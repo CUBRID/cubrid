@@ -13738,6 +13738,13 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   }
 #endif /* CUBRID_DEBUG */
 
+#if defined(SERVER_MODE)
+  if (thread_need_clear_trace (thread_p))
+    {
+      (void) session_clear_trace_stats (thread_p);
+    }
+#endif
+
   /* clear XASL tree */
   (void) qexec_clear_xasl (thread_p, xasl, true);
 

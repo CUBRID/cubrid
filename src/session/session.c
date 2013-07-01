@@ -816,9 +816,9 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name,
   else if (strncasecmp (name_str, "trace_plan", 10) == 0)
     {
       if (state_p->plan_string != NULL)
-        {
-          free_and_init (state_p->plan_string);
-        }
+	{
+	  free_and_init (state_p->plan_string);
+	}
 
       state_p->plan_string = strdup (DB_PULL_STRING (value));
     }
@@ -2537,47 +2537,41 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
     {
       fp = port_open_memstream (&trace_str, &sizeloc);
       if (fp)
-        {
-          if (state_p->plan_string != NULL)
-            {
-              fprintf (fp, "\nQuery Plan:\n%s", state_p->plan_string);
-              free_and_init (state_p->plan_string);
-            }
+	{
+	  if (state_p->plan_string != NULL)
+	    {
+	      fprintf (fp, "\nQuery Plan:\n%s", state_p->plan_string);
+	    }
 
-          if (state_p->trace_stats != NULL)
-            {
-              fprintf (fp, "\nTrace Statistics:\n%s", state_p->trace_stats);
-              free_and_init (state_p->trace_stats);
-            }
+	  if (state_p->trace_stats != NULL)
+	    {
+	      fprintf (fp, "\nTrace Statistics:\n%s", state_p->trace_stats);
+	    }
 
-          port_close_memstream (fp, &trace_str, &sizeloc);
-        }
+	  port_close_memstream (fp, &trace_str, &sizeloc);
+	}
     }
   else if (state_p->trace_format == QUERY_TRACE_JSON)
     {
       stats = json_object ();
 
       if (state_p->plan_string != NULL)
-        {
-          plan = json_loads (state_p->plan_string, 0, NULL);
-          if (plan != NULL)
-            {
-              json_object_set_new (stats, "Query Plan", plan);
-            }
-
-          free_and_init (state_p->plan_string);
-        }
+	{
+	  plan = json_loads (state_p->plan_string, 0, NULL);
+	  if (plan != NULL)
+	    {
+	      json_object_set_new (stats, "Query Plan", plan);
+	    }
+	}
 
       if (state_p->trace_stats != NULL)
-        {
-          xasl = json_loads (state_p->trace_stats, 0, NULL);
-          if (xasl != NULL)
-            {
-              json_object_set_new (stats, "Trace Statistics", xasl);
-            }
-
-          free_and_init (state_p->trace_stats);
-        }
+	{
+	  xasl = json_loads (state_p->trace_stats, 0, NULL);
+	  if (xasl != NULL)
+	    {
+	      json_object_set_new (stats, "Trace Statistics", xasl);
+	    }
+	}
 
       trace_str = json_dumps (stats, JSON_INDENT (2) | JSON_PRESERVE_ORDER);
 
@@ -2595,6 +2589,8 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
     {
       DB_MAKE_NULL (result);
     }
+
+  thread_set_clear_trace (thread_p, true);
 
   return NO_ERROR;
 }
@@ -2623,6 +2619,40 @@ session_set_trace_stats (THREAD_ENTRY * thread_p, char *stats, int format)
 
   state_p->trace_stats = stats;
   state_p->trace_format = format;
+
+  return NO_ERROR;
+}
+
+/*
+ * session_clear_trace_stats () - clear query trace result from session
+ *   return  :
+ *   stats(in) :
+ *   format(in) :
+ */
+int
+session_clear_trace_stats (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state_p = NULL;
+
+  assert (thread_need_clear_trace (thread_p) == true);
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (state_p->plan_string != NULL)
+    {
+      free_and_init (state_p->plan_string);
+    }
+
+  if (state_p->trace_stats != NULL)
+    {
+      free_and_init (state_p->trace_stats);
+    }
+
+  thread_set_clear_trace (thread_p, false);
 
   return NO_ERROR;
 }

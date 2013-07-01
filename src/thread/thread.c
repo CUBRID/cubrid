@@ -1162,6 +1162,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->latch_waits.tv_usec = 0;
 
   entry_p->on_trace = false;
+  entry_p->clear_trace = false;
   entry_p->sort_stats_active = false;
 
   return NO_ERROR;
@@ -4732,3 +4733,37 @@ thread_is_on_trace (THREAD_ENTRY * thread_p)
 
   return thread_p->on_trace;
 }
+
+/*
+ * thread_set_clear_trace () -
+ *   return:
+ *   thread_p(in):
+ *   clear(in):
+ */
+void
+thread_set_clear_trace (THREAD_ENTRY * thread_p, bool clear)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  thread_p->clear_trace = clear;
+}
+
+/*
+ * thread_need_clear_trace() -
+ *   return:
+ *   thread_p(in):
+ */
+bool
+thread_need_clear_trace (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  return thread_p->clear_trace;
+}
+

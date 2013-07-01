@@ -48,6 +48,8 @@
 #define thread_trace_on(thread_p)
 #define thread_set_trace_format(thread_p, format)
 #define thread_is_on_trace(thread_p) (false)
+#define thread_set_clear_trace(thread_p, clear)
+#define thread_need_clear_trace(thread_p) (false)
 #define thread_get_sort_stats_active(thread_p) (false)
 #define thread_set_sort_stats_active(thread_p, flag)
 
@@ -231,6 +233,7 @@ struct thread_entry
   /* for query profile */
   int trace_format;
   bool on_trace;
+  bool clear_trace;
 };
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \
@@ -385,6 +388,8 @@ extern bool thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag);
 extern void thread_trace_on (THREAD_ENTRY * thread_p);
 extern void thread_set_trace_format (THREAD_ENTRY * thread_p, int format);
 extern bool thread_is_on_trace (THREAD_ENTRY * thread_p);
+extern void thread_set_clear_trace (THREAD_ENTRY * thread_p, bool clear);
+extern bool thread_need_clear_trace (THREAD_ENTRY * thread_p);
 
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);
