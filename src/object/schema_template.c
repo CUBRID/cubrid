@@ -1468,7 +1468,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
 	      goto end;
 	    }
 
-	  status = tp_value_strict_cast (proposed_value, value, att->domain);
+	  status = tp_value_cast (proposed_value, value, att->domain, false);
 	  /* value is freed at the bottom */
 	}
       if (status != DOMAIN_COMPATIBLE)

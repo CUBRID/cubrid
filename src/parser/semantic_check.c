@@ -11972,7 +11972,8 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 		  parser_free_tree (parser, lhs);	/* free exp, arg1 */
 		  parser_free_tree (parser, rhs);	/* free exp, arg1 */
 
-		  if ((e2 = parser_new_node (parser, PT_VALUE)) == NULL)
+		  e2 = parser_new_node (parser, PT_VALUE);
+		  if (e2 == NULL)
 		    {
 		      PT_ERRORm (parser, a,
 				 MSGCAT_SET_PARSER_SEMANTIC,
@@ -11992,7 +11993,8 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 		      e1_next = e1->next;
 		      e1->next = NULL;
 
-		      if ((e2 = parser_new_node (parser, PT_VALUE)) == NULL)
+		      e2 = parser_new_node (parser, PT_VALUE);
+		      if (e2 == NULL)
 			{
 			  PT_ERRORm (parser, a,
 				     MSGCAT_SET_PARSER_SEMANTIC,
@@ -13642,9 +13644,6 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	    }
 	  else
 	    {
-	      pt_cast_select_list_to_arg_list (parser,
-					       crt_list->info.node_list.list,
-					       attr_list);
 	      continue;
 	    }
 	}

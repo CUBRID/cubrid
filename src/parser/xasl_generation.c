@@ -13318,22 +13318,6 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list,
 		  regu->domain = pt_xasl_node_to_domain (parser, col);
 		  regu->value.dbvalptr = (DB_VALUE *) col->etc;
 		}
-	      else if (col->node_type == PT_EXPR
-		       && col->info.expr.op == PT_CAST
-		       && col->info.expr.arg1->node_type == PT_EXPR
-		       && col->info.expr.arg1->info.expr.op == PT_ORDERBY_NUM)
-		{
-		  regu = regu_var_alloc ();
-		  if (regu == NULL)
-		    {
-		      goto exit_on_error;
-		    }
-		  regu->type = TYPE_ORDERBY_NUM;
-		  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_NEED_CAST);
-		  regu->domain = pt_xasl_node_to_domain (parser, col);
-		  regu->value.dbvalptr =
-		    (DB_VALUE *) col->info.expr.arg1->etc;
-		}
 	      else
 		{
 		  regu = pt_to_regu_variable (parser, col, unbox);

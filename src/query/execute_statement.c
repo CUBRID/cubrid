@@ -454,8 +454,8 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 
 	  /* make sure the default value can be used for this attribute */
 	  dom_status =
-	    tp_value_strict_cast (&att->default_value.value,
-				  &att->default_value.value, att->domain);
+	    tp_value_cast (&att->default_value.value,
+			   &att->default_value.value, att->domain, false);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
 	      error =

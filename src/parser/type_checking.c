@@ -17552,7 +17552,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	{
 	  return 0;
 	}
-      dom_status = tp_value_strict_cast (arg1, result, domain);
+      dom_status = tp_value_cast (arg1, result, domain, false);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_NOFAIL))
@@ -18337,7 +18337,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	   || op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH
 	   || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR
 	   || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS
-           || op == PT_TRACE_STATS)
+	   || op == PT_TRACE_STATS)
     {
       goto end;
     }

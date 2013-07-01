@@ -12331,8 +12331,7 @@ heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes,
 }
 
 /*
- * heap_scanrange_prev () -
- * heap_scanrange_prev: RETRIEVE OR PEEK NEXT OBJECT IN THE SCANRANGE
+ * heap_scanrange_prev () - RETRIEVE OR PEEK NEXT OBJECT IN THE SCANRANGE
  *   return:
  * returns/side-effects: SCAN_CODE
  *              (Either of S_SUCCESS, S_DOESNT_FIT, S_END,
@@ -15221,25 +15220,12 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
   else
     {
       /* the domains don't match, must attempt coercion */
-      dom_status = tp_value_coerce (attr_val, &value->dbvalue,
-				    value->last_attrepr->domain);
-      if (dom_status != DOMAIN_COMPATIBLE)
+      ret = tp_value_auto_cast (attr_val, &value->dbvalue,
+				value->last_attrepr->domain);
+      if (ret != NO_ERROR)
 	{
-	  if (dom_status == DOMAIN_OVERFLOW)
-	    {
-	      ret =
-		tp_domain_status_er_set (dom_status, ARG_FILE_LINE, attr_val,
-					 value->last_attrepr->domain);
-	    }
-	  else
-	    {
-	      /* set an error of some sort, we really shouldn't get here
-	       * on the server, the coercion rules should have been
-	       * checked by now.
-	       */
-	      ret = ER_OBJ_DOMAIN_CONFLICT;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, "*noname*");
-	    }
+	  assert (er_errid () != NO_ERROR);
+
 	  DB_MAKE_NULL (&value->dbvalue);
 	}
     }

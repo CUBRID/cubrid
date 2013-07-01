@@ -2275,8 +2275,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       else
 	{
-	  dom_status = tp_value_strict_cast (peek_right, arithptr->value,
-					     arithptr->domain);
+	  dom_status = tp_value_cast (peek_right, arithptr->value,
+				      arithptr->domain, false);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,

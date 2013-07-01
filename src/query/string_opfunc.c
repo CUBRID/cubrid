@@ -24503,7 +24503,7 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
       domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
       /* don't mind error code here, we need to know if param is
        * out of range */
-      tp_value_auto_cast (param, &param_db_bigint, domain);
+      (void) tp_value_auto_cast (param, &param_db_bigint, domain);
       if (DB_IS_NULL (&param_db_bigint))
 	{
 	  /* param is out of range, set it to max */

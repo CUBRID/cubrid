@@ -280,8 +280,6 @@ struct ordbynum_info
   int ordbynum_pos_cnt;
   int *ordbynum_pos;
   int reserved[2];
-  TP_DOMAIN **desired_domain;
-  TP_DOMAIN *reserved_domain[2];
 };
 
 /* parent pos info stack */
@@ -3101,48 +3099,14 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 							     ordby_info->
 							     ordbynum_pos[i],
 							     tvalhp);
-		      if (ordby_info->desired_domain[i])
-			{
-			  DB_VALUE t;
-			  TP_DOMAIN_STATUS s;
-
-			  s = tp_value_cast (ordby_info->ordbynum_val, &t,
-					     ordby_info->desired_domain[i],
-					     false);
-			  if (s != DOMAIN_COMPATIBLE)
-			    {
-			      const char *n1, *n2;
-
-			      n1 = pr_type_name (DB_VALUE_TYPE
-						 (ordby_info->ordbynum_val));
-			      n2 = pr_type_name (TP_DOMAIN_TYPE
-						 (ordby_info->
-						  desired_domain[i]));
-			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				      ER_TP_CANT_COERCE, 2, n1, n2);
-			      error = ER_TP_CANT_COERCE;
-			    }
-
-			  (void) qdata_copy_db_value_to_tuple_value (&t,
-								     tvalhp,
-								     &tval_size);
-			  pr_clear_value (&t);
-			}
-		      else
-			{
-			  (void)
-			    qdata_copy_db_value_to_tuple_value (ordby_info->
-								ordbynum_val,
-								tvalhp,
-								&tval_size);
-			}
+		      (void) qdata_copy_db_value_to_tuple_value (ordby_info->
+								 ordbynum_val,
+								 tvalhp,
+								 &tval_size);
 		    }
-		  if (error == NO_ERROR)
-		    {
-		      error =
-			qfile_add_tuple_to_list (thread_p, info->output_file,
-						 data);
-		    }
+		  error =
+		    qfile_add_tuple_to_list (thread_p, info->output_file,
+					     data);
 		}
 	      else
 		{
@@ -3409,7 +3373,7 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   OUTPTR_LIST *outptr_list;
   SORT_LIST *orderby_ptr, *order_ptr, *orderby_list;
   SORT_LIST *order_ptr2, temp_ord;
-  bool orderby_alloc;
+  bool orderby_alloc = false;
   int k, n, i, ls_flag;
   ORDBYNUM_INFO ordby_info;
   REGU_VARIABLE_LIST regu_list;
@@ -3541,7 +3505,6 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   /* sort the list file */
   ordby_info.ordbynum_pos_cnt = 0;
   ordby_info.ordbynum_pos = ordby_info.reserved;
-  ordby_info.desired_domain = ordby_info.reserved_domain;
   if (outptr_list)
     {
       for (n = 0, regu_list = outptr_list->valptrp; regu_list;
@@ -3562,15 +3525,6 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      error = ER_FAILED;
 	      GOTO_EXIT_ON_ERROR;
 	    }
-
-	  ordby_info.desired_domain =
-	    (TP_DOMAIN **) db_private_alloc (thread_p,
-					     sizeof (TP_DOMAIN *) * n);
-	  if (ordby_info.desired_domain == NULL)
-	    {
-	      error = ER_FAILED;
-	      GOTO_EXIT_ON_ERROR;
-	    }
 	}
 
       for (n = 0, i = 0, regu_list = outptr_list->valptrp; regu_list;
@@ -3578,15 +3532,6 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  if (regu_list->value.type == TYPE_ORDERBY_NUM)
 	    {
-	      if (REGU_VARIABLE_IS_FLAGED
-		  (&regu_list->value, REGU_VARIABLE_NEED_CAST))
-		{
-		  ordby_info.desired_domain[n] = regu_list->value.domain;
-		}
-	      else
-		{
-		  ordby_info.desired_domain[n] = NULL;
-		}
 	      ordby_info.ordbynum_pos[n++] = i;
 	    }
 	}
@@ -3640,12 +3585,6 @@ exit_on_error:
       && ordby_info.ordbynum_pos != ordby_info.reserved)
     {
       db_private_free_and_init (thread_p, ordby_info.ordbynum_pos);
-    }
-
-  if (ordby_info.desired_domain
-      && ordby_info.desired_domain != ordby_info.reserved_domain)
-    {
-      db_private_free_and_init (thread_p, ordby_info.desired_domain);
     }
 
   /* free temporarily allocated areas */
@@ -15293,6 +15232,7 @@ qexec_remove_my_transaction_id (THREAD_ENTRY * thread_p,
 	}
 
       ent->last_ta_idx--;	/* shrink */
+      assert (ent->last_ta_idx >= 0);
     }
 
   return NO_ERROR;
@@ -24342,8 +24282,8 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 
       db_make_int (&db_int_precision, precision);
       DB_MAKE_NULL (&db_str_precision);
-      if (tp_value_strict_cast (&db_int_precision, &db_str_precision,
-				&tp_String_domain) != DOMAIN_COMPATIBLE)
+      if (tp_value_cast (&db_int_precision, &db_str_precision,
+			 &tp_String_domain, false) != DOMAIN_COMPATIBLE)
 	{
 	  goto exit_on_error;
 	}
@@ -24381,8 +24321,8 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	{
 	  db_make_int (&db_int_scale, scale);
 	  DB_MAKE_NULL (&db_str_scale);
-	  if (tp_value_strict_cast (&db_int_scale, &db_str_scale,
-				    &tp_String_domain) != DOMAIN_COMPATIBLE)
+	  if (tp_value_cast (&db_int_scale, &db_str_scale,
+			     &tp_String_domain, false) != DOMAIN_COMPATIBLE)
 	    {
 	      db_value_clear (pprec_scale_result);
 	      goto exit_on_error;
@@ -25662,34 +25602,8 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 	  if (varp->value.type == TYPE_ORDERBY_NUM)
 	    {
-	      if (REGU_VARIABLE_IS_FLAGED
-		  (&varp->value, REGU_VARIABLE_NEED_CAST))
-		{
-		  DB_VALUE t;
-		  TP_DOMAIN_STATUS s;
-
-		  s = tp_value_cast (ordby_info.ordbynum_val, &t,
-				     varp->value.domain, false);
-		  if (s != DOMAIN_COMPATIBLE)
-		    {
-		      const char *n1, *n2;
-
-		      n1 = pr_type_name (DB_VALUE_TYPE
-					 (ordby_info.ordbynum_val));
-		      n2 = pr_type_name (TP_DOMAIN_TYPE (varp->value.domain));
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_TP_CANT_COERCE, 2, n1, n2);
-		      error = ER_TP_CANT_COERCE;
-		      goto cleanup;
-		    }
-		  pr_clone_value (&t, &tuple[tpl_descr->f_cnt]);
-		  pr_clear_value (&t);
-		}
-	      else
-		{
-		  pr_clone_value (ordby_info.ordbynum_val,
-				  &tuple[tpl_descr->f_cnt]);
-		}
+	      pr_clone_value (ordby_info.ordbynum_val,
+			      &tuple[tpl_descr->f_cnt]);
 	    }
 	  tpl_descr->f_valp[tpl_descr->f_cnt] = &tuple[tpl_descr->f_cnt];
 	  value_size =

@@ -109,9 +109,8 @@ static int rv;
 
 typedef enum tp_coersion_mode
 {
-  TP_IMPLICIT_COERCION = 0,
-  TP_EXPLICIT_COERCION,
-  TP_STRICT_COERCION
+  TP_EXPLICIT_COERCION = 0,
+  TP_IMPLICIT_COERCION
 } TP_COERCION_MODE;
 
 /*
@@ -5555,10 +5554,6 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
      TP_IS_CHAR_STRING(dest_type)) ||					\
     (TP_IS_LOB(src_type) || TP_IS_LOB(dest_type)))
 
-#define TP_STRICT_COERCION_ONLY_ALLOWED(src_type, dest_type)            \
-    (src_type != dest_type && \
-     (TP_IS_LOB(src_type) || TP_IS_LOB(dest_type)))
-
 /*
  * tp_value_string_to_double - Coerce a string to a double.
  *    return: NO_ERROR, ER_OUT_OF_VIRTUAL_MEMORY or ER_FAILED.
@@ -6527,25 +6522,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
   if (coercion_mode == TP_IMPLICIT_COERCION)
     {
       if (TP_IMPLICIT_COERCION_NOT_ALLOWED (original_type, desired_type))
-	{
-	  if (preserve_domain)
-	    {
-	      db_value_domain_init (dest, desired_type,
-				    desired_domain->precision,
-				    desired_domain->scale);
-	      db_value_put_null (dest);
-	    }
-	  else
-	    {
-	      db_make_null (dest);
-	    }
-	  return DOMAIN_INCOMPATIBLE;
-	}
-    }
-
-  if (coercion_mode != TP_STRICT_COERCION)
-    {
-      if (TP_STRICT_COERCION_ONLY_ALLOWED (original_type, desired_type))
 	{
 	  if (preserve_domain)
 	    {
@@ -8794,26 +8770,8 @@ tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest,
 }
 
 /*
- * tp_value_strict_cast - Coerce a value into one of another domain strictly.
- *    return: TP_DOMAIN_STATUS
- *    src(in): src DB_VALUE
- *    dest(out): dest DB_VALUE
- *    desired_domain(in):
- * Note:
- *    This function does select domain from desired_domain
- */
-TP_DOMAIN_STATUS
-tp_value_strict_cast (const DB_VALUE * src, DB_VALUE * dest,
-		      const TP_DOMAIN * desired_domain)
-{
-  return tp_value_cast_internal (src, dest, desired_domain,
-				 TP_STRICT_COERCION, true, false);
-}
-
-/*
  * VALUE COMPARISON
  */
-
 
 /*
  * oidcmp - Compares two OIDs and returns a DB_ style status code.
@@ -9997,24 +9955,22 @@ int
 tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest,
 		    const TP_DOMAIN * desired_domain)
 {
-  TP_DOMAIN_STATUS err_dom = DOMAIN_ERROR;
+  TP_DOMAIN_STATUS status;
+  int err = NO_ERROR;
 
-  err_dom = tp_value_cast (src, dest, desired_domain, false);
-  if (err_dom != DOMAIN_COMPATIBLE)
+  status = tp_value_cast (src, dest, desired_domain, false);
+  if (status != DOMAIN_COMPATIBLE)
     {
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 	{
 	  return NO_ERROR;
 	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-		  0);
-	  return ER_QPROC_INVALID_DATATYPE;
-	}
+
+      err = tp_domain_status_er_set (status, ARG_FILE_LINE, src,
+				     desired_domain);
     }
 
-  return NO_ERROR;
+  return err;
 }
 
 /*

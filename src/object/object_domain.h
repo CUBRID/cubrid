@@ -467,11 +467,6 @@ extern TP_DOMAIN_STATUS tp_value_cast_no_domain_select (const DB_VALUE * src,
 							bool
 							implicit_coercion);
 
-extern TP_DOMAIN_STATUS tp_value_strict_cast (const DB_VALUE * src,
-					      DB_VALUE * dest,
-					      const TP_DOMAIN *
-					      desired_domain);
-
 extern int tp_value_equal (const DB_VALUE * value1,
 			   const DB_VALUE * value2, int allow_coercion);
 
