@@ -1299,6 +1299,7 @@ namespace DBGW3
     {
       dbgw::clearException();
 
+      dbgw::ClientResultSetMetaDataSharedPtr *pMeta = NULL;
       try
         {
           if (hResult == NULL)
@@ -1311,9 +1312,7 @@ namespace DBGW3
           dbgw::ClientResultSetSharedPtr *pResult =
               (dbgw::ClientResultSetSharedPtr *) hResult;
 
-          dbgw::ClientResultSetMetaDataSharedPtr *pMeta =
-              new dbgw::ClientResultSetMetaDataSharedPtr();
-
+          pMeta = new dbgw::ClientResultSetMetaDataSharedPtr();
           *pMeta = (*pResult)->getMetaData();
           if (*pMeta == NULL)
             {
@@ -1324,6 +1323,11 @@ namespace DBGW3
         }
       catch (dbgw::Exception &e)
         {
+          if (pMeta != NULL)
+            {
+              delete pMeta;
+            }
+
           dbgw::setLastException(e);
           return NULL;
         }

@@ -441,6 +441,15 @@ namespace dbgw
               throw getLastException();
             }
 
+          if (szValue == NULL)
+            {
+              /**
+               *  assert (szValue == NULL)
+               *  we can't use assert.
+               */
+              return;
+            }
+
           memcpy(m_pBuffer, szValue, 2);
         }
     }
@@ -491,6 +500,15 @@ namespace dbgw
               throw getLastException();
             }
 
+          if (szValue == NULL)
+            {
+              /**
+               *  assert (szValue == NULL)
+               *  we can't use assert.
+               */
+              return;
+            }
+
           int yy, mm, dd, hh, mi, ss;
           /* yy-mm-dd hh:mi:ss*/
           sscanf(szValue, "%d-%d-%d %d:%d:%d", &yy, &mm, &dd, &hh, &mi, &ss);
@@ -511,6 +529,15 @@ namespace dbgw
           if (pValue->getCString(&szValue) == false)
             {
               throw getLastException();
+            }
+
+          if (szValue == NULL)
+            {
+              /**
+               *  assert (szValue == NULL)
+               *  we can't use assert.
+               */
+              return;
             }
 
           int yy, mm, dd;
@@ -534,6 +561,15 @@ namespace dbgw
               throw getLastException();
             }
 
+          if (szValue == NULL)
+            {
+              /**
+               *  assert (szValue == NULL)
+               *  we can't use assert.
+               */
+              return;
+            }
+
           int hh, mi, ss;
           sscanf(szValue, "%d:%d:%d", &hh, &mi, &ss);
           oci::setOCIDateTime(m_pBuffer, 0, 0, 0, hh, mi, ss);
@@ -551,7 +587,17 @@ namespace dbgw
       m_pBuffer = new char[m_nLength];
       if (isNull() == false)
         {
-          memcpy(m_pBuffer, pValue->getVoidPtr(), pValue->getLength());
+          const void *pData = pValue->getVoidPtr();
+          if (pData == NULL)
+            {
+              /**
+               *  assert (pData == NULL)
+               *  we can't use assert.
+               */
+              return;
+            }
+
+          memcpy(m_pBuffer, pData, pValue->getLength());
         }
     }
 

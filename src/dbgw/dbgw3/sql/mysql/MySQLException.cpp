@@ -114,6 +114,7 @@ namespace dbgw
       context.nErrorCode = DBGW_ER_INTERFACE_ERROR;
       context.what = errorMessage;
       context.bConnectionError = false;
+      context.nInterfaceErrorCode = 0;
 
       if (pMySQLStmt != NULL)
         {

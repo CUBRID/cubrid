@@ -567,6 +567,10 @@ namespace dbgw
       for (size_t i = 0, size = m_parameter.size(); i < size; i++)
         {
           pValue = m_parameter.getValue(i);
+          if (pValue == NULL)
+            {
+              throw getLastException();
+            }
 
           trait<_OracleBind>::sp pBind(
               new _OracleBind(m_pContext, m_pOCIStmt, i, pValue,
@@ -583,6 +587,10 @@ namespace dbgw
       for (size_t i = 0, size = m_parameterList[nIndex].size(); i < size; i++)
         {
           pValue = m_parameterList[nIndex].getValue(i);
+          if (pValue == NULL)
+            {
+              throw getLastException();
+            }
 
           trait<_OracleBind>::sp pBind(
               new _OracleBind(m_pContext, m_pOCIStmt, i, pValue,

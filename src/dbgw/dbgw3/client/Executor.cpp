@@ -73,9 +73,10 @@ namespace dbgw
     trait<ClientResultSet>::sp execute(trait<_BoundQuery>::sp pQuery,
         _Parameter &parameter)
     {
+      bool needUpdateStatistics = m_pSelf->getMonitor()->isRunning();
       struct timeval beginTime;
 
-      if (m_pSelf->getMonitor()->isRunning())
+      if (needUpdateStatistics)
         {
           gettimeofday(&beginTime, NULL);
         }
@@ -103,7 +104,7 @@ namespace dbgw
 
           pClientResultSet->bindCharsetConverter(m_pDBCharsetConverter);
 
-          if (m_pSelf->getMonitor()->isRunning())
+          if (needUpdateStatistics)
             {
               double dExecTime =
                   (double) system::getdifftimeofday(beginTime) / 1000;
@@ -132,9 +133,10 @@ namespace dbgw
     trait<ClientResultSet>::spvector executeBatch(trait<_BoundQuery>::sp pQuery,
         _ParameterList &parameterList)
     {
+      bool needUpdateStatistics = m_pSelf->getMonitor()->isRunning();
       struct timeval beginTime;
 
-      if (m_pSelf->getMonitor()->isRunning())
+      if (needUpdateStatistics)
         {
           gettimeofday(&beginTime, NULL);
         }
@@ -154,7 +156,7 @@ namespace dbgw
           trait<ClientResultSet>::spvector pResultSetList =
               pStatement->executeBatch(parameterList);
 
-          if (m_pSelf->getMonitor()->isRunning())
+          if (needUpdateStatistics)
             {
               double dExecTime =
                   (double) system::getdifftimeofday(beginTime) / 1000;

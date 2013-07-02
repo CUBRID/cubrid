@@ -173,6 +173,9 @@ namespace dbgw
   private:
     class Impl;
     Impl *m_pImpl;
+
+    _StatisticsGroup(const _StatisticsGroup &);
+    _StatisticsGroup &operator=(const _StatisticsGroup &);
   };
 
   class _StatisticsMonitor : public system::_ThreadEx

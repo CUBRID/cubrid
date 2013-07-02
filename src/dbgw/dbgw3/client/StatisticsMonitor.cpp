@@ -390,11 +390,11 @@ namespace dbgw
       return m_value.getLong();
     }
 
-    void operator=(int64 lValue)
+    _StatisticsItemColumn::Impl &operator=(int64 lValue)
     {
       if (m_pMonitor->isRunning() == false)
         {
-          return;
+          return *this;
         }
 
       system::_MutexAutoLock lock(&m_mutex);
@@ -412,13 +412,15 @@ namespace dbgw
         default:
           break;
         }
+
+      return *this;
     }
 
-    void operator=(double dValue)
+    _StatisticsItemColumn::Impl &operator=(double dValue)
     {
       if (m_pMonitor->isRunning() == false)
         {
-          return;
+          return *this;
         }
 
       system::_MutexAutoLock lock(&m_mutex);
@@ -436,13 +438,15 @@ namespace dbgw
         default:
           break;
         }
+
+      return *this;
     }
 
-    void operator=(const char *szValue)
+    _StatisticsItemColumn::Impl &operator=(const char *szValue)
     {
       if (m_pMonitor->isRunning() == false)
         {
-          return;
+          return *this;
         }
 
       system::_MutexAutoLock lock(&m_mutex);
@@ -460,6 +464,8 @@ namespace dbgw
         default:
           break;
         }
+
+      return *this;
     }
 
     void operator+=(int64 lValue)
