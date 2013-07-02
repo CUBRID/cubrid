@@ -1198,7 +1198,8 @@ $ LOADDB
 1129 Log recovery is finished.
 1130 Transaction is aborted because transaction lock counts exceeds %1$d.
 1131 Internal error: The page %1 of volume %2 may be corrupted.\n%3
-1132 Ultimo error
+1132 Encryption library failure: %s
+1133 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %d):

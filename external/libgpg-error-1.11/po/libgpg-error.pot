@@ -1,0 +1,1119 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR g10 Code GmbH
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: libgpg-error 1.11\n"
+"Report-Msgid-Bugs-To: translations@gnupg.org\n"
+"POT-Creation-Date: 2013-06-28 07:14+0900\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/err-sources.h:27
+msgid "Unspecified source"
+msgstr ""
+
+#: src/err-sources.h:28
+msgid "gcrypt"
+msgstr ""
+
+#: src/err-sources.h:30
+msgid "GnuPG"
+msgstr ""
+
+#: src/err-sources.h:32
+msgid "GpgSM"
+msgstr ""
+
+#: src/err-sources.h:34
+msgid "GPG Agent"
+msgstr ""
+
+#: src/err-sources.h:36
+msgid "Pinentry"
+msgstr ""
+
+#: src/err-sources.h:38
+msgid "SCD"
+msgstr ""
+
+#: src/err-sources.h:40
+msgid "GPGME"
+msgstr ""
+
+#: src/err-sources.h:42
+msgid "Keybox"
+msgstr ""
+
+#: src/err-sources.h:44
+msgid "KSBA"
+msgstr ""
+
+#: src/err-sources.h:46
+msgid "Dirmngr"
+msgstr ""
+
+#: src/err-sources.h:48
+msgid "GSTI"
+msgstr ""
+
+#: src/err-sources.h:50
+msgid "GPA"
+msgstr ""
+
+#: src/err-sources.h:52
+msgid "Kleopatra"
+msgstr ""
+
+#: src/err-sources.h:54
+msgid "G13"
+msgstr ""
+
+#: src/err-sources.h:56
+msgid "Assuan"
+msgstr ""
+
+#: src/err-sources.h:58
+msgid "Any source"
+msgstr ""
+
+#: src/err-sources.h:60
+msgid "User defined source 1"
+msgstr ""
+
+#: src/err-sources.h:62
+msgid "User defined source 2"
+msgstr ""
+
+#: src/err-sources.h:64
+msgid "User defined source 3"
+msgstr ""
+
+#: src/err-sources.h:66
+msgid "User defined source 4"
+msgstr ""
+
+#: src/err-sources.h:68
+msgid "Unknown source"
+msgstr ""
+
+#: src/err-codes.h:27
+msgid "Success"
+msgstr ""
+
+#: src/err-codes.h:28
+msgid "General error"
+msgstr ""
+
+#: src/err-codes.h:30
+msgid "Unknown packet"
+msgstr ""
+
+#: src/err-codes.h:32
+msgid "Unknown version in packet"
+msgstr ""
+
+#: src/err-codes.h:34
+msgid "Invalid public key algorithm"
+msgstr ""
+
+#: src/err-codes.h:36
+msgid "Invalid digest algorithm"
+msgstr ""
+
+#: src/err-codes.h:38
+msgid "Bad public key"
+msgstr ""
+
+#: src/err-codes.h:40
+msgid "Bad secret key"
+msgstr ""
+
+#: src/err-codes.h:42
+msgid "Bad signature"
+msgstr ""
+
+#: src/err-codes.h:44
+msgid "No public key"
+msgstr ""
+
+#: src/err-codes.h:46
+msgid "Checksum error"
+msgstr ""
+
+#: src/err-codes.h:48
+msgid "Bad passphrase"
+msgstr ""
+
+#: src/err-codes.h:50
+msgid "Invalid cipher algorithm"
+msgstr ""
+
+#: src/err-codes.h:52
+msgid "Keyring open"
+msgstr ""
+
+#: src/err-codes.h:54
+msgid "Invalid packet"
+msgstr ""
+
+#: src/err-codes.h:56
+msgid "Invalid armor"
+msgstr ""
+
+#: src/err-codes.h:58
+msgid "No user ID"
+msgstr ""
+
+#: src/err-codes.h:60
+msgid "No secret key"
+msgstr ""
+
+#: src/err-codes.h:62
+msgid "Wrong secret key used"
+msgstr ""
+
+#: src/err-codes.h:64
+msgid "Bad session key"
+msgstr ""
+
+#: src/err-codes.h:66
+msgid "Unknown compression algorithm"
+msgstr ""
+
+#: src/err-codes.h:68
+msgid "Number is not prime"
+msgstr ""
+
+#: src/err-codes.h:70
+msgid "Invalid encoding method"
+msgstr ""
+
+#: src/err-codes.h:72
+msgid "Invalid encryption scheme"
+msgstr ""
+
+#: src/err-codes.h:74
+msgid "Invalid signature scheme"
+msgstr ""
+
+#: src/err-codes.h:76
+msgid "Invalid attribute"
+msgstr ""
+
+#: src/err-codes.h:78
+msgid "No value"
+msgstr ""
+
+#: src/err-codes.h:80
+msgid "Not found"
+msgstr ""
+
+#: src/err-codes.h:82
+msgid "Value not found"
+msgstr ""
+
+#: src/err-codes.h:84
+msgid "Syntax error"
+msgstr ""
+
+#: src/err-codes.h:86
+msgid "Bad MPI value"
+msgstr ""
+
+#: src/err-codes.h:88
+msgid "Invalid passphrase"
+msgstr ""
+
+#: src/err-codes.h:90
+msgid "Invalid signature class"
+msgstr ""
+
+#: src/err-codes.h:92
+msgid "Resources exhausted"
+msgstr ""
+
+#: src/err-codes.h:94
+msgid "Invalid keyring"
+msgstr ""
+
+#: src/err-codes.h:96
+msgid "Trust DB error"
+msgstr ""
+
+#: src/err-codes.h:98
+msgid "Bad certificate"
+msgstr ""
+
+#: src/err-codes.h:100
+msgid "Invalid user ID"
+msgstr ""
+
+#: src/err-codes.h:102
+msgid "Unexpected error"
+msgstr ""
+
+#: src/err-codes.h:104
+msgid "Time conflict"
+msgstr ""
+
+#: src/err-codes.h:106
+msgid "Keyserver error"
+msgstr ""
+
+#: src/err-codes.h:108
+msgid "Wrong public key algorithm"
+msgstr ""
+
+#: src/err-codes.h:110
+msgid "Tribute to D. A."
+msgstr ""
+
+#: src/err-codes.h:112
+msgid "Weak encryption key"
+msgstr ""
+
+#: src/err-codes.h:114
+msgid "Invalid key length"
+msgstr ""
+
+#: src/err-codes.h:116
+msgid "Invalid argument"
+msgstr ""
+
+#: src/err-codes.h:118
+msgid "Syntax error in URI"
+msgstr ""
+
+#: src/err-codes.h:120
+msgid "Invalid URI"
+msgstr ""
+
+#: src/err-codes.h:122
+msgid "Network error"
+msgstr ""
+
+#: src/err-codes.h:124
+msgid "Unknown host"
+msgstr ""
+
+#: src/err-codes.h:126
+msgid "Selftest failed"
+msgstr ""
+
+#: src/err-codes.h:128
+msgid "Data not encrypted"
+msgstr ""
+
+#: src/err-codes.h:130
+msgid "Data not processed"
+msgstr ""
+
+#: src/err-codes.h:132
+msgid "Unusable public key"
+msgstr ""
+
+#: src/err-codes.h:134
+msgid "Unusable secret key"
+msgstr ""
+
+#: src/err-codes.h:136
+msgid "Invalid value"
+msgstr ""
+
+#: src/err-codes.h:138
+msgid "Bad certificate chain"
+msgstr ""
+
+#: src/err-codes.h:140
+msgid "Missing certificate"
+msgstr ""
+
+#: src/err-codes.h:142
+msgid "No data"
+msgstr ""
+
+#: src/err-codes.h:144
+msgid "Bug"
+msgstr ""
+
+#: src/err-codes.h:146
+msgid "Not supported"
+msgstr ""
+
+#: src/err-codes.h:148
+msgid "Invalid operation code"
+msgstr ""
+
+#: src/err-codes.h:150
+msgid "Timeout"
+msgstr ""
+
+#: src/err-codes.h:152
+msgid "Internal error"
+msgstr ""
+
+#: src/err-codes.h:154
+msgid "EOF (gcrypt)"
+msgstr ""
+
+#: src/err-codes.h:156
+msgid "Invalid object"
+msgstr ""
+
+#: src/err-codes.h:158
+msgid "Provided object is too short"
+msgstr ""
+
+#: src/err-codes.h:160
+msgid "Provided object is too large"
+msgstr ""
+
+#: src/err-codes.h:162
+msgid "Missing item in object"
+msgstr ""
+
+#: src/err-codes.h:164
+msgid "Not implemented"
+msgstr ""
+
+#: src/err-codes.h:166
+msgid "Conflicting use"
+msgstr ""
+
+#: src/err-codes.h:168
+msgid "Invalid cipher mode"
+msgstr ""
+
+#: src/err-codes.h:170
+msgid "Invalid flag"
+msgstr ""
+
+#: src/err-codes.h:172
+msgid "Invalid handle"
+msgstr ""
+
+#: src/err-codes.h:174
+msgid "Result truncated"
+msgstr ""
+
+#: src/err-codes.h:176
+msgid "Incomplete line"
+msgstr ""
+
+#: src/err-codes.h:178
+msgid "Invalid response"
+msgstr ""
+
+#: src/err-codes.h:180
+msgid "No agent running"
+msgstr ""
+
+#: src/err-codes.h:182
+msgid "Agent error"
+msgstr ""
+
+#: src/err-codes.h:184
+msgid "Invalid data"
+msgstr ""
+
+#: src/err-codes.h:186
+msgid "Unspecific Assuan server fault"
+msgstr ""
+
+#: src/err-codes.h:188
+msgid "General Assuan error"
+msgstr ""
+
+#: src/err-codes.h:190
+msgid "Invalid session key"
+msgstr ""
+
+#: src/err-codes.h:192
+msgid "Invalid S-expression"
+msgstr ""
+
+#: src/err-codes.h:194
+msgid "Unsupported algorithm"
+msgstr ""
+
+#: src/err-codes.h:196
+msgid "No pinentry"
+msgstr ""
+
+#: src/err-codes.h:198
+msgid "pinentry error"
+msgstr ""
+
+#: src/err-codes.h:200
+msgid "Bad PIN"
+msgstr ""
+
+#: src/err-codes.h:202
+msgid "Invalid name"
+msgstr ""
+
+#: src/err-codes.h:204
+msgid "Bad data"
+msgstr ""
+
+#: src/err-codes.h:206
+msgid "Invalid parameter"
+msgstr ""
+
+#: src/err-codes.h:208
+msgid "Wrong card"
+msgstr ""
+
+#: src/err-codes.h:210
+msgid "No dirmngr"
+msgstr ""
+
+#: src/err-codes.h:212
+msgid "dirmngr error"
+msgstr ""
+
+#: src/err-codes.h:214
+msgid "Certificate revoked"
+msgstr ""
+
+#: src/err-codes.h:216
+msgid "No CRL known"
+msgstr ""
+
+#: src/err-codes.h:218
+msgid "CRL too old"
+msgstr ""
+
+#: src/err-codes.h:220
+msgid "Line too long"
+msgstr ""
+
+#: src/err-codes.h:222
+msgid "Not trusted"
+msgstr ""
+
+#: src/err-codes.h:224
+msgid "Operation cancelled"
+msgstr ""
+
+#: src/err-codes.h:226
+msgid "Bad CA certificate"
+msgstr ""
+
+#: src/err-codes.h:228
+msgid "Certificate expired"
+msgstr ""
+
+#: src/err-codes.h:230
+msgid "Certificate too young"
+msgstr ""
+
+#: src/err-codes.h:232
+msgid "Unsupported certificate"
+msgstr ""
+
+#: src/err-codes.h:234
+msgid "Unknown S-expression"
+msgstr ""
+
+#: src/err-codes.h:236
+msgid "Unsupported protection"
+msgstr ""
+
+#: src/err-codes.h:238
+msgid "Corrupted protection"
+msgstr ""
+
+#: src/err-codes.h:240
+msgid "Ambiguous name"
+msgstr ""
+
+#: src/err-codes.h:242
+msgid "Card error"
+msgstr ""
+
+#: src/err-codes.h:244
+msgid "Card reset required"
+msgstr ""
+
+#: src/err-codes.h:246
+msgid "Card removed"
+msgstr ""
+
+#: src/err-codes.h:248
+msgid "Invalid card"
+msgstr ""
+
+#: src/err-codes.h:250
+msgid "Card not present"
+msgstr ""
+
+#: src/err-codes.h:252
+msgid "No PKCS15 application"
+msgstr ""
+
+#: src/err-codes.h:254
+msgid "Not confirmed"
+msgstr ""
+
+#: src/err-codes.h:256
+msgid "Configuration error"
+msgstr ""
+
+#: src/err-codes.h:258
+msgid "No policy match"
+msgstr ""
+
+#: src/err-codes.h:260
+msgid "Invalid index"
+msgstr ""
+
+#: src/err-codes.h:262
+msgid "Invalid ID"
+msgstr ""
+
+#: src/err-codes.h:264
+msgid "No SmartCard daemon"
+msgstr ""
+
+#: src/err-codes.h:266
+msgid "SmartCard daemon error"
+msgstr ""
+
+#: src/err-codes.h:268
+msgid "Unsupported protocol"
+msgstr ""
+
+#: src/err-codes.h:270
+msgid "Bad PIN method"
+msgstr ""
+
+#: src/err-codes.h:272
+msgid "Card not initialized"
+msgstr ""
+
+#: src/err-codes.h:274
+msgid "Unsupported operation"
+msgstr ""
+
+#: src/err-codes.h:276
+msgid "Wrong key usage"
+msgstr ""
+
+#: src/err-codes.h:278
+msgid "Nothing found"
+msgstr ""
+
+#: src/err-codes.h:280
+msgid "Wrong blob type"
+msgstr ""
+
+#: src/err-codes.h:282
+msgid "Missing value"
+msgstr ""
+
+#: src/err-codes.h:284
+msgid "Hardware problem"
+msgstr ""
+
+#: src/err-codes.h:286
+msgid "PIN blocked"
+msgstr ""
+
+#: src/err-codes.h:288
+msgid "Conditions of use not satisfied"
+msgstr ""
+
+#: src/err-codes.h:290
+msgid "PINs are not synced"
+msgstr ""
+
+#: src/err-codes.h:292
+msgid "Invalid CRL"
+msgstr ""
+
+#: src/err-codes.h:294
+msgid "BER error"
+msgstr ""
+
+#: src/err-codes.h:296
+msgid "Invalid BER"
+msgstr ""
+
+#: src/err-codes.h:298
+msgid "Element not found"
+msgstr ""
+
+#: src/err-codes.h:300
+msgid "Identifier not found"
+msgstr ""
+
+#: src/err-codes.h:302
+msgid "Invalid tag"
+msgstr ""
+
+#: src/err-codes.h:304
+msgid "Invalid length"
+msgstr ""
+
+#: src/err-codes.h:306
+msgid "Invalid key info"
+msgstr ""
+
+#: src/err-codes.h:308
+msgid "Unexpected tag"
+msgstr ""
+
+#: src/err-codes.h:310
+msgid "Not DER encoded"
+msgstr ""
+
+#: src/err-codes.h:312
+msgid "No CMS object"
+msgstr ""
+
+#: src/err-codes.h:314
+msgid "Invalid CMS object"
+msgstr ""
+
+#: src/err-codes.h:316
+msgid "Unknown CMS object"
+msgstr ""
+
+#: src/err-codes.h:318
+msgid "Unsupported CMS object"
+msgstr ""
+
+#: src/err-codes.h:320
+msgid "Unsupported encoding"
+msgstr ""
+
+#: src/err-codes.h:322
+msgid "Unsupported CMS version"
+msgstr ""
+
+#: src/err-codes.h:324
+msgid "Unknown algorithm"
+msgstr ""
+
+#: src/err-codes.h:326
+msgid "Invalid crypto engine"
+msgstr ""
+
+#: src/err-codes.h:328
+msgid "Public key not trusted"
+msgstr ""
+
+#: src/err-codes.h:330
+msgid "Decryption failed"
+msgstr ""
+
+#: src/err-codes.h:332
+msgid "Key expired"
+msgstr ""
+
+#: src/err-codes.h:334
+msgid "Signature expired"
+msgstr ""
+
+#: src/err-codes.h:336
+msgid "Encoding problem"
+msgstr ""
+
+#: src/err-codes.h:338
+msgid "Invalid state"
+msgstr ""
+
+#: src/err-codes.h:340
+msgid "Duplicated value"
+msgstr ""
+
+#: src/err-codes.h:342
+msgid "Missing action"
+msgstr ""
+
+#: src/err-codes.h:344
+msgid "ASN.1 module not found"
+msgstr ""
+
+#: src/err-codes.h:346
+msgid "Invalid OID string"
+msgstr ""
+
+#: src/err-codes.h:348
+msgid "Invalid time"
+msgstr ""
+
+#: src/err-codes.h:350
+msgid "Invalid CRL object"
+msgstr ""
+
+#: src/err-codes.h:352
+msgid "Unsupported CRL version"
+msgstr ""
+
+#: src/err-codes.h:354
+msgid "Invalid certificate object"
+msgstr ""
+
+#: src/err-codes.h:356
+msgid "Unknown name"
+msgstr ""
+
+#: src/err-codes.h:358
+msgid "A locale function failed"
+msgstr ""
+
+#: src/err-codes.h:360
+msgid "Not locked"
+msgstr ""
+
+#: src/err-codes.h:362
+msgid "Protocol violation"
+msgstr ""
+
+#: src/err-codes.h:364
+msgid "Invalid MAC"
+msgstr ""
+
+#: src/err-codes.h:366
+msgid "Invalid request"
+msgstr ""
+
+#: src/err-codes.h:368
+msgid "Unknown extension"
+msgstr ""
+
+#: src/err-codes.h:370
+msgid "Unknown critical extension"
+msgstr ""
+
+#: src/err-codes.h:372
+msgid "Locked"
+msgstr ""
+
+#: src/err-codes.h:374
+msgid "Unknown option"
+msgstr ""
+
+#: src/err-codes.h:376
+msgid "Unknown command"
+msgstr ""
+
+#: src/err-codes.h:378
+msgid "Not operational"
+msgstr ""
+
+#: src/err-codes.h:380
+msgid "No passphrase given"
+msgstr ""
+
+#: src/err-codes.h:382
+msgid "No PIN given"
+msgstr ""
+
+#: src/err-codes.h:384
+msgid "Not enabled"
+msgstr ""
+
+#: src/err-codes.h:386
+msgid "No crypto engine"
+msgstr ""
+
+#: src/err-codes.h:388
+msgid "Missing key"
+msgstr ""
+
+#: src/err-codes.h:390
+msgid "Too many objects"
+msgstr ""
+
+#: src/err-codes.h:392
+msgid "Limit reached"
+msgstr ""
+
+#: src/err-codes.h:394
+msgid "Not initialized"
+msgstr ""
+
+#: src/err-codes.h:396
+msgid "Missing issuer certificate"
+msgstr ""
+
+#: src/err-codes.h:398
+msgid "No keyserver available"
+msgstr ""
+
+#: src/err-codes.h:400
+msgid "Invalid elliptic curve"
+msgstr ""
+
+#: src/err-codes.h:402
+msgid "Unknown elliptic curve"
+msgstr ""
+
+#: src/err-codes.h:404
+msgid "Duplicated key"
+msgstr ""
+
+#: src/err-codes.h:406
+msgid "Ambiguous result"
+msgstr ""
+
+#: src/err-codes.h:408
+msgid "Operation fully cancelled"
+msgstr ""
+
+#: src/err-codes.h:410
+msgid "Operation not yet finished"
+msgstr ""
+
+#: src/err-codes.h:412
+msgid "Buffer too short"
+msgstr ""
+
+#: src/err-codes.h:414
+msgid "Invalid length specifier in S-expression"
+msgstr ""
+
+#: src/err-codes.h:416
+msgid "String too long in S-expression"
+msgstr ""
+
+#: src/err-codes.h:418
+msgid "Unmatched parentheses in S-expression"
+msgstr ""
+
+#: src/err-codes.h:420
+msgid "S-expression not canonical"
+msgstr ""
+
+#: src/err-codes.h:422
+msgid "Bad character in S-expression"
+msgstr ""
+
+#: src/err-codes.h:424
+msgid "Bad quotation in S-expression"
+msgstr ""
+
+#: src/err-codes.h:426
+msgid "Zero prefix in S-expression"
+msgstr ""
+
+#: src/err-codes.h:428
+msgid "Nested display hints in S-expression"
+msgstr ""
+
+#: src/err-codes.h:430
+msgid "Unmatched display hints"
+msgstr ""
+
+#: src/err-codes.h:432
+msgid "Unexpected reserved punctuation in S-expression"
+msgstr ""
+
+#: src/err-codes.h:434
+msgid "Bad hexadecimal character in S-expression"
+msgstr ""
+
+#: src/err-codes.h:436
+msgid "Odd hexadecimal numbers in S-expression"
+msgstr ""
+
+#: src/err-codes.h:438
+msgid "Bad octal character in S-expression"
+msgstr ""
+
+#: src/err-codes.h:440
+msgid "General IPC error"
+msgstr ""
+
+#: src/err-codes.h:442
+msgid "IPC accept call failed"
+msgstr ""
+
+#: src/err-codes.h:444
+msgid "IPC connect call failed"
+msgstr ""
+
+#: src/err-codes.h:446
+msgid "Invalid IPC response"
+msgstr ""
+
+#: src/err-codes.h:448
+msgid "Invalid value passed to IPC"
+msgstr ""
+
+#: src/err-codes.h:450
+msgid "Incomplete line passed to IPC"
+msgstr ""
+
+#: src/err-codes.h:452
+msgid "Line passed to IPC too long"
+msgstr ""
+
+#: src/err-codes.h:454
+msgid "Nested IPC commands"
+msgstr ""
+
+#: src/err-codes.h:456
+msgid "No data callback in IPC"
+msgstr ""
+
+#: src/err-codes.h:458
+msgid "No inquire callback in IPC"
+msgstr ""
+
+#: src/err-codes.h:460
+msgid "Not an IPC server"
+msgstr ""
+
+#: src/err-codes.h:462
+msgid "Not an IPC client"
+msgstr ""
+
+#: src/err-codes.h:464
+msgid "Problem starting IPC server"
+msgstr ""
+
+#: src/err-codes.h:466
+msgid "IPC read error"
+msgstr ""
+
+#: src/err-codes.h:468
+msgid "IPC write error"
+msgstr ""
+
+#: src/err-codes.h:470
+msgid "Too much data for IPC layer"
+msgstr ""
+
+#: src/err-codes.h:472
+msgid "Unexpected IPC command"
+msgstr ""
+
+#: src/err-codes.h:474
+msgid "Unknown IPC command"
+msgstr ""
+
+#: src/err-codes.h:476
+msgid "IPC syntax error"
+msgstr ""
+
+#: src/err-codes.h:478
+msgid "IPC call has been cancelled"
+msgstr ""
+
+#: src/err-codes.h:480
+msgid "No input source for IPC"
+msgstr ""
+
+#: src/err-codes.h:482
+msgid "No output source for IPC"
+msgstr ""
+
+#: src/err-codes.h:484
+msgid "IPC parameter error"
+msgstr ""
+
+#: src/err-codes.h:486
+msgid "Unknown IPC inquire"
+msgstr ""
+
+#: src/err-codes.h:488
+msgid "User defined error code 1"
+msgstr ""
+
+#: src/err-codes.h:490
+msgid "User defined error code 2"
+msgstr ""
+
+#: src/err-codes.h:492
+msgid "User defined error code 3"
+msgstr ""
+
+#: src/err-codes.h:494
+msgid "User defined error code 4"
+msgstr ""
+
+#: src/err-codes.h:496
+msgid "User defined error code 5"
+msgstr ""
+
+#: src/err-codes.h:498
+msgid "User defined error code 6"
+msgstr ""
+
+#: src/err-codes.h:500
+msgid "User defined error code 7"
+msgstr ""
+
+#: src/err-codes.h:502
+msgid "User defined error code 8"
+msgstr ""
+
+#: src/err-codes.h:504
+msgid "User defined error code 9"
+msgstr ""
+
+#: src/err-codes.h:506
+msgid "User defined error code 10"
+msgstr ""
+
+#: src/err-codes.h:508
+msgid "User defined error code 11"
+msgstr ""
+
+#: src/err-codes.h:510
+msgid "User defined error code 12"
+msgstr ""
+
+#: src/err-codes.h:512
+msgid "User defined error code 13"
+msgstr ""
+
+#: src/err-codes.h:514
+msgid "User defined error code 14"
+msgstr ""
+
+#: src/err-codes.h:516
+msgid "User defined error code 15"
+msgstr ""
+
+#: src/err-codes.h:518
+msgid "User defined error code 16"
+msgstr ""
+
+#: src/err-codes.h:520
+msgid "System error w/o errno"
+msgstr ""
+
+#: src/err-codes.h:522
+msgid "Unknown system error"
+msgstr ""
+
+#: src/err-codes.h:524
+msgid "End of file"
+msgstr ""
+
+#: src/err-codes.h:526
+msgid "Unknown error code"
+msgstr ""
+
+#: src/gpg-error.c:390
+#, c-format
+msgid "Usage: %s GPG-ERROR [...]\n"
+msgstr ""
+
+#: src/gpg-error.c:446
+#, c-format
+msgid "%s: warning: could not recognize %s\n"
+msgstr ""

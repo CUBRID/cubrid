@@ -1198,7 +1198,8 @@ $ LOADDB
 1129 Log recovery is finished.
 1130 Transaction is aborted because transaction lock counts exceeds %1$d.
 1131 Internal error: The page %1 of volume %2 may be corrupted.\n%3
-1132 Lỗi sau cùng
+1132 Encryption library failure: %s
+1133 Lỗi sau cùng
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Lỗi trong các lỗi hệ thống con (dòng %d):

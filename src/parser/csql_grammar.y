@@ -191,6 +191,10 @@ static FUNCTION_MAP functions[] = {
   {"substring_index", PT_SUBSTRING_INDEX},
   {"find_in_set", PT_FINDINSET},
   {"md5", PT_MD5},
+  {"aes_encrypt", PT_AES_ENCRYPT},
+  {"aes_decrypt", PT_AES_DECRYPT},	
+  {"sha1", PT_SHA_ONE},	
+  {"sha2", PT_SHA_TWO},	
   {"substrb", PT_SUBSTRING},
   {"tan", PT_TAN},
   {"time_format", PT_TIME_FORMAT},
@@ -22616,6 +22620,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_INET_ATON:
     case PT_INET_NTOA:
     case PT_COERCIBILITY:
+    case PT_SHA_ONE:	
       if (c != 1)
         {
 	  return NULL;
@@ -22660,6 +22665,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_MAKEDATE:
     case PT_ADDTIME:
     case PT_FINDINSET:
+    case PT_AES_ENCRYPT:
+    case PT_AES_DECRYPT:
+    case PT_SHA_TWO:
       if (c != 2)
 	return NULL;
       a1 = args;

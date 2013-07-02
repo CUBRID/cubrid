@@ -145,7 +145,8 @@ QUERY_SOURCES = \
 	$(QUERY_DIR)/query_executor.c \
 	$(QUERY_DIR)/partition.c \
 	$(QUERY_DIR)/query_opfunc.c \
-	$(QUERY_DIR)/stream_to_xasl.c
+	$(QUERY_DIR)/stream_to_xasl.c \
+	$(QUERY_DIR)/crypt_opfunc.c
 
 OBJECT_SOURCES = \
 	$(OBJECT_DIR)/elo.c \

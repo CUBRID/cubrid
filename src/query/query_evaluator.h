@@ -410,7 +410,11 @@ typedef enum
   T_CHARSET,
   T_COLLATION,
   T_WIDTH_BUCKET,
-  T_TRACE_STATS
+  T_TRACE_STATS,
+  T_AES_ENCRYPT,
+  T_AES_DECRYPT,
+  T_SHA_ONE,
+  T_SHA_TWO
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;

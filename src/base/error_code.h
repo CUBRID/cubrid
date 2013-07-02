@@ -1436,7 +1436,9 @@
 
 #define ER_SP_INVALID_HEADER                        -1131
 
-#define ER_LAST_ERROR                               -1132
+#define ER_ENCRYPTION_LIB_FAILED                    -1132
+
+#define ER_LAST_ERROR                               -1133
 
 /*
  * CAUTION!

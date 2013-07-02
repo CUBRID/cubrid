@@ -7532,6 +7532,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_DIVIDE
 		  || node->info.expr.op == PT_MODULUS
 		  || node->info.expr.op == PT_POWER
+		  || node->info.expr.op == PT_AES_ENCRYPT
+		  || node->info.expr.op == PT_AES_DECRYPT
+		  || node->info.expr.op == PT_SHA_TWO
 		  || node->info.expr.op == PT_ROUND
 		  || node->info.expr.op == PT_LOG
 		  || node->info.expr.op == PT_TRUNC
@@ -7713,6 +7716,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_DECRYPT
 		       || node->info.expr.op == PT_BIN
 		       || node->info.expr.op == PT_MD5
+		       || node->info.expr.op == PT_SHA_ONE
 		       || node->info.expr.op == PT_SPACE
 		       || node->info.expr.op == PT_PRIOR
 		       || node->info.expr.op == PT_CONNECT_BY_ROOT
@@ -8659,6 +8663,24 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_MD5:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_MD5, domain);
+		  break;
+
+		case PT_SHA_ONE:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_SHA_ONE, domain);
+		  break;
+
+		case PT_AES_ENCRYPT:
+		  regu =
+		    pt_make_regu_arith (r1, r2, NULL, T_AES_ENCRYPT, domain);
+		  break;
+
+		case PT_AES_DECRYPT:
+		  regu =
+		    pt_make_regu_arith (r1, r2, NULL, T_AES_DECRYPT, domain);
+		  break;
+
+		case PT_SHA_TWO:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_SHA_TWO, domain);
 		  break;
 
 		case PT_SPACE:
@@ -22350,6 +22372,10 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_FROM_UNIXTIME:
 	case T_SUBSTRING_INDEX:
 	case T_MD5:
+	case T_AES_ENCRYPT:
+	case T_AES_DECRYPT:
+	case T_SHA_ONE:
+	case T_SHA_TWO:
 	case T_LPAD:
 	case PT_RPAD:
 	case T_REPLACE:

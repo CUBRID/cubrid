@@ -325,6 +325,8 @@
 		<row><td>cubridsa.lib</td><td>CUBRID</td><td>cubridsa.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cubridsa.lib</td><td>1</td><td>NewSubFolder7</td></row>
 		<row><td>cubridservice.exe</td><td>CUBRID</td><td>cubridservice.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridservice.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>dbghelp.dll</td><td>CUBRID</td><td>dbghelp.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\dbghelp.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>libgcrypt.dll</td><td>CUBRID</td><td>libgcrypt.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libgcrypt.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>libgpg_error_0.dll</td><td>CUBRID</td><td>libgpg-error-0.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libgpg-error-0.dll</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_proxy.exe</td><td>CUBRID</td><td>cub_proxy.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_proxy.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>common.h</td><td>DBGW</td><td>Common.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\Common.h</td><td>1</td><td>NewSubFolder14</td></row>
 		<row><td>exception.h</td><td>DBGW</td><td>Exception.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\Exception.h</td><td>1</td><td>NewSubFolder14</td></row>

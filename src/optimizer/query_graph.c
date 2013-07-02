@@ -3527,6 +3527,10 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_NOT_RLIKE_BINARY:
 
     case PT_MD5:
+    case PT_AES_ENCRYPT:
+    case PT_AES_DECRYPT:
+    case PT_SHA_ONE:
+    case PT_SHA_TWO:
     case PT_ENCRYPT:
     case PT_DECRYPT:
     case PT_INDEX_CARDINALITY:
@@ -3992,6 +3996,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_REVERSE:
 	case PT_SPACE:
 	case PT_MD5:
+	case PT_SHA_ONE:
 	case PT_BIN:
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_TRIM:
@@ -4000,6 +4005,9 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_LIKE_LOWER_BOUND:
 	case PT_LIKE_UPPER_BOUND:
 	case PT_FROM_UNIXTIME:
+	case PT_AES_ENCRYPT:
+	case PT_AES_DECRYPT:
+	case PT_SHA_TWO:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && (expr->info.expr.arg2 ?
 		      pt_is_pseudo_const (expr->info.

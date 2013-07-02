@@ -3587,6 +3587,14 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "conv ";
     case PT_MD5:
       return "md5 ";
+    case PT_AES_ENCRYPT:
+      return "aes_encrypt ";
+    case PT_AES_DECRYPT:
+      return "aes_decrypt ";
+    case PT_SHA_ONE:
+      return "sha1 ";
+    case PT_SHA_TWO:
+      return "sha2 ";
     case PT_BIN:
       return "bin ";
     case PT_TRIM:
@@ -10203,6 +10211,39 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, " md5(");
       q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_AES_ENCRYPT:
+      q = pt_append_nulstring (parser, q, " aes_encrypt(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_AES_DECRYPT:
+      q = pt_append_nulstring (parser, q, " aes_decrypt(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_SHA_ONE:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " sha1(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_SHA_TWO:
+      q = pt_append_nulstring (parser, q, " sha2(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r2);
       q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_EXTRACT:
@@ -17234,6 +17275,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_ASCII:
 	case PT_BIN:
 	case PT_MD5:
+	case PT_SHA_ONE:
 	case PT_REVERSE:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_TRIM:
@@ -17321,6 +17363,9 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_MAKEDATE:
 	case PT_ADDTIME:
 	case PT_WEEKF:
+	case PT_AES_ENCRYPT:
+	case PT_AES_DECRYPT:
+	case PT_SHA_TWO:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.
 					    expr.arg2)) ? true : false;
@@ -17808,6 +17853,10 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_FROM_UNIXTIME:
     case PT_SUBSTRING_INDEX:
     case PT_MD5:
+    case PT_AES_ENCRYPT:
+    case PT_AES_DECRYPT:
+    case PT_SHA_ONE:
+    case PT_SHA_TWO:
     case PT_LPAD:
     case PT_RPAD:
     case PT_REPLACE:
