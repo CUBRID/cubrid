@@ -8611,6 +8611,18 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
 
   env->use_sort_limit = QO_SL_INVALID;
 
+  /* Verify that we don't have terms qualified as after join. These terms will
+   * be evaluated after the SORT-LIMIT plan and might invalidate tuples the
+   * plan returned. 
+   */
+  for (i = 0; i < env->nterms; i++)
+    {
+      if (QO_TERM_CLASS (&env->terms[i]) == QO_TC_AFTER_JOIN)
+	{
+	  goto abandon_stop_limit;
+	}
+    }
+
   /* Start by assuming that evaluation of the limit clause depends on all
    * nodes in the query. Since we only have one partition, we can get the
    * bitset of nodes from there.
