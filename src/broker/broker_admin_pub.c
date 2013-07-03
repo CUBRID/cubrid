@@ -37,6 +37,7 @@
 #include <signal.h>
 #include <time.h>
 #include <errno.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <direct.h>
@@ -901,6 +902,8 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 
   for (i = 0; i < shm_br->num_broker; i++)
     {
+      shm_proxy_p = NULL;
+
       if (strcmp (shm_br->br_info[i].name, broker_name) == 0)
 	{
 	  if (shm_br->br_info[i].service_flag == ON)
@@ -1275,6 +1278,7 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
       uw_shm_detach (shm_br);
       return -1;
     }
+  assert (shm_as_p->num_appl_server <= APPL_SERVER_NUM_LIMIT);
 
   if (shm_br->br_info[br_index].shard_flag == ON)
     {
@@ -1342,7 +1346,8 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
     }
   else
     {
-      for (i = 0; i < shm_as_p->num_appl_server; i++)
+      for (i = 0; i < shm_as_p->num_appl_server && i < APPL_SERVER_NUM_LIMIT;
+	   i++)
 	{
 	  shm_as_p->as_info[i].reset_flag = TRUE;
 	}
@@ -1913,6 +1918,7 @@ admin_conf_change (int master_shm_id, const char *br_name,
 			uw_get_os_error_code ());
       goto set_conf_error;
     }
+  assert (shm_as_p->num_appl_server <= APPL_SERVER_NUM_LIMIT);
 
   if (br_info_p->shard_flag == ON)
     {
@@ -2058,7 +2064,9 @@ admin_conf_change (int master_shm_id, const char *br_name,
 	}
       else
 	{
-	  for (i = 0; i < shm_as_p->num_appl_server; i++)
+	  for (i = 0;
+	       i < shm_as_p->num_appl_server && i < APPL_SERVER_NUM_LIMIT;
+	       i++)
 	    {
 	      shm_as_p->as_info[i].reset_flag = TRUE;
 	    }
@@ -2344,6 +2352,8 @@ admin_conf_change (int master_shm_id, const char *br_name,
 	  goto set_conf_error;
 	}
 
+      assert (shm_proxy_p != NULL);
+
       user_p = shard_metadata_get_shard_user_from_shm (shm_proxy_p);
 
       strncpy (br_info_p->shard_db_user, conf_value,
@@ -2363,6 +2373,8 @@ admin_conf_change (int master_shm_id, const char *br_name,
 	  sprintf (admin_err_msg, "%s is only supported on shard", conf_name);
 	  goto set_conf_error;
 	}
+
+      assert (shm_proxy_p != NULL);
 
       user_p = shard_metadata_get_shard_user_from_shm (shm_proxy_p);
 
@@ -2386,6 +2398,8 @@ admin_conf_change (int master_shm_id, const char *br_name,
 	  sprintf (admin_err_msg, "%s is only supported on shard", conf_name);
 	  goto set_conf_error;
 	}
+
+      assert (shm_proxy_p != NULL);
 
       proxy_log_mode = conf_get_value_proxy_log_mode (conf_value);
       if (proxy_log_mode < 0)
@@ -2868,6 +2882,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
       res = -1;
       goto end;
     }
+  assert (shm_appl->num_appl_server <= APPL_SERVER_NUM_LIMIT);
 
 #if defined(WINDOWS)
   shm_appl->use_pdh_flag = FALSE;
@@ -3008,7 +3023,8 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
     }
   else
     {
-      for (i = 0; i < shm_appl->num_appl_server; i++)
+      for (i = 0; i < shm_appl->num_appl_server && i < APPL_SERVER_NUM_LIMIT;
+	   i++)
 	{
 	  as_activate (shm_br, br_info, shm_appl, &shm_appl->as_info[i], i,
 		       env, env_num);

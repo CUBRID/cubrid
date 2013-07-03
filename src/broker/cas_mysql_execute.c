@@ -858,8 +858,9 @@ fetch_error:
   NET_BUF_ERR_SET (net_buf);
 
   if (cas_shard_flag == ON
-      && srv_handle->auto_commit_mode == TRUE
-      && srv_handle->forward_only_cursor == TRUE)
+      && (srv_handle != NULL
+	  && srv_handle->auto_commit_mode == TRUE
+	  && srv_handle->forward_only_cursor == TRUE))
     {
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }

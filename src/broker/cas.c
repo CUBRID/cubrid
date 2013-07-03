@@ -1031,7 +1031,7 @@ cas_main (void)
 	  {
 	    char len;
 	    unsigned char *ip_addr;
-	    char *db_err_msg = NULL, *url;
+	    char *db_err_msg = NULL, *url = NULL;
 	    struct timeval cas_start_time;
 
 	    gettimeofday (&cas_start_time, NULL);
@@ -1070,6 +1070,8 @@ cas_main (void)
 
 	    if (req_info.client_version >= CAS_MAKE_VER (8, 4, 0))
 	      {
+		assert (url != NULL);
+
 		db_sessionid = url + SRV_CON_URL_SIZE;
 		db_sessionid[SRV_CON_DBSESS_ID_SIZE - 1] = '\0';
 	      }
@@ -1084,6 +1086,8 @@ cas_main (void)
 	    if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info.client_version,
 						     PROTOCOL_V5))
 	      {
+		assert (url != NULL);
+
 		len = *(url + strlen (url) + 1);
 		if (len > 0 && len < SRV_CON_VER_STR_MAX_SIZE)
 		  {
@@ -1215,6 +1219,8 @@ cas_main (void)
 
 		goto finish_cas;
 	      }
+
+	    FREE_MEM (db_err_msg);
 
 	    set_hang_check_time ();
 

@@ -852,7 +852,8 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
     {
       char as_id_str[FIELD_WIDTH_AS_ID];
 
-      sprintf (as_id_str, "%d-%d-%d", proxy_id, shard_id, as_id);
+      snprintf (as_id_str, sizeof (as_id_str), "%d-%d-%d", proxy_id,
+		shard_id, as_id);
 
       print_value (FIELD_ID, as_id_str, FIELD_T_STRING);
     }
@@ -1436,6 +1437,8 @@ br_monitor (char *br_vector)
 
 		  num_shard_q = 0;
 		  num_proxy = shm_proxy_p->num_proxy;
+		  assert (num_proxy <= MAX_PROXY_NUM);
+
 		  for (proxy_index = 0; proxy_index < num_proxy;
 		       proxy_index++)
 		    {

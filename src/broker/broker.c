@@ -2006,6 +2006,7 @@ cas_monitor_worker (T_APPL_SERVER_INFO * as_info_p, int br_index,
 	shard_shm_find_proxy_info (shm_proxy_p, as_info_p->proxy_id);
       shard_info_p =
 	shard_shm_find_shard_info (proxy_info_p, as_info_p->shard_id);
+      assert (shard_info_p != NULL);
 
       (shm_br->br_info[br_index].appl_server_num)--;
       (shard_info_p->num_appl_server)--;
@@ -2054,7 +2055,7 @@ cas_monitor_thr_f (void *ar)
 static THREAD_FUNC
 hang_check_thr_f (void *ar)
 {
-  int cur_index;
+  unsigned int cur_index;
   int cur_hang_count;
   T_BROKER_INFO *br_info_p;
   time_t cur_time;

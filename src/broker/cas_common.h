@@ -131,6 +131,7 @@
 	  pthread_attr_init(&thread_attr);	\
 	  pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED); \
 	  pthread_create(&(THR_ID), &thread_attr, FUNC, ARG);	\
+	  pthread_attr_destroy(&thread_attr);  \
 	} while (0)
 #endif
 

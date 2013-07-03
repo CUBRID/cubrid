@@ -530,7 +530,7 @@ extern SOCKET new_req_sock_fd;
 static int
 read_buffer (SOCKET sock_fd, char *buf, int size)
 {
-  int read_len;
+  int read_len = -1;
 #if defined(ASYNC_MODE)
   struct pollfd po[2] = { {0, 0, 0}, {0, 0, 0} };
   int timeout, po_size, n;
@@ -587,27 +587,31 @@ retry_poll:
 	  /* CHANGE CLIENT */
 	  return -1;
 	}
-      if (po[0].revents & POLLIN)
+      if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
+	{
+	  read_len = -1;
+	}
+      else if (po[0].revents & POLLIN)
 	{
 #endif /* ASYNC_MODE */
 	  /* RECEIVE NEW REQUEST */
 	  read_len = READ_FROM_SOCKET (sock_fd, buf, size);
-	  if (read_len <= 0)
-	    {
-	      net_error_flag = 1;
-	    }
 #if defined(ASYNC_MODE)
 	}
     }
 #endif /* ASYNC_MODE */
 
+  if (read_len <= 0)
+    {
+      net_error_flag = 1;
+    }
   return read_len;
 }
 
 static int
 write_buffer (SOCKET sock_fd, const char *buf, int size)
 {
-  int write_len;
+  int write_len = -1;
 #ifdef ASYNC_MODE
   struct pollfd po[1] = { {0, 0, 0} };
   int timeout, n;
@@ -646,19 +650,23 @@ retry_poll:
     }
   else
     {
-      if (po[0].revents & POLLOUT)
+      if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
+	{
+	  write_len = -1;
+	}
+      else if (po[0].revents & POLLOUT)
 	{
 #endif /* ASYNC_MODE */
 	  write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
-	  if (write_len <= 0)
-	    {
-	      net_error_flag = 1;
-	    }
 #if defined(ASYNC_MODE)
 	}
     }
 #endif /* ASYNC_MODE */
 
+  if (write_len <= 0)
+    {
+      net_error_flag = 1;
+    }
   return write_len;
 }
 
