@@ -42,11 +42,7 @@ current_dir=`pwd`
 
 current_gpg_dir="$current_dir/../libgpg-error-1.11/"
 
-SYS=`uname -s`
-if test "x$SYS" = "xAIX"
-then
-  opts_libgcrypt="$opts_libgcrypt --disable-asm"
-fi
+opts_libgcrypt="$opts_libgcrypt --disable-asm"
 
 if test -f config.status; then
   echo "configured already. skip $PWD"
