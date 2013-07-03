@@ -2512,7 +2512,11 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  sysprm_reload_and_init (NULL, NULL);
+	  error_code = sysprm_reload_and_init (NULL, NULL);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
 
 	  error_code =
 	    logtb_define_trantable_log_latch (thread_p,
