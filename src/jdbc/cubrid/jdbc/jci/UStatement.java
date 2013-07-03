@@ -2048,7 +2048,7 @@ public class UStatement {
 		case UUType.U_TYPE_CLOB:
 			return inBuffer.readClob(dataSize, relatedConnection.cubridcon);
 		default:
-			return null;
+			throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 		}
 	}
 
