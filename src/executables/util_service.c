@@ -1898,6 +1898,7 @@ process_broker (int command_type, int argc, const char **argv,
 	      proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
 	  }
       }
+      break;
 
     case INFO:
       {
