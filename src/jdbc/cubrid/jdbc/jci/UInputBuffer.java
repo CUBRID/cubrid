@@ -291,7 +291,7 @@ class UInputBuffer {
 
 		Calendar cal = Calendar.getInstance();
 		if (year == 0 && month == 0 && day == 0) {
-			cal.set(0, 0, 1, 0, 0, 0); /* round to 0001-01-01 00:00:00) */
+			cal.setTimeInMillis(0); /* round to 1970-01-01 00:00:00 UTC */
 		} else {
 			cal.set(year, month - 1, day, hour, minute, second);
 		}
