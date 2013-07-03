@@ -51,6 +51,9 @@ namespace dbgw
     const std::string &getFileName() const;
     const std::string &getRealFileName() const;
 
+  protected:
+    virtual void doSetRealFileName();
+
   private:
     std::string m_fileName;
     std::string m_realFileName;
@@ -229,6 +232,7 @@ namespace dbgw
         _ExpatXMLProperties &properties);
     virtual void doOnElementEnd(const XML_Char *szName);
     virtual void doOnElementContent(const XML_Char *szData, int nLength);
+    virtual void doSetRealFileName();
 
   private:
     void parseSql(_ExpatXMLProperties properties);
@@ -252,6 +256,7 @@ namespace dbgw
     virtual void doOnElementEnd(const XML_Char *szName);
     virtual void doOnElementContent(const XML_Char *szData, int nLength);
     virtual void doOnCdataEnd();
+    virtual void doSetRealFileName();
 
   private:
     void parseUsingDB(_ExpatXMLProperties &properties);
@@ -276,6 +281,7 @@ namespace dbgw
     virtual void doOnElementEnd(const XML_Char *szName);
     virtual void doOnElementContent(const XML_Char *szData, int nLength);
     virtual void doOnCdataEnd();
+    virtual void doSetRealFileName();
 
   private:
     void parseSqls(_ExpatXMLProperties &properties);

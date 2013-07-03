@@ -203,6 +203,7 @@ namespace dbgw
   void _XmlParser::setRealFileName(const std::string &realFileName)
   {
     m_realFileName = realFileName;
+    doSetRealFileName();
   }
 
   const std::string &_XmlParser::getFileName() const
@@ -213,6 +214,10 @@ namespace dbgw
   const std::string &_XmlParser::getRealFileName() const
   {
     return m_realFileName;
+  }
+
+  void _XmlParser::doSetRealFileName()
+  {
   }
 
   _ExpatXMLParser::_ExpatXMLParser(const std::string &fileName) :
@@ -1601,6 +1606,11 @@ namespace dbgw
     m_parserContext.appendQueryString(data.substr(0, nLength).c_str());
   }
 
+  void _10QueryMapParser::doSetRealFileName()
+  {
+    m_parserContext.setFileName(getRealFileName());
+  }
+
   void _10QueryMapParser::parseSql(_ExpatXMLProperties properties)
   {
     if (getParentElementName() != XN_10_DEFINEDQUERY)
@@ -1741,6 +1751,11 @@ namespace dbgw
       {
         m_parserContext.addQuery();
       }
+  }
+
+  void _20QueryMapParser::doSetRealFileName()
+  {
+    m_parserContext.setFileName(getRealFileName());
   }
 
   void _20QueryMapParser::parseUsingDB(_ExpatXMLProperties &properties)
@@ -1885,6 +1900,11 @@ namespace dbgw
       {
         m_parserContext.addQuery();
       }
+  }
+
+  void _30QueryMapParser::doSetRealFileName()
+  {
+    m_parserContext.setFileName(getRealFileName());
   }
 
   void _30QueryMapParser::parseSqls(_ExpatXMLProperties &properties)

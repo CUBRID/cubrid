@@ -77,8 +77,9 @@ namespace dbgw
 #if defined(WINDOWS) || defined(_WIN32) || defined(_WIN64)
       HANDLE hSrc;
       WIN32_FIND_DATA wfd;
+      std::string path = m_path + "\\*";
 
-      hSrc = FindFirstFile(m_path.c_str(), &wfd);
+      hSrc = FindFirstFile(path.c_str(), &wfd);
 
       if (hSrc == INVALID_HANDLE_VALUE)
         {
@@ -87,12 +88,12 @@ namespace dbgw
           throw e;
         }
 
-      BOOL pResult = true;
+      BOOL bResult = true;
 
-      while (pResult != false)
+      while (bResult)
         {
-          fileNameList.push_back(m_path + "/" + wfd.cFileName);
-          pResult = FindNextFile(hSrc, &wfd);
+          fileNameList.push_back(m_path + "\\" + wfd.cFileName);
+          bResult = FindNextFile(hSrc, &wfd);
         }
 
       FindClose(hSrc);
