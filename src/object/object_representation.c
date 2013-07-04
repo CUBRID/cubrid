@@ -6430,7 +6430,18 @@ or_listid_length (void *listid_ptr)
       return length;
     }
 
-  length = OR_INT_SIZE * 12;
+  /* QFILE_LIST_ID 9 fixed item 
+   *  tuple_cnt
+   *  page_cnt
+   *  first_vpid.pageid
+   *  first_vpid.volid
+   *  last_vpid.pageid
+   *  last_vpid.volid
+   *  last_offset
+   *  lasttpl_len
+   *  type_list_type_cnt
+   */
+  length = OR_INT_SIZE * 9;
 
   for (i = 0; i < listid->type_list.type_cnt; i++)
     {

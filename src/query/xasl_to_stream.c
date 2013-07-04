@@ -1504,6 +1504,9 @@ xts_save_xasl_node (const XASL_NODE * xasl)
   char *buf = OR_ALIGNED_BUF_START (a_buf);
   char *buf_p = NULL;
   bool is_buf_alloced = false;
+#if !defined(NDEBUG)
+  int margin;
+#endif
 
   if (xasl == NULL)
     {
@@ -1550,7 +1553,18 @@ xts_save_xasl_node (const XASL_NODE * xasl)
       offset = ER_FAILED;
       goto end;
     }
+
+  /* OR_DOUBLE_ALIGNED_SIZE may reserve more bytes */
   assert (buf <= buf_p + size);
+
+#if !defined(NDEBUG)
+  /* suppress valgrind UMW (uninitialized memory write) */
+  margin = size - (buf - buf_p);
+  if (margin > 0)
+    {
+      memset (buf, 0, margin);
+    }
+#endif
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
