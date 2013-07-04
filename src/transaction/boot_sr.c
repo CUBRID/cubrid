@@ -5359,6 +5359,10 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
 	}
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
 	      db_name);
+      if (dir)
+	{
+	  cfg_free_directory (dir);
+	}
       goto error_dirty_delete;
     }
 
@@ -5451,18 +5455,12 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
   if (error_code == NO_ERROR)
     {
       boot_server_all_finalize (thread_p, true);
-#if defined(SA_MODE)
-      boot_client_all_finalize (true);
-#endif /* SA_MODE */
     }
   else
     {
       er_stack_push ();
       boot_server_all_finalize (thread_p, false);
       er_stack_pop ();
-#if defined(SA_MODE)
-      boot_client_all_finalize (false);
-#endif /* SA_MODE */
     }
   return error_code;
 
@@ -5474,9 +5472,6 @@ error_dirty_delete:
   er_stack_push ();
   boot_server_all_finalize (thread_p, false);
   er_stack_pop ();
-#if defined(SA_MODE)
-  boot_client_all_finalize (false);
-#endif /* SA_MODE */
 
   return error_code;
 }
@@ -5853,6 +5848,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname,
       log_restart_emergency (thread_p, db_fullname, log_path, log_prefix);
       (void) boot_remove_all_temp_volumes (thread_p);
       boot_server_status (BOOT_SERVER_UP);
+      log_final (thread_p);
 
     }
 

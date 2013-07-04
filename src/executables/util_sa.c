@@ -755,6 +755,16 @@ deletedb (UTIL_FUNCTION_ARG * arg)
       goto print_delete_usage;
     }
 
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
   if (output_file_name == NULL)
     {
       output_file = stdout;
@@ -773,16 +783,6 @@ deletedb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (check_database_name (database_name))
-    {
-      goto error_exit;
-    }
-
-  /* error message log file */
-  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	    "%s_%s.err", database_name, arg->command_name);
-  er_init (er_msg_file, ER_NEVER_EXIT);
-
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
@@ -796,6 +796,7 @@ deletedb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  er_final ();
   if (output_file != stdout)
     {
       fclose (output_file);
@@ -808,6 +809,7 @@ print_delete_usage:
 				   DELETEDB_MSG_USAGE),
 	   basename (arg->argv0));
 error_exit:
+  er_final ();
   if (output_file != stdout && output_file != NULL)
     {
       fclose (output_file);
@@ -1259,6 +1261,11 @@ copydb (UTIL_FUNCTION_ARG * arg)
       copy_lob_path = true;
     }
 
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", src_db_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   if (check_database_name (src_db_name)
       || check_new_database_name (dest_db_name))
     {
@@ -1272,11 +1279,6 @@ copydb (UTIL_FUNCTION_ARG * arg)
 				       COPYDB_MSG_IDENTICAL));
       goto error_exit;
     }
-
-  /* error message log file */
-  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	    "%s_%s.err", src_db_name, arg->command_name);
-  er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
@@ -1311,6 +1313,8 @@ copydb (UTIL_FUNCTION_ARG * arg)
     {
       boot_delete (src_db_name, true);
     }
+  er_final ();
+
   return EXIT_SUCCESS;
 
 print_copy_usage:
@@ -1318,6 +1322,8 @@ print_copy_usage:
 				   MSGCAT_UTIL_SET_COPYDB, COPYDB_MSG_USAGE),
 	   basename (arg->argv0));
 error_exit:
+  er_final ();
+
   return EXIT_FAILURE;
 }
 
