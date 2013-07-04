@@ -383,7 +383,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_COPY_LOG_TIMEOUT "ha_copy_log_timeout"
 
-#define PRM_NAME_HA_REPLICA_DELAY_IN_SECS "ha_replica_delay_in_secs"
+#define PRM_NAME_HA_REPLICA_DELAY "ha_replica_delay"
 
 #define PRM_NAME_HA_REPLICA_TIME_BOUND "ha_replica_time_bound"
 
@@ -3132,7 +3132,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_HA_COPY_LOG_TIMEOUT,
-   (PRM_FOR_SERVER | PRM_FOR_HA),
+   (PRM_FOR_SERVER | PRM_FOR_HA | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_ha_copy_log_timeout_flag,
    (void *) &prm_ha_copy_log_timeout_default,
@@ -3142,8 +3142,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_REPLICA_DELAY_IN_SECS,
-   (PRM_FOR_CLIENT | PRM_FOR_HA),
+  {PRM_NAME_HA_REPLICA_DELAY,
+   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_ha_replica_delay_in_secs_flag,
    (void *) &prm_ha_replica_delay_in_secs_default,
@@ -3151,8 +3151,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ha_replica_delay_in_secs_upper,
    (void *) &prm_ha_replica_delay_in_secs_lower,
    (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
+   (DUP_PRM_FUNC) prm_msec_to_sec,
+   (DUP_PRM_FUNC) prm_sec_to_msec},
   {PRM_NAME_HA_REPLICA_TIME_BOUND,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_STRING,
