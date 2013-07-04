@@ -558,7 +558,7 @@ namespace dbgw
       unsigned long ulWaitTimeMilSec) throw() :
     Exception(
         ExceptionFactory::create(DBGW_ER_CLIENT_EXEC_TIMEOUT,
-            (boost::format("Timeout occurred. (%d msec)")
+            (boost::format("Timeout occurred. (%lu msec)")
                 % ulWaitTimeMilSec).str()))
   {
   }

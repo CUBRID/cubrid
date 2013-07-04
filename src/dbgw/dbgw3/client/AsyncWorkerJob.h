@@ -87,7 +87,7 @@ namespace dbgw
     virtual const char *getJobName() const = 0;
     virtual const char *getSqlName() const;
     unsigned long getTimeOutMilSec() const;
-    uint64_t getAbsTimeOutMilSec() const;
+    unsigned long long int getAbsTimeOutMilSec() const;
 
   protected:
     virtual trait<_AsyncWorkerJobResult>::sp doExecute() = 0;

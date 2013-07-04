@@ -28,9 +28,9 @@ namespace dbgw
 
     static const unsigned long INFINITE_TIMEOUT = 0;
 
-    uint64_t getCurrTimeMilSec();
-    uint64_t getdifftimeofday(struct timeval &begin);
-    std::string getTimeStrFromMilSec(uint64_t ulMilSec);
+    unsigned long long int getCurrTimeMilSec();
+    unsigned long long int getdifftimeofday(struct timeval &begin);
+    std::string getTimeStrFromMilSec(unsigned long long int ulMilSec);
 
   }
 

@@ -282,9 +282,9 @@ namespace dbgw
       return m_bInvalid == false;
     }
 
-    bool isEvictable(uint64_t ulMinEvictableIdleTimeMillis)
+    bool isEvictable(unsigned long long int ulMinEvictableIdleTimeMillis)
     {
-      uint64_t lTotalIdleTimeMilSec = system::getdifftimeofday(m_beginIdleTime);
+      unsigned long long int lTotalIdleTimeMilSec = system::getdifftimeofday(m_beginIdleTime);
 
       return lTotalIdleTimeMilSec >= ulMinEvictableIdleTimeMillis;
     }
@@ -452,7 +452,7 @@ namespace dbgw
     return m_pImpl->isValid();
   }
 
-  bool _Executor::isEvictable(uint64_t ulMinEvictableIdleTimeMillis)
+  bool _Executor::isEvictable(unsigned long long int ulMinEvictableIdleTimeMillis)
   {
     return m_pImpl->isEvictable(ulMinEvictableIdleTimeMillis);
   }

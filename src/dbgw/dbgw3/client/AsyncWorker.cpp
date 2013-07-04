@@ -189,7 +189,7 @@ namespace dbgw
           m_statItem[DBGW_WORKER_STAT_COL_JOB_START_TIME] =
               system::getTimeStrFromMilSec(system::getCurrTimeMilSec()).c_str();
 
-          uint64_t ulTimeOutMilSec = pJob->getAbsTimeOutMilSec();
+          unsigned long long int ulTimeOutMilSec = pJob->getAbsTimeOutMilSec();
           if (ulTimeOutMilSec == 0)
             {
               m_statItem[DBGW_WORKER_STAT_COL_JOB_TIMEOUT] = "-";
@@ -208,7 +208,7 @@ namespace dbgw
           m_statItem[DBGW_WORKER_STAT_COL_JOB_START_TIME] =
               system::getTimeStrFromMilSec(system::getCurrTimeMilSec()).c_str();
 
-          uint64_t ulTimeOutMilSec = pJob->getAbsTimeOutMilSec();
+          unsigned long long int ulTimeOutMilSec = pJob->getAbsTimeOutMilSec();
           if (ulTimeOutMilSec == 0)
             {
               m_statItem[DBGW_WORKER_STAT_COL_JOB_TIMEOUT] = "-";

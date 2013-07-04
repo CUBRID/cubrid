@@ -188,7 +188,7 @@ namespace dbgw
       return m_ulTimeOutMilSec;
     }
 
-    uint64_t getAbsTimeOutMilSec() const
+    unsigned long long int getAbsTimeOutMilSec() const
     {
       return m_ulAbsTimeOutMilSec;
     }
@@ -286,7 +286,7 @@ namespace dbgw
     Exception m_exception;
     _AsyncWorkerJobStatus m_status;
     unsigned long m_ulTimeOutMilSec;
-    unsigned long m_ulAbsTimeOutMilSec;
+    unsigned long long int m_ulAbsTimeOutMilSec;
     bool needReleaseExecutor;
   };
 
@@ -355,7 +355,7 @@ namespace dbgw
     return m_pImpl->getTimeOutMilSec();
   }
 
-  uint64_t _AsyncWorkerJob::getAbsTimeOutMilSec() const
+  unsigned long long int _AsyncWorkerJob::getAbsTimeOutMilSec() const
   {
     return m_pImpl->getAbsTimeOutMilSec();
   }

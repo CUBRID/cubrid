@@ -50,7 +50,7 @@ namespace dbgw
     return m_pJob->isDone();
   }
 
-  bool _TimerEvent::needWakeUp(uint64_t ulCurrTimeMilSec) const
+  bool _TimerEvent::needWakeUp(unsigned long long int ulCurrTimeMilSec) const
   {
     return ulCurrTimeMilSec >= m_ulAbsTimeOutMilSec;
   }
@@ -99,7 +99,7 @@ namespace dbgw
 
     void wakeupEvent()
     {
-      uint64_t ulCurrTimeMilSec = 0;
+      unsigned long long int ulCurrTimeMilSec = 0;
       _TimerEvent *pEvent = NULL;
 
       while (true)

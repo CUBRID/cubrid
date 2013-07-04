@@ -2211,11 +2211,11 @@ namespace dbgw
         XN_STATISTICS_TIME_BETWEEN_STATISTICS_RUNS_MILLIS, false,
         _StatisticsMonitor::DEFAULT_LOG_INTERVAL_MILSEC());
 
-    unsigned long nMaxFileSizeKBytes = properties.getInt(
+    int nMaxFileSizeKBytes = properties.getInt(
         XN_STATISTICS_MAX_FILE_SIZE_KBYTES, false,
         _StatisticsMonitor::DEFAULT_MAX_FILE_SIZE_KBYTES());
 
-    unsigned long nMaxBackupCount = properties.getInt(
+    int nMaxBackupCount = properties.getInt(
         XN_STATISTICS_MAX_BACKUP_COUNT, false,
         _StatisticsMonitor::DEFAULT_MAX_BACKUP_COUNT());
 

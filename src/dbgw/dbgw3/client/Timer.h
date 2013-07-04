@@ -39,10 +39,10 @@ namespace dbgw
     bool isDone();
 
   public:
-    bool needWakeUp(uint64_t ulCurrTimeMilSec) const;
+    bool needWakeUp(unsigned long long int ulCurrTimeMilSec) const;
 
   private:
-    uint64_t m_ulAbsTimeOutMilSec;
+    unsigned long long int m_ulAbsTimeOutMilSec;
     _AsyncWorkerJobSharedPtr m_pJob;
     bool m_bIsDone;
   };
