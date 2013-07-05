@@ -227,6 +227,20 @@ namespace dbgw
       return m_groupList.empty();
     }
 
+    trait<_Group>::sp getGroup(const char *szGroupName) const
+    {
+      trait<_Group>::spvector::const_iterator it = m_groupList.begin();
+      for (; it != m_groupList.end(); it++)
+        {
+          if (!strcmp((*it)->getName().c_str(), szGroupName))
+            {
+              return *it;
+            }
+        }
+
+      return trait<_Group>::sp();
+    }
+
     static void run(const system::_ThreadEx *pThread)
     {
       if (pThread == NULL)
@@ -327,6 +341,11 @@ namespace dbgw
   bool _Service::empty() const
   {
     return m_pImpl->empty();
+  }
+
+  trait<_Group>::sp _Service::getGroup(const char *szGroupName) const
+  {
+    return m_pImpl->getGroup(szGroupName);
   }
 
 }

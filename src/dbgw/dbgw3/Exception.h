@@ -45,6 +45,7 @@ namespace dbgw
     DBGW_ER_CONF_INVALID_SQL                          = -22109,
     DBGW_ER_CONF_INVALID_CHARSET                      = -22110,
     DBGW_ER_CONF_NOT_EXIST_CHARSET                    = -22111,
+    DBGW_ER_CONF_INVALID_DB_TYPE                      = -22112,
 
     DBGW_ER_SQL_NOT_EXIST_OUT_PARAMETER               = -22201,
     DBGW_ER_SQL_INVALID_PARAMETER_LIST                = -22202,
@@ -547,6 +548,12 @@ namespace dbgw
   {
   public:
     NotExistCharsetException() throw();
+  };
+
+  class InvalidDbTypeException : public Exception
+  {
+  public:
+    InvalidDbTypeException(const char *szDbType) throw();
   };
 
 }

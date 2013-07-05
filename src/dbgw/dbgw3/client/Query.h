@@ -113,6 +113,8 @@ namespace dbgw
     virtual ~ _Query();
 
   public:
+    void setDbType(sql::DataBaseType dbType);
+    void parseQuery();
     trait<_BoundQuery>::sp getBoundQuery(const char *szGroupName,
         const _Parameter &valueSet) const;
     const char *getFileName() const;

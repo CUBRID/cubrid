@@ -35,6 +35,8 @@ namespace dbgw
 
     class Connection;
 
+    const char *getDbTypeString(DataBaseType dbType);
+
     class DriverManager
     {
     public:

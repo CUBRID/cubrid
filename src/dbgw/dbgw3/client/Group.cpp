@@ -105,7 +105,7 @@ namespace dbgw
         bool bInactivate, bool bIgnoreResult,
         bool useDefaultValueWhenFailedToCastParam,
         int nMaxPreparedStatementSize, CodePage dbCodePage,
-        CodePage clientCodePage) :
+        CodePage clientCodePage, sql::DataBaseType dbType) :
       m_pSelf(pSelf), m_pService(pService),
       m_fileName(fileName), m_name(name),
       m_description(description), m_bIsInactivate(bInactivate),
@@ -115,7 +115,7 @@ namespace dbgw
       m_nModular(0), m_nSchedule(0), m_nCurrentHostIndex(0),
       m_nMaxPreparedStatementSize(nMaxPreparedStatementSize),
       m_dbCodePage(dbCodePage), m_clientCodePage(clientCodePage),
-      m_connPoolStatItem("CS"), m_stmtPoolStatItem("SS")
+      m_dbType(dbType), m_connPoolStatItem("CS"), m_stmtPoolStatItem("SS")
     {
       m_logger.setGroupName(m_name);
 
@@ -433,6 +433,11 @@ namespace dbgw
       return m_hostList.empty();
     }
 
+    sql::DataBaseType getDbType() const
+    {
+      return m_dbType;
+    }
+
     _StatisticsItem &getStatementStatItem()
     {
       return m_stmtPoolStatItem;
@@ -453,7 +458,8 @@ namespace dbgw
         }
 
       trait<sql::Connection>::sp pConnection = sql::DriverManager::getConnection(
-          pHost->getUrl().c_str(), pHost->getUser(), pHost->getPassword());
+          pHost->getUrl().c_str(), pHost->getUser(), pHost->getPassword(),
+          m_dbType);
       if (pConnection != NULL)
         {
           pConnection->connect();
@@ -488,6 +494,7 @@ namespace dbgw
     _Logger m_logger;
     CodePage m_dbCodePage;
     CodePage m_clientCodePage;
+    sql::DataBaseType m_dbType;
 
     system::_Mutex m_poolMutex;
     trait<_Executor>::splist m_executorList;
@@ -500,11 +507,11 @@ namespace dbgw
       const std::string &name, const std::string &description, bool bInactivate,
       bool bIgnoreResult, bool useDefaultValueWhenFailedToCastParam,
       int nMaxPreparedStatementSize, CodePage dbCodePage,
-      CodePage clientCodePage) :
+      CodePage clientCodePage, sql::DataBaseType dbType) :
     _ConfigurationObject(pService), m_pImpl(new Impl(this, pService, fileName,
         name, description, bInactivate, bIgnoreResult,
         useDefaultValueWhenFailedToCastParam, nMaxPreparedStatementSize,
-        dbCodePage, clientCodePage))
+        dbCodePage, clientCodePage, dbType))
   {
   }
 
@@ -584,6 +591,11 @@ namespace dbgw
   bool _Group::empty() const
   {
     return m_pImpl->empty();
+  }
+
+  sql::DataBaseType _Group::getDbType() const
+  {
+    return m_pImpl->getDbType();
   }
 
   _StatisticsItem &_Group::getStatementStatItem()

@@ -28,6 +28,7 @@ namespace dbgw
   class _Query;
   class _BoundQuery;
   class _Parameter;
+  class _Connector;
 
   typedef boost::unordered_map<std::string, trait<_Query>::spvector,
           boost::hash<std::string>, func::compareString> _QuerySqlHashMap;
@@ -42,6 +43,7 @@ namespace dbgw
     void addQuery(const std::string &sqlName, trait<_Query>::sp pQuery);
     void copyFrom(const _QueryMapper &src);
     void setVersion(QueryMapperVersion version);
+    void parseQuery(trait<_Connector>::sp pConnector);
 
   public:
     size_t size() const;

@@ -144,6 +144,8 @@ namespace dbgw
               pQueryMapper.get());
           parseXml(&parser);
 
+          pQueryMapper->parseQuery(pConnector);
+
           m_connResource.putResource(pConnector);
           m_queryResource.putResource(pQueryMapper);
           return true;
@@ -178,7 +180,13 @@ namespace dbgw
             }
 
           m_connResource.putResource(pConnector);
+
+#if defined (DBGW_ALL)
+          /* we have to reload query map if using 2tier library. */
+          return loadQueryMapper(szXmlPath, false);
+#else
           return true;
+#endif
         }
       catch (Exception &e)
         {
@@ -201,6 +209,8 @@ namespace dbgw
         const char *szXmlPath, bool bAppend)
     {
       clearException();
+
+      _ConfigurationVersion resourceVersion = getVersion();
 
       try
         {
@@ -227,11 +237,18 @@ namespace dbgw
               parseQueryMapper(szXmlPath, pQueryMapper.get());
             }
 
+          trait<_Connector>::sp pConnector = boost::shared_static_cast<_Connector>(
+              m_connResource.getResource(resourceVersion.nConnectorVersion));
+
+          pQueryMapper->parseQuery(pConnector);
+
           m_queryResource.putResource(pQueryMapper);
+          closeVersion(resourceVersion);
           return true;
         }
       catch (Exception &e)
         {
+          closeVersion(resourceVersion);
           setLastException(e);
           return false;
         }

@@ -48,6 +48,7 @@ namespace dbgw
     const std::string &getFileName() const;
     const std::string &getNameSpace() const;
     bool empty() const;
+    trait<_Group>::sp getGroup(const char *szGroupName) const;
 
   private:
     _Service(const _Service &);

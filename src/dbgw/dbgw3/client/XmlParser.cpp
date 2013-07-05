@@ -86,8 +86,9 @@ namespace dbgw
       "useDefaultValueWhenFailedToCastParam";
   static const char *XN_GROUP_PR_MAX_PREPARED_STATEMENT_SIZE =
       "maxPrepraredStatementSize";
-  static const char *XML_NODE_GROUP_PROP_CLIENT_CHARSET = "clientCharset";
-  static const char *XML_NODE_GROUP_PROP_DB_CHARSET = "dbCharset";
+  static const char *XN_GROUP_PR_CLIENT_CHARSET = "clientCharset";
+  static const char *XN_GROUP_PR_DB_CHARSET = "dbCharset";
+  static const char *XN_GROUP_PR_DBTYPE = "dbtype";
 
   static const char *XN_POOL = "pool";
   static const char *XN_POOL_PR_INIT_SIZE = "initialSize";
@@ -652,6 +653,43 @@ namespace dbgw
       }
   }
 
+  sql::DataBaseType _ExpatXMLProperties::getDataBaseType(const char *szName)
+  {
+    std::string dbType = get(szName, false);
+
+    if (dbType == "")
+      {
+#if defined(DBGW_ALL)
+        return sql::DBGW_DB_TYPE_CUBRID;
+#elif defined(DBGW_ORACLE)
+        return sql::DBGW_DB_TYPE_ORACLE;
+#elif defined(DBGW_MYSQL)
+        return sql::DBGW_DB_TYPE_MYSQL;
+#else
+        return sql::DBGW_DB_TYPE_CUBRID;
+#endif
+      }
+    else if (!strcasecmp(dbType.c_str(), "cubrid"))
+      {
+        return sql::DBGW_DB_TYPE_CUBRID;
+      }
+    else if (!strcasecmp(dbType.c_str(), "mysql"))
+      {
+        return sql::DBGW_DB_TYPE_MYSQL;
+      }
+    else if (!strcasecmp(dbType.c_str(), "oracle"))
+      {
+        return sql::DBGW_DB_TYPE_ORACLE;
+      }
+    else
+      {
+        InvalidPropertyValueException e(m_xmlParser.getFileName(), dbType.c_str(),
+            "CUBRID|MYSQL|ORACLE");
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+  }
+
   const char *_ExpatXMLProperties::getNodeName() const
   {
     return m_nodeName.c_str();
@@ -1061,14 +1099,14 @@ namespace dbgw
       CodePage clientCodePage = DBGW_IDENTITY;
 
       std::string dbCharset =
-          properties.get(XML_NODE_GROUP_PROP_DB_CHARSET, false);
+          properties.get(XN_GROUP_PR_DB_CHARSET, false);
       if (dbCharset != "")
         {
           dbCodePage = stringToCodepage(dbCharset);
         }
 
       std::string clientCharset =
-          properties.get(XML_NODE_GROUP_PROP_CLIENT_CHARSET, false);
+          properties.get(XN_GROUP_PR_CLIENT_CHARSET, false);
       if (clientCharset != "")
         {
           clientCodePage = stringToCodepage(clientCharset);
@@ -1082,6 +1120,32 @@ namespace dbgw
           throw e;
         }
 
+      sql::DataBaseType dbType = properties.getDataBaseType(XN_GROUP_PR_DBTYPE);
+#if !defined(DBGW_ALL)
+#if defined(DBGW_MYSQL)
+      if (dbType != sql::DBGW_DB_TYPE_MYSQL)
+        {
+          InvalidDbTypeException e(getDbTypeString(dbType));
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+#elif defined(DBGW_ORACLE)
+      if (dbType != sql::DBGW_DB_TYPE_ORACLE)
+        {
+          InvalidDbTypeException e(getDbTypeString(dbType));
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+#else
+      if (dbType != sql::DBGW_DB_TYPE_CUBRID)
+        {
+          InvalidDbTypeException e(getDbTypeString(dbType));
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+#endif /* DBGW_ORACLE */
+#endif /* DBGW_ALL */
+
       m_pGroup = trait<_Group>::sp(
           new _Group(m_pService.get(), m_pSelf->getFileName(),
               properties.get(XN_GROUP_PR_NAME, true),
@@ -1094,7 +1158,7 @@ namespace dbgw
                   false),
               properties.getInt(XN_GROUP_PR_MAX_PREPARED_STATEMENT_SIZE, false,
                   _Executor::DEFAULT_MAX_PREPARED_STATEMENT_SIZE()), dbCodePage,
-              clientCodePage));
+              clientCodePage, dbType));
       m_pService->addGroup(m_pGroup);
     }
 

@@ -101,7 +101,8 @@ namespace dbgw
     ValueType get10ValueType(const char *szName);
     CCI_LOG_LEVEL getLogLevel(const char *szName);
     CCI_LOG_POSTFIX getLogPostfix(const char *szName);
-    sql::ParameterMode getBindMode(const char *szMode);
+    sql::ParameterMode getBindMode(const char *szName);
+    sql::DataBaseType getDataBaseType(const char *szName);
 
   public:
     const char *getNodeName() const;

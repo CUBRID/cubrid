@@ -31,6 +31,8 @@
 #include "dbgw3/client/Executor.h"
 #include "dbgw3/client/Connector.h"
 #include "dbgw3/client/Service.h"
+#include "dbgw3/client/CharsetConverter.h"
+#include "dbgw3/client/Group.h"
 
 namespace dbgw
 {
@@ -88,6 +90,21 @@ namespace dbgw
     NotExistNameSpaceException e(szNameSpace);
     DBGW_LOG_ERROR(e.what());
     throw e;
+  }
+
+  sql::DataBaseType _Connector::getDbType(const char *szGroupName) const
+  {
+    trait<_Service>::spvector::const_iterator it = m_serviceList.begin();
+    for (; it != m_serviceList.end(); it++)
+      {
+        trait<_Group>::sp pGroup = (*it)->getGroup(szGroupName);
+        if (pGroup != NULL)
+          {
+            return pGroup->getDbType();
+          }
+      }
+
+    return sql::DBGW_DB_TYPE_CUBRID;
   }
 
 }

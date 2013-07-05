@@ -769,4 +769,12 @@ namespace dbgw
   {
   }
 
+  InvalidDbTypeException::InvalidDbTypeException(const char *szDbType) throw() :
+    Exception(
+        ExceptionFactory::create(DBGW_ER_CONF_INVALID_DB_TYPE,
+            (boost::format("This library is not supported %s database type.") %
+                szDbType).str()))
+  {
+  }
+
 }

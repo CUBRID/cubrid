@@ -28,6 +28,10 @@
 #include "dbgw3/sql/oracle/OracleConnection.h"
 #elif DBGW_MYSQL
 #include "dbgw3/sql/mysql/MySQLConnection.h"
+#elif DBGW_ALL
+#include "dbgw3/sql/oracle/OracleConnection.h"
+#include "dbgw3/sql/mysql/MySQLConnection.h"
+#include "dbgw3/sql/cubrid/CUBRIDConnection.h"
 #else
 #include "dbgw3/sql/cubrid/CUBRIDConnection.h"
 #endif
@@ -37,6 +41,19 @@ namespace dbgw
 
   namespace sql
   {
+
+    const char *getDbTypeString(DataBaseType dbType)
+    {
+      switch (dbType)
+        {
+        case DBGW_DB_TYPE_CUBRID:
+          return "CUBRID";
+        case DBGW_DB_TYPE_MYSQL:
+          return "MySQL";
+        case DBGW_DB_TYPE_ORACLE:
+          return "Oracle";
+        }
+    }
 
     trait<Connection>::sp DriverManager::getConnection(const char *szUrl,
         DataBaseType dbType)
@@ -59,6 +76,22 @@ namespace dbgw
 #elif DBGW_MYSQL
           pConnection = trait<Connection>::sp(
               new MySQLConnection(szUrl, szUser, szPassword));
+#elif DBGW_ALL
+          if (dbType == DBGW_DB_TYPE_ORACLE)
+            {
+              pConnection = trait<Connection>::sp(
+                  new OracleConnection(szUrl, szUser, szPassword));
+            }
+          else if (dbType == DBGW_DB_TYPE_MYSQL)
+            {
+              pConnection = trait<Connection>::sp(
+                  new MySQLConnection(szUrl, szUser, szPassword));
+            }
+          else
+            {
+              pConnection = trait<Connection>::sp(
+                  new CUBRIDConnection(szUrl, szUser, szPassword));
+            }
 #else
           pConnection = trait<Connection>::sp(
               new CUBRIDConnection(szUrl, szUser, szPassword));

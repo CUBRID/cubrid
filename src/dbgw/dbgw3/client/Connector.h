@@ -35,6 +35,9 @@ namespace dbgw
     void addService(trait<_Service>::sp pService);
     trait<_Service>::sp getService(const char *szNameSpace);
 
+  public:
+    sql::DataBaseType getDbType(const char *szGroupName) const;
+
   private:
     /* (namespace => _Service) */
     trait<_Service>::spvector m_serviceList;

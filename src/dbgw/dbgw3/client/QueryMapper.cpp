@@ -28,6 +28,7 @@
 #include "dbgw3/client/Resource.h"
 #include "dbgw3/client/Configuration.h"
 #include "dbgw3/client/QueryMapper.h"
+#include "dbgw3/client/Connector.h"
 #include "dbgw3/client/Query.h"
 
 namespace dbgw
@@ -96,6 +97,23 @@ namespace dbgw
   void _QueryMapper::setVersion(QueryMapperVersion version)
   {
     m_version = version;
+  }
+
+  void _QueryMapper::parseQuery(trait<_Connector>::sp pConnector)
+  {
+    _QuerySqlHashMap::iterator it = m_querySqlMap.begin();
+    for (; it != m_querySqlMap.end(); it++)
+      {
+        trait<_Query>::spvector &queryGroupList = it->second;
+        trait<_Query>::spvector::iterator git = queryGroupList.begin();
+        for (; git != queryGroupList.end(); git++)
+          {
+            sql::DataBaseType dbType = pConnector->getDbType(
+                (*git)->getGroupName());
+            (*git)->setDbType(dbType);
+            (*git)->parseQuery();
+          }
+      }
   }
 
   size_t _QueryMapper::size() const

@@ -219,7 +219,8 @@ namespace dbgw
         trait<ClientResultSetMetaData>::sp pUserDefinedResultSetMetaData) :
       m_pSelf(pSelf), m_logger(groupName, sqlName), m_fileName(fileName),
       m_query(query), m_sqlName(sqlName), m_groupName(groupName),
-      m_statementType(statementType), m_queryParamList(queryParamList),
+      m_statementType(statementType), m_dbType(sql::DBGW_DB_TYPE_CUBRID),
+      m_version(version), m_queryParamList(queryParamList),
       m_pUserDefinedResultSetMetaData(pUserDefinedResultSetMetaData),
       m_bExistOutBindParam(false), m_statItem("QS")
     {
@@ -234,95 +235,6 @@ namespace dbgw
               break;
             }
         }
-
-      /**
-       * Example :
-       *
-       * SELECT * FROM A
-       * WHERE
-       *  COL_A = :COL_A
-       *  AND COL_B = #COL_B
-       *  AND COL_C = 'BLAH BLAH #COL_C'
-       *  AND @SESSSION_VAR := @SESSSION_VAR + 1
-       *  AND COL_D = 'BLAH BLAH :COL_D'
-       *  AND ?
-       *  AND COL_E = COL_D
-       */
-      const char *p = m_query.c_str();
-      const char *q = p;
-      char cQuotationMark = 0;
-      char cToken = 0;
-
-      while (*p)
-        {
-          if (*p == '\'' || *p == '"')
-            {
-              if (cQuotationMark == 0)
-                {
-                  cQuotationMark = *p;
-                }
-              else if (cQuotationMark == *p)
-                {
-                  cQuotationMark = 0;
-                }
-            }
-          else if (*p == '#')
-            {
-              /**
-               * 3. ` AND COL_B = ` is added to normal query part.
-               * 5. ` AND COL_C = 'BLAH BLAH` is added to normal query part.
-               */
-              addQueryPart(cToken, q, p);
-              q = p;
-              cToken = *p;
-            }
-          else if (cQuotationMark == 0 && (*p == ':' || *p == '?'))
-            {
-              /**
-               * 1. `SELECT * FROM A WHERE COL_A = ` is added to normal query part.
-               * 7. `' AND @SESSSION_VAR ` is added to normal query part.
-               * 8. `:= @SESSSION_VAR + 1 AND COL_D = 'BLAH BLAH :COL_D' AND
-               * ` is added to normal query part.
-               */
-              addQueryPart(cToken, q, p);
-              q = p;
-              cToken = *p;
-            }
-          else if (cToken != 0 && !isalnum(*p) && (*p != '_' && *p != '-'))
-            {
-              if (cToken == '?' && version == DBGW_QUERY_MAP_VER_10)
-                {
-                  /**
-                   * 9. `?` is added to bind query part.
-                   */
-                  addQueryPart(cToken, q, p);
-                  q = p;
-                }
-              else if (cToken == ':' && p - q > 1)
-                {
-                  /**
-                   * 2. `:COL_A` is added to bind query part.
-                   */
-                  addQueryPart(cToken, q, p);
-                  q = p;
-                }
-              else if (cToken == '#')
-                {
-                  /**
-                   * 4. `#COL_B` is added to replace query part.
-                   * 6. `#COL_C` is added to replace query part.
-                   */
-                  addQueryPart(cToken, q, p);
-                  q = p;
-                }
-              cToken = 0;
-            }
-          ++p;
-        }
-      /**
-       * 10. `AND COL_E = COL_D` is added to normal query part.
-       */
-      addQueryPart(cToken, q, p);
 
       m_statItem.addColumn(
           new _StatisticsItemColumn(pMonitor, DBGW_STAT_COL_TYPE_STATIC,
@@ -382,6 +294,106 @@ namespace dbgw
         }
     }
 
+    void setDbType(sql::DataBaseType dbType)
+    {
+      m_dbType = dbType;
+    }
+
+    void parseQuery()
+    {
+      m_queryPartList.clear();
+      m_placeHolderList.clear();
+
+      /**
+       * Example :
+       *
+       * SELECT * FROM A
+       * WHERE
+       *  COL_A = :COL_A
+       *  AND COL_B = #COL_B
+       *  AND COL_C = 'BLAH BLAH #COL_C'
+       *  AND @SESSSION_VAR := @SESSSION_VAR + 1
+       *  AND COL_D = 'BLAH BLAH :COL_D'
+       *  AND ?
+       *  AND COL_E = COL_D
+       */
+      const char *p = m_query.c_str();
+      const char *q = p;
+      char cQuotationMark = 0;
+      char cToken = 0;
+
+      while (*p)
+        {
+          if (*p == '\'' || *p == '"')
+            {
+              if (cQuotationMark == 0)
+                {
+                  cQuotationMark = *p;
+                }
+              else if (cQuotationMark == *p)
+                {
+                  cQuotationMark = 0;
+                }
+            }
+          else if (*p == '#')
+            {
+              /**
+               * 3. ` AND COL_B = ` is added to normal query part.
+               * 5. ` AND COL_C = 'BLAH BLAH` is added to normal query part.
+               */
+              addQueryPart(cToken, q, p);
+              q = p;
+              cToken = *p;
+            }
+          else if (cQuotationMark == 0 && (*p == ':' || *p == '?'))
+            {
+              /**
+               * 1. `SELECT * FROM A WHERE COL_A = ` is added to normal query part.
+               * 7. `' AND @SESSSION_VAR ` is added to normal query part.
+               * 8. `:= @SESSSION_VAR + 1 AND COL_D = 'BLAH BLAH :COL_D' AND
+               * ` is added to normal query part.
+               */
+              addQueryPart(cToken, q, p);
+              q = p;
+              cToken = *p;
+            }
+          else if (cToken != 0 && !isalnum(*p) && (*p != '_' && *p != '-'))
+            {
+              if (cToken == '?' && m_version == DBGW_QUERY_MAP_VER_10)
+                {
+                  /**
+                   * 9. `?` is added to bind query part.
+                   */
+                  addQueryPart(cToken, q, p);
+                  q = p;
+                }
+              else if (cToken == ':' && p - q > 1)
+                {
+                  /**
+                   * 2. `:COL_A` is added to bind query part.
+                   */
+                  addQueryPart(cToken, q, p);
+                  q = p;
+                }
+              else if (cToken == '#')
+                {
+                  /**
+                   * 4. `#COL_B` is added to replace query part.
+                   * 6. `#COL_C` is added to replace query part.
+                   */
+                  addQueryPart(cToken, q, p);
+                  q = p;
+                }
+              cToken = 0;
+            }
+          ++p;
+        }
+      /**
+       * 10. `AND COL_E = COL_D` is added to normal query part.
+       */
+      addQueryPart(cToken, q, p);
+    }
+
     void addQueryPart(char cToken, const char *szStart,
         const char *szEnd)
     {
@@ -420,15 +432,19 @@ namespace dbgw
                       it->firstPlaceHolderIndex = placeHolder.index;
                     }
 
-#ifdef DBGW_ORACLE
-                  /**
-                   * oci using placeholder name instead of '?'
-                   */
-                  p = new _SQLQueryPart(
-                      ":" + makeImplicitParamName(m_queryPartList.size()));
-#else
-                  p = new _SQLQueryPart("?");
-#endif
+                  if (m_dbType == sql::DBGW_DB_TYPE_ORACLE)
+                    {
+                      /**
+                       * oci using placeholder name instead of '?'
+                       */
+                      p = new _SQLQueryPart(
+                          ":" + makeImplicitParamName(m_queryPartList.size()));
+                    }
+                  else
+                    {
+                      p = new _SQLQueryPart("?");
+                    }
+
                   m_queryPartList.push_back(p);
                   return;
                 }
@@ -643,6 +659,8 @@ namespace dbgw
     std::string m_sqlName;
     std::string m_groupName;
     sql::StatementType m_statementType;
+    sql::DataBaseType m_dbType;
+    QueryMapperVersion m_version;
     trait<_QueryParameter>::vector m_queryParamList;
     trait<_PlaceHolder>::vector m_placeHolderList;
     /**
@@ -674,6 +692,16 @@ namespace dbgw
       {
         delete m_pImpl;
       }
+  }
+
+  void _Query::setDbType(sql::DataBaseType dbType)
+  {
+    m_pImpl->setDbType(dbType);
+  }
+
+  void _Query::parseQuery()
+  {
+    m_pImpl->parseQuery();
   }
 
   trait<_BoundQuery>::sp _Query::getBoundQuery(const char *szGroupName,
