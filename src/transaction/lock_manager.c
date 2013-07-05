@@ -288,6 +288,9 @@ struct lk_deadlock_victim
   int tran_index;		/* Index of selected victim */
   TRANID tranid;		/* Transaction identifier   */
   int can_timeout;		/* Is abort or timeout      */
+
+  int num_trans_in_cycle;       /* # of transaction in cycle */
+  int *tran_index_in_cycle;     /* tran_index array for transaction in cycle */
 };
 
 /*
@@ -335,6 +338,8 @@ struct lk_tran_lock
   LK_ENTRY *root_class_hold;	/* root class lock hold */
   int inst_hold_count;		/* # of entries in inst_hold_list */
   int class_hold_count;		/* # of entries in class_hold_list */
+
+  LK_ENTRY *waiting;		/* waiting lock entry */
 
   /* non two phase lock list */
   pthread_mutex_t non2pl_mutex;	/* mutex for non2pl_list */
@@ -611,10 +616,8 @@ static void lock_decrement_class_granules (LK_ENTRY * class_entry);
 static LK_ENTRY *lock_find_class_entry (int tran_index,
 					const OID * class_oid);
 
-static void lock_event_log_tran_hold_locks (THREAD_ENTRY * thread_p,
-					    FILE * log_fp, int tran_index);
-static void lock_event_log_tran_wait_lock (THREAD_ENTRY * thread_p,
-					   FILE * log_fp, int tran_index);
+static void lock_event_log_tran_locks (THREAD_ENTRY * thread_p,
+				       FILE * log_fp, int tran_index);
 static void lock_event_log_blocked_lock (THREAD_ENTRY * thread_p,
 					 FILE * log_fp, LK_ENTRY * entry);
 static void lock_event_log_blocking_locks (THREAD_ENTRY * thread_p,
@@ -622,6 +625,9 @@ static void lock_event_log_blocking_locks (THREAD_ENTRY * thread_p,
 					   LK_ENTRY * wait_entry);
 static void lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp,
 				      LK_ENTRY * entry);
+static void lock_event_set_tran_wait_entry (int tran_index, LK_ENTRY * entry);
+static void lock_event_set_xasl_id_to_entry (int tran_index,
+					     LK_ENTRY * entry);
 #endif /* SERVER_MODE */
 
 
@@ -652,8 +658,6 @@ static void
 lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index,
 				  struct lk_res *res, LOCK lock)
 {
-  LOG_TDES *tdes;
-
   entry_ptr->tran_index = tran_index;
   entry_ptr->res_head = res;
   entry_ptr->granted_mode = lock;
@@ -668,15 +672,7 @@ lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index,
   entry_ptr->recent = NULL;
   entry_ptr->instant_lock_count = 0;
 
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL && !XASL_ID_IS_NULL (&tdes->xasl_id))
-    {
-      if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
-	{
-	  entry_ptr->bind_index_in_tran = tdes->num_exec_queries - 1;
-	}
-      XASL_ID_COPY (&entry_ptr->xasl_id, &tdes->xasl_id);
-    }
+  lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
 }
 
 /* initialize lock entry as blocked state */
@@ -685,8 +681,6 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr,
 				  THREAD_ENTRY * thread_p, int tran_index,
 				  struct lk_res *res, LOCK lock)
 {
-  LOG_TDES *tdes;
-
   entry_ptr->tran_index = tran_index;
   entry_ptr->thrd_entry = thread_p;
   entry_ptr->res_head = res;
@@ -702,15 +696,7 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr,
   entry_ptr->recent = NULL;
   entry_ptr->instant_lock_count = 0;
 
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL && !XASL_ID_IS_NULL (&tdes->xasl_id))
-    {
-      if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
-	{
-	  entry_ptr->bind_index_in_tran = tdes->num_exec_queries - 1;
-	}
-      XASL_ID_COPY (&entry_ptr->xasl_id, &tdes->xasl_id);
-    }
+  lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
 }
 
 /* initialize lock entry as non2pl state */
@@ -2712,6 +2698,8 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
       tdes->waiting_for_res = entry_ptr->res_head;
     }
 
+  lock_event_set_tran_wait_entry (entry_ptr->tran_index, entry_ptr);
+
   /* suspend the worker thread (transaction) */
   thread_suspend_wakeup_and_unlock_entry (entry_ptr->thrd_entry,
 					  THREAD_LOCK_SUSPENDED);
@@ -2722,6 +2710,8 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
     {
       tdes->waiting_for_res = NULL;
     }
+
+  lock_event_set_tran_wait_entry (entry_ptr->tran_index, NULL);
 
   if (entry_ptr->thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
     {
@@ -6039,7 +6029,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   char *client_prog_name, *client_user_name, *client_host_name;
   int client_pid;
   int next_node;
-
+  int *tran_index_in_cycle = NULL;
 
   /* simple notation */
   TWFG_node = lk_Gl.TWFG_node;
@@ -6198,6 +6188,9 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 #endif
     }
 
+  victims[victim_count].tran_index_in_cycle = NULL;
+  victims[victim_count].num_trans_in_cycle = 0;
+
   num_tran_in_cycle = 1;
   for (v = s; v != t; v = TWFG_node[v].ancestor)
     {
@@ -6205,13 +6198,12 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
     }
 
   cycle_info_string = (char *) malloc (unit_size * num_tran_in_cycle);
+  tran_index_in_cycle = (int *) malloc (sizeof (int) * num_tran_in_cycle);
 
-  if (cycle_info_string != NULL)
+  if (cycle_info_string != NULL && tran_index_in_cycle != NULL)
     {
       int i;
-      FILE *log_fp;
 
-      log_fp = event_log_start (thread_p, "DEADLOCK");
       ptr = cycle_info_string;
 
       for (i = 0, v = s; i < num_tran_in_cycle;
@@ -6230,15 +6222,8 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  assert_release (ptr <
 			  cycle_info_string + unit_size * num_tran_in_cycle);
 
-	  if (log_fp != NULL)
-	    {
-	      event_log_print_client_info (v, 0);
-	      lock_event_log_tran_hold_locks (thread_p, log_fp, v);
-	      lock_event_log_tran_wait_lock (thread_p, log_fp, v);
-	    }
+	  tran_index_in_cycle[i] = v;
 	}
-
-      event_log_end (thread_p);
     }
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
@@ -6314,6 +6299,8 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	}
 #endif /* CUBRID_DEBUG */
       TWFG_node[victims[victim_count].tran_index].current = -1;
+      victims[victim_count].tran_index_in_cycle = tran_index_in_cycle;
+      victims[victim_count].num_trans_in_cycle = num_tran_in_cycle;
       victim_count++;
     }
   else
@@ -6348,6 +6335,11 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  /* can't find false edge */
 	  TWFG_edge[TWFG_node[s].current].to_tran_index = -2;
 	  TWFG_node[s].current = TWFG_edge[TWFG_node[s].current].next;
+	}
+
+      if (tran_index_in_cycle != NULL)
+	{
+	  free_and_init (tran_index_in_cycle);
 	}
 
 #if defined(CUBRID_DEBUG)
@@ -10128,6 +10120,8 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   LK_WFG_EDGE *TWFG_edge;
   int i, rv;
   int compat1, compat2;
+  int tran_index;
+  FILE *log_fp;
 
   /* initialize deadlock detection related structures */
 
@@ -10468,6 +10462,30 @@ final:
 	}
     }
 #endif /* ENABLE_UNUSED_FUNCTION */
+
+  /* dump deadlock cycle to event log file */
+  for (k = 0; k < victim_count; k++)
+    {
+      if (victims[k].tran_index_in_cycle == NULL)
+	{
+	  continue;
+	}
+
+      log_fp = event_log_start (thread_p, "DEADLOCK");
+      if (log_fp != NULL)
+	{
+	  for (i = 0; i < victims[k].num_trans_in_cycle; i++)
+	    {
+	      tran_index = victims[k].tran_index_in_cycle[i];
+	      event_log_print_client_info (tran_index, 0);
+	      lock_event_log_tran_locks (thread_p, log_fp, tran_index);
+	    }
+
+	  event_log_end (thread_p);
+	}
+
+      free_and_init (victims[k].tran_index_in_cycle);
+    }
 
   /* Now solve the deadlocks (cycles) by executing the cycle resolution
    * function (e.g., aborting victim)
@@ -13766,7 +13784,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
 
 #if defined(SERVER_MODE)
 /*
- * lock_event_log_tran_hold_locks - dump transaction holding locks to event log file
+ * lock_event_log_tran_locks - dump transaction locks to event log file
  *   return:
  *   thread_p(in):
  *   log_fp(in):
@@ -13775,8 +13793,8 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p,
  *   note: for deadlock
  */
 static void
-lock_event_log_tran_hold_locks (THREAD_ENTRY * thread_p, FILE * log_fp,
-				int tran_index)
+lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp,
+			   int tran_index)
 {
   int rv, i, indent = 2;
   LK_TRAN_LOCK *tran_lock;
@@ -13795,10 +13813,12 @@ lock_event_log_tran_hold_locks (THREAD_ENTRY * thread_p, FILE * log_fp,
     {
       fprintf (log_fp, "%*clock: %s", indent, ' ',
 	       LOCK_TO_LOCKMODE_STRING (entry->granted_mode));
+
       lock_event_log_lock_info (thread_p, log_fp, entry);
 
       event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
       event_log_bind_values (log_fp, tran_index, entry->bind_index_in_tran);
+
       fprintf (log_fp, "\n");
     }
 
@@ -13807,86 +13827,22 @@ lock_event_log_tran_hold_locks (THREAD_ENTRY * thread_p, FILE * log_fp,
       fprintf (log_fp, "%*c...\n", indent, ' ');
     }
 
-  pthread_mutex_unlock (&tran_lock->hold_mutex);
-
-}
-
-/*
- * lock_event_log_tran_wait_lock - dump transaction waiting locks to event log file
- *   return:
- *   thread_p(in):
- *   log_fp(in):
- *   tran_index(in):
- *
- *   note: for deadlock
- */
-static void
-lock_event_log_tran_wait_lock (THREAD_ENTRY * thread_p, FILE * log_fp,
-			       int tran_index)
-{
-  LOG_TDES *tdes;
-  LK_ENTRY *entry;
-  int indent = 2;
-  bool blocked_holder = false;
-
-  assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
-
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL)
+  entry = tran_lock->waiting;
+  if (entry != NULL)
     {
-      entry = tdes->waiting_for_res->waiter;
-      while (entry != NULL)
-	{
-	  if (entry->tran_index == tran_index)
-	    {
-	      break;
-	    }
-	  entry = entry->next;
-	}
+      fprintf (log_fp, "wait:\n");
+      fprintf (log_fp, "%*clock: %s", indent, ' ',
+	       LOCK_TO_LOCKMODE_STRING (entry->blocked_mode));
 
-      if (entry == NULL)
-	{
-	  entry = tdes->waiting_for_res->holder;
-	  while (entry != NULL)
-	    {
-	      if (entry->tran_index == tran_index)
-		{
-		  break;
-		}
-	      entry = entry->next;
-	    }
+      lock_event_log_lock_info (thread_p, log_fp, entry);
 
-	  blocked_holder = true;
-	}
+      event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
+      event_log_bind_values (log_fp, tran_index, entry->bind_index_in_tran);
 
-      if (entry != NULL)
-	{
-	  fprintf (log_fp, "wait:\n");
-
-	  fprintf (log_fp, "%*clock: %s", indent, ' ',
-		   LOCK_TO_LOCKMODE_STRING (entry->blocked_mode));
-	  lock_event_log_lock_info (thread_p, log_fp, entry);
-
-	  if (blocked_holder == true)
-	    {
-	      fprintf (log_fp, "%*cblocked holder: true", indent, ' ');
-	    }
-
-	  event_log_sql_string (thread_p, log_fp, &tdes->xasl_id, indent);
-
-	  if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
-	    {
-	      event_log_bind_values (log_fp, tran_index,
-				     tdes->num_exec_queries - 1);
-	    }
-
-	  fprintf (log_fp, "\n");
-	}
-      else
-	{
-	  assert (false);
-	}
+      fprintf (log_fp, "\n");
     }
+
+  pthread_mutex_unlock (&tran_lock->hold_mutex);
 }
 
 /*
@@ -14056,5 +14012,51 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp,
     }
 
   fprintf (log_fp, ")\n");
+}
+
+/*
+ * lock_event_set_tran_wait_entry - save the lock entry tran is waiting
+ *   return:
+ *   entry(in):
+ */
+static void
+lock_event_set_tran_wait_entry (int tran_index, LK_ENTRY * entry)
+{
+  LK_TRAN_LOCK *tran_lock;
+  int rv;
+
+  tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  rv = pthread_mutex_lock (&tran_lock->hold_mutex);
+
+  tran_lock->waiting = entry;
+
+  if (entry != NULL)
+    {
+      lock_event_set_xasl_id_to_entry (tran_index, entry);
+    }
+
+  pthread_mutex_unlock (&tran_lock->hold_mutex);
+}
+
+/*
+ * lock_event_set_xasl_id_to_entry - save the xasl id related lock entry
+ *   return:
+ *   entry(in):
+ */
+static void
+lock_event_set_xasl_id_to_entry (int tran_index, LK_ENTRY * entry)
+{
+  LOG_TDES *tdes;
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL && !XASL_ID_IS_NULL (&tdes->xasl_id))
+    {
+      if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
+	{
+	  entry->bind_index_in_tran = tdes->num_exec_queries - 1;
+	}
+
+      XASL_ID_COPY (&entry->xasl_id, &tdes->xasl_id);
+    }
 }
 #endif /* SERVER_MODE */
