@@ -516,7 +516,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
     }
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  srv_handle->next_cursor_pos = 0;
+  srv_handle->next_cursor_pos = 1;
 #endif
 
   net_arg_get_char (flag, argv[arg_idx++]);
