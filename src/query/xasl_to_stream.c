@@ -593,11 +593,13 @@ xts_save_aggregate_type (const AGGREGATE_TYPE * aggregate)
       is_buf_alloced = true;
     }
 
-  if (xts_process_aggregate_type (buf_p, aggregate) == NULL)
+  buf = xts_process_aggregate_type (buf_p, aggregate);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -660,11 +662,13 @@ xts_save_function_type (const FUNCTION_TYPE * function)
       is_buf_alloced = true;
     }
 
-  if (xts_process_function_type (buf_p, function) == NULL)
+  buf = xts_process_function_type (buf_p, function);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -794,11 +798,13 @@ xts_save_srlist_id (const QFILE_SORTED_LIST_ID * sort_list_id)
       is_buf_alloced = true;
     }
 
-  if (xts_process_srlist_id (buf_p, sort_list_id) == NULL)
+  buf = xts_process_srlist_id (buf_p, sort_list_id);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -930,11 +936,13 @@ xts_save_arith_type (const ARITH_TYPE * arithmetic)
       is_buf_alloced = true;
     }
 
-  if (xts_process_arith_type (buf_p, arithmetic) == NULL)
+  buf = xts_process_arith_type (buf_p, arithmetic);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -997,11 +1005,13 @@ xts_save_indx_info (const INDX_INFO * indx_info)
       is_buf_alloced = true;
     }
 
-  if (xts_process_indx_info (buf_p, indx_info) == NULL)
+  buf = xts_process_indx_info (buf_p, indx_info);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -1271,11 +1281,29 @@ xts_save_regu_variable (const REGU_VARIABLE * regu_var)
       is_buf_alloced = true;
     }
 
-  if (xts_process_regu_variable (buf_p, regu_var) == NULL)
+  buf = xts_process_regu_variable (buf_p, regu_var);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
+
+  /*
+   * OR_VALUE_ALIGNED_SIZE may reserve more bytes
+   * suppress valgrind UMW (uninitialized memory write)
+   */
+#if !defined(NDEBUG)
+  do
+    {
+      int margin = size - (buf - buf_p);
+      if (margin > 0)
+	{
+	  memset (buf, 0, margin);
+	}
+    }
+  while (0);
+#endif
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -1504,9 +1532,6 @@ xts_save_xasl_node (const XASL_NODE * xasl)
   char *buf = OR_ALIGNED_BUF_START (a_buf);
   char *buf_p = NULL;
   bool is_buf_alloced = false;
-#if !defined(NDEBUG)
-  int margin;
-#endif
 
   if (xasl == NULL)
     {
@@ -1554,16 +1579,22 @@ xts_save_xasl_node (const XASL_NODE * xasl)
       goto end;
     }
 
-  /* OR_DOUBLE_ALIGNED_SIZE may reserve more bytes */
   assert (buf <= buf_p + size);
 
+  /*
+   * OR_DOUBLE_ALIGNED_SIZE may reserve more bytes
+   * suppress valgrind UMW (uninitialized memory write)
+   */
 #if !defined(NDEBUG)
-  /* suppress valgrind UMW (uninitialized memory write) */
-  margin = size - (buf - buf_p);
-  if (margin > 0)
+  do
     {
-      memset (buf, 0, margin);
+      int margin = size - (buf - buf_p);
+      if (margin > 0)
+	{
+	  memset (buf, 0, margin);
+	}
     }
+  while (0);
 #endif
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
@@ -1764,11 +1795,13 @@ xts_save_cache_attrinfo (const HEAP_CACHE_ATTRINFO * attrinfo)
       is_buf_alloced = true;
     }
 
-  if (xts_process_cache_attrinfo (buf_p) == NULL)
+  buf = xts_process_cache_attrinfo (buf_p);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -2173,11 +2206,13 @@ xts_save_method_sig_list (const METHOD_SIG_LIST * method_sig_list)
       is_buf_alloced = true;
     }
 
-  if (xts_process_method_sig_list (buf_p, method_sig_list) == NULL)
+  buf = xts_process_method_sig_list (buf_p, method_sig_list);
+  if (buf == NULL)
     {
       offset = ER_FAILED;
       goto end;
     }
+  assert (buf <= buf_p + size);
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -6023,25 +6058,7 @@ xts_sizeof_pred (const PRED * pred)
       size += OR_INT_SIZE;	/* rhs-type */
     }
 
-  switch (rhs->type)
-    {
-    case T_EVAL_TERM:
-      tmp_size = xts_sizeof_eval_term (&rhs->pe.eval_term);
-      if (tmp_size == ER_FAILED)
-	{
-	  return ER_FAILED;
-	}
-      size += tmp_size;		/* rhs */
-      break;
-
-    case T_NOT_TERM:
-      size += PTR_SIZE;		/* pe.not_term */
-      break;
-
-    default:
-      xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
-      return ER_FAILED;
-    }
+  size += PTR_SIZE;
 
   return size;
 }

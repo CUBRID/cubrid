@@ -6047,13 +6047,7 @@ or_pack_value (char *buf, DB_VALUE * value)
   char *aligned_buf;
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
-#if !defined(NDEBUG)
-  /* to make valgrind quiet */
-  if (aligned_buf - buf > 0)
-    {
-      memset (buf, 0, aligned_buf - buf);
-    }
-#endif
+
   or_init (&orbuf, aligned_buf, 0);
   /* don't collapse nulls, include the domain, and include domain class oids */
   or_put_value (&orbuf, value, 0, 1, 1);
