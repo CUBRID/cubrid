@@ -93,19 +93,19 @@ namespace dbgw
     initialize(m_logLevel, DBGW_LOG_PATH);
   }
 
-  void _Logger::initialize(CCI_LOG_LEVEL level, const char *szLogPath)
+  void _Logger::initialize(CCI_LOG_LEVEL level, const std::string &logPath)
   {
-    setLogPath(szLogPath);
+    setLogPath(logPath);
     setLogLevel(level);
   }
 
-  void _Logger::setLogPath(const char *szLogPath)
+  void _Logger::setLogPath(const std::string &logPath)
   {
     system::_MutexAutoLock lock(&g_logMutex);
 
-    if (szLogPath != NULL)
+    if (logPath != "")
       {
-        m_logPath = szLogPath;
+        m_logPath = logPath;
         m_logger = cci_log_get(m_logPath.c_str());
       }
   }

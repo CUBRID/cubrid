@@ -185,49 +185,49 @@ namespace dbgw
 #endif
   }
 
-  CodePage stringToCodepage(const char *charset)
+  CodePage stringToCodepage(const std::string &charset)
   {
-    if (!strcasecmp(charset, "US-ASCII"))
+    if (!strcasecmp(charset.c_str(), "US-ASCII"))
       {
         return DBGW_US_ASCII;
       }
-    else if (!strcasecmp(charset, "UTF-8"))
+    else if (!strcasecmp(charset.c_str(), "UTF-8"))
       {
         return DBGW_UTF_8;
       }
-    else if (!strcasecmp(charset, "MS-932"))
+    else if (!strcasecmp(charset.c_str(), "MS-932"))
       {
         return DBGW_MS_932;
       }
-    else if (!strcasecmp(charset, "MS-949"))
+    else if (!strcasecmp(charset.c_str(), "MS-949"))
       {
         return DBGW_MS_949;
       }
-    else if (!strcasecmp(charset, "MSCP949"))
+    else if (!strcasecmp(charset.c_str(), "MSCP949"))
       {
         return DBGW_MS_949;
       }
-    else if (!strcasecmp(charset, "MS-1252"))
+    else if (!strcasecmp(charset.c_str(), "MS-1252"))
       {
         return DBGW_MS_1252;
       }
-    else if (!strcasecmp(charset, "ECU-JP"))
+    else if (!strcasecmp(charset.c_str(), "ECU-JP"))
       {
         return DBGW_EUC_JP;
       }
-    else if (!strcasecmp(charset, "SHIFT-JIS"))
+    else if (!strcasecmp(charset.c_str(), "SHIFT-JIS"))
       {
         return DBGW_SHIFT_JIS;
       }
-    else if (!strcasecmp(charset, "EUC-KR"))
+    else if (!strcasecmp(charset.c_str(), "EUC-KR"))
       {
         return DBGW_EUC_KR;
       }
-    else if (!strcasecmp(charset, "LATIN1"))
+    else if (!strcasecmp(charset.c_str(), "LATIN1"))
       {
         return DBGW_LATIN_1;
       }
-    else if (!strcasecmp(charset, "ISO-8859-1"))
+    else if (!strcasecmp(charset.c_str(), "ISO-8859-1"))
       {
         return DBGW_ISO_8859_1;
       }

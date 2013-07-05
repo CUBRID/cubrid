@@ -38,8 +38,8 @@ namespace dbgw
 
   public:
     static void initialize();
-    static void initialize(CCI_LOG_LEVEL level, const char *szLogPath);
-    static void setLogPath(const char *szLogPath);
+    static void initialize(CCI_LOG_LEVEL level, const std::string &logPath);
+    static void setLogPath(const std::string &logPath);
     static void setLogLevel(CCI_LOG_LEVEL level);
     static void setForceFlush(bool bForceFlush);
     static void setDefaultPostfix(CCI_LOG_POSTFIX postfix);

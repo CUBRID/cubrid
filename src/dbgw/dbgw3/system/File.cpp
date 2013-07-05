@@ -44,8 +44,8 @@ namespace dbgw
       return fileName.substr(fileName.find_last_of(".") + 1);
     }
 
-    _Directory::_Directory(const char *szPath) :
-      m_path(szPath)
+    _Directory::_Directory(const std::string &path) :
+      m_path(path)
     {
     }
 

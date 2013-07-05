@@ -43,7 +43,7 @@ namespace dbgw
     DBGW_ISO_8859_1             = DBGW_MS_1252          /* iso-8859-1 */
   };
 
-  CodePage stringToCodepage(const char *szCharset);
+  CodePage stringToCodepage(const std::string &charset);
   const char *codepageToString(CodePage code);
 
   class _CharsetConverter

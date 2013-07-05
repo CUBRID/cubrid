@@ -31,7 +31,7 @@ namespace dbgw
     class _Directory
     {
     public:
-      _Directory(const char *szPath);
+      _Directory(const std::string &path);
       virtual ~_Directory();
 
     public:

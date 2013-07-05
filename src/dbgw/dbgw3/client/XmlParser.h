@@ -81,11 +81,8 @@ namespace dbgw
         const std::string &nodeName, const XML_Char *szAttr[]);
     virtual ~ _ExpatXMLProperties();
 
-    const char *get(const char *szName, bool bRequired);
-    const char *get(const char *szName, const char *szHiddenName,
-        bool bRequired);
-    const char *getCString(const char *szName, bool bRequired);
-    const char *getCString(const char *szName, const char *szHiddenName,
+    std::string get(const char *szName, bool bRequired);
+    std::string get(const char *szName, const char *szHiddenName,
         bool bRequired);
     int getInt(const char *szName, bool bRequired, int nDefault = 0);
     int getInt(const char *szName, const char *szHiddenName,
@@ -110,6 +107,7 @@ namespace dbgw
     const char *getNodeName() const;
 
   private:
+    std::string propertyFromEnv(const char *szValue);
     int propertyToInt(const char *szProperty);
     long propertyToLong(const char *szProperty);
     bool propertyToBoolean(const char *szProperty);
@@ -194,14 +192,14 @@ namespace dbgw
     void checkAndClearSql();
     void checkAndClearGroup();
     void setFileName(const std::string &fileName);
-    void setGlobalGroupName(const char *szGlobalGroupName);
-    void setLocalGroupName(const char *szLocalGroupName);
+    void setGlobalGroupName(const std::string &globalGroupName);
+    void setLocalGroupName(const std::string &localGroupName);
     void setStatementType(sql::StatementType statementType);
-    void setSqlName(const char *szSqlName);
+    void setSqlName(const std::string &sqlName);
     void setParameter(const std::string &name, int nIndex, ValueType valueType,
         sql::ParameterMode mode, int nSize);
-    void setParameter(const char *szMode, const char *szName,
-        ValueType valueType, sql::ParameterMode mode, int nSize);
+    void setParameter(const std::string &name, ValueType valueType,
+        sql::ParameterMode mode, int nSize);
     void setResult(const std::string &name, size_t nIndex, ValueType valueType,
         int nLength);
     void appendQueryString(const char *szQueryString);

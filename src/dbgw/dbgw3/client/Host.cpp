@@ -25,18 +25,18 @@
 namespace dbgw
 {
 
-  _Host::_Host(const char *szUrl, const char *szUser,
-      const char *szPassword, int nWeight) :
-    m_url(szUrl), m_user(szUser), m_password(szPassword), m_nWeight(nWeight)
+  _Host::_Host(const std::string &url, const std::string &user,
+      const std::string &password, int nWeight) :
+    m_url(url), m_user(user), m_password(password), m_nWeight(nWeight)
   {
   }
 
-  void _Host::setAltHost(const char *szAddress, const char *szPort)
+  void _Host::setAltHost(const std::string &address, const std::string &port)
   {
     m_althost = "?althosts=";
-    m_althost += szAddress;
+    m_althost += address;
     m_althost += ":";
-    m_althost += szPort;
+    m_althost += port;
   }
 
   std::string _Host::getUrl() const

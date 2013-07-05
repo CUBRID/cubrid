@@ -26,11 +26,11 @@ namespace dbgw
   class _Host
   {
   public:
-    _Host(const char *szUrl, const char *szUser, const char *szPassword,
-        int nWeight);
+    _Host(const std::string &url, const std::string &user,
+        const std::string &password, int nWeight);
     virtual ~ _Host() {}
 
-    void setAltHost(const char *szAddress, const char *szPort);
+    void setAltHost(const std::string &address, const std::string &port);
 
   public:
     std::string getUrl() const;
