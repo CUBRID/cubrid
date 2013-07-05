@@ -2202,6 +2202,7 @@ port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
 {
   char *buff = NULL;
   struct stat stat_buf;
+  size_t n;
 
   fflush (fp);
 
@@ -2218,8 +2219,9 @@ port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
 	  if (buff)
 	    {
 	      fseek (fp, 0, SEEK_SET);
-	      fread (buff, 1, *sizeloc, fp);
-	      buff[*sizeloc] = 0;
+	      n = fread (buff, 1, *sizeloc, fp);
+	      buff[n] = '\0';
+	      *sizeloc = n;
 	    }
 	}
 
