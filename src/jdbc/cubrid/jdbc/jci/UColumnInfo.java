@@ -54,7 +54,7 @@ public class UColumnInfo {
 	private byte is_reverse_unique;
 	private byte is_shared;
 
-	UColumnInfo(byte cType, short cScale, int cPrecision, String cName) {
+	UColumnInfo(byte cType, short cScale, int cPrecision, String cName) throws UJciException {
 		byte realType[];
 
 		realType = UColumnInfo.confirmType(cType);
@@ -148,7 +148,7 @@ public class UColumnInfo {
 		return attributeName;
 	}
 
-	static byte[] confirmType(byte originalType) {
+	static byte[] confirmType(byte originalType) throws UJciException {
 		int collectionTypeOrNot = 0;
 		byte typeInfo[];
 
@@ -162,14 +162,20 @@ public class UColumnInfo {
 		case 040:
 			typeInfo[0] = UUType.U_TYPE_SET;
 			typeInfo[1] = (byte) (originalType & 037);
+			if (typeInfo[1] < UUType.U_TYPE_MIN || typeInfo[1] > UUType.U_TYPE_MAX)
+				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 			return typeInfo;
 		case 0100:
 			typeInfo[0] = UUType.U_TYPE_MULTISET;
 			typeInfo[1] = (byte) (originalType & 037);
+			if (typeInfo[1] < UUType.U_TYPE_MIN || typeInfo[1] > UUType.U_TYPE_MAX)
+				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 			return typeInfo;
 		case 0140:
 			typeInfo[0] = UUType.U_TYPE_SEQUENCE;
 			typeInfo[1] = (byte) (originalType & 037);
+			if (typeInfo[1] < UUType.U_TYPE_MIN || typeInfo[1] > UUType.U_TYPE_MAX)
+				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 			return typeInfo;
 		default:
 			typeInfo[0] = UUType.U_TYPE_NULL;

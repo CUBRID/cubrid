@@ -50,7 +50,7 @@ class CUBRIDArray {
 	private int length;
 	private Object internalArray[];
 
-	CUBRIDArray(byte type, int arrayLength) {
+	CUBRIDArray(byte type, int arrayLength) throws UJciException {
 		baseType = type;
 		length = arrayLength;
 		if (length < 0)
@@ -106,10 +106,16 @@ class CUBRIDArray {
 		case UUType.U_TYPE_CLOB:
 			internalArray = (Object[]) (new Clob[length]);
 			break;
-		default:
+		case UUType.U_TYPE_NULL:
+		case UUType.U_TYPE_SET:
+		case UUType.U_TYPE_MULTISET:
+		case UUType.U_TYPE_SEQUENCE:
+		case UUType.U_TYPE_RESULTSET:	
 			baseType = UUType.U_TYPE_NULL;
 			internalArray = new Object[length];
 			break;
+		default:
+			throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 		}
 	}
 

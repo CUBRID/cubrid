@@ -1954,7 +1954,7 @@ public class UStatement {
 		}
 	}
 
-	private void confirmSchemaTypeInfo(int index) {
+	private void confirmSchemaTypeInfo(int index) throws UJciException {
 		if (statementType != GET_SCHEMA_INFO)
 			return;
 
