@@ -60,17 +60,9 @@
 #define DOUBLE_ALIGNMENT        sizeof(double)
 #define MAX_ALIGNMENT           DOUBLE_ALIGNMENT
 
-#if defined(NDEBUG)
 #define PTR_ALIGN(addr, boundary) \
         ((char *)((((UINTPTR)(addr) + ((UINTPTR)((boundary)-1)))) \
                   & ~((UINTPTR)((boundary)-1))))
-#else
-#define PTR_ALIGN(addr, boundary) \
-        (memset((void*)(addr), 0,\
-	   DB_WASTED_ALIGN((UINTPTR)(addr), (UINTPTR)(boundary))),\
-        (char *)((((UINTPTR)(addr) + ((UINTPTR)((boundary)-1)))) \
-                  & ~((UINTPTR)((boundary)-1))))
-#endif
 
 #define DB_ALIGN(offset, align) \
         (((offset) + (align) - 1) & ~((align) - 1))
