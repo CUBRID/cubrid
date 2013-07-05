@@ -5944,7 +5944,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
       else if (PRM_HAS_TIME_UNIT (prm->static_flag))
 	{
 	  INT64 dup_val;
-	  val = PRM_GET_INT (prm->value);
+	  val = value.i;
 
 	  if (PRM_DIFFERENT_UNIT (prm->static_flag) && val >= 0)
 	    {
