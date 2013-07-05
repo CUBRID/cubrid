@@ -204,6 +204,10 @@ public class CUBRIDResultSet implements ResultSet {
 							current_row = number_of_rows;
 							return false;
 						}
+						
+						if (u_stmt.isFetchCompleted(current_row)) {
+							return false;
+						}
 
 						move();
 						inserting = false;

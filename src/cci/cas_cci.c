@@ -4418,6 +4418,9 @@ cci_get_err_msg_internal (int error)
     case CAS_ER_MAX_CLIENT_EXCEEDED:
       return "Proxy refused client connection. max clients exceeded";
 
+    case CAS_ER_INVALID_CURSOR_POS:
+      return "Invalid cursor position";
+
     case CAS_ER_IS:
       return "Not used";
 

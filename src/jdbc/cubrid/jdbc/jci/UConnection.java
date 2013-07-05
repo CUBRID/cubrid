@@ -1200,6 +1200,15 @@ public class UConnection {
 		return false;
 	}
 
+	public boolean isConnectedToOracle() {
+	    byte dbms_type = getDbmsType();
+		if (dbms_type == DBMS_ORACLE 
+			|| dbms_type == DBMS_PROXY_ORACLE) {
+			return true;
+		}
+		return false;
+	}
+
 	public boolean isConnectedToProxy() {
 	    byte dbms_type = getDbmsType();
 		if (dbms_type == DBMS_PROXY_CUBRID 

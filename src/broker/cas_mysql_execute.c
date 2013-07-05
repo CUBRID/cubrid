@@ -837,6 +837,12 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       goto fetch_error;
     }
 
+  if (srv_handle->next_cursor_pos != cursor_pos)
+    {
+      err_code =
+	ERROR_INFO_SET (CAS_ER_INVALID_CURSOR_POS, CAS_ERROR_INDICATOR);
+      goto fetch_error;
+    }
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
 
@@ -1562,12 +1568,14 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	      T_REQ_INFO * req_info)
 {
   T_OBJECT tuple_obj;
+  char fetch_end_flag = 0;
   int err_code = 0;
   int num_tuple;
   int tuple;
   T_QUERY_RESULT *result;
   int num_tuple_msg_offset;
   int net_buf_size;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   result = (T_QUERY_RESULT *) srv_handle->q_result;
   if (result == NULL || has_stmt_result_set (srv_handle->stmt_type) == false)
@@ -1625,10 +1633,19 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
   if (err_code == MYSQL_NO_DATA)
     {
+      fetch_end_flag = 1;
+
       if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	{
 	  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	}
+    }
+
+  srv_handle->next_cursor_pos += tuple;
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
     }
 
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, tuple);

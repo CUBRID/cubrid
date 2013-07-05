@@ -119,6 +119,7 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   srv_handle->is_from_current_transaction = true;
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   srv_handle->send_metadata_before_execute = false;
+  srv_handle->next_cursor_pos = 1;
 #endif
 #if !defined(LIBCAS_FOR_JSP)
   srv_handle->is_pooled = as_info->cur_statement_pooling;

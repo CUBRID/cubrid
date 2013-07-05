@@ -158,6 +158,7 @@ struct t_srv_handle
   T_QUERY_RESULT *q_result;
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   int stmt_type;
+  int next_cursor_pos;
   int tuple_count;
   bool is_no_data;
   bool send_metadata_before_execute;

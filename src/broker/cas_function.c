@@ -515,6 +515,10 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
       return FN_KEEP_CONN;
     }
 
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+  srv_handle->next_cursor_pos = 0;
+#endif
+
   net_arg_get_char (flag, argv[arg_idx++]);
   net_arg_get_int (&max_col_size, argv[arg_idx++]);
   net_arg_get_int (&max_row, argv[arg_idx++]);

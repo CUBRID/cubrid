@@ -91,6 +91,7 @@ public class UStatement {
 	private int fetchSize;
 	private int maxFetchSize;
 	private int fetchedTupleNumber;
+	private boolean isFetchCompleted;
 	private int totalTupleNumber;
 	private int currentFirstCursor;
 	private int cursorPosition;
@@ -167,6 +168,7 @@ public class UStatement {
 			batchParameter = null;
 		}
 		fetchSize = DEFAULT_FETCH_SIZE;
+		isFetchCompleted = false;
 		currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
 		maxFetchSize = 0;
 		realFetched = false;
@@ -740,7 +742,7 @@ public class UStatement {
 	if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_SELECT
 		&& totalTupleNumber > 0) {
 	    inBuffer.readInt(); // fetch_rescode
-	    read_fetch_data(inBuffer);
+	    read_fetch_data(inBuffer, UFunctionCode.FETCH);
 	}
     }
 
@@ -777,6 +779,8 @@ public class UStatement {
 	    boolean isExecuteAll, boolean isSensitive, boolean isScrollable,
 	    boolean isQueryPlan, boolean isOnlyPlan, boolean isHoldable,
 	    UStatementCacheData cacheData, int queryTimeout) {
+    	
+    	isFetchCompleted = false;
 	flushLobStreams();
 	errorHandler = new UError(relatedConnection);
 
@@ -1669,7 +1673,7 @@ public class UStatement {
 				inBuffer = relatedConnection.send_recv_msg();
 			}
 
-			read_fetch_data(inBuffer);
+			read_fetch_data(inBuffer, UFunctionCode.FETCH);
 			realFetched = true;
 		} catch (UJciException e) {
 			relatedConnection.logException(e);
@@ -1823,7 +1827,7 @@ public class UStatement {
 				statementType = GET_AUTOINCREMENT_KEYS;
 				readColumnInfo(inBuffer);
 				executeResult = totalTupleNumber;
-				read_fetch_data(inBuffer);
+				read_fetch_data(inBuffer, UFunctionCode.GET_GENERATED_KEYS);
 			}
 		} catch (UJciException e) {
 			relatedConnection.logException(e);
@@ -2054,13 +2058,23 @@ public class UStatement {
 		}
 	}
 
-	private void read_fetch_data(UInputBuffer inBuffer) throws UJciException {
+	private void read_fetch_data(UInputBuffer inBuffer, byte functionCode)
+			throws UJciException {
 		fetchedTupleNumber = inBuffer.readInt();
-		if (fetchedTupleNumber < 0)
+		if (fetchedTupleNumber < 0) {
 			fetchedTupleNumber = 0;
+		}
+		
 		tuples = new UResultTuple[fetchedTupleNumber];
-		for (int i = 0; i < fetchedTupleNumber; i++)
+		for (int i = 0; i < fetchedTupleNumber; i++) {
 			readATuple(i, inBuffer);
+		}
+		
+		if (functionCode == UFunctionCode.FETCH
+				&& relatedConnection
+						.protoVersionIsAbove(UConnection.PROTOCOL_V5)) {
+			isFetchCompleted = inBuffer.readByte() == 1 ? true : false;
+		}
 	}
 
 	private void readATupleByOid(CUBRIDOID oid, UInputBuffer inBuffer)
@@ -2230,5 +2244,10 @@ public class UStatement {
 
 	public boolean hasBatch() {
 	    return batchParameter != null && batchParameter.size() != 0;
+	}
+	
+	public boolean isFetchCompleted(int current_row) {
+		return relatedConnection.isConnectedToOracle() && isFetchCompleted
+				&& current_row >= currentFirstCursor + fetchedTupleNumber;
 	}
 }

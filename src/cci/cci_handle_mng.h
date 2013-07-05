@@ -172,6 +172,7 @@ extern "C"
     int is_closed;
     int is_from_current_transaction;
     int shard_id;
+    char is_fetch_completed;	/* used only cas4oracle */
     void *prev;
     void *next;
   } T_REQ_HANDLE;

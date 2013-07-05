@@ -154,7 +154,8 @@ static int get_cursor_pos (T_REQ_HANDLE * req_handle, int offset,
 static int fetch_info_decode (char *buf, int size, int num_cols,
 			      T_TUPLE_VALUE ** tuple_value,
 			      T_FETCH_TYPE fetch_type,
-			      T_REQ_HANDLE * req_handle, char *charset);
+			      T_REQ_HANDLE * req_handle,
+			      T_CON_HANDLE * con_handle);
 static void stream_to_obj (char *buf, T_OBJECT * obj);
 
 static int get_data_set (T_CCI_U_TYPE u_type, char *col_value_p,
@@ -166,12 +167,13 @@ static int get_column_info (char *buf_p, int *remain_size,
 			    T_CCI_COL_INFO ** ret_col_info,
 			    char **next_buf_p, bool is_prepare);
 static int oid_get_info_decode (char *buf_p, int remain_size,
-				T_REQ_HANDLE * req_handle, char *charset);
+				T_REQ_HANDLE * req_handle,
+				T_CON_HANDLE * con_handle);
 static int schema_info_decode (char *buf_p, int size,
 			       T_REQ_HANDLE * req_handle);
 static int col_get_info_decode (char *buf_p, int remain_size, int *col_size,
 				int *col_type, T_REQ_HANDLE * req_handle,
-				char *charset);
+				T_CON_HANDLE * con_handle);
 
 static int next_result_info_decode (char *buf, int size,
 				    T_REQ_HANDLE * req_handle);
@@ -186,9 +188,10 @@ static int execute_array_info_decode (char *buf, int size, char flag,
 static T_CCI_U_TYPE get_basic_utype (T_CCI_U_TYPE u_type);
 static int parameter_info_decode (char *buf, int size, int num_param,
 				  T_CCI_PARAM_INFO ** res_param);
-static int decode_fetch_result (T_REQ_HANDLE * req_handle,
+static int decode_fetch_result (T_CON_HANDLE * con_handle,
+				T_REQ_HANDLE * req_handle,
 				char *result_msg_org, char *result_msg_start,
-				int result_msg_size, char *charset);
+				int result_msg_size);
 static int qe_close_req_handle_internal (T_REQ_HANDLE * req_handle,
 					 T_CON_HANDLE * con_handle,
 					 bool force_close);
@@ -205,6 +208,7 @@ static void net_str_to_xid (char *buf, XID * xid);
 #endif
 static int shard_info_decode (char *buf_p, int size, int num_shard,
 			      T_CCI_SHARD_INFO ** shard_info);
+static bool is_connected_to_oracle (T_CON_HANDLE * con_handle);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -584,6 +588,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   int shard_id;
   T_BROKER_VERSION broker_ver;
 
+  req_handle->is_fetch_completed = 0;
   QUERY_RESULT_FREE (req_handle);
 
   net_buf_init (&net_buf);
@@ -772,12 +777,11 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       int num_tuple;
 
       req_handle->cursor_pos = 1;
-      num_tuple = decode_fetch_result (req_handle,
+      num_tuple = decode_fetch_result (con_handle, req_handle,
 				       result_msg,
 				       result_msg + (result_msg_size -
 						     remain_msg_size) + 4,
-				       remain_msg_size - 4,
-				       con_handle->charset);
+				       remain_msg_size - 4);
       req_handle->cursor_pos = 0;
       if (num_tuple < 0)
 	{
@@ -1051,11 +1055,10 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   if (fetch_flag)
     {
       req_handle->cursor_pos = 1;
-      num_tuple = decode_fetch_result (req_handle, result_msg_org,
+      num_tuple = decode_fetch_result (con_handle, req_handle, result_msg_org,
 				       result_msg + (result_msg_size -
 						     remain_msg_size) + 4,
-				       remain_msg_size - 4,
-				       con_handle->charset);
+				       remain_msg_size - 4);
       req_handle->cursor_pos = 0;
       if (num_tuple < 0)
 	{
@@ -1449,15 +1452,24 @@ qe_cursor (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, int offset,
 	  if (req_handle->num_tuple >= 0)
 	    {
 	      cursor_pos = get_cursor_pos (req_handle, offset, origin);
-	      if (cursor_pos <= 0 || cursor_pos > req_handle->num_tuple)
+	      if (cursor_pos <= 0)
 		{
-		  if (cursor_pos <= 0)
-		    req_handle->cursor_pos = 0;
-		  else if (cursor_pos > req_handle->num_tuple)
-		    req_handle->cursor_pos = req_handle->num_tuple + 1;
-
+		  req_handle->cursor_pos = 0;
 		  return CCI_ER_NO_MORE_DATA;
 		}
+	      else if (cursor_pos > req_handle->num_tuple)
+		{
+		  req_handle->cursor_pos = req_handle->num_tuple + 1;
+		  return CCI_ER_NO_MORE_DATA;
+		}
+
+	      if (is_connected_to_oracle (con_handle)
+		  && cursor_pos > req_handle->fetched_tuple_end
+		  && req_handle->is_fetch_completed)
+		{
+		  return CCI_ER_NO_MORE_DATA;
+		}
+
 	      req_handle->cursor_pos = cursor_pos;
 	      return 0;
 	    }
@@ -1656,10 +1668,10 @@ qe_fetch (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       return err_code;
     }
 
-  num_tuple = decode_fetch_result (req_handle,
+  num_tuple = decode_fetch_result (con_handle,
+				   req_handle,
 				   result_msg,
-				   result_msg + 4, result_msg_size - 4,
-				   con_handle->charset);
+				   result_msg + 4, result_msg_size - 4);
   if (num_tuple < 0)
     {
       FREE_MEM (result_msg);
@@ -1924,7 +1936,7 @@ qe_oid_get (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   err_code =
     oid_get_info_decode (result_msg + 4, result_msg_size - 4, req_handle,
-			 con_handle->charset);
+			 con_handle);
   if (err_code < 0)
     {
       FREE_MEM (result_msg);
@@ -2329,7 +2341,7 @@ qe_col_get (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   err_code =
     col_get_info_decode (result_msg + 4, result_msg_size - 4, col_size,
-			 col_type, req_handle, con_handle->charset);
+			 col_type, req_handle, con_handle);
   if (err_code < 0)
     {
       FREE_MEM (result_msg);
@@ -4470,18 +4482,21 @@ get_cursor_pos (T_REQ_HANDLE * req_handle, int offset, char origin)
 static int
 fetch_info_decode (char *buf, int size, int num_cols,
 		   T_TUPLE_VALUE ** tuple_value, T_FETCH_TYPE fetch_type,
-		   T_REQ_HANDLE * req_handle, char *charset)
+		   T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
 {
   int remain_size = size;
   char *cur_p = buf;
   int err_code = 0;
   int num_tuple, i, j;
   T_TUPLE_VALUE *tmp_tuple_value = NULL;
+  char *charset = con_handle->charset;
 
   if (fetch_type == FETCH_FETCH || fetch_type == FETCH_COL_GET)
     {
       if (remain_size < 4)
-	return CCI_ER_COMMUNICATION;
+	{
+	  return CCI_ER_COMMUNICATION;
+	}
 
       NET_STR_TO_INT (num_tuple, cur_p);
       remain_size -= 4;
@@ -4493,7 +4508,9 @@ fetch_info_decode (char *buf, int size, int num_cols,
     }
 
   if (num_tuple <= 0)
-    return 0;
+    {
+      return 0;
+    }
 
   tmp_tuple_value =
     (T_TUPLE_VALUE *) MALLOC (sizeof (T_TUPLE_VALUE) * num_tuple);
@@ -4610,6 +4627,20 @@ fetch_info_decode (char *buf, int size, int num_cols,
 	    }
 	}			/* end of for j */
     }				/* end of for i */
+
+  if (fetch_type == FETCH_FETCH
+      && hm_get_broker_version (con_handle) >=
+      CAS_PROTO_MAKE_VER (PROTOCOL_V5))
+    {
+      if (remain_size < NET_SIZE_BYTE)
+	{
+	  return CCI_ER_COMMUNICATION;
+	}
+
+      NET_STR_TO_BYTE (req_handle->is_fetch_completed, cur_p);
+      remain_size -= NET_SIZE_BYTE;
+      cur_p += NET_SIZE_BYTE;
+    }
 
   *tuple_value = tmp_tuple_value;
 
@@ -4962,7 +4993,7 @@ get_column_info_error:
 
 static int
 oid_get_info_decode (char *buf_p, int remain_size, T_REQ_HANDLE * req_handle,
-		     char *charset)
+		     T_CON_HANDLE * con_handle)
 {
   int num_col_info;
   int class_name_size;
@@ -5004,7 +5035,7 @@ oid_get_info_decode (char *buf_p, int remain_size, T_REQ_HANDLE * req_handle,
   remain_size -= CAST_STRLEN (next_buf_p - cur_p);
   err_code = fetch_info_decode (next_buf_p, remain_size, num_col_info,
 				&(req_handle->tuple_value), FETCH_OID_GET,
-				req_handle, charset);
+				req_handle, con_handle);
   if (err_code < 0)
     {
       return err_code;
@@ -5051,7 +5082,8 @@ schema_info_decode (char *buf_p, int size, T_REQ_HANDLE * req_handle)
 
 static int
 col_get_info_decode (char *buf_p, int remain_size, int *col_size,
-		     int *col_type, T_REQ_HANDLE * req_handle, char *charset)
+		     int *col_type, T_REQ_HANDLE * req_handle,
+		     T_CON_HANDLE * con_handle)
 {
   int num_col_info;
   char *cur_p = buf_p;
@@ -5083,7 +5115,7 @@ col_get_info_decode (char *buf_p, int remain_size, int *col_size,
 
   num_tuple = fetch_info_decode (cur_p, remain_size, 1,
 				 &(req_handle->tuple_value), FETCH_COL_GET,
-				 req_handle, charset);
+				 req_handle, con_handle);
   if (num_tuple < 0)
     return num_tuple;
 
@@ -5967,9 +5999,9 @@ param_decode_error:
 }
 
 static int
-decode_fetch_result (T_REQ_HANDLE * req_handle, char *result_msg_org,
-		     char *result_msg_start, int result_msg_size,
-		     char *charset)
+decode_fetch_result (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
+		     char *result_msg_org, char *result_msg_start,
+		     int result_msg_size)
 {
   int num_cols;
   int num_tuple;
@@ -5983,7 +6015,7 @@ decode_fetch_result (T_REQ_HANDLE * req_handle, char *result_msg_org,
 				 result_msg_size,
 				 num_cols,
 				 &(req_handle->tuple_value), FETCH_FETCH,
-				 req_handle, charset);
+				 req_handle, con_handle);
   if (num_tuple < 0)
     {
       return num_tuple;
@@ -6149,4 +6181,12 @@ shard_info_decode_error:
     }
 
   return CCI_ER_COMMUNICATION;
+}
+
+static bool
+is_connected_to_oracle (T_CON_HANDLE * con_handle)
+{
+  return con_handle->broker_info[BROKER_INFO_DBMS_TYPE] == CAS_DBMS_ORACLE
+    || con_handle->broker_info[BROKER_INFO_DBMS_TYPE] ==
+    CAS_PROXY_DBMS_ORACLE;
 }

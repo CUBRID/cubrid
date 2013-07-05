@@ -105,6 +105,7 @@ abstract public class UErrorCode {
 	public static final int CAS_ER_HOLDABLE_NOT_ALLOWED_KEEP_CON_OFF = -10028;
 	public static final int CAS_ER_NOT_IMPLEMENTED = -10100;
 	public static final int CAS_ER_MAX_CLIENT_EXCEEDED = -10101;
+	public static final int CAS_ER_INVALID_CURSOR_POS = -10102;
 	public static final int CAS_ER_IS = -10200;
 
 	public final static int CAS_ERROR_INDICATOR = -1;

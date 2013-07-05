@@ -2062,12 +2062,14 @@ net_buf_cp_oracle_row (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
 }
 
 static int
-fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
+fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
+	    T_REQ_INFO * req_info)
 {
   int i;
   T_OBJECT tuple_obj;
   DB_VALUE **out_vals, *val_ptr;
   T_PREPARE_CALL_INFO *call_info = srv_handle->prepare_call_info;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   if (call_info == NULL)
     {
@@ -2116,6 +2118,13 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 	}
     }
 
+  srv_handle->next_cursor_pos += 1;
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, 1);	/* fetch_end_flag */
+    }
+
   return 0;
 }
 
@@ -2127,9 +2136,11 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   OCIStmt *stmt;
   int ret, tuple, num_tuple_msg_offset;
   int err_code;
+  char fetch_end_flag = 0;
   T_OBJECT tuple_obj;
   bool first_flag;
   int net_buf_size;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   if (fetch_count <= 0)
@@ -2137,9 +2148,22 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       fetch_count = 100;
     }
 
+  if (srv_handle == NULL)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+      goto fetch_error;
+    }
+
+  if (srv_handle->next_cursor_pos != cursor_pos)
+    {
+      err_code =
+	ERROR_INFO_SET (CAS_ER_INVALID_CURSOR_POS, CAS_ERROR_INDICATOR);
+      goto fetch_error;
+    }
+
   if (srv_handle->prepare_flag & CCI_PREPARE_CALL)
     {
-      return fetch_call (srv_handle, net_buf);
+      return fetch_call (srv_handle, net_buf, req_info);
     }
 
   if (srv_handle->q_result == NULL
@@ -2170,6 +2194,8 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       ret = OCIStmtFetch2 (stmt, ORA_ERR, 1, OCI_DEFAULT, 0, OCI_DEFAULT);
       if (ret == OCI_NO_DATA)
 	{
+	  fetch_end_flag = 1;
+
 	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -2200,6 +2226,14 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       cursor_pos++;
       tuple++;
     }
+
+  srv_handle->next_cursor_pos += tuple;
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
+    }
+
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, tuple);
   return ret;
 

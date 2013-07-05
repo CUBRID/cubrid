@@ -220,8 +220,6 @@ static int fetch_trigger (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *,
 			  T_REQ_INFO *);
 static int fetch_privilege (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *,
 			    T_REQ_INFO *);
-static int fetch_primary_key (T_SRV_HANDLE *, int, int, char, int,
-			      T_NET_BUF *, T_REQ_INFO *);
 static int fetch_foreign_keys (T_SRV_HANDLE *, int, int, char, int,
 			       T_NET_BUF *, T_REQ_INFO *);
 static void add_res_data_bytes (T_NET_BUF * net_buf, char *str, int size,
@@ -317,7 +315,8 @@ static short constraint_dbtype_to_castype (int db_const_type);
 static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args,
 						    int is_first_out);
 static void prepare_call_info_dbval_clear (T_PREPARE_CALL_INFO * call_info);
-static int fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
+static int fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
+		       T_REQ_INFO * req_info);
 static int create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result,
 						DB_QUERY_TYPE * column_info,
 						unsigned int query_seq_num);
@@ -2578,7 +2577,7 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   if (srv_handle->prepare_flag & CCI_PREPARE_CALL)
     {
       net_buf_cp_int (net_buf, 0, NULL);	/* result code */
-      return (fetch_call (srv_handle, net_buf));
+      return (fetch_call (srv_handle, net_buf, req_info));
     }
 
   if (srv_handle->schema_type < 0)
@@ -5243,10 +5242,12 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   int num_tuple_msg_offset;
   int num_tuple;
   int net_buf_size;
+  char fetch_end_flag = 0;
   DB_QUERY_RESULT *result;
   T_QUERY_RESULT *q_result;
   char sensitive_flag = fetch_flag & CCI_FETCH_SENSITIVE;
   DB_OBJECT *db_obj;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   if (result_set_idx <= 0)
     {
@@ -5300,12 +5301,21 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	}
       else if (err_code == DB_CURSOR_END)
 	{
+	  fetch_end_flag = 1;
+
 	  net_buf_cp_int (net_buf, 0, NULL);
 
 	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	    }
+
+
+	  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
+	      (client_version, PROTOCOL_V5))
+	    {
+	      net_buf_cp_byte (net_buf, fetch_end_flag);
 	    }
 
 	  return 0;
@@ -5395,6 +5405,8 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	}
       else if (err_code == DB_CURSOR_END)
 	{
+	  fetch_end_flag = 1;
+
 	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
@@ -5407,6 +5419,12 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
     }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
+    }
+
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
 
   srv_handle->cursor_pos = cursor_pos;
@@ -5425,6 +5443,8 @@ fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   int i;
   int num_result;
   T_CLASS_TABLE *class_table;
+  char fetch_end_flag = 0;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   class_table = (T_CLASS_TABLE *) (srv_handle->session);
   if (class_table == NULL)
@@ -5460,6 +5480,17 @@ fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       tuple_num++;
       cursor_pos++;
     }
+
+  if (cursor_pos > num_result)
+    {
+      fetch_end_flag = 1;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
+    }
+
   net_buf_overwrite_int (net_buf, tuple_num_msg_offset, tuple_num);
 
   return 0;
@@ -5475,6 +5506,7 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   int num_tuple_msg_offset;
   int num_tuple;
   int i;
+  char fetch_end_flag = 0;
   DB_QUERY_RESULT *result;
   T_QUERY_RESULT *q_result;
   DB_VALUE val_class, val_attr;
@@ -5482,6 +5514,7 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   DB_ATTRIBUTE *db_attr;
   char *class_name, *attr_name, *p;
   T_ATTR_TABLE attr_info;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   q_result = (T_QUERY_RESULT *) (srv_handle->cur_result);
   if (q_result == NULL)
@@ -5620,6 +5653,7 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	}
       else if (err_code == DB_CURSOR_END)
 	{
+	  fetch_end_flag = 1;
 	  break;
 	}
       else
@@ -5627,6 +5661,12 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
     }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
+    }
+
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
 
   srv_handle->cursor_pos = cursor_pos;
@@ -5643,11 +5683,13 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   DB_METHOD *tmp_p;
   int tuple_num, tuple_num_msg_offset;
   int i, j;
+  char fetch_end_flag = 0;
   DB_DOMAIN *domain;
   char *name;
   int db_type;
   char arg_str[128];
   int num_args;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   memset (&dummy_obj, 0, sizeof (T_OBJECT));
 
@@ -5721,6 +5763,17 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
       tmp_p = db_method_next (tmp_p);
     }
+
+  if (tmp_p == NULL)
+    {
+      fetch_end_flag = 1;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
+    }
+
   net_buf_overwrite_int (net_buf, tuple_num_msg_offset, tuple_num);
 
   srv_handle->cur_result = (void *) tmp_p;
@@ -5739,6 +5792,8 @@ fetch_methfile (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   char *name;
   int tuple_num, tuple_num_msg_offset;
   int i;
+  char fetch_end_flag = 0;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   memset (&dummy_obj, 0, sizeof (T_OBJECT));
 
@@ -5777,6 +5832,17 @@ fetch_methfile (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
       tmp_p = db_methfile_next (tmp_p);
     }
+
+  if (tmp_p == NULL)
+    {
+      fetch_end_flag = 1;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
+    }
+
   net_buf_overwrite_int (net_buf, tuple_num_msg_offset, tuple_num);
 
   srv_handle->cur_result = (void *) tmp_p;
@@ -5799,6 +5865,8 @@ fetch_constraint (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   char *name, *attr_name;
   int bt_total_pages, bt_num_keys, bt_leaf_pages, bt_height;
   int asc_desc;
+  char fetch_end_flag = 0;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   memset (&dummy_obj, 0, sizeof (T_OBJECT));
 
@@ -5868,6 +5936,17 @@ fetch_constraint (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
     const_next:
       tmp_p = db_constraint_next (tmp_p);
     }
+
+  if (tmp_p == NULL)
+    {
+      fetch_end_flag = 1;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
+    }
+
   net_buf_overwrite_int (net_buf, tuple_num_msg_offset, tuple_num);
 
   return 0;
@@ -5882,6 +5961,8 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   DB_OBJLIST *tmp_p;
   int i;
   int tuple_num, tuple_num_msg_offset;
+  char fetch_end_flag = 0;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   memset (&dummy_obj, 0, sizeof (T_OBJECT));
 
@@ -6038,6 +6119,17 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       tuple_num++;
       cursor_pos++;
     }
+
+  if (tmp_p == NULL)
+    {
+      fetch_end_flag = 1;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
+    }
+
   net_buf_overwrite_int (net_buf, tuple_num_msg_offset, tuple_num);
 
   srv_handle->cur_result = (void *) tmp_p;
@@ -6056,6 +6148,8 @@ fetch_privilege (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   int tuple_num, tuple_num_msg_offset;
   int i;
   T_PRIV_TABLE *priv_table;
+  char fetch_end_flag = 0;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   priv_table = (T_PRIV_TABLE *) (srv_handle->session);
   if (priv_table == NULL)
@@ -6133,20 +6227,21 @@ fetch_privilege (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       tuple_num++;
       cursor_pos++;
     }
+
+  if (cursor_pos > num_result)
+    {
+      fetch_end_flag = 1;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
+    }
+
   net_buf_overwrite_int (net_buf, tuple_num_msg_offset, tuple_num);
 
   return 0;
 }
-
-static int
-fetch_primary_key (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
-		   char fetch_flag, int result_set_idx, T_NET_BUF * net_buf,
-		   T_REQ_INFO * req_info)
-{
-  net_buf_cp_int (net_buf, 0, NULL);
-  return 0;
-}
-
 
 static int
 fetch_foreign_keys (T_SRV_HANDLE * srv_handle, int cursor_pos,
@@ -6156,6 +6251,8 @@ fetch_foreign_keys (T_SRV_HANDLE * srv_handle, int cursor_pos,
   T_OBJECT dummy_obj = { 0, 0, 0 };
   T_FK_INFO_RESULT *fk_res;
   int tuple_num_msg_offset;
+  char fetch_end_flag = 0;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   cursor_pos = 1;
   net_buf_cp_int (net_buf, 0, &tuple_num_msg_offset);
@@ -6194,6 +6291,16 @@ fetch_foreign_keys (T_SRV_HANDLE * srv_handle, int cursor_pos,
       add_res_data_string_safe (net_buf, fk_res->pk_name, 0, NULL);
 
       cursor_pos++;
+    }
+
+  if (fk_res == NULL)
+    {
+      fetch_end_flag = 1;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
     }
 
   net_buf_overwrite_int (net_buf, tuple_num_msg_offset, cursor_pos - 1);
@@ -8738,12 +8845,14 @@ prepare_call_info_dbval_clear (T_PREPARE_CALL_INFO * call_info)
 }
 
 static int
-fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
+fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
+	    T_REQ_INFO * req_info)
 {
   T_OBJECT tuple_obj;
   DB_VALUE **out_vals, null_val, *val_ptr;
   int i;
   T_PREPARE_CALL_INFO *call_info = srv_handle->prepare_call_info;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   if (call_info == NULL)
     {
@@ -8773,6 +8882,11 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 	}
 
       dbval_to_net_buf (val_ptr, net_buf, 0, srv_handle->max_col_size, 1);
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, 1);	/* fetch_end_flag */
     }
 
   return 0;

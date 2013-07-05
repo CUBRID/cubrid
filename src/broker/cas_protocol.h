@@ -207,7 +207,7 @@ extern "C"
     PROTOCOL_V2 = 2,		/* send columns meta-data with the result for executing */
     PROTOCOL_V3 = 3,		/* session information extend with server session key */
     PROTOCOL_V4 = 4,		/* send as_index to driver */
-    PROTOCOL_V5 = 5,		/* shard feature */
+    PROTOCOL_V5 = 5,		/* shard feature, fetch end flag */
     CURRENT_PROTOCOL = PROTOCOL_V5
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
