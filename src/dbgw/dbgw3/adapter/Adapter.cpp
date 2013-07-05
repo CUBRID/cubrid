@@ -1154,7 +1154,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1185,7 +1186,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1215,7 +1217,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1245,7 +1248,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1276,7 +1280,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1302,7 +1307,8 @@ namespace DBGW3
       dbgw::ClientResultSetMetaDataSharedPtr *pMeta = NULL;
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1340,7 +1346,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1371,7 +1378,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1474,7 +1482,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1505,7 +1514,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1536,7 +1546,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1567,7 +1578,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1598,7 +1610,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1629,7 +1642,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1660,7 +1674,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1691,7 +1706,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1722,7 +1738,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1776,7 +1793,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1830,7 +1848,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1861,7 +1880,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1892,7 +1912,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1923,7 +1944,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1954,7 +1976,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
@@ -1988,7 +2011,8 @@ namespace DBGW3
 
       try
         {
-          if (hResult == NULL)
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
             {
               dbgw::InvalidHandleException e;
               DBGW_LOG_ERROR(e.what());
