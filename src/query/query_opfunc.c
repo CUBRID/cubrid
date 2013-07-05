@@ -6081,6 +6081,15 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	      return ER_FAILED;
 	    }
 
+	  /* set list_id domain, if it's not set */
+	  if (agg_p->function == PT_MEDIAN
+	      && agg_p->list_id->type_list.type_cnt == 1
+	      && agg_p->list_id->
+	      type_list.domp[0]->type->id == DB_TYPE_VARIABLE)
+	    {
+	      agg_p->list_id->type_list.domp[0] = agg_p->domain;
+	    }
+
 	  if (qfile_add_item_to_list (thread_p, disk_repr_p,
 				      dbval_size, agg_p->list_id) != NO_ERROR)
 	    {
