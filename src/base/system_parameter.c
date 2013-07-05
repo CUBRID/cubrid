@@ -5120,17 +5120,17 @@ prm_sec_to_min (void *out_val, unsigned int out_type,
 
   if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
     {
-      int *sec_value = (int *) in_val;
       int *min_value = (int *) out_val;
+      int sec_value = *((int *) in_val);
 
-      if (*sec_value < 0)
+      if (sec_value < 0)
 	{
-	  *min_value = *sec_value;
+	  *min_value = sec_value;
 	}
       else
 	{
-	  *min_value = *sec_value / 60;
-	  if (*sec_value % 60 > 0)
+	  *min_value = sec_value / 60;
+	  if (sec_value % 60 > 0)
 	    {
 	      *min_value = *min_value + 1;
 	    }
