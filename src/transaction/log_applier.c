@@ -6220,7 +6220,11 @@ la_change_state (void)
 	      new_state = HA_LOG_APPLIER_STATE_DONE;
 
 	      /* clear all repl_lists */
-	      la_clear_all_repl_and_commit_list ();
+	      if (la_Info.act_log.log_hdr->ha_server_state !=
+		  HA_SERVER_STATE_DEAD)
+		{
+		  la_clear_all_repl_and_commit_list ();
+		}
 	    }
 	  break;
 	default:
@@ -7500,7 +7504,6 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	      && (final_log_hdr.ha_server_state !=
 		  HA_SERVER_STATE_TO_BE_STANDBY))
 	    {
-
 	      /* if there's no replication log to be applied,
 	       * we should release dbname lock */
 	      clear_owner = true;
@@ -7509,10 +7512,13 @@ la_apply_log_file (const char *database_name, const char *log_path,
 				  clear_owner);
 	      assert_release (error == NO_ERROR);
 
-	      if (LSA_GT (&la_Info.final_lsa, &la_Info.committed_lsa))
+	      if (final_log_hdr.ha_server_state != HA_SERVER_STATE_DEAD)
 		{
 		  LSA_COPY (&la_Info.committed_lsa, &la_Info.final_lsa);
+		}
 
+	      if (LSA_GE (&la_Info.final_lsa, &la_Info.committed_lsa))
+		{
 		  er_log_debug (ARG_FILE_LINE,
 				"lowest required page id is %lld",
 				(long long int) la_Info.committed_lsa.pageid);
@@ -7531,10 +7537,6 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		    {
 		      break;
 		    }
-		}
-	      else
-		{
-		  LSA_COPY (&la_Info.committed_lsa, &la_Info.final_lsa);
 		}
 
 	      la_Info.apply_state = HA_LOG_APPLIER_STATE_RECOVERING;
