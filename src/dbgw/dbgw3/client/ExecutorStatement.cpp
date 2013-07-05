@@ -521,9 +521,9 @@ namespace dbgw
       }
   }
 
-  _ExecutorStatementPool::_ExecutorStatementPool(_StatisticsItem &statItem,
-      size_t nMaxLRUSize) :
-    m_nMaxLRUSize(nMaxLRUSize), m_statItem(statItem)
+  _ExecutorStatementPool::_ExecutorStatementPool(
+      trait<_StatisticsItem>::sp pStatItem, size_t nMaxLRUSize) :
+    m_nMaxLRUSize(nMaxLRUSize), m_pStatItem(pStatItem)
   {
   }
 
@@ -550,7 +550,7 @@ namespace dbgw
         m_statementMap[fullSqlText] = _ExecutorStatementPoolValue(pProxy,
             keyListIt);
 
-        m_statItem[DBGW_STMT_POOL_STAT_COL_TOTAL_CNT]++;
+        m_pStatItem->getColumn(DBGW_STMT_POOL_STAT_COL_TOTAL_CNT)++;
       }
     else
       {
@@ -566,25 +566,25 @@ namespace dbgw
   _ExecutorStatement *_ExecutorStatementPool::get(
       const std::string &fullSqlText)
   {
-    m_statItem[DBGW_STMT_POOL_STAT_COL_GET_CNT]++;
+    m_pStatItem->getColumn(DBGW_STMT_POOL_STAT_COL_GET_CNT)++;
 
     _ExecutorStatement *pProxy = NULL;
     _ExecutorStatementPoolHashMap::iterator it = m_statementMap.find(fullSqlText);
     if (it != m_statementMap.end())
       {
-        m_statItem[DBGW_STMT_POOL_STAT_COL_HIT_CNT]++;
+        m_pStatItem->getColumn(DBGW_STMT_POOL_STAT_COL_HIT_CNT)++;
         pProxy = it->second.first;
       }
 
-    m_statItem[DBGW_STMT_POOL_STAT_COL_HIT_RATIO] =
-        (double) m_statItem[DBGW_STMT_POOL_STAT_COL_HIT_CNT].getLong()
-        / m_statItem[DBGW_STMT_POOL_STAT_COL_GET_CNT].getLong();
+    m_pStatItem->getColumn(DBGW_STMT_POOL_STAT_COL_HIT_RATIO) =
+        (double) m_pStatItem->getColumn(DBGW_STMT_POOL_STAT_COL_HIT_CNT).getLong()
+        / m_pStatItem->getColumn(DBGW_STMT_POOL_STAT_COL_GET_CNT).getLong();
     return pProxy;
   }
 
   void _ExecutorStatementPool::clear()
   {
-    m_statItem[DBGW_STMT_POOL_STAT_COL_TOTAL_CNT] -=
+    m_pStatItem->getColumn(DBGW_STMT_POOL_STAT_COL_TOTAL_CNT) -=
         (int64) m_statementKeyList.size();
     m_statementKeyList.clear();
 
@@ -619,8 +619,8 @@ namespace dbgw
             m_statementMap.erase(it);
           }
 
-        m_statItem[DBGW_STMT_POOL_STAT_COL_TOTAL_CNT]--;
-        m_statItem[DBGW_STMT_POOL_STAT_COL_EVICT_CNT]++;
+        m_pStatItem->getColumn(DBGW_STMT_POOL_STAT_COL_TOTAL_CNT)--;
+        m_pStatItem->getColumn(DBGW_STMT_POOL_STAT_COL_EVICT_CNT)++;
       }
   }
 

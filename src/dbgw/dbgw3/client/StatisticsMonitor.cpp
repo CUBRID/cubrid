@@ -273,7 +273,7 @@ namespace dbgw
       }
   }
 
-  const char *_StatisticsItemColumnValue::getCString() const
+  std::string _StatisticsItemColumnValue::getString() const
   {
     if (m_type == DBGW_STAT_VAL_TYPE_STRING)
       {
@@ -281,7 +281,7 @@ namespace dbgw
       }
     else
       {
-        return NULL;
+        return "";
       }
   }
 
@@ -371,7 +371,7 @@ namespace dbgw
                   doWriteColumn(buffer, m_value.getDouble());
                   break;
                 case DBGW_STAT_VAL_TYPE_STRING:
-                  doWriteColumn(buffer, m_value.getCString());
+                  doWriteColumn(buffer, m_value.getString());
                   break;
                 default:
                   break;
@@ -802,6 +802,11 @@ namespace dbgw
     m_nTotalWidth += pColumn->getMaxWidth() + DEFAULT_PADDING_WIDTH;
   }
 
+  _StatisticsItemColumn &_StatisticsItem::getColumn(int nIndex)
+  {
+    return *(m_colList[nIndex]);
+  }
+
   void _StatisticsItem::writeHeader(std::stringstream &buffer)
   {
     struct timeval tp;
@@ -870,11 +875,6 @@ namespace dbgw
     return m_bNeedRemove;
   }
 
-  _StatisticsItemColumn &_StatisticsItem::operator[](int nIndex) const
-  {
-    return *(m_colList[nIndex]);
-  }
-
   void _StatisticsItem::writePrefix(std::stringstream &buffer)
   {
     buffer << m_prefix << "|";
@@ -893,7 +893,7 @@ namespace dbgw
     }
 
     void addItem(const std::string &key,
-        _StatisticsItem *pItem)
+        trait<_StatisticsItem>::sp pItem)
     {
       system::_MutexAutoLock lock(&m_mutex);
 
@@ -992,7 +992,7 @@ namespace dbgw
   }
 
   void _StatisticsGroup::addItem(const std::string &key,
-      _StatisticsItem *pItem)
+      trait<_StatisticsItem>::sp pItem)
   {
     m_pImpl->addItem(key, pItem);
   }
@@ -1083,8 +1083,9 @@ namespace dbgw
       m_logPath = "";
     }
 
-    bool isRunning() const
+    bool isRunning()
     {
+      system::_MutexAutoLock lock(&m_mutex);
       return m_logger != NULL;
     }
 

@@ -222,7 +222,7 @@ namespace dbgw
       m_statementType(statementType), m_dbType(sql::DBGW_DB_TYPE_CUBRID),
       m_version(version), m_queryParamList(queryParamList),
       m_pUserDefinedResultSetMetaData(pUserDefinedResultSetMetaData),
-      m_bExistOutBindParam(false), m_statItem("QS")
+      m_bExistOutBindParam(false), m_pStatItem(new _StatisticsItem("QS"))
     {
       trait<_QueryParameter>::vector::const_iterator it =
           m_queryParamList.begin();
@@ -236,50 +236,51 @@ namespace dbgw
             }
         }
 
-      m_statItem.addColumn(
+      m_pStatItem->addColumn(
           new _StatisticsItemColumn(pMonitor, DBGW_STAT_COL_TYPE_STATIC,
               DBGW_STAT_VAL_TYPE_STRING, " ", 1));
-      m_statItem.addColumn(
+      m_pStatItem->addColumn(
           new _StatisticsItemColumn(pMonitor, DBGW_STAT_COL_TYPE_STATIC,
               DBGW_STAT_VAL_TYPE_STRING, "GROUP-NAME", 20));
-      m_statItem.addColumn(
+      m_pStatItem->addColumn(
           new _StatisticsItemColumn(pMonitor, DBGW_STAT_COL_TYPE_STATIC,
               DBGW_STAT_VAL_TYPE_STRING, "SQL-NAME", 20));
-      m_statItem.addColumn(
+      m_pStatItem->addColumn(
           new _StatisticsItemColumn(pMonitor, DBGW_STAT_COL_TYPE_ADD,
               DBGW_STAT_VAL_TYPE_LONG, "TOTAL-CNT", 10));
-      m_statItem.addColumn(
+      m_pStatItem->addColumn(
           new _StatisticsItemColumn(pMonitor, DBGW_STAT_COL_TYPE_ADD,
               DBGW_STAT_VAL_TYPE_LONG, "SUCC-CNT", 10));
-      m_statItem.addColumn(
+      m_pStatItem->addColumn(
           new _StatisticsItemColumn(pMonitor, DBGW_STAT_COL_TYPE_ADD,
               DBGW_STAT_VAL_TYPE_LONG, "FAIL-CNT", 10));
-      m_statItem.addColumn(
+      m_pStatItem->addColumn(
           new _StatisticsItemColumn(pMonitor, DBGW_STAT_COL_TYPE_AVG,
               DBGW_STAT_VAL_TYPE_DOUBLE, "AVG", 8));
-      m_statItem.addColumn(
+      m_pStatItem->addColumn(
           new _StatisticsItemColumn(pMonitor, DBGW_STAT_COL_TYPE_MAX,
               DBGW_STAT_VAL_TYPE_DOUBLE, "MAX", 8));
 
-      m_statItem[DBGW_QUERY_STAT_COL_PADDING] = "*";
-      m_statItem[DBGW_QUERY_STAT_COL_GROUPNAME] = m_groupName.c_str();
-      m_statItem[DBGW_QUERY_STAT_COL_SQLNAME] = m_sqlName.c_str();
+      m_pStatItem->getColumn(DBGW_QUERY_STAT_COL_PADDING) = "*";
+      m_pStatItem->getColumn(DBGW_QUERY_STAT_COL_GROUPNAME) =
+          m_groupName.c_str();
+      m_pStatItem->getColumn(DBGW_QUERY_STAT_COL_SQLNAME) = m_sqlName.c_str();
 
-      m_statItem[DBGW_QUERY_STAT_COL_TOTAL_CNT].setRightAlign();
-      m_statItem[DBGW_QUERY_STAT_COL_SUCC_CNT].setRightAlign();
-      m_statItem[DBGW_QUERY_STAT_COL_FAIL_CNT].setRightAlign();
+      m_pStatItem->getColumn(DBGW_QUERY_STAT_COL_TOTAL_CNT).setRightAlign();
+      m_pStatItem->getColumn(DBGW_QUERY_STAT_COL_SUCC_CNT).setRightAlign();
+      m_pStatItem->getColumn(DBGW_QUERY_STAT_COL_FAIL_CNT).setRightAlign();
 
-      m_statItem[DBGW_QUERY_STAT_COL_AVG_TIME].setRightAlign();
-      m_statItem[DBGW_QUERY_STAT_COL_AVG_TIME].setPrecision(2);
+      m_pStatItem->getColumn(DBGW_QUERY_STAT_COL_AVG_TIME).setRightAlign();
+      m_pStatItem->getColumn(DBGW_QUERY_STAT_COL_AVG_TIME).setPrecision(2);
 
-      m_statItem[DBGW_QUERY_STAT_COL_MAX_TIME].setRightAlign();
-      m_statItem[DBGW_QUERY_STAT_COL_MAX_TIME].setPrecision(2);
+      m_pStatItem->getColumn(DBGW_QUERY_STAT_COL_MAX_TIME).setRightAlign();
+      m_pStatItem->getColumn(DBGW_QUERY_STAT_COL_MAX_TIME).setPrecision(2);
 
       std::string statKey = m_groupName;
       statKey += ".";
       statKey += m_sqlName;
 
-      pMonitor->getQueryStatGroup()->addItem(statKey, &m_statItem);
+      pMonitor->getQueryStatGroup()->addItem(statKey, m_pStatItem);
     }
 
     ~Impl()
@@ -585,7 +586,7 @@ namespace dbgw
     _StatisticsItemColumn &getStatColumn(
         _QueryStatColumn column) const
     {
-      return m_statItem[column];
+      return m_pStatItem->getColumn(column);
     }
 
   private:
@@ -671,7 +672,7 @@ namespace dbgw
     trait<ClientResultSetMetaData>::sp m_pUserDefinedResultSetMetaData;
     bool m_bExistOutBindParam;
 
-    _StatisticsItem m_statItem;
+    trait<_StatisticsItem>::sp m_pStatItem;
   };
 
   _Query::_Query(trait<_StatisticsMonitor>::sp pMonitor,

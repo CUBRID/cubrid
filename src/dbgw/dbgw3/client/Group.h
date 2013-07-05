@@ -107,7 +107,7 @@ namespace dbgw
     bool isUseDefaultValueWhenFailedToCastParam() const;
     bool empty() const;
     sql::DataBaseType getDbType() const;
-    _StatisticsItem &getStatementStatItem();
+    trait<_StatisticsItem>::sp getStatementStatItem();
 
   private:
     _Group(const _Group &);

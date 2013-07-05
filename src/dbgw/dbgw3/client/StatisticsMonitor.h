@@ -42,7 +42,7 @@ namespace dbgw
   class _StatisticsGroup;
 
   class _StatisticsItem;
-  typedef boost::unordered_map<std::string, _StatisticsItem *,
+  typedef boost::unordered_map<std::string, trait<_StatisticsItem>::sp,
           boost::hash<std::string>, func::compareString> _StatisticsItemHashMap;
 
   class _StatisticsItemColumn;
@@ -79,7 +79,7 @@ namespace dbgw
     _StatisticsItemColumnValueType getType() const;
     int64 getLong() const;
     double getDouble() const;
-    const char *getCString() const;
+    std::string getString() const;
 
   private:
     _StatisticsItemColumnValueType m_type;
@@ -141,6 +141,7 @@ namespace dbgw
     virtual ~_StatisticsItem();
 
     void addColumn(_StatisticsItemColumn *pColumn);
+    _StatisticsItemColumn &getColumn(int nIndex);
     void writeHeader(std::stringstream &buffer);
     void writeItem(std::stringstream &buffer);
     void removeAfterWriteItem();
@@ -165,7 +166,7 @@ namespace dbgw
     _StatisticsGroup(bool bNeedForceWriteHeader = false);
     virtual ~_StatisticsGroup();
 
-    void addItem(const std::string &key, _StatisticsItem *pItem);
+    void addItem(const std::string &key, trait<_StatisticsItem>::sp pItem);
     void removeItem(const std::string &key);
     void clearItem();
     void writeGroup(std::stringstream &buffer);

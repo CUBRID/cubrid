@@ -74,7 +74,7 @@ namespace dbgw
   class _ExecutorStatementPool
   {
   public:
-    _ExecutorStatementPool(_StatisticsItem &statItem, size_t nMaxLRUSize);
+    _ExecutorStatementPool(trait<_StatisticsItem>::sp pStatItem, size_t nMaxLRUSize);
     virtual ~_ExecutorStatementPool();
 
     void put(const std::string &fullSqlText, _ExecutorStatement *pStatement);
@@ -93,7 +93,7 @@ namespace dbgw
     _ExecutorStatementPoolKeyList m_statementKeyList;
     _ExecutorStatementPoolHashMap m_statementMap;
 
-    _StatisticsItem &m_statItem;
+    trait<_StatisticsItem>::sp m_pStatItem;
   };
 
 }

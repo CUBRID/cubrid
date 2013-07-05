@@ -73,15 +73,15 @@ namespace dbgw
 
     ~Impl()
     {
-      m_pMonitor->clear();
-      m_workerPool.clear();
-      m_connResource.clear();
-      m_queryResource.clear();
-
       m_pTimer->timedJoin(m_ulMaxWaitExitTimeMilSec);
       m_pMonitor->timedJoin(m_ulMaxWaitExitTimeMilSec);
       m_pAsyncJobManager->timedJoin(m_ulMaxWaitExitTimeMilSec);
       m_pTimeoutJobManager->timedJoin(m_ulMaxWaitExitTimeMilSec);
+
+      m_pMonitor->clear();
+      m_workerPool.clear();
+      m_connResource.clear();
+      m_queryResource.clear();
     }
 
     void init(bool bNeedLoadXml)
