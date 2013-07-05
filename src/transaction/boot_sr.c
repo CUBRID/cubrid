@@ -252,7 +252,8 @@ static void boot_shutdown_server_at_exit (void);
 void
 boot_server_status (BOOT_SERVER_STATUS status)
 {
-  static const char *status_str[] = { "UP", "DOWN", "MAINTENANCE" };
+  static const char *status_str[] =
+    { "UNKNOWN", "UP", "DOWN", "MAINTENANCE" };
   if (status >= BOOT_SERVER_UP && status <= BOOT_SERVER_MAINTENANCE)
     {
       boot_Server_status = status;
