@@ -18218,7 +18218,7 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   DB_VALUE *dbvalp;
   DB_LOGICAL ev_res;
   bool qualified;
-  XASL_NODE *xptr;
+  XASL_NODE *xptr, *last_xasl;
 
   if (qfile_open_list_scan (xasl->connect_by_ptr->list_id, &s_id) != NO_ERROR)
     {
@@ -18324,14 +18324,31 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		{
 		  goto exit_on_error;
 		}
-	      /* clear correlated subquery list files */
-	      for (xptr = xasl->dptr_list; xptr != NULL; xptr = xptr->next)
+	      /* clear correlated subquery list files; the list of correlated
+	       * subqueries reside on the last scan proc or fetch proc */
+	      last_xasl = xasl;
+	      while (last_xasl)
+		{
+		  if (last_xasl->scan_ptr)
+		    {
+		      last_xasl = last_xasl->scan_ptr;
+		    }
+		  else if (last_xasl->fptr_list)
+		    {
+		      last_xasl = last_xasl->fptr_list;
+		    }
+		  else
+		    {
+		      break;
+		    }
+		}
+	      for (xptr = last_xasl->dptr_list; xptr != NULL;
+		   xptr = xptr->next)
 		{
 		  qexec_clear_head_lists (thread_p, xptr);
 		}
 	    }
 	}
-
     }
 
   if (scan != S_END)
