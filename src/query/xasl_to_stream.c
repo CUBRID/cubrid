@@ -39,6 +39,7 @@
 #include "memory_alloc.h"
 #include "heap_file.h"
 
+
 /* memory alignment unit - to align stored XASL tree nodes */
 #define	ALIGN_UNIT	sizeof(double)
 #define	ALIGN_MASK	(ALIGN_UNIT - 1)
@@ -320,7 +321,7 @@ static char *xts_process_regu_variable_list (char *ptr,
 int
 xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
 {
-  int offset;
+  int offset, org_offset;
   int header_size, body_size;
   char *p;
   int i;
@@ -342,9 +343,19 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   offset = sizeof (int)		/* [size of header data] */
     + header_size		/* [header data] */
     + sizeof (int);		/* [size of body data] */
+
+  org_offset = offset;
   offset = MAKE_ALIGN (offset);
 
   xts_reserve_location_in_stream (offset);
+
+#if !defined(NDEBUG)
+  /* suppress valgrind UMW error */
+  if (offset > org_offset)
+    {
+      memset (xts_Stream_buffer + org_offset, 0, offset - org_offset);
+    }
+#endif
 
   /* save XASL tree into body data of the stream buffer */
   if (xts_save_xasl_node (xasl_tree) == ER_FAILED)
@@ -7027,6 +7038,7 @@ xts_reserve_location_in_stream (int size)
 {
   int needed;
   int grow;
+  int org_size = size;
 
   size = MAKE_ALIGN (size);
   needed = size - (xts_Stream_size - xts_Free_offset_in_stream);
@@ -7063,6 +7075,15 @@ xts_reserve_location_in_stream (int size)
 	  return ER_FAILED;
 	}
     }
+
+#if !defined(NDEBUG)
+  /* suppress valgrind UMW error */
+  if (size > org_size)
+    {
+      memset (xts_Stream_buffer + xts_Free_offset_in_stream + org_size,
+	      0, size - org_size);
+    }
+#endif
 
   xts_Free_offset_in_stream += size;
   assert ((xts_Free_offset_in_stream - size) % MAX_ALIGNMENT == 0);
