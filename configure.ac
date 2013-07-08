@@ -161,7 +161,7 @@ AC_CHECK_LIB([dl], [main])
 AC_CHECK_LIB([pthread], [main])
 AC_CHECK_LIB([curses], [main])
 AC_CHECK_LIB([stdc++], [main])
-AC_CHECK_LIB([gcrypt], [main])
+#AC_CHECK_LIB([gcrypt], [main])
 
 # Checks for header files.
 AC_HEADER_STDC
@@ -559,7 +559,7 @@ AC_ARG_WITH([libgcrypt],
 AS_IF([test "$with_cci_only" = "yes"], [with_libgcrypt=no],
 	[AS_IF([test "$with_libgcrypt" = "builtin"],
 		[AC_CONFIG_SUBDIRS([external/libgcrypt-1.5.2])		
-		GCRYPT_LIBS="\$(top_builddir)/external/lib/libgcrypt.a \$(top_builddir)/external/lib/libgpg-error.a"
+		GCRYPT_LIBS="\$(top_builddir)/external/lib/libgcrypt.la \$(top_builddir)/external/lib/libgpg-error.la"
 		GCRYPT_INC="-I\$(top_builddir)/external/include/"
 		EXTERNAL_PKGS="$EXTERNAL_PKGS libgpg-error-1.11 libgcrypt-1.5.2"],
 		[GCRYPT_LIBS="-L$with_libgcrypt/lib -lgcrypt"

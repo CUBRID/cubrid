@@ -1336,7 +1336,8 @@ m4trace:m4/gpg-error.m4:16: -1- AC_DEFUN([AM_PATH_GPG_ERROR], [ AC_ARG_WITH(gpg-
   fi
   if test $ok = yes; then
     GPG_ERROR_CFLAGS=`$GPG_ERROR_CONFIG $gpg_error_config_args --cflags`
-    GPG_ERROR_LIBS=`$GPG_ERROR_CONFIG $gpg_error_config_args --libs`
+    #GPG_ERROR_LIBS=`$GPG_ERROR_CONFIG $gpg_error_config_args --libs`
+    GPG_ERROR_LIBS="$gpg_error_config_prefix/lib/libgpg-error.a"
     AC_MSG_RESULT([yes ($gpg_error_config_version)])
     ifelse([$2], , :, [$2])
     if test x"$host" != x ; then
@@ -2862,7 +2863,7 @@ m4trace:configure.ac:156: -1- m4_pattern_allow([^_ALL_SOURCE$])
 m4trace:configure.ac:156: -1- m4_pattern_allow([^_GNU_SOURCE$])
 m4trace:configure.ac:156: -1- m4_pattern_allow([^_POSIX_PTHREAD_SEMANTICS$])
 m4trace:configure.ac:156: -1- m4_pattern_allow([^_TANDEM_SOURCE$])
-m4trace:configure.ac:160: -1- LT_INIT([win32-dll disable-static])
+m4trace:configure.ac:160: -1- LT_INIT([win32-dll disable-shared])
 m4trace:configure.ac:160: -1- m4_pattern_forbid([^_?LT_[A-Z_]+$])
 m4trace:configure.ac:160: -1- m4_pattern_allow([^(_LT_EOF|LT_DLGLOBAL|LT_DLLAZY_OR_NOW|LT_MULTI_MODULE)$])
 m4trace:configure.ac:160: -1- LTOPTIONS_VERSION

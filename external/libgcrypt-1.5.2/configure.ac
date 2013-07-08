@@ -157,7 +157,7 @@ AC_GNU_SOURCE
 
 
 LT_PREREQ([2.2.6])
-LT_INIT([win32-dll disable-static])
+LT_INIT([win32-dll disable-shared])
 LT_LANG([Windows Resource])
 
 
