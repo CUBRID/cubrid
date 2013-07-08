@@ -2101,7 +2101,12 @@ db_string_substring (const MISC_OPERAND substr_operand,
 
 		  if (start_offset < 0)
 		    {
-		      string += string_len + start_offset;
+		      int byte_pos;
+		      (void) intl_char_size (string,
+					     string_len + start_offset,
+					     DB_GET_STRING_CODESET
+					     (src_string), &byte_pos);
+		      string += byte_pos;
 		      string_len = -start_offset;
 		    }
 		}
