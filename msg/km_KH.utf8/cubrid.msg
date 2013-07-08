@@ -1342,7 +1342,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 112 In line %d, column %d before %s\n
 113 before ' %s'\n
 114 before END OF STATEMENT\n
-115 ឈ្មោះមោឃ\nឈ្មោះ: SET NAMES charset [{COLLATE | COLLATION} collation]\n
+115 ឈ្មោះមោឃ\nឈ្មោះ: SET NAMES charset [COLLATE collation]\n
 116 ការប្រើមោឃនៃchr\n  CHR ( number [using charset] )\n
 117 ប្រើប្រាស់អក្សរកូដឥតបានការ\n  CHARSET ( expression )\n
 118 ការរៀបចំឥតបានការ\n  COLLATION ( expression )\n

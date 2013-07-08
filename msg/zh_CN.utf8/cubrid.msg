@@ -1342,7 +1342,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 112 In line %d, column %d before %s\n
 113 before ' %s'\n
 114 before END OF STATEMENT\n
-115 集合名无效\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
+115 集合名无效\n  set_names: SET NAMES charset [COLLATE collation]\n
 116 chr无效使用\n  CHR ( number [using charset] )\n
 117 非法使用字符集\n  CHARSET ( expression )\n
 118 非法使用排序规则\n  COLLATION ( expression )\n

@@ -1342,7 +1342,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 112 In line %d, column %d before %s\n
 113 before ' %s'\n
 114 before END OF STATEMENT\n
-115 Geçersiz grup\n adı: SET NAMES charset [{COLLATE | COLLATION} collation]\n
+115 Geçersiz grup\n adı: SET NAMES charset [COLLATE collation]\n
 116 invalid use of chr\n  CHR ( number [using charset] )\n
 117 Karakter kümesi kullanımı geçersiz \n CHARSET ( expression )\n
 118 derlemenin geçersiz kullanımı \n COLLATION ( expression )\n

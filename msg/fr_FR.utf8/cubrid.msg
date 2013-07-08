@@ -1342,7 +1342,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 112 In line %d, column %d before %s\n
 113 before ' %s'\n
 114 before END OF STATEMENT\n
-115 instruction invalide: set names\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
+115 instruction invalide: set names\n  set_names: SET NAMES charset [COLLATE collation]\n
 116 utilisation invalide du chr\n  CHR ( number [using charset] )\n
 117 utilisation invalide du charset\n CHARSET ( expression )\n
 118 utilisation invalide du collation\n COLLATION ( expression )\n

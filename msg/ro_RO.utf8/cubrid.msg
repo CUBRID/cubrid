@@ -1342,7 +1342,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 112 PE linia %d, coloana %d înainte de %s\n
 113 înainte de ' %s'\n
 114 înainte de FINAL DE INSTRUCTIUNE\n
-115 utilizare invalidă a lui set names\n  set_names: SET NAMES charset [{COLLATE | COLLATION} collation]\n
+115 utilizare invalidă a lui set names\n  set_names: SET NAMES charset [COLLATE collation]\n
 116 utilizare invalidă a lui chr\n  CHR ( number [using charset] )\n
 117 utilizare invalidă a lui charset\n  CHARSET ( expression )\n
 118 utilizare invalidă a lui collation\n  COLLATION ( expression )\n

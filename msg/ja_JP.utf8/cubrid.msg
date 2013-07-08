@@ -1342,7 +1342,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 112 In line %d, column %d before %s\n
 113 before ' %s'\n
 114 before END OF STATEMENT\n
-115 正しくないセットネーム\n  set_names: SET NAMES キャラクターセット [{COLLATE | COLLATION} collation]\n
+115 正しくないセットネーム\n  set_names: SET NAMES キャラクターセット [COLLATE collation]\n
 116 正しくないchrの使い方\n  CHR (　数字 [using charset]　)\n
 117 正しくないcharsetの使い方です。\n  CHARSET ( expression )\n
 118 正しくないcollationの使い方です。\n  COLLATION ( expression )\n
