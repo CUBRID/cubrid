@@ -5451,7 +5451,7 @@ qo_check_new_best_plan_on_info (QO_INFO * info, QO_PLAN * plan)
 	      EQ = info->planner->EQ;
 	      best_plan = qo_find_best_plan_on_planvec (&info->best_no_order,
 							1.0);
-	      if (QO_ENV_USE_SORT_LIMIT (env)
+	      if (QO_ENV_USE_SORT_LIMIT (env) == QO_SL_USE
 		  && !best_plan->has_sort_limit
 		  && bitset_is_equivalent (&QO_ENV_SORT_LIMIT_NODES (env),
 					   &info->nodes)

@@ -155,7 +155,8 @@ static bool qo_check_parent_eq_class_for_multi_range_opt (QO_PLAN * parent,
 static XASL_NODE *make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan,
 					PT_NODE * namelist, XASL_NODE * xasl);
 static PT_NODE *qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser,
-						     PT_NODE * orderby_for);
+						     PT_NODE * orderby_for,
+						     bool * is_new_node);
 
 /*
  * make_scan_proc () -
@@ -1032,6 +1033,7 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan,
       PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
       PT_NODE *query = QO_ENV_PT_TREE (env);
       PT_NODE *upper_bound = NULL, *save_next = NULL;
+      bool free_upper_bound = false;
 
       xasl->orderby_list = pt_to_orderby (parser, query->info.query.order_by,
 					  query);
@@ -1044,7 +1046,8 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan,
        * If the lower bound is evaluated twice, some tuples are lost.
        */
       upper_bound = query->info.query.orderby_for;
-      upper_bound = qo_get_orderby_num_upper_bound_node (parser, upper_bound);
+      upper_bound = qo_get_orderby_num_upper_bound_node (parser, upper_bound,
+							 &free_upper_bound);
       if (upper_bound == NULL)
 	{
 	  /* Must have an upper limit if we're considering a SORT-LIMIT
@@ -1057,6 +1060,10 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan,
       xasl->ordbynum_pred = pt_to_pred_expr_with_arg (parser, upper_bound,
 						      &ordbynum_flag);
       upper_bound->next = save_next;
+      if (free_upper_bound)
+	{
+	  parser_free_tree (parser, upper_bound);
+	}
 
       if (ordbynum_flag & PT_PRED_ARG_ORDBYNUM_CONTINUE)
 	{
@@ -4979,8 +4986,10 @@ cleanup:
  *					    upper bound predicate of an
  *					    orderby_num predicate
  * return : node or NULL
- * parser (in) : parser context
- * orderby_for (in) : orderby_for predicate list
+ * parser (in)		: parser context
+ * orderby_for (in)	: orderby_for predicate list
+ * is_new_node (in/out) : if a new node was created, free_node is set to true
+ *			  and caller must free the returned node
  *
  * Note: A NULL return indicates that this function either found no upper
  * bound or that it found several predicates which specify an upper bound
@@ -4988,13 +4997,15 @@ cleanup:
  */
 static PT_NODE *
 qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser,
-				     PT_NODE * orderby_for)
+				     PT_NODE * orderby_for,
+				     bool * is_new_node)
 {
   PT_NODE *upper_bound = NULL, *left = NULL, *right = NULL;
   PT_NODE *save_next;
   PT_NODE *orderby_num = NULL, *value_node = NULL;
   PT_OP_TYPE op;
-
+  bool free_left = false, free_right = false;
+  *is_new_node = false;
 
   if (orderby_for == NULL
       || !PT_IS_EXPR_NODE (orderby_for) || orderby_for->or_next != NULL)
@@ -5016,8 +5027,9 @@ qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser,
       right = save_next;
       left = orderby_for;
 
-      left = qo_get_orderby_num_upper_bound_node (parser, left);
-      right = qo_get_orderby_num_upper_bound_node (parser, right);
+      left = qo_get_orderby_num_upper_bound_node (parser, left, &free_left);
+      right = qo_get_orderby_num_upper_bound_node (parser, right,
+						   &free_right);
 
       orderby_for->next = save_next;
 
@@ -5026,8 +5038,17 @@ qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser,
 	  if (right != NULL)
 	    {
 	      /* There should be exactly one upper bound */
+	      if (free_left)
+		{
+		  parser_free_tree (parser, left);
+		}
+	      if (free_right)
+		{
+		  parser_free_tree (parser, right);
+		}
 	      return NULL;
 	    }
+	  *is_new_node = free_left;
 	  return left;
 	}
       else
@@ -5036,6 +5057,7 @@ qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser,
 	   * something up somewhere. If it is not NULL, this is the node
 	   * we are looking for.
 	   */
+	  *is_new_node = free_right;
 	  return right;
 	}
     }
@@ -5045,29 +5067,80 @@ qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser,
   if (PT_IS_EXPR_NODE (orderby_for->info.expr.arg1)
       && orderby_for->info.expr.arg1->info.expr.op == PT_ORDERBY_NUM)
     {
-      if (op == PT_GE || op == PT_GT)
-	{
-	  /* only interested in orderby_num <[=] arg2 */
-	  return NULL;
-	}
-      return orderby_for;
+      left = orderby_for->info.expr.arg1;
+      right = orderby_for->info.expr.arg2;
     }
   else
     {
-      if (!PT_IS_EXPR_NODE (orderby_for->info.expr.arg2)
-	  || orderby_for->info.expr.arg1->info.expr.op != PT_ORDERBY_NUM)
+      left = orderby_for->info.expr.arg2;
+      right = orderby_for->info.expr.arg1;
+      if (!PT_IS_EXPR_NODE (left) || left->info.expr.op != PT_ORDERBY_NUM)
 	{
 	  /* could not find ORDERBY_NUM argument */
 	  return NULL;
 	}
 
-      if (op == PT_LE || op == PT_LT)
+      /* Verify operator. If LE, LT then reverse it. */
+      switch (op)
 	{
-	  /* only interested in arg1 >[=] orderby_num */
-	  return NULL;
+	case PT_LE:
+	  op = PT_GE;
+	  break;
+	case PT_LT:
+	  op = PT_GT;
+	  break;
+	case PT_GE:
+	  op = PT_LE;
+	  break;
+	case PT_GT:
+	  op = PT_LT;
+	  break;
+	default:
+	  break;
 	}
+    }
+
+  if (op == PT_LE || op == PT_LT)
+    {
       return orderby_for;
     }
 
+  if (op == PT_BETWEEN)
+    {
+      /* construct new predicate for ORDERBY_NUM from BETWEEN expr. */
+      PT_NODE *new_node;
+
+      if (!PT_IS_EXPR_NODE (right) || right->info.expr.op != PT_BETWEEN_AND)
+	{
+	  return NULL;
+	}
+
+      new_node = parser_new_node (parser, PT_EXPR);
+      if (new_node == NULL)
+	{
+	  return NULL;
+	}
+      new_node->info.expr.op = PT_LE;
+
+      new_node->info.expr.arg1 = parser_copy_tree (parser, left);
+      if (new_node->info.expr.arg1 == NULL)
+	{
+	  parser_free_tree (parser, new_node);
+	  return NULL;
+	}
+
+      new_node->info.expr.arg2 = parser_copy_tree (parser,
+						   right->info.expr.arg2);
+      if (new_node->info.expr.arg2 == NULL)
+	{
+	  parser_free_tree (parser, new_node);
+	  return NULL;
+	}
+
+      *is_new_node = true;
+      return new_node;
+    }
+
+  /* Any other comparison operator is unusable */
   return NULL;
 }
