@@ -92,15 +92,13 @@ typedef enum
   FIELD_PID,
   FIELD_PSIZE,
   FIELD_PORT,
-  FIELD_ACTIVE_P,
-  FIELD_ACTIVE_C,
   FIELD_APPL_SERVER_NUM_TOTAL,
   FIELD_APPL_SERVER_NUM_CLIENT_WAIT,
   FIELD_APPL_SERVER_NUM_BUSY,
   FIELD_APPL_SERVER_NUM_CLIENT_WAIT_IN_SEC,
-  FIELD_APPL_SERVER_NUM_BUSY_IN_SEC,	/* = 10 */
+  FIELD_APPL_SERVER_NUM_BUSY_IN_SEC,
   FIELD_JOB_QUEUE_ID,
-  FIELD_THREAD,
+  FIELD_THREAD,			/* = 10 */
   FIELD_CPU_USAGE,
   FIELD_CPU_TIME,
   FIELD_TPS,
@@ -108,27 +106,20 @@ typedef enum
   FIELD_NUM_OF_SELECT_QUERIES,
   FIELD_NUM_OF_INSERT_QUERIES,
   FIELD_NUM_OF_UPDATE_QUERIES,
-  FIELD_NUM_OF_DELETE_QUERIES,	/* = 20 */
+  FIELD_NUM_OF_DELETE_QUERIES,
   FIELD_NUM_OF_OTHERS_QUERIES,
-  FIELD_K_QPS,
-  FIELD_H_KEY,
-  FIELD_H_ID,
-  FIELD_H_ALL,
-  FIELD_NK_QPS,
-  FIELD_LONG_TRANSACTION,
+  FIELD_LONG_TRANSACTION,	/* = 20 */
   FIELD_LONG_QUERY,
   FIELD_ERROR_QUERIES,
-  FIELD_UNIQUE_ERROR_QUERIES,	/* = 30 */
+  FIELD_UNIQUE_ERROR_QUERIES,
   FIELD_CANCELED,
   FIELD_ACCESS_MODE,
   FIELD_SQL_LOG,
   FIELD_NUMBER_OF_CONNECTION,
-  FIELD_PROXY_ID,
-  FIELD_SHARD_ID,
   FIELD_ID,
   FIELD_LQS,
-  FIELD_STATUS,
-  FIELD_LAST_ACCESS_TIME,	/* = 40 */
+  FIELD_STATUS,			/* = 30 */
+  FIELD_LAST_ACCESS_TIME,
   FIELD_DB_NAME,
   FIELD_HOST,
   FIELD_LAST_CONNECT_TIME,
@@ -137,8 +128,7 @@ typedef enum
   FIELD_SQL_LOG_MODE,
   FIELD_TRANSACTION_STIME,
   FIELD_CONNECT,
-  FIELD_RESTART,
-  FIELD_STMT_Q_SIZE,		/* = 50 */
+  FIELD_RESTART,		/* = 40 */
   FIELD_SHARD_Q_SIZE,
   FIELD_LAST = FIELD_SHARD_Q_SIZE
 } FIELD_NAME;
@@ -172,8 +162,6 @@ struct status_field fields[FIELD_LAST + 1] = {
   {FIELD_PID, 5, "PID", FIELD_RIGHT_ALIGN},
   {FIELD_PSIZE, 7, "PSIZE", FIELD_RIGHT_ALIGN},
   {FIELD_PORT, 5, "PORT", FIELD_RIGHT_ALIGN},
-  {FIELD_ACTIVE_P, 10, "Active-P", FIELD_RIGHT_ALIGN},
-  {FIELD_ACTIVE_C, 10, "Active-C", FIELD_RIGHT_ALIGN},
   {FIELD_APPL_SERVER_NUM_TOTAL, 5, "", FIELD_RIGHT_ALIGN},
   {FIELD_APPL_SERVER_NUM_CLIENT_WAIT, 6, "W", FIELD_RIGHT_ALIGN},
   {FIELD_APPL_SERVER_NUM_BUSY, 6, "B", FIELD_RIGHT_ALIGN},
@@ -190,11 +178,6 @@ struct status_field fields[FIELD_LAST + 1] = {
   {FIELD_NUM_OF_UPDATE_QUERIES, 8, "UPDATE", FIELD_RIGHT_ALIGN},
   {FIELD_NUM_OF_DELETE_QUERIES, 8, "DELETE", FIELD_RIGHT_ALIGN},
   {FIELD_NUM_OF_OTHERS_QUERIES, 8, "OTHERS", FIELD_RIGHT_ALIGN},
-  {FIELD_K_QPS, 7, "K-QPS", FIELD_RIGHT_ALIGN},
-  {FIELD_H_KEY, 7, "(H-KEY", FIELD_RIGHT_ALIGN},
-  {FIELD_H_ID, 7, "H_ID", FIELD_RIGHT_ALIGN},
-  {FIELD_H_ALL, 7, "H-ALL)", FIELD_RIGHT_ALIGN},
-  {FIELD_NK_QPS, 7, "NK-QPS", FIELD_RIGHT_ALIGN},
   /*
    * 5: width of long transaction count
    * 1: delimiter(/)
@@ -219,8 +202,6 @@ struct status_field fields[FIELD_LAST + 1] = {
   {FIELD_ACCESS_MODE, 13, "ACCESS_MODE", FIELD_RIGHT_ALIGN},
   {FIELD_SQL_LOG, 9, "SQL_LOG", FIELD_RIGHT_ALIGN},
   {FIELD_NUMBER_OF_CONNECTION, 9, "#CONNECT", FIELD_RIGHT_ALIGN},
-  {FIELD_PROXY_ID, 8, "PROXY_ID", FIELD_RIGHT_ALIGN},
-  {FIELD_SHARD_ID, 8, "SHARD_ID", FIELD_RIGHT_ALIGN},
   {FIELD_ID, FIELD_WIDTH_AS_ID, "ID", FIELD_RIGHT_ALIGN},
   {FIELD_LQS, 10, "LQS", FIELD_RIGHT_ALIGN},
   {FIELD_STATUS, 12, "STATUS", FIELD_LEFT_ALIGN},
@@ -234,7 +215,6 @@ struct status_field fields[FIELD_LAST + 1] = {
   {FIELD_TRANSACTION_STIME, 19, "TRANSACTION STIME", FIELD_RIGHT_ALIGN},
   {FIELD_CONNECT, 9, "#CONNECT", FIELD_RIGHT_ALIGN},
   {FIELD_RESTART, 9, "#RESTART", FIELD_RIGHT_ALIGN},
-  {FIELD_STMT_Q_SIZE, 7, "STMT-Q", FIELD_RIGHT_ALIGN},
   {FIELD_SHARD_Q_SIZE, 7, "SHARD-Q", FIELD_RIGHT_ALIGN}
 };
 
@@ -609,7 +589,7 @@ print_usage (void)
     ("broker_monitor [-b] [-q] [-t] [-s <sec>] [-m] [-c] [-f] [<expr>]\n");
   printf ("\t<expr> part of broker name or SERVICE=[ON|OFF]\n");
   printf ("\t-q display job queue\n");
-  printf ("\t-m display shard metadata information\n");
+  printf ("\t-m display shard statistics information\n");
   printf ("\t-c display client information\n");
   printf ("\t-b brief mode (show broker info)\n");
   printf ("\t-s refresh time in sec\n");
@@ -1137,12 +1117,6 @@ br_monitor (char *br_vector)
   UINT64 num_delete_query = 0;
   UINT64 num_others_query = 0;
 
-  UINT64 num_stmt_q = 0, num_shard_q = 0;
-
-  T_SHM_PROXY *shm_proxy_p = NULL;
-  T_PROXY_INFO *proxy_info_p = NULL;
-  T_SHARD_INFO *shard_info_p = NULL;
-
   T_APPL_SERVER_INFO *as_info_p = NULL;
 
   buf_offset = 0;
@@ -1220,10 +1194,6 @@ br_monitor (char *br_vector)
     }
   buf_offset = print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION,
 			    NULL);
-
-  /* FIELD_ACTIVE_P , FIELD_SHARD_Q_SIZE were removed in this -b option.
-   * They will be display in additional shard option.
-   */
 
   if (tty_mode == false || (tty_print_header++ % 20 == 0))
     {
@@ -1420,49 +1390,6 @@ br_monitor (char *br_vector)
 	      num_delete_query_cur = 0;
 	      num_others_query_cur = 0;
 
-	      if (shm_appl->shard_flag == ON)
-		{
-		  shm_proxy_p =
-		    (T_SHM_PROXY *) uw_shm_open (shm_br->br_info[i].
-						 proxy_shm_id, SHM_PROXY,
-						 SHM_MODE_MONITOR);
-
-		  if (shm_proxy_p == NULL)
-		    {
-		      str_out ("%s", "shared memory open error");
-		      print_newline ();
-		      uw_shm_detach (shm_appl);
-		      continue;
-		    }
-
-		  num_shard_q = 0;
-		  num_proxy = shm_proxy_p->num_proxy;
-		  assert (num_proxy <= MAX_PROXY_NUM);
-
-		  for (proxy_index = 0; proxy_index < num_proxy;
-		       proxy_index++)
-		    {
-		      proxy_info_p =
-			shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
-
-		      for (shard_index = 0;
-			   shard_index < proxy_info_p->num_shard_conn;
-			   shard_index++)
-			{
-			  shard_info_p =
-			    shard_shm_find_shard_info (proxy_info_p,
-						       shard_index);
-
-			  num_shard_q += shard_info_p->waiter_count;
-			}	/* SHARD */
-		    }		/* PROXY */
-
-		  if (shm_proxy_p)
-		    {
-		      uw_shm_detach (shm_proxy_p);
-		    }
-		}
-
 	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
 		{
 		  as_info_p = &(shm_appl->as_info[j]);
@@ -1584,10 +1511,6 @@ br_monitor (char *br_vector)
 
 	      print_value (FIELD_NUMBER_OF_CONNECTION, &num_connect,
 			   FIELD_T_UINT64);
-
-	      /* FIELD_ACTIVE_P , FIELD_SHARD_Q_SIZE were removed in this -b option.
-	       * They will be display in additional shard option.
-	       */
 
 	      print_newline ();
 
@@ -1789,6 +1712,7 @@ metadata_monitor (void)
 
   T_SHM_PROXY *shm_proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
+  T_SHARD_INFO *shard_info_p = NULL;
 
   SHARD_STAT_ITEM *shard_stat_items = NULL;
   KEY_STAT_ITEM *key_stat_items = NULL;
@@ -1811,7 +1735,9 @@ metadata_monitor (void)
   int col_len;
   char buf[1024];
   char line_buf[1024];
-  int proxy_index;
+  int num_shard_q_arr[MAX_PROXY_NUM][SHARD_INFO_SIZE_LIMIT];
+  int proxy_index, shard_index;
+  int num_proxy, num_shard;
 
   INT64 num_hint_key_qr;
   INT64 num_hint_id_qr;
@@ -1891,6 +1817,13 @@ metadata_monitor (void)
 	  str_out ("%s", "shared memory open error");
 	  goto free_and_error;
 	}
+
+      num_proxy = shm_proxy_p->num_proxy;
+      assert (num_proxy <= MAX_PROXY_NUM);
+
+      num_shard = shm_proxy_p->proxy_info[0].num_shard_conn;
+      assert (num_shard <= SHARD_INFO_SIZE_LIMIT);
+
       shard_stat_items_old_p =
 	(SHARD_STAT_ITEM *) (((char *) shard_stat_items_old) +
 			     (shard_stat_items_size * i));
@@ -1918,7 +1851,7 @@ metadata_monitor (void)
       if (full_info_flag)
 	{
 	  str_out ("SHARD : ");
-	  for (j = 0; j < shm_conn_p->num_shard_conn; j++)
+	  for (j = 0; j < num_shard; j++)
 	    {
 	      if (j != 0)
 		{
@@ -1930,6 +1863,8 @@ metadata_monitor (void)
 	    }
 	  print_newline ();
 	}
+
+      str_out ("ACTIVE-PROXY : %d, ", num_proxy);
 
       /* PRINT SHARD STATSTICS */
 
@@ -1962,7 +1897,7 @@ metadata_monitor (void)
 	      str_out ("%s", "shard_stat open error");
 	      goto free_and_error;
 	    }
-	  for (j = 0; j < proxy_info_p->num_shard_conn;
+	  for (j = 0; j < num_shard;
 	       shard_stat_p = shard_shm_get_shard_stat (proxy_info_p, ++j))
 	    {
 	      shard_stat_items[j].num_hint_key_queries_requested +=
@@ -1973,6 +1908,21 @@ metadata_monitor (void)
 		shard_stat_p->num_no_hint_queries_requested;
 	    }
 	}			/* proxy_info loop */
+
+      if (elapsed_time > 0)
+	{
+	  num_err_qr = err_queries - err_queries_old[i];
+
+	  num_err_qr = num_err_qr / elapsed_time;
+	}
+      else
+	{
+	  num_err_qr = err_queries;
+	}
+
+      str_out ("NUM-NO-HINT-ERR-Q : %d", num_err_qr);
+      print_newline ();
+      print_newline ();
 
       str_out ("SHARD STATISTICS ");
       print_newline ();
@@ -1995,7 +1945,7 @@ metadata_monitor (void)
       str_out ("\t%s", line_buf);
       print_newline ();
 
-      for (j = 0; j < shm_conn_p->num_shard_conn; j++)
+      for (j = 0; j < num_shard; j++)
 	{
 	  if (elapsed_time > 0)
 	    {
@@ -2032,19 +1982,61 @@ metadata_monitor (void)
 
 	  print_newline ();
 	}
-      if (elapsed_time > 0)
-	{
-	  num_err_qr = err_queries - err_queries_old[i];
-
-	  num_err_qr = num_err_qr / elapsed_time;
-	}
-      else
-	{
-	  num_err_qr = err_queries;
-	}
 
       print_newline ();
-      str_out ("NUM-NO-HINT-ERR-Q : %d", num_err_qr);
+
+      str_out ("NUM_SHARD_Q");
+      print_newline ();
+
+      col_len = 0;
+      memset (buf, '\0', 1024);
+      col_len += sprintf (buf, "%12s", "PROXY_ID");
+      for (j = 0; j < num_proxy; j++)
+	{
+	  col_len += sprintf (buf + col_len, "%7d ", j + 1);
+	}
+
+      str_out ("\t%s", buf);
+      print_newline ();
+
+      str_out ("\tSHARD_ID");
+      print_newline ();
+
+      for (k = 0; k < col_len; k++)
+	{
+	  line_buf[k] = '-';
+	}
+      line_buf[k] = '\0';
+
+      str_out ("\t%s", line_buf);
+      print_newline ();
+
+      for (proxy_index = 0; proxy_index < num_proxy; proxy_index++)
+	{
+	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+	  for (shard_index = 0; shard_index < num_shard; shard_index++)
+	    {
+	      shard_info_p =
+		shard_shm_find_shard_info (proxy_info_p, shard_index);
+
+	      num_shard_q_arr[proxy_index][shard_index] =
+		shard_info_p->waiter_count;
+	    }
+	}
+
+      for (shard_index = 0; shard_index < num_shard; shard_index++)
+	{
+	  str_out ("\t%3d", shard_index);
+	  str_out ("%9s", " ");	/* it is for matching up with PROXY_ID column */
+
+	  for (proxy_index = 0; proxy_index < num_proxy; proxy_index++)
+	    {
+	      print_value (FIELD_SHARD_Q_SIZE,
+			   &num_shard_q_arr[proxy_index][shard_index],
+			   FIELD_T_INT);
+	    }
+	  print_newline ();
+	}
       print_newline ();
 
       /* PRINT KEY STATISTICS */
@@ -2065,8 +2057,7 @@ metadata_monitor (void)
 	  memset ((char *) key_stat_items, 0,
 		  sizeof (KEY_STAT_ITEM) * shm_key_p->num_shard_key);
 
-	  for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
-	       proxy_index++)
+	  for (proxy_index = 0; proxy_index < num_proxy; proxy_index++)
 	    {
 	      proxy_info_p =
 		shard_shm_find_proxy_info (shm_proxy_p, proxy_index);

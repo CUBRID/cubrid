@@ -406,7 +406,7 @@ shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info_p)
 
       for (j = 0; j < num_key; j++)
 	{
-	  key_stat_p = &proxy_info_p->key_stat[i];
+	  key_stat_p = &proxy_info_p->key_stat[j];
 	  shard_shm_init_key_stat (key_stat_p,
 				   &(shm_proxy_p->shm_shard_key.
 				     shard_key[j]));
