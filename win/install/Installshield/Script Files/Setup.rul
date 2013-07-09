@@ -66,7 +66,6 @@ NUMBER  nvCodePage;
 #define SD_DISAGREE                15
 #define SD_CUSTOM_LICENSE                 104
 #define    ST_CUBRID_VERSION        @IFX_PRODUCT_VERSION
-#define ODBC_VERSION            @IFX_PRODUCT_VERSION
 
 #ifndef STILL_ACTIVE
     #define STILL_ACTIVE    0x00000103
