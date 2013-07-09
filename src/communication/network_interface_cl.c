@@ -7727,7 +7727,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
     {
       senddata_size += OR_VALUE_ALIGNED_SIZE ((DB_VALUE *) dbval);
     }
-  if (senddata_size)
+  if (senddata_size != 0)
     {
       senddata = (char *) malloc (senddata_size);
       if (senddata == NULL)
@@ -7742,10 +7742,10 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 	{
 	  ptr = or_pack_db_value (ptr, (DB_VALUE *) dbval);
 	}
-    }
 
-  /* change senddata_size as real packing size */
-  senddata_size = ptr - senddata;
+      /* change senddata_size as real packing size */
+      senddata_size = ptr - senddata;
+    }
 
   /* pack XASL file id (XASL_ID), number of parameter values,
      size of the send data, and query execution mode flag as a request data */
@@ -7871,7 +7871,7 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size,
       senddata_size += OR_VALUE_ALIGNED_SIZE (dbval);
     }
 
-  if (senddata_size)
+  if (senddata_size != 0)
     {
       senddata = (char *) malloc (senddata_size);
       if (senddata == NULL)
