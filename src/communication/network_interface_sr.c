@@ -101,6 +101,8 @@ static void event_log_many_ioreads (THREAD_ENTRY * thread_p,
 				    EXECUTION_INFO * info,
 				    int time,
 				    MNT_SERVER_EXEC_STATS * diff_stats);
+static void event_log_temp_expand_pages (THREAD_ENTRY * thread_p,
+					 EXECUTION_INFO * info);
 
 /*
  * return_error_to_client -
@@ -5948,6 +5950,11 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
       xmnt_server_stop_stats (thread_p);
     }
 
+  if (thread_p->event_stats.temp_expand_pages > 0)
+    {
+      event_log_temp_expand_pages (thread_p, &info);
+    }
+
   if (sql_id != NULL)
     {
       free_and_init (sql_id);
@@ -6084,8 +6091,9 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
 	   (long long int) diff_stats->pb_num_ioreads,
 	   (long long int) diff_stats->pb_num_iowrites);
   fprintf (log_fp, "%*cwait: cs=%d, lock=%d, latch=%d\n\n", indent, ' ',
-	   TO_MSEC (thread_p->cs_waits), TO_MSEC (thread_p->lock_waits),
-	   TO_MSEC (thread_p->latch_waits));
+	   TO_MSEC (thread_p->event_stats.cs_waits),
+	   TO_MSEC (thread_p->event_stats.lock_waits),
+	   TO_MSEC (thread_p->event_stats.latch_waits));
 
   event_log_end (thread_p);
 }
@@ -6129,6 +6137,47 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
   fprintf (log_fp, "%*cioreads: %lld\n\n", indent, ' ',
 	   (long long int) diff_stats->pb_num_ioreads);
+
+  event_log_end (thread_p);
+}
+
+/*
+ * event_log_temp_expand_pages - log temp volume expand pages to event log file
+ * return:
+ *   thread_p(in):
+ *   info(in):
+ *   num_bind_vals(in):
+ *   bind_vals(in):
+ */
+static void
+event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
+{
+  FILE *log_fp;
+  int indent = 2;
+  LOG_TDES *tdes;
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  log_fp = event_log_start (thread_p, "TEMP_VOLUME_EXPAND");
+
+  if (tdes == NULL || log_fp == NULL)
+    {
+      return;
+    }
+
+  event_log_print_client_info (tran_index, indent);
+  fprintf (log_fp, "%*csql: %s\n", indent, ' ', info->sql_hash_text);
+
+  if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
+    {
+      event_log_bind_values (log_fp, tran_index, tdes->num_exec_queries - 1);
+    }
+
+  fprintf (log_fp, "%*ctime: %d\n", indent, ' ',
+	   TO_MSEC (thread_p->event_stats.temp_expand_time));
+  fprintf (log_fp, "%*cpages: %d\n\n", indent, ' ',
+	   thread_p->event_stats.temp_expand_pages);
 
   event_log_end (thread_p);
 }

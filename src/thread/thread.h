@@ -154,6 +154,21 @@ struct thread_resource_track
 };
 
 typedef struct thread_entry THREAD_ENTRY;
+
+/* stats for event logging */
+typedef struct event_stat EVENT_STAT;
+struct event_stat
+{
+  /* slow query stats */
+  struct timeval cs_waits;
+  struct timeval lock_waits;
+  struct timeval latch_waits;
+
+  /* temp volume expand stats */
+  int temp_expand_pages;
+  struct timeval temp_expand_time;
+};
+
 struct thread_entry
 {
 #if defined(WINDOWS)
@@ -225,10 +240,7 @@ struct thread_entry
 
   bool sort_stats_active;
 
-  /* slow query stats for event logging */
-  struct timeval cs_waits;
-  struct timeval lock_waits;
-  struct timeval latch_waits;
+  EVENT_STAT event_stats;
 
   /* for query profile */
   int trace_format;

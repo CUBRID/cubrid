@@ -1540,11 +1540,8 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
   DKNPAGES ext_npages, part_npages;
   DBDEF_VOL_EXT_INFO ext_info;
 #if defined (SERVER_MODE)
-  FILE *log_fp;
   struct timeval start, end;
-  int elapsed, tran_index, indent = 2;
-  LOG_TDES *tdes;
-#endif
+#endif /* SERVER_MODE */
 
   if (boot_Temp_volumes_max_pages == -2)
     {
@@ -1704,7 +1701,7 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 
 #if defined(SERVER_MODE)
 	  gettimeofday (&start, NULL);
-#endif
+#endif /* SERVER_MODE */
 
 	  temp_volid = boot_add_volume (thread_p, &ext_info);
 	  if (temp_volid != NULL_VOLID)
@@ -1714,34 +1711,9 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 	    }
 
 #if defined(SERVER_MODE)
-	  log_fp = event_log_start (thread_p, "TEMP_VOLUME_CREATE");
-	  if (log_fp != NULL)
-	    {
-	      gettimeofday (&end, NULL);
-	      elapsed = TO_MSEC (end) - TO_MSEC (start);
-
-	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	      event_log_print_client_info (tran_index, indent);
-
-	      tdes = LOG_FIND_TDES (tran_index);
-	      if (tdes != NULL)
-		{
-		  event_log_sql_string (thread_p, log_fp, &tdes->xasl_id,
-					indent);
-		  if (!XASL_ID_IS_NULL (&tdes->xasl_id)
-		      && tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
-		    {
-		      event_log_bind_values (log_fp, tran_index,
-					     tdes->num_exec_queries - 1);
-		    }
-		}
-
-	      fprintf (log_fp, "%*ctime: %d\n", indent, ' ', elapsed);
-	      fprintf (log_fp, "%*cpages: %d\n\n", indent, ' ',
-		       possible_max_npages);
-
-	      event_log_end (thread_p);
-	    }
+	  gettimeofday (&end, NULL);
+	  ADD_TIMEVAL (thread_p->event_stats.temp_expand_time, start, end);
+	  thread_p->event_stats.temp_expand_pages += possible_max_npages;
 #endif /* SERVER_MODE */
 	}
     }

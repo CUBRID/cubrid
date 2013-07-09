@@ -1154,16 +1154,10 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 
   entry_p->sort_stats_active = false;
 
-  entry_p->cs_waits.tv_sec = 0;
-  entry_p->cs_waits.tv_usec = 0;
-  entry_p->lock_waits.tv_sec = 0;
-  entry_p->lock_waits.tv_usec = 0;
-  entry_p->latch_waits.tv_sec = 0;
-  entry_p->latch_waits.tv_usec = 0;
+  memset (&(entry_p->event_stats), 0, sizeof (EVENT_STAT));
 
   entry_p->on_trace = false;
   entry_p->clear_trace = false;
-  entry_p->sort_stats_active = false;
 
   return NO_ERROR;
 }
@@ -1532,11 +1526,11 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
       gettimeofday (&end, NULL);
       if (suspended_reason == THREAD_LOCK_SUSPENDED)
 	{
-	  ADD_TIMEVAL (thread_p->lock_waits, start, end);
+	  ADD_TIMEVAL (thread_p->event_stats.lock_waits, start, end);
 	}
       else if (suspended_reason == THREAD_PGBUF_SUSPENDED)
 	{
-	  ADD_TIMEVAL (thread_p->latch_waits, start, end);
+	  ADD_TIMEVAL (thread_p->event_stats.latch_waits, start, end);
 	}
     }
 
@@ -2437,12 +2431,7 @@ thread_worker (void *arg_p)
       pthread_mutex_unlock (&tsd_ptr->tran_index_lock);
       tsd_ptr->check_interrupt = true;
 
-      tsd_ptr->cs_waits.tv_sec = 0;
-      tsd_ptr->cs_waits.tv_usec = 0;
-      tsd_ptr->lock_waits.tv_sec = 0;
-      tsd_ptr->lock_waits.tv_usec = 0;
-      tsd_ptr->latch_waits.tv_sec = 0;
-      tsd_ptr->latch_waits.tv_usec = 0;
+      memset (&(tsd_ptr->event_stats), 0, sizeof (EVENT_STAT));
       tsd_ptr->on_trace = false;
     }
 

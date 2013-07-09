@@ -4528,7 +4528,7 @@ try_again:
   if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
     {
       gettimeofday (&end, NULL);
-      ADD_TIMEVAL (thrd_entry->latch_waits, start, end);
+      ADD_TIMEVAL (thrd_entry->event_stats.latch_waits, start, end);
     }
 
   if (r == 0)

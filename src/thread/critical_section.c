@@ -576,7 +576,8 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
 		{
 		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+			       wait_start, wait_end);
 		}
 
 	      cs_ptr->waiting_writers--;
@@ -642,7 +643,8 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
 		{
 		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+			       wait_start, wait_end);
 		}
 
 	      cs_ptr->waiting_writers--;
@@ -824,7 +826,8 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
 		{
 		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+			       wait_start, wait_end);
 		}
 
 	      if (error_code != NO_ERROR)
@@ -873,7 +876,8 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
 		{
 		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+			       wait_start, wait_end);
 		}
 
 	      if (error_code != 0)
@@ -1080,7 +1084,8 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
 		{
 		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+			       wait_start, wait_end);
 		}
 
 	      if (error_code != NO_ERROR)
@@ -1129,8 +1134,9 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
               if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
                 {
                   gettimeofday (&wait_end, NULL);
-                  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
-                }
+		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+			       wait_start, wait_end);
+		}
 
 	      if (error_code != 0)
 		{
@@ -1347,7 +1353,8 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
 		{
 		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
+		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+			       wait_start, wait_end);
 		}
 
 	      cs_ptr->waiting_writers--;
@@ -1385,8 +1392,9 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
               if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
                 {
                   gettimeofday (&wait_end, NULL);
-                  ADD_TIMEVAL (thread_p->cs_waits, wait_start, wait_end);
-                }
+		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+			       wait_start, wait_end);
+		}
 
 	      cs_ptr->waiting_writers--;
 	      if (error_code != NO_ERROR)
