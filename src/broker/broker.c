@@ -1718,13 +1718,6 @@ stop_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
   as_info_p->last_access_time = time (NULL);
   as_info_p->transaction_start_time = (time_t) 0;
 
-  as_info_p->service_flag = SERVICE_OFF;
-  as_info_p->service_ready_flag = FALSE;
-
-  as_info_p->uts_status = UTS_STATUS_IDLE;
-  as_info_p->con_status = CON_STATUS_CLOSE;
-
-
   return 0;
 }
 
