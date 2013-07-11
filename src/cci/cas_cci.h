@@ -328,7 +328,8 @@ extern "C"
     CCI_A_TYPE_BIGINT,
     CCI_A_TYPE_BLOB,
     CCI_A_TYPE_CLOB,
-    CCI_A_TYPE_LAST = CCI_A_TYPE_CLOB,
+    CCI_A_TYPE_REQ_HANDLE,
+    CCI_A_TYPE_LAST = CCI_A_TYPE_REQ_HANDLE,
 
     CCI_A_TYTP_LAST = CCI_A_TYPE_LAST	/* typo but backward compatibility */
   } T_CCI_A_TYPE;
@@ -879,6 +880,8 @@ extern "C"
   extern int cci_clob_free (T_CCI_CLOB clob);
   extern int cci_get_dbms_type (int con_h_id);
   extern int cci_register_out_param (int req_h_id, int index);
+  extern int cci_register_out_param_ex (int req_h_id, int index,
+					T_CCI_U_TYPE u_type);
   extern int cci_cancel (int con_h_id);
   extern int cci_get_error_msg (int err_code, T_CCI_ERROR * err_buf,
 				char *out_buf, int out_buf_size);

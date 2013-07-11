@@ -74,6 +74,7 @@ namespace dbgw
           const char **pValue) const;
       virtual trait<Lob>::sp getClob(int nIndex) const;
       virtual trait<Lob>::sp getBlob(int nIndex) const;
+      virtual trait<ResultSet>::sp getResultSet(int nIndex) const;
       virtual const Value *getValue(int nIndex) const;
       virtual _ValueSet &getInternalValuSet();
 

@@ -23,6 +23,11 @@
 namespace dbgw
 {
 
+  namespace sql
+  {
+    class ResultSet;
+  }
+
   class Value;
 
   typedef std::pair<std::string, trait<Value>::sp> _ValuePair;
@@ -50,6 +55,7 @@ namespace dbgw
         bool bNull = false);
     bool set(size_t nIndex, ValueType type, trait<Lob>::sp pLob,
         bool bNull = false);
+    bool set(size_t nIndex, trait<sql::ResultSet>::sp pResultSet);
     bool put(const char *szKey, int nValue, bool bNull = false);
     bool put(const char *szKey, const char *szValue, bool bNull = false);
     bool put(const char *szKey, int64 lValue, bool bNull = false);
@@ -64,6 +70,7 @@ namespace dbgw
     bool put(const char *szKey, ValueType type, trait<Lob>::sp pLob,
         bool bNull = false);
     bool put(const char *szKey, const _ExternelSource &source);
+    bool put(const char *szKey, trait<sql::ResultSet>::sp pResultSet);
     bool put(int nValue, bool bNull = false);
     bool put(const char *szValue, bool bNull = false);
     bool put(int64 lValue, bool bNull = false);
@@ -79,6 +86,7 @@ namespace dbgw
     bool replace(size_t nIndex, ValueType type, void *pValue, bool bNull,
         int nSize);
     bool replace(size_t nIndex, const _ExternelSource &source);
+    bool replace(size_t nIndex, trait<sql::ResultSet>::sp pResultSet);
     virtual void clear();
 
   public:
@@ -108,6 +116,7 @@ namespace dbgw
     bool getBytes(int nIndex, size_t *pSize, const char **pValue) const;
     trait<Lob>::sp getClob(int nIndex) const;
     trait<Lob>::sp getBlob(int nIndex) const;
+    trait<sql::ResultSet>::sp getResultSet(int nIndex) const;
     bool getType(int nIndex, ValueType *pType) const;
     bool getLength(int nIndex, int *pValue) const;
     bool isNull(int nIndex, bool *pNull) const;

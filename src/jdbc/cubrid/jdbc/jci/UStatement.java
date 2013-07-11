@@ -59,13 +59,13 @@ public class UStatement {
 
 	private final static byte ASYNC_EXECUTE = 1;
 	private final static byte NORMAL = 0, GET_BY_OID = 1, GET_SCHEMA_INFO = 2,
-			GET_AUTOINCREMENT_KEYS = 3;
+	        GET_AUTOINCREMENT_KEYS = 3;
 	private final static byte TRUE = -128, FALSE = 0;
 	private final static int DEFAULT_FETCH_SIZE = 100;
 
 	private final static byte EXEC_FLAG_ASYNC = 0x01,
-			EXEC_FLAG_QUERY_ALL = 0x02, EXEC_FLAG_QUERY_INFO = 0x04,
-			EXEC_FLAG_ONLY_QUERY_PLAN = 0x08, EXEC_FLAG_HOLDABLE_RESULT = 0x20;
+	        EXEC_FLAG_QUERY_ALL = 0x02, EXEC_FLAG_QUERY_INFO = 0x04,
+	        EXEC_FLAG_ONLY_QUERY_PLAN = 0x08, EXEC_FLAG_HOLDABLE_RESULT = 0x20;
 
 	private byte statementType;
 
@@ -121,8 +121,8 @@ public class UStatement {
 	private UStmtCache stmt_cache;
 
 	UStatement(UConnection relatedC, UInputBuffer inBuffer,
-			boolean assign_only, String sql, byte _prepare_flag)
-			throws UJciException {
+	        boolean assign_only, String sql, byte _prepare_flag)
+	        throws UJciException {
 		errorHandler = new UError(relatedC);
 		if (assign_only) {
 			relatedConnection = relatedC;
@@ -134,15 +134,15 @@ public class UStatement {
 		}
 
 		if (result_cacheable
-				&& (prepare_flag & UConnection.PREPARE_INCLUDE_OID) == 0
-				&& (prepare_flag & UConnection.PREPARE_UPDATABLE) == 0) {
+		        && (prepare_flag & UConnection.PREPARE_INCLUDE_OID) == 0
+		        && (prepare_flag & UConnection.PREPARE_UPDATABLE) == 0) {
 			UUrlCache url_cache = relatedC.getUrlCache();
 			stmt_cache = url_cache.getStmtCache(sql);
 		}
 	}
 
 	private void init(UConnection relatedC, UInputBuffer inBuffer, String sql,
-			byte _prepare_flag, boolean clear_bind_info) throws UJciException {
+	        byte _prepare_flag, boolean clear_bind_info) throws UJciException {
 		sql_stmt = sql;
 		prepare_flag = _prepare_flag;
 		outBuffer = relatedC.outBuffer;
@@ -161,10 +161,13 @@ public class UStatement {
 		readColumnInfo(inBuffer);
 
 		if (clear_bind_info) {
-			if (parameterNumber > 0)
-				bindParameter = new UBindParameter(parameterNumber);
-			else
+			if (parameterNumber > 0) {
+				bindParameter = new UBindParameter(parameterNumber,
+				        relatedConnection.getDbmsType());
+			}
+			else {
 				bindParameter = null;
+			}
 			batchParameter = null;
 		}
 		fetchSize = DEFAULT_FETCH_SIZE;
@@ -184,7 +187,7 @@ public class UStatement {
 	}
 
 	UStatement(UConnection relatedC, CUBRIDOID oid, String attributeName[],
-			UInputBuffer inBuffer) throws UJciException {
+	        UInputBuffer inBuffer) throws UJciException {
 		outBuffer = relatedC.outBuffer;
 		statementType = GET_BY_OID;
 		relatedConnection = relatedC;
@@ -218,7 +221,7 @@ public class UStatement {
 	}
 
 	UStatement(UConnection relatedC, String cName, String attributePattern,
-			int type, UInputBuffer inBuffer) throws UJciException {
+	        int type, UInputBuffer inBuffer) throws UJciException {
 		outBuffer = relatedC.outBuffer;
 		statementType = GET_SCHEMA_INFO;
 		relatedConnection = relatedC;
@@ -246,7 +249,8 @@ public class UStatement {
 		 */
 	}
 
-	public UStatement(UConnection u_con, int srv_handle) throws UJciException, IOException {
+	public UStatement(UConnection u_con, int srv_handle) throws UJciException,
+	        IOException {
 		relatedConnection = u_con;
 		outBuffer = u_con.outBuffer;
 		statementType = NORMAL;
@@ -307,7 +311,7 @@ public class UStatement {
 		return parameterNumber;
 	}
 
-	public void registerOutParameter(int index) {
+	public void registerOutParameter(int index, int sqlType) {
 		errorHandler = new UError(relatedConnection);
 		if (index < 0 || index >= parameterNumber) {
 			errorHandler.setErrorCode(UErrorCode.ER_BIND_INDEX);
@@ -315,7 +319,7 @@ public class UStatement {
 		}
 		synchronized (bindParameter) {
 			try {
-				bindParameter.setOutParam(index);
+				bindParameter.setOutParam(index, sqlType);
 			} catch (UJciException e) {
 				e.toUError(errorHandler);
 			}
@@ -459,7 +463,8 @@ public class UStatement {
 		}
 		batchParameter.add(bindParameter);
 
-		bindParameter = new UBindParameter(parameterNumber);
+		bindParameter = new UBindParameter(parameterNumber,
+		        relatedConnection.getDbmsType());
 	}
 
 	public void bindNull(int index) {
@@ -519,31 +524,31 @@ public class UStatement {
 
 		try {
 			if (!isReturnable
-					&& close_srv_handle
-					&& (relatedConnection.getAutoCommit() == false
-						|| relatedConnection.brokerInfoStatementPooling() == true
-						|| ((prepare_flag & UConnection.PREPARE_HOLDABLE) != 0))) {
+			        && close_srv_handle
+			        && (relatedConnection.getAutoCommit() == false
+			                || relatedConnection.brokerInfoStatementPooling() == true
+			                || ((prepare_flag & UConnection.PREPARE_HOLDABLE) != 0))) {
 				if (getSqlType()) {
 					synchronized (relatedConnection) {
 						outBuffer.newRequest(UFunctionCode.CLOSE_USTATEMENT);
 						outBuffer.addInt(serverHandler);
-						outBuffer.addByte(relatedConnection.getAutoCommit() 
-										  ? (byte) 1 : (byte) 0);
+						outBuffer.addByte(relatedConnection.getAutoCommit()
+						        ? (byte) 1 : (byte) 0);
 						relatedConnection.send_recv_msg();
 					}
 				} else {
 					relatedConnection.deferred_close_handle.add(new Integer(
-							serverHandler));
+					        serverHandler));
 				}
 			}
 		} catch (UJciException e) {
 			if (relatedConnection.isActive()) {
-		    		e.setStackTrace(e.getStackTrace());
+				e.setStackTrace(e.getStackTrace());
 				e.toUError(errorHandler);
 			}
 		} catch (IOException e) {
 			if (relatedConnection.isActive()) {
-		    		e.setStackTrace(e.getStackTrace());
+				e.setStackTrace(e.getStackTrace());
 				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 			}
 		} finally {
@@ -565,9 +570,9 @@ public class UStatement {
 			return false;
 		}
 		if ((currentFirstCursor < 0)
-				|| (cursor < 0)
-				|| (cursor >= 0 && ((cursor < currentFirstCursor) || (cursor > currentFirstCursor
-						+ fetchedTupleNumber - 1)))) {
+		        || (cursor < 0)
+		        || (cursor >= 0 && ((cursor < currentFirstCursor) || (cursor > currentFirstCursor
+		                + fetchedTupleNumber - 1)))) {
 			errorHandler.setErrorCode(UErrorCode.ER_INVALID_ARGUMENT);
 			return false;
 		}
@@ -580,7 +585,7 @@ public class UStatement {
 
 		synchronized (relatedConnection) {
 			instance_obj = relatedConnection.oidCmd(tuples[cursorPosition
-					- currentFirstCursor].getOid(), UConnection.IS_INSTANCE);
+			        - currentFirstCursor].getOid(), UConnection.IS_INSTANCE);
 		}
 		errorHandler.copyValue(relatedConnection.getRecentError());
 		if (instance_obj == null)
@@ -593,12 +598,12 @@ public class UStatement {
 		if (isReturnable) {
 			return;
 		}
-		
+
 		try {
-		    	byte code = UFunctionCode.CURSOR_CLOSE;
-		    	if (relatedConnection.protoVersionIsSame(UConnection.PROTOCOL_V2)) {
-		    	    code = UFunctionCode.CURSOR_CLOSE_FOR_PROTOCOL_V2;
-		    	}
+			byte code = UFunctionCode.CURSOR_CLOSE;
+			if (relatedConnection.protoVersionIsSame(UConnection.PROTOCOL_V2)) {
+				code = UFunctionCode.CURSOR_CLOSE_FOR_PROTOCOL_V2;
+			}
 			outBuffer.newRequest(code);
 			outBuffer.addInt(serverHandler);
 			relatedConnection.send_recv_msg();
@@ -610,6 +615,7 @@ public class UStatement {
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 	}
+
 	synchronized public void deleteCursor(int cursor) {
 		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
@@ -617,9 +623,9 @@ public class UStatement {
 			return;
 		}
 		if ((currentFirstCursor < 0)
-				|| (cursor < 0)
-				|| (cursor >= 0 && ((cursor < currentFirstCursor) || (cursor > currentFirstCursor
-						+ fetchedTupleNumber - 1)))) {
+		        || (cursor < 0)
+		        || (cursor >= 0 && ((cursor < currentFirstCursor) || (cursor > currentFirstCursor
+		                + fetchedTupleNumber - 1)))) {
 			errorHandler.setErrorCode(UErrorCode.ER_INVALID_ARGUMENT);
 			return;
 		}
@@ -630,258 +636,269 @@ public class UStatement {
 
 		synchronized (relatedConnection) {
 			relatedConnection.oidCmd(
-					tuples[cursorPosition - currentFirstCursor].getOid(),
-					UConnection.DROP_BY_OID);
+			        tuples[cursorPosition - currentFirstCursor].getOid(),
+			        UConnection.DROP_BY_OID);
 		}
 		errorHandler.copyValue(relatedConnection.getRecentError());
 	}
 
-    private void setExecuteOptions(int maxRow, boolean isAsync, boolean isExecuteAll,
-	    boolean isQueryPlan, boolean isOnlyPlan, boolean isHoldable, boolean isSensitive) {
-	executeFlag = 0;
-	if (isAsync) {
-	    executeFlag |= EXEC_FLAG_ASYNC;
-	}
-	if (isExecuteAll) {
-	    executeFlag |= EXEC_FLAG_QUERY_ALL;
-	}
-	if (isQueryPlan) {
-	    executeFlag |= EXEC_FLAG_QUERY_INFO;
-	}
-	if (isOnlyPlan) {
-	    executeFlag |= EXEC_FLAG_QUERY_INFO;
-	    executeFlag |= EXEC_FLAG_ONLY_QUERY_PLAN;
-	}
-	if (isHoldable && relatedConnection.supportHoldableResult()) {
-	    executeFlag |= EXEC_FLAG_HOLDABLE_RESULT;
-	}
-
-	this.isSensitive = isSensitive;
-	this.maxFetchSize = maxRow;
-    }
-
-    private void writeExecuteRequest(int maxField, boolean isScrollable, int queryTimeout)
-    	    throws IOException, UJciException {
-	byte is_auto_commit = (byte) 0, is_forward_only = (byte) 0;
-	long remainingTime = 0;
-
-	outBuffer.newRequest(UFunctionCode.EXECUTE);
-	outBuffer.addInt(serverHandler);
-	outBuffer.addByte(executeFlag);
-	outBuffer.addInt(maxField < 0 ? 0 : maxField);
-	outBuffer.addInt(0);
-
-	if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP
-		&& bindParameter != null) {
-	    outBuffer.addBytes(bindParameter.paramMode);
-	} else {
-	    outBuffer.addNull();
-	}
-
-	/* fetch flag */
-	if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_SELECT) {
-	    outBuffer.addByte((byte) 1);
-	} else {
-	    outBuffer.addByte((byte) 0);
-	}
-
-	if (relatedConnection.getAutoCommit() && !isGeneratedKeys) {
-	    is_auto_commit = (byte) 1;
-	}
-	outBuffer.addByte(is_auto_commit);
-
-	if (isScrollable == false) {
-	    is_forward_only = (byte) 1;
-	}
-	outBuffer.addByte(is_forward_only);
-	outBuffer.addCacheTime(null);
-
-	// query timeout support only if protocol version 1 or above
-	if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V2)) {
-	    // send queryTimeout in milliseconds
-	    remainingTime = relatedConnection.getRemainingTime(queryTimeout * 1000);
-	} else if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V1)) {
-	    // send queryTimeout in seconds
-	    remainingTime = relatedConnection.getRemainingTime(queryTimeout);
-	}
-	if (queryTimeout > 0 && remainingTime <= 0) {
-	    throw relatedConnection.createJciException(UErrorCode.ER_TIMEOUT);
-	}
-	outBuffer.addInt((int) remainingTime);
-
-	if (bindParameter != null) {
-	    bindParameter.writeParameter(outBuffer);
-	}
-    }
-
-    private void readResultMeta(UInputBuffer inBuffer) throws UJciException {
-	if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V2)) {
-	    // include_column_info
-	    if (inBuffer.readByte() == 1) {
-		inBuffer.readInt(); // result_cache_lifetime
-		commandTypeIs = inBuffer.readByte();
-		inBuffer.readInt(); // num_markers
-		isUpdatable = (inBuffer.readByte() == 1) ? true : false;
-		columnNumber = inBuffer.readInt();
-		readColumnInfo(inBuffer);
-		if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
-		    columnNumber = parameterNumber + 1;
+	private void setExecuteOptions(int maxRow, boolean isAsync,
+	        boolean isExecuteAll,
+	        boolean isQueryPlan, boolean isOnlyPlan, boolean isHoldable,
+	        boolean isSensitive) {
+		executeFlag = 0;
+		if (isAsync) {
+			executeFlag |= EXEC_FLAG_ASYNC;
 		}
-	    }
-	}
-    }
-
-    private void fetchResultData(UInputBuffer inBuffer) throws UJciException {
-	executeResult = inBuffer.getResCode();
-	if (maxFetchSize > 0) {
-	    executeResult = Math.min(maxFetchSize, executeResult);
-	}
-	totalTupleNumber = executeResult;
-	batchParameter = null;
-
-	if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_SELECT
-		&& totalTupleNumber > 0) {
-	    inBuffer.readInt(); // fetch_rescode
-	    read_fetch_data(inBuffer, UFunctionCode.FETCH);
-	}
-    }
-
-    private void executeInternal(int maxRow, int maxField,
-	    boolean isScrollable, int queryTimeout) throws UJciException, IOException {
-	UInputBuffer inBuffer = null;
-	errorHandler.clear();
-	relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
-
-	synchronized (relatedConnection) {
-	    writeExecuteRequest(maxField, isScrollable, queryTimeout);
-	    inBuffer = relatedConnection.send_recv_msg();
-	}
-
-	inBuffer.readByte(); // cache_reusable
-	readResultInfo(inBuffer);
-	readResultMeta(inBuffer);
-
-	if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V5)) {
-		relatedConnection.setShardId(inBuffer.readInt());
-	}
-
-	fetchResultData(inBuffer);
-
-	for (int i = 0; i < resultInfo.length; i++) {
-	    if (resultInfo[i].statementType != CUBRIDCommandType.CUBRID_STMT_SELECT) {
-		relatedConnection.update_executed = true;
-		break;
-	    }
-	}
-    }
-
-    synchronized public void execute(boolean isAsync, int maxRow, int maxField,
-	    boolean isExecuteAll, boolean isSensitive, boolean isScrollable,
-	    boolean isQueryPlan, boolean isOnlyPlan, boolean isHoldable,
-	    UStatementCacheData cacheData, int queryTimeout) {
-    	
-    	isFetchCompleted = false;
-	flushLobStreams();
-	errorHandler = new UError(relatedConnection);
-
-	if (isClosed) {
-	    if (relatedConnection.brokerInfoStatementPooling()) {
-		try {
-		    reset();
-		} catch (UJciException e) {
-		    e.toUError(errorHandler);
-		    return;
+		if (isExecuteAll) {
+			executeFlag |= EXEC_FLAG_QUERY_ALL;
 		}
-	    } else {
-		errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
-		return;
-	    }
+		if (isQueryPlan) {
+			executeFlag |= EXEC_FLAG_QUERY_INFO;
+		}
+		if (isOnlyPlan) {
+			executeFlag |= EXEC_FLAG_QUERY_INFO;
+			executeFlag |= EXEC_FLAG_ONLY_QUERY_PLAN;
+		}
+		if (isHoldable && relatedConnection.supportHoldableResult()) {
+			executeFlag |= EXEC_FLAG_HOLDABLE_RESULT;
+		}
+
+		this.isSensitive = isSensitive;
+		this.maxFetchSize = maxRow;
 	}
 
-	if (statementType == GET_SCHEMA_INFO) {
-	    return;
+	private void writeExecuteRequest(int maxField, boolean isScrollable,
+	        int queryTimeout)
+	        throws IOException, UJciException {
+		byte is_auto_commit = (byte) 0, is_forward_only = (byte) 0;
+		long remainingTime = 0;
+
+		outBuffer.newRequest(UFunctionCode.EXECUTE);
+		outBuffer.addInt(serverHandler);
+		outBuffer.addByte(executeFlag);
+		outBuffer.addInt(maxField < 0 ? 0 : maxField);
+		outBuffer.addInt(0);
+
+		if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP
+		        && bindParameter != null) {
+			outBuffer.addBytes(bindParameter.paramMode);
+		} else {
+			outBuffer.addNull();
+		}
+
+		/* fetch flag */
+		if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_SELECT) {
+			outBuffer.addByte((byte) 1);
+		} else {
+			outBuffer.addByte((byte) 0);
+		}
+
+		if (relatedConnection.getAutoCommit() && !isGeneratedKeys) {
+			is_auto_commit = (byte) 1;
+		}
+		outBuffer.addByte(is_auto_commit);
+
+		if (isScrollable == false) {
+			is_forward_only = (byte) 1;
+		}
+		outBuffer.addByte(is_forward_only);
+		outBuffer.addCacheTime(null);
+
+		// query timeout support only if protocol version 1 or above
+		if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V2)) {
+			// send queryTimeout in milliseconds
+			remainingTime = relatedConnection
+			        .getRemainingTime(queryTimeout * 1000);
+		} else if (relatedConnection
+		        .protoVersionIsAbove(UConnection.PROTOCOL_V1)) {
+			// send queryTimeout in seconds
+			remainingTime = relatedConnection.getRemainingTime(queryTimeout);
+		}
+		if (queryTimeout > 0 && remainingTime <= 0) {
+			throw relatedConnection.createJciException(UErrorCode.ER_TIMEOUT);
+		}
+		outBuffer.addInt((int) remainingTime);
+
+		if (bindParameter != null) {
+			bindParameter.writeParameter(outBuffer);
+		}
 	}
 
-	if (bindParameter != null && !bindParameter.checkAllBinded()) {
-	    errorHandler.setErrorCode(UErrorCode.ER_NOT_BIND);
-	    return;
+	private void readResultMeta(UInputBuffer inBuffer) throws UJciException {
+		if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V2)) {
+			// include_column_info
+			if (inBuffer.readByte() == 1) {
+				inBuffer.readInt(); // result_cache_lifetime
+				commandTypeIs = inBuffer.readByte();
+				inBuffer.readInt(); // num_markers
+				isUpdatable = (inBuffer.readByte() == 1) ? true : false;
+				columnNumber = inBuffer.readInt();
+				readColumnInfo(inBuffer);
+				if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
+					columnNumber = parameterNumber + 1;
+				}
+			}
+		}
 	}
 
-	setExecuteOptions(maxRow, isAsync, isExecuteAll, isQueryPlan,
-		isOnlyPlan, isHoldable, isSensitive);
-	currentFirstCursor = -1;
-	fetchedTupleNumber = 0;
-	if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
-	    cursorPosition = 0;
-	} else {
-	    cursorPosition = -1;
-	}
-	result_cacheable = false;
+	private void fetchResultData(UInputBuffer inBuffer) throws UJciException {
+		executeResult = inBuffer.getResCode();
+		if (maxFetchSize > 0) {
+			executeResult = Math.min(maxFetchSize, executeResult);
+		}
+		totalTupleNumber = executeResult;
+		batchParameter = null;
 
-	boolean isFirstExecInTran = !relatedConnection.isActive();
-
-	try {
-	    executeInternal(maxRow, maxField, isScrollable, queryTimeout);
-	    return;
-	} catch (UJciException e) {
-	    relatedConnection.logException(e);
-	    e.toUError(errorHandler);
-	} catch (IOException e) {
-	    relatedConnection.logException(e);
-	    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+		if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_SELECT
+		        && totalTupleNumber > 0) {
+			inBuffer.readInt(); // fetch_rescode
+			read_fetch_data(inBuffer, UFunctionCode.FETCH);
+		}
 	}
 
-	if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
-	    if (!relatedConnection.brokerInfoReconnectWhenServerDown()
-		|| !relatedConnection.isServerDownError(errorHandler.getJdbcErrorCode())) {
-		relatedConnection.clientSocketClose();
-	    }
-	    
-	    if (!relatedConnection.isActive() || isFirstExecInTran) {
+	private void executeInternal(int maxRow, int maxField,
+	        boolean isScrollable, int queryTimeout) throws UJciException,
+	        IOException {
+		UInputBuffer inBuffer = null;
+		errorHandler.clear();
+		relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
+
+		synchronized (relatedConnection) {
+			writeExecuteRequest(maxField, isScrollable, queryTimeout);
+			inBuffer = relatedConnection.send_recv_msg();
+		}
+
+		inBuffer.readByte(); // cache_reusable
+		readResultInfo(inBuffer);
+		readResultMeta(inBuffer);
+
+		if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V5)) {
+			relatedConnection.setShardId(inBuffer.readInt());
+		}
+
+		fetchResultData(inBuffer);
+
+		for (int i = 0; i < resultInfo.length; i++) {
+			if (resultInfo[i].statementType != CUBRIDCommandType.CUBRID_STMT_SELECT) {
+				relatedConnection.update_executed = true;
+				break;
+			}
+		}
+	}
+
+	synchronized public void execute(boolean isAsync, int maxRow, int maxField,
+	        boolean isExecuteAll, boolean isSensitive, boolean isScrollable,
+	        boolean isQueryPlan, boolean isOnlyPlan, boolean isHoldable,
+	        UStatementCacheData cacheData, int queryTimeout) {
+
+		isFetchCompleted = false;
+		flushLobStreams();
+		errorHandler = new UError(relatedConnection);
+
+		if (isClosed) {
+			if (relatedConnection.brokerInfoStatementPooling()) {
+				try {
+					reset();
+				} catch (UJciException e) {
+					e.toUError(errorHandler);
+					return;
+				}
+			} else {
+				errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
+				return;
+			}
+		}
+
+		if (statementType == GET_SCHEMA_INFO) {
+			return;
+		}
+
+		if (bindParameter != null && !bindParameter.checkAllBinded()) {
+			errorHandler.setErrorCode(UErrorCode.ER_NOT_BIND);
+			return;
+		}
+
+		setExecuteOptions(maxRow, isAsync, isExecuteAll, isQueryPlan,
+		        isOnlyPlan, isHoldable, isSensitive);
+		currentFirstCursor = -1;
+		fetchedTupleNumber = 0;
+		if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
+			cursorPosition = 0;
+		} else {
+			cursorPosition = -1;
+		}
+		result_cacheable = false;
+
+		boolean isFirstExecInTran = !relatedConnection.isActive();
+
 		try {
-		    reset();
-		    executeInternal(maxRow, maxField, isScrollable, queryTimeout);
-		    return;
+			executeInternal(maxRow, maxField, isScrollable, queryTimeout);
+			return;
 		} catch (UJciException e) {
-		    relatedConnection.logException(e);
-		    e.toUError(errorHandler);
+			relatedConnection.logException(e);
+			e.toUError(errorHandler);
 		} catch (IOException e) {
-		    relatedConnection.logException(e);
-		    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+			relatedConnection.logException(e);
+			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
-	    }
+
+		if (relatedConnection.isErrorToReconnect(errorHandler
+		        .getJdbcErrorCode())) {
+			if (!relatedConnection.brokerInfoReconnectWhenServerDown()
+			        || !relatedConnection.isServerDownError(errorHandler
+			                .getJdbcErrorCode())) {
+				relatedConnection.clientSocketClose();
+			}
+
+			if (!relatedConnection.isActive() || isFirstExecInTran) {
+				try {
+					reset();
+					executeInternal(maxRow, maxField, isScrollable,
+					        queryTimeout);
+					return;
+				} catch (UJciException e) {
+					relatedConnection.logException(e);
+					e.toUError(errorHandler);
+				} catch (IOException e) {
+					relatedConnection.logException(e);
+					errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+				}
+			}
+		}
+
+		while (relatedConnection.brokerInfoStatementPooling()
+		        &&
+		        errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
+			try {
+				reset();
+				executeInternal(maxRow, maxField, isScrollable, queryTimeout);
+				return;
+			} catch (UJciException e) {
+				relatedConnection.logException(e);
+				e.toUError(errorHandler);
+			} catch (IOException e) {
+				relatedConnection.logException(e);
+				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+			}
+		}
 	}
-	
-	while (relatedConnection.brokerInfoStatementPooling() &&
-		errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
-	    try {
-		reset();
-		executeInternal(maxRow, maxField, isScrollable, queryTimeout);
-		return;
-	    } catch (UJciException e) {
-		relatedConnection.logException(e);
-		e.toUError(errorHandler);
-	    } catch (IOException e) {
-		relatedConnection.logException(e);
-		errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-	    }
+
+	private void reset() throws UJciException {
+		close();
+
+		UStatement tmp = relatedConnection
+		        .prepare(sql_stmt, prepare_flag, true);
+		UError err = relatedConnection.getRecentError();
+		if (err.getErrorCode() != UErrorCode.ER_NO_ERROR) {
+			throw new UJciException(err.getErrorCode());
+		}
+
+		relatedConnection.pooled_ustmts.remove(tmp);
+		relatedConnection.pooled_ustmts.add(this);
+
+		init(relatedConnection, tmp.tmp_inbuffer, sql_stmt, prepare_flag, false);
 	}
-    }
-
-    private void reset() throws UJciException {
-	close();
-
-	UStatement tmp = relatedConnection.prepare(sql_stmt, prepare_flag, true);
-	UError err = relatedConnection.getRecentError();
-	if (err.getErrorCode() != UErrorCode.ER_NO_ERROR) {
-	    throw new UJciException(err.getErrorCode());
-	}
-
-	relatedConnection.pooled_ustmts.remove(tmp);
-	relatedConnection.pooled_ustmts.add(this);
-
-	init(relatedConnection, tmp.tmp_inbuffer, sql_stmt, prepare_flag, false);
-    }
 
 	synchronized public CUBRIDOID executeInsert(boolean isAsync) {
 		errorHandler = new UError(relatedConnection);
@@ -893,7 +910,8 @@ public class UStatement {
 			errorHandler.setErrorCode(UErrorCode.ER_CMD_IS_NOT_INSERT);
 			return null;
 		}
-		execute(isAsync, 0, 0, false, false, false, false, false, false, null, 0);
+		execute(isAsync, 0, 0, false, false, false, false, false, false, null,
+		        0);
 		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 			return null;
 		if (resultInfo != null && resultInfo[0] != null)
@@ -906,136 +924,143 @@ public class UStatement {
 		isAutoCommit = autoCommit;
 	}
 
-	private void writeExecuteBatchRequest (int queryTimeout) throws IOException, UJciException {
-	    outBuffer.newRequest(relatedConnection.getOutputStream(),
-		    UFunctionCode.EXECUTE_BATCH_PREPAREDSTATEMENT);
-	    outBuffer.addInt(serverHandler);
-	    if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V4)) {
-		long remainingTime = relatedConnection.getRemainingTime(queryTimeout * 1000);
-		if (queryTimeout > 0 && remainingTime <= 0) {
-		    throw relatedConnection.createJciException(UErrorCode.ER_TIMEOUT);
+	private void writeExecuteBatchRequest(int queryTimeout) throws IOException,
+	        UJciException {
+		outBuffer.newRequest(relatedConnection.getOutputStream(),
+		        UFunctionCode.EXECUTE_BATCH_PREPAREDSTATEMENT);
+		outBuffer.addInt(serverHandler);
+		if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V4)) {
+			long remainingTime = relatedConnection
+			        .getRemainingTime(queryTimeout * 1000);
+			if (queryTimeout > 0 && remainingTime <= 0) {
+				throw relatedConnection
+				        .createJciException(UErrorCode.ER_TIMEOUT);
+			}
+			outBuffer.addInt((int) remainingTime);
 		}
-		outBuffer.addInt((int) remainingTime);
-	    }
-	    outBuffer.addByte(isAutoCommit ? (byte) 1 : (byte) 0);
+		outBuffer.addByte(isAutoCommit ? (byte) 1 : (byte) 0);
 
-	    if (batchParameter != null) {
-		synchronized (batchParameter) {
-		    for (int i = 0; i < batchParameter.size(); i++) {
-			UBindParameter b = (UBindParameter) batchParameter.get(i);
-			b.writeParameter(outBuffer);
-		    }
+		if (batchParameter != null) {
+			synchronized (batchParameter) {
+				for (int i = 0; i < batchParameter.size(); i++) {
+					UBindParameter b = (UBindParameter) batchParameter.get(i);
+					b.writeParameter(outBuffer);
+				}
+			}
 		}
-	    }
 	}
 
-	private UBatchResult executeBatchInternal (int queryTimeout) throws IOException, UJciException {
-	    UInputBuffer inBuffer = null;
-	    errorHandler.clear();
-	    relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
-		
-	    synchronized (relatedConnection) {
-		writeExecuteBatchRequest(queryTimeout);
-		inBuffer = relatedConnection.send_recv_msg();
-	    } 
-		
-	    batchParameter = null;
-	    UBatchResult batchResult;
-	    int result;
+	private UBatchResult executeBatchInternal(int queryTimeout)
+	        throws IOException, UJciException {
+		UInputBuffer inBuffer = null;
+		errorHandler.clear();
+		relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
 
-	    batchResult = new UBatchResult(inBuffer.readInt());
-	    for (int i = 0; i < batchResult.getResultNumber(); i++) {
-		batchResult.setStatementType(i, statementType);
-		result = inBuffer.readInt();
-		if (result < 0) {
-		    int err_code = inBuffer.readInt();
-		    batchResult.setResultError(i, err_code, inBuffer.readString(
-				inBuffer.readInt(), UJCIManager.sysCharsetName));
+		synchronized (relatedConnection) {
+			writeExecuteBatchRequest(queryTimeout);
+			inBuffer = relatedConnection.send_recv_msg();
 		}
-		else {
-		    batchResult.setResult(i, result);
-		    // jci 3.0
-		    inBuffer.readInt();
-		    inBuffer.readShort(); 
-		    inBuffer.readShort();
+
+		batchParameter = null;
+		UBatchResult batchResult;
+		int result;
+
+		batchResult = new UBatchResult(inBuffer.readInt());
+		for (int i = 0; i < batchResult.getResultNumber(); i++) {
+			batchResult.setStatementType(i, statementType);
+			result = inBuffer.readInt();
+			if (result < 0) {
+				int err_code = inBuffer.readInt();
+				batchResult.setResultError(i, err_code, inBuffer.readString(
+				        inBuffer.readInt(), UJCIManager.sysCharsetName));
+			}
+			else {
+				batchResult.setResult(i, result);
+				// jci 3.0
+				inBuffer.readInt();
+				inBuffer.readShort();
+				inBuffer.readShort();
+			}
 		}
-	    }
 
 		if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V5)) {
 			relatedConnection.setShardId(inBuffer.readInt());
 		}
 
-	    return batchResult;
+		return batchResult;
 	}
 
 	synchronized public UBatchResult executeBatch(int queryTimeout) {
-	    UBatchResult batchResult; 
-	    
-	    errorHandler = new UError(relatedConnection); 
-	    if (isClosed) {
-		if (relatedConnection.brokerInfoStatementPooling()) {
-		    try {
-			reset();
-		    } catch (UJciException e) {
-			e.toUError(errorHandler);
-			return null;
-		    }
-		} else {
-		    errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
-		    return null; 
-		}
-	    }
-	    
-	    boolean isFirstExecInTran = !relatedConnection.isActive();
+		UBatchResult batchResult;
 
-	    try {
-		batchResult = executeBatchInternal(queryTimeout);
-		return batchResult;
-	    } catch (UJciException e) {
-		relatedConnection.logException(e);
-		e.toUError(errorHandler);
-	    } catch (IOException e) {
-		relatedConnection.logException(e);
-		if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
-		    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-	    }
-
-	    if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
-		if (!relatedConnection.brokerInfoReconnectWhenServerDown()
-		    || !relatedConnection.isServerDownError(errorHandler.getJdbcErrorCode())) {
-		    relatedConnection.clientSocketClose();
+		errorHandler = new UError(relatedConnection);
+		if (isClosed) {
+			if (relatedConnection.brokerInfoStatementPooling()) {
+				try {
+					reset();
+				} catch (UJciException e) {
+					e.toUError(errorHandler);
+					return null;
+				}
+			} else {
+				errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
+				return null;
+			}
 		}
 
-		if (!relatedConnection.isActive() || isFirstExecInTran) {
-		    try {
-			reset();
+		boolean isFirstExecInTran = !relatedConnection.isActive();
+
+		try {
 			batchResult = executeBatchInternal(queryTimeout);
 			return batchResult;
-		    } catch (UJciException e) {
+		} catch (UJciException e) {
 			relatedConnection.logException(e);
 			e.toUError(errorHandler);
-		    } catch (IOException e) {
-			relatedConnection.logException(e);
-			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-		    }
-		}
-	    }
-	    
-	    while (relatedConnection.brokerInfoStatementPooling() &&
-		    errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
-		try {
-		    reset();
-		    batchResult = executeBatchInternal(queryTimeout);
-		    return batchResult;
-		} catch (UJciException e) {
-		    relatedConnection.logException(e);
-		    e.toUError(errorHandler);
 		} catch (IOException e) {
-		    relatedConnection.logException(e); 
-		    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+			relatedConnection.logException(e);
+			if (errorHandler.getErrorCode() != UErrorCode.ER_CONNECTION)
+				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
-	    }
-	    return null;
+
+		if (relatedConnection.isErrorToReconnect(errorHandler
+		        .getJdbcErrorCode())) {
+			if (!relatedConnection.brokerInfoReconnectWhenServerDown()
+			        || !relatedConnection.isServerDownError(errorHandler
+			                .getJdbcErrorCode())) {
+				relatedConnection.clientSocketClose();
+			}
+
+			if (!relatedConnection.isActive() || isFirstExecInTran) {
+				try {
+					reset();
+					batchResult = executeBatchInternal(queryTimeout);
+					return batchResult;
+				} catch (UJciException e) {
+					relatedConnection.logException(e);
+					e.toUError(errorHandler);
+				} catch (IOException e) {
+					relatedConnection.logException(e);
+					errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+				}
+			}
+		}
+
+		while (relatedConnection.brokerInfoStatementPooling()
+		        &&
+		        errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
+			try {
+				reset();
+				batchResult = executeBatchInternal(queryTimeout);
+				return batchResult;
+			} catch (UJciException e) {
+				relatedConnection.logException(e);
+				e.toUError(errorHandler);
+			} catch (IOException e) {
+				relatedConnection.logException(e);
+				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+			}
+		}
+		return null;
 	}
 
 	synchronized public void fetch() {
@@ -1051,16 +1076,16 @@ public class UStatement {
 			return;
 
 		if (cursorPosition < 0
-				|| (executeFlag != ASYNC_EXECUTE && totalTupleNumber <= 0)) {
+		        || (executeFlag != ASYNC_EXECUTE && totalTupleNumber <= 0)) {
 			errorHandler.setErrorCode(UErrorCode.ER_NO_MORE_DATA);
 			return;
 		}
 
 		/* need not to fetch really */
 		if (currentFirstCursor >= 0
-				&& currentFirstCursor <= cursorPosition
-				&& cursorPosition <= currentFirstCursor + fetchedTupleNumber
-						- 1) {
+		        && currentFirstCursor <= cursorPosition
+		        && cursorPosition <= currentFirstCursor + fetchedTupleNumber
+		                - 1) {
 			return;
 		}
 
@@ -1346,8 +1371,8 @@ public class UStatement {
 		Object retValue;
 		try {
 			if ((commandTypeIs != CUBRIDCommandType.CUBRID_STMT_CALL_SP)
-					&& (columnInfo[index].getColumnType() == UUType.U_TYPE_BIT)
-					&& (columnInfo[index].getColumnPrecision() == 8)) {
+			        && (columnInfo[index].getColumnType() == UUType.U_TYPE_BIT)
+			        && (columnInfo[index].getColumnPrecision() == 8)) {
 				retValue = new Boolean(UGetTypeConvertedValue.getBoolean(obj));
 			} else if (obj instanceof CUBRIDArray)
 				retValue = ((CUBRIDArray) obj).getArrayClone();
@@ -1416,9 +1441,9 @@ public class UStatement {
 			return false;
 		}
 		if ((commandTypeIs == CUBRIDCommandType.CUBRID_STMT_SELECT)
-				|| (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL)
-				|| (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_GET_STATS)
-				|| (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_EVALUATE)) {
+		        || (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL)
+		        || (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_GET_STATS)
+		        || (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_EVALUATE)) {
 			errorHandler = localError;
 			return true;
 		} else {
@@ -1496,7 +1521,7 @@ public class UStatement {
 			return;
 		}
 		if ((origin != CURSOR_SET && origin != CURSOR_CUR && origin != CURSOR_END)
-				|| (executeFlag != ASYNC_EXECUTE && totalTupleNumber == 0)) {
+		        || (executeFlag != ASYNC_EXECUTE && totalTupleNumber == 0)) {
 			errorHandler.setErrorCode(UErrorCode.ER_NO_MORE_DATA);
 			return;
 		}
@@ -1510,8 +1535,8 @@ public class UStatement {
 		if (origin == CURSOR_SET || origin == CURSOR_CUR) {
 			if (executeFlag == ASYNC_EXECUTE) {
 				if ((cursorPosition <= currentFirstCursor + fetchedTupleNumber
-						- 1)
-						|| (totalTupleNumber != 0 && cursorPosition < totalTupleNumber))
+				        - 1)
+				        || (totalTupleNumber != 0 && cursorPosition < totalTupleNumber))
 					return;
 			} else if (cursorPosition < totalTupleNumber)
 				return;
@@ -1605,7 +1630,7 @@ public class UStatement {
 		currentFirstCursor = cursorPosition = -1;
 		/* set max resultset row size */
 		totalTupleNumber = executeResult = ((maxFetchSize > 0) && (executeResult > maxFetchSize)) ? maxFetchSize
-				: executeResult;
+		        : executeResult;
 		realFetched = false;
 		return true;
 	}
@@ -1691,8 +1716,8 @@ public class UStatement {
 			return;
 		}
 		if (direction != ResultSet.FETCH_FORWARD
-				&& direction != ResultSet.FETCH_REVERSE
-				&& direction != ResultSet.FETCH_UNKNOWN) {
+		        && direction != ResultSet.FETCH_REVERSE
+		        && direction != ResultSet.FETCH_UNKNOWN) {
 			errorHandler.setErrorCode(UErrorCode.ER_INVALID_ARGUMENT);
 			return;
 		}
@@ -1718,7 +1743,7 @@ public class UStatement {
 	}
 
 	synchronized public void updateRows(int cursorPosition, int[] indexes,
-			Object[] values) {
+	        Object[] values) {
 		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
@@ -1789,7 +1814,7 @@ public class UStatement {
 			}
 
 			plan = inBuffer.readString(inBuffer.remainedCapacity(),
-					relatedConnection.getCharset());
+			        relatedConnection.getCharset());
 		} catch (UJciException e) {
 			relatedConnection.logException(e);
 			closeInternal();
@@ -1887,9 +1912,9 @@ public class UStatement {
 		 */
 		Object obj;
 		if ((tuples == null)
-				|| (tuples[cursorPosition - currentFirstCursor] == null)
-				|| ((obj = tuples[cursorPosition - currentFirstCursor]
-						.getAttribute(index)) == null)) {
+		        || (tuples[cursorPosition - currentFirstCursor] == null)
+		        || ((obj = tuples[cursorPosition - currentFirstCursor]
+		                .getAttribute(index)) == null)) {
 			errorHandler.setErrorCode(UErrorCode.ER_WAS_NULL);
 			return null;
 		}
@@ -1899,8 +1924,8 @@ public class UStatement {
 
 	private boolean checkReFetch() {
 		if ((currentFirstCursor < 0)
-				|| (cursorPosition >= 0 && ((cursorPosition < currentFirstCursor) || (cursorPosition > currentFirstCursor
-						+ fetchedTupleNumber - 1)))) {
+		        || (cursorPosition >= 0 && ((cursorPosition < currentFirstCursor) || (cursorPosition > currentFirstCursor
+		                + fetchedTupleNumber - 1)))) {
 			fetch();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return false;
@@ -1909,11 +1934,11 @@ public class UStatement {
 	}
 
 	private byte readTypeFromData(int index, UInputBuffer inBuffer)
-			throws UJciException {
+	        throws UJciException {
 		if ((commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL)
-				|| (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_EVALUATE)
-				|| (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP)
-				|| (columnInfo[index].getColumnType() == UUType.U_TYPE_NULL)) {
+		        || (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_EVALUATE)
+		        || (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP)
+		        || (columnInfo[index].getColumnType() == UUType.U_TYPE_NULL)) {
 			return inBuffer.readByte();
 		}
 		return UUType.U_TYPE_NULL;
@@ -1936,10 +1961,10 @@ public class UStatement {
 			}
 			bindParameter = null;
 		}
-		
+
 		closeResult();
 	}
-	
+
 	public void closeResult() {
 		if (tuples != null) {
 			synchronized (tuples) {
@@ -1975,7 +2000,7 @@ public class UStatement {
 	}
 
 	private Object readAAttribute(int index, UInputBuffer inBuffer)
-			throws UJciException {
+	        throws UJciException {
 		int size;
 		int localType;
 
@@ -1993,7 +2018,7 @@ public class UStatement {
 	}
 
 	private Object readData(UInputBuffer inBuffer, int dataType, int dataSize)
-			throws UJciException
+	        throws UJciException
 	{
 		switch (dataType) {
 		case UUType.U_TYPE_CHAR:
@@ -2002,10 +2027,10 @@ public class UStatement {
 		case UUType.U_TYPE_VARNCHAR:
 		case UUType.U_TYPE_ENUM:
 			return inBuffer.readString(dataSize,
-					relatedConnection.getCharset());
+			        relatedConnection.getCharset());
 		case UUType.U_TYPE_NUMERIC:
 			return new BigDecimal(inBuffer.readString(dataSize,
-					UJCIManager.sysCharsetName));
+			        UJCIManager.sysCharsetName));
 		case UUType.U_TYPE_BIGINT:
 			return new Long(inBuffer.readLong());
 		case UUType.U_TYPE_INT:
@@ -2059,26 +2084,26 @@ public class UStatement {
 	}
 
 	private void read_fetch_data(UInputBuffer inBuffer, byte functionCode)
-			throws UJciException {
+	        throws UJciException {
 		fetchedTupleNumber = inBuffer.readInt();
 		if (fetchedTupleNumber < 0) {
 			fetchedTupleNumber = 0;
 		}
-		
+
 		tuples = new UResultTuple[fetchedTupleNumber];
 		for (int i = 0; i < fetchedTupleNumber; i++) {
 			readATuple(i, inBuffer);
 		}
-		
+
 		if (functionCode == UFunctionCode.FETCH
-				&& relatedConnection
-						.protoVersionIsAbove(UConnection.PROTOCOL_V5)) {
+		        && relatedConnection
+		                .protoVersionIsAbove(UConnection.PROTOCOL_V5)) {
 			isFetchCompleted = inBuffer.readByte() == 1 ? true : false;
 		}
 	}
 
 	private void readATupleByOid(CUBRIDOID oid, UInputBuffer inBuffer)
-			throws UJciException {
+	        throws UJciException {
 		tuples[0] = new UResultTuple(1, columnNumber);
 		tuples[0].setOid(oid);
 		for (int i = 0; i < columnNumber; i++) {
@@ -2088,7 +2113,7 @@ public class UStatement {
 	}
 
 	private void readATuple(int index, UInputBuffer inBuffer)
-			throws UJciException {
+	        throws UJciException {
 		tuples[index] = new UResultTuple(inBuffer.readInt(), columnNumber);
 		tuples[index].setOid(inBuffer.readOID(relatedConnection.cubridcon));
 		for (int i = 0; i < columnNumber; i++) {
@@ -2115,7 +2140,7 @@ public class UStatement {
 			scale = inBuffer.readShort();
 			precision = inBuffer.readInt();
 			name = inBuffer.readString(inBuffer.readInt(),
-					relatedConnection.getCharset());
+			        relatedConnection.getCharset());
 			columnInfo[i] = new UColumnInfo(type, scale, precision, name);
 			if (statementType == NORMAL) {
 				/*
@@ -2124,15 +2149,15 @@ public class UStatement {
 				 */
 
 				String attributeName = inBuffer.readString(inBuffer.readInt(),
-						relatedConnection.getCharset());
+				        relatedConnection.getCharset());
 				String className = inBuffer.readString(inBuffer.readInt(),
-						relatedConnection.getCharset());
+				        relatedConnection.getCharset());
 				byte byteData = inBuffer.readByte();
 				columnInfo[i].setRemainedData(attributeName, className,
-						((byteData == (byte) 0) ? true : false));
+				        ((byteData == (byte) 0) ? true : false));
 
 				String defValue = inBuffer.readString(inBuffer.readInt(),
-						relatedConnection.getCharset());
+				        relatedConnection.getCharset());
 				byte bAI = inBuffer.readByte();
 				byte bUK = inBuffer.readByte();
 				byte bPK = inBuffer.readByte();
@@ -2142,7 +2167,7 @@ public class UStatement {
 				byte bSh = inBuffer.readByte();
 
 				columnInfo[i].setExtraData(defValue, bAI, bUK, bPK, bFK, bRI,
-						bRU, bSh);
+				        bRU, bSh);
 			}
 
 			colNameToIndex.put(name.toLowerCase(), i);
@@ -2154,11 +2179,11 @@ public class UStatement {
 		resultInfo = new UResultInfo[numQueriesExecuted];
 		for (int i = 0; i < resultInfo.length; i++) {
 			resultInfo[i] = new UResultInfo(inBuffer.readByte(),
-					inBuffer.readInt());
+			        inBuffer.readInt());
 			resultInfo[i].setResultOid(inBuffer
-					.readOID(relatedConnection.cubridcon));
+			        .readOID(relatedConnection.cubridcon));
 			resultInfo[i].setSrvCacheTime(inBuffer.readInt(),
-					inBuffer.readInt());
+			        inBuffer.readInt());
 		}
 	}
 
@@ -2211,7 +2236,7 @@ public class UStatement {
 
 	public boolean is_result_cacheable() {
 		if (result_cacheable == true
-				&& relatedConnection.update_executed == false)
+		        && relatedConnection.update_executed == false)
 			return true;
 		else
 			return false;
@@ -2243,11 +2268,11 @@ public class UStatement {
 	}
 
 	public boolean hasBatch() {
-	    return batchParameter != null && batchParameter.size() != 0;
+		return batchParameter != null && batchParameter.size() != 0;
 	}
-	
+
 	public boolean isFetchCompleted(int current_row) {
 		return relatedConnection.isConnectedToOracle() && isFetchCompleted
-				&& current_row >= currentFirstCursor + fetchedTupleNumber;
+		        && current_row >= currentFirstCursor + fetchedTupleNumber;
 	}
 }

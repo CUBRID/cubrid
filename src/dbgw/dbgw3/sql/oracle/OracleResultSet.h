@@ -33,6 +33,8 @@ namespace dbgw
     public:
       OracleResultSet(trait<Statement>::sp pStatement,
           _OracleContext *pContext);
+      OracleResultSet(trait<Statement>::sp pStatement,
+          _OracleContext *pContext, bool isOutResultSet);
       virtual ~OracleResultSet();
 
       virtual bool isFirst();
@@ -52,9 +54,11 @@ namespace dbgw
       virtual void getBytes(int nIndex, size_t *pSize, const char **pValue) const;
       virtual trait<Lob>::sp getClob(int nIndex) const;
       virtual trait<Lob>::sp getBlob(int nIndex) const;
+      virtual trait<ResultSet>::sp getResultSet(int nIndex) const;
       virtual const Value *getValue(int nIndex) const;
       virtual trait<ResultSetMetaData>::sp getMetaData() const;
       virtual _ValueSet &getInternalValuSet();
+      void makeMetaData();
 
     protected:
       virtual void doClose();
@@ -71,6 +75,7 @@ namespace dbgw
       _ValueSet m_resultSet;
       int m_nRowCount;
       int m_nFetchRowCount;
+      bool m_bIsOutResultSet;
     };
 
   }

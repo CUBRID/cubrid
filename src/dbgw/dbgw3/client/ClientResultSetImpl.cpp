@@ -37,7 +37,8 @@ namespace dbgw
       int nAffectedRow) :
     m_bFetched(false), m_pQuery(pQuery),
     m_logger(pQuery->getGroupName(), pQuery->getSqlName()),
-    m_nAffectedRow(nAffectedRow), m_pConverter(NULL)
+    m_nAffectedRow(nAffectedRow), m_pConverter(NULL),
+    m_statementType(pQuery->getType())
   {
   }
 
@@ -45,7 +46,7 @@ namespace dbgw
       trait<sql::CallableStatement>::sp pCallableStatement) :
     m_bFetched(false), m_pCallableStatement(pCallableStatement),
     m_pQuery(pQuery), m_logger(pQuery->getGroupName(), pQuery->getSqlName()),
-    m_nAffectedRow(-1), m_pConverter(NULL)
+    m_nAffectedRow(-1), m_pConverter(NULL), m_statementType(pQuery->getType())
   {
     makeKeyIndexMap();
   }
@@ -55,7 +56,8 @@ namespace dbgw
     m_bFetched(false), m_pResultSet(pResultSet),
     m_pUserDefinedResultSetMetaData(pQuery->getUserDefinedResultSetMetaData()),
     m_pQuery(pQuery), m_logger(pQuery->getGroupName(), pQuery->getSqlName()),
-    m_nAffectedRow(-1), m_pConverter(NULL)
+    m_nAffectedRow(-1), m_pConverter(NULL),
+    m_statementType(sql::DBGW_STMT_TYPE_SELECT)
   {
   }
 
@@ -65,7 +67,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() != sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType != sql::DBGW_STMT_TYPE_SELECT)
           {
             InvalidClientOperationException e;
             DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
@@ -88,7 +90,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() != sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType != sql::DBGW_STMT_TYPE_SELECT)
           {
             InvalidClientOperationException e;
             DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
@@ -127,7 +129,7 @@ namespace dbgw
 
   bool ClientResultSetImpl::isNeedFetch() const
   {
-    return m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT;
+    return m_statementType == sql::DBGW_STMT_TYPE_SELECT;
   }
 
   int ClientResultSetImpl::getAffectedRow() const
@@ -136,7 +138,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             InvalidClientOperationException e;
             DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
@@ -158,7 +160,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() != sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType != sql::DBGW_STMT_TYPE_SELECT)
           {
             InvalidClientOperationException e;
             DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
@@ -180,7 +182,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() != sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType != sql::DBGW_STMT_TYPE_SELECT)
           {
             InvalidClientOperationException e;
             DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
@@ -209,7 +211,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             if (m_bFetched == false)
               {
@@ -226,7 +228,7 @@ namespace dbgw
 
             *pNull = pValue->isNull();
           }
-        else if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
           {
             const Value *pValue = m_pCallableStatement->getValue(nIndex);
             if (pValue == NULL)
@@ -258,7 +260,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             if (m_bFetched == false)
               {
@@ -269,7 +271,7 @@ namespace dbgw
 
             *pType = m_pResultSet->getType(nIndex);
           }
-        else if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
           {
             const _QueryParameter &queryParam = m_pQuery->getQueryParam(
                 nIndex);
@@ -299,7 +301,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             if (m_bFetched == false)
               {
@@ -310,7 +312,7 @@ namespace dbgw
 
             *pValue = m_pResultSet->getInt(nIndex);
           }
-        else if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
           {
             const _QueryParameter &queryParam = m_pQuery->getQueryParam(
                 nIndex);
@@ -340,7 +342,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             if (m_bFetched == false)
               {
@@ -351,7 +353,7 @@ namespace dbgw
 
             *pValue = m_pResultSet->getCString(nIndex);
           }
-        else if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
           {
             const _QueryParameter &queryParam = m_pQuery->getQueryParam(
                 nIndex);
@@ -381,7 +383,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             if (m_bFetched == false)
               {
@@ -392,7 +394,7 @@ namespace dbgw
 
             *pValue = m_pResultSet->getLong(nIndex);
           }
-        else if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
           {
             const _QueryParameter &queryParam = m_pQuery->getQueryParam(
                 nIndex);
@@ -422,7 +424,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             if (m_bFetched == false)
               {
@@ -433,7 +435,7 @@ namespace dbgw
 
             *pValue = m_pResultSet->getChar(nIndex);
           }
-        else if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
           {
             const _QueryParameter &queryParam = m_pQuery->getQueryParam(
                 nIndex);
@@ -463,7 +465,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             if (m_bFetched == false)
               {
@@ -474,7 +476,7 @@ namespace dbgw
 
             *pValue = m_pResultSet->getFloat(nIndex);
           }
-        else if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
           {
             const _QueryParameter &queryParam = m_pQuery->getQueryParam(
                 nIndex);
@@ -504,7 +506,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             if (m_bFetched == false)
               {
@@ -515,7 +517,7 @@ namespace dbgw
 
             *pValue = m_pResultSet->getDouble(nIndex);
           }
-        else if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
           {
             const _QueryParameter &queryParam = m_pQuery->getQueryParam(
                 nIndex);
@@ -545,7 +547,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             if (m_bFetched == false)
               {
@@ -556,7 +558,7 @@ namespace dbgw
 
             *pValue = m_pResultSet->getDateTime(nIndex);
           }
-        else if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
           {
             const _QueryParameter &queryParam = m_pQuery->getQueryParam(
                 nIndex);
@@ -587,7 +589,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             if (m_bFetched == false)
               {
@@ -599,7 +601,7 @@ namespace dbgw
             m_pResultSet->getBytes(nIndex, pSize, pValue);
             return true;
           }
-        else if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
           {
             const _QueryParameter &queryParam = m_pQuery->getQueryParam(
                 nIndex);
@@ -628,7 +630,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             if (m_bFetched == false)
               {
@@ -639,7 +641,7 @@ namespace dbgw
 
             return m_pResultSet->getClob(nIndex);
           }
-        else if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
           {
             const _QueryParameter &queryParam = m_pQuery->getQueryParam(
                 nIndex);
@@ -667,7 +669,7 @@ namespace dbgw
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             if (m_bFetched == false)
               {
@@ -678,7 +680,7 @@ namespace dbgw
 
             return m_pResultSet->getBlob(nIndex);
           }
-        else if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
           {
             const _QueryParameter &queryParam = m_pQuery->getQueryParam(
                 nIndex);
@@ -700,13 +702,48 @@ namespace dbgw
       }
   }
 
+  trait<ClientResultSet>::sp ClientResultSetImpl::getClientResultSet(
+      int nIndex) const
+  {
+    clearException();
+
+    try
+      {
+        if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
+          {
+            const _QueryParameter &queryParam = m_pQuery->getQueryParam(
+                nIndex);
+
+            trait<sql::ResultSet>::sp pResultSet =
+                m_pCallableStatement->getResultSet(
+                    queryParam.firstPlaceHolderIndex);
+
+            trait<ClientResultSet>::sp pClientResultSet(
+                new ClientResultSetImpl(m_pQuery, pResultSet));
+
+            return pClientResultSet;
+          }
+        else
+          {
+            InvalidClientOperationException e;
+            DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+            throw e;
+          }
+      }
+    catch (Exception &e)
+      {
+        setLastException(e);
+        return trait<ClientResultSet>::sp();
+      }
+  }
+
   const Value *ClientResultSetImpl::getValue(int nIndex) const
   {
     clearException();
 
     try
       {
-        if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT)
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
           {
             if (m_bFetched == false)
               {
@@ -717,7 +754,7 @@ namespace dbgw
 
             return m_pResultSet->getValue(nIndex);
           }
-        else if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
           {
             const _QueryParameter &queryParam = m_pQuery->getQueryParam(
                 nIndex);
@@ -946,6 +983,24 @@ namespace dbgw
       }
   }
 
+  trait<ClientResultSet>::sp ClientResultSetImpl::getClientResultSet(
+      const char *szKey) const
+  {
+    clearException();
+
+    try
+      {
+        int nIndex = getKeyIndex(szKey);
+
+        return getClientResultSet(nIndex);
+      }
+    catch (Exception &e)
+      {
+        setLastException(e);
+        return trait<ClientResultSet>::sp();
+      }
+  }
+
   const Value *ClientResultSetImpl::getValue(const char *szKey) const
   {
     clearException();
@@ -967,7 +1022,7 @@ namespace dbgw
   {
     m_pConverter = pConverter;
 
-    if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE
+    if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE
         && m_pConverter != NULL)
       {
         m_pConverter->convert(m_pCallableStatement->getInternalValuSet());
@@ -1055,7 +1110,7 @@ namespace dbgw
 
   int ClientResultSetImpl::getKeyIndex(const char *szKey) const
   {
-    if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_SELECT
+    if (m_statementType == sql::DBGW_STMT_TYPE_SELECT
         && m_bFetched == false)
       {
         AccessDataBeforeFetchException e;

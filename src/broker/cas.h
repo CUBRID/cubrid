@@ -127,6 +127,8 @@ extern T_ERROR_INFO err_info;
 extern bool is_xa_prepared (void);
 extern void set_xa_prepare_flag (void);
 extern void unset_xa_prepare_flag (void);
+extern int query_seq_num_next_value (void);
+extern int query_seq_num_current_value (void);
 
 extern void set_hang_check_time (void);
 extern void unset_hang_check_time (void);

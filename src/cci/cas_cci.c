@@ -1186,6 +1186,12 @@ cci_bind_param (int mapped_stmt_id, int index, T_CCI_A_TYPE a_type,
 int
 cci_register_out_param (int mapped_stmt_id, int index)
 {
+  cci_register_out_param_ex (mapped_stmt_id, index, CCI_U_TYPE_NULL);
+}
+
+int
+cci_register_out_param_ex (int mapped_stmt_id, int index, T_CCI_U_TYPE u_type)
+{
   T_CON_HANDLE *con_handle = NULL;
   T_REQ_HANDLE *req_handle = NULL;
   int error;
@@ -1202,6 +1208,7 @@ cci_register_out_param (int mapped_stmt_id, int index)
     }
   else
     {
+      req_handle->bind_value[index - 1].u_type = u_type;
       req_handle->bind_mode[index - 1] |= CCI_PARAM_MODE_OUT;
     }
 
@@ -2262,7 +2269,8 @@ cci_get_data (int mapped_stmt_id, int col_no, int a_type, void *value,
     }
   reset_error_buffer (&(con_handle->err_buf));
 
-  error = qe_get_data (req_handle, col_no, a_type, value, indicator);
+  error =
+    qe_get_data (con_handle, req_handle, col_no, a_type, value, indicator);
 
   con_handle->used = false;
 

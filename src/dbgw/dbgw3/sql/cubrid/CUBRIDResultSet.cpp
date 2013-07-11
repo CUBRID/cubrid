@@ -20,6 +20,8 @@
 #include "dbgw3/sql/cubrid/CUBRIDCommon.h"
 #include "dbgw3/sql/cubrid/CUBRIDResultSetMetaData.h"
 #include "dbgw3/sql/cubrid/CUBRIDResultSet.h"
+#include "dbgw3/sql/cubrid/CUBRIDStatementBase.h"
+#include "dbgw3/sql/cubrid/CUBRIDPreparedStatement.h"
 
 namespace dbgw
 {
@@ -55,6 +57,17 @@ namespace dbgw
        */
       m_pResultSetMetaData = trait<CUBRIDResultSetMetaData>::sp(
           new CUBRIDResultSetMetaData(m_metaDataRawList));
+
+      pStatement->registerResource(this);
+    }
+
+    CUBRIDResultSet::CUBRIDResultSet(trait<Statement>::sp pStatement) :
+      ResultSet(pStatement),
+      m_hCCIRequest(*(int *) pStatement->getNativeHandle()),
+      m_nRowCount(-1), m_nFetchRowCount(0), m_cursorPos(CCI_CURSOR_FIRST)
+    {
+      m_pResultSetMetaData = trait<CUBRIDResultSetMetaData>::sp(
+          new CUBRIDResultSetMetaData(m_hCCIRequest));
 
       pStatement->registerResource(this);
     }
@@ -326,6 +339,24 @@ namespace dbgw
       return pLob;
     }
 
+    trait<sql::ResultSet>::sp CUBRIDResultSet::getResultSet(int nIndex) const
+    {
+      if (m_cursorPos == CCI_CURSOR_FIRST)
+        {
+          InvalidCursorPositionException e;
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      trait<sql::ResultSet>::sp pResultSet = m_resultSet.getResultSet(nIndex);
+      if (pResultSet == NULL)
+        {
+          throw getLastException();
+        }
+
+      return pResultSet;
+    }
+
     const Value *CUBRIDResultSet::getValue(int nIndex) const
     {
       if (m_cursorPos == CCI_CURSOR_FIRST)
@@ -407,6 +438,9 @@ namespace dbgw
                   break;
                 case DBGW_VAL_TYPE_BYTES:
                   getResultSetBytesColumn(i, metaDataRaw);
+                  break;
+                case DBGW_VAL_TYPE_RESULTSET:
+                  getResultSetResultSetColumn(i, metaDataRaw);
                   break;
                 default:
                   getResultSetStringColumn(i, metaDataRaw);
@@ -512,6 +546,37 @@ namespace dbgw
 
       doMakeResultSet(nIndex, md.columnName.c_str(), DBGW_VAL_TYPE_BYTES,
           bitValue.buf, nIndicator == -1, bitValue.size);
+    }
+
+    void CUBRIDResultSet::getResultSetResultSetColumn(size_t nIndex,
+        const _CUBRIDResultSetMetaDataRaw &md)
+    {
+      int nOutReqID;
+      int nIndicator = -1;
+      int nResult = cci_get_data(m_hCCIRequest, nIndex + 1,
+          CCI_A_TYPE_REQ_HANDLE, (void *) &nOutReqID, &nIndicator);
+      if (nResult < 0)
+        {
+          CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
+              "Failed to get data.");
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      trait<Statement>::sp pStatement(new CUBRIDPreparedStatement(
+          getStatement()->getConnection(), nOutReqID));
+
+      trait<ResultSet>::sp pResultSet(
+          new CUBRIDResultSet(pStatement));
+
+      if (m_cursorPos == CCI_CURSOR_FIRST)
+        {
+          m_resultSet.put(md.columnName.c_str(), pResultSet);
+        }
+      else
+        {
+          m_resultSet.replace(nIndex, pResultSet);
+        }
     }
 
     void CUBRIDResultSet::getResultSetStringColumn(size_t nIndex,

@@ -339,8 +339,8 @@ extern int qe_cursor (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		      int offset, char origin, T_CCI_ERROR * err_buf);
 extern int qe_fetch (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		     char flag, int result_set_index, T_CCI_ERROR * err_buf);
-extern int qe_get_data (T_REQ_HANDLE * req_handle, int col_no, int a_type,
-			void *value, int *indicator);
+extern int qe_get_data (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
+			int col_no, int a_type, void *value, int *indicator);
 extern int qe_get_cur_oid (T_REQ_HANDLE * req_handle, char *oid_str_buf);
 extern int qe_schema_info (T_REQ_HANDLE * req_handle,
 			   T_CON_HANDLE * con_handle,
@@ -429,11 +429,12 @@ extern int qe_get_data_bit (T_CCI_U_TYPE u_type,
 			    char *col_value_p, int col_val_size, void *value);
 extern int qe_get_data_lob (T_CCI_U_TYPE u_type,
 			    char *col_value_p, int col_val_size, void *value);
-extern int qe_get_attr_type_str (T_CON_HANDLE * con_handle,
-				 char *class_name,
-				 char *attr_name,
-				 char *buf,
-				 int buf_size, T_CCI_ERROR * err_buf);
+extern int qe_get_data_req_handle (T_CON_HANDLE * con_handle,
+				   T_REQ_HANDLE * req_handle,
+				   char *col_value_p, void *value);
+extern int qe_get_attr_type_str (T_CON_HANDLE * con_handle, char *class_name,
+				 char *attr_name, char *buf, int buf_size,
+				 T_CCI_ERROR * err_buf);
 extern int qe_get_query_info (T_REQ_HANDLE * req_handle,
 			      T_CON_HANDLE * con_handle, char log_type,
 			      char **out_buf);

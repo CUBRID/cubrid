@@ -504,6 +504,10 @@ namespace dbgw
       {
         return DBGW_VAL_TYPE_BLOB;
       }
+    if (!strcasecmp(type.c_str(), "resultset"))
+      {
+        return DBGW_VAL_TYPE_RESULTSET;
+      }
 
     InvalidValueTypeException e(m_xmlParser.getFileName(), type.c_str());
     DBGW_LOG_ERROR(e.what());

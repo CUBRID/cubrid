@@ -63,15 +63,15 @@ class UAParameter extends UParameter {
 
 	synchronized void writeParameter(UOutputBuffer outBuffer)
 			throws UJciException {
-	    	try {
+		try {
 			if (attributeName != null)
 				outBuffer.addStringWithNull(attributeName);
 			else
 				outBuffer.addNull();
 			outBuffer.addByte(types[0]);
-			outBuffer.writeParameter(types[0], values[0]);
-	    	} catch (IOException e) {
-	    	    	throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
-	    	}
+			outBuffer.writeParameter(types[0], values[0], false);
+		} catch (IOException e) {
+			throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+		}
 	}
 }

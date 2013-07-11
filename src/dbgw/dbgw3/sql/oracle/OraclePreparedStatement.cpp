@@ -29,9 +29,17 @@ namespace dbgw
   {
 
     OraclePreparedStatement::OraclePreparedStatement(
+        trait<Connection>::sp pConnection) :
+      PreparedStatement(pConnection),
+      m_stmtBase(pConnection)
+    {
+      pConnection->registerResource(this);
+    }
+
+    OraclePreparedStatement::OraclePreparedStatement(
         trait<Connection>::sp pConnection, const char *szSql) :
       PreparedStatement(pConnection),
-      m_stmtBase((_OracleContext *) pConnection->getNativeHandle(), szSql)
+      m_stmtBase(pConnection, szSql)
     {
       m_stmtBase.prepare();
 

@@ -142,19 +142,17 @@ namespace dbgw
 
   void _ExecutorStatement::bindParameter(const _Parameter &parameter)
   {
-    if (parameter.size() == 0)
-      {
-        return;
-      }
-
     if (_Logger::isWritable(CCI_LOG_LEVEL_DEBUG))
       {
         m_paramLogDecorator.clear();
       }
 
+    std::string inout = "";
     const Value *pValue = NULL;
     for (size_t i = 0, size = m_pQuery->getBindNum(); i < size; i++)
       {
+        inout = "";
+
         const _QueryParameter &stParam =
             m_pQuery->getQueryParamByPlaceHolderIndex(i);
 
@@ -213,6 +211,7 @@ namespace dbgw
         if (stParam.mode == sql::DBGW_PARAM_MODE_OUT
             || stParam.mode == sql::DBGW_PARAM_MODE_INOUT)
           {
+            inout = "|OUT";
             m_pCallableStatement->registerOutParameter(i, stParam.type,
                 stParam.size);
           }
@@ -224,13 +223,13 @@ namespace dbgw
               {
                 m_paramLogDecorator.addLog("NULL");
                 m_paramLogDecorator.addLogDesc(
-                    getValueTypeString(stParam.type));
+                    getValueTypeString(stParam.type) + inout);
               }
             else
               {
                 m_paramLogDecorator.addLog(pValue->toString());
                 m_paramLogDecorator.addLogDesc(
-                    getValueTypeString(pValue->getType()));
+                    getValueTypeString(pValue->getType()) + inout);
               }
           }
       }

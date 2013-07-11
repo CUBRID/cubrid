@@ -27,8 +27,13 @@ namespace dbgw
   {
 
     _OracleParameterMetaData::_OracleParameterMetaData() :
-      m_mode(DBGW_PARAM_MODE_NONE), m_nSize(0)
+      m_type(DBGW_VAL_TYPE_UNDEFINED), m_mode(DBGW_PARAM_MODE_NONE), m_nSize(0)
     {
+    }
+
+    void _OracleParameterMetaData::setParamType(ValueType type)
+    {
+      m_type = type;
     }
 
     void _OracleParameterMetaData::setParamMode(ParameterMode mode)
@@ -61,6 +66,16 @@ namespace dbgw
     int _OracleParameterMetaData::getSize() const
     {
       return m_nSize;
+    }
+
+    bool _OracleParameterMetaData::isLazyBindingOutParameter() const
+    {
+      return m_mode == DBGW_PARAM_MODE_OUT && m_type == DBGW_VAL_TYPE_RESULTSET;
+    }
+
+    ValueType _OracleParameterMetaData::getType() const
+    {
+      return m_type;
     }
 
   }

@@ -293,6 +293,13 @@ namespace dbgw
       throw e;
     }
 
+    trait<ResultSet>::sp MySQLResultSet::getResultSet(int nIndex) const
+    {
+      UnsupportedOperationException e;
+      DBGW_LOG_ERROR(e.what());
+      throw e;
+    }
+
     trait<ResultSetMetaData>::sp MySQLResultSet::getMetaData() const
     {
       return m_pResultSetMetaData;

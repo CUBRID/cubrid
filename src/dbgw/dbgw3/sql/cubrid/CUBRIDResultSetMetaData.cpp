@@ -65,6 +65,7 @@ namespace dbgw
             case CCI_U_TYPE_BIGINT:
               metaDataRaw.columnType = DBGW_VAL_TYPE_LONG;
               break;
+            case CCI_U_TYPE_NUMERIC:
             case CCI_U_TYPE_STRING:
             case CCI_U_TYPE_NCHAR:
             case CCI_U_TYPE_VARNCHAR:

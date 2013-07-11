@@ -61,6 +61,7 @@ namespace dbgw
     void CUBRIDCallableStatement::clearParameters()
     {
       m_baseStatement.clearParameters();
+      m_pOutParamResult.reset();
     }
 
     trait<ResultSet>::sp CUBRIDCallableStatement::executeQuery()
@@ -425,6 +426,24 @@ namespace dbgw
         }
 
       return pClob;
+    }
+
+    trait<ResultSet>::sp CUBRIDCallableStatement::getResultSet(int nIndex) const
+    {
+      if (m_pOutParamResult == NULL)
+        {
+          NotExistOutParameterException e;
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      trait<ResultSet>::sp pResult = m_pOutParamResult->getResultSet(nIndex);
+      if (pResult == NULL)
+        {
+          throw getLastException();
+        }
+
+      return pResult;
     }
 
     const Value *CUBRIDCallableStatement::getValue(int nIndex) const

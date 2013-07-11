@@ -31,6 +31,7 @@ namespace dbgw
     public:
       _OracleParameterMetaData();
 
+      void setParamType(ValueType type);
       void setParamMode(ParameterMode mode);
       void setReservedSize(int nSize);
 
@@ -38,8 +39,11 @@ namespace dbgw
       bool isUsed() const;
       bool isInParameter() const;
       int getSize() const;
+      bool isLazyBindingOutParameter() const;
+      ValueType getType() const;
 
     private:
+      ValueType m_type;
       ParameterMode m_mode;
       int m_nSize;
     };

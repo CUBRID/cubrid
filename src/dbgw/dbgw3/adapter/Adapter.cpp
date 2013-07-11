@@ -1969,6 +1969,80 @@ namespace DBGW3
         }
     }
 
+    DECLSPECIFIER bool __stdcall GetResultSet(Handle hResult, int nIndex,
+        Handle hOutResult)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL
+              || hOutResult == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          dbgw::ClientResultSetSharedPtr *pResult =
+              (dbgw::ClientResultSetSharedPtr *) hResult;
+
+          dbgw::ClientResultSetSharedPtr *pOutResult =
+              (dbgw::ClientResultSetSharedPtr *) hOutResult;
+
+          *pOutResult = (*pResult)->getClientResultSet(nIndex);
+          if (*pOutResult == NULL)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::Exception &e)
+        {
+          dbgw::setLastException(e);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall GetResultSet(Handle hResult,
+        const char *szName, Handle hOutResult)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL
+              || hOutResult == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          dbgw::ClientResultSetSharedPtr *pResult =
+              (dbgw::ClientResultSetSharedPtr *) hResult;
+
+          dbgw::ClientResultSetSharedPtr *pOutResult =
+              (dbgw::ClientResultSetSharedPtr *) hOutResult;
+
+          *pOutResult = (*pResult)->getClientResultSet(szName);
+          if (*pOutResult == NULL)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::Exception &e)
+        {
+          dbgw::setLastException(e);
+          return false;
+        }
+    }
+
     DECLSPECIFIER bool __stdcall GetType(Handle hResult, int nIndex,
         ValueType *pType)
     {

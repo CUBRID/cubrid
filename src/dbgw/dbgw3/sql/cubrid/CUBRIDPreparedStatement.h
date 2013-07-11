@@ -31,6 +31,8 @@ namespace dbgw
     public:
       CUBRIDPreparedStatement(trait<Connection>::sp pConnection,
           const char *szSql);
+      CUBRIDPreparedStatement(trait<Connection>::sp pConnection,
+          int nOutReqId);
       virtual ~ CUBRIDPreparedStatement();
 
       virtual void addBatch();

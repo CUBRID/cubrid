@@ -47,6 +47,8 @@ namespace dbgw
           return CCI_U_TYPE_DOUBLE;
         case DBGW_VAL_TYPE_BYTES:
           return CCI_U_TYPE_VARBIT;
+        case DBGW_VAL_TYPE_RESULTSET:
+          return CCI_U_TYPE_RESULTSET;
         default:
           return CCI_U_TYPE_STRING;
         }
@@ -276,6 +278,12 @@ namespace dbgw
     {
     }
 
+    _CUBRIDStatementBase::_CUBRIDStatementBase(int hCCIConnection,
+        int hCCIRequest) :
+      m_hCCIConnection(hCCIConnection), m_hCCIRequest(hCCIRequest), m_sql("")
+    {
+    }
+
     _CUBRIDStatementBase::~_CUBRIDStatementBase()
     {
     }
@@ -432,7 +440,7 @@ namespace dbgw
 
       if (m_metaDataRawList[nIndex].unused)
         {
-          setNull(nIndex, type);
+          m_metaDataRawList[nIndex].type = type;
           m_metaDataRawList[nIndex].mode = DBGW_PARAM_MODE_OUT;
         }
       else
@@ -607,16 +615,16 @@ namespace dbgw
       T_CCI_BIT bitValue;
       const Value *pParam = NULL;
 
-      for (size_t i = 0, size = m_parameter.size(); i < size; i++)
+      for (size_t i = 0, size = m_metaDataRawList.size(); i < size; i++)
         {
-          pParam = m_parameter.getValue(i);
-          if (pParam == NULL)
-            {
-              throw getLastException();
-            }
-
           if (m_metaDataRawList[i].unused == false)
             {
+              pParam = m_parameter.getValue(i);
+              if (pParam == NULL)
+                {
+                  throw getLastException();
+                }
+
               if (pParam->getType() == DBGW_VAL_TYPE_UNDEFINED)
                 {
                   InvalidValueTypeException e(pParam->getType());
@@ -653,11 +661,15 @@ namespace dbgw
                   throw e;
                 }
             }
+          else
+            {
+              utype = getCCIUTypeFromValueType(m_metaDataRawList[i].type);
+            }
 
           if (m_metaDataRawList[i].mode == DBGW_PARAM_MODE_OUT
               || m_metaDataRawList[i].mode == DBGW_PARAM_MODE_INOUT)
             {
-              int nResult = cci_register_out_param(m_hCCIRequest, i + 1);
+              int nResult = cci_register_out_param_ex(m_hCCIRequest, i + 1, utype);
               if (nResult < 0)
                 {
                   CUBRIDException e = CUBRIDExceptionFactory::create(nResult,

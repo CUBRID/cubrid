@@ -79,6 +79,7 @@ namespace dbgw
       void bindBytes(const Value *pValue);
       void bindClob(const Value *pValue);
       void bindBlob(const Value *pValue);
+      void bindResultSet(const Value *pValue);
 
     private:
       OCIBind *m_pOCIBind;

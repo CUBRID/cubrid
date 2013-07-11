@@ -51,11 +51,13 @@ public class UBindParameter extends UParameter {
 	byte paramMode[];
 
 	private boolean isBinded[];
+	private byte dbmsType;
 
-	UBindParameter(int parameterNumber) {
+	UBindParameter(int parameterNumber, byte dbmsType) {
 		super(parameterNumber);
 
 		isBinded = new boolean[number];
+		this.dbmsType = dbmsType;
 		paramMode = new byte[number];
 
 		clear();
@@ -105,27 +107,37 @@ public class UBindParameter extends UParameter {
 		paramMode[index] |= PARAM_MODE_IN;
 	}
 
-	void setOutParam(int index) throws UJciException {
+	void setOutParam(int index, int sqlType) throws UJciException {
 		if (index < 0 || index >= number)
 			throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+
+		if (dbmsType == UConnection.DBMS_ORACLE
+		        || dbmsType == UConnection.DBMS_PROXY_ORACLE) {
+			if (sqlType < UUType.U_TYPE_MIN || sqlType > UUType.U_TYPE_MAX) {
+				throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+			}
+			types[index] = (byte) sqlType;
+		}
+		
 		paramMode[index] |= PARAM_MODE_OUT;
 	}
 
 	synchronized void writeParameter(UOutputBuffer outBuffer)
 			throws UJciException {
-    	    	try {
-        		for (int i = 0; i < number; i++) {
-        			if (values[i] == null) {
-        				outBuffer.addByte(UUType.U_TYPE_NULL);
-        				outBuffer.addNull();
-        			} else {
-        				outBuffer.addByte((byte) types[i]);
-        				outBuffer.writeParameter(((byte) types[i]), values[i]);
-        			}
-        		}
-    	    	} catch (IOException e) {
-    	    	    	throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
-    	    	}
+		try {
+			for (int i = 0; i < number; i++) {
+				if (isSetDefaultValue(i) == false && values[i] == null) {
+					outBuffer.addByte(UUType.U_TYPE_NULL);
+					outBuffer.addNull();
+				} else {
+					outBuffer.addByte((byte) types[i]);
+					outBuffer.writeParameter(((byte) types[i]), values[i],
+							isSetDefaultValue(i));
+				}
+			}
+		} catch (IOException e) {
+			throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+		}
 	}
 
 	synchronized void flushLobStreams() {
@@ -138,5 +150,11 @@ public class UBindParameter extends UParameter {
 				((CUBRIDClob) values[i]).flushFlushableStreams();
 			}
 		}
+	}
+
+	private boolean isSetDefaultValue(int index) {
+		return (dbmsType == UConnection.DBMS_ORACLE 
+				|| dbmsType == UConnection.DBMS_PROXY_ORACLE)
+				&& paramMode[index] == PARAM_MODE_OUT;
 	}
 }

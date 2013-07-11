@@ -60,6 +60,7 @@ namespace dbgw
         const char **pValue) const;
     virtual trait<Lob>::sp getClob(int nIndex) const;
     virtual trait<Lob>::sp getBlob(int nIndex) const;
+    virtual trait<ClientResultSet>::sp getClientResultSet(int nIndex) const;
     virtual const Value *getValue(int nIndex) const;
     virtual bool isNull(const char *szKey, bool *pNull) const;
     virtual bool getType(const char *szKey, ValueType *pType) const;
@@ -74,6 +75,7 @@ namespace dbgw
         const char **pValue) const;
     virtual trait<Lob>::sp getClob(const char *szKey) const;
     virtual trait<Lob>::sp getBlob(const char *szKey) const;
+    virtual trait<ClientResultSet>::sp getClientResultSet(const char *szKey) const;
     virtual const Value *getValue(const char *szKey) const;
     virtual void bindCharsetConverter(_CharsetConverter *pConverter);
 
@@ -94,6 +96,7 @@ namespace dbgw
     _Logger m_logger;
     int m_nAffectedRow;
     _CharsetConverter *m_pConverter;
+    sql::StatementType m_statementType;
   };
 
   struct _ClientResultSetMetaDataRaw

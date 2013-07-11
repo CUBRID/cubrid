@@ -25,6 +25,7 @@
 #include "dbgw3/Logger.h"
 #include "dbgw3/Lob.h"
 #include "dbgw3/Value.h"
+#include "dbgw3/sql/DatabaseInterface.h"
 
 namespace dbgw
 {
@@ -57,6 +58,8 @@ namespace dbgw
         return "CLOB";
       case DBGW_VAL_TYPE_BLOB:
         return "BLOB";
+      case DBGW_VAL_TYPE_RESULTSET:
+        return "RESULTSET";
       default:
         return "UNDEFINED";
       }
@@ -67,8 +70,7 @@ namespace dbgw
   public:
     Impl(ValueType type, struct tm tmValue) :
       m_type(type), m_bIsNull(false), m_nBufferSize(-1),
-      m_nValueSize(-1), m_bIsLinked(false), m_szTempBuffer(NULL),
-      m_nTempBufferSize(0)
+      m_nValueSize(-1), m_bIsLinked(false)
     {
       clearException();
       try
@@ -96,8 +98,7 @@ namespace dbgw
     Impl(ValueType type, const void *pValue, bool bIsNull,
         int nSize) :
       m_type(type), m_bIsNull(bIsNull), m_nBufferSize(-1),
-      m_nValueSize(-1), m_bIsLinked(false), m_szTempBuffer(NULL),
-      m_nTempBufferSize(0)
+      m_nValueSize(-1), m_bIsLinked(false)
     {
       clearException();
       try
@@ -113,8 +114,7 @@ namespace dbgw
 
     Impl(ValueType type, trait<Lob>::sp pLob, bool bIsNull) :
       m_type(type), m_pLob(pLob), m_bIsNull(bIsNull), m_nBufferSize(-1),
-      m_nValueSize(-1), m_bIsLinked(false), m_szTempBuffer(NULL),
-      m_nTempBufferSize(0)
+      m_nValueSize(-1), m_bIsLinked(false)
     {
       memset(&m_stValue, 0, sizeof(_RawValue));
 
@@ -132,20 +132,27 @@ namespace dbgw
         }
     }
 
+    Impl(trait<sql::ResultSet>::sp pResultSet) :
+      m_type(DBGW_VAL_TYPE_RESULTSET), m_pResultSet(pResultSet),
+      m_bIsNull(pResultSet == NULL), m_nBufferSize(-1), m_nValueSize(-1),
+      m_bIsLinked(false)
+    {
+    }
+
     Impl(const _ExternelSource &source) :
       m_type(source.type), m_bIsNull(source.isNull),
       m_nBufferSize(source.length), m_nValueSize(source.length),
-      m_bIsLinked(true), m_szTempBuffer(NULL), m_nTempBufferSize(0)
+      m_bIsLinked(true)
     {
       m_stValue = source.value;
       m_pLob = source.lob;
+      m_pResultSet = source.resultSet;
     }
 
     Impl(const Impl *pImpl) :
       m_type(pImpl->m_type), m_pLob(pImpl->m_pLob),
       m_bIsNull(pImpl->m_bIsNull), m_nBufferSize(pImpl->m_nBufferSize),
-      m_nValueSize(pImpl->m_nValueSize), m_bIsLinked(pImpl->m_bIsLinked),
-      m_szTempBuffer(NULL), m_nTempBufferSize(0)
+      m_nValueSize(pImpl->m_nValueSize), m_bIsLinked(pImpl->m_bIsLinked)
     {
       clearException();
 
@@ -176,6 +183,11 @@ namespace dbgw
 
     ~Impl()
     {
+      clear();
+    }
+
+    void clear()
+    {
       if (m_bIsLinked)
         {
           return;
@@ -184,6 +196,8 @@ namespace dbgw
       if (isStringBasedValue() && m_stValue.p != NULL)
         {
           delete[] m_stValue.p;
+          m_nBufferSize = -1;
+          m_nValueSize = -1;
         }
     }
 
@@ -198,6 +212,11 @@ namespace dbgw
               return true;
             }
 
+          if (m_type != type)
+            {
+              clear();
+            }
+
           alloc(type, pValue, bIsNull, nSize);
           return true;
         }
@@ -206,6 +225,24 @@ namespace dbgw
           setLastException(e);
           return false;
         }
+    }
+
+    void set(trait<sql::ResultSet>::sp pResultSet)
+    {
+      if (m_bIsLinked)
+        {
+          return;
+        }
+
+      if (m_type != DBGW_VAL_TYPE_RESULTSET)
+        {
+          clear();
+        }
+
+      m_type = DBGW_VAL_TYPE_RESULTSET;
+      m_bIsNull = pResultSet == NULL;
+      m_nBufferSize = -1;
+      m_nValueSize = -1;
     }
 
     void set(const _ExternelSource &source)
@@ -383,6 +420,28 @@ namespace dbgw
         }
     }
 
+    trait<sql::ResultSet>::sp getResultSet() const
+    {
+      clearException();
+
+      try
+        {
+          if (m_type != DBGW_VAL_TYPE_RESULTSET)
+            {
+              MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_RESULTSET);
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          return m_pResultSet;
+        }
+      catch (Exception &e)
+        {
+          setLastException(e);
+          return trait<sql::ResultSet>::sp();
+        }
+    }
+
     ValueType getType() const
     {
       return m_type;
@@ -406,7 +465,8 @@ namespace dbgw
 
       try
         {
-          if (m_type == DBGW_VAL_TYPE_UNDEFINED)
+          if (m_type == DBGW_VAL_TYPE_UNDEFINED ||
+              m_type == DBGW_VAL_TYPE_RESULTSET)
             {
               InvalidValueTypeException e(m_type);
               DBGW_LOG_ERROR(e.what());
@@ -452,6 +512,7 @@ namespace dbgw
             case DBGW_VAL_TYPE_BYTES:
             case DBGW_VAL_TYPE_CLOB:
             case DBGW_VAL_TYPE_BLOB:
+            case DBGW_VAL_TYPE_RESULTSET:
             default:
               MismatchValueTypeException e(m_type, toString(),
                   DBGW_VAL_TYPE_INT);
@@ -505,6 +566,7 @@ namespace dbgw
             case DBGW_VAL_TYPE_BYTES:
             case DBGW_VAL_TYPE_CLOB:
             case DBGW_VAL_TYPE_BLOB:
+            case DBGW_VAL_TYPE_RESULTSET:
             default:
               MismatchValueTypeException e(m_type, toString(),
                   DBGW_VAL_TYPE_LONG);
@@ -558,6 +620,7 @@ namespace dbgw
             case DBGW_VAL_TYPE_BYTES:
             case DBGW_VAL_TYPE_CLOB:
             case DBGW_VAL_TYPE_BLOB:
+            case DBGW_VAL_TYPE_RESULTSET:
             default:
               MismatchValueTypeException e(m_type, toString(),
                   DBGW_VAL_TYPE_FLOAT);
@@ -611,6 +674,7 @@ namespace dbgw
             case DBGW_VAL_TYPE_BYTES:
             case DBGW_VAL_TYPE_CLOB:
             case DBGW_VAL_TYPE_BLOB:
+            case DBGW_VAL_TYPE_RESULTSET:
             default:
               MismatchValueTypeException e(m_type, toString(),
                   DBGW_VAL_TYPE_DOUBLE);
@@ -666,6 +730,7 @@ namespace dbgw
             case DBGW_VAL_TYPE_BYTES:
             case DBGW_VAL_TYPE_CLOB:
             case DBGW_VAL_TYPE_BLOB:
+            case DBGW_VAL_TYPE_RESULTSET:
             default:
               MismatchValueTypeException e(m_type, toString(),
                   DBGW_VAL_TYPE_CHAR);
@@ -710,6 +775,7 @@ namespace dbgw
             case DBGW_VAL_TYPE_BYTES:
             case DBGW_VAL_TYPE_CLOB:
             case DBGW_VAL_TYPE_BLOB:
+            case DBGW_VAL_TYPE_RESULTSET:
             default:
               MismatchValueTypeException e(m_type, toString(),
                   DBGW_VAL_TYPE_TIME);
@@ -746,6 +812,7 @@ namespace dbgw
             case DBGW_VAL_TYPE_BYTES:
             case DBGW_VAL_TYPE_CLOB:
             case DBGW_VAL_TYPE_BLOB:
+            case DBGW_VAL_TYPE_RESULTSET:
             default:
               MismatchValueTypeException e(m_type, toString(),
                   DBGW_VAL_TYPE_DATE);
@@ -782,6 +849,7 @@ namespace dbgw
             case DBGW_VAL_TYPE_BYTES:
             case DBGW_VAL_TYPE_CLOB:
             case DBGW_VAL_TYPE_BLOB:
+            case DBGW_VAL_TYPE_RESULTSET:
             default:
               MismatchValueTypeException e(m_type, toString(),
                   DBGW_VAL_TYPE_DATETIME);
@@ -857,6 +925,8 @@ namespace dbgw
               return "(CLOB)";
             case DBGW_VAL_TYPE_BLOB:
               return "(BLOB)";
+            case DBGW_VAL_TYPE_RESULTSET:
+              return "(RESULTSET)";
             default:
               InvalidValueTypeException e(m_type);
               DBGW_LOG_ERROR(e.what());
@@ -947,6 +1017,7 @@ namespace dbgw
             case DBGW_VAL_TYPE_CLOB:
             case DBGW_VAL_TYPE_BLOB:
               return true;
+            case DBGW_VAL_TYPE_RESULTSET:
             default:
               InvalidValueTypeException e(m_type);
               DBGW_LOG_ERROR(e.what());
@@ -1281,12 +1352,11 @@ namespace dbgw
     ValueType m_type;
     _RawValue m_stValue;
     trait<Lob>::sp m_pLob;
+    trait<sql::ResultSet>::sp m_pResultSet;
     bool m_bIsNull;
     int m_nBufferSize;
     int m_nValueSize;
     bool m_bIsLinked;
-    char *m_szTempBuffer;
-    int m_nTempBufferSize;
   };
 
   int Value::MAX_BOUNDARY_SIZE()
@@ -1315,6 +1385,11 @@ namespace dbgw
   {
   }
 
+  Value::Value(trait<sql::ResultSet>::sp pResultSet) :
+    m_pImpl(new Impl(pResultSet))
+  {
+  }
+
   Value::Value(const _ExternelSource &source) :
     m_pImpl(new Impl(source))
   {
@@ -1336,6 +1411,11 @@ namespace dbgw
   bool Value::set(ValueType type, void *pValue, bool bIsNull, int nSize)
   {
     return m_pImpl->set(type, pValue, bIsNull, nSize);
+  }
+
+  void Value::set(trait<sql::ResultSet>::sp pResultSet)
+  {
+    m_pImpl->set(pResultSet);
   }
 
   void Value::set(const _ExternelSource &source)
@@ -1371,6 +1451,11 @@ namespace dbgw
   trait<Lob>::sp Value::getBlob() const
   {
     return m_pImpl->getBlob();
+  }
+
+  trait<sql::ResultSet>::sp Value::getResultSet() const
+  {
+    return m_pImpl->getResultSet();
   }
 
   ValueType Value::getType() const

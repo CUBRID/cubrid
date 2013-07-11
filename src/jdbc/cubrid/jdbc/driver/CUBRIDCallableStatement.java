@@ -549,17 +549,17 @@ public class CUBRIDCallableStatement extends CUBRIDPreparedStatement implements
 
 	public void registerOutParameter(int index, int sqlType)
 			throws SQLException {
-		registerOutParameter(index);
+		doRegisterOutParameter(index, sqlType);
 	}
 
 	public void registerOutParameter(int index, int sqlType, int scale)
 			throws SQLException {
-		registerOutParameter(index);
+		doRegisterOutParameter(index, sqlType);
 	}
 
 	public void registerOutParameter(int index, int sqlType, String typeName)
 			throws SQLException {
-		registerOutParameter(index);
+		doRegisterOutParameter(index, sqlType);
 	}
 
 	public void registerOutParameter(String pName, int sqlType)
@@ -591,12 +591,13 @@ public class CUBRIDCallableStatement extends CUBRIDPreparedStatement implements
 	 * =======================================================================
 	 */
 
-	private void registerOutParameter(int index) throws SQLException {
+	private void doRegisterOutParameter(int index, int sqlType) throws SQLException {
 		checkIsOpen();
 		synchronized (u_stmt) {
-			u_stmt.registerOutParameter(index - 1);
+			u_stmt.registerOutParameter(index - 1, sqlType);
 			error = u_stmt.getRecentError();
 		}
+		
 		checkBindError();
 	}
 

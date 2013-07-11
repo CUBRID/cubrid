@@ -53,6 +53,7 @@ namespace dbgw
     virtual bool getBytes(int nIndex, size_t *pSize, const char **pValue) const = 0;
     virtual trait<Lob>::sp getClob(int nIndex) const = 0;
     virtual trait<Lob>::sp getBlob(int nIndex) const = 0;
+    virtual trait<ClientResultSet>::sp getClientResultSet(int nIndex) const = 0;
     virtual const Value *getValue(int nIndex) const = 0;
     virtual bool isNull(const char *szKey, bool *pNull) const = 0;
     virtual bool getType(const char *szKey, ValueType *pType) const = 0;
@@ -66,6 +67,7 @@ namespace dbgw
     virtual bool getBytes(const char *szKey, size_t *pSize, const char **pValue) const = 0;
     virtual trait<Lob>::sp getClob(const char *szKey) const = 0;
     virtual trait<Lob>::sp getBlob(const char *szKey) const = 0;
+    virtual trait<ClientResultSet>::sp getClientResultSet(const char *szKey) const = 0;
     virtual const Value *getValue(const char *szKey) const = 0;
     virtual void bindCharsetConverter(_CharsetConverter *pConverter) = 0;
   };

@@ -38,6 +38,7 @@ namespace dbgw
        */
       CUBRIDResultSet(trait<Statement>::sp pStatement,
           const trait<_CUBRIDResultSetMetaDataRaw>::vector &metaDataRawList);
+      CUBRIDResultSet(trait<Statement>::sp pStatement);
       virtual ~CUBRIDResultSet();
 
       virtual bool isFirst();
@@ -57,6 +58,7 @@ namespace dbgw
       virtual void getBytes(int nIndex, size_t *pSize, const char **pValue) const;
       virtual trait<Lob>::sp getClob(int nIndex) const;
       virtual trait<Lob>::sp getBlob(int nIndex) const;
+      virtual trait<sql::ResultSet>::sp getResultSet(int nIndex) const;
       virtual const Value *getValue(int nIndex) const;
       virtual trait<ResultSetMetaData>::sp getMetaData() const;
       virtual _ValueSet &getInternalValuSet();
@@ -75,6 +77,8 @@ namespace dbgw
       void getResultSetDoubleColumn(size_t nIndex,
           const _CUBRIDResultSetMetaDataRaw &md);
       void getResultSetBytesColumn(size_t nIndex,
+          const _CUBRIDResultSetMetaDataRaw &md);
+      void getResultSetResultSetColumn(size_t nIndex,
           const _CUBRIDResultSetMetaDataRaw &md);
       void getResultSetStringColumn(size_t nIndex,
           const _CUBRIDResultSetMetaDataRaw &md);

@@ -153,6 +153,32 @@ namespace dbgw
       }
   }
 
+  bool _ValueSet::set(size_t nIndex, trait<sql::ResultSet>::sp pResultSet)
+  {
+    clearException();
+    try
+      {
+        if (m_valueList.size() <= nIndex)
+          {
+            m_valueList.resize(nIndex + 1);
+          }
+
+        trait<Value>::sp p(new Value(pResultSet));
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_valueList[nIndex] = _ValuePair("", p);
+        return true;
+      }
+    catch (Exception &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
   bool _ValueSet::put(const char *szKey, int nValue, bool bNull)
   {
     return put(szKey, DBGW_VAL_TYPE_INT, &nValue, bNull);
@@ -265,6 +291,28 @@ namespace dbgw
     try
       {
         trait<Value>::sp p(new Value(source));
+        if (getLastErrorCode() != DBGW_ER_NO_ERROR)
+          {
+            throw getLastException();
+          }
+
+        m_valueList.push_back(_ValuePair(szKey, p));
+        return true;
+      }
+    catch (Exception &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool _ValueSet::put(const char *szKey, trait<sql::ResultSet>::sp pResultSet)
+  {
+    clearException();
+
+    try
+      {
+        trait<Value>::sp p(new Value(pResultSet));
         if (getLastErrorCode() != DBGW_ER_NO_ERROR)
           {
             throw getLastException();
@@ -442,6 +490,29 @@ namespace dbgw
           }
 
         m_valueList[nIndex].second->set(source);
+        return true;
+      }
+    catch (Exception &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool _ValueSet::replace(size_t nIndex, trait<sql::ResultSet>::sp pResultSet)
+  {
+    clearException();
+
+    try
+      {
+        if (m_valueList.size() <= nIndex || m_valueList[nIndex].second == NULL)
+          {
+            ArrayIndexOutOfBoundsException e(nIndex, "ValueSet");
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+
+        m_valueList[nIndex].second->set(pResultSet);
         return true;
       }
     catch (Exception &e)
@@ -1063,6 +1134,29 @@ namespace dbgw
       {
         setLastException(e);
         return trait<Lob>::sp();
+      }
+  }
+
+  trait<sql::ResultSet>::sp _ValueSet::getResultSet(int nIndex) const
+  {
+    clearException();
+
+    try
+      {
+        const Value *p = getValue(nIndex);
+        if (p == NULL)
+          {
+            throw getLastException();
+          }
+        else
+          {
+            return p->getResultSet();
+          }
+      }
+    catch (Exception &e)
+      {
+        setLastException(e);
+        return trait<sql::ResultSet>::sp();
       }
   }
 

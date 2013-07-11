@@ -29,6 +29,7 @@ namespace dbgw
     class OraclePreparedStatement : public PreparedStatement
     {
     public:
+      OraclePreparedStatement(trait<Connection>::sp pConnection);
       OraclePreparedStatement(trait<Connection>::sp pConnection,
           const char *szSql);
       virtual ~ OraclePreparedStatement();

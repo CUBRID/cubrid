@@ -68,17 +68,17 @@ class UPutByOIDParameter extends UParameter {
 
 	synchronized void writeParameter(UOutputBuffer outBuffer)
 			throws UJciException {
-    	    	try {
-            		for (int i = 0; i < number; i++) {
-        			if (attributeNames[i] != null)
-        				outBuffer.addStringWithNull(attributeNames[i]);
-        			else
-        				outBuffer.addNull();
-        			outBuffer.addByte(types[i]);
-        			outBuffer.writeParameter(types[i], values[i]);
-        		}
-    	    	} catch (IOException e) {
-    	    	    	throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
-    	    	}
+		try {
+			for (int i = 0; i < number; i++) {
+				if (attributeNames[i] != null)
+					outBuffer.addStringWithNull(attributeNames[i]);
+				else
+					outBuffer.addNull();
+				outBuffer.addByte(types[i]);
+				outBuffer.writeParameter(types[i], values[i], false);
+			}
+		} catch (IOException e) {
+			throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+		}
 	}
 }

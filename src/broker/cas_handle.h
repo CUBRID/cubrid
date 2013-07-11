@@ -79,6 +79,7 @@ union db_data
 #if defined(CAS_FOR_ORACLE)
   OCIDate date;
   OCINumber number;
+  OCIStmt *cursor;
 #else				/* CAS_FOR_ORACLE */
   MYSQL_TIME t;
 #endif				/* !CAS_FOR_ORACLE */

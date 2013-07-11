@@ -277,6 +277,10 @@ namespace DBGW3
         struct tm *pValue);
     DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
         struct tm *pValue);
+    DECLSPECIFIER bool __stdcall GetResultSet(Handle hResult, int nIndex,
+        Handle hOutResult);
+    DECLSPECIFIER bool __stdcall GetResultSet(Handle hResult,
+        const char *szName, Handle hOutResult);
     DECLSPECIFIER bool __stdcall GetType(Handle hResult, int nIndex,
         ValueType *pType);
     DECLSPECIFIER bool __stdcall GetType(Handle hResult, const char *szName,

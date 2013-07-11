@@ -33,7 +33,8 @@ namespace dbgw
     class _OracleStatementBase
     {
     public:
-      _OracleStatementBase(_OracleContext *pContext,
+      _OracleStatementBase(trait<Connection>::sp pConnection);
+      _OracleStatementBase(trait<Connection>::sp pConnection,
           const char *szSql);
       virtual ~ _OracleStatementBase();
 
@@ -76,8 +77,10 @@ namespace dbgw
     private:
       void bindParameters();
       void bindParameters(size_t nIndex);
+      void registerOutParameterAgain(size_t nIndex);
 
     private:
+      trait<Connection>::sp m_pConnection;
       _OracleContext *m_pContext;
       OCIStmt *m_pOCIStmt;
       _OracleHandle m_ociStmt;

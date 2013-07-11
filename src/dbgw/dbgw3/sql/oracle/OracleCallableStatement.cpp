@@ -32,7 +32,7 @@ namespace dbgw
     OracleCallableStatement::OracleCallableStatement(
         trait<Connection>::sp pConnection, const char *szSql) :
       CallableStatement(pConnection),
-      m_stmtBase((_OracleContext *) pConnection->getNativeHandle(), szSql)
+      m_stmtBase(pConnection, szSql)
     {
       m_stmtBase.prepareCall();
 
@@ -61,10 +61,13 @@ namespace dbgw
     void OracleCallableStatement::clearParameters()
     {
       m_stmtBase.clearParameters();
+      m_resultSet.clear();
     }
 
     trait<ResultSet>::sp OracleCallableStatement::executeQuery()
     {
+      m_resultSet.clear();
+
       m_stmtBase.executeQuery(getConnection()->getAutoCommit());
 
       const trait<_OracleBind>::spvector &bindList = m_stmtBase.getBindList();
@@ -84,6 +87,8 @@ namespace dbgw
 
     int OracleCallableStatement::executeUpdate()
     {
+      m_resultSet.clear();
+
       int nAffectedRow = m_stmtBase.executeUpdate(
           getConnection()->getAutoCommit());
 
@@ -482,6 +487,28 @@ namespace dbgw
         }
 
       return m_resultSet.getBlob(nIndex);
+    }
+
+    trait<ResultSet>::sp OracleCallableStatement::getResultSet(int nIndex) const
+    {
+      if (m_resultSet.size() == 0)
+        {
+          NotExistOutParameterException e;
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      const trait<_OracleParameterMetaData>::vector &metaList =
+          m_stmtBase.getParamMetaDataList();
+
+      if ((int) metaList.size() <= nIndex || metaList[nIndex].isInParameter())
+        {
+          NotExistOutParameterException e(nIndex);
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      return m_resultSet.getResultSet(nIndex);
     }
 
     const Value *OracleCallableStatement::getValue(int nIndex) const

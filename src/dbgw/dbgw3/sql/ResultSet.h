@@ -41,6 +41,7 @@ namespace dbgw
       virtual bool next() = 0;
 
     public:
+      virtual trait<Statement>::sp getStatement() const;
       virtual int getRowCount() const = 0;
       virtual ValueType getType(int nIndex) const = 0;
       virtual int getInt(int nIndex) const = 0;
@@ -55,6 +56,7 @@ namespace dbgw
       virtual const Value *getValue(int nIndex) const = 0;
       virtual trait<Lob>::sp getClob(int nIndex) const = 0;
       virtual trait<Lob>::sp getBlob(int nIndex) const = 0;
+      virtual trait<ResultSet>::sp getResultSet(int nIndex) const = 0;
       virtual trait<ResultSetMetaData>::sp getMetaData() const = 0;
       virtual _ValueSet &getInternalValuSet() = 0;
 

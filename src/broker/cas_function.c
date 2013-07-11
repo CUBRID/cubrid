@@ -143,10 +143,6 @@ static const char *type_str_tbl[] = {
   "ENUM"			/* CCI_U_TYPE_ENUM */
 };
 
-static int query_sequence_num = 0;
-#define QUERY_SEQ_NUM_NEXT_VALUE()      ++query_sequence_num
-#define QUERY_SEQ_NUM_CURRENT_VALUE()   query_sequence_num
-
 FN_RETURN
 fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	     T_REQ_INFO * req_info)
@@ -375,7 +371,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
   query_timeout = 0;
 #endif /* !LIBCAS_FOR_JSP */
 
-  cas_log_write_nonl (QUERY_SEQ_NUM_NEXT_VALUE (), false, "prepare %d ",
+  cas_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ",
 		      flag);
   cas_log_write_query_string (sql_stmt, sql_size - 1);
 
@@ -404,7 +400,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
 #endif
 
   srv_h_id = ux_prepare (sql_stmt, flag, auto_commit_mode,
-			 net_buf, req_info, QUERY_SEQ_NUM_CURRENT_VALUE ());
+			 net_buf, req_info, query_seq_num_current_value ());
 
   if (ret_srv_h_id != NULL)
     {
@@ -414,7 +410,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv,
 
   srv_handle = hm_find_srv_handle (srv_h_id);
 
-  cas_log_write (QUERY_SEQ_NUM_CURRENT_VALUE (), false,
+  cas_log_write (query_seq_num_current_value (), false,
 		 "prepare srv_h_id %s%d%s%s",
 		 (srv_h_id < 0) ? "error:" : "",
 		 (srv_h_id < 0) ? err_info.err_number : srv_h_id,
@@ -1162,16 +1158,16 @@ fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       shard_id = 0;
     }
 
-  cas_log_write (QUERY_SEQ_NUM_NEXT_VALUE (), true,
+  cas_log_write (query_seq_num_next_value (), true,
 		 "schema_info %s %s %s %d",
 		 get_schema_type_str (schema_type),
 		 (arg1 ? arg1 : "NULL"), (arg2 ? arg2 : "NULL"), flag);
 
   srv_h_id =
     ux_schema_info (schema_type, arg1, arg2, flag,
-		    net_buf, req_info, QUERY_SEQ_NUM_CURRENT_VALUE ());
+		    net_buf, req_info, query_seq_num_current_value ());
 
-  cas_log_write (QUERY_SEQ_NUM_CURRENT_VALUE (), false,
+  cas_log_write (query_seq_num_current_value (), false,
 		 "schema_info srv_h_id %d", srv_h_id);
 
   return FN_KEEP_CONN;
@@ -1947,7 +1943,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   if (sql_stmt != NULL)
     {
-      srv_h_id = hm_new_srv_handle (&srv_handle, QUERY_SEQ_NUM_NEXT_VALUE ());
+      srv_h_id = hm_new_srv_handle (&srv_handle, query_seq_num_next_value ());
       if (srv_h_id < 0)
 	{
 	  net_buf_cp_byte (net_buf, '\0');
@@ -2123,7 +2119,7 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#if !defined(CAS_FOR_MYSQL)
 FN_RETURN
 fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		T_REQ_INFO * req_info)
@@ -2142,7 +2138,15 @@ fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   return FN_KEEP_CONN;
 }
+#else /* !defined(CAS_FOR_MYSQL) */
+fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+		T_REQ_INFO * req_info)
+{
+  return fn_not_supported (sock_fd, argc, argv, net_buf, req_info);
+}
+#endif /* !defined(CAS_FOR_MYSQL) */
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 FN_RETURN
 fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv,
 		       T_NET_BUF * net_buf, T_REQ_INFO * req_info)

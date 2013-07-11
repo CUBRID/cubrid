@@ -137,6 +137,8 @@ extern void libcas_srv_handle_free (int h_id);
 
 void set_cas_info_size (void);
 
+static int query_sequence_num = 0;
+
 int cas_shard_flag = OFF;
 int shm_shard_id = SHARD_ID_UNSUPPORTED;
 
@@ -215,7 +217,7 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_XA_END_TRAN */
   fn_con_close,			/* CAS_FC_CON_CLOSE */
   fn_check_cas,			/* CAS_FC_CHECK_CAS */
-  fn_not_supported,		/* CAS_FC_MAKE_OUT_RS */
+  fn_make_out_rs,		/* CAS_FC_MAKE_OUT_RS */
   fn_not_supported,		/* CAS_FC_GET_GENERATED_KEYS */
   fn_not_supported,		/* CAS_FC_LOB_NEW */
   fn_not_supported,		/* CAS_FC_LOB_WRITE */
@@ -2786,3 +2788,15 @@ set_db_parameter (void)
 }
 #endif /* !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) */
 #endif /* !LIBCAS_FOR_JSP */
+
+int
+query_seq_num_next_value (void)
+{
+  return ++query_sequence_num;
+}
+
+int
+query_seq_num_current_value (void)
+{
+  return query_sequence_num;
+}

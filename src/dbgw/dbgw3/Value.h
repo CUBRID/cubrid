@@ -23,6 +23,11 @@
 namespace dbgw
 {
 
+  namespace sql
+  {
+    class ResultSet;
+  }
+
   class Lob;
   class _CharsetConverter;
 
@@ -40,7 +45,8 @@ namespace dbgw
     DBGW_VAL_TYPE_TIME,
     DBGW_VAL_TYPE_BYTES,
     DBGW_VAL_TYPE_CLOB,
-    DBGW_VAL_TYPE_BLOB
+    DBGW_VAL_TYPE_BLOB,
+    DBGW_VAL_TYPE_RESULTSET
   };
 
   union _RawValue
@@ -59,6 +65,7 @@ namespace dbgw
     size_t length;
     _RawValue value;
     trait<Lob>::sp lob;
+    trait<sql::ResultSet>::sp resultSet;
   };
 
   const char *getValueTypeString(int type);
@@ -74,6 +81,7 @@ namespace dbgw
     Value(ValueType type, const void *pValue, bool bNull = false,
         int nSize = -1);
     Value(ValueType type, trait<Lob>::sp pLob, bool bNull = false);
+    Value(trait<sql::ResultSet>::sp pResultSet);
     Value(const _ExternelSource &source);
     Value(const Value &value);
     virtual ~ Value();
@@ -81,6 +89,7 @@ namespace dbgw
   public:
     bool set(const ValueType type, void *pValue, bool bNull = false,
         int nSize = -1);
+    void set(trait<sql::ResultSet>::sp pResultSet);
     void set(const _ExternelSource &source);
     /*
      * The Number getters are replaced by toXXX.
@@ -95,6 +104,7 @@ namespace dbgw
     bool getBytes(size_t *pSize, const char **pValue) const;
     trait<Lob>::sp getClob() const;
     trait<Lob>::sp getBlob() const;
+    trait<sql::ResultSet>::sp getResultSet() const;
     ValueType getType() const;
     void *getVoidPtr() const;
     int getLength() const;

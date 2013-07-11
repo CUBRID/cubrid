@@ -20,6 +20,7 @@
 #include "dbgw3/sql/oracle/OracleCommon.h"
 #include "dbgw3/sql/oracle/OracleValue.h"
 #include "dbgw3/sql/oracle/OracleResultSetMetaData.h"
+#include "dbgw3/sql/oracle/OracleResultSet.h"
 
 namespace dbgw
 {
@@ -51,6 +52,8 @@ namespace dbgw
           return SQLT_CLOB;
         case DBGW_VAL_TYPE_BLOB:
           return SQLT_BLOB;
+        case DBGW_VAL_TYPE_RESULTSET:
+          return SQLT_RSET;
         default:
           return SQLT_STR;
         }
@@ -238,13 +241,17 @@ namespace dbgw
           break;
         case SQLT_CLOB:
           m_linkedValue.lob = trait<Lob>::sp(
-              new OracleLob(m_pContext, DBGW_VAL_TYPE_CLOB,
+              new OracleLob(m_pContext, DBGW_VAL_TYPE_BLOB,
                   (OCILobLocator *) m_pBuffer));
           break;
         case SQLT_BLOB:
           m_linkedValue.lob = trait<Lob>::sp(
               new OracleLob(m_pContext, DBGW_VAL_TYPE_BLOB,
                   (OCILobLocator *) m_pBuffer));
+          break;
+        case SQLT_RSET:
+          boost::dynamic_pointer_cast<OracleResultSet>(
+              m_linkedValue.resultSet)->makeMetaData();
           break;
         case SQLT_BIN:
           m_linkedValue.length = m_nReadLen;
@@ -288,6 +295,7 @@ namespace dbgw
           break;
         case SQLT_CLOB:
         case SQLT_BLOB:
+        case SQLT_RSET:
           m_pBuffer = NULL;
           break;
         default:
@@ -359,13 +367,16 @@ namespace dbgw
             case DBGW_VAL_TYPE_BLOB:
               bindBlob(pValue);
               break;
+            case DBGW_VAL_TYPE_RESULTSET:
+              bindResultSet(pValue);
             default:
               break;
             }
 
           void **p = NULL;
           if (m_dbgwType == DBGW_VAL_TYPE_CLOB
-              || m_dbgwType == DBGW_VAL_TYPE_BLOB)
+              || m_dbgwType == DBGW_VAL_TYPE_BLOB
+              || m_dbgwType == DBGW_VAL_TYPE_RESULTSET)
             {
               p = (void **) &m_pBuffer;
             }
@@ -603,24 +614,36 @@ namespace dbgw
 
     void _OracleBind::bindClob(const Value *pValue)
     {
-      trait<Lob>::sp pLob = pValue->getClob();
-      if (pLob == NULL)
+      m_linkedValue.lob = pValue->getClob();
+      if (m_linkedValue.lob == NULL)
         {
           throw getLastException();
         }
 
-      m_pBuffer = (char *) pLob->getNativeHandle();
+      m_pBuffer = (char *) m_linkedValue.lob->getNativeHandle();
     }
 
     void _OracleBind::bindBlob(const Value *pValue)
     {
-      trait<Lob>::sp pLob = pValue->getBlob();
-      if (pLob == NULL)
+      m_linkedValue.lob = pValue->getBlob();
+      if (m_linkedValue.lob == NULL)
         {
           throw getLastException();
         }
 
-      m_pBuffer = (char *) pLob->getNativeHandle();
+      m_pBuffer = (char *) m_linkedValue.lob->getNativeHandle();
+    }
+
+    void _OracleBind::bindResultSet(const Value *pValue)
+    {
+      m_linkedValue.resultSet = pValue->getResultSet();
+      if (m_linkedValue.resultSet == NULL)
+        {
+          throw getLastException();
+        }
+
+      m_pBuffer =
+          (char *) m_linkedValue.resultSet->getStatement()->getNativeHandle();
     }
 
     _OracleDefine::_OracleDefine(_OracleContext *pContext,

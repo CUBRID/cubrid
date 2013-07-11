@@ -33,20 +33,23 @@ namespace dbgw
       ResultSet(pStatement), m_pContext(pContext),
       m_pOCIStmt((OCIStmt *) pStatement->getNativeHandle()),
       m_nCursorPos(OCI_DEFAULT), m_nRowCount(-1),
-      m_nFetchRowCount(0)
+      m_nFetchRowCount(0), m_bIsOutResultSet(false)
     {
-      m_pMetaData = trait<ResultSetMetaData>::sp(
-          new OracleResultSetMetaData(m_pOCIStmt, m_pContext->pOCIErr));
+      makeMetaData();
 
-      OracleResultSetMetaData *pOracleMD =
-          (OracleResultSetMetaData *) m_pMetaData.get();
+      pStatement->registerResource(this);
+    }
 
-      for (int i = 0, nSize = m_pMetaData->getColumnCount(); i < nSize; i++)
+    OracleResultSet::OracleResultSet(trait<Statement>::sp pStatement,
+        _OracleContext *pContext, bool bIsOutResultSet) :
+      ResultSet(pStatement), m_pContext(pContext),
+      m_pOCIStmt((OCIStmt *) pStatement->getNativeHandle()),
+      m_nCursorPos(OCI_DEFAULT), m_nRowCount(-1),
+      m_nFetchRowCount(0), m_bIsOutResultSet(bIsOutResultSet)
+    {
+      if (m_bIsOutResultSet == false)
         {
-          trait<_OracleDefine>::sp pDefine(
-              new _OracleDefine(m_pContext, m_pOCIStmt, i,
-                  pOracleMD->getColumnInfo(i)));
-          m_defineList.push_back(pDefine);
+          makeMetaData();
         }
 
       pStatement->registerResource(this);
@@ -293,6 +296,24 @@ namespace dbgw
       return m_resultSet.getBlob(nIndex);
     }
 
+    trait<ResultSet>::sp OracleResultSet::getResultSet(int nIndex) const
+    {
+      if (m_nFetchRowCount == 0)
+        {
+          InvalidCursorPositionException e;
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      trait<sql::ResultSet>::sp pResultSet = m_resultSet.getResultSet(nIndex);
+      if (pResultSet == NULL)
+        {
+          throw getLastException();
+        }
+
+      return pResultSet;
+    }
+
     const Value *OracleResultSet::getValue(int nIndex) const
     {
       if (m_nFetchRowCount == 0)
@@ -313,6 +334,23 @@ namespace dbgw
     _ValueSet &OracleResultSet::getInternalValuSet()
     {
       return m_resultSet;
+    }
+
+    void OracleResultSet::makeMetaData()
+    {
+      m_pMetaData = trait<ResultSetMetaData>::sp(
+          new OracleResultSetMetaData(m_pOCIStmt, m_pContext->pOCIErr));
+
+      OracleResultSetMetaData *pOracleMD =
+          (OracleResultSetMetaData *) m_pMetaData.get();
+
+      for (int i = 0, nSize = m_pMetaData->getColumnCount(); i < nSize; i++)
+        {
+          trait<_OracleDefine>::sp pDefine(
+              new _OracleDefine(m_pContext, m_pOCIStmt, i,
+                  pOracleMD->getColumnInfo(i)));
+          m_defineList.push_back(pDefine);
+        }
     }
 
     void OracleResultSet::doClose()

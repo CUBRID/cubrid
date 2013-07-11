@@ -49,6 +49,11 @@ namespace dbgw
       closeResource();
     }
 
+    trait<Statement>::sp ResultSet::getStatement() const
+    {
+      return m_pStatement;
+    }
+
     void ResultSet::doUnlinkResource()
     {
       doClose();

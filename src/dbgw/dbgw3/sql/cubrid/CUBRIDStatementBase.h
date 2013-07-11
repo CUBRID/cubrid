@@ -78,6 +78,7 @@ namespace dbgw
     {
     public:
       _CUBRIDStatementBase(int hCCIConnection, const char *szSql);
+      _CUBRIDStatementBase(int hCCIConnection, int hCCIRequest);
       virtual ~_CUBRIDStatementBase();
 
       void addBatch();

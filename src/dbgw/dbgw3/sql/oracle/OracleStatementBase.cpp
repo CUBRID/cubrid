@@ -21,6 +21,8 @@
 #include "dbgw3/sql/oracle/OracleStatementBase.h"
 #include "dbgw3/sql/oracle/OracleParameterMetaData.h"
 #include "dbgw3/sql/oracle/OracleValue.h"
+#include "dbgw3/sql/oracle/OraclePreparedStatement.h"
+#include "dbgw3/sql/oracle/OracleResultSet.h"
 
 namespace dbgw
 {
@@ -29,9 +31,20 @@ namespace dbgw
   {
 
     _OracleStatementBase::_OracleStatementBase(
-        _OracleContext *pContext, const char *szSql) :
-      m_pContext(pContext), m_pOCIStmt(NULL), m_sql(szSql),
-      m_bIsCallableStatement(false)
+        trait<Connection>::sp pConnection) :
+      m_pConnection(pConnection),
+      m_pContext((_OracleContext *) pConnection->getNativeHandle()),
+      m_pOCIStmt(NULL), m_sql(""), m_bIsCallableStatement(false)
+    {
+      m_pOCIStmt = (OCIStmt *) m_ociStmt.alloc(m_pContext->pOCIEnv,
+          OCI_HTYPE_STMT);
+    }
+
+    _OracleStatementBase::_OracleStatementBase(
+        trait<Connection>::sp pConnection, const char *szSql) :
+      m_pConnection(pConnection),
+      m_pContext((_OracleContext *) pConnection->getNativeHandle()),
+      m_pOCIStmt(NULL), m_sql(szSql), m_bIsCallableStatement(false)
     {
     }
 
@@ -251,6 +264,12 @@ namespace dbgw
                   throw getLastException();
                 }
             }
+          else if (type == DBGW_VAL_TYPE_RESULTSET)
+            {
+              /**
+               * we will register out parameter before executing sql.
+               */
+            }
           else
             {
               if (m_parameter.set(nIndex, type, NULL, true, nSize) == false)
@@ -269,6 +288,7 @@ namespace dbgw
           m_metaList[nIndex].setReservedSize(nSize + 1);
         }
 
+      m_metaList[nIndex].setParamType(type);
       m_metaList[nIndex].setParamMode(DBGW_PARAM_MODE_OUT);
     }
 
@@ -563,6 +583,15 @@ namespace dbgw
     {
       m_bindList.clear();
 
+
+      for (size_t i = 0, size = m_metaList.size(); i < size; i++)
+        {
+          if (m_metaList[i].isLazyBindingOutParameter())
+            {
+              registerOutParameterAgain(i);
+            }
+        }
+
       const Value *pValue = NULL;
       for (size_t i = 0, size = m_parameter.size(); i < size; i++)
         {
@@ -596,6 +625,23 @@ namespace dbgw
               new _OracleBind(m_pContext, m_pOCIStmt, i, pValue,
                   m_metaList[i].getSize()));
           m_bindList.push_back(pBind);
+        }
+    }
+
+    void _OracleStatementBase::registerOutParameterAgain(size_t nIndex)
+    {
+      if (m_metaList[nIndex].getType() == DBGW_VAL_TYPE_RESULTSET)
+        {
+          trait<Statement>::sp pStatement(
+              new OraclePreparedStatement(m_pConnection));
+
+          trait<ResultSet>::sp pResult(
+              new OracleResultSet(pStatement, m_pContext, true));
+
+          if (m_parameter.set(nIndex, pResult) == false)
+            {
+              throw getLastException();
+            }
         }
     }
 

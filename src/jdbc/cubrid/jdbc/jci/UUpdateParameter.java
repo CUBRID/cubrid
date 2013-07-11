@@ -42,12 +42,12 @@ class UUpdateParameter extends UParameter {
 	private int indexes[]; /* parameter's column index */
 
 	public UUpdateParameter(UColumnInfo columnInfo[], int[] columnIndexes,
-			Object[] columnValues) throws UJciException {
+	        Object[] columnValues) throws UJciException {
 		super(columnValues.length);
 
 		/* check acceptable argument */
 		if (columnIndexes == null || columnValues == null
-				|| columnIndexes.length != columnValues.length) {
+		        || columnIndexes.length != columnValues.length) {
 			throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
 		}
 
@@ -72,15 +72,15 @@ class UUpdateParameter extends UParameter {
 	}
 
 	synchronized void writeParameter(UOutputBuffer outBuffer)
-			throws UJciException {
-	    	try {
-            		for (int i = 0; i < number; i++) {
-            			outBuffer.addInt(indexes[i]);
-            			outBuffer.addByte(types[i]);
-            			outBuffer.writeParameter(types[i], values[i]);
-            		}
-	    	} catch (IOException e) {
-	    	    	throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);    
-	    	}
+	        throws UJciException {
+		try {
+			for (int i = 0; i < number; i++) {
+				outBuffer.addInt(indexes[i]);
+				outBuffer.addByte(types[i]);
+				outBuffer.writeParameter(types[i], values[i], false);
+			}
+		} catch (IOException e) {
+			throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+		}
 	}
 }

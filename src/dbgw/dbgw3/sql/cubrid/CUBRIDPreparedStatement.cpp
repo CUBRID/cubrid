@@ -39,6 +39,18 @@ namespace dbgw
       pConnection->registerResource(this);
     }
 
+    CUBRIDPreparedStatement::CUBRIDPreparedStatement(
+        trait<Connection>::sp pConnection, int nOutReqId) :
+      PreparedStatement(pConnection),
+      m_baseStatement(*(int *) pConnection->getNativeHandle(), nOutReqId)
+    {
+      DBGW_LOGF_DEBUG("%s (CONN_ID:%d) (REQ_ID:%d)",
+          "prepare external statement.",
+          *(int *) pConnection->getNativeHandle(), nOutReqId);
+
+      pConnection->registerResource(this);
+    }
+
     CUBRIDPreparedStatement::~CUBRIDPreparedStatement()
     {
       try
