@@ -210,13 +210,13 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 	  /* check for system errors */
 	  if (typ == PT_TYPE_OBJECT)
 	    {
-	      if (!typs->data_type)
+	      if (typs->data_type == NULL)
 		{
 		  PT_INTERNAL_ERROR (parser, "interface");
 		  return;
 		}
 
-	      if (!typs->data_type->info.data_type.entity)
+	      if (typs->data_type->info.data_type.entity == NULL)
 		{
 		  /* this type is the generic object */
 		  cls_nam = NULL;
@@ -565,6 +565,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 
   db_type = DB_VALUE_TYPE (val);
   result->type_enum = pt_db_to_type_enum (db_type);
+
   switch (db_type)
     {
     case DB_TYPE_NULL:
@@ -831,25 +832,25 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       break;
 
     case DB_TYPE_BLOB:
-      if (db_elo_copy_structure (db_get_elo (val),
-				 &result->info.value.data_value.elo) !=
-	  NO_ERROR)
-	{
-	  parser_free_node (parser, result);
-	  result = NULL;
-	}
-      result->type_enum = PT_TYPE_BLOB;
-      break;
-
     case DB_TYPE_CLOB:
-      if (db_elo_copy_structure (db_get_elo (val),
-				 &result->info.value.data_value.elo) !=
-	  NO_ERROR)
-	{
-	  parser_free_node (parser, result);
-	  result = NULL;
-	}
-      result->type_enum = PT_TYPE_CLOB;
+      {
+	DB_ELO *db_elo;
+
+	db_elo = db_get_elo (val);
+	if (db_elo)
+	  {
+	    if (db_elo_copy_structure (db_elo,
+				       &result->info.value.data_value.elo) !=
+		NO_ERROR)
+	      {
+		parser_free_node (parser, result);
+		result = NULL;
+	      }
+	  }
+
+	result->type_enum =
+	  db_type == DB_TYPE_BLOB ? PT_TYPE_BLOB : PT_TYPE_CLOB;
+      }
       break;
 
     case DB_TYPE_ENUMERATION:

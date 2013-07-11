@@ -2624,7 +2624,10 @@ mr_data_readval_int (OR_BUF * buf, DB_VALUE * value,
   else
     {
       temp_int = or_get_int (buf, &rc);
-      db_make_int (value, temp_int);
+      if (rc == NO_ERROR)
+	{
+	  db_make_int (value, temp_int);
+	}
       value->need_clear = false;
     }
   return rc;
@@ -2976,7 +2979,10 @@ mr_data_readval_bigint (OR_BUF * buf, DB_VALUE * value,
   else
     {
       temp_int = or_get_bigint (buf, &rc);
-      db_make_bigint (value, temp_int);
+      if (rc == NO_ERROR)
+	{
+	  db_make_bigint (value, temp_int);
+	}
       value->need_clear = false;
     }
   return rc;
@@ -3149,7 +3155,10 @@ mr_data_readval_float (OR_BUF * buf, DB_VALUE * value,
   else
     {
       temp = or_get_float (buf, &rc);
-      db_make_float (value, temp);
+      if (rc == NO_ERROR)
+	{
+	  db_make_float (value, temp);
+	}
       value->need_clear = false;
     }
   return rc;
@@ -3341,7 +3350,10 @@ mr_data_readval_double (OR_BUF * buf, DB_VALUE * value,
   else
     {
       temp = or_get_double (buf, &rc);
-      db_make_double (value, temp);
+      if (rc == NO_ERROR)
+	{
+	  db_make_double (value, temp);
+	}
       value->need_clear = false;
     }
 
@@ -3523,7 +3535,10 @@ mr_data_readval_time (OR_BUF * buf, DB_VALUE * value,
   else
     {
       rc = or_get_time (buf, &tm);
-      db_value_put_encoded_time (value, &tm);
+      if (rc == NO_ERROR)
+	{
+	  db_value_put_encoded_time (value, &tm);
+	}
       value->need_clear = false;
     }
   return rc;
@@ -3705,7 +3720,10 @@ mr_data_readval_utime (OR_BUF * buf, DB_VALUE * value,
   else
     {
       rc = or_get_utime (buf, &utm);
-      db_make_utime (value, utm);
+      if (rc == NO_ERROR)
+	{
+	  db_make_utime (value, utm);
+	}
       value->need_clear = false;
     }
   return rc;
@@ -3891,7 +3909,11 @@ mr_data_readval_datetime (OR_BUF * buf, DB_VALUE * value,
   else
     {
       rc = or_get_datetime (buf, &datetime);
-      db_make_datetime (value, &datetime);
+      if (rc == NO_ERROR)
+	{
+	  db_make_datetime (value, &datetime);
+	}
+      value->need_clear = false;
     }
   return rc;
 }
@@ -4194,7 +4216,10 @@ mr_data_readval_money (OR_BUF * buf, DB_VALUE * value,
   else
     {
       rc = or_get_monetary (buf, &money);
-      db_make_monetary (value, money.type, money.amount);
+      if (rc == NO_ERROR)
+	{
+	  db_make_monetary (value, money.type, money.amount);
+	}
       value->need_clear = false;
     }
   return rc;
@@ -4382,7 +4407,10 @@ mr_data_readval_date (OR_BUF * buf, DB_VALUE * value,
   else
     {
       rc = or_get_date (buf, &dt);
-      db_value_put_encoded_date (value, &dt);
+      if (rc == NO_ERROR)
+	{
+	  db_value_put_encoded_date (value, &dt);
+	}
       value->need_clear = false;
     }
   return rc;

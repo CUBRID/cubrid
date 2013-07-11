@@ -2115,7 +2115,9 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 {
   char *context_copy;
   char buf[MAX_PRINT_ERROR_CONTEXT_LENGTH + 1];
-  PT_NODE *node = parser_new_node (parser, PT_ZZ_ERROR_MSG);
+  PT_NODE *node;
+
+  node = parser_new_node (parser, PT_ZZ_ERROR_MSG);
   if (node == NULL)
     {
       PT_INTERNAL_ERROR (parser, "allocate new node");
@@ -15910,11 +15912,41 @@ pt_print_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 {
+  DB_VALUE *val;
   PARSER_VARCHAR *q = 0, *r1;
   char s[PT_MEMB_PRINTABLE_BUF_SIZE];
   const char *r;
   int prt_coll_id = -1;
   INTL_CODESET prt_cs = INTL_CODESET_NONE;
+
+  /* at first, check NULL value */
+  if (p->info.value.db_value_is_initialized)
+    {
+      val = pt_value_to_db (parser, p);
+      if (val)
+	{
+	  if (DB_IS_NULL (val))
+	    {
+	      q = pt_append_nulstring (parser, q,
+				       pt_show_type_enum (PT_TYPE_NULL));
+
+	      if ((parser->custom_print & PT_PRINT_ALIAS)
+		  && p->alias_print != NULL)
+		{
+		  q = pt_append_nulstring (parser, q, " as [");
+		  q = pt_append_nulstring (parser, q, p->alias_print);
+		  q = pt_append_nulstring (parser, q, "]");
+		}
+
+	      return q;
+	    }
+	}
+      else
+	{
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
+    }
 
   if (PT_HAS_COLLATION (p->type_enum))
     {

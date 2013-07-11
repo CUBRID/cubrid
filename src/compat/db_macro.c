@@ -806,6 +806,21 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_ENUMERATION:
       db_make_enumeration (value, 0, NULL, 0, codeset, collation_id);
       break;
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      value->data.elo.type = ELO_NULL;
+      value->domain.general_info.is_null = 0;
+      break;
+#if 1				/* TODO - */
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_MIDXKEY:
+    case DB_TYPE_ELO:
+    case DB_TYPE_VARIABLE:
+    case DB_TYPE_SUB:
+    case DB_TYPE_POINTER:
+    case DB_TYPE_ERROR:
+    case DB_TYPE_VOBJ:
+#endif
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UCI_INVALID_DATA_TYPE, 0);
@@ -4582,6 +4597,14 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
     case DB_TYPE_MIDXKEY:
     case DB_TYPE_TABLE:	/* Should be impossible. */
       goto invalid_args;
+
+#if 1				/* TODO - */
+    case DB_TYPE_ENUMERATION:
+      break;
+#endif
+
+    default:
+      break;
     }
 
   if (error_code != NO_ERROR)

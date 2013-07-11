@@ -567,6 +567,15 @@ mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
 	case PT_JOIN_RIGHT_OUTER:
 	  /* right outer joined */
 	  return true;
+
+#if 1				/* TODO - */
+	case PT_JOIN_NATURAL:	/* not used */
+	case PT_JOIN_INNER:
+	case PT_JOIN_LEFT_OUTER:
+	case PT_JOIN_FULL_OUTER:	/* not used */
+	case PT_JOIN_UNION:	/* not used */
+	  break;
+#endif
 	}
 
       spec = spec->next;

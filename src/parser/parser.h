@@ -824,7 +824,8 @@ extern "C"
 					    PT_NODE * original_cls_id);
   extern PT_NODE *pt_make_query_show_exec_stats (PARSER_CONTEXT * parser);
   extern PT_NODE *pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser);
-  extern PT_NODE *parser_make_expression (PT_OP_TYPE OP, PT_NODE * arg1,
+  extern PT_NODE *parser_make_expression (PARSER_CONTEXT * parser,
+					  PT_OP_TYPE OP, PT_NODE * arg1,
 					  PT_NODE * arg2, PT_NODE * arg3);
   extern PT_NODE *parser_keyword_func (const char *name, PT_NODE * args);
 

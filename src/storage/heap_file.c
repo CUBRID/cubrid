@@ -15220,10 +15220,13 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
   else
     {
       /* the domains don't match, must attempt coercion */
-      ret = tp_value_auto_cast (attr_val, &value->dbvalue,
-				value->last_attrepr->domain);
-      if (ret != NO_ERROR)
+      dom_status = tp_value_auto_cast (attr_val, &value->dbvalue,
+				       value->last_attrepr->domain);
+      if (dom_status != DOMAIN_COMPATIBLE)
 	{
+	  ret = tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+					 attr_val,
+					 value->last_attrepr->domain);
 	  assert (er_errid () != NO_ERROR);
 
 	  DB_MAKE_NULL (&value->dbvalue);

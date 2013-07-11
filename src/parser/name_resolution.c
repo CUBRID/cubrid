@@ -366,7 +366,8 @@ pt_eval_value_path (PARSER_CONTEXT * parser, PT_NODE * path)
   if (pt_eval_path_expr (parser, path, &val))
     {
       /* make val into a PT_VALUE node */
-      if ((tmp = pt_dbval_to_value (parser, &val)))
+      tmp = pt_dbval_to_value (parser, &val);
+      if (tmp)
 	{
 	  tmp->line_number = path->line_number;
 	  tmp->column_number = path->column_number;

@@ -317,8 +317,9 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
 	    }
 	  else
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OBJ_DOMAIN_CONFLICT, 1, att->header.name);
+	      (void) tp_domain_status_er_set (status, ARG_FILE_LINE,
+					      proposed_value, att->domain);
+	      assert (er_errid () != NO_ERROR);
 	    }
 	  break;
 	case DOMAIN_INCOMPATIBLE:

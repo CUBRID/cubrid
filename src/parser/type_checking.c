@@ -9843,54 +9843,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     case PT_ASSIGN:
-      node->type_enum = arg1_type;
       node->data_type = parser_copy_tree_list (parser, arg1->data_type);
-
-      if (PT_IS_N_COLUMN_UPDATE_EXPR (arg1))
-	{
-	  if (PT_IS_QUERY_NODE_TYPE (arg2->node_type))
-	    {
-	      PT_NODE *att_a, *att_b;
-
-	      att_a = arg1->info.expr.arg1;
-	      att_b = pt_get_select_list (parser, arg2);
-	      if (pt_length_of_list (att_a) ==
-		  pt_length_of_select_list (att_b, EXCLUDE_HIDDEN_COLUMNS))
-		{
-		  for (; att_a && att_b;
-		       att_a = att_a->next, att_b = att_b->next)
-		    {
-		      if (att_b->type_enum != att_a->type_enum
-			  && pt_coerce_value (parser, att_b, att_b,
-					      att_a->type_enum,
-					      att_a->data_type) != NO_ERROR)
-			{
-			  node->type_enum = PT_TYPE_NONE;
-			  break;
-			}
-		    }
-		}
-	      else
-		{
-		  node->type_enum = PT_TYPE_NONE;
-		}
-	    }
-	  else
-	    {
-	      node->type_enum = PT_TYPE_NONE;
-	    }
-	}
-      else
-	{
-	  /* arg2 can be NULL here, if CAST is not compatible */
-	  if (arg2 == NULL ||
-	      (arg2_type != arg1_type
-	       && pt_coerce_value (parser, arg2, arg2,
-				   arg1_type, arg1->data_type) != NO_ERROR))
-	    {
-	      node->type_enum = PT_TYPE_NONE;
-	    }
-	}
+      node->type_enum = arg1_type;
       break;
 
     case PT_LIKE_ESCAPE:
@@ -20097,7 +20051,8 @@ pt_type_generic_func (PARSER_CONTEXT * parser, PT_NODE * node)
       return 0;			/* we can't find it */
     }
 
-  if ((offset = parser_new_node (parser, PT_VALUE)) == NULL)
+  offset = parser_new_node (parser, PT_VALUE);
+  if (offset == NULL)
     {
       return 0;
     }

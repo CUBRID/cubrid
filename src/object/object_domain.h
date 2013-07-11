@@ -505,8 +505,9 @@ extern void tp_domain_fprint (FILE * fp, TP_DOMAIN * domain);
 #endif
 extern int tp_domain_attach (TP_DOMAIN ** dlist, TP_DOMAIN * domain);
 
-extern int tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest,
-			       const TP_DOMAIN * desired_domain);
+extern TP_DOMAIN_STATUS tp_value_auto_cast (const DB_VALUE * src,
+					    DB_VALUE * dest,
+					    const TP_DOMAIN * desired_domain);
 extern int tp_value_str_auto_cast_to_number (DB_VALUE * src,
 					     DB_VALUE * dest,
 					     DB_TYPE * val_type);

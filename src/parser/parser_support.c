@@ -6877,7 +6877,7 @@ pt_make_pred_name_int_val (PARSER_CONTEXT * parser, PT_OP_TYPE op_type,
   /* create PT_NAME for lhs */
   pred_lhs = pt_make_dotted_identifier (parser, col_name);
 
-  pred = parser_make_expression (op_type, pred_lhs, pred_rhs, NULL);
+  pred = parser_make_expression (parser, op_type, pred_lhs, pred_rhs, NULL);
   return pred;
 }
 
@@ -6907,7 +6907,7 @@ pt_make_pred_name_string_val (PARSER_CONTEXT * parser, PT_OP_TYPE op_type,
   /* create PT_NAME for lhs */
   pred_lhs = pt_make_dotted_identifier (parser, identifier_str);
 
-  pred = parser_make_expression (op_type, pred_lhs, pred_rhs, NULL);
+  pred = parser_make_expression (parser, op_type, pred_lhs, pred_rhs, NULL);
 
   return pred;
 }
@@ -6940,7 +6940,7 @@ pt_make_pred_with_identifiers (PARSER_CONTEXT * parser, PT_OP_TYPE op_type,
   /* create PT_DOT_ for rhs */
   pred_rhs = pt_make_dotted_identifier (parser, rhs_identifier);
 
-  pred = parser_make_expression (op_type, pred_lhs, pred_rhs, NULL);
+  pred = parser_make_expression (parser, op_type, pred_lhs, pred_rhs, NULL);
 
   return pred;
 }
@@ -6964,7 +6964,7 @@ pt_make_if_with_expressions (PARSER_CONTEXT * parser, PT_NODE * pred,
 {
   PT_NODE *if_node = NULL;
 
-  if_node = parser_make_expression (PT_IF, pred, expr1, expr2);
+  if_node = parser_make_expression (parser, PT_IF, pred, expr1, expr2);
 
   if (alias != NULL)
     {
@@ -7020,7 +7020,8 @@ pt_make_like_col_expr (PARSER_CONTEXT * parser, PT_NODE * rhs_expr,
   PT_NODE *like_node = NULL;
 
   like_lhs = pt_make_dotted_identifier (parser, col_name);
-  like_node = parser_make_expression (PT_LIKE, like_lhs, rhs_expr, NULL);
+  like_node =
+    parser_make_expression (parser, PT_LIKE, like_lhs, rhs_expr, NULL);
 
   return like_node;
 }
@@ -7296,7 +7297,7 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     val1_node = concat_node;
     val2_node = pt_make_string_value (parser, ")");
 
-    if_node = parser_make_expression (PT_IF,
+    if_node = parser_make_expression (parser, PT_IF,
 				      pred_for_if, val1_node, val2_node);
     if (if_node == NULL)
       {
@@ -7343,35 +7344,41 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     /* VARNCHAR and CHAR */
     cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 27);
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 26);
-    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    cond_item1 =
+      parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
     /* CHAR */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 25);
-    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    cond_item1 =
+      parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
     /* VARBIT */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 24);
-    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    cond_item1 =
+      parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
     /* BIT */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 23);
-    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    cond_item1 =
+      parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
     /* VARCHAR */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 4);
-    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    cond_item1 =
+      parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
     /* NUMERIC */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 22);
-    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    cond_item1 =
+      parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
     cond_item1->info.expr.paren_type = 1;
 
     /* prec */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_GT, "prec", 0);
     cond_item1 =
-      parser_make_expression (PT_AND, cond_item2, cond_item1, NULL);
+      parser_make_expression (parser, PT_AND, cond_item2, cond_item1, NULL);
 
     pred_for_if = cond_item1;
     assert (concat_node != NULL);
     val1_node = concat_node;
     val2_node = pt_make_string_value (parser, "");
 
-    if_node = parser_make_expression (PT_IF,
+    if_node = parser_make_expression (parser, PT_IF,
 				      pred_for_if, val1_node, val2_node);
     if (if_node == NULL)
       {
@@ -7464,7 +7471,8 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     /* IF (type_id = 35, CONCAT('(', SELECT ..., ')'), '') */
     node1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 35);
     node3 = pt_make_string_value (parser, "");
-    if_node_enum = parser_make_expression (PT_IF, node1, node2, node3);
+    if_node_enum =
+      parser_make_expression (parser, PT_IF, node1, node2, node3);
     if (if_node_enum == NULL)
       {
 	return NULL;
@@ -7482,10 +7490,12 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     /* SET  and MULTISET */
     cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 6);
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 7);
-    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    cond_item1 =
+      parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
     /* SEQUENCE */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 8);
-    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    cond_item1 =
+      parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
 
     pred_for_if = cond_item1;
     assert (concat_node != NULL);
@@ -7494,7 +7504,7 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
 
     assert (pred_for_if != NULL && val1_node != NULL && val2_node != NULL);
 
-    if_node_types = parser_make_expression (PT_IF,
+    if_node_types = parser_make_expression (parser, PT_IF,
 					    pred_for_if,
 					    val1_node, val2_node);
     if (if_node_types == NULL)
@@ -7568,17 +7578,20 @@ pt_make_collation_expr_node (PARSER_CONTEXT * parser)
     /* VARNCHAR and CHAR */
     cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 27);
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 26);
-    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    cond_item1 =
+      parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
     /* CHAR */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 25);
-    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    cond_item1 =
+      parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
     /* STRING */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 4);
-    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    cond_item1 =
+      parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
 
     pred_for_if = cond_item1;
 
-    if_node = parser_make_expression (PT_IF,
+    if_node = parser_make_expression (parser, PT_IF,
 				      pred_for_if, collation_name, null_expr);
 
     if (if_node != NULL)
@@ -7641,7 +7654,7 @@ pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
 				   "C.class_name");
 
   /* item1 = item2 AND item2 */
-  where_item1 = parser_make_expression (PT_AND,
+  where_item1 = parser_make_expression (parser, PT_AND,
 					where_item1, where_item2, NULL);
   query->info.query.q.select.where =
     parser_append_node (where_item1, query->info.query.q.select.where);
@@ -7649,7 +7662,7 @@ pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
   /* IF ( SELECT (..) >=1 ,  'auto_increment' , '' ) */
   pred_rhs = pt_make_integer_value (parser, 1);
 
-  pred = parser_make_expression (PT_GE, query, pred_rhs, NULL);
+  pred = parser_make_expression (parser, PT_GE, query, pred_rhs, NULL);
 
   extra_node = pt_make_if_with_strings (parser,
 					pred, "auto_increment", "", "Extra");
@@ -7739,19 +7752,19 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
 						 "IK.key_attr_name",
 						 "A.attr_name");
-    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
-					  NULL);
+    where_item1 =
+      parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
     where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
 						 "I.class_of", "A.class_of");
-    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
-					  NULL);
+    where_item1 =
+      parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
     where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
 						 "A.class_of.class_name",
 						 "C.class_name");
-    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
-					  NULL);
+    where_item1 =
+      parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
     /* WHERE clause should be empty */
     assert (sub_query->info.query.q.select.where == NULL);
@@ -7836,20 +7849,20 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
 						 PT_EQ,
 						 "IK.key_attr_name",
 						 "A.attr_name");
-    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
-					  NULL);
+    where_item1 =
+      parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
     where_item2 = pt_make_pred_with_identifiers (parser,
 						 PT_EQ,
 						 "I.class_of", "A.class_of");
-    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
-					  NULL);
+    where_item1 =
+      parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
     where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
 						 "A.class_of.class_name",
 						 "C.class_name");
-    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
-					  NULL);
+    where_item1 =
+      parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
     /* where should be empty */
     assert (sub_query->info.query.q.select.where == NULL);
@@ -7934,24 +7947,24 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
 						 "IK.key_attr_name",
 						 "A.attr_name");
-    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
-					  NULL);
+    where_item1 =
+      parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
     where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
 						 "I.class_of", "A.class_of");
-    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
-					  NULL);
+    where_item1 =
+      parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
     where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
 						 "A.class_of.class_name",
 						 "C.class_name");
-    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
-					  NULL);
+    where_item1 =
+      parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
     where_item2 = pt_make_pred_name_int_val (parser, PT_EQ,
 					     "IK.key_order", 0);
-    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
-					  NULL);
+    where_item1 =
+      parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
     /* where should be empty */
     assert (sub_query->info.query.q.select.where == NULL);
@@ -8002,7 +8015,8 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
 
       pred_rhs = pt_make_integer_value (parser, 0);
 
-      pred = parser_make_expression (PT_GT, mul_query, pred_rhs, NULL);
+      pred =
+	parser_make_expression (parser, PT_GT, mul_query, pred_rhs, NULL);
 
       if_node3 = pt_make_if_with_strings (parser, pred, "MUL", "", NULL);
     }
@@ -8015,7 +8029,8 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
 
       pred_rhs = pt_make_integer_value (parser, 0);
 
-      pred = parser_make_expression (PT_GT, uni_key_query, pred_rhs, NULL);
+      pred =
+	parser_make_expression (parser, PT_GT, uni_key_query, pred_rhs, NULL);
 
       string1_node = pt_make_string_value (parser, "UNI");
 
@@ -8031,7 +8046,8 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
 
       pred_rhs = pt_make_integer_value (parser, 0);
 
-      pred = parser_make_expression (PT_GT, pri_key_query, pred_rhs, NULL);
+      pred =
+	parser_make_expression (parser, PT_GT, pri_key_query, pred_rhs, NULL);
 
       string1_node = pt_make_string_value (parser, "PRI");
 
@@ -8214,14 +8230,14 @@ pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser,
   where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
 					       "DD.data_type", "TT.type_id");
   /* item1 = item2 AND item2 */
-  where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
-					NULL);
+  where_item1 =
+    parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
   /* DD.object_of  IN  AA.domains */
   where_item2 = pt_make_pred_with_identifiers (parser, PT_IS_IN,
 					       "DD.object_of", "AA.domains");
-  where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
-					NULL);
+  where_item1 =
+    parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
   query->info.query.q.select.where =
     parser_append_node (where_item1, query->info.query.q.select.where);
@@ -9477,7 +9493,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser,
 					       "C.is_system_class", "NO");
     /* <where_expr> = <where_expr> AND <where_item> */
     where_expr =
-      parser_make_expression (PT_AND, where_expr, where_item, NULL);
+      parser_make_expression (parser, PT_AND, where_expr, where_item, NULL);
   }
   {
     PT_NODE *user_cond = NULL;
@@ -9511,12 +9527,14 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser,
       query_user_groups = pt_make_query_user_groups (parser, user_name);
 
       group_cond =
-	parser_make_expression (PT_SUBSETEQ, set_of_grantee_name,
+	parser_make_expression (parser, PT_SUBSETEQ, set_of_grantee_name,
 				query_user_groups, NULL);
     }
-    user_cond = parser_make_expression (PT_OR, user_cond, group_cond, NULL);
+    user_cond =
+      parser_make_expression (parser, PT_OR, user_cond, group_cond, NULL);
 
-    where_expr = parser_make_expression (PT_AND, where_expr, user_cond, NULL);
+    where_expr =
+      parser_make_expression (parser, PT_AND, where_expr, user_cond, NULL);
   }
 
 
@@ -10061,7 +10079,7 @@ pt_convert_to_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node,
   zero->type_enum = PT_TYPE_INTEGER;
 
   /* make a new expression comparing the node to zero */
-  expr = parser_make_expression (PT_NE, node, zero, NULL);
+  expr = parser_make_expression (parser, PT_NE, node, zero, NULL);
   if (expr != NULL)
     {
       expr->type_enum = PT_TYPE_LOGICAL;
@@ -11872,7 +11890,8 @@ pt_make_query_show_trace (PARSER_CONTEXT * parser)
       return NULL;
     }
 
-  trace_func = parser_make_expression (PT_TRACE_STATS, NULL, NULL, NULL);
+  trace_func =
+    parser_make_expression (parser, PT_TRACE_STATS, NULL, NULL, NULL);
   if (trace_func == NULL)
     {
       return NULL;

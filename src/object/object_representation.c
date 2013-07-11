@@ -1712,7 +1712,50 @@ or_get_datetime (OR_BUF * buf, DB_DATETIME * datetime)
 int
 or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary)
 {
+  int error;
+
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  /* check for valid currency type
+     don't put default case in the switch!!! */
+  error = ER_INVALID_CURRENCY_TYPE;
+  switch (monetary->type)
+    {
+    case DB_CURRENCY_DOLLAR:
+    case DB_CURRENCY_YEN:
+    case DB_CURRENCY_WON:
+    case DB_CURRENCY_TL:
+    case DB_CURRENCY_BRITISH_POUND:
+    case DB_CURRENCY_CAMBODIAN_RIEL:
+    case DB_CURRENCY_CHINESE_RENMINBI:
+    case DB_CURRENCY_INDIAN_RUPEE:
+    case DB_CURRENCY_RUSSIAN_RUBLE:
+    case DB_CURRENCY_AUSTRALIAN_DOLLAR:
+    case DB_CURRENCY_CANADIAN_DOLLAR:
+    case DB_CURRENCY_BRASILIAN_REAL:
+    case DB_CURRENCY_ROMANIAN_LEU:
+    case DB_CURRENCY_EURO:
+    case DB_CURRENCY_SWISS_FRANC:
+    case DB_CURRENCY_DANISH_KRONE:
+    case DB_CURRENCY_NORWEGIAN_KRONE:
+    case DB_CURRENCY_BULGARIAN_LEV:
+    case DB_CURRENCY_VIETNAMESE_DONG:
+    case DB_CURRENCY_CZECH_KORUNA:
+    case DB_CURRENCY_POLISH_ZLOTY:
+    case DB_CURRENCY_SWEDISH_KRONA:
+    case DB_CURRENCY_CROATIAN_KUNA:
+    case DB_CURRENCY_SERBIAN_DINAR:
+      error = NO_ERROR;		/* it's a type we expect */
+      break;
+    default:
+      break;
+    }
+
+  if (error != NO_ERROR)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, monetary->type);
+      return error;
+    }
 
   if ((buf->ptr + OR_MONETARY_SIZE) > buf->endptr)
     {
@@ -1723,7 +1766,8 @@ or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary)
       OR_PUT_MONETARY (buf->ptr, monetary);
       buf->ptr += OR_MONETARY_SIZE;
     }
-  return NO_ERROR;
+
+  return error;
 }
 
 /*
