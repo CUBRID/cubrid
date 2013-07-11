@@ -4884,6 +4884,7 @@ locator_mflush (MOP mop, void *mf)
     }
 
   mflush->mobjs->num_objs++;
+  mflush->obj->error_code = NO_ERROR;
   mflush->obj->operation = operation;
   mflush->obj->has_index = has_index ? 1 : 0;
   HFID_COPY (&mflush->obj->hfid, hfid);

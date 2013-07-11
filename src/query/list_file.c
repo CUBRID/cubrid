@@ -1056,6 +1056,11 @@ qfile_initialize_page_header (PAGE_PTR page_p)
   OR_PUT_SHORT (page_p + QFILE_PREV_VOL_ID_OFFSET, NULL_VOLID);
   OR_PUT_SHORT (page_p + QFILE_NEXT_VOL_ID_OFFSET, NULL_VOLID);
   OR_PUT_SHORT (page_p + QFILE_OVERFLOW_VOL_ID_OFFSET, NULL_VOLID);
+#if !defined(NDEBUG)
+  /* suppress valgrind UMW error */
+  memset (page_p + QFILE_RESERVED_OFFSET, 0,
+	  QFILE_PAGE_HEADER_SIZE - QFILE_RESERVED_OFFSET);
+#endif
 }
 
 static void
@@ -1879,6 +1884,11 @@ qfile_save_single_bound_item_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p,
 
   tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
   memcpy (tuple_p, tuple_descr_p->item, tuple_descr_p->item_size);
+#if !defined(NDEBUG)
+  /* suppress valgrind UMW error */
+  memset (tuple_p + tuple_descr_p->item_size, 0,
+	  align - tuple_descr_p->item_size);
+#endif
 
   QFILE_PUT_TUPLE_LENGTH (page_p, tuple_length);
 
@@ -2738,6 +2748,10 @@ qfile_add_item_to_list (THREAD_ENTRY * thread_p, char *item_p, int item_size,
       QFILE_PUT_TUPLE_VALUE_LENGTH (tuple_p, item_size + align);
       tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
       memcpy (tuple_p, item_p, item_size);
+#if !defined(NDEBUG)
+      /* suppress valgrind UMW error */
+      memset (tuple_p + item_size, 0, align);
+#endif
 
       if (qfile_add_tuple_to_list (thread_p, list_id_p, tuple) != NO_ERROR)
 	{

@@ -5967,6 +5967,11 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   /* result cache created time */
   OR_PACK_CACHE_TIME (ptr, &srv_cache_time);
 
+#if !defined(NDEBUG)
+  /* suppress valgrind UMW error */
+  memset (ptr, 0, OR_ALIGNED_BUF_SIZE (a_reply) - (ptr - reply));
+#endif
+
   css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid,
 				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				       replydata, replydata_size,
@@ -6371,6 +6376,11 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   ptr = or_pack_int (ptr, page_size);
   ptr = or_pack_int (ptr, dummy_plan_size);
   ptr = or_pack_ptr (ptr, query_id);
+
+#if !defined(NDEBUG)
+  /* suppress valgrind UMW error */
+  memset (ptr, 0, OR_ALIGNED_BUF_SIZE (a_reply) - (ptr - reply));
+#endif
 
   css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply,
 				       OR_ALIGNED_BUF_SIZE (a_reply),
@@ -7174,7 +7184,7 @@ xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p,
   char *databuf;
   char *ptr;
   unsigned int rid;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_PTR_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   rid = thread_get_comm_request_id (thread_p);
@@ -7182,6 +7192,11 @@ xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p,
   length += or_method_sig_list_length ((void *) method_sig_list);
   ptr = or_pack_int (reply, (int) METHOD_CALL);
   ptr = or_pack_int (ptr, length);
+
+#if !defined(NDEBUG)
+  /* suppress valgrind UMW error */
+  memset (ptr, 0, OR_ALIGNED_BUF_SIZE (a_reply) - (ptr - reply));
+#endif
 
   databuf = (char *) db_private_alloc (thread_p, length);
   if (databuf == NULL)

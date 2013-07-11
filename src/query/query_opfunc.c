@@ -543,12 +543,8 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p,
       *tuple_val_size = QFILE_TUPLE_VALUE_HEADER_SIZE + align;
       QFILE_PUT_TUPLE_VALUE_LENGTH (tuple_val_p, align);
 
-#if defined(CUBRID_DEBUG)
-      /*
-       * If there's any gap at the end of the record, fill it with zeroes.
-       * This will keep purify from getting confused when we start sending
-       * tuples via writev.
-       */
+#if !defined(NDEBUG)
+      /* suppress valgrind UMW error */
       memset (tuple_val_p + QFILE_TUPLE_VALUE_HEADER_SIZE + val_size, 0,
 	      align - val_size);
 #endif

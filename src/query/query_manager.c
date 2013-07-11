@@ -344,6 +344,11 @@ qmgr_put_page_header (PAGE_PTR page_p, QFILE_PAGE_HEADER * header_p)
   OR_PUT_SHORT ((page_p) + QFILE_NEXT_VOL_ID_OFFSET, (header_p)->next_volid);
   OR_PUT_SHORT ((page_p) + QFILE_OVERFLOW_VOL_ID_OFFSET,
 		(header_p)->ovfl_volid);
+#if !defined(NDEBUG)
+  /* suppress valgrind UMW error */
+  memset (page_p + QFILE_RESERVED_OFFSET, 0,
+	  QFILE_PAGE_HEADER_SIZE - QFILE_RESERVED_OFFSET);
+#endif
 }
 
 

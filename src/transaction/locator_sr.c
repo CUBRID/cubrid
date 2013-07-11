@@ -2048,6 +2048,7 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
 			      int chn, int guess_chn, SCAN_CODE scan,
 			      int tran_index)
 {
+  int wasted_length = 0;
 
   switch (scan)
     {
@@ -2066,6 +2067,7 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
 	}
       assign->mobjs->num_objs++;
 
+      assign->obj->error_code = NO_ERROR;
       COPY_OID (&assign->obj->class_oid, class_oid);
       COPY_OID (&assign->obj->oid, oid);
       assign->obj->has_index = false;
@@ -2075,7 +2077,12 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
       assign->obj->operation = LC_FETCH;
       assign->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (assign->obj);
 
-      assign->recdes.length = DB_ALIGN (assign->recdes.length, MAX_ALIGNMENT);
+      wasted_length = DB_WASTED_ALIGN (assign->recdes.length, MAX_ALIGNMENT);
+#if !defined(NDEBUG)
+      /* suppress valgrind UMW error */
+      memset (assign->recdes.data + assign->recdes.length, 0, wasted_length);
+#endif
+      assign->recdes.length = assign->recdes.length + wasted_length;
       assign->area_offset += assign->recdes.length;
       assign->recdes.data += assign->recdes.length;
       assign->recdes.area_size -= (assign->recdes.length +
@@ -2094,6 +2101,7 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
 
 	  /* Indicate to the caller that the object does not exist any
 	   * longer */
+	  assign->obj->error_code = NO_ERROR;
 	  COPY_OID (&assign->obj->class_oid, class_oid);
 	  COPY_OID (&assign->obj->oid, oid);
 	  assign->obj->has_index = false;
@@ -2113,6 +2121,7 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
       assign->mobjs->num_objs++;
 
       /* Indicate to the caller that the object does not exist any longer */
+      assign->obj->error_code = NO_ERROR;
       COPY_OID (&assign->obj->class_oid, class_oid);
       COPY_OID (&assign->obj->oid, oid);
       assign->obj->has_index = false;
@@ -2632,6 +2641,7 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock,
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
 	  COPY_OID (&obj->oid, &oid);
+	  obj->error_code = NO_ERROR;
 	  obj->has_index = false;
 	  obj->hfid = NULL_HFID;
 	  obj->length = recdes.length;
@@ -2639,6 +2649,11 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock,
 	  obj->operation = LC_FETCH;
 	  obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
 	  round_length = DB_ALIGN (recdes.length, MAX_ALIGNMENT);
+#if !defined(NDEBUG)
+	  /* suppress valgrind UMW error */
+	  memset (recdes.data + recdes.length, 0,
+		  round_length - recdes.length);
+#endif
 	  offset += round_length;
 	  recdes.data += round_length;
 	  recdes.area_size -= round_length + sizeof (*obj);
@@ -8214,6 +8229,7 @@ locator_notify_decache (const OID * class_oid, const OID * oid,
   notify->mobjs->num_objs++;
   COPY_OID (&((*notify->obj)->class_oid), class_oid);
   COPY_OID (&((*notify->obj)->oid), oid);
+  (*notify->obj)->error_code = NO_ERROR;
   (*notify->obj)->has_index = false;
   (*notify->obj)->hfid = NULL_HFID;
   (*notify->obj)->length = -1;
@@ -11049,6 +11065,7 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
 	  COPY_OID (&obj->oid, &oid);
+	  obj->error_code = NO_ERROR;
 	  obj->has_index = false;
 	  obj->hfid = NULL_HFID;
 	  obj->length = recdes.length;
@@ -11056,6 +11073,11 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  obj->operation = LC_FETCH;
 	  obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
 	  round_length = DB_ALIGN (recdes.length, MAX_ALIGNMENT);
+#if !defined(NDEBUG)
+	  /* suppress valgrind UMW error */
+	  memset (recdes.data + recdes.length, 0,
+		  round_length - recdes.length);
+#endif
 	  offset += round_length;
 	  recdes.data += round_length;
 	  recdes.area_size -= round_length + sizeof (*obj);

@@ -242,6 +242,7 @@ struct xasl_id
 #define QFILE_PREV_VOL_ID_OFFSET        20
 #define QFILE_NEXT_VOL_ID_OFFSET        22
 #define QFILE_OVERFLOW_VOL_ID_OFFSET    24
+#define QFILE_RESERVED_OFFSET		26
 
 /* Invalid offset value to the page */
 #define QFILE_NULL_PAGE_OFFSET          -1

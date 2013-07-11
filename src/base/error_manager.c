@@ -1312,9 +1312,9 @@ er_final (bool do_global_final)
 
       er_hasalready_initiated = false;
       ER_CSECT_EXIT_LOG_FILE ();
-    }
 
-  er_call_stack_final ();
+      er_call_stack_final ();
+    }
 }
 
 #else /* SERVER_MODE */
