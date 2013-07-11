@@ -5467,7 +5467,6 @@ cci_disconnect_force (int resolved_id, bool try_close)
     }
 
   API_ELOG (con_handle, 0);
-  hm_req_handle_free_all (con_handle);
   hm_con_handle_free (con_handle);
 }
 

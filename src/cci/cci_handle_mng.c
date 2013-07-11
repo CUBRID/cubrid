@@ -271,6 +271,7 @@ hm_con_handle_free (T_CON_HANDLE * con_handle)
       con_handle->sock_fd = INVALID_SOCKET;
     }
 
+  hm_req_handle_free_all (con_handle);
   con_handle_content_free (con_handle);
   FREE_MEM (con_handle);
 
@@ -1408,6 +1409,7 @@ con_handle_content_free (T_CON_HANDLE * con_handle)
   con_handle->url[0] = '\0';
   FREE_MEM (con_handle->req_handle_table);
   FREE_MEM (con_handle->deferred_close_handle_list);
+  FREE_MEM (con_handle->last_insert_id);
 
   if (con_handle->stmt_pool != NULL)
     {

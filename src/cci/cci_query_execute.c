@@ -243,10 +243,6 @@ qe_con_close (T_CON_HANDLE * con_handle)
   T_NET_BUF net_buf;
   char func_code = CAS_FC_CON_CLOSE;
 
-  hm_req_handle_free_all (con_handle);
-
-  FREE_MEM (con_handle->last_insert_id);
-
   if (IS_INVALID_SOCKET (con_handle->sock_fd))
     return 0;
 
