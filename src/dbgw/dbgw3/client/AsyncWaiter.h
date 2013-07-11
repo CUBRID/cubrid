@@ -28,9 +28,9 @@ namespace dbgw
   public:
     _AsyncWaiter(unsigned long ulTimeOutMilSec);
     _AsyncWaiter(unsigned long ulTimeOutMilSec, int nHandleId,
-        ExecAsyncCallBack pCallBack);
+        ExecAsyncCallBack pCallBack, void *pData);
     _AsyncWaiter(unsigned long ulTimeOutMilSec, int nHandleId,
-        ExecBatchAsyncCallBack pBatchCallBack);
+        ExecBatchAsyncCallBack pBatchCallBack, void *pData);
     virtual ~_AsyncWaiter();
 
     void wait();

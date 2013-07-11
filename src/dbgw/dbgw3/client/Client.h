@@ -41,10 +41,10 @@ namespace dbgw
   class Configuration;
 
   typedef void (*ExecAsyncCallBack)(int nHandleId,
-      trait<ClientResultSet>::sp, const Exception &);
+      trait<ClientResultSet>::sp, const Exception &, void *);
 
   typedef void (*ExecBatchAsyncCallBack)(int nHandleId,
-      trait<ClientResultSet>::spvector, const Exception &);
+      trait<ClientResultSet>::spvector, const Exception &, void *);
 
   class Client : public _SynchronizedResource
   {
@@ -66,13 +66,15 @@ namespace dbgw
         const _Parameter *pParameter = NULL);
     trait<ClientResultSet>::sp exec(const char *szSqlName,
         const _Parameter *pParameter, unsigned long ulWaitTimeMilSec);
-    int execAsync(const char *szSqlName, ExecAsyncCallBack pCallBack);
     int execAsync(const char *szSqlName, ExecAsyncCallBack pCallBack,
-        unsigned long ulWaitTimeMilSec);
+        void *pData = NULL);
+    int execAsync(const char *szSqlName, ExecAsyncCallBack pCallBack,
+        unsigned long ulWaitTimeMilSec, void *pData = NULL);
     int execAsync(const char *szSqlName, const _Parameter *pParameter,
-        ExecAsyncCallBack pCallBack);
+        ExecAsyncCallBack pCallBack, void *pData = NULL);
     int execAsync(const char *szSqlName, const _Parameter *pParameter,
-        ExecAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec);
+        ExecAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec,
+        void *pData = NULL);
     trait<ClientResultSet>::spvector execBatch(const char *szSqlName,
         const _ParameterList &parameterList);
     trait<ClientResultSet>::spvector execBatch(const char *szSqlName,
@@ -80,11 +82,11 @@ namespace dbgw
         unsigned long ulWaitTimeMilSec);
     int execBatchAsync(const char *szSqlName,
         const _ParameterList &parameterList,
-        ExecBatchAsyncCallBack pCallBack);
+        ExecBatchAsyncCallBack pCallBack, void *pData = NULL);
     int execBatchAsync(const char *szSqlName,
         const _ParameterList &parameterList,
-        ExecBatchAsyncCallBack pCallBack,
-        unsigned long ulWaitTimeMilSec);
+        ExecBatchAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec,
+        void *pData = NULL);
     bool close();
     trait<Lob>::sp createClob();
     trait<Lob>::sp createClob(unsigned long ulWaitTimeMilSec);

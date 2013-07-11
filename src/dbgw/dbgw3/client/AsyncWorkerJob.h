@@ -240,9 +240,9 @@ namespace dbgw
 
     trait<_AsyncWorkerJobResult>::sp delegateJob(trait<_AsyncWorkerJob>::sp pJob);
     int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-        ExecAsyncCallBack pCallBack);
+        ExecAsyncCallBack pCallBack, void *pData);
     int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-        ExecBatchAsyncCallBack pCallBack);
+        ExecBatchAsyncCallBack pCallBack, void *pData);
     void setMaxSize(size_t nMaxSize);
 
   protected:

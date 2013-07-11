@@ -651,7 +651,7 @@ namespace dbgw
     }
 
     int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-        ExecAsyncCallBack pCallBack)
+        ExecAsyncCallBack pCallBack, void *pData)
     {
       system::_MutexAutoLock lock(&m_mutex);
 
@@ -670,7 +670,7 @@ namespace dbgw
 
           trait<_AsyncWaiter>::sp pWaiter(
               new _AsyncWaiter(pJob->getTimeOutMilSec(), m_nCallBackHandleID,
-                  pCallBack));
+                  pCallBack, pData));
           pJob->bindWaiter(pWaiter);
 
           m_jobList.push_back(pJob);
@@ -683,7 +683,7 @@ namespace dbgw
     }
 
     int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-        ExecBatchAsyncCallBack pCallBack)
+        ExecBatchAsyncCallBack pCallBack, void *pData)
     {
       system::_MutexAutoLock lock(&m_mutex);
 
@@ -702,7 +702,7 @@ namespace dbgw
 
           trait<_AsyncWaiter>::sp pWaiter(
               new _AsyncWaiter(pJob->getTimeOutMilSec(), m_nCallBackHandleID,
-                  pCallBack));
+                  pCallBack, pData));
           pJob->bindWaiter(pWaiter);
 
           m_jobList.push_back(pJob);
@@ -812,15 +812,15 @@ namespace dbgw
   }
 
   int _WorkerJobManager::delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-      ExecAsyncCallBack pCallBack)
+      ExecAsyncCallBack pCallBack, void *pData)
   {
-    return m_pImpl->delegateJobAsync(pJob, pCallBack);
+    return m_pImpl->delegateJobAsync(pJob, pCallBack, pData);
   }
 
   int _WorkerJobManager::delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-      ExecBatchAsyncCallBack pCallBack)
+      ExecBatchAsyncCallBack pCallBack, void *pData)
   {
-    return m_pImpl->delegateJobAsync(pJob, pCallBack);
+    return m_pImpl->delegateJobAsync(pJob, pCallBack, pData);
   }
 
   void _WorkerJobManager::setMaxSize(size_t nMaxSize)

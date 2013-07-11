@@ -36,21 +36,21 @@ namespace dbgw
   public:
     Impl(unsigned long ulTimeOutMilSec) :
       m_ulTimeOutMilSec(ulTimeOutMilSec), m_nHandleId(-1),
-      m_pCallBack(NULL), m_pBatchCallBack(NULL)
+      m_pCallBack(NULL), m_pBatchCallBack(NULL), m_pData(NULL)
     {
     }
 
     Impl(unsigned long ulTimeOutMilSec, int nHandleId,
-        ExecAsyncCallBack pCallBack) :
+        ExecAsyncCallBack pCallBack, void *pData) :
       m_ulTimeOutMilSec(ulTimeOutMilSec), m_nHandleId(nHandleId),
-      m_pCallBack(pCallBack), m_pBatchCallBack(NULL)
+      m_pCallBack(pCallBack), m_pBatchCallBack(NULL), m_pData(pData)
     {
     }
 
     Impl(unsigned long ulTimeOutMilSec, int nHandleId,
-        ExecBatchAsyncCallBack pBatchCallBack) :
+        ExecBatchAsyncCallBack pBatchCallBack, void *pData) :
       m_ulTimeOutMilSec(ulTimeOutMilSec), m_nHandleId(nHandleId),
-      m_pCallBack(NULL), m_pBatchCallBack(pBatchCallBack)
+      m_pCallBack(NULL), m_pBatchCallBack(pBatchCallBack), m_pData(pData)
     {
     }
 
@@ -81,12 +81,12 @@ namespace dbgw
       if (m_pCallBack != NULL)
         {
           (*m_pCallBack)(m_nHandleId, m_pJobResult->getResultSet(),
-              m_pJobResult->getException());
+              m_pJobResult->getException(), m_pData);
         }
       else if (m_pBatchCallBack != NULL)
         {
           (*m_pBatchCallBack)(m_nHandleId, m_pJobResult->getResultSetList(),
-              m_pJobResult->getException());
+              m_pJobResult->getException(), m_pData);
         }
     }
 
@@ -115,6 +115,7 @@ namespace dbgw
     int m_nHandleId;
     ExecAsyncCallBack m_pCallBack;
     ExecBatchAsyncCallBack m_pBatchCallBack;
+    void *m_pData;
     trait<_AsyncWorkerJobResult>::sp m_pJobResult;
   };
 
@@ -124,15 +125,15 @@ namespace dbgw
   }
 
   _AsyncWaiter::_AsyncWaiter(unsigned long ulTimeOutMilSec, int nHandleId,
-      ExecAsyncCallBack pCallBack) :
-    m_pImpl(new Impl(ulTimeOutMilSec, nHandleId, pCallBack))
+      ExecAsyncCallBack pCallBack, void *pData) :
+    m_pImpl(new Impl(ulTimeOutMilSec, nHandleId, pCallBack, pData))
   {
   }
 
   _AsyncWaiter::_AsyncWaiter(unsigned long ulTimeOutMilSec, int nHandleId,
-      ExecBatchAsyncCallBack pBatchCallBack) :
+      ExecBatchAsyncCallBack pBatchCallBack, void *pData) :
     m_pImpl(new Impl(ulTimeOutMilSec, nHandleId,
-        pBatchCallBack))
+        pBatchCallBack, pData))
   {
   }
 

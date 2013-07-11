@@ -273,25 +273,27 @@ namespace dbgw
       return m_pExecHandler->getResultSet();
     }
 
-    int execAsync(const char *szSqlName, ExecAsyncCallBack pCallBack)
+    int execAsync(const char *szSqlName, ExecAsyncCallBack pCallBack,
+        void *pData)
     {
-      return execAsync(szSqlName, NULL, pCallBack, m_ulWaitTimeMilSec);
+      return execAsync(szSqlName, NULL, pCallBack, m_ulWaitTimeMilSec, pData);
     }
 
     int execAsync(const char *szSqlName, ExecAsyncCallBack pCallBack,
-        unsigned long ulWaitTimeMilSec)
+        unsigned long ulWaitTimeMilSec, void *pData)
     {
-      return execAsync(szSqlName, NULL, pCallBack, ulWaitTimeMilSec);
+      return execAsync(szSqlName, NULL, pCallBack, ulWaitTimeMilSec, pData);
     }
 
     int execAsync(const char *szSqlName, const _Parameter *pParameter,
-        ExecAsyncCallBack pCallBack)
+        ExecAsyncCallBack pCallBack, void *pData)
     {
-      return execAsync(szSqlName, pParameter, pCallBack, m_ulWaitTimeMilSec);
+      return execAsync(szSqlName, pParameter, pCallBack, m_ulWaitTimeMilSec,
+          pData);
     }
 
     int execAsync(const char *szSqlName, const _Parameter *pParameter,
-        ExecAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec)
+        ExecAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec, void *pData)
     {
       clearException();
 
@@ -303,7 +305,7 @@ namespace dbgw
               new _ExecuteQueryJob(m_pService, m_pQueryMapper, ulWaitTimeMilSec,
                   szSqlName, pParameter));
 
-          return delegateJobAsync(pJob, pCallBack);
+          return delegateJobAsync(pJob, pCallBack, pData);
         }
       catch (Exception &e)
         {
@@ -358,16 +360,16 @@ namespace dbgw
 
     int execBatchAsync(const char *szSqlName,
         const _ParameterList &parameterList,
-        ExecBatchAsyncCallBack pCallBack)
+        ExecBatchAsyncCallBack pCallBack, void *pData)
     {
       return execBatchAsync(szSqlName, parameterList, pCallBack,
-          m_ulWaitTimeMilSec);
+          m_ulWaitTimeMilSec, pData);
     }
 
     int execBatchAsync(const char *szSqlName,
         const _ParameterList &parameterList,
-        ExecBatchAsyncCallBack pCallBack,
-        unsigned long ulWaitTimeMilSec)
+        ExecBatchAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec,
+        void *pData)
     {
       clearException();
 
@@ -381,7 +383,7 @@ namespace dbgw
               new _ExecuteQueryBatchJob(m_pExecHandler, ulWaitTimeMilSec,
                   szSqlName, parameterList));
 
-          return delegateJobAsync(pJob, pCallBack);
+          return delegateJobAsync(pJob, pCallBack, pData);
         }
       catch (Exception &e)
         {
@@ -616,7 +618,7 @@ namespace dbgw
     }
 
     int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-        ExecAsyncCallBack pCallBack)
+        ExecAsyncCallBack pCallBack, void *pData)
     {
       if (pJob->getTimeOutMilSec() > system::INFINITE_TIMEOUT)
         {
@@ -624,11 +626,11 @@ namespace dbgw
           m_pTimer->addEvent(pEvent);
         }
 
-      return m_pAsyncJobManager->delegateJobAsync(pJob, pCallBack);
+      return m_pAsyncJobManager->delegateJobAsync(pJob, pCallBack, pData);
     }
 
     int delegateJobAsync(trait<_AsyncWorkerJob>::sp pJob,
-        ExecBatchAsyncCallBack pCallBack)
+        ExecBatchAsyncCallBack pCallBack, void *pData)
     {
       if (pJob->getTimeOutMilSec() > system::INFINITE_TIMEOUT)
         {
@@ -636,7 +638,7 @@ namespace dbgw
           m_pTimer->addEvent(pEvent);
         }
 
-      return m_pAsyncJobManager->delegateJobAsync(pJob, pCallBack);
+      return m_pAsyncJobManager->delegateJobAsync(pJob, pCallBack, pData);
     }
 
     void processError(const Exception &e)
@@ -757,28 +759,30 @@ namespace dbgw
     return m_pImpl->exec(szSqlName, pParameter, ulWaitTimeMilSec);
   }
 
-  int Client::execAsync(const char *szSqlName, ExecAsyncCallBack pCallBack)
+  int Client::execAsync(const char *szSqlName, ExecAsyncCallBack pCallBack,
+      void *pData)
   {
-    return m_pImpl->execAsync(szSqlName, pCallBack);
+    return m_pImpl->execAsync(szSqlName, pCallBack, pData);
   }
 
   int Client::execAsync(const char *szSqlName, ExecAsyncCallBack pCallBack,
-      unsigned long ulWaitTimeMilSec)
+      unsigned long ulWaitTimeMilSec, void *pData)
   {
-    return m_pImpl->execAsync(szSqlName, pCallBack, ulWaitTimeMilSec);
+    return m_pImpl->execAsync(szSqlName, pCallBack, ulWaitTimeMilSec, pData);
   }
 
   int Client::execAsync(const char *szSqlName, const _Parameter *pParameter,
-      ExecAsyncCallBack pCallBack)
+      ExecAsyncCallBack pCallBack, void *pData)
   {
-    return m_pImpl->execAsync(szSqlName, pParameter, pCallBack);
+    return m_pImpl->execAsync(szSqlName, pParameter, pCallBack, pData);
   }
 
   int Client::execAsync(const char *szSqlName, const _Parameter *pParameter,
-      ExecAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec)
+      ExecAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec,
+      void *pData)
   {
     return m_pImpl->execAsync(szSqlName, pParameter, pCallBack,
-        ulWaitTimeMilSec);
+        ulWaitTimeMilSec, pData);
   }
 
   trait<ClientResultSet>::spvector Client::execBatch(const char *szSqlName,
@@ -796,18 +800,18 @@ namespace dbgw
 
   int Client::execBatchAsync(const char *szSqlName,
       const _ParameterList &parameterList,
-      ExecBatchAsyncCallBack pCallBack)
+      ExecBatchAsyncCallBack pCallBack, void *pData)
   {
-    return m_pImpl->execBatchAsync(szSqlName, parameterList, pCallBack);
+    return m_pImpl->execBatchAsync(szSqlName, parameterList, pCallBack, pData);
   }
 
   int Client::execBatchAsync(const char *szSqlName,
       const _ParameterList &parameterList,
-      ExecBatchAsyncCallBack pCallBack,
-      unsigned long ulWaitTimeMilSec)
+      ExecBatchAsyncCallBack pCallBack, unsigned long ulWaitTimeMilSec,
+      void *pData)
   {
     return m_pImpl->execBatchAsync(szSqlName, parameterList, pCallBack,
-        ulWaitTimeMilSec);
+        ulWaitTimeMilSec, pData);
   }
 
   bool Client::close()

@@ -320,10 +320,10 @@ namespace DBGW3
     typedef void *Handle, *THandle;
 
     typedef void (*AsyncCallBack)(int nHandleId, ResultSet::Handle,
-        const Exception::Handle);
+        const Exception::Handle, void *);
 
     typedef void (*BatchAsyncCallBack)(int nHandleId,
-        ResultSetList::Handle, const Exception::Handle);
+        ResultSetList::Handle, const Exception::Handle, void *);
 
     DECLSPECIFIER Handle __stdcall CreateHandle(DBGW3::Connector::Handle henv,
         const char *szNamespace = NULL);
@@ -336,10 +336,11 @@ namespace DBGW3
         DBGW3::ResultSet::Handle hResult);
     DECLSPECIFIER int __stdcall ExecuteAsync(Handle hExecutor,
         const char *szMethod, DBGW3::ParamSet::Handle hParam,
-        AsyncCallBack pCallBack);
+        AsyncCallBack pCallBack, void *pData = NULL);
     DECLSPECIFIER int __stdcall ExecuteAsync(Handle hExecutor,
         const char *szMethod, unsigned long ulMilliseconds,
-        DBGW3::ParamSet::Handle hParam, AsyncCallBack pCallBack);
+        DBGW3::ParamSet::Handle hParam, AsyncCallBack pCallBack,
+        void *pData = NULL);
     DECLSPECIFIER bool __stdcall ExecuteBatch(Handle hExecutor,
         const char *szMethod, DBGW3::ParamList::Handle hParamList,
         DBGW3::ResultSetList::Handle hResultSetList);
@@ -349,10 +350,11 @@ namespace DBGW3
         DBGW3::ResultSetList::Handle hResultSetList);
     DECLSPECIFIER int __stdcall ExecuteBatchAsync(Handle hExecutor,
         const char *szMethod, DBGW3::ParamList::Handle hParamList,
-        BatchAsyncCallBack pCallBack);
+        BatchAsyncCallBack pCallBack, void *pData = NULL);
     DECLSPECIFIER int __stdcall ExecuteBatchAsync(Handle hExecutor,
         const char *szMethod, unsigned long ulMilliseconds,
-        DBGW3::ParamList::Handle hParamList, BatchAsyncCallBack pCallBack);
+        DBGW3::ParamList::Handle hParamList, BatchAsyncCallBack pCallBack,
+        void *pData = NULL);
     DECLSPECIFIER bool __stdcall BeginTransaction(Handle hExecutor);
     DECLSPECIFIER bool __stdcall BeginTransaction(Handle hExecutor,
         unsigned long ulWaitTimeMilSec);
