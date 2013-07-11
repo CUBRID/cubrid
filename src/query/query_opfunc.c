@@ -9885,6 +9885,18 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	  opr_dbval_p = &dbval;
 	  copy_opr = true;
 
+	  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (opr_dbval_p)))
+	    {
+	      /* char types default to double; coerce here so we don't mess up
+	       * the accumulator when we copy the operand */
+	      if (tp_value_coerce (&dbval, &dbval, func_p->domain)
+		  != DOMAIN_COMPATIBLE)
+		{
+		  pr_clear_value (&dbval);
+		  return ER_FAILED;
+		}
+	    }
+
 	  /* this type setting is necessary, it ensures that for the case
 	   * average handling, which is treated like sum until final iteration,
 	   * starts with the initial data type */
