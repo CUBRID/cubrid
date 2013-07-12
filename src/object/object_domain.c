@@ -9505,7 +9505,8 @@ tp_value_equal (const DB_VALUE * value1, const DB_VALUE * value2,
 /*
  * tp_domain_disk_size - Caluclate the disk size necessary to store a value
  * for a particular domain.
- *    return: disk size in bytes. -1 if this is a variable width domain
+ *    return: disk size in bytes. -1 if this is a variable width domain or
+ *            floating precision in fixed domain.
  *    domain(in): domain to consider
  * Note:
  *    This is here because it takes a domain handle.
@@ -9522,6 +9523,17 @@ tp_domain_disk_size (TP_DOMAIN * domain)
     {
       return -1;
     }
+
+  if (domain->type->data_lengthmem != NULL
+      && (domain->type->id == DB_TYPE_CHAR
+	  || domain->type->id == DB_TYPE_NCHAR
+	  || domain->type->id == DB_TYPE_BIT)
+      && domain->precision == TP_FLOATING_PRECISION_VALUE)
+    {
+      return -1;
+    }
+
+  assert (domain->precision != TP_FLOATING_PRECISION_VALUE);
 
   /*
    * Use the "lengthmem" function here with a NULL pointer.  The size will
@@ -9552,6 +9564,15 @@ int
 tp_domain_memory_size (TP_DOMAIN * domain)
 {
   int size;
+
+  if (domain->type->data_lengthmem != NULL
+      && (domain->type->id == DB_TYPE_CHAR
+	  || domain->type->id == DB_TYPE_NCHAR
+	  || domain->type->id == DB_TYPE_BIT)
+      && domain->precision == TP_FLOATING_PRECISION_VALUE)
+    {
+      return -1;
+    }
 
   /*
    * Use the "lengthmem" function here with a NULL pointer and a "disk"

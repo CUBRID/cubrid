@@ -56,7 +56,7 @@ typedef struct pr_type
   /* print dbvalue to buffer */
   int (*sptrfunc) (const DB_VALUE * value, char *buffer, int buflen);
   /* initialize memory */
-  void (*initmem) (void *memptr);
+  void (*initmem) (void *memptr, struct tp_domain * domain);
   /* initialize DB_VALUE */
   void (*initval) (DB_VALUE * value, int precision, int scale);
   int (*setmem) (void *memptr, struct tp_domain * domain, DB_VALUE * value);
@@ -207,7 +207,7 @@ extern int pr_ordered_mem_size_total;
  * requirement but it makes the object block look cleaner in the debugger.
  * For variable width attributes, it makes sure the pointers are NULL.
  */
-#define PRIM_INITMEM(type, mem) (*((type)->initmem))(mem)
+#define PRIM_INITMEM(type, mem, domain) (*((type)->initmem))(mem, domain)
 
 /* PRIM_SETMEM
  * Assign a value into instance memory, copy the value.

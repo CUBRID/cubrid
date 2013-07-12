@@ -1056,7 +1056,7 @@ clear_new_unbound (char *obj, SM_CLASS * class_, SM_REPRESENTATION * oldrep)
 	{
 	  mem = obj + att->offset;
 	  /* initialize in case there isn't an initial value */
-	  PRIM_INITMEM (att->type, mem);
+	  PRIM_INITMEM (att->type, mem, att->domain);
 	  if (!DB_IS_NULL (&att->default_value.original_value))
 	    {
 	      /* assign the initial value, should check for non-existance ? */

@@ -203,6 +203,21 @@ method_send_value_to_server (DB_VALUE * dbval_p,
   p = or_pack_db_value (vacomm_buffer_p->buffer
 			+ vacomm_buffer_p->cur_pos, dbval_p);
 
+#if !defined(NDEBUG)
+  /* suppress valgrind UMW error */
+  do
+    {
+      char *new_pos = vacomm_buffer_p->buffer + vacomm_buffer_p->cur_pos +
+	dbval_length;
+
+      if (new_pos > p)
+	{
+	  memset (p, 0, new_pos - p);
+	}
+    }
+  while (0);
+#endif
+
   vacomm_buffer_p->cur_pos += dbval_length;
   return NO_ERROR;
 }

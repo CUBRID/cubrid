@@ -1215,7 +1215,7 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
 #if defined(CS_MODE)
   int success = ER_FAILED;
   int packed_size;
-  char *buffer;
+  char *buffer, *ptr;
   int req_error;
 
   /*
@@ -1232,7 +1232,10 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
       return ER_FAILED;
     }
 
-  if (locator_pack_oid_set (buffer + OR_INT_SIZE, oidset) == NULL)
+  ptr = buffer;
+  ptr = or_pack_int (ptr, 0);
+
+  if (locator_pack_oid_set (ptr, oidset) == NULL)
     {
       free_and_init (buffer);
       return ER_FAILED;
@@ -1244,11 +1247,11 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
 
   if (!req_error)
     {
-      (void) or_unpack_int (buffer, &success);
+      ptr = buffer;
+      ptr = or_unpack_int (ptr, &success);
       if (success == NO_ERROR)
 	{
-	  if (locator_unpack_oid_set_to_exist (buffer + OR_INT_SIZE, oidset)
-	      == false)
+	  if (locator_unpack_oid_set_to_exist (ptr, oidset) == false)
 	    {
 	      success = ER_FAILED;
 	    }
@@ -7051,6 +7054,9 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
 
       ptr = or_pack_oid (ptr, class_oid);
       ptr = or_pack_btid (ptr, btid);
+
+      /* reset request_size as real packed size */
+      request_size = ptr - request;
 
       req_error = net_client_request (request_id,
 				      request, request_size, reply,
