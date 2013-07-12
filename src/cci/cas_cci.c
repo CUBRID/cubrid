@@ -1208,7 +1208,11 @@ cci_register_out_param_ex (int mapped_stmt_id, int index, T_CCI_U_TYPE u_type)
     }
   else
     {
-      req_handle->bind_value[index - 1].u_type = u_type;
+      if (is_connected_to_oracle (con_handle))
+	{
+	  req_handle->bind_value[index - 1].u_type = u_type;
+	}
+
       req_handle->bind_mode[index - 1] |= CCI_PARAM_MODE_OUT;
     }
 

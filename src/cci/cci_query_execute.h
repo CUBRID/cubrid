@@ -475,6 +475,7 @@ extern int qe_get_shard_info (T_CON_HANDLE * con_handle,
 			      T_CCI_ERROR * err_buf);
 extern int qe_shard_info_free (T_CCI_SHARD_INFO * shard_info);
 extern int qe_is_shard (T_CON_HANDLE * con_handle);
+extern bool is_connected_to_oracle (T_CON_HANDLE * con_handle);
 
 /************************************************************************
  * EXPORTED VARIABLES							*

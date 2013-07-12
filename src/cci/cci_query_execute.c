@@ -211,7 +211,6 @@ static void net_str_to_xid (char *buf, XID * xid);
 #endif
 static int shard_info_decode (char *buf_p, int size, int num_shard,
 			      T_CCI_SHARD_INFO ** shard_info);
-static bool is_connected_to_oracle (T_CON_HANDLE * con_handle);
 static bool is_set_default_value_if_null (T_CON_HANDLE * con_handle,
 					  T_CCI_CUBRID_STMT stmt_type,
 					  char bind_mode);
@@ -6451,7 +6450,7 @@ shard_info_decode_error:
   return CCI_ER_COMMUNICATION;
 }
 
-static bool
+bool
 is_connected_to_oracle (T_CON_HANDLE * con_handle)
 {
   return con_handle->broker_info[BROKER_INFO_DBMS_TYPE] == CAS_DBMS_ORACLE
