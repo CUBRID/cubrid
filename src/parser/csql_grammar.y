@@ -2180,17 +2180,20 @@ session_variable_list
 	;
 
 session_variable
-	: '@' IdName
+	: '@' identifier
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
+			PT_NODE *id = $2;
 
-			if (node)
+			if (node != NULL && id != NULL)
 			  {
 			    node->type_enum = PT_TYPE_CHAR;
 			    node->info.value.string_type = ' ';
 			    node->info.value.data_value.str =
-			      pt_append_bytes (this_parser, NULL, $2, strlen ($2));
+			      pt_append_bytes (this_parser, NULL, 
+			      				   id->info.name.original, 
+			      				   strlen (id->info.name.original));
 			    node->info.value.text =
 			      node->info.value.data_value.str->bytes;
 			  }
