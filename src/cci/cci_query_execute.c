@@ -1257,6 +1257,11 @@ qe_close_query_result (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
   char func_code = CAS_FC_CURSOR_CLOSE;
   T_BROKER_VERSION broker_ver;
 
+  if (!hm_get_con_handle_holdable (con_handle))
+    {
+      return err_code;
+    }
+
   net_buf_init (&net_buf);
 
   broker_ver = hm_get_broker_version (con_handle);
