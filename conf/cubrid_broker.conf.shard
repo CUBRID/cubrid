@@ -16,7 +16,7 @@
 #  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA 
 #
 
-[shard]
+[broker]
 MASTER_SHM_ID           =30001
 ADMIN_LOG_FILE          =log/broker/cubrid_broker.log
 
