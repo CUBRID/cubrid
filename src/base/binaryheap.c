@@ -44,7 +44,6 @@
 
 
 static void bh_up_heap (BINARY_HEAP * heap, int index);
-static void bh_down_heap (BINARY_HEAP * heap, int index);
 
 /*
  * bh_up_heap () - push an element up the heap to the correct position
@@ -75,7 +74,7 @@ bh_up_heap (BINARY_HEAP * heap, int index)
  * heap (in)  : heap
  * index (in) : element index
  */
-static void
+void
 bh_down_heap (BINARY_HEAP * heap, int index)
 {
   int left = BH_LEFT (index);

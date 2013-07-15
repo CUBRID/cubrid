@@ -546,6 +546,22 @@ struct selupd_list
   int wait_msecs;		/* lock timeout in milliseconds */
 };
 
+typedef struct topn_tuple TOPN_TUPLE;
+struct topn_tuple
+{
+  DB_VALUE *values;		/* tuple values */
+  int values_size;		/* total size in bytes occupied by the
+				 * objects stored in the values array
+				 */
+};
+
+typedef enum
+{
+  TOPN_SUCCESS,
+  TOPN_OVERFLOW,
+  TOPN_FAILURE
+} TOPN_STATUS;
+
 /* top-n sorting object */
 typedef struct topn_tuples TOPN_TUPLES;
 struct topn_tuples
@@ -553,7 +569,10 @@ struct topn_tuples
   SORT_LIST *sort_items;	/* sort items position in tuple and sort
 				 * order */
   BINARY_HEAP *heap;		/* heap used to hold top-n tuples */
+  TOPN_TUPLE *tuples;		/* actual tuples stored in memory */
   int values_count;		/* number of values in a tuple */
+  UINT64 total_size;		/* size in bytes of stored tuples */
+  UINT64 max_size;		/* maximum size which tuples may occupy */
 };
 
 typedef struct orderby_stat ORDERBY_STATS;

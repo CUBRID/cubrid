@@ -77,6 +77,7 @@ extern "C"
   extern int bh_insert (BINARY_HEAP * heap, BH_ELEM elem);
   extern BH_ELEM bh_try_insert (BINARY_HEAP * heap, BH_ELEM elem);
 
+  extern void bh_down_heap (BINARY_HEAP * heap, int index);
   extern BH_ELEM bh_extract_max (BINARY_HEAP * heap);
   extern BH_ELEM bh_replace_max (BINARY_HEAP * heap, BH_ELEM elem);
   extern BH_ELEM bh_peek_max (BINARY_HEAP * heap);
