@@ -116,6 +116,7 @@ static int shard_shm_set_param_proxy (T_SHM_PROXY * proxy_p,
 static int shard_shm_set_param_proxy_internal (T_PROXY_INFO * proxy_info_p,
 					       const char *param_name,
 					       const char *param_value);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int shard_shm_set_param_shard (T_PROXY_INFO * proxy_info_p,
 				      const char *param_name,
 				      const char *param_value, int shard_id);
@@ -127,6 +128,7 @@ static int shard_shm_set_param_shard_in_proxy (T_SHM_PROXY * proxy_p,
 					       const char *param_name,
 					       const char *param_value,
 					       int proxy_id, int shard_id);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int shard_shm_set_param_as (T_PROXY_INFO * proxy_info_p,
 				   T_SHARD_INFO * shard_info_p,
 				   const char *param_name,
@@ -2330,65 +2332,6 @@ admin_conf_change (int master_shm_id, const char *br_name,
       br_info_p->query_timeout = val;
       shm_as_p->query_timeout = val;
     }
-  else if (strcasecmp (conf_name, "SHARD_DB_NAME") == 0)
-    {
-      if (br_info_p->shard_flag == OFF)
-	{
-	  sprintf (admin_err_msg, "%s is only supported on shard", conf_name);
-	  goto set_conf_error;
-	}
-
-      user_p = shard_metadata_get_shard_user_from_shm (shm_proxy_p);
-
-      strncpy (br_info_p->shard_db_name, conf_value,
-	       sizeof (br_info_p->shard_db_name) - 1);
-      strncpy (user_p->db_name, conf_value, sizeof (user_p->db_name) - 1);
-    }
-  else if (strcasecmp (conf_name, "SHARD_DB_USER") == 0)
-    {
-      if (br_info_p->shard_flag == OFF)
-	{
-	  sprintf (admin_err_msg, "%s is only supported on shard", conf_name);
-	  goto set_conf_error;
-	}
-
-      assert (shm_proxy_p != NULL);
-
-      user_p = shard_metadata_get_shard_user_from_shm (shm_proxy_p);
-
-      strncpy (br_info_p->shard_db_user, conf_value,
-	       sizeof (br_info_p->shard_db_user) - 1);
-      strncpy (user_p->db_user, conf_value, sizeof (user_p->db_user) - 1);
-
-      if (shard_shm_set_param_shard_in_proxy
-	  (shm_proxy_p, conf_name, conf_value, ALL_PROXY, ALL_SHARD) < 0)
-	{
-	  goto set_conf_error;
-	}
-    }
-  else if (strcasecmp (conf_name, "SHARD_DB_PASSWORD") == 0)
-    {
-      if (br_info_p->shard_flag == OFF)
-	{
-	  sprintf (admin_err_msg, "%s is only supported on shard", conf_name);
-	  goto set_conf_error;
-	}
-
-      assert (shm_proxy_p != NULL);
-
-      user_p = shard_metadata_get_shard_user_from_shm (shm_proxy_p);
-
-      strncpy (br_info_p->shard_db_password, conf_value,
-	       sizeof (br_info_p->shard_db_password) - 1);
-      strncpy (user_p->db_password, conf_value,
-	       sizeof (user_p->db_password) - 1);
-
-      if (shard_shm_set_param_shard_in_proxy
-	  (shm_proxy_p, conf_name, conf_value, ALL_PROXY, ALL_SHARD) < 0)
-	{
-	  goto set_conf_error;
-	}
-    }
   else if (strcasecmp (conf_name, "SHARD_PROXY_LOG") == 0)
     {
       char proxy_log_mode;
@@ -2443,9 +2386,10 @@ admin_conf_change (int master_shm_id, const char *br_name,
     }
   else
     {
-      sprintf (admin_err_msg, "%s is only supported on shard", conf_name);
+      sprintf (admin_err_msg, "unknown keyword %s", conf_name);
       goto set_conf_error;
     }
+
   if (shm_proxy_p)
     {
       uw_shm_detach (shm_proxy_p);
@@ -3693,6 +3637,7 @@ shard_shm_set_param_proxy_internal (T_PROXY_INFO * proxy_info_p,
   return 0;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int
 shard_shm_set_param_shard (T_PROXY_INFO * proxy_info_p,
 			   const char *param_name, const char *param_value,
@@ -3797,6 +3742,7 @@ shard_shm_set_param_shard_in_proxy (T_SHM_PROXY * proxy_p,
 
   return 0;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 static int
 shard_shm_set_param_as (T_PROXY_INFO * proxy_info_p,
