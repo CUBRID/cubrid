@@ -21749,23 +21749,6 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer,
       assert (arg3_coll_infer != NULL);
     }
 
-  /* arguments can have only one multibyte charset */
-  if ((arg1_coll_infer->codeset == INTL_CODESET_UTF8
-       || arg2_coll_infer->codeset == INTL_CODESET_UTF8
-       || (op_has_3_args && arg3_coll_infer->codeset == INTL_CODESET_UTF8))
-      && (arg1_coll_infer->codeset == INTL_CODESET_KSC5601_EUC
-	  || arg2_coll_infer->codeset == INTL_CODESET_KSC5601_EUC
-	  || (op_has_3_args &&
-	      arg3_coll_infer->codeset == INTL_CODESET_KSC5601_EUC)))
-    {
-      if (!arg1_coll_infer->can_force_cs
-	  && !arg2_coll_infer->can_force_cs
-	  && !(op_has_3_args && arg2_coll_infer->can_force_cs))
-	{
-	  goto error;
-	}
-    }
-
   if (arg1_coll_infer->coll_id != arg2_coll_infer->coll_id
       && arg1_coll_infer->coerc_level == arg2_coll_infer->coerc_level
       && arg1_coll_infer->can_force_cs == arg2_coll_infer->can_force_cs)
@@ -22454,8 +22437,6 @@ pt_check_recursive_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   int recurs_coll = -1;
   INTL_CODESET recurs_cs = INTL_CODESET_NONE;
   PT_COLL_COERC_LEV recurs_coerc_level = PT_COLLATION_FULLY_COERC;
-  bool has_utf8_cs = false;
-  bool has_euc_cs = false;
   bool need_arg_coerc = false;
 
   assert (expr != NULL);
@@ -22473,22 +22454,6 @@ pt_check_recursive_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 
       if (pt_get_collation_info (arg1, &arg1_coll_infer))
 	{
-	  if (!arg1_coll_infer.can_force_cs)
-	    {
-	      if (arg1_coll_infer.codeset == INTL_CODESET_KSC5601_EUC)
-		{
-		  has_euc_cs = true;
-		}
-	      else if (arg1_coll_infer.codeset == INTL_CODESET_UTF8)
-		{
-		  has_utf8_cs = true;
-		}
-	      if (has_utf8_cs && has_euc_cs)
-		{
-		  goto error;
-		}
-	    }
-
 	  if (recurs_coll != -1 && recurs_coll != arg1_coll_infer.coll_id
 	      && recurs_coerc_level == arg1_coll_infer.coerc_level)
 	    {
@@ -22515,23 +22480,6 @@ pt_check_recursive_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	  && (arg2->node_type != PT_EXPR || op != arg2->info.expr.op)
 	  && pt_get_collation_info (arg2, &arg2_coll_infer))
 	{
-	  if (!arg2_coll_infer.can_force_cs)
-	    {
-	      if (arg2_coll_infer.codeset == INTL_CODESET_KSC5601_EUC)
-		{
-		  has_euc_cs = true;
-		}
-	      else if (arg2_coll_infer.codeset == INTL_CODESET_UTF8)
-		{
-		  has_utf8_cs = true;
-		}
-
-	      if (has_utf8_cs && has_euc_cs)
-		{
-		  goto error;
-		}
-	    }
-
 	  if (recurs_coll != -1 && recurs_coll != arg2_coll_infer.coll_id
 	      && recurs_coerc_level == arg2_coll_infer.coerc_level)
 	    {
