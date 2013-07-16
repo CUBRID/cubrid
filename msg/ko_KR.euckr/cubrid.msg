@@ -1787,7 +1787,7 @@ $set 14 MSGCAT_SET_LOCK
 29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_secs = %.2f\n
 30 %4sTran_index = %3d, Non_2_phase_lock =%8s\n
 31 VPID (volid|pageid) = %3d|%6d.\n
-32 *** 락 테이블 덤프  ***\n 락 상승    = %d, Run Deadlock interval = %d\n
+32 *** 락 테이블 덤프  ***\n 락 상승    = %d, Run Deadlock interval = %5.2f\n
 33 트랜잭션 (인덱스 %2d, %s, %s@%s|%d)\n
 34 격리도 %s\n
 35 수행상태 %s\n

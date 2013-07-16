@@ -1787,7 +1787,7 @@ $set 14 MSGCAT_SET_LOCK
 29 %4sTran_Index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_secs = %.2f\n
 30 %4sTran_Index = %3d, Non_2_phase_lock =%8s\n
 31 VPID (volid|pageid) = %3d|%6d.\n
-32 *** Locktabelle Dump ***\n Lock Eskalation bei = %d, Ausführung Deadlock Interval = %d\n
+32 *** Locktabelle Dump ***\n Lock Eskalation bei = %d, Ausführung Deadlock Interval = %5.2f\n
 33 Transaktion (Index %2d, %s, %s@%s|%d)\n
 34 Isolation %s\n
 35 Zustand %s\n
