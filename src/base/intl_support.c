@@ -5172,6 +5172,10 @@ intl_utf8_to_euckr (const unsigned char *in_buf, const int in_size,
 	  unsigned char *next_utf8;
 
 	  unicode_cp = intl_utf8_to_cp (p_in, p_end - p_in, &next_utf8);
+	  if (unicode_cp == 0xffffffff)
+	    {
+	      goto illegal_char;
+	    }
 
 	  /* try to convert to KSC5601 */
 	  euc_bytes = ksc5601_wctomb (euc_buf, unicode_cp, next_utf8 - p_in);
@@ -5187,6 +5191,10 @@ intl_utf8_to_euckr (const unsigned char *in_buf, const int in_size,
 	      continue;
 	    }
 
+	  if (euc_bytes != RET_ILUNI)
+	    {
+	      goto illegal_char;
+	    }
 	  assert (euc_bytes == RET_ILUNI);
 	  /* not found as KSC encoding, try as JISX0212 */
 	  euc_bytes = jisx0212_wctomb (euc_buf, unicode_cp, next_utf8 - p_in);
@@ -5203,8 +5211,7 @@ intl_utf8_to_euckr (const unsigned char *in_buf, const int in_size,
 	    }
 
 	  /* illegal Unicode or impossible to convert to EUC */
-	  assert (euc_bytes == RET_ILUNI);
-
+	illegal_char:
 	  p_in = next_utf8;
 	  *p_out = '?';
 	  p_out++;
@@ -5277,6 +5284,10 @@ intl_iso88591_to_euckr (const unsigned char *in_buf, const int in_size,
 	    }
 
 	  /* illegal ISO8859-1 or impossible to convert to KSC */
+	  if (euc_bytes != RET_ILUNI)
+	    {
+	      goto illegal_char;
+	    }
 	  assert (euc_bytes == RET_ILUNI);
 
 	  /* try to convert to JISX0212 */
@@ -5294,6 +5305,7 @@ intl_iso88591_to_euckr (const unsigned char *in_buf, const int in_size,
 	      continue;
 	    }
 
+	illegal_char:
 	  *p_out = '?';
 	  p_out++;
 	  status = 1;
