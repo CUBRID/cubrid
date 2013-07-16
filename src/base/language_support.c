@@ -2930,7 +2930,7 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll,
       str = str_next;
     }
 
-  return 0;
+  return pseudo_key;
 }
 
 /*
