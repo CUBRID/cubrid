@@ -13414,6 +13414,12 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
       return error;
     }
 
+  error = au_fetch_class (classop, &class_, AU_FETCH_UPDATE, AU_INDEX);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   constraint_type =
     SM_MAP_DB_INDEX_CONSTRAINT_TO_SM_CONSTRAINT (db_constraint_type);
   reverse_index = SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (constraint_type);
@@ -13569,164 +13575,160 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
       free_and_init (sub_partitions);
     }
 
-  error = au_fetch_class (classop, &class_, AU_FETCH_UPDATE, AU_INDEX);
+
+  /* should be had checked before if this index already exist */
+
+  /* make sure the catalog can handle another representation */
+  error = check_catalog_space (classop, class_);
+  if (error)
+    {
+      goto general_error;
+    }
+
+  /* Count the number of attributes */
+  n_attrs = 0;
+  for (i = 0; attnames[i] != NULL; i++)
+    {
+      n_attrs++;
+    }
+
+  /* Allocate memory for the attribute array */
+  attrs_size = sizeof (SM_ATTRIBUTE *) * (n_attrs + 1);
+  attrs = (SM_ATTRIBUTE **) malloc (attrs_size);
+  if (attrs == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, attrs_size);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto general_error;
+    }
+
+  /* Retrieve all of the attributes */
+  for (i = 0; i < n_attrs; i++)
+    {
+      attrs[i] = classobj_find_attribute (class_, attnames[i], 0);
+
+      if (attrs[i] != NULL
+	  && attrs[i]->header.name_space == ID_SHARED_ATTRIBUTE)
+	{
+	  ERROR1 (error, ER_SM_INDEX_ON_SHARED, attnames[i]);
+	  goto general_error;
+	}
+      if (attrs[i] == NULL || attrs[i]->header.name_space != ID_ATTRIBUTE)
+	{
+	  ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, attnames[i]);
+	  goto general_error;
+	}
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
+      if (sm_has_text_domain (attrs[i], 0))
+	{
+	  if (strstr (constraint_name, TEXT_CONSTRAINT_PREFIX))
+	    {
+	      /* prevent to create index on TEXT attribute */
+	      ERROR1 (error, ER_REGU_NOT_IMPLEMENTED,
+		      rel_major_release_string ());
+	      goto general_error;
+	    }
+	}
+#endif /* ENABLE_UNUSED_FUNCTION */
+    }
+  attrs[n_attrs] = NULL;
+
+  /* Make sure both the class and the instances are flushed before
+   * creating the index.  NOTE THAT THIS WILL REMOVE THE DIRTY
+   * BIT FROM THE CLASS OBJECT BEFORE THE INDEX HAS ACTUALLY BEEN
+   * ATTACHED !  WE NEED TO MAKE SURE THE CLASS IS MARKED DIRTY
+   * AGAIN AFTER THE INDEX LOAD.
+   */
+
+  if (locator_flush_class (classop) != NO_ERROR
+      || locator_flush_all_instances (classop, DECACHE,
+				      LC_STOP_ON_ERROR) != NO_ERROR)
+    {
+      goto general_error;
+    }
+
+  if (out_shared_cons_name)
+    {
+      /* only normal index can share with foreign key */
+      SM_CLASS_CONSTRAINT *existing_con;
+      existing_con =
+	classobj_find_constraint_by_name (class_->constraints,
+					  out_shared_cons_name);
+      assert (existing_con != NULL);
+
+      BTID_COPY (&index, &existing_con->index_btid);
+    }
+  else
+    {
+      /* allocate the index - this will result in a btree load if there
+         are existing instances */
+      BTID_SET_NULL (&index);
+      error = allocate_index (classop, class_, NULL, attrs, asc_desc,
+			      attrs_prefix_length, false, false,
+			      reverse_index, constraint_name, &index,
+			      NULL, NULL, -1, NULL, filter_index,
+			      function_index);
+    }
   if (error == NO_ERROR)
     {
+      /* modify the class to point at the new index */
+      if (classobj_put_index_id (&(class_->properties), constraint_type,
+				 constraint_name, attrs, asc_desc,
+				 attrs_prefix_length, &index,
+				 filter_index, NULL, out_shared_cons_name,
+				 function_index) != NO_ERROR)
+	{
+	  error = er_errid ();
+	  goto general_error;
+	}
 
-      /* should be had checked before if this index already exist */
-
-      /* make sure the catalog can handle another representation */
-      error = check_catalog_space (classop, class_);
-      if (error)
+      error = classobj_cache_class_constraints (class_);
+      if (error != NO_ERROR)
 	{
 	  goto general_error;
 	}
 
-      /* Count the number of attributes */
-      n_attrs = 0;
-      for (i = 0; attnames[i] != NULL; i++)
+      if (!classobj_cache_constraints (class_))
 	{
-	  n_attrs++;
-	}
-
-      /* Allocate memory for the attribute array */
-      attrs_size = sizeof (SM_ATTRIBUTE *) * (n_attrs + 1);
-      attrs = (SM_ATTRIBUTE **) malloc (attrs_size);
-      if (attrs == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, attrs_size);
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = er_errid ();
 	  goto general_error;
 	}
 
-      /* Retrieve all of the attributes */
-      for (i = 0; i < n_attrs; i++)
-	{
-	  attrs[i] = classobj_find_attribute (class_, attnames[i], 0);
-
-	  if (attrs[i] != NULL
-	      && attrs[i]->header.name_space == ID_SHARED_ATTRIBUTE)
-	    {
-	      ERROR1 (error, ER_SM_INDEX_ON_SHARED, attnames[i]);
-	      goto general_error;
-	    }
-	  if (attrs[i] == NULL || attrs[i]->header.name_space != ID_ATTRIBUTE)
-	    {
-	      ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, attnames[i]);
-	      goto general_error;
-	    }
-#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
-	  if (sm_has_text_domain (attrs[i], 0))
-	    {
-	      if (strstr (constraint_name, TEXT_CONSTRAINT_PREFIX))
-		{
-		  /* prevent to create index on TEXT attribute */
-		  ERROR1 (error, ER_REGU_NOT_IMPLEMENTED,
-			  rel_major_release_string ());
-		  goto general_error;
-		}
-	    }
-#endif /* ENABLE_UNUSED_FUNCTION */
-	}
-      attrs[n_attrs] = NULL;
-
-      /* Make sure both the class and the instances are flushed before
-       * creating the index.  NOTE THAT THIS WILL REMOVE THE DIRTY
-       * BIT FROM THE CLASS OBJECT BEFORE THE INDEX HAS ACTUALLY BEEN
-       * ATTACHED !  WE NEED TO MAKE SURE THE CLASS IS MARKED DIRTY
-       * AGAIN AFTER THE INDEX LOAD.
+      /* now that the index is physically attached to the class, we must
+       * mark it as dirty and flush it again to make sure the catalog
+       * is updated correctly.  This is necessary because the allocation
+       * and loading of the instance are done at the same time.  We need
+       * to be able to allocate the index and flush the class BEFORE
+       * the loading to avoid this extra step.
        */
 
-      if (locator_flush_class (classop) != NO_ERROR
-	  || locator_flush_all_instances (classop, DECACHE,
-					  LC_STOP_ON_ERROR) != NO_ERROR)
+      /* If either of these operations fail, the transaction should
+       * be aborted
+       */
+      if (locator_update_class (classop) == NULL)
 	{
-	  goto general_error;
+	  goto severe_error;
 	}
 
-      if (out_shared_cons_name)
+      if (locator_flush_class (classop) != NO_ERROR)
 	{
-	  /* only normal index can share with foreign key */
-	  SM_CLASS_CONSTRAINT *existing_con;
-	  existing_con =
-	    classobj_find_constraint_by_name (class_->constraints,
-					      out_shared_cons_name);
-	  assert (existing_con != NULL);
-
-	  BTID_COPY (&index, &existing_con->index_btid);
-	}
-      else
-	{
-	  /* allocate the index - this will result in a btree load if there
-	     are existing instances */
-	  BTID_SET_NULL (&index);
-	  error = allocate_index (classop, class_, NULL, attrs, asc_desc,
-				  attrs_prefix_length, false, false,
-				  reverse_index, constraint_name, &index,
-				  NULL, NULL, -1, NULL, filter_index,
-				  function_index);
-	}
-      if (error == NO_ERROR)
-	{
-	  /* modify the class to point at the new index */
-	  if (classobj_put_index_id (&(class_->properties), constraint_type,
-				     constraint_name, attrs, asc_desc,
-				     attrs_prefix_length, &index,
-				     filter_index, NULL, out_shared_cons_name,
-				     function_index) != NO_ERROR)
-	    {
-	      error = er_errid ();
-	      goto general_error;
-	    }
-
-	  error = classobj_cache_class_constraints (class_);
-	  if (error != NO_ERROR)
-	    {
-	      goto general_error;
-	    }
-
-	  if (!classobj_cache_constraints (class_))
-	    {
-	      error = er_errid ();
-	      goto general_error;
-	    }
-
-	  /* now that the index is physically attached to the class, we must
-	   * mark it as dirty and flush it again to make sure the catalog
-	   * is updated correctly.  This is necessary because the allocation
-	   * and loading of the instance are done at the same time.  We need
-	   * to be able to allocate the index and flush the class BEFORE
-	   * the loading to avoid this extra step.
-	   */
-
-	  /* If either of these operations fail, the transaction should
-	   * be aborted
-	   */
-	  if (locator_update_class (classop) == NULL)
-	    {
-	      goto severe_error;
-	    }
-
-	  if (locator_flush_class (classop) != NO_ERROR)
-	    {
-	      goto severe_error;
-	    }
-
-	  /* since we almost always want to use the index after
-	   * it has been created, cause the statistics for this
-	   * class to be updated so that the optimizer is able
-	   * to make use of the new index.  Recall that the optimizer
-	   * looks at the statistics structures, not the schema structures.
-	   */
-	  if (sm_update_index_statistics (classop, &index, false))
-	    {
-	      goto severe_error;
-	    }
+	  goto severe_error;
 	}
 
-      free_and_init (attrs);
+      /* since we almost always want to use the index after
+       * it has been created, cause the statistics for this
+       * class to be updated so that the optimizer is able
+       * to make use of the new index.  Recall that the optimizer
+       * looks at the statistics structures, not the schema structures.
+       */
+      if (sm_update_index_statistics (classop, &index, false))
+	{
+	  goto severe_error;
+	}
     }
+
+  free_and_init (attrs);
 
 fail_end:
   if (savepoint_index && error != NO_ERROR
@@ -13833,6 +13835,12 @@ sm_drop_index (MOP classop, const char *constraint_name)
   int i, is_partition = 0, savepoint_index = 0;
   MOP *sub_partitions = NULL;
 
+  error = au_fetch_class (classop, &class_, AU_FETCH_UPDATE, AU_INDEX);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   error = sm_partitioned_class_type (classop, &is_partition, NULL,
 				     &sub_partitions);
   if (error != NO_ERROR)
@@ -13869,81 +13877,76 @@ sm_drop_index (MOP classop, const char *constraint_name)
       free_and_init (sub_partitions);
     }
 
-  error = au_fetch_class (classop, &class_, AU_FETCH_UPDATE, AU_INDEX);
-  if (error == NO_ERROR)
+  /* Verify that this constraint does exist */
+  ctype = SM_CONSTRAINT_INDEX;
+  found = classobj_find_class_constraint (class_->constraints, ctype,
+					  constraint_name);
+
+  if (found == NULL)
     {
-      /* Verify that this constraint does exist */
-      ctype = SM_CONSTRAINT_INDEX;
+      ctype = SM_CONSTRAINT_REVERSE_INDEX;
       found = classobj_find_class_constraint (class_->constraints, ctype,
 					      constraint_name);
+    }
 
-      if (found == NULL)
+  if (found == NULL)
+    {
+      ERROR1 (error, ER_SM_NO_INDEX, constraint_name);
+    }
+  else
+    {
+      /* make sure the catalog can handle another representation */
+      error = check_catalog_space (classop, class_);
+      if (error != NO_ERROR)
 	{
-	  ctype = SM_CONSTRAINT_REVERSE_INDEX;
-	  found = classobj_find_class_constraint (class_->constraints, ctype,
-						  constraint_name);
+	  return error;
 	}
 
-      if (found == NULL)
+      /*
+       *  Remove the index from the class.  We do this is an awkward
+       *  way.  First we remove it from the class constraint cache and
+       *  then we back propagate the changes to the class property list.
+       *  We do this backwards because it's easier, go figure.
+       */
+      if (deallocate_index (class_->constraints, &found->index_btid))
 	{
-	  ERROR1 (error, ER_SM_NO_INDEX, constraint_name);
+	  goto severe_error;
 	}
-      else
+
+      BTID_SET_NULL (&found->index_btid);
+      classobj_remove_class_constraint_node (&class_->constraints, found);
+      classobj_free_class_constraints (found);
+
+      error = classobj_populate_class_properties (&class_->properties,
+						  class_->constraints, ctype);
+
+      if (classobj_cache_class_constraints (class_) != NO_ERROR)
 	{
-	  /* make sure the catalog can handle another representation */
-	  error = check_catalog_space (classop, class_);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
+	  goto severe_error;
+	}
 
-	  /*
-	   *  Remove the index from the class.  We do this is an awkward
-	   *  way.  First we remove it from the class constraint cache and
-	   *  then we back propagate the changes to the class property list.
-	   *  We do this backwards because it's easier, go figure.
-	   */
-	  if (deallocate_index (class_->constraints, &found->index_btid))
-	    {
-	      goto severe_error;
-	    }
+      if (!classobj_cache_constraints (class_))
+	{
+	  goto severe_error;
+	}
 
-	  BTID_SET_NULL (&found->index_btid);
-	  classobj_remove_class_constraint_node (&class_->constraints, found);
-	  classobj_free_class_constraints (found);
+      /* Make sure the class is now marked dirty and flushed so that
+         the catalog is updated.  Also update statistics so that
+         the optimizer will know that the index no longer exists.
+       */
+      if (locator_update_class (classop) == NULL)
+	{
+	  goto severe_error;
+	}
 
-	  error = classobj_populate_class_properties (&class_->properties,
-						      class_->constraints,
-						      ctype);
+      if (locator_flush_class (classop) != NO_ERROR)
+	{
+	  goto severe_error;
+	}
 
-	  if (classobj_cache_class_constraints (class_) != NO_ERROR)
-	    {
-	      goto severe_error;
-	    }
-
-	  if (!classobj_cache_constraints (class_))
-	    {
-	      goto severe_error;
-	    }
-
-	  /* Make sure the class is now marked dirty and flushed so that
-	     the catalog is updated.  Also update statistics so that
-	     the optimizer will know that the index no longer exists.
-	   */
-	  if (locator_update_class (classop) == NULL)
-	    {
-	      goto severe_error;
-	    }
-
-	  if (locator_flush_class (classop) != NO_ERROR)
-	    {
-	      goto severe_error;
-	    }
-
-	  if (sm_update_class_statistics (classop, false))
-	    {
-	      goto severe_error;
-	    }
+      if (sm_update_class_statistics (classop, false))
+	{
+	  goto severe_error;
 	}
     }
 

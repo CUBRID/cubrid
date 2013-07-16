@@ -4853,6 +4853,13 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_,
       db_make_error (returnval, er_errid ());
       return;
     }
+
+  error = au_fetch_class_force (classmop, &class_, AU_FETCH_UPDATE);
+  if (error != NO_ERROR)
+    {
+      goto fail_return;
+    }
+
   user = au_find_user (owner_name);
   if (user == NULL)
     {
@@ -4863,7 +4870,9 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_,
   error = sm_partitioned_class_type (classmop, &is_partition, NULL,
 				     &sub_partitions);
   if (error != NO_ERROR)
-    goto fail_return;
+    {
+      goto fail_return;
+    }
 
   if (is_partition != DB_NOT_PARTITIONED_CLASS)
     {
