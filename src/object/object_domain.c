@@ -4426,6 +4426,11 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
   int original_length, desired_precision;
 
   original_type = DB_VALUE_DOMAIN_TYPE (val);
+  if (!TP_IS_CHAR_BIT_TYPE (original_type))
+    {
+      return 0;
+    }
+
   original_length = DB_GET_STRING_LENGTH (val);
   desired_type = TP_DOMAIN_TYPE (desired_domain);
   desired_precision = desired_domain->precision;
