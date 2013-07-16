@@ -4464,14 +4464,6 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
       /* Key 2 is ALWAYS NULL (see pt_create_iss_range(), so we do not
        * stream it */
     }
-  else
-    {
-#if !defined(NDEBUG)
-      /* suppress valgrind UMW error */
-      ptr = or_pack_int (ptr, 0);	/* dummy indx_info->iss_range.range */
-      ptr = or_pack_int (ptr, 0);	/* dummp offset of iss_range.key1 */
-#endif
-    }
 
   return ptr;
 }
