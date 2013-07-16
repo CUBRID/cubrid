@@ -289,8 +289,7 @@ class UOutputBuffer {
 			} else {
 				stringData = UGetTypeConvertedValue.getString(value);
 			}
-		    stringData = UGetTypeConvertedValue.getString(value);
-		    return addStringWithNull(stringData);
+		    	return addStringWithNull(stringData);
 		case UUType.U_TYPE_NUMERIC:
 			if (value == null) {
 				stringData = "";
