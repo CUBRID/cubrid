@@ -106,7 +106,7 @@ init_gcrypt ()
 	  pthread_mutex_unlock (&gcrypt_init_mutex);
 #endif
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED,
-		  0, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+		  1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
 	  return ER_ENCRYPTION_LIB_FAILED;
 	}
       gcrypt_initialized = (i_gcrypt_err == GCRYPT_INIT_SUCCESS) ? 1 : 0;
@@ -235,11 +235,11 @@ aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len,
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  i_gcrypt_err =
-    gcry_cipher_open (&aes_ctx, GCRY_CIPHER_AES, GCRY_CIPHER_MODE_ECB, 0);
+  i_gcrypt_err = gcry_cipher_open (&aes_ctx, GCRY_CIPHER_AES,
+				   GCRY_CIPHER_MODE_ECB, 0);
   if (i_gcrypt_err != GPG_ERR_NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 0,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
 	      crypt_lib_fail_info[CRYPT_LIB_OPEN_CIPHER_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
@@ -271,7 +271,7 @@ aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len,
   if (i_gcrypt_err != GPG_ERR_NO_ERROR)
     {
       error_status = ER_ENCRYPTION_LIB_FAILED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 0,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
 	      crypt_lib_fail_info[CRYPT_LIB_SET_KEY_ERR]);
       goto exit_and_free;
     }
@@ -288,7 +288,7 @@ aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len,
 			 padding_src_len);
   if (i_gcrypt_err != GPG_ERR_NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 0,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
 	      crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
       error_status = ER_ENCRYPTION_LIB_FAILED;
       goto exit_and_free;
@@ -359,11 +359,11 @@ aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len,
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  i_gcrypt_err =
-    gcry_cipher_open (&aes_ctx, GCRY_CIPHER_AES, GCRY_CIPHER_MODE_ECB, 0);
+  i_gcrypt_err = gcry_cipher_open (&aes_ctx, GCRY_CIPHER_AES,
+				   GCRY_CIPHER_MODE_ECB, 0);
   if (i_gcrypt_err != GPG_ERR_NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 0,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
 	      crypt_lib_fail_info[CRYPT_LIB_OPEN_CIPHER_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
@@ -379,7 +379,7 @@ aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len,
   i_gcrypt_err = gcry_cipher_setkey (aes_ctx, new_key, AES128_KEY_LEN);
   if (i_gcrypt_err != GPG_ERR_NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 0,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
 	      crypt_lib_fail_info[CRYPT_LIB_SET_KEY_ERR]);
       error_status = ER_ENCRYPTION_LIB_FAILED;
       goto error_and_free;
@@ -389,7 +389,7 @@ aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len,
   if (i_gcrypt_err != GPG_ERR_NO_ERROR)
     {
       error_status = ER_ENCRYPTION_LIB_FAILED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 0,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
 	      crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
       goto error_and_free;
     }
