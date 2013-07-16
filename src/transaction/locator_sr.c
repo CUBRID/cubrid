@@ -2048,7 +2048,7 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
 			      int chn, int guess_chn, SCAN_CODE scan,
 			      int tran_index)
 {
-  int wasted_length = 0;
+  int round_length;		/* Length of object rounded to integer alignment */
 
   switch (scan)
     {
@@ -2077,16 +2077,17 @@ locator_return_object_assign (THREAD_ENTRY * thread_p,
       assign->obj->operation = LC_FETCH;
       assign->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (assign->obj);
 
-      wasted_length = DB_WASTED_ALIGN (assign->recdes.length, MAX_ALIGNMENT);
+      round_length = DB_ALIGN (assign->recdes.length, MAX_ALIGNMENT);
 #if !defined(NDEBUG)
       /* suppress valgrind UMW error */
-      memset (assign->recdes.data + assign->recdes.length, 0, wasted_length);
+      memset (assign->recdes.data + assign->recdes.length, 0,
+	      MIN (round_length - assign->recdes.length,
+		   assign->recdes.area_size - assign->recdes.length));
 #endif
-      assign->recdes.length = assign->recdes.length + wasted_length;
-      assign->area_offset += assign->recdes.length;
-      assign->recdes.data += assign->recdes.length;
-      assign->recdes.area_size -= (assign->recdes.length +
-				   sizeof (*assign->obj));
+      assign->recdes.length = round_length;
+      assign->area_offset += round_length;
+      assign->recdes.data += round_length;
+      assign->recdes.area_size -= round_length + sizeof (*assign->obj);
       break;
 
     case S_SUCCESS_CHN_UPTODATE:
@@ -2652,7 +2653,8 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock,
 #if !defined(NDEBUG)
 	  /* suppress valgrind UMW error */
 	  memset (recdes.data + recdes.length, 0,
-		  round_length - recdes.length);
+		  MIN (round_length - recdes.length,
+		       recdes.area_size - recdes.length));
 #endif
 	  offset += round_length;
 	  recdes.data += round_length;
@@ -11076,7 +11078,8 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid,
 #if !defined(NDEBUG)
 	  /* suppress valgrind UMW error */
 	  memset (recdes.data + recdes.length, 0,
-		  round_length - recdes.length);
+		  MIN (round_length - recdes.length,
+		       recdes.area_size - recdes.length));
 #endif
 	  offset += round_length;
 	  recdes.data += round_length;

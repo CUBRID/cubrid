@@ -4563,6 +4563,7 @@ locator_mflush (MOP mop, void *mf)
   bool decache;
   WS_MAP_STATUS map_status;
   int class_type = DB_NOT_PARTITIONED_CLASS;
+  int wasted_length;
 
   mflush = (LOCATOR_MFLUSH_CACHE *) mf;
 
@@ -4911,12 +4912,17 @@ locator_mflush (MOP mop, void *mf)
    * start at alignment of sizeof(int)
    */
 
-  round_length = DB_ALIGN (round_length, MAX_ALIGNMENT);
+  wasted_length = DB_WASTED_ALIGN (round_length, MAX_ALIGNMENT);
+#if !defined(NDEBUG)
+  /* suppress valgrind UMW error */
+  memset (mflush->recdes.data + round_length, 0,
+	  MIN (wasted_length, mflush->recdes.area_size - round_length));
+#endif
+  round_length = round_length + wasted_length;
   mflush->recdes.data += round_length;
   mflush->recdes.area_size -= round_length + sizeof (*(mflush->obj));
 
   /* If there is not any more area, force the area */
-
   if (mflush->recdes.area_size <= 0)
     {
       /* Force the mflush area */
