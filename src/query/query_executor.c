@@ -7197,10 +7197,7 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
       if (granted != LK_GRANTED)
 	{
 	  error = er_errid ();
-	  if (error == NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
+	  return ((error != NO_ERROR) ? error : ER_FAILED);
 	}
     }
 
