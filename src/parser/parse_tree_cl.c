@@ -7978,8 +7978,11 @@ pt_print_parts (PARSER_CONTEXT * parser, PT_NODE * p)
 
   save_custom = parser->custom_print;
   parser->custom_print |= PT_SUPPRESS_BIGINT_CAST;
+  parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
 
   r2 = pt_print_bytes_l (parser, p->info.parts.values);
+
+  parser->custom_print &= ~PT_SUPPRESS_COLLATE_PRINT;
 
   parser->custom_print = save_custom;
 
@@ -15954,6 +15957,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	? (p->data_type->info.data_type.collation_id) : LANG_SYS_COLLATION;
 
       if (!(p->info.value.print_collation)
+	  || (parser->custom_print & PT_SUPPRESS_COLLATE_PRINT)
 	  || (prt_coll_id == LANG_SYS_COLLATION
 	      && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT)))
 	{
