@@ -25115,8 +25115,20 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
     }
   else if (TP_IS_CHAR_TYPE (num_type))
     {
-      /* get string */
-      num_p_str = DB_PULL_STRING (num);
+      /* copy into a null-terminated string */
+      int str_size = DB_GET_STRING_SIZE (num);
+
+      if (str_size >= 0)
+	{
+	  str_size = MIN (str_size, sizeof (num_str) - 1);
+	}
+      else
+	{
+	  str_size = sizeof (num_str) - 1;
+	}
+      strncpy (num_str, DB_PULL_STRING (num), str_size);
+      num_str[str_size] = '\0';
+      num_p_str = num_str;
     }
   else if (TP_IS_BIT_TYPE (num_type))
     {
