@@ -5857,6 +5857,9 @@ pt_check_partition_values (PARSER_CONTEXT * parser, PT_TYPE_ENUM desired_type,
 
   for (val = parts->info.parts.values; val != NULL; val = val->next)
     {
+      bool has_different_collation = false;
+      bool has_different_codeset = false;
+
       if (val->node_type != PT_VALUE)
 	{
 	  /* Only values are allowed in partition LIST or RANGE
@@ -5869,12 +5872,29 @@ pt_check_partition_values (PARSER_CONTEXT * parser, PT_TYPE_ENUM desired_type,
 	}
 
       if (PT_HAS_COLLATION (val->type_enum) && data_type != NULL
-	  && PT_HAS_COLLATION (data_type->type_enum)
-	  && ((val->data_type != NULL
+	  && PT_HAS_COLLATION (data_type->type_enum))
+	{
+	  if ((val->data_type != NULL
 	       && data_type->info.data_type.units
 	       != val->data_type->info.data_type.units)
-	      || (val->data_type == NULL && data_type->info.data_type.units
-		  != LANG_SYS_CODESET)))
+	      || (val->data_type == NULL
+		  && data_type->info.data_type.units != LANG_SYS_CODESET))
+	    {
+	      has_different_codeset = true;
+	    }
+
+	  if ((val->data_type != NULL
+	       && data_type->info.data_type.collation_id
+	       != val->data_type->info.data_type.collation_id)
+	      || (val->data_type == NULL
+		  && data_type->info.data_type.collation_id
+		  != LANG_SYS_COLLATION))
+	    {
+	      has_different_collation = true;
+	    }
+	}
+
+      if (has_different_codeset == true)
 	{
 	  int val_codeset;
 
@@ -5890,7 +5910,9 @@ pt_check_partition_values (PARSER_CONTEXT * parser, PT_TYPE_ENUM desired_type,
 	  break;
 	}
 
-      if (val->type_enum != PT_TYPE_NULL && val->type_enum != desired_type)
+      if (val->type_enum != PT_TYPE_NULL
+	  && (val->type_enum != desired_type
+	      || has_different_collation == true))
 	{
 	  /* Coerce this value to the desired type. We have to preserve the
 	   * original text of the value for replication reasons. The coercion
