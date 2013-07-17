@@ -827,7 +827,7 @@ namespace DBGW3
     }
 
     DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
-        const char *szParamName, ValueType type, struct tm &value)
+        const char *szParamName, ValueType type, const struct tm &value)
     {
       dbgw::clearException();
 
@@ -856,7 +856,7 @@ namespace DBGW3
     }
 
     DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
-        ValueType type, struct tm &value)
+        ValueType type, const struct tm &value)
     {
       dbgw::clearException();
 

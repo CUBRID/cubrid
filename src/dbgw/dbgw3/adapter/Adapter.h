@@ -173,9 +173,9 @@ namespace DBGW3
     DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
         size_t nSize, const void *pValue);
     DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
-        const char *szParamName, ValueType type, struct tm &value);
+        const char *szParamName, ValueType type, const struct tm &value);
     DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
-        ValueType type, struct tm &value);
+        ValueType type, const struct tm &value);
 
   }
 
