@@ -123,7 +123,7 @@ int
 access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
 				 char *filename, char *admin_err_msg)
 {
-  char buf[1024], path_buf[256], *files, *token, *save;
+  char buf[1024], path_buf[BROKER_PATH_MAX], *files, *token, *save;
   FILE *fd_access_list;
   int num_access_list = 0, line = 0;
   ACCESS_INFO new_access_info[ACL_MAX_ITEM_COUNT];
@@ -252,7 +252,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
 	      break;
 	    }
 
-	  if (strlen (token) > 255)
+	  if (strlen (token) > BROKER_PATH_MAX - 1)
 	    {
 	      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
 			"%s: error while loading access control file(%s)"
@@ -261,7 +261,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
 	      goto error;
 	    }
 
-	  strncpy (path_buf, token, 256);
+	  strncpy (path_buf, token, BROKER_PATH_MAX);
 	  access_control_repath_file (path_buf);
 	  if (access_control_read_ip_info (&(access_info->ip_info),
 					   path_buf, admin_err_msg) < 0)

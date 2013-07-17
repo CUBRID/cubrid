@@ -337,7 +337,7 @@ broker_config_read_internal (const char *conf_file,
     {
       ini_string = ini_getstr (ini, SECTION_NAME, "ADMIN_LOG_FILE",
 			       DEFAULT_ADMIN_LOG_FILE, &lineno);
-      MAKE_FILEPATH (admin_log_file, ini_string, CONF_LOG_FILE_LEN);
+      MAKE_FILEPATH (admin_log_file, ini_string, BROKER_PATH_MAX);
     }
 
   if (acl_flag != NULL)
@@ -358,7 +358,7 @@ broker_config_read_internal (const char *conf_file,
     {
       ini_string = ini_getstr (ini, SECTION_NAME, "ACCESS_CONTROL_FILE", "",
 			       &lineno);
-      MAKE_FILEPATH (acl_file, ini_string, CONF_LOG_FILE_LEN);
+      MAKE_FILEPATH (acl_file, ini_string, BROKER_PATH_MAX);
     }
 
   for (i = 0; i < ini->nsec; i++)
