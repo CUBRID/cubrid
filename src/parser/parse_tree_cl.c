@@ -7982,8 +7982,6 @@ pt_print_parts (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r2 = pt_print_bytes_l (parser, p->info.parts.values);
 
-  parser->custom_print &= ~PT_SUPPRESS_COLLATE_PRINT;
-
   parser->custom_print = save_custom;
 
   q = pt_append_nulstring (parser, q, " partition ");
