@@ -160,6 +160,10 @@ static void as_activate (T_SHM_BROKER * shm_br, T_BROKER_INFO * br_info,
 			 char **env, int env_num);
 static void as_inactivate (T_APPL_SERVER_INFO * as_info_p, char *broker_name,
 			   int shard_flag);
+static int check_shard_conn (T_SHM_APPL_SERVER * shm_as_p,
+			     T_SHM_PROXY * shm_proxy_p);
+static int check_shard_as_conn (T_SHM_APPL_SERVER * shm_as_p,
+				T_SHARD_INFO * shard_info_p);
 
 static void free_env (char **env, int env_num);
 static char **make_env (char *env_file, int *env_num);
@@ -389,6 +393,12 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
 	    }
 
 	  res = br_activate (&(shm_br->br_info[i]), master_shm_id, shm_br);
+
+	  if (shm_br->br_info[i].shard_flag == ON && res == 0)
+	    {
+	      res = check_shard_conn (shm_as_p, shm_proxy_p);
+	    }
+
 	  if (res < 0)
 	    {
 	      break;
@@ -960,6 +970,11 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 
 	      res =
 		br_activate (&(shm_br->br_info[i]), master_shm_id, shm_br);
+
+	      if (shm_br->br_info[i].shard_flag == ON && res == 0)
+		{
+		  res = check_shard_conn (shm_as_p, shm_proxy_p);
+		}
 	    }
 	  break;
 	}
@@ -2948,22 +2963,13 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 		  (as_info_p->pid, &as_info_p->service_ready_flag) == false)
 		{
 		  sprintf (admin_err_msg,
-			   "failed to connect database. [%s]\n\n"
-			   "please check your $CUBRID/conf/cubrid_broker.conf or database status.\n\n"
-			   "[%%%s]\n"
-			   "%-20s = %s\n"
-			   "%-20s = %s\n",
-			   br_info->name, br_info->name, "SHARD_DB_NAME",
-			   shm_appl->shard_conn_info[as_info_p->shard_id].
-			   db_name, "SHARD_DB_USER",
-			   shm_appl->shard_conn_info[as_info_p->shard_id].
-			   db_user);
+			   "%s: failed to run appl server. \n",
+			   br_info->name);
 		  res = -1;
 		  goto end;
 		}
 	    }
 	}
-
     }
   else
     {
@@ -3286,6 +3292,79 @@ as_inactivate (T_APPL_SERVER_INFO * as_info_p, char *broker_name,
   CON_STATUS_LOCK_DESTROY (as_info_p);
 
   return;
+}
+
+static int
+check_shard_conn (T_SHM_APPL_SERVER * shm_as_p, T_SHM_PROXY * shm_proxy_p)
+{
+  T_PROXY_INFO *proxy_info_p;
+  T_SHARD_INFO *shard_info_p;
+  int proxy_id, shard_id;
+  int num_proxy;
+  int res = 0;
+
+  assert (shm_as_p != NULL);
+  assert (shm_proxy_p != NULL);
+
+  num_proxy = shm_proxy_p->num_proxy;
+
+  assert (num_proxy <= MAX_PROXY_NUM);
+
+  for (proxy_id = 0; proxy_id < num_proxy; proxy_id++)
+    {
+      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_id);
+
+      for (shard_id = 0; shard_id < proxy_info_p->num_shard_conn; shard_id++)
+	{
+	  shard_info_p = shard_shm_find_shard_info (proxy_info_p, shard_id);
+
+	  res = check_shard_as_conn (shm_as_p, shard_info_p);
+
+	  if (res < 0)
+	    {
+	      sprintf (admin_err_msg,
+		       "failed to connect database. [%s]\n\n"
+		       "please check your $CUBRID/conf/cubrid_broker.conf or database status.\n\n"
+		       "[%%%s]\n"
+		       "%-20s = %s\n"
+		       "%-20s = %s\n",
+		       shm_as_p->broker_name, shm_as_p->broker_name,
+		       "SHARD_DB_NAME",
+		       shm_as_p->shard_conn_info[shard_id].db_name,
+		       "SHARD_DB_USER",
+		       shm_as_p->shard_conn_info[shard_id].db_user);
+
+	      return -1;
+	    }
+	}
+    }
+
+  return 0;
+}
+
+static int
+check_shard_as_conn (T_SHM_APPL_SERVER * shm_as_p,
+		     T_SHARD_INFO * shard_info_p)
+{
+  int i;
+  int as_id;
+
+  for (i = 0; i < SERVICE_READY_WAIT_COUNT; i++)
+    {
+      for (as_id = 0; as_id < shard_info_p->min_appl_server; as_id++)
+	{
+	  if (shm_as_p->as_info[as_id +
+				shard_info_p->as_info_index_base].
+	      uts_status != UTS_STATUS_CON_WAIT)
+	    {
+	      return 0;
+	    }
+	}
+
+      SLEEP_MILISEC (0, 10);
+    }
+
+  return -1;
 }
 
 static int

@@ -2167,7 +2167,7 @@ psize_check_worker (T_APPL_SERVER_INFO * as_info_p, int br_index,
   float pct_cpu;
 #endif
 
-  if (as_info_p->service_flag != SERVICE_ON || as_info_p->pid <= 0)
+  if (as_info_p->service_flag != SERVICE_ON)
     {
       return;
     }

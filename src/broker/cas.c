@@ -539,6 +539,7 @@ shard_cas_main (void)
     }
   net_buf.alloc_size = SHARD_NET_BUF_ALLOC_SIZE;
 
+  as_info->service_ready_flag = TRUE;
   as_info->con_status = CON_STATUS_IN_TRAN;
   as_info->cur_keep_con = KEEP_CON_DEFAULT;
   errors_in_transaction = 0;
@@ -639,8 +640,6 @@ conn_retry:
 	SLEEP_SEC (1);
 	goto conn_proxy_retry;
       }
-
-    as_info->service_ready_flag = TRUE;
 
 #if defined(WINDOWS)
     as_info->uts_status = UTS_STATUS_BUSY;
