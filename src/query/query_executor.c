@@ -869,7 +869,7 @@ static SCAN_CODE qexec_merge_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				  XASL_STATE * xasl_state,
 				  QFILE_TUPLE_RECORD * tplrec,
 				  XASL_SCAN_FNC_PTR ignore);
-static int qexec_setup_list_id (XASL_NODE * xasl);
+static int qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_init_upddel_ehash_files (THREAD_ENTRY * thread_p,
 					  XASL_NODE * buildlist);
 static void qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p,
@@ -8007,7 +8007,7 @@ exit_on_error:
  * type_list. Copying a list_id structure fails unless it has a type list.
  */
 static int
-qexec_setup_list_id (XASL_NODE * xasl)
+qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   QFILE_LIST_ID *list_id;
 
@@ -8039,6 +8039,15 @@ qexec_setup_list_id (XASL_NODE * xasl)
    * the updated/inserted/deleted oid's
    */
   list_id->type_list.domp[0] = &tp_Object_domain;
+
+#if !defined (NDEBUG)
+  assert (list_id->type_list.type_cnt == 1);
+  if (list_id->type_list.type_cnt != 0)
+    {
+      thread_rc_track_meter (thread_p, __FILE__, __LINE__, 1, list_id,
+			     RC_QLIST, MGR_DEF);
+    }
+#endif /* NDEBUG */
 
   return NO_ERROR;
 }
@@ -8202,7 +8211,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   /* This guarantees that the result list file will have a type list.
      Copying a list_id structure fails unless it has a type list. */
-  if (qexec_setup_list_id (xasl) != NO_ERROR)
+  if (qexec_setup_list_id (thread_p, xasl) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -9022,7 +9031,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   /* This guarantees that the result list file will have a type list.
      Copying a list_id structure fails unless it has a type list. */
-  if ((qexec_setup_list_id (xasl) != NO_ERROR)
+  if ((qexec_setup_list_id (thread_p, xasl) != NO_ERROR)
       /* it can be > 2
          || (aptr->list_id->type_list.type_cnt != 2) */ )
     {
@@ -10115,7 +10124,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   /* This guarantees that the result list file will have a type list.
      Copying a list_id structure fails unless it has a type list. */
-  if (qexec_setup_list_id (xasl) != NO_ERROR)
+  if (qexec_setup_list_id (thread_p, xasl) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       return ER_FAILED;
@@ -13414,7 +13423,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 		     const DB_VALUE * dbval_ptr, QUERY_ID query_id)
 {
   int re_execute;
-  int stat;
+  int stat = NO_ERROR;
   QFILE_LIST_ID *list_id = NULL;
   XASL_STATE xasl_state;
   struct timeb tloc;
@@ -13426,6 +13435,11 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   struct timeval s_tv, e_tv;
 #endif /* CUBRID_DEBUG */
   struct drand48_data *rand_buf_p;
+#if !defined (NDEBUG)
+  int amount_qlist_enter;
+  int amount_qlist_exit;
+  int amount_qlist_new;
+#endif /* NDEBUG */
 
 #if defined(CUBRID_DEBUG)
   {
@@ -13490,6 +13504,10 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
       }
   }
 #endif /* CUBRID_DEBUG */
+
+#if !defined (NDEBUG)
+  amount_qlist_enter = thread_rc_track_amount_qlist (thread_p);
+#endif /* NDEBUG */
 
   /* this routine should not be called if an outstanding error condition
    * already exists.
@@ -13654,6 +13672,21 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 
 	      (void) qexec_clear_xasl (thread_p, xasl, true);
 
+#if !defined (NDEBUG)
+	      amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
+	      amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
+#if defined(SERVER_MODE)
+	      if (list_id && list_id->type_list.type_cnt != 0)
+		{
+		  assert_release (amount_qlist_new == 1);
+		}
+	      else
+		{
+		  assert_release (amount_qlist_new == 0);
+		}
+#endif /* SERVER_MODE */
+#endif /* NDEBUG */
+
 	      /* caller will detect the error condition and free the listid */
 	      return list_id;
 	    }			/* if-else */
@@ -13676,6 +13709,31 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
       QFILE_PUT_NEXT_VPID_NULL (list_id->last_pgptr);
     }
 
+#if defined(SERVER_MODE)
+  if (thread_need_clear_trace (thread_p))
+    {
+      (void) session_clear_trace_stats (thread_p);
+    }
+#endif
+
+  /* clear XASL tree */
+  (void) qexec_clear_xasl (thread_p, xasl, true);
+
+#if !defined (NDEBUG)
+  amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
+  amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
+#if defined(SERVER_MODE)
+  if (list_id && list_id->type_list.type_cnt != 0)
+    {
+      assert_release (amount_qlist_new == 1);
+    }
+  else
+    {
+      assert_release (amount_qlist_new == 0);
+    }
+#endif /* SERVER_MODE */
+#endif /* NDEBUG */
+
 #if defined(CUBRID_DEBUG)
   {
     if (trace && fp)
@@ -13697,16 +13755,6 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
       }
   }
 #endif /* CUBRID_DEBUG */
-
-#if defined(SERVER_MODE)
-  if (thread_need_clear_trace (thread_p))
-    {
-      (void) session_clear_trace_stats (thread_p);
-    }
-#endif
-
-  /* clear XASL tree */
-  (void) qexec_clear_xasl (thread_p, xasl, true);
 
   return list_id;
 }
@@ -25173,7 +25221,7 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   /* setup list file for result count */
-  error = qexec_setup_list_id (xasl);
+  error = qexec_setup_list_id (thread_p, xasl);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;

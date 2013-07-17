@@ -3906,6 +3906,14 @@ thread_rc_track_check (THREAD_ENTRY * thread_p, int id)
 	      continue;
 	    }
 
+#if 1				/* TODO - */
+	  /* skip out qlist check; is checked separately */
+	  if (i == RC_QLIST)
+	    {
+	      continue;
+	    }
+#endif
+
 	  for (j = 0; j < MGR_LAST; j++)
 	    {
 	      meter = &(track->meter[i][j]);
@@ -4051,6 +4059,9 @@ thread_rc_track_rcname (int rc_idx)
       break;
     case RC_PGBUF_TEMP:
       name = "Page Buffer (Temporary)";
+      break;
+    case RC_QLIST:
+      name = "List File";
       break;
     default:
       name = "**UNKNOWN_RESOURCE**";
@@ -4347,6 +4358,17 @@ thread_rc_track_amount_pgbuf_temp (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * thread_rc_track_amount_qlist () -
+ *   return:
+ *   thread_p(in):
+ */
+int
+thread_rc_track_amount_qlist (THREAD_ENTRY * thread_p)
+{
+  return thread_rc_track_amount_helper (thread_p, RC_QLIST);
+}
+
+/*
  * thread_rc_track_meter () -
  *   return:
  *   thread_p(in):
@@ -4399,7 +4421,19 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
 
       meter->m_amount += amount;
 
+#if 1				/* TODO - */
+      /* skip out qlist check; is checked separately */
+      if (rc_idx == RC_QLIST)
+	{
+	  ;			/* nop */
+	}
+      else
+	{
+	  assert_release (0 <= meter->m_amount);
+	}
+#else
       assert_release (0 <= meter->m_amount);
+#endif
       assert_release (meter->m_amount <= meter->m_threshold);
 
       if (amount > 0)
@@ -4755,4 +4789,3 @@ thread_need_clear_trace (THREAD_ENTRY * thread_p)
 
   return thread_p->clear_trace;
 }
-

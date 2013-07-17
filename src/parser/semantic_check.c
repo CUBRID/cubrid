@@ -13183,7 +13183,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
 
       /*
-       * This case means "select count(*) from athlete limit 1"
+       * This case means "select count(*) from athlete limit ?"
        * This limit clause should be evaluated after "select count(*) from athlete"
        * So we will change it as subquery.
        */

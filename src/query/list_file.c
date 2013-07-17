@@ -462,6 +462,15 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p,
     }
 
   memset (&dest_list_id_p->tpl_descr, 0, sizeof (QFILE_TUPLE_DESCRIPTOR));
+
+#if !defined (NDEBUG)
+  if (dest_list_id_p->type_list.type_cnt != 0)
+    {
+      thread_rc_track_meter (NULL, __FILE__, __LINE__, 1, dest_list_id_p,
+			     RC_QLIST, MGR_DEF);
+    }
+#endif /* NDEBUG */
+
   return NO_ERROR;
 }
 
@@ -501,6 +510,14 @@ qfile_clone_list_id (const QFILE_LIST_ID * list_id_p,
 void
 qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
 {
+#if !defined (NDEBUG)
+  if (list_id_p->type_list.type_cnt != 0)
+    {
+      thread_rc_track_meter (NULL, __FILE__, __LINE__, -1, list_id_p,
+			     RC_QLIST, MGR_DEF);
+    }
+#endif /* NDEBUG */
+
   if (list_id_p->tpl_descr.f_valp)
     {
       free_and_init (list_id_p->tpl_descr.f_valp);
@@ -1534,6 +1551,14 @@ qfile_open_list (THREAD_ENTRY * thread_p,
       /* no DISTINCT and no source SORT_LIST supplied */
       list_id_p->sort_list = NULL;
     }
+
+#if !defined (NDEBUG)
+  if (list_id_p->type_list.type_cnt != 0)
+    {
+      thread_rc_track_meter (thread_p, __FILE__, __LINE__, 1, list_id_p,
+			     RC_QLIST, MGR_DEF);
+    }
+#endif /* NDEBUG */
 
   return list_id_p;
 }

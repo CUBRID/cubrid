@@ -13662,7 +13662,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
     }
 
   n = snprintf (query, sizeof (query) / sizeof (char),
-		"SELECT count(*) FROM [%s] WHERE [%s] IS NULL LIMIT 1",
+		"SELECT count(*) FROM [%s] WHERE [%s] IS NULL",
 		class_name, att_name);
   if (n < 0 || (n == sizeof (query) / sizeof (char)))
     {

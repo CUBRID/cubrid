@@ -3706,7 +3706,9 @@ int
 pt_is_single_tuple (PARSER_CONTEXT * parser, PT_NODE * select_node)
 {
   if (select_node->info.query.q.select.group_by != NULL)
-    return false;
+    {
+      return false;
+    }
 
   return pt_has_aggregate (parser, select_node);
 }
