@@ -14565,9 +14565,15 @@ pt_optimize_analytic_list (ANALYTIC_INFO * info)
 	  /* check for same sort spec list */
 	  while (curr_s != NULL && list_s != NULL)
 	    {
+	      /* median sort string in different order */
 	      if (curr_s->pos_descr.pos_no != list_s->pos_descr.pos_no
 		  || curr_s->s_order != list_s->s_order
-		  || curr_s->s_nulls != list_s->s_nulls)
+		  || curr_s->s_nulls != list_s->s_nulls
+		  || ((curr->function == PT_MEDIAN
+		       || list->function == PT_MEDIAN)
+		      && curr->function != list->function
+		      && TP_IS_STRING_TYPE
+		      (TP_DOMAIN_TYPE (curr_s->pos_descr.dom))))
 		{
 		  break;
 		}

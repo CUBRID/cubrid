@@ -363,6 +363,9 @@ static int qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p,
 
 static int qfile_compare_with_null_value (int o0, int o1,
 					  SUBKEY_INFO key_info);
+static int qfile_compare_with_interpolate_domain (char *fp0, char *fp1,
+						  SUBKEY_INFO * subkey,
+						  SORTKEY_INFO * key_info);
 
 /* qfile_modify_type_list () -
  *   return:
@@ -3994,12 +3997,23 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1,
 
       if (o0 && o1)
 	{
-	  d0 = fp0 + QFILE_TUPLE_VALUE_HEADER_LENGTH;
-	  d1 = fp1 + QFILE_TUPLE_VALUE_HEADER_LENGTH;
+	  if (key_info_p->key[i].use_cmp_dom)
+	    {
+	      order =
+		qfile_compare_with_interpolate_domain (fp0, fp1,
+						       &key_info_p->key[i],
+						       key_info_p);
+	    }
+	  else
+	    {
+	      d0 = fp0 + QFILE_TUPLE_VALUE_HEADER_LENGTH;
+	      d1 = fp1 + QFILE_TUPLE_VALUE_HEADER_LENGTH;
 
-	  order = (*key_info_p->key[i].sort_f) (d0, d1,
-						key_info_p->key[i].col_dom,
-						0, 1, NULL);
+	      order = (*key_info_p->key[i].sort_f) (d0, d1,
+						    key_info_p->key[i].
+						    col_dom, 0, 1, NULL);
+	    }
+
 	  order = key_info_p->key[i].is_desc ? -order : order;
 	}
       else
@@ -4194,6 +4208,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p,
 
   key_info_p->nkeys = n;
   key_info_p->use_original = (n != types->type_cnt);
+  key_info_p->error = NO_ERROR;
 
   if (n <= (int) DIM (key_info_p->default_keys))
     {
@@ -4219,6 +4234,8 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p,
 	  subkey = &key_info_p->key[i];
 	  subkey->col = p->pos_descr.pos_no;
 	  subkey->col_dom = p->pos_descr.dom;
+	  subkey->cmp_dom = NULL;
+	  subkey->use_cmp_dom = false;
 	  subkey->sort_f = p->pos_descr.dom->type->data_cmpdisk;
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;
 	  subkey->is_nulls_first = (p->s_nulls == S_NULLS_LAST) ? 0 : 1;
@@ -4242,6 +4259,8 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p,
 	  subkey->col = i;
 	  subkey->permuted_col = i;
 	  subkey->col_dom = types->domp[i];
+	  subkey->cmp_dom = NULL;
+	  subkey->use_cmp_dom = false;
 	  subkey->sort_f = types->domp[i]->type->data_cmpdisk;
 	  subkey->is_desc = 0;
 	  subkey->is_nulls_first = 1;
@@ -7373,4 +7392,123 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p,
     }
 
   return NO_ERROR;
+}
+
+/*
+ * qfile_compare_with_interpolate_domain () -
+ *  return: compare result
+ *  fp0(in):
+ *  fp1(in):
+ *  subkey(in):
+ *
+ *  NOTE: median analytic function sort string in different domain
+ */
+static int
+qfile_compare_with_interpolate_domain (char *fp0, char *fp1,
+				       SUBKEY_INFO * subkey,
+				       SORTKEY_INFO * key_info)
+{
+  int order = 0;
+  DB_VALUE val0, val1;
+  OR_BUF buf0, buf1;
+  TP_DOMAIN *cast_domain = NULL;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  int error = NO_ERROR;
+  char *d0, *d1;
+
+  assert (fp0 != NULL && fp1 != NULL && subkey != NULL && key_info != NULL);
+
+  DB_MAKE_NULL (&val0);
+  DB_MAKE_NULL (&val1);
+
+  d0 = fp0 + QFILE_TUPLE_VALUE_HEADER_LENGTH;
+  d1 = fp1 + QFILE_TUPLE_VALUE_HEADER_LENGTH;
+
+  if (subkey->cmp_dom == NULL)
+    {
+      /* get the proper domain
+       * NOTE: col_dom is string type.
+       *       See qexec_initialize_analytic_state
+       */
+      pr_clear_value (&val0);
+
+      OR_BUF_INIT (buf0, d0, QFILE_GET_TUPLE_VALUE_LENGTH (fp0));
+      error =
+	(subkey->col_dom->type->data_readval)
+	(&buf0, &val0, subkey->col_dom,
+	 QFILE_GET_TUPLE_VALUE_LENGTH (fp0), false, NULL, 0);
+      if (error != NO_ERROR || DB_IS_NULL (&val0))
+	{
+	  goto end;
+	}
+
+      error =
+	qdata_update_interpolate_func_value_and_domain (&val0,
+							&val0, &cast_domain);
+      if (error != NO_ERROR)
+	{
+	  subkey->cmp_dom = NULL;
+	  goto end;
+	}
+      else
+	{
+	  subkey->cmp_dom = cast_domain;
+	}
+    }
+
+  /* cast to proper domain, then compare */
+  pr_clear_value (&val0);
+  pr_clear_value (&val1);
+
+  OR_BUF_INIT (buf0, d0, QFILE_GET_TUPLE_VALUE_LENGTH (fp0));
+  OR_BUF_INIT (buf1, d1, QFILE_GET_TUPLE_VALUE_LENGTH (fp1));
+  error =
+    (subkey->col_dom->type->data_readval)
+    (&buf0, &val0, subkey->col_dom,
+     QFILE_GET_TUPLE_VALUE_LENGTH (fp0), false, NULL, 0);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error =
+    (subkey->col_dom->type->data_readval)
+    (&buf1, &val1, subkey->col_dom,
+     QFILE_GET_TUPLE_VALUE_LENGTH (fp1), false, NULL, 0);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  cast_domain = subkey->cmp_dom;
+  status = tp_value_cast (&val0, &val0, cast_domain, false);
+  if (status != DOMAIN_COMPATIBLE)
+    {
+      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+      goto end;
+    }
+
+  status = tp_value_cast (&val1, &val1, cast_domain, false);
+  if (status != DOMAIN_COMPATIBLE)
+    {
+      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+      goto end;
+    }
+
+  /* compare */
+  order = cast_domain->type->cmpval (&val0, &val1,
+				     0, 1, NULL, cast_domain->collation_id);
+
+end:
+
+  pr_clear_value (&val0);
+  pr_clear_value (&val1);
+
+  /* record error */
+  if (error != NO_ERROR)
+    {
+      key_info->error = error;
+    }
+
+  return order;
 }

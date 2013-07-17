@@ -20158,6 +20158,20 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
+  /* check sort error */
+  if (analytic_state.key_info.error != NO_ERROR)
+    {
+      if (analytic_state.key_info.error ==
+	  ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
+		  "MEDIAN", "DOUBLE, DATETIME or TIME");
+	}
+
+      GOTO_EXIT_ON_ERROR;
+    }
+
   /*
    * There may be one unfinished group in the output, since the sort_listfile
    * interface doesn't include a finalization function.  If so, finish
@@ -20294,6 +20308,9 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
 {
   REGU_VARIABLE_LIST regu_list = NULL;
   ANALYTIC_TYPE *func_p;
+  bool has_interpolation_func = false;
+  SUBKEY_INFO *subkey = NULL;
+  int i;
 
   analytic_state->state = NO_ERROR;
 
@@ -20351,6 +20368,7 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
       analytic_state->key_info.nkeys = 0;
       analytic_state->key_info.use_original = 1;
       analytic_state->key_info.key = NULL;
+      analytic_state->key_info.error = NO_ERROR;
     }
 
   analytic_state->current_key.data =
@@ -20366,6 +20384,25 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
   for (func_p = a_func_list; func_p != NULL; func_p = func_p->next)
     {
       memset (&func_p->info, 0, sizeof (ANALYTIC_FUNCTION_INFO));
+      if (func_p->function == PT_MEDIAN)
+	{
+	  has_interpolation_func = true;
+	}
+    }
+
+  /* set SUBKEY_INFO.cmp_dom */
+  if (has_interpolation_func)
+    {
+      for (i = 0, subkey = analytic_state->key_info.key;
+	   i < analytic_state->key_info.nkeys && subkey != NULL;
+	   ++i, ++subkey)
+	{
+	  if (i >= a_func_list->partition_cnt
+	      && TP_IS_STRING_TYPE (TP_DOMAIN_TYPE (subkey->col_dom)))
+	    {
+	      subkey->use_cmp_dom = true;
+	    }
+	}
     }
 
   /* resolve domains in regulist */

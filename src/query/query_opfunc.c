@@ -371,6 +371,10 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p,
 						  AGGREGATE_TYPE * agg_p,
 						  VAL_DESCR * val_desc_p);
 
+static int
+qdata_update_agg_interpolate_func_value_and_domain (AGGREGATE_TYPE * agg_p,
+						    DB_VALUE * val);
+
 /*
  * qdata_dummy () -
  *   return:
@@ -6082,6 +6086,21 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
        */
       if (agg_p->option == Q_DISTINCT || agg_p->sort_list != NULL)
 	{
+	  /* convert domain to the median domains (number, date/time)
+	   * to make 1,2,11 '1','2','11' result the same
+	   */
+	  if (agg_p->function == PT_MEDIAN && dbval_type != DB_TYPE_NULL)
+	    {
+	      error =
+		qdata_update_agg_interpolate_func_value_and_domain (agg_p,
+								    &dbval);
+	      if (error != NO_ERROR)
+		{
+		  pr_clear_value (&dbval);
+		  return ER_FAILED;
+		}
+	    }
+
 	  dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
 	  pr_type_p = PR_TYPE_FROM_ID (dbval_type);
 
@@ -6108,15 +6127,6 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	    {
 	      pr_clear_value (&dbval);
 	      return ER_FAILED;
-	    }
-
-	  /* set list_id domain, if it's not set */
-	  if (agg_p->function == PT_MEDIAN
-	      && agg_p->list_id->type_list.type_cnt == 1
-	      && agg_p->list_id->
-	      type_list.domp[0]->type->id == DB_TYPE_VARIABLE)
-	    {
-	      agg_p->list_id->type_list.domp[0] = agg_p->domain;
 	    }
 
 	  if (qfile_add_item_to_list (thread_p, disk_repr_p,
@@ -10827,35 +10837,21 @@ qdata_get_median_function_result (THREAD_ENTRY * thread_p,
 	  break;
 
 	default:
-	  if (TP_DOMAIN_TYPE (*result_dom) == DB_TYPE_VARIABLE)
+	  type = TP_DOMAIN_TYPE (*result_dom);
+	  if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
 	    {
 	      /* try to coerce value to double, datetime then time
 	       * and save domain for next coerce
 	       */
-	      *result_dom = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-
-	      status = tp_value_cast (f_value, result, *result_dom, false);
-	      if (status != DOMAIN_COMPATIBLE)
+	      error =
+		qdata_update_interpolate_func_value_and_domain (f_value,
+								result,
+								result_dom);
+	      if (error != NO_ERROR)
 		{
-		  /* try datetime */
-		  *result_dom = tp_domain_resolve_default (DB_TYPE_DATETIME);
+		  assert
+		    (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
 
-		  status =
-		    tp_value_cast (f_value, result, *result_dom, false);
-		}
-
-	      /* try time */
-	      if (status != DOMAIN_COMPATIBLE)
-		{
-		  *result_dom = tp_domain_resolve_default (DB_TYPE_TIME);
-
-		  status =
-		    tp_value_cast (f_value, result, *result_dom, false);
-		}
-
-	      if (status != DOMAIN_COMPATIBLE)
-		{
-		  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
 			  "MEDIAN", "DOUBLE, DATETIME or TIME");
 
@@ -10904,35 +10900,21 @@ qdata_get_median_function_result (THREAD_ENTRY * thread_p,
       type = db_value_type (f_value);
       if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
 	{
-	  if (TP_DOMAIN_TYPE (*result_dom) == DB_TYPE_VARIABLE)
+	  type = TP_DOMAIN_TYPE (*result_dom);
+	  if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
 	    {
 	      /* try to coerce f_value to double, datetime then time
 	       * and save domain for next coerce
 	       */
-	      *result_dom = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-
-	      status = tp_value_cast (f_value, f_value, *result_dom, false);
-	      if (status != DOMAIN_COMPATIBLE)
+	      error =
+		qdata_update_interpolate_func_value_and_domain (f_value,
+								f_value,
+								result_dom);
+	      if (error != NO_ERROR)
 		{
-		  /* try datetime */
-		  *result_dom = tp_domain_resolve_default (DB_TYPE_DATETIME);
+		  assert
+		    (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
 
-		  status = tp_value_cast (f_value, f_value,
-					  *result_dom, false);
-		}
-
-	      /* try time */
-	      if (status != DOMAIN_COMPATIBLE)
-		{
-		  *result_dom = tp_domain_resolve_default (DB_TYPE_TIME);
-
-		  status = tp_value_cast (f_value, f_value,
-					  *result_dom, false);
-		}
-
-	      if (status != DOMAIN_COMPATIBLE)
-		{
-		  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
 			  "MEDIAN", "DOUBLE, DATETIME or TIME");
 
@@ -11358,4 +11340,129 @@ exit_on_error:
     }
 
   return ER_FAILED;
+}
+
+/*
+ * qdata_update_agg_interpolate_func_value_and_domain () -
+ *   return: NO_ERROR, or error code
+ *   agg_p(in): aggregate type
+ *   val(in):
+ *
+ */
+static int
+qdata_update_agg_interpolate_func_value_and_domain (AGGREGATE_TYPE * agg_p,
+						    DB_VALUE * dbval)
+{
+  int error = NO_ERROR;
+  DB_TYPE dbval_type;
+  TP_DOMAIN_STATUS status;
+
+  assert (dbval != NULL
+	  && agg_p != NULL
+	  && agg_p->function == PT_MEDIAN
+	  && agg_p->sort_list != NULL
+	  && agg_p->list_id != NULL
+	  && agg_p->list_id->type_list.type_cnt == 1);
+
+  if (DB_IS_NULL (dbval))
+    {
+      goto end;
+    }
+
+  dbval_type = TP_DOMAIN_TYPE (agg_p->domain);
+  if (dbval_type == DB_TYPE_VARIABLE)
+    {
+      dbval_type = DB_VALUE_DOMAIN_TYPE (dbval);
+      agg_p->domain = tp_domain_resolve_default (dbval_type);
+    }
+
+  if (dbval_type != DB_TYPE_DOUBLE && !TP_IS_DATE_OR_TIME_TYPE (dbval_type))
+    {
+      error =
+	qdata_update_interpolate_func_value_and_domain (dbval,
+							dbval,
+							&agg_p->domain);
+      if (error != NO_ERROR)
+	{
+	  assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+		  "MEDIAN", "DOUBLE, DATETIME or TIME");
+	  goto end;
+	}
+    }
+  else
+    {
+      dbval_type = DB_VALUE_DOMAIN_TYPE (dbval);
+      if (dbval_type != TP_DOMAIN_TYPE (agg_p->domain))
+	{
+	  /* cast */
+	  error = db_value_coerce (dbval, dbval, agg_p->domain);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
+    }
+
+  /* set list_id domain, if it's not set */
+  if (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0])
+      != TP_DOMAIN_TYPE (agg_p->domain))
+    {
+      agg_p->list_id->type_list.domp[0] = agg_p->domain;
+      agg_p->sort_list->pos_descr.dom = agg_p->domain;
+    }
+
+end:
+
+  return error;
+}
+
+/*
+ * qdata_update_interpolate_func_value_and_domain () -
+ *   return: NO_ERROR or ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN
+ *   src_val(in):
+ *   dest_val(out):
+ *   domain(in/out):
+ *
+ */
+int
+qdata_update_interpolate_func_value_and_domain (DB_VALUE * src_val,
+						DB_VALUE * dest_val,
+						TP_DOMAIN ** domain)
+{
+  int error = NO_ERROR;
+  DB_DOMAIN *tmp_domain = NULL;
+  TP_DOMAIN_STATUS status;
+
+  assert (src_val != NULL && dest_val != NULL && domain != NULL);
+
+  tmp_domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+
+  status = tp_value_cast (src_val, dest_val, tmp_domain, false);
+  if (status != DOMAIN_COMPATIBLE)
+    {
+      /* try datetime */
+      tmp_domain = tp_domain_resolve_default (DB_TYPE_DATETIME);
+      status = tp_value_cast (src_val, dest_val, tmp_domain, false);
+    }
+
+  /* try time */
+  if (status != DOMAIN_COMPATIBLE)
+    {
+      tmp_domain = tp_domain_resolve_default (DB_TYPE_TIME);
+      status = tp_value_cast (src_val, dest_val, tmp_domain, false);
+    }
+
+  if (status != DOMAIN_COMPATIBLE)
+    {
+      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+      goto end;
+    }
+
+  *domain = tmp_domain;
+
+end:
+
+  return error;
 }

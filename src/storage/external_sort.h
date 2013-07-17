@@ -97,6 +97,10 @@ struct SUBKEY_INFO
 
   TP_DOMAIN *col_dom;
 
+  TP_DOMAIN *cmp_dom;		/* for median sorting string
+				 * in different domain
+				 */
+
   int (*sort_f) (void *tplp1, void *tplp2, TP_DOMAIN * dom,
 		 int do_coercion, int total_order, int *start_col);
 
@@ -109,6 +113,8 @@ struct SUBKEY_INFO
   int is_desc;
 
   int is_nulls_first;
+
+  bool use_cmp_dom;		/* when true, use cmp_dom to make comparing */
 };
 
 struct SORTKEY_INFO
@@ -123,6 +129,7 @@ struct SORTKEY_INFO
 				   otherwise it points to malloc'ed space. */
   SUBKEY_INFO default_keys[8];	/* Default storage; this ought to work for
 				   most cases. */
+  int error;			/* median domain convert errors */
 };
 
 struct SORT_INFO

@@ -310,4 +310,9 @@ extern int qdata_get_median_function_result (THREAD_ENTRY * thread_p,
 					     double c_row_num_d,
 					     DB_VALUE * result,
 					     TP_DOMAIN ** result_dom);
+extern int qdata_update_interpolate_func_value_and_domain (DB_VALUE * src_val,
+							   DB_VALUE *
+							   dest_val,
+							   TP_DOMAIN **
+							   domain);
 #endif /* _QUERY_OPFUNC_H_ */
