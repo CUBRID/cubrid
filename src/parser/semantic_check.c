@@ -13494,8 +13494,9 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 						   order->info.sort_spec.expr,
 						   order->next)))
 	{
-	  if (order->info.sort_spec.asc_or_desc !=
-	      match->info.sort_spec.asc_or_desc)
+	  if ((order->info.sort_spec.asc_or_desc !=
+	       match->info.sort_spec.asc_or_desc)
+	      || (pt_to_null_ordering (order) != pt_to_null_ordering (match)))
 	    {
 	      error = MSGCAT_SEMANTIC_SORT_DIR_CONFLICT;
 	      PT_ERRORmf (parser, match,
@@ -15299,6 +15300,8 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
 	    {
 	      part->info.sort_spec.asc_or_desc =
 		match->info.sort_spec.asc_or_desc;
+	      part->info.sort_spec.nulls_first_or_last =
+		match->info.sort_spec.nulls_first_or_last;
 	    }
 	}
     }
@@ -15417,8 +15420,9 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func,
 	      pt_find_matching_sort_spec (parser, order, order->next,
 					  select_list)))
 	{
-	  if (order->info.sort_spec.asc_or_desc !=
-	      match->info.sort_spec.asc_or_desc)
+	  if ((order->info.sort_spec.asc_or_desc !=
+	       match->info.sort_spec.asc_or_desc)
+	      || (pt_to_null_ordering (order) != pt_to_null_ordering (match)))
 	    {
 	      PT_ERRORmf (parser, match,
 			  MSGCAT_SET_PARSER_SEMANTIC,

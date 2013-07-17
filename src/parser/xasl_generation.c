@@ -290,9 +290,6 @@ static PT_NODE *pt_append_assignment_references (PARSER_CONTEXT * parser,
 static ODKU_INFO *pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert,
 				   XASL_NODE * xasl,
 				   PT_NODE ** non_null_attrs);
-
-static SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
-
 static REGU_VARIABLE
   * pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser,
 						PT_NODE * tree, UNBOX unbox);
@@ -18191,7 +18188,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
 		      return NULL;
 		    }
 
-                  /* set as NULL value */
+		  /* set as NULL value */
 		  (void) pr_clear_value (nv_valp);
 
 		  assert (nv->type_enum != PT_TYPE_NULL);
@@ -23981,7 +23978,7 @@ pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p,
  * return : null ordering
  * sort_spec (in) : sort spec
  */
-static SORT_NULLS
+SORT_NULLS
 pt_to_null_ordering (PT_NODE * sort_spec)
 {
   assert_release (sort_spec != NULL && sort_spec->node_type == PT_SORT_SPEC);

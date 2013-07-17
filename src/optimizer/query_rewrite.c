@@ -2155,8 +2155,10 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 					       order->info.sort_spec.expr,
 					       order->next)))
 	    {
-	      if (order->info.sort_spec.asc_or_desc !=
-		  match->info.sort_spec.asc_or_desc)
+	      if ((order->info.sort_spec.asc_or_desc !=
+		   match->info.sort_spec.asc_or_desc)
+		  || (pt_to_null_ordering (order) !=
+		      pt_to_null_ordering (match)))
 		{
 		  error = MSGCAT_SEMANTIC_SORT_DIR_CONFLICT;
 		  PT_ERRORmf (parser, match, MSGCAT_SET_PARSER_SEMANTIC,

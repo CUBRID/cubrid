@@ -248,4 +248,5 @@ extern int pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser,
 extern PT_NODE *pt_set_orderby_for_sort_limit_plan (PARSER_CONTEXT * parser,
 						    PT_NODE * statement,
 						    PT_NODE * name_list);
+extern SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
 #endif /* _XASL_GENERATION_H_ */
