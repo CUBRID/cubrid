@@ -283,7 +283,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 未知的命令 '%s'\n
 43 无法打开输出文件 '%s'\n
 44 无法移除已存在的数据库.\n
-45 Creating database with %s size using locale %s. The total amount of disk space needed is %s.\n
+45 Creating database with %1$s size using default locale %2$s. The total amount of disk space needed is %3$s.\n
 46 无法创建数据库.\n
 47 用户文件 '%s' 存在问题\n
 48 给定值 '%s', %s 超过了范围. 选择大小在 %s 和 %s之间的数.\n

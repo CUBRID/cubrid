@@ -283,7 +283,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Bilinmeyen komut '%s'\n
 43 Çıktı dosyası '%s' açılamadı\n
 44 Varolan veritabanı kaldırılamadı\n
-45 Creating database with %s size using locale %s. The total amount of disk space needed is %s.\n
+45 Creating database with %1$s size using default locale %2$s. The total amount of disk space needed is %3$s.\n
 46 Veritabanı oluşturulamadı.\n
 47 '%s' Kullanıcı dosya ile ilgili sorun\n
 48 Verilen '%s', %s kapsam dışı. %s ve %s arasında bir boyut seçin.\n

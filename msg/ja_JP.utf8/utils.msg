@@ -233,7 +233,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: -tオプションは独立実行モードでは無視されます。\n
-31 ERROR: Destination-path does not exist or is not a directory.\n
+31 エラー：ターゲットパスが存在しないか、ディレクトリではありません。\n
 60 \
 backupdb: データーベースをバックアップします。\n\
 使い方: %s backupdb [オプション] <データーベース名>\n\
@@ -283,7 +283,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 正しくないコマンド「%s」\n
 43 出力ファイル「%s」が開けられません。\n
 44 既存データベースが削除できません。\n
-45 Creating database with %s size using default locale %s. The total amount of disk space needed is %s.\n
+45 基本ロケール「%2$s」、サイズ「%1$s」のデーターベースを生成します。必要なディスクの容量は「%3$s」です。\n
 46 データベースが生成できません。\n
 47 ユーザーファイル「%s」に問題があります。\n
 48 あげられたバリュー：「%s」。「%s」は範囲を超えてしまいました。「%s」と「%s」の内のバリューを入力してください。\n
@@ -292,7 +292,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 createdb: データベース生成。\n\
 usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
-database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
+データーベースロケールのフォーマットは<language>.<charset>です。例：en_US.iso88591, ko_KR.utf8\n\
 使い方:\n\
       --db-volume-size=SIZE           最初に生成されるボリューム(generic)のサイズ\n\
                                       デフォルト: 「cubrid.conf」の「db_volume_size」\n\
@@ -667,7 +667,7 @@ spacedb: データベースのディスクスペース情報を出力\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                出力の単位(page, mega, giga, tera, human readable)設定; デフォルト: H\n\
   -s, --summarize              ボリュームの使い道別に合算を出力\n\
-  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
+  -p, --purpose                各自の目的で使われたボリュームのサイズを表示します(data/index/temp)\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
@@ -1021,7 +1021,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 24 %4d%-10s %14s %14s %15d %17s\n
 25 トランザクションがありません。\n
 26 tranlistはDBAユーザー、またはDBAグループのメンバーが実行できます。\n
-27 sort-key column number(%d) is invalid.\n
+27 正しくないソートキーのカラム番号(%d)。\n
 32 トランインデックス　　　　プロセスid       プログラム名　　　　　　　　　　　　　クエリタイム　　　　トランタイム　　　　　　　　　　　ロックゴールだウェート　　　　     SQL ID        SQLテキスト\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1039,5 +1039,5 @@ tranlist: アクティブトランザクション情報をダンプします。\
   -u, --user=ID                データベースに接続するユーザーID; デフォルト: DBAユーザー\n\
   -p, --password=PASS          ユーザーパスワード; デフォルト: なし\n\
   -s, --summary                トランザクション情報を要約して出力する。\n\
-      --sort-key=COLUMN_NUMBER column number to be sorted\n\
-      --reverse                reverse the sort result\n
+      --sort-key=COLUMN_NUMBER ソートされるカラム番号\n\
+      --reverse                ソート結果を逆にする。\n

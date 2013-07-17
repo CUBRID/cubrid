@@ -1178,26 +1178,26 @@ $ LOADDB
 1109 正しくないパーティション定義。
 1110 btreeリーフページにフーリスペースが足りません。(キーレングス: %d)\n%s
 1111 プレシジョン「%1$d」が結果の長さ「%2$d」より短いため、結果が切りました。
-1112 A character could not be converted from '%1$s' to '%2$s'.
-1113 Element index out of range.
-1114 Argument '%s' is out of range.
-1115 Started to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d).
-1116 Finished to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
-1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
-1118 The argument of "%1$s" can not be coerced to desired domain "%2$s".
-1119 Internal error: Page id %1$d is allocated according to the allocation map of volume "%2$s", but it does not belong to any file. 
-1120 Internal error: Page id %1$d of volume "%2$s" is currently being used, but it is not allocated according to the allocation map of volume.
-1121 NOT NULL constraints do not allow NULL value.
-1122 Time out in receiving data.
-1123 pthread_cond_timedwait() timed out. 
-1124 Query execution error. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
-1125 Create the overflow key file. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1126 Create a new overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1127 Delete an empty overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
-1129 Log recovery is finished.
-1130 Transaction is aborted because transaction lock counts exceeds %1$d.
-1131 Internal error: The page %1 of volume %2 may be corrupted.\n%3
+1112 '%1$s'から'%2$s'の変換ができません。
+1113 範囲を超えたエレメントインデックス。
+1114 範囲を超えたアーギュメント'%s'。
+1115 統計のアップデートが始まりました。(class 「%1$s」、oid : %2$d|%3$d|%4$d)。
+1116 統計のアップデートが終了しました。(class 「%1$s」、oid : %2$d|%3$d|%4$d、エラーコード : %5$d)。
+1117 アトリビュート「%1$s」の変換ができません。CUBRIDはアトリビュートとSHAREDの変換を支援しません。
+1118 アーギュメント「%1$s」はドメイン「%2$s」に強制キャスティングできません。
+1119 「インターナルエラー」：ページID「%1$d」はボリューム「%2$s」のアロケーションマップに従って割り当てされたが、どのファイルにも属していません。
+1120 「インターナルエラー」：ボリューム「%2$s」のページID「%1$d」は現在使用されているが、ボリュームのアロケーションマップに従って割り当てされていません。
+1121 「NOT NULL」制約条件は「NULL」バリューを許可しません。
+1122 データの受信がタイムアウトされました。
+1123 pthread_cond_timedwait()タイムアウト。
+1124 クエリー実行エラー。エラーコード = %1$d、/* SQL_ID: %2$s */ %3$s
+1125 オーバーフローキーファイルを生成します。INDEX %1$s%2$s ON CLASS %3$s%4$s。キー: %5$s%6$s。
+1126 新しいオーバーフローページを生成します。INDEX %1$s%2$s ON CLASS %3$s%4$s。キー: %5$s%6$s。
+1127 空きオーバーフローページを削除します。INDEX %1$s%2$s ON CLASS %3$s%4$s。キー: %5$s%6$s。
+1128 ログリカバリー作業が始まりました。適用されるログレコード数：%1$lld。ログページ：%2$lld ~ %3$lld。
+1129 ログリカバリー作業が終わりました。
+1130 トランザクションのロックカウントが「%1$d」を超えたので、トランザクションがキャンセルされました。
+1131 インターナルエラー：ボリューム「%2$s」のページ「%1$d」が壊れています。\n%3$s
 1132 Encryption library failure: %s
 1133 ラストエラー
 
@@ -1621,11 +1621,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 正しくないインデックス表現ファンクション。
 271 「%s」のクエリスペシフィケーションは自分を参照する循環参照を持ちます。
 272 表現「%s」はジョインコンディションでは使用できません。
-273 Only one table within a view can be updated.
-274 Multiple insert targets not allowed.
-275 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
-276 ORDER BY is not allowed in function MEDIAN.
-277 The arguments of the function '%s' must be constant.
+273 「ORDER BY」は「MEDIAN」ファンクションで許可しません。
+274 ファンクション「%s」のアーギュメントはコンスタントしか使えません。
+275 ファンクション「%s」は「ORDER BY」節を含めないといけません。
+276 ファンクション「%s」のアーギュメント数が「ORDER BY」カラム数と一致しません。
+277 ファンクション「%s」で「ORDER BY」節は使えません。
 278 Function '%s' must have ORDER BY clause.
 279 For function '%s', the number of arguments does not match the number of ORDER BY columns.
 280 For function '%s', the ORDER BY clause is invalid.
