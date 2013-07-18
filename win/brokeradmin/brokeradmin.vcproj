@@ -118,7 +118,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\broker;..\..\src\base;..\..\src\compat;..\..\src\api"
+				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\transaction"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;_UC_ADMIN_SO_;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;_USRDLL;UC_ADMIN_EXPORTS;CAS_BROKER"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
