@@ -545,7 +545,8 @@ static int fileio_read_restore (THREAD_ENTRY * thread_p,
 static void *fileio_write_restore (THREAD_ENTRY * thread_p,
 				   FILEIO_RESTORE_PAGE_CACHE * pages_cache,
 				   int vdes, void *io_pgptr, VOLID volid,
-				   PAGEID pageid, void *level_as_ptr);
+				   PAGEID pageid,
+				   FILEIO_BACKUP_LEVEL level);
 static int fileio_read_restore_header (FILEIO_BACKUP_SESSION * session);
 static FILEIO_RELOCATION_VOLUME
 fileio_find_restore_volume (THREAD_ENTRY * thread_p, const char *dbname,
@@ -10209,7 +10210,7 @@ fileio_fill_hole_during_restore (THREAD_ENTRY * thread_p, int *next_page_id_p,
       if (fileio_write_restore (thread_p, cache_p, session_p->dbfile.vdes,
 				malloc_io_pgptr, session_p->dbfile.volid,
 				*next_page_id_p,
-				(void *) session_p->dbfile.level) == NULL)
+				session_p->dbfile.level) == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_IO_RESTORE_READ_ERROR, 1,
@@ -10562,7 +10563,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
 				    buffer_p + i * IO_PAGESIZE,
 				    session_p->dbfile.volid,
 				    next_page_id,
-				    (void *) session_p->dbfile.level) == NULL)
+				    session_p->dbfile.level) == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_IO_RESTORE_READ_ERROR, 1, backup_header_p->unit_num);
@@ -10688,7 +10689,7 @@ error:
  *   io_pgptr(in): In-memory address where the current content of page resides
  *   volid(in):
  *   pageid(in): Page identifier
- *   level_as_ptr(in): backup level page restored from
+ *   level(in): backup level page restored from
  *
  * Note: The contents of the page stored on io_pgptr buffer which is
  *       IO_PAGESIZE long are sent to disk using fileio_write. The restore pageid
@@ -10698,7 +10699,7 @@ static void *
 fileio_write_restore (THREAD_ENTRY * thread_p,
 		      FILEIO_RESTORE_PAGE_CACHE * pages_cache_p, int vol_fd,
 		      void *io_page_p, VOLID vol_id, PAGEID page_id,
-		      void *level_p)
+		      FILEIO_BACKUP_LEVEL level)
 {
   VPID vpid;
   VPID *alloc_vpid_p;
@@ -10726,20 +10727,24 @@ fileio_write_restore (THREAD_ENTRY * thread_p,
 	      return NULL;
 	    }
 
-	  /* Make a new node and ... */
-	  alloc_vpid_p = (VPID *) db_fixed_alloc (pages_cache_p->heap_id,
-						  sizeof (VPID));
-	  if (alloc_vpid_p == NULL)
+	  if (level > FILEIO_BACKUP_FULL_LEVEL)
 	    {
-	      return NULL;
-	    }
+	      /* Make a new node and ... */
+	      alloc_vpid_p = (VPID *) db_fixed_alloc (pages_cache_p->heap_id,
+						      sizeof (VPID));
+	      if (alloc_vpid_p == NULL)
+		{
+		  return NULL;
+		}
 
-	  /* ... add it to the hash table */
-	  *alloc_vpid_p = vpid;
-	  if (mht_put (pages_cache_p->ht, alloc_vpid_p, level_p) == NULL)
-	    {
-	      db_fixed_free (pages_cache_p->heap_id, alloc_vpid_p);
-	      return NULL;
+	      /* ... add it to the hash table */
+	      *alloc_vpid_p = vpid;
+	      if (mht_put (pages_cache_p->ht, alloc_vpid_p,
+			   (void *) level) == NULL)
+		{
+		  db_fixed_free (pages_cache_p->heap_id, alloc_vpid_p);
+		  return NULL;
+		}
 	    }
 	}
     }

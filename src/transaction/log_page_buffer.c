@@ -10073,9 +10073,9 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   PGLENGTH bkdb_iopagesize;
   float bkdb_compatibility;
   FILEIO_RESTORE_PAGE_CACHE pages_cache;
-  FILEIO_BACKUP_LEVEL try_level;
+  FILEIO_BACKUP_LEVEL try_level, start_level;
   bool first_time = true;
-  bool remember_pages;
+  bool remember_pages = false;
   bool error_expected = false;
   bool restore_in_progress = false;	/* true if any vols restored */
   int lgat_vdes = NULL_VOLDES;
@@ -10092,6 +10092,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   int dummy;
 
   try_level = (FILEIO_BACKUP_LEVEL) r_args->level;
+  start_level = try_level;
   memset (&session_storage, 0, sizeof (FILEIO_BACKUP_SESSION));
   memset (verbose_to_volname, 0, PATH_MAX);
   memset (lgat_tmpname, 0, PATH_MAX);
@@ -10485,7 +10486,11 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		}
 
 	      restore_in_progress = true;
-	      remember_pages = true;
+	      if (start_level > FILEIO_BACKUP_FULL_LEVEL)
+	        {
+	          remember_pages = true;
+	        }
+
 	      /*
 	       * Another volume/file to restore
 	       */
