@@ -6860,6 +6860,12 @@ qstr_pad_string (unsigned char *s, int length, INTL_CODESET codeset)
   unsigned char pad[2];
   int i, j, pad_size = 0;
 
+  if (length == 0)
+    {
+      return s;
+    }
+
+  assert (length > 0);
 
   intl_pad_char (codeset, pad, &pad_size);
 
@@ -9334,6 +9340,17 @@ qstr_coerce (const unsigned char *src,
 						(*dest_length - copy_length),
 						dest_codeset);
       *dest_size = CAST_STRLEN (end_of_string - (char *) (*dest));
+
+      if (conv_status != 0)
+	{
+	  /* conversion error occured, re-count characters so that we comply
+	   * to computed precision */
+	  (void) intl_char_size (*dest, *dest_length, dest_codeset,
+				 dest_size);
+	  end_of_string = *dest + *dest_size;
+	  *end_of_string = '\0';
+	}
+
       assert (*dest_size <= alloc_size);
 
       if (conv_status != 0 && er_errid () != ER_CHAR_CONV_NO_MATCH)

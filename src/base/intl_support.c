@@ -4278,7 +4278,7 @@ intl_check_euckr (const unsigned char *buf, int size, char **pos)
     {
       curr_char = p;
 
-      if (*p < SS3 || (*p > SS3 && *p < 0xa1))
+      if (*p < 0x80)
 	{
 	  p++;
 	  continue;
@@ -4309,8 +4309,7 @@ intl_check_euckr (const unsigned char *buf, int size, char **pos)
 	  continue;
 	}
 
-      assert (*p == 0xff);
-      p++;
+      UTF8_RETURN_INVALID_BYTE (curr_char, pos);
     }
 
   return 0;
