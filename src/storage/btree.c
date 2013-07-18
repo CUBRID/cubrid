@@ -18573,26 +18573,23 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
   btid_msg_buf[0] = class_oid_msg_buf[0] = oid_msg_buf[0] = 0;
   index_name = class_name = keyval = NULL;
 
-  if (bt_name == NULL)
+  /* fetch index name from the class representation */
+  if (class_oid)
     {
-      /* fetch index name from the class representation */
-      if (class_oid)
+      if (heap_get_indexinfo_of_btid (thread_p,
+				      class_oid, btid,
+				      NULL, NULL, NULL, NULL,
+				      &index_name, NULL) != NO_ERROR)
 	{
-	  if (heap_get_indexinfo_of_btid (thread_p,
-					  class_oid, btid,
-					  NULL, NULL, NULL, NULL,
-					  &index_name, NULL) != NO_ERROR)
-	    {
-	      index_name = NULL;
-	    }
-
-	  if (index_name)
-	    {
-	      snprintf (btid_msg_buf, OID_MSG_BUF_SIZE, "(B+tree: %d|%d|%d)",
-			btid->vfid.volid, btid->vfid.fileid,
-			btid->root_pageid);
-	    }
+	  index_name = NULL;
 	}
+    }
+
+  if (index_name && btid)
+    {
+      /* print valid btid */
+      snprintf (btid_msg_buf, OID_MSG_BUF_SIZE, "(B+tree: %d|%d|%d)",
+		btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
     }
 
   if (class_oid)
@@ -18617,10 +18614,9 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
     }
 
   er_set (severity, ARG_FILE_LINE, err_id, 6,
-	  (index_name) ? index_name : (bt_name) ? bt_name : "*UNKNOWN-INDEX*",
-	  btid_msg_buf,
-	  (class_name) ? class_name : "*UNKNOWN-CLASS*",
-	  class_oid_msg_buf,
+	  (index_name) ? index_name : ((bt_name) ? bt_name :
+				       "*UNKNOWN-INDEX*"), btid_msg_buf,
+	  (class_name) ? class_name : "*UNKNOWN-CLASS*", class_oid_msg_buf,
 	  (keyval) ? keyval : "*UNKNOWN-KEY*", oid_msg_buf);
 
   if (keyval)
@@ -18633,7 +18629,6 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
     }
   if (index_name)
     {
-      assert (bt_name == NULL);
       free_and_init (index_name);
     }
 
