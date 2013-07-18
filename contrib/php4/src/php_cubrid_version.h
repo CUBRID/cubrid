@@ -28,4 +28,4 @@
  *
  */
 
-#define PHP_CUBRID_VERSION "10.0.0.0105"
+#define PHP_CUBRID_VERSION "10.0.0.0106"
