@@ -110,7 +110,8 @@ char_isalnum (int c)
 int
 char_isspace (int c)
 {
-  return ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n');
+  return ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n'
+	  || (c) == '\f' || (c) == '\v');
 }
 
 /*

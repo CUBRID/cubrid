@@ -207,6 +207,7 @@ csql_help_schema (const char *class_name)
   CLASS_HELP *class_schema = NULL;
   char **line_ptr;
   char class_title[2 * DB_MAX_IDENTIFIER_LENGTH + 2];
+  char fixed_class_name[DB_MAX_IDENTIFIER_LENGTH];
   char *class_name_composed = NULL;
   int composed_size, class_name_size;
 
@@ -243,6 +244,23 @@ csql_help_schema (const char *class_name)
 	{
 	  class_name = class_name_composed;
 	}
+    }
+
+  if (strlen (class_name) >= DB_MAX_IDENTIFIER_LENGTH)
+    {
+      csql_Error_code = CSQL_ERR_TOO_LONG_LINE;
+      goto error;
+    }
+  else
+    {
+      strcpy (fixed_class_name, class_name);
+      /* check that both lower and upper case are not truncated */
+      if (intl_identifier_fix (fixed_class_name, -1, true) != NO_ERROR)
+	{
+	  csql_Error_code = CSQL_ERR_TOO_LONG_LINE;
+	  goto error;
+	}
+      class_name = fixed_class_name;
     }
 
   class_schema = (CLASS_HELP *) NULL;

@@ -1612,7 +1612,7 @@ stmt
 				g_query_string_len = len;
 			      }
 			    
-			    while (isspace (*g_query_string))
+			    while (char_isspace (*g_query_string))
 			      {
 			        g_query_string++;
 			      }
