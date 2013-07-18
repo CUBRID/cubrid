@@ -710,7 +710,11 @@ cci_disconnect (int mapped_conn_id, T_CCI_ERROR * err_buf)
 			  "[%04d][API][E][cci_datasource_release]",
 			  con_handle->id);
 	}
-      cci_end_tran_internal (con_handle, CCI_TRAN_ROLLBACK);
+      if (cci_end_tran_internal (con_handle, CCI_TRAN_ROLLBACK) != NO_ERROR)
+        {
+          qe_con_close (con_handle);
+          con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+        }
 
       get_last_error (con_handle, err_buf);
       con_handle->used = false;
@@ -6013,7 +6017,11 @@ cci_datasource_release (T_CCI_DATASOURCE * ds, T_CCI_CONN mapped_conn_id,
   reset_error_buffer (&(con_handle->err_buf));
 
   ret = cci_datasource_release_internal (ds, con_handle);
-  cci_end_tran_internal (con_handle, CCI_TRAN_ROLLBACK);
+  if (cci_end_tran_internal (con_handle, CCI_TRAN_ROLLBACK) != NO_ERROR)
+    {
+      qe_con_close (con_handle);
+      con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+    }
 
   get_last_error (con_handle, err_buf);
   con_handle->used = false;
