@@ -95,6 +95,8 @@ struct load_args
 {				/* This structure is never written to disk; thus logical
 				   ordering of fields is ok. */
   BTID_INT *btid;
+  const char *bt_name;		/* index name */
+
   int allocated_pgcnt;		/* Allocated page count for index */
   int used_pgcnt;		/* Used page count for the index file */
   RECDES out_recdes;
@@ -180,6 +182,7 @@ static void print_list (const BTREE_NODE * this_list);
  *   btid(out):
  *      btid: Set to the created B+tree index identifier
  *            (Note: btid->vfid.volid should be set by the caller)
+ *   bt_name(in): index name
  *   key_type(in): Key type corresponding to the attribute.
  *   class_oids(in): OID of the class for which the index will be created
  *   n_classes(in):
@@ -197,16 +200,15 @@ static void print_list (const BTREE_NODE * this_list);
  *
  */
 BTID *
-xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
-		   OID * class_oids, int n_classes, int n_attrs,
-		   int *attr_ids, int *attrs_prefix_length,
+xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
+		   TP_DOMAIN * key_type, OID * class_oids, int n_classes,
+		   int n_attrs, int *attr_ids, int *attrs_prefix_length,
 		   HFID * hfids, int unique_flag, int not_null_flag,
-		   OID * fk_refcls_oid,
-		   BTID * fk_refcls_pk_btid, int cache_attr_id,
-		   const char *fk_name, char *pred_stream,
-		   int pred_stream_size,
-		   char *func_pred_stream, int func_pred_stream_size,
-		   int func_col_id, int func_attr_index_start)
+		   OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
+		   int cache_attr_id, const char *fk_name, char *pred_stream,
+		   int pred_stream_size, char *func_pred_stream,
+		   int func_pred_stream_size, int func_col_id,
+		   int func_attr_index_start)
 {
   SORT_ARGS sort_args_info, *sort_args;
   LOAD_ARGS load_args_info, *load_args;
@@ -445,6 +447,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
     /** Initialize the fields of loading argument structures **/
   load_args->btid = &btid_int;
+  load_args->bt_name = bt_name;
   load_args->allocated_pgcnt = init_pgcnt;
   load_args->used_pgcnt = 1;	/* set used page count (first page used for root) */
   DB_MAKE_NULL (&load_args->current_key);
@@ -1920,7 +1923,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 						    &this_oid,
 						    &this_class_oid,
 						    load_args->btid->
-						    sys_btid);
+						    sys_btid,
+						    load_args->bt_name);
 		  goto error;
 		}
 

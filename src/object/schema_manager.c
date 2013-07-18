@@ -10462,10 +10462,10 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	      if (function_index)
 		{
 		  error =
-		    btree_load_index (index, domain, oids, n_classes, n_attrs,
-				      attr_ids, (int *) attrs_prefix_length,
-				      hfids, unique, not_null,
-				      fk_refcls_oid,
+		    btree_load_index (index, constraint_name, domain, oids,
+				      n_classes, n_attrs, attr_ids,
+				      (int *) attrs_prefix_length, hfids,
+				      unique, not_null, fk_refcls_oid,
 				      fk_refcls_pk_btid, cache_attr_id,
 				      fk_name,
 				      SM_GET_FILTER_PRED_STREAM
@@ -10480,10 +10480,10 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	      else
 		{
 		  error =
-		    btree_load_index (index, domain, oids, n_classes, n_attrs,
-				      attr_ids, (int *) attrs_prefix_length,
-				      hfids, unique, not_null,
-				      fk_refcls_oid,
+		    btree_load_index (index, constraint_name, domain, oids,
+				      n_classes, n_attrs, attr_ids,
+				      (int *) attrs_prefix_length, hfids,
+				      unique, not_null, fk_refcls_oid,
 				      fk_refcls_pk_btid, cache_attr_id,
 				      fk_name,
 				      SM_GET_FILTER_PRED_STREAM
@@ -11008,7 +11008,7 @@ allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
 	}
     }
 
-  /* Whether we allocated a BTID or not, always write the contraint info
+  /* Whether we allocated a BTID or not, always write the constraint info
    * back out to the property list.  This is where the promotion of
    * attribute name references to ids references happens.
    */

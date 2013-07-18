@@ -4726,7 +4726,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
   OID fk_refcls_oid;
   BTID fk_refcls_pk_btid;
   int cache_attr_id;
-  char *fk_name;
+  char *bt_name, *fk_name;
   int n_classes, n_attrs, *attr_ids = NULL;
   int *attr_prefix_lengths = NULL;
   TP_DOMAIN *key_type;
@@ -4741,6 +4741,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
   int csserror;
 
   ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_string_nocopy (ptr, &bt_name);
   ptr = or_unpack_domain (ptr, &key_type, 0);
 
   ptr = or_unpack_int (ptr, &n_classes);
@@ -4829,15 +4830,13 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
       break;
     }
 
-  return_btid = xbtree_load_index (thread_p, &btid, key_type, class_oids,
-				   n_classes, n_attrs, attr_ids,
-				   attr_prefix_lengths, hfids,
-				   unique_flag, not_null_flag,
-				   &fk_refcls_oid,
-				   &fk_refcls_pk_btid, cache_attr_id,
-				   fk_name, pred_stream, pred_stream_size,
-				   expr_stream, expr_stream_size,
-				   func_col_id, func_attr_index_start);
+  return_btid =
+    xbtree_load_index (thread_p, &btid, bt_name, key_type, class_oids,
+		       n_classes, n_attrs, attr_ids, attr_prefix_lengths,
+		       hfids, unique_flag, not_null_flag, &fk_refcls_oid,
+		       &fk_refcls_pk_btid, cache_attr_id, fk_name,
+		       pred_stream, pred_stream_size, expr_stream,
+		       expr_stream_size, func_col_id, func_attr_index_start);
   if (return_btid == NULL)
     {
       return_error_to_client (thread_p, rid);

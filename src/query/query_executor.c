@@ -8885,7 +8885,7 @@ qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid,
 	  unique_stat_info[i].num_oids)
 	{
 	  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, class_oid,
-					    &unique_stat_info[i].btid);
+					    &unique_stat_info[i].btid, NULL);
 	  return ER_FAILED;
 	}
 
@@ -8946,7 +8946,7 @@ qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p,
 		  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL,
 						    &pcontext->root_oid,
 						    &unique_stat_info[i].
-						    btid);
+						    btid, NULL);
 		  return ER_FAILED;
 		}
 

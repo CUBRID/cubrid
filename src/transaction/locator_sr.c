@@ -6282,7 +6282,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL,
 						&mobjs->objs.class_oid,
 						&tdes->unique_stat_info[s].
-						btid);
+						btid, NULL);
 	      error_code = ER_BTREE_UNIQUE_FAILED;
 	      goto error;
 	    }

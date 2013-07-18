@@ -9921,7 +9921,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
   /* save class MOP */
   class_mop = ctemplate->op;
 
-  /* check foreign key contraints */
+  /* check foreign key constraints */
   error = do_check_fk_constraints (ctemplate,
 				   alter->info.alter.constraint_list);
   if (error != NO_ERROR)
@@ -13099,7 +13099,7 @@ do_run_upgrade_instances_domain (PARSER_CONTEXT * parser,
 }
 
 /*
- * do_drop_att_constraints() - drops contraints in list associated with a
+ * do_drop_att_constraints() - drops constraints in list associated with a
  *			       class
  *  class_mop(in): class object
  *  constr_info_list(in): constraint list
@@ -13142,7 +13142,7 @@ error_exit:
 }
 
 /*
- * do_recreate_att_constraints() - (re-)creates contraints in list associated
+ * do_recreate_att_constraints() - (re-)creates constraints in list associated
  *				    with a class
  *  class_mop(in): class object
  *  constr_info_list(in): constraint list
@@ -13325,8 +13325,8 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       goto exit;
     }
 
-  /* check if domain type is indexable : for contraints that may be
-   * acquired with ALTER.. CHANGE, check both if the contraint is present
+  /* check if domain type is indexable : for constraints that may be
+   * acquired with ALTER.. CHANGE, check both if the constraint is present
    * in either old or new schema;
    * if constraint cannot be acquired with CHANGE, check only if it is present
    * with old schema*/

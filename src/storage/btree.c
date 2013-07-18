@@ -155,17 +155,17 @@ struct btree_stats_env
 
 /* for notification log messages */
 #define BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
-		btree_set_error(THREAD, KEY, OID, C_OID, BTID, \
+		btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, \
 		ER_NOTIFICATION_SEVERITY, ER_BTREE_CREATED_OVERFLOW_KEY, \
 		__FILE__, __LINE__)
 
 #define BTREE_SET_CREATED_OVERFLOW_PAGE_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
-		btree_set_error(THREAD, KEY, OID, C_OID, BTID, \
+		btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, \
 		ER_NOTIFICATION_SEVERITY, ER_BTREE_CREATED_OVERFLOW_PAGE, \
 		__FILE__, __LINE__)
 
 #define BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
-		btree_set_error(THREAD, KEY, OID, C_OID, BTID, \
+		btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, \
 		ER_NOTIFICATION_SEVERITY, ER_BTREE_DELETED_OVERFLOW_PAGE, \
 		__FILE__, __LINE__)
 
@@ -3616,7 +3616,7 @@ xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size)
       if ((status == NO_ERROR) && (xbtree_test_unique (thread_p, &btid) != 1))
 	{
 	  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL,
-					    NULL, &btid);
+					    NULL, &btid, NULL);
 	  status = ER_BTREE_UNIQUE_FAILED;
 	}
     }
@@ -9778,7 +9778,7 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
 	  else
 	    {
 	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key, oid, cls_oid,
-						btid->sys_btid);
+						btid->sys_btid, NULL);
 	      ret = ER_BTREE_UNIQUE_FAILED;
 	    }
 
@@ -18557,79 +18557,84 @@ btree_get_next_overflow_vpid (char *header_ptr, VPID * overflow_vpid_ptr)
 int
 btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
 		 OID * obj_oid, OID * class_oid, BTID * btid,
+		 const char *bt_name,
 		 int severity, int err_id, const char *filename, int lineno)
 {
-  char key_str[LINE_MAX];
-  char *keyval = NULL;
-  char *class_name = NULL;
-  char *index_name = NULL;
   char btid_msg_buf[OID_MSG_BUF_SIZE];
   char class_oid_msg_buf[OID_MSG_BUF_SIZE];
   char oid_msg_buf[OID_MSG_BUF_SIZE];
+  char *index_name;
+  char *class_name;
+  char *keyval;
 
-  if (key != NULL)
-    {
-      keyval = pr_valstring (key);
-    }
+  assert (btid != NULL);
 
-  if (keyval != NULL)
+  /* init as empty string */
+  btid_msg_buf[0] = class_oid_msg_buf[0] = oid_msg_buf[0] = 0;
+  index_name = class_name = keyval = NULL;
+
+  if (bt_name == NULL)
     {
-      strncpy (key_str, keyval, LINE_MAX - 1);
-      key_str[LINE_MAX - 1] = '\0';
-    }
-  else
-    {
-      strcpy (key_str, "*UNKNOWN-KEY*");
+      /* fetch index name from the class representation */
+      if (class_oid)
+	{
+	  if (heap_get_indexinfo_of_btid (thread_p,
+					  class_oid, btid,
+					  NULL, NULL, NULL, NULL,
+					  &index_name, NULL) != NO_ERROR)
+	    {
+	      index_name = NULL;
+	    }
+
+	  if (index_name)
+	    {
+	      snprintf (btid_msg_buf, OID_MSG_BUF_SIZE, "(B+tree: %d|%d|%d)",
+			btid->vfid.volid, btid->vfid.fileid,
+			btid->root_pageid);
+	    }
+	}
     }
 
   if (class_oid)
     {
       class_name = heap_get_class_name (thread_p, class_oid);
-      if (heap_get_indexinfo_of_btid (thread_p,
-				      class_oid, btid,
-				      NULL, NULL, NULL, NULL,
-				      &index_name, NULL) != NO_ERROR)
+      if (class_name)
 	{
-	  index_name = NULL;
+	  snprintf (class_oid_msg_buf, OID_MSG_BUF_SIZE,
+		    "(CLASS_OID: %d|%d|%d)", class_oid->volid,
+		    class_oid->pageid, class_oid->slotid);
 	}
     }
 
-  if (index_name && btid)
+  if (key && obj_oid)
     {
-      snprintf (btid_msg_buf, OID_MSG_BUF_SIZE, "(B+tree: %d|%d|%d)",
-		btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
-    }
-
-  if (class_name && class_oid)
-    {
-      snprintf (class_oid_msg_buf, OID_MSG_BUF_SIZE, "(CLASS_OID: %d|%d|%d)",
-		class_oid->volid, class_oid->pageid, class_oid->slotid);
-    }
-
-  if (keyval && obj_oid)
-    {
-      snprintf (oid_msg_buf, OID_MSG_BUF_SIZE, "(OID: %d|%d|%d)",
-		obj_oid->volid, obj_oid->pageid, obj_oid->slotid);
+      keyval = pr_valstring (key);
+      if (keyval)
+	{
+	  snprintf (oid_msg_buf, OID_MSG_BUF_SIZE, "(OID: %d|%d|%d)",
+		    obj_oid->volid, obj_oid->pageid, obj_oid->slotid);
+	}
     }
 
   er_set (severity, ARG_FILE_LINE, err_id, 6,
-	  (index_name) ? index_name : "*UNKNOWN-INDEX*",
-	  (index_name && btid) ? btid_msg_buf : "",
+	  (index_name) ? index_name : (bt_name) ? bt_name : "*UNKNOWN-INDEX*",
+	  btid_msg_buf,
 	  (class_name) ? class_name : "*UNKNOWN-CLASS*",
-	  (class_name && class_oid) ? class_oid_msg_buf : "", key_str,
-	  (keyval && obj_oid) ? oid_msg_buf : "");
+	  class_oid_msg_buf,
+	  (keyval) ? keyval : "*UNKNOWN-KEY*", oid_msg_buf);
 
   if (keyval)
     {
       free_and_init (keyval);
     }
-  if (index_name)
-    {
-      free_and_init (index_name);
-    }
   if (class_name)
     {
       free_and_init (class_name);
+    }
+  if (index_name)
+    {
+      assert (bt_name == NULL);
+      free_and_init (index_name);
     }
 
   return NO_ERROR;

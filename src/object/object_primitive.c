@@ -9400,7 +9400,8 @@ pr_valstring (DB_VALUE * val)
 
   if (val == NULL)
     {
-      str = (char *) malloc (sizeof (null_str));
+      /* space with terminating NULL */
+      str = (char *) malloc (sizeof (null_str) + 1);
       if (str)
 	{
 	  strcpy (str, null_str);
@@ -9410,7 +9411,8 @@ pr_valstring (DB_VALUE * val)
 
   if (DB_IS_NULL (val))
     {
-      str = (char *) malloc (sizeof (NULL_str));
+      /* space with terminating NULL */
+      str = (char *) malloc (sizeof (NULL_str) + 1);
       if (str)
 	{
 	  strcpy (str, NULL_str);
@@ -9450,7 +9452,7 @@ pr_valstring (DB_VALUE * val)
       char *old_str;
       old_str = str;
       str_size = -str_size;
-      str_size++;		/* for NULL */
+      str_size++;		/* for terminating NULL */
       str = (char *) realloc (str, str_size);
       if (str == NULL)
 	{
@@ -9462,6 +9464,8 @@ pr_valstring (DB_VALUE * val)
 	  free_and_init (str);
 	  return NULL;
 	}
+
+      str[str_size - 1] = 0;	/* set terminating NULL */
     }
 
   return str;

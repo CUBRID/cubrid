@@ -274,6 +274,7 @@ extern BTID *xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid,
 			       int attr_id, int unique_btree,
 			       int num_oids, int num_nulls, int num_keys);
 extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid,
+				const char *bt_name,
 				TP_DOMAIN * key_type, OID * class_oids,
 				int n_classes, int n_attrs, int *attr_ids,
 				int *attrs_prefix_length,
