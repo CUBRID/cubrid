@@ -126,7 +126,6 @@ static T_CONF_TABLE tbl_access_mode[] = {
   {"RW", READ_WRITE_ACCESS_MODE},
   {"RO", READ_ONLY_ACCESS_MODE},
   {"SO", SLAVE_ONLY_ACCESS_MODE},
-  {"PHRO", PH_READ_ONLY_ACCESS_MODE},
   {NULL, 0}
 };
 
@@ -751,12 +750,6 @@ broker_config_read_internal (const char *conf_file,
       strcpy (br_info[num_brs].preferred_hosts,
 	      ini_getstr (ini, sec_name, "PREFERRED_HOSTS",
 			  DEFAULT_EMPTY_STRING, &lineno));
-      if (br_info[num_brs].access_mode == PH_READ_ONLY_ACCESS_MODE
-	  && br_info[num_brs].preferred_hosts[0] == '\0')
-	{
-	  errcode = PARAM_BAD_VALUE;
-	  goto conf_error;
-	}
 
       br_info[num_brs].connect_order =
 	conf_get_value_connect_order (ini_getstr (ini, sec_name,

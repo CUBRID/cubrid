@@ -517,12 +517,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 	  cas_log_debug (ARG_FILE_LINE,
 			 "ux_database_connect: slave_only_broker");
 	}
-      else if (shm_appl->access_mode == PH_READ_ONLY_ACCESS_MODE)
-	{
-	  client_type = 11;	/* DB_CLIENT_TYPE_PREFERRED_HOST_BROKER in db.h */
-	  cas_log_debug (ARG_FILE_LINE,
-			 "ux_database_connect: preferred_host_broker");
-	}
       else
 	{
 	  client_type = 4;	/* DB_CLIENT_TYPE_BROKER in db.h */
@@ -631,12 +625,6 @@ ux_database_reconnect (void)
       client_type = 6;		/* DB_CLIENT_TYPE_SLAVE_ONLY_BROKER in db.h */
       cas_log_debug (ARG_FILE_LINE,
 		     "ux_database_reconnect: slave_only_broker");
-    }
-  else if (shm_appl->access_mode == PH_READ_ONLY_ACCESS_MODE)
-    {
-      client_type = 11;		/* DB_CLIENT_TYPE_PREFERRED_HOST_BROKER in db.h */
-      cas_log_debug (ARG_FILE_LINE,
-		     "ux_database_connect: preferred_host_broker");
     }
   else
     {

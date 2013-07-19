@@ -132,7 +132,6 @@ enum t_access_mode_value
   READ_WRITE_ACCESS_MODE = 0,
   READ_ONLY_ACCESS_MODE = 1,
   SLAVE_ONLY_ACCESS_MODE = 2,
-  PH_READ_ONLY_ACCESS_MODE = 3
 };
 
 /* dbi.h must be updated when a new order is added */

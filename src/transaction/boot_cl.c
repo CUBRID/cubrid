@@ -931,7 +931,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 #if defined(CS_MODE)
   /* Initialize the communication subsystem */
-  if (client_credential->client_type == BOOT_CLIENT_PH_READ_ONLY_BROKER)
+  if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential))
     {
       char **hosts;
       DB_INFO *tmp_db;
@@ -961,12 +961,12 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
        */
       error_code =
 	boot_client_initialize_css (tmp_db, client_credential->client_type,
-				    false, false, DB_CONNECT_ORDER_SEQ);
+				    true, false, DB_CONNECT_ORDER_SEQ);
       util_free_string_array (hosts);
       cfg_free_directory (tmp_db);
     }
 
-  if (client_credential->client_type == BOOT_CLIENT_PH_READ_ONLY_BROKER
+  if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential)
       && error_code == NO_ERROR)
     {
       /* connected to any preferred hosts successfully */

@@ -44,7 +44,6 @@ enum boot_client_type
   BOOT_CLIENT_ADMIN_CSQL = 8,
   BOOT_CLIENT_LOG_COPIER = 9,
   BOOT_CLIENT_LOG_APPLIER = 10,
-  BOOT_CLIENT_PH_READ_ONLY_BROKER = 11
 };
 
 #define BOOT_NORMAL_CLIENT_TYPE(client_type) \
@@ -52,14 +51,12 @@ enum boot_client_type
          || (client_type) == BOOT_CLIENT_CSQL \
          || (client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
          || (client_type) == BOOT_CLIENT_BROKER \
-         || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
-         || (client_type) == BOOT_CLIENT_PH_READ_ONLY_BROKER)
+         || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER)
 
 #define BOOT_READ_ONLY_CLIENT_TYPE(client_type) \
         ((client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
 	 || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
-	 || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER \
-         || (client_type) == BOOT_CLIENT_PH_READ_ONLY_BROKER)
+	 || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER)
 
 #define BOOT_ADMIN_CLIENT_TYPE(client_type) \
 	((client_type) == BOOT_CLIENT_ADMIN_UTILITY \
@@ -78,7 +75,6 @@ enum boot_client_type
         ((client_type) == BOOT_CLIENT_DEFAULT \
          || (client_type) == BOOT_CLIENT_BROKER \
 	 || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
-         || (client_type) == BOOT_CLIENT_PH_READ_ONLY_BROKER \
 	 || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER)
 
 /*
@@ -90,6 +86,10 @@ enum boot_client_type
           ((host1 != NULL && strcmp (host1, host2)) && \
            (BOOT_CSQL_CLIENT_TYPE(client_type) \
             || BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE(client_type)))) ? 0 : 1)
+
+#define BOOT_IS_PREFERRED_HOSTS_SET(credential) \
+        ((credential)->preferred_hosts != NULL \
+        && (credential)->preferred_hosts[0] != '\0')
 
 typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;
 struct boot_client_credential
