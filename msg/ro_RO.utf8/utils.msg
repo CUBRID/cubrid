@@ -233,7 +233,7 @@ Comenzi disponibile:\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTIESMENT: opţiunea -t este ignorată în modul de execuţie independent.\n
-31 ERROR: Destination-path does not exist or is not a directory.\n
+31 EROARE: Calea destinaţie nu există sau nu este un director.\n
 60 \
 backupdb: Creează o copie de rezervă a bazei de date.\n\
 utilizare: %s backupdb [optiune] nume-bază-de-date\n\
@@ -287,7 +287,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Comandă necunoscută '%s'\n
 43 Nu s-a putut deschide fişierul de ieşire '%s'\n
 44 Baza de date existentă nu a putut fi eliminată.\n
-45 Se creează o bază de date de dimensiune %1$s si localizare %2$s. Cantitatea totală de spaţiu necesar pe disc este %3$s.\n
+45 Se creează o bază de date de dimensiune %1$s si localizare %2$s. Spaţiul total necesar este %3$s.\n
 46 Baza de date nu a putut fi creată.\n
 47 S-a întâmpinat o problemă cu fişierul '%s' dat de utilizator\n
 48 S-a furnizat '%s', %s este în afara domeniului. Alegeţi o dimensiune cuprinsă între %s şi %s.\n
@@ -688,7 +688,7 @@ opţiuni valide:\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                setează unitatea de afişare (pagina, mega, giga, tera, format lizibil); implicit: H\n\
   -s, --summarize              afişează doar un sumar pentru fiecare scop de volum\n\
-  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
+  -p, --purpose                afişează dimensiunea fiecărui scop(data/index/temp) al fiecărui volum\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
@@ -1046,7 +1046,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 24 %4d%-10s %14s %14s %15d %17s\n
 25 Nu există tranzacţii\n
 26 tranlist poate fi executat doar de către DBA sau un membru al grupului DBA.\n
-27 sort-key column number(%d) is invalid.\n
+27 Numărul coloanei din cheia de sortare(%d) este invalid.\n
 32 Index tranzacţie    ID proces    Nume program         Durată interogare    Durată tranzacţie      Aşteaptă deţinătorul de lock      SQL_ID       Text SQL\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1064,5 +1064,5 @@ opţiuni valide:\n\
   -u, --user=ID                ID de utilizator pentru accesul la baza de date; implicit: utilizator DBA\n\
   -p, --password=PAROLA        parola de utilizator; default: nul\n\
   -s, --summary                afişează informaţii sumare despre tranzacţii\n\
-      --sort-key=COLUMN_NUMBER column number to be sorted\n\
-      --reverse                reverse the sort result\n
+      --sort-key=COLUMN_NUMBER numărul coloanei de sortare\n\
+      --reverse                inversează rezultatul sortării\n

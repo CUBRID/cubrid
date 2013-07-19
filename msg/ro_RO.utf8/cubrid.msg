@@ -1181,23 +1181,23 @@ $ LOADDB
 1112 Un caracter nu a putut fi convertit din '%1$s' în '%2$s'.
 1113 Indexul elementului este în afara domeniului.
 1114 Argumentul '%s' este în afara domeniului.
-1115 Started to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d).
-1116 Finished to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
-1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
-1118 The argument of "%1$s" can not be coerced to desired domain "%2$s".
-1119 Internal error: Page id %1$d is allocated according to the allocation map of volume "%2$s", but it does not belong to any file. 
-1120 Internal error: Page id %1$d of volume "%2$s" is currently being used, but it is not allocated according to the allocation map of volume.
-1121 NOT NULL constraints do not allow NULL value.
-1122 Time out in receiving data.
-1123 pthread_cond_timedwait() timed out. 
-1124 Query execution error. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
-1125 Create the overflow key file. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1126 Create a new overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1127 Delete an empty overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
-1129 Log recovery is finished.
-1130 Transaction is aborted because transaction lock counts exceeds %1$d.
-1131 Internal error: The page %1 of volume %2 may be corrupted.\n%3
+1115 A început actualizarea statisticilor (clasa "%1$s", oid : %2$d|%3$d|%4$d).
+1116 S-a finalizat actualizarea statisticilor (clasa "%1$s", oid : %2$d|%3$d|%4$d, cod de eroare : %5$d).
+1117 Nu se poate modifica atributul "%1$s". CUBRID nu poate modifica un atribut în SHARED şi nici reciproc.
+1118 Argumentul lui "%1$s" nu poate fi convertit forţat la domeniul dorit "%2$s".
+1119 Eroare internă: IDul de pagină %1$d este alocat comform harţii de alocare a volumului "%2$s", dar nu aparţine niciunui fişier. 
+1120 Eroare internă: IDul de pagină %1$d din volumul "%2$s" se afla în uz, dar nu este alocat comform harţii de alocare a volumului.
+1121 Constrângerile NOT NULL nu permit valoarea NULL.
+1122 Timp de aşteptare expirat la recepţionarea datelor.
+1123 pthread_cond_timedwait() a expirat. 
+1124 Eroare de execuţie a interogării. COD DE EROARE = %1$d, /* SQL_ID: %2$s */ %3$s
+1125 Crearea unui fişier de chei de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
+1126 Crearea unei pagini noi de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
+1127 Ştergerea unei pagini goale de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
+1128 Restaurarea logului a început. Numărul de înregistrări din log ce trebuie aplicate: %1$lld. Pagina de log: %2$lld ~ %3$lld.
+1129 Restaurarea logului s-a finalizat.
+1130 Tranzacţia a fost abandonată deoarece numărul de lock-uri asociate tranzacţiei depăşeşte %1$d.
+1131 Eroare internă: Pagina %1$d din volumul "%2$s" ar putea fi coruptă.\n%3$s
 1132 Encryption library failure: %s
 1133 Ultima eroare
 
@@ -1621,11 +1621,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 Expresie invalidă pentru indexul funcţional.
 271 Specificaţia de interogare a lui %s conţine o referinţa circulară la el însuşi.
 272 Expresia %s nu este permisă în condiţia de JOIN.
-273 ORDER BY is not allowed in function MEDIAN.
-274 The arguments of the function '%s' must be constant.
-275 Function '%s' must have ORDER BY clause.
-276 For function '%s', the number of arguments does not match the number of ORDER BY columns.
-277 For function '%s', the ORDER BY clause is invalid.
+273 ORDER BY nu este permis îm funcţia MEDIAN.
+274 Argumentele funcţiei '%s' trebuie să fie constante.
+275 Funcţia '%s' trebuie să aibă clauza ORDER BY.
+276 Pentru funcţia '%s', numărul de argumente nu corespunde numărului de coloane ORDER BY.
+277 Pentru funcţia '%s', clauza ORDER BY este invalidă.
 278 O singură tabelă din interiorul unei vizualizări poate fi actualizată.
 279 Inserarea în mai multe tabele nu este permisă.
 280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.

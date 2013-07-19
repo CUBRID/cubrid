@@ -59,8 +59,8 @@ Para mas informacion, vea http://www.cubrid.com\n
 51 Interpretador CUBRID SQL
 52 Hay actualizaciones. Quiere cometer? (`Y' or `N') 
 53 Introduzca 'Y' para cometer, 'N' para abortar.
-54 Committed.
-55 Rolled back.
+54 Cometido.
+55 Retrotraido.
 56 Bufer de comando ha sido guardado.
 57 El archivo ha sido leido en el bufer de comando.
 58 Bufer de comando ha sido mandado a la impresora.

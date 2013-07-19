@@ -59,8 +59,8 @@ Pentru informaţii suplimentare accesaţi http://www.cubrid.com\n
 51 CUBRID SQL Interpreter
 52 Au fost efectuate actualizări. Doriţi să executaţi un commit ? (`Y' sau `N') 
 53 Introduceţi `Y' pentru commit, `N' pentru anulare. 
-54 Committed.
-55 Rolled back.
+54 Finalizat(ă).
+55 Derulat(ă) înapoi.
 56 Bufferul comenzii a fost salvat.
 57 Fişierul a fost citit în bufferul de comenzi.
 58 Bufferul de comenzi a fost trimis spre printare.

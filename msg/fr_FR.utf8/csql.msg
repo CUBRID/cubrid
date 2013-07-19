@@ -59,8 +59,8 @@ Pour plus d'informations, visitez le site http://www.cubrid.com\n
 51 CUBRID SQL Interpreter
 52 Il ya eu des mises à jour. Voulez-vous enregistrer? (`Y' ou `N') 
 53 Entrez `Y' pour enregistrer, `N' pour annuler. 
-54 Committed.
-55 Rolled back.
+54 Validé(e).
+55 Annulé(e).
 56 Tampon de commandes a été enregistré.
 57 Le fichier a été lu dans le tampon de commande.
 58 Mémoire tampon de commande a été envoyée à l'imprimante.

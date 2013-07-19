@@ -1178,26 +1178,26 @@ $ LOADDB
 1109 Valeur incorrecte pour la définition de la partition.
 1110 Espace insuffisant dans la page d'une feuille de B-arbre. (longueur de la clé: %d)\n%s
 1111 Valeur résultat est tronqué, car la précision(%1$d) est inférieure à sa longueur(%2$d).
-1112 A character could not be converted from '%1$s' to '%2$s'.
-1113 Element index out of range.
-1114 Argument '%s' is out of range.
-1115 Started to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d).
-1116 Finished to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
-1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
-1118 The argument of "%1$s" can not be coerced to desired domain "%2$s".
-1119 Internal error: Page id %1$d is allocated according to the allocation map of volume "%2$s", but it does not belong to any file. 
-1120 Internal error: Page id %1$d of volume "%2$s" is currently being used, but it is not allocated according to the allocation map of volume.
-1121 NOT NULL constraints do not allow NULL value.
-1122 Time out in receiving data.
-1123 pthread_cond_timedwait() timed out. 
-1124 Query execution error. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
-1125 Create the overflow key file. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1126 Create a new overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1127 Delete an empty overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
-1129 Log recovery is finished.
-1130 Transaction is aborted because transaction lock counts exceeds %1$d.
-1131 Internal error: The page %1 of volume %2 may be corrupted.\n%3
+1112 Un caractère ne peut pas être converti à partir de '%1$s' à '%2$s'.
+1113 Indice d'élément hors de portée..
+1114 Argument '%s' est hors de portée..
+1115 Commencé à mettre à jour les statistiques (classe "%1$s", oid : %2$d|%3$d|%4$d).
+1116  Fini de mettre à jour les statistiques (classe "%1$s", oid : %2$d|%3$d|%4$d, code d'erreur : %5$d).
+1117 Impossible de modifier l'attribut "%1$s". CUBRID ne peut pas changer un attribut à SHARED(partagée) et vice versa.
+1118 L'argument de "%1$s" ne peut pas être forcé au domaine souhaité "%2$s".
+1119 Erreur interne: ID de page %1$d est allouée selon la carte d'allocation du volume "%2$s", mais il n'appartient pas à un fichier. 
+1120 Erreur interne: ID de page %1$d du volume "%2$s" est actuellement utilisé, mais il n'est pas alloué selon la carte d'allocation du volume.
+1121 Contraintes NOT NULL ne permettent pas la valeur NULL.
+1122 Délai d'attente en réception de données.
+1123 pthread_cond_timedwait() a expiré. 
+1124 Erreur d'exécution de requête. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
+1125 Création du fichier de clé de débordement. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
+1126 Création d'une nouvelle page de débordement. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
+1127 Suppression d'une page de débordement vide. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
+1128 Reprise du journal est démarré. Le nombre d'enregistrements de journal à appliquer: %1$lld. Page du jurnal: %2$lld ~ %3$lld.
+1129 Reprise du journal est finie.
+1130 Transaction est abandonnée parce que nombre de verrous de la transaction dépasse %1$d.
+1131 Erreur interne: La page %1$d du volume "%2$s" peut être corrompue.\n%3$s
 1132 Encryption library failure: %s
 1133 Dernière erreur
 
@@ -1621,11 +1621,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 Expression invalide pout index de fonction.
 271 La spécification de la requête de %s contient une référence cyclique pour lui-même.
 272 Expression %s n'est pas permis dans condition du JOIN.
-273 ORDER BY is not allowed in function MEDIAN.
-274 The arguments of the function '%s' must be constant.
-275 Function '%s' must have ORDER BY clause.
-276 For function '%s', the number of arguments does not match the number of ORDER BY columns.
-277 For function '%s', the ORDER BY clause is invalid.
+273 ORDER BY n'est pas autorisé en fonction MEDIAN.
+274 Les arguments de la fonction '%s' doit être constants.
+275 La fonction '%s' doit avoir la clause ORDER BY.
+276 Pour la fonction '%s', le nombre d'arguments ne correspond pas au nombre de colonnes ORDER BY.
+277 Pour la fonction '%s', la clause ORDER BY n'est pas valide.
 278 Only one table within a view can be updated.
 279 Multiple insert targets not allowed.
 280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.

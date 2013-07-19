@@ -59,8 +59,8 @@ Für weitere Informationen, siehe http://www.cubrid.com\n
 51 CUBRID SQL Interpreter
 52 Es gibt Updates. Wollen Sie diese verpflichten? (`Y' or `N') 
 53 `Y' für Verpflichtung, `N' für Abbruch eingeben. 
-54 Committed.
-55 Rolled back.
+54 Verpflichtet.
+55 Wiederherstellt.
 56 Befehlspuffer wurde gespeichert.
 57 Die Datei wurde in den Befehlspuffer gelesen.
 58 Der Befehlspuffer wurde an den Drucker gesendet.

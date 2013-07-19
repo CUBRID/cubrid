@@ -233,7 +233,7 @@ Comando disponible: \n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ADVERTENCIA: -t opcion es ignorada en modo de ejecucion independiente.\n
-31 ERROR: Destination-path does not exist or is not a directory.\n
+31 ERROR: Calle de destino no existe o no es un directorio.\n
 60 \
 backupdb: Respaldar una base de datos.\n\
 uso: %s backupdb [OPTION] database-name\n\
@@ -283,7 +283,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Comando desconocido '%s'\n
 43 No se puede abrir archivo de salida '%s'\n
 44 No se puede eliminar base de datos existente.\n
-45 Creating database with %1$s size using locale %2$s. The total amount of disk space needed is %3$s.\n
+45 Creando base de datos de tamano %s utilizando la localizacion estandar %s. La cantidad total de espacio en disco necesaria es %s. \n
 46 No se pudo crear base de datos.\n
 47 Problema con el archivo de utilizador '%s'\n
 48 Para el '%s' dado, %s es fuera de rango. Escoger un tamano entre %s y %s.\n
@@ -292,7 +292,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 createdb: Crear una base de datos.\n\
 usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
-database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
+El formato para la localizacion de la base de datos es <idioma>.<charset>; ejemplos: en_US.iso88591, ko_KR.utf8\n\
 opciones validas:\n\
       --db-volume-size=SIZE           tamano del primer volumen de informacion\n\
                                       estandar: db_volume_size en cubrid.conf\n\
@@ -667,7 +667,7 @@ opciones validas:\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                ajustar la unidad de visualizacion (pagina, mega, giga, tera, legible por humanos); estandar: H\n\
   -s, --summarize              mostrar solo un resumen para cada proposito de volumen\n\
-  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
+  -p, --purpose                muestra la dimension de cada proposito (data/index/temp) de cada volumen\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
@@ -1021,7 +1021,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 24 %4d%-10s %14s %14s %15d %17s\n
 25 No hay transacciones\n
 26 tranlist puede ser ejecutada solamente por el DBA or por un miembro del grupo DBA.\n
-27 sort-key column number(%d) is invalid.\n
+27 El numero de la columna de la clave de ordenacion (%d) no es valido.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1039,5 +1039,5 @@ opciones validas:\n\
   -u, --user=ID                ID de utilizador para acceso a la base de datos; estandar: utilizador DBA\n\
   -p, --password=PASS          clave del utilizador; estandar: ninguna\n\
   -s, --summary                imprimir resume de informacion de la transaccion\n\
-      --sort-key=COLUMN_NUMBER column number to be sorted\n\
-      --reverse                reverse the sort result\n
+      --sort-key=COLUMN_NUMBER numero de la columna de ordenacion \n\
+      --reverse                invierte el resultado de la clasificacion\n

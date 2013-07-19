@@ -233,7 +233,7 @@ Vorhandene Befehle:\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNUNG: -t Option wird in Stand-Alone-Ausführung ignoriert.\n
-31 ERROR: Destination-path does not exist or is not a directory.\n
+31 FEHLER: Destination-Pfad existiert nicht oder ist kein Verzeichnis.\n
 60 \
 backupdb: Datenbank sichern.\n\
 Anwendung: %s backupdb [OPTION] Datenbanknamen\n\
@@ -283,7 +283,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Unbekannter Befehl '%s'\n
 43 Ausgabedatei konnte nicht geöffnet werden '%s'\n
 44 Vorhandene Datenbank konnte nicht gelöscht werden.\n
-45 Creating database with %1$s size using locale %2$s. The total amount of disk space needed is %3$s.\n
+45 Erstellen der Datenbank mit %s Größe mit Standard-Locale %s. Der Gesamtbetrag der benötigten Speicherplatz ist %s.\n
 46 Datenbank konnte nicht erstellt werden.\n
 47 Problem mit Benutzerdatei '%s'\n
 48 Der angegebene '%s', %s ist außerhalb des Bereichs. Eine Größe zwischen %s und %s wählen.\n
@@ -292,7 +292,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 createdb: Datenbank erstellen.\n\
 usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
-database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
+Datenbank Lokale-format ist <language>.<charset>; Beispiele: en_US.iso88591, ko_KR.utf8\n\
 gültige Optionen:\n\
       --db-volume-size=GRÖSSE           Größe des ersten Informationsdatenträger \n\
                                       Standard: db_volume_size in cubrid.conf\n\
@@ -667,7 +667,7 @@ gültige Optionen:\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                Anzeigeeinheit setzen (Seite, mega, giga, terra, Mensch-lesbar); Standard: H\n\
   -s, --summarize              nur eine Zusammenfassung für jedes Datenträgerzweck anzeigen\n\
-  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
+  -p, --purpose                Anzeige des verwendeten Größe der einzelnen Zwecke (data/index/temp) jedes Volumen\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
@@ -1021,7 +1021,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 24 %4d%-10s %14s %14s %15d %17s\n
 25 Es gibt keine Transaktionen\n
 26 tranlist darf nur von DBA oder einem Mitglied der DBA Gruppe durchgeführt werden.\n
-27 sort-key column number(%d) is invalid.\n
+27 sort-key Spalte (%d) ist ungültig.\n
 32 Tran index         Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1039,5 +1039,5 @@ gültige Optionen:\n\
   -u, --user=ID                Benutzer ID für Datenbankzugang; Standardwert: DBA Benutzer\n\
   -p, --password=PASS          Benutzerpasswort; Standardwert: Keinen\n\
   -s, --summary                zusammengefasste Transaktionsinformationen anzeigen\n\
-      --sort-key=COLUMN_NUMBER column number to be sorted\n\
-      --reverse                reverse the sort result\n
+      --sort-key=COLUMN_NUMBER Spalte zu sortieren\n\
+      --reverse                Ergebnisse umgekehrt sortieren\n

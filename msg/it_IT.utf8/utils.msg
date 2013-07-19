@@ -233,7 +233,7 @@ Commandi disponibili:\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ATTENZIONE: opzione -t viene ignorata in modalità di esecuzione stand-alone.\n
-31 ERROR: Destination-path does not exist or is not a directory.\n
+31 ERRORE: Destinazione non esiste o non è un folder.\n
 60 \
 backupdb: Backup di un database.\n\
 uso: %s backupdb [OPZIONE] nome-database\n\
@@ -283,7 +283,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Comando sconosciuto '%s'\n
 43 Impossibile aprire il file di output '%s'\n
 44 Impossibile rimuovere database esistente.\n
-45 Creating database with %1$s size using locale %2$s. The total amount of disk space needed is %3$s.\n
+45 Creazione di database con dimensioni %s utilizzando locale predefinito %s. La quantità totale di spazio su disco necessario è %s.\n
 46 Impossibile creare database.\n
 47 Problema con file utente '%s'\n
 48 La data '%s', %s è fuori portata. Scegliere una dimensione tra %s e %s.\n
@@ -292,7 +292,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 createdb: Creare un database.\n\
 usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
-database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
+database-locale formato è <language>.<charset>; Esempi : en_US.iso88591, ko_KR.utf8\n\
 opzioni valide:\n\
       --db-volume-size=SIZE           dimensioni del primo volume di informazioni\n\
                                       predefinito: db_volume_size nel cubrid.conf\n\
@@ -648,12 +648,12 @@ $set 19 MSGCAT_UTIL_SET_SPACEDB
 32 Scopo       total_size   used_size   free_size  volume_count\n
 33 %10s %s %s %s %10d\n
 34 -------------------------------------------------------------\n
-40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
-41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
+40 Volid  Scopo     total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
+41 Volid  Scopo      total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
 42 %5d %9s  %s %s %s %s %s  %s\n
 43 ----------------------------------------------------------------------------------------------------\n
-50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
-51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
+50 Scopo      total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
+51 Scopo       total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
 52 %10s %s %s %s %s %s %s %10d\n
 53 -------------------------------------------------------------------------------------------------\n
 60 \
@@ -667,7 +667,7 @@ opzioni valide:\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                impostare l'unità di visualizzazione (page, mega, giga, tera, human readable); predefinito: H\n\
   -s, --summarize              visualizzare solo un riepilogo per ogni scopo del volume\n\
-  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
+  -p, --purpose                visualizzare la dimensione di ciascun utilizzato scopo(data/index/temp) di ciascun volume\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
@@ -1021,7 +1021,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 24 %4d%-10s %14s %14s %15d %17s\n
 25 Non ci sono transazioni\n
 26 tranlist può essere eseguita solo dal DBA o un membro del gruppo DBA.\n
-27 sort-key column number(%d) is invalid.\n
+27 sort-key numero di colonna(%d) non è valido.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1039,5 +1039,5 @@ opzioni valide:\n\
   -u, --user=ID                utente per l'accesso al database; predefinito: utente DBA\n\
   -p, --password=PASS          password utente; predefinito: nessuno\n\
   -s, --summary                stampa informazioni riepilogative della transazione\n\
-      --sort-key=COLUMN_NUMBER column number to be sorted\n\
-      --reverse                reverse the sort result\n
+      --sort-key=COLUMN_NUMBER numero di colonna da ordinare\n\
+      --reverse                invertire l'ordinamento\n

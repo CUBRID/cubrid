@@ -1197,7 +1197,7 @@ $ LOADDB
 1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
 1129 Log recovery is finished.
 1130 Transaction is aborted because transaction lock counts exceeds %1$d.
-1131 Internal error: The page %1 of volume %2 may be corrupted.\n%3
+1131 Internal error: The page %1$d of volume "%2$s" may be corrupted.\n%3$s
 1132 Encryption library failure: %s
 1133 Son Hata
 
