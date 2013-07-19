@@ -802,7 +802,7 @@ static unsigned int prm_bt_unfill_factor_flag = 0;
 
 float PRM_BT_OID_NBUFFERS = 4.0f;
 static float prm_bt_oid_nbuffers_default = 4.0f;
-static float prm_bt_oid_nbuffers_lower = 0.05f;
+static float prm_bt_oid_nbuffers_lower = 0.049999f;
 static float prm_bt_oid_nbuffers_upper = 16.0f;
 static unsigned int prm_bt_oid_nbuffers_flag = 0;
 
