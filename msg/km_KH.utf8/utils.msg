@@ -283,7 +283,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 commandដែលមិនស្គាល់ `%s'\n
 43 មិនអាចបើក output file `%s'\n
 44 មិនអាចផ្លាស់ប្តូរទីតាំងដែលតាបេសដែលមាន។\n
-45 Creating database with %1$s size using default locale %2$s. The total amount of disk space needed is %3$s.\n
+45 Creating database with %1$s size using locale %2$s. The total amount of disk space needed is %3$s.\n
 46 មិនអាំចបង្កើតដែលតាបេស\n
 47 បញ្ហាជាមួយ user file `%s'\n
 48 ទំហំ '%s', %s ហួសកំណត់. សូមជ្រើសរើសទំហំរវាង %s និង %s.\n

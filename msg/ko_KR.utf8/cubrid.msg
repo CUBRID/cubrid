@@ -1172,19 +1172,19 @@ $ LOADDB
 1103 시스템 파라미터를 변경할 수 없습니다.
 1104 Slow query (%d msec)\n%s
 1105 내부에러: partially failed to flush dirty object. 
-1106 Multiple rows in source table match the same row in destination table.
-1107 Invalid bucket number for NTILE. Should be greater than zero and no more than 2,147,483,647.
-1108 Invalid bucket number for WIDTH_BUCKET. Should be greater than zero and less than 2,147,483,647.
-1109 Invalid value for partition definition.
-1110 Insufficient space in btree leaf page. (key len: %d)\n%s
+1106 원본 테이블의 레코드 수와 대상 테이블의 레코드 수가 일치하지 않습니다. 머지하는 두 테이블의 레코드 수는 동일해야 합니다.
+1107 NTILE 버킷 수는 0보다 크고 2,147,483,647보다 작야야 합니다.
+1108 WIDTH 버킷 수는 0보다 크고 2,147,483,647보다 작아야 합니다. 
+1109 잘못된 분할 정의 값입니다.
+1110 btree leaf 페이지의 공간이 부족합니다. (key len: %d)\n%s
 1111 결과값의 길이(%2$d)가 precision(%1$d)보다 커서 값이 잘립니다.
-1112 A character could not be converted from '%1$s' to '%2$s'.
-1113 Element index out of range.
-1114 Argument '%s' is out of range.
+1112 문자셋 "%1$s"에서 문자셋 "%2$s"로 변환할 수 없습니다.
+1113 엘리먼트 인덱스의 범위가 정상 범위를 넘었습니다. 
+1114 인자 "%s"의 범위가 정상 범위를 넘었습니다.
 1115 통계정보 갱신이 시작되었습니다. (class "%1$s", oid : %2$d|%3$d|%4$d)
 1116 통계정보 갱신이 완료되었습니다. (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d)
-1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
-1118 The argument of "%1$s" can not be coerced to desired domain "%2$s".
+1117 애트리뷰트 "%1$s"를 변경할 수 없습니다. SHARED와 같은 속성의 애트리뷰트는 변경할 수 없습니다.
+1118 "%1$s" 의 인자를 도메인 "%2$s"으로 변환할 수 없습니다.
 1119 내부 에러: 볼륨 "%2$s"의 페이지 테이블에 할당된 %1$d번 페이지가 어떤 파일에도 속해있지 않습니다.
 1120 내부 에러: 볼륨 "%2$s"의 %1$d번 페이지가 현재 사용중이지만 볼륨의 페이지 테이블에는 할당되어 있지 않습니다.
 1121 NOT NULL 제약조건은 NULL 값을 허용하지 않습니다.
@@ -1614,18 +1614,18 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 263 상속된 애트리뷰트는 분할 키로 사용할 수 없습니다.
 264 ENUM 원소들의 문자열을 모두 더한 바이트 크기가 너무 큽니다.
 265 원본 테이블에 명시된 것을 대상 테이블에 명시할 수 없습니다.
-266 COLLATE is not allowed in this context.
-267 COLLATE modifier cannot change codeset (from '%s' to '%s'). Try using CAST instead.
-268 Invalid codeset '%1$s' for partition value. Expecting '%2$s' codeset.
-269 Session variable cannot have a different collation than system collation ('%s').
-270 Invalid function index expression.
-271 The query specification of %s has a cyclic reference to itself.
-272 %s expression not allowed in join condition.
-273 ORDER BY is not allowed in function MEDIAN.
-274 The arguments of the function '%s' must be constant.
-275 Function '%s' must have ORDER BY clause.
-276 For function '%s', the number of arguments does not match the number of ORDER BY columns.
-277 For function '%s', the ORDER BY clause is invalid.
+266 COLLATE는 이 문맥에서 허용되지 않습니다.
+267 COLLATE 수정자로 코드셋 "%1$s"를 "%2$s"로 바꿀수 없습니다. CAST 연산자를 사용 하십시오. 
+268 파티션 값의 코드셋 "%1$s"은 적절하지 않습니다. 적절한 코드셋은 "%2$s" 입니다.
+269 세션 변수는 시스템 콜레이션과 다른 콜레이션을 가질수 없습니다.
+270 함수 인덱스의 표현식이 적절하지 않습니다.
+271 "%s"의 질의 명세는 자신을 참조하는 순환 참조를 가집니다.
+272 표현식 "%s"는 조인 조건 절에서 사용할 수 없습니다.
+273 MEDIAN 분석함수는 ORDER BY 절을 허용하지 않습니다.
+274 함수 "%s"의 인자는 상수이어야 합니다.
+275 함수 "%s"는 반드시 ORDER BY 절을 포함해야 합니다.
+276 함수 "%s"의 인자 수가 ORDER BY 절 컬럼 수와 일치하지 않습니다.
+277 함수 "%s"의 ORDER BY 절은 적절하지 않습니다.
 278 Only one table within a view can be updated.
 279 Multiple insert targets not allowed.
 280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.

@@ -283,7 +283,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Comando desconocido '%s'\n
 43 No se puede abrir archivo de salida '%s'\n
 44 No se puede eliminar base de datos existente.\n
-45 Creating database with %1$s size using default locale %2$s. The total amount of disk space needed is %3$s.\n
+45 Creating database with %1$s size using locale %2$s. The total amount of disk space needed is %3$s.\n
 46 No se pudo crear base de datos.\n
 47 Problema con el archivo de utilizador '%s'\n
 48 Para el '%s' dado, %s es fuera de rango. Escoger un tamano entre %s y %s.\n

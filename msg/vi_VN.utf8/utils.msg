@@ -283,7 +283,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Lệnh '%s' không rõ\n
 43 Không thể mở tệp tin đầu ra '%s'\n
 44 Không thể gỡ bỏ cơ sở dữ liệu hiện có.\n
-45 Creating database with %1$s size using default locale %2$s. The total amount of disk space needed is %3$s.\n
+45 Creating database with %1$s size using locale %2$s. The total amount of disk space needed is %3$s.\n
 46 Không thể tạo cơ sở dữ liệu.\n
 47 Vấn đề với tệp tin người dùng '%s'\n
 48 Với '%s' đã cho, %s nằm ngoài khoảng. Lựa chọn kích thước giữa %s và %s.\n
