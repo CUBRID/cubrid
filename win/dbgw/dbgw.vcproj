@@ -43,12 +43,12 @@
       />
       <Tool
         Name="VCCLCompilerTool"
+	AdditionalOptions="/MP"
         Optimization="0"
         EnableIntrinsicFunctions="false"
         AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\storage;..\..\src\broker;..\..\src\cci;..\..\include;..\..\win\external\include;C:\Program Files\boost\boost_1_41"
         PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;_MT;_USE_32BIT_TIME_T;__STL_DEBUG;CAS_CCI;CASCCI_EXPORTS;CAS_CCI_DL;XML_STATIC;BOOST_ALL_NO_LIB;DBGW_ADAPTER_API_EXPORT"
         GeneratePreprocessedFile="0"
-        MinimalRebuild="true"
         BasicRuntimeChecks="3"
         RuntimeLibrary="3"
         WarningLevel="3"
@@ -122,11 +122,11 @@
       />
       <Tool
         Name="VCCLCompilerTool"
+	AdditionalOptions="/MP"
         Optimization="0"
         AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\storage;..\..\src\broker;..\..\src\cci;..\..\include;..\..\win\external\include;C:\Program Files\boost\boost_1_41"
         PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;_MT;__STL_DEBUG;CAS_CCI;CASCCI_EXPORTS;CAS_CCI_DL;XML_STATIC;BOOST_ALL_NO_LIB;DBGW_ADAPTER_API_EXPORT"
         GeneratePreprocessedFile="0"
-        MinimalRebuild="true"
         BasicRuntimeChecks="3"
         RuntimeLibrary="3"
         WarningLevel="3"
@@ -201,6 +201,7 @@
       />
       <Tool
         Name="VCCLCompilerTool"
+	AdditionalOptions="/MP"
         Optimization="2"
         InlineFunctionExpansion="0"
         EnableIntrinsicFunctions="true"
@@ -282,6 +283,7 @@
       />
       <Tool
         Name="VCCLCompilerTool"
+	AdditionalOptions="/MP"
         Optimization="2"
         EnableIntrinsicFunctions="true"
         AdditionalIncludeDirectories="..\..\src\dbgw;..\..\win;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\storage;..\..\src\broker;..\..\src\cci;..\..\include;..\..\win\external\include;C:\Program Files\boost\boost_1_41"
