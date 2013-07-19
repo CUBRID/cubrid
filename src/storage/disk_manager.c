@@ -64,39 +64,36 @@ static int rv;
 /* do not use assert_release () for performance risk */
 #define DISK_VERIFY_VAR_HEADER(h) 					\
   do { 									\
-    if (BO_IS_SERVER_RESTARTED ())					\
-      {									\
-	assert ((h)->total_pages > 0);					\
-	assert ((h)->free_pages >= 0);					\
-	assert ((h)->free_pages <= (h)->total_pages);			\
+    assert ((h)->total_pages > 0);					\
+    assert ((h)->free_pages >= 0);					\
+    assert ((h)->free_pages <= (h)->total_pages);			\
 									\
-	assert ((h)->total_sects > 0);					\
-	assert ((h)->free_sects >= 0);					\
-	assert ((h)->free_sects <= (h)->total_sects);			\
+    assert ((h)->total_sects > 0);					\
+    assert ((h)->free_sects >= 0);					\
+    assert ((h)->free_sects <= (h)->total_sects);			\
 									\
-	assert ((h)->sect_npgs == DISK_SECTOR_NPAGES);			\
-	assert ((h)->total_sects == 					\
-		CEIL_PTVDIV ((h)->total_pages, (h)->sect_npgs));	\
-	assert ((h)->sect_alloctb_page1 == DISK_VOLHEADER_PAGE + 1);	\
+    assert ((h)->sect_npgs == DISK_SECTOR_NPAGES);			\
+    assert ((h)->total_sects == 					\
+            CEIL_PTVDIV ((h)->total_pages, (h)->sect_npgs));		\
+    assert ((h)->sect_alloctb_page1 == DISK_VOLHEADER_PAGE + 1);	\
 									\
-	assert ((h)->page_alloctb_page1 == 				\
-		((h)->sect_alloctb_page1 + (h)->sect_alloctb_npages));	\
-	assert ((h)->sys_lastpage == 					\
-		((h)->page_alloctb_page1 + (h)->page_alloctb_npages - 1));\
+    assert ((h)->page_alloctb_page1 == 					\
+            ((h)->sect_alloctb_page1 + (h)->sect_alloctb_npages));	\
+    assert ((h)->sys_lastpage == 					\
+            ((h)->page_alloctb_page1 + (h)->page_alloctb_npages - 1));	\
    									\
-        if ((h)->purpose != DISK_TEMPVOL_TEMP_PURPOSE)                  \
-          {                                                             \
-            assert ((h)->sect_alloctb_npages >= 			\
-                    CEIL_PTVDIV ((h)->total_sects, DISK_PAGE_BIT));	\
-            assert ((h)->page_alloctb_npages >= 			\
-                    CEIL_PTVDIV ((h)->total_pages, DISK_PAGE_BIT));	\
-          }								\
-        if ((h)->purpose != DISK_PERMVOL_GENERIC_PURPOSE                \
-            && (h)->purpose != DISK_TEMPVOL_TEMP_PURPOSE)               \
-          {                                                             \
-            assert ((h)->total_pages == (h)->max_npages);               \
-          }                                                             \
+    if ((h)->purpose != DISK_TEMPVOL_TEMP_PURPOSE)                     	\
+      {                                                                 \
+        assert ((h)->sect_alloctb_npages >= 				\
+                CEIL_PTVDIV ((h)->total_sects, DISK_PAGE_BIT));		\
+        assert ((h)->page_alloctb_npages >= 				\
+                CEIL_PTVDIV ((h)->total_pages, DISK_PAGE_BIT));		\
       }									\
+    if ((h)->purpose != DISK_PERMVOL_GENERIC_PURPOSE                    \
+        && (h)->purpose != DISK_TEMPVOL_TEMP_PURPOSE)                   \
+      {                                                                 \
+        assert ((h)->total_pages == (h)->max_npages);                   \
+      }                                                                 \
   } while (0)
 
 #define DISK_PAGE   1
