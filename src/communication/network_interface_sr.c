@@ -8267,6 +8267,11 @@ sqp_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid,
 		  db_value_clear (&value[i]);
 		}
 	    }
+
+#if !defined(NDEBUG)
+	  /* suppress valgrind UMW error */
+	  memset (ptr, 0, buffer_length - (ptr - buffer));
+#endif
 	}
       else
 	{
