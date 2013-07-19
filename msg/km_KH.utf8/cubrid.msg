@@ -1621,14 +1621,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 ឃ្លាមុខងារអំពីតារាងរៀងតាមអក្សរត្រូវចាត់ទុកជាមោឃៈ
 271 បែបបទសាកសួរអំពី %s អាចកើតមានឡើងចំពោះការដកស្រង់យកមកប្រើ.
 272 %s ឃ្លានេះមិនអាចសរសេរក្នុងករណីរួម.
-273 Only one table within a view can be updated.
-274 Multiple insert targets not allowed.
-275 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
-276 ORDER BY is not allowed in function MEDIAN.
-277 The arguments of the function '%s' must be constant.
-278 Function '%s' must have ORDER BY clause.
-279 For function '%s', the number of arguments does not match the number of ORDER BY columns.
-280 For function '%s', the ORDER BY clause is invalid.
+273 ORDER BY is not allowed in function MEDIAN.
+274 The arguments of the function '%s' must be constant.
+275 Function '%s' must have ORDER BY clause.
+276 For function '%s', the number of arguments does not match the number of ORDER BY columns.
+277 For function '%s', the ORDER BY clause is invalid.
+278 Only one table within a view can be updated.
+279 Multiple insert targets not allowed.
+280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 អស់ memoryជាក់ស្តែង: មិនអាចប្រើ %d bytes។

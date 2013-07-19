@@ -1621,14 +1621,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 Expresie invalidă pentru indexul funcţional.
 271 Specificaţia de interogare a lui %s conţine o referinţa circulară la el însuşi.
 272 Expresia %s nu este permisă în condiţia de JOIN.
-273 O singură tabelă din interiorul unei vizualizări poate fi actualizată.
-274 Inserarea în mai multe tabele nu este permisă.
-275 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
-276 ORDER BY is not allowed in function MEDIAN.
-277 The arguments of the function '%s' must be constant.
-278 Function '%s' must have ORDER BY clause.
-279 For function '%s', the number of arguments does not match the number of ORDER BY columns.
-280 For function '%s', the ORDER BY clause is invalid.
+273 ORDER BY is not allowed in function MEDIAN.
+274 The arguments of the function '%s' must be constant.
+275 Function '%s' must have ORDER BY clause.
+276 For function '%s', the number of arguments does not match the number of ORDER BY columns.
+277 For function '%s', the ORDER BY clause is invalid.
+278 O singură tabelă din interiorul unei vizualizări poate fi actualizată.
+279 Inserarea în mai multe tabele nu este permisă.
+280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %d bytes.

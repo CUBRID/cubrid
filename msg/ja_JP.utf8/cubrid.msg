@@ -1626,9 +1626,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 275 ファンクション「%s」は「ORDER BY」節を含めないといけません。
 276 ファンクション「%s」のアーギュメント数が「ORDER BY」カラム数と一致しません。
 277 ファンクション「%s」で「ORDER BY」節は使えません。
-278 Function '%s' must have ORDER BY clause.
-279 For function '%s', the number of arguments does not match the number of ORDER BY columns.
-280 For function '%s', the ORDER BY clause is invalid.
+278 Only one table within a view can be updated.
+279 Multiple insert targets not allowed.
+280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %dバイトがアロケーションできません。
