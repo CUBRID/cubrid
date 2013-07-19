@@ -8617,7 +8617,8 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
    */
   for (i = 0; i < env->nterms; i++)
     {
-      if (QO_TERM_CLASS (&env->terms[i]) == QO_TC_AFTER_JOIN)
+      if (QO_TERM_CLASS (&env->terms[i]) == QO_TC_AFTER_JOIN
+	  || QO_TERM_CLASS (&env->terms[i]) == QO_TC_OTHER)
 	{
 	  goto abandon_stop_limit;
 	}
