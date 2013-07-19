@@ -545,8 +545,7 @@ static int fileio_read_restore (THREAD_ENTRY * thread_p,
 static void *fileio_write_restore (THREAD_ENTRY * thread_p,
 				   FILEIO_RESTORE_PAGE_CACHE * pages_cache,
 				   int vdes, void *io_pgptr, VOLID volid,
-				   PAGEID pageid,
-				   FILEIO_BACKUP_LEVEL level);
+				   PAGEID pageid, FILEIO_BACKUP_LEVEL level);
 static int fileio_read_restore_header (FILEIO_BACKUP_SESSION * session);
 static FILEIO_RELOCATION_VOLUME
 fileio_find_restore_volume (THREAD_ENTRY * thread_p, const char *dbname,
@@ -3533,7 +3532,8 @@ fileio_is_system_volume_label_equal (THREAD_ENTRY * thread_p,
 				     FILEIO_SYSTEM_VOLUME_INFO *
 				     sys_vol_info_p, APPLY_ARG * arg)
 {
-  return (strncmp (sys_vol_info_p->vlabel, arg->vol_label, PATH_MAX) == 0);
+  return (util_compare_filepath (sys_vol_info_p->vlabel,
+				 arg->vol_label) == 0);
 }
 
 #if defined(HPUX) && !defined(IA64)
@@ -6217,7 +6217,7 @@ fileio_is_volume_label_equal (THREAD_ENTRY * thread_p,
 			      FILEIO_VOLUME_INFO * vol_info_p,
 			      APPLY_ARG * arg)
 {
-  return (strncmp (vol_info_p->vlabel, arg->vol_label, PATH_MAX) == 0);
+  return (util_compare_filepath (vol_info_p->vlabel, arg->vol_label) == 0);
 }
 
 /*
