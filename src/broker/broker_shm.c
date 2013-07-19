@@ -557,6 +557,8 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
   shm_as_p->jdbc_cache_only_hint = br_info_p->jdbc_cache_only_hint;
   shm_as_p->jdbc_cache_life_time = br_info_p->jdbc_cache_life_time;
 
+  shm_as_p->connect_order = br_info_p->connect_order;
+
   strcpy (shm_as_p->preferred_hosts, br_info_p->preferred_hosts);
   strcpy (shm_as_p->error_log_file, br_info_p->error_log_file);
   strcpy (shm_as_p->access_log_file, br_info_p->access_log_file);

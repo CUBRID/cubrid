@@ -320,6 +320,8 @@ EXPORTS
     db_set_session_mode_sync
     db_set_size
     db_set_system_parameters
+    db_set_preferred_hosts
+    db_set_connect_order
     db_shutdown
     db_string_free
     db_synchronize_cache

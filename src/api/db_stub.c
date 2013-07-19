@@ -2882,6 +2882,7 @@ conn_restart_client (CI_CONN_STRUCTURE * pconn,
   client_credential.login_name = NULL;
   client_credential.host_name = NULL;
   client_credential.process_id = -1;
+  client_credential.connect_order = DB_CONNECT_ORDER_SEQ;
   error = boot_restart_client (&client_credential);
 
   if (error != NO_ERROR)

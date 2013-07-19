@@ -527,8 +527,12 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 	{
 	  client_type = 4;	/* DB_CLIENT_TYPE_BROKER in db.h */
 	}
+
+      db_set_preferred_hosts (shm_appl->preferred_hosts);
+      db_set_connect_order (shm_appl->connect_order);
+
       err_code = db_restart_ex (program_name, db_name, db_user, db_passwd,
-				shm_appl->preferred_hosts, client_type);
+				NULL, client_type);
       if (err_code < 0)
 	{
 	  goto connect_error;
@@ -639,9 +643,11 @@ ux_database_reconnect (void)
       client_type = 4;		/* DB_CLIENT_TYPE_BROKER in db.h */
     }
 
+  db_set_preferred_hosts (shm_appl->preferred_hosts);
+  db_set_connect_order (shm_appl->connect_order);
+
   err_code = db_restart_ex (program_name, database_name, database_user,
-			    database_passwd, shm_appl->preferred_hosts,
-			    client_type);
+			    database_passwd, NULL, client_type);
 
   if (err_code < 0)
     {

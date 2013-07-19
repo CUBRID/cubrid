@@ -130,6 +130,12 @@ static T_CONF_TABLE tbl_access_mode[] = {
   {NULL, 0}
 };
 
+static T_CONF_TABLE tbl_connect_order[] = {
+  {"SEQ", CONNECT_ORDER_SEQ},
+  {"RANDOM", CONNECT_ORDER_RANDOM},
+  {NULL, 0}
+};
+
 static T_CONF_TABLE tbl_proxy_log_mode[] = {
   {"ALL", PROXY_LOG_MODE_ALL},
   {"ON", PROXY_LOG_MODE_ALL},
@@ -752,6 +758,16 @@ broker_config_read_internal (const char *conf_file,
 	  goto conf_error;
 	}
 
+      br_info[num_brs].connect_order =
+	conf_get_value_connect_order (ini_getstr (ini, sec_name,
+						  "CONNECT_ORDER",
+						  "SEQ", &lineno));
+      if (br_info[num_brs].connect_order < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
       strncpy (time_str,
 	       ini_getstr (ini, sec_name, "MAX_QUERY_TIMEOUT",
 			   DEFAULT_MAX_QUERY_TIMEOUT, &lineno),
@@ -1313,6 +1329,11 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	{
 	  fprintf (fp, "ACCESS_MODE\t\t=%s\n", tmp_str);
 	}
+      tmp_str = get_conf_string (br_info[i].connect_order, tbl_connect_order);
+      if (tmp_str)
+	{
+	  fprintf (fp, "CONNECT_ORDER\t\t=%s\n", tmp_str);
+	}
       fprintf (fp, "MAX_QUERY_TIMEOUT\t=%d\n", br_info[i].query_timeout);
 
       tmp_str = get_conf_string (br_info[i].monitor_hang_flag, tbl_on_off);
@@ -1470,6 +1491,17 @@ int
 conf_get_value_access_mode (const char *value)
 {
   return (get_conf_value (value, tbl_access_mode));
+}
+
+/*
+ * conf_get_value_connect_order - get value from connect_order table
+ *   return: -1 if fail
+ *   value(in):
+ */
+int
+conf_get_value_connect_order (const char *value)
+{
+  return (get_conf_value (value, tbl_connect_order));
 }
 
 /*

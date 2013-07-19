@@ -135,6 +135,15 @@ enum t_access_mode_value
   PH_READ_ONLY_ACCESS_MODE = 3
 };
 
+/* dbi.h must be updated when a new order is added */
+typedef enum t_connect_order_value T_CONNECT_ORDER_VALUE;
+enum t_connect_order_value
+{
+  CONNECT_ORDER_SEQ = 0,
+  CONNECT_ORDER_RANDOM = 1,
+  CONNECT_ORDER_DEFAULT = CONNECT_ORDER_SEQ
+};
+
 typedef enum t_proxy_log_value T_PROXY_LOG_MODE_VALUE;
 enum t_proxy_log_mode_value
 {
@@ -218,6 +227,9 @@ struct t_broker_info
 
   char monitor_hang_flag;
   char reject_client_flag;	/* reject clients due to hanging cas/proxy */
+
+  int connect_order;
+
   char shard_flag;
   /*from here, these are used only in shard */
   int proxy_shm_id;
@@ -260,6 +272,7 @@ extern int conf_get_value_table_on_off (const char *value);
 extern int conf_get_value_sql_log_mode (const char *value);
 extern int conf_get_value_keep_con (const char *value);
 extern int conf_get_value_access_mode (const char *value);
+extern int conf_get_value_connect_order (const char *value);
 
 extern int conf_get_value_proxy_log_mode (const char *value);
 

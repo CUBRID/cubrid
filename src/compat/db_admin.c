@@ -77,6 +77,9 @@ void (*prev_sigfpe_handler) (int) = SIG_DFL;
 char db_Database_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 char db_Program_name[PATH_MAX];
 
+static char *db_Preferred_hosts = NULL;
+static int db_Connect_order = DB_CONNECT_ORDER_SEQ;
+
 static void install_static_methods (void);
 static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose,
 			       int quit_on_error);
@@ -489,6 +492,12 @@ db_set_preferred_hosts (const char *hosts)
     }
 }
 
+void
+db_set_connect_order (int connect_order)
+{
+  db_Connect_order = connect_order;
+}
+
 /*
  * DATABASE ACCESS
  */
@@ -598,6 +607,7 @@ db_restart (const char *program, int print_version, const char *volume)
       client_credential.host_name = NULL;
       client_credential.process_id = -1;
       client_credential.preferred_hosts = db_Preferred_hosts;
+      client_credential.connect_order = db_Connect_order;
 
       error = boot_restart_client (&client_credential);
       if (error != NO_ERROR)
@@ -637,10 +647,13 @@ db_restart (const char *program, int print_version, const char *volume)
  *   db_user(in) : the database user name
  *   db_password(in) : the password
  *   client_type(in) : DB_CLIENT_TYPE_XXX in db.h
+ *   preferred_hosts(in) : DO NOT USE IT, set it to NULL and
+ *                         use db_set_preferred_hosts instead
  */
 int
 db_restart_ex (const char *program, const char *db_name, const char *db_user,
-	       const char *db_password, const char *hosts, int client_type)
+	       const char *db_password, const char *preferred_hosts,
+	       int client_type)
 {
   int retval;
 
@@ -664,7 +677,15 @@ db_restart_ex (const char *program, const char *db_name, const char *db_user,
       break;
     }
 #endif
-  db_set_preferred_hosts (hosts);
+  /* For backward compatibility.
+   * Do not use the parameter, preferred_hosts.
+   * A caller is supposed to use db_set_preferred_hosts
+   * before db_restart_ex is called.
+   */
+  if (preferred_hosts != NULL)
+    {
+      db_set_preferred_hosts (preferred_hosts);
+    }
 
   return db_restart (program, false, db_name);
 }

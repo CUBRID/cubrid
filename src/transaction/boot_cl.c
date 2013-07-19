@@ -99,6 +99,7 @@ extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 #endif /* SA_MODE */
 
 #define BOOT_FORMAT_MAX_LENGTH 500
+#define BOOT_MAX_NUM_HOSTS      32
 
 typedef int (*DEF_FUNCTION) ();
 typedef int (*DEF_CLASS_FUNCTION) (MOP);
@@ -159,7 +160,8 @@ static void boot_shutdown_client_at_exit (void);
 #if defined(CS_MODE)
 static int boot_client_initialize_css (DB_INFO * db, int client_type,
 				       bool check_capabilities,
-				       bool discriminative);
+				       bool discriminative,
+				       int connect_order);
 #endif /* CS_MODE */
 static int boot_define_class (MOP class_mop);
 static int boot_define_attribute (MOP class_mop);
@@ -549,7 +551,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   /* Initialize the communication subsystem */
   error_code =
     boot_client_initialize_css (db, client_credential->client_type, false,
-				false);
+				false, DB_CONNECT_ORDER_SEQ);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -953,9 +955,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	}
 
       boot_Host_connected[0] = '\0';
+
+      /* connect to preferred hosts in a sequential order even though
+       * a user sets CONNECT_ORDER to RANDOM
+       */
       error_code =
 	boot_client_initialize_css (tmp_db, client_credential->client_type,
-				    false, false);
+				    false, false, DB_CONNECT_ORDER_SEQ);
       util_free_string_array (hosts);
       cfg_free_directory (tmp_db);
     }
@@ -969,13 +975,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       error_code =
 	boot_client_initialize_css (db, client_credential->client_type, false,
-				    false);
+				    false, DB_CONNECT_ORDER_SEQ);
     }
   else if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
     {
       error_code =
 	boot_client_initialize_css (db, client_credential->client_type, true,
-				    false);
+				    false, client_credential->connect_order);
 
       if (error_code == ER_NET_SERVER_HAND_SHAKE)
 	{
@@ -983,20 +989,21 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
 	  error_code =
 	    boot_client_initialize_css (db, client_credential->client_type,
-					false, false);
+					false, false,
+					client_credential->connect_order);
 	}
     }
   else if (client_credential->client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
     {
       error_code =
 	boot_client_initialize_css (db, client_credential->client_type, true,
-				    false);
+				    false, client_credential->connect_order);
     }
   else
     {
       error_code =
 	boot_client_initialize_css (db, client_credential->client_type, false,
-				    false);
+				    false, client_credential->connect_order);
     }
 
   if (error_code != NO_ERROR)
@@ -1474,11 +1481,13 @@ boot_client_all_finalize (bool is_er_final)
  */
 static int
 boot_client_initialize_css (DB_INFO * db, int client_type,
-			    bool check_capabilities, bool discriminative)
+			    bool check_capabilities, bool discriminative,
+			    int connect_order)
 {
   int error = ER_NET_NO_SERVER_HOST;
   int hn, tn, n;
-  char *hostlist[10], strbuf[(MAXHOSTNAMELEN + 1) * 10];
+  char *hostlist[BOOT_MAX_NUM_HOSTS];
+  char strbuf[(MAXHOSTNAMELEN + 1) * BOOT_MAX_NUM_HOSTS];
   bool cap_error = false;
 
   assert (db != NULL);
@@ -1501,9 +1510,22 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
     {
       hostlist[hn++] = boot_Host_connected;
     }
-  for (n = 0; hn < 10 && n < db->num_hosts; n++)
+  for (n = 0; hn < BOOT_MAX_NUM_HOSTS && n < db->num_hosts; n++)
     {
       hostlist[hn++] = db->hosts[n];
+    }
+
+  if (connect_order == DB_CONNECT_ORDER_RANDOM)
+    {
+      if (boot_Host_connected[0] != '\0')
+	{
+	  /* leave boot_Host_connected at the front and shuffle the others */
+	  util_shuffle_string_array (hostlist + 1, hn - 1);
+	}
+      else
+	{
+	  util_shuffle_string_array (hostlist, hn);
+	}
     }
 
   /*
@@ -1570,7 +1592,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
 
   /* failed to connect all hosts; write an error message */
   strbuf[0] = '\0';
-  for (n = 0; n < hn - 1 && n < 9; n++)
+  for (n = 0; n < hn - 1 && n < (BOOT_MAX_NUM_HOSTS - 1); n++)
     {
       strncat (strbuf, hostlist[n], MAXHOSTNAMELEN);
       strcat (strbuf, ":");

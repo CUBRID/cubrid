@@ -3080,7 +3080,7 @@ extern int db_restart (const char *program,
 		       int print_version, const char *volume);
 extern int db_restart_ex (const char *program, const char *db_name,
 			  const char *db_user, const char *db_password,
-			  const char *hosts, int client_type);
+			  const char *preferred_hosts, int client_type);
 extern SESSION_ID db_get_session_id (void);
 extern void db_set_session_id (const SESSION_ID session_id);
 extern int db_end_session (void);

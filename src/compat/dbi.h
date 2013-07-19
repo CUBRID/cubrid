@@ -42,6 +42,10 @@
 #define db_utime_to_string db_timestamp_to_string
 #define db_string_to_utime db_string_to_timestamp
 
+/* the order to connect to db-hosts in databases.txt */
+#define DB_CONNECT_ORDER_SEQ         0
+#define DB_CONNECT_ORDER_RANDOM      1
+
 /* constants for db_include_oid */
 enum
 { DB_NO_OIDS, DB_ROW_OIDS, DB_COLUMN_OIDS };
@@ -59,7 +63,7 @@ extern int db_restart (const char *program,
 		       int print_version, const char *volume);
 extern int db_restart_ex (const char *program, const char *db_name,
 			  const char *db_user, const char *db_password,
-			  const char *hosts, int client_type);
+			  const char *preferred_hosts, int client_type);
 extern void db_set_server_session_key (const char *key);
 extern char *db_get_server_session_key (void);
 extern SESSION_ID db_get_session_id (void);
@@ -379,6 +383,7 @@ extern char *db_get_database_name (void);
 extern const char *db_get_database_comments (void);
 extern void db_set_client_type (int client_type);
 extern void db_set_preferred_hosts (const char *hosts);
+extern void db_set_connect_order (int connect_order);
 extern int db_get_client_type (void);
 extern const char *db_get_type_name (DB_TYPE type_id);
 extern DB_TYPE db_type_from_string (const char *name);

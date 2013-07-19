@@ -51,7 +51,6 @@
 #define DB_CONNECTION_STATUS_CONNECTED          1
 #define DB_CONNECTION_STATUS_RESET              -1
 extern int db_Connect_status;
-extern char *db_Preferred_hosts;
 
 extern SESSION_ID db_Session_id;
 

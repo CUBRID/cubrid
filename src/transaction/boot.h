@@ -103,6 +103,7 @@ struct boot_client_credential
   char *login_name;		/* L_cuserid */
   char *host_name;		/* MAXHOSTNAMELEN */
   char *preferred_hosts;	/* LINE_MAX */
+  int connect_order;
   int process_id;
 };
 

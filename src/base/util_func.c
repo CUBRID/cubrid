@@ -31,6 +31,9 @@
 #include <signal.h>
 #include <assert.h>
 #include <time.h>
+#if !defined (WINDOWS)
+#include <sys/time.h>
+#endif /* !WINDOWS */
 
 #include "util_func.h"
 #include "porting.h"
@@ -380,4 +383,28 @@ util_str_to_time_since_epoch (char *str)
     }
 
   return result_time;
+}
+
+void
+util_shuffle_string_array (char **array, int count)
+{
+  struct timeval t;
+  int i, j;
+  long int r;
+  struct drand48_data buf;
+  char *temp;
+
+  gettimeofday (&t, NULL);
+  srand48_r (t.tv_usec, &buf);
+
+  /* Fisher-Yates shuffle */
+  for (i = count - 1; i > 0; i--)
+    {
+      lrand48_r (&buf, &r);
+      j = (int) (r % (i + 1));
+
+      temp = array[j];
+      array[j] = array[i];
+      array[i] = temp;
+    }
 }

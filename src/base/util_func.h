@@ -45,5 +45,6 @@ extern void util_disarm_signal_handlers (void);
 extern char **util_split_string (const char *str, const char *delim);
 extern void util_free_string_array (char **array);
 extern time_t util_str_to_time_since_epoch (char *str);
+extern void util_shuffle_string_array (char **array, int count);
 
 #endif /* _UTIL_FUNC_H_ */

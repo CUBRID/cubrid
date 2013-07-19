@@ -539,6 +539,7 @@ struct t_shm_appl_server
   char shard_flag;
   bool access_control;
   int jdbc_cache_life_time;
+  int connect_order;
 
 #if defined(WINDOWS)
   int as_port;
