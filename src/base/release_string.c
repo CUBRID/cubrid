@@ -44,13 +44,27 @@
  *                      For two revision levels, both a compatibility type
  *                      and optional fixup function list is defined.
  */
+
+typedef struct version
+{
+  unsigned char major;
+  unsigned char minor;
+  unsigned short patch;
+} REL_VERSION;
+
 typedef struct compatibility_rule
 {
-  float base_level;
-  float apply_level;
+  REL_VERSION base;
+  REL_VERSION apply;
   REL_COMPATIBILITY compatibility;
   REL_FIXUP_FUNCTION *fix_function;
 } COMPATIBILITY_RULE;
+
+typedef enum
+{
+  CHECK_LOG_COMPATIBILITY,
+  CHECK_NET_PROTOCOL_COMPATIBILITY
+} COMPATIBILITY_CHECK_MODE;
 
 /*
  * Copyright Information
@@ -79,7 +93,8 @@ static int bit_platform = __WORDSIZE;
 static REL_COMPATIBILITY
 rel_get_compatible_internal (const char *base_rel_str,
 			     const char *apply_rel_str,
-			     COMPATIBILITY_RULE rules[]);
+			     COMPATIBILITY_CHECK_MODE check,
+			     REL_VERSION rules[]);
 
 /*
  * Disk (database image) Version Compatibility
@@ -244,14 +259,8 @@ rel_bit_platform (void)
  * {base_level (of database), apply_level (of system), compatibility, fix_func}
  */
 static COMPATIBILITY_RULE disk_compatibility_rules[] = {
-  /*
-   * NOTICE:
-   * 8.2.0 and 8.2.1 database(8.2) should be compatible with 8.2.2 server(8.3).
-   */
-  {8.2f, 8.3f, REL_BACKWARD_COMPATIBLE, NULL},
-
   /* a zero indicates the end of the table */
-  {0.0f, 0.0f, REL_NOT_COMPATIBLE, NULL}
+  {{0, 0, 0}, {0, 0, 0}, REL_NOT_COMPATIBLE, NULL}
 };
 
 /*
@@ -286,11 +295,15 @@ rel_get_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups)
     {
       compat = REL_NOT_COMPATIBLE;
       for (rule = &disk_compatibility_rules[0];
-	   rule->base_level != 0 && compat == REL_NOT_COMPATIBLE; rule++)
+	   rule->base.major != 0 && compat == REL_NOT_COMPATIBLE; rule++)
 	{
+	  float base_level, apply_level;
 
-	  if (rule->base_level == db_level
-	      && rule->apply_level == disk_compatibility_level)
+	  base_level = rule->base.major + (rule->base.minor / 10.0);
+	  apply_level = rule->apply.major + (rule->apply.minor / 10.0);
+
+	  if (base_level == db_level
+	      && apply_level == disk_compatibility_level)
 	    {
 	      compat = rule->compatibility;
 	      func = rule->fix_function;
@@ -406,49 +419,15 @@ rel_compare (const char *rel_a, const char *rel_b)
 
 /*
  * log compatibility matrix
- * {base_level (of server), apply_level (of client), compatibility, fix_func}
- * minor and patch number of the release string is to be the value of level
- * e.g. release 8.2.0 -> level 2.0
- * if the major numbers are different, no network compatibility!
  */
-static COMPATIBILITY_RULE log_compatibility_rules[] = {
-  /* 8.4.0 <-> 8.4.1 */
-  {4.1f, 4.0f, REL_FORWARD_COMPATIBLE, NULL},
-  {4.0f, 4.1f, REL_BACKWARD_COMPATIBLE, NULL},
+static REL_VERSION log_incompatible_versions[] = {
+  {10, 0, 0},
 
-  /* 8.4.1 <-> 8.4.2 */
-  {4.1f, 4.2f, REL_FORWARD_COMPATIBLE, NULL},
-  {4.2f, 4.1f, REL_BACKWARD_COMPATIBLE, NULL},
-
-  /* 8.4.0 <-> 8.4.2 */
-  {4.2f, 4.0f, REL_FORWARD_COMPATIBLE, NULL},
-  {4.0f, 4.2f, REL_BACKWARD_COMPATIBLE, NULL},
-
-  /* 8.4.2 <-> 8.4.3 */
-  {4.2f, 4.3f, REL_FORWARD_COMPATIBLE, NULL},
-  {4.3f, 4.2f, REL_BACKWARD_COMPATIBLE, NULL},
-
-  /* 8.4.0 <-> 8.4.3 */
-  {4.3f, 4.0f, REL_FORWARD_COMPATIBLE, NULL},
-  {4.0f, 4.3f, REL_BACKWARD_COMPATIBLE, NULL},
-
-  /* 8.4.1 <-> 8.4.3 */
-  {4.1f, 4.3f, REL_FORWARD_COMPATIBLE, NULL},
-  {4.3f, 4.1f, REL_BACKWARD_COMPATIBLE, NULL},
-
-  /*
-   * NOTICE:
-   * 2.0 and 2.1 servers should NOT be compatible with 2.2 databases.
-   * 2.2 server should be compatible with 2.0 and 2.1 databases.
-   */
-  {2.1f, 2.2f, REL_BACKWARD_COMPATIBLE, NULL},
-  {2.0f, 2.2f, REL_BACKWARD_COMPATIBLE, NULL},
-
-  {2.1f, 2.0f, REL_FORWARD_COMPATIBLE, NULL},
-  {2.0f, 2.1f, REL_BACKWARD_COMPATIBLE, NULL},
+  /* PLEASE APPEND HERE versions that are incompatible with existing ones. */
+  /* NOTE that versions are kept as ascending order. */
 
   /* zero indicates the end of the table */
-  {0.0f, 0.0f, REL_NOT_COMPATIBLE, NULL}
+  {0, 0, 0}
 };
 
 /*
@@ -463,7 +442,8 @@ rel_is_log_compatible (const char *writer_rel_str, const char *reader_rel_str)
   REL_COMPATIBILITY compat;
 
   compat = rel_get_compatible_internal (writer_rel_str, reader_rel_str,
-					log_compatibility_rules);
+					CHECK_LOG_COMPATIBILITY,
+					log_incompatible_versions);
   if (compat == REL_NOT_COMPATIBLE)
     {
       return false;
@@ -474,20 +454,15 @@ rel_is_log_compatible (const char *writer_rel_str, const char *reader_rel_str)
 
 /*
  * network compatibility matrix
- * {base_level (of server), apply_level (of client), compatibility, fix_func}
- * minor and patch number of the release string is to be the value of level
- * e.g. release 8.2.0 -> level 2.0
- * if the major numbers are different, no network compatibility!
  */
-static COMPATIBILITY_RULE net_compatibility_rules[] = {
+static REL_VERSION net_incompatible_versions[] = {
+  {10, 0, 0},
+
+  /* PLEASE APPEND HERE versions that are incompatible with existing ones. */
+  /* NOTE that versions are kept as ascending order. */
+
   /* zero indicates the end of the table */
-  {2.3f, 2.2f, REL_FORWARD_COMPATIBLE, NULL},
-  {2.2f, 2.3f, REL_BACKWARD_COMPATIBLE, NULL},
-  {2.2f, 2.1f, REL_FORWARD_COMPATIBLE, NULL},
-  {2.1f, 2.2f, REL_BACKWARD_COMPATIBLE, NULL},
-  /*{2.1f, 2.0f, REL_FORWARD_COMPATIBLE, NULL}, */
-  /*{2.0f, 2.1f, REL_BACKWARD_COMPATIBLE, NULL}, */
-  {0.0f, 0.0f, REL_NOT_COMPATIBLE, NULL}
+  {0, 0, 0}
 };
 
 /*
@@ -511,7 +486,8 @@ rel_get_net_compatible (const char *client_rel_str,
 			const char *server_rel_str)
 {
   return rel_get_compatible_internal (server_rel_str, client_rel_str,
-				      net_compatibility_rules);
+				      CHECK_NET_PROTOCOL_COMPATIBILITY,
+				      net_incompatible_versions);
 }
 
 /*
@@ -525,12 +501,15 @@ rel_get_net_compatible (const char *client_rel_str,
 static REL_COMPATIBILITY
 rel_get_compatible_internal (const char *base_rel_str,
 			     const char *apply_rel_str,
-			     COMPATIBILITY_RULE rules[])
+			     COMPATIBILITY_CHECK_MODE check,
+			     REL_VERSION versions[])
 {
-  COMPATIBILITY_RULE *rule;
+  REL_VERSION *version, *base_version, *apply_version;
   REL_COMPATIBILITY compat;
-  float apply_level, base_level;
-  char *str_a, *str_b;
+  char *base, *apply, *str_a, *str_b;
+
+  unsigned char base_major, base_minor, apply_major, apply_minor;
+  unsigned short base_patch, apply_patch;
 
   if (apply_rel_str == NULL || base_rel_str == NULL)
     {
@@ -540,9 +519,9 @@ rel_get_compatible_internal (const char *base_rel_str,
   /* release string should be in the form of <major>.<minor>[.<patch>] */
 
   /* check major number */
-  apply_level = (float) strtol (apply_rel_str, &str_a, 10);
-  base_level = (float) strtol (base_rel_str, &str_b, 10);
-  if (apply_level == 0.0 || base_level == 0.0 || apply_level != base_level)
+  apply_major = (unsigned char) strtol (apply_rel_str, &str_a, 10);
+  base_major = (unsigned char) strtol (base_rel_str, &str_b, 10);
+  if (apply_major == 0 || base_major == 0)
     {
       return REL_NOT_COMPATIBLE;
     }
@@ -557,23 +536,68 @@ rel_get_compatible_internal (const char *base_rel_str,
       str_b++;
     }
 
-  /* check minor.patch number */
-  apply_level = (float) strtod (str_a, NULL);
-  base_level = (float) strtod (str_b, NULL);
-  if (apply_level == base_level)
+  /* check minor number */
+  apply = str_a;
+  base = str_b;
+  apply_minor = (unsigned char) strtol (apply, &str_a, 10);
+  base_minor = (unsigned char) strtol (base, &str_b, 10);
+
+  /* skip '.' */
+  while (*str_a && *str_a == '.')
+    {
+      str_a++;
+    }
+  while (*str_b && *str_b == '.')
+    {
+      str_b++;
+    }
+
+  if (check == CHECK_NET_PROTOCOL_COMPATIBILITY)
+    {
+      if (apply_major != base_major)
+	{
+	  return REL_NOT_COMPATIBLE;
+	}
+      if (apply_minor != base_minor)
+	{
+	  return REL_NOT_COMPATIBLE;
+	}
+    }
+
+  /* check patch number */
+  apply = str_a;
+  base = str_b;
+  apply_patch = (unsigned short) strtol (apply, &str_a, 10);
+  base_patch = (unsigned short) strtol (base, &str_b, 10);
+  if (apply_major == base_major
+      && apply_minor == base_minor && apply_patch == base_patch)
     {
       return REL_FULLY_COMPATIBLE;
     }
 
-  compat = REL_NOT_COMPATIBLE;
-  for (rule = &rules[0];
-       rule->base_level != 0 && compat == REL_NOT_COMPATIBLE; rule++)
+  base_version = NULL;
+  apply_version = NULL;
+  for (version = &versions[0]; version->major != 0; version++)
     {
-      if (rule->base_level == base_level && rule->apply_level == apply_level)
+      if (base_major >= version->major
+	  && base_minor >= version->minor && base_patch >= version->patch)
 	{
-	  compat = rule->compatibility;
+	  base_version = version;
+	}
+      if (apply_major >= version->major
+	  && apply_minor >= version->minor && apply_patch >= version->patch)
+	{
+	  apply_version = version;
 	}
     }
 
-  return compat;
+  if (base_version == NULL || apply_version == NULL
+      || base_version != apply_version)
+    {
+      return REL_NOT_COMPATIBLE;
+    }
+  else
+    {
+      return REL_FULLY_COMPATIBLE;
+    }
 }

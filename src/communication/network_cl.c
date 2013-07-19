@@ -4249,6 +4249,13 @@ net_client_ping_server_with_handshake (int client_type,
   ptr = or_unpack_int (ptr, &server_bit_platform);
   ptr = or_unpack_string_nocopy (ptr, &server_host);
 
+  /* get the error code which was from the server if it exists */
+  error = er_errid ();
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   /* check bits model */
   if (server_bit_platform != rel_bit_platform ())
     {
@@ -4287,11 +4294,10 @@ net_client_ping_server_with_handshake (int client_type,
   if (compat == REL_NOT_COMPATIBLE)
     {
       error = ER_NET_DIFFERENT_RELEASE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+	      server_release, client_release);
       return error;
     }
-
-  /* get the error code which was from the server if it exists */
-  error = er_errid ();
 
   return error;
 }
