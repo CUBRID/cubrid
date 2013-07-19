@@ -25,6 +25,7 @@
 
 #include "config.h"
 
+#include "porting.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "class_object.h"

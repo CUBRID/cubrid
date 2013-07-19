@@ -25,6 +25,7 @@
 
 #include "config.h"
 
+#include "porting.h"
 #include "utility.h"
 #include "util_support.h"
 #include "error_code.h"

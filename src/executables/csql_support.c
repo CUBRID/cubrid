@@ -34,7 +34,7 @@
 #else /* !WINDOWS */
 #include <pwd.h>
 #endif /* !WINDOWS */
-
+#include "porting.h"
 #include "csql.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"

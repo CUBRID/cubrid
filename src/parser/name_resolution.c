@@ -27,6 +27,7 @@
 
 #include <assert.h>
 
+#include "porting.h"
 #include "error_manager.h"
 #include "parser.h"
 #include "parser_message.h"

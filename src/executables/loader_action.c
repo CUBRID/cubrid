@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include "porting.h"
 #include "language_support.h"
 #include "loader_old.h"
 #include "class_object.h"

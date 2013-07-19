@@ -31,6 +31,7 @@
 #include <string.h>
 
 #include "config.h"
+#include "porting.h"
 #include "release_string.h"
 #include "message_catalog.h"
 #include "chartype.h"

@@ -30,6 +30,7 @@
 #include <string.h>
 #include <fcntl.h>
 
+#include "porting.h"
 #include "area_alloc.h"
 #include "dbtype.h"
 #include "class_object.h"

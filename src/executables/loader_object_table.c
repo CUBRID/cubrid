@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "porting.h"
 #include "utility.h"
 #include "oid.h"
 #include "work_space.h"

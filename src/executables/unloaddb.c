@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "porting.h"
 #include "authenticate.h"
 #include "db.h"
 #include "message_catalog.h"

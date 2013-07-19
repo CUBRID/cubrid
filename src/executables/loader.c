@@ -37,7 +37,7 @@
 #include <unistd.h>
 #endif /* !WINDOWS */
 #include <errno.h>
-
+#include "porting.h"
 #include "utility.h"
 #include "dbi.h"
 #include "memory_alloc.h"

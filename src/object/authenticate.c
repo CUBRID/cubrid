@@ -38,6 +38,7 @@
 #include <string.h>
 #include <ctype.h>
 
+#include "porting.h"
 #include "misc_string.h"
 #include "memory_alloc.h"
 #include "dbtype.h"

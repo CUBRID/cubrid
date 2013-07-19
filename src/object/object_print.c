@@ -32,6 +32,7 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include "porting.h"
 #include "chartype.h"
 #include "misc_string.h"
 

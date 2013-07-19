@@ -32,6 +32,7 @@
 
 #include <assert.h>
 
+#include "porting.h"
 #include "boot_sr.h"
 #include "memory_alloc.h"
 #include "locator_sr.h"

@@ -34,7 +34,7 @@
 #include <unistd.h>
 #include <sys/param.h>
 #endif
-
+#include "porting.h"
 #include "db.h"
 #include "utility.h"
 #include "misc_string.h"

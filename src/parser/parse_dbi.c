@@ -31,6 +31,7 @@
 #include <stdarg.h>
 #include <ctype.h>
 
+#include "porting.h"
 #include "error_manager.h"
 #include "parser.h"
 #include "xasl_generation.h"
