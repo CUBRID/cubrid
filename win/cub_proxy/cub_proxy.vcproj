@@ -43,10 +43,10 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
+				AdditionalOptions="/MP"
 				Optimization="0"
 				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;_USE_32BIT_TIME_T;CUB_PROXY"
-				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
 				WarningLevel="3"
@@ -117,6 +117,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
+				AdditionalOptions="/MP"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
 				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
@@ -193,10 +194,10 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
+				AdditionalOptions="/MP"
 				Optimization="0"
 				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;CUB_PROXY"
-				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
 				WarningLevel="3"
@@ -268,6 +269,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
+				AdditionalOptions="/MP"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
 				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\include;..\..\src\api;..\..\src\base;..\..\src\compat;..\..\src\object;..\..\src\storage;..\..\src\thread;..\..\src\query;..\..\src\cci;..\..\src\transaction"
