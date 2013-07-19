@@ -14876,14 +14876,15 @@ pt_check_cume_dist_percent_rank_order_by (PARSER_CONTEXT * parser,
 		}
 	    }
 
-	  if (dom == NULL)
-	    {
-	      error = er_errid ();
-	      goto error_exit;
-	    }
+	  /* Note: it is possible that class is not found.
+	   * i.e. 'select PERCENT_RANK(null,3) within group 
+	   *        (order by score,score1) from 
+	   *        (select NULL score,'00001' score1 from db_root) S;'
+	   *     We just let it go if an attribute could not be found.
+	   */
 
 	  /* for common values */
-	  if (arg->node_type != PT_EXPR)
+	  if (arg->node_type == PT_VALUE && dom != NULL)
 	    {
 	      value = &arg->info.value.db_value;
 	      error = db_value_coerce (value, value, dom);
