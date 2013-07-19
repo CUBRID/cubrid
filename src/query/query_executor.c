@@ -774,6 +774,21 @@ static int qexec_analytic_evaluate_ntile_function (THREAD_ENTRY * thread_p,
 						   ANALYTIC_STATE *
 						   analytic_state,
 						   int tuple_idx);
+static int find_rec_for_nth_value_with_ignore_nulls (THREAD_ENTRY * thread_p,
+						     REGU_VARIABLE_LIST
+						     regulist,
+						     ANALYTIC_TYPE * func_p,
+						     VAL_DESCR * val_desc,
+						     int tuple_idx,
+						     int target_idx,
+						     int upto_idx);
+static int locate_first_non_null_rec_for_nth_value (THREAD_ENTRY * thread_p,
+						    REGU_VARIABLE_LIST
+						    regulist,
+						    ANALYTIC_TYPE * func_p,
+						    VAL_DESCR * val_desc,
+						    int tuple_idx,
+						    int target_idx);
 static int qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 						    ANALYTIC_TYPE * func_p,
 						    ANALYTIC_STATE *
@@ -20994,6 +21009,173 @@ qexec_analytic_evaluate_ntile_function (THREAD_ENTRY * thread_p,
 }
 
 /*
+ * find_rec_for_nth_value_with_ignore_nulls () - process non-null record offset and location for NTH_VALUE function
+ *                                              (i.e. lead/lag)
+ *   returns: error code or NO_ERROR
+ *   thread_p(in): current thread
+ *   regulist(in/out): list of regu variables to be fetched.
+ *   func_p(in): analytic function
+ *   val_desc(in): value descriptor
+ *   tuple_idx(in): current position of main scan in group
+ *   target_idx(in): target tuple offset which is relative to the position of the first non-null tuple
+ *   upto_idx(in): the start point to which the scan list should be reset
+ */
+static int
+find_rec_for_nth_value_with_ignore_nulls (THREAD_ENTRY * thread_p,
+					  REGU_VARIABLE_LIST regulist,
+					  ANALYTIC_TYPE * func_p,
+					  VAL_DESCR * val_desc,
+					  int tuple_idx,
+					  int target_idx, int upto_idx)
+{
+  REGU_VARIABLE_LIST save_next;
+  int sc;
+  int counter;
+  int error = NO_ERROR;
+
+  /* scan to the start position */
+  while (func_p->info.offset.tuple_idx != upto_idx)
+    {
+      if (func_p->info.offset.tuple_idx > upto_idx)
+	{
+	  sc = qfile_scan_list_prev (thread_p,
+				     &func_p->info.offset.lsid,
+				     &func_p->info.offset.tplrec, PEEK);
+	  func_p->info.offset.tuple_idx--;
+	}
+      else
+	{
+	  sc = qfile_scan_list_next (thread_p,
+				     &func_p->info.offset.lsid,
+				     &func_p->info.offset.tplrec, PEEK);
+	  func_p->info.offset.tuple_idx++;
+	}
+
+      /* check for valid tuple */
+      if (sc != S_SUCCESS)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  if (func_p->from_last)
+    {
+      counter = tuple_idx - target_idx;
+    }
+  else
+    {
+      counter = target_idx;
+    }
+
+  /* re-fetch function value for new tuple; domains should be the same */
+  save_next = regulist->next;
+  regulist->next = NULL;
+  error = fetch_val_list (thread_p, regulist, val_desc, NULL, NULL,
+			  func_p->info.offset.tplrec.tpl, PEEK);
+  if (error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  regulist->next = save_next;
+
+  if (!DB_IS_NULL (regulist->value.vfetch_to))
+    {
+      counter--;
+    }
+
+  while (counter >= 0
+	 && ((func_p->from_last)
+	     ? (func_p->info.offset.tuple_idx > 0)
+	     : (func_p->info.offset.tuple_idx < tuple_idx)))
+    {
+      if (func_p->from_last)
+	{
+	  sc = qfile_scan_list_prev (thread_p,
+				     &func_p->info.offset.lsid,
+				     &func_p->info.offset.tplrec, PEEK);
+	  if (sc != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	  func_p->info.offset.tuple_idx--;
+	}
+      else
+	{
+	  sc = qfile_scan_list_next (thread_p,
+				     &func_p->info.offset.lsid,
+				     &func_p->info.offset.tplrec, PEEK);
+	  if (sc != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	  func_p->info.offset.tuple_idx++;
+	}
+
+      /* re-fetch function value for new tuple; domains should be the same */
+      save_next = regulist->next;
+      regulist->next = NULL;
+      error = fetch_val_list (thread_p, regulist, val_desc, NULL, NULL,
+			      func_p->info.offset.tplrec.tpl, PEEK);
+      if (error != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      regulist->next = save_next;
+
+      if (!DB_IS_NULL (regulist->value.vfetch_to))
+	{
+	  counter--;
+	}
+    }
+  if (counter >= 0)
+    {
+      DB_MAKE_NULL (regulist->value.vfetch_to);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * locate_first_non_null_rec_for_nth_value () - process non-null record offset for NTH_VALUE function
+ *                                              (i.e. lead/lag)
+ *   returns: error code or NO_ERROR
+ *   thread_p(in): current thread
+ *   regulist(in/out): list of regu variables to be fetched.
+ *   func_p(in): analytic function
+ *   val_desc(in): value descriptor
+ *   tuple_idx(in): current position of main scan in group
+ *   target_idx(in): target tuple offset which is relative to the position of the first non-null tuple
+ */
+static int
+locate_first_non_null_rec_for_nth_value (THREAD_ENTRY * thread_p,
+					 REGU_VARIABLE_LIST regulist,
+					 ANALYTIC_TYPE * func_p,
+					 VAL_DESCR * val_desc,
+					 int tuple_idx, int target_idx)
+{
+  int err;
+
+  assert (func_p->function == PT_NTH_VALUE && func_p->ignore_nulls);
+
+  if (func_p->from_last)
+    {
+      err = find_rec_for_nth_value_with_ignore_nulls (thread_p, regulist,
+						      func_p, val_desc,
+						      tuple_idx,
+						      target_idx, tuple_idx);
+    }
+  else
+    {
+      err = find_rec_for_nth_value_with_ignore_nulls (thread_p, regulist,
+						      func_p, val_desc,
+						      tuple_idx,
+						      target_idx, 0);
+    }
+
+  return err;
+}
+
+/*
  * qexec_analytic_evaluate_offset_function () - process analytic offset functions
  *                                              (i.e. lead/lag)
  *   returns: error code or NO_ERROR
@@ -21214,84 +21396,56 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
   if (target_idx >= 0
       && target_idx < analytic_state->current_group_input_recs)
     {
-      /* scan */
-      while (target_idx != func_p->info.offset.tuple_idx)
-	{
-	  if (target_idx < func_p->info.offset.tuple_idx)
-	    {
-	      sc = qfile_scan_list_prev (thread_p, &func_p->info.offset.lsid,
-					 &func_p->info.offset.tplrec, PEEK);
-	      func_p->info.offset.tuple_idx--;
-	    }
-	  else
-	    {
-	      sc = qfile_scan_list_next (thread_p, &func_p->info.offset.lsid,
-					 &func_p->info.offset.tplrec, PEEK);
-	      func_p->info.offset.tuple_idx++;
-	    }
-
-	  /* check for valid tuple */
-	  if (sc != S_SUCCESS)
-	    {
-	      return ER_FAILED;
-	    }
-	}
-
-      /* re-fetch function value for new tuple; domains should be the same */
-      save_next = regulist->next;
-      regulist->next = NULL;
-      error = fetch_val_list (thread_p, regulist, val_desc, NULL, NULL,
-			      func_p->info.offset.tplrec.tpl, PEEK);
-      if (error != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-      regulist->next = save_next;
-
       /* handle IGNORE NULLS
        * locate the first non-NULL position for NTH_VALUE() */
       if (func_p->function == PT_NTH_VALUE && func_p->ignore_nulls)
 	{
-	  while (DB_IS_NULL (output_val_p)
-		 && ((func_p->from_last
-		      && func_p->info.offset.tuple_idx > 0)
-		     || (!func_p->from_last
-			 && func_p->info.offset.tuple_idx < tuple_idx)))
+	  error =
+	    locate_first_non_null_rec_for_nth_value (thread_p, regulist,
+						     func_p, val_desc,
+						     tuple_idx, target_idx);
+	  if (error != NO_ERROR)
 	    {
-	      if (func_p->from_last)
+	      return error;
+	    }
+	}
+      else
+	{
+	  /* scan */
+	  while (target_idx != func_p->info.offset.tuple_idx)
+	    {
+	      if (target_idx < func_p->info.offset.tuple_idx)
 		{
-		  sc = qfile_scan_list_prev (thread_p,
-					     &func_p->info.offset.lsid,
-					     &func_p->info.offset.tplrec,
-					     PEEK);
+		  sc =
+		    qfile_scan_list_prev (thread_p, &func_p->info.offset.lsid,
+					  &func_p->info.offset.tplrec, PEEK);
 		  func_p->info.offset.tuple_idx--;
 		}
 	      else
 		{
-		  sc = qfile_scan_list_next (thread_p,
-					     &func_p->info.offset.lsid,
-					     &func_p->info.offset.tplrec,
-					     PEEK);
+		  sc =
+		    qfile_scan_list_next (thread_p, &func_p->info.offset.lsid,
+					  &func_p->info.offset.tplrec, PEEK);
 		  func_p->info.offset.tuple_idx++;
 		}
 
+	      /* check for valid tuple */
 	      if (sc != S_SUCCESS)
 		{
 		  return ER_FAILED;
 		}
-
-	      /* re-fetch function value for new tuple; domains should be the same */
-	      save_next = regulist->next;
-	      regulist->next = NULL;
-	      error =
-		fetch_val_list (thread_p, regulist, val_desc, NULL, NULL,
-				func_p->info.offset.tplrec.tpl, PEEK);
-	      if (error != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
-	      regulist->next = save_next;
 	    }
+
+	  /* re-fetch function value for new tuple; domains should be the same */
+	  save_next = regulist->next;
+	  regulist->next = NULL;
+	  error = fetch_val_list (thread_p, regulist, val_desc, NULL, NULL,
+				  func_p->info.offset.tplrec.tpl, PEEK);
+	  if (error != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  regulist->next = save_next;
 	}
     }
   else
