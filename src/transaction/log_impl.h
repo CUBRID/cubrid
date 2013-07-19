@@ -1472,6 +1472,9 @@ struct log_donetime
 struct log_ha_server_state
 {
   int state;			/* ha_Server_state */
+  int dummy;			/* dummy for alignment */
+
+  INT64 at_time;		/* time recorded by active server */
 };
 
 typedef struct log_crumb LOG_CRUMB;

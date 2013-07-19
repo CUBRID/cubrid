@@ -3424,6 +3424,8 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
     }
 
   ha_server_state = (struct log_ha_server_state *) node->data_header;
+  memset (ha_server_state, 0, sizeof (struct log_ha_server_state));
+
   ha_server_state->state = state;
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
