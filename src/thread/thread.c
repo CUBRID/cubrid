@@ -4225,6 +4225,49 @@ thread_rc_track_free (THREAD_ENTRY * thread_p, int id)
 }
 
 /*
+ * thread_rc_track_is_on () - check if is enable
+ *   return:
+ *   thread_p(in):
+ */
+bool
+thread_rc_track_is_on (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert_release (thread_p != NULL);
+
+  if (prm_get_bool_value (PRM_ID_USE_SYSTEM_MALLOC))
+    {
+      /* disable tracking */
+      assert_release (thread_p->track == NULL);
+      assert_release (thread_p->track_depth == -1);
+
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * thread_rc_track_is_off () - check if is not enable
+ *   return:
+ *   thread_p(in):
+ */
+bool
+thread_rc_track_is_off (THREAD_ENTRY * thread_p)
+{
+  if (thread_rc_track_is_on (thread_p))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
  * thread_rc_track_enter () - save current track info
  *   return:
  *   thread_p(in):
@@ -4241,11 +4284,7 @@ thread_rc_track_enter (THREAD_ENTRY * thread_p)
 
   assert_release (thread_p != NULL);
 
-  if (prm_get_bool_value (PRM_ID_USE_SYSTEM_MALLOC))
-    {
-      assert_release (thread_p->track == NULL);	/* disable tracking */
-    }
-  else
+  if (thread_rc_track_is_on (thread_p))
     {
       track = thread_rc_track_alloc (thread_p);
       assert_release (track != NULL);
@@ -4273,11 +4312,7 @@ thread_rc_track_exit (THREAD_ENTRY * thread_p, int id)
   assert_release (thread_p != NULL);
   assert_release (id == thread_p->track_depth);
 
-  if (prm_get_bool_value (PRM_ID_USE_SYSTEM_MALLOC))
-    {
-      assert_release (thread_p->track == NULL);	/* disable tracking */
-    }
-  else
+  if (thread_rc_track_is_on (thread_p))
     {
       assert_release (id >= 0);
 

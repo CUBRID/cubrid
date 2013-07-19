@@ -289,8 +289,8 @@ struct lk_deadlock_victim
   TRANID tranid;		/* Transaction identifier   */
   int can_timeout;		/* Is abort or timeout      */
 
-  int num_trans_in_cycle;       /* # of transaction in cycle */
-  int *tran_index_in_cycle;     /* tran_index array for transaction in cycle */
+  int num_trans_in_cycle;	/* # of transaction in cycle */
+  int *tran_index_in_cycle;	/* tran_index array for transaction in cycle */
 };
 
 /*
@@ -2615,7 +2615,8 @@ set_error:
  * Note:set error code for unilaterally aborted deadlock victim
  */
 static void
-lock_set_error_for_aborted (LK_ENTRY * entry_ptr, TRAN_ABORT_REASON abort_reason)
+lock_set_error_for_aborted (LK_ENTRY * entry_ptr,
+			    TRAN_ABORT_REASON abort_reason)
 {
   char *client_prog_name;	/* Client user name for transaction  */
   char *client_user_name;	/* Client user name for transaction  */
@@ -4133,10 +4134,13 @@ start:
       /* check iff holding pgbuf and request uncond-lock */
       if (wait_msecs != LK_FORCE_ZERO_WAIT)
 	{
-	  if (thread_rc_track_amount_pgbuf (thread_p) -
-	      thread_rc_track_amount_pgbuf_temp (thread_p) > 0)
+	  if (thread_rc_track_is_on (thread_p))
 	    {
-	      assert_release (false);
+	      if (thread_rc_track_amount_pgbuf (thread_p) -
+		  thread_rc_track_amount_pgbuf_temp (thread_p) > 0)
+		{
+		  assert_release (false);
+		}
 	    }
 	}
 #endif

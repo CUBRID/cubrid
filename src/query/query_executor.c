@@ -13675,16 +13675,17 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 #if !defined (NDEBUG)
 	      amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
 	      amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
-#if defined(SERVER_MODE)
-	      if (list_id && list_id->type_list.type_cnt != 0)
+	      if (thread_rc_track_is_on (thread_p))
 		{
-		  assert_release (amount_qlist_new == 1);
+		  if (list_id && list_id->type_list.type_cnt != 0)
+		    {
+		      assert_release (amount_qlist_new == 1);
+		    }
+		  else
+		    {
+		      assert_release (amount_qlist_new == 0);
+		    }
 		}
-	      else
-		{
-		  assert_release (amount_qlist_new == 0);
-		}
-#endif /* SERVER_MODE */
 #endif /* NDEBUG */
 
 	      /* caller will detect the error condition and free the listid */
@@ -13722,16 +13723,17 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 #if !defined (NDEBUG)
   amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
   amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
-#if defined(SERVER_MODE)
-  if (list_id && list_id->type_list.type_cnt != 0)
+  if (thread_rc_track_is_on (thread_p))
     {
-      assert_release (amount_qlist_new == 1);
+      if (list_id && list_id->type_list.type_cnt != 0)
+	{
+	  assert_release (amount_qlist_new == 1);
+	}
+      else
+	{
+	  assert_release (amount_qlist_new == 0);
+	}
     }
-  else
-    {
-      assert_release (amount_qlist_new == 0);
-    }
-#endif /* SERVER_MODE */
 #endif /* NDEBUG */
 
 #if defined(CUBRID_DEBUG)
