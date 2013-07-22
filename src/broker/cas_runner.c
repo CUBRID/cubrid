@@ -894,7 +894,10 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 			   req_stat_h);
 		  continue;
 		}
-	      fprintf (result_fp, "SHOW EXEC STATISTICS\n");
+	      if (result_fp)
+		{
+		  fprintf (result_fp, "SHOW EXEC STATISTICS\n");
+		}
 
 	      while (1)
 		{
@@ -938,14 +941,23 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 			}
 		      if (ind < 0 || data == NULL)
 			{
-			  fprintf (result_fp, "<NULL>\t|");
+			  if (result_fp)
+			    {
+			      fprintf (result_fp, "<NULL>\t|");
+			    }
 			}
 		      else
 			{
-			  fprintf (result_fp, "%s\t|", data);
+			  if (result_fp)
+			    {
+			      fprintf (result_fp, "%s\t|", data);
+			    }
 			}
 		    }
-		  fprintf (result_fp, "\n");
+		  if (result_fp)
+		    {
+		      fprintf (result_fp, "\n");
+		    }
 		}
 	    }
 	}

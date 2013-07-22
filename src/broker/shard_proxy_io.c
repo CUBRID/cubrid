@@ -1669,7 +1669,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
   if (client_version >= CAS_MAKE_VER (8, 2, 0))
     {
       url = db_passwd + SRV_CON_DBPASSWD_SIZE;
-      url[SRV_CON_URL_SIZE + 1] = '\0';
+      url[SRV_CON_URL_SIZE - 1] = '\0';
       driver_version[0] = '\0';
       if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
 	{
@@ -1677,7 +1677,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 	  if (len > 0 && len < SRV_CON_VER_STR_MAX_SIZE)
 	    {
 	      memcpy (driver_version, url + strlen (url) + 2, (int) len);
-	      driver_version[len + 1] = '\0';
+	      driver_version[len] = '\0';
 	    }
 	  else
 	    {

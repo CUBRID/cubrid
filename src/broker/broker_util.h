@@ -54,8 +54,10 @@
 	  (dest)[0] = 0; \
       } else if (realpath ((src), _buf) != NULL) { \
 	  strncpy ((dest), _buf, (dest_len)); \
+	  (dest)[(dest_len) - 1] = 0; \
       } else { \
 	  strncpy ((dest), (src), (dest_len)); \
+	  (dest)[(dest_len) - 1] = 0; \
       } \
   } while (0)
 

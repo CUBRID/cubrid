@@ -241,9 +241,9 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
 
       if (access_info->ip_files[0] != '\0')
 	{
-	  strncat (access_info->ip_files, ",", LINE_MAX);
+	  strncat (access_info->ip_files, ",", LINE_MAX - 1);
 	}
-      strncat (access_info->ip_files, ip_file, LINE_MAX);
+      strncat (access_info->ip_files, ip_file, LINE_MAX - 1);
       for (files = ip_file;; files = NULL)
 	{
 	  token = strtok_r (files, IP_FILE_DELIMITER, &save);
@@ -305,6 +305,8 @@ access_control_repath_file (char *path)
 
   trim (path);
   strncpy (tmp_str, path, BROKER_PATH_MAX);
+  tmp_str[BROKER_PATH_MAX - 1] = 0;
+
   MAKE_FILEPATH (path, tmp_str, BROKER_PATH_MAX);
 
   if (IS_ABS_PATH (path))

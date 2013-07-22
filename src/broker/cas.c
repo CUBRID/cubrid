@@ -1094,7 +1094,7 @@ cas_main (void)
 		  {
 		    memcpy (as_info->driver_version, url + strlen (url) + 2,
 			    (int) len);
-		    as_info->driver_version[len + 1] = '\0';
+		    as_info->driver_version[len] = '\0';
 		  }
 		else
 		  {

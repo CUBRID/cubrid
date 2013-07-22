@@ -158,8 +158,8 @@ cfg_read_dbinfo (DB_INFO ** db_info_p)
     {
       if (IS_ABS_PATH (shm_appl->db_connection_file))
 	{
-	  strncpy (filename, shm_appl->db_connection_file,
-		   BROKER_PATH_MAX - 1);
+	  strncpy (filename, shm_appl->db_connection_file, BROKER_PATH_MAX);
+	  filename[BROKER_PATH_MAX - 1] = 0;
 	}
       else
 	{

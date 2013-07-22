@@ -274,7 +274,8 @@ ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
       if (is_first)
 	{
 	  bind_with_size = is_bind_with_size (buf, &tot_val_size, &info_size);
-	  if (tot_val_size < 0 || (tot_val_size + info_size) > INT_MAX)
+	  if (tot_val_size < 0 || info_size < 0
+	      || (tot_val_size + info_size + 1) < 0)
 	    {
 	      fprintf (stderr, "log error\n");
 	      return -1;

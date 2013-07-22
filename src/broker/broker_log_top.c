@@ -86,8 +86,8 @@ T_LOG_TOP_MODE log_top_mode = MODE_PROC_TIME;
 static char *sql_info_file = NULL;
 static int mode_max_handle_lower_bound;
 static char mode_tran = 0;
-static char from_date[64] = "";
-static char to_date[64] = "";
+static char from_date[128] = "";
+static char to_date[128] = "";
 
 #ifdef MT_MODE
 static int num_thread = 5;

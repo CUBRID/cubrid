@@ -710,6 +710,7 @@ ux_get_system_parameter (const char *param, bool * value)
   char buffer[LINE_MAX], *p;
 
   strncpy (buffer, param, LINE_MAX);
+  buffer[LINE_MAX - 1] = 0;
   err_code = db_get_system_parameters (buffer, LINE_MAX);
   if (err_code != NO_ERROR)
     {

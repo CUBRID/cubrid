@@ -807,7 +807,10 @@ restart_error:
     {
       uw_shm_detach (shm_br);
     }
-  free_env (env, env_num);
+  if (env)
+    {
+      free_env (env, env_num);
+    }
 
   return -1;
 }
@@ -2841,10 +2844,10 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 	     T_SHM_BROKER * shm_br)
 {
   int pid, i, res = 0;
-  T_SHM_APPL_SERVER *shm_appl;
-  T_APPL_SERVER_INFO *as_info_p;
+  T_SHM_APPL_SERVER *shm_appl = NULL;
+  T_APPL_SERVER_INFO *as_info_p = NULL;
   char **env = NULL;
-  int env_num;
+  int env_num = 0;
   char port_str[BROKER_PATH_MAX];
   char master_shm_key_str[32];
   const char *broker_exe_name;
@@ -3057,8 +3060,10 @@ end:
     {
       uw_shm_detach (shm_proxy_p);
     }
-
-  free_env (env, env_num);
+  if (env)
+    {
+      free_env (env, env_num);
+    }
 
   return res;
 }
@@ -3561,6 +3566,11 @@ static void
 free_env (char **env, int env_num)
 {
   int i;
+
+  if (env == NULL)
+    {
+      return;
+    }
 
   for (i = 0; i < env_num; i++)
     {
