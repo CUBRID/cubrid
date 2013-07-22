@@ -3462,7 +3462,7 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 	    {
 	      PT_ERRORc (parser, class_, er_msg ());
 	    }
-	  if (smcls->partition_of)
+	  if (smcls != NULL && smcls->partition_of)
 	    {
 	      /* flush all partitions */
 	      DB_OBJLIST *user = NULL;
