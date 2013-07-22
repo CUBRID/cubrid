@@ -797,7 +797,7 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
   overflow_file_vfid = btid->ovfid;	/* structure copy */
 
   rec.area_size = size;
-  rec.data = (char *) malloc (size);
+  rec.data = (char *) db_private_alloc (thread_p, size);
   if (rec.data == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -824,7 +824,7 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   if (rec.data)
     {
-      free_and_init (rec.data);
+      db_private_free_and_init (thread_p, rec.data);
     }
 
   return ret;
@@ -833,7 +833,7 @@ exit_on_error:
 
   if (rec.data)
     {
-      free_and_init (rec.data);
+      db_private_free_and_init (thread_p, rec.data);
     }
 
   return (ret == NO_ERROR
@@ -864,7 +864,7 @@ btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
       return ER_FAILED;
     }
 
-  rec.data = (char *) malloc (rec.area_size);
+  rec.data = (char *) db_private_alloc (thread_p, rec.area_size);
   if (rec.data == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -888,7 +888,7 @@ btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   if (rec.data)
     {
-      free_and_init (rec.data);
+      db_private_free_and_init (thread_p, rec.data);
     }
 
   return NO_ERROR;
@@ -897,7 +897,7 @@ exit_on_error:
 
   if (rec.data)
     {
-      free_and_init (rec.data);
+      db_private_free_and_init (thread_p, rec.data);
     }
 
   return (ret == NO_ERROR
@@ -3497,7 +3497,7 @@ xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid,
   else
     {
       result = BTREE_KEY_NOTFOUND;
-      db_private_free (thread_p, found_oids);
+      db_private_free_and_init (thread_p, found_oids);
       *oids = NULL;
       *oids_count = 0;
     }
@@ -3507,7 +3507,7 @@ xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid,
 error_return:
   if (found_oids != NULL)
     {
-      db_private_free (thread_p, found_oids);
+      db_private_free_and_init (thread_p, found_oids);
     }
   *oids_count = 0;
   *oids = NULL;
@@ -4879,7 +4879,7 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
   if (size < 0)
     {
       fd_size = -size;
-      fd = (char *) malloc (fd_size);
+      fd = (char *) db_private_alloc (thread_p, fd_size);
       if (fd == NULL)
 	{
 	  fd = area;
@@ -4911,7 +4911,7 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
 exit_on_end:
   if (fd != area)
     {
-      free_and_init (fd);
+      db_private_free_and_init (thread_p, fd);
     }
   if (btname)
     {
@@ -5033,7 +5033,8 @@ btree_check_all (THREAD_ENTRY * thread_p)
  * Note: Start a <key-oid> check scan on the index.
  */
 int
-btree_keyoid_checkscan_start (BTID * btid, BTREE_CHECKSCAN * btscan)
+btree_keyoid_checkscan_start (THREAD_ENTRY * thread_p, BTID * btid,
+			      BTREE_CHECKSCAN * btscan)
 {
   /* initialize scan structure */
   btscan->btid.vfid.volid = btid->vfid.volid;
@@ -5042,7 +5043,8 @@ btree_keyoid_checkscan_start (BTID * btid, BTREE_CHECKSCAN * btscan)
   BTREE_INIT_SCAN (&btscan->btree_scan);
   btscan->oid_area_size = ISCAN_OID_BUFFER_SIZE;
   btscan->oid_cnt = 0;
-  btscan->oid_ptr = (OID *) malloc (btscan->oid_area_size);
+  btscan->oid_ptr =
+    (OID *) db_private_alloc (thread_p, btscan->oid_area_size);
   if (btscan->oid_ptr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -5136,12 +5138,12 @@ end:
  * Note: End the <key-oid> check scan on the index.
  */
 void
-btree_keyoid_checkscan_end (BTREE_CHECKSCAN * btscan)
+btree_keyoid_checkscan_end (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan)
 {
   /* Deallocate allocated areas */
   if (btscan->oid_ptr)
     {
-      free_and_init (btscan->oid_ptr);
+      db_private_free_and_init (thread_p, btscan->oid_ptr);
       btscan->oid_area_size = 0;
     }
 }
@@ -19569,7 +19571,7 @@ btree_fix_ovfl_oid_pages_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
   if (size < 0)
     {
       fd_size = -size;
-      fd = (char *) malloc (fd_size);
+      fd = (char *) db_private_alloc (thread_p, fd_size);
       if (fd == NULL)
 	{
 	  fd = area;
@@ -19605,7 +19607,7 @@ exit_on_end:
 
   if (fd != area)
     {
-      free_and_init (fd);
+      db_private_free_and_init (thread_p, fd);
     }
 
   if (btname)

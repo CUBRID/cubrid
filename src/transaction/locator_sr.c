@@ -8503,7 +8503,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
    */
 
   /* start a check-scan on index */
-  if (btree_keyoid_checkscan_start (btid, &bt_checkscan) != NO_ERROR)
+  if (btree_keyoid_checkscan_start (thread_p, btid, &bt_checkscan) !=
+      NO_ERROR)
     {
       (void) heap_scancache_end (thread_p, &scan_cache);
       return DISK_ERROR;
@@ -8631,7 +8632,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
     }
 
   /* close the index check-scan */
-  btree_keyoid_checkscan_end (&bt_checkscan);
+  btree_keyoid_checkscan_end (thread_p, &bt_checkscan);
 
   /* Finish scan cursor and class attribute cache information */
   heap_attrinfo_end (thread_p, &attr_info);
@@ -8916,7 +8917,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       attrinfo_inited = 1;
 
       /* start a check-scan on index */
-      if (btree_keyoid_checkscan_start (btid, &bt_checkscan) != NO_ERROR)
+      if (btree_keyoid_checkscan_start (thread_p, btid, &bt_checkscan) !=
+	  NO_ERROR)
 	{
 	  goto error;
 	}
@@ -9042,7 +9044,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	}
 
       /* close the index check-scan */
-      btree_keyoid_checkscan_end (&bt_checkscan);
+      btree_keyoid_checkscan_end (thread_p, &bt_checkscan);
 
       /* Finish scan cursor and class attribute cache information */
       heap_attrinfo_end (thread_p, &attr_info);
