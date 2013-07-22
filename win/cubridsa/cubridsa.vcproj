@@ -43,10 +43,10 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 				Optimization="0"
 				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\src\session;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;..\..\win\external\include\expat;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;SA_MODE;_USE_32BIT_TIME_T;BUILD_OS#$(OS)"
+				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
 				WarningLevel="3"
@@ -123,10 +123,10 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 				Optimization="0"
 				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\src\session;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;..\..\win\external\include\expat;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;SA_MODE;BUILD_OS#$(OS)"
+				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
 				WarningLevel="3"
@@ -203,7 +203,6 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
 				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\session;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;..\..\win\external\include\expat;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
@@ -287,7 +286,6 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
 				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\src\session;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;..\..\win\external\include\expat;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
@@ -636,7 +634,6 @@
 						>
 						<Tool
 							Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 							PreprocessorDefinitions="NDEBUG"
 						/>
 					</FileConfiguration>
@@ -645,7 +642,6 @@
 						>
 						<Tool
 							Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 							PreprocessorDefinitions="NDEBUG"
 						/>
 					</FileConfiguration>
@@ -738,7 +734,6 @@
 						>
 						<Tool
 							Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 							Optimization="0"
 							EnableIntrinsicFunctions="false"
 						/>
@@ -948,7 +943,6 @@
 						>
 						<Tool
 							Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 							PreprocessorDefinitions="YY_NO_UNISTD_H"
 						/>
 					</FileConfiguration>
@@ -957,7 +951,6 @@
 						>
 						<Tool
 							Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 							PreprocessorDefinitions="YY_NO_UNISTD_H"
 						/>
 					</FileConfiguration>
@@ -966,7 +959,6 @@
 						>
 						<Tool
 							Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 							PreprocessorDefinitions="YY_NO_UNISTD_H"
 						/>
 					</FileConfiguration>
@@ -975,7 +967,6 @@
 						>
 						<Tool
 							Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 							PreprocessorDefinitions="YY_NO_UNISTD_H"
 						/>
 					</FileConfiguration>
@@ -1216,7 +1207,6 @@
 						>
 						<Tool
 							Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 							PreprocessorDefinitions="YY_NO_UNISTD_H"
 						/>
 					</FileConfiguration>
@@ -1225,7 +1215,6 @@
 						>
 						<Tool
 							Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 							PreprocessorDefinitions="YY_NO_UNISTD_H"
 						/>
 					</FileConfiguration>
@@ -1234,7 +1223,6 @@
 						>
 						<Tool
 							Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 							PreprocessorDefinitions="YY_NO_UNISTD_H"
 						/>
 					</FileConfiguration>
@@ -1243,7 +1231,6 @@
 						>
 						<Tool
 							Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 							PreprocessorDefinitions="YY_NO_UNISTD_H"
 						/>
 					</FileConfiguration>

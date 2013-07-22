@@ -44,10 +44,10 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 				Optimization="0"
 				AdditionalIncludeDirectories=".;..\..\win;..\..\src\base;..\..\include"
 				PreprocessorDefinitions="WIN32;_DEBUG;_CONSOLE;WINDOWS;_USE_32BIT_TIME_T"
+				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
 				UsePrecompiledHeader="0"
@@ -121,10 +121,10 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 				Optimization="0"
 				AdditionalIncludeDirectories=".;..\..\win;..\..\src\base;..\..\include"
 				PreprocessorDefinitions="_WIN64;_DEBUG;_CONSOLE;WINDOWS"
+				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
 				UsePrecompiledHeader="0"
@@ -198,7 +198,6 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
 				AdditionalIncludeDirectories=".;..\..\win;..\..\src\base;..\..\include"
@@ -279,7 +278,6 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalOptions="/MP"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
 				AdditionalIncludeDirectories=".;..\..\win;..\..\src\base;..\..\include"
