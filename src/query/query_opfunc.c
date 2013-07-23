@@ -6089,8 +6089,11 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	  /* convert domain to the median domains (number, date/time)
 	   * to make 1,2,11 '1','2','11' result the same
 	   */
-	  if (agg_p->function == PT_MEDIAN && dbval_type != DB_TYPE_NULL)
+	  if (agg_p->function == PT_MEDIAN)
 	    {
+	      /* never be null type */
+	      assert (!DB_IS_NULL (&dbval));
+
 	      error =
 		qdata_update_agg_interpolate_func_value_and_domain (agg_p,
 								    &dbval);
