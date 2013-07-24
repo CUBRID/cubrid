@@ -104,29 +104,18 @@ fn_get_shard_key_default (const char *shard_key, T_SHARD_U_TYPE type,
       return ERROR_ON_MAKE_SHARD_KEY;
     }
 
-  switch (type)
+  if (type == SHARD_U_TYPE_INT)
     {
-    case SHARD_U_TYPE_INT:
-      {
-	unsigned int ival;
-	ival = (unsigned int) (*(unsigned int *) value);
-	return ival % modular_key;
-      }
-      break;
-    case SHARD_U_TYPE_STRING:
-      {
-	unsigned char c;
-	c = (unsigned char) (((unsigned char *) value)[0]);
-	return c % modular_key;
-      }
-      break;
-    default:
+      unsigned int ival;
+      ival = (unsigned int) (*(unsigned int *) value);
+      return ival % modular_key;
+    }
+  else
+    {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unexpected shard key type. "
 		 "(type:%d).", type);
       return ERROR_ON_ARGUMENT;
     }
-
-  return ERROR_ON_MAKE_SHARD_KEY;
 }
 
 int
