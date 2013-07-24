@@ -132,10 +132,6 @@ net_init_env (char *port_name)
     strlen (sock_addr.sun_path) + sizeof (sock_addr.sun_family) + 1;
 #endif /* WINDOWS */
 
-#if !defined(WINDOWS)
-  unlink (port_name);
-#endif /* !WINDOWS */
-
   if (bind (sock_fd, (struct sockaddr *) &sock_addr, sock_addr_len) < 0)
     {
       CLOSE_SOCKET (sock_fd);
