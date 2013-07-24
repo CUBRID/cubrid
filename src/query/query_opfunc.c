@@ -8333,7 +8333,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
   sep = (char *) db_private_alloc (thread_p, sizeof (char) * (i + 1));
   if (sep == NULL)
     {
-      goto error;
+      return false;
     }
   sep[0] = 0;
   if (i > 0)
@@ -8466,7 +8466,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
       len = (strlen (sep) +
 	     (DB_IS_NULL (&cast_value) ? 0 : DB_GET_STRING_SIZE (&cast_value))
 	     + strlen (result_path) + 1);
-      if (len > len_tmp)
+      if (len > len_tmp || path_tmp == NULL)
 	{
 	  /* free previously alloced */
 	  if (path_tmp)
@@ -8601,8 +8601,8 @@ error:
 	    {
 	      db_value_free (save_values[i]);
 	    }
-	  db_private_free_and_init (thread_p, save_values);
 	}
+      db_private_free_and_init (thread_p, save_values);
     }
 
 error2:

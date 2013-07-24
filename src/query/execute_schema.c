@@ -3557,7 +3557,7 @@ end:
 
   if (attnames_allocated)
     {
-      for (i = 0; attnames[i]; i++)
+      for (i = 0; attnames && attnames[i]; i++)
 	{
 	  free_and_init (attnames[i]);
 	}

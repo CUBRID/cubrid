@@ -234,6 +234,12 @@ numeric_copy_long (DB_C_NUMERIC dest, DB_C_NUMERIC source, bool is_long_num)
 
   if (dest != source)
     {
+      if (source == NULL || dest == NULL)
+	{
+	  assert (0);
+	  return;
+	}
+
       if (is_long_num)
 	{
 	  num_cnt = DB_LONG_NUMERIC_MULTIPLIER;
