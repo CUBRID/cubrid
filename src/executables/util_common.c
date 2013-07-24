@@ -936,6 +936,8 @@ util_byte_to_size_string (char *buf, size_t len, UINT64 size_num)
       v /= ONE_K;
     }
 
+  v = floor (v * 10) / 10;
+
   if (snprintf (buf, len, "%.1f%c", v, ss[pow]) < 0)
     {
       return ER_FAILED;
