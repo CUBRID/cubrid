@@ -93,6 +93,7 @@ static BOOT_CLIENT_CREDENTIAL log_Client_credential = {
   NULL,				/* login_name */
   NULL,				/* host_name */
   NULL,				/* preferred_hosts */
+  0,				/* connect_order */
   -1				/* process_id */
 };
 
