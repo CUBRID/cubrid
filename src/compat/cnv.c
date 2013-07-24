@@ -6928,7 +6928,7 @@ db_string_value (const char *string, int str_size, const char *format,
 		next = string;
 	      }
 
-	    csect_exit (CSECT_CNV_FMT_LEXER);
+	    csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
 
@@ -6945,7 +6945,7 @@ db_string_value (const char *string, int str_size, const char *format,
 		db_make_double (value, num);
 	      }
 
-	    csect_exit (CSECT_CNV_FMT_LEXER);
+	    csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
 
@@ -6962,7 +6962,7 @@ db_string_value (const char *string, int str_size, const char *format,
 		db_make_float (value, num);
 	      }
 
-	    csect_exit (CSECT_CNV_FMT_LEXER);
+	    csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
 
@@ -6979,7 +6979,7 @@ db_string_value (const char *string, int str_size, const char *format,
 		db_make_int (value, num);
 	      }
 
-	    csect_exit (CSECT_CNV_FMT_LEXER);
+	    csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
 
@@ -6996,7 +6996,7 @@ db_string_value (const char *string, int str_size, const char *format,
 		db_make_bigint (value, num);
 	      }
 
-	    csect_exit (CSECT_CNV_FMT_LEXER);
+	    csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
 
@@ -7012,7 +7012,7 @@ db_string_value (const char *string, int str_size, const char *format,
 	      return NULL;
 	    }
 	  next = db_string_monetary (string, format, DB_GET_MONETARY (value));
-	  csect_exit (CSECT_CNV_FMT_LEXER);
+	  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	  break;
 
 	case DB_TYPE_NULL:
@@ -7039,7 +7039,7 @@ db_string_value (const char *string, int str_size, const char *format,
 		db_make_short (value, the_short);
 	      }
 
-	    csect_exit (CSECT_CNV_FMT_LEXER);
+	    csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
 
@@ -7097,7 +7097,7 @@ db_string_value (const char *string, int str_size, const char *format,
 		next = string;
 	      }
 
-	    csect_exit (CSECT_CNV_FMT_LEXER);
+	    csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
 
@@ -7115,7 +7115,7 @@ db_string_value (const char *string, int str_size, const char *format,
 		next = string;
 	      }
 
-	    csect_exit (CSECT_CNV_FMT_LEXER);
+	    csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
 
@@ -7133,7 +7133,7 @@ db_string_value (const char *string, int str_size, const char *format,
 		next = string;
 	      }
 
-	    csect_exit (CSECT_CNV_FMT_LEXER);
+	    csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
 
@@ -7144,7 +7144,7 @@ db_string_value (const char *string, int str_size, const char *format,
 	      return NULL;
 	    }
 	  next = db_string_bit (string, format, value);
-	  csect_exit (CSECT_CNV_FMT_LEXER);
+	  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	  break;
 
 	case DB_TYPE_NUMERIC:
@@ -7154,7 +7154,7 @@ db_string_value (const char *string, int str_size, const char *format,
 	      return NULL;
 	    }
 	  next = db_string_numeric (string, format, value);
-	  csect_exit (CSECT_CNV_FMT_LEXER);
+	  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	  break;
 #endif
 	case DB_TYPE_ELO:
@@ -7616,7 +7616,7 @@ db_date_string (const DB_DATE * the_date,
 	}
     }
 
-  csect_exit (CSECT_CNV_FMT_LEXER);	/* after using lexer */
+  csect_exit (NULL, CSECT_CNV_FMT_LEXER);	/* after using lexer */
 
   adj_ar_append (buffer, "", 1);
 
@@ -7695,7 +7695,7 @@ db_double_string (double the_double, const char *double_format,
   ffmt_new (&ffmt, double_format);
   r = ffmt_print (&ffmt, the_double, string, max_size);
 
-  csect_exit (CSECT_CNV_FMT_LEXER);
+  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 
   return r;
 }
@@ -7761,7 +7761,7 @@ db_numeric_string (const DB_VALUE * the_numeric,
   ffmt_new (&ffmt, numeric_format);
   r = num_fmt_print (&ffmt, the_numeric, string, max_size);
 
-  csect_exit (CSECT_CNV_FMT_LEXER);
+  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 
   return r;
 }
@@ -7857,7 +7857,7 @@ db_float_string (float the_float, const char *float_format,
   ffmt_new (&ffmt, float_format);
   r = ffmt_print (&ffmt, the_float, string, max_size);
 
-  csect_exit (CSECT_CNV_FMT_LEXER);
+  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 
   return r;
 }
@@ -7919,7 +7919,7 @@ db_integer_string (int the_integer, const char *integer_format,
   ifmt_new (&ifmt, integer_format);
   r = ifmt_print (&ifmt, the_integer, string, max_size);
 
-  csect_exit (CSECT_CNV_FMT_LEXER);
+  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 
   return r;
 }
@@ -7981,7 +7981,7 @@ db_bigint_string (DB_BIGINT the_bigint, const char *bigint_format,
   ifmt_new (&ifmt, bigint_format);
   r = ifmt_print (&ifmt, the_bigint, string, max_size);
 
-  csect_exit (CSECT_CNV_FMT_LEXER);
+  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 
   return r;
 }
@@ -8056,7 +8056,7 @@ db_monetary_string (const DB_MONETARY * the_monetary,
   mfmt_new (&mfmt, monetary_format, the_monetary->type);
   r = mfmt_print (&mfmt, the_monetary->amount, string, max_size);
 
-  csect_exit (CSECT_CNV_FMT_LEXER);
+  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 
   return r;
 }
@@ -8147,7 +8147,7 @@ db_short_string (short the_short, const char *short_format,
   ifmt_new (&ifmt, short_format);
   r = ifmt_print (&ifmt, the_short, string, max_size);
 
-  csect_exit (CSECT_CNV_FMT_LEXER);
+  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 
   return r;
 }
@@ -8359,7 +8359,7 @@ db_time_string (const DB_TIME * the_time,
 	}
     }
 
-  csect_exit (CSECT_CNV_FMT_LEXER);
+  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 
   adj_ar_append (buffer, "", 1);
 
@@ -8701,7 +8701,7 @@ db_timestamp_string (const DB_TIMESTAMP * the_timestamp,
 	}
     }
 
-  csect_exit (CSECT_CNV_FMT_LEXER);
+  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 
   adj_ar_append (buffer, "", 1);
 
@@ -9007,7 +9007,7 @@ db_datetime_string (const DB_DATETIME * the_datetime,
 	}
     }
 
-  csect_exit (CSECT_CNV_FMT_LEXER);
+  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
   adj_ar_append (buffer, "", 1);
   /* Enough room to copy completed value string? */
   if ((int) strlen ((char *) adj_ar_get_buffer (buffer)) >= max_size)
@@ -9076,7 +9076,7 @@ db_bit_string (const DB_VALUE * the_db_bit,
   bfmt_new (&bfmt, bit_format);
   r = bfmt_print (&bfmt, the_db_bit, string, max_size);
 
-  csect_exit (CSECT_CNV_FMT_LEXER);
+  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 
   return r;
 }

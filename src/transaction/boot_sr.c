@@ -364,7 +364,7 @@ xboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p)
       return NULL_VOLID;
     }
   nvols = boot_Db_parm->nvols;
-  csect_exit (CSECT_BOOT_SR_DBPARM);
+  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
 
   return nvols;
 }
@@ -385,7 +385,7 @@ xboot_find_number_temp_volumes (THREAD_ENTRY * thread_p)
       return NULL_VOLID;
     }
   nvols = boot_Db_parm->temp_nvols;
-  csect_exit (CSECT_BOOT_SR_DBPARM);
+  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
 
   return nvols;
 }
@@ -406,7 +406,7 @@ xboot_find_last_temp (THREAD_ENTRY * thread_p)
       return NULL_VOLID;
     }
   volid = boot_Db_parm->temp_last_volid;
-  csect_exit (CSECT_BOOT_SR_DBPARM);
+  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
 
   return volid;
 }
@@ -426,7 +426,7 @@ boot_find_next_permanent_volid (THREAD_ENTRY * thread_p)
       return NULL_VOLID;
     }
   volid = boot_Db_parm->last_volid + 1;
-  csect_exit (CSECT_BOOT_SR_DBPARM);
+  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
 
   return volid;
 }
@@ -653,7 +653,7 @@ boot_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info)
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
   pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
-  csect_exit (CSECT_BOOT_SR_DBPARM);
+  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
 
 #if !defined(WINDOWS)
   if (prm_get_bool_value (PRM_ID_DBFILES_PROTECT))
@@ -671,7 +671,7 @@ error:
     }
 
   pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
-  csect_exit (CSECT_BOOT_SR_DBPARM);
+  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
 
   return NULL_VOLID;
 }
@@ -817,7 +817,7 @@ end:
     {
       free (vlabel);
     }
-  csect_exit (CSECT_BOOT_SR_DBPARM);
+  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
 
   return error_code;
 }
@@ -1041,7 +1041,7 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p,
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_LINK,
 		  2, vol_fullname, link_fullname);
 
-	  csect_exit (CSECT_BOOT_SR_DBPARM);
+	  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
 
 	  return NULL_VOLID;
 	}
@@ -1091,7 +1091,7 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p,
 	}
     }
 
-  csect_exit (CSECT_BOOT_SR_DBPARM);
+  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
 
   return volid;
 }
@@ -1718,7 +1718,7 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 	}
     }
 
-  csect_exit (CSECT_BOOT_SR_DBPARM);
+  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
 
   return temp_volid;
 }
@@ -4136,7 +4136,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	}
     }
 
-  csect_exit_critical_section (&conn->csect);
+  csect_exit_critical_section (thread_p, &conn->csect);
 }
 #endif /* SERVER_MODE */
 

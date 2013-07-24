@@ -696,7 +696,7 @@ file_manager_initialize (THREAD_ENTRY * thread_p)
   ret = file_typecache_clear ();
   if (ret != NO_ERROR)
     {
-      csect_exit (CSECT_FILE_NEWFILE);
+      csect_exit (thread_p, CSECT_FILE_NEWFILE);
 
       return ret;
     }
@@ -710,14 +710,14 @@ file_manager_initialize (THREAD_ENTRY * thread_p)
   if (file_Tracker->newfiles.mht == NULL)
     {
       ret = ER_FAILED;
-      csect_exit (CSECT_FILE_NEWFILE);
+      csect_exit (thread_p, CSECT_FILE_NEWFILE);
 
       return ret;
     }
 
   ret = file_tmpfile_cache_initialize ();
 
-  csect_exit (CSECT_FILE_NEWFILE);
+  csect_exit (thread_p, CSECT_FILE_NEWFILE);
 
   return ret;
 }
@@ -759,7 +759,7 @@ file_manager_finalize (THREAD_ENTRY * thread_p)
 
   file_tmpfile_cache_finalize ();
 
-  csect_exit (CSECT_FILE_NEWFILE);
+  csect_exit (thread_p, CSECT_FILE_NEWFILE);
 
   return ret;
 }
@@ -795,7 +795,7 @@ file_cache_newfile (THREAD_ENTRY * thread_p, const VFID * vfid,
       if (file_new_declare_as_old_internal (thread_p, vfid, entry->tran_index,
 					    true) != NO_ERROR)
 	{
-	  csect_exit (CSECT_FILE_NEWFILE);
+	  csect_exit (thread_p, CSECT_FILE_NEWFILE);
 	  return NULL;
 	}
     }
@@ -803,7 +803,7 @@ file_cache_newfile (THREAD_ENTRY * thread_p, const VFID * vfid,
   entry = (FILE_NEWFILE *) malloc (sizeof (*entry));
   if (entry == NULL)
     {
-      csect_exit (CSECT_FILE_NEWFILE);
+      csect_exit (thread_p, CSECT_FILE_NEWFILE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      sizeof (*entry));
       return NULL;
@@ -834,7 +834,7 @@ file_cache_newfile (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   (void) mht_put (file_Tracker->newfiles.mht, entry, entry);
 
-  csect_exit (CSECT_FILE_NEWFILE);
+  csect_exit (thread_p, CSECT_FILE_NEWFILE);
 
   tdes = LOG_FIND_TDES (tran_index);
   if (file_type == FILE_TMP)
@@ -956,7 +956,7 @@ file_new_declare_as_old_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   if (hold_csect == false)
     {
-      csect_exit (CSECT_FILE_NEWFILE);
+      csect_exit (thread_p, CSECT_FILE_NEWFILE);
     }
 
   return success;
@@ -1036,7 +1036,7 @@ file_isnew_with_type (THREAD_ENTRY * thread_p, const VFID * vfid,
       *file_type = entry->file_type;
     }
 
-  csect_exit (CSECT_FILE_NEWFILE);
+  csect_exit (thread_p, CSECT_FILE_NEWFILE);
 
   return newfile;
 }
@@ -1081,7 +1081,7 @@ file_is_new_file_with_has_undolog (THREAD_ENTRY * thread_p, const VFID * vfid,
       *has_undolog = entry->has_undolog;
     }
 
-  csect_exit (CSECT_FILE_NEWFILE);
+  csect_exit (thread_p, CSECT_FILE_NEWFILE);
 
   return newfile;
 }
@@ -1119,7 +1119,7 @@ file_new_set_has_undolog (THREAD_ENTRY * thread_p, const VFID * vfid)
       entry->has_undolog = true;
     }
 
-  csect_exit (CSECT_FILE_NEWFILE);
+  csect_exit (thread_p, CSECT_FILE_NEWFILE);
 
   return ret;
 }
@@ -1181,7 +1181,7 @@ file_new_destroy_all_tmp (THREAD_ENTRY * thread_p, FILE_TYPE tmp_type)
 	}
     }
 
-  csect_exit (CSECT_FILE_NEWFILE);
+  csect_exit (thread_p, CSECT_FILE_NEWFILE);
 
   entry = delete_list;
   while (entry != NULL)
@@ -1228,7 +1228,7 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
   entry = (FILE_NEWFILE *) mht_get (file_Tracker->newfiles.mht, &key);
   if (entry == NULL)
     {
-      csect_exit (CSECT_FILE_NEWFILE);
+      csect_exit (thread_p, CSECT_FILE_NEWFILE);
       return NO_ERROR;
     }
 
@@ -1266,7 +1266,7 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
   /* we don't need this entry anymore */
   free_and_init (entry);
 
-  csect_exit (CSECT_FILE_NEWFILE);
+  csect_exit (thread_p, CSECT_FILE_NEWFILE);
   return NO_ERROR;
 }
 
@@ -1315,7 +1315,7 @@ file_dump_all_newfiles (THREAD_ENTRY * thread_p, FILE * fp, bool tmptmp_only)
 	}
     }
 
-  csect_exit (CSECT_FILE_NEWFILE);
+  csect_exit (thread_p, CSECT_FILE_NEWFILE);
 
   return ret;
 }
@@ -2747,7 +2747,7 @@ file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
 	     file in the case of system crash. See above */
 	  LOG_CS_ENTER (thread_p);
 	  logpb_flush_pages_direct (thread_p);
-	  LOG_CS_EXIT ();
+	  LOG_CS_EXIT (thread_p);
 	}
     }
   else
@@ -13765,7 +13765,7 @@ file_tmpfile_cache_get (THREAD_ENTRY * thread_p, VFID * vfid,
       idx = p->next_entry;
     }
 
-  csect_exit_critical_section (&file_Cs_tempfile_cache);
+  csect_exit_critical_section (thread_p, &file_Cs_tempfile_cache);
 
   return (idx == -1) ? NULL : vfid;
 }
@@ -13798,7 +13798,7 @@ file_tmpfile_cache_put (THREAD_ENTRY * thread_p, const VFID * vfid,
       (void) file_new_declare_as_old (thread_p, vfid);
     }
 
-  csect_exit_critical_section (&file_Cs_tempfile_cache);
+  csect_exit_critical_section (thread_p, &file_Cs_tempfile_cache);
 
   return (p == NULL) ? 0 : 1;
 }

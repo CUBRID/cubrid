@@ -424,7 +424,7 @@ disk_goodvol_decache (THREAD_ENTRY * thread_p)
 	  free_and_init (disk_Cache->vols);
 	  disk_Cache->max_nvols = 0;
 	}
-      csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+      csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
     }
 
   return ret;
@@ -563,7 +563,7 @@ disk_goodvol_refresh_with_new (THREAD_ENTRY * thread_p, INT16 volid)
   if (csect_enter (thread_p, CSECT_DISK_REFRESH_GOODVOL, INF_WAIT) !=
       NO_ERROR)
     {
-      csect_exit (CSECT_BOOT_SR_DBPARM);
+      csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
       return false;
     }
 
@@ -576,8 +576,8 @@ disk_goodvol_refresh_with_new (THREAD_ENTRY * thread_p, INT16 volid)
       answer = disk_cache_goodvol_refresh_onevol (thread_p, volid, NULL);
     }
 
-  csect_exit (CSECT_DISK_REFRESH_GOODVOL);
-  csect_exit (CSECT_BOOT_SR_DBPARM);
+  csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
+  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
 
   return answer;
 }
@@ -616,7 +616,7 @@ disk_goodvol_refresh (THREAD_ENTRY * thread_p, int hint_max_nvols)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 		  1, sizeof (DISK_VOLFREEPGS) * hint_max_nvols);
-	  csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+	  csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
 	  return false;
 	}
       disk_Cache->vols = (DISK_VOLFREEPGS *) ptr;
@@ -640,7 +640,7 @@ disk_goodvol_refresh (THREAD_ENTRY * thread_p, int hint_max_nvols)
   answer =
     fileio_map_mounted (thread_p, disk_cache_goodvol_refresh_onevol, NULL);
 
-  csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+  csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
 
   return answer;
 }
@@ -659,7 +659,7 @@ disk_cache_get_auto_extend_volid (THREAD_ENTRY * thread_p)
 			     INF_WAIT) == NO_ERROR)
     {
       ret_volid = disk_Cache->auto_extend_volid;
-      csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+      csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
     }
 
   return ret_volid;
@@ -680,7 +680,7 @@ disk_cache_set_auto_extend_volid (THREAD_ENTRY * thread_p, VOLID volid)
 
   disk_Cache->auto_extend_volid = volid;
 
-  csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+  csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
 
   return NO_ERROR;
 }
@@ -778,7 +778,7 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
       break;
 
     default:
-      csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+      csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
       return ER_FAILED;
     }
 
@@ -842,7 +842,7 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
     }
 #endif
 
-  csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+  csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
 
 #if defined (SERVER_MODE)
   if (need_to_check_auto_volume_ext == true
@@ -1453,7 +1453,7 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid,
       break;
     }
 
-  csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+  csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
 
   if (found_contiguous == false)
     {
@@ -1560,7 +1560,7 @@ disk_cache_get_purpose_info (THREAD_ENTRY * thread_p,
 	}
     }
 
-  csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+  csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
 
   return *nvols;
 }
@@ -1659,7 +1659,7 @@ disk_get_max_numpages (THREAD_ENTRY * thread_p, DISK_VOLPURPOSE vol_purpose)
       break;
     }
 
-  csect_exit (CSECT_DISK_REFRESH_GOODVOL);
+  csect_exit (thread_p, CSECT_DISK_REFRESH_GOODVOL);
 
   if (fun != NULL)
     {
@@ -1936,7 +1936,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
   /* This log must be flushed. */
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   /* Create and initialize the volume. Recovery information is initialized in
      every page. */
@@ -2904,7 +2904,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid,
      permanent temp volumes. */
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   DISK_VERIFY_VAR_HEADER (vhdr);
 

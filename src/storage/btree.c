@@ -709,7 +709,7 @@ random_exit (THREAD_ENTRY * thread_p)
     {
       LOG_CS_ENTER (thread_p);
       logpb_flush_all_append_pages (thread_p);
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
     }
 
   if ((r % MOD_FACTOR) == 0)

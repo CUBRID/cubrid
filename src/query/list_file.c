@@ -5550,7 +5550,7 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
       pent->s.next = -1;
     }
 
-  csect_exit (CSECT_QPROC_LIST_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
   return NO_ERROR;
 
@@ -5582,7 +5582,7 @@ error:
     }
   qfile_List_cache.n_hts = 0;
 
-  csect_exit (CSECT_QPROC_LIST_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
   return ER_FAILED;
 }
@@ -5631,7 +5631,7 @@ qfile_finalize_list_cache (THREAD_ENTRY * thread_p)
       free_and_init (qfile_List_cache_entry_pool.pool);
     }
 
-  csect_exit (CSECT_QPROC_LIST_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
   return NO_ERROR;
 }
@@ -5705,7 +5705,7 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
 			   qfile_end_use_of_list_cache_entry_local, &del);
       if (rc != NO_ERROR)
 	{
-	  csect_exit (CSECT_QPROC_LIST_CACHE);
+	  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 	  thread_sleep (10);	/* 10 msec */
 	  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) !=
 	      NO_ERROR)
@@ -5731,7 +5731,7 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
       qfile_List_cache.next_ht_no = list_ht_no;
     }
 
-  csect_exit (CSECT_QPROC_LIST_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
   return NO_ERROR;
 }
@@ -6002,7 +6002,7 @@ qfile_dump_list_cache_internal (THREAD_ENTRY * thread_p, FILE * fp)
 	}
     }
 
-  csect_exit (CSECT_QPROC_LIST_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
   return NO_ERROR;
 }
@@ -6097,7 +6097,7 @@ qfile_clear_uncommited_list_cache_entry (THREAD_ENTRY * thread_p,
     }
   qfile_List_cache.tran_list[tran_index] = NULL;
 
-  csect_exit (CSECT_QPROC_LIST_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 #endif /* SERVER_MODE */
 }
 
@@ -6375,7 +6375,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no,
       qfile_List_cache.miss_counter++;	/* counter */
     }
 
-  csect_exit (CSECT_QPROC_LIST_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
   return lent;
 }
@@ -6556,7 +6556,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
       *list_ht_no_ptr = qfile_assign_list_cache ();
       if (*list_ht_no_ptr < 0)
 	{
-	  csect_exit (CSECT_QPROC_LIST_CACHE);
+	  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 	  return NULL;
 	}
     }
@@ -6870,7 +6870,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
   qfile_List_cache.n_pages += lent->list_id.page_cnt;
 
 end:
-  csect_exit (CSECT_QPROC_LIST_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
   return lent;
 }
@@ -6957,7 +6957,7 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p,
       (void) qfile_delete_list_cache_entry (thread_p, lent, &tran_index);
     }
 
-  csect_exit (CSECT_QPROC_LIST_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
   return NO_ERROR;
 }

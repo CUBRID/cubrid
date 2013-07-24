@@ -676,7 +676,7 @@ logpb_expand_pool (int num_new_buffers)
   while ((unsigned int) num_new_buffers > LOG_MAX_NUM_CONTIGUOUS_BUFFERS)
     {
       /* Note that we control overflow of size in this way */
-      csect_exit_critical_section (&log_Pb.lpb_cs);
+      csect_exit_critical_section (NULL, &log_Pb.lpb_cs);
       error_code = logpb_expand_pool (LOG_MAX_NUM_CONTIGUOUS_BUFFERS);
       if (error_code != NO_ERROR)
 	{
@@ -701,7 +701,7 @@ logpb_expand_pool (int num_new_buffers)
       area = (struct log_bufarea *) malloc (size);
       if (area == NULL)
 	{
-	  csect_exit_critical_section (&log_Pb.lpb_cs);
+	  csect_exit_critical_section (NULL, &log_Pb.lpb_cs);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 		  1, size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -715,7 +715,7 @@ logpb_expand_pool (int num_new_buffers)
 	{
 	  free_and_init (area);
 
-	  csect_exit_critical_section (&log_Pb.lpb_cs);
+	  csect_exit_critical_section (NULL, &log_Pb.lpb_cs);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 		  1, total_buffers * sizeof (*log_Pb.pool));
@@ -745,7 +745,7 @@ logpb_expand_pool (int num_new_buffers)
       log_Pb.num_buffers = total_buffers;
     }
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (NULL, &log_Pb.lpb_cs);
 
   log_Stat.log_buffer_expand_count++;
 
@@ -945,7 +945,7 @@ logpb_finalize_pool (void)
       free_and_init (area);
     }
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (NULL, &log_Pb.lpb_cs);
 
   csect_finalize_critical_section (&log_Pb.lpb_cs);
 
@@ -1046,7 +1046,7 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
 	}
     }
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 }
 
 /*
@@ -1105,7 +1105,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 		  ixpool = log_bufptr->ipool;
 		  if (log_bufptr->dirty == true)
 		    {
-		      csect_exit_critical_section (&log_Pb.lpb_cs);
+		      csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 
 		      assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 		      log_Stat.log_buffer_flush_count_by_replacement++;
@@ -1136,7 +1136,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
        * aborted at the same time or it is likely that there is a bug in the
        * system (e.g., buffer are not being freed).
        */
-      csect_exit_critical_section (&log_Pb.lpb_cs);
+      csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 
       error_code = logpb_expand_pool (-1);
 
@@ -1285,7 +1285,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int fetch_mode)
       log_bufptr->fcnt++;
     }
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 
   assert (log_bufptr != NULL);
 
@@ -1305,7 +1305,7 @@ error:
       logpb_initialize_log_buffer (log_bufptr);
       logpb_reset_clock_hand (log_bufptr->ipool);
     }
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 
   return NULL;
 }
@@ -1347,7 +1347,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
       logpb_unfix_page (bufptr);
     }
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 }
 
 /*
@@ -1372,7 +1372,7 @@ logpb_is_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 
   is_dirty = (bool) bufptr->dirty;
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 
   return is_dirty;
 }
@@ -1405,7 +1405,7 @@ logpb_is_any_dirty (void)
 	}
     }
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (NULL, &log_Pb.lpb_cs);
   return ret;
 }
 #endif /* !NDEBUG || CUBRID_DEBUG */
@@ -1438,7 +1438,7 @@ logpb_is_any_fix (void)
 	}
     }
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (NULL, &log_Pb.lpb_cs);
 
   return ret;
 }
@@ -1473,7 +1473,7 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
       && (bufptr->pageid < LOGPB_NEXT_ARCHIVE_PAGE_ID
 	  || bufptr->pageid > LOGPB_LAST_ACTIVE_PAGE_ID))
     {
-      csect_exit_critical_section (&log_Pb.lpb_cs);
+      csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSHING_UNUPDATABLE,
 	      1, bufptr->pageid);
@@ -1482,7 +1482,7 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
   if (bufptr->phy_pageid == NULL_PAGEID
       || bufptr->phy_pageid != logpb_to_physical_pageid (bufptr->pageid))
     {
-      csect_exit_critical_section (&log_Pb.lpb_cs);
+      csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 
       /* Bad physical log page for such logical page */
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED,
@@ -1520,12 +1520,12 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
       logpb_unfix_page (bufptr);
     }
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 
   return NO_ERROR;
 
 error:
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 
   return ER_FAILED;
 }
@@ -1548,7 +1548,7 @@ logpb_free_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 
   logpb_free_without_mutex (log_pgptr);
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 }
 
 /*
@@ -1634,7 +1634,7 @@ logpb_dump (FILE * out_fp)
 
   logpb_dump_pages (out_fp);
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (NULL, &log_Pb.lpb_cs);
 }
 
 /*
@@ -2071,7 +2071,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 	{
 	  logpb_prior_lsa_append_all_list (thread_p);
 	}
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
     }
 
   ret_pgptr = logpb_copy_page (thread_p, pageid, log_pgptr);
@@ -2121,7 +2121,7 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
     {
       ret_pgptr = logpb_read_page_from_file (thread_p, pageid, log_pgptr);
     }
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   return ret_pgptr;
 }
@@ -2161,14 +2161,14 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
       ret_pgptr = log_pgptr;
     }
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 
   if (log_bufptr == NULL)
     {
       ret_pgptr = logpb_read_page_from_file (thread_p, pageid, log_pgptr);
     }
 
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   return ret_pgptr;
 }
@@ -4530,12 +4530,12 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p,
 	    {
 	      LOG_CS_ENTER (thread_p);
 	      logpb_prior_lsa_append_all_list (thread_p);
-	      LOG_CS_EXIT ();
+	      LOG_CS_EXIT (thread_p);
 	    }
 #else
 	  LOG_CS_ENTER (thread_p);
 	  logpb_prior_lsa_append_all_list (thread_p);
-	  LOG_CS_EXIT ();
+	  LOG_CS_EXIT (thread_p);
 #endif
 	}
     }
@@ -4987,7 +4987,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	       *
 	       * Flush the accumulated contiguous pages
 	       */
-	      csect_exit_critical_section (&log_Pb.lpb_cs);
+	      csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
 	      hold_lpb_cs = false;
 
 	      if (logpb_writev_append_pages (thread_p,
@@ -5048,7 +5048,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    * If there are any accumulated pages, flush them at this point
    */
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
   hold_lpb_cs = false;
 
   if (idxflush != -1)
@@ -5170,7 +5170,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   assert (flush_page_count == dirty_page_count);
 #endif /* CUBRID_DEBUG */
 
-  csect_exit_critical_section (&log_Pb.lpb_cs);
+  csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
   hold_lpb_cs = false;
 
 #if defined(CUBRID_DEBUG)
@@ -5303,7 +5303,7 @@ error:
 
   if (hold_lpb_cs)
     {
-      csect_exit_critical_section (&log_Pb.lpb_cs);
+      csect_exit_critical_section (thread_p, &log_Pb.lpb_cs);
     }
   if (hold_flush_mutex)
     {
@@ -5358,7 +5358,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 #if !defined(SERVER_MODE)
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 #else /* SERVER_MODE */
   int rv;
   struct timeval start_time = { 0, 0 };
@@ -5378,7 +5378,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
     {
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
 
       return;
     }
@@ -5388,7 +5388,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
     {
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
 
       return;
     }
@@ -5527,7 +5527,7 @@ logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
 
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
 
 #if defined(CUBRID_DEBUG)
       if (logpb_need_wal (lsa_ptr)
@@ -6786,7 +6786,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_LOG_NOTIN_ARCHIVE, 1, pageid);
 
-	  LOG_ARCHIVE_CS_EXIT ();
+	  LOG_ARCHIVE_CS_EXIT (thread_p);
 	  return NULL;
 	}
 
@@ -6814,7 +6814,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ,
 			  3, 0, 0, arv_name);
 
-		  LOG_ARCHIVE_CS_EXIT ();
+		  LOG_ARCHIVE_CS_EXIT (thread_p);
 		  return NULL;
 		}
 	      error_code = NO_ERROR;
@@ -6878,7 +6878,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3,
 		      pageid, phy_pageid, tmp_arv_name);
 
-	      LOG_ARCHIVE_CS_EXIT ();
+	      LOG_ARCHIVE_CS_EXIT (thread_p);
 	      return NULL;
 	    }
 
@@ -7027,7 +7027,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 			      ER_LOG_NOTIN_ARCHIVE, 1, pageid);
 		    }
 
-		  LOG_ARCHIVE_CS_EXIT ();
+		  LOG_ARCHIVE_CS_EXIT (thread_p);
 
 		  return NULL;
 		}
@@ -7098,7 +7098,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 					 "log_fetch_from_archive");
 		    }
 
-		  LOG_ARCHIVE_CS_EXIT ();
+		  LOG_ARCHIVE_CS_EXIT (thread_p);
 
 		  return NULL;
 
@@ -7145,7 +7145,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ,
 			  3, 0, 0, arv_name);
 
-		  LOG_ARCHIVE_CS_EXIT ();
+		  LOG_ARCHIVE_CS_EXIT (thread_p);
 
 		  return NULL;
 		}
@@ -7181,7 +7181,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 			 "log_fetch_from_archive");
 
-      LOG_ARCHIVE_CS_EXIT ();
+      LOG_ARCHIVE_CS_EXIT (thread_p);
 
       return NULL;
     }
@@ -7193,7 +7193,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
       *ret_arv_hdr = *arv_hdr;
     }
 
-  LOG_ARCHIVE_CS_EXIT ();
+  LOG_ARCHIVE_CS_EXIT (thread_p);
 
   return log_pgptr;
 }
@@ -7624,7 +7624,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
       min_copied_pageid = logwr_get_min_copied_fpageid ();
       if (min_copied_pageid == NULL_PAGEID)
 	{
-	  LOG_CS_EXIT ();
+	  LOG_CS_EXIT (thread_p);
 	  return deleted_count;
 	}
 
@@ -7685,7 +7685,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
 	}
     }
 
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   if (last_arv_num_to_delete >= 0
       && last_arv_num_to_delete >= first_arv_num_to_delete)
@@ -8460,7 +8460,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 #if defined(SERVER_MODE)
   if (BO_IS_SERVER_RESTARTED () && log_Gl.run_nxchkpt_atpageid == NULL_PAGEID)
     {
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
       return NULL_PAGEID;
     }
 
@@ -8486,7 +8486,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   tdes = LOG_FIND_TDES (LOG_SYSTEM_TRAN_INDEX);
   if (tdes == NULL)
     {
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
       return NULL_PAGEID;
     }
 
@@ -8510,7 +8510,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 					0, NULL, 0, NULL);
   if (node == NULL)
     {
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
       return NULL_PAGEID;
     }
 
@@ -8523,7 +8523,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   LSA_COPY (&newchkpt_lsa, &tdes->tail_lsa);
 
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
@@ -8570,7 +8570,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   chkpt_trans = (struct log_chkpt_trans *) malloc (length_all_chkpt_trans);
   if (chkpt_trans == NULL)
     {
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
       goto error_cannot_chkpt;
     }
 
@@ -8670,7 +8670,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       if (chkpt_topops == NULL)
 	{
 	  free_and_init (chkpt_trans);
-	  TR_TABLE_CS_EXIT ();
+	  TR_TABLE_CS_EXIT (thread_p);
 	  goto error_cannot_chkpt;
 	}
 
@@ -8706,7 +8706,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 			  if (ptr == NULL)
 			    {
 			      free_and_init (chkpt_trans);
-			      TR_TABLE_CS_EXIT ();
+			      TR_TABLE_CS_EXIT (thread_p);
 			      goto error_cannot_chkpt;
 			    }
 			  chkpt_topops =
@@ -8737,7 +8737,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   tmp_chkpt.ntops = ntops;
   length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
 
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_END_CHKPT,
 					RV_NOT_DEFINED, NULL,
@@ -8754,7 +8754,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  free_and_init (chkpt_topops);
 	}
 
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
       return NULL_PAGEID;
     }
 
@@ -8820,7 +8820,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * module which may be blocked on a lock.
    */
 
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   /*
    * Record the checkpoint address on every volume header
@@ -8966,7 +8966,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    */
   logtb_clear_tdes (thread_p, tdes);
 
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
 #if 0
   /* have to sync log vol, data vol */
@@ -8985,7 +8985,7 @@ error_cannot_chkpt:
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   /* to immediately execute the next checkpoint. */
   log_Gl.run_nxchkpt_atpageid = log_Gl.hdr.append_lsa.pageid;
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
   return NULL_PAGEID;
 }
 
@@ -9156,7 +9156,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid,
 
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   error_code = pgbuf_flush_all_unfixed (thread_p, volid);
   if (error_code != NO_ERROR)
@@ -9303,7 +9303,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
 #if defined(SERVER_MODE)
   if (log_Gl.backup_in_progress == true)
     {
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_LOG_BKUP_DUPLICATE_REQUESTS, 0);
       error_code = ER_LOG_BKUP_DUPLICATE_REQUESTS;
@@ -9311,7 +9311,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
     }
 
   log_Gl.backup_in_progress = true;
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   print_backupdb_waiting_reason = false;
   wait_checkpoint_begin_time = time (NULL);
@@ -9321,7 +9321,7 @@ loop:
   if (log_Gl.run_nxchkpt_atpageid == NULL_PAGEID)
     {
       bool continue_check;
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
       if (print_backupdb_waiting_reason == false
 	  && session.verbose_fp != NULL)
 	{
@@ -9372,7 +9372,7 @@ loop:
   LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   switch (backup_level)
     {
@@ -9722,7 +9722,7 @@ loop:
     }
 
   last_arv_needed = log_Gl.hdr.nxarv_num - 1;
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   if (last_arv_needed >= first_arv_needed)
     {
@@ -9761,7 +9761,7 @@ loop:
 						     1);
       if (error_code != NO_ERROR)
 	{
-	  LOG_CS_EXIT ();
+	  LOG_CS_EXIT (thread_p);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 	  goto error;
@@ -9777,7 +9777,7 @@ loop:
 					 LOG_DBLOG_INFO_VOLID, -1, false);
       if (error_code != NO_ERROR)
 	{
-	  LOG_CS_EXIT ();
+	  LOG_CS_EXIT (thread_p);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 	  goto error;
@@ -9795,7 +9795,7 @@ loop:
   error_code = logpb_update_backup_volume_info (log_Name_bkupinfo);
   if (error_code != NO_ERROR)
     {
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT,
 	      1, log_Name_active);
       goto error;
@@ -9836,7 +9836,7 @@ loop:
 					 LOG_DBLOG_ACTIVE_VOLID, -1, false);
       if (error_code != NO_ERROR)
 	{
-	  LOG_CS_EXIT ();
+	  LOG_CS_EXIT (thread_p);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 		  ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 	  goto error;
@@ -9845,7 +9845,7 @@ loop:
 
   if (fileio_finish_backup (thread_p, &session) == NULL)
     {
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT,
 	      1, log_Name_active);
       error_code = ER_FAILED;
@@ -9863,7 +9863,7 @@ loop:
 	}
     }
 
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT,
 	  1, log_Name_active);
@@ -9905,7 +9905,7 @@ loop:
   LOG_CS_ENTER (thread_p);
   log_Gl.run_nxchkpt_atpageid = saved_run_nxchkpt_atpageid;
   log_Gl.backup_in_progress = false;
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
 
   return NO_ERROR;
@@ -9922,7 +9922,7 @@ error:
   LOG_CS_ENTER (thread_p);
   log_Gl.run_nxchkpt_atpageid = saved_run_nxchkpt_atpageid;
   log_Gl.backup_in_progress = false;
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
 
   return error_code;
@@ -10123,7 +10123,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
       if (lgat_vdes == NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
-	  LOG_CS_EXIT ();
+	  LOG_CS_EXIT (thread_p);
 	  goto error;
 	}
     }
@@ -10145,7 +10145,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   if (pages_cache.ht == NULL)
     {
       error_code = ER_FAILED;
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
       goto error;
     }
   pages_cache.heap_id = db_create_fixed_heap (sizeof (VPID),
@@ -10153,7 +10153,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   if (pages_cache.heap_id == HL_NULL_HEAPID)
     {
       error_code = ER_FAILED;
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
       goto error;
     }
 
@@ -10236,7 +10236,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		      ER_LOG_CANNOT_ACCESS_BACKUP, 1, from_volbackup);
 	      error_expected = true;
 	      error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
-	      LOG_CS_EXIT ();
+	      LOG_CS_EXIT (thread_p);
 	      goto error;
 
 	    case 2:
@@ -10249,7 +10249,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_LOG_CANNOT_ACCESS_BACKUP, 1, from_volbackup);
 		  error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
-		  LOG_CS_EXIT ();
+		  LOG_CS_EXIT (thread_p);
 		  goto error;
 		}
 	      break;
@@ -10290,7 +10290,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	      fclose (backup_volinfo_fp);
 	      backup_volinfo_fp = NULL;
 	      error_code = ER_FAILED;
-	      LOG_CS_EXIT ();
+	      LOG_CS_EXIT (thread_p);
 	      goto error;
 	    }
 
@@ -10314,7 +10314,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 
 	  mht_destroy (pages_cache.ht);
 	  db_destroy_fixed_heap (pages_cache.heap_id);
-	  LOG_CS_EXIT ();
+	  LOG_CS_EXIT (thread_p);
 
 	  return error_code;
 	}
@@ -10334,7 +10334,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		      ER_LOG_CANNOT_ACCESS_BACKUP, 1, from_volbackup);
 	    }
 	  error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
-	  LOG_CS_EXIT ();
+	  LOG_CS_EXIT (thread_p);
 	  goto error;
 	}
 
@@ -10367,7 +10367,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 
 		  mht_destroy (pages_cache.ht);
 		  db_destroy_fixed_heap (pages_cache.heap_id);
-		  LOG_CS_EXIT ();
+		  LOG_CS_EXIT (thread_p);
 		  return error_code;
 		}
 	    }
@@ -10390,14 +10390,14 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		  NO_ERROR)
 		{
 		  error_code = ER_FAILED;
-		  LOG_CS_EXIT ();
+		  LOG_CS_EXIT (thread_p);
 		  goto error;
 		}
 
 	      error_code = logtb_define_trantable_log_latch (thread_p, -1);
 	      if (error_code != NO_ERROR)
 		{
-		  LOG_CS_EXIT ();
+		  LOG_CS_EXIT (thread_p);
 		  goto error;
 		}
 	    }
@@ -10415,7 +10415,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		  ER_LOG_BKUP_INCOMPATIBLE, 2,
 		  rel_name (), rel_release_string ());
 	  error_code = ER_LOG_BKUP_INCOMPATIBLE;
-	  LOG_CS_EXIT ();
+	  LOG_CS_EXIT (thread_p);
 	  goto error;
 	}
 
@@ -10487,9 +10487,9 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 
 	      restore_in_progress = true;
 	      if (start_level > FILEIO_BACKUP_FULL_LEVEL)
-	        {
-	          remember_pages = true;
-	        }
+		{
+		  remember_pages = true;
+		}
 
 	      /*
 	       * Another volume/file to restore
@@ -10517,7 +10517,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 			{
 			  success = ER_FAILED;
 			  error_code = ER_FAILED;
-			  LOG_CS_EXIT ();
+			  LOG_CS_EXIT (thread_p);
 			  goto error;
 			}
 		      else
@@ -10572,7 +10572,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 						bkuphdr->end_time) !=
 		   NO_ERROR)
 	    {
-	      LOG_CS_EXIT ();
+	      LOG_CS_EXIT (thread_p);
 	      error_code = ER_FAILED;
 	      goto error;
 	    }
@@ -10631,7 +10631,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	}
     }
 
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   mht_destroy (pages_cache.ht);
   db_destroy_fixed_heap (pages_cache.heap_id);

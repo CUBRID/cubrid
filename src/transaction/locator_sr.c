@@ -305,7 +305,7 @@ locator_initialize (THREAD_ENTRY * thread_p, EHID * classname_table)
 					   mht_compare_strings_are_equal);
     }
 
-  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
   if (locator_Mht_classnames == NULL)
     {
@@ -337,20 +337,22 @@ locator_finalize (THREAD_ENTRY * thread_p)
 
   if (locator_Mht_classnames == NULL)
     {
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
       return;
     }
 
   if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
     {
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
       return;
     }
   (void) mht_map (locator_Mht_classnames,
 		  locator_force_drop_class_name_entry, NULL);
   mht_destroy (locator_Mht_classnames);
   locator_Mht_classnames = NULL;
-  csect_exit (CSECT_CT_OID_TABLE);
+  csect_exit (thread_p, CSECT_CT_OID_TABLE);
 
-  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 }
 
 /*
@@ -485,7 +487,7 @@ start:
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			      sizeof (*old_action));
-		      csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+		      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 		      return LC_CLASSNAME_ERROR;
 		    }
 
@@ -515,7 +517,7 @@ start:
 	   * Exit from critical section since we are going to be suspended and
 	   * then retry again.
 	   */
-	  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
 	  if (lock_object (thread_p, &tmp_classoid, oid_Root_class_oid,
 			   X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
@@ -564,7 +566,7 @@ start:
        *       exit critical section
        */
 
-      csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
       search = ehash_search (thread_p, locator_Eht_classnames,
 			     (char *) classname, &oid);
       if (search == EH_ERROR_OCCURRED)
@@ -598,7 +600,7 @@ start:
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
-		  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+		  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 		  return LC_CLASSNAME_ERROR;
 		}
 
@@ -609,7 +611,7 @@ start:
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  strlen (classname) + 1);
-		  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+		  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 		  return LC_CLASSNAME_ERROR;
 		}
 
@@ -635,7 +637,7 @@ start:
    *      That is, it has not been inserted onto extendible hash.
    */
 
-  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
   /*
    * Get the lock on the class if we were able to reserve the name
@@ -669,7 +671,7 @@ start:
 	      free_and_init (old_action);
 	    }
 
-	  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 	  reserve = LC_CLASSNAME_ERROR;
 	}
     }
@@ -791,7 +793,7 @@ start:
 	   * then retry again.
 	   */
 
-	  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
 	  if (lock_object (thread_p, &tmp_classoid, oid_Root_class_oid,
 			   X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
@@ -849,7 +851,7 @@ start:
        *       exit critical section
        */
 
-      csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
       search = ehash_search (thread_p, locator_Eht_classnames,
 			     (void *) classname, &class_oid);
@@ -917,7 +919,7 @@ start:
     }
 
 error:
-  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
   /*
    * We do not need to lock the entry->oid since it has already been locked
@@ -991,13 +993,13 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname,
 	      goto error;
 	    }
 	  (void) locator_drop_class_name_entry (newname, entry, NULL);
-	  csect_exit (CSECT_CT_OID_TABLE);
+	  csect_exit (thread_p, CSECT_CT_OID_TABLE);
 	}
     }
 
 error:
 
-  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
   return renamed;
 }
@@ -1059,11 +1061,11 @@ start:
 	      OID_SET_NULL (class_oid);
 	      find = LC_CLASSNAME_DELETED;
 	    }
-	  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 	}
       else if (entry->current.action == LC_CLASSNAME_EXIST)
 	{
-	  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 	}
       else
 	{
@@ -1071,7 +1073,7 @@ start:
 	   * Do not know the fate of this entry until the transaction is
 	   * committed or aborted. Get the lock and try again.
 	   */
-	  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
 	  if (lock != NULL_LOCK)
 	    {
@@ -1108,7 +1110,7 @@ start:
        * Is there a class with such a name on the permanent classname hash
        * table ?
        */
-      csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
       search = ehash_search (thread_p, locator_Eht_classnames,
 			     (void *) classname, class_oid);
       if (search != EH_KEY_FOUND)
@@ -1124,9 +1126,8 @@ start:
 	}
       else
 	{
-	  if (csect_enter
-	      (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE,
-	       INF_WAIT) != NO_ERROR)
+	  if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE,
+			   INF_WAIT) != NO_ERROR)
 	    {
 	      return LC_CLASSNAME_ERROR;
 	    }
@@ -1145,7 +1146,7 @@ start:
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
-		      csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+		      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 		      return LC_CLASSNAME_ERROR;
 
 		    }
@@ -1157,7 +1158,7 @@ start:
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			      strlen (classname));
-		      csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+		      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 		      return LC_CLASSNAME_ERROR;
 		    }
 
@@ -1169,7 +1170,7 @@ start:
 		  (void) mht_put (locator_Mht_classnames, entry->name, entry);
 		}
 	    }
-	  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 	}
     }
 
@@ -1259,7 +1260,7 @@ locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname,
     }
 
 error:
-  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
   return;
 }
 
@@ -1308,7 +1309,7 @@ locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p,
 /* TODO: SystemCatalog: 1st Phase: 2002/06/20: */
   if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
     {
-      csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
       return ER_FAILED;
     }
 
@@ -1320,9 +1321,9 @@ locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p,
     }
 
 /* TODO: SystemCatalog: 1st Phase: 2002/06/20: */
-  csect_exit (CSECT_CT_OID_TABLE);
+  csect_exit (thread_p, CSECT_CT_OID_TABLE);
 
-  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
   return error_code;
 }
@@ -1486,7 +1487,7 @@ locator_savepoint_transient_class_name_entries (THREAD_ENTRY * thread_p,
   error_code = mht_map (locator_Mht_classnames,
 			locator_savepoint_class_name_entry, &savep);
 
-  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
   return error_code;
 }
@@ -1670,7 +1671,7 @@ locator_dump_class_names (THREAD_ENTRY * thread_p, FILE * out_fp)
   /* TODO : output file */
   ehash_dump (thread_p, locator_Eht_classnames);
 
-  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 }
 
 /*
@@ -1866,12 +1867,12 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
       isvalid = DISK_ERROR;
     }
 
-  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
   return isvalid;
 
 error:
-  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
   return DISK_ERROR;
 }
@@ -10155,7 +10156,7 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
 
 	      COPY_OID (&(*hlock)->classes[n].oid, &entry->current.oid);
 
-	      csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
 	      if (entry->tran_index == tran_index)
 		{
@@ -10208,7 +10209,7 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
 	       * Is there a class with such a name on the permanent classname
 	       * hash table ?
 	       */
-	      csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
 	      search = ehash_search (thread_p, locator_Eht_classnames,
 				     (void *) classname,
@@ -10251,7 +10252,8 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
 			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				      ER_OUT_OF_VIRTUAL_MEMORY, 1,
 				      sizeof (*entry));
-			      csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+			      csect_exit (thread_p,
+					  CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 			      return LC_CLASSNAME_ERROR;
 			    }
 
@@ -10262,7 +10264,8 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
 			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				      ER_OUT_OF_VIRTUAL_MEMORY, 1,
 				      strlen (classname));
-			      csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+			      csect_exit (thread_p,
+					  CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 			      return LC_CLASSNAME_ERROR;
 			    }
 
@@ -10276,7 +10279,7 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
 					  entry->name, entry);
 			}
 		    }
-		  csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+		  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 		}
 	    }
 	}

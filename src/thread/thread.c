@@ -3328,7 +3328,7 @@ thread_log_flush_thread (void *arg_p)
 
       LOG_CS_ENTER (tsd_ptr);
       logpb_flush_pages_direct (tsd_ptr);
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (tsd_ptr);
 
       log_Stat.gc_flush_count++;
       total_elapsed_time = 0;
@@ -3528,7 +3528,7 @@ thread_auto_volume_expansion_thread (void *arg_p)
 		  volid = NULL_VOLID;
 		}
 
-	      csect_exit (CSECT_BOOT_SR_DBPARM);
+	      csect_exit (tsd_ptr, CSECT_BOOT_SR_DBPARM);
 	    }
 	  else
 	    {
@@ -3829,6 +3829,10 @@ static int
 thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter,
 			     THREAD_RC_METER * prev_meter)
 {
+#if !defined(NDEBUG)
+  int i;
+#endif
+
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
@@ -3863,6 +3867,20 @@ thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter,
 	  return ER_FAILED;
 	}
     }
+
+#if !defined(NDEBUG)
+  /* check hold_buf */
+  if (meter->m_hold_buf_size > 0)
+    {
+      for (i = 0; i < meter->m_hold_buf_size; i++)
+	{
+	  if (meter->m_hold_buf[i] != '\0')
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
+#endif
 
   return NO_ERROR;
 }
@@ -3927,8 +3945,8 @@ thread_rc_track_check (THREAD_ENTRY * thread_p, int id)
 		  prev_meter = NULL;
 		}
 
-	      if (thread_rc_track_meter_check (thread_p, meter, prev_meter) !=
-		  NO_ERROR)
+	      if (thread_rc_track_meter_check (thread_p,
+					       meter, prev_meter) != NO_ERROR)
 		{
 #if !defined(NDEBUG)
 		  FILE *outfp;
@@ -4063,6 +4081,9 @@ thread_rc_track_rcname (int rc_idx)
     case RC_QLIST:
       name = "List File";
       break;
+    case RC_CS:
+      name = "Critical Section";
+      break;
     default:
       name = "**UNKNOWN_RESOURCE**";
       break;
@@ -4117,6 +4138,9 @@ static THREAD_RC_TRACK *
 thread_rc_track_alloc (THREAD_ENTRY * thread_p)
 {
   int i, j;
+#if !defined(NDEBUG)
+  int k;
+#endif
   THREAD_RC_TRACK *new_track;
 
   if (thread_p == NULL)
@@ -4173,6 +4197,17 @@ thread_rc_track_alloc (THREAD_ENTRY * thread_p)
 		  new_track->meter[i][j].m_add_buf_size = 0;
 		  new_track->meter[i][j].m_sub_buf[0] = '\0';
 		  new_track->meter[i][j].m_sub_buf_size = 0;
+		  new_track->meter[i][j].m_hold_buf[0] = '\0';
+		  new_track->meter[i][j].m_hold_buf_size = 0;
+
+		  /* init Critical Section hold_buf */
+		  if (i == RC_CS)
+		    {
+		      for (k = 0; k < CRITICAL_SECTION_COUNT; k++)
+			{
+			  new_track->meter[i][j].m_hold_buf[k] = '\0';
+			}
+		    }
 #endif
 		}
 	    }
@@ -4471,6 +4506,44 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
 #endif
       assert_release (meter->m_amount <= meter->m_threshold);
 
+#if !defined(NDEBUG)
+      /* check Critical Section cycle and keep current hold info */
+      if (rc_idx == RC_CS)
+	{
+	  int cs_idx;
+
+	  assert (ptr != NULL);
+
+	  cs_idx = *((int *) ptr);
+
+	  /* TODO - skip out un-named CS */
+	  if (cs_idx != -1)
+	    {
+	      assert (cs_idx >= 0);
+	      assert (cs_idx < CRITICAL_SECTION_COUNT);
+
+	      assert_release (meter->m_hold_buf[cs_idx] >= 0);
+	      if (amount > 0)
+		{
+		  assert_release (amount == 1);
+		}
+	      else
+		{
+		  assert_release (amount == -1);
+		}
+
+	      meter->m_hold_buf[cs_idx] += amount;
+
+	      assert_release (meter->m_hold_buf[cs_idx] >= 0);
+
+	      /* re-set buf size */
+	      meter->m_hold_buf_size =
+		MAX (meter->m_hold_buf_size, cs_idx + 1);
+	      assert (meter->m_hold_buf_size <= CRITICAL_SECTION_COUNT);
+	    }
+	}
+#endif
+
       if (amount > 0)
 	{
 	  meter->m_add_file_name = file_name;
@@ -4481,6 +4554,7 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
 	  meter->m_sub_file_name = file_name;
 	  meter->m_sub_line_no = line_no;
 	}
+
 #if !defined(NDEBUG)
       (void) thread_rc_track_meter_at (meter, file_name, line_no, amount,
 				       ptr);
@@ -4545,6 +4619,21 @@ thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp,
 	  fprintf (outfp, "\n");
 	  fprintf (outfp, "            +--- sub_buf_size = %d\n",
 		   meter->m_sub_buf_size);
+	}
+      /* dump hold_buf */
+      if (meter->m_hold_buf_size > 0)
+	{
+	  fprintf (outfp, "            +--- hold_at = ");
+	  for (i = 0; i < meter->m_hold_buf_size; i++)
+	    {
+	      if (meter->m_hold_buf[i] != '\0')
+		{
+		  fprintf (outfp, "[%d]:%c ", i, meter->m_hold_buf[i]);
+		}
+	    }
+	  fprintf (outfp, "\n");
+	  fprintf (outfp, "            +--- hold_buf_size = %d\n",
+		   meter->m_hold_buf_size);
 	}
 #endif
     }

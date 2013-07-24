@@ -98,7 +98,7 @@ syslog (long priority, const char *message, ...)
 #define ER_CSECT_ENTER_LOG_FILE() \
     (csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT))
 #define ER_CSECT_EXIT_LOG_FILE() \
-    (csect_exit (CSECT_ER_LOG_FILE))
+    (csect_exit (NULL, CSECT_ER_LOG_FILE))
 #elif defined (CS_MODE)
 static pthread_mutex_t er_log_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int er_csect_enter_log_file (void);
@@ -3253,7 +3253,7 @@ er_find_fmt (int err_id, int num_args)
 
   if (entered_critical_section == true)
     {
-      csect_exit (CSECT_ER_MSG_CACHE);
+      csect_exit (NULL, CSECT_ER_MSG_CACHE);
     }
 
   return fmt;

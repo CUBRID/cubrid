@@ -418,7 +418,7 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
 #if defined(SERVER_MODE)
   conn->session_p = NULL;
 #endif
-  csect_exit_critical_section (&conn->csect);
+  csect_exit_critical_section (NULL, &conn->csect);
 }
 
 /*
@@ -567,7 +567,7 @@ css_make_conn (SOCKET fd)
       assert (css_Num_free_conn >= 0);
     }
 
-  csect_exit_critical_section (&css_Free_conn_csect);
+  csect_exit_critical_section (NULL, &css_Free_conn_csect);
 
   if (conn != NULL)
     {
@@ -601,7 +601,7 @@ css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn)
 
   assert (css_Num_active_conn > 0 && css_Num_active_conn <= css_Num_max_conn);
 
-  csect_exit_critical_section (&css_Active_conn_csect);
+  csect_exit_critical_section (NULL, &css_Active_conn_csect);
 }
 
 /*
@@ -631,7 +631,7 @@ css_dealloc_conn (CSS_CONN_ENTRY * conn)
   css_Num_free_conn++;
   assert (css_Num_free_conn > 0 && css_Num_free_conn <= css_Num_max_conn);
 
-  csect_exit_critical_section (&css_Free_conn_csect);
+  csect_exit_critical_section (NULL, &css_Free_conn_csect);
 }
 
 /*
@@ -882,7 +882,7 @@ css_free_conn (CSS_CONN_ENTRY * conn)
   css_dealloc_conn (conn);
   css_decrement_num_conn (conn->client_type);
 
-  csect_exit_critical_section (&css_Active_conn_csect);
+  csect_exit_critical_section (NULL, &css_Active_conn_csect);
 }
 
 /*
@@ -925,7 +925,7 @@ css_print_conn_list (void)
 
       assert (i == css_Num_active_conn);
 
-      csect_exit_critical_section (&css_Active_conn_csect);
+      csect_exit_critical_section (NULL, &css_Active_conn_csect);
     }
 }
 
@@ -954,7 +954,7 @@ css_print_free_conn_list (void)
 
       assert (i == css_Num_free_conn);
 
-      csect_exit_critical_section (&css_Free_conn_csect);
+      csect_exit_critical_section (NULL, &css_Free_conn_csect);
     }
 }
 
@@ -1214,7 +1214,7 @@ css_find_conn_by_tran_index (int tran_index)
 	    }
 	}
 
-      csect_exit_critical_section (&css_Active_conn_csect);
+      csect_exit_critical_section (NULL, &css_Active_conn_csect);
     }
 
   return conn;
@@ -1244,7 +1244,7 @@ css_find_conn_from_fd (SOCKET fd)
 	    }
 	}
 
-      csect_exit_critical_section (&css_Active_conn_csect);
+      csect_exit_critical_section (NULL, &css_Active_conn_csect);
     }
   return conn;
 }
@@ -1288,7 +1288,7 @@ css_get_session_ids_for_active_connections (SESSION_ID ** session_ids,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      css_Num_active_conn * sizeof (SESSION_ID));
       error = ER_FAILED;
-      csect_exit_critical_section (&css_Active_conn_csect);
+      csect_exit_critical_section (NULL, &css_Active_conn_csect);
       goto error_return;
     }
 
@@ -1299,7 +1299,7 @@ css_get_session_ids_for_active_connections (SESSION_ID ** session_ids,
       i++;
     }
 
-  csect_exit_critical_section (&css_Active_conn_csect);
+  csect_exit_critical_section (NULL, &css_Active_conn_csect);
   *session_ids = sessions_p;
   return error;
 
@@ -1346,7 +1346,7 @@ css_shutdown_conn_by_tran_index (int tran_index)
 	    }
 	}
 
-      csect_exit_critical_section (&css_Active_conn_csect);
+      csect_exit_critical_section (NULL, &css_Active_conn_csect);
     }
 }
 
@@ -1374,7 +1374,7 @@ css_get_request_id (CSS_CONN_ENTRY * conn)
       if (css_is_valid_request_id (conn, conn->request_id))
 	{
 	  request_id = conn->request_id;
-	  csect_exit_critical_section (&conn->csect);
+	  csect_exit_critical_section (NULL, &conn->csect);
 	  return (request_id);
 	}
       else
@@ -1386,7 +1386,7 @@ css_get_request_id (CSS_CONN_ENTRY * conn)
 	    }
 	}
     }
-  csect_exit_critical_section (&conn->csect);
+  csect_exit_critical_section (NULL, &conn->csect);
 
   /* Should never reach this point */
   er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_REQUEST_ID_FAILURE, 0);
@@ -1437,7 +1437,7 @@ css_send_abort_request (CSS_CONN_ENTRY * conn, unsigned short request_id)
   css_remove_unexpected_packets (conn, request_id);
   rc = css_abort_request (conn, request_id);
 
-  csect_exit_critical_section (&conn->csect);
+  csect_exit_critical_section (NULL, &conn->csect);
   return rc;
 }
 
@@ -1938,7 +1938,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type,
       thread_lock_entry (p);
       p = p->next_wait_thrd;
     }
-  csect_exit_critical_section (&conn->csect);
+  csect_exit_critical_section (NULL, &conn->csect);
 
   p = wait_thrd;
   while (p != NULL)
@@ -2292,7 +2292,7 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid,
       rc = CONN_CLOSED;
     }
 
-  csect_exit_critical_section (&conn->csect);
+  csect_exit_critical_section (NULL, &conn->csect);
   return rc;
 }
 
@@ -2363,7 +2363,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 	  conn->db_error = data_entry->db_error;
 
 	  css_free_queue_entry (conn, data_entry);
-	  csect_exit_critical_section (&conn->csect);
+	  csect_exit_critical_section (NULL, &conn->csect);
 
 	  return NO_ERRORS;
 	}
@@ -2386,7 +2386,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 	  if (data_wait)
 	    {
 	      /* exit the critical section before to be suspended */
-	      csect_exit_critical_section (&conn->csect);
+	      csect_exit_critical_section (NULL, &conn->csect);
 
 	      /* fall to the thread sleep until the socket listener
 	         'css_server_thread()' receives and enqueues the data */
@@ -2466,7 +2466,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 		      css_free_wait_queue_entry (conn, data_wait);
 		    }
 
-		  csect_exit_critical_section (&conn->csect);
+		  csect_exit_critical_section (NULL, &conn->csect);
 		}
 
 	      return NO_ERRORS;
@@ -2488,7 +2488,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
     }
 
   /* exit the critical section */
-  csect_exit_critical_section (&conn->csect);
+  csect_exit_critical_section (NULL, &conn->csect);
   return *rc;
 }
 
@@ -2536,7 +2536,7 @@ css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id,
       r = 1;
     }
 
-  csect_exit_critical_section (&conn->csect);
+  csect_exit_critical_section (NULL, &conn->csect);
   return r;
 }
 
@@ -2636,7 +2636,7 @@ css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id,
 				conn->db_error);
     }
 
-  csect_exit_critical_section (&conn->csect);
+  csect_exit_critical_section (NULL, &conn->csect);
   return rc;
 }
 
@@ -2692,5 +2692,5 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
   css_traverse_list (&conn->error_queue, css_remove_and_free_queue_entry,
 		     conn);
 
-  csect_exit_critical_section (&conn->csect);
+  csect_exit_critical_section (NULL, &conn->csect);
 }

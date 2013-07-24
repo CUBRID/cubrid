@@ -47,8 +47,6 @@
 #undef csect_enter_critical_section
 #undef csect_exit_critical_section
 
-#define CRITICAL_SECTION_COUNT	CSECT_LAST
-
 #define TOTAL_AND_MAX_TIMEVAL(total, max, elapsed) \
 do { \
   (total).tv_sec += elapsed.tv_sec; \
@@ -75,7 +73,7 @@ static const char *css_Csect_name[] = {
   "LOCATOR_CLASSNAME_TABLE",
   "FILE_NEWFILE",
   "QPROC_QUERY_TABLE",
-  "QPROC_QFILE_PGCNT",
+  "unused - QPROC_QFILE_PGCNT",
   "QPROC_XASL_CACHE",
   "QPROC_LIST_CACHE",
   "BOOT_SR_DBPARM",
@@ -86,13 +84,14 @@ static const char *css_Csect_name[] = {
   "TRAN_TABLE",
   "CT_OID_TABLE",
   "SCANID_BITMAP",
-  "LOG_FLUSH",
+  "unused - LOG_FLUSH",
   "HA_SERVER_STATE",
   "COMPACTDB_ONE_INSTANCE",
   "SESSION_STATE",
   "ACL",
   "QPROC_FILTER_PRED_CACHE",
-  "PARTITION_CACHE"
+  "PARTITION_CACHE",
+  "EVENT_LOG_FILE"
 };
 
 static int csect_initialize_entry (int cs_index);
@@ -118,6 +117,9 @@ csect_initialize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
   pthread_mutexattr_t mattr;
 
   assert (cs_ptr != NULL);
+
+  cs_ptr->cs_index = -1;
+  cs_ptr->name = NULL;
 
   error_code = pthread_mutexattr_init (&mattr);
   if (error_code != NO_ERROR)
@@ -192,14 +194,21 @@ csect_initialize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
 static int
 csect_initialize_entry (int cs_index)
 {
+  int error_code = NO_ERROR;
   CSS_CRITICAL_SECTION *cs_ptr;
 
-  assert (cs_index >= 0 && cs_index < CRITICAL_SECTION_COUNT);
+  assert (cs_index >= 0);
+  assert (cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
-  cs_ptr->cs_index = cs_index;
-  cs_ptr->name = css_Csect_name[cs_index];
-  return csect_initialize_critical_section (cs_ptr);
+  error_code = csect_initialize_critical_section (cs_ptr);
+  if (error_code == NO_ERROR)
+    {
+      cs_ptr->cs_index = cs_index;
+      cs_ptr->name = css_Csect_name[cs_index];
+    }
+
+  return error_code;
 }
 
 /*
@@ -258,7 +267,8 @@ csect_finalize_entry (int cs_index)
 {
   CSS_CRITICAL_SECTION *cs_ptr;
 
-  assert (cs_index >= 0 && cs_index < CRITICAL_SECTION_COUNT);
+  assert (cs_index >= 0);
+  assert (cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
   cs_ptr->cs_index = 0;
@@ -531,6 +541,11 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
       thread_p = thread_get_thread_entry_info ();
     }
 
+#if !defined (NDEBUG)
+  thread_rc_track_meter (thread_p, __FILE__, __LINE__, 1, &(cs_ptr->cs_index),
+			 RC_CS, MGR_DEF);
+#endif /* NDEBUG */
+
   cs_ptr->total_enter++;
 
 #if defined (EnableThreadMonitoring)
@@ -750,7 +765,8 @@ csect_enter (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
 {
   CSS_CRITICAL_SECTION *cs_ptr;
 
-  assert (cs_index >= 0 && cs_index < CRITICAL_SECTION_COUNT);
+  assert (cs_index >= 0);
+  assert (cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
   return csect_enter_critical_section (thread_p, cs_ptr, wait_secs);
@@ -780,7 +796,13 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
       thread_p = thread_get_thread_entry_info ();
     }
 
+#if !defined (NDEBUG)
+  thread_rc_track_meter (thread_p, __FILE__, __LINE__, 1, &(cs_ptr->cs_index),
+			 RC_CS, MGR_DEF);
+#endif /* NDEBUG */
+
   cs_ptr->total_enter++;
+
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
@@ -985,7 +1007,8 @@ csect_enter_as_reader (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
 {
   CSS_CRITICAL_SECTION *cs_ptr;
 
-  assert (cs_index >= 0 && cs_index < CRITICAL_SECTION_COUNT);
+  assert (cs_index >= 0);
+  assert (cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
   return csect_enter_critical_section_as_reader (thread_p, cs_ptr, wait_secs);
@@ -1016,7 +1039,13 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
       thread_p = thread_get_thread_entry_info ();
     }
 
+#if !defined (NDEBUG)
+  thread_rc_track_meter (thread_p, __FILE__, __LINE__, -1,
+			 &(cs_ptr->cs_index), RC_CS, MGR_DEF);
+#endif /* NDEBUG */
+
   cs_ptr->total_enter++;
+
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
@@ -1131,9 +1160,9 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 
 	      error_code = pthread_cond_timedwait (&cs_ptr->readers_ok,
 						   &cs_ptr->lock, &to);
-              if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
-                {
-                  gettimeofday (&wait_end, NULL);
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_end, NULL);
 		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
 			       wait_start, wait_end);
 		}
@@ -1262,7 +1291,8 @@ csect_demote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
 {
   CSS_CRITICAL_SECTION *cs_ptr;
 
-  assert (cs_index >= 0 && cs_index < CRITICAL_SECTION_COUNT);
+  assert (cs_index >= 0);
+  assert (cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
   return csect_demote_critical_section (thread_p, cs_ptr, wait_secs);
@@ -1293,7 +1323,13 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
       thread_p = thread_get_thread_entry_info ();
     }
 
+#if !defined (NDEBUG)
+  thread_rc_track_meter (thread_p, __FILE__, __LINE__, 1, &(cs_ptr->cs_index),
+			 RC_CS, MGR_DEF);
+#endif /* NDEBUG */
+
   cs_ptr->total_enter++;
+
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
@@ -1382,16 +1418,16 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 
 	      cs_ptr->waiting_writers++;
 
-              if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
-                {
-                  gettimeofday (&wait_start, NULL);
-                }
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_start, NULL);
+		}
 
 	      error_code = csect_wait_on_promoter_queue (thread_p, cs_ptr,
 							 NOT_WAIT, &to);
-              if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
-                {
-                  gettimeofday (&wait_end, NULL);
+	      if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+		{
+		  gettimeofday (&wait_end, NULL);
 		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
 			       wait_start, wait_end);
 		}
@@ -1495,7 +1531,8 @@ csect_promote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
 {
   CSS_CRITICAL_SECTION *cs_ptr;
 
-  assert (cs_index >= 0 && cs_index < CRITICAL_SECTION_COUNT);
+  assert (cs_index >= 0);
+  assert (cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
   return csect_promote_critical_section (thread_p, cs_ptr, wait_secs);
@@ -1507,12 +1544,25 @@ csect_promote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
  *   cs_ptr(in): critical section
  */
 int
-csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
+csect_exit_critical_section (THREAD_ENTRY * thread_p,
+			     CSS_CRITICAL_SECTION * cs_ptr)
 {
   int error_code = NO_ERROR;
   bool ww, wr, wp;
 
   assert (cs_ptr != NULL);
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+#if !defined (NDEBUG)
+  thread_rc_track_meter (thread_p, __FILE__, __LINE__, -1,
+			 &(cs_ptr->cs_index), RC_CS, MGR_DEF);
+#endif /* NDEBUG */
+
+  assert (cs_ptr->total_enter > 0);
 
   error_code = pthread_mutex_lock (&cs_ptr->lock);
   if (error_code != NO_ERROR)
@@ -1637,14 +1687,15 @@ csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
  *       is suspended and waiting for the critical section.
  */
 int
-csect_exit (int cs_index)
+csect_exit (THREAD_ENTRY * thread_p, int cs_index)
 {
   CSS_CRITICAL_SECTION *cs_ptr;
 
-  assert (cs_index >= 0 && cs_index < CRITICAL_SECTION_COUNT);
+  assert (cs_index >= 0);
+  assert (cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
-  return csect_exit_critical_section (cs_ptr);
+  return csect_exit_critical_section (thread_p, cs_ptr);
 }
 
 /*
@@ -1691,7 +1742,8 @@ csect_check_own (THREAD_ENTRY * thread_p, int cs_index)
   CSS_CRITICAL_SECTION *cs_ptr;
   int error_code = NO_ERROR;
 
-  assert (cs_index >= 0 && cs_index < CRITICAL_SECTION_COUNT);
+  assert (cs_index >= 0);
+  assert (cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
 

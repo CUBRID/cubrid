@@ -606,7 +606,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
 
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   return btid;
 

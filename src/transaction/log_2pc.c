@@ -468,7 +468,7 @@ log_get_global_tran_id (THREAD_ENTRY * thread_p)
       gtrid = tdes->gtrid;
     }
 
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 
   return gtrid;
 }
@@ -841,7 +841,7 @@ log_2pc_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
     {
       TR_TABLE_CS_ENTER (thread_p);
       tdes->gtrid = log_2pc_make_global_tran_id (tdes->trid);
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
     }
 
   /*
@@ -934,7 +934,7 @@ log_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *info,
 			  ER_LOG_CANNOT_SET_GTRINFO, 2, gtrid,
 			  log_state_string (tdes->state));
 
-		  TR_TABLE_CS_EXIT ();
+		  TR_TABLE_CS_EXIT (thread_p);
 		  return ER_LOG_CANNOT_SET_GTRINFO;
 		}
 
@@ -947,18 +947,18 @@ log_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *info,
 	      tdes->gtrinfo.info_data = malloc (size);
 	      if (tdes->gtrinfo.info_data == NULL)
 		{
-		  TR_TABLE_CS_EXIT ();
+		  TR_TABLE_CS_EXIT (thread_p);
 		  return ER_OUT_OF_VIRTUAL_MEMORY;
 		}
 	      tdes->gtrinfo.info_length = size;
 	      (void) memcpy (tdes->gtrinfo.info_data, info, size);
 
-	      TR_TABLE_CS_EXIT ();
+	      TR_TABLE_CS_EXIT (thread_p);
 	      return NO_ERROR;
 	    }
 	}
 
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
     }
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_2PC_UNKNOWN_GTID, 1,
@@ -1009,7 +1009,7 @@ log_get_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *buffer,
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_LOG_CANNOT_SET_GTRINFO, 1, gtrid);
 
-		  TR_TABLE_CS_EXIT ();
+		  TR_TABLE_CS_EXIT (thread_p);
 		  return ER_LOG_CANNOT_SET_GTRINFO;
 		}
 
@@ -1020,12 +1020,12 @@ log_get_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *buffer,
 		}
 	      (void) memcpy (buffer, tdes->gtrinfo.info_data, size);
 
-	      TR_TABLE_CS_EXIT ();
+	      TR_TABLE_CS_EXIT (thread_p);
 	      return NO_ERROR;
 	    }
 	}
 
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
     }
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_2PC_UNKNOWN_GTID, 1,
@@ -1073,7 +1073,7 @@ log_2pc_start (THREAD_ENTRY * thread_p)
     {
       TR_TABLE_CS_ENTER (thread_p);
       tdes->gtrid = log_2pc_make_global_tran_id (tdes->trid);
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
     }
 
   return tdes->gtrid;
@@ -1158,7 +1158,7 @@ log_2pc_recovery_prepared (THREAD_ENTRY * thread_p, int gtrids[], int size)
 	}
     }
 
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
   return count;
 }
 
@@ -1312,17 +1312,17 @@ log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_2PC_CANNOT_ATTACH,
 		  2, gtrid, client_tdes->trid);
 
-	  TR_TABLE_CS_EXIT ();
+	  TR_TABLE_CS_EXIT (thread_p);
 	  return NULL_TRAN_INDEX;
 	}
 
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
       return (tdes->tran_index);
     }
 
 error:
 
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 
   /* There is no such transaction to attach to */
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_2PC_UNKNOWN_GTID, 1,
@@ -1433,7 +1433,7 @@ log_2pc_append_recv_ack (THREAD_ENTRY * thread_p, int particp_index)
   logpb_flush_pages (thread_p, &start_lsa);
   assert (LOG_CS_OWN (thread_p));
 
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   return NO_ERROR;
 }
@@ -1542,7 +1542,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_LOG_UNKNOWN_TRANINDEX, 1,
 		  LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-	  TR_TABLE_CS_EXIT ();
+	  TR_TABLE_CS_EXIT (thread_p);
 	  return TRAN_UNACTIVE_UNKNOWN;
 	}
 
@@ -1554,11 +1554,11 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 	  /* This gtrid is not unique; It is already been used */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_LOG_2PC_NON_UNIQUE_GTID, 1, gtrid);
-	  TR_TABLE_CS_EXIT ();
+	  TR_TABLE_CS_EXIT (thread_p);
 	  return tdes->state;
 	}
     }
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 
   /*
    * Check if the current site is not only a participant but also a
@@ -2176,11 +2176,11 @@ log_2pc_send_decision_participant (THREAD_ENTRY * thread_p, void *particp_id)
       if ((i >= log_Gl.trantable.num_total_indices
 	   || log_Gl.trantable.num_coord_loose_end_indices <= 0))
 	{
-	  TR_TABLE_CS_EXIT ();
+	  TR_TABLE_CS_EXIT (thread_p);
 	  break;
 	}
 
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
 
       tdes = LOG_FIND_TDES (i);
       if (tdes != NULL

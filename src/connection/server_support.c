@@ -1449,7 +1449,7 @@ css_block_all_active_conn (unsigned short stop_phase)
       csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
       if (conn->stop_phase != stop_phase)
 	{
-	  csect_exit_critical_section (&conn->csect);
+	  csect_exit_critical_section (NULL, &conn->csect);
 	  continue;
 	}
       css_end_server_request (conn);
@@ -1460,10 +1460,10 @@ css_block_all_active_conn (unsigned short stop_phase)
 	  thread_sleep (10);	/* 10 msec */
 	}
 
-      csect_exit_critical_section (&conn->csect);
+      csect_exit_critical_section (NULL, &conn->csect);
     }
 
-  csect_exit_critical_section (&css_Active_conn_csect);
+  csect_exit_critical_section (NULL, &css_Active_conn_csect);
 }
 
 /*
@@ -1688,7 +1688,7 @@ shutdown:
 
   assert_release (LSA_EQ (&log_Gl.append.nxio_lsa,
 			  &log_Gl.prior_info.prior_lsa));
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
 
   thread_stop_active_workers (THREAD_STOP_LOGWR);
 
@@ -2076,7 +2076,7 @@ css_end_server_request (CSS_CONN_ENTRY * conn)
   css_remove_all_unexpected_packets (conn);
   conn->status = CONN_CLOSING;
 
-  csect_exit_critical_section (&conn->csect);
+  csect_exit_critical_section (NULL, &conn->csect);
 }
 
 /*
@@ -2275,7 +2275,7 @@ css_number_of_clients (void)
 	}
     }
 
-  csect_exit_critical_section (&css_Active_conn_csect);
+  csect_exit_critical_section (NULL, &css_Active_conn_csect);
 
   return n;
 }
@@ -2524,7 +2524,7 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p,
 	}
     }
 
-  csect_exit (CSECT_HA_SERVER_STATE);
+  csect_exit (thread_p, CSECT_HA_SERVER_STATE);
   return new_state;
 }
 
@@ -2831,7 +2831,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 		    }
 		}
 	    }
-	  TR_TABLE_CS_EXIT ();
+	  TR_TABLE_CS_EXIT (thread_p);
 
 	  thread_sleep (2000);	/* 2000 msec */
 	}
@@ -2842,7 +2842,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
       break;
     }
 
-  csect_exit (CSECT_HA_SERVER_STATE);
+  csect_exit (thread_p, CSECT_HA_SERVER_STATE);
 
   return (state != HA_SERVER_STATE_NA) ? NO_ERROR : ER_FAILED;
 }
@@ -2876,7 +2876,7 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p,
 	{
 	  if (table->state == state)
 	    {
-	      csect_exit (CSECT_HA_SERVER_STATE);
+	      csect_exit (thread_p, CSECT_HA_SERVER_STATE);
 	      return NO_ERROR;
 	    }
 	  table->state = state;
@@ -2927,7 +2927,7 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p,
 	}
     }
 
-  csect_exit (CSECT_HA_SERVER_STATE);
+  csect_exit (thread_p, CSECT_HA_SERVER_STATE);
   return NO_ERROR;
 }
 
@@ -2978,7 +2978,7 @@ css_check_accessibility (SOCKET new_fd)
 
   csect_enter_as_reader (NULL, CSECT_ACL, INF_WAIT);
   err_code = css_check_ip (css_Server_accessible_ip_info, ip_addr);
-  csect_exit (CSECT_ACL);
+  csect_exit (NULL, CSECT_ACL);
 
   if (err_code != NO_ERROR)
     {
@@ -3037,7 +3037,7 @@ css_set_accessible_ip_info ()
 	}
       css_Server_accessible_ip_info = tmp_accessible_ip_info;
 
-      csect_exit (CSECT_ACL);
+      csect_exit (NULL, CSECT_ACL);
     }
 
   return ret_val;
@@ -3098,7 +3098,7 @@ xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp)
     }
 
   fprintf (outfp, "\n");
-  csect_exit (CSECT_ACL);
+  csect_exit (thread_p, CSECT_ACL);
 
   return;
 }

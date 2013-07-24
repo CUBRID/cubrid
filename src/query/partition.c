@@ -641,7 +641,7 @@ partition_cache_pruning_context (PRUNING_CONTEXT * pinfo)
 
   (void) mht_put (db_Partition_Ht, oid_key, entry_p);
 
-  csect_exit (CSECT_PARTITION_CACHE);
+  csect_exit (pinfo->thread_p, CSECT_PARTITION_CACHE);
 
   return NO_ERROR;
 }
@@ -705,17 +705,17 @@ partition_load_context_from_cache (PRUNING_CONTEXT * pinfo, bool * is_modfied)
 					       &pinfo->root_oid);
   if (entry_p == NULL)
     {
-      csect_exit (CSECT_PARTITION_CACHE);
+      csect_exit (pinfo->thread_p, CSECT_PARTITION_CACHE);
       return false;
     }
 
   if (partition_cache_entry_to_pruning_context (pinfo, entry_p) != NO_ERROR)
     {
-      csect_exit (CSECT_PARTITION_CACHE);
+      csect_exit (pinfo->thread_p, CSECT_PARTITION_CACHE);
       return false;
     }
 
-  csect_exit (CSECT_PARTITION_CACHE);
+  csect_exit (pinfo->thread_p, CSECT_PARTITION_CACHE);
 
   pinfo->is_from_cache = true;
 
@@ -757,7 +757,7 @@ partition_cache_init (THREAD_ENTRY * thread_p)
     }
 
 cleanup:
-  csect_exit (CSECT_PARTITION_CACHE);
+  csect_exit (thread_p, CSECT_PARTITION_CACHE);
 
   return error;
 }
@@ -786,7 +786,7 @@ partition_cache_finalize (THREAD_ENTRY * thread_p)
       db_Partition_Ht = NULL;
     }
 
-  csect_exit (CSECT_PARTITION_CACHE);
+  csect_exit (thread_p, CSECT_PARTITION_CACHE);
 }
 
 /*
@@ -814,7 +814,7 @@ partition_decache_class (THREAD_ENTRY * thread_p, const OID * class_oid)
   (void) mht_rem (db_Partition_Ht, class_oid, partition_free_cache_entry,
 		  NULL);
 
-  csect_exit (CSECT_PARTITION_CACHE);
+  csect_exit (thread_p, CSECT_PARTITION_CACHE);
 }
 
 /*

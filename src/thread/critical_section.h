@@ -51,7 +51,7 @@ enum
   CSECT_LOCATOR_SR_CLASSNAME_TABLE,	/* Latch for temp classname to classOID entries */
   CSECT_FILE_NEWFILE,		/* Latch related to new file table */
   CSECT_QPROC_QUERY_TABLE,	/* Latch for query manager table */
-  CSECT_QPROC_QFILE_PGCNT,	/* Latch for query file page count */
+  CSECT_QPROC_QFILE_PGCNT,	/* unused - Latch for query file page count */
   CSECT_QPROC_XASL_CACHE,	/* Latch for XASL cache (mht: memory hash table) */
   CSECT_QPROC_LIST_CACHE,	/* Latch for query result(list file) cache (mht) */
   CSECT_BOOT_SR_DBPARM,		/* Latch for accessing System Database parameters.
@@ -64,16 +64,18 @@ enum
   CSECT_TRAN_TABLE,		/* Latch for transaction table */
   CSECT_CT_OID_TABLE,
   CSECT_SCANID_BITMAP,
-  CSECT_LOG_FLUSH,		/* for 2 flushing (by LFT, by normal thread) */
+  CSECT_LOG_FLUSH,		/* unused - for 2 flushing (by LFT, by normal thread) */
   CSECT_HA_SERVER_STATE,	/* Latch for HA server mode change */
   CSECT_COMPACTDB_ONE_INSTANCE,	/* Latch for compactdb */
   CSECT_SESSION_STATE,		/* Latch for session state table */
   CSECT_ACL,			/* Latch for accessible IP list table */
   CSECT_QPROC_FILTER_PRED_CACHE,	/* Latch for PRED XASL cache */
   CSECT_PARTITION_CACHE,	/* Latch for partitions cache */
-  CSECT_EVENT_LOG_FILE,         /* Latch for event log file */
+  CSECT_EVENT_LOG_FILE,		/* Latch for event log file */
   CSECT_LAST
 };
+
+#define CRITICAL_SECTION_COUNT  CSECT_LAST
 
 typedef struct css_critical_section
 {
@@ -108,7 +110,7 @@ extern int csect_demote (THREAD_ENTRY * thread_p, int cs_index,
 			 int wait_secs);
 extern int csect_promote (THREAD_ENTRY * thread_p, int cs_index,
 			  int wait_secs);
-extern int csect_exit (int cs_index);
+extern int csect_exit (THREAD_ENTRY * thread_p, int cs_index);
 
 extern int csect_initialize_critical_section (CSS_CRITICAL_SECTION * cs_ptr);
 extern int csect_finalize_critical_section (CSS_CRITICAL_SECTION * cs_ptr);
@@ -124,7 +126,8 @@ extern int csect_demote_critical_section (THREAD_ENTRY * thread_p,
 extern int csect_promote_critical_section (THREAD_ENTRY * thread_p,
 					   CSS_CRITICAL_SECTION * cs_ptr,
 					   int wait_secs);
-extern int csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr);
+extern int csect_exit_critical_section (THREAD_ENTRY * thread_p,
+					CSS_CRITICAL_SECTION * cs_ptr);
 
 extern int csect_check_own (THREAD_ENTRY * thread_p, int cs_index);
 extern int csect_check_own_critical_section (THREAD_ENTRY * thread_p,
@@ -137,10 +140,10 @@ extern void csect_dump_statistics (FILE * fp);
 #define csect_finalize_critical_section(a)
 #define csect_enter(a, b, c) NO_ERROR
 #define csect_enter_as_reader(a, b, c) NO_ERROR
-#define csect_exit(a)
-#define csect_enter_critical_section(a,b,c)
+#define csect_exit(a, b)
+#define csect_enter_critical_section(a, b, c)
 #define csect_enter_critical_section_as_reader(a, b, c)
-#define csect_exit_critical_section(a)
+#define csect_exit_critical_section(a, b)
 #define csect_check_own_critical_section(a, b)
 #define csect_check_own(a, b) 1
 #endif /* !SERVER_MODE */

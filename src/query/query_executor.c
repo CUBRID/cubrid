@@ -14001,7 +14001,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
 	}
     }
 
-  csect_exit (CSECT_QPROC_XASL_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
   return ((xasl_ent_cache.qstr_ht && xasl_ent_cache.xid_ht
 	   && xasl_ent_cache.oid_ht && xasl_cache_entry_pool.pool
@@ -14089,7 +14089,7 @@ qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p)
       free_and_init (xasl_cache_entry_pool.pool);
     }
 
-  csect_exit (CSECT_QPROC_XASL_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
   return NO_ERROR;
 }
@@ -14309,7 +14309,7 @@ qexec_dump_xasl_cache_internal (THREAD_ENTRY * thread_p, FILE * fp, int mask)
 		       qexec_print_xasl_cache_ent, NULL);
     }
 
-  csect_exit (CSECT_QPROC_XASL_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
   return NO_ERROR;
 }
@@ -14822,7 +14822,7 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
     }
 
 end:
-  csect_exit (CSECT_QPROC_XASL_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
   return ent;
 }
@@ -15270,7 +15270,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
   xasl_ent_cache.num++;
 
 end:
-  csect_exit (CSECT_QPROC_XASL_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
   return ent;
 }
@@ -15396,7 +15396,7 @@ qexec_end_use_of_xasl_cache_ent (THREAD_ENTRY * thread_p,
 #endif
     }
 
-  csect_exit (CSECT_QPROC_XASL_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
   return rc;
 }
 
@@ -15516,7 +15516,7 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 #endif
       (void) qexec_delete_xasl_cache_ent (thread_p, ent, NULL);
 
-      csect_exit (CSECT_QPROC_XASL_CACHE);
+      csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
       ret = ER_FAILED;
     }
@@ -15658,7 +15658,7 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
     }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-  csect_exit (CSECT_QPROC_XASL_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
   return ent;
 }
@@ -15710,7 +15710,7 @@ qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p,
     }
   while (ent);
 
-  csect_exit (CSECT_QPROC_XASL_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
   return NO_ERROR;
 }
@@ -15753,7 +15753,7 @@ qexec_remove_xasl_cache_ent_by_qstr (THREAD_ENTRY * thread_p,
 	}
     }
 
-  csect_exit (CSECT_QPROC_XASL_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
   return NO_ERROR;
 }
@@ -15791,7 +15791,7 @@ qexec_remove_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
       (void) qexec_delete_xasl_cache_ent (thread_p, ent, NULL);
     }
 
-  csect_exit (CSECT_QPROC_XASL_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
   return NO_ERROR;
 }
@@ -15930,7 +15930,7 @@ qexec_remove_all_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p)
       rc = ER_FAILED;
     }
 
-  csect_exit (CSECT_QPROC_XASL_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
   return rc;
 }
@@ -15974,7 +15974,7 @@ qexec_clear_list_cache_by_class (THREAD_ENTRY * thread_p,
     }
   while (ent);
 
-  csect_exit (CSECT_QPROC_XASL_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
   return NO_ERROR;
 }
@@ -22243,7 +22243,7 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
 	}
     }
 
-  csect_exit (CSECT_QPROC_FILTER_PRED_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_FILTER_PRED_CACHE);
 
   return ((filter_pred_ent_cache.qstr_ht && filter_pred_ent_cache.xid_ht
 	   && filter_pred_ent_cache.oid_ht
@@ -22329,7 +22329,7 @@ qexec_finalize_filter_pred_cache (THREAD_ENTRY * thread_p)
       free_and_init (filter_pred_cache_entry_pool.pool);
     }
 
-  csect_exit (CSECT_QPROC_FILTER_PRED_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_FILTER_PRED_CACHE);
 
   return NO_ERROR;
 }
@@ -22421,7 +22421,7 @@ qexec_dump_filter_pred_cache_internal (THREAD_ENTRY * thread_p, FILE * fp,
 		       qexec_print_xasl_cache_ent, NULL);
     }
 
-  csect_exit (CSECT_QPROC_FILTER_PRED_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_FILTER_PRED_CACHE);
 
   return NO_ERROR;
 }
@@ -22997,7 +22997,7 @@ qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
     }
 
 end:
-  csect_exit (CSECT_QPROC_FILTER_PRED_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_FILTER_PRED_CACHE);
 
   return ent;
 }
@@ -23311,7 +23311,7 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
   filter_pred_ent_cache.num++;
 
 end:
-  csect_exit (CSECT_QPROC_FILTER_PRED_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_FILTER_PRED_CACHE);
 
   return ent;
 }
@@ -23378,7 +23378,7 @@ qexec_end_use_of_filter_pred_cache_ent (THREAD_ENTRY * thread_p,
 		    xasl_id->temp_vfid.fileid, xasl_id->temp_vfid.volid);
     }
 
-  csect_exit (CSECT_QPROC_FILTER_PRED_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_FILTER_PRED_CACHE);
   return rc;
 }
 
@@ -23517,7 +23517,7 @@ qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
       *clop = clo;
     }
 
-  csect_exit (CSECT_QPROC_FILTER_PRED_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_FILTER_PRED_CACHE);
 
   return ent;
 }
@@ -23570,7 +23570,7 @@ qexec_remove_filter_pred_cache_ent_by_class (THREAD_ENTRY * thread_p,
     }
   while (ent);
 
-  csect_exit (CSECT_QPROC_FILTER_PRED_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_FILTER_PRED_CACHE);
 
   return NO_ERROR;
 }
@@ -23681,7 +23681,7 @@ qexec_remove_all_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p)
       rc = ER_FAILED;
     }
 
-  csect_exit (CSECT_QPROC_FILTER_PRED_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_FILTER_PRED_CACHE);
 
   return rc;
 }
@@ -23727,7 +23727,7 @@ qexec_clear_list_pred_cache_by_class (THREAD_ENTRY * thread_p,
     }
   while (ent);
 
-  csect_exit (CSECT_QPROC_FILTER_PRED_CACHE);
+  csect_exit (thread_p, CSECT_QPROC_FILTER_PRED_CACHE);
 
   return NO_ERROR;
 }

@@ -360,8 +360,8 @@ logtb_define_trantable (THREAD_ENTRY * thread_p,
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
-  TR_TABLE_CS_EXIT ();
-  LOG_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
+  LOG_CS_EXIT (thread_p);
 }
 
 /*
@@ -733,9 +733,9 @@ logtb_am_i_sole_tran (THREAD_ENTRY * thread_p)
  * NOTE:
  */
 void
-logtb_i_am_not_sole_tran (void)
+logtb_i_am_not_sole_tran (THREAD_ENTRY * thread_p)
 {
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -806,7 +806,7 @@ logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 					  client_credential,
 					  current_state, wait_msecs,
 					  isolation);
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 
   if (tran_index != NULL_TRAN_INDEX)
     {
@@ -1215,7 +1215,7 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 	    }
 	}
 
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
     }
 }
 
@@ -1283,7 +1283,7 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 	{
 	  log_Gl.trantable.hint_free_index = tran_index;
 	}
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
 
       if (log_tran_index == tran_index)
 	{
@@ -1341,7 +1341,7 @@ logtb_free_tran_index_with_undo_lsa (THREAD_ENTRY * thread_p,
 	}
     }
 
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 }
 
 /*
@@ -1523,7 +1523,7 @@ xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp)
 	}
     }
 
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 
   fprintf (out_fp, "\n");
 }
@@ -1575,7 +1575,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       tdes->interrupt = false;
       TR_TABLE_CS_ENTER (thread_p);
       log_Gl.trantable.num_interrupts--;
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
     }
   tdes->modified_class_list = NULL;
 
@@ -1588,12 +1588,13 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
 
   save_heap_id = db_change_private_heap (thread_p, 0);
-  for (i = 0; i < tdes->num_exec_queries && i < MAX_NUM_EXEC_QUERY_HISTORY; i++)
+  for (i = 0; i < tdes->num_exec_queries && i < MAX_NUM_EXEC_QUERY_HISTORY;
+       i++)
     {
       if (tdes->bind_history[i].vals == NULL)
-        {
-          continue;
-        }
+	{
+	  continue;
+	}
 
       dbval = tdes->bind_history[i].vals;
       for (j = 0; j < tdes->bind_history[i].size; j++)
@@ -1720,7 +1721,7 @@ logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       log_Gl.hdr.next_trid = tdes->trid + 1;
     }
 
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 
   return tdes->trid;
 }
@@ -1768,7 +1769,7 @@ logtb_find_tran_index (THREAD_ENTRY * thread_p, TRANID trid)
 	      break;
 	    }
 	}
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
     }
 
   return tran_index;
@@ -1815,7 +1816,7 @@ logtb_find_tran_index_host_pid (THREAD_ENTRY * thread_p,
 	  break;
 	}
     }
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 
   return tran_index;
 }
@@ -1926,7 +1927,7 @@ logtb_count_clients_with_type (THREAD_ENTRY * thread_p, int client_type)
 	    }
 	}
     }
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
   return count;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -1955,7 +1956,7 @@ logtb_count_clients (THREAD_ENTRY * thread_p)
 	    }
 	}
     }
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
   return count;
 }
 
@@ -1987,7 +1988,7 @@ logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p)
 	    }
 	}
     }
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
   return count;
 }
 
@@ -2329,7 +2330,7 @@ error:
     }
 #endif
 
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
   return error_code;
 }
 
@@ -2638,7 +2639,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index,
 		  log_Gl.trantable.num_interrupts--;
 		}
 
-	      TR_TABLE_CS_EXIT ();
+	      TR_TABLE_CS_EXIT (thread_p);
 	    }
 
 	  if (set == true)
@@ -2705,7 +2706,7 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	{
 	  *continue_checking = false;
 	}
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
     }
   else if (interrupt == false && tdes->query_timeout > 0)
     {
@@ -2852,7 +2853,7 @@ logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
 
 	      tdes->suppress_replication = set;
 
-	      TR_TABLE_CS_EXIT ();
+	      TR_TABLE_CS_EXIT (thread_p);
 	    }
 	  return true;
 	}
@@ -2911,7 +2912,7 @@ logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid)
 	      break;
 	    }
 	}
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
     }
 
   return active;
@@ -2992,7 +2993,7 @@ logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid)
 	      break;
 	    }
 	}
-      TR_TABLE_CS_EXIT ();
+      TR_TABLE_CS_EXIT (thread_p);
     }
 
   return active;
@@ -3227,7 +3228,7 @@ logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p)
        + log_Gl.trantable.num_coord_loose_end_indices
        + log_Gl.trantable.num_prepared_loose_end_indices);
 
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 
   return r;
 }
@@ -3264,7 +3265,7 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p)
 	    }
 	}
     }
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 
   return max;
 }
@@ -3304,7 +3305,7 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
     {
       LSA_COPY (lsa, min_lsa);
     }
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -3337,7 +3338,7 @@ logtb_find_largest_lsa (THREAD_ENTRY * thread_p)
 	    }
 	}
     }
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 
   return max_lsa;
 }
@@ -3388,5 +3389,5 @@ logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p,
 	    }
 	}
     }
-  TR_TABLE_CS_EXIT ();
+  TR_TABLE_CS_EXIT (thread_p);
 }

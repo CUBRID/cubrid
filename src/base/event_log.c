@@ -195,7 +195,7 @@ event_log_start (THREAD_ENTRY * thread_p, const char *event_name)
       if (event_Fp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  csect_exit (CSECT_EVENT_LOG_FILE);
+	  csect_exit (thread_p, CSECT_EVENT_LOG_FILE);
 	  return NULL;
 	}
     }
@@ -207,7 +207,7 @@ event_log_start (THREAD_ENTRY * thread_p, const char *event_name)
       if (event_Fp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  csect_exit (CSECT_EVENT_LOG_FILE);
+	  csect_exit (thread_p, CSECT_EVENT_LOG_FILE);
 	  return NULL;
 	}
     }
@@ -251,7 +251,7 @@ event_log_end (THREAD_ENTRY * thread_p)
     }
 
   fflush (event_Fp);
-  csect_exit (CSECT_EVENT_LOG_FILE);
+  csect_exit (thread_p, CSECT_EVENT_LOG_FILE);
 }
 
 /*

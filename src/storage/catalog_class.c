@@ -730,7 +730,7 @@ catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p,
 
   oid_p = catcls_find_oid (class_oid_p);
 
-  csect_exit (CSECT_CT_OID_TABLE);
+  csect_exit (thread_p, CSECT_CT_OID_TABLE);
 
   if (oid_p == NULL)
     {
@@ -757,7 +757,7 @@ catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p,
 	      return ER_FAILED;
 	    }
 	  catcls_put_entry (entry_p);
-	  csect_exit (CSECT_CT_OID_TABLE);
+	  csect_exit (thread_p, CSECT_CT_OID_TABLE);
 	}
     }
 
@@ -4301,11 +4301,11 @@ catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p,
 
   if (catcls_remove_entry (class_oid_p) != NO_ERROR)
     {
-      csect_exit (CSECT_CT_OID_TABLE);
+      csect_exit (thread_p, CSECT_CT_OID_TABLE);
       goto error;
     }
 
-  csect_exit (CSECT_CT_OID_TABLE);
+  csect_exit (thread_p, CSECT_CT_OID_TABLE);
 
   heap_scancache_end_modify (thread_p, &scan);
   catalog_free_class_info (cls_info_p);

@@ -1757,7 +1757,7 @@ heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oid)
     {
       ret = heap_chnguess_decache (class_oid);
     }
-  csect_exit (CSECT_HEAP_CHNGUESS);
+  csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
 
   return ret;
 }
@@ -6865,7 +6865,7 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 				LOG_FIND_THREAD_TRAN_INDEX (thread_p),
 				or_chn (recdes));
 
-      csect_exit (CSECT_HEAP_CHNGUESS);
+      csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
     }
 
   return oid;
@@ -7844,7 +7844,7 @@ try_again:
       (void) heap_chnguess_put (thread_p, (OID *) oid,
 				LOG_FIND_THREAD_TRAN_INDEX (thread_p),
 				or_chn (recdes));
-      csect_exit (CSECT_HEAP_CHNGUESS);
+      csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
     }
 
   return oid;
@@ -7932,7 +7932,7 @@ heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * oid,
       heap_Guesschn->schema_change = true;
       ret = heap_chnguess_decache (oid);
 
-      csect_exit (CSECT_HEAP_CHNGUESS);
+      csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
     }
 
   return heap_delete_internal (thread_p, hfid, oid, scan_cache, true);
@@ -19108,7 +19108,7 @@ heap_chnguess_get (THREAD_ENTRY * thread_p, const OID * oid, int tran_index)
 	{
 	  if (heap_chnguess_realloc () != NO_ERROR)
 	    {
-	      csect_exit (CSECT_HEAP_CHNGUESS);
+	      csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
 	      return NULL_CHN;
 	    }
 	}
@@ -19125,7 +19125,7 @@ heap_chnguess_get (THREAD_ENTRY * thread_p, const OID * oid, int tran_index)
 	}
     }
 
-  csect_exit (CSECT_HEAP_CHNGUESS);
+  csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
 
   return chn;
 }
@@ -19164,7 +19164,7 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index,
     {
       if (heap_chnguess_realloc () != NO_ERROR)
 	{
-	  csect_exit (CSECT_HEAP_CHNGUESS);
+	  csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
 	  return NULL_CHN;
 	}
     }
@@ -19241,7 +19241,7 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index,
       chn = NULL_CHN;
     }
 
-  csect_exit (CSECT_HEAP_CHNGUESS);
+  csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
 
   return chn;
 }
@@ -19277,7 +19277,7 @@ heap_chnguess_clear (THREAD_ENTRY * thread_p, int tran_index)
 	}
     }
 
-  csect_exit (CSECT_HEAP_CHNGUESS);
+  csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
 
 }
 

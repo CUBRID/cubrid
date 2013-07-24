@@ -829,7 +829,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   /* Dismount any archive and checkpoint the database */
   logpb_decache_archive_info (thread_p);
 
-  LOG_CS_EXIT ();
+  LOG_CS_EXIT (thread_p);
   (void) logpb_checkpoint (thread_p);
   LOG_CS_ENTER (thread_p);
 

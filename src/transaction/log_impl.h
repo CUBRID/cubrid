@@ -67,15 +67,15 @@
         csect_demote((thread_p), CSECT_LOG, INF_WAIT)
 #define LOG_CS_PROMOTE(thread_p) \
         csect_promote((thread_p), CSECT_LOG, INF_WAIT)
-#define LOG_CS_EXIT() \
-        csect_exit(CSECT_LOG)
+#define LOG_CS_EXIT(thread_p) \
+        csect_exit((thread_p), CSECT_LOG)
 
 #define TR_TABLE_CS_ENTER(thread_p) \
         csect_enter((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
 #define TR_TABLE_CS_ENTER_READ_MODE(thread_p) \
         csect_enter_as_reader((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
-#define TR_TABLE_CS_EXIT() \
-        csect_exit(CSECT_TRAN_TABLE)
+#define TR_TABLE_CS_EXIT(thread_p) \
+        csect_exit((thread_p), CSECT_TRAN_TABLE)
 
 #define LOG_ARCHIVE_CS_ENTER(thread_p)                                       \
         csect_enter_critical_section (thread_p, &log_Gl.archive.archives_cs, \
@@ -84,23 +84,23 @@
         csect_enter_critical_section_as_reader (thread_p,                    \
                                                 &log_Gl.archive.archives_cs, \
                                                 INF_WAIT)
-#define LOG_ARCHIVE_CS_EXIT() \
-        csect_exit_critical_section (&log_Gl.archive.archives_cs)
+#define LOG_ARCHIVE_CS_EXIT(thread_p) \
+        csect_exit_critical_section (thread_p, &log_Gl.archive.archives_cs)
 
 #else /* SERVER_MODE */
 #define LOG_CS_ENTER(thread_p)
 #define LOG_CS_ENTER_READ_MODE(thread_p)
 #define LOG_CS_DEMOTE(thread_p)
 #define LOG_CS_PROMOTE(thread_p)
-#define LOG_CS_EXIT()
+#define LOG_CS_EXIT(thread_p)
 
 #define TR_TABLE_CS_ENTER(thread_p)
 #define TR_TABLE_CS_ENTER_READ_MODE(thread_p)
-#define TR_TABLE_CS_EXIT()
+#define TR_TABLE_CS_EXIT(thread_p)
 
 #define LOG_ARCHIVE_CS_ENTER(thread_p)
 #define LOG_ARCHIVE_CS_ENTER_READ_MODE(thread_p)
-#define LOG_ARCHIVE_CS_EXIT()
+#define LOG_ARCHIVE_CS_EXIT(thread_p)
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
@@ -2028,7 +2028,7 @@ extern int logtb_get_number_assigned_tran_indices (void);
 extern int logtb_get_number_of_total_tran_indices (void);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern bool logtb_am_i_sole_tran (THREAD_ENTRY * thread_p);
-extern void logtb_i_am_not_sole_tran (void);
+extern void logtb_i_am_not_sole_tran (THREAD_ENTRY * thread_p);
 #endif
 extern bool logtb_am_i_dba_client (THREAD_ENTRY * thread_p);
 extern int

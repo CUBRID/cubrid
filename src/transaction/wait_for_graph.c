@@ -331,7 +331,7 @@ wfg_alloc_nodes (THREAD_ENTRY * thread_p, const int num_trans)
   wfg_Nodes = temp_node_p;
 
 end:
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
   return error_code;
 }
 
@@ -409,7 +409,7 @@ wfg_free_nodes (THREAD_ENTRY * thread_p)
   /* free transaction group list */
   error_code = wfg_free_group_list ();
 
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
   return error_code;
 }
 
@@ -528,7 +528,7 @@ wfg_insert_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index,
   wfg_Total_edges += num_holders;
 
 end:
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
 
   return error_code;
 }
@@ -942,7 +942,7 @@ wfg_remove_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index,
     }
 
 end:
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
   return error_code;
 }
 
@@ -1372,7 +1372,7 @@ wfg_alloc_tran_group (THREAD_ENTRY * thread_p)
   wfg_Total_tran_groups++;
 
 end:
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
 
   return (wfg_Total_tran_groups - 1);
 }
@@ -1456,7 +1456,7 @@ wfg_insert_holder_tran_group (THREAD_ENTRY * thread_p,
 end:
 #endif /* WFG_DEBUG */
 
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
 
   return error_code;
 }
@@ -1545,7 +1545,7 @@ wfg_remove_holder_tran_group (THREAD_ENTRY * thread_p,
 end:
 #endif /* WFG_DEBUG */
 
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
 
   return error_code;
 }
@@ -1645,7 +1645,7 @@ wfg_insert_waiter_tran_group (THREAD_ENTRY * thread_p,
   wfg_Nodes[waiter_tran_index].args = args;
 
 end:
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
 
   return error_code;
 }
@@ -1736,7 +1736,7 @@ wfg_remove_waiter_tran_group (THREAD_ENTRY * thread_p,
 end:
 #endif /* WFG_DEBUG */
 
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
 
   return error_code;
 }
@@ -2008,7 +2008,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
 
   free_and_init (bottom_p);	/* free stack */
 
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
   return error_code;
 
 error:
@@ -2022,7 +2022,7 @@ error:
     {
       free_and_init (bottom_p);
     }
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
 
   return error_code;
 }
@@ -2448,7 +2448,7 @@ wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p,
     }
 
 end:
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
   return error_code;
 
 error:
@@ -2497,7 +2497,7 @@ wfg_is_waiting (THREAD_ENTRY * thread_p, const int tran_index)
   error_code = wfg_is_tran_group_waiting (thread_p, tran_index);
 
 end:
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
 
   return error_code;
 }
@@ -2536,7 +2536,7 @@ wfg_is_tran_group_waiting (THREAD_ENTRY * thread_p, const int tran_index)
     }
 
 end:
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
 
   return error_code;
 }
@@ -2587,7 +2587,7 @@ wfg_get_tran_entries (THREAD_ENTRY * thread_p, const int tran_index)
 	}
     }
 
-  csect_exit (CSECT_WFG);
+  csect_exit (thread_p, CSECT_WFG);
 
   return n;
 }

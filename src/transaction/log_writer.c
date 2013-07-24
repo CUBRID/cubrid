@@ -1402,7 +1402,7 @@ static bool logwr_unregister_writer_entry (LOGWR_ENTRY * wr_entry,
 static int logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area,
 				 int *logpg_used_size, int *status,
 				 LOGWR_ENTRY * entry, bool copy_from_file);
-static void logwr_cs_exit (bool * check_cs_own);
+static void logwr_cs_exit (THREAD_ENTRY * thread_p, bool * check_cs_own);
 static void logwr_write_end (LOGWR_INFO * writer_info,
 			     LOGWR_ENTRY * entry, int status);
 static bool logwr_is_delayed (LOGWR_ENTRY * entry);
@@ -1711,12 +1711,12 @@ error:
 }
 
 static void
-logwr_cs_exit (bool * check_cs_own)
+logwr_cs_exit (THREAD_ENTRY * thread_p, bool * check_cs_own)
 {
   if (*check_cs_own)
     {
       *check_cs_own = false;
-      LOG_CS_EXIT ();
+      LOG_CS_EXIT (thread_p);
     }
   return;
 }
@@ -1939,7 +1939,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 	      (entry->status != LOGWR_STATUS_DELAY
 	       || status != LOGWR_STATUS_DONE)))
 	{
-	  logwr_cs_exit (&check_cs_own);
+	  logwr_cs_exit (thread_p, &check_cs_own);
 	  logwr_write_end (writer_info, entry, status);
 	  need_cs_exit_after_send = false;
 	}
@@ -1966,7 +1966,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
       /* In case of sync mode, unregister the writer and wakeup LFT to finish */
       if (need_cs_exit_after_send)
 	{
-	  logwr_cs_exit (&check_cs_own);
+	  logwr_cs_exit (thread_p, &check_cs_own);
 	  logwr_write_end (writer_info, entry, status);
 	}
 
@@ -1986,7 +1986,7 @@ error:
 		"[tid:%ld] xlogwr_get_log_pages, error(%d)\n",
 		thread_p->tid, error_code);
 
-  logwr_cs_exit (&check_cs_own);
+  logwr_cs_exit (thread_p, &check_cs_own);
   logwr_write_end (writer_info, entry, status);
 
   db_private_free_and_init (thread_p, logpg_area);

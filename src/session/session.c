@@ -265,7 +265,7 @@ session_states_init (THREAD_ENTRY * thread_p)
 
   if (sessions_is_states_table_initialized ())
     {
-      csect_exit (CSECT_SESSION_STATE);
+      csect_exit (thread_p, CSECT_SESSION_STATE);
       return NO_ERROR;
     }
 
@@ -274,11 +274,11 @@ session_states_init (THREAD_ENTRY * thread_p)
 					sessions_compare);
   if (sessions.sessions_table == NULL)
     {
-      csect_exit (CSECT_SESSION_STATE);
+      csect_exit (thread_p, CSECT_SESSION_STATE);
       return ER_FAILED;
     }
 
-  csect_exit (CSECT_SESSION_STATE);
+  csect_exit (thread_p, CSECT_SESSION_STATE);
 
   return NO_ERROR;
 }
@@ -316,7 +316,7 @@ session_states_finalize (THREAD_ENTRY * thread_p)
       sessions.sessions_table = NULL;
     }
 
-  csect_exit (CSECT_SESSION_STATE);
+  csect_exit (thread_p, CSECT_SESSION_STATE);
 }
 
 /*
@@ -415,7 +415,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
   /* need to do this under the critical section because we cannot rely on the
    * session_p pointer after we left it */
   session_set_conn_entry_data (thread_p, session_p);
-  csect_exit (CSECT_SESSION_STATE);
+  csect_exit (thread_p, CSECT_SESSION_STATE);
 
   return NO_ERROR;
 
@@ -548,14 +548,14 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
   session_p = (SESSION_STATE *) mht_get (sessions.sessions_table, &key->id);
   if (session_p == NULL || session_p->related_socket != key->fd)
     {
-      csect_exit (CSECT_SESSION_STATE);
+      csect_exit (thread_p, CSECT_SESSION_STATE);
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_SES_SESSION_EXPIRED;
     }
 
   error = mht_rem (sessions.sessions_table, &key->id,
 		   session_free_session, NULL);
-  csect_exit (CSECT_SESSION_STATE);
+  csect_exit (thread_p, CSECT_SESSION_STATE);
 
   return error;
 }
@@ -593,7 +593,7 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
   session_p = (SESSION_STATE *) mht_get (sessions.sessions_table, &key->id);
   if (session_p == NULL)
     {
-      csect_exit (CSECT_SESSION_STATE);
+      csect_exit (thread_p, CSECT_SESSION_STATE);
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_SES_SESSION_EXPIRED;
     }
@@ -601,13 +601,13 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
   /* update the timeout */
   if (gettimeofday (&(session_p->session_timeout), NULL) != 0)
     {
-      csect_exit (CSECT_SESSION_STATE);
+      csect_exit (thread_p, CSECT_SESSION_STATE);
       return ER_FAILED;
     }
   /* need to do this under the critical section because we cannot rely on the
    * session_p pointer after we left it */
   session_set_conn_entry_data (thread_p, session_p);
-  csect_exit (CSECT_SESSION_STATE);
+  csect_exit (thread_p, CSECT_SESSION_STATE);
   return error;
 }
 
@@ -633,14 +633,14 @@ session_set_session_key (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
   session_p = (SESSION_STATE *) mht_get (sessions.sessions_table, &key->id);
   if (session_p == NULL)
     {
-      csect_exit (CSECT_SESSION_STATE);
+      csect_exit (thread_p, CSECT_SESSION_STATE);
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_SES_SESSION_EXPIRED;
     }
 
   session_p->related_socket = key->fd;
 
-  csect_exit (CSECT_SESSION_STATE);
+  csect_exit (thread_p, CSECT_SESSION_STATE);
 
   return error;
 }
@@ -668,7 +668,7 @@ session_remove_expired_sessions (struct timeval *timeout)
   err = mht_map (sessions.sessions_table, session_check_timeout,
 		 &timeout_info);
 
-  csect_exit (CSECT_SESSION_STATE);
+  csect_exit (NULL, CSECT_SESSION_STATE);
 
   if (timeout_info.session_ids != NULL)
     {
@@ -1953,7 +1953,7 @@ session_states_dump (THREAD_ENTRY * thread_p)
       fflush (stdout);
     }
 
-  csect_exit (CSECT_SESSION_STATE);
+  csect_exit (thread_p, CSECT_SESSION_STATE);
 }
 
 /*
@@ -2489,12 +2489,12 @@ session_get_session_state (THREAD_ENTRY * thread_p)
 
   if (!sessions_is_states_table_initialized ())
     {
-      csect_exit (CSECT_SESSION_STATE);
+      csect_exit (thread_p, CSECT_SESSION_STATE);
       return NULL;
     }
 
   state_p = mht_get (sessions.sessions_table, &key.id);
-  csect_exit (CSECT_SESSION_STATE);
+  csect_exit (thread_p, CSECT_SESSION_STATE);
 
   if (state_p == NULL || state_p->related_socket != key.fd)
     {

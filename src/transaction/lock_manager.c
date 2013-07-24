@@ -1160,13 +1160,13 @@ lock_alloc_scanid_bit (THREAD_ENTRY * thread_p)
     }
   if (i == lock_Max_scanid_bit)
     {
-      csect_exit (CSECT_SCANID_BITMAP);
+      csect_exit (thread_p, CSECT_SCANID_BITMAP);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_ENOUGH_SCANID_BIT, 1,
 	      lock_Max_scanid_bit + 1);
       return ER_NOT_ENOUGH_SCANID_BIT;
     }
 
-  csect_exit (CSECT_SCANID_BITMAP);
+  csect_exit (thread_p, CSECT_SCANID_BITMAP);
 
   return i;
 }
@@ -1194,7 +1194,7 @@ lock_free_scanid_bit (THREAD_ENTRY * thread_p, int idx)
 
   RESET_SCANID_BIT (scanid_bit, idx);
 
-  csect_exit (CSECT_SCANID_BITMAP);
+  csect_exit (thread_p, CSECT_SCANID_BITMAP);
 }
 
 #endif /* SERVER_MODE */

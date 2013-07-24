@@ -589,14 +589,14 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p)
     }
   else if (qmgr_Query_table.num_alloced_array >= QMGR_QUERY_ENTRY_ARRAY_SIZE)
     {
-      csect_exit (CSECT_QPROC_QUERY_TABLE);
+      csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
       return NULL;
     }
   else
     {
       if (qmgr_allocate_query_entry_array () == NULL)
 	{
-	  csect_exit (CSECT_QPROC_QUERY_TABLE);
+	  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 	  return NULL;
 	}
 
@@ -612,7 +612,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p)
     }
   query_p->query_id = ++qmgr_Query_id_count;
 
-  csect_exit (CSECT_QPROC_QUERY_TABLE);
+  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 
   /* initialize per query temp file VFID structure */
   query_p->next = NULL;
@@ -670,7 +670,7 @@ qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p)
   qmgr_Query_table.free_query_entry_list_p = query_p;
   qmgr_Query_table.free_query_entry_count++;
 
-  csect_exit (CSECT_QPROC_QUERY_TABLE);
+  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 }
 
 /*
@@ -714,7 +714,7 @@ qmgr_free_query_entry_list (THREAD_ENTRY * thread_p,
       qmgr_Query_table.free_query_entry_count++;
     }
 
-  csect_exit (CSECT_QPROC_QUERY_TABLE);
+  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 }
 
 /*
@@ -950,7 +950,7 @@ qmgr_allocate_tran_entries (THREAD_ENTRY * thread_p, int count)
 
       if (qmgr_Query_table.tran_entries_p == NULL)
 	{
-	  csect_exit (CSECT_QPROC_QUERY_TABLE);
+	  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 	  return ER_FAILED;
 	}
 
@@ -964,14 +964,14 @@ qmgr_allocate_tran_entries (THREAD_ENTRY * thread_p, int count)
 	  tran_entry_p++;
 	}
 
-      csect_exit (CSECT_QPROC_QUERY_TABLE);
+      csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 
       return NO_ERROR;
     }
 
   if (count <= qmgr_Query_table.num_trans)
     {
-      csect_exit (CSECT_QPROC_QUERY_TABLE);
+      csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
       return NO_ERROR;
     }
 
@@ -980,7 +980,7 @@ qmgr_allocate_tran_entries (THREAD_ENTRY * thread_p, int count)
 				 count * sizeof (QMGR_TRAN_ENTRY));
   if (qmgr_Query_table.tran_entries_p == NULL)
     {
-      csect_exit (CSECT_QPROC_QUERY_TABLE);
+      csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
       return ER_FAILED;
     }
 
@@ -995,7 +995,7 @@ qmgr_allocate_tran_entries (THREAD_ENTRY * thread_p, int count)
 
   qmgr_Query_table.num_trans = count;
 
-  csect_exit (CSECT_QPROC_QUERY_TABLE);
+  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 
   return NO_ERROR;
 }
@@ -1209,7 +1209,7 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
       if (qmgr_allocate_tran_entries (thread_p, total_tran_indices) !=
 	  NO_ERROR)
 	{
-	  csect_exit (CSECT_QPROC_QUERY_TABLE);
+	  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 	  return ER_FAILED;
 	}
     }
@@ -1221,7 +1221,7 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
 				      QMGR_QUERY_ENTRY_ARRAY_SIZE);
       if (qmgr_Query_table.query_entry_array_p == NULL)
 	{
-	  csect_exit (CSECT_QPROC_QUERY_TABLE);
+	  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 	  return ER_FAILED;
 	}
 
@@ -1229,7 +1229,7 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
 
       if (qmgr_allocate_query_entry_array () == NULL)
 	{
-	  csect_exit (CSECT_QPROC_QUERY_TABLE);
+	  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 	  return ER_FAILED;
 	}
     }
@@ -1253,7 +1253,7 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
 				  [TEMP_FILE_MEMBUF_KEY_BUFFER],
 				  TEMP_FILE_MEMBUF_KEY_BUFFER);
 
-  csect_exit (CSECT_QPROC_QUERY_TABLE);
+  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 
   qmgr_Query_id_count = 0;
   qfile_initialize ();
@@ -1328,7 +1328,7 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
     {
       qmgr_finalize_temp_file_list (&qmgr_Query_table.temp_file_list[i]);
     }
-  csect_exit (CSECT_QPROC_QUERY_TABLE);
+  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 }
 
 /*
@@ -3364,7 +3364,7 @@ qmgr_allocate_oid_block (THREAD_ENTRY * thread_p)
       oid_block_p = (OID_BLOCK_LIST *) malloc (sizeof (OID_BLOCK_LIST));
       if (oid_block_p == NULL)
 	{
-	  csect_exit (CSECT_QPROC_QUERY_TABLE);
+	  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID_BLOCK_LIST));
 	  return NULL;
@@ -3374,7 +3374,7 @@ qmgr_allocate_oid_block (THREAD_ENTRY * thread_p)
 
   oid_block_p->next = NULL;
   oid_block_p->last_oid_idx = 0;
-  csect_exit (CSECT_QPROC_QUERY_TABLE);
+  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 
   return oid_block_p;
 }
@@ -3403,7 +3403,7 @@ qmgr_free_oid_block (THREAD_ENTRY * thread_p, OID_BLOCK_LIST * oid_block_p)
   p->next = qmgr_Query_table.free_oid_block_list_p;
   qmgr_Query_table.free_oid_block_list_p = oid_block_p;
 
-  csect_exit (CSECT_QPROC_QUERY_TABLE);
+  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 }
 
 /*
