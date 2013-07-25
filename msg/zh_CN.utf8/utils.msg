@@ -233,7 +233,7 @@ cubrid 管理工具，版本 %s\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: 在单机模式下 -t 选项将被忽略.\n
-31 ERROR: Destination-path does not exist or is not a directory.\n
+31 错误: 目标路径不存在或不是目录.\n
 60 \
 backupdb: 备份一个数据库.\n\
 usage: %s backupdb [选项] 数据库名\n\
@@ -283,7 +283,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 未知的命令 '%s'\n
 43 无法打开输出文件 '%s'\n
 44 无法移除已存在的数据库.\n
-45 Creating database with %1$s size using locale %2$s. The total amount of disk space needed is %3$s.\n
+45 创建数据库大小为 %1$s，使用的缺省语言区域是 %2$s。总共需要的磁盘空间大小为 %3$s.\n
 46 无法创建数据库.\n
 47 用户文件 '%s' 存在问题\n
 48 给定值 '%s', %s 超过了范围. 选择大小在 %s 和 %s之间的数.\n
@@ -667,7 +667,7 @@ usage: %s spacedb [选项] 数据库名\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                设置显示单元 (页, M, G, T, 人类可读);默认 : 人类可读\n\
   -s, --summarize              为每个设定的卷只显示一个总结\n\
-  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
+  -p, --purpose                显示每个卷上的每个 purpose(data/index/temp) 已使用的大小\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
@@ -1021,7 +1021,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 24 %4d%-10s %14s %14s %15d %17s\n
 25 没有事务\n
 26 tranlist只能被DBA或DBA组成员来执行.\n
-27 sort-key column number(%d) is invalid.\n
+27 sort-key 列序号 (%d) 不可用.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1039,5 +1039,5 @@ usage: %s tranlist [OPTION] 数据库名\n\
   -u, --user=ID                访问数据库的用户ID; default: DBA user\n\
   -p, --password=PASS          用户密码; default: none\n\
   -s, --summary                打印事务的汇总信息\n\
-      --sort-key=COLUMN_NUMBER column number to be sorted\n\
-      --reverse                reverse the sort result\n
+      --sort-key=COLUMN_NUMBER 列序号将被排序\n\
+      --reverse                反转排序结果\n

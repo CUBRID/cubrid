@@ -233,7 +233,7 @@ Mevcut komut:\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 UYARI: -t seçeneği stand-alone modu yürütülmesine göz ardı edilir.\n
-31 ERROR: Destination-path does not exist or is not a directory.\n
+31 HATA: Hedef-yolu yok veya bir dizin değil.\n
 60 \
 backupdb: Bir veritabanı yedeklemesi.\n\
 kullanım: %s backupdb [SEÇENEK] veritabanı-adı\n\
@@ -283,7 +283,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Bilinmeyen komut '%s'\n
 43 Çıktı dosyası '%s' açılamadı\n
 44 Varolan veritabanı kaldırılamadı\n
-45 Creating database with %1$s size using locale %2$s. The total amount of disk space needed is %3$s.\n
+45 Varsayılan yerel %2$s kullanarak %1$s boyutu ile veritabanı oluşturmak. Gerekli disk alanın toplam miktarı ise %3$s.\n
 46 Veritabanı oluşturulamadı.\n
 47 '%s' Kullanıcı dosya ile ilgili sorun\n
 48 Verilen '%s', %s kapsam dışı. %s ve %s arasında bir boyut seçin.\n
@@ -292,7 +292,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 createdb: Bir veritabanı oluştur.\n\
 usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
-database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
+Veritabanı-yerel biçimi ise <language>.<charset>; örnekler : en_US.iso88591, ko_KR.utf8\n\
 geçerli seçenekler:\n\
       --db-volume-size=SIZE           ilk bilgi yoğunluğunun büyüklüğün\
                                       varsayılan: cubrid.conf içinde db_volume_size\n\
@@ -667,7 +667,7 @@ geçerli seçenekler:\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                gösterge ünitesi (sayfa, mega, giga, tera, insanların okuyabileceği); varsayılan: H\n\
   -s, --summarize              her birim bir amaç için sadece özet görüntüler\n\
-  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
+  -p, --purpose                Her birimin her amacı (data/index/temp) kullanılan boyutunu görüntülemek\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
@@ -1021,7 +1021,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 24 %4d%-10s %14s %14s %15d %17s\n
 25 Geçişler yok\n
 26 tranlist sadece DBA veya bir DBA grup üyesi tarafından uygulanabilir.\n
-27 sort-key column number(%d) is invalid.\n
+27 sort-key sütun numarası (%d) geçersiz.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1039,5 +1039,5 @@ geçerli seçenekler:\n\
   -u, --user=ID                veri tabanı erişimi için kullanıcı kimliği; default: DBA user\n\
   -p, --password=PASS          kullanıcı şifresi; default: none\n\
   -s, --summary                geçişin sonuçlandırılmış bilgisini yazdır\n\
-      --sort-key=COLUMN_NUMBER column number to be sorted\n\
-      --reverse                reverse the sort result\n
+      --sort-key=COLUMN_NUMBER Sıralanacak sütun numarası\n\
+      --reverse                Sıralama sonucu ters\n

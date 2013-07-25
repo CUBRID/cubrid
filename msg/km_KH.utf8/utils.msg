@@ -233,7 +233,7 @@ commandដែលមាន:\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: ជម្រើស -t មិនស្គាល់ក្នុងប្រតិបត្តិការ stand-alone mode។\n
-31 ERROR: Destination-path does not exist or is not a directory.\n
+31 ៣១ កំហុសៈ ទីគោលដៅអត់មានទេឬមិនឋិតនៅក្នុងមាតិកាទេ.\n
 60 \
 backupdb: ថតចម្លងដែលតាបេសបន្ថែម។\n\
 usage: %s backupdb [OPTION] ឈ្មោះដែលតាបេស\n\
@@ -283,7 +283,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 commandដែលមិនស្គាល់ `%s'\n
 43 មិនអាចបើក output file `%s'\n
 44 មិនអាចផ្លាស់ប្តូរទីតាំងដែលតាបេសដែលមាន។\n
-45 Creating database with %1$s size using locale %2$s. The total amount of disk space needed is %3$s.\n
+45 បង្កើតទិន្នន័យដែលមានទំហំ %1$s ហើយរក្សាទុកនៅកន្លែង %2$s. ទំហំថាសរឹងទាំងអស់ត្រូវការ %3$s.\n
 46 មិនអាំចបង្កើតដែលតាបេស\n
 47 បញ្ហាជាមួយ user file `%s'\n
 48 ទំហំ '%s', %s ហួសកំណត់. សូមជ្រើសរើសទំហំរវាង %s និង %s.\n
@@ -292,7 +292,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 createdb: បង្កើតដែលតាបេស\n\
 usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
-database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
+ទ្រង់ទា្រយទិន្នន័យគឺជា <language>.<charset>; ឧទាហរណ៍ៈ  en_US.iso88591, ko_KR.utf8\n\
 ជម្រើសសុពល:\n\
       --db-volume-size=SIZE           ទំហំនៃvolumeពត៌មានទីមួយ\n\
                                       default: db_volume_size ក្នុង cubrid.conf\n\
@@ -667,7 +667,7 @@ usage: %s spacedb [OPTION] ឈ្មោះដែលតាបេស \n\
       --size-unit={PAGE|M|G|T|H}\n\
                                set the display unit (page, mega, giga, tera, human readable); default: H\n\
   -s, --summarize              បង្ហាញតែសេចក្តីសង្ខេបមួយសម្រាប់បំណង volumeនីមួយៗ \n\
-  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
+  -p, --purpose                បង្ហាញនូវបំណងនៃទំហំដែលបានប្រើប្រាស់រួចហើយ(data/index/temp) ក្នុងវ៉ូលូមនិមួយៗ\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
@@ -1021,7 +1021,7 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 24 %4d%-10s %14s %14s %15d %17s\n
 25 អត់មានការជួញដូរទេ\n
 26 tranlist អាចអនុវត្តតាមតែ DBA ឬសមាជិកក្រុម DBA.\n
-27 sort-key column number(%d) is invalid.\n
+27 sort-key ចំនួនវ៉ូលូម(%d) ត្រូវចាត់ទុកថា មោឃៈ.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
@@ -1039,5 +1039,5 @@ usage: %s tranlist [OPTION] database-name\n\
   -u, --user=ID                ID របស់អ្នកប្រើប្រាស់សំរាប់ឆែកឆេរទិន្នន័យ; default: DBA user\n\
   -p, --password=PASS          លេខសំងាត់នៃអ្នកប្រើប្រាស់; default: none\n\
   -s, --summary                ចេញក្រដាស(បោះពុម្ព)ព័ត៌មានអំពីការជួញដូរ\n\
-      --sort-key=COLUMN_NUMBER column number to be sorted\n\
-      --reverse                reverse the sort result\n
+      --sort-key=COLUMN_NUMBER ចំនួនវ៉ូលូមត្រូវដាក់ទៅតាមប្រភេទ\n\
+      --reverse                ដាក់បញ្ច្រាសលទ្ធផលតាមប្រភេទ\n

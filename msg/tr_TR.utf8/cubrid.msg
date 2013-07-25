@@ -1178,26 +1178,26 @@ $ LOADDB
 1109 Bölüm tanımlama için geçersiz değer.
 1110 Btree yaprak sayfasında yetersiz alan. (key len: %d)\n%s
 1111 Sonuç değeri kısaltıldı, çünkü hassasiyet (%1$d) uzunluğundan az(%2$d).
-1112 A character could not be converted from '%1$s' to '%2$s'.
-1113 Element index out of range.
-1114 Argument '%s' is out of range.
-1115 Started to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d).
-1116 Finished to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
-1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
-1118 The argument of "%1$s" can not be coerced to desired domain "%2$s".
-1119 Internal error: Page id %1$d is allocated according to the allocation map of volume "%2$s", but it does not belong to any file. 
-1120 Internal error: Page id %1$d of volume "%2$s" is currently being used, but it is not allocated according to the allocation map of volume.
-1121 NOT NULL constraints do not allow NULL value.
-1122 Time out in receiving data.
-1123 pthread_cond_timedwait() timed out. 
-1124 Query execution error. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
-1125 Create the overflow key file. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1126 Create a new overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1127 Delete an empty overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
-1129 Log recovery is finished.
-1130 Transaction is aborted because transaction lock counts exceeds %1$d.
-1131 Internal error: The page %1$d of volume "%2$s" may be corrupted.\n%3$s
+1112 Bir karakter '%1$s' dan '%2$s' a dönüştürülemedi.
+1113 Aralık dışındaki eleman indeksi.
+1114 Argüman '%s' aralık dışında.
+1115 Güncelleştirme istatistikleri başladı (class "%1$s", oid : %2$d|%3$d|%4$d).
+1116 Güncelleştirme istatistikleri tamamlandı(class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
+1117 Özellik "%1$s" değiştiremezsiniz. CUBRID bir SHARED ve tersi gibi, nitelik değiştiremezsiniz.
+1118 "%1$s" argümanı istenen etki alanı "%2$s" zorlanamadığında edilemez.
+1119 Dahili hata: Page id %1$d hacmi "%2$s" tahsisi haritasına göre tahsis edilir, ancak herhangi bir dosyaya ait değildir.
+1120 Dahili hata: Page id %1$d hacmi "%2$s" ise şu anda kullanılmaktadır, ama ses tahsisi haritasına göre tahsis değildir.
+1121 NOT NULL kısıtlamaları NULL değeri izin vermez.
+1122 Veri alma zamanı.
+1123 pthread_cond_timedwait() zaman aşımına uğradı.
+1124 Sorgu yürütme hatası. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
+1125 Taşma anahtar dosyası oluştur. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1126 Yeni bir taşma sayfası oluştur. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1127 Boş bir taşma sayfayı sil. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1128 Oturum kurtarma başlatılır. Uygulanacak günlük kayıt sayısı: %1$lld. Log page: %2$lld ~ %3$lld.
+1129 Oturum kurtarma bitti.
+1130 İşlem kilit sayıları %1$d aştığı için işlem iptal edilir.
+1131 Dahili hata: Sayfa %1$d hacmi "%2$s"de bozulabilir.\n%3$s
 1132 Encryption library failure: %s
 1133 Son Hata
 
@@ -1621,11 +1621,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 Geçersiz fonksiyon indeks ifadesi.
 271 %s sorgulama spesifikasyonu kendisine dönüşlü bir referansa sahiptir.
 272 %s ifadesi bağlanma koşulunda izin verilmemiştir. 
-273 ORDER BY is not allowed in function MEDIAN.
-274 The arguments of the function '%s' must be constant.
-275 Function '%s' must have ORDER BY clause.
-276 For function '%s', the number of arguments does not match the number of ORDER BY columns.
-277 For function '%s', the ORDER BY clause is invalid.
+273 ORDER BY fonksiyon izin verilmez MEDIAN.
+274 Fonksiyon argümanları '%s' sabit olmalıdır.
+275 Fonksiyon '%s' ORDER BY yan tümcesi olmalıdır.
+276 Fonksiyon '%s' için, argüman sayısı sayısı sütun sayısı ORDER BY ile eşleşmiyor.
+277 Fonksiyon '%s', ORDER BY yan tümcesinde geçersiz.
 278 Only one table within a view can be updated.
 279 Multiple insert targets not allowed.
 280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.

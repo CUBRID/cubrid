@@ -59,8 +59,8 @@ Ek bilgi için, adresine bakın http://www.cubrid.com\n
 51 CUBRID SQL Yorumlayıcı
 52 Güncellemeler bulunmaktadır. İşlemek istiyormusunuz ? (`E' or `H') 
 53 Giriş `E' İşlemek, `H' İptal etmk. 
-54 Committed.
-55 Rolled back.
+54 İşlenen.
+55 Geri alındı.
 56 Komut buffera kaydedildi.
 57 Komut buffer içinden dosya okundu.
 58 Komut buffer yazıyıcıya gönderildi.

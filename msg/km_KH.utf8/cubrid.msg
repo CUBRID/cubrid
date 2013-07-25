@@ -1178,26 +1178,26 @@ $ LOADDB
 1109 តម្លៃឥតបានការសំរាប់កំណត់ការបែងចែក.
 1110 នៅក្នុងទំព័រមាតិកាអត់មានថាសទំនេរគ្រប់គ្រាន់ទេ. (key len: %d)\n%s
 1111 តម្លៃនៃលទ្ធផលត្រូវកាត់បន្ថយ, ពិព្រោះភាពទៀងទាត់អំពី (%1$d) ត្រូវតិចជាងប្រវែងរបស់ខ្លួនដែលមាន(%2$d).
-1112 A character could not be converted from '%1$s' to '%2$s'.
-1113 Element index out of range.
-1114 Argument '%s' is out of range.
-1115 Started to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d).
-1116 Finished to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
-1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
-1118 The argument of "%1$s" can not be coerced to desired domain "%2$s".
-1119 Internal error: Page id %1$d is allocated according to the allocation map of volume "%2$s", but it does not belong to any file. 
-1120 Internal error: Page id %1$d of volume "%2$s" is currently being used, but it is not allocated according to the allocation map of volume.
-1121 NOT NULL constraints do not allow NULL value.
-1122 Time out in receiving data.
-1123 pthread_cond_timedwait() timed out. 
-1124 Query execution error. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
-1125 Create the overflow key file. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1126 Create a new overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1127 Delete an empty overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
-1129 Log recovery is finished.
-1130 Transaction is aborted because transaction lock counts exceeds %1$d.
-1131 Internal error: The page %1$d of volume "%2$s" may be corrupted.\n%3$s
+1112 លក្ខណៈតួអក្សរ មិនអាចបម្លែងពី '%1$s' ទៅ '%2$s'.
+1113 តារាងរៀងតាមអក្សរមិនឋិតនៅក្នុងក្របខ័ណ្ឌទេ.
+1114 ហេតុផល(អាគុយម៉ង់) '%s' មិនឋិតនៅក្នុងក្របខ័ណ្ឌទេ.
+1115 ចាប់ផ្តើមប្តូរថ្មីនូវទិន្នន័យ (class "%1$s", oid : %2$d|%3$d|%4$d).
+1116 ការប្តូរថ្មីនូវទិន្នន័យចប់ហើយ (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
+1117 មិនអាចកែប្រែគុណលក្ខណៈ "%1$s". មិនអាចផ្លាស់ប្តូរគុណលក្ខណៈដូច SHARED និងផ្ទុយមកវិញ.
+1118 ហេតុផល(អាគុយម៉ង់) នៃ "%1$s" មិនអាចទៅដល់ទីកន្លែងដែលអ្នកចង់បាន "%2$s".
+1119 កំហុសផ្ទៃក្នុងៈ Page id %1$d ត្រូវបម្រុងទុកយោងតាមការបម្រុងទុកផែនទីនៃ វ៉ូលូម "%2$s", ប៉ុន្តែវាមិនមែនជាឯកសារណាមួយទេ.
+1120 កំហុសផ្ទៃក្នុងៈ Page id %1$d  នៃ វ៉ូលូម  "%2$s" កំពុងដំណើរការ.
+1121 NOT NULL កំរិតទាំងនេះមិនអាចប្រើប្រាស់តម្លៃ NULLនេះទេ.
+1122 ការទទួលទិន្នន័យអស់ពេល.
+1123 pthread_cond_timedwait() អស់ពេល. 
+1124 ការឆែកឆេរនិងសួរសំណួរខុស. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
+1125 បង្កើតឯកសារសំខាន់ដែលហៀរចេញ. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1126 បង្កើតទំព័រថ្មីដែលហៀរចេញ. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1127 លុបចោលទំព័រទទេដែលហៀរចេញ. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1128 ការសង្គ្រោះឯកសារអំពីកំណត់ហេតុបានចាប់ផ្តើមហើយ ការកត់ត្រាកំណត់ហេតុត្រូវបានប្រព្រឹត្តទៅ: %1$lld. Log page: %2$lld ~ %3$lld.
+1129 ការសង្គ្រោះឯកសារអំពីកំណត់ហេតុត្រូវចប់ហើយ.
+1130 កិច្ចការត្រូវបោះបង់ដោយសារតែកិច្ចការនេះហួសកំណត់ ត្រូវចាក់សោរ %1$d.
+1131 កំហុសផ្ទៃក្នុងៈ ទំព័រនេះ: %1$d នៃ វ៉ូលូម "%2$s" ប្រហែលឯកសារខូច.\n%3$s
 1132 Encryption library failure: %s
 1133 Last Error
 
@@ -1621,11 +1621,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 ឃ្លាមុខងារអំពីតារាងរៀងតាមអក្សរត្រូវចាត់ទុកជាមោឃៈ
 271 បែបបទសាកសួរអំពី %s អាចកើតមានឡើងចំពោះការដកស្រង់យកមកប្រើ.
 272 %s ឃ្លានេះមិនអាចសរសេរក្នុងករណីរួម.
-273 ORDER BY is not allowed in function MEDIAN.
-274 The arguments of the function '%s' must be constant.
-275 Function '%s' must have ORDER BY clause.
-276 For function '%s', the number of arguments does not match the number of ORDER BY columns.
-277 For function '%s', the ORDER BY clause is invalid.
+273 ORDER BY មិនអាចប្រើប្រាស់នៅក្នុងអនុគមន៍(មុខងារ)នេះទេ MEDIAN.
+274 មុខងារ(អនុគមន៍)អំពីហេតុផល(អាគុយម៉ង់) '%s' ត្រូវឋិតនៅក្នុងស្ថានភាពនឹងនជារៀងរហូត.
+275 មុខងារ(អនុគមន៍) '%s' ត្រូវមាន ORDER BY សំណើ(កិច្ចព្រមព្រៀង).
+276 សំរាប់មុខងារ(អនុគមន៍)'%s',  ចំនួនហេតុផល(អាគុយម៉ង់)មិនសមស្របទៅចំនួននៃ ORDER BY វ៉ូលូម ទេ.
+277 សំរាប់មុខងារ(អនុគមន៍)'%s', ORDER នេះ BYសំណើ(កិច្ចព្រមព្រៀង)ត្រូវចាត់ទុកជាមោឃៈ.
 278 Only one table within a view can be updated.
 279 Multiple insert targets not allowed.
 280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.

@@ -59,8 +59,8 @@ tùy chọn có thể dùng:\n\
 51 CUBRID SQL Bộ diễn dịch
 52 Đã có những cập nhật. Bạn có muốn cam kết không? (`Y' hoặc `N')
 53 Nhập `Y' để cam kết, `N' để bỏ dở.
-54 Committed.
-55 Rolled back.
+54 Tận tâm.
+55 Quay trở lại.
 56 Bộ đệm lệnh đã được lưu lại.
 57 Tệp tin đã được đọc vào bộ đệm lệnh.
 58 Bộ đệm lệnh đã được gửi đến máy in.

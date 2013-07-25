@@ -1178,26 +1178,26 @@ $ LOADDB
 1109 Giá trị cho định nghĩa phân vùng vô hiệu.
 1110 Không đủ bộ nhớ trống ở trang lá b-tree. (key len: %d)\n%s
 1111 Giá trị kết quả bị cắt cụt, do độ nét(%1$d) nhỏ hơn chiều dài của nó(%2$d).
-1112 A character could not be converted from '%1$s' to '%2$s'.
-1113 Element index out of range.
-1114 Argument '%s' is out of range.
-1115 Started to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d).
-1116 Finished to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
-1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
-1118 The argument of "%1$s" can not be coerced to desired domain "%2$s".
-1119 Internal error: Page id %1$d is allocated according to the allocation map of volume "%2$s", but it does not belong to any file. 
-1120 Internal error: Page id %1$d of volume "%2$s" is currently being used, but it is not allocated according to the allocation map of volume.
-1121 NOT NULL constraints do not allow NULL value.
-1122 Time out in receiving data.
-1123 pthread_cond_timedwait() timed out. 
-1124 Query execution error. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
-1125 Create the overflow key file. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1126 Create a new overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1127 Delete an empty overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
-1129 Log recovery is finished.
-1130 Transaction is aborted because transaction lock counts exceeds %1$d.
-1131 Internal error: The page %1$d of volume "%2$s" may be corrupted.\n%3$s
+1112 Một chữ số dữ liệu không thể chuyển đổi từ '%1$s' sang '%2$s'.
+1113 Yếu tố chỉ dẫn vượt quá phạm vi.
+1114 Đối số '%s' vượt quá phạm vi.
+1115 Bắt đầu cập nhật số liệu thống kê (class "%1$s", oid : %2$d|%3$d|%4$d).
+1116 Kết thúc cập nhập số liệu thống kê (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
+1117 Không thể thay đổi thuộc tính "%1$s". CURBID Không thể thay đổi thuộc tính giống như SHARED và ngược lại.
+1118 Những đối số về "%1$s" không thể bị ép buộc để yêu cầu miền "%2$s".
+1119 Lỗi nội bộ: Page id %1$d được chỉ định theo bản đồ phân bổ dung lượng "%2$s", nhưng nó không thuộc bất kỳ tập tin nào.
+1120 Lỗi nội bộ: Page id %1$d của bộ đĩa "%2$s" đang được sử dụng, nhưng không được chỉ định theo bản đồ phân bổ dung lượng.
+1121 NOT NULL hạn chế không cho phép NULL giá trị.
+1122 Hết thời gian nhận dữ liệu.
+1123 pthread_cond_timedwait() Thời gian đã hết.
+1124 Lỗi thực hiện truy vấn. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
+1125 Tạo tập tin giá trị quan trọng. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1126 Tạo một trang giá trị quan trọng. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1127 Xóa trang giá trị trống. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1128 Bắt đầu phục hồi đăng nhập. Số lần đăng nhập được chấp nhận: %1$lld. Log page: %2$lld ~ %3$lld.
+1129 Kết thúc phục hồi đăng nhập.
+1130 Giao dịch bị hủy bỏ do vượt quá lượng giao dịch %1$d.
+1131 Lỗi nội bộ: Trang %1$d của bộ đĩa "%2$s" có thể bị hỏng.\n%3$s
 1132 Encryption library failure: %s
 1133 Lỗi sau cùng
 
@@ -1621,11 +1621,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 Biểu thức chỉ số chức năng vô hiệu.
 271 Thuyết minh câu hỏi %s tự tham chiếu tới câu hỏi.
 272 %s biểu thức không được cho phép trong điều kiện chung.
-273 ORDER BY is not allowed in function MEDIAN.
-274 The arguments of the function '%s' must be constant.
-275 Function '%s' must have ORDER BY clause.
-276 For function '%s', the number of arguments does not match the number of ORDER BY columns.
-277 For function '%s', the ORDER BY clause is invalid.
+273 ORDER BY không được phép trong hàm MEDIAN.
+274 Các đối số của hàm '%s' phải là không đổi.
+275 Hàm '%s' phải có mệnh đề ORDER BY.
+276 Đối với hàm '%s', số lượng các đối số không phù hợp với số cột ORDER BY.
+277 Đối với hàm '%s', mệnh đề ORDER BY không hợp lệ.
 278 Only one table within a view can be updated.
 279 Multiple insert targets not allowed.
 280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.

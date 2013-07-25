@@ -233,7 +233,7 @@ Lệnh có thể dùng :\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 CẢNH BÁO: tùy chọn -t bị bỏ qua trong thực thi chế độ độc lập.\n
-31 ERROR: Destination-path does not exist or is not a directory.\n
+31 Lỗi: Đường dẫn không tồn tại hoặc không phải một thư mục.\n
 60 \
 backupdb: Sao lưu một cơ sở dữ liệu.\n\
 cách sử dụng: %s backupdb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
@@ -283,7 +283,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Lệnh '%s' không rõ\n
 43 Không thể mở tệp tin đầu ra '%s'\n
 44 Không thể gỡ bỏ cơ sở dữ liệu hiện có.\n
-45 Creating database with %1$s size using locale %2$s. The total amount of disk space needed is %3$s.\n
+45 Tạo cơ sở dữ liệu sử dụng ngôn ngữ mặc định %1$s với %2$s kích thước. Tổng số không gian đĩa trống cần thiết là %3$s.\n
 46 Không thể tạo cơ sở dữ liệu.\n
 47 Vấn đề với tệp tin người dùng '%s'\n
 48 Với '%s' đã cho, %s nằm ngoài khoảng. Lựa chọn kích thước giữa %s và %s.\n
@@ -292,7 +292,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 createdb: Tạo một cơ sở dữ liệu.\n\
 usage: %s createdb [OPTION] database-name database-locale\n\
 \n\
-database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
+định dạng cơ sở dữ liệu là <language>.<charset>; ví dụ : en_US.iso88591, ko_KR.utf8\n\
 các tùy chọn hợp lệ:\n\
       --db-volume-size=SIZE           kích cỡ của bộ đĩa thông tin đầu tiên\n\
                                       mặc định: db_volume_size trong cubrid.conf\n\
@@ -667,7 +667,7 @@ các tùy chọn hợp lệ:\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                thiết lập đơn vị hiển thị (page, mega, giga, tera, human readable); mặc định: H\n\
   -s, --summarize              chỉ hiển thị một tóm tắt cho mỗi mục đích ổ\n\
-  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
+  -p, --purpose                hiển thị kích thước sử dụng của từng mục(data/index/temp) của từng bộ đĩa\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
@@ -1039,5 +1039,5 @@ lựa chọn có giá trị:\n\
   -u, --user=ID                ID người dùng để truy cập cơ sở dữ liệu; default: DBA user\n\
   -p, --password=PASS          mật khẩu người dùng; default: none\n\
   -s, --summary                in các thông tin tổng hợp về giao dịch\n\
-      --sort-key=COLUMN_NUMBER column number to be sorted\n\
-      --reverse                reverse the sort result\n
+      --sort-key=COLUMN_NUMBER số cột được sắp xếp\n\
+      --reverse                đảo ngược thứ hạng kết quả\n

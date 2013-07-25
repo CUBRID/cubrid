@@ -1178,26 +1178,26 @@ $ LOADDB
 1109 分区定义数非法.
 1110 B树叶子节点页空间不足. (key len: %d)\n%s
 1111 结果值被截断, 因为精度(%1$d) 小于它的长度(%2$d).
-1112 A character could not be converted from '%1$s' to '%2$s'.
-1113 Element index out of range.
-1114 Argument '%s' is out of range.
-1115 Started to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d).
-1116 Finished to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
-1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
-1118 The argument of "%1$s" can not be coerced to desired domain "%2$s".
-1119 Internal error: Page id %1$d is allocated according to the allocation map of volume "%2$s", but it does not belong to any file. 
-1120 Internal error: Page id %1$d of volume "%2$s" is currently being used, but it is not allocated according to the allocation map of volume.
-1121 NOT NULL constraints do not allow NULL value.
-1122 Time out in receiving data.
-1123 pthread_cond_timedwait() timed out. 
-1124 Query execution error. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
-1125 Create the overflow key file. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1126 Create a new overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1127 Delete an empty overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
-1129 Log recovery is finished.
-1130 Transaction is aborted because transaction lock counts exceeds %1$d.
-1131 Internal error: The page %1$d of volume "%2$s" may be corrupted.\n%3$s
+1112 字符不能从 '%1$s' 转化为 '%2$s'.
+1113 元素索引越界.
+1114 参数 '%s' 越界.
+1115 开始更新统计信息 (class "%1$s", oid : %2$d|%3$d|%4$d).
+1116 结束更新统计信息 (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
+1117 不能改变属性 "%1$s". CUBRID 不能将一个属性改变为一个 SHARED, 反之亦然.
+1118 参数 "%1$s" 无法被强制转换为域 "%2$s".
+1119 内部错误: 根据卷 "%2$s" 的分配映射表, 页ID %1$d 已经被分配, 但它不属于任何文件. 
+1120 内部错误: 卷 "%2$s" 的页ID %1$d 当前已经被使用, 但它没有被分配到卷的分配映射表中.
+1121 NOT NULL 约束不允许NULL 值.
+1122 接收数据超时.
+1123 pthread_cond_timedwait() 超时. 
+1124 查询执行错误. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
+1125 创建溢出键文件. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1126 创建新的溢出页. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1127 删除空的溢出页. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1128 日志恢复已经开始. 已经被应用的日志记录数为: %1$lld. Log page: %2$lld ~ %3$lld.
+1129 日志恢复结束.
+1130 事务被终止, 因为事务锁数超过 %1$d.
+1131 内部错误: 卷 "%2$s" 的页 %1$d 可能被破坏.\n%3$s
 1132 Encryption library failure: %s
 1133 Last Error
 
@@ -1621,11 +1621,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 270 非法函数索引表达式.
 271 指定查询 %s 存在自我引用.
 272 %s 表达式不支持连接条件.
-273 ORDER BY is not allowed in function MEDIAN.
-274 The arguments of the function '%s' must be constant.
-275 Function '%s' must have ORDER BY clause.
-276 For function '%s', the number of arguments does not match the number of ORDER BY columns.
-277 For function '%s', the ORDER BY clause is invalid.
+273 函数 MEDIAN 中不允许使用 ORDER BY.
+274 函数 '%s' 的参数必须是常数.
+275 函数 '%s' 必须有 ORDER BY 字句.
+276 对于函数 '%s', 其参数个数与 ORDER BY 列中的参数个数不匹配.
+277 对于函数 '%s', the ORDER BY 字句是非法的.
 278 Only one table within a view can be updated.
 279 Multiple insert targets not allowed.
 280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
