@@ -1190,7 +1190,7 @@ cci_bind_param (int mapped_stmt_id, int index, T_CCI_A_TYPE a_type,
 int
 cci_register_out_param (int mapped_stmt_id, int index)
 {
-  cci_register_out_param_ex (mapped_stmt_id, index, CCI_U_TYPE_NULL);
+  return cci_register_out_param_ex (mapped_stmt_id, index, CCI_U_TYPE_NULL);
 }
 
 int
