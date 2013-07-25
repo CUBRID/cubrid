@@ -2380,7 +2380,8 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   prepared_session = db_open_buffer_local (statement_literal);
   if (prepared_session == NULL)
     {
-      return er_errid ();
+      err = er_errid ();
+      goto cleanup;
     }
 
   /* we need to copy all the relevant settings */
@@ -2465,12 +2466,23 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
 					    stmt_info, info_len);
 
 cleanup:
+  if (err < 0 && name != NULL)
+    {
+      /* clear the previously cached one with the same name if exists */
+      er_stack_push ();
+      csession_delete_prepared_statement (name);
+      er_stack_pop ();
+    }
+
   if (stmt_info != NULL)
     {
       free_and_init (stmt_info);
     }
 
-  db_close_session_local (prepared_session);
+  if (prepared_session)
+    {
+      db_close_session_local (prepared_session);
+    }
 
   if (prepare_info.into_list != NULL)
     {
