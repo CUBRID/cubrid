@@ -1254,8 +1254,7 @@ pt_get_next_assignment (PT_ASSIGNMENTS_HELPER * ea)
     {
       lhs = ea->assignment->info.expr.arg1;
       ea->rhs = rhs = ea->assignment->info.expr.arg2;
-      ea->is_rhs_const = PT_IS_CONST_NOT_HOSTVAR (rhs) ||
-	(PT_IS_HOSTVAR (rhs) && ea->parser->set_host_var != 0);
+      ea->is_rhs_const = PT_IS_CONST_NOT_HOSTVAR (rhs);
       if (lhs->node_type == PT_NAME)
 	{
 	  ea->is_n_column = false;

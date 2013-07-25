@@ -17697,8 +17697,8 @@ pt_get_assignment_lists (PARSER_CONTEXT * parser, PT_NODE ** select_names,
 
 	  links[links_idx++] = rhs->next;
 	}
-      if (!PT_IS_CONST (rhs)
-	  || (PT_IS_HOSTVAR (rhs) && parser->set_host_var == 0))
+
+      if (!PT_IS_CONST_NOT_HOSTVAR (rhs))
 	{
 	  /* assume evaluation needed. */
 	  if (*select_names == NULL)
