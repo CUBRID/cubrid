@@ -1366,7 +1366,7 @@ net_server_start (const char *server_name)
     }
   if (csect_initialize () != NO_ERROR)
     {
-      printf ("Failed to intialize critical section\n");
+      printf ("Failed to initialize critical section\n");
       status = -1;
       goto end;
     }

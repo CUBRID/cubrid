@@ -49,6 +49,8 @@
 #include "thread.h"
 #include "boot.h"
 
+#define NUM_MASTER_CHANNEL 1
+
 /*
  * These are the types of top-level commands sent to the master server
  * from the client when initiating a connection. They distinguish the

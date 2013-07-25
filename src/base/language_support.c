@@ -705,7 +705,7 @@ lang_init_console_txt_conv (void)
 /*
  * set_current_locale - Initializes current locale from global variables
  *			'lang_Lang_name' and 'lang_Loc_charset';
- *			if these are invalid current locale is intialized
+ *			if these are invalid current locale is initialized
  *			with default locale (en_US.iso88591), and error is
  *			returned.
  *

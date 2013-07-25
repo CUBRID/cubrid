@@ -257,7 +257,7 @@ es_open_owfs (const char *mds_ip, const char *svc_code)
 
   rv = pthread_mutex_lock (&es_lock);
   /*
-   * intialize owfs if it is first time
+   * initialize owfs if it is first time
    */
   if (!es_owfs_initialized)
     {

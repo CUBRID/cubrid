@@ -4124,6 +4124,12 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
     }
 
   conn = thread_p->conn_entry;
+
+#if defined(SERVER_MODE)
+  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
+  assert (conn->csect.name == NULL);
+#endif
+
   csect_enter_critical_section (thread_p, &conn->csect, INF_WAIT);
 
   client_id = conn->client_id;
@@ -4135,6 +4141,11 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  conn->status = CONN_CLOSING;
 	}
     }
+
+#if defined(SERVER_MODE)
+  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
+  assert (conn->csect.name == NULL);
+#endif
 
   csect_exit_critical_section (thread_p, &conn->csect);
 }

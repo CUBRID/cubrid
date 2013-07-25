@@ -291,8 +291,6 @@ static pthread_mutex_t file_Type_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t file_Num_mark_deleted_hint_lock =
   PTHREAD_MUTEX_INITIALIZER;
 #endif /* SERVER_MODE */
-static CSS_CRITICAL_SECTION file_Cs_tempfile_cache;
-
 
 #ifdef FILE_DEBUG
 static int file_Debug_newallocset_multiple_of = -10;
@@ -13678,8 +13676,6 @@ file_tmpfile_cache_initialize (void)
 {
   int i;
 
-  csect_initialize_critical_section (&file_Cs_tempfile_cache);
-
   file_Tempfile_cache.entry = (FILE_TEMPFILE_CACHE_ENTRY *)
     malloc (sizeof (FILE_TEMPFILE_CACHE_ENTRY) *
 	    prm_get_integer_value (PRM_ID_MAX_ENTRIES_IN_TEMP_FILE_CACHE));
@@ -13716,7 +13712,6 @@ file_tmpfile_cache_initialize (void)
 static int
 file_tmpfile_cache_finalize (void)
 {
-  csect_finalize_critical_section (&file_Cs_tempfile_cache);
   free_and_init (file_Tempfile_cache.entry);
 
   return NO_ERROR;
@@ -13735,7 +13730,7 @@ file_tmpfile_cache_get (THREAD_ENTRY * thread_p, VFID * vfid,
   FILE_TEMPFILE_CACHE_ENTRY *p;
   int idx, prev;
 
-  csect_enter_critical_section (thread_p, &file_Cs_tempfile_cache, INF_WAIT);
+  csect_enter (thread_p, CSECT_TEMPFILE_CACHE, INF_WAIT);
 
   idx = file_Tempfile_cache.first_idx;
   prev = -1;
@@ -13765,7 +13760,7 @@ file_tmpfile_cache_get (THREAD_ENTRY * thread_p, VFID * vfid,
       idx = p->next_entry;
     }
 
-  csect_exit_critical_section (thread_p, &file_Cs_tempfile_cache);
+  csect_exit (thread_p, CSECT_TEMPFILE_CACHE);
 
   return (idx == -1) ? NULL : vfid;
 }
@@ -13782,7 +13777,7 @@ file_tmpfile_cache_put (THREAD_ENTRY * thread_p, const VFID * vfid,
 {
   FILE_TEMPFILE_CACHE_ENTRY *p = NULL;
 
-  csect_enter_critical_section (thread_p, &file_Cs_tempfile_cache, INF_WAIT);
+  csect_enter (thread_p, CSECT_TEMPFILE_CACHE, INF_WAIT);
 
   if (file_Tempfile_cache.free_idx != -1)
     {
@@ -13798,7 +13793,7 @@ file_tmpfile_cache_put (THREAD_ENTRY * thread_p, const VFID * vfid,
       (void) file_new_declare_as_old (thread_p, vfid);
     }
 
-  csect_exit_critical_section (thread_p, &file_Cs_tempfile_cache);
+  csect_exit (thread_p, CSECT_TEMPFILE_CACHE);
 
   return (p == NULL) ? 0 : 1;
 }

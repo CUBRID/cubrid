@@ -583,6 +583,14 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 	  tdes = log_Gl.trantable.all_tdes[i];
 	  if (tdes != NULL)
 	    {
+#if defined(SERVER_MODE)
+	      assert (tdes->tran_index == i);
+	      assert (tdes->cs_topop.cs_index == CRITICAL_SECTION_COUNT
+		      + css_get_max_conn () + NUM_MASTER_CHANNEL
+		      + tdes->tran_index);
+	      assert (tdes->cs_topop.name == NULL);
+#endif
+
 	      logtb_clear_tdes (thread_p, tdes);
 	      csect_finalize_critical_section (&tdes->cs_topop);
 	      if (tdes->topops.max != 0)
@@ -1663,6 +1671,14 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->client_posp_lsa);
 
   csect_initialize_critical_section (&tdes->cs_topop);
+
+#if defined(SERVER_MODE)
+  assert (tdes->cs_topop.cs_index == -1);
+  assert (tdes->cs_topop.name == NULL);
+
+  tdes->cs_topop.cs_index = CRITICAL_SECTION_COUNT
+    + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index;
+#endif
 
   tdes->topops.stack = NULL;
   tdes->topops.last = -1;

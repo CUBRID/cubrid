@@ -4203,7 +4203,7 @@ thread_rc_track_alloc (THREAD_ENTRY * thread_p)
 		  /* init Critical Section hold_buf */
 		  if (i == RC_CS)
 		    {
-		      for (k = 0; k < CRITICAL_SECTION_COUNT; k++)
+		      for (k = 0; k < ONE_K; k++)
 			{
 			  new_track->meter[i][j].m_hold_buf[k] = '\0';
 			}
@@ -4516,11 +4516,11 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
 
 	  cs_idx = *((int *) ptr);
 
-	  /* TODO - skip out un-named CS */
-	  if (cs_idx != -1)
+	  /* TODO - skip out too many CS */
+	  if (cs_idx < ONE_K)
 	    {
 	      assert (cs_idx >= 0);
-	      assert (cs_idx < CRITICAL_SECTION_COUNT);
+	      assert (cs_idx < ONE_K);
 
 	      assert_release (meter->m_hold_buf[cs_idx] >= 0);
 	      if (amount > 0)
@@ -4539,7 +4539,14 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
 	      /* re-set buf size */
 	      meter->m_hold_buf_size =
 		MAX (meter->m_hold_buf_size, cs_idx + 1);
-	      assert (meter->m_hold_buf_size <= CRITICAL_SECTION_COUNT);
+	      assert (meter->m_hold_buf_size <= ONE_K);
+	    }
+	  else
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "thread_rc_track_meter: hold_buf overflow: "
+			    "buf_size=%d, idx=%d",
+			    meter->m_hold_buf_size, cs_idx);
 	    }
 	}
 #endif

@@ -4075,6 +4075,12 @@ log_start_system_op (THREAD_ENTRY * thread_p)
 
   if (LOG_ISRESTARTED ())
     {
+#if defined(SERVER_MODE)
+      assert (tdes->cs_topop.cs_index == CRITICAL_SECTION_COUNT
+	      + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
+      assert (tdes->cs_topop.name == NULL);
+#endif
+
       csect_enter_critical_section (thread_p, &tdes->cs_topop, INF_WAIT);
     }
   if (tdes->topops.max == 0 || (tdes->topops.last + 1) >= tdes->topops.max)
@@ -4084,6 +4090,13 @@ log_start_system_op (THREAD_ENTRY * thread_p)
 	  /* Out of memory */
 	  if (LOG_ISRESTARTED ())
 	    {
+#if defined(SERVER_MODE)
+	      assert (tdes->cs_topop.cs_index == CRITICAL_SECTION_COUNT
+		      + css_get_max_conn () + NUM_MASTER_CHANNEL
+		      + tdes->tran_index);
+	      assert (tdes->cs_topop.name == NULL);
+#endif
+
 	      csect_exit_critical_section (thread_p, &tdes->cs_topop);
 	    }
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -4296,6 +4309,12 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 
   if (LOG_ISRESTARTED ())
     {
+#if defined(SERVER_MODE)
+      assert (tdes->cs_topop.cs_index == CRITICAL_SECTION_COUNT
+	      + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
+      assert (tdes->cs_topop.name == NULL);
+#endif
+
       csect_exit_critical_section (thread_p, &tdes->cs_topop);
     }
 

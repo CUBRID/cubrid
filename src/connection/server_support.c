@@ -1442,13 +1442,23 @@ css_block_all_active_conn (unsigned short stop_phase)
 {
   CSS_CONN_ENTRY *conn;
 
-  csect_enter_critical_section (NULL, &css_Active_conn_csect, INF_WAIT);
+  csect_enter (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
 
   for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
     {
+#if defined(SERVER_MODE)
+      assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
+      assert (conn->csect.name == NULL);
+#endif
+
       csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
       if (conn->stop_phase != stop_phase)
 	{
+#if defined(SERVER_MODE)
+	  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
+	  assert (conn->csect.name == NULL);
+#endif
+
 	  csect_exit_critical_section (NULL, &conn->csect);
 	  continue;
 	}
@@ -1460,10 +1470,15 @@ css_block_all_active_conn (unsigned short stop_phase)
 	  thread_sleep (10);	/* 10 msec */
 	}
 
+#if defined(SERVER_MODE)
+      assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
+      assert (conn->csect.name == NULL);
+#endif
+
       csect_exit_critical_section (NULL, &conn->csect);
     }
 
-  csect_exit_critical_section (NULL, &css_Active_conn_csect);
+  csect_exit (NULL, CSECT_CONN_ACTIVE);
 }
 
 /*
@@ -2071,10 +2086,20 @@ css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn,
 void
 css_end_server_request (CSS_CONN_ENTRY * conn)
 {
+#if defined(SERVER_MODE)
+  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
+  assert (conn->csect.name == NULL);
+#endif
+
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
 
   css_remove_all_unexpected_packets (conn);
   conn->status = CONN_CLOSING;
+
+#if defined(SERVER_MODE)
+  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
+  assert (conn->csect.name == NULL);
+#endif
 
   csect_exit_critical_section (NULL, &conn->csect);
 }
@@ -2264,8 +2289,7 @@ css_number_of_clients (void)
   int n = 0;
   CSS_CONN_ENTRY *conn;
 
-  csect_enter_critical_section_as_reader (NULL, &css_Active_conn_csect,
-					  INF_WAIT);
+  csect_enter_as_reader (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
 
   for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
     {
@@ -2275,7 +2299,7 @@ css_number_of_clients (void)
 	}
     }
 
-  csect_exit_critical_section (NULL, &css_Active_conn_csect);
+  csect_exit (NULL, CSECT_CONN_ACTIVE);
 
   return n;
 }

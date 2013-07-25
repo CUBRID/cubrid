@@ -73,7 +73,6 @@ static const char *css_Csect_name[] = {
   "LOCATOR_CLASSNAME_TABLE",
   "FILE_NEWFILE",
   "QPROC_QUERY_TABLE",
-  "unused - QPROC_QFILE_PGCNT",
   "QPROC_XASL_CACHE",
   "QPROC_LIST_CACHE",
   "BOOT_SR_DBPARM",
@@ -84,14 +83,18 @@ static const char *css_Csect_name[] = {
   "TRAN_TABLE",
   "CT_OID_TABLE",
   "SCANID_BITMAP",
-  "unused - LOG_FLUSH",
   "HA_SERVER_STATE",
   "COMPACTDB_ONE_INSTANCE",
   "SESSION_STATE",
   "ACL",
   "QPROC_FILTER_PRED_CACHE",
   "PARTITION_CACHE",
-  "EVENT_LOG_FILE"
+  "EVENT_LOG_FILE",
+  "CONN_ACTIVE",
+  "CONN_FREE",
+  "TEMPFILE_CACHE",
+  "LOG_PB",
+  "LOG_ARCHIVE"
 };
 
 static int csect_initialize_entry (int cs_index);
@@ -104,6 +107,14 @@ static int csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p,
 					 int timeout, struct timespec *to);
 static int csect_wakeup_waiting_writer (CSS_CRITICAL_SECTION * cs_ptr);
 static int csect_wakeup_waiting_promoter (CSS_CRITICAL_SECTION * cs_ptr);
+static int csect_demote_critical_section (THREAD_ENTRY * thread_p,
+					  CSS_CRITICAL_SECTION * cs_ptr,
+					  int wait_secs);
+static int csect_promote_critical_section (THREAD_ENTRY * thread_p,
+					   CSS_CRITICAL_SECTION * cs_ptr,
+					   int wait_secs);
+static int csect_check_own_critical_section (THREAD_ENTRY * thread_p,
+					     CSS_CRITICAL_SECTION * cs_ptr);
 
 /*
  * csect_initialize_critical_section() - initialize critical section
@@ -265,15 +276,23 @@ csect_finalize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
 static int
 csect_finalize_entry (int cs_index)
 {
+  int error_code = NO_ERROR;
   CSS_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
-  cs_ptr->cs_index = 0;
-  cs_ptr->name = NULL;
-  return csect_finalize_critical_section (cs_ptr);
+  assert (cs_ptr->cs_index == cs_index);
+
+  error_code = csect_finalize_critical_section (cs_ptr);
+  if (error_code == NO_ERROR)
+    {
+      cs_ptr->cs_index = -1;
+      cs_ptr->name = NULL;
+    }
+
+  return error_code;
 }
 
 /*
@@ -769,6 +788,10 @@ csect_enter (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
   assert (cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
+#if defined (SERVER_MODE)
+  assert (cs_ptr->cs_index == cs_index);
+#endif
+
   return csect_enter_critical_section (thread_p, cs_ptr, wait_secs);
 }
 
@@ -1011,6 +1034,10 @@ csect_enter_as_reader (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
   assert (cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
+#if defined (SERVER_MODE)
+  assert (cs_ptr->cs_index == cs_index);
+#endif
+
   return csect_enter_critical_section_as_reader (thread_p, cs_ptr, wait_secs);
 }
 
@@ -1022,7 +1049,7 @@ csect_enter_as_reader (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
  *
  * Note: Always successful because I have the write lock.
  */
-int
+static int
 csect_demote_critical_section (THREAD_ENTRY * thread_p,
 			       CSS_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
@@ -1306,7 +1333,7 @@ csect_demote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
  *
  * Note: Always successful because I have the write lock.
  */
-int
+static int
 csect_promote_critical_section (THREAD_ENTRY * thread_p,
 				CSS_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
@@ -1695,6 +1722,10 @@ csect_exit (THREAD_ENTRY * thread_p, int cs_index)
   assert (cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
+#if defined (SERVER_MODE)
+  assert (cs_ptr->cs_index == cs_index);
+#endif
+
   return csect_exit_critical_section (thread_p, cs_ptr);
 }
 
@@ -1755,7 +1786,7 @@ csect_check_own (THREAD_ENTRY * thread_p, int cs_index)
  *   return: true if cs's owner is me, false if not
  *   cs_ptr(in): critical section
  */
-int
+static int
 csect_check_own_critical_section (THREAD_ENTRY * thread_p,
 				  CSS_CRITICAL_SECTION * cs_ptr)
 {
