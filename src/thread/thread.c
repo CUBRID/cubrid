@@ -4441,6 +4441,7 @@ thread_rc_track_amount_qlist (THREAD_ENTRY * thread_p)
   return thread_rc_track_amount_helper (thread_p, RC_QLIST);
 }
 
+#if !defined(NDEBUG)
 /*
  * thread_rc_track_meter_assert_CS () -
  *   return:
@@ -4487,6 +4488,7 @@ thread_rc_track_meter_assert_CS (THREAD_RC_METER * meter, int amount,
 	}
     }
 }
+#endif
 
 /*
  * thread_rc_track_meter () -
