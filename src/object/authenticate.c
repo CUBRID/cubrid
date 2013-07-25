@@ -4830,6 +4830,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_,
   int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_owner = 0;
   MOP *sub_partitions = NULL;
   char *class_name = NULL, *owner_name = NULL;
+  SM_CLASS *clsobj;
 
   db_make_null (returnval);
 
@@ -4855,7 +4856,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_,
       return;
     }
 
-  error = au_fetch_class_force (classmop, &class_, AU_FETCH_UPDATE);
+  error = au_fetch_class_force (classmop, &clsobj, AU_FETCH_UPDATE);
   if (error != NO_ERROR)
     {
       goto fail_return;
