@@ -31,6 +31,7 @@
 #include "message_catalog.h"
 #include "error_code.h"
 
+#include "mprec.h"
 #include "system_parameter.h"
 #include "util_func.h"
 #include "ini_parser.h"
@@ -920,9 +921,12 @@ util_size_to_byte (double *pre, char *post)
 int
 util_byte_to_size_string (char *buf, size_t len, UINT64 size_num)
 {
+  char num_str[100];
   const char *ss = "BKMGTP";
   double v = (double) size_num;
   int pow = 0;
+  int i, decpt, sign, num_len;
+  char *rve;
 
   if (buf == NULL)
     {
@@ -936,11 +940,45 @@ util_byte_to_size_string (char *buf, size_t len, UINT64 size_num)
       v /= ONE_K;
     }
 
-  v = floor (v * 10) / 10;
+  _dtoa (v, 3, 1, &decpt, &sign, &rve, num_str, 0);
+  num_str[99] = '\0';
+  num_len = strlen (num_str);
 
-  if (snprintf (buf, len, "%.1f%c", v, ss[pow]) < 0)
+  if (len < decpt + 4)
     {
       return ER_FAILED;
+    }
+
+  for (i = 0; i <= decpt + 1; i++)
+    {
+      if (i == decpt)
+	{
+	  buf[i] = '.';
+	}
+      else if (i == decpt + 1)
+	{
+	  if (num_len > decpt)
+	    {
+	      buf[i] = num_str[num_len - 1];
+	    }
+	  else
+	    {
+	      buf[i] = '0';
+	    }
+	  buf[i + 1] = ss[pow];
+	  buf[i + 2] = '\0';
+	}
+      else
+	{
+	  if (num_len < decpt && i >= num_len)
+	    {
+	      buf[i] = '0';
+	    }
+	  else
+	    {
+	      buf[i] = num_str[i];
+	    }
+	}
     }
 
   return NO_ERROR;
