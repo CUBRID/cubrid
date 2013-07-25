@@ -192,6 +192,9 @@ static void
 thread_rc_track_meter_at (THREAD_RC_METER * meter,
 			  const char *caller_file, int caller_line,
 			  int amount, void *ptr);
+static void
+thread_rc_track_meter_assert_CS (THREAD_RC_METER * meter, int amount,
+				 void *ptr);
 #endif
 
 /*
@@ -4439,6 +4442,53 @@ thread_rc_track_amount_qlist (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * thread_rc_track_meter_assert_CS () -
+ *   return:
+ *   meter(in):
+ */
+static void
+thread_rc_track_meter_assert_CS (THREAD_RC_METER * meter, int amount,
+				 void *ptr)
+{
+  int cs_idx;
+
+  assert_release (meter != NULL);
+  assert_release (amount != 0);
+  assert_release (ptr != NULL);
+
+  cs_idx = *((int *) ptr);
+
+  /* TODO - skip out too many CS */
+  if (cs_idx >= ONE_K)
+    {
+      return;
+    }
+
+  assert (cs_idx >= 0);
+  assert (cs_idx < ONE_K);
+
+  /* check CS dependency */
+  if (amount > 0)
+    {
+      switch (cs_idx)
+	{
+	  /* CSECT_BOOT_SR_DBPARM -> CSECT_DISK_REFRESH_GOODVOL */
+	case CSECT_BOOT_SR_DBPARM:
+	  assert_release (meter->m_hold_buf[CSECT_DISK_REFRESH_GOODVOL] == 0);
+	  break;
+
+	  /* CSECT_LOCATOR_SR_CLASSNAME_TABLE -> CSECT_CT_OID_TABLE */
+	case CSECT_LOCATOR_SR_CLASSNAME_TABLE:
+	  assert_release (meter->m_hold_buf[CSECT_CT_OID_TABLE] == 0);
+	  break;
+
+	default:
+	  break;
+	}
+    }
+}
+
+/*
  * thread_rc_track_meter () -
  *   return:
  *   thread_p(in):
@@ -4565,6 +4615,11 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
 #if !defined(NDEBUG)
       (void) thread_rc_track_meter_at (meter, file_name, line_no, amount,
 				       ptr);
+
+      if (rc_idx == RC_CS)
+	{
+	  (void) thread_rc_track_meter_assert_CS (meter, amount, ptr);
+	}
 #endif
     }
 }

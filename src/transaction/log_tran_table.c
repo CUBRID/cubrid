@@ -588,7 +588,7 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 	      assert (tdes->cs_topop.cs_index == CRITICAL_SECTION_COUNT
 		      + css_get_max_conn () + NUM_MASTER_CHANNEL
 		      + tdes->tran_index);
-	      assert (tdes->cs_topop.name == NULL);
+	      assert (tdes->cs_topop.name == css_Csect_name_tdes);
 #endif
 
 	      logtb_clear_tdes (thread_p, tdes);
@@ -1678,6 +1678,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 
   tdes->cs_topop.cs_index = CRITICAL_SECTION_COUNT
     + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index;
+  tdes->cs_topop.name = css_Csect_name_tdes;
 #endif
 
   tdes->topops.stack = NULL;

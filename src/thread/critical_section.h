@@ -80,6 +80,9 @@ enum
 
 #define CRITICAL_SECTION_COUNT  CSECT_LAST
 
+extern const char *css_Csect_name_conn;
+extern const char *css_Csect_name_tdes;
+
 typedef struct css_critical_section
 {
   int cs_index;
@@ -97,10 +100,6 @@ typedef struct css_critical_section
   struct timeval max_wait;
   struct timeval total_wait;
 } CSS_CRITICAL_SECTION;
-
-#define CSS_CRITICAL_SECTION_INITIALIZER \
-  { 0, NULL, PTHREAD_MUTEX_INITIALIZER, 0, 0, PTHREAD_COND_INITIALIZER, \
-    NULL, NULL, (pthread_t) 0, -1, 0, 0, { 0, 0 }, { 0, 0 } }
 
 extern int csect_initialize (void);
 extern int csect_finalize (void);

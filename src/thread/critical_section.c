@@ -97,6 +97,9 @@ static const char *css_Csect_name[] = {
   "LOG_ARCHIVE"
 };
 
+const char *css_Csect_name_conn = "CONN_ENTRY";
+const char *css_Csect_name_tdes = "TDES";
+
 static int csect_initialize_entry (int cs_index);
 static int csect_finalize_entry (int cs_index);
 static int csect_wait_on_writer_queue (THREAD_ENTRY * thread_p,
