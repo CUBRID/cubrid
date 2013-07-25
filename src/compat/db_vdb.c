@@ -1730,6 +1730,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
   int err = NO_ERROR;
   SERVER_INFO server_info;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  CLASS_STATUS cls_status = CLS_NOT_MODIFIED;
 
   if (result != NULL)
     {
@@ -1891,9 +1892,19 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 
   pt_null_etc (statement);
   if (statement->xasl_id == NULL
-      && pt_has_modified_class (parser, statement) == true)
+      && ((cls_status = pt_has_modified_class (parser, statement))
+	  != CLS_NOT_MODIFIED))
     {
-      err = ER_QPROC_INVALID_XASLNODE;
+      if (cls_status == CLS_MODIFIED)
+	{
+	  err = ER_QPROC_INVALID_XASLNODE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	}
+      else
+	{
+	  assert (cls_status == CLS_ERROR);
+	  err = er_errid ();
+	}
     }
   else if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
 	   && statement->cannot_prepare == 0)

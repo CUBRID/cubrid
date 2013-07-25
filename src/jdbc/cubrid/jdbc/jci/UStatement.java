@@ -864,6 +864,8 @@ public class UStatement {
 					relatedConnection.logException(e);
 					errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 				}
+			} else {
+				relatedConnection.clientSocketClose();
 			}
 		}
 
@@ -1042,6 +1044,8 @@ public class UStatement {
 					relatedConnection.logException(e);
 					errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 				}
+			} else {
+				relatedConnection.clientSocketClose();
 			}
 		}
 

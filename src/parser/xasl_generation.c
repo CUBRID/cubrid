@@ -3492,15 +3492,15 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node,
  *   parser(in):
  *   statement(in/out):
  */
-bool
+CLASS_STATUS
 pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  bool found = false;
+  CLASS_STATUS status = CLS_NOT_MODIFIED;
 
   parser_walk_tree (parser, statement, pt_has_modified_class_helper,
-		    &found, NULL, NULL);
+		    &status, NULL, NULL);
 
-  return found;
+  return status;
 }
 
 /*
@@ -3516,12 +3516,13 @@ static PT_NODE *
 pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node,
 			      void *arg, int *continue_walk)
 {
-  bool *found_modified_class = (bool *) arg;
+  CLASS_STATUS *status = (CLASS_STATUS *) arg;
   PT_NODE *class_;
   MOP clsmop = NULL;
   SM_CLASS *sm_class = NULL;
+  int error = NO_ERROR;
 
-  if (*found_modified_class)
+  if (*status != CLS_NOT_MODIFIED)
     {
       *continue_walk = PT_STOP_WALK;
       return node;
@@ -3540,15 +3541,29 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node,
 	      continue;
 	    }
 
-	  if (au_fetch_class_force (clsmop, &sm_class,
-				    AU_FETCH_READ) != NO_ERROR)
+	  if (clsmop->decached)
 	    {
-	      /*
-	       * the class might be dropped. treat error cases
-	       * as the class was modified.
-	       */
-	      *found_modified_class = true;
-
+	      /* the class might be aborted. */
+	      *status = CLS_MODIFIED;
+	    }
+	  else
+	    {
+	      error = au_fetch_class_force (clsmop, &sm_class, AU_FETCH_READ);
+	      if (error != NO_ERROR)
+		{
+		  if (error == ER_HEAP_UNKNOWN_OBJECT)
+		    {
+		      /* the class might be dropped. */
+		      *status = CLS_MODIFIED;
+		    }
+		  else
+		    {
+		      *status = CLS_ERROR;
+		    }
+		}
+	    }
+	  if (*status != CLS_NOT_MODIFIED)
+	    {
 	      /* don't revisit leaves */
 	      *continue_walk = PT_STOP_WALK;
 	      break;
@@ -3567,7 +3582,7 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node,
 	  else if (class_->info.name.db_object_chn
 		   != locator_get_cache_coherency_number (clsmop))
 	    {
-	      *found_modified_class = true;
+	      *status = CLS_MODIFIED;
 
 	      /* don't revisit leaves */
 	      *continue_walk = PT_STOP_WALK;
