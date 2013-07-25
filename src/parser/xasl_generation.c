@@ -6104,7 +6104,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
       if (regu->domain == NULL
 	  && (parser->set_host_var == 1 || typ != DB_TYPE_NULL))
 	{
-	  /* if the host var was given before by the user,
+	  /* if the host var DB_VALUE was initialized before,
 	     use its domain for regu varaible */
 	  regu->domain =
 	    pt_xasl_type_enum_to_domain ((PT_TYPE_ENUM)

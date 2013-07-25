@@ -2502,13 +2502,15 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_ENUMERATION:
       pt_type = PT_TYPE_ENUMERATION;
       break;
+    case DB_TYPE_VARIABLE:
+      pt_type = PT_TYPE_MAYBE;
+      break;
 
       /* these guys should not get encountered */
     case DB_TYPE_OID:
     case DB_TYPE_VOBJ:
     case DB_TYPE_UNKNOWN:
     case DB_TYPE_ELO:
-    case DB_TYPE_VARIABLE:
     case DB_TYPE_POINTER:
     case DB_TYPE_SUB:
     case DB_TYPE_ERROR:
