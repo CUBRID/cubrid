@@ -724,18 +724,15 @@ AC_ARG_WITH([jansson],
                 [prefix for installed jansson @<:@default=builtin@:>@]),
         [with_jansson=$withval],
         [with_jansson=builtin])
-
-if test "$with_jansson" = "builtin"
-then
-        AC_CONFIG_SUBDIRS([external/jansson-2.4])
-        JANSSON_LIBS="\$(top_builddir)/external/lib/libjansson.la"
-        JANSSON_INC="-I\$(top_builddir)/external/include/jansson"
-        EXTERNAL_PKGS="$EXTERNAL_PKGS jansson-2.4"
-else
-        JANSSON_LIBS="-L$with_jansson/lib -ljansson"
-        JANSSON_INC="-I$with_jansson/include" 
-        EXTERNAL_DIST="$EXTERNAL_DIST jansson-2.4"
-fi
+AS_IF([test "$with_cci_only" = "yes"], [with-jansson=no],
+	[AS_IF([test "$with_expat" = "builtin"],
+		[AC_CONFIG_SUBDIRS([external/jansson-2.4])
+        	JANSSON_LIBS="\$(top_builddir)/external/lib/libjansson.la"
+		JANSSON_INC="-I\$(top_builddir)/external/include/jansson"
+		EXTERNAL_PKGS="$EXTERNAL_PKGS jansson-2.4"],
+		[JANSSON_LIBS="-L$with_jansson/lib -ljansson"
+		JANSSON_INC="-I$with_jansson/include"
+		EXTERNAL_DIST="$EXTERNAL_DIST jansson-2.4"])])
 AC_MSG_RESULT([$with_jansson])
 
 AC_PREFIX_DEFAULT("$HOME/cubrid")
