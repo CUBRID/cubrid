@@ -483,13 +483,6 @@ main (int argc, char *argv[])
 
   set_cubrid_home ();
 
-  cas_log_open (broker_name);
-  cas_slow_log_open (broker_name);
-  cas_log_write_and_end (0, true, "CAS STARTED pid %d", getpid ());
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  cas_error_log_open (broker_name);
-#endif
-
   if (cas_shard_flag == ON)
     {
       res = shard_cas_main ();
@@ -562,6 +555,13 @@ conn_retry:
   is_first = false;
 
   net_timeout_set (-1);
+
+  cas_log_open (broker_name);
+  cas_slow_log_open (broker_name);
+  cas_log_write_and_end (0, true, "CAS STARTED pid %d", getpid ());
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+  cas_error_log_open (broker_name);
+#endif
 
   /* This is a only use in proxy-cas internal message */
   req_info.client_version = CAS_PROTO_CURRENT_VER;
@@ -861,6 +861,10 @@ cas_main (void)
       return -1;
     }
   net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
+
+  cas_log_open (broker_name);
+  cas_slow_log_open (broker_name);
+  cas_log_write_and_end (0, true, "CAS STARTED pid %d", getpid ());
 
 #if defined(WINDOWS)
   as_info->as_port = new_port;
