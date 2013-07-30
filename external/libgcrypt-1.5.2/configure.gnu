@@ -1,9 +1,7 @@
 #!/bin/sh
 
-opts_libgcrypt="--prefix=$PWD/.. --with-gpg-error-prefix=$PWD/.. --disable-shared --enable-static"
-opts_gpg_error="--prefix=$PWD/.. --disable-shared --enable-static"
-
-fpic_flags="CFLAGS=\"-fPIC\" CXXFLAGS=\"-fPIC\""
+opts_libgcrypt="--prefix=$PWD/.. --with-gpg-error-prefix=$PWD/.. --disable-shared --enable-static --with-pic"
+opts_gpg_error="--prefix=$PWD/.. --disable-shared --enable-static --with-pic"
 
 lib_gpg_error="-L${PWD}/../lib libgpg-error.a"
 
@@ -25,11 +23,6 @@ while test $# -ge 1; do
 	  opts_gpg_error="$opts_gpg_error --srcdir=${srcdir}/../libgpg-error-1.11/"
       shift
       ;;
-    --enable-64bit)
-      opts_libgcrypt="$opts_libgcrypt $fpic_flags"
-      opts_gpg_error="$opts_gpg_error $fpic_flags"
-	  shift
-      ;; 	  
     *)
       shift
       ;;

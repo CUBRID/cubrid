@@ -1,6 +1,6 @@
 #!/bin/sh
 
-opts="--prefix=$PWD/.."
+opts="--prefix=$PWD/.. --with-pic"
 
 srdrir=''
 
