@@ -732,7 +732,10 @@ shard_broker_process (void)
 			  as_info_p->cur_slow_log_mode =
 			    shm_appl->slow_log_mode;
 
-			  pid = run_appl_server (as_info_p, br_index, i);
+			  pid = run_appl_server (as_info_p, br_index,
+						 i +
+						 shard_info_p->
+						 as_info_index_base);
 			  if (pid > 0)
 			    {
 			      as_info_p->pid = pid;
