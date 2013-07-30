@@ -1,5 +1,6 @@
 set CUBRID_DISABLE_JAVA_STORED_PROCEDURE=1
 set DBNAME=demodb
+set CUBRID_CHARSET=en_US
 if not "%1"=="" (
         set DBNAME=%1
 
@@ -15,7 +16,7 @@ if exist %DBNAME% goto done
 
 cd %CUBRID_DATABASES%\demodb
 echo ********** Creating database %DBNAME% ...
-%CUBRID%\bin\cub_admin createdb --db-volume-size=100M --log-volume-size=100M --replace %DBNAME%
+%CUBRID%\bin\cub_admin createdb --db-volume-size=100M --log-volume-size=100M --replace %DBNAME% %CUBRID_CHARSET%
 echo ********** Loading objects ...
 %CUBRID%\bin\cub_admin loaddb %DBNAME% --schema-file=%CUBRID%\bin\demodb_schema --data-file=%CUBRID%\bin\demodb_objects -u dba
 echo ********** Makedemo complete.
