@@ -483,6 +483,20 @@ main (int argc, char *argv[])
       goto error_undo_vol_header;
     }
 
+  /* The 'COLL_CONTRACTION' struct exported in locales lib was reorganized to
+   * optimize memory; as a side-effect, collations having contractions have
+   * altered checksum, but their properties are the same, it is safe to
+   * overwrite the _db_collation system table */
+  printf ("Updating database system collations \n\n");
+  if (synccoll_force () != EXIT_SUCCESS)
+    {
+      db_abort_transaction ();
+      db_shutdown ();
+
+      goto error_undo_vol_header;
+    }
+  db_commit_transaction ();
+
   au_disable ();
 
   if (file_update_used_pages_of_vol_header (NULL) == DISK_ERROR)

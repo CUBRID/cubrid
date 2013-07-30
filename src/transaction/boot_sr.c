@@ -3911,8 +3911,8 @@ xboot_register_client (THREAD_ENTRY * thread_p,
   if (adm_prg_file_name != NULL
       && (strncasecmp (adm_prg_file_name, "synccolldb",
 		       strlen ("synccolldb")) == 0
-	  || strncasecmp (adm_prg_file_name, "migrate_90beta_to_91",
-			  strlen ("migrate_90beta_to_91")) == 0))
+	  || strncasecmp (adm_prg_file_name, "migrate_",
+			  strlen ("migrate_")) == 0))
     {
       check_db_coll = false;
     }
