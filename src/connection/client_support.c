@@ -619,7 +619,6 @@ css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
       css_test_for_server_errors (entry, eid);
     }
 
-  assert (css_is_valid_request_id (entry->conn, rid));
   return css_Errno == NO_ERRORS ? 0 : css_Errno;
 }
 
