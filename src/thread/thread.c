@@ -4452,6 +4452,7 @@ thread_rc_track_meter_assert_CS (THREAD_RC_METER * meter, int amount,
 				 void *ptr)
 {
   int cs_idx;
+  int i;
 
   assert_release (meter != NULL);
   assert_release (amount != 0);
@@ -4473,14 +4474,32 @@ thread_rc_track_meter_assert_CS (THREAD_RC_METER * meter, int amount,
     {
       switch (cs_idx)
 	{
-	  /* CSECT_BOOT_SR_DBPARM -> CSECT_DISK_REFRESH_GOODVOL */
+	  /* CSECT_DISK_REFRESH_GOODVOL -> CSECT_BOOT_SR_DBPARM is NOK */
+	  /* CSECT_BOOT_SR_DBPARM -> CSECT_DISK_REFRESH_GOODVOL is OK */
 	case CSECT_BOOT_SR_DBPARM:
 	  assert_release (meter->m_hold_buf[CSECT_DISK_REFRESH_GOODVOL] == 0);
 	  break;
 
-	  /* CSECT_LOCATOR_SR_CLASSNAME_TABLE -> CSECT_CT_OID_TABLE */
+	  /* CSECT_CT_OID_TABLE -> CSECT_LOCATOR_SR_CLASSNAME_TABLE is NOK */
+	  /* CSECT_LOCATOR_SR_CLASSNAME_TABLE -> CSECT_CT_OID_TABLE is OK */
 	case CSECT_LOCATOR_SR_CLASSNAME_TABLE:
 	  assert_release (meter->m_hold_buf[CSECT_CT_OID_TABLE] == 0);
+	  break;
+
+	  /* CSECT_ER_LOG_FILE -> X_CS -> [Y_CS] -> CSECT_ER_LOG_FILE is NOK */
+	  /* X_CS -> CSECT_ER_LOG_FILE -> [Y_CS] -> CSECT_ER_LOG_FILE is NOK */
+	case CSECT_ER_LOG_FILE:
+	  if (meter->m_hold_buf[CSECT_ER_LOG_FILE] > 1)
+	    {
+	      for (i = 0; i < meter->m_hold_buf_size; i++)
+		{
+		  if (i == cs_idx)
+		    {
+		      continue;	/* skip myself */
+		    }
+		  assert_release (meter->m_hold_buf[i] == 0);
+		}
+	    }
 	  break;
 
 	default:
@@ -4559,47 +4578,70 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p,
       assert_release (meter->m_amount <= meter->m_threshold);
 
 #if !defined(NDEBUG)
-      /* check Critical Section cycle and keep current hold info */
-      if (rc_idx == RC_CS)
+      switch (rc_idx)
 	{
-	  int cs_idx;
+	case RC_PGBUF:
+	  /* check fix/unfix protocol */
+	  {
+	    assert (ptr != NULL);
 
-	  assert (ptr != NULL);
+	    if (amount > 0)
+	      {
+		assert_release (amount == 1);
+	      }
+	    else
+	      {
+		assert_release (amount == -1);
+	      }
+	  }
+	  break;
 
-	  cs_idx = *((int *) ptr);
+	case RC_CS:
+	  /* check Critical Section cycle and keep current hold info */
+	  {
+	    int cs_idx;
 
-	  /* TODO - skip out too many CS */
-	  if (cs_idx < ONE_K)
-	    {
-	      assert (cs_idx >= 0);
-	      assert (cs_idx < ONE_K);
+	    assert (ptr != NULL);
 
-	      assert_release (meter->m_hold_buf[cs_idx] >= 0);
-	      if (amount > 0)
-		{
-		  assert_release (amount == 1);
-		}
-	      else
-		{
-		  assert_release (amount == -1);
-		}
+	    cs_idx = *((int *) ptr);
 
-	      meter->m_hold_buf[cs_idx] += amount;
+	    /* TODO - skip out too many CS */
+	    if (cs_idx < ONE_K)
+	      {
+		assert (cs_idx >= 0);
+		assert (cs_idx < ONE_K);
 
-	      assert_release (meter->m_hold_buf[cs_idx] >= 0);
+		assert_release (meter->m_hold_buf[cs_idx] >= 0);
+		if (amount > 0)
+		  {
+		    assert_release (amount == 1);
+		  }
+		else
+		  {
+		    assert_release (amount == -1);
+		  }
 
-	      /* re-set buf size */
-	      meter->m_hold_buf_size =
-		MAX (meter->m_hold_buf_size, cs_idx + 1);
-	      assert (meter->m_hold_buf_size <= ONE_K);
-	    }
-	  else
-	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "thread_rc_track_meter: hold_buf overflow: "
-			    "buf_size=%d, idx=%d",
-			    meter->m_hold_buf_size, cs_idx);
-	    }
+		meter->m_hold_buf[cs_idx] += amount;
+
+		assert_release (meter->m_hold_buf[cs_idx] >= 0);
+
+		/* re-set buf size */
+		meter->m_hold_buf_size =
+		  MAX (meter->m_hold_buf_size, cs_idx + 1);
+		assert (meter->m_hold_buf_size <= ONE_K);
+	      }
+	    else
+	      {
+		er_log_debug (ARG_FILE_LINE,
+			      "thread_rc_track_meter: hold_buf overflow: "
+			      "buf_size=%d, idx=%d",
+			      meter->m_hold_buf_size, cs_idx);
+	      }
+	  }
+	  break;
+
+	default:
+	  break;
 	}
 #endif
 
