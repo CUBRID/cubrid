@@ -39,13 +39,52 @@ CCI_DIR = $(SRC)/cci
 DBMT_DIR = $(SRC)/dbmt
 QATOOLS_DIR = $(SRC)/qatools
 
+if BUILD_CAS_FOR_MYSQL51
+  CAS4M51 = cub_cas_mysql51
+else
+  CAS4M51 =
+endif
+
 if BUILD_CAS_FOR_MYSQL
   CAS4M = cub_cas_mysql
 else
   CAS4M =
 endif
 
-bin_PROGRAMS = $(CAS4M)
+bin_PROGRAMS = $(CAS4M51) $(CAS4M)
+
+cub_cas_mysql51_SOURCES = \
+	$(BROKER_DIR)/cas.c \
+	$(BROKER_DIR)/cas_network.c \
+	$(BROKER_DIR)/cas_net_buf.c \
+	$(BROKER_DIR)/cas_function.c \
+	$(BROKER_DIR)/cas_mysql_execute.c \
+	$(BROKER_DIR)/cas_handle.c \
+	$(BROKER_DIR)/broker_util.c \
+	$(BROKER_DIR)/cas_str_like.c \
+	$(BROKER_DIR)/broker_recv_fd.c \
+	$(BROKER_DIR)/cas_xa.c \
+	$(BROKER_DIR)/cas_schema_info.c \
+	$(BROKER_DIR)/cas_log.c \
+	$(BROKER_DIR)/broker_shm.c \
+	$(BROKER_DIR)/broker_process_size.c \
+	$(BROKER_DIR)/cas_sql_log2.c \
+	$(BROKER_DIR)/broker_filename.c \
+	$(BROKER_DIR)/broker_error.c \
+	$(BROKER_DIR)/cas_util.c \
+	$(BROKER_DIR)/cas_dbms_util.c \
+	$(BROKER_DIR)/cas_error.c \
+	$(BROKER_DIR)/cas_error_log.c \
+	$(BASE_DIR)/environment_variable.c \
+	$(BASE_DIR)/stringl.c \
+	$(BASE_DIR)/porting.c \
+	$(BROKER_DIR)/broker_acl.c \
+	$(BROKER_DIR)/cas_meta.c
+cub_cas_mysql51_CPPFLAGS = @SRC_INC@ @EXT_INC@ @MYSQL51_INC_PATH@\
+	@SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE @XOPEN_DEFS@ -D_BSD_SOURCE \
+	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_MYSQL -DMYSQL_VERSION=51
+
+cub_cas_mysql51_LDFLAGS = @MYSQL51_LIB_PATH@ -lmysqlclient -lrt
 
 cub_cas_mysql_SOURCES = \
 	$(BROKER_DIR)/cas.c \
@@ -69,9 +108,6 @@ cub_cas_mysql_SOURCES = \
 	$(BROKER_DIR)/cas_dbms_util.c \
 	$(BROKER_DIR)/cas_error.c \
 	$(BROKER_DIR)/cas_error_log.c \
-	$(BROKER_DIR)/shard_metadata.c \
-	$(BROKER_DIR)/shard_admin_pub.c \
-	$(BROKER_DIR)/shard_shm.c \
 	$(BASE_DIR)/environment_variable.c \
 	$(BASE_DIR)/stringl.c \
 	$(BASE_DIR)/porting.c \
@@ -79,12 +115,11 @@ cub_cas_mysql_SOURCES = \
 	$(BROKER_DIR)/cas_meta.c
 cub_cas_mysql_CPPFLAGS = @SRC_INC@ @EXT_INC@ @MYSQL_INC_PATH@\
 	@SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE @XOPEN_DEFS@ -D_BSD_SOURCE \
-	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_MYSQL
+	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_MYSQL -DMYSQL_VERSION=
 
 cub_cas_mysql_LDFLAGS = @MYSQL_LIB_PATH@ -lmysqlclient -lrt
 
 VERSIONED_FILES = \
 	$(BROKER_DIR)/cas_mysql_execute.c
-
 $(VERSIONED_FILES): $(top_srcdir)/BUILD_NUMBER
 	touch $@

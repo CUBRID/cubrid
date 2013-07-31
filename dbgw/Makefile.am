@@ -40,10 +40,16 @@ else
   DBGW_ORACLE_LIB =
 endif
 
-if BUILD_DBGW_MYSQL
+if BUILD_DBGW_MYSQL51
   DBGW_MYSQL_LIB = libdbgw3_mysql.la
 else
   DBGW_MYSQL_LIB =
+endif
+
+if BUILD_DBGW_MYSQL
+  DBGW_MYSQL61_LIB = libdbgw3_mysql61.la
+else
+  DBGW_MYSQL61_LIB =
 endif
 
 if BUILD_DBGW_ALL
@@ -203,7 +209,7 @@ dbgw3_all_SOURCES = \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDResultSetMetaData.cpp \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDStatementBase.cpp \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDMock.cpp
-lib_LTLIBRARIES = $(DBGW_LIB) $(DBGW_ORACLE_LIB) $(DBGW_MYSQL_LIB) $(DBGW_ALL_LIB)
+lib_LTLIBRARIES = $(DBGW_LIB) $(DBGW_ORACLE_LIB) $(DBGW_MYSQL_LIB) $(DBGW_MYSQL61_LIB) $(DBGW_ALL_LIB)
 libdbgw3_la_SOURCES = \
         $(dbgw3_SOURCES)
 libdbgw3_la_CPPFLAGS = \
@@ -223,17 +229,25 @@ libdbgw3_oracle_la_LINK = $(CXXLINK)
 libdbgw3_mysql_la_SOURCES = \
         $(dbgw3_mysql_SOURCES)
 libdbgw3_mysql_la_CPPFLAGS = \
-        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) @MYSQL_INC_PATH@ -DDBGW_MYSQL
-libdbgw3_mysql_la_LDFLAGS = -version-number @LT_VERSION@ @MYSQL_LIB_PATH@
+        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) @MYSQL51_INC_PATH@ -DDBGW_MYSQL
+libdbgw3_mysql_la_LDFLAGS = -version-number @LT_VERSION@ @MYSQL51_LIB_PATH@
 libdbgw3_mysql_la_LIBADD = @EXPAT_LIBS@ -lmysqlclient -lrt
 libdbgw3_mysql_la_LINK = $(CXXLINK)
+
+libdbgw3_mysql61_la_SOURCES = \
+        $(dbgw3_mysql_SOURCES)
+libdbgw3_mysql61_la_CPPFLAGS = \
+        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) @MYSQL_INC_PATH@ -DDBGW_MYSQL
+libdbgw3_mysql61_la_LDFLAGS = -version-number @LT_VERSION@ @MYSQL_LIB_PATH@
+libdbgw3_mysql61_la_LIBADD = @EXPAT_LIBS@ -lmysqlclient -lrt
+libdbgw3_mysql61_la_LINK = $(CXXLINK)
 
 libdbgw3_all_la_SOURCES = \
         $(dbgw3_all_SOURCES)
 libdbgw3_all_la_CPPFLAGS = \
-        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) @MYSQL_INC_PATH@ -DDBGW_ALL \
+        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) @MYSQL51_INC_PATH@ -DDBGW_ALL \
         @ORACLE_INC_PATH@
-libdbgw3_all_la_LDFLAGS = -version-number @LT_VERSION@ @MYSQL_LIB_PATH@ @ORACLE_LIB_PATH@
+libdbgw3_all_la_LDFLAGS = -version-number @LT_VERSION@ @MYSQL51_LIB_PATH@ @ORACLE_LIB_PATH@
 libdbgw3_all_la_LIBADD = @EXPAT_LIBS@ -lclntsh -lnnz11 -lmysqlclient -lrt
 libdbgw3_all_la_LINK = $(CXXLINK)
 

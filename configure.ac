@@ -579,19 +579,46 @@ AS_IF([test "$with_aio" = "yes"],
 	SYS_LIBS="$SYS_LIBS -lrt"])
 AC_MSG_RESULT([$with_aio])
 
-AC_MSG_CHECKING([for mysql client library])
+AC_MSG_CHECKING([for mysql client library version 5.1])
+AC_ARG_WITH([mysql51],
+	AS_HELP_STRING([--with-mysql51=PATH],
+		[for CAS for MySQL @<:@default=builtin@:>@]),
+	[with_mysql51=$withval],
+	[with_mysql51=builtin])
+
+case "$with_mysql51" in
+	yes|builtin)
+		if test -d "$srcdir/external/mysqlclient" && test "$enable_64bit" == "yes"; then
+			AC_CONFIG_SUBDIRS([external/mysqlclient/5.1])
+			MYSQL51_LIB_PATH="-L\$(top_builddir)/external/mysqlclient/5.1/lib"
+			MYSQL51_INC_PATH="-I\$(top_builddir)/external/mysqlclient/5.1/include"
+		else
+			with_mysql=no
+		fi
+		;;
+	no)
+		;;
+	*)
+		MYSQL51_LIB_PATH="-L$with_mysql/lib"
+		MYSQL51_INC_PATH="-I$with_mysql/include"
+		;;
+esac
+AM_CONDITIONAL([BUILD_CAS_FOR_MYSQL51], [test "$with_mysql51" != "no"])
+AC_MSG_RESULT([$with_mysql51])
+
+AC_MSG_CHECKING([for mysql client library version 6.1])
 AC_ARG_WITH([mysql],
 	AS_HELP_STRING([--with-mysql=PATH],
 		[for CAS for MySQL @<:@default=builtin@:>@]),
 	[with_mysql=$withval],
 	[with_mysql=builtin])
-AS_IF([test "$with_cci_only" = "yes"], [with_mysql=no])
+
 case "$with_mysql" in
 	yes|builtin)
-		if test -d "$srcdir/external/mysqlclient" -a "$enable_64bit" = "yes"; then
-			AC_CONFIG_SUBDIRS([external/mysqlclient])
-			MYSQL_LIB_PATH="-L\$(top_builddir)/external/lib"
-			MYSQL_INC_PATH="-I\$(top_builddir)/external/include/mysqlclient"
+		if test -d "$srcdir/external/mysqlclient" && test "$enable_64bit" == "yes"; then
+			AC_CONFIG_SUBDIRS([external/mysqlclient/6.1])
+			MYSQL_LIB_PATH="-L\$(top_builddir)/external/mysqlclient/6.1/lib"
+			MYSQL_INC_PATH="-I\$(top_builddir)/external/mysqlclient/6.1/include"
 		else
 			with_mysql=no
 		fi
@@ -642,6 +669,7 @@ AC_ARG_ENABLE([dbgw],
 AM_CONDITIONAL([BUILD_DBGW], [test "$enable_dbgw" != "no"])
 AS_IF([test "$with_cci_only" = "yes"], [enable_dbgw=no])
 AM_CONDITIONAL([BUILD_DBGW_ORACLE], [test "$enable_dbgw" != "no" && test "$with_oracle" != "no"])
+AM_CONDITIONAL([BUILD_DBGW_MYSQL51], [test "$enable_dbgw" != "no" && test "$with_mysql51" != "no"])
 AM_CONDITIONAL([BUILD_DBGW_MYSQL], [test "$enable_dbgw" != "no" && test "$with_mysql" != "no"])
 AM_CONDITIONAL([BUILD_DBGW_ALL], [test "$enable_dbgw" != "no" && test "$with_oracle" != "no" && test "$with_mysql" != "no"])
 if test "$enable_dbgw" = "yes"
@@ -1024,6 +1052,8 @@ AC_SUBST([CUBRID_SHLOCALESDIR])
 AC_SUBST([CUBRID_COMPATDIR])
 AC_SUBST([CUBRID_LOGDIR])
 AC_SUBST([CUBRID_TMPDIR])
+AC_SUBST([MYSQL51_LIB_PATH])
+AC_SUBST([MYSQL51_INC_PATH])
 AC_SUBST([MYSQL_LIB_PATH])
 AC_SUBST([MYSQL_INC_PATH])
 AC_SUBST([ORACLE_LIB_PATH])

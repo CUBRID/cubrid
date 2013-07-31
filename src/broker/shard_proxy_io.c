@@ -935,7 +935,8 @@ proxy_io_make_client_dbinfo_ok (char *driver_info, char **buffer)
 	{
 	  dbms_type = CAS_PROXY_DBMS_ORACLE;
 	}
-      else if (proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL)
+      else if (proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL
+	       || proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL51)
 	{
 	  dbms_type = CAS_PROXY_DBMS_MYSQL;
 	}
@@ -1722,7 +1723,8 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
   user_p = shard_metadata_get_shard_user (shm_user_p);
   assert (user_p);
 
-  if (proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL)
+  if (proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL
+      || proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL51)
     {
       if (strcmp (db_name, user_p->db_name)
 	  || strcmp (db_user, user_p->db_user)

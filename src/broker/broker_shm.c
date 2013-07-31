@@ -959,6 +959,10 @@ get_appl_server_name (int appl_server_type)
     {
       return APPL_SERVER_CAS_ORACLE_NAME;
     }
+  else if (appl_server_type == APPL_SERVER_CAS_MYSQL51)
+    {
+      return APPL_SERVER_CAS_MYSQL51_NAME;
+    }
   else if (appl_server_type == APPL_SERVER_CAS_MYSQL)
     {
       return APPL_SERVER_CAS_MYSQL_NAME;

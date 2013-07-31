@@ -1436,6 +1436,8 @@ get_as_type_str (char as_type)
 {
   if (as_type == APPL_SERVER_CAS_ORACLE)
     return APPL_SERVER_CAS_ORACLE_TYPE_NAME;
+  if (as_type == APPL_SERVER_CAS_MYSQL51)
+    return APPL_SERVER_CAS_MYSQL51_TYPE_NAME;
   if (as_type == APPL_SERVER_CAS_MYSQL)
     return APPL_SERVER_CAS_MYSQL_TYPE_NAME;
   return APPL_SERVER_CAS_TYPE_NAME;
@@ -1446,6 +1448,8 @@ get_as_type (const char *type_str)
 {
   if (strcasecmp (type_str, APPL_SERVER_CAS_ORACLE_TYPE_NAME) == 0)
     return APPL_SERVER_CAS_ORACLE;
+  if (strcasecmp (type_str, APPL_SERVER_CAS_MYSQL51_TYPE_NAME) == 0)
+    return APPL_SERVER_CAS_MYSQL51;
   if (strcasecmp (type_str, APPL_SERVER_CAS_MYSQL_TYPE_NAME) == 0)
     return APPL_SERVER_CAS_MYSQL;
   return APPL_SERVER_CAS;
