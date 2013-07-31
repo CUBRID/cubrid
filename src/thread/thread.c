@@ -4491,7 +4491,9 @@ thread_rc_track_meter_assert_CS (THREAD_RC_METER * meter, int amount,
 	case CSECT_ER_LOG_FILE:
 	  if (meter->m_hold_buf[CSECT_ER_LOG_FILE] > 1)
 	    {
-	      for (i = 0; i < meter->m_hold_buf_size; i++)
+	      for (i = 0;
+		   i < meter->m_hold_buf_size && i < CRITICAL_SECTION_COUNT;
+		   i++)
 		{
 		  if (i == cs_idx)
 		    {
