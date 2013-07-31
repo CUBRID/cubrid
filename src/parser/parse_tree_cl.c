@@ -2532,6 +2532,7 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 	    }
 
 	  strcat_with_realloc (&sb, r->bytes);
+	  prev = r;
 	}
     }
 
