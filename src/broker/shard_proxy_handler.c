@@ -1002,7 +1002,9 @@ error_return:
 static void
 proxy_context_destroy (void)
 {
-  /* SHARD TODO : not implemented yet */
+  shard_cqueue_destroy (&proxy_Context.freeq);
+
+  FREE_MEM (proxy_Context.ent);
 
   return;
 }
@@ -1569,6 +1571,7 @@ proxy_handler_destroy (void)
   shard_queue_destroy (&proxy_Handler.cas_rcv_q);
   shard_queue_destroy (&proxy_Handler.cli_ret_q);
   shard_queue_destroy (&proxy_Handler.cli_rcv_q);
+  proxy_context_destroy ();
 }
 
 int

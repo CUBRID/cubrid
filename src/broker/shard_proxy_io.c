@@ -4555,6 +4555,10 @@ proxy_io_destroy (void)
   proxy_client_io_destroy ();
   proxy_shard_io_destroy ();
 
+#if defined (LINUX)
+  FREE_MEM (ep_Event);
+#endif /* LINUX */
+
   return;
 }
 
@@ -4919,6 +4923,8 @@ proxy_add_epoll_event (int fd, unsigned int events)
   int error;
   struct epoll_event ep_ev;
 
+  memset (&ep_ev, 0, sizeof (ep_ev));
+
   assert (ep_Fd != INVALID_SOCKET);
 
   ep_ev.data.fd = fd;
@@ -4942,6 +4948,8 @@ proxy_mod_epoll_event (int fd, unsigned int events)
   int error;
   struct epoll_event ep_ev;
 
+  memset (&ep_ev, 0, sizeof (ep_ev));
+
   assert (ep_Fd != INVALID_SOCKET);
 
   ep_ev.data.fd = fd;
@@ -4964,6 +4972,8 @@ proxy_del_epoll_event (int fd)
 {
   int error;
   struct epoll_event ep_ev;
+
+  memset (&ep_ev, 0, sizeof (ep_ev));
 
   assert (ep_Fd != INVALID_SOCKET);
 

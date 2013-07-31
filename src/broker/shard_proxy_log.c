@@ -365,6 +365,16 @@ proxy_access_log (struct timeval *start_time, int client_ip_addr,
   return (end_time.tv_sec - start_time->tv_sec);
 }
 
+void
+proxy_access_log_close (void)
+{
+  if (access_log_fp != NULL)
+    {
+      fclose (access_log_fp);
+      access_log_fp = NULL;
+    }
+}
+
 static FILE *
 log_open (char *log_file_name)
 {

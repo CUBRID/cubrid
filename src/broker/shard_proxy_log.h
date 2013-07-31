@@ -49,6 +49,7 @@ extern void proxy_log_open (char *br_name, int proxy_index);
 extern void proxy_log_reset (char *br_name, int proxy_index);
 */
 extern void proxy_log_close (void);
+extern void proxy_access_log_close (void);
 extern void proxy_log_end (void);
 extern void proxy_log_write (int level, char *svc_code, const char *fmt, ...);
 extern int proxy_log_get_level (void);

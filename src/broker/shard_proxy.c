@@ -69,6 +69,9 @@ proxy_term (void)
   proxy_io_destroy ();
   shard_stmt_destroy ();
 
+  proxy_log_close ();
+  proxy_access_log_close ();
+
   return;
 }
 
