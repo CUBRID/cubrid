@@ -54,7 +54,8 @@
 
 #define 	SHMODE			0644
 
-#define 	MAGIC_NUMBER		0x20081209
+#define 	SEQ_NUMBER		1
+#define 	MAGIC_NUMBER		(MAJOR_VERSION * 1000000 + MINOR_VERSION * 10000 + SEQ_NUMBER)
 
 #if defined(WINDOWS)
 static int shm_id_cmp_func (void *key1, void *key2);
