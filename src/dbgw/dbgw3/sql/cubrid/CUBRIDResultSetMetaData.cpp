@@ -71,6 +71,7 @@ namespace dbgw
             case CCI_U_TYPE_VARNCHAR:
               metaDataRaw.columnType = DBGW_VAL_TYPE_STRING;
               break;
+            case CCI_U_TYPE_BIT:
             case CCI_U_TYPE_VARBIT:
               metaDataRaw.columnType = DBGW_VAL_TYPE_BYTES;
               break;
