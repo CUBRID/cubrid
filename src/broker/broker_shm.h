@@ -135,7 +135,7 @@
 
 #define IP_BYTE_COUNT           5
 #define ACL_MAX_ITEM_COUNT      50
-#define ACL_MAX_IP_COUNT        100
+#define ACL_MAX_IP_COUNT        256
 #define ACL_MAX_DBNAME_LENGTH	32
 #define ACL_MAX_DBUSER_LENGTH	32
 
