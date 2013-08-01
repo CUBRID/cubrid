@@ -1390,7 +1390,7 @@ proxy_client_execute_internal (T_PROXY_CONTEXT * ctx_p,
   int bind_value_size;
   int argc_mod_2;
   T_CAS_IO *cas_io_p;
-  T_SHARD_STMT *stmt_p;
+  T_SHARD_STMT *stmt_p = NULL;
   T_SHARD_KEY_RANGE *range_p = NULL;
 
   T_PROXY_EVENT *new_event_p = NULL;
@@ -1652,7 +1652,14 @@ proxy_client_execute_internal (T_PROXY_CONTEXT * ctx_p,
   if (proxy_info_p->ignore_shard_hint == OFF)
     {
       /* update shard statistics */
-      proxy_update_shard_stats (stmt_p, range_p);
+      if (stmt_p && range_p)
+	{
+	  proxy_update_shard_stats (stmt_p, range_p);
+	}
+      else
+	{
+	  assert (false);
+	}
     }
   else
     {
@@ -2736,7 +2743,7 @@ fn_proxy_client_prepare_and_execute (T_PROXY_CONTEXT * ctx_p,
   char auto_commit_mode = FALSE;
 
   T_CAS_IO *cas_io_p;
-  T_SHARD_STMT *stmt_p;
+  T_SHARD_STMT *stmt_p = NULL;
   int shard_id;
   SP_HINT_TYPE hint_type;
   T_SHARD_KEY_RANGE *range_p = NULL;
@@ -2959,6 +2966,24 @@ fn_proxy_client_prepare_and_execute (T_PROXY_CONTEXT * ctx_p,
 	}
     }
 
+  if (stmt_p == NULL)
+    {
+      if (ctx_p->prepared_stmt == NULL)
+	{
+	  assert (false);
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "No prepared statement to execute");
+
+	  proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR,
+				   CAS_ER_INTERNAL);
+	  EXIT_FUNC ();
+	  goto free_context;
+	}
+
+      stmt_p = ctx_p->prepared_stmt;
+      (void) proxy_get_shard_id (stmt_p, NULL, &range_p);
+    }
+
   cas_io_p =
     proxy_cas_alloc_by_ctx (ctx_p->client_id, ctx_p->shard_id, ctx_p->cas_id,
 			    ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout);
@@ -2999,7 +3024,14 @@ fn_proxy_client_prepare_and_execute (T_PROXY_CONTEXT * ctx_p,
   if (proxy_info_p->ignore_shard_hint == OFF)
     {
       /* update shard statistics */
-      proxy_update_shard_stats (stmt_p, range_p);
+      if (stmt_p && range_p)
+	{
+	  proxy_update_shard_stats (stmt_p, range_p);
+	}
+      else
+	{
+	  assert (false);
+	}
     }
   else
     {
