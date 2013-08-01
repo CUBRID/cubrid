@@ -42,6 +42,7 @@
 #include "message_catalog.h"
 #include "error_manager.h"
 #include "system_parameter.h"
+#include "language_support.h"
 
 #define V9_1_LEVEL (9.1f)
 #define V9_2_LEVEL (9.2f)
@@ -162,6 +163,9 @@ static int check_and_fix_compat_level (const char *db_name,
 static int get_db_path (const char *db_name, char *db_full_path);
 static int fix_codeset_in_active_log (const char *db_path,
 				      INTL_CODESET codeset);
+extern int catcls_get_db_collation (THREAD_ENTRY * thread_p,
+				    LANG_COLL_COMPAT ** db_collations,
+				    int *coll_cnt);
 
 static int
 get_active_log_vol_path (const char *db_path, char *logvol_path)
@@ -412,6 +416,9 @@ main (int argc, char *argv[])
   INTL_CODESET codeset;
   int i;
   VOLUME_UNDO_INFO *p;
+  LANG_COLL_COMPAT *db_collations = NULL;
+  int db_coll_cnt;
+  bool db_started = false;
 
   if (argc != 2)
     {
@@ -482,17 +489,81 @@ main (int argc, char *argv[])
       printf ("\n%s\n", db_error_string (3));
       goto error_undo_vol_header;
     }
+  db_started = true;
 
-  /* The 'COLL_CONTRACTION' struct exported in locales lib was reorganized to
-   * optimize memory; as a side-effect, collations having contractions have
-   * altered checksum, but their properties are the same, it is safe to
-   * overwrite the _db_collation system table */
+  if (catcls_get_db_collation (NULL, &db_collations, &db_coll_cnt)
+      != NO_ERROR)
+    {
+      if (db_collations != NULL)
+	{
+	  db_private_free (NULL, db_collations);
+	  db_collations = NULL;
+	}
+      goto error_undo_vol_header;
+    }
+
+  for (i = 0; i < db_coll_cnt; i++)
+    {
+      const LANG_COLL_COMPAT *ref_c;
+      LANG_COLLATION *lc;
+
+      ref_c = &(db_collations[i]);
+
+      assert (ref_c->coll_id >= 0 && ref_c->coll_id < LANG_MAX_COLLATIONS);
+      /* collation id is valid, check if same collation */
+      lc = lang_get_collation (ref_c->coll_id);
+
+      if (lc->coll.coll_id != ref_c->coll_id)
+	{
+	  printf ("Collation '%s' with id %d from database %s "
+		  "was not loaded by migration process\n", ref_c->coll_name,
+		  ref_c->coll_id, db_name);
+	  goto error_undo_vol_header;
+	}
+
+      if (strcmp (lc->coll.coll_name, ref_c->coll_name))
+	{
+	  printf ("Names of collation with id %d do not match : "
+		  "the collation loaded by migration process is '%s'; "
+		  "the collation in database %s, is '%s'\n",
+		  ref_c->coll_id, lc->coll.coll_name, db_name,
+		  ref_c->coll_name);
+	  goto error_undo_vol_header;
+	}
+
+      if (lc->codeset != ref_c->codeset)
+	{
+	  printf ("Codesets of collation '%s' with id %d do not match : "
+		  "the collation loaded by migration process has codeset %d; "
+		  "the collation in database %s has codeset %d\n",
+		  ref_c->coll_name, ref_c->coll_id, lc->codeset, db_name,
+		  ref_c->codeset);
+	  goto error_undo_vol_header;
+	}
+
+      /* The 'COLL_CONTRACTION' struct exported in locales lib was reorganized
+       * to optimize memory; as a side-effect, collations having contractions
+       * have altered checksum, but their properties are the same */
+
+      /* collations with contractions are ignored, there is no acceptable
+       * solution to check them;
+       * we just assume that user does not change their properties */
+      if (lc->coll.count_contr == 0
+	  && strcasecmp (lc->coll.checksum, ref_c->checksum))
+	{
+	  printf ("Collation '%s' with id %d has changed : "
+		  "the collation loaded by migration process has checksum "
+		  "'%s'; the collation from database %s has checksum '%s'\n",
+		  ref_c->coll_name, ref_c->coll_id, lc->coll.checksum,
+		  db_name, ref_c->checksum);
+	  goto error_undo_vol_header;
+	}
+    }
+
   printf ("Updating database system collations \n\n");
   if (synccoll_force () != EXIT_SUCCESS)
     {
       db_abort_transaction ();
-      db_shutdown ();
-
       goto error_undo_vol_header;
     }
   db_commit_transaction ();
@@ -504,13 +575,13 @@ main (int argc, char *argv[])
       printf
 	("Could not update the statistics of the used pages of a volume: %s.\n",
 	 db_error_string (3));
-      db_shutdown ();
       goto error_undo_vol_header;
     }
 
   /* read codeset from db_root */
   codeset = get_codeset_from_db_root ();
   db_shutdown ();
+  db_started = false;
 
   if (codeset >= INTL_CODESET_ISO88591 && codeset <= INTL_CODESET_LAST)
     {
@@ -534,6 +605,16 @@ main (int argc, char *argv[])
   return NO_ERROR;
 
 error_undo_vol_header:
+  if (db_collations != NULL)
+    {
+      db_private_free (NULL, db_collations);
+      db_collations = NULL;
+    }
+  if (db_started)
+    {
+      db_shutdown ();
+      db_started = false;
+    }
   for (p = vol_undo_info, i = 0; i < vol_undo_count; i++, p++)
     {
       printf ("rollback volume header: %s\n", p->filename);
