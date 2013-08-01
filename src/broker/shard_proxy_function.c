@@ -931,6 +931,7 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   char *request_p;
 
   bool has_shard_val_hint = false;
+  bool use_temp_statement = false;
 
   const char func_code = CAS_FC_PREPARE;
 
@@ -1020,6 +1021,16 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
       switch (stmt_p->status)
 	{
 	case SHARD_STMT_STATUS_COMPLETE:
+	  /**
+	   * this statement has been used previously. if we use it,
+	   * we will get the corrupted result of statement.
+	   */
+	  if (proxy_context_find_stmt (ctx_p, stmt_p->stmt_h_id) != NULL)
+	    {
+	      use_temp_statement = true;
+	      break;
+	    }
+
 	  error = proxy_send_prepared_stmt_to_client (ctx_p, stmt_p);
 	  if (error)
 	    {
@@ -1102,14 +1113,20 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 	  assert (false);
 	  goto free_context;
 	}
-
-      assert (false);
-      goto free_context;
     }
 
-  stmt_p =
-    shard_stmt_new_prepared_stmt (organized_sql_stmt, ctx_p->cid, ctx_p->uid,
+  if (use_temp_statement)
+    {
+      stmt_p =
+	shard_stmt_new_exclusive (organized_sql_stmt, ctx_p->cid, ctx_p->uid,
 				  client_version);
+    }
+  else
+    {
+      stmt_p =
+	shard_stmt_new_prepared_stmt (organized_sql_stmt, ctx_p->cid,
+				      ctx_p->uid, client_version);
+    }
   if (stmt_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
