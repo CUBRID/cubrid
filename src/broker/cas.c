@@ -1702,6 +1702,12 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  fn_ret = FN_CLOSE_CONN;
 
 #ifndef LIBCAS_FOR_JSP
+	  if (as_info->reset_flag)
+	    {
+	      cas_log_msg = "RESET";
+	      cas_log_write_and_end (0, true, cas_log_msg);
+	      fn_ret = FN_KEEP_SESS;
+	    }
 	  if (as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
 	    {
 	      cas_log_msg = "CHANGE CLIENT";
@@ -2345,6 +2351,12 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
       if (as_info->cas_slow_log_reset)
 	{
 	  cas_slow_log_reset (broker_name);
+	}
+
+      if (as_info->con_status != CON_STATUS_IN_TRAN
+	  && as_info->reset_flag == TRUE)
+	{
+	  return -1;
 	}
 
       if (as_info->con_status == CON_STATUS_CLOSE
