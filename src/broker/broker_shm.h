@@ -168,6 +168,9 @@
 #define MAX_HA_DBNAME_LENGTH 		128
 #endif /* !MAX_HA_DBNAME_LENGTH */
 
+#define         SEQ_NUMBER              1
+#define         MAGIC_NUMBER            (MAJOR_VERSION * 1000000 + MINOR_VERSION * 10000 + SEQ_NUMBER)
+
 typedef enum
 {
   SERVICE_OFF = 0,

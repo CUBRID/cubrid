@@ -59,7 +59,6 @@
 #define DEFAULT_NUM_KEY			1
 #define DEFAULT_NUM_CONN		4
 
-#define MAGIC_NUMBER			0x20081209
 
 FN_GET_SHARD_KEY fn_get_shard_key = NULL;
 
