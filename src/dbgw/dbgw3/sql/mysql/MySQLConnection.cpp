@@ -76,7 +76,7 @@ namespace dbgw
 
         if (mysql_real_connect(m_pMySQL, m_host.c_str(), m_user.c_str(),
             m_password.c_str(), m_dbname.c_str(), m_nPort, NULL,
-            CLIENT_FOUND_ROWS) == NULL)
+            CLIENT_MULTI_STATEMENTS | CLIENT_FOUND_ROWS) == NULL)
           {
             MySQLException e = MySQLExceptionFactory::create(
                 "Failed to connect database.");

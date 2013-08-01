@@ -186,7 +186,7 @@ static void trigger_status_str (DB_TRIGGER_STATUS trig_status, char *buf);
 static void trigger_time_str (DB_TRIGGER_TIME trig_time, char *buf);
 #endif /* 0 */
 
-static char get_stmt_type (char *stmt);
+static char get_stmt_type (const char *stmt);
 static int execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
 			     T_BROKER_VERSION client_version, char exec_flag);
 
@@ -1934,9 +1934,9 @@ trigger_time_str (DB_TRIGGER_TIME trig_time, char *buf)
 #endif /* 0 */
 
 static char
-get_stmt_type (char *stmt)
+get_stmt_type (const char *stmt)
 {
-  char *tbuf = stmt;
+  const char *tbuf = stmt;
   int size = strlen (stmt);
   int i;
   for (i = 0; i < size; i++)
@@ -1966,6 +1966,10 @@ get_stmt_type (char *stmt)
   else if (strncasecmp (tbuf, "select", 6) == 0)
     {
       return CUBRID_STMT_SELECT;
+    }
+  else if (strncasecmp (tbuf, "call", 4) == 0)
+    {
+      return CUBRID_STMT_CALL_SP;
     }
   else
     {
@@ -2012,7 +2016,8 @@ send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 
   net_buf_cp_byte (net_buf, 0);	/* updatable_flag */
 
-  if (srv_handle->stmt_type != CUBRID_STMT_SELECT)
+  if (srv_handle->stmt_type != CUBRID_STMT_SELECT
+      || srv_handle->send_metadata_before_execute == FALSE)
     {
       net_buf_cp_int (net_buf, 0, NULL);
       return CAS_NO_ERROR;
@@ -2623,6 +2628,12 @@ cas_mysql_prepare (T_SRV_HANDLE ** new_handle, char *sql_stmt, int flag,
       goto prepare_error_internal;
     }
 
+  if (flag & CCI_PREPARE_CALL)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+      goto prepare_error_internal;
+    }
+
   srv_h_id = hm_new_srv_handle (new_handle, query_seq_num);
   if (srv_h_id < 0)
     {
@@ -2660,6 +2671,12 @@ cas_mysql_prepare (T_SRV_HANDLE ** new_handle, char *sql_stmt, int flag,
 
   (*new_handle)->num_markers = cas_mysql_param_count (stmt);
   (*new_handle)->stmt_type = get_stmt_type (sql_stmt);
+  if ((*new_handle)->stmt_type == CUBRID_STMT_CALL_SP)
+    {
+      /* in cas4mysql, we treat call statement like select statement. */
+      (*new_handle)->stmt_type = CUBRID_STMT_SELECT;
+      (*new_handle)->send_metadata_before_execute = FALSE;
+    }
 
   (*new_handle)->session = (void *) stmt;
   (*new_handle)->is_prepared = TRUE;
@@ -2759,7 +2776,20 @@ void
 cas_mysql_stmt_free_result (MYSQL_STMT * stmt)
 {
   (void) mysql_stmt_free_result (stmt);
-  return;
+
+  if (_db_conn == NULL)
+    {
+      return;
+    }
+
+  /**
+   * if statement return multiple result set,
+   * we should consume all result set.
+   */
+  while (mysql_more_results (_db_conn))
+    {
+      mysql_next_result (_db_conn);
+    }
 }
 
 void

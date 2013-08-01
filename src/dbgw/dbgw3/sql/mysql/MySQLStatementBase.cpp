@@ -86,7 +86,7 @@ namespace dbgw
       bindParameters();
 
       int nRetCode = mysql_stmt_execute(m_pMySQLStmt);
-      if (nRetCode != 0)
+      if (nRetCode < 0)
         {
           MySQLException e = MySQLExceptionFactory::create(nRetCode,
               m_pMySQLStmt, "Failed to execute statement");
@@ -104,7 +104,7 @@ namespace dbgw
       bindParameters();
 
       int nRetCode = mysql_stmt_execute(m_pMySQLStmt);
-      if (nRetCode != 0)
+      if (nRetCode < 0)
         {
           MySQLException e = MySQLExceptionFactory::create(nRetCode,
               m_pMySQLStmt, "Failed to execute statement");

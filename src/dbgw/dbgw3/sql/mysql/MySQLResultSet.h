@@ -66,6 +66,7 @@ namespace dbgw
       void makeResultSet();
 
     private:
+      MYSQL *m_pMySQL;
       MYSQL_STMT *m_pMySQLStmt;
       int m_nRowCount;
       int m_nCursor;

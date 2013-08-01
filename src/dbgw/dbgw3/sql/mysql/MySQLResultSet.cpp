@@ -33,6 +33,7 @@ namespace dbgw
         _MySQLDefineList &defineList,
         const trait<MySQLResultSetMetaData>::sp pResultSetMetaData) :
       ResultSet(pStatement),
+      m_pMySQL((MYSQL *) pStatement->getConnection()->getNativeHandle()),
       m_pMySQLStmt((MYSQL_STMT *) pStatement->getNativeHandle()),
       m_nRowCount(0), m_nCursor(0), m_nFetchRowCount(0),
       m_defineList(defineList),
@@ -318,6 +319,11 @@ namespace dbgw
               m_pMySQLStmt, "Failed to close result");
           DBGW_LOG_ERROR(e.what());
           throw e;
+        }
+
+      while (mysql_more_results(m_pMySQL))
+        {
+          mysql_next_result(m_pMySQL);
         }
 
       DBGW_LOG_DEBUG("close resultset.");
