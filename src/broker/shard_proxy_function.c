@@ -1652,7 +1652,7 @@ proxy_client_execute_internal (T_PROXY_CONTEXT * ctx_p,
   if (proxy_info_p->ignore_shard_hint == OFF)
     {
       /* update shard statistics */
-      if (stmt_p && range_p)
+      if (stmt_p)
 	{
 	  proxy_update_shard_stats (stmt_p, range_p);
 	}
@@ -3024,7 +3024,7 @@ fn_proxy_client_prepare_and_execute (T_PROXY_CONTEXT * ctx_p,
   if (proxy_info_p->ignore_shard_hint == OFF)
     {
       /* update shard statistics */
-      if (stmt_p && range_p)
+      if (stmt_p)
 	{
 	  proxy_update_shard_stats (stmt_p, range_p);
 	}
