@@ -23,14 +23,14 @@ JDBC_SRC_DIR = $(SRC)/jdbc
 
 DRIVER_CUBRID = JDBC-@BUILD_NUMBER@-cubrid.jar
 
-if BUILD_CAS_FOR_MYSQL51 
+if BUILD_CAS_FOR_MYSQL
   DRIVER_MYSQL = JDBC-@BUILD_NUMBER@-cubrid-mysql.jar
 else
-  if BUILD_CAS_FOR_MYSQL
-	  DRIVER_MYSQL = JDBC-@BUILD_NUMBER@-cubrid-mysql.jar
-	else
-  	DRIVER_MYSQL =
-  endif
+if BUILD_CAS_FOR_MYSQL51
+  DRIVER_MYSQL = JDBC-@BUILD_NUMBER@-cubrid-mysql.jar
+else
+  DRIVER_MYSQL =
+endif
 endif
 
 if BUILD_CAS_FOR_ORACLE

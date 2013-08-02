@@ -588,12 +588,12 @@ AC_ARG_WITH([mysql51],
 
 case "$with_mysql51" in
 	yes|builtin)
-		if test -d "$srcdir/external/mysqlclient" && test "$enable_64bit" == "yes"; then
+		if test -d "$srcdir/external/mysqlclient/5.1" && test "$enable_64bit" == "yes"; then
 			AC_CONFIG_SUBDIRS([external/mysqlclient/5.1])
 			MYSQL51_LIB_PATH="-L\$(top_builddir)/external/mysqlclient/5.1/lib"
 			MYSQL51_INC_PATH="-I\$(top_builddir)/external/mysqlclient/5.1/include"
 		else
-			with_mysql=no
+			with_mysql51=no
 		fi
 		;;
 	no)
@@ -615,7 +615,7 @@ AC_ARG_WITH([mysql],
 
 case "$with_mysql" in
 	yes|builtin)
-		if test -d "$srcdir/external/mysqlclient" && test "$enable_64bit" == "yes"; then
+		if test -d "$srcdir/external/mysqlclient/6.1" && test "$enable_64bit" == "yes"; then
 			AC_CONFIG_SUBDIRS([external/mysqlclient/6.1])
 			MYSQL_LIB_PATH="-L\$(top_builddir)/external/mysqlclient/6.1/lib"
 			MYSQL_INC_PATH="-I\$(top_builddir)/external/mysqlclient/6.1/include"
