@@ -37,7 +37,6 @@
 #include "db_date.h"
 
 static CLASS_STATS *stats_client_unpack_statistics (char *buffer);
-static void stats_print_min_max (ATTR_STATS * attr_stats, FILE * fpp);
 
 /*
  * stats_get_statistics () - Get class statistics
@@ -99,20 +98,20 @@ stats_client_unpack_statistics (char *buf_p)
   class_stats_p->time_stamp = (unsigned int) OR_GET_INT (buf_p);
   buf_p += OR_INT_SIZE;
 
-  class_stats_p->num_objects = OR_GET_INT (buf_p);
+  class_stats_p->heap_num_objects = OR_GET_INT (buf_p);
   buf_p += OR_INT_SIZE;
-  if (class_stats_p->num_objects < 0)
+  if (class_stats_p->heap_num_objects < 0)
     {
       assert (false);
-      class_stats_p->num_objects = 0;
+      class_stats_p->heap_num_objects = 0;
     }
 
-  class_stats_p->heap_size = OR_GET_INT (buf_p);
+  class_stats_p->heap_num_pages = OR_GET_INT (buf_p);
   buf_p += OR_INT_SIZE;
-  if (class_stats_p->heap_size < 0)
+  if (class_stats_p->heap_num_pages < 0)
     {
       assert (false);
-      class_stats_p->heap_size = 0;
+      class_stats_p->heap_num_pages = 0;
     }
 
   class_stats_p->n_attrs = OR_GET_INT (buf_p);
@@ -139,83 +138,6 @@ stats_client_unpack_statistics (char *buf_p)
 
       attr_stats_p->type = (DB_TYPE) OR_GET_INT (buf_p);
       buf_p += OR_INT_SIZE;
-
-      switch (attr_stats_p->type)
-	{
-	case DB_TYPE_INTEGER:
-	  attr_stats_p->min_value.i = OR_GET_INT (buf_p);
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  attr_stats_p->max_value.i = OR_GET_INT (buf_p);
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_BIGINT:
-	  OR_GET_BIGINT (buf_p, &(attr_stats_p->min_value.bigint));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_GET_BIGINT (buf_p, &(attr_stats_p->max_value.bigint));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_SHORT:
-	  /* stored these as full integers because of alignment */
-	  attr_stats_p->min_value.i = OR_GET_INT (buf_p);
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  attr_stats_p->max_value.i = OR_GET_INT (buf_p);
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_FLOAT:
-	  OR_GET_FLOAT (buf_p, &(attr_stats_p->min_value.f));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_GET_FLOAT (buf_p, &(attr_stats_p->max_value.f));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_DOUBLE:
-	  OR_GET_DOUBLE (buf_p, &(attr_stats_p->min_value.d));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_GET_DOUBLE (buf_p, &(attr_stats_p->max_value.d));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_DATE:
-	  OR_GET_DATE (buf_p, &(attr_stats_p->min_value.date));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_GET_DATE (buf_p, &(attr_stats_p->max_value.date));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_TIME:
-	  OR_GET_TIME (buf_p, &(attr_stats_p->min_value.time));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_GET_TIME (buf_p, &(attr_stats_p->max_value.time));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_UTIME:
-	  OR_GET_UTIME (buf_p, &(attr_stats_p->min_value.utime));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_GET_UTIME (buf_p, &(attr_stats_p->max_value.utime));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_DATETIME:
-	  OR_GET_DATETIME (buf_p, &(attr_stats_p->min_value.datetime));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_GET_DATETIME (buf_p, &(attr_stats_p->max_value.datetime));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_MONETARY:
-	  OR_GET_MONETARY (buf_p, &(attr_stats_p->min_value.money));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_GET_MONETARY (buf_p, &(attr_stats_p->max_value.money));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	default:
-	  break;
-	}
 
       attr_stats_p->n_btstats = OR_GET_INT (buf_p);
       buf_p += OR_INT_SIZE;
@@ -282,12 +204,6 @@ stats_client_unpack_statistics (char *buf_p)
 	      buf_p += OR_INT_SIZE;
 	    }
 
-	  if (btree_stats_p->has_function > 0)
-	    {
-	      buf_p = or_unpack_db_value (buf_p, &btree_stats_p->min_value);
-
-	      buf_p = or_unpack_db_value (buf_p, &btree_stats_p->max_value);
-	    }
 	}
     }
 
@@ -336,24 +252,6 @@ stats_free_statistics (CLASS_STATS * class_statsp)
 }
 
 /*
- * qst_min_max_print () -
- *   return:
- *   attr_stats(in): attribute description
- *   fpp(in):
- */
-static void
-stats_print_min_max (ATTR_STATS * attr_stats_p, FILE * file_p)
-{
-  (void) fprintf (file_p, "    Minimum value: ");
-  db_print_data (attr_stats_p->type, &attr_stats_p->min_value, file_p);
-
-  (void) fprintf (file_p, "\n    Maximum value: ");
-  db_print_data (attr_stats_p->type, &attr_stats_p->max_value, file_p);
-
-  (void) fprintf (file_p, "\n");
-}
-
-/*
  * stats_dump () - Dumps the given statistics about a class
  *   return:
  *   classname(in): The name of class to be printed
@@ -394,8 +292,8 @@ stats_dump (const char *class_name_p, FILE * file_p)
   tloc = (time_t) class_stats_p->time_stamp;
   fprintf (file_p, " Timestamp: %s", ctime (&tloc));
   fprintf (file_p, " Total pages in class heap: %d\n",
-	   class_stats_p->heap_size);
-  fprintf (file_p, " Total objects: %d\n", class_stats_p->num_objects);
+	   class_stats_p->heap_num_pages);
+  fprintf (file_p, " Total objects: %d\n", class_stats_p->heap_num_objects);
   fprintf (file_p, " Number of attributes: %d\n", class_stats_p->n_attrs);
 
   for (i = 0; i < class_stats_p->n_attrs; i++)
@@ -529,7 +427,6 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	  break;
 	}
 
-      stats_print_min_max (&(class_stats_p->attr_stats[i]), file_p);
       fprintf (file_p, "    B+tree statistics:\n");
 
       for (j = 0; j < class_stats_p->attr_stats[i].n_btstats; j++)

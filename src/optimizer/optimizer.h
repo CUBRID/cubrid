@@ -115,8 +115,6 @@ struct qo_summary
 
 typedef struct
 {
-  DB_DATA min_value;		/* minimum existing value */
-  DB_DATA max_value;		/* maximum existing value */
   DB_TYPE type;			/* data type of the attribute */
   int leafs;			/* number of leaf pages including overflow pages */
   int pages;			/* number of total pages */

@@ -1406,9 +1406,9 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 	  else
 	    {
 	      QO_NODE_NCARD (node) +=
-		QO_GET_CLASS_STATS (&info->info[i])->num_objects;
+		QO_GET_CLASS_STATS (&info->info[i])->heap_num_objects;
 	      QO_NODE_TCARD (node) +=
-		QO_GET_CLASS_STATS (&info->info[i])->heap_size;
+		QO_GET_CLASS_STATS (&info->info[i])->heap_num_pages;
 	    }
 	}			/* for (i = ... ) */
     }
@@ -5103,7 +5103,7 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
 	  info->stats->attr_stats = NULL;
 	  qo_estimate_statistics (info->mop, info->stats);
 	}
-      else if (smclass->stats->heap_size == 0)
+      else if (smclass->stats->heap_num_pages == 0)
 	{
 	  if (!info->normal_class
 	      || (((hfid = sm_get_heap (info->mop)) && !HFID_IS_NULL (hfid))))
@@ -5168,8 +5168,6 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
   cum_statsp = &attr_infop->cum_stats;
   cum_statsp->type = pt_type_enum_to_db (QO_SEG_PT_NODE (seg)->type_enum);
   cum_statsp->valid_limits = false;
-  OR_PUT_INT (&cum_statsp->min_value, 0);
-  OR_PUT_INT (&cum_statsp->max_value, 0);
   cum_statsp->is_indexed = true;
   cum_statsp->leafs = cum_statsp->pages = cum_statsp->height = 0;
   cum_statsp->keys = 0;
@@ -5215,31 +5213,6 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
 		{
 		  /* first time */
 		  cum_statsp->valid_limits = true;
-
-		  if (DB_NUMERIC_TYPE (cum_statsp->type))
-		    {
-		      /* assign values, bitwise-copy of DB_DATA structure */
-		      cum_statsp->min_value = bstatsp->min_value.data;
-		      cum_statsp->max_value = bstatsp->max_value.data;
-		    }
-		}
-	      else
-		{
-		  if (DB_NUMERIC_TYPE (cum_statsp->type))
-		    {
-		      if (qo_data_compare (&bstatsp->min_value.data,
-					   &cum_statsp->min_value,
-					   cum_statsp->type) < 0)
-			{
-			  cum_statsp->min_value = bstatsp->min_value.data;
-			}
-		      if (qo_data_compare (&bstatsp->max_value.data,
-					   &cum_statsp->max_value,
-					   cum_statsp->type) > 0)
-			{
-			  cum_statsp->max_value = bstatsp->max_value.data;
-			}
-		    }
 		}
 
 	      cum_statsp->leafs += bstatsp->leafs;
@@ -5336,8 +5309,6 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   cum_statsp = &attr_infop->cum_stats;
   cum_statsp->type = sm_att_type_id (class_info_entryp->mop, name);
   cum_statsp->valid_limits = false;
-  OR_PUT_INT (&cum_statsp->min_value, 0);
-  OR_PUT_INT (&cum_statsp->max_value, 0);
   cum_statsp->is_indexed = true;
   cum_statsp->leafs = cum_statsp->pages = cum_statsp->height = 0;
   cum_statsp->keys = 0;
@@ -5395,41 +5366,6 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	  /* first time */
 	  cum_statsp->type = attr_statsp->type;
 	  cum_statsp->valid_limits = true;
-	  /* if the atrribute is numeric type so its min/max values are
-	     meaningful, keep the min/max existing values */
-	  if (DB_NUMERIC_TYPE (attr_statsp->type))
-	    {
-	      /* assign values, bitwise-copy of DB_DATA structure */
-	      cum_statsp->min_value = attr_statsp->min_value;
-	      cum_statsp->max_value = attr_statsp->max_value;
-	    }
-	}
-      else
-	{
-	  /* if the atrribute is numeric type so its min/max values are
-	     meaningful, keep the min/max existing values */
-	  if (DB_NUMERIC_TYPE (attr_statsp->type))
-	    {
-	      /* compare with previous values */
-	      if (qo_data_compare (&attr_statsp->min_value,
-				   &cum_statsp->min_value,
-				   cum_statsp->type) < 0)
-		{
-		  cum_statsp->min_value = attr_statsp->min_value;
-		}
-	      if (qo_data_compare (&attr_statsp->max_value,
-				   &cum_statsp->max_value,
-				   cum_statsp->type) > 0)
-		{
-		  cum_statsp->max_value = attr_statsp->max_value;
-		}
-	      /* 'qo_data_compare()' is a simplified function that works
-	         with DB_DATA instead of DB_VALUE. However, this way
-	         would be enough to get minimum/maximum existing value,
-	         because the values are meaningful only when their types
-	         are numeric and we are considering compatible indexes
-	         under class hierarchy. */
-	    }
 	}
 
       n_func_indexes = 0;
@@ -5727,41 +5663,6 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		  /* first time */
 		  cum_statsp->type = attr_statsp->type;
 		  cum_statsp->valid_limits = true;
-		  /* if the attribute is numeric type so its min/max values are
-		     meaningful, keep the min/max existing values */
-		  if (DB_NUMERIC_TYPE (attr_statsp->type))
-		    {
-		      /* assign values, bitwise-copy of DB_DATA structure */
-		      cum_statsp->min_value = attr_statsp->min_value;
-		      cum_statsp->max_value = attr_statsp->max_value;
-		    }
-		}
-	      else
-		{
-		  /* if the attribute is numeric type so its min/max values are
-		     meaningful, keep the min/max existing values */
-		  if (DB_NUMERIC_TYPE (attr_statsp->type))
-		    {
-		      /* compare with previous values */
-		      if (qo_data_compare (&attr_statsp->min_value,
-					   &cum_statsp->min_value,
-					   cum_statsp->type) < 0)
-			{
-			  cum_statsp->min_value = attr_statsp->min_value;
-			}
-		      if (qo_data_compare (&attr_statsp->max_value,
-					   &cum_statsp->max_value,
-					   cum_statsp->type) > 0)
-			{
-			  cum_statsp->max_value = attr_statsp->max_value;
-			}
-		      /* 'qo_data_compare()' is a simplified function that works
-		         with DB_DATA instead of DB_VALUE. However, this way
-		         would be enough to get minimum/maximum existing value,
-		         because the values are meaningful only when their types
-		         are numeric and we are considering compatible indexes
-		         under class hierarchy. */
-		    }
 		}
 
 	      /* find the index that we are interesting within BTREE_STATS[] array */
@@ -5914,10 +5815,10 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	      stats = QO_GET_CLASS_STATS (class_info_entryp);
 	    }
 
-	  if (stats != NULL && stats->num_objects > 0)
+	  if (stats != NULL && stats->heap_num_objects > 0)
 	    {
 	      /* we have what seems like valid statistics; fetch row count */
-	      row_count = stats->num_objects;
+	      row_count = stats->heap_num_objects;
 	    }
 	  else
 	    {
@@ -6074,9 +5975,10 @@ qo_estimate_statistics (MOP class_mop, CLASS_STATS * statblock)
    * Really, the statistics manager ought to be doing this on its own.
    */
 
-  statblock->heap_size = NOMINAL_HEAP_SIZE (class_mop);
-  statblock->num_objects =
-    (statblock->heap_size * DB_PAGESIZE) / NOMINAL_OBJECT_SIZE (class_mop);
+  statblock->heap_num_pages = NOMINAL_HEAP_SIZE (class_mop);
+  statblock->heap_num_objects =
+    (statblock->heap_num_pages * DB_PAGESIZE) /
+    NOMINAL_OBJECT_SIZE (class_mop);
 
 }
 
@@ -6400,8 +6302,8 @@ qo_discover_edges (QO_ENV * env)
   for (i = 0, n = env->nedges; i < n; ++i)
     {
       edge = QO_ENV_TERM (env, i);
-      QO_ASSERT (env, QO_TERM_HEAD (edge) != NULL
-		 && QO_TERM_TAIL (edge) != NULL);
+      QO_ASSERT (env, QO_TERM_HEAD (edge) != NULL);
+      QO_ASSERT (env, QO_TERM_TAIL (edge) != NULL);
 
       if (QO_TERM_JOIN_TYPE (edge) != JOIN_INNER
 	  && QO_TERM_CLASS (edge) != QO_TC_JOIN)

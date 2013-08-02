@@ -16571,9 +16571,9 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec,
 			{
 			  if (smclass && smclass->stats)
 			    {
-			      assert (smclass->stats->heap_size >= 0);
+			      assert (smclass->stats->heap_num_pages >= 0);
 			      *(t_list + o_num - 1) =
-				smclass->stats->heap_size;
+				smclass->stats->heap_num_pages;
 			    }
 			}
 		    }

@@ -183,7 +183,6 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
   RECDES rec;
   BTREE_ROOT_HEADER root_header;
   BTID_INT btid_int;
-  DB_TYPE db_type;
 
   or_rep = or_get_classrep (record, NULL_REPRID);
   if (or_rep == NULL)
@@ -201,7 +200,9 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
   rep->n_fixed = 0;
   rep->n_variable = 0;
   rep->fixed_length = or_rep->fixed_length;
-  rep->num_objects = 0;
+#if 0				/* reserved for future use */
+  rep->repr_reserved_1 = 0;
+#endif
   rep->fixed = NULL;
   rep->variable = NULL;
 
@@ -272,9 +273,6 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
       or_att->default_value.value = NULL;
       att->classoid = or_att->classoid;
 
-      DATA_INIT (&att->min_value, att->type);
-      DATA_INIT (&att->max_value, att->type);
-
       /* initialize B+tree statisitcs information */
 
       n_btstats = att->n_btstats = or_att->n_btids;
@@ -310,11 +308,6 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		    }
 		}
 
-#if 0				/* reserved for future use */
-	      bt_statsp->reserved_1 = 0;
-	      bt_statsp->reserved_2 = 0;
-	      bt_statsp->reserved_3 = 0;
-#endif
 	      bt_statsp->key_type = NULL;
 	      bt_statsp->key_size = 0;
 	      bt_statsp->pkeys = NULL;
@@ -389,25 +382,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		{
 		  bt_statsp->pkeys[k] = 0;
 		}
-
-	      db_type = (TP_DOMAIN_TYPE (bt_statsp->key_type) ==
-			 DB_TYPE_OBJECT ? DB_TYPE_OID :
-			 TP_DOMAIN_TYPE (bt_statsp->key_type));
-	      db_value_domain_min (&bt_statsp->min_value,
-				   TP_DOMAIN_TYPE (bt_statsp->key_type),
-				   bt_statsp->key_type->precision,
-				   bt_statsp->key_type->scale,
-				   bt_statsp->key_type->codeset,
-				   bt_statsp->key_type->collation_id,
-				   &bt_statsp->key_type->enumeration);
-	      db_value_domain_min (&bt_statsp->max_value,
-				   TP_DOMAIN_TYPE (bt_statsp->key_type),
-				   bt_statsp->key_type->precision,
-				   bt_statsp->key_type->scale,
-				   bt_statsp->key_type->codeset,
-				   bt_statsp->key_type->collation_id,
-				   &bt_statsp->key_type->enumeration);
-	    }
+	    }			/* for (j = 0, ...) */
 	}
       else
 	{

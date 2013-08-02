@@ -92,9 +92,6 @@ static const BTREE_STATS *stats_find_inherited_index_stats (OR_CLASSREP *
 							    DISK_ATTR *
 							    subcls_attr,
 							    BTID * cls_btid);
-#if defined(CUBRID_DEBUG)
-static void stats_print_min_max (ATTR_STATS * attr_stats, FILE * fpp);
-#endif /* CUBRID_DEBUG */
 
 /*
  * xstats_update_class_statistics () -  Updates the statistics for the objects
@@ -134,12 +131,9 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
   DISK_ATTR *disk_attr_p = NULL;
   BTREE_STATS *btree_stats_p = NULL;
   HEAP_SCANCACHE hf_scan_cache, *hf_scan_cache_p = NULL;
-  HEAP_CACHE_ATTRINFO hf_cache_attr_info, *hf_cache_attr_info_p = NULL;
   RECDES recdes;
   OID oid;
   SCAN_CODE scan_rc;
-  DB_VALUE *db_value_p;
-  DB_DATA *db_data_p;
   char *class_name = NULL;
   int i, j;
   OID *partitions = NULL;
@@ -147,7 +141,6 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 #if !defined(NDEBUG)
   int track_id;
 #endif
-  bool need_free_classname = false;
 
 #if !defined(NDEBUG)
   track_id = thread_rc_track_enter (thread_p);
@@ -160,17 +153,10 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
     }
 
   class_name = heap_get_class_name (thread_p, class_id_p);
-  if (class_name == NULL)
-    {
-      class_name = (char *) "unknown class";
-    }
-  else
-    {
-      need_free_classname = true;
-    }
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	  ER_LOG_STARTED_TO_UPDATE_STATISTICS, 4, class_name,
+	  ER_LOG_STARTED_TO_UPDATE_STATISTICS, 4,
+	  class_name ? class_name : "*UNKNOWN-CLASS*",
 	  class_id_p->volid, class_id_p->pageid, class_id_p->slotid);
 
   /* if class information was not obtained */
@@ -232,9 +218,8 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
   cls_info_p->tot_pages = file_get_numpages (thread_p,
 					     &cls_info_p->hfid.vfid);
   cls_info_p->tot_objects = 0;
-  disk_repr_p->num_objects = 0;
 
-  /* scan whole object of the class and update the statistics */
+  /* TODO - scan whole object of the class and update the statistics */
 
   if (heap_scancache_start (thread_p, &hf_scan_cache, &(cls_info_p->hfid),
 			    class_id_p, true, false,
@@ -245,15 +230,7 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   hf_scan_cache_p = &hf_scan_cache;
 
-  if (heap_attrinfo_start (thread_p, class_id_p, -1, NULL,
-			   &hf_cache_attr_info) != NO_ERROR)
-    {
-      goto error;
-    }
-  hf_cache_attr_info_p = &hf_cache_attr_info;
-
-  /* Obtain minimum and maximum value of the instances for each attribute of
-     the class and count the number of objects by scanning heap file */
+  /* Count the number of objects by scanning heap file */
 
   recdes.area_size = -1;
   scan_rc = heap_first (thread_p, &(cls_info_p->hfid), class_id_p, &oid,
@@ -261,54 +238,7 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   while (scan_rc == S_SUCCESS)
     {
-      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &recdes,
-				       hf_cache_attr_info_p) != NO_ERROR)
-	{
-	  scan_rc = S_ERROR;
-	  break;
-	}
-
-      /* Consider attributes only whose type are fixed because min/max value
-         statistics are useful only for those type when calculating the cost
-         of query plan by query optimizer. Variable type attributes, for
-         example VARCHAR(STRING), take constant number of selectivity. */
-
-      for (i = 0; i < disk_repr_p->n_fixed; i++)
-	{
-	  disk_attr_p = &(disk_repr_p->fixed[i]);
-
-	  db_value_p = heap_attrinfo_access (disk_attr_p->id,
-					     hf_cache_attr_info_p);
-	  if (db_value_p != NULL && db_value_is_null (db_value_p) != true)
-	    {
-	      db_data_p = db_value_get_db_data (db_value_p);
-
-	      if (disk_repr_p->num_objects == 0)
-		{
-		  /* first object */
-		  disk_attr_p->min_value = *db_data_p;
-		  disk_attr_p->max_value = *db_data_p;
-		}
-	      else
-		{
-		  /* compare with previous values */
-		  if (stats_compare_data (db_data_p, &disk_attr_p->min_value,
-					  disk_attr_p->type) < 0)
-		    {
-		      disk_attr_p->min_value = *db_data_p;
-		    }
-
-		  if (stats_compare_data (db_data_p, &disk_attr_p->max_value,
-					  disk_attr_p->type) > 0)
-		    {
-		      disk_attr_p->max_value = *db_data_p;
-		    }
-		}
-	    }
-	}
-
       cls_info_p->tot_objects++;
-      disk_repr_p->num_objects++;
 
       scan_rc = heap_next (thread_p, &(cls_info_p->hfid), class_id_p, &oid,
 			   &recdes, hf_scan_cache_p, PEEK);
@@ -319,7 +249,6 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
       goto error;
     }
 
-  heap_attrinfo_end (thread_p, hf_cache_attr_info_p);
   if (heap_scancache_end (thread_p, hf_scan_cache_p) != NO_ERROR)
     {
       goto error;
@@ -398,6 +327,17 @@ end:
       catalog_free_class_info (cls_info_p);
     }
 
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	  ER_LOG_FINISHED_TO_UPDATE_STATISTICS, 5,
+	  class_name ? class_name : "*UNKNOWN-CLASS*",
+	  class_id_p->volid, class_id_p->pageid, class_id_p->slotid,
+	  error_code);
+
+  if (class_name)
+    {
+      free_and_init (class_name);
+    }
+
 #if !defined(NDEBUG)
   if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
     {
@@ -405,23 +345,9 @@ end:
     }
 #endif
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	  ER_LOG_FINISHED_TO_UPDATE_STATISTICS, 5, class_name,
-	  class_id_p->volid, class_id_p->pageid, class_id_p->slotid,
-	  error_code);
-
-  if (need_free_classname)
-    {
-      free_and_init (class_name);
-    }
-
   return error_code;
 
 error:
-  if (hf_cache_attr_info_p)
-    {
-      heap_attrinfo_end (thread_p, hf_cache_attr_info_p);
-    }
 
   if (hf_scan_cache_p)
     {
@@ -501,7 +427,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   BTREE_STATS *btree_stats_p;
   int npages, estimated_nobjs, dummy_avg_length;
   int i, j, k, size, n_attrs, tot_n_btstats, tot_key_info_size;
-  int tot_bt_min_max_size;
   char *buf_p, *start_p;
 #if !defined(NDEBUG)
   int track_id;
@@ -543,7 +468,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   n_attrs = disk_repr_p->n_fixed + disk_repr_p->n_variable;
 
-  tot_n_btstats = tot_key_info_size = tot_bt_min_max_size = 0;
+  tot_n_btstats = tot_key_info_size = 0;
   for (i = 0; i < n_attrs; i++)
     {
       if (i < disk_repr_p->n_fixed)
@@ -562,12 +487,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  tot_key_info_size +=
 	    (or_packed_domain_size (btree_stats_p->key_type, 0) +
 	     (OR_INT_SIZE * btree_stats_p->key_size));
-	  if (btree_stats_p->has_function > 0)
-	    {
-	      tot_bt_min_max_size +=
-		OR_VALUE_ALIGNED_SIZE (&btree_stats_p->min_value) +
-		OR_VALUE_ALIGNED_SIZE (&btree_stats_p->max_value);
-	    }
 	}
     }
 
@@ -577,8 +496,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  + OR_INT_SIZE		/* n_attrs from DISK_REPR */
 	  + (OR_INT_SIZE	/* id of DISK_ATTR */
 	     + OR_INT_SIZE	/* type of DISK_ATTR */
-	     + STATS_MIN_MAX_SIZE	/* min_value of DISK_ATTR */
-	     + STATS_MIN_MAX_SIZE	/* max_value of DISK_ATTR */
 	     + OR_INT_SIZE	/* n_btstats of DISK_ATTR */
 	  ) * n_attrs);		/* number of attributes */
 
@@ -592,7 +509,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	   ) * tot_n_btstats);	/* total number of indexes */
 
   size += tot_key_info_size;	/* key_type, pkeys[] of BTREE_STATS */
-  size += tot_bt_min_max_size;	/* min, max value of BTREE_STATS */
 
   start_p = buf_p = (char *) malloc (size);
   if (buf_p == NULL)
@@ -658,83 +574,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 
       OR_PUT_INT (buf_p, disk_attr_p->type);
       buf_p += OR_INT_SIZE;
-
-      switch (disk_attr_p->type)
-	{
-	case DB_TYPE_INTEGER:
-	  OR_PUT_INT (buf_p, disk_attr_p->min_value.i);
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_PUT_INT (buf_p, disk_attr_p->max_value.i);
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_BIGINT:
-	  OR_PUT_BIGINT (buf_p, &(disk_attr_p->min_value.bigint));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_PUT_BIGINT (buf_p, &(disk_attr_p->max_value.bigint));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_SHORT:
-	  /* store these as full integers because of alignment */
-	  OR_PUT_INT (buf_p, disk_attr_p->min_value.i);
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_PUT_INT (buf_p, disk_attr_p->max_value.i);
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_FLOAT:
-	  OR_PUT_FLOAT (buf_p, &(disk_attr_p->min_value.f));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_PUT_FLOAT (buf_p, &(disk_attr_p->max_value.f));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_DOUBLE:
-	  OR_PUT_DOUBLE (buf_p, &(disk_attr_p->min_value.d));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_PUT_DOUBLE (buf_p, &(disk_attr_p->max_value.d));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_DATE:
-	  OR_PUT_DATE (buf_p, &(disk_attr_p->min_value.date));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_PUT_DATE (buf_p, &(disk_attr_p->max_value.date));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_TIME:
-	  OR_PUT_TIME (buf_p, &(disk_attr_p->min_value.time));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_PUT_TIME (buf_p, &(disk_attr_p->max_value.time));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_UTIME:
-	  OR_PUT_UTIME (buf_p, &(disk_attr_p->min_value.utime));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_PUT_UTIME (buf_p, &(disk_attr_p->max_value.utime));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_DATETIME:
-	  OR_PUT_DATETIME (buf_p, &(disk_attr_p->min_value.datetime));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_PUT_DATETIME (buf_p, &(disk_attr_p->max_value.datetime));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	case DB_TYPE_MONETARY:
-	  OR_PUT_MONETARY (buf_p, &(disk_attr_p->min_value.money));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_PUT_MONETARY (buf_p, &(disk_attr_p->max_value.money));
-	  buf_p += STATS_MIN_MAX_SIZE;
-	  break;
-
-	default:
-	  break;
-	}
 
       OR_PUT_INT (buf_p, disk_attr_p->n_btstats);
       buf_p += OR_INT_SIZE;
@@ -808,14 +647,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	      OR_PUT_INT (buf_p, btree_stats_p->pkeys[k]);
 	      buf_p += OR_INT_SIZE;
 	    }
-
-	  if (btree_stats_p->has_function > 0)
-	    {
-	      buf_p = or_pack_db_value (buf_p, &btree_stats_p->min_value);
-
-	      buf_p = or_pack_db_value (buf_p, &btree_stats_p->max_value);
-	    }
-	}
+	}			/* for (j = 0, ...) */
     }
 
   catalog_free_representation (disk_repr_p);
@@ -1107,24 +939,6 @@ stats_compare_data (DB_DATA * data1_p, DB_DATA * data2_p, DB_TYPE type)
 
 #if defined(CUBRID_DEBUG)
 /*
- * stats_print_min_max () -
- *   return:
- *   attr_stats(in): attribute description
- *   fpp(in):
- */
-static void
-stats_print_min_max (ATTR_STATS * attr_stats, FILE * fpp)
-{
-  (void) fprintf (fpp, "    Minimum value: ");
-  db_print_data (attr_stats->type, &attr_stats->min_value, fpp);
-
-  (void) fprintf (fpp, "\n    Maximum value: ");
-  db_print_data (attr_stats->type, &attr_stats->max_value, fpp);
-
-  (void) fprintf (fpp, "\n");
-}
-
-/*
  * stats_dump_class_stats () - Dumps the given statistics about a class
  *   return:
  *   class_stats(in): statistics to be printed
@@ -1146,8 +960,9 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
   fprintf (fpp, "****************\n");
   tloc = (time_t) class_stats->time_stamp;
   fprintf (fpp, " Timestamp: %s", ctime (&tloc));
-  fprintf (fpp, " Total Pages in Class Heap: %d\n", class_stats->heap_size);
-  fprintf (fpp, " Total Objects: %d\n", class_stats->num_objects);
+  fprintf (fpp, " Total Pages in Class Heap: %d\n",
+	   class_stats->heap_num_pages);
+  fprintf (fpp, " Total Objects: %d\n", class_stats->heap_num_objects);
   fprintf (fpp, " Number of attributes: %d\n", class_stats->n_attrs);
 
   for (i = 0; i < class_stats->n_attrs; i++)
@@ -1274,7 +1089,6 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	  break;
 	}
 
-      stats_print_min_max (&(class_stats->attr_stats[i]), fpp);
       fprintf (fpp, "    BTree statistics:\n");
 
       for (j = 0; j < class_stats->attr_stats[i].n_btstats; j++)
@@ -1339,7 +1153,6 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
   BTREE_STATS *btree_stats_p = NULL;
   BTREE_STATS *computed_stats = NULL;
   int n_btrees = 0;
-  bool *is_disk_min_max_set = NULL;
   PARTITION_STATS_ACUMULATOR *mean = NULL, *stddev = NULL;
   OR_CLASSREP *cls_rep = NULL;
   OR_CLASSREP *subcls_rep = NULL;
@@ -1379,18 +1192,6 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
     {
       error = er_errid ();
       goto cleanup;
-    }
-  if (disk_repr_p->n_fixed != 0)
-    {
-      is_disk_min_max_set =
-	(bool *) db_private_alloc (thread_p,
-				   disk_repr_p->n_fixed * sizeof (bool));
-      if (is_disk_min_max_set == NULL)
-	{
-	  error = ER_FAILED;
-	  goto cleanup;
-	}
-      memset (is_disk_min_max_set, 0, disk_repr_p->n_fixed * sizeof (bool));
     }
   /* partitions_count number of btree_stats we will need to use */
   n_btrees = 0;
@@ -1485,8 +1286,6 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 	    }
 	  memset (stddev[btree_iter].pkeys, 0,
 		  mean[btree_iter].key_size * sizeof (double));
-	  pr_clear_value (&(btree_stats_p->min_value));
-	  pr_clear_value (&(btree_stats_p->max_value));
 	  btree_iter++;
 	}
     }
@@ -1572,33 +1371,6 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 	    {
 	      subcls_attr_p = subcls_disk_rep->fixed + j;
 	      disk_attr_p = disk_repr_p->fixed + j;
-	      if (subcls_disk_rep->num_objects != 0)
-		{
-		  /* Use this opportunity to update min/max values here */
-		  if (!is_disk_min_max_set[j])
-		    {
-		      /* shallow copy */
-		      disk_attr_p->min_value = subcls_attr_p->min_value;
-		      disk_attr_p->max_value = subcls_attr_p->max_value;
-		      is_disk_min_max_set[j] = true;
-		    }
-		  else
-		    {
-		      if (stats_compare_data
-			  (&disk_attr_p->min_value, &subcls_attr_p->min_value,
-			   disk_attr_p->type) > 0)
-			{
-			  disk_attr_p->min_value = subcls_attr_p->min_value;
-			}
-
-		      if (stats_compare_data
-			  (&disk_attr_p->max_value, &subcls_attr_p->max_value,
-			   disk_attr_p->type) < 0)
-			{
-			  disk_attr_p->max_value = subcls_attr_p->max_value;
-			}
-		    }
-		}
 	    }
 	  else
 	    {
@@ -1859,10 +1631,6 @@ cleanup:
   if (subcls_rep != NULL)
     {
       heap_classrepr_free (subcls_rep, &subcls_idx_cache);
-    }
-  if (is_disk_min_max_set != NULL)
-    {
-      db_private_free (thread_p, is_disk_min_max_set);
     }
   if (mean != NULL)
     {

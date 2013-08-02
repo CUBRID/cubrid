@@ -4061,9 +4061,6 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
   int offset;
   int i;
   int ret = NO_ERROR;
-  int prev_i_index;
-  char *prev_i_ptr;
-  DB_VALUE elem;
 
   assert_release (stat_info != NULL);
   assert_release (!BTID_IS_NULL (&stat_info->btid));
@@ -4150,12 +4147,6 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
       env->stat_info->pkeys[i] = 0;	/* clear old stats */
     }
 
-  if (env->stat_info->has_function > 0)
-    {
-      pr_clear_value (&env->stat_info->min_value);
-      pr_clear_value (&env->stat_info->max_value);
-    }
-
   ret = btree_find_lower_bound_leaf (thread_p, BTS, stat_info);
   if (ret != NO_ERROR)
     {
@@ -4183,7 +4174,7 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
 	      env->stat_info->pkeys[0]++;
 	    }
 
-	  if (env->pkeys_val_num > 1 || env->stat_info->has_function > 0)
+	  if (env->pkeys_val_num > 1)
 	    {
 	      /* multi column index */
 	      if (spage_get_record (BTS->C_page, BTS->slot_id, &rec, PEEK) !=
@@ -4205,69 +4196,11 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
 		  goto exit_on_error;
 		}
 
-	      if (env->stat_info->has_function > 0)
+	      /* get pkeys info */
+	      ret = btree_get_midxkey_stats (thread_p, &key_value, env);
+	      if (ret != NO_ERROR)
 		{
-		  /* we need to obtain the values even if we are dealing
-		   * with a single-column index */
-		  if (env->pkeys_val_num > 1)
-		    {
-		      /* multi-column index */
-		      prev_i_index = 0;
-		      prev_i_ptr = NULL;
-		      ret =
-			pr_midxkey_get_element_nocopy (&key_value.data.
-						       midxkey, 0, &elem,
-						       &prev_i_index,
-						       &prev_i_ptr);
-		      if (ret != NO_ERROR)
-			{
-			  assert_release (false);
-			  goto exit_on_error;
-			}
-		    }
-		  else
-		    {
-		      /* single-column index - no need to extract from
-		       * midxkey */
-		      pr_clone_value (&key_value, &elem);
-		    }
-
-		  if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (&elem))
-		      || TP_IS_DATE_OR_TIME_TYPE (DB_VALUE_TYPE (&elem)))
-		    {
-		      if (BTS->use_desc_index)
-			{
-			  if (DB_IS_NULL (&(env->stat_info->max_value)))
-			    {
-			      pr_clone_value (&elem,
-					      &(env->stat_info->max_value));
-			    }
-			  pr_clone_value (&elem,
-					  &(env->stat_info->min_value));
-			}
-		      else
-			{
-			  if (DB_IS_NULL (&(env->stat_info->min_value)))
-			    {
-			      pr_clone_value (&elem,
-					      &(env->stat_info->min_value));
-			    }
-			  pr_clone_value (&elem,
-					  &(env->stat_info->max_value));
-			}
-		    }
-
-		  pr_clear_value (&elem);
-		}
-
-	      if (env->pkeys_val_num > 1)
-		{
-		  /* get pkeys info */
-		  ret = btree_get_midxkey_stats (thread_p, &key_value, env);
-		  if (ret != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
+		  goto exit_on_error;
 		}
 
 	      if (clear_key)

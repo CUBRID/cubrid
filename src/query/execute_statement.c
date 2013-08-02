@@ -3496,8 +3496,9 @@ do_internal_statements (PARSER_CONTEXT * parser, PT_NODE * internal_stmt_list,
 typedef enum
 {
   CST_UNDEFINED,
-  CST_NOBJECTS, CST_NPAGES, CST_NATTRIBUTES, CST_ATTR_MIN, CST_ATTR_MAX,
+  CST_NOBJECTS, CST_NPAGES, CST_NATTRIBUTES,
 #if 0
+  CST_ATTR_MIN, CST_ATTR_MAX,
   CST_ATTR_NINDEXES, CST_BT_NLEAFS, CST_BT_HEIGHT,
 #endif
   CST_BT_NKEYS,
@@ -3516,9 +3517,9 @@ static CST_ITEM cst_item_tbl[] = {
   {CST_NOBJECTS, "#objects", -1, -1},
   {CST_NPAGES, "#pages", -1, -1},
   {CST_NATTRIBUTES, "#attributes", -1, -1},
+#if 0
   {CST_ATTR_MIN, "min", 0, -1},
   {CST_ATTR_MAX, "max", 0, -1},
-#if 0
   {CST_ATTR_NINDEXES, "#indexes", 0, -1},
   {CST_BT_NLEAFS, "#leaf_pages", 0, 0},
   {CST_BT_NPAGES, "#index_pages", 0, 0},
@@ -3758,109 +3759,21 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
   switch (cst_item.item)
     {
     case CST_NOBJECTS:
-      db_make_int (db_val, class_statsp->num_objects);
+      db_make_int (db_val, class_statsp->heap_num_objects);
       break;
     case CST_NPAGES:
-      db_make_int (db_val, class_statsp->heap_size);
+      db_make_int (db_val, class_statsp->heap_num_pages);
       break;
     case CST_NATTRIBUTES:
       db_make_int (db_val, class_statsp->n_attrs);
       break;
+#if 0
     case CST_ATTR_MIN:
-      if (!attr_statsp)
-	{
-	  db_make_null (db_val);
-	}
-      else
-	switch (attr_statsp->type)
-	  {
-	  case DB_TYPE_INTEGER:
-	    db_make_int (db_val, attr_statsp->min_value.i);
-	    break;
-	  case DB_TYPE_BIGINT:
-	    db_make_bigint (db_val, attr_statsp->min_value.bigint);
-	    break;
-	  case DB_TYPE_SHORT:
-	    db_make_short (db_val, attr_statsp->min_value.i);
-	    break;
-	  case DB_TYPE_FLOAT:
-	    db_make_float (db_val, attr_statsp->min_value.f);
-	    break;
-	  case DB_TYPE_DOUBLE:
-	    db_make_double (db_val, attr_statsp->min_value.d);
-	    break;
-	  case DB_TYPE_DATE:
-	    db_value_put_encoded_date (db_val, &attr_statsp->min_value.date);
-	    break;
-	  case DB_TYPE_TIME:
-	    db_value_put_encoded_time (db_val, &attr_statsp->min_value.time);
-	    break;
-	  case DB_TYPE_UTIME:
-	    db_make_timestamp (db_val, attr_statsp->min_value.utime);
-	    break;
-	  case DB_TYPE_DATETIME:
-	    db_make_datetime (db_val, &attr_statsp->min_value.datetime);
-	    break;
-	  case DB_TYPE_MONETARY:
-	    db_make_monetary (db_val,
-			      attr_statsp->min_value.money.type,
-			      attr_statsp->min_value.money.amount);
-	    break;
-	  default:
-	    db_make_null (db_val);
-	    break;
-	  }
+      db_make_null (db_val);	/* not support */
       break;
     case CST_ATTR_MAX:
-      if (!attr_statsp)
-	{
-	  db_make_null (db_val);
-	}
-      else
-	{
-	  switch (attr_statsp->type)
-	    {
-	    case DB_TYPE_INTEGER:
-	      db_make_int (db_val, attr_statsp->max_value.i);
-	      break;
-	    case DB_TYPE_BIGINT:
-	      db_make_bigint (db_val, attr_statsp->max_value.bigint);
-	      break;
-	    case DB_TYPE_SHORT:
-	      db_make_short (db_val, attr_statsp->max_value.i);
-	      break;
-	    case DB_TYPE_FLOAT:
-	      db_make_float (db_val, attr_statsp->max_value.f);
-	      break;
-	    case DB_TYPE_DOUBLE:
-	      db_make_double (db_val, attr_statsp->max_value.d);
-	      break;
-	    case DB_TYPE_DATE:
-	      db_value_put_encoded_date (db_val,
-					 &attr_statsp->max_value.date);
-	      break;
-	    case DB_TYPE_TIME:
-	      db_value_put_encoded_time (db_val,
-					 &attr_statsp->max_value.time);
-	      break;
-	    case DB_TYPE_UTIME:
-	      db_make_timestamp (db_val, attr_statsp->max_value.utime);
-	      break;
-	    case DB_TYPE_DATETIME:
-	      db_make_datetime (db_val, &attr_statsp->max_value.datetime);
-	      break;
-	    case DB_TYPE_MONETARY:
-	      db_make_monetary (db_val,
-				attr_statsp->max_value.money.type,
-				attr_statsp->max_value.money.amount);
-	      break;
-	    default:
-	      db_make_null (db_val);
-	      break;
-	    }
-	}
+      db_make_null (db_val);	/* not support */
       break;
-#if 0
     case CST_ATTR_NINDEXES:
       if (!attr_statsp)
 	{

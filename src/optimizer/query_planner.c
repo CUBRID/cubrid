@@ -497,14 +497,7 @@ static double qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
 static PRED_CLASS qo_classify (PT_NODE * attr);
 
-static bool qo_is_arithmetic_type (PT_NODE * attr);
-
-static double get_const_value (QO_ENV * env, PT_NODE * attr);
-
 static int qo_index_cardinality (QO_ENV * env, PT_NODE * attr);
-
-static int qo_get_range (QO_ENV * env, PT_NODE * attr, double *low_value,
-			 double *high_value);
 
 /*
  * log3 () -
@@ -9730,7 +9723,8 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   double lhs_selectivity, rhs_selectivity, selectivity, total_selectivity;
   PT_NODE *node;
 
-  QO_ASSERT (env, pt_expr != NULL && pt_expr->node_type == PT_EXPR);
+  QO_ASSERT (env, pt_expr != NULL);
+  QO_ASSERT (env, pt_expr->node_type == PT_EXPR);
 
   selectivity = 0.0;
   total_selectivity = 0.0;
@@ -9873,8 +9867,10 @@ qo_or_selectivity (QO_ENV * env, double lhs_sel, double rhs_sel)
 {
   double result;
 
-  QO_ASSERT (env, lhs_sel >= 0.0 && lhs_sel <= 1.0);
-  QO_ASSERT (env, rhs_sel >= 0.0 && rhs_sel <= 1.0);
+  QO_ASSERT (env, lhs_sel >= 0.0);
+  QO_ASSERT (env, lhs_sel <= 1.0);
+  QO_ASSERT (env, rhs_sel >= 0.0);
+  QO_ASSERT (env, rhs_sel <= 1.0);
 
   result = lhs_sel + rhs_sel - (lhs_sel * rhs_sel);
 
@@ -9893,8 +9889,10 @@ qo_and_selectivity (QO_ENV * env, double lhs_sel, double rhs_sel)
 {
   double result;
 
-  QO_ASSERT (env, lhs_sel >= 0.0 && lhs_sel <= 1.0);
-  QO_ASSERT (env, rhs_sel >= 0.0 && rhs_sel <= 1.0);
+  QO_ASSERT (env, lhs_sel >= 0.0);
+  QO_ASSERT (env, lhs_sel <= 1.0);
+  QO_ASSERT (env, rhs_sel >= 0.0);
+  QO_ASSERT (env, rhs_sel <= 1.0);
 
   result = lhs_sel * rhs_sel;
 
@@ -9910,7 +9908,8 @@ qo_and_selectivity (QO_ENV * env, double lhs_sel, double rhs_sel)
 static double
 qo_not_selectivity (QO_ENV * env, double sel)
 {
-  QO_ASSERT (env, sel >= 0.0 && sel <= 1.0);
+  QO_ASSERT (env, sel >= 0.0);
+  QO_ASSERT (env, sel <= 1.0);
 
   return 1.0 - sel;
 }
@@ -9929,9 +9928,7 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   PT_NODE *lhs, *rhs;
   PRED_CLASS pc_lhs, pc_rhs;
   int lhs_icard, rhs_icard, icard;
-  double selectivity, lhs_high_value, lhs_low_value;
-  double rhs_high_value, rhs_low_value, const_val;
-  int rc1, rc2;
+  double selectivity;
 
   lhs = pt_expr->info.expr.arg1;
   rhs = pt_expr->info.expr.arg2;
@@ -9965,27 +9962,6 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	      selectivity = DEFAULT_EQUIJOIN_SELECTIVITY;
 	    }
 
-	  /* special case */
-	  if (qo_is_arithmetic_type (lhs) && qo_is_arithmetic_type (rhs))
-	    {
-	      /* get the range and data value coerced into doubles */
-	      rc1 = qo_get_range (env, lhs, &lhs_low_value, &lhs_high_value);
-	      rc2 = qo_get_range (env, rhs, &rhs_low_value, &rhs_high_value);
-	      if (rc1 || rc2)
-		{
-		  if ((lhs_icard == 0 && rhs_low_value == rhs_high_value)
-		      || (rhs_icard == 0 && lhs_low_value == lhs_high_value))
-		    {
-		      selectivity = 1.0;
-		    }
-		  if (lhs_low_value > rhs_high_value
-		      || rhs_low_value > lhs_high_value)
-		    {
-		      selectivity = 0.0;
-		    }
-		}
-	    }
-
 	  break;
 
 	case PC_CONST:
@@ -10005,39 +9981,6 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  else
 	    {
 	      selectivity = DEFAULT_EQUAL_SELECTIVITY;
-	    }
-
-	  /* special case */
-	  if (pc_rhs == PC_CONST && qo_is_arithmetic_type (lhs))
-	    {
-	      /* get the range and data value coerced into doubles */
-	      rc1 = qo_get_range (env, lhs, &lhs_low_value, &lhs_high_value);
-	      if (rc1)
-		{
-		  /* get the constant values */
-		  const_val = get_const_value (env, rhs);
-		  if (const_val == lhs_low_value
-		      && lhs_low_value == lhs_high_value)
-		    {
-		      selectivity = 1.0;
-		    }
-		  else if (const_val < lhs_low_value
-			   || const_val > lhs_high_value)
-		    {
-		      selectivity = 0.0;
-		    }
-		  else if (lhs->type_enum == PT_TYPE_INTEGER
-			   && lhs_icard == 0)
-		    {		/* still default-selectivity */
-		      double diff;
-
-		      diff = lhs_high_value - lhs_low_value + 1.0;
-		      if ((int) diff > 0)
-			{
-			  selectivity = 1.0 / diff;
-			}
-		    }
-		}
 	    }
 
 	  break;
@@ -10066,39 +10009,6 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  else
 	    {
 	      selectivity = DEFAULT_EQUAL_SELECTIVITY;
-	    }
-
-	  /* special case */
-	  if (pc_lhs == PC_CONST && qo_is_arithmetic_type (rhs))
-	    {
-	      /* get the range and data value coerced into doubles */
-	      rc2 = qo_get_range (env, rhs, &rhs_low_value, &rhs_high_value);
-	      if (rc2)
-		{
-		  /* get the constant values */
-		  const_val = get_const_value (env, lhs);
-		  if (const_val == rhs_low_value
-		      && rhs_low_value == rhs_high_value)
-		    {
-		      selectivity = 1.0;
-		    }
-		  else if (const_val < rhs_low_value
-			   || const_val > rhs_high_value)
-		    {
-		      selectivity = 0.0;
-		    }
-		  else if (rhs->type_enum == PT_TYPE_INTEGER
-			   && rhs_icard == 0)
-		    {		/* still default-selectivity */
-		      double diff;
-
-		      diff = rhs_high_value - rhs_low_value + 1.0;
-		      if ((int) diff > 0)
-			{
-			  selectivity = 1.0 / diff;
-			}
-		    }
-		}
 	    }
 
 	  break;
@@ -10131,93 +10041,6 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 static double
 qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
-  PRED_CLASS pc_lhs, pc_rhs;
-  double low_value = 0.0, high_value = 0.0, const_value = 0.0;
-  double comp_sel;
-  int rc;
-
-  /* determine the class of each side of the comparison */
-  pc_lhs = qo_classify (pt_expr->info.expr.arg1);
-  pc_rhs = qo_classify (pt_expr->info.expr.arg2);
-
-  /* The only interesting cases are when one side is an attribute and the
-   * other is a constant.
-   */
-  if ((pc_lhs == PC_ATTR && pc_rhs == PC_CONST)
-      || (pc_rhs == PC_ATTR && pc_lhs == PC_CONST))
-    {
-      /* bail out if the datatype is not arithmetic */
-      if ((pc_lhs == PC_ATTR
-	   && !qo_is_arithmetic_type (pt_expr->info.expr.arg1))
-	  || (pc_rhs == PC_ATTR
-	      && !qo_is_arithmetic_type (pt_expr->info.expr.arg2)))
-	{
-	  return DEFAULT_COMP_SELECTIVITY;
-	}
-
-      /* get high and low values for the class of the attribute. */
-      if (pc_lhs == PC_ATTR)
-	{
-	  rc = qo_get_range (env, pt_expr->info.expr.arg1,
-			     &low_value, &high_value);
-	}
-      else
-	{
-	  rc = qo_get_range (env, pt_expr->info.expr.arg2,
-			     &low_value, &high_value);
-	}
-
-      if (!rc)
-	{
-	  /* bail out if fails to get range */
-	  return DEFAULT_COMP_SELECTIVITY;
-	}
-
-      /* bail out if they are equal by chance */
-      if (low_value == high_value)
-	{
-	  return DEFAULT_COMP_SELECTIVITY;
-	}
-
-      /* get the constant value */
-      if (pc_lhs == PC_CONST)
-	{
-	  const_value = get_const_value (env, pt_expr->info.expr.arg1);
-	}
-      else
-	{
-	  const_value = get_const_value (env, pt_expr->info.expr.arg2);
-	}
-
-      /* finally, interpolate selectivity, based on the operator
-       * NOTE: if the interpolation yields a negative result, the user
-       * has asked for a value outside the range and the selectivity is 0.0
-       */
-      switch (pt_expr->info.expr.op)
-	{
-	case PT_GE:
-	  comp_sel = ((high_value - const_value + 1.0)
-		      / (high_value - low_value + 1.0));
-	  break;
-	case PT_GT:
-	  comp_sel = ((high_value - const_value)
-		      / (high_value - low_value + 1.0));
-	  break;
-	case PT_LT:
-	  comp_sel = ((const_value - low_value)
-		      / (high_value - low_value + 1.0));
-	  break;
-	case PT_LE:
-	  comp_sel = ((const_value - low_value + 1.0)
-		      / (high_value - low_value + 1.0));
-	  break;
-	default:
-	  /* can't get here, but so the compiler doesn't whine... */
-	  return DEFAULT_COMP_SELECTIVITY;
-	}
-      return (comp_sel < 0.0) ? 0.0 : ((comp_sel > 1.0) ? 1.0 : comp_sel);
-    }
-
   return DEFAULT_COMP_SELECTIVITY;
 }
 
@@ -10232,69 +10055,12 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 static double
 qo_between_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
-  PRED_CLASS pc1, pc2, pc3;
-  double low_value = 0.0, high_value = 0.0;
-  double lhs_const_val = 0.0, rhs_const_val = 0.0;
-  PT_NODE *and_node = pt_expr->info.expr.arg2;
-  int rc;
+  PT_NODE *and_node;
+
+  and_node = pt_expr->info.expr.arg2;
 
   QO_ASSERT (env, and_node->node_type == PT_EXPR);
   QO_ASSERT (env, pt_is_between_range_op (and_node->info.expr.op));
-
-  /* determine the classes of the operands */
-  pc1 = qo_classify (pt_expr->info.expr.arg1);
-  pc2 = qo_classify (and_node->info.expr.arg1);
-  pc3 = qo_classify (and_node->info.expr.arg2);
-
-  /* The only interesting case is: attr BETWEEN const1 AND const2 */
-  if (pc1 == PC_ATTR && pc2 == PC_CONST && pc3 == PC_CONST)
-    {
-      /* bail out if the datatypes are not arithmetic */
-      if (!qo_is_arithmetic_type (and_node->info.expr.arg1)
-	  || !qo_is_arithmetic_type (and_node->info.expr.arg2))
-	{
-	  return DEFAULT_BETWEEN_SELECTIVITY;
-	}
-
-      /* get the range and data value coerced into doubles */
-      rc = qo_get_range (env, pt_expr->info.expr.arg1, &low_value,
-			 &high_value);
-      if (rc == 0)
-	{
-	  /* bail out if fails to get range */
-	  return DEFAULT_BETWEEN_SELECTIVITY;
-	}
-
-      /* bail out if they are equal by chance */
-      if (low_value == high_value)
-	{
-	  return DEFAULT_BETWEEN_SELECTIVITY;
-	}
-
-      /* get the constant values */
-      lhs_const_val = get_const_value (env, and_node->info.expr.arg1);
-      rhs_const_val = get_const_value (env, and_node->info.expr.arg2);
-
-      /* choose the class's bounds if it restricts the range */
-      if (rhs_const_val > high_value)
-	{
-	  rhs_const_val = high_value;
-	}
-      if (lhs_const_val < low_value)
-	{
-	  lhs_const_val = low_value;
-	}
-
-      /* Check if the range is trivially empty */
-      if (lhs_const_val > rhs_const_val)
-	{
-	  return 0.0;
-	}
-
-      /* finally, calculate the selectivity */
-      return ((rhs_const_val - lhs_const_val + 1.0)
-	      / (high_value - low_value + 1.0));
-    }
 
   return DEFAULT_BETWEEN_SELECTIVITY;
 }
@@ -10309,14 +10075,11 @@ static double
 qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
   PT_NODE *lhs, *arg1, *arg2;
-  PRED_CLASS pc1, pc2;
+  PRED_CLASS pc1;
   double total_selectivity, selectivity;
-  double high_value1, low_value1, high_value2, low_value2;
-  double const1, const2;
   int lhs_icard, rhs_icard, icard;
   PT_NODE *range_node;
   PT_OP_TYPE op_type;
-  int rc1, rc2;
 
   lhs = pt_expr->info.expr.arg1;
 
@@ -10356,86 +10119,6 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  || op_type == PT_BETWEEN_GT_LE || op_type == PT_BETWEEN_GT_LT)
 	{
 	  selectivity = DEFAULT_BETWEEN_SELECTIVITY;
-
-	  pc2 = qo_classify (arg2);
-
-	  if (pc1 == PC_CONST && pc2 == PC_CONST
-	      /* bail out if the datatypes are not arithmetic */
-	      && qo_is_arithmetic_type (arg1) && qo_is_arithmetic_type (arg2))
-	    {
-	      /* get the range and data value coerced into doubles */
-	      rc1 = qo_get_range (env, lhs, &low_value1, &high_value1);
-
-	      /* get the constant values */
-	      const1 = get_const_value (env, arg1);
-	      const2 = get_const_value (env, arg2);
-
-	      if (const1 == const2)
-		{
-		  /* same as equal selectivity */
-		  if (lhs_icard != 0)
-		    {
-		      selectivity = (1.0 / lhs_icard);
-		    }
-		  else
-		    {
-		      selectivity = DEFAULT_EQUAL_SELECTIVITY;
-		    }
-
-		  /* special case */
-		  if (rc1)
-		    {
-		      if (low_value1 == high_value1)
-			{
-			  selectivity = 1.0;
-			}
-		      if (const1 < low_value1 || const1 > high_value1)
-			{
-			  selectivity = 0.0;
-			}
-		    }
-		}
-	      else if (const1 < const2)
-		{
-		  /* same as between selectivity */
-		  /* choose the class's bounds if it restricts the range */
-		  if (rc1)
-		    {
-		      if (const1 < low_value1)
-			{
-			  const1 = low_value1;
-			}
-		      if (const2 > high_value1)
-			{
-			  const2 = high_value1;
-			}
-
-		      switch (op_type)
-			{
-			case PT_BETWEEN_GE_LE:
-			  selectivity = ((const2 - const1 + 1.0) /
-					 (high_value1 - low_value1 + 1.0));
-			  break;
-			case PT_BETWEEN_GE_LT:
-			case PT_BETWEEN_GT_LE:
-			  selectivity = ((const2 - const1) /
-					 (high_value1 - low_value1 + 1.0));
-			  break;
-			case PT_BETWEEN_GT_LT:
-			  selectivity = ((const2 - const1 - 1.0) /
-					 (high_value1 - low_value1 + 1.0));
-			  break;
-			default:
-			  break;
-			}
-		    }
-		}
-	      else
-		{
-		  /* low value > high value; trivially empty */
-		  selectivity = 0.0;
-		}
-	    }
 	}
       else if (op_type == PT_BETWEEN_EQ_NA)
 	{
@@ -10457,31 +10140,10 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 		{
 		  selectivity = DEFAULT_EQUIJOIN_SELECTIVITY;
 		}
-
-	      /* special case */
-	      if (qo_is_arithmetic_type (lhs) && qo_is_arithmetic_type (arg1))
-		{
-		  /* get the range and data value coerced into doubles */
-		  rc1 = qo_get_range (env, lhs, &low_value1, &high_value1);
-		  rc2 = qo_get_range (env, arg1, &low_value2, &high_value2);
-		  if (rc1 || rc2)
-		    {
-		      if ((lhs_icard == 0 && low_value1 == high_value1)
-			  || (rhs_icard == 0 && low_value2 == high_value2))
-			{
-			  selectivity = 1.0;
-			}
-		      if (low_value1 > high_value2
-			  || low_value2 > high_value1)
-			{
-			  selectivity = 0.0;
-			}
-		    }
-		}
 	    }
 	  else
 	    {
-	      /* attr1 range (const2 = ) */
+	      /* attr1 range (const = ) */
 	      if (lhs_icard != 0)
 		{
 		  selectivity = (1.0 / lhs_icard);
@@ -10489,39 +10151,6 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	      else
 		{
 		  selectivity = DEFAULT_EQUAL_SELECTIVITY;
-		}
-
-	      /* special case */
-	      if (pc1 == PC_CONST && qo_is_arithmetic_type (lhs))
-		{
-		  if (qo_is_arithmetic_type (arg1))
-		    {
-		      /* get the range and data value coerced into doubles */
-		      rc1 = qo_get_range (env, lhs, &low_value1,
-					  &high_value1);
-		      if (rc1)
-			{
-			  /* get the constant values */
-			  const1 = get_const_value (env, arg1);
-			  if (const1 == low_value1
-			      && low_value1 == high_value1)
-			    {
-			      selectivity = 1.0;
-			    }
-			  if (const1 < low_value1 || const1 > high_value1)
-			    {
-			      selectivity = 0.0;
-			    }
-			}
-		    }
-		  else
-		    {
-		      /* evaluate on different data type
-		       * ex) SELECT ... FROM ... WHERE i in (1, 'x');
-		       *     ---> now, evaluate i on 'x'
-		       */
-		      selectivity = 0.0;
-		    }
 		}
 	    }
 	}
@@ -10531,43 +10160,6 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	     PT_BETWEEN_GT_INF have only one argument */
 
 	  selectivity = DEFAULT_COMP_SELECTIVITY;
-
-	  /* in the case of
-	     'attr RANGE {INF_LE(INF_LT, GE_INF, GT_INF) const, ...}' */
-	  if (pc1 == PC_CONST
-	      /* bail out if the datatype is not arithmetic */
-	      && qo_is_arithmetic_type (arg1))
-	    {
-	      /* get the range and data value coerced into doubles */
-	      rc1 = qo_get_range (env, lhs, &low_value1, &high_value1);
-	      if (rc1)
-		{
-		  /* get the constant value */
-		  const1 = get_const_value (env, arg1);
-
-		  switch (op_type)
-		    {
-		    case PT_BETWEEN_GE_INF:
-		      selectivity = ((high_value1 - const1 + 1.0) /
-				     (high_value1 - low_value1 + 1.0));
-		      break;
-		    case PT_BETWEEN_GT_INF:
-		      selectivity = ((high_value1 - const1) /
-				     (high_value1 - low_value1 + 1.0));
-		      break;
-		    case PT_BETWEEN_INF_LE:
-		      selectivity = ((const1 - low_value1 + 1.0) /
-				     (high_value1 - low_value1 + 1.0));
-		      break;
-		    case PT_BETWEEN_INF_LT:
-		      selectivity = ((const1 - low_value1) /
-				     (high_value1 - low_value1 + 1.0));
-		      break;
-		    default:
-		      break;
-		    }
-		}
-	    }
 	}
 
       selectivity = MAX (selectivity, 0.0);
@@ -10577,7 +10169,8 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 					     selectivity);
       total_selectivity = MAX (total_selectivity, 0.0);
       total_selectivity = MIN (total_selectivity, 1.0);
-    }
+
+    }				/* for (range_node = ...) */
 
   return total_selectivity;
 }
@@ -10687,103 +10280,6 @@ qo_classify (PT_NODE * attr)
 }
 
 /*
- * qo_is_arithmetic_type () - Check whether the attribute has an arithmetic type
- *   return: bool
- *   attr(in): pt node to check
- */
-static bool
-qo_is_arithmetic_type (PT_NODE * attr)
-{
-  /*
-   * This should probably be extended to look at host variables and do
-   * the right thing.  If that happens, we also need to extend
-   * get_const_value() to look inside the host variables as well.
-   */
-  switch (attr->node_type)
-    {
-    case PT_VALUE:
-    case PT_NAME:
-      return (attr->type_enum == PT_TYPE_INTEGER
-	      || attr->type_enum == PT_TYPE_BIGINT
-	      || attr->type_enum == PT_TYPE_FLOAT
-	      || attr->type_enum == PT_TYPE_DOUBLE
-	      || attr->type_enum == PT_TYPE_SMALLINT
-	      || attr->type_enum == PT_TYPE_DATE
-	      || attr->type_enum == PT_TYPE_TIME
-	      || attr->type_enum == PT_TYPE_TIMESTAMP
-	      || attr->type_enum == PT_TYPE_DATETIME
-	      || attr->type_enum == PT_TYPE_MONETARY);
-
-    default:
-      break;
-    }
-
-  return false;
-}
-
-/*
- * get_const_value () - Get the value from the pt value node and coerce
- *			to double
- *   return:
- *   env(in):
- *   val(in): pt value node to get the constant value from
- *
- * Note: assumes an arithmetic type which will be guaranteed if
- *	qo_is_arithmetic_type() above is used before this call
- */
-static double
-get_const_value (QO_ENV * env, PT_NODE * val)
-{
-  QO_ASSERT (env, val->node_type == PT_VALUE);
-
-  switch (val->type_enum)
-    {
-    case PT_TYPE_INTEGER:
-      return (double) val->info.value.data_value.i;
-
-    case PT_TYPE_BIGINT:
-      return (double) val->info.value.data_value.bigint;
-
-    case PT_TYPE_FLOAT:
-      return (double) val->info.value.data_value.f;
-
-    case PT_TYPE_DOUBLE:
-      return (double) val->info.value.data_value.d;
-
-    case PT_TYPE_TIME:
-      return (double) val->info.value.data_value.time;
-
-    case PT_TYPE_TIMESTAMP:
-      return (double) val->info.value.data_value.utime;
-
-    case PT_TYPE_DATETIME:
-      {
-	DB_BIGINT tmp_bi;
-	tmp_bi = val->info.value.data_value.datetime.date;
-	tmp_bi <<= 32;
-	tmp_bi += val->info.value.data_value.datetime.time;
-	return (double) tmp_bi;
-      }
-
-    case PT_TYPE_DATE:
-      return (double) val->info.value.data_value.date;
-
-    case PT_TYPE_MONETARY:
-      return (double) val->info.value.data_value.money.amount;
-
-    case PT_TYPE_SMALLINT:
-      return (double) val->info.value.data_value.i;
-
-    case PT_TYPE_NUMERIC:
-      return (double) atof ((char *) val->info.value.data_value.str->bytes);
-
-    default:
-      QO_ASSERT (env, UNEXPECTED_CASE);
-      return 0.0;
-    }
-}
-
-/*
  * qo_index_cardinality () - Determine if the attribute has an index
  *   return: cardinality of the index if the index exists, otherwise return 0
  *   env(in): optimizer environment
@@ -10827,144 +10323,12 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
       return 0;
     }
 
-  QO_ASSERT (env, info->cum_stats.key_size > 0
-	     && info->cum_stats.pkeys != NULL);
+  QO_ASSERT (env, info->cum_stats.key_size > 0);
+  QO_ASSERT (env, info->cum_stats.pkeys != NULL);
 
   /* return number of the first partial-key of the index on the attribute
      shown in the expression */
   return info->cum_stats.pkeys[0];
-}
-
-/*
- * qo_get_range () - Look up in the stats of the segment info the range of the
- *		  attribute
- *   return: 1 if success, otherwise 0
- *   env(in): optimizer environment
- *   attr(in): pt node to get the range for
- *   low_value(in): return variable for the low value of the range
- *   high_value(in): return variable for the high_value
- */
-static int
-qo_get_range (QO_ENV * env, PT_NODE * attr, double *low_value,
-	      double *high_value)
-{
-  PT_NODE *dummy;
-  QO_NODE *nodep;
-  QO_SEGMENT *segp;
-  QO_ATTR_CUM_STATS *cum_statsp;
-  int rc = 0;
-
-  if (attr->node_type == PT_DOT_)
-    {
-      attr = attr->info.dot.arg2;
-    }
-
-  QO_ASSERT (env, attr->node_type == PT_NAME);
-
-  *low_value = *high_value = 0.0;
-
-  nodep = lookup_node (attr, env, &dummy);
-  if (nodep == NULL)
-    {
-      return rc;
-    }
-
-  segp = lookup_seg (nodep, attr, env);
-  if (segp == NULL)
-    {
-      return rc;
-    }
-
-  if (QO_SEG_INFO (segp) == NULL)
-    {
-      return rc;
-    }
-
-  if (!QO_SEG_INFO (segp)->cum_stats.valid_limits)
-    {
-      return rc;
-    }
-
-  cum_statsp = &(QO_SEG_INFO (segp)->cum_stats);
-  switch (cum_statsp->type)
-    {
-    case DB_TYPE_INTEGER:
-      *low_value = (double) cum_statsp->min_value.i;
-      *high_value = (double) cum_statsp->max_value.i;
-      rc = 1;
-      break;
-
-    case DB_TYPE_BIGINT:
-      *low_value = (double) cum_statsp->min_value.bigint;
-      *high_value = (double) cum_statsp->max_value.bigint;
-      rc = 1;
-      break;
-
-    case DB_TYPE_FLOAT:
-      *low_value = (double) cum_statsp->min_value.f;
-      *high_value = (double) cum_statsp->max_value.f;
-      rc = 1;
-      break;
-
-    case DB_TYPE_DOUBLE:
-      *low_value = (double) cum_statsp->min_value.d;
-      *high_value = (double) cum_statsp->max_value.d;
-      rc = 1;
-      break;
-
-    case DB_TYPE_TIME:
-      *low_value = (double) cum_statsp->min_value.time;
-      *high_value = (double) cum_statsp->max_value.time;
-      rc = 1;
-      break;
-
-    case DB_TYPE_UTIME:
-      *low_value = (double) cum_statsp->min_value.utime;
-      *high_value = (double) cum_statsp->max_value.utime;
-      rc = 1;
-      break;
-
-    case DB_TYPE_DATETIME:
-      {
-	DB_BIGINT bi;
-
-	bi = cum_statsp->min_value.datetime.date;
-	bi = (bi * MILLISECONDS_OF_ONE_DAY
-	      + cum_statsp->min_value.datetime.time);
-	*low_value = (double) bi;
-
-	bi = cum_statsp->max_value.datetime.date;
-	bi = (bi * MILLISECONDS_OF_ONE_DAY
-	      + cum_statsp->max_value.datetime.time);
-	*high_value = (double) bi;
-	rc = 1;
-      }
-      break;
-
-    case DB_TYPE_DATE:
-      *low_value = (double) cum_statsp->min_value.date;
-      *high_value = (double) cum_statsp->max_value.date;
-      rc = 1;
-      break;
-
-    case DB_TYPE_MONETARY:
-      *low_value = (double) cum_statsp->min_value.money.amount;
-      *high_value = (double) cum_statsp->max_value.money.amount;
-      rc = 1;
-      break;
-
-    case DB_TYPE_SHORT:
-      *low_value = (double) cum_statsp->min_value.sh;
-      *high_value = (double) cum_statsp->max_value.sh;
-      rc = 1;
-      break;
-
-    default:
-      *low_value = *high_value = 0.0;
-      break;
-    }
-
-  return rc;
 }
 
 /*

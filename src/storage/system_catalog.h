@@ -68,7 +68,9 @@ struct disk_representation
   int fixed_length;		/* total length of fixed attributes */
   int n_variable;		/* number of variable attributes */
   struct disk_attribute *variable;	/* variable attribute structures */
-  int num_objects;		/* number of belonging objects  */
+#if 0				/* reserved for future use */
+  int repr_reserved_1;
+#endif
 };				/* object disk representation */
 
 
@@ -87,8 +89,6 @@ struct disk_attribute
   DB_DEFAULT_EXPR_TYPE default_expr;	/* default expression identifier */
   int position;			/* storage position (fixed attributes only) */
   OID classoid;			/* source class object id */
-  DB_DATA min_value;		/* minimum existing value */
-  DB_DATA max_value;		/* maximum existing value */
   int n_btstats;		/* number of B+tree statistics information */
   BTREE_STATS *bt_stats;	/* pointer to array of BTREE_STATS;
 				 * BTREE_STATS[n_btstats] */

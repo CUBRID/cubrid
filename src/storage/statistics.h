@@ -34,7 +34,7 @@
 
 /* disk-resident elements of pkeys[] field */
 #define BTREE_STATS_PKEYS_NUM      8
-#define BTREE_STATS_RESERVED_NUM   2
+#define BTREE_STATS_RESERVED_NUM   4
 
 #define STATS_MIN_MAX_SIZE    sizeof(DB_DATA)
 
@@ -48,11 +48,6 @@ struct btree_stats
   int height;			/* the height of the B+tree */
   int keys;			/* number of keys */
   int has_function;		/* is a function index */
-  DB_VALUE min_value;		/* min value stored in B+tree */
-  DB_VALUE max_value;		/* max value stored in B+tree */
-#if 0				/* reserved for future use */
-  int reserved_1;
-#endif
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
   int key_size;			/* number of key columns */
   int *pkeys;			/* partial keys info
@@ -73,8 +68,6 @@ struct attr_stats
 {
   int id;
   DB_TYPE type;
-  DB_DATA min_value;		/* minimum existing value */
-  DB_DATA max_value;		/* maximum existing value */
   int n_btstats;		/* number of B+tree statistics information */
   BTREE_STATS *bt_stats;	/* pointer to array of BTREE_STATS[n_btstats] */
 };
@@ -85,9 +78,9 @@ struct class_stats
 {
   unsigned int time_stamp;	/* the time stamped when the stat info updated;
 				   used to get up-to-date stat info */
-  int num_objects;		/* cardinality of the class;
+  int heap_num_objects;		/* cardinality of the class;
 				   number of instances the class has */
-  int heap_size;		/* number of pages the class occupy */
+  int heap_num_pages;		/* number of pages the class occupy */
   int n_attrs;			/* number of attributes; size of the
 				   attr_stats[] */
   ATTR_STATS *attr_stats;	/* pointer to the array of attribute
