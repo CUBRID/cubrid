@@ -11236,7 +11236,6 @@ error:
 static bool
 is_index_owner (MOP classop, SM_CLASS_CONSTRAINT * con)
 {
-  BTID btid;
   MOP origin_classop;
 
   origin_classop = con->attributes[0]->class_mop;
@@ -11246,15 +11245,10 @@ is_index_owner (MOP classop, SM_CLASS_CONSTRAINT * con)
       return true;
     }
 
-  if (sm_exist_index (origin_classop, con->name, &btid) == NO_ERROR)
-    {
-      if (BTID_IS_EQUAL (&btid, &con->index_btid))
-	{
-	  return false;
-	}
-    }
-
-  return true;
+  /* we are not the owner of this index so it belongs to us only if it is not
+   * a global constraint
+   */
+  return !sm_is_global_only_constraint (con);
 }
 
 /*
@@ -11381,6 +11375,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
   SM_ATTRIBUTE *attr = NULL;
   int num_pk;
   bool is_partitioned;
+  BTID btid;
+  MOP origin_classop;
 
   /* Get the cached constraint info for the flattened template.
    * Sigh, convert the template property list to a transient constraint
@@ -11430,9 +11426,12 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		    }
 		}
 
-	      /* destroy the old index but only if we're the owner of it ! */
+
 	      if (is_index_owner (classop, con))
 		{
+		  /* destroy the old index but only if we're the owner of
+		   * it!
+		   */
 		  error = deallocate_index (class_->constraints,
 					    &con->index_btid);
 		  if (error != NO_ERROR)
@@ -11440,16 +11439,27 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		      goto end;
 		    }
 		}
-	      /* If we're not the owner of it, then only remove this class
-	         from the B-tree (the B-tree will still exist) */
 	      else
 		{
-		  error = rem_class_from_index (WS_OID (classop),
-						&con->index_btid,
-						&class_->header.heap);
-		  if (error != NO_ERROR)
+		  /* If we're not the owner of it, then only remove this class
+		   * from the B-tree (the B-tree will still exist).
+		   */
+		  origin_classop = con->attributes[0]->class_mop;
+		  if (sm_exist_index (origin_classop, con->name, &btid)
+		      == NO_ERROR)
 		    {
-		      goto end;
+		      /* Only do this if the B-tree still exists. If classop
+		       * is a subclass of the class owning the index and we're
+		       * in the middle of a drop index statement, the index
+		       * has already been dropped.
+		       */
+		      error = rem_class_from_index (WS_OID (classop),
+						    &con->index_btid,
+						    &class_->header.heap);
+		      if (error != NO_ERROR)
+			{
+			  goto end;
+			}
 		    }
 		}
 
