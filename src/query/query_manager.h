@@ -42,7 +42,6 @@
 
 #define NULL_PAGEID_ASYNC -2
 #define QMGR_VPID_ARRAY_SIZE    20
-#define QMGR_QUERY_ENTRY_ARRAY_SIZE     100
 
 typedef enum
 {
@@ -147,11 +146,9 @@ struct qmgr_query_entry
   QUERY_ID query_id;		/* unique query identifier */
   XASL_ID xasl_id;		/* XASL tree storage identifier */
   XASL_CACHE_ENTRY *xasl_ent;	/* XASL cache entry for this query */
-  int repeat;			/* repetitive query ? */
   QFILE_LIST_ID *list_id;	/* result list file identifier */
   QFILE_LIST_CACHE_ENTRY *list_ent;	/* list cache entry for this query */
   QMGR_QUERY_ENTRY *next;
-  QMGR_QUERY_ENTRY *next_free;	/* next query entry in the free list */
   QMGR_TEMP_FILE *temp_vfid;	/* head of per query temp file VFID */
   int num_tmp;			/* number of tmpfiles allocated */
   int total_count;		/* total number of file pages alloc'd

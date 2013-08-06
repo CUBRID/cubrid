@@ -64,7 +64,7 @@ static int rv;
 #define qmgr_unlock_mutex(a)
 #endif
 
-#define QMGR_NUM_ENTRY_PER_ARRAY	300
+#define QMGR_MAX_QUERY_ENTRY_PER_TRAN   100
 
 #define TEMP_FILE_DEFAULT_PAGES         10
 
@@ -124,7 +124,12 @@ struct qmgr_tran_entry
   QMGR_MUTEX lock;
 #endif
   QMGR_TRAN_STATUS trans_stat;	/* transaction status */
+  int query_id_generator;	/* global query identifier count */
+
+  int num_query_entries;	/* number of allocated query entries */
+
   QMGR_QUERY_ENTRY *query_entry_list_p;	/* linked list of query entries */
+  QMGR_QUERY_ENTRY *free_query_entry_list_p;	/* free query entry list */
 
   OID_BLOCK_LIST *modified_classes_p;	/* array of class OIDs */
 
@@ -153,25 +158,16 @@ struct qmgr_query_table
   int num_trans;		/* size of trans_ind[] */
 
   /* allocation structure resource */
-  int free_query_entry_count;	/* number of free query_entry structures     */
-  int total_query_entry_count;	/* total query entry number */
-
-  int num_alloced_array;	/* number of allocated query entry array */
-  int num_entry_per_array;	/* number of query entry per query entry array */
-
-  QMGR_QUERY_ENTRY *free_query_entry_list_p;	/* free query entry list */
-  QMGR_QUERY_ENTRY **query_entry_array_p;	/* query entry resource pool */
   OID_BLOCK_LIST *free_oid_block_list_p;	/* free OID block list */
 
   /* temp file free list info */
   QMGR_TEMP_FILE_LIST temp_file_list[QMGR_NUM_TEMP_FILE_LISTS];
 };
 
-QMGR_QUERY_TABLE qmgr_Query_table = { NULL, 0, 0, 0, 0, 0, NULL, NULL, NULL,
+QMGR_QUERY_TABLE qmgr_Query_table = { NULL, 0, NULL,
   {{PTHREAD_MUTEX_INITIALIZER, NULL, 0}, {PTHREAD_MUTEX_INITIALIZER, NULL, 0}}
 };
 
-static int qmgr_Query_id_count;	/* global query identifier count */
 #if !defined(SERVER_MODE)
 static struct drand48_data qmgr_rand_buf;
 #endif
@@ -197,12 +193,14 @@ static bool qmgr_can_get_result_from_cache (QUERY_FLAG flag);
 static void qmgr_put_page_header (PAGE_PTR page_p,
 				  QFILE_PAGE_HEADER * header_p);
 
-static QMGR_QUERY_ENTRY *qmgr_allocate_query_entry_array (void);
-static QMGR_QUERY_ENTRY *qmgr_allocate_query_entry (THREAD_ENTRY * thread_p);
+static QMGR_QUERY_ENTRY *qmgr_allocate_query_entry (THREAD_ENTRY * thread_p,
+						    QMGR_TRAN_ENTRY *
+						    tran_entry_p);
 static void qmgr_free_query_entry (THREAD_ENTRY * thread_p,
+				   QMGR_TRAN_ENTRY * tran_entry_p,
 				   QMGR_QUERY_ENTRY * q_ptr);
-static void qmgr_free_query_entry_list (THREAD_ENTRY * thread_p,
-					QMGR_QUERY_ENTRY * q_ptr);
+static void qmgr_deallocate_query_entries (THREAD_ENTRY * thread_p,
+					   QMGR_QUERY_ENTRY * q_ptr);
 static void qmgr_add_query_entry (THREAD_ENTRY * thread_p,
 				  QMGR_QUERY_ENTRY * q_ptr, int trans_ind);
 static QMGR_QUERY_ENTRY *qmgr_find_query_entry (QMGR_QUERY_ENTRY *
@@ -486,83 +484,6 @@ qmgr_mark_query_as_completed (QMGR_QUERY_ENTRY * query_p)
 }
 
 /*
- * qmgr_allocate_query_entry_array () - Allocate new query entry array which has
- * 'qmgr_Query_table.num_entry_per_array' number of elements. We assume that there is not
- * free query entry when this function is called.
- *   return:
- *
- * Note: This function must be called within the critical section
- *       CSECT_QP_QUERY_TABLE.
- */
-static QMGR_QUERY_ENTRY *
-qmgr_allocate_query_entry_array (void)
-{
-  QMGR_QUERY_ENTRY *query_p;
-  QMGR_QUERY_TABLE *query_table_p;
-  int i;
-
-  /* csect_enter(CSECT_QP_QUERY_TABLE, INF_WAIT); */
-
-  query_table_p = &qmgr_Query_table;
-
-  if (query_table_p->free_query_entry_list_p != NULL ||
-      query_table_p->num_alloced_array >= QMGR_QUERY_ENTRY_ARRAY_SIZE ||
-      query_table_p->total_query_entry_count !=
-      query_table_p->num_alloced_array * query_table_p->num_entry_per_array)
-    {
-      /* csect_exit(CSECT_QP_QUERY_TABLE); */
-      return NULL;
-    }
-
-  query_table_p->query_entry_array_p[query_table_p->num_alloced_array] =
-    (QMGR_QUERY_ENTRY *) malloc (sizeof (QMGR_QUERY_ENTRY) *
-				 query_table_p->num_entry_per_array);
-  if (query_table_p->query_entry_array_p[query_table_p->num_alloced_array] ==
-      NULL)
-    {
-      /* csect_exit(CSECT_QP_QUERY_TABLE); */
-      return NULL;
-    }
-
-  query_p =
-    query_table_p->query_entry_array_p[query_table_p->num_alloced_array];
-  query_table_p->free_query_entry_list_p = query_p;
-
-  for (i = 1; i < query_table_p->num_entry_per_array; i++)
-    {
-      query_p->list_id = NULL;
-      query_p->next_free =
-	&query_table_p->
-	query_entry_array_p[query_table_p->num_alloced_array][i];
-
-#if defined (SERVER_MODE)
-      pthread_mutex_init (&query_p->lock, NULL);
-      pthread_cond_init (&query_p->cond, NULL);
-      query_p->nwaits = 0;
-#endif
-
-      query_p = query_p->next_free;
-    }
-
-  query_p->list_id = NULL;
-  query_p->next_free = NULL;
-
-#if defined (SERVER_MODE)
-  pthread_mutex_init (&query_p->lock, NULL);
-  pthread_cond_init (&query_p->cond, NULL);
-  query_p->nwaits = 0;
-#endif
-
-  query_table_p->free_query_entry_count = query_table_p->num_entry_per_array;
-  query_table_p->total_query_entry_count +=
-    query_table_p->free_query_entry_count;
-
-  /* csect_exit(CSECT_QP_QUERY_TABLE); */
-  return query_table_p->
-    query_entry_array_p[query_table_p->num_alloced_array++];
-}
-
-/*
  * qmgr_allocate_query_entry () -
  *   return: QMGR_QUERY_ENTRY * or NULL
  *
@@ -571,52 +492,51 @@ qmgr_allocate_query_entry_array (void)
  * a structure.
  */
 static QMGR_QUERY_ENTRY *
-qmgr_allocate_query_entry (THREAD_ENTRY * thread_p)
+qmgr_allocate_query_entry (THREAD_ENTRY * thread_p,
+			   QMGR_TRAN_ENTRY * tran_entry_p)
 {
   QMGR_QUERY_ENTRY *query_p;
 
-  if (csect_enter (thread_p, CSECT_QPROC_QUERY_TABLE, INF_WAIT) != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  query_p = qmgr_Query_table.free_query_entry_list_p;
+  query_p = tran_entry_p->free_query_entry_list_p;
 
   if (query_p)
     {
-      qmgr_Query_table.free_query_entry_list_p = query_p->next_free;
-      qmgr_Query_table.free_query_entry_count--;
+      tran_entry_p->free_query_entry_list_p = query_p->next;
     }
-  else if (qmgr_Query_table.num_alloced_array >= QMGR_QUERY_ENTRY_ARRAY_SIZE)
+  else if (QMGR_MAX_QUERY_ENTRY_PER_TRAN < tran_entry_p->num_query_entries)
     {
-      csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
       return NULL;
     }
   else
     {
-      if (qmgr_allocate_query_entry_array () == NULL)
+      query_p = (QMGR_QUERY_ENTRY *) malloc (sizeof (QMGR_QUERY_ENTRY));
+      if (query_p == NULL)
 	{
-	  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (QMGR_QUERY_ENTRY));
 	  return NULL;
 	}
 
-      query_p = qmgr_Query_table.free_query_entry_list_p;
-      qmgr_Query_table.free_query_entry_list_p = query_p->next_free;
-      qmgr_Query_table.free_query_entry_count--;
+      query_p->list_id = NULL;
+
+#if defined (SERVER_MODE)
+      pthread_mutex_init (&query_p->lock, NULL);
+      pthread_cond_init (&query_p->cond, NULL);
+      query_p->nwaits = 0;
+#endif
+
+      tran_entry_p->num_query_entries++;
     }
 
   /* assign query id */
-  if (qmgr_Query_id_count >= SHRT_MAX - 2)	/* overflow happened */
+  if (tran_entry_p->query_id_generator >= SHRT_MAX - 2)	/* overflow happened */
     {
-      qmgr_Query_id_count = 0;
+      tran_entry_p->query_id_generator = 0;
     }
-  query_p->query_id = ++qmgr_Query_id_count;
-
-  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
+  query_p->query_id = ++tran_entry_p->query_id_generator;
 
   /* initialize per query temp file VFID structure */
   query_p->next = NULL;
-  query_p->next_free = NULL;
   query_p->temp_vfid = NULL;
   query_p->num_tmp = 0;
   query_p->total_count = 0;
@@ -645,7 +565,9 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p)
  * or by calling db_free.
  */
 static void
-qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p)
+qmgr_free_query_entry (THREAD_ENTRY * thread_p,
+		       QMGR_TRAN_ENTRY * tran_entry_p,
+		       QMGR_QUERY_ENTRY * query_p)
 {
 #if defined (SERVER_MODE)
   if (query_p->er_msg)
@@ -661,60 +583,45 @@ qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p)
 
   query_p->next = NULL;
 
-  if (csect_enter (thread_p, CSECT_QPROC_QUERY_TABLE, INF_WAIT) != NO_ERROR)
-    {
-      return;
-    }
-
-  query_p->next_free = qmgr_Query_table.free_query_entry_list_p;
-  qmgr_Query_table.free_query_entry_list_p = query_p;
-  qmgr_Query_table.free_query_entry_count++;
-
-  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
+  query_p->next = tran_entry_p->free_query_entry_list_p;
+  tran_entry_p->free_query_entry_list_p = query_p;
 }
 
 /*
- * qmgr_free_query_entry_list () -
+ * qmgr_deallocate_query_entries () -
  *   return:
  *   q_ptr(in)  : Query Entry Pointer
  *
  * Note: Free the area allocated for the query entry list
  */
 static void
-qmgr_free_query_entry_list (THREAD_ENTRY * thread_p,
-			    QMGR_QUERY_ENTRY * query_p)
+qmgr_deallocate_query_entries (THREAD_ENTRY * thread_p,
+			       QMGR_QUERY_ENTRY * query_p)
 {
-  QMGR_QUERY_ENTRY *tmp_query_p;
-
-  if (csect_enter (thread_p, CSECT_QPROC_QUERY_TABLE, INF_WAIT) != NO_ERROR)
-    {
-      return;
-    }
+  QMGR_QUERY_ENTRY *p;
 
   while (query_p)
     {
-      tmp_query_p = query_p;
+      p = query_p;
       query_p = query_p->next;
 
 #if defined (SERVER_MODE)
-      if (tmp_query_p->er_msg)
+      if (p->er_msg)
 	{
-	  free_and_init (tmp_query_p->er_msg);
+	  free_and_init (p->er_msg);
 	}
+
+      pthread_mutex_destroy (&p->lock);
+      pthread_cond_destroy (&p->cond);
 #endif
 
-      if (tmp_query_p->list_id)
+      if (p->list_id)
 	{
-	  QFILE_FREE_AND_INIT_LIST_ID (tmp_query_p->list_id);
+	  QFILE_FREE_AND_INIT_LIST_ID (p->list_id);
 	}
 
-      tmp_query_p->next = NULL;
-      tmp_query_p->next_free = qmgr_Query_table.free_query_entry_list_p;
-      qmgr_Query_table.free_query_entry_list_p = tmp_query_p;
-      qmgr_Query_table.free_query_entry_count++;
+      free_and_init (p);
     }
-
-  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 }
 
 /*
@@ -805,37 +712,46 @@ qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id,
   qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
   query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p,
 				   query_id);
+  if (query_p != NULL)
+    {
+      qmgr_unlock_mutex (&tran_entry_p->lock);
+      return query_p;
+    }
+
+  /* Maybe it is a holdable result and we'll find it in the session state
+   * object. In order to be able to use this result, we need to create
+   * a new entry for this query in the transaction query entries and copy
+   * result information from the session.
+   */
+  query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
   qmgr_unlock_mutex (&tran_entry_p->lock);
   if (query_p == NULL)
     {
-      /* Maybe it is a holdable result and we'll find it in the session state
-       * object. In order to be able to use this result, we need to create
-       * a new entry for this query in the transaction query entries and copy
-       * result information from the session.
-       */
-      query_p = qmgr_allocate_query_entry (thread_p);
-      if (query_p == NULL)
-	{
-	  return NULL;
-	}
-
-      query_p->query_id = query_id;
-      if (xsession_load_query_entry_info (thread_p, query_p) != NO_ERROR)
-	{
-	  qmgr_free_query_entry (thread_p, query_p);
-	  query_p = NULL;
-	  return NULL;
-	}
-#if defined (SERVER_MODE)
-      /* mark this query as belonging to this transaction */
-      if (thread_p != NULL)
-	{
-	  query_p->tid = thread_p->tid;
-	}
-#endif
-      /* add it to this transaction also */
-      qmgr_add_query_entry (thread_p, query_p, tran_index);
+      return NULL;
     }
+
+  query_p->query_id = query_id;
+  if (xsession_load_query_entry_info (thread_p, query_p) != NO_ERROR)
+    {
+      qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
+      qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
+      qmgr_unlock_mutex (&tran_entry_p->lock);
+
+      query_p = NULL;
+      return NULL;
+    }
+
+#if defined (SERVER_MODE)
+  /* mark this query as belonging to this transaction */
+  if (thread_p != NULL)
+    {
+      query_p->tid = thread_p->tid;
+    }
+#endif
+
+  /* add it to this transaction also */
+  qmgr_add_query_entry (thread_p, query_p, tran_index);
+
   return query_p;
 }
 
@@ -899,15 +815,18 @@ qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id,
       prev_query_p->next = query_p->next;
     }
 
+  qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
   qmgr_unlock_mutex (&tran_entry_p->lock);
-  qmgr_free_query_entry (thread_p, query_p);
 }
 
 static void
 qmgr_initialize_tran_entry (QMGR_TRAN_ENTRY * tran_entry_p)
 {
   tran_entry_p->trans_stat = QMGR_TRAN_NULL;
+  tran_entry_p->query_id_generator = 0;
+  tran_entry_p->num_query_entries = 0;
   tran_entry_p->query_entry_list_p = NULL;
+  tran_entry_p->free_query_entry_list_p = NULL;
 
 #if defined (SERVER_MODE)
   tran_entry_p->exist_active_query = false;
@@ -1020,8 +939,14 @@ qmgr_free_tran_entries (THREAD_ENTRY * thread_p)
   tran_entry_p = qmgr_Query_table.tran_entries_p;
   for (i = 0; i < qmgr_Query_table.num_trans; i++)
     {
+      qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
+      qmgr_deallocate_query_entries (thread_p,
+				     tran_entry_p->query_entry_list_p);
+      qmgr_deallocate_query_entries (thread_p,
+				     tran_entry_p->free_query_entry_list_p);
+      qmgr_unlock_mutex (&tran_entry_p->lock);
+
       qmgr_destroy_mutex (&tran_entry_p->lock);
-      qmgr_free_query_entry_list (thread_p, tran_entry_p->query_entry_list_p);
       tran_entry_p++;
     }
 
@@ -1068,7 +993,6 @@ qmgr_dump_query_entry (QMGR_QUERY_ENTRY * query_p)
 	   query_p->xasl_id.first_vpid.volid,
 	   query_p->xasl_id.temp_vfid.fileid,
 	   query_p->xasl_id.temp_vfid.volid);
-  fprintf (stdout, "\t\trepeat: %d\n", query_p->repeat);
   fprintf (stdout, "\t\tlist_id: %p\n", (void *) query_p->list_id);
 
   if (query_p->list_id)
@@ -1214,26 +1138,6 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
 	}
     }
 
-  if (qmgr_Query_table.query_entry_array_p == NULL)
-    {
-      qmgr_Query_table.query_entry_array_p =
-	(QMGR_QUERY_ENTRY **) malloc (sizeof (QMGR_QUERY_ENTRY *) *
-				      QMGR_QUERY_ENTRY_ARRAY_SIZE);
-      if (qmgr_Query_table.query_entry_array_p == NULL)
-	{
-	  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
-	  return ER_FAILED;
-	}
-
-      qmgr_Query_table.num_entry_per_array = QMGR_NUM_ENTRY_PER_ARRAY;
-
-      if (qmgr_allocate_query_entry_array () == NULL)
-	{
-	  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
-	  return ER_FAILED;
-	}
-    }
-
   if (qmgr_Query_table.temp_file_list[TEMP_FILE_MEMBUF_NORMAL].list != NULL)
     {
       qmgr_finalize_temp_file_list (&qmgr_Query_table.temp_file_list
@@ -1255,7 +1159,6 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
 
   csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 
-  qmgr_Query_id_count = 0;
   qfile_initialize ();
 
 #if defined (SERVER_MODE)
@@ -1297,32 +1200,7 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
 
   qmgr_free_tran_entries (thread_p);
 
-  for (i = 0; i < qmgr_Query_table.num_alloced_array; i++)
-    {
-      for (j = 0; j < qmgr_Query_table.num_entry_per_array; j++)
-	{
-	  query_p = &qmgr_Query_table.query_entry_array_p[i][j];
-
-	  if (query_p && query_p->list_id)
-	    {
-	      QFILE_FREE_AND_INIT_LIST_ID (query_p->list_id);
-	    }
-
-#if defined (SERVER_MODE)
-	  pthread_mutex_destroy (&query_p->lock);
-	  pthread_cond_destroy (&query_p->cond);
-#endif
-	}
-
-      free_and_init (qmgr_Query_table.query_entry_array_p[i]);
-    }
-
   qmgr_Query_table.tran_entries_p = NULL;
-  qmgr_Query_table.free_query_entry_count = 0;
-  qmgr_Query_table.total_query_entry_count = 0;
-  qmgr_Query_table.num_alloced_array = 0;
-  qmgr_Query_table.free_query_entry_list_p = NULL;
-  free_and_init (qmgr_Query_table.query_entry_array_p);
 
   for (i = 0; i < QMGR_NUM_TEMP_FILE_LISTS; i++)
     {
@@ -2178,18 +2056,22 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
     {
       *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
     }
+
+  /* allocate a new query entry */
+  query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
   qmgr_unlock_mutex (&tran_entry_p->lock);
 
   /* set a timeout if necessary */
   qmgr_set_query_exec_info_to_tdes (tran_index, query_timeout, xasl_id_p);
+#else
+  /* allocate a new query entry */
+  query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
 #endif
 
-  /* allocate a new query entry */
-  query_p = qmgr_allocate_query_entry (thread_p);
   if (query_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1,
-	      qmgr_Query_table.total_query_entry_count);
+	      QMGR_MAX_QUERY_ENTRY_PER_TRAN);
       goto exit_on_error;
     }
 
@@ -2197,7 +2079,6 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   XASL_ID_COPY (&query_p->xasl_id, xasl_id_p);
   query_p->xasl_ent = xasl_cache_entry_p;
   query_p->list_ent = list_cache_entry_p;	/* for qfile_end_use_of_list_cache_entry() */
-  query_p->repeat = false;
   query_p->query_mode = IS_SYNC_EXEC_MODE (*flag_p) ? SYNC_MODE : ASYNC_MODE;
   query_p->query_flag = *flag_p;
 #if defined (SERVER_MODE)
@@ -2627,13 +2508,15 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
     {
       *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
     }
+
+  /* allocate a new query entry */
+  query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
+
   qmgr_unlock_mutex (&tran_entry_p->lock);
 
   /* set a timeout if necessary */
   qmgr_set_query_exec_info_to_tdes (tran_index, query_timeout, NULL);
-#endif
 
-#if defined (SERVER_MODE)
   if (dbval_count)
     {
       char *ptr;
@@ -2684,14 +2567,15 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
 
   dbvals_p = (DB_VALUE *) dbval_p;
-#endif
 
   /* allocate a new query entry */
-  query_p = qmgr_allocate_query_entry (thread_p);
+  query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
+#endif
+
   if (query_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1,
-	      qmgr_Query_table.total_query_entry_count);
+	      QMGR_MAX_QUERY_ENTRY_PER_TRAN);
       goto exit_on_error;
     }
 
@@ -2699,7 +2583,6 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   XASL_ID_SET_NULL (&query_p->xasl_id);
   query_p->xasl_ent = NULL;
   query_p->list_ent = NULL;
-  query_p->repeat = false;
   query_p->query_mode = SYNC_MODE;
   query_p->query_flag = *flag_p;
 #if defined (SERVER_MODE)
@@ -2939,12 +2822,8 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 						     tran_index);
     }
 
-  /* remove the query entry if not repetitive query */
-  if (query_p->repeat == false)
-    {
-      XASL_ID_SET_NULL (&query_p->xasl_id);
-      qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
-    }
+  XASL_ID_SET_NULL (&query_p->xasl_id);
+  qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
 
   return rc;
 }
@@ -3255,44 +3134,31 @@ again:
 						    tran_index);
 	}
 
-      /* Invalidate query only if the query is
-       * non-repetitive or the transaction has died
+      XASL_ID_SET_NULL (&query_p->xasl_id);
+      /* if there were external volumes created for the transaction,
+       * free them so that they can be used by coming transactions.
        */
-      if (query_p->repeat == false || is_tran_died)
+      if (qmgr_free_query_temp_file_by_query_entry (thread_p, query_p,
+						    tran_index) != NO_ERROR)
 	{
-	  XASL_ID_SET_NULL (&query_p->xasl_id);
-	  /* if there were external volumes created for the transaction,
-	   * free them so that they can be used by coming transactions.
-	   */
-	  if (qmgr_free_query_temp_file_by_query_entry (thread_p, query_p,
-							tran_index) !=
-	      NO_ERROR)
-	    {
 #ifdef QP_DEBUG
-	      er_log_debug (ARG_FILE_LINE, "qm_clear_trans_wakeup: "
-			    "External volume deletion failed.\n");
+	  er_log_debug (ARG_FILE_LINE, "qm_clear_trans_wakeup: "
+			"External volume deletion failed.\n");
 #endif
-	    }
-	  /* remove query entry */
-	  t = query_p;
-	  if (p == NULL)
-	    {
-	      tran_entry_p->query_entry_list_p = query_p->next;
-	      query_p = tran_entry_p->query_entry_list_p;
-	    }
-	  else
-	    {
-	      p->next = query_p->next;
-	      query_p = p->next;
-	    }
-	  qmgr_free_query_entry (thread_p, t);
-
+	}
+      /* remove query entry */
+      t = query_p;
+      if (p == NULL)
+	{
+	  tran_entry_p->query_entry_list_p = query_p->next;
+	  query_p = tran_entry_p->query_entry_list_p;
 	}
       else
 	{
-	  p = query_p;
-	  query_p = query_p->next;
+	  p->next = query_p->next;
+	  query_p = p->next;
 	}
+      qmgr_free_query_entry (thread_p, tran_entry_p, t);
     }
 
   if (tran_entry_p->query_entry_list_p == NULL)

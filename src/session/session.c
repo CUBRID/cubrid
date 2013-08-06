@@ -2166,7 +2166,6 @@ sentry_to_qentry (const SESSION_QUERY_ENTRY * sentry_p,
   qentry_p->xasl_ent = NULL;
   qentry_p->er_msg = NULL;
   qentry_p->is_holdable = true;
-  qentry_p->repeat = false;
 }
 
 /*
