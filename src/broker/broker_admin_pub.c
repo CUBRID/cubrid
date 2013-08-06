@@ -3041,6 +3041,10 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 	  as_activate (shm_br, br_info, shm_appl, &shm_appl->as_info[i], i,
 		       env, env_num);
 	}
+      for (; i < br_info->appl_server_max_num; i++)
+	{
+	  CON_STATUS_LOCK_INIT (&(shm_appl->as_info[i]));
+	}
     }
 
   br_info->ready_to_service = true;

@@ -650,6 +650,8 @@ broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl,
   as_info_p->database_host[0] = '\0';
   as_info_p->last_connect_time = 0;
   as_info_p->num_holdable_results = 0;
+  as_info_p->cur_sql_log_mode = br_info_p->sql_log_mode;
+  as_info_p->cur_slow_log_mode = br_info_p->slow_log_mode;
 
   as_info_p->as_id = as_index;
   return;
