@@ -338,14 +338,13 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
   if (shm_br == NULL)
     {
       strcpy (admin_err_msg, "failed to initialize broker shared memory");
-      uw_shm_destroy (master_shm_id);
       return -1;
     }
 
   for (i = 0; i < br_num; i++)
     {
-      T_SHM_APPL_SERVER *shm_as_p = NULL;
-      T_SHM_PROXY *shm_proxy_p = NULL;
+      shm_as_p = NULL;
+      shm_proxy_p = NULL;
 
       if (br_info[i].service_flag == ON)
 	{
@@ -420,6 +419,20 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
     {
       char err_msg_backup[ADMIN_ERR_MSG_SIZE];
       memcpy (err_msg_backup, admin_err_msg, ADMIN_ERR_MSG_SIZE);
+
+      /* if shm_as_p == NULL then, it is expected that failed creating shared memory */
+      if (shm_as_p == NULL)
+	{
+	  if (shm_br->br_info[i].shard_flag == ON && shm_proxy_p)
+	    {
+	      uw_shm_detach (shm_proxy_p);
+	      shm_proxy_p = NULL;
+
+	      uw_shm_destroy (shm_br->br_info[i].proxy_shm_id);
+	    }
+
+	  --i;
+	}
 
       for (; i >= 0; i--)
 	{
@@ -986,6 +999,22 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
   if (res < 0)
     {
       char err_msg_backup[ADMIN_ERR_MSG_SIZE];
+
+      /* if shm_as_p == NULL then, it is expected that failed creating shared memory */
+      if (shm_as_p == NULL)
+	{
+	  if (shm_br->br_info[i].shard_flag == ON && shm_proxy_p)
+	    {
+	      uw_shm_detach (shm_proxy_p);
+
+	      uw_shm_destroy (shm_br->br_info[i].proxy_shm_id);
+	    }
+
+	  uw_shm_detach (shm_br);
+
+	  return -1;
+	}
+
       memcpy (err_msg_backup, admin_err_msg, ADMIN_ERR_MSG_SIZE);
 
       br_inactivate (&(shm_br->br_info[i]));
@@ -1002,19 +1031,10 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
   if (i >= shm_br->num_broker)
     {
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker_name);
-      uw_shm_detach (shm_br);
 
-      if (shm_as_p)
-	{
-	  uw_shm_detach (shm_as_p);
-	}
-      if (shm_proxy_p)
-	{
-	  uw_shm_detach (shm_proxy_p);
-	}
-
-      return -1;
+      res = -1;
     }
+
   uw_shm_detach (shm_br);
   if (shm_as_p)
     {

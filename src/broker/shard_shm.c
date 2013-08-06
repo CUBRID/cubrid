@@ -329,7 +329,7 @@ shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info_p)
   res = shard_metadata_initialize (br_info_p, shm_proxy_p);
   if (res < 0)
     {
-      return NULL;
+      goto init_shm_proxy_error;
     }
 
   shm_conn_p = shard_metadata_get_conn (shm_proxy_p);
@@ -337,7 +337,7 @@ shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info_p)
   num_shard = shm_conn_p->num_shard_conn;
   if (num_shard <= 0)
     {
-      return NULL;
+      goto init_shm_proxy_error;
     }
 
   shm_key_p = shard_metadata_get_key (shm_proxy_p);
@@ -345,7 +345,7 @@ shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info_p)
   num_key = shm_key_p->num_shard_key;
   if (num_key <= 0)
     {
-      return NULL;
+      goto init_shm_proxy_error;
     }
 
   appl_server_min_num =
@@ -354,7 +354,7 @@ shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info_p)
     {
       fprintf (stderr, "shorted MIN_NUM_APPL_SERVER. "
 	       "it need %d at least\n", num_proxy * num_shard);
-      return NULL;
+      goto init_shm_proxy_error;
     }
 
   appl_server_max_num =
@@ -363,7 +363,7 @@ shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info_p)
     {
       fprintf (stderr, "shorted MAX_NUM_APPL_SERVER. "
 	       "it need %d at least\n", num_proxy * num_shard);
-      return NULL;
+      goto init_shm_proxy_error;
     }
 
   br_info_p->appl_server_min_num =
@@ -445,6 +445,11 @@ shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info_p)
   /* SHARD TODO : will delete */
 
   return shm_proxy_p;
+
+init_shm_proxy_error:
+  uw_shm_destroy (br_info_p->proxy_shm_id);
+
+  return NULL;
 }
 
 T_PROXY_INFO *
