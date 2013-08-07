@@ -9259,12 +9259,12 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
   ENTER_SERVER ();
 
   assert_release (!BTID_IS_NULL (btid));
-  assert_release (stat_info->key_size == 0);
+  assert_release (stat_info->pkeys_size == 0);
 
   BTID_COPY (&stat_info->btid, btid);
-  if (stat_info->key_size != 0)
+  if (stat_info->pkeys_size != 0)
     {
-      stat_info->key_size = 0;	/* do not request pkeys info */
+      stat_info->pkeys_size = 0;	/* do not request pkeys info */
     }
 
   success = btree_get_stats (NULL, stat_info);

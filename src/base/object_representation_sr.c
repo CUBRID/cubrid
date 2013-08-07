@@ -309,7 +309,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		}
 
 	      bt_statsp->key_type = NULL;
-	      bt_statsp->key_size = 0;
+	      bt_statsp->pkeys_size = 0;
 	      bt_statsp->pkeys = NULL;
 
 #if 0				/* reserved for future use */
@@ -361,24 +361,30 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      bt_statsp->key_type = btid_int.key_type;
 	      if (TP_DOMAIN_TYPE (bt_statsp->key_type) == DB_TYPE_MIDXKEY)
 		{
-		  /* get full-size stats in memory */
-		  bt_statsp->key_size =
+		  bt_statsp->pkeys_size =
 		    tp_domain_size (bt_statsp->key_type->setdomain);
 		}
 	      else
 		{
-		  bt_statsp->key_size = 1;
+		  bt_statsp->pkeys_size = 1;
+		}
+
+	      /* cut-off to stats */
+	      if (bt_statsp->pkeys_size > BTREE_STATS_PKEYS_NUM)
+		{
+		  bt_statsp->pkeys_size = BTREE_STATS_PKEYS_NUM;
 		}
 
 	      bt_statsp->pkeys =
-		(int *) malloc (sizeof (int) * bt_statsp->key_size);
+		(int *) malloc (bt_statsp->pkeys_size * sizeof (int));
 	      if (bt_statsp->pkeys == NULL)
 		{
-		  bt_statsp->key_size = 0;
+		  bt_statsp->pkeys_size = 0;
 		  continue;
 		}
 
-	      for (k = 0; k < bt_statsp->key_size; k++)
+	      assert (bt_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	      for (k = 0; k < bt_statsp->pkeys_size; k++)
 		{
 		  bt_statsp->pkeys[k] = 0;
 		}

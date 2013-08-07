@@ -121,6 +121,7 @@ typedef struct
   int height;			/* the height of the B+tree */
   int keys;			/* number of keys */
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
+  int pkeys_size;		/* pkeys array size */
   int *pkeys;			/* partial keys info
 				   for example: index (a, b, ..., x)
 				   pkeys[0]          -> # of {a}
@@ -128,7 +129,6 @@ typedef struct
 				   ...
 				   pkeys[key_size-1] -> # of {a, b, ..., x}
 				 */
-  int key_size;			/* number of key columns */
   bool valid_limits;
   bool is_indexed;
 } QO_ATTR_CUM_STATS;

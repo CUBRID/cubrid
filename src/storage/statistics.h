@@ -49,13 +49,13 @@ struct btree_stats
   int keys;			/* number of keys */
   int has_function;		/* is a function index */
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
-  int key_size;			/* number of key columns */
+  int pkeys_size;		/* pkeys array size */
   int *pkeys;			/* partial keys info
 				   for example: index (a, b, ..., x)
 				   pkeys[0]          -> # of {a}
 				   pkeys[1]          -> # of {a, b}
 				   ...
-				   pkeys[key_size-1] -> # of {a, b, ..., x}
+				   pkeys[pkeys_size-1] -> # of {a, b, ..., x}
 				 */
 #if 0				/* reserved for future use */
   int reserved[BTREE_STATS_RESERVED_NUM];

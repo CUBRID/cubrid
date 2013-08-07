@@ -221,10 +221,12 @@ static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 static int locator_force_for_multi_update (THREAD_ENTRY * thread_p,
 					   LC_COPYAREA * force_area);
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 static void locator_increase_catalog_count (THREAD_ENTRY * thread_p,
 					    OID * cls_oid);
 static void locator_decrease_catalog_count (THREAD_ENTRY * thread_p,
 					    OID * cls_oid);
+#endif
 
 static int
 locator_set_foreign_key_object_cache (THREAD_ENTRY * thread_p,
@@ -5155,8 +5157,10 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	    }
 	}
 
+#if defined(ENABLE_UNUSED_FUNCTION)
       /* increase the counter of the catalog */
       locator_increase_catalog_count (thread_p, &real_class_oid);
+#endif
 
       /* remove query result cache entries which are relevant with this class */
       if (!QFILE_IS_LIST_CACHE_DISABLED)
@@ -5726,10 +5730,12 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  repl_add_update_lsa (thread_p, oid);
 	}
 
+#if defined(ENABLE_UNUSED_FUNCTION)
       if (isold_object == false)
 	{
 	  locator_increase_catalog_count (thread_p, class_oid);
 	}
+#endif
 
       /* remove query result cache entries which are relevant with this class */
       if (!QFILE_IS_LIST_CACHE_DISABLED)
@@ -5999,11 +6005,13 @@ locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
     }
   *force_count = 1;
 
+#if defined(ENABLE_UNUSED_FUNCTION)
   if (isold_object == true && !OID_IS_ROOTOID (&class_oid))
     {
       /* decrease the counter of the catalog */
       locator_decrease_catalog_count (thread_p, &class_oid);
     }
+#endif
 
 error:
 
@@ -10668,6 +10676,7 @@ error:
   return error_code;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * locator_increase_catalog_count () -
  *
@@ -10756,6 +10765,7 @@ locator_decrease_catalog_count (THREAD_ENTRY * thread_p, OID * cls_oid)
 
   catalog_free_class_info (cls_infop);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * xrepl_set_info () -

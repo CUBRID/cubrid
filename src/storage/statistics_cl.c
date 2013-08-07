@@ -182,28 +182,34 @@ stats_client_unpack_statistics (char *buf_p)
 
 	  if (TP_DOMAIN_TYPE (btree_stats_p->key_type) == DB_TYPE_MIDXKEY)
 	    {
-	      btree_stats_p->key_size =
+	      btree_stats_p->pkeys_size =
 		tp_domain_size (btree_stats_p->key_type->setdomain);
 	    }
 	  else
 	    {
-	      btree_stats_p->key_size = 1;
+	      btree_stats_p->pkeys_size = 1;
+	    }
+
+	  /* cut-off to stats */
+	  if (btree_stats_p->pkeys_size > BTREE_STATS_PKEYS_NUM)
+	    {
+	      btree_stats_p->pkeys_size = BTREE_STATS_PKEYS_NUM;
 	    }
 
 	  btree_stats_p->pkeys =
-	    (int *) db_ws_alloc (btree_stats_p->key_size * sizeof (int));
-	  if (!btree_stats_p->pkeys)
+	    (int *) db_ws_alloc (btree_stats_p->pkeys_size * sizeof (int));
+	  if (btree_stats_p->pkeys == NULL)
 	    {
 	      stats_free_statistics (class_stats_p);
 	      return NULL;
 	    }
 
-	  for (k = 0; k < btree_stats_p->key_size; k++)
+	  assert (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	  for (k = 0; k < btree_stats_p->pkeys_size; k++)
 	    {
 	      btree_stats_p->pkeys[k] = OR_GET_INT (buf_p);
 	      buf_p += OR_INT_SIZE;
 	    }
-
 	}
     }
 
@@ -437,7 +443,8 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	  fprintf (file_p, "        Cardinality: %d (", bt_statsp->keys);
 
 	  prefix_p = "";
-	  for (k = 0; k < bt_statsp->key_size; k++)
+	  assert (bt_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	  for (k = 0; k < bt_statsp->pkeys_size; k++)
 	    {
 	      fprintf (file_p, "%s%d", prefix_p, bt_statsp->pkeys[k]);
 	      prefix_p = ",";

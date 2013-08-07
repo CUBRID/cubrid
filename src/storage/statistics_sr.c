@@ -60,13 +60,13 @@ struct partition_stats_acumulator
   double pages;			/* number of total pages */
   double height;		/* the height of the B+tree */
   double keys;			/* number of keys */
-  int key_size;			/* number of key columns */
+  int pkeys_size;		/* pkeys array size */
   double *pkeys;		/* partial keys info
 				   for example: index (a, b, ..., x)
 				   pkeys[0]          -> # of {a}
 				   pkeys[1]          -> # of {a, b}
 				   ...
-				   pkeys[key_size-1] -> # of {a, b, ..., x}
+				   pkeys[pkeys_size-1] -> # of {a, b, ..., x}
 				 */
 };
 
@@ -130,10 +130,7 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
   DISK_REPR *disk_repr_p = NULL;
   DISK_ATTR *disk_attr_p = NULL;
   BTREE_STATS *btree_stats_p = NULL;
-  HEAP_SCANCACHE hf_scan_cache, *hf_scan_cache_p = NULL;
-  RECDES recdes;
-  OID oid;
-  SCAN_CODE scan_rc;
+  int npages, estimated_nobjs;
   char *class_name = NULL;
   int i, j;
   OID *partitions = NULL;
@@ -163,9 +160,10 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
   if (cls_info_p->hfid.vfid.fileid < 0 || cls_info_p->hfid.vfid.volid < 0)
     {
       /* The class does not have a heap file (i.e. it has no instances);
-         so no statistics can be obtained for this class; just set
-         'tot_objects' field to 0 and return. */
+         so no statistics can be obtained for this class;
+         just set to 0 and return. */
 
+      cls_info_p->tot_pages = 0;
       cls_info_p->tot_objects = 0;
 
       if (catalog_add_class_info (thread_p, class_id_p, cls_info_p) !=
@@ -215,43 +213,21 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
       goto error;
     }
 
-  cls_info_p->tot_pages = file_get_numpages (thread_p,
-					     &cls_info_p->hfid.vfid);
-  cls_info_p->tot_objects = 0;
+  npages = estimated_nobjs = 0;
 
-  /* TODO - scan whole object of the class and update the statistics */
+  /* do not use estimated npages, get correct info */
+  npages = file_get_numpages (thread_p, &(cls_info_p->hfid.vfid));
+  cls_info_p->tot_pages = MAX (npages, 0);
 
-  if (heap_scancache_start (thread_p, &hf_scan_cache, &(cls_info_p->hfid),
-			    class_id_p, true, false,
-			    LOCKHINT_NONE) != NO_ERROR)
+  estimated_nobjs = heap_estimate_num_objects (thread_p, &(cls_info_p->hfid));
+  if (estimated_nobjs == -1)
     {
-      goto error;
+      /* cannot get estimates from the heap, use old info */
+      assert (cls_info_p->tot_objects >= 0);
     }
-
-  hf_scan_cache_p = &hf_scan_cache;
-
-  /* Count the number of objects by scanning heap file */
-
-  recdes.area_size = -1;
-  scan_rc = heap_first (thread_p, &(cls_info_p->hfid), class_id_p, &oid,
-			&recdes, hf_scan_cache_p, PEEK);
-
-  while (scan_rc == S_SUCCESS)
+  else
     {
-      cls_info_p->tot_objects++;
-
-      scan_rc = heap_next (thread_p, &(cls_info_p->hfid), class_id_p, &oid,
-			   &recdes, hf_scan_cache_p, PEEK);
-    }
-
-  if (scan_rc == S_ERROR)
-    {
-      goto error;
-    }
-
-  if (heap_scancache_end (thread_p, hf_scan_cache_p) != NO_ERROR)
-    {
-      goto error;
+      cls_info_p->tot_objects = estimated_nobjs;
     }
 
   /* update the index statistics for each attribute */
@@ -271,7 +247,9 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
 	  assert_release (!BTID_IS_NULL (&btree_stats_p->btid));
-	  assert_release (btree_stats_p->key_size > 0);
+	  assert_release (btree_stats_p->pkeys_size > 0);
+	  assert_release (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+
 	  if (btids)
 	    {
 	      BTID_LIST *b = btids;
@@ -297,8 +275,10 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 		  goto error;
 		}
 	    }
-	}
-    }
+
+	  assert_release (btree_stats_p->keys >= 0);
+	}			/* for (j = 0; ...) */
+    }				/* for (i = 0; ...) */
 
   /* replace the current disk representation structure/information in the
      catalog with the newly computed statistics */
@@ -348,11 +328,6 @@ end:
   return error_code;
 
 error:
-
-  if (hf_scan_cache_p)
-    {
-      (void) heap_scancache_end (thread_p, hf_scan_cache_p);
-    }
 
   if (error_code == NO_ERROR && (error_code = er_errid ()) == NO_ERROR)
     {
@@ -425,9 +400,10 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   DISK_REPR *disk_repr_p;
   DISK_ATTR *disk_attr_p;
   BTREE_STATS *btree_stats_p;
-  int npages, estimated_nobjs, dummy_avg_length;
+  int npages, estimated_nobjs;
   int i, j, k, size, n_attrs, tot_n_btstats, tot_key_info_size;
   char *buf_p, *start_p;
+  int key_size;
 #if !defined(NDEBUG)
   int track_id;
 #endif
@@ -485,8 +461,9 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
 	  tot_key_info_size +=
-	    (or_packed_domain_size (btree_stats_p->key_type, 0) +
-	     (OR_INT_SIZE * btree_stats_p->key_size));
+	    or_packed_domain_size (btree_stats_p->key_type, 0);
+	  assert (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	  tot_key_info_size += (btree_stats_p->pkeys_size * OR_INT_SIZE);	/* pkeys[] */
 	}
     }
 
@@ -520,37 +497,53 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   OR_PUT_INT (buf_p, cls_info_p->time_stamp);
   buf_p += OR_INT_SIZE;
 
-  npages = estimated_nobjs = dummy_avg_length = 0;
+  npages = estimated_nobjs = 0;
 
-  if (!HFID_IS_NULL (&cls_info_p->hfid)
-      && heap_estimate (thread_p, &cls_info_p->hfid, &npages,
-			&estimated_nobjs, &dummy_avg_length) != ER_FAILED)
+  assert (cls_info_p->tot_objects >= 0);
+  assert (cls_info_p->tot_pages >= 0);
+
+  if (HFID_IS_NULL (&cls_info_p->hfid))
     {
-      /* use estimates from the heap since it is likely that its estimates
-         are more accurate than the ones gathered at update statistics time */
-      assert (estimated_nobjs >= 0 && npages >= 0);
-
-      /* heuristic is that big nobjs is better than small */
-      estimated_nobjs = MAX (estimated_nobjs, cls_info_p->tot_objects);
-      OR_PUT_INT (buf_p, estimated_nobjs);
+      /* The class does not have a heap file (i.e. it has no instances);
+       * so no statistics can be obtained for this class
+       */
+      OR_PUT_INT (buf_p, cls_info_p->tot_objects);	/* #objects */
       buf_p += OR_INT_SIZE;
 
-      /* do not use estimated npages, use correct info */
-      assert (!VFID_ISNULL (&cls_info_p->hfid.vfid));
-      npages = file_get_numpages (thread_p, &cls_info_p->hfid.vfid);
-
-      OR_PUT_INT (buf_p, npages);
+      OR_PUT_INT (buf_p, cls_info_p->tot_pages);	/* #pages */
       buf_p += OR_INT_SIZE;
     }
   else
     {
-      /* cannot get estimates from the heap, use ones from the catalog */
-      assert (cls_info_p->tot_objects >= 0 && cls_info_p->tot_pages >= 0);
+      /* use estimates from the heap since it is likely that its estimates
+       * are more accurate than the ones gathered at update statistics time
+       */
+      estimated_nobjs = heap_estimate_num_objects (thread_p,
+						   &(cls_info_p->hfid));
+      if (estimated_nobjs == -1)
+	{
+	  /* cannot get estimates from the heap, use ones from the catalog */
+	  estimated_nobjs = cls_info_p->tot_objects;
+	}
+      else
+	{
+	  /* heuristic is that big nobjs is better than small */
+	  estimated_nobjs = MAX (estimated_nobjs, cls_info_p->tot_objects);
+	}
 
-      OR_PUT_INT (buf_p, cls_info_p->tot_objects);
+      OR_PUT_INT (buf_p, estimated_nobjs);	/* #objects */
       buf_p += OR_INT_SIZE;
 
-      OR_PUT_INT (buf_p, cls_info_p->tot_pages);
+      /* do not use estimated npages, get correct info */
+      assert (!VFID_ISNULL (&cls_info_p->hfid.vfid));
+      npages = file_get_numpages (thread_p, &cls_info_p->hfid.vfid);
+      if (npages < 0)
+	{
+	  /* cannot get #pages from the heap, use ones from the catalog */
+	  npages = cls_info_p->tot_pages;
+	}
+
+      OR_PUT_INT (buf_p, npages);	/* #pages */
       buf_p += OR_INT_SIZE;
     }
 
@@ -619,21 +612,28 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  OR_PUT_INT (buf_p, btree_stats_p->has_function);
 	  buf_p += OR_INT_SIZE;
 
-	  /* If the estimated objects from heap manager is greater than the
-	     estimate when the statistics were gathered, assume that the
-	     difference is in distinct keys. */
-	  if (estimated_nobjs > cls_info_p->tot_objects)
+	  /* check and handle with estimation,
+	   * since pkeys[] is not gathered before update stats
+	   */
+	  if (estimated_nobjs > 0)
 	    {
-	      OR_PUT_INT (buf_p, (btree_stats_p->keys +
-				  (estimated_nobjs -
-				   cls_info_p->tot_objects)));
-	      buf_p += OR_INT_SIZE;
+	      /* is non-empty index */
+	      btree_stats_p->keys = MAX (btree_stats_p->keys, 1);
+
+	      /* If the estimated objects from heap manager is greater than
+	       * the estimate when the statistics were gathered, assume that
+	       * the difference is in distinct keys.
+	       */
+	      if (cls_info_p->tot_objects > 0
+		  && estimated_nobjs > cls_info_p->tot_objects)
+		{
+		  btree_stats_p->keys +=
+		    (estimated_nobjs - cls_info_p->tot_objects);
+		}
 	    }
-	  else
-	    {
-	      OR_PUT_INT (buf_p, btree_stats_p->keys);
-	      buf_p += OR_INT_SIZE;
-	    }
+
+	  OR_PUT_INT (buf_p, btree_stats_p->keys);
+	  buf_p += OR_INT_SIZE;
 
 	  assert_release (btree_stats_p->leafs >= 1);
 	  assert_release (btree_stats_p->pages >= 1);
@@ -642,8 +642,35 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 
 	  buf_p = or_pack_domain (buf_p, btree_stats_p->key_type, 0, 0);
 
-	  for (k = 0; k < btree_stats_p->key_size; k++)
+	  /* get full key size */
+	  if (TP_DOMAIN_TYPE (btree_stats_p->key_type) == DB_TYPE_MIDXKEY)
 	    {
+	      key_size = tp_domain_size (btree_stats_p->key_type->setdomain);
+	    }
+	  else
+	    {
+	      key_size = 1;
+	    }
+	  assert (key_size >= btree_stats_p->pkeys_size);
+
+	  assert (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	  for (k = 0; k < btree_stats_p->pkeys_size; k++)
+	    {
+	      /* check and handle with estimation,
+	       * since pkeys[] is not gathered before update stats
+	       */
+	      if (estimated_nobjs > 0)
+		{
+		  /* is non-empty index */
+		  btree_stats_p->pkeys[k] = MAX (btree_stats_p->pkeys[k], 1);
+		}
+
+	      if (k + 1 == key_size)
+		{
+		  /* this last pkeys must be equal to keys */
+		  btree_stats_p->pkeys[k] = btree_stats_p->keys;
+		}
+
 	      OR_PUT_INT (buf_p, btree_stats_p->pkeys[k]);
 	      buf_p += OR_INT_SIZE;
 	    }
@@ -1099,7 +1126,8 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	  fprintf (fpp, "        Cardinality: %d (", bt_statsp->keys);
 
 	  prefix = "";
-	  for (k = 0; k < bt_statsp->key_size; k++)
+	  assert (bt_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	  for (k = 0; k < bt_statsp->pkeys_size; k++)
 	    {
 	      fprintf (fpp, "%s%d", prefix, bt_statsp->pkeys[k]);
 	      prefix = ",";
@@ -1261,10 +1289,10 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
       for (j = 0, btree_stats_p = disk_attr_p->bt_stats;
 	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
-	  mean[btree_iter].key_size = btree_stats_p->key_size;
+	  mean[btree_iter].pkeys_size = btree_stats_p->pkeys_size;
 	  mean[btree_iter].pkeys =
 	    (double *) db_private_alloc (thread_p,
-					 mean[btree_iter].key_size *
+					 mean[btree_iter].pkeys_size *
 					 sizeof (double));
 	  if (mean[btree_iter].pkeys == NULL)
 	    {
@@ -1272,12 +1300,12 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 	      goto cleanup;
 	    }
 	  memset (mean[btree_iter].pkeys, 0,
-		  mean[btree_iter].key_size * sizeof (double));
+		  mean[btree_iter].pkeys_size * sizeof (double));
 
-	  stddev[btree_iter].key_size = btree_stats_p->key_size;
+	  stddev[btree_iter].pkeys_size = btree_stats_p->pkeys_size;
 	  stddev[btree_iter].pkeys =
 	    (double *) db_private_alloc (thread_p,
-					 mean[btree_iter].key_size *
+					 mean[btree_iter].pkeys_size *
 					 sizeof (double));
 	  if (stddev[btree_iter].pkeys == NULL)
 	    {
@@ -1285,7 +1313,7 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 	      goto cleanup;
 	    }
 	  memset (stddev[btree_iter].pkeys, 0,
-		  mean[btree_iter].key_size * sizeof (double));
+		  mean[btree_iter].pkeys_size * sizeof (double));
 	  btree_iter++;
 	}
     }
@@ -1410,7 +1438,9 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 	      mean[btree_iter].height += subcls_stats->height;
 
 	      mean[btree_iter].keys += subcls_stats->keys;
-	      for (m = 0; m < subcls_stats->key_size; m++)
+
+	      assert (subcls_stats->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	      for (m = 0; m < subcls_stats->pkeys_size; m++)
 		{
 		  mean[btree_iter].pkeys[m] += subcls_stats->pkeys[m];
 		}
@@ -1431,7 +1461,8 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 
       mean[btree_iter].keys /= partitions_count;
 
-      for (m = 0; m < mean[btree_iter].key_size; m++)
+      assert (mean[btree_iter].pkeys_size <= BTREE_STATS_PKEYS_NUM);
+      for (m = 0; m < mean[btree_iter].pkeys_size; m++)
 	{
 	  mean[btree_iter].pkeys[m] /= partitions_count;
 	}
@@ -1517,7 +1548,9 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 
 	      stddev[btree_iter].keys +=
 		SQUARE (subcls_stats->keys - mean[btree_iter].keys);
-	      for (m = 0; m < subcls_stats->key_size; m++)
+
+	      assert (subcls_stats->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	      for (m = 0; m < subcls_stats->pkeys_size; m++)
 		{
 		  stddev[btree_iter].pkeys[m] +=
 		    SQUARE (subcls_stats->pkeys[m] -
@@ -1528,7 +1561,6 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 	    }
 	}
     }
-
 
   for (btree_iter = 0; btree_iter < n_btrees; btree_iter++)
     {
@@ -1544,7 +1576,8 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
       stddev[btree_iter].keys =
 	sqrt (stddev[btree_iter].keys / partitions_count);
 
-      for (m = 0; m < mean[btree_iter].key_size; m++)
+      assert (mean[btree_iter].pkeys_size <= BTREE_STATS_PKEYS_NUM);
+      for (m = 0; m < mean[btree_iter].pkeys_size; m++)
 	{
 	  stddev[btree_iter].pkeys[m] =
 	    sqrt (stddev[btree_iter].pkeys[m] / partitions_count);
@@ -1594,7 +1627,9 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 		(int) (mean[btree_iter].keys *
 		       (1 + stddev[btree_iter].keys / mean[btree_iter].keys));
 	    }
-	  for (m = 0; m < mean[btree_iter].key_size; m++)
+
+	  assert (mean[btree_iter].pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	  for (m = 0; m < mean[btree_iter].pkeys_size; m++)
 	    {
 	      if (mean[btree_iter].pkeys[m] != 0)
 		{

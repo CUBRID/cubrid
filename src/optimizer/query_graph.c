@@ -5172,7 +5172,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
   cum_statsp->leafs = cum_statsp->pages = cum_statsp->height = 0;
   cum_statsp->keys = 0;
   cum_statsp->key_type = NULL;
-  cum_statsp->key_size = 0;
+  cum_statsp->pkeys_size = 0;
   cum_statsp->pkeys = NULL;
 
   /* set the statistics from the class information(QO_CLASS_INFO_ENTRY) */
@@ -5219,30 +5219,32 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
 	      cum_statsp->pages += bstatsp->pages;
 	      cum_statsp->height = MAX (cum_statsp->height, bstatsp->height);
 
-	      if (cum_statsp->key_size == 0 ||	/* the first found */
+	      if (cum_statsp->pkeys_size == 0 ||	/* the first found */
 		  cum_statsp->keys < bstatsp->keys)
 		{
 		  cum_statsp->keys = bstatsp->keys;
 		  cum_statsp->key_type = bstatsp->key_type;
-		  cum_statsp->key_size = bstatsp->key_size;
+		  cum_statsp->pkeys_size = bstatsp->pkeys_size;
 		  /* alloc pkeys[] within the current optimizer environment */
 		  if (cum_statsp->pkeys)
 		    {
 		      free_and_init (cum_statsp->pkeys);
 		    }
 		  cum_statsp->pkeys = (int *)
-		    malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->
-							 key_size));
+		    malloc (SIZEOF_ATTR_CUM_STATS_PKEYS
+			    (cum_statsp->pkeys_size));
 		  if (cum_statsp->pkeys == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			      SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->
-							   key_size));
+							   pkeys_size));
 		      qo_free_attr_info (env, attr_infop);
 		      return NULL;
 		    }
-		  for (i = 0; i < cum_statsp->key_size; i++)
+
+		  assert (cum_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+		  for (i = 0; i < cum_statsp->pkeys_size; i++)
 		    {
 		      cum_statsp->pkeys[i] = bstatsp->pkeys[i];
 		    }
@@ -5313,7 +5315,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   cum_statsp->leafs = cum_statsp->pages = cum_statsp->height = 0;
   cum_statsp->keys = 0;
   cum_statsp->key_type = NULL;
-  cum_statsp->key_size = 0;
+  cum_statsp->pkeys_size = 0;
   cum_statsp->pkeys = NULL;
 
   /* set the statistics from the class information(QO_CLASS_INFO_ENTRY) */
@@ -5426,7 +5428,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	      cum_statsp->height = bt_statsp->height;
 	      cum_statsp->keys = bt_statsp->keys;
 	      cum_statsp->key_type = bt_statsp->key_type;
-	      cum_statsp->key_size = bt_statsp->key_size;
+	      cum_statsp->pkeys_size = bt_statsp->pkeys_size;
 	      /* alloc pkeys[] within the current optimizer environment */
 	      if (cum_statsp->pkeys != NULL)
 		{
@@ -5434,16 +5436,19 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		}
 	      cum_statsp->pkeys =
 		(int *)
-		malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->key_size));
+		malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      if (cum_statsp->pkeys == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->key_size));
+			  SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->
+						       pkeys_size));
 		  qo_free_attr_info (env, attr_infop);
 		  return NULL;
 		}
-	      for (j = 0; j < cum_statsp->key_size; j++)
+
+	      assert (cum_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	      for (j = 0; j < cum_statsp->pkeys_size; j++)
 		{
 		  cum_statsp->pkeys[j] = bt_statsp->pkeys[j];
 		}
@@ -5462,12 +5467,12 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
          This is probably not far from the truth; it is almost certainly
          a better guess than assuming that all key ranges are distinct. */
       cum_statsp->height = MAX (cum_statsp->height, bt_statsp->height);
-      if (cum_statsp->key_size == 0 ||	/* the first found */
+      if (cum_statsp->pkeys_size == 0 ||	/* the first found */
 	  cum_statsp->keys < bt_statsp->keys)
 	{
 	  cum_statsp->keys = bt_statsp->keys;
 	  cum_statsp->key_type = bt_statsp->key_type;
-	  cum_statsp->key_size = bt_statsp->key_size;
+	  cum_statsp->pkeys_size = bt_statsp->pkeys_size;
 	  /* alloc pkeys[] within the current optimizer environment */
 	  if (cum_statsp->pkeys)
 	    {
@@ -5475,16 +5480,18 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	    }
 	  cum_statsp->pkeys =
 	    (int *)
-	    malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->key_size));
+	    malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	  if (cum_statsp->pkeys == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->key_size));
+		      SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      qo_free_attr_info (env, attr_infop);
 	      return NULL;
 	    }
-	  for (j = 0; j < cum_statsp->key_size; j++)
+
+	  assert (cum_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	  for (j = 0; j < cum_statsp->pkeys_size; j++)
 	    {
 	      cum_statsp->pkeys[j] = bt_statsp->pkeys[j];
 	    }
@@ -5735,7 +5742,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		  cum_statsp->height = bt_statsp->height;
 		  cum_statsp->keys = bt_statsp->keys;
 		  cum_statsp->key_type = bt_statsp->key_type;
-		  cum_statsp->key_size = bt_statsp->key_size;
+		  cum_statsp->pkeys_size = bt_statsp->pkeys_size;
 		  /* alloc pkeys[] within the current optimizer environment */
 		  if (cum_statsp->pkeys)
 		    {
@@ -5744,16 +5751,18 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		  cum_statsp->pkeys =
 		    (int *)
 		    malloc (SIZEOF_ATTR_CUM_STATS_PKEYS
-			    (cum_statsp->key_size));
+			    (cum_statsp->pkeys_size));
 		  if (cum_statsp->pkeys == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			      SIZEOF_ATTR_CUM_STATS_PKEYS
-			      (cum_statsp->key_size));
+			      (cum_statsp->pkeys_size));
 		      return;	/* give up */
 		    }
-		  for (k = 0; k < cum_statsp->key_size; k++)
+
+		  assert (cum_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+		  for (k = 0; k < cum_statsp->pkeys_size; k++)
 		    {
 		      cum_statsp->pkeys[k] = bt_statsp->pkeys[k];
 		    }
@@ -5773,12 +5782,12 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	     certainly a better guess than assuming that all key ranges
 	     are distinct. */
 	  cum_statsp->height = MAX (cum_statsp->height, bt_statsp->height);
-	  if (cum_statsp->key_size == 0 ||	/* the first found */
+	  if (cum_statsp->pkeys_size == 0 ||	/* the first found */
 	      cum_statsp->keys < bt_statsp->keys)
 	    {
 	      cum_statsp->keys = bt_statsp->keys;
 	      cum_statsp->key_type = bt_statsp->key_type;
-	      cum_statsp->key_size = bt_statsp->key_size;
+	      cum_statsp->pkeys_size = bt_statsp->pkeys_size;
 	      /* alloc pkeys[] within the current optimizer environment */
 	      if (cum_statsp->pkeys)
 		{
@@ -5786,15 +5795,18 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		}
 	      cum_statsp->pkeys =
 		(int *)
-		malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->key_size));
+		malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      if (cum_statsp->pkeys == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->key_size));
+			  SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->
+						       pkeys_size));
 		  return;	/* give up */
 		}
-	      for (k = 0; k < cum_statsp->key_size; k++)
+
+	      assert (cum_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	      for (k = 0; k < cum_statsp->pkeys_size; k++)
 		{
 		  cum_statsp->pkeys[k] = bt_statsp->pkeys[k];
 		}
@@ -5804,7 +5816,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
       /* if index skip scan is possible, check the statistics and confirm or
          infirm it's use */
       if (j == 1 && (ni_entryp->head->is_iss_candidate || is_iss_and_cover)
-	  && cum_statsp->key_size > 1 && cum_statsp->keys > 0)
+	  && cum_statsp->pkeys_size > 1 && cum_statsp->keys > 0)
 	{
 	  CLASS_STATS *stats = NULL;
 	  long long int first_pkey_card;
@@ -5831,8 +5843,8 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	  /* fetch the cardinality of the first partial key. NULL values are
 	     not counted when the index statistics are built, so a zero card
 	     pkey is possible; we must avoid this case */
-	  first_pkey_card = cum_statsp->pkeys[0];
-	  first_pkey_card = (first_pkey_card != 0 ? first_pkey_card : 1);
+	  assert (cum_statsp->pkeys[0] >= 0);
+	  first_pkey_card = MAX (cum_statsp->pkeys[0], 1);
 
 	  ni_entryp->head->is_iss_candidate =
 	    (row_count > first_pkey_card * INDEX_SKIP_SCAN_FACTOR);
@@ -8260,7 +8272,7 @@ qo_seg_free (QO_SEGMENT * seg)
 	{
 	  if (QO_SEG_NAME (seg))
 	    {
-	      free_and_init (seg->name);
+	      free_and_init (QO_SEG_NAME (seg));
 	    }
 	}
     }

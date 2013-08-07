@@ -459,7 +459,9 @@ catalog_get_btree_statistics (BTREE_STATS * stat_p, char *rec_p)
   stat_p->height = OR_GET_INT (rec_p + CATALOG_BT_STATS_HEIGHT_OFF);
   stat_p->keys = OR_GET_INT (rec_p + CATALOG_BT_STATS_KEYS_OFF);
   stat_p->has_function = OR_GET_INT (rec_p + CATALOG_BT_STATS_FUNC_INDEX_OFF);
-  for (i = 0; i < MIN (stat_p->key_size, BTREE_STATS_PKEYS_NUM); i++)
+
+  assert (stat_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+  for (i = 0; i < stat_p->pkeys_size; i++)
     {
       stat_p->pkeys[i] = OR_GET_INT (rec_p + CATALOG_BT_STATS_PKEYS_OFF +
 				     (OR_INT_SIZE * i));
@@ -499,7 +501,8 @@ catalog_put_btree_statistics (char *rec_p, BTREE_STATS * stat_p)
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_KEYS_OFF, stat_p->keys);
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_FUNC_INDEX_OFF, stat_p->has_function);
 
-  for (i = 0; i < MIN (stat_p->key_size, BTREE_STATS_PKEYS_NUM); i++)
+  assert (stat_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+  for (i = 0; i < stat_p->pkeys_size; i++)
     {
       OR_PUT_INT (rec_p + CATALOG_BT_STATS_PKEYS_OFF + (OR_INT_SIZE * i),
 		  stat_p->pkeys[i]);
@@ -1527,7 +1530,7 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  btree_stats_p->key_size = 0;
+  btree_stats_p->pkeys_size = 0;
   btree_stats_p->pkeys = NULL;
 
   CATALOG_GET_BT_STATS_BTID (&btree_stats_p->btid,
@@ -1567,23 +1570,30 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p,
   btree_stats_p->key_type = root_header.key_type;
   if (TP_DOMAIN_TYPE (btree_stats_p->key_type) == DB_TYPE_MIDXKEY)
     {
-      btree_stats_p->key_size =
+      btree_stats_p->pkeys_size =
 	tp_domain_size (btree_stats_p->key_type->setdomain);
     }
   else
     {
-      btree_stats_p->key_size = 1;
+      btree_stats_p->pkeys_size = 1;
     }
 
-  btree_stats_p->pkeys = (int *) db_private_alloc (thread_p,
-						   sizeof (int) *
-						   btree_stats_p->key_size);
+  /* cut-off to stats */
+  if (btree_stats_p->pkeys_size > BTREE_STATS_PKEYS_NUM)
+    {
+      btree_stats_p->pkeys_size = BTREE_STATS_PKEYS_NUM;
+    }
+
+  btree_stats_p->pkeys =
+    (int *) db_private_alloc (thread_p,
+			      btree_stats_p->pkeys_size * sizeof (int));
   if (btree_stats_p->pkeys == NULL)
     {
       return ER_FAILED;
     }
 
-  for (i = 0; i < btree_stats_p->key_size; i++)
+  assert (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+  for (i = 0; i < btree_stats_p->pkeys_size; i++)
     {
       btree_stats_p->pkeys[i] = 0;
     }
@@ -2439,9 +2449,10 @@ catalog_copy_btree_statistic (BTREE_STATS * new_btree_stats_p,
 	  new_stats_p->height = pre_stats_p->height;
 	  new_stats_p->keys = pre_stats_p->keys;
 	  new_stats_p->key_type = pre_stats_p->key_type;
-	  new_stats_p->key_size = pre_stats_p->key_size;
+	  new_stats_p->pkeys_size = pre_stats_p->pkeys_size;
 
-	  for (k = 0; k < new_stats_p->key_size; k++)
+	  assert (new_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	  for (k = 0; k < new_stats_p->pkeys_size; k++)
 	    {
 	      new_stats_p->pkeys[k] = pre_stats_p->pkeys[k];
 	    }
@@ -2846,6 +2857,7 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 	{
 	  btree_stats_p = &disk_attr_p->bt_stats[j];
 
+	  assert (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 	  if (catalog_store_btree_statistics (thread_p, btree_stats_p,
 					      &catalog_record,
 					      &remembered_slot_id) !=
@@ -4061,6 +4073,7 @@ start:
 
   catalog_get_class_info_from_record (class_info_p, record.data);
   pgbuf_unfix_and_init (thread_p, page_p);
+
   return class_info_p;
 }
 
@@ -4627,7 +4640,8 @@ catalog_dump_disk_attribute (DISK_ATTR * attr_p)
       fprintf (stdout, "    Cardinality: %d (", bt_statsp->keys);
 
       prefix = "";
-      for (i = 0; i < bt_statsp->key_size; i++)
+      assert (bt_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+      for (i = 0; i < bt_statsp->pkeys_size; i++)
 	{
 	  fprintf (stdout, "%s%d", prefix, bt_statsp->pkeys[i]);
 	  prefix = ",";
@@ -5146,13 +5160,14 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
 
   assert_release (p_stat_info != NULL);
   assert_release (BTID_IS_EQUAL (&(p_stat_info->btid), btid));
-  assert_release (p_stat_info->key_size > 0);
+  assert_release (p_stat_info->pkeys_size > 0);
+  assert_release (p_stat_info->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 
   /* since btree_get_stats is too slow, use the old statistics.
      the user must previously execute 'update statistics on class_name',
      in order to get updated statistics. */
 
-  if (key_pos >= p_stat_info->key_size || key_pos < 0)
+  if (key_pos >= p_stat_info->pkeys_size || key_pos < 0)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR,
 	      1, "index_cardinality()");

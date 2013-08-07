@@ -3891,7 +3891,10 @@ btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 		  prev_j_index = 0;
 		  prev_j_ptr = NULL;
-		  for (j = 0; j < stats_env->stat_info->key_size; j++)
+
+		  assert (stats_env->stat_info->pkeys_size <=
+			  BTREE_STATS_PKEYS_NUM);
+		  for (j = 0; j < stats_env->stat_info->pkeys_size; j++)
 		    {
 		      /* extract the element of the midxkey */
 		      ret = pr_midxkey_get_element_nocopy (midxkey, j, &elem,
@@ -3913,8 +3916,11 @@ btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			  /* propagate to the following partial key-values */
 			  prev_k_index = prev_j_index;
 			  prev_k_ptr = prev_j_ptr;
-			  for (k = j + 1; k < stats_env->stat_info->key_size;
-			       k++)
+
+			  assert (stats_env->stat_info->pkeys_size <=
+				  BTREE_STATS_PKEYS_NUM);
+			  for (k = j + 1;
+			       k < stats_env->stat_info->pkeys_size; k++)
 			    {
 			      ret = pr_midxkey_get_element_nocopy (midxkey,
 								   k,
@@ -4071,7 +4077,9 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
   /* set environment variable */
   env = &stat_env;
   env->stat_info = stat_info;
-  env->pkeys_val_num = MIN (env->stat_info->key_size, BTREE_STATS_PKEYS_NUM);
+  env->pkeys_val_num = env->stat_info->pkeys_size;
+
+  assert (env->pkeys_val_num <= BTREE_STATS_PKEYS_NUM);
   for (i = 0; i < env->pkeys_val_num; i++)
     {
       DB_MAKE_NULL (&(env->pkeys_val[i]));
@@ -4167,48 +4175,46 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
 	{
 	  ;			/* do not request pkeys info; go ahead */
 	}
+      else if (env->pkeys_val_num == 1)
+	{
+	  /* single column index */
+	  env->stat_info->pkeys[0]++;
+	}
       else
 	{
-	  if (env->pkeys_val_num == 1)
+	  assert (env->pkeys_val_num > 1);
+
+	  /* multi column index */
+	  if (spage_get_record (BTS->C_page, BTS->slot_id, &rec, PEEK) !=
+	      S_SUCCESS)
 	    {
-	      /* single column index */
-	      env->stat_info->pkeys[0]++;
+	      goto exit_on_error;
 	    }
 
-	  if (env->pkeys_val_num > 1)
+	  /* read key-value */
+
+	  assert (clear_key == false);
+
+	  (void) btree_read_record (thread_p, &BTS->btid_int, &rec,
+				    &key_value, (void *) &leaf_pnt,
+				    BTREE_LEAF_NODE, &clear_key, &offset,
+				    PEEK_KEY_VALUE);
+	  if (DB_IS_NULL (&key_value))
 	    {
-	      /* multi column index */
-	      if (spage_get_record (BTS->C_page, BTS->slot_id, &rec, PEEK) !=
-		  S_SUCCESS)
-		{
-		  goto exit_on_error;
-		}
+	      goto exit_on_error;
+	    }
 
-	      /* read key-value */
+	  /* get pkeys info */
+	  ret = btree_get_midxkey_stats (thread_p, &key_value, env);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 
-	      assert (clear_key == false);
-
-	      (void) btree_read_record (thread_p, &BTS->btid_int, &rec,
-					&key_value, (void *) &leaf_pnt,
-					BTREE_LEAF_NODE, &clear_key, &offset,
-					PEEK_KEY_VALUE);
-	      if (DB_IS_NULL (&key_value))
-		{
-		  goto exit_on_error;
-		}
-
-	      /* get pkeys info */
-	      ret = btree_get_midxkey_stats (thread_p, &key_value, env);
-	      if (ret != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-
-	      if (clear_key)
-		{
-		  pr_clear_value (&key_value);
-		  clear_key = false;
-		}
+	  if (clear_key)
+	    {
+	      pr_clear_value (&key_value);
+	      clear_key = false;
 	    }
 	}
 
@@ -4217,6 +4223,23 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
+	}
+    }
+
+  /* check for emptiness */
+  for (i = 0; i < env->pkeys_val_num; i++)
+    {
+      assert_release (env->stat_info->keys >= env->stat_info->pkeys[i]);
+
+      if (env->stat_info->keys <= 0)
+	{
+	  /* is empty */
+	  assert_release (env->stat_info->pkeys[i] == 0);
+	  env->stat_info->pkeys[i] = 0;
+	}
+      else
+	{
+	  env->stat_info->pkeys[i] = MAX (env->stat_info->pkeys[i], 1);
 	}
     }
 

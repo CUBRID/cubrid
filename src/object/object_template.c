@@ -2666,7 +2666,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	    }			/* if (a->att->type->id == DB_TYPE_BLOB) || */
 	}			/* if (db_get_client_type () !=  */
 
-      if (!error)
+      if (error == NO_ERROR)
 	{
 	  /* check for template assignment that needs to be expanded */
 	  if (a->obj != NULL)
@@ -2711,7 +2711,9 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
   if (trstate != NULL)
     {
       if (error)
-	tr_abort (trstate);
+	{
+	  tr_abort (trstate);
+	}
       else
 	{
 	  if (event == TR_EVENT_INSERT)

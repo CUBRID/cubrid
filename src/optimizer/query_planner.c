@@ -2012,7 +2012,9 @@ qo_iscan_cost (QO_PLAN * planp)
 	}
     }
 
-  pkeys_num = MIN (n, cum_statsp->key_size);
+  pkeys_num = MIN (n, cum_statsp->pkeys_size);
+  assert (pkeys_num <= BTREE_STATS_PKEYS_NUM);
+
   if (bitset_is_empty (&(planp->plan_un.scan.terms)))
     {
       bool is_null_sel = false;
@@ -2020,15 +2022,17 @@ qo_iscan_cost (QO_PLAN * planp)
 
       assert (!index_entryp->is_iss_candidate);
 
+      sel_limit = 0.0;		/* init */
+
       /* set selectivity limit */
-      if (pkeys_num > 0 && cum_statsp->pkeys[0] > 0)
+      if (pkeys_num > 0 && cum_statsp->pkeys[0] > 1)
 	{
 	  sel_limit = 1.0 / (double) cum_statsp->pkeys[0];
 	}
       else
 	{
 	  /* can not use btree partial-key statistics */
-	  if (cum_statsp->keys > 0)
+	  if (cum_statsp->keys > 1)
 	    {
 	      sel_limit = 1.0 / (double) cum_statsp->keys;
 	    }
@@ -2039,12 +2043,14 @@ qo_iscan_cost (QO_PLAN * planp)
 		  sel = 0.0;
 		  is_null_sel = true;
 		}
-	      else
+	      else if (QO_NODE_NCARD (nodep) > 1)
 		{
 		  sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
 		}
 	    }
 	}
+
+      assert (sel_limit < 1.0);
 
       /* check lower bound */
       if (is_null_sel == false)
@@ -2084,22 +2090,28 @@ qo_iscan_cost (QO_PLAN * planp)
 	  else
 	    {			/* apply heuristic factor */
 	      if (QO_TERM_SELECTIVITY (termp) < 0.1)
-		sel *= QO_TERM_SELECTIVITY (termp) * pow ((double) n, 2);
+		{
+		  sel *= QO_TERM_SELECTIVITY (termp) * pow ((double) n, 2);
+		}
 	      else
-		sel *= QO_TERM_SELECTIVITY (termp);
+		{
+		  sel *= QO_TERM_SELECTIVITY (termp);
+		}
 	    }
 
 	  /* check upper bound */
 	  sel = MIN (sel, 1.0);
 
+	  sel_limit = 0.0;	/* init */
+
 	  /* set selectivity limit */
-	  if (i < pkeys_num && cum_statsp->pkeys[i] > 0)
+	  if (i < pkeys_num && cum_statsp->pkeys[i] > 1)
 	    {
 	      sel_limit = 1.0 / (double) cum_statsp->pkeys[i];
 	    }
 	  else
 	    {			/* can not use btree partial-key statistics */
-	      if (cum_statsp->keys > 0)
+	      if (cum_statsp->keys > 1)
 		{
 		  sel_limit = 1.0 / (double) cum_statsp->keys;
 		}
@@ -2110,9 +2122,14 @@ qo_iscan_cost (QO_PLAN * planp)
 		      sel = 0.0;
 		      break;	/* immediately exit loop */
 		    }
-		  sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
+		  else if (QO_NODE_NCARD (nodep) > 1)
+		    {
+		      sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
+		    }
 		}
 	    }
+
+	  assert (sel_limit < 1.0);
 
 	  /* check lower bound */
 	  sel = MAX (sel, sel_limit);
@@ -4018,7 +4035,9 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     a_ni = a->plan_un.scan.index;
     a_ent = (a_ni)->head;
     a_cum = &(a_ni)->cum_stats;
-    for (i = 0; i < a_cum->key_size; i++)
+
+    assert (a_cum->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+    for (i = 0; i < a_cum->pkeys_size; i++)
       {
 	if (a_cum->pkeys[i] <= 0)
 	  {
@@ -4042,7 +4061,9 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     b_ni = b->plan_un.scan.index;
     b_ent = (b_ni)->head;
     b_cum = &(b_ni)->cum_stats;
-    for (i = 0; i < b_cum->key_size; i++)
+
+    assert (b_cum->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+    for (i = 0; i < b_cum->pkeys_size; i++)
       {
 	if (b_cum->pkeys[i] <= 0)
 	  {
@@ -10323,7 +10344,8 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
       return 0;
     }
 
-  QO_ASSERT (env, info->cum_stats.key_size > 0);
+  QO_ASSERT (env, info->cum_stats.pkeys_size > 0);
+  QO_ASSERT (env, info->cum_stats.pkeys_size <= BTREE_STATS_PKEYS_NUM);
   QO_ASSERT (env, info->cum_stats.pkeys != NULL);
 
   /* return number of the first partial-key of the index on the attribute
@@ -11184,18 +11206,21 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
 	      return PLAN_COMP_GT;
 	    }
 
-	  /* take the smaller index key_size */
-	  if (a_cum->key_size < b_cum->key_size)
+	  assert (a_cum->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	  assert (b_cum->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+
+	  /* take the smaller index pkeys_size */
+	  if (a_cum->pkeys_size < b_cum->pkeys_size)
 	    {
 	      return PLAN_COMP_LT;
 	    }
-	  else if (a_cum->key_size > b_cum->key_size)
+	  else if (a_cum->pkeys_size > b_cum->pkeys_size)
 	    {
 	      return PLAN_COMP_GT;
 	    }
 	}
 
-      /* both have the same number of index pages and key_size */
+      /* both have the same number of index pages and pkeys_size */
       return PLAN_COMP_EQ;
     }
   else if (bitset_subset (&(a->plan_un.scan.terms), &(b->plan_un.scan.terms)))

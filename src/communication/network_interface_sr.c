@@ -8182,7 +8182,7 @@ sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_btid (request, &stat_info.btid);
   assert_release (!BTID_IS_NULL (&stat_info.btid));
 
-  stat_info.key_size = 0;	/* do not request pkeys info */
+  stat_info.pkeys_size = 0;	/* do not request pkeys info */
 
   success = (btree_get_stats (thread_p, &stat_info) == NO_ERROR)
     ? NO_ERROR : ER_FAILED;
