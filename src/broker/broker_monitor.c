@@ -2136,8 +2136,8 @@ metadata_monitor (void)
 	  for (j = 0; j < shm_user_p->num_shard_user; j++)
 	    {
 	      user_p = (T_SHARD_USER *) (&(shm_user_p->shard_user[j]));
-	      str_out ("DB Alias : %s [USER : %s, PASSWD : %s]",
-		       user_p->db_name, user_p->db_user, user_p->db_password);
+	      str_out ("DB Alias : %s [USER : %s]",
+		       user_p->db_name, user_p->db_user);
 	      print_newline ();
 	    }
 	}

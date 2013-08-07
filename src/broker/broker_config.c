@@ -1399,8 +1399,6 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 
       fprintf (fp, "SHARD_DB_NAME\t\t=%s\n", br_info[i].shard_db_name);
       fprintf (fp, "SHARD_DB_USER\t\t=%s\n", br_info[i].shard_db_user);
-      fprintf (fp, "SHARD_DB_PASSWORD\t\t=%s\n",
-	       br_info[i].shard_db_password);
 
       fprintf (fp, "SHARD_NUM_PROXY\t\t=%d\n", br_info[i].num_proxy);
       fprintf (fp, "SHARD_PROXY_LOG_DIR\t\t=%s\n", br_info[i].proxy_log_dir);

@@ -529,15 +529,14 @@ shard_metadata_dump_user (FILE * fp, T_SHM_SHARD_USER * shm_user_p)
 
   fprintf (fp, "%s=%d\n", "NUM_SHARD_USER", shm_user_p->num_shard_user);
   shard_println_1 (fp);
-  fprintf (fp, "      %-15s %-20s %-20s\n", "DB_NAME",
-	   "DB_USER", "DB_PASSWORD");
+  fprintf (fp, "      %-15s %-20s\n", "DB_NAME", "DB_USER");
   shard_println_2 (fp);
 
   for (i = 0; i < shm_user_p->num_shard_user; i++)
     {
       user_p = (T_SHARD_USER *) (&(shm_user_p->shard_user[i]));
-      fprintf (fp, "[%-3d] %-15s %-20s %-20s\n", i,
-	       user_p->db_name, user_p->db_user, user_p->db_password);
+      fprintf (fp, "[%-3d] %-15s %-20s\n", i,
+	       user_p->db_name, user_p->db_user);
     }
   shard_println_1 (fp);
   fprintf (fp, "\n\n");
