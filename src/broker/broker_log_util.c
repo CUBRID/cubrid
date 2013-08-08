@@ -99,6 +99,10 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     {
       *tot_val_size = 0;
     }
+  if (info_size)
+    {
+      *info_size = 0;
+    }
 
   if (strncmp (buf, "B ", 1) != 0)
     {
