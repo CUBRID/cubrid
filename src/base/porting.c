@@ -1727,6 +1727,8 @@ win_custom_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex,
   result = WaitForMultipleObjects (2, cond->events, FALSE, msec);
   assert (result == WAIT_TIMEOUT || result <= 2);
 
+  /*** THREAD UNSAFE AREA ***/
+
   EnterCriticalSection (&cond->lock_waiting);
   cond->waiting--;
 
@@ -1734,6 +1736,12 @@ win_custom_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex,
     {
       ResetEvent (cond->events[COND_BROADCAST]);
       SetEvent (cond->broadcast_block_event);
+
+      /* 
+       * Remove additional signal if exists
+       * (That's received in above THREAD UNSAFE AREA)
+       */
+      WaitForSingleObject (cond->events[COND_SIGNAL], 0);
     }
 
   LeaveCriticalSection (&cond->lock_waiting);
