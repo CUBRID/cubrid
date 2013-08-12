@@ -240,9 +240,12 @@
 		<col def="S255">ISBuildSourcePath</col>
 		<col def="I4">ISAttributes</col>
 		<col def="S72">ISComponentSubFolder_</col>
-		<row><td>DBGWConnector3.dll</td><td>CUBRID</td><td>DBGWConnector3.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3.dll</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>DBGWConnector3.lib</td><td>CUBRID</td><td>DBGWConnector3.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\DBGWConnector3.lib</td><td>1</td><td>NewSubFolder7</td></row>
+		<row><td>dbgwconnector3.dll</td><td>CUBRID</td><td>DBGWConnector3.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>dbgwconnector3mysql.dll</td><td>CUBRID</td><td>DBGWConnector3MySQL.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3MySQL.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>dbgwconnector3.lib</td><td>CUBRID</td><td>DBGWConnector3.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\DBGWConnector3.lib</td><td>1</td><td>NewSubFolder7</td></row>
+		<row><td>dbgwconnector3mysql.lib</td><td>CUBRID</td><td>DBGWConnector3MySQL.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\DBGWConnector3MySQL.lib</td><td>1</td><td>NewSubFolder7</td></row>
 		<row><td>adapter.h</td><td>DBGW</td><td>Adapter.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\adapter\Adapter.h</td><td>1</td><td>NewSubFolder21</td></row>
+		<row><td>adapterformysql.h</td><td>DBGW</td><td>AdapterForMySQL.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\adapter\AdapterForMySQL.h</td><td>1</td><td>NewSubFolder21</td></row>
 		<row><td>autoaddvoldb.conf</td><td>CUBRID</td><td>autoaddvoldb.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\autoaddvoldb.conf</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>autobackupdb.conf</td><td>CUBRID</td><td>autobackupdb.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\autobackupdb.conf</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>autoexecquery.conf</td><td>CUBRID</td><td>autoexecquery.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\autoexecquery.conf</td><td>1</td><td>NewSubFolder4</td></row>
@@ -327,8 +330,10 @@
 		<row><td>dbghelp.dll</td><td>CUBRID</td><td>dbghelp.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\dbghelp.dll</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>dbgwclient.h</td><td>DBGW</td><td>DBGWClient.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWClient.h</td><td>1</td><td>NewSubFolder14</td></row>
 		<row><td>dbgwconnector3.dll</td><td>DBGW</td><td>DBGWConnector3.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3.dll</td><td>1</td><td>NewSubFolder15</td></row>
+		<row><td>dbgwconnector3mysql.dll</td><td>DBGW</td><td>DBGWConnector3MySQL.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3MySQL.dll</td><td>1</td><td>NewSubFolder15</td></row>
 		<row><td>dbgwconnector3.h</td><td>DBGW</td><td>DBGWConnector3.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\\DBGWConnector3.h</td><td>1</td><td>NewSubFolder14</td></row>
 		<row><td>dbgwconnector3.lib</td><td>DBGW</td><td>DBGWConnector3.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\DBGWConnector3.lib</td><td>1</td><td>NewSubFolder16</td></row>
+		<row><td>dbgwconnector3mysql.lib</td><td>DBGW</td><td>DBGWConnector3MySQL.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\DBGWConnector3MySQL.lib</td><td>1</td><td>NewSubFolder16</td></row>
 		<row><td>dbgwporting.h</td><td>DBGW</td><td>DBGWPorting.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\system\DBGWPorting.h</td><td>1</td><td>NewSubFolder19</td></row>
 		<row><td>dbi.h</td><td>CUBRID</td><td>dbi.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbi.h</td><td>1</td><td>NewSubFolder6</td></row>
 		<row><td>demodb_objects</td><td>CUBRID</td><td>demodb_objects</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_DEMO_FILES&gt;\demodb_objects</td><td>1</td><td>NewSubFolder5</td></row>

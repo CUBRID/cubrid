@@ -350,8 +350,11 @@ copy %BUILD_PREFIX%\include\dbgw3\client\Resource.h cubrid-dbgwci-%BUILD_NUMBER%
 copy %BUILD_PREFIX%\include\dbgw3\client\QueryMapper.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\client
 copy %BUILD_PREFIX%\include\dbgw3\client\Client.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\client
 copy %BUILD_PREFIX%\include\dbgw3\adapter\Adapter.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\adapter
+copy %BUILD_PREFIX%\include\dbgw3\adapter\AdapterForMySQL.h cubrid-dbgwci-%BUILD_NUMBER%\include\dbgw3\adapter
 copy %BUILD_PREFIX%\bin\DBGWConnector3.dll cubrid-dbgwci-%BUILD_NUMBER%\bin
+copy %BUILD_PREFIX%\bin\DBGWConnector3MySQL.dll cubrid-dbgwci-%BUILD_NUMBER%\bin
 copy %BUILD_PREFIX%\lib\DBGWConnector3.lib cubrid-dbgwci-%BUILD_NUMBER%\lib
+copy %BUILD_PREFIX%\lib\DBGWConnector3MySQL.lib cubrid-dbgwci-%BUILD_NUMBER%\lib
 if "%BUILD_TARGET%" == "Win32" (
   set CUBRID_DBGWCI_PACKAGE_NAME=CUBRID-DBGWCI-Windows-x86-%BUILD_NUMBER%
 ) ELSE (

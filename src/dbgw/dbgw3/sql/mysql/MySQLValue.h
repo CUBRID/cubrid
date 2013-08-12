@@ -27,7 +27,7 @@ namespace dbgw
   {
 
     class MySQLResultSetMetaData;
-    class _MySQLResultSetMetaDataRaw;
+    struct _MySQLResultSetMetaDataRaw;
 
     class _MySQLBindList
     {

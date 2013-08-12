@@ -21,17 +21,21 @@
 #define ADAPTER_H_
 
 #if defined(WINDOWS) || defined(_WIN32) || defined(_WIN64)
-#include <Winsock2.h>
-#ifdef DBGW_ADAPTER_API_EXPORT
-#define DECLSPECIFIER __declspec(dllexport)
-#else
-#define DECLSPECIFIER __declspec(dllimport)
-#pragma comment(lib, "DBGWConnector3.lib")
-#endif
+#  include <Winsock2.h>
+#  ifdef DBGW_ADAPTER_API_EXPORT
+#    define DECLSPECIFIER __declspec(dllexport)
+#  else /* DBGW_ADAPTER_API_EXPORT */
+#    define DECLSPECIFIER __declspec(dllimport)
+#    ifdef DBGW_MYSQL
+#      pragma comment(lib, "DBGWConnector3MySQL.lib")
+#    else
+#      pragma comment(lib, "DBGWConnector3.lib")
+#    endif /* DBGW_MYSQL */
+#  endif /* DBGW_ADAPTER_API_EXPORT */
 typedef __int64 int64;
 #else /* WINDOWS */
-#define __stdcall
-#define DECLSPECIFIER
+#  define __stdcall
+#  define DECLSPECIFIER
 #endif /* !WINDOWS */
 
 #include "dbgw3/Exception.h"
