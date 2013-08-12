@@ -239,11 +239,7 @@
 		<col def="i2">Sequence</col>
 		<col def="S255">ISBuildSourcePath</col>
 		<col def="I4">ISAttributes</col>
-		<col def="S72">ISComponentSubFolder_</col>
-		<row><td>dbgwconnector3.dll</td><td>CUBRID</td><td>DBGWConnector3.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3.dll</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>dbgwconnector3mysql.dll</td><td>CUBRID</td><td>DBGWConnector3MySQL.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3MySQL.dll</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>dbgwconnector3.lib</td><td>CUBRID</td><td>DBGWConnector3.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\DBGWConnector3.lib</td><td>1</td><td>NewSubFolder7</td></row>
-		<row><td>dbgwconnector3mysql.lib</td><td>CUBRID</td><td>DBGWConnector3MySQL.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\DBGWConnector3MySQL.lib</td><td>1</td><td>NewSubFolder7</td></row>
+		<col def="S72">ISComponentSubFolder_</col>		
 		<row><td>adapter.h</td><td>DBGW</td><td>Adapter.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\adapter\Adapter.h</td><td>1</td><td>NewSubFolder21</td></row>
 		<row><td>adapterformysql.h</td><td>DBGW</td><td>AdapterForMySQL.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\adapter\AdapterForMySQL.h</td><td>1</td><td>NewSubFolder21</td></row>
 		<row><td>autoaddvoldb.conf</td><td>CUBRID</td><td>autoaddvoldb.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\autoaddvoldb.conf</td><td>1</td><td>NewSubFolder4</td></row>
