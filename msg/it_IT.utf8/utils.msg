@@ -199,12 +199,12 @@ Commandi disponibili:\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-m] [-c] [<expr>]\n\
     on          nome-broker\n\
     off         nome-broker\n\
     reset       nome-broker\n\
     acl         <status|reload> [nome-broker]\n\
-    getid       -b <broker-name> [-f] shard-key\n
+    getid       -b nome-broker [-f] shard-key\n
 27 utilità cubrid, versione %s\n\
 uso: %s manager <commando>\n\
 \n\

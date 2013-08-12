@@ -199,12 +199,12 @@ Lệnh có thể dùng :\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-m] [-c] [<expr>]\n\
     on          tên-trung gian\n\
     off         tên-trung gian\n\
     reset       tên-trung gian\n\
     acl         <status|reload> [tên-trung gian]\n\
-    getid       -b <broker-name> [-f] shard-key\n
+    getid       -b <tên-trung gian> [-f] shard-key\n
 27 tiện ích cubrid, phiên bản %s\n\
 cách sử dụng: %s manager <lệnh>\n\
 \n\

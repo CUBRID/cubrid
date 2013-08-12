@@ -199,12 +199,12 @@ commandដែលមាន:\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-m] [-c] [<expr>]\n\
     on          ឈ្មោះbroker\n\
     off         ឈ្មោះbroker\n\
     reset       ឈ្មោះbroker\n\
     acl         <status|reload> [ឈ្មោះbroker]\n\
-    getid       -b <broker-name> [-f] shard-key\n
+    getid       -b <ឈ្មោះbroker> [-f] shard-key\n
 27 cubrid utility, version %s\n\
 usage: %s manager <command>\n\
 \n\

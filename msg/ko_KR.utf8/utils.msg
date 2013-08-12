@@ -199,12 +199,12 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-m] [-c] [<expr>]\n\
     on          <브로커 이름>\n\
     off         <브로커 이름>\n\
     reset       <브로커 이름>\n\
     acl         <status|reload> [브로커 이름]\n\
-    getid       -b <broker-name> [-f] shard-key\n
+    getid       -b <브로커 이름> [-f] shard-key\n
 27 cubrid 유틸리티, 버전 %s\n\
 사용법: %s manager <명령어>\n\
 \n\

@@ -199,12 +199,12 @@ Vorhandene Befehle:\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-m] [-c] [<expr>]\n\
     on          Brokername\n\
     off         Brokername\n\
     reset       Brokername\n\
     acl         <status|reload> [Brokername]\n\
-    getid       -b <broker-name> [-f] shard-key\n
+    getid       -b Brokername [-f] shard-key\n
 27 Cubrid Utility, Version %s\n\
 Anwendung: %s manager <Befehl>\n\
 \n\
