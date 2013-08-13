@@ -631,6 +631,10 @@ proxy_io_make_error_msg (char *driver_info, char **buffer,
 	}
     }
 
+  error_code = proxy_convert_error_code (error_ind, error_code, driver_info,
+					 client_version,
+					 PROXY_CONV_ERR_TO_OLD);
+
   /* error code */
   net_buf_cp_int (&net_buf, error_code, NULL);
 
@@ -4898,6 +4902,42 @@ proxy_available_cas_wait_timer (void)
     }
 
   return;
+}
+
+int
+proxy_convert_error_code (int error_ind, int error_code, char *driver_info,
+			  T_BROKER_VERSION client_version, bool to_new)
+{
+  if (client_version < CAS_MAKE_VER (8, 3, 0))
+    {
+      if (to_new == PROXY_CONV_ERR_TO_NEW)
+	{
+	  error_code = CAS_CONV_ERROR_TO_NEW (error_code);
+	}
+      else
+	{
+	  error_code = CAS_CONV_ERROR_TO_OLD (error_code);
+	}
+    }
+  else if (!DOES_CLIENT_MATCH_THE_PROTOCOL (client_version, PROTOCOL_V2)
+	   && !cas_di_understand_renewed_error_code (driver_info)
+	   && error_code != NO_ERROR)
+    {
+      if (error_ind == CAS_ERROR_INDICATOR
+	  || error_code == CAS_ER_NOT_AUTHORIZED_CLIENT)
+	{
+	  if (to_new == PROXY_CONV_ERR_TO_NEW)
+	    {
+	      error_code = CAS_CONV_ERROR_TO_NEW (error_code);
+	    }
+	  else
+	    {
+	      error_code = CAS_CONV_ERROR_TO_OLD (error_code);
+	    }
+	}
+    }
+
+  return error_code;
 }
 
 #if defined(LINUX)

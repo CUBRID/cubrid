@@ -75,7 +75,9 @@ CAS_INFO_SIZE : cas_info
 #define SHARD_TEMPORARY_UNAVAILABLE     (-1)
 
 #define PROXY_IO_FROM_CAS               (true)
-#define PROXY_IO_FROM_CLIENT    (false)
+#define PROXY_IO_FROM_CLIENT            (false)
+#define PROXY_CONV_ERR_TO_NEW           (true)
+#define PROXY_CONV_ERR_TO_OLD           (false)
 
 #if !defined(LINUX)
 /* for network global variables */
@@ -181,4 +183,8 @@ extern char *proxy_get_driver_info_by_ctx (T_PROXY_CONTEXT * ctx_p);
 extern char *proxy_get_driver_info_by_fd (T_SOCKET_IO * sock_io_p);
 
 extern void proxy_available_cas_wait_timer (void);
+extern int proxy_convert_error_code (int error_ind, int error_code,
+				     char *driver_info,
+				     T_BROKER_VERSION client_version,
+				     bool to_new);
 #endif /* _SHARD_PROXY_IO_H_ */
