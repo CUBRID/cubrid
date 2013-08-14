@@ -1511,7 +1511,7 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
 
   thread_p->resume_status = suspended_reason;
 
-  if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+  if (thread_p->event_stats.trace_slow_query == true)
     {
       gettimeofday (&start, NULL);
     }
@@ -1524,7 +1524,7 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
       return ER_CSS_PTHREAD_COND_WAIT;
     }
 
-  if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+  if (thread_p->event_stats.trace_slow_query == true)
     {
       gettimeofday (&end, NULL);
       if (suspended_reason == THREAD_LOCK_SUSPENDED)

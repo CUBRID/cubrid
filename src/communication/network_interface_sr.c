@@ -5774,6 +5774,11 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
       xmnt_server_start_stats (thread_p, false);
       xmnt_server_copy_stats (thread_p, &base_stats);
       gettimeofday (&start, NULL);
+
+      if (trace_slow_msec >= 0)
+        {
+          thread_p->event_stats.trace_slow_query = true;
+        }
     }
 
   aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);

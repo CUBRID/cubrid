@@ -4516,7 +4516,7 @@ try_again:
   to.tv_sec = time (NULL) + wait_secs;
   to.tv_nsec = 0;
 
-  if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+  if (thrd_entry->event_stats.trace_slow_query == true)
     {
       gettimeofday (&start, NULL);
     }
@@ -4525,7 +4525,7 @@ try_again:
   r = pthread_cond_timedwait (&thrd_entry->wakeup_cond,
 			      &thrd_entry->th_entry_lock, &to);
 
-  if (prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS) >= 0)
+  if (thrd_entry->event_stats.trace_slow_query == true)
     {
       gettimeofday (&end, NULL);
       ADD_TIMEVAL (thrd_entry->event_stats.latch_waits, start, end);
