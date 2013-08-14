@@ -327,7 +327,6 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
 		     char **db_err_msg)
 {
   char tns[ORA_BUFSIZ];
-  const char *err_msg;
   int err_code = 0;
 
   if (ux_is_database_connected ())
@@ -347,7 +346,7 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
   err_code = cfg_get_dbinfo (db_alias, tns);
   if (err_code < 0)
     {
-      return ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      return err_code;
     }
 
   err_code = cas_oracle_connect_db (tns, db_user, db_passwd, db_err_msg);

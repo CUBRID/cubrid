@@ -1753,7 +1753,7 @@ public class UConnection {
 		    byte msg[] = new byte[dataLength - 8];
 		    is.readFully(msg);
 		    throw new UJciException(UErrorCode.ER_DBMS, response, code,
-			    new String(msg, 0, msg.length - 1));
+			    new String(msg, 0, Math.max(msg.length - 1, 0)));
 		}
 
 		processId = response;

@@ -79,7 +79,6 @@ cfg_get_dbinfo (char *alias, char *dbinfo)
   char delim[] = "|";
   char filename[BROKER_PATH_MAX];
   char line[DBINFO_MAX_LENGTH];
-  int ret = -1;
 
   if (shm_appl->db_connection_file[0] == '\0')
     {
@@ -127,12 +126,12 @@ cfg_get_dbinfo (char *alias, char *dbinfo)
 	}
 
       strcpy (dbinfo, token);
-      ret = 0;
-      break;
+      fclose (file);
+      return 0;
     }
 
   fclose (file);
-  return ret;
+  return ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
 }
 
 int
