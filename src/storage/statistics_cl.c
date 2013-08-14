@@ -268,6 +268,8 @@ stats_dump (const char *class_name_p, FILE * file_p)
 {
   MOP class_mop;
   CLASS_STATS *class_stats_p;
+  ATTR_STATS *attr_stats_p;
+  BTREE_STATS *bt_stats_p;
   SM_CLASS *smclass_p;
   int i, j, k;
   const char *name_p;
@@ -292,11 +294,12 @@ stats_dump (const char *class_name_p, FILE * file_p)
       return;
     }
 
+  tloc = (time_t) class_stats_p->time_stamp;
+
   fprintf (file_p, "\nCLASS STATISTICS\n");
   fprintf (file_p, "****************\n");
-  fprintf (file_p, " Class name: %s", class_name_p);
-  tloc = (time_t) class_stats_p->time_stamp;
-  fprintf (file_p, " Timestamp: %s", ctime (&tloc));
+  fprintf (file_p, " Class name: %s Timestamp: %s",
+	   class_name_p, ctime (&tloc));
   fprintf (file_p, " Total pages in class heap: %d\n",
 	   class_stats_p->heap_num_pages);
   fprintf (file_p, " Total objects: %d\n", class_stats_p->heap_num_objects);
@@ -304,12 +307,14 @@ stats_dump (const char *class_name_p, FILE * file_p)
 
   for (i = 0; i < class_stats_p->n_attrs; i++)
     {
-      name_p = sm_get_att_name (class_mop, class_stats_p->attr_stats[i].id);
+      attr_stats_p = &(class_stats_p->attr_stats[i]);
+
+      name_p = sm_get_att_name (class_mop, attr_stats_p->id);
       fprintf (file_p, " Atrribute: %s\n", (name_p ? name_p : "not found"));
-      fprintf (file_p, "    id: %d\n", class_stats_p->attr_stats[i].id);
+      fprintf (file_p, "    id: %d\n", attr_stats_p->id);
       fprintf (file_p, "    Type: ");
 
-      switch (class_stats_p->attr_stats[i].type)
+      switch (attr_stats_p->type)
 	{
 	case DB_TYPE_SHORT:
 	  fprintf (file_p, "DB_TYPE_SHORT\n");
@@ -433,26 +438,32 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	  break;
 	}
 
-      fprintf (file_p, "    B+tree statistics:\n");
-
-      for (j = 0; j < class_stats_p->attr_stats[i].n_btstats; j++)
+      if (attr_stats_p->n_btstats > 0)
 	{
-	  BTREE_STATS *bt_statsp = &class_stats_p->attr_stats[i].bt_stats[j];
-	  fprintf (file_p, "        BTID: { %d , %d }\n",
-		   bt_statsp->btid.vfid.volid, bt_statsp->btid.vfid.fileid);
-	  fprintf (file_p, "        Cardinality: %d (", bt_statsp->keys);
+	  fprintf (file_p, "    B+tree statistics:\n");
 
-	  prefix_p = "";
-	  assert (bt_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
-	  for (k = 0; k < bt_statsp->pkeys_size; k++)
+	  for (j = 0; j < attr_stats_p->n_btstats; j++)
 	    {
-	      fprintf (file_p, "%s%d", prefix_p, bt_statsp->pkeys[k]);
-	      prefix_p = ",";
+	      bt_stats_p = &(attr_stats_p->bt_stats[j]);
+
+	      fprintf (file_p, "        BTID: { %d , %d }\n",
+		       bt_stats_p->btid.vfid.volid,
+		       bt_stats_p->btid.vfid.fileid);
+	      fprintf (file_p, "        Cardinality: %d (", bt_stats_p->keys);
+
+	      prefix_p = "";
+	      assert (bt_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	      for (k = 0; k < bt_stats_p->pkeys_size; k++)
+		{
+		  fprintf (file_p, "%s%d", prefix_p, bt_stats_p->pkeys[k]);
+		  prefix_p = ",";
+		}
+	      fprintf (file_p, ") ,");
+	      fprintf (file_p, " Total pages: %d , Leaf pages: %d ,"
+		       " Height: %d\n",
+		       bt_stats_p->pages, bt_stats_p->leafs,
+		       bt_stats_p->height);
 	    }
-	  fprintf (file_p, ") ,");
-	  fprintf (file_p, " Total pages: %d , Leaf pages: %d ,"
-		   " Height: %d\n",
-		   bt_statsp->pages, bt_statsp->leafs, bt_statsp->height);
 	}
       fprintf (file_p, "\n");
     }

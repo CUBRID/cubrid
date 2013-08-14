@@ -6426,7 +6426,7 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp,
   ptr = or_pack_oid (request, classoid);
   ptr = or_pack_int (ptr, (int) timestamp);
 
-  req_error = net_client_request2 (NET_SERVER_QST_SERVER_GET_STATISTICS,
+  req_error = net_client_request2 (NET_SERVER_QST_GET_STATISTICS,
 				   request, OR_ALIGNED_BUF_SIZE (a_request),
 				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				   NULL, 0, &area, length_ptr);
@@ -6454,7 +6454,7 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp,
 }
 
 /*
- * stats_update_class_statistics -
+ * stats_update_statistics -
  *
  * return:
  *
@@ -6463,7 +6463,7 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp,
  * NOTE:
  */
 int
-stats_update_class_statistics (OID * classoid, BTID * btid, int do_now)
+stats_update_statistics (OID * classoid, BTID * btid, int do_now)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -6491,7 +6491,7 @@ stats_update_class_statistics (OID * classoid, BTID * btid, int do_now)
       ptr = or_pack_btid (ptr, btid);
     }
 
-  req_error = net_client_request (NET_SERVER_QST_UPDATE_CLASS_STATISTICS,
+  req_error = net_client_request (NET_SERVER_QST_UPDATE_STATISTICS,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
 				  reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
@@ -6517,7 +6517,7 @@ stats_update_class_statistics (OID * classoid, BTID * btid, int do_now)
 
   if (btid == NULL || BTID_IS_NULL (btid))
     {
-      success = xstats_update_class_statistics (NULL, classoid, NULL);
+      success = xstats_update_statistics (NULL, classoid, NULL);
     }
   else
     {
@@ -6525,7 +6525,7 @@ stats_update_class_statistics (OID * classoid, BTID * btid, int do_now)
 
       b.next = NULL;
       BTID_COPY (&b.btid, btid);
-      success = xstats_update_class_statistics (NULL, classoid, &b);
+      success = xstats_update_statistics (NULL, classoid, &b);
     }
 
   EXIT_SERVER ();
@@ -6535,14 +6535,14 @@ stats_update_class_statistics (OID * classoid, BTID * btid, int do_now)
 }
 
 /*
- * stats_update_statistics -
+ * stats_update_all_statistics -
  *
  * return:
  *
  * NOTE:
  */
 int
-stats_update_statistics (void)
+stats_update_all_statistics (void)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -6552,7 +6552,7 @@ stats_update_statistics (void)
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  req_error = net_client_request (NET_SERVER_QST_UPDATE_STATISTICS,
+  req_error = net_client_request (NET_SERVER_QST_UPDATE_ALL_STATISTICS,
 				  NULL, 0, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
 				  NULL, 0);
@@ -6567,7 +6567,7 @@ stats_update_statistics (void)
 
   ENTER_SERVER ();
 
-  success = xstats_update_statistics (NULL);
+  success = xstats_update_all_statistics (NULL);
 
   EXIT_SERVER ();
 
@@ -9259,7 +9259,9 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
   ENTER_SERVER ();
 
   assert_release (!BTID_IS_NULL (btid));
+  assert_release (stat_info->keys == 0);
   assert_release (stat_info->pkeys_size == 0);
+  assert_release (stat_info->pkeys == NULL);
 
   BTID_COPY (&stat_info->btid, btid);
   if (stat_info->pkeys_size != 0)

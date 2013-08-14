@@ -435,7 +435,7 @@ static int allocate_foreign_key (MOP classop, SM_CLASS * class_,
 				 SM_CLASS_CONSTRAINT * con,
 				 DB_OBJLIST * subclasses,
 				 bool * recache_cls_cons);
-static int allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
+static int allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
 					   SM_CLASS_CONSTRAINT * con,
 					   DB_OBJLIST * subclasses,
 					   bool * recache_cls_cons);
@@ -478,7 +478,6 @@ static char *sm_default_constraint_name (const char *class_name,
 					 DB_CONSTRAINT_TYPE type,
 					 const char **att_names,
 					 const int *asc_desc);
-static int sm_update_statistics (MOP classop, BTID * btid, bool do_now);
 
 static const char *sm_locate_method_file (SM_CLASS * class_,
 					  const char *function);
@@ -3836,7 +3835,7 @@ sm_get_statistics_force (MOP classop)
 }
 
 /*
- * sm_update_statistics() - Update statistics on the server for the
+ * sm_update_statistics () - Update statistics on the server for the
  *    particular class or index. When finished, fetch the new statistics and
  *    cache them with the class.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -3849,7 +3848,7 @@ sm_get_statistics_force (MOP classop)
  *       when it is requested during other processing, such as
  *       "alter table ..." or "create index ...".
  */
-static int
+int
 sm_update_statistics (MOP classop, BTID * btid, bool do_now)
 {
   int error = NO_ERROR;
@@ -3859,6 +3858,8 @@ sm_update_statistics (MOP classop, BTID * btid, bool do_now)
     {
       return NO_ERROR;
     }
+
+  assert_release (classop != NULL);
 
   /* only try to get statistics if we know the class has been flushed
      if it has a temporary oid, it isn't flushed and there are no statistics */
@@ -3874,8 +3875,8 @@ sm_update_statistics (MOP classop, BTID * btid, bool do_now)
 	  return er_errid ();
 	}
 
-      error = stats_update_class_statistics (WS_OID (classop), btid,
-					     do_now ? 1 : 0);
+      error = stats_update_statistics (WS_OID (classop), btid,
+				       do_now ? 1 : 0);
       if (error == NO_ERROR)
 	{
 	  /* only recache if the class itself is cached */
@@ -3910,33 +3911,6 @@ sm_update_statistics (MOP classop, BTID * btid, bool do_now)
 }
 
 /*
- * sm_update_index_statistics() -
- *   return: NO_ERROR on success, non-zero for ERROR
- *   classop(in): class object
- *   btid(in): btree id
- *   do_now(in): update statistics right now or
- *               delay it until a transaction is committed
- */
-int
-sm_update_index_statistics (MOP classop, BTID * btid, bool do_now)
-{
-  return sm_update_statistics (classop, btid, do_now);
-}
-
-/*
- * sm_update_class_statistics() -
- *   return: NO_ERROR on success, non-zero for ERROR
- *   classop(in): class object
- *   do_now(in): update statistics right now or
- *               delay it until a transaction is committed
- */
-int
-sm_update_class_statistics (MOP classop, bool do_now)
-{
-  return sm_update_statistics (classop, NULL, do_now);
-}
-
-/*
  * sm_update_all_statistics() - Update the statistics for all classes
  * 			        in the database.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -3955,7 +3929,7 @@ sm_update_all_statistics ()
       return er_errid ();
     }
 
-  error = stats_update_statistics ();
+  error = stats_update_all_statistics ();
   if (error == NO_ERROR)
     {
       /* Need to reset the statistics cache for all resident classes */
@@ -4027,7 +4001,7 @@ sm_update_catalog_statistics (const char *class_name)
   obj = db_find_class (class_name);
   if (obj != NULL)
     {
-      error = sm_update_class_statistics (obj, true);
+      error = sm_update_statistics (obj, NULL, true);
     }
   else
     {
@@ -10949,7 +10923,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
 }
 
 /*
- * allocate_disk_structure_helper() - Helper for index allocation
+ * allocate_disk_structures_index() - Helper for index allocation
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop(in): class object
  *   class(in): class structure
@@ -10958,7 +10932,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
  *   recache_cls_cons(out):
  */
 static int
-allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
+allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
 				SM_CLASS_CONSTRAINT * con,
 				DB_OBJLIST * subclasses,
 				bool * recache_cls_cons)
@@ -10968,6 +10942,7 @@ allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
 
   if (!SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
     {
+      assert (false);
       return NO_ERROR;
     }
 
@@ -11042,6 +11017,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 {
   SM_CLASS_CONSTRAINT *con;
   bool recache_cls_cons = false;
+  int num_index = 0;
 
   assert (classop != NULL);
 
@@ -11062,27 +11038,35 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 
   for (con = class_->constraints; con != NULL; con = con->next)
     {
-      if (con->shared_cons_name == NULL && con->attributes[0] != NULL)
+      /* check for non-shared indexes */
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY (con->type)
+	  && con->attributes[0] != NULL && con->shared_cons_name == NULL)
 	{
-	  if (allocate_disk_structure_helper (classop, class_, con,
+	  if (allocate_disk_structures_index (classop, class_, con,
 					      subclasses,
 					      &recache_cls_cons) != NO_ERROR)
 	    {
 	      goto structure_error;
 	    }
+
+	  num_index++;
 	}
     }
 
   for (con = class_->constraints; con != NULL; con = con->next)
     {
-      if (con->shared_cons_name != NULL && con->attributes[0] != NULL)
+      /* check for shared indexes */
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY (con->type)
+	  && con->attributes[0] != NULL && con->shared_cons_name != NULL)
 	{
-	  if (allocate_disk_structure_helper (classop, class_, con,
+	  if (allocate_disk_structures_index (classop, class_, con,
 					      subclasses,
 					      &recache_cls_cons) != NO_ERROR)
 	    {
 	      goto structure_error;
 	    }
+
+	  num_index++;
 	}
     }
 
@@ -11108,9 +11092,12 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
       goto structure_error;
     }
 
-  if (sm_update_class_statistics (classop, false))
+  if (num_index > 0)
     {
-      goto structure_error;
+      if (sm_update_statistics (classop, NULL, false))
+	{
+	  goto structure_error;
+	}
     }
 
   return NO_ERROR;
@@ -12824,7 +12811,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 	      sm_Disable_updating_statistics = old_val;
 	      if (error == NO_ERROR)
 		{
-		  error = sm_update_class_statistics (newop, false);
+		  error = sm_update_statistics (newop, NULL, false);
 		}
 	    }
 	}
@@ -13732,7 +13719,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
        * to make use of the new index.  Recall that the optimizer
        * looks at the statistics structures, not the schema structures.
        */
-      if (sm_update_index_statistics (classop, &index, false))
+      assert_release (!BTID_IS_NULL (&index));
+      if (sm_update_statistics (classop, &index, false))
 	{
 	  goto severe_error;
 	}
@@ -13950,11 +13938,6 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	}
 
       if (locator_flush_class (classop) != NO_ERROR)
-	{
-	  goto severe_error;
-	}
-
-      if (sm_update_class_statistics (classop, false))
 	{
 	  goto severe_error;
 	}
@@ -14491,6 +14474,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
   int error = NO_ERROR;
   char *shared_cons_name = NULL;
   SM_TEMPLATE *def;
+  MOP newmop = NULL;
 
   if (att_names == NULL)
     {
@@ -14522,10 +14506,14 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
 				      NULL, filter_index, function_index);
 	  if (error == NO_ERROR)
 	    {
-	      error = sm_update_class (def, NULL);
+	      error = sm_update_class (def, &newmop);
 	    }
 
-	  if (error != NO_ERROR)
+	  if (error == NO_ERROR)
+	    {
+	      error = sm_update_statistics (newmop, NULL, false);
+	    }
+	  else
 	    {
 	      smt_quit (def);
 	    }
@@ -14552,7 +14540,12 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
 	      error = sm_update_class (def, NULL);
 	    }
 
-	  if (error != NO_ERROR)
+	  if (error == NO_ERROR)
+	    {
+	      /* don't have to update stats for NOT NULL
+	       */
+	    }
+	  else
 	    {
 	      smt_quit (def);
 	    }

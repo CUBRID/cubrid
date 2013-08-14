@@ -4570,7 +4570,7 @@ slargeobjmgr_length (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
- * sqst_update_class_statistics -
+ * sqst_update_statistics -
  *
  * return:
  *
@@ -4581,8 +4581,8 @@ slargeobjmgr_length (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-sqst_update_class_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
-			      char *request, int reqlen)
+sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
+			char *request, int reqlen)
 {
   int error, do_now;
   OID classoid;
@@ -4599,7 +4599,7 @@ sqst_update_class_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       if (BTID_IS_NULL (&btid))
 	{
-	  error = xstats_update_class_statistics (thread_p, &classoid, NULL);
+	  error = xstats_update_statistics (thread_p, &classoid, NULL);
 	}
       else
 	{
@@ -4607,7 +4607,7 @@ sqst_update_class_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 
 	  b.next = NULL;
 	  BTID_COPY (&b.btid, &btid);
-	  error = xstats_update_class_statistics (thread_p, &classoid, &b);
+	  error = xstats_update_statistics (thread_p, &classoid, &b);
 	}
       if (error != NO_ERROR)
 	{
@@ -4628,7 +4628,7 @@ sqst_update_class_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
- * sqst_update_statistics -
+ * sqst_update_all_statistics -
  *
  * return:
  *
@@ -4639,14 +4639,14 @@ sqst_update_class_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
-			char *request, int reqlen)
+sqst_update_all_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
+			    char *request, int reqlen)
 {
   int error;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  error = xstats_update_statistics (thread_p);
+  error = xstats_update_all_statistics (thread_p);
   if (error != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
@@ -8182,7 +8182,9 @@ sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_btid (request, &stat_info.btid);
   assert_release (!BTID_IS_NULL (&stat_info.btid));
 
+  stat_info.keys = 0;
   stat_info.pkeys_size = 0;	/* do not request pkeys info */
+  stat_info.pkeys = NULL;
 
   success = (btree_get_stats (thread_p, &stat_info) == NO_ERROR)
     ? NO_ERROR : ER_FAILED;

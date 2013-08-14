@@ -44,7 +44,7 @@
 
 #define SQUARE(n) ((n)*(n))
 
-/* Used by the "stats_update_statistics" routine to create the list of all
+/* Used by the "stats_update_all_statistics" routine to create the list of all
    classes from the extendible hashing directory used by the catalog manager. */
 typedef struct class_id_list CLASS_ID_LIST;
 struct class_id_list
@@ -81,10 +81,9 @@ static int stats_compare_utime (DB_UTIME * utime1, DB_UTIME * utime2);
 static int stats_compare_datetime (DB_DATETIME * datetime1_p,
 				   DB_DATETIME * datetime2_p);
 static int stats_compare_money (DB_MONETARY * mn1, DB_MONETARY * mn2);
-static int stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
-						      OID * class_oid,
-						      OID * partitions,
-						      int count);
+static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
+						OID * class_oid,
+						OID * partitions, int count);
 static const BTREE_STATS *stats_find_inherited_index_stats (OR_CLASSREP *
 							    cls_rep,
 							    OR_CLASSREP *
@@ -94,8 +93,8 @@ static const BTREE_STATS *stats_find_inherited_index_stats (OR_CLASSREP *
 							    BTID * cls_btid);
 
 /*
- * xstats_update_class_statistics () -  Updates the statistics for the objects
- *                                    of a given class
+ * xstats_update_statistics () -  Updates the statistics for the objects
+ *                                of a given class
  *   return:
  *   class_id(in): Identifier of the class
  *   btids(in):
@@ -122,8 +121,8 @@ static const BTREE_STATS *stats_find_inherited_index_stats (OR_CLASSREP *
  *       for the last class representation.
  */
 int
-xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
-				BTID_LIST * btids)
+xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
+			  BTID_LIST * btids)
 {
   CLS_INFO *cls_info_p = NULL;
   REPR_ID repr_id;
@@ -188,10 +187,9 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
       assert (partitions != NULL);
       catalog_free_class_info (cls_info_p);
       cls_info_p = NULL;
-      error_code = stats_update_partitioned_class_statistics (thread_p,
-							      class_id_p,
-							      partitions,
-							      count);
+      error_code = stats_update_partitioned_statistics (thread_p,
+							class_id_p,
+							partitions, count);
       db_private_free (thread_p, partitions);
       if (error_code != NO_ERROR)
 	{
@@ -337,18 +335,18 @@ error:
 }
 
 /*
- * xstats_update_statistics () - Updates the statistics for all the classes of
- *                             the database
+ * xstats_update_all_statistics () - Updates the statistics
+ *                                   for all the classes of the database
  *   return:
  *
  * Note: It performs this by getting the list of all classes existing in the
  *       database and their OID's from the catalog's class collection
  *       (maintained in an extendible hashing structure) and calling the
- *       "stats_update_class_statistics" function for each one of the elements
+ *       "stats_update_statistics" function for each one of the elements
  *       of this list one by one.
  */
 int
-xstats_update_statistics (THREAD_ENTRY * thread_p)
+xstats_update_all_statistics (THREAD_ENTRY * thread_p)
 {
   int error;
   OID class_id;
@@ -364,7 +362,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p)
       class_id.pageid = class_id_item_p->class_id.pageid;
       class_id.slotid = class_id_item_p->class_id.slotid;
 
-      error = xstats_update_class_statistics (thread_p, &class_id, NULL);
+      error = xstats_update_statistics (thread_p, &class_id, NULL);
       if (error != NO_ERROR)
 	{
 	  stats_free_class_list (class_id_list_p);
@@ -1146,7 +1144,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 #endif /* CUBRID_DEBUG */
 
 /*
- * stats_update_partitioned_class_statistics () - compute statistics for a
+ * stats_update_partitioned_statistics () - compute statistics for a
  *						  partitioned class
  * return : error code or NO_ERROR
  * thread_p (in) :
@@ -1167,9 +1165,9 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
  * will be used in the query.
  */
 static int
-stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
-					   OID * class_id_p, OID * partitions,
-					   int partitions_count)
+stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
+				     OID * class_id_p, OID * partitions,
+				     int partitions_count)
 {
   int i, j, k, btree_iter, m;
   int error = NO_ERROR;
@@ -1192,7 +1190,7 @@ stats_update_partitioned_class_statistics (THREAD_ENTRY * thread_p,
 
   for (i = 0; i < partitions_count; i++)
     {
-      error = xstats_update_class_statistics (thread_p, &partitions[i], NULL);
+      error = xstats_update_statistics (thread_p, &partitions[i], NULL);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;

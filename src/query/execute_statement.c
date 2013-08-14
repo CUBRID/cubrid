@@ -3547,8 +3547,6 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *cls = NULL;
   int error = NO_ERROR;
   DB_OBJECT *obj;
-  int is_partition = 0, i;
-  MOP *sub_partitions = NULL;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -3576,27 +3574,13 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      return er_errid ();
 	    }
 
-	  error = sm_update_class_statistics (obj, true);
-	  error = sm_partitioned_class_type (obj, &is_partition, NULL,
-					     &sub_partitions);
+	  error = sm_update_statistics (obj, NULL, true);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
 	    }
-
-	  if (is_partition == DB_PARTITIONED_CLASS
-	      || is_partition == DB_PARTITION_CLASS)
-	    {
-	      for (i = 0; sub_partitions[i]; i++)
-		{
-		  error = sm_update_class_statistics (sub_partitions[i],
-						      true);
-		  if (error != NO_ERROR)
-		    break;
-		}
-	      free_and_init (sub_partitions);
-	    }
 	}
+
       return error;
     }
 }

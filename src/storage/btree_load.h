@@ -286,7 +286,6 @@ typedef struct btree_root_header BTREE_ROOT_HEADER;
 struct btree_root_header
 {				/*  Root header information  */
   BTREE_NODE_HEADER node;
-  VPID next_vpid;		/* Leaf Page Next Node Pointer       */
   int num_oids;			/* Number of OIDs stored in the Btree */
   int num_nulls;		/* Number of NULLs (they aren't stored) */
   int num_keys;			/* Number of unique keys in the Btree */

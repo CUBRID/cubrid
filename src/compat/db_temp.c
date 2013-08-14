@@ -505,7 +505,6 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
   char *name;
   SM_CLASS_CONSTRAINT *temp_cons = NULL;
   SM_FOREIGN_KEY_INFO fk_info;
-  char *shared_cons_name = NULL;
 
   name = sm_produce_constraint_name_tmpl (def, DB_CONSTRAINT_FOREIGN_KEY,
 					  attnames, NULL, constraint_name);

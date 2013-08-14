@@ -417,8 +417,10 @@ static int do_promote_partition_by_name (const char *class_name,
 					 const char *part_num,
 					 char **partition_name);
 static int do_promote_partition (SM_CLASS * class_);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 				 SM_PARTITION_ALTER_INFO * pinfo);
+#endif
 static int do_redistribute_partitions_data (const char *class_name,
 					    const char *keyname,
 					    char **promoted,
@@ -1435,9 +1437,10 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  /* update statistics here */
 	  sm_Disable_updating_statistics = old_disable_stats;
-	  error = sm_update_class_statistics (pinfo.root_op, false);
+	  error = sm_update_statistics (pinfo.root_op, NULL, false);
 	}
       break;
+
     default:
       break;
     }
@@ -3693,7 +3696,6 @@ do_alter_index_rename (PARSER_CONTEXT * parser, const PT_NODE * statement)
       ctemplate = NULL;
       goto error_exit;
     }
-
 
 end:
   /* roll back the state of sm_Disable_updating_statistics */
@@ -6697,6 +6699,7 @@ do_reorganize_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter,
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * do_analyze_partition () - update statistics on partitions
  * return : error code or NO_ERROR
@@ -6721,8 +6724,8 @@ do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
       while (name)
 	{
 	  assert (name->info.name.db_object != NULL);
-	  error = sm_update_class_statistics (name->info.name.db_object,
-					      false);
+	  error =
+	    sm_update_statistics (name->info.name.db_object, NULL, false);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -6741,7 +6744,7 @@ do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	{
 	  return error;
 	}
-      error = sm_update_class_statistics (pinfo->root_op, false);
+      error = sm_update_statistics (pinfo->root_op, NULL, false);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -6762,7 +6765,7 @@ do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	      continue;
 	    }
 
-	  error = sm_update_class_statistics (obj->op, false);
+	  error = sm_update_statistics (obj->op, NULL, false);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -6772,6 +6775,7 @@ do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 
   return error;
 }
+#endif
 
 /*
  * do_promote_partition_list () -

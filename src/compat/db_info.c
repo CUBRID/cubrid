@@ -2375,7 +2375,10 @@ db_get_btree_statistics (DB_CONSTRAINT * cons,
   btid = &cons->index_btid;
   assert_release (!BTID_IS_NULL (btid));
 
+  stat.keys = 0;
   stat.pkeys_size = 0;		/* do not request pkeys info */
+  stat.pkeys = NULL;
+
   errcode = btree_get_statistics (btid, &stat);
   if (errcode != NO_ERROR)
     {

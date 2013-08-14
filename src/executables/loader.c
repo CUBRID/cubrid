@@ -6027,7 +6027,7 @@ ldr_update_statistics (void)
 		       sm_class_name (table->class_));
 	      fflush (stdout);
 	    }
-	  err = sm_update_class_statistics (table->class_, true);
+	  err = sm_update_statistics (table->class_, NULL, true);
 	}
     }
   return err;

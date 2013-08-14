@@ -273,9 +273,8 @@ extern INT64 largeobjmgr_length (LOID * loid);
 extern char *stats_get_statistics_from_server (OID * classoid,
 					       unsigned int timestamp,
 					       int *length_ptr);
-extern int stats_update_class_statistics (OID * classoid, BTID * btid,
-					  int do_now);
-extern int stats_update_statistics (void);
+extern int stats_update_statistics (OID * classoid, BTID * btid, int do_now);
+extern int stats_update_all_statistics (void);
 
 extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type,
 			    OID * class_oid, int attr_id, int unique_btree);

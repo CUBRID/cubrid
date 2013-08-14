@@ -620,20 +620,20 @@ net_server_init (void)
   req_p->name = "NET_SERVER_DISK_VLABEL";
 
   /* statistics */
-  req_p = &net_Requests[NET_SERVER_QST_SERVER_GET_STATISTICS];
+  req_p = &net_Requests[NET_SERVER_QST_GET_STATISTICS];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sqst_server_get_statistics;
-  req_p->name = "NET_SERVER_QST_SERVER_GET_STATISTICS";
-
-  req_p = &net_Requests[NET_SERVER_QST_UPDATE_CLASS_STATISTICS];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = sqst_update_class_statistics;
-  req_p->name = "NET_SERVER_QST_UPDATE_CLASS_STATISTICS";
+  req_p->name = "NET_SERVER_QST_GET_STATISTICS";
 
   req_p = &net_Requests[NET_SERVER_QST_UPDATE_STATISTICS];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sqst_update_statistics;
   req_p->name = "NET_SERVER_QST_UPDATE_STATISTICS";
+
+  req_p = &net_Requests[NET_SERVER_QST_UPDATE_ALL_STATISTICS];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sqst_update_all_statistics;
+  req_p->name = "NET_SERVER_QST_UPDATE_ALL_STATISTICS";
 
   /* query manager */
   req_p = &net_Requests[NET_SERVER_QM_QUERY_PREPARE];
