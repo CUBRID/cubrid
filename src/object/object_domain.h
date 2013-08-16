@@ -365,6 +365,7 @@ extern void tp_area_init (void);
 /* Domain support functions */
 
 extern void tp_init (void);
+extern void tp_apply_sys_charset (void);
 extern void tp_final (void);
 extern TP_DOMAIN *tp_domain_resolve (DB_TYPE domain_type,
 				     DB_OBJECT * class_obj,

@@ -896,6 +896,7 @@ lang_set_charset_lang (const char *lang_charset)
     }
 
   status = set_current_locale ();
+  tp_apply_sys_charset ();
 
   return status;
 
@@ -925,6 +926,8 @@ lang_set_charset (const INTL_CODESET codeset)
 
   lang_Loc_charset = codeset;
   lang_Charset_initialized = true;
+
+  tp_apply_sys_charset ();
   return NO_ERROR;
 }
 
