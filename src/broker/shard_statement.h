@@ -64,6 +64,7 @@ struct t_shard_stmt
 
   int ctx_cid;			/* owner context cid */
   unsigned int ctx_uid;		/* owner context uid */
+  char database_user[SRV_CON_DBUSER_SIZE];
 
   int num_pinned;		/* pinned count */
   T_SHARD_STMT *lru_next;
@@ -96,6 +97,7 @@ struct t_shard_stmt_global
 };
 
 extern T_SHARD_STMT *shard_stmt_find_by_sql (char *sql_stmt,
+					     const char *db_user,
 					     T_BROKER_VERSION client_version);
 extern T_SHARD_STMT *shard_stmt_find_by_stmt_h_id (int stmt_h_id);
 extern int shard_stmt_pin (T_SHARD_STMT * stmt_p);

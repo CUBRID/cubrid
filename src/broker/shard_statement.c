@@ -233,7 +233,8 @@ shard_stmt_make_protocol_version (T_BROKER_VERSION client_version)
 }
 
 T_SHARD_STMT *
-shard_stmt_find_by_sql (char *sql_stmt, T_BROKER_VERSION client_version)
+shard_stmt_find_by_sql (char *sql_stmt, const char *db_user,
+			T_BROKER_VERSION client_version)
 {
   T_SHARD_STMT *stmt_p = NULL;
   T_BROKER_VERSION client_protocol_version;
@@ -245,13 +246,30 @@ shard_stmt_find_by_sql (char *sql_stmt, T_BROKER_VERSION client_version)
       stmt_p = &(shard_Stmt.stmt_ent[i]);
       if (stmt_p->status == SHARD_STMT_STATUS_UNUSED
 	  || stmt_p->stmt_type != SHARD_STMT_TYPE_PREPARED
-	  || stmt_p->client_version != client_protocol_version
-	  || strcmp (sp_get_sql_stmt (stmt_p->parser), sql_stmt))
+	  || stmt_p->client_version != client_protocol_version)
 	{
 	  continue;
 	}
 
-      return stmt_p;
+      if (proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL)
+	{
+	  if (strcmp (db_user, stmt_p->database_user))
+	    {
+	      continue;
+	    }
+	}
+      else
+	{
+	  if (strcasecmp (db_user, stmt_p->database_user))
+	    {
+	      continue;
+	    }
+	}
+
+      if (strcmp (sp_get_sql_stmt (stmt_p->parser), sql_stmt) == 0)
+	{
+	  return stmt_p;
+	}
     }
 
   return NULL;
@@ -415,14 +433,19 @@ shard_stmt_new_internal (int stmt_type, char *sql_stmt, int ctx_cid,
   int i, num_cas;
   char *sql_stmt_tp = NULL;
   T_SHARD_STMT *stmt_p = NULL;
+  T_PROXY_CONTEXT *ctx_p = NULL;
 
   assert ((stmt_type != SHARD_STMT_TYPE_SCHEMA_INFO && sql_stmt != NULL)
 	  || (stmt_type == SHARD_STMT_TYPE_SCHEMA_INFO
 	      && sql_stmt == NULL && client_version == 0));
 
+  ctx_p = proxy_context_find (ctx_cid, ctx_uid);
+  assert (ctx_p != NULL);
+
   if (stmt_type == SHARD_STMT_TYPE_PREPARED)
     {
-      stmt_p = shard_stmt_find_by_sql (sql_stmt, client_version);
+      stmt_p = shard_stmt_find_by_sql (sql_stmt, ctx_p->database_user,
+				       client_version);
       if (stmt_p)
 	{
 	  assert (stmt_p->stmt_type == stmt_type);
@@ -504,6 +527,8 @@ shard_stmt_new_internal (int stmt_type, char *sql_stmt, int ctx_cid,
 
       stmt_p->ctx_cid = ctx_cid;
       stmt_p->ctx_uid = ctx_uid;
+      strncpy (stmt_p->database_user, ctx_p->database_user,
+	       SRV_CON_DBUSER_SIZE - 1);
 
       stmt_p->num_pinned = 0;
       stmt_p->lru_prev = NULL;
@@ -655,6 +680,7 @@ shard_stmt_free (T_SHARD_STMT * stmt_p)
 
   stmt_p->ctx_cid = PROXY_INVALID_CONTEXT;
   stmt_p->ctx_uid = 0;
+  stmt_p->database_user[0] = '\0';
 
   stmt_p->num_pinned = 0;
   if ((shard_Stmt.lru == stmt_p) || (stmt_p->lru_prev || stmt_p->lru_next))
@@ -1082,7 +1108,7 @@ shard_str_stmt (T_SHARD_STMT * stmt_p)
 	    "stmt_type:%d, "
 	    "context id:%d, context uid:%d, "
 	    "num pinned:%d, "
-	    "lru_next:%p, lru_prev:%p, "
+	    "lru_next:%p, lru_prev:%p, db_user:%s"
 	    "sql_stmt:[%s]",
 	    stmt_p->index, stmt_p->num_alloc,
 	    stmt_p->stmt_h_id, stmt_p->status,
@@ -1090,6 +1116,7 @@ shard_str_stmt (T_SHARD_STMT * stmt_p)
 	    stmt_p->ctx_cid, stmt_p->ctx_uid,
 	    stmt_p->num_pinned,
 	    stmt_p->lru_next, stmt_p->lru_prev,
+	    stmt_p->database_user,
 	    (stmt_p->parser) ? ((stmt_p->parser->sql_stmt) ?
 				shard_str_sqls (stmt_p->parser->
 						sql_stmt) : "-") : "-");
@@ -1148,6 +1175,7 @@ shard_stmt_initialize (int initial_size)
       stmt_p->index = i;
       stmt_p->ctx_cid = PROXY_INVALID_CONTEXT;
       stmt_p->ctx_uid = 0;
+      stmt_p->database_user[0] = '\0';
 
       stmt_p->client_version = 0;
 

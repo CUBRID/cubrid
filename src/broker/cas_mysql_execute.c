@@ -264,6 +264,8 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
   const char *host_connected = NULL;
   MY_CHARSET_INFO cs;
 
+  as_info->force_reconnect = false;
+
   if (db_alias == NULL || db_alias[0] == '\0')
     return -1;
 
@@ -347,6 +349,8 @@ ux_database_shutdown (void)
 		 "ux_database_shutdown: cas_mysql_disconnect_db ()");
   as_info->database_name[0] = '\0';
   as_info->database_host[0] = '\0';
+  as_info->database_user[0] = '\0';
+  as_info->database_passwd[0] = '\0';
   as_info->last_connect_time = 0;
   memset (database_name, 0, sizeof (database_name));
   memset (database_user, 0, sizeof (database_user));

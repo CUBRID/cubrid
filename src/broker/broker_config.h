@@ -257,6 +257,7 @@ struct t_broker_info
 
   int proxy_log_max_size;
   int proxy_max_prepared_stmt_count;
+  int proxy_conn_wait_timeout;
 
   char ignore_shard_hint;
   int proxy_timeout;

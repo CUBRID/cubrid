@@ -138,6 +138,7 @@ extern int proxy_io_make_client_proxy_alive (char *driver_info,
 extern int proxy_io_make_client_dbinfo_ok (char *driver_info, char **buffer);
 extern int proxy_io_make_client_acl_fail (char *driver_info, char **buffer);
 extern int proxy_io_make_shard_info (char *driver_info, char **buffer);
+extern int proxy_io_make_check_cas (char *driver_info, char **buffer);
 
 extern int proxy_socket_set_write_event (T_SOCKET_IO * sock_io_p,
 					 T_PROXY_EVENT * event_p);
@@ -165,7 +166,8 @@ extern T_CAS_IO *proxy_cas_find_io_by_ctx (int shard_id, int cas_id,
 
 extern T_CAS_IO *proxy_cas_alloc_by_ctx (int client_id, int shard_id,
 					 int cas_id, int ctx_cid,
-					 unsigned int ctx_uid, int timeout);
+					 unsigned int ctx_uid, int timeout,
+					 int func_code);
 extern void proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
 				      unsigned int ctx_uid);
 extern int proxy_cas_io_write (T_CAS_IO * cas_io_p, T_PROXY_EVENT * event_p);
@@ -178,6 +180,7 @@ extern void proxy_io_destroy (void);
 
 
 extern int proxy_socket_io_delete (SOCKET fd);
+extern int proxy_io_set_established_by_ctx (T_PROXY_CONTEXT * ctx_p);
 
 extern char *proxy_get_driver_info_by_ctx (T_PROXY_CONTEXT * ctx_p);
 extern char *proxy_get_driver_info_by_fd (T_SOCKET_IO * sock_io_p);

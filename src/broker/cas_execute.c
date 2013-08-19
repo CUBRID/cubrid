@@ -489,6 +489,8 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
   char *p;
   const char *host_connected = NULL;
 
+  as_info->force_reconnect = false;
+
   if (db_name == NULL || db_name[0] == '\0')
     {
       return ERROR_INFO_SET (-1, CAS_ERROR_INDICATOR);
@@ -767,6 +769,8 @@ ux_database_shutdown ()
 #ifndef LIBCAS_FOR_JSP
   as_info->database_name[0] = '\0';
   as_info->database_host[0] = '\0';
+  as_info->database_user[0] = '\0';
+  as_info->database_passwd[0] = '\0';
   as_info->last_connect_time = 0;
 #endif /* !LIBCAS_FOR_JSP */
   memset (database_name, 0, sizeof (database_name));

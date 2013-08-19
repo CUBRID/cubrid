@@ -153,7 +153,7 @@ static T_PROXY_CAS_FUNC proxy_cas_fn_table[] = {
   fn_proxy_cas_relay_only,	/* fn_xa_recover */
   fn_proxy_cas_relay_only,	/* fn_xa_end_tran */
   fn_proxy_cas_relay_only,	/* fn_con_close */
-  fn_proxy_cas_relay_only,	/* fn_check_cas */
+  fn_proxy_cas_check_cas,	/* fn_check_cas */
   fn_proxy_cas_relay_only,	/* fn_make_out_rs */
   fn_proxy_cas_relay_only,	/* fn_get_generated_keys */
   fn_proxy_cas_relay_only,	/* fn_lob_new */
@@ -561,7 +561,8 @@ proxy_handler_process_cas_conn_error (T_PROXY_EVENT * event_p)
 	  && ctx_p->is_cas_in_tran == false
 	  && (ctx_p->func_code == CAS_FC_PREPARE
 	      || ctx_p->func_code == CAS_FC_EXECUTE
-	      || ctx_p->func_code == CAS_FC_PREPARE_AND_EXECUTE))
+	      || ctx_p->func_code == CAS_FC_PREPARE_AND_EXECUTE
+	      || ctx_p->func_code == CAS_FC_CHECK_CAS))
 	{
 	  PROXY_DEBUG_LOG ("Context is in_tran status "
 			   "and waiting prepare/execute response. "
@@ -1224,6 +1225,10 @@ proxy_context_clear (T_PROXY_CONTEXT * ctx_p)
     }
   ctx_p->prepared_stmt = NULL;
 
+  ctx_p->is_connected = false;
+  ctx_p->database_user[0] = '\0';
+  ctx_p->database_passwd[0] = '\0';
+
   proxy_context_free_stmt (ctx_p);
 
   ctx_p->client_id = PROXY_INVALID_CLIENT;
@@ -1676,7 +1681,7 @@ proxy_wakeup_context_by_shard (T_WAIT_CONTEXT * waiter_p,
   cas_io_p =
     proxy_cas_alloc_by_ctx (ctx_p->client_id, shard_id, cas_id,
 			    waiter_p->ctx_cid, waiter_p->ctx_uid,
-			    ctx_p->wait_timeout);
+			    ctx_p->wait_timeout, ctx_p->func_code);
   if (cas_io_p == NULL)
     {
       PROXY_DEBUG_LOG ("failed to proxy_cas_alloc_by_ctx. "

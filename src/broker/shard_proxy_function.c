@@ -126,8 +126,9 @@ proxy_get_cas_error_code (char *read_msg, T_BROKER_VERSION client_version)
   return error_code;
 }
 
-static int
-proxy_send_request_to_cas (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
+int
+proxy_send_request_to_cas (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
+			   int func_code)
 {
   int error = 0;
   T_CAS_IO *cas_io_p;
@@ -136,7 +137,8 @@ proxy_send_request_to_cas (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 
   cas_io_p =
     proxy_cas_alloc_by_ctx (ctx_p->client_id, ctx_p->shard_id, ctx_p->cas_id,
-			    ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout);
+			    ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout,
+			    func_code);
   if (cas_io_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to allocate CAS. "
@@ -195,7 +197,7 @@ proxy_send_request_to_cas_with_new_event (T_PROXY_CONTEXT * ctx_p,
       goto error_return;
     }
 
-  error = proxy_send_request_to_cas (ctx_p, event_p);
+  error = proxy_send_request_to_cas (ctx_p, event_p, ctx_p->func_code);
   if (error < 0)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -849,7 +851,7 @@ fn_proxy_client_end_tran (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
   if (ctx_p->is_in_tran)
     {
-      error = proxy_send_request_to_cas (ctx_p, event_p);
+      error = proxy_send_request_to_cas (ctx_p, event_p, func_code);
       if (error < 0)
 	{
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -1015,7 +1017,9 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 
   driver_info = proxy_get_driver_info_by_ctx (ctx_p);
   client_version = CAS_MAKE_PROTO_VER (driver_info);
-  stmt_p = shard_stmt_find_by_sql (organized_sql_stmt, client_version);
+  stmt_p =
+    shard_stmt_find_by_sql (organized_sql_stmt,
+			    ctx_p->database_user, client_version);
   if (stmt_p)
     {
       switch (stmt_p->status)
@@ -1250,7 +1254,8 @@ relay_prepare_request:
 
   cas_io_p =
     proxy_cas_alloc_by_ctx (ctx_p->client_id, ctx_p->shard_id, ctx_p->cas_id,
-			    ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout);
+			    ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout,
+			    func_code);
   if (cas_io_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to allocate CAS. context(%s).",
@@ -1554,7 +1559,8 @@ proxy_client_execute_internal (T_PROXY_CONTEXT * ctx_p,
 
   cas_io_p =
     proxy_cas_alloc_by_ctx (ctx_p->client_id, ctx_p->shard_id, ctx_p->cas_id,
-			    ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout);
+			    ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout,
+			    func_code);
   if (cas_io_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to allocate CAS. context(%s).",
@@ -1957,7 +1963,7 @@ fn_proxy_client_close_req_handle (T_PROXY_CONTEXT * ctx_p,
       cas_io_p =
 	proxy_cas_alloc_by_ctx (ctx_p->client_id, ctx_p->shard_id,
 				ctx_p->cas_id, ctx_p->cid, ctx_p->uid,
-				ctx_p->wait_timeout);
+				ctx_p->wait_timeout, func_code);
       if (cas_io_p == NULL)
 	{
 	  goto free_context;
@@ -2069,7 +2075,8 @@ fn_proxy_client_cursor (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   /* find idle cas */
   cas_io_p =
     proxy_cas_alloc_by_ctx (ctx_p->client_id, ctx_p->shard_id, ctx_p->cas_id,
-			    ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout);
+			    ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout,
+			    func_code);
   if (cas_io_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -2164,7 +2171,8 @@ fn_proxy_client_fetch (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
   /* find idle cas */
   cas_io_p =
     proxy_cas_alloc_by_ctx (ctx_p->client_id, ctx_p->shard_id, ctx_p->cas_id,
-			    ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout);
+			    ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout,
+			    func_code);
   if (cas_io_p == NULL)
     {
       goto free_context;
@@ -2332,7 +2340,7 @@ fn_proxy_client_schema_info (T_PROXY_CONTEXT * ctx_p,
     }
   ctx_p->shard_id = shard_id;
 
-  error = proxy_send_request_to_cas (ctx_p, event_p);
+  error = proxy_send_request_to_cas (ctx_p, event_p, func_code);
   if (error < 0)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
@@ -2375,44 +2383,87 @@ fn_proxy_client_check_cas (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 			   int argc, char **argv)
 {
   int error = 0;
-  char *response_p;
+  char *request_p = NULL;
+  char *response_p = NULL;
   char *driver_info;
   T_PROXY_EVENT *new_event_p = NULL;
+  T_CLIENT_IO *client_io_p = NULL;
+  T_SOCKET_IO *sock_io_p = NULL;
 
   ENTER_FUNC ();
 
-  driver_info = proxy_get_driver_info_by_ctx (ctx_p);
-  new_event_p =
-    proxy_event_new_with_rsp (driver_info, PROXY_EVENT_IO_WRITE,
-			      PROXY_EVENT_FROM_CLIENT,
-			      proxy_io_make_check_cas_ok);
-  if (new_event_p == NULL)
+  if (ctx_p->is_connected)
     {
-      goto free_context;
+      driver_info = proxy_get_driver_info_by_ctx (ctx_p);
+      new_event_p =
+	proxy_event_new_with_rsp (driver_info, PROXY_EVENT_IO_WRITE,
+				  PROXY_EVENT_FROM_CLIENT,
+				  proxy_io_make_check_cas_ok);
+      if (new_event_p == NULL)
+	{
+	  goto free_context;
+	}
+
+      response_p = new_event_p->buffer.data;
+      assert (response_p);	// __FOR_DEBUG
+
+      if (ctx_p->is_client_in_tran)
+	{
+	  proxy_set_con_status_in_tran (response_p);
+	}
+
+      error = proxy_send_response_to_client (ctx_p, new_event_p);
+      if (error)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Failed to response to the client. "
+		     "(error=%d). context(%s). evnet(%s).", error,
+		     proxy_str_context (ctx_p),
+		     proxy_str_event (new_event_p));
+
+	  goto free_context;
+	}
+      new_event_p = NULL;
+
+      proxy_event_free (event_p);
+      event_p = NULL;
     }
-
-  response_p = new_event_p->buffer.data;
-  assert (response_p);		// __FOR_DEBUG
-
-  if (ctx_p->is_client_in_tran)
+  else
     {
-      proxy_set_con_status_in_tran (response_p);
+      request_p = event_p->buffer.data;
+
+      proxy_set_force_out_tran (request_p);
+
+      error = proxy_send_request_to_cas (ctx_p, event_p, CAS_FC_CHECK_CAS);
+      if (error < 0)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Failed to send request to CAS. "
+		     "(error=%d). context(%s). evnet(%s).", error,
+		     proxy_str_context (ctx_p), proxy_str_event (event_p));
+
+	  proxy_event_free (event_p);
+	  event_p = NULL;
+	}
+      else if (error > 0)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_DEBUG,
+		     "Waiting cas to connect db context(%s)",
+		     proxy_str_context (ctx_p));
+	  ctx_p->waiting_event = event_p;
+	  event_p = NULL;
+	}
+      else
+	{
+	  ctx_p->waiting_event = proxy_event_dup (event_p);
+	  if (ctx_p->waiting_event == NULL)
+	    {
+	      goto free_context;
+	    }
+	}
+
+      ctx_p->func_code = CAS_FC_CHECK_CAS;
     }
-
-  error = proxy_send_response_to_client (ctx_p, new_event_p);
-  if (error)
-    {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to response to the client. "
-		 "(error=%d). context(%s). evnet(%s).",
-		 error, proxy_str_context (ctx_p),
-		 proxy_str_event (new_event_p));
-
-      goto free_context;
-    }
-  new_event_p = NULL;
-
-  proxy_event_free (event_p);
-  event_p = NULL;
 
   EXIT_FUNC ();
   return 0;
@@ -2578,7 +2629,7 @@ fn_proxy_client_cursor_close (T_PROXY_CONTEXT * ctx_p,
       cas_io_p =
 	proxy_cas_alloc_by_ctx (ctx_p->client_id, ctx_p->shard_id,
 				ctx_p->cas_id, ctx_p->cid, ctx_p->uid,
-				ctx_p->wait_timeout);
+				ctx_p->wait_timeout, func_code);
       if (cas_io_p == NULL)
 	{
 	  goto free_context;
@@ -2741,6 +2792,7 @@ fn_proxy_client_prepare_and_execute (T_PROXY_CONTEXT * ctx_p,
   /* argv */
   char flag = 0;
   char auto_commit_mode = FALSE;
+  char func_code = CAS_FC_PREPARE_AND_EXECUTE;
 
   T_CAS_IO *cas_io_p;
   T_SHARD_STMT *stmt_p = NULL;
@@ -2986,7 +3038,8 @@ fn_proxy_client_prepare_and_execute (T_PROXY_CONTEXT * ctx_p,
 
   cas_io_p =
     proxy_cas_alloc_by_ctx (ctx_p->client_id, ctx_p->shard_id, ctx_p->cas_id,
-			    ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout);
+			    ctx_p->cid, ctx_p->uid, ctx_p->wait_timeout,
+			    func_code);
   if (cas_io_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to allocate CAS. context(%s).",
@@ -3044,7 +3097,7 @@ fn_proxy_client_prepare_and_execute (T_PROXY_CONTEXT * ctx_p,
       goto free_context;
     }
 
-  ctx_p->func_code = CAS_FC_PREPARE_AND_EXECUTE;
+  ctx_p->func_code = func_code;
 
 end:
   EXIT_FUNC ();
@@ -3861,6 +3914,112 @@ free_context:
   ctx_p->free_context = true;
 
   EXIT_FUNC ();
+  return -1;
+}
+
+int
+fn_proxy_cas_check_cas (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
+{
+  int error = 0;
+  int error_code = 0;
+  int error_ind = 0;
+  char *response_p = NULL;
+  char *driver_info = NULL;
+  T_BROKER_VERSION client_version;
+  struct timeval client_start_time;
+  T_SOCKET_IO *sock_io_p = NULL;
+  T_PROXY_EVENT *new_event_p = NULL;
+
+  gettimeofday (&client_start_time, NULL);
+
+  if (ctx_p->waiting_event)
+    {
+      proxy_event_free (ctx_p->waiting_event);
+      ctx_p->waiting_event = NULL;
+    }
+
+  response_p = event_p->buffer.data;
+  driver_info = proxy_get_driver_info_by_ctx (ctx_p);
+
+  if (event_p->buffer.length > MSG_HEADER_SIZE)
+    {
+      error_ind = proxy_check_cas_error (response_p);
+      assert (error_ind < 0);
+
+      client_version = CAS_MAKE_PROTO_VER (driver_info);
+      error_code = proxy_get_cas_error_code (response_p, client_version);
+
+      PROXY_LOG (PROXY_LOG_MODE_NOTICE, "CAS response error. "
+		 "(error_ind:%d, error_code:%d). context(%s).",
+		 error_ind, error_code, proxy_str_context (ctx_p));
+
+      error = proxy_send_response_to_client (ctx_p, event_p);
+      if (error)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Failed to response to the client. "
+		     "(error=%d). context(%s). evnet(%s).", error,
+		     proxy_str_context (ctx_p), proxy_str_event (event_p));
+
+	  goto free_context;
+	}
+    }
+  else
+    {
+      /* send dbinfo_ok to the client */
+      new_event_p =
+	proxy_event_new_with_rsp (driver_info, PROXY_EVENT_IO_WRITE,
+				  PROXY_EVENT_FROM_CLIENT,
+				  proxy_io_make_client_dbinfo_ok);
+      if (new_event_p == NULL)
+	{
+	  goto free_context;
+	}
+
+      if (event_p)
+	{
+	  proxy_event_free (event_p);
+	  event_p = NULL;
+	}
+
+      error = proxy_send_response_to_client (ctx_p, new_event_p);
+      if (error)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Failed to response to the client. "
+		     "(error=%d). context(%s). evnet(%s).", error,
+		     proxy_str_context (ctx_p),
+		     proxy_str_event (new_event_p));
+
+	  goto free_context;
+	}
+    }
+
+  if (error_ind < 0)
+    {
+      ctx_p->free_on_client_io_write = true;
+    }
+  else
+    {
+      ctx_p->is_connected = true;
+      proxy_io_set_established_by_ctx (ctx_p);
+    }
+
+  return 0;
+
+free_context:
+  if (event_p)
+    {
+      proxy_event_free (event_p);
+      event_p = NULL;
+    }
+
+  if (new_event_p)
+    {
+      proxy_event_free (new_event_p);
+    }
+
+  ctx_p->free_context = true;
   return -1;
 }
 

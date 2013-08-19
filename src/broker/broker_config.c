@@ -64,12 +64,13 @@
 #define DEFAULT_KEEP_CONNECTION         "AUTO"
 #define DEFAULT_JDBC_CACHE_LIFE_TIME    1000
 #define DEFAULT_MAX_PREPARED_STMT_COUNT 2000
-#define DEFAULT_MONITOR_HANG_INTERVAL 60
-#define DEFAULT_HANG_TIMEOUT    60
+#define DEFAULT_MONITOR_HANG_INTERVAL   60
+#define DEFAULT_HANG_TIMEOUT            60
 
 #define DEFAULT_SHARD_PROXY_LOG_MODE		"ERROR"
-#define DEFAULT_SHARD_KEY_MODULAR	256
+#define DEFAULT_SHARD_KEY_MODULAR	        256
 #define DEFAULT_SHARD_PROXY_TIMEOUT 		"30s"
+#define DEFAULT_SHARD_PROXY_CONN_WAIT_TIMEOUT   "8h"
 
 #define	TRUE	1
 #define	FALSE	0
@@ -960,6 +961,24 @@ broker_config_read_internal (const char *conf_file,
 	  goto conf_error;
 	}
 
+      strncpy (time_str,
+	       ini_getstr (ini, sec_name, "SHARD_PROXY_CONN_WAIT_TIMEOUT",
+			   DEFAULT_SHARD_PROXY_CONN_WAIT_TIMEOUT, &lineno),
+	       sizeof (time_str));
+      br_info[num_brs].proxy_conn_wait_timeout =
+	(int) ut_time_string_to_sec (time_str, "sec");
+      if (br_info[num_brs].proxy_conn_wait_timeout < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+      else if (br_info[num_brs].proxy_conn_wait_timeout >
+	       MAX_PROXY_TIMEOUT_LIMIT)
+	{
+	  errcode = PARAM_BAD_RANGE;
+	  goto conf_error;
+	}
+
       num_brs++;
     }
 
@@ -1037,12 +1056,6 @@ broker_config_read_internal (const char *conf_file,
 	      if (br_info[i].shard_db_name[0] == '\0')
 		{
 		  PRINTERROR ("config error, %s, SHARD_DB_NAME\n",
-			      br_info[i].name);
-		  error_flag = TRUE;
-		}
-	      if (br_info[i].shard_db_user[0] == '\0')
-		{
-		  PRINTERROR ("config error, %s, SHARD_DB_USER\n",
 			      br_info[i].name);
 		  error_flag = TRUE;
 		}

@@ -344,6 +344,8 @@ struct t_appl_server_info
   char auto_commit_mode;
   char database_name[MAX_HA_DBNAME_LENGTH];
   char database_host[MAX_CONN_INFO_LENGTH];
+  char database_user[SRV_CON_DBUSER_SIZE];
+  char database_passwd[SRV_CON_DBPASSWD_SIZE];
   char cci_default_autocommit;
   time_t last_connect_time;
   INT64 num_connect_requests;
@@ -365,6 +367,8 @@ struct t_appl_server_info
   short as_id;
 
   int advance_activate_flag;	/* it is used only in shard */
+  int proxy_conn_wait_timeout;	/* it is used only in shard */
+  bool force_reconnect;		/* it is used only in shard */
 };
 
 typedef struct t_client_info T_CLIENT_INFO;
@@ -474,6 +478,7 @@ struct t_proxy_info
   int proxy_access_log_reset;
 
   char port_name[SHM_PROXY_NAME_MAX];
+  bool fixed_conn_info;
 
   /* MOVE FROM T_BROKER_INFO */
   char access_log_file[CONF_LOG_FILE_LEN];

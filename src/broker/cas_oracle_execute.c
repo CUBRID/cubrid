@@ -329,6 +329,8 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
   char tns[ORA_BUFSIZ];
   int err_code = 0;
 
+  as_info->force_reconnect = false;
+
   if (ux_is_database_connected ())
     {
       if (get_db_connect_status () != DB_CONNECTION_STATUS_CONNECTED
@@ -381,6 +383,12 @@ ux_database_shutdown (void)
   ORA_NAME[0] = 0;
   ORA_USER[0] = 0;
   ORA_PASS[0] = 0;
+
+  as_info->database_name[0] = '\0';
+  as_info->database_host[0] = '\0';
+  as_info->database_user[0] = '\0';
+  as_info->database_passwd[0] = '\0';
+  as_info->last_connect_time = 0;
 
   set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
 }

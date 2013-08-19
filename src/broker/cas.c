@@ -125,9 +125,9 @@ static int net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 				       T_REQ_INFO * req_info);
 static int net_read_header_keep_con_on (SOCKET clt_sock_fd,
 					MSG_HEADER * client_msg_header);
-
-static void set_shard_db_conn_info (char *db_name, char *db_user,
-				    char *db_password);
+static void set_db_connection_info (void);
+static void clear_db_connection_info (void);
+static bool need_database_reconnect (void);
 
 #else /* !LIBCAS_FOR_JSP */
 extern int libcas_main (SOCKET jsp_sock_fd);
@@ -135,8 +135,11 @@ extern void *libcas_get_db_result_set (int h_id);
 extern void libcas_srv_handle_free (int h_id);
 #endif /* !LIBCAS_FOR_JSP */
 
-void set_cas_info_size (void);
+static void set_cas_info_size (void);
 
+static char cas_db_name[MAX_HA_DBNAME_LENGTH];
+static char cas_db_user[SRV_CON_DBUSER_SIZE];
+static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 static int query_sequence_num = 0;
 
 int cas_shard_flag = OFF;
@@ -501,9 +504,6 @@ shard_cas_main (void)
   T_NET_BUF net_buf;
   SOCKET proxy_sock_fd = INVALID_SOCKET;
   int err_code;
-  char db_name[MAX_HA_DBNAME_LENGTH];
-  char db_user[SRV_CON_DBUSER_SIZE];
-  char db_passwd[SRV_CON_DBPASSWD_SIZE];
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   SESSION_ID session_id = DB_EMPTY_SESSION;
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
@@ -571,26 +571,16 @@ conn_retry:
   gettimeofday (&cas_start_time, NULL);
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  snprintf (db_name, MAX_HA_DBNAME_LENGTH, "%s",
+  snprintf (cas_db_name, MAX_HA_DBNAME_LENGTH, "%s",
 	    shm_appl->shard_conn_info[shm_shard_id].db_name);
 #else
-  snprintf (db_name, MAX_HA_DBNAME_LENGTH, "%s@%s",
+  snprintf (cas_db_name, MAX_HA_DBNAME_LENGTH, "%s@%s",
 	    shm_appl->shard_conn_info[shm_shard_id].db_name,
 	    shm_appl->shard_conn_info[shm_shard_id].db_host);
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-  strncpy (db_user, shm_appl->shard_conn_info[shm_shard_id].db_user,
-	   SRV_CON_DBUSER_SIZE - 1);
-  db_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
 
-  strncpy (db_passwd, shm_appl->shard_conn_info[shm_shard_id].db_password,
-	   SRV_CON_DBPASSWD_SIZE - 1);
-  db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
+  set_db_connection_info ();
 
-  /* SHARD DO NOT SUPPORT SESSION */
-
-  cas_log_debug (ARG_FILE_LINE,
-		 "db_name %s db_user %s db_passwd %s",
-		 db_name, db_user, db_passwd);
   if (as_info->reset_flag == TRUE)
     {
       cas_log_debug (ARG_FILE_LINE, "main: set reset_flag");
@@ -603,12 +593,23 @@ conn_retry:
   {
 #endif /* WINDOWS */
 
-    err_code = ux_database_connect (db_name, db_user, db_passwd, NULL);
-
-    if (err_code < 0)
+    if (cas_db_user[0] != '\0')
       {
-	SLEEP_SEC (1);
-	goto finish_cas;
+	err_code =
+	  ux_database_connect (cas_db_name, cas_db_user, cas_db_passwd, NULL);
+	if (err_code < 0)
+	  {
+	    clear_db_connection_info ();
+	    SLEEP_SEC (1);
+	    goto finish_cas;
+	  }
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+	ux_set_default_setting ();
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+	cas_log_write_and_end (0, false, "connect db %s user %s", cas_db_name,
+			       cas_db_user);
       }
 
     as_info->uts_status = UTS_STATUS_IDLE;
@@ -657,13 +658,6 @@ conn_retry:
       {
 	goto conn_proxy_retry;
       }
-
-    cas_log_write_and_end (0, false, "connect db %s user %s", db_name,
-			   db_user);
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-    ux_set_default_setting ();
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
     as_info->auto_commit_mode = FALSE;
     cas_log_write_and_end (0, false, "DEFAULT isolation_level %d, "
@@ -1138,8 +1132,8 @@ cas_main (void)
 	    set_hang_check_time ();
 
 	    cas_log_debug (ARG_FILE_LINE,
-			   "db_name %s db_user %s db_passwd %s url %s "
-			   "session id %s", db_name, db_user, db_passwd, url,
+			   "db_name %s db_user %s url %s "
+			   "session id %s", db_name, db_user, url,
 			   db_sessionid);
 	    if (as_info->reset_flag == TRUE)
 	      {
@@ -1643,11 +1637,14 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 		}
 	      else
 		{
-#if defined(CAS_FOR_MYSQL)
-		  cas_log_msg = "SESSION TIMEOUT OR MYSQL CONNECT TIMEOUT";
-#else
-		  cas_log_msg = "SESSION TIMEOUT";
-#endif
+		  if (as_info->con_status == CON_STATUS_IN_TRAN)
+		    {
+		      cas_log_msg = "SESSION TIMEOUT";
+		    }
+		  else
+		    {
+		      cas_log_msg = "CONNECTION WAIT TIMEOUT";
+		    }
 		}
 	    }
 	  else
@@ -1660,6 +1657,31 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       else
 	{
 	  as_info->uts_status = UTS_STATUS_BUSY;
+
+	  if (need_database_reconnect ())
+	    {
+	      set_db_connection_info ();
+
+	      err_code = ux_database_connect (cas_db_name, cas_db_user,
+					      cas_db_passwd, NULL);
+	      if (err_code < 0)
+		{
+		  clear_db_connection_info ();
+		  net_write_error (sock_fd, req_info->client_version,
+				   req_info->driver_info,
+				   cas_msg_header.info_ptr, cas_info_size,
+				   err_info.err_indicator,
+				   err_info.err_number, err_info.err_string);
+		  return FN_CLOSE_CONN;
+		}
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+	      ux_set_default_setting ();
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+	      cas_log_write_and_end (0, false, "connect db %s user %s",
+				     cas_db_name, cas_db_user);
+	    }
 	}
     }
   else
@@ -1952,12 +1974,13 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 #endif /* !LIBCAS_FOR_JSP */
 
-  if (cas_shard_flag == ON &&
-      func_code == CAS_FC_PREPARE &&
-      (client_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &
-       CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN))
+  if (cas_shard_flag == ON
+      && (func_code == CAS_FC_PREPARE || func_code == CAS_FC_CHECK_CAS)
+      && (client_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG]
+	  & CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN))
     {
       /* for shard dummy prepare */
+      /* for connection check */
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
 
@@ -2188,6 +2211,7 @@ net_read_process (SOCKET proxy_sock_fd,
   int ret_value = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
   int timeout = 0, remained_timeout = 0;
+  bool is_proxy_conn_wait_timeout = false;
 
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {
@@ -2198,6 +2222,11 @@ net_read_process (SOCKET proxy_sock_fd,
       net_timeout_set (DEFAULT_CHECK_INTERVAL);
 
       timeout = get_graceful_down_timeout ();
+      if (timeout < 0 && as_info->database_user[0] != '\0')
+	{
+	  timeout = as_info->proxy_conn_wait_timeout;
+	  is_proxy_conn_wait_timeout = true;
+	}
 #if defined(CAS_FOR_MYSQL)
       if (timeout > 0)
 	{
@@ -2276,6 +2305,12 @@ net_read_process (SOCKET proxy_sock_fd,
 		}
 #endif /* CAS_FOR_MYSQL */
 
+	      if (is_proxy_conn_wait_timeout)
+		{
+		  as_info->database_user[0] = '\0';
+		  as_info->database_passwd[0] = '\0';
+		}
+
 	      /* MYSQL_CONNECT_TIMEOUT case */
 	      /* SHARD_CAS expire idle time and restart case */
 	      ret_value = -1;
@@ -2305,9 +2340,13 @@ net_read_process (SOCKET proxy_sock_fd,
     {
       if (as_info->con_status != CON_STATUS_IN_TRAN)
 	{
+	  if (ret_value >= 0)
+	    {
+	      as_info->con_status = CON_STATUS_IN_TRAN;
+	      errors_in_transaction = 0;
+	    }
+
 	  cas_log_write_client_ip (as_info->cas_clt_ip);
-	  as_info->con_status = CON_STATUS_IN_TRAN;
-	  errors_in_transaction = 0;
 
 	  /* This is a real client protocol version */
 	  req_info->client_version = as_info->clt_version;
@@ -2491,31 +2530,56 @@ net_read_header_keep_con_on (SOCKET clt_sock_fd,
 
   return ret_value;
 }
-#endif /* !LIBCAS_FOR_JSP */
-static void
-set_shard_db_conn_info (char *db_name, char *db_user, char *db_passwd)
-{
-#ifndef LIBCAS_FOR_JSP
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  snprintf (db_name, MAX_HA_DBNAME_LENGTH, "%s",
-	    shm_appl->shard_conn_info[shm_shard_id].db_name);
-#else
-  snprintf (db_name, MAX_HA_DBNAME_LENGTH, "%s@%s",
-	    shm_appl->shard_conn_info[shm_shard_id].db_name,
-	    shm_appl->shard_conn_info[shm_shard_id].db_host);
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-  strncpy (db_user, shm_appl->shard_conn_info[shm_shard_id].db_user,
-	   SRV_CON_DBUSER_SIZE - 1);
-  db_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
 
-  strncpy (db_passwd,
-	   shm_appl->shard_conn_info[shm_shard_id].db_password,
+static void
+set_db_connection_info (void)
+{
+  strncpy (cas_db_user, as_info->database_user, SRV_CON_DBUSER_SIZE - 1);
+  cas_db_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
+
+  strncpy (cas_db_passwd, as_info->database_passwd,
 	   SRV_CON_DBPASSWD_SIZE - 1);
-  db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
-#endif
+  cas_db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
+
+  cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s", cas_db_name,
+		 cas_db_user);
 }
 
-void
+static void
+clear_db_connection_info (void)
+{
+  cas_db_user[0] = '\0';
+  cas_db_passwd[0] = '\0';
+  as_info->database_user[0] = '\0';
+  as_info->database_passwd[0] = '\0';
+}
+
+static bool
+need_database_reconnect (void)
+{
+  if (as_info->force_reconnect)
+    {
+      return true;
+    }
+#if defined(CAS_FOR_MYSQL)
+  if (strcmp (cas_db_user, as_info->database_user))
+#else /* CAS_FOR_MYSQL */
+  if (strcasecmp (cas_db_user, as_info->database_user))
+#endif /* CAS_FOR_MYSQL */
+    {
+      return true;
+    }
+
+  if (strcmp (cas_db_passwd, as_info->database_passwd))
+    {
+      return true;
+    }
+
+  return false;
+}
+#endif /* !LIBCAS_FOR_JSP */
+
+static void
 set_cas_info_size (void)
 {
 #if !defined(LIBCAS_FOR_JSP)

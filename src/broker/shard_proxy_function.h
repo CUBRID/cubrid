@@ -39,7 +39,8 @@ typedef int (*T_PROXY_CAS_FUNC) (T_PROXY_CONTEXT * ctx_p,
 extern int proxy_check_cas_error (char *read_msg);
 extern int proxy_get_cas_error_code (char *read_msg,
 				     T_BROKER_VERSION client_version);
-
+extern int proxy_send_request_to_cas (T_PROXY_CONTEXT * ctx_p,
+				      T_PROXY_EVENT * event_p, int func_code);
 
 /* process client request */
 extern int fn_proxy_client_end_tran (T_PROXY_CONTEXT * ctx_p,
@@ -109,6 +110,8 @@ extern int fn_proxy_cas_schema_info (T_PROXY_CONTEXT * ctx_p,
 				     T_PROXY_EVENT * event_p);
 extern int fn_proxy_cas_prepare_and_execute (T_PROXY_CONTEXT * ctx_p,
 					     T_PROXY_EVENT * event_p);
+extern int fn_proxy_cas_check_cas (T_PROXY_CONTEXT * ctx_p,
+				   T_PROXY_EVENT * event_p);
 
 extern int fn_proxy_cas_relay_only (T_PROXY_CONTEXT * ctx_p,
 				    T_PROXY_EVENT * event_p);

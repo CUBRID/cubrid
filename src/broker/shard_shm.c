@@ -587,6 +587,8 @@ shard_shm_dump_shard_appl_server (FILE * fp, T_APPL_SERVER_INFO * as_info_p)
 	   as_info_p->database_name);
   fprintf (fp, BLANK_9 "%-30s = %-30s \n", "DATABASE_HOST",
 	   as_info_p->database_host);
+  fprintf (fp, BLANK_9 "%-30s = %-30s \n", "DATABASE_USER",
+	   as_info_p->database_user);
   if (as_info_p->last_connect_time)
     {
       ct_tm_p = localtime (&as_info_p->last_connect_time);
