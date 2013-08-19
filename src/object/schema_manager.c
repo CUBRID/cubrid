@@ -3843,13 +3843,15 @@ sm_get_statistics_force (MOP classop)
  *   btid(in): btree id
  *   do_now(in): update statistics right now or
  *               delay it until a transaction is committed
+ *   with_fullscan(in): true iff WITH FULLSCAN
  *
  * NOTE: We will delay updating statistics until a transaction is committed
  *       when it is requested during other processing, such as
  *       "alter table ..." or "create index ...".
  */
 int
-sm_update_statistics (MOP classop, BTID * btid, bool do_now)
+sm_update_statistics (MOP classop, BTID * btid, bool do_now,
+		      bool with_fullscan)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -3876,7 +3878,8 @@ sm_update_statistics (MOP classop, BTID * btid, bool do_now)
 	}
 
       error = stats_update_statistics (WS_OID (classop), btid,
-				       do_now ? 1 : 0);
+				       (do_now ? 1 : 0),
+				       (with_fullscan ? 1 : 0));
       if (error == NO_ERROR)
 	{
 	  /* only recache if the class itself is cached */
@@ -3913,11 +3916,12 @@ sm_update_statistics (MOP classop, BTID * btid, bool do_now)
 /*
  * sm_update_all_statistics() - Update the statistics for all classes
  * 			        in the database.
+ *   with_fullscan(in): true iff WITH FULLSCAN
  *   return: NO_ERROR on success, non-zero for ERROR
  */
 
 int
-sm_update_all_statistics ()
+sm_update_all_statistics (bool with_fullscan)
 {
   int error = NO_ERROR;
   DB_OBJLIST *cl;
@@ -3929,7 +3933,7 @@ sm_update_all_statistics ()
       return er_errid ();
     }
 
-  error = stats_update_all_statistics ();
+  error = stats_update_all_statistics ((with_fullscan ? 1 : 0));
   if (error == NO_ERROR)
     {
       /* Need to reset the statistics cache for all resident classes */
@@ -4001,7 +4005,7 @@ sm_update_catalog_statistics (const char *class_name)
   obj = db_find_class (class_name);
   if (obj != NULL)
     {
-      error = sm_update_statistics (obj, NULL, true);
+      error = sm_update_statistics (obj, NULL, true, STATS_WITH_FULLSCAN);
     }
   else
     {
@@ -11094,7 +11098,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 
   if (num_index > 0)
     {
-      if (sm_update_statistics (classop, NULL, false))
+      if (sm_update_statistics (classop, NULL, false, STATS_WITH_SAMPLING))
 	{
 	  goto structure_error;
 	}
@@ -12811,7 +12815,9 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 	      sm_Disable_updating_statistics = old_val;
 	      if (error == NO_ERROR)
 		{
-		  error = sm_update_statistics (newop, NULL, false);
+		  error =
+		    sm_update_statistics (newop, NULL, false,
+					  STATS_WITH_SAMPLING);
 		}
 	    }
 	}
@@ -13720,7 +13726,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
        * looks at the statistics structures, not the schema structures.
        */
       assert_release (!BTID_IS_NULL (&index));
-      if (sm_update_statistics (classop, &index, false))
+      if (sm_update_statistics (classop, &index, false, STATS_WITH_SAMPLING)
+	  != NO_ERROR)
 	{
 	  goto severe_error;
 	}
@@ -14511,7 +14518,9 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
 
 	  if (error == NO_ERROR)
 	    {
-	      error = sm_update_statistics (newmop, NULL, false);
+	      error =
+		sm_update_statistics (newmop, NULL, false,
+				      STATS_WITH_SAMPLING);
 	    }
 	  else
 	    {

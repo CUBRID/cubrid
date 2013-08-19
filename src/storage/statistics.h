@@ -32,6 +32,9 @@
 #include "storage_common.h"
 #include "object_domain.h"
 
+#define STATS_WITH_FULLSCAN  true
+#define STATS_WITH_SAMPLING  false
+
 /* disk-resident elements of pkeys[] field */
 #define BTREE_STATS_PKEYS_NUM      8
 #define BTREE_STATS_RESERVED_NUM   4

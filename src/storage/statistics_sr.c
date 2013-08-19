@@ -83,7 +83,8 @@ static int stats_compare_datetime (DB_DATETIME * datetime1_p,
 static int stats_compare_money (DB_MONETARY * mn1, DB_MONETARY * mn2);
 static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 						OID * class_oid,
-						OID * partitions, int count);
+						OID * partitions, int count,
+						bool with_fullscan);
 static const BTREE_STATS *stats_find_inherited_index_stats (OR_CLASSREP *
 							    cls_rep,
 							    OR_CLASSREP *
@@ -98,6 +99,7 @@ static const BTREE_STATS *stats_find_inherited_index_stats (OR_CLASSREP *
  *   return:
  *   class_id(in): Identifier of the class
  *   btids(in):
+ *   with_fullscan(in): true iff WITH FULLSCAN
  *
  * Note: It first retrieves the whole catalog information about this class,
  *       including all possible forms of disk representations for the instance
@@ -122,7 +124,7 @@ static const BTREE_STATS *stats_find_inherited_index_stats (OR_CLASSREP *
  */
 int
 xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
-			  BTID_LIST * btids)
+			  BTID_LIST * btids, bool with_fullscan)
 {
   CLS_INFO *cls_info_p = NULL;
   REPR_ID repr_id;
@@ -189,7 +191,8 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
       cls_info_p = NULL;
       error_code = stats_update_partitioned_statistics (thread_p,
 							class_id_p,
-							partitions, count);
+							partitions, count,
+							with_fullscan);
       db_private_free (thread_p, partitions);
       if (error_code != NO_ERROR)
 	{
@@ -259,7 +262,8 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 		      continue;
 		    }
 
-		  if (btree_get_stats (thread_p, btree_stats_p) != NO_ERROR)
+		  if (btree_get_stats (thread_p, btree_stats_p,
+				       with_fullscan) != NO_ERROR)
 		    {
 		      goto error;
 		    }
@@ -268,7 +272,8 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 	    }
 	  else
 	    {
-	      if (btree_get_stats (thread_p, btree_stats_p) != NO_ERROR)
+	      if (btree_get_stats (thread_p, btree_stats_p,
+				   with_fullscan) != NO_ERROR)
 		{
 		  goto error;
 		}
@@ -338,6 +343,7 @@ error:
  * xstats_update_all_statistics () - Updates the statistics
  *                                   for all the classes of the database
  *   return:
+ *   with_fullscan(in): true iff WITH FULLSCAN
  *
  * Note: It performs this by getting the list of all classes existing in the
  *       database and their OID's from the catalog's class collection
@@ -346,7 +352,7 @@ error:
  *       of this list one by one.
  */
 int
-xstats_update_all_statistics (THREAD_ENTRY * thread_p)
+xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
 {
   int error;
   OID class_id;
@@ -362,7 +368,8 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p)
       class_id.pageid = class_id_item_p->class_id.pageid;
       class_id.slotid = class_id_item_p->class_id.slotid;
 
-      error = xstats_update_statistics (thread_p, &class_id, NULL);
+      error =
+	xstats_update_statistics (thread_p, &class_id, NULL, with_fullscan);
       if (error != NO_ERROR)
 	{
 	  stats_free_class_list (class_id_list_p);
@@ -1151,6 +1158,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
  * class_id_p (in) : oid of the partitioned class
  * partitions (in) : oids of partitions
  * int partitions_count (in) : number of partitions
+ * with_fullscan(in): true iff WITH FULLSCAN
  *
  * Note: Since, during plan generation we only have access to the partitioned
  * class, we have to keep an estimate of average statistics in this class. We
@@ -1167,7 +1175,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 static int
 stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 				     OID * class_id_p, OID * partitions,
-				     int partitions_count)
+				     int partitions_count, bool with_fullscan)
 {
   int i, j, k, btree_iter, m;
   int error = NO_ERROR;
@@ -1190,7 +1198,9 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
   for (i = 0; i < partitions_count; i++)
     {
-      error = xstats_update_statistics (thread_p, &partitions[i], NULL);
+      error =
+	xstats_update_statistics (thread_p, &partitions[i], NULL,
+				  with_fullscan);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;

@@ -4584,7 +4584,7 @@ void
 sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 			char *request, int reqlen)
 {
-  int error, do_now;
+  int error, do_now, with_fullscan;
   OID classoid;
   BTID btid;
   char *ptr;
@@ -4593,13 +4593,17 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 
   ptr = or_unpack_oid (request, &classoid);
   ptr = or_unpack_int (ptr, &do_now);
+  ptr = or_unpack_int (ptr, &with_fullscan);
   ptr = or_unpack_btid (ptr, &btid);
 
   if (do_now)
     {
       if (BTID_IS_NULL (&btid))
 	{
-	  error = xstats_update_statistics (thread_p, &classoid, NULL);
+	  error =
+	    xstats_update_statistics (thread_p, &classoid, NULL,
+				      (with_fullscan ? STATS_WITH_FULLSCAN :
+				       STATS_WITH_SAMPLING));
 	}
       else
 	{
@@ -4607,7 +4611,10 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 
 	  b.next = NULL;
 	  BTID_COPY (&b.btid, &btid);
-	  error = xstats_update_statistics (thread_p, &classoid, &b);
+	  error =
+	    xstats_update_statistics (thread_p, &classoid, &b,
+				      (with_fullscan ? STATS_WITH_FULLSCAN :
+				       STATS_WITH_SAMPLING));
 	}
       if (error != NO_ERROR)
 	{
@@ -4642,11 +4649,17 @@ void
 sqst_update_all_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 			    char *request, int reqlen)
 {
-  int error;
+  int error, with_fullscan;
+  char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  error = xstats_update_all_statistics (thread_p);
+  ptr = or_unpack_int (request, &with_fullscan);
+
+  error =
+    xstats_update_all_statistics (thread_p,
+				  (with_fullscan ? STATS_WITH_FULLSCAN :
+				   STATS_WITH_SAMPLING));
   if (error != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
@@ -5776,9 +5789,9 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
       gettimeofday (&start, NULL);
 
       if (trace_slow_msec >= 0)
-        {
-          thread_p->event_stats.trace_slow_query = true;
-        }
+	{
+	  thread_p->event_stats.trace_slow_query = true;
+	}
     }
 
   aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);
@@ -8191,8 +8204,7 @@ sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
   stat_info.pkeys_size = 0;	/* do not request pkeys info */
   stat_info.pkeys = NULL;
 
-  success = (btree_get_stats (thread_p, &stat_info) == NO_ERROR)
-    ? NO_ERROR : ER_FAILED;
+  success = btree_get_stats (thread_p, &stat_info, STATS_WITH_FULLSCAN);
   if (success != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);

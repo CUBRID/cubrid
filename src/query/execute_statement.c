@@ -3552,7 +3552,9 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (statement->info.update_stats.all_classes > 0)
     {
-      return sm_update_all_statistics ();
+#if 1				/* TODO - */
+      return sm_update_all_statistics (STATS_WITH_SAMPLING);
+#endif
     }
   else if (statement->info.update_stats.all_classes < 0)
     {
@@ -3574,7 +3576,9 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      return er_errid ();
 	    }
 
-	  error = sm_update_statistics (obj, NULL, true);
+#if 1				/* TODO - */
+	  error = sm_update_statistics (obj, NULL, true, STATS_WITH_SAMPLING);
+#endif
 	  if (error != NO_ERROR)
 	    {
 	      return error;

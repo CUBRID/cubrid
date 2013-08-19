@@ -4047,14 +4047,17 @@ exit_on_error:
  * btree_get_stats () - Get Statistical Information about the B+tree index
  *   return: NO_ERROR
  *   stat_info(in): Structure to store and return the statistical information
+ *   with_fullscan(in): true iff WITH FULLSCAN
  *
  * Note: Computes and returns statistical information about B+tree
  * which consist of the number of leaf pages, total number of
  * pages, number of keys and the height of the tree.
  */
 int
-btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
+btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info,
+		 bool with_fullscan)
 {
+  int npages;
   BTREE_STATS_ENV stat_env, *env;
   VPID root_vpid;
   PAGE_PTR root_page_ptr = NULL;
@@ -4071,6 +4074,26 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
 
   assert_release (stat_info != NULL);
   assert_release (!BTID_IS_NULL (&stat_info->btid));
+
+  npages = file_get_numpages (thread_p, &(stat_info->btid.vfid));
+
+  /* For the optimization of the sampling,
+   * if the btree file has currently the same pages as we gathered
+   * statistics, we guess the btree file has not been modified;
+   * So, we take current stats as it is
+   */
+  if (!with_fullscan)
+    {
+      /* check if the stats has been gathered */
+      if (stat_info->keys > 0)
+	{
+	  /* guess the stats has not been modified */
+	  if (npages == stat_info->pages)
+	    {
+	      return NO_ERROR;
+	    }
+	}
+    }
 
   db_make_null (&key_value);
 
@@ -4245,7 +4268,9 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info)
 
   /* do guessing for total pages */
   env->stat_info->leafs = MAX (1, env->stat_info->leafs);
-  env->stat_info->pages = env->stat_info->leafs + env->stat_info->height - 1;
+  assert_release (npages >=
+		  env->stat_info->leafs + env->stat_info->height - 1);
+  env->stat_info->pages = npages;
 
   assert_release (env->stat_info->leafs >= 1);
   assert_release (env->stat_info->height >= 1);
