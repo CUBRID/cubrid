@@ -611,6 +611,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
 	      as_info_p->proxy_id = proxy_id;
 	      as_info_p->shard_id = shard_id;
 	      as_info_p->shard_cas_id = shard_cas_id;
+	      as_info_p->fixed_conn_info = proxy_info_p->fixed_conn_info;
 	      if (proxy_info_p->fixed_conn_info == true)
 		{
 		  strcpy (as_info_p->database_user,

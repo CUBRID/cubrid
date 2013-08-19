@@ -342,6 +342,7 @@ struct t_appl_server_info
   INT64 num_error_queries;
   INT64 num_interrupts;
   char auto_commit_mode;
+  bool fixed_conn_info;
   char database_name[MAX_HA_DBNAME_LENGTH];
   char database_host[MAX_CONN_INFO_LENGTH];
   char database_user[SRV_CON_DBUSER_SIZE];

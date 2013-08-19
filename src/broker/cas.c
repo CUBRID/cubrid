@@ -2548,6 +2548,11 @@ set_db_connection_info (void)
 static void
 clear_db_connection_info (void)
 {
+  if (as_info->fixed_conn_info)
+    {
+      return;
+    }
+
   cas_db_user[0] = '\0';
   cas_db_passwd[0] = '\0';
   as_info->database_user[0] = '\0';
