@@ -1660,6 +1660,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
 	  if (need_database_reconnect ())
 	    {
+	      assert (as_info->fixed_conn_info == false);
+
 	      set_db_connection_info ();
 
 	      err_code = ux_database_connect (cas_db_name, cas_db_user,
