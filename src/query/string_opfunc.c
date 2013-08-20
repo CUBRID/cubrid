@@ -12534,9 +12534,9 @@ db_to_date (const DB_VALUE * src_str,
 
   int i;
   bool no_user_format;
-  bool forced_user_format = false;
   INTL_LANG date_lang_id;
   INTL_CODESET codeset;
+  INTL_CODESET frmt_codeset;
   char stack_buf_str[64], stack_buf_format[64];
   char *initial_buf_str = NULL, *initial_buf_format = NULL;
   bool do_free_buf_str = false, do_free_buf_format = false;
@@ -12611,86 +12611,428 @@ db_to_date (const DB_VALUE * src_str,
 
   if (no_user_format)
     {
-      const char *default_format_str = lang_date_format (date_lang_id,
-							 codeset,
-							 DB_TYPE_DATE);
-      if (default_format_str != NULL)
-	{
-	  DB_MAKE_CHAR (&default_format, strlen (default_format_str),
-			default_format_str, strlen (default_format_str),
-			LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	  format_str = &default_format;
-	  no_user_format = false;
-	  forced_user_format = true;
-	}
-    }
-
-  if (no_user_format)
-    {
       DB_DATE date_tmp;
+      const char *default_format_str;
 
-      if (NO_ERROR != db_string_to_date_ex ((char *) cs,
+      /* try default CUBRID format first */
+      if (NO_ERROR == db_string_to_date_ex ((char *) cs,
 					    last_src - cs, &date_tmp))
+	{
+	  DB_MAKE_ENCODED_DATE (result_date, &date_tmp);
+	  goto exit;
+	}
+
+      /* error parsing CUBRID default format, try the locale format, if any */
+      default_format_str = lang_date_format_parse (date_lang_id, codeset,
+						   DB_TYPE_DATE,
+						   &frmt_codeset);
+      if (default_format_str == NULL)
 	{
 	  error_status = ER_DATE_CONVERSION;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
 	}
 
-      DB_MAKE_ENCODED_DATE (result_date, &date_tmp);
+      DB_MAKE_CHAR (&default_format, strlen (default_format_str),
+		    default_format_str, strlen (default_format_str),
+		    frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
+      format_str = &default_format;
+    }
+
+  if (DB_IS_NULL (format_str))
+    {
+      DB_MAKE_NULL (result_date);
       goto exit;
     }
-  else
+
+  if (false == is_char_string (format_str))
     {
-      INTL_CODESET frmt_codeset;
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
 
-      if (!forced_user_format && DB_IS_NULL (format_str))
+  if (DB_GET_STRING_SIZE (format_str) > MAX_TOKEN_SIZE)
+    {
+      error_status = ER_QSTR_FORMAT_TOO_LONG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
+
+  if (DB_GET_STRING_SIZE (format_str) == 0)
+    {
+      error_status = ER_QSTR_EMPTY_STRING;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+
+  frmt_codeset = DB_GET_STRING_CODESET (format_str);
+
+  error_status =
+    db_check_or_create_null_term_string (format_str, stack_buf_format,
+					 sizeof (stack_buf_format),
+					 true, true,
+					 &initial_buf_format,
+					 &do_free_buf_format);
+  if (error_status != NO_ERROR)
+    {
+      goto exit;
+    }
+  cur_format_str_ptr = initial_buf_format;
+  last_format = cur_format_str_ptr + strlen (cur_format_str_ptr);
+
+  /* Skip space, tab, CR     */
+  while (cs < last_src && strchr (WHITE_CHARS, *cs))
+    {
+      cs++;
+    }
+
+  /* Skip space, tab, CR     */
+  while (cur_format_str_ptr < last_format &&
+	 strchr (WHITE_CHARS, *cur_format_str_ptr))
+    {
+      cur_format_str_ptr++;
+    }
+
+  while (cs < last_src)
+    {
+      int token_size, cmp, cs_byte_size;
+      int k;
+
+      cur_format = get_next_format (cur_format_str_ptr, frmt_codeset,
+				    DB_TYPE_DATE, &cur_format_size,
+				    &next_format_str_ptr);
+      switch (cur_format)
 	{
-	  DB_MAKE_NULL (result_date);
+	case DT_YYYY:
+	  if (yearcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      yearcount++;
+	    }
+
+	  k = parse_digits (cs, &year, 4);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  cs += k;
+	  break;
+
+	case DT_YY:
+	  if (yearcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      yearcount++;
+	    }
+
+	  k = parse_digits (cs, &year, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  cs += k;
+
+	  i = get_cur_year ();
+	  if (i == -1)
+	    {
+	      error_status = ER_SYSTEM_DATE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  year += (i / 100) * 100;
+	  break;
+
+	case DT_MM:
+	  if (monthcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      monthcount++;
+	    }
+
+	  k = parse_digits (cs, &month, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  cs += k;
+
+	  if (month < 1 || month > 12)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_MONTH:
+	  if (monthcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      monthcount++;
+	    }
+
+	  error_status = get_string_date_token_id (SDT_MONTH,
+						   date_lang_id, cs,
+						   codeset,
+						   &month, &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  cs += token_size;
+
+	  if (month == 0)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_MON:
+	  if (monthcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      monthcount++;
+	    }
+
+	  month = 0;
+
+
+	  error_status = get_string_date_token_id (SDT_MONTH_SHORT,
+						   date_lang_id, cs,
+						   codeset,
+						   &month, &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  cs += token_size;
+
+
+	  if (month == 0)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_DD:
+	  if (daycount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      daycount++;
+	    }
+
+	  k = parse_digits (cs, &day, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  cs += k;
+
+	  if (day < 0 || day > 31)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_TEXT:
+	  if (codeset != frmt_codeset)
+	    {
+	      error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cmp =
+	    intl_case_match_tok (date_lang_id, codeset,
+				 (unsigned char *)
+				 (cur_format_str_ptr + 1),
+				 (unsigned char *) cs,
+				 cur_format_size - 2, strlen (cs),
+				 &cs_byte_size);
+
+	  if (cmp != 0)
+	    {
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      return error_status;
+	    }
+
+	  cs += cs_byte_size;
+	  break;
+
+	case DT_PUNCTUATION:
+	  if (strncasecmp ((const char *) cur_format_str_ptr,
+			   (const char *) cs, cur_format_size) != 0)
+	    {
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  cs += cur_format_size;
+	  break;
+
+	case DT_CC:
+	case DT_Q:
+	  error_status = ER_QSTR_INVALID_FORMAT;
+	  /* Does it need error message? */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
-	}
 
-      if (false == is_char_string (format_str))
-	{
-	  error_status = ER_QSTR_INVALID_DATA_TYPE;
+	case DT_DAY:
+	  if (day_of_the_weekcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      day_of_the_weekcount++;
+	    }
+
+	  error_status = get_string_date_token_id (SDT_DAY, date_lang_id,
+						   cs, codeset,
+						   &day_of_the_week,
+						   &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  cs += token_size;
+
+	  if (day_of_the_week == 0)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_DY:
+	  if (day_of_the_weekcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      day_of_the_weekcount++;
+	    }
+
+	  error_status =
+	    get_string_date_token_id (SDT_DAY_SHORT, date_lang_id, cs,
+				      codeset, &day_of_the_week, &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  cs += token_size;
+
+	  if (day_of_the_week == 0)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_D:
+	  if (day_of_the_weekcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      day_of_the_weekcount++;
+	    }
+
+	  k = parse_digits (cs, &day_of_the_week, 1);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  cs += k;
+
+	  if (day_of_the_week < 1 || day_of_the_week > 7)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_INVALID:
+	case DT_NORMAL:
+	  error_status = ER_QSTR_INVALID_FORMAT;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
 	}
-
-      if (DB_GET_STRING_SIZE (format_str) > MAX_TOKEN_SIZE)
-	{
-	  error_status = ER_QSTR_FORMAT_TOO_LONG;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	  goto exit;
-	}
-
-      if (DB_GET_STRING_SIZE (format_str) == 0)
-	{
-	  error_status = ER_QSTR_EMPTY_STRING;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	  return error_status;
-	}
-
-      frmt_codeset = DB_GET_STRING_CODESET (format_str);
-
-      error_status =
-	db_check_or_create_null_term_string (format_str, stack_buf_format,
-					     sizeof (stack_buf_format),
-					     true, true,
-					     &initial_buf_format,
-					     &do_free_buf_format);
-      if (error_status != NO_ERROR)
-	{
-	  goto exit;
-	}
-      cur_format_str_ptr = initial_buf_format;
-      last_format = cur_format_str_ptr + strlen (cur_format_str_ptr);
 
       /* Skip space, tab, CR     */
       while (cs < last_src && strchr (WHITE_CHARS, *cs))
 	{
 	  cs++;
 	}
+
+      cur_format_str_ptr = next_format_str_ptr;
 
       /* Skip space, tab, CR     */
       while (cur_format_str_ptr < last_format &&
@@ -12699,371 +13041,23 @@ db_to_date (const DB_VALUE * src_str,
 	  cur_format_str_ptr++;
 	}
 
-      while (cs < last_src)
+      if (last_format == next_format_str_ptr)
 	{
-	  int token_size, cmp, cs_byte_size;
-	  int k;
-
-	  cur_format = get_next_format (cur_format_str_ptr, frmt_codeset,
-					DB_TYPE_DATE, &cur_format_size,
-					&next_format_str_ptr);
-	  switch (cur_format)
-	    {
-	    case DT_YYYY:
-	      if (yearcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  yearcount++;
-		}
-
-	      k = parse_digits (cs, &year, 4);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      cs += k;
-	      break;
-
-	    case DT_YY:
-	      if (yearcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  yearcount++;
-		}
-
-	      k = parse_digits (cs, &year, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      cs += k;
-
-	      i = get_cur_year ();
-	      if (i == -1)
-		{
-		  error_status = ER_SYSTEM_DATE;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      year += (i / 100) * 100;
-	      break;
-
-	    case DT_MM:
-	      if (monthcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  monthcount++;
-		}
-
-	      k = parse_digits (cs, &month, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      cs += k;
-
-	      if (month < 1 || month > 12)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_MONTH:
-	      if (monthcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  monthcount++;
-		}
-
-	      error_status = get_string_date_token_id (SDT_MONTH,
-						       date_lang_id, cs,
-						       codeset,
-						       &month, &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      cs += token_size;
-
-	      if (month == 0)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_MON:
-	      if (monthcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  monthcount++;
-		}
-
-	      month = 0;
-
-
-	      error_status = get_string_date_token_id (SDT_MONTH_SHORT,
-						       date_lang_id, cs,
-						       codeset,
-						       &month, &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-	      cs += token_size;
-
-
-	      if (month == 0)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_DD:
-	      if (daycount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  daycount++;
-		}
-
-	      k = parse_digits (cs, &day, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      cs += k;
-
-	      if (day < 0 || day > 31)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_TEXT:
-	      if (codeset != frmt_codeset)
-		{
-		  error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cmp =
-		intl_case_match_tok (date_lang_id, codeset,
-				     (unsigned char *)
-				     (cur_format_str_ptr + 1),
-				     (unsigned char *) cs,
-				     cur_format_size - 2, strlen (cs),
-				     &cs_byte_size);
-
-	      if (cmp != 0)
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  return error_status;
-		}
-
-	      cs += cs_byte_size;
-	      break;
-
-	    case DT_PUNCTUATION:
-	      if (strncasecmp ((const char *) cur_format_str_ptr,
-			       (const char *) cs, cur_format_size) != 0)
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      cs += cur_format_size;
-	      break;
-
-	    case DT_CC:
-	    case DT_Q:
-	      error_status = ER_QSTR_INVALID_FORMAT;
-	      /* Does it need error message? */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      goto exit;
-
-	    case DT_DAY:
-	      if (day_of_the_weekcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  day_of_the_weekcount++;
-		}
-
-	      error_status = get_string_date_token_id (SDT_DAY, date_lang_id,
-						       cs, codeset,
-						       &day_of_the_week,
-						       &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-	      cs += token_size;
-
-	      if (day_of_the_week == 0)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_DY:
-	      if (day_of_the_weekcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  day_of_the_weekcount++;
-		}
-
-	      error_status =
-		get_string_date_token_id (SDT_DAY_SHORT, date_lang_id, cs,
-					  codeset,
-					  &day_of_the_week, &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      cs += token_size;
-
-	      if (day_of_the_week == 0)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_D:
-	      if (day_of_the_weekcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  day_of_the_weekcount++;
-		}
-
-	      k = parse_digits (cs, &day_of_the_week, 1);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      cs += k;
-
-	      if (day_of_the_week < 1 || day_of_the_week > 7)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_INVALID:
-	    case DT_NORMAL:
-	      error_status = ER_QSTR_INVALID_FORMAT;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      goto exit;
-	    }
-
-	  /* Skip space, tab, CR     */
 	  while (cs < last_src && strchr (WHITE_CHARS, *cs))
 	    {
 	      cs++;
 	    }
 
-	  cur_format_str_ptr = next_format_str_ptr;
-
-	  /* Skip space, tab, CR     */
-	  while (cur_format_str_ptr < last_format &&
-		 strchr (WHITE_CHARS, *cur_format_str_ptr))
+	  if (cs != last_src)
 	    {
-	      cur_format_str_ptr++;
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
 	    }
-
-	  if (last_format == next_format_str_ptr)
-	    {
-	      while (cs < last_src && strchr (WHITE_CHARS, *cs))
-		{
-		  cs++;
-		}
-
-	      if (cs != last_src)
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-	    }
+	  break;
 	}
     }
+
 
   /* Both format and src should end at same time     */
   if (cs != last_src || cur_format_str_ptr != last_format)
@@ -13133,13 +13127,13 @@ db_to_time (const DB_VALUE * src_str,
   bool no_user_format;
   INTL_LANG date_lang_id;
   INTL_CODESET codeset;
+  INTL_CODESET frmt_codeset;
   char stack_buf_str[64], stack_buf_format[64];
   char *initial_buf_str = NULL, *initial_buf_format = NULL;
   bool do_free_buf_str = false, do_free_buf_format = false;
   DB_VALUE default_format;
   bool has_user_format = false;
   bool dummy;
-  bool forced_user_format = false;
 
   assert (src_str != (DB_VALUE *) NULL);
   assert (result_time != (DB_VALUE *) NULL);
@@ -13203,89 +13197,303 @@ db_to_time (const DB_VALUE * src_str,
   last_src = last_src + 1;
 
   no_user_format = (format_str == NULL) || (!has_user_format);
-  if (no_user_format)
-    {
-      const char *default_format_str = lang_date_format (date_lang_id,
-							 codeset,
-							 DB_TYPE_TIME);
-      if (default_format_str != NULL)
-	{
-	  DB_MAKE_CHAR (&default_format, strlen (default_format_str),
-			default_format_str, strlen (default_format_str),
-			LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	  format_str = &default_format;
-	  no_user_format = false;
-	  forced_user_format = true;
-	}
-    }
 
   if (no_user_format)
     {
       DB_TIME time_tmp;
+      const char *default_format_str;
 
-      if (NO_ERROR != db_string_to_time_ex ((const char *) cs,
+      /* try default CUBRID format first */
+      if (NO_ERROR == db_string_to_time_ex ((const char *) cs,
 					    last_src - cs, &time_tmp))
+	{
+	  DB_MAKE_ENCODED_TIME (result_time, &time_tmp);
+	  goto exit;
+	}
+
+      /* error parsing CUBRID default format, try the locale format, if any */
+      default_format_str = lang_date_format_parse (date_lang_id, codeset,
+						   DB_TYPE_TIME,
+						   &frmt_codeset);
+      if (default_format_str == NULL)
 	{
 	  error_status = ER_TIME_CONVERSION;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
 	}
+      DB_MAKE_CHAR (&default_format, strlen (default_format_str),
+		    default_format_str, strlen (default_format_str),
+		    frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
+      format_str = &default_format;
+    }
 
-      DB_MAKE_ENCODED_TIME (result_time, &time_tmp);
+  if (DB_IS_NULL (format_str))
+    {
+      DB_MAKE_NULL (result_time);
       goto exit;
     }
-  else
+
+  if (false == is_char_string (format_str))
     {
-      INTL_CODESET frmt_codeset;
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
 
-      if (!forced_user_format && DB_IS_NULL (format_str))
-	{
-	  DB_MAKE_NULL (result_time);
-	  goto exit;
-	}
+  if (DB_GET_STRING_SIZE (format_str) > MAX_TOKEN_SIZE)
+    {
+      error_status = ER_QSTR_FORMAT_TOO_LONG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
 
-      if (false == is_char_string (format_str))
+  if (DB_GET_STRING_SIZE (format_str) == 0)
+    {
+      error_status = ER_QSTR_EMPTY_STRING;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
+
+  frmt_codeset = DB_GET_STRING_CODESET (format_str);
+
+  error_status =
+    db_check_or_create_null_term_string (format_str, stack_buf_format,
+					 sizeof (stack_buf_format),
+					 true, true,
+					 &initial_buf_format,
+					 &do_free_buf_format);
+
+  if (error_status != NO_ERROR)
+    {
+      goto exit;
+    }
+  cur_format_str_ptr = initial_buf_format;
+  last_format = cur_format_str_ptr + strlen (cur_format_str_ptr);
+
+  /* Skip space, tab, CR     */
+  while (cs < last_src && strchr (WHITE_CHARS, *cs))
+    {
+      cs++;
+    }
+
+  /* Skip space, tab, CR     */
+  while (cur_format_str_ptr < last_format &&
+	 strchr (WHITE_CHARS, *cur_format_str_ptr))
+    {
+      cur_format_str_ptr++;
+    }
+
+  while (cs < last_src)
+    {
+      int cmp, cs_byte_size, token_size;
+      int am_pm_id;
+      int k;
+
+      cur_format = get_next_format (cur_format_str_ptr, frmt_codeset,
+				    DB_TYPE_TIME, &cur_format_size,
+				    &next_format_str_ptr);
+      switch (cur_format)
 	{
-	  error_status = ER_QSTR_INVALID_DATA_TYPE;
+	case DT_AM:
+	case DT_A_M:
+	case DT_PM:
+	case DT_P_M:
+	  if (mil_time_count != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      mil_time_count++;
+	    }
+
+	  error_status =
+	    get_string_date_token_id (SDT_AM_PM, date_lang_id, cs,
+				      codeset, &am_pm_id, &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  if (am_pm_id > 0)
+	    {
+	      if (am_pm_id % 2)
+		{
+		  am = true;
+		}
+	      else
+		{
+		  pm = true;
+		}
+	    }
+	  else
+	    {
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  cs += token_size;
+	  break;
+
+	case DT_HH:
+	case DT_HH12:
+	  if (time_count != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      time_count++;
+	    }
+
+	  k = parse_digits (cs, &hour, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (hour < 1 || hour > 12)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_HH24:
+	  if (time_count != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      time_count++;
+	    }
+
+	  if (mil_time_count != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      mil_time_count++;
+	    }
+
+	  k = parse_digits (cs, &hour, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (hour < 0 || hour > 23)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_MI:
+	  k = parse_digits (cs, &minute, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (minute < 0 || minute > 59)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_SS:
+	  k = parse_digits (cs, &second, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (second < 0 || second > 59)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_TEXT:
+	  if (codeset != frmt_codeset)
+	    {
+	      error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cmp =
+	    intl_case_match_tok (date_lang_id, codeset,
+				 (unsigned char *)
+				 (cur_format_str_ptr + 1),
+				 (unsigned char *) cs,
+				 cur_format_size - 2, strlen (cs),
+				 &cs_byte_size);
+
+	  if (cmp != 0)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      return error_status;
+	    }
+
+	  cs += cs_byte_size;
+	  break;
+
+	case DT_PUNCTUATION:
+	  if (strncasecmp ((const char *) cur_format_str_ptr,
+			   (const char *) cs, cur_format_size) != 0)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  cs += cur_format_size;
+	  break;
+
+	case DT_INVALID:
+	  error_status = ER_TIME_CONVERSION;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
 	}
-
-      if (DB_GET_STRING_SIZE (format_str) > MAX_TOKEN_SIZE)
-	{
-	  error_status = ER_QSTR_FORMAT_TOO_LONG;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	  goto exit;
-	}
-
-      if (DB_GET_STRING_SIZE (format_str) == 0)
-	{
-	  error_status = ER_QSTR_EMPTY_STRING;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	  goto exit;
-	}
-
-      frmt_codeset = DB_GET_STRING_CODESET (format_str);
-
-      error_status =
-	db_check_or_create_null_term_string (format_str, stack_buf_format,
-					     sizeof (stack_buf_format),
-					     true, true,
-					     &initial_buf_format,
-					     &do_free_buf_format);
-
-      if (error_status != NO_ERROR)
-	{
-	  goto exit;
-	}
-      cur_format_str_ptr = initial_buf_format;
-      last_format = cur_format_str_ptr + strlen (cur_format_str_ptr);
 
       /* Skip space, tab, CR     */
       while (cs < last_src && strchr (WHITE_CHARS, *cs))
 	{
 	  cs++;
 	}
+
+      cur_format_str_ptr = next_format_str_ptr;
 
       /* Skip space, tab, CR     */
       while (cur_format_str_ptr < last_format &&
@@ -13294,240 +13502,20 @@ db_to_time (const DB_VALUE * src_str,
 	  cur_format_str_ptr++;
 	}
 
-      while (cs < last_src)
+      if (last_format == next_format_str_ptr)
 	{
-	  int cmp, cs_byte_size, token_size;
-	  int am_pm_id;
-	  int k;
-
-	  cur_format = get_next_format (cur_format_str_ptr, frmt_codeset,
-					DB_TYPE_TIME, &cur_format_size,
-					&next_format_str_ptr);
-	  switch (cur_format)
-	    {
-	    case DT_AM:
-	    case DT_A_M:
-	    case DT_PM:
-	    case DT_P_M:
-	      if (mil_time_count != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  mil_time_count++;
-		}
-
-	      error_status =
-		get_string_date_token_id (SDT_AM_PM, date_lang_id, cs,
-					  codeset, &am_pm_id, &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      if (am_pm_id > 0)
-		{
-		  if (am_pm_id % 2)
-		    {
-		      am = true;
-		    }
-		  else
-		    {
-		      pm = true;
-		    }
-		}
-	      else
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      cs += token_size;
-	      break;
-
-	    case DT_HH:
-	    case DT_HH12:
-	      if (time_count != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  time_count++;
-		}
-
-	      k = parse_digits (cs, &hour, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (hour < 1 || hour > 12)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_HH24:
-	      if (time_count != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  time_count++;
-		}
-
-	      if (mil_time_count != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  mil_time_count++;
-		}
-
-	      k = parse_digits (cs, &hour, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (hour < 0 || hour > 23)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_MI:
-	      k = parse_digits (cs, &minute, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (minute < 0 || minute > 59)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_SS:
-	      k = parse_digits (cs, &second, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (second < 0 || second > 59)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_TEXT:
-	      if (codeset != frmt_codeset)
-		{
-		  error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cmp =
-		intl_case_match_tok (date_lang_id, codeset,
-				     (unsigned char *)
-				     (cur_format_str_ptr + 1),
-				     (unsigned char *) cs,
-				     cur_format_size - 2, strlen (cs),
-				     &cs_byte_size);
-
-	      if (cmp != 0)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  return error_status;
-		}
-
-	      cs += cs_byte_size;
-	      break;
-
-	    case DT_PUNCTUATION:
-	      if (strncasecmp ((const char *) cur_format_str_ptr,
-			       (const char *) cs, cur_format_size) != 0)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      cs += cur_format_size;
-	      break;
-
-	    case DT_INVALID:
-	      error_status = ER_TIME_CONVERSION;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      goto exit;
-	    }
-
-	  /* Skip space, tab, CR     */
 	  while (cs < last_src && strchr (WHITE_CHARS, *cs))
 	    {
 	      cs++;
 	    }
 
-	  cur_format_str_ptr = next_format_str_ptr;
-
-	  /* Skip space, tab, CR     */
-	  while (cur_format_str_ptr < last_format &&
-		 strchr (WHITE_CHARS, *cur_format_str_ptr))
+	  if (cs != last_src)
 	    {
-	      cur_format_str_ptr++;
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
 	    }
-
-	  if (last_format == next_format_str_ptr)
-	    {
-	      while (cs < last_src && strchr (WHITE_CHARS, *cs))
-		{
-		  cs++;
-		}
-
-	      if (cs != last_src)
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-	    }
+	  break;
 	}
     }
 
@@ -13606,9 +13594,9 @@ db_to_timestamp (const DB_VALUE * src_str,
 
   int i;
   bool no_user_format;
-  bool forced_user_format = false;
   INTL_LANG date_lang_id;
   INTL_CODESET codeset;
+  INTL_CODESET frmt_codeset;
   char stack_buf_str[64], stack_buf_format[64];
   char *initial_buf_str = NULL, *initial_buf_format = NULL;
   bool do_free_buf_str = false, do_free_buf_format = false;
@@ -13683,88 +13671,578 @@ db_to_timestamp (const DB_VALUE * src_str,
 
   if (no_user_format)
     {
-      const char *default_format_str = lang_date_format (date_lang_id,
-							 codeset,
-							 DB_TYPE_TIMESTAMP);
-      if (default_format_str != NULL)
-	{
-	  DB_MAKE_CHAR (&default_format, strlen (default_format_str),
-			default_format_str, strlen (default_format_str),
-			LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	  format_str = &default_format;
-	  no_user_format = false;
-	  forced_user_format = true;
-	}
-    }
-
-  if (no_user_format)
-    {
       DB_TIMESTAMP timestamp_tmp;
+      const char *default_format_str;
 
-      if (NO_ERROR !=
+      /* try default CUBRID format first */
+      if (NO_ERROR ==
 	  db_string_to_timestamp_ex ((const char *) cs,
 				     last_src - cs, &timestamp_tmp))
+	{
+	  DB_MAKE_TIMESTAMP (result_timestamp, timestamp_tmp);
+	  goto exit;
+	}
+
+      default_format_str = lang_date_format_parse (date_lang_id, codeset,
+						   DB_TYPE_TIMESTAMP,
+						   &frmt_codeset);
+      if (default_format_str == NULL)
 	{
 	  error_status = ER_TIMESTAMP_CONVERSION;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
 	}
 
-      DB_MAKE_TIMESTAMP (result_timestamp, timestamp_tmp);
+      DB_MAKE_CHAR (&default_format, strlen (default_format_str),
+		    default_format_str, strlen (default_format_str),
+		    frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
+      format_str = &default_format;
+    }
+
+  if (DB_IS_NULL (format_str))
+    {
+      DB_MAKE_NULL (result_timestamp);
       goto exit;
     }
-  else
+
+  if (false == is_char_string (format_str))
     {
-      INTL_CODESET frmt_codeset;
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
 
-      if (!forced_user_format && DB_IS_NULL (format_str))
+  if (DB_GET_STRING_SIZE (format_str) > MAX_TOKEN_SIZE)
+    {
+      error_status = ER_QSTR_FORMAT_TOO_LONG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
+
+  if (DB_GET_STRING_SIZE (format_str) == 0)
+    {
+      error_status = ER_QSTR_EMPTY_STRING;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
+
+  frmt_codeset = DB_GET_STRING_CODESET (format_str);
+
+  error_status =
+    db_check_or_create_null_term_string (format_str, stack_buf_format,
+					 sizeof (stack_buf_format),
+					 true, true,
+					 &initial_buf_format,
+					 &do_free_buf_format);
+
+  if (error_status != NO_ERROR)
+    {
+      goto exit;
+    }
+  cur_format_str_ptr = initial_buf_format;
+  last_format = cur_format_str_ptr + strlen (cur_format_str_ptr);
+
+  /* Skip space, tab, CR     */
+  while (cs < last_src && strchr (WHITE_CHARS, *cs))
+    {
+      cs++;
+    }
+
+  /* Skip space, tab, CR     */
+  while (cur_format_str_ptr < last_format &&
+	 strchr (WHITE_CHARS, *cur_format_str_ptr))
+    {
+      cur_format_str_ptr++;
+    }
+
+  while (cs < last_src)
+    {
+      int token_size, cmp, cs_byte_size;
+      int am_pm_id;
+      int k;
+
+      cur_format = get_next_format (cur_format_str_ptr, frmt_codeset,
+				    DB_TYPE_TIMESTAMP, &cur_format_size,
+				    &next_format_str_ptr);
+      switch (cur_format)
 	{
-	  DB_MAKE_NULL (result_timestamp);
+	case DT_YYYY:
+	  if (yearcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      yearcount++;
+	    }
+
+	  k = parse_digits (cs, &year, 4);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+	  break;
+
+	case DT_YY:
+	  if (yearcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      yearcount++;
+	    }
+
+	  k = parse_digits (cs, &year, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  i = get_cur_year ();
+	  if (i == -1)
+	    {
+	      error_status = ER_SYSTEM_DATE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  year += (i / 100) * 100;
+	  break;
+
+	case DT_MM:
+	  if (monthcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      monthcount++;
+	    }
+
+	  k = parse_digits (cs, &month, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (month < 1 || month > 12)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_MONTH:
+	  if (monthcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      monthcount++;
+	    }
+
+	  error_status = get_string_date_token_id (SDT_MONTH,
+						   date_lang_id, cs,
+						   codeset,
+						   &month, &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  cs += token_size;
+
+	  if (month == 0)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_MON:
+	  if (monthcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      monthcount++;
+	    }
+
+	  month = 0;
+
+	  error_status = get_string_date_token_id (SDT_MONTH_SHORT,
+						   date_lang_id, cs,
+						   codeset,
+						   &month, &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  cs += token_size;
+
+	  if (month == 0)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_DD:
+	  if (daycount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      daycount++;
+	    }
+
+	  k = parse_digits (cs, &day, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (day < 0 || day > 31)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_AM:
+	case DT_A_M:
+	case DT_PM:
+	case DT_P_M:
+	  if (mil_time_count != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      mil_time_count++;
+	    }
+
+	  error_status = get_string_date_token_id (SDT_AM_PM,
+						   date_lang_id, cs,
+						   codeset,
+						   &am_pm_id, &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  if (am_pm_id > 0)
+	    {
+	      if (am_pm_id % 2)
+		{
+		  am = true;
+		}
+	      else
+		{
+		  pm = true;
+		}
+	    }
+	  else
+	    {
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  cs += token_size;
+	  break;
+
+	case DT_HH:
+	case DT_HH12:
+	  if (time_count != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      time_count++;
+	    }
+
+	  k = parse_digits (cs, &hour, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (hour < 1 || hour > 12)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_HH24:
+	  if (time_count != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      time_count++;
+	    }
+
+	  if (mil_time_count != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      mil_time_count++;
+	    }
+
+	  k = parse_digits (cs, &hour, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (hour < 0 || hour > 23)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_MI:
+	  k = parse_digits (cs, &minute, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (minute < 0 || minute > 59)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_SS:
+	  k = parse_digits (cs, &second, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (second < 0 || second > 59)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_TEXT:
+	  if (codeset != frmt_codeset)
+	    {
+	      error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  cmp =
+	    intl_case_match_tok (date_lang_id, codeset,
+				 (unsigned char *)
+				 (cur_format_str_ptr + 1),
+				 (unsigned char *) cs,
+				 cur_format_size - 2, strlen (cs),
+				 &cs_byte_size);
+
+	  if (cmp != 0)
+	    {
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      return error_status;
+	    }
+
+	  cs += cs_byte_size;
+	  break;
+
+	case DT_PUNCTUATION:
+	  if (strncasecmp ((const char *) (void *) cur_format_str_ptr,
+			   (const char *) cs, cur_format_size) != 0)
+	    {
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += cur_format_size;
+	  break;
+
+	case DT_CC:
+	case DT_Q:
+	  error_status = ER_QSTR_INVALID_FORMAT;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
-	}
 
-      if (false == is_char_string (format_str))
-	{
-	  error_status = ER_QSTR_INVALID_DATA_TYPE;
+	case DT_DAY:
+	  if (day_of_the_weekcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      day_of_the_weekcount++;
+	    }
+
+	  error_status = get_string_date_token_id (SDT_DAY,
+						   date_lang_id, cs,
+						   codeset,
+						   &day_of_the_week,
+						   &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  cs += token_size;
+
+	  if (day_of_the_week == 0)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_DY:
+	  if (day_of_the_weekcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      day_of_the_weekcount++;
+	    }
+
+	  error_status = get_string_date_token_id (SDT_DAY_SHORT,
+						   date_lang_id, cs,
+						   codeset,
+						   &day_of_the_week,
+						   &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  cs += token_size;
+
+	  if (day_of_the_week == 0)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_D:
+	  if (day_of_the_weekcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      day_of_the_weekcount++;
+	    }
+
+	  k = parse_digits (cs, &day_of_the_week, 1);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (day_of_the_week < 1 || day_of_the_week > 7)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_NORMAL:
+	case DT_INVALID:
+	  error_status = ER_QSTR_INVALID_FORMAT;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
 	}
-
-      if (DB_GET_STRING_SIZE (format_str) > MAX_TOKEN_SIZE)
-	{
-	  error_status = ER_QSTR_FORMAT_TOO_LONG;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	  goto exit;
-	}
-
-      if (DB_GET_STRING_SIZE (format_str) == 0)
-	{
-	  error_status = ER_QSTR_EMPTY_STRING;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	  goto exit;
-	}
-
-      frmt_codeset = DB_GET_STRING_CODESET (format_str);
-
-      error_status =
-	db_check_or_create_null_term_string (format_str, stack_buf_format,
-					     sizeof (stack_buf_format),
-					     true, true,
-					     &initial_buf_format,
-					     &do_free_buf_format);
-
-      if (error_status != NO_ERROR)
-	{
-	  goto exit;
-	}
-      cur_format_str_ptr = initial_buf_format;
-      last_format = cur_format_str_ptr + strlen (cur_format_str_ptr);
 
       /* Skip space, tab, CR     */
       while (cs < last_src && strchr (WHITE_CHARS, *cs))
 	{
 	  cs++;
 	}
+
+      cur_format_str_ptr = next_format_str_ptr;
 
       /* Skip space, tab, CR     */
       while (cur_format_str_ptr < last_format &&
@@ -13773,518 +14251,20 @@ db_to_timestamp (const DB_VALUE * src_str,
 	  cur_format_str_ptr++;
 	}
 
-      while (cs < last_src)
+      if (last_format == next_format_str_ptr)
 	{
-	  int token_size, cmp, cs_byte_size;
-	  int am_pm_id;
-	  int k;
-
-	  cur_format = get_next_format (cur_format_str_ptr, frmt_codeset,
-					DB_TYPE_TIMESTAMP, &cur_format_size,
-					&next_format_str_ptr);
-	  switch (cur_format)
-	    {
-	    case DT_YYYY:
-	      if (yearcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  yearcount++;
-		}
-
-	      k = parse_digits (cs, &year, 4);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-	      break;
-
-	    case DT_YY:
-	      if (yearcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  yearcount++;
-		}
-
-	      k = parse_digits (cs, &year, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      i = get_cur_year ();
-	      if (i == -1)
-		{
-		  error_status = ER_SYSTEM_DATE;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      year += (i / 100) * 100;
-	      break;
-
-	    case DT_MM:
-	      if (monthcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  monthcount++;
-		}
-
-	      k = parse_digits (cs, &month, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (month < 1 || month > 12)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_MONTH:
-	      if (monthcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  monthcount++;
-		}
-
-	      error_status = get_string_date_token_id (SDT_MONTH,
-						       date_lang_id, cs,
-						       codeset,
-						       &month, &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      cs += token_size;
-
-	      if (month == 0)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_MON:
-	      if (monthcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  monthcount++;
-		}
-
-	      month = 0;
-
-	      error_status = get_string_date_token_id (SDT_MONTH_SHORT,
-						       date_lang_id, cs,
-						       codeset,
-						       &month, &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      cs += token_size;
-
-	      if (month == 0)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_DD:
-	      if (daycount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  daycount++;
-		}
-
-	      k = parse_digits (cs, &day, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (day < 0 || day > 31)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_AM:
-	    case DT_A_M:
-	    case DT_PM:
-	    case DT_P_M:
-	      if (mil_time_count != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  mil_time_count++;
-		}
-
-	      error_status = get_string_date_token_id (SDT_AM_PM,
-						       date_lang_id, cs,
-						       codeset,
-						       &am_pm_id,
-						       &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      if (am_pm_id > 0)
-		{
-		  if (am_pm_id % 2)
-		    {
-		      am = true;
-		    }
-		  else
-		    {
-		      pm = true;
-		    }
-		}
-	      else
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      cs += token_size;
-	      break;
-
-	    case DT_HH:
-	    case DT_HH12:
-	      if (time_count != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  time_count++;
-		}
-
-	      k = parse_digits (cs, &hour, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (hour < 1 || hour > 12)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_HH24:
-	      if (time_count != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  time_count++;
-		}
-
-	      if (mil_time_count != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  mil_time_count++;
-		}
-
-	      k = parse_digits (cs, &hour, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (hour < 0 || hour > 23)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_MI:
-	      k = parse_digits (cs, &minute, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (minute < 0 || minute > 59)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_SS:
-	      k = parse_digits (cs, &second, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (second < 0 || second > 59)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_TEXT:
-	      if (codeset != frmt_codeset)
-		{
-		  error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      cmp =
-		intl_case_match_tok (date_lang_id, codeset,
-				     (unsigned char *)
-				     (cur_format_str_ptr + 1),
-				     (unsigned char *) cs,
-				     cur_format_size - 2, strlen (cs),
-				     &cs_byte_size);
-
-	      if (cmp != 0)
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  return error_status;
-		}
-
-	      cs += cs_byte_size;
-	      break;
-
-	    case DT_PUNCTUATION:
-	      if (strncasecmp ((const char *) (void *) cur_format_str_ptr,
-			       (const char *) cs, cur_format_size) != 0)
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += cur_format_size;
-	      break;
-
-	    case DT_CC:
-	    case DT_Q:
-	      error_status = ER_QSTR_INVALID_FORMAT;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      goto exit;
-
-	    case DT_DAY:
-	      if (day_of_the_weekcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  day_of_the_weekcount++;
-		}
-
-	      error_status = get_string_date_token_id (SDT_DAY,
-						       date_lang_id, cs,
-						       codeset,
-						       &day_of_the_week,
-						       &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      cs += token_size;
-
-	      if (day_of_the_week == 0)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_DY:
-	      if (day_of_the_weekcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  day_of_the_weekcount++;
-		}
-
-	      error_status = get_string_date_token_id (SDT_DAY_SHORT,
-						       date_lang_id, cs,
-						       codeset,
-						       &day_of_the_week,
-						       &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      cs += token_size;
-
-	      if (day_of_the_week == 0)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_D:
-	      if (day_of_the_weekcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  day_of_the_weekcount++;
-		}
-
-	      k = parse_digits (cs, &day_of_the_week, 1);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (day_of_the_week < 1 || day_of_the_week > 7)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_NORMAL:
-	    case DT_INVALID:
-	      error_status = ER_QSTR_INVALID_FORMAT;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      goto exit;
-	    }
-
-	  /* Skip space, tab, CR     */
 	  while (cs < last_src && strchr (WHITE_CHARS, *cs))
 	    {
 	      cs++;
 	    }
 
-	  cur_format_str_ptr = next_format_str_ptr;
-
-	  /* Skip space, tab, CR     */
-	  while (cur_format_str_ptr < last_format &&
-		 strchr (WHITE_CHARS, *cur_format_str_ptr))
+	  if (cs != last_src)
 	    {
-	      cur_format_str_ptr++;
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
 	    }
-
-	  if (last_format == next_format_str_ptr)
-	    {
-	      while (cs < last_src && strchr (WHITE_CHARS, *cs))
-		{
-		  cs++;
-		}
-
-	      if (cs != last_src)
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-	    }
+	  break;
 	}
     }
 
@@ -14392,9 +14372,9 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
 
   int i;
   bool no_user_format;
-  bool forced_user_format = false;
   INTL_LANG date_lang_id;
   INTL_CODESET codeset;
+  INTL_CODESET frmt_codeset;
   char stack_buf_str[64], stack_buf_format[64];
   char *initial_buf_str = NULL, *initial_buf_format = NULL;
   bool do_free_buf_str = false, do_free_buf_format = false;
@@ -14468,87 +14448,624 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
 
   if (no_user_format)
     {
-      const char *default_format_str = lang_date_format (date_lang_id,
-							 codeset,
-							 DB_TYPE_DATETIME);
-      if (default_format_str != NULL)
-	{
-	  DB_MAKE_CHAR (&default_format, strlen (default_format_str),
-			default_format_str, strlen (default_format_str),
-			LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	  format_str = &default_format;
-	  no_user_format = false;
-	  forced_user_format = true;
-	}
-    }
-
-  if (no_user_format)
-    {
       DB_DATETIME datetime_tmp;
+      const char *default_format_str;
 
+      /* try default CUBRID format first */
       if (db_string_to_datetime_ex ((const char *) cs,
-				    last_src - cs, &datetime_tmp) != NO_ERROR)
+				    last_src - cs, &datetime_tmp) == NO_ERROR)
+	{
+	  DB_MAKE_DATETIME (result_datetime, &datetime_tmp);
+	  goto exit;
+	}
+
+      default_format_str = lang_date_format_parse (date_lang_id, codeset,
+						   DB_TYPE_DATETIME,
+						   &frmt_codeset);
+      if (default_format_str == NULL)
 	{
 	  error_status = ER_TIMESTAMP_CONVERSION;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
 	}
 
-      DB_MAKE_DATETIME (result_datetime, &datetime_tmp);
+      DB_MAKE_CHAR (&default_format, strlen (default_format_str),
+		    default_format_str, strlen (default_format_str),
+		    frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
+      format_str = &default_format;
+    }
+  if (DB_IS_NULL (format_str))
+    {
+      DB_MAKE_NULL (result_datetime);
       goto exit;
     }
-  else
+
+  if (false == is_char_string (format_str))
     {
-      INTL_CODESET frmt_codeset;
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
 
-      if (!forced_user_format && DB_IS_NULL (format_str))
+  if (DB_GET_STRING_SIZE (format_str) > MAX_TOKEN_SIZE)
+    {
+      error_status = ER_QSTR_FORMAT_TOO_LONG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
+
+  if (DB_GET_STRING_SIZE (format_str) == 0)
+    {
+      error_status = ER_QSTR_EMPTY_STRING;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
+
+  frmt_codeset = DB_GET_STRING_CODESET (format_str);
+
+  error_status =
+    db_check_or_create_null_term_string (format_str, stack_buf_format,
+					 sizeof (stack_buf_format),
+					 true, true,
+					 &initial_buf_format,
+					 &do_free_buf_format);
+
+  if (error_status != NO_ERROR)
+    {
+      goto exit;
+    }
+  cur_format_str_ptr = initial_buf_format;
+  last_format = cur_format_str_ptr + strlen (cur_format_str_ptr);
+
+  /* Skip space, tab, CR     */
+  while (cs < last_src && strchr (WHITE_CHARS, *cs))
+    {
+      cs++;
+    }
+
+  /* Skip space, tab, CR     */
+  while (cur_format_str_ptr < last_format &&
+	 strchr (WHITE_CHARS, *cur_format_str_ptr))
+    {
+      cur_format_str_ptr++;
+    }
+
+  while (cs < last_src)
+    {
+      int token_size, cmp, cs_byte_size;
+      int am_pm_id;
+      int k;
+
+      cur_format = get_next_format (cur_format_str_ptr, frmt_codeset,
+				    DB_TYPE_DATETIME, &cur_format_size,
+				    &next_format_str_ptr);
+      switch (cur_format)
 	{
-	  DB_MAKE_NULL (result_datetime);
+	case DT_YYYY:
+	  if (yearcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      yearcount++;
+	    }
+
+	  k = parse_digits (cs, &year, 4);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+	  break;
+
+	case DT_YY:
+	  if (yearcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      yearcount++;
+	    }
+
+	  k = parse_digits (cs, &year, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  i = get_cur_year ();
+	  if (i == -1)
+	    {
+	      error_status = ER_SYSTEM_DATE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  year += (i / 100) * 100;
+	  break;
+
+	case DT_MM:
+	  if (monthcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      monthcount++;
+	    }
+
+	  k = parse_digits (cs, &month, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (month < 1 || month > 12)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_MONTH:
+	  if (monthcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      monthcount++;
+	    }
+
+	  error_status = get_string_date_token_id (SDT_MONTH,
+						   date_lang_id, cs,
+						   codeset,
+						   &month, &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  cs += token_size;
+
+	  if (month == 0)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_MON:
+	  if (monthcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      monthcount++;
+	    }
+
+	  month = 0;
+
+	  error_status = get_string_date_token_id (SDT_MONTH_SHORT,
+						   date_lang_id, cs,
+						   codeset,
+						   &month, &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  cs += token_size;
+
+	  if (month == 0)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_DD:
+	  if (daycount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      daycount++;
+	    }
+
+	  k = parse_digits (cs, &day, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (day < 0 || day > 31)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_AM:
+	case DT_A_M:
+	case DT_PM:
+	case DT_P_M:
+	  if (mil_time_count != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      mil_time_count++;
+	    }
+
+	  error_status =
+	    get_string_date_token_id (SDT_AM_PM, date_lang_id, cs,
+				      codeset, &am_pm_id, &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  if (am_pm_id > 0)
+	    {
+	      if (am_pm_id % 2)
+		{
+		  am = true;
+		}
+	      else
+		{
+		  pm = true;
+		}
+	    }
+	  else
+	    {
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  cs += token_size;
+	  break;
+
+	case DT_H:
+	  if (time_count != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      time_count++;
+	    }
+
+	  k = parse_digits (cs, &hour, 1);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+	  if (hour < 1 || hour > 12)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_HH:
+	case DT_HH12:
+	  if (time_count != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      time_count++;
+	    }
+
+	  k = parse_digits (cs, &hour, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (hour < 1 || hour > 12)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_HH24:
+	  if (time_count != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      time_count++;
+	    }
+
+	  if (mil_time_count != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      mil_time_count++;
+	    }
+
+	  k = parse_digits (cs, &hour, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (hour < 0 || hour > 23)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_MI:
+	  k = parse_digits (cs, &minute, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (minute < 0 || minute > 59)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_SS:
+	  k = parse_digits (cs, &second, 2);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (second < 0 || second > 59)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_MS:
+	  if (!char_isdigit (*cs))
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  for (i = 0, fraction = 100; char_isdigit (*cs); cs++, i++)
+	    {
+	      millisecond += (int) ((*cs - '0') * fraction + 0.5);
+	      fraction /= 10;
+	    }
+
+	  if (millisecond < 0 || millisecond > 999)
+	    {
+	      error_status = ER_TIME_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_TEXT:
+	  if (codeset != frmt_codeset)
+	    {
+	      error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cmp =
+	    intl_case_match_tok (date_lang_id, codeset,
+				 (unsigned char *)
+				 (cur_format_str_ptr + 1),
+				 (unsigned char *) cs,
+				 cur_format_size - 2, strlen (cs),
+				 &cs_byte_size);
+
+	  if (cmp != 0)
+	    {
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      return error_status;
+	    }
+
+	  cs += cs_byte_size;
+	  break;
+
+	case DT_PUNCTUATION:
+	  if (strncasecmp ((const char *) (void *) cur_format_str_ptr,
+			   (const char *) cs, cur_format_size) != 0)
+	    {
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+
+	  cs += cur_format_size;
+	  break;
+
+	case DT_CC:
+	case DT_Q:
+	  error_status = ER_QSTR_INVALID_FORMAT;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
-	}
 
-      if (false == is_char_string (format_str))
-	{
-	  error_status = ER_QSTR_INVALID_DATA_TYPE;
+	case DT_DAY:
+	  if (day_of_the_weekcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      day_of_the_weekcount++;
+	    }
+
+	  error_status = get_string_date_token_id (SDT_DAY,
+						   date_lang_id, cs,
+						   codeset,
+						   &day_of_the_week,
+						   &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  cs += token_size;
+
+	  if (day_of_the_week == 0)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_DY:
+	  if (day_of_the_weekcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      day_of_the_weekcount++;
+	    }
+
+	  error_status = get_string_date_token_id (SDT_DAY_SHORT,
+						   date_lang_id, cs,
+						   codeset,
+						   &day_of_the_week,
+						   &token_size);
+	  if (error_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  cs += token_size;
+
+	  if (day_of_the_week == 0)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_D:
+	  if (day_of_the_weekcount != 0)
+	    {
+	      error_status = ER_QSTR_FORMAT_DUPLICATION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  else
+	    {
+	      day_of_the_weekcount++;
+	    }
+
+	  k = parse_digits (cs, &day_of_the_week, 1);
+	  if (k <= 0)
+	    {
+	      error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  cs += k;
+
+	  if (day_of_the_week < 1 || day_of_the_week > 7)
+	    {
+	      error_status = ER_DATE_CONVERSION;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
+	    }
+	  break;
+
+	case DT_NORMAL:
+	case DT_INVALID:
+	  error_status = ER_QSTR_INVALID_FORMAT;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
 	}
 
-      if (DB_GET_STRING_SIZE (format_str) > MAX_TOKEN_SIZE)
-	{
-	  error_status = ER_QSTR_FORMAT_TOO_LONG;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	  goto exit;
-	}
-
-      if (DB_GET_STRING_SIZE (format_str) == 0)
-	{
-	  error_status = ER_QSTR_EMPTY_STRING;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	  goto exit;
-	}
-
-      frmt_codeset = DB_GET_STRING_CODESET (format_str);
-
-      error_status =
-	db_check_or_create_null_term_string (format_str, stack_buf_format,
-					     sizeof (stack_buf_format),
-					     true, true,
-					     &initial_buf_format,
-					     &do_free_buf_format);
-
-      if (error_status != NO_ERROR)
-	{
-	  goto exit;
-	}
-      cur_format_str_ptr = initial_buf_format;
-      last_format = cur_format_str_ptr + strlen (cur_format_str_ptr);
-
-      /* Skip space, tab, CR     */
       while (cs < last_src && strchr (WHITE_CHARS, *cs))
 	{
 	  cs++;
 	}
+
+      cur_format_str_ptr = next_format_str_ptr;
 
       /* Skip space, tab, CR     */
       while (cur_format_str_ptr < last_format &&
@@ -14557,565 +15074,20 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
 	  cur_format_str_ptr++;
 	}
 
-      while (cs < last_src)
+      if (last_format == next_format_str_ptr)
 	{
-	  int token_size, cmp, cs_byte_size;
-	  int am_pm_id;
-	  int k;
-
-	  cur_format = get_next_format (cur_format_str_ptr, frmt_codeset,
-					DB_TYPE_DATETIME, &cur_format_size,
-					&next_format_str_ptr);
-	  switch (cur_format)
-	    {
-	    case DT_YYYY:
-	      if (yearcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  yearcount++;
-		}
-
-	      k = parse_digits (cs, &year, 4);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-	      break;
-
-	    case DT_YY:
-	      if (yearcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  yearcount++;
-		}
-
-	      k = parse_digits (cs, &year, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      i = get_cur_year ();
-	      if (i == -1)
-		{
-		  error_status = ER_SYSTEM_DATE;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      year += (i / 100) * 100;
-	      break;
-
-	    case DT_MM:
-	      if (monthcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  monthcount++;
-		}
-
-	      k = parse_digits (cs, &month, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (month < 1 || month > 12)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_MONTH:
-	      if (monthcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  monthcount++;
-		}
-
-	      error_status = get_string_date_token_id (SDT_MONTH,
-						       date_lang_id, cs,
-						       codeset,
-						       &month, &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      cs += token_size;
-
-	      if (month == 0)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_MON:
-	      if (monthcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  monthcount++;
-		}
-
-	      month = 0;
-
-	      error_status = get_string_date_token_id (SDT_MONTH_SHORT,
-						       date_lang_id, cs,
-						       codeset,
-						       &month, &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      cs += token_size;
-
-	      if (month == 0)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_DD:
-	      if (daycount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  daycount++;
-		}
-
-	      k = parse_digits (cs, &day, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (day < 0 || day > 31)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_AM:
-	    case DT_A_M:
-	    case DT_PM:
-	    case DT_P_M:
-	      if (mil_time_count != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  mil_time_count++;
-		}
-
-	      error_status =
-		get_string_date_token_id (SDT_AM_PM, date_lang_id, cs,
-					  codeset, &am_pm_id, &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      if (am_pm_id > 0)
-		{
-		  if (am_pm_id % 2)
-		    {
-		      am = true;
-		    }
-		  else
-		    {
-		      pm = true;
-		    }
-		}
-	      else
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      cs += token_size;
-	      break;
-
-	    case DT_H:
-	      if (time_count != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  time_count++;
-		}
-
-	      k = parse_digits (cs, &hour, 1);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-	      if (hour < 1 || hour > 12)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_HH:
-	    case DT_HH12:
-	      if (time_count != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  time_count++;
-		}
-
-	      k = parse_digits (cs, &hour, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (hour < 1 || hour > 12)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_HH24:
-	      if (time_count != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  time_count++;
-		}
-
-	      if (mil_time_count != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  mil_time_count++;
-		}
-
-	      k = parse_digits (cs, &hour, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (hour < 0 || hour > 23)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_MI:
-	      k = parse_digits (cs, &minute, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (minute < 0 || minute > 59)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_SS:
-	      k = parse_digits (cs, &second, 2);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (second < 0 || second > 59)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_MS:
-	      if (!char_isdigit (*cs))
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      for (i = 0, fraction = 100; char_isdigit (*cs); cs++, i++)
-		{
-		  millisecond += (int) ((*cs - '0') * fraction + 0.5);
-		  fraction /= 10;
-		}
-
-	      if (millisecond < 0 || millisecond > 999)
-		{
-		  error_status = ER_TIME_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_TEXT:
-	      if (codeset != frmt_codeset)
-		{
-		  error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cmp =
-		intl_case_match_tok (date_lang_id, codeset,
-				     (unsigned char *)
-				     (cur_format_str_ptr + 1),
-				     (unsigned char *) cs,
-				     cur_format_size - 2, strlen (cs),
-				     &cs_byte_size);
-
-	      if (cmp != 0)
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  return error_status;
-		}
-
-	      cs += cs_byte_size;
-	      break;
-
-	    case DT_PUNCTUATION:
-	      if (strncasecmp ((const char *) (void *) cur_format_str_ptr,
-			       (const char *) cs, cur_format_size) != 0)
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-
-	      cs += cur_format_size;
-	      break;
-
-	    case DT_CC:
-	    case DT_Q:
-	      error_status = ER_QSTR_INVALID_FORMAT;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      goto exit;
-
-	    case DT_DAY:
-	      if (day_of_the_weekcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  day_of_the_weekcount++;
-		}
-
-	      error_status = get_string_date_token_id (SDT_DAY,
-						       date_lang_id, cs,
-						       codeset,
-						       &day_of_the_week,
-						       &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      cs += token_size;
-
-	      if (day_of_the_week == 0)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_DY:
-	      if (day_of_the_weekcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  day_of_the_weekcount++;
-		}
-
-	      error_status = get_string_date_token_id (SDT_DAY_SHORT,
-						       date_lang_id, cs,
-						       codeset,
-						       &day_of_the_week,
-						       &token_size);
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      cs += token_size;
-
-	      if (day_of_the_week == 0)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_D:
-	      if (day_of_the_weekcount != 0)
-		{
-		  error_status = ER_QSTR_FORMAT_DUPLICATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      else
-		{
-		  day_of_the_weekcount++;
-		}
-
-	      k = parse_digits (cs, &day_of_the_week, 1);
-	      if (k <= 0)
-		{
-		  error_status = ER_QSTR_MISMATCHING_ARGUMENTS;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      cs += k;
-
-	      if (day_of_the_week < 1 || day_of_the_week > 7)
-		{
-		  error_status = ER_DATE_CONVERSION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-
-	    case DT_NORMAL:
-	    case DT_INVALID:
-	      error_status = ER_QSTR_INVALID_FORMAT;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      goto exit;
-	    }
-
 	  while (cs < last_src && strchr (WHITE_CHARS, *cs))
 	    {
 	      cs++;
 	    }
 
-	  cur_format_str_ptr = next_format_str_ptr;
-
-	  /* Skip space, tab, CR     */
-	  while (cur_format_str_ptr < last_format &&
-		 strchr (WHITE_CHARS, *cur_format_str_ptr))
+	  if (cs != last_src)
 	    {
-	      cur_format_str_ptr++;
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto exit;
 	    }
-
-	  if (last_format == next_format_str_ptr)
-	    {
-	      while (cs < last_src && strchr (WHITE_CHARS, *cs))
-		{
-		  cs++;
-		}
-
-	      if (cs != last_src)
-		{
-		  error_status = ER_QSTR_INVALID_FORMAT;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  goto exit;
-		}
-	      break;
-	    }
+	  break;
 	}
     }
 
@@ -15724,9 +15696,7 @@ date_to_char (const DB_VALUE * src_value,
   DB_TIME tmp_time;
 
   bool no_user_format;
-  bool forced_user_format = false;
   INTL_LANG date_lang_id;
-  DB_VALUE default_format;
 
   char stack_buf_format[64];
   char *initial_buf_format = NULL;
@@ -15739,8 +15709,6 @@ date_to_char (const DB_VALUE * src_value,
   assert (src_value != (DB_VALUE *) NULL);
   assert (result_str != (DB_VALUE *) NULL);
   assert (date_lang != (DB_VALUE *) NULL);
-
-  DB_MAKE_NULL (&default_format);
 
   if (DB_IS_NULL (src_value))
     {
@@ -15770,22 +15738,6 @@ date_to_char (const DB_VALUE * src_value,
 					     &has_user_format, &dummy);
 
   no_user_format = (format_str == NULL) || (!has_user_format);
-
-  if (no_user_format)
-    {
-      const char *default_format_str = lang_date_format (date_lang_id,
-							 codeset,
-							 src_type);
-      if (default_format_str != NULL)
-	{
-	  DB_MAKE_CHAR (&default_format, strlen (default_format_str),
-			default_format_str, strlen (default_format_str),
-			LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-	  format_str = &default_format;
-	  no_user_format = false;
-	  forced_user_format = true;
-	}
-    }
 
   if (no_user_format)
     {
@@ -15867,7 +15819,7 @@ date_to_char (const DB_VALUE * src_value,
 
       assert (!DB_IS_NULL (date_lang));
 
-      if (!forced_user_format && DB_IS_NULL (format_str))
+      if (DB_IS_NULL (format_str))
 	{
 	  DB_MAKE_NULL (result_str);
 	  goto exit;

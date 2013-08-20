@@ -2112,43 +2112,76 @@ lang_get_lang_id_from_flag (const int flag, bool * has_user_format,
 }
 
 /*
- * lang_date_format - Returns the default format of date for the required
- *		      language or NULL if a the default format is not
+ * lang_date_format_parse - Returns the default format of parsing date for the
+ *		      required language or NULL if a the default format is not
  *		      available
  *   lang_id (in):
  *   codeset (in):
  *   type (in): DB type for format
+ *   format_codeset (in): codeset of the format found
+ *
+ * Note:  If a format for combination (lang_id, codeset) is not found, then
+ *	  the first valid (non-NULL) format for lang_id and the codeset
+ *	  are returned.
+ * 
  */
 const char *
-lang_date_format (const INTL_LANG lang_id, const INTL_CODESET codeset,
-		  const DB_TYPE type)
+lang_date_format_parse (const INTL_LANG lang_id, const INTL_CODESET codeset,
+			const DB_TYPE type, INTL_CODESET * format_codeset)
 {
   const LANG_LOCALE_DATA *lld;
+  const char *format = NULL;
+  const char *first_valid_format = NULL;
+
+  assert (format_codeset != NULL);
 
   assert (lang_Charset_initialized && lang_Language_initialized);
 
-  lld = lang_get_specific_locale (lang_id, codeset);
+  lld = lang_get_first_locale_for_lang (lang_id);
 
   if (lld == NULL)
     {
       return NULL;
     }
 
-  switch (type)
+  do
     {
-    case DB_TYPE_TIME:
-      return lld->time_format;
-    case DB_TYPE_DATE:
-      return lld->date_format;
-    case DB_TYPE_DATETIME:
-      return lld->datetime_format;
-    case DB_TYPE_TIMESTAMP:
-      return lld->timestamp_format;
-    default:
-      break;
-    }
+      switch (type)
+	{
+	case DB_TYPE_TIME:
+	  format = lld->time_format;
+	  break;
+	case DB_TYPE_DATE:
+	  format = lld->date_format;
+	  break;
+	case DB_TYPE_DATETIME:
+	  format = lld->datetime_format;
+	  break;
+	case DB_TYPE_TIMESTAMP:
+	  format = lld->timestamp_format;
+	  break;
+	default:
+	  break;
+	}
 
-  return NULL;
+      if (lld->codeset == codeset)
+	{
+	  *format_codeset = codeset;
+	  first_valid_format = format;
+	  break;
+	}
+
+      if (first_valid_format == NULL)
+	{
+	  *format_codeset = lld->codeset;
+	  first_valid_format = format;
+	}
+
+      lld = lld->next_lld;
+    }
+  while (lld != NULL);
+
+  return first_valid_format;
 }
 
 /*
