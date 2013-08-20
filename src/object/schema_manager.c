@@ -3967,10 +3967,11 @@ sm_update_all_statistics (bool with_fullscan)
 /*
  * sm_update_all_catalog_statistics()
  *   return: NO_ERROR on success, non-zero for ERROR
+ *   with_fullscan(in): true iff WITH FULLSCAN
  */
 
 int
-sm_update_all_catalog_statistics (void)
+sm_update_all_catalog_statistics (bool with_fullscan)
 {
   int error = NO_ERROR;
   int i;
@@ -3985,7 +3986,7 @@ sm_update_all_catalog_statistics (void)
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)
     {
-      error = sm_update_catalog_statistics (classes[i]);
+      error = sm_update_catalog_statistics (classes[i], with_fullscan);
     }
 
   return error;
@@ -3994,10 +3995,12 @@ sm_update_all_catalog_statistics (void)
 /*
  * sm_update_catalog_statistics()
  *   return: NO_ERROR on success, non-zero for ERROR
+ *   class_name(in):
+ *   with_fullscan(in): true iff WITH FULLSCAN
  */
 
 int
-sm_update_catalog_statistics (const char *class_name)
+sm_update_catalog_statistics (const char *class_name, bool with_fullscan)
 {
   int error = NO_ERROR;
   DB_OBJECT *obj;
@@ -4005,7 +4008,7 @@ sm_update_catalog_statistics (const char *class_name)
   obj = db_find_class (class_name);
   if (obj != NULL)
     {
-      error = sm_update_statistics (obj, NULL, true, STATS_WITH_FULLSCAN);
+      error = sm_update_statistics (obj, NULL, true, with_fullscan);
     }
   else
     {

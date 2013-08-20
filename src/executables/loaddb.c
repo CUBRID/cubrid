@@ -737,7 +737,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
       /* update catalog statistics */
       AU_DISABLE (au_save);
-      sm_update_all_catalog_statistics ();
+      sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN);
       AU_ENABLE (au_save);
 
       print_log_msg (1,
@@ -992,8 +992,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
       /* update catalog statistics */
       AU_DISABLE (au_save);
-      sm_update_catalog_statistics (CT_INDEX_NAME);
-      sm_update_catalog_statistics (CT_INDEXKEY_NAME);
+      sm_update_catalog_statistics (CT_INDEX_NAME, STATS_WITH_FULLSCAN);
+      sm_update_catalog_statistics (CT_INDEXKEY_NAME, STATS_WITH_FULLSCAN);
       AU_ENABLE (au_save);
 
       print_log_msg (1, "Index loading from %s finished.\n", Index_file);

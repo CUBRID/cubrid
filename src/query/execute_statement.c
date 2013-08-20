@@ -3552,13 +3552,29 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (statement->info.update_stats.all_classes > 0)
     {
-#if 1				/* TODO - */
-      return sm_update_all_statistics (STATS_WITH_SAMPLING);
-#endif
+      if (statement->info.update_stats.with_fullscan)
+	{
+	  assert (statement->info.update_stats.with_fullscan == 1);
+	  error = sm_update_all_statistics (STATS_WITH_FULLSCAN);
+	}
+      else
+	{
+	  assert (statement->info.update_stats.with_fullscan == 0);
+	  error = sm_update_all_statistics (STATS_WITH_SAMPLING);
+	}
     }
   else if (statement->info.update_stats.all_classes < 0)
     {
-      return sm_update_all_catalog_statistics ();
+      if (statement->info.update_stats.with_fullscan)
+	{
+	  assert (statement->info.update_stats.with_fullscan == 1);
+	  error = sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN);
+	}
+      else
+	{
+	  assert (statement->info.update_stats.with_fullscan == 0);
+	  error = sm_update_all_catalog_statistics (STATS_WITH_SAMPLING);
+	}
     }
   else
     {
@@ -3576,17 +3592,22 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      return er_errid ();
 	    }
 
-#if 1				/* TODO - */
-	  error = sm_update_statistics (obj, NULL, true, STATS_WITH_SAMPLING);
-#endif
-	  if (error != NO_ERROR)
+	  if (statement->info.update_stats.with_fullscan)
 	    {
-	      return error;
+	      assert (statement->info.update_stats.with_fullscan == 1);
+	      error =
+		sm_update_statistics (obj, NULL, true, STATS_WITH_FULLSCAN);
 	    }
-	}
-
-      return error;
+	  else
+	    {
+	      assert (statement->info.update_stats.with_fullscan == 0);
+	      error =
+		sm_update_statistics (obj, NULL, true, STATS_WITH_SAMPLING);
+	    }
+	}			/* for (cls = ...) */
     }
+
+  return error;
 }
 
 /*

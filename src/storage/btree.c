@@ -4179,6 +4179,10 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info,
       env->stat_info->pkeys[i] = 0;	/* clear old stats */
     }
 
+#if 1				/* TODO - */
+  /* under construction - handling for STATS_WITH_SAMPLING */
+#endif
+
   ret = btree_find_lower_bound_leaf (thread_p, BTS, stat_info);
   if (ret != NO_ERROR)
     {

@@ -188,6 +188,7 @@ static KEYWORD_RECORD keywords[] = {
   {FOUND, "FOUND", 0},
   {FROM, "FROM", 0},
   {FULL, "FULL", 0},
+  {FULLSCAN, "FULLSCAN", 1},
   {FUNCTION, "FUNCTION", 0},
   {GENERAL, "GENERAL", 0},
   {GET, "GET", 0},

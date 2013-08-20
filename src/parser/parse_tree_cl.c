@@ -15553,6 +15553,12 @@ pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r1);
     }
 
+  if (p->info.update_stats.with_fullscan > 0)
+    {
+      assert (p->info.update_stats.with_fullscan == 1);
+      b = pt_append_nulstring (parser, b, " with fullscan");
+    }
+
   return b;
 }
 

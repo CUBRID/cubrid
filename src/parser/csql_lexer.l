@@ -261,11 +261,9 @@ extern int dot_flag;
 [eE][aA][cC][hH]							{ begin_token(yytext);   return EACH; }
 [eE][lL][sS][eE]							{ begin_token(yytext);   return ELSE; }
 [eE][lL][sS][eE][iI][fF]						{ begin_token(yytext);   return ELSEIF; }
-[eE][lL][tT]								{ 
-												begin_token(yytext);
-												csql_yylval.cptr = pt_makename(yytext); 
-												return ELT; 
-											}
+[eE][lL][tT]								{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext); 
+										return ELT; }
 [eE][nN][dD]								{ begin_token(yytext);   return END; }
 [eE][nN][uU][mM]							{ begin_token(yytext);	 return ENUM; }
 [eE][qQ][uU][aA][lL][sS]						{ begin_token(yytext);   return EQUALS; }
@@ -276,23 +274,24 @@ extern int dot_flag;
 [eE][xX][eE][cC]							{ begin_token(yytext);   return EXEC; }
 [eE][xX][eE][cC][uU][tT][eE]						{ begin_token(yytext);   return EXECUTE; }
 [eE][xX][iI][sS][tT][sS]						{ begin_token(yytext);   return EXISTS; }
-[eE][xX][pP][lL][aA][iI][nN]						{ 
-												begin_token(yytext);
-												csql_yylval.cptr = pt_makename(yytext); 
-												return EXPLAIN; 
-											}
+[eE][xX][pP][lL][aA][iI][nN]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext); 
+										return EXPLAIN; }
 [eE][xX][tT][eE][rR][nN][aA][lL]					{ begin_token(yytext);   return EXTERNAL; }
 [eE][xX][tT][rR][aA][cC][tT]						{ begin_token(yytext);   return EXTRACT; }
 [fF][eE][tT][cC][hH]							{ begin_token(yytext);   return FETCH; }
 [fF][iI][rR][sS][tT]							{ begin_token(yytext);   return FIRST; }
-[fF][iI][rR][sS][tT]_[vV][aA][lL][uU][eE]		{ begin_token(yytext);   
-											csql_yylval.cptr = pt_makename(yytext);
-											return FIRST_VALUE; }
+[fF][iI][rR][sS][tT]_[vV][aA][lL][uU][eE]				{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return FIRST_VALUE; }
 [fF][oO][rR][cC][eE]							{ begin_token(yytext);   return FORCE; }
 [fF][oO][rR][eE][iI][gG][nN]						{ begin_token(yytext);   return FOREIGN; }
 [fF][oO][uU][nN][dD]							{ begin_token(yytext);   return FOUND; }
 [fF][rR][oO][mM]							{ begin_token(yytext);   return FROM; }
 [fF][uU][lL][lL]							{ begin_token(yytext);   return FULL; }
+[fF][uU][lL][lL][sS][cC][aA][nN]					{ begin_token(yytext);
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                                return FULLSCAN; }
 [fF][uU][nN][cC][tT][iI][oO][nN]					{ begin_token(yytext);   return FUNCTION; }
 [fF][aA][lL][sS][eE]							{ begin_token(yytext);   return False; }
 [fF][iI][lL][eE]							{ begin_token(yytext);   return File; }

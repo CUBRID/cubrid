@@ -609,6 +609,7 @@ typedef struct YYLTYPE
 %type <number> of_leading_trailing_both
 %type <number> datetime_field
 %type <number> opt_paren_plus
+%type <number> opt_with_fullscan
 %type <number> comp_op
 %type <number> opt_of_all_some_any
 %type <number> set_op
@@ -1412,6 +1413,7 @@ typedef struct YYLTYPE
 %token <cptr> ELT
 %token <cptr> EXPLAIN
 %token <cptr> FIRST_VALUE
+%token <cptr> FULLSCAN
 %token <cptr> GE_INF_
 %token <cptr> GE_LE_
 %token <cptr> GE_LT_
@@ -3906,7 +3908,7 @@ index_column_name_list
 	;
 
 update_statistics_stmt
-	: UPDATE STATISTICS ON_ only_class_name_list
+	: UPDATE STATISTICS ON_ only_class_name_list opt_with_fullscan
 		{{
 
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
@@ -3914,12 +3916,13 @@ update_statistics_stmt
 			  {
 			    ups->info.update_stats.class_list = $4;
 			    ups->info.update_stats.all_classes = 0;
+			    ups->info.update_stats.with_fullscan = $5;
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| UPDATE STATISTICS ON_ ALL CLASSES
+	| UPDATE STATISTICS ON_ ALL CLASSES opt_with_fullscan
 		{{
 
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
@@ -3927,12 +3930,13 @@ update_statistics_stmt
 			  {
 			    ups->info.update_stats.class_list = NULL;
 			    ups->info.update_stats.all_classes = 1;
+			    ups->info.update_stats.with_fullscan = $6;
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| UPDATE STATISTICS ON_ CATALOG CLASSES
+	| UPDATE STATISTICS ON_ CATALOG CLASSES opt_with_fullscan
 		{{
 
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
@@ -3940,6 +3944,7 @@ update_statistics_stmt
 			  {
 			    ups->info.update_stats.class_list = NULL;
 			    ups->info.update_stats.all_classes = -1;
+			    ups->info.update_stats.with_fullscan = $6;
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -3963,6 +3968,21 @@ only_class_name_list
 
 		DBG_PRINT}}
 	;
+
+opt_with_fullscan
+        : /* empty */
+                {{
+
+                        $$ = 0;
+
+                DBG_PRINT}}
+        | WITH FULLSCAN
+                {{
+
+                        $$ = 1;
+
+                DBG_PRINT}}
+        ;
 
 opt_of_to_eq
 	: /* empty */
@@ -19013,6 +19033,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}		
+        | FULLSCAN
+                {{
+
+                        PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                        if (p)
+                          p->info.name.original = $1;
+                        $$ = p;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
 	| GE_INF_
 		{{
 

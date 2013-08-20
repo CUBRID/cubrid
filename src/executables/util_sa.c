@@ -665,7 +665,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
     }
-  if (sm_update_all_catalog_statistics () != NO_ERROR)
+  if (sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN) != NO_ERROR)
     {
       db_shutdown ();
       goto error_exit;
