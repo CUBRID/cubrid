@@ -45,6 +45,27 @@
 	} while(0)
 #endif
 
+#define MASTER_ER_SET(...) \
+  do { \
+      pthread_mutex_lock (&css_Master_er_log_lock); \
+      er_set (__VA_ARGS__); \
+      pthread_mutex_unlock (&css_Master_er_log_lock); \
+  } while (0)
+
+#define MASTER_ER_SET_WITH_OSERROR(...) \
+  do { \
+      pthread_mutex_lock (&css_Master_er_log_lock); \
+      er_set_with_oserror (__VA_ARGS__); \
+      pthread_mutex_unlock (&css_Master_er_log_lock); \
+  } while (0)
+
+#define MASTER_ER_LOG_DEBUG(...) \
+  do { \
+      pthread_mutex_lock (&css_Master_er_log_lock); \
+      er_log_debug (__VA_ARGS__); \
+      pthread_mutex_unlock (&css_Master_er_log_lock); \
+  } while (0)
+
 typedef struct socket_queue_entry SOCKET_QUEUE_ENTRY;
 struct socket_queue_entry
 {
@@ -67,6 +88,7 @@ struct socket_queue_entry
 extern bool master_util_config_startup (const char *db_name, int *port_id);
 extern void master_util_wait_proc_terminate (int pid);
 
+extern pthread_mutex_t css_Master_er_log_lock;
 
 #define IS_MASTER_CONN_NAME_DRIVER(name)        (*((char *)name) == '-')
 #define IS_MASTER_CONN_NAME_HA_SERVER(name)     (*((char *)name) == '#')

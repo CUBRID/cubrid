@@ -37,6 +37,7 @@
 #include <sys/time.h>
 #include <sys/param.h>
 #include <netinet/in.h>
+#include <pthread.h>
 #endif /* ! WINDOWS */
 
 #include "system_parameter.h"
@@ -720,7 +721,8 @@ css_process_kill_master (void)
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STOPPED, 0);
+      MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_STOPPED, 0);
     }
 #endif
 
@@ -824,8 +826,8 @@ css_process_shutdown (char *time_buffer)
 	}
       css_Master_timeout->tv_sec += timeout * 60;
     }
-  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_MINFO_MESSAGE, 1,
-	  buffer);
+  MASTER_ER_SET (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		 ERR_CSS_MINFO_MESSAGE, 1, buffer);
 }
 
 /*
@@ -1666,16 +1668,16 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 	  css_process_change_ha_mode (conn);
 	  break;
 	default:
-	  er_log_debug (ARG_FILE_LINE,
-			"receive unexpected request. (request:%d).\n",
-			request);
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			       "receive unexpected request. (request:%d).\n",
+			       request);
 	  break;
 	}
     }
   else
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "receive error request. (error:%d). \n", error);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "receive error request. (error:%d). \n", error);
       hb_cleanup_conn_and_start_process (conn, rfd);
     }
 #else

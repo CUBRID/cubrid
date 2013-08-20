@@ -444,8 +444,8 @@ hb_job_queue (HB_JOB * jobs, unsigned int job_type, HB_JOB_ARG * arg,
   new_job = (HB_JOB_ENTRY *) malloc (sizeof (HB_JOB_ENTRY));
   if (new_job == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (HB_JOB_ENTRY));
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HB_JOB_ENTRY));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -675,12 +675,12 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 	  && hb_Cluster->myself->state == HB_NSTATE_MASTER
 	  && hb_Cluster->master->priority != hb_Cluster->myself->priority))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	      "More than one master detected and failback will be initiated");
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+		     "More than one master detected and failback will be initiated");
 
       hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	      hb_info_str);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+		     hb_info_str);
 
       pthread_mutex_unlock (&hb_Cluster->lock);
 
@@ -724,9 +724,9 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 					(PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
 	  assert (error == NO_ERROR);
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
-		  1,
-		  "A failover attempted to make the current node a master");
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
+			 1,
+			 "A failover attempted to make the current node a master");
 	}
 
       if (arg)
@@ -738,7 +738,7 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
     }
 
   hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
-  er_log_debug (ARG_FILE_LINE, "%s", hb_info_str);
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s", hb_info_str);
 
 calc_end:
   pthread_mutex_unlock (&hb_Cluster->lock);
@@ -888,8 +888,8 @@ ping_check_cancel:
 
   if (hb_Cluster->state != HB_NSTATE_MASTER)
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	      "Failover cancelled by ping check");
+      MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_NODE_EVENT, 1, "Failover cancelled by ping check");
       hb_Cluster->state = HB_NSTATE_SLAVE;
     }
   hb_cluster_request_heartbeat_to_all ();
@@ -936,20 +936,21 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
   if (hb_Cluster->master && hb_Cluster->myself
       && hb_Cluster->master->priority == hb_Cluster->myself->priority)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	      "Failover completed");
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+		     "Failover completed");
       hb_Cluster->state = HB_NSTATE_MASTER;
       hb_Resource->state = HB_NSTATE_MASTER;
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	      "Failover cancelled");
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+		     "Failover cancelled");
       hb_Cluster->state = HB_NSTATE_SLAVE;
     }
 
   hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+		 hb_info_str);
 
   hb_cluster_request_heartbeat_to_all ();
   pthread_mutex_unlock (&hb_Cluster->lock);
@@ -995,11 +996,12 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
 
   hb_cluster_request_heartbeat_to_all ();
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	  "This master will become a slave and cub_server will be restarted");
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+		 "This master will become a slave and cub_server will be restarted");
 
   hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+		 hb_info_str);
 
   pthread_mutex_unlock (&hb_Cluster->lock);
 
@@ -1021,8 +1023,8 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
 	  pids = (pid_t *) realloc (pids, size);
 	  if (pids == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			     ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 
 	      /*
 	       * in case that memory allocation fails,
@@ -1140,7 +1142,7 @@ hb_cluster_calc_score (void)
 
   if (hb_Cluster == NULL)
     {
-      er_log_debug (ARG_FILE_LINE, "hb_Cluster is null. \n");
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_Cluster is null. \n");
       return ER_FAILED;
     }
 
@@ -1223,7 +1225,7 @@ hb_cluster_request_heartbeat_to_all (void)
 
   if (hb_Cluster == NULL)
     {
-      er_log_debug (ARG_FILE_LINE, "hb_Cluster is null. \n");
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_Cluster is null. \n");
       return;
     }
 
@@ -1264,7 +1266,7 @@ hb_cluster_send_heartbeat (bool is_req, char *host_name)
   if (hb_sockaddr (host_name, prm_get_integer_value (PRM_ID_HA_PORT_ID),
 		   (struct sockaddr *) &saddr, &saddr_len) != NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "hb_sockaddr failed. \n");
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_sockaddr failed. \n");
       return;
     }
 
@@ -1284,7 +1286,7 @@ hb_cluster_send_heartbeat (bool is_req, char *host_name)
 		     (struct sockaddr *) &saddr, saddr_len);
   if (send_len <= 0)
     {
-      er_log_debug (ARG_FILE_LINE, "sendto failed. \n");
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sendto failed. \n");
       /* TODO : if error */
     }
 
@@ -1324,28 +1326,30 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
   /* validate receive message */
   if (strcmp (hb_Cluster->host_name, hbp_header->dest_host_name))
     {
-      er_log_debug (ARG_FILE_LINE, "hostname mismatch. "
-		    "(host_name:{%s}, dest_host_name:{%s}).\n",
-		    hb_Cluster->host_name, hbp_header->dest_host_name);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hostname mismatch. "
+			   "(host_name:{%s}, dest_host_name:{%s}).\n",
+			   hb_Cluster->host_name, hbp_header->dest_host_name);
       pthread_mutex_unlock (&hb_Cluster->lock);
       return;
     }
 
   if (len != (int) (sizeof (*hbp_header) + htons (hbp_header->len)))
     {
-      er_log_debug (ARG_FILE_LINE, "size mismatch. "
-		    "(len:%d, msg_size:%d).\n", len,
-		    (sizeof (*hbp_header) + htons (hbp_header->len)));
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "size mismatch. "
+			   "(len:%d, msg_size:%d).\n", len,
+			   (sizeof (*hbp_header) + htons (hbp_header->len)));
       pthread_mutex_unlock (&hb_Cluster->lock);
       return;
     }
 
 #if 0
-  er_log_debug (ARG_FILE_LINE, "hbp_header. (type:%d, r:%d, len:%d, seq:%d, "
-		"orig_host_name:{%s}, dest_host_name:{%s}). \n",
-		hbp_header->type, (hbp_header->r) ? 1 : 0,
-		ntohs (hbp_header->len), ntohl (hbp_header->seq),
-		hbp_header->orig_host_name, hbp_header->dest_host_name);
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+		       "hbp_header. (type:%d, r:%d, len:%d, seq:%d, "
+		       "orig_host_name:{%s}, dest_host_name:{%s}). \n",
+		       hbp_header->type, (hbp_header->r) ? 1 : 0,
+		       ntohs (hbp_header->len), ntohl (hbp_header->seq),
+		       hbp_header->orig_host_name,
+		       hbp_header->dest_host_name);
 #endif
 
   switch (hbp_header->type)
@@ -1357,14 +1361,15 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
 
 	if (state < 0 || state >= HB_NSTATE_MAX)
 	  {
-	    er_log_debug (ARG_FILE_LINE,
-			  "receive heartbeat have unknown state. "
-			  "(state:%u).\n", state);
+	    MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+				 "receive heartbeat have unknown state. "
+				 "(state:%u).\n", state);
 	    pthread_mutex_unlock (&hb_Cluster->lock);
 	    return;
 	  }
 #if 0
-	er_log_debug (ARG_FILE_LINE, "hbp_heartbeat. (state:%d). \n", state);
+	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hbp_heartbeat. (state:%d). \n",
+			     state);
 #endif
 
 
@@ -1395,16 +1400,17 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
 	  }
 	else
 	  {
-	    er_log_debug (ARG_FILE_LINE,
-			  "receive heartbeat have unknown host_name. "
-			  "(host_name:{%s}).\n", hbp_header->orig_host_name);
+	    MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+				 "receive heartbeat have unknown host_name. "
+				 "(host_name:{%s}).\n",
+				 hbp_header->orig_host_name);
 	  }
       }
       break;
     default:
       {
-	er_log_debug (ARG_FILE_LINE, "unknown heartbeat message. "
-		      "(type:%d). \n", hbp_header->type);
+	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "unknown heartbeat message. "
+			     "(type:%d). \n", hbp_header->type);
       }
       break;
 
@@ -1489,8 +1495,8 @@ hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
       if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 ||
 	  hp == NULL)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				      ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &udp_saddr.sin_addr, (void *) hent.h_addr,
@@ -1502,8 +1508,8 @@ hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
 
       if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				      ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &udp_saddr.sin_addr, (void *) hent.h_addr,
@@ -1514,8 +1520,8 @@ hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
 
       if (gethostbyname_r (host, &hent, buf) == -1)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				      ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &udp_saddr.sin_addr, (void *) hent.h_addr,
@@ -1532,8 +1538,8 @@ hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				      ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &udp_saddr.sin_addr, (void *) hp->h_addr,
@@ -1578,8 +1584,8 @@ hb_cluster_job_queue (unsigned int job_type, HB_JOB_ARG * arg,
 {
   if (job_type >= HB_CJOB_MAX)
     {
-      er_log_debug (ARG_FILE_LINE, "unknown job type. (job_type:%d).\n",
-		    job_type);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "unknown job type. (job_type:%d).\n", job_type);
       return ER_FAILED;
     }
 
@@ -1751,8 +1757,8 @@ hb_cluster_load_group_and_node_list (char *ha_node_list,
 
   if (ha_node_list == NULL)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "invalid ha_node_list. (ha_node_list:NULL).\n");
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "invalid ha_node_list. (ha_node_list:NULL).\n");
       return ER_FAILED;
     }
 
@@ -1782,10 +1788,10 @@ hb_cluster_load_group_and_node_list (char *ha_node_list,
 		{
 		  hb_Cluster->myself = node;
 #if defined (HB_VERBOSE_DEBUG)
-		  er_log_debug (ARG_FILE_LINE,
-				"find myself node. (myself:%p, priority:%d). \n",
-				hb_Cluster->myself,
-				hb_Cluster->myself->priority);
+		  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+				       "find myself node. (myself:%p, priority:%d). \n",
+				       hb_Cluster->myself,
+				       hb_Cluster->myself->priority);
 #endif
 		}
 	    }
@@ -1794,8 +1800,8 @@ hb_cluster_load_group_and_node_list (char *ha_node_list,
 
   if (hb_Cluster->state == HB_NSTATE_REPLICA && hb_Cluster->myself != NULL)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "myself should be in the ha_replica_list. \n");
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "myself should be in the ha_replica_list. \n");
       return ER_FAILED;
     }
   num_nodes = priority;
@@ -1816,8 +1822,8 @@ hb_cluster_load_group_and_node_list (char *ha_node_list,
 	{
 	  if (strcmp (hb_Cluster->group_id, p) != 0)
 	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "different group id ('ha_node_list', 'ha_replica_list') \n");
+	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+				   "different group id ('ha_node_list', 'ha_replica_list') \n");
 	      return ER_FAILED;
 	    }
 	}
@@ -1837,7 +1843,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list,
 
   if (hb_Cluster->myself == NULL)
     {
-      er_log_debug (ARG_FILE_LINE, "cannot find myself. \n");
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "cannot find myself. \n");
       return ER_FAILED;
     }
 
@@ -1868,9 +1874,9 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
 
   if (arg == NULL || proc_arg == NULL)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n",
-		    arg, proc_arg);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n",
+			   arg, proc_arg);
       return;
     }
 
@@ -1884,8 +1890,8 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
     }
 
   snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-	  "Restart the process", error_string);
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		 "Restart the process", error_string);
 
   hb_proc_make_arg (argv, (char *) proc->argv);
 
@@ -1894,7 +1900,8 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
     {
       pthread_mutex_unlock (&hb_Resource->lock);
 
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_CANNOT_FORK, 0);
+      MASTER_ER_SET (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_CANNOT_FORK,
+		     0);
 
       error = hb_resource_job_queue (HB_RJOB_PROC_START, arg,
 				     HB_JOB_TIMER_WAIT_A_SECOND);
@@ -1908,16 +1915,16 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
   else if (pid == 0)
     {
 #if defined (HB_VERBOSE_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "execute:{%s} arg[0]:{%s} arg[1]:{%s} arg[2]:{%s} "
-		    "arg[3]:{%s} arg{4}:{%s} arg[5]:{%s} arg[6]:{%s} "
-		    "arg[7]:{%s} arg[8]:{%s} arg[9]:{%s}.\n",
-		    proc->exec_path, (argv[0]) ? argv[0] : "",
-		    (argv[1]) ? argv[1] : "", (argv[2]) ? argv[2] : "",
-		    (argv[3]) ? argv[3] : "", (argv[4]) ? argv[4] : "",
-		    (argv[5]) ? argv[5] : "", (argv[6]) ? argv[6] : "",
-		    (argv[7]) ? argv[7] : "", (argv[8]) ? argv[8] : "",
-		    (argv[9]) ? argv[9] : "");
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "execute:{%s} arg[0]:{%s} arg[1]:{%s} arg[2]:{%s} "
+			   "arg[3]:{%s} arg{4}:{%s} arg[5]:{%s} arg[6]:{%s} "
+			   "arg[7]:{%s} arg[8]:{%s} arg[9]:{%s}.\n",
+			   proc->exec_path, (argv[0]) ? argv[0] : "",
+			   (argv[1]) ? argv[1] : "", (argv[2]) ? argv[2] : "",
+			   (argv[3]) ? argv[3] : "", (argv[4]) ? argv[4] : "",
+			   (argv[5]) ? argv[5] : "", (argv[6]) ? argv[6] : "",
+			   (argv[7]) ? argv[7] : "", (argv[8]) ? argv[8] : "",
+			   (argv[9]) ? argv[9] : "");
 #endif
       error = execv (proc->exec_path, argv);
       pthread_mutex_unlock (&hb_Resource->lock);
@@ -1964,14 +1971,14 @@ hb_resource_job_proc_dereg (HB_JOB_ARG * arg)
 
   if (arg == NULL || proc_arg == NULL)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n",
-		    arg, proc_arg);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n",
+			   arg, proc_arg);
       return;
     }
 #if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE, "deregister process. (pid:%d). \n",
-		proc_arg->pid);
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "deregister process. (pid:%d). \n",
+		       proc_arg->pid);
 #endif
 #if !defined(WINDOWS)
   rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
@@ -1980,9 +1987,9 @@ hb_resource_job_proc_dereg (HB_JOB_ARG * arg)
   proc = hb_return_proc_by_pid (proc_arg->pid);
   if (proc == NULL)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "cannot find process entry. (unknown pid, pid:%d). \n",
-		    proc_arg->pid);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "cannot find process entry. (unknown pid, pid:%d). \n",
+			   proc_arg->pid);
       pthread_mutex_unlock (&hb_Resource->lock);
 #if !defined(WINDOWS)
       pthread_mutex_unlock (&css_Master_socket_anchor_lock);
@@ -1994,9 +2001,9 @@ hb_resource_job_proc_dereg (HB_JOB_ARG * arg)
 
   if (proc->state != HB_PSTATE_DEREGISTERED)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "invalid process state. (pid:%d, state:%d). \n",
-		    proc_arg->pid, proc->state);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "invalid process state. (pid:%d, state:%d). \n",
+			   proc_arg->pid, proc->state);
       pthread_mutex_unlock (&hb_Resource->lock);
 #if !defined(WINDOWS)
       pthread_mutex_unlock (&css_Master_socket_anchor_lock);
@@ -2012,9 +2019,9 @@ hb_resource_job_proc_dereg (HB_JOB_ARG * arg)
 	css_return_entry_by_conn (proc->conn, &css_Master_socket_anchor);
       if (sock_entq == NULL || sock_entq->name == NULL)
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"invalid process conn entry. (pid:%d). \n",
-			proc_arg->pid);
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			       "invalid process conn entry. (pid:%d). \n",
+			       proc_arg->pid);
 	  goto hb_resource_job_proc_dereg_end;
 
 	}
@@ -2080,9 +2087,9 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
 
   if (arg == NULL || proc_arg == NULL)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n",
-		    arg, proc_arg);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n",
+			   arg, proc_arg);
       return;
     }
 
@@ -2106,17 +2113,19 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
       if (hb_Resource->state == HB_NSTATE_MASTER
 	  && proc->type == HB_PTYPE_SERVER)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-		  "Failed to restart the process", error_string);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			 ER_HB_PROCESS_EVENT, 2,
+			 "Failed to restart the process", error_string);
 	  free_and_init (arg);
 	  css_master_cleanup (SIGTERM);
 	  return;
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-		  "Keep checking to confirm the completion of the process startup",
-		  error_string);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			 ER_HB_PROCESS_EVENT, 2,
+			 "Keep checking to confirm the completion of the process startup",
+			 error_string);
 	  proc_arg->retries = 0;
 	  error = hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
 					 prm_get_integer_value
@@ -2139,8 +2148,9 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
 	  snprintf (error_string, LINE_MAX,
 		    "(process not found, expected pid: %d, args:%s)",
 		    proc->pid, proc->args);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-		  "Failed to restart process", error_string);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			 ER_HB_PROCESS_EVENT, 2, "Failed to restart process",
+			 error_string);
 
 	  error = hb_resource_job_queue (HB_RJOB_PROC_START, arg,
 					 HB_JOB_TIMER_WAIT_A_SECOND);
@@ -2181,7 +2191,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
   pthread_mutex_unlock (&hb_Resource->lock);
 
   hb_help_sprint_processes_info (hb_info_str, HB_INFO_STR_MAX);
-  er_log_debug (ARG_FILE_LINE, "%s", hb_info_str);
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s", hb_info_str);
 
   if (retry)
     {
@@ -2217,16 +2227,16 @@ hb_resource_job_confirm_dereg (HB_JOB_ARG * arg)
 
   if (arg == NULL || proc_arg == NULL)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n",
-		    arg, proc_arg);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n",
+			   arg, proc_arg);
       return;
     }
 
 #if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE,
-		"deregister confirm process. (pid:%d, args:{%s}). \n",
-		proc_arg->pid, proc_arg->args);
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+		       "deregister confirm process. (pid:%d, args:{%s}). \n",
+		       proc_arg->pid, proc_arg->args);
 #endif
 
   rv = pthread_mutex_lock (&hb_Resource->lock);
@@ -2240,9 +2250,9 @@ hb_resource_job_confirm_dereg (HB_JOB_ARG * arg)
 
   if (proc->state != HB_PSTATE_DEREGISTERED)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "invalid process state. (pid:%d, state:%d). \n",
-		    proc_arg->pid, proc->state);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "invalid process state. (pid:%d, state:%d). \n",
+			   proc_arg->pid, proc->state);
       pthread_mutex_unlock (&hb_Resource->lock);
 
       free_and_init (arg);
@@ -2323,10 +2333,10 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
 		  || proc->state == HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY)))
 	{
 	  /* TODO : send heartbeat changemode request */
-	  er_log_debug (ARG_FILE_LINE,
-			"send change-mode request. "
-			"(node_state:%d, pid:%d, proc_state:%d). \n",
-			hb_Resource->state, proc->pid, proc->state);
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			       "send change-mode request. "
+			       "(node_state:%d, pid:%d, proc_state:%d). \n",
+			       hb_Resource->state, proc->pid, proc->state);
 
 	  error = hb_resource_send_changemode (proc);
 	  if (NO_ERROR != error)
@@ -2339,7 +2349,7 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
   if (hb_Resource->procs)
     {
       hb_help_sprint_processes_info (hb_info_str, HB_INFO_STR_MAX);
-      er_log_debug (ARG_FILE_LINE, "%s", hb_info_str);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s", hb_info_str);
     }
 
   pthread_mutex_unlock (&hb_Resource->lock);
@@ -2388,8 +2398,8 @@ hb_resource_job_queue (unsigned int job_type, HB_JOB_ARG * arg,
 {
   if (job_type >= HB_RJOB_MAX)
     {
-      er_log_debug (ARG_FILE_LINE, "unknown job type. (job_type:%d).\n",
-		    job_type);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "unknown job type. (job_type:%d).\n", job_type);
       return ER_FAILED;
     }
 
@@ -2599,7 +2609,8 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
   proc = hb_return_proc_by_fd (sfd);
   if (proc == NULL)
     {
-      er_log_debug (ARG_FILE_LINE, "cannot find process. (fd:%d). \n", sfd);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "cannot find process. (fd:%d). \n",
+			   sfd);
       pthread_mutex_unlock (&hb_Resource->lock);
       return;
     }
@@ -2607,31 +2618,31 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
 
   if (proc->state < HB_PSTATE_REGISTERED)
     {
-      er_log_debug (ARG_FILE_LINE, "unexpected process's state. "
-		    "(fd:%d, pid:%d, state:%d, args:{%s}). \n", sfd,
-		    proc->pid, proc->state, proc->args);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "unexpected process's state. "
+			   "(fd:%d, pid:%d, state:%d, args:{%s}). \n", sfd,
+			   proc->pid, proc->state, proc->args);
       pthread_mutex_unlock (&hb_Resource->lock);
       return;
     }
 
   gettimeofday (&proc->ktime, NULL);
 #if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE,
-		"process terminated. (args:{%s}, pid:%d, state:%d). \n",
-		proc->args, proc->pid, proc->state);
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+		       "process terminated. (args:{%s}, pid:%d, state:%d). \n",
+		       proc->args, proc->pid, proc->state);
 #endif
 
   snprintf (error_string, LINE_MAX, "(pid:%d, args:%s)", proc->pid,
 	    proc->args);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-	  "Process failure detected", error_string);
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		 "Process failure detected", error_string);
 
   job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
   if (job_arg == NULL)
     {
       pthread_mutex_unlock (&hb_Resource->lock);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (HB_JOB_ARG));
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HB_JOB_ARG));
       return;
     }
 
@@ -2785,12 +2796,13 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
 	}
 
 #if defined (HB_VERBOSE_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "hbp_proc_register. (sizeof(hbp_proc_register):%d, \n"
-		    "type:%d, state:%d, pid:%d, exec_path:{%s}, "
-		    "args:{%s}). \n",
-		    sizeof (HBP_PROC_REGISTER), proc->type, proc->state,
-		    proc->pid, proc->exec_path, proc->args);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "hbp_proc_register. (sizeof(hbp_proc_register):%d, \n"
+			   "type:%d, state:%d, pid:%d, exec_path:{%s}, "
+			   "args:{%s}). \n",
+			   sizeof (HBP_PROC_REGISTER), proc->type,
+			   proc->state, proc->pid, proc->exec_path,
+			   proc->args);
       hb_print_procs ();
 #endif
 
@@ -2798,8 +2810,8 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
 		HB_RESULT_SUCCESS_STR, ntohl (hbp_proc_register->pid),
 		hb_process_state_string (proc->type, proc->state),
 		hbp_proc_register->args);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-	      "Registered as local process entries", error_string);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		     "Registered as local process entries", error_string);
 
       pthread_mutex_unlock (&hb_Resource->lock);
       return;
@@ -2812,8 +2824,8 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
 	    HB_RESULT_FAILURE_STR, proc->pid, ntohl (hbp_proc_register->pid),
 	    hb_process_state_string (proc->type, proc->state),
 	    hbp_proc_register->args);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-	  "Registered as local process entries", error_string);
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		 "Registered as local process entries", error_string);
 
   css_remove_entry_by_conn (conn, &css_Master_socket_anchor);
   return;
@@ -2854,9 +2866,9 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
 	  snprintf (error_string, sizeof (error_string),
 		    "process does not respond for a long time. kill pid %d signal %d.",
 		    proc->pid, sig);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_HB_PROCESS_EVENT, 2, "Process failure detected",
-		  error_string);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			 ER_HB_PROCESS_EVENT, 2, "Process failure detected",
+			 error_string);
 	  kill (proc->pid, sig);
 	}
       return ER_FAILED;
@@ -2898,8 +2910,8 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
 		"(state:%d[%s], args:[%s], pid:%d)",
 		state, css_ha_server_state_string (state), proc->args,
 		proc->pid);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
-	      error_string);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		     error_string);
 
       return ER_FAILED;
     }
@@ -2908,8 +2920,8 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
 	    "Send changemode request to the server. "
 	    "(state:%d[%s], args:[%s], pid:%d)",
 	    state, css_ha_server_state_string (state), proc->args, proc->pid);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	  ER_HA_GENERIC_ERROR, 1, error_string);
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		 ER_HA_GENERIC_ERROR, 1, error_string);
 
   return NO_ERROR;
 }
@@ -2947,7 +2959,8 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
   proc = hb_return_proc_by_fd (sfd);
   if (proc == NULL)
     {
-      er_log_debug (ARG_FILE_LINE, "cannot find process. (fd:%d). \n", sfd);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "cannot find process. (fd:%d). \n",
+			   sfd);
       pthread_mutex_unlock (&hb_Resource->lock);
       pthread_mutex_unlock (&hb_Cluster->lock);
       return;
@@ -2957,8 +2970,8 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
 	    "Receive changemode response from the server. "
 	    "(state:%d[%s], args:[%s], pid:%d)", state,
 	    css_ha_server_state_string (state), proc->args, proc->pid);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
-	  error_string);
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		 error_string);
 
   switch (state)
     {
@@ -3013,8 +3026,9 @@ hb_thread_cluster_worker (void *arg)
   HB_JOB_ENTRY *job;
 
 #if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE, "thread started. (thread:{%s}, tid:%d).\n",
-		__func__, THREAD_ID ());
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+		       "thread started. (thread:{%s}, tid:%d).\n", __func__,
+		       THREAD_ID ());
 #endif
 
   while (cluster_Jobs->shutdown == false)
@@ -3029,7 +3043,7 @@ hb_thread_cluster_worker (void *arg)
     }
 
 #if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE, "thread exit.\n");
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "thread exit.\n");
 #endif
 
 #if defined(WINDOWS)
@@ -3063,8 +3077,9 @@ hb_thread_cluster_reader (void *arg)
   socklen_t from_len;
 
 #if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE, "thread started. (thread:{%s}, tid:%d).\n",
-		__func__, THREAD_ID ());
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+		       "thread started. (thread:{%s}, tid:%d).\n", __func__,
+		       THREAD_ID ());
 #endif
 
   aligned_buffer = PTR_ALIGN (buffer, MAX_ALIGNMENT);
@@ -3094,7 +3109,7 @@ hb_thread_cluster_reader (void *arg)
     }
 
 #if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE, "thread exit.\n");
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "thread exit.\n");
 #endif
 
 #if defined(WINDOWS)
@@ -3121,8 +3136,9 @@ hb_thread_resource_worker (void *arg)
   HB_JOB_ENTRY *job;
 
 #if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE, "thread started. (thread:{%s}, tid:%d).\n",
-		__func__, THREAD_ID ());
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+		       "thread started. (thread:{%s}, tid:%d).\n", __func__,
+		       THREAD_ID ());
 #endif
 
   while (resource_Jobs->shutdown == false)
@@ -3137,7 +3153,7 @@ hb_thread_resource_worker (void *arg)
     }
 
 #if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE, "thread exit.\n");
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "thread exit.\n");
 #endif
 
 #if defined(WINDOWS)
@@ -3167,8 +3183,8 @@ hb_cluster_job_initialize (void)
       cluster_Jobs = (HB_JOB *) malloc (sizeof (HB_JOB));
       if (cluster_Jobs == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (HB_JOB));
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			 ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HB_JOB));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -3208,8 +3224,8 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 
   if (nodes == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
-	      prm_get_name (PRM_ID_HA_NODE_LIST));
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
+		     prm_get_name (PRM_ID_HA_NODE_LIST));
 
       return ER_PRM_BAD_VALUE;
     }
@@ -3219,8 +3235,8 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
       hb_Cluster = (HB_CLUSTER *) malloc (sizeof (HB_CLUSTER));
       if (hb_Cluster == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (HB_CLUSTER));
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			 ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HB_CLUSTER));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -3229,8 +3245,8 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 
   if (GETHOSTNAME (host_name, sizeof (host_name)))
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
       return ER_BO_UNABLE_TO_FIND_HOSTNAME;
     }
 
@@ -3256,13 +3272,13 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
     hb_cluster_load_group_and_node_list ((char *) nodes, (char *) replicas);
   if (hb_Cluster->num_nodes < 1)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "hb_Cluster->num_nodes is smaller than '1'. (num_nodes=%d). \n",
-		    hb_Cluster->num_nodes);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "hb_Cluster->num_nodes is smaller than '1'. (num_nodes=%d). \n",
+			   hb_Cluster->num_nodes);
       pthread_mutex_unlock (&hb_Cluster->lock);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
-	      prm_get_name (PRM_ID_HA_NODE_LIST));
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
+		     prm_get_name (PRM_ID_HA_NODE_LIST));
       return ER_PRM_BAD_VALUE;
     }
 
@@ -3274,8 +3290,8 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   hb_Cluster->sfd = socket (AF_INET, SOCK_DGRAM, 0);
   if (hb_Cluster->sfd < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_DATAGRAM_SOCKET, 0);
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ERR_CSS_TCP_DATAGRAM_SOCKET, 0);
       pthread_mutex_unlock (&hb_Cluster->lock);
       return ERR_CSS_TCP_DATAGRAM_SOCKET;
     }
@@ -3288,8 +3304,8 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   if (bind (hb_Cluster->sfd, (struct sockaddr *) &udp_saddr,
 	    sizeof (udp_saddr)) < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_DATAGRAM_BIND, 0);
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ERR_CSS_TCP_DATAGRAM_BIND, 0);
       pthread_mutex_unlock (&hb_Cluster->lock);
       return ERR_CSS_TCP_DATAGRAM_BIND;
     }
@@ -3315,8 +3331,8 @@ hb_resource_initialize (void)
       hb_Resource = (HB_RESOURCE *) malloc (sizeof (HB_RESOURCE));
       if (hb_Resource == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (HB_RESOURCE));
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			 ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HB_RESOURCE));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -3348,8 +3364,8 @@ hb_resource_job_initialize ()
       resource_Jobs = (HB_JOB *) malloc (sizeof (HB_JOB));
       if (resource_Jobs == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (HB_JOB));
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			 ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HB_JOB));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -3396,16 +3412,16 @@ hb_thread_initialize (void)
   rv = pthread_attr_init (&thread_attr);
   if (rv != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_ATTR_INIT, 0);
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_CSS_PTHREAD_ATTR_INIT, 0);
       return ER_CSS_PTHREAD_ATTR_INIT;
     }
 
   rv = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
   if (rv != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_ATTR_SETDETACHSTATE, 0);
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_CSS_PTHREAD_ATTR_SETDETACHSTATE, 0);
       return ER_CSS_PTHREAD_ATTR_SETDETACHSTATE;
     }
 
@@ -3422,8 +3438,8 @@ hb_thread_initialize (void)
 #endif /* AIX */
   if (rv != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_ATTR_SETSCOPE, 0);
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_CSS_PTHREAD_ATTR_SETSCOPE, 0);
       return ER_CSS_PTHREAD_ATTR_SETSCOPE;
     }
 
@@ -3438,8 +3454,8 @@ hb_thread_initialize (void)
 				      (PRM_ID_THREAD_STACKSIZE));
       if (rv != 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ER_CSS_PTHREAD_ATTR_SETSTACKSIZE, 0);
+	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				      ER_CSS_PTHREAD_ATTR_SETSTACKSIZE, 0);
 	  return ER_CSS_PTHREAD_ATTR_SETSTACKSIZE;
 	}
 
@@ -3453,8 +3469,8 @@ hb_thread_initialize (void)
 		       hb_thread_cluster_reader, NULL);
   if (rv != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_CREATE, 0);
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_CSS_PTHREAD_CREATE, 0);
       return ER_CSS_PTHREAD_CREATE;
     }
 
@@ -3462,8 +3478,8 @@ hb_thread_initialize (void)
 		       hb_thread_cluster_worker, NULL);
   if (rv != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_CREATE, 0);
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_CSS_PTHREAD_CREATE, 0);
       return ER_CSS_PTHREAD_CREATE;
     }
 
@@ -3471,8 +3487,8 @@ hb_thread_initialize (void)
 		       hb_thread_resource_worker, NULL);
   if (rv != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_CREATE, 0);
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_CSS_PTHREAD_CREATE, 0);
       return ER_CSS_PTHREAD_CREATE;
     }
 
@@ -3480,8 +3496,8 @@ hb_thread_initialize (void)
   rv = pthread_attr_destroy (&thread_attr);
   if (rv != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_ATTR_DESTROY, 0);
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_CSS_PTHREAD_ATTR_DESTROY, 0);
       return ER_CSS_PTHREAD_ATTR_DESTROY;
     }
 
@@ -3498,15 +3514,15 @@ hb_master_init (void)
 {
   int error;
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STARTED, 0);
+  MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STARTED, 0);
 #if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE,
-		"heartbeat params. (ha_mode:%s, heartbeat_nodes:{%s}"
-		", ha_port_id:%d). \n",
-		(prm_get_integer_value (PRM_ID_HA_MODE)
-		 != HA_MODE_OFF) ? "yes" : "no",
-		prm_get_string_value (PRM_ID_HA_NODE_LIST),
-		prm_get_integer_value (PRM_ID_HA_PORT_ID));
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+		       "heartbeat params. (ha_mode:%s, heartbeat_nodes:{%s}"
+		       ", ha_port_id:%d). \n",
+		       (prm_get_integer_value (PRM_ID_HA_MODE)
+			!= HA_MODE_OFF) ? "yes" : "no",
+		       prm_get_string_value (PRM_ID_HA_NODE_LIST),
+		       prm_get_integer_value (PRM_ID_HA_PORT_ID));
 #endif
 
   sysprm_reload_and_init (NULL, NULL);
@@ -3515,40 +3531,41 @@ hb_master_init (void)
 				 (PRM_ID_HA_REPLICA_LIST));
   if (error != NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "hb_cluster_initialize failed. "
-		    "(error=%d). \n", error);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_cluster_initialize failed. "
+			   "(error=%d). \n", error);
       goto error_return;
     }
 
   error = hb_cluster_job_initialize ();
   if (error != NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "hb_cluster_job_initialize failed. "
-		    "(error=%d). \n", error);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_cluster_job_initialize failed. "
+			   "(error=%d). \n", error);
       goto error_return;
     }
 
   error = hb_resource_initialize ();
   if (error != NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "hb_resource_initialize failed. "
-		    "(error=%d). \n", error);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_resource_initialize failed. "
+			   "(error=%d). \n", error);
       goto error_return;
     }
 
   error = hb_resource_job_initialize ();
   if (error != NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "hb_resource_job_initialize failed. "
-		    "(error=%d). \n", error);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "hb_resource_job_initialize failed. "
+			   "(error=%d). \n", error);
       goto error_return;
     }
 
   error = hb_thread_initialize ();
   if (error != NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "hb_thread_initialize failed. "
-		    "(error=%d). \n", error);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_thread_initialize failed. "
+			   "(error=%d). \n", error);
       goto error_return;
     }
 
@@ -3628,9 +3645,9 @@ hb_resource_cleanup (void)
 	  if (proc->type != HB_PTYPE_SERVER)
 	    {
 #if defined (HB_VERBOSE_DEBUG)
-	      er_log_debug (ARG_FILE_LINE,
-			    "remove socket-queue entry. (pid:%d). \n",
-			    proc->pid);
+	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+				   "remove socket-queue entry. (pid:%d). \n",
+				   proc->pid);
 #endif
 	      css_remove_entry_by_conn (proc->conn,
 					&css_Master_socket_anchor);
@@ -3662,8 +3679,9 @@ hb_resource_cleanup (void)
 	}
       else
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"invalid socket-queue entry. (pid:%d).\n", proc->pid);
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			       "invalid socket-queue entry. (pid:%d).\n",
+			       proc->pid);
 	}
 
       proc->state = HB_PSTATE_DEREGISTERED;
@@ -3694,9 +3712,9 @@ hb_resource_cleanup (void)
 		{
 		  /* process was terminated */
 #if defined (HB_VERBOSE_DEBUG)
-		  er_log_debug (ARG_FILE_LINE,
-				"remove socket-queue entry. (pid:%d). \n",
-				proc->pid);
+		  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+				       "remove socket-queue entry. (pid:%d). \n",
+				       proc->pid);
 #endif
 		  css_remove_entry_by_conn (proc->conn,
 					    &css_Master_socket_anchor);
@@ -3739,9 +3757,9 @@ hb_resource_cleanup (void)
 			{
 			  /* socket closed */
 #if defined (HB_VERBOSE_DEBUG)
-			  er_log_debug (ARG_FILE_LINE,
-					"remove socket-queue entry. (pid:%d). \n",
-					proc->pid);
+			  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+					       "remove socket-queue entry. (pid:%d). \n",
+					       proc->pid);
 #endif
 			  css_remove_entry_by_conn (proc->conn,
 						    &css_Master_socket_anchor);
@@ -3768,11 +3786,12 @@ hb_resource_cleanup (void)
     }
 
 #if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE,
-		"close all local heartbeat connection. (timer:%d*%d).\n",
-		prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM),
-		prm_get_integer_value
-		(PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+		       "close all local heartbeat connection. (timer:%d*%d).\n",
+		       prm_get_integer_value
+		       (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM),
+		       prm_get_integer_value
+		       (PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
 #endif
 
   /* now all server processes were terminated or dereg time is expired
@@ -3792,9 +3811,9 @@ hb_resource_cleanup (void)
 	  else
 	    {
 #if defined (HB_VERBOSE_DEBUG)
-	      er_log_debug (ARG_FILE_LINE,
-			    "Process (pid:%d) did not terminated."
-			    "It is forced to kill.\n", proc->pid);
+	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+				   "Process (pid:%d) did not terminated."
+				   "It is forced to kill.\n", proc->pid);
 
 	      num_active_process++;
 #endif
@@ -3806,7 +3825,8 @@ hb_resource_cleanup (void)
 #if defined (HB_VERBOSE_DEBUG)
   if (num_active_process == 0)
     {
-      er_log_debug (ARG_FILE_LINE, "all ha processes are terminated. \n");
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "all ha processes are terminated. \n");
     }
 #endif
 
@@ -3975,8 +3995,8 @@ hb_reload_config (void)
   sysprm_reload_and_init (NULL, NULL);
 
 #if defined (HB_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE, "reload configuration. (nodes:{%s}).\n",
-		prm_get_string_value (PRM_ID_HA_NODE_LIST));
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "reload configuration. (nodes:{%s}).\n",
+		       prm_get_string_value (PRM_ID_HA_NODE_LIST));
 #endif
 
   if (prm_get_string_value (PRM_ID_HA_NODE_LIST) == NULL)
@@ -4006,11 +4026,11 @@ hb_reload_config (void)
       (hb_Cluster->master
        && hb_return_node_by_name (hb_Cluster->master->host_name) == NULL))
     {
-      er_log_debug (ARG_FILE_LINE, "reconfigure heartebat failed. "
-		    "(num_nodes:%d, master:{%s}).\n",
-		    hb_Cluster->num_nodes,
-		    (hb_Cluster->master) ? hb_Cluster->master->
-		    host_name : "-");
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "reconfigure heartebat failed. "
+			   "(num_nodes:%d, master:{%s}).\n",
+			   hb_Cluster->num_nodes,
+			   (hb_Cluster->master) ? hb_Cluster->master->
+			   host_name : "-");
 
       hb_cluster_remove_all_nodes (hb_Cluster->nodes);
       hb_Cluster->myself = old_myself;
@@ -4023,16 +4043,17 @@ hb_reload_config (void)
 
       pthread_mutex_unlock (&hb_Cluster->lock);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
-	      prm_get_name (PRM_ID_HA_NODE_LIST));
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
+		     prm_get_name (PRM_ID_HA_NODE_LIST));
       return ER_PRM_BAD_VALUE;
     }
 
   for (new_node = hb_Cluster->nodes; new_node; new_node = new_node->next)
     {
 #if defined (HB_VERBOSE_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "reloaded nodes list. (nodes:{%s}).\n",
-		    new_node->host_name);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "reloaded nodes list. (nodes:{%s}).\n",
+			   new_node->host_name);
 #endif
       for (old_node = old_nodes; old_node; old_node = old_node->next)
 	{
@@ -4190,8 +4211,8 @@ hb_get_node_info_string (char **str, bool verbose_yn)
   if (*str == NULL)
     {
       pthread_mutex_unlock (&hb_Cluster->lock);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (char) * buf_size);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char) * buf_size);
       return;
     }
   **str = '\0';
@@ -4287,8 +4308,8 @@ hb_get_process_info_string (char **str, bool verbose_yn)
   if (*str == NULL)
     {
       pthread_mutex_unlock (&hb_Resource->lock);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (char) * buf_size);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char) * buf_size);
       return;
     }
   **str = '\0';
@@ -4449,8 +4470,8 @@ hb_kill_all_heartbeat_process (char **str)
 	  if (pids == NULL)
 	    {
 	      pthread_mutex_unlock (&hb_Resource->lock);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			     ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	      return;
 	    }
 	  pids[count] = proc->pid;
@@ -4495,9 +4516,9 @@ hb_deregister_by_pid (pid_t pid)
       snprintf (error_string, LINE_MAX,
 		"%s. (cannot find process to deregister, pid:%d)",
 		HB_RESULT_FAILURE_STR, pid);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEREGISTER_STR,
-	      error_string);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEREGISTER_STR,
+		     error_string);
       return;
     }
 
@@ -4517,8 +4538,9 @@ hb_deregister_by_pid (pid_t pid)
 
   snprintf (error_string, LINE_MAX, "%s. (pid:%d)", HB_RESULT_SUCCESS_STR,
 	    pid);
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
-	  HB_CMD_DEREGISTER_STR, error_string);
+  MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		 ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEREGISTER_STR,
+		 error_string);
 
   return;
 }
@@ -4551,9 +4573,9 @@ hb_deregister_by_args (char *args)
       snprintf (error_string, LINE_MAX,
 		"%s. (cannot find process to deregister, args:%s)",
 		HB_RESULT_FAILURE_STR, args);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEREGISTER_STR,
-	      error_string);
+      MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEREGISTER_STR,
+		     error_string);
       return;
     }
 
@@ -4573,8 +4595,9 @@ hb_deregister_by_args (char *args)
 
   snprintf (error_string, LINE_MAX, "%s. (args:%s)", HB_RESULT_SUCCESS_STR,
 	    args);
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
-	  HB_CMD_DEREGISTER_STR, error_string);
+  MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		 ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEREGISTER_STR,
+		 error_string);
 
   return;
 }
@@ -4594,9 +4617,9 @@ hb_deregister_process (HB_PROC_ENTRY * proc)
       snprintf (error_string, LINE_MAX,
 		"%s. (unexpected process status or invalid pid, status:%d, pid:%d)",
 		HB_RESULT_FAILURE_STR, proc->state, proc->pid);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEREGISTER_STR,
-	      error_string);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEREGISTER_STR,
+		     error_string);
       return NULL;
     }
 
@@ -4605,8 +4628,8 @@ hb_deregister_process (HB_PROC_ENTRY * proc)
   job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
   if (job_arg == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (HB_JOB_ARG));
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HB_JOB_ARG));
       return NULL;
     }
 
@@ -4644,21 +4667,23 @@ hb_reconfig_heartbeat (char **str)
       snprintf (error_string, LINE_MAX,
 		"%s. (failed to reload CUBRID heartbeat configuration)",
 		HB_RESULT_FAILURE_STR);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_RELOAD_STR, error_string);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_RELOAD_STR,
+		     error_string);
     }
   else
     {
       snprintf (error_string, LINE_MAX, "%s.", HB_RESULT_SUCCESS_STR);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_RELOAD_STR, error_string);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_RELOAD_STR,
+		     error_string);
     }
 
   hb_get_node_info_string (str, false);
 
   snprintf (error_string, LINE_MAX, "\n%s", (str && *str) ? *str : "");
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
-	  HB_CMD_RELOAD_STR, error_string);
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
+		 HB_CMD_RELOAD_STR, error_string);
 
   return;
 }
@@ -4693,8 +4718,9 @@ hb_deactivate_heartbeat (char **str)
   *str = (char *) malloc (required_size * sizeof (char));
   if (NULL == *str)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      required_size * sizeof (char));
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		     required_size * sizeof (char));
       return;
     }
   **str = '\0';
@@ -4704,9 +4730,9 @@ hb_deactivate_heartbeat (char **str)
       snprintf (error_string, LINE_MAX,
 		"%s. (CUBRID heartbeat feature already deactivated)",
 		HB_RESULT_FAILURE_STR);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR,
-	      error_string);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR,
+		     error_string);
 
       return;
     }
@@ -4724,8 +4750,8 @@ hb_deactivate_heartbeat (char **str)
   hb_Is_activated = false;
 
   snprintf (error_string, LINE_MAX, "%s.", HB_RESULT_SUCCESS_STR);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
-	  HB_CMD_DEACTIVATE_STR, error_string);
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
+		 HB_CMD_DEACTIVATE_STR, error_string);
 
   return;
 }
@@ -4759,8 +4785,9 @@ hb_activate_heartbeat (char **str)
   *str = (char *) malloc (required_size * sizeof (char));
   if (NULL == *str)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      required_size * sizeof (char));
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		     required_size * sizeof (char));
       return;
     }
   **str = '\0';
@@ -4770,8 +4797,9 @@ hb_activate_heartbeat (char **str)
       snprintf (error_string, LINE_MAX,
 		"%s. (CUBRID heartbeat feature already activated)",
 		HB_RESULT_FAILURE_STR);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_ACTIVATE_STR, error_string);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_ACTIVATE_STR,
+		     error_string);
       return;
     }
 
@@ -4781,16 +4809,17 @@ hb_activate_heartbeat (char **str)
       snprintf (error_string, LINE_MAX,
 		"%s. (failed to initialize CUBRID heartbeat feature)",
 		HB_RESULT_FAILURE_STR);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HB_COMMAND_EXECUTION, 2, HB_CMD_ACTIVATE_STR, error_string);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_ACTIVATE_STR,
+		     error_string);
       return;
     }
 
   hb_Is_activated = true;
 
   snprintf (error_string, LINE_MAX, "%s.", HB_RESULT_SUCCESS_STR);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
-	  HB_CMD_ACTIVATE_STR, error_string);
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
+		 HB_CMD_ACTIVATE_STR, error_string);
 
   return;
 }
@@ -4827,7 +4856,8 @@ hb_check_ping (const char *host)
 	{
 	  /* PING Host is same as cluster's host name */
 	  snprintf (buf, sizeof (buf), "Useless PING host name %s", host);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
+			 1, buf);
 	  return HB_PING_USELESS_HOST;
 	}
     }
@@ -4837,16 +4867,16 @@ hb_check_ping (const char *host)
   if (fp == NULL)
     {
       /* ping open fail */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HB_NODE_EVENT, 1, "PING command pork failed");
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_NODE_EVENT, 1, "PING command pork failed");
       return HB_PING_SYS_ERR;
     }
 
   if (fgets (result_str, sizeof (result_str), fp) == NULL)
     {
       pclose (fp);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HB_NODE_EVENT, 1, "Can't get PING result");
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_NODE_EVENT, 1, "Can't get PING result");
       return HB_PING_SYS_ERR;
     }
 
@@ -4859,14 +4889,16 @@ hb_check_ping (const char *host)
     {
       /* ping failed */
       snprintf (buf, sizeof (buf), "PING failed for host %s", host);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+		     buf);
 
       return HB_PING_FAILURE;
 
     }
   /* ping success */
   snprintf (buf, sizeof (buf), "PING success for host %s", host);
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
+  MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+		 buf);
 
   return HB_PING_SUCCESS;
 }

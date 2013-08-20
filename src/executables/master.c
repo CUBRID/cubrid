@@ -142,6 +142,7 @@ SOCKET_QUEUE_ENTRY *css_Master_socket_anchor = NULL;
 #if !defined(WINDOWS)
 pthread_mutex_t css_Master_socket_anchor_lock;
 #endif
+pthread_mutex_t css_Master_er_log_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  * css_master_error() - print error message to syslog or console
@@ -242,7 +243,8 @@ css_master_cleanup (int sig)
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STOPPED, 0);
+      MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_STOPPED, 0);
     }
 #endif
   exit (1);
@@ -263,7 +265,7 @@ css_master_init (int cport, SOCKET * clientfd)
       os_set_signal_handler (SIGINT, css_master_cleanup) == SIG_ERR ||
       os_set_signal_handler (SIGTERM, css_master_cleanup) == SIG_ERR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return (0);
     }
 #else /* ! WINDOWS */
@@ -273,7 +275,7 @@ css_master_init (int cport, SOCKET * clientfd)
       os_set_signal_handler (SIGPIPE, SIG_IGN) == SIG_ERR ||
       os_set_signal_handler (SIGCHLD, SIG_IGN) == SIG_ERR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return (0);
     }
 #endif /* ! WINDOWS */
@@ -1556,7 +1558,8 @@ css_daemon_start (void)
   childpid = fork ();
   if (childpid < 0)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_CANNOT_FORK, 0);
+      MASTER_ER_SET (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		     ERR_CSS_CANNOT_FORK, 0);
     }
   else if (childpid > 0)
     {

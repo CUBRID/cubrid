@@ -879,3 +879,7 @@ EXPORTS
 	db_private_free_release
 	ws_mop
 	oid_compare
+;
+;   porting.h
+;
+	port_win_mutex_init_and_lock
