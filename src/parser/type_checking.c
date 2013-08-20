@@ -13338,8 +13338,10 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	coll_infer4.codeset = LANG_SYS_CODESET;
 	coll_infer1.coll_id = LANG_SYS_COLLATION;
 	coll_infer4.coll_id = LANG_SYS_COLLATION;
-	coll_infer1.coerc_level = PT_COLLATION_NOT_COERC;
-	coll_infer4.coerc_level = PT_COLLATION_NOT_COERC;
+	coll_infer1.coerc_level = PT_COLLATION_FULLY_COERC;
+	coll_infer4.coerc_level = PT_COLLATION_FULLY_COERC;
+	coll_infer1.can_force_cs = true;
+	coll_infer4.can_force_cs = true;
 
 	if (pt_node_list_to_array (parser, arg_list, arg_array,
 				   NUM_F_INSERT_SUBSTRING_ARGS,
