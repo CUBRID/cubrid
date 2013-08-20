@@ -21098,7 +21098,7 @@ pt_get_collation_info (PT_NODE * node, PT_COLL_INFER * coll_infer)
 	  coll_infer->coerc_level = coll_infer_dummy.coerc_level;
 	  coll_infer->can_force_cs = coll_infer_dummy.can_force_cs;
 
-	  if (PT_IS_NUMERIC_TYPE (node->info.expr.arg1->type_enum))
+	  if (!PT_HAS_COLLATION (node->info.expr.arg1->type_enum))
 	    {
 	      coll_infer->can_force_cs = true;
 	    }
@@ -21733,11 +21733,10 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer,
 		     const int args_w_coll, bool op_has_3_args,
 		     int *common_coll, INTL_CODESET * common_cs)
 {
-#define MORE_COERCIBLE(arg1_coll_infer, arg2_coll_infer)		  \
-  (((arg1_coll_infer)->coerc_level > (arg2_coll_infer)->coerc_level)	  \
-   || ((arg1_coll_infer)->coerc_level == (arg2_coll_infer)->coerc_level   \
-	&& (arg1_coll_infer)->can_force_cs				  \
-	&& !((arg2_coll_infer)->can_force_cs)))
+#define MORE_COERCIBLE(arg1_coll_infer, arg2_coll_infer)		     \
+  ((((arg1_coll_infer)->can_force_cs) && !((arg2_coll_infer)->can_force_cs)) \
+   || ((arg1_coll_infer)->coerc_level > (arg2_coll_infer)->coerc_level)	     \
+       && (arg1_coll_infer)->can_force_cs == (arg2_coll_infer)->can_force_cs)
 
   assert (common_coll != NULL);
   assert (common_cs != NULL);
@@ -21787,10 +21786,16 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer,
 
 	  if (set_arg3)
 	    {
-	      /* coerce arg2 collation */
+	      /* coerce to collation of arg3 */
 	      if (!INTL_CAN_COERCE_CS (arg2_coll_infer->codeset,
 				       arg3_coll_infer->codeset)
 		  && !arg2_coll_infer->can_force_cs)
+		{
+		  goto error;
+		}
+	      if (!INTL_CAN_COERCE_CS (arg1_coll_infer->codeset,
+				       arg3_coll_infer->codeset)
+		  && !arg1_coll_infer->can_force_cs)
 		{
 		  goto error;
 		}
@@ -21815,10 +21820,8 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer,
     }
   else
     {
-      assert ((arg1_coll_infer->coerc_level < arg2_coll_infer->coerc_level)
-	      || (arg1_coll_infer->coerc_level == arg2_coll_infer->coerc_level
-		  && (arg1_coll_infer->coll_id == arg2_coll_infer->coll_id
-		      || !arg1_coll_infer->can_force_cs)));
+      assert (MORE_COERCIBLE (arg2_coll_infer, arg1_coll_infer)
+	      || arg2_coll_infer->coll_id == arg1_coll_infer->coll_id);
 
       /* coerce arg2 collation */
       if (!INTL_CAN_COERCE_CS (arg2_coll_infer->codeset,
@@ -21850,10 +21853,17 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer,
 
 	  if (set_arg3)
 	    {
-	      /* coerce arg1 collation */
+	      /* coerce to collation of arg3 */
 	      if (!INTL_CAN_COERCE_CS (arg1_coll_infer->codeset,
 				       arg3_coll_infer->codeset)
 		  && !arg1_coll_infer->can_force_cs)
+		{
+		  goto error;
+		}
+
+	      if (!INTL_CAN_COERCE_CS (arg2_coll_infer->codeset,
+				       arg3_coll_infer->codeset)
+		  && !arg2_coll_infer->can_force_cs)
 		{
 		  goto error;
 		}
@@ -21921,7 +21931,9 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   arg1_coll_inf.codeset = arg2_coll_inf.codeset = arg3_coll_inf.codeset
     = LANG_COERCIBLE_CODESET;
   arg1_coll_inf.coerc_level = arg2_coll_inf.coerc_level =
-    arg3_coll_inf.coerc_level = PT_COLLATION_NOT_COERC;
+    arg3_coll_inf.coerc_level = PT_COLLATION_FULLY_COERC;
+  arg1_coll_inf.can_force_cs = arg2_coll_inf.can_force_cs =
+    arg2_coll_inf.can_force_cs = true;
 
   /* NULL has no collation */
   if (expr->type_enum == PT_TYPE_NULL)

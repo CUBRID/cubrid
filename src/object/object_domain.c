@@ -8234,9 +8234,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    default:
 	      {
 		DB_VALUE tmpval;
+		DB_VALUE cs;
 
 		DB_MAKE_NULL (&tmpval);
-		err = db_clob_to_char (src, NULL, &tmpval);
+		/* convert directly from CLOB into charset of desired domain
+		 * string */
+		DB_MAKE_INTEGER (&cs, desired_domain->codeset);
+		err = db_clob_to_char (src, &cs, &tmpval);
 		if (err == NO_ERROR)
 		  {
 		    err =
