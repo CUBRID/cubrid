@@ -295,7 +295,8 @@ extern "C"
   extern PT_NODE *pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser,
 						   PT_NODE * arg,
 						   PT_TYPE_ENUM set_type,
-						   PT_NODE * set_data);
+						   PT_NODE * set_data,
+						   bool for_collation);
   extern int pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser,
 					       PT_NODE * query,
 					       PT_TYPE_ENUM new_type,

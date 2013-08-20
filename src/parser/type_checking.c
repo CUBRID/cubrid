@@ -4454,7 +4454,7 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr,
 	    }
 	  new_node =
 	    pt_wrap_collection_with_cast_op (parser, node, def_type,
-					     data_type);
+					     data_type, false);
 	}
       else
 	{
@@ -5226,7 +5226,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 
       arg2 =
 	pt_wrap_collection_with_cast_op (parser, arg2, sig.arg2_type.val.type,
-					 data_type);
+					 data_type, false);
       if (!arg2)
 	{
 	  return NULL;
@@ -8159,7 +8159,8 @@ pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query,
 
 PT_NODE *
 pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
-				 PT_TYPE_ENUM set_type, PT_NODE * set_data)
+				 PT_TYPE_ENUM set_type, PT_NODE * set_data,
+				 bool for_collation)
 {
   PT_NODE *new_att, *set_dt, *next_att;
 
@@ -8182,20 +8183,28 @@ pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
 	      {
 		next_att = arg_list->next;
 
-		if (set_data->type_enum != arg_list->type_enum && (!is_numeric
-								   ||
-								   !PT_IS_NUMERIC_TYPE
-								   (arg_list->
-								    type_enum)))
+		if ((set_data->type_enum != arg_list->type_enum
+		     && (!is_numeric
+			 || !PT_IS_NUMERIC_TYPE (arg_list->type_enum)))
+		    || (for_collation == true
+			&& PT_HAS_COLLATION (set_data->type_enum)
+			&& PT_HAS_COLLATION (arg_list->type_enum)
+			&& arg_list->data_type != NULL
+			&& set_data->info.data_type.collation_id
+			!= arg_list->data_type->info.data_type.collation_id))
 		  {
 		    /* Set the expected domain of host variable to type
 		       set_data so that at runtime the host variable should
 		       be casted to it if needed */
 		    if (arg_list->type_enum == PT_TYPE_MAYBE)
 		      {
-			arg_list->expected_domain =
-			  pt_data_type_to_db_domain (parser, set_data, NULL);
-			pt_preset_hostvar (parser, arg_list);
+			if (for_collation == false)
+			  {
+			    arg_list->expected_domain =
+			      pt_data_type_to_db_domain (parser, set_data,
+							 NULL);
+			    pt_preset_hostvar (parser, arg_list);
+			  }
 		      }
 		    else
 		      {
@@ -21432,7 +21441,8 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (apply_wrap_cast)
 	    {
 	      node = pt_wrap_collection_with_cast_op (parser, node,
-						      node->type_enum, dt);
+						      node->type_enum, dt,
+						      true);
 	      /* flag PT_EXPR_INFO_CAST_COLL_MODIFIER is not set here;
 	       * COLLATE modifier is not supported for this context */
 	    }
