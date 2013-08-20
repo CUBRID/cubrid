@@ -5065,6 +5065,7 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
   bool is_btree_found;
   DISK_REPR *disk_repr_p = NULL;
   bool free_disk_rep = false;
+  int key_size;
 
   assert (class_oid != NULL && btid != NULL && cardinality != NULL);
   *cardinality = -1;
@@ -5167,14 +5168,23 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
      the user must previously execute 'update statistics on class_name',
      in order to get updated statistics. */
 
-  if (key_pos >= p_stat_info->pkeys_size || key_pos < 0)
+  if (TP_DOMAIN_TYPE (p_stat_info->key_type) == DB_TYPE_MIDXKEY)
+    {
+      key_size = tp_domain_size (p_stat_info->key_type->setdomain);
+    }
+  else
+    {
+      key_size = 1;
+    }
+
+  if (key_pos >= key_size || key_pos < 0)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR,
 	      1, "index_cardinality()");
       goto exit_cleanup;
     }
 
-  *cardinality = p_stat_info->pkeys[key_pos];
+  *cardinality = p_stat_info->keys;
 
 exit_cleanup:
   if (free_disk_rep)
