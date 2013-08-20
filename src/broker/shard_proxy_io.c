@@ -5205,6 +5205,12 @@ int
 proxy_convert_error_code (int error_ind, int error_code, char *driver_info,
 			  T_BROKER_VERSION client_version, bool to_new)
 {
+  if (error_code >= 0)
+    {
+      assert (error_code == 0);
+      return error_code;
+    }
+
   if (client_version < CAS_MAKE_VER (8, 3, 0))
     {
       if (to_new == PROXY_CONV_ERR_TO_NEW)
