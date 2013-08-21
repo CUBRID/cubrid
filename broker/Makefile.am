@@ -45,10 +45,11 @@ AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ \
 
 BROKER_CAS_LIBS = @CS_LIB@
 LOG_RUNNER_LIBS = @CS_LIB@ @CCI_LIB@
+TESTER_LIBS = @CS_LIB@ @CCI_LIB@
 
 bin_PROGRAMS = cub_broker cubrid_broker cub_cas cub_proxy \
 	broker_monitor broker_changer \
-	broker_log_converter broker_log_runner broker_log_top
+	broker_log_converter broker_log_runner broker_log_top broker_tester
 
 include_HEADERS = \
 	$(BROKER_DIR)/shard_key.h 
@@ -180,6 +181,16 @@ broker_log_runner_SOURCES = \
 	$(BROKER_DIR)/log_top_string.c
 broker_log_runner_CPPFLAGS = $(AM_CPPFLAGS) -DBROKER_LOG_RUNNER
 broker_log_runner_LDADD = $(LOG_RUNNER_LIBS)
+
+broker_tester_SOURCES = \
+	$(BROKER_DIR)/broker_tester.c \
+        $(BROKER_DIR)/broker_config.c \
+        $(BROKER_DIR)/broker_shm.c \
+	$(BROKER_DIR)/broker_error.c \
+	$(BROKER_DIR)/shard_metadata.c \
+	$(BROKER_DIR)/shard_shm.c 
+broker_tester_CPPFLAGS = $(AM_CPPFLAGS) -DBROKER_TESTER
+broker_tester_LDADD = $(TESTER_LIBS)
 
 broker_log_top_SOURCES = \
 	$(BROKER_DIR)/broker_log_top.c \

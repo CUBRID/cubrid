@@ -204,7 +204,8 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     off         <ブローカー名>\n\
     reset       <ブローカー名>\n\
     acl         <status|reload> [ブローカー名]\n\
-    getid       -b <ブローカー名> [-f] シャードキー\n
+    getid       -b <ブローカー名> [-f] シャードキー\n\
+    test        <ブローカー名> [-D <database_name>] [-u <user_name>] [-p <user_password>] [-c <SQL_command>] [-i <input_file>] [-o <output_file>] [-v] [-s]\n
 27 cubridユーティリティー、バージョン %s\n\
 使い方: %s manager <コマンド>\n\
 \n\

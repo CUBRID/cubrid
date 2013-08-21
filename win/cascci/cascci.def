@@ -89,6 +89,7 @@ EXPORTS
 	
 	cci_set_charset
 	cci_row_count
+	cci_get_shard_id_with_req_handle
 	cci_last_insert_id
 	cci_get_last_insert_id
 	cci_get_autocommit

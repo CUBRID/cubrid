@@ -204,7 +204,8 @@ Mevcut komut:\n\
     off         broker-name\n\
     reset       broker-name\n\
     acl         <status|reload> [broker-name]\n\
-    getid       -b <broker-name> [-f] shard-key\n
+    getid       -b <broker-name> [-f] shard-key\n\
+    test        broker-name [-D <database_name>] [-u <user_name>] [-p <user_password>] [-c <SQL_command>] [-i <input_file>] [-o <output_file>] [-v] [-s]\n
 27 cubrid yardımcı programı, sürüm %s\n\
 kullanım: %s manager <komut>\n\
 \n\

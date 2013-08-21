@@ -725,6 +725,7 @@ typedef struct _ha_config
 #define UTIL_CUBRID_NAME        "cub_server" UTIL_EXE_EXT
 #define UTIL_BROKER_NAME        "cubrid_broker" UTIL_EXE_EXT
 #define UTIL_MONITOR_NAME       "broker_monitor" UTIL_EXE_EXT
+#define UTIL_TESTER_NAME        "broker_tester" UTIL_EXE_EXT
 #define UTIL_CUB_AUTO_NAME      "cub_auto" UTIL_EXE_EXT
 #define UTIL_CUB_JS_NAME        "cub_js" UTIL_EXE_EXT
 #define UTIL_ADMIN_NAME         "cub_admin" UTIL_EXE_EXT
@@ -764,6 +765,7 @@ typedef struct _ha_config
 #define PRINT_CMD_COPYLOGDB     "copylogdb"
 #define PRINT_CMD_APPLYLOGDB    "applylogdb"
 #define PRINT_CMD_GETID         "getid"
+#define PRINT_CMD_TEST          "test"
 
 #define PRINT_RESULT_SUCCESS    "success"
 #define PRINT_RESULT_FAIL       "fail"
@@ -1361,7 +1363,7 @@ extern void util_redirect_stdout_to_null (void);
 extern int util_byte_to_size_string (char *buf, size_t len, UINT64 size_num);
 extern int util_size_string_to_byte (UINT64 * size_num, char *size_str);
 extern int util_msec_to_time_string (char *buf, size_t len, INT64 msec_num);
-extern int util_time_string_to_msec (INT64 *msec_num, char *time_str);
+extern int util_time_string_to_msec (INT64 * msec_num, char *time_str);
 extern void util_print_deprecated (const char *option);
 
 typedef struct

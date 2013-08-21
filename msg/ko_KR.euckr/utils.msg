@@ -204,7 +204,8 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     off         <브로커 이름>\n\
     reset       <브로커 이름>\n\
     acl         <status|reload> [브로커 이름]\n\
-    getid       -b <브로커 이름> [-f] shard-key\n
+    getid       -b <브로커 이름> [-f] shard-key\n\
+    test        <브로커 이름> [-D <database_name>] [-u <user_name>] [-p <user_password>] [-c <SQL_command>] [-i <input_file>] [-o <output_file>] [-v] [-s]\n
 27 cubrid 유틸리티, 버전 %s\n\
 사용법: %s manager <명령어>\n\
 \n\

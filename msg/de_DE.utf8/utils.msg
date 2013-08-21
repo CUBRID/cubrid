@@ -204,7 +204,8 @@ Vorhandene Befehle:\n\
     off         Brokername\n\
     reset       Brokername\n\
     acl         <status|reload> [Brokername]\n\
-    getid       -b Brokername [-f] shard-key\n
+    getid       -b Brokername [-f] shard-key\n\
+    test        Brokername [-D <database_name>] [-u <user_name>] [-p <user_password>] [-c <SQL_command>] [-i <input_file>] [-o <output_file>] [-v] [-s]\n
 27 Cubrid Utility, Version %s\n\
 Anwendung: %s manager <Befehl>\n\
 \n\

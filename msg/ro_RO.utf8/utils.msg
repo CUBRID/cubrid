@@ -204,7 +204,8 @@ Comenzi disponibile:\n\
     off         nume-broker\n\
     reset       nume-broker\n\
     acl         <status|reload> [nume-broker]\n\
-    getid       -b <nume-broker> [-f] cheie-shard\n
+    getid       -b <nume-broker> [-f] cheie-shard\n\
+    test        nume-broker [-D <database_name>] [-u <user_name>] [-p <user_password>] [-c <SQL_command>] [-i <input_file>] [-o <output_file>] [-v] [-s]\n
 27 utilitar CUBRID, versiunea %s\n\
 utilizare: %s manager <command>\n\
 \n\

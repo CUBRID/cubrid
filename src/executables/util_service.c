@@ -80,7 +80,8 @@ typedef enum
   INFO,
   SC_COPYLOGDB,
   SC_APPLYLOGDB,
-  GET_SHARID
+  GET_SHARID,
+  TEST
 } UTIL_SERVICE_COMMAND_E;
 
 typedef enum
@@ -179,6 +180,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_COPYLOGDB  "copylogdb"
 #define COMMAND_TYPE_APPLYLOGDB "applylogdb"
 #define COMMAND_TYPE_GETID      "getid"
+#define COMMAND_TYPE_TEST       "test"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL},
@@ -198,6 +200,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {SC_COPYLOGDB, COMMAND_TYPE_COPYLOGDB, MASK_HEARTBEAT},
   {SC_APPLYLOGDB, COMMAND_TYPE_APPLYLOGDB, MASK_HEARTBEAT},
   {GET_SHARID, COMMAND_TYPE_GETID, MASK_BROKER},
+  {TEST, COMMAND_TYPE_TEST, MASK_BROKER},
   {-1, "", MASK_ALL}
 };
 
@@ -337,6 +340,9 @@ command_string (int command_type)
       break;
     case SC_APPLYLOGDB:
       command = PRINT_CMD_APPLYLOGDB;
+      break;
+    case TEST:
+      command = PRINT_CMD_TEST;
       break;
     case STOP:
     default:
@@ -1942,6 +1948,53 @@ process_broker (int command_type, int argc, const char **argv,
 	  proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
 
 	free (args);
+      }
+      break;
+
+    case TEST:
+      {
+	int i;
+	const char **args;
+
+	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		       PRINT_BROKER_NAME, PRINT_CMD_TEST);
+	switch (is_broker_running ())
+	  {
+	  case 0:		/* no error */
+	    args = (const char **) malloc (sizeof (char *) * (argc + 2));
+	    if (args == NULL)
+	      {
+		return ER_GENERIC_ERROR;
+	      }
+
+	    args[0] = PRINT_BROKER_NAME " " PRINT_CMD_TEST;
+	    for (i = 0; i < argc; i++)
+	      {
+		args[i + 1] = argv[i];
+	      }
+	    args[argc + 1] = NULL;
+	    status =
+	      proc_execute (UTIL_TESTER_NAME, args, true, false, false, NULL);
+
+	    free (args);
+	    return status;
+
+	  case 1:		/* shm_open error */
+	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			   PRINT_BROKER_NAME);
+	    return NO_ERROR;
+
+	  case 2:		/* no conf file */
+	    fprintf (stderr,
+		     "Error: Error occurred while reading cubrid_broker.conf.\n"
+		     "       The file is not found or an invalid "
+		     "parameter name/value is found.\n");
+	    print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
+	    return ER_GENERIC_ERROR;
+	  default:		/* other error */
+	    print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
+	    return ER_GENERIC_ERROR;
+	  }
       }
       break;
 

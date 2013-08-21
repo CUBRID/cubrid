@@ -204,7 +204,8 @@ Lệnh có thể dùng :\n\
     off         tên-trung gian\n\
     reset       tên-trung gian\n\
     acl         <status|reload> [tên-trung gian]\n\
-    getid       -b <tên-trung gian> [-f] shard-key\n
+    getid       -b <tên-trung gian> [-f] shard-key\n\
+    test        tên-trung gian [-D <database_name>] [-u <user_name>] [-p <user_password>] [-c <SQL_command>] [-i <input_file>] [-o <output_file>] [-v] [-s]\n
 27 tiện ích cubrid, phiên bản %s\n\
 cách sử dụng: %s manager <lệnh>\n\
 \n\
