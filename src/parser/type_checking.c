@@ -21945,7 +21945,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   arg1_coll_inf.coerc_level = arg2_coll_inf.coerc_level =
     arg3_coll_inf.coerc_level = PT_COLLATION_FULLY_COERC;
   arg1_coll_inf.can_force_cs = arg2_coll_inf.can_force_cs =
-    arg2_coll_inf.can_force_cs = true;
+    arg3_coll_inf.can_force_cs = true;
 
   /* NULL has no collation */
   if (expr->type_enum == PT_TYPE_NULL)
