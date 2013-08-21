@@ -3355,8 +3355,8 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
   else
     {
       if (proxy_has_different_column_info (event_p->buffer.data,
-					   stmt_p->reply_buffer,
 					   event_p->buffer.length,
+					   stmt_p->reply_buffer,
 					   stmt_p->reply_buffer_length))
 	{
 	  PROXY_LOG (PROXY_LOG_MODE_DEBUG,
