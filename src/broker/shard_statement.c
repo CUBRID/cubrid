@@ -245,6 +245,7 @@ shard_stmt_find_by_sql (char *sql_stmt, const char *db_user,
     {
       stmt_p = &(shard_Stmt.stmt_ent[i]);
       if (stmt_p->status == SHARD_STMT_STATUS_UNUSED
+	  || stmt_p->status == SHARD_STMT_STATUS_INVALID
 	  || stmt_p->stmt_type != SHARD_STMT_TYPE_PREPARED
 	  || stmt_p->client_version != client_protocol_version)
 	{
@@ -775,10 +776,6 @@ shard_stmt_add_srv_h_id_for_shard_cas (int stmt_h_id, int shard_id,
   /* check and wakeup statement waiter */
   shard_stmt_check_waiter_and_wakeup (stmt_p);
 
-  PROXY_DEBUG_LOG ("Create new sql statement. "
-		   "(shard_id:%d, cas_id:%d, srv_h_id:%d). statement(%s).",
-		   shard_id, cas_id, srv_h_id, shard_str_stmt (stmt_p));
-
   error = shard_stmt_set_srv_h_id (stmt_p, shard_id, cas_id, srv_h_id);
   if (error)
     {
@@ -788,6 +785,10 @@ shard_stmt_add_srv_h_id_for_shard_cas (int stmt_h_id, int shard_id,
 		 shard_id, cas_id, srv_h_id, shard_str_stmt (stmt_p));
       return -1;
     }
+
+  PROXY_DEBUG_LOG ("save statement handle id. "
+		   "(shard_id:%d, cas_id:%d, srv_h_id:%d). statement(%s).",
+		   shard_id, cas_id, srv_h_id, shard_str_stmt (stmt_p));
 
   return 0;
 }
@@ -1108,7 +1109,7 @@ shard_str_stmt (T_SHARD_STMT * stmt_p)
 	    "stmt_type:%d, "
 	    "context id:%d, context uid:%d, "
 	    "num pinned:%d, "
-	    "lru_next:%p, lru_prev:%p, db_user:%s"
+	    "lru_next:%p, lru_prev:%p, db_user:%s, "
 	    "sql_stmt:[%s]",
 	    stmt_p->index, stmt_p->num_alloc,
 	    stmt_p->stmt_h_id, stmt_p->status,
@@ -1506,4 +1507,21 @@ shard_statement_wait_timer (void)
     }
 
   return;
+}
+
+void
+shard_stmt_set_status_invalid (int stmt_h_id)
+{
+  T_SHARD_STMT *stmt_p = NULL;
+
+  stmt_p = shard_stmt_find_by_stmt_h_id (stmt_h_id);
+  if (stmt_p == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  assert (stmt_p->status == SHARD_STMT_STATUS_COMPLETE);
+
+  stmt_p->status = SHARD_STMT_STATUS_INVALID;
 }

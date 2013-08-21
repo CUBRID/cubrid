@@ -655,6 +655,11 @@ execute_all_error:
 	}
     }
 
+  if (err_info.err_number == CAS_ER_STMT_POOLING)
+    {
+      hm_srv_handle_free (srv_handle->id);
+    }
+
   return err_code;
 }
 
@@ -2448,6 +2453,12 @@ cas_mysql_get_stmt_errno (MYSQL_STMT * stmt)
   e = mysql_stmt_errno (stmt);
   emsg = mysql_stmt_error (stmt);
   cas_error_log_write (e, emsg);
+
+  if (e == CR_NEW_STMT_METADATA)
+    {
+      return ERROR_INFO_SET_WITH_MSG (CAS_ER_STMT_POOLING,
+				      CAS_ERROR_INDICATOR, emsg);
+    }
 
   return ERROR_INFO_SET_WITH_MSG (e, DBMS_ERROR_INDICATOR, emsg);
 }

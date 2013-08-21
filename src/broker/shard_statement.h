@@ -40,7 +40,8 @@ enum
 {
   SHARD_STMT_STATUS_UNUSED = 0,
   SHARD_STMT_STATUS_IN_PROGRESS = 1,
-  SHARD_STMT_STATUS_COMPLETE = 2
+  SHARD_STMT_STATUS_COMPLETE = 2,
+  SHARD_STMT_STATUS_INVALID = 3
 };
 
 enum
@@ -148,4 +149,5 @@ extern char *shard_stmt_rewrite_sql (bool * has_shard_val_hint,
 				     char *sql_stmt, char appl_server);
 
 extern void shard_statement_wait_timer (void);
+extern void shard_stmt_set_status_invalid (int stmt_h_id);
 #endif /* _SHARD_STATEMENT_H_ */

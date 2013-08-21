@@ -64,6 +64,11 @@ static int proxy_client_execute_internal (T_PROXY_CONTEXT * ctx_p,
 					  int bind_value_index);
 static int proxy_cas_execute_internal (T_PROXY_CONTEXT * ctx_p,
 				       T_PROXY_EVENT * event_p);
+static bool proxy_is_invalid_statement (int error_ind, int error_code,
+					char *driver_info,
+					T_BROKER_VERSION client_version);
+static bool proxy_has_different_column_info (const char *r1, size_t r1_len,
+					     const char *r2, size_t r2_len);
 
 
 void
@@ -1022,6 +1027,9 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
 			    ctx_p->database_user, client_version);
   if (stmt_p)
     {
+      PROXY_DEBUG_LOG ("success to find statement. (stmt:%s).",
+		       shard_str_stmt (stmt_p));
+
       switch (stmt_p->status)
 	{
 	case SHARD_STMT_STATUS_COMPLETE:
@@ -3258,11 +3266,12 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
       ctx_p->waiting_event = NULL;
     }
 
+  driver_info = proxy_get_driver_info_by_ctx (ctx_p);
+  client_version = CAS_MAKE_PROTO_VER (driver_info);
+
   error_ind = proxy_check_cas_error (response_p);
   if (error_ind < 0)
     {
-      driver_info = proxy_get_driver_info_by_ctx (ctx_p);
-      client_version = CAS_MAKE_PROTO_VER (driver_info);
       error_code = proxy_get_cas_error_code (response_p, client_version);
 
       PROXY_LOG (PROXY_LOG_MODE_NOTICE, "CAS response error. "
@@ -3342,6 +3351,61 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
       stmt_h_id_n = htonl (stmt_p->stmt_h_id);
       memcpy ((char *) stmt_p->reply_buffer + srv_h_id_offset,
 	      (char *) &stmt_h_id_n, NET_SIZE_INT);
+    }
+  else
+    {
+      if (proxy_has_different_column_info (event_p->buffer.data,
+					   stmt_p->reply_buffer,
+					   event_p->buffer.length,
+					   stmt_p->reply_buffer_length))
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_DEBUG,
+		     "Invalid statement. schema info is different. context(%s). "
+		     "stmt(%s).", proxy_str_context (ctx_p),
+		     shard_str_stmt (stmt_p));
+
+	  assert (stmt_p->status == SHARD_STMT_STATUS_COMPLETE);
+
+	  ctx_p->is_prepare_for_execute = false;
+
+	  if (ctx_p->waiting_event)
+	    {
+	      proxy_event_free (ctx_p->waiting_event);
+	      ctx_p->waiting_event = NULL;
+	    }
+
+	  shard_stmt_set_status_invalid (stmt_p->stmt_h_id);
+
+	  proxy_event_free (event_p);
+	  event_p = proxy_event_new_with_error (driver_info,
+						PROXY_EVENT_IO_WRITE,
+						PROXY_EVENT_FROM_CLIENT,
+						proxy_io_make_error_msg,
+						CAS_ERROR_INDICATOR,
+						CAS_ER_STMT_POOLING, "",
+						ctx_p->is_client_in_tran);
+	  if (event_p == NULL)
+	    {
+	      goto free_context;
+	    }
+
+	  /* relay error to the client */
+	  error = proxy_send_response_to_client (ctx_p, event_p);
+	  if (error)
+	    {
+	      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+			 "Failed to response to the client. "
+			 "(error=%d). context(%s). evnet(%s).", error,
+			 proxy_str_context (ctx_p),
+			 proxy_str_event (event_p));
+
+	      /* statement waiters may be woken up when freeing context */
+	      goto free_context;
+	    }
+
+	  EXIT_FUNC ();
+	  return 0;
+	}
     }
 
   /* save server handle id for this statement from shard/cas */
@@ -3461,8 +3525,11 @@ proxy_cas_execute_internal (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 {
   int error;
   int error_ind;
+  int error_code = 0;
   bool is_in_tran;
   char *response_p;
+  char *driver_info;
+  T_BROKER_VERSION client_version;
 
   ENTER_FUNC ();
 
@@ -3484,14 +3551,24 @@ proxy_cas_execute_internal (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
   error_ind = proxy_check_cas_error (response_p);
   if (error_ind < 0)
     {
-      PROXY_LOG (PROXY_LOG_MODE_NOTICE,
-		 "CAS response error. (error_ind:%d). context(%s).",
-		 error_ind, proxy_str_context (ctx_p));
+      driver_info = proxy_get_driver_info_by_ctx (ctx_p);
+      client_version = CAS_MAKE_PROTO_VER (driver_info);
+      error_code = proxy_get_cas_error_code (response_p, client_version);
+
+      PROXY_LOG (PROXY_LOG_MODE_NOTICE, "CAS response error. "
+		 "(error_ind:%d, error_code:%d). context(%s).",
+		 error_ind, error_code, proxy_str_context (ctx_p));
 
       assert (ctx_p->stmt_h_id >= 0);
 
       shard_stmt_del_srv_h_id_for_shard_cas (ctx_p->stmt_h_id,
 					     ctx_p->shard_id, ctx_p->cas_id);
+
+      if (proxy_is_invalid_statement (error_ind, error_code, driver_info,
+				      client_version))
+	{
+	  shard_stmt_set_status_invalid (ctx_p->stmt_h_id);
+	}
     }
 
   if (proxy_info_p->ignore_shard_hint == OFF)
@@ -4107,4 +4184,45 @@ fn_proxy_cas_conn_error (T_PROXY_CONTEXT * ctx_p)
   return 0;
 }
 
-/* wakeup event */
+static bool
+proxy_is_invalid_statement (int error_ind, int error_code,
+			    char *driver_info,
+			    T_BROKER_VERSION client_version)
+{
+  int new_error_code = 0;
+
+  new_error_code =
+    proxy_convert_error_code (error_ind, error_code, driver_info,
+			      client_version, PROXY_CONV_ERR_TO_NEW);
+
+  if (client_version < CAS_MAKE_VER (8, 3, 0)
+      && new_error_code == CAS_ER_STMT_POOLING)
+    {
+      return true;
+    }
+  else if (error_ind == CAS_ERROR_INDICATOR
+	   && new_error_code == CAS_ER_STMT_POOLING)
+    {
+      return true;
+    }
+
+  return false;
+}
+
+static bool
+proxy_has_different_column_info (const char *r1, size_t r1_len,
+				 const char *r2, size_t r2_len)
+{
+  int ignore_size = MSG_HEADER_SIZE + /* srv_h_id */ NET_SIZE_INT
+    + /* result_cache_lifetime */ NET_SIZE_INT;
+
+  r1 += ignore_size;
+  r2 += ignore_size;
+
+  if (r1_len != r2_len)
+    {
+      return true;
+    }
+
+  return (memcmp (r1, r2, r1_len - ignore_size) != 0) ? true : false;
+}

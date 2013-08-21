@@ -676,6 +676,11 @@ proxy_io_make_error_msg (char *driver_info, char **buffer,
 
   net_buf.data = NULL;
 
+  PROXY_DEBUG_LOG ("make error to send to the client. "
+		   "(error_ind:%d, error_code:%d, errro_msg:%s)",
+		   error_ind, error_code,
+		   (error_msg && error_msg[0]) ? error_msg : "-");
+
   return (net_buf.data_size + MSG_HEADER_SIZE);
 
 error_return:
