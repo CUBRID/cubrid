@@ -1955,6 +1955,13 @@
 #   endif
 # endif
 
+/* AIX/PPC use 4k pages */
+# if defined(_AIX) && defined(POWER_PC)
+#   ifndef HBLKSIZE
+#     define HBLKSIZE 4096
+#   endif
+# endif
+
 # ifdef X86_64
 #   define MACH_TYPE "X86_64"
 #   define ALIGNMENT 8
