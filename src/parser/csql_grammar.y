@@ -1201,7 +1201,6 @@ typedef struct YYLTYPE
 %token NOT
 %token Null
 %token NULLIF
-%token NULLS
 %token NUMERIC
 %token OBJECT
 %token OCTET_LENGTH
@@ -1243,7 +1242,6 @@ typedef struct YYLTYPE
 %token RENAME
 %token REPLACE
 %token RESIGNAL
-%token RESPECT
 %token RESTRICT
 %token RETURN
 %token RETURNS
