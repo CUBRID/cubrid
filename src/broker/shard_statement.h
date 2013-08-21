@@ -70,6 +70,8 @@ struct t_shard_stmt
   int num_pinned;		/* pinned count */
   T_SHARD_STMT *lru_next;
   T_SHARD_STMT *lru_prev;
+  T_SHARD_STMT *hash_next;
+  T_SHARD_STMT *hash_prev;
 
   SP_PARSER_CTX *parser;	/* parser context */
 
@@ -95,6 +97,8 @@ struct t_shard_stmt_global
   T_SHARD_STMT *mru;		/* tail */
 
   T_SHARD_STMT *stmt_ent;
+
+  MHT_TABLE *stmt_map;
 };
 
 extern T_SHARD_STMT *shard_stmt_find_by_sql (char *sql_stmt,

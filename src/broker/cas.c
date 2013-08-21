@@ -80,9 +80,6 @@
 #include "environment_variable.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-#include "shard_metadata.h"
-#include "shard_shm.h"
-
 static const int DEFAULT_CHECK_INTERVAL = 1;
 
 #define FUNC_NEEDS_RESTORING_CON_STATUS(func_code) \

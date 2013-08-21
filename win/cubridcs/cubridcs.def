@@ -883,3 +883,13 @@ EXPORTS
 ;   porting.h
 ;
 	port_win_mutex_init_and_lock
+;
+; memory hash function
+;
+  mht_create
+  mht_destroy
+  mht_get
+  mht_put
+  mht_1strhash
+  mht_compare_strings_are_equal
+  mht_rem

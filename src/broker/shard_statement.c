@@ -67,6 +67,9 @@ static char *shard_stmt_write_buf_to_sql (char *sql_stmt, const char *buf,
 
 static T_BROKER_VERSION shard_stmt_make_protocol_version (T_BROKER_VERSION
 							  client_version);
+static void shard_stmt_put_statement_to_map (const char *sql_stmt,
+					     T_SHARD_STMT * stmt_p);
+static void shard_stmt_del_statement_from_map (T_SHARD_STMT * stmt_p);
 
 T_SHARD_STMT_GLOBAL shard_Stmt;
 
@@ -238,16 +241,25 @@ shard_stmt_find_by_sql (char *sql_stmt, const char *db_user,
 {
   T_SHARD_STMT *stmt_p = NULL;
   T_BROKER_VERSION client_protocol_version;
-  int i;
 
   client_protocol_version = shard_stmt_make_protocol_version (client_version);
-  for (i = 0; i < shard_Stmt.max_num_stmt; i++)
+
+  stmt_p = (T_SHARD_STMT *) mht_get (shard_Stmt.stmt_map, sql_stmt);
+  for (; stmt_p != NULL; stmt_p = stmt_p->hash_next)
     {
-      stmt_p = &(shard_Stmt.stmt_ent[i]);
+      if (stmt_p->stmt_type != SHARD_STMT_TYPE_PREPARED)
+	{
+	  assert (false);
+	  continue;
+	}
+
       if (stmt_p->status == SHARD_STMT_STATUS_UNUSED
-	  || stmt_p->status == SHARD_STMT_STATUS_INVALID
-	  || stmt_p->stmt_type != SHARD_STMT_TYPE_PREPARED
-	  || stmt_p->client_version != client_protocol_version)
+	  || stmt_p->status == SHARD_STMT_STATUS_INVALID)
+	{
+	  continue;
+	}
+
+      if (stmt_p->client_version != client_protocol_version)
 	{
 	  continue;
 	}
@@ -267,10 +279,9 @@ shard_stmt_find_by_sql (char *sql_stmt, const char *db_user,
 	    }
 	}
 
-      if (strcmp (sp_get_sql_stmt (stmt_p->parser), sql_stmt) == 0)
-	{
-	  return stmt_p;
-	}
+      assert (strcmp (sp_get_sql_stmt (stmt_p->parser), sql_stmt) == 0);
+
+      return stmt_p;
     }
 
   return NULL;
@@ -434,6 +445,7 @@ shard_stmt_new_internal (int stmt_type, char *sql_stmt, int ctx_cid,
   int i, num_cas;
   char *sql_stmt_tp = NULL;
   T_SHARD_STMT *stmt_p = NULL;
+  T_SHARD_STMT *last_hash_stmt_p = NULL;
   T_PROXY_CONTEXT *ctx_p = NULL;
 
   assert ((stmt_type != SHARD_STMT_TYPE_SCHEMA_INFO && sql_stmt != NULL)
@@ -443,26 +455,9 @@ shard_stmt_new_internal (int stmt_type, char *sql_stmt, int ctx_cid,
   ctx_p = proxy_context_find (ctx_cid, ctx_uid);
   assert (ctx_p != NULL);
 
-  if (stmt_type == SHARD_STMT_TYPE_PREPARED)
-    {
-      stmt_p = shard_stmt_find_by_sql (sql_stmt, ctx_p->database_user,
-				       client_version);
-      if (stmt_p)
-	{
-	  assert (stmt_p->stmt_type == stmt_type);
-	  if (stmt_p->stmt_type == stmt_type)
-	    {
-	      return stmt_p;
-	    }
-	  else
-	    {
-	      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-			 "Statement type mismatch. expect(%d), statement(%s)",
-			 SHARD_STMT_TYPE_PREPARED, shard_str_stmt (stmt_p));
-	      return NULL;
-	    }
-	}
-    }
+  assert (stmt_type != SHARD_STMT_TYPE_PREPARED
+	  || shard_stmt_find_by_sql (sql_stmt, ctx_p->database_user,
+				     client_version) == NULL);
 
   num_cas = shard_Stmt.max_num_shard * shard_Stmt.num_cas_per_shard;
 
@@ -561,6 +556,11 @@ shard_stmt_new_internal (int stmt_type, char *sql_stmt, int ctx_cid,
 	}
 
       stmt_p->num_alloc += 1;
+
+      if (stmt_p->stmt_type == SHARD_STMT_TYPE_PREPARED)
+	{
+	  shard_stmt_put_statement_to_map (sql_stmt, stmt_p);
+	}
     }
 
   return stmt_p;
@@ -607,6 +607,11 @@ shard_stmt_destroy (void)
 {
   T_SHARD_STMT *stmt_p = NULL;
   int i;
+
+  if (shard_Stmt.stmt_map)
+    {
+      mht_destroy (shard_Stmt.stmt_map);
+    }
 
   if (shard_Stmt.stmt_ent)
     {
@@ -673,6 +678,11 @@ shard_stmt_free (T_SHARD_STMT * stmt_p)
 
   num_cas = shard_Stmt.max_num_shard * shard_Stmt.num_cas_per_shard;
 
+  if (stmt_p->stmt_type == SHARD_STMT_TYPE_PREPARED)
+    {
+      shard_stmt_del_statement_from_map (stmt_p);
+    }
+
   stmt_p->stmt_h_id = SHARD_STMT_INVALID_HANDLE_ID;
   stmt_p->status = SHARD_STMT_STATUS_UNUSED;
   stmt_p->stmt_type = -1;
@@ -693,6 +703,8 @@ shard_stmt_free (T_SHARD_STMT * stmt_p)
     }
   stmt_p->lru_prev = NULL;
   stmt_p->lru_next = NULL;
+  stmt_p->hash_next = NULL;
+  stmt_p->hash_prev = NULL;
 
   if (stmt_p->parser)
     {
@@ -1109,14 +1121,16 @@ shard_str_stmt (T_SHARD_STMT * stmt_p)
 	    "stmt_type:%d, "
 	    "context id:%d, context uid:%d, "
 	    "num pinned:%d, "
-	    "lru_next:%p, lru_prev:%p, db_user:%s, "
-	    "sql_stmt:[%s]",
+	    "lru_next:%p, lru_prev:%p, "
+	    "hash_next:%p, hash_prev:%p, "
+	    "db_user:%s, sql_stmt:[%s]",
 	    stmt_p->index, stmt_p->num_alloc,
 	    stmt_p->stmt_h_id, stmt_p->status,
 	    stmt_p->stmt_type,
 	    stmt_p->ctx_cid, stmt_p->ctx_uid,
 	    stmt_p->num_pinned,
 	    stmt_p->lru_next, stmt_p->lru_prev,
+	    stmt_p->hash_next, stmt_p->hash_prev,
 	    stmt_p->database_user,
 	    (stmt_p->parser) ? ((stmt_p->parser->sql_stmt) ?
 				shard_str_sqls (stmt_p->parser->
@@ -1165,6 +1179,17 @@ shard_stmt_initialize (int initial_size)
 
   shard_Stmt_max_num_alloc =
     MAX (shard_Stmt_max_num_alloc, (INT_MAX / shard_Stmt.max_num_stmt) - 1);
+
+  shard_Stmt.stmt_map = mht_create ("Proxy statement pool",
+				    shard_Stmt.max_num_stmt, mht_1strhash,
+				    mht_compare_strings_are_equal);
+  if (shard_Stmt.stmt_map == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. "
+		 "Failed to alloc map of statement. " "(errno:%d).", errno);
+
+      return -1;
+    }
 
   num_cas = shard_Stmt.max_num_shard * shard_Stmt.num_cas_per_shard;
 
@@ -1524,4 +1549,84 @@ shard_stmt_set_status_invalid (int stmt_h_id)
   assert (stmt_p->status == SHARD_STMT_STATUS_COMPLETE);
 
   stmt_p->status = SHARD_STMT_STATUS_INVALID;
+}
+
+static void
+shard_stmt_put_statement_to_map (const char *sql_stmt, T_SHARD_STMT * stmt_p)
+{
+  T_SHARD_STMT *hash_stmt_p = NULL;
+
+  hash_stmt_p = (T_SHARD_STMT *) mht_get (shard_Stmt.stmt_map, sql_stmt);
+  if (hash_stmt_p == NULL)
+    {
+      mht_put (shard_Stmt.stmt_map, sp_get_sql_stmt (stmt_p->parser), stmt_p);
+      stmt_p->hash_prev = NULL;
+      stmt_p->hash_next = NULL;
+
+      PROXY_DEBUG_LOG ("SHARD_STMT PUT : %s", shard_str_stmt (stmt_p));
+    }
+  else
+    {
+      while (hash_stmt_p->hash_next)
+	{
+	  hash_stmt_p = hash_stmt_p->hash_next;
+	}
+
+      hash_stmt_p->hash_next = stmt_p;
+      stmt_p->hash_prev = hash_stmt_p;
+      stmt_p->hash_next = NULL;
+    }
+}
+
+static void
+shard_stmt_del_statement_from_map (T_SHARD_STMT * stmt_p)
+{
+  const char *key = NULL;
+  T_SHARD_STMT *hash_stmt_p = NULL;
+  T_SHARD_STMT *prev_stmt_p = NULL;
+  T_SHARD_STMT *next_stmt_p = NULL;
+
+  key = sp_get_sql_stmt (stmt_p->parser);
+
+  hash_stmt_p = (T_SHARD_STMT *) mht_get (shard_Stmt.stmt_map, key);
+  if (hash_stmt_p == NULL)
+    {
+      return;
+    }
+
+  while (hash_stmt_p != NULL && stmt_p != hash_stmt_p)
+    {
+      hash_stmt_p = hash_stmt_p->hash_next;
+    }
+
+  if (hash_stmt_p == NULL || stmt_p != hash_stmt_p)
+    {
+      assert (false);
+      return;
+    }
+
+  if (stmt_p->hash_prev)
+    {
+      prev_stmt_p = stmt_p->hash_prev;
+      next_stmt_p = stmt_p->hash_next;
+
+      prev_stmt_p->hash_next = next_stmt_p;
+      if (next_stmt_p)
+	{
+	  next_stmt_p->hash_prev = prev_stmt_p;
+	}
+    }
+  else
+    {
+      mht_rem (shard_Stmt.stmt_map, key, NULL, NULL);
+
+      if (stmt_p->hash_next)
+	{
+	  next_stmt_p = stmt_p->hash_next;
+
+	  next_stmt_p->hash_prev = NULL;
+	  mht_put (shard_Stmt.stmt_map, sp_get_sql_stmt (next_stmt_p->parser),
+		   next_stmt_p);
+	}
+    }
 }

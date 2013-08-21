@@ -32,6 +32,7 @@
 #include "broker_shm.h"
 #include "shard_proxy_queue.h"
 #include "shard_proxy_log.h"
+#include "memory_hash.h"
 #include "shard_statement.h"
 
 #if defined(WINDOWS)
