@@ -524,7 +524,6 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 	      || (attr2->type_enum == PT_TYPE_NA)
 	      || (attr2->type_enum == PT_TYPE_NULL))
 	    {
-
 	      /* convert type to that of non-null */
 	      if (col->type_enum == PT_TYPE_NA && col->alias_print == NULL)
 		{
@@ -537,7 +536,9 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 		}
 	      col->type_enum = attr1->type_enum;
 	      if (col->data_type)
-		parser_free_tree (parser, col->data_type);
+		{
+		  parser_free_tree (parser, col->data_type);
+		}
 	      col->data_type =
 		parser_copy_tree_list (parser, attr1->data_type);
 
@@ -573,10 +574,13 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 	      if (col->data_type)
 		{
 		  parser_free_tree (parser, col->data_type);
+		  col->data_type = NULL;
 		}
-	      col->data_type = parser_copy_tree_list (parser,
-						      attr2->data_type);
-
+	      if (PT_IS_COMPLEX_TYPE (common_type))
+		{
+		  col->data_type = parser_copy_tree_list (parser,
+							  attr2->data_type);
+		}
 	    }
 	}
 
