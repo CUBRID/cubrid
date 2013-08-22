@@ -552,6 +552,7 @@ EXPORTS
     db_check_authorization_and_grant_option
     db_chn
     db_clear_client_query_result
+    db_clear_host_connected
     db_col_add
     db_col_cardinality
     db_col_copy

@@ -503,10 +503,16 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
       || strcmp (database_name, db_name) != 0
       || strcmp (as_info->database_host, host_connected) != 0)
     {
+      if (get_db_connect_status () == -1)	/* DB_CONNECTION_STATUS_RESET */
+	{
+	  db_clear_host_connected ();
+	}
+
       if (database_name[0] != '\0')
 	{
 	  ux_database_shutdown ();
 	}
+
       if (shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
 	{
 	  client_type = 5;	/* DB_CLIENT_TYPE_READ_ONLY_BROKER in db.h */

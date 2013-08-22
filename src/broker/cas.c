@@ -740,6 +740,7 @@ conn_retry:
 	  {
 	    ux_database_shutdown ();
 	    as_info->reset_flag = FALSE;
+	    set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
 	  }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -1319,6 +1320,7 @@ cas_main (void)
 	      {
 		ux_database_shutdown ();
 		as_info->reset_flag = FALSE;
+		set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
 	      }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
