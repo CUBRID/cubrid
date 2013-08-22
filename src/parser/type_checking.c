@@ -13284,10 +13284,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	PT_NODE *new_node;
 	PT_TYPE_ENUM sep_type;
 
-	coll_infer1.coll_id = LANG_SYS_COLLATION;
-	coll_infer1.codeset = LANG_SYS_CODESET;
-	coll_infer1.coerc_level = PT_COLLATION_NOT_COERC;
-
 	(void) pt_get_collation_info (arg_list, &coll_infer1);
 
 	sep_type = (arg_list->next) ? arg_list->next->type_enum :
@@ -13338,8 +13334,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	coll_infer4.codeset = LANG_SYS_CODESET;
 	coll_infer1.coll_id = LANG_SYS_COLLATION;
 	coll_infer4.coll_id = LANG_SYS_COLLATION;
-	coll_infer1.coerc_level = PT_COLLATION_FULLY_COERC;
-	coll_infer4.coerc_level = PT_COLLATION_FULLY_COERC;
+	coll_infer1.coerc_level = PT_COLLATION_NOT_APPLICABLE;
+	coll_infer4.coerc_level = PT_COLLATION_NOT_APPLICABLE;
 	coll_infer1.can_force_cs = true;
 	coll_infer4.can_force_cs = true;
 
@@ -13457,6 +13453,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	func_coll_infer.coll_id = LANG_SYS_COLLATION;
 	arg_coll_infer.coerc_level = PT_COLLATION_NOT_COERC;
 	func_coll_infer.coerc_level = PT_COLLATION_NOT_COERC;
+	arg_coll_infer.can_force_cs = false;
+	func_coll_infer.can_force_cs = false;
 
 	arg_type = (arg_list != NULL) ? arg_list->type_enum : PT_TYPE_NONE;
 	func_res_type = node->type_enum;
@@ -21943,7 +21941,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   arg1_coll_inf.codeset = arg2_coll_inf.codeset = arg3_coll_inf.codeset
     = LANG_COERCIBLE_CODESET;
   arg1_coll_inf.coerc_level = arg2_coll_inf.coerc_level =
-    arg3_coll_inf.coerc_level = PT_COLLATION_FULLY_COERC;
+    arg3_coll_inf.coerc_level = PT_COLLATION_NOT_APPLICABLE;
   arg1_coll_inf.can_force_cs = arg2_coll_inf.can_force_cs =
     arg3_coll_inf.can_force_cs = true;
 
@@ -22042,11 +22040,8 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	  args_w_coll++;
 	}
 
-      if (arg1_type != PT_TYPE_MAYBE)
-	{
-	  common_coll = arg1_coll_inf.coll_id;
-	  common_cs = arg1_coll_inf.codeset;
-	}
+      common_coll = arg1_coll_inf.coll_id;
+      common_cs = arg1_coll_inf.codeset;
     }
   else if (PT_IS_COLLECTION_TYPE (arg1_type))
     {
@@ -22072,11 +22067,8 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	  args_w_coll++;
 	}
 
-      if (arg2_type != PT_TYPE_MAYBE)
-	{
-	  common_coll = arg2_coll_inf.coll_id;
-	  common_cs = arg2_coll_inf.codeset;
-	}
+      common_coll = arg2_coll_inf.coll_id;
+      common_cs = arg2_coll_inf.codeset;
     }
   else if (PT_IS_COLLECTION_TYPE (arg2_type))
     {
@@ -22104,11 +22096,8 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	      args_w_coll++;
 	    }
 
-	  if (arg3_type != PT_TYPE_MAYBE)
-	    {
-	      common_coll = arg3_coll_inf.coll_id;
-	      common_cs = arg3_coll_inf.codeset;
-	    }
+	  common_coll = arg3_coll_inf.coll_id;
+	  common_cs = arg3_coll_inf.codeset;
 	}
       else if (PT_IS_COLLECTION_TYPE (arg3_type))
 	{
@@ -22184,7 +22173,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	    {
 	      arg1_coll_inf.coll_id = common_coll;
 	      arg1_coll_inf.codeset = common_cs;
-	      arg1_coll_inf.coerc_level = PT_COLLATION_FULLY_COERC;
+	      arg1_coll_inf.coerc_level = PT_COLLATION_NOT_APPLICABLE;
 	    }
 
 	  if (!(PT_HAS_COLLATION (arg2_type) || arg2_type == PT_TYPE_MAYBE
@@ -22192,7 +22181,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	    {
 	      arg2_coll_inf.coll_id = common_coll;
 	      arg2_coll_inf.codeset = common_cs;
-	      arg2_coll_inf.coerc_level = PT_COLLATION_FULLY_COERC;
+	      arg2_coll_inf.coerc_level = PT_COLLATION_NOT_APPLICABLE;
 	    }
 
 	  if (!(PT_HAS_COLLATION (arg3_type) || arg3_type == PT_TYPE_MAYBE
@@ -22200,7 +22189,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	    {
 	      arg3_coll_inf.coll_id = common_coll;
 	      arg3_coll_inf.codeset = common_cs;
-	      arg3_coll_inf.coerc_level = PT_COLLATION_FULLY_COERC;
+	      arg3_coll_inf.coerc_level = PT_COLLATION_NOT_APPLICABLE;
 	    }
 	}
 
@@ -22460,7 +22449,7 @@ pt_check_recursive_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   PT_OP_TYPE op;
   int recurs_coll = -1;
   INTL_CODESET recurs_cs = INTL_CODESET_NONE;
-  PT_COLL_COERC_LEV recurs_coerc_level = PT_COLLATION_FULLY_COERC;
+  PT_COLL_COERC_LEV recurs_coerc_level = PT_COLLATION_NOT_APPLICABLE;
   bool need_arg_coerc = false;
 
   assert (expr != NULL);

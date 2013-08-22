@@ -3270,6 +3270,10 @@ enum pt_coll_coerc_lev
   PT_COLLATION_L4_BIN_COERC,	/* with binary collation */
   /* HV, session variables */
   PT_COLLATION_L5_COERC,
+  /* nodes not having collation (internal use) */
+  PT_COLLATION_L6_COERC,
+
+  PT_COLLATION_NOT_APPLICABLE = PT_COLLATION_L6_COERC,
   PT_COLLATION_NOT_COERC = PT_COLLATION_L0_COERC,
   PT_COLLATION_FULLY_COERC = PT_COLLATION_L5_COERC
 };
