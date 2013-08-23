@@ -223,8 +223,6 @@ extern int error_info_set_with_msg (int err_number, int err_indicator,
 extern void error_info_clear (void);
 extern void set_server_aborted (bool is_aborted);
 extern bool is_server_aborted (void);
-extern size_t error_append_shard_info (char *err_buf, const char *err_msg,
-				       int buf_size);
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 /*****************************

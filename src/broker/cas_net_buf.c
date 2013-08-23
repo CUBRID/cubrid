@@ -331,7 +331,7 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
   net_buf_cp_str (net_buf, msg_buf, strlen (msg_buf));
 #endif
 
-  err_msg_len = error_append_shard_info (err_msg, err_str, ERR_MSG_LENGTH);
+  err_msg_len = net_error_append_shard_info (err_msg, err_str, ERR_MSG_LENGTH);
   if (err_msg_len == 0)
     {
       net_buf_cp_byte (net_buf, '\0');
@@ -769,4 +769,45 @@ net_arg_put_int (void *arg, int *value)
   cur_p += NET_SIZE_INT;
   put_value = htonl (*value);
   memcpy (cur_p, &put_value, NET_SIZE_INT);
+}
+
+
+size_t
+net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
+{
+  assert (err_buf);
+
+#if !defined(LIBCAS_FOR_JSP) && !defined(CUB_PROXY)
+  if (cas_shard_flag == ON)
+    {
+      if (err_msg == NULL)
+        {
+          snprintf (err_buf, buf_size, "[SHARD/CAS ID-%d,%d]",
+                    shm_shard_id, shm_shard_cas_id + 1);
+        }
+      else if (strlen (err_msg) + MAX_SHARD_INFO_LENGTH >= buf_size)
+        {
+          snprintf (err_buf, buf_size, "%s", err_msg);
+        }
+      else
+        {
+          snprintf (err_buf, buf_size, "%s [SHARD/CAS ID-%d,%d]",
+                    err_msg, shm_shard_id, shm_shard_cas_id + 1);
+        }
+    }
+  else
+#endif /* !LIBCAS_FOR_JSP && !CUB_PROXY */
+    {
+      if (err_msg == NULL)
+        {
+          err_buf[0] = '\0';
+          return 0;
+        }
+      else
+        {
+          strncpy (err_buf, err_msg, buf_size - 1);
+        }
+    }
+
+  return strlen (err_buf);
 }

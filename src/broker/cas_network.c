@@ -721,7 +721,7 @@ net_write_error (int sock, int version, char *driver_info, char *cas_info,
       len += NET_SIZE_INT;
     }
 
-  err_msg_len = error_append_shard_info (err_msg, msg, ERR_MSG_LENGTH);
+  err_msg_len = net_error_append_shard_info (err_msg, msg, ERR_MSG_LENGTH);
   if (err_msg_len > 0)
     {
       len += err_msg_len + 1;

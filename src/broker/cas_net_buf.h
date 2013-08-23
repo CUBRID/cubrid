@@ -166,5 +166,7 @@ extern void net_arg_get_lob_value (DB_VALUE * db_lob, void *arg);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 extern void net_arg_put_int (void *arg, int *value);
+extern size_t net_error_append_shard_info (char *err_buf, const char *err_msg,
+                                       int buf_size);
 
 #endif /* _CAS_NET_BUF_H_ */
