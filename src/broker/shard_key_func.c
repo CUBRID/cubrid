@@ -110,6 +110,18 @@ fn_get_shard_key_default (const char *shard_key, T_SHARD_U_TYPE type,
       ival = (unsigned int) (*(unsigned int *) value);
       return ival % modular_key;
     }
+  else if (type == SHARD_U_TYPE_SHORT)
+    {
+      unsigned short sval;
+      sval = (unsigned short) (*(unsigned short *) value);
+      return sval % modular_key;
+    }
+  else if (type == SHARD_U_TYPE_BIGINT)
+    {
+      UINT64 lval;
+      lval = (UINT64) (*(UINT64 *) value);
+      return lval % modular_key;
+    }
   else
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unexpected shard key type. "
@@ -124,7 +136,7 @@ proxy_find_shard_id_by_hint_value (SP_VALUE * value_p, const char *key_column)
   T_SHARD_KEY_RANGE *range_p = NULL;
 
   int shard_key_id = -1;
-  int shard_key_val_int;
+  INT64 shard_key_val_int;
   char *shard_key_val_string;
   int shard_key_val_len;
 
@@ -132,8 +144,8 @@ proxy_find_shard_id_by_hint_value (SP_VALUE * value_p, const char *key_column)
     {
       shard_key_val_int = value_p->integer;
       shard_key_id =
-	(*fn_get_shard_key) (key_column, SHARD_U_TYPE_INT,
-			     &shard_key_val_int, sizeof (int));
+	(*fn_get_shard_key) (key_column, SHARD_U_TYPE_BIGINT,
+			     &shard_key_val_int, sizeof (INT64));
     }
   else if (value_p->type == VT_STRING)
     {

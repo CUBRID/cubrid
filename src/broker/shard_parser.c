@@ -330,8 +330,10 @@ sp_make_int_sp_value_from_string (SP_VALUE * value_p, char *pos, int length)
   char tmp = pos[length];
   char *end;
   pos[length] = '\0';
-  value_p->integer = strtol (pos, &end, 10);
-  if (*end != '\0')
+
+  errno = 0;
+  value_p->integer = strtoll (pos, &end, 10);
+  if (errno == ERANGE || *end != '\0')
     {
       return ER_SP_INVALID_HINT;
     }

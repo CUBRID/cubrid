@@ -534,12 +534,22 @@ proxy_update_shard_stats (T_SHARD_STMT * stmt_p, T_SHARD_KEY_RANGE * range_p)
       assert (first_hint_p->arg.type == VT_INTEGER);
       if (first_hint_p->arg.type == VT_INTEGER)
 	{
-	  shard_id = first_hint_p->arg.integer;
+	  INT64 integer = first_hint_p->arg.integer;
+	  if (integer < 0 || integer >= MAX_SHARD_CONN)
+	    {
+	      shard_id = PROXY_INVALID_SHARD;
+	    }
+	  else
+	    {
+	      shard_id = (int) integer;
+	    }
+
 	  if (proxy_info_p->num_shard_conn <= shard_id)
 	    {
 	      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to update stats. "
 			 "Invalid shard id. (hint_type:%s, shard_id:%d).",
 			 "HT_ID", shard_id);
+	      return;
 	    }
 
 	  shard_stat_p = shard_shm_get_shard_stat (proxy_info_p, shard_id);
@@ -653,13 +663,22 @@ proxy_get_shard_id (T_SHARD_STMT * stmt_p, void **argv,
 	case HT_ID:
 	  if (hint_p->arg.type == VT_INTEGER)
 	    {
+	      INT64 integer = hint_p->arg.integer;
+	      if (integer < 0 || integer >= MAX_SHARD_CONN)
+		{
+		  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+			     "Unable to get shard id. Invalid hint id. (hint_type:%s).",
+			     "HT_ID");
+		  return PROXY_INVALID_SHARD;
+		}
+
 	      if (shard_id < 0)
 		{
-		  shard_id = hint_p->arg.integer;
+		  shard_id = (int) integer;
 		}
 	      else
 		{
-		  next_shard_id = hint_p->arg.integer;
+		  next_shard_id = (int) integer;
 		  compare_flag = 1;
 		}
 	    }
@@ -782,6 +801,44 @@ proxy_get_range_by_param (SP_PARSER_HINT * hint_p, void **argv)
 	    shard_key_id =
 	      (*fn_get_shard_key) (key_column, SHARD_U_TYPE_INT, &i_val,
 				   sizeof (int));
+	  }
+	  break;
+	case CCI_U_TYPE_SHORT:
+	  {
+	    short s_val;
+	    net_arg_get_size (&data_size, net_value);
+	    if (data_size <= 0)
+	      {
+		PROXY_LOG (PROXY_LOG_MODE_ERROR,
+			   "Unexpected short hint value size."
+			   "(size:%d).", data_size);
+		return NULL;
+	      }
+
+	    net_arg_get_short (&s_val, net_value);
+	    shard_key_id =
+	      (*fn_get_shard_key) (key_column, SHARD_U_TYPE_SHORT, &s_val,
+				   sizeof (short));
+
+	  }
+	  break;
+	case CCI_U_TYPE_BIGINT:
+	  {
+	    INT64 l_val;
+	    net_arg_get_size (&data_size, net_value);
+	    if (data_size <= 0)
+	      {
+		PROXY_LOG (PROXY_LOG_MODE_ERROR,
+			   "Unexpected big integer hint value size."
+			   "(size:%d).", data_size);
+		return NULL;
+	      }
+
+	    net_arg_get_bigint (&l_val, net_value);
+	    shard_key_id =
+	      (*fn_get_shard_key) (key_column, SHARD_U_TYPE_BIGINT, &l_val,
+				   sizeof (INT64));
+
 	  }
 	  break;
 	case CCI_U_TYPE_ENUM:

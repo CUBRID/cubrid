@@ -69,7 +69,7 @@ enum sp_bind_type
 typedef enum sp_value_type SP_VALUE_TYPE;
 enum sp_value_type
 {
-  VT_INTEGER,
+  VT_INTEGER,			/* this type means INT64 to support 64bit integer key value */
   VT_STRING
 };
 
@@ -112,7 +112,7 @@ struct sp_value
     char value_arr[SP_VALUE_INIT_SIZE];
     char *value_ex;
   } string;
-  int integer;
+  INT64 integer;
 };
 
 typedef struct sp_parser_hint SP_PARSER_HINT;

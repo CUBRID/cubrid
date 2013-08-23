@@ -1639,10 +1639,17 @@ static int
 make_sp_value (SP_VALUE * value_p, char *shard_key)
 {
   int length = strlen (shard_key);
+  char *end;
 
   if (key_isdigit (shard_key))
     {
-      value_p->integer = atoi (shard_key);
+      errno = 0;
+      value_p->integer = strtoll (shard_key, &end, 10);
+      if (errno == ERANGE || *end != '\0')
+	{
+	  return -1;
+	}
+
       value_p->type = VT_INTEGER;
     }
   else
