@@ -711,10 +711,10 @@ cci_disconnect (int mapped_conn_id, T_CCI_ERROR * err_buf)
 			  con_handle->id);
 	}
       if (cci_end_tran_internal (con_handle, CCI_TRAN_ROLLBACK) != NO_ERROR)
-        {
-          qe_con_close (con_handle);
-          con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
-        }
+	{
+	  qe_con_close (con_handle);
+	  con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+	}
 
       get_last_error (con_handle, err_buf);
       con_handle->used = false;
@@ -6199,6 +6199,17 @@ set_error_buffer (T_CCI_ERROR * err_buf_p,
 static void
 get_last_error (T_CON_HANDLE * con_handle, T_CCI_ERROR * dest_err_buf)
 {
+  const char *info_type = NULL;
+
+  if (qe_is_shard (con_handle))
+    {
+      info_type = "PROXY INFO";
+    }
+  else
+    {
+      info_type = "CAS INFO";
+    }
+
   if (con_handle == NULL || dest_err_buf == NULL)
     {
       return;
@@ -6209,11 +6220,11 @@ get_last_error (T_CON_HANDLE * con_handle, T_CCI_ERROR * dest_err_buf)
     {
       dest_err_buf->err_code = con_handle->err_buf.err_code;
       snprintf (dest_err_buf->err_msg, sizeof (dest_err_buf->err_msg),
-		"%s[CAS INFO - %d.%d.%d.%d:%d, %d, %d].",
-		con_handle->err_buf.err_msg, con_handle->ip_addr[0],
-		con_handle->ip_addr[1], con_handle->ip_addr[2],
-		con_handle->ip_addr[3], con_handle->port, con_handle->cas_id,
-		con_handle->cas_pid);
+		"%s[%s-%d.%d.%d.%d:%d,%d,%d].",
+		con_handle->err_buf.err_msg, info_type,
+		con_handle->ip_addr[0], con_handle->ip_addr[1],
+		con_handle->ip_addr[2], con_handle->ip_addr[3],
+		con_handle->port, con_handle->cas_id, con_handle->cas_pid);
     }
   else
     {

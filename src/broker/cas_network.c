@@ -711,6 +711,8 @@ net_write_error (int sock, int version, char *driver_info, char *cas_info,
 		 int cas_info_size, int indicator, int code, char *msg)
 {
   size_t len = NET_SIZE_INT;
+  size_t err_msg_len = 0;
+  char err_msg[ERR_MSG_LENGTH];
 
   assert (code != NO_ERROR);
 
@@ -718,9 +720,11 @@ net_write_error (int sock, int version, char *driver_info, char *cas_info,
     {
       len += NET_SIZE_INT;
     }
-  if (msg != NULL)
+
+  err_msg_len = error_append_shard_info (err_msg, msg, ERR_MSG_LENGTH);
+  if (err_msg_len > 0)
     {
-      len += (strlen (msg) + 1);
+      len += err_msg_len + 1;
     }
   net_write_int (sock, len);
 
@@ -746,8 +750,8 @@ net_write_error (int sock, int version, char *driver_info, char *cas_info,
     }
 
   net_write_int (sock, code);
-  if (msg != NULL)
+  if (err_msg_len > 0)
     {
-      net_write_stream (sock, msg, strlen (msg) + 1);
+      net_write_stream (sock, err_msg, err_msg_len + 1);
     }
 }

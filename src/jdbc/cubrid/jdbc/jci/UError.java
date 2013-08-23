@@ -46,7 +46,7 @@ public class UError {
 	private StackTraceElement[] stackTrace;
 
 	UError(UConnection c) {
-	    	connection = c;
+		connection = c;
 		jciErrorCode = UErrorCode.ER_NO_ERROR;
 	}
 
@@ -59,36 +59,47 @@ public class UError {
 	}
 
 	private int getSessionNumber(byte[] session) {
-	    int ch1 = session[8];
-	    int ch2 = session[9];
-	    int ch3 = session[10];
-	    int ch4 = session[11];
+		int ch1 = session[8];
+		int ch2 = session[9];
+		int ch3 = session[10];
+		int ch4 = session[11];
 
-	    return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
+		return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
 	}
 
 	public String getErrorMsg() {
-	    	if (connection != null) {
-	    	    if (connection.protoVersionIsAbove(UConnection.PROTOCOL_V4)) {
-	    		return String.format("%s[CAS INFO - %s:%d,%d,%d],[SESSION-%d],[URL-%s].",
-				errorMessage, connection.CASIp,
-				connection.CASPort, connection.casId,
-	    			connection.processId ,
-				getSessionNumber(connection.sessionId),
-	    			connection.url);
-	    	    } else if (connection.protoVersionIsAbove(UConnection.PROTOCOL_V3)) {
-	    		return String.format("%s[CAS INFO - %s:%d,%d],[SESSION-%d],[URL-%s].", 
-				errorMessage, connection.CASIp,
-				connection.CASPort,connection.processId,
-	    			getSessionNumber(connection.sessionId),
-				connection.url);
-	    	    } else {
-	    		return String.format("%s[CAS INFO - %s:%d,%d],[SESSION-%d],[URL-%s].", 
-				errorMessage, connection.CASIp,
-				connection.CASPort, connection.processId,
-	    			connection.oldSessionId, connection.url);
-	    	    }
-	    	}
+		if (connection != null) {
+			String sessionInfo = "";			
+			if (connection.protoVersionIsAbove(UConnection.PROTOCOL_V3)) {
+				sessionInfo = String.format("[SESSION-%d],",
+						getSessionNumber(connection.sessionId));
+			} else {
+				sessionInfo = String.format("[SESSION-%d],",
+						connection.oldSessionId);
+			}
+			
+			String infoType = "";
+			if (connection.isConnectedToProxy()) {
+				sessionInfo = "";
+				infoType = "PROXY INFO";
+			} else {
+				infoType = "CAS INFO";
+			}
+			
+			if (connection.protoVersionIsAbove(UConnection.PROTOCOL_V4)) {
+				return String.format(
+						"%s[%s-%s:%d,%d,%d],%s[URL-%s].",
+						errorMessage, infoType, connection.CASIp, connection.CASPort,
+						connection.casId, connection.processId,
+						sessionInfo, connection.url);
+			} else {
+				return String.format(
+						"%s[%s-%s:%d,%d],%s[URL-%s].",
+						errorMessage, infoType, connection.CASIp, connection.CASPort,
+						connection.processId, sessionInfo,
+						connection.url);
+			}
+		}
 		return errorMessage;
 	}
 
@@ -102,7 +113,7 @@ public class UError {
 	}
 
 	void copyValue(UError object) {
-	    	connection = object.connection;
+		connection = object.connection;
 		jciErrorCode = object.jciErrorCode;
 		errorMessage = object.errorMessage;
 		serverErrorCode = object.serverErrorCode;
@@ -132,12 +143,12 @@ public class UError {
 	}
 
 	public void setStackTrace(StackTraceElement[] stackTrace) {
-	    this.stackTrace = stackTrace;
+		this.stackTrace = stackTrace;
 	}
 
 	public void changeStackTrace(Throwable t) {
-	    if (stackTrace != null) {
-		t.setStackTrace(stackTrace);
-	    }
+		if (stackTrace != null) {
+			t.setStackTrace(stackTrace);
+		}
 	}
 }

@@ -42,6 +42,7 @@
 #define CAS_NO_ERROR		0
 #define ERR_MSG_LENGTH		1024
 #define ERR_FILE_LENGTH		256
+#define MAX_SHARD_INFO_LENGTH   30
 
 typedef struct t_object T_OBJECT;
 struct t_object

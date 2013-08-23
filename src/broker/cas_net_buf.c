@@ -293,6 +293,8 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
 #ifndef LIBCAS_FOR_JSP
   T_BROKER_VERSION ver;
 #endif /* !LIBCAS_FOR_JSP */
+  size_t err_msg_len = 0;
+  char err_msg[ERR_MSG_LENGTH];
 
   assert (err_code != NO_ERROR);
 
@@ -329,13 +331,14 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
   net_buf_cp_str (net_buf, msg_buf, strlen (msg_buf));
 #endif
 
-  if ((err_str == NULL) || (err_str == ""))
+  err_msg_len = error_append_shard_info (err_msg, err_str, ERR_MSG_LENGTH);
+  if (err_msg_len == 0)
     {
       net_buf_cp_byte (net_buf, '\0');
     }
   else
     {
-      net_buf_cp_str (net_buf, err_str, strlen (err_str) + 1);
+      net_buf_cp_str (net_buf, err_msg, err_msg_len + 1);
     }
 }
 
