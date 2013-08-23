@@ -22040,8 +22040,11 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	  args_w_coll++;
 	}
 
-      common_coll = arg1_coll_inf.coll_id;
-      common_cs = arg1_coll_inf.codeset;
+      if (arg1_type != PT_TYPE_MAYBE)
+	{
+	  common_coll = arg1_coll_inf.coll_id;
+	  common_cs = arg1_coll_inf.codeset;
+	}
     }
   else if (PT_IS_COLLECTION_TYPE (arg1_type))
     {
@@ -22067,8 +22070,11 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	  args_w_coll++;
 	}
 
-      common_coll = arg2_coll_inf.coll_id;
-      common_cs = arg2_coll_inf.codeset;
+      if (arg2_type != PT_TYPE_MAYBE)
+	{
+	  common_coll = arg2_coll_inf.coll_id;
+	  common_cs = arg2_coll_inf.codeset;
+	}
     }
   else if (PT_IS_COLLECTION_TYPE (arg2_type))
     {
@@ -22096,8 +22102,11 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	      args_w_coll++;
 	    }
 
-	  common_coll = arg3_coll_inf.coll_id;
-	  common_cs = arg3_coll_inf.codeset;
+	  if (arg3_type != PT_TYPE_MAYBE)
+	    {
+	      common_coll = arg3_coll_inf.coll_id;
+	      common_cs = arg3_coll_inf.codeset;
+	    }
 	}
       else if (PT_IS_COLLECTION_TYPE (arg3_type))
 	{
@@ -22154,6 +22163,31 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
       common_coll = expr_coll_modifier;
       use_cast_collate_modifier = true;
       goto coerce_arg;
+    }
+
+  if (args_w_coll == 0)
+    {
+      /* we don't have any argument from which we can get an exact collation
+       * (strings, enums or collections with strings);
+       * try to get common codeset and collation from TYPE_MAYBE arguments:
+       * all TYPE_MAYBE arguments of this expression have the same codeset and
+       * collation (those of the client), so it doesn't matter which one we
+       * use */
+      if (arg1_type == PT_TYPE_MAYBE)
+	{
+	  common_coll = arg1_coll_inf.coll_id;
+	  common_cs = arg1_coll_inf.codeset;
+	}
+      else if (arg2_type == PT_TYPE_MAYBE)
+	{
+	  common_coll = arg2_coll_inf.coll_id;
+	  common_cs = arg2_coll_inf.codeset;
+	}
+      else if (arg3_type == PT_TYPE_MAYBE)
+	{
+	  common_coll = arg3_coll_inf.coll_id;
+	  common_cs = arg3_coll_inf.codeset;
+	}
     }
 
   if (args_w_coll <= 1)
@@ -22287,8 +22321,8 @@ coerce_arg:
 coerce_result:
   if (op == PT_CHR || op == PT_CLOB_TO_CHAR)
     {
-      /* for these operators, we don't we the arguments' collaitons to infere
-       * common collation, but special values for arg2 */
+      /* for these operators, we don't want the arguments' collations to
+       * infere common collation, but special values of arg2 */
       common_cs = expr->data_type->info.data_type.units;
       common_coll = expr->data_type->info.data_type.collation_id;
     }
