@@ -1097,10 +1097,10 @@ $ LOADDB
 1028 log applier: 在存档日志中遇到意外的EOF记录. LSA: %1$lld|%2$d.
 1029 log applier: 非法复制日志 页/偏移. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
 1030 log applier: 非法复制记录. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: apply schema 日志失败. class: "%1$s", schema: "%2$s", internal error: %3$d. 
-1032 log applier: apply insert 日志失败. class: "%1$s", key: "%2$s", internal error: %3$d.  
-1033 log applier: apply update 日志失败. class: "%1$s", key: "%2$s", internal error: %3$d.  
-1034 log applier: apply delete 日志失败. class: "%1$s", key: "%2$s", internal error: %3$d.  
+1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s. 
+1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
 1035 log applier: log applier 的内存大小(%1$d MB) 大于 最大内存大小(%2$d MB) 或已经增长了2倍以上 (%3$d MB). required LSA: %4$lld|%5$d. last committed LSA: %6$lld|%7$d.
 1036 log applier: log applier 通过信号关闭自己.
 1037 log writer: log writer 通过信号关闭自己.

@@ -1097,10 +1097,10 @@ $ LOADDB
 1028 uygulayıcı log: arşiv log beklenmedik EOF kaydı. LSA: %1$lld|%2$d.
 1029 uygulayıcı log: geçersiz çoğaltma log page/offset. sayfa HDR: %1$1lld|%2$d, final: %3$lld|%4$d, ekleme LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha dosya durumu: %9$d, is end-of-log: %10$d.
 1030 uygulayıcı log: geçersiz çoğaltma kayıt. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, önceki tran LSA: %8$lld|%9$d, tür: %10$d.
-1031 uygulayıcı log: şema çoğaltma log uygulanması başarısız oldu. sınıfı: "%1$s", şema: "%2$s", İç hata: %$3d.
-1032 uygulayıcı log: ekleme çoğaltma log uygulanması başarısız oldu. sınıfı: "%1$s", anahtar: "%2$s", İç hata: %3$d.
-1033 uygulayıcı log: güncelleme çoğaltma log uygulanması başarısız oldu. sınıfı: "%1$s", anahtar: "%2$s", İç hata: %3$d.
-1034 uygulayıcı log: silme çoğaltma log uygulanması başarısız oldu. sınıfı:  "%1$s", anahtar: "%2$s", İç hata: %3$d.
+1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s.
+1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d.
 1035 uygulayıcı log: hafıza boyutu(%1$d MB) log uygulayıcısı max hafıza boyutu büyükse (%2$d MB) veya daha az 2 kat büyümesini edilmiştir (%3$d MB). gereken LSA: %4$lld|%5$d. son kararlı LSA: %6$lld|%7$d.
 1036 uygulayıcı log: log uygulayıcısı sinyal kendini kapattı.
 1037 yazıcı log: log yazar sinyal kendini kapattı.

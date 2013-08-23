@@ -1097,10 +1097,10 @@ $ LOADDB
 1028 Aplicador de registro: registro EOF inesperado en la carpeta de registros. LSA: %1$lld|%2$d.
 1029 Aplicador de registro: pagina/offset de registro de replicacion no valida. pagina HDR: %1$1lld|%2$d, final: %3$lld|%4$d,, anexar LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, estado de archivo HA: %9$d, es fin-del-registro: %10$d. 
 1030 Aplicador de registro: registro de replicacion no valido. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 Aplicador de registro: fracaso al aplicar registro de replicacion de esquema. clase: "%1$s", esquema: "%2$s", error interno: %3$d.  
-1032 Aplicador de registro: fracaso al aplicar registro de replicacion insert. clase: "%1$s", clave: "%2$s", error interno: %3$d.  
-1033 Aplicador de registro: fracaso al aplicar registro de replicacion de actualizacion.clase: "%1$s", clave: "%2$s", error interno: %3$d.  
-1034 Aplicador de registro: fracaso al aplicar registro de replicacion de eliminar. clase: "%1$s", esquema: "%2$s", error interno: %3$d.  
+1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s.  
+1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
 1035 Aplicador de registro: tamano de memoria (%1$d MB) del aplicador de registro es superior al tamano maximo de memoria (%2$d MB) o ha sido aumentado mas de 2 veces (%3$d MB). LSA requerido : %4$lld|%5$d. ultimo LSA cometido: %6$lld|%7$d.
 1036 Aplicador de registro: aplicador de registro se ha apagado por senal.
 1037 Escritor de registro: escritor de registro se ha apagado por senal.

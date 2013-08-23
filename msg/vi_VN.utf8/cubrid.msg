@@ -1097,10 +1097,10 @@ $ LOADDB
 1028 log applier: bản ghi EOF không mong đợi từ bản ghi lưu trữ. LSA: %1$lld|%2$d.
 1029 log applier: độ lệch/trang bản ghi nhân bản không hợp lệ. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
 1030 log applier: bản ghi chép nhân bản không hợp lệ. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: thất bại áp dụng bản ghi nhân bản Schema. lớp: "%1$s", lược đồ: "%2$s", Lỗi nội bộ: %3$d.
-1032 log applier: thất bại khi áp dụng bản ghi nhân bản Insert. lớp: "%1$s", khóa: "%2$s", Lỗi nội bộ: %3$d.
-1033 log applier: thất bại khi áp dụng bản ghi nhân bản Update. class: "%1$s", key: "%2$s", Lỗi nội bộ: %3$d.
-1034 log applier: thất bại khi áp dụng bản ghi nhân bản Delete. class: "%1$s", key: "%2$s", Lỗi nội bộ: %3$d.
+1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s.
+1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d.
 1035 log applier: kích cỡ bộ nhớ(%1$d MB) của log applier lớn hơn kích cỡ bộ nhớ tối đa (%2$d MB) hoặc đã được tăng lên nhiều hơn 2 lần (%3$d MB). LSA được yêu cầu: %4$lld|%5$d. LSA được cam kết lần cuối: %6$lld|%7$d.
 1036 log applier: log applier tự tắt nó bằng tín hiệu.
 1037 log writer: log writer tự tắt nó bằng tín hiệu.

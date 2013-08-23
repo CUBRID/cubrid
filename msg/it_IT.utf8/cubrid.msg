@@ -1097,10 +1097,10 @@ $ LOADDB
 1028 log applier: voce EOF imprevisto nel log dei transazioni. LSA: %1$lld|%2$d.
 1029 log applier: offset/pagina non valida del log di replicazione . HDR della pagina: %1$1lld|%2$d, final: %3$lld|%4$d, Append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, stato del file HA: %9$d, is end-of-log: %10$d.
 1030 log applier: voce di replicazione don valida. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: non riuscito ad applicare il log del replicazione della schema. classe: "%1$s", schema: "%2$s", Errore interno: %3$d. 
-1032 log applier: non riuscito ad applicare il log del replicazione della schema. classe: "%1$s", chiave: "%2$s", Errore interno: %3$d.  
-1033 log applier: non riuscito ad applicare il log del replicazione dell'UPDATE. classe: "%1$s", chiave: "%2$s", Errore interno: %3$d.  
-1034 log applier: non riuscito ad applicare il log del replicazione del DELETE. classe: "%1$s", chiave: "%2$s", Errore interno: %3$d.  
+1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s. 
+1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d.
 1035 log applier: dimensione della memoria (%1$d MB) dell'applicatore di log è maggiore della dimensione massima di memoria (%2$d MB) o è stato aumentato più di 2 volte (%3$d MB). LSA richiesto: %4$lld|%5$d. ultimo LSA commesso : %6$lld|%7$d.
 1036 log applier: log applier sé arrestato dal segnale.
 1037 log writer: log writer sé arrestato dal segnale.

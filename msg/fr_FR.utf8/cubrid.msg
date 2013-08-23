@@ -1097,10 +1097,10 @@ $ LOADDB
 1028 Applicateur du journal: enregistrement EOF inattendu dans le journal de transactions. LSA: %1$lld|%2$d.
 1029 Applicateur du journal: invalide la page du journal de réplication. page HDR: %1$1lld|%2$d, finale: %3$lld|%4$d, LSA annexé: %5$lld|%6$d, LSA EOF: %7$lld|%8$d, l'état des fichiers ha: %9$d, est en fin de journal (end-of-log): %10$d.
 1030 Applicateur du journal: enregistrement invalide de réplication. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 Applicateur du journal: échoué d'appliquer le journal de réplication de schéma. Classe: "%1$s", schéma: "%2$s", erreur interne: %3$d.
-1032 Applicateur du journal: échoué d'appliquer le journal de réplication d'INSERT. Classe: "%1$s", clé: "%2$s", erreur interne: %3$d.  
-1033 Applicateur du journal: échoué d'appliquer le journal de réplication d'UPDATE. Classe: "%1$s", clé: "%2$s", erreur interne: %3$d.  
-1034 Applicateur du journal: échoué d'appliquer le journal de réplication de DELETE. Classe: "%1$s", clé: "%2$s", erreur interne: %3$d.  
+1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s.
+1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
 1035 Applicateur du journal: taille de la mémoire(%1$d Mo) d'applicateur de journal est supérieure à la taille maximale de la mémoire (%2$d Mo) ou a été augmenter de plus de 2 fois (%3$d Mo). LSA nécessaire: %4$lld|%5$d. Dernière LSA enregistré: %6$lld|%7$d.
 1036 Applicateur du journal: applicateur du journal s'est arrêté par un signal.
 1037 Écrivain du journal: écrivain du journal s'est arrêté par un signal.

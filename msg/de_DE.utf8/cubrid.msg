@@ -1097,10 +1097,10 @@ $ LOADDB
 1028 Log-Applier: unerwarteter EOF Eintrag im Archivprotokoll. LSA: %1$lld|%2$d.
 1029 Log-Applier: ungültige Replikation-Protokollseite/-offset. Seite HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha Dateistatus: %9$d, its end-of-log: %10$d.
 1030 Log-Applier: ungültiger Replikationseintrag. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, Typ: %10$d.
-1031 Log-Applier: Schema-Replikation-Log konnte nicht übernommen werden. Klasse: "%1$s", Schema: "%2$s", INTERNER FEHLER: %3$d. 
-1032 Log-Applier: Insert-Replikation-Log konnte nicht übernommen werden. Klasse: "%1$s", Schlüssel: "%2$s", INTERNER FEHLER: %3$d.  
-1033 Log-Applier: Update-Replikation-Log konnte nicht übernommen werden. Klasse: "%1$s", Schlüssel: "%2$s", INTERNER FEHLER: %3$d.  
-1034 Log-Applier: Löschen-Replikation-Log konnte nicht übernommen werden. Klasse: "%1$s", Schlüssel: "%2$s", INTERNER FEHLER: %3$d.  
+1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s. 
+1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d.
 1035 Log-Applier: Die Speichergrösse (%1$d MB) des Log-Appliers ist größer als der gesamte Speicher (%2$d MB) oder ist mehr als zweimal (%3$d MB) gewachsen. erforderlich LSA: %4$lld|%5$d. Letzter Mal LSA festgeschrieben: %6$lld|%7$d.
 1036 Log-Applier: Log-Applier hat sich selber heruntergefahren.
 1037 Log-Schreiber: Der Log-Schreiber hat sich selber heruntergefahren.

@@ -5247,6 +5247,7 @@ la_apply_schema_log (LA_ITEM * item)
 {
   char *ddl;
   int error = NO_ERROR;
+  const char *error_msg = "";
   DB_OBJECT *user = NULL, *save_user = NULL;
   char buf[256];
   char sql_log_err[LINE_MAX];
@@ -5319,6 +5320,8 @@ la_apply_schema_log (LA_ITEM * item)
 		{
 		  error = er_errid ();
 		}
+
+	      error_msg = er_msg ();
 	      break;
 	    }
 
@@ -5358,6 +5361,7 @@ la_apply_schema_log (LA_ITEM * item)
       if (la_update_query_execute (ddl, false) != NO_ERROR)
 	{
 	  error = er_errid ();
+	  error_msg = er_msg ();
 	  if (error == ER_NET_CANT_CONNECT_SERVER
 	      || error == ER_OBJ_NO_CONNECT)
 	    {
@@ -5397,7 +5401,7 @@ la_apply_schema_log (LA_ITEM * item)
       er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_HA_LA_FAILED_TO_APPLY_SCHEMA, 3, item->class_name, buf,
-	      error);
+	      error, error_msg);
       er_stack_pop ();
 
       la_Info.fail_counter++;
