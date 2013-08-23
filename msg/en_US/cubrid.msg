@@ -1199,7 +1199,9 @@ $ LOADDB
 1130 Transaction is aborted because transaction lock counts exceeds %1$d.
 1131 Internal error: The page %1$d of volume "%2$s" may be corrupted.\n%3$s
 1132 Encryption library failure: %s
-1133 Last Error
+1133 Copylogdb for %1$s already exists.
+1134 Applylogdb for %1$s already exists.
+1135 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):

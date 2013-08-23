@@ -1199,7 +1199,9 @@ $ LOADDB
 1130 Giao dịch bị hủy bỏ do vượt quá lượng giao dịch %1$d.
 1131 Lỗi nội bộ: Trang %1$d của bộ đĩa "%2$s" có thể bị hỏng.\n%3$s
 1132 Encryption library failure: %s
-1133 Lỗi sau cùng
+1133 Copylogdb for %1$s already exists.
+1134 Applylogdb for %1$s already exists.
+1135 Lỗi sau cùng
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Lỗi trong các lỗi hệ thống con (dòng %d):

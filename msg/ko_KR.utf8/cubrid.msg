@@ -1199,7 +1199,9 @@ $ LOADDB
 1130 락 횟수가 %1$d 를 초과하여 트랜잭션이 취소되었습니다.
 1131 내부 에러: The page %1$d of volume "%2$s" may be corrupted.\n%3$s
 1132 Encryption library failure: %s
-1133 마지막 에러
+1133 Copylogdb for %1$s은 (는) 이미 존재합니다.
+1134 Applylogdb for %1$s은 (는) 이미 존재합니다.
+1135 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

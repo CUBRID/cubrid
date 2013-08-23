@@ -1199,7 +1199,9 @@ $ LOADDB
 1130 Tranzacţia a fost abandonată deoarece numărul de lock-uri asociate tranzacţiei depăşeşte %1$d.
 1131 Eroare internă: Pagina %1$d din volumul "%2$s" ar putea fi coruptă.\n%3$s
 1132 Encryption library failure: %s
-1133 Ultima eroare
+1133 Copylogdb for %1$s already exists.
+1134 Applylogdb for %1$s already exists.
+1135 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %d):

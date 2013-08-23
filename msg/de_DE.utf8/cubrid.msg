@@ -1199,7 +1199,9 @@ $ LOADDB
 1130 Transaktion wird abgebrochen, weil die Anzahl der Transaktionssperre %1$d überschreitet.
 1131 Interner Fehler: Die Seite %1$d des Volumen "%2$s" könnte beschädigt sein.\n%3$s
 1132 Encryption library failure: %s
-1133 Letzter Fehler
+1133 Copylogdb for %1$s already exists.
+1134 Applylogdb for %1$s already exists.
+1135 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %d):

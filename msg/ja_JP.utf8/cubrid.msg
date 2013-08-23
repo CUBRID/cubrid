@@ -1199,7 +1199,9 @@ $ LOADDB
 1130 トランザクションのロックカウントが「%1$d」を超えたので、トランザクションがキャンセルされました。
 1131 インターナルエラー：ボリューム「%2$s」のページ「%1$d」が壊れています。\n%3$s
 1132 Encryption library failure: %s
-1133 ラストエラー
+1133 Copylogdb for %1$s already exists.
+1134 Applylogdb for %1$s already exists.
+1135 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %d):

@@ -1439,7 +1439,10 @@
 
 #define ER_ENCRYPTION_LIB_FAILED                    -1132
 
-#define ER_LAST_ERROR                               -1133
+#define ERR_CSS_COPYLOG_ALREADY_EXISTS              -1133
+#define ERR_CSS_APPLYLOG_ALREADY_EXISTS             -1134
+
+#define ER_LAST_ERROR                               -1135
 
 
 

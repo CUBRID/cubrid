@@ -1199,7 +1199,9 @@ $ LOADDB
 1130 İşlem kilit sayıları %1$d aştığı için işlem iptal edilir.
 1131 Dahili hata: Sayfa %1$d hacmi "%2$s"de bozulabilir.\n%3$s
 1132 Encryption library failure: %s
-1133 Son Hata
+1133 Copylogdb for %1$s already exists.
+1134 Applylogdb for %1$s already exists.
+1135 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %d):

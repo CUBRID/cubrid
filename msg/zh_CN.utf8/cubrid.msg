@@ -1199,7 +1199,9 @@ $ LOADDB
 1130 事务被终止, 因为事务锁数超过 %1$d.
 1131 内部错误: 卷 "%2$s" 的页 %1$d 可能被破坏.\n%3$s
 1132 Encryption library failure: %s
-1133 Last Error
+1133 Copylogdb for %1$s already exists.
+1134 Applylogdb for %1$s already exists.
+1135 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %d):

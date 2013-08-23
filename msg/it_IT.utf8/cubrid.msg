@@ -1199,7 +1199,9 @@ $ LOADDB
 1130 Transazione viene interrotta perché numero di lock counts supera il valore %1$d.
 1131 Errore interno: La pagina %1$d di volume "%2$s" potrebbe essere danneggiata.\n%3$s
 1132 Encryption library failure: %s
-1133 Ultimo errore
+1133 Copylogdb for %1$s already exists.
+1134 Applylogdb for %1$s already exists.
+1135 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %d):

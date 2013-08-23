@@ -1199,7 +1199,9 @@ $ LOADDB
 1130 Transaction est abandonnée parce que nombre de verrous de la transaction dépasse %1$d.
 1131 Erreur interne: La page %1$d du volume "%2$s" peut être corrompue.\n%3$s
 1132 Encryption library failure: %s
-1133 Dernière erreur
+1133 Copylogdb for %1$s already exists.
+1134 Applylogdb for %1$s already exists.
+1135 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %d):

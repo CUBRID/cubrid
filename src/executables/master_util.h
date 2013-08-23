@@ -90,6 +90,7 @@ extern void master_util_wait_proc_terminate (int pid);
 
 extern pthread_mutex_t css_Master_er_log_lock;
 
+#define GET_REAL_MASTER_CONN_NAME(name)         (((char *) name) + 1)
 #define IS_MASTER_CONN_NAME_DRIVER(name)        (*((char *)name) == '-')
 #define IS_MASTER_CONN_NAME_HA_SERVER(name)     (*((char *)name) == '#')
 #define IS_MASTER_CONN_NAME_HA_COPYLOG(name)    (*((char *)name) == '$')

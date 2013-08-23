@@ -1199,7 +1199,9 @@ $ LOADDB
 1130 កិច្ចការត្រូវបោះបង់ដោយសារតែកិច្ចការនេះហួសកំណត់ ត្រូវចាក់សោរ %1$d.
 1131 កំហុសផ្ទៃក្នុងៈ ទំព័រនេះ: %1$d នៃ វ៉ូលូម "%2$s" ប្រហែលឯកសារខូច.\n%3$s
 1132 Encryption library failure: %s
-1133 Last Error
+1133 Copylogdb for %1$s already exists.
+1134 Applylogdb for %1$s already exists.
+1135 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error ក្នុងអនុប្រព័ន្ធ error (line %d):

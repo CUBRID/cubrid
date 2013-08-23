@@ -1199,7 +1199,9 @@ $ LOADDB
 1130 Transaccion es abortada porque el numero de llaves asociado a la transaccion excede %1$d.
 1131 Error interno: La pagina %1$d del volumen "%2$s" puede ser corrota. \n%3$s
 1132 Encryption library failure: %s
-1133 Ultimo error
+1133 Copylogdb for %1$s already exists.
+1134 Applylogdb for %1$s already exists.
+1135 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %d):
