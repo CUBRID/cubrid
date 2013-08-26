@@ -3067,6 +3067,12 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       mode = LOGWR_MODE_SYNC;
     }
 
+  /* 'SEMISYNC' is treated as 'SYNC'. */
+  if (mode == LOGWR_MODE_SEMISYNC)
+    {
+      mode = LOGWR_MODE_SYNC;
+    }
+
 #if defined(NDEBUG)
   util_redirect_stdout_to_null ();
 #endif
