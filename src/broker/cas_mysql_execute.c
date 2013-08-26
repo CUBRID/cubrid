@@ -25,6 +25,7 @@
 #ident "$Id$"
 
 #include <stdio.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -187,6 +188,7 @@ static void trigger_time_str (DB_TRIGGER_TIME trig_time, char *buf);
 #endif /* 0 */
 
 static char get_stmt_type (const char *stmt);
+static const char *ignore_sql_comment (const char *stmt);
 static int execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
 			     T_BROKER_VERSION client_version, char exec_flag);
 
@@ -1945,21 +1947,10 @@ trigger_time_str (DB_TRIGGER_TIME trig_time, char *buf)
 static char
 get_stmt_type (const char *stmt)
 {
-  const char *tbuf = stmt;
-  int size = strlen (stmt);
-  int i;
-  for (i = 0; i < size; i++)
-    {
-      if (char_isalpha (tbuf[i]))
-	{
-	  break;
-	}
-    }
-  if (i >= strlen (stmt))
-    {
-      return CUBRID_MAX_STMT_TYPE;
-    }
-  tbuf += i;
+  const char *tbuf = NULL;
+
+  tbuf = ignore_sql_comment (stmt);
+
   if (strncasecmp (tbuf, "insert", 6) == 0)
     {
       return CUBRID_STMT_INSERT;
@@ -1984,6 +1975,90 @@ get_stmt_type (const char *stmt)
     {
       return CUBRID_MAX_STMT_TYPE;
     }
+}
+
+static const char *
+ignore_sql_comment (const char *stmt)
+{
+  enum t_comment_type
+  {
+    COMMENT_TYPE_NONE = 0,
+    COMMENT_TYPE_C,
+    COMMENT_TYPE_SHARP,
+    COMMENT_TYPE_ANSI
+  } cmt_type = COMMENT_TYPE_NONE;
+  const char *p = NULL;
+
+  assert (stmt != NULL);
+
+  p = stmt;
+  while (*p != '\0')
+    {
+      if (cmt_type == COMMENT_TYPE_NONE)
+	{
+	  if (isspace (*p))
+	    {
+	      p += 1;
+	    }
+	  else if (*p == '#')
+	    {
+	      cmt_type = COMMENT_TYPE_SHARP;
+	      p += 1;
+	    }
+	  else if (*p == '/')
+	    {
+	      if (*(p + 1) == '*')
+		{
+		  cmt_type = COMMENT_TYPE_C;
+		  p += 2;
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	  else if (*p == '-')
+	    {
+	      if (*(p + 1) == '-' && isspace (*(p + 2)))
+		{
+		  cmt_type = COMMENT_TYPE_ANSI;
+		  p += 3;
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	  else
+	    {
+	      break;
+	    }
+	}
+      else if (cmt_type == COMMENT_TYPE_SHARP
+	       || cmt_type == COMMENT_TYPE_ANSI)
+	{
+	  if (*p == '\n')
+	    {
+	      cmt_type = COMMENT_TYPE_NONE;
+	    }
+
+	  p += 1;
+	}
+      else if (cmt_type == COMMENT_TYPE_C)
+	{
+	  if (*p == '*' && *(p + 1) == '/')
+	    {
+	      cmt_type = COMMENT_TYPE_NONE;
+	      p += 2;
+	    }
+	  else
+	    {
+	      p += 1;
+	    }
+	}
+    }
+
+  return p;
 }
 
 static int
