@@ -79,6 +79,7 @@ char db_Program_name[PATH_MAX];
 
 static char *db_Preferred_hosts = NULL;
 static int db_Connect_order = DB_CONNECT_ORDER_SEQ;
+static int db_Reconnect_reason = 0;
 
 static void install_static_methods (void);
 static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose,
@@ -86,7 +87,6 @@ static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose,
 #if !defined(WINDOWS)
 void sigfpe_handler (int sig);
 #endif
-
 
 /*
  * install_static_methods() - Installs the static method definitions for the
@@ -496,6 +496,30 @@ void
 db_set_connect_order (int connect_order)
 {
   db_Connect_order = connect_order;
+}
+
+void
+db_set_reconnect_reason (int reason)
+{
+  db_Reconnect_reason |= reason;
+}
+
+void
+db_unset_reconnect_reason (int reason)
+{
+  db_Reconnect_reason &= ~reason;
+}
+
+void
+db_clear_reconnect_reason ()
+{
+  db_Reconnect_reason = 0;
+}
+
+bool
+db_get_need_reconnect ()
+{
+  return (db_Reconnect_reason != 0);
 }
 
 /*

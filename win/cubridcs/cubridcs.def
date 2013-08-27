@@ -79,6 +79,7 @@ EXPORTS
     db_change_query_spec
     db_check_authorization
     db_class_has_instance
+    db_clear_reconnect_reason
     db_close_session
     db_col_create
     db_col_domain
@@ -198,6 +199,7 @@ EXPORTS
     db_get_type_name
     db_get_host_connected
     db_get_ha_server_state
+    db_get_need_reconnect
     db_grant
     db_identifier
     db_include_oid
@@ -322,6 +324,7 @@ EXPORTS
     db_set_system_parameters
     db_set_preferred_hosts
     db_set_connect_order
+    db_set_reconnect_reason
     db_shutdown
     db_string_free
     db_synchronize_cache
@@ -343,6 +346,7 @@ EXPORTS
     db_trigger_priority
     db_trigger_status
     db_type_to_db_domain
+    db_unset_reconnect_reason
     db_validate
     db_validate_query_spec
     db_value_clear

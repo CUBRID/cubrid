@@ -277,6 +277,12 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare,
 		    client_cap & NET_CAP_UPDATE_DISABLED,
 		    server_cap & NET_CAP_UPDATE_DISABLED);
       server_cap ^= NET_CAP_UPDATE_DISABLED;
+
+      db_set_reconnect_reason (DB_RC_MISMATCHED_RW_MODE);
+    }
+  else
+    {
+      db_unset_reconnect_reason (DB_RC_MISMATCHED_RW_MODE);
     }
 
   /* network protocol compatibility */

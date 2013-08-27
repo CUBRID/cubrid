@@ -66,6 +66,7 @@
 #define DEFAULT_MAX_PREPARED_STMT_COUNT 10000
 #define DEFAULT_MONITOR_HANG_INTERVAL   60
 #define DEFAULT_HANG_TIMEOUT            60
+#define DEFAULT_RECONNECT_TIME          "600s"
 
 #define DEFAULT_SHARD_PROXY_LOG_MODE		"ERROR"
 #define DEFAULT_SHARD_KEY_MODULAR	        256
@@ -764,6 +765,18 @@ broker_config_read_internal (const char *conf_file,
 	}
 
       strncpy (time_str,
+	       ini_getstr (ini, sec_name, "RECONNECT_TIME",
+			   DEFAULT_RECONNECT_TIME, &lineno),
+	       sizeof (time_str));
+      br_info[num_brs].cas_rctime =
+	(int) ut_time_string_to_sec (time_str, "sec");
+      if (br_info[num_brs].cas_rctime < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
+      strncpy (time_str,
 	       ini_getstr (ini, sec_name, "MAX_QUERY_TIMEOUT",
 			   DEFAULT_MAX_QUERY_TIMEOUT, &lineno),
 	       sizeof (time_str));
@@ -1341,6 +1354,8 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	{
 	  fprintf (fp, "CONNECT_ORDER\t\t=%s\n", tmp_str);
 	}
+      fprintf (fp, "RECONNECT_TIME\t\t=%d\n", br_info[i].cas_rctime);
+
       fprintf (fp, "MAX_QUERY_TIMEOUT\t=%d\n", br_info[i].query_timeout);
 
       tmp_str = get_conf_string (br_info[i].monitor_hang_flag, tbl_on_off);

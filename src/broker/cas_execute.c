@@ -350,6 +350,7 @@ static char *get_backslash_escape_string (void);
 
 static void update_query_execution_count (T_APPL_SERVER_INFO * as_info_p,
 					  char stmt_type);
+static bool need_reconnect_on_rctime (void);
 
 
 static char cas_u_type[] = { 0,	/* 0 */
@@ -1108,8 +1109,10 @@ ux_end_tran (int tran_type, bool reset_con_status)
     }
 
 #ifndef LIBCAS_FOR_JSP
-  if (get_db_connect_status () == -1 /* DB_CONNECTION_STATUS_RESET */ )
+  if (get_db_connect_status () == -1	/* DB_CONNECTION_STATUS_RESET */
+      || need_reconnect_on_rctime ())
     {
+      db_clear_reconnect_reason ();
       as_info->reset_flag = TRUE;
     }
 #endif /* !LIBCAS_FOR_JSP */
@@ -9781,4 +9784,19 @@ update_query_execution_count (T_APPL_SERVER_INFO * as_info_p, char stmt_type)
     default:
       break;
     }
+}
+
+static bool
+need_reconnect_on_rctime (void)
+{
+#if !defined(LIBCAS_FOR_JSP)
+  if (shm_appl->cas_rctime > 0 && db_get_need_reconnect ())
+    {
+      if ((time (NULL) - as_info->last_connect_time) > shm_appl->cas_rctime)
+	{
+	  return true;
+	}
+    }
+#endif /* !LIBCAS_FOR_JSP */
+  return false;
 }

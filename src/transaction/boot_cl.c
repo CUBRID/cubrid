@@ -931,6 +931,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 #if defined(CS_MODE)
   /* Initialize the communication subsystem */
+  db_clear_reconnect_reason ();
+
   if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential))
     {
       char **hosts;
@@ -962,6 +964,12 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       error_code =
 	boot_client_initialize_css (tmp_db, client_credential->client_type,
 				    true, false, DB_CONNECT_ORDER_SEQ);
+
+      if (error_code != NO_ERROR)
+	{
+	  db_set_reconnect_reason (DB_RC_NON_PREFERRED_HOSTS);
+	}
+
       util_free_string_array (hosts);
       cfg_free_directory (tmp_db);
     }

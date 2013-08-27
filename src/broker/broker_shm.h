@@ -592,6 +592,7 @@ struct t_shm_appl_server
   int max_prepared_stmt_count;
   int num_access_info;
   int acl_chn;
+  int cas_rctime;		/* sec */
   bool monitor_hang_flag;
 #if !defined(WINDOWS)
   sem_t acl_sem;

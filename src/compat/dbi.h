@@ -46,6 +46,10 @@
 #define DB_CONNECT_ORDER_SEQ         0
 #define DB_CONNECT_ORDER_RANDOM      1
 
+/* reason for a client to reconnect */
+#define DB_RC_MISMATCHED_RW_MODE        0x00000002
+#define DB_RC_NON_PREFERRED_HOSTS       0x00000004
+
 /* constants for db_include_oid */
 enum
 { DB_NO_OIDS, DB_ROW_OIDS, DB_COLUMN_OIDS };
@@ -387,6 +391,11 @@ extern void db_set_connect_order (int connect_order);
 extern int db_get_client_type (void);
 extern const char *db_get_type_name (DB_TYPE type_id);
 extern DB_TYPE db_type_from_string (const char *name);
+
+extern void db_set_reconnect_reason (int reason);
+extern void db_unset_reconnect_reason (int reason);
+extern void db_clear_reconnect_reason (void);
+extern bool db_get_need_reconnect (void);
 
 extern DB_OBJECT *db_find_class_of_index (const char *const index,
 					  const DB_CONSTRAINT_TYPE type);

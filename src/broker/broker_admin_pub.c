@@ -2201,6 +2201,20 @@ admin_conf_change (int master_shm_id, const char *br_name,
 	    }
 	}
     }
+  else if (strcasecmp (conf_name, "RECONNECT_TIME") == 0)
+    {
+      int rctime;
+
+      rctime = (int) ut_time_string_to_sec (conf_value, "sec");
+      if (rctime < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_conf_error;
+	}
+
+      br_info_p->cas_rctime = rctime;
+      shm_as_p->cas_rctime = rctime;
+    }
   else if (strcasecmp (conf_name, "SQL_LOG_MAX_SIZE") == 0)
     {
       int sql_log_max_size;

@@ -233,6 +233,8 @@ struct t_broker_info
 
   int connect_order;
 
+  int cas_rctime;		/* sec */
+
   char shard_flag;
   /*from here, these are used only in shard */
   int proxy_shm_id;
