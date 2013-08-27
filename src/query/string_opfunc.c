@@ -9237,7 +9237,11 @@ qstr_coerce (const unsigned char *src,
 	  intl_char_size ((unsigned char *) src, copy_length, src_codeset,
 			  &copy_size);
 	  copy_size = MIN (copy_size, dest_precision);
-	  *dest_length = copy_length = copy_size;
+	  copy_length = copy_size;
+	  if (QSTR_IS_VARIABLE_LENGTH (dest_type))
+	    {
+	      *dest_length = copy_length;
+	    }
 	}
       else
 	{
