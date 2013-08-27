@@ -3235,9 +3235,10 @@ numeric_coerce_string_to_num (const char *astring, int astring_length,
 		  trailing_spaces = true;
 		}
 	      /* Decrease scale if decimal part exists. */
-	      if (scale > 0)
+	      scale -= skip_size;
+	      if (scale < 0)
 		{
-		  scale--;
+		  scale = 0;
 		}
 	    }
 	  else if (astring[i] == ',')
