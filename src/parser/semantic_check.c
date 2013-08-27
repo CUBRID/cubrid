@@ -16323,7 +16323,7 @@ pt_apply_union_select_list_collation (PARSER_CONTEXT * parser,
       next_att = NULL;
 
       for (att = attrs, i = 0; i < num_cinfo && att != NULL;
-	   ++i, att = next_att)
+	   ++i, prev_att = att, att = next_att)
 	{
 	  SEMAN_COMPATIBLE_INFO cinfo_att;
 
@@ -16390,7 +16390,6 @@ pt_apply_union_select_list_collation (PARSER_CONTEXT * parser,
 		    }
 		}
 
-	      prev_att = att;
 	      status = PT_UNION_INCOMP;
 	    }
 	}
