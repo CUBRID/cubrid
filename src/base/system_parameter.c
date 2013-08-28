@@ -7784,6 +7784,9 @@ sysprm_final (void)
 	  valp = (char **) prm->value;
 	  *valp = NULL;
 	}
+
+      /* reset all dynamic flags */
+      *prm->dynamic_flag = 0;
     }
 
   for (i = 0; i < MAX_NUM_OF_PRM_FILES_LOADED; i++)
