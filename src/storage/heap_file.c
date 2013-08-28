@@ -2759,6 +2759,7 @@ heap_stats_get_min_freespace (HEAP_HDR_STATS * heap_hdr)
     {
       min_freespace = (int) (heap_hdr->estimates.recs_sumlen /
 			     heap_hdr->estimates.num_recs);
+
       if (min_freespace < (OR_HEADER_SIZE + 20))
 	{
 	  min_freespace = OR_HEADER_SIZE + 20;	/* Assume very small records */
@@ -2770,6 +2771,8 @@ heap_stats_get_min_freespace (HEAP_HDR_STATS * heap_hdr)
     }
 
   min_freespace += heap_hdr->unfill_space;
+
+  min_freespace = MIN (min_freespace, HEAP_DROP_FREE_SPACE);
 
   return min_freespace;
 }
@@ -3018,7 +3021,6 @@ heap_stats_update_all (THREAD_ENTRY * thread_p, const HFID * hfid,
   RECDES recdes;		/* Header record descriptor    */
   LOG_DATA_ADDR addr;		/* Address of logging data     */
   int i, best;
-  int min_freespace;
   FILE_IS_NEW_FILE is_new_file;
   int ret = NO_ERROR;
 
@@ -3062,8 +3064,6 @@ heap_stats_update_all (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 
   heap_hdr = (HEAP_HDR_STATS *) recdes.data;
-
-  min_freespace = heap_stats_get_min_freespace (heap_hdr);
 
   /* Do we need to update the best space statistics */
   if (num_best >= 0 && bestspace != NULL)
@@ -4260,18 +4260,11 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  heap_hdr->estimates.num_other_high_best = num_other_best;
 	}
 
-      if (heap_hdr->estimates.num_pages < num_pages)
+      if (num_recs > heap_hdr->estimates.num_recs
+	  || recs_sumlen > heap_hdr->estimates.recs_sumlen)
 	{
 	  heap_hdr->estimates.num_pages = num_pages;
-	}
-
-      if (heap_hdr->estimates.num_recs < num_recs)
-	{
 	  heap_hdr->estimates.num_recs = num_recs;
-	}
-
-      if (heap_hdr->estimates.recs_sumlen < recs_sumlen)
-	{
 	  heap_hdr->estimates.recs_sumlen = recs_sumlen;
 	}
     }
