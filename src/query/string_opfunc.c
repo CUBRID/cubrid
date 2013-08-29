@@ -12150,17 +12150,19 @@ db_to_char (const DB_VALUE * src_value,
     }
   else if (TP_IS_CHAR_TYPE (type))
     {
-      error_status = pr_clone_value (src_value, result_str);
-      if (domain != NULL)
+      if (domain == NULL)
 	{
-	  db_string_put_cs_and_collation (result_str,
-					  TP_DOMAIN_CODESET (domain),
-					  TP_DOMAIN_COLLATION (domain));
+	  error_status = pr_clone_value (src_value, result_str);
+	  if (error_status != NO_ERROR)
+	    {
+	      return error_status;
+	    }
+	  db_string_put_cs_and_collation (result_str, LANG_COERCIBLE_CODESET,
+					  LANG_COERCIBLE_COLL);
 	}
       else
 	{
-	  db_string_put_cs_and_collation (result_str, LANG_COERCIBLE_CODESET,
-					  LANG_COERCIBLE_COLL);
+	  error_status = db_value_coerce (src_value, result_str, domain);
 	}
 
       return error_status;
@@ -12169,6 +12171,7 @@ db_to_char (const DB_VALUE * src_value,
     {
       error_status = ER_QSTR_INVALID_DATA_TYPE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+
       return error_status;
     }
 }
