@@ -1091,8 +1091,8 @@ $ LOADDB
 1022 prefix length의 값(%d)이 유효하지 않습니다.
 1023 Reserved error code for HA.
 1024 Reserved error code for HA.
-1025 Reserved error code for HA.
-1026 Reserved error code for HA.
+1025 HA delay info: 복제 지연(%1$d 초)이 허용치(%2$d 초)를 초과하였습니다.
+1026 HA delay info: 복제 지연(%1$d 초)이 적정 수준(%2$d 초) 이하로 감소하였습니다.
 1027 log applier: '%1$s'에서 '%2$s'로 복제 반영 상태를 변경하지 못하였습니다.
 1028 log applier: Archive 로그에 예상치 못한 EOF 로그 레코드가 있습니다. LSA: %1$lld|%2$d.
 1029 log applier: 잘못된 로그 페이지/오프셋. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.

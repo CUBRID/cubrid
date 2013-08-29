@@ -1091,8 +1091,8 @@ $ LOADDB
 1022 Invalid value "%d" for prefix length of the index.
 1023 Reserved error code for HA.
 1024 Reserved error code for HA.
-1025 Reserved error code for HA.
-1026 Reserved error code for HA.
+1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
+1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 log applier: failed to change apply state from '%1$s' to '%2$s'.
 1028 log applier: unexpected EOF record in archive log. LSA: %1$lld|%2$d.
 1029 log applier: invalid replication log page/offset. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.

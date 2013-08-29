@@ -1091,8 +1091,8 @@ $ LOADDB
 1022 Valeur non valide "%d" pour la longueur du préfixe de l'index.
 1023 Code d'erreur réservé pour HA.
 1024 Code d'erreur réservé pour HA.
-1025 Code d'erreur réservé pour HA.
-1026 Code d'erreur réservé pour HA.
+1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
+1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 Applicateur du journal: pas réussi à changer l'état d'application '%1$s' à '%2$s'.
 1028 Applicateur du journal: enregistrement EOF inattendu dans le journal de transactions. LSA: %1$lld|%2$d.
 1029 Applicateur du journal: invalide la page du journal de réplication. page HDR: %1$1lld|%2$d, finale: %3$lld|%4$d, LSA annexé: %5$lld|%6$d, LSA EOF: %7$lld|%8$d, l'état des fichiers ha: %9$d, est en fin de journal (end-of-log): %10$d.

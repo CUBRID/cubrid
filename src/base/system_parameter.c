@@ -387,6 +387,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_REPLICA_TIME_BOUND "ha_replica_time_bound"
 
+#define PRM_NAME_HA_DELAY_LIMIT "ha_delay_limit"
+
+#define PRM_NAME_HA_DELAY_LIMIT_DELTA "ha_delay_limit_delta"
+
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
@@ -1360,6 +1364,18 @@ static unsigned int prm_ha_replica_delay_in_secs_flag = 0;
 const char *PRM_HA_REPLICA_TIME_BOUND = "";
 static const char *prm_ha_replica_time_bound_default = NULL;
 static unsigned int prm_ha_replica_time_bound_flag = 0;
+
+int PRM_HA_DELAY_LIMIT_IN_SECS = 0;
+static int prm_ha_delay_limit_in_secs_default = 0;
+static int prm_ha_delay_limit_in_secs_upper = INT_MAX;
+static int prm_ha_delay_limit_in_secs_lower = 0;
+static unsigned int prm_ha_delay_limit_in_secs_flag = 0;
+
+int PRM_HA_DELAY_LIMIT_DELTA_IN_SECS = 0;
+static int prm_ha_delay_limit_delta_in_secs_default = 0;
+static int prm_ha_delay_limit_delta_in_secs_upper = INT_MAX;
+static int prm_ha_delay_limit_delta_in_secs_lower = 0;
+static unsigned int prm_ha_delay_limit_delta_in_secs_flag = 0;
 
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
@@ -3163,6 +3179,30 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_HA_DELAY_LIMIT,
+   (PRM_FOR_SERVER | PRM_FOR_HA | PRM_USER_CHANGE | PRM_TIME_UNIT |
+    PRM_DIFFER_UNIT),
+   PRM_INTEGER,
+   (void *) &prm_ha_delay_limit_in_secs_flag,
+   (void *) &prm_ha_delay_limit_in_secs_default,
+   (void *) &PRM_HA_DELAY_LIMIT_IN_SECS,
+   (void *) &prm_ha_delay_limit_in_secs_upper,
+   (void *) &prm_ha_delay_limit_in_secs_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) prm_msec_to_sec,
+   (DUP_PRM_FUNC) prm_sec_to_msec},
+  {PRM_NAME_HA_DELAY_LIMIT_DELTA,
+   (PRM_FOR_SERVER | PRM_FOR_HA | PRM_USER_CHANGE | PRM_TIME_UNIT |
+    PRM_DIFFER_UNIT),
+   PRM_INTEGER,
+   (void *) &prm_ha_delay_limit_delta_in_secs_flag,
+   (void *) &prm_ha_delay_limit_delta_in_secs_default,
+   (void *) &PRM_HA_DELAY_LIMIT_DELTA_IN_SECS,
+   (void *) &prm_ha_delay_limit_delta_in_secs_upper,
+   (void *) &prm_ha_delay_limit_delta_in_secs_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) prm_msec_to_sec,
+   (DUP_PRM_FUNC) prm_sec_to_msec},
   {PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),
    PRM_BOOLEAN,

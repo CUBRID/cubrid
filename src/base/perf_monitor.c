@@ -519,6 +519,8 @@ mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
   stats_diff->net_num_requests =
     CALC_GLOBAL_STAT_DIFF (p->net_num_requests, q->net_num_requests);
 
+  stats_diff->ha_repl_delay = p->ha_repl_delay;
+
   mnt_server_calc_stats (stats_diff);
 
   return NO_ERROR;
@@ -1669,6 +1671,7 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
   "Num_prior_lsa_list_removed",
   "Num_heap_stats_bestspace_entries",
   "Num_heap_stats_bestspace_maxed",
+  "Time_ha_replication_delay",
   "Data_page_buffer_hit_ratio"
 };
 
@@ -3156,6 +3159,20 @@ mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
     }
 
   return 0;
+}
+
+
+void
+mnt_x_ha_repl_delay (THREAD_ENTRY * thread_p, int delay)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      SET_STATS (stats, ha_repl_delay, delay);
+    }
+
 }
 #endif /* SERVER_MODE || SA_MODE */
 

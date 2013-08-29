@@ -502,7 +502,8 @@ extern int net_client_request_recv_stream (int request, char *argbuf,
 extern int net_client_ping_server (int client_val, int *server_val,
 				   int timeout);
 extern int net_client_ping_server_with_handshake (int client_type,
-						  bool check_capabilities);
+						  bool check_capabilities,
+						  int opt_cap);
 
 /* Startup/Shutdown */
 #if defined(ENABLE_UNUSED_FUNCTION)

@@ -1091,8 +1091,8 @@ $ LOADDB
 1022 プリフィックスレングス(%d)が正しくありません。
 1023 HAが予約されたエラーコード。
 1024 HAが予約されたエラーコード。
-1025 HAが予約されたエラーコード。
-1026 HAが予約されたエラーコード。
+1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
+1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 log applier: 「%1$s」から「%2$s」に複製反映状態が変更できませんでした。
 1028 log applier: アーカイブログに期待しなかったEOFログレコードがあります。 LSA: %1$lld|%2$d。
 1029 log applier: 正しくないログページ/オフセット。page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.

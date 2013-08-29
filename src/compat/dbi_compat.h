@@ -1276,9 +1276,10 @@
 
 #define ER_SM_INVALID_PREFIX_LENGTH                 -1022
 
-/* Please note that error codes from -1023 to -1026 are reserved for HA */
+/* Please note that error codes from -1023 to -1024 are reserved for HA */
 
-#define ER_HA_LA_FAILED_TO_CHANGE_STATE             -1027
+#define ER_HA_REPL_DELAY_DETECTED                   -1025
+#define ER_HA_REPL_DELAY_RESOLVED                   -1026
 #define ER_HA_LA_UNEXPECTED_EOF_IN_ARCHIVE_LOG      -1028
 #define ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET     -1029
 #define ER_HA_LA_INVALID_REPL_LOG_RECORD            -1030

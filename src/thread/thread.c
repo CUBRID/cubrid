@@ -93,10 +93,10 @@ struct thread_manager
 /* deadlock + checkpoint + oob + page flush + log flush + flush control
  * + session control + purge archive logs + log clock + auto_volume_expansion */
 #if defined(HAVE_ATOMIC_BUILTINS)
-static const int PREDEFINED_DAEMON_THREAD_NUM = 10;
+static const int PREDEFINED_DAEMON_THREAD_NUM = 11;
 #define USE_LOG_CLOCK_THREAD
 #else /* HAVE_ATOMIC_BUILTINS */
-static const int PREDEFINED_DAEMON_THREAD_NUM = 9;
+static const int PREDEFINED_DAEMON_THREAD_NUM = 10;
 #endif /* HAVE_ATOMIC_BUILTINS */
 
 static const int THREAD_RETRY_MAX_SLAM_TIMES = 10;
@@ -127,6 +127,8 @@ static DAEMON_THREAD_MONITOR
   thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR
   thread_Session_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR
+  thread_Check_ha_delay_info_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 DAEMON_THREAD_MONITOR
   thread_Log_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 
@@ -154,6 +156,8 @@ static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_log_flush_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_session_control_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+thread_check_ha_delay_info_thread (void *);
 #if defined(USE_LOG_CLOCK_THREAD)
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_log_clock_thread (void *);
@@ -196,6 +200,9 @@ static void
 thread_rc_track_meter_assert_CS (THREAD_RC_METER * meter, int amount,
 				 void *ptr);
 #endif
+
+extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p,
+						  time_t * log_record_time);
 
 /*
  * Thread Specific Data management
@@ -811,6 +818,38 @@ thread_start_workers (void)
       return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
 
+  /* start check HA delay info daemon thread */
+  thread_Check_ha_delay_info_thread.thread_index = thread_index++;
+  thread_p =
+    &thread_Manager.thread_array[thread_Check_ha_delay_info_thread.
+				 thread_index];
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
+
+  r =
+    pthread_create (&thread_p->tid, &thread_attr,
+		    thread_check_ha_delay_info_thread, thread_p);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_CREATE, 0);
+      pthread_mutex_unlock (&thread_p->th_entry_lock);
+      return ER_CSS_PTHREAD_CREATE;
+    }
+
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
+
   /* destroy thread_attribute */
   r = pthread_attr_destroy (&thread_attr);
   if (r != 0)
@@ -971,6 +1010,7 @@ thread_stop_active_daemons (void)
   thread_wakeup_log_flush_thread ();
   thread_wakeup_session_control_thread ();
   thread_wakeup_auto_volume_expansion_thread ();
+  thread_wakeup_check_ha_delay_info_thread ();
 
 loop:
   repeat_loop = false;
@@ -2999,6 +3039,168 @@ thread_wakeup_oob_handler_thread (void)
 }
 
 /*
+ * thread_check_ha_delay_info_thread() -
+ *   return:
+ *   arg_p(in):
+ */
+
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+thread_check_ha_delay_info_thread (void *arg_p)
+{
+#if !defined(HPUX)
+  THREAD_ENTRY *tsd_ptr;
+#endif /* !HPUX */
+  struct timeval cur_time = {
+    0, 0
+  };
+
+  struct timespec wakeup_time = {
+    0, 0
+  };
+
+  int rv;
+  int error_code;
+  INT64 tmp_usec;
+  int wakeup_interval = 1000;
+  int delay_limit_in_secs;
+  int acceptable_delay_in_secs;
+  int curr_delay_in_secs;
+  HA_SERVER_STATE server_state;
+  time_t log_record_time = 0;
+  char buffer[LINE_MAX];
+
+  tsd_ptr = (THREAD_ENTRY *) arg_p;
+  /* wait until THREAD_CREATE() finishes */
+  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
+  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
+
+  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
+  tsd_ptr->type = TT_DAEMON;	/* daemon thread */
+  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+
+  thread_Check_ha_delay_info_thread.is_running = true;
+  thread_Check_ha_delay_info_thread.is_valid = true;
+
+  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+
+  while (!tsd_ptr->shutdown)
+    {
+      er_clear ();
+
+      gettimeofday (&cur_time, NULL);
+      wakeup_time.tv_sec = cur_time.tv_sec + (wakeup_interval / 1000);
+      tmp_usec = cur_time.tv_usec + (wakeup_interval % 1000) * 1000;
+
+      if (tmp_usec >= 1000000)
+	{
+	  wakeup_time.tv_sec += 1;
+	  tmp_usec -= 1000000;
+	}
+      wakeup_time.tv_nsec = tmp_usec * 1000;
+
+      rv = pthread_mutex_lock (&thread_Check_ha_delay_info_thread.lock);
+      thread_Check_ha_delay_info_thread.is_running = false;
+
+      do
+	{
+	  rv =
+	    pthread_cond_timedwait (&thread_Check_ha_delay_info_thread.cond,
+				    &thread_Check_ha_delay_info_thread.lock,
+				    &wakeup_time);
+	}
+      while (rv == 0 && tsd_ptr->shutdown == false);
+
+      thread_Check_ha_delay_info_thread.is_running = true;
+
+      pthread_mutex_unlock (&thread_Check_ha_delay_info_thread.lock);
+
+      if (tsd_ptr->shutdown == true)
+	{
+	  break;
+	}
+
+      /* do its job */
+      delay_limit_in_secs =
+	prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_IN_SECS);
+      acceptable_delay_in_secs =
+	delay_limit_in_secs -
+	prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_DELTA_IN_SECS);
+
+      if (acceptable_delay_in_secs < 0)
+	{
+	  acceptable_delay_in_secs = 0;
+	}
+
+      csect_enter (tsd_ptr, CSECT_HA_SERVER_STATE, INF_WAIT);
+
+      server_state = css_ha_server_state ();
+
+      if (server_state == HA_SERVER_STATE_ACTIVE
+	  || server_state == HA_SERVER_STATE_TO_BE_STANDBY)
+	{
+	  log_append_ha_server_state (tsd_ptr, server_state);
+	  csect_exit (tsd_ptr, CSECT_HA_SERVER_STATE);
+	}
+      else
+	{
+	  csect_exit (tsd_ptr, CSECT_HA_SERVER_STATE);
+
+	  error_code =
+	    catcls_get_apply_info_log_record_time (tsd_ptr, &log_record_time);
+
+	  if (error_code == NO_ERROR)
+	    {
+	      curr_delay_in_secs = time (NULL) - log_record_time;
+	      if (curr_delay_in_secs > 0)
+		{
+		  curr_delay_in_secs -= HA_DELAY_ERR_CORRECTION;
+		}
+
+	      if (delay_limit_in_secs > 0)
+		{
+		  if (curr_delay_in_secs > delay_limit_in_secs)
+		    {
+		      if (!css_is_ha_repl_delayed ())
+			{
+			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+				  ER_HA_REPL_DELAY_DETECTED, 2,
+				  curr_delay_in_secs, delay_limit_in_secs);
+
+			  css_set_ha_repl_delayed ();
+			}
+		    }
+		  else if (curr_delay_in_secs <= acceptable_delay_in_secs)
+		    {
+		      if (css_is_ha_repl_delayed ())
+			{
+			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+				  ER_HA_REPL_DELAY_RESOLVED, 2,
+				  curr_delay_in_secs,
+				  acceptable_delay_in_secs);
+
+			  css_unset_ha_repl_delayed ();
+			}
+		    }
+		}
+
+	      mnt_x_ha_repl_delay (tsd_ptr, curr_delay_in_secs);
+	    }
+	}
+    }
+
+  rv = pthread_mutex_lock (&thread_Check_ha_delay_info_thread.lock);
+  thread_Check_ha_delay_info_thread.is_running = false;
+  thread_Check_ha_delay_info_thread.is_valid = false;
+  pthread_mutex_unlock (&thread_Check_ha_delay_info_thread.lock);
+
+  er_final (false);
+  tsd_ptr->status = TS_DEAD;
+
+  return (THREAD_RET_T) 0;
+}
+
+
+/*
  * thread_page_flush_thread() -
  *   return:
  *   arg_p(in):
@@ -3589,6 +3791,23 @@ thread_wakeup_auto_volume_expansion_thread (void)
       pthread_cond_signal (&thread_Auto_volume_expansion_thread.cond);
     }
   pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
+}
+
+/*
+ * thread_wakeup_check_ha_delay_info_thread() -
+ *   return:
+ */
+void
+thread_wakeup_check_ha_delay_info_thread (void)
+{
+  int rv;
+
+  rv = pthread_mutex_lock (&thread_Check_ha_delay_info_thread.lock);
+  if (!thread_Check_ha_delay_info_thread.is_running)
+    {
+      pthread_cond_signal (&thread_Check_ha_delay_info_thread.cond);
+    }
+  pthread_mutex_unlock (&thread_Check_ha_delay_info_thread.lock);
 }
 
 /*

@@ -49,6 +49,7 @@
 /* reason for a client to reconnect */
 #define DB_RC_MISMATCHED_RW_MODE        0x00000002
 #define DB_RC_NON_PREFERRED_HOSTS       0x00000004
+#define DB_RC_HA_REPL_DELAY             0x00000008
 
 /* constants for db_include_oid */
 enum

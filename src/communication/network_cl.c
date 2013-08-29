@@ -116,7 +116,7 @@ static int client_capabilities (void);
 static int check_server_capabilities (int server_cap, int client_type,
 				      int rel_compare,
 				      REL_COMPATIBILITY * compatibility,
-				      const char *server_host);
+				      const char *server_host, int opt_cap);
 static void set_alloc_err_and_read_expected_packets (int *err, int rc,
 						     int num_packets,
 						     const char *file,
@@ -256,13 +256,15 @@ client_capabilities (void)
 static int
 check_server_capabilities (int server_cap, int client_type, int rel_compare,
 			   REL_COMPATIBILITY * compatibility,
-			   const char *server_host)
+			   const char *server_host, int opt_cap)
 {
   int client_cap;
 
   assert (compatibility != NULL);
 
   client_cap = client_capabilities ();
+  client_cap |= opt_cap;
+
   /* interrupt-ability should be same */
   if ((client_cap ^ server_cap) & NET_CAP_INTERRUPT_ENABLED)
     {
@@ -283,6 +285,22 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare,
   else
     {
       db_unset_reconnect_reason (DB_RC_MISMATCHED_RW_MODE);
+    }
+
+  /*
+   * check HA replication delay
+   * if client_cap is on, it checks the server delay status
+   * else, it ignores the delay status.
+   */
+  if (client_cap & NET_CAP_HA_REPL_DELAY & server_cap)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "NET_CAP_HA_REPL_DELAYED client_cap %d server_cap %d\n",
+		    client_cap & NET_CAP_HA_REPL_DELAY,
+		    server_cap & NET_CAP_HA_REPL_DELAY);
+      server_cap ^= NET_CAP_HA_REPL_DELAY;
+
+      db_set_reconnect_reason (DB_RC_HA_REPL_DELAY);
     }
 
   /* network protocol compatibility */
@@ -4187,7 +4205,7 @@ net_client_ping_server (int client_val, int *server_val, int timeout)
  */
 int
 net_client_ping_server_with_handshake (int client_type,
-				       bool check_capabilities)
+				       bool check_capabilities, int opt_cap)
 {
   const char *client_release;
   char *server_release, *server_host, *server_handshake, *ptr;
@@ -4291,7 +4309,8 @@ net_client_ping_server_with_handshake (int client_type,
 				    rel_compare (client_release,
 						 server_release),
 				    &compat,
-				    server_host) != server_capabilities)
+				    server_host,
+				    opt_cap) != server_capabilities)
     {
       error = ER_NET_SERVER_HAND_SHAKE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, net_Server_host);

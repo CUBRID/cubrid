@@ -3427,6 +3427,7 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
   memset (ha_server_state, 0, sizeof (struct log_ha_server_state));
 
   ha_server_state->state = state;
+  ha_server_state->at_time = time (NULL);
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 

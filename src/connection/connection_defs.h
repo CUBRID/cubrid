@@ -326,6 +326,8 @@ enum ha_log_applier_state
 #define HA_CHANGE_MODE_DEFAULT_TIMEOUT_IN_SECS	5
 #define HA_CHANGE_MODE_IMMEDIATELY		0
 
+#define HA_DELAY_ERR_CORRECTION             1
+
 /*
  * This constant defines the maximum size of a msg from the master to the
  * server.  Every msg between the master and the server will transmit this

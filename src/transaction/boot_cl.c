@@ -101,6 +101,10 @@ extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 #define BOOT_FORMAT_MAX_LENGTH 500
 #define BOOT_MAX_NUM_HOSTS      32
 
+/* for optional capability check */
+#define BOOT_NO_OPT_CAP                 0
+#define BOOT_CHECK_HA_DELAY_CAP         NET_CAP_HA_REPL_DELAY
+
 typedef int (*DEF_FUNCTION) ();
 typedef int (*DEF_CLASS_FUNCTION) (MOP);
 
@@ -159,7 +163,7 @@ static int boot_client (int tran_index, int lock_wait,
 static void boot_shutdown_client_at_exit (void);
 #if defined(CS_MODE)
 static int boot_client_initialize_css (DB_INFO * db, int client_type,
-				       bool check_capabilities,
+				       bool check_capabilities, int opt_cap,
 				       bool discriminative,
 				       int connect_order);
 #endif /* CS_MODE */
@@ -240,7 +244,7 @@ boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation)
  * returns : NO_ERROR if all OK, ER_ status otherwise
  *
  *   client_credential(in): Contains database access information such as :
- *			    database name, user name and password, client type
+ *                          database name, user name and password, client type
  *   db_path_info(in) : Directory where the database is created. It allows you
  *                      to specify the exact pathname of a directory in which
   *                     to create the new database.
@@ -550,8 +554,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 #if defined(CS_MODE)
   /* Initialize the communication subsystem */
   error_code =
-    boot_client_initialize_css (db, client_credential->client_type, false,
-				false, DB_CONNECT_ORDER_SEQ);
+    boot_client_initialize_css (db, client_credential->client_type,
+				false, BOOT_NO_OPT_CAP, false,
+				DB_CONNECT_ORDER_SEQ);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -686,8 +691,8 @@ error_exit:
  * returns : NO_ERROR if all OK, ER_ status otherwise
  *
  *   client_credential(in) : Information required to start as client, such as:
- *			     database name, user name and password, client
- *			     type.
+ *                           database name, user name and password, client
+ *                           type.
  *
  * Note:
  *              An application must restart the database system with the
@@ -962,8 +967,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
        * a user sets CONNECT_ORDER to RANDOM
        */
       error_code =
-	boot_client_initialize_css (tmp_db, client_credential->client_type,
-				    true, false, DB_CONNECT_ORDER_SEQ);
+	boot_client_initialize_css (tmp_db,
+				    client_credential->
+				    client_type,
+				    true, BOOT_CHECK_HA_DELAY_CAP, false,
+				    DB_CONNECT_ORDER_SEQ);
 
       if (error_code != NO_ERROR)
 	{
@@ -982,14 +990,18 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   else if (BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))
     {
       error_code =
-	boot_client_initialize_css (db, client_credential->client_type, false,
-				    false, DB_CONNECT_ORDER_SEQ);
+	boot_client_initialize_css (db, client_credential->client_type,
+				    false, BOOT_NO_OPT_CAP, false,
+				    DB_CONNECT_ORDER_SEQ);
     }
   else if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
     {
       error_code =
-	boot_client_initialize_css (db, client_credential->client_type, true,
-				    false, client_credential->connect_order);
+	boot_client_initialize_css (db,
+				    client_credential->
+				    client_type,
+				    true, BOOT_CHECK_HA_DELAY_CAP, false,
+				    client_credential->connect_order);
 
       if (error_code == ER_NET_SERVER_HAND_SHAKE)
 	{
@@ -997,21 +1009,38 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
 	  error_code =
 	    boot_client_initialize_css (db, client_credential->client_type,
-					false, false,
+					false, BOOT_NO_OPT_CAP, false,
 					client_credential->connect_order);
 	}
     }
   else if (client_credential->client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
     {
       error_code =
-	boot_client_initialize_css (db, client_credential->client_type, true,
-				    false, client_credential->connect_order);
+	boot_client_initialize_css (db,
+				    client_credential->
+				    client_type,
+				    true, BOOT_CHECK_HA_DELAY_CAP, false,
+				    client_credential->connect_order);
+
+      if (error_code == ER_NET_SERVER_HAND_SHAKE)
+	{
+	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
+			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
+	  error_code =
+	    boot_client_initialize_css (db,
+					client_credential->
+					client_type,
+					true, BOOT_NO_OPT_CAP,
+					false,
+					client_credential->connect_order);
+	}
     }
   else
     {
       error_code =
-	boot_client_initialize_css (db, client_credential->client_type, false,
-				    false, client_credential->connect_order);
+	boot_client_initialize_css (db, client_credential->client_type,
+				    false, BOOT_NO_OPT_CAP, false,
+				    client_credential->connect_order);
     }
 
   if (error_code != NO_ERROR)
@@ -1478,19 +1507,22 @@ boot_client_all_finalize (bool is_er_final)
 
 #if defined(CS_MODE)
 /*
- * boot_client_initialize_css () - Attempts to connect to hosts in list send to it
+ * boot_client_initialize_css () - Attempts to connect to hosts
+ *                                          in list
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
  *
  *   db(in) : host information
+ *   connect_order(in): whether to randomly or sequentially traverse host list
+ *   opt_cap(in): optional capability
  *
  * Note: This function will try an initialize the communications with the hosts
  *       in hostlist until success or the end of list is reached.
  */
 static int
 boot_client_initialize_css (DB_INFO * db, int client_type,
-			    bool check_capabilities, bool discriminative,
-			    int connect_order)
+			    bool check_capabilities, int opt_cap,
+			    bool discriminative, int connect_order)
 {
   int error = ER_NET_NO_SERVER_HOST;
   int hn, tn, n;
@@ -1562,7 +1594,8 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
 	      er_clear ();
 	      error =
 		net_client_ping_server_with_handshake (client_type,
-						       check_capabilities);
+						       check_capabilities,
+						       opt_cap);
 	      if (error != NO_ERROR)
 		{
 		  css_terminate (false);
@@ -5565,7 +5598,7 @@ boot_clear_host_connected (void)
 #if defined(CS_MODE)
 /*
  * boot_check_locales () - checks that client locales are compatible with
- *			   server locales
+ *                         server locales
  *
  *  return : error code
  *

@@ -1091,8 +1091,8 @@ $ LOADDB
 1022 Valor "%d" no valido para la longitud de prefijo del indice.
 1023 Error de codigo reservado para HA.
 1024 Error de codigo reservado para HA.
-1025 Error de codigo reservado para HA.
-1026 Error de codigo reservado para HA.
+1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
+1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 Aplicador de registro: fracaso al cambiar el estado de aplicar de '%1$s' a '%2$s'.
 1028 Aplicador de registro: registro EOF inesperado en la carpeta de registros. LSA: %1$lld|%2$d.
 1029 Aplicador de registro: pagina/offset de registro de replicacion no valida. pagina HDR: %1$1lld|%2$d, final: %3$lld|%4$d,, anexar LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, estado de archivo HA: %9$d, es fin-del-registro: %10$d. 

@@ -102,6 +102,9 @@ extern bool css_is_shutdown_timeout_expired (void);
 extern void css_set_ha_num_of_hosts (int num);
 extern int css_get_ha_num_of_hosts (void);
 extern HA_SERVER_STATE css_ha_server_state (void);
+extern bool css_is_ha_repl_delayed (void);
+extern void css_set_ha_repl_delayed (void);
+extern void css_unset_ha_repl_delayed (void);
 extern int css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p,
 						 int whence);
 extern int css_change_ha_server_state (THREAD_ENTRY * thread_p,

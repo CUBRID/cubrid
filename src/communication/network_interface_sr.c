@@ -203,6 +203,10 @@ server_capabilities (void)
     {
       capabilities |= NET_CAP_REMOTE_DISABLED;
     }
+  if (css_is_ha_repl_delayed () == true)
+    {
+      capabilities |= NET_CAP_HA_REPL_DELAY;
+    }
   return capabilities;
 }
 
@@ -2794,7 +2798,8 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid,
       thread_p->conn_entry->reset_on_commit = false;
     }
   else if (ha_state == HA_SERVER_STATE_STANDBY
-	   && thread_p->conn_entry->reset_on_commit == true
+	   && (thread_p->conn_entry->reset_on_commit == true
+	       || css_is_ha_repl_delayed () == true)
 	   && BOOT_NORMAL_CLIENT_TYPE (client_type))
     {
       reset_on_commit = true;
@@ -2899,7 +2904,8 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid,
       thread_p->conn_entry->reset_on_commit = false;
     }
   else if (ha_state == HA_SERVER_STATE_STANDBY
-	   && thread_p->conn_entry->reset_on_commit == true
+	   && (thread_p->conn_entry->reset_on_commit == true
+	       || css_is_ha_repl_delayed () == true)
 	   && BOOT_NORMAL_CLIENT_TYPE (client_type))
     {
       reset_on_commit = true;

@@ -370,6 +370,7 @@ extern void thread_wakeup_purge_archive_logs_thread (void);
 extern void thread_wakeup_oob_handler_thread (void);
 extern void thread_wakeup_session_control_thread (void);
 extern void thread_wakeup_auto_volume_expansion_thread (void);
+extern void thread_wakeup_check_ha_delay_info_thread (void);
 extern bool thread_auto_volume_expansion_thread_is_running (void);
 extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
 extern THREAD_ENTRY *thread_find_next_lockwait_entry (int *thrd_index);

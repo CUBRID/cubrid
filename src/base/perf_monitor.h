@@ -233,6 +233,9 @@ struct mnt_server_exec_stats
   UINT64 hf_num_stats_entries;
   UINT64 hf_num_stats_maxed;
 
+  /* HA replication delay */
+  UINT64 ha_repl_delay;
+
   /* Other statistics */
   UINT64 pb_hit_ratio;
   /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
@@ -243,7 +246,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of field of MNT_SERVER_EXEC_STATS structure */
-#define MNT_SIZE_OF_SERVER_EXEC_STATS 66
+#define MNT_SIZE_OF_SERVER_EXEC_STATS 67
 
 /* The exact size of mnt_server_exec_stats structure */
 #define MNT_SERVER_EXEC_STATS_SIZEOF \
@@ -665,6 +668,7 @@ extern void mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages,
 			    unsigned int num_log_pages, unsigned int tokens);
 extern UINT64 mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p,
 					 const char *stat_name);
+extern void mnt_x_ha_repl_delay (THREAD_ENTRY * thread_p, int delay);
 
 extern UINT64 mnt_get_pb_fetches (THREAD_ENTRY * thread_p);
 extern UINT64 mnt_get_pb_ioreads (THREAD_ENTRY * thread_p);

@@ -1091,8 +1091,8 @@ $ LOADDB
 1022 Valoare invalidă "%d" pentru lungimea indexului prefixat.
 1023 Cod de eroare rezervat pentru HA.
 1024 Cod de eroare rezervat pentru HA.
-1025 Cod de eroare rezervat pentru HA.
-1026 Cod de eroare rezervat pentru HA.
+1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
+1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 log applier: eşec la schimbarea stării de aplicare din '%1$s' în '%2$s'.
 1028 log applier: înregistrare EOF neaşteptată în log. LSA: %1$lld|%2$d.
 1029 log applier: pagină/offset invalid în logul de replicare. HDR de pagină: %1$1lld|%2$d, final: %3$lld|%4$d, APPEND LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, stare HA a fişierului: %9$d, este end-of-log: %10$d.

@@ -1091,8 +1091,8 @@ $ LOADDB
 1022 İndeksin önek uzunluğu için geçersiz değer "%d".
 1023 HA hata kodu saklıdır.
 1024 HA hata kodu saklıdır.
-1025 HA hata kodu saklıdır.
-1026 HA hata kodu saklıdır.
+1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
+1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 uygulayıcı log: '%2$s' için '%1$s' durum onayı değiştirme başarısız oldu.
 1028 uygulayıcı log: arşiv log beklenmedik EOF kaydı. LSA: %1$lld|%2$d.
 1029 uygulayıcı log: geçersiz çoğaltma log page/offset. sayfa HDR: %1$1lld|%2$d, final: %3$lld|%4$d, ekleme LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha dosya durumu: %9$d, is end-of-log: %10$d.

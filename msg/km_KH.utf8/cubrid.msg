@@ -1091,8 +1091,8 @@ $ LOADDB
 1022 តម្លៃមិនសុពល "%d" សម្រាប់ប្រវែង prefix នៃ index។
 1023 កូដerrorដែលបម្រុងសម្រាប់ HA។
 1024 កូដerrorដែលបម្រុងសម្រាប់ HA។
-1025 កូដerrorដែលបម្រុងសម្រាប់ HA។
-1026 កូដerrorដែលបម្រុងសម្រាប់ HA។
+1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
+1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 log applier: បរាជ័យក្នុងការផ្លាស់ប្តូរ apply state ពី '%1$s' ទៅ '%2$s'។
 1028 log applier: ការថតចម្លងEOFដែលមិនរំពឹងទុក ​ក្នុងarchive log. LSA: %1$lld|%2$d។
 1029 log applier: replication log page/offsetដែលមិនសុពល។ page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.

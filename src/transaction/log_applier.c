@@ -292,6 +292,7 @@ struct la_info
   time_t log_commit_time;
   bool required_lsa_changed;
   int status;
+  bool is_apply_info_updated;	/* whether catalog is partially updated or not */
 
   int num_unflushed_insert;
 
@@ -417,6 +418,7 @@ static int la_find_log_pagesize (LA_ACT_LOG * act_log,
 static bool la_apply_pre (void);
 static int la_does_page_exist (LOG_PAGEID pageid);
 static int la_init_repl_lists (bool need_realloc);
+static bool la_is_repl_lists_empty ();
 static LA_APPLY *la_find_apply_list (int tranid);
 static void la_log_copy_fromlog (char *rec_type, char *area, int length,
 				 LOG_PAGEID log_pageid, PGLENGTH log_offset,
@@ -1469,7 +1471,7 @@ la_find_required_lsa (LOG_LSA * required_lsa)
 
   if (LSA_ISNULL (&lowest_lsa))
     {
-      LSA_COPY (required_lsa, &la_Info.committed_lsa);
+      LSA_COPY (required_lsa, &la_Info.final_lsa);
     }
   else
     {
@@ -1914,6 +1916,8 @@ la_update_ha_apply_info_start_time (void)
 
   error = la_update_query_execute_with_values (query_buf, in_value_idx,
 					       &in_value[0], true);
+  la_Info.is_apply_info_updated = true;
+
   for (i = 0; i < in_value_idx; i++)
     {
       db_value_clear (&in_value[i]);
@@ -1921,6 +1925,57 @@ la_update_ha_apply_info_start_time (void)
 
   return error;
 
+#undef LA_IN_VALUE_COUNT
+}
+
+static int
+la_update_ha_apply_info_log_record_time (time_t new_time)
+{
+#define LA_IN_VALUE_COUNT       3
+  int error = NO_ERROR;
+  char query_buf[LA_QUERY_BUF_SIZE];
+  DB_VALUE in_value[LA_IN_VALUE_COUNT];
+  DB_DATETIME datetime;
+  int i, in_value_idx = 0;
+
+  er_clear ();
+
+  snprintf (query_buf, sizeof (query_buf), "UPDATE %s "	/* UPDATE */
+	    " SET "		/* SET */
+	    "   log_record_time = ?, "	/* 1 */
+	    "   last_access_time = SYS_DATETIME "	/* last_access_time */
+	    " WHERE db_name = ? AND copied_log_path = ? ;",	/* 2 ~ 3 */
+	    CT_HA_APPLY_INFO_NAME);
+
+  /* 1. log_record_time */
+  db_localdatetime (&new_time, &datetime);
+  db_make_datetime (&in_value[in_value_idx++], &datetime);
+
+  /* 2. db_name */
+  db_make_varchar (&in_value[in_value_idx++], 255,
+		   la_Info.act_log.log_hdr->prefix_name,
+		   strlen (la_Info.act_log.log_hdr->prefix_name),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+
+  /* 3. copied_log_path */
+  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
+		   strlen (la_Info.log_path),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  assert_release (in_value_idx == LA_IN_VALUE_COUNT);
+
+  error = la_update_query_execute_with_values (query_buf, in_value_idx,
+					       &in_value[0], true);
+  if (error >= 0)
+    {
+      la_Info.is_apply_info_updated = true;
+    }
+
+  for (i = 0; i < in_value_idx; i++)
+    {
+      db_value_clear (&in_value[i]);
+    }
+
+  return error;
 #undef LA_IN_VALUE_COUNT
 }
 
@@ -2706,6 +2761,26 @@ la_init_repl_lists (bool need_realloc)
     }
 
   return error;
+}
+
+/*
+ * la_is_repl_lists_empty() -
+ *
+ *   return: whether repl_lists is empty or not
+ */
+static bool
+la_is_repl_lists_empty ()
+{
+  int i;
+
+  for (i = 0; i < la_Info.cur_repl; i++)
+    {
+      if (la_Info.repl_lists[i]->num_items > 0)
+	{
+	  return false;
+	}
+    }
+  return true;
 }
 
 /*
@@ -4499,16 +4574,15 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr,
   return error;
 }
 
-static int
+static struct log_ha_server_state *
 la_get_ha_server_state (LOG_PAGE * pgptr, LOG_LSA * lsa)
 {
+  struct log_ha_server_state *state = NULL;
   int error = NO_ERROR;
-  int state = HA_SERVER_STATE_NA;
   LOG_PAGEID pageid;
   PGLENGTH offset;
   int length;
   LOG_PAGE *pg;
-  struct log_ha_server_state *ha_server_state;
 
   pageid = lsa->pageid;
   offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
@@ -4518,9 +4592,7 @@ la_get_ha_server_state (LOG_PAGE * pgptr, LOG_LSA * lsa)
   LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, length, offset, pageid, pgptr);
   if (error == NO_ERROR)
     {
-      ha_server_state =
-	(struct log_ha_server_state *) ((char *) pg->area + offset);
-      state = ha_server_state->state;
+      state = (struct log_ha_server_state *) ((char *) pg->area + offset);
     }
 
   return state;
@@ -5829,7 +5901,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
   LOG_LSA required_lsa;
   LOG_PAGEID final_pageid;
   int commit_list_count;
-  int ha_server_state;
+  struct log_ha_server_state *ha_server_state;
   char buffer[256];
 
   if (lrec->trid == NULL_TRANID ||
@@ -6065,20 +6137,33 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 
     case LOG_DUMMY_HA_SERVER_STATE:
       ha_server_state = la_get_ha_server_state (pg_ptr, final);
-      if (la_Info.db_lockf_vdes != NULL_VOLDES
-	  && ha_server_state != HA_SERVER_STATE_ACTIVE
-	  && ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY)
+      if (ha_server_state == NULL)
 	{
-	  snprintf (buffer, sizeof (buffer),
-		    "the state of HA server (%s@%s) is changed to %s",
-		    la_slave_db_name, la_peer_host,
-		    css_ha_server_state_string (ha_server_state));
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-		  ER_HA_GENERIC_ERROR, 1, buffer);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "failed to read LOG_DUMMY_HA_SERVER_STATE");
+	  break;
+	}
 
-	  la_Info.is_role_changed = true;
+      if (ha_server_state->state != HA_SERVER_STATE_ACTIVE
+	  && ha_server_state->state != HA_SERVER_STATE_TO_BE_STANDBY)
+	{
+	  if (la_Info.db_lockf_vdes != NULL_VOLDES)
+	    {
+	      snprintf (buffer, sizeof (buffer),
+			"the state of HA server (%s@%s) is changed to %s",
+			la_slave_db_name, la_peer_host,
+			css_ha_server_state_string (ha_server_state->state));
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		      ER_HA_GENERIC_ERROR, 1, buffer);
 
-	  return ER_INTERRUPTED;
+	      la_Info.is_role_changed = true;
+
+	      return ER_INTERRUPTED;
+	    }
+	}
+      else if (la_is_repl_lists_empty ())
+	{
+	  la_update_ha_apply_info_log_record_time (ha_server_state->at_time);
 	}
       break;
 
@@ -6487,6 +6572,7 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
   int error = NO_ERROR;
   struct timeval curtime;
   int diff_msec;
+  bool need_commit = false;
 
   assert (time_commit);
 
@@ -6514,11 +6600,17 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
       /* check for # of rows to commit */
       if (la_Info.prev_total_rows != la_Info.total_rows)
 	{
-	  error = la_log_commit (true);
+	  need_commit = true;
+	}
+
+      if (need_commit == true || la_Info.is_apply_info_updated == true)
+	{
+	  error = la_log_commit (need_commit);
 	  if (error == NO_ERROR)
 	    {
 	      /* sync with new one */
 	      la_Info.prev_total_rows = la_Info.total_rows;
+	      la_Info.is_apply_info_updated = false;
 	    }
 	}
       else
@@ -6688,6 +6780,7 @@ la_init (const char *log_path, const int max_mem_size)
   la_Info.last_deleted_archive_num = -1;
   la_Info.is_role_changed = false;
   la_Info.num_unflushed_insert = 0;
+  la_Info.is_apply_info_updated = false;
 
   la_Info.max_mem_size = max_mem_size;
   /* check vsize when it started */

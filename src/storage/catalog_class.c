@@ -131,6 +131,8 @@ extern int catcls_get_server_lang_charset (THREAD_ENTRY * thread_p,
 extern int catcls_get_db_collation (THREAD_ENTRY * thread_p,
 				    LANG_COLL_COMPAT ** db_collations,
 				    int *coll_cnt);
+extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p,
+						  time_t * log_record_time);
 
 static int catcls_initialize_class_oid_to_oid_hash_table (int num_entry);
 static int catcls_get_or_value_from_class (THREAD_ENTRY * thread_p,
@@ -4903,6 +4905,164 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p,
 	      strncpy (curr_coll->checksum, checksum_str, str_len);
 	      curr_coll->checksum[str_len] = '\0';
 	    }
+	}
+    }
+
+exit:
+  if (scan_cache_inited == true)
+    {
+      (void) heap_scancache_end (thread_p, &scan_cache);
+      scan_cache_inited = false;
+    }
+
+  if (attr_info_inited == true)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+      attr_info_inited = false;
+    }
+
+  return error;
+}
+
+/*
+ * catcls_get_apply_info_log_record_time () - get max log_record_time
+ *                                            in db_ha_apply_info
+ *
+ *   return: NO_ERROR, or error code
+ *   thread_p(in)  : thread context
+ *   log_record_time(out): log_record_time
+ *
+ */
+int
+catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p,
+				       time_t * log_record_time)
+{
+  OID class_oid;
+  OID inst_oid;
+  HFID hfid;
+  HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes;
+  DB_DATETIME *tmp_datetime;
+  time_t tmp_log_record_time;
+  int log_record_time_att_id = -1;
+  int error = NO_ERROR;
+  int i;
+  bool attr_info_inited = false;
+  bool scan_cache_inited = false;
+
+
+  assert (log_record_time != NULL);
+  *log_record_time = 0;
+
+  OID_SET_NULL (&class_oid);
+  OID_SET_NULL (&inst_oid);
+
+  error =
+    catcls_find_class_oid_by_class_name (thread_p, CT_HA_APPLY_INFO_NAME,
+					 &class_oid);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (OID_ISNULL (&class_oid))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1,
+	      CT_HA_APPLY_INFO_NAME);
+      error = ER_LC_UNKNOWN_CLASSNAME;
+      goto exit;
+    }
+
+  error = heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  attr_info_inited = true;
+
+  heap_scancache_quick_start (&scan_cache);
+  scan_cache_inited = true;
+
+  if (heap_get (thread_p, &class_oid, &recdes, &scan_cache, PEEK, NULL_CHN) !=
+      S_SUCCESS)
+    {
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  for (i = 0; i < attr_info.num_values; i++)
+    {
+      const char *rec_attr_name_p = or_get_attrname (&recdes, i);
+      if (rec_attr_name_p == NULL)
+	{
+	  error = ER_FAILED;
+	  goto exit;
+	}
+
+      if (strcmp ("log_record_time", rec_attr_name_p) == 0)
+	{
+	  log_record_time_att_id = i;
+	  break;
+	}
+    }
+
+  if (log_record_time_att_id == -1)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  heap_scancache_end (thread_p, &scan_cache);
+  scan_cache_inited = false;
+
+  error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
+  if (error != NO_ERROR || HFID_IS_NULL (&hfid))
+    {
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  error = heap_scancache_start (thread_p, &scan_cache, &hfid, NULL, true,
+				false, LOCKHINT_NONE);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  scan_cache_inited = true;
+
+  while (heap_next
+	 (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache,
+	  PEEK) == S_SUCCESS)
+    {
+      HEAP_ATTRVALUE *heap_value = NULL;
+
+      if (heap_attrinfo_read_dbvalues
+	  (thread_p, &inst_oid, &recdes, &attr_info) != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto exit;
+	}
+
+      for (i = 0, heap_value = attr_info.values; i < attr_info.num_values;
+	   i++, heap_value++)
+	{
+	  if (heap_value->attrid == log_record_time_att_id)
+	    {
+	      tmp_datetime = DB_GET_DATETIME (&heap_value->dbvalue);
+	      tmp_datetime->time /= 1000;
+
+	      tmp_log_record_time =
+		db_mktime (&tmp_datetime->date, &tmp_datetime->time);
+
+	      break;
+	    }
+	}
+
+      if (tmp_log_record_time > *log_record_time)
+	{
+	  *log_record_time = tmp_log_record_time;
 	}
     }
 

@@ -100,6 +100,8 @@ static int (*css_Server_request_handler) (THREAD_ENTRY *, unsigned int,
 
 /* server's state for HA feature */
 static HA_SERVER_STATE ha_Server_state = HA_SERVER_STATE_IDLE;
+static bool ha_Repl_delay_detected = false;
+
 static int ha_Server_num_of_hosts = 0;
 
 typedef struct job_queue JOB_QUEUE;
@@ -2453,6 +2455,24 @@ HA_SERVER_STATE
 css_ha_server_state (void)
 {
   return ha_Server_state;
+}
+
+bool
+css_is_ha_repl_delayed (void)
+{
+  return ha_Repl_delay_detected;
+}
+
+void
+css_set_ha_repl_delayed (void)
+{
+  ha_Repl_delay_detected = true;
+}
+
+void
+css_unset_ha_repl_delayed (void)
+{
+  ha_Repl_delay_detected = false;
 }
 
 /*

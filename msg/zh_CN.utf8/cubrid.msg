@@ -1091,8 +1091,8 @@ $ LOADDB
 1022 索引的前缀长度值 "%d" 是非法的.
 1023 HA的保留错误代码.
 1024 HA的保留错误代码.
-1025 HA的保留错误代码.
-1026 HA的保留错误代码.
+1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
+1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 log applier: 从 '%1$s' 到 '%2$s' 改变apply状态 失败.
 1028 log applier: 在存档日志中遇到意外的EOF记录. LSA: %1$lld|%2$d.
 1029 log applier: 非法复制日志 页/偏移. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.

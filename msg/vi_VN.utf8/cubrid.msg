@@ -1091,8 +1091,8 @@ $ LOADDB
 1022 Giá trị "%d" không hợp lệ cho prefix length của chỉ mục.
 1023 Mã lỗi bảo lưu cho HA.
 1024 Mã lỗi bảo lưu cho HA.
-1025 Mã lỗi bảo lưu cho HA.
-1026 Mã lỗi bảo lưu cho HA.
+1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
+1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 log applier: thất bại khi thay đổi trạng thái áp dụng từ '%1$s' đến '%2$s'.
 1028 log applier: bản ghi EOF không mong đợi từ bản ghi lưu trữ. LSA: %1$lld|%2$d.
 1029 log applier: độ lệch/trang bản ghi nhân bản không hợp lệ. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.

@@ -1091,8 +1091,8 @@ $ LOADDB
 1022 Valore "%d" non valido per lunghezza del prefisso dell'index.
 1023 Codice di errore riservato per HA.
 1024 Codice di errore riservato per HA.
-1025 Codice di errore riservato per HA.
-1026 Codice di errore riservato per HA.
+1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
+1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 log applier: non è riuscito a cambiare stato dell'applicare dal '%1$s' a '%2$s'.
 1028 log applier: voce EOF imprevisto nel log dei transazioni. LSA: %1$lld|%2$d.
 1029 log applier: offset/pagina non valida del log di replicazione . HDR della pagina: %1$1lld|%2$d, final: %3$lld|%4$d, Append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, stato del file HA: %9$d, is end-of-log: %10$d.
