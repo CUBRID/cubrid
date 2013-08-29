@@ -168,6 +168,13 @@ css_sockopt (SOCKET sd)
       setsockopt (sd, IPPROTO_TCP, TCP_NODELAY,
 		  (int *) prm_get_value (PRM_ID_TCP_NODELAY), sizeof (int));
     }
+
+  if (prm_get_bool_value (PRM_ID_TCP_KEEPALIVE))
+    {
+      setsockopt (sd, SOL_SOCKET, SO_KEEPALIVE,
+		  (bool *) prm_get_value (PRM_ID_TCP_KEEPALIVE),
+		  sizeof (bool));
+    }
 }
 
 /*

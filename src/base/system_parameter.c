@@ -431,6 +431,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_TCP_NODELAY "tcp_nodealy"
 
+#define PRM_NAME_TCP_KEEPALIVE "tcp_keepalive"
+
 #define PRM_NAME_CSQL_SINGLE_LINE_MODE "csql_single_line_mode"
 
 #define PRM_NAME_XASL_DEBUG_DUMP "xasl_debug_dump"
@@ -1456,6 +1458,10 @@ static unsigned int prm_tcp_sndbuf_size_flag = 0;
 int PRM_TCP_NODELAY = -1;
 static int prm_tcp_nodelay_default = -1;
 static unsigned int prm_tcp_nodelay_flag = 0;
+
+bool PRM_TCP_KEEPALIVE = true;
+static bool prm_tcp_keepalive_default = true;
+static unsigned int prm_tcp_keepalive_flag = 0;
 
 bool PRM_CSQL_SINGLE_LINE_MODE = false;
 static bool prm_csql_single_line_mode_default = false;
@@ -3406,6 +3412,16 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_tcp_nodelay_flag,
    (void *) &prm_tcp_nodelay_default,
    (void *) &PRM_TCP_NODELAY,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_TCP_KEEPALIVE,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_BOOLEAN,
+   (void *) &prm_tcp_keepalive_flag,
+   (void *) &prm_tcp_keepalive_default,
+   (void *) &PRM_TCP_KEEPALIVE,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
