@@ -73,17 +73,12 @@
 /* common collation to be used at runtime */
 #define LANG_RT_COMMON_COLL(c1, c2, coll)     \
   do {					      \
-    if ((c1) == (c2))			      \
-      {					      \
-	coll = (c1);			      \
-      }					      \
-    else if (LANG_IS_COERCIBLE_COLL (c1))     \
+    if (LANG_IS_COERCIBLE_COLL (c1))          \
       {					      \
 	coll = (c2);			      \
       }					      \
     else				      \
       {					      \
-	assert (LANG_IS_COERCIBLE_COLL (c2)); \
 	coll = (c1);			      \
       }					      \
   } while (0)
