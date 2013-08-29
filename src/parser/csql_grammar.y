@@ -19999,7 +19999,12 @@ escape_literal
 	: string_literal_or_input_hv
 		{{
 
-			$$ = $1;
+			PT_NODE *node = $1;
+			if (node->node_type == PT_VALUE)
+			  {
+			    node->info.value.print_collation = false;
+			  }
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}	
