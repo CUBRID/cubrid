@@ -6894,6 +6894,12 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
 	  /* set line number to dummy class, dummy attr */
 	  spec->info.spec.range_var = pt_name (parser, "av6749");
 	  spec->info.spec.as_attr_list = pt_name (parser, "av_1");
+
+	  if (spec->info.spec.as_attr_list)
+	    {
+	      PT_NAME_INFO_SET_FLAG (spec->info.spec.as_attr_list,
+				     PT_NAME_GENERATED_DERIVED_SPEC);
+	    }
 	  subq->from = spec;
 	}
       else
@@ -21135,6 +21141,23 @@ pt_get_collation_info (PT_NODE * node, PT_COLL_INFER * coll_infer)
       break;
 
     case PT_NAME:
+      if (PT_NAME_INFO_IS_FLAGED (node, PT_NAME_GENERATED_DERIVED_SPEC))
+	{
+	  if (coll_infer->coll_id == LANG_COLL_ISO_BINARY)
+	    {
+	      coll_infer->coerc_level = PT_COLLATION_L2_ISO_BIN_COERC;
+	    }
+	  else if (LANG_IS_COERCIBLE_COLL (coll_infer->coll_id))
+	    {
+	      coll_infer->coerc_level = PT_COLLATION_L2_BIN_COERC;
+	    }
+	  else
+	    {
+	      coll_infer->coerc_level = PT_COLLATION_L2_COERC;
+	    }
+	  break;
+	}
+      /* Fall through */
     case PT_DOT_:
       if (coll_infer->coll_id == LANG_COLL_ISO_BINARY)
 	{

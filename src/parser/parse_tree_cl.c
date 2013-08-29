@@ -4446,13 +4446,19 @@ pt_select_list_to_one_col (PARSER_CONTEXT * parser, PT_NODE * node,
 	      for (spec->info.spec.as_attr_list = NULL, i = 1, col = list;
 		   col; i++, col = col->next)
 		{
+		  PT_NODE *att;
+
 		  sprintf (buf, "av_%d", i);
+
+		  att = pt_name (parser, pt_append_string (parser, NULL,
+							   buf));
+		  if (att)
+		    {
+		      PT_NAME_INFO_SET_FLAG (att,
+					     PT_NAME_GENERATED_DERIVED_SPEC);
+		    }
 		  spec->info.spec.as_attr_list =
-		    parser_append_node (pt_name (parser,
-						 pt_append_string (parser,
-								   NULL,
-								   buf)),
-					spec->info.spec.as_attr_list);
+		    parser_append_node (att, spec->info.spec.as_attr_list);
 		}
 
 	      node->info.query.q.select.list =

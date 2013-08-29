@@ -2268,6 +2268,10 @@ struct pt_name_info
 					   and execution */
 #define PT_NAME_ALLOW_REUSABLE_OID 512	/* ignore the REUSABLE_OID
 					   restrictions for this name */
+#define PT_NAME_GENERATED_DERIVED_SPEC 1024	/* attribute generated from
+						 * derived spec
+						 */
+
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))

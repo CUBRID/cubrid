@@ -8476,7 +8476,6 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node,
   spec->info.spec.as_attr_list = as_attr_list = NULL;	/* init */
   for (col = pt_get_select_list (parser, subquery); col; col = col->next)
     {
-
       tmp = pt_name (parser, mq_generate_name (parser, "av", idx));
       tmp->info.name.meta_class = PT_NORMAL;
       tmp->info.name.resolved = spec->info.spec.range_var->info.name.original;
@@ -8498,6 +8497,7 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 	  as_attr_list =
 	    parser_append_node (parser_copy_tree (parser, tmp), as_attr_list);
 	}
+      PT_NAME_INFO_SET_FLAG (tmp, PT_NAME_GENERATED_DERIVED_SPEC);
     }
 
   /* save spec, attr */
