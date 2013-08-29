@@ -81,9 +81,9 @@ extern bool pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser,
 						  PT_NODE * column);
 extern PT_NODE *pt_check_odku_assignments (PARSER_CONTEXT * parser,
 					   PT_NODE * insert);
-extern void pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser,
-					   PT_NODE * attr,
-					   int default_cs, int default_coll);
+extern int pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser,
+					  PT_NODE * attr,
+					  int default_cs, int default_coll);
 extern PT_NODE *pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT *
 							parser,
 							PT_NODE * node,

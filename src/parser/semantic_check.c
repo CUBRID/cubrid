@@ -4462,25 +4462,24 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
  *		   default_coll argument is used
  * default_coll(in): collation of the attribute's class, or override value
  */
-void
+int
 pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr,
 			       int default_cs, int default_coll)
 {
   int attr_cs = attr->data_type->info.data_type.units;
   int attr_coll = attr->data_type->info.data_type.collation_id;
   LANG_COLLATION *lc;
+  int err = NO_ERROR;
 
   assert (default_coll >= 0);
 
   if (attr->data_type->info.data_type.has_cs_spec)
     {
-      if (attr->data_type->info.data_type.has_coll_spec)
+      if (attr->data_type->info.data_type.has_coll_spec == false)
 	{
-	  return;
+	  /* use binary collation of attribute's charset specifier */
+	  attr_coll = LANG_GET_BINARY_COLLATION (attr_cs);
 	}
-
-      /* use binary collation of attribute's charset specifier */
-      attr_coll = LANG_GET_BINARY_COLLATION (attr_cs);
     }
   else if (attr->data_type->info.data_type.has_coll_spec)
     {
@@ -4504,8 +4503,58 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr,
 	}
     }
 
+  if (attr->type_enum == PT_TYPE_ENUMERATION && attr->data_type != NULL)
+    {
+      /* coerce each element of enum to actual attribute codeset */
+      PT_NODE *elem = NULL;
+      int er = NO_ERROR;
+
+      elem = attr->data_type->info.data_type.enumeration;
+      while (elem != NULL)
+	{
+	  assert (elem->node_type == PT_VALUE);
+	  assert (PT_HAS_COLLATION (elem->type_enum));
+
+	  if (elem->data_type != NULL
+	      && elem->data_type->info.data_type.units != attr_cs)
+	    {
+	      PT_NODE *dt;
+
+	      dt = parser_copy_tree (parser, elem->data_type);
+	      dt->info.data_type.collation_id = attr_coll;
+	      dt->info.data_type.units = attr_cs;
+
+	      if (attr_cs == INTL_CODESET_ISO88591)
+		{
+		  /* conversion from multi-byte to ISO88591 must keep text */
+		  if (elem->info.value.data_value.str != NULL)
+		    {
+		      dt->info.data_type.precision =
+			elem->info.value.data_value.str->length;
+		    }
+		  else if (elem->info.value.db_value_is_initialized)
+		    {
+		      dt->info.data_type.precision =
+			DB_GET_STRING_SIZE (&(elem->info.value.db_value));
+		    }
+		}
+
+	      err = pt_coerce_value (parser, elem, elem, elem->type_enum, dt);
+	      if (err != NO_ERROR)
+		{
+		  return err;
+		}
+
+	      parser_free_tree (parser, dt);
+	    }
+	  elem = elem->next;
+	}
+    }
+
   attr->data_type->info.data_type.units = attr_cs;
   attr->data_type->info.data_type.collation_id = attr_coll;
+
+  return err;
 }
 
 /*
@@ -4962,7 +5011,11 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  if (PT_HAS_COLLATION (attr->type_enum)
 	      && attr->node_type == PT_ATTR_DEF)
 	    {
-	      pt_attr_check_default_cs_coll (parser, attr, -1, collation_id);
+	      if (pt_attr_check_default_cs_coll (parser, attr, -1,
+						 collation_id) != NO_ERROR)
+		{
+		  return;
+		}
 	    }
 	}
 
@@ -5029,8 +5082,11 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    if (PT_HAS_COLLATION (attr->type_enum)
 		&& attr->node_type == PT_ATTR_DEF)
 	      {
-		pt_attr_check_default_cs_coll (parser, attr, -1,
-					       collation_id);
+		if (pt_attr_check_default_cs_coll (parser, attr, -1,
+						   collation_id) != NO_ERROR)
+		  {
+		    return;
+		  }
 	      }
 	  }
 
@@ -8753,8 +8809,12 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (attr->node_type == PT_ATTR_DEF
 	      && PT_HAS_COLLATION (attr->type_enum))
 	    {
-	      pt_attr_check_default_cs_coll (parser, attr,
-					     charset, collation_id);
+	      if (pt_attr_check_default_cs_coll (parser, attr,
+						 charset, collation_id)
+		  != NO_ERROR)
+		{
+		  return;
+		}
 	    }
 	}
     }
