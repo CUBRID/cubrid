@@ -7040,7 +7040,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		  && (val->type_enum != column_dt->type_enum
 		      || (val->data_type != NULL
 			  && val->data_type->info.data_type.collation_id !=
-			  column_dt->data_type->info.data_type.collation_id)))
+			  column_dt->info.data_type.collation_id)))
 		{
 		  if (pt_coerce_value (parser, parts->info.parts.values,
 				       parts->info.parts.values,
@@ -7096,7 +7096,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		  if (val->type_enum != column_dt->type_enum
 		      || (val->data_type != NULL
 			  && val->data_type->info.data_type.collation_id !=
-			  column_dt->data_type->info.data_type.collation_id))
+			  column_dt->info.data_type.collation_id))
 		    {		/* LIST-NULL */
 		      if (pt_coerce_value (parser, val, val,
 					   column_dt->type_enum,
