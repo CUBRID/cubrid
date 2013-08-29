@@ -3847,8 +3847,13 @@ static SYSPRM_PARAM prm_Def[] = {
 #define GET_PRM_DYNAMIC_FLAG(id) ((GET_PRM (id))->dynamic_flag)
 #define GET_PRM_DATATYPE(id) ((GET_PRM (id))->datatype)
 
+#if defined (CS_MODE)
 #define PRM_PRINT_QRY_STRING(id) (PRM_IS_DIFFERENT (*(GET_PRM_DYNAMIC_FLAG (id))) \
 			&& PRM_IS_FOR_QRY_STRING (GET_PRM_STATIC_FLAG (id)))
+#else
+#define PRM_PRINT_QRY_STRING(id) (PRM_IS_FOR_QRY_STRING (GET_PRM_STATIC_FLAG (id)))
+#endif
+
 #define PRM_SERVER_SESSION(id) (PRM_IS_FOR_SESSION (GET_PRM_STATIC_FLAG (id)) \
 			&& PRM_IS_FOR_SERVER (GET_PRM_STATIC_FLAG (id)) \
 			&& !PRM_CLIENT_SESSION_ONLY (GET_PRM_STATIC_FLAG (id)))
