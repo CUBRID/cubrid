@@ -8482,6 +8482,7 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node,
       tmp->info.name.spec_id = spec->info.spec.id;
       tmp->type_enum = col->type_enum;
       tmp->data_type = parser_copy_tree (parser, col->data_type);
+      PT_NAME_INFO_SET_FLAG (tmp, PT_NAME_GENERATED_DERIVED_SPEC);
       /* keep out hidden columns from derived select list */
       if (subquery->info.query.order_by && col->is_hidden_column)
 	{
@@ -8497,7 +8498,6 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 	  as_attr_list =
 	    parser_append_node (parser_copy_tree (parser, tmp), as_attr_list);
 	}
-      PT_NAME_INFO_SET_FLAG (tmp, PT_NAME_GENERATED_DERIVED_SPEC);
     }
 
   /* save spec, attr */
