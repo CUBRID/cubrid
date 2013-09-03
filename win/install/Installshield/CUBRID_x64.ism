@@ -1296,8 +1296,8 @@
 		<row><td>SCRIPT_STR_0019</td><td>1042</td><td>설치유형: CUBRID 서버 컴포넌트와 클라이언트 컴포넌트</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0020</td><td>1033</td><td>Setup Type : CUBRID Client Components</td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0020</td><td>1042</td><td>설치유형: CUBRID 클라이언트 컴포넌트</td><td>0</td><td/><td>-1323328437</td></row>
-		<row><td>SCRIPT_STR_0021</td><td>1033</td><td>Since CUBRID broker and server versions should match, please make sure that\nyou are running the same version if you operate them in separate machines.\nFor installation of CUBRID tools like Query Browser, Manager and Web Manager,\nplease refer to http://www.cubrid.org/wiki_tools.\nDo you want to continue?</td><td>0</td><td/><td>1293969040</td></row>
-		<row><td>SCRIPT_STR_0021</td><td>1042</td><td>브로커 버전과 데이터베이스 서버 버전은 서로 일치해야 합니다.\n브로커와 데이터베이스 서버를 서로 다른 장비에 설치하려는 경우 주의해 주십시오.\nQuery Browser, Manager, Web Manager등 CUBRID Tool들을 설치하려면\nhttp://www.cubrid.org/wiki_tools를 참고해 주십시오.\n계속 진행하시겠습니까?</td><td>0</td><td/><td>1293977264</td></row>
+		<row><td>SCRIPT_STR_0021</td><td>1033</td><td>Since CUBRID broker and server versions should match, please make sure that you are running the same version if you operate them in separate machines.\nFor installation of CUBRID tools like Query Browser, Manager and Web Manager, please refer to http://www.cubrid.org/wiki_tools.\nDo you want to continue?</td><td>0</td><td/><td>1293969040</td></row>
+		<row><td>SCRIPT_STR_0021</td><td>1042</td><td>브로커 버전과 데이터베이스 서버 버전은 서로 일치해야 합니다.\n브로커와 데이터베이스 서버를 서로 다른 장비에 설치하려는 경우 주의해 주십시오.\nQuery Browser, Manager, Web Manager등 CUBRID Tool들을 설치하려면 http://www.cubrid.org/wiki_tools를 참고해 주십시오.\n계속 진행하시겠습니까?</td><td>0</td><td/><td>1293977264</td></row>
 		<row><td>SCRIPT_STR_0022</td><td>1033</td><td>Compatibility information</td><td>0</td><td/><td>-1323342357</td></row>
 		<row><td>SCRIPT_STR_0022</td><td>1042</td><td>호환성 정보</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>SCRIPT_STR_0028</td><td>1033</td><td>Setup is starting</td><td>0</td><td/><td>-1323342357</td></row>
