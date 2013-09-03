@@ -391,6 +391,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_DELAY_LIMIT_DELTA "ha_delay_limit_delta"
 
+#define PRM_NAME_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS "ha_applylogdb_max_commit_interval_in_msecs"
+
+#define PRM_NAME_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL "ha_applylogdb_max_commit_interval"
+
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
@@ -1378,6 +1382,12 @@ static int prm_ha_delay_limit_delta_in_secs_default = 0;
 static int prm_ha_delay_limit_delta_in_secs_upper = INT_MAX;
 static int prm_ha_delay_limit_delta_in_secs_lower = 0;
 static unsigned int prm_ha_delay_limit_delta_in_secs_flag = 0;
+
+int PRM_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS = 500;
+static int prm_ha_applylogdb_max_commit_interval_in_msecs_default = 500;
+static int prm_ha_applylogdb_max_commit_interval_in_msecs_upper = INT_MAX;
+static int prm_ha_applylogdb_max_commit_interval_in_msecs_lower = 0;
+static unsigned int prm_ha_applylogdb_max_commit_interval_in_msecs_flag = 0;
 
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
@@ -3209,6 +3219,28 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
+  {PRM_NAME_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_INTEGER,
+   (void *) &prm_ha_applylogdb_max_commit_interval_in_msecs_flag,
+   (void *) &prm_ha_applylogdb_max_commit_interval_in_msecs_default,
+   (void *) &PRM_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS,
+   (void *) &prm_ha_applylogdb_max_commit_interval_in_msecs_upper,
+   (void *) &prm_ha_applylogdb_max_commit_interval_in_msecs_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL,
+   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT),
+   PRM_INTEGER,
+   (void *) &prm_ha_applylogdb_max_commit_interval_in_msecs_flag,
+   (void *) &prm_ha_applylogdb_max_commit_interval_in_msecs_default,
+   (void *) &PRM_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS,
+   (void *) &prm_ha_applylogdb_max_commit_interval_in_msecs_upper,
+   (void *) &prm_ha_applylogdb_max_commit_interval_in_msecs_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),
    PRM_BOOLEAN,

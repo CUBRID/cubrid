@@ -81,6 +81,11 @@
 
 #define LA_MAX_REPL_ITEMS                       1000
 
+/* for adaptive commit interval */
+#define LA_NUM_DELAY_HISTORY                    10
+#define LA_MAX_TOLERABLE_DELAY                  2
+#define LA_REINIT_COMMIT_INTERVAL               10
+
 #define LA_WS_CULL_MOPS_PER_APPLY 				(100000)
 #define LA_WS_CULL_MOPS_INTERVAL				(180)
 
@@ -526,6 +531,10 @@ static bool la_restart_on_bulk_flush_error (int errid);
 static char *la_get_hostname_from_log_path (char *log_path);
 
 static void la_delay_replica (time_t eot_time);
+
+static float la_get_avg (int *array, int size);
+static void la_get_adaptive_time_commit_interval (int *time_commit_interval,
+						  int *delay_hist);
 
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
@@ -7353,6 +7362,87 @@ la_find_last_deleted_arv_num (void)
   return arv_log_num;
 }
 
+static float
+la_get_avg (int *array, int size)
+{
+  int i, total = 0;
+
+  assert (size > 0);
+
+  for (i = 0; i < size; i++)
+    {
+      total += array[i];
+    }
+
+  return (float) total / size;
+}
+
+/*
+ * la_get_adaptive_time_commit_interval () - adjust commit interval
+ *                                      based on the replication delay
+ *   time_commit_interval(in/out): commit interval
+ *   delay_hist(in): delay history
+ *   return: none
+ */
+static void
+la_get_adaptive_time_commit_interval (int *time_commit_interval,
+				      int *delay_hist)
+{
+  int delay;
+  int max_commit_interval;
+  float avg_delay;
+  static int delay_hist_idx = 0;
+
+  if (la_Info.log_record_time != 0)
+    {
+      delay = time (NULL) - la_Info.log_record_time;
+    }
+  else
+    {
+      return;
+    }
+
+  max_commit_interval =
+    prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS);
+
+  if (delay > LA_MAX_TOLERABLE_DELAY)
+    {
+      *time_commit_interval = max_commit_interval;
+    }
+  else if (delay == 0)
+    {
+      *time_commit_interval /= 2;
+    }
+  /* check if delay history is filled up */
+  else if (delay_hist[delay_hist_idx] >= 0)
+    {
+      avg_delay = la_get_avg (delay_hist, LA_NUM_DELAY_HISTORY);
+
+      if (delay < avg_delay)
+	{
+	  *time_commit_interval /= 2;
+	}
+      else if (delay > avg_delay)
+	{
+	  *time_commit_interval *= 2;
+
+	  if (*time_commit_interval == 0)
+	    {
+	      *time_commit_interval = LA_REINIT_COMMIT_INTERVAL;
+	    }
+	  else if (*time_commit_interval > max_commit_interval)
+	    {
+	      *time_commit_interval = max_commit_interval;
+	    }
+	}
+    }
+
+  delay_hist[delay_hist_idx++] = delay;
+  delay_hist_idx %= LA_NUM_DELAY_HISTORY;
+
+  return;
+}
+
 /*
  * la_apply_log_file() - apply the transaction log to the slave
  *   return: int
@@ -7386,6 +7476,10 @@ la_apply_log_file (const char *database_name, const char *log_path,
   bool clear_owner;
   int now = 0, last_eof_time = 0;
   LOG_LSA last_eof_lsa;
+
+  int time_commit_interval;
+  int delay_hist[LA_NUM_DELAY_HISTORY];
+  int i;
 
   assert (database_name != NULL);
   assert (log_path != NULL);
@@ -7498,6 +7592,13 @@ la_apply_log_file (const char *database_name, const char *log_path,
       er_log_debug (ARG_FILE_LINE, "Cannot find last LSA from DB");
       return error;
     }
+
+  for (i = 0; i < LA_NUM_DELAY_HISTORY; i++)
+    {
+      delay_hist[i] = -1;
+    }
+  time_commit_interval =
+    prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS);
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_STARTED, 4,
 	  la_Info.required_lsa.pageid,
@@ -7897,7 +7998,11 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	      LSA_COPY (&la_Info.final_lsa, &lrec->forw_lsa);
 	    }
 
-	  error = la_check_time_commit (&time_commit, 500 /* ms */ );
+	  /* commit */
+	  la_get_adaptive_time_commit_interval (&time_commit_interval,
+						delay_hist);
+
+	  error = la_check_time_commit (&time_commit, time_commit_interval);
 	  if (error != NO_ERROR)
 	    {
 	      /* check connection error */
