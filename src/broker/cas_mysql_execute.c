@@ -271,7 +271,7 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
   if (db_alias == NULL || db_alias[0] == '\0')
     return -1;
 
-  if (get_db_connect_status () != DB_CONNECTION_STATUS_CONNECTED
+  if (cas_get_db_connect_status () != DB_CONNECTION_STATUS_CONNECTED
       || database_name[0] == '\0' || strcmp (database_name, db_alias) != 0)
     {
       if (database_name[0] != '\0')
@@ -452,7 +452,7 @@ ux_end_tran (int tran_type, bool reset_con_status)
       errors_in_transaction++;
     }
 
-  if (get_db_connect_status () == DB_CONNECTION_STATUS_RESET)
+  if (cas_get_db_connect_status () == DB_CONNECTION_STATUS_RESET)
     {
       as_info->reset_flag = TRUE;
     }
@@ -2684,7 +2684,7 @@ cas_mysql_connect_db (char *alias, char *user, char *passwd)
     return cas_mysql_get_errno ();
 
   mysql_set_server_option (_db_conn, MYSQL_OPTION_MULTI_STATEMENTS_ON);
-  set_db_connect_status (DB_CONNECTION_STATUS_CONNECTED);
+  cas_set_db_connect_status (DB_CONNECTION_STATUS_CONNECTED);
   cas_mysql_set_host_connected (dbname, host, port);
 
   cas_mysql_autocommit (false);
@@ -2695,7 +2695,7 @@ cas_mysql_connect_db (char *alias, char *user, char *passwd)
 static void
 cas_mysql_disconnect_db (void)
 {
-  set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
+  cas_set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
 
   if (_db_conn == NULL)
     return;
@@ -2997,18 +2997,18 @@ cas_mysql_num_fields (MYSQL_RES * metaResult)
 }
 
 int
-get_db_connect_status (void)
+cas_get_db_connect_status (void)
 {
   if (!is_server_alive ())
     {
-      set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
+      cas_set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
     }
 
   return mysql_connect_status;
 }
 
 void
-set_db_connect_status (int status)
+cas_set_db_connect_status (int status)
 {
   mysql_connect_status = status;
 }

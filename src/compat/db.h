@@ -332,4 +332,8 @@ extern int db_drop_set_attribute_domain (MOP class_,
 extern BTID *db_constraint_index (DB_CONSTRAINT * constraint, BTID * index);
 
 extern int db_col_optimize (DB_COLLECTION * col);
+
+extern int db_get_connect_status (void);
+extern void db_set_connect_status (int status);
+
 #endif /* _DB_H_ */

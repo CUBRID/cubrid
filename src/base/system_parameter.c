@@ -4276,6 +4276,9 @@ static SYSPRM_ERR sysprm_set_session_parameter_default (SESSION_PARAM *
 							int prm_id);
 #endif /* SERVER_MODE */
 
+#if defined (CS_MODE)
+static void sysprm_update_cached_session_param_val (const PARAM_ID prm_id);
+#endif
 
 /* conf files that have been loaded */
 #define MAX_NUM_OF_PRM_FILES_LOADED	10
@@ -9951,37 +9954,44 @@ sysprm_init_intl_param (void)
   prm_number_lang = prm_find (PRM_NAME_INTL_NUMBER_LANG, NULL);
   prm_intl_collation = prm_find (PRM_NAME_INTL_COLLATION, NULL);
 
+  /* intl system parameters are session based and depend on system language;
+   * The language is read from DB (and client from server), after the system
+   * parameters module was initialized and default values read from
+   * configuration file.
+   * This function avoids to override any value already read from config.
+   * If no values are set from config, then this function sets the values
+   * according to the default language.
+   *
+   * On client (CAS), we set the client copy of the value, and also the cached
+   * session parameter value (which is the default starting value, when the
+   * existing CAS serves another session) is intialized.
+   */
+
   if (prm_date_lang != NULL && !PRM_IS_SET (*prm_date_lang->dynamic_flag))
     {
-      if (PRM_GET_STRING (prm_date_lang->value))
-	{
-	  free_and_init (PRM_GET_STRING (prm_date_lang->value));
-	}
-      PRM_CLEAR_BIT (PRM_ALLOCATED, *prm_date_lang->dynamic_flag);
       prm_set (prm_date_lang, lang_get_Lang_name (), true);
+#if defined (CS_MODE)
+      sysprm_update_cached_session_param_val (PRM_ID_INTL_DATE_LANG);
+#endif
     }
 
   if (prm_number_lang != NULL && !PRM_IS_SET (*prm_number_lang->dynamic_flag))
     {
-      if (PRM_GET_STRING (prm_number_lang->value))
-	{
-	  free_and_init (PRM_GET_STRING (prm_number_lang->value));
-	}
-      PRM_CLEAR_BIT (PRM_ALLOCATED, *prm_number_lang->dynamic_flag);
       prm_set (prm_number_lang, lang_get_Lang_name (), true);
+#if defined (CS_MODE)
+      sysprm_update_cached_session_param_val (PRM_ID_INTL_NUMBER_LANG);
+#endif
     }
 
   if (prm_intl_collation != NULL
       && !PRM_IS_SET (*prm_intl_collation->dynamic_flag))
     {
-      if (PRM_GET_STRING (prm_intl_collation->value))
-	{
-	  free_and_init (PRM_GET_STRING (prm_intl_collation->value));
-	}
-      PRM_CLEAR_BIT (PRM_ALLOCATED, *prm_intl_collation->dynamic_flag);
       prm_set (prm_intl_collation,
-	       lang_get_collation_name
-	       (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET)), true);
+	       lang_get_collation_name (LANG_GET_BINARY_COLLATION
+					(LANG_SYS_CODESET)), true);
+#if defined (CS_MODE)
+      sysprm_update_cached_session_param_val (PRM_ID_INTL_COLLATION);
+#endif
     }
 }
 #endif /* !SERVER_MODE */
@@ -10069,3 +10079,42 @@ sysprm_get_session_parameters_count (void)
 {
   return NUM_SESSION_PRM;
 }
+
+#if defined (CS_MODE)
+/*
+ * sysprm_update_cached_session_param_val () - updates value of a cached
+ *		 session parameter
+ * prm_id (in) : cached session system paramater id to update
+ *
+ *  Note : cached session parameters (global cached_session_parameters) are
+ *	   default value copies of the system parameters which can be changed
+ *	   in a session context; this should be used only during init process
+ *	   to alter the default initial value of system parameter for session.
+ */
+static void
+sysprm_update_cached_session_param_val (const PARAM_ID prm_id)
+{
+  SESSION_PARAM *cached_session_prm;
+  SYSPRM_PARAM *sys_prm;
+  int i;
+
+  assert (NUM_SESSION_PRM > 0);
+
+  sys_prm = GET_PRM (prm_id);
+
+  for (i = 0; i < NUM_SESSION_PRM; i++)
+    {
+      cached_session_prm = &cached_session_parameters[i];
+      if (cached_session_prm->prm_id != prm_id)
+	{
+	  continue;
+	}
+
+      cached_session_prm->flag = *sys_prm->dynamic_flag;
+      sysprm_set_sysprm_value_from_parameter (&cached_session_prm->value,
+					      sys_prm);
+      sysprm_update_session_prm_flag_allocated (cached_session_prm);
+      break;
+    }
+}
+#endif /* CS_MODE */

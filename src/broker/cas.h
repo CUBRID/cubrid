@@ -133,4 +133,8 @@ extern int query_seq_num_current_value (void);
 
 extern void set_hang_check_time (void);
 extern void unset_hang_check_time (void);
+
+extern void cas_set_db_connect_status (int status);
+extern int cas_get_db_connect_status (void);
+
 #endif /* _CAS_H_ */

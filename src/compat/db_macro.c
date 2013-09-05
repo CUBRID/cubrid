@@ -6589,3 +6589,15 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
 
   return NO_ERROR;
 }
+
+int
+db_get_connect_status (void)
+{
+  return db_Connect_status;
+}
+
+void
+db_set_connect_status (int status)
+{
+  db_Connect_status = status;
+}

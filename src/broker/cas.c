@@ -581,7 +581,7 @@ conn_retry:
   if (as_info->reset_flag == TRUE)
     {
       cas_log_debug (ARG_FILE_LINE, "main: set reset_flag");
-      set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
+      cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
       as_info->reset_flag = FALSE;
     }
 
@@ -740,7 +740,7 @@ conn_retry:
 	  {
 	    ux_database_shutdown ();
 	    as_info->reset_flag = FALSE;
-	    set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
+	    cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
 	  }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -1136,7 +1136,7 @@ cas_main (void)
 	    if (as_info->reset_flag == TRUE)
 	      {
 		cas_log_debug (ARG_FILE_LINE, "main: set reset_flag");
-		set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
+		cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
 		as_info->reset_flag = FALSE;
 	      }
 
@@ -1320,7 +1320,7 @@ cas_main (void)
 	      {
 		ux_database_shutdown ();
 		as_info->reset_flag = FALSE;
-		set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
+		cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
 	      }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -2150,7 +2150,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (as_info->reset_flag
       && ((as_info->con_status != CON_STATUS_IN_TRAN
 	   && as_info->num_holdable_results < 1)
-	  || (get_db_connect_status () == -1)))
+	  || (cas_get_db_connect_status () == -1)))
     {
       cas_log_debug (ARG_FILE_LINE,
 		     "process_request: reset_flag && !CON_STATUS_IN_TRAN");

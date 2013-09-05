@@ -30,7 +30,8 @@
 #include "dbi.h"
 #include "dbval.h"
 /*#include "db.h"*/
-extern int db_Connect_status;
+extern int db_get_connect_status (void);
+extern void db_set_connect_status (int status);
 
 #define CUBRID_VERSION(X, Y)	(((X) << 8) | (Y))
 #define CUR_CUBRID_VERSION	\

@@ -499,12 +499,12 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 
   host_connected = db_get_host_connected ();
 
-  if (get_db_connect_status () != 1	/* DB_CONNECTION_STATUS_CONNECTED */
+  if (cas_get_db_connect_status () != 1	/* DB_CONNECTION_STATUS_CONNECTED */
       || database_name[0] == '\0'
       || strcmp (database_name, db_name) != 0
       || strcmp (as_info->database_host, host_connected) != 0)
     {
-      if (get_db_connect_status () == -1)	/* DB_CONNECTION_STATUS_RESET */
+      if (cas_get_db_connect_status () == -1)	/* DB_CONNECTION_STATUS_RESET */
 	{
 	  db_clear_host_connected ();
 	}
@@ -1163,7 +1163,7 @@ ux_end_tran (int tran_type, bool reset_con_status)
     }
 
 #ifndef LIBCAS_FOR_JSP
-  if (get_db_connect_status () == -1	/* DB_CONNECTION_STATUS_RESET */
+  if (cas_get_db_connect_status () == -1	/* DB_CONNECTION_STATUS_RESET */
       || need_reconnect_on_rctime ())
     {
       db_clear_reconnect_reason ();
@@ -9409,17 +9409,19 @@ check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
   return false;
 }
 
-int
-get_db_connect_status (void)
+#if !(defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL))
+void
+cas_set_db_connect_status (int status)
 {
-  return db_Connect_status;
+  db_set_connect_status (status);
 }
 
-void
-set_db_connect_status (int status)
+int
+cas_get_db_connect_status (void)
 {
-  db_Connect_status = status;
+  return db_get_connect_status ();
 }
+#endif
 
 void
 cas_log_error_handler (unsigned int eid)

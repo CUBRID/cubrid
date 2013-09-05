@@ -154,6 +154,7 @@ EXPORTS
     db_get_class_num_objs_and_pages
     db_get_class_privilege
     db_get_class_resolutions
+    db_get_connect_status    
     db_get_constraints
     db_get_currency_default
     db_get_database_name
@@ -287,6 +288,7 @@ EXPORTS
     db_get_session_id
     db_check_session
     db_end_session
+    db_set_connect_status
     db_set_server_session_key
     db_get_server_session_key
     db_get_row_count_cache
