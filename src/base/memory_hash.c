@@ -1930,11 +1930,8 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 		{
 		  len = strlen (ptr);
 		}
-	      i = db_value_precision (val);
-	      if (i <= 0 || len < i)
-		{
-		  i = len;
-		}
+
+	      i = len;
 	      for (i--; i && ptr[i]; i--)
 		{
 		  /* only the trailing ASCII space is ignored;
