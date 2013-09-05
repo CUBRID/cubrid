@@ -717,7 +717,8 @@ enum pt_custom_print
 				 * instead pt_print_tree
 				 */
   PT_SUPPRESS_BIGINT_CAST = 0x4000000,
-  PT_SUPPRESS_COLLATE_PRINT = 0x8000000
+  PT_SUPPRESS_COLLATE_PRINT = 0x8000000,
+  PT_CHARSET_COLLATE_FULL = 0x10000000
 };
 
 /* all statement node types should be assigned their API statement enumeration */
