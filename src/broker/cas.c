@@ -1934,7 +1934,13 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  || func_code == CAS_FC_EXECUTE_ARRAY
 	  || func_code == CAS_FC_PREPARE_AND_EXECUTE))
     {
-      if (ux_database_reconnect () == 0)
+      err_code = ux_database_reconnect ();
+      if (err_code < 0)
+	{
+	  fn_ret = FN_CLOSE_CONN;
+	  goto exit_on_end;
+	}
+      else
 	{
 	  as_info->reset_flag = FALSE;
 	  hm_srv_handle_unset_prepare_flag_all ();
