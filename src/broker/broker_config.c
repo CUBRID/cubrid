@@ -750,6 +750,16 @@ broker_config_read_internal (const char *conf_file,
 	  goto conf_error;
 	}
 
+      br_info[num_brs].replica_only_flag =
+	conf_get_value_table_on_off (ini_getstr
+				     (ini, sec_name, "REPLICA_ONLY", "OFF",
+				      &lineno));
+      if (br_info[num_brs].replica_only_flag < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
       strcpy (br_info[num_brs].preferred_hosts,
 	      ini_getstr (ini, sec_name, "PREFERRED_HOSTS",
 			  DEFAULT_EMPTY_STRING, &lineno));
@@ -1355,6 +1365,12 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	  fprintf (fp, "CONNECT_ORDER\t\t=%s\n", tmp_str);
 	}
       fprintf (fp, "RECONNECT_TIME\t\t=%d\n", br_info[i].cas_rctime);
+
+      tmp_str = get_conf_string (br_info[i].replica_only_flag, tbl_on_off);
+      if (tmp_str)
+	{
+	  fprintf (fp, "REPLICA_ONLY\t\t=%s\n", tmp_str);
+	}
 
       fprintf (fp, "MAX_QUERY_TIMEOUT\t=%d\n", br_info[i].query_timeout);
 

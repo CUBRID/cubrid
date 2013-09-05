@@ -72,7 +72,11 @@ extern int db_Disable_modifications;
 #define DB_CLIENT_TYPE_ADMIN_CSQL       8
 #define DB_CLIENT_TYPE_LOG_COPIER       9
 #define DB_CLIENT_TYPE_LOG_APPLIER      10
-#define DB_CLIENT_TYPE_MAX              DB_CLIENT_TYPE_LOG_APPLIER
+#define DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY   11
+#define DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY   12
+#define DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY   13
+#define DB_CLIENT_TYPE_ADMIN_CSQL_WOS   14	/* admin csql that can write on standby */
+#define DB_CLIENT_TYPE_MAX              DB_CLIENT_TYPE_ADMIN_CSQL_WOS
 extern int db_Client_type;
 
 extern char db_Database_name[];

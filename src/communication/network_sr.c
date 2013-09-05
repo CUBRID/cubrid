@@ -1080,7 +1080,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
 	}
       /* check if DB modification is allowed */
       client_type = logtb_find_client_type (thread_p->tran_index);
-      if (check && BOOT_NORMAL_CLIENT_TYPE (client_type))
+      if (check)
 	{
 	  CHECK_MODIFICATION_NO_RETURN (thread_p, error_code);
 	  if (error_code != NO_ERROR)

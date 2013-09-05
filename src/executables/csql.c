@@ -2734,6 +2734,11 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   if (csql_arg->sysadm)
     {
       client_type = DB_CLIENT_TYPE_ADMIN_CSQL;
+
+      if (csql_arg->write_on_standby)
+	{
+	  client_type = DB_CLIENT_TYPE_ADMIN_CSQL_WOS;
+	}
     }
   else if (csql_arg->read_only)
     {

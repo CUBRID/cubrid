@@ -273,6 +273,7 @@ enum net_server_request
 #define NET_CAP_UPDATE_DISABLED         0x00008000
 #define NET_CAP_REMOTE_DISABLED         0x00000080
 #define NET_CAP_HA_REPL_DELAY           0x00000008
+#define NET_CAP_HA_REPLICA              0x00000004
 
 extern char *net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);
 extern char *net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);

@@ -516,19 +516,46 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 
       if (shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
 	{
-	  client_type = 5;	/* DB_CLIENT_TYPE_READ_ONLY_BROKER in db.h */
-	  cas_log_debug (ARG_FILE_LINE,
-			 "ux_database_connect: read_only_broker");
+	  if (shm_appl->replica_only_flag)
+	    {
+	      client_type = 12;	/* DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY in db.h */
+	      cas_log_debug (ARG_FILE_LINE,
+			     "ux_database_connect: read_replica_only_broker");
+	    }
+	  else
+	    {
+	      client_type = 5;	/* DB_CLIENT_TYPE_READ_ONLY_BROKER in db.h */
+	      cas_log_debug (ARG_FILE_LINE,
+			     "ux_database_connect: read_only_broker");
+	    }
 	}
       else if (shm_appl->access_mode == SLAVE_ONLY_ACCESS_MODE)
 	{
-	  client_type = 6;	/* DB_CLIENT_TYPE_SLAVE_ONLY_BROKER in db.h */
-	  cas_log_debug (ARG_FILE_LINE,
-			 "ux_database_connect: slave_only_broker");
+	  if (shm_appl->replica_only_flag)
+	    {
+	      client_type = 13;	/* DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY in db.h */
+	      cas_log_debug (ARG_FILE_LINE,
+			     "ux_database_connect: slave_replica_only_broker");
+	    }
+	  else
+	    {
+	      client_type = 6;	/* DB_CLIENT_TYPE_SLAVE_ONLY_BROKER in db.h */
+	      cas_log_debug (ARG_FILE_LINE,
+			     "ux_database_connect: slave_only_broker");
+	    }
 	}
       else
 	{
-	  client_type = 4;	/* DB_CLIENT_TYPE_BROKER in db.h */
+	  if (shm_appl->replica_only_flag)
+	    {
+	      client_type = 11;	/* DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY */
+	      cas_log_debug (ARG_FILE_LINE,
+			     "ux_database_connect: read_write_replica_only_broker");
+	    }
+	  else
+	    {
+	      client_type = 4;	/* DB_CLIENT_TYPE_BROKER in db.h */
+	    }
 	}
 
       db_set_preferred_hosts (shm_appl->preferred_hosts);
@@ -625,19 +652,46 @@ ux_database_reconnect (void)
 
   if (shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
     {
-      client_type = 5;		/* DB_CLIENT_TYPE_READ_ONLY_BROKER in db.h */
-      cas_log_debug (ARG_FILE_LINE,
-		     "ux_database_reconnect: read_only_broker");
+      if (shm_appl->replica_only_flag)
+	{
+	  client_type = 12;	/* DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY in db.h */
+	  cas_log_debug (ARG_FILE_LINE,
+			 "ux_database_connect: read_replica_only_broker");
+	}
+      else
+	{
+	  client_type = 5;	/* DB_CLIENT_TYPE_READ_ONLY_BROKER in db.h */
+	  cas_log_debug (ARG_FILE_LINE,
+			 "ux_database_connect: read_only_broker");
+	}
     }
   else if (shm_appl->access_mode == SLAVE_ONLY_ACCESS_MODE)
     {
-      client_type = 6;		/* DB_CLIENT_TYPE_SLAVE_ONLY_BROKER in db.h */
-      cas_log_debug (ARG_FILE_LINE,
-		     "ux_database_reconnect: slave_only_broker");
+      if (shm_appl->replica_only_flag)
+	{
+	  client_type = 13;	/* DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY in db.h */
+	  cas_log_debug (ARG_FILE_LINE,
+			 "ux_database_connect: slave_replica_only_broker");
+	}
+      else
+	{
+	  client_type = 6;	/* DB_CLIENT_TYPE_SLAVE_ONLY_BROKER in db.h */
+	  cas_log_debug (ARG_FILE_LINE,
+			 "ux_database_connect: slave_only_broker");
+	}
     }
   else
     {
-      client_type = 4;		/* DB_CLIENT_TYPE_BROKER in db.h */
+      if (shm_appl->replica_only_flag)
+	{
+	  client_type = 11;	/* DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY */
+	  cas_log_debug (ARG_FILE_LINE,
+			 "ux_database_connect: read_write_replica_only_broker");
+	}
+      else
+	{
+	  client_type = 4;	/* DB_CLIENT_TYPE_BROKER in db.h */
+	}
     }
 
   db_set_preferred_hosts (shm_appl->preferred_hosts);

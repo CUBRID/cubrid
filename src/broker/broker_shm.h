@@ -549,6 +549,7 @@ struct t_shm_appl_server
   bool access_control;
   int jdbc_cache_life_time;
   int connect_order;
+  int replica_only_flag;
 
 #if defined(WINDOWS)
   int as_port;

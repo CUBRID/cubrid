@@ -258,6 +258,7 @@ typedef struct
   bool nopager;
   bool continue_on_error;
   bool sysadm;
+  bool write_on_standby;
   int string_width;
 #if defined(CSQL_NO_LONGGING)
   bool no_logging;

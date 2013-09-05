@@ -232,6 +232,7 @@ struct t_broker_info
   char reject_client_flag;	/* reject clients due to hanging cas/proxy */
 
   int connect_order;
+  int replica_only_flag;
 
   int cas_rctime;		/* sec */
 

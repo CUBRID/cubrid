@@ -245,6 +245,7 @@ client_capabilities (void)
     {
       capabilities |= NET_CAP_UPDATE_DISABLED;
     }
+
   return capabilities;
 }
 
@@ -271,20 +272,35 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare,
       server_cap ^= NET_CAP_INTERRUPT_ENABLED;
     }
 
-  /* update-ability should be same */
-  if ((client_cap ^ server_cap) & NET_CAP_UPDATE_DISABLED)
+  /* replica only client should check whether the server is replica */
+  if (BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_type))
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "NET_CAP_UPDATE_DISABLED client_cap %d server_cap %d\n",
-		    client_cap & NET_CAP_UPDATE_DISABLED,
-		    server_cap & NET_CAP_UPDATE_DISABLED);
-      server_cap ^= NET_CAP_UPDATE_DISABLED;
-
-      db_set_reconnect_reason (DB_RC_MISMATCHED_RW_MODE);
+      if (~server_cap & NET_CAP_HA_REPLICA)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"NET_CAP_HA_REPLICA client_cap %d server_cap %d\n",
+			client_cap & NET_CAP_HA_REPLICA,
+			server_cap & NET_CAP_HA_REPLICA);
+	  server_cap ^= NET_CAP_HA_REPLICA;
+	}
     }
   else
     {
-      db_unset_reconnect_reason (DB_RC_MISMATCHED_RW_MODE);
+      /* update-ability should be same */
+      if ((client_cap ^ server_cap) & NET_CAP_UPDATE_DISABLED)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"NET_CAP_UPDATE_DISABLED client_cap %d server_cap %d\n",
+			client_cap & NET_CAP_UPDATE_DISABLED,
+			server_cap & NET_CAP_UPDATE_DISABLED);
+	  server_cap ^= NET_CAP_UPDATE_DISABLED;
+
+	  db_set_reconnect_reason (DB_RC_MISMATCHED_RW_MODE);
+	}
+      else
+	{
+	  db_unset_reconnect_reason (DB_RC_MISMATCHED_RW_MODE);
+	}
     }
 
   /*

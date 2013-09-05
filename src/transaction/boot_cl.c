@@ -987,6 +987,26 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       /* connected to any preferred hosts successfully */
     }
+  else
+    if (BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_credential->client_type))
+    {
+      error_code =
+	boot_client_initialize_css (db, client_credential->client_type, true,
+				    BOOT_CHECK_HA_DELAY_CAP, false,
+				    client_credential->connect_order);
+      if (error_code == ER_NET_SERVER_HAND_SHAKE)
+	{
+	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
+			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
+	  error_code =
+	    boot_client_initialize_css (db,
+					client_credential->
+					client_type,
+					true, BOOT_NO_OPT_CAP,
+					false,
+					client_credential->connect_order);
+	}
+    }
   else if (BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))
     {
       error_code =

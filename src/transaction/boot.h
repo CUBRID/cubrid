@@ -44,6 +44,10 @@ enum boot_client_type
   BOOT_CLIENT_ADMIN_CSQL = 8,
   BOOT_CLIENT_LOG_COPIER = 9,
   BOOT_CLIENT_LOG_APPLIER = 10,
+  BOOT_CLIENT_RW_BROKER_REPLICA_ONLY = 11,
+  BOOT_CLIENT_RO_BROKER_REPLICA_ONLY = 12,
+  BOOT_CLIENT_SO_BROKER_REPLICA_ONLY = 13,
+  BOOT_CLIENT_ADMIN_CSQL_WOS = 14,	/* admin csql that can write on standby */
 };
 
 #define BOOT_NORMAL_CLIENT_TYPE(client_type) \
@@ -51,31 +55,48 @@ enum boot_client_type
          || (client_type) == BOOT_CLIENT_CSQL \
          || (client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
          || (client_type) == BOOT_CLIENT_BROKER \
-         || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER)
+         || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
+         || (client_type) == BOOT_CLIENT_RW_BROKER_REPLICA_ONLY \
+         || (client_type) == BOOT_CLIENT_RO_BROKER_REPLICA_ONLY)
 
 #define BOOT_READ_ONLY_CLIENT_TYPE(client_type) \
         ((client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
-	 || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
-	 || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER)
+         || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
+         || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER \
+         || (client_type) == BOOT_CLIENT_RO_BROKER_REPLICA_ONLY \
+         || (client_type) == BOOT_CLIENT_SO_BROKER_REPLICA_ONLY)
 
 #define BOOT_ADMIN_CLIENT_TYPE(client_type) \
-	((client_type) == BOOT_CLIENT_ADMIN_UTILITY \
-	 || (client_type) == BOOT_CLIENT_ADMIN_CSQL)
+        ((client_type) == BOOT_CLIENT_ADMIN_UTILITY \
+         || (client_type) == BOOT_CLIENT_ADMIN_CSQL \
+         || (client_type) == BOOT_CLIENT_ADMIN_CSQL_WOS)
 
 #define BOOT_LOG_REPLICATOR_TYPE(client_type) \
-	((client_type) == BOOT_CLIENT_LOG_COPIER \
-	 || (client_type) == BOOT_CLIENT_LOG_APPLIER)
+        ((client_type) == BOOT_CLIENT_LOG_COPIER \
+         || (client_type) == BOOT_CLIENT_LOG_APPLIER)
 
 #define BOOT_CSQL_CLIENT_TYPE(client_type) \
         ((client_type) == BOOT_CLIENT_CSQL \
-	|| (client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
-	|| (client_type) == BOOT_CLIENT_ADMIN_CSQL)
+        || (client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
+        || (client_type) == BOOT_CLIENT_ADMIN_CSQL \
+        || (client_type) == BOOT_CLIENT_ADMIN_CSQL_WOS)
 
 #define BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE(client_type) \
         ((client_type) == BOOT_CLIENT_DEFAULT \
          || (client_type) == BOOT_CLIENT_BROKER \
-	 || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
-	 || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER)
+         || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
+         || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER \
+         || BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE(client_type))
+
+#define BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE(client_type) \
+    ((client_type) == BOOT_CLIENT_RW_BROKER_REPLICA_ONLY \
+        || (client_type) == BOOT_CLIENT_RO_BROKER_REPLICA_ONLY \
+        || (client_type) == BOOT_CLIENT_SO_BROKER_REPLICA_ONLY)
+
+#define BOOT_WRITE_ON_STANDY_CLIENT_TYPE(client_type) \
+  ((client_type) == BOOT_CLIENT_LOG_APPLIER \
+      || (client_type) == BOOT_CLIENT_RW_BROKER_REPLICA_ONLY \
+      || (client_type) == BOOT_CLIENT_ADMIN_CSQL_WOS)
 
 /*
  * BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE()

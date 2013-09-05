@@ -293,7 +293,8 @@ static void print_header (bool use_pdh_flag);
 static int print_title (char *buf_p, int buf_offset, FIELD_NAME name,
 			const char *new_title_p);
 static void print_value (FIELD_NAME name, const void *value, FIELD_TYPE type);
-static const char *get_access_mode_string (T_ACCESS_MODE_VALUE mode);
+static const char *get_access_mode_string (T_ACCESS_MODE_VALUE mode,
+					   int replica_only_flag);
 static const char *get_sql_log_mode_string (T_SQL_LOG_MODE_VALUE mode);
 static const char *get_status_string (T_APPL_SERVER_INFO * as_info_p,
 				      char appl_server);
@@ -1500,7 +1501,9 @@ br_monitor (char *br_vector)
 		  print_value (FIELD_CANCELED, &its, FIELD_T_INT64);
 		  print_value (FIELD_ACCESS_MODE,
 			       get_access_mode_string (shm_br->br_info[i].
-						       access_mode),
+						       access_mode,
+						       shm_br->br_info[i].
+						       replica_only_flag),
 			       FIELD_T_STRING);
 
 		  print_value (FIELD_SQL_LOG,
@@ -2472,16 +2475,16 @@ get_sql_log_mode_string (T_SQL_LOG_MODE_VALUE mode)
 }
 
 static const char *
-get_access_mode_string (T_ACCESS_MODE_VALUE mode)
+get_access_mode_string (T_ACCESS_MODE_VALUE mode, int replica_only_flag)
 {
   switch (mode)
     {
     case READ_ONLY_ACCESS_MODE:
-      return "RO";
+      return (replica_only_flag ? "RO-REPLICA" : "RO");
     case SLAVE_ONLY_ACCESS_MODE:
-      return "SO";
+      return (replica_only_flag ? "SO-REPLICA" : "SO");
     case READ_WRITE_ACCESS_MODE:
-      return "RW";
+      return (replica_only_flag ? "RW-REPLICA" : "RW");
     default:
       return "--";
     }

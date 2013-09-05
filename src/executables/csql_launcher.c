@@ -143,6 +143,7 @@ main (int argc, char *argv[])
     {CSQL_NO_PAGER_L, 0, 0, CSQL_NO_PAGER_S},
     {CSQL_NO_SINGLE_LINE_L, 0, 0, CSQL_NO_SINGLE_LINE_S},
     {CSQL_SYSADM_L, 0, 0, CSQL_SYSADM_S},
+    {CSQL_WRITE_ON_STANDBY_L, 0, 0, CSQL_WRITE_ON_STANDBY_S},
     {CSQL_STRING_WIDTH_L, 1, 0, CSQL_STRING_WIDTH_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
@@ -248,6 +249,10 @@ main (int argc, char *argv[])
 	  csql_arg.sysadm = true;
 	  break;
 
+	case CSQL_WRITE_ON_STANDBY_S:
+	  csql_arg.write_on_standby = true;
+	  break;
+
 	case CSQL_STRING_WIDTH_S:
 	  {
 	    char *endptr;
@@ -306,6 +311,13 @@ main (int argc, char *argv[])
       /* sysadm is allowed only to DBA */
       goto print_usage;
     }
+
+  if (csql_arg.sysadm == false && csql_arg.write_on_standby == true)
+    {
+      /* write_on_standby must come with sysadm */
+      goto print_usage;
+    }
+
   if (csql_arg.sa_mode && csql_arg.cs_mode)
     {
       /* Don't allow both at once. */

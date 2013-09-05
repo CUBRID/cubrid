@@ -312,13 +312,10 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   assert (oid_p != NULL);
   assert (result_num != NULL);
 
-  if (!LOG_CHECK_LOG_APPLIER (thread_p))
+  CHECK_MODIFICATION_NO_RETURN (thread_p, ret);
+  if (ret != NO_ERROR)
     {
-      CHECK_MODIFICATION_NO_RETURN (thread_p, ret);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
+      return ret;
     }
 
   if (num_alloc < 1)
@@ -507,13 +504,10 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p,
 
   DB_MAKE_NULL (&key_val);
 
-  if (!LOG_CHECK_LOG_APPLIER (thread_p))
+  CHECK_MODIFICATION_NO_RETURN (thread_p, ret);
+  if (ret != NO_ERROR)
     {
-      CHECK_MODIFICATION_NO_RETURN (thread_p, ret);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
+      return ret;
     }
 
   heap_scancache_quick_start_modify (&scan_cache);

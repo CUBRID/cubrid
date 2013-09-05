@@ -1631,9 +1631,17 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->tran_start_time = 0;
   XASL_ID_SET_NULL (&tdes->xasl_id);
   tdes->waiting_for_res = NULL;
-  tdes->disable_modifications = db_Disable_modifications;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
+
+  if (BOOT_WRITE_ON_STANDY_CLIENT_TYPE (tdes->client.client_type))
+    {
+      tdes->disable_modifications = 0;
+    }
+  else
+    {
+      tdes->disable_modifications = db_Disable_modifications;
+    }
 }
 
 /*
@@ -1654,6 +1662,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->isloose_end = false;
   tdes->coord = NULL;
   tdes->client_id = -1;
+  tdes->client.client_type = BOOT_CLIENT_UNKNOWN;
   tdes->gtrid = LOG_2PC_NULL_GTRID;
   tdes->gtrinfo.info_length = 0;
   tdes->gtrinfo.info_data = NULL;

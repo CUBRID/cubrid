@@ -207,6 +207,12 @@ server_capabilities (void)
     {
       capabilities |= NET_CAP_HA_REPL_DELAY;
     }
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA)
+    {
+      assert_release (css_ha_server_state () == HA_SERVER_STATE_STANDBY);
+      capabilities |= NET_CAP_HA_REPLICA;
+    }
+
   return capabilities;
 }
 
