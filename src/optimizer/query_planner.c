@@ -1097,7 +1097,7 @@ qo_set_use_desc (QO_PLAN * plan, void *arg)
  * qo_unset_multi_range_optimization () - set all multi_range_opt flags
  *					  on all indexes to false
  *
- * return    : NO_ERROR 
+ * return    : NO_ERROR
  * plan (in) : current plan
  * arg (in)  : not used
  */
@@ -10525,7 +10525,7 @@ qo_index_scan_order_by_new (QO_INFO * info, QO_NODE * node,
  *					 index scan with multi range
  *					 optimization
  *
- * return    : true/false 
+ * return    : true/false
  * plan (in) : plan to verify
  */
 bool
@@ -12546,12 +12546,18 @@ qo_plan_scan_print_json (QO_PLAN * plan)
   bool natural_desc_index = false;
   json_t *scan, *range, *filter;
   const char *scan_string = "";
+  const char *class_name;
   int i;
 
   scan = json_object ();
 
-  json_object_set_new (scan, "table",
-		       json_string (QO_NODE_NAME (plan->plan_un.scan.node)));
+  class_name = QO_NODE_NAME (plan->plan_un.scan.node);
+  if (class_name == NULL)
+    {
+      class_name = "unknown";
+    }
+
+  json_object_set_new (scan, "table", json_string (class_name));
 
   switch (plan->plan_un.scan.scan_method)
     {
@@ -12865,22 +12871,28 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
   BITSET_ITERATOR bi;
   QO_ENV *env;
   bool natural_desc_index = false;
+  const char *class_name;
   int i;
 
   indent += 2;
   fprintf (fp, "%*c", indent, ' ');
 
+  class_name = QO_NODE_NAME (plan->plan_un.scan.node);
+  if (class_name == NULL)
+    {
+      class_name = "unknown";
+    }
+
   switch (plan->plan_un.scan.scan_method)
     {
     case QO_SCANMETHOD_SEQ_SCAN:
-      fprintf (fp, "TABLE SCAN (%s)", QO_NODE_NAME (plan->plan_un.scan.node));
+      fprintf (fp, "TABLE SCAN (%s)", class_name);
       break;
 
     case QO_SCANMETHOD_INDEX_SCAN:
     case QO_SCANMETHOD_INDEX_ORDERBY_SCAN:
     case QO_SCANMETHOD_INDEX_GROUPBY_SCAN:
-      fprintf (fp, "INDEX SCAN (%s.%s)",
-	       QO_NODE_NAME (plan->plan_un.scan.node),
+      fprintf (fp, "INDEX SCAN (%s.%s)", class_name,
 	       plan->plan_un.scan.index->head->constraints->name);
 
       env = (plan->info)->env;

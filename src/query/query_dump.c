@@ -2881,6 +2881,8 @@ qdump_xasl_type_string (XASL_NODE * xasl_p)
       return "CONNECTBY";
     case OBJFETCH_PROC:
       return "OBJFETCH";
+    case BUILD_SCHEMA_PROC:
+      return "SCHEMA";
     default:
       assert (false);
       return "";
@@ -3038,6 +3040,7 @@ qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
     case DELETE_PROC:
     case INSERT_PROC:
     case CONNECTBY_PROC:
+    case BUILD_SCHEMA_PROC:
       json_object_set_new (proc, "time",
 			   json_integer (TO_MSEC
 					 (xasl_p->xasl_stats.elapsed_time)));
@@ -3312,6 +3315,7 @@ qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
     case UPDATE_PROC:
     case DELETE_PROC:
     case CONNECTBY_PROC:
+    case BUILD_SCHEMA_PROC:
       fprintf (fp, "%s (time: %d, fetch: %lld, ioread: %lld)\n",
 	       qdump_xasl_type_string (xasl_p),
 	       TO_MSEC (xasl_p->xasl_stats.elapsed_time),
