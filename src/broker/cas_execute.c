@@ -944,8 +944,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       session = db_open_buffer (tmp);
       if (!session)
 	{
-	  err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-				     CAS_ERROR_INDICATOR);
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  goto prepare_error;
 	}
 
@@ -975,7 +974,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
   session = db_open_buffer (sql_stmt);
   if (!session)
     {
-      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
       goto prepare_error;
     }
 
@@ -1273,8 +1272,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       session = db_open_buffer (srv_handle->sql_stmt);
       if (!session)
 	{
-	  err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-				     CAS_ERROR_INDICATOR);
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  goto execute_error;
 	}
       srv_handle->session = session;
@@ -8204,7 +8202,7 @@ sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt,
   if (!session)
     {
       lang_set_parser_use_client_charset (true);
-      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
     }
 
   stmt_id = db_compile_statement (session);
