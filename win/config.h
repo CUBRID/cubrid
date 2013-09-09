@@ -48,8 +48,8 @@
 /* Using glibc version of gethostbyname_r() */
 /* #undef HAVE_GETHOSTBYNAME_R_GLIBC */
 
-/* Using HPUX gethostbyname_r() */
-/* #undef HAVE_GETHOSTBYNAME_R_HPUX */
+/* Using struct hostent_data gethostbyname_r() */
+/* #undef HAVE_GETHOSTBYNAME_R_HOSTENT_DATA */
 
 /* Using Solaris gethostbyname_r() */
 /* #undef HAVE_GETHOSTBYNAME_R_SOLARIS */

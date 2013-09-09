@@ -289,14 +289,14 @@ AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <netdb.h>]],
 	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the gethostbyname_r function.])],
 	[AC_MSG_RESULT([no])])
 
-AC_MSG_CHECKING([for HP-UX gethostbyname_r])
+AC_MSG_CHECKING([for struct hostent_data gethostbyname_r])
 AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <netdb.h>]],
 	[[struct hostent result;
-	 char buf[1024];
-	 gethostbyname_r("localhost", &result, buf);
+	 struct hostent_data ht_data;
+	 gethostbyname_r("localhost", &result, &ht_data);
 	]])],
 	[AC_MSG_RESULT([yes])
-	 AC_DEFINE(HAVE_GETHOSTBYNAME_R_HPUX, 1, [Using HPUX gethostbyname_r()])
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R_HOSTENT_DATA, 1, [Using struct hostent_data gethostbyname_r()])
 	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the gethostbyname_r function.])],
 	[AC_MSG_RESULT([no])])
 

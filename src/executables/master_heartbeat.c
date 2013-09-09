@@ -1514,11 +1514,11 @@ hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
 	}
       memcpy ((void *) &udp_saddr.sin_addr, (void *) hent.h_addr,
 	      hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_HPUX)
+# elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       struct hostent hent;
-      char buf[1024];
+      struct hostent_data ht_data;
 
-      if (gethostbyname_r (host, &hent, buf) == -1)
+      if (gethostbyname_r (host, &hent, &ht_data) == -1)
 	{
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				      ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
