@@ -2350,6 +2350,44 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 
 	      break;
 
+	    case CONSOLE_OUTPUT:
+	      {
+		int length;
+		char *print_data, *print_str;
+
+		ptr = or_unpack_int (ptr, &length);
+		ptr = or_unpack_int (ptr, &length);
+		COMPARE_AND_FREE_BUFFER (replybuf, reply);
+
+		print_data = (char *) malloc (length);
+		if (print_data != NULL)
+		  {
+		    css_queue_receive_data_buffer (rc, print_data, length);
+		    error = css_receive_data_from_server (rc, &reply,
+							  &length);
+		    if (error != NO_ERROR || reply == NULL)
+		      {
+			server_request = END_CALLBACK;
+			COMPARE_AND_FREE_BUFFER (print_data, reply);
+			free_and_init (print_data);
+			return set_server_error (error);
+		      }
+		    else
+		      {
+			ptr = or_unpack_string_nocopy (reply, &print_str);
+			fprintf (stdout, print_str);
+			fflush (stdout);
+		      }
+		    free_and_init (print_data);
+		  }
+	      }
+
+	      /* expecting another reply */
+	      css_queue_receive_data_buffer (rc, replybuf, replysize);
+
+	      error = NO_ERROR;
+	      break;
+
 	    default:
 	      error = ER_NET_SERVER_DATA_RECEIVE;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);

@@ -632,7 +632,9 @@ các tùy chọn hợp lệ:\n\
   -C, --CS-mode                thực thi chế độ client-server\n\
   -r, --repair                 sửa chữa khi tìm thấy sự không đồng nhất\n\
   -i, --input-class-file=FILE  tệp tin đầu vào của tên lớp\n\
-                               mặc định: kiểm tra tất cả các lớp\n
+                               mặc định: kiểm tra tất cả các lớp\n\
+      --check-prev-link        check only previous links of indices\n\
+      --repair-prev-link       repair previous links of indices\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB

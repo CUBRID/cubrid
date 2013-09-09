@@ -1201,7 +1201,9 @@ $ LOADDB
 1132 Encryption library failure: %s
 1133 Copylogdb for %1$s already exists.
 1134 Applylogdb for %1$s already exists.
-1135 Ultimo error
+1135 A previous link of B+tree(%1$s) is corrupted.: vpid = (%2$d, %3$d)
+1136 A previous link of B+tree(%1$s) is repaired.: vpid = (%2$d, %3$d)
+1137 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %d):

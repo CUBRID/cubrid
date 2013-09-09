@@ -653,7 +653,9 @@ opţiuni valide:\n\
   -C, --CS-mode                  mod de execuţie client-server\n\
   -r, --repair                   repară inconsistenţele detectate\n\
   -i, --input-class-file=FIŞIER  fişier de intrare cu numele claselor\n\
-                                 implicit: se verifică toate clasele\n
+                                 implicit: se verifică toate clasele\n\
+      --check-prev-link        check only previous links of indices\n\
+      --repair-prev-link       repair previous links of indices\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB

@@ -365,6 +365,8 @@ extern void slogtb_get_pack_tran_table (THREAD_ENTRY * thread_p,
 extern void slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid,
 				   char *request, int reqlen);
 
+extern int xcallback_console_print (THREAD_ENTRY * thread_p, char *print_str);
+
 extern int xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p,
 					   FILEIO_REMOTE_PROMPT_TYPE
 					   prompt_id, const char *buffer,

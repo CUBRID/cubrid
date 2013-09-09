@@ -1018,6 +1018,10 @@ typedef struct _ha_config
 #define CHECK_REPAIR_L                          "repair"
 #define CHECK_INPUT_FILE_S                      'i'
 #define CHECK_INPUT_FILE_L                      "input-file"
+#define CHECK_CHECK_PREV_LINK_S			11501
+#define CHECK_CHECK_PREV_LINK_L			"check-prev-link"
+#define CHECK_REPAIR_PREV_LINK_S		11502
+#define CHECK_REPAIR_PREV_LINK_L		"repair-prev-link"
 
 /* plandump option list */
 #define PLANDUMP_DROP_S			        'd'

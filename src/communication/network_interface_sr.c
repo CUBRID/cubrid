@@ -3942,7 +3942,17 @@ sboot_check_db_consistency (THREAD_ENTRY * thread_p, unsigned int rid,
     }
 
 function_exit:
+#if defined (CALLBACK_CONSOLE_PRINT)
+  /*
+   * To indicate results we really only need 2 ints, but the remote
+   * bo and callback routine was expecting to receive 3 ints.
+   */
+  ptr = or_pack_int (reply, (int) END_CALLBACK);
+  ptr = or_pack_int (ptr, success);
+  ptr = or_pack_int (ptr, 0xEEABCDFFL);	/* padding, not used */
+#else
   (void) or_pack_int (reply, success);
+#endif
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -7989,6 +7999,51 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid,
     }
   fclose (outfp);
   db_private_free_and_init (thread_p, buffer);
+}
+
+/*
+ * xcallback_console_print -
+ *
+ * return:
+ *
+ *   print_str(in):
+ */
+int
+xcallback_console_print (THREAD_ENTRY * thread_p, char *print_str)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  unsigned int rid, rc;
+  int data_len, print_len;
+  char *ptr;
+  char *databuf;
+
+  rid = thread_get_comm_request_id (thread_p);
+  data_len = or_packed_string_length (print_str, &print_len);
+
+  ptr = or_pack_int (reply, (int) CONSOLE_OUTPUT);
+  ptr = or_pack_int (ptr, NO_ERROR);
+  ptr = or_pack_int (ptr, data_len);
+
+  databuf = (char *) db_private_alloc (thread_p, data_len);
+  if (databuf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, data_len);
+      return ER_FAILED;
+    }
+  ptr = or_pack_string_with_length (databuf, print_str, print_len);
+  rc = css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
+					  OR_ALIGNED_BUF_SIZE (a_reply),
+					  databuf, data_len);
+  db_private_free_and_init (thread_p, databuf);
+
+  if (rc)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
 
 /*

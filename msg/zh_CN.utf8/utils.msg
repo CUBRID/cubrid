@@ -632,7 +632,9 @@ checkdb: 监测数据库一致性.\n\
   -C, --CS-mode                客户端-服务器模式执行\n\
   -r, --repair                 修复找到的不一致性\n\
   -i, --input-class-file=FILE  输入包含表名的FILE\n\
-                               默认: 检查所有表\n
+                               默认: 检查所有表\n\
+      --check-prev-link        check only previous links of indices\n\
+      --repair-prev-link       repair previous links of indices\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB

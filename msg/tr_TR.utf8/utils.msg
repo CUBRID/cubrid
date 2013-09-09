@@ -632,7 +632,9 @@ geçerli seçenekler:\n\
   -C, --CS-mode                istemci-sunucu modunda yürütme\n\
   -r, --repair                 tutarsızlık bulunduğu zaman onar\n\
   -i, --input-class-file=FILE  sınıf adları girişi FILE\n\
-                               varsayılan: tüm sınıfları kontrol edin\n
+                               varsayılan: tüm sınıfları kontrol edin\n\
+      --check-prev-link        check only previous links of indices\n\
+      --repair-prev-link       repair previous links of indices\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB

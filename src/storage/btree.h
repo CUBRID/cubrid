@@ -461,4 +461,6 @@ extern int btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
 extern BTREE_LOCKED_KEYS btree_get_locked_keys (BTID * delete_btid,
 						BTID * search_btid,
 						bool duplicate_key_locked);
+extern DISK_ISVALID btree_repair_prev_link (THREAD_ENTRY * thread_p,
+					    OID * oid, bool repair);
 #endif /* _BTREE_H_ */

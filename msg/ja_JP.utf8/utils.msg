@@ -632,7 +632,9 @@ checkdb: データベース一貫性をチェック\n\
   -C, --CS-mode                クライアントーサーバモードで実行\n\
   -r, --repair                 非一貫性を発見すると復旧する\n\
   -i, --input-class-file=FILE  クラスリストが入ってあるファイル名\n\
-                               デフォルト: すべてのクラスをチェック\n
+                               デフォルト: すべてのクラスをチェック\n\
+      --check-prev-link        check only previous links of indices\n\
+      --repair-prev-link       repair previous links of indices\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB

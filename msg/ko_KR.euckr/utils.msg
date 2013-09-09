@@ -633,7 +633,9 @@ checkdb: 데이터베이스 일관성 검사.\n\
   -C, --CS-mode                클라이언트 서버 모드 실행\n\
   -r, --repair                 비 일관성 발견 시 복구\n\
   -i, --input-class-file=FILE  클래스 이름이 나열된 입력 파일 명시\n\
-                               기본값: 모든 클래스를 검사\n
+                               기본값: 모든 클래스를 검사\n\
+      --check-prev-link        인덱스 링크의 오류를 검사\n\
+      --repair-prev-link       인덱스 링크가 잘못된 경우 복구 수행\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB

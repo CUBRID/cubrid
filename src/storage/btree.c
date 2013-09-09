@@ -52,6 +52,7 @@
 #include "fetch.h"
 #include "connection_defs.h"
 #include "locator_sr.h"
+#include "network_interface_sr.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -659,6 +660,12 @@ static int btree_handle_current_oid (THREAD_ENTRY * thread_p,
 				     INDX_SCAN_ID * index_scan_id_p,
 				     bool need_count_only, OID * inst_oid,
 				     int *which_action);
+static DISK_ISVALID btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p,
+						    BTID * btid, bool repair,
+						    char *index_name);
+static DISK_ISVALID btree_repair_prev_link_by_class_oid (THREAD_ENTRY *
+							 thread_p, OID * oid,
+							 bool repair);
 #if defined(SERVER_MODE)
 static int btree_range_search_handle_previous_locks (THREAD_ENTRY * thread_p,
 						     BTREE_SCAN * bts,
@@ -4954,6 +4961,354 @@ btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid)
     }
 
   return rv;
+}
+
+/*
+ * btree_repair_prev_link_by_btid () -
+ *   btid(in) :
+ *   repair(in) :
+ *   index_name(in) :
+ *   return:
+ */
+static DISK_ISVALID
+btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTID * btid,
+				bool repair, char *index_name)
+{
+  PAGE_PTR current_pgptr, child_pgptr, next_pgptr, root_pgptr;
+  RECDES current_rec, next_rec;
+  BTREE_NODE_HEADER current_node_header, next_node_header;
+  VPID current_vpid, next_vpid;
+  int valid = DISK_VALID;
+  int request_mode;
+  int retry_count = 0;
+  char output[LINE_MAX];
+
+  snprintf (output, LINE_MAX, "%s - %s... ",
+	    repair ? "repair index" : "check index", index_name);
+  xcallback_console_print (thread_p, output);
+
+  current_pgptr = NULL;
+  next_pgptr = NULL;
+  root_pgptr = NULL;
+
+  request_mode = repair ? PGBUF_LATCH_WRITE : PGBUF_LATCH_READ;
+
+  /* root page */
+  VPID_SET (&current_vpid, btid->vfid.volid, btid->root_pageid);
+  root_pgptr = pgbuf_fix (thread_p, &current_vpid, OLD_PAGE, PGBUF_LATCH_READ,
+			  PGBUF_UNCONDITIONAL_LATCH);
+  if (root_pgptr == NULL)
+    {
+      valid = DISK_ERROR;
+      goto exit_repair;
+    }
+
+retry_repair:
+  if (retry_count > 10)
+    {
+      valid = DISK_ERROR;
+      goto exit_repair;
+    }
+
+  if (current_pgptr)
+    {
+      pgbuf_unfix_and_init (thread_p, current_pgptr);
+    }
+  if (next_pgptr)
+    {
+      pgbuf_unfix_and_init (thread_p, next_pgptr);
+    }
+
+  while (!VPID_ISNULL (&current_vpid))
+    {
+      current_pgptr = pgbuf_fix (thread_p, &current_vpid, OLD_PAGE,
+				 request_mode, PGBUF_CONDITIONAL_LATCH);
+      if (current_pgptr == NULL)
+	{
+	  retry_count++;
+	  goto retry_repair;
+	}
+
+      if (spage_get_record (current_pgptr, HEADER, &current_rec, PEEK) !=
+	  S_SUCCESS)
+	{
+	  valid = DISK_ERROR;
+	  goto exit_repair;
+	}
+
+      btree_read_node_header (&current_rec, &current_node_header);
+      if (BTREE_GET_NODE_TYPE (current_rec.data) == BTREE_LEAF_NODE)
+	{
+	  break;
+	}
+      else
+	{
+	  RECDES rec;
+	  NON_LEAF_REC non_leaf_rec;
+
+	  if (spage_get_record (current_pgptr, 1, &rec, PEEK) != S_SUCCESS)
+	    {
+	      valid = DISK_ERROR;
+	      goto exit_repair;
+	    }
+	  btree_read_fixed_portion_of_non_leaf_record (&rec, &non_leaf_rec);
+	  current_vpid = non_leaf_rec.pnt;
+	  pgbuf_unfix_and_init (thread_p, current_pgptr);
+	}
+    }
+
+  next_vpid = current_node_header.next_vpid;
+  while (!VPID_ISNULL (&next_vpid))
+    {
+      next_pgptr = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE,
+			      request_mode, PGBUF_CONDITIONAL_LATCH);
+      if (next_pgptr == NULL)
+	{
+	  retry_count++;
+	  goto retry_repair;
+	}
+      if (spage_get_record (next_pgptr, HEADER, &next_rec, PEEK) != S_SUCCESS)
+	{
+	  valid = DISK_ERROR;
+	  goto exit_repair;
+	}
+
+      btree_read_node_header (&next_rec, &next_node_header);
+
+      if (!VPID_EQ (&next_node_header.prev_vpid, &current_vpid))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_BTREE_CORRUPT_PREV_LINK, 3, index_name,
+		  next_vpid.volid, next_vpid.pageid);
+
+	  if (repair)
+	    {
+	      BTID_INT bint;
+
+	      log_start_system_op (thread_p);
+	      bint.sys_btid = btid;
+	      if (btree_set_vpid_previous_vpid (thread_p, &bint, next_pgptr,
+						&current_vpid) != NO_ERROR)
+		{
+		  valid = DISK_ERROR;
+		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+		  goto exit_repair;
+		}
+	      valid = DISK_INVALID;
+	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		      ER_BTREE_REPAIR_PREV_LINK, 3, index_name,
+		      next_vpid.volid, next_vpid.pageid);
+	    }
+	  else
+	    {
+	      valid = DISK_INVALID;
+	      goto exit_repair;
+	    }
+	}
+      pgbuf_unfix_and_init (thread_p, current_pgptr);
+
+      /* move to next page */
+      current_vpid = next_vpid;
+      next_vpid = next_node_header.next_vpid;
+      current_pgptr = next_pgptr;
+      next_pgptr = NULL;
+    }
+
+exit_repair:
+  if (root_pgptr)
+    {
+      pgbuf_unfix (thread_p, root_pgptr);
+    }
+  if (current_pgptr)
+    {
+      pgbuf_unfix (thread_p, current_pgptr);
+    }
+  if (next_pgptr)
+    {
+      pgbuf_unfix (thread_p, next_pgptr);
+    }
+
+  if (valid == DISK_ERROR)
+    {
+      xcallback_console_print (thread_p, (char *) "error\n");
+    }
+  else if (valid == DISK_VALID)
+    {
+      xcallback_console_print (thread_p, (char *) "pass\n");
+    }
+  else
+    {
+      if (repair)
+	{
+	  xcallback_console_print (thread_p, (char *) "repaired\n");
+	}
+      else
+	{
+	  xcallback_console_print (thread_p, (char *) "repair needed\n");
+	}
+    }
+
+  return valid;
+}
+
+/*
+ * btree_repair_prev_link_by_class_oid () -
+ *   oid(in) :
+ *   repair(in) :
+ *   return:
+ */
+static DISK_ISVALID
+btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid,
+				     bool repair)
+{
+  OR_CLASSREP *cls_repr;
+  OR_INDEX *curr;
+  int i;
+  int cache_idx = -1;
+  DISK_ISVALID valid = DISK_VALID;
+  char *index_name;
+
+  cls_repr = heap_classrepr_get (thread_p, oid, NULL, 0, &cache_idx, true);
+
+  if (cls_repr == NULL)
+    {
+      return DISK_ERROR;
+    }
+
+  for (i = 0, curr = cls_repr->indexes;
+       i < cls_repr->n_indexes && curr && valid == DISK_VALID; i++, curr++)
+    {
+      heap_get_indexinfo_of_btid (thread_p, oid, &curr->btid, NULL, NULL, NULL,
+				  NULL, &index_name, NULL);
+      valid = btree_repair_prev_link_by_btid (thread_p, &curr->btid, repair,
+					      index_name);
+      if (index_name)
+	{
+	  free_and_init (index_name);
+	}
+    }
+
+  if (cls_repr)
+    {
+      heap_classrepr_free (cls_repr, &cache_idx);
+    }
+
+  return valid;
+}
+
+/*
+ * btree_repair_prev_link () -
+ *   oid(in) :
+ *   repair(in) :
+ *   return:
+ */
+DISK_ISVALID
+btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, bool repair)
+{
+  int num_files;
+  BTID btid;
+  FILE_TYPE file_type;
+  DISK_ISVALID valid;
+  int i;
+  char *index_name;
+  VPID vpid;
+  char output[LINE_MAX];
+
+  if (oid != NULL && !OID_ISNULL (oid))
+    {
+      return btree_repair_prev_link_by_class_oid (thread_p, oid, repair);
+    }
+
+  /* Find number of files */
+  num_files = file_get_numfiles (thread_p);
+  if (num_files < 0)
+    {
+      return DISK_ERROR;
+    }
+
+  valid = DISK_VALID;
+
+  /* Go to each file, check only the btree files */
+  for (i = 0; i < num_files && valid != DISK_ERROR; i++)
+    {
+      INT64 fix_count = 0;
+      char area[FILE_DUMP_DES_AREA_SIZE];
+      char *fd = area;
+      int fd_size = FILE_DUMP_DES_AREA_SIZE, size;
+      FILE_BTREE_DES *btree_des;
+
+      if (file_find_nthfile (thread_p, &btid.vfid, i) != 1)
+	{
+	  valid = DISK_ERROR;
+	  break;
+	}
+
+      file_type = file_get_type (thread_p, &btid.vfid);
+      if (file_type == FILE_UNKNOWN_TYPE)
+	{
+	  valid = DISK_ERROR;
+	  break;
+	}
+
+      if (file_type != FILE_BTREE)
+	{
+	  continue;
+	}
+
+      size = file_get_descriptor (thread_p, &btid.vfid, fd, fd_size);
+      if (size < 0)
+	{
+	  fd_size = -size;
+	  fd = (char *) malloc (fd_size);
+	  if (fd == NULL)
+	    {
+	      return DISK_ERROR;
+	    }
+	  size = file_get_descriptor (thread_p, &btid.vfid, fd, fd_size);
+	}
+      btree_des = (FILE_BTREE_DES *) fd;
+
+      /* get the index name of the index key */
+      if (heap_get_indexinfo_of_btid (thread_p, &(btree_des->class_oid),
+				      &btid, NULL, NULL, NULL,
+				      NULL, &index_name, NULL) != NO_ERROR)
+	{
+	  if (fd != area)
+	    {
+	      free_and_init (fd);
+	    }
+	  return DISK_ERROR;
+	}
+
+      if (file_find_nthpages (thread_p, &btid.vfid, &vpid, 0, 1) != 1)
+	{
+	  if (fd != area)
+	    {
+	      free_and_init (fd);
+	    }
+	  if (index_name)
+	    {
+	      free_and_init (index_name);
+	    }
+	  return DISK_ERROR;
+	}
+
+      btid.root_pageid = vpid.pageid;
+      valid = btree_repair_prev_link_by_btid (thread_p, &btid, repair,
+					      index_name);
+
+      if (fd != area)
+	{
+	  free_and_init (fd);
+	}
+      if (index_name)
+	{
+	  free_and_init (index_name);
+	}
+    }
+
+  return valid;
 }
 
 /*

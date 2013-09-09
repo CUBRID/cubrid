@@ -632,7 +632,9 @@ usage: %s checkdb [OPTION] ឈ្មោះដែលតាបេស [class_name1 
   -C, --CS-mode                ការប្រតិបត្តិclient-server mode \n\
   -r, --repair                 ជួសជុលនៅពេលភាពជាប់លាប់ត្រូវបានរកឃើញ។ \n\
   -i, --input-class-file=FILE  ដាកបញ្ជូល FILE នៃឈ្មោះ class \n\
-                               default: ពិនិត្យមើលclassesទាំងអស់\n
+                               default: ពិនិត្យមើលclassesទាំងអស់\n\
+      --check-prev-link        check only previous links of indices\n\
+      --repair-prev-link       repair previous links of indices\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB

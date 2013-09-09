@@ -1201,7 +1201,9 @@ $ LOADDB
 1132 Encryption library failure: %s
 1133 Copylogdb for %1$s은 (는) 이미 존재합니다.
 1134 Applylogdb for %1$s은 (는) 이미 존재합니다.
-1135 마지막 에러
+1135 B+tree(%1$s)의 프리비어스 링크에 오류가 있습니다.: vpid = (%2$d, %3$d)
+1136 B+tree(%1$s)의 프리비어스 링크을 복구합니다.: vpid = (%2$d, %3$d)
+1137 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

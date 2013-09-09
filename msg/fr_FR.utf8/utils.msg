@@ -635,7 +635,9 @@ options valids:\n\
   -C, --CS-mode                exécution en mode client-serveur\n\
   -r, --repair                 répare quand incohérence est trouvée\n\
   -i, --input-class-file=FICHIER  FICHIER d'entrée des noms de classe\n\
-                               par défaut: vérifier toutes les classes
+                               par défaut: vérifier toutes les classes\
+      --check-prev-link        check only previous links of indices\n\
+      --repair-prev-link       repair previous links of indices\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB

@@ -634,7 +634,9 @@ valid options:\n\
   -C, --CS-mode                client-server mode execution\n\
   -r, --repair                 repair when inconsistency is found\n\
   -i, --input-class-file=FILE  input FILE of class names\n\
-                               default: check all classes\n
+                               default: check all classes\n\
+      --check-prev-link        check only previous links of indices\n\
+      --repair-prev-link       repair previous links of indices\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB

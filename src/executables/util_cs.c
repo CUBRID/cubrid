@@ -649,6 +649,8 @@ checkdb (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   char *fname;
   bool repair = false;
+  bool check_plink = false;
+  bool repair_plink = false;
   int flag;
   int i, num_tables;
   OID *oids = NULL;
@@ -672,6 +674,10 @@ checkdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  check_plink = utility_get_option_bool_value (arg_map,
+					       CHECK_CHECK_PREV_LINK_S);
+  repair_plink = utility_get_option_bool_value (arg_map,
+						CHECK_REPAIR_PREV_LINK_S);
   repair = utility_get_option_bool_value (arg_map, CHECK_REPAIR_S);
   fname = utility_get_option_string_value (arg_map, CHECK_INPUT_FILE_S, 0);
   num_tables = utility_get_option_string_table_size (arg_map);
@@ -729,7 +735,15 @@ checkdb (UTIL_FUNCTION_ARG * arg)
   db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
-      if (repair)
+      if (repair_plink)
+	{
+	  flag = CHECKDB_REPAIR_PREV_LINK;
+	}
+      else if (check_plink)
+	{
+	  flag = CHECKDB_CHECK_PREV_LINK;
+	}
+      else if (repair)
 	{
 	  flag |= CHECKDB_REPAIR;
 	}
@@ -757,8 +771,16 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 					   MSGCAT_UTIL_SET_CHECKDB,
 					   CHECKDB_MSG_INCONSISTENT),
 		   tmpname);
+	  if (repair_plink || repair)
+	    {
+	      db_commit_transaction();
+	    }
 	  db_shutdown ();
 	  goto error_exit;
+	}
+      if (repair_plink || repair)
+	{
+	  db_commit_transaction();
 	}
       db_shutdown ();
     }
