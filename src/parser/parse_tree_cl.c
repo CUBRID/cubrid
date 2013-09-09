@@ -8784,12 +8784,24 @@ static PT_NODE *
 pt_apply_difference (PARSER_CONTEXT * parser, PT_NODE * p,
 		     PT_NODE_FUNCTION g, void *arg)
 {
+  if (parser->xasl_proc_depth >
+      prm_get_integer_value (PRM_ID_MAX_RECURSIVE_SQL_DEPTH))
+    {
+      PT_INTERNAL_ERROR (parser, "too many differences");
+      return NULL;
+    }
+  parser->xasl_proc_depth++;
+
   p->info.query.q.union_.arg1 = g (parser, p->info.query.q.union_.arg1, arg);
   p->info.query.q.union_.arg2 = g (parser, p->info.query.q.union_.arg2, arg);
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
   p->info.query.order_by = g (parser, p->info.query.order_by, arg);
   p->info.query.orderby_for = g (parser, p->info.query.orderby_for, arg);
   p->info.query.for_update = g (parser, p->info.query.for_update, arg);
+
+  parser->xasl_proc_depth--;
+  assert (parser->xasl_proc_depth >= 0);
+
   return p;
 }
 
@@ -9775,6 +9787,14 @@ static PT_NODE *
 pt_apply_expr (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 	       void *arg)
 {
+  if (parser->xasl_proc_depth >
+      prm_get_integer_value (PRM_ID_MAX_RECURSIVE_SQL_DEPTH))
+    {
+      PT_INTERNAL_ERROR (parser, "too many expressions");
+      return NULL;
+    }
+  parser->xasl_proc_depth++;
+
   p->info.expr.arg1 = g (parser, p->info.expr.arg1, arg);
   p->info.expr.arg2 = g (parser, p->info.expr.arg2, arg);
   p->info.expr.value = g (parser, p->info.expr.value, arg);
@@ -9784,6 +9804,10 @@ pt_apply_expr (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
       /* walk cast type in case it might contain a name */
       p->info.expr.cast_type = g (parser, p->info.expr.cast_type, arg);
     }
+
+  parser->xasl_proc_depth--;
+  assert (parser->xasl_proc_depth >= 0);
+
   return p;
 }
 
@@ -12839,12 +12863,24 @@ static PT_NODE *
 pt_apply_intersection (PARSER_CONTEXT * parser, PT_NODE * p,
 		       PT_NODE_FUNCTION g, void *arg)
 {
+  if (parser->xasl_proc_depth >
+      prm_get_integer_value (PRM_ID_MAX_RECURSIVE_SQL_DEPTH))
+    {
+      PT_INTERNAL_ERROR (parser, "too many intersections");
+      return NULL;
+    }
+  parser->xasl_proc_depth++;
+
   p->info.query.q.union_.arg1 = g (parser, p->info.query.q.union_.arg1, arg);
   p->info.query.q.union_.arg2 = g (parser, p->info.query.q.union_.arg2, arg);
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
   p->info.query.order_by = g (parser, p->info.query.order_by, arg);
   p->info.query.orderby_for = g (parser, p->info.query.orderby_for, arg);
   p->info.query.for_update = g (parser, p->info.query.for_update, arg);
+
+  parser->xasl_proc_depth--;
+  assert (parser->xasl_proc_depth >= 0);
+
   return p;
 }
 
@@ -14034,6 +14070,7 @@ pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p,
 					  p->info.query.q.select.check_where,
 					  arg);
   p->info.query.limit = g (parser, p->info.query.limit, arg);
+
   return p;
 }
 
@@ -15191,12 +15228,24 @@ static PT_NODE *
 pt_apply_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p,
 		     PT_NODE_FUNCTION g, void *arg)
 {
+  if (parser->xasl_proc_depth >
+      prm_get_integer_value (PRM_ID_MAX_RECURSIVE_SQL_DEPTH))
+    {
+      PT_INTERNAL_ERROR (parser, "too many unions");
+      return NULL;
+    }
+  parser->xasl_proc_depth++;
+
   p->info.query.q.union_.arg1 = g (parser, p->info.query.q.union_.arg1, arg);
   p->info.query.q.union_.arg2 = g (parser, p->info.query.q.union_.arg2, arg);
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
   p->info.query.order_by = g (parser, p->info.query.order_by, arg);
   p->info.query.orderby_for = g (parser, p->info.query.orderby_for, arg);
   p->info.query.for_update = g (parser, p->info.query.for_update, arg);
+
+  parser->xasl_proc_depth--;
+  assert (parser->xasl_proc_depth >= 0);
+
   return p;
 }
 
