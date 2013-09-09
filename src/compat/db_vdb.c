@@ -243,6 +243,7 @@ db_open_buffer (const char *buffer)
   DB_SESSION *session;
 
   CHECK_1ARG_NULL (buffer);
+  CHECK_CONNECT_NULL ();
 
   session = db_open_buffer_local (buffer);
 
@@ -260,8 +261,9 @@ db_open_file (FILE * file)
 {
   DB_SESSION *session;
 
-  session = db_open_local ();
+  CHECK_CONNECT_NULL ();
 
+  session = db_open_local ();
   if (session)
     {
       session->statements = parser_parse_file (session->parser, file);
@@ -284,8 +286,9 @@ db_make_session_for_one_statement_execution (FILE * file)
 {
   DB_SESSION *session;
 
-  session = db_open_local ();
+  CHECK_CONNECT_NULL ();
 
+  session = db_open_local ();
   if (session)
     {
       pt_init_one_statement_parser (session->parser, file);
@@ -387,8 +390,9 @@ db_open_file_name (const char *name)
   FILE *fp;
   DB_SESSION *session;
 
-  session = db_open_local ();
+  CHECK_CONNECT_NULL ();
 
+  session = db_open_local ();
   if (session)
     {
       fp = fopen (name, "r");
