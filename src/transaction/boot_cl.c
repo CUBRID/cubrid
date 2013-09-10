@@ -1629,12 +1629,14 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
 	      return NO_ERROR;
 
 	    case ER_NET_SERVER_HAND_SHAKE:
+	    case ER_NET_HS_UNKNOWN_SERVER_REL:
 	      cap_error = true;
 	    case ER_NET_DIFFERENT_RELEASE:
 	    case ER_NET_NO_SERVER_HOST:
 	    case ER_NET_CANT_CONNECT_SERVER:
 	    case ER_NET_NO_MASTER:
 	    case ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER:
+	    case ERR_CSS_TCP_CONNECT_TIMEDOUT:
 	    case ERR_CSS_ERROR_FROM_SERVER:
 	    case ER_CSS_CLIENTS_EXCEEDED:
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
@@ -1657,7 +1659,6 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
     {
       strncat (strbuf, hostlist[n], MAXHOSTNAMELEN);
       strcat (strbuf, ":");
-
     }
   strncat (strbuf, hostlist[n], MAXHOSTNAMELEN);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECT_FAILED, 2,

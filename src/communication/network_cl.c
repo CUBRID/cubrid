@@ -139,6 +139,8 @@ static void net_histo_setup_names (void);
 static void net_histo_add_entry (int request, int data_sent);
 static void net_histo_request_finished (int request, int data_received);
 
+static const char *get_capability_string (int cap, int cap_type);
+
 /*
  * Shouldn't know about db_Connect_status at this level, must set this
  * to disable all db_ functions
@@ -250,6 +252,34 @@ client_capabilities (void)
 }
 
 /*
+ * get_capability_string - for the purpose of error logging,
+ *                         it translate cap into a word
+ *
+ * return:
+ */
+static const char *
+get_capability_string (int cap, int cap_type)
+{
+  switch (cap_type)
+    {
+    case NET_CAP_INTERRUPT_ENABLED:
+      if (cap & NET_CAP_INTERRUPT_ENABLED)
+	{
+	  return "enabled";
+	}
+      return "disabled";
+    case NET_CAP_UPDATE_DISABLED:
+      if (cap & NET_CAP_UPDATE_DISABLED)
+	{
+	  return "read only";
+	}
+      return "read/write";
+    default:
+      return "-";
+    }
+}
+
+/*
  * check_server_capabilities -
  *
  * return:
@@ -269,6 +299,10 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare,
   /* interrupt-ability should be same */
   if ((client_cap ^ server_cap) & NET_CAP_INTERRUPT_ENABLED)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_NET_HS_INCOMPAT_INTERRUPTIBILITY, 3, net_Server_host,
+	      get_capability_string (client_cap, NET_CAP_INTERRUPT_ENABLED),
+	      get_capability_string (server_cap, NET_CAP_INTERRUPT_ENABLED));
       server_cap ^= NET_CAP_INTERRUPT_ENABLED;
     }
 
@@ -277,10 +311,8 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare,
     {
       if (~server_cap & NET_CAP_HA_REPLICA)
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"NET_CAP_HA_REPLICA client_cap %d server_cap %d\n",
-			client_cap & NET_CAP_HA_REPLICA,
-			server_cap & NET_CAP_HA_REPLICA);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_HS_HA_REPLICA_ONLY,
+		  1, net_Server_host);
 	  server_cap ^= NET_CAP_HA_REPLICA;
 	}
     }
@@ -289,10 +321,11 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare,
       /* update-ability should be same */
       if ((client_cap ^ server_cap) & NET_CAP_UPDATE_DISABLED)
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"NET_CAP_UPDATE_DISABLED client_cap %d server_cap %d\n",
-			client_cap & NET_CAP_UPDATE_DISABLED,
-			server_cap & NET_CAP_UPDATE_DISABLED);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_NET_HS_INCOMPAT_RW_MODE, 3, net_Server_host,
+		  get_capability_string (client_cap, NET_CAP_UPDATE_DISABLED),
+		  get_capability_string (server_cap,
+					 NET_CAP_UPDATE_DISABLED));
 	  server_cap ^= NET_CAP_UPDATE_DISABLED;
 
 	  db_set_reconnect_reason (DB_RC_MISMATCHED_RW_MODE);
@@ -310,10 +343,8 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare,
    */
   if (client_cap & NET_CAP_HA_REPL_DELAY & server_cap)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "NET_CAP_HA_REPL_DELAYED client_cap %d server_cap %d\n",
-		    client_cap & NET_CAP_HA_REPL_DELAY,
-		    server_cap & NET_CAP_HA_REPL_DELAY);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_HS_HA_REPL_DELAY, 1,
+	      net_Server_host);
       server_cap ^= NET_CAP_HA_REPL_DELAY;
 
       db_set_reconnect_reason (DB_RC_HA_REPL_DELAY);
@@ -351,10 +382,8 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare,
       && !BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (server_host, boot_Host_name,
 						  client_type))
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "NET_CAP_REMOTE_DISABLED client %s %d server %s %d\n",
-		    boot_Host_name, client_cap & NET_CAP_REMOTE_DISABLED,
-		    server_host, server_cap & NET_CAP_REMOTE_DISABLED);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_HS_REMOTE_DISABLED, 1,
+	      net_Server_host);
       server_cap ^= NET_CAP_REMOTE_DISABLED;
     }
 
@@ -4346,8 +4375,8 @@ net_client_ping_server_with_handshake (int client_type,
   /* If we can't get the server version, we have to disconnect it. */
   if (server_release == NULL)
     {
-      error = ER_NET_SERVER_HAND_SHAKE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, net_Server_host);
+      error = ER_NET_HS_UNKNOWN_SERVER_REL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       return error;
     }
 

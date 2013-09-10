@@ -734,13 +734,21 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn,
 	  return conn;
 	}
     }
+#if !defined (WINDOWS)
+  else if (errno == ETIMEDOUT)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ERR_CSS_TCP_CONNECT_TIMEDOUT, 2, host_name,
+			   timeout);
+    }
+#endif /* !WINDOWS */
   else
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 1,
 			   host_name);
-
     }
+
   return NULL;
 }
 

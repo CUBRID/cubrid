@@ -1203,7 +1203,14 @@ $ LOADDB
 1134 Applylogdb for %1$s은 (는) 이미 존재합니다.
 1135 B+tree(%1$s)의 프리비어스 링크에 오류가 있습니다.: vpid = (%2$d, %3$d)
 1136 B+tree(%1$s)의 프리비어스 링크을 복구합니다.: vpid = (%2$d, %3$d)
-1137 마지막 에러
+1137 Handshake 에러 (peer host %1$s): 인터럽트 호환 불일치. (client: %2$s, server: %3$s)
+1138 Handshake 에러 (peer host %1$s): 읽기/쓰기 모드 불일치. (client: %2$s, server: %3$s)
+1139 Handshake 에러 (peer host %1$s): HA 복제 지연 발생.
+1140 Handshake 에러 (peer host %1$s): 레플리카 접속 정책 불일치.
+1141 Handshake 에러 (peer host %1$s): 알 수 없는 서버 버전.
+1142 Handshake 에러 (peer host %1$s): 원격 접속 불허.
+1143 %1$s로의 연결 시도 타임아웃 (timeout: %2$d 초)
+1144 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):

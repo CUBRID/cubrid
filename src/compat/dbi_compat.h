@@ -1446,8 +1446,16 @@
 #define ER_BTREE_CORRUPT_PREV_LINK                  -1135
 #define ER_BTREE_REPAIR_PREV_LINK                   -1136
 
-#define ER_LAST_ERROR                               -1137
+#define ER_NET_HS_INCOMPAT_INTERRUPTIBILITY         -1137
+#define ER_NET_HS_INCOMPAT_RW_MODE                  -1138
+#define ER_NET_HS_HA_REPL_DELAY                     -1139
+#define ER_NET_HS_HA_REPLICA_ONLY                   -1140
+#define ER_NET_HS_REMOTE_DISABLED                   -1141
+#define ER_NET_HS_UNKNOWN_SERVER_REL                -1142
 
+#define ERR_CSS_TCP_CONNECT_TIMEDOUT                -1143
+
+#define ER_LAST_ERROR                               -1144
 
 #define DB_TRUE 1
 #define DB_FALSE 0
