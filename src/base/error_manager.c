@@ -1762,7 +1762,8 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 	  ER_CSECT_EXIT_LOG_FILE ();
 	}
 
-      if (er_Print_to_console && er_Msg->msg_area)
+      if (er_Print_to_console && severity <= ER_ERROR_SEVERITY
+	  && er_Msg->msg_area)
 	{
 	  fprintf (stderr, "%s\n", er_Msg->msg_area);
 	}
@@ -2626,7 +2627,8 @@ er_set_area_error (void *server_area)
 	  ER_CSECT_EXIT_LOG_FILE ();
 	}
 
-      if (er_Print_to_console && er_Msg->msg_area)
+      if (er_Print_to_console && severity <= ER_ERROR_SEVERITY
+	  && er_Msg->msg_area)
 	{
 	  fprintf (stderr, "%s\n", er_Msg->msg_area);
 	}
