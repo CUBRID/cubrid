@@ -1443,8 +1443,10 @@
 #define ERR_CSS_COPYLOG_ALREADY_EXISTS              -1133
 #define ERR_CSS_APPLYLOG_ALREADY_EXISTS             -1134
 
-#define ER_LAST_ERROR                               -1135
+#define ER_BTREE_CORRUPT_PREV_LINK                  -1135
+#define ER_BTREE_REPAIR_PREV_LINK                   -1136
 
+#define ER_LAST_ERROR                               -1137
 
 
 #define DB_TRUE 1
