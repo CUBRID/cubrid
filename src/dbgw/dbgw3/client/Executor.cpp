@@ -90,10 +90,10 @@ namespace dbgw
         {
           m_logger.setSqlName(pQuery->getSqlName());
 
-          pQuery->bindCharsetConverter(m_pClientCharsetConverter);
-          if (m_pClientCharsetConverter != NULL)
+          pQuery->bindCharsetConverter(m_pDBCharsetConverter);
+          if (m_pDBCharsetConverter != NULL)
             {
-              m_pClientCharsetConverter->convert(parameter);
+              m_pDBCharsetConverter->convert(parameter);
             }
 
           pQuery->getStatColumn(DBGW_QUERY_STAT_COL_TOTAL_CNT)++;
@@ -102,7 +102,7 @@ namespace dbgw
           trait<ClientResultSet>::sp pClientResultSet =
               pStatement->execute(parameter);
 
-          pClientResultSet->bindCharsetConverter(m_pDBCharsetConverter);
+          pClientResultSet->bindCharsetConverter(m_pClientCharsetConverter);
 
           if (needUpdateStatistics)
             {
