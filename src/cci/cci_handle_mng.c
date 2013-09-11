@@ -674,9 +674,8 @@ hm_release_connection_internal (int mapped_id,
   if (delete_handle)
     {
       error = hm_con_handle_free (*connection);
+      *connection = NULL;
     }
-
-  *connection = NULL;
 
   return error;
 }
