@@ -19462,7 +19462,6 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   next = node->next;
   node->next = NULL;
   parser->dbval_cnt = 0;
-  parser->xasl_proc_depth = 0;
 
   node = parser_walk_tree (parser, node,
 			   pt_flush_class_and_null_xasl, NULL, NULL, NULL);

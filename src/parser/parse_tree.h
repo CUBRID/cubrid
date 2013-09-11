@@ -3152,8 +3152,6 @@ struct parser_context
   PT_NODE **node_stack;		/* the parser stack */
   PT_NODE *orphans;		/* list of parse tree fragments freed later */
 
-  int xasl_proc_depth;
-
   char *error_buffer;		/* for parse error messages            */
 
   PT_NODE **statements;		/* array of statement pointers */

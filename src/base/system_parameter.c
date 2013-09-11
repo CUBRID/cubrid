@@ -521,7 +521,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_UPDATE_USE_ATTRIBUTE_REFERENCES "update_use_attribute_references"
 
-#define PRM_NAME_MAX_RECURSIVE_SQL_DEPTH "max_recursive_sql_depth"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1651,10 +1650,6 @@ static unsigned int prm_query_trace_format_flag = 0;
 bool PRM_UPDATE_USE_ATTRIBUTE_REFERENCES = false;
 static bool prm_update_use_attribute_references_default = false;
 static unsigned int prm_update_use_attribute_references_flag = 0;
-
-int PRM_MAX_RECURSIVE_SQL_DEPTH = 500;
-static int prm_max_recursive_sql_depth_default = 500;
-static unsigned int prm_max_recursive_sql_depth_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -3885,17 +3880,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_update_use_attribute_references_flag,
    (void *) &prm_update_use_attribute_references_default,
    (void *) &PRM_UPDATE_USE_ATTRIBUTE_REFERENCES,
-   (void *) NULL,
-   (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MAX_RECURSIVE_SQL_DEPTH,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
-    PRM_INTEGER,
-   (void *) &prm_max_recursive_sql_depth_flag,
-   (void *) &prm_max_recursive_sql_depth_default,
-   (void *) &PRM_MAX_RECURSIVE_SQL_DEPTH,
    (void *) NULL,
    (void *) NULL,
    (char *) NULL,
