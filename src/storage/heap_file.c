@@ -20329,6 +20329,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
        i < attr_info->num_values; i++, value++)
     {
       TP_DOMAIN *dest_dom = value->last_attrepr->domain;
+      TP_DOMAIN *src_dom = value->read_attrepr->domain;
       bool log_warning = false;
       int warning_code = NO_ERROR;
       DB_TYPE dest_type;
@@ -20349,7 +20350,18 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 	}
       else if (QSTR_IS_ANY_CHAR (src_type))
 	{
-	  curr_prec = DB_GET_STRING_SIZE (&(value->dbvalue));
+	  if (TP_DOMAIN_CODESET (dest_dom) == INTL_CODESET_ISO88591)
+	    {
+	      curr_prec = DB_GET_STRING_SIZE (&(value->dbvalue));
+	    }
+	  else if (!DB_IS_NULL (&(value->dbvalue)))
+	    {
+	      curr_prec = DB_GET_STRING_LENGTH (&(value->dbvalue));
+	    }
+	  else
+	    {
+	      curr_prec = dest_dom->precision;
+	    }
 	}
 
       dest_prec = dest_dom->precision;
