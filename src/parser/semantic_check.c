@@ -4515,12 +4515,22 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr,
 	  assert (elem->node_type == PT_VALUE);
 	  assert (PT_HAS_COLLATION (elem->type_enum));
 
-	  if (elem->data_type != NULL
-	      && elem->data_type->info.data_type.units != attr_cs)
+	  if ((elem->data_type != NULL
+	       && elem->data_type->info.data_type.units != attr_cs)
+	      || (elem->data_type == NULL && attr_cs != LANG_SYS_CODESET))
 	    {
 	      PT_NODE *dt;
 
-	      dt = parser_copy_tree (parser, elem->data_type);
+	      if (elem->data_type != NULL)
+		{
+		  dt = parser_copy_tree (parser, elem->data_type);
+		}
+	      else
+		{
+		  dt = parser_new_node (parser, PT_DATA_TYPE);
+		  dt->type_enum = elem->type_enum;
+		  dt->info.data_type.precision = DB_DEFAULT_PRECISION;
+		}
 	      dt->info.data_type.collation_id = attr_coll;
 	      dt->info.data_type.units = attr_cs;
 

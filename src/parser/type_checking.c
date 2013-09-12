@@ -21768,8 +21768,8 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer,
 {
 #define MORE_COERCIBLE(arg1_coll_infer, arg2_coll_infer)		     \
   ((((arg1_coll_infer)->can_force_cs) && !((arg2_coll_infer)->can_force_cs)) \
-   || ((arg1_coll_infer)->coerc_level > (arg2_coll_infer)->coerc_level)	     \
-       && (arg1_coll_infer)->can_force_cs == (arg2_coll_infer)->can_force_cs)
+   || ((arg1_coll_infer)->coerc_level > (arg2_coll_infer)->coerc_level	     \
+       && (arg1_coll_infer)->can_force_cs == (arg2_coll_infer)->can_force_cs))
 
   assert (common_coll != NULL);
   assert (common_cs != NULL);

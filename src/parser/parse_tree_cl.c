@@ -6512,6 +6512,7 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1;
   char s[PT_MEMB_BUF_SIZE];
+  unsigned int save_custom;
 
   if (!(parser->custom_print & PT_SUPPRESS_META_ATTR_CLASS)
       && p->info.attr_def.attr_type == PT_META_ATTR)
@@ -6612,8 +6613,11 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "(");
       if (p->data_type != NULL)
 	{
+	  save_custom = parser->custom_print;
+	  parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
 	  r1 = pt_print_bytes_l (parser,
 				 p->data_type->info.data_type.enumeration);
+	  parser->custom_print = save_custom;
 	}
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
@@ -8431,6 +8435,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = 0, *r1;
   char buf[PT_MEMB_BUF_SIZE];
   bool show_collation = false;
+  unsigned int save_custom;
 
   switch (p->type_enum)
     {
@@ -8507,7 +8512,10 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_ENUMERATION:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       q = pt_append_nulstring (parser, q, "(");
+      save_custom = parser->custom_print;
+      parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
       r1 = pt_print_bytes_l (parser, p->info.data_type.enumeration);
+      parser->custom_print = save_custom;
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       show_collation = true;

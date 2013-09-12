@@ -17962,7 +17962,6 @@ primitive_type
 
 			int elem_cs = -1;
 			int list_cs = -1;
-			bool has_cs_introducer = false;
 			int has_error = 0;
 
 			PT_NODE *charset_node = $5;
@@ -17989,7 +17988,6 @@ primitive_type
 				if (list_cs == -1)
 				  {
 				    list_cs = elem_cs;
-				    has_cs_introducer = true;
 				  }
 				else if (list_cs != elem_cs)
 				  {
@@ -18012,18 +18010,9 @@ primitive_type
 
 			    if (charset_node == NULL && coll_node == NULL)
 			      {
-				if (has_cs_introducer)
-				  {
-				    charset = list_cs;
-				    coll_id = LANG_GET_BINARY_COLLATION (list_cs);
-				    dt->info.data_type.has_cs_spec = true;
-				  }
-				else
-				  {
-				    charset = lang_get_client_charset ();
-				    coll_id = lang_get_client_collation ();
-				    dt->info.data_type.has_cs_spec = false;
-				  }
+				charset = LANG_SYS_CODESET;
+				coll_id = LANG_GET_BINARY_COLLATION (list_cs);
+				dt->info.data_type.has_cs_spec = false;
 				dt->info.data_type.has_coll_spec = false;
 			      }
 			    else if (pt_check_grammar_charset_collation (
@@ -18031,16 +18020,6 @@ primitive_type
 					coll_node, &charset,
 					&coll_id) == NO_ERROR)
 			      {
-				if (has_cs_introducer && list_cs != charset)
-				  {
-				    charset = -1;
-				    coll_id = -1;
-				    has_error = 1;
-				    PT_ERRORm (this_parser, charset_node,
-					       MSGCAT_SET_PARSER_SEMANTIC,
-					       MSGCAT_SEMANTIC_INCOMPATIBLE_CS_COLL);
-				  }
-				  
 				if (charset_node)
 				  {
 				    dt->info.data_type.has_cs_spec = true;
@@ -18067,16 +18046,6 @@ primitive_type
 
 			    if (!has_error)
 			      {
-				elem = elem_list;
-				while (elem != NULL)
-				  {
-				    if (elem->data_type != NULL)
-				      {
-					elem->data_type->info.data_type.units = charset;
-					elem->data_type->info.data_type.collation_id = coll_id;
-				      }
-				    elem = elem->next;
-				  }
 				dt->info.data_type.units = charset;
 				dt->info.data_type.collation_id = coll_id;
 			      }
