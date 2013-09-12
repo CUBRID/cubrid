@@ -36907,6 +36907,10 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  return NULL;
 	}
       a1 = args;
+      if (key->op == PT_COERCIBILITY && a1)
+	{
+	  a1->do_not_fold = 1;
+	}
       return parser_make_expression (this_parser, key->op, a1, NULL, NULL);
 
     case PT_UNIX_TIMESTAMP:
