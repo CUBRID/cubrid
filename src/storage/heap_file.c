@@ -20329,7 +20329,6 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
        i < attr_info->num_values; i++, value++)
     {
       TP_DOMAIN *dest_dom = value->last_attrepr->domain;
-      TP_DOMAIN *src_dom = value->read_attrepr->domain;
       bool log_warning = false;
       int warning_code = NO_ERROR;
       DB_TYPE dest_type;
