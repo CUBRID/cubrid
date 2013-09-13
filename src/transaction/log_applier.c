@@ -1976,6 +1976,7 @@ la_update_ha_apply_info_log_record_time (time_t new_time)
 					       &in_value[0], true);
   if (error >= 0)
     {
+      la_Info.log_record_time = new_time;
       la_Info.is_apply_info_updated = true;
     }
 
