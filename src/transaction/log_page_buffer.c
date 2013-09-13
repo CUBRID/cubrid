@@ -2049,14 +2049,37 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
 
-  if (pageid >= log_Gl.hdr.append_lsa.pageid)
+  /*
+   * This If block ensure belows,
+   *  case 1. log page (of pageid) is in log page buffer (not prior_lsa list) 
+   *  case 2. EOL record which is written temporarily by
+   *          logpb_flush_all_append_pages is cleared so there is no EOL
+   *          in log page (in delayed_free_log_pgptr)
+   */
+  if (pageid >= log_Gl.hdr.append_lsa.pageid	/* for case 1 */
+      || pageid >= log_Gl.append.prev_lsa.pageid)	/* for case 2 */
     {
       LOG_CS_ENTER (thread_p);
+
+      assert (LSA_LE (&log_Gl.append.prev_lsa, &log_Gl.hdr.append_lsa));
+
+      /* 
+       * copy prior lsa list to log page buffer to ensure that required 
+       * pageid is in log page buffer
+       */
       if (pageid >= log_Gl.hdr.append_lsa.pageid)	/* retry with mutex */
 	{
 	  logpb_prior_lsa_append_all_list (thread_p);
 	}
+
+      /*
+       * calling logpb_copy_page in LOG_CS boundary ensures exclusive running 
+       * with logpb_flush_all_append_pages.
+       */
+      ret_pgptr = logpb_copy_page (thread_p, pageid, log_pgptr);
       LOG_CS_EXIT (thread_p);
+
+      return ret_pgptr;
     }
 
   ret_pgptr = logpb_copy_page (thread_p, pageid, log_pgptr);
