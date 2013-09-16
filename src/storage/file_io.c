@@ -6527,6 +6527,9 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p,
   queue_p->head = NULL;
   queue_p->tail = NULL;
   queue_p->free_list = NULL;
+
+  thread_info_p->initialized = true;
+
   return NO_ERROR;
 }
 
@@ -6802,6 +6805,13 @@ error:
   return NULL;
 }
 
+/*
+ * fileio_finalize_backup_thread() -
+ *    return: void
+ *
+ *    session_p(in/out):
+ *    zip_method(in):
+ */
 static void
 fileio_finalize_backup_thread (FILEIO_BACKUP_SESSION * session_p,
 			       FILEIO_ZIP_METHOD zip_method)
@@ -6815,6 +6825,11 @@ fileio_finalize_backup_thread (FILEIO_BACKUP_SESSION * session_p,
 
   tp = &session_p->read_thread_info;
   qp = &tp->io_queue;
+
+  if (tp->initialized == false)
+    {
+      return;
+    }
 
 #if defined(SERVER_MODE)
   rv = pthread_mutex_destroy (&tp->mtx);
@@ -6879,6 +6894,8 @@ fileio_finalize_backup_thread (FILEIO_BACKUP_SESSION * session_p,
     }
 
   qp->free_list = NULL;
+
+  tp->initialized = false;
 }
 
 /*

@@ -349,6 +349,7 @@ struct fileio_thread_info
   int errid;
 
   bool only_updated_pages;
+  bool initialized;
 
   int check_ratio;
   int check_npages;
