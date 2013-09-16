@@ -5794,14 +5794,9 @@ get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type,
 	}
       else
 	{
-	  unsigned int save_custom;
-
-	  save_custom = parser->custom_print;
-	  parser->custom_print |= PT_CHARSET_COLLATE_FULL;
 	  /* complex expression */
 	  *type = TR_ACT_EXPRESSION;
 	  *source = parser_print_tree_with_quotes (parser, statement);
-	  parser->custom_print = save_custom;
 	}
     }
 }

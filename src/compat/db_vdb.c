@@ -641,8 +641,6 @@ db_compile_statement_local (DB_SESSION * session)
       && is_schema_repl_log_statment (statement)
       && log_does_allow_replication () == true)
     {
-      unsigned int save_custom;
-
       if (session->ddl_stmts_for_replication == NULL)
 	{
 	  int size = sizeof (char *) * session->dimension;
@@ -658,11 +656,8 @@ db_compile_statement_local (DB_SESSION * session)
 	  memset (session->ddl_stmts_for_replication, '\0', size);
 	}
 
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_CHARSET_COLLATE_FULL;
       session->ddl_stmts_for_replication[stmt_ndx] =
 	parser_print_tree_with_quotes (parser, statement);
-      parser->custom_print = save_custom;
 
       assert_release (session->ddl_stmts_for_replication[stmt_ndx] != NULL);
     }
