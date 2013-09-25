@@ -344,7 +344,11 @@ struct t_appl_server_info
   char auto_commit_mode;
   bool fixed_conn_info;
   char database_name[MAX_HA_DBNAME_LENGTH];
+#if defined(AIX)
+  char database_host[MAXHOSTNAMELEN];
+#else
   char database_host[MAX_CONN_INFO_LENGTH];
+#endif
   char database_user[SRV_CON_DBUSER_SIZE];
   char database_passwd[SRV_CON_DBPASSWD_SIZE];
   char cci_default_autocommit;
