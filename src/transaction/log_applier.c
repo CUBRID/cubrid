@@ -3431,6 +3431,7 @@ la_add_abort_log (int tranid, LOG_LSA * lsa)
 
   commit = la_Info.commit_tail;	/* last commit log */
   commit->type = LOG_ABORT;
+  commit->log_record_time = 0;
 
   return error;
 }
@@ -5734,7 +5735,10 @@ la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid)
 
       LSA_COPY (lsa, &commit->log_lsa);
 
-      la_Info.log_record_time = commit->log_record_time;
+      if (commit->type == LOG_COMMIT)
+	{
+	  la_Info.log_record_time = commit->log_record_time;
+	}
 
       if (commit->next != NULL)
 	{
