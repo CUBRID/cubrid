@@ -2029,6 +2029,12 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
     {
       return er_errid ();
     }
+  /* Due to tree copy, the spec ids are broken. Reset spec ids */
+  tmp_trigger = mq_reset_ids_in_statement (parser, tmp_trigger);
+  if (tmp_trigger == NULL)
+    {
+      return er_errid ();
+    }
 
   (void) parser_walk_tree (parser, tmp_trigger->info.scope.stmt,
 			   pt_set_trigger_obj_pre, (void *) &exec_info,
