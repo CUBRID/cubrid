@@ -4600,7 +4600,7 @@ la_get_ha_server_state (LOG_PAGE * pgptr, LOG_LSA * lsa)
   pg = pgptr;
 
   length = DB_SIZEOF (struct log_ha_server_state);
-  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, length, offset, pageid, pgptr);
+  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, length, offset, pageid, pg);
   if (error == NO_ERROR)
     {
       state = (struct log_ha_server_state *) ((char *) pg->area + offset);
