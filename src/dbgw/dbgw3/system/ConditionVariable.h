@@ -37,7 +37,7 @@ namespace dbgw
       void notify();
       void notifyAll();
       void wait(_Mutex *pMutex);
-      void timedWait(_Mutex *pMutex, unsigned long ulWaitTimeMilSec);
+      int timedWait(_Mutex *pMutex, unsigned long ulWaitTimeMilSec);
 
     private:
       _ConditionVariable(const _ConditionVariable &);

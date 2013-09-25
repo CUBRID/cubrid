@@ -112,7 +112,12 @@ namespace dbgw
             switch (m_status)
               {
               case THREAD_STATUS_RUNNING:
-                m_cond.timedWait(&m_mutex, nWaitTimeMilSec);
+                if (m_cond.timedWait(&m_mutex, nWaitTimeMilSec) != 0)
+                  {
+                    m_thread.detach();
+                    changeThreadStatus(THREAD_OP_DETACH);
+                    return;
+                  }
                 /* no break */
               case THREAD_STATUS_STOP:
                 m_thread.join();
@@ -203,7 +208,14 @@ namespace dbgw
 
         if (m_pFunc != NULL)
           {
-            (*m_pFunc)(m_pSelf);
+            try
+              {
+                (*m_pFunc)(m_pSelf);
+              }
+            catch (...)
+              {
+                /* ignore all internal exception */
+              }
           }
 
         _MutexAutoLock lock(&m_mutex);

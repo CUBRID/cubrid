@@ -235,16 +235,7 @@ namespace dbgw
       bool bIsRunning = false;
       while ((bIsRunning = m_pSelf->isRunning()) && m_pJob == NULL)
         {
-          try
-            {
-              m_cond.timedWait(&m_mutex, 100);
-            }
-          catch (CondVarOperationFailException &)
-            {
-              /**
-               * ignore timeout exception
-               */
-            }
+          m_cond.timedWait(&m_mutex, 100);
         }
 
       lock.unlock();

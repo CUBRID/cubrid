@@ -95,8 +95,7 @@ namespace dbgw
           }
       }
 
-      void timedWait(_Mutex *pMutex,
-          unsigned long lWaitTimeMilSec)
+      int timedWait(_Mutex *pMutex, unsigned long lWaitTimeMilSec)
       {
         struct timeval tp;
         struct timespec ts;
@@ -112,12 +111,17 @@ namespace dbgw
             (pthread_mutex_t *) pMutex->get(), &ts);
         if (nStatus != 0)
           {
-            CondVarOperationFailException e("timed wait", nStatus);
             if (nStatus != ETIMEDOUT)
               {
+                CondVarOperationFailException e("timed wait", nStatus);
                 DBGW_LOG_ERROR(e.what());
               }
-            throw e;
+
+            return nStatus;
+          }
+        else
+          {
+            return 0;
           }
       }
 
@@ -153,10 +157,10 @@ namespace dbgw
       m_pImpl->wait(pMutex);
     }
 
-    void _ConditionVariable::timedWait(_Mutex *pMutex,
+    int _ConditionVariable::timedWait(_Mutex *pMutex,
         unsigned long ulWaitTimeMilSec)
     {
-      m_pImpl->timedWait(pMutex, ulWaitTimeMilSec);
+      return m_pImpl->timedWait(pMutex, ulWaitTimeMilSec);
     }
 
   }
