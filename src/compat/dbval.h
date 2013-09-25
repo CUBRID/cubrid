@@ -514,8 +514,8 @@
      (v)->data.ch.medium.buf = (char *) (p), \
      (v)->domain.general_info.is_null = ((p) ? 0 : 1), \
      (v)->domain.general_info.is_null = \
-         (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) \
-	  && (s) == 0) ? 1 : DB_IS_NULL(v), \
+         ((s) == 0 && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)) \
+	  ? 1 : DB_IS_NULL(v), \
      (v)->domain.char_info.collation_id = (coll), \
      (v)->need_clear = false, \
      NO_ERROR)
