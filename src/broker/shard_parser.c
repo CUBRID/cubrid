@@ -481,6 +481,12 @@ sp_parse_sql_internal (SP_PARSER_CTX * parser_p)
 	}
     }
 
+  if (parser_p->cursor.token == TT_CSQL_COMMENT
+      || parser_p->cursor.token == TT_CPP_COMMENT)
+    {
+      parser_p->cursor.token = TT_NONE;
+    }
+
   return NO_ERROR;
 }
 
