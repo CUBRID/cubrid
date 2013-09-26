@@ -7765,8 +7765,11 @@ locale_compute_coll_checksum (COLL_DATA * cd)
 	  *buf_pos++ = c->cp_count;
 	  *buf_pos++ = c->size;
 	  *buf_pos++ = c->uca_num;
-	  /* pad one byte for INT alignment */
-	  buf_pos = BUF_ALIGN (buf_pos, sizeof (int));
+
+	  buf_pos += sizeof (COLL_CONTRACTION)
+	    - (2 * sizeof (int) + MAX_UCA_EXP_CE * sizeof (int)
+	       + MAX_UCA_EXP_CE * sizeof (short) + sizeof (c->c_buf)
+	       + 3 * sizeof (char));
 	}
 
       BUF_PUT_INT32 (buf_pos, cd->contr_min_size);
@@ -8062,7 +8065,8 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
 	  memcpy (buf_pos, um->buffer, sizeof (um->buffer));
 	  buf_pos += sizeof (um->buffer);
 
-	  buf_pos = BUF_ALIGN (buf_pos, sizeof (int));
+	  buf_pos += sizeof (UNICODE_MAPPING)
+	    - (sizeof (um->buffer) + 2 * sizeof (int));
 	}
     }
 
