@@ -1944,6 +1944,9 @@ trigger_time_str (DB_TRIGGER_TIME trig_time, char *buf)
 }
 #endif /* 0 */
 
+/*
+ * cas_mysql recognize only type is CUBRID_STMT_SELECT or not.
+ */
 static char
 get_stmt_type (const char *stmt)
 {
@@ -1951,7 +1954,11 @@ get_stmt_type (const char *stmt)
 
   tbuf = ignore_sql_comment (stmt);
 
-  if (strncasecmp (tbuf, "insert", 6) == 0)
+  if (strncasecmp (tbuf, "select", 6) == 0)
+    {
+      return CUBRID_STMT_SELECT;
+    }
+  else if (strncasecmp (tbuf, "insert", 6) == 0)
     {
       return CUBRID_STMT_INSERT;
     }
@@ -1963,13 +1970,45 @@ get_stmt_type (const char *stmt)
     {
       return CUBRID_STMT_DELETE;
     }
-  else if (strncasecmp (tbuf, "select", 6) == 0)
-    {
-      return CUBRID_STMT_SELECT;
-    }
   else if (strncasecmp (tbuf, "call", 4) == 0)
     {
       return CUBRID_STMT_CALL_SP;
+    }
+  else if (strncasecmp (tbuf, "replace", 7) == 0)
+    {
+      return CUBRID_STMT_INSERT;
+    }
+  else if (strncasecmp (tbuf, "truncate", 8) == 0)
+    {
+      return CUBRID_STMT_DELETE;
+    }
+  else if (strncasecmp (tbuf, "show", 4) == 0)
+    {
+      return CUBRID_STMT_SELECT;
+    }
+  else if (strncasecmp (tbuf, "describe", 8) == 0)
+    {
+      return CUBRID_STMT_SELECT;
+    }
+  else if (strncasecmp (tbuf, "explain", 7) == 0)
+    {
+      return CUBRID_STMT_SELECT;
+    }
+  else if (strncasecmp (tbuf, "create", 6) == 0)
+    {
+      return CUBRID_STMT_CREATE_CLASS;
+    }
+  else if (strncasecmp (tbuf, "alter", 5) == 0)
+    {
+      return CUBRID_STMT_ALTER_CLASS;
+    }
+  else if (strncasecmp (tbuf, "drop", 4) == 0)
+    {
+      return CUBRID_STMT_DROP_CLASS;
+    }
+  else if (strncasecmp (tbuf, "rename", 6) == 0)
+    {
+      return CUBRID_STMT_RENAME_CLASS;
     }
   else
     {
