@@ -90,14 +90,24 @@ struct thread_manager
   bool initialized;
 };
 
-/* deadlock + checkpoint + oob + page flush + log flush + flush control
- * + session control + purge archive logs + log clock + auto_volume_expansion */
+/* deadlock + checkpoint + oob + page flush + log flush
+ * + flush control + session control + purge archive logs
+ * + log clock + auto_volume_expansion + ha_check_delay_info */
+#if !defined(WINDOWS)
 #if defined(HAVE_ATOMIC_BUILTINS)
 static const int PREDEFINED_DAEMON_THREAD_NUM = 11;
 #define USE_LOG_CLOCK_THREAD
 #else /* HAVE_ATOMIC_BUILTINS */
 static const int PREDEFINED_DAEMON_THREAD_NUM = 10;
 #endif /* HAVE_ATOMIC_BUILTINS */
+#else /* !WINDOWS */
+#if defined(HAVE_ATOMIC_BUILTINS)
+static const int PREDEFINED_DAEMON_THREAD_NUM = 10;
+#define USE_LOG_CLOCK_THREAD
+#else /* HAVE_ATOMIC_BUILTINS */
+static const int PREDEFINED_DAEMON_THREAD_NUM = 9;
+#endif /* HAVE_ATOMIC_BUILTINS */
+#endif /* WINDOWS */
 
 static const int THREAD_RETRY_MAX_SLAM_TIMES = 10;
 
@@ -127,10 +137,12 @@ static DAEMON_THREAD_MONITOR
   thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR
   thread_Session_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static DAEMON_THREAD_MONITOR
-  thread_Check_ha_delay_info_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 DAEMON_THREAD_MONITOR
   thread_Log_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+#if !defined (WINDOWS)
+static DAEMON_THREAD_MONITOR
+  thread_Check_ha_delay_info_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+#endif /* !WINDOWS */
 
 #if defined(USE_LOG_CLOCK_THREAD)
 static DAEMON_THREAD_MONITOR
@@ -156,8 +168,10 @@ static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_log_flush_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_session_control_thread (void *);
+#if !defined (WINDOWS)
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_check_ha_delay_info_thread (void *);
+#endif /* !WINDOWS */
 #if defined(USE_LOG_CLOCK_THREAD)
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_log_clock_thread (void *);
@@ -818,6 +832,7 @@ thread_start_workers (void)
       return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
 
+#if !defined(WINDOWS)
   /* start check HA delay info daemon thread */
   thread_Check_ha_delay_info_thread.thread_index = thread_index++;
   thread_p =
@@ -849,6 +864,7 @@ thread_start_workers (void)
 			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
       return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
+#endif /* !WINDOWS */
 
   /* destroy thread_attribute */
   r = pthread_attr_destroy (&thread_attr);
@@ -1010,7 +1026,9 @@ thread_stop_active_daemons (void)
   thread_wakeup_log_flush_thread ();
   thread_wakeup_session_control_thread ();
   thread_wakeup_auto_volume_expansion_thread ();
+#if !defined (WINDOWS)
   thread_wakeup_check_ha_delay_info_thread ();
+#endif /* !WINDOWS */
 
 loop:
   repeat_loop = false;
@@ -2639,6 +2657,10 @@ css_initialize_sync_object (void)
       return ER_CSS_PTHREAD_MUTEX_INIT;
     }
 
+#if !defined (WINDOWS)
+/* initialize cond and mutex of thread_check_ha_delay_info_thread */
+#endif
+
   return r;
 }
 #endif /* WINDOWS */
@@ -3038,6 +3060,7 @@ thread_wakeup_oob_handler_thread (void)
 #endif /* !WINDOWS */
 }
 
+#if !defined (WINDOWS)
 /*
  * thread_check_ha_delay_info_thread() -
  *   return:
@@ -3198,7 +3221,7 @@ thread_check_ha_delay_info_thread (void *arg_p)
 
   return (THREAD_RET_T) 0;
 }
-
+#endif /* !WINDOWS */
 
 /*
  * thread_page_flush_thread() -
@@ -3793,6 +3816,7 @@ thread_wakeup_auto_volume_expansion_thread (void)
   pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
 }
 
+#if !defined (WINDOWS)
 /*
  * thread_wakeup_check_ha_delay_info_thread() -
  *   return:
@@ -3809,6 +3833,7 @@ thread_wakeup_check_ha_delay_info_thread (void)
     }
   pthread_mutex_unlock (&thread_Check_ha_delay_info_thread.lock);
 }
+#endif /* !WINDOWS */
 
 /*
  * thread_slam_tran_index() -
