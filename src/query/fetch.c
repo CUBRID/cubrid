@@ -3101,7 +3101,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	bool need_free = false;
 
 	target_domain = regu_var->domain;
-	if (target_domain == NULL)
+	if (DB_IS_NULL (peek_left))
+	  {
+	    PRIM_SET_NULL (arithptr->value);
+	    break;
+	  }
+	else if (target_domain == NULL)
 	  {
 	    TP_DOMAIN *arg1, *arg2, tmp_arg1, tmp_arg2;
 
