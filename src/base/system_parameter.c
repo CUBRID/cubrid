@@ -1469,8 +1469,8 @@ int PRM_TCP_NODELAY = -1;
 static int prm_tcp_nodelay_default = -1;
 static unsigned int prm_tcp_nodelay_flag = 0;
 
-bool PRM_TCP_KEEPALIVE = true;
-static bool prm_tcp_keepalive_default = true;
+int PRM_TCP_KEEPALIVE = 1;
+static int prm_tcp_keepalive_default = 1;
 static unsigned int prm_tcp_keepalive_flag = 0;
 
 bool PRM_CSQL_SINGLE_LINE_MODE = false;
@@ -3450,7 +3450,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_TCP_KEEPALIVE,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT),
-   PRM_BOOLEAN,
+   PRM_INTEGER,
    (void *) &prm_tcp_keepalive_flag,
    (void *) &prm_tcp_keepalive_default,
    (void *) &PRM_TCP_KEEPALIVE,

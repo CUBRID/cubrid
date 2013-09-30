@@ -169,11 +169,10 @@ css_sockopt (SOCKET sd)
 		  (int *) prm_get_value (PRM_ID_TCP_NODELAY), sizeof (int));
     }
 
-  if (prm_get_bool_value (PRM_ID_TCP_KEEPALIVE))
+  if (prm_get_integer_value (PRM_ID_TCP_KEEPALIVE) > 0)
     {
       setsockopt (sd, SOL_SOCKET, SO_KEEPALIVE,
-		  (bool *) prm_get_value (PRM_ID_TCP_KEEPALIVE),
-		  sizeof (bool));
+		  (int *) prm_get_value (PRM_ID_TCP_KEEPALIVE), sizeof (int));
     }
 }
 

@@ -280,11 +280,10 @@ css_tcp_client_open_with_retry (const char *host_name, int port,
     }
 
   /* ask for the "keep alive" option, ignore errors */
-  if (prm_get_bool_value (PRM_ID_TCP_KEEPALIVE))
+  if (prm_get_integer_value (PRM_ID_TCP_KEEPALIVE) > 0)
     {
       setsockopt (s, SOL_SOCKET, SO_KEEPALIVE,
-		  (bool *) prm_get_value (PRM_ID_TCP_KEEPALIVE),
-		  sizeof (bool));
+		  (int *) prm_get_value (PRM_ID_TCP_KEEPALIVE), sizeof (int));
     }
 
   /* ask for NODELAY, this one is rather important */
@@ -702,11 +701,10 @@ css_open_server_connection_socket (void)
   setsockopt (fd, IPPROTO_TCP, TCP_NODELAY,
 	      (const char *) &bool_value, sizeof (int));
 
-  if (prm_get_bool_value (PRM_ID_TCP_KEEPALIVE))
+  if (prm_get_integer_value (PRM_ID_TCP_KEEPALIVE) > 0)
     {
       setsockopt (fd, SOL_SOCKET, SO_KEEPALIVE,
-		  (bool *) prm_get_value (PRM_ID_TCP_KEEPALIVE),
-		  sizeof (bool));
+		  (int *) prm_get_value (PRM_ID_TCP_KEEPALIVE), sizeof (int));
     }
 
   /*
