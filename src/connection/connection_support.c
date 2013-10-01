@@ -2414,6 +2414,7 @@ css_read_ip_info (IP_INFO ** out_ip_info, char *filename)
 	      long adr;
 	      char *p = NULL;
 
+	      errno = 0;
 	      adr = strtol (token, &p, 10);
 	      if ((errno == ERANGE) ||
 		  (errno != 0 && adr == 0) ||
