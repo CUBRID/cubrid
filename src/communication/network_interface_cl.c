@@ -10077,7 +10077,21 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 	  logwr_flush_header_page ();
 	  ctx_ptr->shutdown = true;
 	}
+      else if (error == ER_HA_LW_FAILED_GET_LOG_PAGE)
+	{
+	  if (logwr_Gl.mode == LOGWR_MODE_SEMISYNC)
+	    {
+	      logwr_Gl.force_flush = true;
+	      logwr_write_log_pages ();
+	    }
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  error, 1, first_pageid_torecv);
+
+	  ctx_ptr->shutdown = true;
+	}
     }
+
   return error;
 
 #else /* CS_MODE */

@@ -1090,7 +1090,7 @@ $ LOADDB
 1021 Ein Deadlock-Zyklus erkannt. %1$s.
 1022 Ungültiger Wert "%d" für Präfixlänge des Indexes.
 1023 Reservierter Fehlercode für HA.
-1024 Reservierter Fehlercode für HA.
+1024 log writer: failed to get log page(s) starting from page id %1$lld.
 1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
 1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 Log-Applier: Apply-Zustand konnte von '%1$s' auf '%2$s' nicht geändert werden.

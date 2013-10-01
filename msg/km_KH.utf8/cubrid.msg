@@ -1090,7 +1090,7 @@ $ LOADDB
 1021 deadlock cycleមួយត្រូវបានដកចេញ។ %1$s.
 1022 តម្លៃមិនសុពល "%d" សម្រាប់ប្រវែង prefix នៃ index។
 1023 កូដerrorដែលបម្រុងសម្រាប់ HA។
-1024 កូដerrorដែលបម្រុងសម្រាប់ HA។
+1024 log writer: failed to get log page(s) starting from page id %1$lld.
 1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
 1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 log applier: បរាជ័យក្នុងការផ្លាស់ប្តូរ apply state ពី '%1$s' ទៅ '%2$s'។

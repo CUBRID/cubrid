@@ -1090,7 +1090,7 @@ $ LOADDB
 1021 Un cycle d'interblocage est détecté. %1$s.
 1022 Valeur non valide "%d" pour la longueur du préfixe de l'index.
 1023 Code d'erreur réservé pour HA.
-1024 Code d'erreur réservé pour HA.
+1024 log writer: failed to get log page(s) starting from page id %1$lld.
 1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
 1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 Applicateur du journal: pas réussi à changer l'état d'application '%1$s' à '%2$s'.

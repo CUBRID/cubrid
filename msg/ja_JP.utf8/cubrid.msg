@@ -1090,7 +1090,7 @@ $ LOADDB
 1021 次のトランザクションでデッドロックサイクルが発見されました。%1$s
 1022 プリフィックスレングス(%d)が正しくありません。
 1023 HAが予約されたエラーコード。
-1024 HAが予約されたエラーコード。
+1024 log writer: failed to get log page(s) starting from page id %1$lld.
 1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
 1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 log applier: 「%1$s」から「%2$s」に複製反映状態が変更できませんでした。

@@ -773,14 +773,14 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 		   tmpname);
 	  if (repair_plink || repair)
 	    {
-	      db_commit_transaction();
+	      db_commit_transaction ();
 	    }
 	  db_shutdown ();
 	  goto error_exit;
 	}
       if (repair_plink || repair)
 	{
-	  db_commit_transaction();
+	  db_commit_transaction ();
 	}
       db_shutdown ();
     }

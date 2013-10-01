@@ -1090,7 +1090,7 @@ $ LOADDB
 1021 一个死锁环路被检测到. %1$s.
 1022 索引的前缀长度值 "%d" 是非法的.
 1023 HA的保留错误代码.
-1024 HA的保留错误代码.
+1024 log writer: failed to get log page(s) starting from page id %1$lld.
 1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
 1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 log applier: 从 '%1$s' 到 '%2$s' 改变apply状态 失败.

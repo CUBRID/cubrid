@@ -1090,7 +1090,7 @@ $ LOADDB
 1021 Vòng khóa chết được phát hiện. %1$s.
 1022 Giá trị "%d" không hợp lệ cho prefix length của chỉ mục.
 1023 Mã lỗi bảo lưu cho HA.
-1024 Mã lỗi bảo lưu cho HA.
+1024 log writer: failed to get log page(s) starting from page id %1$lld.
 1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
 1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 log applier: thất bại khi thay đổi trạng thái áp dụng từ '%1$s' đến '%2$s'.

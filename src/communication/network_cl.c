@@ -2689,8 +2689,12 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr,
 	      if (request_error != ctx_ptr->last_error)
 		{
 		  /* By server error or shutdown */
-		  error = ER_NET_SERVER_CRASHED;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		  error = request_error;
+		  if (error != ER_HA_LW_FAILED_GET_LOG_PAGE)
+		    {
+		      error = ER_NET_SERVER_CRASHED;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		    }
 		}
 
 	      ctx_ptr->shutdown = true;

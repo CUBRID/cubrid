@@ -1918,6 +1918,10 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 					 entry, copy_from_file);
       if (error_code != NO_ERROR)
 	{
+	  error_code = ER_HA_LW_FAILED_GET_LOG_PAGE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  error_code, 1, first_pageid);
+
 	  status = LOGWR_STATUS_ERROR;
 	  goto error;
 	}

@@ -1090,7 +1090,7 @@ $ LOADDB
 1021 S-a detectat un ciclu de deadlock. %1$s.
 1022 Valoare invalidă "%d" pentru lungimea indexului prefixat.
 1023 Cod de eroare rezervat pentru HA.
-1024 Cod de eroare rezervat pentru HA.
+1024 log writer: failed to get log page(s) starting from page id %1$lld.
 1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
 1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
 1027 log applier: eşec la schimbarea stării de aplicare din '%1$s' în '%2$s'.
