@@ -141,6 +141,8 @@ extern int catcls_get_db_collation (THREAD_ENTRY * thread_p,
 				    int *coll_cnt);
 
 #if defined(SA_MODE)
+int thread_Recursion_depth;
+
 extern void boot_client_all_finalize (bool is_er_final);
 #endif /* SA_MODE */
 

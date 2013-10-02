@@ -97,6 +97,16 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
   peek_third = NULL;
   peek_fourth = NULL;
 
+  if (thread_get_recursion_depth (thread_p)
+      > prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH))
+    {
+      int error = ER_MAX_RECURSION_SQL_DEPTH;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH));
+      return error;
+    }
+  thread_inc_recursion_depth (thread_p);
+
   /* fetch values */
   switch (arithptr->opcode)
     {
@@ -3598,9 +3608,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
     }
 
+  thread_dec_recursion_depth (thread_p);
+
   return NO_ERROR;
 
 error:
+  thread_dec_recursion_depth (thread_p);
 
   return ER_FAILED;
 }

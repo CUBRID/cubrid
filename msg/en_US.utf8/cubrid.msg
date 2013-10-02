@@ -1203,14 +1203,15 @@ $ LOADDB
 1134 Applylogdb for %1$s already exists.
 1135 A previous link of B+tree(%1$s) is corrupted.: vpid = (%2$d, %3$d)
 1136 A previous link of B+tree(%1$s) is repaired.: vpid = (%2$d, %3$d)
-1137 Handshake error (peer host %1$s): incompatible interruptibility. (client: %2$s, server: %3$s)
-1138 Handshake error (peer host %1$s): incompatible read/write mode. (client: %2$s, server: %3$s)
-1139 Handshake error (peer host %1$s): HA replication delayed.
-1140 Handshake error (peer host %1$s): replica-only client to non-replica server.
-1141 Handshake error (peer host %1$s): unidentified server version.
-1142 Handshake error (peer host %1$s): remote access to server not allowed.
-1143 Timed out attempting to connect to %1$s. (timeout: %2$d sec(s))
-1144 Last Error
+1137 The query has been rejected due to attempt to exceed the maximum allowed nesting level(%d).
+1138 Handshake error (peer host %1$s): incompatible interruptibility. (client: %2$s, server: %3$s)
+1139 Handshake error (peer host %1$s): incompatible read/write mode. (client: %2$s, server: %3$s)
+1140 Handshake error (peer host %1$s): HA replication delayed.
+1141 Handshake error (peer host %1$s): replica-only client to non-replica server.
+1142 Handshake error (peer host %1$s): unidentified server version.
+1143 Handshake error (peer host %1$s): remote access to server not allowed.
+1144 Timed out attempting to connect to %1$s. (timeout: %2$d sec(s))
+1145 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):

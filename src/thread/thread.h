@@ -40,6 +40,7 @@
 #endif /* SERVER_MODE */
 
 #if !defined(SERVER_MODE)
+extern int thread_Recursion_depth;
 
 #define thread_get_thread_entry_info()  (NULL)
 #define thread_num_worker_threads()  (1)
@@ -52,6 +53,11 @@
 #define thread_need_clear_trace(thread_p) (false)
 #define thread_get_sort_stats_active(thread_p) (false)
 #define thread_set_sort_stats_active(thread_p, flag)
+
+#define thread_get_recursion_depth(thread_p) (thread_Recursion_depth)
+#define thread_inc_recursion_depth(thread_p) (thread_Recursion_depth ++)
+#define thread_dec_recursion_depth(thread_p) (thread_Recursion_depth --)
+#define thread_clear_recursion_depth(thread_p) (thread_Recursion_depth = 0)
 
 typedef void THREAD_ENTRY;
 
@@ -209,6 +215,7 @@ struct thread_entry
 
   void *xasl_unpack_info_ptr;	/* XASL_UNPACK_INFO * */
   int xasl_errcode;		/* xasl errorcode */
+  int xasl_recursion_depth;
 
   unsigned int rand_seed;	/* seed for rand_r() */
   struct drand48_data rand_buf;	/* seed for lrand48_r(), drand48_r() */
@@ -422,6 +429,11 @@ extern void thread_set_trace_format (THREAD_ENTRY * thread_p, int format);
 extern bool thread_is_on_trace (THREAD_ENTRY * thread_p);
 extern void thread_set_clear_trace (THREAD_ENTRY * thread_p, bool clear);
 extern bool thread_need_clear_trace (THREAD_ENTRY * thread_p);
+
+extern int thread_get_recursion_depth (THREAD_ENTRY * thread_p);
+extern void thread_inc_recursion_depth (THREAD_ENTRY * thread_p);
+extern void thread_dec_recursion_depth (THREAD_ENTRY * thread_p);
+extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
 
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);

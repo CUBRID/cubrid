@@ -12458,6 +12458,16 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   struct timeval start, end;
   UINT64 old_fetches, old_ioreads;
 
+  if (thread_get_recursion_depth (thread_p)
+      > prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH))
+    {
+      error = ER_MAX_RECURSION_SQL_DEPTH;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH));
+      return error;
+    }
+  thread_inc_recursion_depth (thread_p);
+
   if (thread_is_on_trace (thread_p))
     {
       gettimeofday (&start, NULL);
@@ -12474,6 +12484,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       xasl->xasl_stats.fetches += mnt_get_pb_fetches (thread_p) - old_fetches;
       xasl->xasl_stats.ioreads += mnt_get_pb_ioreads (thread_p) - old_ioreads;
     }
+
+  thread_dec_recursion_depth (thread_p);
 
   return error;
 }
