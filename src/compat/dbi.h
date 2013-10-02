@@ -425,7 +425,7 @@ extern DB_OBJLIST *db_get_superclasses (DB_OBJECT * obj);
 extern DB_OBJLIST *db_get_subclasses (DB_OBJECT * obj);
 extern DB_ATTRIBUTE *db_get_attribute (DB_OBJECT * obj, const char *name);
 extern DB_ATTRIBUTE *db_get_attribute_by_name (const char *class_name,
-					       const char *atrribute_name);
+					       const char *attribute_name);
 extern DB_ATTRIBUTE *db_get_attributes (DB_OBJECT * obj);
 extern DB_ATTRIBUTE *db_get_class_attribute (DB_OBJECT * obj,
 					     const char *name);

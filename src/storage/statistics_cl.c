@@ -310,7 +310,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
       attr_stats_p = &(class_stats_p->attr_stats[i]);
 
       name_p = sm_get_att_name (class_mop, attr_stats_p->id);
-      fprintf (file_p, " Atrribute: %s\n", (name_p ? name_p : "not found"));
+      fprintf (file_p, " Attribute: %s\n", (name_p ? name_p : "not found"));
       fprintf (file_p, "    id: %d\n", attr_stats_p->id);
       fprintf (file_p, "    Type: ");
 

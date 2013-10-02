@@ -790,10 +790,10 @@ db_get_attribute (DB_OBJECT * obj, const char *name)
  *        functions.
  */
 DB_ATTRIBUTE *
-db_get_attribute_by_name (const char *class_name, const char *atrribute_name)
+db_get_attribute_by_name (const char *class_name, const char *attribute_name)
 {
   DB_OBJECT *db_obj = NULL;
-  if (class_name == NULL || atrribute_name == NULL)
+  if (class_name == NULL || attribute_name == NULL)
     {
       return NULL;
     }
@@ -804,7 +804,7 @@ db_get_attribute_by_name (const char *class_name, const char *atrribute_name)
       return NULL;
     }
 
-  return db_get_attribute (db_obj, atrribute_name);
+  return db_get_attribute (db_obj, attribute_name);
 }
 
 

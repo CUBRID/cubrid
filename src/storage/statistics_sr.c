@@ -999,7 +999,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 
   for (i = 0; i < class_stats->n_attrs; i++)
     {
-      fprintf (fpp, "\n Atrribute :\n");
+      fprintf (fpp, "\n Attribute :\n");
       fprintf (fpp, "    id: %d\n", class_stats->attr_stats[i].id);
       fprintf (fpp, "    Type: ");
 
