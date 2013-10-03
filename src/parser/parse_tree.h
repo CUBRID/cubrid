@@ -2422,6 +2422,8 @@ struct pt_select_info
 							 * MERGE and UPDATE we sometimes
 							 * want to allow OIDs of partially
 							 * updatable views */
+#define PT_SELECT_INFO_IS_UPD_DEL_QUERY	4096	/* set if select was built for
+						   an UPDATE or DELETE statement */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (short) (f))

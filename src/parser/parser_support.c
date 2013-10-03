@@ -922,11 +922,26 @@ pt_find_aggregate_functions_pre (PARSER_CONTEXT * parser, PT_NODE * tree,
 {
   PT_AGG_FIND_INFO *info = (PT_AGG_FIND_INFO *) arg;
   PT_NODE *select_stack = info->select_stack;
+  PT_NODE *stack_top = select_stack;
 
   if (tree == NULL)
     {
       /* nothing to do */
       return tree;
+    }
+
+  while (stack_top != NULL && stack_top->next != NULL)
+    {
+      stack_top = stack_top->next;
+    }
+  if (stack_top && stack_top->info.pointer.node
+      && stack_top->info.pointer.node->node_type == PT_SELECT
+      && stack_top->info.pointer.node->info.query.q.select.where == tree)
+    {
+      /* subqueries of WHERE clause will not be walked for this parent query;
+         they must be treated separately as they own any aggregates referring
+         upper-level names */
+      info->stop_on_subquery = true;
     }
 
   if (pt_is_aggregate_function (parser, tree))
@@ -995,9 +1010,29 @@ pt_find_aggregate_functions_pre (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  *continue_walk = PT_LEAF_WALK;
 	}
 
-      /* don't walk selects unless necessary */
+      /* if we encountered a subquery while walking where clause, stop this
+         walk and make subquery owner of all aggregate functions that
+         reference upper-level names */
       if (info->stop_on_subquery)
 	{
+	  PT_AGG_FIND_INFO sub_info;
+	  sub_info.base_count = 0;
+	  sub_info.out_of_context_count = 0;
+	  sub_info.select_stack = NULL;
+	  sub_info.stop_on_subquery = false;
+
+	  (void) parser_walk_tree (parser, tree,
+				   pt_find_aggregate_functions_pre, &sub_info,
+				   pt_find_aggregate_functions_post,
+				   &sub_info);
+
+	  if (sub_info.out_of_context_count > 0)
+	    {
+	      /* mark as agg select; base_count > 0 case will be handled
+	         later on */
+	      PT_SELECT_INFO_SET_FLAG (tree, PT_SELECT_INFO_HAS_AGG);
+	    }
+
 	  *continue_walk = PT_STOP_WALK;
 	}
 
@@ -1038,6 +1073,21 @@ pt_find_aggregate_functions_post (PARSER_CONTEXT * parser, PT_NODE * tree,
     {
       info->select_stack =
 	pt_pointer_stack_pop (parser, info->select_stack, NULL);
+    }
+  else
+    {
+      PT_NODE *stack_top = info->select_stack;
+
+      while (stack_top != NULL && stack_top->next != NULL)
+	{
+	  stack_top = stack_top->next;
+	}
+      if (stack_top && stack_top->info.pointer.node
+	  && stack_top->info.pointer.node->node_type == PT_SELECT
+	  && stack_top->info.pointer.node->info.query.q.select.where == tree)
+	{
+	  info->stop_on_subquery = false;
+	}
     }
 
   /* nothing can stop us! */
@@ -2771,7 +2821,14 @@ pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return true;
 	}
 
-      /* STEP 3: check select_list */
+      /* STEP 3: check tree */
+      if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_IS_UPD_DEL_QUERY)
+	  || PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_IS_MERGE_QUERY))
+	{
+	  /* UPDATE, DELETE and MERGE queries cannot own aggregates from
+	     subqueries, so this SELECT can't either */
+	  info.stop_on_subquery = true;
+	}
       save_next = node->next;
       node->next = NULL;
       (void) parser_walk_tree (parser, node, pt_find_aggregate_functions_pre,
@@ -2809,6 +2866,7 @@ pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else
     {
+      info.stop_on_subquery = true;
       save_next = node->next;
       node->next = NULL;
       (void) parser_walk_tree (parser, node, pt_find_aggregate_functions_pre,

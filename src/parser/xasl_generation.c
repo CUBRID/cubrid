@@ -18075,6 +18075,9 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
   statement = parser_new_node (parser, PT_SELECT);
   if (statement != NULL)
     {
+      /* this is an internally built query */
+      PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_UPD_DEL_QUERY);
+
       statement->info.query.q.select.list =
 	parser_copy_tree_list (parser, select_list);
 

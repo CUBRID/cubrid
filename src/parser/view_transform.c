@@ -1162,6 +1162,10 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
       info->depth++;		/* increase query depth as we dive into subqueries */
       break;
 
+    case PT_DATA_TYPE:
+      *continue_walk = PT_STOP_WALK;
+      break;
+
     default:
       break;
     }
