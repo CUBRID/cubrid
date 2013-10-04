@@ -738,8 +738,8 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
     }
 #endif
 
-  if (csect_enter_as_reader
-      (thread_p, CSECT_DISK_REFRESH_GOODVOL, INF_WAIT) != NO_ERROR)
+  if (csect_enter_as_reader (thread_p, CSECT_DISK_REFRESH_GOODVOL, 
+			     INF_WAIT) != NO_ERROR)
     {
       return ER_FAILED;
     }
