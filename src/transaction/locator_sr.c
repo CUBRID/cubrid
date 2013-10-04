@@ -8632,6 +8632,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       if (key == &dbvalue)
 	{
 	  pr_clear_value (key);
+	  key = NULL;
 	}
     }
 
