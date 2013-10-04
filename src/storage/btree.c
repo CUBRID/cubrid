@@ -19066,7 +19066,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
 	}
     }
 
-  er_set (severity, ARG_FILE_LINE, err_id, 6,
+  er_set (severity, filename, lineno, err_id, 6,
 	  (index_name) ? index_name : ((bt_name) ? bt_name :
 				       "*UNKNOWN-INDEX*"), btid_msg_buf,
 	  (class_name) ? class_name : "*UNKNOWN-CLASS*", class_oid_msg_buf,
