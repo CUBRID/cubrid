@@ -8724,7 +8724,8 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	  free_space = spage_get_free_space_without_saving (thread_p, pgptr,
 							    &need_update);
 
-	  if (free_space > HEAP_DROP_FREE_SPACE)
+	  if (free_space > HEAP_DROP_FREE_SPACE
+	      && best < HEAP_NUM_BEST_SPACESTATS)
 	    {
 	      heap_hdr.estimates.best[best].vpid = vpid;
 	      heap_hdr.estimates.best[best].freespace = free_space;
