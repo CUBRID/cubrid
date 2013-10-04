@@ -15461,7 +15461,6 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 
       /* retrieve the class information */
       cls_info_p = catalog_get_class_info (thread_p, (OID *) oidp);
-      assert (cls_info_p != NULL);
 
       if (cls_info_p && !HFID_IS_NULL (&cls_info_p->hfid))
 	{
