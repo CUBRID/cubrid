@@ -402,31 +402,24 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   else
     {
       ES_TYPE es_type = es_get_type (db_path_info->lob_path);
-      char *delim;
 
-      delim = strchr (db_path_info->lob_path, ':');
-      if (delim == NULL)
+      switch (es_type)
 	{
+	case ES_NONE:
 	  /* prepend default prefix */
 	  snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s",
 		    LOB_PATH_DEFAULT_PREFIX, db_path_info->lob_path);
 	  db_path_info->lob_path = boot_Lob_path_buf;
-	}
-      else
-	{
-	  switch (es_type)
-	    {
-	    case ES_NONE:
+	  break;
 #if !defined (CUBRID_OWFS)
-	    case ES_OWFS:
+	case ES_OWFS:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_ES_INVALID_PATH, 1, db_path_info->lob_path);
+	  error_code = ER_ES_INVALID_PATH;
+	  goto error_exit;
 #endif /* !CUBRID_OWFS */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_ES_INVALID_PATH, 1, db_path_info->lob_path);
-	      error_code = ER_ES_INVALID_PATH;
-	      goto error_exit;
-	    default:
-	      break;
-	    }
+	default:
+	  break;
 	}
     }
 
