@@ -8113,7 +8113,7 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern,
       attr_table->shared = 0;
     }
 
-  if (db_attribute_is_unique (attr))
+  if (db_attribute_is_unique (attr) || db_attribute_is_reverse_unique (attr))
     {
       attr_table->unique = 1;
     }
