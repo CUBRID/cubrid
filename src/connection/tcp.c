@@ -149,6 +149,8 @@ css_tcp_client_open (const char *host, int port)
 static void
 css_sockopt (SOCKET sd)
 {
+  int bool_value = 1;
+
   if (prm_get_integer_value (PRM_ID_TCP_RCVBUF_SIZE) > 0)
     {
       setsockopt (sd, SOL_SOCKET, SO_RCVBUF,
@@ -163,16 +165,16 @@ css_sockopt (SOCKET sd)
 		  sizeof (int));
     }
 
-  if (prm_get_integer_value (PRM_ID_TCP_NODELAY) > 0)
+  if (prm_get_bool_value (PRM_ID_TCP_NODELAY))
     {
       setsockopt (sd, IPPROTO_TCP, TCP_NODELAY,
-		  (int *) prm_get_value (PRM_ID_TCP_NODELAY), sizeof (int));
+		  (const char *) &bool_value, sizeof (bool_value));
     }
 
-  if (prm_get_integer_value (PRM_ID_TCP_KEEPALIVE) > 0)
+  if (prm_get_bool_value (PRM_ID_TCP_KEEPALIVE))
     {
       setsockopt (sd, SOL_SOCKET, SO_KEEPALIVE,
-		  (int *) prm_get_value (PRM_ID_TCP_KEEPALIVE), sizeof (int));
+		  (const char *) &bool_value, sizeof (bool_value));
     }
 }
 

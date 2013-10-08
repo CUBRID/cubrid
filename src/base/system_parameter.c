@@ -433,7 +433,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_TCP_SNDBUF_SIZE "tcp_sndbuf_size"
 
-#define PRM_NAME_TCP_NODELAY "tcp_nodealy"
+#define PRM_NAME_TCP_NODELAY "tcp_nodelay"
 
 #define PRM_NAME_TCP_KEEPALIVE "tcp_keepalive"
 
@@ -1467,12 +1467,12 @@ int PRM_TCP_SNDBUF_SIZE = -1;
 static int prm_tcp_sndbuf_size_default = -1;
 static unsigned int prm_tcp_sndbuf_size_flag = 0;
 
-int PRM_TCP_NODELAY = -1;
-static int prm_tcp_nodelay_default = -1;
+bool PRM_TCP_NODELAY = false;
+static bool prm_tcp_nodelay_default = false;
 static unsigned int prm_tcp_nodelay_flag = 0;
 
-int PRM_TCP_KEEPALIVE = 1;
-static int prm_tcp_keepalive_default = 1;
+bool PRM_TCP_KEEPALIVE = true;
+static bool prm_tcp_keepalive_default = true;
 static unsigned int prm_tcp_keepalive_flag = 0;
 
 bool PRM_CSQL_SINGLE_LINE_MODE = false;
@@ -3446,7 +3446,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_TCP_NODELAY,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_HIDDEN),
-   PRM_INTEGER,
+   PRM_BOOLEAN,
    (void *) &prm_tcp_nodelay_flag,
    (void *) &prm_tcp_nodelay_default,
    (void *) &PRM_TCP_NODELAY,
@@ -3456,7 +3456,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_TCP_KEEPALIVE,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT),
-   PRM_INTEGER,
+   PRM_BOOLEAN,
    (void *) &prm_tcp_keepalive_flag,
    (void *) &prm_tcp_keepalive_default,
    (void *) &PRM_TCP_KEEPALIVE,
