@@ -2964,7 +2964,6 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   PT_NODE *cls = NULL;
   DB_OBJECT *obj = NULL;
-  bool free_cls = false;
   const char *index_name = NULL;
   int error_code = NO_ERROR;
   const char *class_name = NULL;
@@ -2979,49 +2978,15 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
       cls = statement->info.index.indexed_class->info.spec.flat_entity_list;
     }
 
-  if (cls == NULL)
-    {
-      DB_CONSTRAINT_TYPE index_type;
+  assert (cls != NULL);
 
-      if (index_name == NULL)
-	{
-	  error_code = ER_SM_INVALID_DEF_CONSTRAINT_NAME_PARAMS;
-	  goto error_exit;
-	}
-      index_type =
-	get_reverse_unique_index_type (statement->info.index.reverse,
-				       statement->info.index.unique);
-      cls = pt_find_class_of_index (parser, index_name, index_type);
-
-      if (cls == NULL)
-	{
-	  error_code = er_errid ();
-	  goto error_exit;
-	}
-      free_cls = true;
-      class_name = cls->info.name.original;
-    }
-  else
-    {
-      class_name = cls->info.name.resolved;
-    }
+  class_name = cls->info.name.resolved;
 
   obj = db_find_class (class_name);
   if (obj == NULL)
     {
       error_code = er_errid ();
       goto error_exit;
-    }
-
-  /* A call to pt_check_user_owns_class does not actually have any
-   * effect here, and it conflicts with resolved spec names. This check
-   * is already performed in name resolving. */
-
-  if (free_cls)
-    {
-      parser_free_tree (parser, cls);
-      cls = NULL;
-      free_cls = false;
     }
 
   error_code =
@@ -3037,13 +3002,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   return error_code;
 
 error_exit:
-  if (free_cls)
-    {
-      assert (cls != NULL);
-      parser_free_tree (parser, cls);
-      cls = NULL;
-      free_cls = false;
-    }
+
   return error_code;
 }
 
@@ -3060,7 +3019,6 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_OBJECT *obj;
   PT_NODE *n, *c;
   PT_NODE *cls = NULL;
-  bool free_cls = false;
   int i, nnames;
   DB_CONSTRAINT_TYPE ctype;
   char **attnames = NULL;
@@ -3095,47 +3053,15 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
       cls = statement->info.index.indexed_class->info.spec.flat_entity_list;
     }
 
-  if (cls == NULL)
-    {
-      if (index_name == NULL)
-	{
-	  error = ER_SM_INVALID_DEF_CONSTRAINT_NAME_PARAMS;
-	  goto error_exit;
-	}
-      ctype = get_reverse_unique_index_type (statement->info.index.reverse,
-					     statement->info.index.unique);
-      cls = pt_find_class_of_index (parser, index_name, ctype);
+  assert (cls != NULL);
 
-      if (cls == NULL)
-	{
-	  error = er_errid ();
-	  goto error_exit;
-	}
-      free_cls = true;
-
-      class_name = cls->info.name.original;
-    }
-  else
-    {
-      class_name = cls->info.name.resolved;
-    }
+  class_name = cls->info.name.resolved;
 
   obj = db_find_class (class_name);
   if (obj == NULL)
     {
       error = er_errid ();
       goto error_exit;
-    }
-
-  /* A call to pt_check_user_owns_class does not actually have any
-   * effect here, and it conflicts with resolved spec names. This check
-   * is already performed in name resolving. */
-
-  if (free_cls)
-    {
-      parser_free_tree (parser, cls);
-      cls = NULL;
-      free_cls = false;
     }
 
   ctype = get_reverse_unique_index_type (statement->info.index.reverse,
@@ -3605,13 +3531,6 @@ end:
   return error;
 
 error_exit:
-  if (free_cls)
-    {
-      assert (cls != NULL);
-      parser_free_tree (parser, cls);
-      cls = NULL;
-      free_cls = false;
-    }
 
   if (do_rollback == true)
     {

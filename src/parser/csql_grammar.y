@@ -3278,35 +3278,6 @@ alter_stmt
 			  }
 
 		DBG_PRINT}}
-	| ALTER						/* 1 */
-		{					/* 2 */
-			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
-			parser_push_hint_node(node);
-		}
-	  opt_hint_list					/* 3 */
-	  opt_reverse					/* 4 */
-	  opt_unique					/* 5 */
-	  INDEX						/* 6 */
-	  identifier					/* 7 */
-	  REBUILD					/* 8 */
-		{{
-
-			PT_NODE *node = parser_pop_hint_node ();
-
-			node->info.index.code = PT_REBUILD_INDEX;
-			node->info.index.reverse = $4;
-			node->info.index.unique = $5;
-
-			node->info.index.index_name = $7;
-			if (node->info.index.index_name)
-			  {
-			    node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
 	| ALTER				/* 1 */
 	  INDEX				/* 2 */
 	  identifier			/* 3 */
@@ -3676,32 +3647,6 @@ drop_stmt
 			    $$ = node;
 			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			  }
-
-		DBG_PRINT}}
-	| DROP						/* 1 */
-		{					/* 2 */
-			PT_NODE* node = parser_new_node(this_parser, PT_DROP_INDEX);
-			parser_push_hint_node(node);
-		}
-	  opt_hint_list					/* 3 */
-	  opt_reverse					/* 4 */
-	  opt_unique					/* 5 */
-	  INDEX						/* 6 */
-	  identifier					/* 7 */
-		{{
-
-			PT_NODE *node = parser_pop_hint_node ();
-
-			node->info.index.reverse = $4;
-			node->info.index.unique = $5;
-
-			node->info.index.index_name = $7;
-			if (node->info.index.index_name)
-			  {
-			    node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
-			  }
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| DROP USER identifier

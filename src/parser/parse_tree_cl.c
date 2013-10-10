@@ -6258,21 +6258,18 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_bytes (parser, b, index_name, strlen (index_name));
     }
 
-  if (r1 != NULL)
-    {
-      b = pt_append_nulstring (parser, b, " on ");
-      b = pt_append_varchar (parser, b, r1);
+  assert (r1 != NULL);
+  b = pt_append_nulstring (parser, b, " on ");
+  b = pt_append_varchar (parser, b, r1);
 
-      if (r2 != NULL)
-	{
-	  b = pt_append_nulstring (parser, b, " (");
-	  b = pt_append_varchar (parser, b, r2);
-	  b = pt_append_nulstring (parser, b, ")");
-	}
+  if (r2 != NULL)
+    {
+      b = pt_append_nulstring (parser, b, " (");
+      b = pt_append_varchar (parser, b, r2);
+      b = pt_append_nulstring (parser, b, ")");
     }
 
   b = pt_append_nulstring (parser, b, " ");
-
 
   if (p->info.index.code == PT_REBUILD_INDEX)
     {
@@ -9093,16 +9090,16 @@ pt_print_drop_index (PARSER_CONTEXT * parser, PT_NODE * p)
       index_name = p->info.index.index_name->info.name.original;
       b = pt_append_bytes (parser, b, index_name, strlen (index_name));
     }
-  if (r1)
+
+  assert (r1 != NULL);
+  b = pt_append_nulstring (parser, b, (index_name ? " on " : "on "));
+  b = pt_append_varchar (parser, b, r1);
+
+  if (r2)
     {
-      b = pt_append_nulstring (parser, b, (index_name ? " on " : "on "));
-      b = pt_append_varchar (parser, b, r1);
-      if (r2)
-	{
-	  b = pt_append_nulstring (parser, b, " (");
-	  b = pt_append_varchar (parser, b, r2);
-	  b = pt_append_nulstring (parser, b, ") ");
-	}
+      b = pt_append_nulstring (parser, b, " (");
+      b = pt_append_varchar (parser, b, r2);
+      b = pt_append_nulstring (parser, b, ") ");
     }
 
   if (p->info.index.where)
