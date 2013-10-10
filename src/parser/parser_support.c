@@ -9121,8 +9121,8 @@ pt_make_query_show_exec_stats (PARSER_CONTEXT * parser)
     "UNION ALL (SELECT 'data_page_ioreads' as [variable] , exec_stats('Num_data_page_ioreads') as [value])"
     "UNION ALL (SELECT 'data_page_iowrites' as [variable] , exec_stats('Num_data_page_iowrites') as [value]);";
 
-  /* parser ';' will empty and reset the stack of parser, 
-   * this make the status machine be right for the next statement, 
+  /* parser ';' will empty and reset the stack of parser,
+   * this make the status machine be right for the next statement,
    * and avoid nested parser statement. */
   parser_parse_string (parser, ";");
 
@@ -9212,8 +9212,8 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
     "UNION ALL (SELECT 'heap_stats_bestspace_entries' as [variable] , exec_stats('Num_heap_stats_bestspace_entries') as [value])"
     "UNION ALL (SELECT 'heap_stats_bestspace_maxed' as [variable] , exec_stats('Num_heap_stats_bestspace_maxed') as [value])";
 
-  /* parser ';' will empty and reset the stack of parser, 
-   * this make the status machine be right for the next statement, 
+  /* parser ';' will empty and reset the stack of parser,
+   * this make the status machine be right for the next statement,
    * and avoid nested parser statement. */
   parser_parse_string (parser, ";");
 
@@ -10071,8 +10071,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   query->info.query.order_by =
     parser_append_node (order_by_item, query->info.query.order_by);
 
-  /* By Column_name */
-  order_by_item = pt_make_sort_spec_with_number (parser, 5, PT_ASC);
+  /* By Seq_in_index */
+  order_by_item = pt_make_sort_spec_with_number (parser, 4, PT_ASC);
   if (order_by_item == NULL)
     {
       goto error;
@@ -10949,7 +10949,7 @@ pt_make_tuple_value_reference (PARSER_CONTEXT * parser, PT_NODE * name,
 /*
  * pt_make_query_show_collation() - builds the query for SHOW COLLATION
  *
- * SELECT * FROM 
+ * SELECT * FROM
  *    (SELECT coll_name AS [Collation],
  *	      IF (charset_id = 3, 'iso88591',
  *		  IF (charset_id = 5, 'utf8',
@@ -11613,7 +11613,7 @@ unusable_expr:
  * pt_find_node_type_pre () - Use parser_walk_tree to find a node with a
  *			      specific node type.
  *
- * return	      : node. 
+ * return	      : node.
  * parser (in)	      : parser context.
  * node (in)	      : node in parse tree.
  * arg (in)	      : int array containing node type and found.
