@@ -470,11 +470,14 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 46 Solo %d di %d objects dumped ok.\n
 47 directory di output è troppo lungo.\n
 48 LSA : %d %d \n
+49 Password:
 60 \
 unloaddb: Esportare gli oggetti e gli schemi del database.\n\
 uso: %s unloaddb [OPZIONE] nome-database\n\
 \n\
 opzioni valide:\n\
+  -u, --user=ID               user ID per l'accesso al database; predefinito: "dba"\n\
+  -p, --password=PASS         password utente; predefinito: nessuno\n\
   -i, --input-class-file=FILE FILE di input di nomi di tabelle; predefinito: dump tutte le classi\n\
       --include-reference     includi le tabelle di riferimento, con opzione -i; predefinito: non attivo\n\
       --input-class-only      includi solo le classe specificate, con opzione-i; predefinito: non attivo\n\

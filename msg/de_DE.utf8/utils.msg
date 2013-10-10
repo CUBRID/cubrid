@@ -470,11 +470,14 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 46 Nur %d von %d Objekten erfolgreich exportiert.\n
 47 Ausgabeverzeichnis zu lang.\n
 48 LSA : %d %d \n
+49 Passwort:
 60 \
 unloaddb: Export Objekte und Schemas aus der Datenbank.\n\
 Anwendung: %s unloaddb [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
+  -u, --user=ID               Benutzer ID für Datenbankzugang; Standard: "dba"\n\
+  -p, --password=PASSWORT     Benutzerpasswort; Standard: keinen\n\
   -i, --input-class-file=DATEI Eingangsdatei für Tabellennamen; Standard: Alle Klassen exportieren\n\
       --include-reference     referenzierte Tabellen einfügen; mit -i Option; Standard: deaktiviert\n\
       --input-class-only      nur angegebene Klasse einfügen; mit -i Option; Standard: deaktiviert\n\

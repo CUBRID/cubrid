@@ -470,11 +470,14 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 46 Solo %d de %d objetos botados con exito.\n
 47 directorio de salida es demasiado largo.\n
 48 LSA : %d %d \n
+49 Contrasena:
 60 \
 unloaddb: Exportar objetos y esquemas de la base de datos.\n\
 uso: %s unloaddb [OPTION] database-name\n\
 \n\
 opciones validas:\n\
+  -u, --user=ID               ID de utilizador para acceso a la base de datos; estandar: "dba"\n\
+  -p, --password=PASS         contrasena de utilizador; estandar: ninguna\n\
   -i, --input-class-file=FILE entrar ARCHIVO de nombres de tablas; estandar: botar todas clases\n\
       --include-reference     incluir tablas referenciadas; con opcion -i; estandar: inhabilitado\n\
       --input-class-only      incluir solo la clase especificada; con opcion -i; estandar: inhabilitado\n\

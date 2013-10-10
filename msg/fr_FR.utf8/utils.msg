@@ -473,11 +473,14 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 46 Seulement %d de  %d objets sauvegardées avec succès.\n
 47 répertoire de sortie est trop long.\n
 48 LSA : %d %d \n
+49 Mot de passe:
 60 \
 unloaddb: Exporte des objets et des schémas de la base de données.\n\
 usage: %s unloaddb [OPTION] database-name\n\
 \n\
 options valids:\n\
+  -u, --user=ID               ID d'utilisateur pour l'accès à la base de données, par défaut: "dba"\n\
+  -p, --password=MOT-DE-PASSE MOT DE PASSE d'utilisateur; par défaut: aucun\n\
   -i, --input-class-file=FICHIER   FICHIER d'entrée des noms de tables; par défaut: sauvegarde toutes les classes\n\
       --include-reference     comprennent les tables référencées; avec l'option -i; par défaut: désactivé\n\
       --input-class-only      comprennent seulement la classe spécifiée; avec l'option -i; par défaut: désactivé\n\

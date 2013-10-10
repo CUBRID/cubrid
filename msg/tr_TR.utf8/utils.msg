@@ -470,11 +470,14 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 46 %d nesneleri yalnızca %d tanesinde başarılı atılıyor.\n
 47 çıkış dizin çok uzun.\n
 48 LSA : %d %d \n
+49 Şifre:
 60 \
 unloaddb: Veritabanındaki nesneleri ve şemalar verin.\n\
 kullanım: %s unloaddb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
+  -u, --user=ID               veritabanı erişimi için kullanıcı kimliği; varsayılan: "dba"\n\
+  -p, --password=PASS         kullanıcı şifresi; varsayılan: hiçbir\n\
   -i, --input-class-file=FILE tablo adlarının giriş FILE varsayılan: tüm sınıflar dökümü\n\
       --include-reference     başvurulan tablolar arasında; ile-i seçeneği; varsayılan: Engelli\n\
       --input-class-only      sadece belirtilen sınıf arasında; ile-i seçeneği; varsayılan: devre dışı\n\

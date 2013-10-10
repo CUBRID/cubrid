@@ -443,7 +443,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 int
 extractobjects (const char *exec_name)
 {
-  int i;
+  int i, error;
   HFID *hfid;
   int est_objects = 0;
   int cache_size;
@@ -620,149 +620,155 @@ extractobjects (const char *exec_name)
 #endif /* CUBRID_DEBUG */
   for (i = 0; i < class_table->num; i++)
     {
-      if (!WS_MARKED_DELETED (class_table->mops[i]) &&
-	  class_table->mops[i] != sm_Root_class_mop)
+      if (WS_MARKED_DELETED (class_table->mops[i]) ||
+	  class_table->mops[i] == sm_Root_class_mop)
 	{
-	  ws_find (class_table->mops[i], (MOBJ *) & class_ptr);
-	  if (class_ptr == NULL)
-	    {
-	      status = 1;
-	      goto end;
-	    }
+	  continue;
+	}
 
-	  for (cptr = prohibited_classes; *cptr; ++cptr)
-	    {
-	      if (strcmp (*cptr, class_ptr->header.name) == 0)
-		break;
-	    }
-	  if (*cptr == NULL)
-	    {
+      error = au_fetch_class (class_table->mops[i], NULL, AU_FETCH_READ,
+			      AU_SELECT);
+      if (error != NO_ERROR)
+	{
+	  continue;
+	}
+
+      ws_find (class_table->mops[i], (MOBJ *) & class_ptr);
+      if (class_ptr == NULL)
+	{
+	  status = 1;
+	  goto end;
+	}
+
+      for (cptr = prohibited_classes; *cptr; ++cptr)
+	{
+	  if (strcmp (*cptr, class_ptr->header.name) == 0)
+	    break;
+	}
+      if (*cptr == NULL)
+	{
 #if defined(CUBRID_DEBUG)
-	      fprintf (stdout, "%s%s%s\n",
-		       PRINT_IDENTIFIER (class_ptr->header.name));
+	  fprintf (stdout, "%s%s%s\n",
+		   PRINT_IDENTIFIER (class_ptr->header.name));
 #endif /* CUBRID_DEBUG */
 
-	      fh_put (cl_table, ws_oid (class_table->mops[i]), &i);
-	      if (input_filename)
-		{
-		  if (is_req_class (class_table->mops[i])
-		      || (!required_class_only
-			  && sm_is_system_class (class_table->mops[i])))
-		    MARK_CLASS_REQUESTED (i);
-		}
-	      else
+	  fh_put (cl_table, ws_oid (class_table->mops[i]), &i);
+	  if (input_filename)
+	    {
+	      if (is_req_class (class_table->mops[i])
+		  || (!required_class_only
+		      && sm_is_system_class (class_table->mops[i])))
 		MARK_CLASS_REQUESTED (i);
+	    }
+	  else
+	    MARK_CLASS_REQUESTED (i);
 
-	      if (!datafile_per_class &&
-		  (!required_class_only || IS_CLASS_REQUESTED (i)))
+	  if (!datafile_per_class &&
+	      (!required_class_only || IS_CLASS_REQUESTED (i)))
+	    {
+	      if (text_print (obj_out, NULL, 0, "%cid %s%s%s %d\n", '%',
+			      PRINT_IDENTIFIER (class_ptr->header.name),
+			      i) != NO_ERROR)
 		{
-		  if (text_print (obj_out, NULL, 0, "%cid %s%s%s %d\n", '%',
-				  PRINT_IDENTIFIER (class_ptr->header.name),
-				  i) != NO_ERROR)
-		    {
-		      status = 1;
-		      goto end;
+		  status = 1;
+		  goto end;
+		}
+	    }
+
+	  if (IS_CLASS_REQUESTED (i))
+	    {
+	      if (!datafile_per_class)
+		{
+		  if (!has_obj_ref)
+		    {		/* not found object domain */
+		      for (attribute = class_ptr->shared;
+			   attribute != NULL;
+			   attribute =
+			   (SM_ATTRIBUTE *) attribute->header.next)
+			{
+			  /* false -> don't set */
+			  if ((has_obj_ref =
+			       check_referenced_domain (attribute->domain,
+							false,
+							&num_cls_ref)) ==
+			      true)
+			    {
+#if defined(CUBRID_DEBUG)
+			      fprintf (stdout,
+				       "found OBJECT domain: %s%s%s->%s\n",
+				       PRINT_IDENTIFIER (class_ptr->
+							 header.name),
+				       db_attribute_name (attribute));
+#endif /* CUBRID_DEBUG */
+			      break;
+			    }
+			}
+		    }
+
+		  if (!has_obj_ref)
+		    {		/* not found object domain */
+		      for (attribute = class_ptr->class_attributes;
+			   attribute != NULL;
+			   attribute =
+			   (SM_ATTRIBUTE *) attribute->header.next)
+			{
+			  /* false -> don't set */
+			  if ((has_obj_ref =
+			       check_referenced_domain (attribute->domain,
+							false,
+							&num_cls_ref)) ==
+			      true)
+			    {
+#if defined(CUBRID_DEBUG)
+			      fprintf (stdout,
+				       "found OBJECT domain: %s%s%s->%s\n",
+				       PRINT_IDENTIFIER (class_ptr->
+							 header.name),
+				       db_attribute_name (attribute));
+#endif /* CUBRID_DEBUG */
+			      break;
+			    }
+			}
+		    }
+
+		  if (!has_obj_ref)
+		    {		/* not found object domain */
+		      for (attribute = class_ptr->ordered_attributes;
+			   attribute; attribute = attribute->order_link)
+			{
+			  if (attribute->header.name_space != ID_ATTRIBUTE)
+			    {
+			      continue;
+			    }
+			  has_obj_ref =
+			    check_referenced_domain (attribute->domain, false
+						     /* don't set */ ,
+						     &num_cls_ref);
+			  if (has_obj_ref == true)
+			    {
+#if defined(CUBRID_DEBUG)
+			      fprintf (stdout,
+				       "found OBJECT domain: %s%s%s->%s\n",
+				       PRINT_IDENTIFIER (class_ptr->
+							 header.name),
+				       db_attribute_name (attribute));
+#endif /* CUBRID_DEBUG */
+			      break;
+			    }
+			}
 		    }
 		}
+	      unload_class_table[num_unload_classes] = class_table->mops[i];
+	      num_unload_classes++;
+	    }
 
-	      if (IS_CLASS_REQUESTED (i))
+	  hfid = sm_heap ((MOBJ) class_ptr);
+	  if (!HFID_IS_NULL (hfid))
+	    {
+	      if (get_estimated_objs (hfid, &est_objects) < 0)
 		{
-		  if (!datafile_per_class)
-		    {
-		      if (!has_obj_ref)
-			{	/* not found object domain */
-			  for (attribute = class_ptr->shared;
-			       attribute != NULL;
-			       attribute =
-			       (SM_ATTRIBUTE *) attribute->header.next)
-			    {
-			      /* false -> don't set */
-			      if ((has_obj_ref =
-				   check_referenced_domain (attribute->domain,
-							    false,
-							    &num_cls_ref)) ==
-				  true)
-				{
-#if defined(CUBRID_DEBUG)
-				  fprintf (stdout,
-					   "found OBJECT domain: %s%s%s->%s\n",
-					   PRINT_IDENTIFIER (class_ptr->
-							     header.name),
-					   db_attribute_name (attribute));
-#endif /* CUBRID_DEBUG */
-				  break;
-				}
-			    }
-			}
-
-		      if (!has_obj_ref)
-			{	/* not found object domain */
-			  for (attribute = class_ptr->class_attributes;
-			       attribute != NULL;
-			       attribute =
-			       (SM_ATTRIBUTE *) attribute->header.next)
-			    {
-			      /* false -> don't set */
-			      if ((has_obj_ref =
-				   check_referenced_domain (attribute->domain,
-							    false,
-							    &num_cls_ref)) ==
-				  true)
-				{
-#if defined(CUBRID_DEBUG)
-				  fprintf (stdout,
-					   "found OBJECT domain: %s%s%s->%s\n",
-					   PRINT_IDENTIFIER (class_ptr->
-							     header.name),
-					   db_attribute_name (attribute));
-#endif /* CUBRID_DEBUG */
-				  break;
-				}
-			    }
-			}
-
-		      if (!has_obj_ref)
-			{	/* not found object domain */
-			  for (attribute = class_ptr->ordered_attributes;
-			       attribute; attribute = attribute->order_link)
-			    {
-			      if (attribute->header.name_space !=
-				  ID_ATTRIBUTE)
-				{
-				  continue;
-				}
-			      has_obj_ref =
-				check_referenced_domain (attribute->domain,
-							 false
-							 /* don't set */ ,
-							 &num_cls_ref);
-			      if (has_obj_ref == true)
-				{
-#if defined(CUBRID_DEBUG)
-				  fprintf (stdout,
-					   "found OBJECT domain: %s%s%s->%s\n",
-					   PRINT_IDENTIFIER (class_ptr->
-							     header.name),
-					   db_attribute_name (attribute));
-#endif /* CUBRID_DEBUG */
-				  break;
-				}
-			    }
-			}
-		    }
-		  unload_class_table[num_unload_classes] =
-		    class_table->mops[i];
-		  num_unload_classes++;
-		}
-
-	      hfid = sm_heap ((MOBJ) class_ptr);
-	      if (!HFID_IS_NULL (hfid))
-		{
-		  if (get_estimated_objs (hfid, &est_objects) < 0)
-		    {
-		      status = 1;
-		      goto end;
-		    }
+		  status = 1;
+		  goto end;
 		}
 	    }
 	}

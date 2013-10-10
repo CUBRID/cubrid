@@ -413,7 +413,8 @@ typedef enum
   UNLOADDB_MSG_OBJECTS_DUMPED = 43,
   UNLOADDB_MSG_OBJECTS_FAILED = 46,
   UNLOADDB_MSG_INVALID_DIR_NAME = 47,
-  UNLOADDB_MSG_LOG_LSA = 48
+  UNLOADDB_MSG_LOG_LSA = 48,
+  UNLOADDB_MSG_PASSWORD_PROMPT = 49
 } MSGCAT_UNLOADDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_LOADDB */
@@ -1133,6 +1134,10 @@ typedef struct _ha_config
 #define UNLOAD_CS_MODE_L                        "CS-mode"
 #define UNLOAD_DATAFILE_PER_CLASS_S             11915
 #define UNLOAD_DATAFILE_PER_CLASS_L             "datafile-per-class"
+#define UNLOAD_USER_S                           'u'
+#define UNLOAD_USER_L                           "user"
+#define UNLOAD_PASSWORD_S                       'p'
+#define UNLOAD_PASSWORD_L                       "password"
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'

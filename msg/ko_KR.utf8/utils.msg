@@ -470,11 +470,14 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 46 %d 개의 객체가 (전체 %d 객체) 성공적으로 덤프 되었습니다.\n
 47 출력 디렉터리 이름이 너무 깁니다.\n
 48 LSA : %d %d \n
+49 패스워드: 
 60 \
 unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
 사용법: %s unloaddb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
+  -u, --user=ID               데이터베이스 접근에 관한 사용자 이름; 기본값: "dba"\n\
+  -p, --password=PASS         사용자 패스워드; 기본값: 없음\n\
   -i, --input-class-file=FILE 테이블 이름이 기입된 파일; 기본값: 모든 클래스\n\
       --include-reference     참조되는 테이블 포함; 기본값: 허용하지 않음(-i가 지정 되야 함)\n\
       --input-class-only      명세한 클래스만 처리; 기본값: 허용하지 않음(-i가 지정 되야 함)\n\

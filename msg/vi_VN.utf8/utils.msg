@@ -470,11 +470,14 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 46 Chỉ %d trong số %d đối tượng được kết xuất thành công.\n
 47 thư mục đầu ra quá dài.\n
 48 LSA : %d %d \n
+49 Mật mã:
 60 \
 unloaddb: Xuất đối tượng và lược đồ từ cơ sở dữ liệu.\n\
 cách sử dụng: %s unloaddb [TÙY CHỌN] tên-cơ sở dữ liệu\n\
 \n\
 các tùy chọn hợp lệ:\n\
+  -u, --user=ID               ID người dùng cho truy cập cơ sở dữ liệu; mặc định: "dba"\n\
+  -p, --password=PASS         mật mã người dùng; mặc định: không có \n\
   -i, --input-class-file=FILE tệp tin đầu vào của tên bảng; mặc định: kết xuất tất cả các lớp\n\
       --include-reference     bao gồm các bảng đã tham chiếu; với tùy chọn -i; mặc định: tắt\n\
       --input-class-only      chỉ bao gồm lớp được chỉ định; với tùy chọn -i; mặc định: tắt\n\

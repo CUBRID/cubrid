@@ -470,11 +470,14 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 46 តែ %d ដែលពុំមាន %d objectsប៉ុណ្ណោះ ត្រូវបានបោះចោលដោយជោគជ័យ។\n
 47 បញ្ជីឈ្មោះoutputវែងពេក។\n
 48 LSA : %d %d \n
+49 កំណត់សម្គាល់សម្ងាត់:
 60 \
 unloaddb: នាំចេញ objects និង schemas ពីដែលតាបេស។\n\
 usage: %s unloaddb [OPTION] ឈ្មោះដែលតាបេស\n\
 \n\
 ជម្រើសសុពល:\n\
+  -u, --user=ID               user ID សម្រាប់សិទ្ធិចូលដែលតាបេស; default: "publdba"\n\
+  -p, --password=PASS         កំណត់សម្គាល់សម្ងាត់user; default: none\n\
   -i, --input-class-file=FILE បញ្ជូល FILE នៃឈ្មោះតារាង; default: បោះចោល classesទាំងអស់\n\
       --include-reference     មាន តារាងដែលត្រូវបានសំអាង; ជាមួយជម្រើស -i ; default: ដែលមិនអាច\n\
       --input-class-only      មានតែ classកំណត់ពិសេស; ជាមួយជម្រើស -i ; default: ដែលមិនអាច\n\

@@ -488,11 +488,14 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 46 Doar %d din %d obiecte vărsate cu succes.\n
 47 directorul de ieşire este prea lung.\n
 48 LSA : %d %d \n
+49 Parola:
 60 \
 unloaddb: Exportă obiecte şi scheme din baza de date.\n\
 utilizare: %s unloaddb [OPŢIUNI] nume-bază-de-date\n\
 \n\
 opţiuni valide:\n\
+  -u, --user=ID                  ID de utilizator pentru acces la baza de date; implicit: "dba"\n\
+  -p, --password=PAROLĂ          parola de utilizator; implicit: nulă\n\
   -i, --input-class-file=FIŞIER  fişier de intrare cu numele tabelelor; implicit: varsă toate clasele\n\
       --include-reference        include tabele referenţiate; cu opţiunea -i; implicit: dezactivat\n\
       --input-class-only         include doar clasa specificată; cu opţiunea -i; implicit: dezactivat\n\
