@@ -5179,10 +5179,11 @@ btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid,
   for (i = 0, curr = cls_repr->indexes;
        i < cls_repr->n_indexes && curr && valid == DISK_VALID; i++, curr++)
     {
-      heap_get_indexinfo_of_btid (thread_p, oid, &curr->btid, NULL, NULL, NULL,
-				  NULL, &index_name, NULL);
-      valid = btree_repair_prev_link_by_btid (thread_p, &curr->btid, repair,
-					      index_name);
+      heap_get_indexinfo_of_btid (thread_p, oid, &curr->btid, NULL, NULL,
+				  NULL, NULL, &index_name, NULL);
+      valid =
+	btree_repair_prev_link_by_btid (thread_p, &curr->btid, repair,
+					index_name);
       if (index_name)
 	{
 	  free_and_init (index_name);
@@ -5438,6 +5439,14 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p,
 					     cls_oid, btscan->oid_ptr,
 					     btscan->oid_area_size, NULL,
 					     &isid, false);
+      if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY
+	  && key->data.midxkey.domain == NULL)
+	{
+	  /* set the appropriate domain, as it might be needed for printing
+	   * if the given key-oid pair does not exist in the index. */
+	  key->data.midxkey.domain = btscan->btree_scan.btid_int.key_type;
+	}
+
       if (btscan->oid_cnt == -1)
 	{
 	  btscan->oid_ptr = isid.oid_list.oidp;
