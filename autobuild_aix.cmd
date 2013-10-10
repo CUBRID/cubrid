@@ -29,7 +29,7 @@ SYS=`uname -s`
 if test "x$SYS" = "xAIX"
 then
 	MAKE="gmake"
-	OPTS="$OPTS --with-mysql=no --with-oracle=no"
+	OPTS="$OPTS --with-mysql=no --with-mysql51=no --with-oracle=no"
 	CC="gcc -maix$BIT_MODEL"
 	CXX="g++ -maix$BIT_MODEL"
 	OBJECT_MODE="$BIT_MODEL"
