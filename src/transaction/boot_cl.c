@@ -722,6 +722,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 #endif /* CS_MODE */
   bool is_db_user_alloced = false;
 
+  int i, optional_cap;
+  bool check_capabilities;
+  bool skip_preferred_hosts = false;
+  bool skip_db_info = false;
+
   assert (client_credential != NULL);
 
   /* If the client is restarted, shutdown the client */
@@ -932,135 +937,199 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   db_clear_reconnect_reason ();
   db_clear_ignore_repl_delay ();
 
-  if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential))
+  for (i = 0; i < 2; i++)
     {
-      char **hosts;
-      DB_INFO *tmp_db;
-
-      hosts = util_split_string (client_credential->preferred_hosts, ":");
-      if (hosts == NULL)
+      if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential)
+	  && skip_preferred_hosts == false)
 	{
-	  error_code = ER_GENERIC_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-	  goto error;
-	}
+	  char **hosts;
+	  DB_INFO *tmp_db;
 
-      tmp_db = cfg_new_db (db->name, NULL, NULL, NULL, (const char **) hosts);
-      if (tmp_db == NULL)
-	{
-	  util_free_string_array (hosts);
-	  error_code = ER_BO_UNKNOWN_DATABASE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
-		  db->name);
-	  goto error;
-	}
+	  check_capabilities = true;
 
-      boot_Host_connected[0] = '\0';
+	  if (i == 0)		/* first */
+	    {
+	      optional_cap = BOOT_CHECK_HA_DELAY_CAP;
+	    }
+	  else			/* second */
+	    {
+	      if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
+		{
+		  check_capabilities = false;
+		}
+	      db_set_ignore_repl_delay ();
 
-      /* connect to preferred hosts in a sequential order even though
-       * a user sets CONNECT_ORDER to RANDOM
-       */
-      error_code =
-	boot_client_initialize_css (tmp_db,
-				    client_credential->
-				    client_type,
-				    true, BOOT_CHECK_HA_DELAY_CAP, false,
-				    DB_CONNECT_ORDER_SEQ);
+	      optional_cap = BOOT_NO_OPT_CAP;
+	    }
 
-      if (error_code != NO_ERROR)
-	{
-	  db_set_reconnect_reason (DB_RC_NON_PREFERRED_HOSTS);
-	}
+	  hosts = util_split_string (client_credential->preferred_hosts, ":");
+	  if (hosts == NULL)
+	    {
+	      error_code = ER_GENERIC_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	      goto error;
+	    }
 
-      util_free_string_array (hosts);
-      cfg_free_directory (tmp_db);
-    }
+	  tmp_db =
+	    cfg_new_db (db->name, NULL, NULL, NULL, (const char **) hosts);
+	  if (tmp_db == NULL)
+	    {
+	      util_free_string_array (hosts);
+	      error_code = ER_BO_UNKNOWN_DATABASE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_BO_UNKNOWN_DATABASE, 1, db->name);
+	      goto error;
+	    }
 
-  if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential)
-      && error_code == NO_ERROR)
-    {
-      /* connected to any preferred hosts successfully */
-    }
-  else
-    if (BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_credential->client_type))
-    {
-      error_code =
-	boot_client_initialize_css (db, client_credential->client_type, true,
-				    BOOT_CHECK_HA_DELAY_CAP, false,
-				    client_credential->connect_order);
-      if (error_code == ER_NET_SERVER_HAND_SHAKE)
-	{
-	  db_set_ignore_repl_delay ();
+	  boot_Host_connected[0] = '\0';
 
-	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
-			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
+	  /* connect to preferred hosts in a sequential order even though
+	   * a user sets CONNECT_ORDER to RANDOM
+	   */
 	  error_code =
-	    boot_client_initialize_css (db,
+	    boot_client_initialize_css (tmp_db,
 					client_credential->
 					client_type,
-					true, BOOT_NO_OPT_CAP,
-					false,
-					client_credential->connect_order);
+					check_capabilities, optional_cap,
+					false, DB_CONNECT_ORDER_SEQ);
+
+	  if (error_code != NO_ERROR)
+	    {
+	      db_set_reconnect_reason (DB_RC_NON_PREFERRED_HOSTS);
+
+	      if (error_code == ER_NET_SERVER_HAND_SHAKE)
+		{
+		  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
+				"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
+		}
+	      else
+		{
+		  skip_preferred_hosts = true;
+		}
+	    }
+
+	  util_free_string_array (hosts);
+	  cfg_free_directory (tmp_db);
 	}
-    }
-  else if (BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))
-    {
-      error_code =
-	boot_client_initialize_css (db, client_credential->client_type,
-				    false, BOOT_NO_OPT_CAP, false,
-				    DB_CONNECT_ORDER_SEQ);
-    }
-  else if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
-    {
-      error_code =
-	boot_client_initialize_css (db,
-				    client_credential->
-				    client_type,
-				    true, BOOT_CHECK_HA_DELAY_CAP, false,
-				    client_credential->connect_order);
 
-      if (error_code == ER_NET_SERVER_HAND_SHAKE)
+      if (skip_db_info == true)
 	{
-	  db_set_ignore_repl_delay ();
+	  continue;
+	}
 
-	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
-			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
+      if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential)
+	  && error_code == NO_ERROR)
+	{
+	  /* connected to any preferred hosts successfully */
+	  break;
+	}
+      else
+	if (BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE
+	    (client_credential->client_type))
+	{
+	  check_capabilities = true;
+	  if (i == 0)		/* first */
+	    {
+	      optional_cap = BOOT_CHECK_HA_DELAY_CAP;
+	    }
+	  else			/* second */
+	    {
+	      db_set_ignore_repl_delay ();
+
+	      optional_cap = BOOT_NO_OPT_CAP;
+	    }
+
 	  error_code =
 	    boot_client_initialize_css (db, client_credential->client_type,
-					false, BOOT_NO_OPT_CAP, false,
+					check_capabilities, optional_cap,
+					false,
 					client_credential->connect_order);
 	}
-    }
-  else if (client_credential->client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
-    {
-      error_code =
-	boot_client_initialize_css (db,
-				    client_credential->
-				    client_type,
-				    true, BOOT_CHECK_HA_DELAY_CAP, false,
-				    client_credential->connect_order);
-
-      if (error_code == ER_NET_SERVER_HAND_SHAKE)
+      else if (BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))
 	{
-	  db_set_ignore_repl_delay ();
+	  assert (!BOOT_IS_PREFERRED_HOSTS_SET (client_credential));
 
-	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
-			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
+	  check_capabilities = false;
+	  optional_cap = BOOT_NO_OPT_CAP;
+
+	  error_code =
+	    boot_client_initialize_css (db, client_credential->client_type,
+					check_capabilities, optional_cap,
+					false, DB_CONNECT_ORDER_SEQ);
+	  break;		/* dont retry */
+	}
+      else if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
+	{
+	  if (i == 0)		/* first */
+	    {
+	      check_capabilities = true;
+	      optional_cap = BOOT_CHECK_HA_DELAY_CAP;
+	    }
+	  else			/* second */
+	    {
+	      db_set_ignore_repl_delay ();
+
+	      check_capabilities = false;
+	      optional_cap = BOOT_NO_OPT_CAP;
+	    }
+
 	  error_code =
 	    boot_client_initialize_css (db,
 					client_credential->
 					client_type,
-					true, BOOT_NO_OPT_CAP,
+					check_capabilities, optional_cap,
 					false,
 					client_credential->connect_order);
+
 	}
-    }
-  else
-    {
-      error_code =
-	boot_client_initialize_css (db, client_credential->client_type,
-				    false, BOOT_NO_OPT_CAP, false,
-				    client_credential->connect_order);
+      else if (client_credential->client_type ==
+	       BOOT_CLIENT_SLAVE_ONLY_BROKER)
+	{
+	  check_capabilities = true;
+	  if (i == 0)		/* first */
+	    {
+	      optional_cap = BOOT_CHECK_HA_DELAY_CAP;
+	    }
+	  else			/* second */
+	    {
+	      db_set_ignore_repl_delay ();
+
+	      optional_cap = BOOT_NO_OPT_CAP;
+	    }
+	  boot_client_initialize_css (db,
+				      client_credential->
+				      client_type,
+				      check_capabilities, optional_cap,
+				      false,
+				      client_credential->connect_order);
+	}
+      else
+	{
+	  assert (!BOOT_IS_PREFERRED_HOSTS_SET (client_credential));
+
+	  check_capabilities = false;
+	  optional_cap = BOOT_NO_OPT_CAP;
+	  error_code =
+	    boot_client_initialize_css (db, client_credential->client_type,
+					check_capabilities, optional_cap,
+					false,
+					client_credential->connect_order);
+	  break;		/* dont retry */
+	}
+
+      if (error_code == NO_ERROR)
+	{
+	  break;
+	}
+      else if (error_code == ER_NET_SERVER_HAND_SHAKE)
+	{
+	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
+			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
+	}
+      else
+	{
+	  skip_db_info = true;
+	}
     }
 
   if (error_code != NO_ERROR)
