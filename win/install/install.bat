@@ -7,7 +7,7 @@ if %3 == "" goto exit
 set SRC_DIR=%1
 set DEST_DIR=%2
 set PLATFROM=%3
-if %3 == "x64" (set GENCAT=%SRC_DIR%\..\..\gencat\gencat_x64.exe) else (set GENCAT=%SRC_DIR%\..\..\gencat\gencat.exe)
+set GENCAT=%SRC_DIR%\..\..\gencat\gencat.exe
 set MSG_EN_US_DIR=%DEST_DIR%\msg\en_US
 set MSG_EN_US_UTF8_DIR=%DEST_DIR%\msg\en_US.utf8
 set MSG_EUCKR_DIR=%DEST_DIR%\msg\ko_KR.euckr
