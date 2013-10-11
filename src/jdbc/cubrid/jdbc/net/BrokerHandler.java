@@ -38,6 +38,7 @@ public class BrokerHandler {
 	    }
 
 	    toBroker.setSoTimeout(TIMEOUT_UNIT);
+	    toBroker.setKeepAlive(true);
 	    in = new UTimedDataInputStream(toBroker.getInputStream(), ip, port, timeout);
 	    out = new DataOutputStream(toBroker.getOutputStream());
 	    out.write(UConnection.driverInfo);
@@ -70,6 +71,7 @@ public class BrokerHandler {
 		toBroker.connect(brokerAddress, timeout);
 	    }
 
+	    toBroker.setKeepAlive(true);
 	    return toBroker;
 	} catch (SocketTimeoutException e) {
 	    if (toBroker != null) {

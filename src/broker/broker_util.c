@@ -295,31 +295,13 @@ ut_kill_as_process (int pid, char *broker_name, int as_index, int shard_flag)
 }
 
 int
-ut_set_keepalive (int sock, int keepalivetime)
+ut_set_keepalive (int sock)
 {
   int optval, optlen;
-#if defined(WINDOWS)
-  /* WinSock structure for KeepAlive timing settings */
-  struct tcp_keepalive settings;
-  DWORD bytesReturned;
-  WSAOVERLAPPED overlapped;
-#endif
 
   optlen = sizeof (optval);
   optval = 1;			/* true for SO_KEEPALIVE */
   setsockopt (sock, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen);
-
-#if defined(WINDOWS)
-  overlapped.hEvent = NULL;
-  settings.onoff = 1;
-  settings.keepalivetime = keepalivetime * 1000;
-  optlen = sizeof (struct tcp_keepalive);
-  WSAIoctl (sock, SIO_KEEPALIVE_VALS, &settings, optlen, NULL, 0,
-	    &bytesReturned, &overlapped, NULL);
-#else
-  optval = keepalivetime;
-  setsockopt (sock, SOL_TCP, TCP_KEEPIDLE, &optval, optlen);
-#endif
 
   return 0;
 }

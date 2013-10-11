@@ -76,7 +76,7 @@ extern int ut_kill_as_process (int pid, char *br_name, int as_id,
 extern void ut_cd_work_dir (void);
 extern void ut_cd_root_dir (void);
 
-extern int ut_set_keepalive (int sock, int keepalive_time);
+extern int ut_set_keepalive (int sock);
 
 #if defined(WINDOWS)
 extern int run_child (const char *appl_name);

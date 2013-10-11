@@ -1261,6 +1261,8 @@ connect_srv (unsigned char *ip_addr, int port, char is_retry,
   int retry_count = 0;
   int con_retry_count;
   int ret;
+  int keepalive_val = 1;
+  int optlen = sizeof (keepalive_val);
 #if defined (WINDOWS)
   struct timeval timeout_val;
   fd_set rset, wset, eset;
@@ -1423,6 +1425,7 @@ connect_retry:
 #endif
 
   setsockopt (sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one, sizeof (one));
+  setsockopt (sock_fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive_val, optlen);
 
   *ret_sock = sock_fd;
   return CCI_ER_NO_ERROR;
