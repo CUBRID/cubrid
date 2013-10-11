@@ -1110,7 +1110,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	   */
 	  (void) pr_clone_value (peek_right, arithptr->value);
 	  *peek_dbval = peek_left;
-	  return NO_ERROR;
+
+	  goto fetch_peek_arith_end;
 	}
       break;
 
@@ -3577,15 +3578,15 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
-    default:
-      break;
-
     case T_WIDTH_BUCKET:
       if (db_width_bucket (arithptr->value, peek_left,
 			   peek_right, peek_third, peek_fourth) != NO_ERROR)
 	{
 	  goto error;
 	}
+      break;
+
+    default:
       break;
     }
 
@@ -3608,6 +3609,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
     }
 
+fetch_peek_arith_end:
   thread_dec_recursion_depth (thread_p);
 
   return NO_ERROR;

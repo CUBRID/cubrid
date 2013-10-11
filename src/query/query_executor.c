@@ -1658,6 +1658,13 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (xasl->type == BUILDLIST_PROC || xasl->type == BUILD_SCHEMA_PROC)
     {
+      if (xasl->selected_upd_list != NULL && xasl->list_id->tuple_cnt > 0)
+       {
+         ret = ER_QPROC_INVALID_QRY_SINGLE_TUPLE;
+         er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
+         GOTO_EXIT_ON_ERROR;
+       }
+
       tpldescr_status = qexec_generate_tuple_descriptor (thread_p,
 							 xasl->list_id,
 							 xasl->outptr_list,
