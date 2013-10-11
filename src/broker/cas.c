@@ -817,6 +817,7 @@ cas_main (void)
   };
   FN_RETURN fn_ret = FN_KEEP_CONN;
   char client_ip_str[16];
+  bool is_new_connection;
 
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
@@ -1125,6 +1126,14 @@ cas_main (void)
 				   as_info->driver_version);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	    cas_set_session_id (req_info.client_version, db_sessionid);
+	    if (db_get_session_id () != DB_EMPTY_SESSION)
+	      {
+		is_new_connection = false;
+	      }
+	    else
+	      {
+		is_new_connection = true;
+	      }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 	    set_hang_check_time ();
@@ -1170,7 +1179,7 @@ cas_main (void)
 		      {
 			cas_access_log (&cas_start_time, shm_as_index,
 					client_ip_addr, db_name, db_user,
-					false);
+					ACL_REJECTED);
 		      }
 
 		    unset_hang_check_time ();
@@ -1223,6 +1232,16 @@ cas_main (void)
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	    session_id = db_get_session_id ();
+
+	    if (shm_appl->access_log == ON)
+	      {
+		ACCESS_LOG_TYPE type =
+		  (is_new_connection) ? NEW_CONNECTION : CLIENT_CHANGED;
+
+		cas_access_log (&cas_start_time, shm_as_index,
+				client_ip_addr, db_name, db_user, type);
+	      }
+
 	    cas_log_write_and_end (0, false, "connect db %s user %s url %s"
 				   " session id %u", db_name, db_user, url,
 				   session_id);
@@ -1326,13 +1345,6 @@ cas_main (void)
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	    cas_log_error_handler_end ();
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-
-	    if (shm_appl->access_log == ON)
-	      {
-		cas_access_log (&cas_start_time, shm_as_index,
-				client_ip_addr, db_name, db_user, true);
-	      }
-
 	  }
 
 	CLOSE_SOCKET (client_sock_fd);

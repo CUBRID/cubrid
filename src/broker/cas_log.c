@@ -62,7 +62,9 @@ typedef int mode_t;
 
 #define CAS_LOG_BUFFER_SIZE (8192)
 #define SQL_LOG_BUFFER_SIZE 163840
+#define ACCESS_LOG_IS_DENIED_TYPE(T)  ((T)==ACL_REJECTED)
 
+static const char *get_access_log_type_string (ACCESS_LOG_TYPE type);
 static char cas_log_buffer[CAS_LOG_BUFFER_SIZE];	/* 8K buffer */
 static char sql_log_buffer[SQL_LOG_BUFFER_SIZE];
 
@@ -111,6 +113,7 @@ static int cas_fputc (int c, FILE * stream);
 static int cas_unlink (const char *pathname);
 static int cas_rename (const char *oldpath, const char *newpath);
 static int cas_mkdir (const char *pathname, mode_t mode);
+static void access_log_backup (char *access_log_file, struct tm *ct);
 
 static char *
 make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
@@ -797,19 +800,19 @@ cas_error_log (int err_code, char *err_msg_str, int client_ip_addr)
 
 int
 cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
-		char *dbname, char *dbuser, bool accepted)
+		char *dbname, char *dbuser, ACCESS_LOG_TYPE log_type)
 {
 #ifndef LIBCAS_FOR_JSP
   FILE *fp;
   char *access_log_file = shm_appl->access_log_file;
-  char *script = NULL;
   char clt_ip_str[16];
-  char *clt_appl = NULL;
   struct tm ct1, ct2;
   time_t t1, t2;
-  char *p;
-  char err_str[4];
   struct timeval end_time;
+  char log_file_buf[PATH_MAX];
+  const char *print_format =
+    "%d %s %04d/%02d/%02d %02d:%02d:%02d %s %s %s %s\n";
+  char session_id_buf[16];
 
   gettimeofday (&end_time, NULL);
 
@@ -822,58 +825,63 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
   ct1.tm_year += 1900;
   ct2.tm_year += 1900;
 
+  if (ACCESS_LOG_IS_DENIED_TYPE (log_type))
+    {
+      int n;
+      n = snprintf (log_file_buf, PATH_MAX, "%s%s",
+		    shm_appl->access_log_file,
+		    ACCESS_LOG_DENIED_FILENAME_POSTFIX);
+      if (n >= PATH_MAX)
+	{
+	  return -1;
+	}
+
+      access_log_file = log_file_buf;
+    }
+
   fp = sql_log_open (access_log_file);
   if (fp == NULL)
     {
       return -1;
     }
 
-  if (script == NULL)
-    script = (char *) "-";
-  if (clt_appl == NULL || clt_appl[0] == '\0')
-    clt_appl = (char *) "-";
+  if ((ftell (fp) / ONE_K) > shm_appl->access_log_max_size)
+    {
+      time_t cur_time = time (NULL);
+      struct tm ct;
+
+      if (localtime_r (&cur_time, &ct) != NULL)
+	{
+	  ct.tm_year += 1900;
+
+	  cas_fclose (fp);
+
+	  access_log_backup (access_log_file, &ct);
+
+	  fp = sql_log_open (access_log_file);
+	  if (fp == NULL)
+	    {
+	      return -1;
+	    }
+	}
+    }
 
   ut_get_ipv4_string (clt_ip_str, sizeof (clt_ip_str),
 		      (unsigned char *) (&client_ip_addr));
 
-  for (p = clt_appl; *p; p++)
+  session_id_buf[0] = '\0';
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  if (!ACCESS_LOG_IS_DENIED_TYPE (log_type))
     {
-      if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
-	*p = '_';
+      sprintf (session_id_buf, "%u", db_get_session_id ());
     }
-
-#ifdef CAS_ERROR_LOG
-  if (error_file_offset >= 0)
-    sprintf (err_str, "ERR");
-  else
 #endif
-    sprintf (err_str, "-");
 
-#ifdef CAS_ERROR_LOG
-  cas_fprintf (fp,
-	       "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
-	       "%02d/%02d/%02d %02d:%02d:%02d %d %s %d %s %s %s\n",
-	       as_index + 1, clt_ip_str, clt_appl, script,
-	       (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
-	       (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
+  cas_fprintf (fp, print_format, as_index + 1, clt_ip_str,
 	       ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour,
-	       ct1.tm_min, ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1,
-	       ct2.tm_mday, ct2.tm_hour, ct2.tm_min, ct2.tm_sec,
-	       (int) getpid (), err_str, error_file_offset, dbname, dbuser,
-	       ((accepted) ? "" : " : rejected"));
-#else
-  cas_fprintf (fp,
-	       "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
-	       "%02d/%02d/%02d %02d:%02d:%02d %d %s %d %s %s %s\n",
-	       as_index + 1, clt_ip_str, clt_appl, script,
-	       (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
-	       (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
-	       ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour,
-	       ct1.tm_min, ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1,
-	       ct2.tm_mday, ct2.tm_hour, ct2.tm_min, ct2.tm_sec,
-	       (int) getpid (), err_str, -1, dbname, dbuser,
-	       ((accepted) ? "" : " : rejected"));
-#endif
+	       ct1.tm_min, ct1.tm_sec, dbname, dbuser,
+	       get_access_log_type_string (log_type), session_id_buf);
 
   cas_fclose (fp);
   return (end_time.tv_sec - start_time->tv_sec);
@@ -1368,4 +1376,37 @@ cas_mkdir (const char *pathname, mode_t mode)
   cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
+}
+
+static void
+access_log_backup (char *access_log_file, struct tm *ct)
+{
+  char cmd_buf[BUFSIZ];
+
+  sprintf (cmd_buf, "%s.%04d%02d%02d%02d%02d%02d",
+	   access_log_file,
+	   ct->tm_year, ct->tm_mon + 1, ct->tm_mday, ct->tm_hour, ct->tm_min,
+	   ct->tm_sec);
+  rename (access_log_file, cmd_buf);
+}
+
+static const char *
+get_access_log_type_string (ACCESS_LOG_TYPE type)
+{
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  switch (type)
+    {
+    case NEW_CONNECTION:
+      return "NEW";
+    case CLIENT_CHANGED:
+      return "OLD";
+    case ACL_REJECTED:
+      return "REJECT";
+    default:
+      assert (0);
+      break;
+    }
+#endif
+
+  return "";
 }

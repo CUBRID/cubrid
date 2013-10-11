@@ -510,12 +510,18 @@ broker_config_read_internal (const char *conf_file,
 	ini_getstr (ini, sec_name, "ERROR_LOG_DIR", DEFAULT_ERR_DIR, &lineno);
       MAKE_FILEPATH (br_info[num_brs].err_log_dir, ini_string,
 		     CONF_LOG_FILE_LEN);
+
+      ini_string = ini_getstr (ini, sec_name, "ACCESS_LOG_DIR",
+			       DEFAULT_ACCESS_LOG_DIR, &lineno);
+      MAKE_FILEPATH (br_info[num_brs].access_log_dir, ini_string,
+		     CONF_LOG_FILE_LEN);
       ini_string = ini_getstr (ini, sec_name, "DATABASES_CONNECTION_FILE",
 			       DEFAULT_EMPTY_STRING, &lineno);
       MAKE_FILEPATH (br_info[num_brs].db_connection_file, ini_string,
 		     BROKER_INFO_PATH_MAX);
 
-      strcpy (br_info[num_brs].access_log_file, CUBRID_BASE_DIR);
+      strcpy (br_info[num_brs].access_log_file,
+	      br_info[num_brs].access_log_dir);
       strcpy (br_info[num_brs].error_log_file, CUBRID_BASE_DIR);
 
       br_info[num_brs].max_prepared_stmt_count =
@@ -635,10 +641,28 @@ broker_config_read_internal (const char *conf_file,
 
       br_info[num_brs].access_log =
 	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "ACCESS_LOG",
-						 "ON", &lineno));
+						 "OFF", &lineno));
       if (br_info[num_brs].access_log < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
+      strncpy (size_str,
+	       ini_getstr (ini, sec_name, "ACCESS_LOG_MAX_SIZE",
+			   DEFAULT_ACCESS_LOG_MAX_SIZE, &lineno),
+	       sizeof (size_str));
+      br_info[num_brs].access_log_max_size =
+	(int) ut_size_string_to_kbyte (size_str, "K");
+
+      if (br_info[num_brs].access_log_max_size < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+      else if (br_info[num_brs].access_log_max_size > MAX_ACCESS_LOG_MAX_SIZE)
+	{
+	  errcode = PARAM_BAD_RANGE;
 	  goto conf_error;
 	}
 
@@ -1336,6 +1360,9 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	{
 	  fprintf (fp, "ACCESS_LOG\t\t=%s\n", tmp_str);
 	}
+      fprintf (fp, "ACCESS_LOG_MAX_SIZE\t=%dK\n",
+	       (br_info[i].access_log_max_size));
+      fprintf (fp, "ACCESS_LOG_DIR\t\t=%s\n", br_info[i].access_log_dir);
       fprintf (fp, "ACCESS_LIST\t\t=%s\n", br_info[i].acl_file);
       fprintf (fp, "MAX_STRING_LENGTH\t=%d\n", br_info[i].max_string_length);
       tmp_str =

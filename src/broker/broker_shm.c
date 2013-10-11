@@ -552,7 +552,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
   shm_as_p->access_mode = br_info_p->access_mode;
   shm_as_p->cci_pconnect = br_info_p->cci_pconnect;
   shm_as_p->access_log = br_info_p->access_log;
-
+  shm_as_p->access_log_max_size = br_info_p->access_log_max_size;
   shm_as_p->jdbc_cache = br_info_p->jdbc_cache;
   shm_as_p->jdbc_cache_only_hint = br_info_p->jdbc_cache_only_hint;
   shm_as_p->jdbc_cache_life_time = br_info_p->jdbc_cache_life_time;

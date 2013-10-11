@@ -27,6 +27,13 @@
 
 #ident "$Id$"
 
+typedef enum
+{
+  NEW_CONNECTION,
+  CLIENT_CHANGED,
+  ACL_REJECTED
+} ACCESS_LOG_TYPE;
+
 extern void cas_log_open (char *br_name);
 extern void cas_log_reset (char *br_name);
 extern void cas_log_close (bool flag);
@@ -36,7 +43,7 @@ extern void cas_error_log (int err_code, char *err_msg, int client_ip_addr);
 
 extern int cas_access_log (struct timeval *start_time, int as_index,
 			   int client_ip_addr, char *dbname, char *dbuser,
-			   bool accepted);
+			   ACCESS_LOG_TYPE log_type);
 extern void cas_log_end (int mode, int run_time_sec, int run_time_msec);
 extern void cas_log_write_nonl (unsigned int seq_num, bool unit_start,
 				const char *fmt, ...);

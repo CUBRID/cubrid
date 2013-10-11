@@ -150,8 +150,6 @@ static int shard_shm_check_max_file_open_limit (T_BROKER_INFO * br_info,
 static void get_shard_db_password (T_BROKER_INFO * br_info_p);
 static void get_upper_str (char *upper_str, int len, char *value);
 
-static void rename_access_log_file_name (char *access_log_file,
-					 struct tm *ct);
 static void rename_error_log_file_name (char *error_log_file, struct tm *ct);
 
 static int br_activate (T_BROKER_INFO * br_info, int master_shm_id,
@@ -2355,6 +2353,21 @@ admin_conf_change (int master_shm_id, const char *br_name,
       br_info_p->access_log = access_log_flag;
       shm_as_p->access_log = access_log_flag;
     }
+  else if (strcasecmp (conf_name, "ACCESS_LOG_MAX_SIZE") == 0)
+    {
+      int size;
+
+      size = (int) ut_size_string_to_kbyte (conf_value, "M");
+
+      if (size < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_conf_error;
+	}
+
+      br_info_p->access_log_max_size = size;
+      shm_as_p->access_log_max_size = size;
+    }
   else if (strcasecmp (conf_name, "KEEP_CONNECTION") == 0)
     {
       int keep_con;
@@ -3230,18 +3243,10 @@ br_inactivate (T_BROKER_INFO * br_info)
 
   if (br_info->log_backup == ON)
     {
-      if (br_info->shard_flag == OFF)
-	{
-	  rename_access_log_file_name (br_info->access_log_file, &ct);
-	}
       rename_error_log_file_name (br_info->error_log_file, &ct);
     }
   else
     {
-      if (br_info->shard_flag == OFF)
-	{
-	  unlink (br_info->access_log_file);
-	}
       unlink (br_info->error_log_file);
     }
 
@@ -3767,17 +3772,6 @@ get_cubrid_version ()
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* !WINDOWS */
-
-static void
-rename_access_log_file_name (char *access_log_file, struct tm *ct)
-{
-  char cmd_buf[BUFSIZ];
-
-  sprintf (cmd_buf, "%s.%02d%02d%02d.%02d%02d",
-	   access_log_file,
-	   ct->tm_year, ct->tm_mon + 1, ct->tm_mday, ct->tm_hour, ct->tm_min);
-  rename (access_log_file, cmd_buf);
-}
 
 static void
 rename_error_log_file_name (char *error_log_file, struct tm *ct)

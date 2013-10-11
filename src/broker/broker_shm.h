@@ -576,6 +576,7 @@ struct t_shm_appl_server
   char proxy_log_dir[CONF_LOG_FILE_LEN];
   char port_name[SHM_APPL_SERVER_NAME_MAX];
   int proxy_log_max_size;
+  int access_log_max_size;
   /*to here, these are used only in shard */
 
 #ifdef USE_MUTEX

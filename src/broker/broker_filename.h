@@ -55,6 +55,9 @@
 #define DEFAULT_SLOW_LOG_DIR          DEFAULT_LOG_DIR
 #define DEFAULT_ERR_DIR               "log/broker/error_log/"
 #define DEFAULT_SHARD_PROXY_LOG_DIR   "log/broker/proxy_log/"
+#define DEFAULT_ACCESS_LOG_DIR        "log/broker/"
+
+#define ACCESS_LOG_DENIED_FILENAME_POSTFIX ".denied"
 
 typedef enum t_cubrid_file_id T_CUBRID_FILE_ID;
 enum t_cubrid_file_id
