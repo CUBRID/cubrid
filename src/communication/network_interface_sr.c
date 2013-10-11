@@ -82,7 +82,8 @@
 unsigned int db_on_server = 1;
 
 static int server_capabilities (void);
-static int check_client_capabilities (int client_cap, int rel_compare,
+static int check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap,
+				      int rel_compare,
 				      REL_COMPATIBILITY * compatibility,
 				      const char *client_host);
 static void sbtree_find_unique_internal (THREAD_ENTRY * thread_p,
@@ -224,8 +225,8 @@ server_capabilities (void)
  *
  */
 static int
-check_client_capabilities (int client_cap, int rel_compare,
-			   REL_COMPATIBILITY * compatibility,
+check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap,
+			   int rel_compare, REL_COMPATIBILITY * compatibility,
 			   const char *client_host)
 {
   int server_cap;
@@ -266,6 +267,15 @@ check_client_capabilities (int client_cap, int rel_compare,
 		    "NET_CAP_REMOTE_DISABLED server %s %d client %s %d\n",
 		    boot_Host_name, server_cap & NET_CAP_REMOTE_DISABLED,
 		    client_host, client_cap & NET_CAP_REMOTE_DISABLED);
+    }
+
+  if (client_cap & NET_CAP_HA_IGNORE_REPL_DELAY)
+    {
+      thread_p->conn_entry->ignore_repl_delay = true;
+
+      er_log_debug (ARG_FILE_LINE,
+		    "NET_CAP_HA_IGNORE_REPL_DELAY client %s %d\n",
+		    client_host, client_cap & NET_CAP_HA_IGNORE_REPL_DELAY);
     }
 
   return client_cap;
@@ -371,7 +381,7 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid,
    * 3. check if the client has a capability to make it compatible.
    */
   compat = rel_get_net_compatible (client_release, server_release);
-  if (check_client_capabilities (client_capabilities,
+  if (check_client_capabilities (thread_p, client_capabilities,
 				 rel_compare (client_release, server_release),
 				 &compat, client_host) != client_capabilities)
     {
@@ -2814,12 +2824,15 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid,
       else if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_type)
 	       && css_is_ha_repl_delayed () == true)
 	{
-	  reset_on_commit = true;
+	  if (thread_p->conn_entry->ignore_repl_delay == false)
+	    {
+	      reset_on_commit = true;
+	      er_log_debug (ARG_FILE_LINE, "stran_server_commit: "
+			    "(standby && replication delay "
+			    "&& broker and default client) "
+			    "DB_CONNECTION_STATUS_RESET\n");
+	    }
 	  thread_p->conn_entry->reset_on_commit = false;
-	  er_log_debug (ARG_FILE_LINE, "stran_server_commit: "
-			"(standby && replication delay "
-			"&& broker and default client) "
-			"DB_CONNECTION_STATUS_RESET\n");
 	}
       else if (client_type == BOOT_CLIENT_BROKER)
 	{
@@ -2925,12 +2938,15 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid,
       else if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_type)
 	       && css_is_ha_repl_delayed () == true)
 	{
-	  reset_on_commit = true;
+	  if (thread_p->conn_entry->ignore_repl_delay == false)
+	    {
+	      reset_on_commit = true;
+	      er_log_debug (ARG_FILE_LINE, "stran_server_abort(): "
+			    "(standby && replication delay "
+			    "&& default and broker client) "
+			    "DB_CONNECTION_STATUS_RESET\n");
+	    }
 	  thread_p->conn_entry->reset_on_commit = false;
-	  er_log_debug (ARG_FILE_LINE, "stran_server_abort(): "
-			"(standby && replication delay "
-			"&& default and broker client) "
-			"DB_CONNECTION_STATUS_RESET\n");
 	}
       else if (client_type == BOOT_CLIENT_BROKER)
 	{

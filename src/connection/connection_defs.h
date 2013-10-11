@@ -432,6 +432,8 @@ struct css_conn_entry
   BOOT_CLIENT_TYPE client_type;
   CSS_CRITICAL_SECTION csect;
   bool stop_talk;		/* block and stop this connection */
+  bool ignore_repl_delay;	/* don't do reset_on_commit by the delay 
+				 * of replication */
   unsigned short stop_phase;
 
   char *version_string;		/* client version string */

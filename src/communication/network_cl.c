@@ -248,6 +248,11 @@ client_capabilities (void)
       capabilities |= NET_CAP_UPDATE_DISABLED;
     }
 
+  if (db_get_ignore_repl_delay ())
+    {
+      capabilities |= NET_CAP_HA_IGNORE_REPL_DELAY;
+    }
+
   return capabilities;
 }
 

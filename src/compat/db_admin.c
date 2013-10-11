@@ -80,6 +80,7 @@ char db_Program_name[PATH_MAX];
 static char *db_Preferred_hosts = NULL;
 static int db_Connect_order = DB_CONNECT_ORDER_SEQ;
 static int db_Reconnect_reason = 0;
+static bool db_Ignore_repl_delay = false;
 
 static void install_static_methods (void);
 static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose,
@@ -520,6 +521,24 @@ bool
 db_get_need_reconnect ()
 {
   return (db_Reconnect_reason != 0);
+}
+
+void
+db_set_ignore_repl_delay (void)
+{
+  db_Ignore_repl_delay = true;
+}
+
+void
+db_clear_ignore_repl_delay (void)
+{
+  db_Ignore_repl_delay = false;
+}
+
+bool
+db_get_ignore_repl_delay (void)
+{
+  return db_Ignore_repl_delay;
 }
 
 /*

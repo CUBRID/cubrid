@@ -289,6 +289,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->in_transaction = false;
   conn->reset_on_commit = false;
   conn->stop_talk = false;
+  conn->ignore_repl_delay = false;
   conn->stop_phase = THREAD_STOP_WORKERS_EXCEPT_LOGWR;
   conn->version_string = NULL;
   conn->free_queue_list = NULL;

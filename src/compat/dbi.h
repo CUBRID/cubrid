@@ -397,6 +397,9 @@ extern void db_set_reconnect_reason (int reason);
 extern void db_unset_reconnect_reason (int reason);
 extern void db_clear_reconnect_reason (void);
 extern bool db_get_need_reconnect (void);
+extern void db_set_ignore_repl_delay (void);
+extern void db_clear_ignore_repl_delay (void);
+extern bool db_get_ignore_repl_delay (void);
 
 extern DB_OBJECT *db_find_class_of_index (const char *const index,
 					  const DB_CONSTRAINT_TYPE type);

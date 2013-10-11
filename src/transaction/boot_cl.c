@@ -930,6 +930,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 #if defined(CS_MODE)
   /* Initialize the communication subsystem */
   db_clear_reconnect_reason ();
+  db_clear_ignore_repl_delay ();
 
   if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential))
     {
@@ -989,6 +990,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 				    client_credential->connect_order);
       if (error_code == ER_NET_SERVER_HAND_SHAKE)
 	{
+	  db_set_ignore_repl_delay ();
+
 	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
 			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
 	  error_code =
@@ -1018,6 +1021,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
       if (error_code == ER_NET_SERVER_HAND_SHAKE)
 	{
+	  db_set_ignore_repl_delay ();
+
 	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
 			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
 	  error_code =
@@ -1037,6 +1042,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
       if (error_code == ER_NET_SERVER_HAND_SHAKE)
 	{
+	  db_set_ignore_repl_delay ();
+
 	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
 			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
 	  error_code =
