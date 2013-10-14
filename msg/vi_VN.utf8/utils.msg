@@ -199,7 +199,7 @@ Lệnh có thể dùng :\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-m] [-c] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [<expr>]\n\
     on          tên-trung gian\n\
     off         tên-trung gian\n\
     reset       tên-trung gian\n\

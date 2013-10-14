@@ -199,7 +199,7 @@ commandដែលមាន:\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-m] [-c] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [<expr>]\n\
     on          ឈ្មោះbroker\n\
     off         ឈ្មោះbroker\n\
     reset       ឈ្មោះbroker\n\
