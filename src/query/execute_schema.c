@@ -1057,6 +1057,19 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      pt_evaluate_tree (parser, d->info.data_default.default_value,
 				&src_val, 1);
 
+	      /* Fix CUBRIDSUS-8035. FOR Primary Key situation, we will
+	       * throw another ERROR in function dbt_change_default, so
+	       * I excluded it from here.
+	       */
+	      if (DB_IS_NULL (&src_val)
+		  && (def_attr->flags & SM_ATTFLAG_NON_NULL)
+		  && !(def_attr->flags & SM_ATTFLAG_PRIMARY_KEY))
+		{
+		  ERROR1 (error, ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL,
+			  attr_name);
+		  break;
+		}
+
 	      if (n->info.name.meta_class == PT_META_ATTR)
 		{
 		  error = dbt_change_default (ctemplate, attr_name, 1,
