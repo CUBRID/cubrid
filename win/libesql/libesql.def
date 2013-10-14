@@ -11,6 +11,8 @@ EXPORTS
     uci_start
     uci_end
     uci_stop
+    uci_get_sqlcode
+    uci_get_sqlwarn_0
     uci_connect
     uci_disconnect
     uci_commit

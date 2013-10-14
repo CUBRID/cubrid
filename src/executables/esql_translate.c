@@ -1493,7 +1493,7 @@ emit_whenever (void)
   /* for not_found */
   if (on_not_found.action != CONTINUE)
     {
-      fprintf (FP, "  if(sqlca.sqlcode == %s) ", NOT_FOUND_MACRO_NAME);
+      fprintf (FP, "  if(uci_get_sqlcode () == %s) ", NOT_FOUND_MACRO_NAME);
       switch (on_not_found.action)
 	{
 	case GOTO:
@@ -1516,7 +1516,7 @@ emit_whenever (void)
   /* for errors */
   if (on_error.action != CONTINUE)
     {
-      fprintf (FP, "  if(sqlca.sqlcode < 0) ");
+      fprintf (FP, "  if(uci_get_sqlcode () < 0) ");
       switch (on_error.action)
 	{
 	case STOP:
@@ -1549,8 +1549,7 @@ emit_whenever (void)
   /* for warnings */
   if (on_warning.action != CONTINUE)
     {
-      fprintf (FP, "  if(sqlca.sqlwarn.sqlwarn0 == %s) ",
-	       WARN_CHAR_MACRO_NAME);
+      fprintf (FP, "  if(uci_get_sqlwarn_0 () == %s) ", WARN_CHAR_MACRO_NAME);
       switch (on_warning.action)
 	{
 	case STOP:

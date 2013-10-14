@@ -585,6 +585,28 @@ uci_stop (void)
 }
 
 /*
+ * uci_get_sqlcode() - Get UCI SQL Code
+ * return : sql code
+ */
+long
+uci_get_sqlcode (void)
+{
+  return sqlca.sqlcode;
+}
+
+/*
+ * uci_get_sqlwarn_0() - Get UCI SQL warning 0
+ * return : warning
+ */
+char
+uci_get_sqlwarn_0 (void)
+{
+  return sqlca.sqlwarn.sqlwarn0;
+}
+
+
+
+/*
  * uci_connect() - Connect to a database. if already connected, disconnect
  *    from the current database and connect.
  * return : void

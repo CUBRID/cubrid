@@ -496,10 +496,12 @@ EXPORTS
     intl_char_count
     intl_identifier_casecmp
     lang_charset
-	lang_get_client_charset
-	lang_get_client_collation
-	lang_get_generic_unicode_norm
-	lang_set_parser_use_client_charset
+    lang_get_client_charset
+    lang_get_client_collation
+    lang_get_generic_unicode_norm
+    lang_init
+    lang_set_charset_lang
+    lang_set_parser_use_client_charset
     msgcat_gets
     msgcat_open
     optarg

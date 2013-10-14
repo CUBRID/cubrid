@@ -781,6 +781,7 @@ EXPORTS
     btree_fix_overflow_oid_page_all_btrees
     catcls_get_db_collation
     lang_get_collation
+    lang_init
 ; db private
 	db_private_alloc_debug
 	db_private_alloc_release

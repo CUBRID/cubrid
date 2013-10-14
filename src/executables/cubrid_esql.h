@@ -155,6 +155,8 @@ extern "C"
   extern void uci_start (void *, const char *, int, unsigned int);
   extern void uci_end (void);
   extern void uci_stop (void);
+  extern long uci_get_sqlcode (void);
+  extern char uci_get_sqlwarn_0 (void);
 
   extern void uci_connect (const char *, const char *, const char *);
   extern void uci_disconnect (void);

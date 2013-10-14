@@ -6967,6 +6967,14 @@ main (int argc, char **argv)
     {
       exit (1);
     }
+
+  if (lang_init () != NO_ERROR)
+    {
+      exit (1);
+    }
+    
+  lang_set_charset_lang ("en_US.iso88591");
+
   parser = parser_create_parser ();
   pt_buffer = pt_append_string (parser, NULL, NULL);
 
@@ -7694,6 +7702,7 @@ mm_strdup (char* str)
 
   buff = mm_malloc(len + 1);
   strncpy(buff, str, len);
+  buff[len] = '\0';
 
   return buff;
 }
