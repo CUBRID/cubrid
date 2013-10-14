@@ -53,66 +53,71 @@ static jmp_buf csql_Jmp_buf;
 
 static void csql_pipe_handler (int sig_no);
 
+
+#define CMD_EMPTY_FLAG	  0x00000000
+#define CMD_CHECK_CONNECT 0x00000001
+
 /* session command table */
 typedef struct
 {
   const char *text;		/* lower case cmd name */
   SESSION_CMD cmd_no;		/* command number */
+  unsigned int flags;
 } SESSION_CMD_TABLE;
 
 static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   /* File stuffs */
-  {"read", S_CMD_READ},
-  {"write", S_CMD_WRITE},
-  {"append", S_CMD_APPEND},
-  {"print", S_CMD_PRINT},
-  {"shell", S_CMD_SHELL},
-  {"!", S_CMD_SHELL},
-  {"cd", S_CMD_CD},
-  {"exit", S_CMD_EXIT},
+  {"read", S_CMD_READ, CMD_EMPTY_FLAG},
+  {"write", S_CMD_WRITE, CMD_EMPTY_FLAG},
+  {"append", S_CMD_APPEND, CMD_EMPTY_FLAG},
+  {"print", S_CMD_PRINT, CMD_EMPTY_FLAG},
+  {"shell", S_CMD_SHELL, CMD_EMPTY_FLAG},
+  {"!", S_CMD_SHELL, CMD_EMPTY_FLAG},
+  {"cd", S_CMD_CD, CMD_EMPTY_FLAG},
+  {"exit", S_CMD_EXIT, CMD_EMPTY_FLAG},
   /* Edit stuffs */
-  {"clear", S_CMD_CLEAR},
-  {"edit", S_CMD_EDIT},
-  {"list", S_CMD_LIST},
+  {"clear", S_CMD_CLEAR, CMD_EMPTY_FLAG},
+  {"edit", S_CMD_EDIT, CMD_EMPTY_FLAG},
+  {"list", S_CMD_LIST, CMD_EMPTY_FLAG},
   /* Command stuffs */
-  {"run", S_CMD_RUN},
-  {"xrun", S_CMD_XRUN},
-  {"commit", S_CMD_COMMIT},
-  {"rollback", S_CMD_ROLLBACK},
-  {"autocommit", S_CMD_AUTOCOMMIT},
-  {"checkpoint", S_CMD_CHECKPOINT},
-  {"killtran", S_CMD_KILLTRAN},
-  {"restart", S_CMD_RESTART},
+  {"run", S_CMD_RUN, CMD_CHECK_CONNECT},
+  {"xrun", S_CMD_XRUN, CMD_CHECK_CONNECT},
+  {"commit", S_CMD_COMMIT, CMD_CHECK_CONNECT},
+  {"rollback", S_CMD_ROLLBACK, CMD_CHECK_CONNECT},
+  {"autocommit", S_CMD_AUTOCOMMIT, CMD_EMPTY_FLAG},
+  {"checkpoint", S_CMD_CHECKPOINT, CMD_CHECK_CONNECT},
+  {"killtran", S_CMD_KILLTRAN, CMD_CHECK_CONNECT},
+  {"restart", S_CMD_RESTART, CMD_EMPTY_FLAG},
   /* Environment stuffs */
-  {"shell_cmd", S_CMD_SHELL_CMD},
-  {"editor_cmd", S_CMD_EDIT_CMD},
-  {"print_cmd", S_CMD_PRINT_CMD},
-  {"pager_cmd", S_CMD_PAGER_CMD},
-  {"nopager", S_CMD_NOPAGER_CMD},
-  {"column-width", S_CMD_COLUMN_WIDTH},
-  {"string-width", S_CMD_STRING_WIDTH},
-  {"set", S_CMD_SET_PARAM},
-  {"get", S_CMD_GET_PARAM},
-  {"plan", S_CMD_PLAN_DUMP},
-  {"echo", S_CMD_ECHO},
-  {"date", S_CMD_DATE},
-  {"time", S_CMD_TIME},
-  {"line-output", S_CMD_LINE_OUTPUT},
-  {".hist", S_CMD_HISTO},
-  {".clear_hist", S_CMD_CLR_HISTO},
-  {".dump_hist", S_CMD_DUMP_HISTO},
-  {".x_hist", S_CMD_DUMP_CLR_HISTO},
+  {"shell_cmd", S_CMD_SHELL_CMD, CMD_EMPTY_FLAG},
+  {"editor_cmd", S_CMD_EDIT_CMD, CMD_EMPTY_FLAG},
+  {"print_cmd", S_CMD_PRINT_CMD, CMD_EMPTY_FLAG},
+  {"pager_cmd", S_CMD_PAGER_CMD, CMD_EMPTY_FLAG},
+  {"nopager", S_CMD_NOPAGER_CMD, CMD_EMPTY_FLAG},
+  {"column-width", S_CMD_COLUMN_WIDTH, CMD_EMPTY_FLAG},
+  {"string-width", S_CMD_STRING_WIDTH, CMD_EMPTY_FLAG},
+  {"set", S_CMD_SET_PARAM, CMD_CHECK_CONNECT},
+  {"get", S_CMD_GET_PARAM, CMD_CHECK_CONNECT},
+  {"plan", S_CMD_PLAN_DUMP, CMD_CHECK_CONNECT},
+  {"echo", S_CMD_ECHO, CMD_EMPTY_FLAG},
+  {"date", S_CMD_DATE, CMD_EMPTY_FLAG},
+  {"time", S_CMD_TIME, CMD_EMPTY_FLAG},
+  {"line-output", S_CMD_LINE_OUTPUT, CMD_EMPTY_FLAG},
+  {".hist", S_CMD_HISTO, CMD_EMPTY_FLAG},
+  {".clear_hist", S_CMD_CLR_HISTO, CMD_EMPTY_FLAG},
+  {".dump_hist", S_CMD_DUMP_HISTO, CMD_EMPTY_FLAG},
+  {".x_hist", S_CMD_DUMP_CLR_HISTO, CMD_EMPTY_FLAG},
   /* Help stuffs */
-  {"help", S_CMD_HELP},
-  {"schema", S_CMD_SCHEMA},
-  {"database", S_CMD_DATABASE},
-  {"trigger", S_CMD_TRIGGER},
-  {"info", S_CMD_INFO},
+  {"help", S_CMD_HELP, CMD_EMPTY_FLAG},
+  {"schema", S_CMD_SCHEMA, CMD_CHECK_CONNECT},
+  {"database", S_CMD_DATABASE, CMD_CHECK_CONNECT},
+  {"trigger", S_CMD_TRIGGER, CMD_CHECK_CONNECT},
+  {"info", S_CMD_INFO, CMD_EMPTY_FLAG},
   /* history stuffs */
-  {"historyread", S_CMD_HISTORY_READ},
-  {"historylist", S_CMD_HISTORY_LIST},
+  {"historyread", S_CMD_HISTORY_READ, CMD_EMPTY_FLAG},
+  {"historylist", S_CMD_HISTORY_LIST, CMD_EMPTY_FLAG},
 
-  {"trace", S_CMD_TRACE}
+  {"trace", S_CMD_TRACE, CMD_CHECK_CONNECT}
 };
 
 /*
@@ -139,20 +144,17 @@ csql_get_session_cmd_no (const char *input)
       return S_CMD_XRUN;
     }
 
-  intl_char_count ((unsigned char *) input, strlen (input), lang_charset (),
-		   &input_cmd_length);
+  input_cmd_length = strlen (input);
   num_matches = 0;
   matched_index = -1;
   for (i = 0; i < (int) DIM (csql_Session_cmd_table); i++)
     {
-      if (intl_identifier_ncasecmp
+      if (strncasecmp
 	  (input, csql_Session_cmd_table[i].text, input_cmd_length) == 0)
 	{
 	  int ses_cmd_length;
 
-	  intl_char_count ((unsigned char *) csql_Session_cmd_table[i].text,
-			   strlen (csql_Session_cmd_table[i].text),
-			   lang_charset (), &ses_cmd_length);
+	  ses_cmd_length = strlen (csql_Session_cmd_table[i].text);
 	  if (ses_cmd_length == input_cmd_length)
 	    {
 	      return (csql_Session_cmd_table[i].cmd_no);
@@ -167,6 +169,18 @@ csql_get_session_cmd_no (const char *input)
 	CSQL_ERR_SESS_CMD_NOT_FOUND;
       return (-1);
     }
+#if defined (CS_MODE)
+  if (csql_Session_cmd_table[matched_index].flags & CMD_CHECK_CONNECT)
+    {
+      if (db_Connect_status != DB_CONNECTION_STATUS_CONNECTED)
+	{
+	  csql_Error_code = CSQL_ERR_SQL_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_CONNECT, 0);
+	  return (-1);
+	}
+    }
+#endif
+
   return (csql_Session_cmd_table[matched_index].cmd_no);
 }
 
