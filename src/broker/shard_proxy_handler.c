@@ -322,6 +322,8 @@ proxy_context_send_error (T_PROXY_CONTEXT * ctx_p)
   assert (ctx_p->error_ind != CAS_NO_ERROR);
   assert (ctx_p->error_code != CAS_NO_ERROR);
 
+  proxy_info_p->num_proxy_error_processed++;
+
   /* reset request and response timeout */
   client_info_p = shard_shm_get_client_info (proxy_info_p, ctx_p->client_id);
   if (client_info_p != NULL)

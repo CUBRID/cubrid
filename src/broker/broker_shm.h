@@ -495,6 +495,14 @@ struct t_proxy_info
   INT64 num_hint_all_queries_processed;
   INT64 num_hint_err_queries_processed;
 
+  INT64 num_proxy_error_processed;
+
+  INT64 num_request_stmt;
+  INT64 num_request_stmt_in_pool;
+
+  INT64 num_connect_requests;
+  INT64 num_restarts;
+
   /* hang check info */
   time_t claimed_alive_time;
 

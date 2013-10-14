@@ -82,6 +82,12 @@
 #define         FIELD_WIDTH_BROKER_NAME 20
 #define         FIELD_WIDTH_AS_ID       10
 
+#define         BROKER_MONITOR_FLAG_MASK     0x01
+#define         SHARDDB_MONITOR_FLAG_MASK    0x02
+#define         PROXY_MONITOR_FLAG_MASK      0x04
+#define         METADATA_MONITOR_FLAG_MASK   0x08
+#define         CLIENT_MONITOR_FLAG_MASK     0x10
+
 #if defined(WINDOWS) && !defined(PRId64)
 # define PRId64 "lld"
 #endif
@@ -129,8 +135,12 @@ typedef enum
   FIELD_TRANSACTION_STIME,
   FIELD_CONNECT,
   FIELD_RESTART,		/* = 40 */
+  FIELD_REQUEST,
+  FIELD_SHARD_ID,
+  FIELD_PROXY_ID,
   FIELD_SHARD_Q_SIZE,
-  FIELD_LAST = FIELD_SHARD_Q_SIZE
+  FIELD_STMT_POOL_RATIO,
+  FIELD_LAST = FIELD_STMT_POOL_RATIO
 } FIELD_NAME;
 
 typedef enum
@@ -142,6 +152,14 @@ typedef enum
   FIELD_T_INT64,
   FIELD_T_TIME
 } FIELD_TYPE;
+
+typedef enum
+{
+  MONITOR_T_BROKER = 0,
+  MONITOR_T_SHARDDB,
+  MONITOR_T_PROXY,
+  MONITOR_T_LAST = MONITOR_T_PROXY
+} MONITOR_TYPE;
 
 typedef enum
 {
@@ -215,7 +233,11 @@ struct status_field fields[FIELD_LAST + 1] = {
   {FIELD_TRANSACTION_STIME, 19, "TRANSACTION STIME", FIELD_RIGHT_ALIGN},
   {FIELD_CONNECT, 9, "#CONNECT", FIELD_RIGHT_ALIGN},
   {FIELD_RESTART, 9, "#RESTART", FIELD_RIGHT_ALIGN},
-  {FIELD_SHARD_Q_SIZE, 7, "SHARD-Q", FIELD_RIGHT_ALIGN}
+  {FIELD_REQUEST, 20, "#REQUEST", FIELD_RIGHT_ALIGN},
+  {FIELD_SHARD_ID, 10, "SHARD_ID", FIELD_RIGHT_ALIGN},
+  {FIELD_PROXY_ID, 10, "PROXY_ID", FIELD_RIGHT_ALIGN},
+  {FIELD_SHARD_Q_SIZE, 7, "SHARD-Q", FIELD_RIGHT_ALIGN},
+  {FIELD_STMT_POOL_RATIO, 20, "STMT-POOL-RATIO(%)", FIELD_RIGHT_ALIGN}
 };
 
 /* structure for appl monitoring */
@@ -251,6 +273,18 @@ struct br_monitoring_item
   UINT64 num_update_query;
   UINT64 num_delete_query;
   UINT64 num_others_query;
+  UINT64 num_interrupts;
+  UINT64 num_request;
+  UINT64 num_connect;
+  UINT64 num_client_wait;
+  UINT64 num_client_wait_nsec;
+  UINT64 num_busy;
+  UINT64 num_busy_nsec;
+  UINT64 num_restart;
+  UINT64 shard_waiter_count;
+  UINT64 num_request_stmt;
+  UINT64 num_request_stmt_in_pool;
+  int num_appl_server;
 };
 
 typedef struct shard_stat_item SHARD_STAT_ITEM;
@@ -278,21 +312,37 @@ static void print_job_queue (T_MAX_HEAP_NODE *);
 static void ip2str (unsigned char *ip, char *ip_str);
 static void time2str (const time_t t, char *str);
 
+static void print_monitor_header (MONITOR_TYPE mnt_type);
+static void
+set_monitor_items (BR_MONITORING_ITEM * mnt_items,
+		   T_BROKER_INFO * br_info,
+		   T_SHM_APPL_SERVER * shm_appl,
+		   T_SHM_PROXY * shm_proxy, MONITOR_TYPE mnt_type);
+static void
+print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur,
+		     BR_MONITORING_ITEM * mnt_items_old, int num_mnt_items,
+		     double elapsed_time, T_BROKER_INFO * br_info_p,
+		     T_SHM_APPL_SERVER * shm_appl, MONITOR_TYPE mnt_type);
+
 static void
 appl_info_display (T_SHM_APPL_SERVER * shm_appl,
 		   T_APPL_SERVER_INFO * as_info_p, int br_index,
 		   int as_index,
 		   APPL_MONITORING_ITEM * appl_mnt_old, time_t current_time,
 		   double elapsed_time);
-static int appl_monitor (char *br_vector);
-static int br_monitor (char *br_vector);
+static int appl_monitor (char *br_vector, double elapsed_time);
+static int brief_monitor (char *br_vector, MONITOR_TYPE mnt_type,
+			  double elapsed_time);
+
 #ifdef GET_PSINFO
 static void time_format (int t, char *time_str);
 #endif
-static void print_header (bool use_pdh_flag);
+static void print_appl_header (bool use_pdh_flag);
 static int print_title (char *buf_p, int buf_offset, FIELD_NAME name,
 			const char *new_title_p);
 static void print_value (FIELD_NAME name, const void *value, FIELD_TYPE type);
+static int
+get_num_monitor_items (MONITOR_TYPE mnt_type, T_SHM_PROXY * shm_proxy_p);
 static const char *get_access_mode_string (T_ACCESS_MODE_VALUE mode,
 					   int replica_only_flag);
 static const char *get_sql_log_mode_string (T_SQL_LOG_MODE_VALUE mode);
@@ -310,21 +360,19 @@ static void clrtoeol ();
 static void endwin ();
 #endif
 
-static int metadata_monitor (void);
+static int metadata_monitor (double elapsed_time);
 static int client_monitor (void);
 
 static T_SHM_BROKER *shm_br;
 static bool display_job_queue = false;
 static int refresh_sec = 0;
-static bool br_monitor_flag = false;
 static int last_access_sec = 0;
 static bool tty_mode = false;
 static bool full_info_flag = false;
 static int state_interval = 1;
 static char service_filter_value = SERVICE_UNKNOWN;
 
-static bool metadata_monitor_flag = false;
-static bool client_monitor_flag = false;
+static unsigned int monitor_flag = 0;
 
 #if defined(WINDOWS)
 HANDLE h_console;
@@ -413,6 +461,8 @@ main (int argc, char **argv)
 #else
   WINDOW *win;
 #endif
+  time_t time_old, time_cur;
+  double elapsed_time;
 
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
@@ -483,8 +533,14 @@ main (int argc, char **argv)
 #endif
     }
 
+  (void) time (&time_old);
+  time_old--;
+
   while (1)
     {
+      (void) time (&time_cur);
+      elapsed_time = difftime (time_cur, time_old);
+
       if (refresh_sec > 0 && !tty_mode)
 	{
 	  move (0, 0);
@@ -504,21 +560,62 @@ main (int argc, char **argv)
 	}
       else
 	{
-	  if (br_monitor_flag == true)
+	  if (monitor_flag & BROKER_MONITOR_FLAG_MASK)
 	    {
-	      br_monitor (br_vector);
+	      if ((monitor_flag & ~BROKER_MONITOR_FLAG_MASK) != 0)
+		{
+		  print_newline ();
+		}
+	      brief_monitor (br_vector, MONITOR_T_BROKER, elapsed_time);
 	    }
-	  else if (metadata_monitor_flag == true)
+
+	  if (monitor_flag & SHARDDB_MONITOR_FLAG_MASK)
 	    {
-	      metadata_monitor ();
+	      if ((monitor_flag & ~SHARDDB_MONITOR_FLAG_MASK) != 0)
+		{
+		  print_newline ();
+		  str_out ("<SHARD INFO>");
+		  print_newline ();
+		}
+	      brief_monitor (br_vector, MONITOR_T_SHARDDB, elapsed_time);
 	    }
-	  else if (client_monitor_flag == true)
+
+	  if (monitor_flag & PROXY_MONITOR_FLAG_MASK)
 	    {
+	      if ((monitor_flag & ~PROXY_MONITOR_FLAG_MASK) != 0)
+		{
+		  print_newline ();
+		  str_out ("<PROXY INFO>");
+		  print_newline ();
+		}
+	      brief_monitor (br_vector, MONITOR_T_PROXY, elapsed_time);
+	    }
+
+	  if (monitor_flag & METADATA_MONITOR_FLAG_MASK)
+	    {
+	      if ((monitor_flag & ~METADATA_MONITOR_FLAG_MASK) != 0)
+		{
+		  print_newline ();
+		  str_out ("<SHARD METADATA INFO>");
+		  print_newline ();
+		}
+	      metadata_monitor (elapsed_time);
+	    }
+
+	  if (monitor_flag & CLIENT_MONITOR_FLAG_MASK)
+	    {
+	      if ((monitor_flag & ~CLIENT_MONITOR_FLAG_MASK) != 0)
+		{
+		  print_newline ();
+		  str_out ("<CLIENT INFO>");
+		  print_newline ();
+		}
 	      client_monitor ();
 	    }
-	  else
+
+	  if (monitor_flag == 0)
 	    {
-	      appl_monitor (br_vector);
+	      appl_monitor (br_vector, elapsed_time);
 	    }
 	}
 
@@ -568,6 +665,11 @@ main (int argc, char **argv)
 	{
 	  break;
 	}
+
+      if (elapsed_time > 0)
+	{
+	  time_old = time_cur;
+	}
     }				/* end of while(1) */
 
   if (shm_br != NULL)
@@ -587,12 +689,14 @@ static void
 print_usage (void)
 {
   printf
-    ("broker_monitor [-b] [-q] [-t] [-s <sec>] [-m] [-c] [-f] [<expr>]\n");
+    ("broker_monitor [-b] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-f] [<expr>]\n");
   printf ("\t<expr> part of broker name or SERVICE=[ON|OFF]\n");
   printf ("\t-q display job queue\n");
   printf ("\t-m display shard statistics information\n");
   printf ("\t-c display client information\n");
   printf ("\t-b brief mode (show broker info)\n");
+  printf ("\t-S brief mode (show sharddb info)\n");
+  printf ("\t-P brief mode (show proxy info)\n");
   printf ("\t-s refresh time in sec\n");
   printf ("\t-f full info\n");
 }
@@ -607,11 +711,10 @@ get_args (int argc, char *argv[], char *br_vector)
   regex_t re;
 #endif
 
-  char optchars[] = "hbqts:l:fmc";
+  char optchars[] = "hbqts:l:fmcSP";
 
   display_job_queue = false;
   refresh_sec = 0;
-  br_monitor_flag = false;
   last_access_sec = 0;
   full_info_flag = false;
   state_interval = 1;
@@ -630,7 +733,7 @@ get_args (int argc, char *argv[], char *br_vector)
 	  refresh_sec = atoi (optarg);
 	  break;
 	case 'b':
-	  br_monitor_flag = true;
+	  monitor_flag |= BROKER_MONITOR_FLAG_MASK;
 	  break;
 	case 'l':
 	  state_interval = last_access_sec = atoi (optarg);
@@ -643,10 +746,16 @@ get_args (int argc, char *argv[], char *br_vector)
 	  full_info_flag = true;
 	  break;
 	case 'm':
-	  metadata_monitor_flag = true;
+	  monitor_flag |= METADATA_MONITOR_FLAG_MASK;
 	  break;
 	case 'c':
-	  client_monitor_flag = true;
+	  monitor_flag |= CLIENT_MONITOR_FLAG_MASK;
+	  break;
+	case 'S':
+	  monitor_flag |= SHARDDB_MONITOR_FLAG_MASK;
+	  break;
+	case 'P':
+	  monitor_flag |= PROXY_MONITOR_FLAG_MASK;
 	  break;
 	case 'h':
 	case '?':
@@ -955,18 +1064,16 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
 }
 
 static int
-appl_monitor (char *br_vector)
+appl_monitor (char *br_vector, double elapsed_time)
 {
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];
   T_SHM_APPL_SERVER *shm_appl;
   int i, j, k, appl_offset;
   int shard_flag;
-  static time_t time_old;
 
   static APPL_MONITORING_ITEM *appl_mnt_olds = NULL;
 
-  time_t current_time, time_cur;
-  double elapsed_time = 0;
+  time_t current_time;
 #ifdef GET_PSINFO
   T_PSINFO proc_info;
   char time_str[32];
@@ -987,13 +1094,7 @@ appl_monitor (char *br_vector)
 	  return -1;
 	}
       memset ((char *) appl_mnt_olds, 0, sizeof (APPL_MONITORING_ITEM) * n);
-      (void) time (&time_old);
-      time_old--;
     }
-
-  (void) time (&time_cur);
-
-  elapsed_time = difftime (time_cur, time_old);
 
   for (i = 0; i < shm_br->num_broker; i++)
     {
@@ -1032,9 +1133,9 @@ appl_monitor (char *br_vector)
 		}
 	      print_newline ();
 #if defined (WINDOWS)
-	      print_header (shm_appl->use_pdh_flag);
+	      print_appl_header (shm_appl->use_pdh_flag);
 #else
-	      print_header (false);
+	      print_appl_header (false);
 #endif
 	      current_time = time (NULL);
 
@@ -1074,61 +1175,47 @@ appl_monitor (char *br_vector)
 	}
     }
 
-  if (elapsed_time > 0)
-    {
-      time_old = time_cur;
-    }
-
   return 0;
 }
 
-static int
-br_monitor (char *br_vector)
+static void
+print_monitor_header (MONITOR_TYPE mnt_type)
 {
-  T_SHM_APPL_SERVER *shm_appl;
-  int i, j;
-  char buf[1024];
-  UINT64 num_connect;
-  int buf_offset;
-#ifdef GET_PSINFO
-  T_PSINFO proc_info;
-  char time_str[32];
-#endif
-  static BR_MONITORING_ITEM *br_mnt_olds = NULL;
-  static time_t time_old;
-  time_t time_cur;
-  UINT64 num_req;
-  UINT64 num_tx_cur = 0, num_qx_cur = 0, num_interrupts_cur = 0;
-  UINT64 num_lt_cur = 0, num_lq_cur = 0, num_eq_cur = 0;
-  UINT64 num_eq_ui_cur = 0;
-  long long unsigned int lts = 0, lqs = 0;
-  UINT64 eqs = 0, its = 0;
-  UINT64 eqs_ui = 0;
-  UINT64 tps = 0, qps = 0;
+  char buf[256];
+  char line_buf[256];
+  int buf_offset = 0;
+  int i;
   static unsigned int tty_print_header = 0;
-  double elapsed_time;
-  UINT64 num_select_query_cur = 0;
-  UINT64 num_insert_query_cur = 0;
-  UINT64 num_update_query_cur = 0;
-  UINT64 num_delete_query_cur = 0;
-  UINT64 num_others_query_cur = 0;
-  UINT64 num_select_query = 0;
-  UINT64 num_insert_query = 0;
-  UINT64 num_update_query = 0;
-  UINT64 num_delete_query = 0;
-  UINT64 num_others_query = 0;
 
-  T_APPL_SERVER_INFO *as_info_p = NULL;
+  assert (mnt_type <= MONITOR_T_LAST);
+
+  if (tty_mode == true && (tty_print_header++ % 20 != 0)
+      && mnt_type == MONITOR_T_BROKER
+      && (monitor_flag & ~BROKER_MONITOR_FLAG_MASK) == 0)
+    {
+      return;
+    }
 
   buf_offset = 0;
 
-  buf_offset = print_title (buf, buf_offset, FIELD_BROKER_NAME, NULL);
-  buf_offset = print_title (buf, buf_offset, FIELD_PID, NULL);
-  if (full_info_flag)
+  if (mnt_type == MONITOR_T_BROKER)
     {
-      buf_offset = print_title (buf, buf_offset, FIELD_PSIZE, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_BROKER_NAME, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_PID, NULL);
+      if (full_info_flag)
+	{
+	  buf_offset = print_title (buf, buf_offset, FIELD_PSIZE, NULL);
+	}
+      buf_offset = print_title (buf, buf_offset, FIELD_PORT, NULL);
     }
-  buf_offset = print_title (buf, buf_offset, FIELD_PORT, NULL);
+  else if (mnt_type == MONITOR_T_SHARDDB)
+    {
+      buf_offset = print_title (buf, buf_offset, FIELD_SHARD_ID, NULL);
+    }
+  else if (mnt_type == MONITOR_T_PROXY)
+    {
+      buf_offset = print_title (buf, buf_offset, FIELD_PROXY_ID, NULL);
+    }
 
   if (full_info_flag)
     {
@@ -1137,8 +1224,8 @@ br_monitor (char *br_vector)
       buf_offset = print_title (buf, buf_offset,
 				FIELD_APPL_SERVER_NUM_TOTAL, (char *) "AS(T");
       buf_offset =
-	print_title (buf, buf_offset,
-		     FIELD_APPL_SERVER_NUM_CLIENT_WAIT, NULL);
+	print_title (buf, buf_offset, FIELD_APPL_SERVER_NUM_CLIENT_WAIT,
+		     NULL);
       buf_offset =
 	print_title (buf, buf_offset, FIELD_APPL_SERVER_NUM_BUSY, NULL);
       sprintf (field_title_with_interval, "%d%s", state_interval, "s-W");
@@ -1158,7 +1245,14 @@ br_monitor (char *br_vector)
 				FIELD_APPL_SERVER_NUM_TOTAL, (char *) "AS");
     }
 
-  buf_offset = print_title (buf, buf_offset, FIELD_JOB_QUEUE_ID, NULL);
+  if (mnt_type == MONITOR_T_BROKER)
+    {
+      buf_offset = print_title (buf, buf_offset, FIELD_JOB_QUEUE_ID, NULL);
+    }
+  else if (mnt_type == MONITOR_T_SHARDDB || mnt_type == MONITOR_T_PROXY)
+    {
+      buf_offset = print_title (buf, buf_offset, FIELD_SHARD_Q_SIZE, NULL);
+    }
 
 #ifdef GET_PSINFO
   buf_offset = print_title (buf, buf_offset, FIELD_THREAD, NULL);
@@ -1187,361 +1281,610 @@ br_monitor (char *br_vector)
   buf_offset = print_title (buf, buf_offset, FIELD_ERROR_QUERIES, NULL);
   buf_offset = print_title (buf, buf_offset, FIELD_UNIQUE_ERROR_QUERIES,
 			    NULL);
-  if (full_info_flag)
+  if (full_info_flag && mnt_type == MONITOR_T_BROKER)
     {
       buf_offset = print_title (buf, buf_offset, FIELD_CANCELED, NULL);
       buf_offset = print_title (buf, buf_offset, FIELD_ACCESS_MODE, NULL);
       buf_offset = print_title (buf, buf_offset, FIELD_SQL_LOG, NULL);
     }
-  buf_offset = print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION,
-			    NULL);
 
-  if (tty_mode == false || (tty_print_header++ % 20 == 0))
+  if (mnt_type == MONITOR_T_BROKER)
     {
-      str_out ("%s", buf);
-      print_newline ();
-      for (i = strlen (buf); i > 0; i--)
-	str_out ("%s", "=");
-      print_newline ();
+      buf_offset =
+	print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION, NULL);
+    }
+  else if (mnt_type == MONITOR_T_SHARDDB)
+    {
+      buf_offset = print_title (buf, buf_offset, FIELD_REQUEST, NULL);
+    }
+  else if (mnt_type == MONITOR_T_PROXY)
+    {
+      buf_offset =
+	print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_RESTART, NULL);
+
+      if (full_info_flag)
+	{
+	  buf_offset =
+	    print_title (buf, buf_offset, FIELD_STMT_POOL_RATIO, NULL);
+	}
     }
 
-  if (br_mnt_olds == NULL)
+  str_out ("%s", buf);
+  print_newline ();
+
+  for (i = 0; i < buf_offset; i++)
     {
-      br_mnt_olds =
-	(BR_MONITORING_ITEM *) calloc (sizeof (BR_MONITORING_ITEM),
-				       shm_br->num_broker);
-      if (br_mnt_olds == NULL)
+      str_out ("%s", "=");
+    }
+  print_newline ();
+
+  return;
+}
+
+static void
+set_monitor_items (BR_MONITORING_ITEM * mnt_items,
+		   T_BROKER_INFO * br_info_p,
+		   T_SHM_APPL_SERVER * shm_appl,
+		   T_SHM_PROXY * shm_proxy, MONITOR_TYPE mnt_type)
+{
+  int i, j;
+  BR_MONITORING_ITEM *mnt_item_p = NULL;
+  T_APPL_SERVER_INFO *as_info_p = NULL;
+  T_PROXY_INFO *proxy_info_p = NULL;
+  T_SHARD_INFO *shard_info_p = NULL;
+
+  assert (mnt_type <= MONITOR_T_LAST);
+
+  mnt_item_p = mnt_items;
+
+  for (i = 0; i < br_info_p->appl_server_max_num; i++)
+    {
+      as_info_p = &(shm_appl->as_info[i]);
+
+      if (as_info_p->service_flag != ON)
+	{
+	  continue;
+	}
+      if (mnt_type == MONITOR_T_SHARDDB)
+	{
+	  mnt_item_p = mnt_items + as_info_p->shard_id;
+	}
+      else if (mnt_type == MONITOR_T_PROXY)
+	{
+	  mnt_item_p = mnt_items + as_info_p->proxy_id;
+	}
+
+      mnt_item_p->num_request += as_info_p->num_request;
+      mnt_item_p->num_connect += as_info_p->num_connect_requests;
+      if (full_info_flag)
+	{
+	  time_t cur_time = time (NULL);
+	  bool time_expired =
+	    (cur_time - as_info_p->last_access_time >= state_interval);
+
+	  if (as_info_p->uts_status == UTS_STATUS_BUSY
+	      && as_info_p->con_status != CON_STATUS_OUT_TRAN)
+	    {
+	      if (as_info_p->log_msg[0] == '\0')
+		{
+		  mnt_item_p->num_client_wait++;
+		  if (time_expired)
+		    {
+		      mnt_item_p->num_client_wait_nsec++;
+		    }
+		}
+	      else
+		{
+		  mnt_item_p->num_busy++;
+		  if (time_expired)
+		    {
+		      mnt_item_p->num_busy_nsec++;
+		    }
+		}
+	    }
+#if defined(WIDOWS)
+	  else if (as_info_p->uts_status == UTS_STATUS_BUSY_WAIT)
+	    {
+	      mnt_item_p->num_busy++;
+	      if (time_expired)
+		{
+		  mnt_item_p->num_busy_nsec++;
+		}
+	    }
+#endif
+	}
+      mnt_item_p->num_request += as_info_p->num_requests_received;
+      mnt_item_p->num_tx += as_info_p->num_transactions_processed;
+      mnt_item_p->num_qx += as_info_p->num_queries_processed;
+      mnt_item_p->num_lt += as_info_p->num_long_transactions;
+      mnt_item_p->num_lq += as_info_p->num_long_queries;
+      mnt_item_p->num_eq += as_info_p->num_error_queries;
+      mnt_item_p->num_eq_ui += as_info_p->num_unique_error_queries;
+      mnt_item_p->num_interrupts += as_info_p->num_interrupts;
+      mnt_item_p->num_select_query += as_info_p->num_select_queries;
+      mnt_item_p->num_insert_query += as_info_p->num_insert_queries;
+      mnt_item_p->num_update_query += as_info_p->num_update_queries;
+      mnt_item_p->num_delete_query += as_info_p->num_delete_queries;
+      mnt_item_p->
+	num_others_query = (mnt_item_p->num_qx
+			    - mnt_item_p->num_select_query
+			    - mnt_item_p->num_insert_query
+			    - mnt_item_p->num_update_query
+			    - mnt_item_p->num_delete_query);
+    }
+
+  if (shm_appl->shard_flag == OFF)
+    {
+      return;
+    }
+
+  assert (shm_proxy);
+
+  if (mnt_type == MONITOR_T_BROKER)
+    {
+      for (i = 0; i < shm_proxy->num_proxy; i++)
+	{
+	  proxy_info_p = &shm_proxy->proxy_info[i];
+
+	  mnt_item_p->num_eq += proxy_info_p->num_proxy_error_processed;
+	  mnt_item_p->num_connect += proxy_info_p->num_connect_requests;
+	}
+      mnt_item_p->num_appl_server = br_info_p->appl_server_num;
+    }
+  else if (mnt_type == MONITOR_T_SHARDDB)
+    {
+      for (i = 0; i < shm_proxy->num_proxy; i++)
+	{
+	  proxy_info_p = &shm_proxy->proxy_info[i];
+	  for (j = 0; j < proxy_info_p->max_shard; j++)
+	    {
+	      shard_info_p = &proxy_info_p->shard_info[j];
+	      mnt_items[j].shard_waiter_count += shard_info_p->waiter_count;
+	      mnt_items[j].num_appl_server += shard_info_p->num_appl_server;
+	    }
+	}
+    }
+  else if (mnt_type == MONITOR_T_PROXY)
+    {
+      for (i = 0; i < shm_proxy->num_proxy; i++)
+	{
+	  proxy_info_p = &shm_proxy->proxy_info[i];
+
+	  mnt_items[i].num_eq += proxy_info_p->num_proxy_error_processed;
+	  mnt_items[i].num_connect += proxy_info_p->num_connect_requests;
+	  mnt_items[i].num_restart += proxy_info_p->num_restarts;
+	  mnt_items[i].num_request_stmt += proxy_info_p->num_request_stmt;
+	  mnt_items[i].num_request_stmt_in_pool +=
+	    proxy_info_p->num_request_stmt_in_pool;
+
+	  for (j = 0; j < proxy_info_p->max_shard; j++)
+	    {
+	      shard_info_p = &proxy_info_p->shard_info[j];
+	      mnt_items[i].shard_waiter_count += shard_info_p->waiter_count;
+	      mnt_items[i].num_appl_server += shard_info_p->num_appl_server;
+	    }
+	}
+    }
+
+  return;
+}
+
+static void
+print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur,
+		     BR_MONITORING_ITEM * mnt_items_old, int num_mnt_items,
+		     double elapsed_time, T_BROKER_INFO * br_info_p,
+		     T_SHM_APPL_SERVER * shm_appl, MONITOR_TYPE mnt_type)
+{
+  int i;
+  BR_MONITORING_ITEM *mnt_item_cur_p = NULL;
+  BR_MONITORING_ITEM *mnt_item_old_p = NULL;
+  BR_MONITORING_ITEM mnt_item;
+  char buf[256];
+#ifdef GET_PSINFO
+  T_PSINFO proc_info;
+  char time_str[32];
+#endif
+
+  assert (mnt_type <= MONITOR_T_LAST);
+
+  for (i = 0; i < num_mnt_items; i++)
+    {
+      mnt_item_cur_p = &mnt_items_cur[i];
+      mnt_item_old_p = &mnt_items_old[i];
+
+      if (elapsed_time > 0)
+	{
+	  mnt_item.tps =
+	    (mnt_item_cur_p->num_tx - mnt_item_old_p->num_tx) / elapsed_time;
+	  mnt_item.qps =
+	    (mnt_item_cur_p->num_qx - mnt_item_old_p->num_qx) / elapsed_time;
+	  mnt_item.lts = mnt_item_cur_p->num_lt - mnt_item_old_p->num_lt;
+	  mnt_item.lqs = mnt_item_cur_p->num_lq - mnt_item_old_p->num_lq;
+	  mnt_item.eqs = mnt_item_cur_p->num_eq - mnt_item_old_p->num_eq;
+	  mnt_item.eqs_ui =
+	    mnt_item_cur_p->num_eq_ui - mnt_item_old_p->num_eq_ui;
+	  mnt_item.its =
+	    mnt_item_cur_p->num_interrupts - mnt_item_old_p->num_interrupt;
+	  mnt_item.num_select_query =
+	    mnt_item_cur_p->num_select_query -
+	    mnt_item_old_p->num_select_query;
+	  mnt_item.num_insert_query =
+	    mnt_item_cur_p->num_insert_query -
+	    mnt_item_old_p->num_insert_query;
+	  mnt_item.num_update_query =
+	    mnt_item_cur_p->num_update_query -
+	    mnt_item_old_p->num_update_query;
+	  mnt_item.num_delete_query =
+	    mnt_item_cur_p->num_delete_query -
+	    mnt_item_old_p->num_delete_query;
+	  mnt_item.num_others_query =
+	    mnt_item_cur_p->num_others_query -
+	    mnt_item_old_p->num_others_query;
+
+	  if (mnt_type == MONITOR_T_PROXY)
+	    {
+	      mnt_item.num_request_stmt = (mnt_item_cur_p->num_request_stmt -
+					   mnt_item_old_p->num_request_stmt) /
+		elapsed_time;
+	      mnt_item.num_request_stmt_in_pool =
+		(mnt_item_cur_p->num_request_stmt_in_pool -
+		 mnt_item_old_p->num_request_stmt_in_pool) / elapsed_time;
+	    }
+
+	  mnt_item_cur_p->tps = mnt_item.tps;
+	  mnt_item_cur_p->qps = mnt_item.qps;
+	  mnt_item_cur_p->lts = mnt_item.lts;
+	  mnt_item_cur_p->lqs = mnt_item.lqs;
+	  mnt_item_cur_p->eqs = mnt_item.eqs;
+	  mnt_item_cur_p->eqs_ui = mnt_item.eqs_ui;
+	  mnt_item_cur_p->its = mnt_item.its;
+	}
+      else
+	{
+	  memcpy (&mnt_item, mnt_item_old_p, sizeof (mnt_item));
+	}
+
+      if (mnt_type == MONITOR_T_BROKER)
+	{
+	  print_value (FIELD_PID, &(br_info_p->pid), FIELD_T_INT);
+	  if (full_info_flag)
+	    {
+#if defined(WINDOWS)
+	      if (shm_appl->use_pdh_flag == TRUE)
+		{
+		  print_value (FIELD_PSIZE,
+			       &(br_info_p->pdh_workset), FIELD_T_INT);
+		}
+#else
+	      int process_size;
+
+	      process_size = getsize (br_info_p->pid);
+	      print_value (FIELD_PSIZE, &process_size, FIELD_T_INT);
+#endif
+	    }
+	  print_value (FIELD_PORT, &(br_info_p->port), FIELD_T_INT);
+	}
+      else if (mnt_type == MONITOR_T_SHARDDB)
+	{
+	  print_value (FIELD_SHARD_ID, &i, FIELD_T_INT);
+	}
+      else if (mnt_type == MONITOR_T_PROXY)
+	{
+	  int proxy_id = i + 1;
+	  print_value (FIELD_PROXY_ID, &proxy_id, FIELD_T_INT);
+	}
+
+      print_value (FIELD_APPL_SERVER_NUM_TOTAL,
+		   &mnt_item_cur_p->num_appl_server, FIELD_T_INT);
+
+      if (full_info_flag)
+	{
+
+	  print_value (FIELD_APPL_SERVER_NUM_CLIENT_WAIT,
+		       &mnt_item_cur_p->num_client_wait, FIELD_T_INT);
+	  print_value (FIELD_APPL_SERVER_NUM_BUSY, &mnt_item_cur_p->num_busy,
+		       FIELD_T_INT);
+	  print_value (FIELD_APPL_SERVER_NUM_CLIENT_WAIT_IN_SEC,
+		       &mnt_item_cur_p->num_client_wait_nsec, FIELD_T_INT);
+	  print_value (FIELD_APPL_SERVER_NUM_BUSY_IN_SEC,
+		       &mnt_item_cur_p->num_busy_nsec, FIELD_T_INT);
+	}
+
+      if (mnt_type == MONITOR_T_BROKER)
+	{
+	  print_value (FIELD_JOB_QUEUE_ID,
+		       &(shm_appl->job_queue[0].id), FIELD_T_INT);
+	}
+      else if (mnt_type == MONITOR_T_SHARDDB || mnt_type == MONITOR_T_PROXY)
+	{
+	  print_value (FIELD_SHARD_Q_SIZE,
+		       &mnt_item_cur_p->shard_waiter_count, FIELD_T_UINT64);
+	}
+
+#ifdef GET_PSINFO
+      get_psinfo (br_info_p->pid, &proc_info);
+
+      print_value (FIELD_THREAD, &(proc_info.num_thr), FIELD_T_INT);
+
+      get_cpu_usage_string (buf, proc_info.pcpu);
+      print_value (FIELD_CPU_USAGE, buf, FIELD_T_STRING);
+
+      time_format (proc_info.cpu_time, time_str);
+      print_value (FIELD_CPU_TIME, &time_str, FIELD_T_STRING);
+#endif
+
+      print_value (FIELD_TPS, &mnt_item.tps, FIELD_T_UINT64);
+      print_value (FIELD_QPS, &mnt_item.qps, FIELD_T_UINT64);
+
+      if (full_info_flag == false)
+	{
+	  print_value (FIELD_NUM_OF_SELECT_QUERIES,
+		       &mnt_item.num_select_query, FIELD_T_UINT64);
+	  print_value (FIELD_NUM_OF_INSERT_QUERIES,
+		       &mnt_item.num_insert_query, FIELD_T_UINT64);
+	  print_value (FIELD_NUM_OF_UPDATE_QUERIES,
+		       &mnt_item.num_update_query, FIELD_T_UINT64);
+	  print_value (FIELD_NUM_OF_DELETE_QUERIES,
+		       &mnt_item.num_delete_query, FIELD_T_UINT64);
+	  print_value (FIELD_NUM_OF_OTHERS_QUERIES,
+		       &mnt_item.num_others_query, FIELD_T_UINT64);
+	}
+      sprintf (buf, "%lu/%-.1f", mnt_item.lts,
+	       (shm_appl->long_transaction_time / 1000.0));
+      print_value (FIELD_LONG_TRANSACTION, buf, FIELD_T_STRING);
+      sprintf (buf, "%lu/%-.1f", mnt_item.lqs,
+	       (shm_appl->long_query_time / 1000.0));
+      print_value (FIELD_LONG_QUERY, buf, FIELD_T_STRING);
+      print_value (FIELD_ERROR_QUERIES, &mnt_item.eqs, FIELD_T_UINT64);
+      print_value (FIELD_UNIQUE_ERROR_QUERIES, &mnt_item.eqs_ui,
+		   FIELD_T_UINT64);
+
+      if (full_info_flag && mnt_type == MONITOR_T_BROKER)
+	{
+	  print_value (FIELD_CANCELED, &mnt_item.its, FIELD_T_INT64);
+	  print_value (FIELD_ACCESS_MODE,
+		       get_access_mode_string (br_info_p->access_mode,
+					       br_info_p->
+					       replica_only_flag),
+		       FIELD_T_STRING);
+	  print_value (FIELD_SQL_LOG,
+		       get_sql_log_mode_string (br_info_p->sql_log_mode),
+		       FIELD_T_STRING);
+	}
+
+      if (mnt_type == MONITOR_T_BROKER)
+	{
+	  print_value (FIELD_NUMBER_OF_CONNECTION,
+		       &mnt_item_cur_p->num_connect, FIELD_T_UINT64);
+	}
+      else if (mnt_type == MONITOR_T_SHARDDB)
+	{
+	  print_value (FIELD_REQUEST, &mnt_item_cur_p->num_request,
+		       FIELD_T_UINT64);
+	}
+      else if (mnt_type == MONITOR_T_PROXY)
+	{
+	  print_value (FIELD_NUMBER_OF_CONNECTION,
+		       &mnt_item_cur_p->num_connect, FIELD_T_UINT64);
+	  print_value (FIELD_RESTART, &mnt_item_cur_p->num_restart,
+		       FIELD_T_UINT64);
+
+	  if (full_info_flag)
+	    {
+	      float stmt_pool_ratio;
+	      if (mnt_item.num_request_stmt <= 0
+		  || mnt_item.num_request_stmt_in_pool >
+		  mnt_item.num_request_stmt)
+		{
+		  print_value (FIELD_STMT_POOL_RATIO, (char *) "-",
+			       FIELD_T_STRING);
+		}
+	      else
+		{
+		  stmt_pool_ratio =
+		    (mnt_item.num_request_stmt_in_pool * 100) /
+		    mnt_item.num_request_stmt;
+		  print_value (FIELD_STMT_POOL_RATIO, &stmt_pool_ratio,
+			       FIELD_T_FLOAT);
+		}
+	    }
+	}
+
+      print_newline ();
+
+      if (mnt_type == MONITOR_T_BROKER
+	  && shm_appl->suspend_mode != SUSPEND_NONE)
+	{
+	  str_out ("%s", "      SUSPENDED");
+	  print_newline ();
+	}
+    }
+
+  return;
+}
+
+static int
+brief_monitor (char *br_vector, MONITOR_TYPE mnt_type, double elapsed_time)
+{
+  T_BROKER_INFO *br_info_p = NULL;
+  T_SHM_APPL_SERVER *shm_appl = NULL;
+  T_SHM_PROXY *shm_proxy_p = NULL;
+  static BR_MONITORING_ITEM **mnt_items_old[MONITOR_T_LAST + 1] = { NULL, };
+  static BR_MONITORING_ITEM *mnt_items_cur_p = NULL;
+  BR_MONITORING_ITEM *mnt_items_old_p = NULL;
+  int br_index;
+  int max_num_mnt_items = 0;
+  int num_mnt_items;
+
+  assert (mnt_type <= MONITOR_T_LAST);
+
+  if (mnt_type == MONITOR_T_BROKER)
+    {
+      print_monitor_header (mnt_type);
+    }
+
+  if (mnt_items_old[mnt_type] == NULL)
+    {
+      mnt_items_old[mnt_type] =
+	(BR_MONITORING_ITEM **) calloc (sizeof (BR_MONITORING_ITEM *),
+					shm_br->num_broker);
+      if (mnt_items_old[mnt_type] == NULL)
 	{
 	  return -1;
 	}
-      (void) time (&time_old);
-      time_old--;
     }
 
-  (void) time (&time_cur);
-
-  elapsed_time = difftime (time_cur, time_old);
-
-  for (i = 0; i < shm_br->num_broker; i++)
+  if (mnt_items_cur_p == NULL)
     {
-      int num_client_wait, num_busy, num_client_wait_nsec, num_busy_nsec;
-      int proxy_index, shard_index;
-      int shard_flag;
-      int num_proxy = 0;
-      time_t cur_time;
-      char shortened_broker_name[FIELD_WIDTH_BROKER_NAME + 1];
+      max_num_mnt_items = MAX (MAX (1, MAX_PROXY_NUM), MAX_SHARD_CONN);
 
-      if (br_vector[i] == 0)
+      mnt_items_cur_p =
+	(BR_MONITORING_ITEM *) malloc (sizeof (BR_MONITORING_ITEM)
+				       * max_num_mnt_items);
+      if (mnt_items_cur_p == NULL)
+	{
+	  str_out ("%s", "malloc error");
+	  print_newline ();
+	  return -1;
+	}
+    }
+
+  for (br_index = 0; br_index < shm_br->num_broker; br_index++)
+    {
+      br_info_p = &shm_br->br_info[br_index];
+
+      if (br_vector[br_index] == 0)
 	{
 	  continue;
 	}
 
       if (service_filter_value != SERVICE_UNKNOWN
-	  && service_filter_value != shm_br->br_info[i].service_flag)
+	  && service_filter_value != br_info_p->service_flag)
 	{
 	  continue;
 	}
 
-      if (strlen (shm_br->br_info[i].name) <= FIELD_WIDTH_BROKER_NAME)
+      if (mnt_type == MONITOR_T_BROKER)
 	{
-	  sprintf (shortened_broker_name, "%s", shm_br->br_info[i].name);
-	}
-      else
-	{
-	  sprintf (shortened_broker_name, "%.*s...",
-		   FIELD_WIDTH_BROKER_NAME - 3, shm_br->br_info[i].name);
-	}
-
-      str_out ("*%c", FIELD_DELIMITER);
-      print_value (FIELD_BROKER_NAME, shortened_broker_name, FIELD_T_STRING);
-      if (shm_br->br_info[i].service_flag == SERVICE_ON)
-	{
-	  shm_appl =
-	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[i].
-					       appl_server_shm_id,
-					       SHM_APPL_SERVER,
-					       SHM_MODE_MONITOR);
-	  if (shm_appl == NULL)
+	  char broker_name[FIELD_WIDTH_BROKER_NAME + 1];
+	  if (strlen (br_info_p->name) <= FIELD_WIDTH_BROKER_NAME)
 	    {
-	      str_out ("%s", "shared memory open error");
-	      print_newline ();
+	      sprintf (broker_name, "%s", br_info_p->name);
 	    }
 	  else
 	    {
-	      shard_flag = shm_appl->shard_flag;
-
-	      num_req = 0;
-	      num_client_wait = 0;
-	      num_client_wait_nsec = 0;
-	      num_busy = 0;
-	      num_busy_nsec = 0;
-	      num_connect = 0;
-
-	      cur_time = time (NULL);
-
-	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
-		{
-		  as_info_p = &(shm_appl->as_info[j]);
-
-		  if (as_info_p->service_flag != ON)
-		    {
-		      continue;
-		    }
-
-		  num_req += as_info_p->num_request;
-		  num_connect += as_info_p->num_connect_requests;
-		  if (full_info_flag)
-		    {
-		      bool time_expired =
-			(cur_time - as_info_p->last_access_time >=
-			 state_interval);
-
-		      if (as_info_p->uts_status == UTS_STATUS_BUSY
-			  && as_info_p->con_status != CON_STATUS_OUT_TRAN)
-			{
-			  if (as_info_p->log_msg[0] == '\0')
-			    {
-			      num_client_wait++;
-			      if (time_expired)
-				{
-				  num_client_wait_nsec++;
-				}
-			    }
-			  else
-			    {
-			      num_busy++;
-			      if (time_expired)
-				{
-				  num_busy_nsec++;
-				}
-			    }
-			}
-#if defined(WIDOWS)
-		      else if (as_info_p->uts_status == UTS_STATUS_BUSY_WAIT)
-			{
-			  num_busy++;
-			  if (time_expired)
-			    {
-			      num_busy_nsec++;
-			    }
-			}
-#endif
-		    }
-		}
-
-	      print_value (FIELD_PID, &(shm_br->br_info[i].pid), FIELD_T_INT);
-	      if (full_info_flag)
-		{
-#if defined(WINDOWS)
-		  if (shm_appl->use_pdh_flag == TRUE)
-		    {
-		      print_value (FIELD_PSIZE,
-				   &(shm_br->br_info[i].pdh_workset),
-				   FIELD_T_INT);
-		    }
-#else
-		  int process_size;
-
-		  process_size = getsize (shm_br->br_info[i].pid);
-		  print_value (FIELD_PSIZE, &process_size, FIELD_T_INT);
-#endif
-		}
-
-	      print_value (FIELD_PORT, &(shm_br->br_info[i].port),
-			   FIELD_T_INT);
-	      print_value (FIELD_APPL_SERVER_NUM_TOTAL,
-			   &(shm_br->br_info[i].appl_server_num),
-			   FIELD_T_INT);
-	      if (full_info_flag)
-		{
-
-		  print_value (FIELD_APPL_SERVER_NUM_CLIENT_WAIT,
-			       &num_client_wait, FIELD_T_INT);
-		  print_value (FIELD_APPL_SERVER_NUM_BUSY,
-			       &num_busy, FIELD_T_INT);
-		  print_value (FIELD_APPL_SERVER_NUM_CLIENT_WAIT_IN_SEC,
-			       &num_client_wait_nsec, FIELD_T_INT);
-		  print_value (FIELD_APPL_SERVER_NUM_BUSY_IN_SEC,
-			       &num_busy_nsec, FIELD_T_INT);
-		}
-
-	      print_value (FIELD_JOB_QUEUE_ID,
-			   &(shm_appl->job_queue[0].id), FIELD_T_INT);
-#ifdef GET_PSINFO
-	      get_psinfo (shm_br->br_info[i].pid, &proc_info);
-
-	      print_value (FIELD_THREAD, &(proc_info.num_thr), FIELD_T_INT);
-
-	      get_cpu_usage_string (buf, proc_info.pcpu);
-	      print_value (FIELD_CPU_USAGE, buf, FIELD_T_STRING);
-
-	      time_format (proc_info.cpu_time, time_str);
-	      print_value (FIELD_CPU_TIME, &time_str, FIELD_T_STRING);
-#endif
-	      num_tx_cur = 0;
-	      num_qx_cur = 0;
-	      num_lt_cur = 0;
-	      num_lq_cur = 0;
-	      num_eq_cur = 0;
-	      num_eq_ui_cur = 0;
-	      num_interrupts_cur = 0;
-	      num_select_query_cur = 0;
-	      num_insert_query_cur = 0;
-	      num_update_query_cur = 0;
-	      num_delete_query_cur = 0;
-	      num_others_query_cur = 0;
-
-	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
-		{
-		  as_info_p = &(shm_appl->as_info[j]);
-		  num_req += as_info_p->num_requests_received;
-		  num_tx_cur += as_info_p->num_transactions_processed;
-		  num_qx_cur += as_info_p->num_queries_processed;
-		  num_lt_cur += as_info_p->num_long_transactions;
-		  num_lq_cur += as_info_p->num_long_queries;
-		  num_eq_cur += as_info_p->num_error_queries;
-		  num_eq_ui_cur += as_info_p->num_unique_error_queries;
-		  num_interrupts_cur += as_info_p->num_interrupts;
-		  num_select_query_cur += as_info_p->num_select_queries;
-		  num_insert_query_cur += as_info_p->num_insert_queries;
-		  num_update_query_cur += as_info_p->num_update_queries;
-		  num_delete_query_cur += as_info_p->num_delete_queries;
-		}		/* CAS */
-	      num_others_query_cur = (num_qx_cur -
-				      num_select_query_cur -
-				      num_insert_query_cur -
-				      num_update_query_cur -
-				      num_delete_query_cur);
-
-	      if (elapsed_time > 0)
-		{
-		  tps = (num_tx_cur - br_mnt_olds[i].num_tx) / elapsed_time;
-		  qps = (num_qx_cur - br_mnt_olds[i].num_qx) / elapsed_time;
-		  lts = num_lt_cur - br_mnt_olds[i].num_lt;
-		  lqs = num_lq_cur - br_mnt_olds[i].num_lq;
-		  eqs = num_eq_cur - br_mnt_olds[i].num_eq;
-		  eqs_ui = num_eq_ui_cur - br_mnt_olds[i].num_eq_ui;
-		  its = num_interrupts_cur - br_mnt_olds[i].num_interrupt;
-		  num_select_query =
-		    num_select_query_cur - br_mnt_olds[i].num_select_query;
-		  num_insert_query =
-		    num_insert_query_cur - br_mnt_olds[i].num_insert_query;
-		  num_update_query =
-		    num_update_query_cur - br_mnt_olds[i].num_update_query;
-		  num_delete_query =
-		    num_delete_query_cur - br_mnt_olds[i].num_delete_query;
-		  num_others_query =
-		    num_others_query_cur - br_mnt_olds[i].num_others_query;
-
-		  br_mnt_olds[i].num_tx = num_tx_cur;
-		  br_mnt_olds[i].num_qx = num_qx_cur;
-		  br_mnt_olds[i].num_lt = num_lt_cur;
-		  br_mnt_olds[i].num_lq = num_lq_cur;
-		  br_mnt_olds[i].num_eq = num_eq_cur;
-		  br_mnt_olds[i].num_eq_ui = num_eq_ui_cur;
-		  br_mnt_olds[i].num_interrupt = num_interrupts_cur;
-
-		  br_mnt_olds[i].tps = tps;
-		  br_mnt_olds[i].qps = qps;
-		  br_mnt_olds[i].lts = lts;
-		  br_mnt_olds[i].lqs = lqs;
-		  br_mnt_olds[i].eqs = eqs;
-		  br_mnt_olds[i].eqs_ui = eqs_ui;
-		  br_mnt_olds[i].its = its;
-		  br_mnt_olds[i].num_select_query = num_select_query_cur;
-		  br_mnt_olds[i].num_insert_query = num_insert_query_cur;
-		  br_mnt_olds[i].num_update_query = num_update_query_cur;
-		  br_mnt_olds[i].num_delete_query = num_delete_query_cur;
-		  br_mnt_olds[i].num_others_query = num_others_query_cur;
-		}
-	      else
-		{
-		  tps = br_mnt_olds[i].tps;
-		  qps = br_mnt_olds[i].qps;
-		  lts = br_mnt_olds[i].lts;
-		  lqs = br_mnt_olds[i].lqs;
-		  eqs = br_mnt_olds[i].eqs;
-		  eqs_ui = br_mnt_olds[i].eqs_ui;
-		  its = br_mnt_olds[i].its;
-		  num_select_query = br_mnt_olds[i].num_select_query;
-		  num_insert_query = br_mnt_olds[i].num_insert_query;
-		  num_update_query = br_mnt_olds[i].num_update_query;
-		  num_delete_query = br_mnt_olds[i].num_delete_query;
-		  num_others_query = br_mnt_olds[i].num_others_query;
-		}
-
-	      print_value (FIELD_TPS, &tps, FIELD_T_UINT64);
-	      print_value (FIELD_QPS, &qps, FIELD_T_UINT64);
-
-	      if (full_info_flag == false)
-		{
-		  print_value (FIELD_NUM_OF_SELECT_QUERIES,
-			       &num_select_query, FIELD_T_UINT64);
-		  print_value (FIELD_NUM_OF_INSERT_QUERIES,
-			       &num_insert_query, FIELD_T_UINT64);
-		  print_value (FIELD_NUM_OF_UPDATE_QUERIES,
-			       &num_update_query, FIELD_T_UINT64);
-		  print_value (FIELD_NUM_OF_DELETE_QUERIES,
-			       &num_delete_query, FIELD_T_UINT64);
-		  print_value (FIELD_NUM_OF_OTHERS_QUERIES,
-			       &num_others_query, FIELD_T_UINT64);
-		}
-
-	      sprintf (buf, "%llu/%-.1f", lts,
-		       (shm_appl->long_transaction_time / 1000.0));
-	      print_value (FIELD_LONG_TRANSACTION, buf, FIELD_T_STRING);
-	      sprintf (buf, "%llu/%-.1f", lqs,
-		       (shm_appl->long_query_time / 1000.0));
-	      print_value (FIELD_LONG_QUERY, buf, FIELD_T_STRING);
-	      print_value (FIELD_ERROR_QUERIES, &eqs, FIELD_T_UINT64);
-	      print_value (FIELD_UNIQUE_ERROR_QUERIES, &eqs_ui,
-			   FIELD_T_UINT64);
-	      if (full_info_flag)
-		{
-		  print_value (FIELD_CANCELED, &its, FIELD_T_INT64);
-		  print_value (FIELD_ACCESS_MODE,
-			       get_access_mode_string (shm_br->br_info[i].
-						       access_mode,
-						       shm_br->br_info[i].
-						       replica_only_flag),
-			       FIELD_T_STRING);
-
-		  print_value (FIELD_SQL_LOG,
-			       get_sql_log_mode_string (shm_br->br_info[i].
-							sql_log_mode),
-			       FIELD_T_STRING);
-		}
-
-	      print_value (FIELD_NUMBER_OF_CONNECTION, &num_connect,
-			   FIELD_T_UINT64);
-
-	      print_newline ();
-
-	      if (shm_appl->suspend_mode != SUSPEND_NONE)
-		{
-		  str_out ("%s", "	SUSPENDED");
-		  print_newline ();
-		}
-
-	      if (shm_appl)
-		{
-		  uw_shm_detach (shm_appl);
-		}
+	      sprintf (broker_name, "%.*s...",
+		       FIELD_WIDTH_BROKER_NAME - 3, br_info_p->name);
 	    }
+	  str_out ("*%c", FIELD_DELIMITER);
+	  print_value (FIELD_BROKER_NAME, broker_name, FIELD_T_STRING);
 	}
-      else
-	{			/* service_flag == OFF */
+      else if (mnt_type == MONITOR_T_SHARDDB || mnt_type == MONITOR_T_PROXY)
+	{
+	  str_out ("%% %s ", br_info_p->name);
+	}
+
+      if (br_info_p->service_flag != SERVICE_ON)
+	{
 	  str_out ("%s", "OFF");
 	  print_newline ();
+	  continue;
 	}
-    }
 
-  if (elapsed_time > 0)
-    {
-      time_old = time_cur;
+      if (mnt_type == MONITOR_T_SHARDDB || mnt_type == MONITOR_T_PROXY)
+	{
+	  if (br_info_p->shard_flag == OFF)
+	    {
+	      str_out ("%s", "SHARD OFF");
+	      print_newline ();
+	      continue;
+	    }
+	  print_newline ();
+
+	  print_monitor_header (mnt_type);
+	}
+
+      shm_appl =
+	(T_SHM_APPL_SERVER *) uw_shm_open (br_info_p->appl_server_shm_id,
+					   SHM_APPL_SERVER, SHM_MODE_MONITOR);
+      if (shm_appl == NULL)
+	{
+	  str_out ("%s", "shared memory open error");
+	  print_newline ();
+	  return -1;
+	}
+
+      if (br_info_p->shard_flag == ON)
+	{
+	  shm_proxy_p =
+	    (T_SHM_PROXY *) uw_shm_open (br_info_p->proxy_shm_id,
+					 SHM_PROXY, SHM_MODE_MONITOR);
+	  if (shm_proxy_p == NULL)
+	    {
+	      str_out ("%s", "shared memory open error");
+	      print_newline ();
+	      goto error;
+	    }
+	}
+
+      num_mnt_items = get_num_monitor_items (mnt_type, shm_proxy_p);
+
+      assert (num_mnt_items > 0);
+
+      memset (mnt_items_cur_p, 0,
+	      sizeof (BR_MONITORING_ITEM) * num_mnt_items);
+
+      if (mnt_items_old[mnt_type][br_index] == NULL)
+	{
+	  mnt_items_old[mnt_type][br_index] =
+	    (BR_MONITORING_ITEM *) calloc (sizeof (BR_MONITORING_ITEM),
+					   num_mnt_items);
+	  if (mnt_items_old[mnt_type][br_index] == NULL)
+	    {
+	      str_out ("%s", "malloc error");
+	      print_newline ();
+	      goto error;
+	    }
+	}
+
+      mnt_items_old_p = mnt_items_old[mnt_type][br_index];
+
+      set_monitor_items (mnt_items_cur_p, br_info_p,
+			 shm_appl, shm_proxy_p, mnt_type);
+
+      print_monitor_items (mnt_items_cur_p, mnt_items_old_p,
+			   num_mnt_items, elapsed_time, br_info_p,
+			   shm_appl, mnt_type);
+      memcpy (mnt_items_old_p, mnt_items_cur_p,
+	      sizeof (BR_MONITORING_ITEM) * num_mnt_items);
+
+      if (shm_appl)
+	{
+	  uw_shm_detach (shm_appl);
+	  shm_appl = NULL;
+	}
+
+      if (shm_proxy_p)
+	{
+	  uw_shm_detach (shm_proxy_p);
+	  shm_proxy_p = NULL;
+	}
     }
 
   return 0;
+
+error:
+  if (shm_appl)
+    {
+      uw_shm_detach (shm_appl);
+    }
+  if (shm_proxy_p)
+    {
+      uw_shm_detach (shm_proxy_p);
+    }
+
+  return -1;
 }
 
 #ifdef GET_PSINFO
@@ -1557,7 +1900,7 @@ time_format (int t, char *time_str)
 #endif
 
 static void
-print_header (bool use_pdh_flag)
+print_appl_header (bool use_pdh_flag)
 {
   char buf[256];
   char line_buf[256];
@@ -1699,7 +2042,7 @@ endwin ()
 #endif
 
 static int
-metadata_monitor (void)
+metadata_monitor (double elapsed_time)
 {
   T_SHM_SHARD_USER *shm_user_p;
   T_SHM_SHARD_KEY *shm_key_p;
@@ -1729,10 +2072,6 @@ metadata_monitor (void)
   SHARD_STAT_ITEM *shard_stat_items_old_p = NULL;
   KEY_STAT_ITEM *key_stat_items_old_p = NULL;
 
-  static time_t time_old;
-  time_t time_cur;
-  double elapsed_time;
-
   int i, j, k;
   int shmid;
   int col_len;
@@ -1750,7 +2089,6 @@ metadata_monitor (void)
 
   INT64 num_range_qr;
 
-
   shard_stat_items_size = sizeof (SHARD_STAT_ITEM) * MAX_SHARD_CONN;
   key_stat_items_size = sizeof (KEY_STAT_ITEM) * MAX_SHARD_KEY;
 
@@ -1761,8 +2099,6 @@ metadata_monitor (void)
 	{
 	  goto free_and_error;
 	}
-      memset ((void *) err_queries_old, 0,
-	      sizeof (INT64) * shm_br->num_broker);
     }
 
   if (shard_stat_items_old == NULL)
@@ -1788,13 +2124,7 @@ metadata_monitor (void)
 	}
       memset ((void *) key_stat_items_old, 0,
 	      key_stat_items_size * shm_br->num_broker);
-
-      (void) time (&time_old);
-      time_old--;
     }
-
-  (void) time (&time_cur);
-  elapsed_time = difftime (time_cur, time_old);
 
   for (i = 0; i < shm_br->num_broker; i++)
     {
@@ -1924,6 +2254,7 @@ metadata_monitor (void)
 	}
 
       str_out ("NUM-NO-HINT-ERR-Q : %d", num_err_qr);
+
       print_newline ();
       print_newline ();
 
@@ -2165,11 +2496,6 @@ metadata_monitor (void)
       shm_proxy_p = NULL;
     }
 
-  if (elapsed_time > 0)
-    {
-      time_old = time_cur;
-    }
-
   return 0;
 
 free_and_error:
@@ -2201,6 +2527,7 @@ client_monitor (void)
   int col_len = 0;
   char *ip_str;
   struct tm ct1;
+
   for (i = 0; i < shm_br->num_broker; i++)
     {
       if (shm_br->br_info[i].shard_flag == OFF)
@@ -2231,86 +2558,84 @@ client_monitor (void)
 	{
 	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
 
-	  str_out ("%% %s(%d), MAX-CLIENT : %d ",
+	  str_out ("%% %s(%d), MAX-CLIENT : %d, CUR-CLIENT : %d",
 		   shm_br->br_info[i].name, proxy_index,
-		   proxy_info_p->max_client);
+		   proxy_info_p->max_client, proxy_info_p->cur_client);
 	  print_newline ();
-	  col_len = 0;
-	  col_len += sprintf (buf + col_len, "%10s", "CLIENT-ID");
-	  col_len += sprintf (buf + col_len, "%20s", "CLIENT-IP");
-	  col_len += sprintf (buf + col_len, "%22s", "CONN-TIME");
-	  col_len += sprintf (buf + col_len, "%22s", "LAST-REQ-TIME");
-	  col_len += sprintf (buf + col_len, "%22s", "LAST-RES-TIME");
 	  if (full_info_flag)
 	    {
+	      col_len = 0;
+	      col_len += sprintf (buf + col_len, "%10s", "CLIENT-ID");
+	      col_len += sprintf (buf + col_len, "%20s", "CLIENT-IP");
+	      col_len += sprintf (buf + col_len, "%22s", "CONN-TIME");
+	      col_len += sprintf (buf + col_len, "%22s", "LAST-REQ-TIME");
+	      col_len += sprintf (buf + col_len, "%22s", "LAST-RES-TIME");
 	      col_len += sprintf (buf + col_len, "%15s", "LAST-REQ-CODE");
-	    }
 
-	  for (len = 0; len < col_len; len++)
-	    line_buf[len] = '-';
-	  line_buf[len] = '\0';
-	  str_out ("%s", line_buf);
-	  print_newline ();
-	  str_out ("%s", buf);
-	  print_newline ();
-	  str_out ("%s", line_buf);
-	  print_newline ();
-
-	  for (client_index = 0; client_index < proxy_info_p->max_context;
-	       client_index++)
-	    {
-	      client_info_p =
-		shard_shm_get_client_info (proxy_info_p, client_index);
-
-	      if (client_info_p->client_id == -1)
-		{
-		  continue;
-		}
-	      str_out ("%10d", client_info_p->client_id);
-	      ip_str =
-		ut_uchar2ipstr ((unsigned char *) (&client_info_p->
-						   client_ip));
-	      str_out ("%20s", ip_str);
-	      localtime_r (&client_info_p->connect_time, &ct1);
-	      ct1.tm_year += 1900;
-	      str_out ("   %04d/%02d/%02d %02d:%02d:%02d", ct1.tm_year,
-		       ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
-		       ct1.tm_sec);
-	      if (client_info_p->req_time > 0)
-		{
-		  localtime_r (&client_info_p->req_time, &ct1);
-		  ct1.tm_year += 1900;
-		  str_out ("   %04d/%02d/%02d %02d:%02d:%02d", ct1.tm_year,
-			   ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour,
-			   ct1.tm_min, ct1.tm_sec);
-		}
-	      else
-		{
-		  str_out ("%22s", "-");
-		}
-
-	      if (client_info_p->res_time > 0)
-		{
-		  localtime_r (&client_info_p->res_time, &ct1);
-		  ct1.tm_year += 1900;
-		  str_out ("   %04d/%02d/%02d %02d:%02d:%02d", ct1.tm_year,
-			   ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour,
-			   ct1.tm_min, ct1.tm_sec);
-		}
-	      else
-		{
-		  str_out ("%22s", "-");
-		}
-
-	      if (full_info_flag)
-		{
-		  str_out ("%15d", client_info_p->func_code - 1);
-		}
+	      for (len = 0; len < col_len; len++)
+		line_buf[len] = '-';
+	      line_buf[len] = '\0';
+	      str_out ("%s", line_buf);
 	      print_newline ();
+	      str_out ("%s", buf);
+	      print_newline ();
+	      str_out ("%s", line_buf);
+	      print_newline ();
+
+	      for (client_index = 0; client_index < proxy_info_p->max_context;
+		   client_index++)
+		{
+		  client_info_p =
+		    shard_shm_get_client_info (proxy_info_p, client_index);
+
+		  if (client_info_p->client_id == -1)
+		    {
+		      continue;
+		    }
+		  str_out ("%10d", client_info_p->client_id);
+		  ip_str =
+		    ut_uchar2ipstr ((unsigned char *) (&client_info_p->
+						       client_ip));
+		  str_out ("%20s", ip_str);
+		  localtime_r (&client_info_p->connect_time, &ct1);
+		  ct1.tm_year += 1900;
+		  str_out ("   %04d/%02d/%02d %02d:%02d:%02d", ct1.tm_year,
+			   ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour,
+			   ct1.tm_min, ct1.tm_sec);
+		  if (client_info_p->req_time > 0)
+		    {
+		      localtime_r (&client_info_p->req_time, &ct1);
+		      ct1.tm_year += 1900;
+		      str_out ("   %04d/%02d/%02d %02d:%02d:%02d",
+			       ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday,
+			       ct1.tm_hour, ct1.tm_min, ct1.tm_sec);
+		    }
+		  else
+		    {
+		      str_out ("%22s", "-");
+		    }
+
+		  if (client_info_p->res_time > 0)
+		    {
+		      localtime_r (&client_info_p->res_time, &ct1);
+		      ct1.tm_year += 1900;
+		      str_out ("   %04d/%02d/%02d %02d:%02d:%02d",
+			       ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday,
+			       ct1.tm_hour, ct1.tm_min, ct1.tm_sec);
+		    }
+		  else
+		    {
+		      str_out ("%22s", "-");
+		    }
+
+		  str_out ("%15d", client_info_p->func_code - 1);
+		  print_newline ();
+		}
 	    }
 	}
       uw_shm_detach (shm_proxy_p);
     }
+
   return 0;
 }
 
@@ -2452,6 +2777,32 @@ print_value (FIELD_NAME name, const void *value_p, FIELD_TYPE type)
       break;
     }
   str_out ("%c", FIELD_DELIMITER);
+}
+
+static int
+get_num_monitor_items (MONITOR_TYPE mnt_type, T_SHM_PROXY * shm_proxy_p)
+{
+  int num_mnt_items;
+
+  if (mnt_type == MONITOR_T_BROKER)
+    {
+      num_mnt_items = 1;
+    }
+  else if (mnt_type == MONITOR_T_SHARDDB)
+    {
+      num_mnt_items = shm_proxy_p->proxy_info[0].max_shard;
+    }
+  else if (mnt_type == MONITOR_T_PROXY)
+    {
+      num_mnt_items = shm_proxy_p->num_proxy;
+    }
+  else
+    {
+      /* invalid MONITOR_TYPE */
+      assert (false);
+    }
+
+  return num_mnt_items;
 }
 
 static const char *

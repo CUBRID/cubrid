@@ -1569,6 +1569,8 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   int error;
 #endif
 
+  proxy_info_p->num_connect_requests++;
+
 #if defined(WINDOWS)
   client_fd = lsnr_fd;
   client_ip = accept_ip_addr;

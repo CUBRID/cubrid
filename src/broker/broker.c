@@ -3223,6 +3223,7 @@ restart_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index,
 
   new_pid = run_proxy_server (proxy_info_p, br_index, proxy_index);
   proxy_info_p->pid = new_pid;
+  proxy_info_p->num_restarts++;
 }
 
 static void
