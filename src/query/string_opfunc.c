@@ -2619,7 +2619,7 @@ exit:
 
 /*
  * db_string_shaone - sha1 encrypt function
- *   return: If success, return 0. 
+ *   return: If success, return 0.
  *   src(in): source string
  *	 result(out): the encrypted data.
  * Note:
@@ -2686,7 +2686,7 @@ error:
 
 /*
  * db_string_shatwo - sha2 encrypt function
- *   return: If success, return 0. 
+ *   return: If success, return 0.
  *   src(in): source string
  *	 hash_len(in): the hash length
  *	 result(out): the encrypted data.
@@ -2777,7 +2777,7 @@ error:
 
 /*
  * db_string_aes_encrypt - aes encrypt function
- *   return: If success, return 0. 
+ *   return: If success, return 0.
  *   src(in): source string
  *	 key(in): the encrypt key
  *	 result(out): the encrypted data.
@@ -2848,7 +2848,7 @@ error:
 
 /*
  * db_string_aes_decrypt - aes decrypt function
- *   return: If success, return 0. 
+ *   return: If success, return 0.
  *   src(in): source string
  *	 key(in): the encrypt key
  *	 result(out): the decrypted data.
@@ -15910,6 +15910,11 @@ date_to_char (const DB_VALUE * src_value,
 	  switch (cur_format)
 	    {
 	    case DT_CC:
+	      if (month == 0 && day == 0 && year == 0)
+		{
+		  goto zerodate_exit;
+		}
+
 	      tmp_int = (year / 100) + 1;
 	      sprintf (&result_buf[i], "%02d\n", tmp_int);
 	      i += 2;
@@ -15933,33 +15938,12 @@ date_to_char (const DB_VALUE * src_value,
 	      break;
 
 	    case DT_MONTH:
-	      if (*cur_format_str_ptr == 'm')
-		{
-		  token_case_mode = 1;
-		}
-	      else if (*(cur_format_str_ptr + 1) == 'O')
-		{
-		  token_case_mode = 2;
-		}
-	      else
-		{
-		  token_case_mode = 0;
-		}
-
-	      error_status =
-		print_string_date_token (SDT_MONTH, date_lang_id, codeset,
-					 month - 1, token_case_mode,
-					 &result_buf[i], &token_size);
-
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      i += token_size;
-	      break;
-
 	    case DT_MON:
+	      if (month == 0 && day == 0 && year == 0)
+		{
+		  goto zerodate_exit;
+		}
+
 	      if (*cur_format_str_ptr == 'm')
 		{
 		  token_case_mode = 1;
@@ -15973,14 +15957,25 @@ date_to_char (const DB_VALUE * src_value,
 		  token_case_mode = 0;
 		}
 
-	      error_status =
-		print_string_date_token (SDT_MONTH_SHORT, date_lang_id,
-					 codeset,
-					 month - 1, token_case_mode,
-					 &result_buf[i], &token_size);
+	      if (cur_format == DT_MONTH)
+		{
+		  error_status =
+		    print_string_date_token (SDT_MONTH, date_lang_id, codeset,
+					     month - 1, token_case_mode,
+					     &result_buf[i], &token_size);
+		}
+	      else		/* cur_format == DT_MON */
+		{
+		  error_status =
+		    print_string_date_token (SDT_MONTH_SHORT, date_lang_id,
+					     codeset, month - 1,
+					     token_case_mode, &result_buf[i],
+					     &token_size);
+		}
 
 	      if (error_status != NO_ERROR)
 		{
+		  db_private_free_and_init (NULL, result_buf);
 		  goto exit;
 		}
 
@@ -15988,6 +15983,11 @@ date_to_char (const DB_VALUE * src_value,
 	      break;
 
 	    case DT_Q:
+	      if (month == 0 && day == 0 && year == 0)
+		{
+		  goto zerodate_exit;
+		}
+
 	      result_buf[i] = '1' + ((month - 1) / 3);
 	      i++;
 	      break;
@@ -15998,42 +15998,23 @@ date_to_char (const DB_VALUE * src_value,
 	      break;
 
 	    case DT_DAY:
-	      tmp_int = get_day (month, day, year);
-
-	      if (*cur_format_str_ptr == 'd')
-		{
-		  token_case_mode = 1;
-		}
-	      else if (*(cur_format_str_ptr + 1) == 'A')
-		{
-		  token_case_mode = 2;
-		}
-	      else
-		{
-		  token_case_mode = 0;
-		}
-
-	      error_status =
-		print_string_date_token (SDT_DAY, date_lang_id, codeset,
-					 tmp_int, token_case_mode,
-					 &result_buf[i], &token_size);
-
-	      if (error_status != NO_ERROR)
-		{
-		  goto exit;
-		}
-
-	      i += token_size;
-	      break;
-
 	    case DT_DY:
+	      if (month == 0 && day == 0 && year == 0)
+		{
+		  goto zerodate_exit;
+		}
+
 	      tmp_int = get_day (month, day, year);
 
 	      if (*cur_format_str_ptr == 'd')
 		{
 		  token_case_mode = 1;
 		}
-	      else if (*(cur_format_str_ptr + 1) == 'Y')
+	      else if (*(cur_format_str_ptr + 1) == 'A')	/* "DAY" */
+		{
+		  token_case_mode = 2;
+		}
+	      else if (*(cur_format_str_ptr + 1) == 'Y')	/* "DY" */
 		{
 		  token_case_mode = 2;
 		}
@@ -16042,13 +16023,25 @@ date_to_char (const DB_VALUE * src_value,
 		  token_case_mode = 0;
 		}
 
-	      error_status =
-		print_string_date_token (SDT_DAY_SHORT, date_lang_id, codeset,
-					 tmp_int, token_case_mode,
-					 &result_buf[i], &token_size);
+	      if (cur_format == DT_DAY)
+		{
+		  error_status =
+		    print_string_date_token (SDT_DAY, date_lang_id, codeset,
+					     tmp_int, token_case_mode,
+					     &result_buf[i], &token_size);
+		}
+	      else		/* cur_format == DT_DY */
+		{
+		  error_status =
+		    print_string_date_token (SDT_DAY_SHORT, date_lang_id,
+					     codeset, tmp_int,
+					     token_case_mode, &result_buf[i],
+					     &token_size);
+		}
 
 	      if (error_status != NO_ERROR)
 		{
+		  db_private_free_and_init (NULL, result_buf);
 		  goto exit;
 		}
 
@@ -16056,6 +16049,11 @@ date_to_char (const DB_VALUE * src_value,
 	      break;
 
 	    case DT_D:
+	      if (month == 0 && day == 0 && year == 0)
+		{
+		  goto zerodate_exit;
+		}
+
 	      tmp_int = get_day (month, day, year);
 	      result_buf[i] = '0' + tmp_int + 1;	/* sun=1 */
 	      i += 1;
@@ -16267,6 +16265,14 @@ exit:
       db_private_free (NULL, initial_buf_format);
     }
   return error_status;
+
+zerodate_exit:
+  if (result_buf != NULL)
+    {
+      db_private_free_and_init (NULL, result_buf);
+    }
+  DB_MAKE_NULL (result_str);
+  goto exit;
 }
 
 /*
