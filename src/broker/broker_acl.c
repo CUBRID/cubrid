@@ -368,9 +368,9 @@ access_control_read_ip_info (IP_INFO * ip_info, char *filename,
       if (ip_info->num_list >= ACL_MAX_IP_COUNT)
 	{
 	  sprintf (admin_err_msg,
-		   "Error while loading ip info file(%s)"
+		   "Error while loading ip info file(%s) line(%d)"
 		   " - max ip count(%d) exceeded.",
-		   filename, ACL_MAX_IP_COUNT);
+		   filename, ln, ACL_MAX_IP_COUNT);
 	  goto error;
 	}
 
@@ -382,7 +382,8 @@ access_control_read_ip_info (IP_INFO * ip_info, char *filename,
 	  if (token == NULL)
 	    {
 	      sprintf (admin_err_msg,
-		       "Error while loading ip info file(%s)", filename);
+		       "Error while loading ip info file(%s) line(%d)",
+		       filename, ln);
 	      goto error;
 	    }
 
@@ -401,7 +402,8 @@ access_control_read_ip_info (IP_INFO * ip_info, char *filename,
 		  (p && *p != '\0') || (adr > 255 || adr < 0))
 		{
 		  sprintf (admin_err_msg,
-			   "Error while loading ip info file(%s)", filename);
+			   "Error while loading ip info file(%s) line(%d)",
+			   filename, ln);
 		  goto error;
 		}
 
@@ -413,7 +415,8 @@ access_control_read_ip_info (IP_INFO * ip_info, char *filename,
 	  if (i == 3 && token != NULL)
 	    {
 	      sprintf (admin_err_msg,
-		       "Error while loading ip info file(%s)", filename);
+		       "Error while loading ip info file(%s) line(%d)",
+		       filename, ln);
 	      goto error;
 	    }
 	}
