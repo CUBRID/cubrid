@@ -315,8 +315,7 @@ extern char *xstats_get_statistics_from_server (THREAD_ENTRY * thread_p,
 						unsigned int timestamp,
 						int *length);
 extern int xstats_update_statistics (THREAD_ENTRY * thread_p,
-				     OID * classoid, BTID_LIST * btids,
-				     bool with_fullscan);
+				     OID * classoid, bool with_fullscan);
 extern int xstats_update_all_statistics (THREAD_ENTRY * thread_p,
 					 bool with_fullscan);
 

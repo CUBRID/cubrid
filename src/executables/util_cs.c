@@ -1943,8 +1943,8 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
       return ER_FAILED;
     }
 
-  assert_release (dump_level >= TRANDUMP_SUMMARY
-		  && dump_level <= TRANDUMP_FULL_INFO);
+  assert_release (TRANDUMP_SUMMARY <= dump_level);
+  assert_release (dump_level <= TRANDUMP_FULL_INFO);
 
   if (dump_level == TRANDUMP_FULL_INFO || dump_level == TRANDUMP_QUERY_INFO)
     {

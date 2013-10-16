@@ -6485,14 +6485,12 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp,
  * NOTE:
  */
 int
-stats_update_statistics (OID * classoid, BTID * btid, int do_now,
-			 int with_fullscan)
+stats_update_statistics (OID * classoid, int do_now, int with_fullscan)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
-  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE +
-		  OR_BTID_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
@@ -6504,17 +6502,6 @@ stats_update_statistics (OID * classoid, BTID * btid, int do_now,
   ptr = or_pack_oid (request, classoid);
   ptr = or_pack_int (ptr, do_now);
   ptr = or_pack_int (ptr, with_fullscan);
-  if (btid == NULL)
-    {
-      BTID id;
-
-      BTID_SET_NULL (&id);
-      ptr = or_pack_btid (ptr, &id);
-    }
-  else
-    {
-      ptr = or_pack_btid (ptr, btid);
-    }
 
   req_error = net_client_request (NET_SERVER_QST_UPDATE_STATISTICS,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
@@ -6534,31 +6521,15 @@ stats_update_statistics (OID * classoid, BTID * btid, int do_now,
   if (!do_now)
     {
       /* postpone updating statistics */
-      log_add_to_modified_class_list (NULL, classoid, btid,
+      log_add_to_modified_class_list (NULL, classoid,
 				      UPDATE_STATS_ACTION_SET);
       EXIT_SERVER ();
       return NO_ERROR;
     }
 
-  if (btid == NULL || BTID_IS_NULL (btid))
-    {
-      success =
-	xstats_update_statistics (NULL, classoid, NULL,
-				  (with_fullscan ? STATS_WITH_FULLSCAN :
-				   STATS_WITH_SAMPLING));
-    }
-  else
-    {
-      BTID_LIST b;
-
-      b.next = NULL;
-      BTID_COPY (&b.btid, btid);
-      success =
-	xstats_update_statistics (NULL, classoid, &b,
-				  (with_fullscan ? STATS_WITH_FULLSCAN :
-				   STATS_WITH_SAMPLING));
-    }
-
+  success = xstats_update_statistics (NULL, classoid,
+				      (with_fullscan ? STATS_WITH_FULLSCAN :
+				       STATS_WITH_SAMPLING));
   EXIT_SERVER ();
 
   return success;

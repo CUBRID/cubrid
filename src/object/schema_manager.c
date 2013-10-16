@@ -3840,7 +3840,6 @@ sm_get_statistics_force (MOP classop)
  *    cache them with the class.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop(in): class object
- *   btid(in): btree id
  *   do_now(in): update statistics right now or
  *               delay it until a transaction is committed
  *   with_fullscan(in): true iff WITH FULLSCAN
@@ -3850,8 +3849,7 @@ sm_get_statistics_force (MOP classop)
  *       "alter table ..." or "create index ...".
  */
 int
-sm_update_statistics (MOP classop, BTID * btid, bool do_now,
-		      bool with_fullscan)
+sm_update_statistics (MOP classop, bool do_now, bool with_fullscan)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -3877,7 +3875,7 @@ sm_update_statistics (MOP classop, BTID * btid, bool do_now,
 	  return er_errid ();
 	}
 
-      error = stats_update_statistics (WS_OID (classop), btid,
+      error = stats_update_statistics (WS_OID (classop),
 				       (do_now ? 1 : 0),
 				       (with_fullscan ? 1 : 0));
       if (error == NO_ERROR)
@@ -4008,7 +4006,7 @@ sm_update_catalog_statistics (const char *class_name, bool with_fullscan)
   obj = db_find_class (class_name);
   if (obj != NULL)
     {
-      error = sm_update_statistics (obj, NULL, true, with_fullscan);
+      error = sm_update_statistics (obj, true, with_fullscan);
     }
   else
     {
@@ -11101,7 +11099,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 
   if (num_index > 0)
     {
-      if (sm_update_statistics (classop, NULL, false, STATS_WITH_SAMPLING))
+      if (sm_update_statistics (classop, false, STATS_WITH_SAMPLING))
 	{
 	  goto structure_error;
 	}
@@ -12819,8 +12817,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 	      if (error == NO_ERROR)
 		{
 		  error =
-		    sm_update_statistics (newop, NULL, false,
-					  STATS_WITH_SAMPLING);
+		    sm_update_statistics (newop, false, STATS_WITH_SAMPLING);
 		}
 	    }
 	}
@@ -13581,8 +13578,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
       free_and_init (sub_partitions);
     }
 
-
-  /* should be had checked before if this index already exist */
+  /* should be checked before if this index already exist */
 
   /* make sure the catalog can handle another representation */
   error = check_catalog_space (classop, class_);
@@ -13729,8 +13725,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
        * looks at the statistics structures, not the schema structures.
        */
       assert_release (!BTID_IS_NULL (&index));
-      if (sm_update_statistics (classop, &index, false, STATS_WITH_SAMPLING)
-	  != NO_ERROR)
+      if (sm_update_statistics (classop, false,
+				STATS_WITH_SAMPLING) != NO_ERROR)
 	{
 	  goto severe_error;
 	}
@@ -14522,8 +14518,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
 	  if (error == NO_ERROR)
 	    {
 	      error =
-		sm_update_statistics (newmop, NULL, false,
-				      STATS_WITH_SAMPLING);
+		sm_update_statistics (newmop, false, STATS_WITH_SAMPLING);
 	    }
 	  else
 	    {

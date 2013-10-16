@@ -208,7 +208,7 @@ extern int sm_touch_class (MOP classmop);
 /* Statistics functions */
 extern SM_CLASS *sm_get_class_with_statistics (MOP classop);
 extern CLASS_STATS *sm_get_statistics_force (MOP classop);
-extern int sm_update_statistics (MOP classop, BTID * btid, bool do_now,
+extern int sm_update_statistics (MOP classop, bool do_now,
 				 bool with_fullscan);
 extern int sm_update_all_statistics (bool with_fullscan);
 

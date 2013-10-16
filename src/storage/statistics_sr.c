@@ -98,7 +98,6 @@ static const BTREE_STATS *stats_find_inherited_index_stats (OR_CLASSREP *
  *                                of a given class
  *   return:
  *   class_id(in): Identifier of the class
- *   btids(in):
  *   with_fullscan(in): true iff WITH FULLSCAN
  *
  * Note: It first retrieves the whole catalog information about this class,
@@ -124,7 +123,7 @@ static const BTREE_STATS *stats_find_inherited_index_stats (OR_CLASSREP *
  */
 int
 xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
-			  BTID_LIST * btids, bool with_fullscan)
+			  bool with_fullscan)
 {
   CLS_INFO *cls_info_p = NULL;
   REPR_ID repr_id;
@@ -251,32 +250,10 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  assert_release (btree_stats_p->pkeys_size > 0);
 	  assert_release (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 
-	  if (btids)
+	  if (btree_get_stats (thread_p, btree_stats_p,
+			       with_fullscan) != NO_ERROR)
 	    {
-	      BTID_LIST *b = btids;
-	      while (b != NULL)
-		{
-		  if (!BTID_IS_EQUAL (&b->btid, &btree_stats_p->btid))
-		    {
-		      b = b->next;
-		      continue;
-		    }
-
-		  if (btree_get_stats (thread_p, btree_stats_p,
-				       with_fullscan) != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		  break;
-		}
-	    }
-	  else
-	    {
-	      if (btree_get_stats (thread_p, btree_stats_p,
-				   with_fullscan) != NO_ERROR)
-		{
-		  goto error;
-		}
+	      goto error;
 	    }
 
 	  assert_release (btree_stats_p->keys >= 0);
@@ -368,8 +345,7 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
       class_id.pageid = class_id_item_p->class_id.pageid;
       class_id.slotid = class_id_item_p->class_id.slotid;
 
-      error =
-	xstats_update_statistics (thread_p, &class_id, NULL, with_fullscan);
+      error = xstats_update_statistics (thread_p, &class_id, with_fullscan);
       if (error != NO_ERROR)
 	{
 	  stats_free_class_list (class_id_list_p);
@@ -1199,8 +1175,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
   for (i = 0; i < partitions_count; i++)
     {
       error =
-	xstats_update_statistics (thread_p, &partitions[i], NULL,
-				  with_fullscan);
+	xstats_update_statistics (thread_p, &partitions[i], with_fullscan);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;

@@ -1455,8 +1455,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  /* update statistics here */
 	  sm_Disable_updating_statistics = old_disable_stats;
 	  error =
-	    sm_update_statistics (pinfo.root_op, NULL, false,
-				  STATS_WITH_SAMPLING);
+	    sm_update_statistics (pinfo.root_op, false, STATS_WITH_SAMPLING);
 	}
       break;
 
@@ -6678,7 +6677,7 @@ do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	{
 	  assert (name->info.name.db_object != NULL);
 	  error =
-	    sm_update_statistics (name->info.name.db_object, NULL, false,
+	    sm_update_statistics (name->info.name.db_object, false,
 				  STATS_WITH_SAMPLING);
 	  if (error != NO_ERROR)
 	    {
@@ -6699,8 +6698,7 @@ do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  return error;
 	}
       error =
-	sm_update_statistics (pinfo->root_op, NULL, false,
-			      STATS_WITH_SAMPLING);
+	sm_update_statistics (pinfo->root_op, false, STATS_WITH_SAMPLING);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -6721,8 +6719,7 @@ do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	      continue;
 	    }
 
-	  error =
-	    sm_update_statistics (obj->op, NULL, false, STATS_WITH_SAMPLING);
+	  error = sm_update_statistics (obj->op, false, STATS_WITH_SAMPLING);
 	  if (error != NO_ERROR)
 	    {
 	      return error;

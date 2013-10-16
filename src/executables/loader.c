@@ -6028,8 +6028,7 @@ ldr_update_statistics (void)
 	      fflush (stdout);
 	    }
 	  err =
-	    sm_update_statistics (table->class_, NULL, true,
-				  STATS_WITH_SAMPLING);
+	    sm_update_statistics (table->class_, true, STATS_WITH_SAMPLING);
 	}
     }
   return err;

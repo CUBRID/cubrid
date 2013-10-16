@@ -4636,7 +4636,6 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 {
   int error, do_now, with_fullscan;
   OID classoid;
-  BTID btid;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -4644,28 +4643,13 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_oid (request, &classoid);
   ptr = or_unpack_int (ptr, &do_now);
   ptr = or_unpack_int (ptr, &with_fullscan);
-  ptr = or_unpack_btid (ptr, &btid);
 
   if (do_now)
     {
-      if (BTID_IS_NULL (&btid))
-	{
-	  error =
-	    xstats_update_statistics (thread_p, &classoid, NULL,
-				      (with_fullscan ? STATS_WITH_FULLSCAN :
-				       STATS_WITH_SAMPLING));
-	}
-      else
-	{
-	  BTID_LIST b;
-
-	  b.next = NULL;
-	  BTID_COPY (&b.btid, &btid);
-	  error =
-	    xstats_update_statistics (thread_p, &classoid, &b,
-				      (with_fullscan ? STATS_WITH_FULLSCAN :
-				       STATS_WITH_SAMPLING));
-	}
+      error =
+	xstats_update_statistics (thread_p, &classoid,
+				  (with_fullscan ? STATS_WITH_FULLSCAN :
+				   STATS_WITH_SAMPLING));
       if (error != NO_ERROR)
 	{
 	  return_error_to_client (thread_p, rid);
@@ -4674,7 +4658,7 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
   else
     {
       /* Just mark the class as "updating statistics is required". */
-      log_add_to_modified_class_list (thread_p, &classoid, &btid,
+      log_add_to_modified_class_list (thread_p, &classoid,
 				      UPDATE_STATS_ACTION_SET);
       error = NO_ERROR;
     }

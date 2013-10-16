@@ -211,7 +211,7 @@ extern void log_append_commit_client_loose_ends (THREAD_ENTRY * thread_p,
 extern void log_append_abort_client_loose_ends (THREAD_ENTRY * thread_p,
 						LOG_TDES * tdes);
 extern int log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
-					   const OID * class_oid, BTID * btid,
+					   const OID * class_oid,
 					   UPDATE_STATS_ACTION_TYPE
 					   action_type);
 extern bool log_is_class_being_modified (THREAD_ENTRY * thread_p,
