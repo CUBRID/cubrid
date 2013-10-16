@@ -1592,8 +1592,6 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p,
 			 &(cs_ptr->cs_index), RC_CS, MGR_DEF);
 #endif /* NDEBUG */
 
-  assert (cs_ptr->total_enter > 0);
-
   error_code = pthread_mutex_lock (&cs_ptr->lock);
   if (error_code != NO_ERROR)
     {
