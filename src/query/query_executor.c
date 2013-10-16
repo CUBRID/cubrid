@@ -1659,11 +1659,11 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (xasl->type == BUILDLIST_PROC || xasl->type == BUILD_SCHEMA_PROC)
     {
       if (xasl->selected_upd_list != NULL && xasl->list_id->tuple_cnt > 0)
-       {
-         ret = ER_QPROC_INVALID_QRY_SINGLE_TUPLE;
-         er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
-         GOTO_EXIT_ON_ERROR;
-       }
+	{
+	  ret = ER_QPROC_INVALID_QRY_SINGLE_TUPLE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
+	  GOTO_EXIT_ON_ERROR;
+	}
 
       tpldescr_status = qexec_generate_tuple_descriptor (thread_p,
 							 xasl->list_id,
@@ -15440,7 +15440,7 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
   int npages;
   int RT;
 
-#define DEFAULT_RECOMP_THRESHOLD 50
+#define DEFAULT_PLAN_RECOMP_THRESHOLD 50
 
   if (ent == NULL)
     {
@@ -15459,8 +15459,8 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 	  continue;		/* nop; is not class */
 	}
 
-#if 1				/* TODO - for speed-up purpose; do net delete me */
-      if (*tcardp > DEFAULT_RECOMP_THRESHOLD)
+#if 1				/* TODO - for speed-up purpose; do not delete me */
+      if (*tcardp > DEFAULT_PLAN_RECOMP_THRESHOLD)
 	{
 	  continue;		/* nop; is not small class */
 	}
@@ -15474,13 +15474,13 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 	  assert (!VFID_ISNULL (&cls_info_p->hfid.vfid));
 	  npages = file_get_numpages (thread_p, &cls_info_p->hfid.vfid);
 
-	  if (npages <= DEFAULT_RECOMP_THRESHOLD)
+	  if (npages <= DEFAULT_PLAN_RECOMP_THRESHOLD)
 	    {
-	      RT = DEFAULT_RECOMP_THRESHOLD;
+	      RT = DEFAULT_PLAN_RECOMP_THRESHOLD;
 	    }
 	  else
 	    {
-	      RT = DEFAULT_RECOMP_THRESHOLD + (0.2 * npages);
+	      RT = DEFAULT_PLAN_RECOMP_THRESHOLD + (0.2 * npages);
 	    }
 
 	  if (abs (*tcardp - npages) >= RT)

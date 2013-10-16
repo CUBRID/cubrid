@@ -157,8 +157,6 @@ struct walk_info
   QO_TERM *term;
 };
 
-#define INDEX_SKIP_SCAN_FACTOR 1000
-
 double QO_INFINITY = 0.0;
 
 static QO_PLAN *qo_optimize_helper (QO_ENV * env);

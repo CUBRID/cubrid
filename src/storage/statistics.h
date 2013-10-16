@@ -32,8 +32,13 @@
 #include "storage_common.h"
 #include "object_domain.h"
 
+#define INDEX_SKIP_SCAN_FACTOR 1000
+
 #define STATS_WITH_FULLSCAN  true
 #define STATS_WITH_SAMPLING  false
+
+#define STATS_SAMPLING_THRESHOLD 50	/* sampling trial count */
+#define STATS_SAMPLING_LEAFS_MAX   8	/* sampling leaf pages */
 
 /* disk-resident elements of pkeys[] field */
 #define BTREE_STATS_PKEYS_NUM      8
