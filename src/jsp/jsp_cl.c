@@ -79,6 +79,7 @@
 #define MAX_ARG_COUNT   64
 #define MAX_CALL_COUNT  16
 #define SAVEPOINT_ADD_STORED_PROC "ADDSTOREDPROC"
+#define SAVEPOINT_CREATE_STORED_PROC "CREATESTOREDPROC"
 
 typedef struct db_arg_list
 {
@@ -517,6 +518,8 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *param_list, *p;
   PT_TYPE_ENUM ret_type = PT_TYPE_NONE;
   int param_count;
+  int err = NO_ERROR;
+  bool has_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -544,8 +547,28 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (jsp_is_exist_stored_procedure (name))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1, name);
-      return er_errid ();
+      if (statement->info.sp.or_replace)
+        {
+          /* drop existing stored procedure */
+          err = tran_system_savepoint (SAVEPOINT_CREATE_STORED_PROC);
+          if (err != NO_ERROR)
+            {
+              return err;
+            }
+          has_savepoint = true;
+
+          err = drop_stored_procedure (name, type);
+          if (err != NO_ERROR)
+            {
+              goto error_exit;
+            }
+        }
+      else
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1,
+              name);
+          return er_errid ();
+        }
     }
 
   for (p = param_list, param_count = 0; p != NULL; p = p->next, param_count++)
@@ -557,11 +580,23 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1,
 	      name);
-      return er_errid ();
+      goto error_exit;
     }
 
-  return jsp_add_stored_procedure (name, type, ret_type, param_list,
+  err = jsp_add_stored_procedure (name, type, ret_type, param_list,
 				   java_method);
+  if (err != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  return NO_ERROR;
+
+error_exit:
+  if (has_savepoint)
+    {
+      tran_abort_upto_system_savepoint (SAVEPOINT_CREATE_STORED_PROC);
+    }
+  return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
 }
 
 /*

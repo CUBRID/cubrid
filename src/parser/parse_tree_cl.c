@@ -7560,6 +7560,10 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.sp.name);
   q = pt_append_nulstring (parser, q, "create ");
+  if (p->info.sp.or_replace)
+    {
+      q = pt_append_nulstring (parser, q, "or replace ");
+    }
   q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sp.type));
   q = pt_append_nulstring (parser, q, " ");
   q = pt_append_varchar (parser, q, r1);

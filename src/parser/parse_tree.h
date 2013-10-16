@@ -2818,6 +2818,7 @@ struct pt_stored_proc_info
   PT_NODE *java_method;
   PT_NODE *owner;		/* for ALTER PROCEDURE/FUNCTION name OWNER TO new_owner */
   PT_MISC_TYPE type;
+  unsigned or_replace:1;	/* OR REPLACE clause */
   PT_TYPE_ENUM ret_type;
 };
 

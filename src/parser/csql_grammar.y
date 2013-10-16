@@ -2668,46 +2668,50 @@ create_stmt
 
 		DBG_PRINT}}
 	| CREATE						/* 1 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }		/* 2 */
-	  PROCEDURE						/* 3 */
-	  identifier '(' opt_sp_param_list  ')'			/* 4, 5, 6, 7 */
-	  opt_of_is_as LANGUAGE JAVA				/* 8, 9, 10 */
-	  NAME char_string_literal				/* 11, 12 */
+	  opt_or_replace                /* 2 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }		/* 3 */
+	  PROCEDURE						/* 4 */
+	  identifier '(' opt_sp_param_list  ')'			/* 5, 6, 7, 8 */
+	  opt_of_is_as LANGUAGE JAVA				/* 9, 10, 11 */
+	  NAME char_string_literal				/* 12, 13 */
 		{ pop_msg(); }
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_STORED_PROCEDURE);
 			if (node)
 			  {
-			    node->info.sp.name = $4;
+			    node->info.sp.or_replace = $2;
+			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_PROCEDURE;
-			    node->info.sp.param_list = $6;
+			    node->info.sp.param_list = $7;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
-			    node->info.sp.java_method = $12;
+			    node->info.sp.java_method = $13;
 			  }
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| CREATE
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }
-	  FUNCTION
-	  identifier '('  opt_sp_param_list  ')'
-	  RETURN opt_of_data_type_cursor
-	  opt_of_is_as LANGUAGE JAVA
-	  NAME char_string_literal
+	| CREATE                        /* 1 */
+	  opt_or_replace                /* 2 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }		/* 3 */
+	  FUNCTION						/* 4 */
+	  identifier '('  opt_sp_param_list  ')'			/* 5, 6, 7, 8 */
+	  RETURN opt_of_data_type_cursor				/* 9, 10 */
+	  opt_of_is_as LANGUAGE JAVA					/* 11, 12, 13 */
+	  NAME char_string_literal						/* 14, 15 */
 		{ pop_msg(); }
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_STORED_PROCEDURE);
 			if (node)
 			  {
-			    node->info.sp.name = $4;
+			    node->info.sp.or_replace = $2;
+			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_FUNCTION;
-			    node->info.sp.param_list = $6;
-			    node->info.sp.ret_type = $9;
-			    node->info.sp.java_method = $14;
+			    node->info.sp.param_list = $7;
+			    node->info.sp.ret_type = $10;
+			    node->info.sp.java_method = $15;
 			  }
 
 			$$ = node;
