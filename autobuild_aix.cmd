@@ -37,11 +37,27 @@ then
 	export CC CXX OBJECT_MODE
 fi
 
+# clean the config directory
+if [ -d config ]; then
+	rm -f config/*
+fi 
+
 . ./autogen.sh
 
 if [ -d build ]; then
 	rm -rf build
 fi
+
+# make sure not re-generate configure
+for i in `ls external`
+do
+    if [ -d "external/$i" ]; then
+        if [ -e "external/$i/configure" ]; then
+            echo "touch external/$i/configure"
+            touch external/$i/configure
+        fi
+    fi
+done
 
 mkdir -p build && cd build
 ../configure $OPTS && $MAKE && $MAKE install
