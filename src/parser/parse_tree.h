@@ -1776,6 +1776,7 @@ struct pt_create_entity_info
 						 * for CREATE SELECT
 						 */
   unsigned or_replace:1;	/* OR REPLACE clause for create view */
+  unsigned if_not_exists:1;	/* IF NOT EXISTS clause for create table | class */
   PT_HINT_ENUM hint;		/* hint flag */
 };
 

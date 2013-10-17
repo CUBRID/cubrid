@@ -8794,7 +8794,12 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       if (!(entity_type == PT_VCLASS
 	    && node->info.create_entity.or_replace == 1
-	    && db_is_vclass (existing_entity)))
+	    && db_is_vclass (existing_entity))
+	  /* If user sets "IF NOT EXISTS", do not throw ERROR if TABLE or
+	   * VIEW with the same name exists, to stay compatible with MySQL.
+	   */
+	  && !(entity_type == PT_CLASS
+	       && node->info.create_entity.if_not_exists == 1))
 	{
 	  PT_ERRORmf (parser, name,
 		      MSGCAT_SET_PARSER_SEMANTIC,

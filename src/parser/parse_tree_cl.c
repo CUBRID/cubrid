@@ -6955,6 +6955,7 @@ pt_init_create_entity (PT_NODE * p)
   p->info.create_entity.create_select = 0;
   p->info.create_entity.create_select_action = PT_CREATE_SELECT_NO_ACTION;
   p->info.create_entity.or_replace = 0;
+  p->info.create_entity.if_not_exists = 0;
   return p;
 }
 
@@ -6991,6 +6992,10 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
 			   pt_show_misc_type (p->info.
 					      create_entity.entity_type));
   q = pt_append_nulstring (parser, q, " ");
+  if (p->info.create_entity.if_not_exists)
+    {
+      q = pt_append_nulstring (parser, q, "if not exists ");
+    }
   q = pt_append_varchar (parser, q, r1);
 
   if (p->info.create_entity.create_like)

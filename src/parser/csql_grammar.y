@@ -649,6 +649,7 @@ typedef struct YYLTYPE
 %type <number> opt_nulls_first_or_last
 %type <number> query_trace_spec
 %type <number> opt_trace_output_format
+%type <number> opt_if_not_exists
 /*}}}*/
 
 /* define rule type (node) */
@@ -2341,25 +2342,26 @@ create_stmt
 		}
 	  opt_hint_list					/* 3 */
 	  of_class_table_type				/* 4 */
-	  class_name					/* 5 */
-	  opt_subtable_clause 				/* 6 */
-	  opt_class_attr_def_list			/* 7 */
-	  opt_class_or_normal_attr_def_list		/* 8 */
-	  opt_table_option_list				/* 9 */
-	  opt_method_def_list 				/* 10 */
-	  opt_method_files 				/* 11 */
-	  opt_inherit_resolution_list			/* 12 */
-	  opt_partition_clause 				/* 13 */
-          opt_create_as_clause				/* 14 */
+	  opt_if_not_exists				/* 5 */
+	  class_name					/* 6 */
+	  opt_subtable_clause 				/* 7 */
+	  opt_class_attr_def_list			/* 8 */
+	  opt_class_or_normal_attr_def_list		/* 9 */
+	  opt_table_option_list				/* 10 */
+	  opt_method_def_list 				/* 11 */
+	  opt_method_files 				/* 12 */
+	  opt_inherit_resolution_list			/* 13 */
+	  opt_partition_clause 				/* 14 */
+      opt_create_as_clause				/* 15 */
 		{{
 
 			PT_NODE *qc = parser_pop_hint_node ();
 			PARSER_SAVE_ERR_CONTEXT (qc, @$.buffer_pos)
 
-			if (CONTAINER_AT_1 ($14) != NULL)
+			if (CONTAINER_AT_1 ($15) != NULL)
 			  {
-			    if ($6 != NULL || $7 != NULL || $10 != NULL
-				|| $11 != NULL || $12 != NULL)
+			    if ($7 != NULL || $8 != NULL || $11 != NULL
+				|| $12 != NULL || $13 != NULL)
 			      {
 				PT_ERRORf (this_parser, qc, "check syntax at %s",
                                           parser_print_tree (this_parser, qc));
@@ -2368,20 +2370,21 @@ create_stmt
 
 			if (qc)
 			  {
-			    qc->info.create_entity.entity_name = $5;
+			    qc->info.create_entity.if_not_exists = $5;
+			    qc->info.create_entity.entity_name = $6;
 			    qc->info.create_entity.entity_type = (PT_MISC_TYPE) $4;
-			    qc->info.create_entity.supclass_list = $6;
-			    qc->info.create_entity.class_attr_def_list = $7;
-			    qc->info.create_entity.attr_def_list = $8;
-			    qc->info.create_entity.table_option_list = $9;
-			    qc->info.create_entity.method_def_list = $10;
-			    qc->info.create_entity.method_file_list = $11;
-			    qc->info.create_entity.resolution_list = $12;
-			    qc->info.create_entity.partition_info = $13;
-                            if (CONTAINER_AT_1 ($14) != NULL)
+			    qc->info.create_entity.supclass_list = $7;
+			    qc->info.create_entity.class_attr_def_list = $8;
+			    qc->info.create_entity.attr_def_list = $9;
+			    qc->info.create_entity.table_option_list = $10;
+			    qc->info.create_entity.method_def_list = $11;
+			    qc->info.create_entity.method_file_list = $12;
+			    qc->info.create_entity.resolution_list = $13;
+			    qc->info.create_entity.partition_info = $14;
+                            if (CONTAINER_AT_1 ($15) != NULL)
 			      {
-			        qc->info.create_entity.create_select_action = TO_NUMBER(CONTAINER_AT_0 ($14));
-			        qc->info.create_entity.create_select = CONTAINER_AT_1 ($14);
+			        qc->info.create_entity.create_select_action = TO_NUMBER(CONTAINER_AT_0 ($15));
+			        qc->info.create_entity.create_select = CONTAINER_AT_1 ($15);
 			      }
 
 			    pt_gather_constraints (this_parser, qc);
@@ -2732,18 +2735,20 @@ create_stmt
 		}
 	  opt_hint_list					/* 3 */
 	  of_class_table_type				/* 4 */
-	  class_name					/* 5 */
-	  LIKE						/* 6 */
-	  class_name					/* 7 */
+	  opt_if_not_exists				/* 5 */
+	  class_name					/* 6 */
+	  LIKE						/* 7 */
+	  class_name					/* 8 */
 		{{
 
 			PT_NODE *qc = parser_pop_hint_node ();
 
 			if (qc)
 			  {
-			    qc->info.create_entity.entity_name = $5;
+			    qc->info.create_entity.if_not_exists = $5;
+			    qc->info.create_entity.entity_name = $6;
 			    qc->info.create_entity.entity_type = PT_CLASS;
-			    qc->info.create_entity.create_like = $7;
+			    qc->info.create_entity.create_like = $8;
 			  }
 
 			$$ = qc;
@@ -2757,20 +2762,22 @@ create_stmt
 		}
 	  opt_hint_list					/* 3 */
 	  of_class_table_type				/* 4 */
-	  class_name					/* 5 */
-	  '('						/* 6 */
-	  LIKE						/* 7 */
-	  class_name					/* 8 */
-	  ')'						/* 9 */
+	  opt_if_not_exists				/* 5 */
+	  class_name					/* 6 */
+	  '('						/* 7 */
+	  LIKE						/* 8 */
+	  class_name					/* 9 */
+	  ')'						/* 10 */
 		{{
 
 			PT_NODE *qc = parser_pop_hint_node ();
 
 			if (qc)
 			  {
-			    qc->info.create_entity.entity_name = $5;
+			    qc->info.create_entity.if_not_exists = $5;
+			    qc->info.create_entity.entity_name = $6;
 			    qc->info.create_entity.entity_type = PT_CLASS;
-			    qc->info.create_entity.create_like = $8;
+			    qc->info.create_entity.create_like = $9;
 			  }
 
 			$$ = qc;
@@ -7750,6 +7757,21 @@ opt_or_replace
 
 		DBG_PRINT}}
 	| OR REPLACE
+		{{
+
+			$$ = 1;
+
+		DBG_PRINT}}
+	;
+
+opt_if_not_exists
+	: /*empty*/
+		{{
+
+			$$ = 0;
+
+		DBG_PRINT}}
+	| IF NOT EXISTS
 		{{
 
 			$$ = 1;

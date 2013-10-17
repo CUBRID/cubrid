@@ -9060,6 +9060,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     {
     case PT_CLASS:
 
+      if (node->info.create_entity.if_not_exists == 1
+	  && db_find_class (class_name))
+	{
+	  goto error_exit;
+	}
+
       for (tbl_opt = node->info.create_entity.table_option_list;
 	   tbl_opt != NULL; tbl_opt = tbl_opt->next)
 	{
