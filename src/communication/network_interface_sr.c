@@ -2883,7 +2883,7 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid,
 		    char *request, int reqlen)
 {
   TRAN_STATE state;
-  int reset_on_commit;
+  int reset_on_commit = false;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
@@ -2974,10 +2974,7 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid,
 		    "(maintenance && remote normal client type) "
 		    "DB_CONNECTION_STATUS_RESET\n");
     }
-  else
-    {
-      reset_on_commit = false;
-    }
+
   ptr = or_pack_int (ptr, (int) reset_on_commit);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
