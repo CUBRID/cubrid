@@ -953,7 +953,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	    }
 	  else			/* second */
 	    {
-	      if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
+	      if (!BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE
+		  (client_credential->client_type)
+		  && BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
 		{
 		  check_capabilities = false;
 		}
@@ -983,6 +985,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 	  boot_Host_connected[0] = '\0';
 
+	  db_unset_reconnect_reason (DB_RC_NON_PREFERRED_HOSTS);
+
 	  /* connect to preferred hosts in a sequential order even though
 	   * a user sets CONNECT_ORDER to RANDOM
 	   */
@@ -1001,6 +1005,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 		{
 		  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
 				"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
+
+		  boot_Host_connected[0] = '\0';
 		}
 	      else
 		{
@@ -1025,7 +1031,10 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	}
       else
 	if (BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE
-	    (client_credential->client_type))
+	    (client_credential->client_type)
+	    || client_credential->client_type ==
+	    BOOT_CLIENT_SLAVE_ONLY_BROKER)
+
 	{
 	  check_capabilities = true;
 	  if (i == 0)		/* first */
@@ -1081,27 +1090,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 					false,
 					client_credential->connect_order);
 
-	}
-      else if (client_credential->client_type ==
-	       BOOT_CLIENT_SLAVE_ONLY_BROKER)
-	{
-	  check_capabilities = true;
-	  if (i == 0)		/* first */
-	    {
-	      optional_cap = BOOT_CHECK_HA_DELAY_CAP;
-	    }
-	  else			/* second */
-	    {
-	      db_set_ignore_repl_delay ();
-
-	      optional_cap = BOOT_NO_OPT_CAP;
-	    }
-	  boot_client_initialize_css (db,
-				      client_credential->
-				      client_type,
-				      check_capabilities, optional_cap,
-				      false,
-				      client_credential->connect_order);
 	}
       else
 	{
