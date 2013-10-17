@@ -70,6 +70,7 @@ static T_BROKER_VERSION shard_stmt_make_protocol_version (T_BROKER_VERSION
 static void shard_stmt_put_statement_to_map (const char *sql_stmt,
 					     T_SHARD_STMT * stmt_p);
 static void shard_stmt_del_statement_from_map (T_SHARD_STMT * stmt_p);
+static void shard_stmt_set_status (int stmt_h_id, int status);
 
 T_SHARD_STMT_GLOBAL shard_Stmt;
 
@@ -783,10 +784,13 @@ shard_stmt_add_srv_h_id_for_shard_cas (int stmt_h_id, int shard_id,
       return -1;
     }
 
-  stmt_p->status = SHARD_STMT_STATUS_COMPLETE;
+  if (stmt_p->status == SHARD_STMT_STATUS_IN_PROGRESS)
+    {
+      shard_stmt_set_status_complete (stmt_h_id);
 
-  /* check and wakeup statement waiter */
-  shard_stmt_check_waiter_and_wakeup (stmt_p);
+      /* check and wakeup statement waiter */
+      shard_stmt_check_waiter_and_wakeup (stmt_p);
+    }
 
   error = shard_stmt_set_srv_h_id (stmt_p, shard_id, cas_id, srv_h_id);
   if (error)
@@ -1537,18 +1541,13 @@ shard_statement_wait_timer (void)
 void
 shard_stmt_set_status_invalid (int stmt_h_id)
 {
-  T_SHARD_STMT *stmt_p = NULL;
+  shard_stmt_set_status (stmt_h_id, SHARD_STMT_STATUS_INVALID);
+}
 
-  stmt_p = shard_stmt_find_by_stmt_h_id (stmt_h_id);
-  if (stmt_p == NULL)
-    {
-      assert (false);
-      return;
-    }
-
-  assert (stmt_p->status == SHARD_STMT_STATUS_COMPLETE);
-
-  stmt_p->status = SHARD_STMT_STATUS_INVALID;
+void
+shard_stmt_set_status_complete (int stmt_h_id)
+{
+  shard_stmt_set_status (stmt_h_id, SHARD_STMT_STATUS_COMPLETE);
 }
 
 static void
@@ -1629,4 +1628,25 @@ shard_stmt_del_statement_from_map (T_SHARD_STMT * stmt_p)
 		   next_stmt_p);
 	}
     }
+}
+
+static void
+shard_stmt_set_status (int stmt_h_id, int status)
+{
+  T_SHARD_STMT *stmt_p = NULL;
+
+  stmt_p = shard_stmt_find_by_stmt_h_id (stmt_h_id);
+  if (stmt_p == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  if (stmt_p->status == SHARD_STMT_STATUS_INVALID
+      && status == SHARD_STMT_STATUS_COMPLETE)
+    {
+      assert (false);
+    }
+
+  stmt_p->status = status;
 }

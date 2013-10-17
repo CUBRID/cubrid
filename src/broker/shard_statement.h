@@ -154,4 +154,5 @@ extern char *shard_stmt_rewrite_sql (bool * has_shard_val_hint,
 
 extern void shard_statement_wait_timer (void);
 extern void shard_stmt_set_status_invalid (int stmt_h_id);
+extern void shard_stmt_set_status_complete (int stmt_h_id);
 #endif /* _SHARD_STATEMENT_H_ */

@@ -1517,10 +1517,10 @@ proxy_client_execute_internal (T_PROXY_CONTEXT * ctx_p,
   /* bind variables, even:bind type, odd:bind value */
 
   stmt_p = shard_stmt_find_by_stmt_h_id (srv_h_id);
-  if (stmt_p == NULL)
+  if (stmt_p == NULL || stmt_p->status == SHARD_STMT_STATUS_INVALID)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Unable to find statement handle ideitifier. "
+		 "Unable to find statement handle identifier. "
 		 "(srv_h_id:%d). context(%s).", srv_h_id,
 		 proxy_str_context (ctx_p));
 
