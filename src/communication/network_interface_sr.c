@@ -2808,9 +2808,19 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid,
     }
   else if (ha_state == HA_SERVER_STATE_STANDBY)
     {
+      /* be aware that the order of if conditions
+       * is important
+       */
       if (BOOT_CSQL_CLIENT_TYPE (client_type))
 	{
 	  thread_p->conn_entry->reset_on_commit = false;
+	}
+      else if (client_type == BOOT_CLIENT_BROKER)
+	{
+	  reset_on_commit = true;
+	  er_log_debug (ARG_FILE_LINE, "stran_server_commit(): "
+			"(standby && read-write broker) "
+			"DB_CONNECTION_STATUS_RESET\n");
 	}
       else if (BOOT_NORMAL_CLIENT_TYPE (client_type)
 	       && thread_p->conn_entry->reset_on_commit == true)
@@ -2833,13 +2843,6 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid,
 			    "DB_CONNECTION_STATUS_RESET\n");
 	    }
 	  thread_p->conn_entry->reset_on_commit = false;
-	}
-      else if (client_type == BOOT_CLIENT_BROKER)
-	{
-	  reset_on_commit = true;
-	  er_log_debug (ARG_FILE_LINE, "stran_server_commit(): "
-			"(standby && read-write broker) "
-			"DB_CONNECTION_STATUS_RESET\n");
 	}
     }
   else if (ha_state == HA_SERVER_STATE_ACTIVE
@@ -2921,9 +2924,19 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid,
     }
   else if (ha_state == HA_SERVER_STATE_STANDBY)
     {
+      /* be aware that the order of if conditions
+       * is important
+       */
       if (BOOT_CSQL_CLIENT_TYPE (client_type))
 	{
 	  thread_p->conn_entry->reset_on_commit = false;
+	}
+      else if (client_type == BOOT_CLIENT_BROKER)
+	{
+	  reset_on_commit = true;
+	  er_log_debug (ARG_FILE_LINE, "stran_server_abort(): "
+			"(standby && read-write broker) "
+			"DB_CONNECTION_STATUS_RESET\n");
 	}
       else if (BOOT_NORMAL_CLIENT_TYPE (client_type)
 	       && thread_p->conn_entry->reset_on_commit == true)
@@ -2947,13 +2960,6 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid,
 			    "DB_CONNECTION_STATUS_RESET\n");
 	    }
 	  thread_p->conn_entry->reset_on_commit = false;
-	}
-      else if (client_type == BOOT_CLIENT_BROKER)
-	{
-	  reset_on_commit = true;
-	  er_log_debug (ARG_FILE_LINE, "stran_server_abort(): "
-			"(standby && read-write broker) "
-			"DB_CONNECTION_STATUS_RESET\n");
 	}
     }
   else if (ha_state == HA_SERVER_STATE_ACTIVE
