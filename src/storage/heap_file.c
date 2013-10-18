@@ -770,7 +770,19 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p,
 					  RECDES * old_recdes,
 					  RECDES * new_recdes,
 					  int lob_create_flag);
-
+static int heap_stats_del_bestspace_by_entry (THREAD_ENTRY * thread_p,
+					      HEAP_STATS_ENTRY * ent);
+static int heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p,
+					     const HFID * hfid, VPID * vpid);
+static int heap_stats_del_bestspace (THREAD_ENTRY * thread_p,
+				     const HFID * hfid, int freespace,
+				     int stop_cnt);
+static HEAP_STATS_ENTRY *heap_stats_add_bestspace (THREAD_ENTRY * thread_p,
+						   const HFID * hfid,
+						   VPID * vpid,
+						   int freespace);
+static int heap_stats_entry_free (THREAD_ENTRY * thread_p, void *data,
+				  void *args);
 static int heap_get_partitions_from_subclasses (THREAD_ENTRY * thread_p,
 						const OID * subclasses,
 						const OID * class_part_oid,
@@ -809,7 +821,6 @@ static int heap_compare_vpid (const void *key_vpid1, const void *key_vpid2);
 static unsigned int heap_hash_hfid (const void *key_hfid,
 				    unsigned int htsize);
 static int heap_compare_hfid (const void *key_hfid1, const void *key_hfid2);
-
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -1086,6 +1097,28 @@ heap_stats_del_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 				  heap_Bestspace->num_stats_entries);
 
   return del_cnt;
+}
+
+/*
+ * heap_stats_del_bestspace_by_entry () -
+ *   return: NO_ERROR
+ *
+ *   ent(in/out):
+ */
+static int
+heap_stats_del_bestspace_by_entry (THREAD_ENTRY * thread_p,
+				   HEAP_STATS_ENTRY * ent)
+{
+  (void) mht_rem2 (heap_Bestspace->hfid_ht, &ent->hfid, ent, NULL, NULL);
+  (void) mht_rem (heap_Bestspace->vpid_ht, &ent->best.vpid, NULL, NULL);
+  (void) heap_stats_entry_free (NULL, ent, NULL);
+
+  heap_Bestspace->num_stats_entries--;
+
+  mnt_hf_stats_bestspace_entries (thread_p,
+				  heap_Bestspace->num_stats_entries);
+
+  return NO_ERROR;
 }
 
 /*
@@ -3485,6 +3518,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 				   HEAP_SCANCACHE * scan_cache,
 				   PAGE_PTR * pgptr)
 {
+#define BEST_PAGE_SEARCH_MAX_COUNT 100
   int i;
   int idx_worstspace;
   int worstspace;
@@ -3493,7 +3527,6 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
   int bk_errid = NO_ERROR;	/* backup of previous errid */
   HEAP_STATS_ENTRY *ent;
   HEAP_BESTSPACE best;
-  void *last;
   int notfound_cnt;
   int rc;
 
@@ -3520,9 +3553,8 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
     }
 
   i = 0;
-
   notfound_cnt = 0;
-  last = NULL;
+
   while (found == HEAP_FINDSPACE_NOTFOUND)
     {
       best.freespace = -1;	/* init */
@@ -3535,7 +3567,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 	    {
 	      ent =
 		(HEAP_STATS_ENTRY *) mht_get2 (heap_Bestspace->hfid_ht,
-					       hfid, &last);
+					       hfid, NULL);
 
 	      if (ent)
 		{
@@ -3546,10 +3578,11 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 		      break;
 		    }
 
+		  (void) heap_stats_del_bestspace_by_entry (thread_p, ent);
 		  notfound_cnt++;
 		}
 	    }
-	  while (ent);
+	  while (ent && notfound_cnt < BEST_PAGE_SEARCH_MAX_COUNT);
 
 	  pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
 
@@ -3641,9 +3674,8 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 						      vpid_ht, &best.vpid);
 		      if (ent)
 			{
-			  ent->best.freespace =
-			    bestspace[*idx_found].freespace;
-
+			  (void) heap_stats_del_bestspace_by_entry (thread_p,
+								    ent);
 			  notfound_cnt++;
 			}
 
@@ -3693,24 +3725,6 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
   if (found != HEAP_FINDSPACE_FOUND)
     {
       *idx_found = -1;
-
-      notfound_cnt = INT_MAX;	/* delete all */
-    }
-
-  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
-    {
-      if (notfound_cnt > 0)
-	{
-	  rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
-
-	  (void) heap_stats_del_bestspace (thread_p, hfid, needed_space,
-					   notfound_cnt);
-
-	  assert (mht_count (heap_Bestspace->vpid_ht) ==
-		  mht_count (heap_Bestspace->hfid_ht));
-
-	  pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
-	}
     }
 
   return found;
