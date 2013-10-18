@@ -41,6 +41,9 @@ AC_PROG_CC
 AC_PROG_CXX
 AM_PROG_CC_C_O
 
+# Checks whether OS is AIX.
+AM_CONDITIONAL([BUILD_CMSERVER_FOR_AIX], [test $(uname) = "AIX"])
+
 # Checks bit model feature.
 AC_ARG_ENABLE([64bit],
 	[AS_HELP_STRING([--enable-64bit],

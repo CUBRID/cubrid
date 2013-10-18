@@ -45,6 +45,12 @@
 #include <psapi.h>
 #endif
 
+#if defined(_AIX)
+#include <libperfstat.h>
+#include <fcntl.h>
+#include <sys/procfs.h>
+#endif
+
 typedef void *(*EXTRACT_FUNC) (FILE * fp, const char *arg1,
 			       T_CM_ERROR * arg2);
 static void *extract_db_stat (FILE * fp, const char *tdbname,
@@ -719,6 +725,102 @@ cm_get_host_disk_partition_stat (T_CM_ERROR * err_buf)
     }
 
   return res;
+}
+
+#elif defined(_AIX)
+
+int
+cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
+{
+  struct pstatus proc_stat;
+  struct psinfo proc_psinfo;
+  char file_name[PATH_MAX];
+  int fd;
+  long int ticks_per_sec;
+
+  if (stat == NULL)
+    {
+      return -1;
+    }
+
+  ticks_per_sec = sysconf (_SC_CLK_TCK);
+  snprintf (file_name, PATH_MAX, "/proc/%d/status", pid);
+
+  fd = open (file_name, O_RDONLY);
+  if (fd == -1)
+    {
+      return -1;
+    }
+  if (read (fd, (void *) &proc_stat, sizeof (struct pstatus)) == -1)
+    {
+      close (fd);
+      return -1;
+    }
+  close (fd);
+
+  stat->cpu_user =
+    (uint64_t) ((proc_stat.pr_utime.tv_sec +
+          proc_stat.pr_utime.tv_nsec * 10e-9) * ticks_per_sec);
+  stat->cpu_kernel =
+    (uint64_t) ((proc_stat.pr_stime.tv_sec +
+          proc_stat.pr_stime.tv_nsec * 10e-9) * ticks_per_sec);
+
+  snprintf (file_name, PATH_MAX, "/proc/%d/psinfo", pid);
+
+  fd = open (file_name, O_RDONLY);
+  if (fd == -1)
+    {
+      return -1;
+    }
+  if (read (fd, (void *) &proc_psinfo, sizeof (struct psinfo)) == -1)
+    {
+      close (fd);
+      return -1;
+    }
+  close (fd);
+
+  stat->mem_virtual = proc_psinfo.pr_size * 1024;
+  stat->mem_physical = proc_psinfo.pr_rssize * 1024;
+
+  return 0;
+}
+
+int
+cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
+{
+  perfstat_cpu_total_t cpu_stat;
+  perfstat_memory_total_t mem_info;
+
+  cm_err_buf_reset (err_buf);
+
+  if (stat == NULL)
+    {
+      cm_set_error (err_buf, CM_ERR_NULL_POINTER);
+      return -1;
+    }
+  if (perfstat_cpu_total (NULL, &cpu_stat, sizeof (perfstat_cpu_total_t), 1)
+      == -1)
+    {
+      cm_set_error (err_buf, CM_GENERAL_ERROR);
+      return -1;
+    }
+  stat->cpu_user = cpu_stat.user;
+  stat->cpu_kernel = cpu_stat.sys;
+  stat->cpu_idle = cpu_stat.idle;
+  stat->cpu_iowait = cpu_stat.wait;
+
+  if (perfstat_memory_total
+      (NULL, &mem_info, sizeof (perfstat_memory_total_t), 1) == -1)
+    {
+      cm_set_error (err_buf, CM_GENERAL_ERROR);
+      return -1;
+    }
+  stat->mem_physical_total = mem_info.real_total * 4 * 1024;
+  stat->mem_physical_free = mem_info.real_free * 4 * 1024;
+  stat->mem_swap_total = mem_info.pgsp_total * 4 * 1024;
+  stat->mem_swap_free = mem_info.pgsp_free * 4 * 1024;
+
+  return 0;
 }
 
 #else

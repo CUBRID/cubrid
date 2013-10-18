@@ -38,7 +38,11 @@ libcmstat_la_SOURCES = \
 	$(CM_COMMON_DIR)/cm_errmsg.c   \
 	$(CM_COMMON_DIR)/cm_utils.c	\
 	$(CM_COMMON_DIR)/cm_broker_jni.c
-libcmstat_la_LDFLAGS = -version-number @LT_VERSION@
+if BUILD_CMSERVER_FOR_AIX 
+	libcmstat_la_LDFLAGS = -lperfstat -version-number @LT_VERSION@
+else
+	libcmstat_la_LDFLAGS = -version-number @LT_VERSION@
+endif
 libcmstat_la_LIBADD = @BROKER_ADMIN_LIB@
 
 libcmdep_la_SOURCES = \
