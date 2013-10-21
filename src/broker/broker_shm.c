@@ -601,7 +601,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
 	  shard_info_p = &proxy_info_p->shard_info[shard_id];
 	  shard_conn_info_p = &shm_as_p->shard_conn_info[shard_id];
 
-	  proxy_info_p->fixed_conn_info =
+	  proxy_info_p->fixed_shard_user =
 	    (shard_conn_info_p->db_user[0] != '\0') ? true : false;
 
 	  for (shard_cas_id = 0; shard_cas_id < shard_info_p->max_appl_server;
@@ -614,8 +614,8 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
 	      as_info_p->proxy_id = proxy_id;
 	      as_info_p->shard_id = shard_id;
 	      as_info_p->shard_cas_id = shard_cas_id;
-	      as_info_p->fixed_conn_info = proxy_info_p->fixed_conn_info;
-	      if (proxy_info_p->fixed_conn_info == true)
+	      as_info_p->fixed_shard_user = proxy_info_p->fixed_shard_user;
+	      if (proxy_info_p->fixed_shard_user == true)
 		{
 		  strcpy (as_info_p->database_user,
 			  shard_conn_info_p->db_user);

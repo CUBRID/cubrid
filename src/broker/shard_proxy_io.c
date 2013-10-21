@@ -1857,7 +1857,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
   strncpy (ctx_p->database_user, db_user, SRV_CON_DBUSER_SIZE - 1);
   strncpy (ctx_p->database_passwd, db_passwd, SRV_CON_DBPASSWD_SIZE - 1);
 
-  if (proxy_info_p->fixed_conn_info == false)
+  if (proxy_info_p->fixed_shard_user == false)
     {
       event_p = proxy_event_new_with_rsp (driver_info,
 					  PROXY_EVENT_CLIENT_REQUEST,
@@ -5164,7 +5164,7 @@ proxy_check_authorization (T_PROXY_CONTEXT * ctx_p, const char *db_name,
 	  goto authorization_error;
 	}
 
-      if (proxy_info_p->fixed_conn_info == false)
+      if (proxy_info_p->fixed_shard_user == false)
 	{
 	  return 0;
 	}
@@ -5182,7 +5182,7 @@ proxy_check_authorization (T_PROXY_CONTEXT * ctx_p, const char *db_name,
 	  goto authorization_error;
 	}
 
-      if (proxy_info_p->fixed_conn_info == false)
+      if (proxy_info_p->fixed_shard_user == false)
 	{
 	  return 0;
 	}

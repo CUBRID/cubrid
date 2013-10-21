@@ -342,7 +342,7 @@ struct t_appl_server_info
   INT64 num_error_queries;
   INT64 num_interrupts;
   char auto_commit_mode;
-  bool fixed_conn_info;
+  bool fixed_shard_user;
   char database_name[MAX_HA_DBNAME_LENGTH];
 #if defined(AIX)
   char database_host[MAXHOSTNAMELEN];
@@ -483,7 +483,7 @@ struct t_proxy_info
   int proxy_access_log_reset;
 
   char port_name[SHM_PROXY_NAME_MAX];
-  bool fixed_conn_info;
+  bool fixed_shard_user;
 
   /* MOVE FROM T_BROKER_INFO */
   char access_log_file[CONF_LOG_FILE_LEN];

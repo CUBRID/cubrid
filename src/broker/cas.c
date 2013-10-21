@@ -1671,7 +1671,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
 	  if (need_database_reconnect ())
 	    {
-	      assert (as_info->fixed_conn_info == false);
+	      assert (as_info->fixed_shard_user == false);
 
 	      set_db_connection_info ();
 
@@ -2547,6 +2547,19 @@ net_read_header_keep_con_on (SOCKET clt_sock_fd,
 static void
 set_db_connection_info (void)
 {
+  if (as_info->fixed_shard_user)
+    {
+      strncpy (as_info->database_user,
+	       shm_appl->shard_conn_info[shm_shard_id].db_user,
+	       SRV_CON_DBUSER_SIZE - 1);
+      as_info->database_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
+
+      strncpy (as_info->database_passwd,
+	       shm_appl->shard_conn_info[shm_shard_id].db_password,
+	       SRV_CON_DBPASSWD_SIZE - 1);
+      as_info->database_passwd[SRV_CON_DBUSER_SIZE - 1] = '\0';
+    }
+
   strncpy (cas_db_user, as_info->database_user, SRV_CON_DBUSER_SIZE - 1);
   cas_db_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
 
@@ -2561,7 +2574,7 @@ set_db_connection_info (void)
 static void
 clear_db_connection_info (void)
 {
-  if (as_info->fixed_conn_info)
+  if (as_info->fixed_shard_user)
     {
       return;
     }
