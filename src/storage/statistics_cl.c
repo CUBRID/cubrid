@@ -114,6 +114,13 @@ stats_client_unpack_statistics (char *buf_p)
       class_stats_p->heap_num_pages = 0;
     }
 
+  /* to get the doubtful statistics to be updated, need to clear timestamp */
+  if (class_stats_p->heap_num_objects == 0
+      || class_stats_p->heap_num_pages == 0)
+    {
+      class_stats_p->time_stamp = 0;
+    }
+
   class_stats_p->n_attrs = OR_GET_INT (buf_p);
   buf_p += OR_INT_SIZE;
   if (class_stats_p->n_attrs == 0)

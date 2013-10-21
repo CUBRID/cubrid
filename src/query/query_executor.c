@@ -15489,7 +15489,7 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 
 	      /* update time_stamp; statistics for the given class
 	       * will be transmitted to the client
-	       * bia stats_get_statistics ()
+	       * via stats_get_statistics ()
 	       */
 	      cls_info_p->time_stamp = stats_get_time_stamp ();
 

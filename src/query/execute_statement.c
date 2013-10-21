@@ -3595,12 +3595,12 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (statement->info.update_stats.with_fullscan)
 	    {
 	      assert (statement->info.update_stats.with_fullscan == 1);
-	      error = sm_update_statistics (obj, true, STATS_WITH_FULLSCAN);
+	      error = sm_update_statistics (obj, STATS_WITH_FULLSCAN);
 	    }
 	  else
 	    {
 	      assert (statement->info.update_stats.with_fullscan == 0);
-	      error = sm_update_statistics (obj, true, STATS_WITH_SAMPLING);
+	      error = sm_update_statistics (obj, STATS_WITH_SAMPLING);
 	    }
 	}			/* for (cls = ...) */
     }

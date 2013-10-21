@@ -325,7 +325,7 @@ error:
  * Note: It performs this by getting the list of all classes existing in the
  *       database and their OID's from the catalog's class collection
  *       (maintained in an extendible hashing structure) and calling the
- *       "stats_update_statistics" function for each one of the elements
+ *       "xstats_update_statistics" function for each one of the elements
  *       of this list one by one.
  */
 int
@@ -349,12 +349,14 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
       if (error != NO_ERROR)
 	{
 	  stats_free_class_list (class_id_list_p);
-	  return (error);
+
+	  return error;
 	}
     }
 
   stats_free_class_list (class_id_list_p);
-  return (NO_ERROR);
+
+  return NO_ERROR;
 }
 
 /*
@@ -1392,13 +1394,19 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	    }
 
 	  assert_release (subcls_attr_p->id == disk_attr_p->id);
-	  assert_release (subcls_attr_p->n_btstats == disk_attr_p->n_btstats);
+	  assert_release (subcls_attr_p->n_btstats <= disk_attr_p->n_btstats);
 
 	  if (!(subcls_attr_p->id == disk_attr_p->id
-		&& subcls_attr_p->n_btstats == disk_attr_p->n_btstats))
+		&& subcls_attr_p->n_btstats <= disk_attr_p->n_btstats))
 	    {
 	      error = ER_FAILED;
 	      goto cleanup;
+	    }
+
+	  /* check for partitions schema changes are not yet finished */
+	  if (subcls_attr_p->n_btstats < disk_attr_p->n_btstats)
+	    {
+	      continue;
 	    }
 
 	  for (k = 0, btree_stats_p = disk_attr_p->bt_stats;
@@ -1505,6 +1513,12 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 		subcls_disk_rep->variable + (j - subcls_disk_rep->n_fixed);
 	      disk_attr_p =
 		disk_repr_p->variable + (j - disk_repr_p->n_fixed);
+	    }
+
+	  /* check for partitions schema changes are not yet finished */
+	  if (subcls_attr_p->n_btstats < disk_attr_p->n_btstats)
+	    {
+	      continue;
 	    }
 
 	  for (k = 0, btree_stats_p = disk_attr_p->bt_stats;

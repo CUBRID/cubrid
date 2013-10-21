@@ -5176,6 +5176,20 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
   /* set the statistics from the class information(QO_CLASS_INFO_ENTRY) */
   for (i = 0; i < n; class_info_entryp++, i++)
     {
+      QO_ASSERT (env, QO_GET_CLASS_STATS (class_info_entryp) != NULL);
+      attr_statsp = QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
+      if (attr_statsp == NULL)
+	{
+	  /* the attribute statistics of the class were not set */
+	  cum_statsp->is_indexed = false;
+	  continue;
+	  /* We'll consider the segment to be indexed only if all of the
+	     attributes it represents are indexed. The current optimization
+	     strategy makes it inconvenient to try to construct "mixed"
+	     (segment and index) scans of a node that represents more than
+	     one node. */
+	}
+
       for (consp = class_info_entryp->smclass->constraints; consp;
 	   consp = consp->next)
 	{
@@ -5184,8 +5198,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
 					   consp->func_index_info->expr_str))
 	    {
 	      attr_id = consp->attributes[0]->id;
-	      attr_statsp =
-		QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
+
 	      for (j = 0; j < QO_GET_CLASS_STATS (class_info_entryp)->n_attrs;
 		   j++, attr_statsp++)
 		{
@@ -5194,9 +5207,13 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
 		      break;
 		    }
 		}
+	      if (j == QO_GET_CLASS_STATS (class_info_entryp)->n_attrs)
+		{
+		  /* attribute not found, what happens to the class attribute? */
+		  cum_statsp->is_indexed = false;
+		  continue;
+		}
 
-	      attr_statsp =
-		&QO_GET_CLASS_STATS (class_info_entryp)->attr_stats[j];
 	      bstatsp = attr_statsp->bt_stats;
 	      for (j = 0; j < attr_statsp->n_btstats; j++, bstatsp++)
 		{
@@ -5322,6 +5339,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
       attr_id = sm_att_id (class_info_entryp->mop, name);
 
       /* pointer to ATTR_STATS of CLASS_STATS of QO_CLASS_INFO_ENTRY */
+      QO_ASSERT (env, QO_GET_CLASS_STATS (class_info_entryp));
       attr_statsp = QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
       if (attr_statsp == NULL)
 	{
@@ -5638,91 +5656,67 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	  /* pointer to QO_CLASS_INFO_ENTRY[] array of the node */
 	  class_info_entryp = &QO_NODE_INFO (seg_node)->info[j];
 
+	  /* pointer to ATTR_STATS of CLASS_STATS of QO_CLASS_INFO_ENTRY */
+	  QO_ASSERT (env, QO_GET_CLASS_STATS (class_info_entryp) != NULL);
+	  attr_statsp = QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
+
+	  /* search the attribute from the class information */
+	  n_attrs = QO_GET_CLASS_STATS (class_info_entryp)->n_attrs;
+
 	  if (!index_entryp->is_func_index)
 	    {
 	      attr_id = sm_att_id (class_info_entryp->mop, name);
-
-	      /* pointer to ATTR_STATS of CLASS_STATS of QO_CLASS_INFO_ENTRY */
-	      attr_statsp =
-		QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
-
-	      /* search the attribute from the class information */
-	      n_attrs = QO_GET_CLASS_STATS (class_info_entryp)->n_attrs;
-	      for (k = 0; k < n_attrs; k++, attr_statsp++)
-		{
-		  if (attr_statsp->id == attr_id)
-		    {
-		      break;
-		    }
-		}
-
-	      index_entryp->key_type = NULL;
-	      if (k >= n_attrs)	/* not found */
-		{
-		  attr_statsp = NULL;
-		  continue;
-		}
-
-	      if (cum_statsp->valid_limits == false)
-		{
-		  /* first time */
-		  cum_statsp->type = attr_statsp->type;
-		  cum_statsp->valid_limits = true;
-		}
-
-	      /* find the index that we are interesting within BTREE_STATS[] array */
-	      for (k = 0, bt_statsp = attr_statsp->bt_stats;
-		   k < attr_statsp->n_btstats; k++, bt_statsp++)
-		{
-		  if (BTID_IS_EQUAL (&bt_statsp->btid,
-				     &(index_entryp->constraints->
-				       index_btid)))
-		    {
-		      index_entryp->key_type =
-			attr_statsp->bt_stats[k].key_type;
-		      break;
-		    }
-		}		/* for (k = 0, ...) */
-	      if (k == attr_statsp->n_btstats)
-		{
-		  /* cannot find index in this attribute. what happens? */
-		  continue;
-		}
 	    }
 	  else
 	    {
 	      /* function index with the function expression as the first
 	       * attribute
 	       */
-	      SM_FUNCTION_INFO *fi_info = NULL;
-	      fi_info = index_entryp->constraints->func_index_info;
-
 	      attr_id = index_entryp->constraints->attributes[0]->id;
-	      attr_statsp =
-		QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
-	      for (j = 0; j < QO_GET_CLASS_STATS (class_info_entryp)->n_attrs;
-		   j++, attr_statsp++)
+	    }
+
+	  for (k = 0; k < n_attrs; k++, attr_statsp++)
+	    {
+	      if (attr_statsp->id == attr_id)
 		{
-		  if (attr_statsp->id == attr_id)
+		  break;
+		}
+	    }
+
+	  index_entryp->key_type = NULL;
+	  if (k >= n_attrs)	/* not found */
+	    {
+	      attr_statsp = NULL;
+	      continue;
+	    }
+
+	  if (cum_statsp->valid_limits == false)
+	    {
+	      /* first time */
+	      cum_statsp->type = attr_statsp->type;
+	      cum_statsp->valid_limits = true;
+	    }
+
+	  /* find the index that we are interesting within BTREE_STATS[] array */
+	  for (k = 0, bt_statsp = attr_statsp->bt_stats;
+	       k < attr_statsp->n_btstats; k++, bt_statsp++)
+	    {
+	      if (BTID_IS_EQUAL (&bt_statsp->btid,
+				 &(index_entryp->constraints->index_btid)))
+		{
+		  if (!index_entryp->is_func_index
+		      || bt_statsp->has_function == 1)
 		    {
+		      index_entryp->key_type = bt_statsp->key_type;
 		      break;
 		    }
 		}
+	    }			/* for (k = 0, ...) */
 
-	      attr_statsp =
-		&QO_GET_CLASS_STATS (class_info_entryp)->attr_stats[j];
-	      bt_statsp = attr_statsp->bt_stats;
-	      for (j = 0; j < attr_statsp->n_btstats; j++, bt_statsp++)
-		{
-		  if (BTID_IS_EQUAL (&bt_statsp->btid,
-				     &index_entryp->constraints->index_btid)
-		      && bt_statsp->has_function == 1)
-		    {
-		      break;
-		    }
-		}
-
-	      index_entryp->key_type = bt_statsp->key_type;
+	  if (k == attr_statsp->n_btstats)
+	    {
+	      /* cannot find index in this attribute. what happens? */
+	      continue;
 	    }
 
 	  if (QO_NODE_ENTITY_SPEC (node)->info.spec.only_all == PT_ALL)

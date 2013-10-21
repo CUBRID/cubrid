@@ -525,7 +525,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   SM_CLASS_CONSTRAINT *sm_constraint = NULL;
   DB_CONSTRAINT_TYPE ctype;
   bool partition_savepoint = false;
-  bool old_disable_stats = sm_Disable_updating_statistics;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
   SM_CONSTRAINT_FAMILY constraint_family;
   unsigned int save_custom;
@@ -1280,12 +1279,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
       partition_savepoint = true;
 
-      if (alter_code != PT_ANALYZE_PARTITION)
-	{
-	  /* Disable updating statistics until partitioning schema
-	   * modification is finished */
-	  sm_Disable_updating_statistics = true;
-	}
 
       error = do_alter_partitioning_pre (parser, alter, &pinfo);
       if (ctemplate->partition_of == NULL
@@ -1302,7 +1295,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
     case PT_RENAME_CONSTRAINT:
     case PT_RENAME_INDEX:
-      sm_Disable_updating_statistics = true;
 
       old_name =
 	alter->info.alter.alter_clause.rename.old_name->info.name.original;
@@ -1349,16 +1341,10 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto alter_partition_fail;
 	}
-      /* assume that sm_Disable_updating_statistics was used
-       * in Rename constraint/index */
-      sm_Disable_updating_statistics = old_disable_stats;
       return error;
     }
 
   vclass = dbt_finish_class (ctemplate);
-  /* assume that sm_Disable_updating_statistics was used
-   * in Rename constraint/index */
-  sm_Disable_updating_statistics = old_disable_stats;
 
   /* the dbt_finish_class() failed, the template was not freed */
   if (vclass == NULL)
@@ -1450,13 +1436,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto alter_partition_fail;
 	}
-      if (alter_code != PT_ANALYZE_PARTITION)
-	{
-	  /* update statistics here */
-	  sm_Disable_updating_statistics = old_disable_stats;
-	  error =
-	    sm_update_statistics (pinfo.root_op, false, STATS_WITH_SAMPLING);
-	}
       break;
 
     default:
@@ -1466,7 +1445,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   return error;
 
 alter_partition_fail:
-  sm_Disable_updating_statistics = old_disable_stats;
   if (partition_savepoint && error != NO_ERROR
       && error != ER_LK_UNILATERALLY_ABORTED)
     {
@@ -3574,7 +3552,6 @@ do_alter_index_rename (PARSER_CONTEXT * parser, const PT_NODE * statement)
   const char *index_name = NULL;
   const char *new_index_name = NULL;
   bool do_rollback = false;
-  bool old_disable_stats = sm_Disable_updating_statistics;
 
   index_name =
     statement->info.index.index_name ? statement->info.index.index_name->info.
@@ -3616,8 +3593,6 @@ do_alter_index_rename (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   do_rollback = true;
 
-  /* We do not need to update statistics in Renaming index */
-  sm_Disable_updating_statistics = true;
 
   ctemplate = smt_edit_class_mop (obj, AU_INDEX);
   if (ctemplate == NULL)
@@ -3645,8 +3620,6 @@ do_alter_index_rename (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
 end:
-  /* roll back the state of sm_Disable_updating_statistics */
-  sm_Disable_updating_statistics = old_disable_stats;
 
   return error;
 
@@ -5522,17 +5495,6 @@ do_create_partition_constraints (PARSER_CONTEXT * parser, PT_NODE * alter,
       return er_errid ();
     }
 
-  if (smclass->stats == NULL)
-    {
-      if ((error = er_errid ()) == NO_ERROR)
-	{
-	  /* set an error if none was set yet */
-	  error = ER_PARTITION_WORK_FAILED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED,
-		  0);
-	}
-      return error;
-    }
 
   for (cons = smclass->constraints; cons != NULL; cons = cons->next)
     {
@@ -5547,6 +5509,7 @@ do_create_partition_constraints (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  return error;
 	}
     }
+
   return error;
 }
 
@@ -6676,9 +6639,8 @@ do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
       while (name)
 	{
 	  assert (name->info.name.db_object != NULL);
-	  error =
-	    sm_update_statistics (name->info.name.db_object, false,
-				  STATS_WITH_SAMPLING);
+	  error = sm_update_statistics (name->info.name.db_object,
+					STATS_WITH_SAMPLING);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -6697,8 +6659,7 @@ do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	{
 	  return error;
 	}
-      error =
-	sm_update_statistics (pinfo->root_op, false, STATS_WITH_SAMPLING);
+      error = sm_update_statistics (pinfo->root_op, STATS_WITH_SAMPLING);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -6719,7 +6680,7 @@ do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	      continue;
 	    }
 
-	  error = sm_update_statistics (obj->op, false, STATS_WITH_SAMPLING);
+	  error = sm_update_statistics (obj->op, STATS_WITH_SAMPLING);
 	  if (error != NO_ERROR)
 	    {
 	      return error;

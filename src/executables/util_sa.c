@@ -1381,7 +1381,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
   if (class_name != NULL && class_name[0] != 0)
     {
       if ((class_mop = db_find_class (class_name)) == NULL
-	  || sm_update_statistics (class_mop, true,
+	  || sm_update_statistics (class_mop,
 				   STATS_WITH_FULLSCAN) != NO_ERROR)
 	{
 	  fprintf (stderr, "%s\n", db_error_string (3));

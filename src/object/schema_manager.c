@@ -3840,8 +3840,6 @@ sm_get_statistics_force (MOP classop)
  *    cache them with the class.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop(in): class object
- *   do_now(in): update statistics right now or
- *               delay it until a transaction is committed
  *   with_fullscan(in): true iff WITH FULLSCAN
  *
  * NOTE: We will delay updating statistics until a transaction is committed
@@ -3849,7 +3847,7 @@ sm_get_statistics_force (MOP classop)
  *       "alter table ..." or "create index ...".
  */
 int
-sm_update_statistics (MOP classop, bool do_now, bool with_fullscan)
+sm_update_statistics (MOP classop, bool with_fullscan)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -3876,7 +3874,6 @@ sm_update_statistics (MOP classop, bool do_now, bool with_fullscan)
 	}
 
       error = stats_update_statistics (WS_OID (classop),
-				       (do_now ? 1 : 0),
 				       (with_fullscan ? 1 : 0));
       if (error == NO_ERROR)
 	{
@@ -4006,7 +4003,7 @@ sm_update_catalog_statistics (const char *class_name, bool with_fullscan)
   obj = db_find_class (class_name);
   if (obj != NULL)
     {
-      error = sm_update_statistics (obj, true, with_fullscan);
+      error = sm_update_statistics (obj, with_fullscan);
     }
   else
     {
@@ -11099,7 +11096,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 
   if (num_index > 0)
     {
-      if (sm_update_statistics (classop, false, STATS_WITH_SAMPLING))
+      if (sm_update_statistics (classop, STATS_WITH_SAMPLING))
 	{
 	  goto structure_error;
 	}
@@ -12768,23 +12765,6 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
       error = install_new_representation (template_->op, class_, flat);
       if (error == NO_ERROR)
 	{
-	  MOP newop = NULL;
-	  bool old_val = sm_Disable_updating_statistics;
-	  int is_partition = DB_NOT_PARTITIONED_CLASS;
-	  error = sm_partitioned_class_type (template_->op, &is_partition,
-					     NULL, NULL);
-	  if (error != NO_ERROR)
-	    {
-	      goto cleanup;
-	    }
-	  if (is_partition == DB_PARTITIONED_CLASS)
-	    {
-	      /* Delay updating statistics until subclasses have been updated
-	       * also. When allocate_disk_structures is called, subclasses
-	       * do not have new indexes yet.
-	       */
-	      sm_Disable_updating_statistics = true;
-	    }
 	  /* This used to be done toward the end but since the
 	   * unique btid has to be inherited, the disk structures
 	   * have to be created before we update the subclasses.
@@ -12798,7 +12778,6 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 		  error = update_subclasses (newsubs);
 		  if (error == NO_ERROR)
 		    {
-		      newop = template_->op;
 		      if (classmop != NULL)
 			{
 			  *classmop = template_->op;
@@ -12811,19 +12790,9 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 		    }
 		}
 	    }
-	  if (is_partition == DB_PARTITIONED_CLASS)
-	    {
-	      sm_Disable_updating_statistics = old_val;
-	      if (error == NO_ERROR)
-		{
-		  error =
-		    sm_update_statistics (newop, false, STATS_WITH_SAMPLING);
-		}
-	    }
 	}
     }
 
-cleanup:
   if (error != NO_ERROR)
     {
       classobj_free_template (flat);
@@ -13725,8 +13694,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
        * looks at the statistics structures, not the schema structures.
        */
       assert_release (!BTID_IS_NULL (&index));
-      if (sm_update_statistics (classop, false,
-				STATS_WITH_SAMPLING) != NO_ERROR)
+      if (sm_update_statistics (classop, STATS_WITH_SAMPLING) != NO_ERROR)
 	{
 	  goto severe_error;
 	}
@@ -14517,8 +14485,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
 
 	  if (error == NO_ERROR)
 	    {
-	      error =
-		sm_update_statistics (newmop, false, STATS_WITH_SAMPLING);
+	      error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
 	    }
 	  else
 	    {

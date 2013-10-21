@@ -1792,8 +1792,7 @@ ldr_update_statistics (void)
 		       sm_class_name (table->class_));
 	      fflush (stdout);
 	    }
-	  error =
-	    sm_update_statistics (table->class_, true, STATS_WITH_SAMPLING);
+	  error = sm_update_statistics (table->class_, STATS_WITH_SAMPLING);
 	}
     }
   return error;
