@@ -4298,7 +4298,7 @@ do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE *val;
   PT_NODE *into_var;
   const char *into_name;
-  char cost[2];
+  char *cost;
   int error = NO_ERROR;
 
   val = db_value_create ();
@@ -4328,10 +4328,20 @@ do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    return ER_OBJ_INVALID_ARGUMENTS;
 	  }
 
+	/* 'cost' is referenced by 'val', it should be allocated from heap,
+	 * and will be freed when free 'val' if set 'need_clear' to
+	 * 'true' */
+	cost = db_private_alloc (NULL, 2);
+	if (cost == NULL)
+	  {
+	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	  }
+
 	qo_get_optimization_param (cost, QO_PARAM_COST,
 				   DB_GET_STRING (&plan));
 	pr_clear_value (&plan);
 	db_make_string (val, cost);
+	val->need_clear = true;
       }
     default:
       /*
