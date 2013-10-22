@@ -1364,6 +1364,7 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
   QO_NODE *node = NULL;
   QO_CLASS_INFO *info;
   int i, n;
+  CLASS_STATS *stats;
 
   QO_ASSERT (env, env->nnodes < env->Nnodes);
 
@@ -1391,7 +1392,8 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
       QO_NODE_INFO (node) = info;
       for (i = 0, n = info->n; i < n; i++)
 	{
-	  QO_ASSERT (env, QO_GET_CLASS_STATS (&info->info[i]) != NULL);
+	  stats = QO_GET_CLASS_STATS (&info->info[i]);
+	  QO_ASSERT (env, stats != NULL);
 	  if (entity->info.spec.meta_class == PT_META_CLASS)
 	    {
 	      /* is class OID reference spec
@@ -1403,10 +1405,8 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 	    }
 	  else
 	    {
-	      QO_NODE_NCARD (node) +=
-		QO_GET_CLASS_STATS (&info->info[i])->heap_num_objects;
-	      QO_NODE_TCARD (node) +=
-		QO_GET_CLASS_STATS (&info->info[i])->heap_num_pages;
+	      QO_NODE_NCARD (node) += stats->heap_num_objects;
+	      QO_NODE_TCARD (node) += stats->heap_num_pages;
 	    }
 	}			/* for (i = ... ) */
     }
@@ -5137,6 +5137,8 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
   ATTR_STATS *attr_statsp = NULL;
   int n, i, j;
   int attr_id;
+  int n_attrs;
+  CLASS_STATS *stats;
 
   nodep = QO_SEG_HEAD (seg);
 
@@ -5176,9 +5178,9 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
   /* set the statistics from the class information(QO_CLASS_INFO_ENTRY) */
   for (i = 0; i < n; class_info_entryp++, i++)
     {
-      QO_ASSERT (env, QO_GET_CLASS_STATS (class_info_entryp) != NULL);
-      attr_statsp = QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
-      if (attr_statsp == NULL)
+      stats = QO_GET_CLASS_STATS (class_info_entryp);
+      QO_ASSERT (env, stats != NULL);
+      if (stats->attr_stats == NULL)
 	{
 	  /* the attribute statistics of the class were not set */
 	  cum_statsp->is_indexed = false;
@@ -5193,21 +5195,24 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
       for (consp = class_info_entryp->smclass->constraints; consp;
 	   consp = consp->next)
 	{
+	  /* search the attribute from the class information */
+	  attr_statsp = stats->attr_stats;
+	  n_attrs = stats->n_attrs;
+
 	  if (consp->func_index_info && consp->func_index_info->col_id == 0
 	      && !intl_identifier_casecmp (expr_str,
 					   consp->func_index_info->expr_str))
 	    {
 	      attr_id = consp->attributes[0]->id;
 
-	      for (j = 0; j < QO_GET_CLASS_STATS (class_info_entryp)->n_attrs;
-		   j++, attr_statsp++)
+	      for (j = 0; j < n_attrs; j++, attr_statsp++)
 		{
 		  if (attr_statsp->id == attr_id)
 		    {
 		      break;
 		    }
 		}
-	      if (j == QO_GET_CLASS_STATS (class_info_entryp)->n_attrs)
+	      if (j == n_attrs)
 		{
 		  /* attribute not found, what happens to the class attribute? */
 		  cum_statsp->is_indexed = false;
@@ -5293,6 +5298,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   int n, i, j;
   int n_func_indexes;
   SM_CLASS_CONSTRAINT *consp;
+  CLASS_STATS *stats;
 
   /* actual attribute name of the given segment */
   name = QO_SEG_NAME (seg);
@@ -5339,9 +5345,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
       attr_id = sm_att_id (class_info_entryp->mop, name);
 
       /* pointer to ATTR_STATS of CLASS_STATS of QO_CLASS_INFO_ENTRY */
-      QO_ASSERT (env, QO_GET_CLASS_STATS (class_info_entryp));
-      attr_statsp = QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
-      if (attr_statsp == NULL)
+      stats = QO_GET_CLASS_STATS (class_info_entryp);
+      QO_ASSERT (env, stats != NULL);
+      if (stats->attr_stats == NULL)
 	{
 	  /* the attribute statistics of the class were not set */
 	  cum_statsp->is_indexed = false;
@@ -5364,7 +5370,8 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
          we just make the best guess we can. */
 
       /* search the attribute from the class information */
-      n_attrs = QO_GET_CLASS_STATS (class_info_entryp)->n_attrs;
+      attr_statsp = stats->attr_stats;
+      n_attrs = stats->n_attrs;
       for (j = 0; j < n_attrs; j++, attr_statsp++)
 	{
 	  if (attr_statsp->id == attr_id)
@@ -5563,6 +5570,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
   ATTR_STATS *attr_statsp;
   BTREE_STATS *bt_statsp;
   int i, j, k;
+  CLASS_STATS *stats;
 
   /* pointer to QO_NODE_INDEX structure of QO_NODE */
   node_indexp = QO_NODE_INDEXES (node);
@@ -5657,11 +5665,12 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	  class_info_entryp = &QO_NODE_INFO (seg_node)->info[j];
 
 	  /* pointer to ATTR_STATS of CLASS_STATS of QO_CLASS_INFO_ENTRY */
-	  QO_ASSERT (env, QO_GET_CLASS_STATS (class_info_entryp) != NULL);
-	  attr_statsp = QO_GET_CLASS_STATS (class_info_entryp)->attr_stats;
+	  stats = QO_GET_CLASS_STATS (class_info_entryp);
+	  QO_ASSERT (env, stats != NULL);
 
 	  /* search the attribute from the class information */
-	  n_attrs = QO_GET_CLASS_STATS (class_info_entryp)->n_attrs;
+	  attr_statsp = stats->attr_stats;
+	  n_attrs = stats->n_attrs;
 
 	  if (!index_entryp->is_func_index)
 	    {
@@ -5698,8 +5707,8 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	    }
 
 	  /* find the index that we are interesting within BTREE_STATS[] array */
-	  for (k = 0, bt_statsp = attr_statsp->bt_stats;
-	       k < attr_statsp->n_btstats; k++, bt_statsp++)
+	  bt_statsp = attr_statsp->bt_stats;
+	  for (k = 0; k < attr_statsp->n_btstats; k++, bt_statsp++)
 	    {
 	      if (BTID_IS_EQUAL (&bt_statsp->btid,
 				 &(index_entryp->constraints->index_btid)))
