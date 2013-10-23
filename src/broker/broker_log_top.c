@@ -80,6 +80,7 @@ static int read_execute_end_msg (char *msg_p, int *res_code,
 static int read_bind_value (FILE * fp, T_STRING * t_str, char **linebuf,
 			    int *lineno, T_STRING * cas_log_buf);
 static int search_offset (FILE * fp, char *string, long *offset, bool start);
+static char *organize_query_string (const char *sql);
 
 T_LOG_TOP_MODE log_top_mode = MODE_PROC_TIME;
 
@@ -313,7 +314,9 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
   start_date[0] = '\0';
 
   for (i = 0; i < MAX_SRV_HANDLE; i++)
-    query_info_init (&query_info_buf[i]);
+    {
+      query_info_init (&query_info_buf[i]);
+    }
 
   cas_log_buf = t_string_make (1);
   sql_buf = t_string_make (1);
@@ -469,6 +472,8 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 
 	  strcpy (query_info_buf[qi_idx].sql,
 		  ut_trim (t_string_str (sql_buf)));
+	  query_info_buf[qi_idx].organized_sql = organize_query_string
+	    (query_info_buf[qi_idx].sql);
 
 	  msg_p = get_msg_start_ptr (linebuf);
 	  GET_CUR_DATE_STR (cur_date, linebuf);
@@ -906,4 +911,116 @@ end_loop:
 error:
   t_string_free (linebuf_tstr);
   return -1;
+}
+
+static char *
+organize_query_string (const char *sql)
+{
+  typedef enum
+  {
+    SQL_TOKEN_NONE = 0,
+    SQL_TOKEN_DOUBLE_QUOTE,
+    SQL_TOKEN_SINGLE_QUOTE,
+    SQL_TOKEN_SQL_COMMENT,
+    SQL_TOKEN_C_COMMENT,
+    SQL_TOKEN_CPP_COMMENT
+  } SQL_TOKEN;
+
+  SQL_TOKEN token = SQL_TOKEN_NONE;
+  int token_len = 0;
+  char *p = NULL;
+  const char *q = NULL;
+  char *organized_sql = NULL;
+  bool need_copy_token = true;
+
+  organized_sql = (char *) malloc (strlen (sql) + 1);
+  if (organized_sql == NULL)
+    {
+      return NULL;
+    }
+
+  p = organized_sql;
+  q = sql;
+
+  while (*q != '\0')
+    {
+      need_copy_token = true;
+      token_len = 1;
+
+      if (token == SQL_TOKEN_NONE)
+	{
+	  if (*q == '\'' && (q == sql || *(q - 1) != '\\'))
+	    {
+	      token = SQL_TOKEN_SINGLE_QUOTE;
+	    }
+	  else if (*q == '"' && (q == sql || *(q - 1) != '\\'))
+	    {
+	      token = SQL_TOKEN_DOUBLE_QUOTE;
+	    }
+	  else if (*q == '-' && *(q + 1) == '-')
+	    {
+	      need_copy_token = false;
+	      token = SQL_TOKEN_SQL_COMMENT;
+	      token_len = 2;
+	    }
+	  else if (*q == '/' && *(q + 1) == '*')
+	    {
+	      need_copy_token = false;
+	      token = SQL_TOKEN_C_COMMENT;
+	      token_len = 2;
+	    }
+	  else if (*q == '/' && *(q + 1) == '/')
+	    {
+	      need_copy_token = false;
+	      token = SQL_TOKEN_CPP_COMMENT;
+	      token_len = 2;
+	    }
+	}
+      else
+	{
+	  need_copy_token = false;
+
+	  if (token == SQL_TOKEN_SINGLE_QUOTE)
+	    {
+	      need_copy_token = true;
+
+	      if (*q == '\'' && *(q - 1) != '\\')
+		{
+		  token = SQL_TOKEN_NONE;
+		}
+	    }
+	  else if (token == SQL_TOKEN_DOUBLE_QUOTE)
+	    {
+	      need_copy_token = true;
+
+	      if (*q == '"' && *(q - 1) != '\\')
+		{
+		  token = SQL_TOKEN_NONE;
+		}
+	    }
+	  else if ((token == SQL_TOKEN_SQL_COMMENT
+		    || token == SQL_TOKEN_CPP_COMMENT) && *q == '\n')
+	    {
+	      token = SQL_TOKEN_NONE;
+	    }
+	  else if (token == SQL_TOKEN_C_COMMENT && *q == '*'
+		   && *(q + 1) == '/')
+	    {
+	      token = SQL_TOKEN_NONE;
+	      token_len = 2;
+	    }
+	}
+
+      if (need_copy_token)
+	{
+	  memcpy (p, q, token_len);
+	  p += token_len;
+	}
+
+      q += token_len;
+    }
+
+  *p = '\0';
+
+  return organized_sql;
 }

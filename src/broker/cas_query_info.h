@@ -33,6 +33,7 @@ typedef struct t_query_info T_QUERY_INFO;
 struct t_query_info
 {
   char *sql;
+  char *organized_sql;
   char *cas_log;
   int cas_log_len;
   int min;

@@ -77,6 +77,7 @@ void
 query_info_clear (T_QUERY_INFO * qi)
 {
   FREE_MEM (qi->sql);
+  FREE_MEM (qi->organized_sql);
   FREE_MEM (qi->cas_log);
   qi->start_date[0] = '\0';
 }
@@ -217,7 +218,7 @@ query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res,
 
   for (i = 0; i < num_query_info; i++)
     {
-      if (strcmp (query_info_arr[i].sql, qi->sql) == 0)
+      if (strcmp (query_info_arr[i].organized_sql, qi->organized_sql) == 0)
 	{
 	  qi_idx = i;
 	  break;
@@ -239,6 +240,7 @@ query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res,
       qi_idx = num_query_info;
       query_info_init (&query_info_arr[qi_idx]);
       query_info_arr[qi_idx].sql = strdup (qi->sql);
+      query_info_arr[qi_idx].organized_sql = strdup (qi->organized_sql);
       num_query_info++;
     }
 
@@ -304,7 +306,7 @@ query_info_add_ne (T_QUERY_INFO * qi, char *end_date)
 
   for (i = 0; i < num_query_info; i++)
     {
-      if (strcmp (query_info_arr[i].sql, qi->sql) == 0)
+      if (strcmp (query_info_arr[i].organized_sql, qi->organized_sql) == 0)
 	{
 	  retval = 0;
 	  goto query_info_add_ne_end;
@@ -313,7 +315,7 @@ query_info_add_ne (T_QUERY_INFO * qi, char *end_date)
 
   for (i = 0; i < num_query_info_ne; i++)
     {
-      if (strcmp (query_info_arr_ne[i].sql, qi->sql) == 0)
+      if (strcmp (query_info_arr_ne[i].organized_sql, qi->organized_sql) == 0)
 	{
 	  qi_idx = i;
 	  break;
@@ -335,6 +337,7 @@ query_info_add_ne (T_QUERY_INFO * qi, char *end_date)
       qi_idx = num_query_info_ne;
       query_info_init (&query_info_arr_ne[qi_idx]);
       query_info_arr_ne[qi_idx].sql = strdup (qi->sql);
+      query_info_arr_ne[qi_idx].organized_sql = strdup (qi->organized_sql);
       num_query_info_ne++;
     }
 
