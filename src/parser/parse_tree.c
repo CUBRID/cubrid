@@ -222,8 +222,11 @@ parser_create_node (const PARSER_CONTEXT * parser)
   if (free_list->node == NULL)
     {
       /* do not need to use mutex : only used by one parser(and one thread) */
-      if ((free_list->node = parser_create_node_block (parser)) == NULL)
-	return NULL;
+      free_list->node = parser_create_node_block (parser);
+      if (free_list->node == NULL)
+	{
+	  return NULL;
+	}
     }
 
   node = free_list->node;
@@ -827,7 +830,9 @@ parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node)
   /* before we free this node, see if we need to clear a db_value */
   if (node->node_type == PT_VALUE
       && node->info.value.db_value_is_in_workspace)
-    db_value_clear (&node->info.value.db_value);
+    {
+      db_value_clear (&node->info.value.db_value);
+    }
 
   /*
    * Always set the node type to maximum.  This may
