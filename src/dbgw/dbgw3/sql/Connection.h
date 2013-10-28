@@ -46,24 +46,25 @@ namespace dbgw
       virtual trait<PreparedStatement>::sp prepareStatement(
           const char *szSql) = 0;
 
-      void setTransactionIsolation(TransactionIsolarion isolation);
+      void setTransactionIsolation(TransactionIsolation isolation);
       void setAutoCommit(bool bAutoCommit);
       void commit();
       void rollback();
       virtual void cancel() = 0;
       virtual trait<Lob>::sp createClob() = 0;
       virtual trait<Lob>::sp createBlob() = 0;
+      virtual void setContainerKey(const char *szKey);
 
     public:
       bool getAutoCommit() const;
-      TransactionIsolarion getTransactionIsolation() const;
+      TransactionIsolation getTransactionIsolation() const;
       bool isClosed() const;
       virtual void *getNativeHandle() const = 0;
 
     protected:
       virtual void doConnect() = 0;
       virtual void doClose() = 0;
-      virtual void doSetTransactionIsolation(TransactionIsolarion isolation) = 0;
+      virtual void doSetTransactionIsolation(TransactionIsolation isolation) = 0;
       virtual void doSetAutoCommit(bool bAutoCommit) = 0;
       virtual void doCommit() = 0;
       virtual void doRollback() = 0;
@@ -72,7 +73,7 @@ namespace dbgw
       bool m_bConnected;
       bool m_bClosed;
       bool m_bAutoCommit;
-      TransactionIsolarion m_isolation;
+      TransactionIsolation m_isolation;
     };
 
   }

@@ -709,6 +709,64 @@ namespace DBGW3
         }
     }
 
+
+    DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
+        const char *szParamName, bool bParamValue)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hParam == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (((dbgw::_Parameter *) hParam)->putBool(szParamName,
+              bParamValue) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::Exception &e)
+        {
+          dbgw::setLastException(e);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
+        bool bParamValue)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hParam == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (((dbgw::_Parameter *) hParam)->setBool(nIndex, bParamValue) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::Exception &e)
+        {
+          dbgw::setLastException(e);
+          return false;
+        }
+    }
+
     DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
         const char *szParamName, const char *szParamValue, size_t nLen)
     {
@@ -1452,6 +1510,18 @@ namespace DBGW3
     }
 
     DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
+        bool *pValue)
+    {
+      return GetColumn(hResult, nIndex, pValue);
+    }
+
+    DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
+        const char *szName, bool *pValue)
+    {
+      return GetColumn(hResult, szName, pValue);
+    }
+
+    DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
         char *szBuffer, int BufferSize, size_t *pLen)
     {
       return GetColumn(hResult, nIndex, szBuffer, BufferSize, pLen);
@@ -1718,6 +1788,70 @@ namespace DBGW3
               (dbgw::ClientResultSetSharedPtr *) hResult;
 
           if ((*pResult)->getDouble(szName, pValue) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::Exception &e)
+        {
+          dbgw::setLastException(e);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
+        bool *pValue)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          dbgw::ClientResultSetSharedPtr *pResult =
+              (dbgw::ClientResultSetSharedPtr *) hResult;
+
+          if ((*pResult)->getBool(nIndex, pValue) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::Exception &e)
+        {
+          dbgw::setLastException(e);
+          return false;
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
+        bool *pValue)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hResult == NULL
+              || *(dbgw::ClientResultSetSharedPtr *) hResult == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          dbgw::ClientResultSetSharedPtr *pResult =
+              (dbgw::ClientResultSetSharedPtr *) hResult;
+
+          if ((*pResult)->getBool(szName, pValue) == false)
             {
               throw dbgw::getLastException();
             }
@@ -2363,6 +2497,35 @@ namespace DBGW3
       catch (dbgw::Exception &e)
         {
           dbgw::setLastException(e);
+        }
+    }
+
+    DECLSPECIFIER bool __stdcall SetContainerKey(Handle hExecutor,
+        const char *szKey)
+    {
+      dbgw::clearException();
+
+      try
+        {
+          if (hExecutor == NULL)
+            {
+              dbgw::InvalidHandleException e;
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          dbgw::Client *pClient = (dbgw::Client *) hExecutor;
+          if (pClient->setContainerKey(szKey) == false)
+            {
+              throw dbgw::getLastException();
+            }
+
+          return true;
+        }
+      catch (dbgw::Exception &e)
+        {
+          dbgw::setLastException(e);
+          return false;
         }
     }
 

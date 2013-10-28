@@ -49,6 +49,7 @@ namespace dbgw
     virtual bool getChar(int nIndex, char *pValue) const = 0;
     virtual bool getFloat(int nIndex, float *pValue) const = 0;
     virtual bool getDouble(int nIndex, double *pValue) const = 0;
+    virtual bool getBool(int nIndex, bool *pValue) const = 0;
     virtual bool getDateTime(int nIndex, struct tm *pValue) const = 0;
     virtual bool getBytes(int nIndex, size_t *pSize, const char **pValue) const = 0;
     virtual trait<Lob>::sp getClob(int nIndex) const = 0;
@@ -63,6 +64,7 @@ namespace dbgw
     virtual bool getChar(const char *szKey, char *pValue) const = 0;
     virtual bool getFloat(const char *szKey, float *pValue) const = 0;
     virtual bool getDouble(const char *szKey, double *pValue) const = 0;
+    virtual bool getBool(const char *szKey, bool *pValue) const = 0;
     virtual bool getDateTime(const char *szKey, struct tm *pValue) const = 0;
     virtual bool getBytes(const char *szKey, size_t *pSize, const char **pValue) const = 0;
     virtual trait<Lob>::sp getClob(const char *szKey) const = 0;

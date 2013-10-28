@@ -156,64 +156,75 @@ namespace dbgw
         const _QueryParameter &stParam =
             m_pQuery->getQueryParamByPlaceHolderIndex(i);
 
-        if (stParam.mode == sql::DBGW_PARAM_MODE_IN
-            || stParam.mode == sql::DBGW_PARAM_MODE_INOUT)
+        if (m_pQuery->getDbType() != sql::DBGW_DB_TYPE_NBASE_T)
+          {
+            if (stParam.mode == sql::DBGW_PARAM_MODE_IN
+                || stParam.mode == sql::DBGW_PARAM_MODE_INOUT)
+              {
+                pValue = parameter.getValue(stParam.name.c_str(), stParam.index);
+                if (pValue == NULL)
+                  {
+                    throw getLastException();
+                  }
+
+                switch (stParam.type)
+                  {
+                  case DBGW_VAL_TYPE_INT:
+                    bindInt(i, pValue);
+                    break;
+                  case DBGW_VAL_TYPE_LONG:
+                    bindLong(i, pValue);
+                    break;
+                  case DBGW_VAL_TYPE_FLOAT:
+                    bindFloat(i, pValue);
+                    break;
+                  case DBGW_VAL_TYPE_DOUBLE:
+                    bindDouble(i, pValue);
+                    break;
+                  case DBGW_VAL_TYPE_CHAR:
+                  case DBGW_VAL_TYPE_STRING:
+                    bindString(i, pValue);
+                    break;
+                  case DBGW_VAL_TYPE_DATETIME:
+                    bindDateTime(i, pValue);
+                    break;
+                  case DBGW_VAL_TYPE_DATE:
+                    bindDate(i, pValue);
+                    break;
+                  case DBGW_VAL_TYPE_TIME:
+                    bindTime(i, pValue);
+                    break;
+                  case DBGW_VAL_TYPE_BYTES:
+                    bindBytes(i, pValue);
+                    break;
+                  case DBGW_VAL_TYPE_CLOB:
+                    bindClob(i, pValue);
+                    break;
+                  case DBGW_VAL_TYPE_BLOB:
+                    bindBlob(i, pValue);
+                    break;
+                  default:
+                    InvalidValueTypeException e(pValue->getType());
+                    DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+                    throw e;
+                  }
+              }
+
+            if (stParam.mode == sql::DBGW_PARAM_MODE_OUT
+                || stParam.mode == sql::DBGW_PARAM_MODE_INOUT)
+              {
+                inout = "|OUT";
+                m_pCallableStatement->registerOutParameter(i, stParam.type,
+                    stParam.size);
+              }
+          }
+        else
           {
             pValue = parameter.getValue(stParam.name.c_str(), stParam.index);
             if (pValue == NULL)
               {
                 throw getLastException();
               }
-
-            switch (stParam.type)
-              {
-              case DBGW_VAL_TYPE_INT:
-                bindInt(i, pValue);
-                break;
-              case DBGW_VAL_TYPE_LONG:
-                bindLong(i, pValue);
-                break;
-              case DBGW_VAL_TYPE_FLOAT:
-                bindFloat(i, pValue);
-                break;
-              case DBGW_VAL_TYPE_DOUBLE:
-                bindDouble(i, pValue);
-                break;
-              case DBGW_VAL_TYPE_CHAR:
-              case DBGW_VAL_TYPE_STRING:
-                bindString(i, pValue);
-                break;
-              case DBGW_VAL_TYPE_DATETIME:
-                bindDateTime(i, pValue);
-                break;
-              case DBGW_VAL_TYPE_DATE:
-                bindDate(i, pValue);
-                break;
-              case DBGW_VAL_TYPE_TIME:
-                bindTime(i, pValue);
-                break;
-              case DBGW_VAL_TYPE_BYTES:
-                bindBytes(i, pValue);
-                break;
-              case DBGW_VAL_TYPE_CLOB:
-                bindClob(i, pValue);
-                break;
-              case DBGW_VAL_TYPE_BLOB:
-                bindBlob(i, pValue);
-                break;
-              default:
-                InvalidValueTypeException e(pValue->getType());
-                DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-                throw e;
-              }
-          }
-
-        if (stParam.mode == sql::DBGW_PARAM_MODE_OUT
-            || stParam.mode == sql::DBGW_PARAM_MODE_INOUT)
-          {
-            inout = "|OUT";
-            m_pCallableStatement->registerOutParameter(i, stParam.type,
-                stParam.size);
           }
 
         if (_Logger::isWritable(CCI_LOG_LEVEL_DEBUG))

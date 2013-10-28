@@ -54,6 +54,7 @@ namespace dbgw
       virtual char getChar(int nIndex) const;
       virtual float getFloat(int nIndex) const;
       virtual double getDouble(int nIndex) const;
+      virtual bool getBool(int nIndex) const;
       virtual struct tm getDateTime(int nIndex) const;
       virtual void getBytes(int nIndex, size_t *pSize, const char **pValue) const;
       virtual trait<Lob>::sp getClob(int nIndex) const;

@@ -87,7 +87,7 @@ namespace dbgw
     return 1000 * 60 * 30;
   }
 
-  sql::TransactionIsolarion _ExecutorPoolContext::DEFAULT_ISOLATION()
+  sql::TransactionIsolation _ExecutorPoolContext::DEFAULT_ISOLATION()
   {
     return sql::DBGW_TRAN_UNKNOWN;
   }

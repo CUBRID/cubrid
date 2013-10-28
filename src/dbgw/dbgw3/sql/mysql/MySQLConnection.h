@@ -47,7 +47,7 @@ namespace dbgw
     protected:
       virtual void doConnect();
       virtual void doClose();
-      virtual void doSetTransactionIsolation(TransactionIsolarion isolation);
+      virtual void doSetTransactionIsolation(TransactionIsolation isolation);
       virtual void doSetAutoCommit(bool bAutoCommit);
       virtual void doCommit();
       virtual void doRollback();

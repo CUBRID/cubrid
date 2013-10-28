@@ -508,6 +508,10 @@ namespace dbgw
       {
         return DBGW_VAL_TYPE_RESULTSET;
       }
+    if (!strcasecmp(type.c_str(), "bool"))
+      {
+        return DBGW_VAL_TYPE_BOOL;
+      }
 
     InvalidValueTypeException e(m_xmlParser.getFileName(), type.c_str());
     DBGW_LOG_ERROR(e.what());
@@ -669,6 +673,8 @@ namespace dbgw
         return sql::DBGW_DB_TYPE_ORACLE;
 #elif defined(DBGW_MYSQL)
         return sql::DBGW_DB_TYPE_MYSQL;
+#elif defined(DBGW_NBASE_T)
+        return sql::DBGW_DB_TYPE_NBASE_T;
 #else
         return sql::DBGW_DB_TYPE_CUBRID;
 #endif
@@ -684,6 +690,10 @@ namespace dbgw
     else if (!strcasecmp(dbType.c_str(), "oracle"))
       {
         return sql::DBGW_DB_TYPE_ORACLE;
+      }
+    else if (!strcasecmp(dbType.c_str(), "nbase-t"))
+      {
+        return sql::DBGW_DB_TYPE_NBASE_T;
       }
     else
       {
@@ -1135,6 +1145,13 @@ namespace dbgw
         }
 #elif defined(DBGW_ORACLE)
       if (dbType != sql::DBGW_DB_TYPE_ORACLE)
+        {
+          InvalidDbTypeException e(getDbTypeString(dbType));
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+#elif defined(DBGW_NBASE_T)
+      if (dbType != sql::DBGW_DB_TYPE_NBASE_T)
         {
           InvalidDbTypeException e(getDbTypeString(dbType));
           DBGW_LOG_ERROR(e.what());

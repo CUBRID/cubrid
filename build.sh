@@ -263,7 +263,7 @@ function build_configure ()
       print_fatal "Build mode [$build_mode] is not valid build mode" ;;
   esac
 
-  configure_options="$configure_options --enable-dbgw"
+  configure_options="$configure_options --enable-dbgw --with-nbase-t=yes"
 
   if [ $build_mode = "release" ]; then
     # check conflict
@@ -950,6 +950,7 @@ function build_package ()
 	else
 	  package_name="$package_basename.tar.gz"
 	fi
+	pack_file_list=""
 	cci_headers="include/cas_cci.h include/cas_error.h"
 	dbgw_headers="
 		include/cci_log.h
@@ -982,12 +983,71 @@ function build_package ()
 		include/dbgw3/client/Client.h
 		"
 	cci_libs="lib/libcascci.a lib/libcascci.so*"
-	dbgw_libs="lib/libdbgw3*.a lib/libdbgw3*.so*"
+	dbgw_libs="lib/libdbgw3.a"
+	dbgw_libs="lib/libdbgw3_all.a $dbgw_libs"
+	dbgw_libs="lib/libdbgw3_mysql.a $dbgw_libs"
+	dbgw_libs="lib/libdbgw3_oracle.a $dbgw_libs"
+	dbgw_libs="lib/libdbgw3.so* $dbgw_libs"
+	dbgw_libs="lib/libdbgw3_all.so* $dbgw_libs"
+	dbgw_libs="lib/libdbgw3_mysql.so* $dbgw_libs"
+	dbgw_libs="lib/libdbgw3_oracle.so* $dbgw_libs"
 	for file in $cci_headers $dbgw_headers $cci_libs $dbgw_libs; do
 	  pack_file_list="$pack_file_list $product_name/$file"
 	done
 	(cd $install_dir && tar czf $output_dir/$package_name $pack_file_list)
 	[ $? -eq 0 ] && output_packages="$output_packages $package_name"
+      ;;
+      nbase)
+	if [ ! -d "$install_dir" ]; then
+	  print_fatal "Installed directory not found"
+	fi
+
+	package_basename="$product_name-DBGWCI_NBASE-$build_number-$build_target"
+	if [ ! "$build_mode" = "release" ]; then
+	  package_name="$package_basename-$build_mode.tar.gz"
+	else
+	  package_name="$package_basename.tar.gz"
+	fi
+	pack_file_list=""
+	cci_headers="include/cas_cci.h include/cas_error.h"
+	dbgw_headers="
+		include/cci_log.h
+		include/DBGWClient.h
+		include/DBGWConnector3.h
+		include/dbgw3/Common.h
+		include/dbgw3/Exception.h
+		include/dbgw3/Lob.h
+		include/dbgw3/Logger.h
+		include/dbgw3/Value.h
+		include/dbgw3/ValueSet.h
+		include/dbgw3/SynchronizedResource.h
+		include/dbgw3/system/ThreadEx.h
+		include/dbgw3/system/DBGWPorting.h
+		include/dbgw3/sql/CallableStatement.h
+		include/dbgw3/sql/Connection.h
+		include/dbgw3/sql/DatabaseInterface.h
+		include/dbgw3/sql/DriverManager.h
+		include/dbgw3/sql/PreparedStatement.h
+		include/dbgw3/sql/ResultSet.h
+		include/dbgw3/sql/ResultSetMetaData.h
+		include/dbgw3/sql/Statement.h
+		include/dbgw3/client/Interface.h
+		include/dbgw3/client/Mock.h
+		include/dbgw3/client/ConfigurationObject.h
+		include/dbgw3/client/Configuration.h
+		include/dbgw3/client/ClientResultSet.h
+		include/dbgw3/client/Resource.h
+		include/dbgw3/client/QueryMapper.h
+		include/dbgw3/client/Client.h
+		"
+	cci_libs="lib/libcascci.a lib/libcascci.so*"
+	dbgw_libs="lib/libdbgw3_nbase_t.a"
+	dbgw_libs="lib/libdbgw3_nbase_t.so* $dbgw_libs"
+	for file in $cci_headers $dbgw_headers $cci_libs $dbgw_libs; do
+	  pack_file_list="$pack_file_list $product_name/$file"
+	done
+	(cd $install_dir && tar czf $output_dir/$package_name $pack_file_list)
+	[ $? -eq 0 ] && output_packages="$output_packages $package_name"    
       ;;
     esac
     [ $? -eq 0 ] && print_result "OK [$package_name]" || print_fatal "Packaging for $package failed"
@@ -1035,7 +1095,7 @@ function show_usage ()
   else
     echo "  -j path Set JAVA_HOME path; [default: $JAVA_HOME]"
   fi
-  echo "  -z arg  Package to generate (src,zip_src,cci_src,php_src,shell,tarball,cci,jdbc,srpm,rpm);"
+  echo "  -z arg  Package to generate (src,zip_src,cci_src,php_src,shell,tarball,cci,jdbc,srpm,rpm,nbase);"
   echo "          [default: all]"
   echo "  -? | -h Show this help message and exit"
   echo ""
@@ -1123,7 +1183,7 @@ function get_options ()
     fi
   done
   if [ "$packages" = "all" -o "$packages" = "ALL" ]; then
-    packages="src zip_src cci_src php_src tarball shell cci jdbc srpm rpm dbgwci"
+    packages="src zip_src cci_src php_src tarball shell cci jdbc srpm rpm dbgwci nbase"
   fi
 
   if [ "x$output_dir" = "x" ]; then

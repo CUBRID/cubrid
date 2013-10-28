@@ -65,6 +65,11 @@ namespace dbgw
     return set(nIndex, DBGW_VAL_TYPE_DOUBLE, &dValue, bNull);
   }
 
+  bool _ValueSet::setBool(size_t nIndex, bool bValue, bool bNull)
+  {
+    return set(nIndex, DBGW_VAL_TYPE_BOOL, &bValue, bNull);
+  }
+
   bool _ValueSet::set(size_t nIndex, ValueType type,
       const struct tm &tmValue)
   {
@@ -207,6 +212,11 @@ namespace dbgw
   bool _ValueSet::put(const char *szKey, double dValue, bool bNull)
   {
     return put(szKey, DBGW_VAL_TYPE_DOUBLE, &dValue, bNull);
+  }
+
+  bool _ValueSet::putBool(const char *szKey, bool bValue, bool bNull)
+  {
+    return put(szKey, DBGW_VAL_TYPE_BOOL, &bValue, bNull);
   }
 
   bool _ValueSet::put(const char *szKey, ValueType type,
@@ -356,6 +366,11 @@ namespace dbgw
   bool _ValueSet::put(double dValue, bool bNull)
   {
     return put(DBGW_VAL_TYPE_DOUBLE, &dValue, bNull);
+  }
+
+  bool _ValueSet::putBool(bool bValue, bool bNull)
+  {
+    return put(DBGW_VAL_TYPE_BOOL, &bValue, bNull);
   }
 
   bool _ValueSet::put(ValueType type, const struct tm &tmValue)
@@ -720,6 +735,29 @@ namespace dbgw
       }
   }
 
+  bool _ValueSet::getBool(const char *szKey, bool *pValue) const
+  {
+    clearException();
+
+    try
+      {
+        const Value *p = getValue(szKey);
+        if (p == NULL)
+          {
+            throw getLastException();
+          }
+        else
+          {
+            return p->toBool(pValue);
+          }
+      }
+    catch (Exception &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
   bool _ValueSet::getDateTime(const char *szKey, struct tm *pValue) const
   {
     clearException();
@@ -1036,6 +1074,29 @@ namespace dbgw
         else
           {
             return p->toDouble(pValue);
+          }
+      }
+    catch (Exception &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool _ValueSet::getBool(int nIndex, bool *pValue) const
+  {
+    clearException();
+
+    try
+      {
+        const Value *p = getValue(nIndex);
+        if (p == NULL)
+          {
+            throw getLastException();
+          }
+        else
+          {
+            return p->toBool(pValue);
           }
       }
     catch (Exception &e)

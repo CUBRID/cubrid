@@ -582,6 +582,32 @@ AS_IF([test "$with_aio" = "yes"],
 	SYS_LIBS="$SYS_LIBS -lrt"])
 AC_MSG_RESULT([$with_aio])
 
+AC_MSG_CHECKING([for DBGW3.0 nbase-t support])
+AC_ARG_WITH([nbase_t],
+	AS_HELP_STRING([--with-nbase-t=PATH],
+	  [build as dbgw lib to use nbase-t @<:@default=builtin@:>@])],
+	[with_nbase_t=$withval],
+	[with_nbase_t=no])
+	
+case "$with_nbase_t" in
+	yes|builtin)
+		if test -d "$srcdir/external/nbase-capi-1.3.0" && test "$enable_64bit" == "yes"; then
+			AC_CONFIG_SUBDIRS([external/nbase-capi-1.3.0])
+			NBASE_T_LIB_PATH="-L\$(top_builddir)/external/nbase-capi-1.3.0/lib"
+			NBASE_T_INC_PATH="-I\$(top_builddir)/external/nbase-capi-1.3.0/include"
+		else
+			with_nbase_t=no
+		fi
+		;;
+	no)
+		;;
+	*)
+		NBASE_T_LIB_PATH="-L$with_nbase_t/lib"
+		NBASE_T_INC_PATH="-I$with_nbase_t/include"
+		;;
+esac
+AC_MSG_RESULT([$with_nbase_t])
+
 AC_MSG_CHECKING([for mysql client library version 5.1])
 AC_ARG_WITH([mysql51],
 	AS_HELP_STRING([--with-mysql51=PATH],
@@ -674,6 +700,7 @@ AS_IF([test "$with_cci_only" = "yes"], [enable_dbgw=no])
 AM_CONDITIONAL([BUILD_DBGW_ORACLE], [test "$enable_dbgw" != "no" && test "$with_oracle" != "no"])
 AM_CONDITIONAL([BUILD_DBGW_MYSQL51], [test "$enable_dbgw" != "no" && test "$with_mysql51" != "no"])
 AM_CONDITIONAL([BUILD_DBGW_MYSQL], [test "$enable_dbgw" != "no" && test "$with_mysql" != "no"])
+AM_CONDITIONAL([BUILD_DBGW_NBASE_T], [test "$enable_dbgw" != "no" && test "$with_nbase_t" != "no"])
 AM_CONDITIONAL([BUILD_DBGW_ALL], [test "$enable_dbgw" != "no" && test "$with_oracle" != "no" && test "$with_mysql" != "no"])
 if test "$enable_dbgw" = "yes"
 then
@@ -1055,6 +1082,8 @@ AC_SUBST([CUBRID_SHLOCALESDIR])
 AC_SUBST([CUBRID_COMPATDIR])
 AC_SUBST([CUBRID_LOGDIR])
 AC_SUBST([CUBRID_TMPDIR])
+AC_SUBST([NBASE_T_LIB_PATH])
+AC_SUBST([NBASE_T_INC_PATH])
 AC_SUBST([MYSQL51_LIB_PATH])
 AC_SUBST([MYSQL51_INC_PATH])
 AC_SUBST([MYSQL_LIB_PATH])

@@ -77,6 +77,7 @@ namespace dbgw
     const char *getGroupName() const;
     std::string getSqlKey() const;
     sql::StatementType getType() const;
+    sql::DataBaseType getDbType() const;
     int getBindNum() const;
     const _QueryParameter &getQueryParam(size_t nIndex) const;
     const _QueryParameter &getQueryParamByPlaceHolderIndex(
@@ -121,6 +122,7 @@ namespace dbgw
     const char *getSqlName() const;
     const char *getGroupName() const;
     sql::StatementType getType() const;
+    sql::DataBaseType getDbType() const;
     int getBindNum() const;
     const _QueryParameter &getQueryParam(size_t nIndex) const;
     const _QueryParameter &getQueryParamByPlaceHolderIndex(

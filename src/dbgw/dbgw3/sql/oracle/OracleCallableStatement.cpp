@@ -151,6 +151,13 @@ namespace dbgw
       m_stmtBase.setDouble(nIndex, dValue);
     }
 
+    void OracleCallableStatement::setBool(int nIndex, bool bValue)
+    {
+      UnsupportedOperationException e;
+      DBGW_LOG_ERROR(e.what());
+      throw e;
+    }
+
     void OracleCallableStatement::setDate(int nIndex,
         const char *szValue)
     {
@@ -404,6 +411,13 @@ namespace dbgw
         }
 
       return dValue;
+    }
+
+    bool OracleCallableStatement::getBool(int nIndex) const
+    {
+      UnsupportedOperationException e;
+      DBGW_LOG_ERROR(e.what());
+      throw e;
     }
 
     struct tm OracleCallableStatement::getDateTime(int nIndex) const

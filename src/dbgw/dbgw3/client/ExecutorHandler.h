@@ -45,6 +45,7 @@ namespace dbgw
     void release(bool bIsForceDrop = false);
 
     void setAutoCommit(bool bAutoCommit);
+    void setContainerKey(const char *szKey);
     void commit();
     void rollback();
     void execute(const std::string &sqlName, const _Parameter *pParameter);

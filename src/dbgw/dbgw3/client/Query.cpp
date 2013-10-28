@@ -17,6 +17,7 @@
  *
  */
 
+#include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
 #include "dbgw3/Common.h"
 #include "dbgw3/Exception.h"
@@ -114,9 +115,18 @@ namespace dbgw
   {
     m_sqlKey = m_sql;
 
-    m_sql += " /* SQL : ";
-    m_sql += m_query.getSqlName();
-    m_sql += " */";
+    if (m_query.getDbType() == sql::DBGW_DB_TYPE_NBASE_T)
+      {
+        m_sql += " -- ";
+        m_sql += m_query.getSqlName();
+        m_sql += " \n";
+      }
+    else
+      {
+        m_sql += " /* SQL : ";
+        m_sql += m_query.getSqlName();
+        m_sql += " */";
+      }
   }
 
   _BoundQuery::_BoundQuery(const _BoundQuery &query) :
@@ -164,6 +174,11 @@ namespace dbgw
   sql::StatementType _BoundQuery::getType() const
   {
     return m_query.getType();
+  }
+
+  sql::DataBaseType _BoundQuery::getDbType() const
+  {
+    return m_query.getDbType();
   }
 
   int _BoundQuery::getBindNum() const
@@ -433,7 +448,11 @@ namespace dbgw
                       it->firstPlaceHolderIndex = placeHolder.index;
                     }
 
-                  if (m_dbType == sql::DBGW_DB_TYPE_ORACLE)
+                  if (m_dbType == sql::DBGW_DB_TYPE_NBASE_T)
+                    {
+                      p = new _NBaseTReplaceQueryPart(m_logger, part);
+                    }
+                  else if (m_dbType == sql::DBGW_DB_TYPE_ORACLE)
                     {
                       /**
                        * oci using placeholder name instead of '?'
@@ -521,6 +540,11 @@ namespace dbgw
     sql::StatementType getType() const
     {
       return m_statementType;
+    }
+
+    sql::DataBaseType getDbType() const
+    {
+      return m_dbType;
     }
 
     int getBindNum() const
@@ -651,6 +675,92 @@ namespace dbgw
       std::string m_name;
     };
 
+    class _NBaseTReplaceQueryPart: public _QueryPart
+    {
+    public:
+      _NBaseTReplaceQueryPart(const _Logger &logger, const std::string &name) :
+        m_logger(logger), m_name(name)
+      {
+      }
+
+      virtual ~ _NBaseTReplaceQueryPart() {}
+
+      virtual std::string toString(const _ValueSet &valueSet) const
+      {
+        if (valueSet.size() == 0)
+          {
+            NotExistKeyException e(m_name.c_str(), "DBGWReplaceQueryPart");
+            DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+            throw e;
+          }
+
+        const Value *pValue = valueSet.getValue(m_name.c_str());
+        if (pValue == NULL)
+          {
+            NotExistKeyException e(m_name.c_str(), "DBGWReplaceQueryPart");
+            DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+            throw e;
+          }
+
+        if (pValue->getType() == DBGW_VAL_TYPE_STRING)
+          {
+            std::string part = "'";
+            part += sql::DriverUtil::escapeSingleQuote(pValue->toString());
+            part += "'";
+            return part;
+          }
+        else if (pValue->getType() == DBGW_VAL_TYPE_DATETIME)
+          {
+            struct tm datetime;
+            pValue->getDateTime(&datetime);
+
+            int yy = datetime.tm_year + 1900;
+            int mm = datetime.tm_mon + 1;
+            int dd = datetime.tm_mday;
+            int hh = datetime.tm_hour;
+            int mi = datetime.tm_min;
+            int ss = datetime.tm_sec;
+
+            const char *ampm = "AM";
+            if (hh >= 12)
+              {
+                ampm = "PM";
+              }
+
+            if (hh > 12)
+              {
+                hh -= 12;
+              }
+
+            std::string part = "'";
+            part += (boost::format("%02d:%02d:%02d %s %02d/%02d/%04d") % hh % mi
+                % ss % ampm % mm % dd % yy).str();
+            part += "'";
+            return part;
+          }
+        else if (pValue->getType() == DBGW_VAL_TYPE_BOOL)
+          {
+            bool bValue;
+            pValue->getBool(&bValue);
+
+            if (bValue)
+              {
+                return "true";
+              }
+            else
+              {
+                return "false";
+              }
+          }
+
+        return pValue->toString();
+      }
+
+    private:
+      const _Logger &m_logger;
+      std::string m_name;
+    };
+
   private:
     _Query *m_pSelf;
     _Logger m_logger;
@@ -729,6 +839,11 @@ namespace dbgw
   sql::StatementType _Query::getType() const
   {
     return m_pImpl->getType();
+  }
+
+  sql::DataBaseType _Query::getDbType() const
+  {
+    return m_pImpl->getDbType();
   }
 
   int _Query::getBindNum() const

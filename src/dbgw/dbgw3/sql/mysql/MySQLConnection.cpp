@@ -131,7 +131,7 @@ namespace dbgw
         return (void *) m_pMySQL;
       }
 
-      void setTransactionIsolation(TransactionIsolarion isolation)
+      void setTransactionIsolation(TransactionIsolation isolation)
       {
         const char *szQuery = NULL;
 
@@ -310,7 +310,7 @@ namespace dbgw
     }
 
     void MySQLConnection::doSetTransactionIsolation(
-        TransactionIsolarion isolation)
+        TransactionIsolation isolation)
     {
       m_pImpl->setTransactionIsolation(isolation);
     }

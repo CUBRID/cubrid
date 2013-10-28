@@ -28,6 +28,9 @@
 #include "dbgw3/sql/oracle/OracleConnection.h"
 #elif DBGW_MYSQL
 #include "dbgw3/sql/mysql/MySQLConnection.h"
+#elif DBGW_NBASE_T
+#include <nbase.h>
+#include "dbgw3/sql/nbase_t/NBaseTConnection.h"
 #elif DBGW_ALL
 #include "dbgw3/sql/oracle/OracleConnection.h"
 #include "dbgw3/sql/mysql/MySQLConnection.h"
@@ -46,12 +49,15 @@ namespace dbgw
     {
       switch (dbType)
         {
-        case DBGW_DB_TYPE_CUBRID:
-          return "CUBRID";
         case DBGW_DB_TYPE_MYSQL:
           return "MySQL";
         case DBGW_DB_TYPE_ORACLE:
           return "Oracle";
+        case DBGW_DB_TYPE_NBASE_T:
+          return "NBASE-T";
+        case DBGW_DB_TYPE_CUBRID:
+        default:
+          return "CUBRID";
         }
     }
 
@@ -76,6 +82,9 @@ namespace dbgw
 #elif DBGW_MYSQL
           pConnection = trait<Connection>::sp(
               new MySQLConnection(szUrl, szUser, szPassword));
+#elif DBGW_NBASE_T
+          pConnection = trait<Connection>::sp(
+              new NBaseTConnection(szUrl));
 #elif DBGW_ALL
           if (dbType == DBGW_DB_TYPE_ORACLE)
             {
@@ -108,6 +117,43 @@ namespace dbgw
           setLastException(e);
           return trait<Connection>::sp();
         }
+    }
+
+    std::string DriverUtil::escapeSingleQuote(const std::string &value)
+    {
+#ifdef DBGW_NBASE_T
+      const static int DEFAULT_BUF_SIZE = 1024;
+      char szDefaultBuffer[DEFAULT_BUF_SIZE];
+      char *szExtraBuffer = NULL;
+      char *p = NULL;
+      int nValueSize = value.length();
+      int nMaxValueSize = nValueSize * 2;
+
+      if (nMaxValueSize + 1 > DEFAULT_BUF_SIZE)
+        {
+          szExtraBuffer = new char[nMaxValueSize + 1];
+          p = szExtraBuffer;
+        }
+      else
+        {
+          p = szDefaultBuffer;
+        }
+
+      memset(p, 0, nMaxValueSize + 1);
+
+      nbase_escape_sq_str((char *) value.c_str(), nValueSize, p,
+          nMaxValueSize);
+
+      std::string escapeValue(p);
+      if (szExtraBuffer)
+        {
+          delete[] szExtraBuffer;
+        }
+
+      return escapeValue;
+#else
+      return value;
+#endif
     }
 
   }

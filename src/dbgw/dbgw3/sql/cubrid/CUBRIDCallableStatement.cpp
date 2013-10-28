@@ -166,6 +166,13 @@ namespace dbgw
       m_baseStatement.setDouble(nIndex, dValue);
     }
 
+    void CUBRIDCallableStatement::setBool(int nIndex, bool bValue)
+    {
+      UnsupportedOperationException e;
+      DBGW_LOG_ERROR(e.what());
+      throw e;
+    }
+
     void CUBRIDCallableStatement::setDate(int nIndex,
         const char *szValue)
     {
@@ -357,6 +364,13 @@ namespace dbgw
         }
 
       return m_pOutParamResult->getDouble(nIndex);
+    }
+
+    bool CUBRIDCallableStatement::getBool(int nIndex) const
+    {
+      UnsupportedOperationException e;
+      DBGW_LOG_ERROR(e.what());
+      throw e;
     }
 
     struct tm CUBRIDCallableStatement::getDateTime(int nIndex) const

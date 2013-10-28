@@ -48,6 +48,7 @@ namespace dbgw
     bool set(size_t nIndex, char cValue, bool bNull = false);
     bool set(size_t nIndex, float fValue, bool bNull = false);
     bool set(size_t nIndex, double dValue, bool bNull = false);
+    bool setBool(size_t nIndex, bool bValue, bool bNull = false);
     bool set(size_t nIndex, ValueType type, const struct tm &tmValue);
     bool set(size_t nIndex, ValueType type, const void *pValue,
         bool bNull = false, int nSize = -1);
@@ -62,6 +63,7 @@ namespace dbgw
     bool put(const char *szKey, char cValue, bool bNull = false);
     bool put(const char *szKey, float fValue, bool bNull = false);
     bool put(const char *szKey, double dValue, bool bNull = false);
+    bool putBool(const char *szKey, bool bValue, bool bNull = false);
     bool put(const char *szKey, ValueType type, const struct tm &tmValue);
     bool put(const char *szKey, ValueType type, const void *pValue,
         bool bNull = false, int nSize = -1);
@@ -77,6 +79,7 @@ namespace dbgw
     bool put(char cValue, bool bNull = false);
     bool put(float fValue, bool bNull = false);
     bool put(double dValue, bool bNull = false);
+    bool putBool(bool bValue, bool bNull = false);
     bool put(ValueType type, const struct tm &tmValue);
     bool put(ValueType type, const void *pValue, bool bNull = false,
         int nSize = -1);
@@ -98,6 +101,7 @@ namespace dbgw
     bool getChar(const char *szKey, char *pValue) const;
     bool getFloat(const char *szKey, float *pValue) const;
     bool getDouble(const char *szKey, double *pValue) const;
+    bool getBool(const char *szKey, bool *pValue) const;
     bool getDateTime(const char *szKey, struct tm *pValue) const;
     bool getBytes(const char *szKey, size_t *pSize, const char **pValue) const;
     bool getType(const char *szKey, ValueType *pType) const;
@@ -112,6 +116,7 @@ namespace dbgw
     bool getChar(int nIndex, char *pValue) const;
     bool getFloat(int nIndex, float *pValue) const;
     bool getDouble(int nIndex, double *pValue) const;
+    bool getBool(int nIndex, bool *pValue) const;
     bool getDateTime(int nIndex, struct tm *pValue) const;
     bool getBytes(int nIndex, size_t *pSize, const char **pValue) const;
     trait<Lob>::sp getClob(int nIndex) const;

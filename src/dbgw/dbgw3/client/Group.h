@@ -62,7 +62,7 @@ namespace dbgw
     static unsigned long DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS();
     static int DEFAULT_NUM_TESTS_PER_EVICTIONRUN();
     static unsigned long DEFAULT_MIN_EVICTABLE_IDLE_TIMEMILLIS();
-    static sql::TransactionIsolarion DEFAULT_ISOLATION();
+    static sql::TransactionIsolation DEFAULT_ISOLATION();
     static bool DEFAULT_AUTOCOMMIT();
 
     size_t initialSize;
@@ -73,7 +73,7 @@ namespace dbgw
     unsigned long timeBetweenEvictionRunsMillis;
     int numTestsPerEvictionRun;
     unsigned long minEvictableIdleTimeMillis;
-    sql::TransactionIsolarion isolation;
+    sql::TransactionIsolation isolation;
     bool autocommit;
   };
 

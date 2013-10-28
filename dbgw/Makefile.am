@@ -52,6 +52,12 @@ else
   DBGW_MYSQL61_LIB =
 endif
 
+if BUILD_DBGW_NBASE_T
+  DBGW_NBASE_T_LIB = libdbgw3_nbase_t.la
+else
+  DBGW_NBASE_T_LIB =
+endif
+
 if BUILD_DBGW_ALL
   DBGW_ALL_LIB = libdbgw3_all.la
 else
@@ -146,7 +152,7 @@ dbgw3_base_SOURCES = \
         $(DBGW_SQL_DIR)/ResultSet.cpp \
         $(DBGW_SQL_DIR)/Statement.cpp
 dbgw3_SOURCES = \
-				$(dbgw3_base_SOURCES) \
+        $(dbgw3_base_SOURCES) \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDCallableStatement.cpp \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDConnection.cpp \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDException.cpp \
@@ -156,7 +162,7 @@ dbgw3_SOURCES = \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDStatementBase.cpp \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDMock.cpp
 dbgw3_oracle_SOURCES = \
-				$(dbgw3_base_SOURCES) \
+        $(dbgw3_base_SOURCES) \
         $(DBGW_SQL_DIR)/oracle/OracleCallableStatement.cpp \
         $(DBGW_SQL_DIR)/oracle/OracleConnection.cpp \
         $(DBGW_SQL_DIR)/oracle/OracleException.cpp \
@@ -170,7 +176,7 @@ dbgw3_oracle_SOURCES = \
         $(DBGW_SQL_DIR)/oracle/OracleValue.cpp \
         $(DBGW_SQL_DIR)/oracle/OracleMock.cpp
 dbgw3_mysql_SOURCES = \
-				$(dbgw3_base_SOURCES) \
+        $(dbgw3_base_SOURCES) \
         $(DBGW_SQL_DIR)/mysql/MySQLConnection.cpp \
         $(DBGW_SQL_DIR)/mysql/MySQLException.cpp \
         $(DBGW_SQL_DIR)/mysql/MySQLPreparedStatement.cpp \
@@ -179,8 +185,16 @@ dbgw3_mysql_SOURCES = \
         $(DBGW_SQL_DIR)/mysql/MySQLStatementBase.cpp \
         $(DBGW_SQL_DIR)/mysql/MySQLValue.cpp \
         $(DBGW_SQL_DIR)/mysql/MySQLMock.cpp
+dbgw3_nbase_t_SOURCES = \
+        $(dbgw3_base_SOURCES) \
+        $(DBGW_SQL_DIR)/nbase_t/NBaseTException.cpp \
+        $(DBGW_SQL_DIR)/nbase_t/NBaseTConnection.cpp \
+        $(DBGW_SQL_DIR)/nbase_t/NBaseTPreparedStatement.cpp \
+        $(DBGW_SQL_DIR)/nbase_t/NBaseTExecutor.cpp \
+        $(DBGW_SQL_DIR)/nbase_t/NBaseTResultSetMetaData.cpp \
+        $(DBGW_SQL_DIR)/nbase_t/NBaseTResultSet.cpp
 dbgw3_all_SOURCES = \
-				$(dbgw3_base_SOURCES) \
+        $(dbgw3_base_SOURCES) \
         $(DBGW_SQL_DIR)/oracle/OracleCallableStatement.cpp \
         $(DBGW_SQL_DIR)/oracle/OracleConnection.cpp \
         $(DBGW_SQL_DIR)/oracle/OracleException.cpp \
@@ -209,7 +223,13 @@ dbgw3_all_SOURCES = \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDResultSetMetaData.cpp \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDStatementBase.cpp \
         $(DBGW_SQL_DIR)/cubrid/CUBRIDMock.cpp
-lib_LTLIBRARIES = $(DBGW_LIB) $(DBGW_ORACLE_LIB) $(DBGW_MYSQL_LIB) $(DBGW_MYSQL61_LIB) $(DBGW_ALL_LIB)
+lib_LTLIBRARIES = \
+        $(DBGW_LIB) \
+        $(DBGW_ORACLE_LIB) \
+        $(DBGW_MYSQL_LIB) \
+        $(DBGW_MYSQL61_LIB) \
+        $(DBGW_NBASE_T_LIB) \
+        $(DBGW_ALL_LIB)
 libdbgw3_la_SOURCES = \
         $(dbgw3_SOURCES)
 libdbgw3_la_CPPFLAGS = \
@@ -241,6 +261,14 @@ libdbgw3_mysql61_la_CPPFLAGS = \
 libdbgw3_mysql61_la_LDFLAGS = -version-number @LT_VERSION@ @MYSQL_LIB_PATH@
 libdbgw3_mysql61_la_LIBADD = @EXPAT_LIBS@ -lmysqlclient -lrt
 libdbgw3_mysql61_la_LINK = $(CXXLINK)
+
+libdbgw3_nbase_t_la_SOURCES = \
+        $(dbgw3_nbase_t_SOURCES)
+libdbgw3_nbase_t_la_CPPFLAGS = \
+        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) @NBASE_T_INC_PATH@ -DDBGW_NBASE_T
+libdbgw3_nbase_t_la_LDFLAGS = -version-number @LT_VERSION@ @NBASE_T_LIB_PATH@ -lz
+libdbgw3_nbase_t_la_LIBADD = @EXPAT_LIBS@ @JANSSON_LIBS@ -lnbaseclient
+libdbgw3_nbase_t_la_LINK = $(CXXLINK)
 
 libdbgw3_all_la_SOURCES = \
         $(dbgw3_all_SOURCES)

@@ -65,7 +65,8 @@ namespace DBGW3
     DBGW_VAL_TYPE_TIME,
     DBGW_VAL_TYPE_BYTES,
     DBGW_VAL_TYPE_CLOB,
-    DBGW_VAL_TYPE_BLOB
+    DBGW_VAL_TYPE_BLOB,
+    DBGW_VAL_TYPE_BOOL
   };
 
   enum _FAULT_TYPE
@@ -169,6 +170,10 @@ namespace DBGW3
     DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
         double dParamValue);
     DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
+        const char *szParamName, bool bParamValue);
+    DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
+        bool bParamValue);
+    DECLSPECIFIER bool __stdcall SetParameter(Handle hParam,
         const char *szParamName, const char *szParamValue, size_t nLen);
     DECLSPECIFIER bool __stdcall SetParameter(Handle hParam, int nIndex,
         const char *szParamValue, size_t nLen);
@@ -246,6 +251,10 @@ namespace DBGW3
     DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
         const char *szName, double *pValue);
     DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
+        bool *pValue);
+    DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
+        const char *szName, bool *pValue);
+    DECLSPECIFIER bool __stdcall GetParameter(Handle hResult, int nIndex,
         char *szBuffer, int BufferSize, size_t *pLen);
     DECLSPECIFIER bool __stdcall GetParameter(Handle hResult,
         const char *szName, char *szBuffer, int BufferSize, size_t *pLen);
@@ -269,6 +278,10 @@ namespace DBGW3
         double *pValue);
     DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
         double *pValue);
+    DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
+        bool *pValue);
+    DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
+        bool *pValue);
     DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, int nIndex,
         char *szBuffer, int BufferSize, size_t *pLen);
     DECLSPECIFIER bool __stdcall GetColumn(Handle hResult, const char *szName,
@@ -333,6 +346,8 @@ namespace DBGW3
         const char *szNamespace = NULL);
     DECLSPECIFIER void __stdcall DestroyHandle(Handle hExecutor);
 
+    DECLSPECIFIER bool __stdcall SetContainerKey(Handle hExecutor,
+        const char *szKey);
     DECLSPECIFIER bool __stdcall Execute(Handle hExecutor, const char *szMethod,
         DBGW3::ParamSet::Handle hParam, DBGW3::ResultSet::Handle hResult);
     DECLSPECIFIER bool __stdcall Execute(Handle hExecutor, const char *szMethod,

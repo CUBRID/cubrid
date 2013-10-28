@@ -60,6 +60,8 @@ namespace dbgw
         return "BLOB";
       case DBGW_VAL_TYPE_RESULTSET:
         return "RESULTSET";
+      case DBGW_VAL_TYPE_BOOL:
+        return "BOOL";
       default:
         return "UNDEFINED";
       }
@@ -439,6 +441,37 @@ namespace dbgw
         {
           setLastException(e);
           return trait<sql::ResultSet>::sp();
+        }
+    }
+
+    bool getBool(bool *pValue) const
+    {
+      clearException();
+
+      try
+        {
+          if (m_type != DBGW_VAL_TYPE_BOOL)
+            {
+              MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_BOOL);
+              DBGW_LOG_ERROR(e.what());
+              throw e;
+            }
+
+          if (m_stValue.n != 0)
+            {
+              *pValue = true;
+            }
+          else
+            {
+              *pValue = false;
+            }
+
+          return true;
+        }
+      catch (Exception &e)
+        {
+          setLastException(e);
+          return false;
         }
     }
 
@@ -892,6 +925,63 @@ namespace dbgw
         }
     }
 
+    bool toBool(bool *pValue) const
+    {
+      clearException();
+
+      try
+        {
+          switch (m_type)
+            {
+            case DBGW_VAL_TYPE_BOOL:
+              return getBool(pValue);
+            case DBGW_VAL_TYPE_INT:
+              return m_stValue.n != 0 ? *pValue = true : *pValue = false;
+            case DBGW_VAL_TYPE_LONG:
+              return m_stValue.l != 0 ? *pValue = true : *pValue = false;
+            case DBGW_VAL_TYPE_FLOAT:
+              return m_stValue.f != 0 ? *pValue = true : *pValue = false;
+            case DBGW_VAL_TYPE_DOUBLE:
+              return m_stValue.d != 0 ? *pValue = true : *pValue = false;
+            case DBGW_VAL_TYPE_STRING:
+              if (strcasecmp(m_stValue.p, "true") == 0)
+                {
+                  return true;
+                }
+              else if (strcasecmp(m_stValue.p, "false") == 0)
+                {
+                  return false;
+                }
+              else
+                {
+                  MismatchValueTypeException e(m_type, toString(),
+                      DBGW_VAL_TYPE_DATE);
+                  DBGW_LOG_WARN(e.what());
+                  throw e;
+                }
+            case DBGW_VAL_TYPE_DATE:
+            case DBGW_VAL_TYPE_CHAR:
+            case DBGW_VAL_TYPE_TIME:
+            case DBGW_VAL_TYPE_DATETIME:
+            case DBGW_VAL_TYPE_BYTES:
+            case DBGW_VAL_TYPE_CLOB:
+            case DBGW_VAL_TYPE_BLOB:
+            case DBGW_VAL_TYPE_RESULTSET:
+            default:
+              MismatchValueTypeException e(m_type, toString(),
+                  DBGW_VAL_TYPE_DATE);
+              DBGW_LOG_WARN(e.what());
+              throw e;
+            }
+        }
+      catch (Exception &e)
+        {
+          *pValue = false;
+          setLastException(e);
+          return false;
+        }
+    }
+
     std::string toString() const
     {
       clearException();
@@ -905,6 +995,8 @@ namespace dbgw
 
           switch (m_type)
             {
+            case DBGW_VAL_TYPE_BOOL:
+              return m_stValue.n != 0 ? "TRUE" : "FALSE";
             case DBGW_VAL_TYPE_STRING:
             case DBGW_VAL_TYPE_CHAR:
             case DBGW_VAL_TYPE_DATE:
@@ -1111,7 +1203,7 @@ namespace dbgw
 
           m_nValueSize = nSize;
         }
-      else if (m_type == DBGW_VAL_TYPE_INT)
+      else if (m_type == DBGW_VAL_TYPE_INT || m_type == DBGW_VAL_TYPE_BOOL)
         {
           m_nValueSize = sizeof(int);
         }
@@ -1167,6 +1259,10 @@ namespace dbgw
       else if (m_type == DBGW_VAL_TYPE_DOUBLE)
         {
           m_stValue.d = *(double *) pValue;
+        }
+      else if (m_type == DBGW_VAL_TYPE_BOOL)
+        {
+          m_stValue.n = *(bool *) pValue;
         }
     }
 
@@ -1458,6 +1554,11 @@ namespace dbgw
     return m_pImpl->getResultSet();
   }
 
+  bool Value::getBool(bool *pValue) const
+  {
+    return m_pImpl->getBool(pValue);
+  }
+
   ValueType Value::getType() const
   {
     return m_pImpl->getType();
@@ -1516,6 +1617,11 @@ namespace dbgw
   bool Value::toBytes(size_t *pSize, const char **pValue) const
   {
     return m_pImpl->toBytes(pSize, pValue);
+  }
+
+  bool Value::toBool(bool *pValue) const
+  {
+    return m_pImpl->toBool(pValue);
   }
 
   std::string Value::toString() const

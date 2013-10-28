@@ -152,7 +152,7 @@ namespace dbgw
     }
 
     void CUBRIDConnection::doSetTransactionIsolation(
-        TransactionIsolarion isolation)
+        TransactionIsolation isolation)
     {
       T_CCI_ERROR cciError;
       int nResult;

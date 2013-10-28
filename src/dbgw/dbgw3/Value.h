@@ -46,7 +46,8 @@ namespace dbgw
     DBGW_VAL_TYPE_BYTES,
     DBGW_VAL_TYPE_CLOB,
     DBGW_VAL_TYPE_BLOB,
-    DBGW_VAL_TYPE_RESULTSET
+    DBGW_VAL_TYPE_RESULTSET,
+    DBGW_VAL_TYPE_BOOL
   };
 
   union _RawValue
@@ -105,6 +106,7 @@ namespace dbgw
     trait<Lob>::sp getClob() const;
     trait<Lob>::sp getBlob() const;
     trait<sql::ResultSet>::sp getResultSet() const;
+    bool getBool(bool *pValue) const;
     ValueType getType() const;
     void *getVoidPtr() const;
     int getLength() const;
@@ -117,6 +119,7 @@ namespace dbgw
     bool toDate(const char **pValue) const;
     bool toDateTime(const char **pValue) const;
     bool toBytes(size_t *pSize, const char **pValue) const;
+    bool toBool(bool *pValue) const;
     std::string toString() const;
     bool isNull() const;
     int size() const;

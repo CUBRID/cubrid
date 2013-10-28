@@ -47,7 +47,7 @@ namespace dbgw
       DBGW_STMT_TYPE_SIZE
     };
 
-    enum TransactionIsolarion
+    enum TransactionIsolation
     {
       DBGW_TRAN_UNKNOWN = 0,
       DBGW_TRAN_READ_UNCOMMITED,

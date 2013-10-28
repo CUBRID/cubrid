@@ -241,7 +241,7 @@ namespace dbgw
     }
 
     void OracleConnection::doSetTransactionIsolation(
-        TransactionIsolarion isolation)
+        TransactionIsolation isolation)
     {
     }
 

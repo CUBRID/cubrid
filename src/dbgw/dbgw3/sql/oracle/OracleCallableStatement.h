@@ -50,6 +50,7 @@ namespace dbgw
       virtual void setCString(int nIndex, const char *szValue);
       virtual void setFloat(int nIndex, float fValue);
       virtual void setDouble(int nIndex, double dValue);
+      virtual void setBool(int nIndex, bool bValue);
       virtual void setDate(int nIndex, const char *szValue);
       virtual void setDate(int nIndex, const struct tm &tmValue);
       virtual void setTime(int nIndex, const char *szValue);
@@ -69,6 +70,7 @@ namespace dbgw
       virtual char getChar(int nIndex) const;
       virtual float getFloat(int nIndex) const;
       virtual double getDouble(int nIndex) const;
+      virtual bool getBool(int nIndex) const;
       virtual struct tm getDateTime(int nIndex) const;
       virtual void getBytes(int nIndex, size_t *pSize,
           const char **pValue) const;

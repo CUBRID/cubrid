@@ -541,6 +541,47 @@ namespace dbgw
       }
   }
 
+  bool ClientResultSetImpl::getBool(int nIndex, bool *pValue) const
+  {
+    clearException();
+
+    try
+      {
+        if (m_statementType == sql::DBGW_STMT_TYPE_SELECT)
+          {
+            if (m_bFetched == false)
+              {
+                AccessDataBeforeFetchException e;
+                DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+                throw e;
+              }
+
+            *pValue = m_pResultSet->getBool(nIndex);
+          }
+        else if (m_statementType == sql::DBGW_STMT_TYPE_PROCEDURE)
+          {
+            const _QueryParameter &queryParam = m_pQuery->getQueryParam(
+                nIndex);
+
+            *pValue = m_pCallableStatement->getBool(
+                queryParam.firstPlaceHolderIndex);
+          }
+        else
+          {
+            InvalidClientOperationException e;
+            DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+            throw e;
+          }
+
+        return true;
+      }
+    catch (Exception &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
   bool ClientResultSetImpl::getDateTime(int nIndex, struct tm *pValue) const
   {
     clearException();
@@ -905,6 +946,23 @@ namespace dbgw
         int nIndex = getKeyIndex(szKey);
 
         return getDouble(nIndex, pValue);
+      }
+    catch (Exception &e)
+      {
+        setLastException(e);
+        return false;
+      }
+  }
+
+  bool ClientResultSetImpl::getBool(const char *szKey, bool *pValue) const
+  {
+    clearException();
+
+    try
+      {
+        int nIndex = getKeyIndex(szKey);
+
+        return getBool(nIndex, pValue);
       }
     catch (Exception &e)
       {

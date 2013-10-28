@@ -55,6 +55,7 @@ namespace dbgw
     virtual bool getChar(int nIndex, char *pValue) const;
     virtual bool getFloat(int nIndex, float *pValue) const;
     virtual bool getDouble(int nIndex, double *pValue) const;
+    virtual bool getBool(int nIndex, bool *pValue) const;
     virtual bool getDateTime(int nIndex, struct tm *pValue) const;
     virtual bool getBytes(int nIndex, size_t *pSize,
         const char **pValue) const;
@@ -70,6 +71,7 @@ namespace dbgw
     virtual bool getChar(const char *szKey, char *pValue) const;
     virtual bool getFloat(const char *szKey, float *pValue) const;
     virtual bool getDouble(const char *szKey, double *pValue) const;
+    virtual bool getBool(const char *szKey, bool *pValue) const;
     virtual bool getDateTime(const char *szKey, struct tm *pValue) const;
     virtual bool getBytes(const char *szKey, size_t *pSize,
         const char **pValue) const;

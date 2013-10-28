@@ -30,7 +30,8 @@ namespace dbgw
     {
       DBGW_DB_TYPE_CUBRID = 0,
       DBGW_DB_TYPE_MYSQL,
-      DBGW_DB_TYPE_ORACLE
+      DBGW_DB_TYPE_ORACLE,
+      DBGW_DB_TYPE_NBASE_T
     };
 
     class Connection;
@@ -45,6 +46,12 @@ namespace dbgw
       static trait<Connection>::sp getConnection(const char *szUrl,
           const char *szUser, const char *szPassword,
           DataBaseType dbType = DBGW_DB_TYPE_CUBRID);
+    };
+
+    class DriverUtil
+    {
+    public:
+      static std::string escapeSingleQuote(const std::string &value);
     };
 
   }

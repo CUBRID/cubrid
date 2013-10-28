@@ -269,6 +269,24 @@ namespace dbgw
       return dValue;
     }
 
+    bool CUBRIDResultSet::getBool(int nIndex) const
+    {
+      if (m_cursorPos == CCI_CURSOR_FIRST)
+        {
+          InvalidCursorPositionException e;
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      bool bValue;
+      if (m_resultSet.getBool(nIndex, &bValue) == false)
+        {
+          throw getLastException();
+        }
+
+      return bValue;
+    }
+
     struct tm CUBRIDResultSet::getDateTime(int nIndex) const
     {
       if (m_cursorPos == CCI_CURSOR_FIRST)

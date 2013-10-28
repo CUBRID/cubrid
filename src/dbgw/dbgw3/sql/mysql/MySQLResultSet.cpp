@@ -234,6 +234,24 @@ namespace dbgw
       return dValue;
     }
 
+    bool MySQLResultSet::getBool(int nIndex) const
+    {
+      if (m_nFetchRowCount == 0)
+        {
+          InvalidCursorPositionException e;
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
+      bool bValue;
+      if (m_resultSet.getBool(nIndex, &bValue) == false)
+        {
+          throw getLastException();
+        }
+
+      return bValue;
+    }
+
     struct tm MySQLResultSet::getDateTime(int nIndex) const
     {
       if (m_nFetchRowCount == 0)

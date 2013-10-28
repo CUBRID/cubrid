@@ -60,6 +60,7 @@ namespace dbgw
     bool commit(unsigned long ulWaitTimeMilSec);
     bool rollback();
     bool rollback(unsigned long ulWaitTimeMilSec);
+    bool setContainerKey(const char *szKey);
     trait<ClientResultSet>::sp exec(const char *szSqlName,
         unsigned long ulWaitTimeMilSec);
     trait<ClientResultSet>::sp exec(const char *szSqlName,

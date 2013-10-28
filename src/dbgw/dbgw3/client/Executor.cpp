@@ -49,7 +49,9 @@ namespace dbgw
       m_pSelf(pSelf), m_bClosed(false), m_bIsDestroyed(false),
       m_bAutoCommit(true), m_bInTran(false), m_bInvalid(false),
       m_pConnection(pConnection), m_group(group),
-      m_statementPool(group.getStatementStatItem(), nMaxPreparedStatementSize),
+      m_statementPool(group.getStatementStatItem(),
+          group.getDbType() == sql::DBGW_DB_TYPE_NBASE_T ?
+          1 : nMaxPreparedStatementSize),
       m_pDBCharsetConverter(group.getDBCharesetConverter()),
       m_pClientCharsetConverter(group.getClientCharesetConverter())
     {
@@ -190,6 +192,11 @@ namespace dbgw
       m_bAutoCommit = bAutoCommit;
     }
 
+    void setContainerKey(const char *szKey)
+    {
+      m_pConnection->setContainerKey(szKey);
+    }
+
     void commit()
     {
       m_bInTran = false;
@@ -242,7 +249,7 @@ namespace dbgw
       return m_group.isIgnoreResult();
     }
 
-    void init(bool bAutoCommit, sql::TransactionIsolarion isolation)
+    void init(bool bAutoCommit, sql::TransactionIsolation isolation)
     {
       m_bClosed = false;
       m_bIsDestroyed = false;
@@ -397,6 +404,11 @@ namespace dbgw
     m_pImpl->setAutoCommit(bAutoCommit);
   }
 
+  void _Executor::setContainerKey(const char *szKey)
+  {
+    m_pImpl->setContainerKey(szKey);
+  }
+
   void _Executor::commit()
   {
     m_pImpl->commit();
@@ -437,7 +449,7 @@ namespace dbgw
     return m_pImpl->isIgnoreResult();
   }
 
-  void _Executor::init(bool bAutoCommit, sql::TransactionIsolarion isolation)
+  void _Executor::init(bool bAutoCommit, sql::TransactionIsolation isolation)
   {
     m_pImpl->init(bAutoCommit, isolation);
   }

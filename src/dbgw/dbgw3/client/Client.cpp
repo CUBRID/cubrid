@@ -226,6 +226,34 @@ namespace dbgw
       return true;
     }
 
+    bool setContainerKey(const char *szKey)
+    {
+      return setContainerKey(szKey, m_ulWaitTimeMilSec);
+    }
+
+    bool setContainerKey(const char *szKey, unsigned long ulWaitTimeMilSec)
+    {
+      clearException();
+
+      try
+        {
+          checkClientIsValid();
+
+          bindExecutorHandler(ulWaitTimeMilSec);
+
+          m_pExecHandler->setContainerKey(szKey);
+
+          processError(m_pExecHandler->getLastException());
+        }
+      catch (Exception &e)
+        {
+          setLastException(e);
+          return false;
+        }
+
+      return true;
+    }
+
     trait<ClientResultSet>::sp exec(const char *szSqlName,
         unsigned long ulWaitTimeMilSec)
     {
@@ -739,6 +767,11 @@ namespace dbgw
   bool Client::rollback(unsigned long ulWaitTimeMilSec)
   {
     return m_pImpl->rollback(ulWaitTimeMilSec);
+  }
+
+  bool Client::setContainerKey(const char *szKey)
+  {
+    return m_pImpl->setContainerKey(szKey);
   }
 
   trait<ClientResultSet>::sp Client::exec(const char *szSqlName,

@@ -43,7 +43,7 @@ namespace dbgw
         int nMaxPreparedStatementSize);
     virtual ~_Executor();
 
-    void init(bool bAutoCommit, sql::TransactionIsolarion isolation);
+    void init(bool bAutoCommit, sql::TransactionIsolation isolation);
     void close();
     bool isValid() const;
     bool isEvictable(unsigned long long int ulMinEvictableIdleTimeMillis);
@@ -53,6 +53,7 @@ namespace dbgw
     trait<ClientResultSet>::spvector executeBatch(trait<_BoundQuery>::sp pQuery,
         _ParameterList &parameterList);
     void setAutoCommit(bool bAutoCommit);
+    void setContainerKey(const char *szKey);
     void commit();
     void rollback();
     void cancel();
@@ -63,9 +64,6 @@ namespace dbgw
   public:
     const char *getGroupName() const;
     bool isIgnoreResult() const;
-
-  private:
-    _ExecutorStatement *getExecutorProxy(const trait<_BoundQuery>::sp pQuery);
 
   private:
     _Executor(const _Executor &);

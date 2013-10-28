@@ -66,7 +66,7 @@ namespace dbgw
       doClose();
     }
 
-    void Connection::setTransactionIsolation(TransactionIsolarion isolation)
+    void Connection::setTransactionIsolation(TransactionIsolation isolation)
     {
       doSetTransactionIsolation(isolation);
 
@@ -111,12 +111,16 @@ namespace dbgw
       doRollback();
     }
 
+    void Connection::setContainerKey(const char *szKey)
+    {
+    }
+
     bool Connection::getAutoCommit() const
     {
       return m_bAutoCommit;
     }
 
-    TransactionIsolarion Connection::getTransactionIsolation() const
+    TransactionIsolation Connection::getTransactionIsolation() const
     {
       return m_isolation;
     }

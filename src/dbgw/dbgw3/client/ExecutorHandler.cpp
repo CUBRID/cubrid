@@ -119,6 +119,32 @@ namespace dbgw
         }
     }
 
+    void setContainerKey(const char *szKey)
+    {
+      init();
+
+      trait<_Executor>::splist::iterator it = m_executorList.begin();
+      for (; it != m_executorList.end(); it++)
+        {
+          if (*it == NULL)
+            {
+              continue;
+            }
+
+          try
+            {
+              (*it)->setContainerKey(szKey);
+            }
+          catch (Exception &e)
+            {
+              if ((*it)->isIgnoreResult() == false)
+                {
+                  m_lastException = e;
+                }
+            }
+        }
+    }
+
     void commit()
     {
       init();
@@ -723,6 +749,11 @@ namespace dbgw
   void _ExecutorHandler::setAutoCommit(bool bAutoCommit)
   {
     m_pImpl->setAutoCommit(bAutoCommit);
+  }
+
+  void _ExecutorHandler::setContainerKey(const char *szKey)
+  {
+    m_pImpl->setContainerKey(szKey);
   }
 
   void _ExecutorHandler::commit()

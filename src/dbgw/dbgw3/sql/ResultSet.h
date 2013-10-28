@@ -50,6 +50,7 @@ namespace dbgw
       virtual char getChar(int nIndex) const = 0;
       virtual float getFloat(int nIndex) const = 0;
       virtual double getDouble(int nIndex) const = 0;
+      virtual bool getBool(int nIndex) const = 0;
       virtual struct tm getDateTime(int nIndex) const = 0;
       virtual void getBytes(int nIndex, size_t *pSize,
           const char **pValue) const = 0;
