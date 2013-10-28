@@ -1382,7 +1382,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
     {
       if ((class_mop = db_find_class (class_name)) == NULL
 	  || sm_update_statistics (class_mop,
-				   STATS_WITH_FULLSCAN) != NO_ERROR)
+				   STATS_WITH_SAMPLING) != NO_ERROR)
 	{
 	  fprintf (stderr, "%s\n", db_error_string (3));
 	  db_shutdown ();
@@ -1391,7 +1391,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      if (sm_update_all_statistics (STATS_WITH_FULLSCAN) != NO_ERROR)
+      if (sm_update_all_statistics (STATS_WITH_SAMPLING) != NO_ERROR)
 	{
 	  fprintf (stderr, "%s\n", db_error_string (3));
 	  db_shutdown ();

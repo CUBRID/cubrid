@@ -8275,7 +8275,7 @@ sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
   stat_info.pkeys_size = 0;	/* do not request pkeys info */
   stat_info.pkeys = NULL;
 
-  success = btree_get_stats (thread_p, &stat_info, STATS_WITH_FULLSCAN);
+  success = btree_get_stats (thread_p, &stat_info, STATS_WITH_SAMPLING);
   if (success != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);

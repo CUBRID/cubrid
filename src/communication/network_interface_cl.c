@@ -9275,7 +9275,7 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
       stat_info->pkeys_size = 0;	/* do not request pkeys info */
     }
 
-  success = btree_get_stats (NULL, stat_info, STATS_WITH_FULLSCAN);
+  success = btree_get_stats (NULL, stat_info, STATS_WITH_SAMPLING);
 
   assert_release (stat_info->leafs > 0);
   assert_release (stat_info->pages > 0);
