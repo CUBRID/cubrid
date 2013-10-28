@@ -591,10 +591,10 @@ AC_ARG_WITH([nbase_t],
 	
 case "$with_nbase_t" in
 	yes|builtin)
-		if test -d "$srcdir/external/nbase-capi-1.3.0" && test "$enable_64bit" == "yes"; then
-			AC_CONFIG_SUBDIRS([external/nbase-capi-1.3.0])
-			NBASE_T_LIB_PATH="-L\$(top_builddir)/external/nbase-capi-1.3.0/lib"
-			NBASE_T_INC_PATH="-I\$(top_builddir)/external/nbase-capi-1.3.0/include"
+		if test -d "$srcdir/external/nbase" && test "$enable_64bit" == "yes"; then
+			AC_CONFIG_SUBDIRS([external/nbase])
+			NBASE_T_LIB_PATH="-L\$(top_builddir)/external/nbase/lib"
+			NBASE_T_INC_PATH="-I\$(top_builddir)/external/nbase/include"
 		else
 			with_nbase_t=no
 		fi
