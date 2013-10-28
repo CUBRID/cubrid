@@ -26,6 +26,7 @@
 #include "dbgw3/Lob.h"
 #include "dbgw3/Value.h"
 #include "dbgw3/sql/DatabaseInterface.h"
+#include "porting.h"
 
 namespace dbgw
 {
