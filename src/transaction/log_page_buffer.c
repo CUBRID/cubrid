@@ -862,6 +862,9 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   pthread_cond_init (&writer_info->flush_start_cond, NULL);
   pthread_mutex_init (&writer_info->flush_start_mutex, NULL);
 
+  pthread_cond_init (&writer_info->flush_wait_cond, NULL);
+  pthread_mutex_init (&writer_info->flush_wait_mutex, NULL);
+
   pthread_cond_init (&writer_info->flush_end_cond, NULL);
   pthread_mutex_init (&writer_info->flush_end_mutex, NULL);
 
@@ -4922,8 +4925,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       LOG_CS_DEMOTE (thread_p);
 
       rv = pthread_mutex_lock (&writer_info->flush_start_mutex);
-
       rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
+
       entry = writer_info->writer_list;
       while (entry)
 	{
@@ -4935,6 +4938,11 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	    }
 	  entry = entry->next;
 	}
+
+      rv = pthread_mutex_lock (&writer_info->flush_wait_mutex);
+      writer_info->flush_completed = false;
+      rv = pthread_mutex_unlock (&writer_info->flush_wait_mutex);
+
       pthread_mutex_unlock (&writer_info->wr_list_mutex);
       pthread_mutex_unlock (&writer_info->flush_start_mutex);
     }
@@ -5279,6 +5287,14 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
       && !writer_info->skip_flush)
     {
+      /* it sends signal to LWT to notify that flush is completed */
+      rv = pthread_mutex_lock (&writer_info->flush_wait_mutex);
+
+      writer_info->flush_completed = true;
+      rv = pthread_cond_broadcast (&writer_info->flush_wait_cond);
+
+      rv = pthread_mutex_unlock (&writer_info->flush_wait_mutex);
+
       /* It waits until all log writer threads are done */
       rv = pthread_mutex_lock (&writer_info->flush_end_mutex);
 
@@ -12770,6 +12786,9 @@ logpb_finalize_writer_info (void)
 
   pthread_mutex_destroy (&writer_info->flush_start_mutex);
   pthread_cond_destroy (&writer_info->flush_start_cond);
+
+  pthread_mutex_destroy (&writer_info->flush_wait_mutex);
+  pthread_cond_destroy (&writer_info->flush_wait_cond);
 
   pthread_mutex_destroy (&writer_info->flush_end_mutex);
   pthread_cond_destroy (&writer_info->flush_end_cond);

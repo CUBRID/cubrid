@@ -496,17 +496,21 @@ struct logwr_info
   pthread_mutex_t wr_list_mutex;
   pthread_cond_t flush_start_cond;
   pthread_mutex_t flush_start_mutex;
+  pthread_cond_t flush_wait_cond;
+  pthread_mutex_t flush_wait_mutex;
   pthread_cond_t flush_end_cond;
   pthread_mutex_t flush_end_mutex;
   bool skip_flush;
+  bool flush_completed;
 };
 
 #define LOGWR_INFO_INITIALIZER                                 \
   {NULL,                                                       \
     PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
     PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
     PTHREAD_MUTEX_INITIALIZER,                                 \
-    false}
+    false, false}
 
 typedef struct log_append_info LOG_APPEND_INFO;
 struct log_append_info
