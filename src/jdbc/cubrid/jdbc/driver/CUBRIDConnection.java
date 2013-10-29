@@ -656,7 +656,6 @@ public class CUBRIDConnection implements Connection {
 			return;
 
 		clear();
-		u_con.closeSession();
 		is_closed = true;
 	}
 
