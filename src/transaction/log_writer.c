@@ -2048,10 +2048,6 @@ logwr_get_min_copied_fpageid (void)
     {
       min_fpageid = NULL_PAGEID;
     }
-  if (min_fpageid < css_get_ha_num_of_hosts ())
-    {
-      min_fpageid = NULL_PAGEID;
-    }
 
   return (min_fpageid);
 }
