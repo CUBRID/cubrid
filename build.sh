@@ -984,13 +984,15 @@ function build_package ()
 		"
 	cci_libs="lib/libcascci.a lib/libcascci.so*"
 	dbgw_libs="lib/libdbgw3.a"
-	dbgw_libs="lib/libdbgw3_all.a $dbgw_libs"
-	dbgw_libs="lib/libdbgw3_mysql.a $dbgw_libs"
-	dbgw_libs="lib/libdbgw3_oracle.a $dbgw_libs"
 	dbgw_libs="lib/libdbgw3.so* $dbgw_libs"
-	dbgw_libs="lib/libdbgw3_all.so* $dbgw_libs"
-	dbgw_libs="lib/libdbgw3_mysql.so* $dbgw_libs"
-	dbgw_libs="lib/libdbgw3_oracle.so* $dbgw_libs"
+	if [ "$build_target" == "x86_64" ]; then
+		dbgw_libs="lib/libdbgw3_all.a $dbgw_libs"
+		dbgw_libs="lib/libdbgw3_mysql.a $dbgw_libs"
+		dbgw_libs="lib/libdbgw3_oracle.a $dbgw_libs"
+		dbgw_libs="lib/libdbgw3_all.so* $dbgw_libs"
+		dbgw_libs="lib/libdbgw3_mysql.so* $dbgw_libs"
+		dbgw_libs="lib/libdbgw3_oracle.so* $dbgw_libs"
+	fi
 	for file in $cci_headers $dbgw_headers $cci_libs $dbgw_libs; do
 	  pack_file_list="$pack_file_list $product_name/$file"
 	done
@@ -1183,7 +1185,10 @@ function get_options ()
     fi
   done
   if [ "$packages" = "all" -o "$packages" = "ALL" ]; then
-    packages="src zip_src cci_src php_src tarball shell cci jdbc srpm rpm dbgwci nbase"
+    packages="src zip_src cci_src php_src tarball shell cci jdbc srpm rpm dbgwci"
+	if [ "$build_target" == "x86_64" ]; then
+		packages="$packages nbase"
+	fi
   fi
 
   if [ "x$output_dir" = "x" ]; then
