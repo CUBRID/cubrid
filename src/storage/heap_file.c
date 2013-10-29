@@ -1288,6 +1288,7 @@ heap_scancache_update_hinted_when_lots_space (THREAD_ENTRY *
   int freespace;
 
   this_vpid = pgbuf_get_vpid_ptr (pgptr);
+  assert_release (this_vpid != NULL);
   if (!VPID_EQ (&scan_cache->collect_nxvpid, this_vpid))
     {
       /* This page's statistics was already collected. */
@@ -1304,6 +1305,21 @@ heap_scancache_update_hinted_when_lots_space (THREAD_ENTRY *
 
   if (freespace > HEAP_DROP_FREE_SPACE)
     {
+      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
+	{
+	  int rc;
+
+	  rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
+
+	  (void) heap_stats_add_bestspace (thread_p, &scan_cache->hfid,
+					   this_vpid, freespace);
+
+	  assert (mht_count (heap_Bestspace->vpid_ht) ==
+		  mht_count (heap_Bestspace->hfid_ht));
+
+	  pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
+	}
+
       if (scan_cache->collect_nbest < scan_cache->collect_maxbest)
 	{
 	  i = scan_cache->collect_nbest;
