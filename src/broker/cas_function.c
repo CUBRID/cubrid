@@ -274,23 +274,8 @@ FN_RETURN
 fn_end_session (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		T_REQ_INFO * req_info)
 {
-  int err_code = 0;
-  cas_log_write (0, false, "end_session %u", db_get_session_id ());
-
-  err_code = ux_end_session ();
-  if (err_code != 0)
-    {
-      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      cas_log_write (0, false, "failed to end session %u",
-		     db_get_session_id ());
-    }
-  else
-    {
-      net_buf_cp_int (net_buf, err_code, NULL);
-      cas_log_write (0, false, "ended session %u", db_get_session_id ());
-      db_set_session_id (0);
-    }
+  /* ignore all request to close session from drivers */
+  net_buf_cp_int (net_buf, NO_ERROR, NULL);
 
   return FN_KEEP_CONN;
 }

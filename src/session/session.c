@@ -555,6 +555,15 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
 
   error = mht_rem (sessions.sessions_table, &key->id,
 		   session_free_session, NULL);
+
+#if defined(SERVER_MODE)
+  if (thread_p != NULL && thread_p->conn_entry != NULL
+      && thread_p->conn_entry->session_p != NULL)
+    {
+      thread_p->conn_entry->session_p = NULL;
+    }
+#endif
+
   csect_exit (thread_p, CSECT_SESSION_STATE);
 
   return error;
@@ -1247,6 +1256,10 @@ session_begin_insert_values (THREAD_ENTRY * thread_p)
   SESSION_STATE *state_p = NULL;
 
   state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
 
   state_p->is_last_insert_id_generated = false;
 
@@ -2466,7 +2479,6 @@ session_get_session_state (THREAD_ENTRY * thread_p)
     {
       /* any request for this object should find it cached in the connection
        * entry */
-      assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return NULL;
     }
