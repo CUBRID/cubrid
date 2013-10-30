@@ -1962,7 +1962,6 @@ typedef unsigned int SESSION_ID;
 /* uninitialized value for row count */
 #define DB_ROW_COUNT_NOT_SET -2
 
-
 /*
  * DB_MAX_IDENTIFIER_LENGTH -
  * This constant defines the maximum length of an identifier
@@ -2327,6 +2326,14 @@ typedef unsigned int SESSION_ID;
 
 #define DB_UTIME_MIN       (DB_UINT32_MIN + 1)
 #define DB_UTIME_MAX       DB_UINT32_MAX
+
+/* abnormal DB host status */
+#define DB_HS_NORMAL                    0x00000000
+#define DB_HS_CONN_TIMEOUT              0x00000001
+#define DB_HS_CONN_FAILURE              0x00000002
+#define DB_HS_MISMATCHED_RW_MODE        0x00000004
+#define DB_HS_HA_DELAYED                0x00000008
+#define DB_HS_NON_PREFFERED_HOSTS       0x00000010
 
 /* This defines the basic type identifier constants.  These are used in
    the domain specifications of attributes and method arguments and
@@ -4017,4 +4024,11 @@ extern int db_get_ha_server_state (char *buffer, int maxlen);
 
 extern void db_clear_host_connected (void);
 extern char *db_get_database_version (void);
+
+extern void db_clear_host_status (void);
+extern void db_set_host_status (char *hostname, int status);
+extern void db_set_connected_host_status (char *host_connected);
+extern bool db_does_connected_host_have_status (int status);
+extern bool db_need_reconnect (void);
+extern bool db_need_ignore_repl_delay (void);
 #endif /* _DBI_COMPAT_H_ */

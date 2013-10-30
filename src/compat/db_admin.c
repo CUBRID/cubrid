@@ -79,8 +79,12 @@ char db_Program_name[PATH_MAX];
 
 static char *db_Preferred_hosts = NULL;
 static int db_Connect_order = DB_CONNECT_ORDER_SEQ;
-static int db_Reconnect_reason = 0;
-static bool db_Ignore_repl_delay = false;
+
+/* a list of abnormal host status */
+static DB_HOST_STATUS_LIST db_Host_status_list;
+
+static DB_HOST_STATUS *db_add_host_status (char *hostname, int status);
+static DB_HOST_STATUS *db_find_host_status (char *hostname);
 
 static void install_static_methods (void);
 static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose,
@@ -499,46 +503,224 @@ db_set_connect_order (int connect_order)
   db_Connect_order = connect_order;
 }
 
+/*
+ * db_clear_host_status() - clear db_Host_status_list
+ *   return :
+ */
 void
-db_set_reconnect_reason (int reason)
+db_clear_host_status (void)
 {
-  db_Reconnect_reason |= reason;
+  int i = 0;
+
+  for (i = 0; i < DIM (db_Host_status_list.hostlist); i++)
+    {
+      db_Host_status_list.hostlist[i].hostname[0] = '\0';
+      db_Host_status_list.hostlist[i].status = DB_HS_NORMAL;
+    }
+  db_Host_status_list.connected_host_status = NULL;
+  db_Host_status_list.last_host_idx = -1;
+
+  return;
 }
 
-void
-db_unset_reconnect_reason (int reason)
+/*
+ * db_find_host_status() - Find host status with a given hostname
+ *                         in db_Host_status_list
+ *   return : host status found
+ */
+DB_HOST_STATUS *
+db_find_host_status (char *hostname)
 {
-  db_Reconnect_reason &= ~reason;
+  DB_HOST_STATUS *host_status;
+  int i;
+
+  for (i = 0; i <= db_Host_status_list.last_host_idx; i++)
+    {
+      host_status = &db_Host_status_list.hostlist[i];
+      if (strcmp (hostname, host_status->hostname) == 0)
+	{
+	  return host_status;
+	}
+    }
+
+  return NULL;
 }
 
-void
-db_clear_reconnect_reason ()
+/*
+ * db_add_host_status() - add host status into db_Host_status_list
+ *   return: added host status
+ *
+ *   hostname(in)       :
+ *   status(in)         :
+ */
+DB_HOST_STATUS *
+db_add_host_status (char *hostname, int status)
 {
-  db_Reconnect_reason = 0;
+  DB_HOST_STATUS *host_status;
+  int idx;
+
+  assert (db_Host_status_list.last_host_idx + 1 <
+	  (int) DIM (db_Host_status_list.hostlist));
+
+  idx = ++db_Host_status_list.last_host_idx;
+  host_status = &db_Host_status_list.hostlist[idx];
+
+  strncpy (host_status->hostname, hostname,
+	   sizeof (host_status->hostname) - 1);
+  host_status->status |= status;
+
+  return host_status;
 }
+
+/*
+ * db_set_host_status() - set host status to given status.
+ *      it adds new host status if not exists.
+ *      it adds status into existing one if exists.
+ *   return :
+ *   hostname(in)       :
+ *   status(in)         :
+ */
+void
+db_set_host_status (char *hostname, int status)
+{
+  bool found = false;
+  DB_HOST_STATUS *host_status;
+
+  host_status = db_find_host_status (hostname);
+
+  if (host_status != NULL)
+    {
+      host_status->status |= status;
+    }
+  else
+    {
+      db_add_host_status (hostname, status);
+    }
+
+  return;
+}
+
+/*
+ * db_set_host_connected() - set the currently connected host. if
+ *   currently connected host does not exists, add it to host status list.
+ *
+ *   return :
+ *   host_connected(in): hostname that a client is currently connected to
+
+ */
+void
+db_set_connected_host_status (char *host_connected)
+{
+  DB_HOST_STATUS *connected_host_status;
+
+  connected_host_status = db_find_host_status (host_connected);
+  if (connected_host_status != NULL)
+    {
+      db_Host_status_list.connected_host_status = connected_host_status;
+    }
+  else
+    {
+      db_Host_status_list.connected_host_status =
+	db_add_host_status (host_connected, DB_HS_NORMAL);
+    }
+
+  return;
+}
+
+/*
+ * db_need_reconnect() - check if reconnection is required.
+ *   return : whether reconnection is needed or not
+ *
+ *    NOTE: it checks db_Host_status_list and determines whether to
+ *    reconnect or not. if the currently connected host's status matches
+ *    DB_HS_RECONNECT_INDICATOR, then reconnection is required.
+ *    Also, if any hosts previously attempted to connect to were reported delayed,
+ *    then reconnection is required.
+ */
+bool
+db_need_reconnect (void)
+{
+  int i;
+  DB_HOST_STATUS *host_status;
+
+  if (db_does_connected_host_have_status (DB_HS_RECONNECT_INDICATOR))
+    {
+      return true;
+    }
+
+  /* if any previous attempt to connect failed due to HA replication delay */
+  for (i = 0; i <= db_Host_status_list.last_host_idx; i++)
+    {
+      host_status = &db_Host_status_list.hostlist[i];
+      if (host_status->status & DB_HS_HA_DELAYED)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * db_need_ignore_repl_delay() - check if the current host's replication is delayed.
+ *   return : whether to ignore HA delay or not.
+ *
+ *   NOTE: it checks if the currently connected host is delayed. if it is true,
+ *   it means that all the other hosts' replication is also delayed.
+ *   Therefore, a client should notify a server that HA replication delay should be
+ *   ignored when it is true. (if it is not notified, then the server will keep
+ *   resetting the connection)
+ */
+bool
+db_need_ignore_repl_delay (void)
+{
+  if (db_Host_status_list.connected_host_status != NULL)
+    {
+      return ((db_Host_status_list.connected_host_status->
+	       status & DB_HS_HA_DELAYED) != 0);
+    }
+
+  return false;
+}
+
 
 bool
-db_get_need_reconnect ()
+db_does_connected_host_have_status (int status)
 {
-  return (db_Reconnect_reason != 0);
+  if (db_Host_status_list.connected_host_status != NULL)
+    {
+      if (db_Host_status_list.connected_host_status->status & status)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
-void
-db_set_ignore_repl_delay (void)
+/*
+ * db_get_host_list_with_given_status()
+ *              - get a list of hostnames with a given status.
+ *   return : the number of matching hosts
+ *   hostlist(in/out): a resulting list of hostnames
+ *   status(in): status that a caller is looking for
+ */
+int
+db_get_host_list_with_given_status (char **hostlist, int list_size,
+				    int status)
 {
-  db_Ignore_repl_delay = true;
-}
+  int i, num_hosts = 0;
 
-void
-db_clear_ignore_repl_delay (void)
-{
-  db_Ignore_repl_delay = false;
-}
+  for (i = 0; i <= db_Host_status_list.last_host_idx && i < list_size; i++)
+    {
+      if (db_Host_status_list.hostlist[i].status & status)
+	{
+	  hostlist[num_hosts++] = db_Host_status_list.hostlist[i].hostname;
+	}
+    }
+  hostlist[num_hosts] = NULL;
 
-bool
-db_get_ignore_repl_delay (void)
-{
-  return db_Ignore_repl_delay;
+  return num_hosts;
 }
 
 /*

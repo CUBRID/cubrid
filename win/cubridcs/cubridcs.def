@@ -79,7 +79,6 @@ EXPORTS
     db_change_query_spec
     db_check_authorization
     db_class_has_instance
-    db_clear_reconnect_reason
     db_close_session
     db_col_create
     db_col_domain
@@ -103,6 +102,7 @@ EXPORTS
     db_datetime_encode
     db_datetime_to_string
     db_disable_modification
+    db_does_connected_host_have_status
     db_domain_class
     db_domain_next
     db_domain_precision
@@ -172,6 +172,7 @@ EXPORTS
     db_get_foreign_key_ref_class
     db_get_global_transaction_info
     db_get_hostvars
+    db_get_host_list_with_given_status
     db_get_input_markers
     db_get_int
     db_get_jdbccachehint
@@ -200,7 +201,6 @@ EXPORTS
     db_get_type_name
     db_get_host_connected
     db_get_ha_server_state
-    db_get_need_reconnect
     db_grant
     db_identifier
     db_include_oid
@@ -242,6 +242,7 @@ EXPORTS
     db_method_function
     db_method_name
     db_method_next
+    db_need_reconnect
     db_object
     db_objlist_free
     db_open_buffer
@@ -326,7 +327,6 @@ EXPORTS
     db_set_system_parameters
     db_set_preferred_hosts
     db_set_connect_order
-    db_set_reconnect_reason
     db_shutdown
     db_string_free
     db_synchronize_cache
@@ -348,7 +348,6 @@ EXPORTS
     db_trigger_priority
     db_trigger_status
     db_type_to_db_domain
-    db_unset_reconnect_reason
     db_validate
     db_validate_query_spec
     db_value_clear
@@ -561,6 +560,7 @@ EXPORTS
     db_chn
     db_clear_client_query_result
     db_clear_host_connected
+    db_clear_host_status
     db_col_add
     db_col_cardinality
     db_col_copy
@@ -778,9 +778,11 @@ EXPORTS
     db_set_class_method_arg_domain
     db_set_client_type
     db_set_compare
+    db_set_connected_host_status
     db_set_copy
     db_set_create
     db_set_filter
+    db_set_host_status
     db_set_interrupt
     db_set_isempty
     db_set_has_null

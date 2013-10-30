@@ -351,6 +351,7 @@ static char *get_backslash_escape_string (void);
 static void update_query_execution_count (T_APPL_SERVER_INFO * as_info_p,
 					  char stmt_type);
 static bool need_reconnect_on_rctime (void);
+static void report_abnormal_host_status (int err_code);
 
 
 static char cas_u_type[] = { 0,	/* 0 */
@@ -563,10 +564,14 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 
       err_code = db_restart_ex (program_name, db_name, db_user, db_passwd,
 				NULL, client_type);
+
+      report_abnormal_host_status (err_code);
+
       if (err_code < 0)
 	{
 	  goto connect_error;
 	}
+
       cas_log_debug (ARG_FILE_LINE,
 		     "ux_database_connect: db_login(%s) db_restart(%s) at %s",
 		     db_user, db_name, host_connected);
@@ -1165,7 +1170,6 @@ ux_end_tran (int tran_type, bool reset_con_status)
   if (cas_get_db_connect_status () == -1	/* DB_CONNECTION_STATUS_RESET */
       || need_reconnect_on_rctime ())
     {
-      db_clear_reconnect_reason ();
       as_info->reset_flag = TRUE;
     }
 #endif /* !LIBCAS_FOR_JSP */
@@ -9844,7 +9848,7 @@ static bool
 need_reconnect_on_rctime (void)
 {
 #if !defined(LIBCAS_FOR_JSP)
-  if (shm_appl->cas_rctime > 0 && db_get_need_reconnect ())
+  if (shm_appl->cas_rctime > 0 && db_need_reconnect ())
     {
       if ((time (NULL) - as_info->last_connect_time) > shm_appl->cas_rctime)
 	{
@@ -9853,4 +9857,112 @@ need_reconnect_on_rctime (void)
     }
 #endif /* !LIBCAS_FOR_JSP */
   return false;
+}
+
+static void
+report_abnormal_host_status (int err_code)
+{
+#if !defined(LIBCAS_FOR_JSP)
+  bool reset_after_endtran = false;
+  char *hostlist[MAX_NUM_DB_HOSTS * 2 + 1];
+  char **hostlist_p;
+  char buf[LINE_MAX], *p, *last;
+  int list_size = DIM (hostlist);
+
+  if (db_get_host_list_with_given_status
+      (hostlist, list_size, DB_HS_CONN_FAILURE) > 0)
+    {
+      hostlist_p = hostlist;
+
+      p = buf;
+      last = p + sizeof (buf);
+      p +=
+	snprintf (p, MAX (last - p, 0), "WARNING: failed to connect to %s",
+		  *hostlist_p++);
+      while (*hostlist_p != NULL)
+	{
+	  p += snprintf (p, MAX (last - p, 0), ", %s", *hostlist_p++);
+	}
+      snprintf (p, MAX (last - p, 0), ".");
+
+      cas_log_write_and_end (0, false, buf);
+    }
+
+  if (db_get_host_list_with_given_status
+      (hostlist, list_size, DB_HS_CONN_TIMEOUT) > 0)
+    {
+      hostlist_p = hostlist;
+
+      p = buf;
+      last = p + sizeof (buf);
+      p +=
+	snprintf (p, MAX (last - p, 0), "WARNING: attempt to connect to %s",
+		  *hostlist_p++);
+      while (*hostlist_p != NULL)
+	{
+	  p += snprintf (p, MAX (last - p, 0), ", %s", *hostlist_p++);
+	}
+      snprintf (p, MAX (last - p, 0), " timed out.");
+
+      cas_log_write_and_end (0, false, buf);
+    }
+
+  if (err_code == NO_ERROR && db_need_reconnect () == true)
+    {
+      if (db_does_connected_host_have_status (DB_HS_MISMATCHED_RW_MODE))
+	{
+	  if (shm_appl->access_mode == READ_WRITE_ACCESS_MODE)
+	    {
+	      reset_after_endtran = true;
+	      cas_log_write_and_end (0, false,
+				     "WARNING: connected to HA standby DB host.");
+	    }
+	  else
+	    {
+	      cas_log_write_and_end (0, false,
+				     "WARNING: connected to HA active DB host.");
+	    }
+	}
+
+      if (db_get_host_list_with_given_status
+	  (hostlist, list_size, DB_HS_HA_DELAYED) > 0)
+	{
+	  hostlist_p = hostlist;
+	  p = buf;
+	  last = p + sizeof (buf);
+	  p +=
+	    snprintf (p, MAX (last - p, 0),
+		      "WARNING: HA replication delay detected on %s",
+		      *hostlist_p++);
+
+	  while (*hostlist_p != NULL)
+	    {
+	      p += snprintf (p, MAX (last - p, 0), ", %s", *hostlist_p++);
+	    }
+	  snprintf (p, MAX (last - p, 0), ".");
+
+	  cas_log_write_and_end (0, false, buf);
+	}
+
+      if (db_does_connected_host_have_status (DB_HS_HA_DELAYED))
+	{
+	  cas_log_write_and_end (0, false, "WARNING: connected to host "
+				 "with HA replication delay.");
+	}
+
+      if (db_does_connected_host_have_status (DB_HS_NON_PREFFERED_HOSTS))
+	{
+	  cas_log_write_and_end (0, false,
+				 "WARNING: connected to non-preferred host.");
+	}
+
+      if (reset_after_endtran == false && shm_appl->cas_rctime > 0)
+	{
+	  cas_log_write_and_end (0, false,
+				 "WARNING: connection will be reset "
+				 "in %d sec(s) or later.",
+				 shm_appl->cas_rctime);
+	}
+    }
+#endif /* !LIBCAS_FOR_JSP */
 }

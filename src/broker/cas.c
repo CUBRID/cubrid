@@ -1242,8 +1242,9 @@ cas_main (void)
 				client_ip_addr, db_name, db_user, type);
 	      }
 
-	    cas_log_write_and_end (0, false, "connect db %s user %s url %s"
-				   " session id %u", db_name, db_user, url,
+	    cas_log_write_and_end (0, false, "connect db %s@%s user %s url %s"
+				   " session id %u", as_info->database_name,
+				   as_info->database_host, db_user, url,
 				   session_id);
 #else
 	    cas_log_write_and_end (0, false, "connect db %s user %s url %s",

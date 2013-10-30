@@ -99,7 +99,6 @@ extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 #endif /* SA_MODE */
 
 #define BOOT_FORMAT_MAX_LENGTH 500
-#define BOOT_MAX_NUM_HOSTS      32
 
 /* for optional capability check */
 #define BOOT_NO_OPT_CAP                 0
@@ -934,8 +933,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 #if defined(CS_MODE)
   /* Initialize the communication subsystem */
-  db_clear_reconnect_reason ();
-  db_clear_ignore_repl_delay ();
+  db_clear_host_status ();
 
   for (i = 0; i < 2; i++)
     {
@@ -959,7 +957,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 		{
 		  check_capabilities = false;
 		}
-	      db_set_ignore_repl_delay ();
 
 	      optional_cap = BOOT_NO_OPT_CAP;
 	    }
@@ -985,8 +982,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 	  boot_Host_connected[0] = '\0';
 
-	  db_unset_reconnect_reason (DB_RC_NON_PREFERRED_HOSTS);
-
 	  /* connect to preferred hosts in a sequential order even though
 	   * a user sets CONNECT_ORDER to RANDOM
 	   */
@@ -999,8 +994,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 	  if (error_code != NO_ERROR)
 	    {
-	      db_set_reconnect_reason (DB_RC_NON_PREFERRED_HOSTS);
-
 	      if (error_code == ER_NET_SERVER_HAND_SHAKE)
 		{
 		  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
@@ -1043,8 +1036,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	    }
 	  else			/* second */
 	    {
-	      db_set_ignore_repl_delay ();
-
 	      optional_cap = BOOT_NO_OPT_CAP;
 	    }
 
@@ -1076,8 +1067,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	    }
 	  else			/* second */
 	    {
-	      db_set_ignore_repl_delay ();
-
 	      check_capabilities = false;
 	      optional_cap = BOOT_NO_OPT_CAP;
 	    }
@@ -1107,6 +1096,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
       if (error_code == NO_ERROR)
 	{
+	  if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential))
+	    {
+	      db_set_host_status (boot_Host_connected,
+				  DB_HS_NON_PREFFERED_HOSTS);
+	    }
 	  break;
 	}
       else if (error_code == ER_NET_SERVER_HAND_SHAKE)
@@ -1126,6 +1120,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 		    "boot_client_initialize_css () error %d\n", error_code);
       goto error;
     }
+
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECTED_TO, 5,
 	  client_credential->program_name, client_credential->process_id,
 	  client_credential->db_name, boot_Host_connected,
@@ -1603,8 +1598,8 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
 {
   int error = ER_NET_NO_SERVER_HOST;
   int hn, tn, n;
-  char *hostlist[BOOT_MAX_NUM_HOSTS];
-  char strbuf[(MAXHOSTNAMELEN + 1) * BOOT_MAX_NUM_HOSTS];
+  char *hostlist[MAX_NUM_DB_HOSTS];
+  char strbuf[(MAXHOSTNAMELEN + 1) * MAX_NUM_DB_HOSTS];
   bool cap_error = false;
 
   assert (db != NULL);
@@ -1627,7 +1622,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
     {
       hostlist[hn++] = boot_Host_connected;
     }
-  for (n = 0; hn < BOOT_MAX_NUM_HOSTS && n < db->num_hosts; n++)
+  for (n = 0; hn < MAX_NUM_DB_HOSTS && n < db->num_hosts; n++)
     {
       hostlist[hn++] = db->hosts[n];
     }
@@ -1659,13 +1654,28 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
 	  er_log_debug (ARG_FILE_LINE, "trying to connect '%s@%s'\n",
 			db->name, hostlist[n]);
 	  error = net_client_init (db->name, hostlist[n]);
-	  if (error == NO_ERROR)
+	  if (error != NO_ERROR)
+	    {
+	      if (error == ERR_CSS_TCP_CONNECT_TIMEDOUT)
+		{
+		  db_set_host_status (hostlist[n],
+				      DB_HS_CONN_TIMEOUT |
+				      DB_HS_CONN_FAILURE);
+		}
+	      else
+		{
+		  db_set_host_status (hostlist[n], DB_HS_CONN_FAILURE);
+		}
+	    }
+	  else
 	    {
 	      /* save the hostname for the use of calling functions */
 	      if (boot_Host_connected != hostlist[n])
 		{
 		  strncpy (boot_Host_connected, hostlist[n], MAXHOSTNAMELEN);
 		}
+	      db_set_connected_host_status (hostlist[n]);
+
 	      er_log_debug (ARG_FILE_LINE, "ping server with handshake\n");
 	      /* ping to validate availability and to check compatibility */
 	      er_clear ();
@@ -1712,7 +1722,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
 
   /* failed to connect all hosts; write an error message */
   strbuf[0] = '\0';
-  for (n = 0; n < hn - 1 && n < (BOOT_MAX_NUM_HOSTS - 1); n++)
+  for (n = 0; n < hn - 1 && n < (MAX_NUM_DB_HOSTS - 1); n++)
     {
       strncat (strbuf, hostlist[n], MAXHOSTNAMELEN);
       strcat (strbuf, ":");

@@ -248,7 +248,7 @@ client_capabilities (void)
       capabilities |= NET_CAP_UPDATE_DISABLED;
     }
 
-  if (db_get_ignore_repl_delay ())
+  if (db_need_ignore_repl_delay ())
     {
       capabilities |= NET_CAP_HA_IGNORE_REPL_DELAY;
     }
@@ -333,11 +333,7 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare,
 					 NET_CAP_UPDATE_DISABLED));
 	  server_cap ^= NET_CAP_UPDATE_DISABLED;
 
-	  db_set_reconnect_reason (DB_RC_MISMATCHED_RW_MODE);
-	}
-      else
-	{
-	  db_unset_reconnect_reason (DB_RC_MISMATCHED_RW_MODE);
+	  db_set_host_status (net_Server_host, DB_HS_MISMATCHED_RW_MODE);
 	}
     }
 
@@ -352,7 +348,7 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare,
 	      net_Server_host);
       server_cap ^= NET_CAP_HA_REPL_DELAY;
 
-      db_set_reconnect_reason (DB_RC_HA_REPL_DELAY);
+      db_set_host_status (net_Server_host, DB_HS_HA_DELAYED);
     }
 
   /* network protocol compatibility */

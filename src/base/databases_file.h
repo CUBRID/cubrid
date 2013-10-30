@@ -41,6 +41,9 @@
 /* name of the database file */
 #define DATABASES_FILENAME "databases.txt"
 
+/* max num of db-hosts */
+#define MAX_NUM_DB_HOSTS        32
+
 /*
  * DB_INFO
  *
