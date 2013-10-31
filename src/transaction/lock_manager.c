@@ -4130,21 +4130,6 @@ start:
        * I am not a lock holder of the lockable object.
        */
 
-#if !defined(NDEBUG)
-      /* check iff holding pgbuf and request uncond-lock */
-      if (wait_msecs != LK_FORCE_ZERO_WAIT)
-	{
-	  if (thread_rc_track_is_on (thread_p))
-	    {
-	      if (thread_rc_track_amount_pgbuf (thread_p) -
-		  thread_rc_track_amount_pgbuf_temp (thread_p) > 0)
-		{
-		  assert_release (false);
-		}
-	    }
-	}
-#endif
-
       /* 1. I am not a holder & my request can be granted. */
       assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK
 	      && res_ptr->total_holders_mode >= NULL_LOCK);
