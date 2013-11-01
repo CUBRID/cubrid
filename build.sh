@@ -1061,7 +1061,12 @@ function build_package ()
 	fi
 	mkdir $owfs_build_dir
 	mkdir $owfs_install_dir
-	(cd $owfs_build_dir && ../$configure_dir/configure --prefix=$owfs_install_dir --enable-owfs $configure_options && make -j && make install)
+	if [ "$(readlink -f $build_dir/..)" = "$source_dir" ]; then
+	  configure_dir="../.."
+	else
+	  configure_dir="$source_dir"
+	fi
+	(cd $owfs_build_dir && $configure_dir/configure --prefix=$owfs_install_dir --enable-owfs $configure_options && make -j && make install)
 	if [ $? -eq 0 ]; then
 	  (cd $owfs_build_dir && tar czf $output_dir/$package_name $package_basename)
 	  [ $? -eq 0 ] && output_packages="$output_packages $package_name"
