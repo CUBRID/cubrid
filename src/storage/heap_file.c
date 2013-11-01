@@ -3852,30 +3852,38 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  return NULL;
 	}
 
-      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
-	{
-	  break;
-	}
-
       if (pgptr != NULL)
 	{
 	  /* found the page */
 	  break;
 	}
 
-      if (try_find >= 2
-	  || (heap_hdr->estimates.num_other_high_best <= 0
-	      && heap_hdr->estimates.num_second_best <= 0))
+      /* We stop to find free pages if:
+       * (1) we have tried to do it twice
+       * (2) it is first trying but we have no hints
+       * Regarding (2), we will find free pages by heap_stats_sync_bestspace
+       * only if we know that a free page exists somewhere.
+       * num_other_high_best means the number of free pages existing somewhere
+       * in the heap file.
+       */
+      if (try_find >= 2)
 	{
-	  /* We stop to find free pages if:
-	   * (1) we have tried to do it twice
-	   * (2) it is first trying but we have no hints
-	   * Regarding (2), we will find free pages by heap_stats_sync_bestspace
-	   * only if we know that a free page exists somewhere.
-	   * num_other_high_best means the number of free pages existing somewhere
-	   * in the heap file.
-	   */
 	  break;
+	}
+      else
+	{
+	  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
+	    {
+	      ;			/* go ahead */
+	    }
+	  else
+	    {
+	      if (heap_hdr->estimates.num_other_high_best <= 0
+		  && heap_hdr->estimates.num_second_best <= 0)
+		{
+		  break;
+		}
+	    }
 	}
 
       /*
@@ -4039,6 +4047,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
   HEAP_BESTSPACE *best_pages_hint_p;
   bool iterate_all = false;
   bool search_all = false;
+  int rc;
 #if defined (CUBRID_DEBUG)
   struct timeval s_tv, e_tv;
   float elapsed;
@@ -4200,6 +4209,19 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  if (free_space >= min_freespace
 	      && free_space > HEAP_DROP_FREE_SPACE)
 	    {
+	      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
+		{
+		  rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
+
+		  (void) heap_stats_add_bestspace (thread_p, hfid, &vpid,
+						   free_space);
+
+		  assert (mht_count (heap_Bestspace->vpid_ht) ==
+			  mht_count (heap_Bestspace->hfid_ht));
+
+		  pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
+		}
+
 	      if (num_high_best < HEAP_NUM_BEST_SPACESTATS)
 		{
 		  best_pages_hint_p[best].vpid = vpid;
