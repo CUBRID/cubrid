@@ -4100,9 +4100,10 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	      || error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH);
 
       /* If the force failed and the system is down.. finish */
-      if ((error_code != NO_ERROR
-	   && error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
-	  && !BOOT_IS_CLIENT_RESTARTED ())
+      if (error_code == ER_LK_UNILATERALLY_ABORTED
+	  || ((error_code != NO_ERROR
+	       && error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+	      && !BOOT_IS_CLIENT_RESTARTED ()))
 	{
 	  /* Free the memory ... and finish */
 	  mop_toid = mflush->mop_toids;
@@ -4129,7 +4130,8 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	      free_and_init (mop_toid);
 	      mop_toid = next_mop_toid;
 	    }
-	  return ER_FAILED;
+
+	  return error_code;
 	}
 
       /*
