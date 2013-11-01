@@ -1051,6 +1051,24 @@ function build_package ()
 	(cd $install_dir && tar czf $output_dir/$package_name $pack_file_list)
 	[ $? -eq 0 ] && output_packages="$output_packages $package_name"    
       ;;
+      owfs)
+	package_basename="$product_name-owfs-$build_number"
+	package_name="$package_basename.tar.gz"
+	owfs_build_dir="$build_dir/$package_basename"
+	owfs_install_dir="$owfs_build_dir/$package_basename"
+	if [ -d "$owfs_build_dir" ]; then
+	  rm -rf $owfs_build_dir
+	fi
+	mkdir $owfs_build_dir
+	mkdir $owfs_install_dir
+	(cd $owfs_build_dir && ../$configure_dir/configure --prefix=$owfs_install_dir --enable-owfs $configure_options && make -j && make install)
+	if [ $? -eq 0 ]; then
+	  (cd $owfs_build_dir && tar czf $output_dir/$package_name $package_basename)
+	  [ $? -eq 0 ] && output_packages="$output_packages $package_name"
+	else
+	  false
+	fi
+      ;;
     esac
     [ $? -eq 0 ] && print_result "OK [$package_name]" || print_fatal "Packaging for $package failed"
   done
@@ -1097,7 +1115,7 @@ function show_usage ()
   else
     echo "  -j path Set JAVA_HOME path; [default: $JAVA_HOME]"
   fi
-  echo "  -z arg  Package to generate (src,zip_src,cci_src,php_src,shell,tarball,cci,jdbc,srpm,rpm,nbase);"
+  echo "  -z arg  Package to generate (src,zip_src,cci_src,php_src,shell,tarball,cci,jdbc,srpm,rpm,nbase,owfs);"
   echo "          [default: all]"
   echo "  -? | -h Show this help message and exit"
   echo ""
@@ -1185,7 +1203,7 @@ function get_options ()
     fi
   done
   if [ "$packages" = "all" -o "$packages" = "ALL" ]; then
-    packages="src zip_src cci_src php_src tarball shell cci jdbc srpm rpm dbgwci"
+    packages="src zip_src cci_src php_src tarball shell cci jdbc srpm rpm dbgwci owfs"
 	if [ "$build_target" == "x86_64" ]; then
 		packages="$packages nbase"
 	fi

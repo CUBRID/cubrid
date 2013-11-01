@@ -262,22 +262,12 @@ es_open_owfs (const char *mds_ip, const char *svc_code)
   if (!es_owfs_initialized)
     {
       owfs_param_t param;
-      extern int owfs_set_max_append_size (int);	/* defined in owfs */
 
       ES_INIT_LIST_HEAD (&es_fslist);
 
       owfs_get_param (&param);
       param.use_mdcache = OWFS_TRUE;
       ret = owfs_init (&param);
-      if (ret < 0)
-	{
-	  /* failed to init owfs */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-		  owfs_perror (ret));
-	  pthread_mutex_unlock (&es_lock);
-	  return NULL;
-	}
-      ret = owfs_set_max_append_size (ES_OWFS_MAX_APPEND_SIZE);
       if (ret < 0)
 	{
 	  /* failed to init owfs */
