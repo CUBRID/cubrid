@@ -383,7 +383,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   DISK_REPR *disk_repr_p;
   DISK_ATTR *disk_attr_p;
   BTREE_STATS *btree_stats_p;
-  int npages, estimated_nobjs;
+  int npages, estimated_nobjs, max_unique_keys;
   int i, j, k, size, n_attrs, tot_n_btstats, tot_key_info_size;
   char *buf_p, *start_p;
   int key_size;
@@ -470,6 +470,8 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   size += tot_key_info_size;	/* key_type, pkeys[] of BTREE_STATS */
 
+  size += OR_INT_SIZE;		/* max_unique_keys */
+
   start_p = buf_p = (char *) malloc (size);
   if (buf_p == NULL)
     {
@@ -480,7 +482,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   OR_PUT_INT (buf_p, cls_info_p->time_stamp);
   buf_p += OR_INT_SIZE;
 
-  npages = estimated_nobjs = 0;
+  npages = estimated_nobjs = max_unique_keys = 0;
 
   assert (cls_info_p->tot_objects >= 0);
   assert (cls_info_p->tot_pages >= 0);
@@ -557,6 +559,12 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
       for (j = 0, btree_stats_p = disk_attr_p->bt_stats;
 	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
+          /* collect maximum unique keys info */
+	  if (btree_is_unique (thread_p, &btree_stats_p->btid))
+	    {
+	      max_unique_keys = MAX (max_unique_keys, btree_stats_p->keys);
+	    }
+
 	  OR_PUT_BTID (buf_p, &btree_stats_p->btid);
 	  buf_p += OR_BTID_ALIGNED_SIZE;
 
@@ -659,6 +667,9 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	    }
 	}			/* for (j = 0, ...) */
     }
+
+  OR_PUT_INT (buf_p, max_unique_keys);
+  buf_p += OR_INT_SIZE;
 
   catalog_free_representation (disk_repr_p);
   catalog_free_class_info (cls_info_p);
