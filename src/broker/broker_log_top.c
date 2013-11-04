@@ -68,6 +68,13 @@ static int log_top (FILE * fp, char *filename, long start_offset,
 		    long end_offset);
 static int log_execute (T_QUERY_INFO * qi, char *linebuf, char **query_p);
 static int get_args (int argc, char *argv[]);
+#if defined(WINDOWS)
+static int get_file_count (int argc, char *argv[], int arg_start);
+static int get_file_list (char *list[], int size, int argc, char *argv[],
+			  int arg_start);
+static char **alloc_file_list (int size);
+static void free_file_list (char **list, int size);
+#endif
 #ifdef MT_MODE
 static void *thr_main (void *arg);
 #endif
@@ -100,6 +107,11 @@ main (int argc, char *argv[])
 {
   int arg_start;
   int error = 0;
+#if defined(WINDOWS)
+  int file_cnt = -1;
+  int get_cnt = 0;
+  char **file_list = NULL;
+#endif
 
 
   arg_start = get_args (argc, argv);
@@ -108,6 +120,36 @@ main (int argc, char *argv[])
       return -1;
     }
 
+#if defined(WINDOWS)
+  file_cnt = get_file_count (argc, argv, arg_start);
+  if (file_cnt <= 0)
+    {
+      return -1;
+    }
+
+  file_list = alloc_file_list (file_cnt);
+  if (file_list == NULL)
+    {
+      return -1;
+    }
+
+  get_cnt = get_file_list (file_list, file_cnt, argc, argv, arg_start);
+  if (get_cnt > file_cnt)
+    {
+      get_cnt = file_cnt;
+    }
+
+  if (mode_tran)
+    {
+      error = log_top_tran (get_cnt, file_list, 0);
+    }
+  else
+    {
+      error = log_top_query (get_cnt, file_list, 0);
+    }
+
+  free_file_list (file_list, file_cnt);
+#else
   if (mode_tran)
     {
       error = log_top_tran (argc, argv, arg_start);
@@ -116,9 +158,126 @@ main (int argc, char *argv[])
     {
       error = log_top_query (argc, argv, arg_start);
     }
+#endif
 
   return error;
 }
+
+#if defined(WINDOWS)
+int
+get_file_count (int argc, char *argv[], int arg_start)
+{
+  int i;
+  int count = 0;
+  HANDLE handle;
+  WIN32_FIND_DATA find_data;
+
+  for (i = arg_start; i < argc; i++)
+    {
+      handle = FindFirstFile (argv[i], &find_data);
+      if (handle == INVALID_HANDLE_VALUE)
+	{
+	  fprintf (stderr, "No such file or directory[%s]\n", argv[i]);
+	  return -1;
+	}
+      do
+	{
+	  count++;
+	}
+      while (FindNextFile (handle, &find_data));
+
+      FindClose (handle);
+    }
+
+  return count;
+}
+
+int
+get_file_list (char *list[], int size, int argc, char *argv[], int arg_start)
+{
+  int i;
+  int index = 0;
+  HANDLE handle;
+  WIN32_FIND_DATA find_data;
+
+  assert (list != NULL);
+
+  for (i = arg_start; i < argc; i++)
+    {
+      handle = FindFirstFile (argv[i], &find_data);
+      if (handle == INVALID_HANDLE_VALUE)
+	{
+	  continue;
+	}
+
+      do
+	{
+	  if (index < size)
+	    {
+	      assert (list[index] != NULL);
+	      strncpy (list[index], find_data.cFileName, MAX_PATH);
+	    }
+	  index++;
+	}
+      while (FindNextFile (handle, &find_data));
+
+      FindClose (handle);
+    }
+
+  return index;
+}
+
+char **
+alloc_file_list (int size)
+{
+  int i, j;
+  char **file_list = NULL;
+
+  assert (size > 0);
+
+  file_list = MALLOC (sizeof (char *) * size);
+  if (file_list == NULL)
+    {
+      fprintf (stderr, "fail memory allocation\n");
+      return NULL;
+    }
+
+  for (i = 0; i < size; i++)
+    {
+      file_list[i] = MALLOC (MAX_PATH);
+
+      if (file_list[i] == NULL)
+	{
+	  fprintf (stderr, "fail memory allocation\n");
+	  for (j = 0; j < i; j++)
+	    {
+	      FREE_MEM (file_list[j]);
+	    }
+	  FREE_MEM (file_list);
+	  return NULL;
+	}
+    }
+
+  return file_list;
+}
+
+void
+free_file_list (char **list, int size)
+{
+  int i;
+  assert (list != NULL);
+
+  for (i = 0; i < size; i++)
+    {
+      if (list[i] == NULL)
+	{
+	  break;
+	}
+      FREE_MEM (list[i]);
+    }
+  FREE_MEM (list);
+}
+#endif
 
 int
 get_file_offset (char *filename, long *start_offset, long *end_offset)
