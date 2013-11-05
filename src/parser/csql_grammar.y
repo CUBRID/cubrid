@@ -222,7 +222,8 @@ static FUNCTION_MAP functions[] = {
   {"inet_ntoa", PT_INET_NTOA},
   {"coercibility", PT_COERCIBILITY},
   {"width_bucket", PT_WIDTH_BUCKET},
-  {"trace_stats", PT_TRACE_STATS}
+  {"trace_stats", PT_TRACE_STATS},
+  {"str_to_date", PT_STR_TO_DATE}
 };
 
 
@@ -22626,7 +22627,8 @@ parser_keyword_func (const char *name, PT_NODE * args)
       /* arg 2 */
     case PT_DATE_FORMAT:
     case PT_TIME_FORMAT:
-    case PT_FORMAT:    
+    case PT_FORMAT:
+    case PT_STR_TO_DATE:    
       if (c != 2)
 	return NULL;
       a1 = args;
