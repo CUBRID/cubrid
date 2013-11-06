@@ -2225,7 +2225,7 @@ extern int yycolumn;
 extern int yycolumn_end;
 extern int dot_flag;
 
-
+extern int str_identifier = '\0';
 
 
 
@@ -7161,21 +7161,34 @@ parser_yyinput_single_line (char *buff, int max_size)
   assert (max_size >= 1);
   do
     {
-      c = pt_nextchar ();
+      if (str_identifier == '\'' || str_identifier == '\"')
+        {
+	  c = str_identifier;
+        }
+      else
+        {
+	  c = pt_nextchar ();
+        }
+
       if (c == '\'' || c == '\"')	/* string start */
 	{
-	  buff[i++] = c;
-	  if (i >= max_size)
+          if (str_identifier != '\'' && str_identifier != '\"')
 	    {
-	      return i;
+              str_identifier = c;   
+	      buff[i++] = c;
+	      if (i >= max_size)
+	        {
+	          return i;
+	        }
 	    }
+	    end = c;
 
-	  end = c;
 	  do
 	    {
 	      c = pt_nextchar ();
 	      if (c == end)	/* string end */
 		{
+		  str_identifier = '\0';	
 		  break;
 		}
 
@@ -7218,6 +7231,10 @@ parser_yyinput_single_line (char *buff, int max_size)
 
   buff[i] = 0;
   parser_yyinput_single_mode = 0;	/* all done */
+
+  /* end of file */
+  str_identifier = '\0';
+
   return i;
 }
 
