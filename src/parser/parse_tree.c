@@ -799,6 +799,12 @@ parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node)
 
   assert_release (node->node_type != PT_LAST_NODE_NUMBER);
 
+  if (node->node_type == PT_SPEC)
+    {
+      /* prevent same spec_id on a parser tree */
+      return;
+    }
+
   /* find free list for for this id */
   idhash = parser->id % HASH_NUMBER;
 #if defined(SERVER_MODE)
