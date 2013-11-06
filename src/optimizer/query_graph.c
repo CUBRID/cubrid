@@ -2830,17 +2830,23 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  /* set the start node of outer join - init */
 	  join_idx = -1;
 
-	  node_idx = QO_NODE_IDX (head_node);
 	  /* if the sarg term belongs to null padding table; */
-	  if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_LEFT_OUTER)
+	  for (i = bitset_iterate (&(QO_TERM_NODES (term)), &iter); i >= 0;
+	       i = bitset_next_member (&iter))
 	    {
-	      join_idx = node_idx;	/* case 4.2 */
+	      QO_NODE *tmp = QO_ENV_NODE (env, i);
+	      if (QO_NODE_PT_JOIN_TYPE (tmp) == PT_JOIN_LEFT_OUTER)
+		{
+		  join_idx = node_idx;	/* case 4.2 */
+		  break;
+		}
 	    }
-	  else
+
+	  if (join_idx == -1)
 	    {
 	      /* NEED MORE OPTIMIZATION for future */
-	      node_idx =
-		MIN (QO_NODE_IDX (head_node), QO_NODE_IDX (tail_node));
+	      node_idx = MIN (QO_NODE_IDX (head_node),
+			      QO_NODE_IDX (tail_node));
 	      for (; node_idx < env->nnodes; node_idx++)
 		{
 		  if (QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (env, node_idx)) ==
