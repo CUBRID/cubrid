@@ -136,7 +136,7 @@ static int rv;
 
 /* Assume that locator end with <path>/<meta_name>.<key_name> */
 #define LOCATOR_KEY(locator_) (strrchr (locator_, '.') + 1)
-#define LOCATOR_META(locator_) (strrchr (locator_, '/') + 1)
+#define LOCATOR_META(locator_) (strrchr (locator_, PATH_SEPARATOR) + 1)
 #define PUT_LOCATOR_META(meta_name_, locator_) \
    do { \
      char *key_, *meta_; \

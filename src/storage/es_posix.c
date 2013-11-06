@@ -109,11 +109,13 @@ es_make_dirs (const char *dirname1, const char *dirname2)
 
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
 retry:
-  snprintf (dirbuf, PATH_MAX, "%s/%s/%s", es_base_dir, dirname1, dirname2);
+  snprintf (dirbuf, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR,
+	    dirname1, PATH_SEPARATOR, dirname2);
   ret = mkdir (dirbuf, 0755);
   if (ret < 0 && errno == ENOENT)
     {
-      snprintf (dirbuf, PATH_MAX, "%s/%s", es_base_dir, dirname1);
+      snprintf (dirbuf, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR,
+		dirname1);
       ret = mkdir (dirbuf, 0755);
       if (ret == 0 || errno == EEXIST)
 	{
@@ -121,7 +123,8 @@ retry:
 	}
     }
 #else
-  snprintf (dirbuf, PATH_MAX, "%s/%s", es_base_dir, dirname1);
+  snprintf (dirbuf, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR,
+	    dirname1);
   ret = mkdir (dirbuf, 0755);
 #endif
   if (ret < 0 && errno != EEXIST)
@@ -152,7 +155,7 @@ es_rename_path (char *src, char *tgt, char *metaname)
    *                  ^
    *                  s
    */
-  s = strrchr (src, '/');
+  s = strrchr (src, PATH_SEPARATOR);
   assert (s != NULL);
   strcpy (tgt, src);
   if (s == NULL)
@@ -242,11 +245,12 @@ xes_posix_create_file (char *new_path)
 retry:
   es_get_unique_name (dirname1, dirname2, "ces_temp", filename);
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
-  snprintf (new_path, PATH_MAX, "%s/%s/%s/%s",
-	    es_base_dir, dirname1, dirname2, filename);
+  snprintf (new_path, PATH_MAX, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR,
+	    dirname1, PATH_SEPARATOR, dirname2, PATH_SEPARATOR, filename);
 #else
   /* default */
-  snprintf (new_path, PATH_MAX, "%s/%s/%s", es_base_dir, dirname1, filename);
+  snprintf (new_path, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR,
+	    dirname1, PATH_SEPARATOR, filename);
 #endif
 
   er_log_debug (ARG_FILE_LINE, "xes_posix_create_file(): %s\n", new_path);
@@ -519,11 +523,12 @@ retry:
   /* create a target file */
   es_get_unique_name (dirname1, dirname2, metaname, filename);
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
-  snprintf (new_path, PATH_MAX, "%s/%s/%s/%s",
-	    es_base_dir, dirname1, dirname2, filename);
+  snprintf (new_path, PATH_MAX, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR,
+	    dirname1, PATH_SEPARATOR, dirname2, PATH_SEPARATOR, filename);
 #else
   /* default */
-  snprintf (new_path, PATH_MAX, "%s/%s/%s", es_base_dir, dirname1, filename);
+  snprintf (new_path, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR,
+	    dirname1, PATH_SEPARATOR, filename);
 #endif
 
   er_log_debug (ARG_FILE_LINE, "xes_posix_copy_file(%s, %s): %s\n", src_path,

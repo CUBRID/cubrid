@@ -394,8 +394,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   if (db_path_info->lob_path == NULL)
     {
       /* assign the data volume directory */
-      snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s/lob",
-		LOB_PATH_DEFAULT_PREFIX, db_path_info->db_path);
+      snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s%clob",
+		LOB_PATH_DEFAULT_PREFIX, db_path_info->db_path,
+		PATH_SEPARATOR);
       db_path_info->lob_path = boot_Lob_path_buf;
     }
   else
