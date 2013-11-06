@@ -3909,29 +3909,135 @@ prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
 
   net_buf_cp_byte (net_buf, is_non_null);
 
-  if (client_version >= CAS_MAKE_VER (8, 3, 0))
+  if (client_version < CAS_MAKE_VER (8, 3, 0))
     {
-      if (default_value == NULL)
-	{
-	  net_buf_cp_int (net_buf, 1, NULL);
-	  net_buf_cp_byte (net_buf, '\0');
-	}
-      else
-	{
-	  int len = strlen (default_value) + 1;
-
-	  net_buf_cp_int (net_buf, len, NULL);
-	  net_buf_cp_str (net_buf, default_value, len);
-	}
-
-      net_buf_cp_byte (net_buf, auto_increment);
-      net_buf_cp_byte (net_buf, unique_key);
-      net_buf_cp_byte (net_buf, primary_key);
-      net_buf_cp_byte (net_buf, reverse_index);
-      net_buf_cp_byte (net_buf, reverse_unique);
-      net_buf_cp_byte (net_buf, foreign_key);
-      net_buf_cp_byte (net_buf, shared);
+      return;
     }
+
+  if (default_value == NULL)
+    {
+      net_buf_cp_int (net_buf, 1, NULL);
+      net_buf_cp_byte (net_buf, '\0');
+    }
+  else
+    {
+      int len = strlen (default_value) + 1;
+
+      net_buf_cp_int (net_buf, len, NULL);
+      net_buf_cp_str (net_buf, default_value, len);
+    }
+
+  net_buf_cp_byte (net_buf, auto_increment);
+  net_buf_cp_byte (net_buf, unique_key);
+  net_buf_cp_byte (net_buf, primary_key);
+  net_buf_cp_byte (net_buf, reverse_index);
+  net_buf_cp_byte (net_buf, reverse_unique);
+  net_buf_cp_byte (net_buf, foreign_key);
+  net_buf_cp_byte (net_buf, shared);
+}
+
+static const char *
+get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
+{
+  DB_VALUE *def = NULL;
+  int len, err;
+  char *default_value_string = NULL;
+
+  *alloc = false;
+
+  if (attr->default_value.default_expr != DB_DEFAULT_NONE)
+    {
+      switch (attr->default_value.default_expr)
+	{
+	case DB_DEFAULT_SYSDATE:
+	  return "SYS_DATE";
+	case DB_DEFAULT_SYSDATETIME:
+	  return "SYS_DATETIME";
+	case DB_DEFAULT_SYSTIMESTAMP:
+	  return "SYS_TIMESTAMP";
+	case DB_DEFAULT_UNIX_TIMESTAMP:
+	  return "UNIX_TIMESTAMP";
+	case DB_DEFAULT_USER:
+	  return "USER";
+	case DB_DEFAULT_CURR_USER:
+	  return "CURRENT_USER";
+	case DB_DEFAULT_NONE:
+	  break;
+	}
+    }
+
+  /* Get default value string */
+  def = db_attribute_default (attr);
+  if (def == NULL)
+    {
+      return default_value_string;
+    }
+
+  if (db_value_is_null (def))
+    {
+      return "NULL";
+    }
+
+  switch (db_value_type (def))
+    {
+    case DB_TYPE_UNKNOWN:
+      break;
+
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:	/* DB_TYPE_LIST */
+      *alloc = true;
+      serialize_collection_as_string (def, &default_value_string);
+      break;
+
+    case DB_TYPE_CHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_VARNCHAR:
+      {
+	int def_size = DB_GET_STRING_SIZE (def);
+	char *def_str_p = DB_GET_STRING (def);
+	if (def_str_p)
+	  {
+	    default_value_string = (char *) malloc (def_size + 3);
+	    if (default_value_string != NULL)
+	      {
+		*alloc = true;
+		default_value_string[0] = '\'';
+		memcpy (default_value_string + 1, def_str_p, def_size);
+		default_value_string[def_size + 1] = '\'';
+		default_value_string[def_size + 2] = '\0';
+	      }
+	  }
+      }
+      break;
+
+    default:
+      {
+	DB_VALUE tmp_val;
+
+	err = db_value_coerce (def, &tmp_val,
+			       db_type_to_db_domain (DB_TYPE_VARCHAR));
+	if (err == NO_ERROR)
+	  {
+	    int def_size = DB_GET_STRING_SIZE (&tmp_val);
+	    char *def_str_p = DB_GET_STRING (&tmp_val);
+
+	    default_value_string = (char *) malloc (def_size + 1);
+	    if (default_value_string != NULL)
+	      {
+		*alloc = true;
+		memcpy (default_value_string, def_str_p, def_size);
+		default_value_string[def_size] = '\0';
+	      }
+	  }
+
+	db_value_clear (&tmp_val);
+      }
+      break;
+    }
+
+  return default_value_string;
 }
 
 static void
@@ -3951,15 +4057,8 @@ set_column_info (T_NET_BUF * net_buf, char ut,
   char reverse_unique = 0;
   char foreign_key = 0;
   char shared = 0;
-  char *default_value_string = NULL;
-  char *enum_values = NULL;
-  int enum_values_cnt = 0;
+  const char *default_value_string = NULL;
   bool alloced_default_value_string = false;
-  int def_size = 0;
-  char *def_str_p = NULL;
-  DB_VALUE default_value;
-
-  db_make_null (&default_value);
 
   if (client_version >= CAS_MAKE_VER (8, 3, 0))
     {
@@ -3976,53 +4075,8 @@ set_column_info (T_NET_BUF * net_buf, char ut,
       reverse_unique = db_attribute_is_reverse_unique (attr);
       shared = db_attribute_is_shared (attr);
       foreign_key = db_attribute_is_foreign_key (attr);
-
-      /* Get default value string */
-      def = db_attribute_default (attr);
-      if (def)
-	{
-	  switch (db_value_type (def))
-	    {
-	    case DB_TYPE_UNKNOWN:
-	      break;
-
-	    case DB_TYPE_SET:
-	    case DB_TYPE_MULTISET:
-	    case DB_TYPE_SEQUENCE:	/* DB_TYPE_LIST */
-	      alloced_default_value_string = true;
-	      serialize_collection_as_string (def, &default_value_string);
-	      break;
-
-	    case DB_TYPE_CHAR:
-	    case DB_TYPE_NCHAR:
-	      def_size = DB_GET_STRING_SIZE (def);
-	      def_str_p = DB_GET_STRING (def);
-	      if (def_str_p)
-		{
-		  default_value_string = (char *) malloc (def_size + 1);
-		  if (default_value_string != NULL)
-		    {
-		      alloced_default_value_string = true;
-		      memcpy (default_value_string, def_str_p, def_size);
-		      default_value_string[def_size] = '\0';
-		    }
-		}
-	      break;
-
-	    case DB_TYPE_VARCHAR:
-	    case DB_TYPE_VARNCHAR:
-	      default_value_string = db_get_char (def, &len);
-	      break;
-
-	    default:
-	      err = db_value_coerce (def, &default_value,
-				     db_type_to_db_domain (DB_TYPE_VARCHAR));
-	      if (err == NO_ERROR)
-		{
-		  default_value_string = db_get_char (&default_value, &len);
-		}
-	    }
-	}
+      default_value_string =
+	get_column_default_as_string (attr, &alloced_default_value_string);
     }
 
   prepare_column_info_set (net_buf,
@@ -4043,9 +4097,8 @@ set_column_info (T_NET_BUF * net_buf, char ut,
 
   if (alloced_default_value_string)
     {
-      FREE_MEM (default_value_string);
+      free ((char *) default_value_string);
     }
-  db_value_clear (&default_value);
 }
 
 static int
