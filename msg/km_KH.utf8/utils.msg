@@ -422,6 +422,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 113 lineដែលត្រូវបានប្រតិបត្តិចុងក្រោយ : %d
 114 error-control-file
 115 input file នឹងគ្រប់គ្រង error(s)ក្នុងអម្លុងដំណើរការផ្ទុក
+116 Total %8d object(s) inserted, %d object(s) failed.\n
+117 Load failed.\n
 120 \
 loaddb: នាំចូម objects និង schemas ទៅកាន់ដែលតាបេស\n\
 usage: %s loaddb [OPTION] ឈ្មោះដែលតាបេស\n\

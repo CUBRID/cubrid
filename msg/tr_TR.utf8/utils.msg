@@ -422,6 +422,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 113 Son kararlı hattı: %d
 114 hata-kontrol-dosyası
 115 yükleme sırasında bir hata(lar) kontrol etmek için giriş dosyası
+116 Total %8d object(s) inserted, %d object(s) failed.\n
+117 Load failed.\n
 120 \
 loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
 kullanım: %s loaddb [SEÇENEK] database-name\n\

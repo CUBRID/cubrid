@@ -167,6 +167,8 @@ extern int ldr_finish (LDR_CONTEXT * context, int err);
 extern void ldr_act_init_context (LDR_CONTEXT * context,
 				  const char *class_name, int len);
 extern void ldr_increment_err_total (LDR_CONTEXT * context);
+extern void ldr_increment_fails (void);
+extern void ldr_load_failed_error (void);
 
 extern void ldr_process_constants (LDR_CONSTANT * c);
 
@@ -234,7 +236,7 @@ extern void ldr_act_start_instance (LDR_CONTEXT * context, int id,
 extern void ldr_stats (int *errors, int *objects, int *defaults);
 #else /* !LDR_OLD_LOADDB */
 extern void ldr_stats (int *errors, int *objects, int *defaults,
-		       int *lastcommit);
+		       int *lastcommit, int *fails);
 #endif /* LDR_OLD_LOADDB */
 extern int ldr_update_statistics (void);
 #if defined (ENABLE_UNUSED_FUNCTION)

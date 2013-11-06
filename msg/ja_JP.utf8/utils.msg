@@ -422,6 +422,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 113 最後にコミットされたライン : %d
 114 エラーコントロールファイル
 115 ロードする時にエラー制御のための入力ファイル
+116 Total %8d object(s) inserted, %d object(s) failed.\n
+117 Load failed.\n
 120 \
 loaddb: データベースにオブジェクトやスキーマロード\n\
 使い方: %s loaddb [オプション] <データベース名>\n\

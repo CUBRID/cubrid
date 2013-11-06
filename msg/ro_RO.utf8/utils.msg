@@ -434,6 +434,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 113 Ultima linie salvata (prin commit) : %d
 114 error-control-file
 115 una sau mai multe erori la încărcarea fişierului de intrare de control
+116 Total %8d object(s) inserted, %d object(s) failed.\n
+117 Load failed.\n
 120 \
 loaddb: Importă obiecte şi scheme în baza de date.\n\
 utilizare: %s loaddb [OPŢIUNI] nume-bază-de-date\n\

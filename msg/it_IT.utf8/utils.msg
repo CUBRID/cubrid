@@ -422,6 +422,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 113 Ultima linea committed : %d
 114 error-control-file
 115 file di input per il controllo di errori durante il carico
+116 Total %8d object(s) inserted, %d object(s) failed.\n
+117 Load failed.\n
 120 \
 loaddb: Importare oggetti e gli schemi al database.\n\
 uso: %s loaddb [OPZIONE] nome-database\n\

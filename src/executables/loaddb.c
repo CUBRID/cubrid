@@ -400,7 +400,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   static FILE *object_file = NULL;
   FILE *error_file = NULL;
   int status = 0;
-  int errors, objects, defaults;
+  int errors = 0;
+  int objects = 0;
+  int defaults = 0;
+  int fails = 0;
+
   int ldr_init_ret = NO_ERROR;
 #if !defined (LDR_OLD_LOADDB)
   int lastcommit = 0;
@@ -800,7 +804,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 #if defined(LDR_OLD_LOADDB)
 	  ldr_stats (&errors, &objects, &defaults);
 #else /* !LDR_OLD_LOADDB */
-	  ldr_stats (&errors, &objects, &defaults, &lastcommit);
+	  ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
 #endif /* LDR_OLD_LOADDB */
 	}
       else
@@ -854,7 +858,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 				     Total_objects_loaded);
 		    }
 #if !defined(LDR_OLD_LOADDB)
-		  ldr_stats (&errors, &objects, &defaults, &lastcommit);
+		  ldr_stats (&errors, &objects, &defaults, &lastcommit,
+			     &fails);
 		  if (lastcommit > 0)
 		    {
 		      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -878,7 +883,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 #if defined(LDR_OLD_LOADDB)
 		  ldr_stats (&errors, &objects, &defaults);
 #else /* !LDR_OLD_LOADDB */
-		  ldr_stats (&errors, &objects, &defaults, &lastcommit);
+		  ldr_stats (&errors, &objects, &defaults, &lastcommit,
+			     &fails);
 #endif /* LDR_OLD_LOADDB */
 		  if (errors)
 		    {
@@ -908,14 +914,15 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 		    }
 		  else
 		    {
-		      if (objects)
+		      if (objects || fails)
 			{
 			  print_log_msg (1,
 					 msgcat_message (MSGCAT_CATALOG_UTILS,
 							 MSGCAT_UTIL_SET_LOADDB,
-							 LOADDB_MSG_OBJECT_COUNT),
-					 objects);
+							 LOADDB_MSG_INSERT_AND_FAIL_COUNT),
+					 objects, fails);
 			}
+
 		      if (defaults)
 			{
 			  print_log_msg (1,

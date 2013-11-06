@@ -46,11 +46,18 @@
 #define MAX_QUOTED_STR_BUF_SIZE (32 * 1024)
 #define MAX_COPY_BUF_SIZE (256)
 
+/*
+ *  The default behavior of ECHO is fprintf(yyout, "%s", yytext).
+ *  Therefore, we have redefined ECHO.
+ */
+#define ECHO do{load_fail_flag = true;}while(0)
+
 bool loader_In_instance_line = true;
 
 extern void loader_yyerror (const char *s);
 extern void loader_reset_string_pool (void);
 extern void loader_initialize_lexer (void);
+extern void loader_load_fail (void);
 
 /* pool for string assigned to yyval */
 static LDR_STRING string_Pool[STRING_POOL_SIZE];
@@ -75,6 +82,8 @@ static LDR_STRING *loader_get_string_container (void);
 static LDR_STRING *loader_make_string_by_yytext (void);
 static LDR_STRING *loader_make_string_by_buffer (void);
 
+static bool load_fail_flag = false;
+
 extern int loader_yyline;
 %}
 
@@ -85,6 +94,11 @@ extern int loader_yyline;
 
 \r?\n {
     yylineno = loader_yyline++;
+    if (load_fail_flag)
+      {
+        load_fail_flag = false;              
+        loader_load_fail ();
+      }
     return NL;
 }
 
@@ -859,3 +873,9 @@ loader_initialize_lexer (void)
   qstr_Malloc_buffer = NULL;
 }
 
+void
+loader_load_fail ()
+{
+  ldr_load_failed_error ();
+  ldr_increment_fails ();
+}

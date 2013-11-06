@@ -422,6 +422,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 113 最后提交的行 : %d
 114 错误控制文件
 115 在加载过程中输入文件来控制错误
+116 Total %8d object(s) inserted, %d object(s) failed.\n
+117 Load failed.\n
 120 \
 loaddb: 将对象和结构导入到数据库.\n\
 usage: %s loaddb [选项] 数据库名\n\
