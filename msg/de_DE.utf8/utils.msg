@@ -424,6 +424,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 115 Eingangsdatei für Fehlerkontrolle während Ladung 
 116 Total %8d object(s) inserted, %d object(s) failed.\n
 117 Load failed.\n
+118 Maximum length of class name is %d bytes.\n
 120 \
 loaddb: Import von Objekten und Schemas in die Datenbank.\n\
 Anwendung: %s loaddb [OPTION] Datenbanknamen\n\

@@ -424,6 +424,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 115 tệp tin đầu vào đến lỗi kiểm soát trong quá trình tải
 116 Total %8d object(s) inserted, %d object(s) failed.\n
 117 Load failed.\n
+118 Maximum length of class name is %d bytes.\n
 120 \
 loaddb: Nhập đối tượng và lược đồ đến cơ sở dữ liệu.\n\
 cách sử dụng: %s loaddb [TÙY CHỌN] tên-cơ sở dữ liệu\n\

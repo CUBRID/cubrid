@@ -4519,6 +4519,19 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
     }
   if (class_name)
     {
+      if (intl_identifier_lower_string_size (class_name) >=
+	  SM_MAX_IDENTIFIER_LENGTH)
+	{
+	  display_error_line (0);
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_LOADDB,
+					   LOADDB_MSG_EXCEED_MAX_LEN),
+		   SM_MAX_IDENTIFIER_LENGTH - 1);
+	  CHECK_CONTEXT_VALIDITY (context, true);
+	  ldr_abort ();
+	  goto error_exit;
+	}
+
       class_mop = ldr_find_class (class_name);
       if (class_mop == NULL)
 	{
