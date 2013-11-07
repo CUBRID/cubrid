@@ -105,7 +105,11 @@ extern int db_date_parse_time (char const *str, int str_len, DB_TIME * time,
 			       int *milisec);
 
 /* Unix-like functions */
+#if defined (WINDOWS)
+extern __time64_t db_mktime (DB_DATE * date, DB_TIME * timeval);
+#else
 extern time_t db_mktime (DB_DATE * date, DB_TIME * timeval);
+#endif
 extern int db_strftime (char *s, int smax, const char *fmt,
 			DB_DATE * date, DB_TIME * timeval);
 extern void db_localtime (time_t * epoch_time,

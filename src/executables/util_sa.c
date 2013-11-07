@@ -934,7 +934,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
       else
 	{
 	  status = parse_up_to_date (up_to_date, &time_data);
-	  restart_arg.stopat = mktime (&time_data);
+	  restart_arg.stopat = (time_t) mktime (&time_data);
 	  if (status != NO_ERROR || restart_arg.stopat < 0)
 	    {
 	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -2590,8 +2590,8 @@ error:
       lf = NULL;
     }
 
-  /* 
-   * Text conversions having init_conv_func not NULL are built-in. 
+  /*
+   * Text conversions having init_conv_func not NULL are built-in.
    * They can't be deallocates, as they are static constants.
    */
   if (lld.txt_conv != NULL && lld.txt_conv->init_conv_func == NULL)
@@ -2694,7 +2694,7 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
 
       if (!is_force && db_obs_coll_cnt == 0 && new_sys_coll_cnt == 0)
 	{
-	  /* message SYNCCOLLDB_MSG_SYNC_NOT_NEEDED displayed in 
+	  /* message SYNCCOLLDB_MSG_SYNC_NOT_NEEDED displayed in
 	   * 'synccoll_check' */
 	  goto exit;
 	}

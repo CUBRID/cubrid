@@ -530,6 +530,9 @@ db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval)
   return (NO_ERROR);
 }
 
+#if defined(WINDOWS)
+#define time_t __time64_t
+#endif
 /*
  * db_mktime() -  Converts the date and time arguments into the representation
  *              used by time() and returns it.
@@ -590,6 +593,10 @@ db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval)
 
   return NO_ERROR;
 }
+
+#if defined(WINDOWS)
+#undef time_t
+#endif
 
 /*
  * db_timestamp_decode() - This function converts a DB_TIMESTAMP into
@@ -1002,7 +1009,7 @@ parse_time (const char *buf, int buf_len, DB_TIME * time)
 
 /*
  * db_string_check_explicit_time() -
- * return : true if explicit time expression 
+ * return : true if explicit time expression
  * str(in): pointer to time expression
  * str_len(in): the length of the string to be checked
  */
@@ -1095,7 +1102,7 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime,
 	      ++i;
 
 	      /* This means time string format is not completed (like 0, 01:00) *
-	       * This flag will be used by operate like [select 1 + '1'] which 
+	       * This flag will be used by operate like [select 1 + '1'] which
 	       * should not be converted to time */
 	      if (is_explicit != NULL && i < 3)
 		{
@@ -2059,7 +2066,7 @@ parse_explicit_mtime_separated (char const *str, char const *strend,
  *					format
  *				    '.0' is a valid time that can also be
  *				    written as '.'
- * returns:	pointer in the input string to the character after 
+ * returns:	pointer in the input string to the character after
  *		the converted time, if successfull, or NULL on error
  * str(in):	the [DATE]TIME string, in compact form, to be converted
  * strend(in):  the end of the string to be parsed
@@ -2357,7 +2364,7 @@ parse_explicit_mtime_compact (char const *str, char const *strend,
  *		    If not NULL and parsing successfull, will receive true if
  *		    the input string explicitly specifies the number of
  *		    milliseconds or the decimal point for time
- * 
+ *
  */
 static char const *
 parse_timestamp_compact (char const *str, char const *strend, DB_DATE * date,
@@ -3040,7 +3047,7 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time,
  *		If not NULL and parsing successfull will receive true if the
  *		input string explicitly specifies the time part
  * has_explicit_msec(out):
- *		If not NULL and parsing successfull will receive true if the 
+ *		If not NULL and parsing successfull will receive true if the
  *		input string explicitly specifies the number of milliseconds
  *		or the decimal point for the time part
  * fits_as_timestamp(out):
@@ -3367,7 +3374,7 @@ db_date_parse_timestamp (char const *str, int str_len, DB_TIMESTAMP * utime)
   return ER_TIMESTAMP_CONVERSION;
 }
 
-/* 
+/*
  * db_date_parse_date() - Reads a DATE from a DATE string or a DATETIME
  *			    string, in any of the separated or compact formats
  *			    the string might be in.
@@ -3523,7 +3530,7 @@ finalcheck:
 
 /*
  * db_string_check_explicit_date() - check if a string is formated as a date
- * return : true if str is formated exactly as a date 
+ * return : true if str is formated exactly as a date
  *	    (not a datetime or a timestamp)
  * str(in): the string to be checked
  * str_len(in): the length of the string to be parsed
@@ -4177,7 +4184,7 @@ db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT bi2,
 
 /*
  *  is_leap_year () - returns true if year is a leap year
- *    year(in) : the year 
+ *    year(in) : the year
  */
 bool
 is_leap_year (int year)
@@ -4248,13 +4255,13 @@ db_get_day_of_week (int year, int month, int day)
 	  - (int) (year / 100) + (int) (year / 400) + 1) % 7;
 }
 
-/* 
+/*
  *  get_end_of_week_one_of_year() - returns the day number (1-15) at which
  *                                  week 1 in the year ends
  *    year(in)	: year
  *    mode	: specifies the way in which to consider what "week 1" means
  *
- *	    mode  First day   Range Week 1 is the first week 
+ *	    mode  First day   Range Week 1 is the first week
  *		  of week
  *	    0	  Sunday      0-53  with a Sunday in this year
  *	    1	  Monday      0-53  with more than 3 days this year
@@ -4350,7 +4357,7 @@ get_end_of_week_one_of_year (int year, int mode)
  *    day(in)	: day of month
  *    mode	: specifies the way in which to compute the week number:
  *
- *	    mode  First day   Range Week 1 is the first week 
+ *	    mode  First day   Range Week 1 is the first week
  *		  of week
  *	    0	  Sunday      0-53  with a Sunday in this year
  *	    1	  Monday      0-53  with more than 3 days this year
