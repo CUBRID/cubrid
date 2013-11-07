@@ -3945,27 +3945,6 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 
   *alloc = false;
 
-  if (attr->default_value.default_expr != DB_DEFAULT_NONE)
-    {
-      switch (attr->default_value.default_expr)
-	{
-	case DB_DEFAULT_SYSDATE:
-	  return "SYS_DATE";
-	case DB_DEFAULT_SYSDATETIME:
-	  return "SYS_DATETIME";
-	case DB_DEFAULT_SYSTIMESTAMP:
-	  return "SYS_TIMESTAMP";
-	case DB_DEFAULT_UNIX_TIMESTAMP:
-	  return "UNIX_TIMESTAMP";
-	case DB_DEFAULT_USER:
-	  return "USER";
-	case DB_DEFAULT_CURR_USER:
-	  return "CURRENT_USER";
-	case DB_DEFAULT_NONE:
-	  break;
-	}
-    }
-
   /* Get default value string */
   def = db_attribute_default (attr);
   if (def == NULL)
@@ -3976,6 +3955,24 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
   if (db_value_is_null (def))
     {
       return "NULL";
+    }
+
+  switch (attr->default_value.default_expr)
+    {
+    case DB_DEFAULT_SYSDATE:
+      return "SYS_DATE";
+    case DB_DEFAULT_SYSDATETIME:
+      return "SYS_DATETIME";
+    case DB_DEFAULT_SYSTIMESTAMP:
+      return "SYS_TIMESTAMP";
+    case DB_DEFAULT_UNIX_TIMESTAMP:
+      return "UNIX_TIMESTAMP";
+    case DB_DEFAULT_USER:
+      return "USER";
+    case DB_DEFAULT_CURR_USER:
+      return "CURRENT_USER";
+    case DB_DEFAULT_NONE:
+      break;
     }
 
   switch (db_value_type (def))
