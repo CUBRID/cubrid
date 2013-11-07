@@ -122,6 +122,8 @@ static char const *parse_timedate_separated (char const *str,
 static int get_end_of_week_one_of_year (int year, int mode);
 static bool is_local_am_str (const char *p, const char *p_end);
 static bool is_local_pm_str (const char *p, const char *p_end);
+static int tm_encode (struct tm *c_time_struct, time_t * retval,
+		      DB_DATE * date, DB_TIME * timeval);
 
 /*
  * julian_encode() - Generic routine for calculating a julian date given
@@ -463,21 +465,25 @@ db_time_decode (DB_TIME * timeval, int *hourp, int *minutep, int *secondp)
  */
 
 /*
- * db_tm_encode() - This function is used in conjunction with Unix mktime to
+ * tm_encode() - This function is used in conjunction with Unix mktime to
  *    convert julian/time pairs into a universal time constant.
  *    Be careful not to pass pointers to the tm_ structure to the decoding
  *    functions.  When these go through the PC int-to-long filter, they
  *    expect long* pointers which isn't what the fields in tm_ are.
  * return : error code
  * c_time_struct(out): c time structure from time.h
+ * retval(out): time value (time_t)
  * date(in) : database date structure
  * time(in) : database time structure
  */
-int
-db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval)
+static int
+tm_encode (struct tm *c_time_struct, time_t * retval, DB_DATE * date,
+	   DB_TIME * timeval)
 {
   int mon, day, year, hour, min, sec;
   struct tm loc;
+
+  *retval = -1;
 
   if (c_time_struct == NULL
       || ((date == NULL) && (timeval == NULL))
@@ -515,24 +521,53 @@ db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval)
   loc = *c_time_struct;
 
   /* mktime() on Sun anomalously returns negative values other than -1. */
-  if (mktime (&loc) < (time_t) 0)	/* get correct tm_isdst */
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
-      return ER_DATE_CONVERSION;
-    }
-  c_time_struct->tm_isdst = loc.tm_isdst;
-  if (mktime (c_time_struct) < (time_t) 0)
+  *retval = mktime (&loc);
+  if (*retval < (time_t) 0)	/* get correct tm_isdst */
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       return ER_DATE_CONVERSION;
     }
 
-  return (NO_ERROR);
+  /* If tm_isdst equals to zero, we do not need to convert
+   * the broken-down time (loc) again. */
+  if (loc.tm_isdst == 0)
+    {
+      return NO_ERROR;
+    }
+
+  c_time_struct->tm_isdst = loc.tm_isdst;
+
+  *retval = mktime (c_time_struct);
+  if (*retval < (time_t) 0)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      return ER_DATE_CONVERSION;
+    }
+
+  return NO_ERROR;
 }
 
 #if defined(WINDOWS)
 #define time_t __time64_t
 #endif
+/*
+ * db_tm_encode() - This function is used in conjunction with Unix mktime to
+ *    convert julian/time pairs into a universal time constant.
+ *    Be careful not to pass pointers to the tm_ structure to the decoding
+ *    functions.  When these go through the PC int-to-long filter, they
+ *    expect long* pointers which isn't what the fields in tm_ are.
+ * return : error code
+ * c_time_struct(out): c time structure from time.h
+ * date(in) : database date structure
+ * time(in) : database time structure
+ */
+int
+db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval)
+{
+  time_t retval;
+  return tm_encode (c_time_struct, &retval, date, timeval);
+}
+
 /*
  * db_mktime() -  Converts the date and time arguments into the representation
  *              used by time() and returns it.
@@ -550,12 +585,10 @@ db_mktime (DB_DATE * date, DB_TIME * timeval)
   time_t retval;
   struct tm temp;
 
-  if (db_tm_encode (&temp, date, timeval) != NO_ERROR)
+  if (tm_encode (&temp, &retval, date, timeval) != NO_ERROR)
     {
       return -1;
     }
-
-  retval = (mktime (&temp));
 
   return (retval);
 }
