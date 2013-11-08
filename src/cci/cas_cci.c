@@ -707,10 +707,10 @@ cci_disconnect (int mapped_conn_id, T_CCI_ERROR * err_buf)
       hm_release_connection (mapped_conn_id, &con_handle);
 
       if (cci_end_tran_internal (con_handle, CCI_TRAN_ROLLBACK) != NO_ERROR)
-        {
-          qe_con_close (con_handle);
-          con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
-        }
+	{
+	  qe_con_close (con_handle);
+	  con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+	}
 
       cci_datasource_release_internal (con_handle->datasource, con_handle);
       if (con_handle->log_trace_api)
@@ -5814,14 +5814,8 @@ cci_datasource_destroy (T_CCI_DATASOURCE * ds)
       return;
     }
 
-  FREE_MEM (ds->user);
-  FREE_MEM (ds->pass);
-  FREE_MEM (ds->url);
-
-  pthread_mutex_destroy ((pthread_mutex_t *) ds->mutex);
-  FREE_MEM (ds->mutex);
-  pthread_cond_destroy ((pthread_cond_t *) ds->cond);
-  FREE_MEM (ds->cond);
+  /* critical section begin */
+  pthread_mutex_lock ((pthread_mutex_t *) ds->mutex);
 
   if (ds->con_handles)
     {
@@ -5846,6 +5840,18 @@ cci_datasource_destroy (T_CCI_DATASOURCE * ds)
 	}
       FREE_MEM (ds->con_handles);
     }
+
+  /* critical section end */
+  pthread_mutex_unlock ((pthread_mutex_t *) ds->mutex);
+
+  FREE_MEM (ds->user);
+  FREE_MEM (ds->pass);
+  FREE_MEM (ds->url);
+
+  pthread_mutex_destroy ((pthread_mutex_t *) ds->mutex);
+  FREE_MEM (ds->mutex);
+  pthread_cond_destroy ((pthread_cond_t *) ds->cond);
+  FREE_MEM (ds->cond);
 
   FREE_MEM (ds);
 }
