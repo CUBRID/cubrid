@@ -89,7 +89,6 @@
 /*
  * Page header information related defines
  */
-#define BTREE_NEXT_OVFL_VPID_OFFSET    (0)
 #define NOT_FOUND -1
 /* B'0010 0000 0000 0000' */
 #define BTREE_LEAF_RECORD_OVERFLOW_OIDS 0x2000
@@ -237,19 +236,18 @@ static int btree_delete_overflow_key (THREAD_ENTRY * thread_p,
 				      BTID_INT * btid, PAGE_PTR page_ptr,
 				      INT16 slot_id,
 				      BTREE_NODE_TYPE node_type);
-static void btree_read_node_header (RECDES * rec, BTREE_NODE_HEADER * header);
 static void btree_write_fixed_portion_of_non_leaf_record (RECDES * rec,
 							  NON_LEAF_REC *
 							  nlf_rec);
 static void btree_read_fixed_portion_of_non_leaf_record (RECDES * rec,
 							 NON_LEAF_REC *
 							 nlf_rec);
-static void btree_write_fixed_portion_of_non_leaf_record_to_orbuf (OR_BUF
-								   * buf,
+static void btree_write_fixed_portion_of_non_leaf_record_to_orbuf (OR_BUF *
+								   buf,
 								   NON_LEAF_REC
 								   * nlf_rec);
-static int btree_read_fixed_portion_of_non_leaf_record_from_orbuf (OR_BUF
-								   * buf,
+static int btree_read_fixed_portion_of_non_leaf_record_from_orbuf (OR_BUF *
+								   buf,
 								   NON_LEAF_REC
 								   * nlf_rec);
 static void btree_append_oid (RECDES * rec, OID * oid);
@@ -307,7 +305,7 @@ static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p,
 				       BTREE_CAPACITY * cpc);
 static void btree_print_space (FILE * fp, int n);
 static int btree_delete_from_leaf (THREAD_ENTRY * thread_p,
-				   int *key_deleted, BTID_INT * btid,
+				   bool * key_deleted, BTID_INT * btid,
 				   VPID * leaf_vpid, DB_VALUE * key,
 				   OID * class_oid, OID * oid,
 				   INT16 leaf_slot_id);
@@ -327,7 +325,7 @@ static int btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			     BTREE_NODE_TYPE node_type, VPID * child_vpid);
 static DB_VALUE *btree_find_split_point (THREAD_ENTRY * thread_p,
 					 BTID_INT * btid, PAGE_PTR page_ptr,
-					 INT16 * mid_slot, DB_VALUE * key,
+					 int *mid_slot, DB_VALUE * key,
 					 bool * clear_midkey);
 static int btree_split_next_pivot (BTREE_NODE_SPLIT_INFO * split_info,
 				   float new_value, int max_index);
@@ -424,9 +422,6 @@ static void btree_make_pseudo_oid (int p, short s, short v, BTID * btid,
 static int btree_rv_save_keyval (BTID_INT * btid, DB_VALUE * key,
 				 OID * cls_oid, OID * oid, char **data,
 				 int *length);
-static void btree_rv_save_root_head (int max_key_len, int null_delta,
-				     int oid_delta, int key_delta,
-				     RECDES * recdes);
 static void btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p,
 					      char *datap, int data_size,
 					      BTID_INT * btid,
@@ -451,7 +446,7 @@ static DISK_ISVALID btree_find_key_from_page (THREAD_ENTRY * thread_p,
 					      bool * clear_key);
 
 /* Dump & verify routines */
-static void btree_dump_root_header (FILE * fp, RECDES rec);
+static void btree_dump_root_header (FILE * fp, PAGE_PTR page_ptr);
 static void btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp,
 				    BTID_INT * btid, RECDES * rec, int n);
 static void btree_dump_non_leaf_record (THREAD_ENTRY * thread_p,
@@ -477,8 +472,6 @@ static int btree_verify_leaf_node (THREAD_ENTRY * thread_p,
 				   BTID_INT * btid, PAGE_PTR page_ptr);
 #endif
 
-static VPID *btree_get_next_overflow_vpid (char *header_ptr,
-					   VPID * overflow_vpid_ptr);
 static void btree_set_unknown_key_error (THREAD_ENTRY * thread_p,
 					 BTID_INT * btid, DB_VALUE * key,
 					 const char *debug_msg);
@@ -525,7 +518,6 @@ static char *btree_leaf_advance_oidptr (BTREE_SCAN * bts, char *rec_oid_ptr,
 					BTREE_NODE_TYPE node_type);
 static int btree_leaf_get_num_oids (RECDES * rec, int offset,
 				    BTREE_NODE_TYPE node_type, int oid_size);
-static void btree_write_default_split_info (RECDES * rec);
 static int btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p,
 					 BTID_INT * btid,
 					 PAGE_PTR page_p, VPID * prev);
@@ -580,7 +572,6 @@ static int btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY *
 static int btree_get_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 			     int slot_id, RECDES * rec, int is_peeking);
 static bool btree_is_new_file (BTID_INT * btid_int);
-
 static int btree_insert_oid_with_new_key (THREAD_ENTRY * thread_p,
 					  BTID_INT * btid, PAGE_PTR leaf_page,
 					  DB_VALUE * key, OID * cls_oid,
@@ -1039,121 +1030,6 @@ btree_read_overflow_header (RECDES * rec, VPID * next_overflow_page)
   next_overflow_page->volid = OR_GET_SHORT (ptr);
 }
 #endif
-
-/*
- * btree_write_node_header () -
- *   return:
- *   rec(out):
- *   header(in):
- *
- * Note: Writes the first record (header record) for non root page.
- * rec must be long enough to hold the header record.
- *
- */
-void
-btree_write_node_header (RECDES * rec, BTREE_NODE_HEADER * header)
-{
-  BTREE_PUT_NODE_SPLIT_INFO (rec->data, &header->split_info);
-  BTREE_PUT_NODE_PREV_VPID (rec->data, &header->prev_vpid);
-  BTREE_PUT_NODE_NEXT_VPID (rec->data, &header->next_vpid);
-  BTREE_PUT_NODE_LEVEL (rec->data, header->node_level);
-  BTREE_PUT_NODE_MAX_KEY_LEN (rec->data, header->max_key_len);
-
-  rec->type = REC_HOME;
-  rec->length = NODE_HEADER_SIZE;
-}
-
-/*
- * btree_read_node_header () -
- *   return:
- *   rec(in):
- *   header(out):
- *
- * Note: Reads the first record (header record) for a non root page.
- */
-static void
-btree_read_node_header (RECDES * rec, BTREE_NODE_HEADER * header)
-{
-  /* read node header */
-  BTREE_GET_NODE_SPLIT_INFO (rec->data, &header->split_info);
-  BTREE_GET_NODE_PREV_VPID (rec->data, &header->prev_vpid);
-  BTREE_GET_NODE_NEXT_VPID (rec->data, &header->next_vpid);
-  header->node_level = BTREE_GET_NODE_LEVEL (rec->data);
-  header->max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (rec->data);
-}
-
-/*
- * btree_write_root_header () -
- *   return:
- *   rec(out):
- *   root_header(in):
- *
- * Note: Writes the first record (header record) for a root page.
- * rec must be long enough to hold the header record.
- */
-int
-btree_write_root_header (RECDES * rec, BTREE_ROOT_HEADER * root_header)
-{
-  OR_BUF buf;
-  int rc = NO_ERROR;
-
-  btree_write_node_header (rec, &root_header->node);
-
-  BTREE_PUT_NUM_OIDS (rec->data, root_header->num_oids);
-  BTREE_PUT_NUM_NULLS (rec->data, root_header->num_nulls);
-  BTREE_PUT_NUM_KEYS (rec->data, root_header->num_keys);
-  BTREE_PUT_TOPCLASS_OID (rec->data, &root_header->topclass_oid);
-  BTREE_PUT_UNIQUE (rec->data, root_header->unique);
-  BTREE_PUT_REVERSE_RESERVED (rec->data, 0);	/* not used(root_header->reverse_reserved) */
-  BTREE_PUT_REV_LEVEL (rec->data, root_header->rev_level);
-  BTREE_PUT_OVFID (rec->data, &root_header->ovfid);
-
-  or_init (&buf, rec->data + BTREE_KEY_TYPE_OFFSET,
-	   ((rec->area_size == -1)
-	    ? -1 : (rec->area_size - BTREE_KEY_TYPE_OFFSET)));
-  rc = or_put_domain (&buf, root_header->key_type, 0, 0);
-
-  rec->type = REC_HOME;
-  rec->length = ROOT_HEADER_FIXED_SIZE + CAST_BUFLEN (buf.ptr - buf.buffer);
-
-  if (rc != NO_ERROR && er_errid () == NO_ERROR)
-    {
-      /* if an error occurs then set a generic error so that at least
-         an error to be send to client. */
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-    }
-
-  return rc;
-}
-
-/*
- * btree_read_root_header () -
- *   return:
- *   rec(in):
- *   root_header(out):
- *
- * Note: Reads the first record (header record) for a root page.
- */
-void
-btree_read_root_header (RECDES * rec, BTREE_ROOT_HEADER * root_header)
-{
-  OR_BUF buf;
-
-  btree_read_node_header (rec, &root_header->node);
-
-  root_header->num_oids = BTREE_GET_NUM_OIDS (rec->data);
-  root_header->num_nulls = BTREE_GET_NUM_NULLS (rec->data);
-  root_header->num_keys = BTREE_GET_NUM_KEYS (rec->data);
-  BTREE_GET_TOPCLASS_OID (rec->data, &root_header->topclass_oid);
-  root_header->unique = BTREE_GET_UNIQUE (rec->data);
-  root_header->reverse_reserved = 0;	/* not used */
-  root_header->rev_level = BTREE_GET_REV_LEVEL (rec->data);
-  BTREE_GET_OVFID (rec->data, &root_header->ovfid);
-
-  or_init (&buf, rec->data + BTREE_KEY_TYPE_OFFSET, -1);
-
-  root_header->key_type = or_get_domain (&buf, NULL, NULL);
-}
 
 /*
  * btree_leaf_get_vpid_for_overflow_oids () -
@@ -2254,14 +2130,14 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
  *   rec(in):
  */
 static void
-btree_dump_root_header (FILE * fp, RECDES rec)
+btree_dump_root_header (FILE * fp, PAGE_PTR page_ptr)
 {
   BTREE_ROOT_HEADER root_header;
 
   /* dump the root header information */
 
   /* output root header information */
-  btree_read_root_header (&rec, &root_header);
+  btree_read_root_header (page_ptr, &root_header);
   fprintf (fp, "==============    R O O T    P A G E   ================\n\n");
   fprintf (fp, " Key_Type: %s\n",
 	   pr_type_name (TP_DOMAIN_TYPE (root_header.key_type)));
@@ -2349,7 +2225,6 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid,
   int key_len, offset;
   VPID overflow_vpid;
   DB_VALUE key;
-  char *header_ptr;
   bool clear_key;
   int oid_size;
 
@@ -2466,8 +2341,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid,
 	      return;
 	    }
 
-	  btree_get_header_ptr (overflow_page_ptr, &header_ptr);
-	  btree_get_next_overflow_vpid (header_ptr, &overflow_vpid);
+	  btree_get_next_overflow_vpid (overflow_page_ptr, &overflow_vpid);
 
 	  (void) spage_get_record (overflow_page_ptr, 1, &overflow_rec, COPY);
 
@@ -2681,7 +2555,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 #endif /* BTREE_DEBUG */
 
   /* read the node header */
-  key_cnt = btree_get_node_key_cnt (page_ptr);	/* get the key count */
+  btree_get_node_key_cnt (page_ptr, &key_cnt);	/* get the key count */
   if (key_cnt <= 0)
     {				/* node record underflow */
       er_log_debug (ARG_FILE_LINE,
@@ -2825,7 +2699,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 #endif /* BTREE_DEBUG */
 
   /* read the header record */
-  key_cnt = btree_get_node_key_cnt (page_ptr);	/* get the key count */
+  btree_get_node_key_cnt (page_ptr, &key_cnt);	/* get the key count */
 
   c = 0;
   middle = 0;
@@ -2950,15 +2824,11 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 		  int num_oids, int num_nulls, int num_keys)
 {
   BTREE_ROOT_HEADER root_header;
-  RECDES rec;
   VPID vpid;
   PAGE_PTR page_ptr = NULL;
   FILE_BTREE_DES btree_descriptor;
   bool is_file_created = false;
   unsigned short alignment;
-  char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
-
-  rec.data = NULL;
 
   if (class_oid == NULL || OID_ISNULL (class_oid))
     {
@@ -3027,24 +2897,11 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   VFID_SET_NULL (&root_header.ovfid);
   root_header.rev_level = BTREE_CURRENT_REV_LEVEL;
 
-  rec.area_size = DB_PAGESIZE;
-  rec.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
-
-  if (btree_write_root_header (&rec, &root_header) != NO_ERROR)
+  if (btree_init_root_header (thread_p, &btid->vfid, page_ptr, &root_header)
+      != NO_ERROR)
     {
       goto error;
     }
-
-  /* insert the root header information into the root page */
-  if (spage_insert_at (thread_p, page_ptr, HEADER, &rec) != SP_SUCCESS)
-    {
-      goto error;
-    }
-
-  /* log the new header record for redo purposes */
-  log_append_redo_data2 (thread_p, RVBT_NDHEADER_INS, &btid->vfid, page_ptr,
-			 HEADER, rec.length, rec.data);
-
 
   pgbuf_set_dirty (thread_p, page_ptr, FREE);
   page_ptr = NULL;
@@ -3085,7 +2942,6 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
 {
   PAGE_PTR P = NULL;
   VPID P_vpid;
-  char *header_ptr;
   VFID ovfid;
   int ret;
 
@@ -3099,8 +2955,7 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
     }
 
   /* read the header record */
-  btree_get_header_ptr (P, &header_ptr);
-  BTREE_GET_OVFID (header_ptr, &ovfid);
+  btree_get_root_ovfid (P, &ovfid);
   pgbuf_unfix_and_init (thread_p, P);
 
   btid->root_pageid = NULL_PAGEID;
@@ -3655,7 +3510,6 @@ xbtree_test_unique (THREAD_ENTRY * thread_p, BTID * btid)
 {
   VPID root_vpid;
   PAGE_PTR root = NULL;
-  char *header_ptr;
   INT32 num_nulls, num_keys, num_oids;
 
   root_vpid.pageid = btid->root_pageid;
@@ -3668,10 +3522,7 @@ xbtree_test_unique (THREAD_ENTRY * thread_p, BTID * btid)
       return 0;
     }
 
-  btree_get_header_ptr (root, &header_ptr);
-  num_nulls = BTREE_GET_NUM_NULLS (header_ptr);
-  num_keys = BTREE_GET_NUM_KEYS (header_ptr);
-  num_oids = BTREE_GET_NUM_OIDS (header_ptr);
+  btree_get_root_stat (root, &num_nulls, &num_keys, &num_oids);
   pgbuf_unfix_and_init (thread_p, root);
 
   if (num_nulls == -1)
@@ -3698,8 +3549,7 @@ xbtree_get_unique (THREAD_ENTRY * thread_p, BTID * btid)
 {
   VPID root_vpid;
   PAGE_PTR root = NULL;
-  char *header_ptr;
-  INT32 unique;
+  int unique;
 
   root_vpid.pageid = btid->root_pageid;
   root_vpid.volid = btid->vfid.volid;
@@ -3711,9 +3561,7 @@ xbtree_get_unique (THREAD_ENTRY * thread_p, BTID * btid)
       return 0;
     }
 
-  btree_get_header_ptr (root, &header_ptr);
-  unique = BTREE_GET_UNIQUE (header_ptr);
-
+  btree_get_root_unique (root, &unique);
   pgbuf_unfix_and_init (thread_p, root);
 
   return unique;
@@ -3732,8 +3580,7 @@ btree_is_unique (THREAD_ENTRY * thread_p, BTID * btid)
 {
   VPID root_vpid;
   PAGE_PTR root = NULL;
-  char *header_ptr;
-  INT32 num_nulls;
+  INT32 num_nulls, num_keys, num_oids;
 
   root_vpid.pageid = btid->root_pageid;
   root_vpid.volid = btid->vfid.volid;
@@ -3745,9 +3592,7 @@ btree_is_unique (THREAD_ENTRY * thread_p, BTID * btid)
       return 0;
     }
 
-  btree_get_header_ptr (root, &header_ptr);
-  num_nulls = BTREE_GET_NUM_NULLS (header_ptr);
-
+  btree_get_root_stat (root, &num_nulls, &num_keys, &num_oids);
   pgbuf_unfix_and_init (thread_p, root);
 
   return (num_nulls != -1);
@@ -3770,7 +3615,6 @@ btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid,
 {
   VPID root_vpid;
   PAGE_PTR root = NULL;
-  char *header_ptr;
   int ret;
 
   root_vpid.pageid = btid->root_pageid;
@@ -3783,11 +3627,7 @@ btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid,
       return (((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret);
     }
 
-  btree_get_header_ptr (root, &header_ptr);
-  *oid_cnt = BTREE_GET_NUM_OIDS (header_ptr);
-  *null_cnt = BTREE_GET_NUM_NULLS (header_ptr);
-  *key_cnt = BTREE_GET_NUM_KEYS (header_ptr);
-
+  btree_get_root_stat (root, null_cnt, key_cnt, oid_cnt);
   pgbuf_unfix_and_init (thread_p, root);
 
   return NO_ERROR;
@@ -3805,7 +3645,6 @@ static int
 btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			 PAGE_PTR page_ptr, BTREE_STATS_ENV * stats_env)
 {
-  char *header_ptr;
   int key_cnt;
   int i, j;
   NON_LEAF_REC non_leaf_rec;
@@ -3814,13 +3653,13 @@ btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid,
   RECDES rec;
   DB_DOMAIN *key_type;
   int ret = NO_ERROR;
+  BTREE_NODE_TYPE node_type;
 
   key_type = btid->key_type;
+  btree_get_node_key_cnt (page_ptr, &key_cnt);
 
-  btree_get_header_ptr (page_ptr, &header_ptr);
-  key_cnt = btree_get_node_key_cnt (page_ptr);
-
-  if (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_NON_LEAF_NODE)
+  btree_get_node_type (page_ptr, &node_type);
+  if (node_type == BTREE_NON_LEAF_NODE)
     {
       if (key_cnt < 0)
 	{
@@ -4159,11 +3998,9 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p,
   int n, i;
   bool found;
   int key_cnt;
-#if !defined(NDEBUG)
-  char *header_ptr;
-#endif
   int exp_ratio;
   int ret = NO_ERROR;
+  BTREE_NODE_TYPE node_type;
 
   assert (env != NULL);
   assert (env->stat_info != NULL);
@@ -4192,15 +4029,15 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p,
 	{
 #if !defined(NDEBUG)
 	  /* get header information (key_cnt) */
-	  btree_get_header_ptr (BTS->C_page, &header_ptr);
-	  if (!(BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE))
+	  btree_get_node_type (BTS->C_page, &node_type);
+	  if (node_type != BTREE_LEAF_NODE)
 	    {
 	      assert_release (false);
 	      goto exit_on_error;
 	    }
 #endif
 
-	  key_cnt = btree_get_node_key_cnt (BTS->C_page);
+	  btree_get_node_key_cnt (BTS->C_page, &key_cnt);
 	  assert_release (key_cnt >= 0);
 
 	  if (key_cnt > 0)
@@ -4469,12 +4306,10 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p,
       goto exit_on_error;
     }
 
-  if (spage_get_record (root_page_ptr, HEADER, &rec, PEEK) != S_SUCCESS)
+  if (btree_read_root_header (root_page_ptr, &root_header) != NO_ERROR)
     {
       goto exit_on_error;
     }
-
-  btree_read_root_header (&rec, &root_header);
 
   pgbuf_unfix_and_init (thread_p, root_page_ptr);
 
@@ -4611,9 +4446,8 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 {
   int key_cnt, key_cnt2, max_key, nrecs, offset;
   RECDES peek_rec1, peek_rec2;
-  char *header_ptr;
   DB_VALUE key1, key2;
-  int node_type;
+  BTREE_NODE_TYPE node_type;
   TP_DOMAIN *key_domain;
   int k, overflow_key1 = 0, overflow_key2 = 0;
   bool clear_key1, clear_key2;
@@ -4628,11 +4462,10 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
   nleaf_pnt.key_len = 0;
   VPID_SET_NULL (&nleaf_pnt.pnt);
 
-  btree_get_header_ptr (page_ptr, &header_ptr);
-  max_key = BTREE_GET_NODE_MAX_KEY_LEN (header_ptr);
-  node_type = BTREE_GET_NODE_TYPE (header_ptr);
+  btree_get_node_max_key_len (page_ptr, &max_key);
+  btree_get_node_type (page_ptr, &node_type);
 
-  key_cnt = btree_get_node_key_cnt (page_ptr);
+  btree_get_node_key_cnt (page_ptr, &key_cnt);
   if ((node_type == BTREE_NON_LEAF_NODE && key_cnt <= 0)
       || (node_type == BTREE_LEAF_NODE && key_cnt < 0))
     {
@@ -4784,8 +4617,7 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 		      BTID_INT * btid, const char *btname, PAGE_PTR pg_ptr,
 		      VPID * pg_vpid, BTREE_NODE_INFO * INFO)
 {
-  char *header_ptr;
-  INT16 key_cnt;
+  int key_cnt, max_key_len;
   NON_LEAF_REC nleaf_ptr;
   VPID page_vpid;
   PAGE_PTR page = NULL;
@@ -4796,7 +4628,7 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
   int i;
   DISK_ISVALID valid = DISK_ERROR;
   BTREE_NODE_INFO INFO2;
-  int node_type;
+  BTREE_NODE_TYPE node_type;
 
   db_make_null (&INFO2.max_key);
 
@@ -4811,10 +4643,9 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
       goto error;
     }
 
-  btree_get_header_ptr (pg_ptr, &header_ptr);
-  node_type = BTREE_GET_NODE_TYPE (header_ptr);
+  btree_get_node_type (pg_ptr, &node_type);
 
-  key_cnt = btree_get_node_key_cnt (pg_ptr);
+  btree_get_node_key_cnt (pg_ptr, &key_cnt);
   if ((node_type == BTREE_NON_LEAF_NODE && key_cnt <= 0)
       || (node_type == BTREE_LEAF_NODE && key_cnt < 0))
     {
@@ -4827,7 +4658,8 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
     }
 
   /* initialize INFO structure */
-  INFO->max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (header_ptr);
+  btree_get_node_max_key_len (pg_ptr, &max_key_len);
+  INFO->max_key_len = max_key_len;
   INFO->height = 0;
   INFO->tot_key_cnt = 0;
   INFO->page_cnt = 0;
@@ -4835,7 +4667,7 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
   INFO->nleafpg_cnt = 0;
   db_make_null (&INFO->max_key);
 
-  if (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_NON_LEAF_NODE)
+  if (node_type == BTREE_NON_LEAF_NODE)
     {				/* a non-leaf page */
       btree_clear_key_value (&m_clear_key, &maxkey);
 
@@ -4995,8 +4827,8 @@ btree_check_pages (THREAD_ENTRY * thread_p, BTID_INT * btid,
   DISK_ISVALID vld = DISK_ERROR;	/* Validity return code from subtree */
   int key_cnt;			/* Number of keys in the page */
   int i;			/* Loop counter */
-  char *header_ptr;
   NON_LEAF_REC nleaf;
+  BTREE_NODE_TYPE node_type;
 
   /* Verify the given page */
   vld = file_isvalid_page_partof (thread_p, pg_vpid, &btid->sys_btid->vfid);
@@ -5005,12 +4837,11 @@ btree_check_pages (THREAD_ENTRY * thread_p, BTID_INT * btid,
       goto error;
     }
 
-  btree_get_header_ptr (pg_ptr, &header_ptr);
-
   /* Verify subtree child pages */
-  if (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_NON_LEAF_NODE)
+  btree_get_node_type (pg_ptr, &node_type);
+  if (node_type == BTREE_NON_LEAF_NODE)
     {				/* non-leaf page */
-      key_cnt = btree_get_node_key_cnt (pg_ptr);
+      btree_get_node_key_cnt (pg_ptr, &key_cnt);
       for (i = 1; i <= key_cnt; i++)
 	{
 	  if (spage_get_record (pg_ptr, i, &rec, PEEK) != S_SUCCESS)
@@ -5074,13 +4905,11 @@ btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
   r_pgptr = pgbuf_fix (thread_p, &r_vpid, OLD_PAGE, PGBUF_LATCH_READ,
 		       PGBUF_UNCONDITIONAL_LATCH);
   if (r_pgptr == NULL
-      || (spage_get_record (r_pgptr, HEADER, &rec, PEEK) != S_SUCCESS))
+      || btree_read_root_header (r_pgptr, &root_header) != NO_ERROR)
     {
       valid = DISK_ERROR;
       goto error;
     }
-
-  btree_read_root_header (&rec, &root_header);
 
   btid_int.sys_btid = btid;
   if (btree_glean_root_header_info (thread_p, &root_header, &btid_int) !=
@@ -5234,13 +5063,13 @@ btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTID * btid,
 				bool repair, char *index_name)
 {
   PAGE_PTR current_pgptr, child_pgptr, next_pgptr, root_pgptr;
-  RECDES current_rec, next_rec;
   BTREE_NODE_HEADER current_node_header, next_node_header;
   VPID current_vpid, next_vpid;
   int valid = DISK_VALID;
   int request_mode;
   int retry_count = 0;
   char output[LINE_MAX];
+  BTREE_NODE_TYPE node_type;
 
   snprintf (output, LINE_MAX, "%s - %s... ",
 	    repair ? "repair index" : "check index", index_name);
@@ -5288,15 +5117,8 @@ retry_repair:
 	  goto retry_repair;
 	}
 
-      if (spage_get_record (current_pgptr, HEADER, &current_rec, PEEK) !=
-	  S_SUCCESS)
-	{
-	  valid = DISK_ERROR;
-	  goto exit_repair;
-	}
-
-      btree_read_node_header (&current_rec, &current_node_header);
-      if (BTREE_GET_NODE_TYPE (current_rec.data) == BTREE_LEAF_NODE)
+      btree_get_node_type (current_pgptr, &node_type);
+      if (node_type == BTREE_LEAF_NODE)
 	{
 	  break;
 	}
@@ -5316,6 +5138,7 @@ retry_repair:
 	}
     }
 
+  btree_read_node_header (current_pgptr, &current_node_header);
   next_vpid = current_node_header.next_vpid;
   while (!VPID_ISNULL (&next_vpid))
     {
@@ -5326,13 +5149,8 @@ retry_repair:
 	  retry_count++;
 	  goto retry_repair;
 	}
-      if (spage_get_record (next_pgptr, HEADER, &next_rec, PEEK) != S_SUCCESS)
-	{
-	  valid = DISK_ERROR;
-	  goto exit_repair;
-	}
 
-      btree_read_node_header (&next_rec, &next_node_header);
+      btree_read_node_header (next_pgptr, &next_node_header);
 
       if (!VPID_EQ (&next_node_header.prev_vpid, &current_vpid))
 	{
@@ -5956,7 +5774,6 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid,
 {
   RECDES rec;			/* Page record descriptor */
   int free_space;		/* Total free space of the Page */
-  char *header_ptr;
   int key_cnt;			/* Page key count */
   NON_LEAF_REC nleaf_ptr;	/* NonLeaf Record pointer */
   VPID page_vpid;		/* Child page identifier */
@@ -5973,6 +5790,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid,
   DB_VALUE key1;
   int oid_size;
   int ret = NO_ERROR;
+  BTREE_NODE_TYPE node_type;
 
   /* initialize */
   leaf_pnt.key_len = 0;
@@ -6007,10 +5825,10 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   free_space = spage_get_free_space (thread_p, pg_ptr);
 
-  btree_get_header_ptr (pg_ptr, &header_ptr);
-  key_cnt = btree_get_node_key_cnt (pg_ptr);
+  btree_get_node_key_cnt (pg_ptr, &key_cnt);
 
-  if (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_NON_LEAF_NODE)
+  btree_get_node_type (pg_ptr, &node_type);
+  if (node_type == BTREE_NON_LEAF_NODE)
     {				/* a non-leaf page */
       BTREE_CAPACITY cpc2;
 
@@ -6110,8 +5928,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid,
 		      goto exit_on_error;
 		    }
 
-		  btree_get_header_ptr (ovfp, &header_ptr);
-		  btree_get_next_overflow_vpid (header_ptr, &ovfl_vpid);
+		  btree_get_next_overflow_vpid (ovfp, &ovfl_vpid);
 
 		  if (spage_get_record (ovfp, 1, &orec, PEEK) != S_SUCCESS)
 		    {
@@ -6186,13 +6003,10 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid,
   root_vpid.volid = btid->vfid.volid;
   root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ,
 		    PGBUF_UNCONDITIONAL_LATCH);
-  if (root == NULL
-      || spage_get_record (root, HEADER, &rec, PEEK) != S_SUCCESS)
+  if (root == NULL || btree_read_root_header (root, &root_header) != NO_ERROR)
     {
       goto exit_on_error;
     }
-
-  btree_read_root_header (&rec, &root_header);
 
   btid_int.sys_btid = btid;
   ret = btree_glean_root_header_info (thread_p, &root_header, &btid_int);
@@ -6373,16 +6187,13 @@ btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp,
   int i;
   RECDES rec;
   BTREE_NODE_TYPE node_type;
-  char *header_ptr;
-  VPID prev_vpid;
-  VPID next_vpid;
+  BTREE_NODE_HEADER header;
+
 
   /* get the header record */
-  btree_get_header_ptr (page_ptr, &header_ptr);
-  key_cnt = btree_get_node_key_cnt (page_ptr);
-  node_type = BTREE_GET_NODE_TYPE (header_ptr);
-  BTREE_GET_NODE_PREV_VPID (header_ptr, &prev_vpid);
-  BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
+  btree_read_node_header (page_ptr, &header);
+  btree_get_node_key_cnt (page_ptr, &key_cnt);
+  btree_get_node_type (page_ptr, &node_type);
 
   btree_print_space (fp, depth * 4);
   fprintf (fp,
@@ -6390,10 +6201,10 @@ btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp,
 	   "Prev: {%d, %d}, Next: {%d, %d}, Max key len: %d]\n",
 	   (node_type == BTREE_LEAF_NODE) ? "LEAF" : "NON_LEAF",
 	   pg_vpid->volid, pg_vpid->pageid,
-	   BTREE_GET_NODE_LEVEL (header_ptr), depth, key_cnt,
-	   prev_vpid.volid, prev_vpid.pageid,
-	   next_vpid.volid, next_vpid.pageid,
-	   BTREE_GET_NODE_MAX_KEY_LEN (header_ptr));
+	   header.node_level, depth, key_cnt,
+	   header.prev_vpid.volid, header.prev_vpid.pageid,
+	   header.next_vpid.volid, header.next_vpid.pageid,
+	   header.max_key_len);
 
   if (class_oid_p && !OID_ISNULL (class_oid_p))
     {
@@ -6459,21 +6270,21 @@ btree_dump_page_with_subtree (THREAD_ENTRY * thread_p, FILE * fp,
 			      BTID_INT * btid, PAGE_PTR pg_ptr,
 			      VPID * pg_vpid, int depth, int level)
 {
-  char *header_ptr;
   int key_cnt, right;
   int i;
   NON_LEAF_REC nleaf_ptr;
   VPID page_vpid;
   PAGE_PTR page = NULL;
   RECDES rec;
+  BTREE_NODE_TYPE node_type;
 
   btree_dump_page (thread_p, fp, NULL, btid, NULL, pg_ptr, pg_vpid, depth, level);	/* dump current page */
 
   /* get the header record */
-  btree_get_header_ptr (pg_ptr, &header_ptr);
-  if (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_NON_LEAF_NODE)
+  btree_get_node_type (pg_ptr, &node_type);
+  if (node_type == BTREE_NON_LEAF_NODE)
     {				/* page is non_leaf */
-      key_cnt = btree_get_node_key_cnt (pg_ptr);
+      btree_get_node_key_cnt (pg_ptr, &key_cnt);
 
 #if defined(BTREE_DEBUG)
       if (key_cnt < 0)
@@ -6548,8 +6359,7 @@ btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid, int level)
       return;
     }
 
-  (void) spage_get_record (root, HEADER, &rec, PEEK);
-  btree_read_root_header (&rec, &root_header);
+  btree_read_root_header (root, &root_header);
 
   btid_int.sys_btid = btid;
   if (btree_glean_root_header_info (thread_p, &root_header, &btid_int) !=
@@ -6560,7 +6370,7 @@ btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid, int level)
 
   fprintf (fp,
 	   "\n------------ The B+Tree Index Dump Start ---------------------\n\n\n");
-  btree_dump_root_header (fp, rec);	/* output root header information */
+  btree_dump_root_header (fp, root);	/* output root header information */
 
   if (level != 0)
     {
@@ -6588,8 +6398,8 @@ btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid)
 {
   VPID p_vpid;
   PAGE_PTR root = NULL;
-  char *header_ptr;
   TP_DOMAIN *key_type = NULL;
+  RECDES header_record;
 
   p_vpid.pageid = btid->root_pageid;	/* read root page */
   p_vpid.volid = btid->vfid.volid;
@@ -6600,8 +6410,13 @@ btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid)
       return NULL;
     }
 
-  btree_get_header_ptr (root, &header_ptr);
-  (void) or_unpack_domain (header_ptr + BTREE_KEY_TYPE_OFFSET, &key_type, 0);
+  if (spage_get_record (root, HEADER, &header_record, PEEK) != S_SUCCESS)
+    {
+      return NULL;
+    }
+
+  (void) or_unpack_domain (header_record.data + BTREE_KEY_TYPE_OFFSET,
+			   &key_type, 0);
 
   pgbuf_unfix_and_init (thread_p, root);
 
@@ -6632,7 +6447,9 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
   int rv_data_len, rv_key_len;
   char rv_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   RECDES peek_rec;
-  INT16 key_cnt;
+  int key_cnt;
+  BTREE_NODE_HEADER header;
+  bool write_undo = false;
 
   rv_data = PTR_ALIGN (rv_data_buf, BTREE_MAX_ALIGN);
 
@@ -6679,28 +6496,26 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
     }
 
   /* key deleted, update node header */
-  if (spage_get_record (leaf_pg, HEADER, &peek_rec, PEEK) != S_SUCCESS)
+  if (btree_read_node_header (leaf_pg, &header) != NO_ERROR)
     {
       goto exit_on_error;
     }
-  assert (peek_rec.length % 4 == 0);
 
   if (btree_is_new_file (btid))
     {
-      btree_rv_write_log_record (rv_data, &rv_data_len, &peek_rec,
-				 BTREE_LEAF_NODE);
-      log_append_undo_data2 (thread_p, RVBT_NDRECORD_UPD,
-			     &btid->sys_btid->vfid, leaf_pg, HEADER,
-			     rv_data_len, rv_data);
+      write_undo = true;
     }
 
   RANDOM_EXIT (thread_p);
 
-  key_cnt = btree_get_node_key_cnt (leaf_pg);
+  btree_get_node_key_cnt (leaf_pg, &key_cnt);
   if (key_cnt == 0)
     {
-      BTREE_PUT_NODE_MAX_KEY_LEN (peek_rec.data, 0);
+      header.max_key_len = 0;
     }
+
+  btree_write_node_header (thread_p, &btid->sys_btid->vfid, leaf_pg,
+			   &header, write_undo, false);
 
   RANDOM_EXIT (thread_p);
 
@@ -6761,7 +6576,6 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
   char rv_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   RECDES ovfl_copy_rec;
   char ovfl_copy_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
-  char *ovfl_header;
   VPID next_ovfl_vpid;
   int oid_cnt;
 
@@ -6793,8 +6607,7 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   assert (ovfl_copy_rec.length % 4 == 0);
 
-  btree_get_header_ptr (ovfl_page, &ovfl_header);
-  btree_get_next_overflow_vpid (ovfl_header, &next_ovfl_vpid);
+  btree_get_next_overflow_vpid (ovfl_page, &next_ovfl_vpid);
 
   oid_cnt = btree_leaf_get_num_oids (&ovfl_copy_rec, 0,
 				     BTREE_OVERFLOW_NODE, OR_OID_SIZE);
@@ -7339,7 +7152,7 @@ exit_on_error:
  *     }
  */
 static int
-btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
+btree_delete_from_leaf (THREAD_ENTRY * thread_p, bool * key_deleted,
 			BTID_INT * btid, VPID * leaf_vpid, DB_VALUE * key,
 			OID * class_oid, OID * oid, INT16 leaf_slot_id)
 {
@@ -7352,7 +7165,6 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
   RECDES ovfl_copy_rec;
   char ovfl_copy_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   int oid_size, del_oid_offset, oid_list_offset, oid_cnt;
-  char *ovfl_header;
   bool dummy;
 
   VPID_SET_NULL (&leaf_rec.ovfl);
@@ -7422,7 +7234,7 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
 	{
 	  if (VPID_ISNULL (&leaf_rec.ovfl))
 	    {
-	      *key_deleted = 1;
+	      *key_deleted = true;
 	      ret = btree_delete_key_from_leaf (thread_p, btid, leaf_page,
 						leaf_slot_id, key, oid,
 						class_oid, &leaf_copy_rec,
@@ -7474,8 +7286,7 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
 
       assert (ovfl_copy_rec.length % 4 == 0);
 
-      btree_get_header_ptr (ovfl_page, &ovfl_header);
-      btree_get_next_overflow_vpid (ovfl_header, &next_ovfl_vpid);
+      btree_get_next_overflow_vpid (ovfl_page, &next_ovfl_vpid);
 
       del_oid_offset = btree_find_oid_from_ovfl (&ovfl_copy_rec, oid);
       if (del_oid_offset == NOT_FOUND)
@@ -7554,20 +7365,6 @@ exit_on_error:
   return ret;
 }
 
-/*
- * btree_write_default_split_info() -
- *   return:
- *   rec(in/out):
- */
-static void
-btree_write_default_split_info (RECDES * rec)
-{
-  BTREE_NODE_SPLIT_INFO info;
-
-  info.pivot = BTREE_SPLIT_DEFAULT_PIVOT;
-  info.index = 1;
-  BTREE_PUT_NODE_SPLIT_INFO (rec->data, &info);
-}
 
 /*
  * btree_merge_root () -
@@ -7606,7 +7403,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   RECDES peek_rec;
   NON_LEAF_REC nleaf_pnt = { {NULL_PAGEID, NULL_VOLID}, 0 };
   int i;
-  int key_len;
+  int key_len, key_cnt;
   char *recset_data;		/* for recovery purposes */
   int recset_length;		/* for recovery purposes */
   RECSET_HEADER recset_header;	/* for recovery purposes */
@@ -7616,10 +7413,8 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   VPID null_vpid;
   char recset_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   LOG_DATA_ADDR addr;
-  char *header_ptr;
-  short p_level;
-  short q_level;
-  short r_level;
+  int p_level, q_level, r_level;
+  BTREE_ROOT_HEADER root_header;
 
 #if !defined(NDEBUG)
   if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
@@ -7630,16 +7425,13 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
     }
 #endif
 
-  btree_get_header_ptr (P, &header_ptr);
-  p_level = BTREE_GET_NODE_LEVEL (header_ptr);
+  btree_get_node_level (P, &p_level);
   assert (p_level > 2);
 
-  btree_get_header_ptr (Q, &header_ptr);
-  q_level = BTREE_GET_NODE_LEVEL (header_ptr);
+  btree_get_node_level (Q, &q_level);
   assert (q_level > 1);
 
-  btree_get_header_ptr (R, &header_ptr);
-  r_level = BTREE_GET_NODE_LEVEL (header_ptr);
+  btree_get_node_level (R, &r_level);
   assert (r_level > 1);
 
   assert (q_level == r_level);
@@ -7670,7 +7462,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   /* delete all records in P
    */
-  assert (btree_get_node_key_cnt (P) == 2);
+  assert (btree_get_node_key_cnt (P, &key_cnt) == NO_ERROR && key_cnt == 2);
 
   for (i = 2; i > 0; i--)
     {
@@ -7713,7 +7505,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   /* Log the page Q records for undo/redo purposes on page P.
    */
-  left_cnt = btree_get_node_key_cnt (Q);
+  btree_get_node_key_cnt (Q, &left_cnt);
 
   recset_header.rec_cnt = left_cnt;
   recset_header.first_slotid = 1;
@@ -7756,7 +7548,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   /* Log the page R records for undo purposes on page P.
    */
-  right_cnt = btree_get_node_key_cnt (R);
+  btree_get_node_key_cnt (R, &right_cnt);
 
   recset_header.rec_cnt = right_cnt;
   recset_header.first_slotid = left_cnt + 1;
@@ -7800,27 +7592,23 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   pgbuf_set_dirty (thread_p, R, DONT_FREE);
 
   /* update root page */
-  if (spage_get_record (P, HEADER, &peek_rec, PEEK) != S_SUCCESS)
+  if (btree_read_root_header (P, &root_header) != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  /* log the before image of the root header */
-  log_append_undo_data2 (thread_p, RVBT_NDHEADER_UPD, &btid->sys_btid->vfid,
-			 P, HEADER, peek_rec.length, peek_rec.data);
+  VPID_SET_NULL (&root_header.node.prev_vpid);
+  VPID_SET_NULL (&root_header.node.next_vpid);
+  root_header.node.split_info.pivot = BTREE_SPLIT_DEFAULT_PIVOT;
+  root_header.node.split_info.index = 1;
+  root_header.node.node_level = p_level - 1;
 
-  VPID_SET_NULL (&null_vpid);
-  BTREE_PUT_NODE_NEXT_VPID (peek_rec.data, &null_vpid);
-  BTREE_PUT_NODE_PREV_VPID (peek_rec.data, &null_vpid);
-  btree_write_default_split_info (&peek_rec);
-  BTREE_PUT_NODE_LEVEL (peek_rec.data, p_level - 1);
+  btree_write_root_header (thread_p, &btid->sys_btid->vfid,
+			   P, &root_header, true, true);
+
 #if 1				/* TODO */
   /* assert (P.max_key_len == MAX (Q.max_key_len, R.max_key_len)) */
 #endif
-
-  /* log the new header record for redo purposes */
-  log_append_redo_data2 (thread_p, RVBT_NDHEADER_UPD, &btid->sys_btid->vfid,
-			 P, HEADER, peek_rec.length, peek_rec.data);
 
   pgbuf_set_dirty (thread_p, P, DONT_FREE);
 
@@ -7876,7 +7664,6 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   PAGE_PTR right_pg = NULL;
   VPID left_vpid, right_vpid, next_vpid;
   int left_cnt, right_cnt;
-  char *header_ptr;
   RECDES peek_rec;
   NON_LEAF_REC nleaf_pnt;
   int i;
@@ -7887,6 +7674,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   int ret = NO_ERROR;
   char recset_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   LOG_DATA_ADDR addr;
+  BTREE_NODE_HEADER header;
 
 #if !defined(NDEBUG)
   if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
@@ -7914,8 +7702,8 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   right_pg = R;
   right_vpid = *R_vpid;
 
-  left_cnt = btree_get_node_key_cnt (left_pg);
-  right_cnt = btree_get_node_key_cnt (right_pg);
+  btree_get_node_key_cnt (left_pg, &left_cnt);
+  btree_get_node_key_cnt (right_pg, &right_cnt);
 
   /* Log the right page records for undo purposes on the left page. */
   recset_header.rec_cnt = right_cnt;
@@ -7990,33 +7778,24 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   pgbuf_set_dirty (thread_p, P, DONT_FREE);
 
   /* get right page header information */
-  btree_get_header_ptr (right_pg, &header_ptr);
-  BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
-  max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (header_ptr);
+  btree_get_node_next_vpid (right_pg, &next_vpid);
+  btree_get_node_max_key_len (right_pg, &max_key_len);
 
   /* update left page header
    */
-  if (spage_get_record (left_pg, HEADER, &peek_rec, PEEK) != S_SUCCESS)
+  ret = btree_read_node_header (left_pg, &header);
+  if (ret != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  /* log the old header record for undo purposes */
-  log_append_undo_data2 (thread_p, RVBT_NDHEADER_UPD,
-			 &btid->sys_btid->vfid, left_pg, HEADER,
-			 peek_rec.length, peek_rec.data);
+  header.next_vpid = next_vpid;
+  header.max_key_len = max_key_len;
+  header.split_info.pivot = BTREE_SPLIT_DEFAULT_PIVOT;
+  header.split_info.index = 1;
 
-  BTREE_PUT_NODE_NEXT_VPID (peek_rec.data, &next_vpid);
-  if (max_key_len > BTREE_GET_NODE_MAX_KEY_LEN (peek_rec.data))
-    {
-      BTREE_PUT_NODE_MAX_KEY_LEN (peek_rec.data, max_key_len);
-    }
-  btree_write_default_split_info (&peek_rec);
-
-  /* log the new header record for redo purposes */
-  log_append_redo_data2 (thread_p, RVBT_NDHEADER_UPD,
-			 &btid->sys_btid->vfid, left_pg, HEADER,
-			 peek_rec.length, peek_rec.data);
+  btree_write_node_header (thread_p, &btid->sys_btid->vfid, left_pg, &header,
+			   true, true);
 
   *child_vpid = left_vpid;
 
@@ -8088,7 +7867,6 @@ btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY * thread_p,
   int ret_val = NO_ERROR, lock_ret;
   RECDES peek_recdes;
   OID temp_oid, last_oid;
-  char *header_ptr = NULL;
   VPID O_vpid;
   PAGE_PTR P = NULL;
   int oids_cnt;
@@ -8221,24 +7999,25 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	      OID * cls_oid, OID * oid, BTREE_LOCKED_KEYS locked_keys,
 	      int *unique, int op_type, BTREE_UNIQUE_STATS * unique_stat_info)
 {
-  char *header_ptr;
-  INT16 key_cnt;
+  int key_cnt, tmp;
   VPID next_vpid;
   VPID P_vpid, Q_vpid, R_vpid, child_vpid, Left_vpid, Right_vpid;
   PAGE_PTR P = NULL, Q = NULL, R = NULL, Left = NULL, Right = NULL;
   PAGE_PTR next_page = NULL;
-  RECDES peek_recdes1, peek_recdes2, copy_rec, copy_rec1;
+  RECDES peek_recdes1, peek_recdes2;
   BTREE_ROOT_HEADER root_header;
+  BTREE_NODE_HEADER header;
   int offset;
   int Q_used, L_used, R_used;
   NON_LEAF_REC nleaf_pnt;
   LEAF_REC leaf_pnt;
-  INT16 p_slot_id, last_rec;
+  INT16 p_slot_id;
+  int last_rec;
   int top_op_active = 0;
   bool clear_key;
   BTREE_NODE_TYPE node_type;
   int node_level;
-  int merged, is_q_empty, is_r_empty, is_l_empty, key_deleted;
+  bool merged, is_q_empty, is_r_empty, is_l_empty, key_deleted;
   DB_VALUE mid_key;
   BTID_INT btid_int;
   int next_page_flag = false;
@@ -8259,8 +8038,6 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   OID N_class_oid, C_class_oid;
   OID saved_N_class_oid, saved_C_class_oid;
   PAGE_PTR temp_page = NULL;
-  char copy_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
-  char copy_rec_buf1[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   bool is_active;
   TRAN_ISOLATION tran_isolation;
   int curr_key_oids_cnt;
@@ -8275,9 +8052,6 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 #if defined(SERVER_MODE)
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
 #endif /* SERVER_MODE */
-
-  copy_rec.data = NULL;
-  copy_rec1.data = NULL;
 
   is_active = logtb_is_current_active (thread_p);
   tran_isolation = logtb_find_current_isolation (thread_p);
@@ -8296,13 +8070,11 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 		 PGBUF_UNCONDITIONAL_LATCH);
-  if (P == NULL
-      || (spage_get_record (P, HEADER, &peek_recdes1, PEEK) != S_SUCCESS))
+  if (P == NULL || btree_read_root_header (P, &root_header) != NO_ERROR)
     {
       goto error;
     }
 
-  btree_read_root_header (&peek_recdes1, &root_header);
   btid_int.sys_btid = btid;
   if (btree_glean_root_header_info (thread_p, &root_header, &btid_int) !=
       NO_ERROR)
@@ -8310,8 +8082,8 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       goto error;
     }
 
+  btree_get_node_type (P, &node_type);
   node_level = root_header.node.node_level;
-  node_type = node_level > 1 ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
   *unique = btid_int.unique;
 
@@ -8344,32 +8116,14 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	  if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
 	      || op_type == SINGLE_ROW_MODIFY)
 	    {
-	      /* single instance will be deleted. Update global statistics directly. */
-	      copy_rec.area_size = DB_PAGESIZE;
-	      copy_rec.data = PTR_ALIGN (copy_rec_buf, BTREE_MAX_ALIGN);
-
-	      copy_rec1.area_size = DB_PAGESIZE;
-	      copy_rec1.data = PTR_ALIGN (copy_rec_buf1, BTREE_MAX_ALIGN);
-
-	      /* save root head for undo purposes */
-	      btree_rv_save_root_head (root_header.node.max_key_len, 1, 1, 0,
-				       &copy_rec1);
-
 	      /* update the root header */
 	      root_header.num_nulls--;
 	      root_header.num_oids--;
-	      if (btree_write_root_header (&copy_rec, &root_header) !=
-		  NO_ERROR)
-		{
-		  goto error;
-		}
 
-	      log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD,
-					 &btid->vfid, P, HEADER,
-					 copy_rec1.length, copy_rec.length,
-					 copy_rec1.data, copy_rec.data);
-
-	      if (spage_update (thread_p, P, HEADER, &copy_rec) != SP_SUCCESS)
+	      ret_val =
+		btree_write_root_header_delta (thread_p, &btid->vfid, P,
+					       &root_header, 1, 1, 0);
+	      if (ret_val != NO_ERROR)
 		{
 		  goto error;
 		}
@@ -8424,37 +8178,19 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
 	  || op_type == SINGLE_ROW_MODIFY)
 	{
-	  copy_rec.area_size = DB_PAGESIZE;
-	  copy_rec.data = PTR_ALIGN (copy_rec_buf, BTREE_MAX_ALIGN);
-
-	  copy_rec1.area_size = DB_PAGESIZE;
-	  copy_rec1.data = PTR_ALIGN (copy_rec_buf1, BTREE_MAX_ALIGN);
-
-	  /* save root head for undo purposes */
-	  btree_rv_save_root_head (root_header.node.max_key_len, 0, 1,
-				   1, &copy_rec1);
-
 	  /* update the root header */
 	  root_header.num_oids--;
 	  root_header.num_keys--;	/* guess existing key delete */
-	  if (btree_write_root_header (&copy_rec, &root_header) != NO_ERROR)
-	    {
-	      goto error;
-	    }
 
-	  log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD,
-				     &btid->vfid, P, HEADER, copy_rec1.length,
-				     copy_rec.length, copy_rec1.data,
-				     copy_rec.data);
-
-	  if (spage_update (thread_p, P, HEADER, &copy_rec) != SP_SUCCESS)
+	  ret_val =
+	    btree_write_root_header_delta (thread_p, &btid->vfid, P,
+					   &root_header, 0, 1, 1);
+	  if (ret_val != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
 	  pgbuf_set_dirty (thread_p, P, DONT_FREE);
-	  copy_rec.data = NULL;
-	  copy_rec1.data = NULL;
 	}
       else
 	{
@@ -8563,13 +8299,11 @@ start_point:
       P_vpid.pageid = btid->root_pageid;
       P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 		     PGBUF_UNCONDITIONAL_LATCH);
-      if (P == NULL
-	  || (spage_get_record (P, HEADER, &peek_recdes1, PEEK) != S_SUCCESS))
+      if (P == NULL || btree_read_root_header (P, &root_header) != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      btree_read_root_header (&peek_recdes1, &root_header);
       btid_int.sys_btid = btid;
       if (btree_glean_root_header_info (thread_p, &root_header, &btid_int) !=
 	  NO_ERROR)
@@ -8581,7 +8315,7 @@ start_point:
       node_type = node_level > 1 ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
     }
 
-  key_cnt = btree_get_node_key_cnt (P);
+  btree_get_node_key_cnt (P, &key_cnt);
 
   if (node_level > 2 && key_cnt == 2)
     {				/* root merge may be needed */
@@ -8604,10 +8338,10 @@ start_point:
 	}
 
       Q_used = DB_PAGESIZE - spage_get_free_space (thread_p, Q);
-      is_q_empty = (btree_get_node_key_cnt (Q) == 0);
+      btree_get_node_key_cnt (Q, &tmp);
+      is_q_empty = (tmp == 0);
 
-      btree_get_header_ptr (Q, &header_ptr);
-      node_type = BTREE_GET_NODE_TYPE (header_ptr);
+      btree_get_node_type (Q, &node_type);
 
       /* read the second record */
       if (spage_get_record (P, 2, &peek_recdes2, PEEK) != S_SUCCESS)
@@ -8627,7 +8361,8 @@ start_point:
 	  goto error;
 	}
 
-      is_r_empty = (btree_get_node_key_cnt (R) == 0);
+      btree_get_node_key_cnt (R, &tmp);
+      is_r_empty = (tmp == 0);
       R_used = DB_PAGESIZE - spage_get_free_space (thread_p, R);
 
       /* we need to take into consideration the largest key size since the
@@ -8723,14 +8458,14 @@ start_point:
 	  goto error;
 	}
 
-      merged = 0;
-      last_rec = btree_get_node_key_cnt (P);
+      merged = false;
+      btree_get_node_key_cnt (P, &last_rec);
       Q_used = DB_PAGESIZE - spage_get_free_space (thread_p, Q);
 
       /* read the header record */
-      btree_get_header_ptr (Q, &header_ptr);
-      node_type = BTREE_GET_NODE_TYPE (header_ptr);
-      is_q_empty = (btree_get_node_key_cnt (Q) == 0);
+      btree_get_node_type (Q, &node_type);
+      btree_get_node_key_cnt (Q, &tmp);
+      is_q_empty = (tmp == 0);
 
       if (p_slot_id < last_rec)
 	{			/* right merge */
@@ -8751,7 +8486,8 @@ start_point:
 	    }
 
 	  R_used = DB_PAGESIZE - spage_get_free_space (thread_p, Right);
-	  is_r_empty = (btree_get_node_key_cnt (Right) == 0);
+	  btree_get_node_key_cnt (Right, &tmp);
+	  is_r_empty = (tmp == 0);
 
 	  if (((Q_used + R_used + FIXED_EMPTY) < DB_PAGESIZE)
 	      || (node_type == BTREE_LEAF_NODE && (is_q_empty || is_r_empty)))
@@ -8768,7 +8504,7 @@ start_point:
 		{
 		  goto error;
 		}
-	      merged = 1;
+	      merged = true;
 
 	      if (VPID_EQ (&child_vpid, &Q_vpid))
 		{
@@ -8924,11 +8660,13 @@ start_point:
 		}
 	      /* follow code may not be required */
 	      Q_used = DB_PAGESIZE - spage_get_free_space (thread_p, Q);
-	      is_q_empty = (btree_get_node_key_cnt (Q) == 0);
+	      btree_get_node_key_cnt (Q, &tmp);
+	      is_q_empty = (tmp == 0);
 	    }
 
 	  L_used = DB_PAGESIZE - spage_get_free_space (thread_p, Left);
-	  is_l_empty = (btree_get_node_key_cnt (Left) == 0);
+	  btree_get_node_key_cnt (Left, &tmp);
+	  is_l_empty = (tmp == 0);
 
 	  if (((Q_used + L_used + FIXED_EMPTY) < DB_PAGESIZE)
 	      || (node_type == BTREE_LEAF_NODE && (is_q_empty || is_l_empty)))
@@ -8945,7 +8683,7 @@ start_point:
 		{
 		  goto error;
 		}
-	      merged = 1;
+	      merged = true;
 
 	      if (VPID_EQ (&child_vpid, &Q_vpid))
 		{
@@ -9162,10 +8900,8 @@ start_point:
    * Header must be calculated again.
    * because, SMO might have been occurred.
    */
-  btree_get_header_ptr (P, &header_ptr);
-  key_cnt = btree_get_node_key_cnt (P);
-
-  BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
+  btree_get_node_key_cnt (P, &key_cnt);
+  btree_get_node_next_vpid (P, &next_vpid);
 
   /* find next key */
   if (btree_search_leaf_page (thread_p, &btid_int, P, key, &p_slot_id))
@@ -9276,10 +9012,11 @@ start_point:
 	    {
 	      pgbuf_unfix_and_init (thread_p, temp_page);
 	    }
-	  if (btree_get_node_key_cnt (N) == 0)
+
+	  btree_get_node_key_cnt (N, &tmp);
+	  if (tmp == 0)
 	    {			/* empty leaf page */
-	      btree_get_header_ptr (N, &header_ptr);
-	      BTREE_GET_NODE_NEXT_VPID (header_ptr, &N_vpid);
+	      btree_get_node_next_vpid (N, &N_vpid);
 
 	      temp_page = N;
 	      N = NULL;
@@ -9661,7 +9398,7 @@ curr_key_lock_consistency:
 key_deletion:
 
   /* a leaf page is reached, perform the deletion */
-  key_deleted = 0;
+  key_deleted = false;
   if (btree_delete_from_leaf (thread_p, &key_deleted, &btid_int,
 			      &P_vpid, key, &class_oid, oid,
 			      p_slot_id) != NO_ERROR)
@@ -9687,7 +9424,7 @@ key_deletion:
 	      goto error;
 	    }
 	  /* revert local statistical information */
-	  if (key_deleted == 0)
+	  if (key_deleted == false)
 	    {
 	      unique_stat_info->num_keys++;
 	    }
@@ -9799,9 +9536,8 @@ btree_insert_oid_with_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
   char *rv_data, *rv_key = NULL;
   int rv_data_len, rv_key_len;
   char rv_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
-  char *header_ptr;
-  INT16 key_cnt;
-  BTREE_NODE_SPLIT_INFO split_info;
+  int key_cnt;
+  BTREE_NODE_HEADER header;
 
   rec.type = REC_HOME;
   rec.area_size = DB_PAGESIZE;
@@ -9842,6 +9578,7 @@ btree_insert_oid_with_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   ret = btree_write_record (thread_p, btid, NULL, key, BTREE_LEAF_NODE,
 			    key_type, key_len, false, cls_oid, oid, &rec);
+  rec.type = REC_HOME;
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -9904,20 +9641,24 @@ btree_insert_oid_with_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
     }
 
   /* update the page header */
-  btree_get_header_ptr (leaf_page, &header_ptr);
-
-  key_cnt = btree_get_node_key_cnt (leaf_page);
-
-  key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_LEAF_NODE, key_len);
-  if (BTREE_GET_NODE_MAX_KEY_LEN (header_ptr) < key_len)
+  if (btree_read_node_header (leaf_page, &header) != NO_ERROR)
     {
-      BTREE_PUT_NODE_MAX_KEY_LEN (header_ptr, key_len);
+      goto exit_on_error;
     }
 
-  BTREE_GET_NODE_SPLIT_INFO (header_ptr, &split_info);
-  assert (split_info.pivot >= 0 && key_cnt > 0);
-  btree_split_next_pivot (&split_info, (float) slot_id / key_cnt, key_cnt);
-  BTREE_PUT_NODE_SPLIT_INFO (header_ptr, &split_info);
+  btree_get_node_key_cnt (leaf_page, &key_cnt);
+  key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_LEAF_NODE, key_len);
+  header.max_key_len = MAX (header.max_key_len, key_len);
+
+  assert (header.split_info.pivot >= 0 && key_cnt > 0);
+  btree_split_next_pivot (&header.split_info, (float) slot_id / key_cnt,
+			  key_cnt);
+
+  /* do not write log (for update max_key_len) because redo log for
+   * RVBT_LFRECORD_KEY_INS will change max_key_len if needed
+   */
+  btree_write_node_header (thread_p, &btid->sys_btid->vfid, leaf_page,
+			   &header, false, false);
 
   /* log the new record insertion and update to the header record for
    * undo/redo purposes.  This can be after the insert/update since we
@@ -10509,7 +10250,7 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
   oid_length_in_rec = oid_size + rec.length - offset;
 
   /* insert oid in leaf rec */
-  if (max_free > oid_size + DB_ALIGN (DISK_VPID_SIZE, INT_ALIGNMENT)
+  if (max_free > oid_size + (int) (DB_ALIGN (DISK_VPID_SIZE, INT_ALIGNMENT))
       && oid_length_in_rec < BTREE_MAX_OIDLEN_INPAGE)
     {
       ret = btree_insert_oid_into_leaf_rec (thread_p, btid, page_ptr, key,
@@ -10607,7 +10348,6 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				    VPID * first_ovfl_vpid)
 {
   PAGE_PTR ovfl_page;
-  char *header_ptr;
   VPID ovfl_vpid;
 
   assert (first_ovfl_vpid != NULL);
@@ -10628,8 +10368,7 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  return ovfl_page;
 	}
 
-      btree_get_header_ptr (ovfl_page, &header_ptr);
-      btree_get_next_overflow_vpid (header_ptr, &ovfl_vpid);
+      btree_get_next_overflow_vpid (ovfl_page, &ovfl_vpid);
 
       pgbuf_unfix_and_init (thread_p, ovfl_page);
     }
@@ -10651,7 +10390,6 @@ btree_check_duplicate_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
   PAGE_PTR ovfl_page, redo_page;
   INT16 redo_slot_id;
   VPID next_ovfl_vpid;
-  char *header_ptr;
   RECDES orec;
 
   if (btree_find_oid_from_leaf (btid, leaf_rec_p, oid_list_offset,
@@ -10685,8 +10423,7 @@ btree_check_duplicate_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  goto redo_log;
 	}
 
-      btree_get_header_ptr (ovfl_page, &header_ptr);
-      btree_get_next_overflow_vpid (header_ptr, &next_ovfl_vpid);
+      btree_get_next_overflow_vpid (ovfl_page, &next_ovfl_vpid);
 
       pgbuf_unfix_and_init (thread_p, ovfl_page);
     }
@@ -10898,7 +10635,8 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2,
       return ER_FAILED;
     }
 
-  c = btree_compare_key (key1, prefix_key, key_domain, 1, 1, NULL);
+  c =
+    btree_compare_key ((DB_VALUE *) key1, prefix_key, key_domain, 1, 1, NULL);
 
   if (!(c == DB_LT || c == DB_EQ))
     {
@@ -10951,10 +10689,10 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2,
 static DB_VALUE *
 btree_find_split_point (THREAD_ENTRY * thread_p,
 			BTID_INT * btid, PAGE_PTR page_ptr,
-			INT16 * mid_slot, DB_VALUE * key, bool * clear_midkey)
+			int *mid_slot, DB_VALUE * key, bool * clear_midkey)
 {
   RECDES rec;
-  int node_type;
+  BTREE_NODE_TYPE node_type;
   INT16 slot_id;
   int ent_size;
   int key_cnt, key_len, offset;
@@ -10963,18 +10701,16 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
   bool m_clear_key, n_clear_key;
   DB_VALUE *mid_key = NULL, *next_key = NULL, *prefix_key = NULL, *tmp_key;
   bool key_read, found;
-  char *header_ptr;
   NON_LEAF_REC nleaf_pnt;
   LEAF_REC leaf_pnt;
   BTREE_NODE_SPLIT_INFO split_info;
 
   /* get the page header */
-  btree_get_header_ptr (page_ptr, &header_ptr);
-  node_type = BTREE_GET_NODE_TYPE (header_ptr);
-  key_cnt = btree_get_node_key_cnt (page_ptr);	/* get the key count */
+  btree_get_node_type (page_ptr, &node_type);
+  btree_get_node_key_cnt (page_ptr, &key_cnt);	/* get the key count */
 
   n = key_cnt;
-  BTREE_GET_NODE_SPLIT_INFO (header_ptr, &split_info);
+  btree_get_node_split_info (page_ptr, &split_info);
 
   if (key_cnt <= 0)
     {
@@ -11360,14 +11096,13 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 		  BTREE_NODE_TYPE node_type, DB_VALUE * key,
 		  VPID * child_vpid)
 {
-  int key_cnt = 0, leftcnt = 0, rightcnt = 0;
+  int key_cnt, leftcnt, rightcnt;
   RECDES peek_rec;
   RECDES rec;
   NON_LEAF_REC nleaf_rec;
-  BTREE_NODE_HEADER rheader;
+  BTREE_NODE_HEADER pheader, qheader, rheader;
   VPID next_vpid;
   int i, c;
-  INT16 max_key_len;
   int sep_key_len, key_len;
   bool clear_sep_key;
   DB_VALUE *sep_key;
@@ -11379,8 +11114,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   char recset_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   int key_type;
-  BTREE_NODE_SPLIT_INFO split_info;
-  int node_level;
 
   recset_data = NULL;
   rec.data = NULL;
@@ -11415,18 +11148,11 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   rec.area_size = DB_PAGESIZE;
   rec.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
 
-  if (spage_get_record (Q, HEADER, &peek_rec, PEEK) != S_SUCCESS)
-    {
-      goto exit_on_error;
-    }
-
-  key_cnt = btree_get_node_key_cnt (Q);
+  btree_get_node_key_cnt (Q, &key_cnt);
   if (key_cnt <= 0)
     {
       goto exit_on_error;
     }
-
-  node_level = BTREE_GET_NODE_LEVEL (peek_rec.data);
 
   /* find the middle record of the page Q and find the number of
    * keys after split in pages Q and R, respectively
@@ -11449,11 +11175,11 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   assert (leftcnt > 0);
 #endif
 
-  /* log the old header record for undo purposes */
-  log_append_undo_data2 (thread_p, RVBT_NDHEADER_UPD, &btid->sys_btid->vfid,
-			 Q, HEADER, peek_rec.length, peek_rec.data);
 
-  BTREE_GET_NODE_NEXT_VPID (peek_rec.data, &next_vpid);
+  if (btree_read_node_header (Q, &qheader) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   /* We may need to update the max_key length if the mid key is larger than
    * the max key length.  This can happen due to disk padding when the
@@ -11461,24 +11187,17 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
    */
   sep_key_len = btree_get_key_length (sep_key);
   sep_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, sep_key_len);
+  qheader.max_key_len = MAX (sep_key_len, qheader.max_key_len);
 
-  max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (peek_rec.data);
-  if (sep_key_len > max_key_len)
-    {
-      max_key_len = sep_key_len;
-      BTREE_PUT_NODE_MAX_KEY_LEN (peek_rec.data, max_key_len);
-    }
+  next_vpid = qheader.next_vpid;
 
   if (node_type == BTREE_LEAF_NODE)
     {
-      BTREE_PUT_NODE_NEXT_VPID (peek_rec.data, R_vpid);
+      qheader.next_vpid = *R_vpid;
     }
   else
     {
-      VPID null_vpid;
-
-      VPID_SET_NULL (&null_vpid);
-      BTREE_PUT_NODE_NEXT_VPID (peek_rec.data, &null_vpid);
+      VPID_SET_NULL (&rheader.next_vpid);
     }
 
 #if 0
@@ -11488,19 +11207,16 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   if (leftcnt == 0)
     {
-      BTREE_PUT_NODE_MAX_KEY_LEN (peek_rec.data, 0);
+      qheader.max_key_len = 0;
     }
 
-  BTREE_GET_NODE_SPLIT_INFO (peek_rec.data, &split_info);
-  split_info.index = 1;
-  BTREE_PUT_NODE_SPLIT_INFO (peek_rec.data, &split_info);
+  qheader.split_info.index = 1;
 
-  /* log the new header record for redo purposes */
-  log_append_redo_data2 (thread_p, RVBT_NDHEADER_UPD, &btid->sys_btid->vfid,
-			 Q, HEADER, peek_rec.length, peek_rec.data);
+  btree_write_node_header (thread_p, &btid->sys_btid->vfid, Q, &qheader,
+			   true, true);
 
-  rheader.node_level = node_level;
-  rheader.max_key_len = max_key_len;
+  rheader.node_level = qheader.node_level;
+  rheader.max_key_len = qheader.max_key_len;
   rheader.next_vpid = next_vpid;
   if (node_type == BTREE_LEAF_NODE)
     {
@@ -11510,21 +11226,16 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
     {
       VPID_SET_NULL (&rheader.prev_vpid);
     }
-  rheader.split_info = split_info;
-  btree_write_node_header (&rec, &rheader);
+
+  rheader.split_info = qheader.split_info;
 
   RANDOM_EXIT (thread_p);
 
-  if (spage_insert_at (thread_p, R, HEADER, &rec) != SP_SUCCESS)
+  if (btree_init_node_header (thread_p, &btid->sys_btid->vfid, R, &rheader)
+      != NO_ERROR)
     {
       goto exit_on_error;
     }
-
-  /* log the new header record for redo purposes, there is no need
-     to undo the change to the header record, since the page will be
-     deallocated on further undo operations. */
-  log_append_redo_data2 (thread_p, RVBT_NDHEADER_INS, &btid->sys_btid->vfid,
-			 R, HEADER, rec.length, rec.data);
 
   /* move second half of page Q to page R */
 
@@ -11620,6 +11331,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   ret = btree_write_record (thread_p, btid, &nleaf_rec, sep_key,
 			    BTREE_NON_LEAF_NODE, key_type, key_len, false,
 			    NULL, NULL, &rec);
+  rec.type = REC_HOME;
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -11647,22 +11359,15 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   RANDOM_EXIT (thread_p);
 
-  if (spage_get_record (P, HEADER, &peek_rec, PEEK) != S_SUCCESS)
-    {
-      goto exit_on_error;
-    }
+  btree_read_node_header (P, &pheader);
 
-  /* log the old header record for undo purposes */
-  log_append_undo_data2 (thread_p, RVBT_NDHEADER_UPD, &btid->sys_btid->vfid,
-			 P, HEADER, peek_rec.length, peek_rec.data);
+  btree_get_node_key_cnt (P, &key_cnt);
 
-  key_cnt = btree_get_node_key_cnt (P);
-
-  BTREE_GET_NODE_SPLIT_INFO (peek_rec.data, &split_info);
-  assert_release (split_info.pivot >= 0);
+  assert_release (pheader.split_info.pivot >= 0);
   assert_release (key_cnt > 0);
-  btree_split_next_pivot (&split_info, (float) p_slot_id / key_cnt, key_cnt);
-  BTREE_PUT_NODE_SPLIT_INFO (peek_rec.data, &split_info);
+
+  btree_split_next_pivot (&pheader.split_info, (float) p_slot_id / key_cnt,
+			  key_cnt);
 
   /* We may need to update the max_key length if the mid key is larger than
    * the max key length. This can happen due to disk padding when the
@@ -11671,14 +11376,10 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   /* TODO: fix ( compare with MAX(P_max_key_len, new_key_len) */
   sep_key_len = btree_get_key_length (sep_key);
   sep_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, sep_key_len);
-  if (sep_key_len > BTREE_GET_NODE_MAX_KEY_LEN (peek_rec.data))
-    {
-      BTREE_PUT_NODE_MAX_KEY_LEN (peek_rec.data, sep_key_len);
-    }
+  pheader.max_key_len = MAX (sep_key_len, pheader.max_key_len);
 
-  /* log the new header record for redo purposes */
-  log_append_redo_data2 (thread_p, RVBT_NDHEADER_UPD, &btid->sys_btid->vfid,
-			 P, HEADER, peek_rec.length, peek_rec.data);
+  btree_write_node_header (thread_p, &btid->sys_btid->vfid, P, &pheader,
+			   true, true);
 
   /* find the child page to be followed */
 
@@ -11769,11 +11470,11 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 		  VPID * Q_vpid, VPID * R_vpid, BTREE_NODE_TYPE node_type,
 		  DB_VALUE * key, VPID * child_vpid)
 {
-  int key_cnt = 0, leftcnt = 0, rightcnt = 0;
+  int key_cnt, leftcnt, rightcnt, tmp;
   RECDES rec, peek_rec;
   NON_LEAF_REC nleaf_rec;
   INT16 max_key_len;
-  char *header_ptr;
+  BTREE_ROOT_HEADER pheader;
   BTREE_NODE_HEADER qheader, rheader;
   int i, c;
   int sep_key_len, key_len;
@@ -11790,7 +11491,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   char recset_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   int key_type;
   BTREE_NODE_SPLIT_INFO split_info;
-  short node_level;
+  int node_level;
 
   recset_data = NULL;
   rec.data = NULL;
@@ -11829,17 +11530,16 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 			 -1, DB_PAGESIZE, P);
 
   /* get the number of keys in the root page P */
-  btree_get_header_ptr (P, &header_ptr);
-  key_cnt = btree_get_node_key_cnt (P);
+  btree_get_node_key_cnt (P, &key_cnt);
   if (key_cnt <= 0)
     {
       goto exit_on_error;
     }
 
-  node_level = BTREE_GET_NODE_LEVEL (header_ptr);
+  btree_get_node_level (P, &node_level);
   assert (node_level >= 1);
 
-  BTREE_GET_NODE_SPLIT_INFO (header_ptr, &split_info);
+  btree_get_node_split_info (P, &split_info);
   split_info.index = 1;
 
   /* find the middle record of the root page and find the number of
@@ -11862,12 +11562,12 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   rightcnt = key_cnt - leftcnt;
 
   /* update root page P header */
-  if (spage_get_record (P, HEADER, &peek_rec, PEEK) != S_SUCCESS)
+  if (btree_read_root_header (P, &pheader) != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  BTREE_PUT_NODE_LEVEL (peek_rec.data, node_level + 1);
+  pheader.node.node_level++;
 
   /* We may need to update the max_key length if the sep key is larger than
    * the max key length. This can happen due to disk padding when the
@@ -11875,23 +11575,17 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
    */
   sep_key_len = btree_get_key_length (sep_key);
   sep_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, sep_key_len);
-  max_key_len = BTREE_GET_NODE_MAX_KEY_LEN (peek_rec.data);
+  pheader.node.max_key_len = MAX (sep_key_len, pheader.node.max_key_len);
 
-  if (sep_key_len > max_key_len)
-    {
-      max_key_len = sep_key_len;
-      BTREE_PUT_NODE_MAX_KEY_LEN (peek_rec.data, max_key_len);
-    }
+  pheader.node.split_info.pivot = BTREE_SPLIT_DEFAULT_PIVOT;
+  pheader.node.split_info.index = 1;
 
-  btree_write_default_split_info (&peek_rec);
-
-  /* log the new header record for redo purposes */
-  log_append_redo_data2 (thread_p, RVBT_NDHEADER_UPD, &btid->sys_btid->vfid,
-			 P, HEADER, peek_rec.length, peek_rec.data);
+  btree_write_root_header (thread_p, &btid->sys_btid->vfid, P, &pheader,
+			   false, true);
 
   /* update page Q header */
-  qheader.node_level = node_level;
-  qheader.max_key_len = max_key_len;
+  qheader.node_level = pheader.node.node_level - 1;
+  qheader.max_key_len = pheader.node.max_key_len;
 
   if (node_type == BTREE_LEAF_NODE)
     {
@@ -11904,21 +11598,17 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       VPID_SET_NULL (&qheader.next_vpid);
     }
 
-  qheader.split_info = split_info;
-  btree_write_node_header (&rec, &qheader);
-  sp_success = spage_insert_at (thread_p, Q, HEADER, &rec);
-  if (sp_success != SP_SUCCESS)
+  qheader.split_info = pheader.node.split_info;
+
+  if (btree_init_node_header (thread_p, &btid->sys_btid->vfid, Q, &qheader)
+      != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  /* log the new header record for redo purposes */
-  log_append_redo_data2 (thread_p, RVBT_NDHEADER_INS, &btid->sys_btid->vfid,
-			 Q, HEADER, rec.length, rec.data);
-
   /* update page R header */
-  rheader.node_level = node_level;
-  rheader.max_key_len = max_key_len;
+  rheader.node_level = pheader.node.node_level - 1;
+  rheader.max_key_len = pheader.node.max_key_len;
   VPID_SET_NULL (&rheader.next_vpid);
 
   if (node_type == BTREE_LEAF_NODE)
@@ -11932,21 +11622,18 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       VPID_SET_NULL (&qheader.next_vpid);
     }
 
-  rheader.split_info = split_info;
+  rheader.split_info = pheader.node.split_info;
 
-  btree_write_node_header (&rec, &rheader);
-  if (spage_insert_at (thread_p, R, HEADER, &rec) != SP_SUCCESS)
+  if (btree_init_node_header (thread_p, &btid->sys_btid->vfid, R, &rheader)
+      != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  /* log the new header record for redo purposes */
-  log_append_redo_data2 (thread_p, RVBT_NDHEADER_INS, &btid->sys_btid->vfid,
-			 R, HEADER, rec.length, rec.data);
-
   /* move the second half of root page P to page R
    */
-  assert (btree_get_node_key_cnt (P) == leftcnt + rightcnt);
+  btree_get_node_key_cnt (P, &tmp);
+  assert (tmp == leftcnt + rightcnt);
 
   for (i = 1; i <= rightcnt; i++)
     {
@@ -11983,7 +11670,8 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   /* move the first half of root page P to page Q
    */
-  assert (btree_get_node_key_cnt (P) == leftcnt);
+  btree_get_node_key_cnt (P, &tmp);
+  assert (tmp == leftcnt);
 
   for (i = 1; i <= leftcnt; i++)
     {
@@ -12044,6 +11732,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   ret = btree_write_record (thread_p, btid, &nleaf_rec, neg_inf_key,
 			    BTREE_NON_LEAF_NODE, key_type, key_len, false,
 			    NULL, NULL, &rec);
+  rec.type = REC_HOME;
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -12080,6 +11769,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   ret = btree_write_record (thread_p, btid, &nleaf_rec, sep_key,
 			    BTREE_NON_LEAF_NODE, key_type, key_len, false,
 			    NULL, NULL, &rec);
+  rec.type = REC_HOME;
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -12191,7 +11881,6 @@ btree_insert_lock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
   char *rec_oid_ptr = NULL;
   int oid_pos, oids_cnt;
   OID temp_pseudo_oid;
-  char *header_ptr = NULL;
   PAGE_PTR O_page = NULL;
   int ret_val = NO_ERROR;
   LOCK prev_tot_hold_mode;
@@ -12200,6 +11889,7 @@ btree_insert_lock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
 
   assert_release (btid != NULL);
   assert_release (rec != NULL);
+  assert_release (rec->data != NULL);
   assert_release (first_ovfl_vpid != NULL);
   assert_release (class_oid != NULL);
 
@@ -12284,8 +11974,7 @@ btree_insert_lock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
 	}
 
       /* advance to the next page */
-      btree_get_header_ptr (O_page, &header_ptr);
-      btree_get_next_overflow_vpid (header_ptr, &O_vpid);
+      btree_get_next_overflow_vpid (O_page, &O_vpid);
 
       pgbuf_unfix_and_init (thread_p, O_page);
     }
@@ -12352,7 +12041,6 @@ btree_insert_unlock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
   char *rec_oid_ptr = NULL;
   int oid_pos, oids_cnt;
   OID temp_pseudo_oid;
-  char *header_ptr = NULL;
   PAGE_PTR O_page = NULL;
   int ret_val = NO_ERROR;
   VPID O_vpid;
@@ -12360,6 +12048,7 @@ btree_insert_unlock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
 
   assert_release (btid != NULL);
   assert_release (rec != NULL);
+  assert_release (rec->data != NULL);
   assert_release (first_ovfl_vpid != NULL);
   assert_release (class_oid != NULL);
 
@@ -12422,8 +12111,7 @@ btree_insert_unlock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
 	}
 
       /* advance to the next page */
-      btree_get_header_ptr (O_page, &header_ptr);
-      btree_get_next_overflow_vpid (header_ptr, &O_vpid);
+      btree_get_next_overflow_vpid (O_page, &O_vpid);
 
       pgbuf_unfix_and_init (thread_p, O_page);
     }
@@ -12488,9 +12176,8 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   int ret_val;
   LEAF_REC leaf_pnt;
   PAGE_PTR N = NULL;
-  char *header_ptr;
   BTREE_NODE_TYPE node_type;
-  INT16 key_cnt;
+  int key_cnt, tmp;
   VPID next_vpid;
   VPID N_vpid;
   OID N_oid, saved_N_oid;
@@ -12502,8 +12189,6 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   OID saved_N_class_oid, saved_C_class_oid;
   PAGE_PTR temp_page = NULL;
   int alignment;
-  char copy_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
-  char copy_rec_buf1[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   bool is_active;
   bool key_found = false;
   LOCK next_key_granted_mode = NULL_LOCK;
@@ -12514,6 +12199,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   bool old_check_interrupt;
 #endif /* SERVER_MODE */
   int retry_btree_no_space = 0;
+  BTREE_NODE_HEADER header;
 
 #if defined(SERVER_MODE)
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
@@ -12542,13 +12228,12 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       goto error;
     }
 
-  /* read the header record */
-  if (spage_get_record (P, HEADER, &peek_rec, PEEK) != S_SUCCESS)
+  if (btree_read_root_header (P, &root_header) != NO_ERROR)
     {
       goto error;
     }
 
-  btree_read_root_header (&peek_rec, &root_header);
+
   btid_int.sys_btid = btid;
   if (btree_glean_root_header_info (thread_p, &root_header, &btid_int) !=
       NO_ERROR)
@@ -12563,8 +12248,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   alignment = BTREE_MAX_ALIGN;
 
-  node_type =
-    root_header.node.node_level > 1 ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
+  btree_get_node_type (P, &node_type);
   /* if root is a non leaf node, the number of keys is actually one greater */
   key_len = btree_get_key_length (key);
 
@@ -12603,7 +12287,10 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
       /* update the root header */
       VFID_COPY (&root_header.ovfid, &btid_int.ovfid);
-      if (btree_write_root_header (&peek_rec, &root_header) != NO_ERROR)
+
+      if (btree_write_root_header
+	  (thread_p, &btid_int.sys_btid->vfid, P, &root_header, false,
+	   false) != NO_ERROR)
 	{
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 	  goto error;
@@ -12624,38 +12311,18 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   if (key_len_in_page > max_key)
     {
-      /* new key is longer than all the keys in index */
-      copy_rec.area_size = DB_PAGESIZE;
-      copy_rec.data = PTR_ALIGN (copy_rec_buf, BTREE_MAX_ALIGN);
-
-      copy_rec1.area_size = DB_PAGESIZE;
-      copy_rec1.data = PTR_ALIGN (copy_rec_buf1, BTREE_MAX_ALIGN);
-
-      /* save root head for undo purposes */
-      btree_rv_save_root_head (root_header.node.max_key_len, 0, 0, 0,
-			       &copy_rec1);
-
       root_header.node.max_key_len = key_len_in_page;
       max_key = key_len_in_page;
 
-      /* update the root header */
-      if (btree_write_root_header (&copy_rec, &root_header) != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD, &btid->vfid,
-				 P, HEADER, copy_rec1.length, copy_rec.length,
-				 copy_rec1.data, copy_rec.data);
-
-      if (spage_update (thread_p, P, HEADER, &copy_rec) != SP_SUCCESS)
+      ret_val =
+	btree_write_root_header_delta (thread_p, &btid->vfid, P,
+				       &root_header, 0, 0, 0);
+      if (ret_val != NO_ERROR)
 	{
 	  goto error;
 	}
 
       pgbuf_set_dirty (thread_p, P, DONT_FREE);
-      copy_rec.data = NULL;
-      copy_rec1.data = NULL;
     }
 
   if (key == NULL || db_value_is_null (key)
@@ -12674,36 +12341,16 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	    {
 	      root_header.num_nulls++;
 	      root_header.num_oids++;
-	      copy_rec.area_size = DB_PAGESIZE;
-	      copy_rec.data = PTR_ALIGN (copy_rec_buf, BTREE_MAX_ALIGN);
 
-	      copy_rec1.area_size = DB_PAGESIZE;
-	      copy_rec1.data = PTR_ALIGN (copy_rec_buf1, BTREE_MAX_ALIGN);
-
-	      /* save root head for undo purposes */
-	      btree_rv_save_root_head (root_header.node.max_key_len, -1, -1,
-				       0, &copy_rec1);
-
-	      /* update the root header */
-	      if (btree_write_root_header (&copy_rec, &root_header) !=
-		  NO_ERROR)
-		{
-		  goto error;
-		}
-
-	      log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD,
-					 &btid->vfid, P, HEADER,
-					 copy_rec1.length, copy_rec.length,
-					 copy_rec1.data, copy_rec.data);
-
-	      if (spage_update (thread_p, P, HEADER, &copy_rec) != SP_SUCCESS)
+	      ret_val =
+		btree_write_root_header_delta (thread_p, &btid->vfid, P,
+					       &root_header, -1, -1, 0);
+	      if (ret_val != NO_ERROR)
 		{
 		  goto error;
 		}
 
 	      pgbuf_set_dirty (thread_p, P, DONT_FREE);
-	      copy_rec.data = NULL;
-	      copy_rec1.data = NULL;
 	    }
 	  else
 	    {			/* MULTI_ROW_INSERT, MULTI_ROW_UPDATE */
@@ -12752,37 +12399,19 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       if (op_type == SINGLE_ROW_INSERT || op_type == SINGLE_ROW_UPDATE
 	  || op_type == SINGLE_ROW_MODIFY)
 	{
-	  copy_rec.area_size = DB_PAGESIZE;
-	  copy_rec.data = PTR_ALIGN (copy_rec_buf, BTREE_MAX_ALIGN);
-
-	  copy_rec1.area_size = DB_PAGESIZE;
-	  copy_rec1.data = PTR_ALIGN (copy_rec_buf1, BTREE_MAX_ALIGN);
-
-	  /* save root head for undo purposes */
-	  btree_rv_save_root_head (root_header.node.max_key_len, 0, -1,
-				   -1, &copy_rec1);
-
 	  /* update the root header */
 	  root_header.num_oids++;
 	  root_header.num_keys++;	/* guess new key insert */
-	  if (btree_write_root_header (&copy_rec, &root_header) != NO_ERROR)
-	    {
-	      goto error;
-	    }
 
-	  log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD,
-				     &btid->vfid, P, HEADER, copy_rec1.length,
-				     copy_rec.length, copy_rec1.data,
-				     copy_rec.data);
-
-	  if (spage_update (thread_p, P, HEADER, &copy_rec) != SP_SUCCESS)
+	  ret_val =
+	    btree_write_root_header_delta (thread_p, &btid->vfid, P,
+					   &root_header, 0, -1, -1);
+	  if (ret_val != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
 	  pgbuf_set_dirty (thread_p, P, DONT_FREE);
-	  copy_rec.data = NULL;
-	  copy_rec1.data = NULL;
 	}
       else
 	{
@@ -12881,14 +12510,8 @@ start_point:
 	  goto error;
 	}
 
-      /* read the header record */
-      if (spage_get_record (P, HEADER, &peek_rec, PEEK) != S_SUCCESS)
-	{
-	  goto error;
-	}
-
-      node_type = BTREE_GET_NODE_TYPE (peek_rec.data);
-      max_key = BTREE_GET_NODE_MAX_KEY_LEN (peek_rec.data);
+      btree_get_node_type (P, &node_type);
+      btree_get_node_max_key_len (P, &max_key);
     }
 
   /* find the maximum entry size that may need to be inserted to the root */
@@ -12907,7 +12530,7 @@ start_point:
   /* free space in the root node */
   max_free = spage_max_space_for_new_record (thread_p, P);
 
-  key_cnt = btree_get_node_key_cnt (P);
+  btree_get_node_key_cnt (P, &key_cnt);
 
   /* there is a need to split the root, only if there is not enough space
    * for a new entry and either there are more than one record or else
@@ -13041,10 +12664,9 @@ start_point:
     }
 
   /* get the header record */
-  btree_get_header_ptr (P, &header_ptr);
-  node_type = BTREE_GET_NODE_TYPE (header_ptr);
-  key_cnt = btree_get_node_key_cnt (P);
-  BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
+  btree_get_node_type (P, &node_type);
+  btree_get_node_key_cnt (P, &key_cnt);
+  btree_get_node_next_vpid (P, &next_vpid);
 
   while (node_type == BTREE_NON_LEAF_NODE)
     {
@@ -13065,28 +12687,21 @@ start_point:
       max_free = spage_max_space_for_new_record (thread_p, Q);
 
       /* read the header record */
-      if (spage_get_record (Q, HEADER, &peek_rec, PEEK) != S_SUCCESS)
+      if (btree_read_node_header (Q, &header) != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      node_type = BTREE_GET_NODE_TYPE (peek_rec.data);
-      key_cnt = btree_get_node_key_cnt (Q);
+      btree_get_node_type (Q, &node_type);
+      btree_get_node_key_cnt (Q, &key_cnt);
 
-      max_key = BTREE_GET_NODE_MAX_KEY_LEN (peek_rec.data);
       key_len_in_page = BTREE_GET_KEY_LEN_IN_PAGE (node_type, key_len);
-
       /* is new key longer than all in the subtree of child page Q ? */
-      if (key_len_in_page > max_key)
+      if (key_len_in_page > header.max_key_len)
 	{
-	  BTREE_PUT_NODE_MAX_KEY_LEN (peek_rec.data, key_len_in_page);
-	  max_key = key_len_in_page;
-
-	  /* log the new header record for redo purposes, there is no need
-	   * to undo the change to the header record
-	   */
-	  log_append_redo_data2 (thread_p, RVBT_NDHEADER_UPD, &btid->vfid, Q,
-				 HEADER, peek_rec.length, peek_rec.data);
+	  header.max_key_len = key_len_in_page;
+	  btree_write_node_header (thread_p, &btid->vfid, Q, &header, false,
+				   true);
 	  pgbuf_set_dirty (thread_p, Q, DONT_FREE);
 	}
 
@@ -13248,10 +12863,9 @@ start_point:
       P_vpid = Q_vpid;
 
       /* node_type must be recalculated */
-      btree_get_header_ptr (P, &header_ptr);
-      node_type = BTREE_GET_NODE_TYPE (header_ptr);
-      key_cnt = btree_get_node_key_cnt (P);
-      BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
+      btree_get_node_type (P, &node_type);
+      btree_get_node_key_cnt (P, &key_cnt);
+      btree_get_node_next_vpid (P, &next_vpid);
     }				/* while */
 
   p_slot_id = NULL_SLOTID;
@@ -13360,10 +12974,10 @@ start_point:
 	      pgbuf_unfix_and_init (thread_p, temp_page);
 	    }
 
-	  if (btree_get_node_key_cnt (N) == 0)
+	  btree_get_node_key_cnt (N, &tmp);
+	  if (tmp == 0)
 	    {			/* empty leaf page */
-	      btree_get_header_ptr (N, &header_ptr);
-	      BTREE_GET_NODE_NEXT_VPID (header_ptr, &N_vpid);
+	      btree_get_node_next_vpid (N, &N_vpid);
 
 	      temp_page = N;
 	      N = NULL;
@@ -13806,7 +13420,7 @@ curr_key_lock_promote:
     }
 
 curr_key_lock_consistency:
-  if (curr_key_many_locks_needed)
+  if (curr_key_many_locks_needed && peek_rec.data != NULL)
     {
       assert (offset != -1);
       if (btree_insert_lock_curr_key_remaining_pseudo_oid
@@ -13818,7 +13432,8 @@ curr_key_lock_consistency:
 	}
     }
 
-  if (curr_key_lock_escalation != NO_KEY_LOCK_ESCALATION)
+  if (curr_key_lock_escalation != NO_KEY_LOCK_ESCALATION
+      && peek_rec.data != NULL)
     {
       /* key lock escalated
        * unlock remaining PSEUDO-OIDs of current key, previously NS-locked
@@ -14096,14 +13711,11 @@ btree_reflect_unique_statistics (THREAD_ENTRY * thread_p,
       goto exit_on_error;
     }
 
-  /* get the header record of the root page */
-  if (spage_get_record (root, HEADER, &root_rec, PEEK) != S_SUCCESS)
+  /* read the root information */
+  if (btree_read_root_header (root, &root_header) != NO_ERROR)
     {
       goto exit_on_error;
     }
-
-  /* read the root information */
-  btree_read_root_header (&root_rec, &root_header);
 
   if (logtb_is_current_active (thread_p) && (root_header.num_nulls != -1))
     {
@@ -14112,32 +13724,15 @@ btree_reflect_unique_statistics (THREAD_ENTRY * thread_p,
       root_header.num_oids += unique_stat_info->num_oids;
       root_header.num_keys += unique_stat_info->num_keys;
 
-      /* prepare memory space for logging root header information */
-      undo_rec.area_size = ROOT_HEADER_FIXED_SIZE;
-      undo_rec.data = &(undo_data[0]);
-      redo_rec.area_size = DB_PAGESIZE;
-      redo_rec.data = PTR_ALIGN (redo_data_buf, BTREE_MAX_ALIGN);
 
-      /* save root header for undo purposes */
-      btree_rv_save_root_head (root_header.node.max_key_len,
-			       -(unique_stat_info->num_nulls),
-			       -(unique_stat_info->num_oids),
-			       -(unique_stat_info->num_keys), &undo_rec);
-
-      /* update the root header */
-      if (btree_write_root_header (&redo_rec, &root_header) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-
-      /* log the update with undo-redo record */
-      log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD,
-				 &(unique_stat_info->btid.vfid), root, HEADER,
-				 undo_rec.length, redo_rec.length,
-				 undo_rec.data, redo_rec.data);
-
-      /* update root header record */
-      if (spage_update (thread_p, root, HEADER, &redo_rec) != SP_SUCCESS)
+      ret =
+	btree_write_root_header_delta (thread_p,
+				       &unique_stat_info->btid.vfid, root,
+				       &root_header,
+				       -(unique_stat_info->num_nulls),
+				       -(unique_stat_info->num_oids),
+				       -(unique_stat_info->num_keys));
+      if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -14184,7 +13779,6 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   PAGE_PTR P = NULL, Q = NULL;
   VPID P_vpid, Q_vpid;
   INT16 p_slot_id;
-  char *header_ptr;
   BTREE_NODE_TYPE node_type;
 
   *found = false;
@@ -14214,8 +13808,7 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       goto error;
     }
 
-  btree_get_header_ptr (P, &header_ptr);
-  node_type = BTREE_GET_NODE_TYPE (header_ptr);
+  btree_get_node_type (P, &node_type);
 
   while (node_type == BTREE_NON_LEAF_NODE)
     {
@@ -14236,8 +13829,7 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       pgbuf_unfix_and_init (thread_p, P);
 
       /* read the header record */
-      btree_get_header_ptr (Q, &header_ptr);
-      node_type = BTREE_GET_NODE_TYPE (header_ptr);
+      btree_get_node_type (Q, &node_type);
 
       P = Q;
       Q = NULL;
@@ -14278,8 +13870,8 @@ btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
 			     BTREE_STATS * stat_info_p)
 {
   int key_cnt;
-  char *header_ptr;
   int ret = NO_ERROR;
+  BTREE_NODE_TYPE node_type;
 
   if (BTS->use_desc_index)
     {
@@ -14301,9 +13893,9 @@ btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS,
     }
 
   /* get header information (key_cnt) */
-  btree_get_header_ptr (BTS->C_page, &header_ptr);
-  key_cnt = btree_get_node_key_cnt (BTS->C_page);
-  if (!(BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE))
+  btree_get_node_key_cnt (BTS->C_page, &key_cnt);
+  btree_get_node_type (BTS->C_page, &node_type);
+  if (node_type != BTREE_LEAF_NODE)
     {
       assert_release (false);
       goto exit_on_error;
@@ -14359,13 +13951,12 @@ static PAGE_PTR
 btree_find_first_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 		       BTREE_STATS * stat_info_p)
 {
-  PAGE_PTR P_page = NULL, C_page = NULL;
+  PAGE_PTR P_page = NULL, C_page = NULL, last_page;
   VPID P_vpid, C_vpid;
-  char *header_ptr;
   BTREE_NODE_TYPE node_type;
   NON_LEAF_REC nleaf;
   RECDES rec;
-  int key_cnt = 0;
+  int key_cnt = 0, tmp;
   int depth = 0;
 
   VPID_SET_NULL (pg_vpid);
@@ -14380,8 +13971,8 @@ btree_find_first_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
       goto error;
     }
 
-  btree_get_header_ptr (P_page, &header_ptr);
-  node_type = BTREE_GET_NODE_TYPE (header_ptr);
+  btree_get_node_type (P_page, &node_type);
+  last_page = P_page;
 
   while (node_type == BTREE_NON_LEAF_NODE)
     {
@@ -14389,11 +13980,11 @@ btree_find_first_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 
       /* get the first child page to follow */
 
-      if (btree_get_node_key_cnt (P_page) <= 0)
+      btree_get_node_key_cnt (P_page, &tmp);
+      if (tmp <= 0)
 	{			/* node record underflow */
 	  er_log_debug (ARG_FILE_LINE, "btree_find_first_leaf: node key count"
-			" underflow: %d. Operation Ignored.",
-			btree_get_node_key_cnt (P_page));
+			" underflow: %d. Operation Ignored.", key_cnt);
 	  goto error;
 	}
 
@@ -14412,9 +14003,9 @@ btree_find_first_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 	}
       pgbuf_unfix_and_init (thread_p, P_page);
 
-      btree_get_header_ptr (C_page, &header_ptr);
-      node_type = BTREE_GET_NODE_TYPE (header_ptr);
-      key_cnt = btree_get_node_key_cnt (C_page);
+      btree_get_node_type (C_page, &node_type);
+      btree_get_node_key_cnt (C_page, &key_cnt);
+      last_page = C_page;
 
       P_page = C_page;
       C_page = NULL;
@@ -14429,7 +14020,7 @@ btree_find_first_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 again:
 
   /* fix the next leaf page and set slot_id and oid_pos if it exists. */
-  BTREE_GET_NODE_NEXT_VPID (header_ptr, &C_vpid);
+  btree_get_node_next_vpid (last_page, &C_vpid);
   if (!VPID_ISNULL (&C_vpid))
     {
       C_page = pgbuf_fix (thread_p, &C_vpid, OLD_PAGE,
@@ -14450,8 +14041,7 @@ again:
   /* check if the current leaf page has valid slots */
   if (C_page != NULL)
     {
-      btree_get_header_ptr (C_page, &header_ptr);
-      key_cnt = btree_get_node_key_cnt (C_page);
+      btree_get_node_key_cnt (C_page, &key_cnt);
 
       if (key_cnt <= 0)
 	{			/* empty page */
@@ -14533,7 +14123,6 @@ btree_find_last_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 {
   PAGE_PTR P = NULL, Q = NULL;
   VPID P_vpid, Q_vpid;
-  char *header_ptr;
   BTREE_NODE_TYPE node_type;
   NON_LEAF_REC nleaf;
   RECDES rec;
@@ -14554,8 +14143,7 @@ btree_find_last_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
       goto error;
     }
 
-  btree_get_header_ptr (P, &header_ptr);
-  node_type = BTREE_GET_NODE_TYPE (header_ptr);
+  btree_get_node_type (P, &node_type);
 
   while (node_type == BTREE_NON_LEAF_NODE)
     {
@@ -14563,7 +14151,7 @@ btree_find_last_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 
       /* get the first child page to follow */
 
-      key_cnt = btree_get_node_key_cnt (P);
+      btree_get_node_key_cnt (P, &key_cnt);
       if (key_cnt <= 0)
 	{			/* node record underflow */
 	  er_log_debug (ARG_FILE_LINE, "btree_find_last_leaf: node key count"
@@ -14585,14 +14173,13 @@ btree_find_last_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 	  goto error;
 	}
 
-      btree_get_header_ptr (Q, &header_ptr);
-      node_type = BTREE_GET_NODE_TYPE (header_ptr);
+      btree_get_node_type (Q, &node_type);
 
       if (node_type == BTREE_LEAF_NODE)
 	{
 	  int leaf_key_cnt;
 
-	  leaf_key_cnt = btree_get_node_key_cnt (Q);
+	  btree_get_node_key_cnt (Q, &leaf_key_cnt);
 
 	  /* for empty leaf-page, retry one more */
 	  if (leaf_key_cnt <= 0)
@@ -14667,7 +14254,6 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid,
 {
   PAGE_PTR P_page = NULL, C_page = NULL;
   VPID P_vpid, C_vpid;
-  char *header_ptr;
   int slot_id;
   BTREE_NODE_TYPE node_type;
   NON_LEAF_REC nleaf;
@@ -14694,9 +14280,8 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid,
       goto error;
     }
 
-  btree_get_header_ptr (P_page, &header_ptr);
-  node_type = BTREE_GET_NODE_TYPE (header_ptr);
-  key_cnt = btree_get_node_key_cnt (P_page);
+  btree_get_node_type (P_page, &node_type);
+  btree_get_node_key_cnt (P_page, &key_cnt);
 
   est_page_size = (int) (DB_PAGESIZE - (spage_header_size () +
 					NODE_HEADER_SIZE +
@@ -14735,9 +14320,8 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid,
 	}
       pgbuf_unfix_and_init (thread_p, P_page);
 
-      btree_get_header_ptr (C_page, &header_ptr);
-      node_type = BTREE_GET_NODE_TYPE (header_ptr);
-      key_cnt = btree_get_node_key_cnt (C_page);
+      btree_get_node_type (C_page, &node_type);
+      btree_get_node_key_cnt (C_page, &key_cnt);
 
       /* update Acceptance probability */
 
@@ -14760,7 +14344,7 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid,
 again:
 
   /* fix the next leaf page and set slot_id and oid_pos if it exists. */
-  BTREE_GET_NODE_NEXT_VPID (header_ptr, &C_vpid);
+  btree_get_node_next_vpid (C_page, &C_vpid);
   if (!VPID_ISNULL (&C_vpid))
     {
       C_page = pgbuf_fix (thread_p, &C_vpid, OLD_PAGE,
@@ -14781,8 +14365,7 @@ again:
   /* check if the current leaf page has valid slots */
   if (C_page != NULL)
     {
-      btree_get_header_ptr (C_page, &header_ptr);
-      key_cnt = btree_get_node_key_cnt (C_page);
+      btree_get_node_key_cnt (C_page, &key_cnt);
 
       if (key_cnt <= 0)
 	{			/* empty page */
@@ -15267,12 +14850,12 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	{
 	  goto exit_on_error;
 	}
-      if (spage_get_record (root, HEADER, &rec, PEEK) != S_SUCCESS)
+
+      if (btree_read_root_header (root, &root_header) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      btree_read_root_header (&rec, &root_header);
       pgbuf_unfix_and_init (thread_p, root);
 
       bts->btid_int.sys_btid = btid;
@@ -15540,10 +15123,10 @@ static int
 btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 			      int direction)
 {
-  char *header_ptr;
   int key_cnt;
-  PAGE_PTR temp_page = NULL;
+  PAGE_PTR temp_page = NULL, header_page;
   int ret = NO_ERROR;
+  BTREE_NODE_TYPE node_type;
 
   /* if direction, we are in the descending index mode. */
   if (direction)
@@ -15586,13 +15169,13 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
       bts->P_vpid = bts->C_vpid;
       bts->P_page = bts->C_page;
 
-      btree_get_header_ptr (bts->C_page, &header_ptr);
+      header_page = bts->C_page;
       bts->C_page = NULL;
 
     again_desc:
       /* move in the previous page */
       /* fix the previous leaf page and set slot_id and oid_pos if exists. */
-      BTREE_GET_NODE_PREV_VPID (header_ptr, &bts->C_vpid);
+      btree_get_node_prev_vpid (header_page, &bts->C_vpid);
 
       if (!VPID_ISNULL (&(bts->C_vpid)))
 	{
@@ -15620,9 +15203,10 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
       /* check if the current leaf page has valid slots */
       if (bts->C_page != NULL)
 	{
-	  btree_get_header_ptr (bts->C_page, &header_ptr);
-	  key_cnt = btree_get_node_key_cnt (bts->C_page);
-	  assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE);
+	  header_page = bts->C_page;
+	  btree_get_node_key_cnt (bts->C_page, &key_cnt);
+	  assert (btree_get_node_type (bts->C_page, &node_type) == NO_ERROR &&
+		  node_type == BTREE_LEAF_NODE);
 
 	  if (key_cnt <= 0)
 	    {			/* empty page */
@@ -15682,9 +15266,10 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
     }
 
   /* get header information (key_cnt) from the current leaf page */
-  btree_get_header_ptr (bts->C_page, &header_ptr);
-  key_cnt = btree_get_node_key_cnt (bts->C_page);
-  assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE);
+  header_page = bts->C_page;
+  btree_get_node_key_cnt (bts->C_page, &key_cnt);
+  assert (btree_get_node_type (bts->C_page, &node_type) == NO_ERROR &&
+	  node_type == BTREE_LEAF_NODE);
 
   /*
    * If the next index record exists in the current leaf page,
@@ -15708,7 +15293,7 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 again:
 
   /* fix the next leaf page and set slot_id and oid_pos if it exists. */
-  BTREE_GET_NODE_NEXT_VPID (header_ptr, &bts->C_vpid);
+  btree_get_node_next_vpid (header_page, &bts->C_vpid);
   if (!VPID_ISNULL (&(bts->C_vpid)))
     {
       bts->C_page = pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE,
@@ -15738,10 +15323,10 @@ again:
   /* check if the current leaf page has valid slots */
   if (bts->C_page != NULL)
     {
-      btree_get_header_ptr (bts->C_page, &header_ptr);
-      key_cnt = btree_get_node_key_cnt (bts->C_page);
-      assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE);
-
+      header_page = bts->C_page;
+      btree_get_node_key_cnt (bts->C_page, &key_cnt);
+      assert (btree_get_node_type (bts->C_page, &node_type) == NO_ERROR &&
+	      node_type == BTREE_LEAF_NODE);
       if (key_cnt <= 0)
 	{			/* empty page */
 	  temp_page = bts->C_page;
@@ -15780,7 +15365,6 @@ static int
 btree_get_next_oidset_pos (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 			   VPID * first_ovfl_vpid)
 {
-  char *header_ptr;
   int ret = NO_ERROR;
 
   /*
@@ -15797,8 +15381,7 @@ btree_get_next_oidset_pos (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
        * bts->oid_pos >= # of OIDs contained in the overflow page
        */
       /* get the pageid of the next overflow page */
-      btree_get_header_ptr (bts->O_page, &header_ptr);
-      btree_get_next_overflow_vpid (header_ptr, &bts->O_vpid);
+      btree_get_next_overflow_vpid (bts->O_page, &bts->O_vpid);
 
       /* unfix current overflow page */
       pgbuf_unfix_and_init (thread_p, bts->O_page);
@@ -15863,8 +15446,8 @@ btree_prepare_first_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
   int found;
   int key_cnt;
-  char *header_ptr;
   int ret = NO_ERROR;
+  BTREE_NODE_TYPE node_type;
 
   /* search down the tree to find the first oidset */
   /*
@@ -15927,9 +15510,9 @@ btree_prepare_first_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	{
 	  return ret;
 	}
-      btree_get_header_ptr (bts->C_page, &header_ptr);
-      key_cnt = btree_get_node_key_cnt (bts->C_page);
-      assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE);
+      btree_get_node_key_cnt (bts->C_page, &key_cnt);
+      assert (btree_get_node_type (bts->C_page, &node_type) == NO_ERROR &&
+	      node_type == BTREE_LEAF_NODE);
 
       if (bts->slot_id > key_cnt)
 	{
@@ -15990,11 +15573,11 @@ static int
 btree_prepare_next_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
 #if defined(SERVER_MODE)
-  char *header_ptr;
   int key_cnt;
   int found;
 #endif /* SERVER_MODE */
   int ret = NO_ERROR;
+  BTREE_NODE_TYPE node_type;
 
   /*
    * Assumptions :
@@ -16043,9 +15626,9 @@ btree_prepare_next_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	       * bts->cur_key might be deleted.
 	       * get header information (key_cnt)
 	       */
-	      btree_get_header_ptr (bts->C_page, &header_ptr);
-	      key_cnt = btree_get_node_key_cnt (bts->C_page);
-	      assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE);
+	      btree_get_node_key_cnt (bts->C_page, &key_cnt);
+	      assert (btree_get_node_type (bts->C_page, &node_type) ==
+		      NO_ERROR && node_type == BTREE_LEAF_NODE);
 
 	      if (bts->slot_id > key_cnt)
 		{
@@ -16500,11 +16083,11 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
 				      LOG_LSA * prev_leaf_lsa,
 				      DB_VALUE * prev_key, int *which_action)
 {
-  char *header_ptr;
   int key_cnt;
   int found;
   int ret = NO_ERROR;
   bool old_check_page_validation;
+  BTREE_NODE_TYPE node_type;
 
   /*
    * Following conditions are satisfied.
@@ -16552,9 +16135,9 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
 	  VPID_SET_NULL (&(bts->P_vpid));
 
 	  /* get bts->slot_id */
-	  btree_get_header_ptr (bts->C_page, &header_ptr);
-	  key_cnt = btree_get_node_key_cnt (bts->C_page);
-	  assert (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE);
+	  btree_get_node_key_cnt (bts->C_page, &key_cnt);
+	  assert (btree_get_node_type (bts->C_page, &node_type) == NO_ERROR &&
+		  node_type == BTREE_LEAF_NODE);
 
 	  bts->slot_id = key_cnt;
 
@@ -17293,8 +16876,7 @@ btree_lock_next_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 		     DB_VALUE * prev_key, OID * nk_pseudo_oid,
 		     OID * nk_class_oid, int *which_action)
 {
-  INT16 key_cnt;
-  char *header_ptr;
+  int key_cnt;
   INT16 next_slot_id;
   VPID next_vpid;
   PAGE_PTR next_page = NULL, temp_page = NULL;
@@ -17327,8 +16909,7 @@ btree_lock_next_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   *which_action = BTREE_CONTINUE;
 
 start_point:
-  btree_get_header_ptr (bts->C_page, &header_ptr);
-  key_cnt = btree_get_node_key_cnt (bts->C_page);
+  btree_get_node_key_cnt (bts->C_page, &key_cnt);
 
   if (bts->slot_id < key_cnt)
     {
@@ -17344,7 +16925,7 @@ start_point:
     {
       next_page_flag = true;
       next_slot_id = 1;
-      BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
+      btree_get_node_next_vpid (bts->C_page, &next_vpid);
 
     get_next_oid:
       if (VPID_ISNULL (&next_vpid))
@@ -17387,8 +16968,7 @@ start_point:
 
       if (spage_number_of_records (next_page) == 1)
 	{
-	  btree_get_header_ptr (next_page, &header_ptr);
-	  BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
+	  btree_get_node_next_vpid (next_page, &next_vpid);
 
 	  temp_page = next_page;
 	  next_page = NULL;
@@ -17665,12 +17245,10 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid,
       goto exit_on_error;
     }
 
-  if (spage_get_record (root_page_ptr, HEADER, &rec, PEEK) != S_SUCCESS)
+  if (btree_read_root_header (root_page_ptr, &root_header) != NO_ERROR)
     {
       goto exit_on_error;
     }
-
-  btree_read_root_header (&rec, &root_header);
 
   pgbuf_unfix_and_init (thread_p, root_page_ptr);
 
@@ -17908,7 +17486,7 @@ btree_rv_save_keyval (BTID_INT * btid, DB_VALUE * key,
   *length = CAST_STRLEN (datap - *data);
 
   assert (0 < *length);
-  assert (*length <= size);
+  assert (*length <= (int) size);
 
   return ret;
 
@@ -17916,40 +17494,6 @@ exit_on_error:
 
   return (ret == NO_ERROR
 	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
-}
-
-/*
- * btree_rv_save_root_head () - Save root head stats FOR LOGICAL LOG PURPOSES
- *   return:
- *   max_key_len(in):
- *   null_delta(in):
- *   oid_delta(in):
- *   key_delta(in):
- *   recdes(in):
- *
- * Note: Copy the root header statistics to the data area provided.
- *
- * Note: This is a UTILITY routine, but not an actual recovery routine.
- */
-static void
-btree_rv_save_root_head (int max_key_len, int null_delta,
-			 int oid_delta, int key_delta, RECDES * recdes)
-{
-  char *datap;
-
-  recdes->length = 0;
-  datap = (char *) recdes->data;
-  OR_PUT_INT (datap, max_key_len);
-  datap += OR_INT_SIZE;
-  OR_PUT_INT (datap, null_delta);
-  datap += OR_INT_SIZE;
-  OR_PUT_INT (datap, oid_delta);
-  datap += OR_INT_SIZE;
-  OR_PUT_INT (datap, key_delta);
-  datap += OR_INT_SIZE;
-
-  recdes->length = CAST_STRLEN (datap - recdes->data);
-
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -17998,11 +17542,11 @@ btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp,
 int
 btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
-  char *header_ptr;
   INT32 num_nulls;
   INT32 num_oids;
   INT32 num_keys;
   char *datap;
+  BTREE_ROOT_HEADER root_header;
 
   if (recv->length < 4 * OR_INT_SIZE)
     {
@@ -18010,21 +17554,21 @@ btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       goto error;
     }
 
-  btree_get_header_ptr (recv->pgptr, &header_ptr);
 
-  num_nulls = BTREE_GET_NUM_NULLS (header_ptr);
-  num_oids = BTREE_GET_NUM_OIDS (header_ptr);
-  num_keys = BTREE_GET_NUM_KEYS (header_ptr);
+  btree_read_root_header (recv->pgptr, &root_header);
 
   /* unpack the root statistics */
   datap = (char *) recv->data;
-  BTREE_PUT_NODE_MAX_KEY_LEN (header_ptr, OR_GET_INT (datap));
+  root_header.node.max_key_len = OR_GET_INT (datap);
   datap += OR_INT_SIZE;
-  BTREE_PUT_NUM_NULLS (header_ptr, num_nulls + OR_GET_INT (datap));
+  root_header.num_nulls += OR_GET_INT (datap);
   datap += OR_INT_SIZE;
-  BTREE_PUT_NUM_OIDS (header_ptr, num_oids + OR_GET_INT (datap));
+  root_header.num_oids += OR_GET_INT (datap);
   datap += OR_INT_SIZE;
-  BTREE_PUT_NUM_KEYS (header_ptr, num_keys + OR_GET_INT (datap));
+  root_header.num_keys += OR_GET_INT (datap);
+
+  btree_write_root_header (thread_p, NULL, recv->pgptr, &root_header, false,
+			   false);
 
   pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);
   return NO_ERROR;
@@ -18076,8 +17620,8 @@ btree_rv_roothdr_dump (FILE * fp, int length, void *data)
 int
 btree_rv_ovfid_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
-  char *header_ptr;
   VFID ovfid;
+  BTREE_ROOT_HEADER root_header;
 
   if (recv->length < (int) sizeof (VFID))
     {
@@ -18085,10 +17629,12 @@ btree_rv_ovfid_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       goto error;
     }
 
-  btree_get_header_ptr (recv->pgptr, &header_ptr);
+  btree_read_root_header (recv->pgptr, &root_header);
 
   ovfid = *((VFID *) recv->data);	/* structure copy */
-  BTREE_PUT_OVFID (header_ptr, &ovfid);
+  root_header.ovfid = ovfid;
+  btree_write_root_header (thread_p, NULL, recv->pgptr, &root_header, false,
+			   false);
 
   pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);
 
@@ -18205,35 +17751,6 @@ btree_rv_nodehdr_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 
   pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);
   return NO_ERROR;
-}
-
-/*
- * btree_rv_nodehdr_dump () - Dump node header recovery information
- *   return: int
- *   length(in): Length of Recovery Data
- *   data(in): The data being logged
- *
- * Note: Dump node header recovery information
- */
-void
-btree_rv_nodehdr_dump (FILE * fp, int length, void *data)
-{
-  char *header_ptr;
-  VPID prev_vpid;
-  VPID next_vpid;
-
-  header_ptr = (char *) data;
-  BTREE_GET_NODE_PREV_VPID (header_ptr, &prev_vpid);
-  BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
-
-  fprintf (fp,
-	   "\nNODE_TYPE: %s MAX_KEY_LEN: %4d "
-	   "PREV_PAGEID: {%4d , %4d} NEXT_PAGEID: {%4d , %4d} \n\n",
-	   (BTREE_GET_NODE_TYPE (header_ptr) ==
-	    BTREE_LEAF_NODE) ? "LEAF" : "NON_LEAF",
-	   BTREE_GET_NODE_MAX_KEY_LEN (header_ptr),
-	   prev_vpid.volid, prev_vpid.pageid,
-	   next_vpid.volid, next_vpid.pageid);
 }
 
 /*
@@ -18629,13 +18146,11 @@ btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p,
   root_vpid.volid = btid->sys_btid->vfid.volid;
   root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE,
 		    PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (root == NULL
-      || (spage_get_record (root, HEADER, &rec, PEEK) != S_SUCCESS))
+  if (root == NULL || btree_read_root_header (root, &root_header) != NO_ERROR)
     {
       goto error;
     }
 
-  btree_read_root_header (&rec, &root_header);
   if (btree_glean_root_header_info (thread_p, &root_header, btid) != NO_ERROR)
     {
       goto error;
@@ -18812,7 +18327,7 @@ btree_rv_undoredo_copy_page (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 int
 btree_rv_leafrec_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
-  char *header_ptr;
+  BTREE_NODE_HEADER header;
   RECDES rec;
   INT16 slotid;
   int key_cnt;
@@ -18830,12 +18345,13 @@ btree_rv_leafrec_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
     }
 
   /* update the page header */
-  btree_get_header_ptr (recv->pgptr, &header_ptr);
-
-  key_cnt = btree_get_node_key_cnt (recv->pgptr);
+  btree_get_node_key_cnt (recv->pgptr, &key_cnt);
   if (key_cnt == 0)
     {
-      BTREE_PUT_NODE_MAX_KEY_LEN (header_ptr, 0);
+      btree_read_node_header (recv->pgptr, &header);
+      header.max_key_len = 0;
+      btree_write_node_header (thread_p, NULL, recv->pgptr, &header, false,
+			       false);
     }
 
   pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);
@@ -18857,9 +18373,9 @@ error:
 int
 btree_rv_leafrec_redo_insert_key (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
-  char *header_ptr;
+  BTREE_NODE_HEADER header;
   RECDES rec;
-  INT16 key_cnt;
+  int key_cnt;
   INT16 slotid;
   int key_len;
   int sp_success;
@@ -18886,19 +18402,16 @@ btree_rv_leafrec_redo_insert_key (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       goto error;
     }
 
-  btree_get_header_ptr (recv->pgptr, &header_ptr);
-
-  key_cnt = btree_get_node_key_cnt (recv->pgptr);
+  btree_read_node_header (recv->pgptr, &header);
+  btree_get_node_key_cnt (recv->pgptr, &key_cnt);
 
   key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_LEAF_NODE, key_len);
-  if (BTREE_GET_NODE_MAX_KEY_LEN (header_ptr) < key_len)
-    {
-      BTREE_PUT_NODE_MAX_KEY_LEN (header_ptr, key_len);
-    }
-  BTREE_GET_NODE_SPLIT_INFO (header_ptr, &split_info);
-  assert (split_info.pivot >= 0 && key_cnt > 0);
-  btree_split_next_pivot (&split_info, (float) slotid / key_cnt, key_cnt);
-  BTREE_PUT_NODE_SPLIT_INFO (header_ptr, &split_info);
+  header.max_key_len = MAX (header.max_key_len, key_len);
+
+  assert (header.split_info.pivot >= 0 && key_cnt > 0);
+
+  btree_split_next_pivot (&header.split_info, (float) slotid / key_cnt,
+			  key_cnt);
 
   pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);
 
@@ -19247,7 +18760,6 @@ btree_find_key_from_leaf (THREAD_ENTRY * thread_p,
   RECDES rec;
   LEAF_REC leaf_pnt;
   VPID ovfl_vpid;
-  char *header_ptr;
   int i, offset;
 
   VPID_SET_NULL (&leaf_pnt.ovfl);
@@ -19283,8 +18795,7 @@ btree_find_key_from_leaf (THREAD_ENTRY * thread_p,
 		  return DISK_ERROR;
 		}
 
-	      btree_get_header_ptr (ovfp, &header_ptr);
-	      btree_get_next_overflow_vpid (header_ptr, &ovfl_vpid);
+	      btree_get_next_overflow_vpid (ovfp, &ovfl_vpid);
 
 	      (void) spage_get_record (ovfp, 1, &orec, PEEK);
 	      if (btree_find_oid_from_ovfl (&orec, oid) != NOT_FOUND)
@@ -19375,14 +18886,12 @@ btree_find_key_from_page (THREAD_ENTRY * thread_p,
 			  BTID_INT * btid, PAGE_PTR pg_ptr,
 			  OID * oid, DB_VALUE * key, bool * clear_key)
 {
-  char *header_ptr;
   BTREE_NODE_TYPE node_type;
-  INT16 key_cnt;
+  int key_cnt;
   DISK_ISVALID status;
 
-  btree_get_header_ptr (pg_ptr, &header_ptr);
-  node_type = BTREE_GET_NODE_TYPE (header_ptr);
-  key_cnt = btree_get_node_key_cnt (pg_ptr);
+  btree_get_node_type (pg_ptr, &node_type);
+  btree_get_node_key_cnt (pg_ptr, &key_cnt);
 
   if (node_type == BTREE_NON_LEAF_NODE)
     {
@@ -19427,13 +18936,11 @@ btree_find_key (THREAD_ENTRY * thread_p, BTID * btid, OID * oid,
       return DISK_ERROR;
     }
 
-  if (spage_get_record (root, HEADER, &rec, PEEK) != S_SUCCESS)
+  if (btree_read_root_header (root, &root_header) != NO_ERROR)
     {
       status = DISK_ERROR;
       goto end;
     }
-
-  btree_read_root_header (&rec, &root_header);
 
   btid_int.sys_btid = btid;
   btree_glean_root_header_info (thread_p, &root_header, &btid_int);
@@ -19446,34 +18953,6 @@ end:
   return status;
 }
 
-char *
-btree_get_header_ptr (PAGE_PTR page_ptr, char **header_ptrptr)
-{
-  RECDES header_record;
-
-  if (spage_get_record (page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
-    {
-      return NULL;
-    }
-  *header_ptrptr = header_record.data;
-
-  return *header_ptrptr;
-}
-
-static VPID *
-btree_get_next_overflow_vpid (char *header_ptr, VPID * overflow_vpid_ptr)
-{
-  char *ptr;
-
-  ptr = ((char *) (header_ptr) + BTREE_NEXT_OVFL_VPID_OFFSET);
-
-  overflow_vpid_ptr->pageid = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
-
-  overflow_vpid_ptr->volid = OR_GET_SHORT (ptr);
-
-  return overflow_vpid_ptr;
-}
 
 int
 btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
@@ -19592,12 +19071,10 @@ btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx,
   r_pgptr = pgbuf_fix (thread_p, &r_vpid, OLD_PAGE,
 		       PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (r_pgptr == NULL
-      || (spage_get_record (r_pgptr, HEADER, &rec, PEEK) != S_SUCCESS))
+      || btree_read_root_header (r_pgptr, &root_header) != NO_ERROR)
     {
       goto exit_on_error;
     }
-
-  btree_read_root_header (&rec, &root_header);
 
   btid_int.sys_btid = btid;
 
@@ -19729,12 +19206,7 @@ btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
       return NULL;
     }
 
-  if (spage_get_record (page_p, HEADER, &peek_rec, PEEK) != S_SUCCESS)
-    {
-      goto exit_on_error;
-    }
-
-  BTREE_GET_NODE_NEXT_VPID (peek_rec.data, &next_vpid);
+  btree_get_node_next_vpid (page_p, &next_vpid);
   if (VPID_ISNULL (&next_vpid))
     {
       goto exit_on_error;
@@ -19769,30 +19241,21 @@ static int
 btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			      PAGE_PTR page_p, VPID * prev)
 {
-  RECDES peek_rec;
+  BTREE_NODE_HEADER header;
 
   if (page_p == NULL)
     {
       return NO_ERROR;
     }
 
-  if (spage_get_record (page_p, HEADER, &peek_rec, PEEK) != S_SUCCESS)
+  if (btree_read_node_header (page_p, &header) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-/* TODO - use append_undoredo */
-  /* log the old header record for undo purposes */
-  log_append_undo_data2 (thread_p, RVBT_NDHEADER_UPD,
-			 &btid->sys_btid->vfid, page_p, HEADER,
-			 peek_rec.length, peek_rec.data);
-
-  BTREE_PUT_NODE_PREV_VPID (peek_rec.data, prev);
-
-  /* log the new header record for redo purposes */
-  log_append_redo_data2 (thread_p, RVBT_NDHEADER_UPD,
-			 &btid->sys_btid->vfid, page_p, HEADER,
-			 peek_rec.length, peek_rec.data);
+  header.prev_vpid = *prev;
+  btree_write_node_header (thread_p, &btid->sys_btid->vfid, page_p,
+			   &header, true, true);
 
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
 
@@ -20448,6 +19911,7 @@ btree_is_new_file (BTID_INT * btid_int)
     }
 }
 
+
 /*****************************************************************************/
 /* For migrate_90beta_to_91                                                  */
 /*****************************************************************************/
@@ -20584,7 +20048,6 @@ btree_fix_ovfl_oid_pages_tree (THREAD_ENTRY * thread_p, BTID * btid,
   BTID_INT btid_int;
   RECDES rec;
   BTREE_ROOT_HEADER root_header;
-  char *header_ptr;
 
   /* fetch the root page */
 
@@ -20598,13 +20061,11 @@ btree_fix_ovfl_oid_pages_tree (THREAD_ENTRY * thread_p, BTID * btid,
       return ER_FAILED;
     }
 
-  if (spage_get_record (pgptr, HEADER, &rec, PEEK) != S_SUCCESS)
+  if (btree_read_root_header (pgptr, &root_header) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, pgptr);
       return ER_FAILED;
     }
-
-  btree_read_root_header (&rec, &root_header);
 
   btid_int.sys_btid = btid;
   if (btree_glean_root_header_info (thread_p, &root_header,
@@ -20642,8 +20103,7 @@ btree_fix_ovfl_oid_pages_tree (THREAD_ENTRY * thread_p, BTID * btid,
 	  return ER_FAILED;
 	}
 
-      btree_get_header_ptr (pgptr, &header_ptr);
-      BTREE_GET_NODE_NEXT_VPID (header_ptr, &vpid);
+      btree_get_node_next_vpid (pgptr, &vpid);
       pgbuf_unfix_and_init (thread_p, pgptr);
 
       if (VPID_ISNULL (&vpid))
@@ -20671,7 +20131,6 @@ btree_fix_ovfl_oid_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 {
   RECDES leaf_rec, ovfl_rec;
   int key_cnt, i, offset;
-  char *header_ptr;
   LEAF_REC leaf_pnt;
   bool dummy;
   VPID ovfl_vpid;
@@ -20679,13 +20138,14 @@ btree_fix_ovfl_oid_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
   char *rv_data = NULL;
   int rv_data_len;
   char rv_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  BTREE_NODE_TYPE node_type;
 
   rv_data = PTR_ALIGN (rv_data_buf, BTREE_MAX_ALIGN);
 
-  btree_get_header_ptr (pg_ptr, &header_ptr);
-  assert_release (BTREE_GET_NODE_TYPE (header_ptr) == BTREE_LEAF_NODE);
+  assert_release (btree_get_node_type (pg_ptr, &node_type) == NO_ERROR &&
+		  node_type == BTREE_LEAF_NODE);
 
-  key_cnt = btree_get_node_key_cnt (pg_ptr);
+  btree_get_node_key_cnt (pg_ptr, &key_cnt);
 
   for (i = 1; i <= key_cnt; i++)
     {
@@ -20710,8 +20170,7 @@ btree_fix_ovfl_oid_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	      return ER_FAILED;
 	    }
 
-	  btree_get_header_ptr (ovfl_page, &header_ptr);
-	  btree_get_next_overflow_vpid (header_ptr, &ovfl_vpid);
+	  btree_get_next_overflow_vpid (ovfl_page, &ovfl_vpid);
 
 	  if (spage_get_record (ovfl_page, 1, &ovfl_rec, PEEK) != S_SUCCESS)
 	    {
@@ -20761,7 +20220,6 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 		   PAGE_PTR page_ptr)
 {
   int ret = NO_ERROR;
-  char *header_ptr;
   BTREE_NODE_TYPE node_type;
 
   assert_release (btid != NULL);
@@ -20774,8 +20232,7 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
     }
 
   /* read the header record */
-  btree_get_header_ptr (page_ptr, &header_ptr);
-  node_type = BTREE_GET_NODE_TYPE (header_ptr);
+  btree_get_node_type (page_ptr, &node_type);
 
   if (node_type == BTREE_NON_LEAF_NODE)
     {
@@ -20796,7 +20253,7 @@ btree_verify_nonleaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			   PAGE_PTR page_ptr)
 {
   TP_DOMAIN *key_domain;
-  INT16 key_cnt;
+  int key_cnt;
   int i;
   int offset;
   int c;
@@ -20810,7 +20267,7 @@ btree_verify_nonleaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
   clear_prev_key = clear_curr_key = false;
   key_domain = btid->key_type;
 
-  key_cnt = btree_get_node_key_cnt (page_ptr);	/* get the key count */
+  btree_get_node_key_cnt (page_ptr, &key_cnt);	/* get the key count */
   assert_release (key_cnt >= 1);
 
   /* check key order; exclude neg-inf separator */
@@ -20847,12 +20304,8 @@ btree_verify_nonleaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	{
 	  if (i == 1)
 	    {
-	      char *header_ptr;
 	      VPID vpid;
-
-	      btree_get_header_ptr (page_ptr, &header_ptr);
-	      BTREE_GET_NODE_NEXT_VPID (header_ptr, &vpid);
-
+	      btree_get_node_next_vpid (page_ptr, &vpid);
 	      if (VPID_ISNULL (&vpid))
 		{
 		  /* This page is first non-leaf page.
@@ -20879,10 +20332,9 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			PAGE_PTR page_ptr)
 {
   TP_DOMAIN *key_domain;
-  char *header_ptr;
   VPID prev_vpid;
   VPID next_vpid;
-  INT16 key_cnt;
+  int key_cnt;
   int i;
   int offset;
   int c;
@@ -20899,9 +20351,8 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
   key_domain = btid->key_type;
 
   /* read the header record */
-  btree_get_header_ptr (page_ptr, &header_ptr);
-  BTREE_GET_NODE_PREV_VPID (header_ptr, &prev_vpid);
-  BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
+  btree_get_node_prev_vpid (page_ptr, &prev_vpid);
+  btree_get_node_next_vpid (page_ptr, &next_vpid);
 
   if (!VPID_ISNULL (&prev_vpid) && !VPID_ISNULL (&next_vpid))
     {
@@ -20912,7 +20363,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	}
     }
 
-  key_cnt = btree_get_node_key_cnt (page_ptr);	/* get the key count */
+  btree_get_node_key_cnt (page_ptr, &key_cnt);	/* get the key count */
 
   /* check key order */
   for (i = 1; i < key_cnt; i++)

@@ -383,7 +383,6 @@ extern int btree_rv_nodehdr_redo_insert (THREAD_ENTRY * thread_p,
 					 LOG_RCV * recv);
 extern int btree_rv_nodehdr_undo_insert (THREAD_ENTRY * thread_p,
 					 LOG_RCV * recv);
-extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
 extern int btree_rv_noderec_undoredo_update (THREAD_ENTRY * thread_p,
 					     LOG_RCV * recv);
 extern void btree_rv_noderec_dump (FILE * fp, int length, void *data);

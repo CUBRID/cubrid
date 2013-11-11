@@ -1559,14 +1559,12 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  if (spage_get_record (root_page_p, CATALOG_HEADER_SLOT, &record, PEEK) !=
-      S_SUCCESS)
+  if (btree_read_root_header (root_page_p, &root_header) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, root_page_p);
       return ER_FAILED;
     }
 
-  btree_read_root_header (&record, &root_header);
   pgbuf_unfix_and_init (thread_p, root_page_p);
 
   btree_stats_p->key_type = root_header.key_type;

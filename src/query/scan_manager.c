@@ -3144,12 +3144,12 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     {
       return ER_FAILED;
     }
-  if (spage_get_record (Root, HEADER, &Rec, PEEK) != S_SUCCESS)
+  if (btree_read_root_header (Root, &root_header) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, Root);
       return ER_FAILED;
     }
-  btree_read_root_header (&Rec, &root_header);
+
   pgbuf_unfix_and_init (thread_p, Root);
 
   /* initialize INDEX_SCAN_ID structure */

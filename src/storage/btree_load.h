@@ -105,86 +105,19 @@ typedef enum
 
 #define NODE_HEADER_SIZE       BTREE_NUM_OIDS_OFFSET	/* Node Header Disk Size */
 
-int btree_get_node_key_cnt (PAGE_PTR page_ptr);
-
-#define BTREE_GET_NODE_TYPE(ptr) \
-  (BTREE_GET_NODE_LEVEL(ptr) > 1 ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE)
-
-/* readers/writers for fields */
-#define BTREE_GET_NODE_LEVEL(ptr) \
-  OR_GET_SHORT((ptr) + BTREE_NODE_LEVEL_OFFSET)
-
-#define BTREE_GET_NODE_MAX_KEY_LEN(ptr) \
-  OR_GET_SHORT((ptr) + BTREE_NODE_MAX_KEY_LEN_OFFSET)
-
-#define _BTREE_GET_NODE_NEXT_VPID_VOLID(ptr) \
-  OR_GET_SHORT((ptr) + BTREE_NODE_NEXT_VPID_OFFSET)
-
-#define _BTREE_GET_NODE_NEXT_VPID_PAGEID(ptr) \
-  OR_GET_INT((ptr) + BTREE_NODE_NEXT_VPID_OFFSET + OR_SHORT_SIZE)
-
-#define BTREE_GET_NODE_NEXT_VPID(ptr, vp) \
-  do { \
-    (vp)->volid = _BTREE_GET_NODE_NEXT_VPID_VOLID (ptr); \
-    (vp)->pageid = _BTREE_GET_NODE_NEXT_VPID_PAGEID (ptr); \
-  } while (0)
-
-#define _BTREE_GET_NODE_PREV_VPID_VOLID(ptr) \
-  OR_GET_SHORT((ptr) + BTREE_NODE_PREV_VPID_OFFSET)
-
-#define _BTREE_GET_NODE_PREV_VPID_PAGEID(ptr) \
-  OR_GET_INT((ptr) + BTREE_NODE_PREV_VPID_OFFSET + OR_SHORT_SIZE)
-
-#define BTREE_GET_NODE_PREV_VPID(ptr, vp) \
-  do { \
-  (vp)->volid = _BTREE_GET_NODE_PREV_VPID_VOLID (ptr); \
-  (vp)->pageid = _BTREE_GET_NODE_PREV_VPID_PAGEID (ptr); \
-    } while (0)
-
-#define _BTREE_GET_NODE_SPLIT_INFO_PIVOT(ptr, val) \
-  OR_GET_FLOAT((ptr) + BTREE_NODE_SPLIT_INFO_OFFSET, val)
-
-#define _BTREE_GET_NODE_SPLIT_INFO_INDEX(ptr) \
-  OR_GET_INT((ptr) + BTREE_NODE_SPLIT_INFO_OFFSET + OR_FLOAT_SIZE)
-
-#define BTREE_GET_NODE_SPLIT_INFO(ptr, vp) \
-  do { \
-    _BTREE_GET_NODE_SPLIT_INFO_PIVOT(ptr, &((vp)->pivot)); \
-    (vp)->index = _BTREE_GET_NODE_SPLIT_INFO_INDEX(ptr); \
-  } while (0)
-
-#define BTREE_GET_NUM_OIDS(ptr)\
-  OR_GET_INT((ptr) + BTREE_NUM_OIDS_OFFSET)
-
-#define BTREE_GET_NUM_NULLS(ptr) \
-  OR_GET_INT((ptr) + BTREE_NUM_NULLS_OFFSET)
-
-#define BTREE_GET_NUM_KEYS(ptr) \
-  OR_GET_INT((ptr) + BTREE_NUM_KEYS_OFFSET)
-
-#define BTREE_GET_TOPCLASS_OID(ptr, oid) \
-  OR_GET_OID((ptr) + BTREE_TOPCLASS_OID_OFFSET, oid)
-
-#define BTREE_GET_UNIQUE(ptr) \
-  OR_GET_INT((ptr) + BTREE_UNIQUE_OFFSET)
-
-#define BTREE_GET_REVERSE_RESERVED(ptr) \
-  OR_GET_INT((ptr) + BTREE_REVERSE_RESERVED_OFFSET)
-
-#define BTREE_GET_REV_LEVEL(ptr) \
-  OR_GET_INT((ptr) + BTREE_REV_LEVEL_OFFSET)
-
-#define _BTREE_GET_OVFID_FILEID(ptr) \
-  OR_GET_INT((ptr) + BTREE_OVFID_OFFSET)
-
-#define _BTREE_GET_OVFID_VOLID(ptr) \
-  OR_GET_SHORT((ptr) + BTREE_OVFID_OFFSET + OR_INT_SIZE)
-
-#define BTREE_GET_OVFID(ptr, vf) \
-  do { \
-    (vf)->fileid = _BTREE_GET_OVFID_FILEID (ptr); \
-    (vf)->volid = _BTREE_GET_OVFID_VOLID (ptr); \
-  } while (0)
+extern int btree_get_node_key_cnt (PAGE_PTR page_ptr, int *keycnt);
+extern int btree_get_root_ovfid (PAGE_PTR page_ptr, VFID * vfid);
+extern int btree_get_root_stat (PAGE_PTR page_ptr, int *num_nulls,
+				int *num_keys, int *num_oids);
+extern int btree_get_root_unique (PAGE_PTR page_ptr, int *unique);
+extern int btree_get_node_level (PAGE_PTR page_ptr, int *node_level);
+extern int btree_get_node_type (PAGE_PTR page_ptr, BTREE_NODE_TYPE * type);
+extern int btree_get_node_max_key_len (PAGE_PTR page_ptr, int *max_key_len);
+extern int btree_get_node_next_vpid (PAGE_PTR page_ptr, VPID * vpid);
+extern int btree_get_node_prev_vpid (PAGE_PTR page_ptr, VPID * vpid);
+extern int btree_get_node_split_info (PAGE_PTR page_ptr,
+				      BTREE_NODE_SPLIT_INFO * split_info);
+extern int btree_get_next_overflow_vpid (PAGE_PTR page_ptr, VPID * vpid);
 
 #define BTREE_GET_KEY_LEN_IN_PAGE(node_type, key_len) \
   ((((node_type) == BTREE_LEAF_NODE && (key_len) >= BTREE_MAX_KEYLEN_INPAGE) \
@@ -192,86 +125,9 @@ int btree_get_node_key_cnt (PAGE_PTR page_ptr);
       && (key_len) >= BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)) \
     ? DISK_VPID_SIZE : (key_len))
 
-#define BTREE_PUT_NODE_LEVEL(ptr, val) \
-  OR_PUT_SHORT((ptr) + BTREE_NODE_LEVEL_OFFSET, val)
-
-#define BTREE_PUT_NODE_MAX_KEY_LEN(ptr, val) \
-  OR_PUT_SHORT((ptr) + BTREE_NODE_MAX_KEY_LEN_OFFSET, val)
-
-#define _BTREE_PUT_NODE_NEXT_VPID_VOLID(ptr, val) \
-  OR_PUT_SHORT((ptr) + BTREE_NODE_NEXT_VPID_OFFSET, val)
-
-#define _BTREE_PUT_NODE_NEXT_VPID_PAGEID(ptr, val) \
-  OR_PUT_INT((ptr) + BTREE_NODE_NEXT_VPID_OFFSET + OR_SHORT_SIZE, val)
-
-#define BTREE_PUT_NODE_NEXT_VPID(ptr, vp) \
-  do { \
-    _BTREE_PUT_NODE_NEXT_VPID_VOLID (ptr, (vp)->volid); \
-    _BTREE_PUT_NODE_NEXT_VPID_PAGEID (ptr, (vp)->pageid); \
-  } while (0)
-
-#define _BTREE_PUT_NODE_PREV_VPID_VOLID(ptr, val) \
-  OR_PUT_SHORT((ptr) + BTREE_NODE_PREV_VPID_OFFSET, val)
-
-#define _BTREE_PUT_NODE_PREV_VPID_PAGEID(ptr, val) \
-  OR_PUT_INT((ptr) + BTREE_NODE_PREV_VPID_OFFSET + OR_SHORT_SIZE, val)
-
-#define BTREE_PUT_NODE_PREV_VPID(ptr, vp) \
-  do { \
-  _BTREE_PUT_NODE_PREV_VPID_VOLID (ptr, (vp)->volid); \
-  _BTREE_PUT_NODE_PREV_VPID_PAGEID (ptr, (vp)->pageid); \
-    } while (0)
-
-#define _BTREE_PUT_NODE_SPLIT_INFO_PIVOT(ptr, vp) \
-  OR_PUT_FLOAT((ptr) + BTREE_NODE_SPLIT_INFO_OFFSET, vp)
-
-#define _BTREE_PUT_NODE_SPLIT_INFO_INDEX(ptr, val) \
-  OR_PUT_INT((ptr) + BTREE_NODE_SPLIT_INFO_OFFSET + OR_FLOAT_SIZE, val)
-
-#define BTREE_PUT_NODE_SPLIT_INFO(ptr, vp) \
-  do { \
-    _BTREE_PUT_NODE_SPLIT_INFO_PIVOT (ptr, &((vp)->pivot)); \
-    _BTREE_PUT_NODE_SPLIT_INFO_INDEX (ptr, (vp)->index); \
-  } while (0)
-
-#define BTREE_PUT_NUM_OIDS(ptr, val) \
-  OR_PUT_INT((ptr) + BTREE_NUM_OIDS_OFFSET, val)
-
-#define BTREE_PUT_NUM_NULLS(ptr, val) \
-  OR_PUT_INT((ptr) + BTREE_NUM_NULLS_OFFSET, val)
-
-#define BTREE_PUT_NUM_KEYS(ptr, val) \
-  OR_PUT_INT((ptr) + BTREE_NUM_KEYS_OFFSET, val)
-
-#define BTREE_PUT_TOPCLASS_OID(ptr, val) \
-  OR_PUT_OID((ptr) + BTREE_TOPCLASS_OID_OFFSET, val)
-
-#define BTREE_PUT_UNIQUE(ptr, val) \
-  OR_PUT_INT((ptr) + BTREE_UNIQUE_OFFSET, val)
-
-#define BTREE_PUT_REVERSE_RESERVED(ptr, val) \
-  OR_PUT_INT((ptr) + BTREE_REVERSE_RESERVED_OFFSET, val)
-
-#define BTREE_PUT_REV_LEVEL(ptr, val) \
-  OR_PUT_INT((ptr) + BTREE_REV_LEVEL_OFFSET, val)
-
-#define _BTREE_PUT_OVFID_FILEID(ptr, val) \
-  OR_PUT_INT((ptr) + BTREE_OVFID_OFFSET, val)
-
-#define _BTREE_PUT_OVFID_VOLID(ptr, val) \
-  OR_PUT_SHORT((ptr) + BTREE_OVFID_OFFSET + OR_INT_SIZE, val)
-
-#define BTREE_PUT_OVFID(ptr, vf) \
-  do { \
-     _BTREE_PUT_OVFID_FILEID (ptr, (vf)->fileid); \
-     _BTREE_PUT_OVFID_VOLID (ptr, (vf)->volid); \
-  } while (0)
-
 /*
  * Type definitions related to b+tree structure and operations
  */
-
-/* TODO: alignment  split_info, next_vpid, prev_vpid, ...*/
 typedef struct btree_node_header BTREE_NODE_HEADER;
 struct btree_node_header
 {				/*  Node header information  */
@@ -346,6 +202,7 @@ extern int btree_rv_undo_create_index (THREAD_ENTRY * thread_p,
 				       LOG_RCV * rcv);
 extern void btree_rv_dump_create_index (FILE * fp, int length_ignore,
 					void *data);
+extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
 
 extern bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value);
 extern void btree_write_overflow_header (RECDES * Rec,
@@ -356,12 +213,30 @@ extern int btree_create_overflow_key_file (THREAD_ENTRY * thread_p,
 extern void btree_read_overflow_header (RECDES * Rec,
 					VPID * next_overflow_page);
 #endif
-extern void btree_write_node_header (RECDES * Rec,
-				     BTREE_NODE_HEADER * header);
-extern int btree_write_root_header (RECDES * Rec,
-				    BTREE_ROOT_HEADER * root_header);
-extern void btree_read_root_header (RECDES * Rec,
-				    BTREE_ROOT_HEADER * root_header);
+extern int btree_init_node_header (THREAD_ENTRY * thread_p, VFID * vfid,
+				   PAGE_PTR page_ptr,
+				   BTREE_NODE_HEADER * header);
+extern int btree_read_node_header (PAGE_PTR page_ptr,
+				   BTREE_NODE_HEADER * header);
+extern int btree_write_node_header (THREAD_ENTRY * thread_p, VFID * vfid,
+				    PAGE_PTR page_ptr,
+				    BTREE_NODE_HEADER * header,
+				    bool write_undo, bool write_redo);
+extern int btree_init_root_header (THREAD_ENTRY * thread_p, VFID * vfid,
+				   PAGE_PTR page_ptr,
+				   BTREE_ROOT_HEADER * root_header);
+extern int btree_read_root_header (PAGE_PTR page_ptr,
+				   BTREE_ROOT_HEADER * root_header);
+extern int btree_write_root_header (THREAD_ENTRY * thread_p, VFID * vfid,
+				    PAGE_PTR page_ptr,
+				    BTREE_ROOT_HEADER * root_header,
+				    bool write_undo, bool write_redo);
+extern int btree_write_root_header_delta (THREAD_ENTRY * thread_p,
+					  VFID * vfid, PAGE_PTR page_ptr,
+					  BTREE_ROOT_HEADER * root_header,
+					  int null_delta, int oid_delta,
+					  int key_delta);
+
 extern int btree_get_key_length (DB_VALUE *);
 extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			       void *node_rec, DB_VALUE * key,
@@ -381,7 +256,6 @@ extern DISK_ISVALID btree_verify_tree (THREAD_ENTRY * thread_p,
 				       BTID_INT * btid, const char *btname);
 extern int btree_get_prefix (const DB_VALUE * key1, const DB_VALUE * key2,
 			     DB_VALUE * prefix_key, TP_DOMAIN * key_domain);
-extern char *btree_get_header_ptr (PAGE_PTR page_ptr, char **header_ptrptr);
 extern int btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
 			      TP_DOMAIN * key_domain,
 			      int do_coercion, int total_order,
