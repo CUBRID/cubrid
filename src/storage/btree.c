@@ -2625,8 +2625,9 @@ btree_initialize_new_page (THREAD_ENTRY * thread_p, const VFID * vfid,
       return false;
     }
 
-  alignment = *((unsigned short *) args);
+  (void) pgbuf_set_page_ptype (thread_p, pgptr, PAGE_BTREE);
 
+  alignment = *((unsigned short *) args);
   spage_initialize (thread_p, pgptr, UNANCHORED_KEEP_SEQUENCE,
 		    alignment, DONT_SAFEGUARD_RVSPACE);
   log_append_redo_data2 (thread_p, RVBT_GET_NEWPAGE, vfid, pgptr, -1,
@@ -18540,6 +18541,8 @@ btree_rv_newpage_redo_init (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   unsigned short alignment;
 
+  (void) pgbuf_set_page_ptype (thread_p, recv->pgptr, PAGE_BTREE);
+
   alignment = *(unsigned short *) recv->data;
   spage_initialize (thread_p, recv->pgptr,
 		    UNANCHORED_KEEP_SEQUENCE, alignment,
@@ -18791,6 +18794,8 @@ btree_rv_keyval_dump (FILE * fp, int length, void *data)
 int
 btree_rv_undoredo_copy_page (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
+  (void) pgbuf_set_page_ptype (thread_p, recv->pgptr, PAGE_BTREE);
+
   (void) memcpy (recv->pgptr, recv->data, DB_PAGESIZE);
 
   pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);

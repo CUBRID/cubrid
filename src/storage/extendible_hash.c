@@ -747,6 +747,8 @@ ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p,
       return false;
     }
 
+  (void) pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
+
   /*
    * Initilize the bucket to contain variable-length records
    * on ordered slots.
@@ -1186,6 +1188,8 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
       return NULL;
     }
 
+  (void) pgbuf_set_page_ptype (thread_p, dir_page_p, PAGE_EHASH);
+
   dir_header_p = (EHASH_DIR_HEADER *) dir_page_p;
 
   /* Initilize the directory header */
@@ -1218,7 +1222,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
 
   /* Log the directory root page */
 
-  log_append_redo_data2 (thread_p, RVEH_REPLACE, &dir_vfid, dir_page_p, 0,
+  log_append_redo_data2 (thread_p, RVEH_INIT_DIR, &dir_vfid, dir_page_p, 0,
 			 EHASH_DIR_HEADER_SIZE + sizeof (EHASH_DIR_RECORD),
 			 dir_page_p);
 
@@ -5652,6 +5656,8 @@ ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
   record_p += sizeof (char);
   bucket_header.local_depth = *(char *) record_p;
 
+  (void) pgbuf_set_page_ptype (thread_p, recv_p->pgptr, PAGE_EHASH);
+
   /*
    * Initilize the bucket to contain variable-length records
    * on ordered slots.
@@ -5679,6 +5685,19 @@ ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * ehash_rv_init_dir_redo () - Redo the initilization of a directory
+ *   return: int
+ *   recv(in): Recovery structure
+ */
+int
+ehash_rv_init_dir_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+{
+  (void) pgbuf_set_page_ptype (thread_p, recv_p->pgptr, PAGE_EHASH);
+
+  return log_rv_copy_char (thread_p, recv_p);
 }
 
 /*

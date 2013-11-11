@@ -627,6 +627,8 @@ catalog_initialize_new_page (THREAD_ENTRY * thread_p, const VFID * vfid_p,
       return false;
     }
 
+  (void) pgbuf_set_page_ptype (thread_p, page_p, PAGE_CATALOG);
+
   spage_initialize (thread_p, page_p, ANCHORED_DONT_REUSE_SLOTS,
 		    MAX_ALIGNMENT, SAFEGUARD_RVSPACE);
 
@@ -4940,6 +4942,8 @@ catalog_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
   aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
 
   catalog_clear_hash_table ();
+
+  (void) pgbuf_set_page_ptype (thread_p, recv_p->pgptr, PAGE_CATALOG);
 
   spage_initialize (thread_p, recv_p->pgptr, ANCHORED_DONT_REUSE_SLOTS,
 		    MAX_ALIGNMENT, SAFEGUARD_RVSPACE);

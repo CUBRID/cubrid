@@ -1895,6 +1895,9 @@ file_descriptor_insert (THREAD_ENTRY * thread_p, FILE_HEADER * fhdr,
 	    {
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_FTAB);
+
 	  addr.offset = 0;
 
 	  rest = (FILE_REST_DES *) addr.pgptr;
@@ -1912,7 +1915,7 @@ file_descriptor_insert (THREAD_ENTRY * thread_p, FILE_HEADER * fhdr,
 	   * to log or not.
 	   */
 
-	  log_append_undo_data (thread_p, RVFL_FILEDESC, &addr,
+	  log_append_undo_data (thread_p, RVFL_FILEDESC_INS, &addr,
 				sizeof (*rest) - 1 + copy_length,
 				(char *) addr.pgptr);
 
@@ -1929,7 +1932,7 @@ file_descriptor_insert (THREAD_ENTRY * thread_p, FILE_HEADER * fhdr,
 	  file_des += copy_length;
 	  rest_length -= copy_length;
 
-	  log_append_redo_data (thread_p, RVFL_FILEDESC, &addr,
+	  log_append_redo_data (thread_p, RVFL_FILEDESC_INS, &addr,
 				sizeof (*rest) - 1 + copy_length,
 				(char *) addr.pgptr);
 	  pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
@@ -2005,6 +2008,8 @@ file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid,
 	  return ER_FAILED;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_FTAB);
+
       /* Log before and after images */
 
       /* Is this the first page ? */
@@ -2038,7 +2043,7 @@ file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid,
 	  /* Log before image */
 	  addr.offset = offsetof (FILE_HEADER, des);
 
-	  log_append_undo_data (thread_p, RVFL_FILEDESC, &addr,
+	  log_append_undo_data (thread_p, RVFL_FILEDESC_UPD, &addr,
 				sizeof (fhdr->des) - 1 +
 				fhdr->des.first_length, &fhdr->des);
 
@@ -2055,7 +2060,7 @@ file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid,
 	      memcpy (fhdr->des.piece, file_des, copy_length);
 	    }
 
-	  log_append_redo_data (thread_p, RVFL_FILEDESC, &addr,
+	  log_append_redo_data (thread_p, RVFL_FILEDESC_UPD, &addr,
 				sizeof (fhdr->des) - 1 +
 				fhdr->des.first_length, &fhdr->des);
 	}
@@ -2089,13 +2094,13 @@ file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid,
 	    {
 	      if ((old_length + SSIZEOF (*rest) - 1) > DB_PAGESIZE)
 		{
-		  log_append_undo_data (thread_p, RVFL_FILEDESC, &addr,
+		  log_append_undo_data (thread_p, RVFL_FILEDESC_UPD, &addr,
 					DB_PAGESIZE, (char *) addr.pgptr);
 		  old_length -= DB_PAGESIZE + sizeof (*rest) - 1;
 		}
 	      else
 		{
-		  log_append_undo_data (thread_p, RVFL_FILEDESC, &addr,
+		  log_append_undo_data (thread_p, RVFL_FILEDESC_UPD, &addr,
 					sizeof (*rest) - 1 + old_length,
 					(char *) addr.pgptr);
 		  old_length = 0;
@@ -2106,7 +2111,7 @@ file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid,
 	    {
 	      memcpy (rest->piece, file_des, copy_length);
 	    }
-	  log_append_redo_data (thread_p, RVFL_FILEDESC, &addr,
+	  log_append_redo_data (thread_p, RVFL_FILEDESC_UPD, &addr,
 				sizeof (*rest) - 1 + copy_length,
 				(char *) addr.pgptr);
 	}
@@ -2203,6 +2208,9 @@ file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid,
 		{
 		  return ER_FAILED;
 		}
+
+	      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_FTAB);
+
 	      tmp_vpid = next_vpid;
 	      rest = (FILE_REST_DES *) addr.pgptr;
 	      next_vpid = rest->next_part_vpid;
@@ -2290,6 +2298,8 @@ file_descriptor_get (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
 	  return 0;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
+
       rest = (FILE_REST_DES *) pgptr;
       /* Copy as much as you can */
 
@@ -2352,6 +2362,8 @@ file_descriptor_destroy_rest_pages (THREAD_ENTRY * thread_p,
 	{
 	  return ER_FAILED;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
       rest = (FILE_REST_DES *) pgptr;
       if (batch_ndealloc == 0)
@@ -2429,6 +2441,8 @@ file_descriptor_find_num_rest_pages (THREAD_ENTRY * thread_p,
 	    {
 	      return -1;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
 	  num_rest_pages++;
 	  rest = (FILE_REST_DES *) pgptr;
@@ -2539,6 +2553,8 @@ file_descriptor_dump_internal (THREAD_ENTRY * thread_p, FILE * fp,
 		      free_and_init (file_des);
 		      goto exit_on_error;
 		    }
+
+		  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
 		  rest = (FILE_REST_DES *) pgptr;
 		  /* Dump as much as you can */
@@ -3108,6 +3124,8 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 	  goto exit_on_error;
 	}
 
+      (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_FTAB);
+
       /* Chain forward and backward */
       chain = (FILE_FTAB_CHAIN *) (addr.pgptr + FILE_FTAB_CHAIN_OFFSET);
 
@@ -3138,6 +3156,8 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_set_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
 
   /* Initialize file header */
 
@@ -3260,6 +3280,8 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 	  goto exit_on_error;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_FTAB);
+
       /* Find the location for the sector table */
       ret = file_find_limits (addr.pgptr, allocset, &aid_ptr, &outptr,
 			      FILE_SECTOR_TABLE);
@@ -3299,6 +3321,9 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 		{
 		  goto exit_on_error;
 		}
+
+	      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_FTAB);
+
 	      ret = file_find_limits (addr.pgptr, allocset,
 				      &aid_ptr, &outptr, FILE_SECTOR_TABLE);
 	      if (ret != NO_ERROR)
@@ -3459,6 +3484,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
       return ER_FAILED;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   file_type = fhdr->type;
@@ -3483,6 +3510,9 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 		  return ER_FAILED;
 		}
 
+	      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr,
+					     PAGE_FTAB);
+
 	      allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr
 					    + allocset_offset);
 
@@ -3499,6 +3529,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 
 		      return ER_FAILED;
 		    }
+
+		  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
 		  /* Calculate the starting offset and length of the page to
 		   * check */
@@ -3667,6 +3699,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
   file_type = fhdr->type;
   page_type = file_get_disk_page_type (file_type);
@@ -3701,6 +3735,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 	      goto exit_on_error;
 	    }
 
+	  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
 	  allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr
 					+ allocset_offset);
 
@@ -3722,6 +3758,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 		{
 		  goto exit_on_error;
 		}
+
+	      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
 	      /* Calculate the starting offset and length of the page to
 	       * check */
@@ -3878,6 +3916,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 		      goto exit_on_error;
 		    }
 
+		  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
+
 		  /* Calculate the starting offset and length of the page to
 		     check */
 		  ret = file_find_limits (pgptr, allocset, &aid_ptr, &outptr,
@@ -4015,6 +4055,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
       /* Find next file table page */
       curftb_vpid = nxftb_vpid;
@@ -4255,6 +4297,8 @@ file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
       return ER_FAILED;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   addr.pgptr = fhdr_pgptr;
   addr.offset = FILE_HEADER_OFFSET;
   log_append_postpone (thread_p, RVFL_MARKED_DELETED, &addr, sizeof (deleted),
@@ -4291,6 +4335,8 @@ file_does_marked_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
     {
       return false;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
 
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
   deleted = fhdr->ismark_as_deleted ? true : false;
@@ -4492,6 +4538,9 @@ file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid)
     {
       return FILE_UNKNOWN_TYPE;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
   file_type = fhdr->type;
   if (file_type_cache_add_entry (vfid, file_type) != NO_ERROR)
@@ -4529,6 +4578,8 @@ file_get_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid,
 			  PGBUF_UNCONDITIONAL_LATCH);
   if (fhdr_pgptr != NULL)
     {
+      (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
       fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
       maxsize = file_descriptor_get (thread_p, fhdr, area_des, maxsize);
 
@@ -4593,6 +4644,8 @@ file_get_numpages (THREAD_ENTRY * thread_p, const VFID * vfid)
 			  PGBUF_UNCONDITIONAL_LATCH);
   if (fhdr_pgptr)
     {
+      (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
       fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
       num_pgs = fhdr->num_user_pages;
 
@@ -4624,6 +4677,8 @@ file_get_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid)
 			  PGBUF_UNCONDITIONAL_LATCH);
   if (fhdr_pgptr != NULL)
     {
+      (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
       fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
       num_pgs = file_descriptor_find_num_rest_pages (thread_p, fhdr);
       if (num_pgs >= 0)
@@ -4665,6 +4720,8 @@ file_get_numpages_plus_numpages_overhead (THREAD_ENTRY * thread_p,
 			  PGBUF_UNCONDITIONAL_LATCH);
   if (fhdr_pgptr != NULL)
     {
+      (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
       fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
       *overhead_numpages = file_descriptor_find_num_rest_pages (thread_p,
 								fhdr);
@@ -4755,6 +4812,8 @@ file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid,
 	  return -1;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
       fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
       allocset_pgptr = pgbuf_fix (thread_p, &fhdr->last_allocset_vpid,
@@ -4765,6 +4824,9 @@ file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid,
 	  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
 	  return -1;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
       allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr
 				    + fhdr->last_allocset_offset);
       num_overhead_pages = DB_PAGESIZE - allocset->end_pages_offset;
@@ -4820,6 +4882,8 @@ file_allocset_nthpage (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
 	{
 	  return -1;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
       /* Calculate the portion of pageids that we can look at current page */
       if (file_find_limits (pgptr, allocset, &aid_ptr, &outptr,
@@ -4916,6 +4980,8 @@ file_allocset_look_for_last_page (THREAD_ENTRY * thread_p,
       return NULL;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
   allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr +
 				fhdr->last_allocset_offset);
   if (allocset->num_pages <= 0
@@ -4972,6 +5038,8 @@ file_find_nthpages (THREAD_ENTRY * thread_p, const VFID * vfid,
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   if (start_nthpage < 0 || start_nthpage > fhdr->num_user_pages - 1)
@@ -5017,6 +5085,9 @@ file_find_nthpages (THREAD_ENTRY * thread_p, const VFID * vfid,
 	  VPID_SET_NULL (nth_vpids);
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
       /* Get the allocation set */
       allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr
 				    + allocset_offset);
@@ -5129,6 +5200,8 @@ file_find_last_page (THREAD_ENTRY * thread_p, const VFID * vfid,
       return NULL;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   if (fhdr->num_user_pages > 0)
@@ -5208,6 +5281,8 @@ file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid,
       return DISK_ERROR;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   allocset_offset = offsetof (FILE_HEADER, allocset);
 
   /* Go over each allocation set until the file is found */
@@ -5222,6 +5297,9 @@ file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid,
 	  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
 	  return DISK_ERROR;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
       /* Get the allocation set */
       allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr
 				    + allocset_offset);
@@ -5321,6 +5399,9 @@ file_allocset_alloc_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   FILE_RECV_ALLOCSET_SECTOR recv_undo, recv_redo;	/* Recovery stuff */
   bool special = false;
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
   /* Allocation of pages and sectors is done only from the last allocation set.
      This is done since the VPID must be stored in the order of allocation. */
 
@@ -5368,6 +5449,8 @@ file_allocset_alloc_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	{
 	  return NULL_SECTID;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_FTAB);
 
       if (allocset->end_sects_offset >= DB_PAGESIZE)
 	{
@@ -5528,6 +5611,9 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   int length;
   FILE_RECV_EXPAND_SECTOR recv;	/* Recovery information */
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
   /*
    * An expansion of a sector table can be done only for the last allocation
    * set. This is a consequence since allocations are done at the end due to
@@ -5586,6 +5672,8 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
       return NULL;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, from_pgptr, PAGE_FTAB);
+
   /*
    * Calculate the starting offset and length of allocation area in from
    * page. Note that we move from the right.. so from_outptr is to the
@@ -5597,6 +5685,8 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
       pgbuf_unfix_and_init (thread_p, from_pgptr);
       return NULL;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, from_pgptr, PAGE_FTAB);
 
   /* Find the page where data will moved to */
   if (((FILE_NUM_EMPTY_SECTS * SSIZEOF (to_vpid.pageid)) -
@@ -5613,6 +5703,8 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	  pgbuf_unfix_and_init (thread_p, from_pgptr);
 	  return NULL;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, to_pgptr, PAGE_FTAB);
 
       /* How many sector elements are needed ? */
       nsects = FILE_NUM_EMPTY_SECTS - allocset->num_holes;
@@ -5641,6 +5733,8 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	  pgbuf_unfix_and_init (thread_p, from_pgptr);
 	  return NULL;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, to_pgptr, PAGE_FTAB);
 
       /* Must take in consideration pointers of linked list and empty spaces
          (i.e., NULL_PAGEIDs) of from-page */
@@ -5718,6 +5812,8 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	      return NULL;
 	    }
 
+	  (void) pgbuf_check_page_ptype (thread_p, from_pgptr, PAGE_FTAB);
+
 	  /*
 	   * Calculate the starting offset and length of allocation area in from
 	   * page.
@@ -5765,6 +5861,9 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	      pgbuf_unfix_and_init (thread_p, from_pgptr);
 	      return NULL;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, to_pgptr, PAGE_FTAB);
+
 	  /*
 	   * Calculate the starting offset and length of allocation area in from
 	   * page.
@@ -5886,6 +5985,8 @@ file_expand_ftab (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr)
   FILE_RECV_FTB_EXPANSION recv_undo;
   FILE_RECV_FTB_EXPANSION recv_redo;
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
   addr.vfid = &fhdr->vfid;
 
@@ -5909,6 +6010,8 @@ file_expand_ftab (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr)
        */
       return NULL;
     }
+
+  (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_FTAB);
 
   prev_last_ftb_vpid = fhdr->last_table_vpid;
 
@@ -5951,6 +6054,9 @@ file_expand_ftab (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr)
 	   */
 	  return NULL;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_FTAB);
+
       chain = (FILE_FTAB_CHAIN *) (addr.pgptr + FILE_FTAB_CHAIN_OFFSET);
       memcpy (&rv_undo_chain, chain, sizeof (*chain));
 
@@ -6043,6 +6149,8 @@ file_debug_maybe_newset (PAGE_PTR fhdr_pgptr, FILE_HEADER * fhdr,
 				  PGBUF_UNCONDITIONAL_LATCH);
       if (allocset_pgptr != NULL)
 	{
+	  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
 	  allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr +
 					fhdr->last_allocset_offset);
 	  if (allocset->num_pages > 0
@@ -6086,6 +6194,8 @@ file_allocset_new_set (THREAD_ENTRY * thread_p, INT16 last_allocset_volid,
   INT16 volid;
   int ret = NO_ERROR;
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   /* Find a volume with at least the expected number of pages. */
@@ -6127,6 +6237,8 @@ file_allocset_add_set (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   FILE_RECV_ALLOCSET_LINK recv_redo;
   int ret = NO_ERROR;
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
   addr.vfid = &fhdr->vfid;
 
@@ -6136,6 +6248,8 @@ file_allocset_add_set (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
 
   allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr +
 				fhdr->last_allocset_offset);
@@ -6178,6 +6292,8 @@ file_allocset_add_set (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, new_allocset_pgptr, PAGE_FTAB);
 
   new_allocset = (FILE_ALLOCSET *) ((char *) new_allocset_pgptr +
 				    new_allocset_offset);
@@ -6348,6 +6464,9 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   FILE_RECV_ALLOCSET_PAGES recv_redo;
   int i, length;
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
   if (npages <= 0)
     {
       return NULL_PAGEID;
@@ -6375,6 +6494,8 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
     {
       return NULL_PAGEID;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
   /* Address end of page table... and the end of page */
   CAST_TO_PAGEARRAY (aid_ptr, pgptr, allocset->end_pages_offset);
@@ -6442,6 +6563,9 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	    {
 	      return NULL_PAGEID;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
+
 	  CAST_TO_PAGEARRAY (aid_ptr, pgptr, sizeof (FILE_FTAB_CHAIN));
 	  CAST_TO_PAGEARRAY (outptr, pgptr, DB_PAGESIZE);
 
@@ -6583,6 +6707,8 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 #endif
   DISK_PAGE_TYPE alloc_page_type;
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   /*
    * Allocation of pages and sectors is done only from the last allocation set.
    * This is done since the array of page identifiers must be stored in the
@@ -6594,6 +6720,8 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
 
   /* Get the file header and the allocation set */
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
@@ -6646,6 +6774,9 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	         release its lock */
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
+
 	  /* Find the beginning and the end of the portion of the sector table
 	     stored on the current file table page */
 
@@ -6861,6 +6992,8 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
 
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
@@ -7090,6 +7223,8 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p,
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
 
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
@@ -7391,6 +7526,8 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   file_type = fhdr->type;
@@ -7411,6 +7548,9 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
   allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr +
 				fhdr->last_allocset_offset);
   if (allocset->volid != desired_volid
@@ -7581,6 +7721,9 @@ file_allocset_find_page (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   VPID vpid;
   DISK_ISVALID isfound = DISK_INVALID;
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr + allocset_offset);
@@ -7594,6 +7737,8 @@ file_allocset_find_page (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
       /* Calculate the portion of the set that we can look at */
       if (file_find_limits (pgptr, allocset, &aid_ptr, &outptr,
@@ -7845,6 +7990,9 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p,
   INT32 undo_data, redo_data;
   FILE_RECV_DELETE_PAGES postpone_data;
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
   if (num_contpages <= FILE_PREALLOC_MEMSIZE)
     {
       mem = prealloc_mem;
@@ -7998,6 +8146,8 @@ file_allocset_find_num_deleted (THREAD_ENTRY * thread_p, FILE_HEADER * fhdr,
 	  goto exit_on_error;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
+
       /* Calculate the portion of the set that we can look at */
       if (file_find_limits (pgptr, allocset, &aid_ptr, &outptr,
 			    FILE_PAGE_TABLE) != NO_ERROR)
@@ -8138,6 +8288,8 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   allocset_offset = offsetof (FILE_HEADER, allocset);
   /* Go over each allocation set until the page is found */
   while (!VPID_ISNULL (&allocset_vpid))
@@ -8150,6 +8302,9 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
       /* Get the allocation set */
       allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr
 				    + allocset_offset);
@@ -8320,6 +8475,8 @@ file_truncate_to_numpages (THREAD_ENTRY * thread_p, const VFID * vfid,
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   if (fhdr->num_user_pages > keep_first_numpages)
@@ -8342,6 +8499,9 @@ file_truncate_to_numpages (THREAD_ENTRY * thread_p, const VFID * vfid,
 	      /* Cancel the lock and free the page */
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
 	  allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr +
 					allocset_offset);
 
@@ -8369,6 +8529,8 @@ file_truncate_to_numpages (THREAD_ENTRY * thread_p, const VFID * vfid,
 		      /* Cancel the lock and free the page */
 		      goto exit_on_error;
 		    }
+
+		  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
 		  /* Calculate the starting offset and length of the page to
 		     check */
@@ -8611,6 +8773,8 @@ file_allocset_remove (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   FILE_RECV_ALLOCSET_LINK recv_redo;
   int ret = NO_ERROR;
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   addr.vfid = &fhdr->vfid;
@@ -8630,6 +8794,8 @@ file_allocset_remove (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
   allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr + allocset_offset);
 
   /* Deallocate all sectors assigned to this allocation set */
@@ -8646,6 +8812,8 @@ file_allocset_remove (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	      ret = ER_FAILED;
 	      break;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
 	  /* Calculate the starting offset and length of the page to check */
 	  ret = file_find_limits (pgptr, allocset, &aid_ptr, &outptr,
@@ -8775,6 +8943,8 @@ file_allocset_remove (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
   allocset =
     (FILE_ALLOCSET *) ((char *) allocset_pgptr + prev_allocset_offset);
 
@@ -8881,6 +9051,8 @@ file_allocset_reuse_last_set (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 				   the batch */
   int ret = NO_ERROR;
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   addr.vfid = &fhdr->vfid;
@@ -8891,6 +9063,8 @@ file_allocset_reuse_last_set (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
 
   allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr +
 				fhdr->last_allocset_offset);
@@ -8908,6 +9082,8 @@ file_allocset_reuse_last_set (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	    {
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
 	  /* Calculate the starting offset and length of the page to check */
 	  ret = file_find_limits (pgptr, allocset, &aid_ptr, &outptr,
@@ -9086,6 +9262,9 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
   int ret = NO_ERROR;
   DISK_PAGE_TYPE page_type;
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   addr.vfid = &fhdr->vfid;
@@ -9127,6 +9306,9 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, from_pgptr, PAGE_FTAB);
+
       /* Find the location for portion of page table */
       ret = file_find_limits (from_pgptr, allocset, &from_aid_ptr,
 			      &from_outptr, FILE_PAGE_TABLE);
@@ -9145,6 +9327,9 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, to_pgptr, PAGE_FTAB);
+
       /* Find the location for portion of page table */
       ret = file_find_limits (to_pgptr, allocset, &to_aid_ptr, &to_outptr,
 			      FILE_PAGE_TABLE);
@@ -9163,6 +9348,9 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, to_pgptr, PAGE_FTAB);
+
       /* Find the location for portion of page table */
       ret = file_find_limits (to_pgptr, allocset, &to_aid_ptr, &to_outptr,
 			      FILE_PAGE_TABLE);
@@ -9211,6 +9399,9 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
 		{
 		  goto exit_on_error;
 		}
+
+	      (void) pgbuf_check_page_ptype (thread_p, to_pgptr, PAGE_FTAB);
+
 	      /* Find the location for portion of page table */
 	      ret = file_find_limits (to_pgptr, allocset, &to_aid_ptr,
 				      &to_outptr, FILE_PAGE_TABLE);
@@ -9249,6 +9440,8 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, from_pgptr, PAGE_FTAB);
     }
 
   /* Now start the compacting process. Eliminate empty holes (NULL_PAGEIDs) */
@@ -9300,6 +9493,8 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
 	    {
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, from_pgptr, PAGE_FTAB);
 
 	  /* Find the location for portion of page table */
 	  ret = file_find_limits (from_pgptr, allocset, &from_aid_ptr,
@@ -9353,6 +9548,8 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
 	    {
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, to_pgptr, PAGE_FTAB);
 
 	  /* Find the location for portion of page table */
 	  ret = file_find_limits (to_pgptr, allocset, &to_aid_ptr, &to_outptr,
@@ -9451,6 +9648,9 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
 	    {
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, from_pgptr, PAGE_FTAB);
+
 	  vpid = from_vpid;
 
 	  /* Next file table page */
@@ -9626,6 +9826,9 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
   FILE_RECV_SHIFT_SECTOR_TABLE recv_redo;
   int ret = NO_ERROR;
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   addr.vfid = &fhdr->vfid;
@@ -9650,12 +9853,16 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, to_pgptr, PAGE_FTAB);
+
   from_pgptr = pgbuf_fix (thread_p, &from_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 			  PGBUF_UNCONDITIONAL_LATCH);
   if (from_pgptr == NULL)
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, from_pgptr, PAGE_FTAB);
 
   CAST_TO_PAGEARRAY (to_aid_ptr, to_pgptr, ftb_offset);
   CAST_TO_PAGEARRAY (to_outptr, to_pgptr, DB_PAGESIZE);
@@ -9717,6 +9924,8 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
 	      goto exit_on_error;
 	    }
 
+	  (void) pgbuf_check_page_ptype (thread_p, from_pgptr, PAGE_FTAB);
+
 	  /* Find the location for the from part. */
 	  ret = file_find_limits (from_pgptr, allocset, &from_aid_ptr,
 				  &from_outptr, FILE_SECTOR_TABLE);
@@ -9777,6 +9986,8 @@ file_allocset_shift_sector_table (THREAD_ENTRY * thread_p,
 	    {
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, to_pgptr, PAGE_FTAB);
 
 	  CAST_TO_PAGEARRAY (to_aid_ptr, to_pgptr, sizeof (FILE_FTAB_CHAIN));
 	  CAST_TO_PAGEARRAY (to_outptr, to_pgptr, DB_PAGESIZE);
@@ -9883,6 +10094,8 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   FILE_RECV_ALLOCSET_LINK recv_redo;
   int ret = NO_ERROR;
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   addr.vfid = &fhdr->vfid;
@@ -9893,6 +10106,8 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
 
   allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr + *allocset_offset);
 
@@ -9926,6 +10141,9 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	    {
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, ftb_pgptr, PAGE_FTAB);
+
 	  if ((*ftb_offset + SSIZEOF (*allocset)) >= DB_PAGESIZE)
 	    {
 	      /* Cannot copy the allocation set at this location.
@@ -9971,6 +10189,9 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 		{
 		  goto exit_on_error;
 		}
+
+	      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr,
+					     PAGE_FTAB);
 
 	      allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr +
 					    prev_allocset_offset);
@@ -10032,6 +10253,9 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 		{
 		  goto exit_on_error;
 		}
+
+	      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr,
+					     PAGE_FTAB);
 
 	      allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr +
 					    *allocset_offset);
@@ -10119,6 +10343,8 @@ file_compress (THREAD_ENTRY * thread_p, const VFID * vfid,
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   if (fhdr->num_user_pages_mrkdelete > 0)
@@ -10146,6 +10372,8 @@ file_compress (THREAD_ENTRY * thread_p, const VFID * vfid,
 	  ret = ER_FAILED;
 	  break;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
 
       allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr
 				    + allocset_offset);
@@ -10215,6 +10443,8 @@ file_compress (THREAD_ENTRY * thread_p, const VFID * vfid,
 	      ret = ER_FAILED;
 	      break;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
 
 	  allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr
 					+ allocset_offset);
@@ -10315,6 +10545,8 @@ file_check_all_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   if (!VFID_EQ (vfid, &fhdr->vfid) ||
@@ -10354,6 +10586,8 @@ file_check_all_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
       if (file_ftabvpid_next (fhdr, pgptr, &set_vpids[0]) != NO_ERROR)
 	{
@@ -10476,6 +10710,8 @@ file_check_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
       return DISK_ERROR;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   allocset_offset = offsetof (FILE_HEADER, allocset);
@@ -10488,6 +10724,8 @@ file_check_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
 
       /* Get the allocation set */
       allocset =
@@ -10647,6 +10885,8 @@ file_dump_ftabs (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER * fhdr)
 	  return ER_FAILED;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, ftb_pgptr, PAGE_FTAB);
+
       ret = file_ftabvpid_next (fhdr, ftb_pgptr, &ftb_vpid);
       if (ret != NO_ERROR)
 	{
@@ -10747,6 +10987,9 @@ file_allocset_dump_tables (THREAD_ENTRY * thread_p, FILE * fp,
 	  ret = ER_FAILED;
 	  break;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
+
       /* Calculate the portion of pageids that we can look at current page */
       ret = file_find_limits (pgptr, allocset, &aid_ptr, &outptr,
 			      FILE_SECTOR_TABLE);
@@ -10816,6 +11059,9 @@ file_allocset_dump_tables (THREAD_ENTRY * thread_p, FILE * fp,
 	  ret = ER_FAILED;
 	  break;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
+
       /* Calculate the portion of pageids that we can look at current page */
       ret = file_find_limits (pgptr, allocset, &aid_ptr, &outptr,
 			      FILE_PAGE_TABLE);
@@ -11151,6 +11397,8 @@ file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid)
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   allocset_offset = offsetof (FILE_HEADER, allocset);
 
   if (file_allocset_compact_page_table (thread_p, fhdr_pgptr, fhdr_pgptr,
@@ -11230,6 +11478,8 @@ file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid)
       return NULL;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   /* The following will be associated to the outer transaction
@@ -11253,6 +11503,9 @@ file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid)
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
+
   allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr +
 				fhdr->last_allocset_offset);
   if (allocset->volid != vfid->volid)
@@ -11271,6 +11524,8 @@ file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid)
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
 
       allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr +
 				    fhdr->last_allocset_offset);
@@ -11351,6 +11606,8 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   allocset_offset = offsetof (FILE_HEADER, allocset);
 
   /* Go over each allocation set until the page is found */
@@ -11363,6 +11620,8 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
 
       /* Get the allocation set */
       allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr
@@ -11738,6 +11997,8 @@ file_make_idsmap_image (THREAD_ENTRY * thread_p,
       return DISK_ERROR;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   if (!VFID_EQ (vfid, &fhdr->vfid) ||
@@ -11794,6 +12055,8 @@ file_make_idsmap_image (THREAD_ENTRY * thread_p,
 	  valid = DISK_ERROR;
 	  goto end;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
       if (file_ftabvpid_next (fhdr, pgptr, &next_ftable_vpid) != NO_ERROR)
 	{
@@ -12030,6 +12293,8 @@ file_tracker_check (THREAD_ENTRY * thread_p)
       return DISK_ERROR;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, trk_fhdr_pgptr, PAGE_FTAB);
+
   num_files = file_get_numpages (thread_p, file_Tracker->vfid);
   for (i = 0; i < num_files && allvalid != DISK_ERROR; i += num_found)
     {
@@ -12106,6 +12371,8 @@ file_tracker_dump (THREAD_ENTRY * thread_p, FILE * fp)
     {
       return ER_FAILED;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, trk_fhdr_pgptr, PAGE_FTAB);
 
   num_files = file_get_numpages (thread_p, file_Tracker->vfid);
 
@@ -12190,6 +12457,8 @@ file_tracker_compress (THREAD_ENTRY * thread_p)
     {
       return ER_FAILED;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, trk_fhdr_pgptr, PAGE_FTAB);
 
   /* Compress all the files, but the tracker file at this moment. */
   num_files = file_get_numpages (thread_p, file_Tracker->vfid);
@@ -12358,6 +12627,8 @@ file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid,
 	  goto exit_on_error;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, trk_fhdr_pgptr, PAGE_FTAB);
+
       num_files = file_get_numpages (thread_p, file_Tracker->vfid);
 
       /* Find a mark deleted file */
@@ -12390,6 +12661,8 @@ file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid,
 		{
 		  continue;
 		}
+
+	      (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
 
 	      fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
@@ -12432,6 +12705,8 @@ file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid,
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
 
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
@@ -12511,6 +12786,8 @@ file_reclaim_all_deleted (THREAD_ENTRY * thread_p)
     {
       return ER_FAILED;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, trk_fhdr_pgptr, PAGE_FTAB);
 
   nth = 0;
   num_files = file_get_numpages (thread_p, file_Tracker->vfid);
@@ -12750,6 +13027,8 @@ file_rv_tracker_unregister_logical_undo (THREAD_ENTRY * thread_p, VFID * vfid)
 	  return NO_ERROR;	/* do not permit error */
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_FTAB);
+
       addr.vfid = file_Tracker->vfid;
       addr.offset = -1;
       /* Don't need undo we are undoing! */
@@ -12817,6 +13096,9 @@ file_rv_undo_create_tmp (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 		}
 	      else
 		{
+		  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr,
+						 PAGE_FTAB);
+
 		  fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 		  if (!VFID_EQ (vfid, &fhdr->vfid))
 		    {
@@ -12854,6 +13136,20 @@ file_rv_dump_create_tmp (FILE * fp, int length_ignore, void *data)
 }
 
 /* TODO: list for file_ftab_chain */
+
+/*
+ * file_rv_redo_ftab_chain () -
+ *   return: NO_ERROR
+ *   rcv(in): Recovery structure
+ */
+int
+file_rv_redo_ftab_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
+
+  return log_rv_copy_char (thread_p, rcv);
+}
+
 /*
  * file_rv_dump_ftab_chain () - Dump redo information to double link file table
  *                          pages
@@ -12870,6 +13166,19 @@ file_rv_dump_ftab_chain (FILE * fp, int length_ignore, void *data)
   (void) fprintf (fp, "Next_ftb_vpid:%d|%d, Previous_ftb_vpid = %d|%d\n",
 		  recv->next_ftbvpid.volid, recv->next_ftbvpid.pageid,
 		  recv->prev_ftbvpid.volid, recv->prev_ftbvpid.pageid);
+}
+
+/*
+ * file_rv_redo_fhdr () -
+ *   return: NO_ERROR
+ *   rcv(in): Recovery structure
+ */
+int
+file_rv_redo_fhdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
+
+  return log_rv_copy_char (thread_p, rcv);
 }
 
 /*
@@ -12925,6 +13234,8 @@ file_rv_undoredo_mark_as_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   int rv;
 #endif /* SERVER_MODE */
   int ret = NO_ERROR;
+
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
 
   assert (rcv->length == 2 || rcv->length == 4);
   if (rcv->length == 2)
@@ -12985,6 +13296,8 @@ file_rv_allocset_undoredo_sector (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   FILE_RECV_ALLOCSET_SECTOR *rvsect;
   FILE_ALLOCSET *allocset;
 
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
+
   rvsect = (FILE_RECV_ALLOCSET_SECTOR *) rcv->data;
   allocset = (FILE_ALLOCSET *) ((char *) rcv->pgptr + rcv->offset);
 
@@ -13029,6 +13342,8 @@ file_rv_allocset_undoredo_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   FILE_RECV_EXPAND_SECTOR *rvstb;
   FILE_ALLOCSET *allocset;
+
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
 
   rvstb = (FILE_RECV_EXPAND_SECTOR *) rcv->data;
   allocset = (FILE_ALLOCSET *) ((char *) rcv->pgptr + rcv->offset);
@@ -13087,6 +13402,8 @@ file_rv_fhdr_undoredo_expansion (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   FILE_RECV_FTB_EXPANSION *rvftb;	/* Recovery information   */
   FILE_HEADER *fhdr;		/* Pointer to file header */
+
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
 
   rvftb = (FILE_RECV_FTB_EXPANSION *) rcv->data;
   fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
@@ -13148,6 +13465,8 @@ file_rv_allocset_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   FILE_RECV_ALLOCSET_LINK *rvlink;
   FILE_ALLOCSET *allocset;
 
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
+
   rvlink = (FILE_RECV_ALLOCSET_LINK *) rcv->data;
   allocset = (FILE_ALLOCSET *) ((char *) rcv->pgptr + rcv->offset);
 
@@ -13189,6 +13508,8 @@ file_rv_fhdr_last_allocset_helper (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 {
   FILE_RECV_ALLOCSET_LINK *rvlink;
   FILE_HEADER *fhdr;
+
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
 
   rvlink = (FILE_RECV_ALLOCSET_LINK *) rcv->data;
   fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
@@ -13239,6 +13560,8 @@ file_rv_fhdr_change_last_allocset (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   FILE_RECV_ALLOCSET_LINK *rvlink;
   FILE_HEADER *fhdr;
 
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
+
   rvlink = (FILE_RECV_ALLOCSET_LINK *) rcv->data;
   fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
 
@@ -13279,6 +13602,8 @@ file_rv_allocset_undoredo_add_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   FILE_RECV_ALLOCSET_PAGES *rvpgs;
   FILE_ALLOCSET *allocset;
+
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
 
   rvpgs = (FILE_RECV_ALLOCSET_PAGES *) rcv->data;
   allocset = (FILE_ALLOCSET *) ((char *) rcv->pgptr + rcv->offset);
@@ -13335,6 +13660,8 @@ file_rv_fhdr_undoredo_add_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   FILE_HEADER *fhdr;
 
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
 
   fhdr->num_user_pages = *(INT32 *) rcv->data;
@@ -13368,6 +13695,8 @@ file_rv_fhdr_undoredo_mark_deleted_pages (THREAD_ENTRY * thread_p,
 {
   FILE_HEADER *fhdr;
   INT32 npages;
+
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
 
   npages = *(INT32 *) rcv->data;
   fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
@@ -13407,6 +13736,8 @@ file_rv_allocset_undoredo_delete_pages (THREAD_ENTRY * thread_p,
   FILE_ALLOCSET *allocset;
   INT32 npages;
 
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
+
   npages = *(INT32 *) rcv->data;
 
   allocset = (FILE_ALLOCSET *) ((char *) rcv->pgptr + rcv->offset);
@@ -13442,6 +13773,8 @@ file_rv_fhdr_delete_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   FILE_RECV_DELETE_PAGES *rv_pages;
   VPID *vpid;
   VFID vfid;
+
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
 
   fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
 
@@ -13504,6 +13837,8 @@ file_rv_allocset_undoredo_sectortab (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   FILE_RECV_SHIFT_SECTOR_TABLE *rvsect;
   FILE_ALLOCSET *allocset;
 
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
+
   rvsect = (FILE_RECV_SHIFT_SECTOR_TABLE *) rcv->data;
   allocset = (FILE_ALLOCSET *) ((char *) rcv->pgptr + rcv->offset);
 
@@ -13552,6 +13887,8 @@ file_rv_descriptor_undoredo_firstrest_nextvpid (THREAD_ENTRY * thread_p,
 						LOG_RCV * rcv)
 {
   FILE_HEADER *fhdr;
+
+  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
 
   fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
 
@@ -13615,6 +13952,19 @@ file_rv_descriptor_dump_nrest_nextvpid (FILE * fp, int length_ignore,
 
   vpid = (VPID *) data;
   fprintf (fp, "N Rest of file Desc VPID: %d|%d", vpid->volid, vpid->pageid);
+}
+
+/*
+ * file_rv_descriptor_redo_insert () -
+ *   return: NO_ERROR
+ *   rcv(in): Recovery structure
+ */
+int
+file_rv_descriptor_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
+
+  return log_rv_copy_char (thread_p, rcv);
 }
 
 /*
@@ -14230,6 +14580,8 @@ file_construct_space_info (THREAD_ENTRY * thread_p,
       return DISK_ERROR;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
+
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   page_type = file_get_disk_page_type (fhdr->type);
@@ -14274,6 +14626,8 @@ file_construct_space_info (THREAD_ENTRY * thread_p,
 	  valid = DISK_ERROR;
 	  goto end;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
 
       if (file_ftabvpid_next (fhdr, pgptr, &next_ftable_vpid) != NO_ERROR)
 	{

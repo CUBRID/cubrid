@@ -593,6 +593,8 @@ static DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p,
 static bool pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p,
 					     int page_validation_level);
 static bool pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr);
+static bool pgbuf_check_bcb_page_vpid (THREAD_ENTRY * thread_p,
+				       PGBUF_BCB * bufptr);
 
 #if defined(CUBRID_DEBUG)
 static void pgbuf_scramble (FILEIO_PAGE * iopage);
@@ -1118,11 +1120,39 @@ try_again:
 	      (void) pgbuf_unlock_page (hash_anchor, vpid, true);
 	      return NULL;
 	    }
-	  if (pgbuf_is_temporary_volume (vpid->volid) == true
-	      && !LSA_IS_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa))
+
+	  if (pgbuf_is_temporary_volume (vpid->volid) == true)
 	    {
-	      LSA_SET_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
-	      pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
+	      /* Check iff the first time to access */
+	      if (!LSA_IS_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa))
+		{
+		  LSA_SET_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
+		  pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
+
+		  assert (bufptr->iopage_buffer->iopage.prv.pageid == 0);
+		  assert (bufptr->iopage_buffer->iopage.prv.volid == 0);
+
+		  /* Set Page identifier */
+		  bufptr->iopage_buffer->iopage.prv.pageid =
+		    bufptr->vpid.pageid;
+		  bufptr->iopage_buffer->iopage.prv.volid =
+		    bufptr->vpid.volid;
+		}
+	    }
+	  else
+	    {
+	      /* Check iff the first time to access */
+	      if (LSA_ISNULL (&bufptr->iopage_buffer->iopage.prv.lsa))
+		{
+		  assert (bufptr->iopage_buffer->iopage.prv.pageid == 0);
+		  assert (bufptr->iopage_buffer->iopage.prv.volid == 0);
+
+		  /* Set Page identifier */
+		  bufptr->iopage_buffer->iopage.prv.pageid =
+		    bufptr->vpid.pageid;
+		  bufptr->iopage_buffer->iopage.prv.volid =
+		    bufptr->vpid.volid;
+		}
 	    }
 
 	  mnt_sort_io_pages (thread_p);
@@ -1145,9 +1175,42 @@ try_again:
 	      LSA_SET_INIT_NONTEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
 	    }
 
+	  /* Set Page identifier */
+	  bufptr->iopage_buffer->iopage.prv.pageid = bufptr->vpid.pageid;
+	  bufptr->iopage_buffer->iopage.prv.volid = bufptr->vpid.volid;
+
+	  bufptr->iopage_buffer->iopage.prv.ptype = '\0';
+	  bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 = '\0';
+	  bufptr->iopage_buffer->iopage.prv.p_reserve_2 = 0;
+	  bufptr->iopage_buffer->iopage.prv.p_reserve_3 = 0;
+
 	  mnt_sort_data_pages (thread_p);
 	}
       buf_lock_acquired = true;
+    }
+
+  /* At this place, the caller is holding bufptr->BCB_mutex */
+
+  if (pgbuf_check_bcb_page_vpid (thread_p, bufptr) != true)
+    {
+      if (buf_lock_acquired)
+	{
+	  /* bufptr->BCB_mutex will be released in the following function. */
+	  pgbuf_put_bcb_into_invalid_list (bufptr);
+
+	  /*
+	   * Now, caller is not holding any mutex.
+	   * the last argument of pgbuf_unlock_page () is true that
+	   * means hash_mutex must be held before unlocking page.
+	   */
+	  (void) pgbuf_unlock_page (hash_anchor, vpid, true);
+	}
+      else
+	{
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	}
+
+      return NULL;
     }
 
   /* At this place, the caller is holding bufptr->BCB_mutex */
@@ -1268,6 +1331,10 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
     }
 #endif /* !NDEBUG */
 
+  /* Get the address of the buffer from the page and free the buffer */
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  assert (!VPID_ISNULL (&bufptr->vpid));
+
 #if defined(CUBRID_DEBUG)
   /*
    * If the buffer is dirty and the log sequence address of the buffer
@@ -1320,10 +1387,6 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 		    fileio_get_volume_label (bufptr->vpid.volid, PEEK));
     }
 #endif /* CUBRID_DEBUG */
-
-  /* Get the address of the buffer from the page and free the buffer */
-  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  assert (!VPID_ISNULL (&bufptr->vpid));
 
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
 #if !defined(NDEBUG)
@@ -2666,10 +2729,12 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid,
       pthread_mutex_unlock (&bufptr->BCB_mutex);
     }
 
-  pgptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+  pgptr = pgbuf_fix (thread_p, vpid, NEW_PAGE, PGBUF_LATCH_WRITE,
 		     PGBUF_UNCONDITIONAL_LATCH);
   if (pgptr != NULL)
     {
+      (void) pgbuf_set_page_ptype (thread_p, pgptr, PAGE_AREA);
+
       memcpy ((char *) pgptr + start_offset, area, length);
       /* Inform log manager that there is no need to log this page */
       addr.vfid = NULL;
@@ -2920,8 +2985,50 @@ pgbuf_get_page_id (PAGE_PTR pgptr)
   /* NOTE: Does not need to hold BCB_mutex since the page is fixed */
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  assert (pgbuf_check_bcb_page_vpid (NULL, bufptr) == true);
+
   return bufptr->vpid.pageid;
 }
+
+#if 0				/* TODO - currently, unused */
+/*
+ * pgbuf_get_page_ptype () -
+ *   return:
+ *   pgptr(in): Pointer to page
+ */
+PAGE_TYPE
+pgbuf_get_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr;
+  PAGE_TYPE ptype;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (pgbuf_get_check_page_validation (thread_p,
+				       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+    {
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	{
+	  return PAGE_UNKNOWN;	/* TODO - need to return error_code */
+	}
+    }
+
+  /* NOTE: Does not need to hold BCB_mutex since the page is fixed */
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  assert_release (pgbuf_check_bcb_page_vpid (thread_p, bufptr) == true);
+
+  ptype = (PAGE_TYPE) (bufptr->iopage_buffer->iopage.prv.ptype);
+
+  assert (PAGE_FIRST <= ptype);
+  assert (ptype <= PAGE_LAST);
+
+  return ptype;
+}
+#endif
 
 /*
  * pgbuf_get_volume_id () - Find the volume associated with the passed buffer
@@ -3139,6 +3246,49 @@ pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
       LSA_COPY (&bufptr->iopage_buffer->iopage.prv.lsa, restart_lsa);
       pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
     }
+}
+
+/*
+ * pgbuf_set_page_ptype () -
+ *   return: void
+ *   pgptr(in): Pointer to page
+ *   ptype(in): page type
+ *
+ * Note: This function is used for debugging.
+ */
+void
+pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+		      PAGE_TYPE ptype)
+{
+  PGBUF_BCB *bufptr;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (pgbuf_get_check_page_validation (thread_p,
+				       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+    {
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	{
+	  assert (false);
+	  return;
+	}
+    }
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  assert (!VPID_ISNULL (&bufptr->vpid));
+
+  if (pgbuf_check_bcb_page_vpid (thread_p, bufptr) != true)
+    {
+      assert (false);
+      return;
+    }
+
+  bufptr->iopage_buffer->iopage.prv.ptype = (unsigned char) ptype;
+
+  assert_release (bufptr->iopage_buffer->iopage.prv.ptype == ptype);
 }
 
 /*
@@ -4090,6 +4240,9 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   PAGE_PTR pgptr;
 
   /* the caller is holding bufptr->BCB_mutex */
+
+  assert (!VPID_ISNULL (&bufptr->vpid));
+  assert (pgbuf_check_bcb_page_vpid (thread_p, bufptr) == true);
 
   /* decrement the fix count */
   bufptr->fcnt--;
@@ -6157,6 +6310,11 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 	  || bufptr->latch_mode == PGBUF_LATCH_READ
 	  || bufptr->latch_mode == PGBUF_LATCH_WRITE);
 
+  if (pgbuf_check_bcb_page_vpid (thread_p, bufptr) != true)
+    {
+      return ER_FAILED;
+    }
+
   bufptr->avoid_victim = true;
 
   bufptr->async_flush_request = false;
@@ -6451,6 +6609,99 @@ pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr)
   return false;
 }
 
+/*
+ * pgbuf_check_page_ptype () -
+ *   return: true/false
+ *   bufptr(in): pointer to buffer page
+ *   ptype(in): page type
+ *
+ * Note: Verify if the given page's ptype is valid.
+ *       This function is used for debugging purposes.
+ */
+bool
+pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+			PAGE_TYPE ptype)
+{
+  PGBUF_BCB *bufptr;
+
+#if 1				/* TODO - do not delete me */
+#if defined(NDEBUG)
+  if (log_is_in_crash_recovery ())
+    {
+      return true;
+    }
+#endif
+#endif
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (pgbuf_get_check_page_validation (thread_p,
+				       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+    {
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	{
+	  return false;
+	}
+    }
+
+  /* NOTE: Does not need to hold BCB_mutex since the page is fixed */
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  assert (!VPID_ISNULL (&bufptr->vpid));
+
+  if (pgbuf_check_bcb_page_vpid (thread_p, bufptr) == true)
+    {
+      if (bufptr->iopage_buffer->iopage.prv.ptype != PAGE_UNKNOWN
+	  && bufptr->iopage_buffer->iopage.prv.ptype != ptype)
+	{
+	  assert_release (false);
+	  return false;
+	}
+    }
+  else
+    {
+      assert_release (false);
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * pgbuf_check_bcb_page_vpid () - Validate an FILEIO_PAGE prv
+ *   return: true/false
+ *   bufptr(in): pointer to buffer page
+ *
+ * Note: Verify if the given page's prv is valid.
+ *       This function is used for debugging purposes.
+ */
+static bool
+pgbuf_check_bcb_page_vpid (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert (!VPID_ISNULL (&bufptr->vpid));
+
+  /* Check Page identifier */
+  assert (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid);
+  assert (bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid);
+
+#if 1				/* TODO - do not delete me */
+  assert (bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 == '\0');
+  assert (bufptr->iopage_buffer->iopage.prv.p_reserve_2 == 0);
+  assert (bufptr->iopage_buffer->iopage.prv.p_reserve_3 == 0);
+#endif
+
+  return (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid
+	  && bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid);
+}
+
 #if defined(CUBRID_DEBUG)
 /*
  * pgbuf_scramble () - Scramble the content of the buffer
@@ -6467,6 +6718,15 @@ pgbuf_scramble (FILEIO_PAGE * iopage)
 {
   MEM_REGION_INIT (iopage, IO_PAGESIZE);
   LSA_SET_NULL (&iopage->prv.lsa);
+
+  /* Init Page identifier */
+  iopage->prv.pageid = 0;
+  iopage->prv.volid = 0;
+
+  iopage->prv.ptype = '\0';
+  iopage->prv.pflag_reserve_1 = '\0';
+  iopage->prv.pflag_reserve_2 = 0;
+  iopage->prv.pflag_reserve_3 = 0;
 }
 
 /*

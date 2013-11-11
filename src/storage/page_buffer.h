@@ -231,6 +231,10 @@ extern void pgbuf_reset_temp_lsa (PAGE_PTR pgptr);
 extern void pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid);
 extern VPID *pgbuf_get_vpid_ptr (PAGE_PTR pgptr);
 extern PAGEID pgbuf_get_page_id (PAGE_PTR pgptr);
+#if 0				/* TODO - currently, unused */
+extern PAGE_TYPE pgbuf_get_page_ptype (THREAD_ENTRY * thread_p,
+				       PAGE_PTR pgptr);
+#endif
 extern VOLID pgbuf_get_volume_id (PAGE_PTR pgptr);
 extern const char *pgbuf_get_volume_label (PAGE_PTR pgptr);
 extern void pgbuf_refresh_max_permanent_volume_id (VOLID volid);
@@ -242,10 +246,15 @@ extern void pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p,
 					PAGE_PTR pgptr);
 extern void pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p,
 					PAGE_PTR pgptr);
+extern void pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+				  PAGE_TYPE ptype);
 extern bool pgbuf_is_lsa_temporary (PAGE_PTR pgptr);
 extern void pgbuf_invalidate_temporary_file (VOLID volid, PAGEID first_pageid,
 					     DKNPAGES npages,
 					     bool need_invalidate);
+extern bool pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+				    PAGE_TYPE ptype);
+
 #if defined(CUBRID_DEBUG)
 extern void pgbuf_dump_if_any_fixed (void);
 #endif

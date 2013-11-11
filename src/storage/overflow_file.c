@@ -326,6 +326,8 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 	  goto exit_on_error;
 	}
 
+      (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+
       /* Is this the first page ? */
       if (i == 0)
 	{
@@ -1330,6 +1332,19 @@ overflow_rv_newpage_logical_dump_undo (FILE * fp, int length_ignore,
 		  " from Volid = %d, Fileid = %d\n",
 		  newpg->new_vpid.volid, newpg->new_vpid.pageid,
 		  newpg->ovf_vfid.volid, newpg->ovf_vfid.fileid);
+}
+
+/*
+ * overflow_rv_newpage_insert_redo () -
+ *   return: 0 if no error, or error code
+ *   rcv(in): Recovery structure
+ */
+int
+overflow_rv_newpage_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_OVERFLOW);
+
+  return log_rv_copy_char (thread_p, rcv);
 }
 
 /*

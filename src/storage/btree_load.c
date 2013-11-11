@@ -1183,7 +1183,6 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
       goto exit_on_error;
     }
 
-
   /* Flush the last non-leaf page */
   btree_log_page (thread_p, &load_args->btid->sys_btid->vfid,
 		  load_args->nleaf.pgptr);
@@ -1386,12 +1385,14 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
     {
       goto exit_on_error;
     }
-  next_pageptr = pgbuf_fix (thread_p, &cur_nleafpgid, OLD_PAGE,
+  next_pageptr = pgbuf_fix (thread_p, &cur_nleafpgid, NEW_PAGE,
 			    PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (next_pageptr == NULL)
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_set_page_ptype (thread_p, next_pageptr, PAGE_BTREE);
 
   memcpy (next_pageptr, load_args->nleaf.pgptr, DB_PAGESIZE);
   pgbuf_unfix_and_init (thread_p, load_args->nleaf.pgptr);
@@ -1575,6 +1576,8 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
       return NULL;
     }				/* if */
   (*used_pgcnt)++;
+
+  (void) pgbuf_set_page_ptype (thread_p, page_ptr, PAGE_BTREE);
 
   alignment = BTREE_MAX_ALIGN;
   spage_initialize (thread_p, page_ptr, UNANCHORED_KEEP_SEQUENCE,

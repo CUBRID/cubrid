@@ -124,7 +124,7 @@ struct rvfun RV_fun[] = {
   {RVFL_FTAB_CHAIN,
    "RVFL_FTBCHAIN",
    log_rv_copy_char,
-   log_rv_copy_char,
+   file_rv_redo_ftab_chain,
    file_rv_dump_ftab_chain,
    file_rv_dump_ftab_chain},
   {RVFL_IDSTABLE,
@@ -190,7 +190,7 @@ struct rvfun RV_fun[] = {
   {RVFL_FHDR,
    "RVFL_FHDR",
    log_rv_copy_char,
-   log_rv_copy_char,
+   file_rv_redo_fhdr,
    file_rv_dump_fhdr,
    file_rv_dump_fhdr},
   {RVFL_FHDR_ADD_LAST_ALLOCSET,
@@ -235,8 +235,8 @@ struct rvfun RV_fun[] = {
    file_rv_fhdr_undoredo_expansion,
    file_rv_fhdr_dump_expansion,
    file_rv_fhdr_dump_expansion},
-  {RVFL_FILEDESC,
-   "RVFL_FILEDESC",
+  {RVFL_FILEDESC_UPD,
+   "RVFL_FILEDESC_UPD",
    log_rv_copy_char,
    log_rv_copy_char,
    log_rv_dump_char,
@@ -747,7 +747,21 @@ struct rvfun RV_fun[] = {
    NULL,
    disk_rv_redo_dboutside_init_pages,
    NULL,
-   disk_rv_dump_init_pages}
+   disk_rv_dump_init_pages},
+
+  {RVEH_INIT_DIR,
+   "RVEH_INIT_DIR",
+   log_rv_copy_char,
+   ehash_rv_init_dir_redo,
+   NULL,
+   NULL},
+
+  {RVFL_FILEDESC_INS,
+   "RVFL_FILEDESC_INS",
+   log_rv_copy_char,
+   file_rv_descriptor_redo_insert,
+   log_rv_dump_char,
+   log_rv_dump_char}
 
 };
 

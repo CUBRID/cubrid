@@ -3618,6 +3618,9 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p,
 
       tmp_vfid_p->curr_free_page_index++;
       *vpid_p = tmp_vfid_p->vpid_array[tmp_vfid_p->vpid_index++];
+
+      (void) pgbuf_set_page_ptype (thread_p, page_p, PAGE_QRESULT);
+
       qmgr_put_page_header (page_p, &page_header);
 
       addr.vfid = &tmp_vfid_p->temp_vfid;
@@ -3711,6 +3714,9 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p,
     }
 
   *vpid_p = tmp_vfid_p->vpid_array[tmp_vfid_p->vpid_index++];
+
+  (void) pgbuf_set_page_ptype (thread_p, page_p, PAGE_QRESULT);
+
   qmgr_put_page_header (page_p, &page_header);
 
   if (tmp_vfid_p->vpid_index >= tmp_vfid_p->vpid_count)

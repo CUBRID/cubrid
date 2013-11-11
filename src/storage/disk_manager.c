@@ -741,7 +741,7 @@ disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid,
     }
 #endif
 
-  if (csect_enter_as_reader (thread_p, CSECT_DISK_REFRESH_GOODVOL, 
+  if (csect_enter_as_reader (thread_p, CSECT_DISK_REFRESH_GOODVOL,
 			     INF_WAIT) != NO_ERROR)
     {
       return ER_FAILED;
@@ -1976,6 +1976,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid,
       return NULL_VOLID;
     }
 
+  (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_VOLHEADER);
+
   /* Initialize the header */
 
   vhdr = (DISK_VAR_HEADER *) addr.pgptr;
@@ -3093,6 +3095,8 @@ disk_map_init (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_fpageid,
 	  return ER_FAILED;
 	}
 
+      (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_VOLMTAB);
+
       /* If this is a volume with temporary purposes, we do not log any bitmap
          changes. Indicate that by setting the disk pages to temporary lsa */
 
@@ -4209,6 +4213,8 @@ disk_scramble_newpages (INT16 volid, INT32 first_pageid, INT32 npages,
 			      PGBUF_UNCONDITIONAL_LATCH);
       if (addr.pgptr != NULL)
 	{
+	  (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_UNKNOWN);
+
 	  memset (addr.pgptr, MEM_REGION_SCRAMBLE_MARK, DB_PAGESIZE);
 	  /* The following is needed since the file manager may have set
 	     a page as a temporary one */
@@ -5862,6 +5868,8 @@ disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   DISK_VAR_HEADER *vhdr;
   char *vol_label;
 
+  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_VOLHEADER);
+
   vhdr = (DISK_VAR_HEADER *) rcv->data;
   vol_label = disk_vhdr_get_vol_fullname (vhdr);
 
@@ -5930,6 +5938,8 @@ disk_rv_redo_init_map (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   INT32 nalloc_bits;
   unsigned char *at_chptr;	/* Char Pointer to Sector/page allocator table */
   unsigned char *out_chptr;	/* Outside of page */
+
+  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_VOLMTAB);
 
   nalloc_bits = *(INT32 *) rcv->data;
 

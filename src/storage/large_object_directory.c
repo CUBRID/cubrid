@@ -102,12 +102,12 @@ typedef enum
   L_DIR_PAGE,			/* Directory Page */
   L_ROOT_PAGE,			/* Directory Root Page */
   L_IND_PAGE			/* Directory Index Page */
-} PAGE_TYPE;			/* Recovery Page Types */
+} L_PAGE_TYPE;			/* Recovery Page Types */
 
 typedef struct largeobjmgr_rcv_state LARGEOBJMGR_RCV_STATE;
 struct largeobjmgr_rcv_state
 {
-  PAGE_TYPE page_type;		/* Recovery page type */
+  L_PAGE_TYPE l_page_type;	/* Recovery page type */
   int ent_ind;			/* Entry index */
   union
   {
@@ -168,7 +168,7 @@ static int largeobjmgr_firstdir_map_shrink (THREAD_ENTRY * thread_p,
 static int largeobjmgr_firstdir_map_create (THREAD_ENTRY * thread_p,
 					    LARGEOBJMGR_DIRSTATE * ds);
 static void largeobjmgr_get_rcv_state (LARGEOBJMGR_DIRSTATE * ds,
-				       PAGE_TYPE page_type,
+				       L_PAGE_TYPE l_page_type,
 				       LARGEOBJMGR_RCV_STATE * rcv);
 
 /* Do not create a directory index until number of directory pages
@@ -296,6 +296,8 @@ largeobjmgr_initdir_newpage (THREAD_ENTRY * thread_p, const VFID * vfid,
     {
       return false;
     }
+
+  (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_LARGEOBJ);
 
   /* Copy the header and modify fields related to this page */
   new_head = (LARGEOBJMGR_DIRHEADER *) addr.pgptr;
@@ -3793,15 +3795,15 @@ largeobjmgr_init_dir_pagecnt (int data_pgcnt, int *dir_pgcnt,
  *                        page
  *   return: void
  *   ds(in): Directory state structure
- *   page_type(in):  Directory page type
+ *   l_page_type(in):  Directory page type
  *   rcv(out): recovery state information
  */
 static void
-largeobjmgr_get_rcv_state (LARGEOBJMGR_DIRSTATE * ds, PAGE_TYPE page_type,
+largeobjmgr_get_rcv_state (LARGEOBJMGR_DIRSTATE * ds, L_PAGE_TYPE l_page_type,
 			   LARGEOBJMGR_RCV_STATE * rcv)
 {
-  rcv->page_type = page_type;
-  switch (page_type)
+  rcv->l_page_type = l_page_type;
+  switch (l_page_type)
     {
     case L_DIR_PAGE:
       rcv->ent_ind = ds->curdir.idx;
@@ -3838,7 +3840,7 @@ largeobjmgr_rv_dir_rcv_state_undoredo (THREAD_ENTRY * thread_p,
   *(LARGEOBJMGR_DIRHEADER *) (recv->pgptr) = rcv->dir_head;
 
   /* put entry information */
-  switch (rcv->page_type)
+  switch (rcv->l_page_type)
     {
     case L_DIR_PAGE:
       {
@@ -3890,12 +3892,12 @@ largeobjmgr_rv_dir_rcv_state_dump (FILE * fp, int length, void *data)
 
   /* dump entry information */
   fprintf (fp, "\nEntry Index: %d\n", rcv->ent_ind);
-  if (rcv->page_type == L_IND_PAGE)
+  if (rcv->l_page_type == L_IND_PAGE)
     {
       fprintf (fp, "\nDirectory Index Entry: ");
       largeobjmgr_dirmap_dump (fp, &rcv->ent.i, rcv->ent_ind);
     }
-  else if (rcv->page_type == L_DIR_PAGE)
+  else if (rcv->l_page_type == L_DIR_PAGE)
     {
       fprintf (fp, "\nDirectory Entry: ");
       largeobjmgr_direntry_dump (fp, &rcv->ent.d, rcv->ent_ind);
@@ -3954,6 +3956,8 @@ largeobjmgr_rv_dir_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   LARGEOBJMGR_DIRENTRY *ent_ptr;
   int k;
+
+  (void) pgbuf_set_page_ptype (thread_p, recv->pgptr, PAGE_LARGEOBJ);
 
   /* put page header */
   *(LARGEOBJMGR_DIRHEADER *) recv->pgptr =

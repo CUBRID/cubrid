@@ -1173,7 +1173,10 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, XASL_STREAM * stream)
 	  goto error;
 	}
 
+      (void) pgbuf_set_page_ptype (thread_p, cur_page_p, PAGE_XASL);
+
       qfile_initialize_page_header (cur_page_p);
+
       qfile_set_dirty_page_and_skip_logging (thread_p, cur_page_p,
 					     &xasl_id->temp_vfid, DONT_FREE);
 

@@ -510,6 +510,8 @@ largeobjmgr_initlo_newpage (THREAD_ENTRY * thread_p, const VFID * vfid,
       return false;
     }
 
+  (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_LARGEOBJ);
+
   /* data pages are SLOTTED pages, so initialize them */
   spage_initialize (thread_p, addr.pgptr, ANCHORED, CHAR_ALIGNMENT, false);
 
@@ -3065,7 +3067,10 @@ largeobjmgr_rv_get_newpage_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 int
 largeobjmgr_rv_get_newpage_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
+  (void) pgbuf_set_page_ptype (thread_p, recv->pgptr, PAGE_LARGEOBJ);
+
   spage_initialize (thread_p, recv->pgptr, ANCHORED, CHAR_ALIGNMENT, false);
+
   return NO_ERROR;
 }
 

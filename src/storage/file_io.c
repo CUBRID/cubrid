@@ -2497,7 +2497,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
       return NULL_VOLDES;
     }
 
-  MEM_REGION_INIT ((char *) malloc_io_page_p, page_size);
+  memset ((char *) malloc_io_page_p, 0, page_size);
   LSA_SET_NULL (&malloc_io_page_p->prv.lsa);
 
   vol_fd = fileio_create (thread_p, db_full_name_p, vol_label_p, vol_id,
@@ -2673,8 +2673,8 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd,
       return -1;
     }
 
+  memset ((char *) malloc_io_page_p, 0, IO_PAGESIZE);
   LSA_SET_NULL (&malloc_io_page_p->prv.lsa);
-  MEM_REGION_INIT (&malloc_io_page_p->page[0], DB_PAGESIZE);
 
   start_pageid = (DKNPAGES) (start_offset / IO_PAGESIZE);
   last_pageid = (DKNPAGES) (last_offset / IO_PAGESIZE);
@@ -10211,8 +10211,8 @@ fileio_fill_hole_during_restore (THREAD_ENTRY * thread_p, int *next_page_id_p,
 		  1, IO_PAGESIZE);
 	  return ER_FAILED;
 	}
+      memset ((char *) malloc_io_pgptr, 0, IO_PAGESIZE);
       LSA_SET_NULL (&malloc_io_pgptr->prv.lsa);
-      MEM_REGION_INIT (&malloc_io_pgptr->page[0], DB_PAGESIZE);
     }
 
   while (*next_page_id_p < stop_page_id)
