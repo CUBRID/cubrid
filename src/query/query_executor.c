@@ -1051,6 +1051,12 @@ static int qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl,
 						 DB_VALUE ** iscycle_valp,
 						 DB_VALUE ** parent_pos_valp,
 						 DB_VALUE ** index_valp);
+static void qexec_reset_pseudocolumns_val_pointers (DB_VALUE * level_valp,
+						    DB_VALUE * isleaf_valp,
+						    DB_VALUE * iscycle_valp,
+						    DB_VALUE *
+						    parent_pos_valp,
+						    DB_VALUE * index_valp);
 static int qexec_get_index_pseudocolumn_value_from_tuple (THREAD_ENTRY *
 							  thread_p,
 							  XASL_NODE * xasl,
@@ -1083,8 +1089,7 @@ static int qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 					      OID * unique_oid);
 static int qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p,
 					       ODKU_INFO * odku, HFID * hfid,
-					       VAL_DESCR * vd,
-					       int op_type,
+					       VAL_DESCR * vd, int op_type,
 					       HEAP_SCANCACHE * scan_cache,
 					       HEAP_CACHE_ATTRINFO *
 					       attr_info,
@@ -16880,6 +16885,10 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
     }
 
+  qexec_reset_pseudocolumns_val_pointers (level_valp, isleaf_valp,
+					  iscycle_valp, parent_pos_valp,
+					  index_valp);
+
   xasl->status = XASL_SUCCESS;
 
   return NO_ERROR;
@@ -17832,6 +17841,29 @@ qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl,
 }
 
 /*
+ * qexec_reset_pseudocolumns_val_pointers () - reset pseudocolumns value pointers
+ *    return:
+ *  level_valp(in/out):
+ *  isleaf_valp(in/out):
+ *  iscycle_valp(in/out):
+ *  parent_pos_valp(in/out):
+ *  index_valp(in/out):
+ */
+static void
+qexec_reset_pseudocolumns_val_pointers (DB_VALUE * level_valp,
+					DB_VALUE * isleaf_valp,
+					DB_VALUE * iscycle_valp,
+					DB_VALUE * parent_pos_valp,
+					DB_VALUE * index_valp)
+{
+  (void) pr_clear_value (level_valp);
+  (void) pr_clear_value (parent_pos_valp);
+  (void) pr_clear_value (isleaf_valp);
+  (void) pr_clear_value (iscycle_valp);
+  (void) pr_clear_value (index_valp);
+}
+
+/*
  * qexec_get_index_pseudocolumn_value_from_tuple () -
  *    return:
  *  xasl(in):
@@ -18769,8 +18801,9 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p,
     {
     case QPROC_TPLDESCR_SUCCESS:
       /* generate tuple into list file page */
-      if (qfile_generate_tuple_into_list
-	  (thread_p, gbstate->output_file, T_NORMAL) != NO_ERROR)
+      if (qfile_generate_tuple_into_list (thread_p,
+					  gbstate->output_file,
+					  T_NORMAL) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -18790,9 +18823,10 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p,
 	      GOTO_EXIT_ON_ERROR;
 	    }
 	}
-      if (qdata_copy_valptr_list_to_tuple
-	  (thread_p, gbstate->g_outptr_list, &xasl_state->vd,
-	   gbstate->output_tplrec) != NO_ERROR)
+      if (qdata_copy_valptr_list_to_tuple (thread_p, gbstate->g_outptr_list,
+					   &xasl_state->vd,
+					   gbstate->output_tplrec) !=
+	  NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
