@@ -19660,8 +19660,6 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  regu_list = regu_list->next;
 	}
 
-      gbstate.output_tplrec = &tuple_rec;
-
       if (gbstate.input_recs == 0)
 	{
 	  /* First record we've seen; put it out and set up the group
