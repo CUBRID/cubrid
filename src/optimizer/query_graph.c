@@ -2837,7 +2837,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      QO_NODE *tmp = QO_ENV_NODE (env, i);
 	      if (QO_NODE_PT_JOIN_TYPE (tmp) == PT_JOIN_LEFT_OUTER)
 		{
-		  join_idx = node_idx;	/* case 4.2 */
+		  join_idx = i;	/* case 4.2 */
 		  break;
 		}
 	    }
