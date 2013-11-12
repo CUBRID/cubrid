@@ -5988,7 +5988,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		err = ER_FAILED;
 		break;
 	      }
-	    db_make_bigint (target, (int) i);
+	    db_make_bigint (target, (DB_BIGINT) i);
 	    break;
 	  }
 	  break;
@@ -6023,7 +6023,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		err = ER_FAILED;
 		break;
 	      }
-	    db_make_bigint (target, (int) i);
+	    db_make_bigint (target, (DB_BIGINT) i);
 	    break;
 	  }
 	case DB_TYPE_NUMERIC:
