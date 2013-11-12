@@ -767,9 +767,10 @@ struct log_tdes
 				   unique_stat_info array
 				 */
   int max_unique_btrees;	/* size of unique_stat_info array */
-  BTREE_UNIQUE_STATS *unique_stat_info;	/* Store local statistical info for
-					   multiple row update performed by client.
-					 */
+  BTREE_UNIQUE_STATS *tran_unique_stats;	/* Store local statistical info
+						   for multiple row update 
+						   performed by client.
+						 */
 #if defined(_AIX)
   sig_atomic_t interrupt;
 #else				/* _AIX */

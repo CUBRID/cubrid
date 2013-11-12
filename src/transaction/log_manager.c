@@ -6106,14 +6106,14 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
 	}
     }
 
-  if (tdes->unique_stat_info != NULL)
+  if (tdes->tran_unique_stats != NULL)
     {
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
 		    "log_commit: Warning, unique statistical information "
 		    "kept in transaction entry is not freed.");
 #endif /* CUBRID_DEBUG */
-      free_and_init (tdes->unique_stat_info);
+      free_and_init (tdes->tran_unique_stats);
       tdes->num_unique_btrees = 0;
       tdes->max_unique_btrees = 0;
     }
@@ -6249,14 +6249,14 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
 	}
     }
 
-  if (tdes->unique_stat_info != NULL)
+  if (tdes->tran_unique_stats != NULL)
     {
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
 		    "log_abort: Warning, unique statistical information "
 		    "kept in transaction entry is not freed.");
 #endif /* CUBRID_DEBUG */
-      free_and_init (tdes->unique_stat_info);
+      free_and_init (tdes->tran_unique_stats);
       tdes->num_unique_btrees = 0;
       tdes->max_unique_btrees = 0;
     }

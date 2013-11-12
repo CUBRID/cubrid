@@ -1573,9 +1573,9 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       log_2pc_free_coord_info (tdes);
     }
-  if (tdes->unique_stat_info != NULL)
+  if (tdes->tran_unique_stats != NULL)
     {
-      free_and_init (tdes->unique_stat_info);
+      free_and_init (tdes->tran_unique_stats);
       tdes->num_unique_btrees = 0;
       tdes->max_unique_btrees = 0;
     }
@@ -1695,7 +1695,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->topops.max = 0;
   tdes->num_unique_btrees = 0;
   tdes->max_unique_btrees = 0;
-  tdes->unique_stat_info = NULL;
+  tdes->tran_unique_stats = NULL;
   tdes->num_transient_classnames = 0;
   tdes->num_repl_records = 0;
   tdes->cur_repl_record = 0;
