@@ -9643,6 +9643,7 @@ lock_has_lock_transaction (int tran_index)
   return lock_hold;
 #endif /* !SERVER_MODE */
 }
+#endif
 
 /*
  * lock_is_waiting_transaction -
@@ -9689,7 +9690,6 @@ lock_is_waiting_transaction (int tran_index)
   return false;
 #endif /* !SERVER_MODE */
 }
-#endif
 
 /*
  * lock_get_class_lock - Get a pointer to lock heap entry acquired by

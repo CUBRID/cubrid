@@ -235,8 +235,8 @@ extern LOCK lock_get_object_lock (const OID * oid, const OID * class_oid,
 extern bool lock_has_xlock (THREAD_ENTRY * thread_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern bool lock_has_lock_transaction (int tran_index);
-extern bool lock_is_waiting_transaction (int tran_index);
 #endif
+extern bool lock_is_waiting_transaction (int tran_index);
 extern LK_ENTRY *lock_get_class_lock (const OID * class_oid, int tran_index);
 extern void lock_force_timeout_lock_wait_transactions (unsigned short
 						       stop_phase);

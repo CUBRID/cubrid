@@ -568,7 +568,6 @@ xtran_server_2pc_prepare_global_tran (THREAD_ENTRY * thread_p,
   return log_2pc_prepare_global_tran (thread_p, global_tranid);
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * xtran_is_blocked - Is transaction suspended ?
  *
@@ -581,14 +580,8 @@ xtran_server_2pc_prepare_global_tran (THREAD_ENTRY * thread_p,
 bool
 xtran_is_blocked (THREAD_ENTRY * thread_p, int tran_index)
 {
-  if (wfg_is_waiting (thread_p, tran_index) == NO_ERROR)
-    {
-      return true;
-    }
-
-  return false;
+  return lock_is_waiting_transaction (tran_index);
 }
-#endif
 
 /*
  * xtran_server_has_updated -  Has transaction updated the database ?
@@ -672,7 +665,7 @@ loop:
 }
 
 /*
- * xtran_server_is_active_and_has_updated - Find if transaction is active and 
+ * xtran_server_is_active_and_has_updated - Find if transaction is active and
  *					    has updated the database ?
  * return:
  *

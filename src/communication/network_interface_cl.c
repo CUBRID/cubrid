@@ -3084,7 +3084,6 @@ tran_get_tranlist_state_name (TRAN_STATE state)
   return "(UNKNOWN)";
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tran_is_blocked -
  *
@@ -3135,7 +3134,6 @@ tran_is_blocked (int tran_index)
   return blocked;
 #endif /* !CS_MODE */
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * tran_server_has_updated -

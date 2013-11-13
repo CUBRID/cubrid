@@ -3225,7 +3225,6 @@ void
 stran_is_blocked (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 		  int reqlen)
 {
-#if defined(ENABLE_UNUSED_FUNCTION)
   int tran_index;
   bool blocked;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -3238,7 +3237,6 @@ stran_is_blocked (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   (void) or_pack_int (reply, blocked ? 1 : 0);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
-#endif /* ENABLE_UNUSED_FUNCTION */
 }
 
 /*
