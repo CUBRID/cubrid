@@ -4154,7 +4154,7 @@ ws_dump (FILE * fpp)
   fprintf (fpp, "%d instance mops (%d cached, %d uncached)\n", instances,
 	   cached_instances, instances - cached_instances);
 
-  fprintf (fpp, "%d unkown mops\n", unknown);
+  fprintf (fpp, "%d unknown mops\n", unknown);
   if (weird)
     {
       fprintf (fpp, "*** %d unknown mops with cached objects\n", weird);

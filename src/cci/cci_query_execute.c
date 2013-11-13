@@ -1250,6 +1250,59 @@ qe_set_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
 }
 
 int
+qe_set_cas_change_mode (T_CON_HANDLE * con_handle, int mode,
+			T_CCI_ERROR * err_buf)
+{
+  T_NET_BUF net_buf;
+  char func_code = CAS_FC_CAS_CHANGE_MODE;
+  int err_code;
+  char *result_msg, *cur_p;
+  int result_msg_size;
+  int prev_mode = 0;
+
+  assert (mode == CAS_CHANGE_MODE_AUTO || mode == CAS_CHANGE_MODE_KEEP);
+
+  net_buf_init (&net_buf);
+
+  net_buf_cp_str (&net_buf, &func_code, 1);
+
+  ADD_ARG_INT (&net_buf, mode);
+
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
+  net_buf_clear (&net_buf);
+  if (err_code < 0)
+    {
+      return err_code;
+    }
+
+  result_msg = NULL;
+  result_msg_size = 0;
+  err_code = net_recv_msg (con_handle, &result_msg,
+			   &result_msg_size, err_buf);
+  if (err_code < 0)
+    {
+      return err_code;
+    }
+  if (result_msg == NULL)
+    {
+      return CCI_ER_COMMUNICATION;
+    }
+
+  cur_p = result_msg + NET_SIZE_INT;
+  result_msg_size -= NET_SIZE_INT;
+
+  if (result_msg_size < NET_SIZE_INT)
+    {
+      FREE_MEM (result_msg);
+      return CCI_ER_COMMUNICATION;
+    }
+  NET_STR_TO_INT (prev_mode, cur_p);
+  FREE_MEM (result_msg);
+
+  return prev_mode;
+}
+
+int
 qe_close_query_result (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
 {
   int err_code = 0;

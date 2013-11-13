@@ -1148,6 +1148,38 @@ public class UConnection {
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 	}
+	
+	synchronized public int setCASChangeMode(int mode) {
+		errorHandler = new UError(this);
+
+		if (isClosed == true) {
+			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
+			return errorHandler.getJdbcErrorCode();
+		}
+
+		try {
+			checkReconnect();
+			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) {
+				return errorHandler.getJdbcErrorCode();
+			}
+
+			outBuffer.newRequest(output, UFunctionCode.SET_CAS_CHANGE_MODE);
+			outBuffer.addInt(mode);
+
+			UInputBuffer inBuffer;
+			inBuffer = send_recv_msg();
+			
+			return inBuffer.readInt();			
+		} catch (UJciException e) {
+		    	logException(e);
+			e.toUError(errorHandler);
+		} catch (IOException e) {
+		    	logException(e);
+			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+		}
+		
+		return errorHandler.getJdbcErrorCode();
+	}
 
 	/*
 	 * 3.0 synchronized public void savepoint(int mode, String name) {

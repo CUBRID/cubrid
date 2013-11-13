@@ -2664,7 +2664,8 @@ find_idle_cas (void)
 	  && shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY
 	  && shm_appl->as_info[i].cur_keep_con == KEEP_CON_AUTO
 	  && shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN
-	  && shm_appl->as_info[i].num_holdable_results < 1)
+	  && shm_appl->as_info[i].num_holdable_results < 1
+	  && shm_appl->as_info[i].cas_change_mode == CAS_CHANGE_MODE_AUTO)
 	{
 	  time_t wait_time = cur_time - shm_appl->as_info[i].last_access_time;
 	  if (wait_time > max_wait_time || wait_cas_id == -1)
@@ -2681,7 +2682,9 @@ find_idle_cas (void)
       CON_STATUS_LOCK (&(shm_appl->as_info[wait_cas_id]),
 		       CON_STATUS_LOCK_BROKER);
       if (shm_appl->as_info[wait_cas_id].con_status == CON_STATUS_OUT_TRAN
-	  && shm_appl->as_info[wait_cas_id].num_holdable_results < 1)
+	  && shm_appl->as_info[wait_cas_id].num_holdable_results < 1
+	  && shm_appl->as_info[wait_cas_id].cas_change_mode ==
+	  CAS_CHANGE_MODE_AUTO)
 	{
 	  idle_cas_id = wait_cas_id;
 	  shm_appl->as_info[wait_cas_id].con_status =
@@ -2766,6 +2769,7 @@ find_drop_as_index (void)
       if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY
 	  && shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN
 	  && shm_appl->as_info[i].num_holdable_results < 1
+	  && shm_appl->as_info[i].cas_change_mode == CAS_CHANGE_MODE_AUTO
 	  && wait_time > max_wait_time
 	  && wait_time > shm_br->br_info[br_index].time_to_kill
 	  && exist_idle_cas == 0)

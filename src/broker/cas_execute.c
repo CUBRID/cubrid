@@ -2624,6 +2624,23 @@ ux_set_lock_timeout (int lock_timeout)
   (void) tran_reset_wait_times (lock_timeout);
 }
 
+void
+ux_set_cas_change_mode (int mode, T_NET_BUF * net_buf)
+{
+#if !defined(LIBCAS_FOR_JSP)
+  int prev_mode;
+
+  prev_mode = as_info->cas_change_mode;
+  as_info->cas_change_mode = mode;
+
+  net_buf_cp_int (net_buf, 0, NULL);	/* result code */
+  net_buf_cp_int (net_buf, prev_mode, NULL);	/* result msg */
+#else
+  net_buf_cp_int (net_buf, 0, NULL);	/* result code */
+  net_buf_cp_int (net_buf, CAS_CHANGE_MODE_UNKNOWN, NULL);	/* result msg */
+#endif
+}
+
 int
 ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	  char fetch_flag, int result_set_index, T_NET_BUF * net_buf,

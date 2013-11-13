@@ -229,6 +229,14 @@ extern "C"
     CCI_AUTOCOMMIT_TRUE
   } CCI_AUTOCOMMIT_MODE;
 
+  /* for cci cas_change mode support */
+  typedef enum
+  {
+    CCI_CAS_CHANGE_MODE_UNKNOWN = 0,
+    CCI_CAS_CHANGE_MODE_AUTO = 1,
+    CCI_CAS_CHANGE_MODE_KEEP = 2
+  } CCI_CAS_CHANGE_MODE_MODE;
+
 #define SET_AUTOCOMMIT_FROM_CASINFO(c) \
   (c)->autocommit_mode = \
   (c)->cas_info[CAS_INFO_ADDITIONAL_FLAG] & CAS_INFO_FLAG_MASK_AUTOCOMMIT ? \
@@ -740,6 +748,8 @@ extern "C"
 				   void *value, T_CCI_ERROR * err_buf);
   extern int cci_set_db_parameter (int con_handle, T_CCI_DB_PARAM param_name,
 				   void *value, T_CCI_ERROR * err_buf);
+  extern int cci_set_cas_change_mode (int mapped_conn_id, int mode,
+				      T_CCI_ERROR * err_buf);
   extern long cci_escape_string (int con_h_id, char *to, const char *from,
 				 unsigned long length, T_CCI_ERROR * err_buf);
   extern int cci_close_query_result (int req_handle, T_CCI_ERROR * err_buf);

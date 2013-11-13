@@ -89,7 +89,8 @@ static const int DEFAULT_CHECK_INTERVAL = 1;
    ||((func_code) == CAS_FC_GET_DB_VERSION) \
    ||((func_code) == CAS_FC_GET_ATTR_TYPE_STR) \
    ||((func_code) == CAS_FC_CURSOR_CLOSE) \
-   ||((func_code) == CAS_FC_END_SESSION))
+   ||((func_code) == CAS_FC_END_SESSION)  \
+   ||((func_code) == CAS_FC_CAS_CHANGE_MODE))
 
 static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf,
 				  T_REQ_INFO * req_info);
@@ -227,7 +228,8 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_GET_LAST_INSERT_ID */
   fn_not_supported,		/* CAS_FC_PREPARE_AND_EXECUTE */
   fn_not_supported,		/* CAS_FC_CURSOR_CLOSE */
-  fn_not_supported		/* CAS_FC_GET_SHARD_INFO */
+  fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
+  fn_not_supported		/* CAS_FC_SET_CAS_CHANGE_MODE */
 };
 #else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 static T_SERVER_FUNC server_fn_table[] = {
@@ -273,7 +275,8 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_get_last_insert_id,	/* CAS_FC_GET_LAST_INSERT_ID */
   fn_prepare_and_execute,	/* CAS_FC_PREPARE_AND_EXECUTE */
   fn_cursor_close,		/* CAS_FC_CURSOR_CLOSE */
-  fn_not_supported		/* CAS_FC_GET_SHARD_INFO */
+  fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
+  fn_set_cas_change_mode	/* CAS_FC_SET_CAS_CHANGE_MODE */
 };
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
@@ -321,7 +324,8 @@ static const char *server_func_name[] = {
   "fn_get_last_insert_id",
   "fn_prepare_and_execute",
   "fn_cursor_close",
-  "fn_get_shard_info"
+  "fn_get_shard_info",
+  "fn_set_cas_change_mode"
 };
 #endif /* !LIBCAS_FOR_JSP */
 
@@ -2162,7 +2166,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #ifndef LIBCAS_FOR_JSP
   if (as_info->reset_flag
       && ((as_info->con_status != CON_STATUS_IN_TRAN
-	   && as_info->num_holdable_results < 1)
+	   && as_info->num_holdable_results < 1
+	   && as_info->cas_change_mode == CAS_CHANGE_MODE_AUTO)
 	  || (cas_get_db_connect_status () == -1)))
     {
       cas_log_debug (ARG_FILE_LINE,
@@ -2630,10 +2635,11 @@ set_cas_info_size (void)
 int
 restart_is_needed (void)
 {
-  if (as_info->num_holdable_results > 0)
+  if (as_info->num_holdable_results > 0
+      || as_info->cas_change_mode == CAS_CHANGE_MODE_KEEP)
     {
       /* we do not want to restart the CAS when there are open
-         holdable results */
+         holdable results or cas_change_mode is CAS_CHANGE_MODE_KEEP */
       return 0;
     }
 #if defined(WINDOWS)

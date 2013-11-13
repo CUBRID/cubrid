@@ -191,6 +191,8 @@ static int cci_end_tran_internal (T_CON_HANDLE * con_handle, char type);
 static void get_last_error (T_CON_HANDLE * con_handle,
 			    T_CCI_ERROR * dest_err_buf);
 
+static int convert_cas_mode_to_driver_mode (int cas_mode);
+static int convert_driver_mode_to_cas_mode (int driver_mode);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -2055,6 +2057,116 @@ ret:
   con_handle->used = false;
 
   return error;
+}
+
+static int
+convert_cas_mode_to_driver_mode (int cas_mode)
+{
+  int driver_mode = 0;
+
+  switch (cas_mode)
+    {
+    case CAS_CHANGE_MODE_AUTO:
+      driver_mode = CCI_CAS_CHANGE_MODE_AUTO;
+      break;
+    case CAS_CHANGE_MODE_KEEP:
+      driver_mode = CCI_CAS_CHANGE_MODE_KEEP;
+      break;
+    default:
+      driver_mode = CCI_CAS_CHANGE_MODE_UNKNOWN;
+      break;
+    }
+
+  return driver_mode;
+}
+
+static int
+convert_driver_mode_to_cas_mode (int driver_mode)
+{
+  int cas_mode = 0;
+
+  switch (driver_mode)
+    {
+    case CCI_CAS_CHANGE_MODE_AUTO:
+      cas_mode = CAS_CHANGE_MODE_AUTO;
+      break;
+    case CCI_CAS_CHANGE_MODE_KEEP:
+      cas_mode = CAS_CHANGE_MODE_KEEP;
+      break;
+    default:
+      cas_mode = CAS_CHANGE_MODE_UNKNOWN;
+      break;
+    }
+
+  return cas_mode;
+}
+
+int
+cci_set_cas_change_mode (int mapped_conn_id, int driver_mode,
+			 T_CCI_ERROR * err_buf)
+{
+  T_CON_HANDLE *con_handle = NULL;
+  int error = CCI_ER_NO_ERROR;
+  int cas_mode;
+
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg
+		   ("cci_set_cas_change_mode %d %d", mapped_conn_id,
+		    driver_mode));
+#endif
+
+  reset_error_buffer (err_buf);
+  error = hm_get_connection (mapped_conn_id, &con_handle);
+  if (error != CCI_ER_NO_ERROR)
+    {
+      set_error_buffer (err_buf, error, NULL);
+      return error;
+    }
+  reset_error_buffer (&(con_handle->err_buf));
+
+  cas_mode = convert_driver_mode_to_cas_mode (driver_mode);
+  if (cas_mode == CAS_CHANGE_MODE_UNKNOWN)
+    {
+      error = CCI_ER_INVALID_ARGS;
+      goto ret;
+    }
+
+  if (IS_OUT_TRAN_STATUS (con_handle))
+    {
+      error = cas_connect (con_handle, &(con_handle->err_buf));
+    }
+
+  if (error >= 0)
+    {
+      cas_mode = qe_set_cas_change_mode (con_handle, cas_mode,
+					 &(con_handle->err_buf));
+      if (cas_mode < 0)
+	{
+	  error = cas_mode;
+	}
+      else
+	{
+	  driver_mode = convert_cas_mode_to_driver_mode (cas_mode);
+	  if (driver_mode == CCI_CAS_CHANGE_MODE_UNKNOWN)
+	    {
+	      error = CCI_ER_COMMUNICATION;
+	    }
+	}
+    }
+
+ret:
+  set_error_buffer (&(con_handle->err_buf), error, NULL);
+  get_last_error (con_handle, err_buf);
+  con_handle->used = false;
+
+  if (error < 0)
+    {
+      return error;
+    }
+  else
+    {
+      return driver_mode;
+    }
 }
 
 int

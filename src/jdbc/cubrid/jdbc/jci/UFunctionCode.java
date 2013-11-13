@@ -89,5 +89,6 @@ abstract class UFunctionCode {
 	final static byte CURSOR_CLOSE_FOR_PROTOCOL_V2 = 41;
 	final static byte CURSOR_CLOSE = 42;
 	final static byte GET_SHARD_INFO = 43;
+	final static byte SET_CAS_CHANGE_MODE = 44;
 	final static byte LAST_FUNCTION_CODE = GET_SHARD_INFO;
 }

@@ -993,6 +993,36 @@ fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv,
 
   return FN_KEEP_CONN;
 }
+
+FN_RETURN
+fn_set_cas_change_mode (SOCKET sock_fd, int argc, void **argv,
+			T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int mode;
+
+  if (argc < 1)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_int (&mode, argv[0]);
+
+  if (mode != CAS_CHANGE_MODE_AUTO && mode != CAS_CHANGE_MODE_KEEP)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  cas_log_write (0, true, "set_cas_change_mode %s",
+		 mode == CAS_CHANGE_MODE_AUTO ? "AUTO" : "KEEP");
+
+  ux_set_cas_change_mode (mode, net_buf);
+
+  return FN_KEEP_CONN;
+}
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 FN_RETURN

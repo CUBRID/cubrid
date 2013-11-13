@@ -64,6 +64,9 @@ extern FN_RETURN fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv,
 extern FN_RETURN fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv,
 				      T_NET_BUF * net_buf,
 				      T_REQ_INFO * req_info);
+extern FN_RETURN fn_set_cas_change_mode (SOCKET sock_fd, int argc,
+					 void **argv, T_NET_BUF * net_buf,
+					 T_REQ_INFO * req_info);
 #endif
 extern FN_RETURN fn_close_req_handle (SOCKET sock_fd, int argc, void **argv,
 				      T_NET_BUF * net_buf,

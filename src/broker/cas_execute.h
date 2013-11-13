@@ -101,6 +101,7 @@ extern int ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 extern void ux_get_tran_setting (int *lock_wait, int *isol_level);
 extern int ux_set_isolation_level (int isol_level, T_NET_BUF * net_buf);
 extern void ux_set_lock_timeout (int lock_timeout);
+extern void ux_set_cas_change_mode (int mode, T_NET_BUF * net_buf);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 extern int ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos,
 		     int fetch_count, char fetch_flag, int result_set_index,

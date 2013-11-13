@@ -90,6 +90,14 @@ extern "C"
     CAS_INFO_ADDITIONAL_FLAG = 3
   } CAS_INFO_TYPE;
 
+  typedef enum
+  {
+    CAS_CHANGE_MODE_UNKNOWN = 0,
+    CAS_CHANGE_MODE_AUTO = 1,
+    CAS_CHANGE_MODE_KEEP = 2,
+    CAS_CHANGE_MODE_DEFAULT = CAS_CHANGE_MODE_AUTO
+  } CAS_CHANGE_MODE;
+
 #define CAS_INFO_FLAG_MASK_AUTOCOMMIT		0x01
 #define CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN       0x02
 #define CAS_INFO_FLAG_MASK_NEW_SESSION_ID       0x04
@@ -187,6 +195,7 @@ extern "C"
     CAS_FC_PREPARE_AND_EXECUTE = 41,
     CAS_FC_CURSOR_CLOSE = 42,
     CAS_FC_GET_SHARD_INFO = 43,
+    CAS_FC_CAS_CHANGE_MODE = 44,
 
     /* Whenever you want to introduce a new function code,
      * you must add a corresponding function entry to server_fn_table
@@ -337,7 +346,7 @@ extern "C"
   extern bool cas_bi_get_renewed_error_code (void);
   extern bool cas_di_understand_renewed_error_code (const char *driver_info);
   extern bool cas_di_understand_reconnect_when_server_down (const char
-						       *driver_info);
+							    *driver_info);
   extern void cas_bi_make_broker_info (char *broker_info, char dbms_type,
 				       char statement_pooling,
 				       char cci_pconnect);

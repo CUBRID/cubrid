@@ -261,8 +261,16 @@ proxy_handler_is_cas_in_tran (int shard_id, int cas_id)
   as_info = shard_shm_get_as_info (proxy_info_p, shm_as_p, shard_id, cas_id);
   if (as_info)
     {
-      return (as_info->con_status == CON_STATUS_IN_TRAN
-	      || as_info->num_holdable_results > 0) ? true : false;
+      if (as_info->con_status == CON_STATUS_IN_TRAN
+	  || as_info->num_holdable_results > 0
+	  || as_info->cas_change_mode == CAS_CHANGE_MODE_KEEP)
+	{
+	  return true;
+	}
+      else
+	{
+	  return false;
+	}
     }
 
   return false;

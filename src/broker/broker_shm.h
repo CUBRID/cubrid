@@ -356,6 +356,7 @@ struct t_appl_server_info
   INT64 num_connect_requests;
   INT64 num_restarts;
   int num_holdable_results;
+  int cas_change_mode;
 
   INT64 num_select_queries;
   INT64 num_insert_queries;
