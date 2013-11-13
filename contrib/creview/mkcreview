@@ -374,29 +374,30 @@ def main ():
         print >> sys.stderr, "file (%s) not exist. Aborted." % (args[i])
         sys.exit (2)
 
-  # prepare something...
-  prepareSomething (path)
-
   # get file list for code review
   review_files = getModifiedFiles (getSvnStatusList (inputfiles))
-  if len (review_files) <= 0:
+  if len (review_files) <= 0 and not jira_id and len (jira_attachs) == 0:
     print >> sys.stderr, "Quitting..."
     sys.exit (2)
   
-  if verbose:
-    print "Review files: ", review_files
-    
-  # prepare Code review files
-  if not prepareCodeReviewFile (path, review_files):
-    print >> sys.stderr, "Cannot prepare code review files."
-    sys.exit (2)
-    
-  # create Code review review_files
-  if not createCodeReviewFile (path, crfile):
-    print >> sys.stderr, "Cannot create code review files."
-    sys.exit (2)
+  if len (review_files) > 0:
+    if verbose:
+      print "Review files: ", review_files
       
-  if jira_id:
+    # prepare something...
+    prepareSomething (path)
+
+    # prepare Code review files
+    if not prepareCodeReviewFile (path, review_files):
+      print >> sys.stderr, "Cannot prepare code review files."
+      sys.exit (2)
+      
+    # create Code review review_files
+    if not createCodeReviewFile (path, crfile):
+      print >> sys.stderr, "Cannot create code review files."
+      sys.exit (2)
+      
+  if jira_id and os.path.isfile (crfile):
     if forceyes:
       answer = 'Y'
     else:
@@ -404,17 +405,17 @@ def main ():
     if answer in ('y', 'Y', ''):
       attachFiletoJira(config, jira_id, crfile)
 
-    if len(jira_attachs):
-      if forceyes:
-        answer = 'Y'
-      else:
-        answer = raw_input('Upload addtional files [%s] to [%s]? <Y/n> : ' % (', '.join(jira_attachs), jira_id))
-      if answer in ('y', 'Y', ''):
-        for f in jira_attachs:
-          if not os.path.isfile (f):
-            print 'File %s is not exist' % (f)
-            continue
-          attachFiletoJira(config, jira_id, f)
+  if jira_id and len (jira_attachs):
+    if forceyes:
+      answer = 'Y'
+    else:
+      answer = raw_input('Upload addtional files [%s] to [%s]? <Y/n> : ' % (', '.join(jira_attachs), jira_id))
+    if answer in ('y', 'Y', ''):
+      for f in jira_attachs:
+        if not os.path.isfile (f):
+          print 'File %s is not exist' % (f)
+          continue
+        attachFiletoJira(config, jira_id, f)
 
   # cleanup something...
   cleanupSomething (path)
