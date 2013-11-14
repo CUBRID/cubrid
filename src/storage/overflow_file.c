@@ -570,11 +570,29 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
   length = recdes->length;
   while (length > 0)
     {
-      addr.pgptr = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE,
-			      PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (addr.pgptr == NULL)
+      if (isnewpage == true)
 	{
-	  goto exit_on_error;
+	  addr.pgptr = pgbuf_fix (thread_p, &next_vpid, NEW_PAGE,
+				  PGBUF_LATCH_WRITE,
+				  PGBUF_UNCONDITIONAL_LATCH);
+	  if (addr.pgptr == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+	}
+      else
+	{
+	  addr.pgptr = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE,
+				  PGBUF_LATCH_WRITE,
+				  PGBUF_UNCONDITIONAL_LATCH);
+	  if (addr.pgptr == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
 	}
 
       addr_vpid_ptr = pgbuf_get_vpid_ptr (addr.pgptr);
@@ -1363,6 +1381,19 @@ overflow_rv_newpage_link_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
+}
+
+/*
+ * overflow_rv_newpage_link_redo () - 
+ *   return: 0 if no error, or error code
+ *   rcv(in): Recovery structure
+ */
+int
+overflow_rv_newpage_link_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_OVERFLOW);
+
+  return overflow_rv_link (thread_p, rcv);
 }
 
 /*

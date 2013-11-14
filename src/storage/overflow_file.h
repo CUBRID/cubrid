@@ -77,6 +77,8 @@ extern int overflow_rv_newpage_insert_redo (THREAD_ENTRY * thread_p,
 					    LOG_RCV * rcv);
 extern int overflow_rv_newpage_link_undo (THREAD_ENTRY * thread_p,
 					  LOG_RCV * rcv);
+extern int overflow_rv_newpage_link_redo (THREAD_ENTRY * thread_p,
+					  LOG_RCV * rcv);
 extern int overflow_rv_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void overflow_rv_link_dump (FILE * fp, int length_ignore, void *data);
 extern void overflow_rv_page_dump (FILE * fp, int length, void *data);

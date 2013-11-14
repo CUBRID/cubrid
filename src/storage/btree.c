@@ -18309,7 +18309,7 @@ btree_rv_keyval_dump (FILE * fp, int length, void *data)
 int
 btree_rv_undoredo_copy_page (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
-  (void) pgbuf_set_page_ptype (thread_p, recv->pgptr, PAGE_BTREE);
+  (void) pgbuf_set_page_ptype (thread_p, recv->pgptr, PAGE_BTREE);	/* redo */
 
   (void) memcpy (recv->pgptr, recv->data, DB_PAGESIZE);
 

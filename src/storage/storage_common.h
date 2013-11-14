@@ -242,7 +242,7 @@ typedef enum
   PAGE_LARGEOBJ,		/* TODO - large object/dir page */
   PAGE_OVERFLOW,		/* TODO - overflow page         */
   PAGE_AREA,			/* TODO - area page             */
-  PAGE_CATALOG,			/* TODO - catalog page          */
+  PAGE_CATALOG,			/* catalog page                 */
   PAGE_BTREE,			/* TODO - b+tree index page     */
   PAGE_LOG,			/* NONE - log page (unused)     */
   PAGE_LAST = PAGE_LOG

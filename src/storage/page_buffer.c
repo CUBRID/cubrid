@@ -593,6 +593,8 @@ static DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p,
 static bool pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p,
 					     int page_validation_level);
 static bool pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr);
+static void pgbuf_set_bcb_page_vpid (THREAD_ENTRY * thread_p,
+				     PGBUF_BCB * bufptr);
 static bool pgbuf_check_bcb_page_vpid (THREAD_ENTRY * thread_p,
 				       PGBUF_BCB * bufptr);
 
@@ -1128,31 +1130,14 @@ try_again:
 		{
 		  LSA_SET_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
 		  pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
-
-		  assert (bufptr->iopage_buffer->iopage.prv.pageid == 0);
-		  assert (bufptr->iopage_buffer->iopage.prv.volid == 0);
-
-		  /* Set Page identifier */
-		  bufptr->iopage_buffer->iopage.prv.pageid =
-		    bufptr->vpid.pageid;
-		  bufptr->iopage_buffer->iopage.prv.volid =
-		    bufptr->vpid.volid;
 		}
 	    }
-	  else
-	    {
-	      /* Check iff the first time to access */
-	      if (LSA_ISNULL (&bufptr->iopage_buffer->iopage.prv.lsa))
-		{
-		  assert (bufptr->iopage_buffer->iopage.prv.pageid == 0);
-		  assert (bufptr->iopage_buffer->iopage.prv.volid == 0);
 
-		  /* Set Page identifier */
-		  bufptr->iopage_buffer->iopage.prv.pageid =
-		    bufptr->vpid.pageid;
-		  bufptr->iopage_buffer->iopage.prv.volid =
-		    bufptr->vpid.volid;
-		}
+	  /* perm volume */
+	  if (bufptr->vpid.volid > NULL_VOLID)
+	    {
+	      assert (bufptr->iopage_buffer->iopage.prv.pageid != -1);
+	      assert (bufptr->iopage_buffer->iopage.prv.volid != -1);
 	    }
 
 	  mnt_sort_io_pages (thread_p);
@@ -1175,14 +1160,13 @@ try_again:
 	      LSA_SET_INIT_NONTEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
 	    }
 
-	  /* Set Page identifier */
-	  bufptr->iopage_buffer->iopage.prv.pageid = bufptr->vpid.pageid;
-	  bufptr->iopage_buffer->iopage.prv.volid = bufptr->vpid.volid;
-
-	  bufptr->iopage_buffer->iopage.prv.ptype = '\0';
-	  bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 = '\0';
-	  bufptr->iopage_buffer->iopage.prv.p_reserve_2 = 0;
-	  bufptr->iopage_buffer->iopage.prv.p_reserve_3 = 0;
+	  /* perm volume */
+	  if (bufptr->vpid.volid > NULL_VOLID)
+	    {
+	      /* Init Page identifier of NEW_PAGE */
+	      bufptr->iopage_buffer->iopage.prv.pageid = -1;
+	      bufptr->iopage_buffer->iopage.prv.volid = -1;
+	    }
 
 	  mnt_sort_data_pages (thread_p);
 	}
@@ -1190,6 +1174,9 @@ try_again:
     }
 
   /* At this place, the caller is holding bufptr->BCB_mutex */
+
+  /* Set Page identifier iff needed */
+  (void) pgbuf_set_bcb_page_vpid (thread_p, bufptr);
 
   if (pgbuf_check_bcb_page_vpid (thread_p, bufptr) != true)
     {
@@ -1356,12 +1343,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
        * Do not give warnings on this page any longer. Set the LSA of the
        * buffer for this purposes
        */
-      pgbuf_set_lsa (thread_p,
-		     (PAGE_PTR) (&bufptr->iopage_buffer->iopage.page[0]),
-		     log_get_restart_lsa ());
-      pgbuf_set_lsa (thread_p,
-		     (PAGE_PTR) (&bufptr->iopage_buffer->iopage.page[0]),
-		     &restart_lsa);
+      pgbuf_set_lsa (thread_p, pgptr, log_get_restart_lsa ());
+      pgbuf_set_lsa (thread_p, pgptr, &restart_lsa);
       LSA_COPY (&bufptr->oldest_unflush_lsa,
 		&bufptr->iopage_buffer->iopage.prv.lsa);
     }
@@ -2588,6 +2571,8 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 			     PGBUF_UNCONDITIONAL_LATCH);
 	  if (pgptr != NULL)
 	    {
+	      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_AREA);
+
 	      memcpy (area, (char *) pgptr + start_offset, length);
 	      pgbuf_unfix_and_init (thread_p, pgptr);
 	    }
@@ -2629,7 +2614,10 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid,
   else
     {
       /* the caller is holding only bufptr->BCB_mutex. */
-      pgptr = (PAGE_PTR) (&(bufptr->iopage_buffer->iopage.page[0]));
+      CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_AREA);
+
       memcpy (area, (char *) pgptr + start_offset, length);
 
       mnt_sort_data_pages (thread_p);
@@ -3249,6 +3237,44 @@ pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 }
 
 /*
+ * pgbuf_set_bcb_page_vpid () -
+ *   return: void
+ *   bufptr(in): pointer to buffer page
+ *
+ * Note: This function is used for debugging.
+ */
+static void
+pgbuf_set_bcb_page_vpid (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert (!VPID_ISNULL (&bufptr->vpid));
+
+  /* perm volume */
+  if (bufptr->vpid.volid > NULL_VOLID)
+    {
+      /* Check iff is the first time */
+      if (bufptr->iopage_buffer->iopage.prv.pageid == -1
+	  && bufptr->iopage_buffer->iopage.prv.volid == -1)
+	{
+	  /* Set Page identifier */
+	  bufptr->iopage_buffer->iopage.prv.pageid = bufptr->vpid.pageid;
+	  bufptr->iopage_buffer->iopage.prv.volid = bufptr->vpid.volid;
+
+	  bufptr->iopage_buffer->iopage.prv.ptype = '\0';
+	  bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 = '\0';
+	  bufptr->iopage_buffer->iopage.prv.p_reserve_2 = 0;
+	  bufptr->iopage_buffer->iopage.prv.p_reserve_3 = 0;
+	}
+    }
+
+  assert (pgbuf_check_bcb_page_vpid (thread_p, bufptr) == true);
+}
+
+/*
  * pgbuf_set_page_ptype () -
  *   return: void
  *   pgptr(in): Pointer to page
@@ -3279,6 +3305,9 @@ pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   assert (!VPID_ISNULL (&bufptr->vpid));
+
+  /* Set Page identifier iff needed */
+  (void) pgbuf_set_bcb_page_vpid (thread_p, bufptr);
 
   if (pgbuf_check_bcb_page_vpid (thread_p, bufptr) != true)
     {
@@ -4244,12 +4273,14 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   assert (!VPID_ISNULL (&bufptr->vpid));
   assert (pgbuf_check_bcb_page_vpid (thread_p, bufptr) == true);
 
+  CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+
   /* decrement the fix count */
   bufptr->fcnt--;
   if (bufptr->fcnt < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3,
-	      bufptr->iopage_buffer->iopage.page, bufptr->vpid.pageid,
+	      pgptr, bufptr->vpid.pageid,
 	      fileio_get_volume_label (bufptr->vpid.volid, PEEK));
       assert (false);
       bufptr->fcnt = 0;
@@ -4261,15 +4292,13 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       /* the caller must be the holder */
       pthread_mutex_unlock (&bufptr->BCB_mutex);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3,
-	      bufptr->iopage_buffer->iopage.page, bufptr->vpid.pageid,
+	      pgptr, bufptr->vpid.pageid,
 	      fileio_get_volume_label (bufptr->vpid.volid, PEEK));
       assert (false);
       return ER_FAILED;
     }
 
   holder->fix_count--;
-
-  CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
 
 #if !defined(NDEBUG)
   thread_rc_track_meter (thread_p, caller_file, caller_line, -1, pgptr,
@@ -4292,7 +4321,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 	{
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3,
-		  bufptr->iopage_buffer->iopage.page, bufptr->vpid.pageid,
+		  pgptr, bufptr->vpid.pageid,
 		  fileio_get_volume_label (bufptr->vpid.volid, PEEK));
 	  assert (false);
 	  return ER_FAILED;
@@ -6688,18 +6717,28 @@ pgbuf_check_bcb_page_vpid (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   assert (!VPID_ISNULL (&bufptr->vpid));
 
-  /* Check Page identifier */
-  assert (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid);
-  assert (bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid);
+  /* perm volume */
+  if (bufptr->vpid.volid > NULL_VOLID)
+    {
+      /* Check Page identifier */
+      assert (bufptr->vpid.pageid ==
+	      bufptr->iopage_buffer->iopage.prv.pageid);
+      assert (bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid);
 
 #if 1				/* TODO - do not delete me */
-  assert (bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 == '\0');
-  assert (bufptr->iopage_buffer->iopage.prv.p_reserve_2 == 0);
-  assert (bufptr->iopage_buffer->iopage.prv.p_reserve_3 == 0);
+      assert (bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 == '\0');
+      assert (bufptr->iopage_buffer->iopage.prv.p_reserve_2 == 0);
+      assert (bufptr->iopage_buffer->iopage.prv.p_reserve_3 == 0);
 #endif
 
-  return (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid
-	  && bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid);
+      return (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid
+	      && bufptr->vpid.volid ==
+	      bufptr->iopage_buffer->iopage.prv.volid);
+    }
+  else
+    {
+      return true;		/* nop */
+    }
 }
 
 #if defined(CUBRID_DEBUG)
@@ -6720,8 +6759,8 @@ pgbuf_scramble (FILEIO_PAGE * iopage)
   LSA_SET_NULL (&iopage->prv.lsa);
 
   /* Init Page identifier */
-  iopage->prv.pageid = 0;
-  iopage->prv.volid = 0;
+  iopage->prv.pageid = -1;
+  iopage->prv.volid = -1;
 
   iopage->prv.ptype = '\0';
   iopage->prv.pflag_reserve_1 = '\0';
