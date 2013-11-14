@@ -1427,8 +1427,14 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
     }
   else
     {
-      for (i = 0; i < shm_as_p->num_appl_server && i < APPL_SERVER_NUM_LIMIT;
-	   i++)
+      int limit_appl_index = shm_br->br_info[br_index].appl_server_max_num;
+
+      if (limit_appl_index > APPL_SERVER_NUM_LIMIT)
+	{
+	  limit_appl_index = APPL_SERVER_NUM_LIMIT;
+	}
+
+      for (i = 0; i < limit_appl_index; i++)
 	{
 	  shm_as_p->as_info[i].reset_flag = TRUE;
 	}
