@@ -1052,7 +1052,7 @@ function build_package ()
 	[ $? -eq 0 ] && output_packages="$output_packages $package_name"    
       ;;
       owfs)
-	package_basename="$product_name-owfs-$build_number"
+	package_basename="$product_name-owfs-$build_number-$build_target"
 	package_name="$package_basename.tar.gz"
 	owfs_build_dir="$build_dir/$package_basename"
 	owfs_install_dir="$owfs_build_dir/$package_basename"
