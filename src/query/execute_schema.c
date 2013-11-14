@@ -475,6 +475,12 @@ static int do_find_auto_increment_serial (MOP * auto_increment_obj,
 static int do_check_fk_constraints_internal (DB_CTMPL * ctemplate,
 					     PT_NODE * constraints,
 					     bool is_partitioned);
+
+static int get_index_type_qualifiers (MOP obj, bool * is_reverse,
+				      bool * is_unique,
+				      const char *index_name);
+
+
 /*
  * Function Group :
  * DO functions for alter statement
@@ -1530,32 +1536,52 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser,
   int error_code = NO_ERROR;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
   DB_OBJECT *obj = NULL;
+  DB_CONSTRAINT_TYPE index_type;
+  bool is_reverse;
+  bool is_unique;
 
   assert (alter_code == PT_DROP_INDEX_CLAUSE);
   assert (alter->info.alter.constraint_list != NULL);
   assert (alter->info.alter.constraint_list->next == NULL);
   assert (alter->info.alter.constraint_list->node_type == PT_NAME);
 
+  index_type =
+    get_reverse_unique_index_type (alter->info.alter.alter_clause.index.
+				   reverse,
+				   alter->info.alter.alter_clause.index.
+				   unique);
+
   obj = db_find_class (alter->info.alter.entity_name->info.name.original);
   if (obj == NULL)
     {
       error_code = er_errid ();
+      return error_code;
     }
+
+  if (index_type == DB_CONSTRAINT_INDEX)
+    {
+      error_code =
+	get_index_type_qualifiers (obj, &is_reverse, &is_unique,
+				   alter->info.alter.constraint_list->info.
+				   name.original);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  else
+    {
+      is_reverse = alter->info.alter.alter_clause.index.reverse;
+      is_unique = alter->info.alter.alter_clause.index.unique;
+    }
+
   error_code =
     create_or_drop_index_helper (parser, alter->info.alter.constraint_list->
 				 info.name.original,
-				 alter->info.alter.alter_clause.index.reverse,
-				 alter->info.alter.alter_clause.index.unique,
+				 (const bool) is_reverse,
+				 (const bool) is_unique,
 				 NULL, NULL, NULL, NULL, -1, 0, NULL,
 				 obj, DO_INDEX_DROP);
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  return error_code;
-
-error_exit:
   return error_code;
 }
 
@@ -2957,11 +2983,20 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   const char *index_name = NULL;
   int error_code = NO_ERROR;
   const char *class_name = NULL;
+  DB_CONSTRAINT_TYPE index_type;
+  bool is_reverse;
+  bool is_unique;
 
   CHECK_MODIFICATION_ERROR ();
 
   index_name = statement->info.index.index_name ?
     statement->info.index.index_name->info.name.original : NULL;
+
+  if (index_name == NULL)
+    {
+      error_code = ER_SM_INVALID_DEF_CONSTRAINT_NAME_PARAMS;
+      return error_code;
+    }
 
   if (statement->info.index.indexed_class)
     {
@@ -2970,29 +3005,44 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   assert (cls != NULL);
 
-  class_name = cls->info.name.resolved;
+  index_type =
+    get_reverse_unique_index_type (statement->info.index.reverse,
+				   statement->info.index.unique);
 
+  class_name = cls->info.name.resolved;
   obj = db_find_class (class_name);
+
   if (obj == NULL)
     {
       error_code = er_errid ();
-      goto error_exit;
+      return error_code;
+    }
+
+  if (index_type == DB_CONSTRAINT_INDEX)
+    {
+      error_code =
+	get_index_type_qualifiers (obj, &is_reverse, &is_unique, index_name);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  else
+    {
+      is_reverse = statement->info.index.reverse;
+      is_unique = statement->info.index.unique;
     }
 
   error_code =
     create_or_drop_index_helper (parser, index_name,
-				 statement->info.index.reverse,
-				 statement->info.index.unique,
+				 (const bool) is_reverse,
+				 (const bool) is_unique,
 				 statement->info.index.indexed_class,
 				 statement->info.index.column_names, NULL,
 				 NULL, statement->info.index.func_pos,
 				 statement->info.index.func_no_args,
 				 statement->info.index.function_expr,
 				 obj, DO_INDEX_DROP);
-  return error_code;
-
-error_exit:
-
   return error_code;
 }
 
@@ -14460,4 +14510,73 @@ pt_replace_names_index_expr (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   return node;
+}
+
+/*
+ * get_index_type_qualifiers() - get qualifiers of the index type that
+ *                               matches the index name.
+ * return: NO_ERROR or error code
+ * obj(in): Memory Object Pointer
+ * is_reverse(out): TRUE if the index type has the reverse feature.
+ * is_unique(out): TRUE if the index type has the unique feature.
+ * index_name(in): the name of index
+ *
+ * note:
+ *    Only index types that satisfy the SM_IS_INDEX_FAMILY
+ *    condition will be searched for.
+ */
+
+static int
+get_index_type_qualifiers (MOP obj, bool * is_reverse, bool * is_unique,
+			   const char *index_name)
+{
+  int error_code = NO_ERROR;
+  SM_CLASS_CONSTRAINT *sm_all_constraints = NULL;
+  SM_CLASS_CONSTRAINT *sm_constraint = NULL;
+
+  if (obj == NULL)
+    {
+      error_code = ER_FAILED;
+      return error_code;
+    }
+
+  sm_all_constraints = sm_class_constraints (obj);
+  sm_constraint =
+    classobj_find_constraint_by_name (sm_all_constraints, index_name);
+  if (sm_all_constraints == NULL || sm_constraint == NULL)
+    {
+      error_code = ER_SM_NO_INDEX;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, index_name);
+      return error_code;
+    }
+
+  if (!SM_IS_INDEX_FAMILY (sm_constraint->type))
+    {
+      error_code = ER_SM_CONSTRAINT_HAS_DIFFERENT_TYPE;
+      return error_code;
+    }
+
+  switch (sm_constraint->type)
+    {
+    case SM_CONSTRAINT_INDEX:
+      *is_reverse = false;
+      *is_unique = false;
+      break;
+    case SM_CONSTRAINT_UNIQUE:
+      *is_reverse = false;
+      *is_unique = true;
+      break;
+    case SM_CONSTRAINT_REVERSE_INDEX:
+      *is_reverse = true;
+      *is_unique = false;
+      break;
+    case SM_CONSTRAINT_REVERSE_UNIQUE:
+      *is_reverse = true;
+      *is_unique = true;
+      break;
+    default:
+      break;
+    }
+
+  return error_code;
 }
