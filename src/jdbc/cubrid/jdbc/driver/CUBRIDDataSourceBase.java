@@ -48,6 +48,7 @@ public class CUBRIDDataSourceBase {
 	private String roleName;
 	private String serverName;
 	private String user;
+	private String url;
 
 	private int loginTimeout;
 	private PrintWriter logWriter;
@@ -64,6 +65,7 @@ public class CUBRIDDataSourceBase {
 		roleName = "";
 		serverName = "";
 		user = "public";
+		url = null;
 
 		loginTimeout = 0;
 		logWriter = null;
@@ -116,6 +118,10 @@ public class CUBRIDDataSourceBase {
 		return portNumber;
 	}
 
+	public int getPort() {
+		return getPortNumber();
+	}
+
 	public String getRoleName() {
 		return roleName;
 	}
@@ -126,6 +132,14 @@ public class CUBRIDDataSourceBase {
 
 	public String getUser() {
 		return user;
+	}
+
+	public String getUrl() {
+		return url;
+	}
+
+	public String getURL() {
+		return getUrl();
 	}
 
 	public void setDatabaseName(String dbName) {
@@ -152,6 +166,10 @@ public class CUBRIDDataSourceBase {
 		portNumber = p;
 	}
 
+	void setPort(int p) {
+		setPortNumber(p);
+	}
+
 	public void setRoleName(String rName) {
 		roleName = rName;
 	}
@@ -164,17 +182,32 @@ public class CUBRIDDataSourceBase {
 		user = uName;
 	}
 
+	public void setUrl(String urlString) {
+		url = urlString;
+	}
+
+	public void setURL(String urlString) {
+		setUrl(urlString);
+	}
+
 	synchronized String getDataSourceID(String username) {
 		if (dataSourceID == null) {
-			try {
-				dataSourceID = InetAddress.getByName(serverName)
-						.getHostAddress();
-			} catch (Exception e) {
-				dataSourceID = serverName;
+			if (url != null) {
+				dataSourceID = url;
+			} else {
+				String host;
+				try {
+					host = InetAddress
+							.getByName(serverName)
+							.getHostAddress();
+				} catch (Exception e) {
+					host = serverName;
+				}
+				dataSourceID = "jdbc:cubrid:" + host + ":"
+						+ portNumber + ":"
+						+ databaseName;
 			}
-			dataSourceID = dataSourceID + ":" + portNumber + ":" + databaseName;
 		}
-
 		return (dataSourceID + ":" + username);
 	}
 
@@ -183,10 +216,11 @@ public class CUBRIDDataSourceBase {
 		ref.add(new StringRefAddr("databaseName", getDatabaseName()));
 		ref.add(new StringRefAddr("portNumber", Integer
 				.toString(getPortNumber())));
-		// ref.add(new StringRefAddr("url", getUrl()));
+		ref.add(new StringRefAddr("url", getUrl()));
 		ref.add(new StringRefAddr("dataSourceName", getDataSourceName()));
 		ref.add(new StringRefAddr("description", getDescription()));
-		ref.add(new StringRefAddr("networkProtocol", getNetworkProtocol()));
+		ref.add(new StringRefAddr("networkProtocol",
+				getNetworkProtocol()));
 		ref.add(new StringRefAddr("password", getPassword()));
 		ref.add(new StringRefAddr("roleName", getRoleName()));
 		ref.add(new StringRefAddr("user", getUser()));
@@ -199,10 +233,12 @@ public class CUBRIDDataSourceBase {
 		setDatabaseName((String) ref.get("databaseName").getContent());
 		setPortNumber(Integer.parseInt((String) ref.get("portNumber")
 				.getContent()));
-		// uni_ds.setUrl((String) ref.get("url").getContent());
-		setDataSourceName((String) ref.get("dataSourceName").getContent());
+		setUrl((String) ref.get("url").getContent());
+		setDataSourceName((String) ref.get("dataSourceName")
+				.getContent());
 		setDescription((String) ref.get("description").getContent());
-		setNetworkProtocol((String) ref.get("networkProtocol").getContent());
+		setNetworkProtocol((String) ref.get("networkProtocol")
+				.getContent());
 		setPassword((String) ref.get("password").getContent());
 		setRoleName((String) ref.get("roleName").getContent());
 		setUser((String) ref.get("user").getContent());
@@ -210,7 +246,8 @@ public class CUBRIDDataSourceBase {
 
 	protected void writeLog(String log) {
 		if (logWriter != null) {
-			java.util.Date dt = new java.util.Date(System.currentTimeMillis());
+			java.util.Date dt = new java.util.Date(
+					System.currentTimeMillis());
 			logWriter.println("[" + dt + "] " + log);
 			logWriter.flush();
 		}

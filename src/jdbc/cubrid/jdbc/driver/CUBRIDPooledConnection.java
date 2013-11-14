@@ -44,15 +44,31 @@ import cubrid.jdbc.jci.UConnection;
 public class CUBRIDPooledConnection implements PooledConnection {
 	protected UConnection u_con;
 	protected boolean isClosed;
-	protected CUBRIDConnection curConnection;
-
+	protected CUBRIDConnection storedConnection;
+	protected CUBRIDConnection cubConnection;
 	private Vector<ConnectionEventListener> eventListeners;
 
-	protected CUBRIDPooledConnection(UConnection c) {
-		curConnection = null;
+	protected CUBRIDPooledConnection() {
+		initConnection();
+	}
+
+	protected CUBRIDPooledConnection(UConnection uCon) {
+		initConnection();
+		u_con = uCon;
+	}
+
+	protected CUBRIDPooledConnection(CUBRIDConnection cCon) {
+		initConnection();
+		storedConnection = cCon;
+
+	}
+
+	private void initConnection() {
+		cubConnection = null;
+		storedConnection = null;
 		eventListeners = new Vector<ConnectionEventListener>();
 		isClosed = false;
-		u_con = c;
+		u_con = null;
 	}
 
 	/*
@@ -65,25 +81,37 @@ public class CUBRIDPooledConnection implements PooledConnection {
 					CUBRIDJDBCErrorCode.pooled_connection_closed);
 		}
 
-		if (curConnection != null)
-			curConnection.closeConnection();
+		if (cubConnection != null) {
+			cubConnection.closeConnection();
+		}
+
+		if (u_con == null && storedConnection != null) {
+			u_con = storedConnection.getUConnection();
+		}
 
 		if (u_con.check_cas() == false) {
 			u_con.reset_connection();
 		}
 
-		curConnection = new CUBRIDConnectionWrapperPooling(u_con, null, null,
-				this);
-		return curConnection;
+		cubConnection = new CUBRIDConnectionWrapperPooling(u_con, null,
+				null, this);
+		return cubConnection;
 	}
 
 	synchronized public void close() throws SQLException {
-		if (isClosed)
+		if (isClosed) {
 			return;
+		}
 		isClosed = true;
-		if (curConnection != null)
-			curConnection.closeConnection();
-		u_con.close();
+		if (cubConnection != null) {
+			cubConnection.closeConnection();
+		}
+		if (storedConnection != null) {
+			storedConnection.closeConnection();
+		}
+		if (u_con != null) {
+			u_con.close();
+		}
 		eventListeners.clear();
 	}
 
@@ -106,7 +134,7 @@ public class CUBRIDPooledConnection implements PooledConnection {
 	}
 
 	synchronized void notifyConnectionClosed() {
-		curConnection = null;
+		cubConnection = null;
 		ConnectionEvent e = new ConnectionEvent(this);
 
 		for (int i = 0; i < eventListeners.size(); i++) {
@@ -115,7 +143,7 @@ public class CUBRIDPooledConnection implements PooledConnection {
 	}
 
 	synchronized void notifyConnectionErrorOccurred(SQLException ex) {
-		curConnection = null;
+		cubConnection = null;
 		ConnectionEvent e = new ConnectionEvent(this, ex);
 
 		for (int i = 0; i < eventListeners.size(); i++) {

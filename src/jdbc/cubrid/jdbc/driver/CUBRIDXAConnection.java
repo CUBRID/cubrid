@@ -58,10 +58,10 @@ public class CUBRIDXAConnection extends CUBRIDPooledConnection implements
 	private boolean xa_started;
 	private String xacon_key;
 
-	protected CUBRIDXAConnection(CUBRIDXADataSource xads, String serverName,
-			int portNumber, String databaseName, String username, String passwd)
-			throws SQLException {
-		super(null);
+	protected CUBRIDXAConnection(CUBRIDXADataSource xads,
+			String serverName, int portNumber, String databaseName,
+			String username, String passwd) throws SQLException {
+		super();
 		this.serverName = serverName;
 		this.portNumber = portNumber;
 		this.databaseName = databaseName;
@@ -82,7 +82,8 @@ public class CUBRIDXAConnection extends CUBRIDPooledConnection implements
 
 	synchronized public XAResource getXAResource() throws SQLException {
 		if (isClosed) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.xa_connection_closed);
+			throw new CUBRIDException(
+					CUBRIDJDBCErrorCode.xa_connection_closed);
 		}
 
 		if (xares == null) {
@@ -94,26 +95,29 @@ public class CUBRIDXAConnection extends CUBRIDPooledConnection implements
 
 	synchronized public Connection getConnection() throws SQLException {
 		if (isClosed) {
-			throw new CUBRIDException(CUBRIDJDBCErrorCode.xa_connection_closed);
+			throw new CUBRIDException(
+					CUBRIDJDBCErrorCode.xa_connection_closed);
 		}
 
-		if (curConnection != null)
-			curConnection.closeConnection();
+		if (cubConnection != null) {
+			cubConnection.closeConnection();
+		}
 
 		if (u_con == null) {
 			u_con = createUConnection();
 		}
 
-		curConnection = new CUBRIDConnectionWrapperXA(u_con, null, null, this,
-				xa_started);
-		return curConnection;
+		cubConnection = new CUBRIDConnectionWrapperXA(u_con, null,
+				null, this, xa_started);
+		return cubConnection;
 	}
 
 	synchronized void notifyConnectionClosed() {
 		super.notifyConnectionClosed();
 
-		if (xa_started == true)
+		if (xa_started == true) {
 			u_con = null;
+		}
 	}
 
 	synchronized UConnection xa_end_tran(UConnection u) {
@@ -125,8 +129,9 @@ public class CUBRIDXAConnection extends CUBRIDPooledConnection implements
 	}
 
 	synchronized UConnection xa_start(int flag, UConnection u) {
-		if (xa_started == true)
+		if (xa_started == true) {
 			return null;
+		}
 
 		xa_started = true;
 
@@ -137,22 +142,24 @@ public class CUBRIDXAConnection extends CUBRIDPooledConnection implements
 			u_con = u;
 		}
 
-		if (curConnection != null) {
+		if (cubConnection != null) {
 			if (flag == XAResource.TMNOFLAGS) {
 				try {
-					curConnection.rollback();
+					cubConnection.rollback();
 				} catch (SQLException e) {
 				}
 			}
-			((CUBRIDConnectionWrapperXA) curConnection).xa_start(u_con);
+			((CUBRIDConnectionWrapperXA) cubConnection)
+					.xa_start(u_con);
 		}
 
 		return u_con;
 	}
 
 	synchronized boolean xa_end() {
-		if (xa_started == false)
+		if (xa_started == false) {
 			return true;
+		}
 
 		try {
 			if (u_con != null) {
@@ -162,8 +169,10 @@ public class CUBRIDXAConnection extends CUBRIDPooledConnection implements
 			return false;
 		}
 
-		if (curConnection != null)
-			((CUBRIDConnectionWrapperXA) curConnection).xa_end(u_con);
+		if (cubConnection != null) {
+			((CUBRIDConnectionWrapperXA) cubConnection)
+					.xa_end(u_con);
+		}
 
 		xa_started = false;
 
@@ -171,7 +180,7 @@ public class CUBRIDXAConnection extends CUBRIDPooledConnection implements
 	}
 
 	UConnection createUConnection() throws SQLException {
-		return (UJCIManager.connect(serverName, portNumber, databaseName,
-				username, passwd, "xa"));
+		return (UJCIManager.connect(serverName, portNumber,
+				databaseName, username, passwd, "xa"));
 	}
 }
