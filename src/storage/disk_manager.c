@@ -336,6 +336,8 @@ disk_vhdr_length_of_varfields (const DISK_VAR_HEADER * vhdr)
 static void
 disk_bit_set (unsigned char *c, unsigned int n)
 {
+  assert_release (!disk_bit_is_set (c, n));
+
   *c |= (1 << n);
 }
 
@@ -350,6 +352,8 @@ disk_bit_set (unsigned char *c, unsigned int n)
 static void
 disk_bit_clear (unsigned char *c, unsigned int n)
 {
+  assert_release (disk_bit_is_set (c, n));
+
   *c &= ~(1 << n);
 }
 

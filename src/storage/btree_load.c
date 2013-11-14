@@ -1482,16 +1482,17 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   if (sort_args->cache_attr_id < 0)
     {
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+
+      addr.vfid = NULL;
+      addr.pgptr = NULL;
+      addr.offset = 0;
+      log_append_undo_data (thread_p, RVBT_CREATE_INDEX, &addr, sizeof (VFID),
+			    &(btid->vfid));
     }
   else
     {
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
     }
-  addr.vfid = NULL;
-  addr.pgptr = NULL;
-  addr.offset = 0;
-  log_append_undo_data (thread_p, RVBT_CREATE_INDEX, &addr, sizeof (VFID),
-			&(btid->vfid));
 
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
@@ -1966,7 +1967,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
       if (pr_is_prefix_key_type (TP_DOMAIN_TYPE (load_args->btid->key_type)))
 	{
-	  /* 
+	  /*
 	   * Key type is string or midxkey.
 	   * Should insert the prefix key to the parent level
 	   */
@@ -1990,7 +1991,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	  /*
 	   * We may need to update the max_key length if the mid key is
 	   * larger than the max key length.  This will only happen when
-	   * the varying key length is larger than the fixed key length 
+	   * the varying key length is larger than the fixed key length
 	   * in pathological cases like char(4)
 	   */
 	  new_max = btree_get_key_length (&prefix_key);
@@ -2138,7 +2139,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE,
 						   max_key_len);
 
-	  /* set level to non-leaf page 
+	  /* set level to non-leaf page
 	   * nleaf page could be changed in btree_connect_page */
 
 	  assert (node_level > 2);
