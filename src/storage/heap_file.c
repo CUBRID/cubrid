@@ -2874,11 +2874,10 @@ heap_stats_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HFID * hfid,
 	  pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
 	}
     }
-  else
+
+  if (need_update || prev_freespace <= HEAP_DROP_FREE_SPACE)
     {
-      if (need_update
-	  || (prev_freespace <= HEAP_DROP_FREE_SPACE
-	      && freespace > HEAP_DROP_FREE_SPACE))
+      if (freespace > HEAP_DROP_FREE_SPACE)
 	{
 	  vpid = pgbuf_get_vpid_ptr (pgptr);
 	  assert_release (vpid != NULL);
@@ -3863,32 +3862,19 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  break;
 	}
 
-      /* We stop to find free pages if:
-       * (1) we have tried to do it twice
-       * (2) it is first trying but we have no hints
-       * Regarding (2), we will find free pages by heap_stats_sync_bestspace
-       * only if we know that a free page exists somewhere.
-       * num_other_high_best means the number of free pages existing somewhere
-       * in the heap file.
-       */
-      if (try_find >= 2)
+      if (try_find >= 2
+	  || (heap_hdr->estimates.num_other_high_best <= 0
+	      && heap_hdr->estimates.num_second_best <= 0))
 	{
+	  /* We stop to find free pages if:
+	   * (1) we have tried to do it twice
+	   * (2) it is first trying but we have no hints
+	   * Regarding (2), we will find free pages by heap_stats_sync_bestspace
+	   * only if we know that a free page exists somewhere.
+	   * num_other_high_best means the number of free pages existing somewhere
+	   * in the heap file.
+	   */
 	  break;
-	}
-      else
-	{
-	  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
-	    {
-	      ;			/* go ahead */
-	    }
-	  else
-	    {
-	      if (heap_hdr->estimates.num_other_high_best <= 0
-		  && heap_hdr->estimates.num_second_best <= 0)
-		{
-		  break;
-		}
-	    }
 	}
 
       /*
