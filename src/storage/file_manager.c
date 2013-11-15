@@ -11851,6 +11851,8 @@ file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p)
 	  goto end;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, vhdr_pgptr, PAGE_VOLHEADER);
+
       vhdr = (DISK_VAR_HEADER *) vhdr_pgptr;
 
       if (vhdr->purpose != DISK_PERMVOL_DATA_PURPOSE
@@ -12172,6 +12174,8 @@ file_verify_idsmap_image (THREAD_ENTRY * thread_p, INT16 volid,
     {
       return DISK_ERROR;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, vhdr_pgptr, PAGE_VOLHEADER);
 
   vhdr = (DISK_VAR_HEADER *) vhdr_pgptr;
   vpid.volid = volid;
@@ -14457,6 +14461,8 @@ file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
 	  allvalid = DISK_ERROR;
 	  goto end;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, vhdr_pgptr, PAGE_VOLHEADER);
 
       vhdr = (DISK_VAR_HEADER *) vhdr_pgptr;
 

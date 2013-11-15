@@ -1384,19 +1384,6 @@ overflow_rv_newpage_link_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * overflow_rv_newpage_link_redo () - 
- *   return: 0 if no error, or error code
- *   rcv(in): Recovery structure
- */
-int
-overflow_rv_newpage_link_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_OVERFLOW);
-
-  return overflow_rv_link (thread_p, rcv);
-}
-
-/*
  * overflow_rv_link () - Recover overflow
  *   return: 0 if no error, or error code
  *   rcv(in): Recovery structure
@@ -1432,6 +1419,19 @@ overflow_rv_link_dump (FILE * fp, int length_ignore, void *data)
   vpid = (VPID *) data;
   fprintf (fp, "Overflow Reference to Volid = %d|Pageid = %d\n",
 	   vpid->volid, vpid->pageid);
+}
+
+/*
+ * overflow_rv_page_update_redo () -
+ *   return: 0 if no error, or error code
+ *   rcv(in): Recovery structure
+ */
+int
+overflow_rv_page_update_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_OVERFLOW);
+
+  return log_rv_copy_char (thread_p, rcv);
 }
 
 /*

@@ -234,14 +234,14 @@ typedef enum
   PAGE_UNKNOWN = 0,		/* used for initialized page    */
   PAGE_FTAB,			/* file allocset table page     */
   PAGE_HEAP,			/* heap page                    */
-  PAGE_VOLHEADER,		/* TODO - volume header page    */
-  PAGE_VOLMTAB,			/* TODO - volume map table page */
-  PAGE_XASL,			/* TODO - xasl stream page      */
+  PAGE_VOLHEADER,		/* volume header page           */
+  PAGE_VOLBITMAP,		/* volume bitmap page           */
+  PAGE_XASL,			/* xasl stream page             */
   PAGE_QRESULT,			/* TODO - query result page     */
   PAGE_EHASH,			/* TODO - ehash bucket/dir page */
   PAGE_LARGEOBJ,		/* TODO - large object/dir page */
   PAGE_OVERFLOW,		/* TODO - overflow page         */
-  PAGE_AREA,			/* TODO - area page             */
+  PAGE_AREA,			/* area page                    */
   PAGE_CATALOG,			/* catalog page                 */
   PAGE_BTREE,			/* TODO - b+tree index page     */
   PAGE_LOG,			/* NONE - log page (unused)     */

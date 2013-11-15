@@ -406,6 +406,8 @@ extern void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes,
 				      void *io_pgptr, DKNPAGES start_pageid,
 				      DKNPAGES npages, size_t page_size,
 				      int kbytes_to_be_written_per_sec);
+extern void fileio_initialize_res (THREAD_ENTRY * thread_p,
+				   FILEIO_PAGE_RESERVED * prv_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern DKNPAGES fileio_truncate (VOLID volid, DKNPAGES npages_to_resize);
 #endif

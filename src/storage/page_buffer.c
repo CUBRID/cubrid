@@ -1133,12 +1133,20 @@ try_again:
 		}
 	    }
 
+#if !defined (NDEBUG)
 	  /* perm volume */
 	  if (bufptr->vpid.volid > NULL_VOLID)
 	    {
-	      assert (bufptr->iopage_buffer->iopage.prv.pageid != -1);
-	      assert (bufptr->iopage_buffer->iopage.prv.volid != -1);
+	      if (!log_is_in_crash_recovery ())
+		{
+		  if (!LSA_ISNULL (&bufptr->iopage_buffer->iopage.prv.lsa))
+		    {
+		      assert (bufptr->iopage_buffer->iopage.prv.pageid != -1);
+		      assert (bufptr->iopage_buffer->iopage.prv.volid != -1);
+		    }
+		}
 	    }
+#endif /* NDEBUG */
 
 	  mnt_sort_io_pages (thread_p);
 	}
@@ -2767,7 +2775,11 @@ pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
 #if defined(SERVER_MODE) && !defined(NDEBUG)
   if (bufptr->vpid.pageid == 0)
     {
-      DISK_VAR_HEADER *vhdr = (DISK_VAR_HEADER *) pgptr;
+      DISK_VAR_HEADER *vhdr;
+
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_VOLHEADER);
+
+      vhdr = (DISK_VAR_HEADER *) pgptr;
       if (strncmp (vhdr->magic, CUBRID_MAGIC_DATABASE_VOLUME,
 		   CUBRID_MAGIC_MAX_LENGTH) != 0)
 	{
@@ -3271,7 +3283,6 @@ pgbuf_set_bcb_page_vpid (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 	}
     }
 
-  assert (pgbuf_check_bcb_page_vpid (thread_p, bufptr) == true);
 }
 
 /*
@@ -3287,6 +3298,8 @@ pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 		      PAGE_TYPE ptype)
 {
   PGBUF_BCB *bufptr;
+
+  assert (pgptr != NULL);
 
   if (thread_p == NULL)
     {
@@ -3447,6 +3460,20 @@ pgbuf_initialize_bcb_table (void)
 
       /* link BCB and iopage buffer */
       ioptr = PGBUF_FIND_IOPAGE_PTR (i);
+
+      LSA_SET_NULL (&ioptr->iopage.prv.lsa);
+
+      /* Init Page identifier */
+      ioptr->iopage.prv.pageid = -1;
+      ioptr->iopage.prv.volid = -1;
+
+#if 1				/* do not delete me */
+      ioptr->iopage.prv.ptype = '\0';
+      ioptr->iopage.prv.pflag_reserve_1 = '\0';
+      ioptr->iopage.prv.p_reserve_2 = 0;
+      ioptr->iopage.prv.p_reserve_3 = 0;
+#endif
+
       bufptr->iopage_buffer = ioptr;
       ioptr->bcb = bufptr;
 
@@ -6597,6 +6624,8 @@ pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr)
   int bufid;
   int rv;
 
+  assert (pgptr != NULL);
+
   /* NOTE: Does not need to hold BCB_mutex since the page is fixed */
   for (bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
     {
@@ -6652,6 +6681,8 @@ pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 			PAGE_TYPE ptype)
 {
   PGBUF_BCB *bufptr;
+
+  assert (pgptr != NULL);
 
 #if 1				/* TODO - do not delete me */
 #if defined(NDEBUG)
@@ -6764,8 +6795,8 @@ pgbuf_scramble (FILEIO_PAGE * iopage)
 
   iopage->prv.ptype = '\0';
   iopage->prv.pflag_reserve_1 = '\0';
-  iopage->prv.pflag_reserve_2 = 0;
-  iopage->prv.pflag_reserve_3 = 0;
+  iopage->prv.p_reserve_2 = 0;
+  iopage->prv.p_reserve_3 = 0;
 }
 
 /*

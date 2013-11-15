@@ -1299,6 +1299,8 @@ qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
       return 0;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, cur_page_p, PAGE_XASL);
+
   *size_p = QFILE_GET_XASL_PAGE_SIZE (cur_page_p);
   if (*size_p <= 0
       || (*xasl_p = (char *) db_private_alloc (thread_p, *size_p)) == NULL)
@@ -1334,6 +1336,8 @@ qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 	      db_private_free_and_init (thread_p, *xasl_p);
 	      return 0;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, cur_page_p, PAGE_XASL);
 	}
     }
   while (s > 0 && !VPID_ISNULL (&next_vpid));

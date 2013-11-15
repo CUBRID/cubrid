@@ -285,6 +285,7 @@ extern int disk_dump_all (THREAD_ENTRY * thread_p, FILE * fp);
 extern int disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p,
 					  LOG_RCV * rcv);
 extern int disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void disk_rv_dump_hdr (FILE * fp, int length_ignore, void *data);
 extern int disk_rv_redo_init_map (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void disk_rv_dump_init_map (FILE * fp, int length_ignore, void *data);
