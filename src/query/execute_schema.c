@@ -9800,7 +9800,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 
   /* force exclusive lock on class, even though it should have been already
    * acquired*/
-  if (locator_fetch_class (class_obj, DB_FETCH_QUERY_WRITE) == NULL)
+  if (locator_fetch_class (class_obj, DB_FETCH_WRITE) == NULL)
     {
       error = ER_FAILED;
       goto exit;
@@ -9868,8 +9868,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 
 	  /* force exclusive lock on class, even though it should have been already
 	   * acquired */
-	  if (locator_fetch_class (user_list->op, DB_FETCH_QUERY_WRITE) ==
-	      NULL)
+	  if (locator_fetch_class (user_list->op, DB_FETCH_WRITE) == NULL)
 	    {
 	      error = ER_FAILED;
 	      goto exit;
@@ -10300,7 +10299,7 @@ do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser,
     }
 
   /* get exclusive lock on class */
-  if (locator_fetch_class (class_obj, DB_FETCH_QUERY_WRITE) == NULL)
+  if (locator_fetch_class (class_obj, DB_FETCH_WRITE) == NULL)
     {
       error = ER_FAILED;
       goto exit;

@@ -86,7 +86,7 @@ db_find_class_of_index (const char *const index_name,
       goto end;
     }
 
-  for (found = 0, clslist = db_fetch_all_classes (DB_FETCH_CLREAD_INSTREAD);
+  for (found = 0, clslist = db_fetch_all_classes (DB_FETCH_READ);
        clslist != NULL; clslist = clslist->next)
     {
       if (au_fetch_class (clslist->op, &smcls, AU_FETCH_READ, AU_SELECT)

@@ -1244,7 +1244,7 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
   else
     {
       /* note, we may have a temporary OP here ! */
-      if (!locator_is_class (op, DB_FETCH_CLREAD_INSTREAD))
+      if (!locator_is_class (op, DB_FETCH_READ))
 	{
 	  owner = op->class_mop;	/* shared attribute, owner is class */
 	}

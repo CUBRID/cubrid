@@ -3280,7 +3280,7 @@ db_get_all_chosen_classes (int (*p) (MOBJ o))
     {
       /* make sure we have a user */
       last = NULL;
-      lmops = locator_get_all_class_mops (DB_FETCH_CLREAD_INSTREAD, p);
+      lmops = locator_get_all_class_mops (DB_FETCH_READ, p);
       /* probably should make sure
        * we push here because the list could be long */
       if (lmops != NULL)

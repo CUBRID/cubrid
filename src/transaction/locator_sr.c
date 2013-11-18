@@ -522,7 +522,7 @@ start:
 	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
 	  if (lock_object (thread_p, &tmp_classoid, oid_Root_class_oid,
-			   X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+			   SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 	    {
 	      /*
 	       * Unable to acquired lock
@@ -536,7 +536,7 @@ start:
 	       * Remove the lock.. since the above was a dirty read
 	       */
 	      lock_unlock_object (thread_p, &tmp_classoid, oid_Root_class_oid,
-				  X_LOCK, true);
+				  SCH_M_LOCK, true);
 	      goto start;
 	    }
 	}
@@ -647,7 +647,7 @@ start:
   if (reserve == LC_CLASSNAME_RESERVED && entry != NULL)
     {
       if (lock_object (thread_p, class_oid, oid_Root_class_oid,
-		       X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		       SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 	{
 	  /*
 	   * Something wrong. Remove the entry from hash table.
@@ -798,7 +798,7 @@ start:
 	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
 	  if (lock_object (thread_p, &tmp_classoid, oid_Root_class_oid,
-			   X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+			   SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 	    {
 	      /*
 	       * Unable to acquired lock
@@ -812,7 +812,7 @@ start:
 	       * Remove the lock.. since the above was a dirty read
 	       */
 	      lock_unlock_object (thread_p, &tmp_classoid, oid_Root_class_oid,
-				  X_LOCK, true);
+				  SCH_M_LOCK, true);
 	      goto start;
 	    }
 	}
@@ -11231,7 +11231,7 @@ error:
  *   att_id(in): attribute id within class to update
  *
  *  Note: This function is used in context of ALTER CHANGE (type change
- *	  syntax). Proper lock (X_LOCK) is assumed when this function
+ *	  syntax). Proper lock (SCH_M_LOCK) is assumed when this function
  *	  is reached.
  *	  The entire tuple is rewritten using the new latest representation.
  */
@@ -11239,7 +11239,7 @@ int
 xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid,
 				   int att_id)
 {
-  LOCK class_lock = X_LOCK;
+  LOCK class_lock = SCH_M_LOCK;
   LOCK oid_lock = X_LOCK;
   LC_COPYAREA *fetch_area = NULL;	/* Area where objects are received */
   LC_COPYAREA_MANYOBJS *mobjs = NULL;	/* Describe multiple objects in area */

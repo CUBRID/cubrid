@@ -5798,7 +5798,7 @@ au_fetch_class (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode,
       || op->deleted		/* marked deleted */
       || op->object == NULL	/* never been fetched */
       || op->class_mop != sm_Root_class_mop	/* not a class */
-      || op->lock < IS_LOCK)	/* don't have the lowest level lock */
+      || op->lock < SCH_S_LOCK)	/* don't have the lowest level lock */
     {
       /* go through the usual fetch process */
       error = fetch_class (op, &classmop, &class_, fetchmode);

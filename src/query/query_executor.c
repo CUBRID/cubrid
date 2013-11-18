@@ -1131,13 +1131,12 @@ static ACCESS_SPEC_TYPE *query_multi_range_opt_check_specs (THREAD_ENTRY *
 static int qexec_init_instnum_val (XASL_NODE * xasl,
 				   THREAD_ENTRY * thread_p,
 				   XASL_STATE * xasl_state);
-static int qexec_set_lock_for_sequential_access (THREAD_ENTRY * thread_p,
-						 XASL_NODE * aptr_list,
-						 UPDDEL_CLASS_INFO *
-						 query_classes,
-						 int query_classes_count,
-						 UPDDEL_CLASS_INFO_INTERNAL *
-						 internal_classes);
+static int qexec_set_class_locks (THREAD_ENTRY * thread_p,
+				  XASL_NODE * aptr_list,
+				  UPDDEL_CLASS_INFO * query_classes,
+				  int query_classes_count,
+				  UPDDEL_CLASS_INFO_INTERNAL *
+				  internal_classes);
 static int qexec_create_internal_classes (THREAD_ENTRY * thread_p,
 					  UPDDEL_CLASS_INFO * classes_info,
 					  int count,
@@ -8220,11 +8219,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
 
-  /* set X_LOCK for updatable classes */
-  error =
-    qexec_set_lock_for_sequential_access (thread_p, xasl->aptr_list,
-					  update->classes, update->no_classes,
-					  internal_classes);
+  /* lock classes which this query will update */
+  error = qexec_set_class_locks (thread_p, xasl->aptr_list, update->classes,
+				 update->no_classes, internal_classes);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -9038,12 +9035,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* set X_LOCK for deletable classes */
-  error =
-    qexec_set_lock_for_sequential_access (thread_p, xasl->aptr_list,
-					  delete_->classes,
-					  delete_->no_classes,
-					  internal_classes);
+  /* lock classes from which this query will delete */
+  error = qexec_set_class_locks (thread_p, xasl->aptr_list, delete_->classes,
+				 delete_->no_classes, internal_classes);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -10155,6 +10149,19 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       qexec_failure_line (__LINE__, xasl_state);
       return ER_FAILED;
+    }
+
+  /* We might not hold a strong enough lock on the class yet. */
+  if (lock_object (thread_p, &insert->class_oid, oid_Root_class_oid, IX_LOCK,
+		   LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      error = er_errid ();
+      if (error != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+      qexec_failure_line (__LINE__, xasl_state);
+      return error;
     }
 
   /* need to start a topop to ensure statement atomicity.
@@ -23769,9 +23776,10 @@ qexec_clear_list_pred_cache_by_class (THREAD_ENTRY * thread_p,
 }
 
 /*
- * qexec_set_lock_for_sequential_access () - set X_LOCK on classes which
- *					     will be updated and are accessed
- *					     sequentially
+ * qexec_set_class_locks () - set X_LOCK on classes which will be updated and
+ *			      are accessed sequentially and IX_LOCK on updated
+ *			      classes which are accessed through an index
+ *
  * return : error code or NO_ERROR
  * thread_p (in)  :
  * xasl (in)	  :
@@ -23780,12 +23788,10 @@ qexec_clear_list_pred_cache_by_class (THREAD_ENTRY * thread_p,
  * count (in)	  :
  */
 static int
-qexec_set_lock_for_sequential_access (THREAD_ENTRY * thread_p,
-				      XASL_NODE * aptr_list,
-				      UPDDEL_CLASS_INFO * query_classes,
-				      int query_classes_count,
-				      UPDDEL_CLASS_INFO_INTERNAL *
-				      internal_classes)
+qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
+		       UPDDEL_CLASS_INFO * query_classes,
+		       int query_classes_count,
+		       UPDDEL_CLASS_INFO_INTERNAL * internal_classes)
 {
   XASL_NODE *aptr = NULL;
   ACCESS_SPEC_TYPE *specp = NULL;
@@ -23793,6 +23799,7 @@ qexec_set_lock_for_sequential_access (THREAD_ENTRY * thread_p,
   int i, j, error = NO_ERROR;
   UPDDEL_CLASS_INFO *query_class = NULL;
   bool found = false;
+  LOCK class_lock = IX_LOCK;
 
   for (aptr = aptr_list; aptr != NULL; aptr = aptr->scan_ptr)
     {
@@ -23800,15 +23807,6 @@ qexec_set_lock_for_sequential_access (THREAD_ENTRY * thread_p,
 	{
 	  if (specp->type == TARGET_CLASS)
 	    {
-	      if (specp->pruning_type)
-		{
-		  /* This is a partitioned class and the IX_LOCK we currently
-		   * hold on it is enough. Later in the execution, when
-		   * pruning is performed, partitions will be locked with
-		   * X_LOCK
-		   */
-		  continue;
-		}
 	      class_oid = &specp->s.cls_node.cls_oid;
 	      found = false;
 
@@ -23822,23 +23820,38 @@ qexec_set_lock_for_sequential_access (THREAD_ENTRY * thread_p,
 		    {
 		      if (OID_EQ (&query_class->class_oid[j], class_oid))
 			{
-			  if (specp->access == SEQUENTIAL)
+			  if (specp->access == SEQUENTIAL
+			      && specp->pruning_type != DB_PARTITION_CLASS)
 			    {
-			      if (lock_object (thread_p, class_oid,
-					       oid_Root_class_oid, X_LOCK,
-					       LK_UNCOND_LOCK) != LK_GRANTED)
-				{
-				  error = er_errid ();
-				  if (error == NO_ERROR)
-				    {
-				      error = ER_FAILED;
-				    }
-				  return error;
-				}
+			      /* X_LOCK classes which are accessed 
+			       * sequentially. If this is a partitioned class,
+			       * IX_LOCK is enough. Later in the execution,
+			       * when pruning is performed, partitions will be
+			       * locked with X_LOCK.
+			       */
+			      class_lock = X_LOCK;
 			    }
 			  else
 			    {
-			      /* INDEX access */
+			      /* INDEX access or partitioned class */
+			      class_lock = IX_LOCK;
+			    }
+
+			  /* lock the class */
+			  if (lock_object (thread_p, class_oid,
+					   oid_Root_class_oid, class_lock,
+					   LK_UNCOND_LOCK) != LK_GRANTED)
+			    {
+			      error = er_errid ();
+			      if (error == NO_ERROR)
+				{
+				  error = ER_FAILED;
+				}
+			      return error;
+			    }
+
+			  if (specp->access == INDEX)
+			    {
 			      BTID_COPY (internal_classes[i].btids + j,
 					 &(specp->indexptr->indx_id.i.btid));
 			      internal_classes[i].btids_dup_key_locked[j] =

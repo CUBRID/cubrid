@@ -3010,7 +3010,7 @@ help_class_names (const char *qualifier)
     }
 
   names = NULL;
-  mops = db_fetch_all_classes (DB_FETCH_CLREAD_INSTREAD);
+  mops = db_fetch_all_classes (DB_FETCH_READ);
 
   /* vector fetch as many as possible
      (void)db_fetch_list(mops, DB_FETCH_READ, 0);

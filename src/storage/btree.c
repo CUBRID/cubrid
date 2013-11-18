@@ -8249,6 +8249,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       /* get nextkey_lock_request from the class lock mode */
       switch (class_lock)
 	{
+	case SCH_M_LOCK:
 	case X_LOCK:
 	case SIX_LOCK:
 	case IX_LOCK:
@@ -8262,7 +8263,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	}
       if (!BTREE_IS_UNIQUE (&btid_int))
 	{			/* non-unique index */
-	  if (class_lock == X_LOCK)
+	  if (IS_WRITE_EXCLUSIVE_LOCK (class_lock))
 	    {
 	      nextkey_lock_request = false;
 	    }
@@ -9040,7 +9041,8 @@ start_point:
 	    {
 	      assert (!OID_ISNULL (&N_class_oid));
 
-	      if (OID_EQ (&N_class_oid, &class_oid) && class_lock == X_LOCK)
+	      if (OID_EQ (&N_class_oid, &class_oid)
+		  && IS_WRITE_EXCLUSIVE_LOCK (class_lock))
 		{
 		  if (next_lock_flag == true)
 		    {
@@ -9082,7 +9084,8 @@ start_point:
 	{
 	  assert (!OID_ISNULL (&N_class_oid));
 
-	  if (OID_EQ (&N_class_oid, &class_oid) && class_lock == X_LOCK)
+	  if (OID_EQ (&N_class_oid, &class_oid)
+	      && IS_WRITE_EXCLUSIVE_LOCK (class_lock))
 	    {
 	      if (next_lock_flag == true)
 		{
@@ -9243,7 +9246,8 @@ curr_key_locking:
     {
       assert (!OID_ISNULL (&C_class_oid));
 
-      if (OID_EQ (&C_class_oid, &class_oid) && class_lock == X_LOCK)
+      if (OID_EQ (&C_class_oid, &class_oid)
+	  && IS_WRITE_EXCLUSIVE_LOCK (class_lock))
 	{
 	  goto key_deletion;
 	}
@@ -12464,6 +12468,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       /* get nextkey_lock_request from the class lock mode */
       switch (class_lock)
 	{
+	case SCH_M_LOCK:
 	case X_LOCK:
 	case SIX_LOCK:
 	case IX_LOCK:
@@ -12478,7 +12483,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
       if (!BTREE_IS_UNIQUE (&btid_int))
 	{
-	  if (class_lock == X_LOCK)
+	  if (IS_WRITE_EXCLUSIVE_LOCK (class_lock))
 	    {
 	      nextkey_lock_request = false;
 	    }
@@ -13000,7 +13005,8 @@ start_point:
 	    {
 	      assert (!OID_ISNULL (&N_class_oid));
 
-	      if (OID_EQ (&N_class_oid, &class_oid) && class_lock == X_LOCK)
+	      if (OID_EQ (&N_class_oid, &class_oid)
+		  && IS_WRITE_EXCLUSIVE_LOCK (class_lock))
 		{
 		  if (next_lock_flag == true)
 		    {
@@ -13036,7 +13042,8 @@ start_point:
 	{
 	  assert (!OID_ISNULL (&N_class_oid));
 
-	  if (OID_EQ (&N_class_oid, &class_oid) && class_lock == X_LOCK)
+	  if (OID_EQ (&N_class_oid, &class_oid)
+	      && IS_WRITE_EXCLUSIVE_LOCK (class_lock))
 	    {
 	      if (next_lock_flag == true)
 		{
@@ -13214,7 +13221,8 @@ curr_key_locking:
     {
       assert_release (!OID_ISNULL (&C_class_oid));
 
-      if (OID_EQ (&C_class_oid, &class_oid) && class_lock == X_LOCK)
+      if (OID_EQ (&C_class_oid, &class_oid)
+	  && IS_WRITE_EXCLUSIVE_LOCK (class_lock))
 	{
 	  goto key_insertion;
 	}

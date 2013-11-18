@@ -3778,7 +3778,7 @@ ws_abort_mops (bool only_unpinned)
 	   * If the object has an exclusive lock, decache the object. As
 	   * a security measure we also check for the dirty bit.
 	   */
-	  if (ws_get_lock (mop) == X_LOCK || WS_ISDIRTY (mop))
+	  if (IS_WRITE_EXCLUSIVE_LOCK (ws_get_lock (mop)) || WS_ISDIRTY (mop))
 	    {
 	      ws_decache (mop);
 	    }
@@ -3829,7 +3829,8 @@ ws_decache_allxlockmops_but_norealclasses (void)
 	{
 
 	  if (mop->pinned == 0
-	      && (ws_get_lock (mop) == X_LOCK || WS_ISDIRTY (mop))
+	      && (IS_WRITE_EXCLUSIVE_LOCK (ws_get_lock (mop))
+		  || WS_ISDIRTY (mop))
 	      && (mop->class_mop != sm_Root_class_mop || mop->object == NULL
 		  || ((SM_CLASS *) mop->object)->class_type == SM_CLASS_CT))
 	    {

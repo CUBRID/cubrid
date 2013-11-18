@@ -6655,6 +6655,7 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
   int lk_result;
   int slot_num;
   PAGE_PTR pgptr;
+  LOCK lock = X_LOCK;
 
   pgptr = heap_stats_find_best_page (thread_p, hfid, recdes->length,
 				     (recdes->type != REC_NEWHOME),
@@ -6671,6 +6672,11 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
   oid->volid = pgbuf_get_volume_id (pgptr);
   oid->pageid = pgbuf_get_page_id (pgptr);
 
+  if (OID_IS_ROOTOID (class_oid))
+    {
+      /* We're creating a class. The lock on the object should be SCH-M */
+      lock = SCH_M_LOCK;
+    }
   /* find REC_DELETED_WILL_REUSE slot or add new slot */
   /* slot_id == slot_num means add new slot */
   for (slot_id = 0; slot_id <= slot_num; slot_id++)
@@ -6679,8 +6685,7 @@ heap_find_slot_for_insert_with_lock (THREAD_ENTRY * thread_p,
       oid->slotid = slot_id;
 
       /* lock the object to be inserted conditionally */
-      lk_result = lock_object (thread_p, oid, class_oid, X_LOCK,
-			       LK_COND_LOCK);
+      lk_result = lock_object (thread_p, oid, class_oid, lock, LK_COND_LOCK);
       if (lk_result == LK_GRANTED)
 	{
 	  return pgptr;		/* OK */

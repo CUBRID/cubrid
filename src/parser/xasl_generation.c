@@ -5048,10 +5048,9 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser,
     {
       assert (class_ != NULL);
 
-      /* need to lock class for read
-       * We may have already locked it for write, but that is ok, isn't it? */
+      /* Make sure we have a lock on this class */
       spec->lock_hint = lock_hint;
-      if (locator_fetch_class (class_, DB_FETCH_CLREAD_INSTREAD) == NULL)
+      if (locator_fetch_class (class_, DB_FETCH_READ) == NULL)
 	{
 	  PT_ERRORc (parser, flat, er_msg ());
 	  return NULL;

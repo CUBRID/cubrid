@@ -58,7 +58,7 @@
 #ifndef DB_NA
 #define DB_NA           2
 #endif
-extern int lock_Comp[11][11];
+extern int lock_Comp[13][13];
 
 #if defined (SERVER_MODE)
 /* object lock hash function */
@@ -462,6 +462,14 @@ static LK_DEADLOCK_VICTIM victims[LK_MAX_VICTIM_COUNT];
 static int victim_count;
 #else /* !SERVER_MODE */
 static int lk_Standalone_has_xlock = 0;
+#define LK_SET_STANDALONE_XLOCK(lock)					      \
+  do {									      \
+    if ((lock) == SCH_M_LOCK || (lock) == X_LOCK || lock == IX_LOCK	      \
+	|| lock == SIX_LOCK)						      \
+      {									      \
+	lk_Standalone_has_xlock = true;					      \
+      }									      \
+  } while (0)
 #endif /* !SERVER_MODE */
 
 #if defined(SERVER_MODE)
@@ -3597,7 +3605,8 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry,
 
   if (class_entry->granted_mode == NULL_LOCK
       || class_entry->granted_mode == S_LOCK
-      || class_entry->granted_mode == X_LOCK)
+      || class_entry->granted_mode == X_LOCK
+      || class_entry->granted_mode == SCH_M_LOCK)
     {
       /* The class has no instance lock. */
       tran_lock->lock_escalation_on = false;
@@ -4369,14 +4378,13 @@ start:
       if (entry_ptr->granted_mode == NX_LOCK
 	  || entry_ptr->granted_mode == X_LOCK)
 	{
-	  /* The conversioned mode might be the same with the current mode. */
-	  /* The only exception case is followings.
-	     When the current mode is NX_LOCK and thr request mode is U_LOCK,
-	     the conversioned mode will be X_LOCK.
-	     In this case, however, the intention of U_LOCK of Uncommitted Read
-	     isolation is only having the intent of READ.
-	     Therefore, the U_LOCK request of this case can be granted
-	     without acquiring it.
+	  /* The converted mode might be the same with the current mode.
+	   * The only exception case is the following:
+	   * When the current mode is NX_LOCK and the request mode is U_LOCK,
+	   * the converted mode will be X_LOCK. In this case, however,
+	   * the intention of U_LOCK of Uncommitted Read isolation is only
+	   * having the intent of READ. Therefore, the U_LOCK request of this
+	   * case can be granted without acquiring it.
 	   */
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	  mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
@@ -4638,7 +4646,7 @@ lock_conversion_treatement:
       switch (old_mode)
 	{
 	case IS_LOCK:
-	  if (new_mode == X_LOCK
+	  if (IS_WRITE_EXCLUSIVE_LOCK (new_mode)
 	      || ((new_mode == S_LOCK || new_mode == SIX_LOCK)
 		  && (isolation == TRAN_REP_CLASS_COMMIT_INSTANCE
 		      || isolation == TRAN_COMMIT_CLASS_COMMIT_INSTANCE)))
@@ -4654,7 +4662,7 @@ lock_conversion_treatement:
 	    {
 	      lock_remove_all_inst_locks (thread_p, tran_index, oid, S_LOCK);
 	    }
-	  else if (new_mode == X_LOCK)
+	  else if (IS_WRITE_EXCLUSIVE_LOCK (new_mode))
 	    {
 	      lock_remove_all_inst_locks (thread_p, tran_index, oid, X_LOCK);
 	    }
@@ -7265,12 +7273,8 @@ lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid,
 			  const OID * class_oid, LOCK lock)
 {
 #if !defined (SERVER_MODE)
-  if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
-    {
-      lk_Standalone_has_xlock = true;
-    }
+  LK_SET_STANDALONE_XLOCK (lock);
   return LK_GRANTED;
-
 #else /* !SERVER_MODE */
   int tran_index;
   if (oid == NULL)
@@ -7319,12 +7323,8 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
 		       LOCK lock, int cond_flag)
 {
 #if !defined (SERVER_MODE)
-  if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
-    {
-      lk_Standalone_has_xlock = true;
-    }
+  LK_SET_STANDALONE_XLOCK (lock);
   return LK_GRANTED;
-
 #else /* !SERVER_MODE */
   int tran_index;
   int wait_msecs;
@@ -7582,12 +7582,8 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid,
 	       const OID * superclass_oid, LOCK lock, int cond_flag)
 {
 #if !defined (SERVER_MODE)
-  if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
-    {
-      lk_Standalone_has_xlock = true;
-    }
+  LK_SET_STANDALONE_XLOCK (lock);
   return LK_GRANTED;
-
 #else /* !SERVER_MODE */
   LOCK new_superclass_lock, old_superclass_lock;
   LK_ENTRY *superclass_entry = NULL, *subclass_entry = NULL;
@@ -7735,12 +7731,8 @@ lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid,
 			int wait_msecs)
 {
 #if !defined (SERVER_MODE)
-  if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
-    {
-      lk_Standalone_has_xlock = true;
-    }
+  LK_SET_STANDALONE_XLOCK (lock);
   return LK_GRANTED;
-
 #else /* !SERVER_MODE */
   int old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, wait_msecs);
   int lock_result = lock_object (thread_p, oid, class_oid, lock, cond_flag);
@@ -7773,10 +7765,7 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 		      LOCK lock, int cond_flag, int scanid_bit)
 {
 #if !defined (SERVER_MODE)
-  if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
-    {
-      lk_Standalone_has_xlock = true;
-    }
+  LK_SET_STANDALONE_XLOCK (lock);
   return LK_GRANTED;
 #else /* !SERVER_MODE */
   int tran_index;
@@ -8000,10 +7989,8 @@ int
 lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 {
 #if !defined (SERVER_MODE)
-  if (lockset->reqobj_class_lock == X_LOCK
-      || lockset->reqobj_class_lock == IX_LOCK
-      || lockset->reqobj_class_lock == SIX_LOCK
-      || lockset->reqobj_inst_lock == X_LOCK)
+  LK_SET_STANDALONE_XLOCK (lockset->reqobj_class_lock);
+  if (lockset->reqobj_inst_lock == X_LOCK)
     {
       lk_Standalone_has_xlock = true;
     }
@@ -8462,7 +8449,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
  *     LK_NOTGRANTED_DUE_TIMEOUT
  *     LK_NOTGRANTED_DUE_ERROR
  *
- *   lockhint(in): description of hinted classses
+ *   lockhint(in): description of hinted classes
  *
  */
 int
@@ -8473,7 +8460,8 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 
   for (i = 0; i < lockhint->num_classes; i++)
     {
-      if (lockhint->classes[i].lock == X_LOCK
+      if (lockhint->classes[i].lock == SCH_M_LOCK
+	  || lockhint->classes[i].lock == X_LOCK
 	  || lockhint->classes[i].lock == IX_LOCK
 	  || lockhint->classes[i].lock == SIX_LOCK)
 	{
@@ -9413,7 +9401,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
       lock_mode = entry_ptr->granted_mode;
     }
 
-  /* If the class lock mode is S_LOCK or X_LOCK,
+  /* If the class lock mode is one of S_LOCK, X_LOCK or SCH_M_LOCK,
    * the lock is held on the instance implicitly.
    * In this case, there is no need to check instance lock.
    * If the class lock mode is SIX_LOCK,
@@ -9421,7 +9409,11 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
    * In this case, we must check for a possible X_LOCK on the instance.
    * In other cases, we must check the lock held on the instance.
    */
-  if (lock_mode != S_LOCK && lock_mode != X_LOCK)
+  if (lock_mode == SCH_M_LOCK)
+    {
+      return X_LOCK;
+    }
+  else if (lock_mode != S_LOCK && lock_mode != X_LOCK)
     {
       if (lock_mode == SIX_LOCK)
 	{
@@ -9559,10 +9551,10 @@ lock_has_xlock (THREAD_ENTRY * thread_p)
   int rv;
 
   /*
-   * Exclusive locks in this context mean IX_LOCK, SIX_LOCK and X_LOCK.
-   * NOTE that NX_LOCK and U_LOCK are excluded from exclusive locks.
-   * Because, NX_LOCK is only for next-key locking and U_LOCK is currently
-   * for reading the object.
+   * Exclusive locks in this context mean IX_LOCK, SIX_LOCK, X_LOCK and
+   * SCH_M_LOCK. NOTE that NX_LOCK and U_LOCK are excluded from exclusive
+   * locks. Because, NX_LOCK is only for next-key locking and U_LOCK is
+   * currently for reading the object.
    */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
@@ -9573,7 +9565,7 @@ lock_has_xlock (THREAD_ENTRY * thread_p)
     {
       lock_mode = tran_lock->root_class_hold->granted_mode;
       if (lock_mode == X_LOCK || lock_mode == IX_LOCK
-	  || lock_mode == SIX_LOCK)
+	  || lock_mode == SIX_LOCK || lock_mode == SCH_M_LOCK)
 	{
 	  pthread_mutex_unlock (&tran_lock->hold_mutex);
 	  return true;
@@ -9586,7 +9578,7 @@ lock_has_xlock (THREAD_ENTRY * thread_p)
     {
       lock_mode = entry_ptr->granted_mode;
       if (lock_mode == X_LOCK || lock_mode == IX_LOCK
-	  || lock_mode == SIX_LOCK)
+	  || lock_mode == SIX_LOCK || lock_mode == SCH_M_LOCK)
 	{
 	  pthread_mutex_unlock (&tran_lock->hold_mutex);
 	  return true;
@@ -11321,8 +11313,8 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p,
 	  ret = ER_FAILED;
 	  goto exit_on_error;
 	}
-
-      if (lockcomp_class->class_lock_ptr->granted_mode == X_LOCK)
+      if (IS_WRITE_EXCLUSIVE_LOCK
+	  (lockcomp_class->class_lock_ptr->granted_mode))
 	{
 	  lockcomp_class->inst_oid_space = NULL;
 	}
@@ -11452,7 +11444,8 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p,
   for (lockcomp_class = lockcomp->class_list;
        lockcomp_class != NULL; lockcomp_class = lockcomp_class->next)
     {
-      if (lockcomp_class->class_lock_ptr->granted_mode == X_LOCK
+      if (IS_WRITE_EXCLUSIVE_LOCK
+	  (lockcomp_class->class_lock_ptr->granted_mode)
 	  || lockcomp_class->num_inst_oids ==
 	  prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
 	{
@@ -11550,7 +11543,7 @@ lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation)
 #if !defined (SERVER_MODE)
   return false;
 #else
-  if (class_lock < lock_escalation && class_lock != X_LOCK)
+  if (class_lock < lock_escalation && !IS_WRITE_EXCLUSIVE_LOCK (class_lock))
     {
       return false;
     }
@@ -12458,20 +12451,18 @@ start:
       if (entry_ptr->granted_mode == NX_LOCK
 	  || entry_ptr->granted_mode == X_LOCK)
 	{
-	  /* The conversioned mode might be the same with the current mode. */
-	  /* The only exception case is followings.
-	     When the current mode is NX_LOCK and thr request mode is U_LOCK,
-	     the conversioned mode will be X_LOCK.
-	     In this case, however, the intention of U_LOCK of Uncommitted Read
-	     isolation is only having the intent of READ.
-	     Therefore, the U_LOCK request of this case can be granted
-	     without acquiring it.
-	   */
+	  /* The converted mode might be the same with the current mode.
+	   * The only exception case is the following:
+	   * When the current mode is NX_LOCK and the request mode is U_LOCK,
+	   * the converted mode will be X_LOCK. In this case, however, the
+	   * intention of U_LOCK of Uncommitted Read isolation is only having
+	   * the intent of READ. Therefore, the U_LOCK request of this case
+	   * can be granted without acquiring it. */
 
 	  /* since the current transaction already acquired the
-	     exclusive lock, the others transactions does not hold any lock,
-	     res_ptr->total_holders_mode = entry_ptr->granted_mode in this
-	     case */
+	   * exclusive lock, the others transactions do not hold any lock,
+	   * res_ptr->total_holders_mode = entry_ptr->granted_mode in this
+	   * case */
 	  *prv_tot_hold_mode = res_ptr->total_holders_mode;
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	  mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
@@ -12780,7 +12771,7 @@ lock_conversion_treatement:
       switch (old_mode)
 	{
 	case IS_LOCK:
-	  if (new_mode == X_LOCK
+	  if (IS_WRITE_EXCLUSIVE_LOCK (new_mode)
 	      || ((new_mode == S_LOCK || new_mode == SIX_LOCK)
 		  && (isolation == TRAN_REP_CLASS_COMMIT_INSTANCE
 		      || isolation == TRAN_COMMIT_CLASS_COMMIT_INSTANCE)))
@@ -12796,7 +12787,7 @@ lock_conversion_treatement:
 	    {
 	      lock_remove_all_inst_locks (thread_p, tran_index, oid, S_LOCK);
 	    }
-	  else if (new_mode == X_LOCK)
+	  else if (IS_WRITE_EXCLUSIVE_LOCK (new_mode))
 	    {
 	      lock_remove_all_inst_locks (thread_p, tran_index, oid, X_LOCK);
 	    }
@@ -12904,12 +12895,8 @@ lock_hold_object_instant_get_granted_mode (THREAD_ENTRY * thread_p,
 					   LOCK * granted_mode)
 {
 #if !defined (SERVER_MODE)
-  if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
-    {
-      lk_Standalone_has_xlock = true;
-    }
+  LK_SET_STANDALONE_XLOCK (lock);
   return LK_GRANTED;
-
 #else /* !SERVER_MODE */
   int tran_index;
   if (oid == NULL)
@@ -12966,12 +12953,8 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
 					int cond_flag, LOCK * granted_mode)
 {
 #if !defined (SERVER_MODE)
-  if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
-    {
-      lk_Standalone_has_xlock = true;
-    }
+  LK_SET_STANDALONE_XLOCK (lock);
   return LK_GRANTED;
-
 #else /* !SERVER_MODE */
   int tran_index;
   int wait_msecs;
@@ -13232,12 +13215,8 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 					   key_lock_escalation)
 {
 #if !defined (SERVER_MODE)
-  if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
-    {
-      lk_Standalone_has_xlock = true;
-    }
+  LK_SET_STANDALONE_XLOCK (lock);
   return LK_GRANTED;
-
 #else /* !SERVER_MODE */
   int tran_index;
   int wait_msecs;

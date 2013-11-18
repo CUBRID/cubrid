@@ -370,17 +370,19 @@ typedef enum
   NA_LOCK = 0,			/* N/A lock */
   INCON_NON_TWO_PHASE_LOCK = 1,	/* Incompatible 2 phase lock. */
   NULL_LOCK = 2,		/* NULL LOCK */
-  IS_LOCK = 3,			/* Intention Shared lock */
-  S_LOCK = 4,			/* Shared lock */
-  IX_LOCK = 5,			/* Intention exclusive lock */
-  SIX_LOCK = 6,			/* Shared and intention exclusive lock */
-  U_LOCK = 7,			/* Update lock */
-  X_LOCK = 8,			/* Exclusive lock */
-  NS_LOCK = 9,			/* Next Key Shared lock */
-  NX_LOCK = 10			/* Next Key Exclusive lock */
+  SCH_S_LOCK = 3,		/* Schema Stability Lock */
+  IS_LOCK = 4,			/* Intention Shared lock */
+  S_LOCK = 5,			/* Shared lock */
+  IX_LOCK = 6,			/* Intention exclusive lock */
+  SIX_LOCK = 7,			/* Shared and intention exclusive lock */
+  U_LOCK = 8,			/* Update lock */
+  X_LOCK = 9,			/* Exclusive lock */
+  NS_LOCK = 10,			/* Next Key Shared lock */
+  NX_LOCK = 11,			/* Next Key Exclusive lock */
+  SCH_M_LOCK = 12		/* Schema Modification Lock */
 } LOCK;
 
-extern LOCK lock_Conv[11][11];
+extern LOCK lock_Conv[13][13];
 
 #define LOCK_TO_LOCKMODE_STRING(lock) 			\
   (((lock) ==NULL_LOCK) ? "NULL_LOCK" :			\
@@ -391,6 +393,8 @@ extern LOCK lock_Conv[11][11];
    ((lock) == SIX_LOCK) ? " SIX_LOCK" :			\
    ((lock) ==   U_LOCK) ? "   U_LOCK" :			\
    ((lock) ==  NX_LOCK) ? "  NX_LOCK" :			\
+   ((lock) ==  SCH_S_LOCK) ? "  SCH_S_LOCK" :		\
+   ((lock) ==  SCH_M_LOCK) ? "  SCH_M_LOCK" :		\
    ((lock) ==   X_LOCK) ? "   X_LOCK" : "UNKNOWN")
 
 /* CLASSNAME TO OID RETURN VALUES */
@@ -508,6 +512,8 @@ typedef enum
   S_DELETE,
   S_UPDATE
 } SCAN_OPERATION_TYPE;
+
+#define IS_WRITE_EXCLUSIVE_LOCK(lock) ((lock) == X_LOCK || (lock) == SCH_M_LOCK)
 
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);

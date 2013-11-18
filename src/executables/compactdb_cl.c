@@ -1431,7 +1431,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name,
     }
 
   /*
-   * We need an X_LOCK on the class to process as early as possible so that
+   * We need an SCH-M lock on the class to process as early as possible so that
    * other transactions don't add references to it in the schema.
    */
   class_ = (SM_CLASS *) locator_fetch_class (class_mop, DB_FETCH_WRITE);
@@ -1689,7 +1689,7 @@ class_referenced_by_class (MOP referenced_mop, MOP parent_mop,
   SM_ATTRIBUTE *attributes_list = NULL;
 
   referring_class = (SM_CLASS *) locator_fetch_class (referring_mop,
-						      DB_FETCH_CLREAD_INSTREAD);
+						      DB_FETCH_READ);
   if (referring_class == NULL)
     {
       error_code = er_errid ();
