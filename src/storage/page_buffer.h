@@ -49,6 +49,12 @@
 /* Set the vpid to an invalid one */
 #define VPID_SET_NULL(vpid_ptr) VPID_SET(vpid_ptr, NULL_VOLID, NULL_PAGEID)
 
+/* copy a VPID */
+#define  VPID_COPY(dest_ptr, src_ptr)                      \
+  do {							   \
+    *(dest_ptr) = *(src_ptr);				   \
+  } while (0)
+
 /* vpid1 == vpid2 ? */
 #define VPID_EQ(vpid_ptr1, vpid_ptr2)                         \
   ((vpid_ptr1) == (vpid_ptr2) ||                              \
@@ -65,7 +71,7 @@
   } while (0)
 
 /* public page latch mode */
-enum
+typedef enum
 {
   PGBUF_NO_LATCH = 10,
   PGBUF_LATCH_READ,
@@ -75,7 +81,7 @@ enum
   PGBUF_LATCH_INVALID,
   PGBUF_LATCH_FLUSH_INVALID,
   PGBUF_LATCH_VICTIM_INVALID
-};
+} PGBUF_LATCH_MODE;
 
 typedef enum
 {

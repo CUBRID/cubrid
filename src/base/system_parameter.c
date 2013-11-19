@@ -523,6 +523,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_UPDATE_USE_ATTRIBUTE_REFERENCES "update_use_attribute_references"
 
+#define PRM_NAME_PB_AIN_RATIO "data_ain_ratio"
+#define PRM_NAME_PB_AOUT_RATIO "data_aout_ratio"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1656,6 +1658,19 @@ static unsigned int prm_max_recursion_sql_depth_flag = 0;
 bool PRM_UPDATE_USE_ATTRIBUTE_REFERENCES = false;
 static bool prm_update_use_attribute_references_default = false;
 static unsigned int prm_update_use_attribute_references_flag = 0;
+
+float PRM_PB_AIN_RATIO = 0.25f;
+static float prm_pb_ain_ratio_default = 0.25f;
+static float prm_pb_ain_ratio_upper = 1.0f;
+static float prm_pb_ain_ratio_lower = 0.0f;
+static unsigned int prm_pb_ain_ratio_flag = 0;
+
+float PRM_PB_AOUT_RATIO = 0.5f;
+static float prm_pb_aout_ratio_default = 0.5f;
+static float prm_pb_aout_ratio_upper = 3.0;
+static float prm_pb_aout_ratio_lower = 0;
+static unsigned int prm_pb_aout_ratio_flag = 0;
+
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -3899,6 +3914,28 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_UPDATE_USE_ATTRIBUTE_REFERENCES,
    (void *) NULL,
    (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_PB_AIN_RATIO,
+   (PRM_FOR_SERVER | PRM_RELOADABLE),
+   PRM_FLOAT,
+   (void *) &prm_pb_ain_ratio_flag,
+   (void *) &prm_pb_ain_ratio_default,
+   (void *) &PRM_PB_AIN_RATIO,
+   (void *) &prm_pb_ain_ratio_upper,
+   (void *) &prm_pb_ain_ratio_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_PB_AOUT_RATIO,
+   (PRM_FOR_SERVER | PRM_RELOADABLE),
+   PRM_FLOAT,
+   (void *) &prm_pb_aout_ratio_flag,
+   (void *) &prm_pb_aout_ratio_default,
+   (void *) &PRM_PB_AOUT_RATIO,
+   (void *) &prm_pb_aout_ratio_upper,
+   (void *) &prm_pb_aout_ratio_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
