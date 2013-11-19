@@ -3959,7 +3959,6 @@ sboot_check_db_consistency (THREAD_ENTRY * thread_p, unsigned int rid,
     }
 
 function_exit:
-#if defined (CALLBACK_CONSOLE_PRINT)
   /*
    * To indicate results we really only need 2 ints, but the remote
    * bo and callback routine was expecting to receive 3 ints.
@@ -3967,9 +3966,6 @@ function_exit:
   ptr = or_pack_int (reply, (int) END_CALLBACK);
   ptr = or_pack_int (ptr, success);
   ptr = or_pack_int (ptr, 0xEEABCDFFL);	/* padding, not used */
-#else
-  (void) or_pack_int (reply, success);
-#endif
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }

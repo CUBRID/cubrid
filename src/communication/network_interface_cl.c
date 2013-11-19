@@ -4437,14 +4437,10 @@ boot_check_db_consistency (int check_flag, OID * oids, int num_oids)
 #if defined(CS_MODE)
   int success = ER_FAILED;
   int req_error;
-#if defined (CALLBACK_CONSOLE_PRINT)
   int cb_type;
   char *rd1, *rd2;
   int d1, d2;
   OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
-#else
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-#endif
   char *reply;
   char *request, *ptr;
   size_t request_size;
@@ -4464,12 +4460,12 @@ boot_check_db_consistency (int check_flag, OID * oids, int num_oids)
     }
 
   reply = OR_ALIGNED_BUF_START (a_reply);
-#if defined (CALLBACK_CONSOLE_PRINT)
   req_error =
     net_client_request_with_callback (NET_SERVER_BO_CHECK_DBCONSISTENCY,
 				      request, request_size, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply),
-				      NULL, 0, NULL, 0, &rd1, &d1, &rd2, &d2);
+				      NULL, 0, NULL, 0, &rd1, &d1, &rd2, &d2,
+				      NULL, NULL);
   free_and_init (request);
 
   if (!req_error)
@@ -4477,18 +4473,6 @@ boot_check_db_consistency (int check_flag, OID * oids, int num_oids)
       ptr = or_unpack_int (reply, &cb_type);
       or_unpack_int (ptr, &success);
     }
-#else
-  req_error = net_client_request (NET_SERVER_BO_CHECK_DBCONSISTENCY,
-				  request, request_size, reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				  NULL, 0);
-  free_and_init (request);
-
-  if (!req_error)
-    {
-      or_unpack_int (reply, &success);
-    }
-#endif
 
   return success;
 #else /* CS_MODE */
