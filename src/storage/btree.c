@@ -7675,12 +7675,12 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 {
   PAGE_PTR left_pg = NULL;
   PAGE_PTR right_pg = NULL;
-  VPID left_vpid, right_vpid, next_vpid;
+  VPID left_vpid, right_vpid, right_next_vpid;
   int left_cnt, right_cnt;
   RECDES peek_rec;
   NON_LEAF_REC nleaf_pnt;
   int i;
-  int max_key_len;
+  int right_max_key_len;
   char *recset_data;		/* for recovery purposes */
   int recset_length;		/* for recovery purposes */
   RECSET_HEADER recset_header;	/* for recovery purposes */
@@ -7791,8 +7791,8 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   pgbuf_set_dirty (thread_p, P, DONT_FREE);
 
   /* get right page header information */
-  btree_get_node_next_vpid (right_pg, &next_vpid);
-  btree_get_node_max_key_len (right_pg, &max_key_len);
+  btree_get_node_next_vpid (right_pg, &right_next_vpid);
+  btree_get_node_max_key_len (right_pg, &right_max_key_len);
 
   /* update left page header
    */
@@ -7802,8 +7802,8 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       goto exit_on_error;
     }
 
-  header.next_vpid = next_vpid;
-  header.max_key_len = max_key_len;
+  header.next_vpid = right_next_vpid;
+  header.max_key_len = MAX (header.max_key_len, right_max_key_len);
   header.split_info.pivot = BTREE_SPLIT_DEFAULT_PIVOT;
   header.split_info.index = 1;
 
@@ -11114,11 +11114,9 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 		  VPID * child_vpid)
 {
   int key_cnt, leftcnt, rightcnt;
-  RECDES peek_rec;
-  RECDES rec;
+  RECDES peek_rec, rec;
   NON_LEAF_REC nleaf_rec;
   BTREE_NODE_HEADER pheader, qheader, rheader;
-  VPID next_vpid;
   int i, c;
   int sep_key_len, key_len;
   bool clear_sep_key;
@@ -11131,6 +11129,9 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   char recset_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   int key_type;
+
+  VPID right_next_vpid;
+  int right_max_key_len;
 
   recset_data = NULL;
   rec.data = NULL;
@@ -11206,7 +11207,9 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   sep_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, sep_key_len);
   qheader.max_key_len = MAX (sep_key_len, qheader.max_key_len);
 
-  next_vpid = qheader.next_vpid;
+  /* set rheader max_key_len as qheader max_key_len */
+  right_max_key_len = qheader.max_key_len;
+  right_next_vpid = qheader.next_vpid;
 
   if (node_type == BTREE_LEAF_NODE)
     {
@@ -11214,7 +11217,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
     }
   else
     {
-      VPID_SET_NULL (&rheader.next_vpid);
+      VPID_SET_NULL (&qheader.next_vpid);
     }
 
 #if 0
@@ -11233,8 +11236,9 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 			   true, true);
 
   rheader.node_level = qheader.node_level;
-  rheader.max_key_len = qheader.max_key_len;
-  rheader.next_vpid = next_vpid;
+  rheader.max_key_len = right_max_key_len;
+  rheader.next_vpid = right_next_vpid;
+
   if (node_type == BTREE_LEAF_NODE)
     {
       rheader.prev_vpid = *Q_vpid;
@@ -11603,15 +11607,14 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   /* update page Q header */
   qheader.node_level = pheader.node.node_level - 1;
   qheader.max_key_len = pheader.node.max_key_len;
+  VPID_SET_NULL (&qheader.prev_vpid);	/* non leaf or first leaf node */
 
   if (node_type == BTREE_LEAF_NODE)
     {
-      VPID_SET_NULL (&qheader.prev_vpid);
       qheader.next_vpid = *R_vpid;
     }
   else
     {
-      VPID_SET_NULL (&qheader.prev_vpid);
       VPID_SET_NULL (&qheader.next_vpid);
     }
 
@@ -11626,17 +11629,15 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   /* update page R header */
   rheader.node_level = pheader.node.node_level - 1;
   rheader.max_key_len = pheader.node.max_key_len;
-  VPID_SET_NULL (&rheader.next_vpid);
+  VPID_SET_NULL (&rheader.next_vpid);	/* non leaf or last leaf node */
 
   if (node_type == BTREE_LEAF_NODE)
     {
-      VPID_SET_NULL (&qheader.prev_vpid);
       rheader.prev_vpid = *Q_vpid;
     }
   else
     {
-      VPID_SET_NULL (&qheader.prev_vpid);
-      VPID_SET_NULL (&qheader.next_vpid);
+      VPID_SET_NULL (&rheader.prev_vpid);
     }
 
   rheader.split_info = pheader.node.split_info;
@@ -20243,10 +20244,47 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 		   PAGE_PTR page_ptr)
 {
   int ret = NO_ERROR;
+  int key_cnt;
+  BTREE_NODE_HEADER header;
+
   BTREE_NODE_TYPE node_type;
 
   assert_release (btid != NULL);
   assert_release (page_ptr != NULL);
+
+  /* check header validation */
+  btree_read_node_header (page_ptr, &header);
+
+  assert (header.split_info.pivot >= 0 && header.split_info.pivot <= 1);
+  assert (header.split_info.index >= 0);
+  assert (header.node_level > 0);
+
+  assert (header.prev_vpid.volid >= NULL_VOLID);
+  assert (header.prev_vpid.pageid >= NULL_PAGEID);
+  assert (header.next_vpid.volid >= NULL_VOLID);
+  assert (header.next_vpid.pageid >= NULL_PAGEID);
+
+  btree_get_node_key_cnt (page_ptr, &key_cnt);
+  if (key_cnt > 0)
+    {
+      assert (header.max_key_len > 0);
+    }
+
+#if 0
+  /*
+   * FOR TEST
+   *   usually should admit below assertions.
+   *   but assert is possible in normal case rarely.
+   *   so, turn on this block in develop stage if you want.
+   */
+
+  assert (header.node_level < 20);
+
+  assert (header.prev_vpid.volid < 1000);
+  assert (header.prev_vpid.pageid < 1000000);
+  assert (header.next_vpid.volid < 1000);
+  assert (header.next_vpid.pageid < 1000000);
+#endif
 
   if ((prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) &
        BTREE_DEBUG_HEALTH_FULL) == 0)
