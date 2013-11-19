@@ -35,21 +35,21 @@ namespace dbgw
   {
   public:
     Impl(unsigned long ulTimeOutMilSec) :
-      m_ulTimeOutMilSec(ulTimeOutMilSec), m_nHandleId(-1),
+      m_bNeedWait(true), m_ulTimeOutMilSec(ulTimeOutMilSec), m_nHandleId(-1),
       m_pCallBack(NULL), m_pBatchCallBack(NULL), m_pData(NULL)
     {
     }
 
     Impl(unsigned long ulTimeOutMilSec, int nHandleId,
         ExecAsyncCallBack pCallBack, void *pData) :
-      m_ulTimeOutMilSec(ulTimeOutMilSec), m_nHandleId(nHandleId),
+      m_bNeedWait(true), m_ulTimeOutMilSec(ulTimeOutMilSec), m_nHandleId(nHandleId),
       m_pCallBack(pCallBack), m_pBatchCallBack(NULL), m_pData(pData)
     {
     }
 
     Impl(unsigned long ulTimeOutMilSec, int nHandleId,
         ExecBatchAsyncCallBack pBatchCallBack, void *pData) :
-      m_ulTimeOutMilSec(ulTimeOutMilSec), m_nHandleId(nHandleId),
+      m_bNeedWait(true), m_ulTimeOutMilSec(ulTimeOutMilSec), m_nHandleId(nHandleId),
       m_pCallBack(NULL), m_pBatchCallBack(pBatchCallBack), m_pData(pData)
     {
     }
@@ -60,12 +60,17 @@ namespace dbgw
     {
       system::_MutexAutoLock lock(&m_mutex);
 
-      m_cond.wait(&m_mutex);
+      if (m_bNeedWait)
+        {
+          m_cond.wait(&m_mutex);
+        }
     }
 
     void notify()
     {
       system::_MutexAutoLock lock(&m_mutex);
+
+      m_bNeedWait = false;
 
       try
         {
@@ -111,6 +116,7 @@ namespace dbgw
   private:
     system::_Mutex m_mutex;
     system::_ConditionVariable m_cond;
+    bool m_bNeedWait;
     unsigned long m_ulTimeOutMilSec;
     int m_nHandleId;
     ExecAsyncCallBack m_pCallBack;
@@ -169,5 +175,4 @@ namespace dbgw
   {
     return m_pImpl->getTimeOutMilSec();
   }
-
 }
