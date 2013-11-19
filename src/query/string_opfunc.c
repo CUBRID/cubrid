@@ -574,7 +574,7 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2,
  * Arguments:
  *                string1: (IN) Left side of compare.
  *                string2: (IN) Right side of compare.
- *                 result: (OUT) string such that >= string1, and < string2.
+ *                 result: (OUT) string such that > string1, and <= string2.
  *
  * Returns: int
  *
@@ -690,7 +690,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
       INTL_CODESET codeset;
       int num_bits = -1;
       int collation_id;
-      bool bit_use_str1_size = false;
+      bool bit_use_str2_size = false;
 
       string1 = (unsigned char *) DB_GET_STRING (db_string1);
       size1 = (int) DB_GET_STRING_SIZE (db_string1);
@@ -750,37 +750,32 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 
       if (result_type == DB_TYPE_VARBIT)
 	{
-	  int pos;
+	  int size;
 	  const unsigned char *t2;
 
-	  for (pos = 0, t = string1, t2 = string2;
-	       pos < size1 && pos < size2 && *t++ == *t2++; pos++)
+	  for (size = 1, t = string1, t2 = string2;
+	       size <= size1 && size <= size2; size++, t++, t2++)
 	    {
-	      ;
+	      if (*t != *t2)
+		{
+		  size++;
+		  break;
+		}
 	    }
 
 	  if (!(key_domain->is_desc))
 	    {			/* normal index */
-	      /* check if matched size is exactly string1 or in string2 there
-	       * is exactly one more byte after matched part */
-	      if (pos == size1 || pos + 1 == size2)
-		{
-		  key = string1;
-		  pos = size1;
-		  /* We need all the string1 bits. We may not use all of the
-		   * bits in the last byte. */
-		  bit_use_str1_size = true;
-		}
-	      else
-		{
-		  assert (pos < size2);
+	      key = string2;
 
-		  key = (unsigned char *) string2;
-		  pos += 1;
-		  /* We will take all the bits for the differentiating byte.
-		   * This is fine since in this branch we are guaranteed not
-		   * to be at the end of either string. */
-		  bit_use_str1_size = false;
+	      /* search until non-zero differentiating byte */
+	      t2++;
+	      size++;
+
+	      bit_use_str2_size = false;
+	      if (size >= size2)
+		{
+		  size = size2;
+		  bit_use_str2_size = true;
 		}
 	    }
 	  else
@@ -788,29 +783,29 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	      /* reverse index */
 	      assert (key_domain->is_desc);
 
-	      if (pos == size1)
+	      t++;
+	      size++;
+
+	      if (size >= size1)
 		{
-		  key = (unsigned char *) string1;
-		  pos = size1;
-		  /* We need all the string1 bits. We may not use all of the
-		   * bits in the last byte. */
-		  bit_use_str1_size = true;
+		  /* str1 exhaused or at last byte, we use string2 as key */
+		  key = string2;
+		  size = size2;
+		  bit_use_str2_size = true;
 		}
 	      else
 		{
-		  assert (pos < size1);
-		  key = (unsigned char *) string1;
-		  pos += 1;
-		  /* We will take all the bits for the differentiating byte.
-		   * This is fine since in this branch we are guaranteed not
-		   * to be at the end of either string */
-		  bit_use_str1_size = false;
+		  /* pos is already at the next diffentiating byte */
+		  assert (size < size1);
+		  key = string1;
+		  bit_use_str2_size = false;
 		}
 	    }
 
-	  result_size = pos;
-	  num_bits = bit_use_str1_size ? (db_string1->data.ch.medium.size)
-	    : (result_size * BYTE_SIZE);
+	  num_bits = bit_use_str2_size ? (db_string2->data.ch.medium.size)
+	    : (size * BYTE_SIZE);
+
+	  result_size = (num_bits + 7) / 8;
 	}
       else
 	{
@@ -864,11 +859,11 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 
       if (!key_domain->is_desc)
 	{
-	  assert (c1 <= 0 && c2 < 0);
+	  assert (c1 < 0 && c2 <= 0);
 	}
       else
 	{
-	  assert (c1 >= 0 && c2 > 0);
+	  assert (c1 > 0 && c2 >= 0);
 	}
     }
 #endif

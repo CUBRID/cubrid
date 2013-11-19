@@ -8939,7 +8939,8 @@ exit_on_error:
  *
  *  db_midxkey1(in) : Left side of compare.
  *  db_midxkey2(in) : Right side of compare.
- *  db_result(out) : midxkey such that >= midxkey1, and < midxkey2.
+ *  db_result(out) : midxkey such that > midxkey1, and <= midxkey2.
+ *                                  or < midxkey1, and >= midxkey2 (desc)
  *
  * Note:
  *
@@ -8989,7 +8990,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
       || OR_MULTI_ATT_IS_UNBOUND (midxkey2->buf, diff_column + 1))
     {
       /* not found separator: give up */
-      pr_clone_value (db_midxkey1, db_result);
+      pr_clone_value (db_midxkey2, db_result);
     }
   else
     {
@@ -9027,7 +9028,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
       db_result->need_clear = true;
 
 #if !defined(NDEBUG)
-      /* midxkey1 <= result_midxkey */
+      /* midxkey1 < result_midxkey */
       c = pr_midxkey_compare (midxkey1, &result_midxkey,
 			      0, 1, -1, NULL, &size1, &size2,
 			      &diff_column, &dom_is_desc, &next_dom_is_desc);
@@ -9036,9 +9037,9 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
 	{
 	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
 	}
-      assert (c == DB_LT || c == DB_EQ);
+      assert (c == DB_LT);
 
-      /* result_midxkey < midxkey2 */
+      /* result_midxkey <= midxkey2 */
       c = pr_midxkey_compare (&result_midxkey, midxkey2,
 			      0, 1, -1, NULL, &size1, &size2,
 			      &diff_column, &dom_is_desc, &next_dom_is_desc);
@@ -9047,7 +9048,8 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
 	{
 	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
 	}
-      assert (c == DB_LT);
+
+      assert (c == DB_LT || c == DB_EQ);
 #endif
     }
 

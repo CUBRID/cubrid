@@ -228,10 +228,10 @@ struct btree_range_search_helper
 
 static int btree_store_overflow_key (THREAD_ENTRY * thread_p,
 				     BTID_INT * btid, DB_VALUE * key,
-				     int size, VPID * firstpg_vpid);
-static int btree_load_overflow_key (THREAD_ENTRY * thread_p,
-				    BTID_INT * btid, VPID * firstpg_vpid,
-				    DB_VALUE * key);
+				     int size, BTREE_NODE_TYPE node_type,
+				     VPID * firstpg_vpid);
+static int btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
+				    VPID * firstpg_vpid, DB_VALUE * key);
 static int btree_delete_overflow_key (THREAD_ENTRY * thread_p,
 				      BTID_INT * btid, PAGE_PTR page_ptr,
 				      INT16 slot_id,
@@ -784,22 +784,32 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
  *   btid(in): B+tree index identifier
  *   key(in): Pointer to the overflow key memory area
  *   size(in): Overflow key memory area size
+ *   node_type(in): Type of node
  *   first_overflow_page_vpid(out): Set to the first overflow key page identifier
  *
  * Note: The overflow key given is stored in a chain of pages.
  */
 static int
 btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
-			  DB_VALUE * key, int size,
+			  DB_VALUE * key, int size, BTREE_NODE_TYPE node_type,
 			  VPID * first_overflow_page_vpid)
 {
   RECDES rec;
   OR_BUF buf;
-  PR_TYPE *pr_type = btid->key_type->type;
   VFID overflow_file_vfid;
   int ret = NO_ERROR;
+  PR_TYPE *pr_type;
 
   assert (!VFID_ISNULL (&btid->ovfid));
+
+  if (node_type == BTREE_LEAF_NODE)
+    {
+      pr_type = btid->key_type->type;
+    }
+  else
+    {
+      pr_type = btid->nonleaf_key_type->type;
+    }
 
   overflow_file_vfid = btid->ovfid;	/* structure copy */
 
@@ -1888,7 +1898,9 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  btree_leaf_set_flag (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY);
 	}
 
-      rc = btree_store_overflow_key (thread_p, btid, key, key_len, &key_vpid);
+      rc =
+	btree_store_overflow_key (thread_p, btid, key, key_len, node_type,
+				  &key_vpid);
       if (rc != NO_ERROR)
 	{
 	  goto end;
@@ -3020,7 +3032,8 @@ btree_generate_prefix_domain (BTID_INT * btid)
 
       var_domain = tp_domain_resolve (vartype, domain->class_mop,
 				      domain->precision, domain->scale,
-				      domain->setdomain);
+				      domain->setdomain,
+				      domain->collation_id);
     }
   else
     {

@@ -370,7 +370,8 @@ extern void tp_final (void);
 extern TP_DOMAIN *tp_domain_resolve (DB_TYPE domain_type,
 				     DB_OBJECT * class_obj,
 				     int precision,
-				     int scale, TP_DOMAIN * setdomain);
+				     int scale, TP_DOMAIN * setdomain,
+				     int collation);
 extern TP_DOMAIN *tp_domain_resolve_default (DB_TYPE type);
 
 extern void tp_domain_free (TP_DOMAIN * dom);

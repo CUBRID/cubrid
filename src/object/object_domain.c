@@ -3043,12 +3043,14 @@ tp_domain_cache (TP_DOMAIN * transient)
  *    precision(in): The precision of the domain
  *    scale(in): The class of the domain
  *    setdomain(in): The setdomain of the domain
+ *    collation(in): The collation of domain
  * Note:
  *    Current implementation just creates a new one then returns it.
  */
 TP_DOMAIN *
 tp_domain_resolve (DB_TYPE domain_type, DB_OBJECT * class_obj,
-		   int precision, int scale, TP_DOMAIN * setdomain)
+		   int precision, int scale, TP_DOMAIN * setdomain,
+		   int collation)
 {
   TP_DOMAIN *d;
 
@@ -3059,6 +3061,14 @@ tp_domain_resolve (DB_TYPE domain_type, DB_OBJECT * class_obj,
       d->scale = scale;
       d->class_mop = class_obj;
       d->setdomain = setdomain;
+      if (TP_TYPE_HAS_COLLATION (domain_type))
+	{
+	  LANG_COLLATION *lc;
+	  d->collation_id = collation;
+
+	  lc = lang_get_collation (collation);
+	  d->codeset = lc->codeset;
+	}
 
       d = tp_domain_cache (d);
     }

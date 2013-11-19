@@ -4476,8 +4476,7 @@ lang_next_coll_seq_utf8_w_contr (const LANG_COLLATION * lang_coll,
 
 /*
  * lang_split_key_iso() - finds the prefix key between two strings (ISO
- *			  charset with cases sensitive collation and bit
- *			  strings)
+ *			  charset with cases sensitive collation)
  *
  *   return:  error status
  *   lang_coll(in):
@@ -4489,7 +4488,7 @@ lang_next_coll_seq_utf8_w_contr (const LANG_COLLATION * lang_coll,
  *   key(out): key
  *   byte_size(out): size in bytes of key
  *
- *  Note : this function is used by index prefix computation (BTREE building)
+ *  Note : this function is used by index prefix computation
  */
 static int
 lang_split_key_iso (const LANG_COLLATION * lang_coll, const bool is_desc,
@@ -4497,66 +4496,57 @@ lang_split_key_iso (const LANG_COLLATION * lang_coll, const bool is_desc,
 		    const unsigned char *str2, const int size2,
 		    unsigned char **key, int *byte_size)
 {
-  int pos;
-  const unsigned char *t, *t2;
+  const unsigned char *str1_end, *str2_end;
+  const unsigned char *str1_begin, *str2_begin;
+  int key_size;
 
   assert (key != NULL);
   assert (byte_size != NULL);
 
-  for (pos = 0, t = str1, t2 = str2;
-       pos < size1 && pos < size2 && *t++ == *t2++; pos++)
+  str1_end = str1 + size1;
+  str2_end = str2 + size2;
+  str1_begin = str1;
+  str2_begin = str2;
+
+  for (; str1 < str1_end && str2 < str2_end; str1++, str2++)
     {
-      ;
+      if (*str1 != *str2)
+	{
+	  assert ((!is_desc && *str1 < *str2) || (is_desc && *str1 > *str2));
+	  break;
+	}
     }
 
   if (!is_desc)
     {				/* normal index */
-      /* check if matched size is exactly string1 or in string2 there is
-       * exactly one more character (byte) after matched part */
-      if (pos == size1 || pos + 1 == size2)
-	{
-	  *key = (unsigned char *) str1;
-	  pos = size1;
-	}
-      else
-	{
-	  assert (pos < size2);
-	  assert (pos < size1);
+      *key = (unsigned char *) str2_begin;
 
-	  *key = (unsigned char *) str2;
-	  assert (*(str2 + pos) != 0 && *(str2 + pos) != 0x20);
-	  pos++;
-	}
+      /* common part plus a character with non-zero weight */
+      str2++;
+      assert (str2 <= str2_end);
+      key_size = str2 - str2_begin;
     }
   else
     {				/* reverse index */
       assert (is_desc);
 
-      if (pos == size1)
+      /* common part plus a character with non-zero weight from str1 */
+      str1++;
+      if (str1 >= str1_end)
 	{
-	  /* actually, this could happen only when string1 == string2 */
-	  *key = (unsigned char *) str1;
-	  pos = size1;
+	  /* str1 exhaused or at last char, we use str2 as key */
+	  *key = (unsigned char *) str2_begin;
+	  key_size = str2_end - str2_begin;
 	}
       else
 	{
-	  assert (pos < size1);
-	  *key = (unsigned char *) str1;
-	  /* we must add a non-zero weight character */
-	  for (t = str1 + pos; pos < size1 && (*t == 0x20 || *t == 0);
-	       t++, pos++)
-	    {
-	      ;
-	    }
-
-	  if (pos < size1)
-	    {
-	      pos++;
-	    }
+	  assert (str1 < str1_end);
+	  *key = (unsigned char *) str1_begin;
+	  key_size = str1 - str1_begin;
 	}
     }
 
-  *byte_size = pos;
+  *byte_size = key_size;
 
   return NO_ERROR;
 }
@@ -4576,7 +4566,7 @@ lang_split_key_iso (const LANG_COLLATION * lang_coll, const bool is_desc,
  *   key(out): key
  *   byte_size(out): size in bytes of key
  *
- *  Note : this function is used by index prefix computation (BTREE building)
+ *  Note : this function is used by index prefix computation
  */
 static int
 lang_split_key_byte (const LANG_COLLATION * lang_coll, const bool is_desc,
@@ -4584,66 +4574,63 @@ lang_split_key_byte (const LANG_COLLATION * lang_coll, const bool is_desc,
 		     const unsigned char *str2, const int size2,
 		     unsigned char **key, int *byte_size)
 {
-  int pos, cmp;
-  const unsigned char *t1, *t2;
+  const unsigned char *str1_end, *str2_end;
+  const unsigned char *str1_begin, *str2_begin;
+  unsigned int w1, w2;
+  int key_size;
 
   assert (key != NULL);
   assert (byte_size != NULL);
 
-  for (pos = 0, t1 = str1, t2 = str2; pos < size1 && pos < size2; pos++)
-    {
-      cmp = lang_coll->coll.weights[*t1++] - lang_coll->coll.weights[*t2++];
+  str1_end = str1 + size1;
+  str2_end = str2 + size2;
+  str1_begin = str1;
+  str2_begin = str2;
 
-      if (cmp != 0)
+  for (; str1 < str1_end && str2 < str2_end; str1++, str2++)
+    {
+      w1 = lang_coll->coll.weights[*str1];
+      w2 = lang_coll->coll.weights[*str2];
+
+      if (w1 != w2)
 	{
-	  assert ((!is_desc && cmp < 0) || (is_desc && cmp > 0));
+	  assert ((!is_desc && w1 < w2) || (is_desc && w1 > w2));
 	  break;
 	}
     }
 
   if (!is_desc)
     {				/* normal index */
-      if (pos == size1 || pos + 1 == size2)
-	{
-	  *key = (unsigned char *) str1;
-	  pos = size1;
-	}
-      else
-	{
-	  assert (pos < size2);
-	  assert (pos < size1);
+      *key = (unsigned char *) str2_begin;
 
-	  *key = (unsigned char *) str2;
-	  assert (lang_coll->coll.weights[*(str2 + pos)] != 0);
-	  pos++;
-	}
+      /* common part plus a character with non-zero weight */
+      str2++;
+
+      assert (str2 <= str2_end);
+      key_size = str2 - str2_begin;
     }
   else
     {				/* reverse index */
-      if (pos == size1)
+      assert (is_desc);
+
+      /* common part plus a character with non-zero weight from str1 */
+      str1++;
+
+      if (str1 >= str1_end)
 	{
-	  *key = (unsigned char *) str1;
-	  pos = size1;
+	  /* str1 exhaused or at last char, we use str2 as key */
+	  *key = (unsigned char *) str2_begin;
+	  key_size = str2_end - str2_begin;
 	}
       else
 	{
-	  assert (pos < size1);
-	  *key = (unsigned char *) str1;
-	  /* we must add a non-zero weight character */
-	  for (t1 = str1 + pos;
-	       pos < size1 && lang_coll->coll.weights[*t1] == 0; t1++, pos++)
-	    {
-	      ;
-	    }
-
-	  if (pos < size1)
-	    {
-	      pos++;
-	    }
+	  assert (str1 < str1_end);
+	  *key = (unsigned char *) str1_begin;
+	  key_size = str1 - str1_begin;
 	}
     }
 
-  *byte_size = pos;
+  *byte_size = key_size;
 
   return NO_ERROR;
 }
@@ -4662,7 +4649,7 @@ lang_split_key_byte (const LANG_COLLATION * lang_coll, const bool is_desc,
  *   key(out): key
  *   byte_size(out): size in bytes of key
  *
- *  Note : this function is used by index prefix computation (BTREE building)
+ *  Note : this function is used by index prefix computation
  */
 static int
 lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc,
@@ -4702,66 +4689,33 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc,
 
   if (!is_desc)
     {				/* normal index */
-      bool string2_has_one_more_char = false;
+      *key = (unsigned char *) str2_begin;
 
-      if (str1 < str1_end)
-	{
-	  /* check if in string2 there is one more character (or contraction)
-	   * after common part */
-	  if (str2 < str2_end)
-	    {
-	      w2 = lang_get_w_first_el (coll, str2, str2_end - str2,
-					&str2_next);
-	      assert (w2 != 0);
-	      if (str2_next == str2_end)
-		{
-		  string2_has_one_more_char = true;
-		}
-	    }
-	}
+      /* common part plus a character with non-zero weight */
+      w2 = lang_get_w_first_el (coll, str2, str2_end - str2, &str2_next);
+      str2 = str2_next;
 
-      if (str1 == str1_end || string2_has_one_more_char)
-	{
-	  *key = (unsigned char *) str1_begin;
-	  key_size = size1;
-	}
-      else
-	{
-	  assert (str2 < str2_end);
-
-	  *key = (unsigned char *) str2_begin;
-
-	  /* common part plus one more character (or more, if last unit is a
-	   * contraction) from string2 */
-	  key_size = str2_next - str2_begin;
-	  assert (key_size <= size2);
-	}
+      assert (str2 <= str2_end);
+      key_size = str2 - str2_begin;
     }
   else
     {				/* reverse index */
-      if (str1 == str1_end)
+      assert (is_desc);
+      /* common part plus a character with non-zero weight from str1 */
+      w1 = lang_get_w_first_el (coll, str1, str1_end - str1, &str1_next);
+      str1 = str1_next;
+
+      if (str1 >= str1_end)
 	{
-	  /* actually, this could happen only when string1 == string2 */
-	  *key = (unsigned char *) str1_begin;
-	  key_size = size1;
+	  /* str1 exhaused or at last char, we use str2 as key */
+	  *key = (unsigned char *) str2_begin;
+	  key_size = str2_end - str2_begin;
 	}
       else
 	{
 	  assert (str1 < str1_end);
 	  *key = (unsigned char *) str1_begin;
-
-	  /* common part plus one more non-zero weight collation unit */
-	  do
-	    {
-	      w1 = lang_get_w_first_el (coll, str1, str1_end - str1,
-					&str1_next);
-	      str1 = str1_next;
-	    }
-	  while (w1 == 0 && str1 < str1_end);
-
-	  key_size = str1_next - str1_begin;
-
-	  assert (key_size <= size1);
+	  key_size = str1 - str1_begin;
 	}
     }
 
@@ -4784,7 +4738,7 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc,
  *   key(out): key
  *   byte_size(out): size in bytes in key
  *
- *  Note : this function is used by index prefix computation (BTREE building)
+ *  Note : this function is used by index prefix computation
  */
 static int
 lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc,
@@ -4804,7 +4758,6 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc,
   const COLL_DATA *cd = &(lang_coll->coll);
   unsigned int dummy;
   int key_size;
-  int last_str1_unit_size = 1, last_str2_unit_size = 1;
   bool force_key = false;
 
   assert (key != NULL);
@@ -4835,8 +4788,6 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc,
 	  assert (num_ce1 > 0);
 
 	  ce_index1 = 0;
-
-	  last_str1_unit_size = str1_next - str1;
 	}
 
     read_weights2:
@@ -4854,8 +4805,6 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc,
 	  assert (num_ce2 > 0);
 
 	  ce_index2 = 0;
-
-	  last_str2_unit_size = str2_next - str2;
 	}
 
     compare:
@@ -4907,74 +4856,42 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc,
 
   if (force_key)
     {
-      *key = str1_begin;
-      *byte_size = size1;
+      *key = str2_begin;
+      *byte_size = size2;
       return NO_ERROR;
     }
 
   if (!is_desc)
     {				/* normal index */
-      bool string2_has_one_more_char = false;
+      *key = (unsigned char *) str2_begin;
 
-      if (str1 < str1_end)
-	{
-	  /* check if in string2 there is one more character after common
-	     part */
-	  if (str2 < str2_end)
-	    {
-	      /* get end of current element, weight should be non-zero */
-	      lang_get_uca_w_l13 (cd, true, str2, str2_end - str2,
-				  &uca_w_l13_2, &num_ce2, &str2_next, &dummy);
-	      assert (UCA_GET_L1_W (uca_w_l13_2[0]) != 0);
-	      if (str2_next == str2_end)
-		{
-		  string2_has_one_more_char = true;
-		}
-	    }
-	}
+      /* common part plus a character with non-zero weight */
+      lang_get_uca_w_l13 (cd, true, str2, str2_end - str2, &uca_w_l13_2,
+			  &num_ce2, &str2_next, &dummy);
+      str2 = str2_next;
 
-      if (str1 == str1_end || string2_has_one_more_char)
-	{
-	  *key = str1_begin;
-	  key_size = size1;
-	}
-      else
-	{
-	  assert (str1 < str1_end);
-	  assert (str2 < str2_end);
-	  *key = str2_begin;
-
-	  /* equal part plus one more element (character or contraction)
-	   * the end of element was computed above (str2_next) */
-	  key_size = str2_next - str2_begin;
-	  assert (key_size <= size2);
-	}
+      assert (str2 <= str2_end);
+      key_size = str2 - str2_begin;
     }
   else
     {				/* reverse index */
-      if (str1 == str1_end)
+      assert (is_desc);
+      /* common part plus a character with non-zero weight from str1 */
+      lang_get_uca_w_l13 (cd, true, str1, str1_end - str1, &uca_w_l13_1,
+			  &num_ce1, &str1_next, &dummy);
+      str1 = str1_next;
+
+      if (str1 >= str1_end)
 	{
-	  /* this could happen only when string1 == string2 */
-	  *key = str1_begin;
-	  key_size = size1;
+	  /* str1 exhaused or at last char, we use str2 as key */
+	  *key = (unsigned char *) str2_begin;
+	  key_size = str2_end - str2_begin;
 	}
       else
 	{
 	  assert (str1 < str1_end);
-	  *key = str1_begin;
-
-	  /* common part plus one more non-zero weight collation unit */
-	  do
-	    {
-	      lang_get_uca_w_l13 (cd, true, str1, str1_end - str1,
-				  &uca_w_l13_1, &num_ce1, &str1_next, &dummy);
-	      str1 = str1_next;
-	    }
-	  while (UCA_GET_L1_W (uca_w_l13_1[0]) == 0 && str1 < str1_end);
-
-	  /* equal part plus one more element (character or contraction) */
-	  key_size = str1_next - str1_begin;
-	  assert (key_size <= size1);
+	  *key = (unsigned char *) str1_begin;
+	  key_size = str1 - str1_begin;
 	}
     }
 
@@ -4996,7 +4913,7 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc,
  *   key(out): key
  *   byte_size(out): size in bytes in key
  *
- *  Note : this function is used by index prefix computation (BTREE building)
+ *  Note : this function is used by index prefix computation
  */
 static int
 lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc,
@@ -5033,97 +4950,34 @@ lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc,
 
   if (!is_desc)
     {				/* normal index */
-      bool string2_has_one_more_char = false;
+      *key = (unsigned char *) str2_begin;
 
-      if (str1 < str1_end)
-	{
-	  /* check if in string2 there is one more character after common
-	     part */
-	  if (str2 < str2_end)
-	    {
-	      (void) intl_nextchar_euc ((unsigned char *) str2, &char2_size);
-	      if (str2 + char2_size == str2_end)
-		{
-		  string2_has_one_more_char = true;
-		}
-	    }
-	}
+      /* common part plus a character with non-zero weight */
+      str2_next = intl_nextchar_euc ((unsigned char *) str2, &char2_size);
+      str2 = str2_next;
 
-      if (str1 == str1_end || string2_has_one_more_char)
-	{
-	  *key = (unsigned char *) str1_begin;
-	  key_size = size1;
-	}
-      else
-	{
-	  bool is_zero_weight;
-	  assert (str2 < str2_end);
-
-	  /* common part plus one more non-zero weight character */
-	  do
-	    {
-	      str2_next = intl_nextchar_euc ((unsigned char *) str2,
-					     &char2_size);
-	      is_zero_weight = false;
-	      if (*str2 == 0x20 || *str2 == 0
-		  || (*str2 == 0xa1 && char2_size == 2
-		      && *(str2 + 1) == 0xa1))
-		{
-		  is_zero_weight = true;
-		}
-
-	      if (str2 + char2_size == str2_end)
-		{
-		  string2_has_one_more_char = true;
-		  break;
-		}
-	      str2 = str2_next;
-	    }
-	  while (is_zero_weight && str2 < str2_end);
-
-	  if (string2_has_one_more_char)
-	    {
-	      *key = (unsigned char *) str1_begin;
-	      key_size = size1;
-	    }
-	  else
-	    {
-	      *key = (unsigned char *) str2_begin;
-	      key_size = str2 - str2_begin + char2_size;
-	    }
-	}
+      assert (str2 <= str2_end);
+      key_size = str2 - str2_begin;
     }
   else
     {				/* reverse index */
-      if (str1 == str1_end)
+      assert (is_desc);
+
+      /* common part plus a character with non-zero weight from str1 */
+      str1_next = intl_nextchar_euc ((unsigned char *) str1, &char1_size);
+      str1 = str1_next;
+
+      if (str1 >= str1_end)
 	{
-	  /* actually, this could happen only when string1 == string2 */
-	  *key = (unsigned char *) str1_begin;
-	  key_size = size1;
+	  /* str1 exhaused or at last char, we use str2 as key */
+	  *key = (unsigned char *) str2_begin;
+	  key_size = str2_end - str2_begin;
 	}
       else
 	{
-	  bool is_zero_weight;
 	  assert (str1 < str1_end);
 	  *key = (unsigned char *) str1_begin;
-
-	  /* common part plus one more non-zero weight character */
-	  do
-	    {
-	      str1_next = intl_nextchar_euc ((unsigned char *) str1,
-					     &char1_size);
-	      is_zero_weight = false;
-	      if (*str1 == 0x20 || *str1 == 0
-		  || (*str1 == 0xa1 && char1_size == 2
-		      && *(str1 + 1) == 0xa1))
-		{
-		  is_zero_weight = true;
-		}
-	      str1 = str1_next;
-	    }
-	  while (is_zero_weight && str1 < str1_end);
-
-	  key_size = str1_next - str1_begin;
+	  key_size = str1 - str1_begin;
 	}
     }
 

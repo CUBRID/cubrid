@@ -11913,7 +11913,9 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
 						   class_,
 						   fi->fi_domain->precision,
 						   fi->fi_domain->scale,
-						   NULL));
+						   NULL,
+						   fi->fi_domain->
+						   collation_id));
     }
   else
     {
