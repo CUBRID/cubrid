@@ -116,18 +116,6 @@
     } \
   while (0)
 
-#define QEXEC_CLEAR_ANALYTIC_LIST_VALUE(analytic_list) \
-  do \
-    { \
-      ANALYTIC_TYPE *analytic_ptr; \
-      for (analytic_ptr = analytic_list; analytic_ptr; \
-	  analytic_ptr = analytic_ptr->next) \
-	{ \
-	  pr_clear_value (analytic_ptr->value); \
-	} \
-    } \
-  while (0)
-
 #define QEXEC_EMPTY_ACCESS_SPEC_SCAN(specp) \
   ((specp)->type == TARGET_CLASS \
     && ((ACCESS_SPEC_HFID((specp)).vfid.fileid == NULL_FILEID \
@@ -226,10 +214,41 @@ struct groupby_state
   int upd_del_class_cnt;
 };
 
+typedef struct analytic_function_state ANALYTIC_FUNCTION_STATE;
+struct analytic_function_state
+{
+  ANALYTIC_TYPE *func_p;
+  RECDES current_key;
+
+  /* result list files */
+  QFILE_LIST_ID *group_list_id;	/* file containing group headers */
+  QFILE_LIST_ID *value_list_id;	/* file containing group values */
+  QFILE_LIST_SCAN_ID group_scan_id;	/* scan on group_list_id */
+  QFILE_LIST_SCAN_ID value_scan_id;	/* scan on value_list_id */
+
+  QFILE_TUPLE_RECORD group_tplrec;
+  QFILE_TUPLE_RECORD value_tplrec;
+
+  DB_VALUE cgtc_dbval;		/* linked to curr_group_tuple_count */
+  DB_VALUE cgtc_nn_dbval;	/* linked to curr_group_tuple_count_nn */
+  DB_VALUE csktc_dbval;		/* linked to curr_sort_key_tuple_count */
+  int curr_group_tuple_count;	/* tuples in current group */
+  int curr_group_tuple_count_nn;	/* tuples in current group with non-NULL values */
+  int curr_sort_key_tuple_count;	/* tuples sharing current sort key */
+
+  int group_tuple_position;	/* position of value_scan_id in current group */
+  int group_tuple_position_nn;	/* position of value_scan_id in current group,
+				   ignoring NULL values */
+  int sort_key_tuple_position;	/* position of value_scan_id in current sort key */
+
+  int group_consumed_tuples;	/* number of consumed tuples from current group */
+};
+
 typedef struct analytic_state ANALYTIC_STATE;
 struct analytic_state
 {
   int state;
+  int func_count;
 
   SORTKEY_INFO key_info;
   SORT_CMP_FUNC *cmp_fn;
@@ -237,7 +256,7 @@ struct analytic_state
   XASL_NODE *xasl;
   XASL_STATE *xasl_state;
 
-  ANALYTIC_TYPE *a_func_list;
+  ANALYTIC_FUNCTION_STATE *func_state_list;
   REGU_VARIABLE_LIST a_regu_list;
   OUTPTR_LIST *a_outptr_list_interm;
   OUTPTR_LIST *a_outptr_list;
@@ -247,11 +266,9 @@ struct analytic_state
   QFILE_LIST_ID *interm_file;
   QFILE_LIST_ID *output_file;
 
-  RECDES current_key;
   RECDES analytic_rec;
   QFILE_TUPLE_RECORD input_tplrec;
   QFILE_TUPLE_RECORD *output_tplrec;
-  QFILE_TUPLE_POSITION last_tuple_pos;
 
   struct
   {
@@ -260,9 +277,8 @@ struct analytic_state
   } curr_sort_page;
 
   int input_recs;
-  int current_group_input_recs;
 
-  bool is_last_function;
+  bool is_last_run;
   bool is_output_rec;
 };
 
@@ -651,7 +667,7 @@ static int qexec_clear_access_spec_list (XASL_NODE * xasl_p,
 					 ACCESS_SPEC_TYPE * list, int final);
 static int qexec_clear_analytic_function_list (XASL_NODE * xasl_p,
 					       THREAD_ENTRY * thread_p,
-					       ANALYTIC_TYPE * list,
+					       ANALYTIC_EVAL_TYPE * list,
 					       int final);
 static int qexec_clear_agg_list (XASL_NODE * xasl_p, AGGREGATE_TYPE * list,
 				 int final);
@@ -734,10 +750,18 @@ static int qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 static int qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				XASL_STATE * xasl_state,
 				QFILE_TUPLE_RECORD * tplrec);
-static ANALYTIC_STATE *qexec_initialize_analytic_state (ANALYTIC_STATE *
+static int qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p,
+						     ANALYTIC_FUNCTION_STATE *
+						     func_state,
+						     ANALYTIC_TYPE * func_p,
+						     XASL_STATE * xasl_state);
+static ANALYTIC_STATE *qexec_initialize_analytic_state (THREAD_ENTRY *
+							thread_p,
+							ANALYTIC_STATE *
 							analytic_state,
 							ANALYTIC_TYPE *
 							a_func_list,
+							SORT_LIST * sort_list,
 							REGU_VARIABLE_LIST
 							a_regu_list,
 							VAL_LIST * a_val_list,
@@ -745,7 +769,7 @@ static ANALYTIC_STATE *qexec_initialize_analytic_state (ANALYTIC_STATE *
 							a_outptr_list,
 							OUTPTR_LIST *
 							a_outptr_list_interm,
-							bool is_last_function,
+							bool is_last_run,
 							XASL_NODE * xasl,
 							XASL_STATE *
 							xasl_state,
@@ -759,63 +783,50 @@ static int qexec_analytic_put_next (THREAD_ENTRY * thread_p,
 				    const RECDES * recdes, void *arg);
 static int qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p,
 					     ANALYTIC_STATE * analytic_state,
-					     ANALYTIC_TYPE * func_p,
 					     ANALYTIC_STAGE stage);
-static void qexec_analytic_start_group (THREAD_ENTRY * thread_p,
-					ANALYTIC_STATE * analytic_state,
-					const RECDES * key, bool reinit);
+static int qexec_analytic_start_group (THREAD_ENTRY * thread_p,
+				       XASL_STATE * xasl_state,
+				       ANALYTIC_FUNCTION_STATE * func_state,
+				       const RECDES * key, bool reinit);
+static int qexec_analytic_finalize_group (THREAD_ENTRY * thread_p,
+					  XASL_STATE * xasl_state,
+					  ANALYTIC_FUNCTION_STATE *
+					  func_state, bool is_same_group);
 static void qexec_analytic_add_tuple (THREAD_ENTRY * thread_p,
 				      ANALYTIC_STATE * analytic_state,
 				      QFILE_TUPLE tpl, int peek);
+static void qexec_clear_analytic_function_state (THREAD_ENTRY * thread_p,
+						 ANALYTIC_FUNCTION_STATE *
+						 func_state);
 static void qexec_clear_analytic_state (THREAD_ENTRY * thread_p,
 					ANALYTIC_STATE * analytic_state);
 static int qexec_analytic_evaluate_ntile_function (THREAD_ENTRY * thread_p,
-						   ANALYTIC_TYPE * func_p,
-						   ANALYTIC_STATE *
-						   analytic_state,
-						   int tuple_idx);
-static int find_rec_for_nth_value_with_ignore_nulls (THREAD_ENTRY * thread_p,
-						     REGU_VARIABLE_LIST
-						     regulist,
-						     ANALYTIC_TYPE * func_p,
-						     VAL_DESCR * val_desc,
-						     int tuple_idx,
-						     int target_idx,
-						     int upto_idx);
-static int locate_first_non_null_rec_for_nth_value (THREAD_ENTRY * thread_p,
-						    REGU_VARIABLE_LIST
-						    regulist,
-						    ANALYTIC_TYPE * func_p,
-						    VAL_DESCR * val_desc,
-						    int tuple_idx,
-						    int target_idx);
+						   ANALYTIC_FUNCTION_STATE *
+						   func_state);
 static int qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
-						    ANALYTIC_TYPE * func_p,
+						    ANALYTIC_FUNCTION_STATE *
+						    func_state,
 						    ANALYTIC_STATE *
-						    analytic_state,
-						    VAL_DESCR * val_desc,
-						    int tuple_idx);
+						    analytic_state);
 static int qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
-						    ANALYTIC_TYPE * func_p,
-						    ANALYTIC_STATE *
-						    analytic_state,
-						    int tuple_idx);
-static void qexec_analytic_group_finalize_post_processing (THREAD_ENTRY *
-							   thread_p,
-							   ANALYTIC_TYPE *
-							   func_p,
-							   ANALYTIC_STATE *
-							   analytic_state);
-static int qexec_analytic_group_post_processing (THREAD_ENTRY * thread_p,
-						 ANALYTIC_TYPE * func_p,
-						 ANALYTIC_STATE *
-						 analytic_state,
-						 XASL_STATE * xasl_state,
-						 int tuple_idx);
+						    ANALYTIC_FUNCTION_STATE *
+						    func_state);
+static int qexec_analytic_group_header_load (ANALYTIC_FUNCTION_STATE *
+					     func_state);
+static int qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE *
+						func_state, bool load_value);
+static int qexec_analytic_value_advance (THREAD_ENTRY * thread_p,
+					 ANALYTIC_FUNCTION_STATE * func_state,
+					 int amount, int max_group_changes);
+static int qexec_analytic_value_lookup (THREAD_ENTRY * thread_p,
+					ANALYTIC_FUNCTION_STATE * func_state,
+					int position);
+static int qexec_analytic_group_header_next (THREAD_ENTRY * thread_p,
+					     ANALYTIC_FUNCTION_STATE *
+					     func_state);
 static int qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
 					       ANALYTIC_STATE *
-					       analytic_state,
-					       bool keep_list_file);
+					       analytic_state);
 static int qexec_collection_has_null (DB_VALUE * colval);
 static DB_VALUE_COMPARE_RESULT qexec_cmp_tpl_vals_merge (QFILE_TUPLE *
 							 left_tval,
@@ -955,9 +966,8 @@ static void qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p,
 					      XASL_NODE * xasl);
 static int qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				   XASL_STATE * xasl_state,
-				   ANALYTIC_TYPE * analytic_func_p,
-				   QFILE_TUPLE_RECORD * tplrec,
-				   ANALYTIC_TYPE ** next_func);
+				   ANALYTIC_EVAL_TYPE * analytic_eval,
+				   QFILE_TUPLE_RECORD * tplrec, bool is_last);
 static int qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p,
 						 BTREE_UNIQUE_STATS_UPDATE_INFO
 						 * info);
@@ -1176,17 +1186,11 @@ static void qexec_clear_topn_tuple (THREAD_ENTRY * thread_p,
 static int qexec_get_orderbynum_upper_bound (THREAD_ENTRY * tread_p,
 					     PRED_EXPR * pred, VAL_DESCR * vd,
 					     DB_VALUE * ubound);
-static int qexec_compare_two_tuple_by_sort_key (QFILE_TUPLE tpl1,
-						QFILE_TUPLE tpl2,
-						SORTKEY_INFO * key_info_p);
 static int
 qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY *
 							 thread_p,
-							 ANALYTIC_TYPE *
-							 func_p,
-							 ANALYTIC_STATE *
-							 analytic_state,
-							 int tuple_idx);
+							 ANALYTIC_FUNCTION_STATE
+							 * func_state);
 
 static int
 qexec_clear_regu_variable_list (XASL_NODE * xasl_p, REGU_VARIABLE_LIST list,
@@ -2336,21 +2340,21 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 static int
 qexec_clear_analytic_function_list (XASL_NODE * xasl_p,
 				    THREAD_ENTRY * thread_p,
-				    ANALYTIC_TYPE * list, int final)
+				    ANALYTIC_EVAL_TYPE * list, int final)
 {
+  ANALYTIC_EVAL_TYPE *e;
   ANALYTIC_TYPE *p;
   int pg_cnt;
 
   pg_cnt = 0;
 
-  for (p = list; p; p = p->next)
+  for (e = list; e; e = e->next)
     {
-      (void) pr_clear_value (p->value);
-      (void) pr_clear_value (p->value2);
-#if 0				/* TODO - currenty, is not handled at stream_to_xasl */
-      (void) pr_clear_value (p->save_value);
-      (void) pr_clear_value (&(p->part_value));
-#endif
+      for (p = e->head; p; p = p->next)
+	{
+	  (void) pr_clear_value (p->value);
+	  (void) pr_clear_value (p->value2);
+	}
     }
 
   return pg_cnt;
@@ -2626,7 +2630,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	    /* analytic functions */
 	    pg_cnt +=
 	      qexec_clear_analytic_function_list (xasl, thread_p,
-						  buildlist->a_func_list,
+						  buildlist->a_eval_list,
 						  final);
 	    pg_cnt +=
 	      qexec_clear_regu_list (xasl, buildlist->a_regu_list, final);
@@ -3450,7 +3454,7 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  outptr_list = xasl->proc.buildlist.g_outptr_list;
 	}
-      else if (xasl->proc.buildlist.a_func_list != NULL)
+      else if (xasl->proc.buildlist.a_eval_list != NULL)
 	{
 	  outptr_list = xasl->proc.buildlist.a_outptr_list;
 	}
@@ -11910,7 +11914,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL)
 		&& XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
 		&& buildlist->groupby_list == NULL
-		&& buildlist->a_func_list == NULL
+		&& buildlist->a_eval_list == NULL
 		&& (xasl->orderby_list == NULL
 		    || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST))
 		&& xasl->option != Q_DISTINCT)
@@ -13272,15 +13276,15 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
 
       /* process analytic functions */
-      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_func_list)
+      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list)
 	{
-	  ANALYTIC_TYPE *analytic_func_p = xasl->proc.buildlist.a_func_list;
-	  while (analytic_func_p)
+	  ANALYTIC_EVAL_TYPE *eval_list;
+	  for (eval_list = xasl->proc.buildlist.a_eval_list; eval_list;
+	       eval_list = eval_list->next)
 	    {
-	      if (qexec_execute_analytic (thread_p, xasl, xasl_state,
-					  analytic_func_p,
-					  &tplrec, &analytic_func_p)
-		  != NO_ERROR)
+	      if (qexec_execute_analytic
+		  (thread_p, xasl, xasl_state, eval_list, &tplrec,
+		   (eval_list->next == NULL)) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -20002,95 +20006,39 @@ query_multi_range_opt_check_specs (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 static int
 qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			XASL_STATE * xasl_state,
-			ANALYTIC_TYPE * analytic_func_p,
-			QFILE_TUPLE_RECORD * tplrec,
-			ANALYTIC_TYPE ** next_func)
+			ANALYTIC_EVAL_TYPE * analytic_eval,
+			QFILE_TUPLE_RECORD * tplrec, bool is_last)
 {
   QFILE_LIST_ID *list_id = xasl->list_id;
   BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
   ANALYTIC_STATE analytic_state;
   QFILE_LIST_SCAN_ID input_scan_id, interm_scan_id;
   OUTPTR_LIST *a_outptr_list;
-  REGU_VARIABLE_LIST a_regu_list;
-  ANALYTIC_TYPE *save_next = NULL, *save_last, *func_list;
   int ls_flag = 0;
 
-  /* cut off link to next analytic function */
-  func_list = analytic_func_p;
-  for (save_last = analytic_func_p; save_last != NULL;
-       save_last = save_last->next)
-    {
-      if (save_last->next != NULL)
-	{
-	  if (save_last->next->eval_group != analytic_func_p->eval_group
-	      || save_last->next->eval_group == -1)
-	    {
-	      save_next = save_last->next;
-	      save_last->next = NULL;
-	      break;
-	    }
-	}
-    }
-
   /* fetch regulist and outlist */
-  a_regu_list = buildlist->a_regu_list;
   a_outptr_list =
-    (save_next !=
-     NULL ? buildlist->a_outptr_list_interm : buildlist->a_outptr_list);
-
-  for (func_list = analytic_func_p; func_list != NULL;
-       func_list = func_list->next)
-    {
-      REGU_VARIABLE_LIST function_regu;
-      int idx;
-
-      /* find analytic's reguvar */
-      idx = func_list->outptr_idx;
-      function_regu = buildlist->a_regu_list;
-
-      while (idx > 0 && function_regu != NULL)
-	{
-	  function_regu = function_regu->next;
-	  idx--;
-	}
-
-      if (function_regu == NULL)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
-      /* set analytic value pointer to vallist value */
-      func_list->save_value = func_list->value;
-      func_list->value = function_regu->value.vfetch_to;
-
-      if (func_list->function != PT_ROW_NUMBER
-	  && func_list->function != PT_LEAD && func_list->function != PT_LAG
-	  && func_list->function != PT_NTH_VALUE)
-	{
-	  /* for anything but ROWNUM, NTH_VALUE, LEAD and LAG the fetched value should be
-	   * put in a secluded place - in this case, the function's old
-	   * DB_VALUE */
-	  function_regu->value.vfetch_to = func_list->save_value;
-	}
-    }
+    (is_last ? buildlist->a_outptr_list : buildlist->a_outptr_list_interm);
 
   /* resolve late bindings in analytic sort list */
-  qexec_resolve_domains_on_sort_list (analytic_func_p->sort_list,
+  qexec_resolve_domains_on_sort_list (analytic_eval->sort_list,
 				      buildlist->a_outptr_list_ex->valptrp);
 
   /* initialized analytic functions state structure */
-  if (qexec_initialize_analytic_state (&analytic_state, analytic_func_p,
+  if (qexec_initialize_analytic_state (thread_p,
+				       &analytic_state, analytic_eval->head,
+				       analytic_eval->sort_list,
 				       buildlist->a_regu_list,
 				       buildlist->a_val_list,
 				       a_outptr_list,
 				       buildlist->a_outptr_list_interm,
-				       (save_next == NULL), xasl, xasl_state,
+				       is_last, xasl, xasl_state,
 				       &list_id->type_list, tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (analytic_state.is_last_function)
+  if (analytic_state.is_last_run)
     {
       /* for last function, evaluate instnum() predicate while sorting */
       xasl->instnum_pred = buildlist->a_instnum_pred;
@@ -20134,7 +20082,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     analytic_state.interm_file = interm_list_id;
 
     /* last iteration results in xasl result file */
-    if (save_next == NULL)
+    if (is_last)
       {
 	QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
 	if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL)
@@ -20226,7 +20174,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
-		  "MEDIAN", "DOUBLE, DATETIME or TIME");
+		  "MEDIAN", "DOUBLE, DATETIME, TIME");
 	}
 
       GOTO_EXIT_ON_ERROR;
@@ -20239,14 +20187,25 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
    */
   if (analytic_state.input_recs != 0)
     {
-      if (qexec_analytic_update_group_result (thread_p,
-					      &analytic_state,
-					      false) != NO_ERROR)
+      int i;
+
+      for (i = 0; i < analytic_state.func_count; i++)
+	{
+	  if (qexec_analytic_finalize_group
+	      (thread_p, analytic_state.xasl_state,
+	       &analytic_state.func_state_list[i], false) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+
+      /* reiterate intermediate file and write output using function result
+         files */
+      if (qexec_analytic_update_group_result (thread_p, &analytic_state) !=
+	  NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
-
-      QEXEC_CLEAR_ANALYTIC_LIST_VALUE (analytic_state.a_func_list);
     }
 
 wrapup:
@@ -20280,55 +20239,6 @@ wrapup:
   /* clear internal processing items */
   qexec_clear_analytic_state (thread_p, &analytic_state);
 
-  for (func_list = analytic_func_p; func_list != NULL;
-       func_list = func_list->next)
-    {
-      REGU_VARIABLE_LIST function_regu;
-      int idx;
-
-      /* find analytic's reguvar */
-      idx = func_list->outptr_idx;
-      function_regu = buildlist->a_regu_list;
-
-      while (idx > 0 && function_regu != NULL)
-	{
-	  function_regu = function_regu->next;
-	  idx--;
-	}
-
-      if (function_regu == NULL)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
-      /* restore output pointer list */
-      if (func_list->function == PT_ROW_NUMBER
-	  || analytic_func_p->function == PT_LEAD
-	  || analytic_func_p->function == PT_LAG
-	  || analytic_func_p->function == PT_NTH_VALUE)
-	{
-	  func_list->value = func_list->save_value;
-	}
-      else
-	{
-	  func_list->save_value = func_list->value;
-	  func_list->value = function_regu->value.vfetch_to;
-	  function_regu->value.vfetch_to = func_list->save_value;
-	}
-    }
-
-
-  /* restore link to next analytic function */
-  if (save_last != NULL)
-    {
-      save_last->next = save_next;
-    }
-
-  if (next_func != NULL)
-    {
-      (*next_func) = save_next;
-    }
-
   return (analytic_state.state == NO_ERROR) ? NO_ERROR : ER_FAILED;
 
 exit_on_error:
@@ -20338,6 +20248,120 @@ exit_on_error:
       analytic_state.state = ER_FAILED;
     }
   goto wrapup;
+}
+
+/*
+ * qexec_initialize_analytic_function_state () - initialize a function state
+ *   returns: error code or NO_ERROR
+ *   thread_p(in): thread entry
+ *   func_state(in/out): function state
+ *   func_p(in): function to initialize state for
+ */
+static int
+qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p,
+					  ANALYTIC_FUNCTION_STATE *
+					  func_state, ANALYTIC_TYPE * func_p,
+					  XASL_STATE * xasl_state)
+{
+  QFILE_TUPLE_VALUE_TYPE_LIST group_type_list, value_type_list;
+
+  assert (func_state != NULL);
+
+  /* register function */
+  func_state->func_p = func_p;
+
+  /* initialize function state */
+  func_state->current_key.data =
+    (char *) db_private_alloc (thread_p, DB_PAGESIZE);
+  if (func_state->current_key.data == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      DB_PAGESIZE);
+      return ER_FAILED;
+    }
+  func_state->current_key.area_size = DB_PAGESIZE;
+  func_state->current_key.length = 0;
+  func_state->current_key.type = 0;
+
+  /* zero input recs */
+  func_state->curr_group_tuple_count = 0;
+  func_state->curr_group_tuple_count_nn = 0;
+  func_state->curr_sort_key_tuple_count = 0;
+
+  /* initialize tuple record */
+  func_state->group_tplrec.size = 0;
+  func_state->group_tplrec.tpl = NULL;
+  func_state->value_tplrec.size = 0;
+  func_state->value_tplrec.tpl = NULL;
+
+  /* initialize dbvals */
+  DB_MAKE_NULL (&func_state->csktc_dbval);
+  DB_MAKE_NULL (&func_state->cgtc_dbval);
+  DB_MAKE_NULL (&func_state->cgtc_nn_dbval);
+
+  /* initialize group header listfile */
+  group_type_list.type_cnt = 2;
+  group_type_list.domp =
+    (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
+  if (group_type_list.domp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      DB_PAGESIZE);
+      return ER_FAILED;
+    }
+  group_type_list.domp[0] = &tp_Integer_domain;
+  group_type_list.domp[1] = &tp_Integer_domain;
+
+  func_state->group_list_id =
+    qfile_open_list (thread_p, &group_type_list, NULL,
+		     xasl_state->query_id, 0);
+
+  db_private_free_and_init (thread_p, group_type_list.domp);
+
+  func_state->group_list_id->tpl_descr.f_cnt = 2;
+  func_state->group_list_id->tpl_descr.f_valp =
+    (DB_VALUE **) malloc (sizeof (DB_VALUE *) * 2);
+  if (func_state->group_list_id->tpl_descr.f_valp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      DB_PAGESIZE);
+      return ER_FAILED;
+    }
+  func_state->group_list_id->tpl_descr.f_valp[0] = &func_state->cgtc_dbval;
+  func_state->group_list_id->tpl_descr.f_valp[1] = &func_state->cgtc_nn_dbval;
+
+  /* initialize group value listfile */
+  value_type_list.type_cnt = 2;
+  value_type_list.domp =
+    (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
+  if (value_type_list.domp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      DB_PAGESIZE);
+      return ER_FAILED;
+    }
+  value_type_list.domp[0] = &tp_Integer_domain;
+  value_type_list.domp[1] = func_state->func_p->domain;
+
+  func_state->value_list_id =
+    qfile_open_list (thread_p, &value_type_list, NULL,
+		     xasl_state->query_id, 0);
+
+  db_private_free_and_init (thread_p, value_type_list.domp);
+
+  func_state->value_list_id->tpl_descr.f_cnt = 2;
+  func_state->value_list_id->tpl_descr.f_valp =
+    (DB_VALUE **) malloc (sizeof (DB_VALUE *) * 2);
+  if (func_state->value_list_id->tpl_descr.f_valp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      DB_PAGESIZE);
+      return ER_FAILED;
+    }
+  func_state->value_list_id->tpl_descr.f_valp[0] = &func_state->csktc_dbval;
+  func_state->value_list_id->tpl_descr.f_valp[1] = func_p->value;
+
+  return NO_ERROR;
 }
 
 /*
@@ -20354,13 +20378,15 @@ exit_on_error:
  *   tplrec(out) 	: Tuple record descriptor to store result tuples
  */
 static ANALYTIC_STATE *
-qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
+qexec_initialize_analytic_state (THREAD_ENTRY * thread_p,
+				 ANALYTIC_STATE * analytic_state,
 				 ANALYTIC_TYPE * a_func_list,
+				 SORT_LIST * sort_list,
 				 REGU_VARIABLE_LIST a_regu_list,
 				 VAL_LIST * a_val_list,
 				 OUTPTR_LIST * a_outptr_list,
 				 OUTPTR_LIST * a_outptr_list_interm,
-				 bool is_last_function,
+				 bool is_last_run,
 				 XASL_NODE * xasl,
 				 XASL_STATE * xasl_state,
 				 QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
@@ -20379,7 +20405,6 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
   analytic_state->interm_file = NULL;
   analytic_state->output_file = NULL;
 
-  analytic_state->a_func_list = a_func_list;
   analytic_state->a_regu_list = a_regu_list;
   analytic_state->a_outptr_list = a_outptr_list;
   analytic_state->a_outptr_list_interm = a_outptr_list_interm;
@@ -20387,12 +20412,8 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
   analytic_state->xasl = xasl;
   analytic_state->xasl_state = xasl_state;
 
-  analytic_state->is_last_function = is_last_function;
+  analytic_state->is_last_run = is_last_run;
 
-  analytic_state->current_key.area_size = 0;
-  analytic_state->current_key.length = 0;
-  analytic_state->current_key.type = 0;	/* Unused */
-  analytic_state->current_key.data = NULL;
   analytic_state->analytic_rec.area_size = 0;
   analytic_state->analytic_rec.length = 0;
   analytic_state->analytic_rec.type = 0;	/* Unused */
@@ -20401,24 +20422,16 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
   analytic_state->input_tplrec.size = 0;
   analytic_state->input_tplrec.tpl = 0;
   analytic_state->input_recs = 0;
-  analytic_state->current_group_input_recs = 0;
-
-  analytic_state->last_tuple_pos.tplno = -1;
-  analytic_state->last_tuple_pos.vpid.pageid = NULL_PAGEID;
-  analytic_state->last_tuple_pos.vpid.volid = NULL_VOLID;
-  analytic_state->last_tuple_pos.offset = -1;
-  analytic_state->last_tuple_pos.position = S_ON;
-  analytic_state->last_tuple_pos.tpl = NULL;
 
   analytic_state->curr_sort_page.vpid.pageid = NULL_PAGEID;
   analytic_state->curr_sort_page.vpid.volid = NULL_VOLID;
   analytic_state->curr_sort_page.page_p = NULL;
+  analytic_state->output_tplrec = tplrec;
 
-  if (a_func_list->sort_list)
+  if (sort_list)
     {
       if (qfile_initialize_sort_key_info (&analytic_state->key_info,
-					  a_func_list->sort_list,
-					  type_list) == NULL)
+					  sort_list, type_list) == NULL)
 	{
 	  return NULL;
 	}
@@ -20431,14 +20444,35 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
       analytic_state->key_info.error = NO_ERROR;
     }
 
-  analytic_state->current_key.data =
-    (char *) db_private_alloc (NULL, DB_PAGESIZE);
-  if (analytic_state->current_key.data == NULL)
+  /* build function states */
+  for (analytic_state->func_count = 0, func_p = a_func_list; func_p != NULL;
+       analytic_state->func_count++, func_p = func_p->next)
+    {
+      ;				/* count analytic functions */
+    }
+
+  analytic_state->func_state_list =
+    (ANALYTIC_FUNCTION_STATE *) db_private_alloc (thread_p,
+						  sizeof
+						  (ANALYTIC_FUNCTION_STATE) *
+						  analytic_state->func_count);
+  if (analytic_state->func_state_list == NULL)
     {
       return NULL;
     }
-  analytic_state->current_key.area_size = DB_PAGESIZE;
-  analytic_state->output_tplrec = tplrec;
+
+  memset (analytic_state->func_state_list, 0,
+	  analytic_state->func_count * sizeof (ANALYTIC_FUNCTION_STATE));
+  for (i = 0, func_p = a_func_list; i < analytic_state->func_count;
+       i++, func_p = func_p->next)
+    {
+      if (qexec_initialize_analytic_function_state
+	  (thread_p, &analytic_state->func_state_list[i], func_p,
+	   xasl_state) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
 
   /* initialize runtime structure */
   for (func_p = a_func_list; func_p != NULL; func_p = func_p->next)
@@ -20457,7 +20491,7 @@ qexec_initialize_analytic_state (ANALYTIC_STATE * analytic_state,
 	   i < analytic_state->key_info.nkeys && subkey != NULL;
 	   ++i, ++subkey)
 	{
-	  if (i >= a_func_list->partition_cnt
+	  if (i >= a_func_list->sort_prefix_size
 	      && TP_IS_STRING_TYPE (TP_DOMAIN_TYPE (subkey->col_dom)))
 	    {
 	      subkey->use_cmp_dom = true;
@@ -20517,12 +20551,11 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
   SORT_REC *key;
   char *data;
   VPID vpid;
-  int peek;
+  int peek, i;
   QFILE_LIST_ID *list_idp;
 
   QFILE_TUPLE_RECORD dummy;
-  int status, nkeys;
-  bool is_same_partition;
+  int status;
 
   analytic_state = (ANALYTIC_STATE *) arg;
   list_idp = &(analytic_state->input_scan->list_id);
@@ -20541,7 +20574,6 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 
       /* evaluate inst_num() predicate */
       if (qexec_analytic_eval_instnum_pred (thread_p, analytic_state,
-					    analytic_state->a_func_list,
 					    ANALYTIC_INTERM_PROC) != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -20612,84 +20644,116 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 	  peek = PEEK;		/* avoid unnecessary COPY */
 	}
 
+      /*
+       * process current sorted tuple
+       */
       if (analytic_state->input_recs == 0)
 	{
-	  /*
-	   * First record we've seen; put it out and set up the group
-	   * comparison key(s).
-	   */
-	  qexec_analytic_start_group (thread_p, analytic_state, recdes, true);
-	  qexec_analytic_add_tuple (thread_p, analytic_state, data, peek);
-	}
-      else if (((*analytic_state->cmp_fn) (&analytic_state->current_key.data,
-					   &key, &analytic_state->key_info)
-		== 0) || analytic_state->key_info.nkeys == 0)
-	{
-	  ANALYTIC_TYPE *func_p;
-	  /*
-	   * Still in the same group, accumulate and add the tuple
-	   */
-	  for (func_p = analytic_state->a_func_list; func_p != NULL;
-	       func_p = func_p->next)
+	  /* first input record, initialize everything */
+	  for (i = 0; i < analytic_state->func_count; i++)
 	    {
-	      ANALYTIC_FUNC_SET_FLAG (func_p, ANALYTIC_KEEP_RANK);
+	      qexec_analytic_start_group (thread_p,
+					  analytic_state->xasl_state,
+					  &analytic_state->func_state_list[i],
+					  recdes, true);
 	    }
-
-	  qexec_analytic_add_tuple (thread_p, analytic_state, data, peek);
 	}
       else
 	{
-	  /* find out if it's the same partition; this is possible because
-	   * accumulation is over ordering clause too */
-	  is_same_partition = false;
-	  if (analytic_state->key_info.nkeys
-	      != analytic_state->a_func_list->partition_cnt)
+	  for (i = 0; i < analytic_state->func_count; i++)
 	    {
-	      if (analytic_state->a_func_list->partition_cnt == 0)
-		{
-		  is_same_partition = true;
-		}
-	      else
-		{
-		  nkeys = analytic_state->key_info.nkeys;
-		  analytic_state->key_info.nkeys =
-		    analytic_state->a_func_list->partition_cnt;
-		  if ((*analytic_state->cmp_fn) (&analytic_state->
-						 current_key.data, &key,
-						 &analytic_state->key_info)
-		      == 0)
-		    {
-		      is_same_partition = true;
-		    }
-		  analytic_state->key_info.nkeys = nkeys;
-		}
-	    }
+	      ANALYTIC_FUNCTION_STATE *func_state =
+		&analytic_state->func_state_list[i];
+	      bool is_same_group = false;
+	      int nkeys;
 
-	  if (!is_same_partition)
-	    {
-	      if (qexec_analytic_update_group_result
-		  (thread_p, analytic_state, false) != NO_ERROR)
+	      /* check group finish */
+	      nkeys = analytic_state->key_info.nkeys;
+	      analytic_state->key_info.nkeys =
+		func_state->func_p->sort_list_size;
+	      if (((*analytic_state->cmp_fn) (&func_state->current_key.data,
+					      &key,
+					      &analytic_state->key_info) == 0)
+		  || analytic_state->key_info.nkeys == 0)
 		{
-		  goto exit_on_error;
+		  /* keep rank within same sort key */
+		  analytic_state->key_info.nkeys = nkeys;
+		  ANALYTIC_FUNC_SET_FLAG (func_state->func_p,
+					  ANALYTIC_KEEP_RANK);
+
+		  if (QPROC_ANALYTIC_IS_OFFSET_FUNCTION (func_state->func_p))
+		    {
+		      /* offset functions will treat all tuples in a group as
+		       * having a different sort key regardless if this is true
+		       * or not; this is done in order to have a distinct value
+		       * for each tuple in the group (whereas normally tuples
+		       * sharing a sort key will also share a value) */
+		      is_same_group = true;
+		    }
+		  else
+		    {
+		      /* same sort key, move on */
+		      continue;
+		    }
 		}
-	      QEXEC_CLEAR_ANALYTIC_LIST_VALUE (analytic_state->a_func_list);
-	      qexec_analytic_start_group (thread_p, analytic_state, recdes,
-					  true);
-	    }
-	  else
-	    if (QPROC_ANALYTIC_HAS_SUBPARTITIONS
-		(analytic_state->a_func_list))
-	    {
-	      if (qexec_analytic_update_group_result
-		  (thread_p, analytic_state, true) != NO_ERROR)
+	      analytic_state->key_info.nkeys = nkeys;
+
+	      /* find out if it's the same group */
+	      if (!is_same_group)
 		{
-		  goto exit_on_error;
+		  if (func_state->func_p->sort_prefix_size == 0)
+		    {
+		      /* no groups, only ordering */
+		      is_same_group = true;
+		    }
+		  else
+		    {
+		      nkeys = analytic_state->key_info.nkeys;
+		      analytic_state->key_info.nkeys =
+			func_state->func_p->sort_prefix_size;
+		      if ((*analytic_state->cmp_fn) (&func_state->current_key.
+						     data, &key,
+						     &analytic_state->
+						     key_info) == 0)
+			{
+			  is_same_group = true;
+			}
+		      analytic_state->key_info.nkeys = nkeys;
+		    }
 		}
-	      qexec_analytic_start_group (thread_p, analytic_state, recdes,
-					  false);
+
+	      if (!is_same_group)
+		{
+		  if (qexec_analytic_finalize_group
+		      (thread_p, analytic_state->xasl_state, func_state,
+		       false) != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
+		  pr_clear_value (func_state->func_p->value);
+		  qexec_analytic_start_group (thread_p,
+					      analytic_state->xasl_state,
+					      func_state, recdes, true);
+		}
+	      else if (QPROC_ANALYTIC_HAS_SUBPARTITIONS (func_state->func_p))
+		{
+		  if (qexec_analytic_finalize_group
+		      (thread_p, analytic_state->xasl_state, func_state,
+		       true) != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
+		  qexec_analytic_start_group (thread_p,
+					      analytic_state->xasl_state,
+					      func_state, recdes, false);
+		}
 	    }
-	  qexec_analytic_add_tuple (thread_p, analytic_state, data, peek);
 	}
+
+      /* aggregate tuple across all functions */
+      qexec_analytic_add_tuple (thread_p, analytic_state, data, peek);
+
+      /* one more input record of beer on the wall */
       analytic_state->input_recs++;
     }				/* for (key = (SORT_REC *) recdes->data; ...) */
 
@@ -20714,34 +20778,34 @@ exit_on_error:
 static int
 qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p,
 				  ANALYTIC_STATE * analytic_state,
-				  ANALYTIC_TYPE * func_p,
 				  ANALYTIC_STAGE stage)
 {
   ANALYTIC_STAGE instnum_stage = ANALYTIC_INTERM_PROC;
   DB_LOGICAL is_output_rec;
+  int i;
 
   /* by default, it's an output record */
   analytic_state->is_output_rec = true;
 
-  if (!analytic_state->is_last_function
+  if (!analytic_state->is_last_run
       || analytic_state->xasl->instnum_pred == NULL)
     {
       /* inst_num() is evaluated only for last function */
       return NO_ERROR;
     }
 
-  while (func_p != NULL)
+  for (i = 0; i < analytic_state->func_count; i++)
     {
-      if (func_p->function == PT_LEAD || func_p->function == PT_LAG
-	  || func_p->function == PT_NTILE || func_p->function == PT_NTH_VALUE)
+      ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
+
+      if (QPROC_ANALYTIC_IS_OFFSET_FUNCTION (func_p)
+	  || func_p->function == PT_NTILE)
 	{
 	  /* inst_num() predicate is evaluated at group processing for these
 	     functions, as the result is computed at this stage using all
 	     group values */
 	  instnum_stage = ANALYTIC_GROUP_PROC;
 	}
-
-      func_p = func_p->next;
     }
 
   if (stage != instnum_stage)
@@ -20773,19 +20837,13 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p,
  *   key(in):
  *   reinit(in):
  */
-static void
+static int
 qexec_analytic_start_group (THREAD_ENTRY * thread_p,
-			    ANALYTIC_STATE * analytic_state,
+			    XASL_STATE * xasl_state,
+			    ANALYTIC_FUNCTION_STATE * func_state,
 			    const RECDES * key, bool reinit)
 {
-  ANALYTIC_TYPE *func_p;
-  XASL_STATE *xasl_state = analytic_state->xasl_state;
   int error;
-
-  if (analytic_state->state != NO_ERROR)
-    {
-      return;
-    }
 
   /*
    * Record the new key; keep it in SORT_KEY format so we can continue
@@ -20797,22 +20855,22 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p,
 
   if (key)
     {
-      if (analytic_state->current_key.area_size < key->length)
+      if (func_state->current_key.area_size < key->length)
 	{
 	  void *tmp;
 
 	  tmp =
-	    db_private_realloc (thread_p, analytic_state->current_key.data,
+	    db_private_realloc (thread_p, func_state->current_key.data,
 				key->area_size);
 	  if (tmp == NULL)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
-	  analytic_state->current_key.data = (char *) tmp;
-	  analytic_state->current_key.area_size = key->area_size;
+	  func_state->current_key.data = (char *) tmp;
+	  func_state->current_key.area_size = key->area_size;
 	}
-      memcpy (analytic_state->current_key.data, key->data, key->length);
-      analytic_state->current_key.length = key->length;
+      memcpy (func_state->current_key.data, key->data, key->length);
+      func_state->current_key.length = key->length;
     }
 
   /*
@@ -20820,38 +20878,125 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p,
    */
   if (reinit)
     {
-      for (func_p = analytic_state->a_func_list; func_p;
-	   func_p = func_p->next)
+      /* starting a new group */
+      error =
+	qdata_initialize_analytic_func (thread_p, func_state->func_p,
+					xasl_state->query_id);
+      if (error != NO_ERROR)
 	{
-	  /* starting a new group */
-	  error =
-	    qdata_initialize_analytic_func (thread_p, func_p,
-					    xasl_state->query_id);
-	  if (error != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
+	  GOTO_EXIT_ON_ERROR;
 	}
 
-      analytic_state->current_group_input_recs = 0;
+      /* reinitialize counters */
+      func_state->curr_group_tuple_count = 0;
+      func_state->curr_group_tuple_count_nn = 0;
+      func_state->curr_sort_key_tuple_count = 0;
     }
   else
     {
-      for (func_p = analytic_state->a_func_list; func_p;
-	   func_p = func_p->next)
-	{
-	  /* starting a new partition; reinstate acumulator */
-	  qdata_copy_db_value (func_p->value, &func_p->part_value);
-	  pr_clear_value (&func_p->part_value);
-	}
+      /* starting a new partition; reinstate acumulator */
+      qdata_copy_db_value (func_state->func_p->value,
+			   &func_state->func_p->part_value);
+      pr_clear_value (&func_state->func_p->part_value);
+
+      /* reinitialize counters */
+      func_state->curr_sort_key_tuple_count = 0;
     }
 
 wrapup:
-  return;
+  return NO_ERROR;
 
 exit_on_error:
-  analytic_state->state = er_errid ();
-  goto wrapup;
+  return er_errid ();
+}
+
+/*
+ * qexec_analytic_finalize_group () - finish analytic function and dump result to file
+ *   return: error code or NO_ERROR
+ *   xasl_state(in): XASL state
+ *   func_state(in): function state
+ *   is_same_group(in): true if we're finalizing a sort key, false if a group
+ */
+static int
+qexec_analytic_finalize_group (THREAD_ENTRY * thread_p,
+			       XASL_STATE * xasl_state,
+			       ANALYTIC_FUNCTION_STATE * func_state,
+			       bool is_same_group)
+{
+  QFILE_TUPLE_RECORD tplrec;
+  int rc = NO_ERROR;
+
+  /* initialize tuple record */
+  tplrec.tpl = NULL;
+  tplrec.size = 0;
+
+  /* finalize function */
+  if (qdata_finalize_analytic_func
+      (thread_p, func_state->func_p, is_same_group) != NO_ERROR)
+    {
+      rc = ER_FAILED;
+      goto cleanup;
+    }
+
+  if (!DB_IS_NULL (func_state->func_p->value))
+    {
+      /* keep track of non-NULL values */
+      func_state->curr_group_tuple_count_nn +=
+	func_state->curr_sort_key_tuple_count;
+    }
+
+  /* write current counts to dbvalues */
+  DB_MAKE_INT (&func_state->cgtc_dbval, func_state->curr_group_tuple_count);
+  DB_MAKE_INT (&func_state->cgtc_nn_dbval,
+	       func_state->curr_group_tuple_count_nn);
+  DB_MAKE_INT (&func_state->csktc_dbval,
+	       func_state->curr_sort_key_tuple_count);
+
+  /* dump group */
+  if (!is_same_group)
+    {
+      if (qfile_fast_intint_tuple_to_list
+	  (thread_p, func_state->group_list_id,
+	   func_state->curr_group_tuple_count,
+	   func_state->curr_group_tuple_count_nn) != NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	  goto cleanup;
+	}
+    }
+
+  /* dump sort key header */
+  rc =
+    qfile_fast_intval_tuple_to_list (thread_p, func_state->value_list_id,
+				     func_state->curr_sort_key_tuple_count,
+				     func_state->func_p->value);
+  if (rc > 0)
+    {
+      rc = NO_ERROR;
+      /* big tuple */
+      if (qfile_copy_tuple_descr_to_tuple
+	  (thread_p, &func_state->value_list_id->tpl_descr,
+	   &tplrec) != NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	  goto cleanup;
+	}
+      if (qfile_add_tuple_to_list
+	  (thread_p, func_state->value_list_id, tplrec.tpl) != NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	  goto cleanup;
+	}
+    }
+
+cleanup:
+
+  if (tplrec.tpl != NULL)
+    {
+      db_private_free (thread_p, tplrec.tpl);
+    }
+
+  return rc;
 }
 
 /*
@@ -20868,7 +21013,7 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p,
 {
   XASL_STATE *xasl_state = analytic_state->xasl_state;
   QFILE_LIST_ID *list_id = analytic_state->interm_file;
-  ANALYTIC_TYPE *a_func;
+  int i;
 
   if (analytic_state->state != NO_ERROR)
     {
@@ -20881,16 +21026,21 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p,
       GOTO_EXIT_ON_ERROR;
     }
 
-  for (a_func = analytic_state->a_func_list; a_func != NULL;
-       a_func = a_func->next)
+  for (i = 0; i < analytic_state->func_count; i++)
     {
-      if (qdata_evaluate_analytic_func (thread_p, a_func, &xasl_state->vd)
-	  != NO_ERROR)
+      if (qdata_evaluate_analytic_func
+	  (thread_p, analytic_state->func_state_list[i].func_p,
+	   &xasl_state->vd) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
+
+      /* account for tuple */
+      analytic_state->func_state_list[i].curr_group_tuple_count++;
+      analytic_state->func_state_list[i].curr_sort_key_tuple_count++;
     }
 
+  /* check if output */
   if (analytic_state->is_output_rec)
     {
       /* records that did not pass the instnum() predicate evaluation are used
@@ -20906,15 +21056,45 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p,
 	}
     }
 
-  /* account for tuple */
-  analytic_state->current_group_input_recs++;
-
 wrapup:
   return;
 
 exit_on_error:
   analytic_state->state = er_errid ();
   goto wrapup;
+}
+
+/*
+ * qexec_clear_analytic_function_state () - clear function state
+ *   thread_p(in): thread entry
+ *   func_state(in): function state to free
+ */
+static void
+qexec_clear_analytic_function_state (THREAD_ENTRY * thread_p,
+				     ANALYTIC_FUNCTION_STATE * func_state)
+{
+  assert (func_state != NULL);
+
+  /* clear db_values */
+  pr_clear_value (func_state->func_p->value);
+  pr_clear_value (&func_state->cgtc_dbval);
+  pr_clear_value (&func_state->cgtc_nn_dbval);
+  pr_clear_value (&func_state->csktc_dbval);
+
+  /* free buffers */
+  if (func_state->current_key.data)
+    {
+      db_private_free_and_init (thread_p, func_state->current_key.data);
+      func_state->current_key.area_size = 0;
+    }
+
+  /* dealloc files */
+  qfile_close_list (thread_p, func_state->group_list_id);
+  qfile_close_list (thread_p, func_state->value_list_id);
+  qfile_destroy_list (thread_p, func_state->group_list_id);
+  qfile_destroy_list (thread_p, func_state->value_list_id);
+  qfile_free_list_id (func_state->group_list_id);
+  qfile_free_list_id (func_state->value_list_id);
 }
 
 /*
@@ -20926,18 +21106,19 @@ static void
 qexec_clear_analytic_state (THREAD_ENTRY * thread_p,
 			    ANALYTIC_STATE * analytic_state)
 {
-  ANALYTIC_TYPE *func_ptr;
+  int i;
 
-  for (func_ptr = analytic_state->a_func_list; func_ptr;
-       func_ptr = func_ptr->next)
+  for (i = 0; i < analytic_state->func_count; i++)
     {
-      pr_clear_value (func_ptr->value);
+      qexec_clear_analytic_function_state (thread_p,
+					   &analytic_state->
+					   func_state_list[i]);
     }
-  if (analytic_state->current_key.data)
+  if (analytic_state->func_state_list != NULL)
     {
-      db_private_free_and_init (thread_p, analytic_state->current_key.data);
-      analytic_state->current_key.area_size = 0;
+      db_private_free_and_init (thread_p, analytic_state->func_state_list);
     }
+
   if (analytic_state->analytic_rec.data)
     {
       db_private_free_and_init (thread_p, analytic_state->analytic_rec.data);
@@ -20994,228 +21175,64 @@ qexec_clear_analytic_state (THREAD_ENTRY * thread_p,
  */
 static int
 qexec_analytic_evaluate_ntile_function (THREAD_ENTRY * thread_p,
-					ANALYTIC_TYPE * func_p,
-					ANALYTIC_STATE * analytic_state,
-					int tuple_idx)
+					ANALYTIC_FUNCTION_STATE * func_state)
 {
-  if (func_p == NULL || func_p->function != PT_NTILE)
+  if (func_state == NULL || func_state->func_p == NULL
+      || func_state->func_p->function != PT_NTILE)
     {
       /* nothing to do */
       return NO_ERROR;
     }
 
-  if (!func_p->info.ntile.is_null)
+  if (!func_state->func_p->info.ntile.is_null)
     {
       int recs_in_bucket =
-	analytic_state->current_group_input_recs /
-	func_p->info.ntile.bucket_count;
+	func_state->curr_group_tuple_count /
+	func_state->func_p->info.ntile.bucket_count;
       int compensate =
-	analytic_state->current_group_input_recs %
-	func_p->info.ntile.bucket_count;
+	func_state->curr_group_tuple_count %
+	func_state->func_p->info.ntile.bucket_count;
 
       /* get bucket of current tuple */
       if (recs_in_bucket == 0)
 	{
 	  /* more buckets than tuples, this is identity */
-	  DB_MAKE_INT (func_p->value, tuple_idx + 1);
+	  DB_MAKE_INT (func_state->func_p->value,
+		       func_state->group_tuple_position + 1);
 	}
       else if (compensate == 0)
 	{
 	  /* perfect division, straightforward */
-	  DB_MAKE_INT (func_p->value, tuple_idx / recs_in_bucket + 1);
+	  DB_MAKE_INT (func_state->func_p->value,
+		       func_state->group_tuple_position / recs_in_bucket + 1);
 	}
       else
 	{
 	  int xcount = (recs_in_bucket + 1) * compensate;
 
 	  /* account for remainder */
-	  if (tuple_idx < xcount)
+	  if (func_state->group_tuple_position < xcount)
 	    {
-	      DB_MAKE_INT (func_p->value,
-			   tuple_idx / (recs_in_bucket + 1) + 1);
+	      DB_MAKE_INT (func_state->func_p->value,
+			   func_state->group_tuple_position /
+			   (recs_in_bucket + 1) + 1);
 	    }
 	  else
 	    {
-	      DB_MAKE_INT (func_p->value,
-			   (tuple_idx - compensate) / recs_in_bucket + 1);
+	      DB_MAKE_INT (func_state->func_p->value,
+			   (func_state->group_tuple_position -
+			    compensate) / recs_in_bucket + 1);
 	    }
 	}
     }
   else
     {
       /* null output */
-      DB_MAKE_NULL (func_p->value);
+      DB_MAKE_NULL (func_state->func_p->value);
     }
 
   /* all ok */
   return NO_ERROR;
-}
-
-/*
- * find_rec_for_nth_value_with_ignore_nulls () - process non-null record offset and location for NTH_VALUE function
- *                                              (i.e. lead/lag)
- *   returns: error code or NO_ERROR
- *   thread_p(in): current thread
- *   regulist(in/out): list of regu variables to be fetched.
- *   func_p(in): analytic function
- *   val_desc(in): value descriptor
- *   tuple_idx(in): current position of main scan in group
- *   target_idx(in): target tuple offset which is relative to the position of the first non-null tuple
- *   upto_idx(in): the start point to which the scan list should be reset
- */
-static int
-find_rec_for_nth_value_with_ignore_nulls (THREAD_ENTRY * thread_p,
-					  REGU_VARIABLE_LIST regulist,
-					  ANALYTIC_TYPE * func_p,
-					  VAL_DESCR * val_desc,
-					  int tuple_idx,
-					  int target_idx, int upto_idx)
-{
-  REGU_VARIABLE_LIST save_next;
-  int sc;
-  int counter;
-  int error = NO_ERROR;
-
-  /* scan to the start position */
-  while (func_p->info.offset.tuple_idx != upto_idx)
-    {
-      if (func_p->info.offset.tuple_idx > upto_idx)
-	{
-	  sc = qfile_scan_list_prev (thread_p,
-				     &func_p->info.offset.lsid,
-				     &func_p->info.offset.tplrec, PEEK);
-	  func_p->info.offset.tuple_idx--;
-	}
-      else
-	{
-	  sc = qfile_scan_list_next (thread_p,
-				     &func_p->info.offset.lsid,
-				     &func_p->info.offset.tplrec, PEEK);
-	  func_p->info.offset.tuple_idx++;
-	}
-
-      /* check for valid tuple */
-      if (sc != S_SUCCESS)
-	{
-	  return ER_FAILED;
-	}
-    }
-
-  if (func_p->from_last)
-    {
-      counter = tuple_idx - target_idx;
-    }
-  else
-    {
-      counter = target_idx;
-    }
-
-  /* re-fetch function value for new tuple; domains should be the same */
-  save_next = regulist->next;
-  regulist->next = NULL;
-  error = fetch_val_list (thread_p, regulist, val_desc, NULL, NULL,
-			  func_p->info.offset.tplrec.tpl, PEEK);
-  if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  regulist->next = save_next;
-
-  if (!DB_IS_NULL (regulist->value.vfetch_to))
-    {
-      counter--;
-    }
-
-  while (counter >= 0
-	 && ((func_p->from_last)
-	     ? (func_p->info.offset.tuple_idx > 0)
-	     : (func_p->info.offset.tuple_idx < tuple_idx)))
-    {
-      if (func_p->from_last)
-	{
-	  sc = qfile_scan_list_prev (thread_p,
-				     &func_p->info.offset.lsid,
-				     &func_p->info.offset.tplrec, PEEK);
-	  if (sc != S_SUCCESS)
-	    {
-	      return ER_FAILED;
-	    }
-	  func_p->info.offset.tuple_idx--;
-	}
-      else
-	{
-	  sc = qfile_scan_list_next (thread_p,
-				     &func_p->info.offset.lsid,
-				     &func_p->info.offset.tplrec, PEEK);
-	  if (sc != S_SUCCESS)
-	    {
-	      return ER_FAILED;
-	    }
-	  func_p->info.offset.tuple_idx++;
-	}
-
-      /* re-fetch function value for new tuple; domains should be the same */
-      save_next = regulist->next;
-      regulist->next = NULL;
-      error = fetch_val_list (thread_p, regulist, val_desc, NULL, NULL,
-			      func_p->info.offset.tplrec.tpl, PEEK);
-      if (error != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-      regulist->next = save_next;
-
-      if (!DB_IS_NULL (regulist->value.vfetch_to))
-	{
-	  counter--;
-	}
-    }
-  if (counter >= 0)
-    {
-      DB_MAKE_NULL (regulist->value.vfetch_to);
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * locate_first_non_null_rec_for_nth_value () - process non-null record offset for NTH_VALUE function
- *                                              (i.e. lead/lag)
- *   returns: error code or NO_ERROR
- *   thread_p(in): current thread
- *   regulist(in/out): list of regu variables to be fetched.
- *   func_p(in): analytic function
- *   val_desc(in): value descriptor
- *   tuple_idx(in): current position of main scan in group
- *   target_idx(in): target tuple offset which is relative to the position of the first non-null tuple
- */
-static int
-locate_first_non_null_rec_for_nth_value (THREAD_ENTRY * thread_p,
-					 REGU_VARIABLE_LIST regulist,
-					 ANALYTIC_TYPE * func_p,
-					 VAL_DESCR * val_desc,
-					 int tuple_idx, int target_idx)
-{
-  int err;
-
-  assert (func_p->function == PT_NTH_VALUE && func_p->ignore_nulls);
-
-  if (func_p->from_last)
-    {
-      err = find_rec_for_nth_value_with_ignore_nulls (thread_p, regulist,
-						      func_p, val_desc,
-						      tuple_idx,
-						      target_idx, tuple_idx);
-    }
-  else
-    {
-      err = find_rec_for_nth_value_with_ignore_nulls (thread_p, regulist,
-						      func_p, val_desc,
-						      tuple_idx,
-						      target_idx, 0);
-    }
-
-  return err;
 }
 
 /*
@@ -21230,73 +21247,47 @@ locate_first_non_null_rec_for_nth_value (THREAD_ENTRY * thread_p,
  */
 static int
 qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
-					 ANALYTIC_TYPE * func_p,
-					 ANALYTIC_STATE * analytic_state,
-					 VAL_DESCR * val_desc, int tuple_idx)
+					 ANALYTIC_FUNCTION_STATE * func_state,
+					 ANALYTIC_STATE * analytic_state)
 {
+  ANALYTIC_TYPE *func_p;
   REGU_VARIABLE_LIST regulist;
-  REGU_VARIABLE_LIST save_next;
   DB_VALUE *default_val_p;
-  DB_VALUE *output_val_p;
   DB_VALUE offset_val;
   DB_VALUE default_val;
-  SCAN_CODE sc;
   int regu_idx;
   int target_idx;
+  int group_tuple_count;
   int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
   double nth_idx = 0.0;
   char buf[64];
 
-  if (func_p == NULL)
+  if (func_state == NULL)
+    {
+      /* nothing to do */
+      return NO_ERROR;
+    }
+  else
+    {
+      func_p = func_state->func_p;
+      assert (func_p);
+    }
+
+  if (!QPROC_ANALYTIC_IS_OFFSET_FUNCTION (func_p))
     {
       /* nothing to do */
       return NO_ERROR;
     }
 
-  /* process 'offset' functions (i.e. lead/lag/nth_value) */
-  if (func_p->function != PT_LEAD && func_p->function != PT_LAG
-      && func_p->function != PT_NTH_VALUE)
+  /* determine which tuple count to use */
+  if (QPROC_ANALYTIC_IGNORE_NULLS (func_p))
     {
-      /* nothing to do */
-      return NO_ERROR;
+      group_tuple_count = func_state->curr_group_tuple_count_nn;
     }
-
-  if (tuple_idx == 0)
+  else
     {
-      /* first tuple of group, open scan */
-      func_p->info.offset.tuple_idx = -1;	/* opened on S_BEFORE or last
-						   tuple of previous group */
-      if (qfile_open_list_scan (analytic_state->interm_file,
-				&func_p->info.offset.lsid) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-
-      if (analytic_state->last_tuple_pos.vpid.pageid != NULL_PAGEID
-	  && analytic_state->last_tuple_pos.vpid.pageid != NULL_PAGEID_ASYNC)
-	{
-	  /* we have a saved position, jump to it */
-	  SCAN_CODE sc = qfile_jump_scan_tuple_position (thread_p,
-							 &func_p->info.offset.
-							 lsid,
-							 &analytic_state->
-							 last_tuple_pos,
-							 &func_p->info.offset.
-							 tplrec,
-							 PEEK);
-
-	  if (sc == S_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	  else if (sc == S_END)
-	    {
-	      /* no tuples in group */
-	      qfile_close_scan (thread_p, &func_p->info.offset.lsid);
-	      return NO_ERROR;
-	    }
-	}
+      group_tuple_count = func_state->curr_group_tuple_count;
     }
 
   /* find offset reguvar and get int value */
@@ -21309,6 +21300,7 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
     }
   if (regulist == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return ER_FAILED;
     }
 
@@ -21323,7 +21315,13 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 	    tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
 				     regulist->value.vfetch_to,
 				     &tp_Integer_domain);
-	  assert_release (error != NO_ERROR);
+
+	  if (error == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_QUERY_EXECUTION_ERROR, 1, __LINE__);
+	      return ER_FAILED;
+	    }
 	  return error;
 	}
 
@@ -21336,17 +21334,20 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 	{
 	  target_idx = 0;
 	}
+
+      /* done with offset dbval */
+      pr_clear_value (&offset_val);
     }
 
   /* get target tuple index */
   switch (func_p->function)
     {
     case PT_LEAD:
-      target_idx = tuple_idx + target_idx;
+      target_idx = func_state->group_consumed_tuples + target_idx;
       break;
 
     case PT_LAG:
-      target_idx = tuple_idx - target_idx;
+      target_idx = func_state->group_consumed_tuples - target_idx;
       break;
 
     case PT_NTH_VALUE:
@@ -21358,7 +21359,6 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 	    tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
 				     regulist->value.vfetch_to,
 				     &tp_Double_domain);
-	  assert_release (error != NO_ERROR);
 	  return error;
 	}
 
@@ -21380,13 +21380,13 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 	}
 
       target_idx = (int) floor (nth_idx);
+      target_idx--;		/* SQL defines this index as starting with one */
 
-      if (target_idx <= tuple_idx + 1 && target_idx > 0)
+      if (target_idx >= 0 && target_idx < group_tuple_count)
 	{
-	  target_idx = target_idx - 1;
 	  if (func_p->from_last)
 	    {
-	      target_idx = tuple_idx - target_idx;
+	      target_idx = group_tuple_count - target_idx;
 	    }
 	}
       else
@@ -21397,8 +21397,9 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 
     default:
       /* switch should cover all cases */
-      assert (false);
-      break;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QUERY_EXECUTION_ERROR,
+	      1, __LINE__);
+      return ER_FAILED;
     }
 
   /* clean up */
@@ -21414,81 +21415,18 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
     }
   if (regulist == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return ER_FAILED;
     }
   default_val_p = regulist->value.vfetch_to;
 
-  /* find parameter reguvar */
-  regulist = analytic_state->a_regu_list;
-  regu_idx = func_p->outptr_idx;
-  while (regu_idx > 0 && regulist != NULL)
-    {
-      regulist = regulist->next;
-      regu_idx--;
-    }
-  if (regulist == NULL)
-    {
-      return ER_FAILED;
-    }
-  output_val_p = regulist->value.vfetch_to;
-
-  /* dispose of old value */
-  pr_clear_value (output_val_p);
-
   /* put value */
-  if (target_idx >= 0
-      && target_idx < analytic_state->current_group_input_recs)
+  if (target_idx >= 0 && target_idx < group_tuple_count)
     {
-      /* handle IGNORE NULLS
-       * locate the first non-NULL position for NTH_VALUE() */
-      if (func_p->function == PT_NTH_VALUE && func_p->ignore_nulls)
+      if (qexec_analytic_value_lookup (thread_p, func_state, target_idx) !=
+	  NO_ERROR)
 	{
-	  error =
-	    locate_first_non_null_rec_for_nth_value (thread_p, regulist,
-						     func_p, val_desc,
-						     tuple_idx, target_idx);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	}
-      else
-	{
-	  /* scan */
-	  while (target_idx != func_p->info.offset.tuple_idx)
-	    {
-	      if (target_idx < func_p->info.offset.tuple_idx)
-		{
-		  sc =
-		    qfile_scan_list_prev (thread_p, &func_p->info.offset.lsid,
-					  &func_p->info.offset.tplrec, PEEK);
-		  func_p->info.offset.tuple_idx--;
-		}
-	      else
-		{
-		  sc =
-		    qfile_scan_list_next (thread_p, &func_p->info.offset.lsid,
-					  &func_p->info.offset.tplrec, PEEK);
-		  func_p->info.offset.tuple_idx++;
-		}
-
-	      /* check for valid tuple */
-	      if (sc != S_SUCCESS)
-		{
-		  return ER_FAILED;
-		}
-	    }
-
-	  /* re-fetch function value for new tuple; domains should be the same */
-	  save_next = regulist->next;
-	  regulist->next = NULL;
-	  error = fetch_val_list (thread_p, regulist, val_desc, NULL, NULL,
-				  func_p->info.offset.tplrec.tpl, PEEK);
-	  if (error != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	  regulist->next = save_next;
+	  return ER_FAILED;
 	}
     }
   else
@@ -21501,99 +21439,21 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 	  error =
 	    tp_domain_status_er_set (dom_status, ARG_FILE_LINE, default_val_p,
 				     func_p->domain);
-	  assert_release (error != NO_ERROR);
-
+	  if (error == NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	  return error;
 	}
 
       /* put default value and clean up */
-      pr_clone_value (&default_val, output_val_p);
+      pr_clear_value (func_p->value);
+      pr_clone_value (&default_val, func_p->value);
       pr_clear_value (&default_val);
     }
 
-  /* close scan on end of group */
-  if (tuple_idx == analytic_state->current_group_input_recs - 1)
-    {
-      qfile_close_scan (thread_p, &func_p->info.offset.lsid);
-    }
-
   /* all ok */
-  return NO_ERROR;
-}
-
-/*
- * qexec_compare_two_tuple_by_sort_key () - compare two tuples
- *                    by sort key for analytic functions
- *                    CUME_DIST and PERCENT_RANK)
- *   returns: DB_EQ if two tuples are equal, else DB_UNK
- *   tpl1(in): first tuple
- *   tpl2(in): second tuple
- *   key_info_p(in): key info
- */
-static int
-qexec_compare_two_tuple_by_sort_key (QFILE_TUPLE tpl1,
-				     QFILE_TUPLE tpl2,
-				     SORTKEY_INFO * key_info_p)
-{
-  int cmp, nkeys, i, column, val_len, key_idx;
-  QFILE_TUPLE tuple_p1, tuple_p2;
-
-  assert (tpl1 != NULL && tpl2 != NULL && key_info_p != NULL);
-
-  cmp = DB_EQ;
-  nkeys = key_info_p->nkeys;
-
-  /* all keys in the ORDER BY clause need to be compared */
-  for (i = 0; i < nkeys; i++)
-    {
-      column = key_info_p->key[i].col;
-      tuple_p1 = tpl1 + QFILE_TUPLE_LENGTH_SIZE;
-      tuple_p2 = tpl2 + QFILE_TUPLE_LENGTH_SIZE;
-
-      /* find the position of the key */
-      for (key_idx = 0; key_idx < column; key_idx++)
-	{
-	  /* the length of non-NULL values is different with NULL values  */
-	  val_len = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p1);
-	  tuple_p1 += QFILE_TUPLE_VALUE_HEADER_SIZE + val_len;
-
-	  val_len = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p2);
-	  tuple_p2 += QFILE_TUPLE_VALUE_HEADER_SIZE + val_len;
-	}
-
-      /* compare the values
-       * Note: need to consider if the value is NULL or not
-       */
-      if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p1) == V_UNBOUND
-	  && QFILE_GET_TUPLE_VALUE_FLAG (tuple_p2) == V_UNBOUND)
-	{
-	  /* NULL and NULL values are equal */
-	  cmp = DB_EQ;
-	}
-      else if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p2) == V_UNBOUND
-	       || QFILE_GET_TUPLE_VALUE_FLAG (tuple_p2) == V_UNBOUND)
-	{
-	  /* NULL and non-NULL are not equal */
-	  cmp = DB_UNK;
-	}
-      else
-	{
-	  /* non-NULL values compare */
-	  tuple_p1 += QFILE_TUPLE_VALUE_HEADER_SIZE;
-	  tuple_p2 += QFILE_TUPLE_VALUE_HEADER_SIZE;
-	  cmp = (*key_info_p->key[i].sort_f) (tuple_p1,
-					      tuple_p2,
-					      key_info_p->key[i].col_dom,
-					      0, 1, NULL);
-	}
-
-      if (cmp != DB_EQ)
-	{
-	  break;
-	}
-    }
-
-  return cmp;
+  return error;
 }
 
 /*
@@ -21608,116 +21468,42 @@ qexec_compare_two_tuple_by_sort_key (QFILE_TUPLE tpl1,
 static int
 qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY *
 							 thread_p,
-							 ANALYTIC_TYPE *
-							 func_p,
-							 ANALYTIC_STATE *
-							 analytic_state,
-							 int tuple_idx)
+							 ANALYTIC_FUNCTION_STATE
+							 * func_state)
 {
-  int rc = NO_ERROR;
-  int *last_pos = NULL;
-  double *last_res = NULL;
-  int total;
-  int cmp;
-  SCAN_CODE sc;
-  QFILE_TUPLE_RECORD curr_tplrec, next_tplrec;
-  QFILE_LIST_SCAN_ID scan_id;
-  PAGE_PTR page_p;
-  QFILE_TUPLE tuple;
-  QFILE_LIST_ID *list_id;
+  int start_of_group =
+    func_state->group_tuple_position - func_state->sort_key_tuple_position;
+  int end_of_group =
+    func_state->group_tuple_position
+    - func_state->sort_key_tuple_position
+    + func_state->curr_sort_key_tuple_count;
 
-  assert (func_p != NULL);
-
-  last_pos = &func_p->info.cume_percent.last_pos;
-  last_res = &func_p->info.cume_percent.last_res;
-  total = analytic_state->current_group_input_recs;
-
-  memset ((void *) &curr_tplrec, 0, sizeof (curr_tplrec));
-  memset ((void *) &next_tplrec, 0, sizeof (next_tplrec));
-
-  /* copy the current scan position */
-  memcpy (&scan_id, analytic_state->interm_scan, sizeof (QFILE_LIST_SCAN_ID));
-
-  /* update the analytic info */
-  if (tuple_idx == *last_pos)
+  switch (func_state->func_p->function)
     {
-      /* first get current tuple */
-      page_p = scan_id.curr_pgptr;
-      tuple = (char *) page_p + scan_id.curr_offset;
-      list_id = &scan_id.list_id;
+    case PT_CUME_DIST:
+      DB_MAKE_DOUBLE (func_state->func_p->value,
+		      (double) end_of_group /
+		      func_state->curr_group_tuple_count);
+      break;
 
-      rc = qfile_get_tuple (thread_p, page_p, tuple, &curr_tplrec, list_id);
-      if (rc != NO_ERROR)
+    case PT_PERCENT_RANK:
+      if (func_state->curr_group_tuple_count <= 1)
 	{
-	  return rc;
+	  DB_MAKE_DOUBLE (func_state->func_p->value, 0.0f);
 	}
-
-      while (1)
+      else
 	{
-	  /* find and update the last position */
-	  sc = qfile_scan_list_next (thread_p, &scan_id, &next_tplrec, PEEK);
-	  if (sc != S_SUCCESS)
-	    {
-	      if (sc == S_END)
-		{
-		  (*last_pos)++;
-		}
-	      else
-		{
-		  rc = ER_FAILED;
-		}
-	      break;
-	    }
-
-	  /* check if the next tuple is not equal to the current one */
-	  cmp = qexec_compare_two_tuple_by_sort_key (curr_tplrec.tpl,
-						     next_tplrec.tpl,
-						     &analytic_state->
-						     key_info);
-	  /* increase last pos and check the result */
-	  (*last_pos)++;
-	  if (cmp != DB_EQ || *last_pos == total)
-	    {			/* hooray! got the right number for calculating */
-	      break;
-	    }
+	  DB_MAKE_DOUBLE (func_state->func_p->value,
+			  (double) start_of_group /
+			  (func_state->curr_group_tuple_count - 1));
 	}
+      break;
 
-      /* update info */
-      switch (func_p->function)
-	{
-	case PT_CUME_DIST:
-	  *last_res = (double) (*last_pos) / total;
-	  assert (*last_res <= 1.0 && *last_res > 0.0);
-	  break;
-
-	case PT_PERCENT_RANK:
-	  if (total <= 1)
-	    {
-	      *last_res = 0;
-	    }
-	  else
-	    {
-	      *last_res = (double) tuple_idx / (total - 1);
-	    }
-	  assert (*last_res <= 1.0 && *last_res >= 0.0);
-	  break;
-
-	default:
-	  rc = ER_FAILED;
-	}
+    default:
+      return ER_FAILED;
     }
 
-  /* write the result */
-  DB_MAKE_DOUBLE (func_p->value, *last_res);
-
-  /* must free the memory for storing the current tuple */
-  if (curr_tplrec.tpl != NULL)
-    {
-      db_private_free_and_init (NULL, curr_tplrec.tpl);
-      curr_tplrec.size = 0;
-    }
-
-  return rc;
+  return NO_ERROR;
 }
 
 /*
@@ -21731,220 +21517,467 @@ qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY *
  */
 static int
 qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
-					 ANALYTIC_TYPE * func_p,
-					 ANALYTIC_STATE * analytic_state,
-					 int tuple_idx)
+					 ANALYTIC_FUNCTION_STATE * func_state)
 {
+  ANALYTIC_TYPE *func_p = NULL;
+  double f_row_num_d, c_row_num_d, row_num_d;
+  double d_result;		/* decoy, don't need it here */
   int error = NO_ERROR;
-  ANALYTIC_MEDIAN_FUNCTION_INFO *median_info_p = NULL;
-  SCAN_CODE sc;
-  double row_num_d, c_row_num_d, f_row_num_d;
-  REGU_VARIABLE *regu_var;
-  REGU_VARIABLE_LIST regu_list;
-  QFILE_LIST_SCAN_ID lsid;
-  QFILE_TUPLE_RECORD tplrec;
 
-  assert (func_p != NULL
-	  && analytic_state != NULL && func_p->function == PT_MEDIAN);
+  assert (func_state != NULL && func_state->func_p != NULL);
+  func_p = func_state->func_p;
+  assert (func_p->function == PT_MEDIAN);
 
-  median_info_p = &func_p->info.median;
-
-  /* all NULLs, const value or calculated, just return */
-  if (tuple_idx > 0 || func_p->is_const_operand
-      || median_info_p->start_pos >= median_info_p->end_pos)
+  /* MEDIAN function is evaluated at the start of the group */
+  if (func_state->group_tuple_position_nn > 0)
     {
       return NO_ERROR;
     }
 
-  /* init local non-pointer vars */
-  lsid.status = S_CLOSED;
-  tplrec.size = 0;
-  tplrec.tpl = NULL;
-
-  /* open scan */
-  if (qfile_open_list_scan (analytic_state->interm_file, &lsid) != NO_ERROR)
+  /* constant operand case */
+  if (func_p->is_const_operand)
     {
-      error = ER_FAILED;
-      goto end;
+      /* if constant operand, value has been established during evaluation and
+         was fetched from intermediate file */
+      return NO_ERROR;
     }
 
-  /* if we have a saved position, jump to it */
-  if (analytic_state->last_tuple_pos.vpid.pageid != NULL_PAGEID
-      && analytic_state->last_tuple_pos.vpid.pageid != NULL_PAGEID_ASYNC)
+  /* zero non-NULL values in group */
+  if (func_state->curr_group_tuple_count_nn == 0)
     {
-      sc = qfile_jump_scan_tuple_position (thread_p,
-					   &lsid,
-					   &analytic_state->
-					   last_tuple_pos, &tplrec, PEEK);
-      if (sc == S_ERROR)
-	{
-	  error = ER_FAILED;
-	  goto end;
-	}
-      else if (sc == S_END)
-	{
-	  /* no tuples in group */
-	  qfile_close_scan (thread_p, &func_p->info.offset.lsid);
-	  goto end;
-	}
+      return NO_ERROR;
     }
 
-  /* find the tuple pos of operand */
-  regu_list = analytic_state->a_regu_list;
-  while (regu_list != NULL)
+  /* get target row */
+  if (QPROC_ANALYTIC_IGNORE_NULLS (func_p))
     {
-      if (regu_list->value.type != TYPE_POSITION)
-	{
-	  error = ER_FAILED;
-	  goto end;
-	}
-
-      if (func_p->operand.value.dbvalptr == regu_list->value.vfetch_to)
-	{
-	  break;
-	}
-
-      regu_list = regu_list->next;
+      row_num_d = ((double) (func_state->curr_group_tuple_count_nn - 1)) / 2;
     }
-
-  if (regu_list == NULL)
+  else
     {
-      error = ER_FAILED;
-      goto end;
+      row_num_d = ((double) (func_state->curr_group_tuple_count - 1)) / 2;
     }
-
-  regu_var = &regu_list->value;
-  assert (regu_var->type == TYPE_POSITION);
-
-  /* calculate the value only when tuple_idx is 0 */
-  --median_info_p->end_pos;
-  row_num_d = 0.5 * (median_info_p->end_pos + median_info_p->start_pos);
   f_row_num_d = floor (row_num_d);
   c_row_num_d = ceil (row_num_d);
 
-  error = qdata_get_median_function_result (thread_p, &lsid,
-					    regu_var->domain,
-					    regu_var->value.pos_descr.pos_no,
-					    row_num_d, f_row_num_d,
-					    c_row_num_d, func_p->value,
-					    &func_p->domain);
-
-  if (TP_DOMAIN_TYPE (func_p->domain) != func_p->opr_dbtype)
+  /* compute value */
+  if (f_row_num_d == c_row_num_d)
     {
-      func_p->opr_dbtype = TP_DOMAIN_TYPE (func_p->domain);
-    }
-
-end:
-
-  qfile_close_scan (thread_p, &lsid);
-
-  return error;
-}
-
-/*
- * qexec_analytic_group_finalize_post_processing () - finalize post processing
- *                                                    step of analytic funcs
- *   thread_p(in): current thread
- *   func_p(in): analytic function
- *   analytic_state(in): analytic state
- */
-static void
-qexec_analytic_group_finalize_post_processing (THREAD_ENTRY * thread_p,
-					       ANALYTIC_TYPE * func_p,
-					       ANALYTIC_STATE *
-					       analytic_state)
-{
-  while (func_p != NULL)
-    {
-      if (func_p->function == PT_LEAD || func_p->function == PT_LAG
-	  || func_p->function == PT_NTH_VALUE)
+      /* we have an odd number of rows, median is middle row's value;
+         fetch it */
+      if (qexec_analytic_value_lookup
+	  (thread_p, func_state, (int) f_row_num_d) != NO_ERROR)
 	{
-	  /* end scans */
-	  qfile_close_scan (thread_p, &func_p->info.offset.lsid);
+	  return ER_FAILED;
 	}
 
-      /* advance to next function */
-      func_p = func_p->next;
+      /* coerce accordingly */
+      error = qdata_apply_median_function_coercion (func_p->value,
+						    &func_p->domain,
+						    &d_result, func_p->value);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
+  else
+    {
+      DB_VALUE c_value, f_value;
+      DB_MAKE_NULL (&c_value);
+      DB_MAKE_NULL (&f_value);
+
+      if (qexec_analytic_value_lookup
+	  (thread_p, func_state, (int) f_row_num_d) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      else
+	{
+	  pr_clone_value (func_p->value, &f_value);
+	}
+
+      if (qexec_analytic_value_lookup
+	  (thread_p, func_state, (int) c_row_num_d) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      else
+	{
+	  pr_clone_value (func_p->value, &c_value);
+	}
+
+      pr_clear_value (func_p->value);
+      error =
+	qdata_interpolate_median_function_values (&f_value, &c_value,
+						  row_num_d, f_row_num_d,
+						  c_row_num_d,
+						  &func_p->domain, &d_result,
+						  func_p->value);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  /* all ok */
+  return NO_ERROR;
 }
 
 /*
- * qexec_analytic_group_post_processing () - group post processing for some
- *                                           functions
+ * qexec_analytic_group_header_load () - load group information from group list
+ *					 file
  *   returns: error code or NO_ERROR
- *   thread_p(in): current thread
- *   func_p(in): analytic function
- *   analytic_state(in): analytic state
- *   xasl_state(in): analytic_state
- *   tuple_idx(in): current tuple within group
- *
- * NOTE: This function processes tuples after the group is formed and before
- * they are written to the output file.
+ *   func_state(in): function state
  */
 static int
-qexec_analytic_group_post_processing (THREAD_ENTRY * thread_p,
-				      ANALYTIC_TYPE * func_p,
-				      ANALYTIC_STATE * analytic_state,
-				      XASL_STATE * xasl_state, int tuple_idx)
+qexec_analytic_group_header_load (ANALYTIC_FUNCTION_STATE * func_state)
 {
-  int rc;
+  QFILE_TUPLE tuple_p;
 
-  if (func_p == NULL)
+  assert (func_state != NULL);
+
+  tuple_p = func_state->group_tplrec.tpl + QFILE_TUPLE_LENGTH_SIZE;
+
+  /* deserialize tuple count */
+  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) != V_BOUND)
     {
-      /* nothing to do */
+      return ER_FAILED;
+    }
+  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
+  func_state->curr_group_tuple_count = OR_GET_INT (tuple_p);
+  tuple_p += DB_ALIGN (tp_Integer.disksize, MAX_ALIGNMENT);
+
+  /* deserialize not-null tuple count */
+  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) != V_BOUND)
+    {
+      return ER_FAILED;
+    }
+  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
+  func_state->curr_group_tuple_count_nn = OR_GET_INT (tuple_p);
+
+  /* all ok */
+  return NO_ERROR;
+}
+
+/*
+ * qexec_analytic_sort_key_header_load () - load sort key header from sort key
+ *					    list file
+ *   returns: error code or NO_ERROR
+ *   func_state(in): function state
+ *   load_value(in): if true, will load the actual value into func_p->value
+ *
+ * NOTE: if repeated often, loading the actual value can be expensive, so make
+ * sure you only set load_value when necessary.
+ */
+static int
+qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state,
+				     bool load_value)
+{
+  QFILE_TUPLE tuple_p;
+  OR_BUF buf;
+  int length, rc = NO_ERROR;
+
+  assert (func_state != NULL);
+
+  tuple_p = func_state->value_tplrec.tpl + QFILE_TUPLE_LENGTH_SIZE;
+
+  /* deserialize tuple count */
+  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) != V_BOUND)
+    {
+      return ER_FAILED;
+    }
+  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
+  func_state->curr_sort_key_tuple_count = OR_GET_INT (tuple_p);
+  tuple_p += DB_ALIGN (tp_Integer.disksize, MAX_ALIGNMENT);
+
+  if (!load_value && !QPROC_ANALYTIC_IGNORE_NULLS (func_state->func_p))
+    {
+      /* we're not counting NULLs and we're not using the value */
       return NO_ERROR;
     }
 
-  while (func_p != NULL)
+  /* clear current value */
+  pr_clear_value (func_state->func_p->value);
+
+  /* deserialize value */
+  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_BOUND)
     {
-      /* evaluate based on function type */
-      switch (func_p->function)
-	{
-	case PT_NTILE:
-	  rc = qexec_analytic_evaluate_ntile_function (thread_p, func_p,
-						       analytic_state,
-						       tuple_idx);
-	  break;
+      length = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
+      tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
+      OR_BUF_INIT (buf, tuple_p, length);
 
-	case PT_LEAD:
-	case PT_LAG:
-	case PT_NTH_VALUE:
-	  rc = qexec_analytic_evaluate_offset_function (thread_p, func_p,
-							analytic_state,
-							&xasl_state->vd,
-							tuple_idx);
-	  break;
-	case PT_CUME_DIST:
-	case PT_PERCENT_RANK:
-	  rc =
-	    qexec_analytic_evaluate_cume_dist_percent_rank_function (thread_p,
-								     func_p,
-								     analytic_state,
-								     tuple_idx);
-	  break;
-	case PT_MEDIAN:
-	  rc = qexec_analytic_evaluate_median_function (thread_p, func_p,
-							analytic_state,
-							tuple_idx);
-	  break;
-
-	default:
-	  /* no special processing */
-	  rc = NO_ERROR;
-	  break;
-	}
-
-      /* check for error */
+      rc =
+	func_state->func_p->domain->type->data_readval (&buf,
+							func_state->func_p->
+							value,
+							func_state->func_p->
+							domain, -1, false,
+							NULL, 0);
       if (rc != NO_ERROR)
 	{
-	  return rc;
+	  return ER_FAILED;
 	}
-
-      /* advance to next function */
-      func_p = func_p->next;
+    }
+  else
+    {
+      DB_MAKE_NULL (func_state->func_p->value);
     }
 
+  /* all ok */
   return NO_ERROR;
+}
+
+/*
+ * qexec_analytic_value_advance () - advance position in group/sort key list
+ *				     files and load headers
+ *   returns: error code or NO_ERROR
+ *   thread_p(in): thread
+ *   func_state(in): function state
+ *   amount(in): amount to advance (can also be negative)
+ *   max_group_changes(in): maximum number of group changes
+ */
+static int
+qexec_analytic_value_advance (THREAD_ENTRY * thread_p,
+			      ANALYTIC_FUNCTION_STATE * func_state,
+			      int amount, int max_group_changes)
+{
+  SCAN_CODE sc = S_SUCCESS;
+
+  while (sc == S_SUCCESS && amount != 0)
+    {
+      /* compute new position */
+      if (amount > 0)
+	{
+	  if (max_group_changes <= 0
+	      && func_state->group_tuple_position >=
+	      func_state->curr_group_tuple_count - 1)
+	    {
+	      /* already at end of group */
+	      break;
+	    }
+
+	  func_state->sort_key_tuple_position++;
+	  func_state->group_tuple_position++;
+	}
+      else
+	{
+	  if (max_group_changes <= 0 && func_state->group_tuple_position <= 0)
+	    {
+	      /* already at beginning of group */
+	      break;
+	    }
+
+	  func_state->sort_key_tuple_position--;
+	  func_state->group_tuple_position--;
+	}
+
+      /* check for sort key header change */
+      if (func_state->sort_key_tuple_position < 0)
+	{
+	  /* load previous sort key header */
+	  sc =
+	    qfile_scan_list_prev (thread_p, &func_state->value_scan_id,
+				  &func_state->value_tplrec, PEEK);
+	  if (sc != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	  if (qexec_analytic_sort_key_header_load
+	      (func_state, (-1 <= amount <= 1)) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* initialize position to last */
+	  func_state->sort_key_tuple_position =
+	    func_state->curr_sort_key_tuple_count - 1;
+	}
+      else if (func_state->sort_key_tuple_position >=
+	       func_state->curr_sort_key_tuple_count)
+	{
+	  /* load next sort key header */
+	  sc =
+	    qfile_scan_list_next (thread_p, &func_state->value_scan_id,
+				  &func_state->value_tplrec, PEEK);
+	  if (sc != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	  if (qexec_analytic_sort_key_header_load
+	      (func_state, (-1 <= amount <= 1)) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* reset position to first */
+	  func_state->sort_key_tuple_position = 0;
+	}
+
+      /* check for group header change */
+      if (func_state->group_tuple_position < 0)
+	{
+	  /* load previous sort key header */
+	  sc =
+	    qfile_scan_list_prev (thread_p, &func_state->group_scan_id,
+				  &func_state->group_tplrec, PEEK);
+	  if (sc != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	  if (qexec_analytic_group_header_load (func_state) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* initialize position to last */
+	  func_state->group_tuple_position =
+	    func_state->curr_group_tuple_count - 1;
+	  func_state->group_tuple_position_nn =
+	    func_state->curr_group_tuple_count;
+
+	  /* decrement group change counter */
+	  max_group_changes--;
+	}
+      else if (func_state->group_tuple_position >=
+	       func_state->curr_group_tuple_count)
+	{
+	  /* load next sort key header */
+	  sc =
+	    qfile_scan_list_next (thread_p, &func_state->group_scan_id,
+				  &func_state->group_tplrec, PEEK);
+	  if (sc != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	  if (qexec_analytic_group_header_load (func_state) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* reset position to first */
+	  func_state->group_tuple_position = 0;
+	  func_state->group_tuple_position_nn = -1;
+
+	  /* decrement group change counter */
+	  max_group_changes--;
+	}
+
+      /* adjust amount */
+      if (amount > 0)
+	{
+	  if (!DB_IS_NULL (func_state->func_p->value))
+	    {
+	      func_state->group_tuple_position_nn++;
+	      amount--;
+	    }
+	  else
+	    {
+	      if (!QPROC_ANALYTIC_IGNORE_NULLS (func_state->func_p))
+		{
+		  amount--;
+		}
+	    }
+	}
+      else
+	{
+	  if (!DB_IS_NULL (func_state->func_p->value))
+	    {
+	      func_state->group_tuple_position_nn--;
+	      amount++;
+	    }
+	  else
+	    {
+	      if (!QPROC_ANALYTIC_IGNORE_NULLS (func_state->func_p))
+		{
+		  amount++;
+		}
+	    }
+	}
+    }
+
+  if (amount != 0)
+    {
+      /* target was not hit */
+      if (func_state->curr_group_tuple_count_nn == 0
+	  && QPROC_ANALYTIC_IGNORE_NULLS (func_state->func_p))
+	{
+	  /* current group has only NULL values, so result will be NULL */
+	  return NO_ERROR;
+	}
+      else
+	{
+	  /* true failure */
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      /* target was hit */
+      return NO_ERROR;
+    }
+}
+
+/*
+ * qexec_analytic_value_lookup () - seek a position within the group and
+ *				    load sort key headers
+ *   returns: error code or NO_ERROR
+ *   thread_p(in): thread
+ *   func_state(in): function state
+ *   position(in): position to seek
+ */
+static int
+qexec_analytic_value_lookup (THREAD_ENTRY * thread_p,
+			     ANALYTIC_FUNCTION_STATE * func_state,
+			     int position)
+{
+  int offset = position;
+
+  if (QPROC_ANALYTIC_IGNORE_NULLS (func_state->func_p))
+    {
+      offset -= func_state->group_tuple_position_nn;
+    }
+  else
+    {
+      offset -= func_state->group_tuple_position;
+    }
+
+  if (offset != 0)
+    {
+      return qexec_analytic_value_advance (thread_p, func_state, offset, 0);
+    }
+  else
+    {
+      /* even if we didn't move the position, make sure value is there */
+      return qexec_analytic_sort_key_header_load (func_state, true);
+    }
+}
+
+/*
+ * qexec_analytic_group_header_next () - advance to next group
+ *   returns: error code or NO_ERROR
+ *   thread_p(in): thread
+ *   func_state(in): function state
+ */
+static int
+qexec_analytic_group_header_next (THREAD_ENTRY * thread_p,
+				  ANALYTIC_FUNCTION_STATE * func_state)
+{
+  int pos, count;
+
+  assert (func_state != NULL);
+
+  if (QPROC_ANALYTIC_IGNORE_NULLS (func_state->func_p))
+    {
+      pos = func_state->group_tuple_position_nn;
+      count = func_state->curr_group_tuple_count_nn;
+    }
+  else
+    {
+      pos = func_state->group_tuple_position;
+      count = func_state->curr_group_tuple_count;
+    }
+
+  return qexec_analytic_value_advance (thread_p, func_state, count - pos, 1);
 }
 
 /*
@@ -21952,176 +21985,322 @@ qexec_analytic_group_post_processing (THREAD_ENTRY * thread_p,
  *                                         output file
  *   return:
  *   analytic_state(in):
- *   keep_list_file(in):
  *
  *   Note: Scan the last group from intermediary file and add up to date
  *         analytic result into output file
  */
 static int
 qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
-				    ANALYTIC_STATE * analytic_state,
-				    bool keep_list_file)
+				    ANALYTIC_STATE * analytic_state)
 {
-  QFILE_TUPLE_RECORD tplrec;
-  QFILE_TUPLE_RECORD output_tplrec;
-  ANALYTIC_TYPE *func_p = analytic_state->a_func_list, *func_list;
+  QFILE_TUPLE_RECORD tplrec_scan, tplrec_write;
+  QFILE_LIST_SCAN_ID interm_scan_id;
   XASL_STATE *xasl_state = analytic_state->xasl_state;
-  SCAN_CODE sc;
-  int tuple_idx = 0;		/* index is post incremented, start from zero */
+  SCAN_CODE sc = S_SUCCESS;
   bool save_output_rec_status;
+  int i, rc = NO_ERROR;
 
-  if (analytic_state == NULL)
+  assert (analytic_state != NULL);
+
+  /* open scans on all result files */
+  for (i = 0; i < analytic_state->func_count; i++)
     {
-      GOTO_EXIT_ON_ERROR;
+      if (qfile_open_list_scan
+	  (analytic_state->func_state_list[i].group_list_id,
+	   &analytic_state->func_state_list[i].group_scan_id) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      if (qfile_open_list_scan
+	  (analytic_state->func_state_list[i].value_list_id,
+	   &analytic_state->func_state_list[i].value_scan_id) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p,
+			    &analytic_state->func_state_list[i].
+			    group_scan_id);
+	  return ER_FAILED;
+	}
+
+      /* initialize tuple counter so we do a result read right away */
+      analytic_state->func_state_list[i].curr_group_tuple_count = 0;
+      analytic_state->func_state_list[i].curr_group_tuple_count_nn = 0;
+      analytic_state->func_state_list[i].curr_sort_key_tuple_count = 0;
+      analytic_state->func_state_list[i].group_tuple_position = -1;
+      analytic_state->func_state_list[i].group_tuple_position_nn = -1;
+      analytic_state->func_state_list[i].sort_key_tuple_position = -1;
+      analytic_state->func_state_list[i].group_consumed_tuples = 0;
     }
 
-  /* this flag is already set for the next tuple; save it while processing
-     the group */
-  save_output_rec_status = analytic_state->is_output_rec;
-  output_tplrec.tpl = NULL;
-
-  for (func_list = func_p; func_list != NULL; func_list = func_list->next)
+  /* open scan on intermediate file */
+  if (qfile_open_list_scan (analytic_state->interm_file, &interm_scan_id) !=
+      NO_ERROR)
     {
-      if (qdata_finalize_analytic_func (thread_p, func_list, keep_list_file)
-	  != NO_ERROR)
+      qfile_close_scan (thread_p,
+			&analytic_state->func_state_list[i].group_scan_id);
+      qfile_close_scan (thread_p,
+			&analytic_state->func_state_list[i].value_scan_id);
+      return ER_FAILED;
+    }
+
+  /* we will use each func_state->value as a buffer to read values from the
+   * sort key headers, so make sure it points to the vallist in order to
+   * correctly output values */
+  for (i = 0; i < analytic_state->func_count; i++)
+    {
+      ANALYTIC_FUNCTION_STATE *func_state =
+	&analytic_state->func_state_list[i];
+      REGU_VARIABLE_LIST regu_list_p;
+      ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
+      DB_VALUE *swap;
+
+      if (func_p->function != PT_ROW_NUMBER)
 	{
-	  GOTO_EXIT_ON_ERROR;
+	  swap = func_p->value;
+	  func_p->value = func_p->out_value;
+	  func_p->out_value = swap;
+
+	  /* also, don't fetch into value */
+	  for (regu_list_p = analytic_state->a_regu_list; regu_list_p != NULL;
+	       regu_list_p = regu_list_p->next)
+	    {
+	      if (regu_list_p->value.vfetch_to == func_p->value)
+		{
+		  regu_list_p->value.vfetch_to = func_p->out_value;
+		  break;
+		}
+	    }
 	}
     }
 
-  /* this is an optimization that saves us from opening and closing a scan for
-     each group; this would be slow especially on analytics with an ORDER BY
-     clause or data sets with many groups */
-  analytic_state->interm_scan->list_id.tuple_cnt =
-    analytic_state->interm_file->tuple_cnt;
-  analytic_state->interm_scan->list_id.page_cnt =
-    analytic_state->interm_file->page_cnt;
-  analytic_state->interm_scan->list_id.first_vpid =
-    analytic_state->interm_file->first_vpid;
-  analytic_state->interm_scan->list_id.last_vpid =
-    analytic_state->interm_file->last_vpid;
-  analytic_state->interm_scan->list_id.last_pgptr =
-    analytic_state->interm_file->last_pgptr;
-  analytic_state->interm_scan->list_id.last_offset =
-    analytic_state->interm_file->last_offset;
-  analytic_state->interm_scan->list_id.lasttpl_len =
-    analytic_state->interm_file->lasttpl_len;
+  /* initialize tuple record */
+  tplrec_scan.size = 0;
+  tplrec_scan.tpl = NULL;
+  tplrec_write.size = 0;
+  tplrec_write.tpl = NULL;
 
-  if (analytic_state->interm_scan->position == S_AFTER)
+  /* iterate files */
+  while (sc == S_SUCCESS)
     {
-      /* reset previously ended scan */
-      analytic_state->interm_scan->position = S_ON;
-    }
-
-  /* process tuples in group */
-  do
-    {
-      if (tuple_idx == 0
-	  && analytic_state->last_tuple_pos.vpid.pageid != NULL_PAGEID
-	  && analytic_state->last_tuple_pos.vpid.pageid != NULL_PAGEID_ASYNC)
-	{
-	  /* first tuple of group and this is not the first group; jump to
-	     end of previous group */
-	  sc = qfile_jump_scan_tuple_position (thread_p,
-					       analytic_state->interm_scan,
-					       &analytic_state->
-					       last_tuple_pos, &tplrec, PEEK);
-
-	  if (sc == S_ERROR)
-	    {
-	      goto close_and_exit_on_error;
-	    }
-	  else if (sc == S_END)
-	    {
-	      break;
-	    }
-	}
-
-      /* advance scan */
-      sc = qfile_scan_list_next (thread_p, analytic_state->interm_scan,
-				 &tplrec, PEEK);
+      /* read one tuple from intermediate file */
+      sc =
+	qfile_scan_list_next (thread_p, &interm_scan_id, &tplrec_scan, PEEK);
       if (sc == S_END)
 	{
 	  break;
 	}
       else if (sc == S_ERROR)
 	{
-	  goto close_and_exit_on_error;
+	  rc = ER_FAILED;
+	  goto cleanup;
 	}
 
-      /* fetch values */
-      if (fetch_val_list (thread_p, analytic_state->a_regu_list,
-			  &xasl_state->vd, NULL, NULL, tplrec.tpl,
-			  PEEK) != NO_ERROR)
+      /* fetch values from intermediate file */
+      rc = fetch_val_list (thread_p, analytic_state->a_regu_list,
+			   &xasl_state->vd, NULL, NULL, tplrec_scan.tpl,
+			   PEEK);
+      if (rc != NO_ERROR)
 	{
-	  goto close_and_exit_on_error;
-	}
-
-      /* group post processing */
-      if (qexec_analytic_group_post_processing (thread_p, func_p,
-						analytic_state, xasl_state,
-						tuple_idx) != NO_ERROR)
-	{
-	  goto close_and_exit_on_error;
+	  goto cleanup;
 	}
 
       /* evaluate inst_num() predicate */
-      if (qexec_analytic_eval_instnum_pred (thread_p, analytic_state,
-					    analytic_state->a_func_list,
-					    ANALYTIC_GROUP_PROC) != NO_ERROR)
+      rc = qexec_analytic_eval_instnum_pred (thread_p, analytic_state,
+					     ANALYTIC_GROUP_PROC);
+      if (rc != NO_ERROR)
 	{
-	  goto close_and_exit_on_error;
+	  goto cleanup;
 	}
 
-      /* add tuple to output file */
+      /* handle functions */
+      for (i = 0; i < analytic_state->func_count; i++)
+	{
+	  ANALYTIC_FUNCTION_STATE *func_state =
+	    &analytic_state->func_state_list[i];
+	  ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
+
+	  if (func_p->function == PT_ROW_NUMBER)
+	    {
+	      /* row number has already been computed and value was fetched
+	         from the intermediate file; nothing to do here */
+	    }
+	  else if (QPROC_ANALYTIC_IS_OFFSET_FUNCTION (func_p))
+	    {
+	      if (func_state->group_tuple_position == -1
+		  && func_state->sort_key_tuple_position == -1)
+		{
+		  /* first scan, load first value */
+		  rc =
+		    qexec_analytic_value_advance (thread_p, func_state, 1, 1);
+		  if (rc != NO_ERROR)
+		    {
+		      goto cleanup;
+		    }
+		}
+	      else if (func_state->group_consumed_tuples >=
+		       func_state->curr_group_tuple_count)
+		{
+		  /* advance to next group */
+		  rc =
+		    qexec_analytic_group_header_next (thread_p, func_state);
+		  if (rc != NO_ERROR)
+		    {
+		      goto cleanup;
+		    }
+		  func_state->group_consumed_tuples = 0;
+		}
+	    }
+	  else if (func_state->func_p->function != PT_FIRST_VALUE
+		   && func_state->func_p->function != PT_LAST_VALUE
+		   && func_state->func_p->function != PT_MEDIAN)
+	    {
+	      /* if the function does not seek results in the list file, we
+	         are in charge of advancing */
+	      rc = qexec_analytic_value_advance (thread_p, func_state, 1, 1);
+	      if (rc != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	    }
+	  else
+	    {
+	      /* FIRST_VALUE, LAST_VALUE or MEDIAN; check for group end */
+	      if (func_state->group_consumed_tuples >=
+		  func_state->curr_group_tuple_count)
+		{
+		  /* advance to next group */
+		  rc =
+		    qexec_analytic_group_header_next (thread_p, func_state);
+		  if (rc != NO_ERROR)
+		    {
+		      goto cleanup;
+		    }
+		  func_state->group_consumed_tuples = 0;
+		}
+	    }
+
+	  /* special behavior */
+	  switch (func_p->function)
+	    {
+	    case PT_LEAD:
+	    case PT_LAG:
+	    case PT_NTH_VALUE:
+	      if (analytic_state->is_output_rec)
+		{
+		  rc =
+		    qexec_analytic_evaluate_offset_function (thread_p,
+							     func_state,
+							     analytic_state);
+		  if (rc != NO_ERROR)
+		    {
+		      goto cleanup;
+		    }
+		}
+	      break;
+
+	    case PT_NTILE:
+	      if (analytic_state->is_output_rec)
+		{
+		  rc =
+		    qexec_analytic_evaluate_ntile_function (thread_p,
+							    func_state);
+		  if (rc != NO_ERROR)
+		    {
+		      goto cleanup;
+		    }
+		}
+	      break;
+
+	    case PT_CUME_DIST:
+	    case PT_PERCENT_RANK:
+	      rc =
+		qexec_analytic_evaluate_cume_dist_percent_rank_function
+		(thread_p, func_state);
+	      if (rc != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	      break;
+
+	    case PT_MEDIAN:
+	      rc =
+		qexec_analytic_evaluate_median_function (thread_p,
+							 func_state);
+	      if (rc != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	      break;
+
+	    default:
+	      /* nothing to do */
+	      break;
+	    }
+
+	  /* advance tuple index */
+	  func_state->group_consumed_tuples++;
+	}
+
       if (analytic_state->is_output_rec)
 	{
-	  if (qexec_insert_tuple_into_list (thread_p,
-					    analytic_state->output_file,
-					    analytic_state->a_outptr_list,
-					    &xasl_state->vd,
-					    &output_tplrec) != NO_ERROR)
+	  /* add tuple to output file */
+	  rc = qexec_insert_tuple_into_list (thread_p,
+					     analytic_state->output_file,
+					     analytic_state->a_outptr_list,
+					     &xasl_state->vd, &tplrec_write);
+	  if (rc != NO_ERROR)
 	    {
-	      goto close_and_exit_on_error;
+	      goto cleanup;
 	    }
 	}
-
-      /* save tuple position; when scan ends, this will hold last tuple's pos */
-      qfile_save_current_scan_tuple_position (analytic_state->interm_scan,
-					      &analytic_state->
-					      last_tuple_pos);
-
-      /* next! */
-      tuple_idx++;
     }
-  while (sc != S_END);
 
-  /* finalize */
-  qexec_analytic_group_finalize_post_processing (thread_p, func_p,
-						 analytic_state);
-
-  /* cleanup */
-  if (output_tplrec.tpl)
+cleanup:
+  /* undo the pointer swap we've done before */
+  for (i = 0; i < analytic_state->func_count; i++)
     {
-      db_private_free_and_init (thread_p, output_tplrec.tpl);
+      ANALYTIC_FUNCTION_STATE *func_state =
+	&analytic_state->func_state_list[i];
+      ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
+      REGU_VARIABLE_LIST regu_list_p;
+      DB_VALUE *swap;
+
+      if (func_p->function != PT_ROW_NUMBER)
+	{
+	  swap = func_p->value;
+	  func_p->value = func_p->out_value;
+	  func_p->out_value = swap;
+	}
+
+      for (regu_list_p = analytic_state->a_regu_list; regu_list_p != NULL;
+	   regu_list_p = regu_list_p->next)
+	{
+	  if (regu_list_p->value.vfetch_to == func_p->value)
+	    {
+	      regu_list_p->value.vfetch_to = func_p->out_value;
+	      break;
+	    }
+	}
     }
-  analytic_state->is_output_rec = save_output_rec_status;
 
-  return NO_ERROR;
-
-close_and_exit_on_error:
-  /* return error */
-  qexec_analytic_group_finalize_post_processing (thread_p, func_p,
-						 analytic_state);
-
-exit_on_error:
-  if (output_tplrec.tpl)
+  /* free write tuple record */
+  if (tplrec_write.tpl != NULL)
     {
-      db_private_free_and_init (thread_p, output_tplrec.tpl);
+      db_private_free_and_init (thread_p, tplrec_write.tpl);
+      tplrec_write.size = 0;
     }
-  analytic_state->state = er_errid ();
 
-  return ER_FAILED;
+  /* close all scans */
+  qfile_close_scan (thread_p, &interm_scan_id);
+  for (i = 0; i < analytic_state->func_count; i++)
+    {
+      qfile_close_scan (thread_p,
+			&analytic_state->func_state_list[i].group_scan_id);
+      qfile_close_scan (thread_p,
+			&analytic_state->func_state_list[i].value_scan_id);
+    }
+
+  /* all ok */
+  return rc;
 }
 
 
@@ -25555,7 +25734,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   if (xasl->proc.buildlist.groupby_list != NULL
-      || xasl->proc.buildlist.a_func_list != NULL)
+      || xasl->proc.buildlist.a_eval_list != NULL)
     {
       /* Cannot handle group by and analytics with order by */
       return NO_ERROR;

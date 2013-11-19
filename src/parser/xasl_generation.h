@@ -98,6 +98,7 @@ typedef struct analytic_info ANALYTIC_INFO;
 struct analytic_info
 {
   ANALYTIC_TYPE *head_list;
+  PT_NODE *sort_lists;
   PT_NODE *select_node;
   PT_NODE *select_list;
   VAL_LIST *val_list;

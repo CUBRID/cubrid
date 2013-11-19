@@ -347,7 +347,7 @@ struct buildlist_proc_node
   DB_VALUE *g_grbynum_val;	/* groupby_num() value result */
   AGGREGATE_TYPE *g_agg_list;	/* aggregate function list */
   ARITH_TYPE *g_outarith_list;	/* outside arithmetic list */
-  ANALYTIC_TYPE *a_func_list;	/* analytic functions list */
+  ANALYTIC_EVAL_TYPE *a_eval_list;	/* analytic functions evaluation groups */
   REGU_VARIABLE_LIST a_regu_list;	/* analytic regu list */
   OUTPTR_LIST *a_outptr_list;	/* analytic output ptr list */
   OUTPTR_LIST *a_outptr_list_ex;	/* ext output ptr list */

@@ -222,12 +222,22 @@ extern QFILE_LIST_ID *qfile_open_list (THREAD_ENTRY * thread_p,
 extern int qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p,
 					   QFILE_LIST_ID * list_id,
 					   QFILE_TUPLE_TYPE tpl_type);
+extern int qfile_fast_intint_tuple_to_list (THREAD_ENTRY * thread_p,
+					    QFILE_LIST_ID * list_id_p,
+					    int v1, int v2);
+extern int qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p,
+					    QFILE_LIST_ID * list_id_p,
+					    int v1, DB_VALUE * v2);
 extern int qfile_add_item_to_list (THREAD_ENTRY * thread_p, char *item,
 				   int item_size, QFILE_LIST_ID * list_id);
 extern QFILE_LIST_ID *qfile_combine_two_list (THREAD_ENTRY * thread_p,
 					      QFILE_LIST_ID * lhs_file,
 					      QFILE_LIST_ID * rhs_file,
 					      int flag);
+extern int qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p,
+					    QFILE_TUPLE_DESCRIPTOR *
+					    tpl_descr,
+					    QFILE_TUPLE_RECORD * tplrec);
 extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec, int tpl_size);
 #if defined (CUBRID_DEBUG)
 extern void qfile_print_list (THREAD_ENTRY * thread_p,

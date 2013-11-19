@@ -6458,7 +6458,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 			{
 			  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-				  "MEDIAN", "DOUBLE, DATETIME or TIME");
+				  "MEDIAN", "DOUBLE, DATETIME, TIME");
 
 			  pr_clear_value (&dbval);
 			  return error;
@@ -9621,13 +9621,6 @@ qdata_initialize_analytic_func (THREAD_ENTRY * thread_p,
 
   DB_MAKE_NULL (&func_p->part_value);
 
-  /* init CUME_DIST and PERCENT_RANK info */
-  if (func_p->function == PT_CUME_DIST || func_p->function == PT_PERCENT_RANK)
-    {
-      func_p->info.cume_percent.last_pos = 0;
-      func_p->info.cume_percent.last_res = 0;
-    }
-
   /* create temporary list file to handle distincts */
   if (func_p->option == Q_DISTINCT)
     {
@@ -9688,7 +9681,6 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
   double ntile_bucket = 0.0;
   int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
-  ANALYTIC_MEDIAN_FUNCTION_INFO *median_info_p = NULL;
 
   DB_MAKE_NULL (&dbval);
   DB_MAKE_NULL (&sqr_val);
@@ -9703,22 +9695,52 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 
   if (func_p->opr_dbtype == DB_TYPE_VARIABLE && !DB_IS_NULL (&dbval))
     {
-      /*update domain according to first instance of value */
-      DB_TYPE type = DB_VALUE_DOMAIN_TYPE (&dbval);
-      if ((func_p->function == PT_SUM || func_p->function == PT_AVG) &&
-	  TP_IS_CHAR_TYPE (type))
+      /* set function default domain when late binding */
+      switch (func_p->function)
 	{
+	case PT_COUNT:
+	case PT_COUNT_STAR:
+	  func_p->domain = tp_domain_resolve_default (DB_TYPE_INTEGER);
+	  break;
+
+	case PT_AVG:
+	case PT_STDDEV:
+	case PT_STDDEV_POP:
+	case PT_STDDEV_SAMP:
+	case PT_VARIANCE:
+	case PT_VAR_POP:
+	case PT_VAR_SAMP:
 	  func_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-	  if (tp_value_coerce (&dbval, &dbval, func_p->domain) !=
-	      DOMAIN_COMPATIBLE)
+	  break;
+
+	case PT_SUM:
+	  if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (&dbval)))
 	    {
-	      pr_clear_value (&dbval);
-	      return ER_FAILED;
+	      func_p->domain = tp_domain_resolve_value (&dbval, NULL);
 	    }
-	}
-      else
-	{
+	  else
+	    {
+	      func_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	    }
+	  break;
+
+	default:
 	  func_p->domain = tp_domain_resolve_value (&dbval, NULL);
+	  break;
+	}
+
+      if (func_p->domain == NULL)
+	{
+	  pr_clear_value (&dbval);
+	  return ER_FAILED;
+	}
+
+      /* coerce operand */
+      if (tp_value_coerce (&dbval, &dbval, func_p->domain) !=
+	  DOMAIN_COMPATIBLE)
+	{
+	  pr_clear_value (&dbval);
+	  return ER_FAILED;
 	}
 
       func_p->opr_dbtype = TP_DOMAIN_TYPE (func_p->domain);
@@ -9731,7 +9753,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       && func_p->function != PT_LAST_VALUE
       && func_p->function != PT_NTH_VALUE
       && func_p->function != PT_RANK
-      && func_p->function != PT_DENSE_RANK && func_p->function != PT_MEDIAN)
+      && func_p->function != PT_DENSE_RANK
+      && func_p->function != PT_LEAD && func_p->function != PT_LAG)
     {
       if (func_p->function == PT_COUNT || func_p->function == PT_COUNT_STAR)
 	{
@@ -9747,7 +9770,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
     }
 
   /* handle IGNORE NULLS */
-  if (func_p->ignore_nulls && DB_IS_NULL (&dbval))
+  if (QPROC_ANALYTIC_IGNORE_NULLS (func_p) && DB_IS_NULL (&dbval))
     {
       switch (func_p->function)
 	{
@@ -9809,6 +9832,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
     case PT_CUME_DIST:
     case PT_PERCENT_RANK:
       /* these functions do not execute here, just in case */
+      pr_clear_value (func_p->value);
       break;
 
     case PT_NTILE:
@@ -9849,13 +9873,6 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	}
       break;
 
-    case PT_LEAD:
-    case PT_LAG:
-      /* just copy */
-      (void) pr_clear_value (func_p->value);
-      pr_clone_value (&dbval, func_p->value);
-      break;
-
     case PT_FIRST_VALUE:
       opr_dbval_p = &dbval;
       if (func_p->curr_cnt < 1)
@@ -9864,6 +9881,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 	}
       break;
 
+    case PT_LEAD:
+    case PT_LAG:
     case PT_LAST_VALUE:
     case PT_NTH_VALUE:
       /* just copy */
@@ -9943,8 +9962,11 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
     case PT_COUNT_STAR:
       break;
 
-    case PT_COUNT:
     case PT_ROW_NUMBER:
+      DB_MAKE_INT (func_p->out_value, func_p->curr_cnt + 1);
+      break;
+
+    case PT_COUNT:
       if (func_p->curr_cnt < 1)
 	{
 	  DB_MAKE_INT (func_p->value, 1);
@@ -10080,117 +10102,103 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       break;
 
     case PT_MEDIAN:
-      median_info_p = &func_p->info.median;
-
       if (func_p->curr_cnt < 1)
 	{
-	  /* init the func info */
-	  median_info_p->start_pos = 0;
-	  median_info_p->end_pos = 0;
-	  median_info_p->is_start_null = true;
-
-	  /* the arg is a constant */
-	  if (func_p->is_const_operand)
+	  /* determine domain based on first value */
+	  switch (func_p->opr_dbtype)
 	    {
-	      switch (func_p->opr_dbtype)
+	    case DB_TYPE_SHORT:
+	    case DB_TYPE_INTEGER:
+	    case DB_TYPE_BIGINT:
+	    case DB_TYPE_FLOAT:
+	    case DB_TYPE_DOUBLE:
+	    case DB_TYPE_MONETARY:
+	    case DB_TYPE_NUMERIC:
+	      if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
 		{
-		case DB_TYPE_SHORT:
-		case DB_TYPE_INTEGER:
-		case DB_TYPE_BIGINT:
-		case DB_TYPE_FLOAT:
-		case DB_TYPE_DOUBLE:
-		case DB_TYPE_MONETARY:
-		case DB_TYPE_NUMERIC:
-		case DB_TYPE_DATE:
-		case DB_TYPE_DATETIME:
-		case DB_TYPE_TIMESTAMP:
-		case DB_TYPE_TIME:
-		  break;
+		  if (func_p->is_const_operand)
+		    {
+		      func_p->domain =
+			tp_domain_resolve_default (func_p->opr_dbtype);
+		    }
+		  else
+		    {
+		      func_p->domain =
+			tp_domain_resolve_default (DB_TYPE_DOUBLE);
+		    }
+		}
+	      break;
 
-		default:
-		  assert (func_p->operand.type == TYPE_CONSTANT);
+	    case DB_TYPE_DATE:
+	      if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		{
+		  func_p->domain = tp_domain_resolve_default (DB_TYPE_DATE);
+		}
+	      break;
 
-		  /* try to cast dbval to double, datetime then time */
-		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	    case DB_TYPE_DATETIME:
+	    case DB_TYPE_TIMESTAMP:
+	      if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		{
+		  func_p->domain =
+		    tp_domain_resolve_default (DB_TYPE_DATETIME);
+		}
+	      break;
+
+	    case DB_TYPE_TIME:
+	      if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		{
+		  func_p->domain = tp_domain_resolve_default (DB_TYPE_TIME);
+		}
+	      break;
+
+	    default:
+	      /* try to cast dbval to double, datetime then time */
+	      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+
+	      dom_status = tp_value_cast (&dbval, &dbval,
+					  tmp_domain_p, false);
+	      if (dom_status != DOMAIN_COMPATIBLE)
+		{
+		  /* try datetime */
+		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
 
 		  dom_status = tp_value_cast (&dbval, &dbval,
 					      tmp_domain_p, false);
-		  if (dom_status != DOMAIN_COMPATIBLE)
-		    {
-		      /* try datetime */
-		      tmp_domain_p =
-			tp_domain_resolve_default (DB_TYPE_DATETIME);
-
-		      dom_status = tp_value_cast (&dbval, &dbval,
-						  tmp_domain_p, false);
-		    }
-
-		  /* try time */
-		  if (dom_status != DOMAIN_COMPATIBLE)
-		    {
-		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
-
-		      dom_status = tp_value_cast (&dbval, &dbval,
-						  tmp_domain_p, false);
-		    }
-
-		  if (dom_status != DOMAIN_COMPATIBLE)
-		    {
-		      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-			      "MEDIAN", "DOUBLE, DATETIME or TIME");
-
-		      pr_clear_value (&dbval);
-		      return ER_FAILED;
-		    }
-
-		  /* update domain */
-		  func_p->domain = tmp_domain_p;
 		}
 
-	      pr_clear_value (func_p->value);
-	      error = db_value_clone (&dbval, func_p->value);
-	      if (error != NO_ERROR)
+	      /* try time */
+	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
+		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
+
+		  dom_status = tp_value_cast (&dbval, &dbval,
+					      tmp_domain_p, false);
+		}
+
+	      if (dom_status != DOMAIN_COMPATIBLE)
+		{
+		  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+			  "MEDIAN", "DOUBLE, DATETIME, TIME");
+
 		  pr_clear_value (&dbval);
 		  return ER_FAILED;
 		}
-	    }
-	  else
-	    {
-	      /* output value is not required now */
-	      DB_MAKE_NULL (func_p->value);
+
+	      /* update domain */
+	      func_p->domain = tmp_domain_p;
 	    }
 	}
 
-      /* NULL is not considered in the calculation */
-      if (!func_p->is_const_operand)
+      /* copy value */
+      pr_clear_value (func_p->value);
+      error = db_value_coerce (&dbval, func_p->value, func_p->domain);
+      if (error != NO_ERROR)
 	{
-	  error = fetch_peek_dbval (thread_p,
-				    &func_p->operand, val_desc_p, NULL, NULL,
-				    NULL, &opr_dbval_p);
-	  if (error != NO_ERROR)
-	    {
-	      pr_clear_value (&dbval);
-	      return ER_FAILED;
-	    }
-
-	  if (!DB_IS_NULL (opr_dbval_p))
-	    {
-	      if (median_info_p->is_start_null)
-		{
-		  median_info_p->is_start_null = false;
-		}
-
-	      ++median_info_p->end_pos;
-	    }
-	  else if (median_info_p->is_start_null)
-	    {
-	      ++median_info_p->start_pos;
-	      ++median_info_p->end_pos;
-	    }
+	  pr_clear_value (&dbval);
+	  return error;
 	}
-
       break;
 
     default:
@@ -10226,12 +10234,12 @@ exit:
  * qdata_finalize_analytic_func () -
  *   return: NO_ERROR, or ER_code
  *   func_p(in): Analytic expression node
- *   keep_list_file(in): Don't deallocate list file
+ *   is_same_group(in): Don't deallocate list file
  *
  */
 int
 qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
-			      bool keep_list_file)
+			      bool is_same_group)
 {
   DB_VALUE dbval;
   QFILE_LIST_ID *list_id_p;
@@ -10454,7 +10462,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 	}
     }
 
-  if (keep_list_file)
+  if (is_same_group)
     {
       /* this is the end of a partition; save accumulator */
       qdata_copy_db_value (&func_p->part_value, func_p->value);
@@ -10588,7 +10596,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
 
 exit:
   /* destroy distincts temp list file */
-  if (!keep_list_file)
+  if (!is_same_group)
     {
       qfile_close_list (thread_p, func_p->list_id);
       qfile_destroy_list (thread_p, func_p->list_id);
@@ -10701,6 +10709,377 @@ qdata_aggregate_evaluate_median_function (THREAD_ENTRY * thread_p,
 }
 
 /*
+ * qdata_apply_median_function_coercion () - coerce input value for use in
+ *					     MEDIAN function evaluation
+ *   returns: error code or NO_ERROR
+ *   f_value(in): input value
+ *   result_dom(in/out): result domain
+ *   d_result(out): result as double precision floating point value
+ *   result(out): result as DB_VALUE
+ */
+int
+qdata_apply_median_function_coercion (DB_VALUE * f_value,
+				      TP_DOMAIN ** result_dom,
+				      double *d_result, DB_VALUE * result)
+{
+  DB_TYPE type;
+  int error = NO_ERROR;
+
+  assert (f_value != NULL && result_dom != NULL && d_result != NULL
+	  && result != NULL);
+
+  /* update result */
+  type = db_value_type (f_value);
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+      *d_result = (double) DB_GET_SHORT (f_value);
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_INTEGER:
+      *d_result = (double) DB_GET_INT (f_value);
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_BIGINT:
+      *d_result = (double) DB_GET_BIGINT (f_value);
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_FLOAT:
+      *d_result = (double) DB_GET_FLOAT (f_value);
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_DOUBLE:
+      *d_result = (double) DB_GET_DOUBLE (f_value);
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_MONETARY:
+      *d_result = (DB_GET_MONETARY (f_value))->amount;
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_NUMERIC:
+      numeric_coerce_num_to_double (db_locate_numeric (f_value),
+				    DB_VALUE_SCALE (f_value), d_result);
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_DATE:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIME:
+      pr_clone_value (f_value, result);
+      break;
+
+    default:
+      type = TP_DOMAIN_TYPE (*result_dom);
+      if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
+	{
+	  error =
+	    qdata_update_interpolate_func_value_and_domain (f_value,
+							    result,
+							    result_dom);
+	  if (error != NO_ERROR)
+	    {
+	      assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+		      "MEDIAN", "DOUBLE, DATETIME, TIME");
+
+	      error = ER_FAILED;
+	      goto end;
+	    }
+	}
+      else
+	{
+	  error = db_value_coerce (f_value, result, *result_dom);
+	  if (error != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+	}
+    }
+
+end:
+  return error;
+}
+
+/*
+ * qdata_interpolate_median_function_values () - interpolate two values for use
+ *						 in MEDIAN function evaluation
+ *   returns: error code or NO_ERROR
+ *   f_value(in): "floor" value (i.e. first value in tuple order)
+ *   c_value(in): "ceiling" value (i.e. second value in tuple order)
+ *   row_num_d(in): row number as floating point value
+ *   f_row_num_d(in): row number of f_value as floating point value
+ *   c_row_num_d(in): row number of c_value as floating point value
+ *   result_dom(in/out): result domain
+ *   d_result(out): result as double precision floating point value
+ *   result(out): result as DB_VALUE
+ */
+int
+qdata_interpolate_median_function_values (DB_VALUE * f_value,
+					  DB_VALUE * c_value,
+					  double row_num_d,
+					  double f_row_num_d,
+					  double c_row_num_d,
+					  TP_DOMAIN ** result_dom,
+					  double *d_result, DB_VALUE * result)
+{
+  DB_DATE date;
+  DB_DATETIME datetime;
+  DB_TIMESTAMP utime;
+  DB_TIME time;
+  DB_TYPE type;
+  double d1, d2;
+  int error = NO_ERROR;
+
+  assert (f_value != NULL && c_value != NULL && result_dom != NULL
+	  && d_result != NULL && result != NULL);
+
+  /* calculate according to type
+   * The formular bellow is from Oracle's MEDIAN manual
+   *   result = (CRN - RN) * (value for row at FRN) + (RN - FRN) * (value for row at CRN)
+   */
+  type = db_value_type (f_value);
+  if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
+    {
+      type = TP_DOMAIN_TYPE (*result_dom);
+      if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
+	{
+	  /* try to coerce f_value to double, datetime then time
+	   * and save domain for next coerce
+	   */
+	  error =
+	    qdata_update_interpolate_func_value_and_domain (f_value,
+							    f_value,
+							    result_dom);
+	  if (error != NO_ERROR)
+	    {
+	      assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+		      "MEDIAN", "DOUBLE, DATETIME, TIME");
+
+	      error = ER_FAILED;
+	      goto end;
+	    }
+	}
+      else
+	{
+	  error = db_value_coerce (f_value, f_value, *result_dom);
+	  if (error != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+	}
+
+      /* coerce c_value */
+      error = db_value_coerce (c_value, c_value, *result_dom);
+      if (error != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+    }
+
+  type = db_value_type (f_value);
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+      d1 = (double) DB_GET_SHORT (f_value);
+      d2 = (double) DB_GET_SHORT (c_value);
+
+      /* calculate */
+      *d_result = (c_row_num_d - row_num_d) * d1
+	+ (row_num_d - f_row_num_d) * d2;
+
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_INTEGER:
+      d1 = (double) DB_GET_INT (f_value);
+      d2 = (double) DB_GET_INT (c_value);
+
+      /* calculate */
+      *d_result = (c_row_num_d - row_num_d) * d1
+	+ (row_num_d - f_row_num_d) * d2;
+
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_BIGINT:
+      d1 = (double) DB_GET_BIGINT (f_value);
+      d2 = (double) DB_GET_BIGINT (c_value);
+
+      /* calculate */
+      *d_result = (c_row_num_d - row_num_d) * d1
+	+ (row_num_d - f_row_num_d) * d2;
+
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_FLOAT:
+      d1 = (double) DB_GET_FLOAT (f_value);
+      d2 = (double) DB_GET_FLOAT (c_value);
+
+      /* calculate */
+      *d_result = (c_row_num_d - row_num_d) * d1
+	+ (row_num_d - f_row_num_d) * d2;
+
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_DOUBLE:
+      d1 = DB_GET_DOUBLE (f_value);
+      d2 = DB_GET_DOUBLE (c_value);
+
+      /* calculate */
+      *d_result = (c_row_num_d - row_num_d) * d1
+	+ (row_num_d - f_row_num_d) * d2;
+
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_MONETARY:
+      d1 = (DB_GET_MONETARY (f_value))->amount;
+      d2 = (DB_GET_MONETARY (c_value))->amount;
+
+      /* calculate */
+      *d_result = (c_row_num_d - row_num_d) * d1
+	+ (row_num_d - f_row_num_d) * d2;
+
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_NUMERIC:
+      numeric_coerce_num_to_double (db_locate_numeric (f_value),
+				    DB_VALUE_SCALE (f_value), &d1);
+      numeric_coerce_num_to_double (db_locate_numeric (c_value),
+				    DB_VALUE_SCALE (c_value), &d2);
+
+      /* calculate */
+      *d_result = (c_row_num_d - row_num_d) * d1
+	+ (row_num_d - f_row_num_d) * d2;
+
+      DB_MAKE_DOUBLE (result, *d_result);
+
+      break;
+
+    case DB_TYPE_DATE:
+      d1 = (double) *(DB_GET_DATE (f_value));
+      d2 = (double) *(DB_GET_DATE (c_value));
+      *d_result = (c_row_num_d - row_num_d) * d1
+	+ (row_num_d - f_row_num_d) * d2;
+
+      date = (DB_DATE) floor (*d_result);
+
+      db_value_put_encoded_date (result, &date);
+
+      break;
+
+    case DB_TYPE_DATETIME:
+      datetime = *(DB_GET_DATETIME (f_value));
+      d1 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
+
+      datetime = *(DB_GET_DATETIME (c_value));
+      d2 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
+
+      *d_result = floor ((c_row_num_d - row_num_d) * d1
+			 + (row_num_d - f_row_num_d) * d2);
+
+      datetime.date = (unsigned int) (*d_result / MILLISECONDS_OF_ONE_DAY);
+      datetime.time = (unsigned int) (((DB_BIGINT) * d_result)
+				      % MILLISECONDS_OF_ONE_DAY);
+
+      DB_MAKE_DATETIME (result, &datetime);
+
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      error = db_timestamp_to_datetime (DB_GET_TIMESTAMP (f_value),
+					&datetime);
+      if (error != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      d1 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
+
+      error = db_timestamp_to_datetime (DB_GET_TIMESTAMP (c_value),
+					&datetime);
+      if (error != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      d2 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
+
+      *d_result = floor ((c_row_num_d - row_num_d) * d1
+			 + (row_num_d - f_row_num_d) * d2);
+
+      datetime.date = (unsigned int) (*d_result / MILLISECONDS_OF_ONE_DAY);
+      datetime.time = (unsigned int) (((DB_BIGINT) * d_result)
+				      % MILLISECONDS_OF_ONE_DAY);
+
+      /* to DB_TIME */
+      datetime.time /= 1000;
+
+      error = db_timestamp_encode (&utime, &datetime.date, &datetime.time);
+      if (error != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      DB_MAKE_TIMESTAMP (result, utime);
+
+      break;
+
+    case DB_TYPE_TIME:
+      d1 = (double) (*DB_GET_TIME (f_value));
+      d2 = (double) (*DB_GET_TIME (c_value));
+
+      *d_result = floor ((c_row_num_d - row_num_d) * d1
+			 + (row_num_d - f_row_num_d) * d2);
+
+      time = (DB_TIME) * d_result;
+
+      db_value_put_encoded_time (result, &time);
+
+      break;
+
+    default:
+      /* never be here! */
+      assert (false);
+    }
+
+end:
+  return error;
+}
+
+/*
  * qdata_get_median_function_result () -
  * return : error code or NO_ERROR
  * thread_p (in)     : thread entry
@@ -10729,15 +11108,9 @@ qdata_get_median_function_result (THREAD_ENTRY * thread_p,
   DB_VALUE f_fetch_value, c_fetch_value;
   REGU_VARIABLE regu_var;
   SCAN_CODE scan_code;
-  DB_TYPE type;
   DB_BIGINT bi;
-  TP_DOMAIN_STATUS status;
   /* for calculate */
-  double d1, d2, d_result;
-  DB_DATE date;
-  DB_DATETIME datetime;
-  DB_TIMESTAMP utime;
-  DB_TIME time;
+  double d_result;
 
   assert (scan_id != NULL && domain != NULL
 	  && result != NULL && result_dom != NULL);
@@ -10784,95 +11157,13 @@ qdata_get_median_function_result (THREAD_ENTRY * thread_p,
   pr_clear_value (result);
   if (f_row_num_d == c_row_num_d)
     {
-      /* update result */
-      type = db_value_type (f_value);
-      switch (type)
+      error =
+	qdata_apply_median_function_coercion (f_value, result_dom, &d_result,
+					      result);
+      if (error != NO_ERROR)
 	{
-	case DB_TYPE_SHORT:
-	  d_result = (double) DB_GET_SHORT (f_value);
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_INTEGER:
-	  d_result = (double) DB_GET_INT (f_value);
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_BIGINT:
-	  d_result = (double) DB_GET_BIGINT (f_value);
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_FLOAT:
-	  d_result = (double) DB_GET_FLOAT (f_value);
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_DOUBLE:
-	  d_result = (double) DB_GET_DOUBLE (f_value);
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_MONETARY:
-	  d_result = (DB_GET_MONETARY (f_value))->amount;
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (f_value),
-					DB_VALUE_SCALE (f_value), &d_result);
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_DATE:
-	case DB_TYPE_DATETIME:
-	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIME:
-	  pr_clone_value (f_value, result);
-
-	  break;
-
-	default:
-	  type = TP_DOMAIN_TYPE (*result_dom);
-	  if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
-	    {
-	      /* try to coerce value to double, datetime then time
-	       * and save domain for next coerce
-	       */
-	      error =
-		qdata_update_interpolate_func_value_and_domain (f_value,
-								result,
-								result_dom);
-	      if (error != NO_ERROR)
-		{
-		  assert
-		    (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
-
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-			  "MEDIAN", "DOUBLE, DATETIME or TIME");
-
-		  error = ER_FAILED;
-		  goto end;
-		}
-	    }
-	  else
-	    {
-	      error = db_value_coerce (f_value, result, *result_dom);
-	      if (error != NO_ERROR)
-		{
-		  error = ER_FAILED;
-		  goto end;
-		}
-	    }
+	  goto end;
 	}
-
     }
   else
     {
@@ -10896,236 +11187,14 @@ qdata_get_median_function_result (THREAD_ENTRY * thread_p,
 	  goto end;
 	}
 
-      /* calculate according to type
-       * The formular bellow is from Oracle's MEDIAN manual
-       *   result = (CRN - RN) * (value for row at FRN) + (RN - FRN) * (value for row at CRN)
-       */
-      type = db_value_type (f_value);
-      if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
+      error =
+	qdata_interpolate_median_function_values (f_value, c_value, row_num_d,
+						  f_row_num_d, c_row_num_d,
+						  result_dom, &d_result,
+						  result);
+      if (error != NO_ERROR)
 	{
-	  type = TP_DOMAIN_TYPE (*result_dom);
-	  if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
-	    {
-	      /* try to coerce f_value to double, datetime then time
-	       * and save domain for next coerce
-	       */
-	      error =
-		qdata_update_interpolate_func_value_and_domain (f_value,
-								f_value,
-								result_dom);
-	      if (error != NO_ERROR)
-		{
-		  assert
-		    (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
-
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-			  "MEDIAN", "DOUBLE, DATETIME or TIME");
-
-		  error = ER_FAILED;
-		  goto end;
-		}
-	    }
-	  else
-	    {
-	      error = db_value_coerce (f_value, f_value, *result_dom);
-	      if (error != NO_ERROR)
-		{
-		  error = ER_FAILED;
-		  goto end;
-		}
-	    }
-
-	  /* coerce c_value */
-	  error = db_value_coerce (c_value, c_value, *result_dom);
-	  if (error != NO_ERROR)
-	    {
-	      error = ER_FAILED;
-	      goto end;
-	    }
-	}
-
-      type = db_value_type (f_value);
-      switch (type)
-	{
-	case DB_TYPE_SHORT:
-	  d1 = (double) DB_GET_SHORT (f_value);
-	  d2 = (double) DB_GET_SHORT (c_value);
-
-	  /* calculate */
-	  d_result = (c_row_num_d - row_num_d) * d1
-	    + (row_num_d - f_row_num_d) * d2;
-
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_INTEGER:
-	  d1 = (double) DB_GET_INT (f_value);
-	  d2 = (double) DB_GET_INT (c_value);
-
-	  /* calculate */
-	  d_result = (c_row_num_d - row_num_d) * d1
-	    + (row_num_d - f_row_num_d) * d2;
-
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_BIGINT:
-	  d1 = (double) DB_GET_BIGINT (f_value);
-	  d2 = (double) DB_GET_BIGINT (c_value);
-
-	  /* calculate */
-	  d_result = (c_row_num_d - row_num_d) * d1
-	    + (row_num_d - f_row_num_d) * d2;
-
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_FLOAT:
-	  d1 = (double) DB_GET_FLOAT (f_value);
-	  d2 = (double) DB_GET_FLOAT (c_value);
-
-	  /* calculate */
-	  d_result = (c_row_num_d - row_num_d) * d1
-	    + (row_num_d - f_row_num_d) * d2;
-
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_DOUBLE:
-	  d1 = DB_GET_DOUBLE (f_value);
-	  d2 = DB_GET_DOUBLE (c_value);
-
-	  /* calculate */
-	  d_result = (c_row_num_d - row_num_d) * d1
-	    + (row_num_d - f_row_num_d) * d2;
-
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_MONETARY:
-	  d1 = (DB_GET_MONETARY (f_value))->amount;
-	  d2 = (DB_GET_MONETARY (c_value))->amount;
-
-	  /* calculate */
-	  d_result = (c_row_num_d - row_num_d) * d1
-	    + (row_num_d - f_row_num_d) * d2;
-
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (f_value),
-					DB_VALUE_SCALE (f_value), &d1);
-	  numeric_coerce_num_to_double (db_locate_numeric (c_value),
-					DB_VALUE_SCALE (c_value), &d2);
-
-	  /* calculate */
-	  d_result = (c_row_num_d - row_num_d) * d1
-	    + (row_num_d - f_row_num_d) * d2;
-
-	  DB_MAKE_DOUBLE (result, d_result);
-
-	  break;
-
-	case DB_TYPE_DATE:
-	  d1 = (double) *(DB_GET_DATE (f_value));
-	  d2 = (double) *(DB_GET_DATE (c_value));
-	  d_result = (c_row_num_d - row_num_d) * d1
-	    + (row_num_d - f_row_num_d) * d2;
-
-	  date = (DB_DATE) floor (d_result);
-
-	  db_value_put_encoded_date (result, &date);
-
-	  break;
-
-	case DB_TYPE_DATETIME:
-	  datetime = *(DB_GET_DATETIME (f_value));
-	  d1 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY
-	    + datetime.time;
-
-	  datetime = *(DB_GET_DATETIME (c_value));
-	  d2 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY
-	    + datetime.time;
-
-	  d_result = floor ((c_row_num_d - row_num_d) * d1
-			    + (row_num_d - f_row_num_d) * d2);
-
-	  datetime.date = (unsigned int) (d_result / MILLISECONDS_OF_ONE_DAY);
-	  datetime.time = (unsigned int) (((DB_BIGINT) d_result)
-					  % MILLISECONDS_OF_ONE_DAY);
-
-	  DB_MAKE_DATETIME (result, &datetime);
-
-	  break;
-
-	case DB_TYPE_TIMESTAMP:
-	  error = db_timestamp_to_datetime (DB_GET_TIMESTAMP (f_value),
-					    &datetime);
-	  if (error != NO_ERROR)
-	    {
-	      error = ER_FAILED;
-	      goto end;
-	    }
-
-	  d1 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY
-	    + datetime.time;
-
-	  error = db_timestamp_to_datetime (DB_GET_TIMESTAMP (c_value),
-					    &datetime);
-	  if (error != NO_ERROR)
-	    {
-	      error = ER_FAILED;
-	      goto end;
-	    }
-
-	  d2 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY
-	    + datetime.time;
-
-	  d_result = floor ((c_row_num_d - row_num_d) * d1
-			    + (row_num_d - f_row_num_d) * d2);
-
-	  datetime.date = (unsigned int) (d_result / MILLISECONDS_OF_ONE_DAY);
-	  datetime.time = (unsigned int) (((DB_BIGINT) d_result)
-					  % MILLISECONDS_OF_ONE_DAY);
-
-	  /* to DB_TIME */
-	  datetime.time /= 1000;
-
-	  error =
-	    db_timestamp_encode (&utime, &datetime.date, &datetime.time);
-	  if (error != NO_ERROR)
-	    {
-	      error = ER_FAILED;
-	      goto end;
-	    }
-
-	  DB_MAKE_TIMESTAMP (result, utime);
-
-	  break;
-
-	case DB_TYPE_TIME:
-	  d1 = (double) (*DB_GET_TIME (f_value));
-	  d2 = (double) (*DB_GET_TIME (c_value));
-
-	  d_result = floor ((c_row_num_d - row_num_d) * d1
-			    + (row_num_d - f_row_num_d) * d2);
-
-	  time = (DB_TIME) d_result;
-
-	  db_value_put_encoded_time (result, &time);
-
-	  break;
-
-	default:
-	  /* never be here! */
-	  assert (false);
+	  goto end;
 	}
     }
 
@@ -11390,7 +11459,7 @@ qdata_update_agg_interpolate_func_value_and_domain (AGGREGATE_TYPE * agg_p,
 	  assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-		  "MEDIAN", "DOUBLE, DATETIME or TIME");
+		  "MEDIAN", "DOUBLE, DATETIME, TIME");
 	  goto end;
 	}
     }

@@ -228,7 +228,7 @@ extern int qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
 					 VAL_DESCR * vd);
 extern int qdata_finalize_analytic_func (THREAD_ENTRY * thread_p,
 					 ANALYTIC_TYPE * func_p,
-					 bool keep_list_file);
+					 bool is_same_group);
 extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p,
 						QFILE_LIST_ID * list_id,
 						VAL_LIST * single_tuple);
@@ -302,6 +302,18 @@ extern int qdata_tuple_to_values_array (THREAD_ENTRY * thread_p,
 					QFILE_TUPLE_DESCRIPTOR * tuple,
 					DB_VALUE ** values);
 extern int qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p);
+extern int qdata_apply_median_function_coercion (DB_VALUE * f_value,
+						 TP_DOMAIN ** result_dom,
+						 double *d_result,
+						 DB_VALUE * result);
+extern int qdata_interpolate_median_function_values (DB_VALUE * f_value,
+						     DB_VALUE * c_value,
+						     double row_num_d,
+						     double f_row_num_d,
+						     double c_row_num_d,
+						     TP_DOMAIN ** result_dom,
+						     double *d_result,
+						     DB_VALUE * result);
 extern int qdata_get_median_function_result (THREAD_ENTRY * thread_p,
 					     QFILE_LIST_SCAN_ID * scan_id,
 					     TP_DOMAIN * domain,

@@ -58,6 +58,10 @@
 #define INDENTED_TITLE_FMT	INDENT_FMT TITLE_FMT
 #define __STR(n)		__VAL(n)
 #define __VAL(n)		#n
+#define SORT_SPEC_FMT(spec) \
+  "%d %s %s", (spec)->pos_descr.pos_no + 1, \
+  ((spec)->s_order == S_ASC ? "asc" : "desc"), \
+  ((spec)->s_nulls == S_NULLS_FIRST ? "nulls first" : "nulls last")
 
 #define VALID_INNER(plan)	(plan->well_rooted || \
 				 (plan->plan_type == QO_PLANTYPE_SORT))
@@ -126,6 +130,7 @@ static void qo_plan_print_projected_segs (QO_PLAN *, FILE *, int);
 static void qo_plan_print_sarged_terms (QO_PLAN *, FILE *, int);
 static void qo_plan_print_outer_join_terms (QO_PLAN *, FILE *, int);
 static void qo_plan_print_subqueries (QO_PLAN *, FILE *, int);
+static void qo_plan_print_analytic_eval (QO_PLAN *, FILE *, int);
 static void qo_sort_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *,
 			  void (*)(QO_PLAN *, void *), void *);
 static void qo_join_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *,
@@ -1665,6 +1670,83 @@ qo_plan_print_subqueries (QO_PLAN * plan, FILE * f, int howfar)
 }
 
 /*
+ * qo_plan_print_analytic_eval () - print evaluation order of analytic
+ *				    functions
+ *   return:
+ *   plan(in):
+ *   f(in):
+ *   howfar(in):
+ */
+static void
+qo_plan_print_analytic_eval (QO_PLAN * plan, FILE * f, int howfar)
+{
+  ANALYTIC_EVAL_TYPE *eval;
+  ANALYTIC_TYPE *func;
+  SORT_LIST *sort;
+  int i, j, k;
+  char buf[32];
+
+  if (plan->analytic_eval_list != NULL)
+    {
+      fprintf (f, "\n\nAnalytic functions:");
+
+      /* list functions */
+      for (i = 0, k = 0, eval = plan->analytic_eval_list; eval != NULL;
+	   eval = eval->next, k++)
+	{
+	  /* run info */
+	  sprintf (buf, "run[%d]: ", k);
+	  fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', buf);
+	  fprintf (f, "sort with key (");
+
+	  /* eval sort list */
+	  for (sort = eval->sort_list; sort != NULL; sort = sort->next)
+	    {
+	      fprintf (f, SORT_SPEC_FMT (sort));
+	      if (sort->next != NULL)
+		{
+		  fputs (", ", f);
+		}
+	    }
+	  fputs (")", f);
+
+	  for (func = eval->head; func != NULL; func = func->next, i++)
+	    {
+	      /* func info */
+	      fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "");
+	      fprintf (f, "func[%d]: ", i);
+	      fputs (pt_show_function (func->function), f);
+
+	      /* func partition by */
+	      fputs (" partition by (", f);
+	      for (sort = eval->sort_list, j = func->sort_prefix_size;
+		   sort != NULL && j > 0; sort = sort->next, j--)
+		{
+		  fprintf (f, SORT_SPEC_FMT (sort));
+		  if (sort->next != NULL && j != 1)
+		    {
+		      fputs (", ", f);
+		    }
+		}
+
+	      /* func order by */
+	      fputs (") order by (", f);
+	      for (j = func->sort_list_size - func->sort_prefix_size;
+		   sort != NULL && j > 0; sort = sort->next, j--)
+		{
+		  fprintf (f, SORT_SPEC_FMT (sort));
+		  if (sort->next != NULL && j != 1)
+		    {
+		      fputs (", ", f);
+		    }
+		}
+	      fputs (")", f);
+	    }
+	}
+    }
+}
+
+/*
  * qo_scan_new () -
  *   return:
  *   info(in):
@@ -1694,6 +1776,7 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method,
   plan->top_rooted = false;
   plan->well_rooted = true;
   plan->iscan_sort_list = NULL;
+  plan->analytic_eval_list = NULL;
   plan->plan_type = QO_PLANTYPE_SCAN;
   plan->order = QO_UNORDERED;
 
@@ -2491,6 +2574,7 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
   plan->top_rooted = subplan->top_rooted;
   plan->well_rooted = false;
   plan->iscan_sort_list = NULL;
+  plan->analytic_eval_list = NULL;
   plan->order = order;
   plan->plan_type = QO_PLANTYPE_SORT;
   plan->vtbl = &qo_sort_plan_vtbl;
@@ -2791,6 +2875,7 @@ qo_join_new (QO_INFO * info,
   plan->top_rooted = false;
   plan->well_rooted = false;
   plan->iscan_sort_list = NULL;
+  plan->analytic_eval_list = NULL;
   plan->plan_type = QO_PLANTYPE_JOIN;
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
   plan->has_sort_limit = (outer->has_sort_limit || inner->has_sort_limit);
@@ -3433,6 +3518,7 @@ qo_follow_new (QO_INFO * info,
   plan->top_rooted = false;
   plan->well_rooted = head_plan->well_rooted;
   plan->iscan_sort_list = NULL;
+  plan->analytic_eval_list = NULL;
   plan->plan_type = QO_PLANTYPE_FOLLOW;
   plan->vtbl = &qo_follow_plan_vtbl;
   plan->order = QO_UNORDERED;
@@ -3622,6 +3708,7 @@ qo_worst_new (QO_ENV * env)
   plan->top_rooted = true;
   plan->well_rooted = false;
   plan->iscan_sort_list = NULL;
+  plan->analytic_eval_list = NULL;
   plan->order = QO_UNORDERED;
   plan->plan_type = QO_PLANTYPE_WORST;
   plan->vtbl = &qo_worst_plan_vtbl;
@@ -4531,6 +4618,7 @@ qo_plan_fprint (QO_PLAN * plan, FILE * f, int howfar, const char *title)
   qo_plan_print_subqueries (plan, f, howfar);
   qo_plan_print_sort_spec (plan, f, howfar);
   qo_plan_print_costs (plan, f, howfar);
+  qo_plan_print_analytic_eval (plan, f, howfar);
 }
 
 /*
@@ -5655,6 +5743,7 @@ qo_find_best_nljoin_inner_plan_on_info (QO_PLAN * outer,
   temp->top_rooted = false;
   temp->well_rooted = false;
   temp->iscan_sort_list = NULL;
+  temp->analytic_eval_list = NULL;
 
   temp->plan_un.join.join_type = join_type;	/* set nl-join type */
   temp->plan_un.join.outer = outer;	/* set outer */

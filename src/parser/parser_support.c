@@ -4411,6 +4411,31 @@ regu_analytic_alloc (void)
 }
 
 /*
+ * regu_analytic_eval_alloc () -
+ *   return: ANALYTIC_EVAL_TYPE *
+ *
+ * Note: Memory allocation function for ANALYTIC_EVAL_TYPE.
+ */
+ANALYTIC_EVAL_TYPE *
+regu_analytic_eval_alloc (void)
+{
+  ANALYTIC_EVAL_TYPE *ptr;
+
+  ptr =
+    (ANALYTIC_EVAL_TYPE *) pt_alloc_packing_buf (sizeof (ANALYTIC_EVAL_TYPE));
+  if (ptr == NULL)
+    {
+      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
+    }
+  else
+    {
+      regu_analytic_eval_init (ptr);
+    }
+
+  return ptr;
+}
+
+/*
  * regu_analytic_init () -
  *   return:
  *   ptr(in)    : pointer to an analytic structure
@@ -4423,20 +4448,34 @@ regu_analytic_init (ANALYTIC_TYPE * ptr)
   ptr->next = NULL;
   ptr->value = NULL;
   ptr->value2 = NULL;
-  ptr->outptr_idx = 0;
+  ptr->out_value = NULL;
   ptr->offset_idx = 0;
   ptr->default_idx = 0;
   ptr->curr_cnt = 0;
-  ptr->partition_cnt = 0;
+  ptr->sort_prefix_size = 0;
+  ptr->sort_list_size = 0;
   ptr->function = (FUNC_TYPE) 0;
   regu_var_init (&ptr->operand);
-  ptr->sort_list = NULL;
   ptr->opr_dbtype = DB_TYPE_NULL;
   ptr->flag = 0;
-  ptr->eval_group = -1;
   ptr->from_last = false;
   ptr->ignore_nulls = false;
   ptr->is_const_operand = false;
+}
+
+/*
+ * regu_analytic_eval_init () -
+ *   return:
+ *   ptr(in)    : pointer to an analytic structure
+ *
+ * Note: Initialization function for ANALYTIC_EVAL_TYPE.
+ */
+void
+regu_analytic_eval_init (ANALYTIC_EVAL_TYPE * ptr)
+{
+  ptr->next = NULL;
+  ptr->head = NULL;
+  ptr->sort_list = NULL;
 }
 
 /*

@@ -186,6 +186,7 @@ struct qo_plan
 							 */
   bool has_sort_limit;		/* true if this plan or one if its subplans is a
 				 * SORT-LIMIT plan */
+  ANALYTIC_EVAL_TYPE *analytic_eval_list;	/* analytic evaluation list */
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))

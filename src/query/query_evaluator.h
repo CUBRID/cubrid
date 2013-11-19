@@ -103,13 +103,19 @@ typedef enum
 
 #define QPROC_ANALYTIC_HAS_SUBPARTITIONS(func_p) \
   (((func_p) != NULL) \
-   && ((func_p)->function != PT_LEAD) \
-   && ((func_p)->function != PT_LAG) \
-   && ((func_p)->function != PT_NTH_VALUE) \
    && ((func_p)->function != PT_NTILE) \
-   && ((func_p)->function != PT_MEDIAN) \
-   && ((func_p)->function != PT_CUME_DIST) \
-   && ((func_p)->function != PT_PERCENT_RANK))
+   && ((func_p)->function != PT_FIRST_VALUE) \
+   && ((func_p)->function != PT_LAST_VALUE))
+
+#define QPROC_ANALYTIC_IS_OFFSET_FUNCTION(func_p) \
+    (((func_p) != NULL) \
+    && (((func_p)->function == PT_LEAD) \
+        || ((func_p)->function == PT_LAG) \
+        || ((func_p)->function == PT_NTH_VALUE)))
+
+#define QPROC_ANALYTIC_IGNORE_NULLS(func_p) \
+    ((func_p) != NULL \
+     && ((func_p)->ignore_nulls || ((func_p)->function == PT_MEDIAN)))
 
 #define NUM_F_GENERIC_ARGS 32
 #define NUM_F_INSERT_SUBSTRING_ARGS 4
@@ -464,14 +470,6 @@ struct aggregate_list_node
   AGGREGATE_DIST_PERCENT_INFO agg_info;	/* for CUME_DIST and PERCENT_RANK calculation; */
 };
 
-typedef struct analytic_offset_function_info ANALYTIC_OFFSET_FUNCTION_INFO;
-struct analytic_offset_function_info
-{
-  QFILE_LIST_SCAN_ID lsid;
-  QFILE_TUPLE_RECORD tplrec;
-  int tuple_idx;		/* offset scan tuple index within group */
-};
-
 typedef struct analytic_ntile_function_info ANALYTIC_NTILE_FUNCTION_INFO;
 struct analytic_ntile_function_info
 {
@@ -479,33 +477,10 @@ struct analytic_ntile_function_info
   int bucket_count;		/* number of required buckets */
 };
 
-typedef struct analytic_cume_percent_function_info
-  ANALYTIC_CUME_PERCENT_FUNCTION_INFO;
-struct analytic_cume_percent_function_info
-{
-  int last_pos;			/* record the current position of the 
-				 * rows that are no larger than the current row 
-				 */
-  double last_res;		/* record the last result */
-};
-
-
-typedef struct analytic_median_function_info ANALYTIC_MEDIAN_FUNCTION_INFO;
-struct analytic_median_function_info
-{
-  int start_pos;		/* record the first not null value's pos */
-  int end_pos;			/* record the last not null value's pos */
-  bool is_start_null;		/* deal with null at beginning of list_file */
-};
-
-
 typedef union analytic_function_info ANALYTIC_FUNCTION_INFO;
 union analytic_function_info
 {
-  ANALYTIC_OFFSET_FUNCTION_INFO offset;
   ANALYTIC_NTILE_FUNCTION_INFO ntile;
-  ANALYTIC_MEDIAN_FUNCTION_INFO median;
-  ANALYTIC_CUME_PERCENT_FUNCTION_INFO cume_percent;
 };
 
 typedef struct analytic_list_node ANALYTIC_TYPE;
@@ -517,19 +492,17 @@ struct analytic_list_node
   FUNC_TYPE function;		/* analytic function type */
   QUERY_OPTIONS option;		/* DISTINCT/ALL option */
   TP_DOMAIN *domain;		/* domain of the result */
-  SORT_LIST *sort_list;		/* partition sort */
 
   DB_TYPE opr_dbtype;		/* operand data type */
   REGU_VARIABLE operand;	/* operand */
 
   int flag;			/* flags */
-  int partition_cnt;		/* number of partition items in sort list */
-  int outptr_idx;		/* index of reguvar in list */
+  int sort_prefix_size;		/* number of PARTITION BY cols in sort list */
+  int sort_list_size;		/* the total size of the sort list */
   int offset_idx;		/* index of offset value in select list (for
 				   LEAD/LAG/NTH_value functions) */
   int default_idx;		/* index of default value in select list (for
 				   LEAD/LAG functions) */
-  int eval_group;		/* evaluation group id */
   bool from_last;		/* begin at the last or first row */
   bool ignore_nulls;		/* ignore or respect NULL values */
   bool is_const_operand;	/* is the operand a constant or a host var
@@ -541,7 +514,7 @@ struct analytic_list_node
   QFILE_LIST_ID *list_id;	/* used for distinct handling */
   DB_VALUE *value;		/* value of the aggregate */
   DB_VALUE *value2;		/* for STTDEV and VARIANCE */
-  DB_VALUE *save_value;		/* DB_VALUE pointer holder */
+  DB_VALUE *out_value;		/* DB_VALUE used for output */
   DB_VALUE part_value;		/* partition temporary accumulator */
   int curr_cnt;			/* current number of items */
 };
@@ -552,6 +525,14 @@ struct analytic_list_node
 #define ANALYTIC_FUNC_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define ANALYTIC_FUNC_SET_FLAG(x, f)         (x)->flag |= (int) (f)
 #define ANALYTIC_FUNC_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
+
+typedef struct analytic_eval_type ANALYTIC_EVAL_TYPE;
+struct analytic_eval_type
+{
+  ANALYTIC_EVAL_TYPE *next;	/* next eval group */
+  ANALYTIC_TYPE *head;		/* analytic type list */
+  SORT_LIST *sort_list;		/* partition sort */
+};
 
 typedef struct function_node FUNCTION_TYPE;
 struct function_node
