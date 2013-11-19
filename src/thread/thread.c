@@ -3143,17 +3143,6 @@ thread_check_ha_delay_info_thread (void *arg_p)
 	}
 
       /* do its job */
-      delay_limit_in_secs =
-	prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_IN_SECS);
-      acceptable_delay_in_secs =
-	delay_limit_in_secs -
-	prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_DELTA_IN_SECS);
-
-      if (acceptable_delay_in_secs < 0)
-	{
-	  acceptable_delay_in_secs = 0;
-	}
-
       csect_enter (tsd_ptr, CSECT_HA_SERVER_STATE, INF_WAIT);
 
       server_state = css_ha_server_state ();
@@ -3161,12 +3150,27 @@ thread_check_ha_delay_info_thread (void *arg_p)
       if (server_state == HA_SERVER_STATE_ACTIVE
 	  || server_state == HA_SERVER_STATE_TO_BE_STANDBY)
 	{
+	  css_unset_ha_repl_delayed ();
+	  mnt_x_ha_repl_delay (tsd_ptr, 0);
+
 	  log_append_ha_server_state (tsd_ptr, server_state);
+
 	  csect_exit (tsd_ptr, CSECT_HA_SERVER_STATE);
 	}
       else
 	{
 	  csect_exit (tsd_ptr, CSECT_HA_SERVER_STATE);
+
+	  delay_limit_in_secs =
+	    prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_IN_SECS);
+	  acceptable_delay_in_secs =
+	    delay_limit_in_secs -
+	    prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_DELTA_IN_SECS);
+
+	  if (acceptable_delay_in_secs < 0)
+	    {
+	      acceptable_delay_in_secs = 0;
+	    }
 
 	  error_code =
 	    catcls_get_apply_info_log_record_time (tsd_ptr, &log_record_time);
