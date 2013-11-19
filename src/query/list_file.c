@@ -1269,6 +1269,9 @@ qfile_load_xasl_node_header (THREAD_ENTRY * thread_p,
     {
       return;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, xasl_page_p, PAGE_XASL);
+
   xasl_stream = xasl_page_p + QFILE_PAGE_HEADER_SIZE;
   /* get XASL node header from stream */
   (void) stx_map_stream_to_xasl_node_header (thread_p, xasl_header_p,
@@ -1651,6 +1654,9 @@ qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p,
 	{
 	  return ER_FAILED;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, last_page_ptr, PAGE_QRESULT);
+
     }
 
   list_id_p->last_pgptr = last_page_ptr;

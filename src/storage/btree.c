@@ -14113,6 +14113,8 @@ static int
 btree_get_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int slot_id,
 		  RECDES * rec, int is_peeking)
 {
+  assert_release (slot_id >= HEADER);
+
   if (slot_id == HEADER)
     {
       goto error;

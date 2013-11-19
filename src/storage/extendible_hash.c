@@ -1258,7 +1258,11 @@ ehash_fix_old_page (THREAD_ENTRY * thread_p, const VFID * vfid_p,
 		  ER_EH_UNKNOWN_EXT_HASH, 4, vfid_p->volid, vfid_p->fileid,
 		  vpid_p->volid, vpid_p->pageid);
 	}
+
+      return NULL;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_EHASH);
 
   return page_p;
 }

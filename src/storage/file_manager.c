@@ -12191,6 +12191,8 @@ file_verify_idsmap_image (THREAD_ENTRY * thread_p, INT16 volid,
 	  break;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, alloc_pgptr, PAGE_VOLBITMAP);
+
       file_offset =
 	vol_ids_map + (i * IO_PAGESIZE) + sizeof (FILEIO_PAGE_RESERVED);
 

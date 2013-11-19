@@ -237,10 +237,10 @@ typedef enum
   PAGE_VOLHEADER,		/* volume header page           */
   PAGE_VOLBITMAP,		/* volume bitmap page           */
   PAGE_XASL,			/* xasl stream page             */
-  PAGE_QRESULT,			/* TODO - query result page     */
-  PAGE_EHASH,			/* TODO - ehash bucket/dir page */
-  PAGE_LARGEOBJ,		/* TODO - large object/dir page */
-  PAGE_OVERFLOW,		/* TODO - overflow page         */
+  PAGE_QRESULT,			/* query result page            */
+  PAGE_EHASH,			/* ehash bucket/dir page        */
+  PAGE_LARGEOBJ,		/* large object/dir page        */
+  PAGE_OVERFLOW,		/* overflow page                */
   PAGE_AREA,			/* area page                    */
   PAGE_CATALOG,			/* catalog page                 */
   PAGE_BTREE,			/* TODO - b+tree index page     */

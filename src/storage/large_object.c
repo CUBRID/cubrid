@@ -601,6 +601,8 @@ largeobjmgr_getnewpage (THREAD_ENTRY * thread_p, LOID * loid, VPID * vpid,
       return NULL;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_LARGEOBJ);
+
   /* Need undo log, for cases of unexpected rollback, but only
      if the file is not new */
   if (file_is_new_file (thread_p, &(loid->vfid)) == FILE_OLD_FILE)
@@ -672,6 +674,8 @@ largeobjmgr_allocset_pages (THREAD_ENTRY * thread_p, LOID * loid,
 	      goto exit_on_error;
 	    }
 
+	  (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_LARGEOBJ);
+
 	  /* Need undo log, for cases of unexpected rollback */
 	  addr.vfid = &alloc_p->loid->vfid;
 	  addr.offset = -1;
@@ -733,6 +737,7 @@ largeobjmgr_fetch_nxallocset_page (THREAD_ENTRY * thread_p,
 	{
 	  return NULL;
 	}
+
       alloc_p->tot_allocated++;
     }
   else
@@ -750,6 +755,8 @@ largeobjmgr_fetch_nxallocset_page (THREAD_ENTRY * thread_p,
 	  return NULL;
 	}
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_LARGEOBJ);
 
   return page_ptr;
 }
@@ -1082,6 +1089,8 @@ largeobjmgr_write_entry (THREAD_ENTRY * thread_p, LOID * loid,
 	  goto exit_on_error;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_LARGEOBJ);
+
       /* overwrite the area in the slot */
       ret = largeobjmgr_sp_overwrite (thread_p, loid, page_ptr,
 				      cur_dir_entry_p->slotid, bg_woffset,
@@ -1165,6 +1174,8 @@ largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid,
 	{
 	  return ER_FAILED;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_LARGEOBJ);
 
       if (dlength == cur_slot_length)
 	{
@@ -1346,6 +1357,8 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
 	    {
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_LARGEOBJ);
 
 	  plength = 0;
 	  if (cur_dir_entry_p->length <=
@@ -1601,6 +1614,8 @@ largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p, LOID * loid,
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_LARGEOBJ);
 
       /* How much space do we have on last page ? */
       xlength = spage_max_space_for_new_record (thread_p, page_ptr);
@@ -1917,6 +1932,9 @@ largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
 		  goto exit_on_error;
 		}
 
+	      (void) pgbuf_check_page_ptype (thread_p, page_ptr,
+					     PAGE_LARGEOBJ);
+
 	      /* Append as much as you can to the current slot entry */
 	      plength = largeobjmgr_max_append_putin (thread_p, page_ptr,
 						      cur_dir_entry_p->
@@ -2121,6 +2139,9 @@ largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode,
 			goto exit_on_error;
 		      }
 
+		    (void) pgbuf_check_page_ptype (thread_p, page_ptr,
+						   PAGE_LARGEOBJ);
+
 		    if (spage_get_record (page_ptr, cur_dir_entry_p->slotid,
 					  &recdes, PEEK) != S_SUCCESS)
 		      {
@@ -2316,6 +2337,8 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 	      goto exit_on_error;
 	    }
 
+	  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_LARGEOBJ);
+
 	  if (spage_get_record (page_ptr, cur_dir_entry.slotid, &recdes, COPY)
 	      != S_SUCCESS)
 	    {
@@ -2367,6 +2390,9 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 		{
 		  goto exit_on_error;
 		}
+
+	      (void) pgbuf_check_page_ptype (thread_p, temp_page_ptr,
+					     PAGE_LARGEOBJ);
 
 	      if (spage_get_record
 		  (temp_page_ptr, cur_temp_dir_entry_p->slotid, &data_recdes,

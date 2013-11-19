@@ -1359,6 +1359,9 @@ catalog_get_record_from_page (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, catalog_record_p->page_p,
+				 PAGE_CATALOG);
+
   if (spage_get_record (catalog_record_p->page_p, catalog_record_p->slotid,
 			&catalog_record_p->recdes, PEEK) != S_SUCCESS)
     {
@@ -1690,6 +1693,8 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 	{
 	  return ER_FAILED;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, overflow_page_p, PAGE_CATALOG);
 
       spage_get_record (overflow_page_p, CATALOG_HEADER_SLOT, &record, PEEK);
       new_overflow_vpid.pageid =

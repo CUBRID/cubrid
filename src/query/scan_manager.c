@@ -3144,6 +3144,9 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     {
       return ER_FAILED;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, Root, PAGE_BTREE);
+
   if (btree_read_root_header (Root, &root_header) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, Root);

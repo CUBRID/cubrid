@@ -1218,6 +1218,11 @@ heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p, VPID * vpid_ptr,
 			 PGBUF_UNCONDITIONAL_LATCH);
     }
 
+  if (pgptr != NULL)
+    {
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
+    }
+
   return pgptr;
 }
 
@@ -4181,6 +4186,8 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 	    {
 	      break;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
 
 	  ret = heap_vpid_next (hfid, pgptr, &next_vpid);
 	  if (ret != NO_ERROR)

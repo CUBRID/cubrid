@@ -3263,7 +3263,12 @@ pgbuf_set_bcb_page_vpid (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  assert (!VPID_ISNULL (&bufptr->vpid));
+  if (bufptr == NULL || VPID_ISNULL (&bufptr->vpid))
+    {
+      assert (bufptr != NULL);
+      assert (!VPID_ISNULL (&bufptr->vpid));
+      return;
+    }
 
   /* perm volume */
   if (bufptr->vpid.volid > NULL_VOLID)
@@ -6682,7 +6687,11 @@ pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 {
   PGBUF_BCB *bufptr;
 
-  assert (pgptr != NULL);
+  if (pgptr == NULL)
+    {
+      assert (false);
+      return false;
+    }
 
 #if 1				/* TODO - do not delete me */
 #if defined(NDEBUG)
@@ -6746,7 +6755,12 @@ pgbuf_check_bcb_page_vpid (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  assert (!VPID_ISNULL (&bufptr->vpid));
+  if (bufptr == NULL || VPID_ISNULL (&bufptr->vpid))
+    {
+      assert (bufptr != NULL);
+      assert (!VPID_ISNULL (&bufptr->vpid));
+      return false;
+    }
 
   /* perm volume */
   if (bufptr->vpid.volid > NULL_VOLID)

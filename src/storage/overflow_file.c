@@ -184,6 +184,8 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
       return NULL;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, vfid_fhdr_pgptr, PAGE_FTAB);
+
   /*
    * Guess the number of pages. The total number of pages is found by
    * dividing length by pagesize - the smallest header. Then, we make sure
@@ -480,6 +482,8 @@ overflow_traverse (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 	  goto exit_on_error;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+
       vpid = next_vpid;
       overflow_next_vpid (ovf_vpid, &next_vpid, pgptr);
 
@@ -765,6 +769,9 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 		  goto exit_on_error;
 		}
 
+	      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr,
+					     PAGE_OVERFLOW);
+
 	      tmp_vpid = next_vpid;
 	      rest_parts = (OVERFLOW_REST_PART *) addr.pgptr;
 	      next_vpid = rest_parts->next_vpid;
@@ -903,6 +910,8 @@ overflow_get_length (THREAD_ENTRY * thread_p, const VPID * ovf_vpid)
       return -1;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+
   length = ((OVERFLOW_FIRST_PART *) pgptr)->length;
 
   pgbuf_unfix_and_init (thread_p, pgptr);
@@ -954,6 +963,8 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
     {
       return S_ERROR;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
 
   first_part = (OVERFLOW_FIRST_PART *) pgptr;
   *remaining_length = first_part->length;
@@ -1066,6 +1077,9 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
 	      recdes->length = 0;
 	      return S_ERROR;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+
 	  rest_parts = (OVERFLOW_REST_PART *) pgptr;
 	  copyfrom = (char *) rest_parts->data;
 	  next_vpid = rest_parts->next_vpid;
@@ -1137,6 +1151,8 @@ overflow_get_capacity (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
       return ER_FAILED;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+
   first_part = (OVERFLOW_FIRST_PART *) pgptr;
   remain_length = first_part->length;
 
@@ -1182,6 +1198,8 @@ overflow_get_capacity (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
 	    {
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
 
 	  rest_parts = (OVERFLOW_REST_PART *) pgptr;
 	  hdr_length = offsetof (OVERFLOW_REST_PART, data);
