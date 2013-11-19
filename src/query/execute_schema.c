@@ -4210,6 +4210,7 @@ compile_partition_expression (PARSER_CONTEXT * parser, PT_NODE * entity_name,
 
   /* perform semantic check on the expression */
   expr = pinfo->info.partition.expr;
+  mq_clear_ids (parser, expr, NULL);
   if (pt_semantic_quick_check_node (parser, &spec, &expr) == NULL)
     {
       return NULL;
