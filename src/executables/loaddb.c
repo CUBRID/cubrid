@@ -190,9 +190,9 @@ ldr_validate_object_file (FILE * outfp, const char *argv0)
 {
   if (Volume == NULL)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_LOADDB,
-				       LOADDB_MSG_MISSING_DBNAME));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_LOADDB,
+					     LOADDB_MSG_MISSING_DBNAME));
       load_usage (argv0);
       return 1;
     }
@@ -202,6 +202,7 @@ ldr_validate_object_file (FILE * outfp, const char *argv0)
       /* if schema/index file are specified, process them only */
       if (Schema_file[0] == 0 && Index_file[0] == 0)
 	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 	  load_usage (argv0);
 	  return 1;
 	}
@@ -213,10 +214,10 @@ ldr_validate_object_file (FILE * outfp, const char *argv0)
   else if (Input_file[0] != 0 && Object_file[0] != 0 &&
 	   strcmp (Input_file, Object_file) != 0)
     {
-      fprintf (outfp,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID,
-			       MSGCAT_SET_GENERAL,
-			       MSGCAT_GENERAL_ARG_DUPLICATE), "input-file");
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_CUBRID,
+					     MSGCAT_SET_GENERAL,
+					     MSGCAT_GENERAL_ARG_DUPLICATE),
+			     "input-file");
       return 1;
     }
   else
@@ -414,8 +415,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   static int interrupted = false;
   int au_save = 0;
   extern bool obt_Enable_autoincrement;
-
   char log_file_name[PATH_MAX];
+  const char *msg_format;
 
   LOADDB_INIT_DEBUG ();
   obt_Enable_autoincrement = false;
@@ -464,6 +465,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   if (ldr_validate_object_file (stderr, arg->argv0))
     {
+      status = 1;
       goto error_return;
     }
 
@@ -519,7 +521,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   loaddb_log_file = fopen (log_file_name, "w+");
   if (loaddb_log_file == NULL)
     {
-      printf ("Cannot open log file %s\n", log_file_name);
+      PRINT_AND_LOG_ERR_MSG ("Cannot open log file %s\n", log_file_name);
       status = 2;
       goto error_return;
     }
@@ -604,10 +606,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       schema_file = fopen (Schema_file, "r");
       if (schema_file == NULL)
 	{
-	  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
-					    MSGCAT_UTIL_SET_LOADDB,
-					    LOADDB_MSG_BAD_INFILE),
-			 Schema_file);
+	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_LOADDB,
+				       LOADDB_MSG_BAD_INFILE);
+	  print_log_msg (1, msg_format, Schema_file);
+	  util_log_write_errstr (msg_format, Schema_file);
 	  status = 2;
 	  goto error_return;
 	}
@@ -617,10 +620,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       index_file = fopen (Index_file, "r");
       if (index_file == NULL)
 	{
-	  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
-					    MSGCAT_UTIL_SET_LOADDB,
-					    LOADDB_MSG_BAD_INFILE),
-			 Index_file);
+	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_LOADDB,
+				       LOADDB_MSG_BAD_INFILE);
+	  print_log_msg (1, msg_format, Index_file);
+	  util_log_write_errstr (msg_format, Index_file);
 	  status = 2;
 	  goto error_return;
 	}
@@ -631,10 +635,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
       if (object_file == NULL)
 	{
-	  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
-					    MSGCAT_UTIL_SET_LOADDB,
-					    LOADDB_MSG_BAD_INFILE),
-			 Object_file);
+	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_LOADDB,
+				       LOADDB_MSG_BAD_INFILE);
+	  print_log_msg (1, msg_format, Object_file);
+	  util_log_write_errstr (msg_format, Object_file);
 	  status = 2;
 	  goto error_return;
 	}
@@ -657,10 +662,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   /* Disallow syntax only and load only options together */
   if (Load_only && Syntax_check)
     {
-      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
-					MSGCAT_UTIL_SET_LOADDB,
-					LOADDB_MSG_INCOMPATIBLE_ARGS),
+      msg_format = msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_LOADDB,
+				   LOADDB_MSG_INCOMPATIBLE_ARGS);
+      print_log_msg (1, msg_format,
 		     "--" LOAD_LOAD_ONLY_L, "--" LOAD_CHECK_ONLY_L);
+      util_log_write_errstr (msg_format,
+			     "--" LOAD_LOAD_ONLY_L, "--" LOAD_CHECK_ONLY_L);
       status = 1;		/* parsing error */
       goto error_return;
     }
@@ -669,21 +677,26 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     {
       if (Syntax_check)
 	{
-	  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
-					    MSGCAT_UTIL_SET_LOADDB,
-					    LOADDB_MSG_INCOMPATIBLE_ARGS),
+	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_LOADDB,
+				       LOADDB_MSG_INCOMPATIBLE_ARGS);
+	  print_log_msg (1, msg_format,
 			 "--" LOAD_ERROR_CONTROL_FILE_L,
 			 "--" LOAD_CHECK_ONLY_L);
+	  util_log_write_errstr (msg_format,
+				 "--" LOAD_ERROR_CONTROL_FILE_L,
+				 "--" LOAD_CHECK_ONLY_L);
 	  status = 1;		/* parsing error */
 	  goto error_return;
 	}
       error_file = fopen_ex (Error_file, "rt");
       if (error_file == NULL)
 	{
-	  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS,
-					    MSGCAT_UTIL_SET_LOADDB,
-					    LOADDB_MSG_BAD_INFILE),
-			 Error_file);
+	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_LOADDB,
+				       LOADDB_MSG_BAD_INFILE);
+	  print_log_msg (1, msg_format, Error_file);
+	  util_log_write_errstr (msg_format, Error_file);
 	  status = 2;
 	  goto error_return;
 	}
@@ -697,6 +710,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     {
       /* couldn't log in */
       print_log_msg (1, "%s\n", db_error_string (3));
+      util_log_write_errstr ("%s\n", db_error_string (3));
       status = 3;
       db_shutdown ();
       goto error_return;
@@ -723,6 +737,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	{
 	  print_log_msg (1, "\nError occurred during schema loading."
 			 "\nAborting current transaction...");
+	  msg_format = "Error occurred during schema loading."
+	    "Aborting current transaction...\n";
+	  util_log_write_errstr (msg_format);
 	  status = 3;
 	  db_shutdown ();
 	  print_log_msg (1,
@@ -903,6 +920,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 					 lastcommit);
 			}
 #endif /* LDR_OLD_LOADDB */
+
+		      util_log_write_errstr ("%s\n", db_error_string (3));
 		      /*
 		       * don't allow the transaction to be committed at
 		       * this point, note that if we ever move to a scheme
@@ -988,6 +1007,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	{
 	  print_log_msg (1, "\nError occurred during index loading."
 			 "\nAborting current transaction...");
+	  msg_format = "Error occurred during index loading."
+	    "Aborting current transaction...\n";
+	  util_log_write_errstr (msg_format);
 	  status = 3;
 	  db_shutdown ();
 	  print_log_msg (1,
@@ -1253,12 +1275,15 @@ get_ignore_class_list (const char *inputfile_name)
   if (input_file == NULL)
     {
       perror (inputfile_name);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR,
+			    inputfile_name);
       return 1;
     }
 
   ignore_class_list = (char **) malloc (sizeof (char *) * inc_unit);
   if (ignore_class_list == NULL)
     {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
       goto error;
     }
 
@@ -1282,6 +1307,7 @@ get_ignore_class_list (const char *inputfile_name)
 				   sizeof (char *) * (list_size + inc_unit));
 	      if (ignore_class_list == NULL)
 		{
+		  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
 		  goto error;
 		}
 
@@ -1293,6 +1319,7 @@ get_ignore_class_list (const char *inputfile_name)
 	  ignore_class_list[ignore_class_num] = strdup (class_name);
 	  if (ignore_class_list[ignore_class_num] == NULL)
 	    {
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
 	      goto error;
 	    }
 

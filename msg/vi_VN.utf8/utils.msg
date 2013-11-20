@@ -231,6 +231,10 @@ Lệnh có thể dùng :\n\
 36 The server was not configured for HA.\n
 38 Máy chủ được cấu hình cho HA không được liệt kê trong ha_db_list.\n
 39 Máy chủ được cấu hình cho HA không được liệt kê trong ha_node_list.\n
+40 Invalid command.\n
+41 cubrid manager server is not installed.\n
+42 Invalid argument.\n
+43 File(%s) open error.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 CẢNH BÁO: tùy chọn -t bị bỏ qua trong thực thi chế độ độc lập.\n

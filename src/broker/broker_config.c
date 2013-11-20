@@ -50,6 +50,7 @@
 #include "cas_sql_log2.h"
 #include "shard_shm.h"
 #include "shard_metadata.h"
+#include "util_func.h"
 
 #include "ini_parser.h"
 
@@ -294,7 +295,12 @@ broker_config_read_internal (const char *conf_file,
 #if defined (_UC_ADMIN_SO_)
 #define PRINTERROR(...)	sprintf(admin_err_msg, __VA_ARGS__)
 #else /* _UC_ADMIN_SO_ */
-#define PRINTERROR(...)	fprintf(stderr, __VA_ARGS__)
+#define PRINTERROR(...)	\
+  do {\
+    PRINT_AND_LOG_ERR_MSG(__VA_ARGS__); \
+  } \
+  while (0)
+
 #endif /* !_UC_ADMIN_SO_ */
   int num_brs = 0;
   int num_proxy = 0;
@@ -1260,8 +1266,9 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
   if (!is_conf_found)
     {
       err = -1;
-      fprintf (stderr, "Error: can't find %s\n",
-	       (conf_file == NULL) ? default_conf_file_path : conf_file);
+      PRINT_AND_LOG_ERR_MSG ("Error: can't find %s\n",
+			     (conf_file ==
+			      NULL) ? default_conf_file_path : conf_file);
     }
 
   return err;

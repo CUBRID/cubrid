@@ -46,6 +46,7 @@
 #include <pthread.h>
 #endif
 
+#include "dbi.h"
 #include "porting.h"
 #include "tcp.h"
 #include "object_representation.h"
@@ -3959,6 +3960,7 @@ hb_master_init (void)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_cluster_initialize failed. "
 			   "(error=%d). \n", error);
+      util_log_write_errstr ("%s\n", db_error_string (3));
       goto error_return;
     }
 
@@ -3967,6 +3969,7 @@ hb_master_init (void)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_cluster_job_initialize failed. "
 			   "(error=%d). \n", error);
+      util_log_write_errstr ("%s\n", db_error_string (3));
       goto error_return;
     }
 
@@ -3975,6 +3978,7 @@ hb_master_init (void)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_resource_initialize failed. "
 			   "(error=%d). \n", error);
+      util_log_write_errstr ("%s\n", db_error_string (3));
       goto error_return;
     }
 
@@ -3984,6 +3988,7 @@ hb_master_init (void)
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
 			   "hb_resource_job_initialize failed. "
 			   "(error=%d). \n", error);
+      util_log_write_errstr ("%s\n", db_error_string (3));
       goto error_return;
     }
 
@@ -3992,6 +3997,7 @@ hb_master_init (void)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_thread_initialize failed. "
 			   "(error=%d). \n", error);
+      util_log_write_errstr ("%s\n", db_error_string (3));
       goto error_return;
     }
 

@@ -73,6 +73,7 @@
 #include "environment_variable.h"
 #include "message_catalog.h"
 #include "dbi.h"
+#include "util_func.h"
 
 
 static void css_master_error (const char *error_string);
@@ -1168,6 +1169,7 @@ main (int argc, char **argv)
   char hostname[MAXHOSTNAMELEN + sizeof (suffix)];
   char *errlog = NULL;
   int status = EXIT_SUCCESS;
+  const char *msg_format;
 
   if (utility_initialize () != NO_ERROR)
     {
@@ -1198,22 +1200,28 @@ main (int argc, char **argv)
 
   if (er_init (errlog, ER_NEVER_EXIT) != NO_ERROR)
     {
-      printf ("Failed to initialize error manager.\n");
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager.\n");
       status = EXIT_FAILURE;
       goto cleanup;
     }
   if (master_util_config_startup ((argc > 1) ? argv[1] : NULL,
 				  &port_id) == false)
     {
-      css_master_error (msgcat_message (MSGCAT_CATALOG_UTILS,
-					MSGCAT_UTIL_SET_MASTER,
-					MASTER_MSG_NO_PARAMETERS));
+      msg_format = msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_MASTER,
+				   MASTER_MSG_NO_PARAMETERS);
+      css_master_error (msg_format);
+      util_log_write_errstr (msg_format);
       status = EXIT_FAILURE;
       goto cleanup;
     }
 
   if (css_does_master_exist (port_id))
     {
+      msg_format =
+	msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
+			MASTER_MSG_DUPLICATE);
+      util_log_write_errstr (msg_format, argv[0]);
       /* printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_DUPLICATE), argv[0]); */
       status = EXIT_FAILURE;
       goto cleanup;
@@ -1240,7 +1248,7 @@ main (int argc, char **argv)
 
   if (css_master_init (port_id, css_Master_socket_fd) != NO_ERROR)
     {
-      fprintf (stderr, "%s: %s\n", argv[0], db_error_string (1));
+      PRINT_AND_LOG_ERR_MSG ("%s: %s\n", argv[0], db_error_string (1));
       css_master_error (msgcat_message (MSGCAT_CATALOG_UTILS,
 					MSGCAT_UTIL_SET_MASTER,
 					MASTER_MSG_PROCESS_ERROR));

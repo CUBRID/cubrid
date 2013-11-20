@@ -344,6 +344,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 
   if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
     {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       goto error_exit;
     }
 
@@ -388,10 +389,10 @@ createdb (UTIL_FUNCTION_ARG * arg)
       if (util_size_string_to_byte (&v, (const char *) db_page_str) !=
 	  NO_ERROR)
 	{
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_CREATEDB,
-					   CREATEDB_MSG_INVALID_SIZE),
-		   CREATE_DB_PAGE_SIZE_L, db_page_str);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						 MSGCAT_UTIL_SET_CREATEDB,
+						 CREATEDB_MSG_INVALID_SIZE),
+				 CREATE_DB_PAGE_SIZE_L, db_page_str);
 	  goto error_exit;
 	}
       db_page_size = (int) v;
@@ -410,10 +411,10 @@ createdb (UTIL_FUNCTION_ARG * arg)
       if (util_size_string_to_byte (&db_volume_size,
 				    (const char *) db_volume_str) != NO_ERROR)
 	{
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_CREATEDB,
-					   CREATEDB_MSG_INVALID_SIZE),
-		   CREATE_DB_VOLUME_SIZE_L, db_volume_str);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						 MSGCAT_UTIL_SET_CREATEDB,
+						 CREATEDB_MSG_INVALID_SIZE),
+				 CREATE_DB_VOLUME_SIZE_L, db_volume_str);
 	  goto error_exit;
 	}
     }
@@ -442,10 +443,10 @@ createdb (UTIL_FUNCTION_ARG * arg)
       if (util_size_string_to_byte (&v, (const char *) log_page_str)
 	  != NO_ERROR)
 	{
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_CREATEDB,
-					   CREATEDB_MSG_INVALID_SIZE),
-		   CREATE_LOG_PAGE_SIZE_L, log_page_str);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						 MSGCAT_UTIL_SET_CREATEDB,
+						 CREATEDB_MSG_INVALID_SIZE),
+				 CREATE_LOG_PAGE_SIZE_L, log_page_str);
 	  goto error_exit;
 	}
       log_page_size = (int) v;
@@ -465,10 +466,10 @@ createdb (UTIL_FUNCTION_ARG * arg)
 				    (const char *) log_volume_str) !=
 	  NO_ERROR)
 	{
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_CREATEDB,
-					   CREATEDB_MSG_INVALID_SIZE),
-		   CREATE_LOG_VOLUME_SIZE_L, log_volume_str);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						 MSGCAT_UTIL_SET_CREATEDB,
+						 CREATEDB_MSG_INVALID_SIZE),
+				 CREATE_LOG_VOLUME_SIZE_L, log_volume_str);
 	  goto error_exit;
 	}
     }
@@ -500,10 +501,10 @@ createdb (UTIL_FUNCTION_ARG * arg)
 
   if (output_file == NULL)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_CREATEDB,
-				       CREATEDB_MSG_BAD_OUTPUT),
-	       output_file_name);
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_CREATEDB,
+					     CREATEDB_MSG_BAD_OUTPUT),
+			     output_file_name);
       goto error_exit;
     }
 
@@ -540,11 +541,12 @@ createdb (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CREATEDB,
 				       CREATEDB_MSG_FAILURE));
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_CREATEDB,
-				       CREATEDB_MSG_BAD_RANGE),
-	       prm_get_name (PRM_ID_DB_VOLUME_SIZE), vol_buf, min_buf,
-	       max_buf);
+
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_CREATEDB,
+					     CREATEDB_MSG_BAD_RANGE),
+			     prm_get_name (PRM_ID_DB_VOLUME_SIZE), vol_buf,
+			     min_buf, max_buf);
       goto error_exit;
     }
   if (sysprm_check_range (prm_get_name (PRM_ID_LOG_VOLUME_SIZE),
@@ -580,11 +582,12 @@ createdb (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CREATEDB,
 				       CREATEDB_MSG_FAILURE));
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_CREATEDB,
-				       CREATEDB_MSG_BAD_RANGE),
-	       prm_get_name (PRM_ID_LOG_VOLUME_SIZE), vol_buf, min_buf,
-	       max_buf);
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_CREATEDB,
+					     CREATEDB_MSG_BAD_RANGE),
+			     prm_get_name (PRM_ID_LOG_VOLUME_SIZE),
+			     vol_buf, min_buf, max_buf);
+
       goto error_exit;
     }
 
@@ -593,10 +596,10 @@ createdb (UTIL_FUNCTION_ARG * arg)
       user_define_file = fopen (user_define_file_name, "r");
       if (user_define_file == NULL)
 	{
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_CREATEDB,
-					   CREATEDB_MSG_BAD_USERFILE),
-		   user_define_file_name);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						 MSGCAT_UTIL_SET_CREATEDB,
+						 CREATEDB_MSG_BAD_USERFILE),
+				 user_define_file_name);
 	  goto error_exit;
 	}
     }
@@ -636,7 +639,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CREATEDB,
 				       CREATEDB_MSG_FAILURE));
-      fprintf (stderr, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
 
@@ -654,6 +657,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   if ((catcls_Enable != true)
       && (catcls_compile_catalog_classes (NULL) != NO_ERROR))
     {
+      util_log_write_errstr ("%s\n", db_error_string (3));
       db_shutdown ();
       goto error_exit;
     }
@@ -662,12 +666,14 @@ createdb (UTIL_FUNCTION_ARG * arg)
       if (sm_force_write_all_classes () != NO_ERROR
 	  || au_force_write_new_auth () != NO_ERROR)
 	{
+	  util_log_write_errstr ("%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
     }
   if (sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN) != NO_ERROR)
     {
+      util_log_write_errstr ("%s\n", db_error_string (3));
       db_shutdown ();
       goto error_exit;
     }
@@ -678,10 +684,10 @@ createdb (UTIL_FUNCTION_ARG * arg)
     {
       if (parse_user_define_file (user_define_file, output_file) != NO_ERROR)
 	{
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_CREATEDB,
-					   CREATEDB_MSG_BAD_USERFILE),
-		   user_define_file_name);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						 MSGCAT_UTIL_SET_CREATEDB,
+						 CREATEDB_MSG_BAD_USERFILE),
+				 user_define_file_name);
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -712,6 +718,8 @@ print_create_usage:
 				   MSGCAT_UTIL_SET_CREATEDB,
 				   CREATEDB_MSG_USAGE),
 	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
 error_exit:
   if (output_file != stdout && output_file != NULL)
     {
@@ -777,10 +785,11 @@ deletedb (UTIL_FUNCTION_ARG * arg)
 
   if (output_file == NULL)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_GENERIC,
-				       MSGCAT_UTIL_GENERIC_BAD_OUTPUT_FILE),
-	       output_file_name);
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_GENERIC,
+					     MSGCAT_UTIL_GENERIC_BAD_OUTPUT_FILE),
+			     output_file_name);
+
       goto error_exit;
     }
 
@@ -793,7 +802,7 @@ deletedb (UTIL_FUNCTION_ARG * arg)
   db_login ("DBA", NULL);
   if (boot_delete (database_name, force_delete) != NO_ERROR)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
 
@@ -809,6 +818,8 @@ print_delete_usage:
 				   MSGCAT_UTIL_SET_DELETEDB,
 				   DELETEDB_MSG_USAGE),
 	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
 error_exit:
   er_final ();
   if (output_file != stdout && output_file != NULL)
@@ -938,9 +949,9 @@ restoredb (UTIL_FUNCTION_ARG * arg)
 	  restart_arg.stopat = (time_t) mktime (&time_data);
 	  if (status != NO_ERROR || restart_arg.stopat < 0)
 	    {
-	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_RESTOREDB,
-					       RESTOREDB_MSG_BAD_DATE));
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						     MSGCAT_UTIL_SET_RESTOREDB,
+						     RESTOREDB_MSG_BAD_DATE));
 	      goto error_exit;
 	    }
 	}
@@ -967,7 +978,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
   status = boot_restart_from_backup (true, database_name, &restart_arg);
   if (status == NULL_TRAN_INDEX)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_RESTOREDB,
 				       RESTOREDB_MSG_FAILURE));
@@ -985,6 +996,8 @@ print_restore_usage:
 				   MSGCAT_UTIL_SET_RESTOREDB,
 				   RESTOREDB_MSG_USAGE),
 	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
 error_exit:
   return EXIT_FAILURE;
 }
@@ -1034,16 +1047,16 @@ renamedb (UTIL_FUNCTION_ARG * arg)
     }
   else if (ext_path && access (ext_path, F_OK) == -1)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_RENAMEDB,
-				       RENAMEDB_VOLEXT_PATH_INVALID));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_RENAMEDB,
+					     RENAMEDB_VOLEXT_PATH_INVALID));
       goto error_exit;
     }
   else if (control_file_name && access (control_file_name, F_OK) == -1)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_RENAMEDB,
-				       RENAMEDB_VOLS_TOFROM_PATHS_FILE_INVALID));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_RENAMEDB,
+					     RENAMEDB_VOLS_TOFROM_PATHS_FILE_INVALID));
       goto error_exit;
     }
 
@@ -1061,7 +1074,7 @@ renamedb (UTIL_FUNCTION_ARG * arg)
   db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, src_db_name) != NO_ERROR)
     {
-      fprintf (stdout, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
   else
@@ -1070,7 +1083,7 @@ renamedb (UTIL_FUNCTION_ARG * arg)
 			    NULL, ext_path, control_file_name, FALSE, TRUE,
 			    force_delete) != NO_ERROR)
 	{
-	  fprintf (stdout, "%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -1087,6 +1100,8 @@ print_rename_usage:
 				   MSGCAT_UTIL_SET_RENAMEDB,
 				   RENAMEDB_MSG_USAGE),
 	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
 error_exit:
   return EXIT_FAILURE;
 }
@@ -1138,7 +1153,7 @@ installdb (UTIL_FUNCTION_ARG * arg)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1,
 	      db_name);
-      fprintf (stderr, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       cfg_free_directory (db);
       goto error_exit;
     }
@@ -1146,14 +1161,14 @@ installdb (UTIL_FUNCTION_ARG * arg)
   /* have to add it to the config before calling boot_restart */
   if (cfg_read_directory (&dir, 1) != NO_ERROR)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
 
   db = cfg_add_db (&dir, db_name, db_path, log_path, NULL, server_name);
   if (db == NULL)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
 
@@ -1168,14 +1183,14 @@ installdb (UTIL_FUNCTION_ARG * arg)
   db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
 
   if (boot_soft_rename (NULL, db_name, db_path, log_path, server_name,
 			NULL, NULL, FALSE, FALSE, TRUE) != NO_ERROR)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       db_shutdown ();
       goto error_exit;
     }
@@ -1190,6 +1205,8 @@ print_install_usage:
   fprintf (stderr,
 	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_INSTALLDB,
 			   INSTALLDB_MSG_USAGE), basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
 error_exit:
   if (cfg_added)
     {
@@ -1275,9 +1292,9 @@ copydb (UTIL_FUNCTION_ARG * arg)
 
   if (strcmp (src_db_name, dest_db_name) == 0)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_COPYDB,
-				       COPYDB_MSG_IDENTICAL));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_COPYDB,
+					     COPYDB_MSG_IDENTICAL));
       goto error_exit;
     }
 
@@ -1291,7 +1308,7 @@ copydb (UTIL_FUNCTION_ARG * arg)
 
   if (db_restart (arg->command_name, TRUE, src_db_name) != NO_ERROR)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
 
@@ -1307,7 +1324,7 @@ copydb (UTIL_FUNCTION_ARG * arg)
 		 server_name, ext_path, control_file_name,
 		 overwrite) != NO_ERROR)
     {
-      fprintf (stdout, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
   if (delete_src)
@@ -1322,6 +1339,8 @@ print_copy_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				   MSGCAT_UTIL_SET_COPYDB, COPYDB_MSG_USAGE),
 	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
 error_exit:
   er_final ();
 
@@ -1375,7 +1394,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
   db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
 
@@ -1385,7 +1404,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 	  || sm_update_statistics (class_mop,
 				   STATS_WITH_SAMPLING) != NO_ERROR)
 	{
-	  fprintf (stderr, "%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -1394,7 +1413,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
     {
       if (sm_update_all_statistics (STATS_WITH_SAMPLING) != NO_ERROR)
 	{
-	  fprintf (stderr, "%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -1409,6 +1428,8 @@ print_optimize_usage:
 				   MSGCAT_UTIL_SET_OPTIMIZEDB,
 				   OPTIMIZEDB_MSG_USAGE),
 	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
 error_exit:
   return EXIT_FAILURE;
 }
@@ -1471,7 +1492,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
     {
-      fprintf (stdout, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
 
@@ -1620,6 +1641,8 @@ print_diag_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				   MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_USAGE),
 	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
 error_exit:
   return EXIT_FAILURE;
 }
@@ -2041,7 +2064,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
   return EXIT_SUCCESS;
 
 error:
-  fprintf (stdout, "%s\n", db_error_string (3));
+  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 
   /* Deallocate any allocated structures */
   if (dir != NULL)
@@ -2061,6 +2084,8 @@ print_alterdbhost_usage:
 				   MSGCAT_UTIL_SET_ALTERDBHOST,
 				   ALTERDBHOST_MSG_USAGE),
 	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
 error_exit:
   return EXIT_FAILURE;
 }
@@ -2290,9 +2315,9 @@ exit:
   assert (lf != NULL);
   free_and_init (lf);
 
-  if (err_status != EXIT_SUCCESS)
+  if (err_status != EXIT_SUCCESS && er_errid () != NO_ERROR)
     {
-      printf ("%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
     }
 
   return err_status;
@@ -2302,6 +2327,7 @@ print_genlocale_usage:
 				   MSGCAT_UTIL_SET_GENLOCALE,
 				   GENLOCALE_MSG_USAGE),
 	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
   return EXIT_FAILURE;
 }
@@ -2333,6 +2359,7 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
 
   if (!arg->valid_arg)
     {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       goto print_dumplocale_usage;
     }
 
@@ -2671,7 +2698,7 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
   db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
 
@@ -2680,7 +2707,7 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
       status = synccoll_check (db_name, &db_obs_coll_cnt, &new_sys_coll_cnt);
       if (status != EXIT_SUCCESS)
 	{
-	  fprintf (stderr, "%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  goto exit;
 	}
 
@@ -2711,9 +2738,9 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
 	  scanf ("%1s", yn);
 	  if (yn[0] != 'y')
 	    {
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_SYNCCOLLDB,
-					       SYNCCOLLDB_MSG_SYNC_ABORT));
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						     MSGCAT_UTIL_SET_SYNCCOLLDB,
+						     SYNCCOLLDB_MSG_SYNC_ABORT));
 	      goto exit;
 	    }
 	}
@@ -2721,7 +2748,7 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
       status = synccoll_force ();
       if (status != EXIT_SUCCESS)
 	{
-	  fprintf (stderr, "%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_abort_transaction ();
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
 					   MSGCAT_UTIL_SET_SYNCCOLLDB,
@@ -2748,6 +2775,8 @@ print_sync_collations_usage:
 				   MSGCAT_UTIL_SET_SYNCCOLLDB,
 				   SYNCCOLLDB_MSG_USAGE),
 	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
 error_exit:
   return EXIT_FAILURE;
 }

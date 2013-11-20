@@ -231,6 +231,10 @@ cubrid 管理工具，版本 %s\n\
 36 服务器没有为HA进行设置.\n
 38 为HA配置的服务器没有列在 ha_db_list 列表中.\n
 39 为HA配置的服务器没有列在 ha_node_list 列表中.\n
+40 Invalid command.\n
+41 cubrid manager server is not installed.\n
+42 Invalid argument.\n
+43 File(%s) open error.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: 在单机模式下 -t 选项将被忽略.\n

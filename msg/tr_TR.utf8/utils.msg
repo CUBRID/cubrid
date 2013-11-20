@@ -231,6 +231,10 @@ Mevcut komut:\n\
 36 Sunucu HA için yapılandırıldı.\n
 38 HA için ayarlanan sunucu ha_db_list.\n görülmedi. \n Listesinde
 39 HA için ayarlanan sunucu in_ ha_node_list.\n görülmedi. \n Listesinde
+40 Invalid command.\n
+41 cubrid manager server is not installed.\n
+42 Invalid argument.\n
+43 File(%s) open error.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 UYARI: -t seçeneği stand-alone modu yürütülmesine göz ardı edilir.\n

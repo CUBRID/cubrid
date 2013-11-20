@@ -31,6 +31,8 @@
 #include <signal.h>
 #include <assert.h>
 #include <time.h>
+#include <stdarg.h>
+#include <sys/timeb.h>
 #if !defined (WINDOWS)
 #include <sys/time.h>
 #endif /* !WINDOWS */
@@ -38,6 +40,38 @@
 #include "util_func.h"
 #include "porting.h"
 #include "error_code.h"
+#include "utility.h"
+#include "system_parameter.h"
+#include "environment_variable.h"
+
+#define UTIL_LOG_MAX_HEADER_LEN    (30)
+#define UTIL_LOG_MAX_MSG_SIZE       (1024)
+#define UTIL_LOG_BUFFER_SIZE   \
+  (UTIL_LOG_MAX_MSG_SIZE + UTIL_LOG_MAX_HEADER_LEN)
+
+#define UTIL_LOG_FILENAME  "cubrid_utility.log"
+
+#if defined(WINDOWS)
+#define SLEEP_MILISEC(SEC, MSEC)        Sleep((SEC) * 1000 + (MSEC))
+#else
+#define SLEEP_MILISEC(sec, msec)                        \
+        do {                                            \
+          struct timeval sleep_time_val;                \
+          sleep_time_val.tv_sec = sec;                  \
+          sleep_time_val.tv_usec = (msec) * 1000;       \
+          select(0, 0, 0, 0, &sleep_time_val);          \
+        } while(0)
+#endif
+
+static char *util_Log_filename = NULL;
+static char util_Log_filename_buf[PATH_MAX];
+static char util_Log_buffer[UTIL_LOG_BUFFER_SIZE];
+
+static FILE *util_log_file_backup (FILE * fp, const char *path);
+static FILE *util_log_file_fopen (const char *path);
+static FILE *fopen_and_lock (const char *path);
+static int util_log_header (char *buf, size_t buf_len);
+static int util_log_write_internal (const char *msg, const char *prefix_str);
 
 /*
  * hashpjw() - returns hash value of given string
@@ -407,4 +441,291 @@ util_shuffle_string_array (char **array, int count)
       array[j] = array[i];
       array[i] = temp;
     }
+}
+
+/*
+ * util_log_write_result () -
+ *
+ * error (in) :
+ */
+int
+util_log_write_result (int error)
+{
+  const char *result;
+  if (error == NO_ERROR)
+    {
+      return util_log_write_internal ("SUCCESS\n", NULL);
+    }
+  else
+    {
+      /* skip failed log */
+    }
+
+  return 0;
+}
+
+/*
+ * util_log_write_errid () -
+ *
+ * message_id (in) :
+ */
+int
+util_log_write_errid (int message_id, ...)
+{
+  int n;
+  char msg_buf[UTIL_LOG_MAX_MSG_SIZE];
+  const char *format;
+  va_list arg_list;
+
+  format = utility_get_generic_message (message_id);
+  va_start (arg_list, message_id);
+  n = vsnprintf (msg_buf, UTIL_LOG_MAX_MSG_SIZE, format, arg_list);
+  if (n >= UTIL_LOG_MAX_MSG_SIZE)
+    {
+      msg_buf[UTIL_LOG_MAX_MSG_SIZE - 1] = '\0';
+    }
+  va_end (arg_list);
+
+  return util_log_write_internal (msg_buf, "FAILURE: ");
+}
+
+/*
+ * util_log_write_errstr () -
+ *
+ * format (in) :
+ */
+int
+util_log_write_errstr (const char *format, ...)
+{
+  int n;
+  char msg_buf[UTIL_LOG_MAX_MSG_SIZE];
+  va_list arg_list;
+
+  va_start (arg_list, format);
+  n = vsnprintf (msg_buf, UTIL_LOG_MAX_MSG_SIZE, format, arg_list);
+  if (n >= UTIL_LOG_MAX_MSG_SIZE)
+    {
+      msg_buf[UTIL_LOG_MAX_MSG_SIZE - 1] = '\0';
+    }
+  va_end (arg_list);
+
+  return util_log_write_internal (msg_buf, "FAILURE: ");
+}
+
+/*
+ * util_log_write_command () -
+ *
+ * argc (in) :
+ * argv (in) :
+ */
+int
+util_log_write_command (int argc, char *argv[])
+{
+  int i, remained_buf_length, str_len;
+  char command_buf[UTIL_LOG_MAX_MSG_SIZE];
+  char *p;
+
+  memset (command_buf, '\0', UTIL_LOG_MAX_MSG_SIZE);
+  p = command_buf;
+  remained_buf_length = UTIL_LOG_MAX_MSG_SIZE - 1;
+
+  for (i = 0; i < argc && remained_buf_length > 0; i++)
+    {
+      str_len = strlen (argv[i]);
+      if (str_len > remained_buf_length)
+	{
+	  break;
+	}
+      strcpy (p, argv[i]);
+      remained_buf_length -= str_len;
+      p += str_len;
+      if (i < argc - 1 && remained_buf_length > 0)
+	{
+	  /* add white space */
+	  *p = ' ';
+	  p++;
+	  remained_buf_length--;
+	}
+      else if (i == argc - 1 && remained_buf_length > 0)
+	{
+	  *p = '\n';
+	  p++;
+	  remained_buf_length--;
+	}
+    }
+
+  return util_log_write_internal (command_buf, NULL);
+}
+
+/*
+ * util_log_write_internal () -
+ *
+ * msg (in) :
+ * prefix_str(in) :
+ *
+ */
+static int
+util_log_write_internal (const char *msg, const char *prefix_str)
+{
+  char *p;
+  int ret = -1;
+  int len, n;
+  FILE *fp;
+
+  if (util_Log_filename == NULL)
+    {
+      util_Log_filename = util_Log_filename_buf;
+      envvar_logdir_file (util_Log_filename, PATH_MAX, UTIL_LOG_FILENAME);
+    }
+
+  p = util_Log_buffer;
+  len = UTIL_LOG_BUFFER_SIZE;
+  n = util_log_header (p, len);
+  len -= n;
+  p += n;
+
+  if (len > 0)
+    {
+      n = snprintf (p, len, "%s%s", (prefix_str ? prefix_str : ""), msg);
+      if (n >= len)
+	{
+	  p[len - 1] = '\0';
+	}
+    }
+
+  fp = util_log_file_fopen (util_Log_filename);
+  if (fp == NULL)
+    {
+      return -1;
+    }
+
+  ret = fprintf (fp, "%s", util_Log_buffer);
+  fclose (fp);
+
+  return ret;
+}
+
+/*
+ * util_log_header () -
+ *
+ * buf (out) :
+ *
+ */
+static int
+util_log_header (char *buf, size_t buf_len)
+{
+  struct tm tm, *tm_p;
+  time_t sec;
+  int millisec, len;
+  struct timeb tb;
+  char *p;
+  const char *pid;
+
+  if (buf == NULL)
+    {
+      return 0;
+    }
+
+  /* current time */
+  (void) ftime (&tb);
+  sec = tb.time;
+  millisec = tb.millitm;
+
+  tm_p = localtime_r (&sec, &tm);
+
+  len = strftime (buf, buf_len, "%y-%m-%d %H:%M:%S", tm_p);
+  p = buf + len;
+  buf_len -= len;
+
+  pid = envvar_get (UTIL_PID_ENVVAR_NAME);
+  len +=
+    snprintf (p, buf_len, ".%03d (%s) ", millisec,
+	      ((pid == NULL) ? "    " : pid));
+
+  assert (len <= UTIL_LOG_MAX_HEADER_LEN);
+
+  return len;
+}
+
+/*
+ * util_log_file_fopen () -
+ *
+ * path (in) :
+ *
+ */
+static FILE *
+util_log_file_fopen (const char *path)
+{
+  FILE *fp;
+
+  assert (path != NULL);
+
+  fp = fopen_and_lock (path);
+  if (fp != NULL)
+    {
+      fseek (fp, 0, SEEK_END);
+      if (ftell (fp) > prm_get_integer_value (PRM_ID_ER_LOG_SIZE))
+	{
+	  fp = util_log_file_backup (fp, path);
+	}
+    }
+
+  return fp;
+}
+
+/*
+ * util_log_file_backup ()
+ * fp (in) :
+ * path (in) :
+ *
+ */
+static FILE *
+util_log_file_backup (FILE * fp, const char *path)
+{
+  char backup_file[PATH_MAX];
+
+  assert (fp != NULL);
+  assert (path != NULL);
+
+  fclose (fp);
+  sprintf (backup_file, "%s.bak", path);
+  (void) unlink (backup_file);
+  (void) rename (path, backup_file);
+
+  return fopen_and_lock (path);
+}
+
+/*
+ * fopen_and_lock ()
+ * path (in) :
+ *
+ */
+static FILE *
+fopen_and_lock (const char *path)
+{
+#define MAX_RETRY_COUNT 10
+
+  int retry_count = 0;
+  FILE *fp;
+
+retry:
+  fp = fopen (path, "a+");
+  if (fp != NULL)
+    {
+      if (lockf (fileno (fp), F_TLOCK, 0) < 0)
+	{
+	  fclose (fp);
+
+	  if (retry_count < MAX_RETRY_COUNT)
+	    {
+	      SLEEP_MILISEC (0, 100);
+	      retry_count++;
+	      goto retry;
+	    }
+
+	  return NULL;
+	}
+    }
+
+  return fp;
 }

@@ -231,6 +231,10 @@ commandដែលមាន:\n\
 36 The server was not configured for HA.\n
 38 ៣៨កំព្យួទ័របំរើសេវាដែលបានត្រូវកំណត់អោយHAមិនចេញពីបញ្ជី ha_db_list.\n
 39 ៣៩កំព្យួទ័របំរើសេវាដែលបានត្រូវកំណត់អោយHAមិនចេញពី ha_node_list.\n
+40 Invalid command.\n
+41 cubrid manager server is not installed.\n
+42 Invalid argument.\n
+43 File(%s) open error.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: ជម្រើស -t មិនស្គាល់ក្នុងប្រតិបត្តិការ stand-alone mode។\n

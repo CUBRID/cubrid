@@ -69,7 +69,7 @@ utility_initialize ()
 {
   if (msgcat_init () != NO_ERROR)
     {
-      fprintf (stderr, "Unable to access system message catalog.\n");
+      PRINT_AND_LOG_ERR_MSG ("Unable to access system message catalog.\n");
       return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
     }
 
@@ -114,7 +114,7 @@ check_new_database_name (const char *name)
  * check_database_name_local() - check validation of the name of a database
  *   return: error code
  *   name(in): the name of a database
- *   existing_or_new_db(in): whether db is existing or new one 
+ *   existing_or_new_db(in): whether db is existing or new one
  */
 static int
 check_database_name_local (const char *name, int existing_or_new_db)
@@ -146,7 +146,7 @@ check_database_name_local (const char *name, int existing_or_new_db)
 	utility_get_generic_message (MSGCAT_UTIL_GENERIC_BAD_DATABASE_NAME);
       if (message != NULL)
 	{
-	  fprintf (stderr, message, name[i], name);
+	  PRINT_AND_LOG_ERR_MSG (message, name[i], name);
 	}
     }
   return status;
@@ -191,7 +191,7 @@ check_volume_name (const char *name)
 	utility_get_generic_message (MSGCAT_UTIL_GENERIC_BAD_VOLUME_NAME);
       if (message != NULL)
 	{
-	  fprintf (stderr, message, name[i], name);
+	  PRINT_AND_LOG_ERR_MSG (message, name[i], name);
 	}
     }
   return status;
@@ -829,8 +829,8 @@ ret:
 }
 
 /*
- * util_get_ha_mode_for_sa_utils - 
- * 
+ * util_get_ha_mode_for_sa_utils -
+ *
  * return:
  *
  * NOTE:

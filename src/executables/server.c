@@ -49,6 +49,7 @@
 #include "boot_sr.h"
 #include "system_parameter.h"
 #include "perf_monitor.h"
+#include "util_func.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -295,7 +296,7 @@ main (int argc, char **argv)
 
   if (argc < 2)
     {
-      fprintf (stderr, "Usage: server databasename\n");
+      PRINT_AND_LOG_ERR_MSG ("Usage: server databasename\n");
       return 1;
     }
 

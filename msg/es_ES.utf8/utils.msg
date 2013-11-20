@@ -231,6 +231,10 @@ Comando disponible: \n\
 36 El servidor no ha sido configurado para HA.\n
 38 El servidor configurado para HA no es listado en ha_db_list.\n
 39 El servidor configurado para HA no es listado en ha_node_list.\n
+40 Invalid command.\n
+41 cubrid manager server is not installed.\n
+42 Invalid argument.\n
+43 File(%s) open error.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ADVERTENCIA: -t opcion es ignorada en modo de ejecucion independiente.\n

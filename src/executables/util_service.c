@@ -42,6 +42,7 @@
 #include "error_code.h"
 #include "system_parameter.h"
 #include "connection_cl.h"
+#include "util_func.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif
@@ -51,6 +52,10 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif /* !WINDOWS */
+
+#if defined(WINDOWS)
+typedef int pid_t;
+#endif
 
 typedef enum
 {
@@ -93,13 +98,11 @@ typedef enum
   SERVICE_START_HEARTBEAT,
 } UTIL_SERVICE_PROPERTY_E;
 
-#if defined(WINDOWS)
 typedef enum
 {
   ALL_SERVICES_RUNNING,
   ALL_SERVICES_STOPPED
 } UTIL_ALL_SERVICES_STATUS;
-#endif
 
 typedef struct
 {
@@ -250,12 +253,15 @@ static int is_broker_running (void);
 static bool is_manager_running (unsigned int sleep_time);
 #if defined(WINDOWS)
 static bool is_windows_service_running (unsigned int sleep_time);
-static bool are_all_services_running (unsigned int sleep_time);
-static bool are_all_services_stopped (unsigned int sleep_time);
+#endif
+static bool are_all_services_running (unsigned int sleep_time,
+				      bool check_win_service);
+static bool are_all_services_stopped (unsigned int sleep_time,
+				      bool check_win_service);
 static bool check_all_services_status (unsigned int sleep_time,
 				       UTIL_ALL_SERVICES_STATUS
-				       expected_status);
-#endif
+				       expected_status,
+				       bool check_win_service);
 
 static bool ha_make_mem_size (char *mem_size, int size, int value);
 static bool ha_is_registered (const char **v, bool copylogdb);
@@ -470,6 +476,8 @@ main (int argc, char *argv[])
   int util_type, command_type;
   int status;
   bool process_window_service = false;
+  pid_t pid = getpid ();
+  char env_buf[16];
 
 #if defined (DO_NOT_USE_CUBRIDENV)
   char *envval;
@@ -494,6 +502,9 @@ main (int argc, char *argv[])
 	       envvar_vardir_file (path, PATH_MAX, ""));
     }
 #endif
+
+  sprintf (env_buf, "%d", pid);
+  envvar_set (UTIL_PID_ENVVAR_NAME, env_buf);
 
   Argv = (const char **) argv;
   if (argc == 2)
@@ -524,9 +535,23 @@ main (int argc, char *argv[])
 	}
     }
 
+  if (load_properties () != NO_ERROR)
+    {
+      print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
+
+      util_log_write_command (argc, argv);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
+
+      return EXIT_FAILURE;
+    }
+
   if (util_type == ADMIN)
     {
-      return process_admin (argc, argv);
+      util_log_write_command (argc, argv);
+      status = process_admin (argc, argv);
+      util_log_write_result (status);
+
+      return status;
     }
 
   if (util_type == UTIL_HELP)
@@ -564,16 +589,12 @@ main (int argc, char *argv[])
 	}
     }
 
-  if (load_properties () != NO_ERROR)
-    {
-      print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
-      return EXIT_FAILURE;
-    }
+  util_log_write_command (argc, argv);
 
 #if defined(WINDOWS)
   if (css_windows_startup () < 0)
     {
-      printf ("Unable to initialize Winsock.\n");
+      util_log_write_errstr ("Unable to initialize Winsock.\n");
       goto error;
     }
 
@@ -591,6 +612,8 @@ main (int argc, char *argv[])
     {
       process_window_service = false;
     }
+#else
+  assert (process_window_service == false);
 #endif
 
   switch (util_type)
@@ -625,7 +648,10 @@ main (int argc, char *argv[])
     default:
       goto usage;
     }
-  return status;
+
+  util_log_write_result (status);
+
+  return ((status == NO_ERROR) ? EXIT_SUCCESS : EXIT_FAILURE);
 
 usage:
   util_service_usage (util_type);
@@ -890,8 +916,11 @@ process_master (int command_type)
 	  }
 	else
 	  {
+	    status = ER_GENERIC_ERROR;
 	    print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
 			   PRINT_MASTER_NAME);
+	    util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
+				  PRINT_MASTER_NAME);
 	  }
       }
       break;
@@ -903,12 +932,19 @@ process_master (int command_type)
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_ALL_STOP, NULL };
 	  status =
 	    proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+
+	  status =
+	    css_does_master_exist (master_port) ? ER_GENERIC_ERROR : NO_ERROR;
+
 	  print_result (PRINT_MASTER_NAME, status, command_type);
 	}
       else
 	{
+	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			 PRINT_MASTER_NAME);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+				PRINT_MASTER_NAME);
 	}
       break;
     }
@@ -955,7 +991,7 @@ is_windows_service_running (unsigned int sleep_time)
 
   return true;
 }
-
+#endif
 /*
  * are_all_services_running - are all of services running
  *
@@ -966,9 +1002,10 @@ is_windows_service_running (unsigned int sleep_time)
  * NOTE:
  */
 static bool
-are_all_services_running (unsigned int sleep_time)
+are_all_services_running (unsigned int sleep_time, bool check_win_service)
 {
-  return check_all_services_status (sleep_time, ALL_SERVICES_RUNNING);
+  return check_all_services_status (sleep_time, ALL_SERVICES_RUNNING,
+				    check_win_service);
 }
 
 /*
@@ -981,9 +1018,10 @@ are_all_services_running (unsigned int sleep_time)
  * NOTE:
  */
 static bool
-are_all_services_stopped (unsigned int sleep_time)
+are_all_services_stopped (unsigned int sleep_time, bool check_win_service)
 {
-  return check_all_services_status (sleep_time, ALL_SERVICES_STOPPED);
+  return check_all_services_status (sleep_time, ALL_SERVICES_STOPPED,
+				    check_win_service);
 }
 
 
@@ -999,17 +1037,26 @@ are_all_services_stopped (unsigned int sleep_time)
  */
 static bool
 check_all_services_status (unsigned int sleep_time,
-			   UTIL_ALL_SERVICES_STATUS expected_status)
+			   UTIL_ALL_SERVICES_STATUS expected_status,
+			   bool check_win_service)
 {
   bool ret;
   int master_port;
 
-  /* check whether CUBRIDService is running */
-  ret = is_windows_service_running (sleep_time);
-  if ((expected_status == ALL_SERVICES_RUNNING && !ret)
-      || (expected_status == ALL_SERVICES_STOPPED && ret))
+  if (check_win_service)
     {
+#if defined (WINDOWS)
+      /* check whether CUBRIDService is running */
+      ret = is_windows_service_running (sleep_time);
+      if ((expected_status == ALL_SERVICES_RUNNING && !ret)
+	  || (expected_status == ALL_SERVICES_STOPPED && ret))
+	{
+	  return false;
+	}
+#else
+      assert (0);
       return false;
+#endif
     }
 
   master_port = prm_get_master_port_id ();
@@ -1075,7 +1122,7 @@ check_all_services_status (unsigned int sleep_time,
 
   return true;
 }
-#endif
+
 
 /*
  * process_service -
@@ -1091,6 +1138,7 @@ static int
 process_service (int command_type, bool process_window_service)
 {
   int status = NO_ERROR;
+  int ret;
 
   switch (command_type)
     {
@@ -1098,7 +1146,7 @@ process_service (int command_type, bool process_window_service)
       if (process_window_service)
 	{
 #if defined(WINDOWS)
-	  if (!are_all_services_running (0))
+	  if (!are_all_services_running (0, process_window_service))
 	    {
 	      const char *args[] =
 		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVICE,
@@ -1108,39 +1156,60 @@ process_service (int command_type, bool process_window_service)
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
 			    false, false, NULL);
 	      status =
-		are_all_services_running (0) ? NO_ERROR : ER_GENERIC_ERROR;
+		are_all_services_running (0, process_window_service) ?
+		NO_ERROR : ER_GENERIC_ERROR;
 	      print_result (PRINT_SERVICE_NAME, status, command_type);
 	    }
 	  else
 	    {
 	      print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
 			     PRINT_SERVICE_NAME);
-	      return NO_ERROR;
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
+				    PRINT_SERVICE_NAME);
+	      status = ER_GENERIC_ERROR;
 	    }
 #endif
 	}
       else
 	{
+	  if (!are_all_services_running (0, process_window_service))
+	    {
+	      (void) process_master (command_type);
 
-	  status = process_master (command_type);
+	      if (strcmp (get_property (SERVICE_START_SERVER),
+			  PROPERTY_ON) == 0
+		  && strlen (us_Property_map[SERVER_START_LIST].
+			     property_value) != 0)
+		{
+		  (void) process_server (command_type, 0, NULL, false, true,
+					 false);
+		}
+	      if (strcmp (get_property (SERVICE_START_BROKER),
+			  PROPERTY_ON) == 0)
+		{
+		  (void) process_broker (command_type, 0, NULL, false);
+		}
+	      if (strcmp (get_property (SERVICE_START_MANAGER),
+			  PROPERTY_ON) == 0)
+		{
+		  (void) process_manager (command_type, false);
+		}
+	      if (strcmp (get_property (SERVICE_START_HEARTBEAT),
+			  PROPERTY_ON) == 0)
+		{
+		  (void) process_heartbeat (command_type, 0, NULL);
+		}
 
-	  if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0)
-	    {
-	      status =
-		process_server (command_type, 0, NULL, false, true, false);
+	      status = are_all_services_running (0, process_window_service) ?
+		NO_ERROR : ER_GENERIC_ERROR;
 	    }
-	  if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
+	  else
 	    {
-	      status = process_broker (command_type, 0, NULL, false);
-	    }
-	  if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0)
-	    {
-	      status = process_manager (command_type, false);
-	    }
-	  if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) ==
-	      0)
-	    {
-	      status = process_heartbeat (command_type, 0, NULL);
+	      print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
+			     PRINT_SERVICE_NAME);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
+				    PRINT_SERVICE_NAME);
+	      status = ER_GENERIC_ERROR;
 	    }
 	}
       break;
@@ -1148,7 +1217,7 @@ process_service (int command_type, bool process_window_service)
       if (process_window_service)
 	{
 #if defined(WINDOWS)
-	  if (is_windows_service_running (0))
+	  if (is_windows_service_running (0, process_window_service))
 	    {
 	      const char *args[] =
 		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVICE,
@@ -1157,39 +1226,61 @@ process_service (int command_type, bool process_window_service)
 
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
 			    false, false, NULL);
-	      status =
-		are_all_services_stopped (0) ? NO_ERROR : ER_GENERIC_ERROR;
+	      status = are_all_services_stopped (0, process_window_service) ?
+		NO_ERROR : ER_GENERIC_ERROR;
+
 	      print_result (PRINT_SERVICE_NAME, status, command_type);
 	    }
 	  else
 	    {
 	      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			     PRINT_SERVICE_NAME);
-	      return NO_ERROR;
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+				    PRINT_SERVICE_NAME);
+	      status = ER_GENERIC_ERROR;
 	    }
 #endif
 	}
       else
 	{
-	  if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0)
+	  if (!are_all_services_stopped (0, process_window_service))
 	    {
-	      status =
-		process_server (command_type, 0, NULL, false, true, false);
+	      if (strcmp (get_property (SERVICE_START_SERVER),
+			  PROPERTY_ON) == 0
+		  && strlen (us_Property_map[SERVER_START_LIST].
+			     property_value) != 0)
+		{
+		  (void) process_server (command_type, 0, NULL, false, true,
+					 false);
+		}
+	      if (strcmp (get_property (SERVICE_START_BROKER),
+			  PROPERTY_ON) == 0)
+		{
+		  (void) process_broker (command_type, 0, NULL, false);
+		}
+	      if (strcmp (get_property (SERVICE_START_MANAGER),
+			  PROPERTY_ON) == 0)
+		{
+		  (void) process_manager (command_type, false);
+		}
+	      if (strcmp (get_property (SERVICE_START_HEARTBEAT),
+			  PROPERTY_ON) == 0)
+		{
+		  (void) process_heartbeat (command_type, 0, NULL);
+		}
+	      (void) process_master (command_type);
+
+	      status = are_all_services_stopped (0, process_window_service) ?
+		NO_ERROR : ER_GENERIC_ERROR;
 	    }
-	  if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
+	  else
 	    {
-	      status = process_broker (command_type, 0, NULL, false);
+	      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			     PRINT_SERVICE_NAME);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+				    PRINT_SERVICE_NAME);
+	      status = ER_GENERIC_ERROR;
 	    }
-	  if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0)
-	    {
-	      status = process_manager (command_type, false);
-	    }
-	  if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) ==
-	      0)
-	    {
-	      status = process_heartbeat (command_type, 0, NULL);
-	    }
-	  status = process_master (command_type);
 	}
       break;
     case RESTART:
@@ -1212,20 +1303,21 @@ process_service (int command_type, bool process_window_service)
 
       {
 	const char *args[] = { "-b" };
-	status = process_server (command_type, 0, NULL, false, true, false);
-	status = process_broker (command_type, 1, args, false);
-	status = process_manager (command_type, false);
+
+	(void) process_server (command_type, 0, NULL, false, true, false);
+	(void) process_broker (command_type, 1, args, false);
+	(void) process_manager (command_type, false);
 	if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) == 0)
 	  {
-	    status = process_heartbeat (command_type, 0, NULL);
+	    (void) process_heartbeat (command_type, 0, NULL);
 	  }
-
       }
       break;
     default:
-      return ER_GENERIC_ERROR;
+      status = ER_GENERIC_ERROR;
     }
-  return status == ER_GENERIC_ERROR ? EXIT_FAILURE : status;
+
+  return status;
 }
 
 /*
@@ -1372,6 +1464,7 @@ process_server (int command_type, int argc, char **argv,
       if (show_usage)
 	{
 	  util_service_usage (SERVER);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
 	}
       return ER_GENERIC_ERROR;
     }
@@ -1412,14 +1505,19 @@ process_server (int command_type, int argc, char **argv,
 		      status = ER_GENERIC_ERROR;
 		      print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE);
 		      print_result (PRINT_SERVER_NAME, status, command_type);
+		      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE);
 		      break;
 		    }
 		}
 	      if (is_server_running (CHECK_SERVER, token, 0))
 		{
+		  status = ER_GENERIC_ERROR;
 		  print_message (stdout,
 				 MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
 				 PRINT_SERVER_NAME, token);
+		  util_log_write_errid
+		    (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
+		     PRINT_SERVER_NAME, token);
 		  continue;
 		}
 	      else
@@ -1427,12 +1525,14 @@ process_server (int command_type, int argc, char **argv,
 		  status =
 		    proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
 				  true, false, false, NULL);
-		}
 
-	      status =
-		is_server_running (CHECK_SERVER, token,
-				   0) ? NO_ERROR : ER_GENERIC_ERROR;
-	      print_result (PRINT_SERVER_NAME, status, command_type);
+		  if (status == NO_ERROR
+		      && !is_server_running (CHECK_SERVER, token, 0))
+		    {
+		      status = ER_GENERIC_ERROR;
+		    }
+		  print_result (PRINT_SERVER_NAME, status, command_type);
+		}
 	    }
 #endif
 	}
@@ -1441,7 +1541,12 @@ process_server (int command_type, int argc, char **argv,
 	  if (!css_does_master_exist (master_port))
 	    {
 	      status = process_master (command_type);
+	      if (status != NO_ERROR)
+		{
+		  break;	/* escape switch */
+		}
 	    }
+
 	  for (list = buf;; list = NULL)
 	    {
 	      token = strtok_r (list, delim, &save);
@@ -1458,6 +1563,8 @@ process_server (int command_type, int argc, char **argv,
 		  status = sysprm_load_and_init (token, NULL);
 		  if (status != NO_ERROR)
 		    {
+		      util_log_write_errid
+			(MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
 		      print_result (PRINT_SERVER_NAME, status, command_type);
 		      break;
 		    }
@@ -1467,6 +1574,7 @@ process_server (int command_type, int argc, char **argv,
 		      status = ER_GENERIC_ERROR;
 		      print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE);
 		      print_result (PRINT_SERVER_NAME, status, command_type);
+		      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE);
 		      break;
 		    }
 		}
@@ -1474,9 +1582,13 @@ process_server (int command_type, int argc, char **argv,
 
 	      if (is_server_running (CHECK_SERVER, token, 0))
 		{
+		  status = ER_GENERIC_ERROR;
 		  print_message (stdout,
 				 MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
 				 PRINT_SERVER_NAME, token);
+		  util_log_write_errid
+		    (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
+		     PRINT_SERVER_NAME, token);
 		  continue;
 		}
 	      else
@@ -1485,9 +1597,12 @@ process_server (int command_type, int argc, char **argv,
 		  const char *args[] = { UTIL_CUBRID_NAME, token, NULL };
 		  status = proc_execute (UTIL_CUBRID_NAME, args, false, false,
 					 false, &pid);
-		  status =
-		    is_server_running (CHECK_SERVER, token,
-				       pid) ? NO_ERROR : ER_GENERIC_ERROR;
+
+		  if (status == NO_ERROR
+		      && !is_server_running (CHECK_SERVER, token, pid))
+		    {
+		      status = ER_GENERIC_ERROR;
+		    }
 		  print_result (PRINT_SERVER_NAME, status, command_type);
 		}
 	    }
@@ -1503,6 +1618,7 @@ process_server (int command_type, int argc, char **argv,
 	    }
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S,
 			 PRINT_SERVER_NAME, PRINT_CMD_STOP, token);
+
 	  if (is_server_running (CHECK_SERVER, token, 0))
 	    {
 	      if (process_window_service)
@@ -1512,6 +1628,7 @@ process_server (int command_type, int argc, char **argv,
 		    { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVER,
 		    COMMAND_TYPE_STOP, NULL, NULL
 		  };
+
 		  args[3] = token;
 		  status =
 		    proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
@@ -1537,6 +1654,7 @@ process_server (int command_type, int argc, char **argv,
 			{
 			  status = ER_GENERIC_ERROR;
 			  print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE);
+			  util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE);
 			  print_result (PRINT_SERVER_NAME, status,
 					command_type);
 			  break;
@@ -1550,8 +1668,11 @@ process_server (int command_type, int argc, char **argv,
 	    }
 	  else
 	    {
+	      status = ER_GENERIC_ERROR;
 	      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S,
 			     PRINT_SERVER_NAME, token);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S,
+				    PRINT_SERVER_NAME, token);
 	    }
 	}
       break;
@@ -1583,12 +1704,16 @@ process_server (int command_type, int argc, char **argv,
       {
 	if (argc != 2)
 	  {
+	    status = ER_GENERIC_ERROR;
+
 	    if (show_usage)
 	      {
 		util_service_usage (SERVER);
+		util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
 	      }
-	    return ER_GENERIC_ERROR;
+	    break;
 	  }
+
 	if (strcasecmp (argv[0], "reload") == 0)
 	  {
 	    const char *args[] =
@@ -1610,18 +1735,23 @@ process_server (int command_type, int argc, char **argv,
 	  }
 	else
 	  {
+	    status = ER_GENERIC_ERROR;
 	    if (show_usage)
 	      {
 		util_service_usage (SERVER);
+		util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
 	      }
-	    return ER_GENERIC_ERROR;
+
+	    break;
 	  }
       }
 
       break;
     default:
-      return ER_GENERIC_ERROR;
+      status = ER_GENERIC_ERROR;
+      break;
     }
+
   return status;
 }
 
@@ -1653,6 +1783,7 @@ static int
 process_broker (int command_type, int argc, const char **argv,
 		bool process_window_service)
 {
+  const char *msg;
   int status = NO_ERROR;
 
   switch (command_type)
@@ -1663,9 +1794,12 @@ process_broker (int command_type, int argc, const char **argv,
       switch (is_broker_running ())
 	{
 	case 0:		/* no error */
+	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
 			 PRINT_BROKER_NAME);
-	  return NO_ERROR;
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
+				PRINT_BROKER_NAME);
+	  break;
 	case 1:		/* shm_open error */
 	  if (process_window_service)
 	    {
@@ -1677,6 +1811,8 @@ process_broker (int command_type, int argc, const char **argv,
 
 	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
 				     true, false, false, NULL);
+	      status =
+		(is_broker_running () == 0) ? NO_ERROR : ER_GENERIC_ERROR;
 #endif
 	    }
 	  else
@@ -1686,15 +1822,17 @@ process_broker (int command_type, int argc, const char **argv,
 	      status =
 		proc_execute (UTIL_BROKER_NAME, args, true, false, false,
 			      NULL);
+	      status =
+		(is_broker_running () == 0) ? NO_ERROR : ER_GENERIC_ERROR;
 	    }
-
 	  print_result (PRINT_BROKER_NAME, status, command_type);
-	  return status;
 
+	  break;
 	case 2:		/* no conf file or parameter error */
 	default:
+	  status = ER_GENERIC_ERROR;
 	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
-	  return ER_GENERIC_ERROR;
+	  break;
 	}
       break;
     case STOP:
@@ -1714,6 +1852,8 @@ process_broker (int command_type, int argc, const char **argv,
 	      status =
 		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
 			      false, false, NULL);
+	      status =
+		(is_broker_running () == 0) ? ER_GENERIC_ERROR : NO_ERROR;
 #endif
 	    }
 	  else
@@ -1723,26 +1863,31 @@ process_broker (int command_type, int argc, const char **argv,
 	      status =
 		proc_execute (UTIL_BROKER_NAME, args, true, false, false,
 			      NULL);
+	      status =
+		(is_broker_running () == 0) ? ER_GENERIC_ERROR : NO_ERROR;
 	    }
-
 	  print_result (PRINT_BROKER_NAME, status, command_type);
-	  return status;
+	  break;
 	case 1:		/* shm_open error */
+	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			 PRINT_BROKER_NAME);
-	  return NO_ERROR;
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+				PRINT_BROKER_NAME);
+	  break;
 	case 2:		/* no conf file or parameter error */
 	default:		/* other error */
+	  status = ER_GENERIC_ERROR;
 	  print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
-	  return ER_GENERIC_ERROR;
+	  break;
 	}
       break;
     case RESTART:
-      process_broker (STOP, 0, NULL, process_window_service);
+      status = process_broker (STOP, 0, NULL, process_window_service);
 #if defined (WINDOWS)
       Sleep (500);
 #endif
-      process_broker (START, 0, NULL, process_window_service);
+      status = process_broker (START, 0, NULL, process_window_service);
       break;
     case STATUS:
       {
@@ -1757,7 +1902,9 @@ process_broker (int command_type, int argc, const char **argv,
 	    args = (const char **) malloc (sizeof (char *) * (argc + 2));
 	    if (args == NULL)
 	      {
-		return ER_GENERIC_ERROR;
+		status = ER_GENERIC_ERROR;
+		util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+		break;
 	      }
 
 	    args[0] = PRINT_BROKER_NAME " " PRINT_CMD_STATUS;
@@ -1771,23 +1918,18 @@ process_broker (int command_type, int argc, const char **argv,
 			    NULL);
 
 	    free (args);
-	    return status;
+	    break;
 
 	  case 1:		/* shm_open error */
 	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			   PRINT_BROKER_NAME);
-	    return NO_ERROR;
+	    break;
 
 	  case 2:		/* no conf file */
-	    fprintf (stderr,
-		     "Error: Error occurred while reading cubrid_broker.conf.\n"
-		     "       The file is not found or an invalid "
-		     "parameter name/value is found.\n");
-	    print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
-	    return ER_GENERIC_ERROR;
 	  default:		/* other error */
+	    status = ER_GENERIC_ERROR;
 	    print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
-	    return ER_GENERIC_ERROR;
+	    break;
 	  }
       }
       break;
@@ -1812,8 +1954,10 @@ process_broker (int command_type, int argc, const char **argv,
 	      { UTIL_BROKER_NAME, COMMAND_TYPE_ON, argv[0], NULL };
 	    if (argc <= 0)
 	      {
+		status = ER_GENERIC_ERROR;
 		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
-		return ER_GENERIC_ERROR;
+		util_log_write_errid (MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+		break;
 	      }
 	    status =
 	      proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
@@ -1841,8 +1985,10 @@ process_broker (int command_type, int argc, const char **argv,
 	      { UTIL_BROKER_NAME, COMMAND_TYPE_OFF, argv[0], NULL };
 	    if (argc <= 0)
 	      {
+		status = ER_GENERIC_ERROR;
 		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
-		return ER_GENERIC_ERROR;
+		util_log_write_errid (MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+		break;
 	      }
 	    status =
 	      proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
@@ -1868,8 +2014,10 @@ process_broker (int command_type, int argc, const char **argv,
 	  }
 	else
 	  {
+	    status = ER_GENERIC_ERROR;
 	    util_service_usage (BROKER);
-	    return ER_GENERIC_ERROR;
+	    util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
+	    break;
 	  }
 	status =
 	  proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
@@ -1897,8 +2045,10 @@ process_broker (int command_type, int argc, const char **argv,
 	      { UTIL_BROKER_NAME, COMMAND_TYPE_RESET, argv[0], NULL };
 	    if (argc <= 0)
 	      {
+		status = ER_GENERIC_ERROR;
 		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
-		return ER_GENERIC_ERROR;
+		util_log_write_errid (MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+		break;
 	      }
 	    status =
 	      proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
@@ -1926,13 +2076,18 @@ process_broker (int command_type, int argc, const char **argv,
 	  {
 	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			   PRINT_BROKER_NAME);
-	    return NO_ERROR;
+	    util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+				  PRINT_BROKER_NAME);
+	    status = ER_GENERIC_ERROR;
+	    break;
 	  }
 
 	args = (const char **) malloc (sizeof (char *) * (argc + 3));
 	if (args == NULL)
 	  {
-	    return ER_GENERIC_ERROR;
+	    status = ER_GENERIC_ERROR;
+	    util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+	    break;
 	  }
 
 	args[0] = UTIL_BROKER_NAME;
@@ -1964,7 +2119,9 @@ process_broker (int command_type, int argc, const char **argv,
 	    args = (const char **) malloc (sizeof (char *) * (argc + 2));
 	    if (args == NULL)
 	      {
-		return ER_GENERIC_ERROR;
+		status = ER_GENERIC_ERROR;
+		util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+		break;
 	      }
 
 	    args[0] = PRINT_BROKER_NAME " " PRINT_CMD_TEST;
@@ -1977,29 +2134,25 @@ process_broker (int command_type, int argc, const char **argv,
 	      proc_execute (UTIL_TESTER_NAME, args, true, false, false, NULL);
 
 	    free (args);
-	    return status;
+	    break;
 
 	  case 1:		/* shm_open error */
 	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			   PRINT_BROKER_NAME);
-	    return NO_ERROR;
+	    break;
 
 	  case 2:		/* no conf file */
-	    fprintf (stderr,
-		     "Error: Error occurred while reading cubrid_broker.conf.\n"
-		     "       The file is not found or an invalid "
-		     "parameter name/value is found.\n");
-	    print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
-	    return ER_GENERIC_ERROR;
 	  default:		/* other error */
+	    status = ER_GENERIC_ERROR;
 	    print_result (PRINT_BROKER_NAME, ER_GENERIC_ERROR, command_type);
-	    return ER_GENERIC_ERROR;
+	    break;
 	  }
       }
       break;
 
     default:
-      return ER_GENERIC_ERROR;
+      status = ER_GENERIC_ERROR;
+      break;
     }
 
   return status;
@@ -2080,8 +2233,9 @@ process_manager (int command_type, bool process_window_service)
   (void) envvar_bindir_file (cub_js_path, PATH_MAX, UTIL_CUB_JS_NAME);
   if (stat (cub_auto_path, &stbuf) == -1 || stat (cub_js_path, &stbuf) == -1)
     {
-      printf ("cubrid manager server is not installed.\n");
-      return NO_ERROR;
+      print_message (stderr, MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED);
+      return ER_GENERIC_ERROR;
     }
 
   status = NO_ERROR;
@@ -2124,13 +2278,14 @@ process_manager (int command_type, bool process_window_service)
 
 	  status = is_manager_running (3) ? NO_ERROR : ER_GENERIC_ERROR;
 	  print_result (PRINT_MANAGER_NAME, status, command_type);
-
 	}
       else
 	{
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
 			 PRINT_MANAGER_NAME);
-	  return NO_ERROR;
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
+				PRINT_MANAGER_NAME);
+	  status = ER_GENERIC_ERROR;
 	}
       break;
     case STOP:
@@ -2151,7 +2306,6 @@ process_manager (int command_type, bool process_window_service)
 	    }
 	  else
 	    {
-
 	      {
 		const char *args[] =
 		  { UTIL_CUB_AUTO_NAME, COMMAND_TYPE_STOP, NULL };
@@ -2174,7 +2328,9 @@ process_manager (int command_type, bool process_window_service)
 	{
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			 PRINT_MANAGER_NAME);
-	  return NO_ERROR;
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+				PRINT_MANAGER_NAME);
+	  status = ER_GENERIC_ERROR;
 	}
       break;
     case STATUS:
@@ -2192,8 +2348,10 @@ process_manager (int command_type, bool process_window_service)
       }
       break;
     default:
-      return ER_GENERIC_ERROR;
+      status = ER_GENERIC_ERROR;
+      break;
     }
+
   return status;
 }
 
@@ -2376,6 +2534,7 @@ us_hb_copylogdb_start (dynamic_array * pids, HA_CONF * ha_conf,
   if (db_name != NULL && num_db_found == 0)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
       status = ER_GENERIC_ERROR;
       goto ret;
     }
@@ -2383,6 +2542,7 @@ us_hb_copylogdb_start (dynamic_array * pids, HA_CONF * ha_conf,
   if (node_name != NULL && num_node_found == 0)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE);
       status = ER_GENERIC_ERROR;
     }
 
@@ -2484,6 +2644,7 @@ us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name,
   if (db_name != NULL && num_db_found == 0)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
       status = ER_GENERIC_ERROR;
       goto ret;
     }
@@ -2491,6 +2652,7 @@ us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name,
   if (node_name != NULL && num_node_found == 0)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE);
       status = ER_GENERIC_ERROR;
     }
 
@@ -2584,6 +2746,7 @@ us_hb_applylogdb_start (dynamic_array * pids, HA_CONF * ha_conf,
   if (db_name != NULL && num_db_found == 0)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
       status = ER_GENERIC_ERROR;
       goto ret;
     }
@@ -2591,6 +2754,7 @@ us_hb_applylogdb_start (dynamic_array * pids, HA_CONF * ha_conf,
   if (node_name != NULL && num_node_found == 0)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE);
       status = ER_GENERIC_ERROR;
     }
 
@@ -2695,6 +2859,7 @@ us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name,
   if (db_name != NULL && num_db_found == 0)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
       status = ER_GENERIC_ERROR;
       goto ret;
     }
@@ -2702,6 +2867,7 @@ us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name,
   if (node_name != NULL && num_node_found == 0)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE);
       status = ER_GENERIC_ERROR;
     }
 
@@ -2760,16 +2926,28 @@ us_hb_server_start (HA_CONF * ha_conf, const char *db_name)
 	}
       num_db_found++;
 
-      status = process_server (START, 1, &(dbs[i]), true, false, false);
-      if (status != NO_ERROR)
+      if (!is_server_running (CHECK_SERVER, dbs[i], 0))
 	{
-	  return status;
+	  status = process_server (START, 1, &(dbs[i]), true, false, false);
+	  if (status != NO_ERROR)
+	    {
+	      return status;
+	    }
+	}
+      else
+	{
+	  print_message (stdout,
+			 MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
+			 PRINT_SERVER_NAME, dbs[i]);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
+				PRINT_SERVER_NAME, dbs[i]);
 	}
     }
 
   if (db_name != NULL && num_db_found == 0)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
       status = ER_GENERIC_ERROR;
     }
 
@@ -2792,16 +2970,27 @@ us_hb_server_stop (HA_CONF * ha_conf, const char *db_name)
 	}
       num_db_found++;
 
-      status = process_server (STOP, 1, &(dbs[i]), true, false, false);
-      if (status != NO_ERROR)
+      if (is_server_running (CHECK_SERVER, dbs[i], 0))
 	{
-	  return status;
+	  status = process_server (STOP, 1, &(dbs[i]), true, false, false);
+	  if (status != NO_ERROR)
+	    {
+	      return status;
+	    }
+	}
+      else
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S,
+			 PRINT_SERVER_NAME, dbs[i]);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S,
+				PRINT_SERVER_NAME, dbs[i]);
 	}
     }
 
   if (db_name != NULL && num_db_found == 0)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
       status = ER_GENERIC_ERROR;
     }
 
@@ -3003,6 +3192,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
   if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
       print_result (PRINT_HEARTBEAT_NAME, ER_FAILED, command_type);
       return ER_FAILED;
     }
@@ -3012,6 +3202,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
   if (status != NO_ERROR)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       print_result (PRINT_HEARTBEAT_NAME, ER_FAILED, command_type);
       return ER_FAILED;
     }
@@ -3022,10 +3213,14 @@ process_heartbeat (int command_type, int argc, const char **argv)
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		     PRINT_HEARTBEAT_NAME, PRINT_CMD_START);
 
-      status = process_master (START);
-      if (status != NO_ERROR)
+      if (!css_does_master_exist (master_port))
 	{
-	  goto ret;
+	  status = process_master (START);
+
+	  if (status != NO_ERROR)
+	    {
+	      goto ret;
+	    }
 	}
 
       if (css_does_master_exist (master_port))
@@ -3041,6 +3236,8 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	  status = sysprm_load_and_init (db_name, NULL);
 	  if (status != NO_ERROR)
 	    {
+	      util_log_write_errid
+		(MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
 	      print_result (PRINT_HEARTBEAT_NAME, status, command_type);
 	      goto ret;
 	    }
@@ -3049,6 +3246,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	    {
 	      status = ER_GENERIC_ERROR;
 	      print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
 	      print_result (PRINT_HEARTBEAT_NAME, status, command_type);
 	      goto ret;
 	    }
@@ -3090,6 +3288,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
 		{
 		  status = ER_GENERIC_ERROR;
 		  print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+		  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
 		  print_result (PRINT_HEARTBEAT_NAME, status, command_type);
 		  goto ret;
 		}
@@ -3122,14 +3321,18 @@ process_heartbeat (int command_type, int argc, const char **argv)
     case DEREGISTER:
       if (argc < 1)
 	{
+	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 	  goto ret;
 	}
 
       pid = (char *) argv[0];
       if (pid == NULL)
 	{
+	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 	  goto ret;
 	}
 
@@ -3147,6 +3350,8 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			 PRINT_MASTER_NAME);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+				PRINT_MASTER_NAME);
 	}
       print_result (PRINT_HEARTBEAT_NAME, status, command_type);
       break;
@@ -3206,7 +3411,9 @@ process_heartbeat (int command_type, int argc, const char **argv)
 
       if (argc < 3)
 	{
+	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 	  goto ret;
 	}
 
@@ -3232,6 +3439,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	    {
 	      status = ER_GENERIC_ERROR;
 	      print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
 	      print_result (PRINT_HEARTBEAT_NAME, status, command_type);
 	      goto ret;
 	    }
@@ -3241,7 +3449,9 @@ process_heartbeat (int command_type, int argc, const char **argv)
       if ((sub_command_type != START && sub_command_type != STOP)
 	  || db_name == NULL || node_name == NULL)
 	{
+	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 	  goto ret;
 	}
 
@@ -3257,9 +3467,11 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	}
       else
 	{
+	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			 PRINT_MASTER_NAME);
-	  status = ER_GENERIC_ERROR;
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+				PRINT_MASTER_NAME);
 	}
 
       print_result (PRINT_HEARTBEAT_NAME, status, command_type);
@@ -3271,7 +3483,9 @@ process_heartbeat (int command_type, int argc, const char **argv)
 
       if (argc < 3)
 	{
+	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 	  goto ret;
 	}
 
@@ -3291,6 +3505,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	    {
 	      status = ER_GENERIC_ERROR;
 	      print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
 	      print_result (PRINT_HEARTBEAT_NAME, status, command_type);
 	      goto ret;
 	    }
@@ -3300,7 +3515,9 @@ process_heartbeat (int command_type, int argc, const char **argv)
       if ((sub_command_type != START && sub_command_type != STOP)
 	  || db_name == NULL || node_name == NULL)
 	{
+	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 	  goto ret;
 	}
 
@@ -3317,8 +3534,11 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	}
       else
 	{
+	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			 PRINT_MASTER_NAME);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+				PRINT_MASTER_NAME);
 	  status = ER_GENERIC_ERROR;
 	}
 

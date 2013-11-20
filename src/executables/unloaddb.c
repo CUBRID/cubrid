@@ -37,6 +37,7 @@
 #include "unloaddb.h"
 #include "load_object.h"
 #include "utility.h"
+#include "util_func.h"
 
 char *database_name = NULL;
 const char *output_dirname = NULL;
@@ -76,6 +77,7 @@ unload_usage (const char *argv0)
   exec_name = basename ((char *) argv0);
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				   MSGCAT_UTIL_SET_UNLOADDB, 60), exec_name);
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 }
 
 /*
@@ -136,6 +138,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     {
       status = 1;
       /* TODO: print usage */
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       goto end;
     }
 
@@ -175,7 +178,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 			     DB_CLIENT_TYPE_ADMIN_UTILITY);
       if (error != NO_ERROR)
 	{
-	  fprintf (stderr, "%s: %s\n\n", exec_name, db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("%s: %s\n", exec_name, db_error_string (3));
 	  status = error;
 	  goto end;
 	}
@@ -183,7 +186,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   else if (error != NO_ERROR)
     {
       /* error */
-      fprintf (stderr, "%s: %s\n\n", exec_name, db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s: %s\n", exec_name, db_error_string (3));
       status = error;
       goto end;
     }
@@ -218,6 +221,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       /* It may not be needed */
       if (locator_decache_all_lock_instances (sm_Root_class_mop) != NO_ERROR)
 	{
+	  util_log_write_errstr ("%s\n", db_error_string (3));
 	  status = 1;
 	  goto end;
 	}
@@ -225,6 +229,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
   if (class_table == NULL)
     {
+      util_log_write_errstr ("%s\n", db_error_string (3));
       status = 1;
       goto end;
     }
@@ -233,6 +238,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 					   class_table->num);
   if (req_class_table == NULL)
     {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
       status = 1;
       goto end;
     }
@@ -244,6 +250,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
   if (get_requested_classes (input_filename, req_class_table) != 0)
     {
+      util_log_write_errstr ("%s\n", db_error_string (3));
       status = 1;
       goto end;
     }
@@ -264,8 +271,9 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	      ws_find (req_class_table[i], (MOBJ *) & class_ptr);
 	      if (class_ptr)
 		{
-		  fprintf (stderr, "%s: %s\n", class_ptr->header.name,
-		           db_error_string (3));
+		  PRINT_AND_LOG_ERR_MSG ("%s: %s\n",
+					 class_ptr->header.name,
+					 db_error_string (3));
 		}
 	      status = 1;
 	    }
@@ -301,7 +309,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     {
       if (db_error_code () != NO_ERROR)
 	{
-	  fprintf (stderr, "%s: %s\n\n", exec_name, db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("%s: %s\n", exec_name, db_error_string (3));
 	}
     }
 
@@ -311,7 +319,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   error = db_shutdown ();
   if (error != NO_ERROR)
     {
-      (void) fprintf (stderr, "%s: %s\n\n", exec_name, db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s: %s\n", exec_name, db_error_string (3));
       status = error;
     }
 

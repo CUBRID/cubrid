@@ -83,7 +83,8 @@ broker_monitor_SOURCES = \
 	$(BROKER_DIR)/broker_filename.c \
 	$(BROKER_DIR)/shard_metadata.c \
 	$(BROKER_DIR)/shard_shm.c \
-	$(BROKER_DIR)/cas_util.c 
+	$(BROKER_DIR)/cas_util.c \
+        $(BASE_DIR)/util_func.c
 broker_monitor_LDADD = $(BROKER_CAS_LIBS)
 
 broker_changer_SOURCES = \
@@ -116,7 +117,8 @@ cubrid_broker_SOURCES = \
 	$(BROKER_DIR)/broker_acl.c \
 	$(BROKER_DIR)/shard_metadata.c \
 	$(BROKER_DIR)/shard_shm.c \
-	$(BROKER_DIR)/shard_key_func.c 
+	$(BROKER_DIR)/shard_key_func.c \
+	$(BASE_DIR)/util_func.c
 cubrid_broker_LDADD = $(BROKER_CAS_LIBS)
 
 cub_cas_SOURCES = \

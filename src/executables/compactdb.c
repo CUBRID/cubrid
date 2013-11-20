@@ -84,6 +84,7 @@ compact_usage (const char *argv0)
   const char *exec_name;
 
   exec_name = basename ((char *) argv0);
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
   printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			  MSGCAT_UTIL_SET_COMPACTDB, 60), exec_name);
 }
@@ -121,15 +122,19 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   if ((error = db_login ("DBA", NULL))
       || (error = db_restart (arg->argv0, TRUE, database_name)))
     {
-      fprintf (stderr, "%s: %s.\n\n", exec_name, db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s: %s.\n\n", exec_name, db_error_string (3));
       status = error;
     }
   else
     {
       status = compactdb_start (verbose_flag);
+      if (status != 0)
+	{
+	  util_log_write_errstr ("%s\n", db_error_string (3));
+	}
       if ((error = db_shutdown ()))
 	{
-	  fprintf (stderr, "%s: %s.\n\n", exec_name, db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("%s: %s.\n", exec_name, db_error_string (3));
 	  status = error;
 	}
     }

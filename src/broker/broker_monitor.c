@@ -73,6 +73,7 @@
 #include "cas_util.h"
 #include "shard_shm.h"
 #include "shard_metadata.h"
+#include "util_func.h"
 
 #define		DEFAULT_CHECK_PERIOD		300	/* seconds */
 #define		MAX_APPL_NUM		100
@@ -494,14 +495,14 @@ main (int argc, char **argv)
     }
   if (shm_br->num_broker < 1 || shm_br->num_broker > MAX_BROKER_NUM)
     {
-      fprintf (stderr, "broker configuration error\r\n");
+      PRINT_AND_LOG_ERR_MSG ("broker configuration error\r\n");
       return 3;
     }
 
   br_vector = (char *) malloc (shm_br->num_broker);
   if (br_vector == NULL)
     {
-      fprintf (stderr, "memory allocation error\r\n");
+      PRINT_AND_LOG_ERR_MSG ("memory allocation error\r\n");
       return 3;
     }
   for (i = 0; i < shm_br->num_broker; i++)

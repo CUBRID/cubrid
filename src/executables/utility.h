@@ -28,6 +28,7 @@
 
 #include <config.h>
 #include <stdio.h>
+#include "util_func.h"
 
 /*
  * UTILITY MESSAGE SETS
@@ -109,7 +110,11 @@ typedef enum
   MSGCAT_UTIL_GENERIC_NOT_HA_MODE = 36,
   MSGCAT_UTIL_GENERIC_HA_MODE = 37,
   MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB = 38,
-  MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE = 39
+  MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE = 39,
+  MSGCAT_UTIL_GENERIC_INVALID_CMD = 40,
+  MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED = 41,
+  MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT = 42,
+  MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR = 43
 } MSGCAT_UTIL_GENERIC_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_DELETEDB */
@@ -744,10 +749,8 @@ typedef struct _ha_config
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"
 
-#if defined(WINDOWS)
-#define PRINT_SERVICE_NAME	"cubrid service"
-#endif
 
+#define PRINT_SERVICE_NAME	"cubrid service"
 #define PRINT_MASTER_NAME       "cubrid master"
 #define PRINT_SERVER_NAME       "cubrid server"
 #define PRINT_BROKER_NAME       "cubrid broker"

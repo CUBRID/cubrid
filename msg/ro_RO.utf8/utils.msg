@@ -231,6 +231,10 @@ Comenzi disponibile:\n\
 36 Serverul nu a fost configurat pentru HA.\n
 38 Serverul configurat pentru HA nu se regăseşte în ha_db_list.\n
 39 Serverul configurat pentru HA nu se regăseşte în ha_node_list.\n
+40 Invalid command.\n
+41 cubrid manager server is not installed.\n
+42 Invalid argument.\n
+43 File(%s) open error.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTIESMENT: opţiunea -t este ignorată în modul de execuţie independent.\n

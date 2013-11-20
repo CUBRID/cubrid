@@ -997,6 +997,7 @@ main (int argc, char **argv)
 
   if (argc == 1)
     {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       goto usage;
     }
 
@@ -1089,6 +1090,7 @@ main (int argc, char **argv)
 	  commdb_Arg_deact_immediately = true;
 	  break;
 	default:
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 	  goto usage;
 	}
     }
@@ -1097,9 +1099,9 @@ main (int argc, char **argv)
 
   if (commdb_Arg_deact_immediately && !commdb_Arg_deactivate_heartbeat)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_COMMDB,
-				       COMMDB_INVALID_IMMEDIATELY_OPTION));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_COMMDB,
+					     COMMDB_INVALID_IMMEDIATELY_OPTION));
       status = EXIT_FAILURE;
       goto error;
     }
@@ -1107,9 +1109,9 @@ main (int argc, char **argv)
   if (master_util_config_startup ((argc > 1) ? argv[1] : NULL,
 				  &port_id) == false)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_COMMDB,
-				       COMMDB_STRING10));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_COMMDB,
+					     COMMDB_STRING10));
       status = EXIT_FAILURE;
       goto error;
     }
@@ -1117,9 +1119,9 @@ main (int argc, char **argv)
   conn = css_connect_to_master_for_info (hostname, port_id, &rid);
   if (conn == NULL)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_COMMDB,
-				       COMMDB_STRING11), hostname);
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_COMMDB,
+					     COMMDB_STRING11), hostname);
       status = EXIT_FAILURE;
       goto error;
     }

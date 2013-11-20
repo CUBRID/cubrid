@@ -42,9 +42,9 @@
  * lower / upper */
 #define INTL_CASING_EXPANSION_MULTIPLIER 2
 
-/* Allowed multiplier for identifier casing. 
+/* Allowed multiplier for identifier casing.
  * How many times a string identifier can grow (in bytes size) when
- * performing lower / upper on DB identifiers. 
+ * performing lower / upper on DB identifiers.
  * This growing can occur only in UTF-8 charset (see Unicode data, for example
  * lower case for U+023A is U+2C65 - 2 bytes to 3 bytes).
  * This restriction does not apply to user strings.
@@ -70,10 +70,10 @@
 
 /*
  * Encoding of L1-L3 UCA weights on 32 bit unsigned int:
- * 33333332 22222222 1111111 1111111 
+ * 33333332 22222222 1111111 1111111
  * L1 = 0000-ffff
  * L2 = 0000-01ff
- * L3 = 0000-007f 
+ * L3 = 0000-007f
  */
 #define UCA_GET_L1_W(v) ((v) & 0x0000ffff)
 #define UCA_GET_L2_W(v) (((v) & 0x01ff0000) >> 16)
@@ -155,6 +155,7 @@
       if (do_print) \
 	{ \
 	  fprintf (stderr, "Error processing locales: %s\n", msg); \
+	  util_log_write_errstr ("Error processing locales: %s\n", msg); \
 	} \
     } while (0)
 
@@ -211,7 +212,7 @@ typedef enum
   TAILOR_BEFORE
 } TAILOR_DIR;
 
-/* Type of char data. If tag is cp, ecp, buffer type ill be BUF_TYPE_CODE  
+/* Type of char data. If tag is cp, ecp, buffer type ill be BUF_TYPE_CODE
  * If tag is ch, ech, buffer type will be BUF_TYPE_CHAR. */
 typedef enum
 {
@@ -254,7 +255,7 @@ struct tailor_rule
   char anchor_buf[LOC_DATA_COLL_TWO_CHARS];
 
   /* Reference : */
-  RULE_POS_TYPE r_pos_type;	/* processing flag : 
+  RULE_POS_TYPE r_pos_type;	/* processing flag :
 				 * logical position or buffer value for reference */
   char *r_buf;			/* Buffer containing UTF-8 characters of reference */
   int r_buf_size;
@@ -266,22 +267,22 @@ struct tailor_rule
   char *t_buf;
   int t_buf_size;
 
-  bool multiple_chars;		/* true : indicates a rule for tailoring multiple chars 
+  bool multiple_chars;		/* true : indicates a rule for tailoring multiple chars
 				 * false : rule for a single character */
 };
 
 
-/* 
- * CUBRID_TAILOR_RULE - Structure used for representing the rules for 
- *			absolute tailoring e.g. manually setting the weights 
+/*
+ * CUBRID_TAILOR_RULE - Structure used for representing the rules for
+ *			absolute tailoring e.g. manually setting the weights
  *			and collation elements for unicode character or
  *  			character ranges.
 */
 typedef struct cubrid_tailor_rule CUBRID_TAILOR_RULE;
 struct cubrid_tailor_rule
 {
-  /* The first and last (incl.) codepoints of the 
-   * codepoint range to be tailored, in text format 
+  /* The first and last (incl.) codepoints of the
+   * codepoint range to be tailored, in text format
    * for later validation and parsing. */
   char start_cp_buf[LOC_DATA_BUFF_SIZE];
   char end_cp_buf[LOC_DATA_BUFF_SIZE];
@@ -289,17 +290,17 @@ struct cubrid_tailor_rule
   CP_BUF_TYPE end_cp_buf_type;
 
   char start_weight[MAX_STRLEN_FOR_COLLATION_ELEMENT];
-  /* Buffer containing the weight value to 
-   * use in the rule. 
+  /* Buffer containing the weight value to
+   * use in the rule.
    * Buffer is NOT NULL-terminated.
    * Example : [100.0.0.0][0.0.0.2]...etc.
    */
 
   char step[MAX_STRLEN_FOR_COLLATION_ELEMENT];
-  /* The step (per level) with which we increase the 
+  /* The step (per level) with which we increase the
    * weight range.
-   * Default value is 0 for all levels, 
-   * so single-codepoint and identical tailoring 
+   * Default value is 0 for all levels,
+   * so single-codepoint and identical tailoring
    * can be easily implemented.
    */
 };
@@ -313,7 +314,7 @@ typedef enum
 
 /* Matching of a pattern containing a contraction starter on last position:
  * if "ch" is a contraction, then :
- * "bac" is not matched in "bachxxx", if MATCH_CONTR_BOUND_FORBID 
+ * "bac" is not matched in "bachxxx", if MATCH_CONTR_BOUND_FORBID
  * "bac" is matched in "bachxxx", if MATCH_CONTR_BOUND_ALLOW */
 typedef enum
 {
@@ -380,13 +381,13 @@ struct coll_data
   UCA_L13_W *uca_w_l13;		/* weight array L1, L2, L3 */
   UCA_L4_W *uca_w_l4;
 
-  COLL_CONTRACTION *contr_list;	/* contactions lists; contractions are stored 
+  COLL_CONTRACTION *contr_list;	/* contactions lists; contractions are stored
 				 * in binary ascending order of UTF-8 buffer */
   int count_contr;
   int contr_min_size;		/* size of smallest contraction buffer (in bytes) */
 
   /* array of first contraction index for each codepoint contains 'w_count'
-   * elements : value -1 means CP is not a contraction starter 
+   * elements : value -1 means CP is not a contraction starter
    * other value = index of contraction in contractions list ('contr_list') */
   int *cp_first_contr_array;
   /* codepoint value from which 'cp_first_contr_array' can be used */
@@ -406,7 +407,7 @@ struct coll_tailoring
 
   UCA_OPTIONS uca_opt;
 
-  /* number of codepoints to take into account for collation 
+  /* number of codepoints to take into account for collation
    * -1 means unlimited (we support up to MAX_UNICODE_CHARS) */
   int sett_max_cp;
 
@@ -456,7 +457,7 @@ typedef enum
   TR_LOWER
 } TRANSFORM_TYPE;
 
-/* Describes how a text tranforms into another text 
+/* Describes how a text tranforms into another text
  * Used for lower / upper casing rule description */
 typedef struct transform_rule TRANSFORM_RULE;
 struct transform_rule
@@ -511,7 +512,7 @@ struct text_conversion
   char *nl_lang_str;		/* Linux language string */
 
   unsigned char byte_flag[256];	/* used in DBCS encoding schemes :
-				 * 0 : single byte character 
+				 * 0 : single byte character
 				 * 1 : leading byte for double byte char
 				 * 2 : invalid byte */
   /* UTF-8 to text */
@@ -634,7 +635,7 @@ struct locale_data
   /* processing : last anchor : used when build a new collation rule */
   /* buffer is nul-terminated */
   char last_anchor_buf[LOC_DATA_COLL_TWO_CHARS];
-  RULE_POS_TYPE last_rule_pos_type;	/* processing flag : 
+  RULE_POS_TYPE last_rule_pos_type;	/* processing flag :
 					 * logical position or buffer */
   TAILOR_DIR last_rule_dir;	/* processing flag :
 				 * after, before */
@@ -643,7 +644,7 @@ struct locale_data
 				 * (used for validation) */
 
   /* processing : last tailoring reference : used when building collation rules
-   * pointer to a buffer : either a tailoring buffer (not nul-terminated) in a rule 
+   * pointer to a buffer : either a tailoring buffer (not nul-terminated) in a rule
    * or an anchor buffer (last_anchor_buf) */
   char *last_r_buf_p;
   int last_r_buf_size;

@@ -365,6 +365,7 @@ EXPORTS
     dirname
     envvar_get
     envvar_root
+    envvar_set
     envvar_bindir_file
     envvar_confdir_file
     envvar_vardir_file
@@ -426,6 +427,10 @@ EXPORTS
     utility_initialize
     util_byte_to_size_string
     util_size_string_to_byte
+    util_log_write_result
+    util_log_write_errid
+    util_log_write_errstr
+    util_log_write_command
     au_get_public_user_name
     au_login
     ml_ext_free

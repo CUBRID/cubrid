@@ -231,6 +231,10 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
 36 サーバーがHAモードに設定されませんでした。\n
 38 HA環境で設定されているサーバーがha_db_listのリストにありません。
 39 HA環境で設定されているサーバーがha_node_listのリストにありません。
+40 Invalid command.\n
+41 cubrid manager server is not installed.\n
+42 Invalid argument.\n
+43 File(%s) open error.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: -tオプションは独立実行モードでは無視されます。\n

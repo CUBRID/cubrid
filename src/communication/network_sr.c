@@ -50,6 +50,7 @@
 #include "log_impl.h"
 #include "perf_monitor.h"
 #include "event_log.h"
+#include "util_func.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -1352,7 +1353,7 @@ net_server_start (const char *server_name)
   /* open the system message catalog, before prm_ ?  */
   if (msgcat_init () != NO_ERROR)
     {
-      printf ("Failed to initialize message catalog\n");
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize message catalog\n");
       status = -1;
       goto end;
     }
@@ -1360,19 +1361,19 @@ net_server_start (const char *server_name)
   sysprm_set_er_log_file (server_name);
   if (thread_initialize_manager () != NO_ERROR)
     {
-      printf ("Failed to initialize thread manager\n");
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize thread manager\n");
       status = -1;
       goto end;
     }
   if (csect_initialize () != NO_ERROR)
     {
-      printf ("Failed to initialize critical section\n");
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize critical section\n");
       status = -1;
       goto end;
     }
   if (er_init_internal (NULL, ER_NEVER_EXIT, true) != NO_ERROR)
     {
-      printf ("Failed to initialize error manager\n");
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
       status = -1;
       goto end;
     }
@@ -1424,7 +1425,7 @@ net_server_start (const char *server_name)
 
   if (error != NO_ERROR)
     {
-      fprintf (stderr, "%s\n", er_msg ());
+      PRINT_AND_LOG_ERR_MSG ("%s\n", er_msg ());
       fflush (stderr);
       status = 2;
     }

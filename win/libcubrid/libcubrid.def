@@ -5,3 +5,7 @@ EXPORTS
 	envvar_bindir_file
 	net_server_start
 	os_set_signal_handler
+	util_log_write_result
+	util_log_write_errid
+	util_log_write_errstr
+	util_log_write_command

@@ -42,6 +42,7 @@
 #include "broker_error.h"
 
 #include "broker_util.h"
+#include "util_func.h"
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
 #endif /* WINDOWS */
@@ -96,18 +97,23 @@ main (int argc, char **argv)
   err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id,
 			    admin_log_file, 0, &acl_flag, acl_file, NULL);
   if (err < 0)
-    return -1;
+    {
+      util_log_write_errstr ("broker config read error.\n");
+      return -1;
+    }
 
   /* change the working directory to $CUBRID/bin */
   ut_cd_work_dir ();
 
   if (argc < 2)
-    goto usage;
+    {
+      goto usage;
+    }
 
 #if defined(WINDOWS)
   if (wsa_initialize () < 0)
     {
-      printf ("WSA init error\n");
+      PRINT_AND_LOG_ERR_MSG ("WSA init error\n");
       return 0;
     }
 #endif /* WINDOWS */
@@ -115,7 +121,7 @@ main (int argc, char **argv)
 #if 0
   if (admin_get_host_ip ())
     {
-      printf ("%s\n", admin_err_msg);
+      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
       return -1;
     }
 #endif
@@ -143,7 +149,7 @@ main (int argc, char **argv)
 	  if (admin_start_cmd (br_info, num_broker, master_shm_id,
 			       acl_flag, acl_file) < 0)
 	    {
-	      printf ("%s\n", admin_err_msg);
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	      return -1;
 	    }
 	  else
@@ -153,8 +159,9 @@ main (int argc, char **argv)
 	}
       else
 	{
-	  printf ("Error: CUBRID Broker is already running "
-		  "with shared memory key '%x'.\n", master_shm_id);
+	  PRINT_AND_LOG_ERR_MSG ("Error: CUBRID Broker is already running "
+				 "with shared memory key '%x'.\n",
+				 master_shm_id);
 	  uw_shm_detach (shm_br);
 	}
     }
@@ -162,7 +169,7 @@ main (int argc, char **argv)
     {
       if (admin_stop_cmd (master_shm_id))
 	{
-	  printf ("%s\n", admin_err_msg);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	  return -1;
 	}
       else
@@ -174,12 +181,12 @@ main (int argc, char **argv)
     {
       if (argc < 3)
 	{
-	  printf ("%s add <broker-name>\n", argv[0]);
+	  PRINT_AND_LOG_ERR_MSG ("%s add <broker-name>\n", argv[0]);
 	  return -1;
 	}
       if (admin_add_cmd (master_shm_id, argv[2]) < 0)
 	{
-	  printf ("%s\n", admin_err_msg);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	  return -1;
 	}
       else
@@ -192,12 +199,13 @@ main (int argc, char **argv)
     {
       if (argc < 4)
 	{
-	  printf ("%s restart <broker-name> <appl_server_index>\n", argv[0]);
+	  PRINT_AND_LOG_ERR_MSG
+	    ("%s restart <broker-name> <appl_server_index>\n", argv[0]);
 	  return -1;
 	}
       if (admin_restart_cmd (master_shm_id, argv[2], atoi (argv[3])) < 0)
 	{
-	  printf ("%s\n", admin_err_msg);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	  return -1;
 	}
       else
@@ -210,12 +218,13 @@ main (int argc, char **argv)
     {
       if (argc < 3)
 	{
-	  printf ("%s drop <broker-name>\n", argv[0]);
+	  PRINT_AND_LOG_ERR_MSG ("%s drop <broker-name>\n", argv[0]);
 	  return -1;
 	}
       if (admin_drop_cmd (master_shm_id, argv[2]) < 0)
 	{
-	  printf ("%s\n", admin_err_msg);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
+	  return -1;
 	}
       else
 	{
@@ -227,12 +236,13 @@ main (int argc, char **argv)
     {
       if (argc < 3)
 	{
-	  printf ("%s on <broker-name>\n", argv[0]);
+	  PRINT_AND_LOG_ERR_MSG ("%s on <broker-name>\n", argv[0]);
 	  return -1;
 	}
       if (admin_on_cmd (master_shm_id, argv[2]) < 0)
 	{
-	  printf ("%s\n", admin_err_msg);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
+	  return -1;
 	}
       else
 	{
@@ -244,12 +254,13 @@ main (int argc, char **argv)
     {
       if (argc < 3)
 	{
-	  printf ("%s on <broker-name>\n", argv[0]);
+	  PRINT_AND_LOG_ERR_MSG ("%s on <broker-name>\n", argv[0]);
 	  return -1;
 	}
       if (admin_off_cmd (master_shm_id, argv[2]) < 0)
 	{
-	  printf ("%s\n", admin_err_msg);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
+	  return -1;
 	}
       else
 	{
@@ -261,12 +272,13 @@ main (int argc, char **argv)
     {
       if (argc < 3)
 	{
-	  printf ("%s suspend <broker-name>\n", argv[0]);
+	  PRINT_AND_LOG_ERR_MSG ("%s suspend <broker-name>\n", argv[0]);
 	  return -1;
 	}
       if (admin_broker_suspend_cmd (master_shm_id, argv[2]) < 0)
 	{
-	  printf ("%s\n", admin_err_msg);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
+	  return -1;
 	}
       else
 	{
@@ -278,12 +290,13 @@ main (int argc, char **argv)
     {
       if (argc < 3)
 	{
-	  printf ("%s resume <broker-name>\n", argv[0]);
+	  PRINT_AND_LOG_ERR_MSG ("%s resume <broker-name>\n", argv[0]);
 	  return -1;
 	}
       if (admin_broker_resume_cmd (master_shm_id, argv[2]) < 0)
 	{
-	  printf ("%s\n", admin_err_msg);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
+	  return -1;
 	}
       else
 	{
@@ -295,12 +308,13 @@ main (int argc, char **argv)
     {
       if (argc < 3)
 	{
-	  printf ("%s reset <broker-name>\n", argv[0]);
+	  PRINT_AND_LOG_ERR_MSG ("%s reset <broker-name>\n", argv[0]);
 	  return -1;
 	}
       if (admin_reset_cmd (master_shm_id, argv[2]) < 0)
 	{
-	  printf ("%s\n", admin_err_msg);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
+	  return -1;
 	}
       else
 	{
@@ -314,13 +328,14 @@ main (int argc, char **argv)
 
       if (argc < 4)
 	{
-	  printf ("%s job_first <broker-name> <job-id>\n", argv[0]);
+	  PRINT_AND_LOG_ERR_MSG ("%s job_first <broker-name> <job-id>\n",
+				 argv[0]);
 	  return -1;
 	}
       broker_status = admin_get_broker_status (master_shm_id, argv[2]);
       if (broker_status < 0)
 	{
-	  printf ("%s\n", admin_err_msg);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	  return -1;
 	}
 
@@ -328,7 +343,7 @@ main (int argc, char **argv)
 	{
 	  if (admin_broker_suspend_cmd (master_shm_id, argv[2]) < 0)
 	    {
-	      printf ("%s\n", admin_err_msg);
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	      return -1;
 	    }
 	}
@@ -337,15 +352,16 @@ main (int argc, char **argv)
 	  if (admin_broker_job_first_cmd
 	      (master_shm_id, argv[2], atoi (argv[i])) < 0)
 	    {
-	      printf ("%s\n", admin_err_msg);
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	    }
 	}
       if (broker_status == SUSPEND_NONE)
 	{
 	  if (admin_broker_resume_cmd (master_shm_id, argv[2]) < 0)
 	    {
-	      printf ("%s\n", admin_err_msg);
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	      printf ("broker[%s] SUSPENDED\n", argv[2]);
+	      return -1;
 	    }
 	}
     }
@@ -353,7 +369,8 @@ main (int argc, char **argv)
     {
       if (admin_info_cmd (master_shm_id) < 0)
 	{
-	  printf ("%s\n", admin_err_msg);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
+	  return -1;
 	}
       else
 	{
@@ -367,7 +384,8 @@ main (int argc, char **argv)
 
       if (argc < 3)
 	{
-	  printf ("%s acl <reload|status> <broker-name>\n", argv[0]);
+	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <broker-name>\n",
+				 argv[0]);
 	  return -1;
 	}
 
@@ -386,12 +404,13 @@ main (int argc, char **argv)
 	}
       else
 	{
-	  printf ("%s acl <reload|status> <broker-name>\n", argv[0]);
+	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <broker-name>\n",
+				 argv[0]);
 	  return -1;
 	}
       if (err_code < 0)
 	{
-	  printf ("%s\n", admin_err_msg);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	  return -1;
 	}
     }
@@ -399,7 +418,7 @@ main (int argc, char **argv)
     {
       if (admin_getid_cmd (master_shm_id, argc, (const char **) argv) < 0)
 	{
-	  printf ("%s\n", admin_err_msg);
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	  return -1;
 	}
     }

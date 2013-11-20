@@ -106,6 +106,7 @@ compactdb_usage (const char *argv0)
   const char *exec_name;
 
   exec_name = basename ((char *) argv0);
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
   printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			  MSGCAT_UTIL_SET_COMPACTDB, 60), exec_name);
 }
@@ -1138,11 +1139,10 @@ compactdb (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_COMPACTDB,
 				       COMPACTDB_MSG_FAILURE));
-      fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS,
-			       MSGCAT_UTIL_SET_COMPACTDB,
-			       COMPACTDB_MSG_OUT_OF_RANGE_PAGES),
-	       COMPACT_MIN_PAGES, COMPACT_MAX_PAGES);
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_COMPACTDB,
+					     COMPACTDB_MSG_OUT_OF_RANGE_PAGES),
+			     COMPACT_MIN_PAGES, COMPACT_MAX_PAGES);
 
       return ER_GENERIC_ERROR;
     }
@@ -1170,12 +1170,11 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 				       MSGCAT_UTIL_SET_COMPACTDB,
 				       COMPACTDB_MSG_FAILURE));
 
-      fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS,
-			       MSGCAT_UTIL_SET_COMPACTDB,
-			       COMPACTDB_MSG_OUT_OF_RANGE_INSTANCE_LOCK_TIMEOUT),
-	       COMPACT_INSTANCE_MIN_LOCK_TIMEOUT,
-	       COMPACT_INSTANCE_MAX_LOCK_TIMEOUT);
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_COMPACTDB,
+					     COMPACTDB_MSG_OUT_OF_RANGE_INSTANCE_LOCK_TIMEOUT),
+			     COMPACT_INSTANCE_MIN_LOCK_TIMEOUT,
+			     COMPACT_INSTANCE_MAX_LOCK_TIMEOUT);
 
       return ER_GENERIC_ERROR;
     }
@@ -1189,12 +1188,11 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 				       MSGCAT_UTIL_SET_COMPACTDB,
 				       COMPACTDB_MSG_FAILURE));
 
-      fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS,
-			       MSGCAT_UTIL_SET_COMPACTDB,
-			       COMPACTDB_MSG_OUT_OF_RANGE_CLASS_LOCK_TIMEOUT),
-	       COMPACT_CLASS_MIN_LOCK_TIMEOUT,
-	       COMPACT_CLASS_MAX_LOCK_TIMEOUT);
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					     MSGCAT_UTIL_SET_COMPACTDB,
+					     COMPACTDB_MSG_OUT_OF_RANGE_CLASS_LOCK_TIMEOUT),
+			     COMPACT_CLASS_MIN_LOCK_TIMEOUT,
+			     COMPACT_CLASS_MAX_LOCK_TIMEOUT);
 
       return ER_GENERIC_ERROR;
     }
@@ -1209,9 +1207,9 @@ compactdb (UTIL_FUNCTION_ARG * arg)
       tables = (char **) malloc (sizeof (char *) * table_size - 1);
       if (tables == NULL)
 	{
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_COMPACTDB,
-					   COMPACTDB_MSG_FAILURE));
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						 MSGCAT_UTIL_SET_COMPACTDB,
+						 COMPACTDB_MSG_FAILURE));
 	  return ER_GENERIC_ERROR;
 	}
 
@@ -1229,7 +1227,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   if ((error = db_login ("DBA", NULL))
       || (error = db_restart (arg->argv0, TRUE, database_name)))
     {
-      fprintf (stderr, "%s: %s.\n\n", exec_name, db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s: %s.\n", exec_name, db_error_string (3));
       status = error;
     }
   else
@@ -1254,9 +1252,9 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 
 	  if (status == ER_FAILED)
 	    {
-	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_COMPACTDB,
-					       COMPACTDB_MSG_FAILURE));
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						     MSGCAT_UTIL_SET_COMPACTDB,
+						     COMPACTDB_MSG_FAILURE));
 	    }
 	}
 
