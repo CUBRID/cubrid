@@ -359,6 +359,11 @@ btree_get_header_ptr (PAGE_PTR page_ptr, char **header_ptrptr)
 {
   RECDES header_record;
 
+  assert (page_ptr != NULL);
+#if !defined(NDEBUG)
+  (void) pgbuf_check_page_ptype (NULL, page_ptr, PAGE_BTREE);
+#endif
+
   if (spage_get_record (page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
     {
       return NULL;
@@ -458,6 +463,11 @@ int
 btree_read_node_header (PAGE_PTR page_ptr, BTREE_NODE_HEADER * header)
 {
   RECDES rec;
+
+  assert (page_ptr != NULL);
+#if !defined(NDEBUG)
+  (void) pgbuf_check_page_ptype (NULL, page_ptr, PAGE_BTREE);
+#endif
 
   if (spage_get_record (page_ptr, HEADER, &rec, PEEK) != S_SUCCESS)
     {
@@ -665,6 +675,11 @@ btree_read_root_header (PAGE_PTR page_ptr, BTREE_ROOT_HEADER * root_header)
 {
   RECDES rec;
 
+  assert (page_ptr != NULL);
+#if !defined(NDEBUG)
+  (void) pgbuf_check_page_ptype (NULL, page_ptr, PAGE_BTREE);
+#endif
+
   if (spage_get_record (page_ptr, HEADER, &rec, PEEK) != S_SUCCESS)
     {
       return ER_FAILED;
@@ -845,6 +860,7 @@ int
 btree_get_root_ovfid (PAGE_PTR page_ptr, VFID * ovfid)
 {
   char *header_ptr;
+
   if (btree_get_header_ptr (page_ptr, &header_ptr) == NULL)
     {
       return ER_FAILED;
@@ -869,6 +885,7 @@ btree_get_root_stat (PAGE_PTR page_ptr, int *num_nulls, int *num_keys,
 		     int *num_oids)
 {
   char *header_ptr;
+
   if (btree_get_header_ptr (page_ptr, &header_ptr) == NULL)
     {
       return ER_FAILED;
@@ -892,6 +909,7 @@ int
 btree_get_root_unique (PAGE_PTR page_ptr, int *unique)
 {
   char *header_ptr;
+
   if (btree_get_header_ptr (page_ptr, &header_ptr) == NULL)
     {
       return ER_FAILED;
@@ -912,6 +930,7 @@ int
 btree_get_node_level (PAGE_PTR page_ptr, int *node_level)
 {
   char *header_ptr;
+
   if (btree_get_header_ptr (page_ptr, &header_ptr) == NULL)
     {
       return ER_FAILED;
@@ -964,6 +983,7 @@ int
 btree_get_node_max_key_len (PAGE_PTR page_ptr, int *max_key_len)
 {
   char *header_ptr;
+
   if (btree_get_header_ptr (page_ptr, &header_ptr) == NULL)
     {
       return ER_FAILED;
@@ -985,6 +1005,7 @@ int
 btree_get_node_next_vpid (PAGE_PTR page_ptr, VPID * next_vpid)
 {
   char *header_ptr;
+
   if (btree_get_header_ptr (page_ptr, &header_ptr) == NULL)
     {
       return ER_FAILED;
@@ -1006,6 +1027,7 @@ int
 btree_get_node_prev_vpid (PAGE_PTR page_ptr, VPID * prev_vpid)
 {
   char *header_ptr;
+
   if (btree_get_header_ptr (page_ptr, &header_ptr) == NULL)
     {
       return ER_FAILED;
@@ -1027,6 +1049,7 @@ btree_get_node_split_info (PAGE_PTR page_ptr,
 			   BTREE_NODE_SPLIT_INFO * split_info)
 {
   char *header_ptr;
+
   if (btree_get_header_ptr (page_ptr, &header_ptr) == NULL)
     {
       return ER_FAILED;
@@ -1047,6 +1070,7 @@ int
 btree_get_next_overflow_vpid (PAGE_PTR page_ptr, VPID * vpid)
 {
   char *header_ptr, *ptr;
+
   if (btree_get_header_ptr (page_ptr, &header_ptr) == NULL)
     {
       return ER_FAILED;
@@ -1942,6 +1966,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	  goto exit_on_error;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, load_args->leaf.pgptr,
+				     PAGE_BTREE);
+
       /* obtain the header information for the leaf page */
       btree_get_header_ptr (load_args->leaf.pgptr, &header_ptr);
       /* get the maximum key length on this leaf page */
@@ -2118,6 +2145,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	      goto exit_on_error;
 	    }
 
+	  (void) pgbuf_check_page_ptype (thread_p, cur_nleafpgptr,
+					 PAGE_BTREE);
+
 	  /* obtain the header information for the current non-leaf page */
 	  btree_get_header_ptr (cur_nleafpgptr, &header_ptr);
 	  /* get the maximum key length on this leaf page */
@@ -2209,6 +2239,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, load_args->nleaf.pgptr,
+				 PAGE_BTREE);
 
   /* Prepare the root header by using the last leaf node header */
   root_header.node.max_key_len = load_args->nleaf.hdr.max_key_len;
@@ -3885,6 +3918,9 @@ int
 btree_get_node_key_cnt (PAGE_PTR page_ptr, int *key_cnt)
 {
   assert (page_ptr != NULL);
+#if !defined(NDEBUG)
+  (void) pgbuf_check_page_ptype (NULL, page_ptr, PAGE_BTREE);
+#endif
 
   *key_cnt = spage_number_of_records (page_ptr) - 1;
 

@@ -1156,8 +1156,20 @@ spage_compact (PAGE_PTR page_p)
   SPAGE_SLOT **slot_array = NULL;
   int to_offset;
   int i, j;
+  PAGE_TYPE ptype;
 
   assert (page_p != NULL);
+
+  ptype = pgbuf_get_page_ptype (NULL, page_p);
+  assert_release (ptype < PAGE_LAST);
+  assert_release (ptype != PAGE_UNKNOWN);
+  assert_release (ptype != PAGE_FTAB);
+  assert_release (ptype != PAGE_VOLHEADER);
+  assert_release (ptype != PAGE_VOLBITMAP);
+  assert_release (ptype != PAGE_XASL);
+  assert_release (ptype != PAGE_QRESULT);
+  assert_release (ptype != PAGE_OVERFLOW);
+  assert_release (ptype != PAGE_AREA);
 
   page_header_p = (SPAGE_HEADER *) page_p;
   spage_verify_header (page_p);

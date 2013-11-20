@@ -3208,7 +3208,6 @@ pgbuf_get_page_id (PAGE_PTR pgptr)
   return bufptr->vpid.pageid;
 }
 
-#if 0				/* TODO - currently, unused */
 /*
  * pgbuf_get_page_ptype () -
  *   return:
@@ -3241,12 +3240,11 @@ pgbuf_get_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 
   ptype = (PAGE_TYPE) (bufptr->iopage_buffer->iopage.prv.ptype);
 
-  assert (PAGE_FIRST <= ptype);
-  assert (ptype <= PAGE_LAST);
+  assert (PAGE_UNKNOWN <= ptype);
+  assert (ptype < PAGE_LAST);
 
   return ptype;
 }
-#endif
 
 /*
  * pgbuf_get_volume_id () - Find the volume associated with the passed buffer

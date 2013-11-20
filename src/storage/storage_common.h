@@ -231,20 +231,20 @@ typedef char *PAGE_PTR;		/* Pointer to a page */
 /* TODO - PAGE_TYPE is used for debugging */
 typedef enum
 {
-  PAGE_UNKNOWN = 0,		/* used for initialized page    */
-  PAGE_FTAB,			/* file allocset table page     */
-  PAGE_HEAP,			/* heap page                    */
-  PAGE_VOLHEADER,		/* volume header page           */
-  PAGE_VOLBITMAP,		/* volume bitmap page           */
-  PAGE_XASL,			/* xasl stream page             */
-  PAGE_QRESULT,			/* query result page            */
-  PAGE_EHASH,			/* ehash bucket/dir page        */
-  PAGE_LARGEOBJ,		/* large object/dir page        */
-  PAGE_OVERFLOW,		/* overflow page                */
-  PAGE_AREA,			/* area page                    */
-  PAGE_CATALOG,			/* catalog page                 */
-  PAGE_BTREE,			/* TODO - b+tree index page     */
-  PAGE_LOG,			/* NONE - log page (unused)     */
+  PAGE_UNKNOWN = 0,		/* used for initialized page            */
+  PAGE_FTAB,			/* file allocset table page             */
+  PAGE_HEAP,			/* heap page                            */
+  PAGE_VOLHEADER,		/* volume header page                   */
+  PAGE_VOLBITMAP,		/* volume bitmap page                   */
+  PAGE_XASL,			/* xasl stream page                     */
+  PAGE_QRESULT,			/* query result page                    */
+  PAGE_EHASH,			/* ehash bucket/dir page                */
+  PAGE_LARGEOBJ,		/* large object/dir page                */
+  PAGE_OVERFLOW,		/* overflow page (with ovf_keyval)      */
+  PAGE_AREA,			/* area page                            */
+  PAGE_CATALOG,			/* catalog page                         */
+  PAGE_BTREE,			/* b+tree index page (with ovf_OIDs)    */
+  PAGE_LOG,			/* NONE - log page (unused)             */
   PAGE_LAST = PAGE_LOG
 } PAGE_TYPE;
 

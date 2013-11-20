@@ -2474,6 +2474,8 @@ btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid,
       return NULL;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+
   return page_ptr;
 }
 
@@ -2879,6 +2881,8 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
       goto error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+
   /* form the root header information */
   root_header.node.split_info.pivot = 0.0f;
   root_header.node.split_info.index = 0;
@@ -2965,6 +2969,8 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
     {
       return (((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret);
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
 
   /* read the header record */
   btree_get_root_ovfid (P, &ovfid);
@@ -3535,6 +3541,8 @@ xbtree_test_unique (THREAD_ENTRY * thread_p, BTID * btid)
       return 0;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+
   btree_get_root_stat (root, &num_nulls, &num_keys, &num_oids);
   pgbuf_unfix_and_init (thread_p, root);
 
@@ -3574,6 +3582,8 @@ xbtree_get_unique (THREAD_ENTRY * thread_p, BTID * btid)
       return 0;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+
   btree_get_root_unique (root, &unique);
   pgbuf_unfix_and_init (thread_p, root);
 
@@ -3604,6 +3614,8 @@ btree_is_unique (THREAD_ENTRY * thread_p, BTID * btid)
     {
       return 0;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
 
   btree_get_root_stat (root, &num_nulls, &num_keys, &num_oids);
   pgbuf_unfix_and_init (thread_p, root);
@@ -3639,6 +3651,8 @@ btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid,
     {
       return (((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret);
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
 
   btree_get_root_stat (root, null_cnt, key_cnt, oid_cnt);
   pgbuf_unfix_and_init (thread_p, root);
@@ -3702,6 +3716,8 @@ btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	    {
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
 
 	  ret = btree_get_subtree_stats (thread_p, btid, page, stats_env);
 	  if (ret != NO_ERROR)
@@ -4319,6 +4335,8 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p,
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, root_page_ptr, PAGE_BTREE);
+
   if (btree_read_root_header (root_page_ptr, &root_header) != NO_ERROR)
     {
       goto exit_on_error;
@@ -4722,6 +4740,8 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 	      goto error;
 	    }
 
+	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
+
 	  valid = btree_verify_subtree (thread_p, class_oid_p, btid, btname,
 					page, &page_vpid, &INFO2);
 	  if (valid != DISK_VALID)
@@ -4793,6 +4813,8 @@ btree_verify_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
       valid = DISK_ERROR;
       goto error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
 
   /* traverse the tree and store the statistical data in the INFO structure */
   valid =
@@ -4873,6 +4895,8 @@ btree_check_pages (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	      goto error;
 	    }
 
+	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
+
 	  vld = btree_check_pages (thread_p, btid, page, &page_vpid);
 	  if (vld != DISK_VALID)
 	    {
@@ -4917,8 +4941,15 @@ btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
   r_vpid.volid = btid->vfid.volid;
   r_pgptr = pgbuf_fix (thread_p, &r_vpid, OLD_PAGE, PGBUF_LATCH_READ,
 		       PGBUF_UNCONDITIONAL_LATCH);
-  if (r_pgptr == NULL
-      || btree_read_root_header (r_pgptr, &root_header) != NO_ERROR)
+  if (r_pgptr == NULL)
+    {
+      valid = DISK_ERROR;
+      goto error;
+    }
+
+  (void) pgbuf_check_page_ptype (thread_p, r_pgptr, PAGE_BTREE);
+
+  if (btree_read_root_header (r_pgptr, &root_header) != NO_ERROR)
     {
       valid = DISK_ERROR;
       goto error;
@@ -5104,6 +5135,8 @@ btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTID * btid,
       goto exit_repair;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, root_pgptr, PAGE_BTREE);
+
 retry_repair:
   if (retry_count > 10)
     {
@@ -5129,6 +5162,8 @@ retry_repair:
 	  retry_count++;
 	  goto retry_repair;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, current_pgptr, PAGE_BTREE);
 
       btree_get_node_type (current_pgptr, &node_type);
       if (node_type == BTREE_LEAF_NODE)
@@ -5162,6 +5197,8 @@ retry_repair:
 	  retry_count++;
 	  goto retry_repair;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, next_pgptr, PAGE_BTREE);
 
       btree_read_node_header (next_pgptr, &next_node_header);
 
@@ -5863,6 +5900,8 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	      goto exit_on_error;
 	    }
 
+	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
+
 	  ret = btree_get_subtree_capacity (thread_p, btid, page, &cpc2);
 	  if (ret != NO_ERROR)
 	    {
@@ -5941,6 +5980,8 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid,
 		      goto exit_on_error;
 		    }
 
+		  (void) pgbuf_check_page_ptype (thread_p, ovfp, PAGE_BTREE);
+
 		  btree_get_next_overflow_vpid (ovfp, &ovfl_vpid);
 
 		  if (spage_get_record (ovfp, 1, &orec, PEEK) != S_SUCCESS)
@@ -6016,7 +6057,14 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid,
   root_vpid.volid = btid->vfid.volid;
   root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ,
 		    PGBUF_UNCONDITIONAL_LATCH);
-  if (root == NULL || btree_read_root_header (root, &root_header) != NO_ERROR)
+  if (root == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+
+  if (btree_read_root_header (root, &root_header) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -6423,6 +6471,8 @@ btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid)
       return NULL;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+
   if (spage_get_record (root, HEADER, &header_record, PEEK) != S_SUCCESS)
     {
       return NULL;
@@ -6612,6 +6662,8 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, ovfl_page, PAGE_BTREE);
 
   if (spage_get_record (ovfl_page, 1, &ovfl_copy_rec, COPY) != S_SUCCESS)
     {
@@ -7194,6 +7246,8 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, bool * key_deleted,
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, leaf_page, PAGE_BTREE);
+
   /* find the slot for the key */
   if (leaf_slot_id == NULL_SLOTID)
     {
@@ -7289,6 +7343,8 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, bool * key_deleted,
 	  pgbuf_unfix_and_init (thread_p, prev_page);
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, ovfl_page, PAGE_BTREE);
 
       if (spage_get_record (ovfl_page, 1, &ovfl_copy_rec, COPY) != S_SUCCESS)
 	{
@@ -7866,7 +7922,7 @@ exit_on_error:
  *  3. the pseudo-OID attached to the first key buffer OID has been
  *     NX_LOCK-ed by the current transaction
  */
-int
+static int
 btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY * thread_p,
 					    BTID_INT * btid_int,
 					    RECDES * rec, int offset,
@@ -7908,6 +7964,8 @@ btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY * thread_p,
 	{
 	  return ER_FAILED;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, O_page, PAGE_BTREE);
 
       if (spage_get_record (O_page, 1, &peek_recdes, PEEK) != S_SUCCESS)
 	{
@@ -7981,6 +8039,8 @@ btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY * thread_p,
 	  *search_without_locking = true;
 	  goto end;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, *P_page, PAGE_BTREE);
     }
   else
     {
@@ -8083,7 +8143,14 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 		 PGBUF_UNCONDITIONAL_LATCH);
-  if (P == NULL || btree_read_root_header (P, &root_header) != NO_ERROR)
+  if (P == NULL)
+    {
+      goto error;
+    }
+
+  (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
+
+  if (btree_read_root_header (P, &root_header) != NO_ERROR)
     {
       goto error;
     }
@@ -8313,7 +8380,14 @@ start_point:
       P_vpid.pageid = btid->root_pageid;
       P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 		     PGBUF_UNCONDITIONAL_LATCH);
-      if (P == NULL || btree_read_root_header (P, &root_header) != NO_ERROR)
+      if (P == NULL)
+	{
+	  goto error;
+	}
+
+      (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
+
+      if (btree_read_root_header (P, &root_header) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -8351,6 +8425,8 @@ start_point:
 	  goto error;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, Q, PAGE_BTREE);
+
       Q_used = DB_PAGESIZE - spage_get_free_space (thread_p, Q);
       btree_get_node_key_cnt (Q, &tmp);
       is_q_empty = (tmp == 0);
@@ -8374,6 +8450,8 @@ start_point:
 	{
 	  goto error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, R, PAGE_BTREE);
 
       btree_get_node_key_cnt (R, &tmp);
       is_r_empty = (tmp == 0);
@@ -8472,6 +8550,8 @@ start_point:
 	  goto error;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, Q, PAGE_BTREE);
+
       merged = false;
       btree_get_node_key_cnt (P, &last_rec);
       Q_used = DB_PAGESIZE - spage_get_free_space (thread_p, Q);
@@ -8498,6 +8578,8 @@ start_point:
 	    {
 	      goto error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, Right, PAGE_BTREE);
 
 	  R_used = DB_PAGESIZE - spage_get_free_space (thread_p, Right);
 	  btree_get_node_key_cnt (Right, &tmp);
@@ -8672,11 +8754,16 @@ start_point:
 		{
 		  goto error;
 		}
+
+	      (void) pgbuf_check_page_ptype (thread_p, Q, PAGE_BTREE);
+
 	      /* follow code may not be required */
 	      Q_used = DB_PAGESIZE - spage_get_free_space (thread_p, Q);
 	      btree_get_node_key_cnt (Q, &tmp);
 	      is_q_empty = (tmp == 0);
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, Left, PAGE_BTREE);
 
 	  L_used = DB_PAGESIZE - spage_get_free_space (thread_p, Left);
 	  btree_get_node_key_cnt (Left, &tmp);
@@ -9022,10 +9109,13 @@ start_point:
 		}
 	      goto error;
 	    }
+
 	  if (temp_page != NULL)
 	    {
 	      pgbuf_unfix_and_init (thread_p, temp_page);
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, N, PAGE_BTREE);
 
 	  btree_get_node_key_cnt (N, &tmp);
 	  if (tmp == 0)
@@ -9202,6 +9292,8 @@ start_point:
 	  goto start_point;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
+
       /* the first leaf page is valid */
       if (next_page_flag == true)
 	{
@@ -9221,7 +9313,10 @@ start_point:
 	      next_page_flag = false;
 	      goto start_point;
 	    }
+
 	  /* the next leaf page is valid */
+
+	  (void) pgbuf_check_page_ptype (thread_p, N, PAGE_BTREE);
 
 	  pgbuf_unfix_and_init (thread_p, N);
 	  next_page_flag = false;
@@ -9365,6 +9460,8 @@ curr_key_locking:
 	  pgbuf_unfix_and_init (thread_p, P);
 	  goto start_point;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
 
       if (curr_key_lock_commit_duration == true && delete_first_key_oid)
 	{
@@ -10380,6 +10477,8 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  return NULL;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, ovfl_page, PAGE_BTREE);
+
       if (spage_max_space_for_new_record (thread_p, ovfl_page) > OR_OID_SIZE)
 	{
 	  return ovfl_page;
@@ -10428,6 +10527,8 @@ btree_check_duplicate_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	{
 	  return er_errid ();
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, ovfl_page, PAGE_BTREE);
 
       (void) spage_get_record (ovfl_page, 1, &orec, PEEK);
       assert (orec.length % 4 == 0);
@@ -11954,6 +12055,8 @@ btree_insert_lock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
 	  return ER_FAILED;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, O_page, PAGE_BTREE);
+
       if (spage_get_record (O_page, 1, &peek_rec, PEEK) != S_SUCCESS)
 	{
 	  ret_val = ER_FAILED;
@@ -12103,6 +12206,8 @@ btree_insert_unlock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
 	  return ER_FAILED;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, O_page, PAGE_BTREE);
+
       if (spage_get_record (O_page, 1, &peek_rec, PEEK) != S_SUCCESS)
 	{
 	  ret_val = ER_FAILED;
@@ -12245,6 +12350,8 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
     {
       goto error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
 
   if (btree_read_root_header (P, &root_header) != NO_ERROR)
     {
@@ -12529,6 +12636,8 @@ start_point:
 	  goto error;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
+
       btree_get_node_type (P, &node_type);
       btree_get_node_max_key_len (P, &max_key);
     }
@@ -12679,6 +12788,8 @@ start_point:
 	    {
 	      goto error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
 	}
     }
 
@@ -12702,6 +12813,8 @@ start_point:
 	{
 	  goto error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, Q, PAGE_BTREE);
 
       max_free = spage_max_space_for_new_record (thread_p, Q);
 
@@ -12865,6 +12978,8 @@ start_point:
 		{
 		  goto error;
 		}
+
+	      (void) pgbuf_check_page_ptype (thread_p, Q, PAGE_BTREE);
 	    }
 
 	  if (next_page)
@@ -12992,6 +13107,8 @@ start_point:
 	    {
 	      pgbuf_unfix_and_init (thread_p, temp_page);
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, N, PAGE_BTREE);
 
 	  btree_get_node_key_cnt (N, &tmp);
 	  if (tmp == 0)
@@ -13170,6 +13287,8 @@ start_point:
 
       /* The first leaf page is valid */
 
+      (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
+
       if (next_page_flag == true)
 	{
 	  N = pgbuf_fix_without_validation (thread_p, &N_vpid, OLD_PAGE,
@@ -13192,6 +13311,8 @@ start_point:
 	    }
 
 	  /* The next leaf page is valid */
+
+	  (void) pgbuf_check_page_ptype (thread_p, N, PAGE_BTREE);
 
 	  pgbuf_unfix_and_init (thread_p, N);
 	  next_page_flag = false;
@@ -13421,6 +13542,8 @@ curr_key_lock_promote:
 	  assert (next_lock_flag == true || curr_lock_flag == true);
 	  goto start_point;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
 
       if (curr_key_many_locks_needed ||
 	  curr_key_lock_escalation != NO_KEY_LOCK_ESCALATION)
@@ -13733,6 +13856,8 @@ btree_reflect_unique_statistics (THREAD_ENTRY * thread_p,
       goto exit_on_error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+
   /* read the root information */
   if (btree_read_root_header (root, &root_header) != NO_ERROR)
     {
@@ -13830,6 +13955,8 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       goto error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
+
   btree_get_node_type (P, &node_type);
 
   while (node_type == BTREE_NON_LEAF_NODE)
@@ -13847,6 +13974,8 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	{
 	  goto error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, Q, PAGE_BTREE);
 
       pgbuf_unfix_and_init (thread_p, P);
 
@@ -13993,6 +14122,8 @@ btree_find_first_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
       goto error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, P_page, PAGE_BTREE);
+
   btree_get_node_type (P_page, &node_type);
   last_page = P_page;
 
@@ -14023,6 +14154,9 @@ btree_find_first_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 	{
 	  goto error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, C_page, PAGE_BTREE);
+
       pgbuf_unfix_and_init (thread_p, P_page);
 
       btree_get_node_type (C_page, &node_type);
@@ -14051,6 +14185,8 @@ again:
 	{
 	  goto error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, C_page, PAGE_BTREE);
 
       /* unfix the previous leaf page if it is fixed. */
       if (P_page != NULL)
@@ -14167,6 +14303,8 @@ btree_find_last_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
       goto error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
+
   btree_get_node_type (P, &node_type);
 
   while (node_type == BTREE_NON_LEAF_NODE)
@@ -14197,6 +14335,8 @@ btree_find_last_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 	  goto error;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, Q, PAGE_BTREE);
+
       btree_get_node_type (Q, &node_type);
 
       if (node_type == BTREE_LEAF_NODE)
@@ -14222,6 +14362,8 @@ btree_find_last_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 		    {
 		      goto error;
 		    }
+
+		  (void) pgbuf_check_page_ptype (thread_p, Q, PAGE_BTREE);
 		}
 	    }
 	}
@@ -14304,6 +14446,8 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid,
       goto error;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, P_page, PAGE_BTREE);
+
   btree_get_node_type (P_page, &node_type);
   btree_get_node_key_cnt (P_page, &key_cnt);
 
@@ -14342,6 +14486,9 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid,
 	{
 	  goto error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, C_page, PAGE_BTREE);
+
       pgbuf_unfix_and_init (thread_p, P_page);
 
       btree_get_node_type (C_page, &node_type);
@@ -14377,6 +14524,8 @@ again:
 	{
 	  goto error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, C_page, PAGE_BTREE);
 
       /* unfix the previous leaf page if it is fixed. */
       if (P_page != NULL)
@@ -14875,6 +15024,8 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	  goto exit_on_error;
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+
       if (btree_read_root_header (root, &root_header) != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -15217,6 +15368,8 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 		}
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, bts->C_page, PAGE_BTREE);
 	}
 
       if (temp_page != NULL)
@@ -15326,6 +15479,9 @@ again:
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, bts->C_page, PAGE_BTREE);
+
       bts->slot_id = 1;
       bts->oid_pos = 0;
 
@@ -15404,6 +15560,9 @@ btree_get_next_oidset_pos (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
        * Assumption :
        * bts->oid_pos >= # of OIDs contained in the overflow page
        */
+
+      (void) pgbuf_check_page_ptype (thread_p, bts->O_page, PAGE_BTREE);
+
       /* get the pageid of the next overflow page */
       btree_get_next_overflow_vpid (bts->O_page, &bts->O_vpid);
 
@@ -15434,6 +15593,9 @@ btree_get_next_oidset_pos (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, bts->O_page, PAGE_BTREE);
+
       bts->oid_pos = 0;
       /* bts->slot_id is not changed */
     }
@@ -15702,6 +15864,8 @@ btree_prepare_next_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, bts->O_page, PAGE_BTREE);
     }
 
   return ret;
@@ -16142,6 +16306,9 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
       /*
        * The previous leaf page has not been changed
        */
+
+      (void) pgbuf_check_page_ptype (thread_p, bts->P_page, PAGE_BTREE);
+
       if (!VPID_ISNULL (&(bts->prev_ovfl_vpid)))
 	{
 	  /*
@@ -16174,6 +16341,8 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
 	    {
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, bts->O_page, PAGE_BTREE);
 
 	  bts->oid_pos = bts->prev_oid_pos + 1;
 
@@ -16227,6 +16396,9 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
 	   * The last instance locking is performed correctly.
 	   * unfix the previous leaf page
 	   */
+
+	  (void) pgbuf_check_page_ptype (thread_p, bts->C_page, PAGE_BTREE);
+
 	  pgbuf_unfix_and_init (thread_p, bts->P_page);
 	  VPID_SET_NULL (&(bts->P_vpid));
 
@@ -16291,6 +16463,8 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
 	    {
 	      goto exit_on_error;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, bts->O_page, PAGE_BTREE);
 	}
 
       bts->oid_pos = bts->prev_oid_pos + 1;
@@ -16381,6 +16555,9 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
   if (LSA_EQ (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page)))
     {
       /* The current leaf page has not been changed. */
+
+      (void) pgbuf_check_page_ptype (thread_p, bts->C_page, PAGE_BTREE);
+
       if (VPID_ISNULL (&(bts->O_vpid)))
 	{
 	  if (!VPID_ISNULL (&(bts->prev_ovfl_vpid))
@@ -16400,6 +16577,10 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
 		{
 		  goto exit_on_error;
 		}
+
+	      (void) pgbuf_check_page_ptype (thread_p, bts->O_page,
+					     PAGE_BTREE);
+
 	      bts->oid_pos = bts->prev_oid_pos + 1;
 
 	      /* The locked OID must be checked again. */
@@ -16492,6 +16673,9 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
 		    {
 		      goto exit_on_error;
 		    }
+
+		  (void) pgbuf_check_page_ptype (thread_p, bts->O_page,
+						 PAGE_BTREE);
 		}
 
 	      bts->oid_pos = bts->prev_oid_pos + 1;
@@ -16574,6 +16758,9 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
        * The current overflow page has not been changed
        * the locking is correct
        */
+
+      (void) pgbuf_check_page_ptype (thread_p, bts->O_page, PAGE_BTREE);
+
       *which_action = BTREE_CONTINUE;
 
       return ret;		/* NO_ERROR */
@@ -16622,6 +16809,8 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
 	{
 	  goto exit_on_error;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, bts->O_page, PAGE_BTREE);
     }
 
   bts->oid_pos = bts->prev_oid_pos + 1;
@@ -16990,6 +17179,8 @@ start_point:
 	  pgbuf_unfix_and_init (thread_p, temp_page);
 	}
 
+      (void) pgbuf_check_page_ptype (thread_p, next_page, PAGE_BTREE);
+
       if (spage_number_of_records (next_page) == 1)
 	{
 	  btree_get_node_next_vpid (next_page, &next_vpid);
@@ -17170,6 +17361,8 @@ start_locking:
 	  next_page_flag = false;
 	  goto start_point;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, next_page, PAGE_BTREE);
     }
 
   COPY_OID (nk_pseudo_oid, &N_oid);
@@ -17268,6 +17461,8 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid,
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, root_page_ptr, PAGE_BTREE);
 
   if (btree_read_root_header (root_page_ptr, &root_header) != NO_ERROR)
     {
@@ -17577,7 +17772,6 @@ btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       assert (false);
       goto error;
     }
-
 
   btree_read_root_header (recv->pgptr, &root_header);
 
@@ -18170,7 +18364,14 @@ btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p,
   root_vpid.volid = btid->sys_btid->vfid.volid;
   root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE,
 		    PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (root == NULL || btree_read_root_header (root, &root_header) != NO_ERROR)
+  if (root == NULL)
+    {
+      goto error;
+    }
+
+  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+
+  if (btree_read_root_header (root, &root_header) != NO_ERROR)
     {
       goto error;
     }
@@ -18819,6 +19020,8 @@ btree_find_key_from_leaf (THREAD_ENTRY * thread_p,
 		  return DISK_ERROR;
 		}
 
+	      (void) pgbuf_check_page_ptype (thread_p, ovfp, PAGE_BTREE);
+
 	      btree_get_next_overflow_vpid (ovfp, &ovfl_vpid);
 
 	      (void) spage_get_record (ovfp, 1, &orec, PEEK);
@@ -18882,6 +19085,8 @@ btree_find_key_from_nleaf (THREAD_ENTRY * thread_p,
 	{
 	  return DISK_ERROR;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
 
       status = btree_find_key_from_page (thread_p, btid, page, oid, key,
 					 clear_key);
@@ -18959,6 +19164,8 @@ btree_find_key (THREAD_ENTRY * thread_p, BTID * btid, OID * oid,
     {
       return DISK_ERROR;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
 
   if (btree_read_root_header (root, &root_header) != NO_ERROR)
     {
@@ -19094,8 +19301,14 @@ btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx,
 
   r_pgptr = pgbuf_fix (thread_p, &r_vpid, OLD_PAGE,
 		       PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (r_pgptr == NULL
-      || btree_read_root_header (r_pgptr, &root_header) != NO_ERROR)
+  if (r_pgptr == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  (void) pgbuf_check_page_ptype (thread_p, r_pgptr, PAGE_BTREE);
+
+  if (btree_read_root_header (r_pgptr, &root_header) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -19242,6 +19455,8 @@ btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
     {
       goto exit_on_error;
     }
+
+  (void) pgbuf_check_page_ptype (thread_p, next_page, PAGE_BTREE);
 
   return next_page;
 
@@ -20085,6 +20300,8 @@ btree_fix_ovfl_oid_pages_tree (THREAD_ENTRY * thread_p, BTID * btid,
       return ER_FAILED;
     }
 
+  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_BTREE);
+
   if (btree_read_root_header (pgptr, &root_header) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, pgptr);
@@ -20142,6 +20359,8 @@ btree_fix_ovfl_oid_pages_tree (THREAD_ENTRY * thread_p, BTID * btid,
 	  fprintf (stdout, "\n");
 	  return ER_FAILED;
 	}
+
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_BTREE);
     }
 
   fprintf (stdout, "\n");
@@ -20193,6 +20412,8 @@ btree_fix_ovfl_oid_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	    {
 	      return ER_FAILED;
 	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, ovfl_page, PAGE_BTREE);
 
 	  btree_get_next_overflow_vpid (ovfl_page, &ovfl_vpid);
 
