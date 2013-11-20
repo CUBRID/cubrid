@@ -1342,10 +1342,6 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items,
     {
       as_info_p = &(shm_appl->as_info[i]);
 
-      if (as_info_p->service_flag != ON)
-	{
-	  continue;
-	}
       if (mnt_type == MONITOR_T_SHARDDB)
 	{
 	  mnt_item_p = mnt_items + as_info_p->shard_id;
@@ -1357,7 +1353,7 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items,
 
       mnt_item_p->num_request += as_info_p->num_request;
       mnt_item_p->num_connect += as_info_p->num_connect_requests;
-      if (full_info_flag)
+      if (full_info_flag && as_info_p->service_flag == ON)
 	{
 	  time_t cur_time = time (NULL);
 	  bool time_expired =
