@@ -51,6 +51,7 @@ enum HB_CLUSTER_JOB
   HB_CJOB_FAILOVER = 4,
   HB_CJOB_FAILBACK = 5,
   HB_CJOB_CHECK_VALID_PING_SERVER = 6,
+  HB_CJOB_DEMOTE = 7,
   HB_CJOB_MAX
 };
 
@@ -81,6 +82,8 @@ enum HB_RESOURCE_JOB
   HB_RJOB_CONFIRM_START = 2,
   HB_RJOB_CONFIRM_DEREG = 3,
   HB_RJOB_CHANGE_MODE = 4,
+  HB_RJOB_DEMOTE_START_SHUTDOWN = 5,
+  HB_RJOB_DEMOTE_CONFIRM_SHUTDOWN = 6,
   HB_RJOB_MAX
 };
 
@@ -123,6 +126,7 @@ enum HB_PROC_STATE
 #define HB_MAX_NUM_NODES                        (8)
 #define HB_MAX_NUM_RESOURCE_PROC                (16)
 #define HB_MAX_PING_CHECK                       (3)
+#define HB_MAX_WAIT_FOR_NEW_MASTER              (60)
 #define HB_MAX_CHANGEMODE_DIFF_TO_TERM		(12)
 #define HB_MAX_CHANGEMODE_DIFF_TO_KILL		(24)
 
@@ -187,6 +191,8 @@ struct hb_cluster
   HB_NODE_ENTRY *master;
 
   bool shutdown;
+  bool hide_to_demote;
+  bool is_isolated;
 };
 
 /* heartbeat processs entries */
@@ -215,6 +221,8 @@ struct hb_proc_entry
   unsigned short changemode_gap;
 
   CSS_CONN_ENTRY *conn;
+
+  bool being_shutdown;		/* whether the proc is being shut down */
 };
 
 /* heartbeat resources */
@@ -237,6 +245,7 @@ typedef struct hb_cluster_job_arg HB_CLUSTER_JOB_ARG;
 struct hb_cluster_job_arg
 {
   unsigned int ping_check_count;
+  unsigned int retries;		/* job retries */
 };
 
 /* heartbeat resource job argument */

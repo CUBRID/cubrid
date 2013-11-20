@@ -93,12 +93,14 @@ static void hb_cluster_job_failover (HB_JOB_ARG * arg);
 static void hb_cluster_job_failback (HB_JOB_ARG * arg);
 static void hb_cluster_job_check_ping (HB_JOB_ARG * arg);
 static void hb_cluster_job_check_valid_ping_server (HB_JOB_ARG * arg);
+static void hb_cluster_job_demote (HB_JOB_ARG * arg);
 
 static void hb_cluster_request_heartbeat_to_all (void);
 static void hb_cluster_send_heartbeat (bool is_req, char *host_name);
 static void hb_cluster_receive_heartbeat (char *buffer, int len,
 					  struct sockaddr_in *from,
 					  socklen_t from_len);
+static bool hb_cluster_is_isolated (void);
 
 static int hb_cluster_calc_score (void);
 
@@ -135,7 +137,12 @@ static void hb_resource_job_proc_dereg (HB_JOB_ARG * arg);
 static void hb_resource_job_confirm_start (HB_JOB_ARG * arg);
 static void hb_resource_job_confirm_dereg (HB_JOB_ARG * arg);
 static void hb_resource_job_change_mode (HB_JOB_ARG * arg);
+static void hb_resource_job_demote_start_shutdown (HB_JOB_ARG * arg);
+static void hb_resource_job_demote_confirm_shutdown (HB_JOB_ARG * arg);
 
+static void hb_resource_demote_start_shutdown_server_proc (void);
+static bool hb_resource_demote_confirm_shutdown_server_proc (void);
+static void hb_resource_demote_kill_server_proc (void);
 
 /* resource job queue */
 static HB_JOB_ENTRY *hb_resource_job_dequeue (void);
@@ -212,6 +219,7 @@ static HB_JOB_FUNC hb_cluster_jobs[] = {
   hb_cluster_job_failover,
   hb_cluster_job_failback,
   hb_cluster_job_check_valid_ping_server,
+  hb_cluster_job_demote,
   NULL
 };
 
@@ -222,6 +230,8 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
   hb_resource_job_confirm_start,
   hb_resource_job_confirm_dereg,
   hb_resource_job_change_mode,
+  hb_resource_job_demote_start_shutdown,
+  hb_resource_job_demote_confirm_shutdown,
   NULL
 };
 
@@ -595,7 +605,12 @@ hb_cluster_job_heartbeat (HB_JOB_ARG * arg)
   int error, rv;
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
-  hb_cluster_request_heartbeat_to_all ();
+
+  if (hb_Cluster->hide_to_demote == false)
+    {
+      hb_cluster_request_heartbeat_to_all ();
+    }
+
   pthread_mutex_unlock (&hb_Cluster->lock);
   error = hb_cluster_job_queue (HB_CJOB_HEARTBEAT, NULL,
 				prm_get_integer_value
@@ -610,6 +625,25 @@ hb_cluster_job_heartbeat (HB_JOB_ARG * arg)
 }
 
 /*
+ * hb_cluster_is_isolated() -
+ *   return: whether current node is isolated or not
+ *
+ */
+static bool
+hb_cluster_is_isolated (void)
+{
+  HB_NODE_ENTRY *node;
+  for (node = hb_Cluster->nodes; node; node = node->next)
+    {
+      if (hb_Cluster->myself != node && node->state != HB_NSTATE_UNKNOWN)
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
  * hb_cluster_job_calc_score() -
  *   return: none
  *
@@ -620,7 +654,6 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 {
   int error, rv;
   int num_master;
-  bool is_master_isolated = true;
   HB_JOB_ARG *job_arg;
   HB_CLUSTER_JOB_ARG *clst_arg;
   HB_NODE_ENTRY *node;
@@ -629,7 +662,10 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
   rv = pthread_mutex_lock (&hb_Cluster->lock);
 
   num_master = hb_cluster_calc_score ();
-  if (hb_Cluster->state == HB_NSTATE_REPLICA)
+  hb_Cluster->is_isolated = hb_cluster_is_isolated ();
+
+  if (hb_Cluster->state == HB_NSTATE_REPLICA
+      || hb_Cluster->hide_to_demote == true)
     {
       goto calc_end;
     }
@@ -637,14 +673,7 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
   /* case : check whether master has been isolated */
   if (hb_Cluster->state == HB_NSTATE_MASTER)
     {
-      for (node = hb_Cluster->nodes; node; node = node->next)
-	{
-	  if (hb_Cluster->myself != node && node->state != HB_NSTATE_UNKNOWN)
-	    {
-	      is_master_isolated = false;
-	    }
-	}
-      if (is_master_isolated)
+      if (hb_Cluster->is_isolated == true)
 	{
 	  /*check ping if Ping host exist */
 	  pthread_mutex_unlock (&hb_Cluster->lock);
@@ -654,6 +683,7 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 	    {
 	      clst_arg = &(job_arg->cluster_job_arg);
 	      clst_arg->ping_check_count = 0;
+	      clst_arg->retries = 0;
 
 	      error = hb_cluster_job_queue (HB_CJOB_CHECK_PING, job_arg,
 					    HB_JOB_TIMER_IMMEDIATELY);
@@ -962,6 +992,100 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
 
   if (arg)
     {
+      free_and_init (arg);
+    }
+  return;
+}
+
+/*
+ * hb_cluster_job_demote() -
+ *      it waits for new master to be elected.
+ *      hb_resource_job_demote_start_shutdown must be proceeded
+ *      before this job.
+ *   return: none
+ *
+ *   arg(in):
+ */
+static void
+hb_cluster_job_demote (HB_JOB_ARG * arg)
+{
+  int rv, error;
+  HB_NODE_ENTRY *node;
+  HB_CLUSTER_JOB_ARG *clst_arg = (arg) ? &(arg->cluster_job_arg) : NULL;
+  char hb_info_str[HB_INFO_STR_MAX];
+
+  if (arg == NULL || clst_arg == NULL)
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "invalid arg or proc_arg. "
+			   "(arg:%p, proc_arg:%p). \n", arg, clst_arg);
+      return;
+    }
+
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
+
+  if (clst_arg->retries == 0)
+    {
+      assert (hb_Cluster->state == HB_NSTATE_MASTER);
+      assert (hb_Resource->state == HB_NSTATE_SLAVE);
+
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+		     "Waiting for a new node to be elected as master");
+    }
+
+  hb_Cluster->hide_to_demote = true;
+  hb_Cluster->state = HB_NSTATE_SLAVE;
+  hb_Cluster->myself->state = hb_Cluster->state;
+
+  if (hb_Cluster->is_isolated == true
+      || ++(clst_arg->retries) > HB_MAX_WAIT_FOR_NEW_MASTER)
+    {
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+		     "Failed to find a new master node and it changes "
+		     "its role back to master again");
+      hb_Cluster->hide_to_demote = false;
+
+      pthread_mutex_unlock (&hb_Cluster->lock);
+
+      if (arg)
+	{
+	  free_and_init (arg);
+	}
+      return;
+    }
+
+  for (node = hb_Cluster->nodes; node; node = node->next)
+    {
+      if (node->state == HB_NSTATE_MASTER)
+	{
+	  assert (node != hb_Cluster->myself);
+
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
+			 1, "Found a new master node");
+	  hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
+			 1, hb_info_str);
+
+	  hb_Cluster->hide_to_demote = false;
+
+	  pthread_mutex_unlock (&hb_Cluster->lock);
+
+	  if (arg)
+	    {
+	      free_and_init (arg);
+	    }
+	  return;
+	}
+    }
+
+  pthread_mutex_unlock (&hb_Cluster->lock);
+
+  error =
+    hb_cluster_job_queue (HB_CJOB_DEMOTE, arg, HB_JOB_TIMER_WAIT_A_SECOND);
+
+  if (error != NO_ERROR)
+    {
+      assert (false);
       free_and_init (arg);
     }
   return;
@@ -1386,7 +1510,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
 	 * must send heartbeat response in order to avoid split-brain
 	 * when heartbeat configuration changed
 	 */
-	if (hbp_header->r)
+	if (hbp_header->r && hb_Cluster->hide_to_demote == false)
 	  {
 	    hb_cluster_send_heartbeat (false, hbp_header->orig_host_name);
 	  }
@@ -1889,6 +2013,26 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
       return;
     }
 
+  if (proc->being_shutdown)
+    {
+      if (kill (proc->pid, 0) && errno == ESRCH)
+	{
+	  proc->being_shutdown = false;
+	}
+      else
+	{
+	  pthread_mutex_unlock (&hb_Resource->lock);
+	  error = hb_resource_job_queue (HB_RJOB_PROC_START, arg,
+					 HB_JOB_TIMER_WAIT_A_SECOND);
+	  if (error != NO_ERROR)
+	    {
+	      assert (false);
+	      free_and_init (arg);
+	    }
+	  return;
+	}
+    }
+
   snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
   MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 		 "Restart the process", error_string);
@@ -2070,6 +2214,254 @@ hb_resource_job_proc_dereg_end:
 }
 
 /*
+ * hb_resource_demote_start_shutdown_server_proc() -
+ *      send shutdown request to server
+ *   return: none
+ *
+ */
+static void
+hb_resource_demote_start_shutdown_server_proc (void)
+{
+  HB_PROC_ENTRY *proc;
+  SOCKET_QUEUE_ENTRY *sock_entq;
+  char buffer[MASTER_TO_SRV_MSG_SIZE];
+
+  for (proc = hb_Resource->procs; proc; proc = proc->next)
+    {
+      /* leave processes other than cub_server */
+      if (proc->state != HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE
+	  && proc->state != HB_PSTATE_REGISTERED_AND_ACTIVE)
+	{
+	  continue;
+	}
+      assert (proc->type == HB_PTYPE_SERVER);
+
+      sock_entq = css_return_entry_by_conn (proc->conn,
+					    &css_Master_socket_anchor);
+
+      if (sock_entq != NULL)
+	{
+	  memset (buffer, 0, sizeof (buffer));
+	  snprintf (buffer, sizeof (buffer) - 1,
+		    msgcat_message (MSGCAT_CATALOG_UTILS,
+				    MSGCAT_UTIL_SET_MASTER,
+				    MASTER_MSG_SERVER_STATUS),
+		    sock_entq->name + 1, 0);
+
+	  css_process_start_shutdown (sock_entq, 0, buffer);
+	  proc->being_shutdown = true;
+	}
+    }
+  return;
+}
+
+/*
+ * hb_resource_demote_confirm_shutdown_server_proc() -
+ *      confirm that server process is shutdown
+ *   return: whether all active, to-be-active server proc's are shutdown
+ *
+ */
+static bool
+hb_resource_demote_confirm_shutdown_server_proc (void)
+{
+  HB_PROC_ENTRY *proc;
+
+  for (proc = hb_Resource->procs; proc; proc = proc->next)
+    {
+      if (proc->state == HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE
+	  || proc->state == HB_PSTATE_REGISTERED_AND_ACTIVE)
+	{
+	  assert (proc->type == HB_PTYPE_SERVER);
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
+ * hb_resource_demote_kill_server_proc() -
+ *      kill server process in an active or to-be-active state
+ *   return: none
+ *
+ */
+static void
+hb_resource_demote_kill_server_proc (void)
+{
+  HB_PROC_ENTRY *proc;
+  char error_string[LINE_MAX] = "";
+
+  for (proc = hb_Resource->procs; proc; proc = proc->next)
+    {
+      if (proc->state == HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE
+	  || proc->state == HB_PSTATE_REGISTERED_AND_ACTIVE)
+	{
+	  assert (proc->type == HB_PTYPE_SERVER);
+
+	  if (!(kill (proc->pid, 0) && errno == ESRCH))
+	    {
+	      snprintf (error_string, LINE_MAX, "(pid: %d, args:%s)",
+			proc->pid, proc->args);
+	      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			     ER_HB_PROCESS_EVENT, 2,
+			     "No response to shutdown request. Process killed",
+			     error_string);
+	      kill (proc->pid, SIGKILL);
+	    }
+	}
+    }
+}
+
+/*
+ * hb_resource_job_demote_confirm_shutdown() -
+ *      prepare for demoting master
+ *      it checks if every active server process is shutdown
+ *      if so, it assigns demote cluster job
+ *   return: none
+ *
+ *   arg(in):
+ */
+static void
+hb_resource_job_demote_confirm_shutdown (HB_JOB_ARG * arg)
+{
+  int error, rv;
+  int num_remaining_server_proc = 0;
+  HB_JOB_ARG *job_arg;
+  HB_RESOURCE_JOB_ARG *proc_arg = (arg) ? &(arg->resource_job_arg) : NULL;
+  HB_CLUSTER_JOB_ARG *clst_arg;
+  char hb_info_str[HB_INFO_STR_MAX] = "";
+  char error_string[LINE_MAX] = "";
+
+  if (arg == NULL || proc_arg == NULL)
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n",
+			   arg, proc_arg);
+      return;
+    }
+
+  rv = pthread_mutex_lock (&hb_Resource->lock);
+
+  if (++(proc_arg->retries) > proc_arg->max_retries)
+    {
+      hb_resource_demote_kill_server_proc ();
+      goto demote_confirm_shutdown_end;
+    }
+
+  if (hb_resource_demote_confirm_shutdown_server_proc () == false)
+    {
+      pthread_mutex_unlock (&hb_Resource->lock);
+
+      error =
+	hb_resource_job_queue (HB_RJOB_DEMOTE_CONFIRM_SHUTDOWN, arg,
+			       prm_get_integer_value
+			       (PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
+
+      assert (error == NO_ERROR);
+
+      return;
+    }
+
+demote_confirm_shutdown_end:
+  pthread_mutex_unlock (&hb_Resource->lock);
+
+  job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
+  if (job_arg == NULL)
+    {
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HB_JOB_ARG));
+      if (arg)
+	{
+	  free_and_init (arg);
+	}
+      css_master_cleanup (SIGTERM);
+      return;
+    }
+
+  clst_arg = &(job_arg->cluster_job_arg);
+  clst_arg->ping_check_count = 0;
+  clst_arg->retries = 0;
+
+  error = hb_cluster_job_queue (HB_CJOB_DEMOTE, job_arg,
+				HB_JOB_TIMER_IMMEDIATELY);
+
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      free_and_init (job_arg);
+    }
+
+  if (arg)
+    {
+      free_and_init (arg);
+    }
+
+  return;
+}
+
+/*
+ * hb_resource_job_demote_start_shutdown() -
+ *      prepare for demoting master
+ *      it shuts down working active server processes
+ *   return: none
+ *
+ *   arg(in):
+ */
+static void
+hb_resource_job_demote_start_shutdown (HB_JOB_ARG * arg)
+{
+  int error, rv;
+  HB_JOB_ARG *job_arg;
+  HB_RESOURCE_JOB_ARG *proc_arg;
+
+#if !defined(WINDOWS)
+  rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
+#endif
+  rv = pthread_mutex_lock (&hb_Resource->lock);
+
+  hb_resource_demote_start_shutdown_server_proc ();
+
+  rv = pthread_mutex_unlock (&hb_Resource->lock);
+#if !defined(WINDOWS)
+  rv = pthread_mutex_unlock (&css_Master_socket_anchor_lock);
+#endif
+
+  job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
+  if (job_arg == NULL)
+    {
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HB_JOB_ARG));
+      if (arg)
+	{
+	  free_and_init (arg);
+	}
+      css_master_cleanup (SIGTERM);
+      return;
+    }
+
+  proc_arg = &(job_arg->resource_job_arg);
+  proc_arg->retries = 0;
+  proc_arg->max_retries =
+    prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM);
+  gettimeofday (&proc_arg->ftime, NULL);
+
+  error =
+    hb_resource_job_queue (HB_RJOB_DEMOTE_CONFIRM_SHUTDOWN, job_arg,
+			   prm_get_integer_value
+			   (PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      free_and_init (job_arg);
+    }
+
+  if (arg)
+    {
+      free_and_init (arg);
+    }
+  return;
+}
+
+/*
  * hb_resource_job_confirm_start() -
  *   return: none
  *
@@ -2104,24 +2496,46 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
 
   if (++(proc_arg->retries) > proc_arg->max_retries)
     {
-      pthread_mutex_unlock (&hb_Resource->lock);
-
       snprintf (error_string, LINE_MAX,
 		"(exceed max retry count for pid: %d, args:%s)", proc->pid,
 		proc->args);
 
       if (hb_Resource->state == HB_NSTATE_MASTER
-	  && proc->type == HB_PTYPE_SERVER)
+	  && proc->type == HB_PTYPE_SERVER
+	  && hb_Cluster->is_isolated == false)
 	{
+	  hb_Resource->state = HB_NSTATE_SLAVE;
+	  pthread_mutex_unlock (&hb_Resource->lock);
+
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			 ER_HB_PROCESS_EVENT, 2,
-			 "Failed to restart the process", error_string);
-	  free_and_init (arg);
-	  css_master_cleanup (SIGTERM);
+			 "Failed to restart the process "
+			 "and the current node will be demoted",
+			 error_string);
+
+	  /* keep checking problematic process */
+	  proc_arg->retries = 0;
+	  error =
+	    hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
+				   prm_get_integer_value
+				   (PRM_ID_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS));
+	  if (error != NO_ERROR)
+	    {
+	      free_and_init (arg);
+	      assert (false);
+	    }
+
+	  /* shutdown working server processes to change its role to slave */
+	  error =
+	    hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL,
+				   HB_JOB_TIMER_IMMEDIATELY);
+	  assert (error == NO_ERROR);
+
 	  return;
 	}
       else
 	{
+	  pthread_mutex_unlock (&hb_Resource->lock);
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			 ER_HB_PROCESS_EVENT, 2,
 			 "Keep checking to confirm the completion of the process startup",
@@ -2439,6 +2853,7 @@ hb_alloc_new_proc (void)
       p->state = HB_PSTATE_UNKNOWN;
       p->next = NULL;
       p->prev = NULL;
+      p->being_shutdown = false;
       first_pp = &hb_Resource->procs;
       hb_list_add ((HB_LIST **) first_pp, (HB_LIST *) p);
     }
@@ -2634,8 +3049,17 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
 
   snprintf (error_string, LINE_MAX, "(pid:%d, args:%s)", proc->pid,
 	    proc->args);
-  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-		 "Process failure detected", error_string);
+
+  if (proc->being_shutdown)
+    {
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		     "Process shutdown detected", error_string);
+    }
+  else
+    {
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		     "Process failure detected", error_string);
+    }
 
   job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
   if (job_arg == NULL)
@@ -2655,7 +3079,6 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
   gettimeofday (&proc_arg->ftime, NULL);
 
   proc->state = HB_PSTATE_DEAD;
-  proc->pid = 0;
   proc->sfd = INVALID_SOCKET;
 
   pthread_mutex_unlock (&hb_Resource->lock);
@@ -2761,8 +3184,9 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
     }
   else
     {
-      proc_state = (proc->state == HB_PSTATE_STARTED) ?
-	HB_PSTATE_NOT_REGISTERED /* restarted by heartbeat */ :
+      proc_state =
+	(proc->state == HB_PSTATE_STARTED) ? HB_PSTATE_NOT_REGISTERED
+	/* restarted by heartbeat */ :
 	HB_PSTATE_UNKNOWN /* already registered */ ;
     }
 
@@ -3252,6 +3676,8 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
   hb_Cluster->shutdown = false;
+  hb_Cluster->hide_to_demote = false;
+  hb_Cluster->is_isolated = false;
   hb_Cluster->sfd = INVALID_SOCKET;
   strncpy (hb_Cluster->host_name, host_name,
 	   sizeof (hb_Cluster->host_name) - 1);

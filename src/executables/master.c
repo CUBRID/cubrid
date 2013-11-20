@@ -710,7 +710,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 		      css_free_conn (conn);
 		      return;
 		    }
-		  else
+		  else if (!temp->ha_mode)
 		    {
 		      temp = css_return_entry_of_server (server_name,
 							 css_Master_socket_anchor);
