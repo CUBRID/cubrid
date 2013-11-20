@@ -551,13 +551,14 @@ static int
 record_ip_access_time (T_SHM_APPL_SERVER * shm_as_p, int info_index,
 		       int list_index)
 {
+#if defined (WINDOWS)
+  char acl_sem_name[BROKER_NAME_LEN];
+#endif
   if (access_info_changed != shm_as_p->acl_chn)
     {
       return -1;
     }
 #if defined (WINDOWS)
-  char acl_sem_name[BROKER_NAME_LEN];
-
   MAKE_ACL_SEM_NAME (acl_sem_name, shm_as_p->broker_name);
   uw_sem_wait (acl_sem_name);
 #else
