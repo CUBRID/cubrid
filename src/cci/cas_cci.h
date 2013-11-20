@@ -784,6 +784,11 @@ extern "C"
 				 CCI_AUTOCOMMIT_MODE autocommit_mode);
   extern int cci_set_holdability (int con_handle_id, int holdable);
   extern int cci_get_holdability (int con_handle_id);
+  extern int cci_set_login_timeout (int mapped_conn_id, int timeout,
+				    T_CCI_ERROR * err_buf);
+  extern int cci_get_login_timeout (int mapped_conn_id, int *timeout,
+				    T_CCI_ERROR * err_buf);
+
   extern int cci_get_class_num_objs (int conn_handle, char *class_name,
 				     int flag, int *num_objs, int *num_pages,
 				     T_CCI_ERROR * err_buf);
@@ -940,6 +945,9 @@ extern "C"
 					   T_CCI_ERROR * err_buf);
   extern int cci_datasource_release (T_CCI_DATASOURCE * date_source,
 				     T_CCI_CONN conn, T_CCI_ERROR * err_buf);
+  extern int cci_datasource_change_property (T_CCI_DATASOURCE * ds,
+					     const char *key,
+					     const char *val);
 
   extern int cci_set_query_timeout (int req_h_id, int timeout);
   extern int cci_get_query_timeout (int req_h_id);

@@ -131,6 +131,7 @@ int wsa_initialize ();
 #define CCI_DS_DEFAULT_AUTOCOMMIT_DEFAULT 		-1
 #define CCI_DS_DEFAULT_ISOLATION_DEFAULT 		TRAN_UNKNOWN_ISOLATION
 #define CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT 		CCI_LOCK_TIMEOUT_DEFAULT
+#define CCI_DS_LOGIN_TIMEOUT_DEFAULT			-1
 
 #define CON_HANDLE_ID_FACTOR            1000000
 #define CON_ID(a) ((a) / CON_HANDLE_ID_FACTOR)
@@ -847,7 +848,11 @@ reset_connect (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle)
   T_CCI_ERROR err_buf;
 
   req_handle_content_free (req_handle, 1);
+
+  SET_START_TIME_FOR_LOGIN (con_handle);
   error = cas_connect_with_ret (con_handle, &err_buf, &connect_done);
+  SET_START_TIME_FOR_QUERY (con_handle, req_handle);
+
   if (error < 0 || !connect_done)
     {
       return error;
@@ -3303,6 +3308,55 @@ cci_execute_result (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
   get_last_error (con_handle, err_buf);
+  con_handle->used = false;
+
+  return error;
+}
+
+int
+cci_set_login_timeout (int mapped_conn_id, int timeout, T_CCI_ERROR * err_buf)
+{
+  T_CON_HANDLE *con_handle = NULL;
+  int error = CCI_ER_NO_ERROR;
+
+  reset_error_buffer (err_buf);
+  error = hm_get_connection (mapped_conn_id, &con_handle);
+  if (error != CCI_ER_NO_ERROR)
+    {
+      set_error_buffer (err_buf, error, NULL);
+      return error;
+    }
+  reset_error_buffer (&(con_handle->err_buf));
+
+  con_handle->login_timeout = timeout;
+  con_handle->used = false;
+
+  return error;
+}
+
+int
+cci_get_login_timeout (int mapped_conn_id, int *val, T_CCI_ERROR * err_buf)
+{
+  T_CON_HANDLE *con_handle = NULL;
+  int error = CCI_ER_NO_ERROR;
+
+  reset_error_buffer (err_buf);
+
+  if (val == NULL)
+    {
+      set_error_buffer (err_buf, CCI_ER_INVALID_ARGS, NULL);
+      return CCI_ER_INVALID_ARGS;
+    }
+
+  error = hm_get_connection (mapped_conn_id, &con_handle);
+  if (error != CCI_ER_NO_ERROR)
+    {
+      set_error_buffer (err_buf, error, NULL);
+      return error;
+    }
+  reset_error_buffer (&(con_handle->err_buf));
+
+  *val = con_handle->login_timeout;
   con_handle->used = false;
 
   return error;
@@ -5823,6 +5877,15 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
       goto create_datasource_error;
     }
 
+  if (!cci_property_get_int (prop, CCI_DS_KEY_LOGIN_TIMEOUT,
+			     &ds->login_timeout,
+			     CCI_DS_LOGIN_TIMEOUT_DEFAULT,
+			     CCI_DS_LOGIN_TIMEOUT_DEFAULT, INT_MAX,
+			     &latest_err_buf))
+    {
+      goto create_datasource_error;
+    }
+
   ds->con_handles = CALLOC (ds->pool_size, sizeof (T_CCI_CONN));
   if (ds->con_handles == NULL)
     {
@@ -5968,6 +6031,102 @@ cci_datasource_destroy (T_CCI_DATASOURCE * ds)
   FREE_MEM (ds);
 }
 
+int
+cci_datasource_change_property (T_CCI_DATASOURCE * ds, const char *key,
+				const char *val)
+{
+  T_CCI_ERROR err_buf;
+  T_CCI_PROPERTIES *properties;
+  int error = NO_ERROR;
+
+  properties = cci_property_create ();
+  if (properties == NULL)
+    {
+      return CCI_ER_NO_MORE_MEMORY;
+    }
+
+  if (!cci_property_set (properties, key, val))
+    {
+      error = CCI_ER_NO_PROPERTY;
+      goto change_property_end;
+    }
+
+  if (strcasecmp (key, CCI_DS_PROPERTY_DEFAULT_AUTOCOMMIT) == 0)
+    {
+      int v;
+
+      if (!cci_property_get_bool_internal (properties,
+					   CCI_DS_KEY_DEFAULT_AUTOCOMMIT,
+					   &v,
+					   CCI_DS_DEFAULT_AUTOCOMMIT_DEFAULT,
+					   &err_buf))
+	{
+	  error = err_buf.err_code;
+	  goto change_property_end;
+	}
+
+      ds->default_autocommit = v;
+    }
+  else if (strcasecmp (key, CCI_DS_PROPERTY_DEFAULT_ISOLATION) == 0)
+    {
+      T_CCI_TRAN_ISOLATION v;
+
+      if (!cci_property_get_isolation (properties,
+				       CCI_DS_KEY_DEFAULT_ISOLATION,
+				       &v,
+				       CCI_DS_DEFAULT_ISOLATION_DEFAULT,
+				       &err_buf))
+	{
+	  error = err_buf.err_code;
+	  goto change_property_end;
+	}
+
+      ds->default_isolation = v;
+    }
+  else if (strcasecmp (key, CCI_DS_PROPERTY_DEFAULT_LOCK_TIMEOUT) == 0)
+    {
+      int v;
+
+      if (!cci_property_get_int (properties, CCI_DS_KEY_DEFAULT_LOCK_TIMEOUT,
+				 &v, CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT,
+				 CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT,
+				 INT_MAX, &err_buf))
+	{
+	  error = err_buf.err_code;
+	  goto change_property_end;
+	}
+
+      ds->default_lock_timeout = v;
+    }
+  else if (strcasecmp (key, CCI_DS_PROPERTY_LOGIN_TIMEOUT) == 0)
+    {
+      int v;
+
+      if (!cci_property_get_int (properties, CCI_DS_KEY_LOGIN_TIMEOUT, &v,
+				 CCI_DS_LOGIN_TIMEOUT_DEFAULT,
+				 CCI_DS_LOGIN_TIMEOUT_DEFAULT, INT_MAX,
+				 &err_buf))
+	{
+	  error = err_buf.err_code;
+	  goto change_property_end;
+	}
+
+      ds->login_timeout = v;
+    }
+  else
+    {
+      error = CCI_ER_NO_PROPERTY;
+    }
+
+change_property_end:
+  if (properties)
+    {
+      cci_property_destroy (properties);
+    }
+
+  return error;
+}
+
 T_CCI_CONN
 cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 {
@@ -6057,6 +6216,10 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
       if (ds->default_isolation != CCI_DS_DEFAULT_ISOLATION_DEFAULT)
 	{
 	  cci_set_isolation_level (mapped_id, ds->default_isolation, err_buf);
+	}
+      if (ds->login_timeout != CCI_DS_LOGIN_TIMEOUT_DEFAULT)
+	{
+	  cci_set_login_timeout (mapped_id, ds->login_timeout, err_buf);
 	}
     }
 
