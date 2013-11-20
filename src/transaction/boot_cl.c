@@ -81,6 +81,7 @@
 #include "jsp_cl.h"
 #include "client_support.h"
 #include "es.h"
+#include "tsc_timer.h"
 
 #if defined(CS_MODE)
 #include "network.h"
@@ -564,6 +565,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
    * may need domains.
    */
   tp_init ();
+
+  /* Initialize tsc-timer */
+  tsc_init ();
 
   if (tran_lock_wait_msecs > 0)
     {
@@ -1143,6 +1147,10 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
    * may need domains.
    */
   tp_init ();
+
+  /* Initialize tsc-timer */
+  tsc_init ();
+
   error_code = ws_init ();
   if (error_code != NO_ERROR)
     {

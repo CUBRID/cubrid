@@ -103,7 +103,9 @@ BASE_SOURCES = \
 	$(BASE_DIR)/stringl.c \
 	$(BASE_DIR)/getopt_long.c \
 	$(BASE_DIR)/binaryheap.c \
-	$(BASE_DIR)/event_log.c
+	$(BASE_DIR)/event_log.c \
+	$(BASE_DIR)/tsc_timer.c \
+	$(BASE_DIR)/perf.c
 
 EXECUTABLE_SOURCES = \
 	$(EXECUTABLE_DIR)/util_common.c

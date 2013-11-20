@@ -71,6 +71,7 @@
 #include "es.h"
 #include "es_posix.h"
 #include "event_log.h"
+#include "tsc_timer.h"
 
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
@@ -5787,8 +5788,10 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   int query_timeout;
 
   int response_time = 0;
-  struct timeval start;
-  struct timeval end;
+
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+
   int queryinfo_string_length = 0;
   char queryinfo_string[QUERY_INFO_BUF_SIZE];
 
@@ -5806,7 +5809,8 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       xmnt_server_start_stats (thread_p, false);
       xmnt_server_copy_stats (thread_p, &base_stats);
-      gettimeofday (&start, NULL);
+
+      tsc_getticks (&start_tick);
 
       if (trace_slow_msec >= 0)
 	{
@@ -5962,10 +5966,10 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (trace_slow_msec >= 0 || trace_ioreads > 0)
     {
-      gettimeofday (&end, NULL);
-      response_time =
-	(end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec -
-					      start.tv_usec) / 1000;
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      response_time = (tv_diff.tv_sec * 1000) + (tv_diff.tv_usec / 1000);
+
       xmnt_server_copy_stats (thread_p, &current_stats);
       mnt_calc_diff_stats (&diff_stats, &current_stats, &base_stats);
 

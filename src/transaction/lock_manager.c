@@ -54,6 +54,7 @@
 #include "thread.h"
 #include "query_manager.h"
 #include "event_log.h"
+#include "tsc_timer.h"
 
 #ifndef DB_NA
 #define DB_NA           2
@@ -7336,7 +7337,8 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
   LK_ENTRY *class_entry = NULL, *superclass_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
 
   if (oid == NULL)
@@ -7361,7 +7363,7 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -7523,8 +7525,8 @@ end:
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
@@ -7592,7 +7594,8 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid,
   int wait_msecs;
   TRAN_ISOLATION isolation;
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
 
   if (subclass_oid == NULL)
@@ -7617,7 +7620,7 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -7692,8 +7695,8 @@ end:
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
@@ -7778,7 +7781,8 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
   LK_ENTRY *class_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
 
   if (oid == NULL)
@@ -7803,7 +7807,7 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -7956,8 +7960,8 @@ end:
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
@@ -8019,7 +8023,8 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
   LK_ENTRY *inst_entry = NULL;
   LOCK intention_mode;
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
 
   if (lockset == NULL)
@@ -8032,7 +8037,7 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -8274,8 +8279,8 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
@@ -8340,7 +8345,8 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
 
   if (class_oid == NULL)
@@ -8353,7 +8359,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -8423,8 +8429,8 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
@@ -8484,7 +8490,8 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
   int cls_count;
   int granted, i;
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
 
   if (lockhint == NULL)
@@ -8503,7 +8510,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -8681,8 +8688,8 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
@@ -12966,7 +12973,8 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
   LK_ENTRY *class_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
 
   assert (granted_mode != NULL);
@@ -12994,7 +13002,7 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -13162,8 +13170,8 @@ end:
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
@@ -13228,7 +13236,8 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
   LK_ENTRY *class_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
 
   assert (prv_total_hold_mode != NULL);
@@ -13261,7 +13270,7 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -13417,8 +13426,8 @@ end:
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {

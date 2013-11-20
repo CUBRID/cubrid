@@ -73,6 +73,7 @@
 #endif
 
 #include "partition.h"
+#include "tsc_timer.h"
 
 #define GOTO_EXIT_ON_ERROR \
   do \
@@ -3361,12 +3362,16 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			QUERY_OPTIONS option, XASL_STATE * xasl_state)
 {
   int error = NO_ERROR;
-  struct timeval start, end;
+
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+
   UINT64 old_sort_pages = 0, old_sort_ioreads = 0;
 
   if (thread_is_on_trace (thread_p))
     {
-      gettimeofday (&start, NULL);
+      tsc_getticks (&start_tick);
+
       if (xasl->orderby_stats.orderby_filesort)
 	{
 	  old_sort_pages = mnt_get_sort_data_pages (thread_p);
@@ -3387,8 +3392,9 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (thread_is_on_trace (thread_p))
     {
-      gettimeofday (&end, NULL);
-      ADD_TIMEVAL (xasl->orderby_stats.orderby_time, start, end);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (xasl->orderby_stats.orderby_time, tv_diff);
 
       if (xasl->orderby_stats.orderby_filesort)
 	{
@@ -4162,7 +4168,10 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QFILE_LIST_SCAN_ID input_scan_id;
   int ls_flag = 0;
   int tuple_cnt = 0;
-  struct timeval start, end;
+
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+
   UINT64 old_sort_pages = 0, old_sort_ioreads = 0;
 
   if (buildlist->groupby_list == NULL)
@@ -4278,7 +4287,8 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (thread_is_on_trace (thread_p))
     {
-      gettimeofday (&start, NULL);
+      tsc_getticks (&start_tick);
+
       xasl->groupby_stats.run_groupby = true;
       xasl->groupby_stats.groupby_sort = true;
       xasl->groupby_stats.rows = 0;
@@ -4369,8 +4379,10 @@ wrapup:
 
     if (thread_is_on_trace (thread_p))
       {
-	gettimeofday (&end, NULL);
-	ADD_TIMEVAL (xasl->groupby_stats.groupby_time, start, end);
+	tsc_getticks (&end_tick);
+	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	TSC_ADD_TIMEVAL (xasl->groupby_stats.groupby_time, tv_diff);
+
 	xasl->groupby_stats.groupby_pages =
 	  mnt_get_sort_data_pages (thread_p) - old_sort_pages;
 	xasl->groupby_stats.groupby_ioreads =
@@ -12478,7 +12490,10 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			 XASL_STATE * xasl_state)
 {
   int error = NO_ERROR;
-  struct timeval start, end;
+
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+
   UINT64 old_fetches, old_ioreads;
 
   if (thread_get_recursion_depth (thread_p)
@@ -12493,7 +12508,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (thread_is_on_trace (thread_p))
     {
-      gettimeofday (&start, NULL);
+      tsc_getticks (&start_tick);
+
       old_fetches = mnt_get_pb_fetches (thread_p);
       old_ioreads = mnt_get_pb_ioreads (thread_p);
     }
@@ -12502,8 +12518,10 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (thread_is_on_trace (thread_p))
     {
-      gettimeofday (&end, NULL);
-      ADD_TIMEVAL (xasl->xasl_stats.elapsed_time, start, end);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (xasl->xasl_stats.elapsed_time, tv_diff);
+
       xasl->xasl_stats.fetches += mnt_get_pb_fetches (thread_p) - old_fetches;
       xasl->xasl_stats.ioreads += mnt_get_pb_ioreads (thread_p) - old_ioreads;
     }
@@ -13157,13 +13175,16 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  /* process CONNECT BY xasl */
 	  if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
 	    {
-	      struct timeval start, end;
+	      TSC_TICKS start_tick, end_tick;
+	      TSCTIMEVAL tv_diff;
+
 	      UINT64 old_fetches, old_ioreads;
 	      XASL_STATS *xasl_stats;
 
 	      if (thread_is_on_trace (thread_p))
 		{
-		  gettimeofday (&start, NULL);
+		  tsc_getticks (&start_tick);
+
 		  old_fetches = mnt_get_pb_fetches (thread_p);
 		  old_ioreads = mnt_get_pb_ioreads (thread_p);
 		}
@@ -13188,10 +13209,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	      if (thread_is_on_trace (thread_p))
 		{
-		  gettimeofday (&end, NULL);
 		  xasl_stats = &xasl->connect_by_ptr->xasl_stats;
 
-		  ADD_TIMEVAL (xasl_stats->elapsed_time, start, end);
+		  tsc_getticks (&end_tick);
+		  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+		  TSC_ADD_TIMEVAL (xasl_stats->elapsed_time, tv_diff);
+
 		  xasl_stats->fetches =
 		    mnt_get_pb_fetches (thread_p) - old_fetches;
 		  xasl_stats->ioreads =
@@ -13468,7 +13491,10 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 #if defined(CUBRID_DEBUG)
   static int trace = -1;
   static FILE *fp = NULL;
-  struct timeval s_tv, e_tv;
+
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+
 #endif /* CUBRID_DEBUG */
   struct drand48_data *rand_buf_p;
 #if !defined (NDEBUG)
@@ -13536,7 +13562,8 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 	fprintf (fp, "start %s tid %d qid %ld query %s\n",
 		 str, LOG_FIND_THREAD_TRAN_INDEX (thread_p), query_id,
 		 (xasl->sql_hash_text ? xasl->sql_hash_text : "<NULL>"));
-	gettimeofday (&s_tv, NULL);
+
+	tsc_getticks (&start_tick);
       }
   }
 #endif /* CUBRID_DEBUG */
@@ -13780,10 +13807,12 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 	char str[19];
 	float elapsed;
 
-	gettimeofday (&e_tv, NULL);
-	elapsed = (float) (e_tv.tv_sec - s_tv.tv_sec) * 1000000;
-	elapsed += (float) (e_tv.tv_usec - s_tv.tv_usec);
+	tsc_getticks (&end_tick);
+	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	elapsed = (float) (tv_diff.tv_sec) * 1000000;
+	elapsed += (float) tv_diff.tv_usec;
 	elapsed /= 1000000;
+
 	time (&loc);
 	strftime (str, 19, "%x %X", localtime_r (&loc, &tm_val));
 	fprintf (fp, "end %s tid %d qid %d elapsed %.6f\n",
@@ -17658,7 +17687,10 @@ qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int n, i;
   ORDBYNUM_INFO ordby_info;
   REGU_VARIABLE_LIST regu_list;
-  struct timeval start, end;
+
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+
   UINT64 old_sort_pages = 0, old_sort_ioreads = 0;
 
   if (orderby_list != NULL)
@@ -17672,7 +17704,8 @@ qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  if (thread_is_on_trace (thread_p))
 	    {
-	      gettimeofday (&start, NULL);
+	      tsc_getticks (&start_tick);
+
 	      old_sort_pages = mnt_get_sort_data_pages (thread_p);
 	      old_sort_ioreads = mnt_get_sort_io_pages (thread_p);
 	    }
@@ -17733,8 +17766,10 @@ qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	  if (thread_is_on_trace (thread_p))
 	    {
-	      gettimeofday (&end, NULL);
-	      ADD_TIMEVAL (xasl->orderby_stats.orderby_time, start, end);
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (xasl->orderby_stats.orderby_time, tv_diff);
+
 	      xasl->orderby_stats.orderby_filesort = true;
 
 	      xasl->orderby_stats.orderby_pages +=
@@ -19532,7 +19567,9 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QFILE_TUPLE_RECORD tuple_rec;
   REGU_VARIABLE_LIST regu_list;
   int tuple_cnt = 0;
-  struct timeval start, end;
+
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 
   if (buildlist->groupby_list == NULL)
     {
@@ -19617,7 +19654,8 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (thread_is_on_trace (thread_p))
     {
-      gettimeofday (&start, NULL);
+      tsc_getticks (&start_tick);
+
       xasl->groupby_stats.run_groupby = true;
       xasl->groupby_stats.groupby_sort = false;
       xasl->groupby_stats.rows = 0;
@@ -19762,8 +19800,9 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   if (thread_is_on_trace (thread_p))
     {
-      gettimeofday (&end, NULL);
-      ADD_TIMEVAL (xasl->groupby_stats.groupby_time, start, end);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (xasl->groupby_stats.groupby_time, tv_diff);
     }
 
 exit_on_error:

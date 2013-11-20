@@ -48,6 +48,7 @@
 #include "boot_sr.h"
 #include "environment_variable.h"
 #include "event_log.h"
+#include "tsc_timer.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -2279,7 +2280,8 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
   INT32 npages_toadd;
   INT32 nsects_toadd;
 #if defined(SERVER_MODE)
-  struct timeval start, end;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 #endif /* SERVER_MODE */
 
   vpid.volid = volid;
@@ -2330,7 +2332,7 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
     }
 
 #if defined(SERVER_MODE)
-  gettimeofday (&start, NULL);
+  tsc_getticks (&start_tick);
 #endif /* SERVER_MODE */
 
   if (fileio_expand (thread_p, volid, npages_toadd, DISK_TEMPVOL_TEMP_PURPOSE)
@@ -2340,8 +2342,10 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
     }
 
 #if defined(SERVER_MODE)
-  gettimeofday (&end, NULL);
-  ADD_TIMEVAL (thread_p->event_stats.temp_expand_time, start, end);
+  tsc_getticks (&end_tick);
+  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+  TSC_ADD_TIMEVAL (thread_p->event_stats.temp_expand_time, tv_diff);
+
   thread_p->event_stats.temp_expand_pages += npages_toadd;
 #endif /* SERVER_MODE */
 

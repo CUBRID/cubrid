@@ -73,6 +73,7 @@
 #include "heartbeat.h"
 #endif
 
+#include "tsc_timer.h"
 
 #if defined(HPUX)
 #define thread_initialize_key()
@@ -1561,7 +1562,9 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
 {
   int r;
   int old_status;
-  struct timeval start, end;
+
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 
   assert (thread_p->status == TS_RUN || thread_p->status == TS_CHECK);
   old_status = thread_p->status;
@@ -1571,7 +1574,7 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
 
   if (thread_p->event_stats.trace_slow_query == true)
     {
-      gettimeofday (&start, NULL);
+      tsc_getticks (&start_tick);
     }
 
   r = pthread_cond_wait (&thread_p->wakeup_cond, &thread_p->th_entry_lock);
@@ -1584,14 +1587,16 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
 
   if (thread_p->event_stats.trace_slow_query == true)
     {
-      gettimeofday (&end, NULL);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+
       if (suspended_reason == THREAD_LOCK_SUSPENDED)
 	{
-	  ADD_TIMEVAL (thread_p->event_stats.lock_waits, start, end);
+	  TSC_ADD_TIMEVAL (thread_p->event_stats.lock_waits, tv_diff);
 	}
       else if (suspended_reason == THREAD_PGBUF_SUSPENDED)
 	{
-	  ADD_TIMEVAL (thread_p->event_stats.latch_waits, start, end);
+	  TSC_ADD_TIMEVAL (thread_p->event_stats.latch_waits, tv_diff);
 	}
     }
 

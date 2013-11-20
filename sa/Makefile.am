@@ -149,10 +149,14 @@ BASE_SOURCES = \
 	$(BASE_DIR)/variable_string.c \
 	$(BASE_DIR)/stringl.c \
 	$(BASE_DIR)/getopt_long.c \
-	$(BASE_DIR)/binaryheap.c
+	$(BASE_DIR)/binaryheap.c \
+	$(BASE_DIR)/tsc_timer.c \
+	$(BASE_DIR)/perf.c
+
 HEAPLAYER_SOURCES = \
 	$(HEAPLAYER_DIR)/customheaps.cpp \
 	$(HEAPLAYER_DIR)/lea_heap.c
+
 CONNECTION_SOURCES = \
 	$(CONNECTION_DIR)/connection_less.c \
 	$(CONNECTION_DIR)/connection_cl.c \

@@ -60,6 +60,7 @@
 #include "parser.h"
 #include "network_interface_cl.h"
 #include "utility.h"
+#include "tsc_timer.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -1846,7 +1847,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 
   for (num_stmts = 0; num_stmts < total; num_stmts++)
     {
-      struct timeval start_time, end_time, elapsed_time;
+      TSC_TICKS start_tick, end_tick;
+      TSCTIMEVAL elapsed_time;
+
       int stmt_id;
       CUBRID_STMT_TYPE stmt_type;	/* statement type */
       DB_QUERY_RESULT *result = NULL;	/* result pointer */
@@ -1858,7 +1861,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 
       if (csql_Is_time_on)
 	{
-	  (void) gettimeofday (&start_time, NULL);
+	  tsc_getticks (&start_tick);
 	}
       stmt_id = db_compile_statement (session);
 
@@ -2048,15 +2051,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	{
 	  char time[100];
 
-	  (void) gettimeofday (&end_time, NULL);
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
 
-	  elapsed_time.tv_sec = end_time.tv_sec - start_time.tv_sec;
-	  elapsed_time.tv_usec = end_time.tv_usec - start_time.tv_usec;
-	  if (elapsed_time.tv_usec < 0)
-	    {
-	      elapsed_time.tv_sec--;
-	      elapsed_time.tv_usec += 1000000;
-	    }
 	  sprintf (time, " (%ld.%06ld sec) ",
 		   elapsed_time.tv_sec, elapsed_time.tv_usec);
 	  strncat (stmt_msg, time, sizeof (time));

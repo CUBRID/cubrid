@@ -47,6 +47,7 @@
 #include "query_manager.h"
 #include "xasl_support.h"
 #include "xserver_interface.h"
+#include "tsc_timer.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -4470,11 +4471,14 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   SCAN_CODE status;
 
   UINT64 old_fetches, old_ioreads;
-  struct timeval scan_start, scan_end;
+
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 
   if (thread_is_on_trace (thread_p))
     {
-      gettimeofday (&scan_start, NULL);
+      tsc_getticks (&start_tick);
+
       old_fetches = mnt_get_pb_fetches (thread_p);
       old_ioreads = mnt_get_pb_ioreads (thread_p);
     }
@@ -4515,8 +4519,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   if (thread_is_on_trace (thread_p))
     {
-      gettimeofday (&scan_end, NULL);
-      ADD_TIMEVAL (scan_id->stats.elapsed_scan, scan_start, scan_end);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (scan_id->stats.elapsed_scan, tv_diff);
+
       scan_id->stats.num_fetches +=
 	mnt_get_pb_fetches (thread_p) - old_fetches;
       scan_id->stats.num_ioreads +=
@@ -4786,7 +4792,9 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   RECDES recdes;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   TRAN_ISOLATION isolation;
-  struct timeval lookup_start, lookup_end;
+
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 
   isidp = &scan_id->s.isid;
 
@@ -5058,7 +5066,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  if (thread_is_on_trace (thread_p))
 	    {
-	      gettimeofday (&lookup_start, NULL);
+	      tsc_getticks (&start_tick);
 	    }
 
 	  sp_scan = heap_get (thread_p, isidp->curr_oidp,
@@ -5296,9 +5304,10 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  if (thread_is_on_trace (thread_p))
 	    {
-	      gettimeofday (&lookup_end, NULL);
-	      ADD_TIMEVAL (scan_id->stats.elapsed_lookup,
-			   lookup_start, lookup_end);
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (scan_id->stats.elapsed_lookup, tv_diff);
+
 	      scan_id->stats.data_qualified_rows++;
 	    }
 	}

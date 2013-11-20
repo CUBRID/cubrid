@@ -58,6 +58,7 @@
 #include "network_interface_cl.h"
 #include "locale_support.h"
 #include "boot_cl.h"
+#include "tsc_timer.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else
@@ -1760,6 +1761,9 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
     }
   /* Initialize domain area */
   tp_init ();
+
+  /* Initialize tsc-timer */
+  tsc_init ();
 
   if (key_type != NULL)
     {

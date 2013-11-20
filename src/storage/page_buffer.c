@@ -45,6 +45,7 @@
 #include "environment_variable.h"
 #include "thread.h"
 #include "list_file.h"
+#include "tsc_timer.h"
 
 #if defined(CUBRID_DEBUG)
 #include "disk_manager.h"
@@ -5093,7 +5094,9 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
   char *client_user_name;	/* Client user name for transaction */
   char *client_host_name;	/* Client host for transaction */
   int client_pid;		/* Client process identifier for transaction */
-  struct timeval start, end;
+
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 
   /* After holding the mutex associated with conditional variable,
      relese the bufptr->BCB_mutex. */
@@ -5120,7 +5123,7 @@ try_again:
 
   if (thrd_entry->event_stats.trace_slow_query == true)
     {
-      gettimeofday (&start, NULL);
+      tsc_getticks (&start_tick);
     }
 
   thrd_entry->resume_status = THREAD_PGBUF_SUSPENDED;
@@ -5129,8 +5132,9 @@ try_again:
 
   if (thrd_entry->event_stats.trace_slow_query == true)
     {
-      gettimeofday (&end, NULL);
-      ADD_TIMEVAL (thrd_entry->event_stats.latch_waits, start, end);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (thrd_entry->event_stats.latch_waits, tv_diff);
     }
 
   if (r == 0)

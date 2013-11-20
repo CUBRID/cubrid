@@ -38,6 +38,7 @@
 #include "connection_error.h"
 #include "perf_monitor.h"
 #include "system_parameter.h"
+#include "tsc_timer.h"
 
 #undef csect_initialize_critical_section
 #undef csect_finalize_critical_section
@@ -552,9 +553,12 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 {
   int error_code = NO_ERROR, r;
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 #endif
-  struct timeval wait_start, wait_end;
+
+  TSC_TICKS wait_start_tick, wait_end_tick;
+  TSCTIMEVAL wait_tv_diff;
 
   assert (cs_ptr != NULL);
 
@@ -573,7 +577,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -605,16 +609,18 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_start, NULL);
+		  tsc_getticks (&wait_start_tick);
 		}
 
 	      error_code = csect_wait_on_writer_queue (thread_p, cs_ptr,
 						       INF_WAIT, NULL);
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
-			       wait_start, wait_end);
+		  tsc_getticks (&wait_end_tick);
+		  tsc_elapsed_time_usec (&wait_tv_diff, wait_end_tick,
+					 wait_start_tick);
+		  TSC_ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+				   wait_tv_diff);
 		}
 
 	      cs_ptr->waiting_writers--;
@@ -672,16 +678,18 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_start, NULL);
+		  tsc_getticks (&wait_start_tick);
 		}
 
 	      error_code = csect_wait_on_writer_queue (thread_p, cs_ptr,
 						       NOT_WAIT, &to);
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
-			       wait_start, wait_end);
+		  tsc_getticks (&wait_end_tick);
+		  tsc_elapsed_time_usec (&wait_tv_diff, wait_end_tick,
+					 wait_start_tick);
+		  TSC_ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+				   wait_tv_diff);
 		}
 
 	      cs_ptr->waiting_writers--;
@@ -732,10 +740,9 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
-      TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, cs_ptr->max_wait,
-			     elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, cs_ptr->max_wait, tv_diff);
     }
 #endif
 
@@ -811,9 +818,11 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 {
   int error_code = NO_ERROR, r;
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 #endif
-  struct timeval wait_start, wait_end;
+  TSC_TICKS wait_start_tick, wait_end_tick;
+  TSCTIMEVAL wait_tv_diff;
 
   assert (cs_ptr != NULL);
 
@@ -832,7 +841,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -866,16 +875,18 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_start, NULL);
+		  tsc_getticks (&wait_start_tick);
 		}
 
 	      error_code = pthread_cond_wait (&cs_ptr->readers_ok,
 					      &cs_ptr->lock);
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
-			       wait_start, wait_end);
+		  tsc_getticks (&wait_end_tick);
+		  tsc_elapsed_time_usec (&wait_tv_diff, wait_end_tick,
+					 wait_start_tick);
+		  TSC_ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+				   wait_tv_diff);
 		}
 
 	      if (error_code != NO_ERROR)
@@ -916,16 +927,18 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_start, NULL);
+		  tsc_getticks (&wait_start_tick);
 		}
 
 	      error_code = pthread_cond_timedwait (&cs_ptr->readers_ok,
 						   &cs_ptr->lock, &to);
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
-			       wait_start, wait_end);
+		  tsc_getticks (&wait_end_tick);
+		  tsc_elapsed_time_usec (&wait_tv_diff, wait_end_tick,
+					 wait_start_tick);
+		  TSC_ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+				   wait_tv_diff);
 		}
 
 	      if (error_code != 0)
@@ -981,10 +994,9 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
-      TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, cs_ptr->max_wait,
-			     elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, cs_ptr->max_wait, tv_diff);
     }
 #endif
 
@@ -1058,9 +1070,11 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 {
   int error_code = NO_ERROR, r;
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 #endif
-  struct timeval wait_start, wait_end;
+  TSC_TICKS wait_start_tick, wait_end_tick;
+  TSCTIMEVAL wait_tv_diff;
 
   assert (cs_ptr != NULL);
 
@@ -1079,7 +1093,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -1135,16 +1149,18 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_start, NULL);
+		  tsc_getticks (&wait_start_tick);
 		}
 
 	      error_code = pthread_cond_wait (&cs_ptr->readers_ok,
 					      &cs_ptr->lock);
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
-			       wait_start, wait_end);
+		  tsc_getticks (&wait_end_tick);
+		  tsc_elapsed_time_usec (&wait_tv_diff, wait_end_tick,
+					 wait_start_tick);
+		  TSC_ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+				   wait_tv_diff);
 		}
 
 	      if (error_code != NO_ERROR)
@@ -1185,16 +1201,18 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_start, NULL);
+		  tsc_getticks (&wait_start_tick);
 		}
 
 	      error_code = pthread_cond_timedwait (&cs_ptr->readers_ok,
 						   &cs_ptr->lock, &to);
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
-			       wait_start, wait_end);
+		  tsc_getticks (&wait_end_tick);
+		  tsc_elapsed_time_usec (&wait_tv_diff, wait_end_tick,
+					 wait_start_tick);
+		  TSC_ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+				   wait_tv_diff);
 		}
 
 	      if (error_code != 0)
@@ -1250,10 +1268,9 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
-      TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, cs_ptr->max_wait,
-			     elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, cs_ptr->max_wait, tv_diff);
     }
 #endif
 
@@ -1342,9 +1359,11 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 {
   int error_code = NO_ERROR, r;
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 #endif
-  struct timeval wait_start, wait_end;
+  TSC_TICKS wait_start_tick, wait_end_tick;
+  TSCTIMEVAL wait_tv_diff;
 
   assert (cs_ptr != NULL);
 
@@ -1363,7 +1382,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -1411,16 +1430,18 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_start, NULL);
+		  tsc_getticks (&wait_start_tick);
 		}
 
 	      error_code = csect_wait_on_promoter_queue (thread_p, cs_ptr,
 							 INF_WAIT, NULL);
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
-			       wait_start, wait_end);
+		  tsc_getticks (&wait_end_tick);
+		  tsc_elapsed_time_usec (&wait_tv_diff, wait_end_tick,
+					 wait_start_tick);
+		  TSC_ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+				   wait_tv_diff);
 		}
 
 	      cs_ptr->waiting_writers--;
@@ -1450,16 +1471,18 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_start, NULL);
+		  tsc_getticks (&wait_start_tick);
 		}
 
 	      error_code = csect_wait_on_promoter_queue (thread_p, cs_ptr,
 							 NOT_WAIT, &to);
 	      if (thread_p->event_stats.trace_slow_query == true)
 		{
-		  gettimeofday (&wait_end, NULL);
-		  ADD_TIMEVAL (thread_p->event_stats.cs_waits,
-			       wait_start, wait_end);
+		  tsc_getticks (&wait_end_tick);
+		  tsc_elapsed_time_usec (&wait_tv_diff, wait_end_tick,
+					 wait_start_tick);
+		  TSC_ADD_TIMEVAL (thread_p->event_stats.cs_waits,
+				   wait_tv_diff);
 		}
 
 	      cs_ptr->waiting_writers--;
@@ -1509,10 +1532,9 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
-      TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, cs_ptr->max_wait,
-			     elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, cs_ptr->max_wait, tv_diff);
     }
 #endif
 

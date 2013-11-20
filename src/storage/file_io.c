@@ -96,6 +96,7 @@
 #endif /* SERVER_MODE */
 
 #include "intl_support.h"
+#include "tsc_timer.h"
 
 
 /*
@@ -1965,9 +1966,10 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 					 * and sleep
 					 */
   INT64 time_to_sleep;
-  struct timeval tv;
-  INT64 start_in_millis;
-  INT64 current_in_millis;
+
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+
   INT64 page_count_per_sec;
 #endif
 
@@ -1984,8 +1986,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
       allowed_millis_for_a_sleep =
 	count_of_page_for_a_sleep * 1000 / page_count_per_sec;
 
-      gettimeofday (&tv, NULL);
-      start_in_millis = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -2020,10 +2021,11 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
       if (kbytes_to_be_written_per_sec > 0
 	  && (page_id + 1) % count_of_page_for_a_sleep == 0)
 	{
-	  gettimeofday (&tv, NULL);
-	  current_in_millis = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 
-	  previous_elapsed_millis = current_in_millis - start_in_millis;
+	  previous_elapsed_millis =
+	    (tv_diff.tv_sec * 1000LL) + (tv_diff.tv_usec / 1000LL);
 
 	  /* calculate time to sleep through subtracting */
 	  time_to_sleep =
@@ -2032,8 +2034,8 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	    {
 	      thread_sleep (time_to_sleep);
 	    }
-	  gettimeofday (&tv, NULL);
-	  start_in_millis = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
+
+	  tsc_getticks (&start_tick);
 	}
 #endif
     }
@@ -2801,7 +2803,8 @@ fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p,
 			    const char *new_label_p)
 {
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
 #if !defined(CS_MODE)
   int vol_fd;
@@ -2823,7 +2826,7 @@ fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -2844,8 +2847,8 @@ fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
@@ -3693,7 +3696,8 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	     PAGEID page_id, size_t page_size)
 {
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
   off_t offset = FILEIO_GET_FILE_SIZE (page_size, page_id);
   ssize_t nbytes;
@@ -3712,7 +3716,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -3814,8 +3818,8 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
@@ -3859,7 +3863,8 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	      PAGEID page_id, size_t page_size)
 {
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
   off_t offset = FILEIO_GET_FILE_SIZE (page_size, page_id);
   bool is_retry = true;
@@ -3876,7 +3881,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -3968,8 +3973,8 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
@@ -4005,7 +4010,8 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 		   PAGEID page_id, int num_pages, size_t page_size)
 {
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
   off_t offset;
   ssize_t nbytes;
@@ -4030,7 +4036,7 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -4136,8 +4142,8 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
@@ -4162,7 +4168,8 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 		    PAGEID page_id, int num_pages, size_t page_size)
 {
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
   off_t offset;
   ssize_t nbytes;
@@ -4186,7 +4193,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -4291,8 +4298,8 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
@@ -4359,7 +4366,8 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 {
   int ret;
 #if defined (EnableThreadMonitoring)
-  struct timeval start_time, end_time, elapsed_time;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
 #endif
 #if defined (SERVER_MODE)
   static pthread_mutex_t inc_cnt_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -4395,7 +4403,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&start_time, NULL);
+      tsc_getticks (&start_tick);
     }
 #endif
 
@@ -4410,8 +4418,8 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
-      gettimeofday (&end_time, NULL);
-      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
     }
 #endif
 

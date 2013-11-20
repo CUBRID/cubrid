@@ -76,6 +76,8 @@
 #include "connection_error.h"
 #endif
 
+#include "tsc_timer.h"
+
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
@@ -4045,10 +4047,12 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
   bool search_all = false;
   int rc;
 #if defined (CUBRID_DEBUG)
-  struct timeval s_tv, e_tv;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+
   float elapsed;
 
-  gettimeofday (&s_tv, NULL);
+  tsc_getticks (&start_tick);
 #endif /* CUBRID_DEBUG */
 
   min_freespace = heap_stats_get_min_freespace (heap_hdr);
@@ -4320,10 +4324,12 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 
 #if defined (CUBRID_DEBUG)
-  gettimeofday (&e_tv, NULL);
-  elapsed = (float) (e_tv.tv_sec - s_tv.tv_sec) * 1000000;
-  elapsed += (float) (e_tv.tv_usec - s_tv.tv_usec);
+  tsc_getticks (&end_tick);
+  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+  elapsed = (float) tv_diff.tv_sec * 1000000;
+  elapsed += (float) tv_diff.tv_usec;
   elapsed /= 1000000;
+
   er_log_debug (ARG_FILE_LINE,
 		"heap_stats_sync_bestspace: elapsed time %.6f", elapsed);
 #endif /* CUBRID_DEBUG */
