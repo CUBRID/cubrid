@@ -2685,6 +2685,9 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
   int br_index;
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_appl;
+  char line_buf[LINE_MAX];
+  char str[32];
+  int len = 0;
 
   shm_br =
     (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER,
@@ -2756,30 +2759,62 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
 	      fprintf (stdout, "%s:%s:%s\n", shm_appl->access_info[j].dbname,
 		       shm_appl->access_info[j].dbuser,
 		       shm_appl->access_info[j].ip_files);
+
+	      len = 0;
+	      len += sprintf (line_buf + len, "%16s ", "CLIENT IP");
+	      len += sprintf (line_buf + len, "%25s", "LAST ACCESS TIME");
+	      fprintf (stdout, "%s\n", line_buf);
+
+	      for (k = 0; k < len; k++)
+		{
+		  line_buf[k] = '=';
+		}
+	      line_buf[k] = '\0';
+	      fprintf (stdout, "%s\n", line_buf);
+
 	      for (k = 0; k < shm_appl->access_info[j].ip_info.num_list; k++)
 		{
 		  int address_index = k * IP_BYTE_COUNT;
 
+		  len = 0;
 		  for (m = 0;
 		       m <
 		       shm_appl->access_info[j].ip_info.
 		       address_list[address_index]; m++)
 		    {
-		      fprintf (stdout, "%d%s",
-			       shm_appl->access_info[j].ip_info.
-			       address_list[address_index + m + 1],
-			       ((m != 3) ? "." : ""));
+		      len += sprintf (str + len, "%d%s",
+				      shm_appl->access_info[j].ip_info.
+				      address_list[address_index + m + 1],
+				      ((m != 3) ? "." : ""));
 		    }
 
 		  if (m != 4)
 		    {
-		      fprintf (stdout, "*");
+		      len += sprintf (str + len, "*");
 		    }
 
-		  fprintf (stdout, "\n");
+		  len = sprintf (line_buf, "%16.16s ", str);
+
+		  if (shm_appl->access_info[j].ip_info.last_access_time[k] !=
+		      0)
+		    {
+		      struct tm cur_tm;
+		      localtime_r (&shm_appl->access_info[j].ip_info.
+				   last_access_time[k], &cur_tm);
+		      cur_tm.tm_year += 1900;
+
+		      sprintf (str, "%02d-%02d-%02d %02d:%02d:%02d",
+			       cur_tm.tm_year, cur_tm.tm_mon + 1,
+			       cur_tm.tm_mday, cur_tm.tm_hour,
+			       cur_tm.tm_min, cur_tm.tm_sec);
+		      len += sprintf (line_buf + len, "%25.25s", str);
+		    }
+
+		  fprintf (stdout, "%s\n", line_buf);
 		}
 	      fprintf (stdout, "\n");
 	    }
+	  fprintf (stdout, "\n");
 	  uw_shm_detach (shm_appl);
 	}
     }
@@ -2804,29 +2839,61 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
 	  fprintf (stdout, "%s:%s:%s\n", shm_appl->access_info[j].dbname,
 		   shm_appl->access_info[j].dbuser,
 		   shm_appl->access_info[j].ip_files);
+
+	  len = 0;
+	  len += sprintf (line_buf + len, "%16s ", "CLIENT IP");
+	  len += sprintf (line_buf + len, "%25s", "LAST ACCESS TIME");
+	  fprintf (stdout, "%s\n", line_buf);
+
+	  for (k = 0; k < len; k++)
+	    {
+	      line_buf[k] = '=';
+	    }
+	  line_buf[k] = '\0';
+	  fprintf (stdout, "%s\n", line_buf);
+
 	  for (k = 0; k < shm_appl->access_info[j].ip_info.num_list; k++)
 	    {
 	      int address_index = k * IP_BYTE_COUNT;
 
+	      len = 0;
 	      for (m = 0;
 		   m <
 		   shm_appl->access_info[j].ip_info.
 		   address_list[address_index]; m++)
 		{
-		  fprintf (stdout, "%d%s",
-			   shm_appl->access_info[j].ip_info.
-			   address_list[address_index + m + 1],
-			   ((m != 3) ? "." : ""));
+		  len += sprintf (str + len, "%d%s",
+				  shm_appl->access_info[j].ip_info.
+				  address_list[address_index + m + 1],
+				  ((m != 3) ? "." : ""));
 		}
 
 	      if (m != 4)
 		{
-		  fprintf (stdout, "*");
+		  len += sprintf (str + len, "*");
 		}
-	      fprintf (stdout, "\n");
+
+	      len = sprintf (line_buf, "%16.16s ", str);
+
+	      if (shm_appl->access_info[j].ip_info.last_access_time[k] != 0)
+		{
+		  struct tm cur_tm;
+		  localtime_r (&shm_appl->access_info[j].ip_info.
+			       last_access_time[k], &cur_tm);
+		  cur_tm.tm_year += 1900;
+
+		  sprintf (str, "%02d-%02d-%02d %02d:%02d:%02d",
+			   cur_tm.tm_year, cur_tm.tm_mon + 1,
+			   cur_tm.tm_mday, cur_tm.tm_hour,
+			   cur_tm.tm_min, cur_tm.tm_sec);
+		  len += sprintf (line_buf + len, "%25.25s", str);
+		}
+
+	      fprintf (stdout, "%s\n", line_buf);
 	    }
 	  fprintf (stdout, "\n");
 	}
+      fprintf (stdout, "\n");
       uw_shm_detach (shm_appl);
     }
 

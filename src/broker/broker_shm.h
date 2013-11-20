@@ -196,6 +196,7 @@ typedef struct ip_info IP_INFO;
 struct ip_info
 {
   unsigned char address_list[ACL_MAX_IP_COUNT * IP_BYTE_COUNT];
+  time_t last_access_time[ACL_MAX_IP_COUNT];
   int num_list;
 };
 
@@ -354,6 +355,7 @@ struct t_appl_server_info
   char cci_default_autocommit;
   time_t last_connect_time;
   INT64 num_connect_requests;
+  INT64 num_connect_rejected;
   INT64 num_restarts;
   int num_holdable_results;
   int cas_change_mode;
@@ -502,6 +504,7 @@ struct t_proxy_info
   INT64 num_request_stmt_in_pool;
 
   INT64 num_connect_requests;
+  INT64 num_connect_rejected;
   INT64 num_restarts;
 
   /* hang check info */

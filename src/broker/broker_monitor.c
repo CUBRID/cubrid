@@ -140,7 +140,8 @@ typedef enum
   FIELD_PROXY_ID,
   FIELD_SHARD_Q_SIZE,
   FIELD_STMT_POOL_RATIO,
-  FIELD_LAST = FIELD_STMT_POOL_RATIO
+  FIELD_NUMBER_OF_CONNECTION_REJECTED,
+  FIELD_LAST = FIELD_NUMBER_OF_CONNECTION_REJECTED
 } FIELD_NAME;
 
 typedef enum
@@ -237,7 +238,8 @@ struct status_field fields[FIELD_LAST + 1] = {
   {FIELD_SHARD_ID, 10, "SHARD_ID", FIELD_RIGHT_ALIGN},
   {FIELD_PROXY_ID, 10, "PROXY_ID", FIELD_RIGHT_ALIGN},
   {FIELD_SHARD_Q_SIZE, 7, "SHARD-Q", FIELD_RIGHT_ALIGN},
-  {FIELD_STMT_POOL_RATIO, 20, "STMT-POOL-RATIO(%)", FIELD_RIGHT_ALIGN}
+  {FIELD_STMT_POOL_RATIO, 20, "STMT-POOL-RATIO(%)", FIELD_RIGHT_ALIGN},
+  {FIELD_NUMBER_OF_CONNECTION_REJECTED, 9, "#REJECT", FIELD_RIGHT_ALIGN},
 };
 
 /* structure for appl monitoring */
@@ -276,6 +278,7 @@ struct br_monitoring_item
   UINT64 num_interrupts;
   UINT64 num_request;
   UINT64 num_connect;
+  UINT64 num_connect_reject;
   UINT64 num_client_wait;
   UINT64 num_client_wait_nsec;
   UINT64 num_busy;
@@ -1292,6 +1295,9 @@ print_monitor_header (MONITOR_TYPE mnt_type)
     {
       buf_offset =
 	print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION, NULL);
+      buf_offset =
+	print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION_REJECTED,
+		     NULL);
     }
   else if (mnt_type == MONITOR_T_SHARDDB)
     {
@@ -1301,6 +1307,9 @@ print_monitor_header (MONITOR_TYPE mnt_type)
     {
       buf_offset =
 	print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION, NULL);
+      buf_offset =
+	print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION_REJECTED,
+		     NULL);
       buf_offset = print_title (buf, buf_offset, FIELD_RESTART, NULL);
 
       if (full_info_flag)
@@ -1353,6 +1362,7 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items,
 
       mnt_item_p->num_request += as_info_p->num_request;
       mnt_item_p->num_connect += as_info_p->num_connect_requests;
+      mnt_item_p->num_connect_reject += as_info_p->num_connect_rejected;
       if (full_info_flag && as_info_p->service_flag == ON)
 	{
 	  time_t cur_time = time (NULL);
@@ -1425,6 +1435,8 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items,
 
 	  mnt_item_p->num_eq += proxy_info_p->num_proxy_error_processed;
 	  mnt_item_p->num_connect += proxy_info_p->num_connect_requests;
+	  mnt_item_p->num_connect_reject +=
+	    proxy_info_p->num_connect_rejected;
 	}
       mnt_item_p->num_appl_server = br_info_p->appl_server_num;
     }
@@ -1449,6 +1461,8 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items,
 
 	  mnt_items[i].num_eq += proxy_info_p->num_proxy_error_processed;
 	  mnt_items[i].num_connect += proxy_info_p->num_connect_requests;
+	  mnt_items[i].num_connect_reject +=
+	    proxy_info_p->num_connect_rejected;
 	  mnt_items[i].num_restart += proxy_info_p->num_restarts;
 	  mnt_items[i].num_request_stmt += proxy_info_p->num_request_stmt;
 	  mnt_items[i].num_request_stmt_in_pool +=
@@ -1653,6 +1667,8 @@ print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur,
 	{
 	  print_value (FIELD_NUMBER_OF_CONNECTION,
 		       &mnt_item_cur_p->num_connect, FIELD_T_UINT64);
+	  print_value (FIELD_NUMBER_OF_CONNECTION_REJECTED,
+		       &mnt_item_cur_p->num_connect_reject, FIELD_T_UINT64);
 	}
       else if (mnt_type == MONITOR_T_SHARDDB)
 	{
@@ -1663,6 +1679,8 @@ print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur,
 	{
 	  print_value (FIELD_NUMBER_OF_CONNECTION,
 		       &mnt_item_cur_p->num_connect, FIELD_T_UINT64);
+	  print_value (FIELD_NUMBER_OF_CONNECTION_REJECTED,
+		       &mnt_item_cur_p->num_connect_reject, FIELD_T_UINT64);
 	  print_value (FIELD_RESTART, &mnt_item_cur_p->num_restart,
 		       FIELD_T_UINT64);
 

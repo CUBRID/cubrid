@@ -1164,6 +1164,8 @@ cas_main (void)
 		  {
 		    char err_msg[1024];
 
+		    as_info->num_connect_rejected++;
+
 		    sprintf (err_msg,
 			     "Authorization error.(Address is rejected)");
 

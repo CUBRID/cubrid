@@ -664,6 +664,7 @@ broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl,
   as_info_p->num_error_queries = 0;
   as_info_p->num_interrupts = 0;
   as_info_p->num_connect_requests = 0;
+  as_info_p->num_connect_rejected = 0;
   as_info_p->num_restarts = 0;
   as_info_p->auto_commit_mode = FALSE;
   as_info_p->database_name[0] = '\0';

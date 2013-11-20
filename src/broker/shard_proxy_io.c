@@ -1825,6 +1825,8 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
       if (access_control_check_right (shm_as_p, db_name, db_user, ip_addr) <
 	  0)
 	{
+	  proxy_info_p->num_connect_rejected++;
+
 	  snprintf (err_msg, sizeof (err_msg),
 		    "Authorization error.(Address is rejected)");
 	  proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR,
