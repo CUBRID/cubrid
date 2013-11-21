@@ -3181,24 +3181,6 @@ locator_find_class (const char *classname)
 				 * our parsing
 				 */
 
-#if defined(CUBRID_DEBUG)
-  static int locator_hack_lock_to_null = -1;
-
-  if (locator_hack_lock_to_null == -1)
-    {
-      const char *env_value;
-
-      locator_hack_lock_to_null =
-	((env_value = envvar_get ("LC_DEBUG_HACK_CLASS_LOCK_TO_NULL"))
-	 == NULL) ? 1 : atoi (env_value);
-    }
-
-  if (locator_hack_lock_to_null == 0)
-    {
-      lock = IS_LOCK;
-    }
-#endif /* CUBRID_DEBUG */
-
   if (locator_find_class_by_name (classname, lock,
 				  &class_mop) != LC_CLASSNAME_EXIST)
     {
