@@ -5497,7 +5497,8 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 
   /* check if a hidden column is in the select list; if it is the case, store
      the position in 'adjust_for_hidden_col_from' - index starting from 1
-     !! Only one column is supported!
+     !! Only one column is supported! If we deal with more than two columns
+     then we deal with SELECT ... FOR UPDATE and we must skip the check
      This adjustement is needed for UPDATE statements with SELECT subqueries,
      executed on broker (ex: on tables with triggers); in this case,
      the class OID field in select list is marked as hidden, and the
@@ -5506,7 +5507,8 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
      problem */
   if (sort_mode == SORT_LIST_ORDERBY)
     {
-      for (col = col_list, k = 1; col; col = col->next, k++)
+      for (col = col_list, k = 1; col && adjust_for_hidden_col_from != -2;
+	   col = col->next, k++)
 	{
 	  switch (col->node_type)
 	    {
@@ -5514,8 +5516,14 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 	      if (col->info.function.hidden_column
 		  && col->info.function.function_type == F_CLASS_OF)
 		{
-		  assert (adjust_for_hidden_col_from == -1);
-		  adjust_for_hidden_col_from = k;
+		  if (adjust_for_hidden_col_from != -1)
+		    {
+		      adjust_for_hidden_col_from = -2;
+		    }
+		  else
+		    {
+		      adjust_for_hidden_col_from = k;
+		    }
 		  break;
 		}
 	      break;
@@ -5523,8 +5531,14 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 	    case PT_NAME:
 	      if (col->info.name.hidden_column)
 		{
-		  assert (adjust_for_hidden_col_from == -1);
-		  adjust_for_hidden_col_from = k;
+		  if (adjust_for_hidden_col_from != -1)
+		    {
+		      adjust_for_hidden_col_from = -2;
+		    }
+		  else
+		    {
+		      adjust_for_hidden_col_from = k;
+		    }
 		  break;
 		}
 
@@ -5698,7 +5712,7 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
       else
 	{
 	  sort->pos_descr.pos_no--;
-	  if (adjust_for_hidden_col_from != -1)
+	  if (adjust_for_hidden_col_from > -1)
 	    {
 	      assert (sort_mode == SORT_LIST_ORDERBY);
 	      /* adjust for hidden column */
@@ -12383,6 +12397,11 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 
 	  if (access)
 	    {
+	      if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE)
+		{
+		  access->flags |= ACCESS_SPEC_FLAG_FOR_UPDATE;
+		}
+
 	      access->next = access_list;
 	      access_list = access;
 	    }

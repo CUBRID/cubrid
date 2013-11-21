@@ -4389,10 +4389,18 @@ pt_resolve_correlation (PARSER_CONTEXT * parser,
 	  && exposed_spec->info.spec.derived_table
 	  && exposed_spec->info.spec.range_var != in_node)
 	{
-	  PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_WANT_NO_REF_TO_DRVTB,
-		      pt_short_print (parser, in_node));
-	  return NULL;
+	  if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_FOR_UPDATE))
+	    {
+	      in_node->info.name.spec_id = exposed_spec->info.spec.id;
+	      return in_node;
+	    }
+	  else
+	    {
+	      PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_WANT_NO_REF_TO_DRVTB,
+			  pt_short_print (parser, in_node));
+	      return NULL;
+	    }
 	}
 
       /* check for a selector variable in a perverse place */
@@ -4436,6 +4444,10 @@ pt_resolve_correlation (PARSER_CONTEXT * parser,
       if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_ALLOW_REUSABLE_OID))
 	{
 	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_ALLOW_REUSABLE_OID);
+	}
+      if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_FOR_UPDATE))
+	{
+	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_FOR_UPDATE);
 	}
 
       parser_free_tree (parser, in_node);
@@ -6969,6 +6981,48 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
 			|| statement->node_type == PT_DROP_INDEX))
 	{
 	  statement->info.index.index_name = idx_name;
+	}
+    }
+
+  /* Flag specs from FOR UPDATE clause with PT_SPEC_FLAG_FOR_UPDATE_CLAUSE and
+   * clear the for_update list. From now on the specs from FOR UPDATE clause can
+   * be determined using this flag together with PT_SELECT_INFO_FOR_UPDATE
+   * flag */
+  if (statement != NULL && statement->node_type == PT_SELECT
+      && PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_FOR_UPDATE))
+    {
+      PT_NODE *node = statement->info.query.q.select.for_update;
+      PT_NODE *spec = NULL;
+
+      if (statement->info.query.q.select.for_update != NULL)
+	{
+	  /* Flag only the specified specs */
+	  for (; node != NULL; node = node->next)
+	    {
+	      spec =
+		pt_find_spec (parser, statement->info.query.q.select.from,
+			      node);
+	      if (spec == NULL)
+		{
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
+			      node->info.name.original);
+		  return NULL;
+		}
+	      spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+	    }
+	  parser_free_tree (parser,
+			    statement->info.query.q.select.for_update);
+	  statement->info.query.q.select.for_update = NULL;
+	}
+      else
+	{
+	  /* Flag all specs */
+	  for (spec = statement->info.query.q.select.from; spec != NULL;
+	       spec = spec->next)
+	    {
+	      spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+	    }
 	}
     }
 

@@ -8803,7 +8803,6 @@ pt_apply_difference (PARSER_CONTEXT * parser, PT_NODE * p,
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
   p->info.query.order_by = g (parser, p->info.query.order_by, arg);
   p->info.query.orderby_for = g (parser, p->info.query.orderby_for, arg);
-  p->info.query.for_update = g (parser, p->info.query.for_update, arg);
   return p;
 }
 
@@ -8819,7 +8818,6 @@ pt_init_difference (PT_NODE * p)
   p->info.query.q.union_.arg2 = 0;
   p->info.query.order_by = 0;
   p->info.query.orderby_for = 0;
-  p->info.query.for_update = 0;
   p->info.query.all_distinct = PT_ALL;
   p->info.query.has_outer_spec = 0;
   p->info.query.is_sort_spec = 0;
@@ -8873,13 +8871,6 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.orderby_for);
       q = pt_append_nulstring (parser, q, " for ");
-      q = pt_append_varchar (parser, q, r1);
-    }
-
-  if (p->info.query.for_update)
-    {
-      r1 = pt_print_bytes_l (parser, p->info.query.for_update);
-      q = pt_append_nulstring (parser, q, " for update of ");
       q = pt_append_varchar (parser, q, r1);
     }
 
@@ -12858,7 +12849,6 @@ pt_apply_intersection (PARSER_CONTEXT * parser, PT_NODE * p,
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
   p->info.query.order_by = g (parser, p->info.query.order_by, arg);
   p->info.query.orderby_for = g (parser, p->info.query.orderby_for, arg);
-  p->info.query.for_update = g (parser, p->info.query.for_update, arg);
   return p;
 }
 
@@ -12874,7 +12864,6 @@ pt_init_intersection (PT_NODE * p)
   p->info.query.q.union_.arg2 = 0;
   p->info.query.order_by = 0;
   p->info.query.orderby_for = 0;
-  p->info.query.for_update = 0;
   p->info.query.all_distinct = PT_ALL;
   p->info.query.has_outer_spec = 0;
   p->info.query.is_sort_spec = 0;
@@ -12927,12 +12916,6 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.orderby_for);
       q = pt_append_nulstring (parser, q, " for");
-      q = pt_append_varchar (parser, q, r1);
-    }
-  if (p->info.query.for_update)
-    {
-      r1 = pt_print_bytes_l (parser, p->info.query.for_update);
-      q = pt_append_nulstring (parser, q, " for update of ");
       q = pt_append_varchar (parser, q, r1);
     }
   if (p->info.query.limit && p->info.query.rewrite_limit)
@@ -14042,12 +14025,14 @@ pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p,
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
   p->info.query.order_by = g (parser, p->info.query.order_by, arg);
   p->info.query.orderby_for = g (parser, p->info.query.orderby_for, arg);
-  p->info.query.for_update = g (parser, p->info.query.for_update, arg);
   p->info.query.qcache_hint = g (parser, p->info.query.qcache_hint, arg);
   p->info.query.q.select.check_where = g (parser,
 					  p->info.query.q.select.check_where,
 					  arg);
   p->info.query.limit = g (parser, p->info.query.limit, arg);
+  p->info.query.q.select.for_update = g (parser,
+					 p->info.query.q.select.for_update,
+					 arg);
   return p;
 }
 
@@ -14086,7 +14071,6 @@ pt_init_select (PT_NODE * p)
   p->info.query.q.select.single_table_opt = 0;
   p->info.query.order_by = 0;
   p->info.query.orderby_for = 0;
-  p->info.query.for_update = 0;
   p->info.query.all_distinct = PT_ALL;
   p->info.query.is_subquery = (PT_MISC_TYPE) 0;
   p->info.query.is_view_spec = 0;
@@ -14102,6 +14086,7 @@ pt_init_select (PT_NODE * p)
   p->info.query.qcache_hint = NULL;
   p->info.query.upd_del_class_cnt = 0;
   p->info.query.is_order_dependent = false;
+  p->info.query.q.select.for_update = NULL;
   return p;
 }
 
@@ -14605,6 +14590,39 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 						   select.with_increment));
 	}
 
+      if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_FOR_UPDATE))
+	{
+	  q = pt_append_nulstring (parser, q, " for update");
+	  if (p->info.query.q.select.for_update != NULL)
+	    {
+	      r1 =
+		pt_print_bytes_l (parser, p->info.query.q.select.for_update);
+	      q = pt_append_nulstring (parser, q, " of ");
+	      q = pt_append_varchar (parser, q, r1);
+	    }
+	  else
+	    {
+	      r1 = NULL;
+	      for (temp = p->info.query.q.select.from; temp != NULL;
+		   temp = temp->next)
+		{
+		  if (temp->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE)
+		    {
+		      if (r1 == NULL)
+			{
+			  q = pt_append_nulstring (parser, q, " of ");
+			}
+		      else
+			{
+			  q = pt_append_nulstring (parser, q, ", ");
+			}
+		      r1 = pt_print_bytes (parser, temp->info.spec.range_var);
+		      q = pt_append_varchar (parser, q, r1);
+		    }
+		}
+	    }
+	}
+
       if (p->info.query.order_by)
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.query.order_by);
@@ -14623,13 +14641,6 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.query.orderby_for);
 	  q = pt_append_nulstring (parser, q, " for ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
-
-      if (p->info.query.for_update)
-	{
-	  r1 = pt_print_bytes_l (parser, p->info.query.for_update);
-	  q = pt_append_nulstring (parser, q, " for update of ");
 	  q = pt_append_varchar (parser, q, r1);
 	}
 
@@ -15210,7 +15221,6 @@ pt_apply_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p,
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
   p->info.query.order_by = g (parser, p->info.query.order_by, arg);
   p->info.query.orderby_for = g (parser, p->info.query.orderby_for, arg);
-  p->info.query.for_update = g (parser, p->info.query.for_update, arg);
   return p;
 }
 
@@ -15226,7 +15236,6 @@ pt_init_union_stmt (PT_NODE * p)
   p->info.query.q.union_.arg2 = 0;
   p->info.query.order_by = 0;
   p->info.query.orderby_for = 0;
-  p->info.query.for_update = 0;
   p->info.query.all_distinct = PT_ALL;
   p->info.query.into_list = 0;
   p->info.query.has_outer_spec = 0;
@@ -15277,12 +15286,6 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.orderby_for);
       q = pt_append_nulstring (parser, q, " for ");
-      q = pt_append_varchar (parser, q, r1);
-    }
-  if (p->info.query.for_update)
-    {
-      r1 = pt_print_bytes_l (parser, p->info.query.for_update);
-      q = pt_append_nulstring (parser, q, " for update of ");
       q = pt_append_varchar (parser, q, r1);
     }
   if (p->info.query.limit && p->info.query.rewrite_limit)

@@ -196,6 +196,7 @@ struct indx_scan_id
 					 * search*/
   INDEX_SKIP_SCAN iss;		/* index skip scan structure */
   bool duplicate_key_locked;	/* true if duplicate key have been scanned */
+  bool for_update;		/* true if FOR UPDATE clause is active */
 };
 
 typedef struct llist_scan_id LLIST_SCAN_ID;
@@ -249,14 +250,14 @@ struct scan_stats
   UINT64 num_ioreads;
 
   /* for heap & list scan */
-  int read_rows;                /* # of rows read*/
-  int qualified_rows;           /* # of rows qualified by data filter */
+  int read_rows;		/* # of rows read */
+  int qualified_rows;		/* # of rows qualified by data filter */
 
   /* for btree scan */
-  int read_keys;                /* # of keys read */
-  int qualified_keys;           /* # of keys qualified by key filter */
-  int key_qualified_rows;       /* # of rows qualified by key filter */
-  int data_qualified_rows;      /* # of rows qualified by data filter */
+  int read_keys;		/* # of keys read */
+  int qualified_keys;		/* # of keys qualified by key filter */
+  int key_qualified_rows;	/* # of rows qualified by key filter */
+  int data_qualified_rows;	/* # of rows qualified by data filter */
   struct timeval elapsed_lookup;
   bool covered_index;
   bool multi_range_opt;
@@ -381,7 +382,8 @@ extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 int num_attrs_rest,
 				 ATTR_ID * attrids_rest,
 				 HEAP_CACHE_ATTRINFO * cache_rest,
-				 bool iscan_oid_order, QUERY_ID query_id);
+				 bool iscan_oid_order, QUERY_ID query_id,
+				 bool for_update);
 extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				int grouped,
@@ -438,8 +440,8 @@ extern void scan_initialize (void);
 extern void scan_finalize (void);
 
 #if defined(SERVER_MODE)
-extern void scan_print_stats_json (SCAN_ID * scan_id, json_t *stats);
-extern void scan_print_stats_text (FILE *fp, SCAN_ID * scan_id);
+extern void scan_print_stats_json (SCAN_ID * scan_id, json_t * stats);
+extern void scan_print_stats_text (FILE * fp, SCAN_ID * scan_id);
 #endif /* SERVER_MODE */
 
 #endif /* _SCAN_MANAGER_H_ */

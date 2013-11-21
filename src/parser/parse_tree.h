@@ -1407,8 +1407,9 @@ typedef enum
   PT_SPEC_FLAG_HAS_UNIQUE = 0x04,	/* the spec has unique */
   PT_SPEC_FLAG_FROM_VCLASS = 0x08,	/* applicable for derived tables, marks
 					   one as a rewritten view */
-  PT_SPEC_FLAG_CONTAINS_OID = 0x10	/* classoid and oid were added in the
+  PT_SPEC_FLAG_CONTAINS_OID = 0x10,	/* classoid and oid were added in the
 					   derived table's select list */
+  PT_SPEC_FLAG_FOR_UPDATE_CLAUSE = 0x20	/* Used with FOR UPDATE clause */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -2273,6 +2274,7 @@ struct pt_name_info
 #define PT_NAME_GENERATED_DERIVED_SPEC 1024	/* attribute generated from
 						 * derived spec
 						 */
+#define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
 
 
   short flag;
@@ -2395,6 +2397,7 @@ struct pt_select_info
   PT_NODE *jdbc_life_time;	/* jdbc cache life time */
   struct qo_summary *qo_summary;
   PT_NODE *check_where;		/* with check option predicate */
+  PT_NODE *for_update;		/* FOR UPDATE clause tables list */
   QFILE_LIST_ID *push_list;	/* list file descriptor pushed to server */
   PT_HINT_ENUM hint;
   int flavor;
@@ -2425,6 +2428,7 @@ struct pt_select_info
 							 * updatable views */
 #define PT_SELECT_INFO_IS_UPD_DEL_QUERY	4096	/* set if select was built for
 						   an UPDATE or DELETE statement */
+#define PT_SELECT_INFO_FOR_UPDATE	8192	/* FOR UPDATE clause is active */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (short) (f))
@@ -2457,7 +2461,6 @@ struct pt_query_info
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
   PT_NODE *into_list;		/* PT_VALUE (list) */
-  PT_NODE *for_update;		/* PT_EXPR (list) */
   PT_NODE *qcache_hint;		/* enable/disable query cache */
   PT_NODE *limit;		/* PT_VALUE (list) limit clause parameter(s) */
   void *xasl;			/* xasl proc pointer */

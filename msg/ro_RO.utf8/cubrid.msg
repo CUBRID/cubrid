@@ -1641,6 +1641,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 278 O singură tabelă din interiorul unei vizualizări poate fi actualizată.
 279 Inserarea în mai multe tabele nu este permisă.
 280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
+281 The FOR UPDATE clause cannot be used in subqueries, unions, with GROUP BY clause, DISTINCT operator, aggregate functions.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %d bytes.

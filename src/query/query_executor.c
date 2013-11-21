@@ -1148,6 +1148,8 @@ static int qexec_set_class_locks (THREAD_ENTRY * thread_p,
 				  int query_classes_count,
 				  UPDDEL_CLASS_INFO_INTERNAL *
 				  internal_classes);
+static int qexec_for_update_set_class_locks (THREAD_ENTRY * thread_p,
+					     XASL_NODE * scan_list);
 static int qexec_create_internal_classes (THREAD_ENTRY * thread_p,
 					  UPDDEL_CLASS_INFO * classes_info,
 					  int count,
@@ -6340,7 +6342,11 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 				    curr_spec->s.cls_node.num_attrs_rest,
 				    curr_spec->s.cls_node.attrids_rest,
 				    curr_spec->s.cls_node.cache_rest,
-				    iscan_oid_order, query_id) != NO_ERROR)
+				    iscan_oid_order, query_id,
+				    (curr_spec->
+				     flags & ACCESS_SPEC_FLAG_FOR_UPDATE ?
+				     true : false)) != NO_ERROR)
+
 	    {
 	      goto exit_on_error;
 	    }
@@ -7213,7 +7219,7 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
       return error;
     }
 
-  if (composite_locking == 0)
+  if (composite_locking == 0 && !(spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE))
     {
       lock = IS_LOCK;
     }
@@ -7393,7 +7399,10 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 			      spec->s.cls_node.num_attrs_rest,
 			      spec->s.cls_node.attrids_rest,
 			      spec->s.cls_node.cache_rest,
-			      iscan_oid_order, query_id);
+			      iscan_oid_order, query_id,
+			      (spec->
+			       flags & ACCESS_SPEC_FLAG_FOR_UPDATE ? true :
+			       false));
 
     }
   else if (spec->type == TARGET_CLASS_ATTR)
@@ -12761,6 +12770,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      qexec_failure_line (__LINE__, xasl_state);
 	      return ER_FAILED;
 	    }
+	}
+
+      if (qexec_for_update_set_class_locks (thread_p, xasl) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
 	}
 
       /* evaluate all the aptr lists in all scans */
@@ -23991,6 +24005,71 @@ qexec_clear_list_pred_cache_by_class (THREAD_ENTRY * thread_p,
   csect_exit (thread_p, CSECT_QPROC_FILTER_PRED_CACHE);
 
   return NO_ERROR;
+}
+
+/*
+ * qexec_for_update_set_class_locks () - set X_LOCK on classes which will be
+ *					 updated and are accessed sequentially
+ * return : error code or NO_ERROR
+ * thread_p (in)  :
+ * scan_list (in) :
+ *
+ * Note: Used in SELECT ... FOR UPDATE
+ */
+static int
+qexec_for_update_set_class_locks (THREAD_ENTRY * thread_p,
+				  XASL_NODE * scan_list)
+{
+  XASL_NODE *scan = NULL;
+  ACCESS_SPEC_TYPE *specp = NULL;
+  OID *class_oid = NULL;
+  int error = NO_ERROR;
+  LOCK class_lock = IX_LOCK;
+
+  for (scan = scan_list; scan != NULL; scan = scan->scan_ptr)
+    {
+      for (specp = scan->spec_list; specp; specp = specp->next)
+	{
+	  if (specp->type == TARGET_CLASS
+	      && (specp->flags & ACCESS_SPEC_FLAG_FOR_UPDATE))
+	    {
+	      class_oid = &specp->s.cls_node.cls_oid;
+
+	      /* search through query classes */
+	      if (specp->access == SEQUENTIAL
+		  && specp->pruning_type != DB_PARTITIONED_CLASS)
+		{
+		  /* X_LOCK classes which are accessed 
+		   * sequentially. If this is a partitioned class,
+		   * IX_LOCK is enough. Later in the execution,
+		   * when pruning is performed, partitions will be
+		   * locked with X_LOCK.
+		   */
+		  class_lock = X_LOCK;
+		}
+	      else
+		{
+		  /* INDEX access or partitioned class */
+		  class_lock = IX_LOCK;
+		}
+
+	      /* lock the class */
+	      if (lock_object
+		  (thread_p, class_oid, oid_Root_class_oid, class_lock,
+		   LK_UNCOND_LOCK) != LK_GRANTED)
+		{
+		  error = er_errid ();
+		  if (error == NO_ERROR)
+		    {
+		      error = ER_FAILED;
+		    }
+		  return error;
+		}
+	    }
+	}
+    }
+
+  return error;
 }
 
 /*

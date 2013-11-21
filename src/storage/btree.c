@@ -365,7 +365,7 @@ static int btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 				 KEY_VAL_RANGE * key_val_range,
 				 FILTER_INFO * filter,
 				 bool need_construct_btid_int, char *copy_buf,
-				 int copy_buf_len);
+				 int copy_buf_len, bool for_update);
 static int btree_find_next_index_record (THREAD_ENTRY * thread_p,
 					 BTREE_SCAN * bts, int direction);
 static int btree_get_next_oidset_pos (THREAD_ENTRY * thread_p,
@@ -14974,6 +14974,7 @@ btree_coerce_key (DB_VALUE * keyp, int keysize,
  *   need_construct_btid_int(in):
  *   copy_buf(in):
  *   copy_buf_len(in):
+ *   bool for_update(in): true if FOR UPDATE clause is active
  *
  * Note: Initialize a new B+-tree scan structure for an index scan.
  */
@@ -14983,7 +14984,7 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 		      OID * class_oid, KEY_VAL_RANGE * key_val_range,
 		      FILTER_INFO * filter,
 		      bool need_construct_btid_int, char *copy_buf,
-		      int copy_buf_len)
+		      int copy_buf_len, bool for_update)
 {
   VPID root_vpid;
   PAGE_PTR root = NULL;
@@ -15005,9 +15006,10 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   bts->tran_isolation = logtb_find_current_isolation (thread_p);
 
   bts->read_uncommitted =
-    ((bts->tran_isolation == TRAN_REP_CLASS_UNCOMMIT_INSTANCE
-      || bts->tran_isolation == TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE)
-     && readonly_purpose) || (lock_hint & LOCKHINT_READ_UNCOMMITTED);
+    !for_update
+    && (((bts->tran_isolation == TRAN_REP_CLASS_UNCOMMIT_INSTANCE
+	  || bts->tran_isolation == TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE)
+	 && readonly_purpose) || (lock_hint & LOCKHINT_READ_UNCOMMITTED));
 
   assert (need_construct_btid_int == true
 	  || (need_construct_btid_int == false
@@ -15252,7 +15254,13 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   /* initialize bts->class_lock_map_count */
   bts->class_lock_map_count = 0;
 
-  if (readonly_purpose)
+  if (for_update)
+    {
+      bts->lock_mode = U_LOCK;
+      bts->key_lock_mode = NULL_LOCK;
+      bts->escalated_mode = X_LOCK;
+    }
+  else if (readonly_purpose)
     {
       bts->lock_mode = S_LOCK;
       bts->key_lock_mode = S_LOCK;
@@ -20801,7 +20809,8 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
 				lock_hint, class_oids_ptr, key_val_range,
 				filter, need_construct_btid_int,
 				index_scan_id_p->copy_buf,
-				index_scan_id_p->copy_buf_len) != NO_ERROR)
+				index_scan_id_p->copy_buf_len,
+				index_scan_id_p->for_update) != NO_ERROR)
 	{
 	  goto error;
 	}

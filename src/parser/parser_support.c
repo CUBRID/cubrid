@@ -4706,6 +4706,7 @@ regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
   ptr->single_fetch = (QPROC_SINGLE_FETCH) false;
   ptr->s_dbval = NULL;
   ptr->next = NULL;
+  ptr->flags = 0;
 }
 
 /*

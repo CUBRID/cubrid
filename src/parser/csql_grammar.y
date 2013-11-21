@@ -781,7 +781,6 @@ typedef struct YYLTYPE
 %type <node> sp_param_list
 %type <node> sp_param_def
 %type <node> esql_query_stmt
-%type <node> opt_for_update
 %type <node> csql_query
 %type <node> select_expression
 %type <node> table_op
@@ -947,6 +946,7 @@ typedef struct YYLTYPE
 %type <node> values_expression
 %type <node> values_expr_item
 %type <node> opt_partition_spec
+%type <node> opt_for_update_clause
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -10911,22 +10911,13 @@ opt_sp_in_out
 
 esql_query_stmt
 	: 	{ parser_select_level++; }
-	  csql_query opt_for_update
+	  csql_query
 		{{
-
-			$2->info.query.for_update = $3;
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			parser_select_level--;
 
 		DBG_PRINT}}
-	;
-
-opt_for_update
-	: /* empty */
-		{ $$ = NULL; }
-	| For UPDATE OF sort_spec_list
-		{ $$ = $4; }
 	;
 
 csql_query
@@ -11007,6 +10998,7 @@ csql_query
 
 		DBG_PRINT}}
 	opt_select_limit_clause
+	opt_for_update_clause
 		{{
 
 			PT_NODE *node = parser_pop_orderby_node ();
@@ -11062,9 +11054,10 @@ select_expression
         }
         
         parser_push_orderby_node (node);
-      
-              DBG_PRINT}}
-      opt_select_limit_clause  
+        
+		DBG_PRINT}}
+      opt_select_limit_clause
+      opt_for_update_clause
 		{{
                         
 			PT_NODE *node = parser_pop_orderby_node ();
@@ -11075,13 +11068,13 @@ select_expression
      table_op select_or_subquery
      {{
          
-         PT_NODE *stmt = $7;
+         PT_NODE *stmt = $8;
          
          if (stmt)
          {
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
-			    stmt->info.query.q.union_.arg2 = $8;
+			    stmt->info.query.q.union_.arg2 = $9;
          }
 
 
@@ -12515,6 +12508,71 @@ opt_with_increment_clause
 		{{
 
 			$$ = $4;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+opt_for_update_clause
+	: /* empty */
+	| For UPDATE
+		{{
+
+			PT_NODE *node = parser_top_orderby_node ();
+			
+			if (node != NULL && node->node_type == PT_SELECT)
+			  {
+			    PT_SELECT_INFO_SET_FLAG(node, PT_SELECT_INFO_FOR_UPDATE);
+			  }
+			else
+			  {
+			    PT_ERRORm (this_parser, node,
+				       MSGCAT_SET_PARSER_SEMANTIC,
+				       MSGCAT_SEMANTIC_INVALID_USE_FOR_UPDATE_CLAUSE);
+			  }
+			  
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| For UPDATE OF class_name_list
+		{{
+
+			PT_NODE *node = parser_top_orderby_node ();
+			PT_NODE *names_list = $4;
+			PT_NODE *node1 = names_list, *node2 = NULL;
+			
+			if (node != NULL && node->node_type == PT_SELECT)
+			  {
+			    PT_SELECT_INFO_SET_FLAG(node, PT_SELECT_INFO_FOR_UPDATE);
+			    node->info.query.q.select.for_update = names_list;
+			    for (; node1 != NULL && node2 == NULL;  node1 = node1->next)
+			      {
+				for (node2 = node1->next; node2 != NULL; node2 = node2->next)
+				  {
+				    /* check if search is duplicate of table */
+				    if (!pt_str_compare (node1->info.name.original,
+					 node2->info.name.original, CASE_INSENSITIVE))
+				      {
+					/* same class found twice in table list */
+					PT_ERRORmf (this_parser, node2,
+						    MSGCAT_SET_PARSER_SEMANTIC,
+						    MSGCAT_SEMANTIC_DUPLICATE_CLASS_OR_ALIAS,
+						    node2->info.name.original);
+						    break;
+				      }
+				  }
+				  PT_NAME_INFO_SET_FLAG(node1, PT_NAME_FOR_UPDATE);
+			      }
+			  }
+			else
+			  {
+			    PT_ERRORm (this_parser, node,
+					MSGCAT_SET_PARSER_SEMANTIC,
+					MSGCAT_SEMANTIC_INVALID_USE_FOR_UPDATE_CLAUSE);
+			  }
+
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}

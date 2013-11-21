@@ -35,6 +35,7 @@
 
 #include "dbi.h"
 #include "object_accessor.h"
+#include "locator_cl.h"
 
 #define MAX_STACK_OBJECTS 500
 
@@ -529,6 +530,19 @@ static PT_NODE *mq_reset_references_to_query_string (PARSER_CONTEXT * parser,
 
 static void mq_auto_param_merge_clauses (PARSER_CONTEXT * parser,
 					 PT_NODE * stmt);
+
+static PT_NODE *pt_check_for_update_subquery (PARSER_CONTEXT * parser,
+					      PT_NODE * node, void *arg,
+					      int *continue_walk);
+
+static int pt_check_for_update_clause (PARSER_CONTEXT * parser,
+				       PT_NODE * query, bool root);
+
+static int pt_for_update_prepare_query_internal (PARSER_CONTEXT * parser,
+						 PT_NODE * query);
+
+static int pt_for_update_prepare_query (PARSER_CONTEXT * parser,
+					PT_NODE * query);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -6449,6 +6463,7 @@ static PT_NODE *
 mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *next;
+  int err = NO_ERROR;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   bool strict = true;
 
@@ -6569,6 +6584,13 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     }
 
+  /* process FOR UPDATE clause */
+  err = pt_for_update_prepare_query (parser, node);
+  if (err != NO_ERROR)
+    {
+      return NULL;
+    }
+
   /* restore link */
   if (node)
     {
@@ -6585,6 +6607,214 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 exit_on_error:
 
   return NULL;
+}
+
+/*
+ * pt_check_for_update_subquery() - check if there is a subquery with
+ *				    FOR UPDATE clause.
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): an address of an int. 0 for root, 1 if not root and error
+ *                code if a subquery with FOR UPDATE clause was found.
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_check_for_update_subquery (PARSER_CONTEXT * parser, PT_NODE * node,
+			      void *arg, int *continue_walk)
+{
+  if (!*(int *) arg)
+    {
+      /* Processed the root node. All remaining PT_SELECT nodes are
+         subqueries */
+      *(int *) arg = 1;
+    }
+  else if (node->node_type == PT_SELECT)
+    {
+      if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_FOR_UPDATE))
+	{
+	  /* found a subquery with FOR UPDATE clause */
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_USE_FOR_UPDATE_CLAUSE);
+	  *(int *) arg = ER_FAILED;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_check_for_update_clause() - check the query for invalid use of FOR UPDATE
+ *				  clause
+ *   return: NO_ERROR or error code
+ *   parser(in):
+ *   query(in): statement to be checked
+ *   root(in): true if this is the main statement and false otherwise.
+ *
+ *  NOTE: Always call this function with root set to true. false value is used
+ *	  internally.
+ */
+static int
+pt_check_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * query,
+			    bool root)
+{
+  int error_code = 0;
+  PT_NODE *spec = NULL, *next = NULL;
+
+  if (query == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  /* check for subqueries with FOR UPDATE clause */
+  if (root)
+    {
+      next = query->next;
+      query->next = NULL;
+      parser_walk_tree (parser, query, pt_check_for_update_subquery,
+			&error_code, NULL, NULL);
+      query->next = next;
+      if (error_code < 0)
+	{
+	  return error_code;
+	}
+    }
+
+  /* FOR UPDATE is availbale only in SELECT statements */
+  if (query->node_type != PT_SELECT)
+    {
+      if (!root && PT_IS_QUERY (query))
+	{
+	  PT_ERRORm (parser, query, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_USE_FOR_UPDATE_CLAUSE);
+	  return ER_FAILED;
+	}
+      return NO_ERROR;
+    }
+
+  /* Skip check if this is not a query with FOR UPDATE clause */
+  if (root && !PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_FOR_UPDATE))
+    {
+      return NO_ERROR;
+    }
+
+  /* check for aggregate functions, GROUP BY and DISTINCT */
+  if (pt_has_aggregate (parser, query) || pt_is_distinct (query))
+    {
+      PT_ERRORm (parser, query, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_INVALID_USE_FOR_UPDATE_CLAUSE);
+      return ER_FAILED;
+    }
+
+  /* check derived tables */
+  for (spec = query->info.query.q.select.from; spec != NULL;
+       spec = spec->next)
+    {
+      if ((!root || (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE))
+	  && spec->info.spec.derived_table != NULL)
+	{
+	  error_code =
+	    pt_check_for_update_clause (parser,
+					spec->info.spec.derived_table, false);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_for_update_prepare_query_internal() - reflag specs from FOR UPDATE
+ *					    including those from subqueries
+ *   return: NO_ERROR or error code
+ *   parser(in):
+ *   query(in/out): query for which the specs are flagged.
+ */
+static int
+pt_for_update_prepare_query_internal (PARSER_CONTEXT * parser,
+				      PT_NODE * query)
+{
+  PT_NODE *from = NULL, *spec = NULL;
+  bool has_for_update = false;
+  int err = NO_ERROR;
+  DB_OBJECT *class_obj = NULL;
+
+  if (query == NULL || query->node_type != PT_SELECT)
+    {
+      return NO_ERROR;
+    }
+
+  has_for_update =
+    (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_FOR_UPDATE) ? true :
+     false);
+  from = query->info.query.q.select.from;
+  for (spec = from; spec != NULL; spec = spec->next)
+    {
+      if (has_for_update
+	  && !(spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE))
+	{
+	  /* skip if the spec is not flagged for FOR UPDATE */
+	  continue;
+	}
+      if (spec->info.spec.derived_table != NULL)
+	{
+	  err =
+	    pt_for_update_prepare_query_internal (parser,
+						  spec->info.spec.
+						  derived_table);
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+	}
+      else
+	{
+	  spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_for_update_prepare_query() - check FOR UPDATE clause and reflag specs from
+ *				   FOR UPDATE
+ *   return: returns the modified query.
+ *   parser(in):
+ *   query(in/out): query with FOR UPDATE clause for which the check and spec
+ *		    flagging is made.
+ */
+static int
+pt_for_update_prepare_query (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  int err = NO_ERROR;
+  PT_NODE *node = NULL;
+
+  if (query == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  err = pt_check_for_update_clause (parser, query, true);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (query->node_type != PT_SELECT
+      || !PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_FOR_UPDATE))
+    {
+      return NO_ERROR;
+    }
+
+  err = pt_for_update_prepare_query_internal (parser, query);
+
+  return err;
 }
 
 /*
@@ -8549,7 +8779,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 		 PT_NODE * class_where_part, PT_NODE * class_check_part,
 		 PT_NODE * class_group_by_part, PT_NODE * class_having_part)
 {
-  PT_NODE *spec;
+  PT_NODE *spec, *node = NULL;
   PT_NODE **specptr = NULL;
   PT_NODE **where_part = NULL, **where_part_ex = NULL;
   PT_NODE **check_where_part = NULL;
@@ -8559,7 +8789,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *attr = NULL, *attr_next = NULL;
   PT_NODE **value, *value_next;
   PT_NODE *crt_list = NULL, *attr_names = NULL, *attr_names_crt = NULL;
-  bool build_att_names_list = false;
+  bool build_att_names_list = false, for_update = false;
   PT_NODE **lhs, **rhs, *lhs_next, *rhs_next;
   const char *newresolved = class_->info.name.resolved;
 
@@ -9120,6 +9350,9 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  spec->info.spec.on_cond = NULL;
 		}
 	    }
+	  for_update =
+	    (PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_FOR_UPDATE)
+	     && (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE));
 	  parser_free_tree (parser, spec);
 
 	  if (newspec)
@@ -9172,6 +9405,10 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  /* reset ids of path specs, or toss them, as necessary */
 	  statement = mq_reset_paths (parser, statement, spec);
 
+	  if (for_update)
+	    {
+	      spec->info.spec.flag |= PT_SPEC_FLAG_FOR_UPDATE_CLAUSE;
+	    }
 	}
 
 

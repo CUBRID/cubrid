@@ -203,6 +203,13 @@ typedef enum
   TARGET_REGUVAL_LIST
 } TARGET_TYPE;
 
+typedef enum
+{
+  ACCESS_SPEC_FLAG_NONE = 0,
+  ACCESS_SPEC_FLAG_FOR_UPDATE = 0x01	/* used with FOR UPDATE clause.
+					 * The spec that will be locked. */
+} ACCESS_SPEC_FLAG;
+
 typedef struct cls_spec_node CLS_SPEC_TYPE;
 struct cls_spec_node
 {
@@ -301,6 +308,7 @@ struct access_spec_node
 				 * performed */
   int pruning_type;		/* how pruning should be performed on this
 				 * access spec performed */
+  ACCESS_SPEC_FLAG flags;	/* flags from ACCESS_SPEC_FLAG enum */
 };
 
 

@@ -7012,7 +7012,7 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * node, bool arg1_is_false)
   PT_MISC_TYPE distinct, subq;
   char oids_incl, comp_lock;
   PT_NODE *order_by, *orderby_for;
-  PT_NODE *into_list, *for_update;
+  PT_NODE *into_list;
   PT_NODE_TYPE type;
   int line, column;
   const char *alias_print;
@@ -7026,7 +7026,6 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * node, bool arg1_is_false)
   order_by = node->info.query.order_by;
   orderby_for = node->info.query.orderby_for;
   into_list = node->info.query.into_list;
-  for_update = node->info.query.for_update;
   type = node->node_type;
   line = node->line_number;
   column = node->column_number;
@@ -7044,7 +7043,6 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * node, bool arg1_is_false)
   node->info.query.order_by = NULL;
   node->info.query.orderby_for = NULL;
   node->info.query.into_list = NULL;
-  node->info.query.for_update = NULL;
   parser_free_tree (parser, node);
 
   if (arg1_is_false)
@@ -7110,11 +7108,6 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * node, bool arg1_is_false)
       if (into_list)
 	{
 	  node->info.query.into_list = into_list;
-	}
-
-      if (for_update)
-	{
-	  node->info.query.for_update = for_update;
 	}
     }
 

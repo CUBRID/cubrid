@@ -339,6 +339,7 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf)
   memset ((void *) (&(isidp->multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
   isidp->duplicate_key_locked = false;
   scan_init_iss (isidp);
+  isidp->for_update = false;
 }
 
 /*
@@ -3112,7 +3113,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      int num_attrs_rest,
 		      ATTR_ID * attrids_rest,
 		      HEAP_CACHE_ATTRINFO * cache_rest,
-		      bool iscan_oid_order, QUERY_ID query_id)
+		      bool iscan_oid_order, QUERY_ID query_id,
+		      bool for_update)
 {
   int ret = NO_ERROR;
   INDX_SCAN_ID *isidp;
@@ -3380,6 +3382,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   }
 
   isidp->duplicate_key_locked = false;
+  isidp->for_update = for_update;
 
   return ret;
 

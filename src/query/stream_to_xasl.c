@@ -4823,6 +4823,8 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
   access_spec->curent = NULL;
   access_spec->pruned = false;
 
+  ptr = or_unpack_int (ptr, &access_spec->flags);
+
   return ptr;
 
 error:

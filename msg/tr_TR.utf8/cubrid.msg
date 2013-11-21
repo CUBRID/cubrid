@@ -1641,6 +1641,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 278 Only one table within a view can be updated.
 279 Multiple insert targets not allowed.
 280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
+281 The FOR UPDATE clause cannot be used in subqueries, unions, with GROUP BY clause, DISTINCT operator, aggregate functions.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %d bayt bölüm ayıramadı.
