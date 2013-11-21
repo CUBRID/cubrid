@@ -134,4 +134,11 @@ extern int partition_prune_unique_btid (PRUNING_CONTEXT * pcontext,
 extern int partition_get_partition_oids (THREAD_ENTRY * thread_p,
 					 const OID * class_oid,
 					 OID ** partition_oids, int *count);
+
+extern int partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext,
+					    ACCESS_SPEC_TYPE * spec,
+					    int pruned_count,
+					    BTID * root_btid,
+					    HIERARCHY_AGGREGATE_HELPER *
+					    helper);
 #endif /* _PARTITION_SR_H_ */

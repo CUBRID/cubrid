@@ -476,7 +476,7 @@ static XASL_CACHE_ENT_INFO xasl_ent_cache = {
   NULL,				/*qstr_ht */
   NULL,				/*xid_ht */
   NULL,				/*oid_ht */
-/* information of cacndidates to be removed from XASL cache */
+/* information of candidates to be removed from XASL cache */
   {false,			/*include_in_use */
    0.0,				/*c_ratio */
    0,				/*c_num */
@@ -1167,6 +1167,20 @@ static HEAP_SCANCACHE *qexec_reset_caches (THREAD_ENTRY * thread_p,
 					   PRUNING_CONTEXT * pcontext,
 					   UPDDEL_CLASS_INFO_INTERNAL *
 					   class_, int op_type);
+static int qexec_init_agg_hierarchy_helpers (THREAD_ENTRY * thread_p,
+					     ACCESS_SPEC_TYPE * spec,
+					     AGGREGATE_TYPE * aggregate_list,
+					     HIERARCHY_AGGREGATE_HELPER **
+					     helpers);
+static int qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
+					       AGGREGATE_TYPE * agg_list,
+					       ACCESS_SPEC_TYPE * spec,
+					       bool * is_scan_needed);
+static int qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p,
+						ACCESS_SPEC_TYPE * spec,
+						AGGREGATE_TYPE * agg_list,
+						bool * is_scan_needed);
+
 static int qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				  VAL_DESCR * vd);
 static BH_CMP_RESULT qexec_topn_compare (const BH_ELEM left,
@@ -7477,53 +7491,24 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (xasl->type == BUILDVALUE_PROC)
     {
       BUILDVALUE_PROC_NODE *buildvalue = &xasl->proc.buildvalue;
-
-      /* If it is possible to evaluate aggregation using index, do it */
       if (buildvalue->agg_list != NULL)
 	{
-	  bool flag_scan_needed;
-
-	  flag_scan_needed = false;	/* init */
-
-	  if (buildvalue->is_always_false != true)
+	  int error = NO_ERROR;
+	  bool is_scan_needed = false;
+	  if (!buildvalue->is_always_false)
 	    {
-	      for (agg_ptr = buildvalue->agg_list; agg_ptr;
-		   agg_ptr = agg_ptr->next)
+	      error = qexec_evaluate_aggregates_optimize (thread_p,
+							  buildvalue->
+							  agg_list,
+							  xasl->spec_list,
+							  &is_scan_needed);
+	      if (error != NO_ERROR)
 		{
-		  if (!agg_ptr->flag_agg_optimize)
-		    {
-		      flag_scan_needed = true;
-		      break;
-		    }
-		}
-
-	      for (agg_ptr = buildvalue->agg_list; agg_ptr;
-		   agg_ptr = agg_ptr->next)
-		{
-		  if (agg_ptr->flag_agg_optimize)
-		    {
-		      if (agg_ptr->function == PT_COUNT_STAR
-			  && flag_scan_needed)
-			{
-			  /* If scan is needed, do not optimize PT_COUNT_STAR. */
-			  agg_ptr->flag_agg_optimize = false;
-			  continue;
-			}
-		      if (qdata_evaluate_aggregate_optimize (thread_p,
-							     agg_ptr,
-							     &xasl->
-							     spec_list->s.
-							     cls_node.hfid) !=
-			  NO_ERROR)
-			{
-			  agg_ptr->flag_agg_optimize = false;
-			  flag_scan_needed = true;
-			}
-		    }
+		  is_scan_needed = true;
 		}
 	    }
 
-	  if (!flag_scan_needed)
+	  if (!is_scan_needed)
 	    {
 	      return S_SUCCESS;
 	    }
@@ -25799,6 +25784,273 @@ exit_on_error:
   if (savepoint_used)
     {
       xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
+    }
+
+  return error;
+}
+
+/*
+ * qexec_init_agg_hierarchy_helpers () - initialize aggregate helpers for
+ *					 evaluating aggregates in a class
+ *					 hierarchy
+ * return : error code or NO_ERROR
+ * thread_p (in)	: thread entry
+ * spec (in)		: spec on which the aggregates are to be evaluated
+ * aggregate_list (in)	: aggregates
+ * helpersp (in/out)	: evaluation helpers
+ */
+static int
+qexec_init_agg_hierarchy_helpers (THREAD_ENTRY * thread_p,
+				  ACCESS_SPEC_TYPE * spec,
+				  AGGREGATE_TYPE * aggregate_list,
+				  HIERARCHY_AGGREGATE_HELPER ** helpersp)
+{
+  int agg_count = 0, part_count = 0, i;
+  AGGREGATE_TYPE *agg = NULL;
+  HIERARCHY_AGGREGATE_HELPER *helpers = NULL;
+  PRUNING_CONTEXT context;
+  int error = NO_ERROR;
+  PARTITION_SPEC_TYPE *part = NULL;
+
+  /* count aggregates */
+  agg = aggregate_list;
+  agg_count = 0;
+  while (agg)
+    {
+      if (!agg->flag_agg_optimize)
+	{
+	  agg = agg->next;
+	  continue;
+	}
+      agg = agg->next;
+      agg_count++;
+    }
+
+  if (agg_count == 0)
+    {
+      *helpersp = NULL;
+      return NO_ERROR;
+    }
+
+  partition_init_pruning_context (&context);
+
+  helpers =
+    (HIERARCHY_AGGREGATE_HELPER *) db_private_alloc (thread_p,
+						     agg_count *
+						     sizeof
+						     (HIERARCHY_AGGREGATE_HELPER));
+  if (helpers == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      agg_count * sizeof (HIERARCHY_AGGREGATE_HELPER));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error_return;
+    }
+
+  for (i = 0; i < agg_count; i++)
+    {
+      helpers[i].btids = NULL;
+      helpers[i].hfids = NULL;
+      helpers[i].is_global_index = false;
+    }
+
+  /* count pruned partitions */
+  for (part_count = 0, part = spec->parts; part != NULL;
+       part_count++, part = part->next);
+  if (part_count == 0)
+    {
+      error = NO_ERROR;
+      goto error_return;
+    }
+
+  error = partition_load_pruning_context (thread_p,
+					  &ACCESS_SPEC_CLS_OID (spec),
+					  spec->pruning_type, &context);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  agg = aggregate_list;
+  i = 0;
+  while (agg != NULL)
+    {
+      if (!agg->flag_agg_optimize)
+	{
+	  agg = agg->next;
+	  continue;
+	}
+      error = partition_load_aggregate_helper (&context, spec, part_count,
+					       &agg->btid, &helpers[i]);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+      agg = agg->next;
+      i++;
+    }
+
+  partition_clear_pruning_context (&context);
+  *helpersp = helpers;
+  return NO_ERROR;
+
+error_return:
+  if (helpers != NULL)
+    {
+      for (i = 0; i < agg_count; i++)
+	{
+	  if (helpers[i].btids != NULL)
+	    {
+	      db_private_free (thread_p, helpers[i].btids);
+	    }
+	  if (helpers[i].hfids != NULL)
+	    {
+	      db_private_free (thread_p, helpers[i].hfids);
+	    }
+	}
+      db_private_free (thread_p, helpers);
+    }
+
+  partition_clear_pruning_context (&context);
+
+  *helpersp = NULL;
+  return error;
+}
+
+/*
+ * qexec_evaluate_partition_aggregates () - optimized aggregate evaluation
+ *					    on a partitioned class
+ * return : error code or NO_ERROR
+ * thread_p (in)  : thread entry
+ * spec (in)	  : access spec of the partitioned class
+ * agg_list (in)  : aggregate list
+ * is_scan_needed (in/out) : whether or not scan is still needed after
+ *			     evaluation
+ */
+static int
+qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p,
+				     ACCESS_SPEC_TYPE * spec,
+				     AGGREGATE_TYPE * agg_list,
+				     bool * is_scan_needed)
+{
+  int error = NO_ERROR;
+  int i = 0;
+  HIERARCHY_AGGREGATE_HELPER *helpers = NULL;
+  AGGREGATE_TYPE *agg_ptr = NULL;
+  BTID root_btid;
+  error = qexec_init_agg_hierarchy_helpers (thread_p, spec, agg_list,
+					    &helpers);
+  if (error != NO_ERROR)
+    {
+      *is_scan_needed = true;
+      return error;
+    }
+  i = 0;
+  for (agg_ptr = agg_list; agg_ptr; agg_ptr = agg_ptr->next)
+    {
+      if (!agg_ptr->flag_agg_optimize)
+	{
+	  continue;
+	}
+
+      if (agg_ptr->function == PT_COUNT_STAR && *is_scan_needed)
+	{
+	  i++;
+	  continue;
+	}
+      BTID_COPY (&root_btid, &agg_ptr->btid);
+      error =
+	qdata_evaluate_aggregate_hierarchy (thread_p, agg_ptr,
+					    &ACCESS_SPEC_HFID (spec),
+					    &root_btid, &helpers[i]);
+      if (error != NO_ERROR)
+	{
+	  *is_scan_needed = true;
+	  goto cleanup;
+	}
+      i++;
+    }
+
+cleanup:
+  if (helpers != NULL)
+    {
+      agg_ptr = agg_list;
+      i = 0;
+      while (agg_ptr != NULL)
+	{
+	  if (!agg_ptr->flag_agg_optimize)
+	    {
+	      agg_ptr = agg_ptr->next;
+	      continue;
+	    }
+	  if (helpers[i].btids != NULL)
+	    {
+	      db_private_free (thread_p, helpers[i].btids);
+	    }
+	  if (helpers[i].hfids != NULL)
+	    {
+	      db_private_free (thread_p, helpers[i].hfids);
+	    }
+	  agg_ptr = agg_ptr->next;
+	  i++;
+	}
+      db_private_free (thread_p, helpers);
+    }
+  return error;
+}
+
+/*
+ * qexec_evaluate_aggregates_optimize () - optimize aggregate evaluation
+ * return : error code or NO_ERROR
+ * thread_p (in) : thread entry
+ * agg_list (in) : aggregate list to be evaluated
+ * spec (in)	 : access spec
+ * is_scan_needed (in/out) : true if scan is still needed after evaluation
+ */
+static int
+qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
+				    AGGREGATE_TYPE * agg_list,
+				    ACCESS_SPEC_TYPE * spec,
+				    bool * is_scan_needed)
+{
+  AGGREGATE_TYPE *agg_ptr;
+  int error = NO_ERROR;
+
+  for (agg_ptr = agg_list; agg_ptr; agg_ptr = agg_ptr->next)
+    {
+      if (!agg_ptr->flag_agg_optimize)
+	{
+	  /* scan is needed for this aggregate */
+	  *is_scan_needed = true;
+	  break;
+	}
+    }
+
+  if (spec->pruning_type == DB_PARTITIONED_CLASS)
+    {
+      /* evaluate aggregate across partition hierarchy */
+      return qexec_evaluate_partition_aggregates (thread_p, spec, agg_list,
+						  is_scan_needed);
+    }
+
+  for (agg_ptr = agg_list; agg_ptr; agg_ptr = agg_ptr->next)
+    {
+      if (agg_ptr->flag_agg_optimize)
+	{
+	  if (agg_ptr->function == PT_COUNT_STAR && *is_scan_needed)
+	    {
+	      /* If scan is needed, do not optimize PT_COUNT_STAR. */
+	      agg_ptr->flag_agg_optimize = false;
+	      continue;
+	    }
+	  if (qdata_evaluate_aggregate_optimize (thread_p, agg_ptr,
+						 &ACCESS_SPEC_HFID (spec)) !=
+	      NO_ERROR)
+	    {
+	      agg_ptr->flag_agg_optimize = false;
+	      *is_scan_needed = true;
+	    }
+	}
     }
 
   return error;

@@ -5257,64 +5257,86 @@ sm_find_index (MOP classop, char **att_names, int num_atts,
   SM_CLASS_CONSTRAINT *con = NULL;
   SM_ATTRIBUTE *att1, *att2;
   BTID *index = NULL;
-
+  bool force_local_index = false;
   index = NULL;
+
   error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
-  if (error == NO_ERROR)
+  if (error != NO_ERROR)
     {
-      /* never use an unique index upon a class hierarchy */
-      if (unique_index_only && (class_->inheritance || class_->users))
+      return NULL;
+    }
+
+  if (class_->partition_of && class_->users == NULL)
+    {
+      /* this is a partition, we can only use local indexes */
+      force_local_index = true;
+    }
+
+  if (unique_index_only)
+    {
+      /* unique indexes are global indexes on class hierarchies and we cannot
+       * use them. The exception is when the class hierarchy is actually a
+       * partitioning hierarchy. In this case, we want to use any global/local
+       * index if class_ points to the partitioned class and only local
+       * indexes if class_ points to a partition */
+      if ((class_->inheritance || class_->users)
+	  && class_->partition_of == NULL)
 	{
+	  /* never use an unique index upon a class hierarchy */
 	  return NULL;
 	}
+    }
 
-      for (con = class_->constraints; con != NULL; con = con->next)
+  for (con = class_->constraints; con != NULL; con = con->next)
+    {
+      if (!SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
 	{
-	  if (!SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
+	  continue;
+	}
+
+      if (unique_index_only)
+	{
+	  if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type))
 	    {
 	      continue;
 	    }
-
-	  if (unique_index_only
-	      && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type))
+	  if (force_local_index && sm_is_global_only_constraint (con))
 	    {
 	      continue;
 	    }
+	}
 
-	  if (skip_prefix_index && num_atts > 0
-	      && con->attributes[0] != NULL
-	      && con->attrs_prefix_length && con->attrs_prefix_length[0] > 0)
-	    {
-	      continue;
-	    }
+      if (skip_prefix_index && num_atts > 0 && con->attributes[0] != NULL
+	  && con->attrs_prefix_length && con->attrs_prefix_length[0] > 0)
+	{
+	  continue;
+	}
 
-	  if (num_atts > 0)
-	    {
-	      for (i = 0; i < num_atts; i++)
-		{
-		  att1 = con->attributes[i];
-		  if (att1 == NULL)
-		    {
-		      break;
-		    }
+      if (num_atts == 0)
+	{
+	  /* we don't care about attributes, any index is a good one */
+	  break;
+	}
 
-		  att2 = classobj_find_attribute (class_, att_names[i], 0);
-		  if (att2 == NULL || att1->id != att2->id)
-		    {
-		      break;
-		    }
-		}
-
-	      if ((i == num_atts) && con->attributes[i] == NULL)
-		{
-		  /* found it */
-		  break;
-		}
-	    }
-	  else
+      for (i = 0; i < num_atts; i++)
+	{
+	  att1 = con->attributes[i];
+	  if (att1 == NULL)
 	    {
 	      break;
 	    }
+
+	  att2 = classobj_find_attribute (class_, att_names[i], 0);
+	  if (att2 == NULL || att1->id != att2->id)
+	    {
+	      break;
+	    }
+	}
+
+      if ((i == num_atts) && con->attributes[i] == NULL)
+	{
+	  /* found it */
+	  break;
 	}
     }
 

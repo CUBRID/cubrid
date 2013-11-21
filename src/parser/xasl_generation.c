@@ -4743,12 +4743,9 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	{
 	  if (from->info.spec.entity_name)
 	    {
-	      if (from->info.spec.entity_name->info.name.partition_of == NULL)
-		{
-		  info.class_name =
-		    from->info.spec.entity_name->info.name.original;
-		  info.flag_agg_optimize = true;
-		}
+	      info.class_name =
+		from->info.spec.entity_name->info.name.original;
+	      info.flag_agg_optimize = true;
 	    }
 	}
     }

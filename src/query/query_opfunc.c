@@ -6609,6 +6609,157 @@ qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p,
 }
 
 /*
+ * qdata_evaluate_aggregate_hierarchy () - aggregate evaluation optimization
+ *					   across a class hierarchy
+ * return : error code or NO_ERROR
+ * thread_p (in)  : thread entry
+ * agg_p (in)	  : aggregate to be evaluated
+ * root_hfid (in) : HFID of the root class in the hierarchy
+ * root_btid (in) : BTID of the root class in the hierarchy
+ * helper (in)	  : hierarchy helper
+ */
+int
+qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p,
+				    AGGREGATE_TYPE * agg_p, HFID * root_hfid,
+				    BTID * root_btid,
+				    HIERARCHY_AGGREGATE_HELPER * helper)
+{
+  bool is_btree_stats_needed = false;
+  int error = NO_ERROR, i, cmp = DB_EQ, cur_cnt = 0;
+  HFID *hfidp = NULL;
+  DB_VALUE result;
+  if (!agg_p->flag_agg_optimize)
+    {
+      return ER_FAILED;
+    }
+
+  /* evaluate aggregate on the root class */
+  error = qdata_evaluate_aggregate_optimize (thread_p, agg_p, root_hfid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (!BTID_IS_NULL (&agg_p->btid) && helper->is_global_index)
+    {
+      /* If this is a global index, there's no need to go into the hierarchy,
+       * the result is already correctly computed
+       */
+      return NO_ERROR;
+    }
+
+  DB_MAKE_NULL (&result);
+  error = pr_clone_value (agg_p->value, &result);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  pr_clear_value (agg_p->value);
+  /* iterate through classes in the hierarchy and merge aggregate values */
+  for (i = 0; i < helper->count && error == NO_ERROR; i++)
+    {
+      if (!BTID_IS_NULL (&agg_p->btid))
+	{
+	  assert (helper->btids != NULL);
+	  BTID_COPY (&agg_p->btid, &helper->btids[i]);
+	}
+      error = qdata_evaluate_aggregate_optimize (thread_p, agg_p,
+						 &helper->hfids[i]);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      switch (agg_p->function)
+	{
+	case PT_COUNT:
+	  /* add current value to result */
+	  error = qdata_add_dbval (agg_p->value, &result, &result,
+				   agg_p->domain);
+	  pr_clear_value (agg_p->value);
+	  break;
+	case PT_COUNT_STAR:
+	  cur_cnt += agg_p->curr_cnt;
+	  break;
+	case PT_MIN:
+	  if (DB_IS_NULL (&result))
+	    {
+	      error = pr_clone_value (agg_p->value, &result);
+	      if (error != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	    }
+	  else
+	    {
+
+	      cmp = tp_value_compare (agg_p->value, &result, true, true);
+	      if (cmp == DB_LT)
+		{
+		  /* agg_p->value is lower than result so make it the new
+		   * minimum */
+		  pr_clear_value (&result);
+		  error = pr_clone_value (agg_p->value, &result);
+		  if (error != NO_ERROR)
+		    {
+		      goto cleanup;
+		    }
+		}
+	    }
+	  break;
+
+	case PT_MAX:
+	  if (DB_IS_NULL (&result))
+	    {
+	      error = pr_clone_value (agg_p->value, &result);
+	      if (error != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	    }
+	  else
+	    {
+	      cmp = tp_value_compare (agg_p->value, &result, true, true);
+	      if (cmp == DB_GT)
+		{
+		  /* agg_p->value is greater than result so make it the new
+		   * maximum */
+		  pr_clear_value (&result);
+		  error = pr_clone_value (agg_p->value, &result);
+		  if (error != NO_ERROR)
+		    {
+		      goto cleanup;
+		    }
+		}
+	    }
+	  break;
+
+	default:
+	  break;
+	}
+      pr_clear_value (agg_p->value);
+    }
+
+  if (agg_p->function == PT_COUNT_STAR)
+    {
+      agg_p->curr_cnt = cur_cnt;
+    }
+  else
+    {
+      pr_clone_value (&result, agg_p->value);
+    }
+
+cleanup:
+  pr_clear_value (&result);
+
+  if (!BTID_IS_NULL (&agg_p->btid))
+    {
+      /* restore btid of agg_p */
+      BTID_COPY (&agg_p->btid, root_btid);
+    }
+  return error;
+}
+
+/*
  * qdata_finalize_aggregate_list () -
  *   return: NO_ERROR, or ER_code
  *   agg_list(in)       : Aggregate expression node list

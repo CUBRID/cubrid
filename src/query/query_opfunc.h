@@ -168,6 +168,18 @@ struct execution_info
   char *sql_plan_text;		/* plans for this query */
 };
 
+/* Object for enabling performing aggregate optimizations on class
+ * hierarchies
+ */
+typedef struct hierarchy_aggregate_helper HIERARCHY_AGGREGATE_HELPER;
+struct hierarchy_aggregate_helper
+{
+  BTID *btids;			/* hierarchy indexes */
+  HFID *hfids;			/* HFIDs for classes in the hierarchy */
+  bool is_global_index;		/* if the index used for optimization is a global
+				 * index or not */
+  int count;			/* number of classes in the hierarchy */
+};
 
 extern void qdata_set_value_list_to_null (VAL_LIST * val_list);
 extern int qdata_copy_db_value (DB_VALUE * dbval1, DB_VALUE * dbval2);
@@ -218,6 +230,12 @@ extern int qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 extern int qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p,
 					      AGGREGATE_TYPE * agg_ptr,
 					      HFID * hfid);
+extern int qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p,
+					       AGGREGATE_TYPE * agg_ptr,
+					       HFID * root_hfid,
+					       BTID * root_btid,
+					       HIERARCHY_AGGREGATE_HELPER *
+					       helper);
 extern int qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 					  AGGREGATE_TYPE * agg_list);
 extern int qdata_initialize_analytic_func (THREAD_ENTRY * thread_p,

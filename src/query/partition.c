@@ -3760,3 +3760,136 @@ cleanup:
     }
   return error;
 }
+
+/*
+ * partition_load_aggregate_helper () - setup the members of an aggregate
+ *					helper
+ * return : error code or NO_ERROR
+ * pcontext (in)     : pruning context
+ * spec (in)	     : spec on which aggregates will be evaluated
+ * pruned_count (in) : number of pruned partitions
+ * root_btid (in)    : BTID of the index in the partitioned class
+ * helper (in/out)   : aggregate helper
+ */
+int
+partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext,
+				 ACCESS_SPEC_TYPE * spec, int pruned_count,
+				 BTID * root_btid,
+				 HIERARCHY_AGGREGATE_HELPER * helper)
+{
+  int error = NO_ERROR, i = 0;
+  char *btree_name = NULL;
+  BTREE_TYPE btree_type;
+  PARTITION_SPEC_TYPE *part = NULL;
+
+  assert_release (helper != NULL);
+
+  helper->btids = NULL;
+  helper->hfids = NULL;
+  helper->count = 0;
+  helper->is_global_index = true;
+
+  if (spec->pruning_type != DB_PARTITIONED_CLASS || !spec->pruned)
+    {
+      return NO_ERROR;
+    }
+
+  /* setup pruned HFIDs */
+  helper->hfids = (HFID *) db_private_alloc (pcontext->thread_p,
+					     pruned_count * sizeof (HFID));
+  if (helper->hfids == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+
+  for (i = 0, part = spec->parts; part != NULL; i++, part = part->next)
+    {
+      HFID_COPY (&helper->hfids[i], &part->hfid);
+    }
+
+  assert (i == pruned_count);
+  helper->count = pruned_count;
+
+  if (BTID_IS_NULL (root_btid))
+    {
+      /* no BTID specified */
+      return NO_ERROR;
+    }
+
+  error = heap_get_indexinfo_of_btid (pcontext->thread_p, &pcontext->root_oid,
+				      root_btid, &btree_type, NULL, NULL,
+				      NULL, &btree_name, NULL);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  if (btree_type == BTREE_PRIMARY_KEY)
+    {
+      /* primary keys are always global */
+      helper->is_global_index = true;
+      helper->btids = NULL;
+      goto cleanup;
+    }
+
+  if (btree_is_unique_type (btree_type))
+    {
+      error = partition_get_position_in_key (pcontext, root_btid);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      if (pcontext->attr_position == -1)
+	{
+	  /* this is a global index */
+	  helper->is_global_index = true;
+	  helper->btids = NULL;
+	  goto cleanup;
+	}
+    }
+
+  /* any other index is a local index */
+  helper->is_global_index = false;
+
+  /* get local BTIDs for pruned partitions */
+  helper->btids = (BTID *) db_private_alloc (pcontext->thread_p,
+					     pruned_count * sizeof (BTID));
+  if (helper->btids == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+
+  for (i = 0, part = spec->parts; part != NULL; i++, part = part->next)
+    {
+      error = heap_get_index_with_name (pcontext->thread_p, &part->oid,
+					btree_name, &helper->btids[i]);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+cleanup:
+  if (error != NO_ERROR)
+    {
+      if (helper->btids != NULL)
+	{
+	  db_private_free_and_init (pcontext->thread_p, helper->btids);
+	}
+      if (helper->hfids != NULL)
+	{
+	  db_private_free_and_init (pcontext->thread_p, helper->hfids);
+	}
+      helper->count = 0;
+      helper->is_global_index = true;
+    }
+
+  if (btree_name != NULL)
+    {
+      free_and_init (btree_name);
+    }
+  return error;
+}
