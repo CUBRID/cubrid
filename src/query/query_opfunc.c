@@ -591,8 +591,8 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p,
   reg_var_p = valptr_list_p->valptrp;
   for (k = 0; k < valptr_list_p->valptr_cnt; k++, reg_var_p = reg_var_p->next)
     {
-      if (!REGU_VARIABLE_IS_FLAGED
-	  (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
+      if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, 
+				    REGU_VARIABLE_HIDDEN_COLUMN))
 	{
 	  dbval_p =
 	    qdata_get_dbval_from_constant_regu_variable (thread_p,
