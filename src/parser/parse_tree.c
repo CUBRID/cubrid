@@ -1166,15 +1166,20 @@ parser_free_parser (PARSER_CONTEXT * parser)
   pt_unregister_parser (parser);
 
   if (parser->error_buffer)
-    free ((char *) parser->error_buffer);
+    {
+      free ((char *) parser->error_buffer);
+    }
 
   if (parser->host_variables)
     {
       DB_VALUE *hv;
       int i;
+
       for (i = 0, hv = parser->host_variables;
 	   i < parser->host_var_count + parser->auto_param_count; i++, hv++)
-	db_value_clear (hv);
+	{
+	  db_value_clear (hv);
+	}
       free_and_init (parser->host_variables);
     }
 
