@@ -1620,6 +1620,16 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
 #if !defined(WINDOWS)
   signal (SIGCHLD, SIG_IGN);
 
+  /* shard_cas does not have unix-domain socket */
+  if (br_shard_flag == OFF)
+    {
+      char path[BROKER_PATH_MAX];
+
+      ut_get_as_port_name (path, shm_br->br_info[br_index].name, as_index,
+			   BROKER_PATH_MAX);
+      unlink (path);
+    }
+
   pid = fork ();
   if (pid == 0)
     {
@@ -3135,6 +3145,8 @@ run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
   proxy_info_p->cur_client = 0;
 
 #if !defined(WINDOWS)
+  unlink (proxy_info_p->port_name);
+
   pid = fork ();
   if (pid == 0)
     {
