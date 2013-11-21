@@ -24039,7 +24039,7 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 		      if (OID_EQ (&query_class->class_oid[j], class_oid))
 			{
 			  if (specp->access == SEQUENTIAL
-			      && specp->pruning_type != DB_PARTITION_CLASS)
+			      && specp->pruning_type != DB_PARTITIONED_CLASS)
 			    {
 			      /* X_LOCK classes which are accessed 
 			       * sequentially. If this is a partitioned class,
