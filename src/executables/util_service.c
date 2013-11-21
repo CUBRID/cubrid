@@ -2169,11 +2169,16 @@ is_manager_running (unsigned int sleep_time)
 {
   FILE *input;
   char buf[16], cmd[PATH_MAX];
+  struct stat stbuf;
 
   sleep (sleep_time);
 
   /* check cub_auto */
   make_exec_abspath (cmd, PATH_MAX, (char *) UTIL_CUB_AUTO_NAME " " "getpid");
+  if (stat (cmd, &stbuf) == -1)
+    {
+      return false;
+    }
   input = popen (cmd, "r");
   if (input == NULL)
     {
@@ -2191,6 +2196,10 @@ is_manager_running (unsigned int sleep_time)
 
   /* chech cub_js */
   make_exec_abspath (cmd, PATH_MAX, (char *) UTIL_CUB_JS_NAME " " "getpid");
+  if (stat (cmd, &stbuf) == -1)
+    {
+      return false;
+    }
   input = popen (cmd, "r");
   if (input == NULL)
     {
