@@ -311,6 +311,8 @@ static void qo_free_class_info (QO_ENV * env, QO_CLASS_INFO *);
 static QO_CLASS_INFO *qo_get_class_info (QO_ENV * env, QO_NODE * node);
 static QO_SEGMENT *qo_eqclass_wrt (QO_EQCLASS *, BITSET *);
 static void qo_env_dump (QO_ENV *, FILE *);
+static int qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
+				     QO_INDEX_ENTRY * index_entry);
 static bool qo_is_iss_index (QO_ENV * env, QO_NODE * nodep,
 			     QO_INDEX_ENTRY * index_entry);
 static void qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * nodep,
@@ -4881,6 +4883,7 @@ qo_alloc_index (QO_ENV * env, int n)
       entryp->statistics_attribute_name = NULL;
       entryp->key_limit = NULL;
       entryp->constraints = NULL;
+      entryp->ils_prefix_len = 0;
     }
 
   return indexp;
@@ -5855,6 +5858,41 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 
 	  ni_entryp->head->is_iss_candidate =
 	    (row_count > first_pkey_card * INDEX_SKIP_SCAN_FACTOR);
+
+	  /* disable loose scan if skip scan is possible */
+	  if (ni_entryp->head->is_iss_candidate)
+	    {
+	      ni_entryp->head->ils_prefix_len = 0;
+	    }
+	}
+
+      /* if loose index scan is possible, check statistics */
+      if (ni_entryp->head->ils_prefix_len > 0)
+	{
+	  if (cum_statsp->pkeys_size <= 1 || cum_statsp->keys <= 0
+	      || ni_entryp->head->ils_prefix_len > cum_statsp->pkeys_size)
+	    {
+	      ni_entryp->head->ils_prefix_len = 0;
+	    }
+	  else
+	    {
+	      long long int pkey_card, index_card;
+
+	      /* acquire cardinalities */
+	      pkey_card =
+		cum_statsp->pkeys[ni_entryp->head->ils_prefix_len - 1];
+	      index_card = cum_statsp->pkeys[cum_statsp->pkeys_size - 1];
+
+	      /* safeguard */
+	      pkey_card = (pkey_card > 0 ? pkey_card : 1);
+	      index_card = (index_card > 0 ? index_card : 1);
+
+	      /* disable if not worth it */
+	      if (pkey_card * INDEX_LOOSE_SCAN_FACTOR > index_card)
+		{
+		  ni_entryp->head->ils_prefix_len = 0;
+		}
+	    }
 	}
     }				/* for (i = 0, ...) */
 }
@@ -6908,6 +6946,68 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
 }
 
 /*
+ * qo_get_ils_prefix_length () - get prefix length of loose scan
+ *   returns: prefix length or -1 if loose scan not possible
+ *   env(in): environment
+ *   nodep(in): graph node
+ *   index_entry(in): index structure
+ */
+static int
+qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
+			  QO_INDEX_ENTRY * index_entry)
+{
+  BITSET segments;
+  int prefix_len = 0, i;
+
+  /* check for nulls */
+  if (env == NULL || nodep == NULL || index_entry == NULL)
+    {
+      return 0;
+    }
+
+  /* loose scan has no point on single column index */
+  if (!QO_ENTRY_MULTI_COL (index_entry))
+    {
+      return 0;
+    }
+
+  if (env->pt_tree->node_type == PT_SELECT
+      && index_entry->cover_segments
+      && !PT_SELECT_INFO_IS_FLAGED (env->pt_tree,
+				    PT_SELECT_INFO_DISABLE_LOOSE_SCAN)
+      && (env->pt_tree->info.query.all_distinct == PT_DISTINCT
+	  || PT_SELECT_INFO_IS_FLAGED (env->pt_tree, PT_SELECT_INFO_HAS_AGG)))
+    {
+      /* this is a select, index is covering all segments and it's either a
+       * DISTINCT query or GROUP BY query with DISTINCT functions */
+
+      /* see if only a prefix of the index is used */
+      for (i = index_entry->nsegs - 1; i >= 0; i--)
+	{
+	  if (index_entry->seg_idxs[i] != -1)
+	    {
+	      prefix_len = i + 1;
+	      break;
+	    }
+	}
+    }
+  else
+    {
+      /* not applicable */
+      return 0;
+    }
+
+  /* no need to continue if no prefix detected */
+  if (prefix_len == -1 || prefix_len == index_entry->col_num)
+    {
+      return 0;
+    }
+
+  /* all done */
+  return prefix_len;
+}
+
+/*
  * qo_is_iss_index () - check if we can use the Index Skip Scan optimization
  *   return: bool
  *   env(in): The environment
@@ -6928,7 +7028,6 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
   bool second_col_present = false;
   QO_CLASS_INFO *class_infop = NULL;
   QO_NODE *seg_nodep = NULL;
-  bool has_count_star = false;
   BITSET_ITERATOR iter;
 
   if (env == NULL || nodep == NULL || index_entry == NULL)
@@ -7407,6 +7506,9 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
 	      index_entryp->is_iss_candidate =
 		qo_is_iss_index (env, nodep, index_entryp);
+
+	      index_entryp->ils_prefix_len =
+		qo_get_ils_prefix_length (env, nodep, index_entryp);
 
 	      index_entryp->statistics_attribute_name = NULL;
 	      index_entryp->is_func_index = false;

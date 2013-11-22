@@ -2429,6 +2429,8 @@ struct pt_select_info
 #define PT_SELECT_INFO_IS_UPD_DEL_QUERY	4096	/* set if select was built for
 						   an UPDATE or DELETE statement */
 #define PT_SELECT_INFO_FOR_UPDATE	8192	/* FOR UPDATE clause is active */
+#define PT_SELECT_INFO_DISABLE_LOOSE_SCAN   16384	/* loose scan not possible
+							   on query */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (short) (f))
@@ -3016,6 +3018,7 @@ struct pt_agg_find_info
   int out_of_context_count;	/* # of aggregate functions that do not belong
 				   to any statement within the stack */
   bool stop_on_subquery;	/* walk subqueries? */
+  bool disable_loose_scan;	/* true if loose index scan cannot be used */
 };
 
 struct pt_agg_name_info

@@ -198,6 +198,7 @@ struct btree_range_search_helper
   OID inst_oid;			/* Current object identifier */
   BTREE_NODE_TYPE node_type;	/* Current node type: leaf or overflow */
   bool iss_get_first_result_only;	/* Index skip scan special case */
+  bool restart_on_first;	/* restart after first OID */
 #if defined(SERVER_MODE)
   int CLS_satisfied;		/* All conditions are satisfied */
   OID saved_class_oid;		/* Saved class identifier */
@@ -640,7 +641,8 @@ static void btree_range_search_init_helper (THREAD_ENTRY * thread_p,
 					    btrs_helper,
 					    BTREE_SCAN * bts,
 					    INDX_SCAN_ID * index_scan_id_p,
-					    int oids_size, OID * oids_ptr);
+					    int oids_size, OID * oids_ptr,
+					    int ils_prefix_len);
 static int btree_prepare_range_search (THREAD_ENTRY * thread_p,
 				       BTREE_SCAN * bts);
 static int btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p,
@@ -14650,7 +14652,7 @@ btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid,
   rc = btree_range_search (thread_p, btid, readonly_purpose, scan_op_type,
 			   LOCKHINT_NONE, BTS, key_val_range,
 			   num_classes, class_oid, oids_ptr, oids_size,
-			   filter, isidp, true, false, NULL, NULL, false);
+			   filter, isidp, true, false, NULL, NULL, false, 0);
 
   lock_unlock_scan (thread_p, class_oid, scanid_bit, END_SCAN);
 
@@ -15075,13 +15077,6 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
       /* is from keyval_search; checkdb or find_unique */
       assert_release (key_val_range->num_index_term == 0);
-    }
-  else
-    {
-      /* is from keyrange_search; scan */
-      assert_release ((key_val_range->range == INF_INF
-		       && key_val_range->num_index_term == 0)
-		      || key_val_range->num_index_term > 0);
     }
 
   /*
@@ -20699,6 +20694,144 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 #endif
 
 /*
+ * btree_ils_adjust_range () - adjust scanning range for loose index scan
+ *   return: error code or NO_ERROR
+ *   thread_p(in): thread entry
+ *   key_range(in/out): key range to adjust
+ *   curr_key(in): current key in btree scan
+ *   prefix_len(in): loose scan prefix length
+ */
+int
+btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
+			DB_VALUE * curr_key, int prefix_len)
+{
+  DB_VALUE new_key, *new_key_dbvals, *target_key = &key_range->key1;
+  DB_MIDXKEY midxkey;
+  int i;
+  bool limit_suffix = false;
+
+  /* check environment */
+  if (DB_VALUE_DOMAIN_TYPE (curr_key) != DB_TYPE_MIDXKEY)
+    {
+      assert_release (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+
+      return ER_FAILED;
+    }
+
+  /* allocate key buffer */
+  new_key_dbvals =
+    (DB_VALUE *) db_private_alloc (thread_p,
+				   curr_key->data.midxkey.ncolumns
+				   * sizeof (DB_VALUE));
+  if (new_key_dbvals == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, curr_key->data.midxkey.ncolumns * sizeof (DB_VALUE));
+      return ER_FAILED;
+    }
+
+  /* determine target key and adjust range */
+  switch (key_range->range)
+    {
+    case INF_LE:
+    case GE_LE:
+      key_range->range = GT_LE;
+      limit_suffix = true;
+      break;
+
+    case INF_LT:
+    case GE_LT:
+      key_range->range = GT_LT;
+      limit_suffix = true;
+      break;
+
+    case INF_INF:
+    case GE_INF:
+      key_range->range = GT_INF;
+      limit_suffix = true;
+      break;
+
+    case GT_LE:
+    case GT_LT:
+    case GT_INF:
+      /* nothing to do */
+      break;
+
+    default:
+      assert_release (false);	/* should not happen */
+      break;
+    }
+
+  /* copy prefix of current key into target key */
+  for (i = 0; i < prefix_len; i++)
+    {
+      pr_midxkey_get_element_nocopy (&curr_key->data.midxkey, i,
+				     &new_key_dbvals[i], NULL, NULL);
+    }
+
+  /* build suffix */
+  if (limit_suffix)
+    {
+      TP_DOMAIN *dom = curr_key->data.midxkey.domain->setdomain;
+
+      /* get to domain */
+      for (i = 0; i < prefix_len; i++)
+	{
+	  dom = dom->next;
+	}
+
+      /* minimum or maximum suffix */
+      for (i = prefix_len; i < curr_key->data.midxkey.ncolumns; i++)
+	{
+	  if (dom->is_desc)
+	    {
+	      db_value_domain_min (&new_key_dbvals[i], dom->type->id,
+				   dom->precision, dom->scale, dom->codeset,
+				   dom->collation_id, &dom->enumeration);
+	    }
+	  else
+	    {
+	      db_value_domain_max (&new_key_dbvals[i], dom->type->id,
+				   dom->precision, dom->scale, dom->codeset,
+				   dom->collation_id, &dom->enumeration);
+	    }
+	  dom = dom->next;
+	}
+    }
+  else
+    {
+      /* copy remaining of key */
+      for (i = prefix_len; i < target_key->data.midxkey.ncolumns; i++)
+	{
+	  pr_midxkey_get_element_nocopy (&target_key->data.midxkey, i,
+					 &new_key_dbvals[i], NULL, NULL);
+	}
+    }
+
+  /* build midxkey */
+  midxkey.buf = NULL;
+  midxkey.domain = curr_key->data.midxkey.domain;
+  midxkey.ncolumns = 0;
+  midxkey.size = 0;
+  db_make_midxkey (&new_key, &midxkey);
+  new_key.need_clear = true;
+  pr_midxkey_add_elements (&new_key, new_key_dbvals,
+			   curr_key->data.midxkey.ncolumns,
+			   curr_key->data.midxkey.domain->setdomain);
+
+  /* register key in range */
+  pr_clear_value (target_key);
+  pr_clone_value (&new_key, target_key);
+  pr_clear_value (&new_key);
+
+  db_private_free (thread_p, new_key_dbvals);
+
+  /* all ok */
+  return NO_ERROR;
+}
+
+/*
  * btree_range_search () -
  *   return: OIDs count
  *   btid(in): B+-tree identifier
@@ -20716,6 +20849,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
  *   isidp(in):
  *   need_construct_btid_int(in):
  *   need_count_only(in):
+ *   ils_prefix_len(in): prefix length for index loose scan
  *
  * Note: This functions performs key range search function.
  * Instance level locking function is added in this function.
@@ -20730,11 +20864,12 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
 		    INDX_SCAN_ID * index_scan_id_p,
 		    bool need_construct_btid_int, bool need_count_only,
 		    DB_BIGINT * key_limit_upper,
-		    DB_BIGINT * key_limit_lower, bool need_to_check_null)
+		    DB_BIGINT * key_limit_lower, bool need_to_check_null,
+		    int ils_prefix_len)
 {
   int i, j;
   OID temp_oid;
-  int which_action;
+  int which_action = BTREE_CONTINUE;
   BTREE_RANGE_SEARCH_HELPER btrs_helper;
 
 #if defined(SERVER_MODE)
@@ -20815,7 +20950,10 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
 	  goto error;
 	}
 
-      /* if (key_desc && scan_asc) || (key_asc && scan_desc),
+      /* scan should not be restarted for now */
+      bts->restart_scan = 0;
+
+      /* if (key_desc && scan_asc) || (key_asc && scan_desc), 
        * then swap lower value and upper value
        */
       btrs_helper.swap_key_range = false;
@@ -20885,7 +21023,8 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
     }
 
   btree_range_search_init_helper (thread_p, &btrs_helper, bts,
-				  index_scan_id_p, oids_size, oids_ptr);
+				  index_scan_id_p, oids_size, oids_ptr,
+				  ils_prefix_len);
 
 #if defined(SERVER_MODE)
 search_again:
@@ -20986,6 +21125,10 @@ start_locking:
 	{
 	  /* do not consider size of list file or oid buffer */
 	  btrs_helper.cp_oid_cnt = btrs_helper.rec_oid_cnt - bts->oid_pos;
+	}
+      else if (ils_prefix_len > 0)
+	{
+	  btrs_helper.cp_oid_cnt = 1;
 	}
       else if (SCAN_IS_INDEX_COVERED (index_scan_id_p))
 	{
@@ -21109,6 +21252,11 @@ start_locking:
 		{
 		  goto end_of_scan;
 		}
+	      else if (which_action == BTREE_RESTART_SCAN)
+		{
+		  bts->restart_scan = 1;
+		  goto end_of_scan;
+		}
 	      assert (which_action == BTREE_CONTINUE);
 	    }
 	}
@@ -21148,6 +21296,11 @@ start_locking:
 		    }
 		  if (which_action == BTREE_GOTO_END_OF_SCAN)
 		    {
+		      goto end_of_scan;
+		    }
+		  else if (which_action == BTREE_RESTART_SCAN)
+		    {
+		      bts->restart_scan = 1;
 		      goto end_of_scan;
 		    }
 		  assert (which_action == BTREE_CONTINUE);
@@ -21260,6 +21413,10 @@ start_locking:
 	{			/* do not concern buffer size */
 	  btrs_helper.cp_oid_cnt = btrs_helper.rec_oid_cnt - bts->oid_pos;
 	}
+      else if (ils_prefix_len > 0)
+	{
+	  btrs_helper.cp_oid_cnt = 1;
+	}
       else
 	{
 	  /* Covering index has also a limitation on the size of list file. */
@@ -21329,6 +21486,11 @@ start_locking:
 	    {
 	      goto end_of_scan;
 	    }
+	  else if (which_action == BTREE_RESTART_SCAN)
+	    {
+	      bts->restart_scan = 1;
+	      goto end_of_scan;
+	    }
 	  assert (which_action == BTREE_CONTINUE);
 	}
 
@@ -21390,6 +21552,11 @@ start_locking:
       /* do not consider size of list file or oid buffer */
       btrs_helper.cp_oid_cnt = btrs_helper.rec_oid_cnt - bts->oid_pos;
     }
+  else if (ils_prefix_len > 0)
+    {
+      /* one oid necessary before restart of scan */
+      btrs_helper.cp_oid_cnt = 1;
+    }
   else if (SCAN_IS_INDEX_COVERED (index_scan_id_p))
     {
       if ((btrs_helper.rec_oid_cnt - bts->oid_pos)
@@ -21432,6 +21599,11 @@ start_locking:
 	    }
 	  if (which_action == BTREE_GOTO_END_OF_SCAN)
 	    {
+	      goto end_of_scan;
+	    }
+	  else if (which_action == BTREE_RESTART_SCAN)
+	    {
+	      bts->restart_scan = 1;
 	      goto end_of_scan;
 	    }
 	  assert (which_action == BTREE_CONTINUE);
@@ -21479,6 +21651,11 @@ start_locking:
 		}
 	      if (which_action == BTREE_GOTO_END_OF_SCAN)
 		{
+		  goto end_of_scan;
+		}
+	      else if (which_action = BTREE_RESTART_SCAN)
+		{
+		  bts->restart_scan = 1;
 		  goto end_of_scan;
 		}
 	      assert (which_action == BTREE_CONTINUE);
@@ -21588,8 +21765,11 @@ end_of_scan:
   btree_clear_key_value (&btrs_helper.clear_prev_key, &btrs_helper.prev_key);
 #endif /* SERVER_MODE */
 
-  /* clear all the used keys */
-  btree_scan_clear_key (bts);
+  if (!bts->restart_scan)
+    {
+      /* clear all the used keys */
+      btree_scan_clear_key (bts);
+    }
 
   /* set the end of scan */
   VPID_SET_NULL (&(bts->C_vpid));
@@ -21645,7 +21825,8 @@ btree_range_search_init_helper (THREAD_ENTRY * thread_p,
 				BTREE_RANGE_SEARCH_HELPER * btrs_helper,
 				BTREE_SCAN * bts,
 				INDX_SCAN_ID * index_scan_id_p,
-				int oids_size, OID * oids_ptr)
+				int oids_size, OID * oids_ptr,
+				int ils_prefix_len)
 {
   btrs_helper->mem_oid_ptr = NULL;
   btrs_helper->rec_oid_ptr = NULL;
@@ -21700,6 +21881,9 @@ btree_range_search_init_helper (THREAD_ENTRY * thread_p,
     {
       btrs_helper->oid_size = OR_OID_SIZE;
     }
+
+  /* restart after first OID iff doing index loose scan */
+  btrs_helper->restart_on_first = (ils_prefix_len > 0);
 
 #if defined(SERVER_MODE)
   btrs_helper->CLS_satisfied = true;
@@ -22170,6 +22354,12 @@ btree_handle_current_oid (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	    }
 	  else if (SCAN_IS_INDEX_COVERED (index_scan_id_p))
 	    {
+	      /* handle loose scan */
+	      if (btrs_helper->restart_on_first)
+		{
+		  *which_action = BTREE_RESTART_SCAN;
+		}
+
 	      /* Covering Index */
 	      if (btree_dump_curr_key (thread_p, bts, bts->key_filter,
 				       inst_oid, index_scan_id_p) != NO_ERROR)

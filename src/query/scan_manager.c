@@ -2398,14 +2398,13 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	  break;
 	}
 
-      if (key_cnt != 1 || range != GE_LE)
+      if (key_cnt != 1)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE,
 		  0);
 	  goto exit_on_error;
 	}
 
-      key_vals[0].range = GE_LE;
       n = btree_range_search (thread_p,
 			      &indx_infop->indx_id.i.btid,
 			      s_id->readonly_scan,
@@ -2419,8 +2418,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 			      ISCAN_OID_BUFFER_SIZE,
 			      &key_filter,
 			      iscan_id, false, iscan_id->need_count_only,
-			      key_limit_upper, key_limit_lower, true);
-      key_vals[0].range = range;
+			      key_limit_upper, key_limit_lower, true,
+			      indx_infop->ils_prefix_len);
       iscan_id->oid_list.oid_cnt = n;
       if (iscan_id->oid_list.oid_cnt == -1)
 	{
@@ -2432,6 +2431,12 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
       if (BTREE_END_OF_SCAN (BTS))
 	{
 	  iscan_id->curr_keyno++;
+	}
+      else if (indx_infop->ils_prefix_len > 0)
+	{
+	  /* adjust range */
+	  btree_ils_adjust_range (thread_p, &key_vals[iscan_id->curr_keyno],
+				  &BTS->cur_key, indx_infop->ils_prefix_len);
 	}
 
       if (iscan_id->multi_range_opt.use)
@@ -2513,7 +2518,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 			      ISCAN_OID_BUFFER_SIZE,
 			      &key_filter,
 			      iscan_id, false, iscan_id->need_count_only,
-			      key_limit_upper, key_limit_lower, true);
+			      key_limit_upper, key_limit_lower, true,
+			      indx_infop->ils_prefix_len);
       key_vals[0].range = saved_range;
       iscan_id->oid_list.oid_cnt = n;
       if (iscan_id->oid_list.oid_cnt == -1)
@@ -2526,6 +2532,12 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
       if (BTREE_END_OF_SCAN (BTS))
 	{
 	  iscan_id->curr_keyno++;
+	}
+      else if (indx_infop->ils_prefix_len > 0)
+	{
+	  /* adjust range */
+	  btree_ils_adjust_range (thread_p, &key_vals[iscan_id->curr_keyno],
+				  &BTS->cur_key, indx_infop->ils_prefix_len);
 	}
 
       if (iscan_id->multi_range_opt.use)
@@ -2565,13 +2577,6 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	      continue;
 	    }
 
-	  if (range != GE_LE)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_QPROC_INVALID_XASLNODE, 0);
-	      goto exit_on_error;
-	    }
-
 	  n = btree_range_search (thread_p,
 				  &indx_infop->indx_id.i.btid,
 				  s_id->readonly_scan,
@@ -2585,8 +2590,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 				  ISCAN_OID_BUFFER_SIZE,
 				  &key_filter,
 				  iscan_id, false, iscan_id->need_count_only,
-				  key_limit_upper, key_limit_lower, true);
-	  key_vals[iscan_id->curr_keyno].range = range;
+				  key_limit_upper, key_limit_lower, true,
+				  indx_infop->ils_prefix_len);
 	  iscan_id->oid_list.oid_cnt = n;
 	  if (iscan_id->oid_list.oid_cnt == -1)
 	    {
@@ -2610,6 +2615,14 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 		    }
 		  *key_limit_upper = iscan_id->key_limit_upper;
 		}
+	    }
+	  else if (indx_infop->ils_prefix_len > 0)
+	    {
+	      /* adjust range */
+	      btree_ils_adjust_range (thread_p,
+				      &key_vals[iscan_id->curr_keyno],
+				      &BTS->cur_key,
+				      indx_infop->ils_prefix_len);
 	    }
 
 	  if (iscan_id->multi_range_opt.use)
@@ -2720,7 +2733,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 				  ISCAN_OID_BUFFER_SIZE,
 				  &key_filter,
 				  iscan_id, false, iscan_id->need_count_only,
-				  key_limit_upper, key_limit_lower, true);
+				  key_limit_upper, key_limit_lower, true,
+				  indx_infop->ils_prefix_len);
 	  key_vals[iscan_id->curr_keyno].range = saved_range;
 	  iscan_id->oid_list.oid_cnt = n;
 	  if (iscan_id->oid_list.oid_cnt == -1)
@@ -2745,6 +2759,14 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 		    }
 		  *key_limit_upper = iscan_id->key_limit_upper;
 		}
+	    }
+	  else if (indx_infop->ils_prefix_len > 0)
+	    {
+	      /* adjust range */
+	      btree_ils_adjust_range (thread_p,
+				      &key_vals[iscan_id->curr_keyno],
+				      &BTS->cur_key,
+				      indx_infop->ils_prefix_len);
 	    }
 
 	  if (iscan_id->multi_range_opt.use)

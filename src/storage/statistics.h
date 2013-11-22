@@ -33,6 +33,7 @@
 #include "object_domain.h"
 
 #define INDEX_SKIP_SCAN_FACTOR 1000
+#define INDEX_LOOSE_SCAN_FACTOR 100
 
 #define STATS_WITH_FULLSCAN  true
 #define STATS_WITH_SAMPLING  false

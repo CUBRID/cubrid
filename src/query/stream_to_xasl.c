@@ -4867,6 +4867,8 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr,
 
   ptr = or_unpack_int (ptr, (int *) &(indx_info->use_iss));
 
+  ptr = or_unpack_int (ptr, (int *) &(indx_info->ils_prefix_len));
+
   ptr = or_unpack_int (ptr, (int *) &(indx_info->func_idx_col_id));
 
   if (indx_info->use_iss)

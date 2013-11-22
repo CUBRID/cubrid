@@ -4194,7 +4194,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 					    1, &fkref->self_oid,
 					    isid.oid_list.oidp, oid_buf_size,
 					    NULL, &isid, true, false,
-					    NULL, NULL, false);
+					    NULL, NULL, false, 0);
 
 	      if (oid_cnt < 1)
 		{
@@ -4492,7 +4492,7 @@ locator_repair_object_cache (THREAD_ENTRY * thread_p, OR_INDEX * index,
 					1,
 					&fkref->self_oid, isid.oid_list.oidp,
 					oid_buf_size, NULL, &isid, true,
-					false, NULL, NULL, false);
+					false, NULL, NULL, false, 0);
 
 	  if (oid_cnt < 1)
 	    {
@@ -4743,7 +4743,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 					    1, &fkref->self_oid,
 					    isid.oid_list.oidp, oid_buf_size,
 					    NULL, &isid, true, false, NULL,
-					    NULL, false);
+					    NULL, false, 0);
 
 	      if (oid_cnt < 1)
 		{
@@ -8701,7 +8701,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 				    isid.oid_list.oidp,
 				    ISCAN_OID_BUFFER_SIZE,
 				    NULL, &isid, true, false, NULL, NULL,
-				    false);
+				    false, 0);
       if (oid_cnt == -1)
 	{
 	  break;
@@ -9104,7 +9104,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 				    0, (OID *) NULL, isid.oid_list.oidp,
 				    ISCAN_OID_BUFFER_SIZE,
 				    NULL, &isid, true, false, NULL, NULL,
-				    false);
+				    false, 0);
       /* TODO: unique with prefix length */
 
       if (oid_cnt == -1)

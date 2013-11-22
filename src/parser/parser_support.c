@@ -960,6 +960,12 @@ pt_find_aggregate_functions_pre (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      /* first level on spec stack, this function belongs to the
 	         callee statement */
 	      info->base_count++;
+
+	      if (tree->info.function.function_type == PT_COUNT_STAR)
+		{
+		  /* can't use count star in loose scan */
+		  info->disable_loose_scan = true;
+		}
 	    }
 	}
       else
@@ -977,6 +983,14 @@ pt_find_aggregate_functions_pre (PARSER_CONTEXT * parser, PT_NODE * tree,
 	    {
 	      /* only names from base SELECT were found */
 	      info->base_count++;
+
+	      if (tree->info.function.all_or_distinct == PT_ALL
+		  && tree->info.function.function_type != PT_MIN
+		  && tree->info.function.function_type != PT_MAX)
+		{
+		  /* only DISTINCT allowed for functions other than MIN/MAX */
+		  info->disable_loose_scan = true;
+		}
 	    }
 	  else if (name_info.max_level < 0 && name_info.name_count > 0)
 	    {
@@ -2798,6 +2812,7 @@ pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node)
   info.base_count = 0;
   info.out_of_context_count = 0;
   info.stop_on_subquery = false;
+  info.disable_loose_scan = false;
 
   if (!node)
     {
@@ -2806,9 +2821,12 @@ pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (node->node_type == PT_SELECT)
     {
+      bool found = false;
+
       /* STEP 1: check agg flag */
       if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_HAS_AGG))
 	{
+	  /* we've been here before */
 	  return true;
 	}
 
@@ -2816,9 +2834,8 @@ pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node)
       if (node->info.query.q.select.group_by
 	  || node->info.query.q.select.having)
 	{
-	  /* mark as agg select */
-	  PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_HAS_AGG);
-	  return true;
+	  found = true;
+	  /* fall trough, we need to check for loose scan */
 	}
 
       /* STEP 3: check tree */
@@ -2838,7 +2855,16 @@ pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (info.base_count > 0)
 	{
-	  /* mark as agg select */
+	  found = true;
+	  if (info.disable_loose_scan)
+	    {
+	      PT_SELECT_INFO_SET_FLAG (node,
+				       PT_SELECT_INFO_DISABLE_LOOSE_SCAN);
+	    }
+	}
+
+      if (found)
+	{
 	  PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_HAS_AGG);
 	  return true;
 	}

@@ -870,20 +870,20 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
       return;			/* nop */
     }
 
-  /* if no index scan terms, no index scan */
-  nterms = bitset_cardinality (&(plan->plan_un.scan.terms));
-
-  if (nterms <= 0
-      && !qo_is_iscan_from_groupby (plan) && !qo_is_iscan_from_orderby (plan))
-    {
-      return;			/* nop */
-    }
-
   /* pointer to QO_NODE_INDEX_ENTRY structure in QO_PLAN */
   ni_entryp = plan->plan_un.scan.index;
   /* pointer to linked list of index node, 'head' field(QO_INDEX_ENTRY
      strucutre) of QO_NODE_INDEX_ENTRY */
   index_entryp = (ni_entryp)->head;
+
+  /* if no index scan terms, no index scan */
+  nterms = bitset_cardinality (&(plan->plan_un.scan.terms));
+
+  if (nterms <= 0 && index_entryp->ils_prefix_len == 0
+      && !qo_is_iscan_from_groupby (plan) && !qo_is_iscan_from_orderby (plan))
+    {
+      return;			/* nop */
+    }
 
   /* check if this is an index with prefix */
   *is_index_w_prefix = qo_is_prefix_index (index_entryp);
@@ -934,6 +934,13 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 
   for (i = equi_nterms; i < index_entryp->nsegs; i++)
     {
+      if (index_entryp->ils_prefix_len > 0
+	  && i >= index_entryp->ils_prefix_len)
+	{
+	  /* sort list should contain only prefix when using loose index scan */
+	  break;
+	}
+
       seg_idx = (index_entryp->seg_idxs[i]);
       if (seg_idx == -1)
 	{			/* not exist in query */
@@ -2371,6 +2378,13 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
 	}
 
       if (plan->plan_un.scan.index
+	  && plan->plan_un.scan.index->head->ils_prefix_len > 0)
+	{
+	  fprintf (f, " (loose index scan on prefix %d)",
+		   plan->plan_un.scan.index->head->ils_prefix_len);
+	}
+
+      if (plan->plan_un.scan.index
 	  && plan->plan_un.scan.index->head->multi_range_opt)
 	{
 	  fprintf (f, " (multi_range_opt)");
@@ -2478,6 +2492,13 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
 	  && plan->plan_un.scan.index->head->is_iss_candidate)
 	{
 	  fprintf (f, " (index skip scan)");
+	}
+
+      if (plan->plan_un.scan.index
+	  && plan->plan_un.scan.index->head->ils_prefix_len > 0)
+	{
+	  fprintf (f, " (loose index scan on prefix %d)",
+		   plan->plan_un.scan.index->head->ils_prefix_len);
 	}
 
       if (plan->plan_un.scan.index
@@ -8343,11 +8364,13 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 	   * two situations is true:
 	   *  - we have key filter terms and the index cover all segments
 	   *  - we have filter predicate and force index is used
+	   *  - we have a loose scan candidate
 	   */
 	  if ((bitset_cardinality (&(index_entryp->key_filter_terms))
 	       && index_entryp->cover_segments)
 	      || (index_entryp->constraints->filter_predicate
-		  && index_entryp->force))
+		  && index_entryp->force)
+	      || (index_entryp->ils_prefix_len > 0))
 	    {
 	      bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
 	      planp = qo_index_scan_new (infop, nodep, ni_entryp,
@@ -8942,7 +8965,8 @@ qo_search_planner (QO_PLANNER * planner)
 	      /* Currently we do not consider the following optimization. */
 	      if ((have_range_terms == true)
 		  || (index_entry->constraints->filter_predicate &&
-		      index_entry->force))
+		      index_entry->force)
+		  || (index_entry->ils_prefix_len > 0))
 		/* Currently, CUBRID does not allow null values in index.
 		 * The filter index expression must contain at least one
 		 * term different than "is null". Otherwise, the index will

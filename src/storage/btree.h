@@ -62,6 +62,7 @@
 #define BTREE_GOTO_END_OF_SCAN		   -5
 #define BTREE_GOTO_START_LOCKING	   -6
 #define BTREE_GOTO_LOCKING_DONE		   -7
+#define BTREE_RESTART_SCAN                 -8
 
 #if defined(SERVER_MODE)
 #define BTREE_CLASS_LOCK_MAP_MAX_COUNT     10
@@ -167,6 +168,7 @@ struct btree_scan
   FILTER_INFO *key_filter;	/* key filter information */
 
   int use_desc_index;		/* use descending index */
+  int restart_scan;		/* restart the scan */
 
   /* for query trace */
   int read_keys;
@@ -223,11 +225,13 @@ struct btree_scan
     (bts)->O_page = NULL;			\
     (bts)->slot_id = -1;			\
     (bts)->oid_pos = 0;				\
+    (bts)->restart_scan = 0;                    \
   } while (0)
 
 #define BTREE_END_OF_SCAN(bts) \
    ((bts)->C_vpid.pageid == NULL_PAGEID && \
-    (bts)->O_vpid.pageid == NULL_PAGEID)
+    (bts)->O_vpid.pageid == NULL_PAGEID && \
+    !(bts)->restart_scan)
 
 #define BTREE_START_OF_SCAN(bts) BTREE_END_OF_SCAN(bts)
 
@@ -443,7 +447,7 @@ extern int btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
 			       bool need_count_only,
 			       DB_BIGINT * key_limit_upper,
 			       DB_BIGINT * key_limit_lower,
-			       bool need_to_check_null);
+			       bool need_to_check_null, int ils_prefix_len);
 extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p,
 					 DB_VALUE * curr_key,
 					 int *btree_att_ids,
@@ -462,4 +466,7 @@ extern BTREE_LOCKED_KEYS btree_get_locked_keys (BTID * delete_btid,
 						bool duplicate_key_locked);
 extern DISK_ISVALID btree_repair_prev_link (THREAD_ENTRY * thread_p,
 					    OID * oid, bool repair);
+extern int btree_ils_adjust_range (THREAD_ENTRY * thread_p,
+				   KEY_VAL_RANGE * key_range,
+				   DB_VALUE * curr_key, int prefix_len);
 #endif /* _BTREE_H_ */

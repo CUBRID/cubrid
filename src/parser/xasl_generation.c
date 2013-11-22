@@ -11975,6 +11975,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   indx_infop->groupby_desc = 0;
 
   indx_infop->use_iss = index_entryp->is_iss_candidate;
+  indx_infop->ils_prefix_len = index_entryp->ils_prefix_len;
   indx_infop->func_idx_col_id = fi_info ? fi_info->col_id : -1;
   if (index_entryp->constraints->func_index_info)
     {

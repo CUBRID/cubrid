@@ -155,6 +155,7 @@ typedef struct indx_info
 				 * the index is a function index */
   KEY_RANGE iss_range;		/* placeholder range used for ISS; must be
 				   created on the broker */
+  int ils_prefix_len;		/* index loose scan prefix length */
 } INDX_INFO;			/* index information structure */
 
 

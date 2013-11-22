@@ -158,6 +158,9 @@ struct qo_index_entry
   /* true if the index can be used as covering index */
   bool is_iss_candidate;
 
+  /* index loose scan prefix length or -1 if ILS is not used */
+  int ils_prefix_len;
+
   /*
    * the name of the first indexed attribute in a multi column index
    * the first indexed attribute contain valid statistics

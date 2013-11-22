@@ -4520,6 +4520,8 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 
   ptr = or_pack_int (ptr, indx_info->use_iss);
 
+  ptr = or_pack_int (ptr, indx_info->ils_prefix_len);
+
   ptr = or_pack_int (ptr, indx_info->func_idx_col_id);
 
   if (indx_info->use_iss)
@@ -6435,6 +6437,8 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
   size += OR_INT_SIZE;		/* groupby_skip */
 
   size += OR_INT_SIZE;		/* use_iss boolean (int) */
+
+  size += OR_INT_SIZE;		/* ils_prefix_len (int) */
 
   size += OR_INT_SIZE;		/* func_idx_col_id (int) */
 

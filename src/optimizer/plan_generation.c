@@ -2774,6 +2774,12 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       /* if group by skip plan do not return */
       ;
     }
+  else if (plan->plan_un.scan.index != NULL
+	   && plan->plan_un.scan.index->head->ils_prefix_len > 0)
+    {
+      /* if loose scan do not return */
+      ;
+    }
   else if (nterms <= 0 && nkfterms <= 0 &&
 	   bitset_cardinality (&(plan->sarged_terms)) == 0)
     {
