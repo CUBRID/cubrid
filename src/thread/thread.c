@@ -1213,6 +1213,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->log_data_ptr = NULL;
 
   (void) thread_rc_track_initialize (entry_p);
+  thread_clear_recursion_depth (entry_p);
 
   entry_p->sort_stats_active = false;
 
@@ -4074,6 +4075,7 @@ thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid,
   thread_p->tran_next_wait = NULL;
 
   (void) thread_rc_track_clear_all (thread_p);
+  thread_clear_recursion_depth (thread_p);
 }
 
 /*

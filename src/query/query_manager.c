@@ -1888,7 +1888,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 #endif
 
   assert_release (IS_SYNC_EXEC_MODE (*flag_p));
-  thread_clear_recursion_depth (thread_p);
+  assert (thread_get_recursion_depth (thread_p) == 0);
 
   saved_is_stats_on = mnt_server_is_stats_on (thread_p);
 
@@ -2467,7 +2467,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   list_id_p = NULL;
 
   dbvals_p = NULL;
-  thread_clear_recursion_depth (thread_p);
+  assert (thread_get_recursion_depth (thread_p) == 0);
 
 #if defined (SERVER_MODE)
   use_global_heap = false;
