@@ -7526,7 +7526,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      if (specp->next == NULL
 		  && specp->access == INDEX
 		  && specp->s.cls_node.cls_regu_list_pred == NULL
-		  && specp->where_pred == NULL)
+		  && specp->where_pred == NULL && !specp->indexptr->use_iss)
 		{
 		  /* count(*) query will scan an index
 		   * but does not have a data-filter

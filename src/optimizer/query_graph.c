@@ -7180,19 +7180,8 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
     }
 
   /* The first col is missing, and the second col is present and has terms that
-   * can be used in a range search. */
-
-  /* Using count() involves a lot of risks: btree_range_search might decide
-   * it only needs to count the elements, and index skip scan is not supported
-   * in this scenario. So check for count(...) usage */
-  if (nodep->env->pt_tree &&
-      nodep->env->pt_tree->node_type == PT_SELECT &&
-      PT_SELECT_INFO_IS_FLAGED (nodep->env->pt_tree, PT_SELECT_INFO_HAS_AGG))
-    {
-      return false;
-    }
-
-  /* Go ahead and approve the index as a candidate
+   * can be used in a range search.
+   * Go ahead and approve the index as a candidate
    * for index skip scanning. We still have a long way ahead of us (use sta-
    * tistics to decide whether index skip scan is the best approach) but we've
    * made the first step.
