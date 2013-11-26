@@ -1,10 +1,10 @@
-#!/usr/bin/python
+#!/usr/bin/python -u
 
 import sys, os
 import re
 from optparse import OptionParser
 
-usage = "usage: %prog [options] input_statdump_filename output_csv_filename"
+usage = "usage: %prog [options] input_statdump_filename[default: - (stdin)] output_csv_filename[default: - (stdout)]"
 parser = OptionParser(usage=usage, version="%prog 1.0")
 parser.add_option("-F", "--from", dest="From", default='0', help="from time ex: '17 10:24:32'");
 parser.add_option("-T", "--to", dest="To", default='9', help="to time ex: '18 20:27:32'");
@@ -13,28 +13,62 @@ parser.add_option("-s", dest="short", default=False, help="short titles", action
 (options, args) = parser.parse_args()
 
 if len(args) == 0:
-	parser.print_usage();
-	sys.exit();
+	file = sys.stdin
+	out = sys.stdout
+elif len(args) == 1:
+	file = None
+	out = sys.stdout
+else:
+	file = None
+	out = None
 
-re_stat = re.compile('([0-9]+ [0-9][0-9]:[0-9][0-9]:[0-9][0-9])[^\0]*?OTHER STATISTICS[^\0]*?\n\n');
+re_stat = re.compile('([0-9]+ [0-9][0-9]:[0-9][0-9]:[0-9][0-9])[^\0]*?OTHER STATISTICS[^\0]*?[a-zA-Z0-9_-]+[ \t]*=[ \t]*[0-9\.]+\n');
 re_items = re.compile('[a-zA-Z0-9_-]+[ \t]*=[ \t]*[0-9\.]+');
 
 
-file = open(args[0], 'r');
-lines = file.read();
+if not file and not args[0] == '-':
+	file = open(args[0], 'r');
+	lines = file.read();
+else:
+	file = sys.stdin
+	lines = ''
+
 titles = [];
-datas = [];
+
+if not out and not args[1] == '-':
+	out = open(args[1], 'w');
+else:
+	out = sys.stdout
 
 start = 0;
 while True:
+	if file == sys.stdin:
+		try:
+			line = sys.stdin.readline()
+		except KeyboardInterrupt:
+			print >> sys.stderr, 'Quit'
+			break
+		if not line:
+			break;
+		lines += line
+
 	m = re_stat.search(lines, start);
 	if m is None:
 		#print 'match done';
-		break;
+		if file == sys.stdin:
+			continue;
+		else:
+			break;
+
+	if file == sys.stdin:
+		lines = ''
 
 	statdump = m.group(0);
 	time = m.group(1);
-	start = m.end();
+	if file == sys.stdin:
+		start = 0
+	else:
+		start = m.end();
 
 	#print statdump
 	#print '--------------';
@@ -69,6 +103,9 @@ while True:
 				k = k.replace('lock', 'LK');
 
 			titles.append(k);
+		for k in titles:
+			out.write ('%s,' % k);
+		out.write ('\n');
 
 	data = [];
 	data.append(time);
@@ -76,29 +113,7 @@ while True:
 		d = i.split('=')[1].strip();
 		data.append(d);
 		
-	datas.append(data);
-
-#print titles;
-#print datas;
-
-out = open(args[1], 'w');
-
-for k in titles:
-	out.write('%s,' % k);
-out.write('\n');
-
-for data in datas:
 	for d in data:
-		out.write('%s,' % d);
-	out.write('\n');
- 
-	
-
-
-	
-
-
-
-	
-
+		out.write ('%s,' % d);
+	out.write ('\n');
 

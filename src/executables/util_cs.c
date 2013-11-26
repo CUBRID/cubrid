@@ -2815,6 +2815,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
     {
       print_timestamp (outfp);
       histo_print_global_stats (outfp, cumulative, substr);
+      fflush (outfp);
       sleep (interval);
     }
   while (interval > 0 && !is_Sigint_caught);
