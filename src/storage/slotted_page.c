@@ -4622,10 +4622,6 @@ spage_find_slot (PAGE_PTR page_p, SPAGE_HEADER * page_header_p,
     {
       if (spage_is_unknown_slot (slot_id, page_header_p, slot_p))
 	{
-	  assert (slot_p->offset_to_record == SPAGE_EMPTY_OFFSET
-		  && (slot_p->record_type == REC_MARKDELETED
-		      || slot_p->record_type == REC_DELETED_WILL_REUSE));
-
 	  return NULL;
 	}
     }
