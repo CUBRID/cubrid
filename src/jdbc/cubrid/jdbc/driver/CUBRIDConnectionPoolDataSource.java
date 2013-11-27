@@ -64,12 +64,13 @@ public class CUBRIDConnectionPoolDataSource extends CUBRIDPoolDataSourceBase
 
 	public synchronized PooledConnection getPooledConnection()
 			throws SQLException {
-		return getPooledConnection(getUser(), getPassword());
+		return getPooledConnection(null, null);
 	}
 
 	public synchronized PooledConnection getPooledConnection(
 			String username, String passwd) throws SQLException {
 		PooledConnection poolCon;
+
 		if (getUrl() != null) {
 			CUBRIDDriver driver = new CUBRIDDriver();
 			Properties props = new Properties();
@@ -80,11 +81,16 @@ public class CUBRIDConnectionPoolDataSource extends CUBRIDPoolDataSourceBase
 			if (passwd != null) {
 				props.setProperty("password", passwd);
 			}
-
 			CUBRIDConnection c_con = (CUBRIDConnection) driver
 					.connect(getUrl(), props);
 			poolCon = new CUBRIDPooledConnection(c_con);
 		} else {
+			if (username == null) {
+				username = getUser();
+			}
+			if (passwd == null) {
+				passwd = getPassword();
+			}
 			UConnection u_con = UJCIManager.connect(
 					getServerName(), getPortNumber(),
 					getDatabaseName(), username, passwd,

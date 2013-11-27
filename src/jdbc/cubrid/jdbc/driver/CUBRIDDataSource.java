@@ -75,11 +75,6 @@ public class CUBRIDDataSource extends CUBRIDDataSourceBase implements
 		Connection con;
 
 		if (dataSourceName == null || dataSourceName.length() == 0) {
-			if (username == null)
-				username = getUser();
-			if (passwd == null)
-				passwd = getPassword();
-
 			if (getUrl() != null) {
 				CUBRIDDriver driver = new CUBRIDDriver();
 				Properties props = new Properties();
@@ -92,6 +87,12 @@ public class CUBRIDDataSource extends CUBRIDDataSourceBase implements
 				}
 				con = driver.connect(getUrl(), props);
 			} else {
+				if (username == null) {
+					username = getUser();
+				}
+				if (passwd == null) {
+					passwd = getPassword();
+				}
 				UConnection u_con = UJCIManager.connect(
 						getServerName(),
 						getPortNumber(),
