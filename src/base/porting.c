@@ -77,6 +77,24 @@ aix_malloc (size_t size)
 
 #if defined (WINDOWS)
 /*
+ * realpath() -
+ *    return: pointer to resolved_path or NULL if error occurred
+ *    path(in): the relative path to be resolved
+ *    resolved_path(out): the buffer to output resolved path
+ */
+char *
+realpath (const char *path, char *resolved_path)
+{
+  struct stat stat_buf;
+  char *tmp_str = _fullpath (resolved_path, path, _MAX_PATH);
+  if (tmp_str != NULL && stat (tmp_str, &stat_buf) == 0)
+    {
+      return tmp_str;
+    }
+  return NULL;
+}
+
+/*
  * poll() -
  *    return: return poll result
  *    fds(in): socket descriptors to wait

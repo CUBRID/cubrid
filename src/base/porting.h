@@ -88,9 +88,7 @@ extern "C"
 #define NAME_MAX	256
 
 #define log2(x)                 (log ((double) x) / log ((double) 2))
-#define realpath(path, resolved_path) \
-        _fullpath(resolved_path, path, _MAX_PATH)
-
+  extern char *realpath (const char *path, char *resolved_path);
 #define sleep(sec) Sleep(1000*(sec))
 #define usleep(usec) Sleep((usec)/1000)
 
