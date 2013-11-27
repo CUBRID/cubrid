@@ -20821,15 +20821,20 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p,
 {
   ANALYTIC_STAGE instnum_stage = ANALYTIC_INTERM_PROC;
   DB_LOGICAL is_output_rec;
-  int i;
+  int instnum_flag, i;
+
+  /* get flag from buildlist */
+  instnum_flag = analytic_state->xasl->proc.buildlist.a_instnum_flag;
 
   /* by default, it's an output record */
   analytic_state->is_output_rec = true;
 
   if (!analytic_state->is_last_run
-      || analytic_state->xasl->instnum_pred == NULL)
+      || (analytic_state->xasl->instnum_pred == NULL
+	  && !(instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)))
     {
-      /* inst_num() is evaluated only for last function */
+      /* inst_num() is evaluated only for last function, when an INST_NUM()
+         predicate is present or when INST_NUM() is selected */
       return NO_ERROR;
     }
 
@@ -20843,6 +20848,13 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p,
 	  /* inst_num() predicate is evaluated at group processing for these
 	     functions, as the result is computed at this stage using all
 	     group values */
+	  instnum_stage = ANALYTIC_GROUP_PROC;
+	}
+
+      if (instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
+	{
+	  /* we're selecting INST_NUM() so we must evaluate it when writing the
+	     output file */
 	  instnum_stage = ANALYTIC_GROUP_PROC;
 	}
     }

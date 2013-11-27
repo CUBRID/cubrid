@@ -116,6 +116,7 @@
 #define XASL_INSTNUM_FLAG_SCAN_CHECK        0x02
 #define XASL_INSTNUM_FLAG_SCAN_STOP	    0x04
 #define XASL_INSTNUM_FLAG_SCAN_LAST_STOP    0x08
+#define XASL_INSTNUM_FLAG_EVAL_DEFER	    0x10
 
 /*
  * Macros for buildlist block

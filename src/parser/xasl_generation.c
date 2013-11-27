@@ -179,7 +179,8 @@ static PT_NODE *pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 				     ANALYTIC_INFO * analytic_info);
 static PT_NODE *pt_to_analytic_final_node (PARSER_CONTEXT * parser,
 					   PT_NODE * tree,
-					   PT_NODE ** ex_list);
+					   PT_NODE ** ex_list,
+					   int *instnum_flag);
 static PT_NODE *pt_expand_analytic_node (PARSER_CONTEXT * parser,
 					 PT_NODE * node,
 					 PT_NODE * select_list);
@@ -15795,7 +15796,25 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
 	  ANALYTIC_INFO analytic_info;
 	  PT_NODE *select_list_ex = NULL, *select_list_final = NULL, *node;
-	  int idx;
+	  int idx, final_idx, final_count, *sort_adjust = NULL;
+
+	  /* prepare sort adjustment array */
+	  final_idx = 0;
+	  final_count =
+	    pt_length_of_list (select_node->info.query.q.select.list);
+	  sort_adjust =
+	    (int *) db_private_alloc (NULL, final_count * sizeof (int));
+	  if (sort_adjust == NULL)
+	    {
+	      PT_ERRORm (parser, select_list_ex, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      goto analytic_exit_on_error;
+	    }
+
+	  /* clear instnum_flag from buildlist; this can be modified by
+	     pt_to_analytic_final_node and in some cases will be OR'd with
+	     xasl->instnum_flag */
+	  buildlist->a_instnum_flag = 0;
 
 	  /* break up expressions with analytic functions */
 	  select_list_ex = NULL;
@@ -15807,14 +15826,15 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  while (node != NULL)
 	    {
 	      PT_NODE *final, *to_ex_list = NULL, *save_next;
-	      long sort_adjust;
 
 	      /* save next and unlink node */
 	      save_next = node->next;
 	      node->next = NULL;
 
 	      /* get final select list node */
-	      final = pt_to_analytic_final_node (parser, node, &to_ex_list);
+	      final =
+		pt_to_analytic_final_node (parser, node, &to_ex_list,
+					   &buildlist->a_instnum_flag);
 	      if (final == NULL)
 		{
 		  /* error was set somewhere - clean up */
@@ -15832,38 +15852,35 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 		parser_append_node (final, select_list_final);
 
 	      /* modify sort spec adjustment counter to account for new nodes */
-	      sort_adjust = -1;	/* subtracted 1 for original node */
+	      assert (final_idx < final_count);
+	      sort_adjust[final_idx] = -1;	/* subtracted 1 for original node */
 	      for (; to_ex_list != NULL; to_ex_list = to_ex_list->next)
 		{
 		  /* add one for each node that goes in extended list */
-		  sort_adjust += 1;
+		  sort_adjust[final_idx] += 1;
 		}
-
-	      /* keep adjustment in final node's etc */
-	      final->etc = (void *) sort_adjust;
 
 	      /* advance */
 	      node = save_next;
+	      final_idx++;
 	    }
 
 	  /* adjust sort specs of analytics in select_list_ex */
-	  for (node = select_list_final, idx = 0; node; node = node->next)
+	  for (node = select_list_final, idx = 0, final_idx = 0;
+	       node != NULL && final_idx < final_count;
+	       node = node->next, final_idx++)
 	    {
 	      PT_NODE *list;
-	      long sort_adjust = (long) node->etc;
 
 	      /* walk list and adjust */
 	      for (list = select_list_ex; list; list = list->next)
 		{
 		  pt_adjust_analytic_sort_specs (parser, list, idx,
-						 sort_adjust);
+						 sort_adjust[final_idx]);
 		}
 
 	      /* increment and adjust index too */
-	      idx += sort_adjust + 1;
-
-	      /* reset etc (it will have a different meaning further on) */
-	      node->etc = NULL;
+	      idx += sort_adjust[final_idx] + 1;
 	    }
 
 	  /* we now have all analytics as top-level nodes in select_list_ex;
@@ -16111,10 +16128,18 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	    {
 	      parser_free_tree (parser, select_list_final);
 	    }
+	  if (sort_adjust != NULL)
+	    {
+	      db_private_free (NULL, sort_adjust);
+	    }
 	  goto exit_on_error;
 
 	analytic_exit:
-	  ;			/* finalized correctly */
+	  if (sort_adjust != NULL)
+	    {
+	      db_private_free (NULL, sort_adjust);
+	    }
+	  /* finalized correctly */
 	}
 
       /* check if this select statement has click counter */
@@ -16288,14 +16313,16 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  orderby_ok = ((xasl->orderby_list != NULL) || orderby_skip);
 	}
 
-      if (xasl->instnum_pred != NULL && pt_has_analytic (parser, select_node))
+      if ((xasl->instnum_pred != NULL
+	   || buildlist->a_instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
+	  && pt_has_analytic (parser, select_node))
 	{
-	  /* we have an inst_num() condition which should not get evaluated
-	     in the initial fetch; move it in buildlist, qexec_execute_analytic
-	     will use it in the final sort */
+	  /* we have an inst_num() which should not get evaluated in the
+	     initial fetch; move it in buildlist, qexec_execute_analytic will
+	     use it in the final sort */
 	  buildlist->a_instnum_pred = xasl->instnum_pred;
 	  buildlist->a_instnum_val = xasl->instnum_val;
-	  buildlist->a_instnum_flag = xasl->instnum_flag;
+	  buildlist->a_instnum_flag |= xasl->instnum_flag;
 	  xasl->instnum_pred = NULL;
 	  xasl->instnum_val = NULL;
 	  xasl->instnum_flag = 0;
@@ -22400,6 +22427,7 @@ unlink_and_exit:
  *   parser(in): parser context
  *   tree(in): analytic node
  *   ex_list(out): pointer to a PT_NODE list
+ *   instnum_flag(out): see NOTE2
  *
  * NOTE: This function has the following behavior:
  *
@@ -22413,10 +22441,13 @@ unlink_and_exit:
  *
  * The returned node should be used in the "final" outptr_list of analytics
  * processing.
+ *
+ * NOTE2: The function will set the XASL_INSTNUM_FLAG_SELECTS_INSTNUM bit in
+ * instnum_flag if an INST_NUM() is found in tree.
  */
 static PT_NODE *
 pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree,
-			   PT_NODE ** ex_list)
+			   PT_NODE ** ex_list, int *instnum_flag)
 {
   PT_NODE *ptr;
 
@@ -22448,15 +22479,38 @@ pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree,
       goto exit_return_ptr;
     }
 
-  if (PT_IS_EXPR_NODE (tree) && pt_has_analytic (parser, tree))
+  if (PT_IS_EXPR_NODE (tree))
     {
       PT_NODE *ret = NULL;
+
+      if (PT_IS_ORDERBYNUM (tree))
+	{
+	  /* orderby_num() should be evaluated at the write of output */
+	  return tree;
+	}
+
+      if (PT_IS_INSTNUM (tree))
+	{
+	  /* inst_num() should be evaluated at the write of output; also set
+	     flag so we defer inst_num() incrementation to output */
+	  (*instnum_flag) |= XASL_INSTNUM_FLAG_EVAL_DEFER;
+	  return tree;
+	}
+
+      if (!pt_has_analytic (parser, tree)
+	  && !pt_has_inst_or_orderby_num (parser, tree))
+	{
+	  /* no reason to split this expression tree, we can evaluate it in the
+	     initial scan */
+	  goto exit_return_ptr;
+	}
 
       /* expression tree with analytic children; walk arguments */
       if (tree->info.expr.arg1 != NULL)
 	{
 	  ret =
-	    pt_to_analytic_final_node (parser, tree->info.expr.arg1, ex_list);
+	    pt_to_analytic_final_node (parser, tree->info.expr.arg1, ex_list,
+				       instnum_flag);
 	  if (ret != NULL)
 	    {
 	      tree->info.expr.arg1 = ret;
@@ -22470,7 +22524,8 @@ pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree,
       if (tree->info.expr.arg2 != NULL)
 	{
 	  ret =
-	    pt_to_analytic_final_node (parser, tree->info.expr.arg2, ex_list);
+	    pt_to_analytic_final_node (parser, tree->info.expr.arg2, ex_list,
+				       instnum_flag);
 	  if (ret != NULL)
 	    {
 	      tree->info.expr.arg2 = ret;
@@ -22484,7 +22539,8 @@ pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree,
       if (tree->info.expr.arg3 != NULL)
 	{
 	  ret =
-	    pt_to_analytic_final_node (parser, tree->info.expr.arg3, ex_list);
+	    pt_to_analytic_final_node (parser, tree->info.expr.arg3, ex_list,
+				       instnum_flag);
 	  if (ret != NULL)
 	    {
 	      tree->info.expr.arg3 = ret;
@@ -22513,7 +22569,8 @@ pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  arg->next = NULL;
 
 	  /* get final node */
-	  ret = pt_to_analytic_final_node (parser, arg, ex_list);
+	  ret =
+	    pt_to_analytic_final_node (parser, arg, ex_list, instnum_flag);
 	  if (ret == NULL)
 	    {
 	      /* error was set */
