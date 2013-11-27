@@ -19198,6 +19198,33 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
 	  result = parser_copy_tree_list (parser, result);
 	}
+
+      if (opd1 && opd1->node_type == PT_EXPR
+	  && opd2 && opd2->node_type == PT_VALUE
+	  && (opd1->info.expr.op == PT_INST_NUM
+	      || opd1->info.expr.op == PT_ORDERBY_NUM)
+	  && (opd2->type_enum == PT_TYPE_INTEGER
+	      || opd2->type_enum == PT_TYPE_BIGINT))
+	{
+	  DB_BIGINT rvalue;
+
+	  if (opd2->type_enum == PT_TYPE_INTEGER)
+	    {
+	      rvalue = opd2->info.value.data_value.i;
+	    }
+	  else if (opd2->type_enum == PT_TYPE_BIGINT)
+	    {
+	      rvalue = opd2->info.value.data_value.bigint;
+	    }
+
+	  if ((op == PT_GT && rvalue <= 0) || (op == PT_GE && rvalue <= 1))
+	    {
+	      /* always true */
+	      DB_MAKE_INTEGER (&dbval_res, 1);
+	      result = pt_dbval_to_value (parser, &dbval_res);
+	    }
+	}
+
       if (result == NULL)
 	{
 	  PT_ERRORc (parser, expr, er_msg ());
