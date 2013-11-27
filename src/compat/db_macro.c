@@ -6259,6 +6259,14 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p,
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
 	  src_p = DB_GET_STRING (value_p);
+	  
+	  if (src_p != NULL && DB_GET_STRING_SIZE(value_p) == 0)
+	    {
+              buffer_p = valcnv_append_string (buffer_p, "");
+              return buffer_p;
+	    }
+	    
+	  
 	  end_p = src_p + DB_GET_STRING_SIZE (value_p);
 	  while (src_p < end_p)
 	    {
