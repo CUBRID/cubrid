@@ -18982,6 +18982,7 @@ qexec_gby_start_group (THREAD_ENTRY * thread_p,
     }
 
   /* (Re)initialize the various accumulator variables... */
+  QEXEC_CLEAR_AGG_LIST_VALUE (gbstate->g_dim[N].d_agg_list);
   error =
     qdata_initialize_aggregate_list (thread_p,
 				     gbstate->g_dim[N].d_agg_list,
