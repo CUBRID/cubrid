@@ -69,7 +69,7 @@ static void trim_single_quote (PARSER_VARCHAR * name);
 static int create_dir (const char *new_dir);
 
 static PARSER_VARCHAR *sl_print_midxkey (const PARSER_CONTEXT * parser,
-					 SM_ATTRIBUTE * att,
+					 SM_ATTRIBUTE ** attributes,
 					 const DB_MIDXKEY * midxkey);
 static PARSER_VARCHAR *sl_print_pk (PARSER_CONTEXT * parser,
 				    SM_CLASS * sm_class, DB_VALUE * key);
@@ -188,32 +188,26 @@ sl_print_pk (PARSER_CONTEXT * parser, SM_CLASS * sm_class, DB_VALUE * key)
 {
   PARSER_VARCHAR *buffer = NULL;
   PARSER_VARCHAR *value = NULL;
-  SM_ATTRIBUTE *first_att;
-  SM_ATTRIBUTE *pk_att;
   DB_MIDXKEY *midxkey;
-  int i;
+  SM_ATTRIBUTE *pk_att;
+  SM_CLASS_CONSTRAINT *pk_cons;
 
-  for (i = 0; i < sm_class->att_count; i++)
+  pk_cons = classobj_find_class_primary_key (sm_class);
+  if (pk_cons == NULL || pk_cons->attributes == NULL
+      || pk_cons->attributes[0] == NULL)
     {
-      if (sm_class->attributes[i].order == 0)
-	{
-	  first_att = &sm_class->attributes[i];
-	}
-      if (classobj_get_cached_constraint (sm_class->attributes[i].constraints,
-					  SM_CONSTRAINT_PRIMARY_KEY, NULL))
-	{
-	  pk_att = &sm_class->attributes[i];
-	}
+      return NULL;
     }
 
   if (DB_VALUE_TYPE (key) == DB_TYPE_MIDXKEY)
     {
       midxkey = db_get_midxkey (key);
-      buffer = sl_print_midxkey (parser, first_att, midxkey);
-
+      buffer = sl_print_midxkey (parser, pk_cons->attributes, midxkey);
     }
   else
     {
+      pk_att = pk_cons->attributes[0];
+
       value = describe_value (parser, NULL, key);
       buffer = pt_append_nulstring (parser, buffer, "\"");
       buffer = pt_append_nulstring (parser, buffer, pk_att->header.name);
@@ -290,40 +284,35 @@ sl_print_select (const PARSER_CONTEXT * parser, char *class_name,
  *     */
 static PARSER_VARCHAR *
 sl_print_midxkey (const PARSER_CONTEXT * parser,
-		  SM_ATTRIBUTE * att, const DB_MIDXKEY * midxkey)
+		  SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey)
 {
   int i = 0;
   int prev_i_index;
   char *prev_i_ptr;
   DB_VALUE value;
-  PARSER_VARCHAR *value_varchar;
   PARSER_VARCHAR *buffer = NULL;
 
   prev_i_index = 0;
   prev_i_ptr = NULL;
 
-  while (att != NULL)
+  for (i = 0; i < midxkey->ncolumns && attributes[i] != NULL; i++)
     {
-      if (classobj_get_cached_constraint (att->constraints,
-					  SM_CONSTRAINT_PRIMARY_KEY, NULL))
+      if (i > 0)
 	{
-	  if (i > 0)
-	    {
-	      buffer = pt_append_nulstring (parser, buffer, " AND ");
-	    }
-
-	  pr_midxkey_get_element_nocopy (midxkey, i, &value, &prev_i_index,
-					 &prev_i_ptr);
-
-	  buffer = pt_append_nulstring (parser, buffer, "\"");
-	  buffer = pt_append_nulstring (parser, buffer, att->header.name);
-	  buffer = pt_append_nulstring (parser, buffer, "\"");
-	  buffer = pt_append_nulstring (parser, buffer, "=");
-	  buffer = describe_value (parser, buffer, &value);
-	  i++;
+	  buffer = pt_append_nulstring (parser, buffer, " AND ");
 	}
-      att = att->order_link;
+
+      pr_midxkey_get_element_nocopy (midxkey, i, &value, &prev_i_index,
+				     &prev_i_ptr);
+
+      buffer = pt_append_nulstring (parser, buffer, "\"");
+      buffer =
+	pt_append_nulstring (parser, buffer, attributes[i]->header.name);
+      buffer = pt_append_nulstring (parser, buffer, "\"");
+      buffer = pt_append_nulstring (parser, buffer, "=");
+      buffer = describe_value (parser, buffer, &value);
     }
+
   return buffer;
 }
 
@@ -398,6 +387,11 @@ sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
   buffer = pt_append_nulstring (parser, buffer, ");");
 
   pkey = sl_print_pk (parser, inst_tp->class_, key);
+  if (pkey == NULL)
+    {
+      parser_free_parser (parser);
+      return ER_FAILED;
+    }
 
   select = sl_print_select (parser, inst_tp->class_->header.name, pkey);
 
@@ -429,6 +423,11 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 	sl_print_update_att_set (parser, inst_tp->assignments,
 				 inst_tp->nassigns);
       pkey = sl_print_pk (parser, inst_tp->class_, key);
+      if (pkey == NULL)
+	{
+	  parser_free_parser (parser);
+	  return ER_FAILED;
+	}
 
       buffer = pt_append_nulstring (parser, buffer, "UPDATE [");
       buffer =
@@ -480,6 +479,11 @@ sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
   parser = parser_create_parser ();
 
   pkey = sl_print_pk (parser, (SM_CLASS *) mclass, key);
+  if (pkey == NULL)
+    {
+      parser_free_parser (parser);
+      return ER_FAILED;
+    }
 
   buffer = pt_append_nulstring (parser, buffer, "DELETE FROM [");
   buffer = pt_append_nulstring (parser, buffer, class_name);
