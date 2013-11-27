@@ -16032,7 +16032,9 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	   && !(parser->custom_print & PT_CHARSET_COLLATE_FULL))
 	  || (parser->custom_print & PT_SUPPRESS_COLLATE_PRINT)
 	  || (prt_coll_id == LANG_SYS_COLLATION
-	      && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT)))
+	      && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
+	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY
+	      && PT_GET_COLLATION_MODIFIER (p) == -1))
 	{
 	  prt_coll_id = -1;
 	}
@@ -16046,7 +16048,9 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	   && !(parser->custom_print & PT_CHARSET_COLLATE_FULL))
 	  || (p->type_enum != PT_TYPE_CHAR && p->type_enum != PT_TYPE_VARCHAR)
 	  || (prt_cs == LANG_SYS_CODESET
-	      && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT)))
+	      && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
+	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY
+	      && p->info.value.has_cs_introducer == false))
 	{
 	  prt_cs = INTL_CODESET_NONE;
 	}

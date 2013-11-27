@@ -2695,6 +2695,47 @@ cleanup:
 }
 
 /*
+ * db_set_system_parameters_for_ha_repl () - set new values for system
+ *					     parameters for HA replication
+ *
+ * return    : error code
+ * data (in) : string with new parameter values defined as:
+ *	       "param1=new_val1; param2=new_val2; ..."
+ */
+int
+db_set_system_parameters_for_ha_repl (const char *data)
+{
+  return db_set_system_parameters (data);
+}
+
+/*
+ * db_reset_system_parameters_from_assignments () - reset system parameter
+ *	values from a string containing list of assignments
+ *
+ * return    : error code
+ * data (in) : string with new parameter values defined as:
+ *	       "param1=new_val1; param2=new_val2; ..."
+ *
+ */
+int
+db_reset_system_parameters_from_assignments (const char *data)
+{
+  int rc;
+  int error = NO_ERROR;
+  char buf[LINE_MAX];
+
+  rc = sysprm_make_default_values (data, buf, sizeof (buf));
+  if (rc == PRM_ERR_NO_ERROR)
+    {
+      return db_set_system_parameters (buf);
+    }
+
+  error = sysprm_set_error (rc, data);
+
+  return error;
+}
+
+/*
  * db_get_system_parameters () - get system parameters values.
  *
  * return	 : error code.

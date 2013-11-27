@@ -8702,7 +8702,7 @@ srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
   REPL_INFO repl_info = { 0, NULL };
-  REPL_INFO_SCHEMA repl_schema = { 0, NULL, NULL, NULL };
+  REPL_INFO_SCHEMA repl_schema = { 0, NULL, NULL, NULL, NULL };
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p)
       && log_does_allow_replication () == true)
@@ -8716,6 +8716,7 @@ srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.name);
 	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.ddl);
 	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.db_user);
+	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.sys_prm_context);
 
 	    repl_info.info = (char *) &repl_schema;
 	    break;

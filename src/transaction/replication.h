@@ -60,6 +60,7 @@ struct repl_info_schema
   char *name;
   char *ddl;
   char *db_user;
+  char *sys_prm_context;
 };
 
 /*

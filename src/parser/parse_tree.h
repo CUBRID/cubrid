@@ -718,7 +718,8 @@ enum pt_custom_print
 				 */
   PT_SUPPRESS_BIGINT_CAST = 0x4000000,
   PT_SUPPRESS_COLLATE_PRINT = 0x8000000,
-  PT_CHARSET_COLLATE_FULL = 0x10000000
+  PT_CHARSET_COLLATE_FULL = 0x10000000,
+  PT_CHARSET_COLLATE_USER_ONLY = 0x20000000
 };
 
 /* all statement node types should be assigned their API statement enumeration */

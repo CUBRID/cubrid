@@ -205,6 +205,7 @@ struct la_item
   int item_type;
   char *class_name;
   char *db_user;
+  char *ha_sys_prm;
   DB_VALUE key;
   LOG_LSA lsa;			/* the LSA of the replication log record */
   LOG_LSA target_lsa;		/* the LSA of the target log record */
@@ -2977,6 +2978,7 @@ la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa)
   item->item_type = -1;
   item->class_name = NULL;
   item->db_user = NULL;
+  item->ha_sys_prm = NULL;
   LSA_COPY (&item->lsa, lsa);
   LSA_COPY (&item->target_lsa, target_lsa);
   item->next = NULL;
@@ -3096,6 +3098,7 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid,
       db_make_string (&item->key, str_value);
       item->key.need_clear = true;
       ptr = or_unpack_string (ptr, &item->db_user);
+      ptr = or_unpack_string (ptr, &item->ha_sys_prm);
 
       break;
 
@@ -3131,6 +3134,11 @@ error_return:
       if (item->db_user != NULL)
 	{
 	  db_private_free_and_init (NULL, item->db_user);
+	}
+
+      if (item->ha_sys_prm != NULL)
+	{
+	  db_private_free_and_init (NULL, item->ha_sys_prm);
 	}
 
       free_and_init (item);
@@ -3195,6 +3203,11 @@ la_free_repl_item (LA_APPLY * apply, LA_ITEM * item)
   if (item->db_user != NULL)
     {
       db_private_free_and_init (NULL, item->db_user);
+    }
+
+  if (item->ha_sys_prm != NULL)
+    {
+      db_private_free_and_init (NULL, item->ha_sys_prm);
     }
 
   free_and_init (item);
@@ -5329,7 +5342,7 @@ static int
 la_apply_schema_log (LA_ITEM * item)
 {
   char *ddl;
-  int error = NO_ERROR;
+  int error = NO_ERROR, error2 = NO_ERROR;
   const char *error_msg = "";
   DB_OBJECT *user = NULL, *save_user = NULL;
   char buf[256];
@@ -5427,7 +5440,7 @@ la_apply_schema_log (LA_ITEM * item)
 	{
 	  if (sl_write_schema_sql
 	      (item->class_name, item->db_user, item->item_type,
-	       ddl) != NO_ERROR)
+	       ddl, item->ha_sys_prm) != NO_ERROR)
 	    {
 	      help_sprint_value (&item->key, buf, 255);
 	      snprintf (sql_log_err, sizeof (sql_log_err),
@@ -5439,6 +5452,23 @@ la_apply_schema_log (LA_ITEM * item)
 		      1, sql_log_err);
 	      er_stack_pop ();
 	    }
+	}
+
+      if (item->ha_sys_prm != NULL)
+	{
+	  er_log_debug (ARG_FILE_LINE, "la_apply_schema_log : %s\n",
+			item->ha_sys_prm);
+	  er_stack_push ();
+	  error2 = db_set_system_parameters_for_ha_repl (item->ha_sys_prm);
+	  if (error2 != NO_ERROR)
+	    {
+	      snprintf (sql_log_err, sizeof (sql_log_err),
+			"failed to change sys prm: %s", item->ha_sys_prm);
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+		      1, sql_log_err);
+	    }
+	  er_stack_pop ();
 	}
 
       if (la_update_query_execute (ddl, false) != NO_ERROR)
@@ -5454,6 +5484,21 @@ la_apply_schema_log (LA_ITEM * item)
       else
 	{
 	  la_Info.schema_counter++;
+	}
+
+      if (item->ha_sys_prm != NULL)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"la_apply_schema_log : reset sysprm\n");
+	  er_stack_push ();
+	  error2 =
+	    db_reset_system_parameters_from_assignments (item->ha_sys_prm);
+	  if (error2 != NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+		      1, "failed to reset sys prm");
+	    }
+	  er_stack_pop ();
 	}
 
       if (save_user != NULL)

@@ -505,16 +505,26 @@ sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
 
 int
 sl_write_schema_sql (char *class_name, char *db_user, int item_type,
-		     char *ddl)
+		     char *ddl, char *ha_sys_prm)
 {
   PARSER_CONTEXT *parser;
-  PARSER_VARCHAR *buffer = NULL, *grant = NULL;
+  PARSER_VARCHAR *buffer = NULL, *grant = NULL, *buf_ha_sys_prm = NULL;
 
   parser = parser_create_parser ();
 
   buffer = pt_append_nulstring (parser, buffer, ddl);
   buffer = pt_append_nulstring (parser, buffer, ";");
 
+  if (ha_sys_prm != NULL)
+    {
+      buf_ha_sys_prm = pt_append_nulstring (parser, buf_ha_sys_prm,
+					    ha_sys_prm);
+      if (sl_write_sql (buf_ha_sys_prm, NULL) != NO_ERROR)
+	{
+	  parser_free_parser (parser);
+	  return ER_FAILED;
+	}
+    }
   if (sl_write_sql (buffer, NULL) != NO_ERROR)
     {
       parser_free_parser (parser);

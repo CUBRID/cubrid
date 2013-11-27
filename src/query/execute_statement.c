@@ -14529,6 +14529,7 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   repl_schema.ddl = parser->ddl_stmt_for_replication;
   repl_schema.db_user = db_get_user_name ();
+  repl_schema.sys_prm_context = sysprm_print_parameters_for_ha_repl ();
 
   assert_release (repl_schema.db_user != NULL);
 
@@ -14537,6 +14538,10 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
   error = locator_flush_replication_info (&repl_info);
 
   db_string_free (repl_schema.db_user);
+  if (repl_schema.sys_prm_context)
+    {
+      free (repl_schema.sys_prm_context);
+    }
 
   return error;
 }

@@ -470,10 +470,14 @@ extern void sysprm_update_client_session_parameters (SESSION_PARAM *
 
 #if !defined (SERVER_MODE)
 extern char *sysprm_print_parameters_for_qry_string (void);
+extern char *sysprm_print_parameters_for_ha_repl (void);
 extern SYSPRM_ERR sysprm_validate_change_parameters (const char *data,
 						     bool check,
 						     SYSPRM_ASSIGN_VALUE **
 						     assignments_ptr);
+extern SYSPRM_ERR
+sysprm_make_default_values (const char *data, char *default_val_buf,
+			    const int buf_size);
 extern void sysprm_init_intl_param (void);
 #endif /* !SERVER_MODE */
 
