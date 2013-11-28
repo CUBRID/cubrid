@@ -19256,7 +19256,7 @@ end:
 	    {
 	      alias_print = expr->alias_print;
 	    }
-	  if (result->alias_print == NULL)
+	  if (result->alias_print == NULL && expr->is_alias_enabled_expr)
 	    {
 	      result->alias_print =
 		pt_append_string (parser, NULL, alias_print);
@@ -19425,10 +19425,11 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
 	    {
 	      result->info.value.text = func->alias_print;
 	    }
-	  if (alias_print == NULL)
+	  if (alias_print == NULL && func->is_alias_enabled_expr)
 	    {
 	      alias_print = func->alias_print;
 	    }
+
 	  parser_free_tree (parser, func);
 	}
 

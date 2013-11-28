@@ -11685,7 +11685,12 @@ alias_enabled_expression_list
 	| alias_enabled_expression_
 		{{
 
-			$$ = $1;
+			PT_NODE *node = $1;
+			if (node != NULL)
+			  {
+			    node->is_alias_enabled_expr = 1;
+			  }
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}

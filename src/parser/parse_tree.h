@@ -3105,6 +3105,7 @@ struct parser_node
   unsigned do_not_replace_orderby:1;	/* when checking query in create/alter
 					   view, do not replace order by */
   unsigned is_added_by_parser:1;	/* is added by parser during parsing */
+  unsigned is_alias_enabled_expr:1;	/* node allowed to have alias */
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 
