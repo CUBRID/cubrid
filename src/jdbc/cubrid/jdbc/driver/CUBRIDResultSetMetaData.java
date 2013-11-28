@@ -404,6 +404,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 		col_table = new String[col_name.length];
 		col_null = new int[col_name.length];
 		col_class_name = new String[col_name.length];
+		is_auto_increment_col = new boolean[col_name.length];
 
 		for (int i = 0; i < col_name.length; i++) {
 			col_disp_size[i] = getDefaultColumnDisplaySize((byte) r.type[i]);
@@ -457,6 +458,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 			} else {
 				col_null[i] = columnNoNulls;
 			}
+			is_auto_increment_col[i] = false;
 		}
 	}
 
