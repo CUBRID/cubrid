@@ -21653,7 +21653,7 @@ start_locking:
 		{
 		  goto end_of_scan;
 		}
-	      else if (which_action = BTREE_RESTART_SCAN)
+	      else if (which_action == BTREE_RESTART_SCAN)
 		{
 		  bts->restart_scan = 1;
 		  goto end_of_scan;
