@@ -10018,9 +10018,6 @@ set_time_argument (struct tm *dest, int year, int month, int day,
   dest->tm_isdst = -1;
 }
 
-#if defined (WINDOWS)
-#define time_t __time64_t
-#endif
 /*
  * calc_unix_timestamp() - calculates UNIX timestamp
  *   return:
@@ -10051,22 +10048,12 @@ calc_unix_timestamp (struct tm *time_argument)
       result = time (NULL);
     }
 
-  if (OR_CHECK_INT_OVERFLOW (result))
-    {
-      /* result could not exceed the value of '2038-01-19 03:14:07' UTC */
-      return -1L;
-    }
-
   if (result < (time_t) 0)
     {
       return -1L;
     }
   return (long) result;
 }
-
-#if defined (WINDOWS)
-#undef time_t
-#endif
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*

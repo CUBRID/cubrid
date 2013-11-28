@@ -114,8 +114,7 @@ extern "C"
 #define fileno		_fileno
 #define vsnprintf	cub_vsnprintf
 #define tempnam         _tempnam
-#define fprintf         _fprintf_p
-#define mktime         _mktime64
+#define fprintf		_fprintf_p
 
 #if (_WIN32_WINNT < 0x0600)
 #define POLLRDNORM  0x0100
