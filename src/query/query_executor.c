@@ -10402,13 +10402,13 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      for (k = no_default_expr, vallist = s_id->val_list->valp;
 		   k < val_no; k++, vallist = vallist->next)
 		{
-		  valp = vallist->val;
-		  if (valp == NULL)
+		  if (vallist == NULL || vallist->val == NULL)
 		    {
+		      assert (0);
 		      GOTO_EXIT_ON_ERROR;
 		    }
 
-		  insert->vals[k] = valp;
+		  insert->vals[k] = vallist->val;
 		}
 
 	      /* evaluate constraint predicate */

@@ -24527,6 +24527,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    }
 	  insert->vals = NULL;
 	  insert->no_vals = no_vals + no_default_expr;
+	  insert->no_default_expr = no_default_expr;
 	}
       else
 	{
