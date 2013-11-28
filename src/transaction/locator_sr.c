@@ -297,7 +297,7 @@ locator_initialize (THREAD_ENTRY * thread_p, EHID * classname_table)
   locator_Eht_classnames->pageid = classname_table->pageid;
   if (locator_Mht_classnames != NULL)
     {
-      mht_clear (locator_Mht_classnames);
+      mht_clear (locator_Mht_classnames, NULL, NULL);
     }
   else
     {

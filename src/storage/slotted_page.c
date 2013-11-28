@@ -757,7 +757,7 @@ spage_boot (THREAD_ENTRY * thread_p)
 
   if (spage_Mht_saving != NULL)
     {
-      (void) mht_clear (spage_Mht_saving);
+      (void) mht_clear (spage_Mht_saving, NULL, NULL);
     }
   else
     {

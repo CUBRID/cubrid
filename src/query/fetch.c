@@ -3778,7 +3778,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case TYPE_AGGREGATE:	/* fetch aggregation function value */
       /* The result value of the aggregate node MUST already have been evaluated */
-      *peek_dbval = regu_var->value.aggptr->value;
+      *peek_dbval = regu_var->value.aggptr->accumulator.value;
       break;
 
     case TYPE_FUNC:		/* fetch function value */

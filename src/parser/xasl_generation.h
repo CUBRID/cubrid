@@ -88,6 +88,7 @@ struct aggregate_info
   OUTPTR_LIST *out_list;
   VAL_LIST *value_list;
   REGU_VARIABLE_LIST regu_list;
+  REGU_VARIABLE_LIST scan_regu_list;
   PT_NODE *out_names;
   DB_VALUE **grbynum_valp;
   const char *class_name;

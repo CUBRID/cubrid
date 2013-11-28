@@ -44,6 +44,8 @@ struct hentry
 {
   HENTRY_PTR act_next;		/* Next active entry on hash table */
   HENTRY_PTR act_prev;		/* Previous active entry on hash table */
+  HENTRY_PTR lru_next;		/* least recentry used list next item */
+  HENTRY_PTR lru_prev;		/* least recentry used list prev item */
   HENTRY_PTR next;		/* Next hash table entry for colisions */
   const void *key;		/* Key associated with entry */
   void *data;			/* Data associated with key entry */
@@ -65,6 +67,8 @@ struct mht_table
 				 * entries. Used to perform quick
 				 * mappings of hash table.
 				 */
+  HENTRY_PTR lru_head;		/* least recently used head */
+  HENTRY_PTR lru_tail;		/* least recently used tail */
   HENTRY_PTR prealloc_entries;	/* Free entries allocated for
 				 * locality reasons
 				 */
@@ -76,6 +80,7 @@ struct mht_table
 					 */
   unsigned int ncollisions;	/* Number of collisions in HT */
   HL_HEAPID heap_id;		/* Id of heap allocator */
+  bool build_lru_list;		/* true if LRU list must be built */
 };
 
 extern unsigned int mht_2str_pseudo_key (const void *key, int key_size);
@@ -114,8 +119,10 @@ extern MHT_TABLE *mht_create (const char *name, int est_size,
 			      int (*cmp_func) (const void *key1,
 					       const void *key2));
 extern void mht_destroy (MHT_TABLE * ht);
-extern int mht_clear (MHT_TABLE * ht);
-extern void *mht_get (const MHT_TABLE * ht, const void *key);
+extern int mht_clear (MHT_TABLE * ht,
+		      int (*rem_func) (const void *key, void *data,
+				       void *args), void *func_args);
+extern void *mht_get (MHT_TABLE * ht, const void *key);
 extern void *mht_get2 (const MHT_TABLE * ht, const void *key, void **last);
 extern const void *mht_put (MHT_TABLE * ht, const void *key, void *data);
 extern const void *mht_put_data (MHT_TABLE * ht, const void *key, void *data);

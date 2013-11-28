@@ -2275,7 +2275,7 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  || mht_count (catalog_Hash_table) > CATALOG_HASH_SIZE)
 	{
 	  /* hash table full */
-	  (void) mht_clear (catalog_Hash_table);
+	  (void) mht_clear (catalog_Hash_table, NULL, NULL);
 	  catalog_key_value_entry_point = 0;
 	}
 
@@ -4949,7 +4949,7 @@ catalog_clear_hash_table ()
   rv = pthread_mutex_lock (&catalog_Hash_table_lock);
   if (catalog_Hash_table != NULL)
     {
-      (void) mht_clear (catalog_Hash_table);
+      (void) mht_clear (catalog_Hash_table, NULL, NULL);
       catalog_key_value_entry_point = 0;
     }
   pthread_mutex_unlock (&catalog_Hash_table_lock);

@@ -219,6 +219,11 @@ extern QFILE_LIST_ID *qfile_open_list (THREAD_ENTRY * thread_p,
 				       QFILE_TUPLE_VALUE_TYPE_LIST *
 				       type_list, SORT_LIST * sort_list,
 				       QUERY_ID query_id, int flag);
+extern int qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p,
+					     QFILE_LIST_ID * list_id_p);
+extern int qfile_save_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p,
+			     QFILE_TUPLE_TYPE tuple_type, char *page_p,
+			     int *tuple_length_p);
 extern int qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p,
 					   QFILE_LIST_ID * list_id,
 					   QFILE_TUPLE_TYPE tpl_type);
@@ -282,6 +287,8 @@ extern QFILE_TUPLE_VALUE_FLAG qfile_locate_tuple_value_r (QFILE_TUPLE tpl,
 							  int index,
 							  char **tpl_val,
 							  int *val_size);
+extern int qfile_locate_tuple_next_value (OR_BUF * iterator, OR_BUF * buf,
+					  QFILE_TUPLE_VALUE_FLAG * flag);
 extern bool qfile_has_next_page (PAGE_PTR page_p);
 extern int qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p,
 					      QFILE_LIST_ID * list_id_p,

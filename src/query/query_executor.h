@@ -40,6 +40,7 @@
 #include "lock_manager.h"
 #include "scan_manager.h"
 #include "thread.h"
+#include "external_sort.h"
 
 /* this must be non-0 and probably should be word aligned */
 #define XASL_STREAM_HEADER 8
@@ -335,6 +336,46 @@ struct fetch_proc_node
   bool ql_flag;			/* on/off flag  */
 };
 
+typedef enum
+{
+  HS_ACCEPT_ALL = 0,		/* accept tuples in hash table */
+  HS_REJECT_ALL,		/* reject tuples, use normal sort-based aggregation */
+} AGGREGATE_HASH_STATE;
+
+typedef struct aggregate_hash_context AGGREGATE_HASH_CONTEXT;
+struct aggregate_hash_context
+{
+  /* hash table stuff */
+  MHT_TABLE *hash_table;	/* memory hash table for hash aggregate eval */
+  AGGREGATE_HASH_KEY *temp_key;	/* temporary key used for fetch */
+  AGGREGATE_HASH_STATE state;	/* state of hash aggregation */
+  TP_DOMAIN **key_domains;	/* hash key domains */
+  AGGREGATE_ACCUMULATOR_DOMAIN **accumulator_domains;	/* accumulator domains */
+
+  /* runtime statistics stuff */
+  int hash_size;		/* hash table size */
+  int group_count;		/* groups processed in hash table */
+  int tuple_count;		/* tuples processed in hash table */
+
+  /* partial list file stuff */
+  SCAN_CODE part_scan_code;	/* scan status of partial list file */
+  QFILE_LIST_ID *part_list_id;	/* list with partial accumulators */
+  QFILE_LIST_ID *sorted_part_list_id;	/* sorted list with partial acc's */
+  QFILE_LIST_SCAN_ID part_scan_id;	/* scan on partial list */
+  DB_VALUE *temp_dbval_array;	/* temporary array of dbvalues, used for saving
+				   entries to list files */
+
+  /* partial list file sort stuff */
+  QFILE_TUPLE_RECORD input_tuple;	/* tuple record used while sorting */
+  SORTKEY_INFO sort_key;	/* sort key for partial list */
+  RECDES tuple_recdes;		/* tuple recdes */
+  AGGREGATE_HASH_KEY *curr_part_key;	/* current partial key */
+  AGGREGATE_HASH_KEY *temp_part_key;	/* temporary partial key */
+  AGGREGATE_HASH_VALUE *curr_part_value;	/* current partial value */
+  AGGREGATE_HASH_VALUE *temp_part_value;	/* temporary partial value */
+  int sorted_count;
+};
+
 typedef struct buildlist_proc_node BUILDLIST_PROC_NODE;
 struct buildlist_proc_node
 {
@@ -356,6 +397,9 @@ struct buildlist_proc_node
   DB_VALUE *g_grbynum_val;	/* groupby_num() value result */
   AGGREGATE_TYPE *g_agg_list;	/* aggregate function list */
   ARITH_TYPE *g_outarith_list;	/* outside arithmetic list */
+  REGU_VARIABLE_LIST g_hk_scan_regu_list;	/* group_by key regu list during scan */
+  REGU_VARIABLE_LIST g_hk_sort_regu_list;	/* group_by key regu list during sort */
+  REGU_VARIABLE_LIST g_scan_regu_list;	/* group_by regulist during scan */
   ANALYTIC_EVAL_TYPE *a_eval_list;	/* analytic functions evaluation groups */
   REGU_VARIABLE_LIST a_regu_list;	/* analytic regu list */
   OUTPTR_LIST *a_outptr_list;	/* analytic output ptr list */
@@ -367,9 +411,16 @@ struct buildlist_proc_node
   int a_instnum_flag;		/* inst_num() flag for query with analytic */
   int g_grbynum_flag;		/* stop or continue grouping? */
   int g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */
+  int g_hash_eligible;		/* eligible for hash aggregate evaluation */
+  int g_output_first_tuple;	/* output first tuple of each group */
+  int g_hkey_size;		/* group by key size */
+  int g_func_count;		/* aggregate function count */
   EHID *upddel_oid_locator_ehids;	/* array of temporary extendible hash for
 					   UPDATE/DELETE generated SELECT
 					   statement */
+  AGGREGATE_HASH_CONTEXT agg_hash_context;	/* hash aggregate context,
+						   not serialized */
+  int g_agg_domains_resolved;	/* domain status (not serialized) */
 };
 
 
@@ -381,6 +432,7 @@ struct buildvalue_proc_node
   AGGREGATE_TYPE *agg_list;	/* aggregate function list */
   ARITH_TYPE *outarith_list;	/* outside arithmetic list */
   int is_always_false;		/* always-false agg-query? */
+  int agg_domains_resolved;	/* domain status (not serialized) */
 };
 
 typedef struct mergelist_proc_node MERGELIST_PROC_NODE;

@@ -3146,6 +3146,64 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
 	}
     }
 
+  ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hash_eligible);
+
+  ptr =
+    or_unpack_int (ptr, (int *) &stx_build_list_proc->g_output_first_tuple);
+  ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hkey_size);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      stx_build_list_proc->g_hk_scan_regu_list = NULL;
+    }
+  else
+    {
+      stx_build_list_proc->g_hk_scan_regu_list =
+	stx_restore_regu_variable_list (thread_p,
+					&xasl_unpack_info->
+					packed_xasl[offset]);
+      if (stx_build_list_proc->g_hk_scan_regu_list == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      stx_build_list_proc->g_hk_sort_regu_list = NULL;
+    }
+  else
+    {
+      stx_build_list_proc->g_hk_sort_regu_list =
+	stx_restore_regu_variable_list (thread_p,
+					&xasl_unpack_info->
+					packed_xasl[offset]);
+      if (stx_build_list_proc->g_hk_sort_regu_list == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      stx_build_list_proc->g_scan_regu_list = NULL;
+    }
+  else
+    {
+      stx_build_list_proc->g_scan_regu_list =
+	stx_restore_regu_variable_list (thread_p,
+					&xasl_unpack_info->
+					packed_xasl[offset]);
+      if (stx_build_list_proc->g_scan_regu_list == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_func_count);
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_grbynum_flag);
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_with_rollup);
 
@@ -5900,14 +5958,14 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      aggregate->value = NULL;
+      aggregate->accumulator.value = NULL;
     }
   else
     {
-      aggregate->value =
+      aggregate->accumulator.value =
 	stx_restore_db_value (thread_p,
 			      &xasl_unpack_info->packed_xasl[offset]);
-      if (aggregate->value == NULL)
+      if (aggregate->accumulator.value == NULL)
 	{
 	  goto error;
 	}
@@ -5916,20 +5974,20 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      aggregate->value2 = NULL;
+      aggregate->accumulator.value2 = NULL;
     }
   else
     {
-      aggregate->value2 =
+      aggregate->accumulator.value2 =
 	stx_restore_db_value (thread_p,
 			      &xasl_unpack_info->packed_xasl[offset]);
-      if (aggregate->value2 == NULL)
+      if (aggregate->accumulator.value2 == NULL)
 	{
 	  goto error;
 	}
     }
 
-  ptr = or_unpack_int (ptr, &aggregate->curr_cnt);
+  ptr = or_unpack_int (ptr, &aggregate->accumulator.curr_cnt);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

@@ -2658,7 +2658,7 @@ ws_reset_classname_cache (void)
        * don't need to map over entries because the name strings
        * are part of the class structure
        */
-      (void) mht_clear (Classname_cache);
+      (void) mht_clear (Classname_cache, NULL, NULL);
     }
 }
 #endif /* ENABLE_UNUSED_FUNCTION */

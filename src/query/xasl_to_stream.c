@@ -3408,6 +3408,33 @@ xts_process_buildlist_proc (char *ptr,
     }
   ptr = or_pack_int (ptr, offset);
 
+  ptr = or_pack_int (ptr, build_list_proc->g_hash_eligible);
+
+  ptr = or_pack_int (ptr, build_list_proc->g_output_first_tuple);
+  ptr = or_pack_int (ptr, build_list_proc->g_hkey_size);
+
+  offset = xts_save_regu_variable_list (build_list_proc->g_hk_scan_regu_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (build_list_proc->g_hk_sort_regu_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (build_list_proc->g_scan_regu_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  ptr = or_pack_int (ptr, build_list_proc->g_func_count);
   ptr = or_pack_int (ptr, build_list_proc->g_grbynum_flag);
   ptr = or_pack_int (ptr, build_list_proc->g_with_rollup);
 
@@ -5090,21 +5117,21 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
 
   ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, aggregate->domain, 0, 0);
 
-  offset = xts_save_db_value (aggregate->value);
+  offset = xts_save_db_value (aggregate->accumulator.value);
   if (offset == ER_FAILED)
     {
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_db_value (aggregate->value2);
+  offset = xts_save_db_value (aggregate->accumulator.value2);
   if (offset == ER_FAILED)
     {
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
-  ptr = or_pack_int (ptr, aggregate->curr_cnt);
+  ptr = or_pack_int (ptr, aggregate->accumulator.curr_cnt);
 
   offset = xts_save_aggregate_type (aggregate->next);
   if (offset == ER_FAILED)
@@ -5836,8 +5863,15 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
     PTR_SIZE +			/* g_having_pred */
     PTR_SIZE +			/* g_grbynum_pred */
     PTR_SIZE +			/* g_grbynum_val */
+    PTR_SIZE +			/* g_hk_scan_regu_list */
+    PTR_SIZE +			/* g_hk_sort_regu_list */
+    PTR_SIZE +			/* g_scan_regu_list */
     OR_INT_SIZE +		/* g_grbynum_flag */
     OR_INT_SIZE +		/* g_with_rollup */
+    OR_INT_SIZE +		/* g_hash_eligible */
+    OR_INT_SIZE +		/* g_output_first_tuple */
+    OR_INT_SIZE +		/* g_hkey_size */
+    OR_INT_SIZE +		/* g_func_count */
     PTR_SIZE +			/* g_agg_list */
     PTR_SIZE +			/* g_outarith_list */
     PTR_SIZE +			/* a_func_list */

@@ -241,9 +241,6 @@ static int qfile_save_sort_key_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p,
 static int qfile_save_merge_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p,
 				   char *tuple_p, char *page_p,
 				   int *tuple_length_p);
-static int qfile_save_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p,
-			     QFILE_TUPLE_TYPE tuple_type, char *page_p,
-			     int *tuple_length_p);
 
 #if defined(SERVER_MODE)
 static int qfile_get_list_page_with_waiting (THREAD_ENTRY * thread_p,
@@ -358,9 +355,6 @@ static int
 #endif /* SERVER_MODE */
 static DB_VALUE
   * qfile_get_list_cache_entry_param_values (QFILE_LIST_CACHE_ENTRY * ent);
-static int qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p,
-					     QFILE_LIST_ID * list_id_p);
-
 static int qfile_compare_with_null_value (int o0, int o1,
 					  SUBKEY_INFO key_info);
 static int qfile_compare_with_interpolate_domain (char *fp0, char *fp1,
@@ -1000,6 +994,28 @@ qfile_locate_tuple_value_r (QFILE_TUPLE tuple, int index,
     }
 }
 
+/*
+ * qfile_locate_tuple_next_value () -
+ *   return: error code or no error
+ *   iterator(in): OR_BUF for iterating tuple values
+ *   buf(out): output OR_BUF to be positioned on next tuple value
+ *   flag(out): V_BOUND/V_UNBOUND
+ */
+int
+qfile_locate_tuple_next_value (OR_BUF * iterator, OR_BUF * buf,
+			       QFILE_TUPLE_VALUE_FLAG * flag)
+{
+  int value_size = QFILE_GET_TUPLE_VALUE_LENGTH (iterator->ptr);
+  *flag = QFILE_GET_TUPLE_VALUE_FLAG (iterator->ptr);
+
+  /* initialize output buffer */
+  OR_BUF_INIT ((*buf), iterator->ptr + QFILE_TUPLE_VALUE_HEADER_SIZE,
+	       value_size);
+
+  /* advance iterator */
+  return or_advance (iterator, QFILE_TUPLE_VALUE_HEADER_SIZE + value_size);
+}
+
 #if defined (CUBRID_DEBUG)
 /*
  * qfile_print_tuple () - Prints the tuple content associated with the type list
@@ -1606,7 +1622,7 @@ qfile_close_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
  *
  * Note:
  */
-static int
+int
 qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p,
 				  QFILE_LIST_ID * list_id_p)
 {
@@ -2054,7 +2070,7 @@ qfile_save_merge_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p,
   return NO_ERROR;
 }
 
-static int
+int
 qfile_save_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p,
 		  QFILE_TUPLE_TYPE tuple_type, char *page_p,
 		  int *tuple_length_p)
@@ -5691,7 +5707,7 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
 	  (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[i],
 				 qfile_free_list_cache_entry,
 				 qfile_List_cache.list_hts[i]);
-	  (void) mht_clear (qfile_List_cache.list_hts[i]);
+	  (void) mht_clear (qfile_List_cache.list_hts[i], NULL, NULL);
 	}
       (void) memset (qfile_List_cache.ht_assigned, 0,
 		     sizeof (bool) * qfile_List_cache.n_hts);
@@ -5952,7 +5968,7 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
       er_log_debug (ARG_FILE_LINE,
 		    "ls_clear_list_cache: failed to delete all entries\n");
     }
-  (void) mht_clear (qfile_List_cache.list_hts[list_ht_no]);
+  (void) mht_clear (qfile_List_cache.list_hts[list_ht_no], NULL, NULL);
 
   /* release assigned memory hash table */
   if (release)

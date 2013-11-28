@@ -22498,6 +22498,8 @@ PT_HINT parser_hint_table[] = {
   ,
   {"NO_SORT_LIMIT", NULL, PT_HINT_NO_SORT_LIMIT}
   ,
+  {"NO_HASH_AGGREGATE", NULL, PT_HINT_NO_HASH_AGGREGATE}
+  ,
   {NULL, NULL, -1}		/* mark as end */
 };
 

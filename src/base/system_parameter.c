@@ -526,6 +526,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PB_AIN_RATIO "data_ain_ratio"
 #define PRM_NAME_PB_AOUT_RATIO "data_aout_ratio"
 
+#define PRM_NAME_MAX_AGG_HASH_SIZE "max_agg_hash_size"
+#define PRM_NAME_AGG_HASH_RESPECT_ORDER "agg_hash_respect_order"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -1657,6 +1660,16 @@ static unsigned int prm_query_trace_format_flag = 0;
 int PRM_MAX_RECURSION_SQL_DEPTH = 400;
 static int prm_max_recursion_sql_depth_default = 400;
 static unsigned int prm_max_recursion_sql_depth_flag = 0;
+
+UINT64 PRM_MAX_AGG_HASH_SIZE = 2 * 1024 * 1024;	/* 2 MB */
+static UINT64 prm_max_agg_hash_size_default = 2 * 1024 * 1024;	/* 2 MB */
+static UINT64 prm_max_agg_hash_size_lower = 32 * 1024;	/* 32 KB */
+static UINT64 prm_max_agg_hash_size_upper = 128 * 1024 * 1024;	/* 128 MB */
+static unsigned int prm_max_agg_hash_size_flag = 0;
+
+bool PRM_AGG_HASH_RESPECT_ORDER = true;
+static bool prm_agg_hash_respect_order_default = true;
+static unsigned int prm_agg_hash_respect_order_flag = 0;
 
 bool PRM_UPDATE_USE_ATTRIBUTE_REFERENCES = false;
 static bool prm_update_use_attribute_references_default = false;
@@ -3946,6 +3959,28 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_pb_aout_ratio_upper,
    (void *) &prm_pb_aout_ratio_lower,
    (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_MAX_AGG_HASH_SIZE,
+   (PRM_FOR_SERVER | PRM_TEST_CHANGE),
+   PRM_BIGINT,
+   (void *) &prm_max_agg_hash_size_flag,
+   (void *) &prm_max_agg_hash_size_default,
+   (void *) &PRM_MAX_AGG_HASH_SIZE,
+   (void *) &prm_max_agg_hash_size_upper,
+   (void *) &prm_max_agg_hash_size_lower,
+   (void *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_AGG_HASH_RESPECT_ORDER,
+   (PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   (void *) &prm_agg_hash_respect_order_flag,
+   (void *) &prm_agg_hash_respect_order_default,
+   (void *) &PRM_AGG_HASH_RESPECT_ORDER,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };

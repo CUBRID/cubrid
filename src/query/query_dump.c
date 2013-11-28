@@ -1868,7 +1868,8 @@ static bool
 qdump_print_aggregate_expression (int type, AGGREGATE_TYPE * aggptr)
 {
   fprintf (foutput, "[%s]",
-	   qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (aggptr->value)));
+	   qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
+				   (aggptr->accumulator.value)));
 
   fprintf (foutput, "%s(", qdump_function_type_string (aggptr->function));
 

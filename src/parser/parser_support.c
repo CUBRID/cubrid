@@ -4390,14 +4390,14 @@ regu_agg_alloc (void)
       return NULL;
     }
 
-  aggptr->value = regu_dbval_alloc ();
-  if (aggptr->value == NULL)
+  aggptr->accumulator.value = regu_dbval_alloc ();
+  if (aggptr->accumulator.value == NULL)
     {
       return NULL;
     }
 
-  aggptr->value2 = regu_dbval_alloc ();
-  if (aggptr->value2 == NULL)
+  aggptr->accumulator.value2 = regu_dbval_alloc ();
+  if (aggptr->accumulator.value2 == NULL)
     {
       return NULL;
     }
@@ -4426,8 +4426,8 @@ regu_agg_grbynum_alloc (void)
       return NULL;
     }
 
-  aggptr->value = NULL;
-  aggptr->value2 = NULL;
+  aggptr->accumulator.value = NULL;
+  aggptr->accumulator.value2 = NULL;
   aggptr->list_id = NULL;
 
   return aggptr;
@@ -4468,9 +4468,9 @@ static void
 regu_agg_init (AGGREGATE_TYPE * ptr)
 {
   ptr->next = NULL;
-  ptr->value = NULL;
-  ptr->value2 = NULL;
-  ptr->curr_cnt = 0;
+  ptr->accumulator.value = NULL;
+  ptr->accumulator.value2 = NULL;
+  ptr->accumulator.curr_cnt = 0;
   ptr->function = (FUNC_TYPE) 0;
   ptr->option = (QUERY_OPTIONS) 0;
   regu_var_init (&ptr->operand);

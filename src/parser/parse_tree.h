@@ -1111,7 +1111,9 @@ typedef enum
   /* use index for merge update */
   PT_HINT_USE_INSERT_IDX = 0x400000,	/* 0100 0000 0000 0000 0000 0000 */
   /* do not generate SORT-LIMIT plan */
-  PT_HINT_NO_SORT_LIMIT = 0x800000	/* 1000 0000 0000 0000 0000 0000 */
+  PT_HINT_NO_SORT_LIMIT = 0x800000,	/* 1000 0000 0000 0000 0000 0000 */
+  PT_HINT_NO_HASH_AGGREGATE = 0x1000000	/* 0001 0000 0000 0000 0000 0000 0000 */
+    /* no hash aggregate evaluation */
 } PT_HINT_ENUM;
 
 

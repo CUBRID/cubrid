@@ -103,6 +103,16 @@
 /* used for tuple string id */
 #define CONNECTBY_TUPLE_INDEX_STRING_MEM  64
 
+/* default number of hash entries */
+#define HASH_AGGREGATE_DEFAULT_TABLE_SIZE 1000
+
+/* minimum amount of tuples that have to be hashed before deciding if
+   selectivity is very high */
+#define HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD   200
+
+/* maximum selectivity allowed for hash aggregate evaluation */
+#define HASH_AGGREGATE_VH_SELECTIVITY_THRESHOLD         0.5f
+
 
 #define QEXEC_CLEAR_AGG_LIST_VALUE(agg_list) \
   do \
@@ -112,7 +122,7 @@
 	{ \
 	  if (agg_ptr->function == PT_GROUPBY_NUM) \
 	    continue; \
-	  pr_clear_value (agg_ptr->value); \
+	  pr_clear_value (agg_ptr->accumulator.value); \
 	} \
     } \
   while (0)
@@ -195,6 +205,7 @@ struct groupby_state
   XASL_NODE *eptr_list;
   AGGREGATE_TYPE *g_output_agg_list;
   REGU_VARIABLE_LIST g_regu_list;
+  REGU_VARIABLE_LIST g_hk_regu_list;
   VAL_LIST *g_val_list;
   OUTPTR_LIST *g_outptr_list;
   XASL_NODE *xasl;
@@ -209,6 +220,10 @@ struct groupby_state
   int with_rollup;
   GROUPBY_DIMENSION *g_dim;	/* dimentions for Data Cube */
   int g_dim_levels;		/* dimentions size */
+
+  int hash_eligible;
+
+  AGGREGATE_HASH_CONTEXT *agg_hash_context;
 
   SORT_CMP_FUNC *cmp_fn;
   LK_COMPOSITE_LOCK *composite_lock;
@@ -710,7 +725,12 @@ static GROUPBY_STATE *qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
 						      VAL_LIST * g_val_list,
 						      OUTPTR_LIST *
 						      g_outptr_list,
+						      REGU_VARIABLE_LIST
+						      g_hk_regu_list,
 						      int with_rollup,
+						      int hash_eligible,
+						      AGGREGATE_HASH_CONTEXT
+						      * agg_hash_context,
 						      XASL_NODE * xasl,
 						      XASL_STATE * xasl_state,
 						      QFILE_TUPLE_VALUE_TYPE_LIST
@@ -727,6 +747,13 @@ static void qexec_gby_clear_group_dim (THREAD_ENTRY * thread_p,
 static void qexec_gby_agg_tuple (THREAD_ENTRY * thread_p,
 				 GROUPBY_STATE * gbstate, QFILE_TUPLE tpl,
 				 int peek);
+static int qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p,
+				     XASL_STATE * xasl_state,
+				     BUILDLIST_PROC_NODE * proc,
+				     QFILE_TUPLE_RECORD * tplrec,
+				     QFILE_TUPLE_DESCRIPTOR * tpldesc,
+				     QFILE_LIST_ID * groupby_list,
+				     bool * output_tuple);
 static void qexec_gby_start_group_dim (THREAD_ENTRY * thread_p,
 				       GROUPBY_STATE * gbstate,
 				       const RECDES * recdes);
@@ -736,11 +763,15 @@ static void qexec_gby_start_group (THREAD_ENTRY * thread_p,
 static void qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p,
 					       GROUPBY_STATE * gbstate,
 					       int N);
-static void qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
-					  GROUPBY_STATE * gbstate,
-					  const RECDES * recdes);
+static int qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
+					 GROUPBY_STATE * gbstate,
+					 const RECDES * recdes);
 static void qexec_gby_finalize_group (THREAD_ENTRY * thread_p,
 				      GROUPBY_STATE * gbstate, int N);
+static SORT_STATUS qexec_hash_gby_get_next (THREAD_ENTRY * thread_p,
+					    RECDES * recdes, void *arg);
+static int qexec_hash_gby_put_next (THREAD_ENTRY * thread_p,
+				    const RECDES * recdes, void *arg);
 static SORT_STATUS qexec_gby_get_next (THREAD_ENTRY * thread_p,
 				       RECDES * recdes, void *arg);
 static int qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
@@ -1134,6 +1165,12 @@ static void qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE *
 						buildlist,
 						OUTPTR_LIST *
 						reference_out_list);
+static int qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
+						  AGGREGATE_TYPE * agg_p,
+						  XASL_STATE * xasl_state,
+						  QFILE_TUPLE_RECORD * tplrec,
+						  REGU_VARIABLE_LIST
+						  regu_list, int *resolved);
 static int query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p,
 						     XASL_NODE * xasl);
 static ACCESS_SPEC_TYPE *query_multi_range_opt_check_specs (THREAD_ENTRY *
@@ -1217,6 +1254,20 @@ qexec_clear_regu_variable_list (XASL_NODE * xasl_p, REGU_VARIABLE_LIST list,
 static void qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p,
 					     XASL_NODE * xasl);
 #endif /* SERVER_MODE */
+
+static int qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p,
+					 BUILDLIST_PROC_NODE * proc,
+					 XASL_STATE * xasl_state);
+static void qexec_free_agg_hash_context (THREAD_ENTRY * thread_p,
+					 BUILDLIST_PROC_NODE * proc);
+static int qexec_build_agg_hkey (THREAD_ENTRY * thread_p,
+				 XASL_STATE * xasl_state,
+				 REGU_VARIABLE_LIST regu_list,
+				 QFILE_TUPLE tpl, AGGREGATE_HASH_KEY * key);
+static int qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p,
+					    AGGREGATE_HASH_CONTEXT * context,
+					    AGGREGATE_HASH_KEY * key,
+					    bool * found);
 
 /*
  * Utility routines
@@ -1651,6 +1702,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   TOPN_STATUS topn_stauts = TOPN_SUCCESS;
   OID *class_oid = NULL;
   int ret = NO_ERROR;
+  bool output_tuple = true, update_agg_domains = false;
 
   if ((xasl->composite_locking || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
       && !XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
@@ -1699,6 +1751,26 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  GOTO_EXIT_ON_ERROR;
 	}
 
+      /* update aggregation domains */
+      if (xasl->type == BUILDLIST_PROC
+	  && xasl->proc.buildlist.g_agg_list != NULL
+	  && !xasl->proc.buildlist.g_agg_domains_resolved)
+	{
+	  if (qexec_resolve_domains_for_aggregation (thread_p,
+						     xasl->proc.buildlist.
+						     g_agg_list, xasl_state,
+						     tplrec,
+						     xasl->proc.buildlist.
+						     g_scan_regu_list,
+						     &xasl->proc.buildlist.
+						     g_agg_domains_resolved)
+	      != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+
+      /* process tuple */
       switch (tpldescr_status)
 	{
 	case QPROC_TPLDESCR_SUCCESS:
@@ -1733,13 +1805,33 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
+	      output_tuple = false;
 	      assert (xasl->topn_items == NULL);
 	    }
-	  else if (qfile_generate_tuple_into_list (thread_p, xasl->list_id,
-						   T_NORMAL) != NO_ERROR)
+
+	  if (xasl->type == BUILDLIST_PROC
+	      && xasl->proc.buildlist.g_hash_eligible
+	      && xasl->proc.buildlist.agg_hash_context.state != HS_REJECT_ALL)
+	    {
+	      /* aggregate using hash table */
+	      if (qexec_hash_gby_agg_tuple (thread_p, xasl_state,
+					    &xasl->proc.buildlist, tplrec,
+					    &xasl->list_id->tpl_descr,
+					    xasl->list_id,
+					    &output_tuple) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+
+	  if (output_tuple)
 	    {
 	      /* generate tuple into list file page */
-	      GOTO_EXIT_ON_ERROR;
+	      if (qfile_generate_tuple_into_list (thread_p, xasl->list_id,
+						  T_NORMAL) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
 	    }
 	  break;
 
@@ -1795,9 +1887,26 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  AGGREGATE_TYPE *agg_node = NULL;
 	  REGU_VARIABLE_LIST out_list_val = NULL;
 
-	  if (qdata_evaluate_aggregate_list (thread_p,
-					     xasl->proc.buildvalue.agg_list,
-					     &xasl_state->vd) != NO_ERROR)
+	  if (xasl->proc.buildvalue.agg_list != NULL
+	      && !xasl->proc.buildvalue.agg_domains_resolved)
+	    {
+	      if (qexec_resolve_domains_for_aggregation (thread_p,
+							 xasl->proc.
+							 buildvalue.agg_list,
+							 xasl_state, tplrec,
+							 NULL,
+							 &xasl->proc.
+							 buildvalue.
+							 agg_domains_resolved)
+		  != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+
+	  if (qdata_evaluate_aggregate_list
+	      (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd,
+	       NULL) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -1819,8 +1928,9 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      for (agg_node = xasl->proc.buildvalue.agg_list;
 		   agg_node != NULL; agg_node = agg_node->next)
 		{
-		  if (out_list_val->value.value.dbvalptr == agg_node->value &&
-		      TP_DOMAIN_TYPE (agg_node->domain) != DB_TYPE_NULL)
+		  if (out_list_val->value.value.dbvalptr ==
+		      agg_node->accumulator.value
+		      && TP_DOMAIN_TYPE (agg_node->domain) != DB_TYPE_NULL)
 		    {
 		      assert (agg_node->domain != NULL);
 		      out_list_val->value.domain = agg_node->domain;
@@ -1970,7 +2080,7 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
 	qexec_clear_arith_list (xasl_p, regu_var->value.arithptr, final);
       break;
     case TYPE_AGGREGATE:
-      pr_clear_value (regu_var->value.aggptr->value);
+      pr_clear_value (regu_var->value.aggptr->accumulator.value);
       pg_cnt +=
 	qexec_clear_regu_var (xasl_p, &regu_var->value.aggptr->operand,
 			      final);
@@ -2393,8 +2503,8 @@ qexec_clear_agg_list (XASL_NODE * xasl_p, AGGREGATE_TYPE * list, int final)
   pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
-      pr_clear_value (p->value);
-      pr_clear_value (p->value2);
+      pr_clear_value (p->accumulator.value);
+      pr_clear_value (p->accumulator.value2);
       pg_cnt += qexec_clear_regu_var (xasl_p, &p->operand, final);
     }
 
@@ -3753,7 +3863,10 @@ qexec_eval_grbynum_pred (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
  *   g_regu_list(in)    : Regulator Variable List
  *   g_val_list(in)     : Value List
  *   g_outptr_list(in)  : Output pointer list
+ *   g_hk_regu_list(in) : hash key regu list
  *   g_with_rollup(in)	: Has WITH ROLLUP clause
+ *   hash_eligible(in)  : hash aggregate evaluation eligibility
+ *   agg_hash_context(in): aggregate hash context
  *   xasl_state(in)     : XASL tree state information
  *   type_list(in)      :
  *   tplrec(out) 	: Tuple record descriptor to store result tuples
@@ -3768,7 +3881,10 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
 				AGGREGATE_TYPE * g_agg_list,
 				REGU_VARIABLE_LIST g_regu_list,
 				VAL_LIST * g_val_list,
-				OUTPTR_LIST * g_outptr_list, int with_rollup,
+				OUTPTR_LIST * g_outptr_list,
+				REGU_VARIABLE_LIST g_hk_regu_list,
+				int with_rollup, int hash_eligible,
+				AGGREGATE_HASH_CONTEXT * agg_hash_context,
 				XASL_NODE * xasl,
 				XASL_STATE * xasl_state,
 				QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
@@ -3809,6 +3925,10 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
   gbstate->input_tpl.size = 0;
   gbstate->input_tpl.tpl = 0;
   gbstate->input_recs = 0;
+
+  gbstate->g_hk_regu_list = g_hk_regu_list;
+  gbstate->hash_eligible = hash_eligible;
+  gbstate->agg_hash_context = agg_hash_context;
 
   if (qfile_initialize_sort_key_info (&gbstate->key_info, groupby_list,
 				      type_list) == NULL)
@@ -3944,7 +4064,7 @@ qexec_gby_agg_tuple (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
 
       if (qdata_evaluate_aggregate_list (thread_p,
 					 gbstate->g_dim[i].d_agg_list,
-					 &gbstate->xasl_state->vd) !=
+					 &gbstate->xasl_state->vd, NULL) !=
 	  NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -3957,6 +4077,382 @@ wrapup:
 exit_on_error:
   gbstate->state = er_errid ();
   goto wrapup;
+}
+
+/*
+ * qexec_hash_gby_agg_tuple () - aggregate tuple using hash table
+ *   return: error code or NO_ERROR
+ *   thread_p(in): thread
+ *   xasl_state(in): XASL state
+ *   proc(in): BUILDLIST proc node
+ *   tplrec(in): input tuple record
+ *   tpldesc(in): output tuple descriptor
+ *   groupby_list(in): listfile containing tuples for sort-based aggregation
+ *   output_tuple(out): set if tuple should be output to list file
+ */
+static int
+qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
+			  BUILDLIST_PROC_NODE * proc,
+			  QFILE_TUPLE_RECORD * tplrec,
+			  QFILE_TUPLE_DESCRIPTOR * tpldesc,
+			  QFILE_LIST_ID * groupby_list, bool * output_tuple)
+{
+  AGGREGATE_HASH_CONTEXT *context = &proc->agg_hash_context;
+  AGGREGATE_HASH_KEY *key = context->temp_key;
+  AGGREGATE_HASH_VALUE *value;
+  HENTRY_PTR hentry;
+  int mem_limit = prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE);
+  int rc = NO_ERROR;
+
+  if (context->state == HS_REJECT_ALL)
+    {
+      /* no tuples should be allowed */
+      return NO_ERROR;
+    }
+
+  /* build key */
+  rc =
+    qexec_build_agg_hkey (thread_p, xasl_state, proc->g_hk_scan_regu_list,
+			  NULL, key);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  /* probe hash table */
+  value =
+    (AGGREGATE_HASH_VALUE *) mht_get (context->hash_table, (void *) key);
+  if (value == NULL)
+    {
+      AGGREGATE_HASH_KEY *new_key;
+      AGGREGATE_HASH_VALUE *new_value;
+
+      /* create new key */
+      new_key = qdata_copy_agg_hkey (thread_p, key);
+      if (new_key == NULL)
+	{
+	  return er_errid ();
+	}
+
+      /* create new value */
+      new_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
+      if (new_value == NULL)
+	{
+	  qdata_free_agg_hkey (thread_p, new_key);
+	  return er_errid ();
+	}
+      else if (!proc->g_output_first_tuple)
+	{
+	  int tuple_size = tpldesc->tpl_size;
+
+	  /* alloc tuple space */
+	  new_value->first_tuple.size = tuple_size;
+	  new_value->first_tuple.tpl =
+	    (QFILE_TUPLE) db_private_alloc (thread_p, tuple_size);
+	  if (new_value->first_tuple.tpl == NULL)
+	    {
+	      qdata_free_agg_hkey (thread_p, new_key);
+	      qdata_free_agg_hvalue (thread_p, new_value);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (tuple_size));
+	      return ER_FAILED;
+	    }
+
+	  /* save output tuple */
+	  if (qfile_save_tuple
+	      (tpldesc, T_NORMAL, new_value->first_tuple.tpl,
+	       &tuple_size) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* no need to output it, we're storing it in the hash table */
+	  *output_tuple = false;
+	}
+
+      /* add to hash table */
+      mht_put (context->hash_table, (void *) new_key, (void *) new_value);
+
+      /* count new group and tuple; we're not aggregating the tuple just yet
+         but the count is used for statistic computations */
+      context->tuple_count++;
+      context->group_count++;
+
+      /* compute hash table size */
+      context->hash_size += qdata_get_agg_hkey_size (new_key);
+      context->hash_size += qdata_get_agg_hvalue_size (new_value, false);
+    }
+  else
+    {
+      AGGREGATE_TYPE *agg_list;
+
+      /* no need to output tuple */
+      *output_tuple = false;
+
+      /* count new tuple */
+      value->tuple_count++;
+      context->tuple_count++;
+
+      /* fetch values */
+      rc =
+	fetch_val_list (thread_p, proc->g_scan_regu_list,
+			&xasl_state->vd, NULL, NULL, tplrec->tpl, true);
+
+      /* eval aggregate functions */
+      if (rc == NO_ERROR)
+	{
+	  rc = qdata_evaluate_aggregate_list (thread_p, proc->g_agg_list,
+					      &xasl_state->vd,
+					      value->accumulators);
+	}
+
+      /* compute size */
+      context->hash_size += qdata_get_agg_hvalue_size (value, true);
+
+      /* check for error */
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
+
+  /* keep hash table within memory limit */
+  while (context->hash_size > mem_limit)
+    {
+      /* get least recently used entry */
+      hentry = context->hash_table->lru_head;
+      if (hentry == NULL)
+	{
+	  /* should not get here */
+	  return ER_FAILED;
+	}
+      key = (AGGREGATE_HASH_KEY *) hentry->key;
+      value = (AGGREGATE_HASH_VALUE *) hentry->data;
+
+      /* add key/accumulators to partial list */
+      rc =
+	qdata_save_agg_hentry_to_list (thread_p, key, value,
+				       context->temp_dbval_array,
+				       context->part_list_id);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+
+      /* add first tuple of group to groupby list */
+      if (value->first_tuple.tpl != NULL)
+	{
+	  rc = qfile_add_tuple_to_list (thread_p, groupby_list,
+					value->first_tuple.tpl);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	}
+
+      /* remove entry */
+      context->hash_size -= qdata_get_agg_hkey_size (key);
+      context->hash_size -= qdata_get_agg_hvalue_size (value, false);
+      mht_rem (context->hash_table, key, qdata_free_agg_hentry, NULL);
+    }
+
+  /* check very high selectivity case */
+  if (context->tuple_count > HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD)
+    {
+      float selectivity = (float) context->group_count / context->tuple_count;
+      if (selectivity > HASH_AGGREGATE_VH_SELECTIVITY_THRESHOLD)
+	{
+	  /* very high selectivity, abort hash aggregation */
+	  context->state = HS_REJECT_ALL;
+
+	  /* dump hash table to list file, no need to keep it in memory */
+	  qdata_save_agg_htable_to_list (thread_p, context->hash_table,
+					 groupby_list, context->part_list_id,
+					 context->temp_dbval_array);
+	}
+    }
+
+  /* all ok */
+  return NO_ERROR;
+}
+
+/*
+ * qexec_hash_gby_get_next () - get next tuple in partial list
+ *   return: sort status
+ *   recdes(in): record descriptor
+ *   arg(in): hash context
+ */
+static SORT_STATUS
+qexec_hash_gby_get_next (THREAD_ENTRY * thread_p, RECDES * recdes, void *arg)
+{
+  GROUPBY_STATE *state = (GROUPBY_STATE *) arg;
+  AGGREGATE_HASH_CONTEXT *context = state->agg_hash_context;
+
+  return qfile_make_sort_key (thread_p, &context->sort_key,
+			      recdes, &context->part_scan_id,
+			      &context->input_tuple);
+}
+
+/*
+ * qexec_hash_gby_put_next () - put next tuple in sorted list file
+ *   return: error code or NO_ERROR
+ *   recdes(in): record descriptor
+ *   arg(in): hash context
+ */
+static int
+qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
+			 void *arg)
+{
+  GROUPBY_STATE *state = (GROUPBY_STATE *) arg;
+  AGGREGATE_HASH_CONTEXT *context = state->agg_hash_context;
+  SORT_REC *key;
+  char *data;
+  int rc, peek;
+
+  peek = COPY;
+  for (key = (SORT_REC *) recdes->data; key; key = key->next)
+    {
+      /* read tuple */
+      if (context->sort_key.use_original)
+	{
+	  QFILE_LIST_ID *list_idp = context->part_list_id;
+	  QFILE_TUPLE_RECORD dummy;
+	  PAGE_PTR page;
+	  VPID vpid;
+	  int status;
+
+	  /* retrieve original tuple */
+	  vpid.pageid = key->s.original.pageid;
+	  vpid.volid = key->s.original.volid;
+
+	  page = qmgr_get_old_page (thread_p, &vpid, list_idp->tfile_vfid);
+	  if (page == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  QFILE_GET_OVERFLOW_VPID (&vpid, page);
+	  data = page + key->s.original.offset;
+	  if (vpid.pageid != NULL_PAGEID)
+	    {
+	      /*
+	       * This sucks; why do we need two different structures to
+	       * accomplish exactly the same goal?
+	       */
+	      dummy.size = context->tuple_recdes.area_size;
+	      dummy.tpl = context->tuple_recdes.data;
+	      status =
+		qfile_get_tuple (thread_p, page, data, &dummy, list_idp);
+
+	      if (dummy.tpl != context->tuple_recdes.data)
+		{
+		  /*
+		   * DON'T FREE THE BUFFER!  qfile_get_tuple() already did
+		   * that, and what you have here in gby_rec is a dangling
+		   * pointer.
+		   */
+		  context->tuple_recdes.area_size = dummy.size;
+		  context->tuple_recdes.data = dummy.tpl;
+		}
+	      if (status != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+
+	      data = context->tuple_recdes.data;
+	    }
+	  else
+	    {
+	      peek = PEEK;	/* avoid unnecessary COPY */
+	    }
+	}
+      else
+	{
+	  /*
+	   * sorting over all columns (i.e. no aggregate functions); build
+	   * tuple from sort key.
+	   */
+	  if (qfile_generate_sort_tuple (&context->sort_key, key,
+					 &context->tuple_recdes) == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	  data = context->tuple_recdes.data;
+	}
+
+      /* read tuple into value */
+      if (qdata_load_agg_hentry_from_tuple
+	  (thread_p, data, context->temp_part_key, context->temp_part_value,
+	   context->key_domains, context->accumulator_domains) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      /* aggregate */
+      if (qdata_agg_hkey_eq (context->curr_part_key, context->temp_part_key)
+	  && context->sorted_count > 0)
+	{
+	  AGGREGATE_TYPE *agg_list = state->g_output_agg_list;
+	  int i = 0;
+
+	  /* same key, compose accumulators */
+	  while (agg_list != NULL)
+	    {
+	      rc =
+		qdata_aggregate_accumulator_to_accumulator (thread_p,
+							    &context->
+							    curr_part_value->
+							    accumulators[i],
+							    &agg_list->
+							    accumulator_domain,
+							    agg_list->
+							    function,
+							    agg_list->domain,
+							    &context->
+							    temp_part_value->
+							    accumulators[i]);
+	      if (rc != NO_ERROR)
+		{
+		  return rc;
+		}
+
+	      agg_list = agg_list->next;
+	      i++;
+	    }
+	}
+      else
+	{
+	  AGGREGATE_HASH_KEY *swap_key;
+	  AGGREGATE_HASH_VALUE *swap_value;
+
+	  if (context->sorted_count > 0)
+	    {
+	      /* different key, write current accumulators */
+	      if (qdata_save_agg_hentry_to_list
+		  (thread_p, context->curr_part_key, context->curr_part_value,
+		   context->temp_dbval_array,
+		   context->sorted_part_list_id) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	    }
+
+	  /* swap keys; we keep new key/value as current key/value; old pair
+	     will be cleared and used for the next iteration as temp */
+	  swap_key = context->curr_part_key;
+	  swap_value = context->curr_part_value;
+	  context->curr_part_key = context->temp_part_key;
+	  context->curr_part_value = context->temp_part_value;
+	  context->temp_part_key = swap_key;
+	  context->temp_part_value = swap_value;
+	}
+
+      /* sorted a group */
+      context->sorted_count++;
+    }
+
+  /* all ok */
+  return NO_ERROR;
 }
 
 /*
@@ -3991,7 +4487,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
   char *data;
   PAGE_PTR page;
   VPID vpid;
-  int peek;
+  int peek, i, rollup_level;
   QFILE_LIST_ID *list_idp;
 
   QFILE_TUPLE_RECORD dummy;
@@ -4114,6 +4610,55 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	   * comparison key(s).
 	   */
 	  qexec_gby_start_group_dim (thread_p, info, recdes);
+
+	  /* check partial list file */
+	  if (info->hash_eligible
+	      && info->agg_hash_context->part_scan_code == S_SUCCESS)
+	    {
+	      AGGREGATE_HASH_VALUE *hvalue =
+		info->agg_hash_context->curr_part_value;
+	      bool found = false;
+
+	      /* build key for current */
+	      if (qexec_build_agg_hkey
+		  (thread_p, info->xasl_state, info->g_hk_regu_list, data,
+		   info->agg_hash_context->temp_key) != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+
+	      /* search in partial list */
+	      if (qexec_locate_agg_hentry_in_list
+		  (thread_p, info->agg_hash_context,
+		   info->agg_hash_context->temp_key, &found) != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+
+	      /* if found, load it */
+	      if (found)
+		{
+		  /* increment record count */
+		  info->input_recs += hvalue->tuple_count;
+
+		  /* replace aggregate accumulators */
+		  qdata_load_agg_hvalue_in_agg_list (hvalue,
+						     info->g_dim[0].
+						     d_agg_list, false);
+
+		  if (info->with_rollup)
+		    {
+		      for (i = 1; i < info->g_dim_levels; i++)
+			{
+			  /* replace accumulators for restarted rollup groups */
+			  qdata_load_agg_hvalue_in_agg_list (hvalue,
+							     info->g_dim[i].
+							     d_agg_list,
+							     true);
+			}
+		    }
+		}
+	    }
 	}
       else if ((*info->cmp_fn) (&info->current_key.data, &key,
 				&info->key_info) == 0)
@@ -4129,13 +4674,88 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	   * We got a new group; finalize the group we were accumulating,
 	   * and start a new group using the current key as the group key.
 	   */
-	  qexec_gby_finalize_group_dim (thread_p, info, recdes);
+	  rollup_level =
+	    qexec_gby_finalize_group_dim (thread_p, info, recdes);
 	  if (info->state == SORT_PUT_STOP)
 	    {
 	      goto wrapup;
 	    }
+
+	  /* check partial list file */
+	  if (info->hash_eligible
+	      && info->agg_hash_context->part_scan_code == S_SUCCESS)
+	    {
+	      AGGREGATE_HASH_VALUE *hvalue =
+		info->agg_hash_context->curr_part_value;
+	      bool found = false;
+
+	      /* build key for current */
+	      if (qexec_build_agg_hkey
+		  (thread_p, info->xasl_state, info->g_hk_regu_list, data,
+		   info->agg_hash_context->temp_key) != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+
+	      /* search in partial list */
+	      if (qexec_locate_agg_hentry_in_list
+		  (thread_p, info->agg_hash_context,
+		   info->agg_hash_context->temp_key, &found) != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+
+	      /* if found, load it */
+	      if (found)
+		{
+		  /* increment record count */
+		  info->input_recs += hvalue->tuple_count;
+
+		  /* replace aggregate accumulators */
+		  qdata_load_agg_hvalue_in_agg_list (hvalue,
+						     info->g_dim[0].
+						     d_agg_list, false);
+
+		  if (info->with_rollup)
+		    {
+		      /* replace accumulators for restarted rollup groups */
+		      for (i = rollup_level; i < info->g_dim_levels; i++)
+			{
+			  qdata_load_agg_hvalue_in_agg_list (hvalue,
+							     info->g_dim[i].
+							     d_agg_list,
+							     true);
+			}
+
+		      /* compose accumulators for active rollup groups */
+		      for (i = 1; i < rollup_level; i++)
+			{
+			  AGGREGATE_ACCUMULATOR *acc = hvalue->accumulators;
+			  AGGREGATE_TYPE *ru_agg_list =
+			    info->g_dim[i].d_agg_list;
+			  int j = 0;
+
+			  while (ru_agg_list)
+			    {
+			      if (qdata_aggregate_accumulator_to_accumulator
+				  (thread_p, &ru_agg_list->accumulator,
+				   &ru_agg_list->accumulator_domain,
+				   ru_agg_list->function, ru_agg_list->domain,
+				   &acc[j]) != NO_ERROR)
+				{
+				  goto exit_on_error;
+				}
+
+			      ru_agg_list = ru_agg_list->next;
+			      j++;
+			    }
+			}
+		    }
+		}
+	    }
 	}
 
+      /* aggregate tuple */
       qexec_gby_agg_tuple (thread_p, info, data, peek);
 
       info->input_recs++;
@@ -4227,8 +4847,12 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				      buildlist->g_regu_list,
 				      buildlist->g_val_list,
 				      buildlist->g_outptr_list,
+				      buildlist->g_hk_sort_regu_list,
 				      buildlist->g_with_rollup,
-				      xasl, xasl_state,
+				      buildlist->g_hash_eligible,
+				      &buildlist->agg_hash_context,
+				      xasl,
+				      xasl_state,
 				      &list_id->type_list, tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
@@ -4286,19 +4910,190 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     gbstate.output_file = output_list_id;
   }
 
+  /* check for quick finalization scenarios */
   if (list_id->tuple_cnt == 0)
     {
-      /* empty unsorted list file, no need to proceed */
-      qfile_destroy_list (thread_p, list_id);
-      qfile_close_list (thread_p, gbstate.output_file);
-      qfile_copy_list_id (list_id, gbstate.output_file, true);
-      qexec_clear_groupby_state (thread_p, &gbstate);	/* will free gbstate.output_file */
+      if (!gbstate.hash_eligible
+	  || gbstate.agg_hash_context->tuple_count == 0)
+	{
+	  /* no tuples hash aggregated and empty unsorted list; no reason to
+	     continue */
+	  qfile_destroy_list (thread_p, list_id);
+	  qfile_close_list (thread_p, gbstate.output_file);
+	  qfile_copy_list_id (list_id, gbstate.output_file, true);
+	  qexec_clear_groupby_state (thread_p, &gbstate);
 
-      return NO_ERROR;
+	  return NO_ERROR;
+	}
+      else if (gbstate.agg_hash_context->part_list_id->tuple_cnt == 0
+	       && !prm_get_bool_value (PRM_ID_AGG_HASH_RESPECT_ORDER))
+	{
+	  HENTRY_PTR head = gbstate.agg_hash_context->hash_table->act_head;
+	  AGGREGATE_HASH_VALUE *value = NULL;
+
+	  /* empty unsorted list and empty partial list; we can generate the
+	     output from the hash table */
+	  while (head)
+	    {
+	      /* load entry into aggregate list */
+	      value = (AGGREGATE_HASH_VALUE *) head->data;
+	      if (value == NULL)
+		{
+		  /* should not happen */
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      if (value->first_tuple.tpl == NULL)
+		{
+		  /* empty unsorted list and no first tuple? this should not
+		     happen ... */
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      /* start new group and aggregate tuple; since unsorted list is
+	         empty we don't have rollup groups */
+	      qexec_gby_start_group_dim (thread_p, &gbstate, NULL);
+
+	      /* load values in list and aggregate first tuple */
+	      qdata_load_agg_hvalue_in_agg_list (value,
+						 gbstate.g_dim[0].d_agg_list,
+						 false);
+	      qexec_gby_agg_tuple (thread_p, &gbstate, value->first_tuple.tpl,
+				   true);
+
+	      /* finalize */
+	      qexec_gby_finalize_group_dim (thread_p, &gbstate, NULL);
+
+	      /* next entry */
+	      head = head->act_next;
+	      gbstate.input_recs += value->tuple_count + 1;
+	    }
+
+	  /* output generated; finalize */
+	  qfile_destroy_list (thread_p, list_id);
+	  qfile_close_list (thread_p, gbstate.output_file);
+	  qfile_copy_list_id (list_id, gbstate.output_file, true);
+
+	  goto wrapup;
+	}
+    }
+
+  /* unsorted list is not empty; dump hash table to partial list */
+  if (gbstate.hash_eligible && gbstate.agg_hash_context->tuple_count > 0
+      && mht_count (gbstate.agg_hash_context->hash_table) > 0)
+    {
+      /* reopen unsorted list to accept new tuples */
+      if (qfile_reopen_list_as_append_mode (thread_p, list_id) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      /* save hash table */
+      if (qdata_save_agg_htable_to_list (thread_p,
+					 gbstate.agg_hash_context->hash_table,
+					 list_id,
+					 gbstate.agg_hash_context->
+					 part_list_id,
+					 gbstate.agg_hash_context->
+					 temp_dbval_array) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      /* close unsorted list */
+      qfile_close_list (thread_p, list_id);
+    }
+
+  /* sort partial list and open a scan on it */
+  if (gbstate.hash_eligible
+      && gbstate.agg_hash_context->part_list_id->tuple_cnt > 0)
+    {
+      SORT_CMP_FUNC *cmp_fn;
+      int i, index;
+
+      /* open scan on partial list */
+      if (qfile_open_list_scan
+	  (gbstate.agg_hash_context->part_list_id,
+	   &gbstate.agg_hash_context->part_scan_id) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      /* choose appripriate sort function */
+      if (gbstate.agg_hash_context->sort_key.use_original)
+	{
+	  cmp_fn = &qfile_compare_partial_sort_record;
+	}
+      else
+	{
+	  cmp_fn = &qfile_compare_all_sort_record;
+	}
+
+      /* sort and aggregate partial results */
+      if (sort_listfile (thread_p, NULL_VOLID,
+			 qfile_get_estimated_pages_for_sorting (gbstate.
+								agg_hash_context->
+								part_list_id,
+								&gbstate.
+								agg_hash_context->
+								sort_key),
+			 &qexec_hash_gby_get_next, &gbstate,
+			 &qexec_hash_gby_put_next, &gbstate,
+			 cmp_fn, &gbstate.agg_hash_context->sort_key,
+			 SORT_DUP, NO_SORT_LIMIT) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      /* write last group */
+      if (gbstate.agg_hash_context->sorted_count > 0)
+	{
+	  /* different key, write current accumulators */
+	  if (qdata_save_agg_hentry_to_list
+	      (thread_p, gbstate.agg_hash_context->curr_part_key,
+	       gbstate.agg_hash_context->curr_part_value,
+	       gbstate.agg_hash_context->temp_dbval_array,
+	       gbstate.agg_hash_context->sorted_part_list_id) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+
+      /* close scan */
+      qfile_close_scan (thread_p, &gbstate.agg_hash_context->part_scan_id);
+
+      /* partial list is no longer necessary */
+      qfile_close_list (thread_p, gbstate.agg_hash_context->part_list_id);
+      qfile_destroy_list (thread_p, gbstate.agg_hash_context->part_list_id);
+      qfile_free_list_id (gbstate.agg_hash_context->part_list_id);
+      gbstate.agg_hash_context->part_list_id = NULL;
+
+      /* reopen scan on newly sorted list */
+      if (qfile_open_list_scan (gbstate.agg_hash_context->sorted_part_list_id,
+				&gbstate.agg_hash_context->part_scan_id) !=
+	  NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      /* load first key */
+      gbstate.agg_hash_context->part_scan_code =
+	qdata_load_agg_hentry_from_list (thread_p,
+					 &gbstate.agg_hash_context->
+					 part_scan_id,
+					 gbstate.agg_hash_context->
+					 curr_part_key,
+					 gbstate.agg_hash_context->
+					 curr_part_value,
+					 gbstate.agg_hash_context->
+					 key_domains,
+					 gbstate.agg_hash_context->
+					 accumulator_domains);
     }
   else
     {
-      tuple_cnt = list_id->tuple_cnt;
+      /* empty partial list; probably set types or big records */
+      gbstate.agg_hash_context->part_scan_code = S_END;
     }
 
   if (thread_is_on_trace (thread_p))
@@ -4362,6 +5157,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       qexec_gby_finalize_group_dim (thread_p, &gbstate, NULL);
     }
 
+  /* close output file */
   qfile_close_list (thread_p, gbstate.output_file);
 #if 0				/* SortCache */
   /* free currently fixed page */
@@ -4380,18 +5176,22 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 wrapup:
   {
     int result;
+
     /* SORT_PUT_STOP set by 'qexec_gby_finalize_group_dim ()' isn't error */
     result = (gbstate.state == NO_ERROR || gbstate.state == SORT_PUT_STOP)
       ? NO_ERROR : ER_FAILED;
-    qexec_clear_groupby_state (thread_p, &gbstate);
 
+    /* check merge result */
     if (XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY)
-	&& list_id->tuple_cnt != tuple_cnt)
+	&& list_id->tuple_cnt != gbstate.input_recs)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		ER_MERGE_TOO_MANY_SOURCE_ROWS, 0);
 	result = ER_FAILED;
       }
+
+    /* cleanup */
+    qexec_clear_groupby_state (thread_p, &gbstate);
 
     if (thread_is_on_trace (thread_p))
       {
@@ -7558,7 +8358,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  if (count_star_with_iscan_opt)
 	    {
-	      xasl->proc.buildvalue.agg_list->curr_cnt +=
+	      xasl->proc.buildvalue.agg_list->accumulator.curr_cnt +=
 		(&xasl->curr_spec->s_id)->s.isid.oid_list.oid_cnt;
 	      /* may have more scan ranges */
 	      continue;
@@ -12745,6 +13545,55 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 	}
 
+      if (xasl->type == BUILDLIST_PROC)
+	{
+	  AGGREGATE_TYPE *agg_p;
+
+	  /* prepare hash table for aggregate evaluation */
+	  if (xasl->proc.buildlist.g_hash_eligible)
+	    {
+	      if (xasl->spec_list && xasl->spec_list->indexptr
+		  && xasl->spec_list->indexptr->groupby_skip)
+		{
+		  /* disable hash aggregate evaluation when group by skip is
+		     possible */
+		  xasl->proc.buildlist.g_hash_eligible = 0;
+		}
+	      else if (qexec_alloc_agg_hash_context (thread_p,
+						     &xasl->proc.buildlist,
+						     xasl_state) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+
+	  /* nullify domains */
+	  for (agg_p = xasl->proc.buildlist.g_agg_list; agg_p != NULL;
+	       agg_p = agg_p->next)
+	    {
+	      agg_p->accumulator_domain.value_dom = NULL;
+	      agg_p->accumulator_domain.value2_dom = NULL;
+	    }
+
+	  /* domains not resolved */
+	  xasl->proc.buildlist.g_agg_domains_resolved = 0;
+	}
+      else if (xasl->type == BUILDVALUE_PROC)
+	{
+	  AGGREGATE_TYPE *agg_p;
+
+	  /* nullify domains */
+	  for (agg_p = xasl->proc.buildvalue.agg_list; agg_p != NULL;
+	       agg_p = agg_p->next)
+	    {
+	      agg_p->accumulator_domain.value_dom = NULL;
+	      agg_p->accumulator_domain.value2_dom = NULL;
+	    }
+
+	  /* domains not resolved */
+	  xasl->proc.buildvalue.agg_domains_resolved = 0;
+	}
+
       multi_readonly_scan = QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl);
       if (xasl->composite_locking || multi_readonly_scan)
 	{
@@ -13403,6 +14252,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   /*
    * Cleanup and Exit processing
    */
+  /* destroy hash table */
+  if (xasl->type == BUILDLIST_PROC)
+    {
+      qexec_free_agg_hash_context (thread_p, &xasl->proc.buildlist);
+    }
+
   /* clear only non-zero correlation-level uncorrelated subquery list files */
   for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
     {
@@ -13445,6 +14300,12 @@ exit_on_error:
   if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
     {
       qexec_clear_connect_by_lists (thread_p, xasl->connect_by_ptr);
+    }
+
+  /* destroy hash table */
+  if (xasl->type == BUILDLIST_PROC)
+    {
+      qexec_free_agg_hash_context (thread_p, &xasl->proc.buildlist);
     }
 
   /* free alloced memory for composite locking */
@@ -13930,7 +14791,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
       /* if the hash table already exist, clear it out */
       (void) mht_map_no_key (thread_p, xasl_ent_cache.qstr_ht,
 			     qexec_free_xasl_cache_ent, NULL);
-      (void) mht_clear (xasl_ent_cache.qstr_ht);
+      (void) mht_clear (xasl_ent_cache.qstr_ht, NULL, NULL);
     }
   else
     {
@@ -13945,7 +14806,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
     {
       /* if the hash table already exist, clear it out */
       /*(void) mht_map_no_key(xasl_ent_cache.xid_ht, NULL, NULL); */
-      (void) mht_clear (xasl_ent_cache.xid_ht);
+      (void) mht_clear (xasl_ent_cache.xid_ht, NULL, NULL);
     }
   else
     {
@@ -13959,7 +14820,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
     {
       /* if the hash table already exist, clear it out */
       /*(void) mht_map_no_key(xasl_ent_cache.oid_ht, NULL, NULL); */
-      (void) mht_clear (xasl_ent_cache.oid_ht);
+      (void) mht_clear (xasl_ent_cache.oid_ht, NULL, NULL);
     }
   else
     {
@@ -18598,11 +19459,11 @@ exit_on_error:
  *   gbstate(in):
  *   recdes(in):
  */
-static void
+static int
 qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
 			      GROUPBY_STATE * gbstate, const RECDES * recdes)
 {
-  int i, j, nkeys;
+  int i, j, nkeys, level = 0;
 
   qexec_gby_finalize_group (thread_p, gbstate, 0);
   if (gbstate->state == SORT_PUT_STOP)
@@ -18620,6 +19481,7 @@ qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
 	  key = (SORT_REC *) recdes->data;
 	  assert (key != NULL);
 
+	  level = gbstate->g_dim_levels;
 	  nkeys = gbstate->key_info.nkeys;	/* save */
 
 	  /* find the first key that fails comparison;
@@ -18647,6 +19509,7 @@ qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
 #endif
 		      qexec_gby_start_group (thread_p, gbstate, NULL, j);
 		    }
+		  level = i + 1;
 		  break;
 		}
 	    }
@@ -18669,13 +19532,14 @@ qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
 
 	      qexec_gby_start_group (thread_p, gbstate, NULL, j);
 	    }
+	  level = gbstate->g_dim_levels;
 	}
     }
 
   qexec_gby_start_group (thread_p, gbstate, recdes, 0);
 
 wrapup:
-  return;
+  return level;
 
 exit_on_error:
   gbstate->state = er_errid ();
@@ -18737,13 +19601,14 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p,
 	{
 	  if (g_outp->function != PT_GROUPBY_NUM)
 	    {
-	      if (d_aggp->value != NULL && g_outp->value != NULL)
+	      if (d_aggp->accumulator.value != NULL
+		  && g_outp->accumulator.value != NULL)
 		{
-		  pr_clear_value (g_outp->value);
-		  *g_outp->value = *d_aggp->value;
+		  pr_clear_value (g_outp->accumulator.value);
+		  *g_outp->accumulator.value = *d_aggp->accumulator.value;
 		  /* Don't use DB_MAKE_NULL here to preserve the type information. */
 
-		  PRIM_SET_NULL (d_aggp->value);
+		  PRIM_SET_NULL (d_aggp->accumulator.value);
 		}
 
 	      /* should not touch d_aggp->value2 */
@@ -19065,8 +19930,10 @@ qexec_gby_init_group_dim (GROUPBY_STATE * gbstate)
 	      return ER_FAILED;
 	    }
 	  memcpy (gbstate->g_dim[i].d_agg_list, agg, sizeof (AGGREGATE_TYPE));
-	  gbstate->g_dim[i].d_agg_list->value = db_value_copy (agg->value);
-	  gbstate->g_dim[i].d_agg_list->value2 = db_value_copy (agg->value2);
+	  gbstate->g_dim[i].d_agg_list->accumulator.value =
+	    db_value_copy (agg->accumulator.value);
+	  gbstate->g_dim[i].d_agg_list->accumulator.value2 =
+	    db_value_copy (agg->accumulator.value2);
 
 	  while ((agg = agg->next))
 	    {
@@ -19078,8 +19945,10 @@ qexec_gby_init_group_dim (GROUPBY_STATE * gbstate)
 		  return ER_FAILED;
 		}
 	      memcpy (aggr, agg, sizeof (AGGREGATE_TYPE));
-	      aggr->value = db_value_copy (agg->value);
-	      aggr->value2 = db_value_copy (agg->value2);
+	      aggr->accumulator.value =
+		db_value_copy (agg->accumulator.value);
+	      aggr->accumulator.value2 =
+		db_value_copy (agg->accumulator.value2);
 	      aggp->next = aggr;
 	      aggp = aggr;
 	    }
@@ -19116,8 +19985,8 @@ qexec_gby_clear_group_dim (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 	    {
 	      next_agg = agg->next;
 
-	      db_value_free (agg->value);
-	      db_value_free (agg->value2);
+	      db_value_free (agg->accumulator.value);
+	      db_value_free (agg->accumulator.value2);
 	      if (agg->list_id)
 		{
 		  /* close and destroy temporary list files */
@@ -19379,6 +20248,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
   REGU_VARIABLE_LIST group_regu = NULL;
   REGU_VARIABLE_LIST reference_regu_list = reference_out_list->valptrp;
   SORT_LIST *group_sort_list = NULL;
+  AGGREGATE_TYPE *agg_p;
 
   assert (buildlist != NULL && reference_regu_list != NULL);
 
@@ -19387,7 +20257,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
 				      reference_regu_list);
 
   /* following code aims to resolve VARIABLE domains in GROUP BY lists:
-   * g_regu_list, g_agg_list, g_outprr_list;
+   * g_regu_list, g_agg_list, g_outprr_list, g_hk_regu_list;
    * pointer values are used to match the REGU VARIABLES */
   for (group_regu = buildlist->g_regu_list;
        group_regu != NULL; group_regu = group_regu->next)
@@ -19401,6 +20271,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
       TP_DOMAIN *ref_domain = NULL;
       REGU_VARIABLE_LIST ref_regu = NULL;
       REGU_VARIABLE_LIST group_out_regu = NULL;
+      REGU_VARIABLE_LIST hk_regu = NULL;
 
       if (group_regu->value.domain == NULL ||
 	  TP_DOMAIN_TYPE (group_regu->value.domain) != DB_TYPE_VARIABLE)
@@ -19439,6 +20310,22 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
 
       assert (group_regu->value.type == TYPE_POSITION);
       group_regu->value.value.pos_descr.dom = ref_domain;
+
+      if (buildlist->g_hash_eligible)
+	{
+	  /* all reguvars in g_hk_regu_list are also in g_regu_list; match them
+	     by position and update g_hk_regu_list */
+	  for (hk_regu = buildlist->g_hk_sort_regu_list; hk_regu != NULL;
+	       hk_regu = hk_regu->next)
+	    {
+	      if (hk_regu->value.type == TYPE_POSITION
+		  && hk_regu->value.value.pos_descr.pos_no == pos_in_ref_list)
+		{
+		  hk_regu->value.value.pos_descr.dom = ref_domain;
+		  hk_regu->value.domain = ref_domain;
+		}
+	    }
+	}
 
       /* find value in g_val_list pointed to by vfetch_to ;
        * also find in g_agg_list (if any), the same value indentified by
@@ -19486,7 +20373,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
 			  group_agg->function == PT_SUM);
 
 		  group_agg->domain = ref_domain;
-		  db_value_domain_init (group_agg->value,
+		  db_value_domain_init (group_agg->accumulator.value,
 					group_agg->opr_dbtype,
 					DB_DEFAULT_PRECISION,
 					DB_DEFAULT_SCALE);
@@ -19526,7 +20413,8 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
 	{
 	  assert (group_agg != NULL);
 	  if (group_out_regu->value.type == TYPE_CONSTANT &&
-	      group_out_regu->value.value.dbvalptr == group_agg->value)
+	      group_out_regu->value.value.dbvalptr ==
+	      group_agg->accumulator.value)
 	    {
 	      if (TP_DOMAIN_TYPE (group_out_regu->value.domain) ==
 		  DB_TYPE_VARIABLE)
@@ -19538,6 +20426,312 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
 	    }
 	}
     }
+
+  /* treat case with only NULL values */
+  for (agg_p = buildlist->g_agg_list; agg_p; agg_p = agg_p->next)
+    {
+      if (agg_p->accumulator_domain.value_dom == NULL)
+	{
+	  agg_p->accumulator_domain.value_dom = &tp_Null_domain;
+	}
+
+      if (agg_p->accumulator_domain.value2_dom == NULL)
+	{
+	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	}
+    }
+
+  /* update hash aggregation domains */
+  if (buildlist->g_hash_eligible)
+    {
+      AGGREGATE_HASH_CONTEXT *context = &buildlist->agg_hash_context;
+      int i, index;
+
+      /* update key domains */
+      group_regu = buildlist->g_hk_sort_regu_list;
+      for (i = 0; i < buildlist->g_hkey_size, group_regu != NULL;
+	   i++, group_regu = group_regu->next)
+	{
+	  if (TP_DOMAIN_TYPE (context->key_domains[i]) == DB_TYPE_VARIABLE)
+	    {
+	      context->key_domains[i] = group_regu->value.domain;
+	    }
+	}
+
+      /* update type lists of list files */
+      for (i = 0; i < buildlist->g_hkey_size; i++)
+	{
+	  /* partial list */
+	  context->part_list_id->type_list.domp[i] = context->key_domains[i];
+
+	  /* sorted partial list */
+	  context->sorted_part_list_id->type_list.domp[i] =
+	    context->key_domains[i];
+	}
+
+      for (i = 0; i < buildlist->g_func_count; i++)
+	{
+	  index = buildlist->g_hkey_size + i * 3;
+
+	  /* partial list */
+	  context->part_list_id->type_list.domp[index] =
+	    context->accumulator_domains[i]->value_dom;
+	  context->part_list_id->type_list.domp[index + 1] =
+	    context->accumulator_domains[i]->value2_dom;
+	  context->part_list_id->type_list.domp[index + 2] =
+	    &tp_Integer_domain;
+
+	  /* sorted partial list */
+	  context->sorted_part_list_id->type_list.domp[index] =
+	    context->accumulator_domains[i]->value_dom;
+	  context->sorted_part_list_id->type_list.domp[index + 1] =
+	    context->accumulator_domains[i]->value2_dom;
+	  context->sorted_part_list_id->type_list.domp[index + 2] =
+	    &tp_Integer_domain;
+	}
+    }
+}
+
+/*
+ * qexec_resolve_domains_for_aggregation () - update domains of aggregate
+ *                                            functions and accumulators
+ *   returns: error code or NO_ERROR
+ *   thread_p(in): current thread
+ *   agg_p(in): aggregate node
+ *   xasl_state(in): XASL state
+ *   tplrec(in): tuple record used for fetching of value
+ *   regu_list(in): regulist (NULL for none)
+ *   resolved(out): true if all domains are resolved, false otherwise
+ */
+static int
+qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
+				       AGGREGATE_TYPE * agg_p,
+				       XASL_STATE * xasl_state,
+				       QFILE_TUPLE_RECORD * tplrec,
+				       REGU_VARIABLE_LIST regu_list,
+				       int *resolved)
+{
+  TP_DOMAIN *tmp_domain_p;
+  TP_DOMAIN_STATUS status;
+  DB_VALUE *dbval;
+  int error;
+
+  /* fetch values */
+  if (regu_list != NULL)
+    {
+      if (fetch_val_list
+	  (thread_p, regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl,
+	   true) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  /* start off as resolved */
+  *resolved = 1;
+
+  /* iterate functions */
+  for (; agg_p != NULL; agg_p = agg_p->next)
+    {
+      if (agg_p->function == PT_CUME_DIST
+	  || agg_p->function == PT_PERCENT_RANK)
+	{
+	  /* operands for CUME_DIST and PERCENT_RANK are of no interest here */
+	  continue;
+	}
+
+      /* fetch function operand */
+      if (fetch_peek_dbval
+	  (thread_p, &agg_p->operand, &xasl_state->vd, NULL, NULL, NULL,
+	   &dbval) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      /* handle NULL value */
+      if (dbval == NULL || DB_IS_NULL (dbval))
+	{
+	  if (agg_p->opr_dbtype == DB_TYPE_VARIABLE
+	      || agg_p->accumulator_domain.value_dom == NULL
+	      || agg_p->accumulator_domain.value2_dom == NULL)
+	    {
+	      if (agg_p->function != PT_COUNT_STAR)
+		{
+		  /* domains will not be resolved for this function */
+		  *resolved = 0;
+		}
+	    }
+
+	  /* no need to continue */
+	  continue;
+	}
+
+      /* update variable domain of function */
+      if (agg_p->opr_dbtype == DB_TYPE_VARIABLE)
+	{
+	  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (dbval))
+	      && (agg_p->function == PT_SUM || agg_p->function == PT_AVG))
+	    {
+	      agg_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	    }
+	  else if (!TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (dbval))
+		   && agg_p->function == PT_GROUP_CONCAT)
+	    {
+	      agg_p->domain = tp_domain_resolve_default (DB_TYPE_VARCHAR);
+	    }
+	  else
+	    {
+	      agg_p->domain = tp_domain_resolve_value (dbval, NULL);
+	    }
+	  agg_p->opr_dbtype = TP_DOMAIN_TYPE (agg_p->domain);
+	}
+
+      /* set up domains of accumulator */
+      if (agg_p->domain != NULL && agg_p->opr_dbtype != DB_TYPE_VARIABLE
+	  && (agg_p->accumulator_domain.value_dom == NULL
+	      || agg_p->accumulator_domain.value2_dom == NULL))
+	{
+	  switch (agg_p->function)
+	    {
+	    case PT_AGG_BIT_AND:
+	    case PT_AGG_BIT_OR:
+	    case PT_AGG_BIT_XOR:
+	    case PT_MIN:
+	    case PT_MAX:
+	      agg_p->accumulator_domain.value_dom = agg_p->domain;
+	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	      break;
+
+	    case PT_COUNT_STAR:
+	    case PT_COUNT:
+	      agg_p->accumulator_domain.value_dom = &tp_Integer_domain;
+	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	      break;
+
+	    case PT_AVG:
+	    case PT_SUM:
+	      if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (dbval)))
+		{
+		  agg_p->accumulator_domain.value_dom =
+		    tp_domain_resolve_default (DB_VALUE_TYPE (dbval));
+		}
+	      else
+		{
+		  agg_p->accumulator_domain.value_dom = agg_p->domain;
+		}
+	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	      break;
+
+	    case PT_STDDEV:
+	    case PT_STDDEV_POP:
+	    case PT_STDDEV_SAMP:
+	    case PT_VARIANCE:
+	    case PT_VAR_POP:
+	    case PT_VAR_SAMP:
+	      agg_p->accumulator_domain.value_dom = &tp_Double_domain;
+	      agg_p->accumulator_domain.value2_dom = &tp_Double_domain;
+	      break;
+
+	    case PT_GROUPBY_NUM:
+	      agg_p->accumulator_domain.value_dom = &tp_Null_domain;
+	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	      break;
+
+	    case PT_GROUP_CONCAT:
+	      agg_p->accumulator_domain.value_dom = agg_p->domain;
+	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	      break;
+
+	    case PT_MEDIAN:
+	      switch (agg_p->opr_dbtype)
+		{
+		case DB_TYPE_SHORT:
+		case DB_TYPE_INTEGER:
+		case DB_TYPE_BIGINT:
+		case DB_TYPE_FLOAT:
+		case DB_TYPE_DOUBLE:
+		case DB_TYPE_MONETARY:
+		case DB_TYPE_NUMERIC:
+		case DB_TYPE_DATE:
+		case DB_TYPE_DATETIME:
+		case DB_TYPE_TIMESTAMP:
+		case DB_TYPE_TIME:
+		  break;
+
+		default:
+		  assert (agg_p->operand.type == TYPE_CONSTANT);
+
+		  /* try to cast dbval to double, datetime then time */
+		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+
+		  status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
+		  if (status != DOMAIN_COMPATIBLE)
+		    {
+		      /* try datetime */
+		      tmp_domain_p =
+			tp_domain_resolve_default (DB_TYPE_DATETIME);
+
+		      status = tp_value_cast (dbval, dbval,
+					      tmp_domain_p, false);
+		    }
+
+		  /* try time */
+		  if (status != DOMAIN_COMPATIBLE)
+		    {
+		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
+
+		      status = tp_value_cast (dbval, dbval,
+					      tmp_domain_p, false);
+		    }
+
+		  if (status != DOMAIN_COMPATIBLE)
+		    {
+		      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+			      "MEDIAN", "DOUBLE, DATETIME or TIME");
+
+		      pr_clear_value (dbval);
+		      return error;
+		    }
+
+		  /* update domain */
+		  agg_p->domain = tmp_domain_p;
+		  agg_p->accumulator_domain.value_dom = tmp_domain_p;
+		  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+		}
+	    }
+
+	  /* initialize accumulators */
+	  if (agg_p->accumulator.value != NULL
+	      && agg_p->accumulator_domain.value_dom != NULL
+	      && DB_VALUE_TYPE (agg_p->accumulator.value) == DB_TYPE_NULL)
+	    {
+	      if (db_value_domain_init
+		  (agg_p->accumulator.value,
+		   TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom),
+		   DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	    }
+
+	  if (agg_p->accumulator.value2 != NULL
+	      && agg_p->accumulator_domain.value2_dom != NULL
+	      && DB_VALUE_TYPE (agg_p->accumulator.value2) == DB_TYPE_NULL)
+	    {
+	      if (db_value_domain_init
+		  (agg_p->accumulator.value2,
+		   TP_DOMAIN_TYPE (agg_p->accumulator_domain.value2_dom),
+		   DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	    }
+	}
+    }
+
+  /* all ok */
+  return NO_ERROR;
 }
 
 /*
@@ -19588,8 +20782,12 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				      buildlist->g_regu_list,
 				      buildlist->g_val_list,
 				      buildlist->g_outptr_list,
+				      NULL,
 				      buildlist->g_with_rollup,
-				      xasl, xasl_state,
+				      0,
+				      NULL,
+				      xasl,
+				      xasl_state,
 				      &list_id->type_list, tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
@@ -22392,7 +23590,7 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
       /* if the hash table already exist, clear it out */
       (void) mht_map_no_key (thread_p, filter_pred_ent_cache.qstr_ht,
 			     qexec_free_filter_pred_cache_ent, NULL);
-      (void) mht_clear (filter_pred_ent_cache.qstr_ht);
+      (void) mht_clear (filter_pred_ent_cache.qstr_ht, NULL, NULL);
     }
   else
     {
@@ -22406,7 +23604,7 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
   if (filter_pred_ent_cache.xid_ht)
     {
       /* if the hash table already exist, clear it out */
-      (void) mht_clear (filter_pred_ent_cache.xid_ht);
+      (void) mht_clear (filter_pred_ent_cache.xid_ht, NULL, NULL);
     }
   else
     {
@@ -22421,7 +23619,7 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
     {
       /* if the hash table already exist, clear it out */
       /*(void) mht_map_no_key(filter_pred_ent_cache.oid_ht, NULL, NULL); */
-      (void) mht_clear (filter_pred_ent_cache.oid_ht);
+      (void) mht_clear (filter_pred_ent_cache.oid_ht, NULL, NULL);
     }
   else
     {
@@ -26901,3 +28099,499 @@ qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
 }
 #endif /* SERVER_MODE */
+
+/*
+ * qexec_alloc_agg_hash_context () - allocate hash aggregate evaluation related
+ *                                   structures used at runtime
+ *   returns: error code or NO_ERROR
+ *   thread_p(in): thread
+ *   proc(in): buildlist
+ *   xasl_state(in): XASL state
+ */
+static int
+qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p,
+			      BUILDLIST_PROC_NODE * proc,
+			      XASL_STATE * xasl_state)
+{
+  QFILE_TUPLE_VALUE_TYPE_LIST type_list;
+  REGU_VARIABLE_LIST regu_list;
+  SORT_LIST *sort_list, *sort_col, *gby_col;
+  AGGREGATE_TYPE *agg_list;
+  int value_count = 0, i = 0;
+
+  if (!proc->g_hash_eligible)
+    {
+      return NO_ERROR;
+    }
+
+  /* clear fields (in case of error, things will get properly disposed) */
+  proc->agg_hash_context.key_domains = NULL;
+  proc->agg_hash_context.accumulator_domains = NULL;
+  proc->agg_hash_context.temp_dbval_array = NULL;
+  proc->agg_hash_context.part_list_id = NULL;
+  proc->agg_hash_context.sorted_part_list_id = NULL;
+  proc->agg_hash_context.hash_table = NULL;
+  proc->agg_hash_context.temp_key = NULL;
+  proc->agg_hash_context.temp_part_key = NULL;
+  proc->agg_hash_context.curr_part_key = NULL;
+  proc->agg_hash_context.temp_part_value = NULL;
+  proc->agg_hash_context.curr_part_value = NULL;
+  proc->agg_hash_context.sort_key.key = NULL;
+  proc->agg_hash_context.sort_key.nkeys = 0;
+
+  /*
+   * create temporary dbvalue array
+   */
+  if (proc->g_func_count > 0)
+    {
+      proc->agg_hash_context.temp_dbval_array =
+	(DB_VALUE *) db_private_alloc (thread_p,
+				       sizeof (DB_VALUE) *
+				       proc->g_func_count);
+      if (proc->agg_hash_context.temp_dbval_array == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (DB_VALUE) * proc->g_func_count);
+	  return ER_FAILED;
+	}
+    }
+
+  /* 
+   * keep key domains
+   */
+  proc->agg_hash_context.key_domains =
+    (TP_DOMAIN **) db_private_alloc (thread_p,
+				     sizeof (TP_DOMAIN *) *
+				     proc->g_hkey_size);
+  if (proc->agg_hash_context.key_domains == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (TP_DOMAIN *) * proc->g_hkey_size);
+      return ER_FAILED;
+    }
+
+  regu_list = proc->g_hk_scan_regu_list;
+  for (i = 0; i < proc->g_hkey_size; i++, regu_list = regu_list->next)
+    {
+      assert (regu_list);
+      proc->agg_hash_context.key_domains[i] = regu_list->value.domain;
+    }
+
+  /*
+   * keep accumulator domains
+   */
+  if (proc->g_func_count > 0)
+    {
+      proc->agg_hash_context.accumulator_domains =
+	(AGGREGATE_ACCUMULATOR_DOMAIN **) db_private_alloc (thread_p,
+							    sizeof
+							    (AGGREGATE_ACCUMULATOR_DOMAIN
+							     *) *
+							    proc->
+							    g_func_count);
+      if (proc->agg_hash_context.accumulator_domains == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1,
+		  sizeof (AGGREGATE_ACCUMULATOR_DOMAIN *) *
+		  proc->g_func_count);
+	  return ER_FAILED;
+	}
+
+      agg_list = proc->g_agg_list;
+      for (i = 0; i < proc->g_func_count; i++, agg_list = agg_list->next)
+	{
+	  assert (agg_list);
+	  proc->agg_hash_context.accumulator_domains[i] =
+	    &agg_list->accumulator_domain;
+	}
+    }
+
+  /*
+   * create partial list file
+   */
+
+  /* compute number of values and alloc type list */
+  type_list.type_cnt = proc->g_hkey_size + proc->g_func_count * 3 + 1;
+  type_list.domp =
+    (TP_DOMAIN **) db_private_alloc (thread_p,
+				     sizeof (TP_DOMAIN *) *
+				     type_list.type_cnt);
+  if (type_list.domp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (TP_DOMAIN *) * type_list.type_cnt);
+      return ER_FAILED;
+    }
+
+  /* register key domains */
+  regu_list = proc->g_hk_scan_regu_list;
+  value_count = 0;
+  while (regu_list)
+    {
+      type_list.domp[value_count++] = regu_list->value.domain;
+      regu_list = regu_list->next;
+    }
+
+  /* register accumulator domains */
+  for (i = 0; i < proc->g_func_count; i++)
+    {
+      /* value and value2 are variable */
+      type_list.domp[value_count++] = &tp_Variable_domain;
+      type_list.domp[value_count++] = &tp_Variable_domain;
+
+      /* third one is integer counter */
+      type_list.domp[value_count++] = &tp_Integer_domain;
+    }
+
+  /* register counter domain */
+  type_list.domp[value_count++] = &tp_Integer_domain;
+
+  /* create sort list */
+  sort_list = sort_col = qfile_allocate_sort_list (proc->g_hkey_size);
+  gby_col = proc->groupby_list;
+  for (i = 0; i < proc->g_hkey_size; i++)
+    {
+      sort_col->pos_descr.dom = type_list.domp[i];
+      sort_col->pos_descr.pos_no = i;
+      sort_col->s_order = gby_col->s_order;
+      sort_col->s_nulls = gby_col->s_nulls;
+
+      sort_col = sort_col->next;
+      gby_col = gby_col->next;
+    }
+
+  /* create sort key */
+  if (qfile_initialize_sort_key_info (&proc->agg_hash_context.sort_key,
+				      sort_list, &type_list) == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* create list files */
+  proc->agg_hash_context.part_list_id =
+    qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
+  proc->agg_hash_context.sorted_part_list_id =
+    qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
+
+  /* create tuple descriptor for partial list files */
+  proc->agg_hash_context.part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
+  proc->agg_hash_context.part_list_id->tpl_descr.f_valp =
+    (DB_VALUE **) malloc (sizeof (DB_VALUE) * type_list.type_cnt);
+
+  proc->agg_hash_context.sorted_part_list_id->tpl_descr.f_cnt =
+    type_list.type_cnt;
+  proc->agg_hash_context.sorted_part_list_id->tpl_descr.f_valp =
+    (DB_VALUE **) malloc (sizeof (DB_VALUE) * type_list.type_cnt);
+
+  /* initialize scan; this way we can call qfile_close_scan on an unopened scan
+     without repercussions */
+  proc->agg_hash_context.part_scan_id.status = S_CLOSED;
+
+  /* free memory */
+  db_private_free (thread_p, type_list.domp);
+  qfile_free_sort_list (sort_list);
+
+  /*
+   * create hash table
+   */
+  proc->agg_hash_context.hash_table =
+    mht_create ("Hash aggregate evaluation",
+		HASH_AGGREGATE_DEFAULT_TABLE_SIZE, qdata_hash_agg_hkey,
+		qdata_agg_hkey_eq);
+  if (proc->agg_hash_context.hash_table == NULL)
+    {
+      return ER_FAILED;
+    }
+  else
+    {
+      /* we need the least recently used list */
+      proc->agg_hash_context.hash_table->build_lru_list = true;
+    }
+
+  /*
+   * create temp keys
+   */
+  proc->agg_hash_context.temp_key =
+    qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, false);
+  proc->agg_hash_context.temp_part_key =
+    qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true);
+  proc->agg_hash_context.curr_part_key =
+    qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true);
+
+  if (proc->agg_hash_context.temp_key == NULL
+      || proc->agg_hash_context.temp_part_key == NULL
+      || proc->agg_hash_context.curr_part_key == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /*
+   * create temp values
+   */
+  proc->agg_hash_context.temp_part_value =
+    qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
+  proc->agg_hash_context.curr_part_value =
+    qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
+
+  if (proc->agg_hash_context.temp_part_value == NULL
+      || proc->agg_hash_context.curr_part_value == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /*
+   * initialize recdes
+   */
+  proc->agg_hash_context.tuple_recdes.data = 0;
+  proc->agg_hash_context.tuple_recdes.type = 0;
+  proc->agg_hash_context.tuple_recdes.length = 0;
+  proc->agg_hash_context.tuple_recdes.area_size = 0;
+
+  /*
+   * initialize sort input tuple
+   */
+  proc->agg_hash_context.input_tuple.size = 0;
+  proc->agg_hash_context.input_tuple.tpl = NULL;
+
+  /*
+   * initialize remaining fields
+   */
+  proc->agg_hash_context.hash_size = 0;
+  proc->agg_hash_context.group_count = 0;
+  proc->agg_hash_context.tuple_count = 0;
+  proc->agg_hash_context.sorted_count = 0;
+  proc->agg_hash_context.state = HS_ACCEPT_ALL;
+
+  /* all ok */
+  return NO_ERROR;
+}
+
+/*
+ * qexec_alloc_agg_hash_context () - dispose hash aggregate evaluation related
+ *                                   structures used at runtime
+ *   thread_p(in): thread
+ *   proc(in): buildlist
+ */
+static void
+qexec_free_agg_hash_context (THREAD_ENTRY * thread_p,
+			     BUILDLIST_PROC_NODE * proc)
+{
+  if (!proc->g_hash_eligible)
+    {
+      return;
+    }
+
+  /* free value array */
+  if (proc->agg_hash_context.temp_dbval_array != NULL)
+    {
+      db_private_free (thread_p, proc->agg_hash_context.temp_dbval_array);
+      proc->agg_hash_context.temp_dbval_array = NULL;
+    }
+
+  /* free domain lists */
+  if (proc->agg_hash_context.accumulator_domains != NULL)
+    {
+      db_private_free (thread_p, proc->agg_hash_context.accumulator_domains);
+      proc->agg_hash_context.accumulator_domains = NULL;
+    }
+
+  if (proc->agg_hash_context.key_domains != NULL)
+    {
+      db_private_free (thread_p, proc->agg_hash_context.key_domains);
+      proc->agg_hash_context.key_domains = NULL;
+    }
+
+  /* free entries and hash table */
+  if (proc->agg_hash_context.hash_table != NULL)
+    {
+      (void) mht_clear (proc->agg_hash_context.hash_table,
+			qdata_free_agg_hentry, (void *) thread_p);
+      mht_destroy (proc->agg_hash_context.hash_table);
+
+      proc->agg_hash_context.hash_table = NULL;
+    }
+
+  /* free partial lists */
+  if (proc->agg_hash_context.part_list_id != NULL)
+    {
+      qfile_close_list (thread_p, proc->agg_hash_context.part_list_id);
+      qfile_destroy_list (thread_p, proc->agg_hash_context.part_list_id);
+      qfile_free_list_id (proc->agg_hash_context.part_list_id);
+      proc->agg_hash_context.part_list_id = NULL;
+    }
+
+  if (proc->agg_hash_context.sorted_part_list_id != NULL)
+    {
+      qfile_close_list (thread_p, proc->agg_hash_context.sorted_part_list_id);
+      qfile_destroy_list (thread_p,
+			  proc->agg_hash_context.sorted_part_list_id);
+      qfile_free_list_id (proc->agg_hash_context.sorted_part_list_id);
+      proc->agg_hash_context.sorted_part_list_id = NULL;
+    }
+
+  /* close scan */
+  qfile_close_scan (thread_p, &proc->agg_hash_context.part_scan_id);
+
+  /* free temp keys and values */
+  if (proc->agg_hash_context.temp_key != NULL)
+    {
+      qdata_free_agg_hkey (thread_p, proc->agg_hash_context.temp_key);
+      proc->agg_hash_context.temp_key = NULL;
+    }
+
+  if (proc->agg_hash_context.temp_part_key != NULL)
+    {
+      qdata_free_agg_hkey (thread_p, proc->agg_hash_context.temp_part_key);
+      proc->agg_hash_context.temp_part_key = NULL;
+    }
+
+  if (proc->agg_hash_context.curr_part_key != NULL)
+    {
+      qdata_free_agg_hkey (thread_p, proc->agg_hash_context.curr_part_key);
+      proc->agg_hash_context.curr_part_key = NULL;
+    }
+
+  if (proc->agg_hash_context.temp_part_value != NULL)
+    {
+      qdata_free_agg_hvalue (thread_p,
+			     proc->agg_hash_context.temp_part_value);
+      proc->agg_hash_context.temp_part_value = NULL;
+    }
+
+  if (proc->agg_hash_context.curr_part_value != NULL)
+    {
+      qdata_free_agg_hvalue (thread_p,
+			     proc->agg_hash_context.curr_part_value);
+      proc->agg_hash_context.curr_part_value = NULL;
+    }
+
+  /* free recdes area */
+  if (proc->agg_hash_context.tuple_recdes.data != NULL)
+    {
+      db_private_free (thread_p, proc->agg_hash_context.tuple_recdes.data);
+      proc->agg_hash_context.tuple_recdes.data = NULL;
+      proc->agg_hash_context.tuple_recdes.area_size = 0;
+    }
+
+  /* reinit counters */
+  proc->agg_hash_context.hash_size = 0;
+  proc->agg_hash_context.group_count = 0;
+  proc->agg_hash_context.tuple_count = 0;
+}
+
+/*
+ * qexec_build_agg_hkey () - build aggregate key structure from reguvar list
+ *   returns: NO_ERROR or error code
+ *   thread_p(in): thread
+ *   key(out): aggregate key
+ *   regu_list(in): reguvar list for fetching values
+ * 
+ * NOTE: the DB_VALUEs in the key structure are transient. If key will be
+ * stored for later use, a deep copy of DB_VALUEs must be performed using
+ * qexec_copy_agg_key().
+ */
+static int
+qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
+		      REGU_VARIABLE_LIST regu_list, QFILE_TUPLE tpl,
+		      AGGREGATE_HASH_KEY * key)
+{
+  int rc = NO_ERROR;
+
+  /* build key */
+  key->free_values = false;	/* references precreated DB_VALUES */
+  key->val_count = 0;
+  while (regu_list != NULL)
+    {
+      rc =
+	fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, NULL,
+			  NULL, tpl, &key->values[key->val_count]);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+
+      /* next */
+      regu_list = regu_list->next;
+      key->val_count++;
+    }
+
+  /* all ok */
+  return NO_ERROR;
+}
+
+/*
+ * qexec_locate_agg_hentry_in_list () - find the next hash entry with the
+ *                                      provided key
+ *   return: error code or NO_ERROR
+ *   thread_p(in): thread
+ *   context(in): hash context
+ *   key(in): desired key
+ *   found(out): true if found, false otherwise
+ */
+static int
+qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p,
+				 AGGREGATE_HASH_CONTEXT * context,
+				 AGGREGATE_HASH_KEY * key, bool * found)
+{
+  DB_VALUE_COMPARE_RESULT result;
+  bool done = false;
+  int diff_pos;
+
+  while (!done)
+    {
+      /* stop on last scan (or error) */
+      done = (context->part_scan_code != S_SUCCESS);
+
+      /* compare keys and invert if necessary */
+      result =
+	qdata_agg_hkey_compare (context->curr_part_key, key, &diff_pos);
+      if (diff_pos >= 0 && result != DB_EQ)
+	{
+	  if (context->sort_key.key[diff_pos].is_desc)
+	    {
+	      if (result == DB_GT)
+		{
+		  result = DB_LT;
+		}
+	      else if (result == DB_LT)
+		{
+		  result = DB_GT;
+		}
+	    }
+	}
+
+      /* decide based on comparison result */
+      if (result == DB_UNK || result == DB_NE)
+	{
+	  /* incomparable types or null value; should not get here */
+	  return ER_FAILED;
+	}
+      else if (result == DB_EQ)
+	{
+	  /* found key */
+	  *found = true;
+	  return NO_ERROR;
+	}
+      else if (result == DB_GT)
+	{
+	  /* current key in partial list is greater than provided key */
+	  *found = false;
+	  return NO_ERROR;
+	}
+      else if (!done)
+	{
+	  /* scan for next */
+	  context->part_scan_code =
+	    qdata_load_agg_hentry_from_list (thread_p, &context->part_scan_id,
+					     context->curr_part_key,
+					     context->curr_part_value,
+					     context->key_domains,
+					     context->accumulator_domains);
+	}
+    }
+
+  /* reached end of scan, no match */
+  *found = false;
+  return (context->part_scan_code == S_ERROR ? ER_FAILED : NO_ERROR);
+}

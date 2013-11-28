@@ -962,12 +962,15 @@ mht_create (const char *name, int est_size,
   ht->table = hvector;
   ht->act_head = NULL;
   ht->act_tail = NULL;
+  ht->lru_head = NULL;
+  ht->lru_tail = NULL;
   ht->prealloc_entries = NULL;
   ht->size = ht_estsize;
   ht->rehash_at = (unsigned int) (ht_estsize * MHT_REHASH_TRESHOLD);
   ht->nentries = 0;
   ht->nprealloc_entries = 0;
   ht->ncollisions = 0;
+  ht->build_lru_list = false;
 
   /* Initialize each of the hash entries */
   for (; ht_estsize > 0; ht_estsize--)
@@ -1083,17 +1086,21 @@ mht_destroy (MHT_TABLE * ht)
 }
 
 /*
- * mht_clear - remove all entries of hash table
+ * mht_clear - remove and free all entries of hash table
  *   return: error code
  *   ht(in/out): hash table
+ *   rem_func(in): removal function
+ *   func_args(in): removal function arguments
  */
 int
-mht_clear (MHT_TABLE * ht)
+mht_clear (MHT_TABLE * ht,
+	   int (*rem_func) (const void *key, void *data, void *args),
+	   void *func_args)
 {
   HENTRY_PTR *hvector;		/* Entries of hash table           */
   HENTRY_PTR hentry;		/* A hash table entry. linked list */
   HENTRY_PTR next_hentry = NULL;	/* Next element in linked list     */
-  unsigned int i;
+  unsigned int i, error_code;
 
   assert (ht != NULL);
 
@@ -1106,6 +1113,19 @@ mht_clear (MHT_TABLE * ht)
       /* Go over the linked list for this hash table entry */
       for (hentry = *hvector; hentry != NULL; hentry = next_hentry)
 	{
+	  /* free */
+	  if (rem_func)
+	    {
+	      error_code = (*rem_func) (hentry->key, hentry->data, func_args);
+	      if (error_code != NO_ERROR)
+		{
+		  return error_code;
+		}
+
+	      hentry->key = NULL;
+	      hentry->data = NULL;
+	    }
+
 	  next_hentry = hentry->next;
 	  /* Save the entries for future insertions */
 	  ht->nprealloc_entries++;
@@ -1117,6 +1137,8 @@ mht_clear (MHT_TABLE * ht)
 
   ht->act_head = NULL;
   ht->act_tail = NULL;
+  ht->lru_head = NULL;
+  ht->lru_tail = NULL;
   ht->ncollisions = 0;
   ht->nentries = 0;
 
@@ -1202,7 +1224,7 @@ mht_dump (FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
  * Note: Find the entry in hash table whose key is the value of the given key
  */
 void *
-mht_get (const MHT_TABLE * ht, const void *key)
+mht_get (MHT_TABLE * ht, const void *key)
 {
   unsigned int hash;
   HENTRY_PTR hentry;
@@ -1224,6 +1246,29 @@ mht_get (const MHT_TABLE * ht, const void *key)
     {
       if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
 	{
+	  /* adjust LRU list */
+	  if (ht->build_lru_list && ht->lru_tail != hentry)
+	    {
+	      if (ht->lru_head == hentry)
+		{
+		  ht->lru_head = hentry->lru_next;
+		}
+
+	      /* unlink */
+	      hentry->lru_next->lru_prev = hentry->lru_prev;
+	      if (hentry->lru_prev)
+		{
+		  hentry->lru_prev->lru_next = hentry->lru_next;
+		}
+
+	      /* add at end */
+	      ht->lru_tail->lru_next = hentry;
+	      hentry->lru_prev = ht->lru_tail;
+	      hentry->lru_next = NULL;
+	      ht->lru_tail = hentry;
+	    }
+
+	  /* return value */
 	  return hentry->data;
 	}
     }
@@ -1237,6 +1282,8 @@ mht_get (const MHT_TABLE * ht, const void *key)
  *   ht(in):
  *   key(in):
  *   last(in/out):
+ * 
+ * NOTE: This call does not affect the LRU list.
  */
 void *
 mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
@@ -1348,6 +1395,22 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data,
       if (hentry == NULL)
 	{
 	  return NULL;
+	}
+    }
+
+  if (ht->build_lru_list)
+    {
+      /* link new entry to LRU list */
+      hentry->lru_next = NULL;
+      hentry->lru_prev = ht->lru_tail;
+      if (ht->lru_tail)
+	{
+	  ht->lru_tail->lru_next = hentry;
+	}
+      ht->lru_tail = hentry;
+      if (ht->lru_head == NULL)
+	{
+	  ht->lru_head = hentry;
 	}
     }
 
@@ -1504,6 +1567,22 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data,
 	}
     }
 
+  if (ht->build_lru_list)
+    {
+      /* link new entry to LRU list */
+      hentry->lru_next = NULL;
+      hentry->lru_prev = ht->lru_tail;
+      if (ht->lru_tail)
+	{
+	  ht->lru_tail->lru_next = hentry;
+	}
+      ht->lru_tail = hentry;
+      if (ht->lru_head == NULL)
+	{
+	  ht->lru_head = hentry;
+	}
+    }
+
   /* link the new entry to the double link list of active entries */
   hentry->key = key;
   hentry->data = data;
@@ -1631,6 +1710,30 @@ mht_rem (MHT_TABLE * ht, const void *key,
 		}
 	    }
 
+	  if (ht->build_lru_list)
+	    {
+	      /* remove from LRU list */
+	      if (ht->lru_head == ht->lru_tail)
+		{
+		  ht->lru_head = ht->lru_tail = NULL;
+		}
+	      else if (ht->lru_head == hentry)
+		{
+		  ht->lru_head = hentry->lru_next;
+		  hentry->lru_next->lru_prev = NULL;
+		}
+	      else if (ht->lru_tail == hentry)
+		{
+		  ht->lru_tail = hentry->lru_prev;
+		  hentry->lru_prev->lru_next = NULL;
+		}
+	      else
+		{
+		  hentry->lru_prev->lru_next = hentry->lru_next;
+		  hentry->lru_next->lru_prev = hentry->lru_prev;
+		}
+	    }
+
 	  /* Remove from double link list of active entries */
 	  if (ht->act_head == ht->act_tail)
 	    {
@@ -1731,6 +1834,30 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data,
 	      if (error_code != NO_ERROR)
 		{
 		  return error_code;
+		}
+	    }
+
+	  if (ht->build_lru_list)
+	    {
+	      /* remove from LRU list */
+	      if (ht->lru_head == ht->lru_tail)
+		{
+		  ht->lru_head = ht->lru_tail = NULL;
+		}
+	      else if (ht->lru_head == hentry)
+		{
+		  ht->lru_head = hentry->lru_next;
+		  hentry->lru_next->lru_prev = NULL;
+		}
+	      else if (ht->lru_tail == hentry)
+		{
+		  ht->lru_tail = hentry->lru_prev;
+		  hentry->lru_prev->lru_next = NULL;
+		}
+	      else
+		{
+		  hentry->lru_prev->lru_next = hentry->lru_next;
+		  hentry->lru_next->lru_prev = hentry->lru_prev;
 		}
 	    }
 
@@ -1904,6 +2031,32 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	    hashcode = mht_get_shiftmult32 (x ^ y, ht_size);
 	    break;
 	  }
+	  break;
+	case DB_TYPE_FLOAT:
+	  {
+	    unsigned int *x, y;
+	    x = (unsigned int *) &val->data.f;
+	    y = (*x) & 0xFFFFFFF0;
+	    hashcode = mht_get_shiftmult32 (y, ht_size);
+	  }
+	  break;
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_MONETARY:
+	  {
+	    unsigned int *x, y, z;
+	    x = (unsigned int *) &val->data.d;
+	    y = (x[0]) & 0xFFFFFFF0;
+	    z = (x[1]) & 0xFFFFFFF0;
+	    hashcode = mht_get_shiftmult32 (y ^ z, ht_size);
+	  }
+	  break;
+	case DB_TYPE_NUMERIC:
+	  {
+	    unsigned int *buf = (unsigned int *) val->data.num.d.buf;
+	    hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3],
+					    ht_size);
+	  }
+	  break;
 	case DB_TYPE_DATE:
 	  hashcode = mht_get_shiftmult32 (val->data.date, ht_size);
 	  break;
@@ -1917,6 +2070,17 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	  hashcode = mht_get_shiftmult32 (val->data.datetime.date ^
 					  val->data.datetime.time, ht_size);
 	  break;
+	case DB_TYPE_OID:
+	  {
+	    unsigned int x =
+	      (val->data.oid.volid << 16) | (val->data.oid.slotid);
+	    unsigned int y = val->data.oid.pageid;
+
+	    hashcode = mht_get_shiftmult32 (x ^ y, ht_size);
+	  }
+	  break;
+	case DB_TYPE_BIT:
+	case DB_TYPE_VARBIT:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
@@ -1953,6 +2117,27 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 				       (unsigned char *) ptr, i);
 	      hashcode %= ht_size;
 	    }
+	  break;
+	case DB_TYPE_SET:
+	case DB_TYPE_MULTISET:
+	case DB_TYPE_SEQUENCE:
+	case DB_TYPE_VOBJ:
+	  {
+	    int size = val->data.set->disk_size / 4;
+	    unsigned int x = 0;
+	    int i;
+
+	    for (i = 0; i < size; i++)
+	      {
+		x ^= (unsigned int) (val->data.set->disk_set[i * 4]);
+	      }
+
+	    hashcode = mht_get_shiftmult32 (x, ht_size);
+	  }
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  hashcode =
+	    mht_get_shiftmult32 (val->data.enumeration.short_val, ht_size);
 	  break;
 
 	default:		/* impossible */

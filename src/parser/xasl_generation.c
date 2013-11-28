@@ -173,6 +173,9 @@ static int pt_table_compatible (PARSER_CONTEXT * parser, PT_NODE * node,
 static TABLE_INFO *pt_table_info_alloc (void);
 static PT_NODE *pt_filter_pseudo_specs (PARSER_CONTEXT * parser,
 					PT_NODE * spec);
+static PT_NODE *pt_is_hash_agg_eligible (PARSER_CONTEXT * parser,
+					 PT_NODE * tree,
+					 void *arg, int *continue_walk);
 static PT_NODE *pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 				      void *arg, int *continue_walk);
 static PT_NODE *pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
@@ -614,6 +617,7 @@ static AGGREGATE_TYPE *pt_to_aggregate (PARSER_CONTEXT * parser,
 					OUTPTR_LIST * out_list,
 					VAL_LIST * value_list,
 					REGU_VARIABLE_LIST regu_list,
+					REGU_VARIABLE_LIST scan_regu_list,
 					PT_NODE * out_names,
 					DB_VALUE ** grbynum_valp);
 
@@ -4119,6 +4123,37 @@ pt_find_table_info (UINTPTR spec_id, TABLE_INFO * exposed_list)
 }
 
 /*
+ * pt_is_hash_agg_eligible () - determine if query is eligible for hash
+ *                              aggregate evaluation
+ *   return: tree node
+ *   parser(in): parser context
+ *   tree(in): tree node to check for eligibility
+ *   arg(in/out): pointer to int, eligibility
+ *   continue_walk(in/out): continue walk
+ */
+static PT_NODE *
+pt_is_hash_agg_eligible (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
+			 int *continue_walk)
+{
+  int *eligible = (int *) arg;
+
+  if (tree && eligible && pt_is_aggregate_function (parser, tree))
+    {
+      if (tree->info.function.function_type == PT_GROUP_CONCAT
+	  || tree->info.function.function_type == PT_MEDIAN
+	  || tree->info.function.function_type == PT_CUME_DIST
+	  || tree->info.function.function_type == PT_PERCENT_RANK
+	  || tree->info.function.all_or_distinct == PT_DISTINCT)
+	{
+	  *eligible = 0;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return tree;
+}
+
+/*
  * pt_to_aggregate_node () - test for aggregate function nodes,
  * 	                     convert them to aggregate_list_nodes
  *   return:
@@ -4132,9 +4167,10 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 		      void *arg, int *continue_walk)
 {
   bool is_agg = 0;
-  REGU_VARIABLE *regu = NULL;
+  REGU_VARIABLE *regu = NULL, *scan_regu = NULL;
   AGGREGATE_TYPE *aggregate_list;
   AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
+  REGU_VARIABLE_LIST scan_regu_list;
   REGU_VARIABLE_LIST out_list;
   REGU_VARIABLE_LIST regu_list;
   REGU_VARIABLE_LIST regu_temp;
@@ -4172,7 +4208,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 		  regu_dbval_type_init (*(info->grbynum_valp),
 					DB_TYPE_INTEGER);
 		}
-	      aggregate_list->value = *(info->grbynum_valp);
+	      aggregate_list->accumulator.value = *(info->grbynum_valp);
 	    }
 	  aggregate_list->function = code;
 	  aggregate_list->opr_dbtype = DB_TYPE_NULL;
@@ -4262,13 +4298,17 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 								 UNBOX_AS_VALUE);
 	    }
 
-	  if (regu == NULL)
+	  scan_regu =
+	    pt_to_regu_variable (parser, tree->info.function.arg_list,
+				 UNBOX_AS_VALUE);
+
+	  if (!regu || !scan_regu)
 	    {
 	      return NULL;
 	    }
 
 	  aggregate_list->domain = pt_xasl_node_to_domain (parser, tree);
-	  regu_dbval_type_init (aggregate_list->value,
+	  regu_dbval_type_init (aggregate_list->accumulator.value,
 				pt_node_to_db_type (tree));
 	  if (aggregate_list->function == PT_GROUP_CONCAT)
 	    {
@@ -4281,7 +4321,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 					    type_enum))
 		    {
 		      pr_clone_value (&group_concat_sep_node_save->info.value.
-				      db_value, aggregate_list->value2);
+				      db_value,
+				      aggregate_list->accumulator.value2);
 		      /* set the next argument pointer (the separator
 		       * argument) to NULL in order to avoid impacting
 		       * the regu vars generation.
@@ -4315,23 +4356,24 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 			}
 		      strcpy (buf, ",");
 		      qstr_make_typed_string (pt_type_enum_to_db (arg_type),
-					      aggregate_list->value2,
-					      DB_DEFAULT_PRECISION, buf, 1,
+					      aggregate_list->accumulator.
+					      value2, DB_DEFAULT_PRECISION,
+					      buf, 1,
 					      TP_DOMAIN_CODESET
 					      (aggregate_list->domain),
 					      TP_DOMAIN_COLLATION
 					      (aggregate_list->domain));
-		      aggregate_list->value2->need_clear = true;
+		      aggregate_list->accumulator.value2->need_clear = true;
 		    }
 		  else
 		    {
-		      DB_MAKE_NULL (aggregate_list->value2);
+		      DB_MAKE_NULL (aggregate_list->accumulator.value2);
 		    }
 		}
 	    }
 	  else
 	    {
-	      regu_dbval_type_init (aggregate_list->value2,
+	      regu_dbval_type_init (aggregate_list->accumulator.value2,
 				    pt_node_to_db_type (tree));
 	    }
 	  aggregate_list->opr_dbtype =
@@ -4411,6 +4453,30 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 		  regu_temp = regu_temp->next;
 		}
 	      regu_temp->next = regu_list;
+
+	      /* append regu to info->scan_regu_list */
+	      scan_regu_list = regu_varlist_alloc ();
+	      if (!scan_regu_list)
+		{
+		  PT_ERROR (parser, tree,
+			    msgcat_message (MSGCAT_CATALOG_CUBRID,
+					    MSGCAT_SET_PARSER_SEMANTIC,
+					    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		  return NULL;
+		}
+
+	      scan_regu->vfetch_to =
+		pt_index_value (info->value_list,
+				info->out_list->valptr_cnt - 1);
+	      scan_regu_list->next = NULL;
+	      scan_regu_list->value = *scan_regu;
+
+	      regu_temp = info->scan_regu_list;
+	      while (regu_temp->next)
+		{
+		  regu_temp = regu_temp->next;
+		}
+	      regu_temp->next = scan_regu_list;
 	    }
 	  else
 	    {
@@ -4430,8 +4496,10 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  aggregate_list->option = Q_ALL;
 
 	  aggregate_list->domain = &tp_Integer_domain;
-	  regu_dbval_type_init (aggregate_list->value, DB_TYPE_INTEGER);
-	  regu_dbval_type_init (aggregate_list->value2, DB_TYPE_INTEGER);
+	  regu_dbval_type_init (aggregate_list->accumulator.value,
+				DB_TYPE_INTEGER);
+	  regu_dbval_type_init (aggregate_list->accumulator.value2,
+				DB_TYPE_INTEGER);
 	  aggregate_list->opr_dbtype = DB_TYPE_INTEGER;
 
 	  /* hack.  we need to pack some domain even though we don't
@@ -4441,7 +4509,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	}
 
       /* record the value for pt_to_regu_variable to use in "out arith" */
-      tree->etc = (void *) aggregate_list->value;
+      tree->etc = (void *) aggregate_list->accumulator.value;
 
       info->head_list = aggregate_list;
 
@@ -4700,20 +4768,22 @@ pt_index_value (const VAL_LIST * value, int index)
 
 /*
  * pt_to_aggregate () - Generates an aggregate list from a select node
- *   return:
- *   parser(in):
- *   select_node(in):
- *   out_list(in):
- *   value_list(in):
- *   regu_list(in):
- *   out_names(in):
- *   grbynum_valp(in):
+ *   return: aggregate XASL node
+ *   parser(in): parser context
+ *   select_node(in): SELECT statement node
+ *   out_list(in): outptr list to generate intermediate file
+ *   value_list(in): value list
+ *   regu_list(in): regulist to read values from intermediate file
+ *   scan_regu_list(in): regulist to read values during initial scan
+ *   out_names(in): outptr name nodes
+ *   grbynum_valp(in): groupby_num() dbvalue
  */
 static AGGREGATE_TYPE *
 pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node,
 		 OUTPTR_LIST * out_list,
 		 VAL_LIST * value_list,
 		 REGU_VARIABLE_LIST regu_list,
+		 REGU_VARIABLE_LIST scan_regu_list,
 		 PT_NODE * out_names, DB_VALUE ** grbynum_valp)
 {
   PT_NODE *select_list, *from, *where, *having;
@@ -4728,6 +4798,7 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node,
   info.out_list = out_list;
   info.value_list = value_list;
   info.regu_list = regu_list;
+  info.scan_regu_list = scan_regu_list;
   info.out_names = out_names;
   info.grbynum_valp = grbynum_valp;
 
@@ -15510,7 +15581,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
   XASL_NODE *xasl;
   PT_NODE *saved_current_class;
   int groupby_ok = 1;
-  AGGREGATE_TYPE *aggregate = NULL;
+  AGGREGATE_TYPE *aggregate = NULL, *agg_list = NULL;
   SYMBOL_INFO *symbols;
   PT_NODE *from, *limit;
   UNBOX unbox;
@@ -15641,8 +15712,48 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 				group_out_list);
 	}
 
-      xasl->outptr_list = pt_to_outlist (parser, group_out_list,
-					 NULL, UNBOX_AS_VALUE);
+      /* determine if query is eligible for hash aggregate evaluation */
+      if (select_node->info.query.q.select.hint & PT_HINT_NO_HASH_AGGREGATE)
+	{
+	  /* forced not applicable */
+	  buildlist->g_hash_eligible = false;
+	}
+      else
+	{
+	  buildlist->g_hash_eligible = true;
+
+	  (void) parser_walk_tree (parser,
+				   select_node->info.query.q.select.list,
+				   pt_is_hash_agg_eligible,
+				   (void *) &buildlist->g_hash_eligible, NULL,
+				   NULL);
+	  (void) parser_walk_tree (parser,
+				   select_node->info.query.q.select.having,
+				   pt_is_hash_agg_eligible,
+				   (void *) &buildlist->g_hash_eligible, NULL,
+				   NULL);
+
+	  /* determine where we're storing the first tuple of each group */
+	  if (buildlist->g_hash_eligible)
+	    {
+	      if (select_node->info.query.q.select.group_by->with_rollup)
+		{
+		  /* if using rollup groups, we must output the first tuple of each
+		     group so rollup will be correctly handled during sort */
+		  buildlist->g_output_first_tuple = true;
+		}
+	      else
+		{
+		  /* in other cases just store everyting in hash table */
+		  buildlist->g_output_first_tuple = false;
+		}
+	    }
+	}
+
+      /* this one will be altered further on and it's the actual output of the
+         initial scan; will contain group key and aggregate expressions */
+      xasl->outptr_list =
+	pt_to_outlist (parser, group_out_list, NULL, UNBOX_AS_VALUE);
 
       if (xasl->outptr_list == NULL)
 	{
@@ -15668,6 +15779,35 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
       attr_offsets = pt_make_identity_offsets (group_out_list);
 
+      /* set up hash aggregate lists */
+      if (buildlist->g_hash_eligible)
+	{
+	  /* regulist for hash key during initial scan */
+	  buildlist->g_hk_scan_regu_list =
+	    pt_to_regu_variable_list (parser, group_out_list, UNBOX_AS_VALUE,
+				      buildlist->g_val_list, attr_offsets);
+
+	  /* regulist for hash key during sort operation */
+	  buildlist->g_hk_sort_regu_list =
+	    pt_to_position_regu_variable_list (parser,
+					       group_out_list,
+					       buildlist->g_val_list,
+					       attr_offsets);
+	}
+      else
+	{
+	  buildlist->g_hk_sort_regu_list = NULL;
+	  buildlist->g_hk_scan_regu_list = NULL;
+	}
+
+      /* this will load values from initial scan into g_val_list, a bypass
+         of outptr_list => (listfile) => g_regu_list => g_vallist; this
+         will be modified when building aggregate nodes */
+      buildlist->g_scan_regu_list =
+	pt_to_regu_variable_list (parser, group_out_list, UNBOX_AS_VALUE,
+				  buildlist->g_val_list, attr_offsets);
+
+      /* regulist for loading from listfile */
       buildlist->g_regu_list =
 	pt_to_position_regu_variable_list (parser,
 					   group_out_list,
@@ -15699,7 +15839,29 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 				   xasl->outptr_list,
 				   buildlist->g_val_list,
 				   buildlist->g_regu_list,
+				   buildlist->g_scan_regu_list,
 				   group_out_list, &buildlist->g_grbynum_val);
+
+      /* compute function count */
+      buildlist->g_func_count = 0;
+      agg_list = aggregate;
+      while (agg_list != NULL)
+	{
+	  buildlist->g_func_count++;
+	  agg_list = agg_list->next;
+	}
+
+      /* compute hash key size */
+      buildlist->g_hkey_size = 0;
+      if (buildlist->g_hash_eligible)
+	{
+	  REGU_VARIABLE_LIST regu_list = buildlist->g_hk_scan_regu_list;
+	  while (regu_list != NULL)
+	    {
+	      buildlist->g_hkey_size++;
+	      regu_list = regu_list->next;
+	    }
+	}
 
       /* set current_listfile only around call to make g_outptr_list
        * and havein_pred */
@@ -16547,7 +16709,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 			  xasl);
 
   aggregate = pt_to_aggregate (parser, select_node, NULL, NULL,
-			       NULL, NULL, &buildvalue->grbynum_val);
+			       NULL, NULL, NULL, &buildvalue->grbynum_val);
 
   /* the calls pt_to_out_list, pt_to_spec_list, and pt_to_if_pred,
    * record information in the "symbol_info" structure
@@ -19210,6 +19372,9 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names,
 	  statement->info.query.q.select.group_by = group_by;
 	  PT_SELECT_INFO_SET_FLAG (statement,
 				   PT_SELECT_INFO_MULTI_UPDATE_AGG);
+
+	  /* can't use hash aggregation for this, might mess up order */
+	  statement->info.query.q.select.hint |= PT_HINT_NO_HASH_AGGREGATE;
 	}
 
       /* don't allow orderby_for without order_by */

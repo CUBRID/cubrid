@@ -442,6 +442,21 @@ struct arith_list_node
 					 * pseudo-random sequence */
 };
 
+typedef struct aggregate_accumulator AGGREGATE_ACCUMULATOR;
+struct aggregate_accumulator
+{
+  DB_VALUE *value;		/* value of the aggregate */
+  DB_VALUE *value2;		/* for GROUP_CONCAT, STTDEV and VARIANCE */
+  int curr_cnt;			/* current number of items */
+};
+
+typedef struct aggregate_accumulator_domain AGGREGATE_ACCUMULATOR_DOMAIN;
+struct aggregate_accumulator_domain
+{
+  TP_DOMAIN *value_dom;		/* domain of value */
+  TP_DOMAIN *value2_dom;	/* domain of value2 */
+};
+
 typedef struct aggregate_dist_percent_info AGGREGATE_DIST_PERCENT_INFO;
 struct aggregate_dist_percent_info
 {
@@ -455,9 +470,6 @@ struct aggregate_list_node
 {
   AGGREGATE_TYPE *next;		/* next aggregate node */
   TP_DOMAIN *domain;		/* domain of the result */
-  DB_VALUE *value;		/* value of the aggregate */
-  DB_VALUE *value2;		/* for GROUP_CONCAT, STTDEV and VARIANCE */
-  int curr_cnt;			/* current number of items */
   FUNC_TYPE function;		/* aggregate function name */
   QUERY_OPTIONS option;		/* DISTINCT/ALL option */
   DB_TYPE opr_dbtype;		/* Operand values data type */
@@ -468,6 +480,30 @@ struct aggregate_list_node
   SORT_LIST *sort_list;		/* for sorting elements before aggregation;
 				 * used by GROUP_CONCAT */
   AGGREGATE_DIST_PERCENT_INFO agg_info;	/* for CUME_DIST and PERCENT_RANK calculation; */
+  AGGREGATE_ACCUMULATOR accumulator;	/* holds runtime values, only for
+					   evaluation */
+  AGGREGATE_ACCUMULATOR_DOMAIN accumulator_domain;	/* holds domain info on
+							   accumulator */
+};
+
+/* aggregate evaluation hash key */
+typedef struct aggregate_hash_key AGGREGATE_HASH_KEY;
+struct aggregate_hash_key
+{
+  int val_count;		/* key size */
+  bool free_values;		/* true if values need to be freed */
+  DB_VALUE **values;		/* value array */
+};
+
+/* aggregate evaluation hash value */
+typedef struct aggregate_hash_value AGGREGATE_HASH_VALUE;
+struct aggregate_hash_value
+{
+  int curr_size;		/* last computed size of structure */
+  int tuple_count;		/* # of tuples aggregated in structure */
+  int func_count;		/* # of functions (i.e. accumulators) */
+  AGGREGATE_ACCUMULATOR *accumulators;	/* function accumulators */
+  QFILE_TUPLE_RECORD first_tuple;	/* first aggregated tuple */
 };
 
 typedef struct analytic_ntile_function_info ANALYTIC_NTILE_FUNCTION_INFO;
