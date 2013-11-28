@@ -4873,6 +4873,7 @@ qo_alloc_index (QO_ENV * env, int n)
       entryp->seg_other_terms = NULL;
       bitset_init (&(entryp->terms), env);
       bitset_init (&(entryp->key_filter_terms), env);
+      entryp->all_unique_index_columns_are_equi_terms = false;
       entryp->cover_segments = false;
       entryp->is_iss_candidate = false;
       entryp->multi_range_opt = false;

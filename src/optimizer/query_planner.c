@@ -2098,6 +2098,8 @@ qo_iscan_cost (QO_PLAN * planp)
 	   * thus to force the optimizer to select this scan.
 	   */
 	  qo_zero_cost (planp);
+
+	  index_entryp->all_unique_index_columns_are_equi_terms = true;
 	  return;
 	}
     }
@@ -4016,6 +4018,18 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
   if (a->plan_type == QO_PLANTYPE_SCAN && b->plan_type == QO_PLANTYPE_SCAN)
     {
+      /* check if it is an unique index and all columns are equi */
+      if (qo_is_all_unique_index_columns_are_equi_terms (a)
+	  && !qo_is_all_unique_index_columns_are_equi_terms (b))
+	{
+	  return PLAN_COMP_LT;
+	}
+      if (!qo_is_all_unique_index_columns_are_equi_terms (a)
+	  && qo_is_all_unique_index_columns_are_equi_terms (b))
+	{
+	  return PLAN_COMP_GT;
+	}
+
       /* check multi range optimization */
       if (qo_is_iscan_with_multi_range_opt (a)
 	  && !qo_is_iscan_with_multi_range_opt (b))
@@ -4028,6 +4042,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  return PLAN_COMP_GT;
 	}
 
+      /* check covering index scan */
       if (qo_plan_coverage_index (a) && qo_is_seq_scan (b))
 	{
 	  return PLAN_COMP_LT;
@@ -10631,6 +10646,27 @@ qo_index_scan_order_by_new (QO_INFO * info, QO_NODE * node,
   plan = qo_top_plan_new (plan);
 
   return plan;
+}
+
+/*
+ * qo_is_all_unique_index_columns_are_equi_terms () - 
+ *   check if the current plan uses and 
+ *   index scan with all_unique_index_columns_are_equi_terms 
+ *
+ * return    : true/false
+ * plan (in) : plan to verify
+ */
+bool
+qo_is_all_unique_index_columns_are_equi_terms (QO_PLAN * plan)
+{
+  if (qo_is_iscan (plan) && plan->plan_un.scan.index
+      && plan->plan_un.scan.index->head
+      && (plan->plan_un.scan.index->head->
+	  all_unique_index_columns_are_equi_terms))
+    {
+      return true;
+    }
+  return false;
 }
 
 /*
