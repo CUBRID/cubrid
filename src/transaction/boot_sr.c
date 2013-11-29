@@ -2521,6 +2521,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
   char lob_pathbuf[LOB_PATH_PREFIX_MAX + PATH_MAX];
   char dbtxt_label[PATH_MAX];
   char fixed_pathbuf[PATH_MAX];
+  char original_namebuf[PATH_MAX];
 #if defined (NDEBUG)
   char format[BOOT_FORMAT_MAX_LENGTH];
 #endif
@@ -2788,8 +2789,18 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 	   * Note: we do not call xboot_delete since it shuttdown the system and
 	   *       update database.txt that we have a read copy of its content.
 	   */
-	  error_code = boot_remove_all_volumes (thread_p, boot_Db_full_name,
-						log_path, log_prefix,
+
+	  /* Note: for database replacement, we need to remove the old database 
+	   *       with its original path!
+	   */
+	  memset (original_namebuf, 0, sizeof (original_namebuf));
+
+	  /* Compose the original full name of the database */
+	  snprintf (original_namebuf, sizeof (original_namebuf), "%s%c%s",
+		    dir->pathname, PATH_SEPARATOR, dir->name);
+
+	  error_code = boot_remove_all_volumes (thread_p, original_namebuf,
+						dir->logpath, log_prefix,
 						false, true);
 	  if (error_code != NO_ERROR)
 	    {
