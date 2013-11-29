@@ -3973,7 +3973,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_AGG_HASH_RESPECT_ORDER,
-   (PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_agg_hash_respect_order_flag,
    (void *) &prm_agg_hash_respect_order_default,
