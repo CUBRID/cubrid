@@ -768,7 +768,7 @@ AC_ARG_WITH([expat],
 AS_IF([test "$with_cci_only" = "yes"], [with_expat=no],
 	[AS_IF([test "$with_expat" = "builtin"],
 		[AC_CONFIG_SUBDIRS([external/expat-2.0.1])
-		EXPAT_LIBS="\$(top_builddir)/external/lib/libexpat.la"
+		EXPAT_LIBS="\$(top_builddir)/external/expat-2.0.1/libexpat.la"
 		EXPAT_INC="-I\$(top_builddir)/external/include/expat"
 		EXTERNAL_PKGS="$EXTERNAL_PKGS expat-2.0.1"],
 		[EXPAT_LIBS="-L$with_expat/lib -lexpat"

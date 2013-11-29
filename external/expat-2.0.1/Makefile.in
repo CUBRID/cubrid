@@ -80,9 +80,8 @@ install: xmlwf/xmlwf installlib
 	$(LIBTOOL) --mode=install $(INSTALL_PROGRAM) xmlwf/xmlwf $(DESTDIR)$(bindir)/xmlwf
 	$(INSTALL_DATA) $(MANFILE) $(DESTDIR)$(man1dir)
 
-installlib: $(LIBRARY) $(APIHEADER)
-	$(mkinstalldirs) $(DESTDIR)$(libdir) $(DESTDIR)$(includedir)
-	$(LIBTOOL) --mode=install $(INSTALL) $(LIBRARY) $(DESTDIR)$(libdir)/$(LIBRARY)
+installlib: $(APIHEADER)
+	$(mkinstalldirs) $(DESTDIR)$(includedir)
 	for FN in $(APIHEADER) ; do $(INSTALL_DATA) $$FN $(DESTDIR)$(includedir) ; done
 
 uninstall: uninstalllib
@@ -90,7 +89,6 @@ uninstall: uninstalllib
 	rm -f $(DESTDIR)$(man1dir)/xmlwf.1
 
 uninstalllib:
-	$(LIBTOOL) --mode=uninstall rm -f $(DESTDIR)$(libdir)/$(LIBRARY)
 	rm -f $(DESTDIR)$(includedir)/expat.h
 	rm -f $(DESTDIR)$(includedir)/expat_external.h
 
@@ -117,7 +115,7 @@ LTFLAGS = --silent
 COMPILE = $(CC) $(INCLUDES) $(CFLAGS) $(DEFS) $(CPPFLAGS)
 CXXCOMPILE = $(CXX) $(INCLUDES) $(CXXFLAGS) $(DEFS) $(CPPFLAGS)
 LTCOMPILE = $(LIBTOOL) $(LTFLAGS) --mode=compile $(COMPILE)
-LINK_LIB = $(LIBTOOL) $(LTFLAGS) --mode=link $(COMPILE) -no-undefined $(VSNFLAG) -rpath $(libdir) $(LDFLAGS) -o $@
+LINK_LIB = $(LIBTOOL) $(LTFLAGS) --mode=link $(COMPILE) -no-undefined $(VSNFLAG) $(LDFLAGS) -o $@
 LINK_EXE = $(LIBTOOL) $(LTFLAGS) --mode=link $(COMPILE) $(LDFLAGS) -o $@
 LINK_CXX_EXE = $(LIBTOOL) $(LTFLAGS) --mode=link $(CXXCOMPILE) $(LDFLAGS) -o $@
 

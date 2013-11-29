@@ -233,15 +233,15 @@ lib_LTLIBRARIES = \
 libdbgw3_la_SOURCES = \
         $(dbgw3_SOURCES)
 libdbgw3_la_CPPFLAGS = \
-        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR)
-libdbgw3_la_LDFLAGS = -version-number @LT_VERSION@		
+        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) -fPIC
+libdbgw3_la_LDFLAGS = -version-number @LT_VERSION@
 libdbgw3_la_LIBADD = @EXPAT_LIBS@ -lrt
 libdbgw3_la_LINK = $(CXXLINK)
 
 libdbgw3_oracle_la_SOURCES = \
         $(dbgw3_oracle_SOURCES)
 libdbgw3_oracle_la_CPPFLAGS = \
-        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) @ORACLE_INC_PATH@ -DDBGW_ORACLE
+        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) -fPIC @ORACLE_INC_PATH@ -DDBGW_ORACLE
 libdbgw3_oracle_la_LDFLAGS = -version-number @LT_VERSION@ @ORACLE_LIB_PATH@
 libdbgw3_oracle_la_LIBADD = @EXPAT_LIBS@ -lclntsh -lnnz11 -lrt
 libdbgw3_oracle_la_LINK = $(CXXLINK)
@@ -249,7 +249,7 @@ libdbgw3_oracle_la_LINK = $(CXXLINK)
 libdbgw3_mysql_la_SOURCES = \
         $(dbgw3_mysql_SOURCES)
 libdbgw3_mysql_la_CPPFLAGS = \
-        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) @MYSQL51_INC_PATH@ -DDBGW_MYSQL
+        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) -fPIC @MYSQL51_INC_PATH@ -DDBGW_MYSQL
 libdbgw3_mysql_la_LDFLAGS = -version-number @LT_VERSION@ @MYSQL51_LIB_PATH@
 libdbgw3_mysql_la_LIBADD = @EXPAT_LIBS@ -lmysqlclient -lrt
 libdbgw3_mysql_la_LINK = $(CXXLINK)
@@ -257,7 +257,7 @@ libdbgw3_mysql_la_LINK = $(CXXLINK)
 libdbgw3_mysql61_la_SOURCES = \
         $(dbgw3_mysql_SOURCES)
 libdbgw3_mysql61_la_CPPFLAGS = \
-        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) @MYSQL_INC_PATH@ -DDBGW_MYSQL
+        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) -fPIC @MYSQL_INC_PATH@ -DDBGW_MYSQL
 libdbgw3_mysql61_la_LDFLAGS = -version-number @LT_VERSION@ @MYSQL_LIB_PATH@
 libdbgw3_mysql61_la_LIBADD = @EXPAT_LIBS@ -lmysqlclient -lrt
 libdbgw3_mysql61_la_LINK = $(CXXLINK)
@@ -265,7 +265,7 @@ libdbgw3_mysql61_la_LINK = $(CXXLINK)
 libdbgw3_nbase_t_la_SOURCES = \
         $(dbgw3_nbase_t_SOURCES)
 libdbgw3_nbase_t_la_CPPFLAGS = \
-        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) @NBASE_T_INC_PATH@ -DDBGW_NBASE_T
+        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) -fPIC @NBASE_T_INC_PATH@ -DDBGW_NBASE_T
 libdbgw3_nbase_t_la_LDFLAGS = -version-number @LT_VERSION@ @NBASE_T_LIB_PATH@ -lz
 libdbgw3_nbase_t_la_LIBADD = @EXPAT_LIBS@ @JANSSON_LIBS@ -lnbaseclient
 libdbgw3_nbase_t_la_LINK = $(CXXLINK)
@@ -273,7 +273,7 @@ libdbgw3_nbase_t_la_LINK = $(CXXLINK)
 libdbgw3_all_la_SOURCES = \
         $(dbgw3_all_SOURCES)
 libdbgw3_all_la_CPPFLAGS = \
-        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) @MYSQL51_INC_PATH@ -DDBGW_ALL \
+        $(AM_CPPFLAGS) @SRC_INC@ -I$(CCI_DIR) -I$(BROKER_DIR) -fPIC @MYSQL51_INC_PATH@ -DDBGW_ALL \
         @ORACLE_INC_PATH@
 libdbgw3_all_la_LDFLAGS = -version-number @LT_VERSION@ @MYSQL51_LIB_PATH@ @ORACLE_LIB_PATH@
 libdbgw3_all_la_LIBADD = @EXPAT_LIBS@ -lclntsh -lnnz11 -lmysqlclient -lrt
