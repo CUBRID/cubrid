@@ -5823,7 +5823,30 @@ error:
   return error_code;
 }
 
-
+/*
+ * locator_delete_force () - Delete the given object
+ *
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   hfid(in): Heap where the object is going to be inserted
+ *   oid(in): The object identifier
+ *   search_btid(in): The BTID of the tree where oid was found
+ *   search_btid_duplicate_key_locked(in): true, if duplicate key has been
+ *					   locked when searching in
+ *					   search_btid
+ *   has_index(in): false if we now for sure that there is not any index
+ *                   on the instances of the class.
+ *   op_type(in):
+ *   scan_cache(in/out): Scan cache used to estimate the best space pages
+ *                   between heap changes.
+ *   force_count(in):
+ *   idx_action_flag(in): is moving record between partitioned table? 
+ *			  If FOR_MOVE, this delete&insert is caused by 
+ *			  'UPDATE ... SET ...', NOT 'DELETE FROM ...'
+ *   
+ * Note: The given object is deleted on this heap and all appropiate
+ *              index entries are deleted.
+ */
 int
 locator_delete_force (THREAD_ENTRY * thread_p,
 		      HFID * hfid, OID * oid,
@@ -5839,6 +5862,31 @@ locator_delete_force (THREAD_ENTRY * thread_p,
 					force_count, FOR_INSERT_OR_DELETE);
 }
 
+/*
+ * locator_delete_force_for_moving () - Delete the given object
+ *                                      To move record between partitions.
+ *
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   hfid(in): Heap where the object is going to be inserted
+ *   oid(in): The object identifier
+ *   search_btid(in): The BTID of the tree where oid was found
+ *   search_btid_duplicate_key_locked(in): true, if duplicate key has been
+ *					   locked when searching in
+ *					   search_btid
+ *   has_index(in): false if we now for sure that there is not any index
+ *                   on the instances of the class.
+ *   op_type(in):
+ *   scan_cache(in/out): Scan cache used to estimate the best space pages
+ *                   between heap changes.
+ *   force_count(in):
+ *   idx_action_flag(in): is moving record between partitioned table? 
+ *			  If FOR_MOVE, this delete&insert is caused by 
+ *			  'UPDATE ... SET ...', NOT 'DELETE FROM ...'
+ *   
+ * Note: The given object is deleted on this heap and all appropiate
+ *              index entries are deleted.
+ */
 static int
 locator_delete_force_for_moving (THREAD_ENTRY * thread_p,
 				 HFID * hfid,
@@ -5857,7 +5905,9 @@ locator_delete_force_for_moving (THREAD_ENTRY * thread_p,
 }
 
 /*
- * locator_delete_force_internal () - Delete the given object
+ * locator_delete_force_internal () - helper function for 
+ *                                    locator_delete_force () and
+ *                                    locator_delete_force_for_moving ()
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
@@ -6053,29 +6103,30 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
 	{
 	  if (idx_action_flag == FOR_INSERT_OR_DELETE)
 	    {
-	      error_code = locator_add_or_remove_index (thread_p,
-							&copy_recdes,
-							oid, &class_oid,
-							search_btid,
-							search_btid_duplicate_key_locked,
-							false, op_type,
-							scan_cache, true,
-							true, hfid, NULL);
+	      error_code =
+		locator_add_or_remove_index (thread_p,
+					     &copy_recdes,
+					     oid, &class_oid,
+					     search_btid,
+					     search_btid_duplicate_key_locked,
+					     false, op_type,
+					     scan_cache, true,
+					     true, hfid, NULL);
 	    }
 	  else
 	    {
-	      error_code = locator_add_or_remove_index_for_moving (thread_p,
-								   &copy_recdes,
-								   oid,
-								   &class_oid,
-								   search_btid,
-								   search_btid_duplicate_key_locked,
-								   false,
-								   op_type,
-								   scan_cache,
-								   true, true,
-								   hfid,
-								   NULL);
+	      error_code =
+		locator_add_or_remove_index_for_moving (thread_p,
+							&copy_recdes,
+							oid,
+							&class_oid,
+							search_btid,
+							search_btid_duplicate_key_locked,
+							false,
+							op_type,
+							scan_cache,
+							true, true,
+							hfid, NULL);
 	    }
 
 	  if (error_code != NO_ERROR)
@@ -7011,6 +7062,33 @@ locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attrinfo,
   return false;
 }
 
+/*
+ * locator_add_or_remove_index () - Add or remove index entries
+ *
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   recdes(in): The object
+ *   inst_oid(in): The object identifier
+ *   class_oid(in): The class object identifier
+ *   search_btid(in): The BTID of the tree used when oid it was found
+ *		      (NULL when add index entries)
+ *   search_btid_duplicate_key_locked(in): true, if duplicate key has been
+ *					   locked when searching in
+ *					   search_btid
+ *   is_insert(in): whether to add or remove the object from the indexes
+ *   op_type(in):
+ *   scan_cache(in):
+ *   datayn(in): true if the target object is "data",
+ *                false if the target object is "schema"
+ *   need_replication(in): true if replication is needed
+ *   hfid(in):
+ *   func_preds(in): cached function index expressions
+ *   idx_action_flag(in): is moving record between partitioned table? 
+ *			 If FOR_MOVE, this delete(&insert) is caused by 
+ *			 'UPDATE ... SET ...', NOT 'DELETE FROM ...'
+ *			 
+ * Note:Either insert indices (in_insert) or delete indices.
+ */
 int
 locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
 			     OID * inst_oid, OID * class_oid,
@@ -7030,6 +7108,34 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
 					       FOR_INSERT_OR_DELETE);
 }
 
+/*
+ * locator_add_or_remove_index_for_moving () - Add or remove index entries
+ *                                             To move record between partitions.
+ *
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   recdes(in): The object
+ *   inst_oid(in): The object identifier
+ *   class_oid(in): The class object identifier
+ *   search_btid(in): The BTID of the tree used when oid it was found
+ *		      (NULL when add index entries)
+ *   search_btid_duplicate_key_locked(in): true, if duplicate key has been
+ *					   locked when searching in
+ *					   search_btid
+ *   is_insert(in): whether to add or remove the object from the indexes
+ *   op_type(in):
+ *   scan_cache(in):
+ *   datayn(in): true if the target object is "data",
+ *                false if the target object is "schema"
+ *   need_replication(in): true if replication is needed
+ *   hfid(in):
+ *   func_preds(in): cached function index expressions
+ *   idx_action_flag(in): is moving record between partitioned table? 
+ *			 If FOR_MOVE, this delete(&insert) is caused by 
+ *			 'UPDATE ... SET ...', NOT 'DELETE FROM ...'
+ *			 
+ * Note:Either insert indices (in_insert) or delete indices.
+ */
 static int
 locator_add_or_remove_index_for_moving (THREAD_ENTRY * thread_p,
 					RECDES * recdes,
@@ -7051,7 +7157,9 @@ locator_add_or_remove_index_for_moving (THREAD_ENTRY * thread_p,
 }
 
 /*
- * locator_add_or_remove_index_internal () - Add or remove index entries
+ * locator_add_or_remove_index_internal () - helper function for 
+ *                                     locator_add_or_remove_index () and
+ *                                     locator_add_or_remove_index_for_moving ()
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
