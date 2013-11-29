@@ -3062,6 +3062,30 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
 		     "Process failure detected", error_string);
     }
 
+  if (hb_Resource->state == HB_NSTATE_MASTER
+      && proc->type == HB_PTYPE_SERVER && hb_Cluster->is_isolated == false)
+    {
+      if (HB_GET_ELAPSED_TIME (proc->ktime, proc->rtime) <
+	  prm_get_integer_value
+	  (PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS))
+	{
+	  /* demote the current node */
+	  hb_Resource->state = HB_NSTATE_SLAVE;
+
+	  snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			 ER_HB_PROCESS_EVENT, 2,
+			 "Process failure repeated within a short period of time. "
+			 "The current node will be demoted", error_string);
+
+	  /* shutdown working server processes to change its role to slave */
+	  error =
+	    hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL,
+				   HB_JOB_TIMER_IMMEDIATELY);
+	  assert (error == NO_ERROR);
+	}
+    }
+
   job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
   if (job_arg == NULL)
     {
