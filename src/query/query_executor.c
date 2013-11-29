@@ -28433,6 +28433,9 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p,
       proc->agg_hash_context.hash_table = NULL;
     }
 
+  /* close scan */
+  qfile_close_scan (thread_p, &proc->agg_hash_context.part_scan_id);
+
   /* free partial lists */
   if (proc->agg_hash_context.part_list_id != NULL)
     {
@@ -28450,9 +28453,6 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p,
       qfile_free_list_id (proc->agg_hash_context.sorted_part_list_id);
       proc->agg_hash_context.sorted_part_list_id = NULL;
     }
-
-  /* close scan */
-  qfile_close_scan (thread_p, &proc->agg_hash_context.part_scan_id);
 
   /* free temp keys and values */
   if (proc->agg_hash_context.temp_key != NULL)

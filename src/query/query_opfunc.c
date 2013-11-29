@@ -12257,6 +12257,7 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p,
 	  return rc;
 	}
 
+      (void) pr_clear_value (key->values[i]);
       if (flag == V_BOUND)
 	{
 	  (key_dom[i]->type->data_readval) (&buf, key->values[i], key_dom[i],
@@ -12278,6 +12279,7 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p,
 	  return rc;
 	}
 
+      (void) pr_clear_value (value->accumulators[i].value);
       if (flag == V_BOUND)
 	{
 	  (acc_dom[i]->value_dom->type->data_readval) (&buf,
@@ -12298,6 +12300,7 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p,
 	  return rc;
 	}
 
+      (void) pr_clear_value (value->accumulators[i].value2);
       if (flag == V_BOUND)
 	{
 	  (acc_dom[i]->value2_dom->type->data_readval) (&buf,
