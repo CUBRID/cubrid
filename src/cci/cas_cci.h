@@ -201,8 +201,10 @@ extern "C"
 /* database connection URL */
 #define CCI_DS_PROPERTY_URL				"url"
 
-/* number of connection that are created when the pool is started */
+/* number of connection that are borrowed */
 #define CCI_DS_PROPERTY_POOL_SIZE			"pool_size"
+/* number of connection that are created when the pool is started */
+#define CCI_DS_PROPERTY_MAX_POOL_SIZE			"max_pool_size"
 /* max wait msec for a connection to be returned, or -1 to wait indefinitely */
 #define CCI_DS_PROPERTY_MAX_WAIT			"max_wait"
 /* enable prepared statement pooling */
@@ -642,7 +644,8 @@ extern "C"
     CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT,
     CCI_DS_KEY_DEFAULT_AUTOCOMMIT,
     CCI_DS_KEY_DEFAULT_ISOLATION,
-    CCI_DS_KEY_DEFAULT_LOCK_TIMEOUT
+    CCI_DS_KEY_DEFAULT_LOCK_TIMEOUT,
+    CCI_DS_KEY_MAX_POOL_SIZE
   } T_CCI_DATASOURCE_KEY;
 
 #if !defined(CAS)

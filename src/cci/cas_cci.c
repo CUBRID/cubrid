@@ -236,7 +236,8 @@ static const char *datasource_key[] = {
   CCI_DS_PROPERTY_DISCONNECT_ON_QUERY_TIMEOUT,
   CCI_DS_PROPERTY_DEFAULT_AUTOCOMMIT,
   CCI_DS_PROPERTY_DEFAULT_ISOLATION,
-  CCI_DS_PROPERTY_DEFAULT_LOCK_TIMEOUT
+  CCI_DS_PROPERTY_DEFAULT_LOCK_TIMEOUT,
+  CCI_DS_PROPERTY_MAX_POOL_SIZE
 };
 
 CCI_MALLOC_FUNCTION cci_malloc = malloc;
@@ -5829,6 +5830,23 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
       goto create_datasource_error;
     }
 
+  if (!cci_property_get_int (prop, CCI_DS_KEY_MAX_POOL_SIZE,
+			     &ds->max_pool_size, ds->pool_size,
+			     1, INT_MAX, err_buf))
+    {
+      goto create_datasource_error;
+    }
+  if (ds->max_pool_size < ds->pool_size)
+    {
+      err_buf->err_code = CCI_ER_PROPERTY_TYPE;
+      if (err_buf->err_msg)
+	{
+	  snprintf (err_buf->err_msg, 1023,
+		    "'max_pool_size' should be greater than 'pool_size'");
+	}
+      goto create_datasource_error;
+    }
+
   if (!cci_property_get_int (prop, CCI_DS_KEY_MAX_WAIT, &ds->max_wait,
 			     CCI_DS_MAX_WAIT_DEFAULT, 1, INT_MAX,
 			     &latest_err_buf))
@@ -5886,7 +5904,7 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
       goto create_datasource_error;
     }
 
-  ds->con_handles = CALLOC (ds->pool_size, sizeof (T_CCI_CONN));
+  ds->con_handles = CALLOC (ds->max_pool_size, sizeof (T_CCI_CONN));
   if (ds->con_handles == NULL)
     {
       set_error_buffer (&latest_err_buf, CCI_ER_NO_MORE_MEMORY,
@@ -5913,7 +5931,7 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
   pthread_cond_init ((pthread_cond_t *) ds->cond, NULL);
 
   ds->num_idle = ds->pool_size;
-  for (i = 0; i < ds->pool_size; i++)
+  for (i = 0; i < ds->max_pool_size; i++)
     {
       T_CON_HANDLE *handle;
       int id;
@@ -5950,7 +5968,7 @@ create_datasource_error:
 
   if (ds->con_handles != NULL)
     {
-      for (i = 0; i < ds->pool_size; i++)
+      for (i = 0; i < ds->max_pool_size; i++)
 	{
 	  if (ds->con_handles[i] > 0)
 	    {
@@ -5994,7 +6012,7 @@ cci_datasource_destroy (T_CCI_DATASOURCE * ds)
 
   if (ds->con_handles)
     {
-      for (i = 0; i < ds->pool_size; i++)
+      for (i = 0; i < ds->max_pool_size; i++)
 	{
 	  T_CCI_CONN id = ds->con_handles[i];
 	  if (id == 0)
@@ -6045,7 +6063,10 @@ cci_datasource_change_property (T_CCI_DATASOURCE * ds, const char *key,
       return CCI_ER_NO_MORE_MEMORY;
     }
 
-  if (!cci_property_set (properties, key, val))
+  /* critical section begin */
+  pthread_mutex_lock ((pthread_mutex_t *) ds->mutex);
+
+  if (!cci_property_set (properties, (char *) key, (char *) val))
     {
       error = CCI_ER_NO_PROPERTY;
       goto change_property_end;
@@ -6113,12 +6134,36 @@ cci_datasource_change_property (T_CCI_DATASOURCE * ds, const char *key,
 
       ds->login_timeout = v;
     }
+  else if (strcasecmp (key, CCI_DS_PROPERTY_POOL_SIZE) == 0)
+    {
+      int v;
+
+      if (!cci_property_get_int (properties, CCI_DS_KEY_POOL_SIZE, &v,
+				 ds->max_pool_size, 1, INT_MAX, &err_buf))
+	{
+	  error = err_buf.err_code;
+	  goto change_property_end;
+	}
+
+
+      if (v > ds->max_pool_size)
+	{
+	  error = CCI_ER_PROPERTY_TYPE;
+	  goto change_property_end;
+	}
+
+      ds->num_idle += (v - ds->pool_size);
+      ds->pool_size = v;
+    }
   else
     {
       error = CCI_ER_NO_PROPERTY;
     }
 
 change_property_end:
+  pthread_mutex_unlock ((pthread_mutex_t *) ds->mutex);
+  /* critical section end */
+
   if (properties)
     {
       cci_property_destroy (properties);
@@ -6144,7 +6189,7 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 
   /* critical section begin */
   pthread_mutex_lock ((pthread_mutex_t *) ds->mutex);
-  if (ds->num_idle == 0)
+  if (ds->num_idle <= 0)
     {
       /* wait max_wait msecs */
       struct timespec ts;
@@ -6160,7 +6205,7 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 	  ts.tv_nsec -= 1000000000;
 	}
 
-      while (ds->num_idle == 0)
+      while (ds->num_idle <= 0)
 	{
 	  r = pthread_cond_timedwait ((pthread_cond_t *) ds->cond,
 				      (pthread_mutex_t *) ds->mutex, &ts);
@@ -6182,7 +6227,7 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 
   assert (ds->num_idle > 0);
 
-  for (i = 0; i < ds->pool_size; i++)
+  for (i = 0; i < ds->max_pool_size; i++)
     {
       if (ds->con_handles[i] > 0)
 	{
@@ -6250,7 +6295,7 @@ cci_datasource_release_internal (T_CCI_DATASOURCE * ds,
 
   /* critical section begin */
   pthread_mutex_lock ((pthread_mutex_t *) ds->mutex);
-  for (i = 0; i < ds->pool_size; i++)
+  for (i = 0; i < ds->max_pool_size; i++)
     {
       if (ds->con_handles[i] == -(con_handle->id))
 	{
@@ -6259,7 +6304,7 @@ cci_datasource_release_internal (T_CCI_DATASOURCE * ds,
 	}
     }
 
-  if (i == ds->pool_size)
+  if (i == ds->max_pool_size)
     {
       /* could not found con_handles */
       pthread_mutex_unlock ((pthread_mutex_t *) ds->mutex);
