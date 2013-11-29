@@ -1493,7 +1493,8 @@ la_find_required_lsa (LOG_LSA * required_lsa)
 
 /*
  * la_get_ha_apply_info() - 
- *   return: NO_ERROR or error code
+ *   returns  : error code, if execution failed
+ *              number of affected objects, if a success
  *
  * log_path(in) :
  * prefix_name(in) :
@@ -1507,7 +1508,7 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name,
 #define LA_IN_VALUE_COUNT       2
 #define LA_OUT_VALUE_COUNT      23
 
-  int error = NO_ERROR;
+  int res;
   int in_value_idx, out_value_idx;
   DB_VALUE in_value[LA_IN_VALUE_COUNT];
   DB_VALUE out_value[LA_OUT_VALUE_COUNT];
@@ -1559,11 +1560,11 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name,
 		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert_release (in_value_idx == LA_IN_VALUE_COUNT);
 
-  error = db_execute_with_values (query_buf, &result, &query_error,
-				  in_value_idx, &in_value[0]);
-  if (error > 0)
+  res = db_execute_with_values (query_buf, &result, &query_error,
+				in_value_idx, &in_value[0]);
+  if (res > 0)
     {
-      int pos;
+      int pos, error;
 
       pos = db_query_first_tuple (result);
       switch (pos)
@@ -1576,6 +1577,7 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name,
 						out_value);
 	  if (error != NO_ERROR)
 	    {
+	      res = error;
 	      break;
 	    }
 
@@ -1678,13 +1680,9 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name,
 	case DB_CURSOR_END:
 	case DB_CURSOR_ERROR:
 	default:
-	  error = ER_FAILED;
+	  res = ER_FAILED;
 	  break;
 	}
-    }
-  else
-    {
-      error = ER_FAILED;
     }
 
   db_query_end (result);
@@ -1693,7 +1691,7 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name,
       db_value_clear (&in_value[i]);
     }
 
-  return error;
+  return res;
 
 #undef LA_IN_VALUE_COUNT
 #undef LA_OUT_VALUE_COUNT
@@ -1704,7 +1702,7 @@ la_delete_ha_apply_info (void)
 {
 #define LA_IN_VALUE_COUNT       2
 
-  int error = NO_ERROR;
+  int res;
   LA_ACT_LOG *act_log;
   int i;
   int in_value_idx;
@@ -1729,7 +1727,7 @@ la_delete_ha_apply_info (void)
 		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert (in_value_idx == LA_IN_VALUE_COUNT);
 
-  error =
+  res =
     la_update_query_execute_with_values (query_buf, in_value_idx,
 					 &in_value[0], true);
   for (i = 0; i < in_value_idx; i++)
@@ -1737,7 +1735,7 @@ la_delete_ha_apply_info (void)
       db_value_clear (&in_value[i]);
     }
 
-  return error;
+  return res;
 
 #undef LA_IN_VALUE_COUNT
 }
@@ -1748,7 +1746,7 @@ la_insert_ha_apply_info (DB_DATETIME * creation_time)
 {
 #define LA_IN_VALUE_COUNT       15
 
-  int error = NO_ERROR;
+  int res;
   LA_ACT_LOG *act_log;
   int i;
   int in_value_idx;
@@ -1857,7 +1855,7 @@ la_insert_ha_apply_info (DB_DATETIME * creation_time)
 
   assert_release (in_value_idx == LA_IN_VALUE_COUNT);
 
-  error =
+  res =
     la_update_query_execute_with_values (query_buf, in_value_idx,
 					 &in_value[0], true);
   for (i = 0; i < in_value_idx; i++)
@@ -1865,9 +1863,9 @@ la_insert_ha_apply_info (DB_DATETIME * creation_time)
       db_value_clear (&in_value[i]);
     }
 
-  if (error < 0)
+  if (res <= 0)
     {
-      return error;
+      return res;
     }
 
   /* create log info */
@@ -1890,7 +1888,7 @@ la_insert_ha_apply_info (DB_DATETIME * creation_time)
       fclose (fp);
     }
 
-  return error;
+  return res;
 
 #undef LA_IN_VALUE_COUNT
 }
@@ -1899,7 +1897,7 @@ static int
 la_update_ha_apply_info_start_time (void)
 {
 #define LA_IN_VALUE_COUNT       2
-  int error = NO_ERROR;
+  int res;
   LA_ACT_LOG *act_log;
   int i;
   int in_value_idx;
@@ -1924,8 +1922,8 @@ la_update_ha_apply_info_start_time (void)
 		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert (in_value_idx == LA_IN_VALUE_COUNT);
 
-  error = la_update_query_execute_with_values (query_buf, in_value_idx,
-					       &in_value[0], true);
+  res = la_update_query_execute_with_values (query_buf, in_value_idx,
+					     &in_value[0], true);
   la_Info.is_apply_info_updated = true;
 
   for (i = 0; i < in_value_idx; i++)
@@ -1933,7 +1931,7 @@ la_update_ha_apply_info_start_time (void)
       db_value_clear (&in_value[i]);
     }
 
-  return error;
+  return res;
 
 #undef LA_IN_VALUE_COUNT
 }
@@ -1942,7 +1940,7 @@ static int
 la_update_ha_apply_info_log_record_time (time_t new_time)
 {
 #define LA_IN_VALUE_COUNT       3
-  int error = NO_ERROR;
+  int res;
   char query_buf[LA_QUERY_BUF_SIZE];
   DB_VALUE in_value[LA_IN_VALUE_COUNT];
   DB_DATETIME datetime;
@@ -1973,9 +1971,26 @@ la_update_ha_apply_info_log_record_time (time_t new_time)
 		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert_release (in_value_idx == LA_IN_VALUE_COUNT);
 
-  error = la_update_query_execute_with_values (query_buf, in_value_idx,
-					       &in_value[0], true);
-  if (error >= 0)
+  res = la_update_query_execute_with_values (query_buf, in_value_idx,
+					     &in_value[0], true);
+  if (res == 0)
+    {
+      /* it means db_ha_apply_info was deleted */
+      DB_DATETIME log_db_creation_time;
+
+      db_localdatetime (&la_Info.act_log.log_hdr->db_creation,
+			&log_db_creation_time);
+
+      res = la_insert_ha_apply_info (&log_db_creation_time);
+      if (res > 0)
+	{
+	  res =
+	    la_update_query_execute_with_values (query_buf, in_value_idx,
+						 &in_value[0], true);
+	}
+    }
+
+  if (res > 0)
     {
       la_Info.log_record_time = new_time;
       la_Info.is_apply_info_updated = true;
@@ -1986,7 +2001,7 @@ la_update_ha_apply_info_log_record_time (time_t new_time)
       db_value_clear (&in_value[i]);
     }
 
-  return error;
+  return res;
 #undef LA_IN_VALUE_COUNT
 }
 
@@ -1999,7 +2014,7 @@ la_update_ha_apply_info_log_record_time (time_t new_time)
 static int
 la_get_last_ha_applied_info (void)
 {
-  int error = NO_ERROR;
+  int res;
   LA_ACT_LOG *act_log;
   LA_HA_APPLY_INFO apply_info;
   time_t log_db_creation;
@@ -2008,10 +2023,10 @@ la_get_last_ha_applied_info (void)
 
   act_log = &la_Info.act_log;
 
-  error =
+  res =
     la_get_ha_apply_info (la_Info.log_path, act_log->log_hdr->prefix_name,
 			  &apply_info);
-  if (error == NO_ERROR)
+  if (res > 0)
     {
       LSA_COPY (&la_Info.committed_lsa, &apply_info.committed_lsa);
       LSA_COPY (&la_Info.committed_rep_lsa, &apply_info.committed_rep_lsa);
@@ -2027,16 +2042,21 @@ la_get_last_ha_applied_info (void)
       la_Info.commit_counter = apply_info.commit_counter;
       la_Info.fail_counter = apply_info.fail_counter;
     }
-  else
+  else if (res == 0)
     {
       insert_apply_info = true;
+    }
+  else
+    {
+      return res;
     }
 
   log_db_creation = act_log->log_hdr->db_creation;
   db_localdatetime (&log_db_creation, &log_db_creation_time);
 
-  if ((log_db_creation_time.date != apply_info.creation_time.date)
-      || (log_db_creation_time.time != apply_info.creation_time.time))
+  if (res != 0
+      && ((log_db_creation_time.date != apply_info.creation_time.date)
+	  || (log_db_creation_time.time != apply_info.creation_time.time)))
     {
       delete_apply_info = insert_apply_info = true;
     }
@@ -2065,26 +2085,30 @@ la_get_last_ha_applied_info (void)
     {
       if (delete_apply_info == true)
 	{
-	  error = la_delete_ha_apply_info ();
-	  if (error != NO_ERROR)
+	  res = la_delete_ha_apply_info ();
+	  if (res == 0)
 	    {
-	      return error;
+	      return ER_FAILED;
+	    }
+	  else if (res < 0)
+	    {
+	      return res;
 	    }
 	}
-      error = la_insert_ha_apply_info (&log_db_creation_time);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
+      res = la_insert_ha_apply_info (&log_db_creation_time);
     }
   else
     {
-      error = la_update_ha_apply_info_start_time ();
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+      res = la_update_ha_apply_info_start_time ();
+    }
+
+  if (res == 0)
+    {
+      return ER_FAILED;
+    }
+  else if (res < 0)
+    {
+      return res;
     }
 
   (void) db_commit_transaction ();
@@ -2092,12 +2116,13 @@ la_get_last_ha_applied_info (void)
   LSA_COPY (&la_Info.last_committed_lsa, &la_Info.committed_lsa);
   LSA_COPY (&la_Info.last_committed_rep_lsa, &la_Info.committed_rep_lsa);
 
-  return error;
+  return NO_ERROR;
 }
 
 /*
  * la_update_ha_last_applied_info() - update db_ha_apply_info table
- *   return: NO_ERROR or error code
+ *   returns  : error code, if execution failed
+ *              number of affected objects, if a success
  *
  * Note:
  *     called by APPLY thread
@@ -2106,7 +2131,7 @@ static int
 la_update_ha_last_applied_info (void)
 {
 #define LA_IN_VALUE_COUNT       22
-  int error = NO_ERROR;
+  int res;
   char query_buf[LA_QUERY_BUF_SIZE];
   DB_VALUE in_value[LA_IN_VALUE_COUNT];
   DB_DATETIME datetime;
@@ -2232,14 +2257,31 @@ la_update_ha_last_applied_info (void)
 		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert_release (in_value_idx == LA_IN_VALUE_COUNT);
 
-  error = la_update_query_execute_with_values (query_buf, in_value_idx,
-					       &in_value[0], true);
+  res = la_update_query_execute_with_values (query_buf, in_value_idx,
+					     &in_value[0], true);
+  if (res == 0)
+    {
+      /* it means db_ha_apply_info was deleted */
+      DB_DATETIME log_db_creation_time;
+
+      db_localdatetime (&la_Info.act_log.log_hdr->db_creation,
+			&log_db_creation_time);
+
+      res = la_insert_ha_apply_info (&log_db_creation_time);
+      if (res > 0)
+	{
+	  res =
+	    la_update_query_execute_with_values (query_buf, in_value_idx,
+						 &in_value[0], true);
+	}
+    }
+
   for (i = 0; i < in_value_idx; i++)
     {
       db_value_clear (&in_value[i]);
     }
 
-  return error;
+  return res;
 #undef LA_IN_VALUE_COUNT
 }
 
@@ -5262,13 +5304,14 @@ error_rtn:
 
 /*
  * la_update_query_execute()
- *   return: NO_ERROR or error code
+ *   returns  : error code, if execution failed
+ *              number of affected objects, if a success
  *   sql(in)
  */
 static int
 la_update_query_execute (const char *sql, bool au_disable)
 {
-  int error, au_save;
+  int res, au_save;
   DB_QUERY_RESULT *result;
   DB_QUERY_ERROR query_error;
 
@@ -5280,10 +5323,16 @@ la_update_query_execute (const char *sql, bool au_disable)
       AU_DISABLE (au_save);
     }
 
-  error = db_execute (sql, &result, &query_error);
-  if (error >= 0)
+  res = db_execute (sql, &result, &query_error);
+  if (res >= 0)
     {
+      int error;
+
       error = db_query_end (result);
+      if (error != NO_ERROR)
+	{
+	  res = error;
+	}
     }
 
   if (au_disable)
@@ -5291,12 +5340,13 @@ la_update_query_execute (const char *sql, bool au_disable)
       AU_ENABLE (au_save);
     }
 
-  return error;
+  return res;
 }
 
 /*
  * la_update_query_execute_with_values()
- *   return: NO_ERROR or error code
+ *   returns  : error code, if execution failed
+ *              number of affected objects, if a success
  *   sql(in)
  *   arg_count(in)
  *   vals(in)
@@ -5306,7 +5356,7 @@ static int
 la_update_query_execute_with_values (const char *sql, int arg_count,
 				     DB_VALUE * vals, bool au_disable)
 {
-  int error, au_save;
+  int res, au_save;
   DB_QUERY_RESULT *result;
   DB_QUERY_ERROR query_error;
 
@@ -5316,11 +5366,16 @@ la_update_query_execute_with_values (const char *sql, int arg_count,
       AU_DISABLE (au_save);
     }
 
-  error =
-    db_execute_with_values (sql, &result, &query_error, arg_count, vals);
-  if (error >= 0)
+  res = db_execute_with_values (sql, &result, &query_error, arg_count, vals);
+  if (res >= 0)
     {
+      int error;
+
       error = db_query_end (result);
+      if (error != NO_ERROR)
+	{
+	  res = error;
+	}
     }
 
   if (au_disable)
@@ -5328,7 +5383,7 @@ la_update_query_execute_with_values (const char *sql, int arg_count,
       AU_ENABLE (au_save);
     }
 
-  return error;
+  return res;
 }
 
 /*
@@ -5470,7 +5525,7 @@ la_apply_schema_log (LA_ITEM * item)
 	  er_stack_pop ();
 	}
 
-      if (la_update_query_execute (ddl, false) != NO_ERROR)
+      if (la_update_query_execute (ddl, false) < 0)
 	{
 	  error = er_errid ();
 	  error_msg = er_msg ();
@@ -6152,7 +6207,6 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 		    {
 		      la_Info.commit_counter++;
 		    }
-
 		}
 	    }
 	  while (!LSA_ISNULL (&lsa_apply));	/* if lsa_apply is not null then
@@ -6461,6 +6515,7 @@ la_change_state (void)
 static int
 la_log_commit (bool update_commit_time)
 {
+  int res;
   int error = NO_ERROR;
 
   (void) la_find_required_lsa (&la_Info.required_lsa);
@@ -6479,8 +6534,8 @@ la_log_commit (bool update_commit_time)
       return error;
     }
 
-  error = la_update_ha_last_applied_info ();
-  if (error == NO_ERROR)
+  res = la_update_ha_last_applied_info ();
+  if (res > 0)
     {
       error = la_commit_transaction ();
     }
@@ -6493,14 +6548,14 @@ la_log_commit (bool update_commit_time)
 		    "(%d|%d)",
 		    la_Info.committed_lsa.pageid,
 		    la_Info.committed_lsa.offset);
-      if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+      if (res == ER_NET_CANT_CONNECT_SERVER || res == ER_OBJ_NO_CONNECT)
 	{
 	  error = ER_NET_CANT_CONNECT_SERVER;
 	}
       else
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"Cannot update committed LSA, but ignore it");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+		  1, "failed to update db_ha_apply_info");
 	  error = NO_ERROR;
 	}
     }
@@ -7020,6 +7075,7 @@ la_log_page_check (const char *database_name, const char *log_path,
 		   LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa)
 {
   int error = NO_ERROR;
+  int res;
   char *atchar;
   char active_log_path[PATH_MAX];
   char *replica_time_bound_str;
@@ -7043,11 +7099,13 @@ la_log_page_check (const char *database_name, const char *log_path,
 
       la_init_ha_apply_info (&ha_apply_info);
 
-      error = la_get_ha_apply_info (log_path, database_name, &ha_apply_info);
-      if ((error != NO_ERROR)
+      res = la_get_ha_apply_info (log_path, database_name, &ha_apply_info);
+      if ((res <= 0)
 	  || (ha_apply_info.creation_time.date == 0
 	      && ha_apply_info.creation_time.time == 0))
 	{
+	  error = res;
+
 	  goto check_applied_info_end;
 	}
 
@@ -7639,7 +7697,11 @@ la_apply_log_file (const char *database_name, const char *log_path,
   error = la_get_last_ha_applied_info ();
   if (error != NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "Cannot find last LSA from DB");
+      er_stack_push ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+	      1, "failed to get last applied info");
+      er_stack_pop ();
+
       return error;
     }
 
@@ -7939,6 +8001,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	  /* apply it */
 	  LSA_SET_NULL (&prev_final);
 	  pg_ptr = &(log_buf->logpage);
+
 	  while (la_Info.final_lsa.pageid == log_buf->pageid
 		 && !la_applier_need_shutdown)
 	    {
