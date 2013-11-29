@@ -5370,7 +5370,6 @@ la_apply_schema_log (LA_ITEM * item)
     case CUBRID_STMT_DROP_SERIAL:
 
     case CUBRID_STMT_DROP_DATABASE:
-    case CUBRID_STMT_DROP_LABEL:
 
     case CUBRID_STMT_CREATE_STORED_PROCEDURE:
     case CUBRID_STMT_ALTER_STORED_PROCEDURE_OWNER:
@@ -5514,6 +5513,7 @@ la_apply_schema_log (LA_ITEM * item)
 	}
       break;
 
+    case CUBRID_STMT_DROP_LABEL:
     default:
       return NO_ERROR;
     }

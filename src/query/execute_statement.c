@@ -14448,10 +14448,6 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_schema.statement_type = CUBRID_STMT_DROP_SERIAL;
       break;
 
-    case PT_DROP_VARIABLE:
-      repl_schema.statement_type = CUBRID_STMT_DROP_LABEL;
-      break;
-
     case PT_CREATE_STORED_PROCEDURE:
       repl_schema.statement_type = CUBRID_STMT_CREATE_STORED_PROCEDURE;
       break;
@@ -14514,6 +14510,7 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
 
     case PT_UPDATE_STATS:	/* UPDATE STATISTICS statements are not replicated intentionally. */
+    case PT_DROP_VARIABLE:	/* DROP VARIABLE statements are not replicated intentionally. */
     default:
       return NO_ERROR;
     }
