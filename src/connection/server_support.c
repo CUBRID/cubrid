@@ -2557,10 +2557,13 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p,
 	  new_state = table->next_state;
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, new_state);
+	  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+		{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_CSS_SERVER_HA_MODE_CHANGE, 2,
 		  css_ha_server_state_string (ha_Server_state),
 		  css_ha_server_state_string (new_state));
+	    }
 	  ha_Server_state = new_state;
 	  /* sync up the current HA state with the system parameter */
 	  prm_set_integer_value (PRM_ID_HA_SERVER_STATE, ha_Server_state);
@@ -2749,10 +2752,13 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 	  ha_Server_state = state;
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, state);
+	  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+	  {
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_CSS_SERVER_HA_MODE_CHANGE, 2,
 		  css_ha_server_state_string (ha_Server_state),
 		  css_ha_server_state_string (state));
+	  }
 	}
     }
 
