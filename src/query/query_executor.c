@@ -2761,6 +2761,27 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 						  final);
 	    pg_cnt +=
 	      qexec_clear_regu_list (xasl, buildlist->a_regu_list, final);
+
+	    /* group by regu list */
+	    if (buildlist->g_scan_regu_list)
+	      {
+		pg_cnt +=
+		  qexec_clear_regu_list (xasl, buildlist->g_scan_regu_list,
+					 final);
+	      }
+	    if (buildlist->g_hk_scan_regu_list)
+	      {
+		pg_cnt +=
+		  qexec_clear_regu_list (xasl, buildlist->g_hk_scan_regu_list,
+					 final);
+	      }
+	    if (buildlist->g_hk_sort_regu_list)
+	      {
+		pg_cnt +=
+		  qexec_clear_regu_list (xasl, buildlist->g_hk_sort_regu_list,
+					 final);
+	      }
+
 	    if (buildlist->a_outptr_list)
 	      {
 		pg_cnt +=
