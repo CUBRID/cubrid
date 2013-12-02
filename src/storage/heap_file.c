@@ -5782,7 +5782,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
       /* delete all entries of hfid. is impossible, set as a defense code */
       del_cnt = heap_stats_del_bestspace (thread_p, hfid, -1 /* no stop */ ,
 					  INT_MAX);
-      assert (del_cnt == 0);
+      /* assert (del_cnt == 0); */
       assert (mht_count (heap_Bestspace->vpid_ht) ==
 	      mht_count (heap_Bestspace->hfid_ht));
       pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
