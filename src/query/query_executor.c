@@ -20680,7 +20680,8 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 		  break;
 
 		default:
-		  assert (agg_p->operand.type == TYPE_CONSTANT);
+		  assert (agg_p->operand.type == TYPE_CONSTANT 
+			  || agg_p->operand.type == TYPE_DBVAL);
 
 		  /* try to cast dbval to double, datetime then time */
 		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
@@ -28421,6 +28422,12 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p,
     {
       db_private_free (thread_p, proc->agg_hash_context.key_domains);
       proc->agg_hash_context.key_domains = NULL;
+    }
+
+  /* free sort key */
+  if (&proc->agg_hash_context.sort_key != NULL)
+    {
+      qfile_clear_sort_key_info (&proc->agg_hash_context.sort_key);
     }
 
   /* free entries and hash table */
