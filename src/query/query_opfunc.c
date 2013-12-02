@@ -6573,6 +6573,9 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 		    }
 		}
 	    }
+
+	  /* clear value */
+	  pr_clear_value (&dbval);
 	}
       else if (agg_p->function == PT_GROUP_CONCAT)
 	{
@@ -6594,10 +6597,12 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	  /* increment tuple count */
 	  agg_p->accumulator.curr_cnt++;
 
+	  /* clear value */
+	  pr_clear_value (&dbval);
+
 	  /* check error */
 	  if (error != NO_ERROR)
 	    {
-	      pr_clear_value (&dbval);
 	      return error;
 	    }
 	}
