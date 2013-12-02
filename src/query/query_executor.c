@@ -20680,7 +20680,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 		  break;
 
 		default:
-		  assert (agg_p->operand.type == TYPE_CONSTANT 
+		  assert (agg_p->operand.type == TYPE_CONSTANT
 			  || agg_p->operand.type == TYPE_DBVAL);
 
 		  /* try to cast dbval to double, datetime then time */
@@ -23054,7 +23054,7 @@ qexec_analytic_value_advance (THREAD_ENTRY * thread_p,
 	      return ER_FAILED;
 	    }
 	  if (qexec_analytic_sort_key_header_load
-	      (func_state, (-1 <= amount <= 1)) != NO_ERROR)
+	      (func_state, (-1 <= amount) && (amount <= 1)) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -23075,7 +23075,7 @@ qexec_analytic_value_advance (THREAD_ENTRY * thread_p,
 	      return ER_FAILED;
 	    }
 	  if (qexec_analytic_sort_key_header_load
-	      (func_state, (-1 <= amount <= 1)) != NO_ERROR)
+	      (func_state, (-1 <= amount) && (amount <= 1)) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
