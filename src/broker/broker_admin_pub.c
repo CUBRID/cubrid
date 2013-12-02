@@ -2205,6 +2205,30 @@ admin_conf_change (int master_shm_id, const char *br_name,
 	    }
 	}
     }
+  else if (strcasecmp (conf_name, "MAX_NUM_DELAYED_HOSTS_LOOKUP") == 0)
+    {
+      int max_num_delayed_hosts_lookup;
+      char *end_p = NULL;
+
+      max_num_delayed_hosts_lookup = (int) strtol (conf_value, &end_p, 10);
+      if (errno == ERANGE || (end_p && *end_p != '\0')
+	  || max_num_delayed_hosts_lookup <
+	  DEFAULT_MAX_NUM_DELAYED_HOSTS_LOOKUP)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_conf_error;
+	}
+
+      if (br_info_p->max_num_delayed_hosts_lookup ==
+	  max_num_delayed_hosts_lookup)
+	{
+	  sprintf (admin_err_msg, "same as previous value : %s", conf_value);
+	  goto set_conf_error;
+	}
+
+      br_info_p->max_num_delayed_hosts_lookup = max_num_delayed_hosts_lookup;
+      shm_as_p->max_num_delayed_hosts_lookup = max_num_delayed_hosts_lookup;
+    }
   else if (strcasecmp (conf_name, "RECONNECT_TIME") == 0)
     {
       int rctime;

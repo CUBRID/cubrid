@@ -566,6 +566,7 @@ struct t_shm_appl_server
   int jdbc_cache_life_time;
   int connect_order;
   int replica_only_flag;
+  int max_num_delayed_hosts_lookup;	/* max num of HA delayed hosts to lookup */
 
 #if defined(WINDOWS)
   int as_port;

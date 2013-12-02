@@ -165,7 +165,8 @@ static void boot_shutdown_client_at_exit (void);
 static int boot_client_initialize_css (DB_INFO * db, int client_type,
 				       bool check_capabilities, int opt_cap,
 				       bool discriminative,
-				       int connect_order);
+				       int connect_order,
+				       bool is_preferred_host);
 #endif /* CS_MODE */
 static int boot_define_class (MOP class_mop);
 static int boot_define_attribute (MOP class_mop);
@@ -550,7 +551,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   error_code =
     boot_client_initialize_css (db, client_credential->client_type,
 				false, BOOT_NO_OPT_CAP, false,
-				DB_CONNECT_ORDER_SEQ);
+				DB_CONNECT_ORDER_SEQ, false);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -995,7 +996,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 					client_credential->
 					client_type,
 					check_capabilities, optional_cap,
-					false, DB_CONNECT_ORDER_SEQ);
+					false, DB_CONNECT_ORDER_SEQ, true);
 
 	  if (error_code != NO_ERROR)
 	    {
@@ -1048,7 +1049,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	    boot_client_initialize_css (db, client_credential->client_type,
 					check_capabilities, optional_cap,
 					false,
-					client_credential->connect_order);
+					client_credential->connect_order,
+					false);
 	}
       else if (BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))
 	{
@@ -1060,7 +1062,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  error_code =
 	    boot_client_initialize_css (db, client_credential->client_type,
 					check_capabilities, optional_cap,
-					false, DB_CONNECT_ORDER_SEQ);
+					false, DB_CONNECT_ORDER_SEQ, false);
 	  break;		/* dont retry */
 	}
       else if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
@@ -1082,7 +1084,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 					client_type,
 					check_capabilities, optional_cap,
 					false,
-					client_credential->connect_order);
+					client_credential->connect_order,
+					false);
 
 	}
       else
@@ -1095,7 +1098,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	    boot_client_initialize_css (db, client_credential->client_type,
 					check_capabilities, optional_cap,
 					false,
-					client_credential->connect_order);
+					client_credential->connect_order,
+					false);
 	  break;		/* dont retry */
 	}
 
@@ -1596,6 +1600,7 @@ boot_client_all_finalize (bool is_er_final)
  *   db(in) : host information
  *   connect_order(in): whether to randomly or sequentially traverse host list
  *   opt_cap(in): optional capability
+ *   discriminative(in): deprecated
  *
  * Note: This function will try an initialize the communications with the hosts
  *       in hostlist until success or the end of list is reached.
@@ -1603,13 +1608,15 @@ boot_client_all_finalize (bool is_er_final)
 static int
 boot_client_initialize_css (DB_INFO * db, int client_type,
 			    bool check_capabilities, int opt_cap,
-			    bool discriminative, int connect_order)
+			    bool discriminative, int connect_order,
+			    bool is_preferred_host)
 {
   int error = ER_NET_NO_SERVER_HOST;
-  int hn, tn, n;
+  int hn, n;
   char *hostlist[MAX_NUM_DB_HOSTS];
   char strbuf[(MAXHOSTNAMELEN + 1) * MAX_NUM_DB_HOSTS];
-  bool cap_error = false;
+  bool cap_error = false, boot_host_connected_exist = false;
+  int max_num_delayed_hosts_lookup;
 
   assert (db != NULL);
   assert (db->num_hosts > 0);
@@ -1624,11 +1631,21 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
 	}
     }
 
+  max_num_delayed_hosts_lookup = db_get_max_num_delayed_hosts_lookup ();
+  if (is_preferred_host == false
+      && max_num_delayed_hosts_lookup == 0
+      && (opt_cap & BOOT_CHECK_HA_DELAY_CAP))
+    {
+      /* if max_num_delayed_hosts_lookup is zero, move on to 2nd try */
+      return ER_NET_SERVER_HAND_SHAKE;
+    }
+
   memset (hostlist, 0, sizeof (hostlist));
   hn = 0;
   /* try the connected host first */
   if (boot_Host_connected[0] != '\0')
     {
+      boot_host_connected_exist = true;
       hostlist[hn++] = boot_Host_connected;
     }
   for (n = 0; hn < MAX_NUM_DB_HOSTS && n < db->num_hosts; n++)
@@ -1649,84 +1666,93 @@ boot_client_initialize_css (DB_INFO * db, int client_type,
 	}
     }
 
-  /*
-   * tn: number of hosts trying to connect
-   * cn: current host trying to connect
-   * If hosts array is "host1, host2, and host3", try to connect to host
-   * in sequence of "host1", "host1, host2", "host1, host2, host3"
-   * if 'discriminative' is set
-   */
-  for (tn = 0; tn < hn; tn++)
+  db_clear_delayed_hosts_count ();
+
+  for (n = 0; n < hn; n++)
     {
-      for (n = discriminative ? 0 : tn; n <= tn; n++)
+      er_log_debug (ARG_FILE_LINE, "trying to connect '%s@%s'\n",
+		    db->name, hostlist[n]);
+      error = net_client_init (db->name, hostlist[n]);
+      if (error != NO_ERROR)
 	{
-	  er_log_debug (ARG_FILE_LINE, "trying to connect '%s@%s'\n",
-			db->name, hostlist[n]);
-	  error = net_client_init (db->name, hostlist[n]);
-	  if (error != NO_ERROR)
+	  if (error == ERR_CSS_TCP_CONNECT_TIMEDOUT)
 	    {
-	      if (error == ERR_CSS_TCP_CONNECT_TIMEDOUT)
-		{
-		  db_set_host_status (hostlist[n],
-				      DB_HS_CONN_TIMEOUT |
-				      DB_HS_CONN_FAILURE);
-		}
-	      else
-		{
-		  db_set_host_status (hostlist[n], DB_HS_CONN_FAILURE);
-		}
+	      db_set_host_status (hostlist[n],
+				  DB_HS_CONN_TIMEOUT | DB_HS_CONN_FAILURE);
 	    }
 	  else
 	    {
-	      /* save the hostname for the use of calling functions */
-	      if (boot_Host_connected != hostlist[n])
-		{
-		  strncpy (boot_Host_connected, hostlist[n], MAXHOSTNAMELEN);
-		}
-	      db_set_connected_host_status (hostlist[n]);
-
-	      er_log_debug (ARG_FILE_LINE, "ping server with handshake\n");
-	      /* ping to validate availability and to check compatibility */
-	      er_clear ();
-	      error =
-		net_client_ping_server_with_handshake (client_type,
-						       check_capabilities,
-						       opt_cap);
-	      if (error != NO_ERROR)
-		{
-		  css_terminate (false);
-		}
+	      db_set_host_status (hostlist[n], DB_HS_CONN_FAILURE);
 	    }
-
-	  /* connect error to the db at the host */
-	  switch (error)
+	}
+      else
+	{
+	  /* save the hostname for the use of calling functions */
+	  if (boot_Host_connected != hostlist[n])
 	    {
-	    case NO_ERROR:
-	      return NO_ERROR;
-
-	    case ER_NET_SERVER_HAND_SHAKE:
-	    case ER_NET_HS_UNKNOWN_SERVER_REL:
-	      cap_error = true;
-	    case ER_NET_DIFFERENT_RELEASE:
-	    case ER_NET_NO_SERVER_HOST:
-	    case ER_NET_CANT_CONNECT_SERVER:
-	    case ER_NET_NO_MASTER:
-	    case ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER:
-	    case ERR_CSS_TCP_CONNECT_TIMEDOUT:
-	    case ERR_CSS_ERROR_FROM_SERVER:
-	    case ER_CSS_CLIENTS_EXCEEDED:
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		      ER_BO_CONNECT_FAILED, 2, db->name, hostlist[n]);
-	      /* try to connect to next host */
-	      er_log_debug (ARG_FILE_LINE,
-			    "error %d. try to connect to next host\n", error);
-	      break;
-	    default:
-	      /* ?? */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECT_FAILED,
-		      2, db->name, hostlist[n]);
+	      strncpy (boot_Host_connected, hostlist[n], MAXHOSTNAMELEN);
 	    }
-	}			/* for (cn) */
+	  db_set_connected_host_status (hostlist[n]);
+
+	  er_log_debug (ARG_FILE_LINE, "ping server with handshake\n");
+	  /* ping to validate availability and to check compatibility */
+	  er_clear ();
+	  error =
+	    net_client_ping_server_with_handshake (client_type,
+						   check_capabilities,
+						   opt_cap);
+	  if (error != NO_ERROR)
+	    {
+	      css_terminate (false);
+	    }
+	}
+
+      /* connect error to the db at the host */
+      switch (error)
+	{
+	case NO_ERROR:
+	  return NO_ERROR;
+
+	case ER_NET_SERVER_HAND_SHAKE:
+	case ER_NET_HS_UNKNOWN_SERVER_REL:
+	  cap_error = true;
+	case ER_NET_DIFFERENT_RELEASE:
+	case ER_NET_NO_SERVER_HOST:
+	case ER_NET_CANT_CONNECT_SERVER:
+	case ER_NET_NO_MASTER:
+	case ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER:
+	case ERR_CSS_TCP_CONNECT_TIMEDOUT:
+	case ERR_CSS_ERROR_FROM_SERVER:
+	case ER_CSS_CLIENTS_EXCEEDED:
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		  ER_BO_CONNECT_FAILED, 2, db->name, hostlist[n]);
+	  /* try to connect to next host */
+	  er_log_debug (ARG_FILE_LINE,
+			"error %d. try to connect to next host\n", error);
+	  break;
+	default:
+	  /* ?? */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECT_FAILED,
+		  2, db->name, hostlist[n]);
+	}
+
+      if (error == ER_NET_SERVER_HAND_SHAKE
+	  && is_preferred_host == false
+	  && (opt_cap & BOOT_CHECK_HA_DELAY_CAP)
+	  && max_num_delayed_hosts_lookup > 0)
+	{
+	  /* do not count delayed boot_Host_connected */
+	  if (boot_host_connected_exist == true && n == 0)
+	    {
+	      db_clear_delayed_hosts_count ();
+	    }
+
+	  if (db_get_delayed_hosts_count () >= max_num_delayed_hosts_lookup)
+	    {
+	      hn = n + 1;
+	      break;
+	    }
+	}
     }				/* for (tn) */
 
   /* failed to connect all hosts; write an error message */

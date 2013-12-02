@@ -561,6 +561,8 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 
       db_set_preferred_hosts (shm_appl->preferred_hosts);
       db_set_connect_order (shm_appl->connect_order);
+      db_set_max_num_delayed_hosts_lookup (shm_appl->
+					   max_num_delayed_hosts_lookup);
 
       err_code = db_restart_ex (program_name, db_name, db_user, db_passwd,
 				NULL, client_type);
@@ -701,6 +703,8 @@ ux_database_reconnect (void)
 
   db_set_preferred_hosts (shm_appl->preferred_hosts);
   db_set_connect_order (shm_appl->connect_order);
+  db_set_max_num_delayed_hosts_lookup (shm_appl->
+				       max_num_delayed_hosts_lookup);
 
   err_code = db_restart_ex (program_name, database_name, database_user,
 			    database_passwd, NULL, client_type);

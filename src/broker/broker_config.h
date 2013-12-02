@@ -82,6 +82,7 @@
 #define DEFAULT_ACCESS_LOG_MAX_SIZE     "10M"
 #define MAX_SQL_LOG_MAX_SIZE            2097152	/* 2G */
 #define MAX_ACCESS_LOG_MAX_SIZE         2097152	/* 2G */
+#define DEFAULT_MAX_NUM_DELAYED_HOSTS_LOOKUP    -1
 
 #define BROKER_NAME_LEN		64
 #define BROKER_LOG_MSG_SIZE	64
@@ -237,6 +238,7 @@ struct t_broker_info
 
   int connect_order;
   int replica_only_flag;
+  int max_num_delayed_hosts_lookup;	/* max num of HA delayed hosts to lookup */
 
   int cas_rctime;		/* sec */
 

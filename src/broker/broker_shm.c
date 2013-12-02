@@ -560,6 +560,9 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
   shm_as_p->connect_order = br_info_p->connect_order;
   shm_as_p->replica_only_flag = br_info_p->replica_only_flag;
 
+  shm_as_p->max_num_delayed_hosts_lookup =
+    br_info_p->max_num_delayed_hosts_lookup;
+
   shm_as_p->cas_rctime = br_info_p->cas_rctime;
 
   strcpy (shm_as_p->preferred_hosts, br_info_p->preferred_hosts);

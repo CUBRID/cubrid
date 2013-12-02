@@ -804,6 +804,16 @@ broker_config_read_internal (const char *conf_file,
 	  goto conf_error;
 	}
 
+      br_info[num_brs].max_num_delayed_hosts_lookup =
+	ini_getint (ini, sec_name, "MAX_NUM_DELAYED_HOSTS_LOOKUP",
+		    DEFAULT_MAX_NUM_DELAYED_HOSTS_LOOKUP, &lineno);
+      if (br_info[num_brs].max_num_delayed_hosts_lookup <
+	  DEFAULT_MAX_NUM_DELAYED_HOSTS_LOOKUP)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
       strncpy (time_str,
 	       ini_getstr (ini, sec_name, "RECONNECT_TIME",
 			   DEFAULT_RECONNECT_TIME, &lineno),
@@ -1398,6 +1408,10 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	{
 	  fprintf (fp, "CONNECT_ORDER\t\t=%s\n", tmp_str);
 	}
+
+      fprintf (fp, "MAX_NUM_DELAYED_HOSTS_LOOKUP\t=%d\n",
+	       br_info[i].max_num_delayed_hosts_lookup);
+
       fprintf (fp, "RECONNECT_TIME\t\t=%d\n", br_info[i].cas_rctime);
 
       tmp_str = get_conf_string (br_info[i].replica_only_flag, tbl_on_off);

@@ -320,6 +320,7 @@ EXPORTS
     db_set_global_transaction_info
     db_set_isolation
     db_set_lock_timeout
+    db_set_max_num_delayed_hosts_lookup
     db_set_password
     db_set_session_mode_async
     db_set_session_mode_sync

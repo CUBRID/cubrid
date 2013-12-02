@@ -79,6 +79,8 @@ char db_Program_name[PATH_MAX];
 
 static char *db_Preferred_hosts = NULL;
 static int db_Connect_order = DB_CONNECT_ORDER_SEQ;
+static int db_Max_num_delayed_hosts_lookup = 0;
+static int db_Delayed_hosts_count = 0;
 
 /* a list of abnormal host status */
 static DB_HOST_STATUS_LIST db_Host_status_list;
@@ -503,6 +505,30 @@ db_set_connect_order (int connect_order)
   db_Connect_order = connect_order;
 }
 
+void
+db_set_max_num_delayed_hosts_lookup (int max_num_delayed_hosts_lookup)
+{
+  db_Max_num_delayed_hosts_lookup = max_num_delayed_hosts_lookup;
+}
+
+int
+db_get_max_num_delayed_hosts_lookup (void)
+{
+  return db_Max_num_delayed_hosts_lookup;
+}
+
+int
+db_get_delayed_hosts_count (void)
+{
+  return db_Delayed_hosts_count;
+}
+
+void
+db_clear_delayed_hosts_count (void)
+{
+  db_Delayed_hosts_count = 0;
+}
+
 /*
  * db_clear_host_status() - clear db_Host_status_list
  *   return :
@@ -595,6 +621,11 @@ db_set_host_status (char *hostname, int status)
   else
     {
       db_add_host_status (hostname, status);
+    }
+
+  if (status & DB_HS_HA_DELAYED)
+    {
+      db_Delayed_hosts_count++;
     }
 
   return;

@@ -425,6 +425,11 @@ extern bool db_need_ignore_repl_delay (void);
 extern bool db_does_connected_host_have_status (int status);
 extern int db_get_host_list_with_given_status (char **hostlist, int list_size,
 					       int status);
+extern int db_get_delayed_hosts_count (void);
+extern void db_clear_delayed_hosts_count (void);
+extern void db_set_max_num_delayed_hosts_lookup (int
+						 max_num_delayed_hosts_lookup);
+extern int db_get_max_num_delayed_hosts_lookup (void);
 
 extern DB_OBJECT *db_find_class_of_index (const char *const index,
 					  const DB_CONSTRAINT_TYPE type);
