@@ -3147,9 +3147,11 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
     }
 
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hash_eligible);
+  memset (&stx_build_list_proc->agg_hash_context, 0,
+	  sizeof (AGGREGATE_HASH_CONTEXT));
 
-  ptr =
-    or_unpack_int (ptr, (int *) &stx_build_list_proc->g_output_first_tuple);
+  ptr = or_unpack_int (ptr,
+		       (int *) &stx_build_list_proc->g_output_first_tuple);
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hkey_size);
 
   ptr = or_unpack_int (ptr, &offset);

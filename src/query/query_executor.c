@@ -2807,6 +2807,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	      {
 		qexec_clear_db_val_list (buildlist->a_val_list->valp);
 	      }
+	    if (buildlist->g_hash_eligible)
+	      {
+		qexec_free_agg_hash_context (thread_p, buildlist);
+	      }
 	    pg_cnt +=
 	      qexec_clear_pred (xasl, buildlist->a_instnum_pred, final);
 	    if (buildlist->a_instnum_val)
@@ -13623,7 +13627,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      != NO_ERROR)
 	    {
 	      qexec_failure_line (__LINE__, xasl_state);
-	      return ER_FAILED;
+	      GOTO_EXIT_ON_ERROR;
 	    }
 	}
 
@@ -13695,7 +13699,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			  db_private_free_and_init (thread_p, tplrec.tpl);
 			}
 		      qexec_failure_line (__LINE__, xasl_state);
-		      return ER_FAILED;
+		      GOTO_EXIT_ON_ERROR;
 		    }
 		}
 	      else
@@ -13707,7 +13711,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			  db_private_free_and_init (thread_p, tplrec.tpl);
 			}
 		      qexec_failure_line (__LINE__, xasl_state);
-		      return ER_FAILED;
+		      GOTO_EXIT_ON_ERROR;
 		    }
 		}
 	    }
