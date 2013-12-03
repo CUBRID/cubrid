@@ -1616,6 +1616,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	}
       else if (err_code == MYSQL_NO_DATA)
 	{
+	  fetch_end_flag = 1;
 	  break;
 	}
       memset ((char *) &tuple_obj, 0, sizeof (T_OBJECT));
@@ -1637,19 +1638,15 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       cursor_pos++;
       if (num_tuple < cursor_pos)
 	{
-	  err_code = MYSQL_NO_DATA;
+	  fetch_end_flag = 1;
 	  break;
 	}
     }
 
-  if (err_code == MYSQL_NO_DATA)
+  if (fetch_end_flag == 1
+      && check_auto_commit_after_fetch_done (srv_handle) == true)
     {
-      fetch_end_flag = 1;
-
-      if (check_auto_commit_after_fetch_done (srv_handle) == true)
-	{
-	  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
-	}
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 
   srv_handle->next_cursor_pos += tuple;
