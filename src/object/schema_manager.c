@@ -12747,7 +12747,32 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 	}
       else
 	{
-	  class_->owner = Au_user;	/* remember the owner id */
+	  /* making object relation is not complete,
+	     so cannot use sm_is_partition(), sm_partitioned_class_type() */
+	  if (template_->inheritance != NULL
+	      && template_->partition_parent_atts != NULL)
+	    {
+	      SM_CLASS *super_class = NULL;
+	      int au_save;
+	      AU_DISABLE (au_save);
+	      error =
+		au_fetch_class (template_->inheritance->op, &super_class,
+				AU_FETCH_READ, AU_SELECT);
+	      AU_ENABLE (au_save);
+
+	      if (error != NO_ERROR)
+		{
+		  abort_subclasses (newsubs);
+		  classobj_free_template (flat);
+		  classobj_free_class (class_);
+		  goto end;
+		}
+	      class_->owner = super_class->owner;
+	    }
+	  else
+	    {
+	      class_->owner = Au_user;	/* remember the owner id */
+	    }
 
 	  /* NOTE: Garbage collection can occur in the following function
 	     as a result of the allocation of the class MOP.  We must
