@@ -332,7 +332,8 @@ access_control_read_ip_info (IP_INFO * ip_info, char *filename,
   char buf[LINE_MAX];
   char *save;
   FILE *fd_ip_list;
-  unsigned char i, ln = 0;
+  unsigned char i;
+  unsigned int ln = 0;
 
   fd_ip_list = fopen (filename, "r");
 
