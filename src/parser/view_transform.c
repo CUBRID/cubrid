@@ -3725,7 +3725,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
       else
 	{
 	  parser_free_tree (parser, new_query->info.query.q.select.list);
-	  new_query->info.query.q.select.list = NULL;;
+	  new_query->info.query.q.select.list = NULL;
 	}
     }
   else
