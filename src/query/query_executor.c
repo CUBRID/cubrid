@@ -3981,6 +3981,44 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate,
   gbstate->composite_lock = NULL;
   gbstate->upd_del_class_cnt = 0;
 
+  if (hash_eligible)
+    {
+      SORT_LIST *sort_list, *sort_col, *gby_col;
+      BUILDLIST_PROC_NODE *proc;
+      QFILE_TUPLE_VALUE_TYPE_LIST *plist;
+      int i;
+
+      assert (xasl && xasl->type == BUILDLIST_PROC);
+
+      plist = &agg_hash_context->part_list_id->type_list;
+      proc = &xasl->proc.buildlist;
+      gby_col = groupby_list;
+      sort_list = sort_col = qfile_allocate_sort_list (proc->g_hkey_size);
+      if (sort_list == NULL)
+	{
+	  gbstate->state = ER_FAILED;
+	  return gbstate;
+	}
+
+      for (i = 0; i < proc->g_hkey_size; i++)
+	{
+	  sort_col->pos_descr.dom = plist->domp[i];
+	  sort_col->pos_descr.pos_no = i;
+	  sort_col->s_order = gby_col->s_order;
+	  sort_col->s_nulls = gby_col->s_nulls;
+
+	  sort_col = sort_col->next;
+	  gby_col = gby_col->next;
+	}
+
+      if (qfile_initialize_sort_key_info (&agg_hash_context->sort_key,
+					  sort_list, plist) == NULL)
+	{
+	  gbstate->state = ER_FAILED;
+	}
+      qfile_free_sort_list (sort_list);
+    }
+
   return gbstate;
 }
 
@@ -4126,7 +4164,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
   AGGREGATE_HASH_KEY *key = context->temp_key;
   AGGREGATE_HASH_VALUE *value;
   HENTRY_PTR hentry;
-  int mem_limit = prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE);
+  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE);
   int rc = NO_ERROR;
 
   if (context->state == HS_REJECT_ALL)
@@ -4209,8 +4247,6 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
     }
   else
     {
-      AGGREGATE_TYPE *agg_list;
-
       /* no need to output tuple */
       *output_tuple = false;
 
@@ -5034,7 +5070,6 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       && gbstate.agg_hash_context->part_list_id->tuple_cnt > 0)
     {
       SORT_CMP_FUNC *cmp_fn;
-      int i, index;
 
       /* open scan on partial list */
       if (qfile_open_list_scan
@@ -16410,7 +16445,7 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 	    }
 	  else
 	    {
-	      RT = DEFAULT_PLAN_RECOMP_THRESHOLD + (0.2 * npages);
+	      RT = DEFAULT_PLAN_RECOMP_THRESHOLD + (npages / 5);
 	    }
 
 	  if (abs (*tcardp - npages) >= RT)
@@ -23272,7 +23307,6 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
   QFILE_LIST_SCAN_ID interm_scan_id;
   XASL_STATE *xasl_state = analytic_state->xasl_state;
   SCAN_CODE sc = S_SUCCESS;
-  bool save_output_rec_status;
   int i, rc = NO_ERROR;
 
   assert (analytic_state != NULL);
@@ -28141,7 +28175,6 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p,
 {
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   REGU_VARIABLE_LIST regu_list;
-  SORT_LIST *sort_list, *sort_col, *gby_col;
   AGGREGATE_TYPE *agg_list;
   int value_count = 0, i = 0;
 
@@ -28273,26 +28306,9 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p,
   /* register counter domain */
   type_list.domp[value_count++] = &tp_Integer_domain;
 
-  /* create sort list */
-  sort_list = sort_col = qfile_allocate_sort_list (proc->g_hkey_size);
-  gby_col = proc->groupby_list;
-  for (i = 0; i < proc->g_hkey_size; i++)
-    {
-      sort_col->pos_descr.dom = type_list.domp[i];
-      sort_col->pos_descr.pos_no = i;
-      sort_col->s_order = gby_col->s_order;
-      sort_col->s_nulls = gby_col->s_nulls;
-
-      sort_col = sort_col->next;
-      gby_col = gby_col->next;
-    }
-
   /* create sort key */
-  if (qfile_initialize_sort_key_info (&proc->agg_hash_context.sort_key,
-				      sort_list, &type_list) == NULL)
-    {
-      return ER_FAILED;
-    }
+  proc->agg_hash_context.sort_key.key = NULL;
+  proc->agg_hash_context.sort_key.nkeys = 0;
 
   /* create list files */
   proc->agg_hash_context.part_list_id =
@@ -28316,7 +28332,6 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p,
 
   /* free memory */
   db_private_free (thread_p, type_list.domp);
-  qfile_free_sort_list (sort_list);
 
   /*
    * create hash table
@@ -28429,10 +28444,7 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p,
     }
 
   /* free sort key */
-  if (&proc->agg_hash_context.sort_key != NULL)
-    {
-      qfile_clear_sort_key_info (&proc->agg_hash_context.sort_key);
-    }
+  qfile_clear_sort_key_info (&proc->agg_hash_context.sort_key);
 
   /* free entries and hash table */
   if (proc->agg_hash_context.hash_table != NULL)
