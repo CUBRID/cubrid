@@ -496,7 +496,6 @@ btree_write_node_header (THREAD_ENTRY * thread_p, VFID * vfid,
 			 bool write_undo, bool write_redo)
 {
   RECDES rec;
-  BTREE_NODE_TYPE node_type;
   int key_cnt;
 
   btree_get_node_key_cnt (page_ptr, &key_cnt);
@@ -504,10 +503,6 @@ btree_write_node_header (THREAD_ENTRY * thread_p, VFID * vfid,
     {
       header->max_key_len = 0;
     }
-
-  node_type = header->node_level > 1 ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
-  header->max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (node_type,
-						   header->max_key_len);
 
   if (spage_get_record (page_ptr, HEADER, &rec, PEEK) != S_SUCCESS)
     {
