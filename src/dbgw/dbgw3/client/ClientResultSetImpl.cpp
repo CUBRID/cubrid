@@ -114,8 +114,9 @@ namespace dbgw
         if (bIsSuccess == false)
           {
             NoMoreDataException e;
-            DBGW_LOG_ERROR(e.what());
-            throw e;
+            DBGW_LOG_INFO(e.what());
+            setLastException(e);
+            return false;
           }
 
         return true;

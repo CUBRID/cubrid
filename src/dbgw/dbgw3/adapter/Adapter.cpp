@@ -1288,6 +1288,11 @@ namespace DBGW3
 
           if ((*pResult)->next() == false)
             {
+              if (dbgw::getLastErrorCode() == dbgw::DBGW_ER_CLIENT_NO_MORE_DATA)
+               {  
+                 return false;
+               }
+
               throw dbgw::getLastException();
             }
 
