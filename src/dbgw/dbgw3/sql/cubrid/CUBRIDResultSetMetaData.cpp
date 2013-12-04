@@ -55,9 +55,6 @@ namespace dbgw
           utype = CCI_GET_RESULT_INFO_TYPE(pCCIColInfo, i + 1);
           switch (utype)
             {
-            case CCI_U_TYPE_CHAR:
-              metaDataRaw.columnType = DBGW_VAL_TYPE_CHAR;
-              break;
             case CCI_U_TYPE_INT:
             case CCI_U_TYPE_SHORT:
               metaDataRaw.columnType = DBGW_VAL_TYPE_INT;
@@ -65,6 +62,7 @@ namespace dbgw
             case CCI_U_TYPE_BIGINT:
               metaDataRaw.columnType = DBGW_VAL_TYPE_LONG;
               break;
+            case CCI_U_TYPE_CHAR:
             case CCI_U_TYPE_NUMERIC:
             case CCI_U_TYPE_STRING:
             case CCI_U_TYPE_NCHAR:

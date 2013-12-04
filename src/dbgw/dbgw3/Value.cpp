@@ -300,7 +300,8 @@ namespace dbgw
 
       try
         {
-          if (m_type != DBGW_VAL_TYPE_CHAR)
+          if ((m_type == DBGW_VAL_TYPE_STRING && m_nValueSize > 1)
+              || (m_type != DBGW_VAL_TYPE_STRING && m_type != DBGW_VAL_TYPE_CHAR))
             {
               MismatchValueTypeException e(m_type, DBGW_VAL_TYPE_CHAR);
               DBGW_LOG_ERROR(e.what());
