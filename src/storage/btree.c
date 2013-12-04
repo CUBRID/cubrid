@@ -154,22 +154,6 @@ struct btree_stats_env
   DB_VALUE pkeys_val[BTREE_STATS_PKEYS_NUM];	/* partial key-value */
 };
 
-/* for notification log messages */
-#define BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
-		btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, \
-		ER_NOTIFICATION_SEVERITY, ER_BTREE_CREATED_OVERFLOW_KEY, \
-		__FILE__, __LINE__)
-
-#define BTREE_SET_CREATED_OVERFLOW_PAGE_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
-		btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, \
-		ER_NOTIFICATION_SEVERITY, ER_BTREE_CREATED_OVERFLOW_PAGE, \
-		__FILE__, __LINE__)
-
-#define BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
-		btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, \
-		ER_NOTIFICATION_SEVERITY, ER_BTREE_DELETED_OVERFLOW_PAGE, \
-		__FILE__, __LINE__)
-
 /* Structure used by btree_range_search to initialize and handle variables
  * needed throughout the process.
  */
