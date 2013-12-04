@@ -57,6 +57,7 @@ namespace dbgw
   {
     size_t nLen;
 #if defined(WINDOWS) || defined(_WIN32) || defined(_WIN64)
+    int nOutSize = *(int *) pOutSize;
     std::auto_ptr<wchar_t> wc(new wchar_t[nInSize + 1]);
 
     int nSize = MultiByteToWideChar((UINT) m_fromCodepage, 0, szInBuf, -1,
@@ -69,7 +70,7 @@ namespace dbgw
       }
 
     nLen = WideCharToMultiByte((UINT) m_toCodepage, 0, wc.get(), nSize,
-        szOutBuf, (int) pOutSize, NULL, NULL);
+        szOutBuf, nOutSize, NULL, NULL);
     if (nLen == 0)
       {
         ConvertCharsetFailException e;
@@ -100,12 +101,16 @@ namespace dbgw
   std::string _CharsetConverter::convert(const std::string &value)
   {
     size_t nInSize = value.length();
+    if (nInSize == 0)
+    {
+      return value;
+    }
     size_t nOutSize = nInSize * 4 + 1;
     char *szTempBuffer = new char[nOutSize];
 
     try
       {
-        convert(value.c_str(), nInSize, szTempBuffer, &nOutSize);
+        convert(value.c_str(), nInSize, szTempBuffer, &nOutSize); /* don't  use nOutSize */
       }
     catch (...)
       {
@@ -141,12 +146,16 @@ namespace dbgw
       }
 
     size_t nInSize = pValue->getLength();
+     if (nInSize == 0)
+     {
+       return;
+     }
     size_t nOutSize = nInSize * 4 + 1;
     char *szTempBuffer = new char[nOutSize];
 
     try
       {
-        convert(szValue, nInSize, szTempBuffer, &nOutSize);
+        convert(szValue, nInSize, szTempBuffer, &nOutSize); /* don't use nOutSize */
 
         pValue->set(DBGW_VAL_TYPE_STRING, szTempBuffer, false, -1);
       }

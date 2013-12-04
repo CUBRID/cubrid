@@ -99,11 +99,6 @@ namespace dbgw
 
         bool bIsSuccess = m_pResultSet->next();
 
-        if (m_pConverter != NULL)
-          {
-            m_pConverter->convert(m_pResultSet->getInternalValuSet());
-          }
-
         if (m_pResultSetMetaData == NULL)
           {
             makeMetaData();
@@ -117,6 +112,11 @@ namespace dbgw
             DBGW_LOG_INFO(e.what());
             setLastException(e);
             return false;
+          }
+
+        if (m_pConverter != NULL)
+          {
+            m_pConverter->convert(m_pResultSet->getInternalValuSet());
           }
 
         return true;

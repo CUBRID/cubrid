@@ -28,39 +28,41 @@ namespace dbgw
 
   enum CodePage
   {
-    DBGW_IDENTITY               = 0,                    /* no charset */
+    DBGW_IDENTITY = 0,		/* no charset */
 
     /* DBGW3.0 supported character sets */
-    DBGW_US_ASCII               = 20127,                /* us-ascii (7 bit) */
-    DBGW_UTF_8                  = 65001,                /* utf-8 */
-    DBGW_MS_932                 = 932,                  /* Microsoft Code Page 932 (Japanese) */
-    DBGW_MS_949                 = 949,                  /* Microsoft Code Page 949 (Korean) */
-    DBGW_MS_1252                = 1252,                 /* Microsoft Code Page 1252 (Western Europe) */
-    DBGW_EUC_JP                 = 51932,                /* euc-jp */
-    DBGW_SHIFT_JIS              = DBGW_MS_932,          /* shift-jis */
-    DBGW_EUC_KR                 = DBGW_MS_949,          /* euc-kr */
-    DBGW_LATIN_1                = DBGW_MS_1252,         /* latin1 */
-    DBGW_ISO_8859_1             = DBGW_MS_1252          /* iso-8859-1 */
+    DBGW_US_ASCII = 20127,	/* us-ascii (7 bit) */
+    DBGW_UTF_8 = 65001,		/* utf-8 */
+    DBGW_MS_932 = 932,		/* Microsoft Code Page 932 (Japanese) */
+    DBGW_MS_949 = 949,		/* Microsoft Code Page 949 (Korean) */
+    DBGW_MS_1252 = 1252,	/* Microsoft Code Page 1252 (Western Europe) */
+    DBGW_EUC_JP = 51932,	/* euc-jp */
+    DBGW_SHIFT_JIS = DBGW_MS_932,	/* shift-jis */
+    DBGW_EUC_KR = DBGW_MS_949,	/* euc-kr */
+    DBGW_LATIN_1 = DBGW_MS_1252,	/* latin1 */
+    DBGW_ISO_8859_1 = DBGW_MS_1252	/* iso-8859-1 */
   };
 
-  CodePage stringToCodepage(const std::string &charset);
-  const char *codepageToString(CodePage code);
+  CodePage stringToCodepage (const std::string & charset);
+  const char *codepageToString (CodePage code);
 
   class _CharsetConverter
   {
   public:
-    _CharsetConverter(CodePage to, CodePage from);
-    virtual ~ _CharsetConverter();
+    _CharsetConverter (CodePage to, CodePage from);
+    virtual ~ _CharsetConverter ();
 
-    void convert(const char *szInBuf, size_t nInSize, char *szOutBuf,
-        size_t *pOutSize);
-    std::string convert(const std::string &value);
-    void convert(Value *pValue);
-    void convert(_ValueSet &valueSet);
-    void close();
+    std::string convert (const std::string & value);
+    void convert (_ValueSet & valueSet);
+    void close ();
 
   private:
-    CodePage m_toCodepage;
+    void convert (Value * pValue);
+    void convert (const char *szInBuf, size_t nInSize, char *szOutBuf,
+		  size_t * pOutSize);
+
+  private:
+      CodePage m_toCodepage;
     CodePage m_fromCodepage;
     void *m_pHandle;
   };
