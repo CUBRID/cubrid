@@ -1778,8 +1778,6 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
 	    {
 	      return NULL;
 	    }
-	  BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION (thread_p, key, NULL,
-						       NULL, NULL);
 	}
     }
 
@@ -2633,8 +2631,6 @@ btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key,
 	    {
 	      return error;
 	    }
-	  BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION (thread_p, this_key,
-						       NULL, NULL, NULL);
 	}
     }
   error = btree_write_record (thread_p, load_args->btid, NULL, this_key,
