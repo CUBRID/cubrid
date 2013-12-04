@@ -3020,11 +3020,13 @@ pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node)
 bool
 pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  bool has_inst_orderby_num;
+  bool has_inst_orderby_num = false;
 
   (void) parser_walk_tree (parser, node,
-			   pt_is_analytic_node, &has_inst_orderby_num,
-			   pt_is_analytic_node_post, &has_inst_orderby_num);
+			   pt_is_inst_or_orderby_num_node,
+			   &has_inst_orderby_num,
+			   pt_is_inst_or_orderby_num_node_post,
+			   &has_inst_orderby_num);
 
   return has_inst_orderby_num;
 }
