@@ -2333,3 +2333,37 @@ port_str_to_int (int *ret_p, const char *str_p, int base)
 
   return 0;
 }
+
+#if (defined(WINDOWS) && defined(_WIN32))
+time_t
+mktime_for_win32 (struct tm * tm)
+{
+  struct tm tm_tmp;
+  __time32_t t_32;
+  __time64_t t_64;
+
+  tm_tmp = *tm;
+
+  t_32 = _mktime32 (tm);
+  if (t_32 != -1)
+    {
+      return (time_t) t_32;
+    }
+
+  *tm = tm_tmp;
+
+  t_64 = _mktime64 (tm);
+  /* '(time_t) 0x7FFFFFFF' is equal to '01-19-2038 03:14:07(UTC)' */
+  if (t_64 >= 0x00 && t_64 <= 0x7FFFFFFF)
+    {
+      return (time_t) t_64;
+    }
+
+  /* There is a possibility that *tm was changed. (e.g. tm->tm_isdst) */
+  if (t_64 != -1)
+    {
+      *tm = tm_tmp;
+    }
+  return (time_t) (-1);
+}
+#endif

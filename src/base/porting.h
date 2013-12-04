@@ -114,8 +114,10 @@ extern "C"
 #define fileno		_fileno
 #define vsnprintf	cub_vsnprintf
 #define tempnam         _tempnam
-#define fprintf		_fprintf_p
-
+#define fprintf         _fprintf_p
+#if defined(_WIN32)
+#define mktime         mktime_for_win32
+#endif
 #if (_WIN32_WINNT < 0x0600)
 #define POLLRDNORM  0x0100
 #define POLLRDBAND  0x0200
@@ -755,5 +757,9 @@ extern void port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc);
 extern char *trim (char *str);
 
 extern int port_str_to_int (int *ret_p, const char *str_p, int base);
+
+#if (defined(WINDOWS) && defined(_WIN32))
+extern time_t mktime_for_win32 (struct tm *tm);
+#endif
 
 #endif /* _PORTING_H_ */
