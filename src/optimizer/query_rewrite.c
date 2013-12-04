@@ -5265,9 +5265,20 @@ qo_apply_range_intersection_helper (PARSER_CONTEXT * parser,
 	  else
 	    {
 	      node1->info.expr.arg2 = new_range;
+	      if (PT_EXPR_INFO_IS_FLAGED (node1, PT_EXPR_INFO_FULL_RANGE))
+		{
+		  /*
+		   * Since we are now going to merge a full-range-term and a range-term
+		   * and convert that to this, we should clear FULL_RANGE flag.
+		   * Note that we just reuse the existing node rather than create new one.
+		   */
+		  PT_EXPR_INFO_CLEAR_FLAG (node1, PT_EXPR_INFO_FULL_RANGE);
+		}
 	    }
 	  for (prev = new_range; prev->or_next; prev = prev->or_next)
-	    ;
+	    {
+	      ;
+	    }
 	  prev->or_next = range->or_next;
 	}
       else
