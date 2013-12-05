@@ -1348,6 +1348,7 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items,
 
   mnt_item_p = mnt_items;
 
+  mnt_item_p->num_appl_server = br_info_p->appl_server_num;
   for (i = 0; i < br_info_p->appl_server_max_num; i++)
     {
       as_info_p = &(shm_appl->as_info[i]);
@@ -1439,7 +1440,6 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items,
 	  mnt_item_p->num_connect_reject +=
 	    proxy_info_p->num_connect_rejected;
 	}
-      mnt_item_p->num_appl_server = br_info_p->appl_server_num;
     }
   else if (mnt_type == MONITOR_T_SHARDDB)
     {
