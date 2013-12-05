@@ -1,6 +1,6 @@
 #!/bin/sh
 
-opts_libgcrypt="--prefix=$PWD/.. --with-gpg-error-prefix=$PWD/.. --disable-shared --enable-static --with-pic"
+opts_libgcrypt="--prefix=$PWD/.. --disable-shared --enable-static --with-pic"
 
 srcdir=''
 
