@@ -4648,28 +4648,6 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
       return r;
     }
 
-#if !defined (SERVER_MODE)
-  /*
-   * Read $PWD/cubrid.conf if exist; not for server
-   */
-  if (conf_file == NULL)
-    {
-      snprintf (file_being_dealt_with, sizeof (file_being_dealt_with) - 1,
-		"%s", sysprm_conf_file_name);
-      if (stat (file_being_dealt_with, &stat_buf) == 0)
-	{
-	  r = prm_read_and_parse_ini_file (file_being_dealt_with,
-					   base_db_name, reload, HA_IGNORE,
-					   check_intl_param);
-	}
-    }
-#endif /* !SERVER_MODE */
-
-  if (r != NO_ERROR)
-    {
-      return r;
-    }
-
   if (PRM_HA_MODE != HA_MODE_OFF)
     {
       /* use environment variable's value if exist */
