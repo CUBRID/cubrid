@@ -48,11 +48,11 @@ geçerli ayarlar:\n\
 Ek bilgi için, adresine bakın http://www.cubrid.com\n
 41 %s: doğru olmayan %s_MODE ortam değeri. \n%s veya %s olmalıdır.\n
 42 %s: çok fazla argüman verildi.en fazla %d.\n
-43 %s: Kök dizin ortam değişkeni ($CUBRID) ayarlanmalıdır.\n
+43 %1$s: Kök dizin ortam değişkeni ($CUBRID) ayarlanmalıdır.\n
 44 %s: "%s" çalıştırılma denemesi başarısız oldu.\n
-45 %s: aynı anda -sa ve -cs seçeneklerini kullanamazsınız.\n
-46 %d komut (lar) başarıyla işlendi.
-47 kommand içinde %d satırından,
+45 %1$s: aynı anda -sa ve -cs seçeneklerini kullanamazsınız.\n
+46 %1$d komut (lar) başarıyla işlendi.
+47 kommand içinde %1$d satırından,
 48 %d satırında , sütun %d,
 49 Tür `;help' yardım mesajları için.
 50 HATA: 
@@ -103,7 +103,7 @@ $  Bu 3 boş bırakılmalı
 196 Tanımlanamayan bir hata oluıtu.
 197 Çıkış yönlendirildişinde ';edit' izin verilmez.
 
-203 <%s> 
+203 <%1$s> 
 204 <Super Classes> 
 205 <Sub Classes> 
 206 <Attributes> 

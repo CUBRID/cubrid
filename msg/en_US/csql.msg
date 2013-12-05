@@ -25,8 +25,8 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-interactive SQL utility, version %s\n\
-usage: %s [OPTION] database-name[@host]\n\
+interactive SQL utility, version %1$s\n\
+usage: %2$s [OPTION] database-name[@host]\n\
 \n\
 valid options:\n\
   -S, --SA-mode                standalone mode execution\n\
@@ -46,14 +46,14 @@ valid options:\n\
       --no-single-line         turn off single line oriented execution\n\
 \n\
 For additional information, see http://www.cubrid.com\n
-41 %s: the environment value of %s_MODE is incorrect. \nIt should be either %s or %s.\n
-42 %s: too many arguments given. maximum is %d.\n
-43 %s: The root directory environment variable ($CUBRID) should be set.\n
-44 %s: the attempt to execute "%s" has failed.\n
-45 %s: cannot use -sa and -cs options simultaneously.\n
-46 %d command(s) successfully processed.
-47 In the command from line %d,
-48 In line %d, column %d,
+41 %1$s: the environment value of %2$s_MODE is incorrect. \nIt should be either %3$s or %4$s.\n
+42 %1$s: too many arguments given. maximum is %2$d.\n
+43 %1$s: The root directory environment variable ($CUBRID) should be set.\n
+44 %1$s: the attempt to execute "%2$s" has failed.\n
+45 %1$s: cannot use -sa and -cs options simultaneously.\n
+46 %1$d command(s) successfully processed.
+47 In the command from line %1$d,
+48 In line %1$d, column %2$d,
 49 Type `;help' for help messages.
 50 ERROR: 
 51 CUBRID SQL Interpreter
@@ -66,16 +66,16 @@ For additional information, see http://www.cubrid.com\n
 58 Command buffer has been sent to the printer.
 59 Current directory changed to 
 61 Enter Password : 
-62 <Result of %s Command in Line %d>
+62 <Result of %1$s Command in Line %2$d>
 63 There are no results.
 64 Checkpoint has been issued.
 65 The database has been restarted.
 66 Tran index            User name      Host name      Process id      Program name\n
-67 %4d%-12s %14s %14s %15d %17s\n
+67 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 68 The specified transaction has been killed.
 69 Killing of the specified transaction has failed.
-70 %d rows %s.
-71 %d row %s.
+70 %1$d rows %2$s.
+71 %1$d row %2$s.
 $ These 3 should be blank
 75 Automated API tester
 76 Invalid Automated API tester
@@ -103,7 +103,7 @@ $ These 3 should be blank
 196 An undefined error has occurred.
 197 ';edit' is not allowed when output has been redirected.
 
-203 <%s> 
+203 <%1$s> 
 204 <Super Classes> 
 205 <Sub Classes> 
 206 <Attributes> 

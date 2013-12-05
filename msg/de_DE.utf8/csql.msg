@@ -48,11 +48,11 @@ gültigen Optionen:\n\
 Für weitere Informationen, siehe http://www.cubrid.com\n
 41 %s: der Umgebungswert von %s_MODE ist inkorrekt. \nEr sollte entweder %s oder %s sein.\n
 42 %s: zu viele Argumente gegeben. Maximum ist %d.\n
-43 %s: Das Root-Verzeichnis Umgebungsvariable ($CUBRID) soll gesetzt werden.\n
+43 %1$s: Das Root-Verzeichnis Umgebungsvariable ($CUBRID) soll gesetzt werden.\n
 44 %s: der Versuch "%s" auszuführen ist fehlgeschlagen.\n
-45 %s: -sa und -cs Optionen können nicht gleichzeitig benutzt werden.\n
-46 %d Befehl(e) erfolgreich verarbeitet.
-47 In Befehl auf Zeile %d,
+45 %1$s: -sa und -cs Optionen können nicht gleichzeitig benutzt werden.\n
+46 %1$d Befehl(e) erfolgreich verarbeitet.
+47 In Befehl auf Zeile %1$d,
 48 Auf Zeile %d, Spalte %d,
 49 Für hilfe, `;help' eingeben.
 50 FEHLER: 
@@ -103,7 +103,7 @@ $ Diese 3 sollten leer sein
 196 Ein unbekannter Fehler ist aufgetreten.
 197 ';edit' ist nicht zulässig, wenn die Ausgabe umgeleitet wurde.
 
-203 <%s> 
+203 <%1$s> 
 204 <Oberklassen> 
 205 <Unterklassen> 
 206 <Attribute> 

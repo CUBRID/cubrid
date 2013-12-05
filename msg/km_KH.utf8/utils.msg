@@ -70,9 +70,9 @@ $       49      tranlist
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 ប្រវែងមិនសុពល ឬអក្សរ`%c' ក្នុងឈ្មោះដែលតាបេស`%s'\n
-2 មិនអាចបើកបញ្ជី output `%s'\n
+2 មិនអាចបើកបញ្ជី output `%1$s'\n
 3 ឈ្មោះដែលប្រើមិនសុពលឬបាត់.\n
-4 ឈ្មោះដែលប្រើមិនសុពល `%s'\n
+4 ឈ្មោះដែលប្រើមិនសុពល `%1$s'\n
 5 តារាងខាងក្រោមមានឈ្មោះប្រើរួចដែលស្គាល់:\n
 6 អក្សរមិនសុពល `%c' ក្នុងឈ្មោះvolume `%s'\n
 9 \
@@ -118,15 +118,15 @@ usage: %s <utility-name> [args]\n\
 \n\
 %s ជាឧបករណ៍សម្រាប់ DBMS។\n\
 សម្រាប់ពត៌មានបន្ថែម, សូមមើលhttp://www.cubrid.com\n
-12 ឈ្មោះ'%s' utility មិនសុពល។\nType 'cubrid --help' ដើម្បីមើល usage។\n
-13 '%s' command មិនសុពល។\nType 'cubrid --help' ដើម្បីមើលusage។\n
+12 ឈ្មោះ'%1$s' utility មិនសុពល។\nType 'cubrid --help' ដើម្បីមើល usage។\n
+13 '%1$s' command មិនសុពល។\nType 'cubrid --help' ដើម្បីមើលusage។\n
 14 មិនអាចផ្ទុកpropertiesមួយឬច្រើនក្នុងបញ្ជីconfigurationទេ។\n
 15 @ %s %s: %s\n
 16 @ %s %s\n
 17 ++ %s '%s' មិនដំណើរការ។\n
-18 ++ %s មិនដំណើរការ។\n
+18 ++ %1$s មិនដំណើរការ។\n
 19 ++ %s '%s' កំពុងដំណើរការ។\n
-20 ++ %s កំពុងដំណើរការ។\n
+20 ++ %1$s កំពុងដំណើរការ។\n
 21 ++ %s %s: %s\n
 22 មិនឃើញពាក្យសំអាងខ្ទាស់មួយឬច្រើន។\nType 'cubrid --help' ដើម្បីមើល usage។ \n
 23 cubrid utility, version %s\n\
@@ -223,9 +223,9 @@ commandដែលមាន:\n\
     applylogdb  <start|stop> database-name node-name\n\
     status\n\
     reload\n
-31 មិនត្រូវការពាក្យសំអាងខ្ទាស់'%s'។\n
+31 មិនត្រូវការពាក្យសំអាងខ្ទាស់'%1$s'។\n
 32 មិនឃើញឈ្មោះដែលតាបេស។\n
-33 %s: ជម្រើសបែបនេះមិនស្រុះស្រួលគ្នា។\n
+33 %1$s: ជម្រើសបែបនេះមិនស្រុះស្រួលគ្នា។\n
 34 ប៉ារ៉ាម៉ែត្រមិនសុពល %s %s\n
 35 មិនអាចចែកចាយ memory។\n
 36 The server was not configured for HA.\n
@@ -234,14 +234,14 @@ commandដែលមាន:\n\
 40 Invalid command.\n
 41 cubrid manager server is not installed.\n
 42 Invalid argument.\n
-43 File(%s) open error.\n
+43 File(%1$s) open error.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: ជម្រើស -t មិនស្គាល់ក្នុងប្រតិបត្តិការ stand-alone mode។\n
 31 ៣១ កំហុសៈ ទីគោលដៅអត់មានទេឬមិនឋិតនៅក្នុងមាតិកាទេ.\n
 60 \
 backupdb: ថតចម្លងដែលតាបេសបន្ថែម។\n\
-usage: %s backupdb [OPTION] ឈ្មោះដែលតាបេស\n\
+usage: %1$s backupdb [OPTION] ឈ្មោះដែលតាបេស\n\
 \n\
 valid options:\n\
   -D, --destination-path=PATH  រក្សាទុកសំណុំពត៌មាន volumes ក្នុង PATHបញ្ជីឈ្មោះ; default: បញ្ជីឈ្មោះlogរបស់ដែលតាបេស។ \n\
@@ -268,7 +268,7 @@ $set 3 MSGCAT_UTIL_SET_COPYDB
 32 ERROR: vols-tofrom-paths_file មិនមានឬក៏មិនអាចដំណើរការបាន។\n
 60 \
 copydb: ថតចម្លងដែលតាបេស\n\
-usage: %s copydb [OPTION] ឈ្មោះដែលតាបេសsrc ឈ្មោះដែលតាបេសdest\n\
+usage: %1$s copydb [OPTION] ឈ្មោះដែលតាបេសsrc ឈ្មោះដែលតាបេសdest\n\
 \n\
 ជម្រើសសុពល:\n\
       --server-name=HOST          ឈ្មោះHOSTរបស់server; default: ឈ្មោះhostបច្ចុប្បន្ន \n\
@@ -283,19 +283,19 @@ usage: %s copydb [OPTION] ឈ្មោះដែលតាបេសsrc ឈ្ម�
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
-40 ក្រុម `%s' ពុំមាន\n
-41 User `%s' ពុំមាន\n
-42 commandដែលមិនស្គាល់ `%s'\n
-43 មិនអាចបើក output file `%s'\n
+40 ក្រុម `%1$s' ពុំមាន\n
+41 User `%1$s' ពុំមាន\n
+42 commandដែលមិនស្គាល់ `%1$s'\n
+43 មិនអាចបើក output file `%1$s'\n
 44 មិនអាចផ្លាស់ប្តូរទីតាំងដែលតាបេសដែលមាន។\n
 45 បង្កើតទិន្នន័យដែលមានទំហំ %1$s ហើយរក្សាទុកនៅកន្លែង %2$s. ទំហំថាសរឹងទាំងអស់ត្រូវការ %3$s.\n
 46 មិនអាំចបង្កើតដែលតាបេស\n
-47 បញ្ហាជាមួយ user file `%s'\n
+47 បញ្ហាជាមួយ user file `%1$s'\n
 48 ទំហំ '%s', %s ហួសកំណត់. សូមជ្រើសរើសទំហំរវាង %s និង %s.\n
 49 តំលៃនៃ%s'%s'មោឃ\n
 60 \
 createdb: បង្កើតដែលតាបេស\n\
-usage: %s createdb [OPTION] database-name database-locale\n\
+usage: %1$s createdb [OPTION] database-name database-locale\n\
 \n\
 ទ្រង់ទា្រយទិន្នន័យគឺជា <language>.<charset>; ឧទាហរណ៍ៈ  en_US.iso88591, ko_KR.utf8\n\
 ជម្រើសសុពល:\n\
@@ -321,7 +321,7 @@ usage: %s createdb [OPTION] database-name database-locale\n\
 $set 6 MSGCAT_UTIL_SET_DELETEDB
 60 \
 deletedb: ដកចេញដែលតាបេស.\n\
-usage: %s deletedb [OPTION] ឈ្មោះដែលតាបេស\n\
+usage: %1$s deletedb [OPTION] ឈ្មោះដែលតាបេស\n\
 \n\
 ជម្រើសសុពល:\n\
   -o, --output-file=FILE       ប្តូរទិសដៅសារ outputទៅកាន់ FILE; default: none\n\
@@ -332,7 +332,7 @@ $set 7 MSGCAT_UTIL_SET_RENAMEDB
 32 ERROR: vols-tofrom-paths_file ពុំមានឬមិនមានដំណើរការ\n
 60 \
 renamedb: ដាក់ឈ្មោះដែលតាបេសឡើងវិញ.\n\
-usage: %s renamedb [OPTION] ឈ្មោះដែលតាបេសsrc ឈ្មោះដែលតាបេសdest\n\
+usage: %1$s renamedb [OPTION] ឈ្មោះដែលតាបេសsrc ឈ្មោះដែលតាបេសdest\n\
 \n\
 ជម្រើសសុពល:\n\
   -E, --extended-volume-path=PATH PATHបញ្ជីឈ្មោះសម្រាប់volumesពត៌មានដែលពង្រីក; default: ជាpathដែលដូចនឹងvolumesដែលតាបេស ឬpathដែលផ្តល់ឲ្យក្នុងcontrol-file\n\
@@ -340,23 +340,23 @@ usage: %s renamedb [OPTION] ឈ្មោះដែលតាបេសsrc ឈ្ម
   -d, --delete-backup             ដកចេញសំណុំពត៌មាន volumes; default: កុំដកចេញ\n
 
 $set 9 MSGCAT_UTIL_SET_MASTER
-11 %s មានដំណើរការរួចហើយ។\n
+11 %1$s មានដំណើរការរួចហើយ។\n
 12 ការចាប់ផ្តើមMASTER SERVER។ \n
 13 MASTER SERVER មានហើយ។\n
 14 Error កំពុងស្វែងរកឈ្មោះ local host\n
 15 មិនអាចស្វែងរកfileប៉ារ៉ាម៉ែត្រ\n
 16 មិនអាចផ្តើមដំណើរការ master\n
 17 Server %s ធ្លាក់ចុះក្នុងនាទី %d 
-18 Server %s បញ្ជាក់អំពីការបិទ។\nនេះអាចចំណាយពេលជាច្រើននាទី។ សូមរង់ចាំ។
-19 រកមិនឃើញServer %s ។
-20 Master ធ្លាក់ចុះក្នុងនាទី %d \n
+18 Server %1$s បញ្ជាក់អំពីការបិទ។\nនេះអាចចំណាយពេលជាច្រើននាទី។ សូមរង់ចាំ។
+19 រកមិនឃើញServer %1$s ។
+20 Master ធ្លាក់ចុះក្នុងនាទី %1$d \n
 21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
-11 មិនអាចបើក output file `%s'\n
+11 មិនអាចបើក output file `%1$s'\n
 60 \
 optimizedb: សម្រួលដែលតាបេសឲ្យដំណើរការកាន់តែល្អ\n\
-usage: %s optimizedb [OPTION] ឈ្មោះដែលតាបេស\n\
+usage: %1$s optimizedb [OPTION] ឈ្មោះដែលតាបេស\n\
 \n\
 ជម្រើសសុពល:\n\
   -n, --class-name=NAME        ធ្វើទំនើបកម្មស្ថិតិសម្រាប់  NAME class; default: គ្រប់classes\n
@@ -367,7 +367,7 @@ $set 11 MSGCAT_UTIL_SET_RESTOREDB
 20 Restoredb ត្រូវបានបដិសេសធ ឬerrorបានលេចឡើង។\n
 60 \
 restoredb: ស្ថាបនាដែលតាបេសឡើងវិញ។\n\
-usage: %s restoredb [OPTION] ឈ្មោះដែលតាបេស\n\
+usage: %1$s restoredb [OPTION] ឈ្មោះដែលតាបេស\n\
 \n\
 ជម្រើសសុពល:\n\
   -d, --up-to-date=DATE             ស្ថាបនាដែលតាបេសឡើងវិញផ្អែកតាមលក្ខខណ្ឌរបស់វាតាមកាលបរិច្ឆេទដែលកំណត់រួច។ កាលបរិច្ឆេទត្រូវកំណត់ដូចតទៅ: dd-mm-yyyy:hh:mm:ss or 'backuptime' keyword\n\
@@ -385,53 +385,53 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 21 ការរំខាន ... \n
 22 ការផ្ទុកត្រូវបានរំខាន - កិច្ចសម្រួលដំណើរការបច្ចុប្បន្នត្រូវបានប្រតិបត្តិ\n
 23 ការផ្ទុកត្រូវបានរំខាន - កិច្ចសម្រួលដំណើរការបច្ចុប្បន្នត្រូវបានទម្លាក់ចោល\n
-24 មិនអាចបើក file `%s'\n
+24 មិនអាចបើក file `%1$s'\n
 25 \n*** ពិនិត្យមើល syntax ***\n\n
-26 %d errors ត្រូវបានដកចេញ\n
+26 %1$d errors ត្រូវបានដកចេញ\n
 27 \n*** ដាក់បញ្ជូល objects ***\n\n
-28 %8d objectsសរុបត្រូវបានដាក់បញ្ជូល\n
-29 %8d objectsដែលត្រូវបញ្ជាក់ទាំងអស់ ត្រូវបានដាក់បញ្ជូលជាមួយនឹង default contents.\n
+28 %1$8d objectsសរុបត្រូវបានដាក់បញ្ជូល\n
+29 %1$8d objectsដែលត្រូវបញ្ជាក់ទាំងអស់ ត្រូវបានដាក់បញ្ជូលជាមួយនឹង default contents.\n
 30 \n*** ប្រតិបត្តិកិច្ចសម្រួលដំណើរការ ***\n
 31 \n*** បិទដែលតាបេស ***\n
-32 Line %d:
+32 Line %1$d:
 33 Error ដកឃ្លា `%s' ជាតម្លៃ `%s' សម្រាប់ attribute `%s' of `%s'\n
 34 ពុំឃើញ domain សម្រាប់ attribute %s នៃ %s\n
 35 សម្រាប់ attribute %s នៃ %s, ប្រភេទ %s មិនត្រូវបានអនុញ្ញាតនៅក្នុង domain នៃសំណុំនេះទេ\n
 36 សម្រាប់ attribute %s នៃ %s, ដែលតម្រូវតាមប្រភេទ %s, ទទួលបានចំនួនសំណុំមួយ\n
 37 សម្រាប់ attribute %s នៃ %s, ដែលតម្រូវតាមប្រភេទ %s, ទទួលបាន %s\n
 38  ពុំមាន class ដែលដាក់ឈ្មោះ %s ត្រូវសំអាងដោយ attribute %s នៃ %s​​​​​​​ ទេ \n
-39 ពុំមាន class ដែលដាក់ឈ្មោះ %s, មិនស្គាល់ tuples\n
+39 ពុំមាន class ដែលដាក់ឈ្មោះ %1$s, មិនស្គាល់ tuples\n
 40 ពុំមាន class ដែលមាន identifier %d ត្រូវសំអាងដោយ attribute %s នៃ %s ទេ \n
-41 Class %s មិនត្រូវអនុញ្ជាតនៅក្នុង loader input file\n
+41 Class %1$s មិនត្រូវអនុញ្ជាតនៅក្នុង loader input file\n
 42 ត្រូវបានបញ្ឈប់ដោយសារ error។\n
 43 WARNING: instanceដែលមានត្រូវបានធ្វើទំនើបកម្ម !\n
 44 WARNING: កំណត់ឡើងវិញនូវ Instance %d នៃ class %s\n
 45 Instance %d នៃ class %s ត្រូវបានកំណត់រួចហើយ\n
 46 Instance %d នៃ class %s ត្រូវបានរក្សាបម្រុងទុករួចហើយ\n
-47 UNIQUE violation on attribute `%s', ត្រូវបានប្តូរជា NULL\n
-48   %d instances\n
-49 Class %s\n
+47 UNIQUE violation on attribute `%1$s', ត្រូវបានប្តូរជា NULL\n
+48   %1$d instances\n
+49 Class %1$s\n
 50 កំណត់សម្គាល់សម្ងាត់:
 51 \n*** ការធ្វើទំនើបកម្មស្ថិតិclass ***\n
 52 %s នៅក្បែរ line %d (text គឺជា '%s')\n
 53 Lexical error
 54 line %d: syntax error នៅត្រង់ \"%s\"
 55 បាត់
-56 ក្នុង %s
+56 ក្នុង %1$s
 57 សេចក្តីសំអាងដែលមិនស៊ីគ្នា, \"%s\", និង \"%s\"\n
-58 %d instances ត្រូវបានប្រតិបត្តិ\n
+58 %1$d instances ត្រូវបានប្រតិបត្តិ\n
 59 \nមិនអាចពន្លេចឲ្យប្រសើរនូវ versionដែលមិនអាចដំណើរការល្អនៃ loaddb។\n
 60 ការដកឃ្លាError \"%s\", ជាប្រភេទ %s​៕\n
-112   %d instances\r
-113 lineដែលត្រូវបានប្រតិបត្តិចុងក្រោយ : %d
+112   %1$d instances\r
+113 lineដែលត្រូវបានប្រតិបត្តិចុងក្រោយ : %1$d
 114 error-control-file
 115 input file នឹងគ្រប់គ្រង error(s)ក្នុងអម្លុងដំណើរការផ្ទុក
 116 Total %8d object(s) inserted, %d object(s) failed.\n
 117 Load failed.\n
-118 Maximum length of class name is %d bytes.\n
+118 Maximum length of class name is %1$d bytes.\n
 120 \
 loaddb: នាំចូម objects និង schemas ទៅកាន់ដែលតាបេស\n\
-usage: %s loaddb [OPTION] ឈ្មោះដែលតាបេស\n\
+usage: %1$s loaddb [OPTION] ឈ្មោះដែលតាបេស\n\
 \n\
 ជម្រើសសុពល:\n\
   -u, --user=ID                 user ID សម្រាប់សិទ្ធិចូលដែលតាបេស; default: "public"\n\
@@ -471,16 +471,16 @@ usage: load_noopt [OPTION] ឈ្មោះទិន្នន័យ\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 តម្លៃទំព័រផ្ទុកកំបាំង ពុំមានសុពលភាព។\n
 42 តម្លៃទំហំទំព័រផ្ទុកកំបាំង ពុំមានសុពលភាព។\n
-43 %d objects ត្រូវបានបោះចោល។\n
-44 Class %s
-45 , %d instances.\n
+43 %1$d objects ត្រូវបានបោះចោល។\n
+44 Class %1$s
+45 , %1$d instances.\n
 46 តែ %d ដែលពុំមាន %d objectsប៉ុណ្ណោះ ត្រូវបានបោះចោលដោយជោគជ័យ។\n
 47 បញ្ជីឈ្មោះoutputវែងពេក។\n
 48 LSA : %d %d \n
 49 កំណត់សម្គាល់សម្ងាត់:
 60 \
 unloaddb: នាំចេញ objects និង schemas ពីដែលតាបេស។\n\
-usage: %s unloaddb [OPTION] ឈ្មោះដែលតាបេស\n\
+usage: %1$s unloaddb [OPTION] ឈ្មោះដែលតាបេស\n\
 \n\
 ជម្រើសសុពល:\n\
   -u, --user=ID               user ID សម្រាប់សិទ្ធិចូលដែលតាបេស; default: "publdba"\n\
@@ -506,11 +506,11 @@ usage: %s unloaddb [OPTION] ឈ្មោះដែលតាបេស\n\
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
 11 \nចម្លងទៅកាន់ 1\n\n
-12 %d objects ត្រូវបានដំណើរការ។\n
+12 %1$d objects ត្រូវបានដំណើរការ។\n
 13 \nចម្លងទៅកាន់  2\n\n
-14 Class %s\n
+14 Class %1$s\n
 15 oid:  %d|%d|%d,\n
-16 %d instances.\n
+16 %1$d instances.\n
 17 ធ្វើទំនើបកម្ម object.\n
 18 ref_oid:  %d.%d.%d, ref_class_oid:  %d.%d.%d\n
 19 មិនអាចផ្ទេរ object\n
@@ -520,10 +520,10 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 23 COMPACTDB បានចាប់ផ្តើមរួចហើយ។\n
 24 ចំនួននៃទំព័រត្រូវតែជាចន្លោះរវាង  %d និង %d។\n
 25 ពេលវេលាច្រើនបំផុតកំណត់ការបិទinstanceត្រូវតែជាចន្លោះរវាង %d និង %d។\n
-26 objectsសរុប: %d\n
-27 objectsបរាជ័យ: %d\n
-28 objectsដែលផ្លាស់ប្តូរ: %d\n
-29 objectsសំខានៗ: %d\n
+26 objectsសរុប: %1$d\n
+27 objectsបរាជ័យ: %1$d\n
+28 objectsដែលផ្លាស់ប្តូរ: %1$d\n
+29 objectsសំខានៗ: %1$d\n
 30 តំណាងclassចាស់ ត្រូវបានដកចេញពី catalog។\n
 31 តំណាងclassចាស់ ត្រូវបានការពារក្នុង catalog.\n
 32 ពុំអាចកំណត់កម្រិតមិនអាចភ្ជាប់បាន។\n
@@ -543,7 +543,7 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 46 សំណុំបង្ហាប់បានជោគជ័យ...\n
 60 \
 compactdb: ទីចំហរសេរីដែលមិនប្រើក្នុងដែលតាបេស។\n\
-usage: %s compactdb [OPTION] ឈ្មោះដែលតាបេស [class_name1 class_name2 ...]\n\
+usage: %1$s compactdb [OPTION] ឈ្មោះដែលតាបេស [class_name1 class_name2 ...]\n\
 \n\
 ជម្រើសសុពល:\n\
   -v, --verbose                     បង្កើនសមត្ថភាពសារ verbose status; default: ដែលមិនអាច\n\
@@ -564,8 +564,8 @@ usage: %s compactdb [OPTION] ឈ្មោះដែលតាបេស [class_name
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 The CUBRID master កំពុងដំណើរការនៅលើ host %s \n បានចាប់ផ្តើមត្រង់ %s
 22 បានបម្រើតម្រូវការ %d ។ %d server(s) កំពុងដំណើរការ។ \n
-23 បិទក្នុងនាទី %s \n
-24 %s
+23 បិទក្នុងនាទី %1$s \n
+24 %1$s
 25 ឈ្មោះ server ត្រូវបិទ :
 26 តើប៉ុន្មាននាទីរហូតដល់បិទ? :
 27 \
@@ -586,35 +586,35 @@ usage: cub_commdb [OPTION]\n\
   -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
   -T, --activate-heartbeat         យកមកប្រើក្នុងដំណើរការនូវactivate CUBRID heartbeat feature ហើយ nodeបច្ចុប្បន្ន ក្លាយជាចំនួនក្រុម node \n\
   -V, --verbose                    បង្កើនសមត្ថភាពសារ verbose status ; default: ដែលមិនអាច\n
-28 សុំអធ្យាស្រ័យ, commandដែលមិនស្គាល់: %s\n
+28 សុំអធ្យាស្រ័យ, commandដែលមិនស្គាល់: %1$s\n
 29 មិនអាចទទួលយកឈ្មោះ host សម្រាប់local host - ទម្លាក់ចោល\n
 30 មិនអាចស្វែងរក fileប៉ារ៉ាម៉ែត្រ \n
-31 មិនអាចភ្ជាប់ទៅនឹង master server នៅលើ %s\n
+31 មិនអាចភ្ជាប់ទៅនឹង master server នៅលើ %1$s\n
 32 តើប៉ុន្មាននាទីរហូតដល់បិទ? :
-33 Master នឹងបិទក្នុងនាទី in %d \n
+33 Master នឹងបិទក្នុងនាទី in %1$d \n
 34 Error ទទួលទិន្នន័យពី client
-35 ដែលតាបេស server %s ថ្មីៗមិនដំណើរការទេ។
+35 ដែលតាបេស server %1$s ថ្មីៗមិនដំណើរការទេ។
 36 មិនអាចប្រតិបត្តិ shell (%s) សម្រាប់ %s, %s
 37 ដំណើរការ fork %s, %d ត្រូវត្រឡប់, %s
-38 មិនអាចប្រតិបត្តិ %s
+38 មិនអាចប្រតិបត្តិ %1$s
 39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
 emergency_patchlog: ភ្ជាប់ដែលតាបេសមួយក្នុងករណីបន្ទាន់។ \n\
-usage: %s emergency_patchlog [OPTION] ឈ្មោះដែលតាបេស\n\
+usage: %1$s emergency_patchlog [OPTION] ឈ្មោះដែលតាបេស\n\
 \n\
 ជម្រើសសុពល:\n\
   -r, --recreate-log           បង្កើតឡើងវិញនូវ log files; ប្រើដោយប្រុងប្រយ័ត្ត\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
-20 តម្លៃខុស %d សម្រាប់ npages\n
-21 តម្លៃខុស '%s' សម្រាប់បំណងរក្សាទុក volume ។ \n
+20 តម្លៃខុស %1$d សម្រាប់ npages\n
+21 តម្លៃខុស '%1$s' សម្រាប់បំណងរក្សាទុក volume ។ \n
 22 ព្រមមាន: --max-writesize-in-sec ប្រការនេះមិនអនុវត្តក្រោមទំរង់ឯករាជ្យទេ.\n
 60 \
 addvoldb: បន្ថែម volume-fileមួយសម្រាប់ដែលតាបេសនេះ។ \n\
-usage: %s addvoldb [OPTION] ឈ្មោះដែលតាបេស \n\
+usage: %1$s addvoldb [OPTION] ឈ្មោះដែលតាបេស \n\
 \n\
 ជម្រើសសុពល:\n\
       --db-volume-size=SIZE        ទំហំនៃvolumeបន្ថែម; default: db_volume_size ក្នុង cubrid.conf\n\
@@ -631,11 +631,11 @@ usage: %s addvoldb [OPTION] ឈ្មោះដែលតាបេស \n\
   -C, --CS-mode                    ការប្រតិបត្តិ client-server mode \n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
-20 ភាពមិនជាប់លាប់មួយចំនួយត្រូវបានរកឃើញក្នុងដែលតាបេសរបស់អ្នក។ \n សូមពិគ្រោះជាមួយ error_log_file %s សម្រាប់ពត៌មានបន្ថែម។​ \n
-21 %s: មិនអាចរកឃើញ classនេះ។ វានឹងត្រូវប្រតិបត្តិ។ \n
+20 ភាពមិនជាប់លាប់មួយចំនួយត្រូវបានរកឃើញក្នុងដែលតាបេសរបស់អ្នក។ \n សូមពិគ្រោះជាមួយ error_log_file %1$s សម្រាប់ពត៌មានបន្ថែម។​ \n
+21 %1$s: មិនអាចរកឃើញ classនេះ។ វានឹងត្រូវប្រតិបត្តិ។ \n
 60 \
 checkdb: ពិនិត្យមើលភាពជាប់លាប់នៃដែលតាបេស។ \n\
-usage: %s checkdb [OPTION] ឈ្មោះដែលតាបេស [class_name1 class_name2 ...]\n\
+usage: %1$s checkdb [OPTION] ឈ្មោះដែលតាបេស [class_name1 class_name2 ...]\n\
 \n\
 ជម្រើសសុពល:\n\
   -S, --SA-mode                ការប្រតិបត្តិstand-alone mode \n\
@@ -650,11 +650,11 @@ usage: %s checkdb [OPTION] ឈ្មោះដែលតាបេស [class_name1 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 ការពិពណ៌នាអំពីទីទំនេរសម្រាប់ដែលតាបេស  '%s' ជាមួយទំហំទំព័រ %s. ( ទំហំទំព័រlog : %s)\n\n
 16 %5d %9s  %s %s  %s\n
-17 មិនអាចបើក output file `%s'\n
+17 មិនអាចបើក output file `%1$s'\n
 18 ការពិពណ៌នាអំពីទីទំនេរសម្រាប់volumesបណ្តោះអាសន្ន សម្រាប់ដែលតាបេស '%s' ជាមួយទំហំទំព័រ %s។ \n\n
 19 បំណងសុពល  total_pages  free_pages  ឈ្មោះVol \n\n
 20 បំណងសុពល   total_size   free_size  ឈ្មោះVol \n\n
-21 ការពិពណ៌នាអំពីទីទំនេរLOB  %s \n\n
+21 ការពិពណ៌នាអំពីទីទំនេរLOB  %1$s \n\n
 22 -------------------------------------------------------------------------------\n
 30 ការពិពណ៌នាអំពីទីទំនេរដែលត្រូវបានសង្ខេបសម្រាប់ ដែលតាបេស '%s' ជាមួយទំងំទំព័រ %s. ( ទំហំទំព័រlog : %s)\n\n
 31 បំណង total_pages  used_pages  free_pages  volume_count\n
@@ -671,7 +671,7 @@ $set 19 MSGCAT_UTIL_SET_SPACEDB
 53 -------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: បង្ហាញ usage/ទីទំនេរសេរីនៃដែលតាបេស ។ \n\
-usage: %s spacedb [OPTION] ឈ្មោះដែលតាបេស \n\
+usage: %1$s spacedb [OPTION] ឈ្មោះដែលតាបេស \n\
 \n\
 ជម្រើសសុពល:\n\
   -o, --output-file=FILE       ប្តូរទិសសារ output ទៅកាន់ FILE; default: none\n\
@@ -684,32 +684,32 @@ usage: %s spacedb [OPTION] ឈ្មោះដែលតាបេស \n\
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
-15 ចំនួនប៉ាន់ប្រមាណនៃទំព័រ  = %d\n
+15 ចំនួនប៉ាន់ប្រមាណនៃទំព័រ  = %1$d\n
 60 \
 estimate_data: ប៉ាន់ប្រមាណទំហំទិន្នន័យ។ \n\
-usage: %s estimate_data ចំនួននៃinstances ទំហំមធ្យមនៃinstance ចំនួននៃattributes ចំនួនអថេរនៃattributes\n
+usage: %1$s estimate_data ចំនួននៃinstances ទំហំមធ្យមនៃinstance ចំនួននៃattributes ចំនួនអថេរនៃattributes\n
 
 
 $set 21 MSGCAT_UTIL_SET_ESTIMATEDB_INDEX
-15 ប្រភេទindex keដែលអន់ ត្រូវបានកំណត់ជាពិសេស  = %s\n
+15 ប្រភេទindex keដែលអន់ ត្រូវបានកំណត់ជាពិសេស  = %1$s\n
 16 ប្រវែងaverage keyដែលអន់ ត្រូវបានកំណត់ជាពិសេស = %d នៅពេលដែលភាពជាក់លាក់ = %d\n
 17 សេចក្តីសំអាងខ្ទាស់ដែលអន់ ត្រូវបានកំណត់ជាពិសេស\n
-20 ចំនួនប៉ាន់ប្រមាណនៃទំព័រ index សរុប = %d\n (នៅពេល index ត្រូវបានបង្កើត, បន្ទាប់ពី instances ត្រូវបានស្វ័យបន្ថែមពត៌មានក្នុងតារាង៕)\n
-21 ចំនួនប៉ាន់ប្រមាណនៃទំព័រ index សរុប = %d\n (នៅពេល index ត្រូវបានបង្កើត, បន្ទាប់ពី instances ត្រូវបានស្វ័យបន្ថែមពត៌មានក្នុងតារាង (ករណីមធ្យម))\n
-22 ចំនួនប៉ាន់ប្រមាណនៃទំព័រ index សរុប = %d\n (នៅពេល index ត្រូវបានបង្កើត, បន្ទាប់ពី instances ត្រូវបានស្វ័យបន្ថែមពត៌មានក្នុងតារាង (ករណីអន់បំផុត))\n
+20 ចំនួនប៉ាន់ប្រមាណនៃទំព័រ index សរុប = %1$d\n (នៅពេល index ត្រូវបានបង្កើត, បន្ទាប់ពី instances ត្រូវបានស្វ័យបន្ថែមពត៌មានក្នុងតារាង៕)\n
+21 ចំនួនប៉ាន់ប្រមាណនៃទំព័រ index សរុប = %1$d\n (នៅពេល index ត្រូវបានបង្កើត, បន្ទាប់ពី instances ត្រូវបានស្វ័យបន្ថែមពត៌មានក្នុងតារាង (ករណីមធ្យម))\n
+22 ចំនួនប៉ាន់ប្រមាណនៃទំព័រ index សរុប = %1$d\n (នៅពេល index ត្រូវបានបង្កើត, បន្ទាប់ពី instances ត្រូវបានស្វ័យបន្ថែមពត៌មានក្នុងតារាង (ករណីអន់បំផុត))\n
 23 សម្រាប់ការបញ្ជូលដែលផ្តល់ឲ្យ...\n
-24 ចំនួនសរុបនៃ instances: %d\n
-25 ចំនួននៃ keysខុសៗគ្នា : %d\n
-26 ទំហំ key មធ្យម   : %d\n
-27 ប្រភេទKey                 : %s\n\n
+24 ចំនួនសរុបនៃ instances: %1$d\n
+25 ចំនួននៃ keysខុសៗគ្នា : %1$d\n
+26 ទំហំ key មធ្យម   : %1$d\n
+27 ប្រភេទKey                 : %1$s\n\n
 60 \
 estimate_index: ប៉ាន់ប្រមាណទំហំនៃ indexមួយ។ \n\
-usage: %s estimate_index ចំនួននៃinstances ចំនួននៃkeysខុសៗគ្នា  ទំហំមធ្យមនៃkey ប្រភេទkey\n
+usage: %1$s estimate_index ចំនួននៃinstances ចំនួននៃkeysខុសៗគ្នា  ទំហំមធ្យមនៃkey ប្រភេទkey\n
 
 $set 22 MSGCAT_UTIL_SET_INSTALLDB
 60 \
 installdb: តម្លើងដែលតាបេសមួយ\n\
-usage: %s installdb [OPTION] ឈ្មោះដែលតាបេស\n\
+usage: %1$s installdb [OPTION] ឈ្មោះដែលតាបេស\n\
 \n\
 ជម្រើសសុពល:\n\
       --server-name=HOST       ឈ្មោះserver HOST ; default: ឈ្មោះhostបច្ចុប្បនុ្ន \n\
@@ -723,32 +723,32 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 4 Error ដែលបើក output file សម្រាប់ការពាក់ព័ន្ធដែលប្រើដោយobjectវែងនេះ \n
 5 អាន error\n
 6 សរសេរ error\n
-7 Error ដែលបើក ELO input file "%s"\n
+7 Error ដែលបើក ELO input file "%1$s"\n
 8 CLASSES:
 9 hash filename
-10 ឈ្មោះ:                       %s\n
-11 ទំហំ:                          %d\n
-12 ទំហំទំព័រ:                      %d\n
-13 ទំហំទិន្នន័៍យ:                 %d\n
-14 ទំហំEntry:                     %d\n
-15 Entries ក្នុង១ទំព័រ:            %d\n
-16 ទំព័រលាក់កំបាំង:               %d\n
-17 ចំនួននៃentries:               %d\n
-18 ចំនួននៃcollisions:            %d\n
-19 Hash filename:                %s\n
-20 overflow entryបន្ទាប់:        %d\n
-21 ន្រភេទKey:                     %s\n
-22 អាសយដ្ឋាននៃheadersទំព័រ:      %x\n
-23 អាសយដ្ឋាននៃheaderទំព័រចុងក្រោយ: %x\n
-24 អាសយដ្ឋាននៃheaderទំព័រសេរី:      %x\n
-25 អាសយដ្ឋាននៃbitmapទំព័រ:          %x\n
-26 ទំហំbitmapទំព័រ:                  %d\n
+10 ឈ្មោះ:                       %1$s\n
+11 ទំហំ:                          %1$d\n
+12 ទំហំទំព័រ:                      %1$d\n
+13 ទំហំទិន្នន័៍យ:                 %1$d\n
+14 ទំហំEntry:                     %1$d\n
+15 Entries ក្នុង១ទំព័រ:            %1$d\n
+16 ទំព័រលាក់កំបាំង:               %1$d\n
+17 ចំនួននៃentries:               %1$d\n
+18 ចំនួននៃcollisions:            %1$d\n
+19 Hash filename:                %1$s\n
+20 overflow entryបន្ទាប់:        %1$d\n
+21 ន្រភេទKey:                     %1$s\n
+22 អាសយដ្ឋាននៃheadersទំព័រ:      %1$x\n
+23 អាសយដ្ឋាននៃheaderទំព័រចុងក្រោយ: %1$x\n
+24 អាសយដ្ឋាននៃheaderទំព័រសេរី:      %1$x\n
+25 អាសយដ្ឋាននៃbitmapទំព័រ:          %1$x\n
+26 ទំហំbitmapទំព័រ:                  %1$d\n
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 60 \
 diagdb: Dump ដែលតាបេស\n\
-usage: %s diagdb [OPTION] ឈ្មោះដែលតាបេស\n\
+usage: %1$s diagdb [OPTION] ឈ្មោះដែលតាបេស\n\
 \n\
 valid options:\n\
   -d, --dump-type=TYPE         ប្រភេទនៃ dump\n\
@@ -765,11 +765,11 @@ valid options:\n\
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
-15 មិនអាចបើក output file `%s'\n
+15 មិនអាចបើក output file `%1$s'\n
 59 lockdb មិនអាចដំណើរការជា standalone mode។ \n
 60 \
 lockdb: បង្ហាញ lock-status នៃដែលតាបេស។ \n\
-usage: %s lockdb [OPTION] ឈ្មោះដែលតាបេស \n\
+usage: %1$s lockdb [OPTION] ឈ្មោះដែលតាបេស \n\
 \n\
 ជម្រើសសុពល\n\
   -o, --output-file=FILE   បន្តូរទិសសារ output ទៅកាន់FILE; default: none\n
@@ -781,14 +781,14 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 26 ពុំមានកិច្ចសម្រួលដំណើរការជាមួយ argument valuesដែលត្រូវបានកំណត់ពិសេសទេ។ \n
 27 ត្រៀមរួចជាស្រេចដើម្បីបំផ្លាញកិច្ចសម្រួលដំណើរការជាបន្តរបន្ទាប់:\n\n
 28 តើអ្នកចង់ធ្វើប្រតិបត្តិការទេ ? (Y/N)
-29 ការបំផ្លាញកិច្ចសម្រួលដំណើរការដែលទាក់ទងនឹងindexនៃកិច្ចសម្រួលដំណើរការ %d\n
+29 ការបំផ្លាញកិច្ចសម្រួលដំណើរការដែលទាក់ទងនឹងindexនៃកិច្ចសម្រួលដំណើរការ %1$d\n
 30 ការបំផ្លាញកិច្ចសម្រួលដំណើរការជាបន្តរបន្ទាប់ត្រូវបរាជ័យ។ \n\n
 31 កិច្ចសម្រួលដំណើរការនេះ មិនទាន់ចប់ទេ, ប៉ុន្តែវាអាចបន្តដំណើរការត្រឡប់វិញ។ \n សូមរងចាំសិននិងព្យាយាមនៅពេលក្រោយបើចាំបាច់។ \n
-32 អត់មានប្រសិទ្ធិភាព tranindex(%s).\n
+32 អត់មានប្រសិទ្ធិភាព tranindex(%1$s).\n
 59 killtran មិនអាចដំណើរការជា standalone mode។ \n
 60 \
 killtran: គ្រប់គ្រងកិច្ចសម្រួលដំណើរការនៃដែលតាបេស។ \n\
-usage: %s killtran [OPTION] ឈ្មោះដែលតាបេស\n\
+usage: %1$s killtran [OPTION] ឈ្មោះដែលតាបេស\n\
 \n\
 ជម្រើសសុពល:\n\
   -i, --kill-transaction-index=INDEX បំផ្លាញកិច្ចសម្រួលដំណើរការ ជាមួយនឹងINDEXនៃកិច្ចសម្រួលដំណើរការ \n\
@@ -809,14 +809,14 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 4 ការពិនិត្យតែករណីដែលមាន
 5 គោលបំណងbackup
 6 path ឬ deviceនៃបញ្ជីឈ្មោះមួយសម្រាប់គោលបំណងនៃ backup volumes
-20 ដែលតាបេស '%s'ពុំមានទេ។
+20 ដែលតាបេស '%1$s'ពុំមានទេ។
 21 '%s' មិនអាចផ្លាស់ទៅកាន់ %s, ពីព្រោះ DB versionរបស់វាទាបពេក។ \n
-22 '%s' មិនត្រូវការបម្លាស់។ \n
-23 '%s' ត្រូវការបម្លាស់។ \n
+22 '%1$s' មិនត្រូវការបម្លាស់។ \n
+23 '%1$s' ត្រូវការបម្លាស់។ \n
 24 Backupត្រូវបានបញ្ជាក់បន្ទាប់ពីបម្លាស់។  តើអ្នកចង់ចម្លងពត៌មានដែលតាបេសបន្ថែមឥឡូវនេះទេ? (y/n):
 25 យើងផ្តល់អនុសាសដើម្បីចម្លងពត៌មានដែលតាបេសបន្ថែមជាមួយនឹង backupdb commandបន្ទាប់ពីបម្លាស់។
-26 \n*** WARNING: ចម្លងពត៌មានដែលតាបេសរបស់អ្នកបន្ថែម មុនពេលអ្នកចាប់ផ្តើមផ្លាស់ទៅកាន់%s ***\n\n ដើម្បីបិទerrorsដែលអាចកើតឡើងអម្លុងពេលបម្លាស់, យើងត្រូវផ្តល់អនុសាសដើម្បីចម្លងពត៌មានដែលតាបេសបន្ថែម។ \nតើអ្នកបានចម្លងពត៌មានដែលតាបេសរបស់អ្នកបន្ថែមហើយឬនៅ? (y/n):
-27 \n1. ដំណើរការ backupdb \n2. វាយបញ្ជូល backup pathថ្មីសម្រាប់ដែលតាបេសថ្មី។(pathបច្ចុប្បន្ន: %s)\n3. Exit \n
+26 \n*** WARNING: ចម្លងពត៌មានដែលតាបេសរបស់អ្នកបន្ថែម មុនពេលអ្នកចាប់ផ្តើមផ្លាស់ទៅកាន់%1$s ***\n\n ដើម្បីបិទerrorsដែលអាចកើតឡើងអម្លុងពេលបម្លាស់, យើងត្រូវផ្តល់អនុសាសដើម្បីចម្លងពត៌មានដែលតាបេសបន្ថែម។ \nតើអ្នកបានចម្លងពត៌មានដែលតាបេសរបស់អ្នកបន្ថែមហើយឬនៅ? (y/n):
+27 \n1. ដំណើរការ backupdb \n2. វាយបញ្ជូល backup pathថ្មីសម្រាប់ដែលតាបេសថ្មី។(pathបច្ចុប្បន្ន: %1$s)\n3. Exit \n
 28 \nThe backup pathថ្មីសម្រាប់ដែលតាបេសនេះ :
 29 \nបម្លាស់និង backupត្រូវបានបញ្ចប់ដោយជោគជ័យ។
 30 Backupបរាជ័យ។ សូមព្យាយាមម្តងទៀតដើម្បីចម្លងពត៌មានដែលតាបេសបន្ថែម។
@@ -825,7 +825,7 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \
 alterdbhost: ផ្លាស់ប្តូរhostនៃដែលតាបេស។ \n\
-usage: %s alterdbhost [OPTION] ឈ្មោះដែលតាបេស \n\
+usage: %1$s alterdbhost [OPTION] ឈ្មោះដែលតាបេស \n\
 \n\
 ជម្រើសសុពល:\n\
   -h, --host=HOST  ឈ្មោះHOSTថ្មី; default: ឈ្មោះ hostបច្ចុប្បន្ន \n
@@ -840,24 +840,24 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 6 សរសេរជាន់លើclass file បើមាន, គ្មានdefault 
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
-15 មិនអាចបើក output file `%s'\n
+15 មិនអាចបើក output file `%1$s'\n
 59 plandump មិនអាចដំណើរការជា standalone mode.\n
 60 \
 plandump: បង្ហាញឬគ្រប់គ្រង query plansលាក់កំបាំង។ \n\
-usage: %s plandump [OPTION] ឈ្មោះដែលតាបេស \n\
+usage: %1$s plandump [OPTION] ឈ្មោះដែលតាបេស \n\
 \n\
 ជម្រើសសុពល:\n\
   -d, --drop                   ទម្លា់ចោលplansទាំងអស់ក្នុងទីកំបាំងរបស់server \n\
   -o, --output-file=FILE       ប្តូរទិសសារoutput ទៅកាន់ FILE; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
-11 មិនអាចបើកoutput file `%s'\n
+11 មិនអាចបើកoutput file `%1$s'\n
 21 ប៉ារ៉ាម៉ែត្រប្រព័ន្ធនឹងត្រូវបានប្រើដោយកម្មវិធី client។ \n
-22 ប៉ារ៉ាម៉ែត្រប្រព័ន្ធត្រូរក្សាផ្ទុកដោយ server '%s'\n
+22 ប៉ារ៉ាម៉ែត្រប្រព័ន្ធត្រូរក្សាផ្ទុកដោយ server '%1$s'\n
 23 ប៉ារ៉ាម៉ែត្រប្រព័ន្ធនឹងត្រូវប្រើនៅក្នុង standalone mode។ \n
 60 \
 paramdump: លែងកំណត់ប៉ារ៉ាម៉ែត្រប្រព័ន្ធ.\n\
-usage: %s paramdump [OPTION] ឈ្មោះដែលតាបេស \n\
+usage: %1$s paramdump [OPTION] ឈ្មោះដែលតាបេស \n\
 \n\
 ជម្រើសសុពល:\n\
   -o, --output-file=FILE       ប្តូរទិសសារ output ទៅកាន់ FILE; default: none\n\
@@ -866,7 +866,7 @@ usage: %s paramdump [OPTION] ឈ្មោះដែលតាបេស \n\
   -C, --CS-mode                ការប្រតិបត្តិclient-server mode \n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
-11 តម្លៃខុស \"%s\" សម្រាប់HA modeដែលកំពុងដំណើរការរបស់ server។ \n
+11 តម្លៃខុស \"%1$s\" សម្រាប់HA modeដែលកំពុងដំណើរការរបស់ server។ \n
 12 មិនអាចផ្លាស់ប្តូរបានទេនូវ HA modeដែលកំពុងដំណើរការរបស់ server។ \n
 21 វាយបញ្ជូលកំណត់សម្ងាត់ DBA :
 22 HA modeដែលកំពុងដំណើរការរបស់ server `%s' គឺ %s។ \n
@@ -876,7 +876,7 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 59 changemode មិនអាចដំណើរការជា standalone modeទេ។ \n
 60 \
 changemode: បង្ហាញឬផ្លាស់ប្តូរHA modeដែលកំពុងដំណើរការរបស់ server។ \n\
-usage: %s changemode [OPTION] ឈ្មោះដែលតាបេស​ \n\
+usage: %1$s changemode [OPTION] ឈ្មោះដែលតាបេស​ \n\
 \n\
 ជម្រើសសុពល:\n\
   -m, --mode=MODE             ផ្លាស់ប្តូរserver mode ទៅកាន់ MODE; default: none\n\
@@ -886,14 +886,14 @@ usage: %s changemode [OPTION] ឈ្មោះដែលតាបេស​ \n\
                               default: 5\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
-11 តម្លៃខុស \"%s\" សម្រាប់modeកំពុងដំណើរការរបស់ copylogdb។ \n
+11 តម្លៃខុស \"%1$s\" សម្រាប់modeកំពុងដំណើរការរបស់ copylogdb។ \n
 21 វាយបញ្ជូលកំណត់សម្ងាត់ DBA :
 22 serverនេះ ត្រូវបានកំណត់ទៅកាន់ HA mode។ \n
 58 HA feature មិនត្រូវបានគាំទ្រនៅក្នុងទម្រង់ការនេះទេ។ \n
 59 copylogdb មិនអាចដំណើរការជា standalone modeទេ។ \n
 60 \
 copylogdb: ថតចម្លងទំព័រ log ពី server។ \n\
-usage: %s copylogdb [OPTION] ឈ្មោះដែលតាបេស \n\
+usage: %1$s copylogdb [OPTION] ឈ្មោះដែលតាបេស \n\
 \n\
 ជម្រើសសុពល:\n\
   -L, --log-path=PATH         PATHបញ្ជីឈ្មោះសម្រាប់log volumesដែលត្រូវបានថតចម្លងរួច។ \n\
@@ -907,18 +907,18 @@ $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 59 copylogdb មិនអាចដំណើរការជា standalone modeទេ។ \n
 60 \
 applylogdb: ដាក់ដំណើរការlogដែលត្រូវបានថតចម្លងរួចទៅកាន់ server។ \n\
-usage: %s applylogdb [OPTION] ឈ្មោះដែលតាបេស \n\
+usage: %1$s applylogdb [OPTION] ឈ្មោះដែលតាបេស \n\
 \n\
 ជម្រើសសុពល:\n\
   -L, --log-path=PATH         PATHបញ្ជីឈ្មោះនៃlog volumesដែលត្រូវបានថតចម្លងរួច \n\
       --max-mem-size=SIZE     ទំហំដំណើរការអតិបរមាក្នុង MB; max 1000\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
-11 មិនអាចបើកoutput file `%s'\n
+11 មិនអាចបើកoutput file `%1$s'\n
 59 statdump មិនអាចដំណើរការជា standalone modeទេ។ \n
 60 \
 statdump: ទម្លាក់ចោលស្ថិតិសកល។ \n\
-usage: %s statdump [OPTION] ឈ្មោះដែលតាបេស \n\
+usage: %1$s statdump [OPTION] ឈ្មោះដែលតាបេស \n\
 \n\
 ជម្រើសសុពល:\n\
   -o, --output-file=FILE       ប្តូរទិសសារ output ទៅកាន់ FILE; default: none\n\
@@ -933,7 +933,7 @@ $set 44 MSGCAT_UTIL_SET_APPLYINFO
 59 applyinfo មិនអាចដំណើរការជា standalone modeទេ។ \n
 60 \
 applyinfo: បង្ហាញពត៌មានដាកដំណើរការ CUBRID HA Apply។ \n\
-usage: %s applyinfo [OPTION] ឈ្មោះដែលតាបេស \n\
+usage: %1$s applyinfo [OPTION] ឈ្មោះដែលតាបេស \n\
 \n\
 ជម្រើសសុពល:\n\
   -r, --remote-host-name      ឈ្មោះremote host; បង្ហាញពត៌មានlogសកម្មរបស់ remote node។ \n\
@@ -947,7 +947,7 @@ $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb មិនអាចដំណើរការជា standalone modeទេ។ \n
 60 \
 acldb: បង្ហាញ ឬរក្សាផ្ទុកការកំណត់ការគ្រប់គ្រងសិទ្ធិចូលនៃដែលតាបេស។ \n\
-usage: %s acldb [OPTION] ឈ្មោះដែលតាបេស\n\
+usage: %1$s acldb [OPTION] ឈ្មោះដែលតាបេស\n\
 \n\
 ជម្រើសសុពល:\n\
   -r, --reload       រក្សាផ្ទុកfileគ្រប់គ្រង ip \n
@@ -955,7 +955,7 @@ usage: %s acldb [OPTION] ឈ្មោះដែលតាបេស\n\
 $set 46 MSGCAT_UTIL_SET_GENLOCALE
 60 \
 genlocale::បណ្ណាល័យដែលចែកចាយទីកន្លែងសំរាប់បង្កើត បណ្ណាល័យនេះប្រើLDMLបញ្ចូលសំណុំឯកសារ(s).\n\
-ទំលាប់ប្រើ: %s genlocale [ជម្រើស] [ភាសា-ខ្សែអក្សរ]\n\
+ទំលាប់ប្រើ: %1$s genlocale [ជម្រើស] [ភាសា-ខ្សែអក្សរ]\n\
 \n\
 ភាសា-ខ្សែអក្សរ      ខ្សែអក្សរភាសាទីតាំង សំរាប់បង្កើតបណ្ណាល័យដែលត្រូវចែកចាយ\n\
                      ប្រសិនបើមិនអោយខ្សែអក្សរភាសា\n\
@@ -971,7 +971,7 @@ $set 47 MSGCAT_UTIL_SET_DUMPLOCALE
 59 ការពិភាក្សាអំពីឈ្មោះទីកន្លែងដែលគ្មានប្រសិទ្ធិភាព.\n
 60 \
 dumplocale:បោះចោលខ្លឹមសារនៃបណ្ណល័យដែលចែកចាយទីតាំង ប្រើLDMLបញ្ចូលសំណុំឯកសារបង្កើតបញ្ហានេះពេលមុន\n\
-ទំលាប់ប្រើ: %s dumplocale [ជម្រើស] [ភាសា-ខ្សែអក្សរ]\n\
+ទំលាប់ប្រើ: %1$s dumplocale [ជម្រើស] [ភាសា-ខ្សែអក្សរ]\n\
 \n\
 language-string ខ្សែអក្សរភាសាទីតាំង បោះចោលបណ្ណល័យដែលចែកចាយទីតាំង\n\
                  មនុស្សមិនអោយខ្សែអក្សរភាសា  'cubrid_databases.txt' \n\
@@ -998,28 +998,28 @@ language-string ខ្សែអក្សរភាសាទីតាំង បោ
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
 43 ការបែងចែកថាសត្រូវលុបចោលមុនពេលកែប្រែលក្ខខ័ណ្ឌនៃការរៀចំទិន្នន័យដែលមាន.\nClass name\n
-44 លក្ខខ័ណ្ឌនៃពាក្យសំខាន់ដែលរៀបចំដោយ'%s' ត្រូវលុបចោលមុនពេលកែលក្ខខ័ណ្ឌនៃការរៀបចំ.\nTable | Foreign Key\n
-45 ប្រភេទដែលរៀបចំដោយ'%s'; ត្រូវកំណត់ជាថ្មីទៀត :\nClass name\n
-46 ការស្វែងរកពាក្យសំខាន់ដែលបានប្រើប្រាស់និងរៀបចំដោយ'%s'; ត្រូវកំណត់ជាថ្មីទៀត :\n\
+44 លក្ខខ័ណ្ឌនៃពាក្យសំខាន់ដែលរៀបចំដោយ'%1$s' ត្រូវលុបចោលមុនពេលកែលក្ខខ័ណ្ឌនៃការរៀបចំ.\nTable | Foreign Key\n
+45 ប្រភេទដែលរៀបចំដោយ'%1$s'; ត្រូវកំណត់ជាថ្មីទៀត :\nClass name\n
+46 ការស្វែងរកពាក្យសំខាន់ដែលបានប្រើប្រាស់និងរៀបចំដោយ'%1$s'; ត្រូវកំណត់ជាថ្មីទៀត :\n\
 Table | Index | Function expression\n
 47 បើការរៀបចំទិន្នន័យមិនស៊ីគ្នានោះទិន្នន័យមិនអាចកែប្រែទេ.\n
-48 ខ្លឹមសារអំពី '%s'នៅក្នុងតារាងប្រព័ន្ធអាចប្តូរថ្មីជាមួយការរៀបចំទិន្នន័យដោយប្រព័ន្ធថ្មី.\n
+48 ខ្លឹមសារអំពី '%1$s'នៅក្នុងតារាងប្រព័ន្ធអាចប្តូរថ្មីជាមួយការរៀបចំទិន្នន័យដោយប្រព័ន្ធថ្មី.\n
 49 ផ្តល់នូវការរៀបចំទិន្នន័យថ្មីបំផុតនៅក្នុងប្រព័ន្ធប្រហាក់ប្រហែលខូចទិន្នន័យ. បន្ត (y/n) ?\n
 50 ការរៀបចំដែលមាន '%s' (Id: %d) មិនអាចរកឃើញបាននៅក្នុងទិន្នន័យឬមានការប្រែប្រួលតាមទំរង់ប្រព័ន្ធថ្មី.\n
-51 លក្ខខ័ណ្ឌនៃការរៀបចំដែលមាន '%s'; ត្រូវកំណត់ជាថ្មីទៀត :\nTrigger | Condition\n
-52 នៅក្នុងដំណើរការឆែកឆេរទិន្នន័យដែលមាន '%s'; ការឆែកឆេរត្រូវកំណត់ជាថ្មីទៀត :\nView | Query\n
-53 លក្ខខ័ណ្ឌនៃការរៀបំចំដែលមាន '%s'; ត្រូវកំណត់ជាថ្មីទៀត.\nTable | Attribute Domain\n
+51 លក្ខខ័ណ្ឌនៃការរៀបចំដែលមាន '%1$s'; ត្រូវកំណត់ជាថ្មីទៀត :\nTrigger | Condition\n
+52 នៅក្នុងដំណើរការឆែកឆេរទិន្នន័យដែលមាន '%1$s'; ការឆែកឆេរត្រូវកំណត់ជាថ្មីទៀត :\nView | Query\n
+53 លក្ខខ័ណ្ឌនៃការរៀបំចំដែលមាន '%1$s'; ត្រូវកំណត់ជាថ្មីទៀត.\nTable | Attribute Domain\n
 54 ការរៀបចំទិន្និន័យដោយមនុស្សគឺចាំបាច់.\n\
-សូមមើលមើល៍ឯកសារ'%s'រួចហើយអនុវត្តបានមុនពេលរៀបចំទិន្នន័យ.\n
+សូមមើលមើល៍ឯកសារ'%1$s'រួចហើយអនុវត្តបានមុនពេលរៀបចំទិន្នន័យ.\n
 55 ការស៊ីគ្នាមិនបាច់ទេ.\n
 56 ការរៀបចំទិន្នន័យដោយប្រព័ន្ធត្រូវចាំបាច់ស៊ីគ្នា.\n\
-រត់(ចាប់ដំណើរការ) 'cubrid synccolldb -f %s'\n
-57 អំពី %d មានការរៀបចំថ្មីតាមទំរង់ប្រព័ន្ធចំពោះទិន្នន័យ:\n
-58 ការរៀបចំទិន្នន័យទាំងអស់'%s' អាចរកឃើញបាននៅក្នុងទំរង់ប្រព័ន្ធថ្មី.\n
-59 បើមាន %d នៅក្នុងការរៀបចំទិន្នន័យនោះមិនអាចកំណត់ឬមិនអាចកែប្រែទេបើប្រៀបធៀបទៅនឹងការរៀបចំដោយប្រព័ន្ធ.\n
+រត់(ចាប់ដំណើរការ) 'cubrid synccolldb -f %1$s'\n
+57 អំពី %1$d មានការរៀបចំថ្មីតាមទំរង់ប្រព័ន្ធចំពោះទិន្នន័យ:\n
+58 ការរៀបចំទិន្នន័យទាំងអស់'%1$s' អាចរកឃើញបាននៅក្នុងទំរង់ប្រព័ន្ធថ្មី.\n
+59 បើមាន %1$d នៅក្នុងការរៀបចំទិន្នន័យនោះមិនអាចកំណត់ឬមិនអាចកែប្រែទេបើប្រៀបធៀបទៅនឹងការរៀបចំដោយប្រព័ន្ធ.\n
 60 \
 synccolldb: ការរៀបចំទិន្នន័យត្រូវស៊ីគ្នាជាមួយការរៀបចំដោយប្រព័ន្ធ.\n\
-usage: %s synccolldb [OPTION] database-name\n\
+usage: %1$s synccolldb [OPTION] database-name\n\
 \n\
 ប្រការមានប្រសិទ្ធិភាព:\n\
   -c, --check-only    ត្រួតពិនិត្យការរៀបចំទិន្នន័យតាមទំរង់ការរៀបចំដោយប្រព័ន្ធ.\n\
@@ -1028,25 +1028,25 @@ usage: %s synccolldb [OPTION] database-name\n\
   -f, --force-only     ផ្តល់នូវការរៀបចំទិន្នន័យថ្មីបំផុតនិងការរៀបចំតាមទំរង់ប្រព័ន្ធថ្មីដូចគ្នា.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 បញ្ចូល %s លេខសំងាត់: 
+20 បញ្ចូល %1$s លេខសំងាត់: 
 22 Tran index          User name      Host name      Process id    Program name \n
 23 -------------------------------------------------------------------------------\n
 24 %4d%-10s %14s %14s %15d %17s\n
 25 អត់មានការជួញដូរទេ\n
 26 tranlist អាចអនុវត្តតាមតែ DBA ឬសមាជិកក្រុម DBA.\n
-27 sort-key ចំនួនវ៉ូលូម(%d) ត្រូវចាត់ទុកថា មោឃៈ.\n
+27 sort-key ចំនួនវ៉ូលូម(%1$d) ត្រូវចាត់ទុកថា មោឃៈ.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
 42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
-45 Tran index : %d
-46 SQL_ID: %s\n
+45 Tran index : %1$d
+46 SQL_ID: %1$s\n
 59 tranlist មិនអាចចាប់ដំណើរការក្រោម standalone mode។ \n
 60 \
 tranlist: ទាត់ចោលព័ត៌មានអំពីការជួញដូរ.\n\
-usage: %s tranlist [OPTION] database-name\n\
+usage: %1$s tranlist [OPTION] database-name\n\
 \n\
 ប្រការមានប្រសិទ្ធិភាព:\n\
   -u, --user=ID                ID របស់អ្នកប្រើប្រាស់សំរាប់ឆែកឆេរទិន្នន័យ; default: DBA user\n\

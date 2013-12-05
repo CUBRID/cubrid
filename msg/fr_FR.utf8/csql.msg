@@ -48,11 +48,11 @@ valid options:\n\
 Pour plus d'informations, visitez le site http://www.cubrid.com\n
 41 %s: la valeur d'environnement du %s_MODE est incorrecte. \nIl doit être %s ou %s.\n
 42 %s: trop d'arguments donnés. maximum est de %d.\n
-43 %s: La variable d'environnement pour le répertoire racine ($CUBRID) doit être initialisée.\n
+43 %1$s: La variable d'environnement pour le répertoire racine ($CUBRID) doit être initialisée.\n
 44 %s: la tentative d'exécuter "%s" a échoué.\n
-45 %s: ne pouvez pas utiliser les options -sa et -cs simultanément.\n
-46 %d commande(s) traitées avec succès.
-47 Dans la commande de la ligne %d,
+45 %1$s: ne pouvez pas utiliser les options -sa et -cs simultanément.\n
+46 %1$d commande(s) traitées avec succès.
+47 Dans la commande de la ligne %1$d,
 48 Dans ligne %d, colonne %d,
 49 Saisissez `;help' pour les messages d'aide.
 50 ERREUR: 
@@ -103,7 +103,7 @@ $ Ces 3 doit être vide
 196 Erreur de type inconnu s'est produite.
 197 ';edit' n'est pas autorisée lorsque la sortie a été redirigée.
 
-203 <%s> 
+203 <%1$s> 
 204 <Super Classes> 
 205 <Sub Classes> 
 206 <Attributes> 

@@ -24,46 +24,46 @@ $ cubrid.msg
 $
 
 $set 1 MSGCAT_SET_GENERAL
-1 \n%s\n\n
+1 \n%1$s\n\n
 2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 3 Telif Hakkı Bilgisi \n
-5 tamsayı argüman değeri bulunmamaktadır "%s"\n
-6 floating argüman değeri bulunmamaktadır "%s"\n
-7 kayıp argüman %s\n
-8 argüman çoğaltın `%s'
-9 Argüman için kayıp değer `%s'
-10 Bilinmeyen argüman `%s'
-11 Beklenmeyen konumsal argüman`%s'
+5 tamsayı argüman değeri bulunmamaktadır "%1$s"\n
+6 floating argüman değeri bulunmamaktadır "%1$s"\n
+7 kayıp argüman %1$s\n
+8 argüman çoğaltın `%1$s'
+9 Argüman için kayıp değer `%1$s'
+10 Bilinmeyen argüman `%1$s'
+11 Beklenmeyen konumsal argüman`%1$s'
 12 Verilen hiçbir argüman tanımlanmıyor
 13 Argüman ayrıştırma için depolama ayıramadı
-14 Argüman dize maksimum uzunluğu aşıyor: %s
-15 Argüman ayrıştırma için katalog içindeki geçersiz ileti numarası %d.
+14 Argüman dize maksimum uzunluğu aşıyor: %1$s
+15 Argüman ayrıştırma için katalog içindeki geçersiz ileti numarası %1$d.
 16 [ayarlar]
 17 Ayarlar:
 
 $set 4 MSGCAT_SET_PARAMETER
 2 %s rehber içinde bulunmamakta.  Oluşturma %s içinde ".".
-3 Açılmıyor %s. Yapılandırma dosyası oluşturulamıyor.
+3 Açılmıyor %1$s. Yapılandırma dosyası oluşturulamıyor.
 4 Yapılandırma dosyası %s satır %d yazılamıyor.
 6 Sistem yapılandırma dosyası "%s" erişilemiyor: %s
 7 HOME ayarlanmadı
-8 Gerekli parametre "%s" hiçbir değeri yoktur.
+8 Gerekli parametre "%1$s" hiçbir değeri yoktur.
 9 Konfigürasyon dosyası "%s" açılamıyor: %s
-10 Dosya '%s' içinde '%s' parametresinde satır %d : 
-11 Çevre değişkeni %s: 
+10 Dosya '%1$s' içinde '%3$s' parametresinde satır %2$d : 
+11 Çevre değişkeni %1$s: 
 12 Tanınmayan anahtar kelime.
 13 Değer türü,parametresi türü ile eşleşmiyor.
 14 Değeri saklamak için bellek ayrılamıyor.
 15 Dize değeri Sonlandırılmamış.
 16 Değer aralığı dışındadır.
-17 UNIX hatası: %s
+17 UNIX hatası: %1$s
 18 Görüntülenebilir mesaj yok.
 19 Değer aralığı dışındadır.Varsayılan değere sıfırlama.
 20 Anahtar = '%s' değeri = %d Varsayılan Değer = %d\n
 21 Anahtar = '%s' değeri = %f varsayılan değer = %f\n
 22 Reddedilen parametre
 23 '%s' ve '%s' parametreler birlikte kullanılamaz. \n
-31 '%s' parametresi:
+31 '%1$s' parametresi:
 
 $set 5 MSGCAT_SET_ERROR
 1 Hata kodu %1$d eksik mesaj.
@@ -234,7 +234,7 @@ $set 5 MSGCAT_SET_ERROR
 166 Geçersiz kullanıcı özelleştirmesi.
 167 DBA, DBA grup ve sınıf sahibi üyeleri işlemi gerçekleştirebilirsiniz.
 168 Üye bulunamadı.
-169 %s veritabanından kullanıcı silinemiyor.
+169 %1$s veritabanından kullanıcı silinemiyor.
 170 İçeride kullanıcı girişi bulunmamaktadır.
 171 Yanlış veya kayıp şifre.
 172 Şifre dize 31 bayt den fazla olmaz.
@@ -622,7 +622,7 @@ $set 5 MSGCAT_SET_ERROR
 $ LOADDB
 554 Yükleyici geçersiz bir durum girmiştir. Başka işlemler yapılabilir.
 555 Veritabanı yükleme sırasında bellek ayırma hatası.
-556 Çok fazla değer verilmiştir . %d beklemektir.
+556 Çok fazla değer verilmiştir . %1$d beklemektir.
 557 Öznitelik için %1$s of %2$s, tür %3$s is not allowed in the domain of the set.
 558 Öznitelik için %1$s of %2$s, kabul edilen tür %3$s, got a set constant.
 559 Öznitelik için %1$s of %2$s, kabul edilen tür %3$s, got %4$s.
@@ -677,7 +677,7 @@ $ LOADDB
 608 odbc.ini içinde Veritabanı "%1$s" host özelliği yoktur.
 609 Günlük kaydı yoksayıldığından beri işlem geri alınamaz. Veritabanınız bozulmuş olabilir.
 610 Veritabanı bozulmuş olabilir, Veritabanı çöktüğünden beri günlük kaydı kapatılmış.
-611 %s istemci / sunucu modunda yürütülemez.
+611 %1$s istemci / sunucu modunda yürütülemez.
 612 Kurtarmak için beklemede olan eylemler var olduğu Logging şu anda devre dışı bırakılamıyor.
 613 Sınıf "%3$s" içinde, "%1$s" yerel bileşeni "%2$s" sınıf için bir takma ad yerine hizmet veremez. Etki alanları uyumsuzdur.
 614 Etkin günlük arşiv sayısı %1$d in max istenilen sayısı aşıldı.
@@ -712,7 +712,7 @@ $ LOADDB
 643 Belki bir sistem hatası:  İşlem İşleniyor/İşlem İptal ediliyor = %1$d (indeks = %2$d) daimi işlemleri sahip olduğu \n ona bağlı. İşlem için sistem işlemler eklenecek.
 644 LOG FATAL ERROR: %1$s
 645 SİSTEM HATASI: Durum = %1$s İşlem = %2$d (index = %3$d) \n istemci geri alma / erteleme eylemleri uygulamak için doğru durumda değil... gözardı edildi.
-646 SİSTEM HATASI: Bu bir dengeleme kaydı mantıksal bir günlük kaydı rcvindex eksik olduğunu görünüyor. = %s\n.Bu dengeleme kaydı olmadan hata kurtarma düzgün yapılmayacaktır.
+646 SİSTEM HATASI: Bu bir dengeleme kaydı mantıksal bir günlük kaydı rcvindex eksik olduğunu görünüyor. = %1$s\n.Bu dengeleme kaydı olmadan hata kurtarma düzgün yapılmayacaktır.
 647 Yedek "%1$s" verilen veritabanına ait değildir.
 648 Yedekleme akımı ile uyumsuz "%1$s" serbest bırakma "%2$s".
 649 Göz önüne alındığında hassas %1$d geçersiz; %2$d daha büyük olmalıdır ve %3$d daha büyük olmamalıdır.
@@ -746,11 +746,11 @@ $ LOADDB
 677 Veritabanı sunucusuna bağlantı kurulamadı, '%1$s',Aşağıdaki ana bilgisayar (lar): %2$s
 678 Dahili hata. Müşteri yeniden başlatma modülü NULL veritabanı sunucusu adını aldı.
 679 Bu C++ işlem çoktan başladı.
-680 Aşması girişimi maksimum C++ iç içe geçmiş hareket düzeyi (%d).
-681 %s işlem üzerinde denendi C++ işlem başlamamıştır .
-682 %s C++ işlem tüm alt işlemler tamamlanıncaya kadar olmaz.
-683 Geçersiz - %d uzunluğu ile dizesi oluşturmak için denendi
-684 Metod dönüşü kullanıcı tanımlı hata kodu %d.
+680 Aşması girişimi maksimum C++ iç içe geçmiş hareket düzeyi (%1$d).
+681 %1$s işlem üzerinde denendi C++ işlem başlamamıştır .
+682 %1$s C++ işlem tüm alt işlemler tamamlanıncaya kadar olmaz.
+683 Geçersiz - %1$d uzunluğu ile dizesi oluşturmak için denendi
+684 Metod dönüşü kullanıcı tanımlı hata kodu %1$d.
 685 Sınıf "%1$s" geçersiz.
 686 Bildirim: olay işleyici olarak başlangıç durumuna getirilir.
 687 (%s *) için (%s *) atama için izin bulunmamakta.
@@ -809,7 +809,7 @@ $ LOADDB
 740 Yerel adres bağlanamıyor... durduruluyor. Winsock hata: %1$d.
 741 Başarısız onaylama. Winsock hata: %1$d.
 742 İstemciye bir yayın mesajı gönderme.Winsock hata: %1$d.
-743 İstemci ile sunucu arasındaki karşılama başarısız oldu.(emsal host %s)
+743 İstemci ile sunucu arasındaki karşılama başarısız oldu.(emsal host %1$s)
 744 Rehashing Proxy / vclass MOP Hata .
 745 Geçersiz çöp ​​toplama aşaması.
 746 Geçersiz geri çöp ​​toplama.
@@ -818,10 +818,10 @@ $ LOADDB
 749 Getirilen örneklerin sayısı uymuyor: %1$d beklenen, %2$d alınan.
 750 Getirilen örneklerin sayısı uymuyor: %1$d beklenen, %2$d alınan.
 751 Yeni bir nesne OID INSERT tetikleyicisi ÖNCESİ mevcut değildir.
-752 Yedekleme unit_num %d geri yükleme hatası.
+752 Yedekleme unit_num %1$d geri yükleme hatası.
 753 Yedekleme unit_num %d, %d sayfa id geri yükleme hatası toplam sayfa sayısı %d volid için %d.
 754 OO Proxy örneği olmayan dize tipi veya boş anahtar vardır.
-755 %s stand-alone modu yürütülülemez.
+755 %1$s stand-alone modu yürütülülemez.
 756 Belirtilen dize arabellek bu nesne kodlamak için çok küçük.
 757 İç hata: nesne kodlamak içinde sürekli OID atayamazsınız.
 758 Belirtilen dize çözümleme nesnesi için geçerli değil.
@@ -839,8 +839,8 @@ $ LOADDB
 770 Tablo fonksiyonları yoktur.
 771 Fonksiyonu için geçersiz parametre.
 772 db_serial sınıf bulunamadı.
-773 Seri "%s" bulunamadı.
-774 Seri "%s" zaten var.
+773 Seri "%1$s" bulunamadı.
+774 Seri "%1$s" zaten var.
 775 Bir sonraki değeri MAX(MIN) değerini aşıyor.
 776 Seri nesnesi alamaz.
 777 Seri nesneyi güncelleştiremez.
@@ -896,17 +896,17 @@ $ LOADDB
 827 Bağlantı listesi hareket fonksiyonu geçersiz bir değere döndürdü.
 828 İndeksin geçersiz bir kritik kısmı verildi.
 829 Mutex kilidi zaten kaldırılmıştır.
-830 Sorgu girdi bir daha ayrılamıyor. Maksimum ayrılabilir girdileri %d vardır.
-831 Tüm işlem tanımlayıcılar (%d) kullanılmaktadır. max_clients parametresini yukarı kaldırın.
+830 Sorgu girdi bir daha ayrılamıyor. Maksimum ayrılabilir girdileri %1$d vardır.
+831 Tüm işlem tanımlayıcılar (%1$d) kullanılmaktadır. max_clients parametresini yukarı kaldırın.
 832 Yedekleme zaten çalışıyor. Yedekleme iki süreç tarafından idare edilemez.
 833 Dizin adı "%1$s" belirsiz. İndeksi sınıf adını belirtin.
 834 Kaynak dizesi arasında bazı uyumsuzluklar "%1$s" ve verilen "%2$s" biçim dizesi vardır to_number() .
 835 Tanımlanmamış istatistikler öğesi.
 836 SAYFASINDA LATCH (%d|%d) ZAMAN AŞIMI.
 837 Veritabanı nesneleri (sınıf / tetik / seri vs) sahibi olan kullanıcılara aittir iptal edemezsiniz.. 
-838 Eşzamanlı olarak taranan indeksi %d den daha fazla açılamaz .
-839 "%s": Bilinmeyen sistem parametresi veya bozuk bir değer.
-840 Sistem parametresi değiştiremezsiniz "%s".
+838 Eşzamanlı olarak taranan indeksi %1$d den daha fazla açılamaz .
+839 "%1$s": Bilinmeyen sistem parametresi veya bozuk bir değer.
+840 Sistem parametresi değiştiremezsiniz "%1$s".
 841 İstenen işlem yalnızca tek istemci (işlem) tarafından yürütülebilir.
 842 Nesne kilit önbelleğe alamıyor %1$d|%2$d|%3$d.
 843 %s yanlış argümanlar, %s bir geçmiş 
@@ -915,13 +915,13 @@ $ LOADDB
 846 tran (%d) %s bir nesnenin sahibi listesinde bulunmayan (%d|%d|%d).
 847 %s üzerinde %s (%d|%d|%d) işlem (%d) beklemeye listede bulunmayan (cnt=%d).
 848 İşlem (%d) non2pl listede bulunmaz.bir %s üzerinde (%d|%d|%d)
-849 İki kez iptal bir işlem (%d) çalışıyorum.
+849 İki kez iptal bir işlem (%1$d) çalışıyorum.
 850 Tran (%d) bir nesnenin kilit sahibi, ne de kilit bekleyen ne olduğunu (%d|%d|%d).
-851 Kilit kaynak (%s) ayrılamadı. 
-852 Boş bir kilit sahibi listesinde Toplam sahipleri modu (%d) NULL_LOCK değildir.
+851 Kilit kaynak (%1$s) ayrılamadı. 
+852 Boş bir kilit sahibi listesinde Toplam sahipleri modu (%1$d) NULL_LOCK değildir.
 853 Bir nesne için (%d|%d|%d), Okuma kaydedilmemiş düzenlenen arıza kilidi (%s) tran (%d).
-854 UYARI: kilit sahibi bulunmamaktadır, ama kilit bekleyenler mevcut. %s e başvurun.
-855 UYARI: İki veya daha fazla iş parçacığı kilit bekleyen bir işlem (%d) içindir.
+854 UYARI: kilit sahibi bulunmamaktadır, ama kilit bekleyenler mevcut. %1$s e başvurun.
+855 UYARI: İki veya daha fazla iş parçacığı kilit bekleyen bir işlem (%1$d) içindir.
 856 UYARI: Strange LOCKWAIT durumu (%d|%d), iplik (%d|%d) ve işlemler (%d).
 857 Sayfa %1$d yoğunluk "%2$s" kesilmesi sırasında başka bir I/O hata oluştu.
 858 Cilt "%1$s" sunucu yeniden başlatma sırasında bilinmiyor.
@@ -930,7 +930,7 @@ $ LOADDB
 861 Bu işlemi bir küresel işlemin bir parçası olarak yapılamaması nedeniyle işlemin tanımlayıcısı %1$d ile geçerli işlem tamamlamaya hazırlayamaz.
 862 Durumu '%2$s' olduğundan tanımlayıcı %1$d küresel işlemin kullanıcı bilgileri ayarlanamıyor.
 863 Belirteç %1$d olarak ayarlayın çünkü küresel işlemin kullanıcı bilgileri alınamıyor.
-864 backupdb/restoredb ayrıntılı dosya '%s' açılamıyor.
+864 backupdb/restoredb ayrıntılı dosya '%1$s' açılamıyor.
 865 Bilinmeyen tip giriş işaretleri nedeniyle bildirimi yürütülemiyor.
 866 Kullanılmayan hata kodu.
 867 Kullanılmayan hata kodu.
@@ -945,36 +945,36 @@ $ LOADDB
 876 Kullanılmayan hata kodu.
 877 Verilerin bellekten kaldırılacak biçimde bulunmamakta.
 878 Geçersiz veritabanı konumu dosyası, '%1$s'.
-879 İzni alınamıyor: '%s'.
-880 İzni değiştirilemiyor '%s'.
+879 İzni alınamıyor: '%1$s'.
+880 İzni değiştirilemiyor '%1$s'.
 881 Kilit dosyası alınamıyor '%s(FILE ID:%d)'.
-882 Kilit dosyası serbest bırakılamıyor 'FILE ID:%d'.
-883 '%s' dosya durumu alınamadı.
-884 Volext-path adı '%s' yazmak için izin verilmez.
+882 Kilit dosyası serbest bırakılamıyor 'FILE ID:%1$d'.
+883 '%1$s' dosya durumu alınamadı.
+884 Volext-path adı '%1$s' yazmak için izin verilmez.
 885 '%s' '%s' arasında geçiş yerine getirilmedi.Aynı aygıt (disk) kullanın.
 886 "%1$s" benzersiz kısıtlama ihlaline neden oldu.
-887 Saklı prosedür '%s' zaten var olur.
+887 Saklı prosedür '%1$s' zaten var olur.
 888 Parametre sayısı geçersiz. beklenen: %d, güncel: %d
-889 Saklı prosedür yürütme hatası: %s
+889 Saklı prosedür yürütme hatası: %1$s
 890 Bölme başarısız oldu.
 891 Uygun bir bölüm yok.
 892 Birincil anahtar "%2$s" zaten "%1$s" sınıf için tanımlanmış.
 893 Öznitelik '%1$s', birincil anahtarın bir üyesidir,iptal edilemedi.
-894 Saklı procedure/function '%s' bulunmamaktadır .
+894 Saklı procedure/function '%1$s' bulunmamaktadır .
 895 Geçersiz saklı prosedür türü: '%s' olan '%s'.
 896 Sıkıştırma başarısız oldu. Zip Yöntemi: %d (%s), Zip Seviyesi: %d (%s)
 897 Sıkıştırmayı açma başarısız oldu.
 898 Çoğaltma hatası: "%1$s"
 899 Geçersiz bölüm talepleri.
-900 Java VM kitaplığı bulunanadı: %s. \nSonuç olarak, çağrı java saklı prosedür izin verilmez.
-901 Java VM başlayan olamaz: %s. \nSonuç olarak, çağrı java saklı prosedür izin verilmez.
+900 Java VM kitaplığı bulunanadı: %1$s. \nSonuç olarak, çağrı java saklı prosedür izin verilmez.
+901 Java VM başlayan olamaz: %1$s. \nSonuç olarak, çağrı java saklı prosedür izin verilmez.
 902 Java VM çalışmıyor.
-903 Java VM bağlanamıyor: %s
+903 Java VM bağlanamıyor: %1$s
 904 Geçersiz saklı prosedür adı.
-905 JVM ile Ağ başarısız oldu: %d
+905 JVM ile Ağ başarısız oldu: %1$d
 906 Geçersiz java yöntem imzası.
 907 DBA grubun sahibi ya da üye saklı prosedür iptal edebilirsiniz.
-908 Saklı prosedürün çok fazla bağımsız değişkeni bulunmakta '%s'.
+908 Saklı prosedürün çok fazla bağımsız değişkeni bulunmakta '%1$s'.
 909 Eksik veya geçersiz katalog class/vclass bulunur.
 910 Bölüm erişimine izin verilmez.
 911 Geçersiz çağrı: Bu Resultset geri döndüremez.
@@ -982,26 +982,26 @@ $ LOADDB
 913 Çok fazla iç içe stored procedure çağrısı.
 914 Bir seri nesnesi önceden otomatik artış kısıtlaması olarak bulunmaktadır.
 915 Otomatik artış kısıtlaması değeri artırım 0'dan büyük olmalıdır.
-916 Aktif log yoğunluğa bu yedek yoğunluk dahil edilmemiştir(%s).
+916 Aktif log yoğunluğa bu yedek yoğunluk dahil edilmemiştir(%1$s).
 917 Aktif log yoğunluğu zaten var.
-918 Yabancı anahtar tarafından yönlendirilen sınıf '%s' bulunmamaktadır.
-919 Yabancı anahtarının tarafından yönlendirilen birincil anahtarın sınıf '%s' bulunmamaktadır.
+918 Yabancı anahtar tarafından yönlendirilen sınıf '%1$s' bulunmamaktadır.
+919 Yabancı anahtarının tarafından yönlendirilen birincil anahtarın sınıf '%1$s' bulunmamaktadır.
 920 Yabancı anahtar '%s' birincil anahtar üye '%s' içermez.
 921 Yabancı anahtar üye '%s' alanı birincil anahtar üye '%s' farklıdır.
 922 Dış anahtar kelime: '%s değeri'nedeniyle,'%s'sınırı geçersiz.
 923 Birincil anahtar '%s' yabancı anahtar '%s' tarafından yönlendirilen iptal olması gerekmiyor.
-924 Güncelle/Sil işlemleri yabancı anahtar '%s' tarafından kısıtlanmıştır.
-925 Yabancı anahtar '%s' için kilit edinilmesi başarısız oldu.
-926 Yabancı anahtar '%s' sahip olan örneğini iptal edemezsiniz.
+924 Güncelle/Sil işlemleri yabancı anahtar '%1$s' tarafından kısıtlanmıştır.
+925 Yabancı anahtar '%1$s' için kilit edinilmesi başarısız oldu.
+926 Yabancı anahtar '%1$s' sahip olan örneğini iptal edemezsiniz.
 927 Yabancı anahtar '%s' anahtar sayısı birincil anahtar '%s' farklıdır.
-928 Bir kullanıcı değil ancak sistem özniteliği '%s' yabancı anahtar 'ON CACHE OBJECT' tarafından oluşturulan atayabilirsiniz.
+928 Bir kullanıcı değil ancak sistem özniteliği '%1$s' yabancı anahtar 'ON CACHE OBJECT' tarafından oluşturulan atayabilirsiniz.
 929 Yabancı anahtar sanal sınıf içinde tanımlanamaz.
-930 Bu özniteliği '%s' sadece yabancı anahtar kısıtlaması çıkardıktan sonra yabancı anahtar 'ON CACHE OBJECT' tarafından oluşturulan iptal edilebilir.
+930 Bu özniteliği '%1$s' sadece yabancı anahtar kısıtlaması çıkardıktan sonra yabancı anahtar 'ON CACHE OBJECT' tarafından oluşturulan iptal edilebilir.
 931 Otomatik artış kısıtlama değeri Başlat değeri max değeriden daha az olmalıdır.
 932 Bu "%1$s" yoğunluk için ücretsiz sayfaların sayısını bir tutarsızlığı onarmak mümkün değildir.Etiketli yoğunluk başlığına elde edilen %2$d sayfaları bitmap %3$d sayfaları ile bağdaşmayan olduğundan.
 933 Bu "%1$s" yoğunluk için ücretsiz sayfaların sayısını bir tutarsızlığı onarmak mümkün değildir.Etiketli yoğunluk başlığına elde edilen %2$d sektörlerde bitmap %3$d sektörler ile bağdaşmayan olduğundan.
 934 Başvurulan Null etki alanı.
-935 %s fonksiyonunun bağımsız değişkeni aralık dışındadır.
+935 %1$s fonksiyonunun bağımsız değişkeni aralık dışındadır.
 936 Taşma exp bağlamında oluştu.
 937 Veritabanı hatası.
 938 Geçersiz bağımsız değişkeni.
@@ -1031,7 +1031,7 @@ $ LOADDB
 962 Bellek yetersiz.
 963 Broker Hatası.
 964 Sonuç kümesindeki tanıtıcı kapalı.
-965 Dizin anahtarı listesi yinelenen öznitelik adlarını kullanamazsınız. Öznitelik adı '%s' bir kereden fazla listelenmiştir.
+965 Dizin anahtarı listesi yinelenen öznitelik adlarını kullanamazsınız. Öznitelik adı '%1$s' bir kereden fazla listelenmiştir.
 966 İşleminiz (index %1$d, %2$s@%3$s|%4$d) %5$s üzerinde beklerken zaman aşımına uğradı %6$d|%7$d|%8$d nesne üzerinde kilitleyin çünki tıkanıklık var. Bu kullanıcı için bekliyor(s) %9$s bitirmek için.
 967 İşleminiz (index %1$d, %2$s@%3$s|%4$d) %5$s üzerinde beklerken zaman aşımına uğradı %6$s sınıf üzerinde kilitleyin çünki tıkanıklık var. Bu kullanıcı için bekliyor(s) %7$s bitirmek için.
 968 İşleminiz (index %1$d, %2$s@%3$s|%4$d) %5$s üzerinde beklerken zaman aşımına uğradı %9$s sınıf %6$d|%7$d|%8$d örneği üzerinde kilitleyin çünki tıkanıklık var. Bu kullanıcı için bekliyor(s) %10$s bitirmek için.
@@ -1058,7 +1058,7 @@ $ LOADDB
 989 Süreç olayı: %1$s. %2$s
 990 Komut yürütme: %1$s. %2$s
 991 Sayfa buffer Flush mağdur adayları başlatıldı.
-992 Sayfa buffer Flush mağdur adayları bitirdi (sayı:%d).
+992 Sayfa buffer Flush mağdur adayları bitirdi (sayı:%1$d).
 993 Taşma bit işletim bağlamında oldu.
 994 Bu açıklama hazırlanmış bir açıklama olamaz.
 995 %1$s adında hazırlanmış bir açıklama bulunmamaktadır.
@@ -1079,16 +1079,16 @@ $ LOADDB
 1010 Etki alanı "%1$s" önek uzunluğu indeksi tanımlayamazsınız.
 1011 Paylaşılan özniteliği %2$s yabancı anahtar kısıtlaması %1$s eklenemiyor.
 1012 NULL sütun türü ile tablo oluşturulamıyor.
-1013 VARSAYILAN veya ORTAK ayarlayın veya %s yazılı sütun üzerindeizin verilmez.
-1014 %s yazılı sütun üzerinde NOT NULL olarak ayarlamaya izin verilmez.
-1015 Belirtilen dizin '%s' yok.
+1013 VARSAYILAN veya ORTAK ayarlayın veya %1$s yazılı sütun üzerindeizin verilmez.
+1014 %1$s yazılı sütun üzerinde NOT NULL olarak ayarlamaya izin verilmez.
+1015 Belirtilen dizin '%1$s' yok.
 1016 %1$s harici veri depolama hatası: %2$s
-1017 Harici veri depolama '%s' için path geçersiz.
+1017 Harici veri depolama '%1$s' için path geçersiz.
 1018 Depolama farklı tipte dış dosyaya kopyalanamıyor. (kaynak %1$s hedef %2$s)
 1019 Path "databases.txt" belirlenen olmadığı için harici veri depolama başlatılmaz.
-1020 Harici dosya "%s" bulunamadı.
+1020 Harici dosya "%1$s" bulunamadı.
 1021 Bir deadlock döngüsü algılandı. %1$s.
-1022 İndeksin önek uzunluğu için geçersiz değer "%d".
+1022 İndeksin önek uzunluğu için geçersiz değer "%1$d".
 1023 HA hata kodu saklıdır.
 1024 log writer: failed to get log page(s) starting from page id %1$lld.
 1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
@@ -1123,7 +1123,7 @@ $ LOADDB
 1054 Otomatik artış kısıtlama yeni değeri veya daha büyük mevcut değerine eşit olmalıdır.
 1055 Otomatik artış kısıtlama yeni değeri maksimum değerden daha düşük olmalıdır.
 1056 Karışıklığı önlemek için auto_increment tablosu seçeneğini tablo tam olarak bir tane AUTO_INCREMENT sütunu ve herhangi bir çekirdek/artırma özellikleri olması gerekir.
-1057 VARSAYILAN değer içermeyen bir NOT NULL '%s' yazılmış özniteliği eklenemiyor.
+1057 VARSAYILAN değer içermeyen bir NOT NULL '%1$s' yazılmış özniteliği eklenemiyor.
 1058 TABLO DEĞİŞTİRME .. DEĞİŞİM: Yeni bir etki alanı için değiştirme: döküm başarısız oldu, mevcut yapılandırma kesme veya taşmaya izin vermez.
 1059 TABLO DEĞİŞTİRME .. DEĞİŞİM: Yeni bir etki alanı için değiştirme: döküm başarısız oldu, yeni bir etki alanının varsayılan değer kuruldu.
 1060 TABLO DEĞİŞTİRME .. DEĞİŞİM: Yeni bir etki alanı için değiştirme: döküm başarısız oldu, yeni bir etki alanının minimum değeri ayarlandı.
@@ -1133,10 +1133,10 @@ $ LOADDB
 1064 TABLO DEĞİŞTİRME .. DEĞİŞİM: NOT NULL ekleme:Varolan tüm NULL değerleri etki alanı sabit varsayılan değiştirildi.
 1065 "%1$s" özniteliği değiştirilemiyor. CUBRID NULL kısıtlaması ekleyemezsiniz:sert bir varsayılan değer yeni etki alanı için mevcut değil.
 1066 Aktif kalma süresi dolmuş.
-1067 Sütun '%s' bir NOT NULL kısıtlaması ve bir NULL değeri olamaz.
-1068 Maksimum tetikleyici derinliği %d geçemez.
+1067 Sütun '%1$s' bir NOT NULL kısıtlaması ve bir NULL değeri olamaz.
+1068 Maksimum tetikleyici derinliği %1$d geçemez.
 1069 Çok fazla sayıda hazırlanmış durum.
-1070 Aktif kalma değişkeni '@%s' tanımlı değil.
+1070 Aktif kalma değişkeni '@%1$s' tanımlı değil.
 1071 Çok fazla sayıda oturum değişkenleri bulunmakta.
 1072 IP adresi (%1$s) yetkili değil.
 1073 Dosya biçimi geçersiz (%1$s).
@@ -1144,28 +1144,28 @@ $ LOADDB
 1075 Azalan indeks taraması nedeniyle indeksi tanımlayıcısı ile B+tree üzerinde düşük öncelik iptal edildi:(vfid = (%1$d, %2$d), rt_pgid: %3$d).
 1076 Sistem parametresi yüklenemedi.
 1077 Dosya '%s' satır %d '%s' parametresi: Bilinmeyen parametre
-1078 Başlangıç yerideki %d özellikleri güncel kod ayarını geçersiz.
+1078 Başlangıç yerideki %1$d özellikleri güncel kod ayarını geçersiz.
 1079 Veri tabanı kod takımları (%1$s) ve sunucu konfigürasyonu (%2$s) uyumlu değildir.
 1080 Fitre dizesi uzunluğu en fazla %1$d olmalıdır.
 1081 Filtre veya fonksiyon indeksi özellikleri ile ilgili değişiklik yapılamaz.
 1082 Tüm sayfa tamponlar kirlidir (LRU: %1$d).
-1083 Bilgisayar çöker hakkında belirli koşullar.\n%s
+1083 Bilgisayar çöker hakkında belirli koşullar.\n%1$s
 1084 Kontrol noktasındaki geçersiz sayfa numasından atlamak. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, önceki kontrol redo lsa: %5$lld|%6$d)
-1085 Düzenlenemez Konvansiyonel ifadesi: düzenlemesi : '%s'
-1086 Konvansiyonel ifadesi gerçekleştiremiyor: '%s'
-1087 Yedek inisiyatif günlükcü çalıştırımalı'%s'
-1088 Yedek inisiyatif günlükcü'%s' tamamlanmıştır
+1085 Düzenlenemez Konvansiyonel ifadesi: düzenlemesi : '%1$s'
+1086 Konvansiyonel ifadesi gerçekleştiremiyor: '%1$s'
+1087 Yedek inisiyatif günlükcü çalıştırımalı'%1$s'
+1088 Yedek inisiyatif günlükcü'%1$s' tamamlanmıştır
 1089 Kaynak ayırma hatası. Yüksetilmiş max_bestspace_entries=%1$d '.
-1090 Konum ilklendimesi: %s.
-1091 Konumun var olması: %s.
-1092 Bigisayar değişken'%s' türünün ifadesi hazırlanmamalıdır.
-1093 inet_aton'ın arg '%s, ipv4 adresinde ayarlanan geçerli dizesi değildir.
-1094 inet_aton'ın arg '%lld, ipv4 adresinde ayarlananr geçerli dijital değildi.
+1090 Konum ilklendimesi: %1$s.
+1091 Konumun var olması: %1$s.
+1092 Bigisayar değişken'%1$s' türünün ifadesi hazırlanmamalıdır.
+1093 inet_aton'ın arg '%1$s, ipv4 adresinde ayarlanan geçerli dizesi değildir.
+1094 inet_aton'ın arg '%1$lld, ipv4 adresinde ayarlananr geçerli dijital değildi.
 1095 Kullanıcı adı çok uzun
 1096 Ne zaman bölğm düzeyinde dış anahtar kelimeler referans için kullandığı zamanda, Değişiklik yapılmakta olan bölüm yapısına izin vermez.
-1097 '%s'kapısitesinde bir ilk PRIMARY KEY kelimelerde bir sınırlama ile geçersiz NULL değeri olamaz. 
+1097 '%1$s'kapısitesinde bir ilk PRIMARY KEY kelimelerde bir sınırlama ile geçersiz NULL değeri olamaz. 
 1098 Dil '%s'konumu karakter kümesindeki'%s' kullanılmaz.
-1099 DDL açıklaması konfigürasyon tarafından izin verilmemiştir (block_ddl_statement=yes).\n SQL Text: %s
+1099 DDL açıklaması konfigürasyon tarafından izin verilmemiştir (block_ddl_statement=yes).\n SQL Text: %1$s
 1100 Jümlelerde görülmeyen konumun ifadesi dış boyutlar tarafından izin verilmez(block_nowhere_statement=yes)
 1101 Kullanılmayan hata kodu.
 1102 Unknown system parameter or bad value.
@@ -1180,7 +1180,7 @@ $ LOADDB
 1111 Sonuç değeri kısaltıldı, çünkü hassasiyet (%1$d) uzunluğundan az(%2$d).
 1112 Bir karakter '%1$s' dan '%2$s' a dönüştürülemedi.
 1113 Aralık dışındaki eleman indeksi.
-1114 Argüman '%s' aralık dışında.
+1114 Argüman '%1$s' aralık dışında.
 1115 Güncelleştirme istatistikleri başladı (class "%1$s", oid : %2$d|%3$d|%4$d).
 1116 Güncelleştirme istatistikleri tamamlandı(class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
 1117 Özellik "%1$s" değiştiremezsiniz. CUBRID bir SHARED ve tersi gibi, nitelik değiştiremezsiniz.
@@ -1198,12 +1198,12 @@ $ LOADDB
 1129 Oturum kurtarma bitti.
 1130 İşlem kilit sayıları %1$d aştığı için işlem iptal edilir.
 1131 Dahili hata: Sayfa %1$d hacmi "%2$s"de bozulabilir.\n%3$s
-1132 Encryption library failure: %s
+1132 Encryption library failure: %1$s
 1133 Copylogdb for %1$s already exists.
 1134 Applylogdb for %1$s already exists.
 1135 A previous link of B+tree(%1$s) is corrupted.: vpid = (%2$d, %3$d)
 1136 A previous link of B+tree(%1$s) is repaired.: vpid = (%2$d, %3$d)
-1137 The query has been rejected due to attempt to exceed the maximum allowed nesting level(%d).
+1137 The query has been rejected due to attempt to exceed the maximum allowed nesting level(%1$d).
 1138 Handshake error (peer host %1$s): incompatible interruptibility. (client: %2$s, server: %3$s)
 1139 Handshake error (peer host %1$s): incompatible read/write mode. (client: %2$s, server: %3$s)
 1140 Handshake error (peer host %1$s): HA replication delayed.
@@ -1214,19 +1214,19 @@ $ LOADDB
 1145 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
-1 Alt Hata içinde hata (satır %d):
+1 Alt Hata içinde hata (satır %1$d):
 2 Uygun hata mesajı bulunmamakta.
-3 %d byte tahsis edemez.
-4 "%s" mesaj kataloğu bukunamıyor .
-5 %d hata kodu için mesaj kayıp.
+3 %1$d byte tahsis edemez.
+4 "%1$s" mesaj kataloğu bukunamıyor .
+5 %1$d hata kodu için mesaj kayıp.
 6 ... İPTAL ETMEK /DERHAL ÇIK ...\n
 7 Çıkmak istiyor musunuz? 1/0
 8 Bilinmeyen dosya.
 9 Uygun mesaj bulunmamakta; Bu mesajı yanlışlıkla orijinal yerine biçimlendirilmiş.
 10 er_init: *** doğru değil exit_ask değer = %d; %s yerine üstlenecek . ***\n
-11 er_start: *** UYARI:Mesaj log açılamıyor "%s"; stderr yerine üstlenecek. ***\n
-12 er_study_fmt: %d hata kodu için şüpheli mesaj.
-13 er_estimate_size:bilinmeyen dönüşüm kodu (%d).
+11 er_start: *** UYARI:Mesaj log açılamıyor "%1$s"; stderr yerine üstlenecek. ***\n
+12 er_study_fmt: %1$d hata kodu için şüpheli mesaj.
+13 er_estimate_size:bilinmeyen dönüşüm kodu (%1$d).
 14 \n\n*** Mesaj log panaromik. Mesajlar dosyanın üstünde devam edecektir. ***\n\n
 15 \nTime: %s - %s *** %s KOD = %d, Tran = %d%s\n%s\n
 16 CUBRID (pid: %d) *** %s *** %s KOD = %d, Tran = %d %s
@@ -1237,18 +1237,18 @@ $set 6 MSGCAT_SET_INTERNAL
 21 Mail -s "Sunucu Durduruldu"
 22 --->>>\n Aşağıdaki hata kurulduğunda %s sizin isteğiniz üzerine durduruldu:\n errid = %d, %s\nKullanıcı: %s, pid: %d, host: %s, zaman: %s<<<---\n
 23 %s ,errid = %d üzerine durduruldu. Kullanıcı: %s, pid: %d
-24 er_init: "%s" olay işleyicisi yükleyemezsiniz \n
+24 er_init: "%1$s" olay işleyicisi yükleyemezsiniz \n
 
 $set 7 MSGCAT_SET_PARSER_SYNTAX
 1 Lütfen '%s' sözdizimi kısmını kontrol edin, beklenen %s.
 2 Lütfen '%s' sözdizimi kısmını kontrol edin, %s içinde beklenen %s.
-3 Lütfen '%s' belirteç doğruluğunu kontrol edin.
+3 Lütfen '%1$s' belirteç doğruluğunu kontrol edin.
 4 'kaydedilmemiş şema okuma' kabul edilemez, kullanarak \n'kaydedilmemiş şema okuma' yerine.
 5 Maksimum karakter dize uzunluğu 16383.
 6 %s, %lld sınırını aşarsa .
-7 En fazla bit dize uzunluğu %d bits.
+7 En fazla bit dize uzunluğu %1$d bits.
 8 Join koşulu yan tümcesinde bir alt sorgu kullanamazsınız.
-9 Güncelleştirme ayrıcalığı maddesinin öznitelik "(%s)" belirlemek durumu grant/revoke edemezsiniz.
+9 Güncelleştirme ayrıcalığı maddesinin öznitelik "(%1$s)" belirlemek durumu grant/revoke edemezsiniz.
 10 '%s' anahtar kelime kullanımı geçersiz , beklenen %s.
 11 Token boyu çok uzun.
 12 invalid data type
@@ -1304,7 +1304,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 62 invalid minus value (or minus value in list)
 63 duplicated reference rule
 64 SYS_CONNECT_BY_PATH needs two parameters and the second must be a string literal.
-65 Invalid unsigned integer %s.
+65 Invalid unsigned integer %1$s.
 66 IF needs three parameters: the first must be a logical expression, the second and third must be expressions evaluating to either a numeric or a string type.
 67 IFNULL needs two parameters which must be expressions evaluating to either a numeric or a string type.
 68 invalid use of isnull\n  ISNULL ( expression )
@@ -1343,7 +1343,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 101 invalid use of time\n TIME(expression)
 102 invalid use of group_concat\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 Dizin ipuçlarının geçersiz kullanımı
-104 Bit dizgesinin uzunluğu en fazla %d bittir.
+104 Bit dizgesinin uzunluğu en fazla %1$d bittir.
 105 Sözdizim hatası: unexpected
 106 , expecting '{'
 107 , expecting SELECT or '('
@@ -1352,7 +1352,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 110 END OF STATEMENT
 111 In line %d, column %d before '%c%s'\n
 112 In line %d, column %d before %s\n
-113 before ' %s'\n
+113 before ' %1$s'\n
 114 before END OF STATEMENT\n
 115 Geçersiz grup\n adı: SET NAMES charset [COLLATE collation]\n
 116 invalid use of chr\n  CHR ( number [using charset] )\n
@@ -1362,101 +1362,101 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.
-2 Function %s tanımsız.
-3 ldb '%s' veritabında bulunamıyor.
+2 Function %1$s tanımsız.
+3 ldb '%1$s' veritabında bulunamıyor.
 4 Sütunların sayısı, %d, sol sorgulama içinde eşleşmiyor\nSütunların sayısı, %d, sağ sorgulama içinde.
 5 '%s'ile uyumlu birleşme '%s' değil.
-6 %s tanımlı değil.
-7 %s etki alanı bir vclass olamaz.
-8 %s etki alanı bir proxy vclass olamaz.
-9 %s etki alanı bir class olamaz.
+6 %1$s tanımlı değil.
+7 %1$s etki alanı bir vclass olamaz.
+8 %1$s etki alanı bir proxy vclass olamaz.
+9 %1$s etki alanı bir class olamaz.
 10 %s nin bir özniteliği '%s' değildir.
 11 %s bu sınıftan değiştirilemez.\n %s dan bir artakalandır.
-12 Class %s bulunmamaktadır.
+12 Class %1$s bulunmamaktadır.
 13 %s bir %s değildir.
 14 %s bir metod veya öznitelik %s değildir.
-15 %s olmayan ve herhangi bir sorgu özellikleri olmamalıdır.
-16 %s veritabanında tanımlı değildir.
+15 %1$s olmayan ve herhangi bir sorgu özellikleri olmamalıdır.
+16 %1$s veritabanında tanımlı değildir.
 17 %s bir %s süpersınıfı değildir.
 18 Class %s non-class %s dan devralır.
 19 VClass %s non-vclass %s dan devralır.
 20 Proxy vclass %s non-proxy vclass %s dan devralır.
 21 %s zaten bir %s süpersınıfı.
-22 %s kendisinin bir süper sınıfı olamaz.
+22 %1$s kendisinin bir süper sınıfı olamaz.
 23 %s zaten bir %s altsınıfıdır.
-24 %s tek değerli değildir. Naggregate sorgularında maruz kalan öznitelikler yan tümcesi tarafından grubunda yer almalıdır.
+24 %1$s tek değerli değildir. Naggregate sorgularında maruz kalan öznitelikler yan tümcesi tarafından grubunda yer almalıdır.
 25 Sütünların sayısı(%d) ve into_names(%d) eşit değildir.
-26 Class %s zaten bulunmakta.
+26 Class %1$s zaten bulunmakta.
 27 Super class %s '%s' içinde bulunmamaktadır.
-28 Yan tümcesi '%s' anlamlı bir INHERIT yapmak için bir SUBCLASS yan tümcesi beklemektir.
+28 Yan tümcesi '%1$s' anlamlı bir INHERIT yapmak için bir SUBCLASS yan tümcesi beklemektir.
 29 INHERIT yan tümcesi '%s' başvuruları SUBCLASS yan tümcesi '%s' bulunmayan bir sınıf.
 30 Class bir sorgu özelliklerine sahip olamaz.
-31 %s bir kayıtlı ldb değil.
+31 %1$s bir kayıtlı ldb değil.
 32 Bir proxy varisi kendine ait object_id yan tümcesi olmayabilir. Kalıtımsal object_id öznitelik (ler) geçersiz yapılamaz.
 33 Proxy vclass birden fazla sorgu özelliklerine sahiptir.
 34 Özniteliklerin sayısı, %d, sütunların sayısı ile eşleşmemektedir, \n%d, sorgu özellikleri içinde.
-35 %s için beklenen bir öznitelik adı eksik.
+35 %1$s için beklenen bir öznitelik adı eksik.
 36 Öznitelik '%s' sütun '%s' sorgu özelliği ile uyumlu değildir.
-37 %s sınıf değildir.
+37 %1$s sınıf değildir.
 38 Endeksleri sanal sınıflar da oluşturulmuş olmayabilir.
 39 Endeksleri, sadece tek bir özniteliği oluşturulabilir.
 40 Yan tümcesi birden fazla sınıflar da geçersiz kullanımı.
-41 Sistem hatası - Çözünürlük %s başarısız oldu.
+41 Sistem hatası - Çözünürlük %1$s başarısız oldu.
 42 Türetilmiş bir tablo silemeye bilirsiniz.
-43 Kullanıcı %s veritabanında değil.
+43 Kullanıcı %1$s veritabanında değil.
 44 Güncelleme kümeleme içeremez.
 45 Her sınıfta özniteliği adlarının benzersiz olması gerekir. Öznitelik adı '%s' sınıf '%s' bir kereden fazla belirtildi.
-46 %s birden fazla atama var..
+46 %1$s birden fazla atama var..
 47 Sıralama özellikleri sayısı bir tamsayı değildir.
-48 Sıralama özellikleri %d aralık dışında.
+48 Sıralama özellikleri %1$d aralık dışında.
 49 Öğe tarafindan bir tamsayı değildir.
-50 Sıralama özellikleri %s herhangi bir seçeneği sütununda eşleşmiyor.
-51 Sütun %s için çelişkili sıralama yönü bulunmaktadır.
-52 Sıralama özellikleri %s bir numarası, adı veya path anlatım değildir.
+50 Sıralama özellikleri %1$s herhangi bir seçeneği sütununda eşleşmiyor.
+51 Sütun %1$s için çelişkili sıralama yönü bulunmaktadır.
+52 Sıralama özellikleri %1$s bir numarası, adı veya path anlatım değildir.
 53 Ekleme anlatım sadece ekleme açıklamasında görünebilir.
 54 Seçilen özniteliklerin (%d) ve sütunların (%d) sayısı eşit değildir.
 55 Özniteliklerin (%d) ve değerlerin (%d) sayısı eşit değildir.
-56 Veri türü %s üzerinde veri taşması.
-57 Özniteliğin %s üzerinde uyumsuz veri türü.
-58 %s\n tek bir sınıfında bir SELECT değildir.
+56 Veri türü %1$s üzerinde veri taşması.
+57 Özniteliğin %1$s üzerinde uyumsuz veri türü.
+58 %1$s\n tek bir sınıfında bir SELECT değildir.
 59 `*' proxy vclass dizayn edilmiş sorgu belirleme geçerli bir seçim listesi değildir.
-60 %s ne bir vclass ne de proxy vclass değildir.
+60 %1$s ne bir vclass ne de proxy vclass değildir.
 61 Birden fazla yalıtım düzeyinde yan tümceleri vardır.
 62 Birden fazla zaman aşımı yan tümceleri bulunmaktadır.
 63 Hiçbir yalıtım düzeyine girilemedi.
 64 Operatör BETWEEN türleri %s, %s ve %s tanımlı değildir.
 65 '%s' operatör tiplerinin %s ve %s tanımlı değildir.
-66 Fonksiyon argümanları olması gerekir: %s.
+66 Fonksiyon argümanları olması gerekir: %1$s.
 67 Uyumsuz işlenenler: %s(%s).
-68 Toplama işlevi 1 argüman olması gerekir: %s.
+68 Toplama işlevi 1 argüman olması gerekir: %1$s.
 69 Sıfıra bölme girişimi.
 70 Veri taşması %s yazmak için %s zorluyor.
 71 %s yazmak için %s zorlama olamaz.
-72 '%s' tipi SET, MULTISET veya SEQUENCE olması gerekir.
-73 '%s' tam olarak bir dizi öğe türü olmalıdır.
-74 %s birden fazla türetilmiş sütun adı vardır.
-75 %s türetilmiş sütun adı vardır.
+72 '%1$s' tipi SET, MULTISET veya SEQUENCE olması gerekir.
+73 '%1$s' tam olarak bir dizi öğe türü olmalıdır.
+74 %1$s birden fazla türetilmiş sütun adı vardır.
+75 %1$s türetilmiş sütun adı vardır.
 76 %s sütunlar (%d) ve sütun adlarının (%d) karşılık gelen bir numarası bulunmamaktadır.
-77 %s içinde herhangi bir öznitelikleri bulunmaktadır.
-78 %s içinde tek bir tablo bekleniyor.
-79 Açıkta kalan adı %s belirsiz.
-80 Türetilmiş sütun adları '%s' basit sınıf özellikleri için izin verilmez.
-81 Türetilmiş tablo '%s' bir ilişki adı olmalıdır.
-82 Yetkilendirme hatası, %s sınıfı seçin.
-83 Türetilmiş bir tablo adı için sınıf örneği başvurusu %s izin verilmez.
-84 Path bağıntı (%s) içsel path dönem dışında görünür.
-85 %s Referans belirsiz.
+77 %1$s içinde herhangi bir öznitelikleri bulunmaktadır.
+78 %1$s içinde tek bir tablo bekleniyor.
+79 Açıkta kalan adı %1$s belirsiz.
+80 Türetilmiş sütun adları '%1$s' basit sınıf özellikleri için izin verilmez.
+81 Türetilmiş tablo '%1$s' bir ilişki adı olmalıdır.
+82 Yetkilendirme hatası, %1$s sınıfı seçin.
+83 Türetilmiş bir tablo adı için sınıf örneği başvurusu %1$s izin verilmez.
+84 Path bağıntı (%1$s) içsel path dönem dışında görünür.
+85 %1$s Referans belirsiz.
 86 %s Class özniteliği %s bulunmamaktadır.
 87 Classes (%s) tüm öznitelik %s bulunmamakta.
 88 Class (%s) %s özniteliği bulunmamaktadır.
 89 %s %s türü değil, bir nesne türüdür.
 90 Seçici {%s} gerekli içerik (%s) bir maruz sınıf özelliklerine gidermez.
 91 Seçici {%s} olmayan sınıf özellikleri (%s) ifade eder.
-92 Seçici {%s} kendisini tanımlayan path ifade kök olamaz.
+92 Seçici {%1$s} kendisini tanımlayan path ifade kök olamaz.
 93 Seçici {%s} dairesel seçici {%s} açısından tanımlanır.
 94 Seçici {%s} %s olarak yeniden tanımlandı.
 95 %s (etki alanı nesnesi) özniteliği %s bulunmamaktadır.
-96 özellikleri HARİÇ %s alt sınıfı değildir.
+96 özellikleri HARİÇ %1$s alt sınıfı değildir.
 97 ALL ... EXCEPT Listede sınıfındaki EVERYTHING kapsamaz .
 98 '%s' path seçici '%s' başka bir kullanımı ile veya path kök '%s' tutarsız.
 99 Tanımsız argüman.
@@ -1475,40 +1475,40 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 112 Geçersiz hassas birleşimi (%d) ve ölçek (%d).
 113 %1$d göz önüne alındığında kesinlik geçersiz;%2$d den daha büyük olmalı ve %3$d den daha büyük olmamalıdır.
 114 Hassas (%d) çok büyük. Maksimum kesinlik %d.
-115 %s yöntemi bir dönüş türüne sahip olmalıdır.
+115 %1$s yöntemi bir dönüş türüne sahip olmalıdır.
 116 Metodu ile birlikte bağımsız sayısı yöntemi için tanımlanan \n sayısına eşit değildir.
 117 Yöntem çağrısı bir hedefi olmalıdır.
-118 %s yöntemi verilen hedef için tanımsızdır.
+118 %1$s yöntemi verilen hedef için tanımsızdır.
 119 Örnek yöntemleri sınıf nesneleri olarak adlandırılan olamaz.
 120 Sınıf yöntemler örnek nesneler üzerinde çağrılamaz.
 121 Sınıf metotları, hedef olarak bir sınıf nesnesi gerektirir.
 122 Yöntem, hedef olarak bir nesne gerektirir.
-123 %s yöntemi tam olarak yazılmış değil, sınıf şeması yöntemi tanımını kontrol edin.
+123 %1$s yöntemi tam olarak yazılmış değil, sınıf şeması yöntemi tanımını kontrol edin.
 124 Zaman aritmetiği alttan taşma.
 125 Tarih aritmetiği alttan taşma.
 126 Bir atama yan tümcesi sol tarafta geçersiz.
 127 Yöntem bir dış kapsamı ile bağlantılıdır ayarlanmış türetilen tablolar çağrısında dizi bir alt sorgu ile sarılmış olmadıkça \n desteklenmez.
-128 Karşılık gelen dizayn edilmiş sorgu belirleme sütununda \n paylaşılan özniteliği '%s' NULL veya NA olmalıdır.
+128 Karşılık gelen dizayn edilmiş sorgu belirleme sütununda \n paylaşılan özniteliği '%1$s' NULL veya NA olmalıdır.
 129 Öznitelik tanımı atlanırsa bir NULL sütun görünümünde sorgu şartname seçim listesi üzerinde izin verilmez.
 130 Setlerle Vclass nesneleri desteklenir.
 131 Bir dize değeri bekleniyor.
 132 Bir deyim ya da bir dize değeri bekleniyor.
-133 Proxy object_id özniteliği '%s' \na dizayn edilmiş sorgu belirleme sütununda ifade eşleştirilir olmamalıdır.
-134 %s kısıtlama gözardı edildi.
+133 Proxy object_id özniteliği '%1$s' \na dizayn edilmiş sorgu belirleme sütununda ifade eşleştirilir olmamalıdır.
+134 %1$s kısıtlama gözardı edildi.
 135 Kısıt bildirimleri bu bağlamda izin verilmez.
 136 %s yazmak için %s çevrim desteklenmemektedir.
-137 %s geçerli bir bit dizgesi değil.
+137 %1$s geçerli bir bit dizgesi değil.
 138 '%s' operatör tipi %s tanımlı değildir.
 139 '%s' operatör %s ve %s ile türleri %s tanımlı değildir.
-140 Operatör '%s' işlenenler hem Dinamik Ana Bilgisayar değişkeni olamaz.
+140 Operatör '%1$s' işlenenler hem Dinamik Ana Bilgisayar değişkeni olamaz.
 141 '%s' genel işlevlerde çok fazla argüman bulunmakta.\nSadece %d argümanları genel işlevler için izin verilir.
 142 Seçici {%s} class '%s' '%s' bir alt sınıf değildir.
 143 Türü %s '%s' alanından ayıklayamazsınız.
 144 Sorgu özellikleri ORDER BY yan tümcesine sahip olmamalıdır.
 145 Olgu durumu mantıksal bir tür anlatımı olması gerekir.
-146 İfade türü %s olmalıdır.
-147 Serial '%s' zaten var.
-148 Serial '%s' tanımlı değil.
+146 İfade türü %1$s olmalıdır.
+147 Serial '%1$s' zaten var.
+148 Serial '%1$s' tanımlı değil.
 149 Increment değeri sıfır olmamalıdır.
 150 Maximum değeri 1.0e37 aşıyor.
 151 Minimum değeri geçersiz.
@@ -1519,13 +1519,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 156 serial_next_value fonksiyonunun ikinci kez tartışması 0 den büyük olmalıdır.
 157 Serial değerleri minimum veya maksimum aşan olamaz.
 158 Serial için Dahili I/O hatası
-159 İndeks '%s' bulunamıyor.
-160 Nitelikli dizin adı '%s' bir sınıf için başvuruyor, ancak bu yan tümcesi belirtilen değildir.
-161 İki veya daha fazla sınıfların aynı indeksi '%s' var.Nitelikli dizin adlarını kullanabilirsiniz.
+159 İndeks '%1$s' bulunamıyor.
+160 Nitelikli dizin adı '%1$s' bir sınıf için başvuruyor, ancak bu yan tümcesi belirtilen değildir.
+161 İki veya daha fazla sınıfların aynı indeksi '%1$s' var.Nitelikli dizin adlarını kullanabilirsiniz.
 162 %s geçersiz kullanımı. \n%s anlatımı öznitelik veya ilişkili alt sorgu kullanilamaz.
 163 Güncel sürüm seçim listesinde ORDERBY_NUM() içeren bir anlatımı kısıtlar.
-164 Path anlatımı '%s' birleştirme koşulu.
-165 '%s' birleştirme koşulu tanımlı değil.
+164 Path anlatımı '%1$s' birleştirme koşulu.
+165 '%1$s' birleştirme koşulu tanımlı değil.
 166 Güncel sürümü sağ dış birleştirme için ayarlanmış türetilmiş bir tablo kısıtlar.
 167 Diğer ldb üzerindeki sorgusu ile eklenemiyor.
 168 Alt sorgu EXISTS ile sunulan olmadığında yalnızca tek bir sütunu seçim listesinde belirtilebilir.
@@ -1535,64 +1535,64 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 172 Bölüm sütununda belirtilmelidir.
 173 Sadece tek bir sütununda bölüm sütun olarak belirtilebilir.
 174 Desteklenmeyen bölüm sütun türü.
-175 Bölüm tanımı yineleniyor.'%s'
-176 Sabit tür uyuşmazlığı. '%s'
+175 Bölüm tanımı yineleniyor.'%1$s'
+176 Sabit tür uyuşmazlığı. '%1$s'
 177 Geçersiz bölüm boyutu.
-178 '%s' sınıf bölümlenmiş değil.
-179 '%s' zaten sınıf bölümlenmiş.
+178 '%1$s' sınıf bölümlenmiş değil.
+179 '%1$s' zaten sınıf bölümlenmiş.
 180 Geçersiz bölüm istekleri.
-181 %s bu sınıfa (bölüm anahtar sütun) ile değiştirilemez.
-182 %s aktif bir tetikleyiciler kapsamında bölüm -yönetilen olarak ayarlanamaz.
-183 %s bölümü yok.
-184 Bölüm türü uyumsuzlukları. '%s'
+181 %1$s bu sınıfa (bölüm anahtar sütun) ile değiştirilemez.
+182 %1$s aktif bir tetikleyiciler kapsamında bölüm -yönetilen olarak ayarlanamaz.
+183 %1$s bölümü yok.
+184 Bölüm türü uyumsuzlukları. '%1$s'
 185 Bölüm bilgileri geçersiz.
 186 Bölüm yanı sıra mevcut daha büyük bir aralığı ile ayarlanmaktadır.
 187 Bu veri kaybına neden olabilir, çünkü bölümleri tekrar düzenlenmesine izin verilmez.
-188 Bölüm '%s' aralığı geçersiz.
+188 Bölüm '%1$s' aralığı geçersiz.
 189 A sınıfı özellik bir otomatik artış kısıtlaması olamaz.
 190 Sanal sınıf bir özniteliği otomatik artış kısıtlamasına sahip olamaz.
-191 Özniteliği '%s' bir otomatik artış kısıtlamasına sahip olmasının süreli etki alanı geçersiz.
-192 Bir kullanıcı olmayan ancak sistem özniteliği '%s' yabancı anahtarın 'ON CACHE OBJECT' tarafından oluşturulmuş atayabilirsiniz.
-193 Dizin anahtarı'nı listesinde içinde yinelenen öznitelik adları kullanamazsınız. Öznitelik adı '%s' bir kereden fazla listelenmiştir.
-194 Fonksiyon %s tanımsızdır veya parametresi yanlış numara verilmiştir.
-195 '%s' yalnızca hiyerarşik bir sorguları kullanılabilmektedir. Yan tümcesi CONNECT BY belirleyin.
-196 '%s' buradan izin verilmez.
+191 Özniteliği '%1$s' bir otomatik artış kısıtlamasına sahip olmasının süreli etki alanı geçersiz.
+192 Bir kullanıcı olmayan ancak sistem özniteliği '%1$s' yabancı anahtarın 'ON CACHE OBJECT' tarafından oluşturulmuş atayabilirsiniz.
+193 Dizin anahtarı'nı listesinde içinde yinelenen öznitelik adları kullanamazsınız. Öznitelik adı '%1$s' bir kereden fazla listelenmiştir.
+194 Fonksiyon %1$s tanımsızdır veya parametresi yanlış numara verilmiştir.
+195 '%1$s' yalnızca hiyerarşik bir sorguları kullanılabilmektedir. Yan tümcesi CONNECT BY belirleyin.
+196 '%1$s' buradan izin verilmez.
 197 Sorgu yan tümcesi CONNECT BY NOCYCLE yoksa sadece CONNECT_BY_ISCYCLEne kullanılabilmesine izin verilir.
 198 Tabloların hiçbiri kullanılmamaktadır.
 199 ORDER BY NULL, GROUP BY gerektirir.
-200 CACHE için bir numaralı döngüsü (%s) daha az olmalıdır.
-201 '%s' LIMIT anlatımı içeren bir sorgu içinde izin verilmez.
+200 CACHE için bir numaralı döngüsü (%1$s) daha az olmalıdır.
+201 '%1$s' LIMIT anlatımı içeren bir sorgu içinde izin verilmez.
 202 WITH ROLLUP, GROUP BY gerektirir.
 203 Bir sütun adı parametresi DEFAULT işlevine aktarılan olmalıdır. Path ifadeleri henüz desteklenmemektedir.
-204 '%s' tablosu seçeneği Duplicate
-205 Sınıf '%s' REUSE_OID olarak işaretlenmiş ve olmayan-başvurulabilir konumundadır . Olmayan- başvurulabilir sınıfların bir öznitelik süreli etki alanı olamaz ve bunların örneklerini 'OID'lere geri iade edilemez.
-206 'seri bağlantı %s' seçeneğini çoğaltın.
-207 Sıralama yan tümcesinde sütununda '%s' belirsiz.
-208 Öznitelik '%s' varsayılan bir değeri yoktur.
+204 '%1$s' tablosu seçeneği Duplicate
+205 Sınıf '%1$s' REUSE_OID olarak işaretlenmiş ve olmayan-başvurulabilir konumundadır . Olmayan- başvurulabilir sınıfların bir öznitelik süreli etki alanı olamaz ve bunların örneklerini 'OID'lere geri iade edilemez.
+206 'seri bağlantı %1$s' seçeneğini çoğaltın.
+207 Sıralama yan tümcesinde sütununda '%1$s' belirsiz.
+208 Öznitelik '%1$s' varsayılan bir değeri yoktur.
 209 SELECT DISTINCT belirtilmişse öğelerin ORDER BY seçim listesinde görünmesi gerekir.
 210 Ana değişken sorgu özelliklerindeki sütunların izin verilmemektedir.
-211 %s sütununda ORDER BY olamaz
-212 %s sütununda GROUP BY olamaz
+211 %1$s sütununda ORDER BY olamaz
+212 %1$s sütununda GROUP BY olamaz
 213 Bir sütun türü olarak '%2$s'lik %1$s' tanımlayamazsınız.
-214 İndeksin önek uzunluğu için geçersiz değer "%s".
+214 İndeksin önek uzunluğu için geçersiz değer "%1$s".
 215 '%s'fonksiyonu türleri %s, %s, %s ve %s tanımlı değildir.
 216 '%s' fonksiyonu türleri %s, %s ve %s tanımlı değildir.
 217 '%s' fonksiyonu türleri %s ve %s tanımlı değildir.
 218 '%s' fonksiyonu türleri %s tanımlı değildir.
 219 '%s' fonksiyon türü %s bir indeks bağımsız değişkeni için tanımlı değildir.
-220 DEĞİŞTİRME GÖRÜNÜMÜ '%s' SEÇ gibi alt sınıflara veya süper sınıf vardır görünümleri için izin verilmez. Yerine DEĞİŞİM SORGU DEĞİŞTİRME GÖRÜNÜMÜ kullanabilirsiniz.
+220 DEĞİŞTİRME GÖRÜNÜMÜ '%1$s' SEÇ gibi alt sınıflara veya süper sınıf vardır görünümleri için izin verilmez. Yerine DEĞİŞİM SORGU DEĞİŞTİRME GÖRÜNÜMÜ kullanabilirsiniz.
 221 Görünüm öznitelikleri bu açıklamayı kullanarak değişiklik yapılamaz. 'sorgu gibi DEĞİŞTİRME GÖRÜNÜMÜ adı' yerine yardımcı olabilir.
 222 CUBRID öğesi ORDER BY group_concat bağımsız değişken veya bir tamsayıdır (bağımsız değişken konumu) aynı ifade olmasını gerektirir.
 223 LIKE doğrulama bir çıkış karakteri belirlenen gerektirir.'%1$s' için belgelere başvurun ve '%2$s' yapılandırma parametrelerine bakın.
 224 KEYLIMIT, INDEX NONE olarak kullanilamaz
 225 Oturum değişkenine bu çerçevede izin verilmez.
 226  '%s've '%s'arasındaki dizin ipucu tatışması
-227 '%s'fonksiyonu DEFAULT cümle içine kullanmamalıdır
+227 '%1$s'fonksiyonu DEFAULT cümle içine kullanmamalıdır
 228 Ekstre formunun güncelenmesine izin verilmez
 229 Düzeyin özellikleri ve örnek özelliklerinin aynı ifadesini güncelemesine izin vermez. 
 230 Sanal hiyerarşini güncelemeye izin verilmez
 231 Sunucu değişkenleri DDL deyimini izin verilmez.
-232 İndeks geçersiz filtre ifadesi için (%s)
+232 İndeks geçersiz filtre ifadesi için (%1$s)
 233 Çeşitlilik veya yuvalanmış işlemleri fonksiyon dizini tanımlarında izin verilmez.
 234 Geçersiz dizin özellikleri
 235 SHARED, DEFAULT and AUTO_INCREMENT -büyüme arası tanımlanamaz.
@@ -1603,25 +1603,25 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 240 MERGE taşıyankombineye izin verilmez.
 241 Kullanıcı adı çok uzun
 242 Uzun süreli ifade fonksiyon dizini olarak kullanılamaz. 
-243 Düzey adı veya takma adı listede özgü değildir: '%s'
-244 Geçersiz DEFAULT cümle. '%s' yuvalanmış ifadede kullanılamaz
-245 '%s' Bir eşleme onaylı tartışma gerektirir
+243 Düzey adı veya takma adı listede özgü değildir: '%1$s'
+244 Geçersiz DEFAULT cümle. '%1$s' yuvalanmış ifadede kullanılamaz
+245 '%1$s' Bir eşleme onaylı tartışma gerektirir
 246 Geçersiz özellik grubu
 247 Gereksinimlerde bulunan özellik grubu ile onay eşlemeli değildir
-248 Bilinmeyen onay '%s'.
+248 Bilinmeyen onay '%1$s'.
 249 Bağlamı onaylanmış kod grubuna gerektirir ve kontrol edilen eleman grupları
-250 Ön dizini '%s' üzerinde izin vermez (Temel üzerindeki tontrolu genişletmek)
+250 Ön dizini '%1$s' üzerinde izin vermez (Temel üzerindeki tontrolu genişletmek)
 251 Başlangıç değeri geçersiz
 252 Çok fonksiyonlu kapasite dizinine izinvermez
-253 '%s' fonksiyonu talimat temeli üzerindeki fonksiyon için kullanılamaz
-254 Geçersiz dizin kapasitesinin tanımlanması: %s
-255 Dizin filtre ifadesindeki '%s' izinverilmez.
+253 '%1$s' fonksiyonu talimat temeli üzerindeki fonksiyon için kullanılamaz
+254 Geçersiz dizin kapasitesinin tanımlanması: %1$s
+255 Dizin filtre ifadesindeki '%1$s' izinverilmez.
 256 Aynı sorunlar içinde GROUPBY_NUM() ve WITH ROLLUP cümleleri kullanamaz.
-257 ON cümlelerinde bir referans rolü oynayan ve MERGE UPDATE kapasitesinin %s kombine edilemez.
+257 ON cümlelerinde bir referans rolü oynayan ve MERGE UPDATE kapasitesinin %1$s kombine edilemez.
 258 Kapasite sayısı, %d, ( %s ) içi\n kapasite sayısı ile eşleşmez, %d, in ( %s ). 
 259 Kapasite öneki fonksiyon dizin ifadesinde izinvermez.
-260 %s kapasite komutunun PARTITION BY or ORDER BY 
-261 Şüphe mutlaka tek bir değer\n(%s) üzerinde olmamalıdır
+260 %1$s kapasite komutunun PARTITION BY or ORDER BY 
+261 Şüphe mutlaka tek bir değer\n(%1$s) üzerinde olmamalıdır
 262 Yuvalanmış analız fonksiyonlarına izin verilmez.
 263 Miras alan özellik bölünme için kullanılmaz.
 264 Sayım elemanının toplam büyüklüğü
@@ -1629,22 +1629,22 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 266 COLLATE bu içerikte izin verilmemiştir.
 267 COLLATE değiştirici kod kümesini değiştiremiyor (from '%s' to '%s'). Yerine CAST kullanın.
 268 Bölme değeri için geçersiz kod takımı '%1$s'. Beklenene kod takımı '%2$s'.
-269 Oturum değişkeni sistem harmanlamasından farklı bir harmanlamaya sahip olamaz ('%s').
+269 Oturum değişkeni sistem harmanlamasından farklı bir harmanlamaya sahip olamaz ('%1$s').
 270 Geçersiz fonksiyon indeks ifadesi.
-271 %s sorgulama spesifikasyonu kendisine dönüşlü bir referansa sahiptir.
-272 %s ifadesi bağlanma koşulunda izin verilmemiştir. 
+271 %1$s sorgulama spesifikasyonu kendisine dönüşlü bir referansa sahiptir.
+272 %1$s ifadesi bağlanma koşulunda izin verilmemiştir. 
 273 ORDER BY fonksiyon izin verilmez MEDIAN.
-274 Fonksiyon argümanları '%s' sabit olmalıdır.
-275 Fonksiyon '%s' ORDER BY yan tümcesi olmalıdır.
-276 Fonksiyon '%s' için, argüman sayısı sayısı sütun sayısı ORDER BY ile eşleşmiyor.
-277 Fonksiyon '%s', ORDER BY yan tümcesinde geçersiz.
+274 Fonksiyon argümanları '%1$s' sabit olmalıdır.
+275 Fonksiyon '%1$s' ORDER BY yan tümcesi olmalıdır.
+276 Fonksiyon '%1$s' için, argüman sayısı sayısı sütun sayısı ORDER BY ile eşleşmiyor.
+277 Fonksiyon '%1$s', ORDER BY yan tümcesinde geçersiz.
 278 Only one table within a view can be updated.
 279 Multiple insert targets not allowed.
-280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
+280 '%1$s' type is vclass, drop vclass with cascade constraints is not allowed.
 281 The FOR UPDATE clause cannot be used in subqueries, unions, with GROUP BY clause, DISTINCT operator, aggregate functions.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
-1 Sanal bellek yetersiz: %d bayt bölüm ayıramadı.
+1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.
 2 İşlemin yalıtım düzeyi 1, 2, 3, 4, 5 veya 6 olması gerekir.
 3 Zaman aşımı değeri -1, 0, veya >0 olması gerekir .
 4 Yalıtım düzeyi olarak ayarlandığında:\n
@@ -1658,86 +1658,86 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 12 Sadece %d \n giriş ana bilgisayar değişkenleri verildiğinde indeks %d sahip ana bilgisayar değişkenine erişilmeye çalışıldı.
 13 Dönüştürme gerçekleşmemiş.
 14 Dahili hata, tanımsız dönüştürme.
-15 '%s' yields uygun sonuç bulunamad.
-16 '%s' yields bir satırdan daha fazla.
-17 Yorumlayıcısı değişkeni %s tanımlanmış değildir.
-18 '%s'Değerlendiremiyor.
-19 Bilinmeyen değişken %s.
-20 Bilinmeyen ortak öznitelik %s.
-21 '%s' yields birden fazla sütun.
+15 '%1$s' yields uygun sonuç bulunamad.
+16 '%1$s' yields bir satırdan daha fazla.
+17 Yorumlayıcısı değişkeni %1$s tanımlanmış değildir.
+18 '%1$s'Değerlendiremiyor.
+19 Bilinmeyen değişken %1$s.
+20 Bilinmeyen ortak öznitelik %1$s.
+21 '%1$s' yields birden fazla sütun.
 22 Toplama fonksiyonu yuvalanmış veya kullanımı geçersiz.
-23 Fonksiyon %s tanımlanmış değildir.
-24 Bağlamda tek sütun için sorgu gerektirmektedir \n(%s).
+23 Fonksiyon %1$s tanımlanmış değildir.
+24 Bağlamda tek sütun için sorgu gerektirmektedir \n(%1$s).
 25 Değerler çok fazla belirtildi.
-26 Sanal atama hedefi (%s) ters çevrilebilir değildir.
-27 %s sınıfı içinde özniteliklerinde sorgu özelliklerinden daha fazla sütun vardır.
-28 Sorgusu özelliklerinde sütunlar dan %s sınıfı daha fazla öznitelikleri vardır.
+26 Sanal atama hedefi (%1$s) ters çevrilebilir değildir.
+27 %1$s sınıfı içinde özniteliklerinde sorgu özelliklerinden daha fazla sütun vardır.
+28 Sorgusu özelliklerinde sütunlar dan %1$s sınıfı daha fazla öznitelikleri vardır.
 29 Mevcut sürümde vclasses için kümeleme kısıtlamaktadır OLMADAN\nToplama sorgusu özellikleri.
 30 Mevcut sürümde vclasses için kümeleme kısıtlamaktadır OLMADAN\nBirlik sorgusu özellikleri.
 31 Bir bileşimin hiyerarşisindeki vclass kullanılması (%s) güncellenebilen olmasını gerektirir.\nBu gerçek bir sınıf %s açısından güncelleştirilemez .
 32 Kullanılmamıştır.
-33 '%s' path ifade özelliğinde geçersiz yapı.
+33 '%1$s' path ifade özelliğinde geçersiz yapı.
 34 Path ifadesi '%s' vclass %s, %s db sınırını geçiyor.
 35 Path ifadesi '%s' %s sınıfı için, %s db sınırını geçiyor.
 36 %s %s üzerinde yetkili değil.
-37 Select %s üzerinde yetkili değil.
-38 Vclass %s güncelleştirilebilir değil.
-39 %s bir proxy vclass değildir.
+37 Select %1$s üzerinde yetkili değil.
+38 Vclass %1$s güncelleştirilebilir değil.
+39 %1$s bir proxy vclass değildir.
 40 Proxy vclass sorgu spec bir birleştirme olmamalıdır.
-41 %s nesne kimliği belirledi.
-42 Bir bileşimde birden fazla object_id alanlarıyla sınıfları (%s) \n hiyerarşisi desteklenmez.
+41 %1$s nesne kimliği belirledi.
+42 Bir bileşimde birden fazla object_id alanlarıyla sınıfları (%1$s) \n hiyerarşisi desteklenmez.
 43 %s nesne özniteliği %s ldb %s üzerinde bir vclass değildir.
-44 Sorgu özellikleri tür özniteliği %s ile uyumsuzdur.
-45 %s sorgusu özellikleri kendisi için bir döngüsel başvuru var.
+44 Sorgu özellikleri tür özniteliği %1$s ile uyumsuzdur.
+45 %1$s sorgusu özellikleri kendisi için bir döngüsel başvuru var.
 46 Hiçbir ifade değerlendirmek için verilmemiştir.
-47 Gerçek bir sınıf olmayan vclass %s bulundu.
+47 Gerçek bir sınıf olmayan vclass %1$s bulundu.
 48 Yürütme '%s' ldb '%s' \n döndürdü: %s.
 49 Özniteliği '%s' içine değeri '%s' koyarak döndü: %s.
-50 Ldb adı %s içinde null olmamalıdır.
-51 Ana bilgisayar da ldb ad %s null olmamalıdır.
-53 Host adı %s içinde null olmamalıdır.
-54 Kullanıcı adı %s içinde null olmamalıdır.
-55 Kullanıcı şifresi %s içinde null olmamalıdır.
+50 Ldb adı %1$s içinde null olmamalıdır.
+51 Ana bilgisayar da ldb ad %1$s null olmamalıdır.
+53 Host adı %1$s içinde null olmamalıdır.
+54 Kullanıcı adı %1$s içinde null olmamalıdır.
+55 Kullanıcı şifresi %1$s içinde null olmamalıdır.
 56 Boş açıklamaya çeviri yerleştirin.
 57 Boş açıklamaya çeviri güncelleyin.
 58 Delete translates to empty statement.
-59 Ingres 1 Ocak 1582 öncesi tarihleri ​​(%s) desteklemiyor.
+59 Ingres 1 Ocak 1582 öncesi tarihleri ​​(%1$s) desteklemiyor.
 60 Kaynaklar sorgu üretiminde bitmiş.
-61 Sorgu verimi sonuçsuz, böylece değişken '%s' ayarlı değil.
+61 Sorgu verimi sonuçsuz, böylece değişken '%1$s' ayarlı değil.
 62 YEREL ile kontrol seçeneği desteklenmiyor.
-63 Görünümünde %s seçeneği dışında kontrol edin.
-64 Geçersiz tarih: '%s'.
-65 Geçersiz zaman: '%s'.
-66 Geçersiz U zaman: '%s'.
+63 Görünümünde %1$s seçeneği dışında kontrol edin.
+64 Geçersiz tarih: '%1$s'.
+65 Geçersiz zaman: '%1$s'.
+66 Geçersiz U zaman: '%1$s'.
 67 Bir proxy sorgu belirtiminde alt sorgular desteklenmez.
-68 Ldb fonksiyonu bağımsız değişken '%s' ldb ile uyumlu değildir.
-69 Geçersiz bir sayısal: '%s'.
+68 Ldb fonksiyonu bağımsız değişken '%1$s' ldb ile uyumlu değildir.
+69 Geçersiz bir sayısal: '%1$s'.
 70 Harici join sorgu iyileştirme başarısız oldu.
 71         SERIALIZABLE.\n
-72 Vclass %s güncelleştirilebilir değil. Sadece güncellenebilir vsınıflar VIDs seçmesine izin verilir.
+72 Vclass %1$s güncelleştirilebilir değil. Sadece güncellenebilir vsınıflar VIDs seçmesine izin verilir.
 73 Bölümleme başarısız oldu.
 74 Bölme bulunmamaktadır.
-75 Bölümünün erişim izni bulunmamaktadır: '%s'.
-76 Seri '%s' henüz tanımlanmamış.
+75 Bölümünün erişim izni bulunmamaktadır: '%1$s'.
+76 Seri '%1$s' henüz tanımlanmamış.
 77 Sahibi veya DBA yalnızca hedef seri tanımını değiştirebilir.
 78 Kullanıcılar otomatik artış kısıtlaması tarafından oluşturulan seri nesneyi değiştirmek için izin verilmez.
 79 Geçersiz yalıtım düzeyi: %s şema, %s örnekleri.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** geçersiz önbellek ***
-2    sınıf %s
-3 %s dan :
-4 Kullanıcı Yetkilendirme %s\n
+2    sınıf %1$s
+3 %1$s dan :
+4 Kullanıcı Yetkilendirme %1$s\n
 5 Tanımsız kullanıcı için Yetkilendirme \n
-6 Kullanıcı : %s\n
-7            id : %d\n
+6 Kullanıcı : %1$s\n
+7            id : %1$d\n
 8       üye :
 9       gurup :
-10 Kullanıcı %s\n
-11 Mevcut kullanıcı : %s\n
+10 Kullanıcı %1$s\n
+11 Mevcut kullanıcı : %1$s\n
 12 Kök yetkilendirme nesnesi :\n
 13   kullanıcılar :
-14 *** Kullanıcı için tüm bağışları sorunu bulunamadı "%s"*** \n
+14 *** Kullanıcı için tüm bağışları sorunu bulunamadı "%1$s"*** \n
 15 YETKİLENDİRME\n
 16 direct_groups :
 
@@ -1753,7 +1753,7 @@ $set 12 MSGCAT_SET_HELP
 9 Çatışma çözünürlükleri :\n
 10 Yöntem dosyası :\n
 11 Sorgu özelleştirme :\n
-12 %s Nesnesi \n
+12 %1$s Nesnesi \n
 13 \nTanım :\n
 14 \nYapı :\n
 15 \nÖrnek :\n
@@ -1765,8 +1765,8 @@ $  Don't delete the space at the end of the next message
 20 GENERAL
 
 $set 13 MSGCAT_SET_TRIGGER
-1 İŞARET: Tetik için durum değerlendirilmesi '%s'.
-2 İŞARET: Tetik için eylem yürütme '%s'.
+1 İŞARET: Tetik için durum değerlendirilmesi '%1$s'.
+2 İŞARET: Tetik için eylem yürütme '%1$s'.
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
@@ -1784,7 +1784,7 @@ $set 14 MSGCAT_SET_LOCK
 13 İşlem endeksi %3d sayfa %s kilit DEMOTE %d|%d.\n
 14 OID = %2d|%6d|%4d\n
 15 Nesne türü: Kök sınıf.\n
-16 Nesne türü: Sınıf = %s.\n
+16 Nesne türü: Sınıf = %1$s.\n
 17 Nesne türü: Sınıfın bir örneği (%2d|%6d|%4d) = %s.\n
 18 Nesne türü: Bilinmeyen.\n
 19 Tutucular Toplam modu = %8s, Bekleyenler Toplam modu = %8s.\n
@@ -1802,23 +1802,23 @@ $set 14 MSGCAT_SET_LOCK
 31 VPID (volid|pageid) = %3d|%6d.\n
 32 *** Tablo Dökümü Kilit ***\n Yükseltme Kilidi = %d, Kilitlenme aralığı çalıştırın = %5.2f\n
 33 İşlem (indeks %2d, %s, %s@%s|%d)\n
-34 Ayırma %s\n
-35 Durum %s\n
-36 Timeout_period %s\n
+34 Ayırma %1$s\n
+35 Durum %1$s\n
+36 Timeout_period %1$s\n
 37 İndeksleri ile tek taraflı olarak iptal işlemleri:\n
-38 %d ,
+38 %1$d ,
 39 Timed_out endeksleri ile işlemler:\n
-40 %d ,
+40 %1$d ,
 41 Bir işlem ve bir işlevi seçeneğini belirleyerek kilitlenme çözülmesi \n çıkmazdan kurtarmak için: %d %s
 42 , %d %s
 43 Hedef türü: Düzeyinin dizin anahtar cümlesi  (%2d|%6d|%4d) = %s.\n
-44 Dizin adı: %s\n
+44 Dizin adı: %1$s\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n
-2 Yedekleme = %s ihtiyaç var. \n Bu bağlanmış olmalıdır/devam etmek için yüklendi.\n Yedekleme sonra devam etmek için Tip 1 bağlanmış / yüklenir.\n Çıkmak için 0 yazın.\n
+2 Yedekleme = %1$s ihtiyaç var. \n Bu bağlanmış olmalıdır/devam etmek için yüklendi.\n Yedekleme sonra devam etmek için Tip 1 bağlanmış / yüklenir.\n Çıkmak için 0 yazın.\n
 3 \n\n*** YEDEKLEME BAŞLIĞI BİLGİLERİ ***\n\n
-4 Yedekleme Magic dosya tanımlama gerçekleştirmesi %s,\n
+4 Yedekleme Magic dosya tanımlama gerçekleştirmesi %1$s,\n
 5           Serbest Bırakma: %s\n\
                  Disk Sürüm: %g\n
 6            Veritabanı Adı: %s\n\
@@ -1844,40 +1844,40 @@ Aşağıdaki seçeneklerden birini girin:\n
 13 Giriş hatası,%d ve %d arasında bir değer seçin.\n
 14 ** UYARI ** Yanlış yedek yoğunluğu bağlanmış.\n
 15 Yedekleme yoğunluğu %s başka bir yedekleme seviyesinden olan\n   (Seviye: %d, beklenen %d).\n\n
-16 Yedekleme yoğunluğu %s yanlış sayfa ya da magic bir kimliğe sahiptir.\n\n
+16 Yedekleme yoğunluğu %1$s yanlış sayfa ya da magic bir kimliğe sahiptir.\n\n
 17 Yedekleme yoğunluğu %s başka bir veritabanından\n  (Ad: %s, beklenen %s).\n\n
 18 Yedekleme yoğunluğu %s sırası dışında\n  (Unit Num: %d, beklenen %d).\n\n
 19 Yedekleme yoğunluğu %s timestamp uyumsuzluğu\n  (Timestamp: %s, beklenen %s).\n\n
-20 Yedekleme yoğunluğu bilgi dosyası hatası, satır %d.\n
+20 Yedekleme yoğunluğu bilgi dosyası hatası, satır %1$d.\n
 21 Yedekleme yoğunluğu Label: Level: %d, Unit: %d, Database %s, Backup Time: %s\n
 22                    Önceki Yedekleme düzeyi: %d Zaman: %s (start_lsa was %lld|%d)\n
 23 Aşağıdaki Veritabanı yedekleme yoğunluğu geri döndürmeye devam etmek gerekmektedir:\n\n
 24 Yedekleme hedefi dolu, yeni bir hedefe devam etmek için gereklidir:
-25 Yedekleme yoğunluğu adı öncesindeki: %s\n
-26     Sonraki yedekleme yoğunluğu adı: %s\n
-27              Yedekleme Sayfa boyutu: %d\n
+25 Yedekleme yoğunluğu adı öncesindeki: %1$s\n
+26     Sonraki yedekleme yoğunluğu adı: %1$s\n
+27              Yedekleme Sayfa boyutu: %1$d\n
 28                         Zip Yöntemi: %d (%s)\n\
                           Zip Seviyesi: %d (%s)\n
-29                     Aktif Log Dahil: %s\n
+29                     Aktif Log Dahil: %1$s\n
 
 $set 16 MSGCAT_SET_LOG
 1 \n*************************************************************************\n
-2 Arşiv log %s \n normal yürütülmesine devam etmek için gereklidir.   \n \
+2 Arşiv log %1$s \n normal yürütülmesine devam etmek için gereklidir.   \n \
   Tür\n \
   -  0 çıkmak için.\n \
   -  1 mevcut arşiv olmadan devam etmek için. (Kısmi kurtarma)\n \
   -  2 arşivi sonra devam etmek için bağlanmış / yüklenir.       \n \
   -  3 konumu / arşivi adını değiştirildikten sonra devam etmek için.   \n
-3 Yedekleme bilgi dosyası %s \n geri yükleme işlemine devam etmek gereklidir.\n \
+3 Yedekleme bilgi dosyası %1$s \n geri yükleme işlemine devam etmek gereklidir.\n \
   Tür\n \
   -  0 çıkmak için.\n \
   -  1 dosya bağlanmış / yüklendikten sonra devam etmek için.      \n \
   -  2 konumu / dosya adını değiştirildikten sonra devam etmek için.  \n
 4 Enter yeni konum / adı.\n
 5 YORUM: %s veritabanı için %s\n
-6 YORUM: Bir veritabanı ortamı kilitlenme gerçekleşmediği sürece arşiv %s log artık gerekli değildir.\n
+6 YORUM: Bir veritabanı ortamı kilitlenme gerçekleşmediği sürece arşiv %1$s log artık gerekli değildir.\n
 7 YORUM: Bir veritabanı ortamı kilitlenme oluşmadığı takdirde %s den %s log arşivleri artık gerekli değildir.\n
-8 YORUM: yeniden adlandırılan veritabanından = %s\n
+8 YORUM: yeniden adlandırılan veritabanından = %1$s\n
 9 ARŞİV: %d %s %lld %lld\n
 10 ARŞİV:
 11 KALDIR: %d %s to \n \
@@ -1894,7 +1894,7 @@ $set 16 MSGCAT_SET_LOG
 16 Tamamlanmamış kurtarma nedeniyle log sıfırlayın.
 17 Veritabanı yedeklemesi alındı.
 18 Ortam kilitlenme uygulaması için önemli değildir.
-19 İçinde daha önceki bir yedeğe varmış gibi görünüyor dizini %s yedekleme. \n\
+19 İçinde daha önceki bir yedeğe varmış gibi görünüyor dizini %1$s yedekleme. \n\
 Bu yerde bu veritabanınızın kullanılmayan yedekleme yoğunlukları silinecektir,\n\
 geçerli yedeğe düzeyi yüksek ve de dahil olmak üzere.\n
 20 Devam etmek için 'y' veya iptal etmek için herhangi bir diğer tuşa basın.\n
@@ -1903,7 +1903,7 @@ geçerli yedeğe düzeyi yüksek ve de dahil olmak üzere.\n
         %d %s \n \
         are no longer needed unless a restore from current backup occurs.\n
 23 Daha yeni bir yedeğini daha önceden DELETE POSTPONED işaretli arşivlerinde yayımladı.\n
-24 YORUM: Log arşivi %s artık daha güncel bağlı DELETE POSTPONED değil\n \
+24 YORUM: Log arşivi %1$s artık daha güncel bağlı DELETE POSTPONED değil\n \
    bir veritabanı ortamı kilitlenme gerçekleşmediği sürece bu yüzden yedekleme gerekli değildir.\n
 25 YORUM: %s %s arşivlerinde Log bağlı artık DELETE POSTPONED değil\n \
    daha güncel yedeğini ve bu nedenle bir veritabanında ortam olmadıkça gerekli değildir\n \

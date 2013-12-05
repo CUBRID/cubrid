@@ -70,9 +70,9 @@ $       49      tranlist
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Geçersiz uzunluk veya karakter '%c' veritabanı adı '%s' \n
-2 Çıktı dosyası '%s' açılamadı \n
+2 Çıktı dosyası '%1$s' açılamadı \n
 3 Eksik veya geçersiz yardımcı programı adı.\n
-4 Geçersiz yardımcı programı adı  '%s'\n
+4 Geçersiz yardımcı programı adı  '%1$s'\n
 5 Aşağıdaki liste tanınan yardımcı programı adlarını içerir:\n
 6 Geçersiz karakter '%c'ses adına'%s'\n
 9 \
@@ -118,15 +118,15 @@ Mevcut yönetici yardımcı programı-adı:\n\
 \n\
 %s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz:http://www.cubrid.com\n
-12 '%s' yardımcı programı-adı geçersiz.\nTür 'cubrid --help' kullanıma bak.\n
-13 '%s' komutu geçersiz.\nTür 'cubrid --help' kullanıma bak.\n
+12 '%1$s' yardımcı programı-adı geçersiz.\nTür 'cubrid --help' kullanıma bak.\n
+13 '%1$s' komutu geçersiz.\nTür 'cubrid --help' kullanıma bak.\n
 14 Yapılandırma dosyaları bir veya daha fazla zorunlu özellikleri yüklenemedi.\n
 15 @ %s %s: %s\n
 16 @ %s %s\n
 17 ++ %s '%s'çalışmıyor.\n
-18 ++ %s çalışmıyor.\n
+18 ++ %1$s çalışmıyor.\n
 19 ++ %s '%s' çalışmıyor.\n
-20 ++ %s is running.\n
+20 ++ %1$s is running.\n
 21 ++ %s %s: %s\n
 22 Bir veya daha fazla bağımsız değişkeni eksik.\nTür 'cubrid --help' kullanıma bak.\n
 23 cubrid yardımcı programı, sürüm %s\n\
@@ -223,9 +223,9 @@ Mevcut komut:\n\
     applylogdb  <start|stop> database-name node-name\n\
     status\n\
     reload\n
-31 '%s' argümanı gerekli değildir.\n
+31 '%1$s' argümanı gerekli değildir.\n
 32 Bir veritabanı-adı eksik.\n
-33 %s: Böyle seçeneği önerilmiyor.\n
+33 %1$s: Böyle seçeneği önerilmiyor.\n
 34 Geçersiz Parametre. %s %s\n
 35 Bellek ayrılamadı.\n
 36 Sunucu HA için yapılandırıldı.\n
@@ -234,14 +234,14 @@ Mevcut komut:\n\
 40 Invalid command.\n
 41 cubrid manager server is not installed.\n
 42 Invalid argument.\n
-43 File(%s) open error.\n
+43 File(%1$s) open error.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 UYARI: -t seçeneği stand-alone modu yürütülmesine göz ardı edilir.\n
 31 HATA: Hedef-yolu yok veya bir dizin değil.\n
 60 \
 backupdb: Bir veritabanı yedeklemesi.\n\
-kullanım: %s backupdb [SEÇENEK] veritabanı-adı\n\
+kullanım: %1$s backupdb [SEÇENEK] veritabanı-adı\n\
 \n\
 geçerli opsiyonlar:\n\
   -D, --destination-path=PATH  dizin PATH yedekleme birimleri saklamak; varsayılan: veritabanının günlük dizini\n\
@@ -268,7 +268,7 @@ $set 3 MSGCAT_UTIL_SET_COPYDB
 32 HATA: vols-tofrom-paths_file yok veya okunabilir değil değil.\n
 60 \
 copydb: Bir veritabanı kpyala.\n\
-kullanım: %s copydb [SEÇENEK] src-database-name dest-database-name\n\
+kullanım: %1$s copydb [SEÇENEK] src-database-name dest-database-name\n\
 \n\
 geçerli seçenekler:\n\
       --server-name=HOST          Sunucunun HOST adı; Varsayılan olarak: geçerli ana bilgisayar adı\n\
@@ -283,19 +283,19 @@ geçerli seçenekler:\n\
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
-40 Group '%s' bulunmamaktadır\n
-41 User '%s' bulunmamaktadır\n
-42 Bilinmeyen komut '%s'\n
-43 Çıktı dosyası '%s' açılamadı\n
+40 Group '%1$s' bulunmamaktadır\n
+41 User '%1$s' bulunmamaktadır\n
+42 Bilinmeyen komut '%1$s'\n
+43 Çıktı dosyası '%1$s' açılamadı\n
 44 Varolan veritabanı kaldırılamadı\n
 45 Varsayılan yerel %2$s kullanarak %1$s boyutu ile veritabanı oluşturmak. Gerekli disk alanın toplam miktarı ise %3$s.\n
 46 Veritabanı oluşturulamadı.\n
-47 '%s' Kullanıcı dosya ile ilgili sorun\n
+47 '%1$s' Kullanıcı dosya ile ilgili sorun\n
 48 Verilen '%s', %s kapsam dışı. %s ve %s arasında bir boyut seçin.\n
 49 %s Sayısal değeri '%s' geçersiz. \n
 60 \
 createdb: Bir veritabanı oluştur.\n\
-usage: %s createdb [OPTION] database-name database-locale\n\
+usage: %1$s createdb [OPTION] database-name database-locale\n\
 \n\
 Veritabanı-yerel biçimi ise <language>.<charset>; örnekler : en_US.iso88591, ko_KR.utf8\n\
 geçerli seçenekler:\n\
@@ -321,7 +321,7 @@ geçerli seçenekler:\n\
 $set 6 MSGCAT_UTIL_SET_DELETEDB
 60 \
 deletedb: Bir veritabanı sil.\n\
-kullanım: %s deletedb [SEÇENEK] database-name\n\
+kullanım: %1$s deletedb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -o, --output-file=FILE       DOSYA çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
@@ -332,7 +332,7 @@ $set 7 MSGCAT_UTIL_SET_RENAMEDB
 32 HATA: vols-tofrom-paths_file yok veya okunabilir değil değil.\n
 60 \
 renamedb: Bir veritabanı yeniden adlandırın.\n\
-kullanım: %s renamedb [SEÇENEK] src-database-name dest-database-name\n\
+kullanım: %1$s renamedb [SEÇENEK] src-database-name dest-database-name\n\
 \n\
 geçerli seçenekler:\n\
   -E, --extended-volume-path=PATH genişletilmiş bilgi yoğunlukları için dizin PATH; varsayılan: veritabanı yoğunlukları aynı path veya verilen path kontrol- dosyasında\n\
@@ -340,23 +340,23 @@ geçerli seçenekler:\n\
   -d, --delete-backup             yedekleme birimleri silin; varsayılan: silmeyin\n
 
 $set 9 MSGCAT_UTIL_SET_MASTER
-11 A %s süreç zaten çalışıyor.\n
+11 A %1$s süreç zaten çalışıyor.\n
 12 MASTER SERVER başlangıç​​. \n
 13 MASTER SERVER çıkarken.\n
 14 Hata yerel ana bilgisayar adı bulmakta\n
 15 Parametre dosyası bulunamadı\n
 16 Ana işlemi başlatılamadı\n
 17 Sunucu %s %d dakika içinde aşağı gidiyor
-18 Sunucu %s kapatma bildirilir. \n Bu işlem birkaç dakika sürebilir. Lütfen bekleyiniz.
-19 Sunucu %s bulunamadı.
-20 Master %d dakika aşağı gidiyor\n
+18 Sunucu %1$s kapatma bildirilir. \n Bu işlem birkaç dakika sürebilir. Lütfen bekleyiniz.
+19 Sunucu %1$s bulunamadı.
+20 Master %1$d dakika aşağı gidiyor\n
 21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
-11 Çıktı dosyası '%s' açılamadı\n
+11 Çıktı dosyası '%1$s' açılamadı\n
 60 \
 optimizedb: Bir veritabanı optimize edin.\n\
-kullanım: %s optimizedb [SEÇENEK] database-name\n\
+kullanım: %1$s optimizedb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -n, --class-name=NAME        NAME sınıf için güncelleştirme istatistikleri; varsayılan: tüm sınıflar\n
@@ -367,7 +367,7 @@ $set 11 MSGCAT_UTIL_SET_RESTOREDB
 20 Restoredb iptal edildi veya bir hata oluştu.\n
 60 \
 restoredb: Bir veritabanı geri yükleyin.\n\
-kullanım: %s restoredb [SEÇENEK] database-name\n\
+kullanım: %1$s restoredb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -d, --up-to-date=DATE             Verilen TARİH yukarı durumuna veritabanı geri yükleme. TARİHİ aşağıdaki gibi verilir: gg-aa-yyyy:ss:dd:ss veya 'yedekleme zamanı' anahtar kelime\n\
@@ -385,53 +385,53 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 21 ara verme ... \n
 22 ara verilen yük - mevcut işlem tamamlanmış\n
 23 ara verilen yük - durduruldu mevcut işlem\n
-24 '%s' dosyası açılamıyor\n
+24 '%1$s' dosyası açılamıyor\n
 25 \n*** syntax kontrolü ***\n\n
-26 %d hataları algılandı.\n
+26 %1$d hataları algılandı.\n
 27 \n*** Ekleme nesneleri ***\n\n
-28 Toplam %8d nesneleri eklenir.\n
-29 Toplam %8d varsayılan içeriği ile eklenen nesneleri başvurulan.\n
+28 Toplam %1$8d nesneleri eklenir.\n
+29 Toplam %1$8d varsayılan içeriği ile eklenen nesneleri başvurulan.\n
 30 \n*** İşlem İşlemek ***\n
 31 \n*** Veritabanı Kapama ***\n
-32 Satır %d:
+32 Satır %1$d:
 33 Hata '%s' özniteliği '%s' için '%s' değer olarak '%s' ayrıştırma\n
 34 %s özniteliği %s için eksik alanı\n
 35 %s özniteliği %s için, tip %s set etki alanında izin verilmez\n
 36 %s özniteliği %s için, tip %s beklenen, bir dizi sabiti var\n
 37 %s özniteliği %s için, tip %s beklenen, %s var\n
 38 %s özniteliği %s %s başvurulan adında bir sınıf\n
-39 Hiçbir sınıf dizilerini görmezden gelerek, %s adlı\n
+39 Hiçbir sınıf dizilerini görmezden gelerek, %1$s adlı\n
 40 Tanımlayıcısı %d ile hiçbir sınıf %s özniteliği %s tarafından başvurulan\n
-41 Class %s yükleyici girdi dosyasında izin verilmiyor\n
+41 Class %1$s yükleyici girdi dosyasında izin verilmiyor\n
 42 Hata ile Durduruldu.\n
 43 UYARI: varolan örneği güncellendi!\n
 44 UYARI: Sınıf %s Derece %d yeniden tanımlıyor\n
 45 Sınıf %s Derece %d zaten tanımlanmış\n
 46 Sınıf %s Derece %d zaten ayrılmıştır\n
-47 Özniteliği '%s 'EŞSİZ aykırı, NULL'a dönüştürülür\n
-48   %d örnekleri\n
-49 Sınıf %s\n
+47 Özniteliği '%1$s 'EŞSİZ aykırı, NULL'a dönüştürülür\n
+48   %1$d örnekleri\n
+49 Sınıf %1$s\n
 50 Şifre:
 51 \n*** Sınıf istatistikleri güncelleniyor ***\n
 52 %d hat yakınlarındaki %s (metin '%s' oldu)\n
 53 Sözcüksel hata
 54 satır %d: \"%s\" içinde syntax hata
 55 eksik
-56 %s de
+56 %1$s de
 57 Uyumsuz bağımsız değişkenleri, \"%s\", ve \"%s\"\n
-58 %d taahhüt örnekleri\n
+58 %1$d taahhüt örnekleri\n
 59 \nLoaddb olmayan-optimize edilmiş sürümü çağırılamaz.\n
 60 Hata ayrıştırma \"%s\", gibi %s tür.\n
-112   %d örnekleri\r
-113 Son kararlı hattı: %d
+112   %1$d örnekleri\r
+113 Son kararlı hattı: %1$d
 114 hata-kontrol-dosyası
 115 yükleme sırasında bir hata(lar) kontrol etmek için giriş dosyası
 116 Total %8d object(s) inserted, %d object(s) failed.\n
 117 Load failed.\n
-118 Maximum length of class name is %d bytes.\n
+118 Maximum length of class name is %1$d bytes.\n
 120 \
 loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
-kullanım: %s loaddb [SEÇENEK] database-name\n\
+kullanım: %1$s loaddb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -u, --user=ID                 veritabanı erişimi için kullanıcı kimliği; varsayılan: "public"\n\
@@ -471,16 +471,16 @@ geçerli seçenekler:\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 önbelleğe alınmış sayfaları değeri geçersiz.\n
 42 önbelleğe alınmış sayfa boyutu değeri geçersiz.\n
-43 %d nesneler atılıyor.\n
-44 Class %s
-45 , %d örnekleri.\n
+43 %1$d nesneler atılıyor.\n
+44 Class %1$s
+45 , %1$d örnekleri.\n
 46 %d nesneleri yalnızca %d tanesinde başarılı atılıyor.\n
 47 çıkış dizin çok uzun.\n
 48 LSA : %d %d \n
 49 Şifre:
 60 \
 unloaddb: Veritabanındaki nesneleri ve şemalar verin.\n\
-kullanım: %s unloaddb [SEÇENEK] database-name\n\
+kullanım: %1$s unloaddb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -u, --user=ID               veritabanı erişimi için kullanıcı kimliği; varsayılan: "dba"\n\
@@ -506,11 +506,11 @@ geçerli seçenekler:\n\
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
 11 \nPass 1\n\n
-12 %d işlenmiş nesneler.\n
+12 %1$d işlenmiş nesneler.\n
 13 \nPass 2\n\n
-14 Class %s\n
+14 Class %1$s\n
 15 oid:  %d|%d|%d,\n
-16 %d örnekleri.\n
+16 %1$d örnekleri.\n
 17 nesne güncelleniyor.\n
 18 ref_oid:  %d.%d.%d, ref_class_oid:  %d.%d.%d\n
 19 Nesne dönüşümü bulunamadı\n
@@ -520,10 +520,10 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 23 COMPACTDB Zaten başladı.\n
 24 Sayfa sayısı %d ve %d arasında olmalıdır.\n
 25 Örneğin kilit zaman aşımı %d ile %d arasında olmalıdır.
-26 Toplam nesneler: %d\n
-27 Başarısız nesneler: %d\n
-28 Değiştirilmiş nesneler: %d\n
-29 Büyük nesneler: %d\n
+26 Toplam nesneler: %1$d\n
+27 Başarısız nesneler: %1$d\n
+28 Değiştirilmiş nesneler: %1$d\n
+29 Büyük nesneler: %1$d\n
 30 Alt sınıf temsilleri katalog silinir.\n
 31 Alt sınıf temsilleri katalogda korunmuş.\n
 32 Yalıtım düzeyi ayarlanamıyor.\n
@@ -543,7 +543,7 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 46 Öbek kompakt başarıldı ...\n
 60 \
 compactdb: Bir veritabanı Serbest kullanılmayan alanı.\n\
-kullanım: %s compactdb [SEÇENEK] database-name [class_name1 class_name2 ...]\n\
+kullanım: %1$s compactdb [SEÇENEK] database-name [class_name1 class_name2 ...]\n\
 \n\
 geçerli seçenekler:\n\
   -v, --verbose                     Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
@@ -564,8 +564,8 @@ geçerli seçenekler:\n\
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 Host üzerinde çalışan CUBRID Master %s \n başlandı %s
 22 servisli %d  isteklerde bulunur. %d  sunucu (lar) çalışıyor.\n
-23 %s dakika AŞAĞI KAPATIYOR\n
-24 %s
+23 %1$s dakika AŞAĞI KAPATIYOR\n
+24 %1$s
 25 Kapatmak için sunucunun adı:
 26 Kaç dakika kapatılmasına dek? :
 27 \
@@ -586,35 +586,35 @@ geçerli seçenekler:\n\
   -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
   -T, --activate-heartbeat         etkinleştirme CUBRID sinyal özelliği ve geçerli düğüm düğümün grubunun bir üyesi olur\n\
   -V, --verbose                    Ayrıntılı durum Mesajını sağlamak; varsayılan: Devre Dışı\n
-28 Üzgünüz, bilinmeyen komut: %s\n
+28 Üzgünüz, bilinmeyen komut: %1$s\n
 29 Yerel bilgisayar için ana bilgisayar adı alınamadı - durduruluyor\n
 30 Parametre dosyası bulunamadı\n
-31 %s ana sunucuya bağlantı kurulamadı\n
+31 %1$s ana sunucuya bağlantı kurulamadı\n
 32 Kaç dakika kapatılmasına dek? :
-33 Master %d dakika içinde kapanacaktır\n
+33 Master %1$d dakika içinde kapanacaktır\n
 34 İstemciden veri alma hatası
-35 veritabanı sunucusu %s şu anda çalışmıyor
+35 veritabanı sunucusu %1$s şu anda çalışmıyor
 36 %s kabuk çalıştırma (%s), %s yapamam
 37 süreç çatalı %s,%d,%s döndürülen
-38 %s yürütemez
+38 %1$s yürütemez
 39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
 emergency_patchlog: Patch acil durumlarda bir veritabanı.\n\
-kullanım: %s emergency_patchlog [SEÇENEK] database-name\n\
+kullanım: %1$s emergency_patchlog [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -r, --recreate-log           log dosyalarını yeniden; dikkatli bir şekilde kullanın\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
-20 Npages için yanlış değer %d\n
-21 Yoğunlaştırma depolama amacıyla yanlış bir değeri '%s'.\n
+20 Npages için yanlış değer %1$d\n
+21 Yoğunlaştırma depolama amacıyla yanlış bir değeri '%1$s'.\n
 22 UYARI: --max-writesize-in-sec seçeneği bağımsız mod çalıştırmada yok sayıldı.\n
 60 \
 addvoldb: Add a volume-file for the database.\n\
-kullanım: %s addvoldb [SEÇENEK] database-name\n\
+kullanım: %1$s addvoldb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
       --db-volume-size=SIZE        ilave yoğunluk büyüklüğü; varsayılan: cubrid.conf içinde db_volume_size\n\
@@ -631,11 +631,11 @@ geçerli seçenekler:\n\
   -C, --CS-mode                    istemci-sunucu modunda yürütme\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
-20 Bazı tutarsızlıklar veritabanı tespit edildi.\n ek bilgi için error_log_file %s başvurun.\n
-21 %s: Sınıf bulamıyor. Bu dahil edilmeyecektir.\n
+20 Bazı tutarsızlıklar veritabanı tespit edildi.\n ek bilgi için error_log_file %1$s başvurun.\n
+21 %1$s: Sınıf bulamıyor. Bu dahil edilmeyecektir.\n
 60 \
 checkdb:Veritabanının tutarlılığını denetleyin.\n\
-kullanım: %s checkdb [SEÇENEK] database-name [class_name1 class_name2 ...]\n\
+kullanım: %1$s checkdb [SEÇENEK] database-name [class_name1 class_name2 ...]\n\
 \n\
 geçerli seçenekler:\n\
   -S, --SA-mode                stand-alone modu yürütme\n\
@@ -650,11 +650,11 @@ geçerli seçenekler:\n\
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 Sayfa boyutu %s ile veritabanı '%s' için alan açıklaması. (log sayfa boyutu:%s)\n\n
 16 %5d %9s  %s %s  %s\n
-17 Çıktı dosyası '%s' açılamadı\n
+17 Çıktı dosyası '%1$s' açılamadı\n
 18 Veritabanı '%s' sayfa boyutu %s için geçici yoğunlukları için alan açıklaması.\n\n
 19 Volid Amacı  toplam_sayfa free_pages Vol Name\n\n
 20 Volid Amacı  total_size free_size Vol Name\n\n
-21 LOB alanı açıklaması %s\n\n
+21 LOB alanı açıklaması %1$s\n\n
 22 -------------------------------------------------------------------------------\n
 30 sayfa boyutu %s ile veritabanı '%s' için özet alan açıklama. (sayfa boyutu log:%s)\n\n
 31 Amaç toplam_sayfa used_pages free_pages volume_count\n
@@ -671,7 +671,7 @@ $set 19 MSGCAT_UTIL_SET_SPACEDB
 53 -------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Kullanım / veritabanı boş alanı gösterir.\n\
-kullanım: %s spacedb [SEÇENEK] database-name\n\
+kullanım: %1$s spacedb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -o, --output-file=FILE       FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
@@ -684,32 +684,32 @@ geçerli seçenekler:\n\
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
-15 Tahmini Sayfa Sayısı = %d\n
+15 Tahmini Sayfa Sayısı = %1$d\n
 60 \
 estimate_data: Veri Tahmini boyutu.\n\
-kullanım: %s estimate_data sayı-örnekleri ortalama örnekli-boyut numarası-öznitelikleri değişken sayı-öznitelikleri\n
+kullanım: %1$s estimate_data sayı-örnekleri ortalama örnekli-boyut numarası-öznitelikleri değişken sayı-öznitelikleri\n
 
 
 $set 21 MSGCAT_UTIL_SET_ESTIMATEDB_INDEX
-15 Belirtilen Kötü indeks anahtar türü = %s\n
+15 Belirtilen Kötü indeks anahtar türü = %1$s\n
 16 Kötü ortalama anahtar uzunluğu belirtilen = %d olduğunda hassasiyet= %d\n
 17 Belirtilen Kötü bağımsız değişkenleri\n
-20 Toplam dizin sayfaları Tahmini sayısı = %d\n (Endeksi yarattığı zaman, örnekler sonra doldurulacaktır edilmiştir.)\n
-21 Toplam dizin sayfaları Tahmini sayısı = %d\n (Endeksi yarattığı zaman, örnekler önce doldurulması edilmiştir (ortalama durumda))\n
-22 Toplam dizin sayfaları Tahmini sayısı = %d\n (Örnekleri doldurulan endeksi yarattığı zaman, önce (en kötü durumda))\n
+20 Toplam dizin sayfaları Tahmini sayısı = %1$d\n (Endeksi yarattığı zaman, örnekler sonra doldurulacaktır edilmiştir.)\n
+21 Toplam dizin sayfaları Tahmini sayısı = %1$d\n (Endeksi yarattığı zaman, örnekler önce doldurulması edilmiştir (ortalama durumda))\n
+22 Toplam dizin sayfaları Tahmini sayısı = %1$d\n (Örnekleri doldurulan endeksi yarattığı zaman, önce (en kötü durumda))\n
 23 Verilen giriş için...\n
-24 Örneklerinin sayısı: %d\n
-25 Farklı anahtar numarası: %d\n
-26 Ortalama anahtar boyutu: %d\n
-27 Anahtar Türü			  : %s\n\n
+24 Örneklerinin sayısı: %1$d\n
+25 Farklı anahtar numarası: %1$d\n
+26 Ortalama anahtar boyutu: %1$d\n
+27 Anahtar Türü			  : %1$s\n\n
 60 \
 estimate_index: Bir dizinin boyutu tahmin.\n\
-kullanım: %s estimate_index sayı-örnekleri sayısı-farklı-tuşları ortalama-key-size anahtar-tipi\n
+kullanım: %1$s estimate_index sayı-örnekleri sayısı-farklı-tuşları ortalama-key-size anahtar-tipi\n
 
 $set 22 MSGCAT_UTIL_SET_INSTALLDB
 60 \
 installdb: Bir veritabanı yükleyin.\n\
-kullanım: %s installdb [SEÇENEK] database-name\n\
+kullanım: %1$s installdb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
       --server-name=HOST       Sunucu HOST adı; varsayılan: geçerli ana bilgisayar adı\n\
@@ -723,32 +723,32 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 4 Uzun nesne geçiş için açılırken hata çıktı dosyası\n
 5 Okuma hatası\n
 6 Yazma hatası\n
-7 Açılırken hata ELO girdi dosyası "%s"\n
+7 Açılırken hata ELO girdi dosyası "%1$s"\n
 8 CLASSES:
 9 karma Dosya adı
-10 Ad:                         		%s\n
-11 Boyut:                         	%d\n
-12 Sayfa Boyutu:                    %d\n
-13 Veri Boyutu:                   	%d\n
-14 Giriş Boyutu:                  	%d\n
-15 Her Sayfa İçin Giriş:            %d\n
-16 Önbelleğe alınan sayfaları:      %d\n
-17 Girişlerinin sayısı:             %d\n
-18 Çarpışmalar sayısı:              %d\n
-19 Karma Dosya:                     %s\n
-20 Sonraki taşma girişi:            %d\n
-21 Anahtar türü:                    %s\n
-22 Sayfa başlıkları Adresi:         %x\n
-23 Son sayfa başlığının Adresi:     %x\n
-24 Ücretsiz sayfa başlığının Adresi:%x\n
-25 Sayfa bitmap Adresi:             %x\n
-26 Sayfa bitmap boyutu:             %d\n
+10 Ad:                         		%1$s\n
+11 Boyut:                         	%1$d\n
+12 Sayfa Boyutu:                    %1$d\n
+13 Veri Boyutu:                   	%1$d\n
+14 Giriş Boyutu:                  	%1$d\n
+15 Her Sayfa İçin Giriş:            %1$d\n
+16 Önbelleğe alınan sayfaları:      %1$d\n
+17 Girişlerinin sayısı:             %1$d\n
+18 Çarpışmalar sayısı:              %1$d\n
+19 Karma Dosya:                     %1$s\n
+20 Sonraki taşma girişi:            %1$d\n
+21 Anahtar türü:                    %1$s\n
+22 Sayfa başlıkları Adresi:         %1$x\n
+23 Son sayfa başlığının Adresi:     %1$x\n
+24 Ücretsiz sayfa başlığının Adresi:%1$x\n
+25 Sayfa bitmap Adresi:             %1$x\n
+26 Sayfa bitmap boyutu:             %1$d\n
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 60 \
 diagdb: Bir veritabanı dökümü.\n\
-kullanım: %s diagdb [SEÇENEK] database-name\n\
+kullanım: %1$s diagdb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -d, --dump-type=TYPE         TYPE of dump\n\
@@ -765,11 +765,11 @@ geçerli seçenekler:\n\
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
-15 Çıktı dosyası '%s' açılmaadı \n
+15 Çıktı dosyası '%1$s' açılmaadı \n
 59 lockdb bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 lockdb: veritabanının kilit durumunu görüntüler.\n\
-kullanım: %s lockdb [SEÇENEK] database-name\n\
+kullanım: %1$s lockdb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -o, --output-file=FILE      FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n
@@ -781,14 +781,14 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 26 Belirtilen bağımsız değişken değerleri ile bir işlem yoktur.\n
 27 Aşağıdaki işlemleri iptal etmek için hazır:\n\n
 28 Devam etmek istiyor musunuz? (Y/N)
-29 İptal etme işlemi işlemin endeksi %d ile ilişkili\n
+29 İptal etme işlemi işlemin endeksi %1$d ile ilişkili\n
 30 Aşağıdaki işlemleri İptal etme başarısız oldu\n\n
 31 işlemin henüz bitmiş değil, ama geri alma işi olabilir.\n bir saniye bekleyin ve gerekirse daha sonra deneyin.\n
-32 Geçersiz tranindex(%s).\n
+32 Geçersiz tranindex(%1$s).\n
 59 killtran bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 killtran: Veritabanı işlemleri yönetin.\n\
-kullanım: %s killtran [SEÇENEK] database-name\n\
+kullanım: %1$s killtran [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -i, --kill-transaction-index=INDEX işlemi İNDEX ile işlemi iptal etme\n\
@@ -809,14 +809,14 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 4 uyumluluk yalnızca kontrol edin
 5 yedekleme-hedefi
 6 yedekleme yoğunluk hedef için bir dizin veya aygıt
-20 veritabanı '%s' yok.
+20 veritabanı '%1$s' yok.
 21 DB sürüm çok düşük olduğundan, '%s',%s geçirilemez.\n
-22 '%s' taşınmasına olanak gerekmez.\n
-23 '%s' taşıma gerekir.\n
+22 '%1$s' taşınmasına olanak gerekmez.\n
+23 '%1$s' taşıma gerekir.\n
 24 Yedekleme geçişten sonra önerilir. Şimdi veritabanınızı yedeklemek ister misiniz? (e/ h):
 25 Bu taşınmanın ardından backupdb komutu ile yeni bir veritabanı yedeklemek için önerilir.
-26 \n*** UYARI:taşıma başlamadan önce veritabanı yedekleme %s*** \n\nBu taşıması sırasında meydana gelen olabilecek hataları kurtarabilirsiniz, şiddetle veritabanınızı yedeklemenizi önerilir \n zaten veritabanı yedeklendiyse Varmı.? (e/h):
-27 \n1. Backupdb\n2 çalıştırın..\n3: yeni veritabanı için yeni bir yedekleme path (%s geçerli path) girin. Çıkış
+26 \n*** UYARI:taşıma başlamadan önce veritabanı yedekleme %1$s*** \n\nBu taşıması sırasında meydana gelen olabilecek hataları kurtarabilirsiniz, şiddetle veritabanınızı yedeklemenizi önerilir \n zaten veritabanı yedeklendiyse Varmı.? (e/h):
+27 \n1. Backupdb\n2 çalıştırın..\n3: yeni veritabanı için yeni bir yedekleme path (%1$s geçerli path) girin. Çıkış
 28 \nVeritabanı için yeni bir yedekleme path:
 29 \nTaşınması ve yedekleme başarıyla tamamlandı.
 30 Yedekleme başarısız oldu. Lütfen , Veritabanı yedeklemenizi yeniden deneyin.
@@ -825,7 +825,7 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \
 alterdbhost: Veritabanının bir ana bilgisayar değiştirebilir.\n\
-kullanım: %s alterdbhost [SEÇENEK] database-name\n\
+kullanım: %1$s alterdbhost [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -h, --host=HOST              Yeni HOST adı; varsayılan: geçerli ana bilgisayar adı\n
@@ -840,24 +840,24 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 6 varsa sınıf dosyanın üzerine yazmak, varsayılan yok
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
-15 Çıktı dosyası '%s' açılamıyor \n
+15 Çıktı dosyası '%1$s' açılamıyor \n
 59 plandump bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 plandump: Önbelleğe alınan sorgu planlarını görüntüleme ya da kontrol etmek.\n\
-kullanım: %s plandump [SEÇENEK] database-name\n\
+kullanım: %1$s plandump [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -d, --drop                   sunucunun önbelleğine tüm planları bırakın\n\
   -o, --output-file=FILE       FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
-11 Çıktı dosyası açılamıyor'%s'\n
+11 Çıktı dosyası açılamıyor'%1$s'\n
 21 Sistem parametreleri istemci programı tarafından kullanılacak.\n
-22 Sistem parametreleri sunucu '%s' tarafından yüklenen\n
+22 Sistem parametreleri sunucu '%1$s' tarafından yüklenen\n
 23 Sistem parametrelerinin bağımsız modda kullanılır.\n
 60 \
 paramdump: Sistem parametre ayarları dökümü.\n\
-kullanım: %s paramdump [SEÇENEK] database-name\n\
+kullanım: %1$s paramdump [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -o, --output-file=FILE       FILE çıktı iletiyi yönlendirmek; varsayılan: hiçbir\n\
@@ -866,7 +866,7 @@ geçerli seçenekler:\n\
   -C, --CS-mode                istemci-sunucu modunda yürütme\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
-11 yanlış bir değeri \"%s\" sunucunun HA çalışan modu için.\n
+11 yanlış bir değeri \"%1$s\" sunucunun HA çalışan modu için.\n
 12 Sunucunun HA modunda çalışması değiştirilemez.\n
 21 DBA şifrenizi girin:
 22 Modunda çalışırken sunucu '%s'' şu andaki HA %s dir.\n
@@ -876,7 +876,7 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 59 changemode bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 changemode: Sunucunun HA çalışma modunda görüntülemek veya değiştirmek.\n\
-kullanım: %s changemode [SEÇENEK] database-name\n\
+kullanım: %1$s changemode [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -m, --mode=MODE             MODE sunucu modunu değiştirmek; varsayılan: hiçbir\n\
@@ -886,14 +886,14 @@ geçerli seçenekler:\n\
                               varsayılan: 5\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
-11 yanlış bir değeri \"%s\" copylogdb çalışan modu.\n
+11 yanlış bir değeri \"%1$s\" copylogdb çalışan modu.\n
 21 DBA şifrenizi girin:
 22 Sunucu modunda HA ayarlı değil.\n
 58 HA özelliği bu platformda desteklenmiyor.\n
 59 copylogdb bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 copylogdb: Sunucu günlük sayfaları kopyalayın.\n\
-kullanım: %s copylogdb [SEÇENEK] database-name\n\
+kullanım: %1$s copylogdb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -L, --log-path=PATH         Kopyalanan log yoğunlukları için dizin PATH\n\
@@ -907,18 +907,18 @@ $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 59 applylogdb bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 applylogdb: sunucuya kopyalanmaz log uygulayın.\n\
-kullanım: %s applylogdb [SEÇENEK] database-name\n\
+kullanım: %1$s applylogdb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -L, --log-path=PATH         Kopyalanan log yoğunlukların dizininde PATH\n\
       --max-mem-size=SIZE     MB maksimum işlem SIZE; max 1000\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
-11 Çıktı dosyası '%s' açılamıyor\n
+11 Çıktı dosyası '%1$s' açılamıyor\n
 59 statdump bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 statdump: Genel istatistiklere dökümü.\n\
-kullanım: %s statdump [SEÇENEK] database-name\n\
+kullanım: %1$s statdump [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -o, --output-file=FILE       FILE çıktı iletiyi yönlendirmek; varsayılan: hiçbir\n\
@@ -933,7 +933,7 @@ $set 44 MSGCAT_UTIL_SET_APPLYINFO
 59 applyinfo standlone modu olarak çalıştıramazsınız.\n
 60 \
 applyinfo: Ekran CUBRID HA bilgileri uygulayın.\n\
-kullanım: %s applyinfo [SEÇENEK] database-name\n\
+kullanım: %1$s applyinfo [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -r, --remote-host-name      Uzak ana bilgisayar adı; görüntü uzak düğüm aktif log bilgileri\n\
@@ -947,7 +947,7 @@ $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb bağımsız modu olarak çalıştıramazsınız.\n
 60 \
 acldb: Görüntüleme veya veritabanı erişim kontrol ayarı yeniden yükleyin.\n\
-kullanım: %s acldb [SEÇENEK] database-name\n\
+kullanım: %1$s acldb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -r, --reload       ip kontrol dosyası yeniden yükleyin\n
@@ -955,7 +955,7 @@ geçerli seçenekler:\n\
 $set 46 MSGCAT_UTIL_SET_GENLOCALE
 60 \
 Mevcut komutlar:konum oluşturarak paylaşan kütüphane, Bu kütüphane LDML Giriş belgesi(s).\n\
-Kullanımı: %s Mevcut komutlar[seçmiş] [Dil-Dizeler]\n\
+Kullanımı: %1$s Mevcut komutlar[seçmiş] [Dil-Dizeler]\n\
 \n\
 Dil –Dizeler	      Konum dil dizeleri, Paylaşmak için kullanacak olan kütüphane.\n\
 		      Eğer Dil dizeleri verilmemiş se, 'cubrid_konum.txt'\n\
@@ -971,7 +971,7 @@ $set 47 MSGCAT_UTIL_SET_DUMPLOCALE
 59 Geçersiz nokta dı tartışması.\n
 60 \
 Kopyalama yeri: yeri bırakıp kütüphane içeklerini paylaşmak, önce LDMLgiriş yapılan doyalar neden olmuştur\n\
-Kullanımı: %s dumplocale [seçmiş] [Dil-Dizeler]\n\
+Kullanımı: %1$s dumplocale [seçmiş] [Dil-Dizeler]\n\
 \n\
 Dil-Dizeler	 yeri ve dil dizeleri, yeri bırakıp kütüphane paylaşmak.\n\
 		         Ele çalıştığında hiçbir dil dizesi vermemiştir, 'cubrid_konum.txt' \n\
@@ -997,29 +997,29 @@ geçerli seçenekler: \n\
   -z, --normalization   Normalleştirilen verileri bırakmak; Hata: Hayır\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
-43 Onların bölünme özelliğinin '%s'güncel derlemesini değiştirmeden önce bölümlere ayırma kaldırılmalıdır.\nClass name\n
-44 Derleme '%s' olan özelliklerde yabancı tuşlar özelliklerin derlemesi değiştirilmeden önce düşürülmelidir.\nTable | Foreign Key\n
-45 '%s' derlemesine sahip sınıflar; tekrardan tanımlanmalıdırlar:\nClass name\n
-46 Derleme '%s' içeren ifadeye sahip fonksiyon indeksleri; tekrardan tanımlanmalıdırlar:\n\
+43 Onların bölünme özelliğinin '%1$s'güncel derlemesini değiştirmeden önce bölümlere ayırma kaldırılmalıdır.\nClass name\n
+44 Derleme '%1$s' olan özelliklerde yabancı tuşlar özelliklerin derlemesi değiştirilmeden önce düşürülmelidir.\nTable | Foreign Key\n
+45 '%1$s' derlemesine sahip sınıflar; tekrardan tanımlanmalıdırlar:\nClass name\n
+46 Derleme '%1$s' içeren ifadeye sahip fonksiyon indeksleri; tekrardan tanımlanmalıdırlar:\n\
 Table | Index | Function expression\n
 47 Derlemelerin senkronizasyonu gerçekleştirilmedi. Veri tabanı değişmedi.\n
-48 '%s' sistem tablosu içerikleri yeni sistem derlemeleri ile güncellendi.\n
+48 '%1$s' sistem tablosu içerikleri yeni sistem derlemeleri ile güncellendi.\n
 49 Sistem derlemeleri güncellemesi veri tabanı çökmesine neden olabilir. Devam (y/n) ?\n
 50 Derleme '%s' (Id: %d) veri tabanında bulunmadı veya yeni sistem konfigürasyonunda değişti.\n
-51 Derlee '%s' içeren koşula sahip tetikler; tekrardan tanımlanmalıdırlar:\nTrigger | Condition\n
-52 Derleme '%s' içeren sorgulama görüntüle; tekrardan tanımlanmalıdırlar:\nView | Query\n
-53 Derleme'%s' sahip özellikler; tekrardan tanımlanmalıdırlar.\nTable | Attribute Domain\n
+51 Derlee '%1$s' içeren koşula sahip tetikler; tekrardan tanımlanmalıdırlar:\nTrigger | Condition\n
+52 Derleme '%1$s' içeren sorgulama görüntüle; tekrardan tanımlanmalıdırlar:\nView | Query\n
+53 Derleme'%1$s' sahip özellikler; tekrardan tanımlanmalıdırlar.\nTable | Attribute Domain\n
 54 Veri tabanında manüel müdahale gerekli.\n\
-Lütfen dosya '%s' kontrol ediniz ve onu derlemeleri veri tabanı içine zorlamadan önce çalıştırın.\n
+Lütfen dosya '%1$s' kontrol ediniz ve onu derlemeleri veri tabanı içine zorlamadan önce çalıştırın.\n
 55 Senkronizasyon gerekli değil.\n
 56 Sistem derlemesinin veri tabanı içine senkronizasyonu talep edilmektedir.\n\
-Çalıştır 'cubrid synccolldb -f %s'\n
-57 Veri tabanı ile karşılaştırıldığında sistem konfigürasyonunda %d yeni derlemeler vardır:\n
-58 Veri tabanı '%s' teki tüm derlemeler yeni sistem konfigürasyonunda bulunmuştur.\n
-59 Konfigüre edilmemiş veya sistem derlemelerine kıyasla değişmiş olan veri tabanında %d derlemeler var.\n
+Çalıştır 'cubrid synccolldb -f %1$s'\n
+57 Veri tabanı ile karşılaştırıldığında sistem konfigürasyonunda %1$d yeni derlemeler vardır:\n
+58 Veri tabanı '%1$s' teki tüm derlemeler yeni sistem konfigürasyonunda bulunmuştur.\n
+59 Konfigüre edilmemiş veya sistem derlemelerine kıyasla değişmiş olan veri tabanında %1$d derlemeler var.\n
 60 \
 synccolldb: Derlemeleri sistem derlemeleri ile veri tabanından senkronize eder.\n\
-kullanım: %s synccolldb [OPTION] database-name\n\
+kullanım: %1$s synccolldb [OPTION] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -c, --check-only    Sistemin derlemesi ile veri tabanından derlemeleri control eder.\n\
@@ -1028,25 +1028,25 @@ geçerli seçenekler:\n\
   -f, --force-only    derlemeleri veri tabanında yeni sistem konfigürasyonu ile aynı olacak şekilde günceller.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 %s şifre gir: 
+20 %1$s şifre gir: 
 22 Tran index          User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %4d%-10s %14s %14s %15d %17s\n
 25 Geçişler yok\n
 26 tranlist sadece DBA veya bir DBA grup üyesi tarafından uygulanabilir.\n
-27 sort-key sütun numarası (%d) geçersiz.\n
+27 sort-key sütun numarası (%1$d) geçersiz.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
 42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
-45 Tran index : %d
-46 SQL_ID: %s\n
+45 Tran index : %1$d
+46 SQL_ID: %1$s\n
 59 tranlist standalone mode olarak çalışamaz.\n
 60 \
 tranlist: Aktif geçiş bilgisini boşalt.\n\
-kullanım: %s tranlist [OPTION] database-name\n\
+kullanım: %1$s tranlist [OPTION] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -u, --user=ID                veri tabanı erişimi için kullanıcı kimliği; default: DBA user\n\

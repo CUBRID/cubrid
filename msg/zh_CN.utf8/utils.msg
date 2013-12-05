@@ -70,9 +70,9 @@ $       49      tranlist
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 无效的长度或字符 '%c' 在数据库名 '%s' 中\n
-2 无法打开输出文件 '%s'\n
+2 无法打开输出文件 '%1$s'\n
 3 应用工具名缺失或无效\n
-4 无效的应用工具名 '%s'\n
+4 无效的应用工具名 '%1$s'\n
 5 下面的列表包含了已识别的工具名:\n
 6 无效字符 '%c' 在卷名 '%s' 中\n
 9 \
@@ -118,15 +118,15 @@ cubrid 管理工具，版本 %s\n\
 \n\
 %s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.com\n
-12 '%s' 应用工具名是无效的.\n输入 'cubrid --help' 查询帮助.\n
-13 '%s' 命令无效.\n输入 'cubrid --help' 查询帮助.\n
+12 '%1$s' 应用工具名是无效的.\n输入 'cubrid --help' 查询帮助.\n
+13 '%1$s' 命令无效.\n输入 'cubrid --help' 查询帮助.\n
 14 无法读取从配置文件中读取一个或多个强制属性.\n
 15 @ %s %s: %s\n
 16 @ %s %s\n
 17 ++ %s '%s' 没有运行.\n
-18 ++ %s 没有运行.\n
+18 ++ %1$s 没有运行.\n
 19 ++ %s '%s' 正在运行.\n
-20 ++ %s 正在运行.\n
+20 ++ %1$s 正在运行.\n
 21 ++ %s %s: %s\n
 22 缺少一个或多个参数.\n输入 'cubrid --help' 查询帮助.\n
 23 cubrid 应用工具, 版本 %s\n\
@@ -223,9 +223,9 @@ cubrid 管理工具，版本 %s\n\
     applylogdb  <start|stop> 数据库名 节点名\n\
     status\n\
     reload\n
-31 不需要参数 '%s' .\n
+31 不需要参数 '%1$s' .\n
 32 缺少数据库名.\n
-33 %s: 这个选项已经被废弃.\n
+33 %1$s: 这个选项已经被废弃.\n
 34 非法参数. %s %s\n
 35 不能分配内存.\n
 36 服务器没有为HA进行设置.\n
@@ -234,14 +234,14 @@ cubrid 管理工具，版本 %s\n\
 40 Invalid command.\n
 41 cubrid manager server is not installed.\n
 42 Invalid argument.\n
-43 File(%s) open error.\n
+43 File(%1$s) open error.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: 在单机模式下 -t 选项将被忽略.\n
 31 错误: 目标路径不存在或不是目录.\n
 60 \
 backupdb: 备份一个数据库.\n\
-usage: %s backupdb [选项] 数据库名\n\
+usage: %1$s backupdb [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -D, --destination-path=PATH  将备份卷存到 PATH 目录; 目录的默认值: 数据库的日志目录\n\
@@ -268,7 +268,7 @@ $set 3 MSGCAT_UTIL_SET_COPYDB
 32 错误: vols-tofrom-paths_file不存在或不可读.\n
 60 \
 copydb: 复制一个数据库.\n\
-用法: %s copydb [选项] 源数据库名 目的数据库名\n\
+用法: %1$s copydb [选项] 源数据库名 目的数据库名\n\
 \n\
 可用选项:\n\
       --server-name=HOST          指定服务器的主机名为HOST; 默认: 当前主机名\n\
@@ -283,19 +283,19 @@ copydb: 复制一个数据库.\n\
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
-40 组 '%s' 不存在\n
-41 用户 '%s' 不存在\n
-42 未知的命令 '%s'\n
-43 无法打开输出文件 '%s'\n
+40 组 '%1$s' 不存在\n
+41 用户 '%1$s' 不存在\n
+42 未知的命令 '%1$s'\n
+43 无法打开输出文件 '%1$s'\n
 44 无法移除已存在的数据库.\n
 45 创建数据库大小为 %1$s，使用的缺省语言区域是 %2$s。总共需要的磁盘空间大小为 %3$s.\n
 46 无法创建数据库.\n
-47 用户文件 '%s' 存在问题\n
+47 用户文件 '%1$s' 存在问题\n
 48 给定值 '%s', %s 超过了范围. 选择大小在 %s 和 %s之间的数.\n
 49 %s '%s'的值是非法的.\n
 60 \
 createdb: 创建一个数据库.\n\
-usage: %s createdb [OPTION] database-name database-locale\n\
+usage: %1$s createdb [OPTION] database-name database-locale\n\
 \n\
 database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR.utf8\n\
 可用选项:\n\
@@ -321,7 +321,7 @@ database-locale format is <language>.<charset>; examples : en_US.iso88591, ko_KR
 $set 6 MSGCAT_UTIL_SET_DELETEDB
 60 \
 deletedb: 删除一个数据库.\n\
-用法: %s deletedb [选项] 数据库名\n\
+用法: %1$s deletedb [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -o, --output-file=FILE       重定向输出信息到 FILE; 默认: 无\n\
@@ -332,7 +332,7 @@ $set 7 MSGCAT_UTIL_SET_RENAMEDB
 32 ERROR: vols-tofrom-paths_file 不存在或不可写.\n
 60 \
 renamedb: 重命名数据库.\n\
-usage: %s renamedb [选项] 源数据库名 目的数据库名\n\
+usage: %1$s renamedb [选项] 源数据库名 目的数据库名\n\
 \n\
 有效的选项:\n\
   -E, --extended-volume-path=PATH 指定 PATH 作为扩展卷的目录; 默认: 等于数据卷的路径或给定的控制文件路径\n\
@@ -340,23 +340,23 @@ usage: %s renamedb [选项] 源数据库名 目的数据库名\n\
   -d, --delete-backup             删除备份卷; 默认: 不删除\n
 
 $set 9 MSGCAT_UTIL_SET_MASTER
-11 一个 %s 进程 已经在运行.\n
+11 一个 %1$s 进程 已经在运行.\n
 12 MASTER服务运行. \n
 13 MASTER服务退出.\n
 14 查找本地主机名错误\n
 15 无法找到参数文件\n
 16 无法初始化主进程\n
 17 服务 %s 在 %d 分钟后停止
-18 服务 %s 被通知要关闭.\n这可能会占用几分钟. 请等待.
-19 服务 %s 没有找到.
-20 Master将在 %d 分钟内停止\n
+18 服务 %1$s 被通知要关闭.\n这可能会占用几分钟. 请等待.
+19 服务 %1$s 没有找到.
+20 Master将在 %1$d 分钟内停止\n
 21 Heartbeat failover was finished. Please wait until all shutdown processes of cub_servers are completed.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
-11 无法打开输出文件 '%s'\n
+11 无法打开输出文件 '%1$s'\n
 60 \
 optimizedb: 优化一个数据库.\n\
-usage: %s optimizedb [选项] 数据库名\n\
+usage: %1$s optimizedb [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -n, --class-name=NAME        更新名为NAME的类的统计信息; 默认: 所有类\n
@@ -367,7 +367,7 @@ $set 11 MSGCAT_UTIL_SET_RESTOREDB
 20 Restoredb 被取消或发生了一个错误.\n
 60 \
 restoredb: 恢复一个数据库.\n\
-usage: %s restoredb [选项] 数据库名\n\
+usage: %1$s restoredb [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -d, --up-to-date=DATE             将数据库恢复到给定日期DATE时的情况. DATE 为如下形式: dd-mm-yyyy:hh:mm:ss 或 'backuptime' 关键字\n\
@@ -385,53 +385,53 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 21 中断 ... \n
 22 中断读取 - 当前事务被提交\n
 23 中断读取 - 当前事务被终止\n
-24 无法打开文件 '%s'\n
+24 无法打开文件 '%1$s'\n
 25 \n*** 语法检测 ***\n\n
-26 %d 个错误被检测到\n
+26 %1$d 个错误被检测到\n
 27 \n*** 插入对象 ***\n\n
-28 总共 %8d 个对象被插入.\n
-29 总共 %8d 个被涉及的对象以默认内容被插入.\n
+28 总共 %1$8d 个对象被插入.\n
+29 总共 %1$8d 个被涉及的对象以默认内容被插入.\n
 30 \n*** 提交事务中 ***\n
 31 \n*** 关闭数据库 ***\n
-32 行 %d:
+32 行 %1$d:
 33 解析错误 '%s' 作为一个 '%s' 值 关于属性 '%s' of '%s'\n
 34 缺少域关于属性 %s of %s\n
 35 对于属性 %s of %s, 类型 %s 在域的集合中是不被允许的\n
 36 对于属性 %s of %s, 期望类型 %s, 得到一个set常量\n
 37 对于属性 %s of %s, 期望类型 %s, 得到 %s\n
 38 没有名为 %s 的类被属性 %s of %s 所引用\n
-39 没有名为 %s 的类, 忽略元组\n
+39 没有名为 %1$s 的类, 忽略元组\n
 40 没有以 %d 为表示的类被属性 %s of %s 所引用\n
-41 在加载器输入文件中类 %s 不被允许\n
+41 在加载器输入文件中类 %1$s 不被允许\n
 42 以错误而终止.\n
 43 警告: 更新已存在的实例 !\n
 44 警告: 重定义实例 %d 属于类 %s\n
 45 实例 %d 属于类 %s 已经被定义\n
 46 实例 %d 属于类 %s 已经被保留\n
-47 在属性 '%s' 上违反了唯一性, 转化为 NULL\n
-48   %d 个实例\n
-49 类 %s\n
+47 在属性 '%1$s' 上违反了唯一性, 转化为 NULL\n
+48   %1$d 个实例\n
+49 类 %1$s\n
 50 密码:
 51 \n*** 更新类统计信息 ***\n
 52 %s 在行 %d 附近(文本是 '%s')\n
 53 词法错误
 54 行 %d: 语法错误， 在 \"%s\"
 55 丢失
-56 在 %s
+56 在 %1$s
 57 不兼容的参数, \"%s\", 和 \"%s\"\n
-58 %d 个实例被提交\n
+58 %1$d 个实例被提交\n
 59 \n无法调用非优化版本的loaddb.\n
 60 处理错误 \"%s\", 作为 %s 类型.\n
-112   %d 个实例\r
-113 最后提交的行 : %d
+112   %1$d 个实例\r
+113 最后提交的行 : %1$d
 114 错误控制文件
 115 在加载过程中输入文件来控制错误
 116 Total %8d object(s) inserted, %d object(s) failed.\n
 117 Load failed.\n
-118 Maximum length of class name is %d bytes.\n
+118 Maximum length of class name is %1$d bytes.\n
 120 \
 loaddb: 将对象和结构导入到数据库.\n\
-usage: %s loaddb [选项] 数据库名\n\
+usage: %1$s loaddb [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -u, --user=ID                 用于访问数据库的用户ID; 默认: "public"\n\
@@ -471,16 +471,16 @@ usage: load_noopt [选项] 数据库名\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 缓存页数值无效.\n
 42 缓存页大小无效.\n
-43 %d 个对象被转储.\n
-44 类 %s
-45 , %d 个实例.\n
+43 %1$d 个对象被转储.\n
+44 类 %1$s
+45 , %1$d 个实例.\n
 46 只有 %d 个对象在 %d 个对象之中被成功转储.\n
 47 输出目录过长.\n
 48 LSA : %d %d \n
 49 密码:
 60 \
 unloaddb: 从数据库导出对象和结构.\n\
-usage: %s unloaddb [选项] 数据库名\n\
+usage: %1$s unloaddb [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -u, --user=ID               访问数据库的用户ID; 默认: "dba"\n\
@@ -506,11 +506,11 @@ usage: %s unloaddb [选项] 数据库名\n\
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
 11 \n传递 1\n\n
-12 %d 个对象被处理.\n
+12 %1$d 个对象被处理.\n
 13 \n传递 2\n\n
-14 类 %s\n
+14 类 %1$s\n
 15 oid:  %d|%d|%d,\n
-16 %d 个对象.\n
+16 %1$d 个对象.\n
 17 更新对象.\n
 18 ref_oid:  %d.%d.%d, ref_class_oid:  %d.%d.%d\n
 19 无法转换对象\n
@@ -520,10 +520,10 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 23 COMPACTDB 已经启动.\n
 24 页的数目必须在 %d 和 %d 之间.\n
 25 实例锁的超时时间必须在 %d 和 %d 之间.\n
-26 对象总数: %d\n
-27 失败的对象: %d\n
-28 修改的对象: %d\n
-29 大对象: %d\n
+26 对象总数: %1$d\n
+27 失败的对象: %1$d\n
+28 修改的对象: %1$d\n
+29 大对象: %1$d\n
 30 旧的类表述从目录中删除.\n
 31 旧的类表述在目录中保留.\n
 32 无法设置隔离级别.\n
@@ -543,7 +543,7 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 46 heap压缩成功...\n
 60 \
 compactdb: 释放数据库中未使用的空间.\n\
-usage: %s compactdb [选项] 数据库名 [类名1 类名2 ...]\n\
+usage: %1$s compactdb [选项] 数据库名 [类名1 类名2 ...]\n\
 \n\
 可用选项:\n\
   -v, --verbose                     开启详细状态信息; 默认: 不可用\n\
@@ -564,8 +564,8 @@ usage: %s compactdb [选项] 数据库名 [类名1 类名2 ...]\n\
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 CUBRID 主进程运行在主机 %s \n被启动在 %s
 22 收到了 %d 请求. %d 个服务在运行.\n
-23 在 %s 分钟内关闭\n
-24 %s
+23 在 %1$s 分钟内关闭\n
+24 %1$s
 25 要关闭的服务名 :
 26 多少分钟后关闭? :
 27 \
@@ -586,35 +586,35 @@ usage: cub_commdb [选项]\n\
   -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
   -T, --activate-heartbeat         激活CUBRID heartbeat 特征并将当前节点加入到节点组中\n\
   -V, --verbose                    开启详细状态信息; 默认: 不可用\n
-28 对不起，未知的命令: %s\n
+28 对不起，未知的命令: %1$s\n
 29 无法得到主机名或本地主机 - 终止\n
 30 找不到参数文件\n
-31 无法在 %s 连接主服务\n
+31 无法在 %1$s 连接主服务\n
 32 多少分钟后关闭? :
-33 主进程(Master) 将在 %d 分钟内关闭\n
+33 主进程(Master) 将在 %1$d 分钟内关闭\n
 34 从客户端那里收到了错误的数据
-35 数据库服务 %s 当前没有运行
+35 数据库服务 %1$s 当前没有运行
 36 无法执行 shell (%s) 关于 %s, %s
 37 进程 fork %s, 返回 %d, %s
-38 无法执行 %s
+38 无法执行 %1$s
 39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
 emergency_patchlog: 紧急情况下修补一个数据库.\n\
-usage: %s emergency_patchlog [选项] 数据库名\n\
+usage: %1$s emergency_patchlog [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -r, --recreate-log           重建日志文件; 小心使用\n
 
 
 $set 17 MSGCAT_UTIL_SET_ADDVOLDB
-20 错误的值 %d 对于 页的数目\n
-21 错误的值 '%s' 对于卷存储目的.\n
+20 错误的值 %1$d 对于 页的数目\n
+21 错误的值 '%1$s' 对于卷存储目的.\n
 22 警告: --max-writesize-in-sec 选项在单机模式下是忽略的.\n
 60 \
 addvoldb: 为数据库添加一个卷文件.\n\
-usage: %s addvoldb [选项] 数据库名\n\
+usage: %1$s addvoldb [选项] 数据库名\n\
 \n\
 可用选项:\n\
       --db-volume-size=SIZE        指定附加卷大小; 默认: db_volume_size 在 cubrid.conf 文件中\n\
@@ -631,11 +631,11 @@ usage: %s addvoldb [选项] 数据库名\n\
   -C, --CS-mode                    客户端-服务器模式执行\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
-20 一些不一致性在你的数据库中被检测出来.\n 请在错误日志文件 %s 中查阅额外的信息.\n
-21 %s: 无法找到该表. 它将被忽略.\n
+20 一些不一致性在你的数据库中被检测出来.\n 请在错误日志文件 %1$s 中查阅额外的信息.\n
+21 %1$s: 无法找到该表. 它将被忽略.\n
 60 \
 checkdb: 监测数据库一致性.\n\
-用法: %s checkdb [选项] 数据库名 [class_name1 class_name2 ...]\n\
+用法: %1$s checkdb [选项] 数据库名 [class_name1 class_name2 ...]\n\
 \n\
 可用选项:\n\
   -S, --SA-mode                单机模式执行\n\
@@ -650,11 +650,11 @@ checkdb: 监测数据库一致性.\n\
 $set 19 MSGCAT_UTIL_SET_SPACEDB
 15 数据库 '%s' 的空间描述 页大小 %s. (日志页大小: %s)\n\n
 16 %5d %9s  %s %s  %s\n
-17 无法打开输出文件 '%s'\n
+17 无法打开输出文件 '%1$s'\n
 18 数据库 '%s' 临时卷的空间描述 页大小 %s.\n\n
 19 卷标识  用途  页总数  空闲页  卷名\n\n
 20 卷标识  用途  总大小  空闲空间  卷名\n\n
-21 LOB 空间描述 %s \n\n
+21 LOB 空间描述 %1$s \n\n
 22 -------------------------------------------------------------------------------\n
 30 数据 '%s' 的 汇总空间描述 页大小 %s. (日志页大小: %s)\n\n
 31 设定的    总页数  已用页数  空闲页数  卷数\n
@@ -671,7 +671,7 @@ $set 19 MSGCAT_UTIL_SET_SPACEDB
 53 -------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: 显示数据库的使用/空闲空间.\n\
-usage: %s spacedb [选项] 数据库名\n\
+usage: %1$s spacedb [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -o, --output-file=FILE       重定向输出信息到文件 FILE; 默认: 无\n\
@@ -684,32 +684,32 @@ usage: %s spacedb [选项] 数据库名\n\
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
-15 预计页的数目 = %d\n
+15 预计页的数目 = %1$d\n
 60 \
 估算数据: 估算数据的大小.\n\
-用法: %s 估算数据 实例的数目 实例的平均大小 属性的数目 可变属性数目\n
+用法: %1$s 估算数据 实例的数目 实例的平均大小 属性的数目 可变属性数目\n
 
 
 $set 21 MSGCAT_UTIL_SET_ESTIMATEDB_INDEX
-15 指定了不正确的索引键类型 = %s\n
+15 指定了不正确的索引键类型 = %1$s\n
 16 指定了不正确的平均键长度 = %d when precision = %d\n
 17 指定了错误的参数\n
-20 估算的全部索引页数目 = %d\n (在实例被写入后，索引被创建.)\n
-21 估算的全部索引页数目 = %d\n (在实例被写入前(平均情况)，索引被创建)\n
-22 估算的全部索引页数目 = %d\n (在实例被写入前(最坏情况)，索引被创建)\n
+20 估算的全部索引页数目 = %1$d\n (在实例被写入后，索引被创建.)\n
+21 估算的全部索引页数目 = %1$d\n (在实例被写入前(平均情况)，索引被创建)\n
+22 估算的全部索引页数目 = %1$d\n (在实例被写入前(最坏情况)，索引被创建)\n
 23 用于给定的输入...\n
-24 实例的总数               : %d\n
-25 不同键的数目             : %d\n
-26 键的平均大小             : %d\n
-27 键的类型                 : %s\n\n
+24 实例的总数               : %1$d\n
+25 不同键的数目             : %1$d\n
+26 键的平均大小             : %1$d\n
+27 键的类型                 : %1$s\n\n
 60 \
 估算索引: 估算一个索引的大小.\n\
-用法: %s 估算索引 实例的数目 不同键的数目 平均键长 键类型\n
+用法: %1$s 估算索引 实例的数目 不同键的数目 平均键长 键类型\n
 
 $set 22 MSGCAT_UTIL_SET_INSTALLDB
 60 \
 installdb: 安装一个数据库.\n\
-usage: %s installdb [选项] 数据库名\n\
+usage: %1$s installdb [选项] 数据库名\n\
 \n\
 可用选项:\n\
       --server-name=HOST       指定服务端的主机名; 默认: 当前主机名e\n\
@@ -723,32 +723,32 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 4 打开用于迁移长对象的输出文件错误\n
 5 读错误\n
 6 写错误\n
-7 打开ELO输入文件错误 "%s"\n
+7 打开ELO输入文件错误 "%1$s"\n
 8 类:
 9 哈希文件
-10 名称:                         %s\n
-11 大小:                         %d\n
-12 页大小:                       %d\n
-13 数据大小:                     %d\n
-14 条目大小:                     %d\n
-15 每一页的条目:                 %d\n
-16 缓存的页:                     %d\n
-17 条目的数目:                   %d\n
-18 冲突的数目:                   %d\n
-19 哈希文件名:                   %s\n
-20 下一个溢出条目:               %d\n
-21 键的类型:                     %s\n
-22 页头的地址:                   %x\n
-23 最后的页头地址:               %x\n
-24 空闲页的头地址:               %x\n
-25 页位图的地址:                 %x\n
-26 页位图的大小:                 %d\n
+10 名称:                         %1$s\n
+11 大小:                         %1$d\n
+12 页大小:                       %1$d\n
+13 数据大小:                     %1$d\n
+14 条目大小:                     %1$d\n
+15 每一页的条目:                 %1$d\n
+16 缓存的页:                     %1$d\n
+17 条目的数目:                   %1$d\n
+18 冲突的数目:                   %1$d\n
+19 哈希文件名:                   %1$s\n
+20 下一个溢出条目:               %1$d\n
+21 键的类型:                     %1$s\n
+22 页头的地址:                   %1$x\n
+23 最后的页头地址:               %1$x\n
+24 空闲页的头地址:               %1$x\n
+25 页位图的地址:                 %1$x\n
+26 页位图的大小:                 %1$d\n
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 60 \
 diagdb: 转储一个数据库.\n\
-usage: %s diagdb [选项] 数据库名\n\
+usage: %1$s diagdb [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -d, --dump-type=TYPE         转储类型\n\
@@ -765,11 +765,11 @@ usage: %s diagdb [选项] 数据库名\n\
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
-15 无法打开输出文件 '%s'\n
+15 无法打开输出文件 '%1$s'\n
 59 lockdb 无法在单机模式下运行.\n
 60 \
 lockdb: 显示数据库的锁状态.\n\
-usage: %s lockdb [选项] 数据库名\n\
+usage: %1$s lockdb [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -o, --output-file=FILE       重定向输出信息到文件 FILE ; 默认: 空\n
@@ -781,14 +781,14 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 26 没有一个事务带有指定的参数值.\n
 27 准备取消下面的事务:\n\n
 28 你希望进行吗 ? (Y/N)
-29 取消与事务索引 %d相关联的事务\n
+29 取消与事务索引 %1$d相关联的事务\n
 30 取消如下事务失败\n\n
 31 事务目前还没有终止，但是可能在做一些回滚工作.\n 请稍等片刻，如果有必要，可以稍后再做尝试.\n
-32 非法的tranindex(%s).\n
+32 非法的tranindex(%1$s).\n
 59 无法在单机模式下取消事务.\n
 60 \
 killtran: 管理数据库的事务.\n\
-usage: %s killtran [选项] 数据库名\n\
+usage: %1$s killtran [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -i, --kill-transaction-index=INDEX 通过事务索引取消事务\n\
@@ -809,14 +809,14 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 4 只进行兼容性检测
 5 备份目的地
 6 一个用于备份卷目文件的目录或设备
-20 数据库 '%s' 不存在.
+20 数据库 '%1$s' 不存在.
 21 '%s' 无法被迁移到 %s, 因为数据库的版本太低.\n
-22 '%s' 不需要被迁移.\n
-23 '%s' 需要被迁移.\n
+22 '%1$s' 不需要被迁移.\n
+23 '%1$s' 需要被迁移.\n
 24 推荐在迁移后进行备份. 你希望现在就备份数据库吗? (y/n):
 25 我们推荐在迁移后用backupdb命令备份你的新数据库.
-26 \n*** 警告: 在迁移到 %s 前备份你的数据库***\n\n为了恢复可能在迁移中产生的错误，我们强烈推荐备份你的数据库.\n你已经备份了你的数据库吗? (y/n):
-27 \n1. 运行 backupdb \n2. 为新的数据库输入新的备份路径.(当前路径是: %s)\n3. 退出 \n
+26 \n*** 警告: 在迁移到 %1$s 前备份你的数据库***\n\n为了恢复可能在迁移中产生的错误，我们强烈推荐备份你的数据库.\n你已经备份了你的数据库吗? (y/n):
+27 \n1. 运行 backupdb \n2. 为新的数据库输入新的备份路径.(当前路径是: %1$s)\n3. 退出 \n
 28 \n数据库的新备份路径:
 29 \n迁移和备份成功的完成.
 30 备份失败. 请再次尝试备份数据库.
@@ -825,7 +825,7 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \
 alterdbhost: 改变数据库的主机.\n\
-用法: %s alterdbhost [选项] 数据库名\n\
+用法: %1$s alterdbhost [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -h, --host=HOST              指定HOST为新的主机; 默认: 当前主机名\n
@@ -840,24 +840,24 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 6 如果类存在则进行重写, 默认 不
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
-15 无法打开输出文件 '%s'\n
+15 无法打开输出文件 '%1$s'\n
 59 plandump 无法运行在单机模式.\n
 60 \
 plandump: 显示或控制缓存的查询计划.\n\
-usage: %s plandump [选项] 数据库名\n\
+usage: %1$s plandump [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -d, --drop                   丢弃服务端缓存中的所有计划\n\
   -o, --output-file=FILE       重定向输出信息到FILE; 默认: 空\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
-11 无法打开输出文件 '%s'\n
+11 无法打开输出文件 '%1$s'\n
 21 系统参数将被客户端程序使用.\n
-22 系统参数被服务 '%s' 读取\n
+22 系统参数被服务 '%1$s' 读取\n
 23 系统参数将被用于单机模式.\n
 60 \
 paramdump: 转储系统参数设置.\n\
-usage: %s paramdump [选项] 数据库名\n\
+usage: %1$s paramdump [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -o, --output-file=FILE       重定向输出信息到FILE; 默认: 无\n\
@@ -866,7 +866,7 @@ usage: %s paramdump [选项] 数据库名\n\
   -C, --CS-mode                客户端-服务端模式执行\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
-11 错误的值 \"%s\" 对于服务端的HA运行模式.\n
+11 错误的值 \"%1$s\" 对于服务端的HA运行模式.\n
 12 无法改变服务端的HA运行模式.\n
 21 输入DBA密码:
 22 服务 '%s'的当前HA运行模式是 %s.\n
@@ -876,7 +876,7 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 59 changemode 无法以单机模式运行.\n
 60 \
 changemode: 显示或改变服务的HA运行模式.\n\
-usage: %s changemode [选项] 数据库名\n\
+usage: %1$s changemode [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -m, --mode=MODE             将服务模式改变为MODE; 默认: 空\n\
@@ -886,14 +886,14 @@ usage: %s changemode [选项] 数据库名\n\
                               默认: 5\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
-11 错误的值 \"%s\" 对于copylogdb的运行模式.\n
+11 错误的值 \"%1$s\" 对于copylogdb的运行模式.\n
 21 输入DBA的密码:
 22 服务被设置为HA模式.\n
 58 HA 特性在这个平台上不被支持.\n
 59 copylogdb 无法以单机模式运行.\n
 60 \
 copylogdb: 从服务端拷贝日志页.\n\
-usage: %s copylogdb [选项] 数据库名\n\
+usage: %1$s copylogdb [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -L, --log-path=PATH         指定目录PATH用于拷贝日志卷\n\
@@ -907,18 +907,18 @@ $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 59 applylogdb 无法以单机模式运行.\n
 60 \
 applylogdb: 将已拷贝的日志应用到服务端.\n\
-usage: %s applylogdb [选项] 数据库名\n\
+usage: %1$s applylogdb [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -L, --log-path=PATH         将被读取的事务日志的目录\n\
       --max-mem-size=SIZE     进程可用的最大内存数, 以MB为单位; 最大为 500\n
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
-11 无法打开输出文件 '%s'\n
+11 无法打开输出文件 '%1$s'\n
 59 statdump 无法以单机模式运行.\n
 60 \
 statdump: 转储全局统计信息.\n\
-用法: %s statdump [选项] 数据库名\n\
+用法: %1$s statdump [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -o, --output-file=FILE       重定向输出信息到文件FILE; 默认: 无\n\
@@ -933,7 +933,7 @@ $set 44 MSGCAT_UTIL_SET_APPLYINFO
 59 applylogdb 无法以单机模式运行.\n
 60 \
 applyinfo: 显示 CUBRID HA 应用信息.\n\
-用法: %s applyinfo [选项] 数据库名\n\
+用法: %1$s applyinfo [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -r, --remote-host-name      远程主机名; 显示远程节点的活动日志信息 \n\
@@ -947,7 +947,7 @@ $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb 无法在单机模式下运行.\n
 60 \
 acldb: 显示和加载数据的访问控制设置.\n\
-用法: %s acldb [选项] 数据库名\n\
+用法: %1$s acldb [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -r, --reload       加载IP 控制文件\n
@@ -955,7 +955,7 @@ acldb: 显示和加载数据的访问控制设置.\n\
 $set 46 MSGCAT_UTIL_SET_GENLOCALE
 60 \
 genlocale: 使用LDML 输入文件 生成区域共享库.\n\
-用法: %s genlocale [选项] [language-string]\n\
+用法: %1$s genlocale [选项] [language-string]\n\
 \n\
 language-string	      区域语言字符串用于生成指定共享库.\n\
 		      如果没有指定语言字符串，所有在 'cubrid_locales.txt'文件中的语言\n\
@@ -971,7 +971,7 @@ $set 47 MSGCAT_UTIL_SET_DUMPLOCALE
 59 非法的区域设置名称参数.\n
 60 \
 dumplocale: 输入LDML 文件输出以前生成的区域共享库的内容.\n\
-用法: %s dumplocale [选项] [language-string]\n\
+用法: %1$s dumplocale [选项] [language-string]\n\
 \n\
 language-string	 区域语言字符串用于输出区域共享库.\n\
 		         如果没有指定语言字符串，所有在 'cubrid_locales.txt'文件中的语言\n\
@@ -998,28 +998,28 @@ language-string	 区域语言字符串用于输出区域共享库.\n\
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
 43 改变当前排序规则的分区属性之前，必须先移除分区.\nClass name\n
-44 外键存在排序规则'%s'的，在改变排序规则属性之前必须先删除.\nTable | Foreign Key\n
-45 表包含排序规则'%s'; 它们需要被重新定义 :\nClass name\n
-46 函数索引的表达式中包含排序规则 '%s'; 它们需要被重新定义 :\n\
+44 外键存在排序规则'%1$s'的，在改变排序规则属性之前必须先删除.\nTable | Foreign Key\n
+45 表包含排序规则'%1$s'; 它们需要被重新定义 :\nClass name\n
+46 函数索引的表达式中包含排序规则 '%1$s'; 它们需要被重新定义 :\n\
 Table | Index | Function expression\n
 47 同步排序规则没有执行. 数据库没有被改变.\n
-48 系统表'%s'的内容被更新成新的系统排序规则.\n
+48 系统表'%1$s'的内容被更新成新的系统排序规则.\n
 49 更新系统排序规则可能导致系统， 是否继续 (y/n) ?\n
 50 排序规则 '%s' (Id: %d) 在数据库中不存在或改变在新的系统配置中.\n
-51 触发器的条件中包含排序规则 '%s'; 它们需要被重新定义 :\nTrigger | Condition\n
-52 查询视图中包含排序规则 '%s'; 它们需要被重新定义 :\nView | Query\n
-53 属性中包含排序规则 '%s'; 它们需要被重新定义.\nTable | Attribute Domain\n
+51 触发器的条件中包含排序规则 '%1$s'; 它们需要被重新定义 :\nTrigger | Condition\n
+52 查询视图中包含排序规则 '%1$s'; 它们需要被重新定义 :\nView | Query\n
+53 属性中包含排序规则 '%1$s'; 它们需要被重新定义.\nTable | Attribute Domain\n
 54 需要手动干预数据库.\n\
-请检查文件 '%s' 并在强制排序规则到数据库中前执行它.\n
+请检查文件 '%1$s' 并在强制排序规则到数据库中前执行它.\n
 55 不需要同步.\n
 56 需要同步系统排序规则到数据库中.\n\
-运行 'cubrid synccolldb -f %s'\n
-57 相比数据库，系统配置中有 %d 个新的排序规则:\n
-58 所有数据库'%s'中的排序规则都内在新的系统配置中找到.\n
-59 数据库中的这些排序规则 %d 没有被配置或 与系统排序规则相比被改变.\n
+运行 'cubrid synccolldb -f %1$s'\n
+57 相比数据库，系统配置中有 %1$d 个新的排序规则:\n
+58 所有数据库'%1$s'中的排序规则都内在新的系统配置中找到.\n
+59 数据库中的这些排序规则 %1$d 没有被配置或 与系统排序规则相比被改变.\n
 60 \
 synccolldb: 从数据库的排序规则同步到系统的排序规则.\n\
-usage: %s synccolldb [OPTION] 数据库名\n\
+usage: %1$s synccolldb [OPTION] 数据库名\n\
 \n\
 可用选项::\n\
   -c, --check-only    检查从数据库的排序规则到系统的排序规则.\n\
@@ -1028,25 +1028,25 @@ usage: %s synccolldb [OPTION] 数据库名\n\
   -f, --force-only    更新数据库的排序规则与新的系统排序规则一致.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 输入密码 %s: 
+20 输入密码 %1$s: 
 22 Tran index          User name      Host name      Process id    Program name   \n
 23 -------------------------------------------------------------------------------\n
 24 %4d%-10s %14s %14s %15d %17s\n
 25 没有事务\n
 26 tranlist只能被DBA或DBA组成员来执行.\n
-27 sort-key 列序号 (%d) 不可用.\n
+27 sort-key 列序号 (%1$d) 不可用.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
 42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
 43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
 44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
-45 Tran index : %d
-46 SQL_ID: %s\n
+45 Tran index : %1$d
+46 SQL_ID: %1$s\n
 59 tranlist 无法在单机模式下运行.\n
 60 \
 tranlist: 输出活动事务信息.\n\
-usage: %s tranlist [OPTION] 数据库名\n\
+usage: %1$s tranlist [OPTION] 数据库名\n\
 \n\
 可用选项:\n\
   -u, --user=ID                访问数据库的用户ID; default: DBA user\n\

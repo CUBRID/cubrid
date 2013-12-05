@@ -48,11 +48,11 @@ tùy chọn có thể dùng:\n\
 Để biết thêm thông tin, truy cập http://www.cubrid.com\n
 41 %s: giá trị môi trường của %s_MODE không chính xác. \nNó phải là %s hoặc %s.\n
 42 %s: quá nhiều đối số được đưa ra. Tối đa là %d.\n
-43 %s: Biến môi trường thư mục gốc ($CUBRID) phải được thiết lập.\n
+43 %1$s: Biến môi trường thư mục gốc ($CUBRID) phải được thiết lập.\n
 44 %s: thất bại khi cố gắng thực thi "%s" .\n
-45 %s: không thể dùng tùy chọn -sa và -cs đồng thời.\n
-46 %d lệnh đã xử lý thành công.
-47 Trong lệnh từ dòng %d,
+45 %1$s: không thể dùng tùy chọn -sa và -cs đồng thời.\n
+46 %1$d lệnh đã xử lý thành công.
+47 Trong lệnh từ dòng %1$d,
 48 Trong dòng %d, cột %d,
 49 Gõ ';help' để xem các tin nhắn trợ giúp.
 50 LỖI:
@@ -103,7 +103,7 @@ $ These 3 should be blank
 196 Một lỗi chưa xác định đã phát sinh.
 197 ';edit' không được phép khi đầu ra đã được chuyển hướng.
 
-203 <%s> 
+203 <%1$s> 
 204 <Super Classes> 
 205 <Sub Classes> 
 206 <Attributes> 

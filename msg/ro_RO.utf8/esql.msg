@@ -24,46 +24,46 @@ $ esql.msg
 $
 
 $set 1
-1 Argument cu valoare ne-întreagă "%s"\n
-2 Argument cu valoare ne-flotantă "%s"\n
-3 Argument lipsă %s\n
+1 Argument cu valoare ne-întreagă "%1$s"\n
+2 Argument cu valoare ne-flotantă "%1$s"\n
+3 Argument lipsă %1$s\n
 4 [opţiuni] 
 5 Opţiuni: \n
-6 Valoare absentă a argumentului pentru cheia %s\n
-7 Opţiune necunoscută "%s"\n
-8 Argument pozitional neaşteptat "%s"\n
+6 Valoare absentă a argumentului pentru cheia %1$s\n
+7 Opţiune necunoscută "%1$s"\n
+8 Argument pozitional neaşteptat "%1$s"\n
 
 $set 2
-1 Redefinire pentru cursorul "%s"
-2  *\tpentru instrucţiunea %s\n
+1 Redefinire pentru cursorul "%1$s"
+2  *\tpentru instrucţiunea %1$s\n
 3  *\n * Tabela de cursori:\n
 
 $set 3
-1 (EROARE INTERNĂ în set_class_bit): clasă de stocare greşită (%d)
+1 (EROARE INTERNĂ în set_class_bit): clasă de stocare greşită (%1$d)
 2 (EROARE INTERNĂ în add_spec_to_decl()): lanţ format greşit (fără specificator)
 3 specificator de clasă de stocare nepermis în acest context
 4 combinaţie nepermisă de clase de stocare
 5 combinaţie nepermisă de tipuri
 6 combinaţie nepermisă de modificatori
-7 (EROARE INTERNĂ in pp_add_type_spec): caz neprevăzut (%d)
-8 (EROARE INTERNĂ in pp_add_type_adj): caz neprevăzut (%d)
-9 formă invalidă de declarare %s
+7 (EROARE INTERNĂ in pp_add_type_spec): caz neprevăzut (%1$d)
+8 (EROARE INTERNĂ in pp_add_type_adj): caz neprevăzut (%1$d)
+9 formă invalidă de declarare %1$s
 
 $set 4
-1 %s
-2 %s: nu este un director\n
-3 %s: Rădăcină de instalare invalidă?\n
+1 %1$s
+2 %1$s: nu este un director\n
+3 %1$s: Rădăcină de instalare invalidă?\n
 
 $set 5
 1 ?
 2 vă rugăm verificaţi corectitudinea simbolului
-3 USING nu este permis pentru cursorul static "%s"
-4 cursorul "%s" nu este definit
+3 USING nu este permis pentru cursorul static "%1$s"
+4 cursorul "%1$s" nu este definit
 5 pointer către un descriptor
 6 pointer către un DB_OBJECT
 7 şir de caractere
-8 variabila indicator pentru "%s" nu este permisă în acest context
-9 "%s" nu este declarat în secţiunea BEGIN DECLARE
+8 variabila indicator pentru "%1$s" nu este permisă în acest context
+9 "%1$s" nu este declarat în secţiunea BEGIN DECLARE
 52 %s (textul a fost "%s")
 53 Eroare lexicală
 54 eroare de sintaxă la "%s": %s absent din %s
@@ -103,23 +103,23 @@ $set 8
 
 $set 9
 1 (yy_pop_mode) eroare internă: stivă vidă de moduri
-2 "%s" nu este permis(ă) în acest context
+2 "%1$s" nu este permis(ă) în acest context
 
 $set 10
 1 eroare internă în %s: %s\n
 2 depăşire de capacitate pentru tabelă
 
 $set 11
-1 variabila indicator "%s" trebuie să fie un short int
+1 variabila indicator "%1$s" trebuie să fie un short int
 2 nu se poate folosi o variabilă indicator cu o structură
-3 "%s" are o definiţie de struct incompletă
+3 "%1$s" are o definiţie de struct incompletă
 4 "%s" trebuie să fie un %s valid
 5 %s nu este un tip acceptat pentru "%s"
-6 tip de variabilă de gazdă neprevăzut: %s
+6 tip de variabilă de gazdă neprevăzut: %1$s
 7 (pp_addr_expr): încercare de a găsi adresa unei variabile NULL
-8 "%s" nu este un pointer
-9 "%s" nu referenţiaza un struct
-10 "%s" nu este un struct
+8 "%1$s" nu este un pointer
+9 "%1$s" nu referenţiaza un struct
+10 "%1$s" nu este un struct
 11 %s nu conţine un câmp "%s"
 12 "%s" nu poate fi dereferenţiat de către "%s"
 
@@ -129,7 +129,7 @@ $set 12
 $set 13
 1 vector de funcţii nepermis, se presupun pointeri la funcţii
 2 (pp_the_same_type) clasa de legatură necunoscută
-3 (pp_get_sizeof): nume invalid (%d)
+3 (pp_get_sizeof): nume invalid (%1$d)
 
 $set 14
-1 (EROARE INTERNĂ in %s): caz imposibil
+1 (EROARE INTERNĂ in %1$s): caz imposibil

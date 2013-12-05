@@ -48,11 +48,11 @@ optiuni valide:\n\
 Pentru informaţii suplimentare accesaţi http://www.cubrid.com\n
 41 %s: valoarea de mediu pentru %s_MODE este incorectă. \nTrebuie să fie %s sau %s.\n
 42 %s: prea multe argumente date. Maximul este %d.\n
-43 %s: Variabila de mediu ce indică directorul rădăcină ($CUBRID) trebuie setată.\n
+43 %1$s: Variabila de mediu ce indică directorul rădăcină ($CUBRID) trebuie setată.\n
 44 %s: încercarea de a executa "%s" a eşuat.\n
-45 %s: opţiunile -sa şi -cs nu pot fi folosite simultan.\n
-46 %d comandă/comenzi a(u) fost procesate cu succes.
-47 În comanda de la linia %d,
+45 %1$s: opţiunile -sa şi -cs nu pot fi folosite simultan.\n
+46 %1$d comandă/comenzi a(u) fost procesate cu succes.
+47 În comanda de la linia %1$d,
 48 La linia %d, coloana %d,
 49 Tastaţi `;help' pentru mesaje de ajutor.
 50 EROARE: 
@@ -103,7 +103,7 @@ $ These 3 should be blank
 196 O eroare nedefinită s-a produs.
 197 ';edit' nu este permis când output-ul este redirecţionat.
 
-203 <%s> 
+203 <%1$s> 
 204 <SuperClase> 
 205 <SubClase> 
 206 <Atribute> 

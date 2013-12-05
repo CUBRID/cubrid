@@ -24,46 +24,46 @@ $ cubrid.msg
 $
 
 $set 1 MSGCAT_SET_GENERAL
-1 \n%s\n\n
+1 \n%1$s\n\n
 2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 3 Thông tin bản quyền\n
-5 Giá trị đối số `%s' không phải số nguyên
-6 Giá trị đối số `%s' không phải floating
-7 Thiếu đối số `%s'
-8 Đối số `%s' trùng lặp
-9 Thiếu giá trị cho đối số `%s'
-10 Đối số `%s' không biết
-11 Đối số vị trí `%s' không mong đợi
+5 Giá trị đối số `%1$s' không phải số nguyên
+6 Giá trị đối số `%1$s' không phải floating
+7 Thiếu đối số `%1$s'
+8 Đối số `%1$s' trùng lặp
+9 Thiếu giá trị cho đối số `%1$s'
+10 Đối số `%1$s' không biết
+11 Đối số vị trí `%1$s' không mong đợi
 12 Không có định nghĩa đối số nào được đưa ra
 13 Không thể cấp phát kho lưu trữ cho phân tích cú pháp đối số
-14 Chuỗi đối số vượt quá độ dài tối đa: %s
-15 Số thông báo không hợp lệ %d trong catalog đối với phân tích cú pháp đối số
+14 Chuỗi đối số vượt quá độ dài tối đa: %1$s
+15 Số thông báo không hợp lệ %1$d trong catalog đối với phân tích cú pháp đối số
 16 [tùy chọn]
 17 Tùy chọn:
 
 $set 4 MSGCAT_SET_PARAMETER
 2 %s không phải là một thư mục.  Đang tạo %s trong ".".
-3 Không thể mở %s.  tệp tin cấu hình chưa được tạo.
+3 Không thể mở %1$s.  tệp tin cấu hình chưa được tạo.
 4 Không thể ghi dòng %d đến tệp tin cấu hình %s.
 6 Không thể truy cập tệp tin cấu hình hệ thống "%s": %s
 7 HOME chưa được thiết lập
-8 Tham số được yêu cầu "%s" không có giá trị.
+8 Tham số được yêu cầu "%1$s" không có giá trị.
 9 Không thể mở tệp tin cấu hình "%s": %s
 10 Tham số '%s' tại dòng %d trong tệp tin '%s' : 
-11 Biến số môi trường %s: 
+11 Biến số môi trường %1$s: 
 12 Từ khóa không nhận dạng được.
 13 Kiểu giá trị không khớp với kiểu tham số.
 14 Không thể cấp phát bộ nhớ cho giá trị kho lưu trữ.
 15 Giá trị chuỗi chưa kết thúc.
 16 Giá trị nằm ngoài phạm vi.
-17 Lỗi UNIX : %s
+17 Lỗi UNIX : %1$s
 18 Không có sẵn thông báo nào.
 19 Giá trị nằm ngoài phạm vi. Thiết lập lại về giá trị mặc định.
 20 Từ khóa = '%s'    Giá trị = %d    Giá trị mặc định = %d\n
 21 Từ khóa = '%s'    Giá trị = %f    Giá trị mặc định = %f\n
 22 Tham số không được chấp thuận
 23 Tham số '%s' và '%s' không thể được dùng cùng nhau.\n
-31 '%s' thông số:
+31 '%1$s' thông số:
 
 $set 5 MSGCAT_SET_ERROR
 1 Thiếu thông báo cho mã lỗi %1$d.
@@ -234,7 +234,7 @@ $set 5 MSGCAT_SET_ERROR
 166 Người dùng không hợp lệ được chỉ định.
 167 DBA, các thành viên của nhóm DBA và chủ sở hữu lớp có thể thực thi thao tác.
 168 Không tìm thấy thành viên.
-169 Không thể gỡ bỏ người dùng %s từ cơ sở dữ liệu.
+169 Không thể gỡ bỏ người dùng %1$s từ cơ sở dữ liệu.
 170 Không có người dùng nào đăng nhập.
 171 Mật mã không chính xác hoặc thiếu.
 172 Chuỗi mật khẩu không được có nhiều hơn 31 byte.
@@ -622,7 +622,7 @@ $set 5 MSGCAT_SET_ERROR
 $ LOADDB
 554 Bộ tải đã nhập vào một trạng thái không hợp lệ. Không có thao tác hơn nữa nào là có thể.
 555 Lỗi cấp phát bộ nhớ trong quá trình tải cơ sở dữ liệu.
-556 Giá trị quá nhiều cung cấp. Mong đợi %d.
+556 Giá trị quá nhiều cung cấp. Mong đợi %1$d.
 557 Với thuộc tính %1$s of %2$s, kiểu %3$s không được cho phép trong miền của tập hợp.
 558 Với thuộc tính %1$s of %2$s, kiểu mong đợi %3$s, có một hằng số tập hợp.
 559 Với thuộc tính %1$s of %2$s, kiểu mong đợi %3$s, có  %4$s.
@@ -677,7 +677,7 @@ $ LOADDB
 608 Cơ sở dữ liệu "%1$s" không có một đặc tả Máy chủ trong tệp tin odbc.ini.
 609 Giao dịch của bạn không thể được quay lui lại vì bản ghi đã bị bỏ qua. cơ sở dữ liệu của bạn có thể bị hỏng.
 610 Cơ sở dữ liệu của bạn có thể bị hỏng vì bản ghi đã bị tắt khi cơ sở dữ liệu của bạn gặp sự cố.
-611 %s không thể được thực thi trong chế độ client/server.
+611 %1$s không thể được thực thi trong chế độ client/server.
 612 Bản ghi không thể bị tắt tại thời điểm này vì có các hành động đang chờ để khôi phục.
 613 Trong lớp "%3$s", cấu phần cục bộ "%1$s" không thể phục vụ như một thay thế bí danh cho lớp "%2$s". Các miền không tương thích.
 614 Số lưu trữ bản ghi đang hoạt động đã vượt qua số %1$d tối da cần thiết.
@@ -712,7 +712,7 @@ $ LOADDB
 643 Có thể một lỗi hệ thống: Cam kết/bỏ dở giao dịch = %1$d (chỉ mục= %2$d) mà có thao tác thường trực\n đính kèm với nó. Sẽ đính kèm các thao tác hệ thống đó đến giao dịch
 644 LỖI NHẬT KÝ NGHIÊM TRỌNG: %1$s
 645 LỖI HỆ THỐNG: Trạng thái = %1$s của giao dịch = %2$d (chỉ mục = %3$d) \n không phải là một trạng thái đúng để áp dụng các hành động trì hoãn/hoàn tác máy khách... bị bỏ qua
-646 LỖI HỆ THỐNG: It seems that a compensating record is missing for logical logging rcvindex = %s\n. Without this compensating record crash recovery will not be done correctly
+646 LỖI HỆ THỐNG: It seems that a compensating record is missing for logical logging rcvindex = %1$s\n. Without this compensating record crash recovery will not be done correctly
 647 Sao lưu "%1$s" không thuộc về cơ sở dữ liệu đã cho.
 648 Sao lưu không tương thích với phát hành "%1$s" hiện tại phát hành "%2$s".
 649 precision đã cho của %1$d không hợp lệ; nó phải lớn hơn %2$d và không lớn hơn %3$d.
@@ -746,11 +746,11 @@ $ LOADDB
 677 Thất bại kết nối đến server cơ sở dữ liệu, '%1$s', trong (các) máy chủ sau đây: %2$s
 678 Lỗi nội bộ: Client restart module received NULL database server name.
 679 Giao dịch C++ này đã được bắt đầu.
-680 Tìm cách vượt quá cấp độ lồng nhau giao dịch C++ tối đa (%d).
-681 Giao dịch %s đã tìm cách để đạt tới một giao dịch C++ mà vẫn chưa được bắt đầu.
-682 Không thể %s giao dịch C++ cho đến khi tất cả các giao dịch cấp dưới được hoàn thành.
-683 Tìm cách để tạo chuỗi ký tự với độ dài không hợp lệ - %d
-684 Phương pháp trả về mã lỗi người dùng tự định nghĩa %d.
+680 Tìm cách vượt quá cấp độ lồng nhau giao dịch C++ tối đa (%1$d).
+681 Giao dịch %1$s đã tìm cách để đạt tới một giao dịch C++ mà vẫn chưa được bắt đầu.
+682 Không thể %1$s giao dịch C++ cho đến khi tất cả các giao dịch cấp dưới được hoàn thành.
+683 Tìm cách để tạo chuỗi ký tự với độ dài không hợp lệ - %1$d
+684 Phương pháp trả về mã lỗi người dùng tự định nghĩa %1$d.
 685 Lớp "%1$s" không hợp lệ.
 686 Thông báo: bộ xử lý sự kiện đã được khởi động lại.
 687 Không cho phép ném (%s *) đến to (%s *).
@@ -809,7 +809,7 @@ $ LOADDB
 740 Không thể gắn kết địa chỉ cục bộ... đang bỏ dở. Lỗi Winsock: %1$d.
 741 Chấp nhận thất bại. Lỗi Winsock: %1$d.
 742 Đang gửi một thông báo broadcast đến máy khách. Lỗi Winsock: %1$d.
-743 Thất bại trên handshake giữa máy khách và server. (peer host %s)
+743 Thất bại trên handshake giữa máy khách và server. (peer host %1$s)
 744 Lỗi trong rehashing một proxy/vclass MOP.
 745 Giai đoạn thu gom rác thải không hợp lệ.
 746 Thu gom rác thải không hợp lệ gọi lại.
@@ -818,10 +818,10 @@ $ LOADDB
 749 Số các thực thể lấy về không được khớp: %1$d được mong đợi, %2$d được nhận về.
 750 Số các thực thể lấy về không được khớp: %1$d  được mong đợi, %2$d được nhận về.
 751 OID của đối tượng mới không có sẵn trong một trigger BEFORE INSERT.
-752 Lỗi khôi phục lại sao lưu unit_num %d.
+752 Lỗi khôi phục lại sao lưu unit_num %1$d.
 753 Lỗi khôi phục lại sao lưu unit_num %d, pageid %d vượt quá tổng số trang %d cho volid %d.
 754 Thực thể proxy OO có non-string-type hoặc null key.
-755 %s không được thực thi trong chế độ độc lập.
+755 %1$s không được thực thi trong chế độ độc lập.
 756 Bộ đệm chuỗi ký tự được chỉ định quá nhỏ để mã hóa đối tượng này.
 757 Lỗi nội bộ: không thể gán OID thường trực trong quá trình mã hóa đối tượng.
 758 Chuỗi ký tự đã chỉ định không hợp lệ cho giải mã đối tượng.
@@ -839,8 +839,8 @@ $ LOADDB
 770 Không có hàm số bảng.
 771 Tham số không hợp lệ cho hàm số.
 772 Không tìm thấy lớp db_serial.
-773 Không tìm thấy số sê-ri Serial "%s".
-774 Serial "%s" đã tồn tại.
+773 Không tìm thấy số sê-ri Serial "%1$s".
+774 Serial "%1$s" đã tồn tại.
 775 next value vượt quá giá trị LỚN NHẤT (NHỎ NHẤT).
 776 Không thể lấy về đối tượng serial.
 777 Không thể cập nhật đối tượng serial.
@@ -896,17 +896,17 @@ $ LOADDB
 827 Chức năng xem xét danh sách kết nối trả về giá trị không hợp lệ.
 828 Đoạn mã tới hạn của chỉ mục đã được đưa ra không hợp lệ.
 829 Khóa mutex này đã được mở khóa.
-830 Không thể cấp phát thêm mục nhập truy vấn nữa. Mục nhập tối đa có thể cấp phát là %d.
-831 Tất cả bộ mô tả giao dịch(%d) đang được dùng. Nâng cao tham số max_clients.
+830 Không thể cấp phát thêm mục nhập truy vấn nữa. Mục nhập tối đa có thể cấp phát là %1$d.
+831 Tất cả bộ mô tả giao dịch(%1$d) đang được dùng. Nâng cao tham số max_clients.
 832 Sao lưu đang được chạy. Sao lưu không thể được chạy bởi hai tiến trình.
 833 Tên chỉ mục "%1$s" mơ hồ. Chỉ định tên lớp của chỉ mục.
 834 Có một vài chưa khớp giữa chuỗi source "%1$s" và chuỗi format "%2$s" được đưa ra trong to_number().
 835 Mục thống kê chưa định nghĩa.
 836 CHỐT TRÊN TRANG(%d|%d) TẠM NGƯNG
 837 Không thể xóa người dùng sở hữu các đối tượng cơ sở dữ liệu (lớp/trigger/serial vân vân).
-838 Không thể đồng thời mở nhiều hơn %d quét chỉ mục.
-839 "%s": Tham số hệ thống chưa biết hoặc giá trị sai.
-840 Không thể thay đổi tham số hệ thống "%s".
+838 Không thể đồng thời mở nhiều hơn %1$d quét chỉ mục.
+839 "%1$s": Tham số hệ thống chưa biết hoặc giá trị sai.
+840 Không thể thay đổi tham số hệ thống "%1$s".
 841 Thao tác được yêu cầu có thể được thực hiện bởi chỉ một khách hàng (giao dịch) duy nhất.
 842 Không thể lưu ẩn khóa của đối tượng %1$d|%2$d|%3$d.
 843 Đối số sai trong %s, một %s đã được chuyển.
@@ -915,13 +915,13 @@ $ LOADDB
 846 %s của giao dịch (%d) không được tìm thấy trong danh sách bộ nắm giữ của một đối tượng(%d|%d|%d).
 847 %s trên một %s(%d|%d|%d) không được tìm thấy trong giao dịch(%d) danh sách nắm giữ(cnt=%d).
 848 %s trên một đối tượng(%d|%d|%d) không được tìm thấy trong giao dịch(%d) danh sách non2pl.
-849 Cố gắng bỏ dở một giao dịch(%d) hai lần.
+849 Cố gắng bỏ dở một giao dịch(%1$d) hai lần.
 850 Giao dịch (%d) không phải lock holder hoặc lock waiter của một đối tượng(%d|%d|%d).
-851 Thất bại cấp phát tài nguyên khóa (%s).
-852 Tổng chế độ holder (%d) của một danh sách lock holder rỗng là không NULL_LOCK.
+851 Thất bại cấp phát tài nguyên khóa (%1$s).
+852 Tổng chế độ holder (%1$d) của một danh sách lock holder rỗng là không NULL_LOCK.
 853 Đối với một đối tượng(%d|%d|%d), giao dịch(%d) của of Uncommitted Read nắm giữ khóa lỗi(%s).
-854 CẢNH BÁO: Không có lock holder, nhưng tồn tại lock waiter. tham chiếu đến %s.
-855 CẢNH BÁO: Một hoặc nhiều tuyến đoạn là lock-waiting cho một giao dịch (%d).
+854 CẢNH BÁO: Không có lock holder, nhưng tồn tại lock waiter. tham chiếu đến %1$s.
+855 CẢNH BÁO: Một hoặc nhiều tuyến đoạn là lock-waiting cho một giao dịch (%1$d).
 856 CẢNH BÁO: Trạng thái chờ khóa lạ(%d|%d), tuyến đoạn (%d|%d) và giao dịch (%d).
 857 Một lỗi I/O phát sinh khi cắt bỏ trang %1$d của bộ đĩa "%2$s".
 858 Bộ đĩa "%1$s" là không biết tại khởi động lại server.
@@ -930,7 +930,7 @@ $ LOADDB
 861 Không thể chuẩn bị cam kết giao dịch hiện tại có mã định danh giao dịch %1$d bởi vì giao dịch đó không được thực hiện như một phần của giao dịch toàn cục.
 862 Không thể thiết lập thông tin người dùng của giao dịch toàn cục với mã định danh %1$d bởi vì trạng thái của nó là '%2$s'.
 863 Không thể có được thông tin người dùng của giao dịch toàn cục với mã định danh %1$d bởi vì nó chưa được thiết lập.
-864 Không thể mở tệp tin chi tiết backupdb/restoredb '%s'.
+864 Không thể mở tệp tin chi tiết backupdb/restoredb '%1$s'.
 865 Không thể thực thi câu lệnh vì kiểu input marker không biết.
 866 Mã lỗi chưa được sử dụng.
 867 Mã lỗi chưa được sử dụng.
@@ -945,36 +945,36 @@ $ LOADDB
 876 Mã lỗi chưa được sử dụng.
 877 Không có dữ liệu nào để được dỡ tải.
 878 Tệp tin vị trí cơ cở dữ liệu không hợp lệ, '%1$s'.
-879 Không thể có được cho phép: '%s'.
-880 Không thể thay đổi cho phép '%s'.
+879 Không thể có được cho phép: '%1$s'.
+880 Không thể thay đổi cho phép '%1$s'.
 881 Không thể có được tệp tin khóa '%s(ID TỆP TIN:%d)'.
-882 Không thể phát hành tệp tin khóa 'ID TỆP TIN:%d'.
-883 Thất bại khi lấy trạng thái tệp tin '%s'.
-884 Volext-pathname '%s' không được cho phép ghi.
+882 Không thể phát hành tệp tin khóa 'ID TỆP TIN:%1$d'.
+883 Thất bại khi lấy trạng thái tệp tin '%1$s'.
+884 Volext-pathname '%1$s' không được cho phép ghi.
 885 Thất bại để di chuyển từ '%s' đến '%s'. Dùng thiết bị(đĩa) giống nhau.
 886 "%1$s" gây ra vi phạm ràng buộc duy nhất.
-887 Thủ tục lưu trữ '%s' đã tồn tại.
+887 Thủ tục lưu trữ '%1$s' đã tồn tại.
 888 Đếm tham số không hợp lệ. mong đợi: %d, thực tế: %d
-889 Lỗi thực thi thủ tục lưu trữ: %s
+889 Lỗi thực thi thủ tục lưu trữ: %1$s
 890 Phân vùng thất bại.
 891 Phân vùng thích hợp không tồn tại.
 892 Khóa chính "%2$s" đã được định nghĩa cho lớp "%1$s".
 893 Thuộc tính '%1$s', một thành viên của khóa chính, không thể bị xóa.
-894 Hàm số/Thủ tục lưu trữ '%s' không tồn tại.
+894 Hàm số/Thủ tục lưu trữ '%1$s' không tồn tại.
 895 Kiểu thủ tục lưu trữ không hợp lệ : '%s' là '%s'.
 896 Nén thất bại. Phương pháp Zip: %d (%s), Cấp độ Zip: %d (%s)
 897 Giải nén thất bại.
 898 Lỗi nhân bản: "%1$s"
 899 Yêu cầu phân vùng không hợp lệ.
-900 Không tìm thấy thư viện Java VM: %s. \nVì vậy, không được phép gọi thủ tục lưu trữ java.
-901 Java VM không thể được khởi động: %s. \nVì vậy, không được phép gọi thủ tục lưu trữ java.
+900 Không tìm thấy thư viện Java VM: %1$s. \nVì vậy, không được phép gọi thủ tục lưu trữ java.
+901 Java VM không thể được khởi động: %1$s. \nVì vậy, không được phép gọi thủ tục lưu trữ java.
 902 Java VM đang không chạy is not running.
-903 Không thể kết nối Can't connect Java VM: %s
+903 Không thể kết nối Can't connect Java VM: %1$s
 904 Tên thủ tục lưu trữ không hợp lệ Invalid stored procedure name.
-905 Nối mạng với JVM thất bại: %d
+905 Nối mạng với JVM thất bại: %1$d
 906 Chữ ký phương pháp java không hợp lệ.
 907 Chủ sở hữu hoặc một thành viện của nhóm DBA có thể xóa thủ tục lưu trữ.
-908 Quá nhiều đối số của thủ tục lưu trữ '%s'.
+908 Quá nhiều đối số của thủ tục lưu trữ '%1$s'.
 909 Tìm thấy lớp catalog/lớp ảo thiếu hoặc không hợp lệ.
 910 Không được phép truy cập đến phân vùng.
 911 Gọi không hợp lệ: nó không thể trả về ResultSet.
@@ -982,26 +982,26 @@ $ LOADDB
 913 Quá nhiều thủ tục lưu trữ lồng nhau gọi.
 914 Một đối tượng serial đã tồn tại như một ràng buộc AUTO INCREMENT.
 915 Giá trị tăng của một ràng buộc gia tăng phải lớn hơn 0.
-916 Bộ đĩa bản ghi đang hoạt động không được bao gồm trong bộ đĩa sao lưu này (%s).
+916 Bộ đĩa bản ghi đang hoạt động không được bao gồm trong bộ đĩa sao lưu này (%1$s).
 917 Bộ đĩa bản ghi đang hoạt động đã tồn tại.
-918 Lớp '%s' được tham chiếu bởi khóa ngoại không tồn tại.
-919 Lớp '%s' được tham chiếu bởi khóa ngoại không có khóa chính.
+918 Lớp '%1$s' được tham chiếu bởi khóa ngoại không tồn tại.
+919 Lớp '%1$s' được tham chiếu bởi khóa ngoại không có khóa chính.
 920 Khóa ngoại '%s' không bao gồm thành viên khóa chính '%s'.
 921 Miền của thành viên khóa ngoại '%s' khác với miền của thành viên khóa chính '%s'.
 922 Ràng buộc phím bên ngoài '%s' vô hiệu, do giá trị '%s'.
 923 Khóa chính '%s' tham chiếu bởi một khóa ngoại '%s' không được bị xóa.
-924 Thao tác Update/Delete bị hạn chế bởi khóa ngoại '%s'.
-925 Thu khóa cho khóa ngoại '%s' đã thất bại.
-926 Thực thể có khóa ngoại '%s' không thể bị xóa.
+924 Thao tác Update/Delete bị hạn chế bởi khóa ngoại '%1$s'.
+925 Thu khóa cho khóa ngoại '%1$s' đã thất bại.
+926 Thực thể có khóa ngoại '%1$s' không thể bị xóa.
 927 Số khóa của khóa ngoại '%s' khác với số khóa của khóa chính '%s'.
-928 Không phải người sử dụng nhưng hệ thống có thể gán thuộc tính '%s' được tạo bởi 'ON CACHE OBJECT' của khóa ngoại.
+928 Không phải người sử dụng nhưng hệ thống có thể gán thuộc tính '%1$s' được tạo bởi 'ON CACHE OBJECT' của khóa ngoại.
 929 Một khóa ngoại không thể được định nghĩa trong lớp ảo.
-930 Có thể xóa thuộc tính '%s' được tạo bởi 'ON CACHE OBJECT' của khóa ngoại chỉ sau khi gỡ bỏ ràng buộc của khóa ngoại.
+930 Có thể xóa thuộc tính '%1$s' được tạo bởi 'ON CACHE OBJECT' của khóa ngoại chỉ sau khi gỡ bỏ ràng buộc của khóa ngoại.
 931 Giá trị bắt đầu của một ràng buộc AUTO INCREMENT phải nhỏ hơn giá trị lớn nhất.
 932 Không thể sửa chữa sự không đồng nhất của số trang trống cho bộ đĩa "%1$s". Bởi vì %2$d trang thu được từ đề mục bộ đĩa là không đồng nhất với %3$d trang từ bitmap.
 933 Không thể sửa chữa sự không đồng nhất của số khu vực trống cho bộ đĩa "%1$s". Bởi vì %2$d khu vực thu được từ đề mục bộ đĩa là không đồng nhất với %3$d khu vực từ bitmap.
 934 Miền NUll được tham chiếu.
-935 Đối số của hàm số %s nằm ngoài phạm vi.
+935 Đối số của hàm số %1$s nằm ngoài phạm vi.
 936 Tràn đã xảy ra trong ngữ cảnh exp.
 937 Lỗi cơ sở dữ liệu.
 938 Đối số không hợp lệ.
@@ -1031,7 +1031,7 @@ $ LOADDB
 962 Không đủ bộ nhớ
 963 Lỗi broker.
 964 Xử lý tập kết quả bị đóng.
-965 Không thể sử dụng tên thuộc tính trùng lặp trong danh sách khóa chỉ mục. Tên thuộc tính '%s' được liệt kê nhiều hơn một lần.
+965 Không thể sử dụng tên thuộc tính trùng lặp trong danh sách khóa chỉ mục. Tên thuộc tính '%1$s' được liệt kê nhiều hơn một lần.
 966 Giao dịch của bạn  (chỉ mục %1$d, %2$s@%3$s|%4$d) đã tạm ngưng chờ trên %5$s khóa trên đối tượng %6$d|%7$d|%8$d bởi vì khóa chết. Bạn đang chờ người dùng %9$s hoàn thành.
 967 Giao dịch của bạn  (chỉ mục %1$d, %2$s@%3$s|%4$d) đã tạm ngưng chờ trên %5$s khóa trên lớp %6$s bởi vì khóa chết. Bạn đang chờ người dùng %7$s hoàn thành.
 968 Giao dịch của bạn  (chỉ mục %1$d, %2$s@%3$s|%4$d) đã tạm ngưng chờ trên %5$s khóa trên thực thể %6$d|%7$d|%8$d của lớp %9$s bởi vì khóa chết. Bạn đang chờ người dùng %10$s hoàn thành.
@@ -1058,7 +1058,7 @@ $ LOADDB
 989 Sự kiện tiến trình: %1$s. %2$s
 990 Thực thi lệnh: %1$s. %2$s
 991 Flush victim candidates của bộ đệm trang đã bắt đầu.
-992 Flush victim candidates của bộ đệm trang đã hoàn thành (đếm: %d).
+992 Flush victim candidates của bộ đệm trang đã hoàn thành (đếm: %1$d).
 993 Tràn đã xảy ra trong ngữ cảnh thao tác bit.
 994 Câu lệnh không thể là một câu lệnh được chuẩn bị.
 995 Câu lệnh được chuẩn bị có tên %1$s không tồn tại.
@@ -1079,16 +1079,16 @@ $ LOADDB
 1010 Không thể định nghĩa chỉ mục với prefix length trên miền "%1$s".
 1011 Không thể thêm ràng buộc khóa ngoại %1$s trên thuộc tính SHARED %2$s.
 1012 Không thể tạo bảng với kiểu cột NULL.
-1013 Thiết lập DEFAULT hoặc SHARED trên %s cột đã gõ vào là không được phép.
-1014 Thiết lập NOT NULL trên %s cột đã gõ vào là không được phép.
-1015 Thư mục đã chỉ định '%s' không tồn tại.
+1013 Thiết lập DEFAULT hoặc SHARED trên %1$s cột đã gõ vào là không được phép.
+1014 Thiết lập NOT NULL trên %1$s cột đã gõ vào là không được phép.
+1015 Thư mục đã chỉ định '%1$s' không tồn tại.
 1016 Lỗi lưu trữ bên ngoài %1$s: %2$s
-1017 Đường dẫn cho lưu trữ bên ngoài '%s' là không hợp lệ.
+1017 Đường dẫn cho lưu trữ bên ngoài '%1$s' là không hợp lệ.
 1018 Không thể sao chép tệp tin bên ngoài đến kiểu khác của kho lưu trữ. (nguồn %1$s đích nhận %2$s)
 1019 Kho lưu trữ bên ngoài không được khởi tạo bởi vì đường dẫn chưa được chỉ định trong "databases.txt".
-1020 Không tìm thấy tệp tin bên ngoài "%s".
+1020 Không tìm thấy tệp tin bên ngoài "%1$s".
 1021 Vòng khóa chết được phát hiện. %1$s.
-1022 Giá trị "%d" không hợp lệ cho prefix length của chỉ mục.
+1022 Giá trị "%1$d" không hợp lệ cho prefix length của chỉ mục.
 1023 Mã lỗi bảo lưu cho HA.
 1024 log writer: failed to get log page(s) starting from page id %1$lld.
 1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
@@ -1123,7 +1123,7 @@ $ LOADDB
 1054 Giá trị mới của một ràng buộc AUTO INCREMENT phải lớn hơn hoặc bằng với giá trị hiện tại.
 1055 Giá trị mới của một ràng buộc AUTO INCREMENT phải nhỏ hơn giá trị tối đa.
 1056 Để tránh sự mơ hồ, tùy chọn bảng AUTO_INCREMENT yêu cầu bảng có chính xác một cột AUTO_INCREMENT và không có đặc tả khởi đầu/gia tăng.
-1057 Không thể thêm một thuộc tính đã gõ '%s' NOT NULL mà không có một giá trị DEFAULT.
+1057 Không thể thêm một thuộc tính đã gõ '%1$s' NOT NULL mà không có một giá trị DEFAULT.
 1058 ALTER TABLE .. CHANGE : đang thay đổi thành miền mới : đổi kiểu thất bại, cấu hình hiện tại không cho phép cắt bỏ hoặc tràn.
 1059 ALTER TABLE .. CHANGE : đang thay đổi thành miền mới : đổi kiểu thất bại, giá trị mặc định của miền mới đã được thiết lập.
 1060 ALTER TABLE .. CHANGE : đang thay đổi thành miền mới : đổi kiểu thất bại, giá trị nhỏ nhất của miền mới đã được thiết lập.
@@ -1133,10 +1133,10 @@ $ LOADDB
 1064 ALTER TABLE .. CHANGE : thêm NOT NULL : tất cả giá trị NULL đang tồn tại đã được thay đổi hard default của miền.
 1065 Không thể thay đổi thuộc tính "%1$s". CUBRID không thể thêm ràng buộc NOT NULL : một giá trị hard default không tồn tại cho miền mới.
 1066 Phiên đã quá hạn.
-1067 Cột '%s' không thể có một ràng buộc NOT NULL và một giá trị DEFAULT NULL.
-1068 Độ dài trigger tối đa không thể vượt quá %d.
+1067 Cột '%1$s' không thể có một ràng buộc NOT NULL và một giá trị DEFAULT NULL.
+1068 Độ dài trigger tối đa không thể vượt quá %1$d.
 1069 Quá nhiều câu lệnh được chuẩn bị.
-1070 Biến số phiên '@%s' chưa được định nghĩa.
+1070 Biến số phiên '@%1$s' chưa được định nghĩa.
 1071 Quá nhiều biến số phiên.
 1072 Địa chỉ IP(%1$s) chưa được cấp phép.
 1073 Định đạng không hợp lệ trong tệp tin(%1$s).
@@ -1144,28 +1144,28 @@ $ LOADDB
 1075 Quét chỉ mục giảm dần bị bỏ dở vì ưu tiên thấp hơn trên B+tree với mã định danh chỉ mục: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
 1076 Không thể tải tham số hệ thống.
 1077 Tham số '%s' tại dòng %d trong tệp tin '%s' : Tham số không biết
-1078 Ký tự ở vị trí chuyển vị %d không có giá trị với bộ mã hiện tại.
+1078 Ký tự ở vị trí chuyển vị %1$d không có giá trị với bộ mã hiện tại.
 1079 Các bộ mã của cơ sở dữ liệu(%1$s) và cài đặt máy chủ(%2$s) không tương thích.
 1080 Chiều dài chuỗi xác nhận lọc tối đa phải bằng %1$d.
 1081 Không thể thay đổi thuộc tính của bộ lọc hoặc chỉ mục chức năng.
 1082 Tất cả các tấm đệm trang đều bẩn (LRU: %1$d).
-1083 Thông tin cụ thể về khóa chết.\n%s
+1083 Thông tin cụ thể về khóa chết.\n%1$s
 1084 Bỏ qua trang vô hiệu tại điểm mốc. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, LSA làm lại tại điểm redo lsa: %5$lld|%6$d)
-1085 Không thể biên dịch cách diễn đạt thông thường: '%s'
-1086 Không thể chạy cách diễn đạt thông thường: '%s'
-1087 Nhật ký kích hoạt sao lưu '%s' bắt đầu.
-1088 Nhật ký kích hoạt sao lưu '%s' kết thúc.
+1085 Không thể biên dịch cách diễn đạt thông thường: '%1$s'
+1086 Không thể chạy cách diễn đạt thông thường: '%1$s'
+1087 Nhật ký kích hoạt sao lưu '%1$s' bắt đầu.
+1088 Nhật ký kích hoạt sao lưu '%1$s' kết thúc.
 1089 Phân bổ tài nguyên thất bại. Tăng lên 'max_bestspace_entries=%1$d'.
-1090 Khởi động tại chỗ: %s.
-1091 Khởi tạo tại chỗ: %s.
-1092 Không thể soạn thảo báo cáo loại '%s' với các biến chủ.
-1093 Phần arg '%s' cho inet_aton không phải là một địa chỉ ipv4 có định dạng chuỗi hợp lệ.
-1094 Phần arg '%lld' cho inet_ntoa không phải là một địa chỉ ipv4 có định dạng số hợp lệ.
+1090 Khởi động tại chỗ: %1$s.
+1091 Khởi tạo tại chỗ: %1$s.
+1092 Không thể soạn thảo báo cáo loại '%1$s' với các biến chủ.
+1093 Phần arg '%1$s' cho inet_aton không phải là một địa chỉ ipv4 có định dạng chuỗi hợp lệ.
+1094 Phần arg '%1$lld' cho inet_ntoa không phải là một địa chỉ ipv4 có định dạng số hợp lệ.
 1095 Tên người dùng quá dài.
 1096 Thay đổi kế hoạch phân mảng không được cho phép khi hạng phân mảng được tham chiếu bởi một phím bên ngoài.
-1097 Cột '%s' không thể có ràng buộc PRIMARY KEY và giá trị mặc định NULL.
+1097 Cột '%1$s' không thể có ràng buộc PRIMARY KEY và giá trị mặc định NULL.
 1098 Thiết lập cục bộ cho ngôn ngữ '%s' không khả dụng với bộ ký tự '%s'.
-1099 Thông điệp DDL không được cho phép bởi cài đặt (block_ddl_statement=yes).\n Đoạn chữ SQL: %s
+1099 Thông điệp DDL không được cho phép bởi cài đặt (block_ddl_statement=yes).\n Đoạn chữ SQL: %1$s
 1100 Tuyên bố không có mệnh đề Ở WHERE không được cho phép bởi cấu hình (block_nowhere_statementiyes).
 1101 Mã lỗi chưa được dùng.
 1102 Không biết hệ thống tham số hoặc giá trị xấu.
@@ -1180,7 +1180,7 @@ $ LOADDB
 1111 Giá trị kết quả bị cắt cụt, do độ nét(%1$d) nhỏ hơn chiều dài của nó(%2$d).
 1112 Một chữ số dữ liệu không thể chuyển đổi từ '%1$s' sang '%2$s'.
 1113 Yếu tố chỉ dẫn vượt quá phạm vi.
-1114 Đối số '%s' vượt quá phạm vi.
+1114 Đối số '%1$s' vượt quá phạm vi.
 1115 Bắt đầu cập nhật số liệu thống kê (class "%1$s", oid : %2$d|%3$d|%4$d).
 1116 Kết thúc cập nhập số liệu thống kê (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
 1117 Không thể thay đổi thuộc tính "%1$s". CURBID Không thể thay đổi thuộc tính giống như SHARED và ngược lại.
@@ -1198,12 +1198,12 @@ $ LOADDB
 1129 Kết thúc phục hồi đăng nhập.
 1130 Giao dịch bị hủy bỏ do vượt quá lượng giao dịch %1$d.
 1131 Lỗi nội bộ: Trang %1$d của bộ đĩa "%2$s" có thể bị hỏng.\n%3$s
-1132 Encryption library failure: %s
+1132 Encryption library failure: %1$s
 1133 Copylogdb for %1$s already exists.
 1134 Applylogdb for %1$s already exists.
 1135 A previous link of B+tree(%1$s) is corrupted.: vpid = (%2$d, %3$d)
 1136 A previous link of B+tree(%1$s) is repaired.: vpid = (%2$d, %3$d)
-1137 The query has been rejected due to attempt to exceed the maximum allowed nesting level(%d).
+1137 The query has been rejected due to attempt to exceed the maximum allowed nesting level(%1$d).
 1138 Handshake error (peer host %1$s): incompatible interruptibility. (client: %2$s, server: %3$s)
 1139 Handshake error (peer host %1$s): incompatible read/write mode. (client: %2$s, server: %3$s)
 1140 Handshake error (peer host %1$s): HA replication delayed.
@@ -1214,19 +1214,19 @@ $ LOADDB
 1145 Lỗi sau cùng
 
 $set 6 MSGCAT_SET_INTERNAL
-1 Lỗi trong các lỗi hệ thống con (dòng %d):
+1 Lỗi trong các lỗi hệ thống con (dòng %1$d):
 2 Không có sẵn thông báo lỗi nào.
-3 Không thể cấp phát %d bytes.
-4 Không thể tìm catalog thông báo "%s".
-5 Thiếu thông báo cho mã lỗi %d.
+3 Không thể cấp phát %1$d bytes.
+4 Không thể tìm catalog thông báo "%1$s".
+5 Thiếu thông báo cho mã lỗi %1$d.
 6 ... ABORT/EXIT IMMEDIATELY ...\n
 7 Bạn có muốn thoát không? 1/0
 8 Tệp tin không biết.
 9 Không có sẵn thông báo nào; thông báo này thay thế cho nguyên bản đã bị định dạng nhầm lẫn.
 10 er_init: *** Giá trị exit_ask không đúng = %d; sẽ mặc nhận %s thay thế. ***\n
-11 er_start: *** CẢNH BÁO: Không thể mở bản ghi thông báo "%s"; sẽ mặc nhận stderr thay thế. ***\n
-12 er_study_fmt: suspect message cho mã lỗi %d.
-13 er_estimate_size: mã chuyển đổi không rõ  (%d).
+11 er_start: *** CẢNH BÁO: Không thể mở bản ghi thông báo "%1$s"; sẽ mặc nhận stderr thay thế. ***\n
+12 er_study_fmt: suspect message cho mã lỗi %1$d.
+13 er_estimate_size: mã chuyển đổi không rõ  (%1$d).
 14 \n\n*** Tự động xuống dòng bản ghi thông báo. Thông báo sẽ tiếp tục tại đầu của tệp tin. ***\n\n
 15 \nTime: %s - %s *** %s MÃ = %d, Tran = %d%s\n%s\n
 16 CUBRID (pid: %d) *** %s *** %s MÃ = %d, Tran = %d %s
@@ -1237,18 +1237,18 @@ $set 6 MSGCAT_SET_INTERNAL
 21 Mail -s "Server đã được dừng"
 22 --->>>\n %s đã được dừng theo yêu cầu của bạn khi các lỗi sau đây được thiết lập:\n errid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---\n
 23 %s đã được dừng trên errid = %d. User: %s, pid: %d
-24 er_init: không thể cài đặt event handler "%s"\n
+24 er_init: không thể cài đặt event handler "%1$s"\n
 
 $set 7 MSGCAT_SET_PARSER_SYNTAX
 1 xin vui lòng kiểm tra cú pháp tại '%s', mong đợi %s.
 2 xin vui lòng kiểm tra cú pháp tại '%s', mong đợi %s in %s.
-3 xin vui lòng kiểm tra tính chính xác của mã thông báo '%s'.
+3 xin vui lòng kiểm tra tính chính xác của mã thông báo '%1$s'.
 4 'read uncommitted schema' không thể chấp nhận, dùng \n'read committed schema' để thay thế.
 5 Độ dài chuỗi ký tự char tối đa là 16383.
 6 %s vượt quá giới hạn của %lld.
-7 Độ dài chuỗi bit tối đa là %d bits.
+7 Độ dài chuỗi bit tối đa là %1$d bits.
 8 Không thể dùng truy vấn con trong mệnh đề điều kiện gia nhập.
-9 Không thể chỉ định thuộc tính "(%s)" trong mệnh đề đặc quyền update của câu lệnh grant/revoke.
+9 Không thể chỉ định thuộc tính "(%1$s)" trong mệnh đề đặc quyền update của câu lệnh grant/revoke.
 10 sử dụng từ khóạ '%s' không hợp lê, mong đợi %s.
 11 Độ dài mã thông báo quá dài.
 12 Kiểu dữ liệu không hợp lệ
@@ -1304,7 +1304,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 62 giá trị âm không hợp lệ (hoặc giá trị âm trong danh sách)
 63 reference rule bị trùng lặp
 64 SYS_CONNECT_BY_PATH cần có hai tham số và tham số thứ hai phải là một chuỗi ký tự.
-65 unsigned integer %s không hợp lệ.
+65 unsigned integer %1$s không hợp lệ.
 66 IF cần có ba tham số: tham số đầu tiên phải là một biểu thức logic, tham số thứ hai và thứ ba phải là biểu thức ước tính bằng số hoặc bằng kiểu chuỗi ký tự.
 67 IFNULL cần có hai tham số mà phải là biểu thức ước tính bằng số hoặc bằng kiểu chuỗi ký tự.
 68 sử dụng isnull không hợp lệ\n  ISNULL ( expression )
@@ -1343,7 +1343,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 101 sử dụng time không hợp lệ\n TIME(expression)
 102 sử dụng group_concat không hợp lệ\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 103 sử dụng gợi ý chỉ mục vô hiệu
-104 Chiều dài chuỗi bằng byte tối đa bằng %d byte.
+104 Chiều dài chuỗi bằng byte tối đa bằng %1$d byte.
 105 Lỗi cú pháp: unexpected
 106 , expecting '{'
 107 , expecting SELECT or '('
@@ -1352,7 +1352,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 110 END OF STATEMENT
 111 In line %d, column %d before '%c%s'\n
 112 In line %d, column %d before %s\n
-113 before ' %s'\n
+113 before ' %1$s'\n
 114 before END OF STATEMENT\n
 115 tên đặt vô hiệu\n  set_names: SET NAMES charset [COLLATE collation]\n
 116 sử dụng ký tự vô hiệu\n  CHR ( number [using charset] )\n
@@ -1362,101 +1362,101 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Không đủ bộ nhớ.
-2 Hàm số %s chưa được định nghĩa.
-3 Không thể tìm thấy ldb '%s' trong cơ sở dữ liệu.
+2 Hàm số %1$s chưa được định nghĩa.
+3 Không thể tìm thấy ldb '%1$s' trong cơ sở dữ liệu.
 4 Số lượng cột, %d, trong truy vấn bên trái không khớp với\nsố cột, %d, trong truy vấn bên phải.
 5 '%s' không phải union tương thích với '%s'.
-6 %s chưa được định nghĩa.
-7 Miền của %s không thể là một lớp ảo.
-8 Miền của %s không thể là một lớp ảo proxy.
-9 Miền của %s không thể là một lớp.
+6 %1$s chưa được định nghĩa.
+7 Miền của %1$s không thể là một lớp ảo.
+8 Miền của %1$s không thể là một lớp ảo proxy.
+9 Miền của %1$s không thể là một lớp.
 10 %s không phải là một thuộc tính của %s.
 11 %s không thể được thay đổi từ lớp này.\nNó đã được thừa kế từ %s.
-12 Lớp %s không tồn tại.
+12 Lớp %1$s không tồn tại.
 13 %s không phải là một %s.
 14 %s không phải một phương pháp hoặc thuộc tính của %s.
-15 %s không có hoặc không được có bất kỳ đặc tả truy vấn nào.
-16 %s chưa được định nghĩa trong cơ sở dữ liệu.
+15 %1$s không có hoặc không được có bất kỳ đặc tả truy vấn nào.
+16 %1$s chưa được định nghĩa trong cơ sở dữ liệu.
 17 %s không phải một lớp cao cấp của %s.
 18 Class %s thừa kế từ  non-class %s.
 19 VClass %s thừa kế từ non-vclass %s.
 20 Lớp ảo Proxy %s thừa kế từ lớp ảo non-proxy %s.
 21 %s đã là một lớp cao cấp của %s.
-22 %s có thể không phải là một lớp cao cấp của chính nó.
+22 %1$s có thể không phải là một lớp cao cấp của chính nó.
 23 %s đã là một lớp con của %s.
-24 %s không phải giá trị đơn. Các thuộc tính được hiện ra trong\ncác truy vấn Aggregate cũng phải xuất hiện trong mệnh đề Group by.
+24 %1$s không phải giá trị đơn. Các thuộc tính được hiện ra trong\ncác truy vấn Aggregate cũng phải xuất hiện trong mệnh đề Group by.
 25 Số cột(%d) và into_names(%d) không bằng nhau.
-26 Lớp %s đã tồn tại.
+26 Lớp %1$s đã tồn tại.
 27 Lớp cao cấp %s trong '%s' không tồn tại.
-28 Mong đợi một mệnh đề SUBCLASS để khiến cho mệnh đề INHERIT '%s' có nghĩa.
+28 Mong đợi một mệnh đề SUBCLASS để khiến cho mệnh đề INHERIT '%1$s' có nghĩa.
 29 Mệnh đề INHERIT '%s' tham chiếu một lớp mà không nằm trong mệnh đề SUBCLASS '%s'.
 30 Lớp không thể có một đặc tả truy vấn.
-31 %s không phải một ldb đã đăng ký.
+31 %1$s không phải một ldb đã đăng ký.
 32 Một thừa kế proxy có thể không có mệnh đề object_id của chính nó. Nó không thể ghi đè lên thuộc tính object_id được thừa kế của nó.
 33 Lớp ảo Proxy có nhiều hơn một đặc tả truy vấn.
 34 Số thuộc tính, %d, không khớp với số cột, \n%d, trong đặc tả truy vấn.
-35 Thiếu một tên thuộc tính được mong đợi cho %s.
+35 Thiếu một tên thuộc tính được mong đợi cho %1$s.
 36 Thuộc tính '%s' không tương thích với cột '%s' của đặc tả truy vấn.
-37 %s không phải một lớp.
+37 %1$s không phải một lớp.
 38 Các thư mục có thể không được tạo trên các lớp ảo.
 39 Các thư mục chỉ có thể được tạo trên một thuộc tính đơn.
 40 Sử dụng của nhiều lớp trong mệnh đề FROM không hợp lệ.
-41 Lỗi hệ thống -- Resolution thất bại trên %s.
+41 Lỗi hệ thống -- Resolution thất bại trên %1$s.
 42 Bạn có thể không xóa từ một derived table.
-43 Người dùng %s không ở trong cơ sở dữ liệu.
+43 Người dùng %1$s không ở trong cơ sở dữ liệu.
 44 Update không thể có aggregation.
 45 Tên thuộc tính trong mỗi lớp phải là duy nhất. Tên thuộc tính '%s' trong lớp '%s' được chỉ định nhiều hơn một lần.
-46 Có nhiều phép gán đến %s.
+46 Có nhiều phép gán đến %1$s.
 47 Số trong sort spec không phải là một số nguyên.
-48 %d trong sort spec nằm ngoài phạm vi.
+48 %1$d trong sort spec nằm ngoài phạm vi.
 49 Order by item không phải một số nguyên.
-50 %s trong sort spec không khớp với bất kỳ cột truy xuất nào.
-51 Có mâu thuẫn hướng sắp xếp cho cột %s.
-52 %s trong sort spec không phải là một số, tên hoặc path expression.
+50 %1$s trong sort spec không khớp với bất kỳ cột truy xuất nào.
+51 Có mâu thuẫn hướng sắp xếp cho cột %1$s.
+52 %1$s trong sort spec không phải là một số, tên hoặc path expression.
 53 Insert expression có thể chỉ xuất hiện trong câu lệnh Insert.
 54 Số thuộc tính(%d) và cột truy xuất(%d) không bằng nhau.
 55 Số thuộc tính(%d) và giá trị(%d) không bằng nhau.
-56 Dữ liệu tràn trong kiểu dữ liệu %s.
-57 Kiểu dữ liệu không tương thích trên thuộc tính %s.
-58 %s\n không phải một SELECT từ lớp đơn.
+56 Dữ liệu tràn trong kiểu dữ liệu %1$s.
+57 Kiểu dữ liệu không tương thích trên thuộc tính %1$s.
+58 %1$s\n không phải một SELECT từ lớp đơn.
 59 `*' không phải một danh sách truy xuất hợp lệ trong một đặc tả truy vấn lớp ảo proxy.
-60 %s không phải là Lớp ảo hoặc lớp ảo proxy.
+60 %1$s không phải là Lớp ảo hoặc lớp ảo proxy.
 61 Có nhiều hơn một mệnh đề isolation level.
 62 Có nhiều hơn một mệnh đề timeout.
 63 Không có isolation level nào được nhập.
 64 Toán tử BETWEEN không được định nghĩa trên kiểu %s, %s và %s.
 65 Toán tử '%s' không được định nghĩa trên kiểu %s và %s.
-66 Function phải có đối số: %s.
+66 Function phải có đối số: %1$s.
 67 Toán hạng không tương thích: %s(%s).
-68 Aggregate function phải có 1 đối số: %s.
+68 Aggregate function phải có 1 đối số: %1$s.
 69 Tìm cách chia cho Không.
 70 Dữ liệu tràn ép buộc %s đến kiểu %s.
 71 Không thể ép buộc %s đến kiểu %s.
-72 Kiểu của '%s' phải là SET, MULTISET, hoặc SEQUENCE.
-73 '%s' phải có chính xác một kiểu tập hợp phần tử.
-74 %s có nhiều hơn một tên derived column.
-75 %s không có tên derived column.
+72 Kiểu của '%1$s' phải là SET, MULTISET, hoặc SEQUENCE.
+73 '%1$s' phải có chính xác một kiểu tập hợp phần tử.
+74 %1$s có nhiều hơn một tên derived column.
+75 %1$s không có tên derived column.
 76 %s không có một số cột (%d) và tên cột (%d) tương ứng.
-77 Không có thuộc tính trong %s.
-78 Mong đợi bảng đơn trong %s.
-79 Tên hiện ra %s là mơ hồ is ambiguous.
-80 Tên Derived column '%s' không được phép cho đặc tả lớp đơn giản.
-81 Derived table '%s' phải có một tên tương quan.
-82 Cấp phép Select thất bại, lớp %s.
-83 Tham chiếu thực thể lớp %s đến một tên derived table là không được cho phép.
-84 Path correlation (%s) xuất hiện bên ngoài một path term bên trong.
-85 Tham chiếu đến %s không rõ ràng.
+77 Không có thuộc tính trong %1$s.
+78 Mong đợi bảng đơn trong %1$s.
+79 Tên hiện ra %1$s là mơ hồ is ambiguous.
+80 Tên Derived column '%1$s' không được phép cho đặc tả lớp đơn giản.
+81 Derived table '%1$s' phải có một tên tương quan.
+82 Cấp phép Select thất bại, lớp %1$s.
+83 Tham chiếu thực thể lớp %1$s đến một tên derived table là không được cho phép.
+84 Path correlation (%1$s) xuất hiện bên ngoài một path term bên trong.
+85 Tham chiếu đến %1$s không rõ ràng.
 86 Lớp của %s không có thuộc tính %s.
 87 Các lớp (%s) không phải tất cả đều có thuộc tính %s.
 88 Lớp (%s) không có thuộc tính %s.
 89 %s là một kiểu %s, không phải một kiểu đối tượng.
 90 Selector {%s} không giải quyết đến một đặc tả lớp đã hiện ra trong\n ngữ cảnh được yêu cầu (%s).
 91 Selector {%s} tham chiếu đến đặc tả non-class (%s).
-92 Selector {%s} không thể làm nguồn path expression tự định nghĩa nó.
+92 Selector {%1$s} không thể làm nguồn path expression tự định nghĩa nó.
 93 Selector {%s} được định nghĩa vòng tròn trong các mục của of selector {%s}.
 94 Selector {%s} được định nghĩa lại tại %s.
 95 %s (đối tượng miền) không có thuộc tính %s.
-96 %s trong EXCEPT spec không phải một lớp con.
+96 %1$s trong EXCEPT spec không phải một lớp con.
 97 ALL ... EXCEPT danh sách ngoại trừ EVERYTHING trong lớp.
 98 '%s' là không đồng nhất với\nngười dùng khác của path selector '%s' hoặc của path root '%s'.
 99 Đối số chưa định nghĩa.
@@ -1475,40 +1475,40 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 112 Kết hợp của precision (%d) và scale (%d) không hợp lệ.
 113 Precision đã cho của %1$d không hợp lệ; nó phải lớn hơn %2$d và không lớn hơn %3$d.
 114 Precision (%d) quá lớn. Precision tối đa là  is %d.
-115 Phương pháp %s phải có một kiểu trả về.
+115 Phương pháp %1$s phải có một kiểu trả về.
 116 Số đối số được cung cấp đến phương pháp không bằng với \nsố được định nghĩa cho phương pháp.
 117 Gọi phương pháp phải có một mục tiêu.
-118 Phương pháp %s chưa được định nghĩa cho mục tiêu đã cung cấp.
+118 Phương pháp %1$s chưa được định nghĩa cho mục tiêu đã cung cấp.
 119 Phương pháp thực thể không thể được gọi trên các đối tượng lớp.
 120 Phương pháp lớp không thể được gọi trên đối tượng thực thể.
 121 Các phương pháp lớp đòi hỏi một đối tượng lớp như mục tiêu của chúng.
 122 Các phương pháp đòi hỏi một đối tượng như mục tiêu của chúng.
-123 Phương pháp %s chưa được gõ đầy đủ, kiểm tra định nghĩa phương pháp trong lược đồ lớp.
+123 Phương pháp %1$s chưa được gõ đầy đủ, kiểm tra định nghĩa phương pháp trong lược đồ lớp.
 124 Số học thời gian hụt.
 125 Số học ngày tháng hụt.
 126 Phía bên tay trái của mệnh đề Assignment không hợp lệ.
 127 Phương pháp gọi trên các set derived table tương quan với một phạm vi bên ngoài \nchưa được hỗ trợ trừ khi set expression bị ngắt trong một truy vấn con.
-128 Cột đặt tả truy vấn tương ứng với \nthuộc tính dùng chung '%s' phải là NULL hoặc NA.
+128 Cột đặt tả truy vấn tương ứng với \nthuộc tính dùng chung '%1$s' phải là NULL hoặc NA.
 129 Một cột NULL chưa được cho phép trên danh sách truy xuất của khung nhìn đặc tả truy vấn nếu định nghĩa thuộc tính bị bỏ sót.
 130 Đối tượng Vclass trong tập hợp không được hỗ trợ.
 131 Mong đợi một giá trị chuỗi.
 132 Mong đợi một câu lệnh hoặc một giá trị chuỗi.
-133 Thuộc tính Proxy object_id '%s' không được ánh xạ đến \n một biểu thức cột đặc tả truy vấn.
-134 Ràng buộc %s bị bỏ qua.
+133 Thuộc tính Proxy object_id '%1$s' không được ánh xạ đến \n một biểu thức cột đặc tả truy vấn.
+134 Ràng buộc %1$s bị bỏ qua.
 135 Khai báo ràng buộc không được phép trong ngữ cảnh này.
 136 Đổi kiểu %s đến kiểu %s không được hỗ trợ.
-137 %s không phải là một chuỗi bit hợp lệ.
+137 %1$s không phải là một chuỗi bit hợp lệ.
 138 Toán tử '%s' được định nghĩa trên kiểu %s.
 139 Toán tử '%s' chưa được định nghĩa trên kiểu %s với %s và %s.
-140 Các toán hạng của toán tử '%s' không thể cùng là các biến máy chủ động.
+140 Các toán hạng của toán tử '%1$s' không thể cùng là các biến máy chủ động.
 141 Quá nhiều đối số đến hàm số generic %s.\nChỉ đối số %d được cho phép cho hàm số generic.
 142 Selector lớp {%s} '%s' không phải một lớp con của '%s'.
 143 Không thể giải nén trường '%s' từ kiểu %s.
 144 Đặc tả truy vấn không được có một mệnh đề ORDER BY.
 145 Điều kiện Case phải là một biểu thức kiểu logic.
-146 Biểu thức phải là của kiểu %s.
-147 Serial '%s' đã tồn tại.
-148 Serial '%s' chưa được định nghĩa.
+146 Biểu thức phải là của kiểu %1$s.
+147 Serial '%1$s' đã tồn tại.
+148 Serial '%1$s' chưa được định nghĩa.
 149 Giá trị tăng dần không được là Không.
 150 Giá trị lớn nhất vượt quá 1.0e37.
 151 Giá trị nhỏ nhất không hợp lệ.
@@ -1519,13 +1519,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 156 Tham số thứ hai của chức năng serial_next_value nên lớn hơn 0.
 157 Giá trị Serial không thể vượt quá giá trị lớn nhất hoặc nhỏ nhất của nó
 158 Lỗi I/O nội tại cho serial
-159 Không thể tìm thấy chỉ mục '%s'.
-160 Tên chỉ mục đủ điều kiện '%s' tham chiếu đến một lớp, nhưng nó không được chỉ định trong mệnh đề From.
-161 Một hoặc nhiều lớp có chỉ mục giống nhau '%s'. Dùng các tên chỉ mục đủ điều kiện.
+159 Không thể tìm thấy chỉ mục '%1$s'.
+160 Tên chỉ mục đủ điều kiện '%1$s' tham chiếu đến một lớp, nhưng nó không được chỉ định trong mệnh đề From.
+161 Một hoặc nhiều lớp có chỉ mục giống nhau '%1$s'. Dùng các tên chỉ mục đủ điều kiện.
 162 Sử dụng %s không hợp lệ.Biểu thức \n%s không thể được dùng với thuộc tính hoặc truy vấn con liên quan.
 163 Phát hành hiện tại hạn chế một biểu thức chứa ORDERBY_NUM() trong danh sách truy xuất.
-164 Path expression '%s' trong điều kiện gia nhập.
-165 '%s' trong điều kiện gia nhập chưa được định nghĩa.
+164 Path expression '%1$s' trong điều kiện gia nhập.
+165 '%1$s' trong điều kiện gia nhập chưa được định nghĩa.
 166 Phát hành hiện tại hạn chế set derived table cho quyền gia nhập bên ngoài.
 167 Không thể chèn truy vấn trên ldb khác.
 168 Chỉ một cột có thể được chỉ định trong danh sách truy vấn khi truy vấn con không được giới thiệu với EXISTS.
@@ -1535,64 +1535,64 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 172 Cột phân vùng phải được chỉ định.
 173 Chỉ một cột có thể được chỉ định như cột phân vùng.
 174 Kiểu cột phân vùng không được hỗ trợ.
-175 Định nghĩa phân vùng bị trùng lặp. '%s'
-176 Không khớp kiểu hằng số. '%s'
+175 Định nghĩa phân vùng bị trùng lặp. '%1$s'
+176 Không khớp kiểu hằng số. '%1$s'
 177 Kích cỡ phân vùng không hợp lệ.
-178 '%s' không phải là lớp được phân vùng.
-179 '%s' đã là lớp được phân vùng.
+178 '%1$s' không phải là lớp được phân vùng.
+179 '%1$s' đã là lớp được phân vùng.
 180 Yêu cầu phân vùng không hợp lệ.
-181 %s không thể được thay đổi từ lớp này (cột khóa phân vùng).
-182 %s không thể được quản lý phân vùng dưới trigger đang hoạt động.
-183 Phân vùng Partition %s không tồn tại.
-184 Kiểu phân vùng không khớp. '%s'
+181 %1$s không thể được thay đổi từ lớp này (cột khóa phân vùng).
+182 %1$s không thể được quản lý phân vùng dưới trigger đang hoạt động.
+183 Phân vùng Partition %1$s không tồn tại.
+184 Kiểu phân vùng không khớp. '%1$s'
 185 Thông tin phân vùng không hợp lệ.
 186 Thêm phân vùng để được thiết lập với một phạm vi lớn hơn hiện có.
 187 Việc sắp xếp lại của phân vùng không được cho phép bởi vì nó có thể dẫn đến mất dữ liệu.
-188 Phạm vi của phân vùng '%s' không hợp lệ.
+188 Phạm vi của phân vùng '%1$s' không hợp lệ.
 189 Một thuộc tính lớp không thể có một ràng buộc AUTO INCREMENT.
 190 Một thuộc tính của lớp ảo không thể có một ràng buộc AUTO INCREMENT.
-191 Miền của thuộc tính '%s' có một ràng buộc AUTO INCREMENT không hợp lệ.
-192 Không phải người dùng nhưng hệ thống có thể gán thuộc tính '%s' tạo bởi 'ON CACHE OBJECT' của khóa ngoại.
-193 Không thể dùng tên thuộc tính trùng lặp trong danh sách khóa chỉ mục. Tên thuộc tính '%s' được liệt kê nhiều hơn một lần.
-194 Hàm số %s chưa được định nghĩa hoặc được đưa ra số tham số sai.
-195 '%s' chỉ có thể được sử dụng trong các truy vấn phân cấp. Chỉ định một mệnh đề CONNECT BY.
-196 '%s' không được phép tại đây.
+191 Miền của thuộc tính '%1$s' có một ràng buộc AUTO INCREMENT không hợp lệ.
+192 Không phải người dùng nhưng hệ thống có thể gán thuộc tính '%1$s' tạo bởi 'ON CACHE OBJECT' của khóa ngoại.
+193 Không thể dùng tên thuộc tính trùng lặp trong danh sách khóa chỉ mục. Tên thuộc tính '%1$s' được liệt kê nhiều hơn một lần.
+194 Hàm số %1$s chưa được định nghĩa hoặc được đưa ra số tham số sai.
+195 '%1$s' chỉ có thể được sử dụng trong các truy vấn phân cấp. Chỉ định một mệnh đề CONNECT BY.
+196 '%1$s' không được phép tại đây.
 197 Dùng CONNECT_BY_ISCYCLE chỉ được cho phép nếu truy vấn có một mệnh đề CONNECT BY NOCYCLE.
 198 Không có bảng nào được dùng.
 199 ORDER BY NULL đòi hỏi GROUP BY.
-200 Số đến CACHE phải nhỏ hơn một vòng (%s).
-201 '%s' không được cho phép trong một truy vấn có mệnh đề LIMIT.
+200 Số đến CACHE phải nhỏ hơn một vòng (%1$s).
+201 '%1$s' không được cho phép trong một truy vấn có mệnh đề LIMIT.
 202 WITH ROLLUP đòi hỏi GROUP BY.
 203 Một tham số tên cột phải được chuyển đến hàm số DEFAULT. Path expressions chưa được hỗ trợ.
-204 Tùy chọn bảng '%s' trùng lặp
-205 Lớp '%s' được đánh dấu như REUSE_OID và không thể tham chiếu. Các lớp không thể tham chiếu không thể là miền của một thuộc tính và OID các thực thể của chúng không thể được trả về.
-206 Trùng lặp tùy chọn 'serial %s'.
-207 Cột '%s' trong mệnh đề sắp xếp thứ tự không rõ ràng.
-208 Thuộc tính '%s' không có một giá trị mặc định.
+204 Tùy chọn bảng '%1$s' trùng lặp
+205 Lớp '%1$s' được đánh dấu như REUSE_OID và không thể tham chiếu. Các lớp không thể tham chiếu không thể là miền của một thuộc tính và OID các thực thể của chúng không thể được trả về.
+206 Trùng lặp tùy chọn 'serial %1$s'.
+207 Cột '%1$s' trong mệnh đề sắp xếp thứ tự không rõ ràng.
+208 Thuộc tính '%1$s' không có một giá trị mặc định.
 209 Mục ORDER BY phải xuất hiện trong danh sách truy xuất nếu SELECT DISTINCT được chỉ định.
 210 Biến số máy chủ không được cho phép trên cột trong đặc tả truy vấn.
-211 %s không thể là một cột ORDER BY
-212 %s không thể là một cột GROUP BY
+211 %1$s không thể là một cột ORDER BY
+212 %1$s không thể là một cột GROUP BY
 213 Không thể định nghĩa '%1$s của %2$s' như một kiểu cột.
-214 Giá trị "%s" không hợp lệ cho prefix length của chỉ mục.
+214 Giá trị "%1$s" không hợp lệ cho prefix length của chỉ mục.
 215 Chức năng '%s' chưa được định nghĩa trên kiểu %s, %s, %s và %s.
 216 Chức năng '%s' chưa được định nghĩa trên kiểu %s, %s và %s.
 217 Chức năng '%s' chưa được định nghĩa trên kiểu %s và %s.
 218 Chức năng '%s' chưa được định nghĩa trên kiểu %s.
 219 Chức năng '%s' chưa được định nghĩa cho một đối số chỉ mục của kiểu %s.
-220 ALTER VIEW '%s' AS SELECT không được cho phép cho các khung nhìn có các lớp con hoặc lớp cao cấp. Dùng ALTER VIEW CHANGE QUERY để thay thế.
+220 ALTER VIEW '%1$s' AS SELECT không được cho phép cho các khung nhìn có các lớp con hoặc lớp cao cấp. Dùng ALTER VIEW CHANGE QUERY để thay thế.
 221 Thuộc tính khung nhìn không thể được thay đổi bằng cách dùng câu lệnh này. 'ALTER VIEW name AS query' có thể có ích để thay thế.
 222 CUBRID yêu cầu mục ORDER BY có biểu thức giống với đối số GROUP_CONCAT hoặc một số nguyên (vị trí đối số).
 223 Vị từ LIKE đòi hỏi một ký tự thoát được chỉ định. Xem tài liệu cho '%1$s' và '%2$s' tham số hệ thống.
 224 KEYLIMIT không thể được dùng trong mệnh đề INDEX NONE.
 225 Biến số phiên không được cho phép trong ngữ cảnh này.
 226 Xung đột gợi ý chỉ mục giữa '%s' và '%s'.
-227 Chức năng '%s' không thể được sử dụng trong mệnh đề DEFAULT 
+227 Chức năng '%1$s' không thể được sử dụng trong mệnh đề DEFAULT 
 228 Cập nhật bảng kết quả không được cho phép.
 229 Cập nhật thuộc tính hạng và thuộc tính đối tượng không được cho phép trong cùng tuyên bố.
 230 Cập nhật thứ bậc hạng ảo không được cho phép.
 231 Biến chủ không được cho phép trong tuyên bố DDL.
-232 Biểu diễn bộ lọc vô hiệu (%s) cho chỉ mục.
+232 Biểu diễn bộ lọc vô hiệu (%1$s) cho chỉ mục.
 233 Đa chức năng hoặc chức năng lồng ghép không được cho phép trong định nghĩa chỉ mục chức năng.
 234 Đặc điểm chỉ mục vô hiệu.
 235 SHARED, DEFAULT and AUTO_INCREMENT không được xác định riêng rẽ.
@@ -1603,25 +1603,25 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 240 MERGE với các bậc hạng khác không được cho phép.
 241 Tên người dùng quá dài.
 242 Biểu diễn hằng số không được dùng làm chỉ mục chức năng.
-243 Tên hoặc bí danh hạng không được duy nhất trong danh sách: '%s'
-244 Mệnh đề DEFAULT vô hiệu. '%s' không thể được sử dụng trong biểu diễm lồng nhau.
-245 '%s' yêu cầu các lý lẽ với đối chiếu tương thích.
+243 Tên hoặc bí danh hạng không được duy nhất trong danh sách: '%1$s'
+244 Mệnh đề DEFAULT vô hiệu. '%1$s' không thể được sử dụng trong biểu diễm lồng nhau.
+245 '%1$s' yêu cầu các lý lẽ với đối chiếu tương thích.
 246 Bộ ký tự vô hiệu.
 247 Bộ ký tự yêu cầu và đối chiếu không tương thích.
-248 Đối chiếu chưa biết '%s'.
+248 Đối chiếu chưa biết '%1$s'.
 249 Nội dung yêu cầu đối chiếu với các yếu tố có bộ mã và đối chiếu tương tự.
-250 Chỉ mục tiền tố không được cho phép trên thuộc tính '%s' (có đối chiếu với phần mở rộng).
+250 Chỉ mục tiền tố không được cho phép trên thuộc tính '%1$s' (có đối chiếu với phần mở rộng).
 251 Giá trị ban đầu vô hiệu.
 252 Chỉ mục tiền tố nhiều cột không được cho phép.
-253 Chức năng '%s' không được dùng cho chỉ mục dựa trên chức năng.
-254 Định nghĩa cột chỉ mục vô hiệu: %s
-255 '%s' không được cho phép trong một biểu diễn lọc cho chỉ mục.
+253 Chức năng '%1$s' không được dùng cho chỉ mục dựa trên chức năng.
+254 Định nghĩa cột chỉ mục vô hiệu: %1$s
+255 '%1$s' không được cho phép trong một biểu diễn lọc cho chỉ mục.
 256 Không được sử dụng mệnh đề GROUPBY_NUM() và WITH ROLLUP trong cùng trường.
-257 Không được MERGE UPDATE cột CẬP NHẬT %s được tham chiếu ở mệnh đề MỞ.
+257 Không được MERGE UPDATE cột CẬP NHẬT %1$s được tham chiếu ở mệnh đề MỞ.
 258 Số cột, %d, trong ( %s ) không cân đối với số cột, %d, trong ( %s ).
 259 Tiền tố cột không được cho phép trong biểu diễn chỉ mục chức năng.
-260 %s không được là cột PARTITION BY hoặc ORDER BY
-261 Trường phải đánh giá so với một giá trị đơn\n(%s).
+260 %1$s không được là cột PARTITION BY hoặc ORDER BY
+261 Trường phải đánh giá so với một giá trị đơn\n(%1$s).
 262 Chức năng phân tích lồng nhau không được cho phép.
 263 Thuộc tính kế thừa không được sử dụng như phím phân mảng.
 264 Tổng kích thước các yếu tố liệt kê quá lớn.
@@ -1629,22 +1629,22 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 266 COLLATE không được cho phép trong trường hợp này.
 267 Bộ điều chỉnh COLLATE không thể thay đổi bộ mã (from '%s' to '%s'). Cố gắng thay bằng sử dụng CAST.
 268 Bộ mã '%1$s' cho giá trị phân vùng vô hiệu. Kỳ vọng '%2$s' bộ mã.
-269 Biến số phiên không thể có phân loại khác với phân loại hệ thống ('%s').
+269 Biến số phiên không thể có phân loại khác với phân loại hệ thống ('%1$s').
 270 Biểu thức chỉ số chức năng vô hiệu.
-271 Thuyết minh câu hỏi %s tự tham chiếu tới câu hỏi.
-272 %s biểu thức không được cho phép trong điều kiện chung.
+271 Thuyết minh câu hỏi %1$s tự tham chiếu tới câu hỏi.
+272 %1$s biểu thức không được cho phép trong điều kiện chung.
 273 ORDER BY không được phép trong hàm MEDIAN.
-274 Các đối số của hàm '%s' phải là không đổi.
-275 Hàm '%s' phải có mệnh đề ORDER BY.
-276 Đối với hàm '%s', số lượng các đối số không phù hợp với số cột ORDER BY.
-277 Đối với hàm '%s', mệnh đề ORDER BY không hợp lệ.
+274 Các đối số của hàm '%1$s' phải là không đổi.
+275 Hàm '%1$s' phải có mệnh đề ORDER BY.
+276 Đối với hàm '%1$s', số lượng các đối số không phù hợp với số cột ORDER BY.
+277 Đối với hàm '%1$s', mệnh đề ORDER BY không hợp lệ.
 278 Only one table within a view can be updated.
 279 Multiple insert targets not allowed.
-280 '%s' type is vclass, drop vclass with cascade constraints is not allowed.
+280 '%1$s' type is vclass, drop vclass with cascade constraints is not allowed.
 281 The FOR UPDATE clause cannot be used in subqueries, unions, with GROUP BY clause, DISTINCT operator, aggregate functions.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
-1 Không đủ bộ nhớ ảo: không thể cấp phát %d bytes.
+1 Không đủ bộ nhớ ảo: không thể cấp phát %1$d bytes.
 2 Cấp độ cô lập giao dịch phải là 1, 2, 3, 4, 5 or 6.
 3 Giá trị Timeout phải là -1, 0, or >0.
 4 Mức độ cô lập thiết lập đến:\n
@@ -1658,86 +1658,86 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 12 Tìm cách truy cập biến số máy chủ có chỉ mục %d trong khi chỉ %d \ncác biến số máy chủ đầu vào được đưa ra.
 13 Chuyển đổi chưa được thực hiện.
 14 Lỗi nội bộ, chuyển đổi chưa được định nghĩa.
-15 '%s' không sinh ra kết quả nào.
-16 '%s' sinh ra kết quả nhiều hơn một hàng.
-17 Biến số bộ diễn dịch %s chưa được định nghĩa.
-18 Không thể ước tính '%s'.
-19 Biến số không biết %s.
-20 Biến số dùng chung không biết %s.
-21 '%s' sinh ra kết quả nhiều hơn một cột.
+15 '%1$s' không sinh ra kết quả nào.
+16 '%1$s' sinh ra kết quả nhiều hơn một hàng.
+17 Biến số bộ diễn dịch %1$s chưa được định nghĩa.
+18 Không thể ước tính '%1$s'.
+19 Biến số không biết %1$s.
+20 Biến số dùng chung không biết %1$s.
+21 '%1$s' sinh ra kết quả nhiều hơn một cột.
 22 Sử dụng hàm Aggregate bị lồng nhau hoặc không hợp lệ.
-23 Functions %s chưa được định nghĩa.
-24 Ngữ cảnh yêu cầu truy vấn phải là cột đơn\n(%s).
+23 Functions %1$s chưa được định nghĩa.
+24 Ngữ cảnh yêu cầu truy vấn phải là cột đơn\n(%1$s).
 25 Quá nhiều giá trị đã được chỉ định.
-26 Virtual assignment target (%s) không thể đảo nghịch.
-27 Có nhiều cột trong đặc tả truy vấn hơn số thuộc tính trong lớp %s.
-28 Có nhiều thuộc tính trong lớp %s hơn số cột trong đặc tả truy vấn.
+26 Virtual assignment target (%1$s) không thể đảo nghịch.
+27 Có nhiều cột trong đặc tả truy vấn hơn số thuộc tính trong lớp %1$s.
+28 Có nhiều thuộc tính trong lớp %1$s hơn số cột trong đặc tả truy vấn.
 29 Phát hành hiện tại hạn chế Aggregation đến các lớp ảo mà không có \n đặc tả truy vấn aggregation.
 30 Phát hành hiện tại hạn chế Aggregation đến các lớp ảo mà không có \n đặc tả truy vấn union.
 31 Sử dụng của lớp ảo (%s) trong một composition hierarchy yêu cầu nó phải là có thể cập nhật.\nNó không thể được cập nhất đối với lớp thực %s.
 32 không được dùng
-33 Xây dựng không hợp lệ trong path expression '%s'.
+33 Xây dựng không hợp lệ trong path expression '%1$s'.
 34 biểu thức đường dẫn '%s' vượt qua ranh giới db%s, với vclass%s.
 35 biểu thức đường dẫn '%s' vượt qua ranh giới db từ%s, lớp%s.
 36 %s chưa được cấp phép trên %s.
-37 Select chưa được cấp phép trên %s.
-38 Lớp ảo %s không thể cập nhật.
-39 %s không phải một lớp ảo proxy.
+37 Select chưa được cấp phép trên %1$s.
+38 Lớp ảo %1$s không thể cập nhật.
+39 %1$s không phải một lớp ảo proxy.
 40 đặc tả truy vấn của lớp ảo proxy không được là một join.
-41 %s không có tập hợp id đối tượng.
-42 Các lớp (%s) với nhiều trường object_id trong một composition \nhierarchy không được hỗ trợ.
+41 %1$s không có tập hợp id đối tượng.
+42 Các lớp (%1$s) với nhiều trường object_id trong một composition \nhierarchy không được hỗ trợ.
 43 Thuộc tính đối tượng %s của %s không phải là một lớp ảo trên ldb %s.
-44 Kiểu đặc tả truy vấn không tương thích với thuộc tính %s.
-45 Đặc tả truy vấn của %s có một tham chiếu vòng tròn đến chính nó.
+44 Kiểu đặc tả truy vấn không tương thích với thuộc tính %1$s.
+45 Đặc tả truy vấn của %1$s có một tham chiếu vòng tròn đến chính nó.
 46 Không có biểu thức nào được đưa ra để ước tính.
-47 Không tìm thấy lớp thực nào cho lớp ảo %s.
+47 Không tìm thấy lớp thực nào cho lớp ảo %1$s.
 48 Đang thực thi '%s' trên ldb '%s' \ntrả về: %s.
 49 Đặt giá trị '%s' vào thuộc tính '%s' trả về: %s.
-50 Tên Ldb không được là null trong %s.
-51 Tên Ldb tại máy chủ không được là null trong %s.
-53 Tên máy chủ không được là null trong %s.
-54 Tên người dùng không được là null trong %s.
-55 Mật mã người dùng không được là null trong %s.
+50 Tên Ldb không được là null trong %1$s.
+51 Tên Ldb tại máy chủ không được là null trong %1$s.
+53 Tên máy chủ không được là null trong %1$s.
+54 Tên người dùng không được là null trong %1$s.
+55 Mật mã người dùng không được là null trong %1$s.
 56 Insert chuyển thành câu lệnh rỗng.
 57 Update chuyển thành câu lệnh rỗng.
 58 Delete chuyển thành câu lệnh rỗng.
-59 INGRES không hỗ trợ những ngày tháng (%s) trước 1 tháng một,1582.
+59 INGRES không hỗ trợ những ngày tháng (%1$s) trước 1 tháng một,1582.
 60 Tài nguyên đã hết trong việc tạo truy vấn.
-61 Truy vấn không sinh ra kết quả nào, vì vậy biến số '%s' không được thiết lập.
+61 Truy vấn không sinh ra kết quả nào, vì vậy biến số '%1$s' không được thiết lập.
 62 With LOCAL check option không được hỗ trợ.
-63 Check option ngoại lệ trên khung nhìn %s.
-64 Ngày tháng không hợp lệ: '%s'.
-65 Thời gian không hợp lệ: '%s'.
-66 Utime không hợp lệ: '%s'.
+63 Check option ngoại lệ trên khung nhìn %1$s.
+64 Ngày tháng không hợp lệ: '%1$s'.
+65 Thời gian không hợp lệ: '%1$s'.
+66 Utime không hợp lệ: '%1$s'.
 67 Các truy vấn con trong đặc tả truy vấn của proxy không được hỗ trợ.
-68 Đối số hàm Ldb không tương thích với ldb trong '%s'.
-69 Numeric không hợp lệ: '%s'.
+68 Đối số hàm Ldb không tương thích với ldb trong '%1$s'.
+69 Numeric không hợp lệ: '%1$s'.
 70 Tối ưu hóa truy vấn tham gia bên ngoài thất bại.
 71         SERIALIZABLE.\n
-72 Lớp ảo %s không thể cập nhật. Chỉ những lớp ảo có thể cập nhật được phép truy xuất VIDs.
+72 Lớp ảo %1$s không thể cập nhật. Chỉ những lớp ảo có thể cập nhật được phép truy xuất VIDs.
 73 Phân vùng thất bại.
 74 Phân vùng không tồn tại.
-75 Không được phép truy cập đến phân vùng: '%s'.
-76 Serial '%s' chưa được định nghĩa.
+75 Không được phép truy cập đến phân vùng: '%1$s'.
+76 Serial '%1$s' chưa được định nghĩa.
 77 Chủ sở hữu hoặc DBA chỉ có thể sửa đổi định nghĩa của serial mục tiêu.
 78 Không cho phép người dùng sửa đổi đối tượng serial được tạo bởi một ràng buộc AUTO INCREMENT.
 79 Cấp độ cô lập không hợp lệ: %s lược đồ, %s thực thể.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** lưu ẩn không hợp lệ ***
-2    lớp %s
-3 từ %s :
-4 Cấp phép cho người dùng %s\n
+2    lớp %1$s
+3 từ %1$s :
+4 Cấp phép cho người dùng %1$s\n
 5 Cấp phép cho người dùng chưa định nghĩa\n
-6 Người dùng : %s\n
-7            id : %d\n
+6 Người dùng : %1$s\n
+7            id : %1$d\n
 8       thành viên :
 9        nhóm :
-10 Người dùng %s\n
-11 Người dùng hiện tại là : %s\n
+10 Người dùng %1$s\n
+11 Người dùng hiện tại là : %1$s\n
 12 Đối tượng cấp phép gốc :\n
 13   người dùng :
-14 *** Không thể phát hành tất cả ủy quyền cho người dùng "%s"*** \n
+14 *** Không thể phát hành tất cả ủy quyền cho người dùng "%1$s"*** \n
 15 CẤP PHÉP\n
 16 direct_groups :
 
@@ -1753,7 +1753,7 @@ $set 12 MSGCAT_SET_HELP
 9 Cách giải quyết mâu thuẫn:\n
 10 Tệp tin phương pháp:\n
 11 Đặc tả truy vấn:\n
-12 ĐỐI TƯỢNG của %s\n
+12 ĐỐI TƯỢNG của %1$s\n
 13 \nMô tả:\n
 14 \nCấu trúc:\n
 15 \nVí dụ:\n
@@ -1765,8 +1765,8 @@ $  Don't delete the space at the end of the next message
 20 GENERAL
 
 $set 13 MSGCAT_SET_TRIGGER
-1 TRACE: Kiểm tra điều kiện cho trigger '%s'.
-2 TRACE: Kiểm tra hành động cho trigger '%s'.
+1 TRACE: Kiểm tra điều kiện cho trigger '%1$s'.
+2 TRACE: Kiểm tra hành động cho trigger '%1$s'.
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
@@ -1784,7 +1784,7 @@ $set 14 MSGCAT_SET_LOCK
 13 Chỉ mục giao dịch  %3d GIÁNG CẤP khóa đến %s trên trang %d|%d.\n
 14 OID = %2d|%6d|%4d\n
 15 Kiểu đổi tượng: Lớp gốc.\n
-16 Kiểu đổi tượng: Lớp = %s.\n
+16 Kiểu đổi tượng: Lớp = %1$s.\n
 17 Kiểu đổi tượng: Thực thể của lớp (%2d|%6d|%4d) = %s.\n
 18 Kiểu đổi tượng: Không biết.\n
 19 Total mode of holders = %8s, Total mode of waiters = %8s.\n
@@ -1802,23 +1802,23 @@ $set 14 MSGCAT_SET_LOCK
 31 VPID (volid|pageid) = %3d|%6d.\n
 32 *** Lock Table Dump ***\n Lock Escalation at = %d, Run Deadlock interval = %5.2f\n
 33 Giao dịch (chỉ mục %2d, %s, %s@%s|%d)\n
-34 Cô lập %s\n
-35 Trạng thái %s\n
-36 Timeout_period %s\n
+34 Cô lập %1$s\n
+35 Trạng thái %1$s\n
+36 Timeout_period %1$s\n
 37 Đơn phương bỏ dở giao dịch với chỉ mục:\n
-38 %d ,
+38 %1$d ,
 39 Giao dịch Timed_out với chỉ mục:\n
-40 %d ,
+40 %1$d ,
 41 Giải quyết khóa chết bằng cách chọn một giao dịch và một hàm số \n để phá vỡ khóa chết: %d %s
 42 , %d %s
 43 Loại đối tượng: Phím chỉ mục thuộc hạng (%2d|%6d|%4d) = %s.\n
-44 Tên chỉ mục: %s\n
+44 Tên chỉ mục: %1$s\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n
-2 Sao lưu = %s là cần có. \n Nó phải được gắn kết/tải để tiếp tục.\n Gõ 1 để tiếp tục sau khi sao lưu được gắn kết/tải.\n Gõ 0 để thoát khỏi.\n
+2 Sao lưu = %1$s là cần có. \n Nó phải được gắn kết/tải để tiếp tục.\n Gõ 1 để tiếp tục sau khi sao lưu được gắn kết/tải.\n Gõ 0 để thoát khỏi.\n
 3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
-4 Backup magic file identification %s,\n
+4 Backup magic file identification %1$s,\n
 5          Release: %s\n\
      Disk Version: %g\n
 6    Database Name: %s\n\
@@ -1844,40 +1844,40 @@ Nhập một trong các tùy chọn sau đây:\n
 13 Lỗi trong đầu vào, chọn một giá trị giữa %d và %d.\n
 14 ** CẢNH BÁO ** Bộ đĩa sao lưu được gắn kết không đúng.\n
 15 Bộ đĩa sao lưu %s từ một cấp độ sao lưu khác\n   (Cấp độ: %d, mong đợi %d).\n\n
-16 Bộ đĩa sao lưu %s có identifier magic hoặc page không đúng.\n\n
+16 Bộ đĩa sao lưu %1$s có identifier magic hoặc page không đúng.\n\n
 17 Bộ đĩa sao lưu %s từ cơ sở dữ liệu khác\n  (Tên: %s, mong đợi %s).\n\n
 18 Bộ đĩa sao lưu %s ngoài trình tự\n  (Unit Num: %d, mong đợi %d).\n\n
 19 Bộ đĩa sao lưu %s timestamp không khớp\n  (Timestamp: %s, mong đợi %s).\n\n
-20 Lỗi tệp tin thông tin bộ đĩa sao lưu, dòng %d.\n
+20 Lỗi tệp tin thông tin bộ đĩa sao lưu, dòng %1$d.\n
 21 Backup Volume Label: Level: %d, Unit: %d, Database %s, Backup Time: %s\n
 22     Previous Backup level: %d Time: %s (start_lsa was %lld|%d)\n
 23 Bộ đĩa sao lưu cơ sở dữ liệu sau đây cần được tiếp tục khôi phục:\n\n
 24 Đích nhận sao lưu đã đầy, một đích nhận mới được đòi hỏi để tiếp tục:\n\n
-25 Tên bộ đĩa sao lưu trước: %s\n
-26     Tên bộ đĩa sao lưu tiếp theo: %s\n
-27  Backup Pagesize: %d\n
+25 Tên bộ đĩa sao lưu trước: %1$s\n
+26     Tên bộ đĩa sao lưu tiếp theo: %1$s\n
+27  Backup Pagesize: %1$d\n
 28       Zip Method: %d (%s)\n\
         Zip Level: %d (%s)\n
-29 Include Active Log: %s\n
+29 Include Active Log: %1$s\n
 
 $set 16 MSGCAT_SET_LOG
 1 \n*************************************************************************\n
-2 Lưu trữ bản ghi %s \n cần có để tiếp tục sự thực thi bình thường.   \n \
+2 Lưu trữ bản ghi %1$s \n cần có để tiếp tục sự thực thi bình thường.   \n \
   Gõ\n \
   -  0 để thoát khỏi.\n \
   -  1 để tiếp tục mà không có lưu trữ hiện tại. (Khôi phục từng phần)\n \
   -  2 để tiếp tục sau khi lưu trữ được gắn kết/tải.       \n \
   -  3 để tiếp tục sau khi thay đổi vị trí/tên của lưu trữ.   \n
-3 Tệp tin thông tin sao lưu %s \n là cần có để tiếp tục tiến trình khôi phục. \n \
+3 Tệp tin thông tin sao lưu %1$s \n là cần có để tiếp tục tiến trình khôi phục. \n \
   Gõ\n \
   -  0 để thoát khỏi.\n \
   -  1 để tiếp tục sau khi tệp tin được gắn kết/tải.       \n \
   -  2 để tiếp tục sau khi thay đổi vị trí/tên của tệp tin.   \n
 4 Nhập vị trí/tên mới.\n
 5 CHÚ THÍCH: %s cho cơ sở dữ liệu for database %s\n
-6 CHÚ THÍCH: Lưu trữ bản ghi %s là không cần thiết nữa trừ khi xảy ra một database media crash.\n
+6 CHÚ THÍCH: Lưu trữ bản ghi %1$s là không cần thiết nữa trừ khi xảy ra một database media crash.\n
 7 CHÚ THÍCH: Lưu trữ bản ghi từ %s đến to %s là không cần thiết nữa trừ khi xảy ra một database media crash.\n
-8 CHÚ THÍCH: từ cơ sở dữ liệu đã được đổi tên = %s\n
+8 CHÚ THÍCH: từ cơ sở dữ liệu đã được đổi tên = %1$s\n
 9 ARCHIVE: %d %s %lld %lld\n
 10 ARCHIVE:
 11 REMOVE: %d %s to \n \
@@ -1894,7 +1894,7 @@ $set 16 MSGCAT_SET_LOG
 16 Thiết lập lại của bản ghi vì sự khôi phục không đầy đủ.
 17 Cơ sở dữ liệu đã được sao lưu.
 18 Media crash không quan trọng đối với ứng dụng.
-19 Đang sao lưu đến thư mục %s mà dường như đã có một sao lưu trước đó ở trong đó.\n\
+19 Đang sao lưu đến thư mục %1$s mà dường như đã có một sao lưu trước đó ở trong đó.\n\
 Ổ sao lưu quá cũ của cơ sở dữ liệu trong vị trí này sẽ được gỡ bỏ,\n\
 bao gồm cả những từ cấp độ sao lưu hiện hành và cao hơn.\n
 20 Nhập 'y' để tiếp tục hoặc bất kỳ phím nào để hủy.\n
@@ -1903,7 +1903,7 @@ bao gồm cả những từ cấp độ sao lưu hiện hành và cao h�
         %d %s \n \
         are no longer needed unless a restore from current backup occurs.\n
 23 Một bản sao lưu mới đã phát hành tài liệu lưu trữ trước đó được đánh dấu DELETE POSTPONED.\n
-24 CHÚ THÍCH: Đăng nhập lưu trữ%s không phải là DELETE POSTPONED nữa do để sao lưu\n \
+24 CHÚ THÍCH: Đăng nhập lưu trữ%1$s không phải là DELETE POSTPONED nữa do để sao lưu\n \
    gần đây và do đó không cần thiết trừ khi xảy ra một vụ tai nạn cơ sở dữ\n liệu phương tiện truyền thông.\n
 25 CHÚ THÍCH: Đăng nhập lưu trữ từ%s đến%s không DELETE POSTPONED nữa do để sao lưu\n \
    gần đây và do đó không cần thiết trừ khi xảy ra một vụ tai nạn cơ sở dữ\n \

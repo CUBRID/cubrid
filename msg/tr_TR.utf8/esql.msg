@@ -24,46 +24,46 @@ $ esql.msg
 $
 
 $set 1
-1 tamsayı argüman değeri bulunmamaktadır "%s"\n
-2 floating argüman değeri bulunmamaktadır "%s"\n
-3 kayıp argüman %s\n
+1 tamsayı argüman değeri bulunmamaktadır "%1$s"\n
+2 floating argüman değeri bulunmamaktadır "%1$s"\n
+3 kayıp argüman %1$s\n
 4 [ayarlar] 
 5 Ayarlar: \n
-6 Anahtar için kayıp argüman değeri %s\n
-7 Bilinmeyen ayarlar "%s"\n
-8 Beklenmeyen konumsal argüman "%s"\n
+6 Anahtar için kayıp argüman değeri %1$s\n
+7 Bilinmeyen ayarlar "%1$s"\n
+8 Beklenmeyen konumsal argüman "%1$s"\n
 
 $set 2
-1 İmlecin yeniden tanımlanması "%s"
-2  *\tfor ifade %s\n
+1 İmlecin yeniden tanımlanması "%1$s"
+2  *\tfor ifade %1$s\n
 3  *\n * imleç tablosu:\n
 
 $set 3
-1 (set_class_bit içinde DAHİLİ HATA): kötü saklama sınıfı(%d)
+1 (set_class_bit içinde DAHİLİ HATA): kötü saklama sınıfı(%1$d)
 2 (add_spec_to_decl() içinde DAHİLİ HATA): bozuk zinciri (belirtici bulunmamaktadır)
 3 saklama sınıfı belirteci bu bağlamda izin verilmez
 4 yasadışı depolama sınıfı kombinasyonu
 5 yasadışı tür kombinasyonu
 6 yasadışı değiştirici kombinasyonu
-7 (pp_add_type_spec içinde DAHİLİ HATA): Beklenmedik durum (%d)
-8 (pp_add_type_adj içinde DAHİLİ HATA): Beklenmedik durum (%d)
-9 bozuk biçim %s beyanı
+7 (pp_add_type_spec içinde DAHİLİ HATA): Beklenmedik durum (%1$d)
+8 (pp_add_type_adj içinde DAHİLİ HATA): Beklenmedik durum (%1$d)
+9 bozuk biçim %1$s beyanı
 
 $set 4
-1 %s
-2 %s: Bir dizin değil\n
-3 %s: Kotü yüklenmiş kök?\n
+1 %1$s
+2 %1$s: Bir dizin değil\n
+3 %1$s: Kotü yüklenmiş kök?\n
 
 $set 5
 1 ?
 2 simge doğruluğunu kontrol ediniz
-3 Parçası USING statik imleç için izin "%s"
-4 iöleç "%s" tanımsız
+3 Parçası USING statik imleç için izin "%1$s"
+4 iöleç "%1$s" tanımsız
 5 Bir tanımlayıcı göstericisi
 6 Bir DB_OBJECT göstericisi
 7 Karakterseti dizini
-8 "%s" için gösterge değişkeni bu bağlamda izin verilmez
-9 "%s" bölümünde BEGIN DECLARE içinde bildirilmemiş
+8 "%1$s" için gösterge değişkeni bu bağlamda izin verilmez
+9 "%1$s" bölümünde BEGIN DECLARE içinde bildirilmemiş
 52 %s ( metin "%s")
 53 Sözcüksel Hata
 54 sözdizimi hatası "%s": %s içinde %s kayıp
@@ -103,23 +103,23 @@ $set 8
 
 $set 9
 1 (yy_pop_mode) iç hata: boş mod yığını
-2 "%s" bu bağlamda izin verilmez
+2 "%1$s" bu bağlamda izin verilmez
 
 $set 10
 1 iç hata %s: %s\n
 2 tablo taşma
 
 $set 11
-1 gösterge değişkeni "%s" kısa bir int olmalı
+1 gösterge değişkeni "%1$s" kısa bir int olmalı
 2 bir yapıya sahip bir gösterge değişken kullanamaz
-3 "%s" eksik yapı tanımı vardır
+3 "%1$s" eksik yapı tanımı vardır
 4 "%s" mutlaka geçerli olamalı %s
 5 %s için kabul edilebilir tür değil "%s"
-6 beklenmeyen ana değişken tipi: %s
+6 beklenmeyen ana değişken tipi: %1$s
 7 (pp_addr_expr): NULL değişkenin adresini bulma girişimi
-8 "%s" bir işaretçi değildir.
-9 "%s" bir yapı işaret değildir.
-10 "%s" bir yapı değildir.
+8 "%1$s" bir işaretçi değildir.
+9 "%1$s" bir yapı işaret değildir.
+10 "%1$s" bir yapı değildir.
 11 %s herhangi bir alan yoktur "%s"
 12 "%s" tarafından başvurusu çözülemiyor "%s"
 
@@ -129,7 +129,7 @@ $set 12
 $set 13
 1 fonksiyonların dizi yasaktır, işlev işaretçileri varsayarak.
 2 (pp_the_same_type) bilinmeyen bağlantı sınıfı
-3 (pp_get_sizeof): kötü isim (%d)
+3 (pp_get_sizeof): kötü isim (%1$d)
 
 $set 14
-1 (%s DAHİLİ HATA): imkansız durumda
+1 (%1$s DAHİLİ HATA): imkansız durumda

@@ -24,46 +24,46 @@ $ esql.msg
 $
 
 $set 1
-1 Valeur "%s" d'argument n'est pas un entier\n
-2 Valeur "%s" d'argument n'est pas de type float\n
-3 Argument %s manquant\n
+1 Valeur "%1$s" d'argument n'est pas un entier\n
+2 Valeur "%1$s" d'argument n'est pas de type float\n
+3 Argument %1$s manquant\n
 4 [options] 
 5 Options: \n
-6 Valeur d'argument manquant pour clé %s\n
-7 Option inconnue "%s"\n
-8 Argument positionnel inconnu "%s"\n
+6 Valeur d'argument manquant pour clé %1$s\n
+7 Option inconnue "%1$s"\n
+8 Argument positionnel inconnu "%1$s"\n
 
 $set 2
-1 Redéfinition du curseur "%s"
-2  *\tpour instruction %s\n
+1 Redéfinition du curseur "%1$s"
+2  *\tpour instruction %1$s\n
 3  *\n * Table du curseur:\n
 
 $set 3
-1 (ERREUR INTERNE dans set_class_bit): classe de stockage incorrecte (%d)
+1 (ERREUR INTERNE dans set_class_bit): classe de stockage incorrecte (%1$d)
 2 (ERREUR INTERNE dans add_spec_to_decl()): chaîne mal formée (pas de spécificateur)
 3 spécificateur de classe de stockage est interdit dans ce contexte
 4 association incorrecte des classes de stockage
 5 association incorrecte des types
 6 association incorrecte des modificateurs
-7 (ERREUR INTERNE dans pp_add_type_spec): cas inattendu (%d)
-8 (ERREUR INTERNE dans pp_add_type_adj): cas inattendu (%d)
-9 déclaration %s mal formée
+7 (ERREUR INTERNE dans pp_add_type_spec): cas inattendu (%1$d)
+8 (ERREUR INTERNE dans pp_add_type_adj): cas inattendu (%1$d)
+9 déclaration %1$s mal formée
 
 $set 4
-1 %s
-2 %s: Pas un répertoire\n
-3 %s: racine de l'installation incorrecte?\n
+1 %1$s
+2 %1$s: Pas un répertoire\n
+3 %1$s: racine de l'installation incorrecte?\n
 
 $set 5
 1 ?
 2 s'il vous plaît vérifier l'exactitude de token
-3 La partie USING est interdite pour le curseur statique "%s"
-4 curseur "%s" n'est pas défini
+3 La partie USING est interdite pour le curseur statique "%1$s"
+4 curseur "%1$s" n'est pas défini
 5 pointeur vers un descripteur
 6 pointeur vers une DB_OBJECT
 7 Chaîne de caractères
-8 variable indicatrice pour "%s" est interdite dans ce contexte
-9 "%s" n'est pas déclaré dans la section BEGIN DECLARE
+8 variable indicatrice pour "%1$s" est interdite dans ce contexte
+9 "%1$s" n'est pas déclaré dans la section BEGIN DECLARE
 52 %s (texte était "%s")
 53 Erreur lexicale
 54 Erreur de syntaxe à "%s": manquant %s dans %s
@@ -103,23 +103,23 @@ $set 8
 
 $set 9
 1 (yy_pop_mode) erreur interne: pile des modes vide
-2 "%s" est interdit dans ce contexte
+2 "%1$s" est interdit dans ce contexte
 
 $set 10
 1 erreur interne dans %s: %s\n
 2 dépassement de table
 
 $set 11
-1 variable indicatrice "%s" doit être de type short int
+1 variable indicatrice "%1$s" doit être de type short int
 2 ne peut pas utiliser une variable indicatrice avec une structure
-3 "%s" a une définition incomplète pour la structure
+3 "%1$s" a une définition incomplète pour la structure
 4 "%s" doit être un(e) %s valid(e)
 5 %s n'est pas un type acceptable pour "%s"
-6 Type de variable d'hôte inattendu: %s
+6 Type de variable d'hôte inattendu: %1$s
 7 (pp_addr_expr): tentative de trouver l'adresse de la variable NULL
-8 "%s" n'est pas un pointeur
-9 "%s" ne pointe pas vers une struct
-10 "%s" n'est pas une struct
+8 "%1$s" n'est pas un pointeur
+9 "%1$s" ne pointe pas vers une struct
+10 "%1$s" n'est pas une struct
 11 %s n'a pas le champ "%s"
 12 "%s" ne peut pas être déréférencé par "%s"
 
@@ -129,7 +129,7 @@ $set 12
 $set 13
 1 tableau des fonctions est interdit, en supposant des pointeurs de fonction
 2 (pp_the_same_type) classe de lien inconnu
-3 (pp_get_sizeof): nom incorrect (%d)
+3 (pp_get_sizeof): nom incorrect (%1$d)
 
 $set 14
-1 (ERREUR INTERNE dans %s): cas impossible
+1 (ERREUR INTERNE dans %1$s): cas impossible

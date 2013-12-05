@@ -24,46 +24,46 @@ $ esql.msg
 $
 
 $set 1
-1 Non è un valore di argomento intero "%s"\n
-2 Non un valore a virgola mobile argomento "%s"\n
-3 Argomento mancante %s\n
+1 Non è un valore di argomento intero "%1$s"\n
+2 Non un valore a virgola mobile argomento "%1$s"\n
+3 Argomento mancante %1$s\n
 4 [opzioni] 
 5 Opzioni: \n
-6 Valore dell'argomento mancante per chiave %s\n
-7 Opzione sconosciuta "%s"\n
-8 Argomento posizionale inaspettato "%s"\n
+6 Valore dell'argomento mancante per chiave %1$s\n
+7 Opzione sconosciuta "%1$s"\n
+8 Argomento posizionale inaspettato "%1$s"\n
 
 $set 2
-1 Ridefinizione del cursore "%s"
-2  *\tper istruzione %s\n
+1 Ridefinizione del cursore "%1$s"
+2  *\tper istruzione %1$s\n
 3  *\n * Tabella cursore:\n
 
 $set 3
-1 (ERRORE INTERNO nel set_class_bit): storage class (%d) sbagliato
+1 (ERRORE INTERNO nel set_class_bit): storage class (%1$d) sbagliato
 2 (ERRORE INTERNO nel add_spec_to_decl()): malformed chain (senza identificatore)
 3 storage class identificatore non consentito in questo contesto
 4 illegale combinazione storage class
 5 illegale combinazione tipo
 6 illegale combinazione modifier
-7 (ERRORE INTERNO nel pp_add_type_spec): caso imprevisto (%d)
-8 (ERRORE INTERNO nel pp_add_type_adj): caso imprevisto (%d)
-9 Dichiarazione di %s in formato errato
+7 (ERRORE INTERNO nel pp_add_type_spec): caso imprevisto (%1$d)
+8 (ERRORE INTERNO nel pp_add_type_adj): caso imprevisto (%1$d)
+9 Dichiarazione di %1$s in formato errato
 
 $set 4
-1 %s
-2 %s: Non è una directory\n
-3 %s: Installation root sbagliato?\n
+1 %1$s
+2 %1$s: Non è una directory\n
+3 %1$s: Installation root sbagliato?\n
 
 $set 5
 1 ?
 2 si prega di verificare la correttezza di token
-3 USING parte non consentito per cursore statico "%s"
-4 cursor "%s" non è definito
+3 USING parte non consentito per cursore statico "%1$s"
+4 cursor "%1$s" non è definito
 5 pointer a un descriptor
 6 pointer a un DB_OBJECT
 7 stringa di caratteri
-8 variabile indicatore per "%s" non è consentito in questo contesto
-9 "%s" non dichiarata nella sezione BEGIN DECLARE
+8 variabile indicatore per "%1$s" non è consentito in questo contesto
+9 "%1$s" non dichiarata nella sezione BEGIN DECLARE
 52 %s (testo era "%s")
 53 errore lessicale
 54 errore di sintassi in "%s": manca di %s in %s
@@ -103,23 +103,23 @@ $set 8
 
 $set 9
 1 (yy_pop_mode) errore interno: modalità stack vuoto
-2 "%s" non è consentito in questo contesto
+2 "%1$s" non è consentito in questo contesto
 
 $set 10
 1 errore interno nel %s: %s\n
 2 tabella overflow
 
 $set 11
-1 variabile indicatore "%s" deve essere un short int
+1 variabile indicatore "%1$s" deve essere un short int
 2 non è possibile utilizzare una variabile indicatore con una struttura
-3 "%s" ha incompleta definizione di struttura
+3 "%1$s" ha incompleta definizione di struttura
 4 "%s" deve essere un valido %s
 5 %s non è un tipo accettabile per "%s"
-6 tipo di variabile host imprevisto: %s
+6 tipo di variabile host imprevisto: %1$s
 7 (pp_addr_expr): tentare di trovare l'indirizzo della variabile NULL
-8 "%s" non è un pointer
-9 "%s" non punta a una struttura
-10 "%s" non è una struttura
+8 "%1$s" non è un pointer
+9 "%1$s" non punta a una struttura
+10 "%1$s" non è una struttura
 11 %s non ha alcun campo "%s"
 12 "%s" non può essere dereferenziato da "%s"
 
@@ -129,7 +129,7 @@ $set 12
 $set 13
 1 matrice delle funzioni è illegale, assumendo puntatori a funzione
 2 (pp_the_same_type) sconosciuto link class
-3 (pp_get_sizeof): sostantivo sbagliato (%d)
+3 (pp_get_sizeof): sostantivo sbagliato (%1$d)
 
 $set 14
-1 (ERRORE INTERNO nel %s): caso impossibile
+1 (ERRORE INTERNO nel %1$s): caso impossibile
