@@ -3,7 +3,7 @@
 import sys, os
 import re
 from optparse import OptionParser
-from time import gmtime, strftime
+from time import localtime, strftime
 
 usage = "usage: %prog [options] input_stats_filename[default: - (stdin)] output_csv_filename[default: - (stdout)]"
 parser = OptionParser(usage=usage, version="%prog 1.0")
@@ -62,7 +62,7 @@ while True:
 	if m is None:
 		continue;
 
-	time = strftime("%Y-%m-%d %H:%M:%S", gmtime())
+	time = strftime("%Y-%m-%d %H:%M:%S", localtime())
 	if m.group(2) == 'OFF':
 	  continue
 
