@@ -13,7 +13,6 @@ output_file=
 cubrid_path=
 cubrid_db_path=
 repl_log_path=
-cubrid_charset=
 is_slave=$NO
 
 #################################################################################
@@ -29,7 +28,6 @@ function print_usage()
 	echo "    -c [cubrid_path]"
 	echo "    -d [cubrid_db_path]"
 	echo "    -r [repl_log_path]"
-	echo "    -l [cubrid_charset]"
 	echo "    -s"
 	echo ""
 }
@@ -51,9 +49,6 @@ function check_args()
 	elif [ -z $repl_log_path ]; then
 		print_usage
 		error "Invalid repl_log_path."
-	elif [ -z $cubrid_charset ]; then
-		print_usage
-		error "Invalid cubrid_charset."		
 	fi
 	
 	expect_home=$ha_temp_home/expect
@@ -70,7 +65,6 @@ do
 		"c") cubrid_path="${OPTARG}";;
 		"d") cubrid_db_path="${OPTARG}";;
 		"r") repl_log_path="${OPTARG}";;
-		"l") cubrid_charset="${OPTARG}";;
 		"s") is_slave=$YES;;
 		"?") print_usage;;
 		":") print_usage;;
@@ -92,9 +86,6 @@ if [ ! -d $repl_log_path ]; then
 	else
 		exit 1
 	fi
-fi
-if [ "$CUBRID_CHARSET" != "$cubrid_charset" ]; then
-	exit 1
 fi
 
 echo $(hostname) > $output_file

@@ -33,6 +33,7 @@ current_host=$(uname -n)
 current_state=
 target_state=
 cubrid_user=$(whoami)
+script_version=$(cat ${CURR_DIR}/BUILD_NUMBER)
 now=$(date +"%Y%m%d_%H%M%S")
 
 ha_temp_home=$HOME/.ha
@@ -141,7 +142,7 @@ function ssh_cubrid()
 	if $verbose; then
 		echo "[$cubrid_user@$host]$ $command"
 	fi
-	ssh -t $cubrid_user@$host "export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABASES=$CUBRID_DATABASES; export CUBRID_CHARSET=$CUBRID_CHARSET; $command"
+	ssh -t $cubrid_user@$host "export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABASES=$CUBRID_DATABASES; $command"
 }
 
 function ssh_expect()
@@ -249,6 +250,20 @@ function get_output_from_replica()
 	for replica_host in ${replica_hosts[@]}; do
 		scp_from_expect "$cubrid_user" "$server_password" $output $replica_host $output/$replica_host 
 	done
+}
+
+function check_version()
+{
+	cubrid_version=$(cubrid_rel)
+	cubrid_version=${cubrid_version#*(}
+	cubrid_major=$(echo ${cubrid_version} | cut -d '.' -f 1)
+	cubrid_minor=$(echo ${cubrid_version} | cut -d '.' -f 2)
+	script_major=$(echo ${script_version} | cut -d '.' -f 1)
+	script_minor=$(echo ${script_version} | cut -d '.' -f 2)
+
+	if [ "${cubrid_major}.${cubrid_minor}" != "${script_major}.${script_minor}" ]; then
+		error "This script is not compatible for installed CUBRID."
+	fi
 }
 
 function check_args()
@@ -639,7 +654,6 @@ function check_environment()
 	echo '#   - test $CUBRID == '"$CUBRID"
 	echo '#   - test $CUBRID_DATABASES == '"$CUBRID_DATABASES"
 	echo "#   - test -d $repl_log_home"
-	echo '#   - test $CUBRID_CHARSET == '"$CUBRID_CHARSET"
 	echo "#"
 	echo "################################################################################"
 	get_yesno
@@ -651,10 +665,10 @@ function check_environment()
 	mkdir $env_output
 	for host in $master_host $slave_host ${replica_hosts[@]}; do
 		if [ "$current_host" == "$host" ]; then
-			echo "[$cubrid_user@$current_host]$ sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -l $CUBRID_CHARSET -s"			
-			sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -l $CUBRID_CHARSET -s
+			echo "[$cubrid_user@$current_host]$ sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -s"			
+			sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -s
 		else
-			ssh_expect $cubrid_user "$server_password" "$host" "sh $function_home/ha_check_environment.sh -t $ha_temp_home -o $env_output -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -l $CUBRID_CHARSET"
+			ssh_expect $cubrid_user "$server_password" "$host" "sh $function_home/ha_check_environment.sh -t $ha_temp_home -o $env_output -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home"
 			scp_from_expect $cubrid_user "$server_password" $env_output $host $env_output/$host
 		fi
 	done
@@ -1163,6 +1177,7 @@ function show_complete()
 # main function
 #################################################################################
 clear
+check_version
 check_args
 init_conf
 
