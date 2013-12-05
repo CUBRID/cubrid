@@ -178,8 +178,8 @@ crc32_final (void *context)
   ctx->CRC ^= 0xffffffffL;
   ctx->buf[0] = (ctx->CRC >> 24) & 0xFF;
   ctx->buf[1] = (ctx->CRC >> 16) & 0xFF;
-  ctx->buf[2] = (ctx->CRC >> 8) & 0xFF;
-  ctx->buf[3] = (ctx->CRC) & 0xFF;
+  ctx->buf[2] = (ctx->CRC >>  8) & 0xFF;
+  ctx->buf[3] = (ctx->CRC      ) & 0xFF;
 }
 
 /* CRC32 a'la RFC 1510 */
@@ -196,8 +196,8 @@ crc32rfc1510_final (void *context)
   CRC_CONTEXT *ctx = (CRC_CONTEXT *) context;
   ctx->buf[0] = (ctx->CRC >> 24) & 0xFF;
   ctx->buf[1] = (ctx->CRC >> 16) & 0xFF;
-  ctx->buf[2] = (ctx->CRC >> 8) & 0xFF;
-  ctx->buf[3] = (ctx->CRC) & 0xFF;
+  ctx->buf[2] = (ctx->CRC >>  8) & 0xFF;
+  ctx->buf[3] = (ctx->CRC      ) & 0xFF;
 }
 
 /* CRC24 a'la RFC 2440 */
@@ -253,16 +253,14 @@ crc24rfc2440_write (void *context, const void *inbuf_arg, size_t inlen)
   if (!inbuf)
     return;
 
-  while (inlen--)
-    {
-      ctx->CRC ^= (*inbuf++) << 16;
-      for (i = 0; i < 8; i++)
-	{
-	  ctx->CRC <<= 1;
-	  if (ctx->CRC & 0x1000000)
-	    ctx->CRC ^= CRC24_POLY;
-	}
+  while (inlen--) {
+    ctx->CRC ^= (*inbuf++) << 16;
+    for (i = 0; i < 8; i++) {
+      ctx->CRC <<= 1;
+      if (ctx->CRC & 0x1000000)
+	ctx->CRC ^= CRC24_POLY;
     }
+  }
 }
 
 static void
@@ -270,26 +268,29 @@ crc24rfc2440_final (void *context)
 {
   CRC_CONTEXT *ctx = (CRC_CONTEXT *) context;
   ctx->buf[0] = (ctx->CRC >> 16) & 0xFF;
-  ctx->buf[1] = (ctx->CRC >> 8) & 0xFF;
-  ctx->buf[2] = (ctx->CRC) & 0xFF;
+  ctx->buf[1] = (ctx->CRC >>  8) & 0xFF;
+  ctx->buf[2] = (ctx->CRC      ) & 0xFF;
 }
 
-gcry_md_spec_t _gcry_digest_spec_crc32 = {
-  "CRC32", NULL, 0, NULL, 4,
-  crc32_init, crc32_write, crc32_final, crc32_read,
-  sizeof (CRC_CONTEXT)
-};
+gcry_md_spec_t _gcry_digest_spec_crc32 =
+  {
+    "CRC32", NULL, 0, NULL, 4,
+    crc32_init, crc32_write, crc32_final, crc32_read,
+    sizeof (CRC_CONTEXT)
+  };
 
-gcry_md_spec_t _gcry_digest_spec_crc32_rfc1510 = {
-  "CRC32RFC1510", NULL, 0, NULL, 4,
-  crc32rfc1510_init, crc32_write,
-  crc32rfc1510_final, crc32_read,
-  sizeof (CRC_CONTEXT)
-};
+gcry_md_spec_t _gcry_digest_spec_crc32_rfc1510 =
+  {
+    "CRC32RFC1510", NULL, 0, NULL, 4,
+    crc32rfc1510_init, crc32_write,
+    crc32rfc1510_final, crc32_read,
+    sizeof (CRC_CONTEXT)
+  };
 
-gcry_md_spec_t _gcry_digest_spec_crc24_rfc2440 = {
-  "CRC24RFC2440", NULL, 0, NULL, 3,
-  crc24rfc2440_init, crc24rfc2440_write,
-  crc24rfc2440_final, crc32_read,
-  sizeof (CRC_CONTEXT)
-};
+gcry_md_spec_t _gcry_digest_spec_crc24_rfc2440 =
+  {
+    "CRC24RFC2440", NULL, 0, NULL, 3,
+    crc24rfc2440_init, crc24rfc2440_write,
+    crc24rfc2440_final, crc32_read,
+    sizeof (CRC_CONTEXT)
+  };

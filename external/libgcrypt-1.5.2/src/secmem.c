@@ -106,11 +106,11 @@ ptr_into_pool_p (const void *p)
      C-99 6.5.8 to avoid undefined behaviour.  Using size_t is at
      least only implementation defined.  See also
      http://lists.gnupg.org/pipermail/gcrypt-devel/2007-February/001102.html
-   */
-  size_t p_addr = (size_t) p;
-  size_t pool_addr = (size_t) pool;
+  */
+  size_t p_addr = (size_t)p;
+  size_t pool_addr = (size_t)pool;
 
-  return p_addr >= pool_addr && p_addr < pool_addr + pool_size;
+  return p_addr >= pool_addr && p_addr <  pool_addr+pool_size;
 }
 
 /* Update the stats.  */
@@ -131,13 +131,13 @@ stats_update (size_t add, size_t sub)
 
 /* Return the block following MB or NULL, if MB is the last block.  */
 static memblock_t *
-mb_get_next (memblock_t * mb)
+mb_get_next (memblock_t *mb)
 {
   memblock_t *mb_next;
 
   mb_next = (memblock_t *) ((char *) mb + BLOCK_HEAD_SIZE + mb->size);
 
-  if (!ptr_into_pool_p (mb_next))
+  if (! ptr_into_pool_p (mb_next))
     mb_next = NULL;
 
   return mb_next;
@@ -146,7 +146,7 @@ mb_get_next (memblock_t * mb)
 /* Return the block preceding MB or NULL, if MB is the first
    block.  */
 static memblock_t *
-mb_get_prev (memblock_t * mb)
+mb_get_prev (memblock_t *mb)
 {
   memblock_t *mb_prev, *mb_next;
 
@@ -171,30 +171,30 @@ mb_get_prev (memblock_t * mb)
 /* If the preceding block of MB and/or the following block of MB
    exist and are not active, merge them to form a bigger block.  */
 static void
-mb_merge (memblock_t * mb)
+mb_merge (memblock_t *mb)
 {
   memblock_t *mb_prev, *mb_next;
 
   mb_prev = mb_get_prev (mb);
   mb_next = mb_get_next (mb);
 
-  if (mb_prev && (!(mb_prev->flags & MB_FLAG_ACTIVE)))
+  if (mb_prev && (! (mb_prev->flags & MB_FLAG_ACTIVE)))
     {
       mb_prev->size += BLOCK_HEAD_SIZE + mb->size;
       mb = mb_prev;
     }
-  if (mb_next && (!(mb_next->flags & MB_FLAG_ACTIVE)))
+  if (mb_next && (! (mb_next->flags & MB_FLAG_ACTIVE)))
     mb->size += BLOCK_HEAD_SIZE + mb_next->size;
 }
 
 /* Return a new block, which can hold SIZE bytes.  */
 static memblock_t *
-mb_get_new (memblock_t * block, size_t size)
+mb_get_new (memblock_t *block, size_t size)
 {
   memblock_t *mb, *mb_split;
 
   for (mb = block; ptr_into_pool_p (mb); mb = mb_get_next (mb))
-    if (!(mb->flags & MB_FLAG_ACTIVE) && mb->size >= size)
+    if (! (mb->flags & MB_FLAG_ACTIVE) && mb->size >= size)
       {
 	/* Found a free block.  */
 	mb->flags |= MB_FLAG_ACTIVE;
@@ -203,8 +203,7 @@ mb_get_new (memblock_t * block, size_t size)
 	  {
 	    /* Split block.  */
 
-	    mb_split =
-	      (memblock_t *) (((char *) mb) + BLOCK_HEAD_SIZE + size);
+	    mb_split = (memblock_t *) (((char *) mb) + BLOCK_HEAD_SIZE + size);
 	    mb_split->size = mb->size - size - BLOCK_HEAD_SIZE;
 	    mb_split->flags = 0;
 
@@ -217,7 +216,7 @@ mb_get_new (memblock_t * block, size_t size)
 	break;
       }
 
-  if (!ptr_into_pool_p (mb))
+  if (! ptr_into_pool_p (mb))
     {
       gpg_err_set_errno (ENOMEM);
       mb = NULL;
@@ -250,16 +249,16 @@ lock_pool (void *p, size_t n)
   if (err)
     {
       if (errno != EPERM
-#ifdef EAGAIN			/* OpenBSD returns this */
+#ifdef EAGAIN	/* OpenBSD returns this */
 	  && errno != EAGAIN
 #endif
-#ifdef ENOSYS			/* Some SCOs return this (function not implemented) */
+#ifdef ENOSYS	/* Some SCOs return this (function not implemented) */
 	  && errno != ENOSYS
 #endif
-#ifdef ENOMEM			/* Linux might return this. */
-	  && errno != ENOMEM
+#ifdef ENOMEM  /* Linux might return this. */
+            && errno != ENOMEM
 #endif
-	)
+	  )
 	log_error ("can't lock memory: %s\n", strerror (err));
       show_warning = 1;
       not_locked = 1;
@@ -293,7 +292,7 @@ lock_pool (void *p, size_t n)
     err = errno;
 #endif /* !HAVE_BROKEN_MLOCK */
 
-  if (uid && !geteuid ())
+  if (uid && ! geteuid ())
     {
       /* check that we really dropped the privs.
        * Note: setuid(0) should always fail */
@@ -304,16 +303,16 @@ lock_pool (void *p, size_t n)
   if (err)
     {
       if (errno != EPERM
-#ifdef EAGAIN			/* OpenBSD returns this. */
+#ifdef EAGAIN	/* OpenBSD returns this. */
 	  && errno != EAGAIN
 #endif
-#ifdef ENOSYS			/* Some SCOs return this (function not implemented). */
+#ifdef ENOSYS	/* Some SCOs return this (function not implemented). */
 	  && errno != ENOSYS
 #endif
-#ifdef ENOMEM			/* Linux might return this. */
-	  && errno != ENOMEM
+#ifdef ENOMEM  /* Linux might return this. */
+            && errno != ENOMEM
 #endif
-	)
+	  )
 	log_error ("can't lock memory: %s\n", strerror (err));
       show_warning = 1;
       not_locked = 1;
@@ -324,22 +323,22 @@ lock_pool (void *p, size_t n)
    * not make much sense.  However it is still of use because it
    * wipes out the memory on a free().
    * Therefore it is sufficient to suppress the warning.  */
-  (void) p;
-  (void) n;
+  (void)p;
+  (void)n;
 #elif defined (HAVE_DOSISH_SYSTEM) || defined (__CYGWIN__)
-  /* It does not make sense to print such a warning, given the fact that
-   * this whole Windows !@#$% and their user base are inherently insecure. */
-  (void) p;
-  (void) n;
+    /* It does not make sense to print such a warning, given the fact that
+     * this whole Windows !@#$% and their user base are inherently insecure. */
+  (void)p;
+  (void)n;
 #elif defined (__riscos__)
-  /* No virtual memory on RISC OS, so no pages are swapped to disc,
-   * besides we don't have mmap, so we don't use it! ;-)
-   * But don't complain, as explained above.  */
-  (void) p;
-  (void) n;
+    /* No virtual memory on RISC OS, so no pages are swapped to disc,
+     * besides we don't have mmap, so we don't use it! ;-)
+     * But don't complain, as explained above.  */
+  (void)p;
+  (void)n;
 #else
-  (void) p;
-  (void) n;
+  (void)p;
+  (void)n;
   log_info ("Please note that you don't have secure memory on this system\n");
 #endif
 }
@@ -364,8 +363,7 @@ init_pool (size_t n)
 #else
   pgsize_val = -1;
 #endif
-  pgsize = (pgsize_val != -1
-	    && pgsize_val > 0) ? pgsize_val : DEFAULT_PAGE_SIZE;
+  pgsize = (pgsize_val != -1 && pgsize_val > 0)? pgsize_val:DEFAULT_PAGE_SIZE;
 
 
 #if HAVE_MMAP
@@ -385,9 +383,8 @@ init_pool (size_t n)
       }
     else
       {
-	pool =
-	  mmap (0, pool_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
-	close (fd);
+	pool = mmap (0, pool_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+        close (fd);
       }
   }
 #endif
@@ -482,7 +479,7 @@ secmem_init (size_t n)
     {
       if (n < MINIMUM_POOL_SIZE)
 	n = MINIMUM_POOL_SIZE;
-      if (!pool_okay)
+      if (! pool_okay)
 	{
 	  init_pool (n);
 	  lock_pool (pool, n);
@@ -519,12 +516,12 @@ _gcry_secmem_malloc_internal (size_t size)
       /* Try to initialize the pool if the user forgot about it.  */
       secmem_init (STANDARD_POOL_SIZE);
       if (!pool_okay)
-	{
-	  log_info (_("operation is not possible without "
-		      "initialized secure memory\n"));
-	  gpg_err_set_errno (ENOMEM);
-	  return NULL;
-	}
+        {
+          log_info (_("operation is not possible without "
+                      "initialized secure memory\n"));
+          gpg_err_set_errno (ENOMEM);
+          return NULL;
+        }
     }
   if (not_locked && fips_mode ())
     {
@@ -610,8 +607,7 @@ _gcry_secmem_realloc (void *p, size_t newsize)
 
   SECMEM_LOCK;
 
-  mb =
-    (memblock_t *) ((char *) p - ((size_t) & ((memblock_t *) 0)->aligned.c));
+  mb = (memblock_t *) ((char *) p - ((size_t) &((memblock_t *) 0)->aligned.c));
   size = mb->size;
   if (newsize < size)
     {
@@ -678,9 +674,9 @@ _gcry_secmem_dump_stats ()
 #if 1
   SECMEM_LOCK;
 
-  if (pool_okay)
+ if (pool_okay)
     log_info ("secmem usage: %u/%lu bytes in %u blocks\n",
-	      cur_alloced, (unsigned long) pool_size, cur_blocks);
+	      cur_alloced, (unsigned long)pool_size, cur_blocks);
   SECMEM_UNLOCK;
 #else
   memblock_t *mb;
@@ -689,9 +685,12 @@ _gcry_secmem_dump_stats ()
   SECMEM_LOCK;
 
   for (i = 0, mb = (memblock_t *) pool;
-       ptr_into_pool_p (mb); mb = mb_get_next (mb), i++)
+       ptr_into_pool_p (mb);
+       mb = mb_get_next (mb), i++)
     log_info ("SECMEM: [%s] block: %i; size: %i\n",
-	      (mb->flags & MB_FLAG_ACTIVE) ? "used" : "free", i, mb->size);
+	      (mb->flags & MB_FLAG_ACTIVE) ? "used" : "free",
+	      i,
+	      mb->size);
   SECMEM_UNLOCK;
 #endif
 }

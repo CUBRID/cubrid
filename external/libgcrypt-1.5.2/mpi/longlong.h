@@ -553,7 +553,7 @@ extern USItype __udiv_qrnnd ();
 	     : "r" ((USItype)(x)));                                     \
     (count) = __cbtmp ^ 31;						\
   } while (0)
-#define COUNT_LEADING_ZEROS_0 (-32)	/* sic */
+#define COUNT_LEADING_ZEROS_0 (-32) /* sic */
 #if defined (__i960mx)		/* what is the proper symbol to test??? */
 #define rshift_rhlc(r,h,l,c) \
   do {									\
@@ -683,7 +683,7 @@ extern USItype __udiv_qrnnd ();
 	     : "r" ((USItype)(x)));                                     \
     (count) = __cbtmp ^ 31;						\
   } while (0)
-#define COUNT_LEADING_ZEROS_0 63	/* sic */
+#define COUNT_LEADING_ZEROS_0 63 /* sic */
 #if defined (__m88110__)
 #define umul_ppmm(wh, wl, u, v) \
   do {									\
@@ -810,10 +810,11 @@ typedef unsigned int UTItype __attribute__ ((mode (TI)));
   (r) = __xx.__i.__l; (q) = __xx.__i.__h; })
 #define count_trailing_zeros(count,x) \
   do {
-__asm__ ("ffsd      %2,%0": "=r" ((USItype) (count)):"0" ((USItype) 0),
-	 "r" ((USItype)
-	      (x)));
-} while (0)
+    __asm__ ("ffsd      %2,%0"                                          \
+	     : "=r" ((USItype) (count))                                 \
+	     : "0" ((USItype) 0),                                       \
+	       "r" ((USItype) (x)));                                    \
+  } while (0)
 #endif /* __ns32000__ */
 
 
@@ -938,12 +939,12 @@ __asm__ ("ffsd      %2,%0": "=r" ((USItype) (count)):"0" ((USItype) 0),
 	   : "r" ((SItype)(nh)), "1" ((SItype)(nl)), "r" ((SItype)(d)))
 #define UDIV_TIME 100
 #endif
-#endif /* Power architecture variants.  */
+#endif /* Power architecture variants.	*/
 
 /* Powerpc 64 bit support taken from gmp-4.1.2. */
 /* We should test _IBMR2 here when we add assembly support for the system
    vendor compilers.  */
-#if 0				/* Not yet enabled because we don't have hardware for a test. */
+#if 0 /* Not yet enabled because we don't have hardware for a test. */
 #if (defined (_ARCH_PPC) || defined (__powerpc__)) && W_TYPE_SIZE == 64
 #define add_ssaaaa(sh, sl, ah, al, bh, bl) \
   do {									\
@@ -993,8 +994,8 @@ __asm__ ("ffsd      %2,%0": "=r" ((USItype) (count)):"0" ((USItype) 0),
     __asm__ ("mulhd %0,%1,%2" : "=r" (ph) : "%r" (m0), "r" (m1));	\
     (pl) = __m0 * __m1;							\
   } while (0)
-#define SMUL_TIME 14		/* ??? */
-#define UDIV_TIME 120		/* ??? */
+#define SMUL_TIME 14  /* ??? */
+#define UDIV_TIME 120 /* ??? */
 #endif /* 64-bit PowerPC.  */
 #endif /* if 0 */
 
@@ -1161,7 +1162,7 @@ __asm__ ("ffsd      %2,%0": "=r" ((USItype) (count)):"0" ((USItype) 0),
 	   : "r" ((USItype)(u)),                                        \
 	     "r" ((USItype)(v)))
 #define UMUL_TIME 5
-#ifndef SUPERSPARC		/* SuperSPARC's udiv only handles 53 bit dividends */
+#ifndef SUPERSPARC	/* SuperSPARC's udiv only handles 53 bit dividends */
 #define udiv_qrnnd(q, r, n1, n0, d) \
   do {									\
     USItype __q;							\
@@ -1299,7 +1300,7 @@ __asm__ ("ffsd      %2,%0": "=r" ((USItype) (count)):"0" ((USItype) 0),
     (q) = __udiv_qrnnd (&__r, (n1), (n0), (d)); 			\
     (r) = __r;								\
   } while (0)
-  extern USItype __udiv_qrnnd ();
+extern USItype __udiv_qrnnd ();
 #define UDIV_TIME 140
 #endif /* LONGLONG_STANDALONE */
 #endif /* udiv_qrnnd */
@@ -1532,7 +1533,7 @@ __asm__ ("ffsd      %2,%0": "=r" ((USItype) (count)):"0" ((USItype) 0),
 #if !defined (count_leading_zeros)
 extern
 #ifdef __STDC__
-  const
+const
 #endif
 unsigned char _gcry_clz_tab[];
 #define MPI_INTERNAL_NEED_CLZ_TAB 1

@@ -29,23 +29,17 @@
 #ifdef __STDC__
 const
 #endif
-unsigned char _gcry_clz_tab[] = {
-  0, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-  5, 5, 5, 5, 5, 5, 5,
-  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-  6, 6, 6, 6, 6, 6, 6,
-  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-  7, 7, 7, 7, 7, 7, 7,
-  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-  7, 7, 7, 7, 7, 7, 7,
-  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
-  8, 8, 8, 8, 8, 8, 8,
-  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
-  8, 8, 8, 8, 8, 8, 8,
-  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
-  8, 8, 8, 8, 8, 8, 8,
-  8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
-  8, 8, 8, 8, 8, 8, 8,
+unsigned char
+_gcry_clz_tab[] =
+{
+  0,1,2,2,3,3,3,3,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,
+  6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
+  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
+  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
+  8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,
+  8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,
+  8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,
+  8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,
 };
 #endif
 
@@ -58,13 +52,13 @@ unsigned char _gcry_clz_tab[] = {
  * this is for some reasons not good, so this function removes them.
  */
 void
-_gcry_mpi_normalize (gcry_mpi_t a)
+_gcry_mpi_normalize( gcry_mpi_t a )
 {
-  if (mpi_is_opaque (a))
-    return;
+    if( mpi_is_opaque(a) )
+	return;
 
-  for (; a->nlimbs && !a->d[a->nlimbs - 1]; a->nlimbs--)
-    ;
+    for( ; a->nlimbs && !a->d[a->nlimbs-1]; a->nlimbs-- )
+	;
 }
 
 
@@ -73,28 +67,26 @@ _gcry_mpi_normalize (gcry_mpi_t a)
  * Return the number of bits in A.
  */
 unsigned int
-gcry_mpi_get_nbits (gcry_mpi_t a)
+gcry_mpi_get_nbits( gcry_mpi_t a )
 {
-  unsigned n;
+    unsigned n;
 
-  if (mpi_is_opaque (a))
-    {
-      return a->sign;		/* which holds the number of bits */
+    if( mpi_is_opaque(a) ) {
+	return a->sign; /* which holds the number of bits */
     }
 
-  _gcry_mpi_normalize (a);
-  if (a->nlimbs)
-    {
-      mpi_limb_t alimb = a->d[a->nlimbs - 1];
-      if (alimb)
-	count_leading_zeros (n, alimb);
-      else
-	n = BITS_PER_MPI_LIMB;
-      n = BITS_PER_MPI_LIMB - n + (a->nlimbs - 1) * BITS_PER_MPI_LIMB;
+    _gcry_mpi_normalize( a );
+    if( a->nlimbs ) {
+	mpi_limb_t alimb = a->d[a->nlimbs-1];
+	if( alimb )
+	    count_leading_zeros( n, alimb );
+	else
+	    n = BITS_PER_MPI_LIMB;
+	n = BITS_PER_MPI_LIMB - n + (a->nlimbs-1) * BITS_PER_MPI_LIMB;
     }
-  else
-    n = 0;
-  return n;
+    else
+	n = 0;
+    return n;
 }
 
 
@@ -102,18 +94,18 @@ gcry_mpi_get_nbits (gcry_mpi_t a)
  * Test whether bit N is set.
  */
 int
-gcry_mpi_test_bit (gcry_mpi_t a, unsigned int n)
+gcry_mpi_test_bit( gcry_mpi_t a, unsigned int n )
 {
-  unsigned int limbno, bitno;
-  mpi_limb_t limb;
+    unsigned int limbno, bitno;
+    mpi_limb_t limb;
 
-  limbno = n / BITS_PER_MPI_LIMB;
-  bitno = n % BITS_PER_MPI_LIMB;
+    limbno = n / BITS_PER_MPI_LIMB;
+    bitno  = n % BITS_PER_MPI_LIMB;
 
-  if (limbno >= a->nlimbs)
-    return 0;			/* too far left: this is a 0 */
-  limb = a->d[limbno];
-  return (limb & (A_LIMB_1 << bitno)) ? 1 : 0;
+    if( limbno >= a->nlimbs )
+	return 0; /* too far left: this is a 0 */
+    limb = a->d[limbno];
+    return (limb & (A_LIMB_1 << bitno))? 1: 0;
 }
 
 
@@ -121,77 +113,77 @@ gcry_mpi_test_bit (gcry_mpi_t a, unsigned int n)
  * Set bit N of A.
  */
 void
-gcry_mpi_set_bit (gcry_mpi_t a, unsigned int n)
+gcry_mpi_set_bit( gcry_mpi_t a, unsigned int n )
 {
   unsigned int limbno, bitno;
 
   limbno = n / BITS_PER_MPI_LIMB;
-  bitno = n % BITS_PER_MPI_LIMB;
+  bitno  = n % BITS_PER_MPI_LIMB;
 
-  if (limbno >= a->nlimbs)
+  if ( limbno >= a->nlimbs )
     {
-      mpi_resize (a, limbno + 1);
-      a->nlimbs = limbno + 1;
+      mpi_resize (a, limbno+1 );
+      a->nlimbs = limbno+1;
     }
-  a->d[limbno] |= (A_LIMB_1 << bitno);
+  a->d[limbno] |= (A_LIMB_1<<bitno);
 }
 
 /****************
  * Set bit N of A. and clear all bits above
  */
 void
-gcry_mpi_set_highbit (gcry_mpi_t a, unsigned int n)
+gcry_mpi_set_highbit( gcry_mpi_t a, unsigned int n )
 {
   unsigned int limbno, bitno;
 
   limbno = n / BITS_PER_MPI_LIMB;
-  bitno = n % BITS_PER_MPI_LIMB;
+  bitno  = n % BITS_PER_MPI_LIMB;
 
-  if (limbno >= a->nlimbs)
+  if ( limbno >= a->nlimbs )
     {
-      mpi_resize (a, limbno + 1);
-      a->nlimbs = limbno + 1;
+      mpi_resize (a, limbno+1 );
+      a->nlimbs = limbno+1;
     }
-  a->d[limbno] |= (A_LIMB_1 << bitno);
-  for (bitno++; bitno < BITS_PER_MPI_LIMB; bitno++)
+  a->d[limbno] |= (A_LIMB_1<<bitno);
+  for ( bitno++; bitno < BITS_PER_MPI_LIMB; bitno++ )
     a->d[limbno] &= ~(A_LIMB_1 << bitno);
-  a->nlimbs = limbno + 1;
+  a->nlimbs = limbno+1;
 }
 
 /****************
  * clear bit N of A and all bits above
  */
 void
-gcry_mpi_clear_highbit (gcry_mpi_t a, unsigned int n)
+gcry_mpi_clear_highbit( gcry_mpi_t a, unsigned int n )
 {
-  unsigned int limbno, bitno;
+    unsigned int limbno, bitno;
 
-  limbno = n / BITS_PER_MPI_LIMB;
-  bitno = n % BITS_PER_MPI_LIMB;
+    limbno = n / BITS_PER_MPI_LIMB;
+    bitno  = n % BITS_PER_MPI_LIMB;
 
-  if (limbno >= a->nlimbs)
-    return;			/* not allocated, therefore no need to clear bits
-				   :-) */
+    if( limbno >= a->nlimbs )
+	return; /* not allocated, therefore no need to clear bits
+		   :-) */
 
-  for (; bitno < BITS_PER_MPI_LIMB; bitno++)
-    a->d[limbno] &= ~(A_LIMB_1 << bitno);
-  a->nlimbs = limbno + 1;
+    for( ; bitno < BITS_PER_MPI_LIMB; bitno++ )
+	a->d[limbno] &= ~(A_LIMB_1 << bitno);
+    a->nlimbs = limbno+1;
 }
 
 /****************
  * Clear bit N of A.
  */
 void
-gcry_mpi_clear_bit (gcry_mpi_t a, unsigned int n)
+gcry_mpi_clear_bit( gcry_mpi_t a, unsigned int n )
 {
-  unsigned int limbno, bitno;
+    unsigned int limbno, bitno;
 
-  limbno = n / BITS_PER_MPI_LIMB;
-  bitno = n % BITS_PER_MPI_LIMB;
+    limbno = n / BITS_PER_MPI_LIMB;
+    bitno  = n % BITS_PER_MPI_LIMB;
 
-  if (limbno >= a->nlimbs)
-    return;			/* don't need to clear this bit, it's to far to left */
-  a->d[limbno] &= ~(A_LIMB_1 << bitno);
+    if( limbno >= a->nlimbs )
+	return; /* don't need to clear this bit, it's to far to left */
+    a->d[limbno] &= ~(A_LIMB_1 << bitno);
 }
 
 
@@ -200,22 +192,21 @@ gcry_mpi_clear_bit (gcry_mpi_t a, unsigned int n)
  * This is used only within the MPI library
  */
 void
-_gcry_mpi_rshift_limbs (gcry_mpi_t a, unsigned int count)
+_gcry_mpi_rshift_limbs( gcry_mpi_t a, unsigned int count )
 {
-  mpi_ptr_t ap = a->d;
-  mpi_size_t n = a->nlimbs;
-  unsigned int i;
+    mpi_ptr_t ap = a->d;
+    mpi_size_t n = a->nlimbs;
+    unsigned int i;
 
-  if (count >= n)
-    {
-      a->nlimbs = 0;
-      return;
+    if( count >= n ) {
+	a->nlimbs = 0;
+	return;
     }
 
-  for (i = 0; i < n - count; i++)
-    ap[i] = ap[i + count];
-  ap[i] = 0;
-  a->nlimbs -= count;
+    for( i = 0; i < n - count; i++ )
+	ap[i] = ap[i+count];
+    ap[i] = 0;
+    a->nlimbs -= count;
 }
 
 
@@ -223,60 +214,60 @@ _gcry_mpi_rshift_limbs (gcry_mpi_t a, unsigned int count)
  * Shift A by N bits to the right.
  */
 void
-gcry_mpi_rshift (gcry_mpi_t x, gcry_mpi_t a, unsigned int n)
+gcry_mpi_rshift ( gcry_mpi_t x, gcry_mpi_t a, unsigned int n )
 {
   mpi_size_t xsize;
   unsigned int i;
-  unsigned int nlimbs = (n / BITS_PER_MPI_LIMB);
-  unsigned int nbits = (n % BITS_PER_MPI_LIMB);
+  unsigned int nlimbs = (n/BITS_PER_MPI_LIMB);
+  unsigned int nbits = (n%BITS_PER_MPI_LIMB);
 
-  if (x == a)
+  if ( x == a )
     {
       /* In-place operation.  */
-      if (nlimbs >= x->nlimbs)
-	{
-	  x->nlimbs = 0;
-	  return;
-	}
+      if ( nlimbs >= x->nlimbs )
+        {
+          x->nlimbs = 0;
+          return;
+        }
 
       if (nlimbs)
-	{
-	  for (i = 0; i < x->nlimbs - nlimbs; i++)
-	    x->d[i] = x->d[i + nlimbs];
-	  x->d[i] = 0;
-	  x->nlimbs -= nlimbs;
+        {
+          for (i=0; i < x->nlimbs - nlimbs; i++ )
+            x->d[i] = x->d[i+nlimbs];
+          x->d[i] = 0;
+          x->nlimbs -= nlimbs;
 
-	}
-      if (x->nlimbs && nbits)
-	_gcry_mpih_rshift (x->d, x->d, x->nlimbs, nbits);
+        }
+      if ( x->nlimbs && nbits )
+        _gcry_mpih_rshift ( x->d, x->d, x->nlimbs, nbits );
     }
-  else if (nlimbs)
+  else if ( nlimbs )
     {
       /* Copy and shift by more or equal bits than in a limb. */
       xsize = a->nlimbs;
       x->sign = a->sign;
       RESIZE_IF_NEEDED (x, xsize);
       x->nlimbs = xsize;
-      for (i = 0; i < a->nlimbs; i++)
-	x->d[i] = a->d[i];
+      for (i=0; i < a->nlimbs; i++ )
+        x->d[i] = a->d[i];
       x->nlimbs = i;
 
-      if (nlimbs >= x->nlimbs)
-	{
-	  x->nlimbs = 0;
-	  return;
-	}
+      if ( nlimbs >= x->nlimbs )
+        {
+          x->nlimbs = 0;
+          return;
+        }
 
       if (nlimbs)
-	{
-	  for (i = 0; i < x->nlimbs - nlimbs; i++)
-	    x->d[i] = x->d[i + nlimbs];
-	  x->d[i] = 0;
-	  x->nlimbs -= nlimbs;
-	}
+        {
+          for (i=0; i < x->nlimbs - nlimbs; i++ )
+            x->d[i] = x->d[i+nlimbs];
+          x->d[i] = 0;
+          x->nlimbs -= nlimbs;
+        }
 
-      if (x->nlimbs && nbits)
-	_gcry_mpih_rshift (x->d, x->d, x->nlimbs, nbits);
+      if ( x->nlimbs && nbits )
+        _gcry_mpih_rshift ( x->d, x->d, x->nlimbs, nbits );
     }
   else
     {
@@ -286,18 +277,18 @@ gcry_mpi_rshift (gcry_mpi_t x, gcry_mpi_t a, unsigned int n)
       RESIZE_IF_NEEDED (x, xsize);
       x->nlimbs = xsize;
 
-      if (xsize)
-	{
-	  if (nbits)
-	    _gcry_mpih_rshift (x->d, a->d, x->nlimbs, nbits);
-	  else
-	    {
-	      /* The rshift helper function is not specified for
-	         NBITS==0, thus we do a plain copy here. */
-	      for (i = 0; i < x->nlimbs; i++)
-		x->d[i] = a->d[i];
-	    }
-	}
+      if ( xsize )
+        {
+          if (nbits )
+            _gcry_mpih_rshift (x->d, a->d, x->nlimbs, nbits );
+          else
+            {
+              /* The rshift helper function is not specified for
+                 NBITS==0, thus we do a plain copy here. */
+              for (i=0; i < x->nlimbs; i++ )
+                x->d[i] = a->d[i];
+            }
+        }
     }
   MPN_NORMALIZE (x->d, x->nlimbs);
 }
@@ -317,12 +308,12 @@ _gcry_mpi_lshift_limbs (gcry_mpi_t a, unsigned int count)
   if (!count || !n)
     return;
 
-  RESIZE_IF_NEEDED (a, n + count);
+  RESIZE_IF_NEEDED (a, n+count);
 
   ap = a->d;
-  for (i = n - 1; i >= 0; i--)
-    ap[i + count] = ap[i];
-  for (i = 0; i < count; i++)
+  for (i = n-1; i >= 0; i--)
+    ap[i+count] = ap[i];
+  for (i=0; i < count; i++ )
     ap[i] = 0;
   a->nlimbs += count;
 }
@@ -332,22 +323,22 @@ _gcry_mpi_lshift_limbs (gcry_mpi_t a, unsigned int count)
  * Shift A by N bits to the left.
  */
 void
-gcry_mpi_lshift (gcry_mpi_t x, gcry_mpi_t a, unsigned int n)
+gcry_mpi_lshift ( gcry_mpi_t x, gcry_mpi_t a, unsigned int n )
 {
-  unsigned int nlimbs = (n / BITS_PER_MPI_LIMB);
-  unsigned int nbits = (n % BITS_PER_MPI_LIMB);
+  unsigned int nlimbs = (n/BITS_PER_MPI_LIMB);
+  unsigned int nbits = (n%BITS_PER_MPI_LIMB);
 
   if (x == a && !n)
-    return;			/* In-place shift with an amount of zero.  */
+    return;  /* In-place shift with an amount of zero.  */
 
-  if (x != a)
+  if ( x != a )
     {
       /* Copy A to X.  */
       unsigned int alimbs = a->nlimbs;
-      int asign = a->sign;
+      int asign  = a->sign;
       mpi_ptr_t xp, ap;
 
-      RESIZE_IF_NEEDED (x, alimbs + nlimbs + 1);
+      RESIZE_IF_NEEDED (x, alimbs+nlimbs+1);
       xp = x->d;
       ap = a->d;
       MPN_COPY (xp, ap, alimbs);
@@ -365,7 +356,7 @@ gcry_mpi_lshift (gcry_mpi_t x, gcry_mpi_t a, unsigned int n)
     {
       /* We use a very dump approach: Shift left by the number of
          limbs plus one and than fix it up by an rshift.  */
-      _gcry_mpi_lshift_limbs (x, nlimbs + 1);
+      _gcry_mpi_lshift_limbs (x, nlimbs+1);
       gcry_mpi_rshift (x, x, BITS_PER_MPI_LIMB - nbits);
     }
 

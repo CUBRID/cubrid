@@ -104,8 +104,8 @@
  * ERROR_MORE_DATA.  The following values define the initial buffer size and
  * step size by which the buffer is increased
  */
-#define PERFORMANCE_BUFFER_SIZE         65536	/* Start at 64K */
-#define PERFORMANCE_BUFFER_STEP         16384	/* Step by 16K */
+#define PERFORMANCE_BUFFER_SIZE         65536   /* Start at 64K */
+#define PERFORMANCE_BUFFER_STEP         16384   /* Step by 16K */
 
 
 /* The number of bytes to read from the system RNG on each slow poll.  */
@@ -119,39 +119,34 @@
 
 
 /* Type definitions for function pointers to call NetAPI32 functions.  */
-typedef DWORD (WINAPI * NETSTATISTICSGET) (LPWSTR szServer, LPWSTR szService,
-					   DWORD dwLevel, DWORD dwOptions,
-					   LPBYTE * lpBuffer);
-typedef DWORD (WINAPI * NETAPIBUFFERSIZE) (LPVOID lpBuffer, LPDWORD cbBuffer);
-typedef DWORD (WINAPI * NETAPIBUFFERFREE) (LPVOID lpBuffer);
+typedef DWORD (WINAPI *NETSTATISTICSGET)(LPWSTR szServer, LPWSTR szService,
+                                         DWORD dwLevel, DWORD dwOptions,
+                                         LPBYTE *lpBuffer);
+typedef DWORD (WINAPI *NETAPIBUFFERSIZE)(LPVOID lpBuffer, LPDWORD cbBuffer);
+typedef DWORD (WINAPI *NETAPIBUFFERFREE)(LPVOID lpBuffer);
 
 /* Type definitions for function pointers to call native NT functions.  */
-typedef DWORD (WINAPI *
-	       NTQUERYSYSTEMINFORMATION) (DWORD systemInformationClass,
-					  PVOID systemInformation,
-					  ULONG systemInformationLength,
-					  PULONG returnLength);
-typedef DWORD (WINAPI * NTQUERYINFORMATIONPROCESS) (HANDLE processHandle,
-						    DWORD
-						    processInformationClass,
-						    PVOID processInformation,
-						    ULONG
-						    processInformationLength,
-						    PULONG returnLength);
-typedef DWORD (WINAPI * NTPOWERINFORMATION) (DWORD powerInformationClass,
-					     PVOID inputBuffer,
-					     ULONG inputBufferLength,
-					     PVOID outputBuffer,
-					     ULONG outputBufferLength);
+typedef DWORD (WINAPI *NTQUERYSYSTEMINFORMATION)(DWORD systemInformationClass,
+                                                 PVOID systemInformation,
+                                                 ULONG systemInformationLength,
+                                                 PULONG returnLength);
+typedef DWORD (WINAPI *NTQUERYINFORMATIONPROCESS)
+     (HANDLE processHandle, DWORD processInformationClass,
+      PVOID processInformation, ULONG processInformationLength,
+      PULONG returnLength);
+typedef DWORD (WINAPI *NTPOWERINFORMATION)
+     (DWORD powerInformationClass, PVOID inputBuffer,
+      ULONG inputBufferLength, PVOID outputBuffer, ULONG outputBufferLength );
 
 /* Type definitions for function pointers to call CryptoAPI functions. */
-typedef BOOL (WINAPI * CRYPTACQUIRECONTEXT) (HCRYPTPROV * phProv,
-					     LPCTSTR pszContainer,
-					     LPCTSTR pszProvider,
-					     DWORD dwProvType, DWORD dwFlags);
-typedef BOOL (WINAPI * CRYPTGENRANDOM) (HCRYPTPROV hProv, DWORD dwLen,
-					BYTE * pbBuffer);
-typedef BOOL (WINAPI * CRYPTRELEASECONTEXT) (HCRYPTPROV hProv, DWORD dwFlags);
+typedef BOOL (WINAPI *CRYPTACQUIRECONTEXT)(HCRYPTPROV *phProv,
+                                           LPCTSTR pszContainer,
+                                           LPCTSTR pszProvider,
+                                           DWORD dwProvType,
+                                           DWORD dwFlags);
+typedef BOOL (WINAPI *CRYPTGENRANDOM)(HCRYPTPROV hProv, DWORD dwLen,
+                                      BYTE *pbBuffer);
+typedef BOOL (WINAPI *CRYPTRELEASECONTEXT)(HCRYPTPROV hProv, DWORD dwFlags);
 
 /* Somewhat alternative functionality available as a direct call, for
    Windows XP and newer.  This is the CryptoAPI RNG, which isn't anywhere
@@ -161,8 +156,8 @@ typedef BOOL (WINAPI * CRYPTRELEASECONTEXT) (HCRYPTPROV hProv, DWORD dwFlags);
    the more general CryptoAPI one since the main purpose of using it is to
    take advantage of any possible future hardware RNGs that may be added,
    for example via TCPA devices.  */
-typedef BOOL (WINAPI * RTLGENRANDOM) (PVOID RandomBuffer,
-				      ULONG RandomBufferLength);
+typedef BOOL (WINAPI *RTLGENRANDOM)(PVOID RandomBuffer,
+                                    ULONG RandomBufferLength);
 
 
 
@@ -174,53 +169,53 @@ typedef BOOL (WINAPI * RTLGENRANDOM) (PVOID RandomBuffer,
 
 typedef struct
 {
-  SensorType iType;		/* Type of sensor.  */
-  int Count;			/* Number of sensor for that type.  */
+  SensorType iType;               /* Type of sensor.  */
+  int Count;                      /* Number of sensor for that type.  */
 } SharedIndex;
 
 typedef struct
 {
-  SensorType ssType;		/* Type of sensor */
-  unsigned char ssName[12];	/* Name of sensor */
-  char sspadding1[3];		/* Padding of 3 bytes */
-  double ssCurrent;		/* Current value */
-  double ssLow;			/* Lowest readout */
-  double ssHigh;		/* Highest readout */
-  long ssCount;			/* Total number of readout */
-  char sspadding2[4];		/* Padding of 4 bytes */
-  long double ssTotal;		/* Total amout of all readouts */
-  char sspadding3[6];		/* Padding of 6 bytes */
-  double ssAlarm1;		/* Temp & fan: high alarm; voltage: % off */
-  double ssAlarm2;		/* Temp: low alarm */
+  SensorType ssType;              /* Type of sensor */
+  unsigned char ssName[12];       /* Name of sensor */
+  char sspadding1[3];             /* Padding of 3 bytes */
+  double ssCurrent;               /* Current value */
+  double ssLow;                   /* Lowest readout */
+  double ssHigh;                  /* Highest readout */
+  long ssCount;                   /* Total number of readout */
+  char sspadding2[4];             /* Padding of 4 bytes */
+  long double ssTotal;            /* Total amout of all readouts */
+  char sspadding3[6];             /* Padding of 6 bytes */
+  double ssAlarm1;                /* Temp & fan: high alarm; voltage: % off */
+  double ssAlarm2;                /* Temp: low alarm */
 } SharedSensor;
 
 typedef struct
 {
-  short siSMB_Base;		/* SMBus base address */
-  BusType siSMB_Type;		/* SMBus/Isa bus used to access chip */
-  SMBType siSMB_Code;		/* SMBus sub type, Intel, AMD or ALi */
-  char siSMB_Addr;		/* Address of sensor chip on SMBus */
-  unsigned char siSMB_Name[41];	/* Nice name for SMBus */
-  short siISA_Base;		/* ISA base address of sensor chip on ISA */
-  int siChipType;		/* Chip nr, connects with Chipinfo.ini */
-  char siVoltageSubType;	/* Subvoltage option selected */
+  short siSMB_Base;               /* SMBus base address */
+  BusType siSMB_Type;             /* SMBus/Isa bus used to access chip */
+  SMBType siSMB_Code;             /* SMBus sub type, Intel, AMD or ALi */
+  char siSMB_Addr;                /* Address of sensor chip on SMBus */
+  unsigned char siSMB_Name[41];   /* Nice name for SMBus */
+  short siISA_Base;               /* ISA base address of sensor chip on ISA */
+  int siChipType;                 /* Chip nr, connects with Chipinfo.ini */
+  char siVoltageSubType;          /* Subvoltage option selected */
 } SharedInfo;
 
 typedef struct
 {
-  double sdVersion;		/* Version number (example: 51090) */
-  SharedIndex sdIndex[10];	/* Sensor index */
-  SharedSensor sdSensor[100];	/* Sensor info */
-  SharedInfo sdInfo;		/* Misc.info */
-  unsigned char sdStart[41];	/* Start time */
+  double sdVersion;               /* Version number (example: 51090) */
+  SharedIndex sdIndex[10];        /* Sensor index */
+  SharedSensor sdSensor[100];     /* Sensor info */
+  SharedInfo sdInfo;              /* Misc.info */
+  unsigned char sdStart[41];      /* Start time */
 
   /* We don't use the next two fields both because they're not random
      and because it provides a nice safety margin in case of data size
      mis- estimates (we always under-estimate the buffer size).  */
 #if 0
-  unsigned char sdCurrent[41];	/* Current time */
-  unsigned char sdPath[256];	/* MBM path */
-#endif				/*0 */
+  unsigned char sdCurrent[41];    /* Current time */
+  unsigned char sdPath[256];      /* MBM path */
+#endif /*0*/
 } SharedData;
 
 
@@ -234,28 +229,28 @@ static NETAPIBUFFERSIZE pNetApiBufferSize;
 static NETAPIBUFFERFREE pNetApiBufferFree;
 
 static HANDLE hNTAPI;
-static NTQUERYSYSTEMINFORMATION pNtQuerySystemInformation;
+static NTQUERYSYSTEMINFORMATION  pNtQuerySystemInformation;
 static NTQUERYINFORMATIONPROCESS pNtQueryInformationProcess;
-static NTPOWERINFORMATION pNtPowerInformation;
+static NTPOWERINFORMATION        pNtPowerInformation;
 
 static HANDLE hAdvAPI32;
 static CRYPTACQUIRECONTEXT pCryptAcquireContext;
-static CRYPTGENRANDOM pCryptGenRandom;
+static CRYPTGENRANDOM      pCryptGenRandom;
 static CRYPTRELEASECONTEXT pCryptReleaseContext;
-static RTLGENRANDOM pRtlGenRandom;
+static RTLGENRANDOM        pRtlGenRandom;
 
 
 /* Other module global variables.  */
-static int system_rng_available;	/* Whether a system RNG is available.  */
-static HCRYPTPROV hRNGProv;	/* Handle to Intel RNG CSP. */
+static int system_rng_available; /* Whether a system RNG is available.  */
+static HCRYPTPROV hRNGProv;      /* Handle to Intel RNG CSP. */
 
-static int debug_me;		/* Debug flag.  */
+static int debug_me;  /* Debug flag.  */
 
-static int system_is_w2000;	/* True if running on W2000.  */
+static int system_is_w2000;     /* True if running on W2000.  */
+
+
+
 
-
-
-
 /* Try and connect to the system RNG if there's one present. */
 static void
 init_system_rng (void)
@@ -285,9 +280,10 @@ init_system_rng (void)
      can't do much with it.  OTOH the Intel RNG is also effectively dead
      as well, mostly due to virtually nonexistent support/marketing by
      Intel, it's included here mostly for form's sake.  */
-  if ((!pCryptAcquireContext || !pCryptGenRandom || !pCryptReleaseContext
-       || !pCryptAcquireContext (&hRNGProv, NULL, INTEL_DEF_PROV,
-				 PROV_INTEL_SEC, 0)) && !pRtlGenRandom)
+  if ( (!pCryptAcquireContext || !pCryptGenRandom || !pCryptReleaseContext
+        || !pCryptAcquireContext (&hRNGProv, NULL, INTEL_DEF_PROV,
+                                  PROV_INTEL_SEC, 0) )
+       && !pRtlGenRandom)
     {
       hAdvAPI32 = NULL;
     }
@@ -298,10 +294,10 @@ init_system_rng (void)
 
 /* Read data from the system RNG if availavle.  */
 static void
-read_system_rng (void (*add) (const void *, size_t, enum random_origins),
-		 enum random_origins requester)
+read_system_rng (void (*add)(const void*, size_t, enum random_origins),
+                 enum random_origins requester)
 {
-  BYTE buffer[SYSTEMRNG_BYTES + 8];
+  BYTE buffer[ SYSTEMRNG_BYTES + 8 ];
   int quality = 0;
 
   if (!system_rng_available)
@@ -313,18 +309,18 @@ read_system_rng (void (*add) (const void *, size_t, enum random_origins),
   if (hRNGProv)
     {
       if (pCryptGenRandom (hRNGProv, SYSTEMRNG_BYTES, buffer))
-	quality = 80;
+        quality = 80;
     }
   else if (pRtlGenRandom)
     {
-      if (pRtlGenRandom (buffer, SYSTEMRNG_BYTES))
-	quality = 50;
+      if ( pRtlGenRandom (buffer, SYSTEMRNG_BYTES))
+        quality = 50;
     }
   if (quality > 0)
     {
       if (debug_me)
-	log_debug ("rndw32#read_system_rng: got %d bytes of quality %d\n",
-		   SYSTEMRNG_BYTES, quality);
+        log_debug ("rndw32#read_system_rng: got %d bytes of quality %d\n",
+                   SYSTEMRNG_BYTES, quality);
       (*add) (buffer, SYSTEMRNG_BYTES, requester);
       wipememory (buffer, SYSTEMRNG_BYTES);
     }
@@ -334,25 +330,24 @@ read_system_rng (void (*add) (const void *, size_t, enum random_origins),
 /* Read data from MBM.  This communicates via shared memory, so all we
    need to do is map a file and read the data out.  */
 static void
-read_mbm_data (void (*add) (const void *, size_t, enum random_origins),
-	       enum random_origins requester)
+read_mbm_data (void (*add)(const void*, size_t, enum random_origins),
+               enum random_origins requester)
 {
   HANDLE hMBMData;
   SharedData *mbmDataPtr;
 
-  hMBMData = OpenFileMapping (FILE_MAP_READ, FALSE, "$M$B$M$5$S$D$");
+  hMBMData = OpenFileMapping (FILE_MAP_READ, FALSE, "$M$B$M$5$S$D$" );
   if (hMBMData)
     {
-      mbmDataPtr =
-	(SharedData *) MapViewOfFile (hMBMData, FILE_MAP_READ, 0, 0, 0);
+      mbmDataPtr = (SharedData*)MapViewOfFile (hMBMData, FILE_MAP_READ,0,0,0);
       if (mbmDataPtr)
-	{
-	  if (debug_me)
-	    log_debug ("rndw32#read_mbm_data: got %d bytes\n",
-		       (int) sizeof (SharedData));
-	  (*add) (mbmDataPtr, sizeof (SharedData), requester);
-	  UnmapViewOfFile (mbmDataPtr);
-	}
+        {
+          if (debug_me)
+            log_debug ("rndw32#read_mbm_data: got %d bytes\n",
+                       (int)sizeof (SharedData));
+          (*add) (mbmDataPtr, sizeof (SharedData), requester);
+          UnmapViewOfFile (mbmDataPtr);
+        }
       CloseHandle (hMBMData);
     }
 }
@@ -360,8 +355,8 @@ read_mbm_data (void (*add) (const void *, size_t, enum random_origins),
 
 /* Fallback method using the registry to poll the statistics.  */
 static void
-registry_poll (void (*add) (const void *, size_t, enum random_origins),
-	       enum random_origins requester)
+registry_poll (void (*add)(const void*, size_t, enum random_origins),
+               enum random_origins requester)
 {
   static int cbPerfData = PERFORMANCE_BUFFER_SIZE;
   int iterations;
@@ -428,51 +423,51 @@ registry_poll (void (*add) (const void *, size_t, enum random_origins),
       static int shown;
 
       if (!shown)
-	{
-	  shown = 1;
-	  log_info ("note: get performance data has been disabled\n");
-	}
+        {
+          shown = 1;
+          log_info ("note: get performance data has been disabled\n");
+        }
     }
   else
     {
       pPerfData = gcry_xmalloc (cbPerfData);
-      for (iterations = 0; iterations < 10; iterations++)
-	{
-	  dwSize = cbPerfData;
-	  if (debug_me)
-	    log_debug ("rndw32#slow_gatherer_nt: get perf data\n");
+      for (iterations=0; iterations < 10; iterations++)
+        {
+          dwSize = cbPerfData;
+          if ( debug_me )
+            log_debug ("rndw32#slow_gatherer_nt: get perf data\n" );
 
-	  status = RegQueryValueEx (HKEY_PERFORMANCE_DATA, "Global", NULL,
-				    NULL, (LPBYTE) pPerfData, &dwSize);
-	  if (status == ERROR_SUCCESS)
-	    {
-	      if (!memcmp (pPerfData->Signature, L"PERF", 8))
-		(*add) (pPerfData, dwSize, requester);
-	      else
-		log_debug ("rndw32: no PERF signature\n");
-	      break;
-	    }
-	  else if (status == ERROR_MORE_DATA)
-	    {
-	      cbPerfData += PERFORMANCE_BUFFER_STEP;
-	      pPerfData = gcry_xrealloc (pPerfData, cbPerfData);
-	    }
-	  else
-	    {
-	      static int been_here;
+          status = RegQueryValueEx (HKEY_PERFORMANCE_DATA, "Global", NULL,
+                                    NULL, (LPBYTE) pPerfData, &dwSize);
+          if (status == ERROR_SUCCESS)
+            {
+              if (!memcmp (pPerfData->Signature, L"PERF", 8))
+                (*add) ( pPerfData, dwSize, requester );
+              else
+                log_debug ("rndw32: no PERF signature\n");
+              break;
+            }
+          else if (status == ERROR_MORE_DATA)
+            {
+              cbPerfData += PERFORMANCE_BUFFER_STEP;
+              pPerfData = gcry_xrealloc (pPerfData, cbPerfData);
+            }
+          else
+            {
+              static int been_here;
 
-	      /* Silence the error message.  In particular under Wine (as
-	         of 2008) we would get swamped with such diagnotiscs.  One
-	         such diagnotiscs should be enough.  */
-	      if (been_here != status)
-		{
-		  been_here = status;
-		  log_debug ("rndw32: get performance data problem: ec=%ld\n",
-			     status);
-		}
-	      break;
-	    }
-	}
+              /* Silence the error message.  In particular under Wine (as
+                 of 2008) we would get swamped with such diagnotiscs.  One
+                 such diagnotiscs should be enough.  */
+              if (been_here != status)
+                {
+                  been_here = status;
+                  log_debug ("rndw32: get performance data problem: ec=%ld\n",
+                             status);
+                }
+              break;
+            }
+        }
       gcry_free (pPerfData);
     }
 
@@ -486,8 +481,8 @@ registry_poll (void (*add) (const void *, size_t, enum random_origins),
 
 
 static void
-slow_gatherer (void (*add) (const void *, size_t, enum random_origins),
-	       enum random_origins requester)
+slow_gatherer ( void (*add)(const void*, size_t, enum random_origins),
+                enum random_origins requester )
 {
   static int is_initialized = 0;
   static int is_workstation = 1;
@@ -498,36 +493,36 @@ slow_gatherer (void (*add) (const void *, size_t, enum random_origins),
   int no_results = 0;
   void *buffer;
 
-  if (!is_initialized)
+  if ( !is_initialized )
     {
       HKEY hKey;
 
-      if (debug_me)
-	log_debug ("rndw32#slow_gatherer: init toolkit\n");
+      if ( debug_me )
+        log_debug ("rndw32#slow_gatherer: init toolkit\n" );
       /* Find out whether this is an NT server or workstation if necessary */
       if (RegOpenKeyEx (HKEY_LOCAL_MACHINE,
-			"SYSTEM\\CurrentControlSet\\Control\\ProductOptions",
-			0, KEY_READ, &hKey) == ERROR_SUCCESS)
-	{
-	  BYTE szValue[32 + 8];
-	  dwSize = 32;
+                        "SYSTEM\\CurrentControlSet\\Control\\ProductOptions",
+                        0, KEY_READ, &hKey) == ERROR_SUCCESS)
+        {
+          BYTE szValue[32 + 8];
+          dwSize = 32;
 
-	  if (debug_me)
-	    log_debug ("rndw32#slow_gatherer: check product options\n");
+          if ( debug_me )
+            log_debug ("rndw32#slow_gatherer: check product options\n" );
 
-	  status = RegQueryValueEx (hKey, "ProductType", 0, NULL,
-				    szValue, &dwSize);
-	  if (status == ERROR_SUCCESS && stricmp (szValue, "WinNT"))
-	    {
-	      /* Note: There are (at least) three cases for ProductType:
-	         WinNT = NT Workstation, ServerNT = NT Server, LanmanNT =
-	         NT Server acting as a Domain Controller.  */
-	      is_workstation = 0;
-	      if (debug_me)
-		log_debug ("rndw32: this is a NT server\n");
-	    }
-	  RegCloseKey (hKey);
-	}
+          status = RegQueryValueEx (hKey, "ProductType", 0, NULL,
+                                    szValue, &dwSize);
+          if (status == ERROR_SUCCESS && stricmp (szValue, "WinNT"))
+            {
+              /* Note: There are (at least) three cases for ProductType:
+                 WinNT = NT Workstation, ServerNT = NT Server, LanmanNT =
+                 NT Server acting as a Domain Controller.  */
+              is_workstation = 0;
+              if ( debug_me )
+                log_debug ("rndw32: this is a NT server\n");
+            }
+          RegCloseKey (hKey);
+        }
 
       /* The following are fixed for the lifetime of the process so we
          only add them once */
@@ -536,46 +531,46 @@ slow_gatherer (void (*add) (const void *, size_t, enum random_origins),
       /* Initialize the NetAPI32 function pointers if necessary */
       hNetAPI32 = LoadLibrary ("NETAPI32.DLL");
       if (hNetAPI32)
-	{
-	  if (debug_me)
-	    log_debug ("rndw32#slow_gatherer: netapi32 loaded\n");
-	  pNetStatisticsGet = (NETSTATISTICSGET)
-	    GetProcAddress (hNetAPI32, "NetStatisticsGet");
-	  pNetApiBufferSize = (NETAPIBUFFERSIZE)
-	    GetProcAddress (hNetAPI32, "NetApiBufferSize");
-	  pNetApiBufferFree = (NETAPIBUFFERFREE)
-	    GetProcAddress (hNetAPI32, "NetApiBufferFree");
+        {
+          if (debug_me)
+            log_debug ("rndw32#slow_gatherer: netapi32 loaded\n" );
+          pNetStatisticsGet = (NETSTATISTICSGET)
+            GetProcAddress (hNetAPI32, "NetStatisticsGet");
+          pNetApiBufferSize = (NETAPIBUFFERSIZE)
+            GetProcAddress (hNetAPI32, "NetApiBufferSize");
+          pNetApiBufferFree = (NETAPIBUFFERFREE)
+            GetProcAddress (hNetAPI32, "NetApiBufferFree");
 
-	  if (!pNetStatisticsGet || !pNetApiBufferSize || !pNetApiBufferFree)
-	    {
-	      FreeLibrary (hNetAPI32);
-	      hNetAPI32 = NULL;
-	      log_debug ("rndw32: No NETAPI found\n");
-	    }
-	}
+          if (!pNetStatisticsGet || !pNetApiBufferSize || !pNetApiBufferFree)
+            {
+              FreeLibrary (hNetAPI32);
+              hNetAPI32 = NULL;
+              log_debug ("rndw32: No NETAPI found\n" );
+            }
+        }
 
       /* Initialize the NT kernel native API function pointers if necessary */
       hNTAPI = GetModuleHandle ("NTDll.dll");
       if (hNTAPI)
-	{
-	  /* Get a pointer to the NT native information query functions */
-	  pNtQuerySystemInformation = (NTQUERYSYSTEMINFORMATION)
-	    GetProcAddress (hNTAPI, "NtQuerySystemInformation");
-	  pNtQueryInformationProcess = (NTQUERYINFORMATIONPROCESS)
-	    GetProcAddress (hNTAPI, "NtQueryInformationProcess");
-	  pNtPowerInformation = (NTPOWERINFORMATION)
-	    GetProcAddress (hNTAPI, "NtPowerInformation");
+        {
+          /* Get a pointer to the NT native information query functions */
+          pNtQuerySystemInformation = (NTQUERYSYSTEMINFORMATION)
+            GetProcAddress (hNTAPI, "NtQuerySystemInformation");
+          pNtQueryInformationProcess = (NTQUERYINFORMATIONPROCESS)
+            GetProcAddress (hNTAPI, "NtQueryInformationProcess");
+          pNtPowerInformation = (NTPOWERINFORMATION)
+            GetProcAddress(hNTAPI, "NtPowerInformation");
 
-	  if (!pNtQuerySystemInformation || !pNtQueryInformationProcess)
-	    hNTAPI = NULL;
-	}
+          if (!pNtQuerySystemInformation || !pNtQueryInformationProcess)
+            hNTAPI = NULL;
+        }
 
 
       is_initialized = 1;
     }
 
-  read_system_rng (add, requester);
-  read_mbm_data (add, requester);
+  read_system_rng ( add, requester );
+  read_mbm_data ( add, requester );
 
   /* Get network statistics.    Note: Both NT Workstation and NT Server by
      default will be running both the workstation and server services.  The
@@ -586,49 +581,50 @@ slow_gatherer (void (*add) (const void *, size_t, enum random_origins),
     LPBYTE lpBuffer;
 
     if (hNetAPI32
-	&& !pNetStatisticsGet (NULL,
-			       is_workstation ? L"LanmanWorkstation" :
-			       L"LanmanServer", 0, 0, &lpBuffer))
+        && !pNetStatisticsGet (NULL,
+                               is_workstation ? L"LanmanWorkstation" :
+                               L"LanmanServer", 0, 0, &lpBuffer))
       {
-	if (debug_me)
-	  log_debug ("rndw32#slow_gatherer: get netstats\n");
-	pNetApiBufferSize (lpBuffer, &dwSize);
-	(*add) (lpBuffer, dwSize, requester);
-	pNetApiBufferFree (lpBuffer);
+        if ( debug_me )
+          log_debug ("rndw32#slow_gatherer: get netstats\n" );
+        pNetApiBufferSize (lpBuffer, &dwSize);
+        (*add) ( lpBuffer, dwSize, requester );
+        pNetApiBufferFree (lpBuffer);
       }
   }
 
   /* Get disk I/O statistics for all the hard drives.  100 is an
      arbitrary failsafe limit.  */
-  for (drive_no = 0; drive_no < 100; drive_no++)
+  for (drive_no = 0; drive_no < 100 ; drive_no++)
     {
       char diskPerformance[SIZEOF_DISK_PERFORMANCE_STRUCT + 8];
       char szDevice[50];
 
       /* Check whether we can access this device.  */
       snprintf (szDevice, sizeof szDevice, "\\\\.\\PhysicalDrive%d",
-		drive_no);
+                drive_no);
       hDevice = CreateFile (szDevice, 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
-			    NULL, OPEN_EXISTING, 0, NULL);
+                            NULL, OPEN_EXISTING, 0, NULL);
       if (hDevice == INVALID_HANDLE_VALUE)
-	break;			/* No more drives.  */
+        break; /* No more drives.  */
 
       /* Note: This only works if you have turned on the disk performance
          counters with 'diskperf -y'.  These counters are off by default. */
       dwSize = sizeof diskPerformance;
       if (DeviceIoControl (hDevice, IOCTL_DISK_PERFORMANCE, NULL, 0,
-			   diskPerformance, SIZEOF_DISK_PERFORMANCE_STRUCT,
-			   &dwSize, NULL))
-	{
-	  if (debug_me)
-	    log_debug ("rndw32#slow_gatherer: iostat drive %d\n", drive_no);
-	  (*add) (diskPerformance, dwSize, requester);
-	}
+                           diskPerformance, SIZEOF_DISK_PERFORMANCE_STRUCT,
+                           &dwSize, NULL))
+        {
+          if ( debug_me )
+            log_debug ("rndw32#slow_gatherer: iostat drive %d\n",
+                       drive_no);
+          (*add) (diskPerformance, dwSize, requester);
+        }
       else
-	{
-	  log_info ("NOTE: you should run 'diskperf -y' "
-		    "to enable the disk statistics\n");
-	}
+        {
+          log_info ("NOTE: you should run 'diskperf -y' "
+                    "to enable the disk statistics\n");
+        }
       CloseHandle (hDevice);
     }
 
@@ -645,7 +641,7 @@ slow_gatherer (void (*add) (const void *, size_t, enum random_origins),
      are never the same and can't be reproduced on any other system, which
      is why we use the native API here.  Microsoft officially documented
      this function in early 2003, so it'll be fairly safe to use.  */
-  if (!hNTAPI)
+  if ( !hNTAPI )
     {
       registry_poll (add, requester);
       return;
@@ -662,31 +658,25 @@ slow_gatherer (void (*add) (const void *, size_t, enum random_origins),
   for (dwType = 0; dwType < 64; dwType++)
     {
       switch (dwType)
-	{
-	  /* ID 17 = SystemObjectInformation hangs on some win2k systems.  */
-	case 17:
-	  if (system_is_w2000)
-	    continue;
-	  break;
+        {
+          /* ID 17 = SystemObjectInformation hangs on some win2k systems.  */
+        case 17:
+          if (system_is_w2000)
+            continue;
+          break;
 
-	  /* Some information types are write-only (the IDs are shared with
-	     a set-information call), we skip these.  */
-	case 26:
-	case 27:
-	case 38:
-	case 46:
-	case 47:
-	case 48:
-	case 52:
-	  continue;
+          /* Some information types are write-only (the IDs are shared with
+             a set-information call), we skip these.  */
+        case 26: case 27: case 38: case 46: case 47: case 48: case 52:
+          continue;
 
-	  /* ID 53 = SystemSessionProcessInformation reads input from the
-	     output buffer, which has to contain a session ID and pointer
-	     to the actual buffer in which to store the session information.
-	     Because this isn't a standard query, we skip this.  */
-	case 53:
-	  continue;
-	}
+          /* ID 53 = SystemSessionProcessInformation reads input from the
+             output buffer, which has to contain a session ID and pointer
+             to the actual buffer in which to store the session information.
+             Because this isn't a standard query, we skip this.  */
+        case  53:
+          continue;
+        }
 
       /* Query the info for this ID.  Some results (for example for
          ID = 6, SystemCallCounts) are only available in checked builds
@@ -697,31 +687,31 @@ slow_gatherer (void (*add) (const void *, size_t, enum random_origins),
          having to special-case all of these, we try reading each one and
          only use those for which we get a success status.  */
       dwResult = pNtQuerySystemInformation (dwType, buffer,
-					    PERFORMANCE_BUFFER_SIZE - 2048,
-					    &ulSize);
+                                            PERFORMANCE_BUFFER_SIZE - 2048,
+                                            &ulSize);
       if (dwResult != ERROR_SUCCESS)
-	continue;
+        continue;
 
       /* Some calls (e.g. ID = 23, SystemProcessorStatistics, and ID = 24,
          SystemDpcInformation) incorrectly return a length of zero, so we
          manually adjust the length to the correct value.  */
-      if (!ulSize)
-	{
-	  if (dwType == 23)
-	    ulSize = 6 * sizeof (ULONG);
-	  else if (dwType == 24)
-	    ulSize = 5 * sizeof (ULONG);
-	}
+      if ( !ulSize )
+        {
+          if (dwType == 23)
+            ulSize = 6 * sizeof (ULONG);
+          else if (dwType == 24)
+            ulSize = 5 * sizeof (ULONG);
+        }
 
       /* If we got some data back, add it to the entropy pool.  */
       if (ulSize > 0 && ulSize <= PERFORMANCE_BUFFER_SIZE - 2048)
-	{
-	  if (debug_me)
-	    log_debug ("rndw32#slow_gatherer: %lu bytes from sysinfo %ld\n",
-		       ulSize, dwType);
-	  (*add) (buffer, ulSize, requester);
-	  no_results++;
-	}
+        {
+          if (debug_me)
+            log_debug ("rndw32#slow_gatherer: %lu bytes from sysinfo %ld\n",
+                       ulSize, dwType);
+          (*add) (buffer, ulSize, requester);
+          no_results++;
+        }
     }
 
   /* Now we would do the same for the process information.  This
@@ -741,43 +731,31 @@ slow_gatherer (void (*add) (const void *, size_t, enum random_origins),
      length data.  */
   if (pNtPowerInformation)
     {
-      static const struct
-      {
-	int type;
-	int size;
-      } powerInfo[] =
-      {
-	{
-	0, 128},		/* SystemPowerPolicyAc */
-	{
-	1, 128},		/* SystemPowerPolicyDc */
-	{
-	4, 64},			/* SystemPowerCapabilities */
-	{
-	5, 48},			/* SystemBatteryState */
-	{
-	11, 48},		/* ProcessorInformation */
-	{
-	12, 24},		/* SystemPowerInformation */
-	{
-	-1, -1}
+      static const struct { int type; int size; } powerInfo[] = {
+        { 0, 128 },     /* SystemPowerPolicyAc */
+        { 1, 128 },     /* SystemPowerPolicyDc */
+        { 4, 64 },      /* SystemPowerCapabilities */
+        { 5, 48 },      /* SystemBatteryState */
+        { 11, 48 },     /* ProcessorInformation */
+        { 12, 24 },     /* SystemPowerInformation */
+        { -1, -1 }
       };
       int i;
 
       /* The 100 is a failsafe limit.  */
-      for (i = 0; powerInfo[i].type != -1 && i < 100; i++)
-	{
-	  /* Query the info for this ID */
-	  dwResult = pNtPowerInformation (powerInfo[i].type, NULL, 0, buffer,
-					  PERFORMANCE_BUFFER_SIZE - 2048);
-	  if (dwResult != ERROR_SUCCESS)
-	    continue;
-	  if (debug_me)
-	    log_debug ("rndw32#slow_gatherer: %u bytes from powerinfo %d\n",
-		       powerInfo[i].size, i);
-	  (*add) (buffer, powerInfo[i].size, requester);
-	  no_results++;
-	}
+      for (i = 0; powerInfo[i].type != -1 && i < 100; i++ )
+        {
+          /* Query the info for this ID */
+          dwResult = pNtPowerInformation (powerInfo[i].type, NULL, 0, buffer,
+                                          PERFORMANCE_BUFFER_SIZE - 2048);
+          if (dwResult != ERROR_SUCCESS)
+            continue;
+          if (debug_me)
+            log_debug ("rndw32#slow_gatherer: %u bytes from powerinfo %d\n",
+                       powerInfo[i].size, i);
+          (*add) (buffer, powerInfo[i].size, requester);
+          no_results++;
+        }
       gcry_assert (i < 100);
     }
   gcry_free (buffer);
@@ -790,10 +768,10 @@ slow_gatherer (void (*add) (const void *, size_t, enum random_origins),
 
 
 int
-_gcry_rndw32_gather_random (void (*add) (const void *, size_t,
-					 enum random_origins),
-			    enum random_origins origin,
-			    size_t length, int level)
+_gcry_rndw32_gather_random (void (*add)(const void*, size_t,
+                                        enum random_origins),
+                            enum random_origins origin,
+                            size_t length, int level )
 {
   static int is_initialized;
 
@@ -807,20 +785,19 @@ _gcry_rndw32_gather_random (void (*add) (const void *, size_t,
 
   if (!is_initialized)
     {
-      OSVERSIONINFO osvi = { sizeof (osvi) };
+      OSVERSIONINFO osvi = { sizeof( osvi ) };
 
-      GetVersionEx (&osvi);
+      GetVersionEx( &osvi );
       if (osvi.dwPlatformId != VER_PLATFORM_WIN32_NT)
-	log_fatal ("can only run on a Windows NT platform\n");
-      system_is_w2000 = (osvi.dwMajorVersion == 5
-			 && osvi.dwMinorVersion == 0);
+        log_fatal ("can only run on a Windows NT platform\n" );
+      system_is_w2000 = (osvi.dwMajorVersion == 5 && osvi.dwMinorVersion == 0);
       init_system_rng ();
       is_initialized = 1;
     }
 
   if (debug_me)
     log_debug ("rndw32#gather_random: ori=%d len=%u lvl=%d\n",
-	       origin, (unsigned int) length, level);
+               origin, (unsigned int)length, level );
 
   slow_gatherer (add, origin);
 
@@ -830,14 +807,14 @@ _gcry_rndw32_gather_random (void (*add) (const void *, size_t,
 
 
 void
-_gcry_rndw32_gather_random_fast (void (*add) (const void *, size_t,
-					      enum random_origins),
-				 enum random_origins origin)
+_gcry_rndw32_gather_random_fast (void (*add)(const void*, size_t,
+                                             enum random_origins),
+                                 enum random_origins origin)
 {
   static int addedFixedItems = 0;
 
-  if (debug_me)
-    log_debug ("rndw32#gather_random_fast: ori=%d\n", origin);
+  if ( debug_me )
+    log_debug ("rndw32#gather_random_fast: ori=%d\n", origin );
 
   /* Get various basic pieces of system information: Handle of active
      window, handle of window with mouse capture, handle of clipboard
@@ -851,7 +828,7 @@ _gcry_rndw32_gather_random_fast (void (*add) (const void *, size_t,
      and milliseconds since Windows was started.  */
 
   {
-    byte buffer[20 * sizeof (ulong)], *bufptr;
+    byte buffer[20*sizeof(ulong)], *bufptr;
 
     bufptr = buffer;
 #define ADD(f)  do { ulong along = (ulong)(f);                  \
@@ -859,27 +836,27 @@ _gcry_rndw32_gather_random_fast (void (*add) (const void *, size_t,
                      bufptr += sizeof (along);                  \
                    } while (0)
 
-    ADD (GetActiveWindow ());
-    ADD (GetCapture ());
-    ADD (GetClipboardOwner ());
-    ADD (GetClipboardViewer ());
-    ADD (GetCurrentProcess ());
-    ADD (GetCurrentProcessId ());
-    ADD (GetCurrentThread ());
-    ADD (GetCurrentThreadId ());
-    ADD (GetDesktopWindow ());
-    ADD (GetFocus ());
-    ADD (GetInputState ());
-    ADD (GetMessagePos ());
-    ADD (GetMessageTime ());
-    ADD (GetOpenClipboardWindow ());
-    ADD (GetProcessHeap ());
-    ADD (GetProcessWindowStation ());
-    ADD (GetQueueStatus (QS_ALLEVENTS));
-    ADD (GetTickCount ());
+    ADD ( GetActiveWindow ());
+    ADD ( GetCapture ());
+    ADD ( GetClipboardOwner ());
+    ADD ( GetClipboardViewer ());
+    ADD ( GetCurrentProcess ());
+    ADD ( GetCurrentProcessId ());
+    ADD ( GetCurrentThread ());
+    ADD ( GetCurrentThreadId ());
+    ADD ( GetDesktopWindow ());
+    ADD ( GetFocus ());
+    ADD ( GetInputState ());
+    ADD ( GetMessagePos ());
+    ADD ( GetMessageTime ());
+    ADD ( GetOpenClipboardWindow ());
+    ADD ( GetProcessHeap ());
+    ADD ( GetProcessWindowStation ());
+    ADD ( GetQueueStatus (QS_ALLEVENTS));
+    ADD ( GetTickCount ());
 
-    gcry_assert (bufptr - buffer < sizeof (buffer));
-    (*add) (buffer, bufptr - buffer, origin);
+    gcry_assert ( bufptr-buffer < sizeof (buffer) );
+    (*add) ( buffer, bufptr-buffer, origin );
 #undef ADD
   }
 
@@ -889,9 +866,9 @@ _gcry_rndw32_gather_random_fast (void (*add) (const void *, size_t,
     POINT point;
 
     GetCaretPos (&point);
-    (*add) (&point, sizeof (point), origin);
+    (*add) ( &point, sizeof (point), origin );
     GetCursorPos (&point);
-    (*add) (&point, sizeof (point), origin);
+    (*add) ( &point, sizeof (point), origin );
   }
 
   /* Get percent of memory in use, bytes of physical memory, bytes of
@@ -902,7 +879,7 @@ _gcry_rndw32_gather_random_fast (void (*add) (const void *, size_t,
 
     memoryStatus.dwLength = sizeof (MEMORYSTATUS);
     GlobalMemoryStatus (&memoryStatus);
-    (*add) (&memoryStatus, sizeof (memoryStatus), origin);
+    (*add) ( &memoryStatus, sizeof (memoryStatus), origin );
   }
 
   /* Get thread and process creation time, exit time, time in kernel
@@ -913,26 +890,29 @@ _gcry_rndw32_gather_random_fast (void (*add) (const void *, size_t,
     DWORD minimumWorkingSetSize, maximumWorkingSetSize;
 
     handle = GetCurrentThread ();
-    GetThreadTimes (handle, &creationTime, &exitTime, &kernelTime, &userTime);
-    (*add) (&creationTime, sizeof (creationTime), origin);
-    (*add) (&exitTime, sizeof (exitTime), origin);
-    (*add) (&kernelTime, sizeof (kernelTime), origin);
-    (*add) (&userTime, sizeof (userTime), origin);
+    GetThreadTimes (handle, &creationTime, &exitTime,
+                    &kernelTime, &userTime);
+    (*add) ( &creationTime, sizeof (creationTime), origin );
+    (*add) ( &exitTime, sizeof (exitTime), origin );
+    (*add) ( &kernelTime, sizeof (kernelTime), origin );
+    (*add) ( &userTime, sizeof (userTime), origin );
 
     handle = GetCurrentProcess ();
     GetProcessTimes (handle, &creationTime, &exitTime,
-		     &kernelTime, &userTime);
-    (*add) (&creationTime, sizeof (creationTime), origin);
-    (*add) (&exitTime, sizeof (exitTime), origin);
-    (*add) (&kernelTime, sizeof (kernelTime), origin);
-    (*add) (&userTime, sizeof (userTime), origin);
+                     &kernelTime, &userTime);
+    (*add) ( &creationTime, sizeof (creationTime), origin );
+    (*add) ( &exitTime, sizeof (exitTime), origin );
+    (*add) ( &kernelTime, sizeof (kernelTime), origin );
+    (*add) ( &userTime, sizeof (userTime), origin );
 
     /* Get the minimum and maximum working set size for the current
        process.  */
     GetProcessWorkingSetSize (handle, &minimumWorkingSetSize,
-			      &maximumWorkingSetSize);
-    (*add) (&minimumWorkingSetSize, sizeof (minimumWorkingSetSize), origin);
-    (*add) (&maximumWorkingSetSize, sizeof (maximumWorkingSetSize), origin);
+                              &maximumWorkingSetSize);
+    (*add) ( &minimumWorkingSetSize,
+             sizeof (minimumWorkingSetSize), origin );
+    (*add) ( &maximumWorkingSetSize,
+             sizeof (maximumWorkingSetSize), origin );
   }
 
 
@@ -947,7 +927,7 @@ _gcry_rndw32_gather_random_fast (void (*add) (const void *, size_t,
          stdout, and stderr.  */
       startupInfo.cb = sizeof (STARTUPINFO);
       GetStartupInfo (&startupInfo);
-      (*add) (&startupInfo, sizeof (STARTUPINFO), origin);
+      (*add) ( &startupInfo, sizeof (STARTUPINFO), origin );
       addedFixedItems = 1;
     }
 
@@ -986,29 +966,29 @@ _gcry_rndw32_gather_random_fast (void (*add) (const void *, size_t,
 /*   if (cpu_has_feature_rdtsc) */
 /*     { */
 /*       uint32_t lo, hi; */
-  /* We cannot use "=A", since this would use %rax on x86_64. */
+      /* We cannot use "=A", since this would use %rax on x86_64. */
 /*       __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi)); */
-  /* Ignore high 32 bits, hwich are >1s res.  */
+      /* Ignore high 32 bits, hwich are >1s res.  */
 /*       (*add) (&lo, 4, origin ); */
 /*     } */
 /*   else */
-#endif /*!__GNUC__ */
-  {
-    LARGE_INTEGER performanceCount;
+#endif /*!__GNUC__*/
+    {
+      LARGE_INTEGER performanceCount;
 
-    if (QueryPerformanceCounter (&performanceCount))
-      {
-	if (debug_me)
-	  log_debug ("rndw32#gather_random_fast: perf data\n");
-	(*add) (&performanceCount, sizeof (performanceCount), origin);
-      }
-    else
-      {
-	/* Millisecond accuracy at best... */
-	DWORD aword = GetTickCount ();
-	(*add) (&aword, sizeof (aword), origin);
-      }
-  }
+      if (QueryPerformanceCounter (&performanceCount))
+        {
+          if ( debug_me )
+          log_debug ("rndw32#gather_random_fast: perf data\n");
+          (*add) (&performanceCount, sizeof (performanceCount), origin);
+        }
+      else
+        {
+          /* Millisecond accuracy at best... */
+          DWORD aword = GetTickCount ();
+          (*add) (&aword, sizeof (aword), origin );
+        }
+    }
 
 
 }

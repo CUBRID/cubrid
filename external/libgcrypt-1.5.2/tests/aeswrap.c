@@ -63,7 +63,7 @@ check (int algo,
 {
   gcry_error_t err;
   gcry_cipher_hd_t hd;
-  unsigned char outbuf[32 + 8];
+  unsigned char outbuf[32+8];
   size_t outbuflen;
 
   err = gcry_cipher_open (&hd, algo, GCRY_CIPHER_MODE_AESWRAP, 0);
@@ -102,7 +102,7 @@ check (int algo,
 	fprintf (stderr, "%02x ", outbuf[i]);
       fprintf (stderr, "\nexpected: ");
       for (s = expected, i = 0; i < expectedlen; s++, i++)
-	fprintf (stderr, "%02x ", *s);
+        fprintf (stderr, "%02x ", *s);
       putc ('\n', stderr);
     }
 
@@ -129,7 +129,7 @@ check (int algo,
 	fprintf (stderr, "%02x ", outbuf[i]);
       fprintf (stderr, "\nexpected: ");
       for (s = data, i = 0; i < datalen; s++, i++)
-	fprintf (stderr, "%02x ", *s);
+        fprintf (stderr, "%02x ", *s);
       putc ('\n', stderr);
     }
 

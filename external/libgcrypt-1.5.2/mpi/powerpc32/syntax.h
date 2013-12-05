@@ -42,7 +42,7 @@
 #endif
 
 /* No profiling of gmp's assembly for now... */
-#define CALL_MCOUNT		/* no profiling */
+#define CALL_MCOUNT /* no profiling */
 
 #define        ENTRY(name)				    \
   ASM_GLOBAL_DIRECTIVE C_SYMBOL_NAME(name);		    \
@@ -51,7 +51,7 @@
   C_LABEL(name) 					    \
   CALL_MCOUNT
 
-#define EALIGN_W_0		/* No words to insert.  */
+#define EALIGN_W_0  /* No words to insert.  */
 #define EALIGN_W_1  nop
 #define EALIGN_W_2  nop;nop
 #define EALIGN_W_3  nop;nop;nop
@@ -72,3 +72,4 @@
 #undef END
 #define END(name)		     \
   ASM_SIZE_DIRECTIVE(name)
+

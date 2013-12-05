@@ -64,16 +64,16 @@ gcry_mpi_cmp (gcry_mpi_t u, gcry_mpi_t v)
   if (mpi_is_opaque (u) || mpi_is_opaque (v))
     {
       if (mpi_is_opaque (u) && !mpi_is_opaque (v))
-	return -1;
+        return -1;
       if (!mpi_is_opaque (u) && mpi_is_opaque (v))
-	return 1;
+        return 1;
       if (!u->sign && !v->sign)
-	return 0;		/* Empty buffers are identical.  */
+        return 0; /* Empty buffers are identical.  */
       if (u->sign < v->sign)
-	return -1;
+        return -1;
       if (u->sign > v->sign)
-	return 1;
-      return memcmp (u->d, v->d, (u->sign + 7) / 8);
+        return 1;
+      return memcmp (u->d, v->d, (u->sign+7)/8);
     }
   else
     {
@@ -86,22 +86,22 @@ gcry_mpi_cmp (gcry_mpi_t u, gcry_mpi_t v)
       /* Compare sign bits.  */
 
       if (!u->sign && v->sign)
-	return 1;
+        return 1;
       if (u->sign && !v->sign)
-	return -1;
+        return -1;
 
       /* U and V are either both positive or both negative.  */
 
       if (usize != vsize && !u->sign && !v->sign)
-	return usize - vsize;
+        return usize - vsize;
       if (usize != vsize && u->sign && v->sign)
-	return vsize + usize;
-      if (!usize)
-	return 0;
+        return vsize + usize;
+      if (!usize )
+        return 0;
       if (!(cmp = _gcry_mpih_cmp (u->d, v->d, usize)))
-	return 0;
-      if ((cmp < 0 ? 1 : 0) == (u->sign ? 1 : 0))
-	return 1;
+        return 0;
+      if ((cmp < 0?1:0) == (u->sign?1:0))
+        return 1;
     }
   return -1;
 }

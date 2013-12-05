@@ -562,13 +562,43 @@ AC_ARG_WITH([libgcrypt],
 AS_IF([test "$with_cci_only" = "yes"], [with_libgcrypt=no],
 	[AS_IF([test "$with_libgcrypt" = "builtin"],
 		[AC_CONFIG_SUBDIRS([external/libgcrypt-1.5.2])		
-		GCRYPT_LIBS="\$(top_builddir)/external/lib/libgcrypt.la \$(top_builddir)/external/lib/libgpg-error.la"
+		GCRYPT_LIBS="\$(top_builddir)/external/lib/libgcrypt.la"
 		GCRYPT_INC="-I\$(top_builddir)/external/include/"
-		EXTERNAL_PKGS="$EXTERNAL_PKGS libgpg-error-1.11 libgcrypt-1.5.2"],
+		EXTERNAL_PKGS="$EXTERNAL_PKGS libgcrypt-1.5.2"],
 		[GCRYPT_LIBS="-L$with_libgcrypt/lib -lgcrypt"
 		GCRYPT_INC="-I$with_libgcrypt/include/"
 		EXTERNAL_DIST="$EXTERNAL_DIST libgcrypt-1.5.2"])])
+
+if test "$with_libgcrypt" = "no"
+then	
+  AC_CHECK_LIB([gcrypt], [main])
+else  
+  AC_DEFINE([HAVE_LIBGCRYPT], [1], [There is libgcyprt])
+fi
 AC_MSG_RESULT([$with_libgcrypt])
+
+AC_MSG_CHECKING([for libgpg-error library])
+AC_ARG_WITH([libgpg_error],
+	AS_HELP_STRING([--with-libgpg-error=PATH],
+		[prefix for installed libgpg-error @<:@default=builtin@:>@]),
+	[with_libgpg_error=$withval],
+	[with_libgpg_error=builtin])	
+AS_IF([test "$with_cci_only" = "yes"], [with_libgpg_error=no],
+	[AS_IF([test "$with_libgpg_error" = "builtin"],
+		[AC_CONFIG_SUBDIRS([external/libgpg-error-1.11])		
+		GPG_ERROR_LIBS="\$(top_builddir)/external/lib/libgpg-error.la"
+		GPG_ERROR_INC="-I\$(top_builddir)/external/include/"
+		EXTERNAL_PKGS="$EXTERNAL_PKGS libgpg-error-1.11"],
+		[GPG_ERROR_LIBS="-L$with_libgpg_error/lib -lgpg-error"
+		GPG_ERROR_INC="-I$with_libgpg_error/include/"
+		EXTERNAL_DIST="$EXTERNAL_DIST libgpg-error-1.11"])])
+if test "$with_libgpg_error" = "no"
+then	
+  AC_CHECK_LIB([gpg-error], [main])
+else  
+  AC_DEFINE([HAVE_LIBGPG_ERROR], [1], [There is libgpg-error])
+fi
+AC_MSG_RESULT([$with_libgpg-error])
 
 AC_MSG_CHECKING([for aio library])
 AC_ARG_WITH([aio],
@@ -824,8 +854,8 @@ CCI_LIB="\$(top_builddir)/cci/libcascci.la"
 ESQL_LIB="\$(top_builddir)/util/libcubridesql.la"
 BROKER_ADMIN_LIB="\$(top_builddir)/broker/libbrokeradmin.la"
 
-EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS $REGEX_LIBS $EXPAT_LIBS $JANSSON_LIBS $GCRYPT_LIBS"
-EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC $REGEX_INC $EXPAT_INC $JANSSON_INC $GCRYPT_INC"
+EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS $REGEX_LIBS $EXPAT_LIBS $JANSSON_LIBS $GCRYPT_LIBS $GPG_ERROR_LIBS"
+EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC $REGEX_INC $EXPAT_INC $JANSSON_INC $GCRYPT_INC $GPG_ERROR_INC"
 
 AC_MSG_CHECKING([whether to use CUBRID environment variable])
 AC_ARG_ENABLE([cubridenv],

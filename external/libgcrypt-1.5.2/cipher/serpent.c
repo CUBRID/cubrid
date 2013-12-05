@@ -579,7 +579,7 @@ static const char *serpent_test (void);
 /* Convert the user provided key KEY of KEY_LENGTH bytes into the
    internally used format.  */
 static void
-serpent_key_prepare (const byte * key, unsigned int key_length,
+serpent_key_prepare (const byte *key, unsigned int key_length,
 		     serpent_key_t key_prepared)
 {
   int i;
@@ -596,7 +596,7 @@ serpent_key_prepare (const byte * key, unsigned int key_length,
   if (i < 8)
     {
       /* Key must be padded according to the Serpent
-         specification.  */
+	 specification.  */
       key_prepared[i] = 0x00000001;
 
       for (i++; i < 8; i++)
@@ -622,31 +622,31 @@ serpent_subkeys_generate (serpent_key_t key, serpent_subkeys_t subkeys)
     w[i] = rol (w[i - 8] ^ w[i - 5] ^ w[i - 3] ^ w[i - 1] ^ PHI ^ i, 11);
 
   /* Calculate subkeys via S-Boxes, in bitslice mode.  */
-  SBOX (3, w, k, 0);
-  SBOX (2, w, k, 4);
-  SBOX (1, w, k, 8);
-  SBOX (0, w, k, 12);
-  SBOX (7, w, k, 16);
-  SBOX (6, w, k, 20);
-  SBOX (5, w, k, 24);
-  SBOX (4, w, k, 28);
-  SBOX (3, w, k, 32);
-  SBOX (2, w, k, 36);
-  SBOX (1, w, k, 40);
-  SBOX (0, w, k, 44);
-  SBOX (7, w, k, 48);
-  SBOX (6, w, k, 52);
-  SBOX (5, w, k, 56);
-  SBOX (4, w, k, 60);
-  SBOX (3, w, k, 64);
-  SBOX (2, w, k, 68);
-  SBOX (1, w, k, 72);
-  SBOX (0, w, k, 76);
-  SBOX (7, w, k, 80);
-  SBOX (6, w, k, 84);
-  SBOX (5, w, k, 88);
-  SBOX (4, w, k, 92);
-  SBOX (3, w, k, 96);
+  SBOX (3, w, k,   0);
+  SBOX (2, w, k,   4);
+  SBOX (1, w, k,   8);
+  SBOX (0, w, k,  12);
+  SBOX (7, w, k,  16);
+  SBOX (6, w, k,  20);
+  SBOX (5, w, k,  24);
+  SBOX (4, w, k,  28);
+  SBOX (3, w, k,  32);
+  SBOX (2, w, k,  36);
+  SBOX (1, w, k,  40);
+  SBOX (0, w, k,  44);
+  SBOX (7, w, k,  48);
+  SBOX (6, w, k,  52);
+  SBOX (5, w, k,  56);
+  SBOX (4, w, k,  60);
+  SBOX (3, w, k,  64);
+  SBOX (2, w, k,  68);
+  SBOX (1, w, k,  72);
+  SBOX (0, w, k,  76);
+  SBOX (7, w, k,  80);
+  SBOX (6, w, k,  84);
+  SBOX (5, w, k,  88);
+  SBOX (4, w, k,  92);
+  SBOX (3, w, k,  96);
   SBOX (2, w, k, 100);
   SBOX (1, w, k, 104);
   SBOX (0, w, k, 108);
@@ -664,8 +664,8 @@ serpent_subkeys_generate (serpent_key_t key, serpent_subkeys_t subkeys)
 
 /* Initialize CONTEXT with the key KEY of KEY_LENGTH bits.  */
 static void
-serpent_setkey_internal (serpent_context_t * context,
-			 const byte * key, unsigned int key_length)
+serpent_setkey_internal (serpent_context_t *context,
+			 const byte *key, unsigned int key_length)
 {
   serpent_key_t key_prepared;
 
@@ -676,14 +676,15 @@ serpent_setkey_internal (serpent_context_t * context,
 
 /* Initialize CTX with the key KEY of KEY_LENGTH bytes.  */
 static gcry_err_code_t
-serpent_setkey (void *ctx, const byte * key, unsigned int key_length)
+serpent_setkey (void *ctx,
+		const byte *key, unsigned int key_length)
 {
   serpent_context_t *context = ctx;
   static const char *serpent_test_ret;
   static int serpent_init_done;
   gcry_err_code_t ret = GPG_ERR_NO_ERROR;
 
-  if (!serpent_init_done)
+  if (! serpent_init_done)
     {
       /* Execute a self-test the first time, Serpent is used.  */
       serpent_test_ret = serpent_test ();
@@ -704,8 +705,8 @@ serpent_setkey (void *ctx, const byte * key, unsigned int key_length)
 }
 
 static void
-serpent_encrypt_internal (serpent_context_t * context,
-			  const byte * input, byte * output)
+serpent_encrypt_internal (serpent_context_t *context,
+			  const byte *input, byte *output)
 {
   serpent_block_t b, b_next;
   int round = 0;
@@ -762,8 +763,8 @@ serpent_encrypt_internal (serpent_context_t * context,
 }
 
 static void
-serpent_decrypt_internal (serpent_context_t * context,
-			  const byte * input, byte * output)
+serpent_decrypt_internal (serpent_context_t *context,
+			  const byte *input, byte *output)
 {
   serpent_block_t b, b_next;
   int round = ROUNDS;
@@ -820,7 +821,7 @@ serpent_decrypt_internal (serpent_context_t * context,
 }
 
 static void
-serpent_encrypt (void *ctx, byte * buffer_out, const byte * buffer_in)
+serpent_encrypt (void *ctx, byte *buffer_out, const byte *buffer_in)
 {
   serpent_context_t *context = ctx;
 
@@ -829,15 +830,15 @@ serpent_encrypt (void *ctx, byte * buffer_out, const byte * buffer_in)
 }
 
 static void
-serpent_decrypt (void *ctx, byte * buffer_out, const byte * buffer_in)
+serpent_decrypt (void *ctx, byte *buffer_out, const byte *buffer_in)
 {
   serpent_context_t *context = ctx;
 
   serpent_decrypt_internal (context, buffer_in, buffer_out);
   _gcry_burn_stack (2 * sizeof (serpent_block_t));
 }
-
 
+
 
 /* Serpent test.  */
 
@@ -855,89 +856,98 @@ serpent_test (void)
     unsigned char text_plain[16];
     unsigned char text_cipher[16];
   } test_data[] =
-  {
     {
-    16,
+      {
+	16,
 	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
 	"\xD2\x9D\x57\x6F\xCE\xA3\xA3\xA7\xED\x90\x99\xF2\x92\x73\xD7\x8E",
-	"\xB2\x28\x8B\x96\x8A\xE8\xB0\x86\x48\xD1\xCE\x96\x06\xFD\x99\x2D"},
-    {
-    24,
+	"\xB2\x28\x8B\x96\x8A\xE8\xB0\x86\x48\xD1\xCE\x96\x06\xFD\x99\x2D"
+      },
+      {
+	24,
 	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 	"\x00\x00\x00\x00\x00\x00\x00\x00",
 	"\xD2\x9D\x57\x6F\xCE\xAB\xA3\xA7\xED\x98\x99\xF2\x92\x7B\xD7\x8E",
-	"\x13\x0E\x35\x3E\x10\x37\xC2\x24\x05\xE8\xFA\xEF\xB2\xC3\xC3\xE9"},
-    {
-    32,
+	"\x13\x0E\x35\x3E\x10\x37\xC2\x24\x05\xE8\xFA\xEF\xB2\xC3\xC3\xE9"
+      },
+      {
+	32,
 	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
 	"\xD0\x95\x57\x6F\xCE\xA3\xE3\xA7\xED\x98\xD9\xF2\x90\x73\xD7\x8E",
-	"\xB9\x0E\xE5\x86\x2D\xE6\x91\x68\xF2\xBD\xD5\x12\x5B\x45\x47\x2B"},
-    {
-    32,
+	"\xB9\x0E\xE5\x86\x2D\xE6\x91\x68\xF2\xBD\xD5\x12\x5B\x45\x47\x2B"
+      },
+      {
+	32,
 	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
 	"\x00\x00\x00\x00\x01\x00\x00\x00\x02\x00\x00\x00\x03\x00\x00\x00",
-	"\x20\x61\xA4\x27\x82\xBD\x52\xEC\x69\x1E\xC3\x83\xB0\x3B\xA7\x7C"},
-    {
-  0},};
+	"\x20\x61\xA4\x27\x82\xBD\x52\xEC\x69\x1E\xC3\x83\xB0\x3B\xA7\x7C"
+      },
+      {
+	0
+      },
+    };
 
   for (i = 0; test_data[i].key_length; i++)
     {
       serpent_setkey_internal (&context, test_data[i].key,
-			       test_data[i].key_length);
+                               test_data[i].key_length);
       serpent_encrypt_internal (&context, test_data[i].text_plain, scratch);
 
-      if (memcmp
-	  (scratch, test_data[i].text_cipher, sizeof (serpent_block_t)))
+      if (memcmp (scratch, test_data[i].text_cipher, sizeof (serpent_block_t)))
 	switch (test_data[i].key_length)
 	  {
 	  case 16:
 	    return "Serpent-128 test encryption failed.";
-	  case 24:
+	  case  24:
 	    return "Serpent-192 test encryption failed.";
 	  case 32:
 	    return "Serpent-256 test encryption failed.";
 	  }
 
-      serpent_decrypt_internal (&context, test_data[i].text_cipher, scratch);
-      if (memcmp (scratch, test_data[i].text_plain, sizeof (serpent_block_t)))
-	switch (test_data[i].key_length)
-	  {
-	  case 16:
-	    return "Serpent-128 test decryption failed.";
-	  case 24:
-	    return "Serpent-192 test decryption failed.";
-	  case 32:
-	    return "Serpent-256 test decryption failed.";
-	  }
+    serpent_decrypt_internal (&context, test_data[i].text_cipher, scratch);
+    if (memcmp (scratch, test_data[i].text_plain, sizeof (serpent_block_t)))
+      switch (test_data[i].key_length)
+	{
+	case 16:
+	  return "Serpent-128 test decryption failed.";
+	case  24:
+	  return "Serpent-192 test decryption failed.";
+	case 32:
+	  return "Serpent-256 test decryption failed.";
+	}
     }
 
   return NULL;
 }
+
 
 
-
 /* "SERPENT" is an alias for "SERPENT128".  */
-static const char *cipher_spec_serpent128_aliases[] = {
-  "SERPENT",
-  NULL
-};
+static const char *cipher_spec_serpent128_aliases[] =
+  {
+    "SERPENT",
+    NULL
+  };
 
-gcry_cipher_spec_t _gcry_cipher_spec_serpent128 = {
-  "SERPENT128", cipher_spec_serpent128_aliases, NULL, 16, 128,
-  sizeof (serpent_context_t),
-  serpent_setkey, serpent_encrypt, serpent_decrypt
-};
+gcry_cipher_spec_t _gcry_cipher_spec_serpent128 =
+  {
+    "SERPENT128", cipher_spec_serpent128_aliases, NULL, 16, 128,
+    sizeof (serpent_context_t),
+    serpent_setkey, serpent_encrypt, serpent_decrypt
+  };
 
-gcry_cipher_spec_t _gcry_cipher_spec_serpent192 = {
-  "SERPENT192", NULL, NULL, 16, 192,
-  sizeof (serpent_context_t),
-  serpent_setkey, serpent_encrypt, serpent_decrypt
-};
+gcry_cipher_spec_t _gcry_cipher_spec_serpent192 =
+  {
+    "SERPENT192", NULL, NULL, 16, 192,
+    sizeof (serpent_context_t),
+    serpent_setkey, serpent_encrypt, serpent_decrypt
+  };
 
-gcry_cipher_spec_t _gcry_cipher_spec_serpent256 = {
-  "SERPENT256", NULL, NULL, 16, 256,
-  sizeof (serpent_context_t),
-  serpent_setkey, serpent_encrypt, serpent_decrypt
-};
+gcry_cipher_spec_t _gcry_cipher_spec_serpent256 =
+  {
+    "SERPENT256", NULL, NULL, 16, 256,
+    sizeof (serpent_context_t),
+    serpent_setkey, serpent_encrypt, serpent_decrypt
+  };

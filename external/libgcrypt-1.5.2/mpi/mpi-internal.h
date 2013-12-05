@@ -32,22 +32,22 @@
 
 #ifndef BITS_PER_MPI_LIMB
 #if BYTES_PER_MPI_LIMB == SIZEOF_UNSIGNED_INT
-typedef unsigned int mpi_limb_t;
-typedef signed int mpi_limb_signed_t;
+  typedef unsigned int mpi_limb_t;
+  typedef   signed int mpi_limb_signed_t;
 #elif BYTES_PER_MPI_LIMB == SIZEOF_UNSIGNED_LONG
-typedef unsigned long int mpi_limb_t;
-typedef signed long int mpi_limb_signed_t;
+  typedef unsigned long int mpi_limb_t;
+  typedef   signed long int mpi_limb_signed_t;
 #elif BYTES_PER_MPI_LIMB == SIZEOF_UNSIGNED_LONG_LONG
-typedef unsigned long long int mpi_limb_t;
-typedef signed long long int mpi_limb_signed_t;
+  typedef unsigned long long int mpi_limb_t;
+  typedef   signed long long int mpi_limb_signed_t;
 #elif BYTES_PER_MPI_LIMB == SIZEOF_UNSIGNED_SHORT
-typedef unsigned short int mpi_limb_t;
-typedef signed short int mpi_limb_signed_t;
+  typedef unsigned short int mpi_limb_t;
+  typedef   signed short int mpi_limb_signed_t;
 #else
 #error BYTES_PER_MPI_LIMB does not match any C type
 #endif
 #define BITS_PER_MPI_LIMB    (8*BYTES_PER_MPI_LIMB)
-#endif /*BITS_PER_MPI_LIMB */
+#endif /*BITS_PER_MPI_LIMB*/
 
 #include "mpi.h"
 
@@ -68,8 +68,8 @@ typedef signed short int mpi_limb_signed_t;
 #endif
 
 
-typedef mpi_limb_t *mpi_ptr_t;	/* pointer to a limb */
-typedef int mpi_size_t;		/* (must be a signed type) */
+typedef mpi_limb_t *mpi_ptr_t; /* pointer to a limb */
+typedef int mpi_size_t;        /* (must be a signed type) */
 
 #define ABS(x) (x >= 0 ? x : -x)
 #define MIN(l,o) ((l) < (o) ? (l) : (o))
@@ -170,114 +170,108 @@ typedef int mpi_size_t;		/* (must be a signed type) */
 
 /*-- mpiutil.c --*/
 #define mpi_alloc_limb_space(n,f)  _gcry_mpi_alloc_limb_space((n),(f))
-mpi_ptr_t _gcry_mpi_alloc_limb_space (unsigned nlimbs, int sec);
-void _gcry_mpi_free_limb_space (mpi_ptr_t a, unsigned int nlimbs);
-void _gcry_mpi_assign_limb_space (gcry_mpi_t a, mpi_ptr_t ap,
-				  unsigned nlimbs);
+mpi_ptr_t _gcry_mpi_alloc_limb_space( unsigned nlimbs, int sec );
+void _gcry_mpi_free_limb_space( mpi_ptr_t a, unsigned int nlimbs );
+void _gcry_mpi_assign_limb_space( gcry_mpi_t a, mpi_ptr_t ap, unsigned nlimbs );
 
 /*-- mpi-bit.c --*/
 #define mpi_rshift_limbs(a,n)  _gcry_mpi_rshift_limbs ((a), (n))
 #define mpi_lshift_limbs(a,n)  _gcry_mpi_lshift_limbs ((a), (n))
 
-void _gcry_mpi_rshift_limbs (gcry_mpi_t a, unsigned int count);
-void _gcry_mpi_lshift_limbs (gcry_mpi_t a, unsigned int count);
+void _gcry_mpi_rshift_limbs( gcry_mpi_t a, unsigned int count );
+void _gcry_mpi_lshift_limbs( gcry_mpi_t a, unsigned int count );
 
 
 /*-- mpih-add.c --*/
-mpi_limb_t _gcry_mpih_add_1 (mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
-			     mpi_size_t s1_size, mpi_limb_t s2_limb);
-mpi_limb_t _gcry_mpih_add_n (mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
-			     mpi_ptr_t s2_ptr, mpi_size_t size);
-mpi_limb_t _gcry_mpih_add (mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
-			   mpi_size_t s1_size, mpi_ptr_t s2_ptr,
-			   mpi_size_t s2_size);
+mpi_limb_t _gcry_mpih_add_1(mpi_ptr_t res_ptr,  mpi_ptr_t s1_ptr,
+			 mpi_size_t s1_size, mpi_limb_t s2_limb );
+mpi_limb_t _gcry_mpih_add_n( mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
+			  mpi_ptr_t s2_ptr,  mpi_size_t size);
+mpi_limb_t _gcry_mpih_add(mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr, mpi_size_t s1_size,
+		       mpi_ptr_t s2_ptr, mpi_size_t s2_size);
 
 /*-- mpih-sub.c --*/
-mpi_limb_t _gcry_mpih_sub_1 (mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
-			     mpi_size_t s1_size, mpi_limb_t s2_limb);
-mpi_limb_t _gcry_mpih_sub_n (mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
-			     mpi_ptr_t s2_ptr, mpi_size_t size);
-mpi_limb_t _gcry_mpih_sub (mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
-			   mpi_size_t s1_size, mpi_ptr_t s2_ptr,
-			   mpi_size_t s2_size);
+mpi_limb_t _gcry_mpih_sub_1( mpi_ptr_t res_ptr,  mpi_ptr_t s1_ptr,
+			  mpi_size_t s1_size, mpi_limb_t s2_limb );
+mpi_limb_t _gcry_mpih_sub_n( mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
+			  mpi_ptr_t s2_ptr, mpi_size_t size);
+mpi_limb_t _gcry_mpih_sub(mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr, mpi_size_t s1_size,
+		       mpi_ptr_t s2_ptr, mpi_size_t s2_size);
 
 /*-- mpih-cmp.c --*/
-int _gcry_mpih_cmp (mpi_ptr_t op1_ptr, mpi_ptr_t op2_ptr, mpi_size_t size);
+int _gcry_mpih_cmp( mpi_ptr_t op1_ptr, mpi_ptr_t op2_ptr, mpi_size_t size );
 
 /*-- mpih-mul.c --*/
 
-struct karatsuba_ctx
-{
-  struct karatsuba_ctx *next;
-  mpi_ptr_t tspace;
-  unsigned int tspace_nlimbs;
-  mpi_size_t tspace_size;
-  mpi_ptr_t tp;
-  unsigned int tp_nlimbs;
-  mpi_size_t tp_size;
+struct karatsuba_ctx {
+    struct karatsuba_ctx *next;
+    mpi_ptr_t tspace;
+    unsigned int tspace_nlimbs;
+    mpi_size_t tspace_size;
+    mpi_ptr_t tp;
+    unsigned int tp_nlimbs;
+    mpi_size_t tp_size;
 };
 
-void _gcry_mpih_release_karatsuba_ctx (struct karatsuba_ctx *ctx);
+void _gcry_mpih_release_karatsuba_ctx( struct karatsuba_ctx *ctx );
 
-mpi_limb_t _gcry_mpih_addmul_1 (mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
-				mpi_size_t s1_size, mpi_limb_t s2_limb);
-mpi_limb_t _gcry_mpih_submul_1 (mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
-				mpi_size_t s1_size, mpi_limb_t s2_limb);
-void _gcry_mpih_mul_n (mpi_ptr_t prodp, mpi_ptr_t up, mpi_ptr_t vp,
-		       mpi_size_t size);
-mpi_limb_t _gcry_mpih_mul (mpi_ptr_t prodp, mpi_ptr_t up, mpi_size_t usize,
-			   mpi_ptr_t vp, mpi_size_t vsize);
-void _gcry_mpih_sqr_n_basecase (mpi_ptr_t prodp, mpi_ptr_t up,
-				mpi_size_t size);
-void _gcry_mpih_sqr_n (mpi_ptr_t prodp, mpi_ptr_t up, mpi_size_t size,
-		       mpi_ptr_t tspace);
+mpi_limb_t _gcry_mpih_addmul_1( mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
+			     mpi_size_t s1_size, mpi_limb_t s2_limb);
+mpi_limb_t _gcry_mpih_submul_1( mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
+			     mpi_size_t s1_size, mpi_limb_t s2_limb);
+void _gcry_mpih_mul_n( mpi_ptr_t prodp, mpi_ptr_t up, mpi_ptr_t vp,
+						   mpi_size_t size);
+mpi_limb_t _gcry_mpih_mul( mpi_ptr_t prodp, mpi_ptr_t up, mpi_size_t usize,
+					 mpi_ptr_t vp, mpi_size_t vsize);
+void _gcry_mpih_sqr_n_basecase( mpi_ptr_t prodp, mpi_ptr_t up, mpi_size_t size );
+void _gcry_mpih_sqr_n( mpi_ptr_t prodp, mpi_ptr_t up, mpi_size_t size,
+						mpi_ptr_t tspace);
 
-void _gcry_mpih_mul_karatsuba_case (mpi_ptr_t prodp,
-				    mpi_ptr_t up, mpi_size_t usize,
-				    mpi_ptr_t vp, mpi_size_t vsize,
-				    struct karatsuba_ctx *ctx);
+void _gcry_mpih_mul_karatsuba_case( mpi_ptr_t prodp,
+				 mpi_ptr_t up, mpi_size_t usize,
+				 mpi_ptr_t vp, mpi_size_t vsize,
+				 struct karatsuba_ctx *ctx );
 
 
 /*-- mpih-mul_1.c (or xxx/cpu/ *.S) --*/
-mpi_limb_t _gcry_mpih_mul_1 (mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
-			     mpi_size_t s1_size, mpi_limb_t s2_limb);
+mpi_limb_t _gcry_mpih_mul_1( mpi_ptr_t res_ptr, mpi_ptr_t s1_ptr,
+			  mpi_size_t s1_size, mpi_limb_t s2_limb);
 
 /*-- mpih-div.c --*/
-mpi_limb_t _gcry_mpih_mod_1 (mpi_ptr_t dividend_ptr, mpi_size_t dividend_size,
+mpi_limb_t _gcry_mpih_mod_1(mpi_ptr_t dividend_ptr, mpi_size_t dividend_size,
+						 mpi_limb_t divisor_limb);
+mpi_limb_t _gcry_mpih_divrem( mpi_ptr_t qp, mpi_size_t qextra_limbs,
+			   mpi_ptr_t np, mpi_size_t nsize,
+			   mpi_ptr_t dp, mpi_size_t dsize);
+mpi_limb_t _gcry_mpih_divmod_1( mpi_ptr_t quot_ptr,
+			     mpi_ptr_t dividend_ptr, mpi_size_t dividend_size,
 			     mpi_limb_t divisor_limb);
-mpi_limb_t _gcry_mpih_divrem (mpi_ptr_t qp, mpi_size_t qextra_limbs,
-			      mpi_ptr_t np, mpi_size_t nsize,
-			      mpi_ptr_t dp, mpi_size_t dsize);
-mpi_limb_t _gcry_mpih_divmod_1 (mpi_ptr_t quot_ptr,
-				mpi_ptr_t dividend_ptr,
-				mpi_size_t dividend_size,
-				mpi_limb_t divisor_limb);
 
 /*-- mpih-shift.c --*/
-mpi_limb_t _gcry_mpih_lshift (mpi_ptr_t wp, mpi_ptr_t up, mpi_size_t usize,
-			      unsigned cnt);
-mpi_limb_t _gcry_mpih_rshift (mpi_ptr_t wp, mpi_ptr_t up, mpi_size_t usize,
-			      unsigned cnt);
+mpi_limb_t _gcry_mpih_lshift( mpi_ptr_t wp, mpi_ptr_t up, mpi_size_t usize,
+							   unsigned cnt);
+mpi_limb_t _gcry_mpih_rshift( mpi_ptr_t wp, mpi_ptr_t up, mpi_size_t usize,
+							   unsigned cnt);
 
 
 /* Define stuff for longlong.h.  */
 #define W_TYPE_SIZE BITS_PER_MPI_LIMB
-typedef mpi_limb_t UWtype;
-typedef unsigned int UHWtype;
+  typedef mpi_limb_t   UWtype;
+  typedef unsigned int UHWtype;
 #if defined (__GNUC__)
-typedef unsigned int UQItype __attribute__ ((mode (QI)));
-typedef int SItype __attribute__ ((mode (SI)));
-typedef unsigned int USItype __attribute__ ((mode (SI)));
-typedef int DItype __attribute__ ((mode (DI)));
-typedef unsigned int UDItype __attribute__ ((mode (DI)));
+  typedef unsigned int UQItype	  __attribute__ ((mode (QI)));
+  typedef	   int SItype	  __attribute__ ((mode (SI)));
+  typedef unsigned int USItype	  __attribute__ ((mode (SI)));
+  typedef	   int DItype	  __attribute__ ((mode (DI)));
+  typedef unsigned int UDItype	  __attribute__ ((mode (DI)));
 #else
-typedef unsigned char UQItype;
-typedef long SItype;
-typedef unsigned long USItype;
+  typedef unsigned char UQItype;
+  typedef	   long SItype;
+  typedef unsigned long USItype;
 #endif
 
 #ifdef __GNUC__
 #include "mpi-inline.h"
 #endif
 
-#endif /*G10_MPI_INTERNAL_H */
+#endif /*G10_MPI_INTERNAL_H*/

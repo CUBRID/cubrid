@@ -32,36 +32,36 @@
 #include "init.h"
 
 #ifdef HAVE_W32CE_SYSTEM
-# include "mkw32errmap.map.c"	/* Generated map_w32codes () */
+# include "mkw32errmap.map.c"  /* Generated map_w32codes () */
 # ifndef TLS_OUT_OF_INDEXES
 #  define TLS_OUT_OF_INDEXES 0xFFFFFFFF
 # endif
 # ifndef __MINGW32CE__
-#				/* Replace the Mingw32CE provided abort function.  */
+#  /* Replace the Mingw32CE provided abort function.  */
 #  define abort() do { TerminateProcess (GetCurrentProcess(), 8); } while (0)
 # endif
 #endif
-
 
+
 /* Locale directory support.  */
 
 #if HAVE_W32_SYSTEM
 
 #include <windows.h>
 
-static int tls_index = TLS_OUT_OF_INDEXES;	/* Index for the TLS functions.  */
+static int tls_index = TLS_OUT_OF_INDEXES;  /* Index for the TLS functions.  */ 
 
 static char *get_locale_dir (void);
 static void drop_locale_dir (char *locale_dir);
 
-#else /*!HAVE_W32_SYSTEM */
+#else /*!HAVE_W32_SYSTEM*/
 
 #define get_locale_dir() LOCALEDIR
 #define drop_locale_dir(dir)
 
-#endif /*!HAVE_W32_SYSTEM */
-
+#endif /*!HAVE_W32_SYSTEM*/
 
+
 static void
 real_init (void)
 {
@@ -90,7 +90,7 @@ gpg_err_init (void)
      called.  The problem with that is that the TLS has not been setup
      and w32-gettext.c requires TLS.  To solve this we do nothing here
      but call the actual init code from our DllMain.  */
-# else /*!DLL_EXPORT */
+# else /*!DLL_EXPORT*/
   /* Note that if the TLS is actually used, we can't release the TLS
      as there is no way to know when a thread terminates (i.e. no
      thread-specific-atexit).  You are really better off to use the
@@ -99,14 +99,14 @@ gpg_err_init (void)
     {
       tls_index = TlsAlloc ();
       if (tls_index == TLS_OUT_OF_INDEXES)
-	{
-	  /* No way to continue - commit suicide.  */
-	  abort ();
-	}
+        {
+          /* No way to continue - commit suicide.  */
+          abort ();
+        }
       _gpg_w32__init_gettext_module ();
       real_init ();
     }
-# endif	/*!DLL_EXPORT */
+# endif /*!DLL_EXPORT*/
 #else
   real_init ();
 #endif
@@ -127,7 +127,7 @@ gpg_err_deinit (int mode)
 {
 #if defined (HAVE_W32_SYSTEM) && !defined(DLL_EXPORT)
   struct tls_space_s *tls;
-
+  
   tls = TlsGetValue (tls_index);
   if (tls)
     {
@@ -141,12 +141,12 @@ gpg_err_deinit (int mode)
       tls_index = TLS_OUT_OF_INDEXES;
     }
 #else
-  (void) mode;
+  (void)mode;
 #endif
 }
+
+
 
-
-
 #ifdef HAVE_W32_SYSTEM
 
 /* Return a malloced string encoded in UTF-8 from the wide char input
@@ -155,7 +155,7 @@ gpg_err_deinit (int mode)
    number.  The result of calling this function with STRING set to
    NULL is not defined.  */
 static char *
-wchar_to_utf8 (const wchar_t * string)
+wchar_to_utf8 (const wchar_t *string)
 {
   int n;
   char *result;
@@ -166,15 +166,15 @@ wchar_to_utf8 (const wchar_t * string)
   if (n < 0)
     return NULL;
 
-  result = malloc (n + 1);
+  result = malloc (n+1);
   if (result)
     {
       n = WideCharToMultiByte (CP_UTF8, 0, string, -1, result, n, NULL, NULL);
       if (n < 0)
-	{
-	  free (result);
-	  result = NULL;
-	}
+        {
+          free (result);
+          result = NULL;
+        }
     }
   return result;
 }
@@ -195,15 +195,15 @@ utf8_to_wchar (const char *string)
   if (n < 0)
     return NULL;
 
-  result = malloc ((n + 1) * sizeof *result);
+  result = malloc ((n+1) * sizeof *result);
   if (result)
     {
       n = MultiByteToWideChar (CP_UTF8, 0, string, -1, result, n);
       if (n < 0)
-	{
-	  free (result);
-	  result = NULL;
-	}
+        {
+          free (result);
+          result = NULL;
+        }
       return NULL;
     }
   return result;
@@ -213,7 +213,7 @@ utf8_to_wchar (const char *string)
 static char *
 get_locale_dir (void)
 {
-  static wchar_t moddir[MAX_PATH + 5];
+  static wchar_t moddir[MAX_PATH+5];
   char *result, *p;
   int nbytes;
 
@@ -223,61 +223,60 @@ get_locale_dir (void)
 #define SLDIR "\\share\\locale"
   if (*moddir)
     {
-      nbytes =
-	WideCharToMultiByte (CP_UTF8, 0, moddir, -1, NULL, 0, NULL, NULL);
+      nbytes = WideCharToMultiByte (CP_UTF8, 0, moddir, -1, NULL, 0, NULL, NULL);
       if (nbytes < 0)
-	return NULL;
-
+        return NULL;
+      
       result = malloc (nbytes + strlen (SLDIR) + 1);
       if (result)
-	{
-	  nbytes = WideCharToMultiByte (CP_UTF8, 0, moddir, -1,
-					result, nbytes, NULL, NULL);
-	  if (nbytes < 0)
-	    {
-	      free (result);
-	      result = NULL;
-	    }
-	  else
-	    {
-	      p = strrchr (result, '\\');
-	      if (p)
-		*p = 0;
-	      /* If we are installed below "bin" strip that part and
-	         use the top directory instead.
+        {
+          nbytes = WideCharToMultiByte (CP_UTF8, 0, moddir, -1,
+                                        result, nbytes, NULL, NULL);
+          if (nbytes < 0)
+            {
+              free (result);
+              result = NULL;
+            }
+          else
+            {
+              p = strrchr (result, '\\');
+              if (p)
+                *p = 0;
+              /* If we are installed below "bin" strip that part and
+                 use the top directory instead.
 
-	         Background: Under Windows we don't install GnuPG
-	         below bin/ but in the top directory with only share/,
-	         lib/, and etc/ below it.  One of the reasons is to
-	         keep the the length of the filenames at bay so not to
-	         increase the limited length of the PATH envvar.
-	         Another and more important reason, however, is that
-	         the very first GPG versions on W32 were installed
-	         into a flat directory structure and for best
-	         compatibility with these versions we didn't changed
-	         that later.  For WindowsCE we can right away install
-	         it under bin, though.  The hack with detection of the
-	         bin directory part allows us to eventually migrate to
-	         such a directory layout under plain Windows without
-	         the need to change libgpg-error.  */
-	      p = strrchr (result, '\\');
-	      if (p && !strcmp (p + 1, "bin"))
-		*p = 0;
-	      /* Append the static part.  */
-	      strcat (result, SLDIR);
-	    }
-	}
+                 Background: Under Windows we don't install GnuPG
+                 below bin/ but in the top directory with only share/,
+                 lib/, and etc/ below it.  One of the reasons is to
+                 keep the the length of the filenames at bay so not to
+                 increase the limited length of the PATH envvar.
+                 Another and more important reason, however, is that
+                 the very first GPG versions on W32 were installed
+                 into a flat directory structure and for best
+                 compatibility with these versions we didn't changed
+                 that later.  For WindowsCE we can right away install
+                 it under bin, though.  The hack with detection of the
+                 bin directory part allows us to eventually migrate to
+                 such a directory layout under plain Windows without
+                 the need to change libgpg-error.  */
+              p = strrchr (result, '\\');
+              if (p && !strcmp (p+1, "bin"))
+                *p = 0;
+              /* Append the static part.  */
+              strcat (result, SLDIR);
+            }
+        }
     }
-  else				/* Use the old default value.  */
+  else /* Use the old default value.  */
     {
       result = malloc (10 + strlen (SLDIR) + 1);
       if (result)
-	{
-	  strcpy (result, "c:\\gnupg");
-	  strcat (result, SLDIR);
-	}
-    }
-#undef SLDIR
+        {
+          strcpy (result, "c:\\gnupg");
+          strcat (result, SLDIR);
+        }
+    }  
+#undef SLDIR  
   return result;
 }
 
@@ -303,14 +302,14 @@ get_tls (void)
          Allocate the space.  */
       tls = LocalAlloc (LPTR, sizeof *tls);
       if (!tls)
-	{
-	  /* No way to continue - commit suicide.  */
-	  abort ();
-	}
+        {
+          /* No way to continue - commit suicide.  */
+          abort ();
+        }
       tls->gt_use_utf8 = 0;
       TlsSetValue (tls_index, tls);
     }
-
+        
   return tls;
 }
 
@@ -322,9 +321,9 @@ get_tls (void)
 int
 _gpg_w32ce_get_errno (void)
 {
-  return map_w32codes (GetLastError ());
+  return map_w32codes ( GetLastError () );
 }
-#endif /*HAVE_W32CE_SYSTEM */
+#endif /*HAVE_W32CE_SYSTEM*/
 
 
 /* Replacement strerror function for WindowsCE.  */
@@ -343,22 +342,24 @@ _gpg_w32ce_strerror (int err)
      LOCALE_USER_DEFAULT and LOCALE_SYSTEM_DEFAULT - both returned
      English messages.  */
   if (FormatMessageW (FORMAT_MESSAGE_FROM_SYSTEM, NULL, err,
-		      MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT),
-		      tmpbuf, STRBUFFER_SIZE - 1, NULL))
+                      MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT),
+                      tmpbuf, STRBUFFER_SIZE -1,
+                      NULL))
     {
       n = WideCharToMultiByte (CP_UTF8, 0, tmpbuf, -1,
-			       tls->strerror_buffer,
-			       sizeof tls->strerror_buffer - 1, NULL, NULL);
+                               tls->strerror_buffer,
+                               sizeof tls->strerror_buffer -1,
+                               NULL, NULL);
     }
   else
     n = -1;
 
   if (n < 0)
-    snprintf (tls->strerror_buffer, sizeof tls->strerror_buffer - 1,
-	      "[w32err=%d]", err);
-  return tls->strerror_buffer;
+    snprintf (tls->strerror_buffer, sizeof tls->strerror_buffer -1,
+              "[w32err=%d]", err);
+  return tls->strerror_buffer;    
 }
-#endif /*HAVE_W32CE_SYSTEM */
+#endif /*HAVE_W32CE_SYSTEM*/
 
 
 void
@@ -366,9 +367,9 @@ gpg_err_set_errno (int err)
 {
 #ifdef HAVE_W32CE_SYSTEM
   SetLastError (err);
-#else /*!HAVE_W32CE_SYSTEM */
+#else /*!HAVE_W32CE_SYSTEM*/
   errno = err;
-#endif /*!HAVE_W32CE_SYSTEM */
+#endif /*!HAVE_W32CE_SYSTEM*/
 }
 
 
@@ -378,14 +379,14 @@ int WINAPI
 DllMain (HINSTANCE hinst, DWORD reason, LPVOID reserved)
 {
   struct tls_space_s *tls;
-  (void) reserved;
+  (void)reserved;
 
   switch (reason)
     {
     case DLL_PROCESS_ATTACH:
       tls_index = TlsAlloc ();
       if (tls_index == TLS_OUT_OF_INDEXES)
-	return FALSE;
+        return FALSE; 
 #ifndef _GPG_ERR_HAVE_CONSTRUCTOR
       /* If we have not constructors (e.g. MSC) we call it here.  */
       _gpg_w32__init_gettext_module ();
@@ -394,37 +395,37 @@ DllMain (HINSTANCE hinst, DWORD reason, LPVOID reserved)
     case DLL_THREAD_ATTACH:
       tls = LocalAlloc (LPTR, sizeof *tls);
       if (!tls)
-	return FALSE;
+        return FALSE;
       tls->gt_use_utf8 = 0;
       TlsSetValue (tls_index, tls);
       if (reason == DLL_PROCESS_ATTACH)
-	{
-	  real_init ();
-	}
+        {
+          real_init ();
+        }
       break;
 
     case DLL_THREAD_DETACH:
       tls = TlsGetValue (tls_index);
       if (tls)
-	LocalFree (tls);
+        LocalFree (tls);
       break;
 
     case DLL_PROCESS_DETACH:
       tls = TlsGetValue (tls_index);
       if (tls)
-	LocalFree (tls);
+        LocalFree (tls);
       TlsFree (tls_index);
       break;
 
     default:
       break;
     }
-
+  
   return TRUE;
 }
-#endif /*DLL_EXPORT */
+#endif /*DLL_EXPORT*/
 
-#else /*!HAVE_W32_SYSTEM */
+#else /*!HAVE_W32_SYSTEM*/
 
 void
 gpg_err_set_errno (int err)
@@ -432,4 +433,4 @@ gpg_err_set_errno (int err)
   errno = err;
 }
 
-#endif /*!HAVE_W32_SYSTEM */
+#endif /*!HAVE_W32_SYSTEM*/

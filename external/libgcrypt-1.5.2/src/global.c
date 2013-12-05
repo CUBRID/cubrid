@@ -30,15 +30,15 @@
 #include <unistd.h>
 #ifdef HAVE_SYSLOG
 # include <syslog.h>
-#endif /*HAVE_SYSLOG */
+#endif /*HAVE_SYSLOG*/
 
 #include "g10lib.h"
 #include "cipher.h"
-#include "stdmem.h"		/* our own memory allocator */
-#include "secmem.h"		/* our own secmem allocator */
+#include "stdmem.h" /* our own memory allocator */
+#include "secmem.h" /* our own secmem allocator */
 #include "ath.h"
-
 
+
 
 /****************
  * flag bits: 0 : general cipher debug
@@ -59,20 +59,14 @@ static struct
   unsigned int flag;
   const char *desc;
 } hwflist[] =
-{
   {
-  HWF_PADLOCK_RNG, "padlock-rng"},
-  {
-  HWF_PADLOCK_AES, "padlock-aes"},
-  {
-  HWF_PADLOCK_SHA, "padlock-sha"},
-  {
-  HWF_PADLOCK_MMUL, "padlock-mmul"},
-  {
-  HWF_INTEL_AESNI, "intel-aesni"},
-  {
-  0, NULL}
-};
+    { HWF_PADLOCK_RNG, "padlock-rng" },
+    { HWF_PADLOCK_AES, "padlock-aes" },
+    { HWF_PADLOCK_SHA, "padlock-sha" },
+    { HWF_PADLOCK_MMUL,"padlock-mmul"},
+    { HWF_INTEL_AESNI, "intel-aesni" },
+    { 0, NULL}
+  };
 
 /* A bit vector with the hardware features which shall not be used.
    This variable must be set prior to any initialization.  */
@@ -89,9 +83,9 @@ static gcry_handler_free_t free_func;
 static gcry_handler_no_mem_t outofcore_handler;
 static void *outofcore_handler_value;
 static int no_secure_memory;
+
+
 
-
-
 
 
 /* This is our handmade constructor.  It gets called by any function
@@ -131,17 +125,17 @@ global_init (void)
     goto fail;
 #if 0
   /* Hmmm, as of now ac_init does nothing. */
-  if (!fips_mode ())
+  if ( !fips_mode () )
     {
       err = _gcry_ac_init ();
       if (err)
-	goto fail;
+        goto fail;
     }
 #endif
 
   return;
 
-fail:
+ fail:
   BUG ();
 }
 
@@ -169,37 +163,36 @@ _gcry_global_is_operational (void)
   if (!any_init_done)
     {
 #ifdef HAVE_SYSLOG
-      syslog (LOG_USER | LOG_WARNING, "Libgcrypt warning: "
-	      "missing initialization - please fix the application");
-#endif /*HAVE_SYSLOG */
+      syslog (LOG_USER|LOG_WARNING, "Libgcrypt warning: "
+              "missing initialization - please fix the application");
+#endif /*HAVE_SYSLOG*/
       global_init ();
     }
   return _gcry_fips_is_operational ();
 }
+
+
+
 
-
-
-
 /* Version number parsing.  */
 
 /* This function parses the first portion of the version number S and
    stores it in *NUMBER.  On success, this function returns a pointer
    into S starting with the first character, which is not part of the
    initial number portion; on failure, NULL is returned.  */
-static const char *
-parse_version_number (const char *s, int *number)
+static const char*
+parse_version_number( const char *s, int *number )
 {
-  int val = 0;
+    int val = 0;
 
-  if (*s == '0' && isdigit (s[1]))
-    return NULL;		/* leading zeros are not allowed */
-  for (; isdigit (*s); s++)
-    {
-      val *= 10;
-      val += *s - '0';
+    if( *s == '0' && isdigit(s[1]) )
+	return NULL; /* leading zeros are not allowed */
+    for ( ; isdigit(*s); s++ ) {
+	val *= 10;
+	val += *s - '0';
     }
-  *number = val;
-  return val < 0 ? NULL : s;
+    *number = val;
+    return val < 0? NULL : s;
 }
 
 /* This function breaks up the complete string-representation of the
@@ -212,20 +205,20 @@ parse_version_number (const char *s, int *number)
    in failure, NULL will be returned.  */
 
 static const char *
-parse_version_string (const char *s, int *major, int *minor, int *micro)
+parse_version_string( const char *s, int *major, int *minor, int *micro )
 {
-  s = parse_version_number (s, major);
-  if (!s || *s != '.')
-    return NULL;
-  s++;
-  s = parse_version_number (s, minor);
-  if (!s || *s != '.')
-    return NULL;
-  s++;
-  s = parse_version_number (s, micro);
-  if (!s)
-    return NULL;
-  return s;			/* patchlevel */
+    s = parse_version_number( s, major );
+    if( !s || *s != '.' )
+	return NULL;
+    s++;
+    s = parse_version_number( s, minor );
+    if( !s || *s != '.' )
+	return NULL;
+    s++;
+    s = parse_version_number( s, micro );
+    if( !s )
+	return NULL;
+    return s; /* patchlevel */
 }
 
 /* If REQ_VERSION is non-NULL, check that the version of the library
@@ -236,50 +229,50 @@ parse_version_string (const char *s, int *major, int *minor, int *micro)
    If a NULL is passed to this function, no check is done, but the
    string representation of the library is simply returned.  */
 const char *
-gcry_check_version (const char *req_version)
+gcry_check_version( const char *req_version )
 {
-  const char *ver = VERSION;
-  int my_major, my_minor, my_micro;
-  int rq_major, rq_minor, rq_micro;
-  const char *my_plvl;
+    const char *ver = VERSION;
+    int my_major, my_minor, my_micro;
+    int rq_major, rq_minor, rq_micro;
+    const char *my_plvl;
 
-  if (req_version && req_version[0] == 1 && req_version[1] == 1)
-    return _gcry_compat_identification ();
+    if (req_version && req_version[0] == 1 && req_version[1] == 1)
+        return _gcry_compat_identification ();
 
-  /* Initialize library.  */
-  global_init ();
+    /* Initialize library.  */
+    global_init ();
 
-  if (!req_version)
-    /* Caller wants our version number.  */
-    return ver;
+    if ( !req_version )
+        /* Caller wants our version number.  */
+	return ver;
 
-  /* Parse own version number.  */
-  my_plvl = parse_version_string (ver, &my_major, &my_minor, &my_micro);
-  if (!my_plvl)
-    /* very strange our own version is bogus.  Shouldn't we use
-       assert() here and bail out in case this happens?  -mo.  */
+    /* Parse own version number.  */
+    my_plvl = parse_version_string( ver, &my_major, &my_minor, &my_micro );
+    if ( !my_plvl )
+        /* very strange our own version is bogus.  Shouldn't we use
+	   assert() here and bail out in case this happens?  -mo.  */
+	return NULL;
+
+    /* Parse requested version number.  */
+    if (!parse_version_string (req_version, &rq_major, &rq_minor, &rq_micro))
+      return NULL;  /* req version string is invalid, this can happen.  */
+
+    /* Compare version numbers.  */
+    if ( my_major > rq_major
+	|| (my_major == rq_major && my_minor > rq_minor)
+	|| (my_major == rq_major && my_minor == rq_minor		                           		 && my_micro > rq_micro)
+	|| (my_major == rq_major && my_minor == rq_minor
+                                 && my_micro == rq_micro))
+      {
+	return ver;
+      }
+
     return NULL;
-
-  /* Parse requested version number.  */
-  if (!parse_version_string (req_version, &rq_major, &rq_minor, &rq_micro))
-    return NULL;		/* req version string is invalid, this can happen.  */
-
-  /* Compare version numbers.  */
-  if (my_major > rq_major
-      || (my_major == rq_major && my_minor > rq_minor)
-      || (my_major == rq_major && my_minor == rq_minor && my_micro > rq_micro)
-      || (my_major == rq_major && my_minor == rq_minor
-	  && my_micro == rq_micro))
-    {
-      return ver;
-    }
-
-  return NULL;
 }
 
 
 static void
-print_config (int (*fnc) (FILE * fp, const char *format, ...), FILE * fp)
+print_config ( int (*fnc)(FILE *fp, const char *format, ...), FILE *fp)
 {
   unsigned int hwf;
   int i;
@@ -290,34 +283,35 @@ print_config (int (*fnc) (FILE * fp, const char *format, ...), FILE * fp)
   fnc (fp, "digests:%s:\n", LIBGCRYPT_DIGESTS);
   fnc (fp, "rnd-mod:"
 #if USE_RNDEGD
-       "egd:"
+                "egd:"
 #endif
 #if USE_RNDLINUX
-       "linux:"
+                "linux:"
 #endif
 #if USE_RNDUNIX
-       "unix:"
+                "unix:"
 #endif
 #if USE_RNDW32
-       "w32:"
+                "w32:"
 #endif
        "\n");
   fnc (fp, "mpi-asm:%s:\n", _gcry_mpi_get_hw_config ());
   hwf = _gcry_get_hw_features ();
   fnc (fp, "hwflist:");
-  for (i = 0; hwflist[i].desc; i++)
-    if ((hwf & hwflist[i].flag))
+  for (i=0; hwflist[i].desc; i++)
+    if ( (hwf & hwflist[i].flag) )
       fnc (fp, "%s:", hwflist[i].desc);
   fnc (fp, "\n");
   /* We use y/n instead of 1/0 for the simple reason that Emacsen's
      compile error parser would accidently flag that line when printed
      during "make check" as an error.  */
   fnc (fp, "fips-mode:%c:%c:\n",
-       fips_mode ()? 'y' : 'n', _gcry_enforced_fips_mode ()? 'y' : 'n');
+       fips_mode ()? 'y':'n',
+       _gcry_enforced_fips_mode ()? 'y':'n' );
 }
+
+
 
-
-
 
 /* Command dispatcher function, acting as general control
    function.  */
@@ -341,7 +335,7 @@ _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr)
       /* Return an error if the RNG is faked one (e.g. enabled by
          ENABLE_QUICK_RANDOM. */
       if (_gcry_random_is_faked ())
-	err = GPG_ERR_GENERAL;	/* Use as TRUE value.  */
+        err = GPG_ERR_GENERAL;  /* Use as TRUE value.  */
       break;
 
     case GCRYCTL_DUMP_RANDOM_STATS:
@@ -349,7 +343,7 @@ _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr)
       break;
 
     case GCRYCTL_DUMP_MEMORY_STATS:
-      /*m_print_stats("[fixme: prefix]"); */
+      /*m_print_stats("[fixme: prefix]");*/
       break;
 
     case GCRYCTL_DUMP_SECMEM_STATS:
@@ -370,7 +364,7 @@ _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr)
       global_init ();
       _gcry_secmem_init (va_arg (arg_ptr, unsigned int));
       if ((_gcry_secmem_get_flags () & GCRY_SECMEM_FLAG_NOT_LOCKED))
-	err = GPG_ERR_GENERAL;
+        err = GPG_ERR_GENERAL;
       break;
 
     case GCRYCTL_TERM_SECMEM:
@@ -395,7 +389,7 @@ _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr)
 
     case GCRYCTL_USE_SECURE_RNDPOOL:
       global_init ();
-      _gcry_secure_random_alloc ();	/* Put random number into secure memory. */
+      _gcry_secure_random_alloc (); /* Put random number into secure memory. */
       break;
 
     case GCRYCTL_SET_RANDOM_SEED_FILE:
@@ -403,8 +397,8 @@ _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr)
       break;
 
     case GCRYCTL_UPDATE_RANDOM_SEED_FILE:
-      if (fips_is_operational ())
-	_gcry_update_random_seed_file ();
+      if ( fips_is_operational () )
+        _gcry_update_random_seed_file ();
       break;
 
     case GCRYCTL_SET_VERBOSITY:
@@ -431,30 +425,30 @@ _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr)
 
     case GCRYCTL_INITIALIZATION_FINISHED_P:
       if (init_finished)
-	err = GPG_ERR_GENERAL;	/* Yes.  */
+	err = GPG_ERR_GENERAL; /* Yes.  */
       break;
 
     case GCRYCTL_INITIALIZATION_FINISHED:
       /* This is a hook which should be used by an application after
-         all initialization has been done and right before any threads
-         are started.  It is not really needed but the only way to be
-         really sure that all initialization for thread-safety has
-         been done. */
-      if (!init_finished)
-	{
-	  global_init ();
-	  /* Do only a basic random initialization, i.e. init the
-	     mutexes. */
-	  _gcry_random_initialize (0);
-	  init_finished = 1;
-	  /* Force us into operational state if in FIPS mode.  */
-	  (void) fips_is_operational ();
-	}
+	 all initialization has been done and right before any threads
+	 are started.  It is not really needed but the only way to be
+	 really sure that all initialization for thread-safety has
+	 been done. */
+      if (! init_finished)
+        {
+          global_init ();
+          /* Do only a basic random initialization, i.e. init the
+             mutexes. */
+          _gcry_random_initialize (0);
+          init_finished = 1;
+          /* Force us into operational state if in FIPS mode.  */
+          (void)fips_is_operational ();
+        }
       break;
 
     case GCRYCTL_SET_THREAD_CBS:
       err = ath_install (va_arg (arg_ptr, void *), any_init_done);
-      if (!err)
+      if (! err)
 	global_init ();
       break;
 
@@ -463,8 +457,8 @@ _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr)
          initialized so that the poll function is not a NOP. */
       _gcry_random_initialize (1);
 
-      if (fips_is_operational ())
-	_gcry_fast_random_poll ();
+      if ( fips_is_operational () )
+        _gcry_fast_random_poll ();
       break;
 
     case GCRYCTL_SET_RNDEGD_SOCKET:
@@ -483,7 +477,7 @@ _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr)
       /* We need to do make sure that the random pool is really
          initialized so that the poll function is not a NOP. */
       _gcry_random_initialize (1);
-      _gcry_use_random_daemon (!!va_arg (arg_ptr, int));
+      _gcry_use_random_daemon (!! va_arg (arg_ptr, int));
       break;
 
       /* This command dumps information pertaining to the
@@ -492,8 +486,8 @@ _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr)
          before a gcry_version_check. */
     case GCRYCTL_PRINT_CONFIG:
       {
-	FILE *fp = va_arg (arg_ptr, FILE *);
-	print_config (fp ? fprintf : _gcry_log_info_with_dummy_fp, fp);
+        FILE *fp = va_arg (arg_ptr, FILE *);
+        print_config (fp?fprintf:_gcry_log_info_with_dummy_fp, fp);
       }
       break;
 
@@ -501,13 +495,14 @@ _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr)
       /* Returns true if the library is in an operational state.  This
          is always true for non-fips mode.  */
       if (_gcry_fips_test_operational ())
-	err = GPG_ERR_GENERAL;	/* Used as TRUE value */
+        err = GPG_ERR_GENERAL; /* Used as TRUE value */
       break;
 
     case GCRYCTL_FIPS_MODE_P:
       if (fips_mode ()
-	  && !_gcry_is_fips_mode_inactive () && !no_secure_memory)
-	err = GPG_ERR_GENERAL;	/* Used as TRUE value */
+          && !_gcry_is_fips_mode_inactive ()
+          && !no_secure_memory)
+	err = GPG_ERR_GENERAL; /* Used as TRUE value */
       break;
 
     case GCRYCTL_FORCE_FIPS_MODE:
@@ -516,21 +511,21 @@ _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr)
          selftest is triggered.  It is not possible to put the libraty
          into fips mode after having passed the initialization. */
       if (!any_init_done)
-	{
-	  /* Not yet intialized at all.  Set a flag so that we are put
-	     into fips mode during initialization.  */
-	  force_fips_mode = 1;
-	}
+        {
+          /* Not yet intialized at all.  Set a flag so that we are put
+             into fips mode during initialization.  */
+          force_fips_mode = 1;
+        }
       else
-	{
-	  /* Already initialized.  If we are already operational we
-	     run a selftest.  If not we use the is_operational call to
-	     force us into operational state if possible.  */
-	  if (_gcry_fips_test_error_or_operational ())
-	    _gcry_fips_run_selftests (1);
-	  if (_gcry_fips_is_operational ())
-	    err = GPG_ERR_GENERAL;	/* Used as TRUE value */
-	}
+        {
+          /* Already initialized.  If we are already operational we
+             run a selftest.  If not we use the is_operational call to
+             force us into operational state if possible.  */
+          if (_gcry_fips_test_error_or_operational ())
+            _gcry_fips_run_selftests (1);
+          if (_gcry_fips_is_operational ())
+            err = GPG_ERR_GENERAL; /* Used as TRUE value */
+      }
       break;
 
     case GCRYCTL_SELFTEST:
@@ -546,43 +541,43 @@ _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr)
 # pragma GCC diagnostic push
 # pragma GCC diagnostic ignored "-Wswitch"
 #endif
-    case 58:			/* Init external random test.  */
+    case 58:  /* Init external random test.  */
       {
-	void **rctx = va_arg (arg_ptr, void **);
-	unsigned int flags = va_arg (arg_ptr, unsigned int);
-	const void *key = va_arg (arg_ptr, const void *);
-	size_t keylen = va_arg (arg_ptr, size_t);
-	const void *seed = va_arg (arg_ptr, const void *);
-	size_t seedlen = va_arg (arg_ptr, size_t);
-	const void *dt = va_arg (arg_ptr, const void *);
-	size_t dtlen = va_arg (arg_ptr, size_t);
-	if (!fips_is_operational ())
-	  err = fips_not_operational ();
-	else
-	  err = _gcry_random_init_external_test (rctx, flags, key, keylen,
-						 seed, seedlen, dt, dtlen);
+        void **rctx        = va_arg (arg_ptr, void **);
+        unsigned int flags = va_arg (arg_ptr, unsigned int);
+        const void *key    = va_arg (arg_ptr, const void *);
+        size_t keylen      = va_arg (arg_ptr, size_t);
+        const void *seed   = va_arg (arg_ptr, const void *);
+        size_t seedlen     = va_arg (arg_ptr, size_t);
+        const void *dt     = va_arg (arg_ptr, const void *);
+        size_t dtlen       = va_arg (arg_ptr, size_t);
+        if (!fips_is_operational ())
+          err = fips_not_operational ();
+        else
+          err = _gcry_random_init_external_test (rctx, flags, key, keylen,
+                                                 seed, seedlen, dt, dtlen);
       }
       break;
-    case 59:			/* Run external random test.  */
+    case 59:  /* Run external random test.  */
       {
-	void *ctx = va_arg (arg_ptr, void *);
-	void *buffer = va_arg (arg_ptr, void *);
-	size_t buflen = va_arg (arg_ptr, size_t);
-	if (!fips_is_operational ())
-	  err = fips_not_operational ();
-	else
-	  err = _gcry_random_run_external_test (ctx, buffer, buflen);
+        void *ctx     = va_arg (arg_ptr, void *);
+        void *buffer  = va_arg (arg_ptr, void *);
+        size_t buflen = va_arg (arg_ptr, size_t);
+        if (!fips_is_operational ())
+          err = fips_not_operational ();
+        else
+          err = _gcry_random_run_external_test (ctx, buffer, buflen);
       }
       break;
-    case 60:			/* Deinit external random test.  */
+    case 60:  /* Deinit external random test.  */
       {
-	void *ctx = va_arg (arg_ptr, void *);
-	_gcry_random_deinit_external_test (ctx);
+        void *ctx = va_arg (arg_ptr, void *);
+        _gcry_random_deinit_external_test (ctx);
       }
       break;
-    case 61:			/* RFU */
+    case 61:  /* RFU */
       break;
-    case 62:			/* RFU */
+    case 62:  /* RFU */
       break;
 #if _GCRY_GCC_VERSION >= 40600
 # pragma GCC diagnostic pop
@@ -590,28 +585,28 @@ _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr)
 
     case GCRYCTL_DISABLE_HWF:
       {
-	const char *name = va_arg (arg_ptr, const char *);
-	int i;
+        const char *name = va_arg (arg_ptr, const char *);
+        int i;
 
-	for (i = 0; hwflist[i].desc; i++)
-	  if (!strcmp (hwflist[i].desc, name))
-	    {
-	      disabled_hw_features |= hwflist[i].flag;
-	      break;
-	    }
-	if (!hwflist[i].desc)
-	  err = GPG_ERR_INV_NAME;
+        for (i=0; hwflist[i].desc; i++)
+          if (!strcmp (hwflist[i].desc, name))
+            {
+              disabled_hw_features |= hwflist[i].flag;
+              break;
+            }
+        if (!hwflist[i].desc)
+          err = GPG_ERR_INV_NAME;
       }
       break;
 
     case GCRYCTL_SET_ENFORCED_FIPS_FLAG:
       if (!any_init_done)
-	{
-	  /* Not yet intialized at all.  Set the enforced fips mode flag */
-	  _gcry_set_enforced_fips_mode ();
-	}
+        {
+          /* Not yet intialized at all.  Set the enforced fips mode flag */
+          _gcry_set_enforced_fips_mode ();
+        }
       else
-	err = GPG_ERR_GENERAL;
+        err = GPG_ERR_GENERAL;
       break;
 
     default:
@@ -632,7 +627,7 @@ gcry_control (enum gcry_ctl_cmds cmd, ...)
 
   va_start (arg_ptr, cmd);
   err = _gcry_vcontrol (cmd, arg_ptr);
-  va_end (arg_ptr);
+  va_end(arg_ptr);
   return err;
 }
 
@@ -735,12 +730,12 @@ gcry_set_allocation_handler (gcry_handler_alloc_t new_alloc_func,
  *	bit 0 set = secure memory has been requested.
  */
 void
-gcry_set_outofcore_handler (int (*f) (void *, size_t, unsigned int),
-			    void *value)
+gcry_set_outofcore_handler( int (*f)( void*, size_t, unsigned int ),
+							void *value )
 {
   global_init ();
 
-  if (fips_mode ())
+  if (fips_mode () )
     {
       log_info ("out of core handler ignored in FIPS mode\n");
       return;
@@ -791,7 +786,7 @@ do_malloc (size_t n, unsigned int flags, void **mem)
       /* Make sure that ERRNO has been set in case a user supplied
          memory handler didn't it correctly. */
       if (!errno)
-	gpg_err_set_errno (ENOMEM);
+        gpg_err_set_errno (ENOMEM);
       err = gpg_err_code_from_errno (errno);
     }
   else
@@ -826,246 +821,257 @@ gcry_is_secure (const void *a)
   if (get_no_secure_memory ())
     return 0;
   if (is_secure_func)
-    return is_secure_func (a);
+    return is_secure_func (a) ;
   return _gcry_private_is_secure (a);
 }
 
 void
-_gcry_check_heap (const void *a)
+_gcry_check_heap( const void *a )
 {
-  (void) a;
+  (void)a;
 
-  /* FIXME: implement this */
+    /* FIXME: implement this*/
 #if 0
-  if (some_handler)
-    some_handler (a)
+    if( some_handler )
+	some_handler(a)
     else
-    _gcry_private_check_heap (a)
+	_gcry_private_check_heap(a)
 #endif
+}
+
+void *
+gcry_realloc (void *a, size_t n)
+{
+  void *p;
+
+  /* To avoid problems with non-standard realloc implementations and
+     our own secmem_realloc, we divert to malloc and free here.  */
+  if (!a)
+    return gcry_malloc (n);
+  if (!n)
+    {
+      gcry_free (a);
+      return NULL;
     }
 
-    void *gcry_realloc (void *a, size_t n)
-  {
-    void *p;
+  if (realloc_func)
+    p = realloc_func (a, n);
+  else
+    p =  _gcry_private_realloc (a, n);
+  if (!p && !errno)
+    gpg_err_set_errno (ENOMEM);
+  return p;
+}
 
-    /* To avoid problems with non-standard realloc implementations and
-       our own secmem_realloc, we divert to malloc and free here.  */
-    if (!a)
-      return gcry_malloc (n);
-    if (!n)
-      {
-	gcry_free (a);
-	return NULL;
-      }
+void
+gcry_free (void *p)
+{
+  int save_errno;
 
-    if (realloc_func)
-      p = realloc_func (a, n);
-    else
-      p = _gcry_private_realloc (a, n);
-    if (!p && !errno)
+  if (!p)
+    return;
+
+  /* In case ERRNO is set we better save it so that the free machinery
+     may not accidently change ERRNO.  We restore it only if it was
+     already set to comply with the usual C semantic for ERRNO.  */
+  save_errno = errno;
+  if (free_func)
+    free_func (p);
+  else
+    _gcry_private_free (p);
+
+  if (save_errno)
+    gpg_err_set_errno (save_errno);
+}
+
+void *
+gcry_calloc (size_t n, size_t m)
+{
+  size_t bytes;
+  void *p;
+
+  bytes = n * m; /* size_t is unsigned so the behavior on overflow is
+                    defined. */
+  if (m && bytes / m != n)
+    {
       gpg_err_set_errno (ENOMEM);
-    return p;
-  }
+      return NULL;
+    }
 
-  void gcry_free (void *p)
-  {
-    int save_errno;
+  p = gcry_malloc (bytes);
+  if (p)
+    memset (p, 0, bytes);
+  return p;
+}
 
-    if (!p)
-      return;
+void *
+gcry_calloc_secure (size_t n, size_t m)
+{
+  size_t bytes;
+  void *p;
 
-    /* In case ERRNO is set we better save it so that the free machinery
-       may not accidently change ERRNO.  We restore it only if it was
-       already set to comply with the usual C semantic for ERRNO.  */
-    save_errno = errno;
-    if (free_func)
-      free_func (p);
-    else
-      _gcry_private_free (p);
+  bytes = n * m; /* size_t is unsigned so the behavior on overflow is
+                    defined. */
+  if (m && bytes / m != n)
+    {
+      gpg_err_set_errno (ENOMEM);
+      return NULL;
+    }
 
-    if (save_errno)
-      gpg_err_set_errno (save_errno);
-  }
-
-  void *gcry_calloc (size_t n, size_t m)
-  {
-    size_t bytes;
-    void *p;
-
-    bytes = n * m;		/* size_t is unsigned so the behavior on overflow is
-				   defined. */
-    if (m && bytes / m != n)
-      {
-	gpg_err_set_errno (ENOMEM);
-	return NULL;
-      }
-
-    p = gcry_malloc (bytes);
-    if (p)
-      memset (p, 0, bytes);
-    return p;
-  }
-
-  void *gcry_calloc_secure (size_t n, size_t m)
-  {
-    size_t bytes;
-    void *p;
-
-    bytes = n * m;		/* size_t is unsigned so the behavior on overflow is
-				   defined. */
-    if (m && bytes / m != n)
-      {
-	gpg_err_set_errno (ENOMEM);
-	return NULL;
-      }
-
-    p = gcry_malloc_secure (bytes);
-    if (p)
-      memset (p, 0, bytes);
-    return p;
-  }
+  p = gcry_malloc_secure (bytes);
+  if (p)
+    memset (p, 0, bytes);
+  return p;
+}
 
 
 /* Create and return a copy of the null-terminated string STRING.  If
    it is contained in secure memory, the copy will be contained in
    secure memory as well.  In an out-of-memory condition, NULL is
    returned.  */
-  char *gcry_strdup (const char *string)
-  {
-    char *string_cp = NULL;
-    size_t string_n = 0;
+char *
+gcry_strdup (const char *string)
+{
+  char *string_cp = NULL;
+  size_t string_n = 0;
 
-    string_n = strlen (string);
+  string_n = strlen (string);
 
-    if (gcry_is_secure (string))
-      string_cp = gcry_malloc_secure (string_n + 1);
-    else
-      string_cp = gcry_malloc (string_n + 1);
+  if (gcry_is_secure (string))
+    string_cp = gcry_malloc_secure (string_n + 1);
+  else
+    string_cp = gcry_malloc (string_n + 1);
 
-    if (string_cp)
-      strcpy (string_cp, string);
+  if (string_cp)
+    strcpy (string_cp, string);
 
-    return string_cp;
-  }
+  return string_cp;
+}
 
 
-  void *gcry_xmalloc (size_t n)
-  {
-    void *p;
+void *
+gcry_xmalloc( size_t n )
+{
+  void *p;
 
-    while (!(p = gcry_malloc (n)))
-      {
-	if (fips_mode ()
-	    || !outofcore_handler
-	    || !outofcore_handler (outofcore_handler_value, n, 0))
-	  {
-	    _gcry_fatal_error (gpg_err_code_from_errno (errno), NULL);
-	  }
-      }
+  while ( !(p = gcry_malloc( n )) )
+    {
+      if ( fips_mode ()
+           || !outofcore_handler
+           || !outofcore_handler (outofcore_handler_value, n, 0) )
+        {
+          _gcry_fatal_error (gpg_err_code_from_errno (errno), NULL);
+        }
+    }
     return p;
-  }
+}
 
-  void *gcry_xrealloc (void *a, size_t n)
-  {
-    void *p;
+void *
+gcry_xrealloc( void *a, size_t n )
+{
+  void *p;
 
-    while (!(p = gcry_realloc (a, n)))
-      {
-	if (fips_mode ()
-	    || !outofcore_handler
-	    || !outofcore_handler (outofcore_handler_value, n,
-				   gcry_is_secure (a) ? 3 : 2))
-	  {
-	    _gcry_fatal_error (gpg_err_code_from_errno (errno), NULL);
-	  }
-      }
+  while ( !(p = gcry_realloc( a, n )) )
+    {
+      if ( fips_mode ()
+           || !outofcore_handler
+           || !outofcore_handler (outofcore_handler_value, n,
+                                   gcry_is_secure(a)? 3:2 ) )
+        {
+          _gcry_fatal_error (gpg_err_code_from_errno (errno), NULL );
+	}
+    }
     return p;
-  }
+}
 
-  void *gcry_xmalloc_secure (size_t n)
-  {
-    void *p;
+void *
+gcry_xmalloc_secure( size_t n )
+{
+  void *p;
 
-    while (!(p = gcry_malloc_secure (n)))
-      {
-	if (fips_mode ()
-	    || !outofcore_handler
-	    || !outofcore_handler (outofcore_handler_value, n, 1))
-	  {
-	    _gcry_fatal_error (gpg_err_code_from_errno (errno),
-			       _("out of core in secure memory"));
-	  }
-      }
-    return p;
-  }
-
-
-  void *gcry_xcalloc (size_t n, size_t m)
-  {
-    size_t nbytes;
-    void *p;
-
-    nbytes = n * m;
-    if (m && nbytes / m != n)
-      {
-	gpg_err_set_errno (ENOMEM);
-	_gcry_fatal_error (gpg_err_code_from_errno (errno), NULL);
-      }
-
-    p = gcry_xmalloc (nbytes);
-    memset (p, 0, nbytes);
-    return p;
-  }
-
-  void *gcry_xcalloc_secure (size_t n, size_t m)
-  {
-    size_t nbytes;
-    void *p;
-
-    nbytes = n * m;
-    if (m && nbytes / m != n)
-      {
-	gpg_err_set_errno (ENOMEM);
-	_gcry_fatal_error (gpg_err_code_from_errno (errno), NULL);
-      }
-
-    p = gcry_xmalloc_secure (nbytes);
-    memset (p, 0, nbytes);
-    return p;
-  }
-
-  char *gcry_xstrdup (const char *string)
-  {
-    char *p;
-
-    while (!(p = gcry_strdup (string)))
-      {
-	size_t n = strlen (string);
-	int is_sec = !!gcry_is_secure (string);
-
-	if (fips_mode ()
-	    || !outofcore_handler
-	    || !outofcore_handler (outofcore_handler_value, n, is_sec))
-	  {
-	    _gcry_fatal_error (gpg_err_code_from_errno (errno),
-			       is_sec ? _("out of core in secure memory") :
-			       NULL);
-	  }
-      }
-
-    return p;
-  }
+  while ( !(p = gcry_malloc_secure( n )) )
+    {
+      if ( fips_mode ()
+           || !outofcore_handler
+           || !outofcore_handler (outofcore_handler_value, n, 1) )
+        {
+          _gcry_fatal_error (gpg_err_code_from_errno (errno),
+                             _("out of core in secure memory"));
+	}
+    }
+  return p;
+}
 
 
-  int _gcry_get_debug_flag (unsigned int mask)
-  {
-    if (fips_mode ())
-      return 0;
-    return (debug_flags & mask);
-  }
+void *
+gcry_xcalloc( size_t n, size_t m )
+{
+  size_t nbytes;
+  void *p;
+
+  nbytes = n * m;
+  if (m && nbytes / m != n)
+    {
+      gpg_err_set_errno (ENOMEM);
+      _gcry_fatal_error(gpg_err_code_from_errno (errno), NULL );
+    }
+
+  p = gcry_xmalloc ( nbytes );
+  memset ( p, 0, nbytes );
+  return p;
+}
+
+void *
+gcry_xcalloc_secure( size_t n, size_t m )
+{
+  size_t nbytes;
+  void *p;
+
+  nbytes = n * m;
+  if (m && nbytes / m != n)
+    {
+      gpg_err_set_errno (ENOMEM);
+      _gcry_fatal_error(gpg_err_code_from_errno (errno), NULL );
+    }
+
+  p = gcry_xmalloc_secure ( nbytes );
+  memset ( p, 0, nbytes );
+  return p;
+}
+
+char *
+gcry_xstrdup (const char *string)
+{
+  char *p;
+
+  while ( !(p = gcry_strdup (string)) )
+    {
+      size_t n = strlen (string);
+      int is_sec = !!gcry_is_secure (string);
+
+      if (fips_mode ()
+          || !outofcore_handler
+          || !outofcore_handler (outofcore_handler_value, n, is_sec) )
+        {
+          _gcry_fatal_error (gpg_err_code_from_errno (errno),
+                             is_sec? _("out of core in secure memory"):NULL);
+	}
+    }
+
+  return p;
+}
+
+
+int
+_gcry_get_debug_flag (unsigned int mask)
+{
+  if ( fips_mode () )
+    return 0;
+  return (debug_flags & mask);
+}
+
+
 
-
-
 /* It is often useful to get some feedback of long running operations.
    This function may be used to register a handler for this.
    The callback function CB is used as:
@@ -1102,17 +1108,16 @@ _gcry_check_heap (const void *a)
    "pk_dsa"
             Only used in debugging mode.
 */
-  void
-    gcry_set_progress_handler (void (*cb)
-			       (void *, const char *, int, int, int),
-			       void *cb_data)
-  {
+void
+gcry_set_progress_handler (void (*cb)(void *,const char*,int, int, int),
+                           void *cb_data)
+{
 #if USE_DSA
-    _gcry_register_pk_dsa_progress (cb, cb_data);
+  _gcry_register_pk_dsa_progress (cb, cb_data);
 #endif
 #if USE_ELGAMAL
-    _gcry_register_pk_elg_progress (cb, cb_data);
+  _gcry_register_pk_elg_progress (cb, cb_data);
 #endif
-    _gcry_register_primegen_progress (cb, cb_data);
-    _gcry_register_random_progress (cb, cb_data);
-  }
+  _gcry_register_primegen_progress (cb, cb_data);
+  _gcry_register_random_progress (cb, cb_data);
+}

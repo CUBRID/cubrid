@@ -34,23 +34,25 @@ static int verbose;
 static void
 die (const char *format, ...)
 {
-  va_list arg_ptr;
+  va_list arg_ptr ;
 
-  va_start (arg_ptr, format);
-  vfprintf (stderr, format, arg_ptr);
-  va_end (arg_ptr);
+  va_start( arg_ptr, format ) ;
+  vfprintf (stderr, format, arg_ptr );
+  va_end(arg_ptr);
   exit (1);
 }
 
 void
 key_copy (gcry_ac_handle_t handle,
-	  gcry_ac_key_type_t type, gcry_ac_key_t * key_cp, gcry_ac_key_t key)
+	  gcry_ac_key_type_t type,
+	  gcry_ac_key_t *key_cp, gcry_ac_key_t key)
 {
   gcry_error_t err = 0;
 
-  err = gcry_ac_key_init (key_cp, handle, type, gcry_ac_key_data_get (key));
+  err = gcry_ac_key_init (key_cp, handle, type,
+			  gcry_ac_key_data_get (key));
 
-  assert (!err);
+  assert (! err);
 }
 
 void
@@ -68,10 +70,10 @@ check_one (gcry_mpi_t x)
   gcry_mpi_set_ui (rsa_spec.e, 1);
 
   err = gcry_ac_open (&handle, GCRY_AC_RSA, 0);
-  assert (!err);
+  assert (! err);
 
   err = gcry_ac_key_pair_generate (handle, 1024, &rsa_spec, &key_pair, NULL);
-  assert (!err);
+  assert (! err);
 
   key_sec = gcry_ac_key_pair_extract (key_pair, GCRY_AC_KEY_SECRET);
   key_copy (handle, GCRY_AC_KEY_SECRET, &key_sec_cp, key_sec);
@@ -79,42 +81,38 @@ check_one (gcry_mpi_t x)
   key_pub = gcry_ac_key_pair_extract (key_pair, GCRY_AC_KEY_PUBLIC);
   key_copy (handle, GCRY_AC_KEY_PUBLIC, &key_pub_cp, key_pub);
 
-  err =
-    gcry_ac_data_encrypt (handle, GCRY_AC_FLAG_NO_BLINDING, key_pub_cp, x,
-			  &data);
-  assert (!err);
+  err = gcry_ac_data_encrypt (handle, GCRY_AC_FLAG_NO_BLINDING, key_pub_cp, x, &data);
+  assert (! err);
 
-  err =
-    gcry_ac_data_decrypt (handle, GCRY_AC_FLAG_NO_BLINDING, key_sec_cp, &x2,
-			  data);
-  assert (!err);
+  err = gcry_ac_data_decrypt (handle, GCRY_AC_FLAG_NO_BLINDING, key_sec_cp, &x2, data);
+  assert (! err);
 
-  assert (!gcry_mpi_cmp (x, x2));
+  assert (! gcry_mpi_cmp (x, x2));
 
   gcry_ac_data_destroy (data);
 
   err = gcry_ac_data_sign (handle, key_sec, x, &data);
-  assert (!err);
+  assert (! err);
   err = gcry_ac_data_copy (&data2, data);
-  assert (!err);
+  assert (! err);
   gcry_ac_data_destroy (data);
   err = gcry_ac_data_copy (&data, data2);
-  assert (!err);
+  assert (! err);
   gcry_ac_data_destroy (data2);
 
   err = gcry_ac_data_verify (handle, key_pub, x, data);
-  assert (!err);
+  assert (! err);
 
   gcry_ac_data_destroy (data);
 
   err = gcry_ac_data_sign (handle, key_sec, x, &data);
-  assert (!err);
+  assert (! err);
   {
     const char *label;
     gcry_mpi_t y;
 
     err = gcry_ac_data_get_index (data, 0, 0, &label, &y);
-    assert (!err);
+    assert (! err);
     gcry_mpi_add_ui (y, y, 1);
 
     err = gcry_ac_data_verify (handle, key_pub, x, data);
@@ -153,7 +151,7 @@ main (int argc, char **argv)
     die ("version mismatch\n");
   gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
   if (debug)
-    gcry_control (GCRYCTL_SET_DEBUG_FLAGS, 1u, 0);
+    gcry_control (GCRYCTL_SET_DEBUG_FLAGS, 1u , 0);
   /* No valuable keys are create, so we can speed up our RNG. */
   gcry_control (GCRYCTL_ENABLE_QUICK_RANDOM, 0);
 

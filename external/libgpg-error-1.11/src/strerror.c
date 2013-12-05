@@ -78,7 +78,7 @@ system_strerror_r (int no, char *buf, size_t buflen)
   else
     {
       /* We can not tell if the buffer was large enough, but we can
-         try to make a guess.  */
+	 try to make a guess.  */
       if (strlen (buf) + 1 >= buflen)
 	return ERANGE;
 
@@ -86,7 +86,7 @@ system_strerror_r (int no, char *buf, size_t buflen)
     }
 }
 
-#else /* STRERROR_R_CHAR_P */
+#else	/* STRERROR_R_CHAR_P */
 /* Now the POSIX version.  */
 
 static int
@@ -95,9 +95,9 @@ system_strerror_r (int no, char *buf, size_t buflen)
   return strerror_r (no, buf, buflen);
 }
 
-#endif /* STRERROR_R_CHAR_P */
+#endif	/* STRERROR_R_CHAR_P */
 
-#else /* HAVE_STRERROR_H */
+#else	/* HAVE_STRERROR_H */
 /* Without strerror_r(), we can still provide a non-thread-safe
    version.  Maybe we are even lucky and the system's strerror() is
    already thread-safe.  */

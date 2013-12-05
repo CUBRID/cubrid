@@ -34,25 +34,25 @@ static int debug;
 static int error_count;
 
 static void
-fail (const char *format, ...)
+fail ( const char *format, ... )
 {
-  va_list arg_ptr;
+    va_list arg_ptr ;
 
-  va_start (arg_ptr, format);
-  vfprintf (stderr, format, arg_ptr);
-  va_end (arg_ptr);
-  error_count++;
+    va_start( arg_ptr, format ) ;
+    vfprintf (stderr, format, arg_ptr );
+    va_end(arg_ptr);
+    error_count++;
 }
 
 static void
-die (const char *format, ...)
+die ( const char *format, ... )
 {
-  va_list arg_ptr;
+    va_list arg_ptr ;
 
-  va_start (arg_ptr, format);
-  vfprintf (stderr, format, arg_ptr);
-  va_end (arg_ptr);
-  exit (1);
+    va_start( arg_ptr, format ) ;
+    vfprintf (stderr, format, arg_ptr );
+    va_end(arg_ptr);
+    exit (1);
 }
 
 
@@ -66,7 +66,7 @@ print_mpi (const char *text, gcry_mpi_t a)
   rc = gcry_mpi_aprint (GCRYMPI_FMT_HEX, bufaddr, NULL, a);
   if (rc)
     fprintf (stderr, "%s=[error printing number: %s]\n",
-	     text, gpg_strerror (rc));
+             text, gpg_strerror (rc));
   else
     {
       fprintf (stderr, "%s=0x%s\n", text, buf);
@@ -88,18 +88,18 @@ check_generated_rsa_key (gcry_sexp_t key, unsigned long expected_e)
       gcry_mpi_t e = NULL;
 
       list = gcry_sexp_find_token (pkey, "e", 0);
-      if (!list || !(e = gcry_sexp_nth_mpi (list, 1, 0)))
-	fail ("public exponent not found\n");
+      if (!list || !(e=gcry_sexp_nth_mpi (list, 1, 0)) )
+        fail ("public exponent not found\n");
       else if (!expected_e)
-	{
-	  if (verbose)
-	    print_mpi ("e", e);
-	}
-      else if (gcry_mpi_cmp_ui (e, expected_e))
-	{
-	  print_mpi ("e", e);
-	  fail ("public exponent is not %lu\n", expected_e);
-	}
+        {
+          if (verbose)
+            print_mpi ("e", e);
+        }
+      else if ( gcry_mpi_cmp_ui (e, expected_e))
+        {
+          print_mpi ("e", e);
+          fail ("public exponent is not %lu\n", expected_e);
+        }
       gcry_sexp_release (list);
       gcry_mpi_release (e);
       gcry_sexp_release (pkey);
@@ -112,11 +112,11 @@ check_generated_rsa_key (gcry_sexp_t key, unsigned long expected_e)
     {
       int rc = gcry_pk_testkey (skey);
       if (rc)
-	fail ("gcry_pk_testkey failed: %s\n", gpg_strerror (rc));
+        fail ("gcry_pk_testkey failed: %s\n", gpg_strerror (rc));
       gcry_sexp_release (skey);
     }
 
-}
+ }
 
 static void
 check_rsa_keys (void)
@@ -129,28 +129,32 @@ check_rsa_keys (void)
      argument. */
   if (verbose)
     fprintf (stderr, "creating 5 1024 bit DSA keys\n");
-  for (i = 0; i < 5; i++)
+  for (i=0; i < 5; i++)
     {
       rc = gcry_sexp_new (&keyparm,
-			  "(genkey\n"
-			  " (dsa\n" "  (nbits 4:1024)\n" " ))", 0, 1);
+                          "(genkey\n"
+                          " (dsa\n"
+                          "  (nbits 4:1024)\n"
+                          " ))", 0, 1);
       if (rc)
-	die ("error creating S-expression: %s\n", gpg_strerror (rc));
+        die ("error creating S-expression: %s\n", gpg_strerror (rc));
       rc = gcry_pk_genkey (&key, keyparm);
       gcry_sexp_release (keyparm);
       if (rc)
-	die ("error generating DSA key: %s\n", gpg_strerror (rc));
+        die ("error generating DSA key: %s\n", gpg_strerror (rc));
       gcry_sexp_release (key);
       if (verbose)
-	fprintf (stderr, "  done\n");
+        fprintf (stderr, "  done\n");
     }
 
   if (verbose)
     fprintf (stderr, "creating 1536 bit DSA key\n");
   rc = gcry_sexp_new (&keyparm,
-		      "(genkey\n"
-		      " (dsa\n"
-		      "  (nbits 4:1536)\n" "  (qbits 3:224)\n" " ))", 0, 1);
+                      "(genkey\n"
+                      " (dsa\n"
+                      "  (nbits 4:1536)\n"
+                      "  (qbits 3:224)\n"
+                      " ))", 0, 1);
   if (rc)
     die ("error creating S-expression: %s\n", gpg_strerror (rc));
   rc = gcry_pk_genkey (&key, keyparm);
@@ -162,15 +166,18 @@ check_rsa_keys (void)
       char buffer[20000];
       gcry_sexp_sprint (key, GCRYSEXP_FMT_ADVANCED, buffer, sizeof buffer);
       if (verbose)
-	printf ("=============================\n%s\n"
-		"=============================\n", buffer);
+        printf ("=============================\n%s\n"
+                "=============================\n", buffer);
     }
   gcry_sexp_release (key);
 
   if (verbose)
     fprintf (stderr, "creating 1024 bit RSA key\n");
   rc = gcry_sexp_new (&keyparm,
-		      "(genkey\n" " (rsa\n" "  (nbits 4:1024)\n" " ))", 0, 1);
+                      "(genkey\n"
+                      " (rsa\n"
+                      "  (nbits 4:1024)\n"
+                      " ))", 0, 1);
   if (rc)
     die ("error creating S-expression: %s\n", gpg_strerror (rc));
   rc = gcry_pk_genkey (&key, keyparm);
@@ -185,10 +192,11 @@ check_rsa_keys (void)
   if (verbose)
     fprintf (stderr, "creating 512 bit RSA key with e=257\n");
   rc = gcry_sexp_new (&keyparm,
-		      "(genkey\n"
-		      " (rsa\n"
-		      "  (nbits 3:512)\n"
-		      "  (rsa-use-e 3:257)\n" " ))", 0, 1);
+                      "(genkey\n"
+                      " (rsa\n"
+                      "  (nbits 3:512)\n"
+                      "  (rsa-use-e 3:257)\n"
+                      " ))", 0, 1);
   if (rc)
     die ("error creating S-expression: %s\n", gpg_strerror (rc));
   rc = gcry_pk_genkey (&key, keyparm);
@@ -202,9 +210,11 @@ check_rsa_keys (void)
   if (verbose)
     fprintf (stderr, "creating 512 bit RSA key with default e\n");
   rc = gcry_sexp_new (&keyparm,
-		      "(genkey\n"
-		      " (rsa\n"
-		      "  (nbits 3:512)\n" "  (rsa-use-e 1:0)\n" " ))", 0, 1);
+                      "(genkey\n"
+                      " (rsa\n"
+                      "  (nbits 3:512)\n"
+                      "  (rsa-use-e 1:0)\n"
+                      " ))", 0, 1);
   if (rc)
     die ("error creating S-expression: %s\n", gpg_strerror (rc));
   rc = gcry_pk_genkey (&key, keyparm);
@@ -212,7 +222,7 @@ check_rsa_keys (void)
   if (rc)
     die ("error generating RSA key: %s\n", gpg_strerror (rc));
 
-  check_generated_rsa_key (key, 0);	/* We don't expect a constant exponent. */
+  check_generated_rsa_key (key, 0); /* We don't expect a constant exponent. */
   gcry_sexp_release (key);
 
 }
@@ -222,34 +232,34 @@ static void
 check_nonce (void)
 {
   char a[32], b[32];
-  int i, j;
-  int oops = 0;
+  int i,j;
+  int oops=0;
 
   if (verbose)
     fprintf (stderr, "checking gcry_create_nonce\n");
 
   gcry_create_nonce (a, sizeof a);
-  for (i = 0; i < 10; i++)
+  for (i=0; i < 10; i++)
     {
       gcry_create_nonce (b, sizeof b);
       if (!memcmp (a, b, sizeof a))
-	die ("identical nounce found\n");
+        die ("identical nounce found\n");
     }
-  for (i = 0; i < 10; i++)
+  for (i=0; i < 10; i++)
     {
       gcry_create_nonce (a, sizeof a);
       if (!memcmp (a, b, sizeof a))
-	die ("identical nounce found\n");
+        die ("identical nounce found\n");
     }
 
-again:
-  for (i = 1, j = 0; i < sizeof a; i++)
+ again:
+  for (i=1,j=0; i < sizeof a; i++)
     if (a[0] == a[i])
       j++;
-  if (j + 1 == sizeof (a))
+  if (j+1 == sizeof (a))
     {
       if (oops)
-	die ("impossible nonce found\n");
+        die ("impossible nonce found\n");
       oops++;
       gcry_create_nonce (a, sizeof a);
       goto again;
@@ -259,15 +269,15 @@ again:
 
 static void
 progress_cb (void *cb_data, const char *what, int printchar,
-	     int current, int total)
+		  int current, int total)
 {
-  (void) cb_data;
-  (void) what;
-  (void) current;
-  (void) total;
+  (void)cb_data;
+  (void)what;
+  (void)current;
+  (void)total;
 
   if (printchar == '\n')
-    fputs ("<LF>", stdout);
+    fputs ( "<LF>", stdout);
   else
     putchar (printchar);
   fflush (stdout);
@@ -287,14 +297,14 @@ main (int argc, char **argv)
   gcry_control (GCRYCTL_DISABLE_SECMEM, 0);
   gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
   if (debug)
-    gcry_control (GCRYCTL_SET_DEBUG_FLAGS, 1u, 0);
+    gcry_control (GCRYCTL_SET_DEBUG_FLAGS, 1u , 0);
   /* No valuable keys are create, so we can speed up our RNG. */
   gcry_control (GCRYCTL_ENABLE_QUICK_RANDOM, 0);
   if (verbose)
-    gcry_set_progress_handler (progress_cb, NULL);
+    gcry_set_progress_handler ( progress_cb, NULL );
 
   check_rsa_keys ();
   check_nonce ();
 
-  return error_count ? 1 : 0;
+  return error_count? 1:0;
 }

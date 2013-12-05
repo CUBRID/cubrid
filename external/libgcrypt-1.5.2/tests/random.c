@@ -66,39 +66,39 @@ writen (int fd, const void *buf, size_t nbytes)
     {
       nwritten = write (fd, buf, nleft);
       if (nwritten < 0)
-	{
-	  if (errno == EINTR)
-	    nwritten = 0;
-	  else
-	    return -1;
-	}
+        {
+          if (errno == EINTR)
+            nwritten = 0;
+          else
+            return -1;
+        }
       nleft -= nwritten;
-      buf = (const char *) buf + nwritten;
+      buf = (const char*)buf + nwritten;
     }
 
   return 0;
 }
 
 static int
-readn (int fd, void *buf, size_t buflen, size_t * ret_nread)
+readn (int fd, void *buf, size_t buflen, size_t *ret_nread)
 {
   size_t nleft = buflen;
   int nread;
 
-  while (nleft > 0)
+  while ( nleft > 0 )
     {
-      nread = read (fd, buf, nleft);
+      nread = read ( fd, buf, nleft );
       if (nread < 0)
-	{
-	  if (nread == EINTR)
-	    nread = 0;
-	  else
-	    return -1;
-	}
+        {
+          if (nread == EINTR)
+            nread = 0;
+          else
+            return -1;
+        }
       else if (!nread)
-	break;			/* EOF */
+        break; /* EOF */
       nleft -= nread;
-      buf = (char *) buf + nread;
+      buf = (char*)buf + nread;
     }
   if (ret_nread)
     *ret_nread = buflen - nleft;
@@ -126,18 +126,18 @@ check_forking (void)
     die ("pipe failed: %s\n", strerror (errno));
 
   pid = fork ();
-  if (pid == (pid_t) (-1))
+  if (pid == (pid_t)(-1))
     die ("fork failed: %s\n", strerror (errno));
   if (!pid)
     {
       gcry_randomize (tmp1c, sizeof tmp1c, GCRY_STRONG_RANDOM);
       if (writen (rp[1], tmp1c, sizeof tmp1c))
-	die ("write failed: %s\n", strerror (errno));
+        die ("write failed: %s\n", strerror (errno));
       if (verbose)
-	{
-	  print_hex ("  child random: ", tmp1c, sizeof tmp1c);
-	  fflush (stdout);
-	}
+        {
+          print_hex ("  child random: ", tmp1c, sizeof tmp1c);
+          fflush (stdout);
+        }
       _exit (0);
     }
   gcry_randomize (tmp1p, sizeof tmp1p, GCRY_STRONG_RANDOM);
@@ -150,9 +150,10 @@ check_forking (void)
   if (nread != sizeof tmp1c)
     die ("read too short\n");
 
-  while ((i = waitpid (pid, &status, 0)) == -1 && errno == EINTR)
+  while ( (i=waitpid (pid, &status, 0)) == -1 && errno == EINTR)
     ;
-  if (i != (pid_t) (-1) && WIFEXITED (status) && !WEXITSTATUS (status))
+  if (i != (pid_t)(-1)
+      && WIFEXITED (status) && !WEXITSTATUS (status))
     ;
   else
     die ("child failed\n");
@@ -184,18 +185,18 @@ check_nonce_forking (void)
     die ("pipe failed: %s\n", strerror (errno));
 
   pid = fork ();
-  if (pid == (pid_t) (-1))
+  if (pid == (pid_t)(-1))
     die ("fork failed: %s\n", strerror (errno));
   if (!pid)
     {
       gcry_create_nonce (nonce1c, sizeof nonce1c);
       if (writen (rp[1], nonce1c, sizeof nonce1c))
-	die ("write failed: %s\n", strerror (errno));
+        die ("write failed: %s\n", strerror (errno));
       if (verbose)
-	{
-	  print_hex ("  child nonce: ", nonce1c, sizeof nonce1c);
-	  fflush (stdout);
-	}
+        {
+          print_hex ("  child nonce: ", nonce1c, sizeof nonce1c);
+          fflush (stdout);
+        }
       _exit (0);
     }
   gcry_create_nonce (nonce1p, sizeof nonce1p);
@@ -208,9 +209,10 @@ check_nonce_forking (void)
   if (nread != sizeof nonce1c)
     die ("read too short\n");
 
-  while ((i = waitpid (pid, &status, 0)) == -1 && errno == EINTR)
+  while ( (i=waitpid (pid, &status, 0)) == -1 && errno == EINTR)
     ;
-  if (i != (pid_t) (-1) && WIFEXITED (status) && !WEXITSTATUS (status))
+  if (i != (pid_t)(-1)
+      && WIFEXITED (status) && !WEXITSTATUS (status))
     ;
   else
     die ("child failed\n");
@@ -229,9 +231,9 @@ main (int argc, char **argv)
 {
   int debug = 0;
 
-  if ((argc > 1) && (!strcmp (argv[1], "--verbose")))
+  if ((argc > 1) && (! strcmp (argv[1], "--verbose")))
     verbose = 1;
-  else if ((argc > 1) && (!strcmp (argv[1], "--debug")))
+  else if ((argc > 1) && (! strcmp (argv[1], "--debug")))
     verbose = debug = 1;
 
   signal (SIGPIPE, SIG_IGN);

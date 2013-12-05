@@ -53,13 +53,11 @@ check_primes (void)
     unsigned int factor_bits;
     unsigned int flags;
   } prime_specs[] =
-  {
     {
-    1024, 100, GCRY_PRIME_FLAG_SPECIAL_FACTOR},
-    {
-    128, 0, 0},
-    {
-  0},};
+      { 1024, 100, GCRY_PRIME_FLAG_SPECIAL_FACTOR },
+      { 128, 0, 0 },
+      { 0 },
+    };
 
   for (i = 0; prime_specs[i].prime_bits; i++)
     {
@@ -68,29 +66,29 @@ check_primes (void)
 				 prime_specs[i].factor_bits,
 				 &factors,
 				 NULL, NULL,
-				 GCRY_WEAK_RANDOM, prime_specs[i].flags);
-      assert (!err);
+				 GCRY_WEAK_RANDOM,
+				 prime_specs[i].flags);
+      assert (! err);
       if (verbose)
-	{
-	  fprintf (stderr, "test %d: p = ", i);
-	  gcry_mpi_dump (prime);
-	  putc ('\n', stderr);
-	}
+        {
+          fprintf (stderr, "test %d: p = ", i);
+          gcry_mpi_dump (prime);
+          putc ('\n', stderr);
+        }
 
       err = gcry_prime_check (prime, 0);
-      assert (!err);
+      assert (! err);
 
       err = gcry_prime_group_generator (&g, prime, factors, NULL);
       assert (!err);
-      gcry_prime_release_factors (factors);
-      factors = NULL;
+      gcry_prime_release_factors (factors); factors = NULL;
 
       if (verbose)
-	{
-	  fprintf (stderr, "     %d: g = ", i);
-	  gcry_mpi_dump (g);
-	  putc ('\n', stderr);
-	}
+        {
+          fprintf (stderr, "     %d: g = ", i);
+          gcry_mpi_dump (g);
+          putc ('\n', stderr);
+        }
       gcry_mpi_release (g);
 
 
@@ -105,13 +103,13 @@ main (int argc, char **argv)
 {
   int debug = 0;
 
-  if ((argc > 1) && (!strcmp (argv[1], "--verbose")))
+  if ((argc > 1) && (! strcmp (argv[1], "--verbose")))
     verbose = 1;
-  else if ((argc > 1) && (!strcmp (argv[1], "--debug")))
+  else if ((argc > 1) && (! strcmp (argv[1], "--debug")))
     verbose = debug = 1;
 
   gcry_control (GCRYCTL_DISABLE_SECMEM, 0);
-  if (!gcry_check_version (GCRYPT_VERSION))
+  if (! gcry_check_version (GCRYPT_VERSION))
     die ("version mismatch\n");
 
   gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);

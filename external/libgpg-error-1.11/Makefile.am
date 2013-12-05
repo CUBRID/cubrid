@@ -90,7 +90,8 @@ conv_define_sed_variable = \
   conv_sed_del_last_slash='s,\(//*\)$$,,'; \
   conv_sed_del_all_redu_slash='s,\(//*\),/,g'; \
   conv_sed_del_first_slash='s,^\(//*\),,'
- 
+
+
 #ensure there isn't last slash (/bin/ --> /bin)
 #ensure there isn't redu slash (//bin --> /bin)
 #ensure there isn't . or ..  (/usr/bin/../ --> /usr  /usr/bin/./ --> /usr/bin)
@@ -112,6 +113,7 @@ conv_get_standard_dir_exp = \
   done; \
   conv_abs_path=$$conv_resolved_abs_path  
 
+
 # conv_same_path is the same part of abs and current_path.
 # if abs=/usr/bin, current_path=/usr/local, then conv_same_path=/usr
 conv_get_same_path = \
@@ -132,9 +134,11 @@ conv_get_same_path = \
 	fi; \
   done
 
+
 # delete the front '/'
 conv_get_standard_relative_dir_exp = \
   conv_rel_path=`echo "$$conv_rel_path" | sed -e "$$conv_sed_del_first_slash"` 
+
 
 # generate relative path expr  
 conv_generate_relative_dir = \
@@ -149,11 +153,13 @@ conv_generate_relative_dir = \
     conv_rel_path="../$$conv_rel_path"; \
   done
 
+
 # if abs is child path of current path, add './'  
 conv_abs_in_current_path = \
   if test "$$conv_same_path" = "$$conv_current_path"; then \
     conv_rel_path="./$$conv_rel_path"; \
   fi  
+
 
 # now this is the new am__relativize
 am__relativize = \
@@ -165,7 +171,6 @@ am__relativize = \
   dir2=$$conv_dist; \
   $(am__old__relativize)
 
-  
 
 dist-hook: gen-ChangeLog
 	sed -e 's/@pkg_version@/$(VERSION)/g' \

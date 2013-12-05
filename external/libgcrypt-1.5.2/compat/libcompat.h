@@ -34,4 +34,4 @@ clock_t _gcry_clock (void);
 #endif
 
 
-#endif /*GCRY_LIBCOMPAT_H */
+#endif /*GCRY_LIBCOMPAT_H*/

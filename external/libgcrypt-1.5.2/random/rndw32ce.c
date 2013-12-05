@@ -41,7 +41,7 @@ static unsigned char *filler_buffer;
 static void
 filler (const void *data, size_t datalen, enum random_origins dummy)
 {
-  (void) dummy;
+  (void)dummy;
   if (filler_used + datalen > filler_length)
     datalen = filler_length - filler_used;
   memcpy (filler_buffer + filler_used, data, datalen);
@@ -62,13 +62,13 @@ fillup_buffer (unsigned char *buffer, size_t length)
 
 
 int
-_gcry_rndw32ce_gather_random (void (*add) (const void *, size_t,
-					   enum random_origins),
-			      enum random_origins origin,
-			      size_t length, int level)
+_gcry_rndw32ce_gather_random (void (*add)(const void*, size_t,
+                                          enum random_origins),
+                              enum random_origins origin,
+                              size_t length, int level )
 {
   HCRYPTPROV prov;
-  unsigned char buffer[256];
+  unsigned char buffer [256];
   DWORD buflen;
 
   if (!level)
@@ -79,20 +79,20 @@ _gcry_rndw32ce_gather_random (void (*add) (const void *, size_t,
      feels that enough entropy has been gathered.  */
 
   buflen = sizeof buffer;
-  if (length + 8 < buflen)
-    buflen = length + 8;	/* Return a bit more than requested.  */
+  if (length+8 < buflen)
+    buflen = length+8;  /* Return a bit more than requested.  */
 
   if (!CryptAcquireContext (&prov, NULL, NULL, PROV_RSA_FULL,
-			    (CRYPT_VERIFYCONTEXT | CRYPT_SILENT)))
-    log_debug ("CryptAcquireContext failed: rc=%d\n", (int) GetLastError ());
+                           (CRYPT_VERIFYCONTEXT|CRYPT_SILENT)) )
+    log_debug ("CryptAcquireContext failed: rc=%d\n", (int)GetLastError ());
   else
     {
       fillup_buffer (buffer, buflen);
       if (!CryptGenRandom (prov, buflen, buffer))
-	log_debug ("CryptGenRandom(%d) failed: rc=%d\n",
-		   (int) buflen, (int) GetLastError ());
+        log_debug ("CryptGenRandom(%d) failed: rc=%d\n",
+                   (int)buflen, (int)GetLastError ());
       else
-	(*add) (buffer, buflen, origin);
+        (*add) (buffer, buflen, origin);
       CryptReleaseContext (prov, 0);
       wipememory (buffer, sizeof buffer);
     }
@@ -103,9 +103,9 @@ _gcry_rndw32ce_gather_random (void (*add) (const void *, size_t,
 
 
 void
-_gcry_rndw32ce_gather_random_fast (void (*add) (const void *, size_t,
-						enum random_origins),
-				   enum random_origins origin)
+_gcry_rndw32ce_gather_random_fast (void (*add)(const void*, size_t,
+                                             enum random_origins),
+                                   enum random_origins origin)
 {
 
   /* Add word sized values.  */
@@ -115,26 +115,26 @@ _gcry_rndw32ce_gather_random_fast (void (*add) (const void *, size_t,
       memcpy (bufptr, &along, sizeof (along));                     \
       bufptr += sizeof (along);                                    \
     } while (0)
-    unsigned char buffer[20 * sizeof (ulong)], *bufptr;
+    unsigned char buffer[20*sizeof(ulong)], *bufptr;
 
     bufptr = buffer;
-    ADD (HWND, GetActiveWindow ());
-    ADD (HWND, GetCapture ());
-    ADD (HWND, GetClipboardOwner ());
+    ADD (HWND,   GetActiveWindow ());
+    ADD (HWND,   GetCapture ());
+    ADD (HWND,   GetClipboardOwner ());
     ADD (HANDLE, GetCurrentProcess ());
-    ADD (DWORD, GetCurrentProcessId ());
+    ADD (DWORD,  GetCurrentProcessId ());
     ADD (HANDLE, GetCurrentThread ());
-    ADD (DWORD, GetCurrentThreadId ());
-    ADD (HWND, GetDesktopWindow ());
-    ADD (HWND, GetFocus ());
-    ADD (DWORD, GetMessagePos ());
-    ADD (HWND, GetOpenClipboardWindow ());
-    ADD (HWND, GetProcessHeap ());
-    ADD (DWORD, GetQueueStatus (QS_ALLEVENTS));
-    ADD (DWORD, GetTickCount ());
+    ADD (DWORD,  GetCurrentThreadId ());
+    ADD (HWND,   GetDesktopWindow ());
+    ADD (HWND,   GetFocus ());
+    ADD (DWORD,  GetMessagePos ());
+    ADD (HWND,   GetOpenClipboardWindow ());
+    ADD (HWND,   GetProcessHeap ());
+    ADD (DWORD,  GetQueueStatus (QS_ALLEVENTS));
+    ADD (DWORD,  GetTickCount ());
 
-    gcry_assert (bufptr - buffer < sizeof (buffer));
-    (*add) (buffer, bufptr - buffer, origin);
+    gcry_assert ( bufptr-buffer < sizeof (buffer) );
+    (*add) ( buffer, bufptr-buffer, origin );
 #   undef ADD
   }
 
@@ -144,9 +144,9 @@ _gcry_rndw32ce_gather_random_fast (void (*add) (const void *, size_t,
     POINT point;
 
     GetCaretPos (&point);
-    (*add) (&point, sizeof (point), origin);
+    (*add) ( &point, sizeof (point), origin );
     GetCursorPos (&point);
-    (*add) (&point, sizeof (point), origin);
+    (*add) ( &point, sizeof (point), origin );
   }
 
   /* Get percent of memory in use, bytes of physical memory, bytes of
@@ -157,7 +157,7 @@ _gcry_rndw32ce_gather_random_fast (void (*add) (const void *, size_t,
 
     memoryStatus.dwLength = sizeof (MEMORYSTATUS);
     GlobalMemoryStatus (&memoryStatus);
-    (*add) (&memoryStatus, sizeof (memoryStatus), origin);
+    (*add) ( &memoryStatus, sizeof (memoryStatus), origin );
   }
 
 
@@ -168,18 +168,20 @@ _gcry_rndw32ce_gather_random_fast (void (*add) (const void *, size_t,
     FILETIME creationTime, exitTime, kernelTime, userTime;
 
     handle = GetCurrentThread ();
-    GetThreadTimes (handle, &creationTime, &exitTime, &kernelTime, &userTime);
-    (*add) (&creationTime, sizeof (creationTime), origin);
-    (*add) (&exitTime, sizeof (exitTime), origin);
-    (*add) (&kernelTime, sizeof (kernelTime), origin);
-    (*add) (&userTime, sizeof (userTime), origin);
+    GetThreadTimes (handle, &creationTime, &exitTime,
+                    &kernelTime, &userTime);
+    (*add) ( &creationTime, sizeof (creationTime), origin );
+    (*add) ( &exitTime, sizeof (exitTime), origin );
+    (*add) ( &kernelTime, sizeof (kernelTime), origin );
+    (*add) ( &userTime, sizeof (userTime), origin );
 
     handle = GetCurrentThread ();
-    GetThreadTimes (handle, &creationTime, &exitTime, &kernelTime, &userTime);
-    (*add) (&creationTime, sizeof (creationTime), origin);
-    (*add) (&exitTime, sizeof (exitTime), origin);
-    (*add) (&kernelTime, sizeof (kernelTime), origin);
-    (*add) (&userTime, sizeof (userTime), origin);
+    GetThreadTimes (handle, &creationTime, &exitTime,
+                     &kernelTime, &userTime);
+    (*add) ( &creationTime, sizeof (creationTime), origin );
+    (*add) ( &exitTime, sizeof (exitTime), origin );
+    (*add) ( &kernelTime, sizeof (kernelTime), origin );
+    (*add) ( &userTime, sizeof (userTime), origin );
 
   }
 

@@ -97,9 +97,9 @@ static unsigned char *tempvalue_for_x931_aes_driver;
 /* A global buffer used to communicate between the x931_generate_key
    and x931_generate_seed functions and the entropy_collect_cb
    function.  It may only be used by these functions. */
-static unsigned char *entropy_collect_buffer;	/* Buffer.  */
-static size_t entropy_collect_buffer_len;	/* Used length.  */
-static size_t entropy_collect_buffer_size;	/* Allocated length.  */
+static unsigned char *entropy_collect_buffer;  /* Buffer.  */
+static size_t entropy_collect_buffer_len;      /* Used length.  */
+static size_t entropy_collect_buffer_size;     /* Allocated length.  */
 
 
 /* This random context type is used to track properties of one random
@@ -178,10 +178,10 @@ static rng_context_t strong_rng_context;
 /* --- Local prototypes ---  */
 static void x931_reseed (rng_context_t rng_ctx);
 static void get_random (void *buffer, size_t length, rng_context_t rng_ctx);
+
+
+
 
-
-
-
 /* --- Functions  --- */
 
 /* Basic initialization is required to initialize mutexes and
@@ -204,7 +204,8 @@ basic_initialization (void)
   /* Make sure that we are still using the values we have
      traditionally used for the random levels.  */
   gcry_assert (GCRY_WEAK_RANDOM == 0
-	       && GCRY_STRONG_RANDOM == 1 && GCRY_VERY_STRONG_RANDOM == 2);
+               && GCRY_STRONG_RANDOM == 1
+               && GCRY_VERY_STRONG_RANDOM == 2);
 
 }
 
@@ -247,9 +248,10 @@ setup_guards (rng_context_t rng_ctx)
 static void
 check_guards (rng_context_t rng_ctx)
 {
-  if (rng_ctx->guard_0[0] != 17
-      || rng_ctx->guard_1[0] != 42
-      || rng_ctx->guard_2[0] != 137 || rng_ctx->guard_3[0] != 252)
+  if ( rng_ctx->guard_0[0] != 17
+       || rng_ctx->guard_1[0] != 42
+       || rng_ctx->guard_2[0] != 137
+       || rng_ctx->guard_3[0] != 252 )
     log_fatal ("memory corruption detected in RNG context %p\n", rng_ctx);
 }
 
@@ -273,7 +275,7 @@ check_guards (rng_context_t rng_ctx)
 static void
 x931_get_dt (unsigned char *buffer, size_t length, rng_context_t rng_ctx)
 {
-  gcry_assert (length == 16);	/* This length is required for use with AES.  */
+  gcry_assert (length == 16); /* This length is required for use with AES.  */
   gcry_assert (fips_rng_is_locked);
 
   /* If the random context indicates that a test DT should be used,
@@ -281,7 +283,8 @@ x931_get_dt (unsigned char *buffer, size_t length, rng_context_t rng_ctx)
      this only if the context is not one of the regular contexts.  */
   if (rng_ctx->test_dt_ptr
       && rng_ctx != nonce_context
-      && rng_ctx != std_rng_context && rng_ctx != strong_rng_context)
+      && rng_ctx != std_rng_context
+      && rng_ctx != strong_rng_context)
     {
       memcpy (buffer, rng_ctx->test_dt_ptr, 16);
       buffer[12] = (rng_ctx->test_dt_counter >> 24);
@@ -304,12 +307,12 @@ x931_get_dt (unsigned char *buffer, size_t length, rng_context_t rng_ctx)
 
     if (!last_sec)
       {
-	/* This is the very first time we are called: Set the counters
-	   to an not so easy predictable value to avoid always
-	   starting at 0.  Not really needed but it doesn't harm.  */
-	counter1 = (u32) getpid ();
+        /* This is the very first time we are called: Set the counters
+           to an not so easy predictable value to avoid always
+           starting at 0.  Not really needed but it doesn't harm.  */
+        counter1 = (u32)getpid ();
 #ifndef HAVE_W32_SYSTEM
-	counter0 = (u32) getppid ();
+        counter0 = (u32)getppid ();
 #endif
       }
 
@@ -326,14 +329,14 @@ x931_get_dt (unsigned char *buffer, size_t length, rng_context_t rng_ctx)
        counter2 and save the time for the next invocation.  */
     if (tv.tv_sec == last_sec && usec == last_usec)
       {
-	counter2++;
-	counter2 &= 0x0fff;
+        counter2++;
+        counter2 &= 0x0fff;
       }
     else
       {
-	counter2 = 0;
-	last_sec = tv.tv_sec;
-	last_usec = usec;
+        counter2 = 0;
+        last_sec = tv.tv_sec;
+        last_usec = usec;
       }
     /* Fill the buffer with the timestamp.  */
     buffer[0] = ((tv.tv_sec >> 24) & 0xff);
@@ -345,8 +348,8 @@ x931_get_dt (unsigned char *buffer, size_t length, rng_context_t rng_ctx)
     buffer[6] = ((usec & 0xf0) | ((counter2 >> 8) & 0x0f));
     buffer[7] = (counter2 & 0xff);
     /* Add the free running counter.  */
-    buffer[8] = ((counter1 >> 24) & 0xff);
-    buffer[9] = ((counter1 >> 16) & 0xff);
+    buffer[8]  = ((counter1 >> 24) & 0xff);
+    buffer[9]  = ((counter1 >> 16) & 0xff);
     buffer[10] = ((counter1 >> 8) & 0xff);
     buffer[11] = ((counter1) & 0xff);
     buffer[12] = ((counter0 >> 24) & 0xff);
@@ -370,9 +373,9 @@ x931_get_dt (unsigned char *buffer, size_t length, rng_context_t rng_ctx)
    of at least LENGTH bytes.  */
 static void
 xor_buffer (unsigned char *r,
-	    const unsigned char *a, const unsigned char *b, size_t length)
+            const unsigned char *a, const unsigned char *b, size_t length)
 {
-  for (; length; length--, a++, b++, r++)
+  for ( ; length; length--, a++, b++, r++)
     *r = (*a ^ *b);
 }
 
@@ -381,7 +384,7 @@ xor_buffer (unsigned char *r,
    needs to be 16. */
 static void
 encrypt_aes (gcry_cipher_hd_t key,
-	     unsigned char *output, const unsigned char *input, size_t length)
+             unsigned char *output, const unsigned char *input, size_t length)
 {
   gpg_error_t err;
 
@@ -404,9 +407,9 @@ encrypt_aes (gcry_cipher_hd_t key,
    updated.  May only be used while holding the lock.  */
 static void
 x931_aes (unsigned char result_R[16],
-	  unsigned char datetime_DT[16], unsigned char seed_V[16],
-	  gcry_cipher_hd_t key,
-	  unsigned char intermediate_I[16], unsigned char temp_xor[16])
+          unsigned char datetime_DT[16], unsigned char seed_V[16],
+          gcry_cipher_hd_t key,
+          unsigned char intermediate_I[16], unsigned char temp_xor[16])
 {
   /* Let ede*X(Y) represent the AES encryption of Y under the key *X.
 
@@ -450,61 +453,62 @@ x931_aes_driver (unsigned char *output, size_t length, rng_context_t rng_ctx)
   gcry_assert (tempvalue_for_x931_aes_driver);
   gcry_assert (TEMPVALUE_FOR_X931_AES_DRIVER_SIZE == 48);
   intermediate_I = tempvalue_for_x931_aes_driver;
-  temp_buffer = tempvalue_for_x931_aes_driver + 16;
-  result_buffer = tempvalue_for_x931_aes_driver + 32;
+  temp_buffer    = tempvalue_for_x931_aes_driver + 16;
+  result_buffer  = tempvalue_for_x931_aes_driver + 32;
 
   while (length)
     {
       /* Unless we are running with a test context, we require a new
          seed after some time.  */
       if (!rng_ctx->test_dt_ptr && rng_ctx->use_counter > SEED_TTL)
-	{
-	  x931_reseed (rng_ctx);
-	  rng_ctx->use_counter = 0;
-	}
+        {
+          x931_reseed (rng_ctx);
+          rng_ctx->use_counter = 0;
+        }
 
       /* Due to the design of the RNG, we always receive 16 bytes (128
          bit) of random even if we require less.  The extra bytes
          returned are not used.  Intheory we could save them for the
          next invocation, but that would make the control flow harder
          to read.  */
-      nbytes = length < 16 ? length : 16;
+      nbytes = length < 16? length : 16;
 
       x931_get_dt (datetime_DT, 16, rng_ctx);
       x931_aes (result_buffer,
-		datetime_DT, rng_ctx->seed_V, rng_ctx->cipher_hd,
-		intermediate_I, temp_buffer);
+                datetime_DT, rng_ctx->seed_V, rng_ctx->cipher_hd,
+                intermediate_I, temp_buffer);
       rng_ctx->use_counter++;
 
       if (rng_ctx->test_no_dup_check
-	  && rng_ctx->test_dt_ptr
-	  && rng_ctx != nonce_context
-	  && rng_ctx != std_rng_context && rng_ctx != strong_rng_context)
-	{
-	  /* This is a test context which does not want the duplicate
-	     block check. */
-	}
+          && rng_ctx->test_dt_ptr
+          && rng_ctx != nonce_context
+          && rng_ctx != std_rng_context
+          && rng_ctx != strong_rng_context)
+        {
+          /* This is a test context which does not want the duplicate
+             block check. */
+        }
       else
-	{
-	  /* Do a basic check on the output to avoid a stuck generator.  */
-	  if (!rng_ctx->compare_value_valid)
-	    {
-	      /* First time used, only save the result.  */
-	      memcpy (rng_ctx->compare_value, result_buffer, 16);
-	      rng_ctx->compare_value_valid = 1;
-	      continue;
-	    }
-	  if (!memcmp (rng_ctx->compare_value, result_buffer, 16))
-	    {
-	      /* Ooops, we received the same 128 bit block - that should
-	         in theory never happen.  The FIPS requirement says that
-	         we need to put ourself into the error state in such
-	         case.  */
-	      fips_signal_error ("duplicate 128 bit block returned by RNG");
-	      return -1;
-	    }
-	  memcpy (rng_ctx->compare_value, result_buffer, 16);
-	}
+        {
+          /* Do a basic check on the output to avoid a stuck generator.  */
+          if (!rng_ctx->compare_value_valid)
+            {
+              /* First time used, only save the result.  */
+              memcpy (rng_ctx->compare_value, result_buffer, 16);
+              rng_ctx->compare_value_valid = 1;
+              continue;
+            }
+          if (!memcmp (rng_ctx->compare_value, result_buffer, 16))
+            {
+              /* Ooops, we received the same 128 bit block - that should
+                 in theory never happen.  The FIPS requirement says that
+                 we need to put ourself into the error state in such
+                 case.  */
+              fips_signal_error ("duplicate 128 bit block returned by RNG");
+              return -1;
+            }
+          memcpy (rng_ctx->compare_value, result_buffer, 16);
+        }
 
       /* Append to outbut.  */
       memcpy (output, result_buffer, nbytes);
@@ -523,11 +527,11 @@ x931_aes_driver (unsigned char *output, size_t length, rng_context_t rng_ctx)
    gathering module. */
 static void
 entropy_collect_cb (const void *buffer, size_t length,
-		    enum random_origins origin)
+                    enum random_origins origin)
 {
   const unsigned char *p = buffer;
 
-  (void) origin;
+  (void)origin;
 
   gcry_assert (fips_rng_is_locked);
   gcry_assert (entropy_collect_buffer);
@@ -557,14 +561,14 @@ get_entropy (size_t nbytes)
 
 #if USE_RNDLINUX
   rc = _gcry_rndlinux_gather_random (entropy_collect_cb, 0,
-				     X931_AES_KEYLEN,
-				     GCRY_VERY_STRONG_RANDOM);
+                                     X931_AES_KEYLEN,
+                                     GCRY_VERY_STRONG_RANDOM);
 #elif USE_RNDW32
   do
     {
       rc = _gcry_rndw32_gather_random (entropy_collect_cb, 0,
-				       X931_AES_KEYLEN,
-				       GCRY_VERY_STRONG_RANDOM);
+                                       X931_AES_KEYLEN,
+                                       GCRY_VERY_STRONG_RANDOM);
     }
   while (rc >= 0 && entropy_collect_buffer_len < entropy_collect_buffer_size);
 #else
@@ -598,11 +602,11 @@ x931_generate_key (int for_nonce)
 
   /* Allocate a cipher context.  */
   err = gcry_cipher_open (&hd, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_ECB,
-			  GCRY_CIPHER_SECURE);
+                          GCRY_CIPHER_SECURE);
   if (err)
     {
       log_error ("error creating cipher context for RNG: %s\n",
-		 gcry_strerror (err));
+                 gcry_strerror (err));
       return NULL;
     }
 
@@ -692,11 +696,11 @@ get_random (void *buffer, size_t length, rng_context_t rng_ctx)
   if (!rng_ctx->cipher_hd)
     {
       if (rng_ctx == nonce_context)
-	rng_ctx->cipher_hd = x931_generate_key (1);
+        rng_ctx->cipher_hd = x931_generate_key (1);
       else
-	rng_ctx->cipher_hd = x931_generate_key (0);
+        rng_ctx->cipher_hd = x931_generate_key (0);
       if (!rng_ctx->cipher_hd)
-	goto bailout;
+        goto bailout;
       rng_ctx->key_init_pid = getpid ();
     }
 
@@ -712,7 +716,7 @@ get_random (void *buffer, size_t length, rng_context_t rng_ctx)
          only chance we have is to bail out.  Obviusly a fork/exec
          won't harm because the exec overwrites the old image. */
       fips_signal_error ("fork without proper re-initialization "
-			 "detected in RNG");
+                         "detected in RNG");
       goto bailout;
     }
 
@@ -722,12 +726,13 @@ get_random (void *buffer, size_t length, rng_context_t rng_ctx)
   check_guards (rng_ctx);
   return;
 
-bailout:
+ bailout:
   log_fatal ("severe error getting random\n");
- /*NOTREACHED*/}
+  /*NOTREACHED*/
+}
+
+
 
-
-
 /* --- Public Functions --- */
 
 /* Initialize this random subsystem.  If FULL is false, this function
@@ -748,7 +753,7 @@ _gcry_rngfips_initialize (int full)
   if (!tempvalue_for_x931_aes_driver)
     {
       tempvalue_for_x931_aes_driver
-	= gcry_xmalloc_secure (TEMPVALUE_FOR_X931_AES_DRIVER_SIZE);
+        = gcry_xmalloc_secure (TEMPVALUE_FOR_X931_AES_DRIVER_SIZE);
 
       /* Allocate the random contexts.  Note that we do not need to use
          secure memory for the nonce context.  */
@@ -758,8 +763,7 @@ _gcry_rngfips_initialize (int full)
       std_rng_context = gcry_xcalloc_secure (1, sizeof *std_rng_context);
       setup_guards (std_rng_context);
 
-      strong_rng_context =
-	gcry_xcalloc_secure (1, sizeof *strong_rng_context);
+      strong_rng_context = gcry_xcalloc_secure (1, sizeof *strong_rng_context);
       setup_guards (strong_rng_context);
     }
   else
@@ -789,7 +793,7 @@ _gcry_rngfips_dump_stats (void)
 int
 _gcry_rngfips_is_faked (void)
 {
-  return 0;			/* Faked random is not allowed.  */
+  return 0;  /* Faked random is not allowed.  */
 }
 
 
@@ -799,10 +803,10 @@ _gcry_rngfips_is_faked (void)
 gcry_error_t
 _gcry_rngfips_add_bytes (const void *buf, size_t buflen, int quality)
 {
-  (void) buf;
-  (void) buflen;
-  (void) quality;
-  return 0;			/* Not implemented. */
+  (void)buf;
+  (void)buflen;
+  (void)quality;
+  return 0;  /* Not implemented. */
 }
 
 
@@ -813,9 +817,9 @@ _gcry_rngfips_add_bytes (const void *buf, size_t buflen, int quality)
    generation stuff but may be very slow.  */
 void
 _gcry_rngfips_randomize (void *buffer, size_t length,
-			 enum gcry_random_level level)
+                         enum gcry_random_level level)
 {
-  _gcry_rngfips_initialize (1);	/* Auto-initialize if needed.  */
+  _gcry_rngfips_initialize (1);  /* Auto-initialize if needed.  */
 
   lock_rng ();
   if (level == GCRY_VERY_STRONG_RANDOM)
@@ -830,7 +834,7 @@ _gcry_rngfips_randomize (void *buffer, size_t length,
 void
 _gcry_rngfips_create_nonce (void *buffer, size_t length)
 {
-  _gcry_rngfips_initialize (1);	/* Auto-initialize if needed.  */
+  _gcry_rngfips_initialize (1);  /* Auto-initialize if needed.  */
 
   lock_rng ();
   get_random (buffer, length, nonce_context);
@@ -853,68 +857,44 @@ selftest_kat (selftest_report_func_t report)
     const unsigned char v[16];
     const unsigned char r[3][16];
   } tv[] =
-  {
     {
-      {
-      0xb9, 0xca, 0x7f, 0xd6, 0xa0, 0xf5, 0xd3, 0x42,
-	  0x19, 0x6d, 0x84, 0x91, 0x76, 0x1c, 0x3b, 0xbe},
-      {
-      0x48, 0xb2, 0x82, 0x98, 0x68, 0xc2, 0x80, 0x00,
-	  0x00, 0x00, 0x28, 0x18, 0x00, 0x00, 0x25, 0x00},
-      {
-      0x52, 0x17, 0x8d, 0x29, 0xa2, 0xd5, 0x84, 0x12,
-	  0x9d, 0x89, 0x9a, 0x45, 0x82, 0x02, 0xf7, 0x77},
-      {
-	{
-	0x42, 0x9c, 0x08, 0x3d, 0x82, 0xf4, 0x8a, 0x40,
-	    0x66, 0xb5, 0x49, 0x27, 0xab, 0x42, 0xc7, 0xc3},
-	{
-	0x0e, 0xb7, 0x61, 0x3c, 0xfe, 0xb0, 0xbe, 0x73,
-	    0xf7, 0x6e, 0x6d, 0x6f, 0x1d, 0xa3, 0x14, 0xfa},
-	{
-    0xbb, 0x4b, 0xc1, 0x0e, 0xc5, 0xfb, 0xcd, 0x46,
-	    0xbe, 0x28, 0x61, 0xe7, 0x03, 0x2b, 0x37, 0x7d}}},
-    {
-      {
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-      {
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-      {
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-      {
-	{
-	0xf7, 0x95, 0xbd, 0x4a, 0x52, 0xe2, 0x9e, 0xd7,
-	    0x13, 0xd3, 0x13, 0xfa, 0x20, 0xe9, 0x8d, 0xbc},
-	{
-	0xc8, 0xd1, 0xe5, 0x11, 0x59, 0x52, 0xf7, 0xfa,
-	    0x37, 0x38, 0xb4, 0xc5, 0xce, 0xb2, 0xb0, 0x9a},
-	{
-    0x0d, 0x9c, 0xc5, 0x0d, 0x16, 0xe1, 0xbc, 0xed,
-	    0xcf, 0x60, 0x62, 0x09, 0x9d, 0x20, 0x83, 0x7e}}},
-    {
-      {
-      0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-	  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f},
-      {
-      0x80, 0x00, 0x81, 0x01, 0x82, 0x02, 0x83, 0x03,
-	  0xa0, 0x20, 0xa1, 0x21, 0xa2, 0x22, 0xa3, 0x23},
-      {
-      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-	  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
-      {
-	{
-	0x96, 0xed, 0xcc, 0xc3, 0xdd, 0x04, 0x7f, 0x75,
-	    0x63, 0x19, 0x37, 0x6f, 0x15, 0x22, 0x57, 0x56},
-	{
-	0x7a, 0x14, 0x76, 0x77, 0x95, 0x17, 0x7e, 0xc8,
-	    0x92, 0xe8, 0xdd, 0x15, 0xcb, 0x1f, 0xbc, 0xb1},
-	{
-    0x25, 0x3e, 0x2e, 0xa2, 0x41, 0x1b, 0xdd, 0xf5,
-	    0x21, 0x48, 0x41, 0x71, 0xb3, 0x8d, 0x2f, 0x4c}}}
-  };
+      { { 0xb9, 0xca, 0x7f, 0xd6, 0xa0, 0xf5, 0xd3, 0x42,
+          0x19, 0x6d, 0x84, 0x91, 0x76, 0x1c, 0x3b, 0xbe },
+        { 0x48, 0xb2, 0x82, 0x98, 0x68, 0xc2, 0x80, 0x00,
+          0x00, 0x00, 0x28, 0x18, 0x00, 0x00, 0x25, 0x00 },
+        { 0x52, 0x17, 0x8d, 0x29, 0xa2, 0xd5, 0x84, 0x12,
+          0x9d, 0x89, 0x9a, 0x45, 0x82, 0x02, 0xf7, 0x77 },
+        { { 0x42, 0x9c, 0x08, 0x3d, 0x82, 0xf4, 0x8a, 0x40,
+            0x66, 0xb5, 0x49, 0x27, 0xab, 0x42, 0xc7, 0xc3 },
+          { 0x0e, 0xb7, 0x61, 0x3c, 0xfe, 0xb0, 0xbe, 0x73,
+            0xf7, 0x6e, 0x6d, 0x6f, 0x1d, 0xa3, 0x14, 0xfa },
+          { 0xbb, 0x4b, 0xc1, 0x0e, 0xc5, 0xfb, 0xcd, 0x46,
+            0xbe, 0x28, 0x61, 0xe7, 0x03, 0x2b, 0x37, 0x7d } } },
+      { { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
+        { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
+        { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
+        { { 0xf7, 0x95, 0xbd, 0x4a, 0x52, 0xe2, 0x9e, 0xd7,
+            0x13, 0xd3, 0x13, 0xfa, 0x20, 0xe9, 0x8d, 0xbc },
+          { 0xc8, 0xd1, 0xe5, 0x11, 0x59, 0x52, 0xf7, 0xfa,
+            0x37, 0x38, 0xb4, 0xc5, 0xce, 0xb2, 0xb0, 0x9a },
+          { 0x0d, 0x9c, 0xc5, 0x0d, 0x16, 0xe1, 0xbc, 0xed,
+            0xcf, 0x60, 0x62, 0x09, 0x9d, 0x20, 0x83, 0x7e } } },
+      { { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+          0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f },
+        { 0x80, 0x00, 0x81, 0x01, 0x82, 0x02, 0x83, 0x03,
+          0xa0, 0x20, 0xa1, 0x21, 0xa2, 0x22, 0xa3, 0x23 },
+        { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+          0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff },
+        { { 0x96, 0xed, 0xcc, 0xc3, 0xdd, 0x04, 0x7f, 0x75,
+            0x63, 0x19, 0x37, 0x6f, 0x15, 0x22, 0x57, 0x56 },
+          { 0x7a, 0x14, 0x76, 0x77, 0x95, 0x17, 0x7e, 0xc8,
+            0x92, 0xe8, 0xdd, 0x15, 0xcb, 0x1f, 0xbc, 0xb1 },
+          { 0x25, 0x3e, 0x2e, 0xa2, 0x41, 0x1b, 0xdd, 0xf5,
+            0x21, 0x48, 0x41, 0x71, 0xb3, 0x8d, 0x2f, 0x4c } } }
+    };
   int tvidx, ridx;
   rng_context_t test_ctx;
   gpg_error_t err;
@@ -928,24 +908,24 @@ selftest_kat (selftest_report_func_t report)
 
   lock_rng ();
 
-  for (tvidx = 0; tvidx < DIM (tv); tvidx++)
+  for (tvidx=0; tvidx < DIM (tv); tvidx++)
     {
       /* Setup the key.  */
       err = gcry_cipher_open (&test_ctx->cipher_hd,
-			      GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_ECB,
-			      GCRY_CIPHER_SECURE);
+                              GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_ECB,
+                              GCRY_CIPHER_SECURE);
       if (err)
-	{
-	  errtxt = "error creating cipher context for RNG";
-	  goto leave;
-	}
+        {
+          errtxt = "error creating cipher context for RNG";
+          goto leave;
+        }
 
       err = gcry_cipher_setkey (test_ctx->cipher_hd, tv[tvidx].key, 16);
       if (err)
-	{
-	  errtxt = "error setting key for RNG";
-	  goto leave;
-	}
+        {
+          errtxt = "error setting key for RNG";
+          goto leave;
+        }
       test_ctx->key_init_pid = getpid ();
 
       /* Setup the seed.  */
@@ -955,39 +935,39 @@ selftest_kat (selftest_report_func_t report)
 
       /* Setup a DT value.  */
       test_ctx->test_dt_ptr = tv[tvidx].dt;
-      test_ctx->test_dt_counter = ((tv[tvidx].dt[12] << 24)
-				   | (tv[tvidx].dt[13] << 16)
-				   | (tv[tvidx].dt[14] << 8)
-				   | (tv[tvidx].dt[15]));
+      test_ctx->test_dt_counter = ( (tv[tvidx].dt[12] << 24)
+                                   |(tv[tvidx].dt[13] << 16)
+                                   |(tv[tvidx].dt[14] << 8)
+                                   |(tv[tvidx].dt[15]) );
 
       /* Get and compare the first three results.  */
-      for (ridx = 0; ridx < 3; ridx++)
-	{
-	  /* Compute the next value.  */
-	  if (x931_aes_driver (result, 16, test_ctx))
-	    {
-	      errtxt = "X9.31 RNG core function failed";
-	      goto leave;
-	    }
+      for (ridx=0; ridx < 3; ridx++)
+        {
+          /* Compute the next value.  */
+          if (x931_aes_driver (result, 16, test_ctx))
+            {
+              errtxt = "X9.31 RNG core function failed";
+              goto leave;
+            }
 
-	  /* Compare it to the known value.  */
-	  if (memcmp (result, tv[tvidx].r[ridx], 16))
-	    {
-	      /* log_printhex ("x931_aes got: ", result, 16); */
-	      /* log_printhex ("x931_aes exp: ", tv[tvidx].r[ridx], 16); */
-	      errtxt = "RNG output does not match known value";
-	      goto leave;
-	    }
-	}
+          /* Compare it to the known value.  */
+          if (memcmp (result, tv[tvidx].r[ridx], 16))
+            {
+              /* log_printhex ("x931_aes got: ", result, 16); */
+              /* log_printhex ("x931_aes exp: ", tv[tvidx].r[ridx], 16); */
+              errtxt = "RNG output does not match known value";
+              goto leave;
+            }
+        }
 
       /* This test is actual pretty pointless because we use a local test
          context.  */
       if (test_ctx->key_init_pid != getpid ()
-	  || test_ctx->seed_init_pid != getpid ())
-	{
-	  errtxt = "fork detection failed";
-	  goto leave;
-	}
+          || test_ctx->seed_init_pid != getpid ())
+        {
+          errtxt = "fork detection failed";
+          goto leave;
+        }
 
       gcry_cipher_close (test_ctx->cipher_hd);
       test_ctx->cipher_hd = NULL;
@@ -995,14 +975,14 @@ selftest_kat (selftest_report_func_t report)
       check_guards (test_ctx);
     }
 
-leave:
+ leave:
   unlock_rng ();
   gcry_cipher_close (test_ctx->cipher_hd);
   check_guards (test_ctx);
   gcry_free (test_ctx);
   if (report && errtxt)
     report ("random", 0, "KAT", errtxt);
-  return errtxt ? GPG_ERR_SELFTEST_FAILED : 0;
+  return errtxt? GPG_ERR_SELFTEST_FAILED : 0;
 }
 
 
@@ -1025,7 +1005,7 @@ _gcry_rngfips_selftest (selftest_report_func_t report)
 
   ec = selftest_kat (report);
 
-#else /*!(USE_RNDLINUX||USE_RNDW32) */
+#else /*!(USE_RNDLINUX||USE_RNDW32)*/
   report ("random", 0, "setup", "no entropy gathering module");
   ec = GPG_ERR_SELFTEST_FAILED;
 #endif
@@ -1038,17 +1018,19 @@ _gcry_rngfips_selftest (selftest_report_func_t report)
    stored at R_CONTEXT and an error code is returned.  */
 gcry_err_code_t
 _gcry_rngfips_init_external_test (void **r_context, unsigned int flags,
-				  const void *key, size_t keylen,
-				  const void *seed, size_t seedlen,
-				  const void *dt, size_t dtlen)
+                                  const void *key, size_t keylen,
+                                  const void *seed, size_t seedlen,
+                                  const void *dt, size_t dtlen)
 {
   gpg_error_t err;
   rng_context_t test_ctx;
 
-  _gcry_rngfips_initialize (1);	/* Auto-initialize if needed.  */
+  _gcry_rngfips_initialize (1);  /* Auto-initialize if needed.  */
 
   if (!r_context
-      || !key || keylen != 16 || !seed || seedlen != 16 || !dt || dtlen != 16)
+      || !key  || keylen  != 16
+      || !seed || seedlen != 16
+      || !dt   || dtlen   != 16 )
     return GPG_ERR_INV_ARG;
 
   test_ctx = gcry_calloc (1, sizeof *test_ctx + dtlen);
@@ -1058,8 +1040,8 @@ _gcry_rngfips_init_external_test (void **r_context, unsigned int flags,
 
   /* Setup the key.  */
   err = gcry_cipher_open (&test_ctx->cipher_hd,
-			  GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_ECB,
-			  GCRY_CIPHER_SECURE);
+                          GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_ECB,
+                          GCRY_CIPHER_SECURE);
   if (err)
     goto leave;
 
@@ -1077,21 +1059,21 @@ _gcry_rngfips_init_external_test (void **r_context, unsigned int flags,
   /* Setup a DT value.  Because our context structure only stores a
      pointer we copy the DT value to the extra space we allocated in
      the test_ctx and set the pointer to that address.  */
-  memcpy ((unsigned char *) test_ctx + sizeof *test_ctx, dt, dtlen);
-  test_ctx->test_dt_ptr = (unsigned char *) test_ctx + sizeof *test_ctx;
-  test_ctx->test_dt_counter = ((test_ctx->test_dt_ptr[12] << 24)
-			       | (test_ctx->test_dt_ptr[13] << 16)
-			       | (test_ctx->test_dt_ptr[14] << 8)
-			       | (test_ctx->test_dt_ptr[15]));
+  memcpy ((unsigned char*)test_ctx + sizeof *test_ctx, dt, dtlen);
+  test_ctx->test_dt_ptr = (unsigned char*)test_ctx + sizeof *test_ctx;
+  test_ctx->test_dt_counter = ( (test_ctx->test_dt_ptr[12] << 24)
+                               |(test_ctx->test_dt_ptr[13] << 16)
+                               |(test_ctx->test_dt_ptr[14] << 8)
+                               |(test_ctx->test_dt_ptr[15]) );
 
-  if ((flags & 1))
+  if ( (flags & 1) )
     test_ctx->test_no_dup_check = 1;
 
   check_guards (test_ctx);
   /* All fine.  */
   err = 0;
 
-leave:
+ leave:
   if (err)
     {
       gcry_cipher_close (test_ctx->cipher_hd);

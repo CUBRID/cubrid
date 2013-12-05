@@ -22,7 +22,7 @@
 #include <config.h>
 #endif
 
-#include <errno.h>
+#include <errno.h> 
 
 #include <gpg-error.h>
 

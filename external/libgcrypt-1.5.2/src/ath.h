@@ -33,14 +33,14 @@
 # endif
 # include <sys/types.h>
 # ifdef HAVE_SYS_MSG_H
-#  include <sys/msg.h>		/* (e.g. for zOS) */
+#  include <sys/msg.h>  /* (e.g. for zOS) */
 # endif
 # include <sys/socket.h>
 #endif /* !_WIN32 */
 #include <gpg-error.h>
+
+
 
-
-
 /* Define _ATH_EXT_SYM_PREFIX if you want to give all external symbols
    a prefix.  */
 #define _ATH_EXT_SYM_PREFIX _gcry_
@@ -64,23 +64,23 @@
 #define ath_sendmsg _ATH_PREFIX(ath_sendmsg)
 #define ath_recvmsg _ATH_PREFIX(ath_recvmsg)
 #endif
-
 
+
 enum ath_thread_option
-{
-  ATH_THREAD_OPTION_DEFAULT = 0,
-  ATH_THREAD_OPTION_USER = 1,
-  ATH_THREAD_OPTION_PTH = 2,
-  ATH_THREAD_OPTION_PTHREAD = 3
-};
+  {
+    ATH_THREAD_OPTION_DEFAULT = 0,
+    ATH_THREAD_OPTION_USER = 1,
+    ATH_THREAD_OPTION_PTH = 2,
+    ATH_THREAD_OPTION_PTHREAD = 3
+  };
 
 struct ath_ops
 {
   /* The OPTION field encodes the thread model and the version number
      of this structure.
-     Bits  7 - 0  are used for the thread model
-     Bits 15 - 8  are used for the version number.
-   */
+       Bits  7 - 0  are used for the thread model
+       Bits 15 - 8  are used for the version number.
+  */
   unsigned int option;
 
   int (*init) (void);
@@ -88,24 +88,24 @@ struct ath_ops
   int (*mutex_destroy) (void *priv);
   int (*mutex_lock) (void *priv);
   int (*mutex_unlock) (void *priv);
-    ssize_t (*read) (int fd, void *buf, size_t nbytes);
-    ssize_t (*write) (int fd, const void *buf, size_t nbytes);
+  ssize_t (*read) (int fd, void *buf, size_t nbytes);
+  ssize_t (*write) (int fd, const void *buf, size_t nbytes);
 #ifdef _WIN32
-    ssize_t (*select) (int nfd, void *rset, void *wset, void *eset,
-		       struct timeval * timeout);
-    ssize_t (*waitpid) (pid_t pid, int *status, int options);
-  int (*accept) (int s, void *addr, int *length_ptr);
+  ssize_t (*select) (int nfd, void *rset, void *wset, void *eset,
+		     struct timeval *timeout);
+  ssize_t (*waitpid) (pid_t pid, int *status, int options);
+  int (*accept) (int s, void  *addr, int *length_ptr);
   int (*connect) (int s, void *addr, int length);
   int (*sendmsg) (int s, const void *msg, int flags);
   int (*recvmsg) (int s, void *msg, int flags);
 #else
-    ssize_t (*select) (int nfd, fd_set * rset, fd_set * wset, fd_set * eset,
-		       struct timeval * timeout);
-    ssize_t (*waitpid) (pid_t pid, int *status, int options);
-  int (*accept) (int s, struct sockaddr * addr, socklen_t * length_ptr);
-  int (*connect) (int s, struct sockaddr * addr, socklen_t length);
-  int (*sendmsg) (int s, const struct msghdr * msg, int flags);
-  int (*recvmsg) (int s, struct msghdr * msg, int flags);
+  ssize_t (*select) (int nfd, fd_set *rset, fd_set *wset, fd_set *eset,
+		     struct timeval *timeout);
+  ssize_t (*waitpid) (pid_t pid, int *status, int options);
+  int (*accept) (int s, struct sockaddr *addr, socklen_t *length_ptr);
+  int (*connect) (int s, struct sockaddr *addr, socklen_t length);
+  int (*sendmsg) (int s, const struct msghdr *msg, int flags);
+  int (*recvmsg) (int s, struct msghdr *msg, int flags);
 #endif
 };
 
@@ -117,10 +117,10 @@ int ath_init (void);
 typedef void *ath_mutex_t;
 #define ATH_MUTEX_INITIALIZER 0
 
-int ath_mutex_init (ath_mutex_t * mutex);
-int ath_mutex_destroy (ath_mutex_t * mutex);
-int ath_mutex_lock (ath_mutex_t * mutex);
-int ath_mutex_unlock (ath_mutex_t * mutex);
+int ath_mutex_init (ath_mutex_t *mutex);
+int ath_mutex_destroy (ath_mutex_t *mutex);
+int ath_mutex_lock (ath_mutex_t *mutex);
+int ath_mutex_unlock (ath_mutex_t *mutex);
 
 /* Replacement for the POSIX functions, which can be used to allow
    other (user-level) threads to run.  */
@@ -135,13 +135,13 @@ int ath_connect (int s, void *addr, int length);
 int ath_sendmsg (int s, const void *msg, int flags);
 int ath_recvmsg (int s, void *msg, int flags);
 #else
-ssize_t ath_select (int nfd, fd_set * rset, fd_set * wset, fd_set * eset,
+ssize_t ath_select (int nfd, fd_set *rset, fd_set *wset, fd_set *eset,
 		    struct timeval *timeout);
 ssize_t ath_waitpid (pid_t pid, int *status, int options);
-int ath_accept (int s, struct sockaddr *addr, socklen_t * length_ptr);
+int ath_accept (int s, struct sockaddr *addr, socklen_t *length_ptr);
 int ath_connect (int s, struct sockaddr *addr, socklen_t length);
 int ath_sendmsg (int s, const struct msghdr *msg, int flags);
 int ath_recvmsg (int s, struct msghdr *msg, int flags);
 #endif
 
-#endif /* ATH_H */
+#endif	/* ATH_H */

@@ -22,7 +22,7 @@
 #include <config.h>
 #endif
 
-#include <assert.h>		/* Right: We need to use assert and not gcry_assert.  */
+#include <assert.h>  /* Right: We need to use assert and not gcry_assert.  */
 #include <unistd.h>
 #ifdef HAVE_SYS_SELECT_H
 # include <sys/select.h>
@@ -36,9 +36,9 @@
 #include <errno.h>
 
 #include "ath.h"
+
+
 
-
-
 /* The interface table.  */
 static struct ath_ops ops;
 
@@ -56,9 +56,9 @@ static int ops_set;
 #define GET_OPTION(a)    ((a) & 0xff)
 /* Return the version number from the option field.  */
 #define GET_VERSION(a)   (((a) >> 8)& 0xff)
+
+
 
-
-
 /* The lock we take while checking for lazy lock initialization.  */
 static ath_mutex_t check_init_lock = ATH_MUTEX_INITIALIZER;
 
@@ -83,14 +83,14 @@ ath_init (void)
    successful, EINVAL if the operation table was invalid and EBUSY if
    we already were initialized.  */
 gpg_err_code_t
-ath_install (struct ath_ops * ath_ops, int check_only)
+ath_install (struct ath_ops *ath_ops, int check_only)
 {
   if (check_only)
     {
       unsigned int option = 0;
 
       /* Check if the requested thread option is compatible to the
-         thread option we are already committed to.  */
+	 thread option we are already committed to.  */
       if (ath_ops)
 	option = ath_ops->option;
 
@@ -100,7 +100,7 @@ ath_install (struct ath_ops * ath_ops, int check_only)
       if (GET_OPTION (ops.option) == ATH_THREAD_OPTION_USER
 	  || GET_OPTION (option) == ATH_THREAD_OPTION_USER
 	  || GET_OPTION (ops.option) != GET_OPTION (option)
-	  || GET_VERSION (ops.option) != GET_VERSION (option))
+          || GET_VERSION (ops.option) != GET_VERSION (option))
 	return GPG_ERR_NOT_SUPPORTED;
 
       return 0;
@@ -124,7 +124,7 @@ ath_install (struct ath_ops * ath_ops, int check_only)
 
 
 static int
-mutex_init (ath_mutex_t * lock, int just_check)
+mutex_init (ath_mutex_t *lock, int just_check)
 {
   int err = 0;
 
@@ -139,7 +139,7 @@ mutex_init (ath_mutex_t * lock, int just_check)
 
 
 int
-ath_mutex_init (ath_mutex_t * lock)
+ath_mutex_init (ath_mutex_t *lock)
 {
   if (ops_set)
     return mutex_init (lock, 0);
@@ -152,7 +152,7 @@ ath_mutex_init (ath_mutex_t * lock)
 
 
 int
-ath_mutex_destroy (ath_mutex_t * lock)
+ath_mutex_destroy (ath_mutex_t *lock)
 {
   if (ops_set)
     {
@@ -179,7 +179,7 @@ ath_mutex_destroy (ath_mutex_t * lock)
 
 
 int
-ath_mutex_lock (ath_mutex_t * lock)
+ath_mutex_lock (ath_mutex_t *lock)
 {
   if (ops_set)
     {
@@ -199,7 +199,7 @@ ath_mutex_lock (ath_mutex_t * lock)
 
 
 int
-ath_mutex_unlock (ath_mutex_t * lock)
+ath_mutex_unlock (ath_mutex_t *lock)
 {
   if (ops_set)
     {
@@ -241,10 +241,10 @@ ath_write (int fd, const void *buf, size_t nbytes)
 ssize_t
 #ifdef _WIN32
 ath_select (int nfd, void *rset, void *wset, void *eset,
-	    struct timeval * timeout)
+	    struct timeval *timeout)
 #else
-ath_select (int nfd, fd_set * rset, fd_set * wset, fd_set * eset,
-	    struct timeval * timeout)
+ath_select (int nfd, fd_set *rset, fd_set *wset, fd_set *eset,
+	    struct timeval *timeout)
 #endif
 {
   if (ops_set && ops.select)
@@ -276,7 +276,7 @@ int
 #ifdef _WIN32
 ath_accept (int s, void *addr, int *length_ptr)
 #else
-ath_accept (int s, struct sockaddr *addr, socklen_t * length_ptr)
+ath_accept (int s, struct sockaddr *addr, socklen_t *length_ptr)
 #endif
 {
   if (ops_set && ops.accept)

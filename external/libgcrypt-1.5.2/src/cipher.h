@@ -29,21 +29,21 @@
 #define PUBKEY_FLAG_NO_BLINDING    (1 << 0)
 
 enum pk_operation
-{
-  PUBKEY_OP_ENCRYPT,
-  PUBKEY_OP_DECRYPT,
-  PUBKEY_OP_SIGN,
-  PUBKEY_OP_VERIFY
-};
+  {
+    PUBKEY_OP_ENCRYPT,
+    PUBKEY_OP_DECRYPT,
+    PUBKEY_OP_SIGN,
+    PUBKEY_OP_VERIFY
+  };
 
 enum pk_encoding
-{
-  PUBKEY_ENC_RAW,
-  PUBKEY_ENC_PKCS1,
-  PUBKEY_ENC_OAEP,
-  PUBKEY_ENC_PSS,
-  PUBKEY_ENC_UNKNOWN
-};
+  {
+    PUBKEY_ENC_RAW,
+    PUBKEY_ENC_PKCS1,
+    PUBKEY_ENC_OAEP,
+    PUBKEY_ENC_PSS,
+    PUBKEY_ENC_UNKNOWN
+  };
 
 struct pk_encoding_ctx
 {
@@ -62,7 +62,7 @@ struct pk_encoding_ctx
   /* for PSS */
   size_t saltlen;
 
-  int (*verify_cmp) (void *opaque, gcry_mpi_t tmp);
+  int (* verify_cmp) (void *opaque, gcry_mpi_t tmp);
   void *verify_arg;
 };
 
@@ -73,48 +73,48 @@ struct pk_encoding_ctx
 
 /*-- rmd160.c --*/
 void _gcry_rmd160_hash_buffer (void *outbuf,
-			       const void *buffer, size_t length);
+                               const void *buffer, size_t length);
 /*-- sha1.c --*/
-void _gcry_sha1_hash_buffer (void *outbuf, const void *buffer, size_t length);
+void _gcry_sha1_hash_buffer (void *outbuf,
+                             const void *buffer, size_t length);
 
 /*-- rijndael.c --*/
 void _gcry_aes_cfb_enc (void *context, unsigned char *iv,
-			void *outbuf, const void *inbuf,
-			unsigned int nblocks);
+                        void *outbuf, const void *inbuf,
+                        unsigned int nblocks);
 void _gcry_aes_cfb_dec (void *context, unsigned char *iv,
-			void *outbuf_arg, const void *inbuf_arg,
-			unsigned int nblocks);
+                        void *outbuf_arg, const void *inbuf_arg,
+                        unsigned int nblocks);
 void _gcry_aes_cbc_enc (void *context, unsigned char *iv,
-			void *outbuf_arg, const void *inbuf_arg,
-			unsigned int nblocks, int cbc_mac);
+                        void *outbuf_arg, const void *inbuf_arg,
+                        unsigned int nblocks, int cbc_mac);
 void _gcry_aes_cbc_dec (void *context, unsigned char *iv,
-			void *outbuf_arg, const void *inbuf_arg,
-			unsigned int nblocks);
+                        void *outbuf_arg, const void *inbuf_arg,
+                        unsigned int nblocks);
 void _gcry_aes_ctr_enc (void *context, unsigned char *ctr,
-			void *outbuf_arg, const void *inbuf_arg,
-			unsigned int nblocks);
+                        void *outbuf_arg, const void *inbuf_arg,
+                        unsigned int nblocks);
 
 
 /*-- dsa.c --*/
-void _gcry_register_pk_dsa_progress (gcry_handler_progress_t cbc,
-				     void *cb_data);
+void _gcry_register_pk_dsa_progress (gcry_handler_progress_t cbc, void *cb_data);
 
 /*-- elgamal.c --*/
 void _gcry_register_pk_elg_progress (gcry_handler_progress_t cb,
-				     void *cb_data);
+                                     void *cb_data);
 
 
 /*-- ecc.c --*/
 void _gcry_register_pk_ecc_progress (gcry_handler_progress_t cbc,
-				     void *cb_data);
+                                     void *cb_data);
 
 
 /*-- primegen.c --*/
 void _gcry_register_primegen_progress (gcry_handler_progress_t cb,
-				       void *cb_data);
+                                       void *cb_data);
 
 /*-- pubkey.c --*/
-const char *_gcry_pk_aliased_algo_name (int algorithm);
+const char * _gcry_pk_aliased_algo_name (int algorithm);
 
 /* Declarations for the cipher specifications.  */
 extern gcry_cipher_spec_t _gcry_cipher_spec_blowfish;
@@ -179,4 +179,4 @@ extern pk_extra_spec_t _gcry_pubkey_extraspec_elg;
 extern pk_extra_spec_t _gcry_pubkey_extraspec_ecdsa;
 
 
-#endif /*G10_CIPHER_H */
+#endif /*G10_CIPHER_H*/

@@ -278,4 +278,8 @@ typedef UINTPTR QUERY_ID;
 #endif
 #endif
 
+#if defined(_POWER)
+# define __powerpc__
+#endif
+
 #endif /* _SYSTEM_H_ */

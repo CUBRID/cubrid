@@ -66,14 +66,14 @@ sha512_init (void *context)
 {
   SHA512_CONTEXT *hd = context;
 
-  hd->h0 = U64_C (0x6a09e667f3bcc908);
-  hd->h1 = U64_C (0xbb67ae8584caa73b);
-  hd->h2 = U64_C (0x3c6ef372fe94f82b);
-  hd->h3 = U64_C (0xa54ff53a5f1d36f1);
-  hd->h4 = U64_C (0x510e527fade682d1);
-  hd->h5 = U64_C (0x9b05688c2b3e6c1f);
-  hd->h6 = U64_C (0x1f83d9abfb41bd6b);
-  hd->h7 = U64_C (0x5be0cd19137e2179);
+  hd->h0 = U64_C(0x6a09e667f3bcc908);
+  hd->h1 = U64_C(0xbb67ae8584caa73b);
+  hd->h2 = U64_C(0x3c6ef372fe94f82b);
+  hd->h3 = U64_C(0xa54ff53a5f1d36f1);
+  hd->h4 = U64_C(0x510e527fade682d1);
+  hd->h5 = U64_C(0x9b05688c2b3e6c1f);
+  hd->h6 = U64_C(0x1f83d9abfb41bd6b);
+  hd->h7 = U64_C(0x5be0cd19137e2179);
 
   hd->nblocks = 0;
   hd->count = 0;
@@ -84,14 +84,14 @@ sha384_init (void *context)
 {
   SHA512_CONTEXT *hd = context;
 
-  hd->h0 = U64_C (0xcbbb9d5dc1059ed8);
-  hd->h1 = U64_C (0x629a292a367cd507);
-  hd->h2 = U64_C (0x9159015a3070dd17);
-  hd->h3 = U64_C (0x152fecd8f70e5939);
-  hd->h4 = U64_C (0x67332667ffc00b31);
-  hd->h5 = U64_C (0x8eb44a8768581511);
-  hd->h6 = U64_C (0xdb0c2e0d64f98fa7);
-  hd->h7 = U64_C (0x47b5481dbefa4fa4);
+  hd->h0 = U64_C(0xcbbb9d5dc1059ed8);
+  hd->h1 = U64_C(0x629a292a367cd507);
+  hd->h2 = U64_C(0x9159015a3070dd17);
+  hd->h3 = U64_C(0x152fecd8f70e5939);
+  hd->h4 = U64_C(0x67332667ffc00b31);
+  hd->h5 = U64_C(0x8eb44a8768581511);
+  hd->h6 = U64_C(0xdb0c2e0d64f98fa7);
+  hd->h7 = U64_C(0x47b5481dbefa4fa4);
 
   hd->nblocks = 0;
   hd->count = 0;
@@ -107,7 +107,7 @@ ROTR (u64 x, u64 n)
 static inline u64
 Ch (u64 x, u64 y, u64 z)
 {
-  return ((x & y) ^ (~x & z));
+  return ((x & y) ^ ( ~x & z));
 }
 
 static inline u64
@@ -132,53 +132,54 @@ Sum1 (u64 x)
  * Transform the message W which consists of 16 64-bit-words
  */
 static void
-transform (SHA512_CONTEXT * hd, const unsigned char *data)
+transform (SHA512_CONTEXT *hd, const unsigned char *data)
 {
   u64 a, b, c, d, e, f, g, h;
   u64 w[80];
   int t;
-  static const u64 k[] = {
-    U64_C (0x428a2f98d728ae22), U64_C (0x7137449123ef65cd),
-    U64_C (0xb5c0fbcfec4d3b2f), U64_C (0xe9b5dba58189dbbc),
-    U64_C (0x3956c25bf348b538), U64_C (0x59f111f1b605d019),
-    U64_C (0x923f82a4af194f9b), U64_C (0xab1c5ed5da6d8118),
-    U64_C (0xd807aa98a3030242), U64_C (0x12835b0145706fbe),
-    U64_C (0x243185be4ee4b28c), U64_C (0x550c7dc3d5ffb4e2),
-    U64_C (0x72be5d74f27b896f), U64_C (0x80deb1fe3b1696b1),
-    U64_C (0x9bdc06a725c71235), U64_C (0xc19bf174cf692694),
-    U64_C (0xe49b69c19ef14ad2), U64_C (0xefbe4786384f25e3),
-    U64_C (0x0fc19dc68b8cd5b5), U64_C (0x240ca1cc77ac9c65),
-    U64_C (0x2de92c6f592b0275), U64_C (0x4a7484aa6ea6e483),
-    U64_C (0x5cb0a9dcbd41fbd4), U64_C (0x76f988da831153b5),
-    U64_C (0x983e5152ee66dfab), U64_C (0xa831c66d2db43210),
-    U64_C (0xb00327c898fb213f), U64_C (0xbf597fc7beef0ee4),
-    U64_C (0xc6e00bf33da88fc2), U64_C (0xd5a79147930aa725),
-    U64_C (0x06ca6351e003826f), U64_C (0x142929670a0e6e70),
-    U64_C (0x27b70a8546d22ffc), U64_C (0x2e1b21385c26c926),
-    U64_C (0x4d2c6dfc5ac42aed), U64_C (0x53380d139d95b3df),
-    U64_C (0x650a73548baf63de), U64_C (0x766a0abb3c77b2a8),
-    U64_C (0x81c2c92e47edaee6), U64_C (0x92722c851482353b),
-    U64_C (0xa2bfe8a14cf10364), U64_C (0xa81a664bbc423001),
-    U64_C (0xc24b8b70d0f89791), U64_C (0xc76c51a30654be30),
-    U64_C (0xd192e819d6ef5218), U64_C (0xd69906245565a910),
-    U64_C (0xf40e35855771202a), U64_C (0x106aa07032bbd1b8),
-    U64_C (0x19a4c116b8d2d0c8), U64_C (0x1e376c085141ab53),
-    U64_C (0x2748774cdf8eeb99), U64_C (0x34b0bcb5e19b48a8),
-    U64_C (0x391c0cb3c5c95a63), U64_C (0x4ed8aa4ae3418acb),
-    U64_C (0x5b9cca4f7763e373), U64_C (0x682e6ff3d6b2b8a3),
-    U64_C (0x748f82ee5defb2fc), U64_C (0x78a5636f43172f60),
-    U64_C (0x84c87814a1f0ab72), U64_C (0x8cc702081a6439ec),
-    U64_C (0x90befffa23631e28), U64_C (0xa4506cebde82bde9),
-    U64_C (0xbef9a3f7b2c67915), U64_C (0xc67178f2e372532b),
-    U64_C (0xca273eceea26619c), U64_C (0xd186b8c721c0c207),
-    U64_C (0xeada7dd6cde0eb1e), U64_C (0xf57d4f7fee6ed178),
-    U64_C (0x06f067aa72176fba), U64_C (0x0a637dc5a2c898a6),
-    U64_C (0x113f9804bef90dae), U64_C (0x1b710b35131c471b),
-    U64_C (0x28db77f523047d84), U64_C (0x32caab7b40c72493),
-    U64_C (0x3c9ebe0a15c9bebc), U64_C (0x431d67c49c100d4c),
-    U64_C (0x4cc5d4becb3e42b6), U64_C (0x597f299cfc657e2a),
-    U64_C (0x5fcb6fab3ad6faec), U64_C (0x6c44198c4a475817)
-  };
+  static const u64 k[] =
+    {
+      U64_C(0x428a2f98d728ae22), U64_C(0x7137449123ef65cd),
+      U64_C(0xb5c0fbcfec4d3b2f), U64_C(0xe9b5dba58189dbbc),
+      U64_C(0x3956c25bf348b538), U64_C(0x59f111f1b605d019),
+      U64_C(0x923f82a4af194f9b), U64_C(0xab1c5ed5da6d8118),
+      U64_C(0xd807aa98a3030242), U64_C(0x12835b0145706fbe),
+      U64_C(0x243185be4ee4b28c), U64_C(0x550c7dc3d5ffb4e2),
+      U64_C(0x72be5d74f27b896f), U64_C(0x80deb1fe3b1696b1),
+      U64_C(0x9bdc06a725c71235), U64_C(0xc19bf174cf692694),
+      U64_C(0xe49b69c19ef14ad2), U64_C(0xefbe4786384f25e3),
+      U64_C(0x0fc19dc68b8cd5b5), U64_C(0x240ca1cc77ac9c65),
+      U64_C(0x2de92c6f592b0275), U64_C(0x4a7484aa6ea6e483),
+      U64_C(0x5cb0a9dcbd41fbd4), U64_C(0x76f988da831153b5),
+      U64_C(0x983e5152ee66dfab), U64_C(0xa831c66d2db43210),
+      U64_C(0xb00327c898fb213f), U64_C(0xbf597fc7beef0ee4),
+      U64_C(0xc6e00bf33da88fc2), U64_C(0xd5a79147930aa725),
+      U64_C(0x06ca6351e003826f), U64_C(0x142929670a0e6e70),
+      U64_C(0x27b70a8546d22ffc), U64_C(0x2e1b21385c26c926),
+      U64_C(0x4d2c6dfc5ac42aed), U64_C(0x53380d139d95b3df),
+      U64_C(0x650a73548baf63de), U64_C(0x766a0abb3c77b2a8),
+      U64_C(0x81c2c92e47edaee6), U64_C(0x92722c851482353b),
+      U64_C(0xa2bfe8a14cf10364), U64_C(0xa81a664bbc423001),
+      U64_C(0xc24b8b70d0f89791), U64_C(0xc76c51a30654be30),
+      U64_C(0xd192e819d6ef5218), U64_C(0xd69906245565a910),
+      U64_C(0xf40e35855771202a), U64_C(0x106aa07032bbd1b8),
+      U64_C(0x19a4c116b8d2d0c8), U64_C(0x1e376c085141ab53),
+      U64_C(0x2748774cdf8eeb99), U64_C(0x34b0bcb5e19b48a8),
+      U64_C(0x391c0cb3c5c95a63), U64_C(0x4ed8aa4ae3418acb),
+      U64_C(0x5b9cca4f7763e373), U64_C(0x682e6ff3d6b2b8a3),
+      U64_C(0x748f82ee5defb2fc), U64_C(0x78a5636f43172f60),
+      U64_C(0x84c87814a1f0ab72), U64_C(0x8cc702081a6439ec),
+      U64_C(0x90befffa23631e28), U64_C(0xa4506cebde82bde9),
+      U64_C(0xbef9a3f7b2c67915), U64_C(0xc67178f2e372532b),
+      U64_C(0xca273eceea26619c), U64_C(0xd186b8c721c0c207),
+      U64_C(0xeada7dd6cde0eb1e), U64_C(0xf57d4f7fee6ed178),
+      U64_C(0x06f067aa72176fba), U64_C(0x0a637dc5a2c898a6),
+      U64_C(0x113f9804bef90dae), U64_C(0x1b710b35131c471b),
+      U64_C(0x28db77f523047d84), U64_C(0x32caab7b40c72493),
+      U64_C(0x3c9ebe0a15c9bebc), U64_C(0x431d67c49c100d4c),
+      U64_C(0x4cc5d4becb3e42b6), U64_C(0x597f299cfc657e2a),
+      U64_C(0x5fcb6fab3ad6faec), U64_C(0x6c44198c4a475817)
+    };
 
   /* get values from the chaining vars */
   a = hd->h0;
@@ -218,7 +219,7 @@ transform (SHA512_CONTEXT * hd, const unsigned char *data)
     w[t] = S1 (w[t - 2]) + w[t - 7] + S0 (w[t - 15]) + w[t - 16];
 
 
-  for (t = 0; t < 80;)
+  for (t = 0; t < 80; )
     {
       u64 t1, t2;
 
@@ -229,8 +230,8 @@ transform (SHA512_CONTEXT * hd, const unsigned char *data)
          Not unrolled with macros:  440ms
          Unrolled with macros:      350ms
          Unrolled with inline:      330ms
-       */
-#if 0				/* Not unrolled.  */
+      */
+#if 0 /* Not unrolled.  */
       t1 = h + Sum1 (e) + Ch (e, f, g) + k[t] + w[t];
       t2 = Sum0 (a) + Maj (a, b, c);
       h = g;
@@ -246,42 +247,42 @@ transform (SHA512_CONTEXT * hd, const unsigned char *data)
       t1 = h + Sum1 (e) + Ch (e, f, g) + k[t] + w[t];
       t2 = Sum0 (a) + Maj (a, b, c);
       d += t1;
-      h = t1 + t2;
+      h  = t1 + t2;
 
-      t1 = g + Sum1 (d) + Ch (d, e, f) + k[t + 1] + w[t + 1];
+      t1 = g + Sum1 (d) + Ch (d, e, f) + k[t+1] + w[t+1];
       t2 = Sum0 (h) + Maj (h, a, b);
       c += t1;
-      g = t1 + t2;
+      g  = t1 + t2;
 
-      t1 = f + Sum1 (c) + Ch (c, d, e) + k[t + 2] + w[t + 2];
+      t1 = f + Sum1 (c) + Ch (c, d, e) + k[t+2] + w[t+2];
       t2 = Sum0 (g) + Maj (g, h, a);
       b += t1;
-      f = t1 + t2;
+      f  = t1 + t2;
 
-      t1 = e + Sum1 (b) + Ch (b, c, d) + k[t + 3] + w[t + 3];
+      t1 = e + Sum1 (b) + Ch (b, c, d) + k[t+3] + w[t+3];
       t2 = Sum0 (f) + Maj (f, g, h);
       a += t1;
-      e = t1 + t2;
+      e  = t1 + t2;
 
-      t1 = d + Sum1 (a) + Ch (a, b, c) + k[t + 4] + w[t + 4];
+      t1 = d + Sum1 (a) + Ch (a, b, c) + k[t+4] + w[t+4];
       t2 = Sum0 (e) + Maj (e, f, g);
       h += t1;
-      d = t1 + t2;
+      d  = t1 + t2;
 
-      t1 = c + Sum1 (h) + Ch (h, a, b) + k[t + 5] + w[t + 5];
+      t1 = c + Sum1 (h) + Ch (h, a, b) + k[t+5] + w[t+5];
       t2 = Sum0 (d) + Maj (d, e, f);
       g += t1;
-      c = t1 + t2;
+      c  = t1 + t2;
 
-      t1 = b + Sum1 (g) + Ch (g, h, a) + k[t + 6] + w[t + 6];
+      t1 = b + Sum1 (g) + Ch (g, h, a) + k[t+6] + w[t+6];
       t2 = Sum0 (c) + Maj (c, d, e);
       f += t1;
-      b = t1 + t2;
+      b  = t1 + t2;
 
-      t1 = a + Sum1 (f) + Ch (f, g, h) + k[t + 7] + w[t + 7];
+      t1 = a + Sum1 (f) + Ch (f, g, h) + k[t+7] + w[t+7];
       t2 = Sum0 (b) + Maj (b, c, d);
       e += t1;
-      a = t1 + t2;
+      a  = t1 + t2;
 
       t += 8;
 #endif
@@ -434,9 +435,9 @@ sha512_read (void *context)
   SHA512_CONTEXT *hd = (SHA512_CONTEXT *) context;
   return hd->buf;
 }
+
+
 
-
-
 /*
      Self-test section.
  */
@@ -462,31 +463,31 @@ selftests_sha384 (int extended, selftest_report_func_t report)
     {
       what = "long string";
       errtxt = _gcry_hash_selftest_check_one
-	(GCRY_MD_SHA384, 0,
-	 "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmn"
-	 "hijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu", 112,
-	 "\x09\x33\x0C\x33\xF7\x11\x47\xE8\x3D\x19\x2F\xC7\x82\xCD\x1B\x47"
-	 "\x53\x11\x1B\x17\x3B\x3B\x05\xD2\x2F\xA0\x80\x86\xE3\xB0\xF7\x12"
-	 "\xFC\xC7\xC7\x1A\x55\x7E\x2D\xB9\x66\xC3\xE9\xFA\x91\x74\x60\x39",
-	 48);
+        (GCRY_MD_SHA384, 0,
+         "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmn"
+         "hijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu", 112,
+         "\x09\x33\x0C\x33\xF7\x11\x47\xE8\x3D\x19\x2F\xC7\x82\xCD\x1B\x47"
+         "\x53\x11\x1B\x17\x3B\x3B\x05\xD2\x2F\xA0\x80\x86\xE3\xB0\xF7\x12"
+         "\xFC\xC7\xC7\x1A\x55\x7E\x2D\xB9\x66\xC3\xE9\xFA\x91\x74\x60\x39",
+         48);
       if (errtxt)
-	goto failed;
+        goto failed;
 
       what = "one million \"a\"";
       errtxt = _gcry_hash_selftest_check_one
-	(GCRY_MD_SHA384, 1,
-	 NULL, 0,
-	 "\x9D\x0E\x18\x09\x71\x64\x74\xCB\x08\x6E\x83\x4E\x31\x0A\x4A\x1C"
-	 "\xED\x14\x9E\x9C\x00\xF2\x48\x52\x79\x72\xCE\xC5\x70\x4C\x2A\x5B"
-	 "\x07\xB8\xB3\xDC\x38\xEC\xC4\xEB\xAE\x97\xDD\xD8\x7F\x3D\x89\x85",
-	 48);
+        (GCRY_MD_SHA384, 1,
+         NULL, 0,
+         "\x9D\x0E\x18\x09\x71\x64\x74\xCB\x08\x6E\x83\x4E\x31\x0A\x4A\x1C"
+         "\xED\x14\x9E\x9C\x00\xF2\x48\x52\x79\x72\xCE\xC5\x70\x4C\x2A\x5B"
+         "\x07\xB8\xB3\xDC\x38\xEC\xC4\xEB\xAE\x97\xDD\xD8\x7F\x3D\x89\x85",
+         48);
       if (errtxt)
-	goto failed;
+        goto failed;
     }
 
-  return 0;			/* Succeeded. */
+  return 0; /* Succeeded. */
 
-failed:
+ failed:
   if (report)
     report ("digest", GCRY_MD_SHA384, what, errtxt);
   return GPG_ERR_SELFTEST_FAILED;
@@ -513,33 +514,33 @@ selftests_sha512 (int extended, selftest_report_func_t report)
     {
       what = "long string";
       errtxt = _gcry_hash_selftest_check_one
-	(GCRY_MD_SHA512, 0,
-	 "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmn"
-	 "hijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu", 112,
-	 "\x8E\x95\x9B\x75\xDA\xE3\x13\xDA\x8C\xF4\xF7\x28\x14\xFC\x14\x3F"
-	 "\x8F\x77\x79\xC6\xEB\x9F\x7F\xA1\x72\x99\xAE\xAD\xB6\x88\x90\x18"
-	 "\x50\x1D\x28\x9E\x49\x00\xF7\xE4\x33\x1B\x99\xDE\xC4\xB5\x43\x3A"
-	 "\xC7\xD3\x29\xEE\xB6\xDD\x26\x54\x5E\x96\xE5\x5B\x87\x4B\xE9\x09",
-	 64);
+        (GCRY_MD_SHA512, 0,
+         "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmn"
+         "hijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu", 112,
+         "\x8E\x95\x9B\x75\xDA\xE3\x13\xDA\x8C\xF4\xF7\x28\x14\xFC\x14\x3F"
+         "\x8F\x77\x79\xC6\xEB\x9F\x7F\xA1\x72\x99\xAE\xAD\xB6\x88\x90\x18"
+         "\x50\x1D\x28\x9E\x49\x00\xF7\xE4\x33\x1B\x99\xDE\xC4\xB5\x43\x3A"
+         "\xC7\xD3\x29\xEE\xB6\xDD\x26\x54\x5E\x96\xE5\x5B\x87\x4B\xE9\x09",
+         64);
       if (errtxt)
-	goto failed;
+        goto failed;
 
       what = "one million \"a\"";
       errtxt = _gcry_hash_selftest_check_one
-	(GCRY_MD_SHA512, 1,
-	 NULL, 0,
-	 "\xE7\x18\x48\x3D\x0C\xE7\x69\x64\x4E\x2E\x42\xC7\xBC\x15\xB4\x63"
-	 "\x8E\x1F\x98\xB1\x3B\x20\x44\x28\x56\x32\xA8\x03\xAF\xA9\x73\xEB"
-	 "\xDE\x0F\xF2\x44\x87\x7E\xA6\x0A\x4C\xB0\x43\x2C\xE5\x77\xC3\x1B"
-	 "\xEB\x00\x9C\x5C\x2C\x49\xAA\x2E\x4E\xAD\xB2\x17\xAD\x8C\xC0\x9B",
-	 64);
+        (GCRY_MD_SHA512, 1,
+         NULL, 0,
+         "\xE7\x18\x48\x3D\x0C\xE7\x69\x64\x4E\x2E\x42\xC7\xBC\x15\xB4\x63"
+         "\x8E\x1F\x98\xB1\x3B\x20\x44\x28\x56\x32\xA8\x03\xAF\xA9\x73\xEB"
+         "\xDE\x0F\xF2\x44\x87\x7E\xA6\x0A\x4C\xB0\x43\x2C\xE5\x77\xC3\x1B"
+         "\xEB\x00\x9C\x5C\x2C\x49\xAA\x2E\x4E\xAD\xB2\x17\xAD\x8C\xC0\x9B",
+         64);
       if (errtxt)
-	goto failed;
+        goto failed;
     }
 
-  return 0;			/* Succeeded. */
+  return 0; /* Succeeded. */
 
-failed:
+ failed:
   if (report)
     report ("digest", GCRY_MD_SHA512, what, errtxt);
   return GPG_ERR_SELFTEST_FAILED;
@@ -567,56 +568,62 @@ run_selftests (int algo, int extended, selftest_report_func_t report)
     }
   return ec;
 }
+
+
+
 
-
-
-
 static byte sha512_asn[] =	/* Object ID is 2.16.840.1.101.3.4.2.3 */
-{
-  0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86,
-  0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05,
-  0x00, 0x04, 0x40
-};
+  {
+    0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86,
+    0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05,
+    0x00, 0x04, 0x40
+  };
 
-static gcry_md_oid_spec_t oid_spec_sha512[] = {
-  {"2.16.840.1.101.3.4.2.3"},
+static gcry_md_oid_spec_t oid_spec_sha512[] =
+  {
+    { "2.16.840.1.101.3.4.2.3" },
 
-  /* PKCS#1 sha512WithRSAEncryption */
-  {"1.2.840.113549.1.1.13"},
+    /* PKCS#1 sha512WithRSAEncryption */
+    { "1.2.840.113549.1.1.13" },
 
-  {NULL}
-};
+    { NULL }
+  };
 
-gcry_md_spec_t _gcry_digest_spec_sha512 = {
-  "SHA512", sha512_asn, DIM (sha512_asn), oid_spec_sha512, 64,
-  sha512_init, sha512_write, sha512_final, sha512_read,
-  sizeof (SHA512_CONTEXT),
-};
-md_extra_spec_t _gcry_digest_extraspec_sha512 = {
-  run_selftests
-};
+gcry_md_spec_t _gcry_digest_spec_sha512 =
+  {
+    "SHA512", sha512_asn, DIM (sha512_asn), oid_spec_sha512, 64,
+    sha512_init, sha512_write, sha512_final, sha512_read,
+    sizeof (SHA512_CONTEXT),
+  };
+md_extra_spec_t _gcry_digest_extraspec_sha512 =
+  {
+    run_selftests
+  };
 
 static byte sha384_asn[] =	/* Object ID is 2.16.840.1.101.3.4.2.2 */
-{
-  0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86,
-  0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05,
-  0x00, 0x04, 0x30
-};
+  {
+    0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86,
+    0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05,
+    0x00, 0x04, 0x30
+  };
 
-static gcry_md_oid_spec_t oid_spec_sha384[] = {
-  {"2.16.840.1.101.3.4.2.2"},
+static gcry_md_oid_spec_t oid_spec_sha384[] =
+  {
+    { "2.16.840.1.101.3.4.2.2" },
 
-  /* PKCS#1 sha384WithRSAEncryption */
-  {"1.2.840.113549.1.1.12"},
+    /* PKCS#1 sha384WithRSAEncryption */
+    { "1.2.840.113549.1.1.12" },
 
-  {NULL},
-};
+    { NULL },
+  };
 
-gcry_md_spec_t _gcry_digest_spec_sha384 = {
-  "SHA384", sha384_asn, DIM (sha384_asn), oid_spec_sha384, 48,
-  sha384_init, sha512_write, sha512_final, sha512_read,
-  sizeof (SHA512_CONTEXT),
-};
-md_extra_spec_t _gcry_digest_extraspec_sha384 = {
-  run_selftests
-};
+gcry_md_spec_t _gcry_digest_spec_sha384 =
+  {
+    "SHA384", sha384_asn, DIM (sha384_asn), oid_spec_sha384, 48,
+    sha384_init, sha512_write, sha512_final, sha512_read,
+    sizeof (SHA512_CONTEXT),
+  };
+md_extra_spec_t _gcry_digest_extraspec_sha384 =
+  {
+    run_selftests
+  };

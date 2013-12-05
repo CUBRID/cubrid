@@ -30,26 +30,25 @@
 
 #ifndef HAVE_STPCPY
 char *
-stpcpy (char *a, const char *b)
+stpcpy(char *a,const char *b)
 {
-  while (*b)
-    *a++ = *b++;
-  *a = 0;
+    while( *b )
+	*a++ = *b++;
+    *a = 0;
 
-  return (char *) a;
+    return (char*)a;
 }
 #endif
 
 
 #ifndef HAVE_STRCASECMP
 int
-strcasecmp (const char *a, const char *b)
+strcasecmp( const char *a, const char *b )
 {
-  for (; *a && *b; a++, b++)
-    {
-      if (*a != *b && toupper (*a) != toupper (*b))
-	break;
+    for( ; *a && *b; a++, b++ ) {
+	if( *a != *b && toupper(*a) != toupper(*b) )
+	    break;
     }
-  return *(const byte *) a - *(const byte *) b;
+    return *(const byte*)a - *(const byte*)b;
 }
 #endif

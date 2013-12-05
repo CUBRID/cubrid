@@ -5691,7 +5691,7 @@ sysprm_make_default_values (const char *data, char *default_val_buf,
 {
   char buf[LINE_MAX], *p = NULL, *out_p = NULL;
   char *name = NULL, *value = NULL;
-  int rem_size, n;
+  int remaining_size, n;
   SYSPRM_ERR err = PRM_ERR_NO_ERROR;
   SYSPRM_PARAM *prm = NULL;
 
@@ -5702,7 +5702,7 @@ sysprm_make_default_values (const char *data, char *default_val_buf,
 
   p = buf;
   out_p = default_val_buf;
-  rem_size = buf_size - 1;
+  remaining_size = buf_size - 1;
   do
     {
       /* parse data */
@@ -5725,37 +5725,37 @@ sysprm_make_default_values (const char *data, char *default_val_buf,
       if (PRM_ID_INTL_COLLATION == sysprm_get_id (prm))
 	{
 	  n =
-	    snprintf (out_p, rem_size, "%s=%s", PRM_NAME_INTL_COLLATION,
+	    snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_INTL_COLLATION,
 		      lang_get_collation_name (LANG_GET_BINARY_COLLATION
 					       (LANG_SYS_CODESET)));
 	}
       else if (PRM_ID_INTL_DATE_LANG == sysprm_get_id (prm))
 	{
 	  n =
-	    snprintf (out_p, rem_size, "%s=%s", PRM_NAME_INTL_DATE_LANG,
+	    snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_INTL_DATE_LANG,
 		      lang_get_Lang_name ());
 	}
       else if (PRM_ID_INTL_NUMBER_LANG == sysprm_get_id (prm))
 	{
 	  n =
-	    snprintf (out_p, rem_size, "%s=%s", PRM_NAME_INTL_NUMBER_LANG,
+	    snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_INTL_NUMBER_LANG,
 		      lang_get_Lang_name ());
 	}
       else
 	{
 	  n =
-	    prm_print (prm, out_p, rem_size, PRM_PRINT_NAME,
+	    prm_print (prm, out_p, remaining_size, PRM_PRINT_NAME,
 		       PRM_PRINT_DEFAULT_VAL);
 	}
 
       out_p += n;
-      rem_size -= n;
+      remaining_size -= n;
 
-      n = snprintf (out_p, rem_size, ";");
+      n = snprintf (out_p, remaining_size, ";");
       out_p += n;
-      rem_size -= n;
+      remaining_size -= n;
     }
-  while (p && rem_size > 0);
+  while (p && remaining_size > 0);
 
   return err;
 }

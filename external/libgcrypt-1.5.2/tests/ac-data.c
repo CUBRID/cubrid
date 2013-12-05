@@ -42,11 +42,11 @@ static int verbose;
 static void
 die (const char *format, ...)
 {
-  va_list arg_ptr;
+  va_list arg_ptr ;
 
-  va_start (arg_ptr, format);
-  vfprintf (stderr, format, arg_ptr);
-  va_end (arg_ptr);
+  va_start( arg_ptr, format ) ;
+  vfprintf (stderr, format, arg_ptr );
+  va_end(arg_ptr);
   exit (1);
 }
 
@@ -79,12 +79,12 @@ check_sexp_conversion (gcry_ac_data_t data, const char **identifiers)
       err = gcry_ac_data_get_index (data2, 0, i, &label2, &mpi2);
       assert_err (err);
       if (verbose)
-	{
-	  fprintf (stderr, "Label1=`%s'\n", label1);
-	  fprintf (stderr, "Label2=`%s'\n", label2);
-	}
-      assert (!strcmp (label1, label2));
-      assert (!gcry_mpi_cmp (mpi1, mpi2));
+        {
+          fprintf (stderr, "Label1=`%s'\n", label1);
+          fprintf (stderr, "Label2=`%s'\n", label2);
+        }
+      assert (! strcmp (label1, label2));
+      assert (! gcry_mpi_cmp (mpi1, mpi2));
     }
 
   gcry_ac_data_destroy (data2);
@@ -95,13 +95,12 @@ void
 check_run (void)
 {
   const char *identifiers[] = { "foo",
-    "bar",
-    "baz",
-    "hello",
-    "somemoretexthere",
-    "blahblahblah",
-    NULL
-  };
+				"bar",
+				"baz",
+				"hello",
+				"somemoretexthere",
+				"blahblahblah",
+				NULL };
   const char *identifiers_null[] = { NULL };
   gcry_ac_data_t data;
   gcry_error_t err;
@@ -113,8 +112,7 @@ check_run (void)
 
   /* Initialize values.  */
 
-  label0 =
-    "thisisreallylonglabelbutsincethereisnolimitationonthelengthoflabelsitshouldworkjustfine";
+  label0 = "thisisreallylonglabelbutsincethereisnolimitationonthelengthoflabelsitshouldworkjustfine";
   mpi0 = gcry_mpi_new (0);
   assert (mpi0);
   gcry_mpi_set_ui (mpi0, 123456);
@@ -172,7 +170,7 @@ check_run (void)
     printf ("data-set-test-1 succeeded\n");
 
   gcry_ac_data_clear (data);
-  assert (!gcry_ac_data_length (data));
+  assert (! gcry_ac_data_length (data));
   check_sexp_conversion (data, identifiers);
   check_sexp_conversion (data, identifiers_null);
   check_sexp_conversion (data, NULL);
@@ -201,7 +199,7 @@ main (int argc, char **argv)
     die ("version mismatch\n");
   gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
   if (debug)
-    gcry_control (GCRYCTL_SET_DEBUG_FLAGS, 1u, 0);
+    gcry_control (GCRYCTL_SET_DEBUG_FLAGS, 1u , 0);
 
   for (; i > 0; i--)
     check_run ();

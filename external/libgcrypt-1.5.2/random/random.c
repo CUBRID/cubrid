@@ -36,21 +36,20 @@
 /* If not NULL a progress function called from certain places and the
    opaque value passed along.  Registered by
    _gcry_register_random_progress (). */
-static void (*progress_cb) (void *, const char *, int, int, int);
+static void (*progress_cb) (void *,const char*,int,int, int );
 static void *progress_cb_data;
+
+
+
 
-
-
-
 /* ---  Functions  --- */
 
 
 /* Used to register a progress callback.  This needs to be called
    before any threads are created. */
 void
-_gcry_register_random_progress (void (*cb)
-				(void *, const char *, int, int, int),
-				void *cb_data)
+_gcry_register_random_progress (void (*cb)(void *,const char*,int,int,int),
+                                void *cb_data )
 {
   progress_cb = cb;
   progress_cb_data = cb_data;
@@ -60,8 +59,7 @@ _gcry_register_random_progress (void (*cb)
 /* This progress function is currently used by the random modules to
    give hints on how much more entropy is required. */
 void
-_gcry_random_progress (const char *what, int printchar, int current,
-		       int total)
+_gcry_random_progress (const char *what, int printchar, int current, int total)
 {
   if (progress_cb)
     progress_cb (progress_cb_data, what, printchar, current, total);
@@ -101,7 +99,7 @@ void
 _gcry_secure_random_alloc (void)
 {
   if (fips_mode ())
-    ;				/* Not used; the FIPS RNG is always in secure mode.  */
+    ;  /* Not used; the FIPS RNG is always in secure mode.  */
   else
     _gcry_rngcsprng_secure_alloc ();
 }
@@ -113,7 +111,7 @@ void
 _gcry_enable_quick_random_gen (void)
 {
   if (fips_mode ())
-    ;				/* Not used.  */
+    ;  /* Not used.  */
   else
     _gcry_rngcsprng_enable_quick_gen ();
 }
@@ -123,7 +121,7 @@ void
 _gcry_set_random_daemon_socket (const char *socketname)
 {
   if (fips_mode ())
-    ;				/* Not used.  */
+    ;  /* Not used.  */
   else
     _gcry_rngcsprng_set_daemon_socket (socketname);
 }
@@ -135,7 +133,7 @@ int
 _gcry_use_random_daemon (int onoff)
 {
   if (fips_mode ())
-    return 0;			/* Never enabled in fips mode.  */
+    return 0; /* Never enabled in fips mode.  */
   else
     return _gcry_rngcsprng_use_daemon (onoff);
 }
@@ -160,7 +158,7 @@ gcry_error_t
 gcry_random_add_bytes (const void *buf, size_t buflen, int quality)
 {
   if (fips_mode ())
-    return 0;			/* No need for this in fips mode.  */
+    return 0; /* No need for this in fips mode.  */
   else
     return _gcry_rngcsprng_add_bytes (buf, buflen, quality);
 }
@@ -226,7 +224,7 @@ void
 _gcry_set_random_seed_file (const char *name)
 {
   if (fips_mode ())
-    ;				/* No need for this in fips mode.  */
+    ; /* No need for this in fips mode.  */
   else
     _gcry_rngcsprng_set_seed_file (name);
 }
@@ -238,7 +236,7 @@ void
 _gcry_update_random_seed_file (void)
 {
   if (fips_mode ())
-    ;				/* No need for this in fips mode.  */
+    ; /* No need for this in fips mode.  */
   else
     _gcry_rngcsprng_update_seed_file ();
 }
@@ -256,7 +254,7 @@ void
 _gcry_fast_random_poll (void)
 {
   if (fips_mode ())
-    ;				/* No need for this in fips mode.  */
+    ; /* No need for this in fips mode.  */
   else
     _gcry_rngcsprng_fast_poll ();
 }
@@ -282,7 +280,7 @@ _gcry_random_selftest (selftest_report_func_t report)
   if (fips_mode ())
     return _gcry_rngfips_selftest (report);
   else
-    return 0;			/* No selftests yet.  */
+    return 0; /* No selftests yet.  */
 }
 
 
@@ -291,15 +289,16 @@ _gcry_random_selftest (selftest_report_func_t report)
    stored at R_CONTEXT and an error code is returned.  */
 gcry_err_code_t
 _gcry_random_init_external_test (void **r_context,
-				 unsigned int flags,
-				 const void *key, size_t keylen,
-				 const void *seed, size_t seedlen,
-				 const void *dt, size_t dtlen)
+                                 unsigned int flags,
+                                 const void *key, size_t keylen,
+                                 const void *seed, size_t seedlen,
+                                 const void *dt, size_t dtlen)
 {
-  (void) flags;
+  (void)flags;
   if (fips_mode ())
     return _gcry_rngfips_init_external_test (r_context, flags, key, keylen,
-					     seed, seedlen, dt, dtlen);
+                                             seed, seedlen,
+                                             dt, dtlen);
   else
     return GPG_ERR_NOT_SUPPORTED;
 }

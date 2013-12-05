@@ -40,18 +40,20 @@ cright_blurb (void)
     "\n\n"
     "This is Libgpg-error " PACKAGE_VERSION " - An error code library\n"
     "Copyright 2003, 2004, 2010, 2013 g10 Code GmbH\n"
-    "\n" "(" BUILD_REVISION " " BUILD_TIMESTAMP ")\n" "\n\n";
+    "\n"
+    "(" BUILD_REVISION " " BUILD_TIMESTAMP ")\n"
+    "\n\n";
   return blurb;
 }
 
 
-static const char *
+static const char*
 parse_version_number (const char *s, int *number)
 {
   int val = 0;
 
   if (*s == '0' && digitp (s[1]))
-    return NULL;		/* Leading zeros are not allowed.  */
+    return NULL;  /* Leading zeros are not allowed.  */
   for (; digitp (*s); s++)
     {
       val *= 10;
@@ -72,7 +74,7 @@ parse_version_string (const char *s, int *major, int *minor)
   s = parse_version_number (s, minor);
   if (!s)
     return NULL;
-  return s;			/* Patchlevel.  */
+  return s;  /* Patchlevel.  */
 }
 
 
@@ -90,12 +92,13 @@ compare_versions (const char *my_version, const char *req_version)
 
   my_plvl = parse_version_string (my_version, &my_major, &my_minor);
   if (!my_plvl)
-    return NULL;		/* Very strange: our own version is bogus.  */
-  rq_plvl = parse_version_string (req_version, &rq_major, &rq_minor);
+    return NULL;	/* Very strange: our own version is bogus.  */
+  rq_plvl = parse_version_string(req_version, &rq_major, &rq_minor);
   if (!rq_plvl)
-    return NULL;		/* Requested version string is invalid.  */
+    return NULL;	/* Requested version string is invalid.  */
 
-  if (my_major > rq_major || (my_major == rq_major && my_minor >= rq_minor))
+  if (my_major > rq_major
+      || (my_major == rq_major && my_minor >= rq_minor))
     {
       return my_version;
     }

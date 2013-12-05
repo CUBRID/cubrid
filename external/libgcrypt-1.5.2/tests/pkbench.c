@@ -28,7 +28,7 @@
 #include <sys/stat.h>
 #ifndef HAVE_W32_SYSTEM
 # include <sys/times.h>
-#endif /*HAVE_W32_SYSTEM */
+#endif /*HAVE_W32_SYSTEM*/
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
@@ -59,7 +59,7 @@ fail (const char *format, ...)
 {
   va_list arg_ptr;
 
-  fputs (PGM ": ", stderr);
+  fputs ( PGM ": ", stderr);
   va_start (arg_ptr, format);
   vfprintf (stderr, format, arg_ptr);
   va_end (arg_ptr);
@@ -72,7 +72,7 @@ die (const char *format, ...)
   va_list arg_ptr;
 
   putchar ('\n');
-  fputs (PGM ": ", stderr);
+  fputs ( PGM ": ", stderr);
   va_start (arg_ptr, format);
   vfprintf (stderr, format, arg_ptr);
   va_end (arg_ptr);
@@ -90,13 +90,13 @@ show_sexp (const char *prefix, gcry_sexp_t a)
   buf = gcry_xmalloc (size);
 
   gcry_sexp_sprint (a, GCRYSEXP_FMT_ADVANCED, buf, size);
-  fprintf (stderr, "%.*s", (int) size, buf);
+  fprintf (stderr, "%.*s", (int)size, buf);
   gcry_free (buf);
 }
 
 
 static void *
-read_file (const char *fname, size_t * r_length)
+read_file (const char *fname, size_t *r_length)
 {
   FILE *fp;
   struct stat st;
@@ -110,7 +110,7 @@ read_file (const char *fname, size_t * r_length)
       return NULL;
     }
 
-  if (fstat (fileno (fp), &st))
+  if (fstat (fileno(fp), &st))
     {
       fail ("can't stat `%s': %s\n", fname, strerror (errno));
       fclose (fp);
@@ -118,7 +118,7 @@ read_file (const char *fname, size_t * r_length)
     }
 
   buflen = st.st_size;
-  buf = gcry_xmalloc (buflen + 1);
+  buf = gcry_xmalloc (buflen+1);
   if (fread (buf, buflen, 1, fp) != 1)
     {
       fail ("error reading `%s': %s\n", fname, strerror (errno));
@@ -153,7 +153,7 @@ benchmark (work_t worker, context_t context)
   for (i = 0; i < loop; i++)
     {
       ret = (*worker) (context, (i + 1) == loop);
-      if (!ret)
+      if (! ret)
 	break;
     }
 #ifdef HAVE_W32_SYSTEM
@@ -178,7 +178,8 @@ work_encrypt (context_t context, unsigned int final)
   gcry_sexp_t data_encrypted = NULL;
   int ret = 1;
 
-  err = gcry_pk_encrypt (&data_encrypted, context->data, context->key_public);
+  err = gcry_pk_encrypt (&data_encrypted,
+			 context->data, context->key_public);
   if (gpg_err_code (err) == GPG_ERR_NOT_IMPLEMENTED)
     {
       err = GPG_ERR_NO_ERROR;
@@ -186,7 +187,7 @@ work_encrypt (context_t context, unsigned int final)
     }
   else
     {
-      assert (!err);
+      assert (! err);
 
       if (final)
 	context->data_encrypted = data_encrypted;
@@ -203,15 +204,16 @@ work_decrypt (context_t context, unsigned int final)
   gcry_error_t err = GPG_ERR_NO_ERROR;
   int ret = 1;
 
-  if (!context->data_encrypted)
+  if (! context->data_encrypted)
     ret = 0;
   else
     {
       gcry_sexp_t data_decrypted = NULL;
 
       err = gcry_pk_decrypt (&data_decrypted,
-			     context->data_encrypted, context->key_secret);
-      assert (!err);
+			     context->data_encrypted,
+			     context->key_secret);
+      assert (! err);
       if (final)
 	{
 	  gcry_sexp_release (context->data_encrypted);
@@ -230,7 +232,8 @@ work_sign (context_t context, unsigned int final)
   gcry_sexp_t data_signed = NULL;
   int ret = 1;
 
-  err = gcry_pk_sign (&data_signed, context->data, context->key_secret);
+  err = gcry_pk_sign (&data_signed,
+		      context->data, context->key_secret);
   if (gpg_err_code (err) == GPG_ERR_NOT_IMPLEMENTED)
     {
       err = GPG_ERR_NO_ERROR;
@@ -262,7 +265,8 @@ work_verify (context_t context, unsigned int final)
     return 0;
 
   err = gcry_pk_verify (context->data_signed,
-			context->data, context->key_public);
+                        context->data,
+                        context->key_public);
   if (err)
     {
       show_sexp ("data_signed:\n", context->data_signed);
@@ -286,20 +290,13 @@ process_key_pair (context_t context)
   {
     work_t worker;
     const char *identifier;
-  } worker_functions[] =
-  {
-    {
-    work_encrypt, "encrypt"},
-    {
-    work_decrypt, "decrypt"},
-    {
-    work_sign, "sign"},
-    {
-  work_verify, "verify"}};
+  } worker_functions[] = { { work_encrypt, "encrypt" },
+			   { work_decrypt, "decrypt" },
+			   { work_sign,    "sign"    },
+			   { work_verify,  "verify"  } };
   unsigned int i = 0;
 
-  for (i = 0; i < (sizeof (worker_functions) / sizeof (*worker_functions));
-       i++)
+  for (i = 0; i < (sizeof (worker_functions) / sizeof (*worker_functions)); i++)
     {
       printf ("%s: ", worker_functions[i].identifier);
       benchmark (worker_functions[i].worker, context);
@@ -307,8 +304,7 @@ process_key_pair (context_t context)
 }
 
 static void
-context_init (context_t context, gcry_sexp_t key_secret,
-	      gcry_sexp_t key_public)
+context_init (context_t context, gcry_sexp_t key_secret, gcry_sexp_t key_public)
 {
   gcry_error_t err = GPG_ERR_NO_ERROR;
   unsigned int key_size = 0;
@@ -324,8 +320,9 @@ context_init (context_t context, gcry_sexp_t key_secret,
   gcry_mpi_randomize (data, key_size, GCRY_STRONG_RANDOM);
   gcry_mpi_clear_bit (data, key_size - 1);
   err = gcry_sexp_build (&data_sexp, NULL,
-			 "(data (flags raw) (value %m))", data);
-  assert (!err);
+			 "(data (flags raw) (value %m))",
+			 data);
+  assert (! err);
   gcry_mpi_release (data);
 
   context->key_secret = key_secret;
@@ -358,7 +355,8 @@ process_key_pair_file (const char *key_pair_file)
   if (!key_pair_buffer)
     die ("failed to open `%s'\n", key_pair_file);
 
-  err = gcry_sexp_sscan (&key_pair_sexp, NULL, key_pair_buffer, file_length);
+  err = gcry_sexp_sscan (&key_pair_sexp, NULL,
+			 key_pair_buffer, file_length);
   if (err)
     die ("gcry_sexp_sscan failed\n");
 
@@ -389,12 +387,14 @@ generate_key (const char *algorithm, const char *key_size)
   gcry_sexp_t key_spec = NULL;
   gcry_sexp_t key_pair = NULL;
 
-  if (isdigit ((unsigned int) *key_size))
+  if (isdigit ((unsigned int)*key_size))
     err = gcry_sexp_build (&key_spec, NULL,
-			   "(genkey (%s (nbits %s)))", algorithm, key_size);
+                           "(genkey (%s (nbits %s)))",
+                           algorithm, key_size);
   else
     err = gcry_sexp_build (&key_spec, NULL,
-			   "(genkey (%s (curve %s)))", algorithm, key_size);
+                           "(genkey (%s (curve %s)))",
+                           algorithm, key_size);
   if (err)
     die ("sexp_build failed: %s\n", gpg_strerror (err));
 
@@ -412,7 +412,7 @@ generate_key (const char *algorithm, const char *key_size)
   gcry_sexp_sprint (key_pair, GCRYSEXP_FMT_ADVANCED,
 		    key_pair_buffer, key_pair_buffer_size);
 
-  printf ("%.*s", (int) key_pair_buffer_size, key_pair_buffer);
+  printf ("%.*s", (int)key_pair_buffer_size, key_pair_buffer);
   gcry_free (key_pair_buffer);
 }
 
@@ -426,59 +426,51 @@ main (int argc, char **argv)
   int fips_mode = 0;
 
   if (argc)
-    {
-      argc--;
-      argv++;
-    }
+    { argc--; argv++; }
 
-  while (argc && last_argc != argc)
+  while (argc && last_argc != argc )
     {
       last_argc = argc;
       if (!strcmp (*argv, "--"))
-	{
-	  argc--;
-	  argv++;
-	  break;
-	}
+        {
+          argc--; argv++;
+          break;
+        }
       else if (!strcmp (*argv, "--help"))
-	{
-	  puts ("Usage: " PGM " [OPTIONS] [FILES]\n"
-		"Various public key tests:\n\n"
-		"  Default is to process all given key files\n\n"
-		"  --genkey ALGONAME SIZE  Generate a public key\n"
-		"\n"
-		"  --verbose    enable extra informational output\n"
-		"  --debug      enable additional debug output\n"
-		"  --help       display this help and exit\n\n");
-	  exit (0);
-	}
+        {
+          puts ("Usage: " PGM " [OPTIONS] [FILES]\n"
+                "Various public key tests:\n\n"
+                "  Default is to process all given key files\n\n"
+                "  --genkey ALGONAME SIZE  Generate a public key\n"
+                "\n"
+                "  --verbose    enable extra informational output\n"
+                "  --debug      enable additional debug output\n"
+                "  --help       display this help and exit\n\n");
+          exit (0);
+        }
       else if (!strcmp (*argv, "--verbose"))
-	{
-	  verbose++;
-	  argc--;
-	  argv++;
-	}
+        {
+          verbose++;
+          argc--; argv++;
+        }
       else if (!strcmp (*argv, "--debug"))
-	{
-	  verbose = debug = 1;
-	  argc--;
-	  argv++;
-	}
+        {
+          verbose = debug = 1;
+          argc--; argv++;
+        }
       else if (!strcmp (*argv, "--genkey"))
-	{
-	  genkey_mode = 1;
-	  argc--;
-	  argv++;
-	}
+        {
+          genkey_mode = 1;
+          argc--; argv++;
+        }
       else if (!strcmp (*argv, "--fips"))
-	{
-	  fips_mode = 1;
-	  argc--;
-	  argv++;
-	}
+        {
+          fips_mode = 1;
+          argc--; argv++;
+        }
     }
 
-  gcry_control (GCRYCTL_SET_VERBOSITY, (int) verbose);
+  gcry_control (GCRYCTL_SET_VERBOSITY, (int)verbose);
 
   if (fips_mode)
     gcry_control (GCRYCTL_FORCE_FIPS_MODE, 0);
@@ -514,7 +506,7 @@ main (int argc, char **argv)
   else
     {
       fprintf (stderr, "usage: " PGM
-	       " [OPTIONS] [FILES] (try --help for more information)\n");
+               " [OPTIONS] [FILES] (try --help for more information)\n");
       exit (1);
     }
 

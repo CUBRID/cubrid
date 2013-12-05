@@ -46,17 +46,17 @@ _gcry_module_id_new (gcry_module_t modules, unsigned int *id_new)
   for (mod_id = MODULE_ID_MIN; mod_id < MODULE_ID_LAST; mod_id++)
     {
       if (mod_id == MODULE_ID_USER)
-	{
-	  mod_id = MODULE_ID_USER_LAST;
-	  continue;
-	}
+        {
+          mod_id = MODULE_ID_USER_LAST;
+          continue;
+        }
 
       /* Search for a module with the current ID.  */
       for (module = modules; module; module = module->next)
 	if (mod_id == module->mod_id)
 	  break;
 
-      if (!module)
+      if (! module)
 	/* None found -> the ID is available for use.  */
 	break;
     }
@@ -74,23 +74,23 @@ _gcry_module_id_new (gcry_module_t modules, unsigned int *id_new)
 /* Add a module specification to the list ENTRIES.  The new module has
    it's use-counter set to one.  */
 gcry_err_code_t
-_gcry_module_add (gcry_module_t * entries, unsigned int mod_id,
-		  void *spec, void *extraspec, gcry_module_t * module)
+_gcry_module_add (gcry_module_t *entries, unsigned int mod_id,
+		  void *spec, void *extraspec, gcry_module_t *module)
 {
   gcry_err_code_t err = 0;
   gcry_module_t entry;
 
-  if (!mod_id)
+  if (! mod_id)
     err = _gcry_module_id_new (*entries, &mod_id);
 
-  if (!err)
+  if (! err)
     {
       entry = gcry_malloc (sizeof (struct gcry_module));
-      if (!entry)
+      if (! entry)
 	err = gpg_err_code_from_errno (errno);
     }
 
-  if (!err)
+  if (! err)
     {
       /* Fill new module entry.  */
       entry->flags = 0;
@@ -168,7 +168,7 @@ _gcry_module_lookup (gcry_module_t entries, void *data,
 void
 _gcry_module_release (gcry_module_t module)
 {
-  if (module && !--module->counter)
+  if (module && ! --module->counter)
     _gcry_module_drop (module);
 }
 
@@ -185,7 +185,8 @@ _gcry_module_use (gcry_module_t module)
    according size.  In case there are less cipher modules than
    *LIST_LENGTH, *LIST_LENGTH is updated to the correct number.  */
 gcry_err_code_t
-_gcry_module_list (gcry_module_t modules, int *list, int *list_length)
+_gcry_module_list (gcry_module_t modules,
+		   int *list, int *list_length)
 {
   gcry_err_code_t err = GPG_ERR_NO_ERROR;
   gcry_module_t module;

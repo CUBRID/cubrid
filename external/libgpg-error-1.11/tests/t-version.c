@@ -41,57 +41,57 @@ main (int argc, char **argv)
   if (argc)
     {
       logpfx = *argv;
-      argc--;
-      argv++;
+      argc--; argv++;
     }
-  while (argc && last_argc != argc)
+  while (argc && last_argc != argc )
     {
       last_argc = argc;
       if (!strcmp (*argv, "--help"))
-	{
-	  puts ("usage: ./version [options]\n"
-		"\n" "Options:\n" "  --verbose      Show what is going on\n");
-	  exit (0);
-	}
+        {
+          puts (
+"usage: ./version [options]\n"
+"\n"
+"Options:\n"
+"  --verbose      Show what is going on\n"
+);
+          exit (0);
+        }
       if (!strcmp (*argv, "--verbose"))
-	{
-	  verbose = 1;
-	  argc--;
-	  argv++;
-	}
+        {
+          verbose = 1;
+          argc--; argv++;
+        }
       else if (!strcmp (*argv, "--debug"))
-	{
-	  verbose = debug = 1;
-	  argc--;
-	  argv++;
-	}
+        {
+          verbose = debug = 1;
+          argc--; argv++;
+        }
     }
 
   if (!gpg_error_check_version (GPG_ERROR_VERSION))
     {
       fprintf (stderr, "%s: gpg_error_check_version returned an error\n",
-	       logpfx);
+               logpfx);
       errorcount++;
     }
   if (!gpg_error_check_version ("1.10"))
     {
       fprintf (stderr, "%s: gpg_error_check_version returned an "
-	       "error for an old version\n", logpfx);
+               "error for an old version\n", logpfx);
       errorcount++;
     }
   if (gpg_error_check_version ("15"))
     {
       fprintf (stderr, "gpg_error_check_version did not return an error"
-	       " for a newer version\n", logpfx);
+               " for a newer version\n", logpfx);
       errorcount++;
     }
   if (verbose || errorcount)
     {
       printf ("Version from header: %s (0x%06x)\n",
-	      GPG_ERROR_VERSION, GPG_ERROR_VERSION_NUMBER);
+               GPG_ERROR_VERSION, GPG_ERROR_VERSION_NUMBER);
       printf ("Version from binary: %s\n", gpg_error_check_version (NULL));
-      printf ("Copyright blurb ...:%s\n",
-	      gpg_error_check_version ("\x01\x01"));
+      printf ("Copyright blurb ...:%s\n", gpg_error_check_version ("\x01\x01"));
     }
 
   return errorcount ? 1 : 0;

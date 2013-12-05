@@ -24,78 +24,61 @@
 /* The purpose of this complex string table is to produce
    optimal code with a minimum of relocations.  */
 
-static const char msgstr[] = gettext_noop ("Unspecified source") "\0"
-  gettext_noop ("gcrypt")
-  "\0"
-  gettext_noop ("GnuPG")
-  "\0"
-  gettext_noop ("GpgSM")
-  "\0"
-  gettext_noop ("GPG Agent")
-  "\0"
-  gettext_noop ("Pinentry")
-  "\0"
-  gettext_noop ("SCD")
-  "\0"
-  gettext_noop ("GPGME")
-  "\0"
-  gettext_noop ("Keybox")
-  "\0"
-  gettext_noop ("KSBA")
-  "\0"
-  gettext_noop ("Dirmngr")
-  "\0"
-  gettext_noop ("GSTI")
-  "\0"
-  gettext_noop ("GPA")
-  "\0"
-  gettext_noop ("Kleopatra")
-  "\0"
-  gettext_noop ("G13")
-  "\0"
-  gettext_noop ("Assuan")
-  "\0"
-  gettext_noop ("Any source")
-  "\0"
-  gettext_noop ("User defined source 1")
-  "\0"
-  gettext_noop ("User defined source 2")
-  "\0"
-  gettext_noop ("User defined source 3")
-  "\0"
-  gettext_noop ("User defined source 4")
-  "\0"
+static const char msgstr[] = 
+  gettext_noop ("Unspecified source") "\0"
+  gettext_noop ("gcrypt") "\0"
+  gettext_noop ("GnuPG") "\0"
+  gettext_noop ("GpgSM") "\0"
+  gettext_noop ("GPG Agent") "\0"
+  gettext_noop ("Pinentry") "\0"
+  gettext_noop ("SCD") "\0"
+  gettext_noop ("GPGME") "\0"
+  gettext_noop ("Keybox") "\0"
+  gettext_noop ("KSBA") "\0"
+  gettext_noop ("Dirmngr") "\0"
+  gettext_noop ("GSTI") "\0"
+  gettext_noop ("GPA") "\0"
+  gettext_noop ("Kleopatra") "\0"
+  gettext_noop ("G13") "\0"
+  gettext_noop ("Assuan") "\0"
+  gettext_noop ("Any source") "\0"
+  gettext_noop ("User defined source 1") "\0"
+  gettext_noop ("User defined source 2") "\0"
+  gettext_noop ("User defined source 3") "\0"
+  gettext_noop ("User defined source 4") "\0"
   gettext_noop ("Unknown source");
 
-     static const int msgidx[] = {
-       0,
-       19,
-       26,
-       32,
-       38,
-       48,
-       57,
-       61,
-       67,
-       74,
-       79,
-       87,
-       92,
-       96,
-       106,
-       110,
-       117,
-       128,
-       150,
-       172,
-       194,
-       216
-     };
+static const int msgidx[] =
+  {
+    0,
+    19,
+    26,
+    32,
+    38,
+    48,
+    57,
+    61,
+    67,
+    74,
+    79,
+    87,
+    92,
+    96,
+    106,
+    110,
+    117,
+    128,
+    150,
+    172,
+    194,
+    216
+  };
 
 static GPG_ERR_INLINE int
 msgidxof (int code)
 {
   return (0 ? 0
-	  : ((code >= 0) && (code <= 15)) ? (code - 0)
-	  : ((code >= 31) && (code <= 35)) ? (code - 15) : 36 - 15);
+  : ((code >= 0) && (code <= 15)) ? (code - 0)
+  : ((code >= 31) && (code <= 35)) ? (code - 15)
+  : 36 - 15);
 }

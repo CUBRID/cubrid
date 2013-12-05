@@ -53,68 +53,68 @@ my_make_filename (const char *first_part, const char *second_part)
   size_t n;
   char *name, *home, *p;
 
-  n = strlen (first_part) + 1;
+  n = strlen(first_part)+1;
   if (second_part)
     n += strlen (second_part) + 1;
 
   home = NULL;
-  if (*first_part == '~' && first_part[1] == '/'
-      && (home = getenv ("HOME")) && *home)
-    n += strlen (home);
+  if( *first_part == '~' && first_part[1] == '/'
+      && (home = getenv("HOME")) && *home )
+    n += strlen(home);
 
-  name = gcry_xmalloc (n);
+  name = gcry_xmalloc(n);
   p = (home
-       ? stpcpy (stpcpy (name, home), first_part + 1)
-       : stpcpy (name, first_part));
+       ? stpcpy (stpcpy (name, home), first_part+1 )
+       : stpcpy (name, first_part) );
 
   if (second_part)
-    strcpy (stpcpy (p, "/"), second_part);
+    strcpy (stpcpy(p,"/"), second_part);
 
   return name;
 }
 
 
 static int
-do_write (int fd, void *buf, size_t nbytes)
+do_write( int fd, void *buf, size_t nbytes )
 {
   size_t nleft = nbytes;
   int nwritten;
 
-  while (nleft > 0)
+  while( nleft > 0 )
     {
-      nwritten = write (fd, buf, nleft);
-      if (nwritten < 0)
-	{
-	  if (errno == EINTR)
-	    continue;
-	  return -1;
+      nwritten = write( fd, buf, nleft);
+      if( nwritten < 0 )
+        {
+          if( errno == EINTR )
+            continue;
+          return -1;
 	}
       nleft -= nwritten;
-      buf = (char *) buf + nwritten;
+      buf = (char*)buf + nwritten;
     }
   return 0;
 }
 
 static int
-do_read (int fd, void *buf, size_t nbytes)
+do_read( int fd, void *buf, size_t nbytes )
 {
   int n, nread = 0;
 
   do
     {
       do
-	{
-	  n = read (fd, (char *) buf + nread, nbytes);
-	}
-      while (n == -1 && errno == EINTR);
-      if (n == -1)
-	return nread ? nread : -1;
-      if (n == 0)
-	return -1;
+        {
+          n = read(fd, (char*)buf + nread, nbytes );
+        }
+      while( n == -1 && errno == EINTR );
+      if( n == -1)
+        return nread? nread:-1;
+      if( n == 0)
+        return -1;
       nread += n;
       nbytes -= n;
     }
-  while (nread < nbytes);
+  while( nread < nbytes );
   return nread;
 }
 
@@ -127,7 +127,7 @@ _gcry_rndegd_set_socket_name (const char *name)
   struct sockaddr_un addr;
 
   newname = my_make_filename (name, NULL);
-  if (strlen (newname) + 1 >= sizeof addr.sun_path)
+  if (strlen (newname)+1 >= sizeof addr.sun_path)
     {
       gcry_free (newname);
       return gpg_error_from_syserror ();
@@ -163,39 +163,39 @@ _gcry_rndegd_connect_socket (int nofail)
     {
       name = gcry_strdup (user_socket_name);
       if (!name)
-	{
-	  if (!nofail)
-	    log_fatal ("error allocating memory in rndegd: %s\n",
-		       strerror (errno));
-	  return -1;
-	}
+        {
+          if (!nofail)
+            log_fatal ("error allocating memory in rndegd: %s\n",
+                       strerror(errno) );
+          return -1;
+        }
     }
-  else if (!bname || !*bname)
+  else if ( !bname || !*bname )
     name = my_make_filename ("~/.gnupg", "entropy");
   else
     name = my_make_filename (bname, NULL);
 
-  if (strlen (name) + 1 >= sizeof addr.sun_path)
+  if (strlen(name)+1 >= sizeof addr.sun_path)
     log_fatal ("EGD socketname is too long\n");
 
-  memset (&addr, 0, sizeof addr);
+  memset( &addr, 0, sizeof addr );
   addr.sun_family = AF_UNIX;
-  strcpy (addr.sun_path, name);
-  addr_len = (offsetof (struct sockaddr_un, sun_path)
-	      + strlen (addr.sun_path));
+  strcpy( addr.sun_path, name );
+  addr_len = (offsetof( struct sockaddr_un, sun_path )
+              + strlen( addr.sun_path ));
 
-  fd = socket (AF_UNIX, SOCK_STREAM, 0);
+  fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (fd == -1 && !nofail)
-    log_fatal ("can't create unix domain socket: %s\n", strerror (errno));
-  else if (connect (fd, (struct sockaddr *) &addr, addr_len) == -1)
+    log_fatal("can't create unix domain socket: %s\n", strerror(errno) );
+  else if (connect (fd, (struct sockaddr*)&addr, addr_len) == -1)
     {
       if (!nofail)
-	log_fatal ("can't connect to EGD socket `%s': %s\n",
-		   name, strerror (errno));
+        log_fatal("can't connect to EGD socket `%s': %s\n",
+		  name, strerror(errno) );
       close (fd);
       fd = -1;
     }
-  gcry_free (name);
+  gcry_free(name);
   if (fd != -1)
     egd_socket = fd;
   return fd;
@@ -210,81 +210,81 @@ _gcry_rndegd_connect_socket (int nofail)
  * to the pool.  So this is just a dummy for EGD.
  */
 int
-_gcry_rndegd_gather_random (void (*add) (const void *, size_t,
-					 enum random_origins),
-			    enum random_origins origin,
-			    size_t length, int level)
+_gcry_rndegd_gather_random (void (*add)(const void*, size_t,
+                                        enum random_origins),
+                            enum random_origins origin,
+                            size_t length, int level )
 {
   int fd = egd_socket;
   int n;
-  byte buffer[256 + 2];
+  byte buffer[256+2];
   int nbytes;
   int do_restart = 0;
 
-  if (!length)
+  if( !length )
     return 0;
-  if (!level)
+  if( !level )
     return 0;
 
-restart:
+ restart:
   if (fd == -1 || do_restart)
     fd = _gcry_rndegd_connect_socket (0);
 
   do_restart = 0;
 
-  nbytes = length < 255 ? length : 255;
+  nbytes = length < 255? length : 255;
   /* First time we do it with a non blocking request */
-  buffer[0] = 1;		/* non blocking */
+  buffer[0] = 1; /* non blocking */
   buffer[1] = nbytes;
-  if (do_write (fd, buffer, 2) == -1)
-    log_fatal ("can't write to the EGD: %s\n", strerror (errno));
-  n = do_read (fd, buffer, 1);
-  if (n == -1)
+  if( do_write( fd, buffer, 2 ) == -1 )
+    log_fatal("can't write to the EGD: %s\n", strerror(errno) );
+  n = do_read( fd, buffer, 1 );
+  if( n == -1 )
     {
-      log_error ("read error on EGD: %s\n", strerror (errno));
+      log_error("read error on EGD: %s\n", strerror(errno));
       do_restart = 1;
       goto restart;
     }
   n = buffer[0];
-  if (n)
+  if( n )
     {
-      n = do_read (fd, buffer, n);
-      if (n == -1)
-	{
-	  log_error ("read error on EGD: %s\n", strerror (errno));
-	  do_restart = 1;
-	  goto restart;
+      n = do_read( fd, buffer, n );
+      if( n == -1 )
+        {
+          log_error("read error on EGD: %s\n", strerror(errno));
+          do_restart = 1;
+          goto restart;
 	}
-      (*add) (buffer, n, origin);
+      (*add)( buffer, n, origin );
       length -= n;
     }
 
-  if (length)
+  if( length )
     {
-      log_info (_
-		("Please wait, entropy is being gathered. Do some work if it would\n"
-		 "keep you from getting bored, because it will improve the quality\n"
-		 "of the entropy.\n"));
+      log_info (
+      _("Please wait, entropy is being gathered. Do some work if it would\n"
+        "keep you from getting bored, because it will improve the quality\n"
+        "of the entropy.\n") );
     }
-  while (length)
+  while( length )
     {
-      nbytes = length < 255 ? length : 255;
+      nbytes = length < 255? length : 255;
 
-      buffer[0] = 2;		/* blocking */
+      buffer[0] = 2; /* blocking */
       buffer[1] = nbytes;
-      if (do_write (fd, buffer, 2) == -1)
-	log_fatal ("can't write to the EGD: %s\n", strerror (errno));
-      n = do_read (fd, buffer, nbytes);
-      if (n == -1)
-	{
-	  log_error ("read error on EGD: %s\n", strerror (errno));
-	  do_restart = 1;
-	  goto restart;
+      if( do_write( fd, buffer, 2 ) == -1 )
+        log_fatal("can't write to the EGD: %s\n", strerror(errno) );
+      n = do_read( fd, buffer, nbytes );
+      if( n == -1 )
+        {
+          log_error("read error on EGD: %s\n", strerror(errno));
+          do_restart = 1;
+          goto restart;
 	}
-      (*add) (buffer, n, origin);
+      (*add)( buffer, n, origin );
       length -= n;
     }
-  memset (buffer, 0, sizeof (buffer));
+  memset(buffer, 0, sizeof(buffer) );
 
-  return 0;			/* success */
+  return 0; /* success */
 }

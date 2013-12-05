@@ -1,6 +1,6 @@
 #!/bin/sh
 
-opts="--prefix=$PWD/.. --with-pic"
+opts="--prefix=$PWD/.. --with-pic --disable-shared --enable-static"
 
 srdrir=''
 

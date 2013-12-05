@@ -30,7 +30,7 @@
 #include <stdio.h>
 
 #ifdef HAVE_LOCALE_H
-# include <locale.h>
+# include <locale.h>	
 #endif
 #ifdef ENABLE_NLS
 #ifdef HAVE_W32_SYSTEM
@@ -50,8 +50,8 @@
 #endif
 
 #include <gpg-error.h>
-
 
+
 #if HAVE_W32_SYSTEM
 /* The implementation follows below.  */
 static char *get_locale_dir (void);
@@ -66,16 +66,16 @@ i18n_init (void)
 {
 #ifdef ENABLE_NLS
   char *locale_dir;
-
+  
 #ifdef HAVE_LC_MESSAGES
   setlocale (LC_TIME, "");
   setlocale (LC_MESSAGES, "");
 #else
 # ifndef HAVE_W32_SYSTEM
-  setlocale (LC_ALL, "");
+  setlocale (LC_ALL, "" );
 # endif
 #endif
-
+  
   /* Note that for this program we would only need the textdomain call
      because libgpg-error already initializes itself to its locale dir
      (via gpg_err_init or a constructor).  However this is only done
@@ -92,8 +92,8 @@ i18n_init (void)
   textdomain (PACKAGE);
 #endif
 }
-
 
+
 #ifdef HAVE_W32_SYSTEM
 
 #include <windows.h>
@@ -102,7 +102,7 @@ i18n_init (void)
 static char *
 get_locale_dir (void)
 {
-  static wchar_t moddir[MAX_PATH + 5];
+  static wchar_t moddir[MAX_PATH+5];
   char *result, *p;
   int nbytes;
 
@@ -112,46 +112,45 @@ get_locale_dir (void)
 #define SLDIR "\\share\\locale"
   if (*moddir)
     {
-      nbytes =
-	WideCharToMultiByte (CP_UTF8, 0, moddir, -1, NULL, 0, NULL, NULL);
+      nbytes = WideCharToMultiByte (CP_UTF8, 0, moddir, -1, NULL, 0, NULL, NULL);
       if (nbytes < 0)
-	return NULL;
-
+        return NULL;
+      
       result = malloc (nbytes + strlen (SLDIR) + 1);
       if (result)
-	{
-	  nbytes = WideCharToMultiByte (CP_UTF8, 0, moddir, -1,
-					result, nbytes, NULL, NULL);
-	  if (nbytes < 0)
-	    {
-	      free (result);
-	      result = NULL;
-	    }
-	  else
-	    {
-	      p = strrchr (result, '\\');
-	      if (p)
-		*p = 0;
-	      /* If we are installed below "bin" strip that part and
-	         use the top directory instead.  */
-	      p = strrchr (result, '\\');
-	      if (p && !strcmp (p + 1, "bin"))
-		*p = 0;
-	      /* Append the static part.  */
-	      strcat (result, SLDIR);
-	    }
-	}
+        {
+          nbytes = WideCharToMultiByte (CP_UTF8, 0, moddir, -1,
+                                        result, nbytes, NULL, NULL);
+          if (nbytes < 0)
+            {
+              free (result);
+              result = NULL;
+            }
+          else
+            {
+              p = strrchr (result, '\\');
+              if (p)
+                *p = 0;
+              /* If we are installed below "bin" strip that part and
+                 use the top directory instead.  */
+              p = strrchr (result, '\\');
+              if (p && !strcmp (p+1, "bin"))
+                *p = 0;
+              /* Append the static part.  */
+              strcat (result, SLDIR);
+            }
+        }
     }
-  else				/* Use the old default value.  */
+  else /* Use the old default value.  */
     {
       result = malloc (10 + strlen (SLDIR) + 1);
       if (result)
-	{
-	  strcpy (result, "c:\\gnupg");
-	  strcat (result, SLDIR);
-	}
-    }
-#undef SLDIR
+        {
+          strcpy (result, "c:\\gnupg");
+          strcat (result, SLDIR);
+        }
+    }  
+#undef SLDIR  
   return result;
 }
 
@@ -162,15 +161,15 @@ drop_locale_dir (char *locale_dir)
   free (locale_dir);
 }
 
-#endif /* HAVE_W32_SYSTEM */
-
+#endif	/* HAVE_W32_SYSTEM */
 
+
 const char *gpg_strerror_sym (gpg_error_t err);
 const char *gpg_strsource_sym (gpg_error_t err);
-
 
+
 static int
-get_err_from_number (char *str, gpg_error_t * err)
+get_err_from_number (char *str, gpg_error_t *err)
 {
   unsigned long nr;
   char *tail;
@@ -201,7 +200,7 @@ get_err_from_number (char *str, gpg_error_t * err)
 
 
 static int
-get_err_from_symbol_one (char *str, gpg_error_t * err,
+get_err_from_symbol_one (char *str, gpg_error_t *err,
 			 int *have_source, int *have_code)
 {
   static const char src_prefix[] = "GPG_ERR_SOURCE_";
@@ -253,7 +252,7 @@ get_err_from_symbol_one (char *str, gpg_error_t * err,
 
 
 static int
-get_err_from_symbol (char *str, gpg_error_t * err)
+get_err_from_symbol (char *str, gpg_error_t *err)
 {
   char *str2 = str;
   int have_source = 0;
@@ -264,7 +263,8 @@ get_err_from_symbol (char *str, gpg_error_t * err)
 
   *err = 0;
   while (*str2 && ((*str2 >= 'A' && *str2 <= 'Z')
-		   || (*str2 >= '0' && *str2 <= '9') || *str2 == '_'))
+		   || (*str2 >= '0' && *str2 <= '9')
+		   || *str2 == '_'))
     str2++;
   if (*str2)
     {
@@ -287,7 +287,7 @@ get_err_from_symbol (char *str, gpg_error_t * err)
 
 
 static int
-get_err_from_str_one (char *str, gpg_error_t * err,
+get_err_from_str_one (char *str, gpg_error_t *err,
 		      int *have_source, int *have_code)
 {
   gpg_err_source_t src;
@@ -314,7 +314,7 @@ get_err_from_str_one (char *str, gpg_error_t * err,
 	{
 	  if (*have_code)
 	    return 0;
-
+	  
 	  *have_code = 1;
 	  *err |= code;
 	  return 1;
@@ -326,7 +326,7 @@ get_err_from_str_one (char *str, gpg_error_t * err,
 
 
 static int
-get_err_from_str (char *str, gpg_error_t * err)
+get_err_from_str (char *str, gpg_error_t *err)
 {
   char *str2 = str;
   int have_source = 0;
@@ -342,7 +342,8 @@ get_err_from_str (char *str, gpg_error_t * err)
 
   while (*str2 && ((*str2 >= 'A' && *str2 <= 'Z')
 		   || (*str2 >= 'a' && *str2 <= 'z')
-		   || (*str2 >= '0' && *str2 <= '9') || *str2 == '_'))
+		   || (*str2 >= '0' && *str2 <= '9')
+		   || *str2 == '_'))
     str2++;
   if (*str2)
     {
@@ -352,7 +353,8 @@ get_err_from_str (char *str, gpg_error_t * err)
       str2++;
       while (*str2 && !((*str2 >= 'A' && *str2 <= 'Z')
 			|| (*str2 >= 'a' && *str2 <= 'z')
-			|| (*str2 >= '0' && *str2 <= '9') || *str2 == '_'))
+			|| (*str2 >= '0' && *str2 <= '9')
+			|| *str2 == '_'))
 	str2++;
     }
   else
@@ -366,9 +368,9 @@ get_err_from_str (char *str, gpg_error_t * err)
     *saved_pos = saved_char;
   return ret;
 }
+
+
 
-
-
 int
 main (int argc, char *argv[])
 {
@@ -387,9 +389,8 @@ main (int argc, char *argv[])
 
   if (argc == 1)
     {
-      fprintf (stderr, _("Usage: %s GPG-ERROR [...]\n"),
-	       strrchr (argv[0],
-			'/') ? (strrchr (argv[0], '/') + 1) : argv[0]);
+      fprintf (stderr, _("Usage: %s GPG-ERROR [...]\n"), 
+               strrchr (argv[0],'/')? (strrchr (argv[0], '/')+1): argv[0]);
       exit (1);
     }
   else if (argc == 2 && !strcmp (argv[1], "--version"))
@@ -405,28 +406,29 @@ main (int argc, char *argv[])
 
   if (listmode)
     {
-      for (i = 0; i < GPG_ERR_SOURCE_DIM; i++)
-	{
-	  /* We use error code 1 because gpg_err_make requires a
-	     non-zero error code. */
-	  err = gpg_err_make (i, 1);
-	  err -= 1;
+      for (i=0; i <  GPG_ERR_SOURCE_DIM; i++)
+        {
+          /* We use error code 1 because gpg_err_make requires a
+             non-zero error code. */
+          err = gpg_err_make (i, 1);
+          err -= 1;
 	  source_sym = gpg_strsource_sym (err);
-	  if (source_sym)
-	    printf ("%u = (%u, -) = (%s, -) = (%s, -)\n",
-		    err, gpg_err_source (err),
-		    source_sym, gpg_strsource (err));
-	}
-      for (i = 0; i < GPG_ERR_CODE_DIM; i++)
-	{
-	  err = gpg_err_make (GPG_ERR_SOURCE_UNKNOWN, i);
+          if (source_sym)
+            printf ("%u = (%u, -) = (%s, -) = (%s, -)\n",
+                    err, gpg_err_source (err),
+                    source_sym, gpg_strsource (err));
+        }
+      for (i=0; i <  GPG_ERR_CODE_DIM; i++)
+        {
+          err = gpg_err_make (GPG_ERR_SOURCE_UNKNOWN, i);
 	  error_sym = gpg_strerror_sym (err);
-	  if (error_sym)
-	    printf ("%u = (-, %u) = (-, %s) = (-, %s)\n",
-		    err, gpg_err_code (err), error_sym, gpg_strerror (err));
-	}
+          if (error_sym)
+            printf ("%u = (-, %u) = (-, %s) = (-, %s)\n",
+                    err, gpg_err_code (err),
+                    error_sym, gpg_strerror (err));
+        }
 
-      i = argc;			/* Don't run the usual stuff.  */
+      i = argc;  /* Don't run the usual stuff.  */
     }
   while (i < argc)
     {
@@ -436,7 +438,7 @@ main (int argc, char *argv[])
 	{
 	  source_sym = gpg_strsource_sym (err);
 	  error_sym = gpg_strerror_sym (err);
-
+	  
 	  printf ("%u = (%u, %u) = (%s, %s) = (%s, %s)\n",
 		  err, gpg_err_source (err), gpg_err_code (err),
 		  source_sym ? source_sym : "-", error_sym ? error_sym : "-",

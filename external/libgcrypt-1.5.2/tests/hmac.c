@@ -57,8 +57,9 @@ die (const char *format, ...)
 
 static void
 check_one_mac (int algo,
-	       const void *key, size_t keylen,
-	       const void *data, size_t datalen, const char *expect)
+               const void *key, size_t keylen,
+               const void *data, size_t datalen,
+               const char *expect)
 {
   gcry_md_hd_t hd;
   unsigned char *p;
@@ -115,35 +116,35 @@ check_hmac (void)
 
   if (verbose)
     fprintf (stderr, "checking FIPS-198a, A.1\n");
-  for (i = 0; i < 64; i++)
+  for (i=0; i < 64; i++)
     key[i] = i;
   check_one_mac (GCRY_MD_SHA1, key, 64, "Sample #1", 9,
-		 "\x4f\x4c\xa3\xd5\xd6\x8b\xa7\xcc\x0a\x12"
-		 "\x08\xc9\xc6\x1e\x9c\x5d\xa0\x40\x3c\x0a");
+                 "\x4f\x4c\xa3\xd5\xd6\x8b\xa7\xcc\x0a\x12"
+                 "\x08\xc9\xc6\x1e\x9c\x5d\xa0\x40\x3c\x0a");
 
   if (verbose)
     fprintf (stderr, "checking FIPS-198a, A.2\n");
-  for (i = 0, j = 0x30; i < 20; i++)
+  for (i=0, j=0x30; i < 20; i++)
     key[i] = j++;
   check_one_mac (GCRY_MD_SHA1, key, 20, "Sample #2", 9,
-		 "\x09\x22\xd3\x40\x5f\xaa\x3d\x19\x4f\x82"
-		 "\xa4\x58\x30\x73\x7d\x5c\xc6\xc7\x5d\x24");
+                 "\x09\x22\xd3\x40\x5f\xaa\x3d\x19\x4f\x82"
+                 "\xa4\x58\x30\x73\x7d\x5c\xc6\xc7\x5d\x24");
 
   if (verbose)
     fprintf (stderr, "checking FIPS-198a, A.3\n");
-  for (i = 0, j = 0x50; i < 100; i++)
+  for (i=0, j=0x50; i < 100; i++)
     key[i] = j++;
   check_one_mac (GCRY_MD_SHA1, key, 100, "Sample #3", 9,
-		 "\xbc\xf4\x1e\xab\x8b\xb2\xd8\x02\xf3\xd0"
-		 "\x5c\xaf\x7c\xb0\x92\xec\xf8\xd1\xa3\xaa");
+                 "\xbc\xf4\x1e\xab\x8b\xb2\xd8\x02\xf3\xd0"
+                 "\x5c\xaf\x7c\xb0\x92\xec\xf8\xd1\xa3\xaa");
 
   if (verbose)
     fprintf (stderr, "checking FIPS-198a, A.4\n");
-  for (i = 0, j = 0x70; i < 49; i++)
+  for (i=0, j=0x70; i < 49; i++)
     key[i] = j++;
   check_one_mac (GCRY_MD_SHA1, key, 49, "Sample #4", 9,
-		 "\x9e\xa8\x86\xef\xe2\x68\xdb\xec\xce\x42"
-		 "\x0c\x75\x24\xdf\x32\xe0\x75\x1a\x2a\x26");
+                 "\x9e\xa8\x86\xef\xe2\x68\xdb\xec\xce\x42"
+                 "\x0c\x75\x24\xdf\x32\xe0\x75\x1a\x2a\x26");
 
 }
 

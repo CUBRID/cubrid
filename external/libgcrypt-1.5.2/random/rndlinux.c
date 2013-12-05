@@ -36,7 +36,7 @@
 #include "g10lib.h"
 #include "rand-internal.h"
 
-static int open_device (const char *name);
+static int open_device ( const char *name );
 
 
 static int
@@ -44,7 +44,7 @@ set_cloexec_flag (int fd)
 {
   int oldflags;
 
-  oldflags = fcntl (fd, F_GETFD, 0);
+  oldflags= fcntl (fd, F_GETFD, 0);
   if (oldflags < 0)
     return oldflags;
   oldflags |= FD_CLOEXEC;
@@ -57,17 +57,17 @@ set_cloexec_flag (int fd)
  * Used to open the /dev/random devices (Linux, xBSD, Solaris (if it exists)).
  */
 static int
-open_device (const char *name)
+open_device ( const char *name )
 {
   int fd;
 
-  fd = open (name, O_RDONLY);
-  if (fd == -1)
-    log_fatal ("can't open %s: %s\n", name, strerror (errno));
+  fd = open ( name, O_RDONLY );
+  if ( fd == -1 )
+    log_fatal ("can't open %s: %s\n", name, strerror(errno) );
 
   if (set_cloexec_flag (fd))
     log_error ("error setting FD_CLOEXEC on fd %d: %s\n",
-	       fd, strerror (errno));
+               fd, strerror (errno));
 
   /* We used to do the following check, however it turned out that this
      is not portable since more OSes provide a random device which is
@@ -76,19 +76,19 @@ open_device (const char *name)
      struct stat sb;
 
      if( fstat( fd, &sb ) )
-     log_fatal("stat() off %s failed: %s\n", name, strerror(errno) );
+        log_fatal("stat() off %s failed: %s\n", name, strerror(errno) );
      if( (!S_ISCHR(sb.st_mode)) && (!S_ISFIFO(sb.st_mode)) )
-     log_fatal("invalid random device!\n" );
-   */
+        log_fatal("invalid random device!\n" );
+  */
   return fd;
 }
 
 
 int
-_gcry_rndlinux_gather_random (void (*add) (const void *, size_t,
-					   enum random_origins),
-			      enum random_origins origin,
-			      size_t length, int level)
+_gcry_rndlinux_gather_random (void (*add)(const void*, size_t,
+                                          enum random_origins),
+                              enum random_origins origin,
+                              size_t length, int level )
 {
   static int fd_urandom = -1;
   static int fd_random = -1;
@@ -104,30 +104,30 @@ _gcry_rndlinux_gather_random (void (*add) (const void *, size_t,
   /* First read from a hardware source.  However let it account only
      for up to 50% of the requested bytes.  */
   n_hw = _gcry_rndhw_poll_slow (add, origin);
-  if (n_hw > length / 2)
-    n_hw = length / 2;
+  if (n_hw > length/2)
+    n_hw = length/2;
   if (length > 1)
     length -= n_hw;
 
   /* Open the requested device.  */
   if (level >= 2)
     {
-      if (fd_random == -1)
-	fd_random = open_device (NAME_OF_DEV_RANDOM);
+      if( fd_random == -1 )
+        fd_random = open_device ( NAME_OF_DEV_RANDOM );
       fd = fd_random;
     }
   else
     {
-      if (fd_urandom == -1)
-	fd_urandom = open_device (NAME_OF_DEV_URANDOM);
+      if( fd_urandom == -1 )
+        fd_urandom = open_device ( NAME_OF_DEV_URANDOM );
       fd = fd_urandom;
     }
 
   /* Enter the read loop.  */
-  delay = 0;			/* Start with 0 seconds so that we do no block on the
-				   first iteration and in turn call the progress function
-				   before blocking.  To give the OS a better chance to
-				   return with something we will actually use 100ms. */
+  delay = 0;  /* Start with 0 seconds so that we do no block on the
+                 first iteration and in turn call the progress function
+                 before blocking.  To give the OS a better chance to
+                 return with something we will actually use 100ms. */
   while (length)
     {
       fd_set rfds;
@@ -142,53 +142,53 @@ _gcry_rndlinux_gather_random (void (*add) (const void *, size_t,
 #ifdef FD_SETSIZE
       if (fd < FD_SETSIZE)
 #endif
-	{
-	  FD_ZERO (&rfds);
-	  FD_SET (fd, &rfds);
-	  tv.tv_sec = delay;
-	  tv.tv_usec = delay ? 0 : 100000;
-	  if (!(rc = select (fd + 1, &rfds, NULL, NULL, &tv)))
-	    {
-	      if (!any_need_entropy || last_so_far != (want - length))
-		{
-		  last_so_far = want - length;
-		  _gcry_random_progress ("need_entropy", 'X',
-					 (int) last_so_far, (int) want);
-		  any_need_entropy = 1;
-		}
-	      delay = 3;	/* Use 3 seconds henceforth.  */
-	      continue;
-	    }
-	  else if (rc == -1)
-	    {
-	      log_error ("select() error: %s\n", strerror (errno));
-	      if (!delay)
-		delay = 1;	/* Use 1 second if we encounter an error before
-				   we have ever blocked.  */
-	      continue;
-	    }
-	}
+        {
+          FD_ZERO(&rfds);
+          FD_SET(fd, &rfds);
+          tv.tv_sec = delay;
+          tv.tv_usec = delay? 0 : 100000;
+          if ( !(rc=select(fd+1, &rfds, NULL, NULL, &tv)) )
+            {
+              if (!any_need_entropy || last_so_far != (want - length) )
+                {
+                  last_so_far = want - length;
+                  _gcry_random_progress ("need_entropy", 'X',
+                                         (int)last_so_far, (int)want);
+                  any_need_entropy = 1;
+                }
+              delay = 3; /* Use 3 seconds henceforth.  */
+              continue;
+            }
+          else if( rc == -1 )
+            {
+              log_error ("select() error: %s\n", strerror(errno));
+              if (!delay)
+                delay = 1; /* Use 1 second if we encounter an error before
+                          we have ever blocked.  */
+              continue;
+            }
+        }
 
       do
-	{
-	  int nbytes = length < sizeof (buffer) ? length : sizeof (buffer);
-	  n = read (fd, buffer, nbytes);
-	  if (n >= 0 && n > nbytes)
-	    {
-	      log_error ("bogus read from random device (n=%d)\n", n);
-	      n = nbytes;
-	    }
-	}
-      while (n == -1 && errno == EINTR);
-      if (n == -1)
-	log_fatal ("read error on random device: %s\n", strerror (errno));
-      (*add) (buffer, n, origin);
+        {
+          int nbytes = length < sizeof(buffer)? length : sizeof(buffer);
+          n = read(fd, buffer, nbytes );
+          if( n >= 0 && n > nbytes )
+            {
+              log_error("bogus read from random device (n=%d)\n", n );
+              n = nbytes;
+            }
+        }
+      while( n == -1 && errno == EINTR );
+      if ( n == -1 )
+        log_fatal("read error on random device: %s\n", strerror(errno));
+      (*add)( buffer, n, origin );
       length -= n;
     }
-  memset (buffer, 0, sizeof (buffer));
+  memset(buffer, 0, sizeof(buffer) );
 
   if (any_need_entropy)
-    _gcry_random_progress ("need_entropy", 'X', (int) want, (int) want);
+    _gcry_random_progress ("need_entropy", 'X', (int)want, (int)want);
 
-  return 0;			/* success */
+  return 0; /* success */
 }

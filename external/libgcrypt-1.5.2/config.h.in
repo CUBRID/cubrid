@@ -36,9 +36,6 @@
 /* Define to use the GNU C visibility attribute. */
 #undef GCRY_USE_VISIBILITY
 
-/* The default error source for libgcrypt. */
-#undef GPG_ERR_SOURCE_DEFAULT
-
 /* Define to 1 if you have the `atexit' function. */
 #undef HAVE_ATEXIT
 

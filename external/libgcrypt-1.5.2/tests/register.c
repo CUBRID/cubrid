@@ -35,20 +35,20 @@ static int in_fips_mode;
 static void
 die (const char *format, ...)
 {
-  va_list arg_ptr;
+  va_list arg_ptr ;
 
-  va_start (arg_ptr, format);
-  vfprintf (stderr, format, arg_ptr);
-  va_end (arg_ptr);
+  va_start( arg_ptr, format ) ;
+  vfprintf (stderr, format, arg_ptr );
+  va_end(arg_ptr);
   exit (1);
 }
 
 gcry_err_code_t
 foo_setkey (void *c, const unsigned char *key, unsigned keylen)
 {
-  (void) c;
-  (void) key;
-  (void) keylen;
+  (void)c;
+  (void)key;
+  (void)keylen;
 
   return 0;
 }
@@ -60,7 +60,7 @@ foo_encrypt (void *c, unsigned char *outbuf, const unsigned char *inbuf)
 {
   int i;
 
-  (void) c;
+  (void)c;
 
   for (i = 0; i < FOO_BLOCKSIZE; i++)
     outbuf[i] = inbuf[i] ^ 0x42;
@@ -71,17 +71,18 @@ foo_decrypt (void *c, unsigned char *outbuf, const unsigned char *inbuf)
 {
   int i;
 
-  (void) c;
+  (void)c;
 
   for (i = 0; i < FOO_BLOCKSIZE; i++)
     outbuf[i] = inbuf[i] ^ 0x42;
 }
 
-gcry_cipher_spec_t cipher_spec_foo = {
-  "FOO", NULL, NULL, 16, 0, 0,
-  foo_setkey, foo_encrypt, foo_decrypt,
-  NULL, NULL,
-};
+gcry_cipher_spec_t cipher_spec_foo =
+  {
+    "FOO", NULL, NULL, 16, 0, 0,
+    foo_setkey, foo_encrypt, foo_decrypt,
+    NULL, NULL,
+  };
 
 int
 check_list (int algorithm)
@@ -91,12 +92,12 @@ check_list (int algorithm)
   int i, ret = 0;
 
   err = gcry_cipher_list (NULL, &list_length);
-  assert (!err);
+  assert (! err);
   list = malloc (sizeof (int) * list_length);
   assert (list);
   err = gcry_cipher_list (list, &list_length);
 
-  for (i = 0; i < list_length && (!ret); i++)
+  for (i = 0; i < list_length && (! ret); i++)
     if (list[i] == algorithm)
       ret = 1;
 
@@ -117,13 +118,13 @@ check_run (void)
   if (in_fips_mode)
     {
       if (gpg_err_code (err) != GPG_ERR_NOT_SUPPORTED)
-	die ("register cipher failed in fips mode: %s\n", gpg_strerror (err));
+        die ("register cipher failed in fips mode: %s\n", gpg_strerror (err));
       return;
     }
   else
     {
       if (err)
-	die ("register cipher failed: %s\n", gpg_strerror (err));
+        die ("register cipher failed: %s\n", gpg_strerror (err));
     }
 
   err = gcry_cipher_open (&h, algorithm, GCRY_CIPHER_MODE_CBC, 0);
@@ -133,17 +134,17 @@ check_run (void)
   err = gcry_cipher_encrypt (h,
 			     (unsigned char *) encrypted, sizeof (encrypted),
 			     (unsigned char *) plain, sizeof (plain));
-  assert (!err);
+  assert (! err);
   assert (memcmp ((void *) plain, (void *) encrypted, sizeof (plain)));
 
   err = gcry_cipher_reset (h);
-  assert (!err);
+  assert (! err);
 
   err = gcry_cipher_decrypt (h,
 			     (unsigned char *) decrypted, sizeof (decrypted),
 			     (unsigned char *) encrypted, sizeof (encrypted));
-  assert (!err);
-  assert (!memcmp ((void *) plain, (void *) decrypted, sizeof (plain)));
+  assert (! err);
+  assert (! memcmp ((void *) plain, (void *) decrypted, sizeof (plain)));
 
   ret = check_list (algorithm);
   assert (ret);
@@ -153,7 +154,7 @@ check_run (void)
   gcry_cipher_unregister (module);
 
   ret = check_list (algorithm);
-  assert (!ret);
+  assert (! ret);
 }
 
 int
@@ -172,9 +173,9 @@ main (int argc, char **argv)
     die ("version mismatch\n");
   gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
   if (debug)
-    gcry_control (GCRYCTL_SET_DEBUG_FLAGS, 1u, 0);
+    gcry_control (GCRYCTL_SET_DEBUG_FLAGS, 1u , 0);
 
-  if (gcry_control (GCRYCTL_FIPS_MODE_P, 0))
+  if ( gcry_control (GCRYCTL_FIPS_MODE_P, 0) )
     in_fips_mode = 1;
 
   for (; i > 0; i--)
@@ -182,5 +183,5 @@ main (int argc, char **argv)
 
   /* In fips mode we let the Makefile skip this test because a PASS
      would not make much sense with all egistering disabled. */
-  return in_fips_mode ? 77 : 0;
+  return in_fips_mode? 77:0;
 }

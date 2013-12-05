@@ -38,9 +38,9 @@
 
 #include "visibility.h"
 #include "types.h"
+
+
 
-
-
 
 /* Attribute handling macros.  */
 
@@ -79,48 +79,43 @@
 #define STR2(v) STR(v)
 #define DIM(v) (sizeof(v)/sizeof((v)[0]))
 #define DIMof(type,member)   DIM(((type *)0)->member)
-
 
+
 
 /*-- src/global.c -*/
 int _gcry_global_is_operational (void);
 gcry_error_t _gcry_vcontrol (enum gcry_ctl_cmds cmd, va_list arg_ptr);
-void _gcry_check_heap (const void *a);
+void  _gcry_check_heap (const void *a);
 int _gcry_get_debug_flag (unsigned int mask);
 
 
 /*-- src/misc.c --*/
 
 #if defined(JNLIB_GCC_M_FUNCTION) || __STDC_VERSION__ >= 199901L
-void
-_gcry_bug (const char *file, int line, const char *func)
-  GCC_ATTR_NORETURN;
-     void _gcry_assert_failed (const char *expr, const char *file, int line,
-			       const char *func) GCC_ATTR_NORETURN;
+void _gcry_bug (const char *file, int line,
+                const char *func) GCC_ATTR_NORETURN;
+void _gcry_assert_failed (const char *expr, const char *file, int line,
+                          const char *func) GCC_ATTR_NORETURN;
 #else
 void _gcry_bug (const char *file, int line);
 void _gcry_assert_failed (const char *expr, const char *file, int line);
 #endif
 
-const char *
-_gcry_gettext (const char *key)
-GCC_ATTR_FORMAT_ARG (1);
-     void _gcry_fatal_error (int rc, const char *text) JNLIB_GCC_A_NR;
-     void _gcry_log (int level, const char *fmt, ...) JNLIB_GCC_A_PRINTF (2,
-									  3);
-     void _gcry_log_bug (const char *fmt, ...) JNLIB_GCC_A_NR_PRINTF (1, 2);
-     void _gcry_log_fatal (const char *fmt, ...) JNLIB_GCC_A_NR_PRINTF (1, 2);
-     void _gcry_log_error (const char *fmt, ...) JNLIB_GCC_A_PRINTF (1, 2);
-     void _gcry_log_info (const char *fmt, ...) JNLIB_GCC_A_PRINTF (1, 2);
-     int _gcry_log_info_with_dummy_fp (FILE * fp, const char *fmt, ...)
-  JNLIB_GCC_A_PRINTF (2, 3);
-     void _gcry_log_debug (const char *fmt, ...) JNLIB_GCC_A_PRINTF (1, 2);
-     void _gcry_log_printf (const char *fmt, ...) JNLIB_GCC_A_PRINTF (1, 2);
-     void _gcry_log_printhex (const char *text, const void *buffer,
-			      size_t length);
+const char *_gcry_gettext (const char *key) GCC_ATTR_FORMAT_ARG(1);
+void _gcry_fatal_error(int rc, const char *text ) JNLIB_GCC_A_NR;
+void _gcry_log( int level, const char *fmt, ... ) JNLIB_GCC_A_PRINTF(2,3);
+void _gcry_log_bug( const char *fmt, ... )   JNLIB_GCC_A_NR_PRINTF(1,2);
+void _gcry_log_fatal( const char *fmt, ... ) JNLIB_GCC_A_NR_PRINTF(1,2);
+void _gcry_log_error( const char *fmt, ... ) JNLIB_GCC_A_PRINTF(1,2);
+void _gcry_log_info( const char *fmt, ... )  JNLIB_GCC_A_PRINTF(1,2);
+int  _gcry_log_info_with_dummy_fp (FILE *fp, const char *fmt, ... )
+                                             JNLIB_GCC_A_PRINTF(2,3);
+void _gcry_log_debug( const char *fmt, ... ) JNLIB_GCC_A_PRINTF(1,2);
+void _gcry_log_printf ( const char *fmt, ... ) JNLIB_GCC_A_PRINTF(1,2);
+void _gcry_log_printhex (const char *text, const void *buffer, size_t length);
 
-     void _gcry_set_log_verbosity (int level);
-     int _gcry_log_verbosity (int level);
+void _gcry_set_log_verbosity( int level );
+int _gcry_log_verbosity( int level );
 
 #ifdef JNLIB_GCC_M_FUNCTION
 #define BUG() _gcry_bug( __FILE__ , __LINE__, __FUNCTION__ )
@@ -156,12 +151,12 @@ GCC_ATTR_FORMAT_ARG (1);
 #define HWF_INTEL_AESNI  256
 
 
-     unsigned int _gcry_get_hw_features (void);
-     void _gcry_detect_hw_features (unsigned int);
+unsigned int _gcry_get_hw_features (void);
+void _gcry_detect_hw_features (unsigned int);
 
 
 /*-- mpi/mpiutil.c --*/
-     const char *_gcry_mpi_get_hw_config (void);
+const char *_gcry_mpi_get_hw_config (void);
 
 
 /*-- cipher/pubkey.c --*/
@@ -172,52 +167,41 @@ GCC_ATTR_FORMAT_ARG (1);
 #endif
 
 /*-- primegen.c --*/
-     gcry_mpi_t _gcry_generate_secret_prime (unsigned int nbits,
-					     gcry_random_level_t random_level,
-					     int (*extra_check) (void *,
-								 gcry_mpi_t),
-					     void *extra_check_arg);
-     gcry_mpi_t _gcry_generate_public_prime (unsigned int nbits,
-					     gcry_random_level_t random_level,
-					     int (*extra_check) (void *,
-								 gcry_mpi_t),
-					     void *extra_check_arg);
-     gcry_mpi_t _gcry_generate_elg_prime (int mode, unsigned int pbits,
-					  unsigned int qbits, gcry_mpi_t g,
-					  gcry_mpi_t ** factors);
-     gcry_mpi_t _gcry_derive_x931_prime (const gcry_mpi_t xp,
-					 const gcry_mpi_t xp1,
-					 const gcry_mpi_t xp2,
-					 const gcry_mpi_t e,
-					 gcry_mpi_t * r_p1,
-					 gcry_mpi_t * r_p2);
-     gpg_err_code_t _gcry_generate_fips186_2_prime (unsigned int pbits,
-						    unsigned int qbits,
-						    const void *seed,
-						    size_t seedlen,
-						    gcry_mpi_t * r_q,
-						    gcry_mpi_t * r_p,
-						    int *r_counter,
-						    void **r_seed,
-						    size_t * r_seedlen);
-     gpg_err_code_t _gcry_generate_fips186_3_prime (unsigned int pbits,
-						    unsigned int qbits,
-						    const void *seed,
-						    size_t seedlen,
-						    gcry_mpi_t * r_q,
-						    gcry_mpi_t * r_p,
-						    int *r_counter,
-						    void **r_seed,
-						    size_t * r_seedlen,
-						    int *r_hashalgo);
+gcry_mpi_t _gcry_generate_secret_prime (unsigned int nbits,
+                                 gcry_random_level_t random_level,
+                                 int (*extra_check)(void*, gcry_mpi_t),
+                                 void *extra_check_arg);
+gcry_mpi_t _gcry_generate_public_prime (unsigned int nbits,
+                                 gcry_random_level_t random_level,
+                                 int (*extra_check)(void*, gcry_mpi_t),
+                                 void *extra_check_arg);
+gcry_mpi_t _gcry_generate_elg_prime (int mode,
+                                     unsigned int pbits, unsigned int qbits,
+                                     gcry_mpi_t g, gcry_mpi_t **factors);
+gcry_mpi_t _gcry_derive_x931_prime (const gcry_mpi_t xp,
+                                    const gcry_mpi_t xp1, const gcry_mpi_t xp2,
+                                    const gcry_mpi_t e,
+                                    gcry_mpi_t *r_p1, gcry_mpi_t *r_p2);
+gpg_err_code_t _gcry_generate_fips186_2_prime
+                 (unsigned int pbits, unsigned int qbits,
+                  const void *seed, size_t seedlen,
+                  gcry_mpi_t *r_q, gcry_mpi_t *r_p,
+                  int *r_counter,
+                  void **r_seed, size_t *r_seedlen);
+gpg_err_code_t _gcry_generate_fips186_3_prime
+                 (unsigned int pbits, unsigned int qbits,
+                  const void *seed, size_t seedlen,
+                  gcry_mpi_t *r_q, gcry_mpi_t *r_p,
+                  int *r_counter,
+                  void **r_seed, size_t *r_seedlen, int *r_hashalgo);
 
 
 /* Replacements of missing functions (missing-string.c).  */
 #ifndef HAVE_STPCPY
-     char *stpcpy (char *a, const char *b);
+char *stpcpy (char *a, const char *b);
 #endif
 #ifndef HAVE_STRCASECMP
-     int strcasecmp (const char *a, const char *b) _GCRY_GCC_ATTR_PURE;
+int strcasecmp (const char *a, const char *b) _GCRY_GCC_ATTR_PURE;
 #endif
 
 #include "../compat/libcompat.h"
@@ -243,7 +227,7 @@ GCC_ATTR_FORMAT_ARG (1);
 
 /* Stack burning.  */
 
-     void _gcry_burn_stack (int bytes);
+void _gcry_burn_stack (int bytes);
 
 
 /* To avoid that a compiler optimizes certain memset calls away, these
@@ -270,88 +254,89 @@ GCC_ATTR_FORMAT_ARG (1);
 /* Management for ciphers/digests/pubkey-ciphers.  */
 
 /* Structure for each registered `module'.  */
-     struct gcry_module
-     {
-       struct gcry_module *next;	/* List pointers.      */
-       struct gcry_module **prevp;
-       void *spec;		/* Pointer to the subsystem-specific
+struct gcry_module
+{
+  struct gcry_module *next;     /* List pointers.      */
+  struct gcry_module **prevp;
+  void *spec;			/* Pointer to the subsystem-specific
 				   specification structure.  */
-       void *extraspec;		/* Pointer to the subsystem-specific
+  void *extraspec;		/* Pointer to the subsystem-specific
 				   extra specification structure.  */
-       int flags;		/* Associated flags.   */
-       int counter;		/* Use counter.        */
-       unsigned int mod_id;	/* ID of this module.  */
-     };
+  int flags;			/* Associated flags.   */
+  int counter;			/* Use counter.        */
+  unsigned int mod_id;		/* ID of this module.  */
+};
 
 /* Flags for the `flags' member of gcry_module_t.  */
 #define FLAG_MODULE_DISABLED (1 << 0)
 
-     gcry_err_code_t _gcry_module_add (gcry_module_t * entries,
-				       unsigned int id,
-				       void *spec,
-				       void *extraspec,
-				       gcry_module_t * module);
+gcry_err_code_t _gcry_module_add (gcry_module_t *entries,
+                                  unsigned int id,
+                                  void *spec,
+                                  void *extraspec,
+                                  gcry_module_t *module);
 
-     typedef int (*gcry_module_lookup_t) (void *spec, void *data);
+typedef int (*gcry_module_lookup_t) (void *spec, void *data);
 
 /* Lookup a module specification by it's ID.  After a successful
    lookup, the module has it's resource counter incremented.  */
-     gcry_module_t _gcry_module_lookup_id (gcry_module_t entries,
-					   unsigned int id);
+gcry_module_t _gcry_module_lookup_id (gcry_module_t entries,
+				       unsigned int id);
 
 /* Internal function.  Lookup a module specification.  */
-     gcry_module_t _gcry_module_lookup (gcry_module_t entries, void *data,
-					gcry_module_lookup_t func);
+gcry_module_t _gcry_module_lookup (gcry_module_t entries, void *data,
+				    gcry_module_lookup_t func);
 
 /* Release a module.  In case the use-counter reaches zero, destroy
    the module.  */
-     void _gcry_module_release (gcry_module_t entry);
+void _gcry_module_release (gcry_module_t entry);
 
 /* Add a reference to a module.  */
-     void _gcry_module_use (gcry_module_t module);
+void _gcry_module_use (gcry_module_t module);
 
 /* Return a list of module IDs.  */
-     gcry_err_code_t _gcry_module_list (gcry_module_t modules,
-					int *list, int *list_length);
+gcry_err_code_t _gcry_module_list (gcry_module_t modules,
+				  int *list, int *list_length);
 
-     gcry_err_code_t _gcry_cipher_init (void);
-     gcry_err_code_t _gcry_md_init (void);
-     gcry_err_code_t _gcry_pk_init (void);
-     gcry_err_code_t _gcry_ac_init (void);
+gcry_err_code_t _gcry_cipher_init (void);
+gcry_err_code_t _gcry_md_init (void);
+gcry_err_code_t _gcry_pk_init (void);
+gcry_err_code_t _gcry_ac_init (void);
 
-     gcry_err_code_t _gcry_pk_module_lookup (int id, gcry_module_t * module);
-     void _gcry_pk_module_release (gcry_module_t module);
-     gcry_err_code_t _gcry_pk_get_elements (int algo, char **enc, char **sig);
+gcry_err_code_t _gcry_pk_module_lookup (int id, gcry_module_t *module);
+void _gcry_pk_module_release (gcry_module_t module);
+gcry_err_code_t _gcry_pk_get_elements (int algo, char **enc, char **sig);
 
 /* Memory management.  */
 #define GCRY_ALLOC_FLAG_SECURE (1 << 0)
 
 
 /*-- sexp.c --*/
-     gcry_error_t _gcry_sexp_vbuild (gcry_sexp_t * retsexp, size_t * erroff,
-				     const char *format, va_list arg_ptr);
-     char *_gcry_sexp_nth_string (const gcry_sexp_t list, int number);
+gcry_error_t _gcry_sexp_vbuild (gcry_sexp_t *retsexp, size_t *erroff,
+                                const char *format, va_list arg_ptr);
+char *_gcry_sexp_nth_string (const gcry_sexp_t list, int number);
 
 
 /*-- fips.c --*/
 
-     void _gcry_initialize_fips_mode (int force);
+void _gcry_initialize_fips_mode (int force);
 
-     int _gcry_fips_mode (void);
+int _gcry_fips_mode (void);
 #define fips_mode() _gcry_fips_mode ()
 
-     int _gcry_enforced_fips_mode (void);
+int _gcry_enforced_fips_mode (void);
 
-     void _gcry_set_enforced_fips_mode (void);
+void _gcry_set_enforced_fips_mode (void);
 
-     void _gcry_inactivate_fips_mode (const char *text);
-     int _gcry_is_fips_mode_inactive (void);
+void _gcry_inactivate_fips_mode (const char *text);
+int _gcry_is_fips_mode_inactive (void);
 
 
-     void _gcry_fips_signal_error (const char *srcfile,
-				   int srcline,
-				   const char *srcfunc,
-				   int is_fatal, const char *description);
+void _gcry_fips_signal_error (const char *srcfile,
+                              int srcline,
+                              const char *srcfunc,
+                              int is_fatal,
+                              const char *description);
 #ifdef JNLIB_GCC_M_FUNCTION
 # define fips_signal_error(a) \
            _gcry_fips_signal_error (__FILE__, __LINE__, __FUNCTION__, 0, (a))
@@ -364,16 +349,16 @@ GCC_ATTR_FORMAT_ARG (1);
            _gcry_fips_signal_error (__FILE__, __LINE__, NULL, 1, (a))
 #endif
 
-     int _gcry_fips_is_operational (void);
+int _gcry_fips_is_operational (void);
 #define fips_is_operational()   (_gcry_global_is_operational ())
 #define fips_not_operational()  (GCRY_GPG_ERR_NOT_OPERATIONAL)
 
-     int _gcry_fips_test_operational (void);
-     int _gcry_fips_test_error_or_operational (void);
+int _gcry_fips_test_operational (void);
+int _gcry_fips_test_error_or_operational (void);
 
-     gpg_err_code_t _gcry_fips_run_selftests (int extended);
+gpg_err_code_t _gcry_fips_run_selftests (int extended);
 
-     void _gcry_fips_noreturn (void);
+void _gcry_fips_noreturn (void);
 #define fips_noreturn()  (_gcry_fips_noreturn ())
 
 

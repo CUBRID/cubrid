@@ -42,8 +42,8 @@
 */
 const char *
 _gcry_hash_selftest_check_one (int algo,
-			       int datamode, const void *data, size_t datalen,
-			       const void *expect, size_t expectlen)
+                               int datamode, const void *data, size_t datalen,
+                               const void *expect, size_t expectlen)
 {
   const char *result = NULL;
   gcry_error_t err = 0;
@@ -63,15 +63,15 @@ _gcry_hash_selftest_check_one (int algo,
       _gcry_md_write (hd, data, datalen);
       break;
 
-    case 1:			/* Hash one million times an "a". */
+    case 1: /* Hash one million times an "a". */
       {
-	char aaa[1000];
-	int i;
+        char aaa[1000];
+        int i;
 
-	/* Write in odd size chunks so that we test the buffering.  */
-	memset (aaa, 'a', 1000);
-	for (i = 0; i < 1000; i++)
-	  _gcry_md_write (hd, aaa, 1000);
+        /* Write in odd size chunks so that we test the buffering.  */
+        memset (aaa, 'a', 1000);
+        for (i = 0; i < 1000; i++)
+          _gcry_md_write (hd, aaa, 1000);
       }
       break;
 
@@ -83,8 +83,8 @@ _gcry_hash_selftest_check_one (int algo,
     {
       digest = _gcry_md_read (hd, algo);
 
-      if (memcmp (digest, expect, expectlen))
-	result = "digest mismatch";
+      if ( memcmp (digest, expect, expectlen) )
+        result = "digest mismatch";
     }
 
   _gcry_md_close (hd);

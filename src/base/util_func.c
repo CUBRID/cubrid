@@ -44,7 +44,7 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 
-#define UTIL_LOG_MAX_HEADER_LEN    (30)
+#define UTIL_LOG_MAX_HEADER_LEN    (40)
 #define UTIL_LOG_MAX_MSG_SIZE       (1024)
 #define UTIL_LOG_BUFFER_SIZE   \
   (UTIL_LOG_MAX_MSG_SIZE + UTIL_LOG_MAX_HEADER_LEN)

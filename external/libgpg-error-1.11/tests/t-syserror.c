@@ -60,7 +60,7 @@ main (int argc, char *argv[])
 
   if (ec != gpg_err_code_from_errno (save_errno))
     {
-      fprintf (stderr, "oops at %d\n", __LINE__);
+      fprintf (stderr, "oops at %d\n",__LINE__);
       return 1;
     }
 
@@ -69,13 +69,13 @@ main (int argc, char *argv[])
   ec = gpg_err_code_from_syserror ();
   if (ec != GPG_ERR_MISSING_ERRNO)
     {
-      fprintf (stderr, "oops at %d\n", __LINE__);
+      fprintf (stderr, "oops at %d\n",__LINE__);
       return 1;
     }
 
-  if (gpg_err_code_from_errno (0))
+  if ( gpg_err_code_from_errno (0) )
     {
-      fprintf (stderr, "oops at %d\n", __LINE__);
+      fprintf (stderr, "oops at %d\n",__LINE__);
       return 1;
     }
 

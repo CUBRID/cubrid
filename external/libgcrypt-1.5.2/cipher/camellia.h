@@ -45,38 +45,37 @@
 #define camellia_setup128     CAMELLIA_PREFIX(camellia_setup128)
 #define camellia_setup192     CAMELLIA_PREFIX(camellia_setup192)
 #define camellia_setup256     CAMELLIA_PREFIX(camellia_setup256)
-#endif /*CAMELLIA_EXT_SYM_PREFIX */
+#endif /*CAMELLIA_EXT_SYM_PREFIX*/
 
 
 #ifdef  __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 #define CAMELLIA_BLOCK_SIZE 16
 #define CAMELLIA_TABLE_BYTE_LEN 272
 #define CAMELLIA_TABLE_WORD_LEN (CAMELLIA_TABLE_BYTE_LEN / 4)
 
-  typedef unsigned int KEY_TABLE_TYPE[CAMELLIA_TABLE_WORD_LEN];
+typedef unsigned int KEY_TABLE_TYPE[CAMELLIA_TABLE_WORD_LEN];
 
 
-  void Camellia_Ekeygen (const int keyBitLength,
-			 const unsigned char *rawKey,
-			 KEY_TABLE_TYPE keyTable);
+void Camellia_Ekeygen(const int keyBitLength,
+		      const unsigned char *rawKey,
+		      KEY_TABLE_TYPE keyTable);
 
-  void Camellia_EncryptBlock (const int keyBitLength,
-			      const unsigned char *plaintext,
-			      const KEY_TABLE_TYPE keyTable,
-			      unsigned char *cipherText);
+void Camellia_EncryptBlock(const int keyBitLength,
+			   const unsigned char *plaintext,
+			   const KEY_TABLE_TYPE keyTable,
+			   unsigned char *cipherText);
 
-  void Camellia_DecryptBlock (const int keyBitLength,
-			      const unsigned char *cipherText,
-			      const KEY_TABLE_TYPE keyTable,
-			      unsigned char *plaintext);
+void Camellia_DecryptBlock(const int keyBitLength,
+			   const unsigned char *cipherText,
+			   const KEY_TABLE_TYPE keyTable,
+			   unsigned char *plaintext);
 
 
 #ifdef  __cplusplus
 }
 #endif
 
-#endif				/* HEADER_CAMELLIA_H */
+#endif /* HEADER_CAMELLIA_H */

@@ -42,17 +42,16 @@
 #include "bithelp.h"
 
 
-typedef struct
-{
-  u32 A, B, C, D;		/* chaining variables */
-  u32 nblocks;
-  byte buf[64];
-  int count;
+typedef struct {
+    u32 A,B,C,D;	  /* chaining variables */
+    u32  nblocks;
+    byte buf[64];
+    int  count;
 } MD5_CONTEXT;
 
 
 static void
-md5_init (void *context)
+md5_init( void *context )
 {
   MD5_CONTEXT *ctx = context;
 
@@ -80,7 +79,7 @@ md5_init (void *context)
  * transform n*64 bytes
  */
 static void
-transform (MD5_CONTEXT * ctx, const unsigned char *data)
+transform ( MD5_CONTEXT *ctx, const unsigned char *data )
 {
   u32 correct_words[16];
   register u32 A = ctx->A;
@@ -94,16 +93,16 @@ transform (MD5_CONTEXT * ctx, const unsigned char *data)
     int i;
     byte *p2;
     const byte *p1;
-    for (i = 0, p1 = data, p2 = (byte *) correct_words; i < 16; i++, p2 += 4)
+    for(i=0, p1=data, p2=(byte*)correct_words; i < 16; i++, p2 += 4 )
       {
-	p2[3] = *p1++;
+        p2[3] = *p1++;
 	p2[2] = *p1++;
 	p2[1] = *p1++;
 	p2[0] = *p1++;
       }
   }
 #else
-  memcpy (correct_words, data, 64);
+  memcpy( correct_words, data, 64 );
 #endif
 
 
@@ -120,22 +119,22 @@ transform (MD5_CONTEXT * ctx, const unsigned char *data)
      They are defined in RFC 1321 as
 
      T[i] = (int) (4294967296.0 * fabs (sin (i))), i=1..64
-   */
+  */
 
   /* Round 1.  */
-  OP (A, B, C, D, 7, 0xd76aa478);
+  OP (A, B, C, D,  7, 0xd76aa478);
   OP (D, A, B, C, 12, 0xe8c7b756);
   OP (C, D, A, B, 17, 0x242070db);
   OP (B, C, D, A, 22, 0xc1bdceee);
-  OP (A, B, C, D, 7, 0xf57c0faf);
+  OP (A, B, C, D,  7, 0xf57c0faf);
   OP (D, A, B, C, 12, 0x4787c62a);
   OP (C, D, A, B, 17, 0xa8304613);
   OP (B, C, D, A, 22, 0xfd469501);
-  OP (A, B, C, D, 7, 0x698098d8);
+  OP (A, B, C, D,  7, 0x698098d8);
   OP (D, A, B, C, 12, 0x8b44f7af);
   OP (C, D, A, B, 17, 0xffff5bb1);
   OP (B, C, D, A, 22, 0x895cd7be);
-  OP (A, B, C, D, 7, 0x6b901122);
+  OP (A, B, C, D,  7, 0x6b901122);
   OP (D, A, B, C, 12, 0xfd987193);
   OP (C, D, A, B, 17, 0xa679438e);
   OP (B, C, D, A, 22, 0x49b40821);
@@ -151,58 +150,58 @@ transform (MD5_CONTEXT * ctx, const unsigned char *data)
     while (0)
 
   /* Round 2.  */
-  OP (FG, A, B, C, D, 1, 5, 0xf61e2562);
-  OP (FG, D, A, B, C, 6, 9, 0xc040b340);
+  OP (FG, A, B, C, D,  1,  5, 0xf61e2562);
+  OP (FG, D, A, B, C,  6,  9, 0xc040b340);
   OP (FG, C, D, A, B, 11, 14, 0x265e5a51);
-  OP (FG, B, C, D, A, 0, 20, 0xe9b6c7aa);
-  OP (FG, A, B, C, D, 5, 5, 0xd62f105d);
-  OP (FG, D, A, B, C, 10, 9, 0x02441453);
+  OP (FG, B, C, D, A,  0, 20, 0xe9b6c7aa);
+  OP (FG, A, B, C, D,  5,  5, 0xd62f105d);
+  OP (FG, D, A, B, C, 10,  9, 0x02441453);
   OP (FG, C, D, A, B, 15, 14, 0xd8a1e681);
-  OP (FG, B, C, D, A, 4, 20, 0xe7d3fbc8);
-  OP (FG, A, B, C, D, 9, 5, 0x21e1cde6);
-  OP (FG, D, A, B, C, 14, 9, 0xc33707d6);
-  OP (FG, C, D, A, B, 3, 14, 0xf4d50d87);
-  OP (FG, B, C, D, A, 8, 20, 0x455a14ed);
-  OP (FG, A, B, C, D, 13, 5, 0xa9e3e905);
-  OP (FG, D, A, B, C, 2, 9, 0xfcefa3f8);
-  OP (FG, C, D, A, B, 7, 14, 0x676f02d9);
+  OP (FG, B, C, D, A,  4, 20, 0xe7d3fbc8);
+  OP (FG, A, B, C, D,  9,  5, 0x21e1cde6);
+  OP (FG, D, A, B, C, 14,  9, 0xc33707d6);
+  OP (FG, C, D, A, B,  3, 14, 0xf4d50d87);
+  OP (FG, B, C, D, A,  8, 20, 0x455a14ed);
+  OP (FG, A, B, C, D, 13,  5, 0xa9e3e905);
+  OP (FG, D, A, B, C,  2,  9, 0xfcefa3f8);
+  OP (FG, C, D, A, B,  7, 14, 0x676f02d9);
   OP (FG, B, C, D, A, 12, 20, 0x8d2a4c8a);
 
   /* Round 3.  */
-  OP (FH, A, B, C, D, 5, 4, 0xfffa3942);
-  OP (FH, D, A, B, C, 8, 11, 0x8771f681);
+  OP (FH, A, B, C, D,  5,  4, 0xfffa3942);
+  OP (FH, D, A, B, C,  8, 11, 0x8771f681);
   OP (FH, C, D, A, B, 11, 16, 0x6d9d6122);
   OP (FH, B, C, D, A, 14, 23, 0xfde5380c);
-  OP (FH, A, B, C, D, 1, 4, 0xa4beea44);
-  OP (FH, D, A, B, C, 4, 11, 0x4bdecfa9);
-  OP (FH, C, D, A, B, 7, 16, 0xf6bb4b60);
+  OP (FH, A, B, C, D,  1,  4, 0xa4beea44);
+  OP (FH, D, A, B, C,  4, 11, 0x4bdecfa9);
+  OP (FH, C, D, A, B,  7, 16, 0xf6bb4b60);
   OP (FH, B, C, D, A, 10, 23, 0xbebfbc70);
-  OP (FH, A, B, C, D, 13, 4, 0x289b7ec6);
-  OP (FH, D, A, B, C, 0, 11, 0xeaa127fa);
-  OP (FH, C, D, A, B, 3, 16, 0xd4ef3085);
-  OP (FH, B, C, D, A, 6, 23, 0x04881d05);
-  OP (FH, A, B, C, D, 9, 4, 0xd9d4d039);
+  OP (FH, A, B, C, D, 13,  4, 0x289b7ec6);
+  OP (FH, D, A, B, C,  0, 11, 0xeaa127fa);
+  OP (FH, C, D, A, B,  3, 16, 0xd4ef3085);
+  OP (FH, B, C, D, A,  6, 23, 0x04881d05);
+  OP (FH, A, B, C, D,  9,  4, 0xd9d4d039);
   OP (FH, D, A, B, C, 12, 11, 0xe6db99e5);
   OP (FH, C, D, A, B, 15, 16, 0x1fa27cf8);
-  OP (FH, B, C, D, A, 2, 23, 0xc4ac5665);
+  OP (FH, B, C, D, A,  2, 23, 0xc4ac5665);
 
   /* Round 4.  */
-  OP (FI, A, B, C, D, 0, 6, 0xf4292244);
-  OP (FI, D, A, B, C, 7, 10, 0x432aff97);
+  OP (FI, A, B, C, D,  0,  6, 0xf4292244);
+  OP (FI, D, A, B, C,  7, 10, 0x432aff97);
   OP (FI, C, D, A, B, 14, 15, 0xab9423a7);
-  OP (FI, B, C, D, A, 5, 21, 0xfc93a039);
-  OP (FI, A, B, C, D, 12, 6, 0x655b59c3);
-  OP (FI, D, A, B, C, 3, 10, 0x8f0ccc92);
+  OP (FI, B, C, D, A,  5, 21, 0xfc93a039);
+  OP (FI, A, B, C, D, 12,  6, 0x655b59c3);
+  OP (FI, D, A, B, C,  3, 10, 0x8f0ccc92);
   OP (FI, C, D, A, B, 10, 15, 0xffeff47d);
-  OP (FI, B, C, D, A, 1, 21, 0x85845dd1);
-  OP (FI, A, B, C, D, 8, 6, 0x6fa87e4f);
+  OP (FI, B, C, D, A,  1, 21, 0x85845dd1);
+  OP (FI, A, B, C, D,  8,  6, 0x6fa87e4f);
   OP (FI, D, A, B, C, 15, 10, 0xfe2ce6e0);
-  OP (FI, C, D, A, B, 6, 15, 0xa3014314);
+  OP (FI, C, D, A, B,  6, 15, 0xa3014314);
   OP (FI, B, C, D, A, 13, 21, 0x4e0811a1);
-  OP (FI, A, B, C, D, 4, 6, 0xf7537e82);
+  OP (FI, A, B, C, D,  4,  6, 0xf7537e82);
   OP (FI, D, A, B, C, 11, 10, 0xbd3af235);
-  OP (FI, C, D, A, B, 2, 15, 0x2ad7d2bb);
-  OP (FI, B, C, D, A, 9, 21, 0xeb86d391);
+  OP (FI, C, D, A, B,  2, 15, 0x2ad7d2bb);
+  OP (FI, B, C, D, A,  9, 21, 0xeb86d391);
 
   /* Put checksum in context given as argument.  */
   ctx->A += A;
@@ -218,40 +217,40 @@ transform (MD5_CONTEXT * ctx, const unsigned char *data)
  * in the message whose digest is being computed.
  */
 static void
-md5_write (void *context, const void *inbuf_arg, size_t inlen)
+md5_write( void *context, const void *inbuf_arg , size_t inlen)
 {
   const unsigned char *inbuf = inbuf_arg;
   MD5_CONTEXT *hd = context;
 
-  if (hd->count == 64)		/* flush the buffer */
+  if( hd->count == 64 )  /* flush the buffer */
     {
-      transform (hd, hd->buf);
-      _gcry_burn_stack (80 + 6 * sizeof (void *));
+      transform( hd, hd->buf );
+      _gcry_burn_stack (80+6*sizeof(void*));
       hd->count = 0;
       hd->nblocks++;
     }
-  if (!inbuf)
+  if( !inbuf )
     return;
 
-  if (hd->count)
+  if( hd->count )
     {
-      for (; inlen && hd->count < 64; inlen--)
-	hd->buf[hd->count++] = *inbuf++;
-      md5_write (hd, NULL, 0);
-      if (!inlen)
-	return;
+      for( ; inlen && hd->count < 64; inlen-- )
+        hd->buf[hd->count++] = *inbuf++;
+      md5_write( hd, NULL, 0 );
+      if( !inlen )
+        return;
     }
-  _gcry_burn_stack (80 + 6 * sizeof (void *));
+  _gcry_burn_stack (80+6*sizeof(void*));
 
-  while (inlen >= 64)
+  while( inlen >= 64 )
     {
-      transform (hd, inbuf);
+      transform( hd, inbuf );
       hd->count = 0;
       hd->nblocks++;
       inlen -= 64;
       inbuf += 64;
     }
-  for (; inlen && hd->count < 64; inlen--)
+  for( ; inlen && hd->count < 64; inlen-- )
     hd->buf[hd->count++] = *inbuf++;
 
 }
@@ -265,13 +264,13 @@ md5_write (void *context, const void *inbuf_arg, size_t inlen)
  */
 
 static void
-md5_final (void *context)
+md5_final( void *context)
 {
   MD5_CONTEXT *hd = context;
   u32 t, msb, lsb;
   byte *p;
 
-  md5_write (hd, NULL, 0); /* flush */ ;
+  md5_write(hd, NULL, 0); /* flush */;
 
   t = hd->nblocks;
   /* multiply by 64 to make a byte count */
@@ -279,7 +278,7 @@ md5_final (void *context)
   msb = t >> 26;
   /* add the count */
   t = lsb;
-  if ((lsb += hd->count) < t)
+  if( (lsb += hd->count) < t )
     msb++;
   /* multiply by 8 to make a bit count */
   t = lsb;
@@ -287,31 +286,31 @@ md5_final (void *context)
   msb <<= 3;
   msb |= t >> 29;
 
-  if (hd->count < 56)		/* enough room */
+  if( hd->count < 56 )  /* enough room */
     {
-      hd->buf[hd->count++] = 0x80;	/* pad */
-      while (hd->count < 56)
-	hd->buf[hd->count++] = 0;	/* pad */
+      hd->buf[hd->count++] = 0x80; /* pad */
+      while( hd->count < 56 )
+        hd->buf[hd->count++] = 0;  /* pad */
     }
-  else				/* need one extra block */
+  else  /* need one extra block */
     {
-      hd->buf[hd->count++] = 0x80;	/* pad character */
-      while (hd->count < 64)
-	hd->buf[hd->count++] = 0;
-      md5_write (hd, NULL, 0); /* flush */ ;
-      memset (hd->buf, 0, 56);	/* fill next block with zeroes */
+      hd->buf[hd->count++] = 0x80; /* pad character */
+      while( hd->count < 64 )
+        hd->buf[hd->count++] = 0;
+      md5_write(hd, NULL, 0);  /* flush */;
+      memset(hd->buf, 0, 56 ); /* fill next block with zeroes */
     }
   /* append the 64 bit count */
-  hd->buf[56] = lsb;
-  hd->buf[57] = lsb >> 8;
+  hd->buf[56] = lsb	   ;
+  hd->buf[57] = lsb >>  8;
   hd->buf[58] = lsb >> 16;
   hd->buf[59] = lsb >> 24;
-  hd->buf[60] = msb;
-  hd->buf[61] = msb >> 8;
+  hd->buf[60] = msb	   ;
+  hd->buf[61] = msb >>  8;
   hd->buf[62] = msb >> 16;
   hd->buf[63] = msb >> 24;
-  transform (hd, hd->buf);
-  _gcry_burn_stack (80 + 6 * sizeof (void *));
+  transform( hd, hd->buf );
+  _gcry_burn_stack (80+6*sizeof(void*));
 
   p = hd->buf;
 #ifdef WORDS_BIGENDIAN
@@ -320,36 +319,37 @@ md5_final (void *context)
 #else /* little endian */
 #define X(a) do { *(u32*)p = (*hd).a ; p += 4; } while(0)
 #endif
-  X (A);
-  X (B);
-  X (C);
-  X (D);
+  X(A);
+  X(B);
+  X(C);
+  X(D);
 #undef X
 
 }
 
 static byte *
-md5_read (void *context)
+md5_read( void *context )
 {
   MD5_CONTEXT *hd = (MD5_CONTEXT *) context;
   return hd->buf;
 }
 
-static byte asn[18] =		/* Object ID is 1.2.840.113549.2.5 */
-{ 0x30, 0x20, 0x30, 0x0c, 0x06, 0x08, 0x2a, 0x86, 0x48,
-  0x86, 0xf7, 0x0d, 0x02, 0x05, 0x05, 0x00, 0x04, 0x10
-};
+static byte asn[18] = /* Object ID is 1.2.840.113549.2.5 */
+  { 0x30, 0x20, 0x30, 0x0c, 0x06, 0x08, 0x2a, 0x86,0x48,
+    0x86, 0xf7, 0x0d, 0x02, 0x05, 0x05, 0x00, 0x04, 0x10 };
 
-static gcry_md_oid_spec_t oid_spec_md5[] = {
-  /* iso.member-body.us.rsadsi.pkcs.pkcs-1.4 (md5WithRSAEncryption) */
-  {"1.2.840.113549.1.1.4"},
-  /* RSADSI digestAlgorithm MD5 */
-  {"1.2.840.113549.2.5"},
-  {NULL},
-};
+static gcry_md_oid_spec_t oid_spec_md5[] =
+  {
+    /* iso.member-body.us.rsadsi.pkcs.pkcs-1.4 (md5WithRSAEncryption) */
+    { "1.2.840.113549.1.1.4" },
+    /* RSADSI digestAlgorithm MD5 */
+    { "1.2.840.113549.2.5" },
+    { NULL },
+  };
 
-gcry_md_spec_t _gcry_digest_spec_md5 = {
-  "MD5", asn, DIM (asn), oid_spec_md5, 16,
-  md5_init, md5_write, md5_final, md5_read,
-  sizeof (MD5_CONTEXT)
-};
+gcry_md_spec_t _gcry_digest_spec_md5 =
+  {
+    "MD5", asn, DIM (asn), oid_spec_md5, 16,
+    md5_init, md5_write, md5_final, md5_read,
+    sizeof (MD5_CONTEXT)
+  };

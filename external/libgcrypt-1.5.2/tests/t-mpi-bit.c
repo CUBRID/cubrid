@@ -92,9 +92,9 @@ mpi2bitstr (gcry_mpi_t a, size_t length)
 {
   char *p, *buf;
 
-  buf = p = xmalloc (length + 1);
+  buf = p = xmalloc (length+1);
   while (length--)
-    *p++ = gcry_mpi_test_bit (a, length) ? '1' : '0';
+    *p++ = gcry_mpi_test_bit (a, length) ? '1':'0';
   *p = 0;
 
   return buf;
@@ -118,8 +118,8 @@ mpi2bitstr_nlz (gcry_mpi_t a)
     {
       buf = p = xmalloc (length + 1);
       while (length-- > 1)
-	*p++ = gcry_mpi_test_bit (a, length) ? '1' : '0';
-      *p++ = gcry_mpi_test_bit (a, 0) ? '1' : '0';
+        *p++ = gcry_mpi_test_bit (a, length) ? '1':'0';
+      *p++ = gcry_mpi_test_bit (a, 0) ? '1':'0';
     }
   *p = 0;
   return buf;
@@ -134,7 +134,7 @@ rshiftbitstring (char *string, size_t n)
   if (n > len)
     n = len;
 
-  memmove (string + n, string, len - n);
+  memmove (string+n, string, len-n);
   memset (string, '0', n);
 }
 
@@ -145,18 +145,18 @@ lshiftbitstring (const char *string, size_t n)
   size_t len = strlen (string);
   char *result;
 
-  if (len + n + 1 < len)
+  if (len+n+1 < len)
     die ("internal overflow\n");
   /* Allocate enough space. */
-  result = xmalloc (len + n + 1);
+  result = xmalloc (len+n+1);
   for (; *string == '0' && string[1]; string++, len--)
     ;
   memcpy (result, string, len);
   if (*string == '0' && !string[1])
-    n = 0;			/* Avoid extra nulls for an only 0 string.  */
+    n = 0; /* Avoid extra nulls for an only 0 string.  */
   else
-    memset (result + len, '0', n);
-  result[len + n] = 0;
+    memset (result+len, '0', n);
+  result[len+n] = 0;
   return result;
 }
 
@@ -171,8 +171,7 @@ one_bit_only (int highbit)
   int i;
 
   wherestr = "one_bit_only";
-  show ("checking that set_%sbit does only set one bit\n",
-	highbit ? "high" : "");
+  show ("checking that set_%sbit does only set one bit\n", highbit?"high":"");
 
   a = gcry_mpi_new (0);
   gcry_mpi_randomize (a, 70, GCRY_WEAK_RANDOM);
@@ -189,8 +188,8 @@ one_bit_only (int highbit)
     fail ("failed to clear a bit\n");
   result = mpi2bitstr (a, 70);
   assert (strlen (result) == 70);
-  for (i = 0; result[i]; i++)
-    if (result[i] != '0')
+  for (i=0; result[i]; i++)
+    if ( result[i] != '0' )
       break;
   if (result[i])
     fail ("spurious bits detected\n");
@@ -214,7 +213,7 @@ test_rshift (int pass)
   b = gcry_mpi_new (0);
   gcry_mpi_randomize (a, 70, GCRY_WEAK_RANDOM);
 
-  for (i = 0; i < 75; i++)
+  for (i=0; i < 75; i++)
     {
       gcry_mpi_rshift (b, a, i);
 
@@ -222,11 +221,11 @@ test_rshift (int pass)
       result2 = mpi2bitstr (a, 72);
       rshiftbitstring (result2, i);
       if (strcmp (result, result2))
-	{
-	  show ("got =%s\n", result);
-	  show ("want=%s\n", result2);
-	  fail ("rshift by %d failed\n", i);
-	}
+        {
+          show ("got =%s\n", result);
+          show ("want=%s\n", result2);
+          fail ("rshift by %d failed\n", i);
+        }
       xfree (result);
       xfree (result2);
     }
@@ -234,7 +233,7 @@ test_rshift (int pass)
   /* Again. This time using in-place operation. */
   gcry_mpi_randomize (a, 70, GCRY_WEAK_RANDOM);
 
-  for (i = 0; i < 75; i++)
+  for (i=0; i < 75; i++)
     {
       gcry_mpi_release (b);
       b = gcry_mpi_copy (a);
@@ -244,11 +243,11 @@ test_rshift (int pass)
       result2 = mpi2bitstr (a, 72);
       rshiftbitstring (result2, i);
       if (strcmp (result, result2))
-	{
-	  show ("got =%s\n", result);
-	  show ("want=%s\n", result2);
-	  fail ("in-place rshift by %d failed\n", i);
-	}
+        {
+          show ("got =%s\n", result);
+          show ("want=%s\n", result2);
+          fail ("in-place rshift by %d failed\n", i);
+        }
       xfree (result2);
       xfree (result);
     }
@@ -261,7 +260,7 @@ test_rshift (int pass)
 static void
 test_lshift (int pass)
 {
-  static int size_list[] = { 1, 31, 32, 63, 64, 65, 70, 0 };
+  static int size_list[] = {1, 31, 32, 63, 64, 65, 70, 0};
   int size_idx;
   gcry_mpi_t a, b;
   char *tmpstr, *result, *result2;
@@ -270,7 +269,7 @@ test_lshift (int pass)
   wherestr = "test_lshift";
   show ("checking that lshift works as expected (pass %d)\n", pass);
 
-  for (size_idx = 0; size_list[size_idx]; size_idx++)
+  for (size_idx=0; size_list[size_idx]; size_idx++)
     {
       a = gcry_mpi_new (0);
       b = gcry_mpi_new (0);
@@ -280,47 +279,47 @@ test_lshift (int pass)
       gcry_mpi_randomize (a, size_list[size_idx], GCRY_WEAK_RANDOM);
       gcry_mpi_clear_highbit (a, size_list[size_idx]);
 
-      for (i = 0; i < 75; i++)
-	{
-	  gcry_mpi_lshift (b, a, i);
+      for (i=0; i < 75; i++)
+        {
+          gcry_mpi_lshift (b, a, i);
 
-	  result = mpi2bitstr_nlz (b);
-	  tmpstr = mpi2bitstr_nlz (a);
-	  result2 = lshiftbitstring (tmpstr, i);
-	  xfree (tmpstr);
-	  if (strcmp (result, result2))
-	    {
-	      show ("got =%s\n", result);
-	      show ("want=%s\n", result2);
-	      fail ("lshift by %d failed\n", i);
-	    }
-	  xfree (result);
-	  xfree (result2);
-	}
+          result = mpi2bitstr_nlz (b);
+          tmpstr = mpi2bitstr_nlz (a);
+          result2 = lshiftbitstring (tmpstr, i);
+          xfree (tmpstr);
+          if (strcmp (result, result2))
+            {
+              show ("got =%s\n", result);
+              show ("want=%s\n", result2);
+              fail ("lshift by %d failed\n", i);
+            }
+          xfree (result);
+          xfree (result2);
+        }
 
       /* Again. This time using in-place operation. */
       gcry_mpi_randomize (a, size_list[size_idx], GCRY_WEAK_RANDOM);
       gcry_mpi_clear_highbit (a, size_list[size_idx]);
 
-      for (i = 0; i < 75; i++)
-	{
-	  gcry_mpi_release (b);
-	  b = gcry_mpi_copy (a);
-	  gcry_mpi_lshift (b, b, i);
+      for (i=0; i < 75; i++)
+        {
+          gcry_mpi_release (b);
+          b = gcry_mpi_copy (a);
+          gcry_mpi_lshift (b, b, i);
 
-	  result = mpi2bitstr_nlz (b);
-	  tmpstr = mpi2bitstr_nlz (a);
-	  result2 = lshiftbitstring (tmpstr, i);
-	  xfree (tmpstr);
-	  if (strcmp (result, result2))
-	    {
-	      show ("got =%s\n", result);
-	      show ("want=%s\n", result2);
-	      fail ("in-place lshift by %d failed\n", i);
-	    }
-	  xfree (result2);
-	  xfree (result);
-	}
+          result = mpi2bitstr_nlz (b);
+          tmpstr = mpi2bitstr_nlz (a);
+          result2 = lshiftbitstring (tmpstr, i);
+          xfree (tmpstr);
+          if (strcmp (result, result2))
+            {
+              show ("got =%s\n", result);
+              show ("want=%s\n", result2);
+              fail ("in-place lshift by %d failed\n", i);
+            }
+          xfree (result2);
+          xfree (result);
+        }
 
       gcry_mpi_release (b);
       gcry_mpi_release (a);
@@ -351,11 +350,11 @@ main (int argc, char **argv)
 
   one_bit_only (0);
   one_bit_only (1);
-  for (i = 0; i < 5; i++)
-    test_rshift (i);		/* Run several times due to random initializations. */
+  for (i=0; i < 5; i++)
+    test_rshift (i); /* Run several times due to random initializations. */
 
-  for (i = 0; i < 5; i++)
-    test_lshift (i);		/* Run several times due to random initializations. */
+  for (i=0; i < 5; i++)
+    test_lshift (i); /* Run several times due to random initializations. */
 
   show ("All tests completed. Errors: %d\n", error_count);
   return error_count ? 1 : 0;

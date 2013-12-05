@@ -38,14 +38,14 @@
  */
 void
 gcry_mpi_powm (gcry_mpi_t res,
-	       gcry_mpi_t base, gcry_mpi_t expo, gcry_mpi_t mod)
+               gcry_mpi_t base, gcry_mpi_t expo, gcry_mpi_t mod)
 {
   /* Pointer to the limbs of the arguments, their size and signs. */
-  mpi_ptr_t rp, ep, mp, bp;
+  mpi_ptr_t  rp, ep, mp, bp;
   mpi_size_t esize, msize, bsize, rsize;
-  int msign, bsign, rsign;
+  int               msign, bsign, rsign;
   /* Flags telling the secure allocation status of the arguments.  */
-  int esec, msec, bsec;
+  int        esec,  msec,  bsec;
   /* Size of the result including space for temporary values.  */
   mpi_size_t size;
   /* Helper.  */
@@ -68,20 +68,20 @@ gcry_mpi_powm (gcry_mpi_t res,
   size = 2 * msize;
   msign = mod->sign;
 
-  esec = mpi_is_secure (expo);
-  msec = mpi_is_secure (mod);
-  bsec = mpi_is_secure (base);
+  esec = mpi_is_secure(expo);
+  msec = mpi_is_secure(mod);
+  bsec = mpi_is_secure(base);
 
   rp = res->d;
   ep = expo->d;
 
   if (!msize)
-    msize = 1 / msize;		/* Provoke a signal.  */
+    msize = 1 / msize;	    /* Provoke a signal.  */
 
   if (!esize)
     {
       /* Exponent is zero, result is 1 mod MOD, i.e., 1 or 0 depending
-         on if MOD equals 1.  */
+        on if MOD equals 1.  */
       rp[0] = 1;
       res->nlimbs = (msize == 1 && mod->d[0] == 1) ? 0 : 1;
       res->sign = 0;
@@ -92,13 +92,13 @@ gcry_mpi_powm (gcry_mpi_t res,
      required by mpn_divrem.  This will make the intermediate values
      in the calculation slightly larger, but the correct result is
      obtained after a final reduction using the original MOD value. */
-  mp_nlimbs = msec ? msize : 0;
-  mp = mp_marker = mpi_alloc_limb_space (msize, msec);
-  count_leading_zeros (mod_shift_cnt, mod->d[msize - 1]);
+  mp_nlimbs = msec? msize:0;
+  mp = mp_marker = mpi_alloc_limb_space(msize, msec);
+  count_leading_zeros (mod_shift_cnt, mod->d[msize-1]);
   if (mod_shift_cnt)
     _gcry_mpih_lshift (mp, mod->d, msize, mod_shift_cnt);
   else
-    MPN_COPY (mp, mod->d, msize);
+    MPN_COPY( mp, mod->d, msize );
 
   bsize = base->nlimbs;
   bsign = base->sign;
@@ -108,16 +108,16 @@ gcry_mpi_powm (gcry_mpi_t res,
 
          Allocate (BSIZE + 1) with space for remainder and quotient.
          (The quotient is (bsize - msize + 1) limbs.)  */
-      bp_nlimbs = bsec ? (bsize + 1) : 0;
-      bp = bp_marker = mpi_alloc_limb_space (bsize + 1, bsec);
-      MPN_COPY (bp, base->d, bsize);
+      bp_nlimbs = bsec ? (bsize + 1):0;
+      bp = bp_marker = mpi_alloc_limb_space( bsize + 1, bsec );
+      MPN_COPY ( bp, base->d, bsize );
       /* We don't care about the quotient, store it above the
        * remainder, at BP + MSIZE.  */
-      _gcry_mpih_divrem (bp + msize, 0, bp, bsize, mp, msize);
+      _gcry_mpih_divrem( bp + msize, 0, bp, bsize, mp, msize );
       bsize = msize;
       /* Canonicalize the base, since we are going to multiply with it
-         quite a few times.  */
-      MPN_NORMALIZE (bp, bsize);
+	 quite a few times.  */
+      MPN_NORMALIZE( bp, bsize );
     }
   else
     bp = base->d;
@@ -131,28 +131,28 @@ gcry_mpi_powm (gcry_mpi_t res,
 
 
   /* Make BASE, EXPO and MOD not overlap with RES.  */
-  if (rp == bp)
+  if ( rp == bp )
     {
       /* RES and BASE are identical.  Allocate temp. space for BASE.  */
       gcry_assert (!bp_marker);
-      bp_nlimbs = bsec ? bsize : 0;
-      bp = bp_marker = mpi_alloc_limb_space (bsize, bsec);
-      MPN_COPY (bp, rp, bsize);
+      bp_nlimbs = bsec? bsize:0;
+      bp = bp_marker = mpi_alloc_limb_space( bsize, bsec );
+      MPN_COPY(bp, rp, bsize);
     }
-  if (rp == ep)
+  if ( rp == ep )
     {
       /* RES and EXPO are identical.  Allocate temp. space for EXPO.  */
-      ep_nlimbs = esec ? esize : 0;
-      ep = ep_marker = mpi_alloc_limb_space (esize, esec);
-      MPN_COPY (ep, rp, esize);
+      ep_nlimbs = esec? esize:0;
+      ep = ep_marker = mpi_alloc_limb_space( esize, esec );
+      MPN_COPY(ep, rp, esize);
     }
-  if (rp == mp)
+  if ( rp == mp )
     {
-      /* RES and MOD are identical.  Allocate temporary space for MOD. */
+      /* RES and MOD are identical.  Allocate temporary space for MOD.*/
       gcry_assert (!mp_marker);
-      mp_nlimbs = msec ? msize : 0;
-      mp = mp_marker = mpi_alloc_limb_space (msize, msec);
-      MPN_COPY (mp, rp, msize);
+      mp_nlimbs = msec?msize:0;
+      mp = mp_marker = mpi_alloc_limb_space( msize, msec );
+      MPN_COPY(mp, rp, msize);
     }
 
   /* Copy base to the result.  */
@@ -161,7 +161,7 @@ gcry_mpi_powm (gcry_mpi_t res,
       mpi_resize (res, size);
       rp = res->d;
     }
-  MPN_COPY (rp, bp, bsize);
+  MPN_COPY ( rp, bp, bsize );
   rsize = bsize;
   rsign = bsign;
 
@@ -174,16 +174,16 @@ gcry_mpi_powm (gcry_mpi_t res,
     mpi_limb_t carry_limb;
     struct karatsuba_ctx karactx;
 
-    xp_nlimbs = msec ? (2 * (msize + 1)) : 0;
-    xp = xp_marker = mpi_alloc_limb_space (2 * (msize + 1), msec);
+    xp_nlimbs = msec? (2 * (msize + 1)):0;
+    xp = xp_marker = mpi_alloc_limb_space( 2 * (msize + 1), msec );
 
-    memset (&karactx, 0, sizeof karactx);
+    memset( &karactx, 0, sizeof karactx );
     negative_result = (ep[0] & 1) && base->sign;
 
     i = esize - 1;
     e = ep[i];
     count_leading_zeros (c, e);
-    e = (e << c) << 1;		/* Shift the expo bits to the left, lose msb.  */
+    e = (e << c) << 1;     /* Shift the expo bits to the left, lose msb.  */
     c = BITS_PER_MPI_LIMB - 1 - c;
 
     /* Main loop.
@@ -196,72 +196,68 @@ gcry_mpi_powm (gcry_mpi_t res,
        and with 50% probability in the area originally pointed to by XP. */
     for (;;)
       {
-	while (c)
-	  {
-	    mpi_ptr_t tp;
-	    mpi_size_t xsize;
+        while (c)
+          {
+            mpi_ptr_t tp;
+            mpi_size_t xsize;
 
-	    /*mpih_mul_n(xp, rp, rp, rsize); */
-	    if (rsize < KARATSUBA_THRESHOLD)
-	      _gcry_mpih_sqr_n_basecase (xp, rp, rsize);
-	    else
-	      {
-		if (!tspace)
-		  {
-		    tsize = 2 * rsize;
-		    tspace = mpi_alloc_limb_space (tsize, 0);
-		  }
-		else if (tsize < (2 * rsize))
-		  {
-		    _gcry_mpi_free_limb_space (tspace, 0);
-		    tsize = 2 * rsize;
-		    tspace = mpi_alloc_limb_space (tsize, 0);
-		  }
-		_gcry_mpih_sqr_n (xp, rp, rsize, tspace);
-	      }
+            /*mpih_mul_n(xp, rp, rp, rsize);*/
+            if ( rsize < KARATSUBA_THRESHOLD )
+              _gcry_mpih_sqr_n_basecase( xp, rp, rsize );
+            else
+              {
+                if ( !tspace )
+                  {
+                    tsize = 2 * rsize;
+                    tspace = mpi_alloc_limb_space( tsize, 0 );
+                  }
+                else if ( tsize < (2*rsize) )
+                  {
+                    _gcry_mpi_free_limb_space (tspace, 0);
+                    tsize = 2 * rsize;
+                    tspace = mpi_alloc_limb_space (tsize, 0 );
+                  }
+                _gcry_mpih_sqr_n (xp, rp, rsize, tspace);
+              }
 
-	    xsize = 2 * rsize;
-	    if (xsize > msize)
-	      {
-		_gcry_mpih_divrem (xp + msize, 0, xp, xsize, mp, msize);
-		xsize = msize;
-	      }
+            xsize = 2 * rsize;
+            if ( xsize > msize )
+              {
+                _gcry_mpih_divrem(xp + msize, 0, xp, xsize, mp, msize);
+                xsize = msize;
+              }
 
-	    tp = rp;
-	    rp = xp;
-	    xp = tp;
-	    rsize = xsize;
+            tp = rp; rp = xp; xp = tp;
+            rsize = xsize;
 
-	    if ((mpi_limb_signed_t) e < 0)
-	      {
-		/*mpih_mul( xp, rp, rsize, bp, bsize ); */
-		if (bsize < KARATSUBA_THRESHOLD)
-		  _gcry_mpih_mul (xp, rp, rsize, bp, bsize);
-		else
-		  _gcry_mpih_mul_karatsuba_case (xp, rp, rsize, bp, bsize,
-						 &karactx);
+            if ( (mpi_limb_signed_t)e < 0 )
+              {
+                /*mpih_mul( xp, rp, rsize, bp, bsize );*/
+                if( bsize < KARATSUBA_THRESHOLD )
+                  _gcry_mpih_mul ( xp, rp, rsize, bp, bsize );
+                else
+                  _gcry_mpih_mul_karatsuba_case (xp, rp, rsize, bp, bsize,
+                                                 &karactx);
 
-		xsize = rsize + bsize;
-		if (xsize > msize)
-		  {
-		    _gcry_mpih_divrem (xp + msize, 0, xp, xsize, mp, msize);
-		    xsize = msize;
-		  }
+                xsize = rsize + bsize;
+                if ( xsize > msize )
+                  {
+                    _gcry_mpih_divrem(xp + msize, 0, xp, xsize, mp, msize);
+                    xsize = msize;
+                  }
 
-		tp = rp;
-		rp = xp;
-		xp = tp;
-		rsize = xsize;
-	      }
-	    e <<= 1;
-	    c--;
-	  }
+                tp = rp; rp = xp; xp = tp;
+                rsize = xsize;
+              }
+            e <<= 1;
+            c--;
+          }
 
-	i--;
-	if (i < 0)
-	  break;
-	e = ep[i];
-	c = BITS_PER_MPI_LIMB;
+        i--;
+        if ( i < 0 )
+          break;
+        e = ep[i];
+        c = BITS_PER_MPI_LIMB;
       }
 
     /* We shifted MOD, the modulo reduction argument, left
@@ -270,59 +266,59 @@ gcry_mpi_powm (gcry_mpi_t res,
 
        Also make sure the result is put in RES->d (where it already
        might be, see above).  */
-    if (mod_shift_cnt)
+    if ( mod_shift_cnt )
       {
-	carry_limb = _gcry_mpih_lshift (res->d, rp, rsize, mod_shift_cnt);
-	rp = res->d;
-	if (carry_limb)
-	  {
-	    rp[rsize] = carry_limb;
-	    rsize++;
-	  }
+        carry_limb = _gcry_mpih_lshift( res->d, rp, rsize, mod_shift_cnt);
+        rp = res->d;
+        if ( carry_limb )
+          {
+            rp[rsize] = carry_limb;
+            rsize++;
+          }
       }
     else if (res->d != rp)
       {
-	MPN_COPY (res->d, rp, rsize);
-	rp = res->d;
+        MPN_COPY (res->d, rp, rsize);
+        rp = res->d;
       }
 
-    if (rsize >= msize)
+    if ( rsize >= msize )
       {
-	_gcry_mpih_divrem (rp + msize, 0, rp, rsize, mp, msize);
-	rsize = msize;
+        _gcry_mpih_divrem(rp + msize, 0, rp, rsize, mp, msize);
+        rsize = msize;
       }
 
     /* Remove any leading zero words from the result.  */
-    if (mod_shift_cnt)
-      _gcry_mpih_rshift (rp, rp, rsize, mod_shift_cnt);
+    if ( mod_shift_cnt )
+      _gcry_mpih_rshift( rp, rp, rsize, mod_shift_cnt);
     MPN_NORMALIZE (rp, rsize);
 
-    _gcry_mpih_release_karatsuba_ctx (&karactx);
+    _gcry_mpih_release_karatsuba_ctx (&karactx );
   }
 
   /* Fixup for negative results.  */
-  if (negative_result && rsize)
+  if ( negative_result && rsize )
     {
-      if (mod_shift_cnt)
-	_gcry_mpih_rshift (mp, mp, msize, mod_shift_cnt);
-      _gcry_mpih_sub (rp, mp, msize, rp, rsize);
+      if ( mod_shift_cnt )
+        _gcry_mpih_rshift( mp, mp, msize, mod_shift_cnt);
+      _gcry_mpih_sub( rp, mp, msize, rp, rsize);
       rsize = msize;
       rsign = msign;
-      MPN_NORMALIZE (rp, rsize);
+      MPN_NORMALIZE(rp, rsize);
     }
   gcry_assert (res->d == rp);
   res->nlimbs = rsize;
   res->sign = rsign;
 
-leave:
+ leave:
   if (mp_marker)
-    _gcry_mpi_free_limb_space (mp_marker, mp_nlimbs);
+    _gcry_mpi_free_limb_space( mp_marker, mp_nlimbs );
   if (bp_marker)
-    _gcry_mpi_free_limb_space (bp_marker, bp_nlimbs);
+    _gcry_mpi_free_limb_space( bp_marker, bp_nlimbs );
   if (ep_marker)
-    _gcry_mpi_free_limb_space (ep_marker, ep_nlimbs);
+    _gcry_mpi_free_limb_space( ep_marker, ep_nlimbs );
   if (xp_marker)
-    _gcry_mpi_free_limb_space (xp_marker, xp_nlimbs);
+    _gcry_mpi_free_limb_space( xp_marker, xp_nlimbs );
   if (tspace)
-    _gcry_mpi_free_limb_space (tspace, 0);
+    _gcry_mpi_free_limb_space( tspace, 0 );
 }

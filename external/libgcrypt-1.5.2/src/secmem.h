@@ -23,15 +23,13 @@
 
 void _gcry_secmem_init (size_t npool);
 void _gcry_secmem_term (void);
-void *
-_gcry_secmem_malloc (size_t size)
-  _GCRY_GCC_ATTR_MALLOC;
-     void *_gcry_secmem_realloc (void *a, size_t newsize);
-     void _gcry_secmem_free (void *a);
-     void _gcry_secmem_dump_stats (void);
-     void _gcry_secmem_set_flags (unsigned flags);
-     unsigned _gcry_secmem_get_flags (void);
-     int _gcry_private_is_secure (const void *p);
+void *_gcry_secmem_malloc (size_t size) _GCRY_GCC_ATTR_MALLOC;
+void *_gcry_secmem_realloc (void *a, size_t newsize);
+void _gcry_secmem_free (void *a);
+void _gcry_secmem_dump_stats (void);
+void _gcry_secmem_set_flags (unsigned flags);
+unsigned _gcry_secmem_get_flags(void);
+int _gcry_private_is_secure (const void *p);
 
 /* Flags for _gcry_secmem_{set,get}_flags.  */
 #define GCRY_SECMEM_FLAG_NO_WARNING      (1 << 0)

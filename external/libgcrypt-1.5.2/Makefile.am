@@ -25,10 +25,10 @@ DISTCHECK_CONFIGURE_FLAGS = --enable-random-daemon \
 # (A suitable gitlog-to-changelog script can be found in GnuPG master.)
 GITLOG_TO_CHANGELOG=gitlog-to-changelog
 
-DIST_SUBDIRS = m4 compat mpi cipher random src tests
-SUBDIRS =         compat mpi cipher random src tests
+DIST_SUBDIRS = m4 compat mpi cipher random src
+SUBDIRS =         compat mpi cipher random src
 EXTRA_DIST = autogen.sh README.GIT \
-	     scripts/ChangeLog-2011 ChangeLog-2011 \
+	     scripts/ChangeLog-2011 doc/ChangeLog-2011 ChangeLog-2011 \
              m4/ChangeLog-2011 cipher/ChangeLog-2011 src/ChangeLog-2011 \
              random/ChangeLog-2011 tests/ChangeLog-2011 mpi/ChangeLog-2011 \
              scripts/git-log-fix scripts/git-log-footer
@@ -89,7 +89,8 @@ conv_define_sed_variable = \
   conv_sed_del_last_slash='s,\(//*\)$$,,'; \
   conv_sed_del_all_redu_slash='s,\(//*\),/,g'; \
   conv_sed_del_first_slash='s,^\(//*\),,'
- 
+
+
 #ensure there isn't last slash (/bin/ --> /bin)
 #ensure there isn't redu slash (//bin --> /bin)
 #ensure there isn't . or ..  (/usr/bin/../ --> /usr  /usr/bin/./ --> /usr/bin)
@@ -111,6 +112,7 @@ conv_get_standard_dir_exp = \
   done; \
   conv_abs_path=$$conv_resolved_abs_path  
 
+
 # conv_same_path is the same part of abs and current_path.
 # if abs=/usr/bin, current_path=/usr/local, then conv_same_path=/usr
 conv_get_same_path = \
@@ -131,9 +133,11 @@ conv_get_same_path = \
 	fi; \
   done
 
+
 # delete the front '/'
 conv_get_standard_relative_dir_exp = \
   conv_rel_path=`echo "$$conv_rel_path" | sed -e "$$conv_sed_del_first_slash"` 
+
 
 # generate relative path expr  
 conv_generate_relative_dir = \
@@ -148,11 +152,13 @@ conv_generate_relative_dir = \
     conv_rel_path="../$$conv_rel_path"; \
   done
 
+
 # if abs is child path of current path, add './'  
 conv_abs_in_current_path = \
   if test "$$conv_same_path" = "$$conv_current_path"; then \
     conv_rel_path="./$$conv_rel_path"; \
   fi  
+
 
 # now this is the new am__relativize
 am__relativize = \
@@ -163,7 +169,6 @@ am__relativize = \
   $(convert_abs_to_rel_path); \
   dir2=$$conv_dist; \
   $(am__old__relativize)
-
 
 
 # Add all the files listed in "distfiles" files to the distribution,

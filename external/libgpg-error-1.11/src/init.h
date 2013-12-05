@@ -29,13 +29,13 @@ struct loaded_domain;
 struct domainlist_s
 {
   struct domainlist_s *next;
-  char *dname;			/* Directory name for the mo file.   */
-  char *fname;			/* File name for the MO file.  */
-  int load_failed;		/* True if loading the domain failed. */
-  struct loaded_domain *domain;	/* NULL if not loaded.  Never changed
-				   once set to non-NULL. */
-  char name[1];			/* Name of the domain.  Never changed
-				   once set. */
+  char *dname;                   /* Directory name for the mo file.   */
+  char *fname;                   /* File name for the MO file.  */
+  int load_failed;               /* True if loading the domain failed. */
+  struct loaded_domain *domain;  /* NULL if not loaded.  Never changed
+                                    once set to non-NULL. */
+  char name[1];                  /* Name of the domain.  Never changed
+                                    once set. */
 };
 
 
@@ -50,7 +50,7 @@ struct tls_space_s
 {
   /* Flag used by w32-gettext.  */
   int gt_use_utf8;
-
+  
 #ifdef HAVE_W32CE_SYSTEM
   char strerror_buffer[STRBUFFER_SIZE];
 #endif
@@ -65,6 +65,6 @@ struct tls_space_s *get_tls (void);
 void _gpg_w32__init_gettext_module (void);
 #endif
 
-#endif /*HAVE_W32_SYSTEM */
+#endif /*HAVE_W32_SYSTEM*/
 
-#endif /*INIT_H */
+#endif /*INIT_H*/

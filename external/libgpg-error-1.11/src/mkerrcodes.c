@@ -26,24 +26,25 @@
 #include "mkerrcodes.h"
 
 static const char header[] =
-  "/* errnos.h - List of system error values.\n"
-  "   Copyright (C) 2004 g10 Code GmbH\n"
-  "   This file is part of libgpg-error.\n"
-  "\n"
-  "   libgpg-error is free software; you can redistribute it and/or\n"
-  "   modify it under the terms of the GNU Lesser General Public License\n"
-  "   as published by the Free Software Foundation; either version 2.1 of\n"
-  "   the License, or (at your option) any later version.\n"
-  "\n"
-  "   libgpg-error is distributed in the hope that it will be useful, but\n"
-  "   WITHOUT ANY WARRANTY; without even the implied warranty of\n"
-  "   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU\n"
-  "   Lesser General Public License for more details.\n"
-  "\n"
-  "   You should have received a copy of the GNU Lesser General Public\n"
-  "   License along with libgpg-error; if not, write to the Free\n"
-  "   Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA\n"
-  "   02111-1307, USA.  */\n" "\n";
+"/* errnos.h - List of system error values.\n"
+"   Copyright (C) 2004 g10 Code GmbH\n"
+"   This file is part of libgpg-error.\n"
+"\n"
+"   libgpg-error is free software; you can redistribute it and/or\n"
+"   modify it under the terms of the GNU Lesser General Public License\n"
+"   as published by the Free Software Foundation; either version 2.1 of\n"
+"   the License, or (at your option) any later version.\n"
+"\n"
+"   libgpg-error is distributed in the hope that it will be useful, but\n"
+"   WITHOUT ANY WARRANTY; without even the implied warranty of\n"
+"   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU\n"
+"   Lesser General Public License for more details.\n"
+"\n"
+"   You should have received a copy of the GNU Lesser General Public\n"
+"   License along with libgpg-error; if not, write to the Free\n"
+"   Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA\n"
+"   02111-1307, USA.  */\n"
+"\n";
 
 int
 main (int argc, char **argv)
@@ -69,7 +70,7 @@ main (int argc, char **argv)
 	  }
     }
   while (!sorted);
-
+      
   for (i = 0; i < sizeof (err_table) / sizeof (err_table[0]); i++)
     printf ("%i\t%s\n", err_table[i].err, err_table[i].err_sym);
 

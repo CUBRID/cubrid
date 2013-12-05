@@ -24,13 +24,13 @@
 /* We need this here because random.c must have direct access. */
 typedef struct
 {
-  u32 h0, h1, h2, h3, h4;
-  u32 nblocks;
+  u32  h0,h1,h2,h3,h4;
+  u32  nblocks;
   byte buf[64];
-  int count;
+  int  count;
 } RMD160_CONTEXT;
 
-void _gcry_rmd160_init (void *context);
-void _gcry_rmd160_mixblock (RMD160_CONTEXT * hd, void *blockof64byte);
+void _gcry_rmd160_init ( void *context );
+void _gcry_rmd160_mixblock ( RMD160_CONTEXT *hd, void *blockof64byte );
 
-#endif /*G10_RMD_H */
+#endif /*G10_RMD_H*/

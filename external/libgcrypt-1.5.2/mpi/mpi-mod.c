@@ -32,13 +32,13 @@
 /* Context used with Barrett reduction.  */
 struct barrett_ctx_s
 {
-  gcry_mpi_t m;			/* The modulus - may not be modified. */
-  int m_copied;			/* If true, M needs to be released.  */
+  gcry_mpi_t m;   /* The modulus - may not be modified. */
+  int m_copied;   /* If true, M needs to be released.  */
   int k;
   gcry_mpi_t y;
-  gcry_mpi_t r1;		/* Helper MPI. */
-  gcry_mpi_t r2;		/* Helper MPI. */
-  gcry_mpi_t r3;		/* Helper MPI allocated on demand. */
+  gcry_mpi_t r1;  /* Helper MPI. */
+  gcry_mpi_t r2;  /* Helper MPI. */
+  gcry_mpi_t r3;  /* Helper MPI allocated on demand. */
 };
 
 
@@ -81,9 +81,9 @@ _gcry_mpi_barrett_init (gcry_mpi_t m, int copy)
   mpi_lshift_limbs (tmp, 2 * ctx->k);
   mpi_fdiv_q (tmp, tmp, m);
 
-  ctx->y = tmp;
-  ctx->r1 = mpi_alloc (2 * ctx->k + 1);
-  ctx->r2 = mpi_alloc (2 * ctx->k + 1);
+  ctx->y  = tmp;
+  ctx->r1 = mpi_alloc ( 2 * ctx->k + 1 );
+  ctx->r2 = mpi_alloc ( 2 * ctx->k + 1 );
 
   return ctx;
 }
@@ -97,9 +97,9 @@ _gcry_mpi_barrett_free (mpi_barrett_t ctx)
       mpi_free (ctx->r1);
       mpi_free (ctx->r2);
       if (ctx->r3)
-	mpi_free (ctx->r3);
+        mpi_free (ctx->r3);
       if (ctx->m_copied)
-	mpi_free (ctx->m);
+        mpi_free (ctx->m);
       gcry_free (ctx);
     }
 }
@@ -128,7 +128,7 @@ _gcry_mpi_mod_barrett (gcry_mpi_t r, gcry_mpi_t x, mpi_barrett_t ctx)
   gcry_mpi_t r2 = ctx->r2;
 
   mpi_normalize (x);
-  if (mpi_get_nlimbs (x) > 2 * k)
+  if (mpi_get_nlimbs (x) > 2*k )
     {
       mpi_mod (r, x, m);
       return;
@@ -139,45 +139,45 @@ _gcry_mpi_mod_barrett (gcry_mpi_t r, gcry_mpi_t x, mpi_barrett_t ctx)
    *    q3 = floor( q2 / b^k+1 )
    * Actually, we don't need qx, we can work direct on r2
    */
-  mpi_set (r2, x);
-  mpi_rshift_limbs (r2, k - 1);
-  mpi_mul (r2, r2, y);
-  mpi_rshift_limbs (r2, k + 1);
+  mpi_set ( r2, x );
+  mpi_rshift_limbs ( r2, k-1 );
+  mpi_mul ( r2, r2, y );
+  mpi_rshift_limbs ( r2, k+1 );
 
   /* 2. r1 = x mod b^k+1
-   *    r2 = q3 * m mod b^k+1
-   *    r  = r1 - r2
+   *	r2 = q3 * m mod b^k+1
+   *	r  = r1 - r2
    * 3. if r < 0 then  r = r + b^k+1
    */
-  mpi_set (r1, x);
-  if (r1->nlimbs > k + 1)	/* Quick modulo operation.  */
-    r1->nlimbs = k + 1;
-  mpi_mul (r2, r2, m);
-  if (r2->nlimbs > k + 1)	/* Quick modulo operation. */
-    r2->nlimbs = k + 1;
-  mpi_sub (r, r1, r2);
+  mpi_set ( r1, x );
+  if ( r1->nlimbs > k+1 ) /* Quick modulo operation.  */
+    r1->nlimbs = k+1;
+  mpi_mul ( r2, r2, m );
+  if ( r2->nlimbs > k+1 ) /* Quick modulo operation. */
+    r2->nlimbs = k+1;
+  mpi_sub ( r, r1, r2 );
 
-  if (mpi_is_neg (r))
+  if ( mpi_is_neg( r ) )
     {
       if (!ctx->r3)
-	{
-	  ctx->r3 = mpi_alloc (k + 2);
-	  mpi_set_ui (ctx->r3, 1);
-	  mpi_lshift_limbs (ctx->r3, k + 1);
-	}
-      mpi_add (r, r, ctx->r3);
+        {
+          ctx->r3 = mpi_alloc ( k + 2 );
+          mpi_set_ui (ctx->r3, 1);
+          mpi_lshift_limbs (ctx->r3, k + 1 );
+        }
+      mpi_add ( r, r, ctx->r3 );
     }
 
   /* 4. while r >= m do r = r - m */
-  while (mpi_cmp (r, m) >= 0)
-    mpi_sub (r, r, m);
+  while ( mpi_cmp( r, m ) >= 0 )
+    mpi_sub ( r, r, m );
 
 }
 
 
 void
 _gcry_mpi_mul_barrett (gcry_mpi_t w, gcry_mpi_t u, gcry_mpi_t v,
-		       mpi_barrett_t ctx)
+                       mpi_barrett_t ctx)
 {
   gcry_mpi_mul (w, u, v);
   mpi_mod_barrett (w, w, ctx);

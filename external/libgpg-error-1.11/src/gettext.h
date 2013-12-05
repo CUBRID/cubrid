@@ -25,12 +25,12 @@
 #if HAVE_W32_SYSTEM
   /* We have a gettext implementation in gpg-error.h which get
      included anyway.  */
-#else /*!HAVE_W32_SYSTEM */
+#else /*!HAVE_W32_SYSTEM*/
   /* Get declarations of GNU message catalog functions.  */
 # include <libintl.h>
-#endif /*!HAVE_W32_SYSTEM */
+#endif /*!HAVE_W32_SYSTEM*/
 
-#else /*!ENABLE_NLS */
+#else /*!ENABLE_NLS*/
 
 /* Solaris /usr/include/locale.h includes /usr/include/libintl.h, which
    chokes if dcgettext is defined as a macro.  So include it now, to make
@@ -60,7 +60,7 @@
 # define bindtextdomain(Domainname, Dirname) ((const char *) (Dirname))
 # define bind_textdomain_codeset(Domainname, Codeset) ((const char *) (Codeset))
 
-#endif /*!ENABLE_NLS */
+#endif /*!ENABLE_NLS*/
 
 /* A pseudo function call that serves as a marker for the automated
    extraction of messages, but does not call gettext().  The run-time

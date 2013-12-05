@@ -40,7 +40,7 @@ logit (const char *format, ...)
 {
   va_list arg_ptr;
 
-  va_start (arg_ptr, format);
+  va_start (arg_ptr, format) ;
   fputs (PGM ": ", stderr);
   vfprintf (stderr, format, arg_ptr);
   putc ('\n', stderr);
@@ -58,17 +58,17 @@ writen (int fd, const void *buffer, size_t length)
       ssize_t n;
 
       do
-	n = write (fd, buffer, length);
+        n = write (fd, buffer, length);
       while (n < 0 && errno == EINTR);
       if (n < 0)
-	{
-	  logit ("write error: %s", strerror (errno));
-	  return -1;		/* write error */
-	}
+         {
+           logit ("write error: %s", strerror (errno));
+           return -1; /* write error */
+         }
       length -= n;
-      buffer = (const char *) buffer + n;
+      buffer = (const char *)buffer + n;
     }
-  return 0;			/* Okay */
+  return 0;  /* Okay */
 }
 
 
@@ -78,27 +78,28 @@ static void
 print_version (int with_help)
 {
   fputs (MYVERSION_LINE "\n"
-	 "Copyright (C) 2006 Free Software Foundation, Inc.\n"
-	 "License GPLv2+: GNU GPL version 2 or later "
-	 "<http://www.gnu.org/licenses/old-licenses/gpl-2.0.html>\n"
-	 "This is free software: you are free to change and redistribute it.\n"
-	 "There is NO WARRANTY, to the extent permitted by law.\n", stdout);
+         "Copyright (C) 2006 Free Software Foundation, Inc.\n"
+         "License GPLv2+: GNU GPL version 2 or later "
+         "<http://www.gnu.org/licenses/old-licenses/gpl-2.0.html>\n"
+         "This is free software: you are free to change and redistribute it.\n"
+         "There is NO WARRANTY, to the extent permitted by law.\n",
+         stdout);
 
   if (with_help)
     fputs ("\n"
-	   "Usage: " PGM " [OPTIONS] NBYTES\n"
-	   "Connect to libgcrypt's random number daemon and "
-	   "return random numbers"
-	   "\n"
-	   "  --nonce       Return weak random suitable for a nonce\n"
-	   "  --very-strong Return very strong random\n"
-	   "  --ping        Send a ping\n"
-	   "  --socket NAME Name of sockket to connect to\n"
-	   "  --hex         Return result as a hex dump\n"
-	   "  --verbose     Show what we are doing\n"
-	   "  --version     Print version of the program and exit\n"
-	   "  --help        Display this help and exit\n"
-	   BUGREPORT_LINE, stdout);
+           "Usage: " PGM " [OPTIONS] NBYTES\n"
+           "Connect to libgcrypt's random number daemon and "
+           "return random numbers"
+           "\n"
+           "  --nonce       Return weak random suitable for a nonce\n"
+           "  --very-strong Return very strong random\n"
+           "  --ping        Send a ping\n"
+           "  --socket NAME Name of sockket to connect to\n"
+           "  --hex         Return result as a hex dump\n"
+           "  --verbose     Show what we are doing\n"
+           "  --version     Print version of the program and exit\n"
+           "  --help        Display this help and exit\n"
+           BUGREPORT_LINE, stdout );
 
   exit (0);
 }
@@ -132,69 +133,60 @@ main (int argc, char **argv)
 
   if (argc)
     {
-      argc--;
-      argv++;
+      argc--; argv++;
     }
   while (argc && **argv == '-' && (*argv)[1] == '-')
     {
       if (!(*argv)[2])
-	{
-	  argc--;
-	  argv++;
-	  break;
-	}
+        {
+          argc--; argv++;
+          break;
+        }
       else if (!strcmp (*argv, "--version"))
-	print_version (0);
+        print_version (0);
       else if (!strcmp (*argv, "--help"))
-	print_version (1);
-      else if (!strcmp (*argv, "--socket") && argc > 1)
-	{
-	  argc--;
-	  argv++;
-	  socketname = *argv;
-	  argc--;
-	  argv++;
-	}
+        print_version (1);
+      else if (!strcmp (*argv, "--socket") && argc > 1 )
+        {
+          argc--; argv++;
+          socketname = *argv;
+          argc--; argv++;
+        }
       else if (!strcmp (*argv, "--nonce"))
-	{
-	  argc--;
-	  argv++;
-	  get_nonce = 1;
-	}
+        {
+          argc--; argv++;
+          get_nonce = 1;
+        }
       else if (!strcmp (*argv, "--very-strong"))
-	{
-	  argc--;
-	  argv++;
-	  get_very_strong = 1;
-	}
+        {
+          argc--; argv++;
+          get_very_strong = 1;
+        }
       else if (!strcmp (*argv, "--ping"))
-	{
-	  argc--;
-	  argv++;
-	  do_ping = 1;
-	}
+        {
+          argc--; argv++;
+          do_ping = 1;
+        }
       else if (!strcmp (*argv, "--hex"))
-	{
-	  argc--;
-	  argv++;
-	  do_hex = 1;
-	}
+        {
+          argc--; argv++;
+          do_hex = 1;
+        }
       else if (!strcmp (*argv, "--verbose"))
-	{
-	  argc--;
-	  argv++;
-	  verbose = 1;
-	}
+        {
+          argc--; argv++;
+          verbose = 1;
+        }
       else
-	print_usage ();
+        print_usage ();
     }
 
 
   if (!argc && do_ping)
-    ;				/* This is allowed. */
+    ; /* This is allowed. */
   else if (argc != 1)
     print_usage ();
-  req_nbytes = argc ? atoi (*argv) : 0;
+  req_nbytes = argc? atoi (*argv) : 0;
 
   if (req_nbytes < 0)
     print_usage ();
@@ -221,114 +213,114 @@ main (int argc, char **argv)
     }
   strcpy (srvr_addr->sun_path, socketname);
   addrlen = (offsetof (struct sockaddr_un, sun_path)
-	     + strlen (srvr_addr->sun_path) + 1);
-  rc = connect (fd, (struct sockaddr *) srvr_addr, addrlen);
+             + strlen (srvr_addr->sun_path) + 1);
+  rc = connect (fd, (struct sockaddr*) srvr_addr, addrlen);
   if (rc == -1)
     {
       logit ("error connecting socket `%s': %s",
-	     srvr_addr->sun_path, strerror (errno));
+             srvr_addr->sun_path, strerror (errno));
       close (fd);
       exit (1);
     }
 
   do
     {
-      nbytes = req_nbytes > 255 ? 255 : req_nbytes;
+      nbytes = req_nbytes > 255? 255 : req_nbytes;
       req_nbytes -= nbytes;
 
       buffer[0] = 3;
       if (do_ping)
-	buffer[1] = 0;
+        buffer[1] = 0;
       else if (get_nonce)
-	buffer[1] = 10;
+        buffer[1] = 10;
       else if (get_very_strong)
-	buffer[1] = 12;
+        buffer[1] = 12;
       else
-	buffer[1] = 11;
+        buffer[1] = 11;
       buffer[2] = nbytes;
       if (writen (fd, buffer, 3))
-	fail = 1;
+        fail = 1;
       else
-	{
-	  for (nleft = 2, nread = 0; nleft > 0;)
-	    {
-	      do
-		n = read (fd, buffer + nread, nleft);
-	      while (n < 0 && errno == EINTR);
-	      if (n < 0)
-		{
-		  logit ("read error: %s", strerror (errno));
-		  exit (1);
-		}
-	      nleft -= n;
-	      nread += n;
-	      if (nread && buffer[0])
-		{
-		  logit ("server returned error code %d", buffer[0]);
-		  exit (1);
-		}
-	    }
-	  if (verbose)
-	    logit ("received response with %d bytes of data", buffer[1]);
-	  if (buffer[1] < nbytes)
-	    {
-	      logit ("warning: server returned less bytes than requested");
-	      fail = 1;
-	    }
-	  else if (buffer[1] > nbytes && !do_ping)
-	    {
-	      logit ("warning: server returned more bytes than requested");
-	      fail = 1;
-	    }
-	  nbytes = buffer[1];
-	  if (nbytes > sizeof buffer)
-	    {
-	      logit ("buffer too short to receive data");
-	      exit (1);
-	    }
+        {
+          for (nleft=2, nread=0; nleft > 0; )
+            {
+              do
+                n = read (fd, buffer+nread, nleft);
+              while (n < 0 && errno == EINTR);
+              if (n < 0)
+                {
+                  logit ("read error: %s", strerror (errno));
+                  exit (1);
+                }
+              nleft -= n;
+              nread += n;
+              if (nread && buffer[0])
+                {
+                  logit ("server returned error code %d", buffer[0]);
+                  exit (1);
+                }
+            }
+          if (verbose)
+            logit ("received response with %d bytes of data", buffer[1]);
+          if (buffer[1] < nbytes)
+            {
+              logit ("warning: server returned less bytes than requested");
+              fail = 1;
+            }
+          else if (buffer[1] > nbytes && !do_ping)
+            {
+              logit ("warning: server returned more bytes than requested");
+              fail = 1;
+            }
+          nbytes = buffer[1];
+          if (nbytes > sizeof buffer)
+            {
+              logit ("buffer too short to receive data");
+              exit (1);
+            }
 
-	  for (nleft = nbytes, nread = 0; nleft > 0;)
-	    {
-	      do
-		n = read (fd, buffer + nread, nleft);
-	      while (n < 0 && errno == EINTR);
-	      if (n < 0)
-		{
-		  logit ("read error: %s", strerror (errno));
-		  exit (1);
-		}
-	      nleft -= n;
-	      nread += n;
-	    }
+          for (nleft=nbytes, nread=0; nleft > 0; )
+            {
+              do
+                n = read (fd, buffer+nread, nleft);
+              while (n < 0 && errno == EINTR);
+              if (n < 0)
+                {
+                  logit ("read error: %s", strerror (errno));
+                  exit (1);
+                }
+              nleft -= n;
+              nread += n;
+            }
 
-	  if (do_hex)
-	    {
-	      for (n = 0; n < nbytes; n++)
-		{
-		  if (!n)
-		    ;
-		  else if (!(n % 16))
-		    putchar ('\n');
-		  else
-		    putchar (' ');
-		  printf ("%02X", buffer[n]);
-		}
-	      if (nbytes)
-		putchar ('\n');
-	    }
-	  else
-	    {
-	      if (fwrite (buffer, nbytes, 1, stdout) != 1)
-		{
-		  logit ("error writing to stdout: %s", strerror (errno));
-		  fail = 1;
-		}
-	    }
-	}
+          if (do_hex)
+            {
+              for (n=0; n < nbytes; n++)
+                {
+                  if (!n)
+                    ;
+                  else if (!(n % 16))
+                    putchar ('\n');
+                  else
+                    putchar (' ');
+                  printf ("%02X", buffer[n]);
+                }
+              if (nbytes)
+                putchar ('\n');
+            }
+          else
+            {
+              if (fwrite (buffer, nbytes, 1, stdout) != 1)
+                {
+                  logit ("error writing to stdout: %s", strerror (errno));
+                  fail = 1;
+                }
+            }
+        }
     }
   while (!fail && req_nbytes);
 
   close (fd);
   free (srvr_addr);
-  return fail ? 1 : 0;
+  return fail? 1 : 0;
 }

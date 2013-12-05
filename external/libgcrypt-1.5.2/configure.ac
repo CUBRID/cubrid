@@ -157,7 +157,7 @@ AC_GNU_SOURCE
 
 
 LT_PREREQ([2.2.6])
-LT_INIT([win32-dll disable-shared])
+LT_INIT([win32-dll disable-static])
 LT_LANG([Windows Resource])
 
 
@@ -576,12 +576,6 @@ AC_DEFINE_UNQUOTED(NAME_OF_DEV_URANDOM, "$NAME_OF_DEV_URANDOM",
 #
 # gpg-error is required.
 #
-AM_PATH_GPG_ERROR("$NEED_GPG_ERROR_VERSION")
-if test "x$GPG_ERROR_LIBS" = "x"; then
-  AC_MSG_ERROR([libgpg-error is needed.
-                See ftp://ftp.gnupg.org/gcrypt/libgpg-error/ .])
-fi
-
 AC_DEFINE(GPG_ERR_SOURCE_DEFAULT, GPG_ERR_SOURCE_GCRYPT,
           [The default error source for libgcrypt.])
 
@@ -1218,6 +1212,7 @@ compat/Makefile
 mpi/Makefile
 cipher/Makefile
 random/Makefile
+doc/Makefile
 src/Makefile
 src/gcrypt.h
 src/libgcrypt-config

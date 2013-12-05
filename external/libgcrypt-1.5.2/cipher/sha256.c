@@ -45,12 +45,11 @@
 #include "cipher.h"
 #include "hash-common.h"
 
-typedef struct
-{
-  u32 h0, h1, h2, h3, h4, h5, h6, h7;
-  u32 nblocks;
+typedef struct {
+  u32  h0,h1,h2,h3,h4,h5,h6,h7;
+  u32  nblocks;
   byte buf[64];
-  int count;
+  int  count;
 } SHA256_CONTEXT;
 
 
@@ -95,8 +94,8 @@ sha224_init (void *context)
 /*
   Transform the message X which consists of 16 32-bit-words. See FIPS
   180-2 for details.  */
-#define S0(x) (ror ((x), 7) ^ ror ((x), 18) ^ ((x) >> 3))	/* (4.6) */
-#define S1(x) (ror ((x), 17) ^ ror ((x), 19) ^ ((x) >> 10))	/* (4.7) */
+#define S0(x) (ror ((x), 7) ^ ror ((x), 18) ^ ((x) >> 3))       /* (4.6) */
+#define S1(x) (ror ((x), 17) ^ ror ((x), 19) ^ ((x) >> 10))     /* (4.7) */
 #define R(a,b,c,d,e,f,g,h,k,w) do                                 \
           {                                                       \
             t1 = (h) + Sum1((e)) + Cho((e),(f),(g)) + (k) + (w);  \
@@ -122,7 +121,7 @@ Cho (u32 x, u32 y, u32 z)
 static inline u32
 Maj (u32 x, u32 y, u32 z)
 {
-  return ((x & y) | (z & (x | y)));
+  return ((x & y) | (z & (x|y)));
 }
 
 /* (4.4) */
@@ -141,7 +140,7 @@ Sum1 (u32 x)
 
 
 static void
-transform (SHA256_CONTEXT * hd, const unsigned char *data)
+transform (SHA256_CONTEXT *hd, const unsigned char *data)
 {
   static const u32 K[64] = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
@@ -162,7 +161,7 @@ transform (SHA256_CONTEXT * hd, const unsigned char *data)
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
   };
 
-  u32 a, b, c, d, e, f, g, h, t1, t2;
+  u32 a,b,c,d,e,f,g,h,t1,t2;
   u32 x[16];
   u32 w[64];
   int i;
@@ -182,66 +181,66 @@ transform (SHA256_CONTEXT * hd, const unsigned char *data)
   {
     byte *p2;
 
-    for (i = 0, p2 = (byte *) x; i < 16; i++, p2 += 4)
+    for (i=0, p2=(byte*)x; i < 16; i++, p2 += 4 )
       {
-	p2[3] = *data++;
-	p2[2] = *data++;
-	p2[1] = *data++;
-	p2[0] = *data++;
+        p2[3] = *data++;
+        p2[2] = *data++;
+        p2[1] = *data++;
+        p2[0] = *data++;
       }
   }
 #endif
 
-  for (i = 0; i < 16; i++)
+  for (i=0; i < 16; i++)
     w[i] = x[i];
   for (; i < 64; i++)
-    w[i] = S1 (w[i - 2]) + w[i - 7] + S0 (w[i - 15]) + w[i - 16];
+    w[i] = S1(w[i-2]) + w[i-7] + S0(w[i-15]) + w[i-16];
 
-  for (i = 0; i < 64;)
+  for (i=0; i < 64;)
     {
 #if 0
-      R (a, b, c, d, e, f, g, h, K[i], w[i]);
+      R(a,b,c,d,e,f,g,h,K[i],w[i]);
       i++;
 #else
       t1 = h + Sum1 (e) + Cho (e, f, g) + K[i] + w[i];
       t2 = Sum0 (a) + Maj (a, b, c);
       d += t1;
-      h = t1 + t2;
+      h  = t1 + t2;
 
-      t1 = g + Sum1 (d) + Cho (d, e, f) + K[i + 1] + w[i + 1];
+      t1 = g + Sum1 (d) + Cho (d, e, f) + K[i+1] + w[i+1];
       t2 = Sum0 (h) + Maj (h, a, b);
       c += t1;
-      g = t1 + t2;
+      g  = t1 + t2;
 
-      t1 = f + Sum1 (c) + Cho (c, d, e) + K[i + 2] + w[i + 2];
+      t1 = f + Sum1 (c) + Cho (c, d, e) + K[i+2] + w[i+2];
       t2 = Sum0 (g) + Maj (g, h, a);
       b += t1;
-      f = t1 + t2;
+      f  = t1 + t2;
 
-      t1 = e + Sum1 (b) + Cho (b, c, d) + K[i + 3] + w[i + 3];
+      t1 = e + Sum1 (b) + Cho (b, c, d) + K[i+3] + w[i+3];
       t2 = Sum0 (f) + Maj (f, g, h);
       a += t1;
-      e = t1 + t2;
+      e  = t1 + t2;
 
-      t1 = d + Sum1 (a) + Cho (a, b, c) + K[i + 4] + w[i + 4];
+      t1 = d + Sum1 (a) + Cho (a, b, c) + K[i+4] + w[i+4];
       t2 = Sum0 (e) + Maj (e, f, g);
       h += t1;
-      d = t1 + t2;
+      d  = t1 + t2;
 
-      t1 = c + Sum1 (h) + Cho (h, a, b) + K[i + 5] + w[i + 5];
+      t1 = c + Sum1 (h) + Cho (h, a, b) + K[i+5] + w[i+5];
       t2 = Sum0 (d) + Maj (d, e, f);
       g += t1;
-      c = t1 + t2;
+      c  = t1 + t2;
 
-      t1 = b + Sum1 (g) + Cho (g, h, a) + K[i + 6] + w[i + 6];
+      t1 = b + Sum1 (g) + Cho (g, h, a) + K[i+6] + w[i+6];
       t2 = Sum0 (c) + Maj (c, d, e);
       f += t1;
-      b = t1 + t2;
+      b  = t1 + t2;
 
-      t1 = a + Sum1 (f) + Cho (f, g, h) + K[i + 7] + w[i + 7];
+      t1 = a + Sum1 (f) + Cho (f, g, h) + K[i+7] + w[i+7];
       t2 = Sum0 (b) + Maj (b, c, d);
       e += t1;
-      a = t1 + t2;
+      a  = t1 + t2;
 
       i += 8;
 #endif
@@ -256,7 +255,6 @@ transform (SHA256_CONTEXT * hd, const unsigned char *data)
   hd->h6 += g;
   hd->h7 += h;
 }
-
 #undef S0
 #undef S1
 #undef R
@@ -271,9 +269,9 @@ sha256_write (void *context, const void *inbuf_arg, size_t inlen)
   SHA256_CONTEXT *hd = context;
 
   if (hd->count == 64)
-    {				/* flush the buffer */
+    { /* flush the buffer */
       transform (hd, hd->buf);
-      _gcry_burn_stack (74 * 4 + 32);
+      _gcry_burn_stack (74*4+32);
       hd->count = 0;
       hd->nblocks++;
     }
@@ -282,10 +280,10 @@ sha256_write (void *context, const void *inbuf_arg, size_t inlen)
   if (hd->count)
     {
       for (; inlen && hd->count < 64; inlen--)
-	hd->buf[hd->count++] = *inbuf++;
+        hd->buf[hd->count++] = *inbuf++;
       sha256_write (hd, NULL, 0);
       if (!inlen)
-	return;
+        return;
     }
 
   while (inlen >= 64)
@@ -296,7 +294,7 @@ sha256_write (void *context, const void *inbuf_arg, size_t inlen)
       inlen -= 64;
       inbuf += 64;
     }
-  _gcry_burn_stack (74 * 4 + 32);
+  _gcry_burn_stack (74*4+32);
   for (; inlen && hd->count < 64; inlen--)
     hd->buf[hd->count++] = *inbuf++;
 }
@@ -308,13 +306,13 @@ sha256_write (void *context, const void *inbuf_arg, size_t inlen)
    to the handle will the destroy the returned buffer.  Returns: 32
    bytes with the message the digest.  */
 static void
-sha256_final (void *context)
+sha256_final(void *context)
 {
   SHA256_CONTEXT *hd = context;
   u32 t, msb, lsb;
   byte *p;
 
-  sha256_write (hd, NULL, 0); /* flush */ ;
+  sha256_write (hd, NULL, 0); /* flush */;
 
   t = hd->nblocks;
   /* multiply by 64 to make a byte count */
@@ -331,30 +329,30 @@ sha256_final (void *context)
   msb |= t >> 29;
 
   if (hd->count < 56)
-    {				/* enough room */
-      hd->buf[hd->count++] = 0x80;	/* pad */
+    { /* enough room */
+      hd->buf[hd->count++] = 0x80; /* pad */
       while (hd->count < 56)
-	hd->buf[hd->count++] = 0;	/* pad */
+        hd->buf[hd->count++] = 0;  /* pad */
     }
   else
-    {				/* need one extra block */
-      hd->buf[hd->count++] = 0x80;	/* pad character */
+    { /* need one extra block */
+      hd->buf[hd->count++] = 0x80; /* pad character */
       while (hd->count < 64)
-	hd->buf[hd->count++] = 0;
-      sha256_write (hd, NULL, 0); /* flush */ ;
-      memset (hd->buf, 0, 56);	/* fill next block with zeroes */
+        hd->buf[hd->count++] = 0;
+      sha256_write (hd, NULL, 0);  /* flush */;
+      memset (hd->buf, 0, 56 ); /* fill next block with zeroes */
     }
   /* append the 64 bit count */
   hd->buf[56] = msb >> 24;
   hd->buf[57] = msb >> 16;
-  hd->buf[58] = msb >> 8;
+  hd->buf[58] = msb >>  8;
   hd->buf[59] = msb;
   hd->buf[60] = lsb >> 24;
   hd->buf[61] = lsb >> 16;
-  hd->buf[62] = lsb >> 8;
+  hd->buf[62] = lsb >>  8;
   hd->buf[63] = lsb;
   transform (hd, hd->buf);
-  _gcry_burn_stack (74 * 4 + 32);
+  _gcry_burn_stack (74*4+32);
 
   p = hd->buf;
 #ifdef WORDS_BIGENDIAN
@@ -363,14 +361,14 @@ sha256_final (void *context)
 #define X(a) do { *p++ = hd->h##a >> 24; *p++ = hd->h##a >> 16;	 \
 		  *p++ = hd->h##a >> 8; *p++ = hd->h##a; } while(0)
 #endif
-  X (0);
-  X (1);
-  X (2);
-  X (3);
-  X (4);
-  X (5);
-  X (6);
-  X (7);
+  X(0);
+  X(1);
+  X(2);
+  X(3);
+  X(4);
+  X(5);
+  X(6);
+  X(7);
 #undef X
 }
 
@@ -381,9 +379,9 @@ sha256_read (void *context)
 
   return hd->buf;
 }
+
+
 
-
-
 /*
      Self-test section.
  */
@@ -408,26 +406,26 @@ selftests_sha224 (int extended, selftest_report_func_t report)
     {
       what = "long string";
       errtxt = _gcry_hash_selftest_check_one
-	(GCRY_MD_SHA224, 0,
-	 "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", 56,
-	 "\x75\x38\x8b\x16\x51\x27\x76\xcc\x5d\xba\x5d\xa1\xfd\x89\x01\x50"
-	 "\xb0\xc6\x45\x5c\xb4\xf5\x8b\x19\x52\x52\x25\x25", 28);
+        (GCRY_MD_SHA224, 0,
+         "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", 56,
+         "\x75\x38\x8b\x16\x51\x27\x76\xcc\x5d\xba\x5d\xa1\xfd\x89\x01\x50"
+         "\xb0\xc6\x45\x5c\xb4\xf5\x8b\x19\x52\x52\x25\x25", 28);
       if (errtxt)
-	goto failed;
+        goto failed;
 
       what = "one million \"a\"";
       errtxt = _gcry_hash_selftest_check_one
-	(GCRY_MD_SHA224, 1,
-	 NULL, 0,
-	 "\x20\x79\x46\x55\x98\x0c\x91\xd8\xbb\xb4\xc1\xea\x97\x61\x8a\x4b"
-	 "\xf0\x3f\x42\x58\x19\x48\xb2\xee\x4e\xe7\xad\x67", 28);
+        (GCRY_MD_SHA224, 1,
+         NULL, 0,
+         "\x20\x79\x46\x55\x98\x0c\x91\xd8\xbb\xb4\xc1\xea\x97\x61\x8a\x4b"
+         "\xf0\x3f\x42\x58\x19\x48\xb2\xee\x4e\xe7\xad\x67", 28);
       if (errtxt)
-	goto failed;
+        goto failed;
     }
 
-  return 0;			/* Succeeded. */
+  return 0; /* Succeeded. */
 
-failed:
+ failed:
   if (report)
     report ("digest", GCRY_MD_SHA224, what, errtxt);
   return GPG_ERR_SELFTEST_FAILED;
@@ -452,28 +450,28 @@ selftests_sha256 (int extended, selftest_report_func_t report)
     {
       what = "long string";
       errtxt = _gcry_hash_selftest_check_one
-	(GCRY_MD_SHA256, 0,
-	 "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", 56,
-	 "\x24\x8d\x6a\x61\xd2\x06\x38\xb8\xe5\xc0\x26\x93\x0c\x3e\x60\x39"
-	 "\xa3\x3c\xe4\x59\x64\xff\x21\x67\xf6\xec\xed\xd4\x19\xdb\x06\xc1",
-	 32);
+        (GCRY_MD_SHA256, 0,
+         "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", 56,
+         "\x24\x8d\x6a\x61\xd2\x06\x38\xb8\xe5\xc0\x26\x93\x0c\x3e\x60\x39"
+         "\xa3\x3c\xe4\x59\x64\xff\x21\x67\xf6\xec\xed\xd4\x19\xdb\x06\xc1",
+         32);
       if (errtxt)
-	goto failed;
+        goto failed;
 
       what = "one million \"a\"";
       errtxt = _gcry_hash_selftest_check_one
-	(GCRY_MD_SHA256, 1,
-	 NULL, 0,
-	 "\xcd\xc7\x6e\x5c\x99\x14\xfb\x92\x81\xa1\xc7\xe2\x84\xd7\x3e\x67"
-	 "\xf1\x80\x9a\x48\xa4\x97\x20\x0e\x04\x6d\x39\xcc\xc7\x11\x2c\xd0",
-	 32);
+        (GCRY_MD_SHA256, 1,
+         NULL, 0,
+         "\xcd\xc7\x6e\x5c\x99\x14\xfb\x92\x81\xa1\xc7\xe2\x84\xd7\x3e\x67"
+         "\xf1\x80\x9a\x48\xa4\x97\x20\x0e\x04\x6d\x39\xcc\xc7\x11\x2c\xd0",
+         32);
       if (errtxt)
-	goto failed;
+        goto failed;
     }
 
-  return 0;			/* Succeeded. */
+  return 0; /* Succeeded. */
 
-failed:
+ failed:
   if (report)
     report ("digest", GCRY_MD_SHA256, what, errtxt);
   return GPG_ERR_SELFTEST_FAILED;
@@ -501,51 +499,56 @@ run_selftests (int algo, int extended, selftest_report_func_t report)
     }
   return ec;
 }
+
+
+
 
+static byte asn224[19] = /* Object ID is 2.16.840.1.101.3.4.2.4 */
+  { 0x30, 0x2D, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48,
+    0x01, 0x65, 0x03, 0x04, 0x02, 0x04, 0x05, 0x00, 0x04,
+    0x1C
+  };
 
+static gcry_md_oid_spec_t oid_spec_sha224[] =
+  {
+    /* From RFC3874, Section 4 */
+    { "2.16.840.1.101.3.4.2.4" },
+    { NULL },
+  };
 
+static byte asn256[19] = /* Object ID is  2.16.840.1.101.3.4.2.1 */
+  { 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86,
+    0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05,
+    0x00, 0x04, 0x20 };
 
-static byte asn224[19] =	/* Object ID is 2.16.840.1.101.3.4.2.4 */
-{ 0x30, 0x2D, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48,
-  0x01, 0x65, 0x03, 0x04, 0x02, 0x04, 0x05, 0x00, 0x04,
-  0x1C
-};
+static gcry_md_oid_spec_t oid_spec_sha256[] =
+  {
+    /* According to the OpenPGP draft rfc2440-bis06 */
+    { "2.16.840.1.101.3.4.2.1" },
+    /* PKCS#1 sha256WithRSAEncryption */
+    { "1.2.840.113549.1.1.11" },
 
-static gcry_md_oid_spec_t oid_spec_sha224[] = {
-  /* From RFC3874, Section 4 */
-  {"2.16.840.1.101.3.4.2.4"},
-  {NULL},
-};
+    { NULL },
+  };
 
-static byte asn256[19] =	/* Object ID is  2.16.840.1.101.3.4.2.1 */
-{ 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86,
-  0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05,
-  0x00, 0x04, 0x20
-};
+gcry_md_spec_t _gcry_digest_spec_sha224 =
+  {
+    "SHA224", asn224, DIM (asn224), oid_spec_sha224, 28,
+    sha224_init, sha256_write, sha256_final, sha256_read,
+    sizeof (SHA256_CONTEXT)
+  };
+md_extra_spec_t _gcry_digest_extraspec_sha224 =
+  {
+    run_selftests
+  };
 
-static gcry_md_oid_spec_t oid_spec_sha256[] = {
-  /* According to the OpenPGP draft rfc2440-bis06 */
-  {"2.16.840.1.101.3.4.2.1"},
-  /* PKCS#1 sha256WithRSAEncryption */
-  {"1.2.840.113549.1.1.11"},
-
-  {NULL},
-};
-
-gcry_md_spec_t _gcry_digest_spec_sha224 = {
-  "SHA224", asn224, DIM (asn224), oid_spec_sha224, 28,
-  sha224_init, sha256_write, sha256_final, sha256_read,
-  sizeof (SHA256_CONTEXT)
-};
-md_extra_spec_t _gcry_digest_extraspec_sha224 = {
-  run_selftests
-};
-
-gcry_md_spec_t _gcry_digest_spec_sha256 = {
-  "SHA256", asn256, DIM (asn256), oid_spec_sha256, 32,
-  sha256_init, sha256_write, sha256_final, sha256_read,
-  sizeof (SHA256_CONTEXT)
-};
-md_extra_spec_t _gcry_digest_extraspec_sha256 = {
-  run_selftests
-};
+gcry_md_spec_t _gcry_digest_spec_sha256 =
+  {
+    "SHA256", asn256, DIM (asn256), oid_spec_sha256, 32,
+    sha256_init, sha256_write, sha256_final, sha256_read,
+    sizeof (SHA256_CONTEXT)
+  };
+md_extra_spec_t _gcry_digest_extraspec_sha256 =
+  {
+    run_selftests
+  };
