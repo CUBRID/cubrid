@@ -16332,7 +16332,7 @@ _ACEOF
 
 
 # And create the files.
-ac_config_files="$ac_config_files Makefile m4/Makefile compat/Makefile mpi/Makefile cipher/Makefile random/Makefile doc/Makefile src/Makefile src/gcrypt.h src/libgcrypt-config src/versioninfo.rc tests/Makefile"
+ac_config_files="$ac_config_files Makefile m4/Makefile compat/Makefile mpi/Makefile cipher/Makefile random/Makefile src/Makefile src/gcrypt.h src/libgcrypt-config src/versioninfo.rc"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -17531,12 +17531,10 @@ do
     "mpi/Makefile") CONFIG_FILES="$CONFIG_FILES mpi/Makefile" ;;
     "cipher/Makefile") CONFIG_FILES="$CONFIG_FILES cipher/Makefile" ;;
     "random/Makefile") CONFIG_FILES="$CONFIG_FILES random/Makefile" ;;
-    "doc/Makefile") CONFIG_FILES="$CONFIG_FILES doc/Makefile" ;;
     "src/Makefile") CONFIG_FILES="$CONFIG_FILES src/Makefile" ;;
     "src/gcrypt.h") CONFIG_FILES="$CONFIG_FILES src/gcrypt.h" ;;
     "src/libgcrypt-config") CONFIG_FILES="$CONFIG_FILES src/libgcrypt-config" ;;
     "src/versioninfo.rc") CONFIG_FILES="$CONFIG_FILES src/versioninfo.rc" ;;
-    "tests/Makefile") CONFIG_FILES="$CONFIG_FILES tests/Makefile" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5;;
   esac

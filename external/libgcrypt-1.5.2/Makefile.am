@@ -28,9 +28,9 @@ GITLOG_TO_CHANGELOG=gitlog-to-changelog
 DIST_SUBDIRS = m4 compat mpi cipher random src
 SUBDIRS =         compat mpi cipher random src
 EXTRA_DIST = autogen.sh README.GIT \
-	     scripts/ChangeLog-2011 doc/ChangeLog-2011 ChangeLog-2011 \
+	     scripts/ChangeLog-2011 ChangeLog-2011 \
              m4/ChangeLog-2011 cipher/ChangeLog-2011 src/ChangeLog-2011 \
-             random/ChangeLog-2011 tests/ChangeLog-2011 mpi/ChangeLog-2011 \
+             random/ChangeLog-2011 mpi/ChangeLog-2011 \
              scripts/git-log-fix scripts/git-log-footer
 DISTCLEANFILES =
 
