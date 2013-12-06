@@ -53,6 +53,6 @@ esac
 if test -f config.status; then
   echo "configured already. skip $PWD"
 else
-  eval "$srcdir/configure $opts_libgcrypt"
+  eval "$srcdir/configure $opts_libgcrypt CFLAGS='$CFLAGS -I$srcdir/../libgpg-error-1.11/src'"
 fi
 
