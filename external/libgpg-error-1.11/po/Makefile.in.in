@@ -95,8 +95,8 @@ CATALOGS = @CATALOGS@
 	sed -e '/^#/d' $< > t-$@
 	mv t-$@ $@
 
-
-all: check-macro-version all-@USE_NLS@
+# always no compile gmo, po
+all: check-macro-version all-no
 
 all-yes: stamp-po
 all-no:
