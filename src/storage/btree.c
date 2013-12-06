@@ -3132,6 +3132,11 @@ xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid,
       error = locator_delete_force (thread_p, &hfid, &unique_oid, btid, false,
 				    true, SINGLE_ROW_DELETE, &scan_cache,
 				    &force_count);
+      if (error == NO_ERROR)
+	{
+	  /* monitor */
+	  mnt_qm_deletes (thread_p);
+	}
 
       heap_scancache_end_modify (thread_p, &scan_cache);
     }
