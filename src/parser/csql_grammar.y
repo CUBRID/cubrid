@@ -1428,6 +1428,7 @@ typedef struct YYLTYPE
 %token <cptr> INACTIVE
 %token <cptr> INCREMENT
 %token <cptr> INDEXES
+%token <cptr> INDEX_PREFIX
 %token <cptr> INF_LE_
 %token <cptr> INF_LT_
 %token <cptr> INFINITE_
@@ -14860,6 +14861,16 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
         DBG_PRINT}}
+	| INDEX_PREFIX
+		{ push_msg(MSGCAT_SYNTAX_INVALID_INDEX_PREFIX); }
+	  '(' expression_  ',' expression_ ',' expression_ ')'
+		{ pop_msg(); }
+		{{
+
+			$$ = parser_make_expression (this_parser, PT_INDEX_PREFIX, $4, $6, $8);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 of_cume_dist_percent_rank_function
@@ -19156,6 +19167,16 @@ identifier
 
 		DBG_PRINT}}
 	| INCREMENT
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| INDEX_PREFIX
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

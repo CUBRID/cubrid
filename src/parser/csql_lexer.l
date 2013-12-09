@@ -357,6 +357,7 @@ extern int str_identifier = '\0';
 										csql_yylval.cptr = pt_makename(yytext);
 										return INCREMENT; }
 [iI][nN][dD][eE][xX]							{ begin_token(yytext);   return INDEX; }
+[iI][nN][dD][eE][xX][_][pP][rR][eE][fF][iI][xX]				{ begin_token(yytext);   return INDEX_PREFIX; }
 [iI][nN][dD][eE][xX][eE][sS]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return INDEXES; }

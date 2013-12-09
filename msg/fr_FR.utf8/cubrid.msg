@@ -1359,6 +1359,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 117 utilisation invalide du charset\n CHARSET ( expression )\n
 118 utilisation invalide du collation\n COLLATION ( expression )\n
 119 utilisation invalide du clob_to_char\n CLOB_TO_CHAR ( expression [using charset] )\n
+120 utilisation invalide du index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Mémoire épuisée.

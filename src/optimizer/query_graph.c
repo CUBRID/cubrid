@@ -3522,6 +3522,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_DATEDIFF:
     case PT_TIMEDIFF:
     case PT_TO_ENUMERATION_VALUE:
+    case PT_INDEX_PREFIX:
       return RANK_EXPR_MEDIUM;
 
       /* Group 3 -- heavy */
@@ -4023,6 +4024,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_RPAD:
 	case PT_REPLACE:
 	case PT_TRANSLATE:
+	case PT_INDEX_PREFIX:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && pt_is_pseudo_const (expr->info.expr.arg2)
 		  && (expr->info.expr.arg3 ?

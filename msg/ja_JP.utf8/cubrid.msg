@@ -1359,6 +1359,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 117 正しくないcharsetの使い方です。\n  CHARSET ( expression )\n
 118 正しくないcollationの使い方です。\n  COLLATION ( expression )\n
 119 正しくないclob_to_charの使い方です。\n  CLOB_TO_CHAR ( 数字 [using charset] )\n
+120 正しくないindex_prefixの使い方です。\n  INDEX_PREFIX ( expression, expression, expression )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。

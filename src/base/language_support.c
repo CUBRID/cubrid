@@ -4522,7 +4522,13 @@ lang_split_key_iso (const LANG_COLLATION * lang_coll, const bool is_desc,
       *key = (unsigned char *) str2_begin;
 
       /* common part plus a character with non-zero weight */
-      str2++;
+      while (str2 < str2_end)
+	{
+	  if (*str2++ != 0x20)
+	    {
+	      break;
+	    }
+	}
       assert (str2 <= str2_end);
       key_size = str2 - str2_begin;
     }
@@ -4531,7 +4537,14 @@ lang_split_key_iso (const LANG_COLLATION * lang_coll, const bool is_desc,
       assert (is_desc);
 
       /* common part plus a character with non-zero weight from str1 */
-      str1++;
+      while (str1 < str1_end)
+	{
+	  if (*str1++ != 0x20)
+	    {
+	      break;
+	    }
+	}
+
       if (str1 >= str1_end)
 	{
 	  /* str1 exhaused or at last char, we use str2 as key */
@@ -4604,9 +4617,13 @@ lang_split_key_byte (const LANG_COLLATION * lang_coll, const bool is_desc,
       *key = (unsigned char *) str2_begin;
 
       /* common part plus a character with non-zero weight */
-      str2++;
-
-      assert (str2 <= str2_end);
+      while (str2 < str2_end)
+	{
+	  if (lang_coll->coll.weights[*str2++] != 0)
+	    {
+	      break;
+	    }
+	}
       key_size = str2 - str2_begin;
     }
   else
@@ -4614,7 +4631,13 @@ lang_split_key_byte (const LANG_COLLATION * lang_coll, const bool is_desc,
       assert (is_desc);
 
       /* common part plus a character with non-zero weight from str1 */
-      str1++;
+      while (str1 < str1_end)
+	{
+	  if (lang_coll->coll.weights[*str1++] != 0)
+	    {
+	      break;
+	    }
+	}
 
       if (str1 >= str1_end)
 	{
@@ -4691,9 +4714,16 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc,
     {				/* normal index */
       *key = (unsigned char *) str2_begin;
 
-      /* common part plus a character with non-zero weight */
-      w2 = lang_get_w_first_el (coll, str2, str2_end - str2, &str2_next);
-      str2 = str2_next;
+      /* common part plus a character with non-zero weight from str2 */
+      while (str2 < str2_end)
+	{
+	  w2 = lang_get_w_first_el (coll, str2, str2_end - str2, &str2_next);
+	  str2 = str2_next;
+	  if (w2 != 0)
+	    {
+	      break;
+	    }
+	}
 
       assert (str2 <= str2_end);
       key_size = str2 - str2_begin;
@@ -4702,8 +4732,15 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc,
     {				/* reverse index */
       assert (is_desc);
       /* common part plus a character with non-zero weight from str1 */
-      w1 = lang_get_w_first_el (coll, str1, str1_end - str1, &str1_next);
-      str1 = str1_next;
+      while (str1 < str1_end)
+	{
+	  w1 = lang_get_w_first_el (coll, str1, str1_end - str1, &str1_next);
+	  str1 = str1_next;
+	  if (w1 != 0)
+	    {
+	      break;
+	    }
+	}
 
       if (str1 >= str1_end)
 	{
@@ -4866,9 +4903,17 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc,
       *key = (unsigned char *) str2_begin;
 
       /* common part plus a character with non-zero weight */
-      lang_get_uca_w_l13 (cd, true, str2, str2_end - str2, &uca_w_l13_2,
-			  &num_ce2, &str2_next, &dummy);
-      str2 = str2_next;
+      while (str2 < str2_end)
+	{
+	  lang_get_uca_w_l13 (cd, true, str2, str2_end - str2, &uca_w_l13_2,
+			      &num_ce2, &str2_next, &dummy);
+	  str2 = str2_next;
+
+	  if (UCA_GET_L1_W (uca_w_l13_2[0]) != 0)
+	    {
+	      break;
+	    }
+	}
 
       assert (str2 <= str2_end);
       key_size = str2 - str2_begin;
@@ -4877,9 +4922,17 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc,
     {				/* reverse index */
       assert (is_desc);
       /* common part plus a character with non-zero weight from str1 */
-      lang_get_uca_w_l13 (cd, true, str1, str1_end - str1, &uca_w_l13_1,
-			  &num_ce1, &str1_next, &dummy);
-      str1 = str1_next;
+      while (str1 < str1_end)
+	{
+	  lang_get_uca_w_l13 (cd, true, str1, str1_end - str1, &uca_w_l13_1,
+			      &num_ce1, &str1_next, &dummy);
+	  str1 = str1_next;
+
+	  if (UCA_GET_L1_W (uca_w_l13_1[0]) != 0)
+	    {
+	      break;
+	    }
+	}
 
       if (str1 >= str1_end)
 	{
@@ -4953,8 +5006,21 @@ lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc,
       *key = (unsigned char *) str2_begin;
 
       /* common part plus a character with non-zero weight */
-      str2_next = intl_nextchar_euc ((unsigned char *) str2, &char2_size);
-      str2 = str2_next;
+      while (str2 < str2_end)
+	{
+	  bool is_zero_weight = false;
+	  str2_next = intl_nextchar_euc ((unsigned char *) str2, &char2_size);
+	  if (*str2 == 0x20 || *str2 == 0
+	      || (*str2 == 0xa1 && char2_size == 2 && *(str2 + 1) == 0xa1))
+	    {
+	      is_zero_weight = true;
+	    }
+	  str2 = str2_next;
+	  if (!is_zero_weight)
+	    {
+	      break;
+	    }
+	}
 
       assert (str2 <= str2_end);
       key_size = str2 - str2_begin;
@@ -4964,8 +5030,21 @@ lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc,
       assert (is_desc);
 
       /* common part plus a character with non-zero weight from str1 */
-      str1_next = intl_nextchar_euc ((unsigned char *) str1, &char1_size);
-      str1 = str1_next;
+      while (str1 < str1_end)
+	{
+	  bool is_zero_weight = false;
+	  str1_next = intl_nextchar_euc ((unsigned char *) str1, &char1_size);
+	  if (*str1 == 0x20 || *str1 == 0
+	      || (*str1 == 0xa1 && char1_size == 2 && *(str1 + 1) == 0xa1))
+	    {
+	      is_zero_weight = true;
+	    }
+	  str1 = str1_next;
+	  if (!is_zero_weight)
+	    {
+	      break;
+	    }
+	}
 
       if (str1 >= str1_end)
 	{

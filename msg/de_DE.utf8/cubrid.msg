@@ -1359,6 +1359,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 117 Ungültige Nutzung des Charsets\n CHARSET ( expression )\n
 118 Ungültige Nutzung der Kollation\n COLLATION ( expression )\n
 119 Ungültige Nutzung des clob_to_char\n CLOB_TO_CHAR ( expression [using charset] )\n
+120 Ungültige Nutzung des index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.

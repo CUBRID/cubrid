@@ -7738,7 +7738,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_ADDTIME
 		  || node->info.expr.op == PT_DEFINE_VARIABLE
 		  || node->info.expr.op == PT_CHR
-		  || node->info.expr.op == PT_CLOB_TO_CHAR)
+		  || node->info.expr.op == PT_CLOB_TO_CHAR
+		  || node->info.expr.op == PT_INDEX_PREFIX)
 		{
 		  r1 = pt_to_regu_variable (parser,
 					    node->info.expr.arg1, unbox);
@@ -7797,7 +7798,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  if (node->info.expr.op == PT_DATE_FORMAT
 		      || node->info.expr.op == PT_STR_TO_DATE
 		      || node->info.expr.op == PT_TIME_FORMAT
-		      || node->info.expr.op == PT_FORMAT)
+		      || node->info.expr.op == PT_FORMAT
+		      || node->info.expr.op == PT_INDEX_PREFIX)
 		    {
 		      r3 = pt_to_regu_variable (parser,
 						node->info.expr.arg3, unbox);
@@ -9565,6 +9567,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_TRACE_STATS:
 		  regu =
 		    pt_make_regu_arith (r1, r2, r3, T_TRACE_STATS, domain);
+		  break;
+
+		case PT_INDEX_PREFIX:
+		  regu =
+		    pt_make_regu_arith (r1, r2, r3, T_INDEX_PREFIX, domain);
 		  break;
 
 		default:

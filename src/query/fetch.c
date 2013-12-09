@@ -126,6 +126,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_DATE_ADD:
     case T_DATE_SUB:
     case T_NEXT_VALUE:
+    case T_INDEX_PREFIX:
 
       /* fetch lhs, rhs, and third value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
@@ -3585,6 +3586,15 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  goto error;
 	}
       break;
+
+    case T_INDEX_PREFIX:
+      if (db_string_index_prefix (peek_left, peek_right, peek_third,
+				  arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
 
     default:
       break;

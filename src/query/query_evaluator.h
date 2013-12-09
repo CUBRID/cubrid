@@ -418,7 +418,8 @@ typedef enum
   T_AES_ENCRYPT,
   T_AES_DECRYPT,
   T_SHA_ONE,
-  T_SHA_TWO
+  T_SHA_TWO,
+  T_INDEX_PREFIX,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;

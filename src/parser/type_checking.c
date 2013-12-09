@@ -4137,6 +4137,57 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       def->overloads_count = num;
       break;
+
+    case PT_INDEX_PREFIX:
+      num = 0;
+
+      /* three overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      /* arg3 */
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+      /* arg3 */
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARNCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      /* arg3 */
+      sig.arg3_type.is_generic = true;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARBIT;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     default:
       return false;
     }
@@ -6281,6 +6332,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_SHA_TWO:
     case PT_AES_ENCRYPT:
     case PT_AES_DECRYPT:
+    case PT_INDEX_PREFIX:
       return false;
 
     default:
@@ -11734,6 +11786,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_HEX:
     case PT_SUBSTRING:
     case PT_COERCIBILITY:
+    case PT_INDEX_PREFIX:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, node->type_enum);
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
@@ -18313,6 +18366,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
       break;
 
+    case PT_INDEX_PREFIX:
+      error = db_string_index_prefix (arg1, arg2, arg3, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
     default:
       break;
     }
@@ -21005,6 +21070,7 @@ pt_is_op_w_collation (const PT_OP_TYPE op)
     case PT_CONNECT_BY_ROOT:
     case PT_PRIOR:
     case PT_QPRIOR:
+    case PT_INDEX_PREFIX:
       return true;
     default:
       return false;
@@ -22041,7 +22107,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   op_has_3_args =
     (op == PT_CONCAT_WS || op == PT_REPLACE || op == PT_TRANSLATE
      || op == PT_BETWEEN || op == PT_NOT_BETWEEN || op == PT_IF
-     || op == PT_FIELD);
+     || op == PT_FIELD || op == PT_INDEX_PREFIX);
   reverse_arg2_arg3 = (op == PT_RPAD || op == PT_LPAD);
 
   /* step 1 : get info */
@@ -22486,6 +22552,7 @@ coerce_result:
     case PT_CONNECT_BY_ROOT:
     case PT_PRIOR:
     case PT_QPRIOR:
+    case PT_INDEX_PREFIX:
       new_node = pt_coerce_node_collation (parser, expr, common_coll,
 					   common_cs, true, false);
       if (new_node == NULL)

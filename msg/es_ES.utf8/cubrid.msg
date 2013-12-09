@@ -1359,6 +1359,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 117 Uso de charset no valido\n CHARSET ( expression )\n
 118 Uso de collation no valido\n COLLATION ( expression )\n
 119 Uso de clob_to_char no valido\n CLOB_TO_CHAR ( expression [using charset] )\n
+120 Uso de index_prefix no valido\n INDEX_PREFIX ( expression, expression, expression )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Sin memoria.

@@ -1359,6 +1359,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 117 ប្រើប្រាស់អក្សរកូដឥតបានការ\n  CHARSET ( expression )\n
 118 ការរៀបចំឥតបានការ\n  COLLATION ( expression )\n
 119 ការប្រើប្រាស់clob_to_charត្រូវចាត់ទុកជាមោឃៈ\n  CLOB_TO_CHAR ( expression [using charset] )\n
+120 ការប្រើប្រាស់index_prefixត្រូវចាត់ទុកជាមោឃៈ\n  INDEX_PREFIX ( expression, expression, expression )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 គ្មាន memory។

@@ -3801,6 +3801,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "width_bucket";
     case PT_TRACE_STATS:
       return "trace_stats";
+    case PT_INDEX_PREFIX:
+      return "index_prefix ";
     default:
       return "unknown opcode";
     }
@@ -11965,6 +11967,21 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 			       pt_show_binopcode (p->info.expr.op));
       q = pt_append_varchar (parser, q, r2);
       break;
+    case PT_INDEX_PREFIX:
+      q = pt_append_nulstring (parser, q, " index_prefix(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+
+      q = pt_append_nulstring (parser, q, ", ");
+      r1 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r1);
+
+      q = pt_append_nulstring (parser, q, ", ");
+      r1 = pt_print_bytes (parser, p->info.expr.arg3);
+      q = pt_append_varchar (parser, q, r1);
+
+      q = pt_append_nulstring (parser, q, ")");
+      break;
     }
 
   for (t = p->or_next; t; t = t->or_next)
@@ -17392,6 +17409,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_RPAD:
 	case PT_REPLACE:
 	case PT_TRANSLATE:
+	case PT_INDEX_PREFIX:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.expr.arg2)
 		  && (node->info.expr.arg3 ?
