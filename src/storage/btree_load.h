@@ -91,9 +91,9 @@
  * keys this shouldn't be much of a problem anyway (when we get them
  * turned back on).
  */
-#define BTREE_MAX_KEYLEN_INPAGE ((int)(DB_PAGESIZE / 4))
+#define BTREE_MAX_KEYLEN_INPAGE ((int)(DB_PAGESIZE / 8))
 #define BTREE_MAX_SEPARATOR_KEYLEN_INPAGE ((int)(DB_PAGESIZE / 8))
-#define BTREE_MAX_OIDLEN_INPAGE ((int)(DB_PAGESIZE / 4))
+#define BTREE_MAX_OIDLEN_INPAGE ((int)(DB_PAGESIZE / 8))
 
 /* B+tree node types */
 typedef enum
@@ -215,7 +215,7 @@ extern void btree_read_overflow_header (RECDES * Rec,
 #endif
 extern int btree_init_node_header (THREAD_ENTRY * thread_p, VFID * vfid,
 				   PAGE_PTR page_ptr,
-				   BTREE_NODE_HEADER * header);
+				   BTREE_NODE_HEADER * header, bool redo);
 extern int btree_read_node_header (PAGE_PTR page_ptr,
 				   BTREE_NODE_HEADER * header);
 extern int btree_write_node_header (THREAD_ENTRY * thread_p, VFID * vfid,

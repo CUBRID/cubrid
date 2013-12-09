@@ -426,7 +426,8 @@ btree_pack_node_header (RECDES * rec, BTREE_NODE_HEADER * header)
  */
 int
 btree_init_node_header (THREAD_ENTRY * thread_p, VFID * vfid,
-			PAGE_PTR page_ptr, BTREE_NODE_HEADER * header)
+			PAGE_PTR page_ptr, BTREE_NODE_HEADER * header,
+			bool redo)
 {
   RECDES rec;
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -439,9 +440,12 @@ btree_init_node_header (THREAD_ENTRY * thread_p, VFID * vfid,
 
   btree_pack_node_header (&rec, header);
 
-  /* log the new header record for redo purposes */
-  log_append_redo_data2 (thread_p, RVBT_NDHEADER_INS, vfid,
-			 page_ptr, HEADER, rec.length, rec.data);
+  if (redo == true)
+    {
+      /* log the new header record for redo purposes */
+      log_append_redo_data2 (thread_p, RVBT_NDHEADER_INS, vfid,
+			     page_ptr, HEADER, rec.length, rec.data);
+    }
 
   if (spage_insert_at (thread_p, page_ptr, HEADER, &rec) != SP_SUCCESS)
     {
@@ -463,6 +467,7 @@ int
 btree_read_node_header (PAGE_PTR page_ptr, BTREE_NODE_HEADER * header)
 {
   RECDES rec;
+  int key_cnt;
 
   assert (page_ptr != NULL);
 #if !defined(NDEBUG)
@@ -475,6 +480,15 @@ btree_read_node_header (PAGE_PTR page_ptr, BTREE_NODE_HEADER * header)
     }
 
   btree_unpack_node_header (header, &rec);
+
+#if !defined(NDEBUG)
+  btree_get_node_key_cnt (page_ptr, &key_cnt);
+  if (key_cnt == 0)
+    {
+      assert (header->node_level == 1);
+      assert (header->max_key_len == 0);
+    }
+#endif
 
   return NO_ERROR;
 }
@@ -498,9 +512,12 @@ btree_write_node_header (THREAD_ENTRY * thread_p, VFID * vfid,
   RECDES rec;
   int key_cnt;
 
+  /* defence code */
   btree_get_node_key_cnt (page_ptr, &key_cnt);
   if (key_cnt == 0)
     {
+      assert (header->node_level == 1);
+      assert (header->max_key_len == 0);
       header->max_key_len = 0;
     }
 
