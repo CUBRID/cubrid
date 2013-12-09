@@ -11434,6 +11434,8 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   bool flag_fence_insert = false;
   OID dummy_oid = { NULL_PAGEID, 0, NULL_VOLID };
   int leftsize, rightsize;
+  VPID right_next_vpid;
+  int right_max_key_len;
 
 
   /***********************************************************
@@ -11442,9 +11444,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   q_undo_data = NULL;
   r_redo_data = NULL;
   p_redo_data = NULL;
-
-  VPID right_next_vpid;
-  int right_max_key_len;
 
   rec.data = NULL;
 
