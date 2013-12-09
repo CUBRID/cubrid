@@ -4864,7 +4864,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   GROUPBY_STATE gbstate;
   QFILE_LIST_SCAN_ID input_scan_id;
   int ls_flag = 0;
-  int tuple_cnt = 0;
+  int estimated_pages;
 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
@@ -5079,6 +5079,12 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  GOTO_EXIT_ON_ERROR;
 	}
 
+      estimated_pages =
+	qfile_get_estimated_pages_for_sorting (gbstate.agg_hash_context->
+					       part_list_id,
+					       &gbstate.agg_hash_context->
+					       sort_key);
+
       /* choose appripriate sort function */
       if (gbstate.agg_hash_context->sort_key.use_original)
 	{
@@ -5090,13 +5096,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
 
       /* sort and aggregate partial results */
-      if (sort_listfile (thread_p, NULL_VOLID,
-			 qfile_get_estimated_pages_for_sorting (gbstate.
-								agg_hash_context->
-								part_list_id,
-								&gbstate.
-								agg_hash_context->
-								sort_key),
+      if (sort_listfile (thread_p, NULL_VOLID, estimated_pages,
 			 &qexec_hash_gby_get_next, &gbstate,
 			 &qexec_hash_gby_put_next, &gbstate,
 			 cmp_fn, &gbstate.agg_hash_context->sort_key,
@@ -5196,10 +5196,10 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       gbstate.upd_del_class_cnt = 0;
     }
 
-  if (sort_listfile (thread_p, NULL_VOLID,
-		     qfile_get_estimated_pages_for_sorting (list_id,
-							    &gbstate.
-							    key_info),
+  estimated_pages = qfile_get_estimated_pages_for_sorting (list_id,
+							   &gbstate.key_info);
+
+  if (sort_listfile (thread_p, NULL_VOLID, estimated_pages,
 		     &qexec_gby_get_next, &gbstate, &qexec_gby_put_next,
 		     &gbstate, gbstate.cmp_fn, &gbstate.key_info, SORT_DUP,
 		     NO_SORT_LIMIT) != NO_ERROR)
@@ -21313,6 +21313,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QFILE_LIST_SCAN_ID input_scan_id, interm_scan_id;
   OUTPTR_LIST *a_outptr_list;
   int ls_flag = 0;
+  int estimated_pages;
 
   /* fetch regulist and outlist */
   a_outptr_list =
@@ -21447,15 +21448,15 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
    * Now load up the sort module and set it off...
    */
 
+  estimated_pages =
+    qfile_get_estimated_pages_for_sorting (list_id, &analytic_state.key_info);
+
   /* number of sort keys is always less than list file column count, as
    * sort columns are included */
   analytic_state.key_info.use_original = 1;
   analytic_state.cmp_fn = &qfile_compare_partial_sort_record;
 
-  if (sort_listfile (thread_p, NULL_VOLID,
-		     qfile_get_estimated_pages_for_sorting (list_id,
-							    &analytic_state.
-							    key_info),
+  if (sort_listfile (thread_p, NULL_VOLID, estimated_pages,
 		     &qexec_analytic_get_next, &analytic_state,
 		     &qexec_analytic_put_next, &analytic_state,
 		     analytic_state.cmp_fn, &analytic_state.key_info,

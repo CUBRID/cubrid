@@ -4677,6 +4677,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 
   estimated_pages = qfile_get_estimated_pages_for_sorting (list_id_p,
 							   &info.key_info);
+
   dup_option = ((option == Q_DISTINCT) ? SORT_ELIM_DUP : SORT_DUP);
 
   sort_result =

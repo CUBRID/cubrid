@@ -8966,7 +8966,8 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
   midxkey1 = (DB_MIDXKEY *) (&(db_midxkey1->data.midxkey));
   midxkey2 = (DB_MIDXKEY *) (&(db_midxkey2->data.midxkey));
 
-  assert (midxkey1->size != -1 && midxkey2->size != -1);
+  assert (midxkey1->size != -1);
+  assert (midxkey2->size != -1);
   assert (midxkey1->ncolumns == midxkey2->ncolumns);
   assert (midxkey1->domain == midxkey2->domain);
   assert (midxkey1->domain->setdomain == midxkey2->domain->setdomain);
@@ -8994,7 +8995,8 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
     }
   else
     {
-      assert (size1 < midxkey1->size && size2 < midxkey2->size);
+      assert (size1 < midxkey1->size);
+      assert (size2 < midxkey2->size);
 
       if (!next_dom_is_desc)
 	{

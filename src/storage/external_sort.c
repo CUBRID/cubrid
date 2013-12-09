@@ -43,6 +43,12 @@
 #include "overflow_file.h"
 #include "boot_sr.h"
 
+#if defined(SERVER_MODE)
+#include "connection_error.h"
+#include "thread.h"
+#include "job_queue.h"
+#endif /* SERVER_MODE */
+
 /* Estimate on number of pages in the multipage temporary file */
 #define SORT_MULTIPAGE_FILE_SIZE_ESTIMATE  20
 
@@ -111,6 +117,28 @@ struct vol_list
   VOL_INFO *vol_info;		/* array of volume information */
 };
 
+/* Parallel eXecution and communition node */
+typedef struct px_tree_node PX_TREE_NODE;
+struct px_tree_node
+{
+  int px_id;			/* node ID */
+  int px_status;		/* node status */
+
+  int px_height;		/* tournament tree: node level */
+  int px_myself;		/* tournament tree: node ID */
+
+  int px_tran_index;
+
+  void *px_arg;			/* operation info */
+
+  char **px_buff;
+  char **px_vector;
+  long px_vector_size;
+
+  char **px_result;		/* output */
+  long px_result_size;		/* output */
+};
+
 typedef struct sort_param SORT_PARAM;
 struct sort_param
 {
@@ -137,6 +165,7 @@ struct sort_param
   /*Comparison function to use in the internal sorting and the merging phases */
   SORT_CMP_FUNC *cmp_fn;
   void *cmp_arg;
+  SORT_DUP_OPTION option;
 
   /* output function to apply on temporary records */
   SORT_PUT_FUNC *put_fn;
@@ -150,6 +179,14 @@ struct sort_param
 
   /* multipage number of pages */
   int multipage_npages;
+
+  /* support parallelism */
+#if defined(SERVER_MODE)
+  pthread_mutex_t px_mtx;	/* px_node status mutex */
+#endif
+  int px_height_max;		/* px_node tournament tree max level */
+  int px_array_size;		/* px_node array size */
+  PX_TREE_NODE *px_array;	/* px_node array */
 };
 
 typedef struct sort_rec_list SORT_REC_LIST;
@@ -214,10 +251,24 @@ typedef void FIND_RUN_FN (char **, long *, SORT_STACK *, long,
 typedef void MERGE_RUN_FN (char **, char **, SORT_STACK *, SORT_CMP_FUNC *,
 			   void *);
 
+#if !defined(NDEBUG)
+static int sort_validate (char **vector, long size, SORT_CMP_FUNC * compare,
+			  void *comp_arg);
+#endif
+static PX_TREE_NODE *px_sort_assign (THREAD_ENTRY * thread_p,
+				     SORT_PARAM * sort_param, int px_id,
+				     char **px_buff, char **px_vector,
+				     long px_vector_size, int px_height,
+				     int px_myself);
+static int px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node);
+#if defined(SERVER_MODE)
+static int px_sort_communicate (THREAD_ENTRY * thread_p,
+				PX_TREE_NODE * px_node);
+#endif
+
 static int sort_inphase_sort (THREAD_ENTRY * thread_p,
 			      SORT_PARAM * sort_param,
-			      SORT_GET_FUNC * get_next, void *arguments,
-			      SORT_DUP_OPTION option);
+			      SORT_GET_FUNC * get_next, void *arguments);
 static int sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p,
 					SORT_PARAM * sort_param);
 static int sort_exphase_merge (THREAD_ENTRY * thread_p,
@@ -243,11 +294,9 @@ static int sort_get_numpages_of_active_infiles (const SORT_PARAM *
 static int sort_find_inbuf_size (int tot_buffers, int in_sections);
 static char *sort_retrieve_longrec (THREAD_ENTRY * thread_p, RECDES * address,
 				    RECDES * memory);
-
-static int sort_run_sort (char ***base, long limit, long sort_numrecs,
-			  char **otherbase,
-			  SORT_CMP_FUNC * cmp_fn, void *cmp_arg,
-			  SORT_DUP_OPTION option, long *srun_limit);
+static char **sort_run_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
+			     char **base, long limit, long sort_numrecs,
+			     char **otherbase, long *srun_limit);
 static int sort_run_add_new (FILE_CONTENTS * file_contents, int num_pages);
 static void sort_run_remove_first (FILE_CONTENTS * file_contents);
 static void sort_run_flip (char **start, char **stop);
@@ -955,7 +1004,7 @@ sort_run_find (char **source, long *top, SORT_STACK * st_p, long limit,
 	     && ((cmp = (*compare) (stop, next_stop, comp_arg)) >= 0))
 	{
 	  /* mark duplicate as NULL */
-	  SORT_CHECK_DUPLICATE (stop, next_stop);
+	  SORT_CHECK_DUPLICATE (stop, next_stop);	/* increase dup_num */
 
 	  stop = next_stop;
 	  next_stop = next_stop + 1;
@@ -966,14 +1015,14 @@ sort_run_find (char **source, long *top, SORT_STACK * st_p, long limit,
       increasing_order = true;	/* mark as increasing order run */
 
       /* mark duplicate as NULL */
-      SORT_CHECK_DUPLICATE (start, stop);
+      SORT_CHECK_DUPLICATE (start, stop);	/* increase dup_num */
 
       /* build increasing order run */
       while (next_stop < limit_p
 	     && ((cmp = (*compare) (stop, next_stop, comp_arg)) <= 0))
 	{
 	  /* mark duplicate as NULL */
-	  SORT_CHECK_DUPLICATE (stop, next_stop);
+	  SORT_CHECK_DUPLICATE (stop, next_stop);	/* increase dup_num */
 
 	  stop = next_stop;
 	  next_stop = next_stop + 1;
@@ -1078,7 +1127,8 @@ sort_run_merge (char **low, char **high, SORT_STACK * st_p,
          srun follows ascending order.
          if (left_max < right_min) do FORWARD-CON.
          we use '<' instead of '<=' */
-      if ((*compare) (left_stop, right_start, comp_arg) < 0)
+      cmp = (*compare) (left_stop, right_start, comp_arg);
+      if (cmp < 0)
 	{
 	  /* con == TRUE */
 	  dest_low_high = right_srun_p->low_high;
@@ -1176,20 +1226,13 @@ sort_run_merge (char **low, char **high, SORT_STACK * st_p,
 
 /*
  * sort_run_sort () - An implementation of a run-sort algorithm
- *   return:
+ *   return: pointer to the sorted area
+ *   thread_p(in):
+ *   sort_param(in): sort parameters
  *   base(in): pointer to the element at the base of the table
  *   limit(in): numrecs of before current sort
  *   sort_numrecs(in): numrecs of after privious sort
  *   otherbase(in): pointer to alternate area suffecient to store base-limit
- *   compare(in): name of the comparison function. It takes three arguments;
- *                the first two are the pointers to elements to compare, and
- *                the third one is the generic user-supplied arguments. It
- *                should return an integer less than, equal to, or greater than
- *                0, as the first argument to be considered is less than,
- *                equal to, or greater than the second one.
- *   comp_arg(in): generic arguments to the comparison function. Pointer to any
- *                 data  structure that can be used by the comparison function.
- *   option(in): duplication option
  *   srun_limit(in): numrecs of after current sort
  *
  * Note: This sorts files by successive merging of runs.
@@ -1204,26 +1247,38 @@ sort_run_merge (char **low, char **high, SORT_STACK * st_p,
  *       This could be sped up a bit by looking for N runs, and sorting these
  *       into lists of concatennatable runs.
  */
-static int
-sort_run_sort (char ***base, long limit, long sort_numrecs, char **otherbase,
-	       SORT_CMP_FUNC * compare, void *comp_arg,
-	       SORT_DUP_OPTION option, long *srun_limit)
+static char **
+sort_run_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
+	       char **base, long limit, long sort_numrecs, char **otherbase,
+	       long *srun_limit)
 {
-  char **src, **dest;
+  SORT_CMP_FUNC *compare;
+  void *comp_arg;
+  SORT_DUP_OPTION option;
+  char **src, **dest, **result;
   SORT_STACK sr_stack, *st_p;
   long src_top = 0;
   int cnt;
+
+  assert_release (limit == *srun_limit);
 
   /* exclude already sorted items */
   limit -= sort_numrecs;
 
   if (limit == 0 || (limit == 1 && sort_numrecs == 0))
     {
-      return NO_ERROR;
+      return base;
     }
 
-  src = *base;
+  /* init */
+  compare = sort_param->cmp_fn;
+  comp_arg = sort_param->cmp_arg;
+  option = sort_param->option;
+
+  src = base;
   dest = otherbase;
+  result = NULL;
+
   st_p = &sr_stack;
   st_p->top = -1;
 
@@ -1237,7 +1292,9 @@ sort_run_sort (char ***base, long limit, long sort_numrecs, char **otherbase,
   st_p->srun = (SRUN *) db_private_alloc (NULL, cnt * sizeof (SRUN));
   if (st_p->srun == NULL)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, cnt * sizeof (SRUN));
+      return NULL;
     }
 
   do
@@ -1260,7 +1317,7 @@ sort_run_sort (char ***base, long limit, long sort_numrecs, char **otherbase,
     }
   while (src_top < limit);
 
-  if (sort_numrecs)
+  if (sort_numrecs > 0)
     {
       /* finally, merge with already found srun */
       SRUN *srun_p;
@@ -1284,50 +1341,41 @@ sort_run_sort (char ***base, long limit, long sort_numrecs, char **otherbase,
   /* include already sorted items */
   limit += sort_numrecs;
 
-  if (st_p->srun[0].start == 0)
+  *srun_limit = limit - st_p->srun[0].start;
+
+  if (st_p->srun[0].low_high == 'L')
     {
-      /* not found duplicate value */
-      if (st_p->srun[0].low_high == 'L')
-	{
-	  SORT_SWAP_PTR ((*base), otherbase);
-	}
+      result = otherbase + st_p->srun[0].start;
     }
   else
     {
-      /* save limit of non-duplicated value slot */
-      *srun_limit = limit - st_p->srun[0].start;
-
-      /* move base pointer */
-      *base = &((*base)[st_p->srun[0].start]);
-
-      if (st_p->srun[0].low_high == 'L')
-	{
-	  if (option == SORT_ELIM_DUP)
-	    {
-	      memcpy (*base, &otherbase[st_p->srun[0].start],
-		      (*srun_limit) * sizeof (char *));
-	    }
-	  else
-	    {
-	      otherbase = &otherbase[st_p->srun[0].start];
-	      SORT_SWAP_PTR ((*base), otherbase);
-	    }
-	}
+      result = base + st_p->srun[0].start;
     }
+  assert (result != NULL);
 
 #if defined(CUBRID_DEBUG)
   src_top = 0;
-  sort_run_find (src, &src_top, st_p, limit, compare, comp_arg, option);
-  if (st_p->srun[st_p->top].stop != limit - 1)
+  src = result;
+  sort_run_find (src, &src_top, st_p, *srun_limit, compare, comp_arg, option);
+  if (st_p->srun[st_p->top].stop != *srun_limit - 1)
     {
       printf ("Inconsistent sort, %ld %ld %ld\n",
-	      st_p->srun[st_p->top].start, st_p->srun[st_p->top].stop, limit);
+	      st_p->srun[st_p->top].start, st_p->srun[st_p->top].stop,
+	      *srun_limit);
+      result = NULL;
     }
 #endif /* CUBRID_DEBUG */
 
   db_private_free_and_init (NULL, st_p->srun);
 
-  return NO_ERROR;
+#if !defined(NDEBUG)
+  if (sort_validate (result, *srun_limit, compare, comp_arg) != NO_ERROR)
+    {
+      result = NULL;
+    }
+#endif
+
+  return result;
 }
 
 /*
@@ -1376,35 +1424,71 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
 	       void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg,
 	       SORT_DUP_OPTION option, int limit)
 {
-  SORT_PARAM sort_param;
-  INT32 input_pages;
   int error = NO_ERROR;
+  SORT_PARAM *sort_param = NULL;
+  bool prm_enable_sort_parallel = false;	/* TODO - PRM_SORT_PARALLEL_SORT */
+  INT32 input_pages;
   int i;
   int file_pg_cnt_est;
+#if defined(SERVER_MODE)
+  int num_cpus;
+  int rv;
+#endif /* SERVER_MODE */
 
   thread_set_sort_stats_active (thread_p, true);
 
-  sort_param.cmp_fn = cmp_fn;
-  sort_param.cmp_arg = cmp_arg;
-  sort_param.put_fn = put_fn;
-  sort_param.put_arg = put_arg;
+  sort_param = (SORT_PARAM *) malloc (sizeof (SORT_PARAM));
+  if (sort_param == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error,
+	      1, sizeof (SORT_PARAM));
+      return error;
+    }
 
-  sort_param.limit = limit;
-  sort_param.tot_tempfiles = 0;
+#if defined(SERVER_MODE)
+  rv = pthread_mutex_init (&(sort_param->px_mtx), NULL);
+  if (rv != 0)
+    {
+      error = ER_CSS_PTHREAD_MUTEX_INIT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+#endif /* SERVER_MODE */
+
+  sort_param->cmp_fn = cmp_fn;
+  sort_param->cmp_arg = cmp_arg;
+  sort_param->option = option;
+
+  sort_param->put_fn = put_fn;
+  sort_param->put_arg = put_arg;
+
+  sort_param->limit = limit;
+  sort_param->tot_tempfiles = 0;
+
+  /* initialize memory allocable fields */
+  for (i = 0; i < 2 * SORT_MAX_HALF_FILES; i++)
+    {
+      sort_param->temp[i].volid = NULL_VOLID;
+      sort_param->file_contents[i].num_pages = NULL;
+    }
+  sort_param->internal_memory = NULL;
+  sort_param->px_height_max = sort_param->px_array_size = 0;
+  sort_param->px_array = NULL;
 
   /* initialize temp. overflow file. Real value will be assigned in
    * sort_inphase_sort function, if long size sorting records are
    * encountered. */
-  sort_param.multipage_file.volid = NULL_VOLID;
-  sort_param.multipage_file.fileid = NULL_FILEID;
-  sort_param.multipage_npages = 0;
+  sort_param->multipage_file.volid = NULL_VOLID;
+  sort_param->multipage_file.fileid = NULL_FILEID;
+  sort_param->multipage_npages = 0;
 
   /* NOTE: This volume list will not be used any more. */
   /* initialize temporary volume list */
-  sort_param.vol_list.volid = volid;
-  sort_param.vol_list.vol_ent_cnt = 0;
-  sort_param.vol_list.vol_cnt = 0;
-  sort_param.vol_list.vol_info = NULL;
+  sort_param->vol_list.volid = volid;
+  sort_param->vol_list.vol_ent_cnt = 0;
+  sort_param->vol_list.vol_cnt = 0;
+  sort_param->vol_list.vol_info = NULL;
 
   if (est_inp_pg_cnt > 0)
     {
@@ -1417,58 +1501,97 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
     }
 
   /* The size of a sort buffer is limited to PRM_SR_NBUFFERS. */
-  sort_param.tot_buffers =
+  sort_param->tot_buffers =
     MIN (prm_get_integer_value (PRM_ID_SR_NBUFFERS), input_pages);
-  sort_param.tot_buffers = MAX (4, sort_param.tot_buffers);
+  sort_param->tot_buffers = MAX (4, sort_param->tot_buffers);
 
-  sort_param.internal_memory =
-    (char *) malloc ((size_t) sort_param.tot_buffers * (size_t) DB_PAGESIZE);
-  if (sort_param.internal_memory == NULL)
+  sort_param->internal_memory =
+    (char *) malloc ((size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
+  if (sort_param->internal_memory == NULL)
     {
-      sort_param.tot_buffers = 4;
-      sort_param.internal_memory =
-	(char *) malloc (sort_param.tot_buffers * DB_PAGESIZE);
+      sort_param->tot_buffers = 4;
+
+      sort_param->internal_memory =
+	(char *) malloc (sort_param->tot_buffers * DB_PAGESIZE);
+      if (sort_param->internal_memory == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error,
+		  1, (sort_param->tot_buffers * DB_PAGESIZE));
+	  goto cleanup;
+	}
     }
 
-  if (sort_param.internal_memory == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (sort_param.tot_buffers * DB_PAGESIZE));
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto cleanup;
-    }
+  sort_param->half_files =
+    sort_get_num_half_tmpfiles (sort_param->tot_buffers, input_pages);
+  sort_param->tot_tempfiles = sort_param->half_files << 1;
+  sort_param->in_half = 0;
 
-  sort_param.half_files = sort_get_num_half_tmpfiles (sort_param.tot_buffers,
-						      input_pages);
-  sort_param.tot_tempfiles = sort_param.half_files << 1;
-  sort_param.in_half = 0;
-
-  for (i = 0; i < sort_param.tot_tempfiles; i++)
+  for (i = 0; i < sort_param->tot_tempfiles; i++)
     {
       /* Initilize temporary file identifier; real value will be set in
          "sort_add_new_file () */
-      sort_param.temp[i].volid = NULL_VOLID;
+      sort_param->temp[i].volid = NULL_VOLID;
 
       /* Initilize file contents list */
-      sort_param.file_contents[i].num_pages =
+      sort_param->file_contents[i].num_pages =
 	(int *) db_private_alloc (thread_p,
 				  SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
-      if (sort_param.file_contents[i].num_pages == NULL)
+      if (sort_param->file_contents[i].num_pages == NULL)
 	{
-	  sort_param.tot_tempfiles = i;
+	  sort_param->tot_tempfiles = i;
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto cleanup;
 	}
 
-      sort_param.file_contents[i].num_slots = SORT_INITIAL_DYN_ARRAY_SIZE;
-      sort_param.file_contents[i].first_run = -1;
-      sort_param.file_contents[i].last_run = -1;
+      sort_param->file_contents[i].num_slots = SORT_INITIAL_DYN_ARRAY_SIZE;
+      sort_param->file_contents[i].first_run = -1;
+      sort_param->file_contents[i].last_run = -1;
     }
 
   /* Create only input temporary files
      make file and temporary volume page count estimates */
-  sort_param.tmp_file_pgs = CEIL_PTVDIV (input_pages, sort_param.half_files);
-  sort_param.tmp_file_pgs = MAX (1, sort_param.tmp_file_pgs);
+  sort_param->tmp_file_pgs = CEIL_PTVDIV (input_pages,
+					  sort_param->half_files);
+  sort_param->tmp_file_pgs = MAX (1, sort_param->tmp_file_pgs);
+
+  sort_param->px_height_max = 0;	/* init */
+  sort_param->px_array_size = 1;	/* init */
+
+#if 1				/* TODO - currently, disable parallelism */
+  prm_enable_sort_parallel = false;
+#endif
+
+#if defined(SERVER_MODE)
+  if (prm_enable_sort_parallel == true)
+    {
+      /* TODO - calc n, 2^^n
+       *
+       * get the number of CPUs
+       *
+       * TODO - fileio_os_sysconf really get #cores instead of #CPUs
+       *      - NEED MORE CONSIDERATION
+       */
+      num_cpus = fileio_os_sysconf ();
+
+      sort_param->px_height_max = sqrt (num_cpus);	/* n */
+      sort_param->px_array_size = num_cpus;	/* 2^^n */
+
+      assert_release (sort_param->px_array_size ==
+		      pow (2, sort_param->px_height_max));
+    }
+#endif /* SERVER_MODE */
+
+  sort_param->px_array =
+    (PX_TREE_NODE *) malloc (sort_param->px_array_size *
+			     sizeof (PX_TREE_NODE));
+  if (sort_param->px_array == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error,
+	      1, (sort_param->px_array_size * sizeof (PX_TREE_NODE)));
+      goto cleanup;
+    }
 
   /*
    * Don't allocate any temp files yet, since we may not need them.
@@ -1478,57 +1601,689 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
    * space that is going to be needed.
    */
 
-  error = sort_inphase_sort (thread_p, &sort_param, get_fn, get_arg, option);
-  if (error == NO_ERROR)
+  error = sort_inphase_sort (thread_p, sort_param, get_fn, get_arg);
+  if (error != NO_ERROR)
     {
-      if (sort_param.tot_runs > 1)
-	{
-	  /* Create output temporary files
-	     make file and temporary volume page count estimates */
-	  file_pg_cnt_est =
-	    sort_get_avg_numpages_of_nonempty_tmpfile (&sort_param);
-	  file_pg_cnt_est = MAX (1, file_pg_cnt_est);
-
-	  if (sort_param.tot_tempfiles > sort_param.half_files)
-	    {
-	      error =
-		file_create_hint_numpages (thread_p, file_pg_cnt_est *
-					   (sort_param.tot_tempfiles -
-					    sort_param.half_files), FILE_TMP);
-	    }
-
-	  if (error == NO_ERROR)
-	    {
-	      for (i = sort_param.half_files; i < sort_param.tot_tempfiles;
-		   i++)
-		{
-		  if (sort_add_new_file
-		      (thread_p, &sort_param.temp[i], file_pg_cnt_est,
-		       true) != NO_ERROR)
-		    {
-		      error = er_errid ();
-		      goto cleanup;
-		    }
-		}
-
-	      if (option == SORT_ELIM_DUP)
-		{
-		  error = sort_exphase_merge_elim_dup (thread_p, &sort_param);
-		}
-	      else
-		{
-		  /* SORT_DUP */
-		  error = sort_exphase_merge (thread_p, &sort_param);
-		}
-	    }
-	}			/* if (sort_param.tot_runs > 1) */
+      goto cleanup;
     }
 
+  if (sort_param->tot_runs > 1)
+    {
+      /* Create output temporary files
+         make file and temporary volume page count estimates */
+      file_pg_cnt_est =
+	sort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
+      file_pg_cnt_est = MAX (1, file_pg_cnt_est);
+
+      if (sort_param->tot_tempfiles > sort_param->half_files)
+	{
+	  error =
+	    file_create_hint_numpages (thread_p, file_pg_cnt_est *
+				       (sort_param->tot_tempfiles -
+					sort_param->half_files), FILE_TMP);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	}
+
+      for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
+	{
+	  error = sort_add_new_file (thread_p, &(sort_param->temp[i]),
+				     file_pg_cnt_est, true);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	}
+
+      if (sort_param->option == SORT_ELIM_DUP)
+	{
+	  error = sort_exphase_merge_elim_dup (thread_p, sort_param);
+	}
+      else
+	{
+	  /* SORT_DUP */
+	  error = sort_exphase_merge (thread_p, sort_param);
+	}
+    }				/* if (sort_param->tot_runs > 1) */
+
 cleanup:
-  sort_return_used_resources (thread_p, &sort_param);
+  sort_return_used_resources (thread_p, sort_param);
+  sort_param = NULL;
   thread_set_sort_stats_active (thread_p, false);
 
-  return (error);
+  return error;
+}
+
+#if !defined(NDEBUG)
+/*
+ * sort_validate() -
+ *   return:
+ *   vector(in):
+ *   size(in):
+ *   compare(in):
+ *   comp_arg(in):
+ *
+ * NOTE: debugging function
+ */
+static int
+sort_validate (char **vector, long size,
+	       SORT_CMP_FUNC * compare, void *comp_arg)
+{
+  long k;
+  int cmp;
+
+  assert (vector != NULL);
+  assert (size >= 1);
+  assert (compare != NULL);
+
+#if 1				/* TODO - for QAF, do not delete me */
+  return NO_ERROR;
+#endif
+
+  for (k = 0; k < size - 1; k++)
+    {
+      cmp = (*compare) (&(vector[k]), &(vector[k + 1]), comp_arg);
+      if (cmp != DB_LT)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+#endif
+
+/*
+ * px_sort_assign() - 
+ *   return:
+ *   thread_p(in):
+ *   sort_param(in): sort parameters
+ *   px_id(in):
+ *   px_buff(in):
+ *   px_vector(in):
+ *   px_vector_size(in):
+ *   px_height(in):
+ *   px_myself(in):
+ *
+ * NOTE: support parallelism
+ */
+static PX_TREE_NODE *
+px_sort_assign (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int px_id,
+		char **px_buff, char **px_vector, long px_vector_size,
+		int px_height, int px_myself)
+{
+  PX_TREE_NODE *px_node;
+#if defined(SERVER_MODE)
+  int rv = NO_ERROR;
+#endif
+
+  assert (sort_param != NULL);
+
+  if (px_height < 0 || px_height > sort_param->px_height_max)
+    {
+      assert_release (false);
+      return NULL;
+    }
+
+  if (px_id < 0 || px_id >= sort_param->px_array_size)
+    {
+      assert_release (false);
+      return NULL;
+    }
+
+  if (px_myself < 0 || px_myself > px_id)
+    {
+      assert_release (false);
+      return NULL;
+    }
+
+  px_node = &(sort_param->px_array[px_id]);
+
+#if defined(SERVER_MODE)
+  rv = pthread_mutex_lock (&(sort_param->px_mtx));
+  assert (rv == NO_ERROR);
+
+#if !defined(NDEBUG)
+  if (px_node->px_status != 0)
+    {
+      assert (false);
+      pthread_mutex_unlock (&(sort_param->px_mtx));
+      return NULL;
+    }
+#endif
+
+  px_node->px_status = 0;
+
+  pthread_mutex_unlock (&(sort_param->px_mtx));
+#else /* SERVER_MODE */
+  assert (sort_param->px_height_max == 0);
+  assert (sort_param->px_array_size == 1);
+
+  assert (px_id == 0);
+  assert (px_height == 0);
+  assert (px_myself == 0);
+
+  px_node->px_status = 0;
+#endif /* SERVER_MODE */
+
+  /* set node info */
+
+  px_node->px_id = px_id;
+
+  px_node->px_height = px_height;
+  px_node->px_myself = px_myself;
+
+  px_node->px_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  /* set operation info */
+
+  px_node->px_arg = (void *) sort_param;
+
+  px_node->px_buff = px_buff;
+  px_node->px_vector = px_vector;
+  px_node->px_vector_size = px_vector_size;
+
+  px_node->px_result = px_node->px_vector;	/* init */
+  px_node->px_result_size = px_node->px_vector_size;	/* init */
+
+  return px_node;
+}
+
+#if defined(SERVER_MODE)
+/*
+ * px_sort_communicate() -
+ *   return:
+ *   thread_p(in):
+ *   px_node(in):
+ *
+ * NOTE: support parallelism
+ */
+static int
+px_sort_communicate (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
+{
+  int ret = NO_ERROR;
+  SORT_PARAM *sort_param;
+  CSS_CONN_ENTRY *conn_p;
+  int conn_index;
+  CSS_JOB_ENTRY *job_entry_p;
+
+  assert_release (px_node != NULL);
+  assert_release (px_node->px_arg != NULL);
+
+  sort_param = (SORT_PARAM *) (px_node->px_arg);
+  assert_release (px_node->px_height <= sort_param->px_height_max);
+  assert_release (px_node->px_id < sort_param->px_array_size);
+
+  assert_release (px_node->px_vector_size > 1);
+
+  conn_p = thread_get_current_conn_entry ();
+  conn_index = (conn_p) ? conn_p->idx : 0;
+
+  /* explicit job queue index */
+  conn_index += px_node->px_id;
+
+  job_entry_p = css_make_job_entry (conn_p,
+				    (CSS_THREAD_FN) px_sort_myself,
+				    (CSS_THREAD_ARG) px_node, conn_index);
+  if (job_entry_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  css_add_to_job_queue (job_entry_p);
+
+  assert (ret == NO_ERROR);
+
+  return ret;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * px_sort_myself() -
+ *   return:
+ *   thread_p(in):
+ *   px_node(in):
+ *
+ * NOTE: support parallelism
+ *
+ * Partitioned merge logic
+ *
+ * The working core: each internal node recurses on this function
+ * both for its left side and its right side, as nodes one closer to
+ * the leaf level.  It then merges the results into the vector
+ *
+ * Leaf level nodes just sort the vector.
+ */
+static int
+px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
+{
+#define SORT_PARTITION_RUN_SIZE_MIN (ONE_M)
+
+  int ret = NO_ERROR;
+#if defined(SERVER_MODE)
+  bool old_check_interrupt;
+#endif /* SERVER_MODE */
+
+  char **buff;
+  char **vector;
+  long vector_size;
+
+  int parent;
+  int child_right = 0;
+  int child_height;
+
+  char **result = NULL;
+  long result_size = -1;
+  int cmp;
+
+  SORT_PARAM *sort_param;
+
+  int rv = NO_ERROR;
+
+  assert_release (px_node != NULL);
+  assert_release (px_node->px_id >= 0);
+  assert_release (px_node->px_arg != NULL);
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  sort_param = (SORT_PARAM *) (px_node->px_arg);
+
+#if defined(SERVER_MODE)
+  if (px_node->px_id > 0)
+    {
+      /* is new childs */
+      thread_p->tran_index = px_node->px_tran_index;
+      pthread_mutex_unlock (&thread_p->tran_index_lock);
+    }
+
+#if !defined(NDEBUG)
+  rv = pthread_mutex_lock (&(sort_param->px_mtx));
+  assert (rv == NO_ERROR);
+
+  assert (px_node->px_status == 0);
+
+  pthread_mutex_unlock (&(sort_param->px_mtx));
+#endif
+
+  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+#endif /* SERVER_MODE */
+
+  buff = px_node->px_buff;
+  vector = px_node->px_vector;
+  vector_size = px_node->px_vector_size;
+
+  assert_release (px_node->px_result == vector);
+  assert_release (px_node->px_result_size == vector_size);
+
+  result = px_node->px_result;
+  result_size = px_node->px_result_size;
+
+  assert_release (vector_size > 0);
+
+#if defined(SERVER_MODE)
+  parent = px_node->px_id & ~(1 << px_node->px_height);
+  child_height = px_node->px_height - 1;
+  if (child_height >= 0)
+    {
+      child_right = px_node->px_myself | (1 << child_height);
+      assert_release (child_right > 0);
+    }
+
+  if (vector_size <= 1)
+    {
+      assert_release (px_node->px_result == vector);
+      assert_release (px_node->px_result_size == vector_size);
+
+      result = px_node->px_result = vector;
+      result_size = px_node->px_result_size = vector_size;
+
+      /* mark as finished */
+
+      rv = pthread_mutex_lock (&(sort_param->px_mtx));
+      assert (rv == NO_ERROR);
+
+      assert_release (px_node->px_status == 0);
+      px_node->px_status = 1;	/* done */
+
+      pthread_mutex_unlock (&(sort_param->px_mtx));
+
+      goto exit_on_end;
+    }
+
+  if (px_node->px_height > 0 && vector_size > SORT_PARTITION_RUN_SIZE_MIN)
+    {
+      long left_vector_size, right_vector_size;
+      char **left_vector, **right_vector;
+      PX_TREE_NODE *left_px_node, *right_px_node;
+      int i, j, k;		// Used in the merge logic
+
+      assert_release (child_right > 0);
+
+      left_vector_size = vector_size / 2;
+      right_vector_size = vector_size - left_vector_size;
+
+      assert_release (vector_size == left_vector_size + right_vector_size);
+
+      /* do new child first */
+      right_vector = vector + left_vector_size;
+      right_px_node = px_sort_assign (thread_p, sort_param,
+				      px_node->px_id + child_right,
+				      buff + left_vector_size,
+				      right_vector, right_vector_size,
+				      child_height,
+				      0 /* px_myself: set as root */ );
+      if (right_px_node == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      if (right_vector_size > 1)
+	{
+	  /* launch new worker */
+	  if (px_sort_communicate (thread_p, right_px_node) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      else
+	{
+	  /* mark as finished */
+
+	  rv = pthread_mutex_lock (&(sort_param->px_mtx));
+	  assert (rv == NO_ERROR);
+
+	  assert_release (right_px_node->px_status == 0);
+	  right_px_node->px_status = 1;	/* done */
+
+	  pthread_mutex_unlock (&(sort_param->px_mtx));
+	}
+
+      left_vector = vector;
+      left_px_node = px_sort_assign (thread_p, sort_param,
+				     px_node->px_id,
+				     buff,
+				     left_vector, left_vector_size,
+				     child_height, px_node->px_myself);
+      if (left_px_node == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      assert_release (px_node == left_px_node);
+#if !defined(NDEBUG)
+      rv = pthread_mutex_lock (&(sort_param->px_mtx));
+      assert (rv == NO_ERROR);
+
+      assert (px_node->px_status == 0);
+
+      pthread_mutex_unlock (&(sort_param->px_mtx));
+#endif
+
+      if (left_vector_size > 1)
+	{
+	  if (px_sort_myself (thread_p, left_px_node) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+
+      /* wait for right-child finished */
+      do
+	{
+	  rv = pthread_mutex_lock (&(sort_param->px_mtx));
+	  assert (rv == NO_ERROR);
+
+	  if (right_px_node->px_status != 0)
+	    {
+	      assert (right_px_node->px_status == 1);
+	      pthread_mutex_unlock (&(sort_param->px_mtx));
+	      break;
+	    }
+
+	  pthread_mutex_unlock (&(sort_param->px_mtx));
+
+#if 1				/* TODO */
+	  thread_sleep (10);	/* 10 msec */
+#endif
+	}
+      while (1);
+
+      assert_release (px_node == left_px_node);
+#if !defined(NDEBUG)
+      rv = pthread_mutex_lock (&(sort_param->px_mtx));
+      assert (rv == NO_ERROR);
+
+      assert (right_px_node->px_status == 1);
+      assert (px_node->px_status == 0);
+
+      pthread_mutex_unlock (&(sort_param->px_mtx));
+#endif
+
+      right_vector = right_px_node->px_result;
+      right_vector_size = right_px_node->px_result_size;
+      if (right_vector == NULL || right_vector_size < 0)
+	{
+	  goto exit_on_error;
+	}
+
+      left_vector = left_px_node->px_result;
+      left_vector_size = left_px_node->px_result_size;
+      if (left_vector == NULL || left_vector_size < 0)
+	{
+	  goto exit_on_error;
+	}
+
+      assert_release (vector_size >= left_vector_size + right_vector_size);
+
+      result_size = px_node->px_result_size =
+	left_vector_size + right_vector_size;
+      if (left_vector < vector)
+	{
+	  assert_release (left_vector + left_vector_size <= vector);
+	  result = px_node->px_result = vector;
+	}
+      else
+	{
+	  result = px_node->px_result = buff;
+	}
+
+      /* Merge the two sub-results back into upper result */
+
+      i = j = k = 0;
+
+#if 1
+      /* STEP 2: check CON conditions
+         if (left_max < right_min) do FORWARD-CON.
+         we use '<' instead of '<=' */
+      cmp =
+	(*(sort_param->cmp_fn)) (&(left_vector[left_vector_size - 1]),
+				 &(right_vector[0]), sort_param->cmp_arg);
+
+      if (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT)
+	{
+	  ;			/* ok */
+	}
+      else
+	{
+	  assert_release (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT);
+	  goto exit_on_error;
+	}
+
+      if (cmp == DB_LT)
+	{
+	  while (i < left_vector_size)
+	    {
+	      result[k++] = left_vector[i++];
+	    }
+	  while (j < right_vector_size)
+	    {
+	      result[k++] = right_vector[j++];
+	    }
+	}
+      else
+	{
+	  /* STEP 3: check CON conditions
+	     if (right_max < left_min) do BACKWARD-CON.
+	     we use '<' instead of '<=' */
+	  cmp =
+	    (*(sort_param->cmp_fn)) (&(right_vector[right_vector_size - 1]),
+				     &(left_vector[0]), sort_param->cmp_arg);
+
+	  if (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT)
+	    {
+	      ;			/* ok */
+	    }
+	  else
+	    {
+	      assert_release (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT);
+	      goto exit_on_error;
+	    }
+
+	  if (cmp == DB_LT)
+	    {
+	      while (j < right_vector_size)
+		{
+		  result[k++] = right_vector[j++];
+		}
+	      while (i < left_vector_size)
+		{
+		  result[k++] = left_vector[i++];
+		}
+	    }
+	  else
+	    {
+#endif
+	      /* STEP 4: do the actual merge */
+	      while (i < left_vector_size && j < right_vector_size)
+		{
+		  cmp =
+		    (*(sort_param->cmp_fn)) (&(left_vector[i]),
+					     &(right_vector[j]),
+					     sort_param->cmp_arg);
+
+		  if (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT)
+		    {
+		      ;		/* ok */
+		    }
+		  else
+		    {
+		      assert_release (cmp == DB_LT || cmp == DB_EQ
+				      || cmp == DB_GT);
+		      goto exit_on_error;
+		    }
+
+		  if (cmp == DB_EQ)
+		    {
+		      if (sort_param->option == SORT_DUP)	/* allow duplicate */
+			{
+			  sort_append (&(left_vector[i]), &(right_vector[j]));
+			}
+
+		      result[k++] = right_vector[j++];	/* temp */
+		      i++;	/* skip left-side dup */
+		    }
+		  else if (cmp == DB_GT)
+		    {
+		      result[k++] = right_vector[j++];
+		    }
+		  else
+		    {
+		      assert_release (cmp == DB_LT);
+		      result[k++] = left_vector[i++];
+		    }
+		}
+	      while (i < left_vector_size)
+		{
+		  result[k++] = left_vector[i++];
+		}
+	      while (j < right_vector_size)
+		{
+		  result[k++] = right_vector[j++];
+		}
+#if 1
+	    }			/* else */
+	}			/* else */
+#endif
+
+      assert_release (result_size >= k);
+
+      result_size = px_node->px_result_size = k;
+
+#if !defined(NDEBUG)
+      if (sort_validate (result, result_size, sort_param->cmp_fn,
+			 sort_param->cmp_arg) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+#endif
+    }
+  else
+    {
+      result = px_node->px_result =
+	sort_run_sort (thread_p, sort_param, vector, vector_size,
+		       0 /* dummy */ ,
+		       buff, &(px_node->px_result_size));
+      result_size = px_node->px_result_size;
+    }
+
+#else /* SERVER_MODE */
+
+  result = px_node->px_result =
+    sort_run_sort (thread_p, sort_param, vector, vector_size, 0 /* dummy */ ,
+		   buff, &(px_node->px_result_size));
+  result_size = px_node->px_result_size;
+
+#endif /* SERVER_MODE */
+
+  if (result == NULL || result_size < 0)
+    {
+      assert_release (false);
+      goto exit_on_error;
+    }
+
+exit_on_end:
+
+  assert_release (result == px_node->px_result);
+  assert_release (result_size == px_node->px_result_size);
+
+  if (parent != px_node->px_id)
+    {
+      /* mark as finished */
+
+#if defined(SERVER_MODE)
+      rv = pthread_mutex_lock (&(sort_param->px_mtx));
+      assert (rv == NO_ERROR);
+#endif /* SERVER_MODE */
+
+      assert_release (px_node->px_status == 0);
+      px_node->px_status = 1;	/* done */
+
+#if defined(SERVER_MODE)
+      pthread_mutex_unlock (&(sort_param->px_mtx));
+#endif /* SERVER_MODE */
+    }
+
+#if defined(SERVER_MODE)
+  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+#endif /* SERVER_MODE */
+
+  return ret;
+
+exit_on_error:
+
+  result = px_node->px_result = NULL;
+  result_size = px_node->px_result_size = -1;
+
+  ret = (ret == NO_ERROR
+	 && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+
+  goto exit_on_end;
 }
 
 /*
@@ -1538,13 +2293,11 @@ cleanup:
  *   get_fn(in): user-supplied function: provides the temporary record for
  *               the given input record
  *   get_arg(in): arguments for get_fn
- *   option(in):
  *
  */
 static int
 sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
-		   SORT_GET_FUNC * get_fn, void *get_arg,
-		   SORT_DUP_OPTION option)
+		   SORT_GET_FUNC * get_fn, void *get_arg)
 {
   /* Variables for the input file */
   SORT_STATUS status;
@@ -1572,11 +2325,12 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
   char **index_buff;		/* buffer area to sort indexes. */
   int i;
   int error = NO_ERROR;
-  SORT_CMP_FUNC *compare;
-  void *comp_arg;
 
-  compare = sort_param->cmp_fn;
-  comp_arg = sort_param->cmp_arg;
+  PX_TREE_NODE *px_node;
+  int rv = NO_ERROR;
+
+  assert (sort_param->px_height_max >= 0);
+  assert (sort_param->px_array_size >= 1);
 
   /* Initialize the current pages of all temp files to 0 */
   for (i = 0; i < sort_param->half_files; i++)
@@ -1641,6 +2395,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	{
 	case SORT_ERROR_OCCURRED:
 	  error = er_errid ();
+	  assert (error != NO_ERROR);
 	  goto exit_on_error;
 
 	case SORT_REC_DOESNT_FIT:
@@ -1649,15 +2404,56 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	      /* Perform internal sorting and flush the run */
 
 	      index_area++;
-	      error = sort_run_sort (&index_area, numrecs, sort_numrecs,
-				     index_buff, compare, comp_arg, option,
-				     &numrecs);
-	      if (error != NO_ERROR)
+
+	      if (sort_numrecs == 0)
+		{
+		  assert (sort_param->px_height_max >= 0);
+		  assert (sort_param->px_array_size >= 1);
+#if defined(SERVER_MODE)
+		  rv = pthread_mutex_lock (&(sort_param->px_mtx));
+		  assert (rv == NO_ERROR);
+#endif /* SERVER_MODE */
+
+		  for (i = 0; i < sort_param->px_array_size; i++)
+		    {
+		      sort_param->px_array[i].px_status = 0;	/* init */
+		    }
+
+#if defined(SERVER_MODE)
+		  pthread_mutex_unlock (&(sort_param->px_mtx));
+#endif /* SERVER_MODE */
+
+		  px_node = px_sort_assign (thread_p, sort_param, 0,
+					    index_buff,
+					    index_area, numrecs,
+					    sort_param->px_height_max,
+					    0 /* px_myself: set as root */ );
+		  if (px_node == NULL)
+		    {
+		      goto exit_on_error;
+		    }
+
+		  if (px_sort_myself (thread_p, px_node) != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
+
+		  index_area = px_node->px_result;
+		  numrecs = px_node->px_result_size;
+		}
+	      else
+		{
+		  index_area =
+		    sort_run_sort (thread_p, sort_param, index_area, numrecs,
+				   sort_numrecs, index_buff, &numrecs);
+		}
+
+	      if (index_area == NULL || numrecs < 0)
 		{
 		  goto exit_on_error;
 		}
 
-	      if (option == SORT_ELIM_DUP)
+	      if (sort_param->option == SORT_ELIM_DUP)
 		{
 		  /* reset item_ptr */
 		  item_ptr = index_area[0];
@@ -1674,7 +2470,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 			      MAX_ALIGNMENT) + SORT_RECORD_LENGTH_SIZE;
 		}
 
-	      if (option == SORT_ELIM_DUP
+	      if (sort_param->option == SORT_ELIM_DUP
 		  && ((item_ptr - sort_param->internal_memory) +
 		      numrecs * SSIZEOF (SLOT) < DB_PAGESIZE)
 		  && temp_recdes.length <= SORT_MAXREC_LENGTH)
@@ -1748,8 +2544,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		    {
 		      error = ER_OUT_OF_VIRTUAL_MEMORY;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      long_recdes.area_size);
+			      error, 1, long_recdes.area_size);
 		      goto exit_on_error;
 		    }
 		}
@@ -1760,8 +2555,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	      if (status != SORT_SUCCESS)
 		{
 		  /* Obtaining the long record has failed */
-		  if (status == SORT_REC_DOESNT_FIT ||
-		      status == SORT_NOMORE_RECS)
+		  if (status == SORT_REC_DOESNT_FIT
+		      || status == SORT_NOMORE_RECS)
 		    {
 		      /* This should never happen */
 		      error = ER_GENERIC_ERROR;
@@ -1772,6 +2567,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		    {
 		      error = er_errid ();
 		    }
+
+		  assert (error != NO_ERROR);
 
 		  goto exit_on_error;
 		}
@@ -1792,6 +2589,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		    {
 		      /* Disk full; so return */
 		      error = er_errid ();
+		      assert (error != NO_ERROR);
 		      goto exit_on_error;
 		    }
 		}
@@ -1805,6 +2603,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 				   &sort_param->multipage_npages) == NULL)
 		{
 		  error = er_errid ();
+		  assert (error != NO_ERROR);
 		  goto exit_on_error;
 		}
 
@@ -1869,9 +2668,51 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
          in the internal memory */
 
       index_area++;
-      error = sort_run_sort (&index_area, numrecs, sort_numrecs, index_buff,
-			     compare, comp_arg, option, &numrecs);
-      if (error != NO_ERROR)
+
+      if (sort_numrecs == 0)
+	{
+	  assert (sort_param->px_height_max >= 0);
+	  assert (sort_param->px_array_size >= 1);
+#if defined(SERVER_MODE)
+	  rv = pthread_mutex_lock (&(sort_param->px_mtx));
+	  assert (rv == NO_ERROR);
+#endif /* SERVER_MODE */
+
+	  for (i = 0; i < sort_param->px_array_size; i++)
+	    {
+	      sort_param->px_array[i].px_status = 0;	/* init */
+	    }
+
+#if defined(SERVER_MODE)
+	  pthread_mutex_unlock (&(sort_param->px_mtx));
+#endif /* SERVER_MODE */
+
+	  px_node = px_sort_assign (thread_p, sort_param, 0,
+				    index_buff,
+				    index_area, numrecs,
+				    sort_param->px_height_max,
+				    0 /* px_myself: set as root */ );
+	  if (px_node == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  if (px_sort_myself (thread_p, px_node) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  index_area = px_node->px_result;
+	  numrecs = px_node->px_result_size;
+	}
+      else
+	{
+	  index_area =
+	    sort_run_sort (thread_p, sort_param, index_area, numrecs,
+			   sort_numrecs, index_buff, &numrecs);
+	}
+
+      if (index_area == NULL || numrecs < 0)
 	{
 	  goto exit_on_error;
 	}
@@ -1963,6 +2804,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 					sort_param->put_arg) != NO_ERROR)
 	    {
 	      error = er_errid ();
+	      assert (error != NO_ERROR);
 	      goto exit_on_error;
 	    }
 	}
@@ -2003,7 +2845,7 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		int out_file, int *cur_page, char *output_buffer,
 		char **index_area, int numrecs, int rec_type)
 {
-  int error;
+  int error = NO_ERROR;
   int run_size;
   RECDES out_recdes;
   int i;
@@ -2015,11 +2857,11 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
      if not, create it now. */
   if (sort_param->temp[out_file].volid == NULL_VOLID)
     {
-      if (sort_add_new_file (thread_p, &sort_param->temp[out_file],
-			     sort_param->tmp_file_pgs, false) != NO_ERROR)
+      error = sort_add_new_file (thread_p, &sort_param->temp[out_file],
+				 sort_param->tmp_file_pgs, false);
+      if (error != NO_ERROR)
 	{
-	  sort_return_used_resources (thread_p, sort_param);
-	  return er_errid ();
+	  return error;
 	}
     }
 
@@ -2065,7 +2907,7 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 				       cur_page[out_file], 1, output_buffer);
 	      if (error != NO_ERROR)
 		{
-		  return (error);
+		  return error;
 		}
 
 	      cur_page[out_file]++;
@@ -2078,9 +2920,9 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		{
 		  /* Slotted page module refuses to insert a short size record
 		     to an empty page. This should never happen. */
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_GENERIC_ERROR, 0);
-		  return ER_GENERIC_ERROR;
+		  error = ER_GENERIC_ERROR;
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		  return error;
 		}
 	    }
 	  flushed_items++;
@@ -2094,7 +2936,7 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 			       cur_page[out_file], 1, output_buffer);
       if (error != NO_ERROR)
 	{
-	  return (error);
+	  return error;
 	}
 
       /* Update sort parameters */
@@ -2103,13 +2945,14 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
     }
 
   /* Record the insertion of the new pages of the file to global parameters */
-  if (sort_run_add_new (&sort_param->file_contents[out_file],
-			run_size) != NO_ERROR)
+  error = sort_run_add_new (&sort_param->file_contents[out_file], run_size);
+  if (error != NO_ERROR)
     {
-      return er_errid ();
+      return error;
     }
 
   sort_param->tot_runs++;
+
   return NO_ERROR;
 }
 
@@ -2373,11 +3216,12 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		      cp_pages =
 			sort_param->file_contents[act].num_pages[first_run];
 
-		      if (sort_run_add_new
-			  (&sort_param->file_contents[cur_outfile],
-			   cp_pages) != NO_ERROR)
+		      error =
+			sort_run_add_new (&sort_param->
+					  file_contents[cur_outfile],
+					  cp_pages);
+		      if (error != NO_ERROR)
 			{
-			  error = er_errid ();
 			  goto bailout;
 			}
 
@@ -2504,6 +3348,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 					     &long_recdes[i]) == NULL)
 		    {
 		      error = er_errid ();
+		      assert (error != NO_ERROR);
 		      goto bailout;
 		    }
 		}
@@ -2593,6 +3438,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 					     &last_long_recdes) == NULL)
 		    {
 		      error = er_errid ();
+		      assert (error != NO_ERROR);
 		      goto bailout;
 		    }
 		}
@@ -2859,6 +3705,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		       &long_recdes[min]) == NULL)
 		    {
 		      error = er_errid ();
+		      assert (error != NO_ERROR);
 		      goto bailout;
 		    }
 		}
@@ -2955,6 +3802,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 				  NULL)
 				{
 				  error = er_errid ();
+				  assert (error != NO_ERROR);
 				  goto bailout;
 				}
 			    }
@@ -3005,10 +3853,11 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 	  /* Add a new node to the file_contents list of the current output
 	     file */
-	  if (sort_run_add_new (&sort_param->file_contents[cur_outfile],
-				out_runsize) != NO_ERROR)
+	  error =
+	    sort_run_add_new (&sort_param->file_contents[cur_outfile],
+			      out_runsize);
+	  if (error != NO_ERROR)
 	    {
-	      error = er_errid ();
 	      goto bailout;
 	    }
 
@@ -3125,6 +3974,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   char **data1, **data2;
   SORT_REC *sort_rec;
   int first_run;
+  int cmp;
 
   error = NO_ERROR;
 
@@ -3261,11 +4111,12 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		      cp_pages =
 			sort_param->file_contents[act].num_pages[first_run];
 
-		      if (sort_run_add_new
-			  (&sort_param->file_contents[cur_outfile],
-			   cp_pages) != NO_ERROR)
+		      error =
+			sort_run_add_new (&sort_param->
+					  file_contents[cur_outfile],
+					  cp_pages);
+		      if (error != NO_ERROR)
 			{
-			  error = er_errid ();
 			  goto bailout;
 			}
 		      sort_run_remove_first (&sort_param->file_contents[act]);
@@ -3392,6 +4243,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		       &long_recdes[i]) == NULL)
 		    {
 		      error = er_errid ();
+		      assert (error != NO_ERROR);
 		      goto bailout;
 		    }
 		}
@@ -3420,7 +4272,8 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		    &(long_recdes[p->rec_pos].data) :
 		    &(smallest_elem_ptr[p->rec_pos].data);
 
-		  if ((*compare) (data1, data2, compare_arg) > 0)
+		  cmp = (*compare) (data1, data2, compare_arg);
+		  if (cmp > 0)
 		    {
 		      do_swap = true;
 		    }
@@ -3460,6 +4313,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		      (thread_p, &last_elem_ptr, &last_long_recdes) == NULL)
 		    {
 		      error = er_errid ();
+		      assert (error != NO_ERROR);
 		      goto bailout;
 		    }
 		}
@@ -3472,7 +4326,8 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		&(long_recdes[p->rec_pos].data) :
 		&(smallest_elem_ptr[p->rec_pos].data);
 
-	      if ((*compare) (data1, data2, compare_arg) <= 0)
+	      cmp = (*compare) (data1, data2, compare_arg);
+	      if (cmp <= 0)
 		{
 		  last_elem_is_min = true;
 		}
@@ -3713,6 +4568,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 					     &long_recdes[min]) == NULL)
 		    {
 		      error = er_errid ();
+		      assert (error != NO_ERROR);
 		      goto bailout;
 		    }
 		}
@@ -3746,7 +4602,8 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			 REC_BIGONE) ? &(long_recdes[p->rec_pos].data) :
 			&(smallest_elem_ptr[p->rec_pos].data);
 
-		      if ((*compare) (data1, data2, compare_arg) > 0)
+		      cmp = (*compare) (data1, data2, compare_arg);
+		      if (cmp > 0)
 			{
 			  do_swap = true;
 			}
@@ -3792,6 +4649,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 				   &last_long_recdes) == NULL)
 				{
 				  error = er_errid ();
+				  assert (error != NO_ERROR);
 				  goto bailout;
 				}
 			    }
@@ -3806,7 +4664,8 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			    &(long_recdes[p->rec_pos].data) :
 			    &(smallest_elem_ptr[p->rec_pos].data);
 
-			  if ((*compare) (data1, data2, compare_arg) <= 0)
+			  cmp = (*compare) (data1, data2, compare_arg);
+			  if (cmp <= 0)
 			    {
 			      last_elem_is_min = true;
 			    }
@@ -3844,10 +4703,11 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 	  /* Add a new node to the file_contents list of the current output
 	     file */
-	  if (sort_run_add_new (&sort_param->file_contents[cur_outfile],
-				out_runsize) != NO_ERROR)
+	  error =
+	    sort_run_add_new (&sort_param->file_contents[cur_outfile],
+			      out_runsize);
+	  if (error != NO_ERROR)
 	    {
-	      error = er_errid ();
 	      goto bailout;
 	    }
 
@@ -3930,6 +4790,14 @@ static void
 sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   int k;
+#if defined(SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  if (sort_param == NULL)
+    {
+      return;			/* nop */
+    }
 
   if (sort_param->internal_memory)
     {
@@ -3946,7 +4814,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
   if (sort_param->multipage_file.volid != NULL_VOLID)
     {
-      (void) file_destroy (thread_p, &sort_param->multipage_file);
+      (void) file_destroy (thread_p, &(sort_param->multipage_file));
     }
 
   for (k = 0; k < sort_param->tot_tempfiles; k++)
@@ -3957,6 +4825,23 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 				    sort_param->file_contents[k].num_pages);
 	}
     }
+
+  if (sort_param->px_array)
+    {
+      free_and_init (sort_param->px_array);
+    }
+  sort_param->px_height_max = sort_param->px_array_size = 0;
+
+#if defined(SERVER_MODE)
+  rv = pthread_mutex_destroy (&(sort_param->px_mtx));
+  if (rv != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
+    }
+#endif
+
+  free_and_init (sort_param);
 }
 
 /*
@@ -4053,6 +4938,7 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page,
   int new_nthpg;
   int alloc_pgcnt;
   int i;
+  int ret = NO_ERROR;
 
   /* initializations */
   vpid.volid = vfid->volid;
@@ -4072,7 +4958,10 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page,
 					     &new_nthpg, alloc_pgcnt, NULL,
 					     NULL, NULL, NULL) == NULL)
 	{
-	  return er_errid ();
+	  ret = er_errid ();
+	  assert (ret != NO_ERROR);
+
+	  return ret;
 	}
     }
 
@@ -4088,7 +4977,10 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page,
 	  || pgbuf_copy_from_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr,
 				   true) == NULL)
 	{
-	  return er_errid ();
+	  ret = er_errid ();
+	  assert (ret != NO_ERROR);
+
+	  return ret;
 	}
 
       page_ptr = (PAGE_PTR) ((char *) page_ptr + DB_PAGESIZE);
@@ -4117,6 +5009,7 @@ sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page,
   VPID vpid;
   INT32 page_no;
   int i;
+  int ret = NO_ERROR;
 
   vpid.volid = vfid->volid;
   page_no = first_page;
@@ -4131,7 +5024,10 @@ sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page,
 	  || pgbuf_copy_to_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr,
 				 true) == NULL)
 	{
-	  return er_errid ();
+	  ret = er_errid ();
+	  assert (ret != NO_ERROR);
+
+	  return ret;
 	}
 
       page_ptr = (PAGE_PTR) ((char *) page_ptr + DB_PAGESIZE);

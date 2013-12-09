@@ -618,7 +618,6 @@ static FILEIO_TYPE fileio_write_backup_volume (THREAD_ENTRY * thread_p,
 					       session);
 static FILEIO_NODE *fileio_append_queue (FILEIO_QUEUE * qp,
 					 FILEIO_NODE * node);
-static int fileio_os_sysconf (void);
 #endif /* SERVER_MODE */
 
 static void fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd,
@@ -11962,7 +11961,7 @@ fileio_lock_region (int fd, int cmd, int type, off_t offset,
  * fileio_os_sysconf () -
  *   return:
  */
-static int
+int
 fileio_os_sysconf (void)
 {
   long nprocs = -1;

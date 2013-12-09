@@ -322,8 +322,7 @@ static int btree_dump_sort_output (const RECDES * recdes,
 				   LOAD_ARGS * load_args);
 #endif /* defined(CUBRID_DEBUG) */
 static int btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args,
-			     int est_inp_pg_cnt, SORT_PUT_FUNC * out_func,
-			     void *out_args);
+			     SORT_PUT_FUNC * out_func, void *out_args);
 static SORT_STATUS btree_sort_get_next (THREAD_ENTRY * thread_p,
 					RECDES * temp_recdes, void *arg);
 static int compare_driver (const void *first, const void *second, void *arg);
@@ -1395,7 +1394,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   /* Build the leaf pages of the btree as the output of the sort.
    * We do not estimate the number of pages required.
    */
-  if (btree_index_sort (thread_p, sort_args, 0,
+  if (btree_index_sort (thread_p, sort_args,
 			btree_construct_leafs, load_args) != NO_ERROR)
     {
       goto error;
@@ -2816,8 +2815,13 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 
 	  c = btree_compare_key (&this_key, &load_args->current_key,
 				 load_args->btid->key_type, 0, 1, NULL);
-	  if (c == DB_UNK)
+	  if (c == DB_EQ || c == DB_GT)
 	    {
+	      ;			/* ok */
+	    }
+	  else
+	    {
+	      assert_release (false);
 	      goto error;
 	    }
 
@@ -3191,7 +3195,6 @@ exit_on_error:
  *   return: int
  *   sort_args(in): sort arguments; specifies the sort-attribute as well as
  *	            the structure of the input objects
- *   est_inp_pg_cnt(in): Estimated number of input pages to the sorting
  *   out_func(in): output function to utilize the sorted items as they are
  *                 produced
  *   out_args(in): arguments to the out_func.
@@ -3203,11 +3206,11 @@ exit_on_error:
  */
 static int
 btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args,
-		  int est_inp_pg_cnt, SORT_PUT_FUNC * out_func,
-		  void *out_args)
+		  SORT_PUT_FUNC * out_func, void *out_args)
 {
   return sort_listfile (thread_p, sort_args->hfids[0].vfid.volid,
-			est_inp_pg_cnt, &btree_sort_get_next, sort_args,
+			0 /* TODO - support parallelism */ ,
+			&btree_sort_get_next, sort_args,
 			out_func, out_args, compare_driver, sort_args,
 			SORT_DUP, NO_SORT_LIMIT);
 }
