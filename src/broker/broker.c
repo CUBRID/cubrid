@@ -310,8 +310,7 @@ static int num_thr;
 static pthread_mutex_t clt_table_mutex;
 static pthread_mutex_t suspend_mutex;
 static pthread_mutex_t run_appl_mutex;
-static pthread_mutex_t con_status_mutex;
-static pthread_mutex_t service_flag_mutex;
+static pthread_mutex_t broker_shm_mutex;
 static pthread_mutex_t run_proxy_mutex;
 static char run_proxy_flag = 0;
 
@@ -361,6 +360,7 @@ broker_add_new_cas (void)
       return false;
     }
 
+  pthread_mutex_lock (&broker_shm_mutex);
   shm_appl->as_info[add_as_index].pid = pid;
   shm_appl->as_info[add_as_index].psize = getsize (pid);
   shm_appl->as_info[add_as_index].psize_time = time (NULL);
@@ -375,6 +375,72 @@ broker_add_new_cas (void)
 
   (shm_br->br_info[br_index].appl_server_num)++;
   (shm_appl->num_appl_server)++;
+  pthread_mutex_unlock (&broker_shm_mutex);
+
+  return true;
+}
+
+static bool
+broker_drop_one_cas_by_time_to_kill (void)
+{
+  int cur_appl_server_num, wait_job_cnt;
+  int drop_as_index;
+  int pid;
+  T_APPL_SERVER_INFO *drop_as_info;
+
+  /* DROP UTS */
+  cur_appl_server_num = shm_br->br_info[br_index].appl_server_num;
+  wait_job_cnt = shm_appl->job_queue[0].id + hold_job;
+  wait_job_cnt -= (cur_appl_server_num - num_busy_uts);
+
+  if (cur_appl_server_num <= shm_br->br_info[br_index].appl_server_min_num
+      || wait_job_cnt > 0)
+    {
+      return false;
+    }
+
+  drop_as_index = find_drop_as_index ();
+  if (drop_as_index < 0)
+    {
+      return false;
+    }
+
+  pthread_mutex_lock (&broker_shm_mutex);
+  current_dropping_as_index = drop_as_index;
+  drop_as_info = &shm_appl->as_info[drop_as_index];
+  drop_as_info->service_flag = SERVICE_OFF_ACK;
+  pthread_mutex_unlock (&broker_shm_mutex);
+
+  CON_STATUS_LOCK (drop_as_info, CON_STATUS_LOCK_BROKER);
+  if (drop_as_info->uts_status == UTS_STATUS_IDLE)
+    {
+      /* do nothing */
+    }
+  else if (drop_as_info->cur_keep_con == KEEP_CON_AUTO
+	   && drop_as_info->uts_status == UTS_STATUS_BUSY
+	   && drop_as_info->con_status == CON_STATUS_OUT_TRAN
+	   && time (NULL) - drop_as_info->last_access_time >
+	   shm_br->br_info[br_index].time_to_kill)
+    {
+      drop_as_info->con_status = CON_STATUS_CLOSE;
+    }
+  else
+    {
+      drop_as_info->service_flag = SERVICE_ON;
+      drop_as_index = -1;
+    }
+  CON_STATUS_UNLOCK (drop_as_info, CON_STATUS_LOCK_BROKER);
+
+  if (drop_as_index >= 0)
+    {
+      pthread_mutex_lock (&broker_shm_mutex);
+      (shm_br->br_info[br_index].appl_server_num)--;
+      (shm_appl->num_appl_server)--;
+      pthread_mutex_unlock (&broker_shm_mutex);
+
+      stop_appl_server (drop_as_info, br_index, drop_as_index);
+    }
+  current_dropping_as_index = -1;
 
   return true;
 }
@@ -428,8 +494,7 @@ main (int argc, char *argv[])
   pthread_mutex_init (&clt_table_mutex, NULL);
   pthread_mutex_init (&suspend_mutex, NULL);
   pthread_mutex_init (&run_appl_mutex, NULL);
-  pthread_mutex_init (&con_status_mutex, NULL);
-  pthread_mutex_init (&service_flag_mutex, NULL);
+  pthread_mutex_init (&broker_shm_mutex, NULL);
   if (br_shard_flag == ON)
     {
       pthread_mutex_init (&run_proxy_mutex, NULL);
@@ -588,86 +653,7 @@ main (int argc, char *argv[])
 	      continue;
 	    }
 
-	  cur_appl_server_num = shm_br->br_info[br_index].appl_server_num;
-
-	  wait_job_cnt = shm_appl->job_queue[0].id + hold_job;
-	  wait_job_cnt -= (cur_appl_server_num - num_busy_uts);
-
-#if 0
-	  if ((wait_job_cnt >= 1) && (new_as_index > 1)
-	      && (shm_appl->as_info[new_as_index - 1].service_flag !=
-		  SERVICE_ON))
-	    {
-	      shm_appl->as_info[new_as_index - 1].service_flag = SERVICE_ON;
-	      continue;
-	    }
-#endif
-
-	  /* DROP UTS */
-	  if (cur_appl_server_num >
-	      shm_br->br_info[br_index].appl_server_min_num
-	      && wait_job_cnt <= 0)
-	    {
-	      int drop_as_index = -1;
-	      pthread_mutex_lock (&service_flag_mutex);
-	      drop_as_index = find_drop_as_index ();
-	      if (drop_as_index >= 0)
-		{
-		  current_dropping_as_index = drop_as_index;
-		  shm_appl->as_info[drop_as_index].service_flag =
-		    SERVICE_OFF_ACK;
-		}
-	      pthread_mutex_unlock (&service_flag_mutex);
-
-	      if (drop_as_index >= 0)
-		{
-		  pthread_mutex_lock (&con_status_mutex);
-		  CON_STATUS_LOCK (&(shm_appl->as_info[drop_as_index]),
-				   CON_STATUS_LOCK_BROKER);
-		  if (shm_appl->as_info[drop_as_index].uts_status ==
-		      UTS_STATUS_IDLE)
-		    {
-		      /* do nothing */
-		    }
-		  else if (shm_appl->as_info[drop_as_index].cur_keep_con ==
-			   KEEP_CON_AUTO
-			   && shm_appl->as_info[drop_as_index].uts_status ==
-			   UTS_STATUS_BUSY
-			   && shm_appl->as_info[drop_as_index].con_status ==
-			   CON_STATUS_OUT_TRAN
-			   && time (NULL) -
-			   shm_appl->as_info[drop_as_index].last_access_time >
-			   shm_br->br_info[br_index].time_to_kill)
-		    {
-		      shm_appl->as_info[drop_as_index].con_status =
-			CON_STATUS_CLOSE;
-		    }
-		  else
-		    {
-		      shm_appl->as_info[drop_as_index].service_flag =
-			SERVICE_ON;
-		      CON_STATUS_UNLOCK (&(shm_appl->as_info[drop_as_index]),
-					 CON_STATUS_LOCK_BROKER);
-		      drop_as_index = -1;
-		    }
-
-		  if (drop_as_index >= 0)
-		    {
-		      CON_STATUS_UNLOCK (&(shm_appl->as_info[drop_as_index]),
-					 CON_STATUS_LOCK_BROKER);
-		    }
-		  pthread_mutex_unlock (&con_status_mutex);
-		}
-
-	      if (drop_as_index >= 0)
-		{
-		  (shm_br->br_info[br_index].appl_server_num)--;
-		  (shm_appl->num_appl_server)--;
-		  stop_appl_server (&(shm_appl->as_info[drop_as_index]),
-				    br_index, drop_as_index);
-		}
-	      current_dropping_as_index = -1;
-	    }			/* end of if (cur_num > min_num) */
+	  broker_drop_one_cas_by_time_to_kill ();
 	}			/* end of while (process_flag) */
     }				/* end of if (SHARD == OFF) */
 
@@ -1228,10 +1214,7 @@ dispatch_thr_f (void *arg)
 #endif
       while (1)
 	{
-	  pthread_mutex_lock (&service_flag_mutex);
 	  as_index = find_idle_cas ();
-	  pthread_mutex_unlock (&service_flag_mutex);
-
 	  if (as_index < 0)
 	    {
 	      if (broker_add_new_cas ())
@@ -2650,6 +2633,8 @@ find_idle_cas (void)
   int wait_cas_id;
   time_t cur_time = time (NULL);
 
+  pthread_mutex_lock (&broker_shm_mutex);
+
   wait_cas_id = -1;
   max_wait_time = 0;
 
@@ -2688,7 +2673,6 @@ find_idle_cas (void)
 
   if (wait_cas_id >= 0)
     {
-      pthread_mutex_lock (&con_status_mutex);
       CON_STATUS_LOCK (&(shm_appl->as_info[wait_cas_id]),
 		       CON_STATUS_LOCK_BROKER);
       if (shm_appl->as_info[wait_cas_id].con_status == CON_STATUS_OUT_TRAN
@@ -2702,7 +2686,6 @@ find_idle_cas (void)
 	}
       CON_STATUS_UNLOCK (&(shm_appl->as_info[wait_cas_id]),
 			 CON_STATUS_LOCK_BROKER);
-      pthread_mutex_unlock (&con_status_mutex);
     }
 
 #if defined(WINDOWS)
@@ -2725,10 +2708,13 @@ find_idle_cas (void)
 
   if (idle_cas_id < 0)
     {
+      pthread_mutex_unlock (&broker_shm_mutex);
       return -1;
     }
 
   shm_appl->as_info[idle_cas_id].uts_status = UTS_STATUS_BUSY;
+  pthread_mutex_unlock (&broker_shm_mutex);
+
   return idle_cas_id;
 }
 
@@ -2738,6 +2724,7 @@ find_drop_as_index (void)
   int i, drop_as_index, exist_idle_cas;
   time_t max_wait_time, wait_time;
 
+  pthread_mutex_lock (&broker_shm_mutex);
   if (IS_NOT_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server))
     {
       drop_as_index = shm_br->br_info[br_index].appl_server_num - 1;
@@ -2746,8 +2733,10 @@ find_drop_as_index (void)
       if (shm_appl->as_info[drop_as_index].uts_status == UTS_STATUS_IDLE
 	  && wait_time > shm_br->br_info[br_index].time_to_kill)
 	{
+	  pthread_mutex_unlock (&broker_shm_mutex);
 	  return drop_as_index;
 	}
+      pthread_mutex_unlock (&broker_shm_mutex);
       return -1;
     }
 
@@ -2789,6 +2778,8 @@ find_drop_as_index (void)
 	}
     }
 
+  pthread_mutex_unlock (&broker_shm_mutex);
+
   return drop_as_index;
 }
 
@@ -2797,14 +2788,18 @@ find_add_as_index ()
 {
   int i;
 
+  pthread_mutex_lock (&broker_shm_mutex);
   for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
     {
       if (shm_appl->as_info[i].service_flag == SERVICE_OFF_ACK
 	  && current_dropping_as_index != i)
 	{
+	  pthread_mutex_unlock (&broker_shm_mutex);
 	  return i;
 	}
     }
+
+  pthread_mutex_unlock (&broker_shm_mutex);
   return -1;
 }
 
