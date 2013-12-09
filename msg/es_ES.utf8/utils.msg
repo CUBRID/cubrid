@@ -939,7 +939,7 @@ opciones validas:\n\
   -r, --remote-host-name      nombre de host remote; mostrar la informacion de registro activa del nodo remote \n\
   -a, --applied-info 	      mostrar informacion aplicada \n\
   -L, --copied-log-path=PATH  ruta de los volumenes de registro copiados; mostrar informacion de registro copiado \n\
-  -p, --pageid=ID             id de pagina; estandar : 0(pagina activa)\n\
+  -p, --page=ID               id de pagina; estandar : 0\n\
   -v, --verbose               habilitar mensajes de estado verbose; estandar : inhabilitar\n\
   -i, --interval=S            imprimir informacion casa S segundos\n
 

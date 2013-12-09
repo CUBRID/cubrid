@@ -270,6 +270,26 @@ util_put_option_value (UTIL_MAP * util_map, int arg_ch,
 		arg_map[i].arg_value.i = (int) value;
 		return NO_ERROR;
 	      }
+	    case ARG_BIGINT:
+	      {
+		INT64 value;
+		char *endptr;
+		errno = 0;	/* to distinguish success/failure */
+		value = strtoll (option_arg, &endptr, 10);
+		if ((errno == ERANGE
+		     && (value == LLONG_MAX || value == LLONG_MIN))
+		    || (errno != 0 && value == 0))
+		  {
+		    return ER_FAILED;
+		  }
+		if (*endptr != '\0')
+		  {
+		    return ER_FAILED;
+		  }
+
+		arg_map[i].arg_value.l = value;
+		return NO_ERROR;
+	      }
 	    case ARG_STRING:
 	      if (option_arg[0] == '-')
 		{

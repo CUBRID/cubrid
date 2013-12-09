@@ -939,7 +939,7 @@ gültige Optionen:\n\
   -r, --remote-host-name      Remote-Hostnamen; aktiven Log-Information des Remoteknoten anzeigen\n\
   -a, --applied-info          Übernommene Information anzeigen \n\
   -L, --copied-log-path=PFAD  Pfad der kopierten Logdatenträger; kopierte Loginformation anzeigen \n\
-  -p, --pageid=ID             Seiten-ID; Standard: 0(aktive Seite)\n\
+  -p, --page=ID               Seiten-ID; Standard: 0\n\
   -v, --verbose               ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
   -i, --interval=S            print information every S secs\n
 

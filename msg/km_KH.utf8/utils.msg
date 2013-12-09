@@ -939,7 +939,7 @@ usage: %1$s applyinfo [OPTION] ឈ្មោះដែលតាបេស \n\
   -r, --remote-host-name      ឈ្មោះremote host; បង្ហាញពត៌មានlogសកម្មរបស់ remote node។ \n\
   -a, --applied-info 	                 បង្ហាញពត៌មានសម្រេច \n\
   -L, --copied-log-path=PATH  path នៃlog volumesដែលថតចម្លងរួច; បង្ហាញពត៌មានlogដែលថតចម្លងរួច \n\
-  -p, --pageid=ID             ទំព័រ id; default : 0(ទំព័រសកម្ម)\n\
+  -p, --page=ID               ទំព័រ id; default : 0\n\
   -v, --verbose               បង្កើនសមត្ថភាពសារ verbose status ; default : មិនអាច\n\
   -i, --interval=S            បោះពុម្ពព័ត៌មានអំពី S secs\n
 

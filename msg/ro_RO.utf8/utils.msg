@@ -960,7 +960,7 @@ opţiuni valide:\n\
   -r, --remote-host-name      numele gazdei remote; afişează informaţii despre logul activ al nodului departat \n\
   -a, --applied-info 	      afişează informaţiile aplicate \n\
   -L, --copied-log-path=CALE  calea către volumele de log copiate; afişează informaţii despre logurile copiate\n\
-  -p, --pageid=ID             id de pagina; implicit : 0 (pagina activă)\n\
+  -p, --page=ID               id de pagina; implicit : 0\n\
   -v, --verbose               activează mesaje de stare detaliate; implicit : dezactivate\n\
   -i, --interval=S            afişează informaţii la fiecare S secunde\n
 

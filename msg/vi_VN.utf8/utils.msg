@@ -939,7 +939,7 @@ các tùy chọn hợp lệ:\n\
   -r, --remote-host-name      tên máy chủ từ xa, thông tin đăng nhập hoạt động hiển thị từ xa của nút \n\
   -a, --applied-info 	      hiển thị thông tin áp dụng \n\
   -L, --copied-log-path=PATH  đường dẫn của ổ ghi sao chép, hiển thị đăng nhập sao chép thông tin \n\
-  -p, --pageid=ID             page id; mặc định : 0(active page)\n\
+  -p, --page=ID               page id; mặc định : 0\n\
   -v, --verbose               kích hoạt các thông báo trạng thái tiết; mặc định : vô hiệu hóa\n\
   -i, --interval=S            print information every S secs\n
 

@@ -29,7 +29,7 @@
 #if defined (CS_MODE)
 int
 la_log_page_check (const char *database_name, const char *log_path,
-		   int page_num, bool check_applied_info,
+		   INT64 page_num, bool check_applied_info,
 		   bool check_copied_info, bool check_replica_info,
 		   bool verbose, LOG_LSA * copied_eof_lsa,
 		   LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa);

@@ -939,7 +939,7 @@ geçerli seçenekler:\n\
   -r, --remote-host-name      Uzak ana bilgisayar adı; görüntü uzak düğüm aktif log bilgileri\n\
   -a, --applied-info 	      uygulamalı bilgilerde görüntü \n\
   -L, --copied-log-path=PATH  Kopyalanan log yoğunlukların path; görüntü kopyalanan log bilgileri \n\
-  -p, --pageid=ID             sayfa id; varsayılan: 0 (etkin sayfa)\n\
+  -p, --page=ID               sayfa id; varsayılan: 0 \n\
   -v, --verbose               Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı bırakmak\n\
   -i, --interval=S            print information every S secs\n
 

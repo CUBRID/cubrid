@@ -171,8 +171,8 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   if (sa_mode && backup_num_threads > 1)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
-						     MSGCAT_UTIL_SET_BACKUPDB,
-						     BACKUPDB_INVALID_THREAD_NUM_OPT));
+					     MSGCAT_UTIL_SET_BACKUPDB,
+					     BACKUPDB_INVALID_THREAD_NUM_OPT));
     }
 
   if (backup_num_threads < FILEIO_BACKUP_NUM_THREADS_AUTO)
@@ -3590,7 +3590,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   char log_path_buf[PATH_MAX];
   char *log_path_base;
   int error = NO_ERROR;
-  int pageid = 0;
+  INT64 pageid = 0;
   int interval;
   float process_rate = 0.0f;
   char *replica_time_bound_str;
@@ -3659,7 +3659,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
   check_replica_info =
     (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA);
-  pageid = utility_get_option_int_value (arg_map, APPLYINFO_PAGE_S);
+  pageid = utility_get_option_bigint_value (arg_map, APPLYINFO_PAGE_S);
   verbose = utility_get_option_bool_value (arg_map, APPLYINFO_VERBOSE_S);
 
   interval = utility_get_option_int_value (arg_map, APPLYINFO_INTERVAL_S);

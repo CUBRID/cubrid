@@ -7069,7 +7069,7 @@ la_print_log_arv_header (const char *database_name,
  */
 int
 la_log_page_check (const char *database_name, const char *log_path,
-		   int page_num, bool check_applied_info,
+		   INT64 page_num, bool check_applied_info,
 		   bool check_copied_info, bool check_replica_info,
 		   bool verbose, LOG_LSA * copied_eof_lsa,
 		   LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa)
@@ -7275,8 +7275,9 @@ check_applied_info_end:
 	      la_print_log_arv_header (database_name,
 				       la_Info.arv_log.log_hdr, verbose);
 	    }
-	  printf ("Log page %d (phy: %lld pageid: %lld, offset %d)\n",
-		  page_num, (long long int) la_log_phypageid (page_num),
+	  printf ("Log page %lld (phy: %lld pageid: %lld, offset %d)\n",
+		  (long long int) page_num,
+		  (long long int) la_log_phypageid (page_num),
 		  (long long int) logpage->hdr.logical_pageid,
 		  logpage->hdr.offset);
 

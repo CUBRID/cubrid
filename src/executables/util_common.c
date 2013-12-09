@@ -286,6 +286,24 @@ utility_get_option_string_value (UTIL_ARG_MAP * arg_map, int arg_ch,
   return NULL;
 }
 
+/*
+ * utility_get_option_bigint_value() - search an option in the map of arguments
+ *      and return that value
+ *   return: the value of a searched argument
+ *   arg_map(in): the map of arguments
+ *   arg_ch(in): the value of an argument
+ */
+INT64
+utility_get_option_bigint_value (UTIL_ARG_MAP * arg_map, int arg_ch)
+{
+  int index = utility_get_option_index (arg_map, arg_ch);
+  if (index != -1)
+    {
+      return arg_map[index].arg_value.l;
+    }
+  return 0;
+}
+
 int
 utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map)
 {
