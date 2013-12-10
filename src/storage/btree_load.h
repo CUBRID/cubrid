@@ -125,6 +125,22 @@ extern int btree_get_next_overflow_vpid (PAGE_PTR page_ptr, VPID * vpid);
       && (key_len) >= BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)) \
     ? DISK_VPID_SIZE : (key_len))
 
+/* for notification log messages */
+#define BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID,BTNM) \
+		btree_set_error(THREAD, KEY, OID, C_OID, BTID, BTNM, \
+		ER_NOTIFICATION_SEVERITY, ER_BTREE_CREATED_OVERFLOW_KEY, \
+		__FILE__, __LINE__)
+
+#define BTREE_SET_CREATED_OVERFLOW_PAGE_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
+		btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, \
+		ER_NOTIFICATION_SEVERITY, ER_BTREE_CREATED_OVERFLOW_PAGE, \
+		__FILE__, __LINE__)
+
+#define BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
+		btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, \
+		ER_NOTIFICATION_SEVERITY, ER_BTREE_DELETED_OVERFLOW_PAGE, \
+		__FILE__, __LINE__)
+
 /*
  * Type definitions related to b+tree structure and operations
  */

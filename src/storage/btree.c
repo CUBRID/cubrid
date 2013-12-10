@@ -164,22 +164,6 @@ struct btree_stats_env
   DB_VALUE pkeys_val[BTREE_STATS_PKEYS_NUM];	/* partial key-value */
 };
 
-/* for notification log messages */
-#define BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
-		btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, \
-		ER_NOTIFICATION_SEVERITY, ER_BTREE_CREATED_OVERFLOW_KEY, \
-		__FILE__, __LINE__)
-
-#define BTREE_SET_CREATED_OVERFLOW_PAGE_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
-		btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, \
-		ER_NOTIFICATION_SEVERITY, ER_BTREE_CREATED_OVERFLOW_PAGE, \
-		__FILE__, __LINE__)
-
-#define BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
-		btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, \
-		ER_NOTIFICATION_SEVERITY, ER_BTREE_DELETED_OVERFLOW_PAGE, \
-		__FILE__, __LINE__)
-
 /* Structure used by btree_range_search to initialize and handle variables
  * needed throughout the process.
  */
@@ -13181,7 +13165,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
       /* notification */
       BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION (thread_p, key, oid,
-						   cls_oid, btid);
+						   cls_oid, btid, NULL);
 
       log_append_undoredo_data2 (thread_p, RVBT_UPDATE_OVFID,
 				 &btid_int.sys_btid->vfid, P, HEADER,

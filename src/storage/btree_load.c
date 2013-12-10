@@ -1484,6 +1484,14 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
 			load_args->n_keys);
     }
 
+  if (!VFID_ISNULL (&load_args->btid->ovfid))
+    {
+      /* notification */
+      BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION (thread_p, NULL, NULL,
+						   &class_oids[0], btid,
+						   bt_name);
+    }
+
   if (sort_args->filter)
     {
       /* to clear db values from dbvalue regu variable */
