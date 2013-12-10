@@ -404,7 +404,6 @@ static int la_find_required_lsa (LOG_LSA * required_lsa);
 static int la_get_ha_apply_info (const char *log_path,
 				 const char *prefix_name,
 				 LA_HA_APPLY_INFO * ha_apply_info);
-static int la_delete_ha_apply_info (void);
 static int la_insert_ha_apply_info (DB_DATETIME * creation_time);
 static int la_update_ha_apply_info_start_time (void);
 static int la_get_last_ha_applied_info (void);
@@ -1074,6 +1073,7 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
 					     (char *) &cache_buffer->logpage);
 	  if (error != NO_ERROR)
 	    {
+	      la_applier_need_shutdown = true;
 	      return error;
 	    }
 	  cache_buffer->in_archive = true;
@@ -1698,50 +1698,6 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name,
 }
 
 static int
-la_delete_ha_apply_info (void)
-{
-#define LA_IN_VALUE_COUNT       2
-
-  int res;
-  LA_ACT_LOG *act_log;
-  int i;
-  int in_value_idx;
-  DB_VALUE in_value[LA_IN_VALUE_COUNT];
-  char query_buf[LA_QUERY_BUF_SIZE];
-
-  act_log = &la_Info.act_log;
-
-  snprintf (query_buf, sizeof (query_buf),
-	    "DELETE "
-	    "FROM %s "
-	    "WHERE db_name = ? AND copied_log_path = ? ;",
-	    CT_HA_APPLY_INFO_NAME);
-
-  in_value_idx = 0;
-  db_make_varchar (&in_value[in_value_idx++], 255,
-		   act_log->log_hdr->prefix_name,
-		   strlen (act_log->log_hdr->prefix_name),
-		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
-		   strlen (la_Info.log_path),
-		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  assert (in_value_idx == LA_IN_VALUE_COUNT);
-
-  res =
-    la_update_query_execute_with_values (query_buf, in_value_idx,
-					 &in_value[0], true);
-  for (i = 0; i < in_value_idx; i++)
-    {
-      db_value_clear (&in_value[i]);
-    }
-
-  return res;
-
-#undef LA_IN_VALUE_COUNT
-}
-
-
-static int
 la_insert_ha_apply_info (DB_DATETIME * creation_time)
 {
 #define LA_IN_VALUE_COUNT       15
@@ -2019,9 +1975,12 @@ la_get_last_ha_applied_info (void)
   LA_HA_APPLY_INFO apply_info;
   time_t log_db_creation;
   DB_DATETIME log_db_creation_time;
-  bool insert_apply_info = false, delete_apply_info = false;
+  bool insert_apply_info = false;
 
   act_log = &la_Info.act_log;
+
+  log_db_creation = act_log->log_hdr->db_creation;
+  db_localdatetime (&log_db_creation, &log_db_creation_time);
 
   res =
     la_get_ha_apply_info (la_Info.log_path, act_log->log_hdr->prefix_name,
@@ -2041,6 +2000,12 @@ la_get_last_ha_applied_info (void)
       la_Info.schema_counter = apply_info.schema_counter;
       la_Info.commit_counter = apply_info.commit_counter;
       la_Info.fail_counter = apply_info.fail_counter;
+
+      if ((log_db_creation_time.date != apply_info.creation_time.date)
+	  || (log_db_creation_time.time != apply_info.creation_time.time))
+	{
+	  return ER_FAILED;
+	}
     }
   else if (res == 0)
     {
@@ -2049,16 +2014,6 @@ la_get_last_ha_applied_info (void)
   else
     {
       return res;
-    }
-
-  log_db_creation = act_log->log_hdr->db_creation;
-  db_localdatetime (&log_db_creation, &log_db_creation_time);
-
-  if (res != 0
-      && ((log_db_creation_time.date != apply_info.creation_time.date)
-	  || (log_db_creation_time.time != apply_info.creation_time.time)))
-    {
-      delete_apply_info = insert_apply_info = true;
     }
 
   if (LSA_ISNULL (&la_Info.required_lsa))
@@ -2083,18 +2038,6 @@ la_get_last_ha_applied_info (void)
 
   if (insert_apply_info == true)
     {
-      if (delete_apply_info == true)
-	{
-	  res = la_delete_ha_apply_info ();
-	  if (res == 0)
-	    {
-	      return ER_FAILED;
-	    }
-	  else if (res < 0)
-	    {
-	      return res;
-	    }
-	}
       res = la_insert_ha_apply_info (&log_db_creation_time);
     }
   else
@@ -2548,7 +2491,7 @@ la_find_log_pagesize (LA_ACT_LOG * act_log,
 			       ER_LOG_MOUNT_FAIL, 1, act_log->path);
 	  error = ER_LOG_MOUNT_FAIL;
 
-	  sleep (1);
+	  LA_SLEEP (0, 200 * 1000);
 	}
       else
 	{
@@ -2556,7 +2499,7 @@ la_find_log_pagesize (LA_ACT_LOG * act_log,
 	  break;
 	}
     }
-  while (!la_applier_need_shutdown);
+  while (la_applier_need_shutdown == false);
 
   if (error != NO_ERROR)
     {
@@ -2586,32 +2529,35 @@ la_find_log_pagesize (LA_ACT_LOG * act_log,
       act_log->log_hdr = (struct log_header *) act_log->hdr_page->area;
 
       /* check if the log header is valid */
-      if (strncmp (act_log->log_hdr->magic, CUBRID_MAGIC_LOG_ACTIVE,
-		   CUBRID_MAGIC_MAX_LENGTH) != 0
-	  || strncmp (act_log->log_hdr->prefix_name, dbname,
-		      strlen (dbname)) != 0)
+      if (strncmp (act_log->log_hdr->magic,
+		   CUBRID_MAGIC_LOG_ACTIVE, CUBRID_MAGIC_MAX_LENGTH) != 0)
 	{
-	  /* The active log header is corrupted. */
-	  if (act_log->log_hdr->prefix_name[0] != '\0'
-	      && strncmp (act_log->log_hdr->prefix_name, dbname,
-			  strlen (dbname)) != 0)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED,
-		      1, 0);
-	      return ER_LOG_PAGE_CORRUPTED;
-	    }
-
 	  /* The active log is formatting by the copylogdb. */
 	  er_log_debug (ARG_FILE_LINE,
 			"Active log file(%s) isn't prepared. waiting...",
 			act_log->path);
-	  sleep (1);
-	  error = ER_LOG_PAGE_CORRUPTED;
+
+	  LA_SLEEP (0, 200 * 1000);
+	  continue;
+	}
+
+      /* The active log header is corrupted. */
+      if (act_log->log_hdr->prefix_name[0] != '\0'
+	  && strncmp (act_log->log_hdr->prefix_name,
+		      dbname, strlen (dbname)) != 0)
+	{
+	  la_applier_need_shutdown = true;
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_LOG_PAGE_CORRUPTED, 1, 0);
+	  return ER_LOG_PAGE_CORRUPTED;
 	}
       else if (check_charset
 	       && act_log->log_hdr->db_charset != lang_charset ())
 	{
 	  char err_msg[ERR_MSG_SIZE];
+
+	  la_applier_need_shutdown = true;
 	  snprintf (err_msg, sizeof (err_msg) - 1,
 		    "Active log file(%s) charset is not valid (%s), "
 		    "expecting %s.", act_log->path,
@@ -2626,7 +2572,7 @@ la_find_log_pagesize (LA_ACT_LOG * act_log,
 	  break;
 	}
     }
-  while (!la_applier_need_shutdown);
+  while (la_applier_need_shutdown == false);
 
   if (error != NO_ERROR)
     {
@@ -5730,7 +5676,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 	    {
 	      /* reconnect to server due to error in flushing unflushed insert */
 	      if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
-		  && la_applier_need_shutdown)
+		  && la_applier_need_shutdown == true)
 		{
 		  goto end;
 		}
@@ -6023,6 +5969,8 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
     {
       if (lrec->type != LOG_END_OF_LOG && lrec->type != LOG_DUMMY_FILLPAGE_FORARCHIVE)	/* for backward compatibility */
 	{
+	  la_applier_need_shutdown = true;
+
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_HA_LA_INVALID_REPL_LOG_RECORD, 10,
 		  final->pageid, final->offset,
@@ -6194,7 +6142,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 		  return error;
 		}
 	      else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
-		       && la_applier_need_shutdown)
+		       && la_applier_need_shutdown == true)
 		{
 		  return error;
 		}
@@ -7700,9 +7648,8 @@ la_apply_log_file (const char *database_name, const char *log_path,
     {
       er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
-	      1, "failed to get last applied info");
+	      1, "Failed to initialize db_ha_apply_info");
       er_stack_pop ();
-
       return error;
     }
 
@@ -7713,7 +7660,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
   time_commit_interval =
     prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS);
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_STARTED, 4,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_STARTED, 6,
 	  la_Info.required_lsa.pageid,
 	  la_Info.required_lsa.offset,
 	  la_Info.committed_lsa.pageid,
@@ -7741,7 +7688,8 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	}
 
       /* start loop for apply */
-      while (!LSA_ISNULL (&la_Info.final_lsa) && !la_applier_need_shutdown)
+      while (!LSA_ISNULL (&la_Info.final_lsa)
+	     && la_applier_need_shutdown == false)
 	{
 	  /* release all page buffers */
 	  la_release_all_page_buffers (NULL_PAGEID);
@@ -7835,8 +7783,8 @@ la_apply_log_file (const char *database_name, const char *log_path,
 				(long long int) la_Info.committed_lsa.pageid);
 
 		  error = la_log_commit (false);
-		  if (error == ER_NET_CANT_CONNECT_SERVER ||
-		      error == ER_OBJ_NO_CONNECT)
+		  if (error == ER_NET_CANT_CONNECT_SERVER
+		      || error == ER_OBJ_NO_CONNECT)
 		    {
 		      er_log_debug (ARG_FILE_LINE,
 				    "we lost connection with DB server.");
@@ -7844,7 +7792,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		      break;
 		    }
 		  else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
-			   && la_applier_need_shutdown)
+			   && la_applier_need_shutdown == true)
 		    {
 		      break;
 		    }
@@ -7868,6 +7816,14 @@ la_apply_log_file (const char *database_name, const char *log_path,
 
 	  if (log_buf == NULL)
 	    {
+	      if (la_applier_need_shutdown == true)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_LOG_PAGE_CORRUPTED, 1, la_Info.final_lsa.pageid);
+		  error = ER_LOG_PAGE_CORRUPTED;
+		  break;
+		}
+
 	      /* it can be happend when log file is not synced yet */
 	      if (final_log_hdr.ha_file_status !=
 		  LOG_HA_FILESTAT_SYNCHRONIZED)
@@ -8004,7 +7960,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	  pg_ptr = &(log_buf->logpage);
 
 	  while (la_Info.final_lsa.pageid == log_buf->pageid
-		 && !la_applier_need_shutdown)
+		 && la_applier_need_shutdown == false)
 	    {
 	      /* adjust the offset when the offset is 0.
 	       * If we read final log record from the archive,
@@ -8051,9 +8007,9 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_LOG_PAGE_CORRUPTED, 1, la_Info.final_lsa.pageid);
-		  /* it should be refetched and release later */
-		  la_invalidate_page_buffer (log_buf);
-		  break;
+		  error = ER_LOG_PAGE_CORRUPTED;
+		  la_shutdown ();
+		  return error;
 		}
 
 	      if (LSA_EQ (&la_Info.final_lsa, &final_log_hdr.eof_lsa)
@@ -8082,7 +8038,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		      return error;
 		    }
 		  else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
-			   && la_applier_need_shutdown)
+			   && la_applier_need_shutdown == true)
 		    {
 		      la_shutdown ();
 		      return error;
@@ -8090,8 +8046,19 @@ la_apply_log_file (const char *database_name, const char *log_path,
 
 		  if (error == ER_LOG_PAGE_CORRUPTED)
 		    {
-		      /* it should be refetched and release later */
-		      la_invalidate_page_buffer (log_buf);
+		      if (la_applier_need_shutdown == true)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_LOG_PAGE_CORRUPTED, 1,
+				  la_Info.final_lsa.pageid);
+			  error = ER_LOG_PAGE_CORRUPTED;
+			  break;
+			}
+		      else
+			{
+			  /* it should be refetched and release later */
+			  la_invalidate_page_buffer (log_buf);
+			}
 		    }
 
 		  break;
@@ -8102,9 +8069,9 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_LOG_PAGE_CORRUPTED, 1, la_Info.final_lsa.pageid);
-		  /* it should be refetched and release later */
-		  la_invalidate_page_buffer (log_buf);
-		  break;
+		  error = ER_LOG_PAGE_CORRUPTED;
+		  la_shutdown ();
+		  return error;
 		}
 
 	      /* set the prev/next record */
@@ -8129,7 +8096,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		  break;
 		}
 	      else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH
-		       && la_applier_need_shutdown)
+		       && la_applier_need_shutdown == true)
 		{
 		  break;
 		}
@@ -8173,9 +8140,10 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	      usleep (100 * 1000);
 	      continue;
 	    }
-	}			/* while (!LSA_ISNULL (&la_Info.final_lsa) && !la_applier_need_shutdown) */
+	}			/* while (!LSA_ISNULL (&la_Info.final_lsa)  
+				 * && la_applier_need_shutdown == false)   */
     }
-  while (!la_applier_need_shutdown);
+  while (la_applier_need_shutdown == false);
 
   la_shutdown ();
 

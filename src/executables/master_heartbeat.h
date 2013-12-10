@@ -147,6 +147,8 @@ enum HB_PROC_STATE
 #define HB_IS_INITIALIZED_TIME(arg_time) \
             ((arg_time.tv_sec == 0 && arg_time.tv_usec == 0) ? 1 : 0)
 
+#define HB_PROC_RECOVERY_DELAY_TIME		(30* 1000)	/* milli-second */
+
 /* heartbeat list */
 typedef struct hb_list HB_LIST;
 struct hb_list
@@ -212,6 +214,7 @@ struct hb_proc_entry
   char args[HB_MAX_SZ_PROC_ARGS];
   char argv[HB_MAX_NUM_PROC_ARGV][HB_MAX_SZ_PROC_ARGV];
 
+  struct timeval frtime;	/* first registered time */
   struct timeval rtime;		/* registerd time */
   struct timeval dtime;		/* deregistered time */
   struct timeval ktime;		/* shutdown time */

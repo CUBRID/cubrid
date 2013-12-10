@@ -2528,7 +2528,6 @@ us_hb_copylogdb_start (dynamic_array * pids, HA_CONF * ha_conf,
 		      status = ER_GENERIC_ERROR;
 		      goto ret;
 		    }
-
 		}
 	      else
 		{
@@ -3043,7 +3042,7 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name,
       goto ret;
     }
 
-  sleep (3);
+  sleep (10);
   if (check_result == true)
     {
       for (i = 0; i < da_size (pids); i++)
@@ -3104,11 +3103,34 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf,
 			 const char *db_name, const char *node_name)
 {
   int status = NO_ERROR;
+  int i, pid;
+  dynamic_array *pids = NULL;
 
   switch (command_type)
     {
     case START:
-      status = us_hb_copylogdb_start (NULL, ha_conf, db_name, node_name);
+      pids = da_create (100, sizeof (int));
+      if (pids == NULL)
+	{
+	  status = ER_GENERIC_ERROR;
+	  goto ret;
+	}
+
+      status = us_hb_copylogdb_start (pids, ha_conf, db_name, node_name);
+
+      sleep (10);
+      for (i = 0; i < da_size (pids); i++)
+	{
+	  da_get (pids, i, &pid);
+	  if (is_terminated_process (pid))
+	    {
+	      (void) us_hb_copylogdb_stop (ha_conf, db_name, node_name);
+
+	      status = ER_GENERIC_ERROR;
+	      break;
+	    }
+	}
+
       break;
 
     case STOP:
@@ -3120,6 +3142,12 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf,
       break;
     }
 
+ret:
+  if (pids)
+    {
+      da_destroy (pids);
+    }
+
   return status;
 }
 
@@ -3128,11 +3156,34 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf,
 			  const char *db_name, const char *node_name)
 {
   int status = NO_ERROR;
+  int i, pid;
+  dynamic_array *pids = NULL;
 
   switch (command_type)
     {
     case START:
-      status = us_hb_applylogdb_start (NULL, ha_conf, db_name, node_name);
+      pids = da_create (100, sizeof (int));
+      if (pids == NULL)
+	{
+	  status = ER_GENERIC_ERROR;
+	  goto ret;
+	}
+
+      status = us_hb_applylogdb_start (pids, ha_conf, db_name, node_name);
+
+      sleep (10);
+      for (i = 0; i < da_size (pids); i++)
+	{
+	  da_get (pids, i, &pid);
+	  if (is_terminated_process (pid))
+	    {
+	      (void) us_hb_applylogdb_stop (ha_conf, db_name, node_name);
+
+	      status = ER_GENERIC_ERROR;
+	      break;
+	    }
+	}
+
       break;
 
     case STOP:
@@ -3142,6 +3193,12 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf,
     default:
       status = ER_GENERIC_ERROR;
       break;
+    }
+
+ret:
+  if (pids)
+    {
+      da_destroy (pids);
     }
 
   return status;

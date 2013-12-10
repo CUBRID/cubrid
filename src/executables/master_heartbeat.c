@@ -1993,6 +1993,7 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
   int error, rv;
   char error_string[LINE_MAX] = "";
   pid_t pid;
+  struct timeval now;
   HB_PROC_ENTRY *proc;
   HB_RESOURCE_JOB_ARG *proc_arg = (arg) ? &(arg->resource_job_arg) : NULL;
   char *argv[HB_MAX_NUM_PROC_ARGV] = { NULL, };
@@ -2032,6 +2033,24 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
 	    }
 	  return;
 	}
+    }
+
+  gettimeofday (&now, NULL);
+  if (HB_GET_ELAPSED_TIME (now, proc->frtime) < HB_PROC_RECOVERY_DELAY_TIME)
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "delay the restart of the process. (arg:%p, proc_arg:%p). \n",
+			   arg, proc_arg);
+
+      pthread_mutex_unlock (&hb_Resource->lock);
+      error = hb_resource_job_queue (HB_RJOB_PROC_START, arg,
+				     HB_JOB_TIMER_WAIT_A_SECOND);
+      if (error != NO_ERROR)
+	{
+	  assert (false);
+	  free_and_init (arg);
+	}
+      return;
     }
 
   snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
@@ -3205,6 +3224,7 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
       else
 	{
 	  proc_state = HB_PSTATE_REGISTERED;	/* first register */
+	  gettimeofday (&proc->frtime, NULL);
 	}
     }
   else
@@ -5067,7 +5087,7 @@ hb_deregister_process (HB_PROC_ENTRY * proc)
   char error_string[LINE_MAX] = "";
   char *p, *last;
 
-  if ((proc->state < HB_PSTATE_NOT_REGISTERED)
+  if ((proc->state < HB_PSTATE_DEAD)
       || (proc->state >= HB_PSTATE_MAX) || (proc->pid < 0))
     {
       snprintf (error_string, LINE_MAX,

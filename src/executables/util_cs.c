@@ -3063,6 +3063,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   int error = NO_ERROR;
   int retried = 0, sleep_nsecs = 1;
   bool need_er_reinit = false;
+  unsigned long num_db_restarted = 0;
 #if !defined(WINDOWS)
   char *binary_name;
   char executable_path[PATH_MAX];
@@ -3187,6 +3188,7 @@ retry:
 	}
       goto error_exit;
     }
+  num_db_restarted += 1;
 
   if (need_er_reinit)
     {
@@ -3251,10 +3253,15 @@ error_exit:
     {
       (void) sleep (sleep_nsecs);
       /* sleep 1, 2, 4, 8, etc; don't wait for more than 1/2 min */
-      if ((sleep_nsecs *= 2) > 32)
+      if (num_db_restarted > 0)
 	{
-	  sleep_nsecs = 1;
+	  sleep_nsecs *= 2;
+	  if (sleep_nsecs > 30)
+	    {
+	      sleep_nsecs = 1;
+	    }
 	}
+
       need_er_reinit = true;
       ++retried;
 
