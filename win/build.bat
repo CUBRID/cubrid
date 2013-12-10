@@ -37,7 +37,7 @@ set BUILD_NUMBER=0
 set BUILD_TARGET=Win32
 set BUILD_MODE=Release
 set DEVENV_PATH=C:\Program Files\Microsoft Visual Studio 9.0\Common7\IDE\devenv.com
-set IS_PATH=D:\IS_2010\System\IsCmdBld.exe
+set IS_PATH=C:\IS_2010\System\IsCmdBld.exe
 rem default list is all
 set BUILD_LIST=ALL
 rem unset BUILD_ARGS
