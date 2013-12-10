@@ -1595,14 +1595,16 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
    * Get the name of the extension: ext_path|dbname|"ext"|volid
    */
 
-  /* Use the directory where the primary volume is located */
+  /* Use the directory user specified
+   * if NULL, use the directory where the primary volume is located
+   */
   temp_path = (char *) prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
-  temp_path = fileio_get_directory_path (temp_path_buf, boot_Db_full_name);
-  if (temp_path == NULL)
+  if (temp_path == NULL || temp_path[0] == '\0')
     {
-      temp_path_buf[0] = '\0';
-      temp_path = temp_path_buf;
+      temp_path =
+	fileio_get_directory_path (temp_path_buf, boot_Db_full_name);
     }
+
   temp_name = fileio_get_base_file_name (boot_Db_full_name);
 
   /*
