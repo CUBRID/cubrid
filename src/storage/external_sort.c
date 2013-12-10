@@ -122,7 +122,9 @@ typedef struct px_tree_node PX_TREE_NODE;
 struct px_tree_node
 {
   int px_id;			/* node ID */
-  int px_status;		/* node status */
+#if defined(SERVER_MODE)
+  int px_status;		/* node status; access through px_mtx */
+#endif				/* SERVER_MODE */
 
   int px_height;		/* tournament tree: node level */
   int px_myself;		/* tournament tree: node ID */
@@ -1341,16 +1343,25 @@ sort_run_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
   /* include already sorted items */
   limit += sort_numrecs;
 
+  /* save limit of non-duplicated value slot */
   *srun_limit = limit - st_p->srun[0].start;
+
+  /* move base pointer */
+  result = base + st_p->srun[0].start;
 
   if (st_p->srun[0].low_high == 'L')
     {
-      result = otherbase + st_p->srun[0].start;
+      if (option == SORT_ELIM_DUP)
+	{
+	  memcpy (result, otherbase + st_p->srun[0].start,
+		  (*srun_limit) * sizeof (char *));
+	}
+      else
+	{
+	  result = otherbase + st_p->srun[0].start;
+	}
     }
-  else
-    {
-      result = base + st_p->srun[0].start;
-    }
+
   assert (result != NULL);
 
 #if defined(CUBRID_DEBUG)
@@ -1765,8 +1776,6 @@ px_sort_assign (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int px_id,
   assert (px_id == 0);
   assert (px_height == 0);
   assert (px_myself == 0);
-
-  px_node->px_status = 0;
 #endif /* SERVER_MODE */
 
   /* set node info */
@@ -1865,23 +1874,24 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
   int ret = NO_ERROR;
 #if defined(SERVER_MODE)
   bool old_check_interrupt;
-#endif /* SERVER_MODE */
-
-  char **buff;
-  char **vector;
-  long vector_size;
 
   int parent;
   int child_right = 0;
   int child_height;
 
-  char **result = NULL;
-  long result_size = -1;
   int cmp;
+
+  int rv = NO_ERROR;
+#endif /* SERVER_MODE */
 
   SORT_PARAM *sort_param;
 
-  int rv = NO_ERROR;
+  char **buff;
+  char **vector;
+  long vector_size;
+
+  char **result = NULL;
+  long result_size = -1;
 
   assert_release (px_node != NULL);
   assert_release (px_node->px_id >= 0);
@@ -2252,24 +2262,20 @@ exit_on_end:
   assert_release (result == px_node->px_result);
   assert_release (result_size == px_node->px_result_size);
 
+#if defined(SERVER_MODE)
   if (parent != px_node->px_id)
     {
       /* mark as finished */
 
-#if defined(SERVER_MODE)
       rv = pthread_mutex_lock (&(sort_param->px_mtx));
       assert (rv == NO_ERROR);
-#endif /* SERVER_MODE */
 
       assert_release (px_node->px_status == 0);
       px_node->px_status = 1;	/* done */
 
-#if defined(SERVER_MODE)
       pthread_mutex_unlock (&(sort_param->px_mtx));
-#endif /* SERVER_MODE */
     }
 
-#if defined(SERVER_MODE)
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
 #endif /* SERVER_MODE */
 
@@ -2412,14 +2418,12 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 #if defined(SERVER_MODE)
 		  rv = pthread_mutex_lock (&(sort_param->px_mtx));
 		  assert (rv == NO_ERROR);
-#endif /* SERVER_MODE */
 
 		  for (i = 0; i < sort_param->px_array_size; i++)
 		    {
 		      sort_param->px_array[i].px_status = 0;	/* init */
 		    }
 
-#if defined(SERVER_MODE)
 		  pthread_mutex_unlock (&(sort_param->px_mtx));
 #endif /* SERVER_MODE */
 
@@ -2485,6 +2489,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		  /* must keep track because index_buff is used */
 		  /* to detect when sort buffer is full */
 		  temp_recdes.area_size = SORT_MAXREC_LENGTH;
+
+		  assert ((char *) index_buff >= item_ptr);
 		}
 	      else
 		{
@@ -2676,14 +2682,12 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 #if defined(SERVER_MODE)
 	  rv = pthread_mutex_lock (&(sort_param->px_mtx));
 	  assert (rv == NO_ERROR);
-#endif /* SERVER_MODE */
 
 	  for (i = 0; i < sort_param->px_array_size; i++)
 	    {
 	      sort_param->px_array[i].px_status = 0;	/* init */
 	    }
 
-#if defined(SERVER_MODE)
 	  pthread_mutex_unlock (&(sort_param->px_mtx));
 #endif /* SERVER_MODE */
 
