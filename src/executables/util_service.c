@@ -1217,7 +1217,7 @@ process_service (int command_type, bool process_window_service)
       if (process_window_service)
 	{
 #if defined(WINDOWS)
-	  if (is_windows_service_running (0, process_window_service))
+	  if (is_windows_service_running (0))
 	    {
 	      const char *args[] =
 		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVICE,
