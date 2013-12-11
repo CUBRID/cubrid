@@ -589,17 +589,18 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id,
 #endif
 		{
 		  memset (buffer, 0, sizeof (buffer));
-		  sprintf (buffer,
-			   msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_MASTER,
-					   MASTER_MSG_SERVER_STATUS),
-			   server_name, timeout);
+		  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+			    msgcat_message (MSGCAT_CATALOG_UTILS,
+					    MSGCAT_UTIL_SET_MASTER,
+					    MASTER_MSG_SERVER_STATUS),
+			    server_name, timeout);
 		  css_process_start_shutdown (temp, timeout * 60, buffer);
 		}
-	      sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_MASTER,
-					       MASTER_MSG_SERVER_NOTIFIED),
-		       server_name);
+	      snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+			msgcat_message (MSGCAT_CATALOG_UTILS,
+					MSGCAT_UTIL_SET_MASTER,
+					MASTER_MSG_SERVER_NOTIFIED),
+			server_name);
 
 	      if (css_send_data (conn, request_id, buffer,
 				 strlen (buffer) + 1) != NO_ERRORS)
@@ -611,9 +612,9 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	}
     }
 
-  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_SERVER_NOT_FOUND), server_name);
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_SERVER_NOT_FOUND), server_name);
 
   if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
       NO_ERRORS)
@@ -650,10 +651,10 @@ css_process_kill_immediate (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	{
 	  css_send_command_to_server (temp, SERVER_SHUTDOWN_IMMEDIATE);
 
-	  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_MASTER,
-					   MASTER_MSG_SERVER_NOTIFIED),
-		   server_name);
+	  snprintf (buffer, 512, msgcat_message (MSGCAT_CATALOG_UTILS,
+						 MSGCAT_UTIL_SET_MASTER,
+						 MASTER_MSG_SERVER_NOTIFIED),
+		    server_name);
 	  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
 	      NO_ERRORS)
 	    {
@@ -662,9 +663,10 @@ css_process_kill_immediate (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	  return;
 	}
     }
-  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_SERVER_NOT_FOUND), server_name);
+  snprintf (buffer, 512, msgcat_message (MSGCAT_CATALOG_UTILS,
+					 MSGCAT_UTIL_SET_MASTER,
+					 MASTER_MSG_SERVER_NOT_FOUND),
+	    server_name);
   if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
       NO_ERRORS)
     {
@@ -784,9 +786,9 @@ css_process_shutdown (char *time_buffer)
   timeout = ntohl ((int) *(int *) time_buffer);
 
   memset (buffer, 0, sizeof (buffer));
-  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_GOING_DOWN), timeout);
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_GOING_DOWN), timeout);
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
@@ -895,9 +897,10 @@ css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn,
 
 	  if (ha_state == HA_SERVER_STATE_NA)
 	    {
-	      sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_CHANGEMODE,
-					       CHANGEMODE_MSG_NOT_HA_MODE));
+	      snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+			msgcat_message (MSGCAT_CATALOG_UTILS,
+					MSGCAT_UTIL_SET_CHANGEMODE,
+					CHANGEMODE_MSG_NOT_HA_MODE));
 	    }
 	  else if ((ha_state >= HA_SERVER_STATE_IDLE)
 		   && (ha_state <= HA_SERVER_STATE_DEAD))
@@ -905,19 +908,18 @@ css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn,
 	      strncpy (ha_state_str,
 		       css_ha_server_state_string (ha_state),
 		       sizeof (ha_state_str) - 1);
-	      sprintf (buffer,
-		       msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_CHANGEMODE,
-				       CHANGEMODE_MSG_SERVER_MODE),
-		       temp->name, ha_state_str);
+	      snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+			msgcat_message (MSGCAT_CATALOG_UTILS,
+					MSGCAT_UTIL_SET_CHANGEMODE,
+					CHANGEMODE_MSG_SERVER_MODE),
+			temp->name, ha_state_str);
 	    }
 	  else
 	    {
-	      sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_CHANGEMODE,
-					       CHANGEMODE_MSG_BAD_MODE),
-		       "unknown");
-
+	      snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+			msgcat_message (MSGCAT_CATALOG_UTILS,
+					MSGCAT_UTIL_SET_CHANGEMODE,
+					CHANGEMODE_MSG_BAD_MODE), "unknown");
 	    }
 
 	  if (css_send_data (conn, request_id, buffer,
@@ -929,9 +931,10 @@ css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn,
 	}
     }
 
-  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_SERVER_NOT_FOUND), server_name);
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS,
+			    MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_SERVER_NOT_FOUND), server_name);
 
   if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
       NO_ERRORS)
@@ -1020,9 +1023,10 @@ error_return:
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
-  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_PROCESS_ERROR));
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS,
+			    MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_PROCESS_ERROR));
 
   if (css_send_data (conn, request_id,
 		     buffer, strlen (buffer) + 1) != NO_ERRORS)
@@ -1085,9 +1089,10 @@ error_return:
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
-  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_PROCESS_ERROR));
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS,
+			    MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_PROCESS_ERROR));
 
   if (css_send_data (conn, request_id,
 		     buffer, strlen (buffer) + 1) != NO_ERRORS)
@@ -1147,9 +1152,10 @@ error_return:
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
-  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_PROCESS_ERROR));
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS,
+			    MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_PROCESS_ERROR));
 
   if (css_send_data (conn, request_id,
 		     buffer, strlen (buffer) + 1) != NO_ERRORS)
@@ -1190,9 +1196,10 @@ css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
-  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_PROCESS_ERROR));
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS,
+			    MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_PROCESS_ERROR));
 
   if (css_send_data (conn, request_id,
 		     buffer, strlen (buffer) + 1) != NO_ERRORS)
@@ -1230,9 +1237,10 @@ css_process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn,
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
-  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_PROCESS_ERROR));
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS,
+			    MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_PROCESS_ERROR));
 
   if (css_send_data (conn, request_id,
 		     buffer, strlen (buffer) + 1) != NO_ERRORS)
@@ -1267,9 +1275,10 @@ css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn,
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
-  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_PROCESS_ERROR));
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS,
+			    MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_PROCESS_ERROR));
 
   if (css_send_data (conn, request_id,
 		     buffer, strlen (buffer) + 1) != NO_ERRORS)
@@ -1329,9 +1338,9 @@ error_return:
   return;
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
-  sprintf (buffer,
-	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
-			   MASTER_MSG_PROCESS_ERROR));
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_PROCESS_ERROR));
   if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
       NO_ERRORS)
     {
@@ -1438,9 +1447,9 @@ error_return:
   return;
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
-  sprintf (buffer,
-	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
-			   MASTER_MSG_PROCESS_ERROR));
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_PROCESS_ERROR));
   if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
       NO_ERRORS)
     {
@@ -1498,9 +1507,9 @@ error_return:
   return;
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
-  sprintf (buffer,
-	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
-			   MASTER_MSG_PROCESS_ERROR));
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_PROCESS_ERROR));
   if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
       NO_ERRORS)
     {

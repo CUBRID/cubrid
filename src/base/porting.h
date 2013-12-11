@@ -94,7 +94,7 @@ extern "C"
 
 #define mkdir(dir, mode)        _mkdir(dir)
 #define getpid()                _getpid()
-#define snprintf                    _snprintf
+#define snprintf                    _sprintf_p
 #define strcasecmp(str1, str2)      _stricmp(str1, str2)
 #define strncasecmp(str1, str2, size)     _strnicmp(str1, str2, size)
 #define lseek(fd, offset, origin)   _lseeki64(fd, offset, origin)
@@ -115,6 +115,8 @@ extern "C"
 #define vsnprintf	cub_vsnprintf
 #define tempnam         _tempnam
 #define fprintf         _fprintf_p
+#define vfprintf        _vfprintf_p
+#define vprintf         _vprintf_p
 #if defined(_WIN32)
 #define mktime         mktime_for_win32
 #endif

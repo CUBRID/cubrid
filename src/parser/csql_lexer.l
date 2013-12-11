@@ -1381,16 +1381,16 @@ csql_yyerror (const char *s)
 	  free_msg = 1;
 	  if (end_statement == 0)
 	    {
-	      sprintf (msg, context_saved_char_str,
-		       csql_yylloc.first_line, csql_yylloc.first_column,
-		       (saved_char ? saved_char : ' '), next_ptr);
+	      snprintf (msg, msg_size, context_saved_char_str,
+		        csql_yylloc.first_line, csql_yylloc.first_column,
+		        (saved_char ? saved_char : ' '), next_ptr);
 	    }
 	  else
 	    {
 	      assert (msg_context != NULL);
-	      sprintf (msg, msg_context,
-		       csql_yylloc.first_line, csql_yylloc.first_column,
-		       next_ptr);
+	      snprintf (msg, msg_size, msg_context,
+		        csql_yylloc.first_line, csql_yylloc.first_column,
+		        next_ptr);
 	    }
 
 	  len = strlen (msg);
@@ -1410,15 +1410,15 @@ csql_yyerror (const char *s)
 	{
 	  if (strstr (s, "$end"))
 	    {
+              int msg_size = strlen (before_token) + strlen (next_ptr) + 2;
 	      next_ptr = end_of_stmt_str;
-	      msg = (char *) csql_yyalloc (strlen (before_token)
-					   + strlen (next_ptr) + 2);
+	      msg = (char *) csql_yyalloc (msg_size);
 	      if (msg == NULL)
 		{
 		  YY_FATAL_ERROR( "out of dynamic memory in csql_yyerror()" );
 		  goto end;
 		}
-	      sprintf (msg, "%s %s", before_token, next_ptr);
+	      snprintf (msg, msg_size, "%s %s", before_token, next_ptr);
 	      free_msg = 1;
 	    }
 	  else

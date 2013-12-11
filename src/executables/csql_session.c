@@ -284,10 +284,10 @@ csql_help_schema (const char *class_name)
       goto error;
     }
 
-  sprintf (class_title, msgcat_message (MSGCAT_CATALOG_CSQL,
-					MSGCAT_CSQL_SET_CSQL,
-					CSQL_HELP_CLASS_HEAD_TEXT),
-	   class_schema->class_type);
+  snprintf (class_title, (2 * DB_MAX_IDENTIFIER_LENGTH + 2),
+	    msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
+			    CSQL_HELP_CLASS_HEAD_TEXT),
+	    class_schema->class_type);
   APPEND_HEAD_LINE (class_title);
   APPEND_MORE_LINE (5, class_schema->name);
 

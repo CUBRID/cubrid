@@ -447,11 +447,10 @@ display_empty_result (int stmt_type, int line_no)
 {
   FILE *pf;			/* pipe stream to pager */
 
-  sprintf (csql_Scratch_text, msgcat_message (MSGCAT_CATALOG_CSQL,
-					      MSGCAT_CSQL_SET_CSQL,
-					      CSQL_RESULT_STMT_TITLE_FORMAT),
-	   csql_cmd_string ((CUBRID_STMT_TYPE) stmt_type, ""), line_no);
-
+  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN,
+	    msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
+			    CSQL_RESULT_STMT_TITLE_FORMAT),
+	    csql_cmd_string ((CUBRID_STMT_TYPE) stmt_type, ""), line_no);
 
   pf = csql_popen (csql_Pager_cmd, csql_Output_fp);
 
@@ -736,9 +735,9 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 #endif /* !WINDOWS */
 
       csql_fputs ("\n=== ", pf);
-      sprintf (csql_Scratch_text,
-	       csql_get_message (CSQL_RESULT_STMT_TITLE_FORMAT),
-	       csql_cmd_string (stmt_type, "UNKNOWN"), line_no);
+      snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN,
+		csql_get_message (CSQL_RESULT_STMT_TITLE_FORMAT),
+		csql_cmd_string (stmt_type, "UNKNOWN"), line_no);
       csql_fputs (csql_Scratch_text, pf);
       csql_fputs (" ===\n\n", pf);
 

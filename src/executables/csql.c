@@ -537,12 +537,12 @@ start_csql (CSQL_ARGUMENT * csql_arg)
     }
 
   /* display product title */
-  sprintf (csql_Scratch_text, "\n\t%s\n\n",
-	   csql_get_message (CSQL_INITIAL_CSQL_TITLE));
+  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n\t%s\n\n",
+	    csql_get_message (CSQL_INITIAL_CSQL_TITLE));
   csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
 
-  sprintf (csql_Scratch_text, "\n%s\n\n",
-	   csql_get_message (CSQL_INITIAL_HELP_MSG));
+  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n%s\n\n",
+	    csql_get_message (CSQL_INITIAL_HELP_MSG));
   csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
 
 #if !defined(WINDOWS)
@@ -2093,8 +2093,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
       db_drop_statement (session, stmt_id);
     }
 
-  sprintf (csql_Scratch_text, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
-	   num_stmts - csql_Num_failures);
+  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN,
+	    csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
+	    num_stmts - csql_Num_failures);
   csql_display_msg (csql_Scratch_text);
 
   db_close_session (session);
@@ -2116,8 +2117,9 @@ error:
     }
 
   /* Finish... */
-  sprintf (csql_Scratch_text, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
-	   num_stmts - csql_Num_failures);
+  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN,
+	    csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
+	    num_stmts - csql_Num_failures);
   csql_display_msg (csql_Scratch_text);
 
   if (session)

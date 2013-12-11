@@ -48,7 +48,7 @@
 #include "system_parameter.h"
 #define JP_MAXNAME 256
 #if defined(WINDOWS)
-#define snprintf _snprintf
+#define snprintf _sprintf_p
 #endif /* WINDOWS */
 #include "memory_alloc.h"
 #include "db_elo.h"

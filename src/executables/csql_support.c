@@ -80,7 +80,8 @@ static CSQL_EDIT_CONTENTS csql_Edit_contents =
 
 
 static void iq_pipe_handler (int sig_no);
-static void iq_format_err (char *string, int line_no, int col_no);
+static void iq_format_err (char *string, int buf_size, int line_no,
+			   int col_no);
 static bool iq_input_device_is_a_tty (void);
 static bool iq_output_device_is_a_tty (void);
 #if !defined(WINDOWS)
@@ -479,19 +480,19 @@ csql_pclose (FILE * pf, FILE * fd)
  *   col_no(in) : error column number
  */
 static void
-iq_format_err (char *string, int line_no, int col_no)
+iq_format_err (char *string, int buf_size, int line_no, int col_no)
 {
   if (line_no > 0)
     {
       if (col_no > 0)
-	sprintf (string,
-		 msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
-				 CSQL_EXACT_POSITION_ERR_FORMAT), line_no,
-		 col_no);
+	snprintf (string, buf_size,
+		  msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
+				  CSQL_EXACT_POSITION_ERR_FORMAT), line_no,
+		  col_no);
       else
-	sprintf (string,
-		 msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
-				 CSQL_START_POSITION_ERR_FORMAT), line_no);
+	snprintf (string, buf_size,
+		  msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
+				  CSQL_START_POSITION_ERR_FORMAT), line_no);
       strcat (string, "\n");
     }
 }
@@ -513,7 +514,7 @@ csql_display_csql_err (int line_no, int col_no)
 {
   csql_Error_code = CSQL_ERR_SQL_ERROR;
 
-  iq_format_err (csql_Scratch_text, line_no, col_no);
+  iq_format_err (csql_Scratch_text, SCRATCH_TEXT_LEN, line_no, col_no);
 
   if (line_no > 0)
     {
@@ -546,7 +547,8 @@ csql_display_session_err (DB_SESSION * session, int line_no)
       if (line_no > 0)
 	{
 	  csql_fputs ("\n", csql_Error_fp);
-	  iq_format_err (csql_Scratch_text, line_no, col_no);
+	  iq_format_err (csql_Scratch_text, SCRATCH_TEXT_LEN, line_no,
+			 col_no);
 	  csql_fputs_console_conv (csql_Scratch_text, csql_Error_fp);
 	}
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);

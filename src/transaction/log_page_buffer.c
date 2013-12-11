@@ -9514,14 +9514,14 @@ loop:
 		      io_bkup_hdr_p = session.bkup.bkuphdr;
 		      tmp_time = (time_t) io_bkup_hdr_p->start_time;
 		      (void) ctime_r (&tmp_time, time_val);
-		      sprintf (old_bkpath,
-			       msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_LOG,
-					       MSGCAT_LOG_BACKUP_HALTED_BY_USER),
-			       io_bkup_hdr_p->level,
-			       fileio_get_base_file_name (io_bkup_hdr_p->
-							  db_fullname),
-			       time_val, io_bkup_hdr_p->unit_num);
+		      snprintf (old_bkpath, PATH_MAX,
+				msgcat_message (MSGCAT_CATALOG_CUBRID,
+						MSGCAT_SET_LOG,
+						MSGCAT_LOG_BACKUP_HALTED_BY_USER),
+				io_bkup_hdr_p->level,
+				fileio_get_base_file_name (io_bkup_hdr_p->
+							   db_fullname),
+				time_val, io_bkup_hdr_p->unit_num);
 		      fileio_request_user_response (thread_p,
 						    FILEIO_PROMPT_DISPLAY_ONLY,
 						    old_bkpath, NULL, NULL,

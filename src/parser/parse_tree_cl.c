@@ -2137,8 +2137,8 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 	msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SYNTAX,
 			MSGCAT_SYNTAX_BEFORE_END_OF_STMT);
       /* size of constant string "before ' '\n" to be printed along with the
-         actual context - do not count format parameter "%s", of size 2 */
-      int before_context_len = strlen (before_context_str) - 2;
+         actual context - do not count format parameter "%1$s", of size 4 */
+      int before_context_len = strlen (before_context_str) - 4;
       int context_len = strlen (context);
       int msg_len = strlen (msg);
       int end_of_statement = 0;
@@ -2176,7 +2176,7 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 	}
       if (end_of_statement == 0)
 	{
-	  sprintf (s, before_context_str, context_copy);
+	  snprintf (s, str_len, before_context_str, context_copy);
 	  if (s[str_len - 3] == '\n')
 	    {
 	      s[str_len - 3] = ' ';
@@ -2184,7 +2184,7 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 	}
       else
 	{
-	  sprintf (s, before_end_of_stmt_str);
+	  snprintf (s, str_len, before_end_of_stmt_str);
 	}
       node->info.error_msg.error_message = s;
     }
