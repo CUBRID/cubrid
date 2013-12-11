@@ -849,10 +849,11 @@ static int qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE *
 						func_state, bool load_value);
 static int qexec_analytic_value_advance (THREAD_ENTRY * thread_p,
 					 ANALYTIC_FUNCTION_STATE * func_state,
-					 int amount, int max_group_changes);
+					 int amount, int max_group_changes,
+					 bool ignore_nulls);
 static int qexec_analytic_value_lookup (THREAD_ENTRY * thread_p,
 					ANALYTIC_FUNCTION_STATE * func_state,
-					int position);
+					int position, bool ignore_nulls);
 static int qexec_analytic_group_header_next (THREAD_ENTRY * thread_p,
 					     ANALYTIC_FUNCTION_STATE *
 					     func_state);
@@ -22034,7 +22035,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 					      analytic_state->xasl_state,
 					      func_state, recdes, true);
 		}
-	      else if (QPROC_ANALYTIC_HAS_SUBPARTITIONS (func_state->func_p))
+	      else if (func_state->func_p->function != PT_NTILE)
 		{
 		  if (qexec_analytic_finalize_group
 		      (thread_p, analytic_state->xasl_state, func_state,
@@ -22103,7 +22104,9 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p,
       ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
 
       if (QPROC_ANALYTIC_IS_OFFSET_FUNCTION (func_p)
-	  || func_p->function == PT_NTILE)
+	  || func_p->function == PT_NTILE
+	  || func_p->function == PT_FIRST_VALUE
+	  || func_p->function == PT_LAST_VALUE)
 	{
 	  /* inst_num() predicate is evaluated at group processing for these
 	     functions, as the result is computed at this stage using all
@@ -22573,6 +22576,7 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
   TP_DOMAIN_STATUS dom_status;
   double nth_idx = 0.0;
   char buf[64];
+  bool put_default = false;
 
   if (func_state == NULL)
     {
@@ -22592,7 +22596,7 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
     }
 
   /* determine which tuple count to use */
-  if (QPROC_ANALYTIC_IGNORE_NULLS (func_p))
+  if (func_p->ignore_nulls)
     {
       group_tuple_count = func_state->curr_group_tuple_count_nn;
     }
@@ -22734,13 +22738,31 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
   /* put value */
   if (target_idx >= 0 && target_idx < group_tuple_count)
     {
-      if (qexec_analytic_value_lookup (thread_p, func_state, target_idx) !=
-	  NO_ERROR)
+      if (qexec_analytic_value_lookup
+	  (thread_p, func_state, target_idx,
+	   func_p->ignore_nulls) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
+
+      if (func_p->function == PT_NTH_VALUE)
+	{
+	  /* when using ORDER BY on NTH_VALUE, value will be NULL until that
+	     value is reached */
+	  if ((func_p->sort_prefix_size != func_p->sort_list_size)
+	      && (func_state->group_consumed_tuples
+		  < func_state->group_tuple_position))
+	    {
+	      put_default = true;
+	    }
+	}
     }
   else
+    {
+      put_default = true;
+    }
+
+  if (put_default)
     {
       /* coerce value to default domain */
       dom_status = tp_value_coerce (default_val_p, &default_val,
@@ -22860,14 +22882,7 @@ qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
     }
 
   /* get target row */
-  if (QPROC_ANALYTIC_IGNORE_NULLS (func_p))
-    {
-      row_num_d = ((double) (func_state->curr_group_tuple_count_nn - 1)) / 2;
-    }
-  else
-    {
-      row_num_d = ((double) (func_state->curr_group_tuple_count - 1)) / 2;
-    }
+  row_num_d = ((double) (func_state->curr_group_tuple_count_nn - 1)) / 2;
   f_row_num_d = floor (row_num_d);
   c_row_num_d = ceil (row_num_d);
 
@@ -22877,7 +22892,7 @@ qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
       /* we have an odd number of rows, median is middle row's value;
          fetch it */
       if (qexec_analytic_value_lookup
-	  (thread_p, func_state, (int) f_row_num_d) != NO_ERROR)
+	  (thread_p, func_state, (int) f_row_num_d, true) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -22898,7 +22913,7 @@ qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
       DB_MAKE_NULL (&f_value);
 
       if (qexec_analytic_value_lookup
-	  (thread_p, func_state, (int) f_row_num_d) != NO_ERROR)
+	  (thread_p, func_state, (int) f_row_num_d, true) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -22908,7 +22923,7 @@ qexec_analytic_evaluate_median_function (THREAD_ENTRY * thread_p,
 	}
 
       if (qexec_analytic_value_lookup
-	  (thread_p, func_state, (int) c_row_num_d) != NO_ERROR)
+	  (thread_p, func_state, (int) c_row_num_d, true) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -23001,7 +23016,8 @@ qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state,
   func_state->curr_sort_key_tuple_count = OR_GET_INT (tuple_p);
   tuple_p += DB_ALIGN (tp_Integer.disksize, MAX_ALIGNMENT);
 
-  if (!load_value && !QPROC_ANALYTIC_IGNORE_NULLS (func_state->func_p))
+  if (!load_value && !func_state->func_p->ignore_nulls
+      && func_state->func_p->function != PT_MEDIAN)
     {
       /* we're not counting NULLs and we're not using the value */
       return NO_ERROR;
@@ -23046,11 +23062,13 @@ qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state,
  *   func_state(in): function state
  *   amount(in): amount to advance (can also be negative)
  *   max_group_changes(in): maximum number of group changes
+ *   ignore_nulls(in): if true, execution will skip NULL values
  */
 static int
 qexec_analytic_value_advance (THREAD_ENTRY * thread_p,
 			      ANALYTIC_FUNCTION_STATE * func_state,
-			      int amount, int max_group_changes)
+			      int amount, int max_group_changes,
+			      bool ignore_nulls)
 {
   SCAN_CODE sc = S_SUCCESS;
 
@@ -23183,7 +23201,7 @@ qexec_analytic_value_advance (THREAD_ENTRY * thread_p,
 	    }
 	  else
 	    {
-	      if (!QPROC_ANALYTIC_IGNORE_NULLS (func_state->func_p))
+	      if (!ignore_nulls)
 		{
 		  amount--;
 		}
@@ -23198,7 +23216,7 @@ qexec_analytic_value_advance (THREAD_ENTRY * thread_p,
 	    }
 	  else
 	    {
-	      if (!QPROC_ANALYTIC_IGNORE_NULLS (func_state->func_p))
+	      if (!ignore_nulls)
 		{
 		  amount++;
 		}
@@ -23209,8 +23227,7 @@ qexec_analytic_value_advance (THREAD_ENTRY * thread_p,
   if (amount != 0)
     {
       /* target was not hit */
-      if (func_state->curr_group_tuple_count_nn == 0
-	  && QPROC_ANALYTIC_IGNORE_NULLS (func_state->func_p))
+      if (func_state->curr_group_tuple_count_nn == 0 && ignore_nulls)
 	{
 	  /* current group has only NULL values, so result will be NULL */
 	  return NO_ERROR;
@@ -23235,15 +23252,16 @@ qexec_analytic_value_advance (THREAD_ENTRY * thread_p,
  *   thread_p(in): thread
  *   func_state(in): function state
  *   position(in): position to seek
+ *   ignore_nulls(in): if true, execution will skip NULL values
  */
 static int
 qexec_analytic_value_lookup (THREAD_ENTRY * thread_p,
 			     ANALYTIC_FUNCTION_STATE * func_state,
-			     int position)
+			     int position, bool ignore_nulls)
 {
   int offset = position;
 
-  if (QPROC_ANALYTIC_IGNORE_NULLS (func_state->func_p))
+  if (ignore_nulls)
     {
       offset -= func_state->group_tuple_position_nn;
     }
@@ -23254,7 +23272,8 @@ qexec_analytic_value_lookup (THREAD_ENTRY * thread_p,
 
   if (offset != 0)
     {
-      return qexec_analytic_value_advance (thread_p, func_state, offset, 0);
+      return qexec_analytic_value_advance (thread_p, func_state, offset, 0,
+					   ignore_nulls);
     }
   else
     {
@@ -23277,18 +23296,11 @@ qexec_analytic_group_header_next (THREAD_ENTRY * thread_p,
 
   assert (func_state != NULL);
 
-  if (QPROC_ANALYTIC_IGNORE_NULLS (func_state->func_p))
-    {
-      pos = func_state->group_tuple_position_nn;
-      count = func_state->curr_group_tuple_count_nn;
-    }
-  else
-    {
-      pos = func_state->group_tuple_position;
-      count = func_state->curr_group_tuple_count;
-    }
+  pos = func_state->group_tuple_position;
+  count = func_state->curr_group_tuple_count;
 
-  return qexec_analytic_value_advance (thread_p, func_state, count - pos, 1);
+  return qexec_analytic_value_advance (thread_p, func_state, count - pos, 1,
+				       false);
 }
 
 /*
@@ -23440,7 +23452,8 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
 		{
 		  /* first scan, load first value */
 		  rc =
-		    qexec_analytic_value_advance (thread_p, func_state, 1, 1);
+		    qexec_analytic_value_advance (thread_p, func_state, 1, 1,
+						  func_p->ignore_nulls);
 		  if (rc != NO_ERROR)
 		    {
 		      goto cleanup;
@@ -23459,21 +23472,9 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
 		  func_state->group_consumed_tuples = 0;
 		}
 	    }
-	  else if (func_state->func_p->function != PT_FIRST_VALUE
-		   && func_state->func_p->function != PT_LAST_VALUE
-		   && func_state->func_p->function != PT_MEDIAN)
+	  else if (func_state->func_p->function == PT_MEDIAN)
 	    {
-	      /* if the function does not seek results in the list file, we
-	         are in charge of advancing */
-	      rc = qexec_analytic_value_advance (thread_p, func_state, 1, 1);
-	      if (rc != NO_ERROR)
-		{
-		  goto cleanup;
-		}
-	    }
-	  else
-	    {
-	      /* FIRST_VALUE, LAST_VALUE or MEDIAN; check for group end */
+	      /* MEDIAN, check for group end */
 	      if (func_state->group_consumed_tuples >=
 		  func_state->curr_group_tuple_count)
 		{
@@ -23485,6 +23486,28 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p,
 		      goto cleanup;
 		    }
 		  func_state->group_consumed_tuples = 0;
+		}
+	    }
+	  else
+	    {
+	      bool ignore_nulls = func_p->ignore_nulls;
+
+	      if (func_p->function == PT_FIRST_VALUE
+		  || func_p->function == PT_LAST_VALUE)
+		{
+		  /* for FIRST_VALUE and LAST_VALUE, the IGNORE NULLS logic
+		     resides at evaluation time */
+		  ignore_nulls = false;
+		}
+
+	      /* if the function does not seek results in the list file, we
+	         are in charge of advancing */
+	      rc =
+		qexec_analytic_value_advance (thread_p, func_state, 1, 1,
+					      ignore_nulls);
+	      if (rc != NO_ERROR)
+		{
+		  goto cleanup;
 		}
 	    }
 

@@ -101,21 +101,11 @@ typedef enum
   PT_PERCENT_RANK
 } FUNC_TYPE;
 
-#define QPROC_ANALYTIC_HAS_SUBPARTITIONS(func_p) \
-  (((func_p) != NULL) \
-   && ((func_p)->function != PT_NTILE) \
-   && ((func_p)->function != PT_FIRST_VALUE) \
-   && ((func_p)->function != PT_LAST_VALUE))
-
 #define QPROC_ANALYTIC_IS_OFFSET_FUNCTION(func_p) \
     (((func_p) != NULL) \
     && (((func_p)->function == PT_LEAD) \
         || ((func_p)->function == PT_LAG) \
         || ((func_p)->function == PT_NTH_VALUE)))
-
-#define QPROC_ANALYTIC_IGNORE_NULLS(func_p) \
-    ((func_p) != NULL \
-     && ((func_p)->ignore_nulls || ((func_p)->function == PT_MEDIAN)))
 
 #define NUM_F_GENERIC_ARGS 32
 #define NUM_F_INSERT_SUBSTRING_ARGS 4

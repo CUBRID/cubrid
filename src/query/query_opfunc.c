@@ -10061,21 +10061,6 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       goto exit;
     }
 
-  /* handle IGNORE NULLS */
-  if (QPROC_ANALYTIC_IGNORE_NULLS (func_p) && DB_IS_NULL (&dbval))
-    {
-      switch (func_p->function)
-	{
-	case PT_FIRST_VALUE:
-	case PT_LAST_VALUE:
-	  goto exit;
-	  break;
-
-	default:
-	  break;
-	}
-    }
-
   if (func_p->option == Q_DISTINCT)
     {
       /* handle distincts by adding to the temp list file */
@@ -10166,16 +10151,26 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       break;
 
     case PT_FIRST_VALUE:
-      opr_dbval_p = &dbval;
-      if (func_p->curr_cnt < 1)
+      if ((func_p->ignore_nulls && DB_IS_NULL (func_p->value))
+	  || (func_p->curr_cnt < 1))
 	{
-	  copy_opr = true;
+	  /* copy value if it's the first value OR if we're ignoring NULLs
+	     and we've only encountered NULL values so far */
+	  (void) pr_clear_value (func_p->value);
+	  pr_clone_value (&dbval, func_p->value);
+	}
+      break;
+
+    case PT_LAST_VALUE:
+      if (!func_p->ignore_nulls || !DB_IS_NULL (&dbval))
+	{
+	  (void) pr_clear_value (func_p->value);
+	  pr_clone_value (&dbval, func_p->value);
 	}
       break;
 
     case PT_LEAD:
     case PT_LAG:
-    case PT_LAST_VALUE:
     case PT_NTH_VALUE:
       /* just copy */
       (void) pr_clear_value (func_p->value);
