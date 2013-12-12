@@ -3687,8 +3687,7 @@ compare_driver (const void *first, const void *second, void *arg)
   char *mem2 = *(char **) second;
   SORT_ARGS *sort_args;
   TP_DOMAIN *key_type;
-  DB_VALUE val1, val2;
-  OR_BUF buf_val1, buf_val2;
+  DB_TYPE dom_type;
   int c;
 
   sort_args = (SORT_ARGS *) arg;
@@ -3716,25 +3715,63 @@ compare_driver (const void *first, const void *second, void *arg)
   mem1 = PTR_ALIGN (mem1, MAX_ALIGNMENT);
   mem2 = PTR_ALIGN (mem2, MAX_ALIGNMENT);
 
-  OR_BUF_INIT (buf_val1, mem1, -1);
-  OR_BUF_INIT (buf_val2, mem2, -1);
-
-  if ((*(key_type->type->data_readval))
-      (&buf_val1, &val1, key_type, -1, false, NULL, 0) != NO_ERROR)
+  dom_type = TP_DOMAIN_TYPE (key_type);
+  if (dom_type == DB_TYPE_MIDXKEY)
     {
-      assert (false);
-      return DB_UNK;
+      DB_MIDXKEY midxkey1;
+      DB_MIDXKEY midxkey2;
+      int dummy_size1, dummy_size2, dummy_diff_column;
+      bool dom_is_desc = false, dummy_next_dom_is_desc;
+
+      /* fast midxkey comparison.
+       * do not use DB_VALUE container for speed-up
+       */
+
+      midxkey1.buf = (char *) mem1;
+      midxkey2.buf = (char *) mem2;
+
+      midxkey1.size = midxkey2.size = -1;
+      midxkey1.ncolumns = midxkey2.ncolumns = sort_args->n_attrs;
+      midxkey1.domain = midxkey2.domain = key_type;
+
+      c = pr_midxkey_compare (&midxkey1, &midxkey2,
+			      0, 1, -1, NULL,
+			      &dummy_size1, &dummy_size2, &dummy_diff_column,
+			      &dom_is_desc, &dummy_next_dom_is_desc);
+
+      assert (c == DB_LT || c == DB_EQ || c == DB_GT);
+
+      if (dom_is_desc)
+	{
+	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
+	}
+    }
+  else
+    {
+      OR_BUF buf_val1, buf_val2;
+      DB_VALUE val1, val2;
+
+      OR_BUF_INIT (buf_val1, mem1, -1);
+      OR_BUF_INIT (buf_val2, mem2, -1);
+
+      if ((*(key_type->type->data_readval))
+	  (&buf_val1, &val1, key_type, -1, false, NULL, 0) != NO_ERROR)
+	{
+	  assert (false);
+	  return DB_UNK;
+	}
+
+      if ((*(key_type->type->data_readval))
+	  (&buf_val2, &val2, key_type, -1, false, NULL, 0) != NO_ERROR)
+	{
+	  assert (false);
+	  return DB_UNK;
+	}
+
+      c = btree_compare_key (&val1, &val2, key_type, 0, 1, NULL);
     }
 
-  if ((*(key_type->type->data_readval))
-      (&buf_val2, &val2, key_type, -1, false, NULL, 0) != NO_ERROR)
-    {
-      assert (false);
-      return DB_UNK;
-    }
-
-  c = btree_compare_key (&val1, &val2, key_type, 0, 1, NULL);
-  assert (c != DB_UNK);
+  assert (c == DB_LT || c == DB_EQ || c == DB_GT);
 
   return c;
 }

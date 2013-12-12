@@ -9870,6 +9870,16 @@ mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
   int charlen;
   int rc = NO_ERROR;
 
+  /* generally, index key-value is short enough
+   */
+  charlen = OR_GET_BYTE (memptr);
+  if (charlen < 0xFF)
+    {
+      return or_varchar_length (charlen);
+    }
+
+  assert (charlen == 0xFF);
+
   or_init (&buf, memptr, -1);
 
   charlen = or_get_varchar_length (&buf, &rc);
@@ -10359,11 +10369,27 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain,
 
   assert (domain != NULL);
 
+  /* generally, data is short enough
+   */
+  str_length1 = OR_GET_BYTE (mem1);
+  str_length2 = OR_GET_BYTE (mem2);
+  if (str_length1 < 0xFF && str_length2 < 0xFF)
+    {
+      mem1 += OR_BYTE_SIZE;
+      mem2 += OR_BYTE_SIZE;
+      c = QSTR_COMPARE (domain->collation_id,
+			(unsigned char *) mem1, str_length1,
+			(unsigned char *) mem2, str_length2);
+      c = MR_CMP_RETURN_CODE (c);
+      return c;
+    }
+
+  assert (str_length1 == 0xFF || str_length2 == 0xFF);
+
   or_init (&buf1, (char *) mem1, 0);
   str_length1 = or_get_varchar_length (&buf1, &rc);
   if (rc == NO_ERROR)
     {
-
       or_init (&buf2, (char *) mem2, 0);
       str_length2 = or_get_varchar_length (&buf2, &rc);
       if (rc == NO_ERROR)
@@ -12982,11 +13008,28 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain,
 
   assert (domain != NULL);
 
+  /* generally, data is short enough
+   */
+  str_length1 = OR_GET_BYTE (mem1);
+  str_length2 = OR_GET_BYTE (mem2);
+  if (str_length1 < 0xFF && str_length2 < 0xFF)
+    {
+      mem1 += OR_BYTE_SIZE;
+      mem2 += OR_BYTE_SIZE;
+      c = QSTR_NCHAR_COMPARE (domain->collation_id,
+			      (unsigned char *) mem1, str_length1,
+			      (unsigned char *) mem2, str_length2,
+			      (INTL_CODESET) TP_DOMAIN_CODESET (domain));
+      c = MR_CMP_RETURN_CODE (c);
+      return c;
+    }
+
+  assert (str_length1 == 0xFF || str_length2 == 0xFF);
+
   or_init (&buf1, (char *) mem1, 0);
   str_length1 = or_get_varchar_length (&buf1, &rc);
   if (rc == NO_ERROR)
     {
-
       or_init (&buf2, (char *) mem2, 0);
       str_length2 = or_get_varchar_length (&buf2, &rc);
       if (rc == NO_ERROR)

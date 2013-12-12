@@ -20203,6 +20203,21 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain,
   OR_BUF buf1, buf2;
   int rc = NO_ERROR;
 
+  /* generally, data is short enough
+   */
+  str_length1 = OR_GET_BYTE (mem1);
+  str_length2 = OR_GET_BYTE (mem2);
+  if (str_length1 < 0xFF && str_length2 < 0xFF)
+    {
+      mem1 += OR_BYTE_SIZE;
+      mem2 += OR_BYTE_SIZE;
+      c = bf2df_str_compare ((unsigned char *) mem1, str_length1,
+			     (unsigned char *) mem2, str_length2);
+      return c;
+    }
+
+  assert (str_length1 == 0xFF || str_length2 == 0xFF);
+
   or_init (&buf1, (char *) mem1, 0);
   str_length1 = or_get_varchar_length (&buf1, &rc);
   if (rc == NO_ERROR)
