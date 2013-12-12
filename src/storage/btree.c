@@ -8324,6 +8324,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   bool old_check_interrupt;
 #endif /* SERVER_MODE */
   BTREE_SCAN tmp_bts;
+  bool is_last_key;
 
 #if defined(SERVER_MODE)
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
@@ -9260,6 +9261,7 @@ start_point:
       goto error;
     }
 
+  memset (&tmp_bts, 0, sizeof (BTREE_SCAN));
   BTREE_INIT_SCAN (&tmp_bts);
   tmp_bts.C_page = P;
   tmp_bts.slot_id = p_slot_id;
@@ -9284,7 +9286,11 @@ start_point:
       next_page_flag = false;
     }
 
-  if (tmp_bts.C_page == NULL)
+  /* tmp_bts.C_page is NULL if next record is not exists */
+  is_last_key = (tmp_bts.C_page == NULL);
+  tmp_bts.C_page = NULL;	/* this page is pointed by P (or N) */
+
+  if (is_last_key)
     {
       /* the first entry of the root page is used as the next OID */
       N_oid.volid = btid->vfid.volid;
@@ -13079,7 +13085,8 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   bool curr_key_many_locks_needed = false;
   KEY_LOCK_ESCALATION curr_key_lock_escalation = NO_KEY_LOCK_ESCALATION;
   bool end_of_page;
-  BTREE_SCAN bts;
+  BTREE_SCAN tmp_bts;
+  bool is_last_key;
 #if defined(SERVER_MODE)
   bool old_check_interrupt;
 #endif /* SERVER_MODE */
@@ -13808,29 +13815,35 @@ start_point:
       slot_id = p_slot_id - 1;	/* if not found fetch current position */
     }
 
-  BTREE_INIT_SCAN (&bts);
-  bts.C_page = P;
-  bts.slot_id = slot_id;
+  memset (&tmp_bts, 0, sizeof (BTREE_SCAN));
+  BTREE_INIT_SCAN (&tmp_bts);
+  tmp_bts.C_page = P;
+  tmp_bts.slot_id = slot_id;
 
   ret_val =
-    btree_find_next_index_record_holding_current (thread_p, &bts, &peek_rec);
+    btree_find_next_index_record_holding_current (thread_p, &tmp_bts,
+						  &peek_rec);
   if (ret_val != NO_ERROR)
     {
       goto error;
     }
 
-  if (bts.C_page != NULL && bts.C_page != P)
+  if (tmp_bts.C_page != NULL && tmp_bts.C_page != P)
     {
       next_page_flag = true;
-      N_vpid = bts.C_vpid;
-      N = bts.C_page;
+      N_vpid = tmp_bts.C_vpid;
+      N = tmp_bts.C_page;
     }
   else
     {
       next_page_flag = false;
     }
 
-  if (bts.C_page == NULL)
+  /* tmp_bts.C_page is NULL if next record is not exists */
+  is_last_key = (tmp_bts.C_page == NULL);
+  tmp_bts.C_page = NULL;	/* this page is pointed by P (or N) */
+
+  if (is_last_key)
     {
       next_page_flag = false;	/* reset next_page_flag */
       /* The first entry of the root page is used as the next OID */
@@ -17823,6 +17836,7 @@ btree_lock_next_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   LOG_LSA ovfl_page_lsa;
   int ret_val = NO_ERROR, lock_ret;
   BTREE_SCAN tmp_bts;
+  bool is_last_key;
 
   /*
    * Assumptions : last accessed leaf page is fixed.
@@ -17845,6 +17859,7 @@ btree_lock_next_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   *which_action = BTREE_CONTINUE;
 
 start_point:
+  memset (&tmp_bts, 0, sizeof (BTREE_SCAN));
   BTREE_INIT_SCAN (&tmp_bts);
   tmp_bts.C_page = bts->C_page;
   tmp_bts.slot_id = bts->slot_id;
@@ -17859,19 +17874,47 @@ start_point:
       next_page = tmp_bts.C_page;
       next_vpid = tmp_bts.C_vpid;
     }
-
-  btree_leaf_get_first_oid (&bts->btid_int, &peek_rec, &N_oid, &N_class_oid);
-  if (BTREE_IS_UNIQUE (&bts->btid_int))	/* unique index */
+  else
     {
-      assert (!OID_ISNULL (&N_class_oid));
+      next_page_flag = false;
+    }
+
+  /* tmp_bts.C_page is NULL if next record is not exists */
+  is_last_key = (tmp_bts.C_page == NULL);
+  tmp_bts.C_page = NULL;	/* this page is pointed by bts.C_page(or next_page) */
+
+  if (is_last_key)
+    {
+      /* the first entry of the root page is used as the next OID */
+      N_oid.volid = bts->btid_int.sys_btid->vfid.volid;
+      N_oid.pageid = bts->btid_int.sys_btid->root_pageid;
+      N_oid.slotid = 0;
+
+      if (BTREE_IS_UNIQUE (&bts->btid_int))
+	{
+	  COPY_OID (&N_class_oid, &bts->btid_int.topclass_oid);
+	}
+      else
+	{
+	  COPY_OID (&N_class_oid, &bts->cls_oid);
+	}
     }
   else
     {
-      COPY_OID (&N_class_oid, &bts->cls_oid);
-    }
+      btree_leaf_get_first_oid (&bts->btid_int, &peek_rec, &N_oid,
+				&N_class_oid);
+      if (BTREE_IS_UNIQUE (&bts->btid_int))	/* unique index */
+	{
+	  assert (!OID_ISNULL (&N_class_oid));
+	}
+      else
+	{
+	  COPY_OID (&N_class_oid, &bts->cls_oid);
+	}
 
-  btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
-			 bts->btid_int.sys_btid, &N_oid);
+      btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
+			     bts->btid_int.sys_btid, &N_oid);
+    }
 
 start_locking:
   if (OID_EQ (nk_pseudo_oid, &N_oid))
