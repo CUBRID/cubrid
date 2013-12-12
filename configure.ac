@@ -519,6 +519,37 @@ AS_IF([test "$with_cci_only" = "yes"], [with_libedit=no],
 		EXTERNAL_DIST="$EXTERNAL_DIST libedit-20120601-3.0"])])
 AC_MSG_RESULT([$with_libedit])
 
+AC_ARG_ENABLE([systemtap],
+	      [AS_HELP_STRING([--enable-systemtap],
+			      [Enable dynamic tracing support using systemtap])],
+	      [ENABLE_SYSTEMTAP=$enableval
+	       SYSTEMTAP_LIB="\$(top_builddir)/contrib/systemtap/probes.o"
+               AC_CHECK_PROGS(DTRACE, dtrace)
+               if test -z "$DTRACE"; then
+                   AC_MSG_ERROR([dtrace not found])
+               fi
+               AC_CHECK_HEADER([sys/sdt.h], [SDT_H_FOUND='yes'],
+                             [SDT_H_FOUND='no';
+		              AC_MSG_ERROR([systemtap support needs sys/sdt.h header])])
+],
+               [ENABLE_SYSTEMTAP='no'
+                SYSTEMTAP_LIB=""])
+AM_CONDITIONAL([ENABLE_SYSTEMTAP], [test "x$ENABLE_SYSTEMTAP" = xyes])
+if test "x$ENABLE_SYSTEMTAP" = xyes; then
+	AC_DEFINE([ENABLE_SYSTEMTAP], [1], [Enable dynamic tracing support using systemtap])
+fi
+AC_MSG_RESULT(${ENABLE_SYSTEMTAP})
+
+AC_ARG_WITH([tapset-install-dir],
+	     [AS_HELP_STRING([--with-tapset-install-dir],
+			     [The absolute path where the tapset dir will be installed])],
+	     [if test "x${withval}" = x; then
+	       TAPSET_DIR="/usr/local/share/systemtap/tapset/"
+	      else
+	       TAPSET_DIR="${withval}"
+	      fi], [TAPSET_DIR="/usr/local/share/systemtap/tapset/"])
+AC_SUBST(TAPSET_DIR)
+
 AC_MSG_CHECKING([for lzo2 library])
 AC_ARG_WITH([lzo2],
 	AS_HELP_STRING([--with-lzo2=PATH],
@@ -854,7 +885,7 @@ CCI_LIB="\$(top_builddir)/cci/libcascci.la"
 ESQL_LIB="\$(top_builddir)/util/libcubridesql.la"
 BROKER_ADMIN_LIB="\$(top_builddir)/broker/libbrokeradmin.la"
 
-EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS $REGEX_LIBS $EXPAT_LIBS $JANSSON_LIBS $GCRYPT_LIBS $GPG_ERROR_LIBS"
+EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS $REGEX_LIBS $EXPAT_LIBS $JANSSON_LIBS $GCRYPT_LIBS $GPG_ERROR_LIBS $SYSTEMTAP_LIB"
 EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC $REGEX_INC $EXPAT_INC $JANSSON_INC $GCRYPT_INC $GPG_ERROR_INC"
 
 AC_MSG_CHECKING([whether to use CUBRID environment variable])
@@ -1076,7 +1107,7 @@ AS_IF([test "$with_cci_only" = "yes"],
 	EXTRA_DIST_SUBDIRS=""
 	CUBRID_LOGDIR=""
 	CUBRID_TMPDIR=""],
-	[BUILD_SUBDIRS="external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales dbgw $OPTIONAL_DIR"
+	[BUILD_SUBDIRS="contrib/systemtap external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales dbgw $OPTIONAL_DIR"
 	EXTRA_DIST_SUBDIRS="debian win src"])
 
 AC_SUBST([BUILD_NUMBER])
@@ -1168,6 +1199,7 @@ AS_IF([test "$with_cci_only" = "no"],
 	msg/ro_RO.utf8/Makefile
 	demo/Makefile
 	contrib/Makefile
+        contrib/systemtap/Makefile
 	jdbc/Makefile
 	java/Makefile
 	cas4mysql/Makefile

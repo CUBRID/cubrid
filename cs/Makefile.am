@@ -36,11 +36,15 @@ EXECUTABLE_DIR = $(SRC)/executables
 BROKER_DIR = $(SRC)/broker
 CCI_DIR = $(SRC)/cci
 DBMT_DIR = $(SRC)/dbmt
+SYSTEMTAP_DIR = $(top_srcdir)/contrib/systemtap
 
 FLEX = flex
 
 AM_CPPFLAGS = @SRC_INC@ -I$(HEAPLAYER_DIR)/util @EXT_INC@ \
 	@SYS_DEFS@ @CS_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
+if ENABLE_SYSTEMTAP
+   AM_CPPFLAGS += -I$(SYSTEMTAP_DIR)
+endif
 
 #BUILT_SOURCES = cnvlex.c
 #CLEANFILES = cnvlex.c
@@ -276,6 +280,9 @@ libcubridcs_la_SOURCES = \
 #dist_libcubridcs_la_SOURCES = $(PARSER_DIR)/csql_grammar.g $(EXECUTABLE_DIR)/loader_grammar.g
 libcubridcs_la_LDFLAGS = -version-number @LT_VERSION@
 libcubridcs_la_LIBADD = @CAS_LIB@ @EXT_LIBS@ @SYS_LIBS@ $(LIBADD_DL)
+if ENABLE_SYSTEMTAP
+   AM_CFLAGS = $(CFLAGS) -I$(SYSTEMTAP_DIR)
+endif
 libcubridcs_la_DEPENDENCIES = @CAS_LIB@ @EXT_LIBS@
 libcubridcs_la_LINK = $(LINK)
 

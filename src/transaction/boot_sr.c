@@ -100,6 +100,10 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 
+#if defined(ENABLE_SYSTEMTAP)
+#include "probes.h"
+#endif /* ENABLE_SYSTEMTAP */
+
 #define BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE  \
   (1250 * (IO_DEFAULT_PAGE_SIZE / IO_PAGESIZE))	/* 5 Mbytes */
 
@@ -4035,6 +4039,11 @@ xboot_register_client (THREAD_ENTRY * thread_p,
 	      tran_index);
     }
 
+#if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
+  CUBRID_CONN_START (thread_p->conn_entry->client_id,
+                     client_credential->db_user);
+#endif /* ENABLE_SYSTEMTAP */
+
   client_credential->db_user = db_user_save;
   return tran_index;
 }
@@ -4056,6 +4065,7 @@ int
 xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 {
   int save_index;
+  LOG_TDES *tdes;
 #if defined(SERVER_MODE)
   int client_id;
   CSS_CONN_ENTRY *conn;
@@ -4063,8 +4073,6 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
   if (BO_IS_SERVER_RESTARTED () && tran_index != NULL_TRAN_INDEX)
     {
-      LOG_TDES *tdes;
-
       save_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, tran_index);
@@ -4075,6 +4083,11 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
       if (tdes == NULL || tdes->client_id != client_id)
 	{
 	  thread_p->tran_index = save_index;
+
+#if defined(ENABLE_SYSTEMTAP)
+          CUBRID_CONN_END (-1, NULL);
+#endif /* ENABLE_SYSTEMTAP */
+
 	  return NO_ERROR;
 	}
 
@@ -4096,6 +4109,11 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 #else
       if (tdes == NULL)
 	{
+
+#if defined(ENABLE_SYSTEMTAP)
+          CUBRID_CONN_END (-1, NULL);
+#endif /* ENABLE_SYSTEMTAP */
+
 	  return NO_ERROR;
 	}
 #endif /* SERVER_MODE */
@@ -4121,6 +4139,10 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 #if defined(SA_MODE)
   (void) xboot_shutdown_server (NULL, true);
 #endif /* SA_MODE */
+
+#if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
+  CUBRID_CONN_END (client_id, tdes->client.db_user);
+#endif /* ENABLE_SYSTEMTAP */
 
   return NO_ERROR;
 }

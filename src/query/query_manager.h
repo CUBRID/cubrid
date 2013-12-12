@@ -168,6 +168,42 @@ struct qmgr_query_entry
   bool is_holdable;		/* true if this query should be available */
 };
 
+#if defined (SERVER_MODE)
+/* This struct is used when implements recursive mutex. */
+typedef struct qmgr_mutex QMGR_MUTEX;
+struct qmgr_mutex
+{
+  pthread_t owner;		/* mutex owner */
+  unsigned int lock_count;	/* how many times we acquired mutex */
+  pthread_mutex_t lock;
+  pthread_cond_t not_busy_cond;
+  unsigned int nwaits;		/* the number of waiters */
+};
+#endif
+
+typedef struct qmgr_tran_entry QMGR_TRAN_ENTRY;
+struct qmgr_tran_entry
+{
+#if defined (SERVER_MODE)
+  QMGR_MUTEX lock;
+#endif
+  QMGR_TRAN_STATUS trans_stat;	/* transaction status */
+  int query_id_generator;	/* global query identifier count */
+
+  int num_query_entries;	/* number of allocated query entries */
+
+  QMGR_QUERY_ENTRY *query_entry_list_p;	/* linked list of query entries */
+  QMGR_QUERY_ENTRY *free_query_entry_list_p;	/* free query entry list */
+
+  OID_BLOCK_LIST *modified_classes_p;	/* array of class OIDs */
+
+#if defined (SERVER_MODE)
+  THREAD_ENTRY *wait_thread_p;
+  int active_sync_query_count;
+  bool exist_active_query;
+#endif
+};
+
 extern QMGR_QUERY_ENTRY *qmgr_get_query_entry (THREAD_ENTRY * thread_p,
 					       QUERY_ID query_id,
 					       int trans_ind);
@@ -231,4 +267,6 @@ extern int qmgr_get_temp_file_membuf_pages (QMGR_TEMP_FILE * temp_file_p);
 extern int qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf,
 			    char *query, int sql_len);
 extern struct drand48_data *qmgr_get_rand_buf (THREAD_ENTRY * thread_p);
+extern QMGR_TRAN_ENTRY *qmgr_get_tran_entry (int trans_id);
+
 #endif /* _QUERY_MANAGER_H_ */

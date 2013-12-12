@@ -42,6 +42,9 @@
 #include "slotted_page.h"
 #include "overflow_file.h"
 #include "boot_sr.h"
+#if defined(ENABLE_SYSTEMTAP)
+#include "probes.h"
+#endif /* ENABLE_SYSTEMTAP */
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -270,7 +273,8 @@ static int px_sort_communicate (THREAD_ENTRY * thread_p,
 
 static int sort_inphase_sort (THREAD_ENTRY * thread_p,
 			      SORT_PARAM * sort_param,
-			      SORT_GET_FUNC * get_next, void *arguments);
+			      SORT_GET_FUNC * get_next, void *arguments,
+			      unsigned int * total_numrecs);
 static int sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p,
 					SORT_PARAM * sort_param);
 static int sort_exphase_merge (THREAD_ENTRY * thread_p,
@@ -1441,12 +1445,17 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
   INT32 input_pages;
   int i;
   int file_pg_cnt_est;
+  unsigned int total_numrecs = 0;
 #if defined(SERVER_MODE)
   int num_cpus;
   int rv;
 #endif /* SERVER_MODE */
 
   thread_set_sort_stats_active (thread_p, true);
+
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_SORT_START ();
+#endif /* ENABLE_SYSTEMTAP */
 
   sort_param = (SORT_PARAM *) malloc (sizeof (SORT_PARAM));
   if (sort_param == NULL)
@@ -1612,8 +1621,9 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
    * space that is going to be needed.
    */
 
-  error = sort_inphase_sort (thread_p, sort_param, get_fn, get_arg);
-  if (error != NO_ERROR)
+  error = sort_inphase_sort (thread_p, &sort_param, get_fn, get_arg, 
+			     &total_numrecs);
+  if (error == NO_ERROR)
     {
       goto cleanup;
     }
@@ -2251,6 +2261,10 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
 
 #endif /* SERVER_MODE */
 
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_SORT_END (total_numrecs, error);
+#endif /* ENABLE_SYSTEMTAP */
+
   if (result == NULL || result_size < 0)
     {
       assert_release (false);
@@ -2303,7 +2317,8 @@ exit_on_error:
  */
 static int
 sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
-		   SORT_GET_FUNC * get_fn, void *get_arg)
+		   SORT_GET_FUNC * get_fn, void *get_arg,
+		   unsigned int  *total_numrecs)
 {
   /* Variables for the input file */
   SORT_STATUS status;
@@ -2353,6 +2368,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
   numrecs = 0;
   sort_numrecs = 0;
   saved_numrecs = 0;
+  *total_numrecs = 0;
   saved_index_area = NULL;
   item_ptr = sort_param->internal_memory + SORT_RECORD_LENGTH_SIZE;
   index_area = (char **) (output_buffer - sizeof (char *));
@@ -2527,6 +2543,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 
 	      /* save sorted record number at this stage */
 	      sort_numrecs = numrecs;
+	      *total_numrecs = *total_numrecs + sort_numrecs;
 	    }
 
 	  /* Check if the record would fit into a single slotted page.

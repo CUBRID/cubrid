@@ -38,6 +38,9 @@
 #include "server_support.h"
 #endif
 #include "xserver_interface.h"
+#if defined(ENABLE_SYSTEMTAP)
+#include "probes.h"
+#endif /* ENABLE_SYSTEMTAP */
 
 /*
  * xtran_server_commit - Commit the current transaction
@@ -79,6 +82,15 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
   (void) locator_drop_transient_class_name_entries (thread_p, tran_index,
 						    NULL);
+#if defined(ENABLE_SYSTEMTAP)
+  if (state == TRAN_UNACTIVE_COMMITTED ||
+      state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS ||
+      state == TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS)
+    {
+      CUBRID_TRAN_COMMIT (tran_index);
+    }
+#endif /* ENABLE_SYSTEMTAP */
+
   return state;
 }
 
@@ -118,6 +130,10 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
 
   (void) locator_drop_transient_class_name_entries (thread_p, tran_index,
 						    NULL);
+
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_TRAN_ABORT (tran_index, state);
+#endif /* ENABLE_SYSTEMTAP */
 
   return state;
 }

@@ -38,6 +38,7 @@ CCI_DIR = $(SRC)/cci
 DBMT_DIR = $(SRC)/dbmt
 QATOOLS_DIR = $(SRC)/qatools
 SESSION_DIR = $(SRC)/session
+SYSTEMTAP_DIR = $(top_srcdir)/contrib/systemtap
 
 AM_CPPFLAGS = @SRC_INC@ -I$(HEAPLAYER_DIR)/util @EXT_INC@ \
 	@SYS_DEFS@ @SERVER_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
@@ -230,6 +231,9 @@ libcubrid_la_SOURCES = \
 	$(SESSION_SOURCES)
 libcubrid_la_LDFLAGS = -version-number @LT_VERSION@
 libcubrid_la_LIBADD = @EXT_LIBS@ @SYS_LIBS@ $(LIBADD_DL)
+if ENABLE_SYSTEMTAP
+   AM_CFLAGS = $(CFLAGS) -I$(SYSTEMTAP_DIR)
+endif
 libcubrid_la_LINK = $(LINK)
 
 install-data-hook:

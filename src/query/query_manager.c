@@ -49,6 +49,9 @@
 #endif
 #include "thread.h"
 #include "md5.h"
+#if defined(ENABLE_SYSTEMTAP)
+#include "probes.h"
+#endif /* ENABLE_SYSTEMTAP */
 
 #ifndef SERVER_MODE
 
@@ -103,42 +106,6 @@ struct query_async
  * A resource mechanism used to effectively handle memory allocation for the
  * query entry structures.
  */
-
-#if defined (SERVER_MODE)
-/* This struct is used when implements recursive mutex. */
-typedef struct qmgr_mutex QMGR_MUTEX;
-struct qmgr_mutex
-{
-  pthread_t owner;		/* mutex owner */
-  unsigned int lock_count;	/* how many times we acquired mutex */
-  pthread_mutex_t lock;
-  pthread_cond_t not_busy_cond;
-  unsigned int nwaits;		/* the number of waiters */
-};
-#endif
-
-typedef struct qmgr_tran_entry QMGR_TRAN_ENTRY;
-struct qmgr_tran_entry
-{
-#if defined (SERVER_MODE)
-  QMGR_MUTEX lock;
-#endif
-  QMGR_TRAN_STATUS trans_stat;	/* transaction status */
-  int query_id_generator;	/* global query identifier count */
-
-  int num_query_entries;	/* number of allocated query entries */
-
-  QMGR_QUERY_ENTRY *query_entry_list_p;	/* linked list of query entries */
-  QMGR_QUERY_ENTRY *free_query_entry_list_p;	/* free query entry list */
-
-  OID_BLOCK_LIST *modified_classes_p;	/* array of class OIDs */
-
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *wait_thread_p;
-  int active_sync_query_count;
-  bool exist_active_query;
-#endif
-};
 
 typedef struct qmgr_temp_file_list QMGR_TEMP_FILE_LIST;
 struct qmgr_temp_file_list
@@ -2050,6 +2017,14 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
+#if defined(ENABLE_SYSTEMTAP)
+  if (tran_entry_p->trans_stat == QMGR_TRAN_NULL
+      || tran_entry_p->trans_stat == QMGR_TRAN_TERMINATED)
+    {
+      CUBRID_TRAN_START (tran_index);
+    }
+#endif /* ENABLE_SYSTEMTAP */
+
 #if defined (SERVER_MODE)
   qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
   tran_entry_p->trans_stat = QMGR_TRAN_RUNNING;
@@ -2503,6 +2478,14 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   /* mark that this transaction is running a query */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+#if defined(ENABLE_SYSTEMTAP)
+  if (tran_entry_p->trans_stat == QMGR_TRAN_NULL
+      || tran_entry_p->trans_stat == QMGR_TRAN_TERMINATED)
+    {
+      CUBRID_TRAN_START (tran_index);
+    }
+#endif /* ENABLE_SYSTEMTAP */
 
 #if defined (SERVER_MODE)
   qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
@@ -5572,4 +5555,10 @@ qmgr_get_rand_buf (THREAD_ENTRY * thread_p)
 #else
   return &qmgr_rand_buf;
 #endif
+}
+
+QMGR_TRAN_ENTRY *
+qmgr_get_tran_entry (int trans_id)
+{
+  return &qmgr_Query_table.tran_entries_p[trans_id];
 }

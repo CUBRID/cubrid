@@ -37,11 +37,15 @@ BROKER_DIR = $(SRC)/broker
 CCI_DIR = $(SRC)/cci
 DBMT_DIR = $(SRC)/dbmt
 SESSION_DIR = $(SRC)/session
+SYSTEMTAP_DIR = $(top_srcdir)/contrib/systemtap
 
 FLEX = flex
 
 AM_CPPFLAGS = @SRC_INC@ -I$(HEAPLAYER_DIR)/util @EXT_INC@ @JAVA_INC@ \
 	@SYS_DEFS@ @SA_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
+if ENABLE_SYSTEMTAP
+   AM_CPPFLAGS += -I$(SYSTEMTAP_DIR)
+endif
 
 #BUILT_SOURCES = cnvlex.c
 #CLEANFILES = cnvlex.c

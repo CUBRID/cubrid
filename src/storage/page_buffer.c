@@ -46,6 +46,7 @@
 #include "thread.h"
 #include "list_file.h"
 #include "tsc_timer.h"
+#include "query_manager.h"
 
 #if defined(CUBRID_DEBUG)
 #include "disk_manager.h"
@@ -60,6 +61,10 @@
 #include "disk_manager.h"
 #include "boot_sr.h"
 #endif /* PAGE_STATISTICS */
+
+#if defined(ENABLE_SYSTEMTAP)
+#include "probes.h"
+#endif /* ENABLE_SYSTEMTAP */
 
 /* minimum number of buffers */
 #define PGBUF_MINIMUM_BUFFERS		(MAX_NTRANS * 10)
@@ -1137,6 +1142,13 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+#if defined(ENABLE_SYSTEMTAP)
+  bool pgbuf_hit = false;
+  int tran_index;
+  QMGR_TRAN_ENTRY * tran_entry;
+  QUERY_ID query_id = -1;
+  bool monitored = false;
+#endif /* ENABLE_SYSTEMTAP */
 
   if (pgbuf_get_check_page_validation (thread_p,
 				       PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
@@ -1191,6 +1203,13 @@ try_again:
 
   buf_lock_acquired = false;
   bufptr = pgbuf_search_hash_chain (hash_anchor, vpid);
+#if defined(ENABLE_SYSTEMTAP)
+  if (bufptr != NULL)
+    {
+	CUBRID_PGBUF_HIT ();
+	pgbuf_hit = true;
+    }
+#endif /* ENABLE_SYSTEMTAP */
 
   if (bufptr == NULL)
     {
@@ -1232,10 +1251,33 @@ try_again:
       bufptr->async_flush_request = false;
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
+#if defined(ENABLE_SYSTEMTAP)
+      if (newpg == NEW_PAGE && pgbuf_hit == false)
+        {
+          pgbuf_hit = true;
+        }
+      if (newpg != NEW_PAGE)
+        {
+	  CUBRID_PGBUF_MISS ();
+        }
+#endif /* ENABLE_SYSTEMTAP */
+
       if (newpg != NEW_PAGE)
 	{
 	  /* Record number of reads in statistics */
 	  mnt_pb_ioreads (thread_p);
+
+#if defined(ENABLE_SYSTEMTAP)
+  	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+          tran_entry = qmgr_get_tran_entry (tran_index);
+          if (tran_entry->query_entry_list_p)
+            {
+              query_id = tran_entry->query_entry_list_p->query_id;
+              monitored = true;
+              CUBRID_IO_READ_START (query_id);
+            }
+#endif /* ENABLE_SYSTEMTAP */
+
 	  if (fileio_read (thread_p,
 			   fileio_get_volume_descriptor (vpid->volid),
 			   &bufptr->iopage_buffer->iopage, vpid->pageid,
@@ -1253,11 +1295,24 @@ try_again:
 	       * means hash_mutex must be held before unlocking page.
 	       */
 	      (void) pgbuf_unlock_page (hash_anchor, vpid, true);
+
+#if defined(ENABLE_SYSTEMTAP)
+              if (monitored == true)
+                {
+                  CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
+                }
+#endif /* ENABLE_SYSTEMTAP */
+
 	      return NULL;
 	    }
 
-	  if (pgbuf_is_temporary_volume (vpid->volid) == true)
-	    {
+#if defined(ENABLE_SYSTEMTAP)
+          if (monitored == true)
+            {
+              CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 0);
+            }
+#endif /* ENABLE_SYSTEMTAP */
+	  if (pgbuf_is_temporary_volume (vpid->volid) == true)	    {
 	      /* Check iff the first time to access */
 	      if (!LSA_IS_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa))
 		{
@@ -7261,6 +7316,12 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage;
   LOG_LSA oldest_unflush_lsa;
+#if defined(ENABLE_SYSTEMTAP)
+  int tran_index;
+  QMGR_TRAN_ENTRY * tran_entry;
+  QUERY_ID query_id = -1;
+  bool monitored = false;
+#endif /* ENABLE_SYSTEMTAP */
 
   /* the caller is holding bufptr->BCB_mutex */
 
@@ -7298,6 +7359,17 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   /* Record number of writes in statistics */
   mnt_pb_iowrites (thread_p, 1);
 
+#if defined(ENABLE_SYSTEMTAP)
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tran_entry = qmgr_get_tran_entry (tran_index);
+  if (tran_entry->query_entry_list_p)
+    {
+      query_id = tran_entry->query_entry_list_p->query_id;
+      monitored = true;
+      CUBRID_IO_WRITE_START (query_id);
+    }
+#endif /* ENABLE_SYSTEMTAP */
+
   /* now, flush buffer page */
   if (fileio_write (thread_p,
 		    fileio_get_volume_descriptor (bufptr->vpid.volid),
@@ -7309,8 +7381,22 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
       bufptr->avoid_victim = false;
 
+#if defined(ENABLE_SYSTEMTAP)
+      if (monitored == true)
+        {
+          CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, 1);
+        }
+#endif /* ENABLE_SYSTEMTAP */
+
       return ER_FAILED;
     }
+
+#if defined(ENABLE_SYSTEMTAP)
+  if (monitored == true)
+    {
+      CUBRID_IO_WRITE_END (query_id, IO_PAGESIZE, 0);
+    }
+#endif /* ENABLE_SYSTEMTAP */
 
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
 

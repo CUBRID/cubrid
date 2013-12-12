@@ -256,7 +256,8 @@ extern const OID *heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
 			       RECDES * recdes, bool * old,
 			       HEAP_SCANCACHE * scan_cache);
 extern const OID *heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid,
-			       const OID * oid, HEAP_SCANCACHE * scan_cache);
+			       const OID * class_oid, const OID * oid,
+			       HEAP_SCANCACHE * scan_cache);
 extern void heap_flush (THREAD_ENTRY * thread_p, const OID * oid);
 extern int xheap_reclaim_addresses (THREAD_ENTRY * thread_p,
 				    const HFID * hfid);

@@ -75,6 +75,10 @@
 #include "partition.h"
 #include "tsc_timer.h"
 
+#if defined(ENABLE_SYSTEMTAP)
+#include "probes.h"
+#endif /* ENABLE_SYSTEMTAP */
+
 #define GOTO_EXIT_ON_ERROR \
   do \
     { \
@@ -14423,6 +14427,14 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   int amount_qlist_exit;
   int amount_qlist_new;
 #endif /* NDEBUG */
+#if defined(ENABLE_SYSTEMTAP)
+  LOG_TDES *tdes = NULL;
+  QMGR_TRAN_ENTRY *tran_entry_p = NULL;
+  QMGR_QUERY_ENTRY *query_p = NULL;
+  char *query_str = NULL;
+  int client_id = -1;
+  char *db_user = NULL;
+#endif /* ENABLE_SYSTEMTAP */
 
 #if defined(CUBRID_DEBUG)
   {
@@ -14497,6 +14509,36 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
    * already exists.
    */
   er_clear ();
+
+#if defined(ENABLE_SYSTEMTAP)
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  tran_entry_p = qmgr_get_tran_entry (tran_index);
+
+  if (tdes != NULL)
+    {
+      client_id = tdes->client_id;
+      db_user = tdes->client.db_user;
+    }
+
+  query_p = tran_entry_p->query_entry_list_p;
+  while (query_p && query_p->query_id != query_id)
+    {
+      query_p = query_p->next;
+    }
+
+  if (query_p != NULL)
+    {
+      XASL_CACHE_ENTRY *xasl_ent = NULL;
+
+      xasl_ent = query_p->xasl_ent;
+      if (xasl_ent != NULL)
+        {
+          query_str = xasl_ent->sql_info.sql_user_text;
+        }
+    }
+  CUBRID_QUERY_EXEC_START (query_str, query_id, client_id, db_user);
+#endif /* ENABLE_SYSTEMTAP */
 
   /* form the value descriptor to represent positional values */
   xasl_state.vd.dbval_cnt = dbval_cnt;
@@ -14674,6 +14716,11 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 		}
 #endif /* NDEBUG */
 
+#if defined(ENABLE_SYSTEMTAP)
+  	      CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user,
+				     1);
+#endif /* ENABLE_SYSTEMTAP */
+
 	      /* caller will detect the error condition and free the listid */
 	      return list_id;
 	    }			/* if-else */
@@ -14746,6 +14793,16 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   }
 #endif /* CUBRID_DEBUG */
 
+#if defined(ENABLE_SYSTEMTAP)
+  /*if (qmgr_get_query_error_with_id (thread_p, query_id) < 0)
+    {
+      CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, 1);
+    }
+  else
+    {*/
+      CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, 0);
+   // }
+#endif /* ENABLE_SYSTEMTAP */
   return list_id;
 }
 

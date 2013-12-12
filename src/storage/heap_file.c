@@ -77,7 +77,9 @@
 #endif
 
 #include "tsc_timer.h"
-
+#if defined(ENABLE_SYSTEMTAP)
+#include "probes.h"
+#endif /* ENABLE_SYSTEMTAP */
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
@@ -6878,6 +6880,10 @@ OID *
 heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	     OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache)
 {
+#if defined(ENABLE_SYSTEMTAP)
+   CUBRID_OBJ_INSERT_START (class_oid);
+#endif /* ENABLE_SYSTEMTAP */
+
   /*
    * If a scan cache for updates is given, make sure that it is for the
    * same heap, otherwise, end the current one and start a new one.
@@ -6898,6 +6904,11 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      if (heap_scancache_reset_modify (thread_p, scan_cache, hfid,
 					       class_oid) != NO_ERROR)
 		{
+
+#if defined(ENABLE_SYSTEMTAP)
+		  CUBRID_OBJ_INSERT_END (class_oid, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
 		  return NULL;
 		}
 	    }
@@ -6912,6 +6923,11 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
       if (heap_ovf_insert (thread_p, hfid, &ovf_oid, recdes) == NULL)
 	{
+
+#if defined(ENABLE_SYSTEMTAP)
+	  CUBRID_OBJ_INSERT_END (class_oid, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
 	  return NULL;
 	}
 
@@ -6927,6 +6943,11 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	{
 	  /* Something went wrong, delete the overflow record */
 	  (void) heap_ovf_delete (thread_p, hfid, &ovf_oid);
+
+#if defined(ENABLE_SYSTEMTAP)
+	  CUBRID_OBJ_INSERT_END (class_oid, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
 	  return NULL;
 	}
     }
@@ -6937,6 +6958,11 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 					  recdes, scan_cache, true,
 					  recdes->length) != NO_ERROR)
 	{
+
+#if defined(ENABLE_SYSTEMTAP)
+	  CUBRID_OBJ_INSERT_END (class_oid, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
 	  return NULL;
 	}
     }
@@ -6947,11 +6973,21 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
       if (log_add_to_modified_class_list (thread_p, oid) != NO_ERROR)
 	{
+
+#if defined(ENABLE_SYSTEMTAP)
+	  CUBRID_OBJ_INSERT_END (class_oid, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
 	  return NULL;
 	}
 
       if (csect_enter (thread_p, CSECT_HEAP_CHNGUESS, INF_WAIT) != NO_ERROR)
 	{
+
+#if defined(ENABLE_SYSTEMTAP)
+	  CUBRID_OBJ_INSERT_END (class_oid, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
 	  return NULL;
 	}
 
@@ -6962,6 +6998,10 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
       csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
     }
+
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_OBJ_INSERT_END (class_oid, 0);
+#endif /* ENABLE_SYSTEMTAP */
 
   return oid;
 }
@@ -7004,6 +7044,10 @@ heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_OBJ_UPDATE_START (class_oid);
+#endif /* ENABLE_SYSTEMTAP */
+
   HEAP_MAYNEED_DECACHE_GUESSED_LASTREPRS (oid, hfid, recdes);
 
   if (hfid == NULL)
@@ -7018,6 +7062,11 @@ heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
 			"heap_update: Bad interface a heap is needed");
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_HEAP, 3,
 		  "", NULL_FILEID, NULL_PAGEID);
+
+#if defined(ENABLE_SYSTEMTAP)
+	  CUBRID_OBJ_UPDATE_END (class_oid, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
 	  return NULL;
 	}
     }
@@ -7030,6 +7079,11 @@ heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
 		  oid->volid, oid->pageid, oid->slotid);
 	}
+
+#if defined(ENABLE_SYSTEMTAP)
+      CUBRID_OBJ_UPDATE_END (class_oid, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
       return NULL;
     }
 
@@ -7956,6 +8010,10 @@ try_again:
       csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
     }
 
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_OBJ_UPDATE_END (class_oid, 0);
+#endif /* ENABLE_SYSTEMTAP */
+
   return oid;
 
 error:
@@ -7972,6 +8030,10 @@ error:
       pgbuf_unfix_and_init (thread_p, hdr_pgptr);
     }
 
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_OBJ_UPDATE_END (class_oid, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
   return NULL;
 }
 
@@ -7979,6 +8041,7 @@ error:
  * heap_delete () - Delete an object from heap file
  *   return: OID *(oid on success or NULL on failure)
  *   hfid(in): Heap file identifier
+ *   class_oid(in): class object identifier
  *   oid(in): Object identifier
  *   scan_cache(in/out): Scan cache used to estimate the best space pages
  *                       between heap changes.
@@ -7988,10 +8051,15 @@ error:
  * overflow, both the relocation and the relocated record are deleted.
  */
 const OID *
-heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * oid,
-	     HEAP_SCANCACHE * scan_cache)
+heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
+	     const OID * oid, HEAP_SCANCACHE * scan_cache)
 {
   int ret = NO_ERROR;
+  const OID *del_oid_p = NULL;
+
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_OBJ_DELETE_START (class_oid);
+#endif /* ENABLE_SYSTEMTAP */
 
   /*
    * If a scan cache for updates is given, make sure that it is for the
@@ -8017,6 +8085,11 @@ heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * oid,
 					     NULL);
 	      if (ret != NO_ERROR)
 		{
+
+#if defined(ENABLE_SYSTEMTAP)
+		  CUBRID_OBJ_DELETE_END (class_oid, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
 		  return NULL;
 		}
 	    }
@@ -8028,11 +8101,21 @@ heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * oid,
 
       if (log_add_to_modified_class_list (thread_p, oid) != NO_ERROR)
 	{
+
+#if defined(ENABLE_SYSTEMTAP)
+	  CUBRID_OBJ_DELETE_END (class_oid, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
 	  return NULL;
 	}
 
       if (csect_enter (thread_p, CSECT_HEAP_CHNGUESS, INF_WAIT) != NO_ERROR)
 	{
+
+#if defined(ENABLE_SYSTEMTAP)
+	  CUBRID_OBJ_DELETE_END (class_oid, 1);
+#endif /* ENABLE_SYSTEMTAP */
+
 	  return NULL;
 	}
 
@@ -8042,7 +8125,13 @@ heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * oid,
       csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
     }
 
-  return heap_delete_internal (thread_p, hfid, oid, scan_cache, true);
+  del_oid_p = heap_delete_internal (thread_p, hfid, oid, scan_cache, true);
+
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_OBJ_DELETE_END (class_oid, (del_oid_p == NULL));
+#endif /* ENABLE_SYSTEMTAP */
+
+  return del_oid_p;
 }
 
 /*
@@ -10525,6 +10614,9 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
   DISK_ISVALID oid_valid;
   int again_count = 0;
   int again_max = 20;
+#if defined(ENABLE_SYSTEMTAP)
+  OID cls_oid;
+#endif /* ENABLE_SYSTEMTAP */
 
 #if defined(CUBRID_DEBUG)
   if (scan_cache == NULL && ispeeking == PEEK)
@@ -10659,7 +10751,37 @@ try_again:
 	  class_oid->pageid = oid_Root_class_oid->pageid;
 	  class_oid->slotid = oid_Root_class_oid->slotid;
 	}
+#if defined(ENABLE_SYSTEMTAP)
+      COPY_OID (&cls_oid, class_oid);
+      CUBRID_OBJ_READ_START (&cls_oid);
+#endif /* ENABLE_SYSTEMTAP */
     }
+  else
+    {
+#if defined(ENABLE_SYSTEMTAP)
+      RECDES chain_recdes;
+      HEAP_CHAIN *chain;
+
+      if (spage_get_record (pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			    &chain_recdes, PEEK) != S_SUCCESS)
+        {
+          pgbuf_unfix_and_init (thread_p, pgptr);
+          return S_ERROR;
+        }
+
+      chain = (HEAP_CHAIN *) chain_recdes.data;
+      COPY_OID (&cls_oid, &(chain->class_oid));
+
+      if (OID_ISNULL (&cls_oid))
+        {
+          /* rootclass class oid, substitute with global */
+          cls_oid.volid = oid_Root_class_oid->volid;
+          cls_oid.pageid = oid_Root_class_oid->pageid;
+          cls_oid.slotid = oid_Root_class_oid->slotid;
+        }
+      CUBRID_OBJ_READ_START (&cls_oid); 
+#endif /* ENABLE_SYSTEMTAP */
+     }
 
   type = spage_get_record_type (pgptr, oid->slotid);
   if (type == REC_UNKNOWN)
@@ -10667,6 +10789,11 @@ try_again:
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3,
 	      oid->volid, oid->pageid, oid->slotid);
       pgbuf_unfix_and_init (thread_p, pgptr);
+
+#if defined(ENABLE_SYSTEMTAP)
+      CUBRID_OBJ_READ_END (&cls_oid, S_DOESNT_EXIST);
+#endif /* ENABLE_SYSTEMTAP */
+
       return S_DOESNT_EXIST;
     }
 
@@ -10688,6 +10815,11 @@ try_again:
 		  ER_HEAP_BAD_RELOCATION_RECORD, 3, oid->volid, oid->pageid,
 		  oid->slotid);
 	  pgbuf_unfix_and_init (thread_p, pgptr);
+
+#if defined(ENABLE_SYSTEMTAP)
+          CUBRID_OBJ_READ_END (&cls_oid, scan);
+#endif /* ENABLE_SYSTEMTAP */
+
 	  return scan;
 	}
 
@@ -10717,6 +10849,10 @@ try_again:
 			  forward_oid.slotid);
 		}
 
+#if defined(ENABLE_SYSTEMTAP)
+      	     CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
+#endif /* ENABLE_SYSTEMTAP */
+
 	      return S_ERROR;
 	    }
 	  pgbuf_unfix_and_init (thread_p, forward_pgptr);
@@ -10735,6 +10871,11 @@ try_again:
 			  ER_PAGE_LATCH_ABORTED, 2, forward_vpid.volid,
 			  forward_vpid.pageid);
 		}
+
+#if defined(ENABLE_SYSTEMTAP)
+      	      CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
+#endif /* ENABLE_SYSTEMTAP */
+
 	      return S_ERROR;
 	    }
 
@@ -10764,6 +10905,11 @@ try_again:
 		  scan_cache->area_size = -1;
 		  pgbuf_unfix_and_init (thread_p, pgptr);
 		  pgbuf_unfix_and_init (thread_p, forward_pgptr);
+
+#if defined(ENABLE_SYSTEMTAP)
+                 CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
+#endif /* ENABLE_SYSTEMTAP */
+
 		  return S_ERROR;
 		}
 	    }
@@ -10833,6 +10979,11 @@ try_again:
 		{
 		  scan_cache->area_size = -1;
 		  pgbuf_unfix_and_init (thread_p, pgptr);
+
+#if defined(ENABLE_SYSTEMTAP)
+      		  CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
+#endif /* ENABLE_SYSTEMTAP */
+
 		  return S_ERROR;
 		}
 	    }
@@ -10868,6 +11019,11 @@ try_again:
 		  ER_HEAP_BAD_RELOCATION_RECORD, 3, oid->volid, oid->pageid,
 		  oid->slotid);
 	  pgbuf_unfix_and_init (thread_p, pgptr);
+
+#if defined(ENABLE_SYSTEMTAP)
+          CUBRID_OBJ_READ_END (&cls_oid, scan);
+#endif /* ENABLE_SYSTEMTAP */
+
 	  return scan;
 	}
       pgbuf_unfix_and_init (thread_p, pgptr);
@@ -10897,6 +11053,11 @@ try_again:
 	      if (scan_cache->area == NULL)
 		{
 		  scan_cache->area_size = -1;
+
+#if defined(ENABLE_SYSTEMTAP)
+                  CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
+#endif /* ENABLE_SYSTEMTAP */
+
 		  return S_ERROR;
 		}
 	    }
@@ -10919,6 +11080,11 @@ try_again:
 					     recdes->area_size);
 	      if (recdes->data == NULL)
 		{
+
+#if defined(ENABLE_SYSTEMTAP)
+      		  CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
+#endif /* ENABLE_SYSTEMTAP */
+
 		  return S_ERROR;
 		}
 	      scan_cache->area_size = recdes->area_size;
@@ -10946,6 +11112,10 @@ try_again:
 	      oid->volid, oid->pageid, oid->slotid);
       break;
     }
+
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_OBJ_READ_END (&cls_oid, scan);
+#endif /* ENABLE_SYSTEMTAP */
 
   return scan;
 }

@@ -1,0 +1,63 @@
+/*
+ * CUBRID SystemTap Support
+ *
+ * USAGE: stap -k io_stat.stp
+ *
+ * DESCRIPTION:
+ * This script monitors the I/O operations and displays the slowest query 
+ * when a certain limit of kb/sec has been reached.
+ *
+ * The script checks for this limit every 2 seconds.
+ */
+ 
+global total_size = 0;
+global query_strings;
+global query_ids;
+global query_io;
+global io_limit = 4000000;
+
+probe process("cub_server").library("*").mark("query_exec_start")
+{
+	query_strings[tid()] = user_string($arg1);
+	query_ids[tid()] = $arg2;
+	query_io[tid()] = 0;
+}
+
+probe process("cub_server").library("*").mark("query_exec_end")
+{
+	query_ids[tid()] = -1;
+	query_strings[tid()] = "";
+	query_io[tid()] = 0;
+}
+
+probe process("cub_server").library("*").mark("io_read_end")
+{
+	total_size = total_size + $arg3;
+	query_io[tid()] = query_io[tid()] + $arg3;
+}
+
+probe process("cub_server").library("*").mark("io_write_end")
+{
+	total_size = total_size + $arg3;
+	query_io[tid()] = query_io[tid()] + $arg3;
+}
+
+probe timer.s(2) 
+{
+	if (total_size > io_limit)
+	  {
+		max_io = 0;
+		foreach (key in query_io+)
+			{
+				if (query_io[key] > max_io && query_ids[tid()] != -1)
+				  {
+					max_io = query_io[key];
+					max_query_string = query_strings[tid()];
+					max_key = key;
+				  }
+			}
+		printf ("%d I/O limit is reached\n Query_string: %s\n, I/O traffic: %d b\n",
+				io_limit, max_query_string, max_io);
+		total_size = 0;
+      }
+}
