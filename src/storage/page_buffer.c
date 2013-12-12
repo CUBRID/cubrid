@@ -7198,7 +7198,10 @@ pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
       pgbuf_Pool.buf_AOUT_list.Aout_bottom =
 	pgbuf_Pool.buf_AOUT_list.Aout_bottom->prev;
 
-      pgbuf_Pool.buf_AOUT_list.Aout_bottom->next = NULL;
+      if (pgbuf_Pool.buf_AOUT_list.Aout_bottom != NULL)
+	{
+	  pgbuf_Pool.buf_AOUT_list.Aout_bottom->next = NULL;
+	}
       aout_buf->prev = NULL;
     }
 
@@ -7207,7 +7210,10 @@ pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
       pgbuf_Pool.buf_AOUT_list.Aout_top =
 	pgbuf_Pool.buf_AOUT_list.Aout_top->next;
 
-      pgbuf_Pool.buf_AOUT_list.Aout_top->prev = NULL;
+      if (pgbuf_Pool.buf_AOUT_list.Aout_top != NULL)
+	{
+	  pgbuf_Pool.buf_AOUT_list.Aout_top->prev = NULL;
+	}
       aout_buf->next = NULL;
     }
 
