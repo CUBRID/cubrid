@@ -1872,24 +1872,26 @@ db_get_serial_current_value (const char *serial_name, DB_VALUE * serial_value)
 
   serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
 				     serial_name);
-  if (serial_mop != NULL)
-    {
-      if (do_get_serial_cached_num (&cached_num, serial_mop) != NO_ERROR)
-	{
-	  cached_num = 0;
-	}
-
-      if (serial_get_current_value (serial_value, &serial_obj_id,
-				    cached_num) != NO_ERROR)
-	{
-	  result = er_errid ();
-	}
-    }
-  else
+  if (serial_mop == NULL)
     {
       result = ER_QPROC_SERIAL_NOT_FOUND;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
+      return result;
+    }
+
+  result = do_get_serial_cached_num (&cached_num, serial_mop);
+  if (result != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      return result;
+    }
+
+  result = serial_get_current_value (serial_value, &serial_obj_id,
+				     cached_num);
+  if (result != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
     }
 
   return result;
@@ -1934,23 +1936,26 @@ db_get_serial_next_value_ex (const char *serial_name, DB_VALUE * serial_value,
 
   serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
 				     serial_name);
-  if (serial_mop != NULL)
-    {
-      if (do_get_serial_cached_num (&cached_num, serial_mop) != NO_ERROR)
-	{
-	  cached_num = 0;
-	}
-      if (serial_get_next_value (serial_value, &serial_obj_id, cached_num,
-				 num_alloc, GENERATE_SERIAL) != NO_ERROR)
-	{
-	  result = er_errid ();
-	}
-    }
-  else
+  if (serial_mop == NULL)
     {
       result = ER_QPROC_SERIAL_NOT_FOUND;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
+      return result;
+    }
+
+  result = do_get_serial_cached_num (&cached_num, serial_mop);
+  if (result != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      return result;
+    }
+
+  result = serial_get_next_value (serial_value, &serial_obj_id,
+				  cached_num, num_alloc, GENERATE_SERIAL);
+  if (result != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
     }
 
   return result;

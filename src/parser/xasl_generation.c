@@ -9252,7 +9252,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			if (do_get_serial_cached_num (&cached_num,
 						      serial_mop) != NO_ERROR)
 			  {
-			    cached_num = 0;
+			    PT_INTERNAL_ERROR (parser,
+					       "get serial cached_num");
+			    return NULL;
 			  }
 
 			DB_MAKE_INTEGER (&dbval, cached_num);

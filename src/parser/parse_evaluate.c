@@ -1455,37 +1455,36 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	      if (serial_mop != NULL)
 		{
 		  serial_oid_p = db_identifier (serial_mop);
-		  if (do_get_serial_cached_num (&cached_num,
-						serial_mop) != NO_ERROR)
+		  error = do_get_serial_cached_num (&cached_num, serial_mop);
+		  if (error == NO_ERROR)
 		    {
-		      cached_num = 0;
-		    }
-
-		  if (op == PT_CURRENT_VALUE)
-		    {
-		      error = serial_get_current_value (db_values,
-							serial_oid_p,
-							cached_num);
-		    }
-		  else
-		    {
-		      int num_alloc;
-
-		      val = pt_value_to_db (parser, arg2);
-		      num_alloc = DB_GET_INTEGER (val);
-		      if (num_alloc < 1)
+		      if (op == PT_CURRENT_VALUE)
 			{
-			  PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-				     MSGCAT_SEMANTIC_SERIAL_NUM_ALLOC_INVALID);
-			  return;
+			  error = serial_get_current_value (db_values,
+							    serial_oid_p,
+							    cached_num);
 			}
 		      else
 			{
-			  error = serial_get_next_value (db_values,
-							 serial_oid_p,
-							 cached_num,
-							 num_alloc,
-							 GENERATE_SERIAL);
+			  int num_alloc;
+
+			  val = pt_value_to_db (parser, arg2);
+			  num_alloc = DB_GET_INTEGER (val);
+			  if (num_alloc < 1)
+			    {
+			      PT_ERRORm (parser, tree,
+					 MSGCAT_SET_PARSER_SEMANTIC,
+					 MSGCAT_SEMANTIC_SERIAL_NUM_ALLOC_INVALID);
+			      return;
+			    }
+			  else
+			    {
+			      error = serial_get_next_value (db_values,
+							     serial_oid_p,
+							     cached_num,
+							     num_alloc,
+							     GENERATE_SERIAL);
+			    }
 			}
 		    }
 

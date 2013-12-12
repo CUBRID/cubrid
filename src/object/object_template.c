@@ -1152,107 +1152,110 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
   MOP serial_class_mop = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
   const char *class_name;
+  int cached_num;
 
-  if (!template_ptr->is_class_update)
+  if (template_ptr->is_class_update)
     {
-      class_ = template_ptr->class_;
+      return error;
+    }
 
-      for (att = class_->ordered_attributes; att != NULL;
-	   att = att->order_link)
+  class_ = template_ptr->class_;
+
+  for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
+    {
+      if (!(att->flags & SM_ATTFLAG_AUTO_INCREMENT))
 	{
-	  if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
+	  continue;
+	}
+
+      if (att->auto_increment == NULL)
+	{
+	  if (serial_class_mop == NULL)
 	    {
-	      if (att->auto_increment == NULL)
-		{
-		  if (serial_class_mop == NULL)
-		    {
-		      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
-		    }
-
-		  class_name = sm_class_name (att->class_mop);
-
-		  /* get original class's serial object */
-		  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name,
-						  class_name,
-						  att->header.name);
-		  serial_mop = do_get_serial_obj_id (&serial_obj_id,
-						     serial_class_mop,
-						     auto_increment_name);
-		  if (serial_mop == NULL)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OBJ_INVALID_ATTRIBUTE, 1,
-			      auto_increment_name);
-		      goto auto_increment_error;
-		    }
-
-		  att->auto_increment = serial_mop;
-		}
-
-	      if (att->auto_increment != NULL)
-		{
-		  exists = template_ptr->assignments[att->order];
-
-		  if (exists == NULL
-		      || (exists->variable != NULL
-			  && DB_IS_NULL (exists->variable)))
-		    {
-		      a = obt_make_assignment (template_ptr, att);
-		      if (a == NULL)
-			{
-			  goto auto_increment_error;
-			}
-
-		      a->is_auto_increment = 1;
-		      a->variable = pr_make_ext_value ();
-
-		      if (a->variable == NULL)
-			{
-			  goto auto_increment_error;
-			}
-
-		      DB_MAKE_NULL (&val);
-		      /* Do not update LAST_INSERT_ID during executing a trigger. */
-		      if (do_Trigger_involved == true
-			  || obt_Last_insert_id_generated == true)
-			{
-			  error = serial_get_next_value (&val, &att->auto_increment->oid_info.oid, 0,	/* no cache */
-							 1,	/* generate one */
-							 GENERATE_SERIAL);
-			}
-		      else
-			{
-			  error = serial_get_next_value (&val, &att->auto_increment->oid_info.oid, 0,	/* no cache */
-							 1,	/* generate one */
-							 GENERATE_AUTO_INCREMENT);
-			  if (error == NO_ERROR)
-			    {
-			      obt_Last_insert_id_generated = true;
-			    }
-			}
-		      if (error != NO_ERROR)
-			{
-			  goto auto_increment_error;
-			}
-
-		      db_value_domain_init (a->variable, att->type->id,
-					    att->domain->precision,
-					    att->domain->scale);
-
-		      (void) numeric_db_value_coerce_from_num (&val,
-							       a->variable,
-							       &data_status);
-		      if (data_status != NO_ERROR)
-			{
-			  goto auto_increment_error;
-			}
-		    }
-		}
+	      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 	    }
+
+	  class_name = sm_class_name (att->class_mop);
+
+	  /* get original class's serial object */
+	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, class_name,
+					  att->header.name);
+	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
+					     auto_increment_name);
+	  if (serial_mop == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OBJ_INVALID_ATTRIBUTE, 1, auto_increment_name);
+	      goto auto_increment_error;
+	    }
+
+	  att->auto_increment = serial_mop;
+	}
+
+      exists = template_ptr->assignments[att->order];
+      if (exists != NULL)
+	{
+	  if (exists->variable == NULL || !DB_IS_NULL (exists->variable))
+	    {
+	      continue;
+	    }
+	}
+
+      a = obt_make_assignment (template_ptr, att);
+      if (a == NULL)
+	{
+	  goto auto_increment_error;
+	}
+
+      a->is_auto_increment = 1;
+      a->variable = pr_make_ext_value ();
+
+      if (a->variable == NULL)
+	{
+	  goto auto_increment_error;
+	}
+
+      if (do_get_serial_cached_num (&cached_num, att->auto_increment) !=
+	  NO_ERROR)
+	{
+	  goto auto_increment_error;
+	}
+
+      DB_MAKE_NULL (&val);
+      /* Do not update LAST_INSERT_ID during executing a trigger. */
+      if (do_Trigger_involved == true || obt_Last_insert_id_generated == true)
+	{
+	  error =
+	    serial_get_next_value (&val, &att->auto_increment->oid_info.oid,
+				   cached_num, 1, GENERATE_SERIAL);
+	}
+      else
+	{
+	  error =
+	    serial_get_next_value (&val, &att->auto_increment->oid_info.oid,
+				   cached_num, 1, GENERATE_AUTO_INCREMENT);
+	  if (error == NO_ERROR)
+	    {
+	      obt_Last_insert_id_generated = true;
+	    }
+	}
+      if (error != NO_ERROR)
+	{
+	  goto auto_increment_error;
+	}
+
+      db_value_domain_init (a->variable, att->type->id,
+			    att->domain->precision, att->domain->scale);
+
+      (void) numeric_db_value_coerce_from_num (&val, a->variable,
+					       &data_status);
+      if (data_status != NO_ERROR)
+	{
+	  goto auto_increment_error;
 	}
     }
 
-  return (NO_ERROR);
+  return error;
 
 auto_increment_error:
   return er_errid ();
