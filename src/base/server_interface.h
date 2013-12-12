@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -32,8 +32,10 @@
 #ident "$Id$"
 
 enum
-{ SI_SYS_DATETIME = 1, SI_LOCAL_TRANSACTION_ID = 2,	/* next is 4 */
-  SI_CNT = 2
+{
+  SI_SYS_DATETIME = 0x01,
+  SI_LOCAL_TRANSACTION_ID = 0x02
+    /* next is 0x04 */
 };
 
 enum

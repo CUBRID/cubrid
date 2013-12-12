@@ -43,13 +43,6 @@
 #include "log_comm.h"
 #include "query_executor.h"
 
-typedef struct server_info SERVER_INFO;
-struct server_info
-{
-  int info_bits;
-  DB_VALUE *value[SI_CNT];
-};
-
 /* killtran supporting structures and functions */
 typedef struct one_tran_info ONE_TRAN_INFO;
 struct one_tran_info
@@ -364,7 +357,7 @@ extern int heap_get_class_num_objects_pages (HFID * hfid, int approximation,
 
 extern int btree_get_statistics (BTID * btid, BTREE_STATS * stat_info);
 extern int db_local_transaction_id (DB_VALUE * trid);
-extern int qp_get_server_info (SERVER_INFO * server_info);
+extern int qp_get_server_info (PARSER_CONTEXT * parser, int server_info_bits);
 extern int heap_has_instance (HFID * hfid, OID * class_oid);
 
 extern int jsp_get_server_port (void);

@@ -1088,7 +1088,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
 	mq_translate (parser,
 		      statement->info.scope.stmt->info.trigger_action.
 		      expression);
-      /* 
+      /*
        * Trigger statement node must use the datetime information of the
        * node corresponding the action to be made.
        */
@@ -1359,30 +1359,32 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
   TRIGGER_EXEC_INFO exec_info;
   DB_VALUE **src;
   int unhide1, unhide2;
-  SERVER_INFO server_info;
+  int server_info_bits;
 
   assert (parser != NULL && trigger_stmt != NULL
 	  && trigger_stmt->node_type == PT_SCOPE);
 
-  server_info.info_bits = 0;
+  server_info_bits = 0;		/* init */
 
   /* set sys_date, sys_time, sys_timestamp, sys_datetime values for trigger statement. */
   if (trigger_stmt->si_datetime)
     {
-      server_info.info_bits |= SI_SYS_DATETIME;
-      server_info.value[0] = &parser->sys_datetime;
+      server_info_bits |= SI_SYS_DATETIME;
     }
 
   if (trigger_stmt->si_tran_id)
     {
-      server_info.info_bits |= SI_LOCAL_TRANSACTION_ID;
-      server_info.value[1] = &parser->local_transaction_id;
+      server_info_bits |= SI_LOCAL_TRANSACTION_ID;
     }
 
   /* request to the server */
-  if (server_info.info_bits)
+  if (server_info_bits)
     {
-      (void) qp_get_server_info (&server_info);
+      error = qp_get_server_info (parser, server_info_bits);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
   /* initialize our parser_walk_tree state */
@@ -1506,6 +1508,17 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
       /* free this so it doesn't become garbage the next time */
       db_make_null (*src);
       db_value_free (*src);
+    }
+
+  /* reset the parser values */
+  if (trigger_stmt->si_datetime)
+    {
+      db_make_null (&parser->sys_datetime);
+      db_make_null (&parser->sys_epochtime);
+    }
+  if (trigger_stmt->si_tran_id)
+    {
+      db_make_null (&parser->local_transaction_id);
     }
 
   parser_free_tree (parser, tmp_trigger);

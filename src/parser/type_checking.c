@@ -17377,20 +17377,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
     case PT_UTC_TIME:
       {
 	DB_TIME db_time;
-	DB_VALUE timezone;
-	int timezone_val;
-	DB_DATETIME *tmp_datetime;
+	DB_TIMESTAMP *tmp_datetime;
 
-	tmp_datetime = db_get_datetime (&parser->sys_datetime);
-	db_time = tmp_datetime->time / 1000;
-	/* extract the timezone part */
-	db_sys_timezone (&timezone);
-	timezone_val = DB_GET_INT (&timezone);
-	db_time = db_time + timezone_val * 60 + SECONDS_OF_ONE_DAY;
-	db_time = db_time % SECONDS_OF_ONE_DAY;
-
+	tmp_datetime = db_get_timestamp (&parser->sys_epochtime);
+	db_time = (DB_TIME) (*tmp_datetime % SECONDS_OF_ONE_DAY);
 	DB_MAKE_ENCODED_TIME (result, &db_time);
-
 	return 1;
       }
 

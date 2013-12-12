@@ -3209,6 +3209,8 @@ struct parser_context
   QUERY_EXEC_MODE exec_mode;	/* flag used to specify query exec mode */
 
   DB_VALUE sys_datetime;
+  DB_VALUE sys_epochtime;
+
   DB_VALUE local_transaction_id;
 
   int num_lcks_classes;

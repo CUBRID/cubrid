@@ -417,73 +417,70 @@ db_open_file_name (const char *name)
  * server_info(in) :
  */
 static void
-db_calculate_current_server_time (PARSER_CONTEXT * parser,
-				  SERVER_INFO * server_info)
+db_calculate_current_server_time (PARSER_CONTEXT * parser)
 {
-  if (base_server_timeb.time != 0)
+
+  struct tm *c_time_struct;
+  DB_DATETIME datetime;
+
+  struct timeb curr_server_timeb;
+  struct timeb curr_client_timeb;
+  int diff_mtime;
+  int diff_time;
+
+  if (base_server_timeb.time == 0)
     {
-      struct tm *c_time_struct;
-      DB_DATETIME datetime;
+      return;
+    }
 
-      struct timeb curr_server_timeb;
-      struct timeb curr_client_timeb;
-      int diff_mtime;
-      int diff_time;
+  ftime (&curr_client_timeb);
+  diff_time = curr_client_timeb.time - base_client_timeb.time;
+  diff_mtime = curr_client_timeb.millitm - base_client_timeb.millitm;
 
-      ftime (&curr_client_timeb);
-      diff_time = curr_client_timeb.time - base_client_timeb.time;
-      diff_mtime = curr_client_timeb.millitm - base_client_timeb.millitm;
+  if (diff_time > MAX_SERVER_TIME_CACHE)
+    {
+      base_server_timeb.time = 0;
+    }
+  else
+    {
+      curr_server_timeb.time = base_server_timeb.time;
+      curr_server_timeb.millitm = base_server_timeb.millitm;
 
-      if (diff_time > MAX_SERVER_TIME_CACHE)
+      /* timeb.millitm is unsigned short, so should prevent underflow */
+      if (diff_mtime < 0)
+	{
+	  curr_server_timeb.time--;
+	  curr_server_timeb.millitm += 1000;
+	}
+
+      curr_server_timeb.time += diff_time;
+      curr_server_timeb.millitm += diff_mtime;
+
+      if (curr_server_timeb.millitm >= 1000)
+	{
+	  curr_server_timeb.time++;
+	  curr_server_timeb.millitm -= 1000;
+	}
+
+      c_time_struct = localtime (&curr_server_timeb.time);
+      if (c_time_struct == NULL)
 	{
 	  base_server_timeb.time = 0;
 	}
       else
 	{
-	  curr_server_timeb.time = base_server_timeb.time;
-	  curr_server_timeb.millitm = base_server_timeb.millitm;
+	  db_datetime_encode (&datetime, c_time_struct->tm_mon + 1,
+			      c_time_struct->tm_mday,
+			      c_time_struct->tm_year + 1900,
+			      c_time_struct->tm_hour,
+			      c_time_struct->tm_min,
+			      c_time_struct->tm_sec,
+			      curr_server_timeb.millitm);
 
-	  /* timeb.millitm is unsigned short, so should prevent underflow */
-	  if (diff_mtime < 0)
-	    {
-	      curr_server_timeb.time--;
-	      curr_server_timeb.millitm += 1000;
-	    }
-
-	  curr_server_timeb.time += diff_time;
-	  curr_server_timeb.millitm += diff_mtime;
-
-	  if (curr_server_timeb.millitm >= 1000)
-	    {
-	      curr_server_timeb.time++;
-	      curr_server_timeb.millitm -= 1000;
-	    }
-
-	  c_time_struct = localtime (&curr_server_timeb.time);
-	  if (c_time_struct == NULL)
-	    {
-	      base_server_timeb.time = 0;
-	    }
-	  else
-	    {
-	      db_datetime_encode (&datetime, c_time_struct->tm_mon + 1,
-				  c_time_struct->tm_mday,
-				  c_time_struct->tm_year + 1900,
-				  c_time_struct->tm_hour,
-				  c_time_struct->tm_min,
-				  c_time_struct->tm_sec,
-				  curr_server_timeb.millitm);
-
-	      server_info->value[0] = &parser->sys_datetime;
-	      DB_MAKE_DATETIME (server_info->value[0], &datetime);
-	    }
+	  DB_MAKE_DATETIME (&parser->sys_datetime, &datetime);
+	  DB_MAKE_TIMESTAMP (&parser->sys_epochtime,
+			     (DB_TIMESTAMP) curr_server_timeb.time);
 	}
-    }
-
-  if (base_server_timeb.time == 0)
-    {
-      server_info->info_bits |= SI_SYS_DATETIME;
-      server_info->value[0] = &parser->sys_datetime;
     }
 }
 
@@ -493,24 +490,20 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser,
  * server_info(in) :
  */
 static void
-db_set_base_server_time (SERVER_INFO * server_info)
+db_set_base_server_time (DB_VALUE * db_val)
 {
-  if (server_info->info_bits & SI_SYS_DATETIME)
-    {
-      struct tm c_time_struct, tz_check;
-      DB_DATETIME *dt = &server_info->value[0]->data.datetime;
-      DB_TIME time_val;
+  struct tm c_time_struct, tz_check;
+  DB_TIME time_val;
+  DB_DATETIME *dt = db_get_datetime (db_val);
 
-      time_val = dt->time / 1000;	/* milliseconds to seconds */
-      db_tm_encode (&c_time_struct, &dt->date, &time_val);
+  time_val = dt->time / 1000;	/* milliseconds to seconds */
+  db_tm_encode (&c_time_struct, &dt->date, &time_val);
 
-      base_server_timeb.millitm = dt->time % 1000;	/* set milliseconds */
+  base_server_timeb.millitm = dt->time % 1000;	/* set milliseconds */
 
-      base_server_timeb.time = mktime (&c_time_struct);
-      ftime (&base_client_timeb);
-    }
+  base_server_timeb.time = mktime (&c_time_struct);
+  ftime (&base_client_timeb);
 }
-
 
 /*
  * db_compile_statement_local() -
@@ -527,7 +520,6 @@ db_compile_statement_local (DB_SESSION * session)
   DB_QUERY_TYPE *qtype;
   int cmd_type;
   int err;
-  SERVER_INFO server_info;
   static long seed = 0;
 
   /* obvious error checking - invalid parameter */
@@ -621,15 +613,6 @@ db_compile_statement_local (DB_SESSION * session)
     {
       pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);
       return er_errid ();
-    }
-
-  /* get sys_date, sys_time, sys_timestamp, sys_datetime values from the server */
-  server_info.info_bits = 0;	/* init */
-
-  if (statement->si_tran_id)
-    {
-      server_info.info_bits |= SI_LOCAL_TRANSACTION_ID;
-      server_info.value[1] = &parser->local_transaction_id;
     }
 
   if (seed == 0)
@@ -1736,7 +1719,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
   DB_QUERY_RESULT *qres;
   DB_VALUE *val;
   int err = NO_ERROR;
-  SERVER_INFO server_info;
+  int server_info_bits;
+
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   CLASS_STATUS cls_status = CLS_NOT_MODIFIED;
 
@@ -1825,7 +1809,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
   pt_reset_error (parser);
 
   /* get sys_date, sys_time, sys_timestamp, sys_datetime values from the server */
-  server_info.info_bits = 0;	/* init */
+  server_info_bits = 0;		/* init */
   if (statement->si_datetime
       || (statement->node_type == PT_CREATE_ENTITY
 	  || statement->node_type == PT_ALTER))
@@ -1836,20 +1820,33 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
        *   create table foo (a timestamp default systimestamp);
        *   create view v_foo as select * from foo;
        */
-      db_calculate_current_server_time (parser, &server_info);
+      db_calculate_current_server_time (parser);
+
+      if (base_server_timeb.time == 0)
+	{
+	  server_info_bits |= SI_SYS_DATETIME;
+	}
     }
 
   if (statement->si_tran_id && DB_IS_NULL (&parser->local_transaction_id))
     {
       /* if it was reset in the previous execution step, fills it now */
-      server_info.info_bits |= SI_LOCAL_TRANSACTION_ID;
-      server_info.value[1] = &parser->local_transaction_id;
+      server_info_bits |= SI_LOCAL_TRANSACTION_ID;
     }
+
   /* request to the server */
-  if (server_info.info_bits)
+  if (server_info_bits)
     {
-      (void) qp_get_server_info (&server_info);
-      db_set_base_server_time (&server_info);
+      err = qp_get_server_info (parser, server_info_bits);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+    }
+
+  if (server_info_bits & SI_SYS_DATETIME)
+    {
+      db_set_base_server_time (&parser->sys_datetime);
     }
 
   if (statement->node_type == PT_PREPARE_STATEMENT)
@@ -2129,6 +2126,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
   if (statement->si_datetime)
     {
       db_make_null (&parser->sys_datetime);
+      db_make_null (&parser->sys_epochtime);
     }
   if (statement->si_tran_id)
     {

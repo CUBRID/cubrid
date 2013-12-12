@@ -14504,6 +14504,8 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
   ftime (&tloc);
   c_time_struct = localtime_r (&tloc.time, &tm_val);
 
+  xasl_state.vd.sys_epochtime = tloc.time;
+
   if (c_time_struct != NULL)
     {
       db_datetime_encode (&xasl_state.vd.sys_datetime,

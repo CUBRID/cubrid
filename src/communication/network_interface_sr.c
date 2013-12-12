@@ -8309,75 +8309,80 @@ sqp_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr, *buffer = NULL;
   int buffer_length;
-  int info_bits, i;
-  DB_VALUE value[SI_CNT];
+  int server_info_bits;
 
-  ptr = or_unpack_int (request, &info_bits);
+  DB_VALUE dt_dbval, ts_dbval;	/* SI_SYS_DATETIME */
+  DB_VALUE lt_dbval;		/* SI_LOCAL_TRANSACTION_ID */
 
-  for (i = 0, buffer_length = 0; i < SI_CNT && success == NO_ERROR; i++)
+  ptr = or_unpack_int (request, &server_info_bits);
+
+  buffer_length = 0;
+
+  if (server_info_bits & SI_SYS_DATETIME)
     {
-      DB_MAKE_NULL (&value[i]);
-      if (info_bits & (1 << i))
+      success = db_sys_date_and_epoch_time (&dt_dbval, &ts_dbval);
+      if (success != NO_ERROR)
 	{
-	  switch ((1 << i))
-	    {
-	    case SI_SYS_DATETIME:
-	      success = ((db_sys_datetime (&value[i]) == NO_ERROR)
-			 ? NO_ERROR : ER_FAILED);
-	      break;
-
-	    case SI_LOCAL_TRANSACTION_ID:
-	      success = (xtran_get_local_transaction_id (thread_p,
-							 &value[i]) ==
-			 NO_ERROR) ? NO_ERROR : ER_FAILED;
-	      break;
-	    }
-	  buffer_length += OR_VALUE_ALIGNED_SIZE (&value[i]);
-	  /* increase buf length */
+	  goto error_exit;
 	}
+      buffer_length += OR_VALUE_ALIGNED_SIZE (&dt_dbval);
+      buffer_length += OR_VALUE_ALIGNED_SIZE (&ts_dbval);
     }
-  if (success == ER_FAILED)
+
+  if (server_info_bits & SI_LOCAL_TRANSACTION_ID)
     {
-      return_error_to_client (thread_p, rid);
+      success = xtran_get_local_transaction_id (thread_p, &lt_dbval);
+      if (success != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      buffer_length += OR_VALUE_ALIGNED_SIZE (&lt_dbval);
     }
 
-  if (success == NO_ERROR)
-    {				/* buffer_length > 0 */
-      buffer = (char *) db_private_alloc (thread_p, buffer_length);
+  buffer = (char *) db_private_alloc (thread_p, buffer_length);
+  if (buffer == NULL)
+    {
+      success = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error_exit;
+    }
 
-      if (buffer != NULL)
-	{
-	  for (i = 0, ptr = buffer; i < SI_CNT; i++)
-	    {
-	      if (info_bits & (1 << i))
-		{
-		  ptr = or_pack_value (ptr, &value[i]);
-		  db_value_clear (&value[i]);
-		}
-	    }
+  ptr = buffer;
+
+  if (server_info_bits & SI_SYS_DATETIME)
+    {
+      ptr = or_pack_value (ptr, &dt_dbval);
+      ptr = or_pack_value (ptr, &ts_dbval);
+    }
+
+  if (server_info_bits & SI_LOCAL_TRANSACTION_ID)
+    {
+      ptr = or_pack_value (ptr, &lt_dbval);
+    }
 
 #if !defined(NDEBUG)
-	  /* suppress valgrind UMW error */
-	  memset (ptr, 0, buffer_length - (ptr - buffer));
+  /* suppress valgrind UMW error */
+  memset (ptr, 0, buffer_length - (ptr - buffer));
 #endif
-	}
-      else
-	{
-	  buffer_length = 0;
-	  success = ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-    }
+
+exit:
   ptr = or_pack_int (reply, buffer_length);
   ptr = or_pack_int (ptr, success);
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
 				     OR_ALIGNED_BUF_SIZE (a_reply), buffer,
 				     buffer_length);
-
   if (buffer != NULL)
     {
       db_private_free_and_init (thread_p, buffer);
     }
+
+  return;
+
+error_exit:
+  buffer_length = 0;
+  return_error_to_client (thread_p, rid);
+
+  goto exit;
 }
 
 /*

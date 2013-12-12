@@ -9325,68 +9325,81 @@ db_local_transaction_id (DB_VALUE * result_trid)
  * NOTE:
  */
 int
-qp_get_server_info (SERVER_INFO * server_info)
+qp_get_server_info (PARSER_CONTEXT * parser, int server_info_bits)
 {
 #if defined(CS_MODE)
-  int req_error, status = ER_FAILED;
+  int status = ER_FAILED;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply;
   char *ptr, *area = NULL;
-  int val_size, i;
+  int val_size;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_pack_int (request, server_info->info_bits);
+  ptr = or_pack_int (request, server_info_bits);
 
-  req_error = net_client_request2 (NET_SERVER_QPROC_GET_SERVER_INFO,
-				   request, OR_ALIGNED_BUF_SIZE (a_request),
-				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				   NULL, 0, &area, &val_size);
+  status = net_client_request2 (NET_SERVER_QPROC_GET_SERVER_INFO, request,
+				OR_ALIGNED_BUF_SIZE (a_request), reply,
+				OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				&area, &val_size);
+  if (status != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
-  if (!req_error && area != NULL)
+  if (area != NULL)
     {
       ptr = or_unpack_int (reply, &val_size);
       ptr = or_unpack_int (ptr, &status);
-      if (status == NO_ERROR)
+
+      if (status != NO_ERROR)
 	{
-	  ptr = area;
-	  for (i = 0; i < SI_CNT; i++)
-	    {
-	      if (server_info->info_bits & (1 << i))
-		{
-		  ptr = or_unpack_value (ptr, server_info->value[i]);
-		}
-	    }
+	  goto error_exit;
 	}
+
+      ptr = area;
+      if (server_info_bits & SI_SYS_DATETIME)
+	{
+	  ptr = or_unpack_value (ptr, &(parser->sys_datetime));
+	  ptr = or_unpack_value (ptr, &(parser->sys_epochtime));
+	}
+      if (server_info_bits & SI_LOCAL_TRANSACTION_ID)
+	{
+	  ptr = or_unpack_value (ptr, &parser->local_transaction_id);
+	}
+    }
+
+error_exit:
+  if (area != NULL)
+    {
       free_and_init (area);
     }
 
   return status;
 #else /* CS_MODE */
   int success = NO_ERROR;
-  int i;
 
   ENTER_SERVER ();
 
-  for (i = 0; i < SI_CNT && success == NO_ERROR; i++)
+  if (server_info_bits & SI_SYS_DATETIME)
     {
-      if (server_info->info_bits & (1 << i))
+      success = db_sys_date_and_epoch_time (&(parser->sys_datetime),
+					    &(parser->sys_epochtime));
+      if (success != NO_ERROR)
 	{
-	  switch (1 << i)
-	    {
-	    case SI_SYS_DATETIME:
-	      success = db_sys_datetime (server_info->value[i]);
-	      break;
-	    case SI_LOCAL_TRANSACTION_ID:
-	      success = db_local_transaction_id (server_info->value[i]);
-	      break;
-	    }
+	  goto error_exit;
 	}
     }
 
+  if (server_info_bits & SI_LOCAL_TRANSACTION_ID)
+    {
+      success = db_local_transaction_id (&parser->local_transaction_id);
+    }
+
+error_exit:
   EXIT_SERVER ();
   return success;
 #endif /* !CS_MODE */

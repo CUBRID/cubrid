@@ -12009,6 +12009,53 @@ db_sys_datetime (DB_VALUE * result_datetime)
 }
 
 /*
+ * db_sys_date_and_epoch_time () - This function returns current 
+ *				   datetime and timestamp.
+ *
+ * return: status of the error
+ *
+ *   dt_dbval(out): datetime
+ *   ts_dbval(out): timestamp
+ */
+
+int
+db_sys_date_and_epoch_time (DB_VALUE * dt_dbval, DB_VALUE * ts_dbval)
+{
+  int error_status = NO_ERROR;
+  DB_DATETIME datetime;
+  struct timeb tloc;
+  struct tm *c_time_struct, tm_val;
+
+  assert (dt_dbval != NULL);
+  assert (ts_dbval != NULL);
+
+  if (ftime (&tloc) != 0)
+    {
+      error_status = ER_SYSTEM_DATE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+
+  c_time_struct = localtime_r (&tloc.time, &tm_val);
+  if (c_time_struct == NULL)
+    {
+      error_status = ER_SYSTEM_DATE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+
+  db_datetime_encode (&datetime, c_time_struct->tm_mon + 1,
+		      c_time_struct->tm_mday, c_time_struct->tm_year + 1900,
+		      c_time_struct->tm_hour, c_time_struct->tm_min,
+		      c_time_struct->tm_sec, tloc.millitm);
+
+  DB_MAKE_DATETIME (dt_dbval, &datetime);
+  DB_MAKE_TIMESTAMP (ts_dbval, (DB_TIMESTAMP *) (&tloc.time));
+
+  return error_status;
+}
+
+/*
  * This function return the current timezone , as an integer representing
  * the minutes away from GMT
  */
