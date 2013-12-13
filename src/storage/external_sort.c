@@ -274,7 +274,7 @@ static int px_sort_communicate (THREAD_ENTRY * thread_p,
 static int sort_inphase_sort (THREAD_ENTRY * thread_p,
 			      SORT_PARAM * sort_param,
 			      SORT_GET_FUNC * get_next, void *arguments,
-			      unsigned int * total_numrecs);
+			      unsigned int *total_numrecs);
 static int sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p,
 					SORT_PARAM * sort_param);
 static int sort_exphase_merge (THREAD_ENTRY * thread_p,
@@ -1621,9 +1621,9 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
    * space that is going to be needed.
    */
 
-  error = sort_inphase_sort (thread_p, &sort_param, get_fn, get_arg, 
+  error = sort_inphase_sort (thread_p, sort_param, get_fn, get_arg,
 			     &total_numrecs);
-  if (error == NO_ERROR)
+  if (error != NO_ERROR)
     {
       goto cleanup;
     }
@@ -2318,7 +2318,7 @@ exit_on_error:
 static int
 sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		   SORT_GET_FUNC * get_fn, void *get_arg,
-		   unsigned int  *total_numrecs)
+		   unsigned int *total_numrecs)
 {
   /* Variables for the input file */
   SORT_STATUS status;
@@ -2349,6 +2349,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 
   PX_TREE_NODE *px_node;
   int rv = NO_ERROR;
+
+  assert (sort_param->half_files <= SORT_MAX_HALF_FILES);
 
   assert (sort_param->px_height_max >= 0);
   assert (sort_param->px_array_size >= 1);
