@@ -10363,38 +10363,41 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain,
 			int do_coercion, int total_order, int *start_colp)
 {
   int c = DB_UNK;
+  char *str1, *str2;
   int str_length1, str_length2;
   OR_BUF buf1, buf2;
   int rc = NO_ERROR;
 
   assert (domain != NULL);
 
+  str1 = (char *) mem1;
+  str2 = (char *) mem2;
+
   /* generally, data is short enough
    */
-  str_length1 = OR_GET_BYTE (mem1);
-  str_length2 = OR_GET_BYTE (mem2);
+  str_length1 = OR_GET_BYTE (str1);
+  str_length2 = OR_GET_BYTE (str2);
   if (str_length1 < 0xFF && str_length2 < 0xFF)
     {
-      mem1 += OR_BYTE_SIZE;
-      mem2 += OR_BYTE_SIZE;
+      str1 += OR_BYTE_SIZE;
+      str2 += OR_BYTE_SIZE;
       c = QSTR_COMPARE (domain->collation_id,
-			(unsigned char *) mem1, str_length1,
-			(unsigned char *) mem2, str_length2);
+			(unsigned char *) str1, str_length1,
+			(unsigned char *) str2, str_length2);
       c = MR_CMP_RETURN_CODE (c);
       return c;
     }
 
   assert (str_length1 == 0xFF || str_length2 == 0xFF);
 
-  or_init (&buf1, (char *) mem1, 0);
+  or_init (&buf1, str1, 0);
   str_length1 = or_get_varchar_length (&buf1, &rc);
   if (rc == NO_ERROR)
     {
-      or_init (&buf2, (char *) mem2, 0);
+      or_init (&buf2, str2, 0);
       str_length2 = or_get_varchar_length (&buf2, &rc);
       if (rc == NO_ERROR)
 	{
-
 	  c = QSTR_COMPARE (domain->collation_id,
 			    (unsigned char *) buf1.ptr, str_length1,
 			    (unsigned char *) buf2.ptr, str_length2);
@@ -13002,23 +13005,27 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain,
 			  int do_coercion, int total_order, int *start_colp)
 {
   int c = DB_UNK;
+  char *str1, *str2;
   int str_length1, str_length2;
   OR_BUF buf1, buf2;
   int rc = NO_ERROR;
 
   assert (domain != NULL);
 
+  str1 = (char *) mem1;
+  str2 = (char *) mem2;
+
   /* generally, data is short enough
    */
-  str_length1 = OR_GET_BYTE (mem1);
-  str_length2 = OR_GET_BYTE (mem2);
+  str_length1 = OR_GET_BYTE (str1);
+  str_length2 = OR_GET_BYTE (str2);
   if (str_length1 < 0xFF && str_length2 < 0xFF)
     {
-      mem1 += OR_BYTE_SIZE;
-      mem2 += OR_BYTE_SIZE;
+      str1 += OR_BYTE_SIZE;
+      str2 += OR_BYTE_SIZE;
       c = QSTR_NCHAR_COMPARE (domain->collation_id,
-			      (unsigned char *) mem1, str_length1,
-			      (unsigned char *) mem2, str_length2,
+			      (unsigned char *) str1, str_length1,
+			      (unsigned char *) str2, str_length2,
 			      (INTL_CODESET) TP_DOMAIN_CODESET (domain));
       c = MR_CMP_RETURN_CODE (c);
       return c;
@@ -13026,11 +13033,11 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain,
 
   assert (str_length1 == 0xFF || str_length2 == 0xFF);
 
-  or_init (&buf1, (char *) mem1, 0);
+  or_init (&buf1, str1, 0);
   str_length1 = or_get_varchar_length (&buf1, &rc);
   if (rc == NO_ERROR)
     {
-      or_init (&buf2, (char *) mem2, 0);
+      or_init (&buf2, str2, 0);
       str_length2 = or_get_varchar_length (&buf2, &rc);
       if (rc == NO_ERROR)
 	{

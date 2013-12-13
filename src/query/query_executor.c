@@ -14533,9 +14533,9 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 
       xasl_ent = query_p->xasl_ent;
       if (xasl_ent != NULL)
-        {
-          query_str = xasl_ent->sql_info.sql_user_text;
-        }
+	{
+	  query_str = xasl_ent->sql_info.sql_user_text;
+	}
     }
   CUBRID_QUERY_EXEC_START (query_str, query_id, client_id, db_user);
 #endif /* ENABLE_SYSTEMTAP */
@@ -14717,7 +14717,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 #endif /* NDEBUG */
 
 #if defined(ENABLE_SYSTEMTAP)
-  	      CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user,
+	      CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user,
 				     1);
 #endif /* ENABLE_SYSTEMTAP */
 
@@ -14795,13 +14795,13 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt,
 
 #if defined(ENABLE_SYSTEMTAP)
   /*if (qmgr_get_query_error_with_id (thread_p, query_id) < 0)
-    {
-      CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, 1);
-    }
-  else
-    {*/
-      CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, 0);
-   // }
+     {
+     CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, 1);
+     }
+     else
+     { */
+  CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, 0);
+  // }
 #endif /* ENABLE_SYSTEMTAP */
   return list_id;
 }
@@ -20256,30 +20256,34 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain,
 		   int do_coercion, int total_order, int *start_colp)
 {
   int c = DB_UNK;
+  char *str1, *str2;
   int str_length1, str_length2;
   OR_BUF buf1, buf2;
   int rc = NO_ERROR;
 
+  str1 = (char *) mem1;
+  str2 = (char *) mem2;
+
   /* generally, data is short enough
    */
-  str_length1 = OR_GET_BYTE (mem1);
-  str_length2 = OR_GET_BYTE (mem2);
+  str_length1 = OR_GET_BYTE (str1);
+  str_length2 = OR_GET_BYTE (str2);
   if (str_length1 < 0xFF && str_length2 < 0xFF)
     {
-      mem1 += OR_BYTE_SIZE;
-      mem2 += OR_BYTE_SIZE;
-      c = bf2df_str_compare ((unsigned char *) mem1, str_length1,
-			     (unsigned char *) mem2, str_length2);
+      str1 += OR_BYTE_SIZE;
+      str2 += OR_BYTE_SIZE;
+      c = bf2df_str_compare ((unsigned char *) str1, str_length1,
+			     (unsigned char *) str2, str_length2);
       return c;
     }
 
   assert (str_length1 == 0xFF || str_length2 == 0xFF);
 
-  or_init (&buf1, (char *) mem1, 0);
+  or_init (&buf1, str1, 0);
   str_length1 = or_get_varchar_length (&buf1, &rc);
   if (rc == NO_ERROR)
     {
-      or_init (&buf2, (char *) mem2, 0);
+      or_init (&buf2, str2, 0);
       str_length2 = or_get_varchar_length (&buf2, &rc);
       if (rc == NO_ERROR)
 	{
