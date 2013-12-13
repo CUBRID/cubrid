@@ -2462,6 +2462,30 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
       fprintf (f, "%s%s", separator,
 	       plan->plan_un.scan.index->head->constraints->name);
 
+      /* print key limit */
+      if (plan->plan_un.scan.index->head->key_limit)
+	{
+	  PT_NODE *key_limit = plan->plan_un.scan.index->head->key_limit;
+	  PT_NODE *saved_next = key_limit->next;
+	  PARSER_CONTEXT *parser = QO_ENV_PARSER (plan->info->env);
+	  PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
+	  parser->print_db_value = pt_print_node_value;
+	  if (saved_next)
+	    {
+	      saved_next->next = key_limit;
+	      key_limit->next = NULL;
+	    }
+	  fprintf (f, "(keylimit %s) ",
+		   parser_print_tree_list (parser, saved_next ?
+					   saved_next : key_limit));
+	  parser->print_db_value = saved_func;
+	  if (saved_next)
+	    {
+	      key_limit->next = saved_next;
+	      saved_next->next = NULL;
+	    }
+	}
+
       for (i = bitset_iterate (&(plan->plan_un.scan.terms), &bi);
 	   i != -1; i = bitset_next_member (&bi))
 	{
@@ -2699,7 +2723,11 @@ qo_sort_info (QO_PLAN * plan, FILE * f, int howfar)
 #endif
 	}
       break;
-
+    case SORT_LIMIT:
+      fprintf (f, "\n%*c%s(%s)", (int) howfar, ' ',
+	       (plan->vtbl)->info_string, "sort limit");
+      howfar += INDENT_INCR;
+      break;
     case SORT_GROUPBY:
       fprintf (f, "\n%*c%s(%s)", (int) howfar, ' ',
 	       (plan->vtbl)->info_string, "group by");

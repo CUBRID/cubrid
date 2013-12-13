@@ -14767,10 +14767,10 @@ pt_analytic_to_metadomain (ANALYTIC_TYPE * func_p,
  *   lost_link_count(out): the number of compatibility links that are lost by
  *			   combining the two metadomains
  *   level(in): maximum sort list size to consider in compatibility checking
- * 
+ *
  * NOTE: Given two window definitions like the following (* denotes a partition
  *       by column, # denotes an order by column):
- * 
+ *
  *   f1: * * * * # # # # #
  *   f2: * * # # # # #
  *  out: * * # # # # # # #
@@ -14778,11 +14778,11 @@ pt_analytic_to_metadomain (ANALYTIC_TYPE * func_p,
  *           ^-^----------------------- forced partition suffix (FPS)
  *               ^-^-^----------------- common sort list (CSL)
  *                     ^-^------------- sort list suffix (SLS)
- * 
+ *
  * The two windows can share a sort list iff:
  *   a. CSL(f1) == CSL(f2)
  *   b. {CPP(f2)} + {FPS(f2)} is a subset of {FPS(f1)} + {CPP(f1)}
- * 
+ *
  * The resulting window (out) will have the structure:
  *  out = CPP(f2) + FPS(f2) + CSL(f1) + SLS(f1) i.e.
  *  out = f2 + SLS(f1)
@@ -17171,7 +17171,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
     }
 
-  if (level & 0x200)
+  if (level >= 0x100)
     {
       unsigned int save_custom;
 
@@ -17180,29 +17180,43 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	  query_Plan_dump_fp = stdout;
 	}
 
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_CONVERT_RANGE;
-      fprintf (query_Plan_dump_fp, "\nQuery stmt:%s\n\n%s\n\n",
-	       ((hint_ignored) ? " [Warning: HINT ignored]" : ""),
-	       parser_print_tree (parser, select_node));
-      if (select_node->info.query.order_by)
+      if (DETAILED_DUMP (level))
 	{
-	  if (xasl && xasl->spec_list && xasl->spec_list->indexptr &&
-	      xasl->spec_list->indexptr->orderby_skip)
+	  save_custom = parser->custom_print;
+	  parser->custom_print |= PT_CONVERT_RANGE;
+	  fprintf (query_Plan_dump_fp, "\nQuery stmt:%s\n\n%s\n\n",
+		   ((hint_ignored) ? " [Warning: HINT ignored]" : ""),
+		   parser_print_tree (parser, select_node));
+	  parser->custom_print = save_custom;
+	}
+
+      if (select_node->info.query.order_by
+	  && xasl && xasl->spec_list && xasl->spec_list->indexptr
+	  && xasl->spec_list->indexptr->orderby_skip)
+	{
+	  if (DETAILED_DUMP (level))
 	    {
 	      fprintf (query_Plan_dump_fp, "/* ---> skip ORDER BY */\n");
 	    }
+	  else if (SIMPLE_DUMP (level))
+	    {
+	      fprintf (query_Plan_dump_fp, " skip ORDER BY\n");
+	    }
 	}
 
-      if (select_node->info.query.q.select.group_by)
+      if (select_node->info.query.q.select.group_by
+	  && xasl && xasl->spec_list && xasl->spec_list->indexptr
+	  && xasl->spec_list->indexptr->groupby_skip)
 	{
-	  if (xasl && xasl->spec_list && xasl->spec_list->indexptr &&
-	      xasl->spec_list->indexptr->groupby_skip)
+	  if (DETAILED_DUMP (level))
 	    {
 	      fprintf (query_Plan_dump_fp, "/* ---> skip GROUP BY */\n");
 	    }
+	  else if (SIMPLE_DUMP (level))
+	    {
+	      fprintf (query_Plan_dump_fp, " skip GROUP BY\n");
+	    }
 	}
-      parser->custom_print = save_custom;
     }
 
   if (xasl != NULL && plan != NULL)
@@ -17215,6 +17229,20 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       if (fp)
 	{
 	  qo_plan_lite_print (plan, fp, 0);
+	  if (select_node->info.query.order_by
+	      && xasl && xasl->spec_list && xasl->spec_list->indexptr
+	      && xasl->spec_list->indexptr->orderby_skip)
+	    {
+	      fprintf (fp, "\n skip ORDER BY\n");
+	    }
+
+	  if (select_node->info.query.q.select.group_by
+	      && xasl && xasl->spec_list && xasl->spec_list->indexptr
+	      && xasl->spec_list->indexptr->groupby_skip)
+	    {
+	      fprintf (fp, "\n skip GROUP BY\n");
+	    }
+
 	  port_close_memstream (fp, &ptr, &sizeloc);
 
 	  if (ptr)
