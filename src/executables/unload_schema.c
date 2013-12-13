@@ -1741,8 +1741,9 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 	  index_flag = 1;
 	}
 
-      if ((unique_flag || reverse_unique_flag) && index_flag)
+      if (unique_flag && reverse_unique_flag && index_flag)
 	{
+	  /* Since we already found all, no need to go further. */
 	  break;
 	}
     }
