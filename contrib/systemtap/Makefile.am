@@ -18,18 +18,19 @@
 #
 
 AUTOMAKE_OPTIONS = foreign
+SYSTEMTAP_DIR=$(top_srcdir)/contrib/systemtap
 
 if ENABLE_SYSTEMTAP
-all-local: probes.d
-	dtrace -C -h -s probes.d -o probes.h
-	dtrace -C -G -s probes.d -o probes.o
+all-local:
+	dtrace -C -h -s $(SYSTEMTAP_DIR)/probes.d -o probes.h
+	dtrace -C -G -s $(SYSTEMTAP_DIR)/probes.d -o probes.o
 	echo "Compile dtrace probe"
 clean-local:
 	-rm -rf probes.h probes.o $(TAPSET_DIR)/cubrid_func.stp
 	-rm -rf $(prefix)/share/systemtap
 
 install-data-local:
-	cp cubrid_func.stp $(TAPSET_DIR)
-	cp -R ../systemtap $(prefix)/share
+	cp $(SYSTEMTAP_DIR)/cubrid_func.stp $(TAPSET_DIR)
+	cp -R $(SYSTEMTAP_DIR) $(prefix)/share
 
 endif

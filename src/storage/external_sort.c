@@ -1673,6 +1673,11 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
     }				/* if (sort_param->tot_runs > 1) */
 
 cleanup:
+
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_SORT_END (total_numrecs, error);
+#endif /* ENABLE_SYSTEMTAP */
+
   sort_return_used_resources (thread_p, sort_param);
   sort_param = NULL;
   thread_set_sort_stats_active (thread_p, false);
@@ -2263,10 +2268,6 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
   result_size = px_node->px_result_size;
 
 #endif /* SERVER_MODE */
-
-#if defined(ENABLE_SYSTEMTAP)
-  CUBRID_SORT_END (total_numrecs, error);
-#endif /* ENABLE_SYSTEMTAP */
 
   if (result == NULL || result_size < 0)
     {

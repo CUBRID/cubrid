@@ -36,7 +36,7 @@ EXECUTABLE_DIR = $(SRC)/executables
 BROKER_DIR = $(SRC)/broker
 CCI_DIR = $(SRC)/cci
 DBMT_DIR = $(SRC)/dbmt
-SYSTEMTAP_DIR = $(top_srcdir)/contrib/systemtap
+SYSTEMTAP_DIR = $(top_builddir)/contrib/systemtap
 
 FLEX = flex
 

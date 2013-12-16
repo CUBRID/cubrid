@@ -38,7 +38,7 @@ CCI_DIR = $(SRC)/cci
 DBMT_DIR = $(SRC)/dbmt
 QATOOLS_DIR = $(SRC)/qatools
 SESSION_DIR = $(SRC)/session
-SYSTEMTAP_DIR = $(top_srcdir)/contrib/systemtap
+SYSTEMTAP_DIR = $(top_builddir)/contrib/systemtap
 
 AM_CPPFLAGS = @SRC_INC@ -I$(HEAPLAYER_DIR)/util @EXT_INC@ \
 	@SYS_DEFS@ @SERVER_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
