@@ -544,6 +544,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
   shm_as_p->as_port = br_info_p->appl_server_port;
 #endif /* WINDOWS */
   shm_as_p->query_timeout = br_info_p->query_timeout;
+  shm_as_p->mysql_read_timeout = br_info_p->mysql_read_timeout;
   shm_as_p->max_string_length = br_info_p->max_string_length;
   shm_as_p->stripped_column_name = br_info_p->stripped_column_name;
   shm_as_p->keep_connection = br_info_p->keep_connection;

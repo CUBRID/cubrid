@@ -2516,6 +2516,25 @@ admin_conf_change (int master_shm_id, const char *br_name,
       br_info_p->query_timeout = val;
       shm_as_p->query_timeout = val;
     }
+  else if (strcasecmp (conf_name, "MYSQL_READ_TIMEOUT") == 0)
+    {
+      int val;
+
+      val = (int) ut_time_string_to_sec (conf_value, "sec");
+
+      if (val < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value: %s", conf_value);
+	  goto set_conf_error;
+	}
+      else if (val > MAX_QUERY_TIMEOUT_LIMIT)
+	{
+	  sprintf (admin_err_msg, "value is out of range : %s", conf_value);
+	  goto set_conf_error;
+	}
+      br_info_p->mysql_read_timeout = val;
+      shm_as_p->mysql_read_timeout = val;
+    }
   else if (strcasecmp (conf_name, "SHARD_PROXY_LOG") == 0)
     {
       char proxy_log_mode;

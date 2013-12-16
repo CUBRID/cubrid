@@ -601,6 +601,7 @@ struct t_shm_appl_server
   int appl_server_hard_limit;
   int session_timeout;
   int query_timeout;
+  int mysql_read_timeout;
   int num_appl_server;
   int suspend_mode;
   int max_string_length;

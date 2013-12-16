@@ -57,6 +57,7 @@
 #define DEFAULT_ADMIN_LOG_FILE		"log/broker/cubrid_broker.log"
 #define DEFAULT_SESSION_TIMEOUT		"5min"
 #define DEFAULT_MAX_QUERY_TIMEOUT       "0"
+#define DEFAULT_MYSQL_READ_TIMEOUT      "0"
 #define DEFAULT_JOB_QUEUE_SIZE		500
 #define DEFAULT_APPL_SERVER		"CAS"
 #define DEFAULT_EMPTY_STRING		"\0"
@@ -843,6 +844,23 @@ broker_config_read_internal (const char *conf_file,
 	  goto conf_error;
 	}
 
+      strncpy (time_str,
+	       ini_getstr (ini, sec_name, "MYSQL_READ_TIMEOUT",
+			   DEFAULT_MYSQL_READ_TIMEOUT, &lineno),
+	       sizeof (time_str));
+      br_info[num_brs].mysql_read_timeout =
+	(int) ut_time_string_to_sec (time_str, "sec");
+      if (br_info[num_brs].mysql_read_timeout < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+      else if (br_info[num_brs].mysql_read_timeout > MAX_QUERY_TIMEOUT_LIMIT)
+	{
+	  errcode = PARAM_BAD_RANGE;
+	  goto conf_error;
+	}
+
       /* parameters related to checking hanging cas */
       br_info[num_brs].reject_client_flag = false;
       tmp_int = conf_get_value_table_on_off (ini_getstr (ini, sec_name,
@@ -1421,6 +1439,13 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	}
 
       fprintf (fp, "MAX_QUERY_TIMEOUT\t=%d\n", br_info[i].query_timeout);
+
+      if (br_info[i].appl_server == APPL_SERVER_CAS_MYSQL
+          || br_info[i].appl_server == APPL_SERVER_CAS_MYSQL51)
+	{
+	  fprintf (fp, "MYSQL_READ_TIMEOUT\t=%d\n",
+		   br_info[i].mysql_read_timeout);
+	}
 
       tmp_str = get_conf_string (br_info[i].monitor_hang_flag, tbl_on_off);
       if (tmp_str)
