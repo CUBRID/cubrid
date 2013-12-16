@@ -3923,7 +3923,7 @@ sboot_check_db_consistency (THREAD_ENTRY * thread_p, unsigned int rid,
 			    char *request, int reqlen)
 {
   int success;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
   int check_flag;
