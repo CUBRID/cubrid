@@ -16002,6 +16002,18 @@ pt_print_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * p)
  *       during view definition translation, see mq_translate ()).
  *       If a type ambiguity does occur, the XASL cache will return query
  *       results with unexpected types to the client.
+ *	 
+ *	 Printing charset introducer and COLLATE modifier of values.
+ *	 Four flags control the printing of charset and collate for strings:
+ *	  - PT_SUPPRESS_CHARSET_PRINT: when printing columns header in results
+ *	  - PT_SUPPRESS_COLLATE_PRINT: some string literals should not
+ *	    have COLLATE modifier: in ENUM definition, partition list or
+ *	    LIKE ESCAPE sequence
+ *	  - PT_CHARSET_COLLATE_FULL : printing of already compiled statement
+ *	    (view definition, index function or filter expression)
+ *	  - PT_CHARSET_COLLATE_USER_ONLY: printing of an uncompiled statement
+ *	    (in HA replication); it prints the statement exactly as the user
+ *	    input. This is mutually exclusive with PT_CHARSET_COLLATE_FULL.
  */
 /* TODO Investigate the scenarios when this function prints ambiguous strings
  *      and fix the issue by either printing different strings or setting the
@@ -16052,7 +16064,8 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	? (p->data_type->info.data_type.collation_id) : LANG_SYS_COLLATION;
 
       if ((p->info.value.print_collation == false
-	   && !(parser->custom_print & PT_CHARSET_COLLATE_FULL))
+	   && !(parser->custom_print
+		& (PT_CHARSET_COLLATE_FULL | PT_CHARSET_COLLATE_USER_ONLY)))
 	  || (parser->custom_print & PT_SUPPRESS_COLLATE_PRINT)
 	  || (prt_coll_id == LANG_SYS_COLLATION
 	      && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
@@ -16068,7 +16081,8 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 
       /* do not print charset introducer for NCHAR and VARNCHAR */
       if ((p->info.value.print_charset == false
-	   && !(parser->custom_print & PT_CHARSET_COLLATE_FULL))
+	   && !(parser->custom_print
+		& (PT_CHARSET_COLLATE_FULL | PT_CHARSET_COLLATE_USER_ONLY)))
 	  || (p->type_enum != PT_TYPE_CHAR && p->type_enum != PT_TYPE_VARCHAR)
 	  || (prt_cs == LANG_SYS_CODESET
 	      && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
