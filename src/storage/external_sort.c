@@ -1472,6 +1472,9 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
     {
       error = ER_CSS_PTHREAD_MUTEX_INIT;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+
+      free_and_init (sort_param);
+
       return error;
     }
 #endif /* SERVER_MODE */

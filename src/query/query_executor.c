@@ -4227,10 +4227,12 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 	    }
 
 	  /* save output tuple */
-	  if (qfile_save_tuple
-	      (tpldesc, T_NORMAL, new_value->first_tuple.tpl,
-	       &tuple_size) != NO_ERROR)
+	  if (qfile_save_tuple (tpldesc, T_NORMAL, new_value->first_tuple.tpl,
+				&tuple_size) != NO_ERROR)
 	    {
+	      qdata_free_agg_hkey (thread_p, new_key);
+	      qdata_free_agg_hvalue (thread_p, new_value);
+
 	      return ER_FAILED;
 	    }
 
