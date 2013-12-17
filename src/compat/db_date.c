@@ -57,10 +57,6 @@
 /* affects DATE/TIME parsing (from string) for mysql compatibility */
 #define DATETIME_FIELD_LIMIT 1000000
 
-#if defined(WINDOWS)
-#define snprintf _snprintf
-#endif
-
 typedef struct ampm_buf
 {
   char str[10];
