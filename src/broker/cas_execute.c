@@ -718,6 +718,7 @@ ux_database_reconnect (void)
   cas_log_debug (ARG_FILE_LINE,
 		 "ux_database_reconnect: db_login (%s) db_restart(%s) at %s",
 		 database_user, database_name, host_connected);
+  strncpy (as_info->database_host, host_connected, MAXHOSTNAMELEN);
   as_info->last_connect_time = time (NULL);
 
   ux_get_default_setting ();
