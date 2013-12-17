@@ -2168,15 +2168,22 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 	{
 	  str_len = context_len + before_context_len;
 	}
+
+      /* parser_allocate_string_buffer() returns the start pointer of 
+       * the string buffer. It is guaranteed that the length of 
+       * the buffer 's' is equal to 'str_len + 1'. 
+       */
       s = parser_allocate_string_buffer (parser, str_len, sizeof (char));
       if (s == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "insufficient memory");
 	  return;
 	}
+
       if (end_of_statement == 0)
 	{
-	  snprintf (s, str_len, before_context_str, context_copy);
+	  /* snprintf will assign the NULL-terminator('\0') to s[str_len]. */
+	  snprintf (s, str_len + 1, before_context_str, context_copy);
 	  if (s[str_len - 3] == '\n')
 	    {
 	      s[str_len - 3] = ' ';
@@ -2184,7 +2191,7 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 	}
       else
 	{
-	  snprintf (s, str_len, before_end_of_stmt_str);
+	  strcpy (s, before_end_of_stmt_str);
 	}
       node->info.error_msg.error_message = s;
     }
