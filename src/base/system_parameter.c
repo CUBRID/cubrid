@@ -533,6 +533,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_USE_BTREE_FENCE_KEY "use_btree_fence_key"
 
+#define PRM_NAME_QA_BTREE_RANDOM_EXIT "qa_btree_random_exit"
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -1684,6 +1685,10 @@ static unsigned int prm_agg_hash_respect_order_flag = 0;
 bool PRM_USE_BTREE_FENCE_KEY = true;
 static bool prm_use_btree_fence_key_default = true;
 static unsigned int prm_use_btree_fence_key_flag = 0;
+
+bool PRM_QA_BTREE_RANDOM_EXIT = false;
+static bool prm_qa_btree_random_exit_default = false;
+static unsigned int prm_qa_btree_random_exit_flag = 0;
 
 bool PRM_UPDATE_USE_ATTRIBUTE_REFERENCES = false;
 static bool prm_update_use_attribute_references_default = false;
@@ -4013,6 +4018,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_use_btree_fence_key_flag,
    (void *) &prm_use_btree_fence_key_default,
    (void *) &PRM_USE_BTREE_FENCE_KEY,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_QA_BTREE_RANDOM_EXIT,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_qa_btree_random_exit_flag,
+   (void *) &prm_qa_btree_random_exit_default,
+   (void *) &PRM_QA_BTREE_RANDOM_EXIT,
    (void *) NULL,
    (void *) NULL,
    (void *) NULL,

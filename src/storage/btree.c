@@ -67,12 +67,6 @@
 
 #define BTREE_DEBUG_TEST_SPLIT		0x0100	/* full split test */
 
-#if 1
-#define RANDOM_EXIT(a)
-#else
-#define RANDOM_EXIT(a)        random_exit(a)
-#endif
-
 #define BTREE_SPLIT_LOWER_BOUND 0.20f
 #define BTREE_SPLIT_UPPER_BOUND (1.0f - BTREE_SPLIT_LOWER_BOUND)
 
@@ -678,6 +672,14 @@ static DISK_ISVALID btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p,
 static DISK_ISVALID btree_repair_prev_link_by_class_oid (THREAD_ENTRY *
 							 thread_p, OID * oid,
 							 bool repair);
+static void random_exit (THREAD_ENTRY * thread_p);
+
+#if defined(NDEBUG)
+#define RANDOM_EXIT(a)
+#else
+#define RANDOM_EXIT(a)        random_exit(a)
+#endif
+
 #if defined(SERVER_MODE)
 static int btree_range_search_handle_previous_locks (THREAD_ENTRY * thread_p,
 						     BTREE_SCAN * bts,
@@ -708,14 +710,17 @@ static int btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p,
 
 #define MOD_FACTOR	20000
 
-int logpb_flush_all_append_pages (THREAD_ENTRY * thread_p);
-
-#if 0
-void
+#if !defined(NDEBUG)
+static void
 random_exit (THREAD_ENTRY * thread_p)
 {
   static bool init = false;
   int r;
+
+  if (prm_get_bool_value (PRM_ID_QA_BTREE_RANDOM_EXIT) == false)
+    {
+      return;
+    }
 
   if (init == false)
     {
@@ -728,7 +733,7 @@ random_exit (THREAD_ENTRY * thread_p)
   if ((r % 10) == 0)
     {
       LOG_CS_ENTER (thread_p);
-      logpb_flush_all_append_pages (thread_p);
+      logpb_flush_pages_direct (thread_p);
       LOG_CS_EXIT (thread_p);
     }
 
@@ -4566,6 +4571,9 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
   nleaf_pnt.key_len = 0;
   VPID_SET_NULL (&nleaf_pnt.pnt);
 
+  DB_MAKE_NULL (&key1);
+  DB_MAKE_NULL (&key2);
+
   btree_get_node_max_key_len (page_ptr, &max_key);
   btree_get_node_type (page_ptr, &node_type);
 
@@ -4604,6 +4612,11 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 	  goto error;
 	}
 
+      if (btree_leaf_is_flaged (&peek_rec1, BTREE_LEAF_RECORD_FENCE))
+	{
+	  continue;
+	}
+
       /* read the current record key */
       if (node_type == BTREE_LEAF_NODE)
 	{
@@ -4637,6 +4650,12 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 	{
 	  valid = DISK_ERROR;
 	  goto error;
+	}
+
+      if (btree_leaf_is_flaged (&peek_rec2, BTREE_LEAF_RECORD_FENCE))
+	{
+	  btree_clear_key_value (&clear_key1, &key1);
+	  continue;
 	}
 
       /* read the next record key */
@@ -12147,6 +12166,7 @@ btree_split_test (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key,
 
       for (lcnt = 1; lcnt < key_cnt; i++)
 	{
+	  fence_insert = false;
 	  sep_key = btree_set_split_point (thread_p, btid, S_page, lcnt, key);
 	  if (node_type == BTREE_LEAF_NODE)
 	    {
@@ -21424,6 +21444,11 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  return ER_FAILED;
 	}
 
+      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+	{
+	  continue;
+	}
+
       btree_read_record (thread_p, btid, &rec, &prev_key, &leaf_pnt,
 			 BTREE_LEAF_NODE, &clear_prev_key, &offset,
 			 PEEK_KEY_VALUE);
@@ -21433,6 +21458,12 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  assert (false);
 	  btree_clear_key_value (&clear_prev_key, &prev_key);
 	  return ER_FAILED;
+	}
+
+      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+	{
+	  btree_clear_key_value (&clear_curr_key, &curr_key);
+	  continue;
 	}
 
       btree_read_record (thread_p, btid, &rec, &curr_key, &leaf_pnt,
