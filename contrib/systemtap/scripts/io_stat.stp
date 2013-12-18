@@ -32,14 +32,14 @@ probe process("cub_server").library("*").mark("query_exec_end")
 
 probe process("cub_server").library("*").mark("io_read_end")
 {
-	total_size = total_size + $arg3;
-	query_io[tid()] = query_io[tid()] + $arg3;
+	total_size = total_size + $arg2;
+	query_io[tid()] = query_io[tid()] + $arg2;
 }
 
 probe process("cub_server").library("*").mark("io_write_end")
 {
-	total_size = total_size + $arg3;
-	query_io[tid()] = query_io[tid()] + $arg3;
+	total_size = total_size + $arg2;
+	query_io[tid()] = query_io[tid()] + $arg2;
 }
 
 probe timer.s(2) 

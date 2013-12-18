@@ -540,16 +540,6 @@ if test "x$ENABLE_SYSTEMTAP" = xyes; then
 fi
 AC_MSG_RESULT(${ENABLE_SYSTEMTAP})
 
-AC_ARG_WITH([tapset-install-dir],
-	     [AS_HELP_STRING([--with-tapset-install-dir],
-			     [The absolute path where the tapset dir will be installed])],
-	     [if test "x${withval}" = x; then
-	       TAPSET_DIR="/usr/local/share/systemtap/tapset/"
-	      else
-	       TAPSET_DIR="${withval}"
-	      fi], [TAPSET_DIR="/usr/local/share/systemtap/tapset/"])
-AC_SUBST(TAPSET_DIR)
-
 AC_MSG_CHECKING([for lzo2 library])
 AC_ARG_WITH([lzo2],
 	AS_HELP_STRING([--with-lzo2=PATH],

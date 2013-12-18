@@ -30,7 +30,7 @@ clean-local:
 	-rm -rf $(prefix)/share/systemtap
 
 install-data-local:
-	cp $(SYSTEMTAP_DIR)/cubrid_func.stp $(TAPSET_DIR)
+	mkdir -p $(prefix)/share
 	cp -R $(SYSTEMTAP_DIR) $(prefix)/share
 
 endif

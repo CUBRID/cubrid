@@ -1,7 +1,7 @@
 /*
  * CUBRID SystemTap Support
  *
- * USAGE: stap -k lock_time.stp
+ * USAGE: stap -k lock_time.stp -I path_to_cubrid_func
  *
  * DESCRIPTION:
  * This script monitors the number and average duration of lock operations
@@ -16,13 +16,13 @@ global lock_times;
 
 probe process("cub_server").library("*").mark("lock_acquire_start")
 {
-	lock[$arg4] = lock[$arg4] + 1;
-	lock_time[tid(), oid_print_oid ($arg2)] = gettimeofday_ns ();
+	lock[$arg3] = lock[$arg3] + 1;
+	lock_time[tid(), oid_print_oid ($arg1)] = gettimeofday_ns ();
 }
 
 probe process("cub_server").library("*").mark("lock_release_end")
 {
-	lock_times[$arg3] <<< gettimeofday_ns () - lock_time[tid(), oid_print_oid ($arg2)];
+	lock_times[$arg2] <<< gettimeofday_ns () - lock_time[tid(), oid_print_oid ($arg1)];
 }
 
 probe timer.s(5)

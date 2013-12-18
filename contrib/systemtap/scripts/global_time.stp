@@ -13,9 +13,6 @@
  *
  * The scripts prints these statistics every 60 seconds.
  */
-
-global index_times; /* associative array - the key comprises of: 
-                     * thread id, index name, index operation - (0..3) */
 global total_index_time; /* associative array - aggregate by thread id */
 global total_heap_time; /* associative array - aggregate by thread id */
 global total_io_time; /* associative array - aggregate by thread id */
@@ -32,22 +29,22 @@ global lock_times; /* associative array - the key comprises of:
 
 probe process("cub_server").library("*").mark("lock_acquire_start")
 {
-  lock_times[tid(), $arg2, $arg3, $arg4, 0] = gettimeofday_ns ();
+  lock_times[tid(), $arg1, $arg2, $arg3, 0] = gettimeofday_ns ();
 }
 
 probe process("cub_server").library("*").mark("lock_acquire_end")
 {
-  total_lock_time[tid()] <<< gettimeofday_ns () - lock_times[tid(), $arg2, $arg3, $arg4, 0];
+  total_lock_time[tid()] <<< gettimeofday_ns () - lock_times[tid(), $arg1, $arg2, $arg3, 0];
 }
 
 probe process("cub_server").library("*").mark("lock_release_start")
 {
-  lock_times[tid(), $arg2, $arg3, $arg4, 1] = gettimeofday_ns ();
+  lock_times[tid(), $arg1, $arg2, $arg3, 1] = gettimeofday_ns ();
 }
 
 probe process("cub_server").library("*").mark("lock_release_end")
 {
-  total_lock_time[tid()] <<< gettimeofday_ns () - lock_times[tid(), $arg2, $arg3, $arg4, 1];
+  total_lock_time[tid()] <<< gettimeofday_ns () - lock_times[tid(), $arg1, $arg2, $arg3, 1];
 }
 
 probe process("cub_server").library("*").mark("obj_read_start")
