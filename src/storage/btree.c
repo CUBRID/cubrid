@@ -11566,6 +11566,10 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 				    BTREE_LEAF_NODE, BTREE_NORMAL_KEY,
 				    sep_key_len, false,
 				    &btid->topclass_oid, &dummy_oid, &rec);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 
 	  rec.type = REC_HOME;
 	  btree_leaf_set_flag (&rec, BTREE_LEAF_RECORD_FENCE);
@@ -11577,6 +11581,11 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 	  /* do not insert fence key if sep_key is overflow key */
 	  flag_fence_insert = false;
 	}
+    }
+
+  if (prm_get_bool_value (PRM_ID_USE_BTREE_FENCE_KEY) == false)
+    {
+      flag_fence_insert = false;
     }
 
   rightcnt = key_cnt - leftcnt;
@@ -12435,6 +12444,10 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 				    BTREE_LEAF_NODE, BTREE_NORMAL_KEY,
 				    sep_key_len, false,
 				    &btid->topclass_oid, &dummy_oid, &rec);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 
 	  rec.type = REC_HOME;
 	  btree_leaf_set_flag (&rec, BTREE_LEAF_RECORD_FENCE);
@@ -12447,9 +12460,9 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 	}
     }
 
-  if (ret != NO_ERROR)
+  if (prm_get_bool_value (PRM_ID_USE_BTREE_FENCE_KEY) == false)
     {
-      goto exit_on_error;
+      flag_fence_insert = false;
     }
 
   /* neg-inf key is dummy key which is not used in comparison

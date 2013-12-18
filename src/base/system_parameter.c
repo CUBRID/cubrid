@@ -531,6 +531,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_MAX_AGG_HASH_SIZE "max_agg_hash_size"
 #define PRM_NAME_AGG_HASH_RESPECT_ORDER "agg_hash_respect_order"
 
+#define PRM_NAME_USE_BTREE_FENCE_KEY "use_btree_fence_key"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -1678,6 +1680,10 @@ static unsigned int prm_max_agg_hash_size_flag = 0;
 bool PRM_AGG_HASH_RESPECT_ORDER = true;
 static bool prm_agg_hash_respect_order_default = true;
 static unsigned int prm_agg_hash_respect_order_flag = 0;
+
+bool PRM_USE_BTREE_FENCE_KEY = true;
+static bool prm_use_btree_fence_key_default = true;
+static unsigned int prm_use_btree_fence_key_flag = 0;
 
 bool PRM_UPDATE_USE_ATTRIBUTE_REFERENCES = false;
 static bool prm_update_use_attribute_references_default = false;
@@ -4000,6 +4006,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_USE_BTREE_FENCE_KEY,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_use_btree_fence_key_flag,
+   (void *) &prm_use_btree_fence_key_default,
+   (void *) &PRM_USE_BTREE_FENCE_KEY,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
+   (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };
 
@@ -5738,8 +5755,8 @@ sysprm_make_default_values (const char *data, char *default_val_buf,
       else if (PRM_ID_INTL_NUMBER_LANG == sysprm_get_id (prm))
 	{
 	  n =
-	    snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_INTL_NUMBER_LANG,
-		      lang_get_Lang_name ());
+	    snprintf (out_p, remaining_size, "%s=%s",
+		      PRM_NAME_INTL_NUMBER_LANG, lang_get_Lang_name ());
 	}
       else
 	{
