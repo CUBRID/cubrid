@@ -204,14 +204,25 @@ static int scan_init_index_key_limit (THREAD_ENTRY * thread_p,
 				      KEY_INFO * key_infop, VAL_DESCR * vd);
 static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p,
 				       SCAN_ID * scan_id);
-static int scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_next_class_attr_scan (THREAD_ENTRY * thread_p,
+static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p,
 				      SCAN_ID * scan_id);
-static int scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_class_attr_scan (THREAD_ENTRY * thread_p,
+					    SCAN_ID * scan_id);
+static SCAN_CODE scan_next_index_scan (THREAD_ENTRY * thread_p,
+				       SCAN_ID * scan_id);
+static SCAN_CODE scan_next_index_lookup_heap (THREAD_ENTRY * thread_p,
+					      SCAN_ID * scan_id,
+					      INDX_SCAN_ID * isidp,
+					      FILTER_INFO * data_filter,
+					      TRAN_ISOLATION isolation);
+static SCAN_CODE scan_next_list_scan (THREAD_ENTRY * thread_p,
+				      SCAN_ID * scan_id);
+static SCAN_CODE scan_next_set_scan (THREAD_ENTRY * thread_p,
+				     SCAN_ID * scan_id);
+static SCAN_CODE scan_next_value_scan (THREAD_ENTRY * thread_p,
+				       SCAN_ID * scan_id);
+static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p,
+					SCAN_ID * scan_id);
 static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p,
 					  SCAN_ID * s_id,
 					  QP_SCAN_FUNC next_scan);
@@ -4564,7 +4575,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  *
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
-static int
+static SCAN_CODE
 scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   HEAP_SCAN_ID *hsidp;
@@ -4704,7 +4715,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  *
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
-static int
+static SCAN_CODE
 scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   HEAP_SCAN_ID *hsidp;
@@ -4807,15 +4818,13 @@ scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  *
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
-static int
+static SCAN_CODE
 scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   INDX_SCAN_ID *isidp;
   FILTER_INFO data_filter;
-  SCAN_CODE sp_scan;
-  DB_LOGICAL ev_res;
-  RECDES recdes;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  SCAN_CODE lookup_status;
   TRAN_ISOLATION isolation;
 
   TSC_TICKS start_tick, end_tick;
@@ -5078,11 +5087,6 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	}
 
-      if (scan_id->fixed == false)
-	{
-	  recdes.data = NULL;
-	}
-
       scan_id->stats.key_qualified_rows++;
 
       if (!SCAN_IS_INDEX_COVERED (isidp))
@@ -5094,246 +5098,30 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      tsc_getticks (&start_tick);
 	    }
 
-	  sp_scan = heap_get (thread_p, isidp->curr_oidp,
-			      &recdes, &isidp->scan_cache,
-			      scan_id->fixed, NULL_CHN);
-
-	  if (sp_scan != S_SUCCESS)
-	    {
-	      INDX_INFO *indx_infop;
-	      BTID *btid;
-	      char *indx_name_p;
-	      char *class_name_p;
-
-	      /* check end of scan */
-	      if (sp_scan == S_END)
-		{
-		  assert (false);	/* is impossible case */
-		  return S_END;
-		}
-
-	      indx_infop = isidp->indx_info;
-	      btid = &(indx_infop->indx_id.i.btid);
-	      indx_name_p = NULL;
-	      class_name_p = NULL;
-
-	      /* check scan notification */
-	      if (QPROC_OK_IF_DELETED (sp_scan, isolation))
-		{
-		  (void) heap_get_indexinfo_of_btid (thread_p,
-						     &isidp->cls_oid,
-						     btid, NULL, NULL,
-						     NULL, NULL,
-						     &indx_name_p, NULL);
-
-		  class_name_p = heap_get_class_name (thread_p,
-						      &isidp->cls_oid);
-
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-			  ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
-			  (indx_name_p) ? indx_name_p : "*UNKNOWN-INDEX*",
-			  (class_name_p) ? class_name_p :
-			  "*UNKNOWN-CLASS*", isidp->cls_oid.volid,
-			  isidp->cls_oid.pageid, isidp->cls_oid.slotid,
-			  isidp->curr_oidp->volid,
-			  isidp->curr_oidp->pageid,
-			  isidp->curr_oidp->slotid, btid->vfid.volid,
-			  btid->vfid.fileid, btid->root_pageid);
-
-		  if (class_name_p)
-		    {
-		      free_and_init (class_name_p);
-		    }
-
-		  if (indx_name_p)
-		    {
-		      free_and_init (indx_name_p);
-		    }
-
-		  continue;	/* continue to the next object */
-		}
-
-	      /* check scan error */
-	      if (er_errid () == NO_ERROR)
-		{
-		  (void) heap_get_indexinfo_of_btid (thread_p,
-						     &isidp->cls_oid,
-						     btid, NULL, NULL,
-						     NULL, NULL,
-						     &indx_name_p, NULL);
-
-		  class_name_p = heap_get_class_name (thread_p,
-						      &isidp->cls_oid);
-
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
-			  (indx_name_p) ? indx_name_p : "*UNKNOWN-INDEX*",
-			  (class_name_p) ? class_name_p :
-			  "*UNKNOWN-CLASS*", isidp->cls_oid.volid,
-			  isidp->cls_oid.pageid, isidp->cls_oid.slotid,
-			  isidp->curr_oidp->volid,
-			  isidp->curr_oidp->pageid,
-			  isidp->curr_oidp->slotid, btid->vfid.volid,
-			  btid->vfid.fileid, btid->root_pageid);
-
-		  if (class_name_p)
-		    {
-		      free_and_init (class_name_p);
-		    }
-
-		  if (indx_name_p)
-		    {
-		      free_and_init (indx_name_p);
-		    }
-		}
-
-	      return S_ERROR;
-	    }
-
-	  /* evaluate the predicates to see if the object qualifies */
-	  ev_res = eval_data_filter (thread_p, isidp->curr_oidp, &recdes,
-				     &data_filter);
-	  if (ev_res == V_ERROR)
-	    {
-	      return S_ERROR;
-	    }
-
-	  if (scan_id->qualification == QPROC_QUALIFIED)
-	    {
-	      if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
-		{
-		  continue;	/* not qualified, continue to the next tuple */
-		}
-	    }
-	  else if (scan_id->qualification == QPROC_NOT_QUALIFIED)
-	    {
-	      if (ev_res != V_FALSE)	/* V_TRUE || V_UNKNOWN */
-		{
-		  continue;	/* qualified, continue to the next tuple */
-		}
-	    }
-	  else if (scan_id->qualification == QPROC_QUALIFIED_OR_NOT)
-	    {
-	      if (ev_res == V_TRUE)
-		{
-		  scan_id->qualification = QPROC_QUALIFIED;
-		}
-	      else if (ev_res == V_FALSE)
-		{
-		  scan_id->qualification = QPROC_NOT_QUALIFIED;
-		}
-	      else		/* V_UNKNOWN */
-		{
-		  /* nop */
-		  ;
-		}
-	    }
-	  else
-	    {			/* invalid value; the same as QPROC_QUALIFIED */
-	      if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
-		{
-		  continue;	/* not qualified, continue to the next tuple */
-		}
-	    }
-
-	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
-	    {
-	      if (isidp->num_vstr)
-		{
-		  int i;
-		  REGU_VARIABLE_LIST regup;
-		  DB_VALUE *dbvalp;
-
-		  /* read the key range the values from the heap into
-		   * the attribute cache */
-		  if (heap_attrinfo_read_dbvalues (thread_p,
-						   isidp->curr_oidp,
-						   &recdes,
-						   isidp->key_attrs.
-						   attr_cache) != NO_ERROR)
-		    {
-		      return S_ERROR;
-		    }
-
-		  /* for all attributes specified in the key range,
-		   * apply special data filter; 'key range attr IS NOT NULL'
-		   */
-		  regup = isidp->key_pred.regu_list;
-		  for (i = 0; i < isidp->num_vstr && regup; i++)
-		    {
-		      if (isidp->vstr_ids[i] == -1)
-			{
-			  continue;	/* skip and go ahead */
-			}
-
-		      if (fetch_peek_dbval (thread_p, &regup->value,
-					    scan_id->vd, NULL, NULL,
-					    NULL, &dbvalp) != NO_ERROR)
-			{
-			  ev_res = V_ERROR;	/* error */
-			  break;
-			}
-		      else if (DB_IS_NULL (dbvalp))
-			{
-			  ev_res = V_FALSE;	/* found Empty-string */
-			  break;
-			}
-
-		      regup = regup->next;
-		    }
-
-		  if (ev_res == V_TRUE && i < isidp->num_vstr)
-		    {
-		      /* must be impossible. unknown error */
-		      ev_res = V_ERROR;
-		    }
-		}
-	    }
-
-	  if (ev_res == V_ERROR)
-	    {
-	      return S_ERROR;
-	    }
-	  else
-	    {
-	      if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
-		{
-		  continue;	/* not qualified, continue to the next tuple */
-		}
-	    }
-
-	  if (isidp->rest_regu_list)
-	    {
-	      /* read the rest of the values from the heap into the attribute
-	         cache */
-	      if (heap_attrinfo_read_dbvalues (thread_p, isidp->curr_oidp,
-					       &recdes,
-					       isidp->rest_attrs.
-					       attr_cache) != NO_ERROR)
-		{
-		  return S_ERROR;
-		}
-
-	      /* fetch the rest of the values from the object instance */
-	      if (scan_id->val_list)
-		{
-		  if (fetch_val_list (thread_p, isidp->rest_regu_list,
-				      scan_id->vd, &isidp->cls_oid,
-				      isidp->curr_oidp, NULL,
-				      PEEK) != NO_ERROR)
-		    {
-		      return S_ERROR;
-		    }
-		}
-	    }
+	  lookup_status = scan_next_index_lookup_heap (thread_p, scan_id,
+						       isidp, &data_filter,
+						       isolation);
 
 	  if (thread_is_on_trace (thread_p))
 	    {
 	      tsc_getticks (&end_tick);
 	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	      TSC_ADD_TIMEVAL (scan_id->stats.elapsed_lookup, tv_diff);
+	    }
 
+	  if (lookup_status == S_SUCCESS)
+	    {
 	      scan_id->stats.data_qualified_rows++;
+	    }
+	  else if (lookup_status == S_DOESNT_EXIST)
+	    {
+	      /* not qualified, continue to the next tuple */
+	      continue;
+	    }
+	  else
+	    {
+	      /* S_ERROR, S_END */
+	      return lookup_status;
 	    }
 	}
       else
@@ -5385,13 +5173,252 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
+ * scan_next_index_lookup_heap () - fetch heap record and evaluate data filter
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR, S_DOESNT_EXIST)
+ *   scan_id(in/out): Scan identifier
+ *   isidp(in/out): Index scan identifier
+ *   data_filter(in): data filter information
+ *   isolation(in): transaction isolation level
+ *
+ * Note: If the tuple is not qualified for data filter, S_DOESNT_EXIST is returned.
+ */
+static SCAN_CODE
+scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+			     INDX_SCAN_ID * isidp, FILTER_INFO * data_filter,
+			     TRAN_ISOLATION isolation)
+{
+  SCAN_CODE sp_scan;
+  DB_LOGICAL ev_res;
+  RECDES recdes;
+  INDX_INFO *indx_infop;
+  BTID *btid;
+  char *indx_name_p;
+  char *class_name_p;
+  int i;
+  REGU_VARIABLE_LIST regup;
+  DB_VALUE *dbvalp;
+
+  if (scan_id->fixed == false)
+    {
+      recdes.data = NULL;
+    }
+
+  sp_scan = heap_get (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache,
+		      scan_id->fixed, NULL_CHN);
+
+  if (sp_scan != S_SUCCESS)
+    {
+      /* check end of scan */
+      if (sp_scan == S_END)
+	{
+	  assert (false);	/* is impossible case */
+	  return S_END;
+	}
+
+      indx_infop = isidp->indx_info;
+      btid = &(indx_infop->indx_id.i.btid);
+      indx_name_p = NULL;
+      class_name_p = NULL;
+
+      /* check scan notification */
+      if (QPROC_OK_IF_DELETED (sp_scan, isolation))
+	{
+	  (void) heap_get_indexinfo_of_btid (thread_p, &isidp->cls_oid,
+					     btid, NULL, NULL,
+					     NULL, NULL, &indx_name_p, NULL);
+
+	  class_name_p = heap_get_class_name (thread_p, &isidp->cls_oid);
+
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
+		  (indx_name_p) ? indx_name_p : "*UNKNOWN-INDEX*",
+		  (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*",
+		  isidp->cls_oid.volid, isidp->cls_oid.pageid,
+		  isidp->cls_oid.slotid, isidp->curr_oidp->volid,
+		  isidp->curr_oidp->pageid, isidp->curr_oidp->slotid,
+		  btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
+
+	  if (class_name_p)
+	    {
+	      free_and_init (class_name_p);
+	    }
+
+	  if (indx_name_p)
+	    {
+	      free_and_init (indx_name_p);
+	    }
+
+	  return S_DOESNT_EXIST;	/* continue to the next object */
+	}
+
+      /* check scan error */
+      if (er_errid () == NO_ERROR)
+	{
+	  (void) heap_get_indexinfo_of_btid (thread_p, &isidp->cls_oid,
+					     btid, NULL, NULL,
+					     NULL, NULL, &indx_name_p, NULL);
+
+	  class_name_p = heap_get_class_name (thread_p, &isidp->cls_oid);
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
+		  (indx_name_p) ? indx_name_p : "*UNKNOWN-INDEX*",
+		  (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*",
+		  isidp->cls_oid.volid, isidp->cls_oid.pageid,
+		  isidp->cls_oid.slotid, isidp->curr_oidp->volid,
+		  isidp->curr_oidp->pageid, isidp->curr_oidp->slotid,
+		  btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
+
+	  if (class_name_p)
+	    {
+	      free_and_init (class_name_p);
+	    }
+
+	  if (indx_name_p)
+	    {
+	      free_and_init (indx_name_p);
+	    }
+	}
+
+      return S_ERROR;
+    }
+
+  /* evaluate the predicates to see if the object qualifies */
+  ev_res = eval_data_filter (thread_p, isidp->curr_oidp, &recdes,
+			     data_filter);
+  if (ev_res == V_ERROR)
+    {
+      return S_ERROR;
+    }
+
+  if (scan_id->qualification == QPROC_QUALIFIED)
+    {
+      if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+	{
+	  return S_DOESNT_EXIST;	/* not qualified, continue to the next tuple */
+	}
+    }
+  else if (scan_id->qualification == QPROC_NOT_QUALIFIED)
+    {
+      if (ev_res != V_FALSE)	/* V_TRUE || V_UNKNOWN */
+	{
+	  return S_DOESNT_EXIST;	/* qualified, continue to the next tuple */
+	}
+    }
+  else if (scan_id->qualification == QPROC_QUALIFIED_OR_NOT)
+    {
+      if (ev_res == V_TRUE)
+	{
+	  scan_id->qualification = QPROC_QUALIFIED;
+	}
+      else if (ev_res == V_FALSE)
+	{
+	  scan_id->qualification = QPROC_NOT_QUALIFIED;
+	}
+      else			/* V_UNKNOWN */
+	{
+	  /* nop */
+	  ;
+	}
+    }
+  else
+    {				/* invalid value; the same as QPROC_QUALIFIED */
+      if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+	{
+	  return S_DOESNT_EXIST;	/* not qualified, continue to the next tuple */
+	}
+    }
+
+  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+    {
+      if (isidp->num_vstr)
+	{
+	  /* read the key range the values from the heap into
+	   * the attribute cache */
+	  if (heap_attrinfo_read_dbvalues (thread_p, isidp->curr_oidp,
+					   &recdes, isidp->key_attrs.
+					   attr_cache) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+
+	  /* for all attributes specified in the key range,
+	   * apply special data filter; 'key range attr IS NOT NULL'
+	   */
+	  regup = isidp->key_pred.regu_list;
+	  for (i = 0; i < isidp->num_vstr && regup; i++)
+	    {
+	      if (isidp->vstr_ids[i] == -1)
+		{
+		  continue;	/* skip and go ahead */
+		}
+
+	      if (fetch_peek_dbval (thread_p, &regup->value, scan_id->vd,
+				    NULL, NULL, NULL, &dbvalp) != NO_ERROR)
+		{
+		  ev_res = V_ERROR;	/* error */
+		  break;
+		}
+	      else if (DB_IS_NULL (dbvalp))
+		{
+		  ev_res = V_FALSE;	/* found Empty-string */
+		  break;
+		}
+
+	      regup = regup->next;
+	    }
+
+	  if (ev_res == V_TRUE && i < isidp->num_vstr)
+	    {
+	      /* must be impossible. unknown error */
+	      ev_res = V_ERROR;
+	    }
+	}
+    }
+
+  if (ev_res == V_ERROR)
+    {
+      return S_ERROR;
+    }
+  else if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+    {
+      return S_DOESNT_EXIST;	/* not qualified, continue to the next tuple */
+    }
+
+  if (isidp->rest_regu_list)
+    {
+      /* read the rest of the values from the heap into the attribute
+         cache */
+      if (heap_attrinfo_read_dbvalues (thread_p, isidp->curr_oidp, &recdes,
+				       isidp->rest_attrs.attr_cache) !=
+	  NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+      /* fetch the rest of the values from the object instance */
+      if (scan_id->val_list)
+	{
+	  if (fetch_val_list (thread_p, isidp->rest_regu_list,
+			      scan_id->vd, &isidp->cls_oid,
+			      isidp->curr_oidp, NULL, PEEK) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
+    }
+
+  return S_SUCCESS;
+}
+
+/*
  * scan_next_list_scan () - The scan is moved to the next list scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
  *
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
-static int
+static SCAN_CODE
 scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   LLIST_SCAN_ID *llsidp;
@@ -5507,7 +5534,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  *
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
-static int
+static SCAN_CODE
 scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   REGU_VALUES_SCAN_ID *rvsidp;
@@ -5575,7 +5602,7 @@ scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  *
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
-static int
+static SCAN_CODE
 scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   SET_SCAN_ID *ssidp;
@@ -5684,7 +5711,7 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  *
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
-static int
+static SCAN_CODE
 scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   VA_SCAN_ID *vaidp;
