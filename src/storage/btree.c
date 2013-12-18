@@ -11323,15 +11323,27 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
       /* return the next_key */
       pr_clone_value (next_key, prefix_key);
     }
-  else
+  else				/* leaf node */
     {
-      if (btree_get_prefix_separator (mid_key, next_key, prefix_key,
-				      btid->key_type) != NO_ERROR)
+      if ((btree_get_key_length (mid_key) >= BTREE_MAX_KEYLEN_INPAGE)
+	  || (btree_get_key_length (next_key) >= BTREE_MAX_KEYLEN_INPAGE))
 	{
-	  goto error;
+	  /* if one of key is overflow key
+	   * prefix key could be longer then max_key_len in page
+	   * (that means insert could be failed)
+	   * so, in this case use next key itself as prefix key
+	   */
+	  pr_clone_value (next_key, prefix_key);
+	}
+      else
+	{
+	  if (btree_get_prefix_separator (mid_key, next_key, prefix_key,
+					  btid->key_type) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
     }
-
 
   *clear_midkey = true;		/* we must always clear prefix keys */
 
