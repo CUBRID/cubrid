@@ -226,7 +226,8 @@ static int btree_store_overflow_key (THREAD_ENTRY * thread_p,
 				     int size, BTREE_NODE_TYPE node_type,
 				     VPID * firstpg_vpid);
 static int btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
-				    VPID * firstpg_vpid, DB_VALUE * key);
+				    VPID * firstpg_vpid, DB_VALUE * key,
+				    BTREE_NODE_TYPE node_type);
 static int btree_delete_overflow_key (THREAD_ENTRY * thread_p,
 				      BTID_INT * btid, PAGE_PTR page_ptr,
 				      INT16 slot_id,
@@ -810,17 +811,43 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
   OR_BUF buf;
   VFID overflow_file_vfid;
   int ret = NO_ERROR;
+  TP_DOMAIN *tp_domain;
   PR_TYPE *pr_type;
+  DB_TYPE src_type, dst_type;
+  DB_VALUE new_key;
+  DB_VALUE *key_ptr = key;
 
   assert (!VFID_ISNULL (&btid->ovfid));
 
   if (node_type == BTREE_LEAF_NODE)
     {
-      pr_type = btid->key_type->type;
+      tp_domain = btid->key_type;
     }
   else
     {
-      pr_type = btid->nonleaf_key_type->type;
+      tp_domain = btid->nonleaf_key_type;
+    }
+
+  pr_type = tp_domain->type;
+
+  src_type = DB_VALUE_DOMAIN_TYPE (key);
+  dst_type = pr_type->id;
+
+  if (src_type != dst_type)
+    {
+      TP_DOMAIN_STATUS status;
+
+      assert (pr_is_string_type (src_type) && pr_is_string_type (dst_type));
+
+      key_ptr = &new_key;
+      status = tp_value_cast (key, key_ptr, tp_domain, false);
+      if (status != DOMAIN_COMPATIBLE)
+	{
+	  assert (false);
+	  goto exit_on_error;
+	}
+
+      size = btree_get_key_length (key_ptr);
     }
 
   overflow_file_vfid = btid->ovfid;	/* structure copy */
@@ -836,7 +863,7 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   or_init (&buf, rec.data, rec.area_size);
 
-  if ((*(pr_type->index_writeval)) (&buf, key) != NO_ERROR)
+  if ((*(pr_type->index_writeval)) (&buf, key_ptr) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -856,6 +883,11 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
       db_private_free_and_init (thread_p, rec.data);
     }
 
+  if (key_ptr != key)
+    {
+      db_value_clear (key_ptr);
+    }
+
   return ret;
 
 exit_on_error:
@@ -863,6 +895,11 @@ exit_on_error:
   if (rec.data)
     {
       db_private_free_and_init (thread_p, rec.data);
+    }
+
+  if (key_ptr != key)
+    {
+      db_value_clear (key_ptr);
     }
 
   return (ret == NO_ERROR
@@ -880,12 +917,22 @@ exit_on_error:
  */
 static int
 btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
-			 VPID * first_overflow_page_vpid, DB_VALUE * key)
+			 VPID * first_overflow_page_vpid, DB_VALUE * key,
+			 BTREE_NODE_TYPE node_type)
 {
   RECDES rec;
   OR_BUF buf;
-  PR_TYPE *pr_type = btid->key_type->type;
+  PR_TYPE *pr_type;
   int ret = NO_ERROR;
+
+  if (node_type == BTREE_LEAF_NODE)
+    {
+      pr_type = btid->key_type->type;
+    }
+  else
+    {
+      pr_type = btid->nonleaf_key_type->type;
+    }
 
   rec.area_size = overflow_get_length (thread_p, first_overflow_page_vpid);
   if (rec.area_size == -1)
@@ -2128,7 +2175,8 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
       if (key != NULL)
 	{
 	  if (btree_load_overflow_key (thread_p, btid,
-				       &overflow_vpid, key) != NO_ERROR)
+				       &overflow_vpid, key,
+				       node_type) != NO_ERROR)
 	    {
 	      db_make_null (key);
 	    }

@@ -2049,6 +2049,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 				  &load_args->leaf.vpid, load_args,
 				  node_level) == NULL)
 	    {
+	      pr_clear_value (&prefix_key);
 	      goto exit_on_error;
 	    }
 
