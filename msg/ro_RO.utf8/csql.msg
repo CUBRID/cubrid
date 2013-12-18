@@ -162,7 +162,7 @@ $ csql help messages
    ;DATE                        - afişează ora şi data locală.\n\
    ;DATAbase                    - afişează numele bazei de date accesate.\n\
    ;SChema class-name           - afişează informaţii despre schema unei clase.\n\
-   ;TRigger [`*'|trigger-name]  - afişează definiţia unui declanşator.\n\
+   ;TRIgger [`*'|trigger-name]  - afişează definiţia unui declanşator.\n\
    ;Get system_parameter        - preia valoarea unui parametru de sistem.\n\
    ;SEt system_parameter=value  - setează valoarea unui parametru de sistem.\n\
    ;STring-width [width]        - setează lăţimea de afişare a coloanelor de tip string.\n\
@@ -175,6 +175,7 @@ $ csql help messages
    ;HISTORYList                 - afişează lista interogărilor executate.\n\
    ;HISTORYRead <history_num>   - citeşte în buffer-ul de comenzi înregistrarea din istoric\n\
                                   specificată prin parametru.\n\
+   ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;HElp                        - afişează acest mesaj de ajutor.\n\n
 
 232 <Constrângeri> 

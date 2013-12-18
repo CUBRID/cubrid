@@ -162,7 +162,7 @@ $ csql help messages
    ;DATE                        - yerel saat görüntüle, tarih.\n\
    ;DATAbase                    - veritabanı erişilen adını görüntüler.\n\
    ;SChema class-name           - bir sınıfın şema bilgilerini görüntüler.\n\
-   ;TRigger [`*'|trigger-name]  - tetik tanımı görüntüler.\n\
+   ;TRIgger [`*'|trigger-name]  - tetik tanımı görüntüler.\n\
    ;Get system_parameter        - bir sistem parametre değeri edinin.\n\
    ;SEt system_parameter=value  - bir sistem parametre değeri ayarla.\n\
    ;STring-width [width]        - bir dizin tipi görüntülenmiş olan her sütunun genişliğini ayarlayın.\n\
@@ -174,6 +174,7 @@ $ csql help messages
    ;LINe-output [ON/OFF]        - bir satırda her bir değeri görüntülemek için etkinleştir/devre dışı bırak\n\
    ;HISTORYList                 - çalıştırılan sorguların listesini görüntüleyebilir.\n\
    ;HISTORYRead <history_num>   - komut buffer içine geçmiş numarası üzerinde giriş okuyun.\n\
+   ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;HElp                        - yardım mesajını görüntüler.\n\n
 
 232 <Constraints> 

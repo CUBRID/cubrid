@@ -162,7 +162,7 @@ $ csql help messages
    ;DATE                        - affiche l'heure et la date locales.\n\
    ;DATAbase                    - affiche le nom de la base de données en cours d'accès.\n\
    ;SChema class-name           - affiche les informations de schéma d'une classe.\n\
-   ;TRigger [`*'|trigger-name]  - affiche la définition du déclencheur.\n\
+   ;TRIgger [`*'|trigger-name]  - affiche la définition du déclencheur.\n\
    ;Get system_parameter        - obtient la valeur d'un paramètre de système.\n\
    ;SEt system_parameter=value  - définit la valeur d'un paramètre de système.\n\
    ;STring-width [width]        - définir la largeur d'affichage de chaque colonne qui est un type de chaîne.\n\
@@ -174,6 +174,7 @@ $ csql help messages
    ;LINe-output [ON/OFF]        - active/désactive afficher chaque valeur dans une ligne\n\
    ;HISTORYList                 - affiche la liste des requêtes exécutées.\n\
    ;HISTORYRead <history_num>   - lit l 'entrée sur le numéro d'historique dans le tampon de commande.\n\
+   ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;HElp                        - affiche ce message d'aide.\n\n
 
 232 <Constraints> 

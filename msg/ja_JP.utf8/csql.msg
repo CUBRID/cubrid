@@ -162,7 +162,7 @@ $ csql help messages
    ;DATE                        - 地域の日付、時間を出力。\n\
    ;DATAbase                    - アクセスしているデータベース名を出力。\n\
    ;SChema class-name           - クラスのスキーマ情報を出力。\n\
-   ;TRigger [`*'|trigger-name]  - トリガー正義を出力。\n\
+   ;TRIgger [`*'|trigger-name]  - トリガー正義を出力。\n\
    ;Get system_parameter        - システムパラメーターを表示。\n\
    ;SEt system_parameter=value  - システムパラメーターを設定。\n\
    ;STring-width [width]        - ストリングタイプの格コラムが表示される長さを「width」に制限する。\n\
@@ -174,6 +174,7 @@ $ csql help messages
    ;LINe-output [ON/OFF]        - 一つのラインでバリューを表示 設定／解除\n\
    ;HISTORYList                 - 実行したクエリリスト表示。\n\
    ;HISTORYRead <history_num>   - ヒストリー番号のクエリをコマンドバッファーにセーブする。\n\
+   ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;HElp                        - ヘルプメッセージ出力。\n\n
 
 232 <制約事項> 

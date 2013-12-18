@@ -162,7 +162,7 @@ $ csql help messages
    ;DATE                        - 显示本地时间,日期.\n\
    ;DATAbase                    - 显示正被访问的数据库名.\n\
    ;SChema class-name           - 显示类的结构信息.\n\
-   ;TRigger [`*'|trigger-name]  - 显示触发器的定义.\n\
+   ;TRIgger [`*'|trigger-name]  - 显示触发器的定义.\n\
    ;Get system_parameter        - 获取一个系统参数的值.\n\
    ;SEt system_parameter=value  - 设置一个系统参数的值.\n\
    ;STring-width [width]        - 设置每个字符串类型的列的显示宽度.\n\
@@ -174,6 +174,7 @@ $ csql help messages
    ;LINe-output [ON/OFF]        - 打开/关闭 显示一行中的每一个值\n\
    ;HISTORYList                 - 显示已经执行的查询列表.\n\
    ;HISTORYRead <history_num>   - 将histroy_num所对应的内容读取到命令缓冲区.\n\
+   ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;HElp                        - 显示帮助信息.\n\n
 
 232 <系统规定参数> 

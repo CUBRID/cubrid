@@ -160,7 +160,7 @@ $ csql help messages
    ;DATE                        - 지역 날짜, 시간 출력.\n\
    ;DATAbase                    - 접근 중인 데이터베이스 이름 출력.\n\
    ;SChema class-name           - 클래스의 스키마 정보 출력.\n\
-   ;TRigger [`*'|trigger-name]  - 트리거 정의 출력.\n\
+   ;TRIgger [`*'|trigger-name]  - 트리거 정의 출력.\n\
    ;Get system_parameter        - 시스템 파라메터 보기.\n\
    ;SEt system_parameter=value  - 시스템 파라메터 설정.\n\
    ;STring-width [width]        - 각 문자열 컬럼 값을 출력할 길이를 설정.\n\
@@ -171,6 +171,7 @@ $ csql help messages
    ;LINe-output [ON/OFF]        - 한 라인 내에 값 표시 설정|해제\n\
    ;HISTORYList                 - 수행된 쿼리 리스트 보기.\n\
    ;HISTORYRead <history_num>   - 히스토리 번호에 해당되는 쿼리를 명령어 버퍼에 올림.\n\
+   ;TRAce [ON|OFF] [text/json]  - 쿼리 자동 트레이스 설정|해제.\n\
    ;HElp                        - 도움말 메시지 출력.\n\n
 
 232 <제약사항> 

@@ -162,7 +162,7 @@ $ csql help messages
    ;DATE                        - display the local time, date.\n\
    ;DATAbase                    - display the name of database being accessed.\n\
    ;SChema class-name           - display schema information of a class.\n\
-   ;TRigger [`*'|trigger-name]  - display trigger definition.\n\
+   ;TRIgger [`*'|trigger-name]  - display trigger definition.\n\
    ;Get system_parameter        - get the value of a system parameter.\n\
    ;SEt system_parameter=value  - set the value of a system parameter.\n\
    ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
@@ -174,6 +174,7 @@ $ csql help messages
    ;LINe-output [ON/OFF]        - enable/disable to display each value in a line\n\
    ;HISTORYList                 - display list of the executed queries.\n\
    ;HISTORYRead <history_num>   - read entry on the history number into command buffer.\n\
+   ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;HElp                        - display this help message.\n\n
 
 232 <Constraints> 

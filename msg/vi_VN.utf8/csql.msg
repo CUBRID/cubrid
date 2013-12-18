@@ -162,7 +162,7 @@ $ csql help messages
    ;DATE                        - hiển thị ngày, thời gian cục bộ.\n\
    ;DATAbase                    - hiển thị tên của cơ sở dữ liệu đang được truy cập.\n\
    ;SChema class-name           - hiển thị thông tin lược đồ của một lớp.\n\
-   ;TRigger [`*'|trigger-name]  - hiển thị định nghĩa trigger.\n\
+   ;TRIgger [`*'|trigger-name]  - hiển thị định nghĩa trigger.\n\
    ;Get system_parameter        - lấy giá trị của một tham số hệ thống.\n\
    ;SEt system_parameter=value  - thiết lập giá trị của một tham số hệ thống.\n\
    ;STring-width [width]        - đặt chiều rộng mà từng cột dạng chuỗi được hiển thị.\n\
@@ -174,6 +174,7 @@ $ csql help messages
    ;LINe-output [ON/OFF]        - bật/tắt hiển thị từng giá trị trong một dòng\n\
    ;HISTORYList                 - hiển thị danh sách của các truy vấn được thực thi.\n\
    ;HISTORYRead <history_num>   - đọc mục nhập trên số lịch sử vào bộ đệm lệnh.\n\
+   ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;HElp                        - hiển thị tin nhắn trợ giúp.\n\n
 
 232 <Constraints>

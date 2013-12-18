@@ -162,7 +162,7 @@ $ messaggi di aiuto csql
    ;DATE                        - visualizzare l'ora locale, data.\n\
    ;DATAbase                    - visualizzare il nome del database a cui si accede.\n\
    ;SChema nome-classe          - visualizzare le informazioni sullo schema di una classe.\n\
-   ;TRigger [`*'|nome-trigger]  - visualizzare la definizione di trigger.\n\
+   ;TRIgger [`*'|nome-trigger]  - visualizzare la definizione di trigger.\n\
    ;Get parametro_sistema       - ottenere il valore di un parametro di sistema.\n\
    ;SEt parametro_sistema=value - impostare il valore di un parametro di sistema.\n\
    ;STring-width [width]        - impostare la larghezza di che ogni colonna che è un tipo string viene visualizzata.\n\
@@ -174,6 +174,7 @@ $ messaggi di aiuto csql
    ;LINe-output [ON/OFF]        - abilitare/disabilitare la visualizzazione di ogni valore in una riga\n\
    ;HISTORYList                 - visualizzare l'elenco delle query eseguite.\n\
    ;HISTORYRead <history_num>   - leggere la voce del numero storia in buffer dei comandi.\n\
+   ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;HElp                        - visualizza questo messaggio di aiuto.\n\n
 
 232 <Vincoli> 

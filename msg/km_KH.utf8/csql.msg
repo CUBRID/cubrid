@@ -162,7 +162,7 @@ $ csql help messages
    ;DATE                        - បង្ហាញម៉ោងក្នុងស្រុក, កាលបរិច្ឆេទ។\n\
    ;DATAbase                    - បង្ហាញឈ្មោះដែលតាបេសដែលពេញសិទិ្ធ។\n\
    ;SChema class-name           - បង្ហាញពត៌មានschemaនៃថ្នាក់មួយ(class)។\n\
-   ;TRigger [`*'|trigger-name]  - បង្ហាញនិយមន័យtrigger។\n\
+   ;TRIgger [`*'|trigger-name]  - បង្ហាញនិយមន័យtrigger។\n\
    ;Get system_parameter        - ទទួលយកតម្លៃនៃប៉ារ៉ាម៉ែត្រប្រព័ន្ធ។\n\
    ;SEt system_parameter=value  - កំណត់តម្លៃនៃប៉ារ៉ាម៉ែត្រប្រព័ន្ធ។\n\
    ;STring-width [width]        - ស៊េរីប្រវែងទទឹងនៃជួរនិមួយៗដែលបានបង្ហាញនូវប្រភេទខ្សែអក្សរ.\n\
@@ -174,6 +174,7 @@ $ csql help messages
    ;LINe-output [ON/OFF]        - អាច/មិនអាចបង្ហាញនូវតម្លៃនិមួយៗក្នុងមួយជួរ\n\
    ;HISTORYList                 - បង្ហាញតារាងឈ្មោះqueriesដែលបានប្រតិបត្តិ។\n\
    ;HISTORYRead <history_num>   - ដំណើរការentryនៅលើចំនួន historyទៅក្នុងcommand buffer។\n\
+   ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;HElp                        - បង្ហាញសារជំនួយនេះ (help message)។\n\n
 
 232 <Constraints> 

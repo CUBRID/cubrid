@@ -163,7 +163,7 @@ $ csql help messages
    ;DATE                        - lokale Uhrzeit und Datum anzeigen.\n\
    ;DATAbase                    - den Namen der zugegriffenen Datenbank anzeigen.\n\
    ;SChema class-name           - Schema-Informationen einer Klasse anzeigen.\n\
-   ;TRigger [`*'|trigger-name]  - Trigger-definition anzeigen.\n\
+   ;TRIgger [`*'|trigger-name]  - Trigger-definition anzeigen.\n\
    ;Get system_parameter        - Wert eines System-Parameter erhalten.\n\
    ;SEt system_parameter=value  - Wert eines System-Parameter setzen.\n\
    ;STring-width [width]        - Breite setzen, in der jeder Spalte der Art String angezeigt wird.\n\
@@ -175,6 +175,7 @@ $ csql help messages
    ;LINe-output [ON/OFF]        - Anzeigen in einer Zeile aktivieren/deaktivieren.\n\
    ;HISTORYList                 - Liste der ausgeführten Abfragen anzeigen.\n\
    ;HISTORYRead <history_num>   - Eintrag über die Verlaufszahl in den Befehlspuffer schreiben.\n\
+   ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;HElp                        - Hilfe anzeigen.\n\n
 
 232 <Beschränkungen> 
