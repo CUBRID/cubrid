@@ -1056,7 +1056,6 @@ static int mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2,
 			      int do_coercion, int total_order,
 			      int *start_colp, int collation);
 static void pr_init_ordered_mem_sizes (void);
-static int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain);
 static void mr_initmem_resultset (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_resultset (void *mem, TP_DOMAIN * domain,
 				DB_VALUE * value);
@@ -2052,9 +2051,9 @@ pr_clear_value (DB_VALUE * value)
   if (DB_IS_NULL (value))
     {
       need_clear = false;
-      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+      if (value->need_clear)
 	{
-	  if (value->need_clear)
+	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
 	    {			/* need to check */
 	      if ((QSTR_IS_ANY_CHAR_OR_BIT (db_type)
 		   && value->data.ch.medium.buf != NULL)
@@ -8730,7 +8729,7 @@ pr_value_mem_size (DB_VALUE * value)
  *    mem(in): memory buffer
  *    domain(in): type domain
  */
-static int
+int
 pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
 {
   int disk_size = 0;

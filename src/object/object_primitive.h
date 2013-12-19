@@ -320,6 +320,7 @@ extern int pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
 			       int *start_colp, int *result_size1,
 			       int *result_size2, int *diff_column,
 			       bool * dom_is_desc, bool * next_dom_is_desc);
+extern int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain);
 extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey,
 					  int index, DB_VALUE * value,
 					  int *prev_indexp, char **prev_ptrp);
