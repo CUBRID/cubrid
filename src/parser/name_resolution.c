@@ -2694,6 +2694,13 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
 			  pt_bind_names_post, bind_arg);
 
+      /* Check for double assignments */
+      pt_no_double_insert_assignments (parser, node);
+      if (pt_has_error (parser))
+	{
+	  goto insert_end;
+	}
+
       /* flag any "correlated" names as undefined.
        * only names in subqueries and sub-inserts should be undefined.
        * use spec->etc to store the correlation level in value_clauses.
@@ -6296,25 +6303,23 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
   is_values = (value_clauses->info.node_list.list_type == PT_IS_VALUE);
   is_subqery = (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY);
 
-  if (au_fetch_class_force (db_obj, &sm_class, AU_FETCH_READ))
+  db_attributes = db_get_attributes_force (db_obj);
+  if (db_attributes == NULL)
     {
       return statement;
     }
-  db_attributes = sm_class->attributes;
 
   rest_attrs = NULL;
   rest_values = NULL;
 
   for (db_attr = db_attributes; db_attr;
-       db_attr = (SM_ATTRIBUTE *) db_attr->header.next)
+       db_attr = db_attribute_next (db_attr))
     {
       const char *name = db_attr->header.name;
 
-      if (!(&db_attr->default_value)
-	  || (DB_IS_NULL (&db_attr->default_value.value)
-	      && db_attr->default_value.default_expr == DB_DEFAULT_NONE))
+      if (db_attr->default_value.default_expr == DB_DEFAULT_NONE
+	  && DB_IS_NULL (&db_attr->default_value.value))
 	{
-	  /* no default value */
 	  continue;
 	}
 

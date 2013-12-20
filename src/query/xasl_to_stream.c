@@ -4068,7 +4068,7 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
 static char *
 xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 {
-  int offset;
+  int offset, i;
 
   ptr = or_pack_oid (ptr, (OID *) & insert_info->class_oid);
 
@@ -4102,11 +4102,28 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 
   ptr = or_pack_int (ptr, insert_info->do_replace);
 
-  ptr = or_pack_int (ptr, insert_info->is_first_value);
-
   ptr = or_pack_int (ptr, insert_info->pruning_type);
 
   offset = xts_save_odku_info (insert_info->odku);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  ptr = or_pack_int (ptr, insert_info->no_val_lists);
+
+  for (i = 0; i < insert_info->no_val_lists; i++)
+    {
+      offset = xts_save_outptr_list (insert_info->valptr_lists[i]);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  offset = xts_save_db_value (insert_info->obj_oid);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -6083,7 +6100,11 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
     OR_INT_SIZE +		/* no_logging */
     OR_INT_SIZE +		/* release_lock */
     OR_INT_SIZE +		/* do_replace */
-    OR_INT_SIZE;		/* needs pruning */
+    OR_INT_SIZE +		/* needs pruning */
+    OR_INT_SIZE +		/* no_val_lists */
+    PTR_SIZE;			/* obj_oid */
+
+  size += insert_info->no_val_lists * PTR_SIZE;	/* valptr_lists */
 
   return size;
 }

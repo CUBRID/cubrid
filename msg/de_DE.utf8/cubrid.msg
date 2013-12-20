@@ -1407,7 +1407,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 43 Benutzer %1$s ist nicht in der Datenbank.
 44 Das Update darf keine Aggregation haben.
 45 Attributnamen in jeder Klasse müssen eindeutig sein. Attributname '%s' in Klasse '%s' ist mehr als einmal angegeben.
-46 Es gibt mehrere Zuordnungen zu %1$s.
+46 Es gibt mehrere Zuordnungen zu %1$s.%2$s.
 47 Zahl in sort spec ist kein Integer.
 48 %1$d in sort spec ist außer zulässigem Bereich.
 49 „Order by“ ist kein Integer.

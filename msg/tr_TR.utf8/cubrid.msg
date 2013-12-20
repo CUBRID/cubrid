@@ -1407,7 +1407,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 43 Kullanıcı %1$s veritabanında değil.
 44 Güncelleme kümeleme içeremez.
 45 Her sınıfta özniteliği adlarının benzersiz olması gerekir. Öznitelik adı '%s' sınıf '%s' bir kereden fazla belirtildi.
-46 %1$s birden fazla atama var..
+46 %1$s.%2$s birden fazla atama var..
 47 Sıralama özellikleri sayısı bir tamsayı değildir.
 48 Sıralama özellikleri %1$d aralık dışında.
 49 Öğe tarafindan bir tamsayı değildir.

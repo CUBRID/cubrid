@@ -2077,7 +2077,15 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
 #if 0				/* TODO - */
     case TYPE_ORDERBY_NUM:
 #endif
-      pr_clear_value (regu_var->value.dbvalptr);
+      pg_cnt +=
+	pr_clear_value (regu_var->value.dbvalptr);
+      /* Fall through */
+    case TYPE_LIST_ID:
+      if (regu_var->xasl != NULL && regu_var->xasl->status != XASL_CLEARED)
+	{
+	  pg_cnt +=
+	    qexec_clear_xasl (NULL, regu_var->xasl, final);
+	}
       break;
     case TYPE_INARITH:
     case TYPE_OUTARITH:
@@ -2917,13 +2925,30 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 		qexec_clear_update_assignment (xasl, assignment, final);
 	    }
 	}
+      if (xasl->proc.insert.valptr_lists != NULL
+	  && xasl->proc.insert.no_val_lists > 0)
+	{
+	  int i, j;
+	  VALPTR_LIST *valptr_list = NULL;
+	  REGU_VARIABLE_LIST regu_list = NULL;
+	  for (i = 0; i < xasl->proc.insert.no_val_lists; i++)
+	    {
+	      valptr_list = xasl->proc.insert.valptr_lists[i];
+	      for (regu_list = valptr_list->valptrp; regu_list != NULL;
+		   regu_list = regu_list->next)
+		{
+		  pg_cnt +=
+		    qexec_clear_regu_var (xasl, &regu_list->value, final);
+		}
+	    }
+	}
       break;
 
     default:
       break;
     }				/* switch */
 
-  /* Note: Here reset the current pointer to access spacification nodes.
+  /* Note: Here reset the current pointer to access specification nodes.
    *       This is needed beause this XASL tree may be used again if
    *       this thread is suspended and restarted.
    */
@@ -10549,6 +10574,17 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 		{
 		  goto error_exit;
 		}
+	      if (pruning_type == DB_PARTITION_CLASS)
+		{
+		  /* make sure data belongs to the right partition */
+		  if (!OID_EQ
+		      (&pruned_oid, &pcontext->selected_partition->class_oid))
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_INVALID_DATA_FOR_PARTITION, 0);
+		      goto error_exit;
+		    }
+		}
 	      /* get actual class hfid */
 	      error_code = heap_get_hfid_from_class_oid (thread_p,
 							 &pruned_oid,
@@ -10661,7 +10697,7 @@ error_exit:
  *   attr_info(in/out): The attribute information that will be inserted
  *   index_attr_info(in/out):
  *   idx_info(in):
- *   needs_pruning(in):
+ *   pruning_type(in):
  *   pcontext(in):
  *   unique_oid_p(out): the OID of one object to be updated or a NULL OID if
  *                      there are no potential unique index violations
@@ -10675,7 +10711,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 				   HEAP_CACHE_ATTRINFO * attr_info,
 				   HEAP_CACHE_ATTRINFO * index_attr_info,
 				   const HEAP_IDX_ELEMENTS_INFO * idx_info,
-				   int needs_pruning,
+				   int pruning_type,
 				   PRUNING_CONTEXT * pcontext,
 				   OID * unique_oid_p)
 {
@@ -10742,7 +10778,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 	  goto error_exit;
 	}
 
-      if (needs_pruning)
+      if (pruning_type != DB_NOT_PARTITIONED_CLASS)
 	{
 	  if (pcontext == NULL)
 	    {
@@ -10765,6 +10801,31 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 	  /* We now hold an U_LOCK on the instance. It will be upgraded to an
 	   * X_LOCK when the update is executed.
 	   */
+	  if (pruning_type == DB_PARTITION_CLASS)
+	    {
+	      OID pruned_class;
+	      if (is_global_index)
+		{
+		  /* find the class to which unique_oid belongs to */
+		  if (heap_get_class_oid
+		      (thread_p, &pruned_class, &unique_oid) == NULL)
+		    {
+		      goto error_exit;
+		    }
+		}
+	      else
+		{
+		  COPY_OID (&pruned_class, &class_oid);
+		}
+	      if (!OID_EQ
+		  (&pruned_class, &pcontext->selected_partition->class_oid))
+		{
+		  /* found a duplicate OID but not in the right partition */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_INVALID_DATA_FOR_PARTITION, 0);
+		  goto error_exit;
+		}
+	    }
 	  found_duplicate = true;
 	  COPY_OID (unique_oid_p, &unique_oid);
 	}
@@ -10869,7 +10930,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
     }
 
   /* setup operation type and handle partition representation id */
-  if (pruning_type != DB_NOT_PARTITIONED_CLASS)
+  if (pruning_type == DB_PARTITIONED_CLASS)
     {
       /* modify rec_descriptor representation id to that of attr_info */
       assert (OID_EQ (&attr_info->class_oid, &pcontext->root_oid));
@@ -10974,17 +11035,17 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   INSERT_PROC_NODE *insert = &xasl->proc.insert;
   SCAN_CODE xb_scan;
   SCAN_CODE ls_scan;
-  XASL_NODE *aptr;
-  DB_VALUE *valp;
+  XASL_NODE *aptr = NULL;
+  DB_VALUE *valp = NULL;
   QPROC_DB_VALUE_LIST vallist;
-  int k;
+  int i, k;
   int val_no;
   int rc;
   OID oid;
   OID class_oid;
   HFID class_hfid;
   ACCESS_SPEC_TYPE *specp = NULL;
-  SCAN_ID *s_id;
+  SCAN_ID *s_id = NULL;
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_CACHE_ATTRINFO index_attr_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
@@ -11055,10 +11116,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
   savepoint_used = 1;
 
-  if (insert->is_first_value)
-    {
-      (void) session_begin_insert_values (thread_p);
-    }
+  (void) session_begin_insert_values (thread_p);
 
   COPY_OID (&class_oid, &insert->class_oid);
   HFID_COPY (&class_hfid, &insert->class_hfid);
@@ -11114,23 +11172,22 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       OR_ATTRIBUTE *attr;
       DB_VALUE *new_val;
       int error = NO_ERROR;
+      TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
       attr = heap_locate_last_attrepr (insert->att_id[k], &attr_info);
       if (attr == NULL)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
-
-      if (attr->default_value.default_expr != DB_DEFAULT_NONE)
+      new_val = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE));
+      if (new_val == NULL)
 	{
-	  new_val = (DB_VALUE *) db_private_alloc (thread_p,
-						   sizeof (DB_VALUE));
-	  insert->vals[k] = new_val;
+	  GOTO_EXIT_ON_ERROR;
 	}
-      switch (attr->default_value.default_expr)
+      DB_MAKE_NULL (new_val);
+      insert->vals[k] = new_val;
+      switch (attr->current_default_value.default_expr)
 	{
-	case DB_DEFAULT_NONE:
-	  break;
 	case DB_DEFAULT_SYSDATE:
 	  DB_MAKE_DATE (insert->vals[k], 1, 1, 1);
 	  insert->vals[k]->data.date = xasl_state->vd.sys_datetime.date;
@@ -11189,6 +11246,50 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    DB_MAKE_STRING (insert->vals[k], temp);
 	  }
 	  break;
+	case DB_DEFAULT_NONE:
+	  if (attr->current_default_value.val_length <= 0)
+	    {
+	      /* leave default value as NULL */
+	      break;
+	    }
+	  else
+	    {
+	      OR_BUF buf;
+	      PR_TYPE *pr_type = PR_TYPE_FROM_ID (attr->type);
+	      bool copy = (pr_is_set_type (attr->type)) ? true : false;
+	      if (pr_type != NULL)
+		{
+		  or_init (&buf, attr->current_default_value.value,
+			   attr->current_default_value.val_length);
+		  buf.error_abort = 1;
+		  switch (_setjmp (buf.env))
+		    {
+		    case 0:
+		      error =
+			(*(pr_type->data_readval)) (&buf, insert->vals[k],
+						    attr->domain,
+						    attr->
+						    current_default_value.
+						    val_length, copy, NULL,
+						    0);
+		      if (error != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		      break;
+		    default:
+		      error = ER_FAILED;
+		      GOTO_EXIT_ON_ERROR;
+		      break;
+		    }
+		}
+	    }
+	  break;
+	default:
+	  assert (0);
+	  error = ER_FAILED;
+	  GOTO_EXIT_ON_ERROR;
+	  break;
 	}
 
       if (error != NO_ERROR)
@@ -11196,25 +11297,26 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (TP_DOMAIN_TYPE (attr->domain) != DB_VALUE_TYPE (insert->vals[k]))
+      if (attr->current_default_value.default_expr == DB_DEFAULT_NONE)
 	{
-	  TP_DOMAIN_STATUS dom_status;
+	  /* skip the value cast */
+	  continue;
+	}
 
-	  dom_status = tp_value_cast (insert->vals[k], insert->vals[k],
-				      attr->domain, false);
-	  if (dom_status != DOMAIN_COMPATIBLE)
-	    {
-	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
-					      insert->vals[k], attr->domain);
-
-	      GOTO_EXIT_ON_ERROR;
-	    }
+      status =
+	tp_value_cast (insert->vals[k], insert->vals[k], attr->domain, false);
+      if (status != DOMAIN_COMPATIBLE)
+	{
+	  (void) tp_domain_status_er_set (status, ARG_FILE_LINE,
+					  insert->vals[k], attr->domain);
+	  GOTO_EXIT_ON_ERROR;
 	}
     }
 
   specp = xasl->spec_list;
-  if (specp || ((insert->do_replace || (xasl->dptr_list != NULL))
-		&& insert->has_uniques))
+  if (specp != NULL
+      || ((insert->do_replace || (xasl->dptr_list != NULL))
+	  && insert->has_uniques) || insert->no_val_lists > 1)
     {
       scan_cache_op_type = MULTI_ROW_INSERT;
     }
@@ -11439,18 +11541,27 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
       scan_cache_inited = true;
 
-      if (xasl->outptr_list)
+      if (XASL_IS_FLAGED (xasl, XASL_LINK_TO_REGU_VARIABLE)
+	  && scan_cache.file_type == FILE_HEAP_REUSE_SLOTS)
 	{
-	  regu_list = xasl->outptr_list->valptrp;
-	  vallist = xasl->val_list->valp;
-	  for (k = no_default_expr;
-	       k < val_no;
+	  /* do not allow references to reusable oids in sub-inserts.
+	   * this is a safety check and should have been detected at semantic
+	   * level
+	   */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      for (i = 0; i < insert->no_val_lists; i++)
+	{
+	  for (regu_list = insert->valptr_lists[i]->valptrp, vallist =
+	       xasl->val_list->valp, k = no_default_expr; k < val_no;
 	       k++, regu_list = regu_list->next, vallist = vallist->next)
 	    {
-
-	      if (fetch_peek_dbval (thread_p, &regu_list->value,
-				    &xasl_state->vd, &class_oid, NULL, NULL,
-				    &valp) != NO_ERROR)
+	      if (fetch_peek_dbval
+		  (thread_p, &regu_list->value, &xasl_state->vd, &class_oid,
+		   NULL, NULL, &valp) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -11460,124 +11571,143 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 	      insert->vals[k] = valp;
 	    }
-	}
 
-      /* evaluate constraint predicate */
-      satisfies_constraints = V_UNKNOWN;
-      if (insert->cons_pred != NULL)
-	{
-	  satisfies_constraints = eval_pred (thread_p, insert->cons_pred,
-					     &xasl_state->vd, NULL);
-	  if (satisfies_constraints == V_ERROR)
+	  /* evaluate constraint predicate */
+	  satisfies_constraints = V_UNKNOWN;
+	  if (insert->cons_pred != NULL)
+	    {
+	      satisfies_constraints = eval_pred (thread_p, insert->cons_pred,
+						 &xasl_state->vd, NULL);
+	      if (satisfies_constraints == V_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+
+	  if (insert->cons_pred != NULL && satisfies_constraints != V_TRUE)
+	    {
+	      /* currently there are only NOT NULL constraints */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_NULL_CONSTRAINT_VIOLATION, 0);
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
+	  if (heap_attrinfo_clear_dbvalues (&attr_info) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
-	}
 
-      if (insert->cons_pred != NULL && satisfies_constraints != V_TRUE)
-	{
-	  /* currently there are only NOT NULL constraints */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_NULL_CONSTRAINT_VIOLATION, 0);
-	  GOTO_EXIT_ON_ERROR;
-	}
-
-      if (heap_attrinfo_clear_dbvalues (&attr_info) != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-      for (k = 0; k < val_no; ++k)
-	{
-	  if (DB_IS_NULL (insert->vals[k]))
+	  for (k = 0; k < val_no; ++k)
 	    {
-	      OR_ATTRIBUTE *attr =
-		heap_locate_last_attrepr (insert->att_id[k], &attr_info);
-	      if (attr == NULL)
+	      if (DB_IS_NULL (insert->vals[k]))
+		{
+		  OR_ATTRIBUTE *attr =
+		    heap_locate_last_attrepr (insert->att_id[k], &attr_info);
+		  if (attr == NULL)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+
+		  if (attr->is_autoincrement)
+		    {
+		      continue;
+		    }
+		}
+	      rc = heap_attrinfo_set (NULL, insert->att_id[k],
+				      insert->vals[k], &attr_info);
+	      if (rc != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+
+	  if (heap_set_autoincrement_value (thread_p, &attr_info, &scan_cache)
+	      != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
+	  if (insert->do_replace && insert->has_uniques)
+	    {
+	      int removed_count = 0;
+	      assert (index_attr_info_inited == true);
+	      error =
+		qexec_remove_duplicates_for_replace (thread_p, &scan_cache,
+						     &attr_info,
+						     &index_attr_info,
+						     &idx_info,
+						     scan_cache_op_type,
+						     insert->pruning_type,
+						     pcontext,
+						     &removed_count);
+	      if (error != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      xasl->list_id->tuple_cnt += removed_count;
+	    }
+
+	  force_count = 0;
+	  if (odku_assignments && insert->has_uniques)
+	    {
+	      error =
+		qexec_execute_duplicate_key_update (thread_p, insert->odku,
+						    &insert->class_hfid,
+						    &xasl_state->vd,
+						    scan_cache_op_type,
+						    &scan_cache, &attr_info,
+						    &index_attr_info,
+						    &idx_info,
+						    insert->pruning_type,
+						    pcontext, &force_count);
+	      if (error != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      if (attr->is_autoincrement)
+	      if (force_count)
 		{
-		  continue;
+		  assert (force_count == 1);
+		  xasl->list_id->tuple_cnt += force_count * 2;
 		}
 	    }
-	  rc = heap_attrinfo_set (NULL, insert->att_id[k],
-				  insert->vals[k], &attr_info);
-	  if (rc != NO_ERROR)
+
+	  if (force_count == 0)
 	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	}
-
-      if (heap_set_autoincrement_value (thread_p, &attr_info, &scan_cache) !=
-	  NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
-      if (insert->do_replace && insert->has_uniques)
-	{
-	  int removed_count = 0;
-	  assert (index_attr_info_inited == true);
-	  error = qexec_remove_duplicates_for_replace (thread_p, &scan_cache,
-						       &attr_info,
-						       &index_attr_info,
-						       &idx_info,
-						       scan_cache_op_type,
-						       insert->pruning_type,
-						       pcontext,
-						       &removed_count);
-	  if (error != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	  xasl->list_id->tuple_cnt += removed_count;
-	}
-
-      force_count = 0;
-      if (odku_assignments && insert->has_uniques)
-	{
-	  error =
-	    qexec_execute_duplicate_key_update (thread_p, insert->odku,
-						&insert->class_hfid,
-						&xasl_state->vd,
+	      if (locator_attribute_info_force (thread_p, &insert->class_hfid,
+						&oid, NULL, false, &attr_info,
+						NULL, 0, operation,
 						scan_cache_op_type,
-						&scan_cache, &attr_info,
-						&index_attr_info, &idx_info,
-						insert->pruning_type,
-						pcontext, &force_count);
-	  if (error != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
+						&scan_cache, &force_count,
+						false,
+						REPL_INFO_TYPE_STMT_NORMAL,
+						insert->pruning_type, pcontext,
+						NULL) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      /* Instances are not put into the result list file, but are counted. */
+	      if (force_count)
+		{
+		  assert (force_count == 1);
+		  xasl->list_id->tuple_cnt += force_count;
+		}
 	    }
 
-	  if (force_count)
+	  if (XASL_IS_FLAGED (xasl, XASL_LINK_TO_REGU_VARIABLE))
 	    {
+	      /* this must be a sub-insert, and the inserted OID must be
+	       * saved to obj_oid in insert_proc
+	       */
 	      assert (force_count == 1);
-	      xasl->list_id->tuple_cnt += force_count * 2;
-	    }
-	}
-
-      if (force_count == 0)
-	{
-	  if (locator_attribute_info_force (thread_p, &insert->class_hfid,
-					    &oid, NULL, false, &attr_info,
-					    NULL, 0, operation,
-					    scan_cache_op_type, &scan_cache,
-					    &force_count, false,
-					    REPL_INFO_TYPE_STMT_NORMAL,
-					    insert->pruning_type, NULL,
-					    NULL) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-
-	  /* Instances are not put into the result list file, but are counted. */
-	  if (force_count)
-	    {
-	      assert (force_count == 1);
-	      xasl->list_id->tuple_cnt += force_count;
+	      if (force_count != 1)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      db_make_oid (insert->obj_oid, &oid);
+	      /* Clear the list id */
+	      qfile_clear_list_id (xasl->list_id);
 	    }
 	}
     }
@@ -11730,6 +11860,11 @@ exit_on_error:
     {
       partition_clear_pruning_context (pcontext);
       pcontext = NULL;
+    }
+  if (XASL_IS_FLAGED (xasl, XASL_LINK_TO_REGU_VARIABLE)
+      && xasl->list_id != NULL)
+    {
+      qfile_clear_list_id (xasl->list_id);
     }
 
   return ER_FAILED;

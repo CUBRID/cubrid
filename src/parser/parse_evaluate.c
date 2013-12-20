@@ -65,6 +65,9 @@ static int pt_make_label_list (const void *key, void *data, void *args);
 #endif /* ENABLE_UNUSED_FUNCTION */
 static int pt_free_label (const void *key, void *data, void *args);
 static int pt_associate_label_with_value (const char *label, DB_VALUE * val);
+static void pt_evaluate_tree_internal (PARSER_CONTEXT * parser,
+				       PT_NODE * tree, DB_VALUE * db_values,
+				       int values_count, bool having_serial);
 
 
 /*
@@ -884,446 +887,10 @@ pt_evaluate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
  *   values_count(in): Number of values to store in db_value.
  *   set_insert(in):
  */
-
 void
 pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 			   DB_VALUE * db_values, int values_count,
-			   bool set_insert)
-{
-  int error = NO_ERROR;
-  PT_NODE *arg1, *arg2, *arg3, *temp;
-  PT_NODE *or_next;
-  DB_VALUE *val, opd1, opd2, opd3;
-  PT_OP_TYPE op;
-  TP_DOMAIN *domain;
-  PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
-
-  assert (parser != NULL);
-
-  if (tree == NULL || db_values == NULL || pt_has_error (parser))
-    {
-      return;
-    }
-
-  switch (tree->node_type)
-    {
-    case PT_HOST_VAR:
-    case PT_VALUE:
-      val = pt_value_to_db (parser, tree);
-      if (val)
-	{
-	  (void) db_value_clone (val, db_values);
-	}
-      break;
-
-    case PT_DOT_:
-    case PT_NAME:
-      if (!pt_eval_path_expr (parser, tree, db_values)
-	  && !pt_has_error (parser))
-	{
-	  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
-		      pt_short_print (parser, tree));
-	}
-      break;
-
-    case PT_EXPR:
-      if (tree->info.expr.op == PT_FUNCTION_HOLDER)
-	{
-	  if (pt_evaluate_function (parser, tree->info.expr.arg1, db_values)
-	      != NO_ERROR)
-	    {
-	      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-			  MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
-			  pt_short_print (parser, tree));
-	    }
-	  break;
-	}
-      if (tree->or_next)
-	{
-	  /* The expression tree has 'or_next' filed. Evaluate it after
-	     converting to 'OR' tree. */
-
-	  /* save 'or_next' */
-	  or_next = tree->or_next;
-	  tree->or_next = NULL;
-
-	  /* make 'OR' tree */
-	  temp = parser_new_node (parser, PT_EXPR);
-	  temp->type_enum = PT_TYPE_LOGICAL;
-	  temp->info.expr.op = PT_OR;
-	  temp->info.expr.arg1 = tree;
-	  temp->info.expr.arg2 = or_next;
-
-	  /* evaluate the 'OR' tree */
-	  pt_evaluate_tree (parser, temp, db_values, 1);
-
-	  /* delete 'OR' node */
-	  temp->info.expr.arg1 = temp->info.expr.arg2 = NULL;
-	  temp->next = temp->or_next = NULL;
-	  parser_free_tree (parser, temp);
-
-	  /* restore 'or_next' */
-	  tree->or_next = or_next;
-	}
-      else
-	{			/* if (tree->or_next) */
-	  op = tree->info.expr.op;
-
-	  /* If the an operand is a query, and the context is a table query
-	     (quantified comparison), rewrite the query into something we can
-	     actually handle here, a tble to set conversion. */
-	  if (pt_is_table_op (op))
-	    {
-	      tree->info.expr.arg2 =
-		pt_query_to_set_table (parser, tree->info.expr.arg2);
-	    }
-	  else if (op == PT_EXISTS)
-	    {
-	      tree->info.expr.arg1 =
-		pt_query_to_set_table (parser, tree->info.expr.arg1);
-	    }
-
-	  arg1 = tree->info.expr.arg1;
-	  if (op == PT_BETWEEN || op == PT_NOT_BETWEEN)
-	    {
-	      /* special handling for PT_BETWEEN and PT_NOT_BETWEEN */
-	      assert (tree->info.expr.arg2->node_type == PT_EXPR);
-	      arg2 = tree->info.expr.arg2->info.expr.arg1;
-	      arg3 = tree->info.expr.arg2->info.expr.arg2;
-	    }
-	  else
-	    {
-	      arg2 = tree->info.expr.arg2;
-	      arg3 = tree->info.expr.arg3;
-	    }
-
-	  db_make_null (&opd1);
-	  db_make_null (&opd2);
-	  db_make_null (&opd3);
-
-	  /* evaluate operands */
-	  pt_evaluate_tree (parser, arg1, &opd1, 1);
-	  if (arg2 && !pt_has_error (parser))
-	    {
-	      pt_evaluate_tree (parser, arg2, &opd2, 1);
-	    }
-
-	  if (arg3 && !pt_has_error (parser))
-	    {
-	      pt_evaluate_tree (parser, arg3, &opd3, 1);
-	    }
-
-	  if (pt_has_error (parser))
-	    {
-	      break;
-	    }
-
-	  if (op == PT_TRIM || op == PT_EXTRACT
-	      || op == PT_SUBSTRING || op == PT_EQ)
-	    {
-	      qualifier = tree->info.expr.qualifier;
-	    }
-	  domain = pt_node_to_db_domain (parser, tree, NULL);
-	  domain = tp_domain_cache (domain);
-
-	  /* PT_BETWEEN_xxxx, PT_ASSIGN, PT_LIKE_ESCAPE do not need to be
-	     evaluated and will return 0 from 'pt_evaluate_db_value_expr()' */
-	  if (!pt_is_between_range_op (op)
-	      && op != PT_ASSIGN && op != PT_LIKE_ESCAPE
-	      && op != PT_CURRENT_VALUE)
-	    {
-	      if (!pt_evaluate_db_value_expr (parser, tree, op, &opd1, &opd2,
-					      &opd3, db_values, domain,
-					      arg1, arg2, arg3, qualifier))
-		{
-		  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-			      MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
-			      pt_short_print (parser, tree));
-		}
-	    }
-
-	  db_value_clear (&opd1);
-	  db_value_clear (&opd2);
-	  db_value_clear (&opd3);
-	}			/* if (tree->or_next) */
-      break;
-
-    case PT_SELECT:
-    case PT_UNION:
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-      /* cannot directly evaluate tree, since this may modify it */
-      temp = parser_copy_tree (parser, tree);
-
-      temp = mq_translate (parser, temp);
-
-      if (temp == NULL)
-	{
-	  if (!pt_has_error (parser))
-	    {
-	      PT_ERRORc (parser, tree, db_error_string (3));
-	    }
-	  break;
-	}
-
-      error = do_select (parser, temp);
-      if (error >= 0)
-	{
-	  /* If there isn't a value from the select, but the select
-	     succeeded, return a NULL instead of an error.
-	     It might break something if an error were returned.    */
-	  if (pt_get_one_tuple_from_list_id (parser, temp, db_values,
-					     values_count) == 0)
-	    {
-	      db_make_null (db_values);
-	    }
-	  regu_free_listid ((QFILE_LIST_ID *) temp->etc);
-	  pt_end_query (parser);
-	}
-      else if (!pt_has_error (parser))
-	{
-	  PT_ERRORc (parser, tree, db_error_string (3));
-	}
-      parser_free_tree (parser, temp);
-      break;
-
-    case PT_INSERT:
-      assert (tree->info.insert.value_clauses != NULL);
-      if (tree->info.insert.value_clauses->next != NULL)
-	{
-	  error = ER_DO_INSERT_TOO_MANY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  if (!pt_has_error (parser))
-	    {
-	      PT_ERRORc (parser, tree, db_error_string (3));
-	    }
-	  break;
-	}
-      /* Handle nested inserts within a set the same way we handle
-         standard nested inserts in do_insert_template() */
-      if (set_insert)
-	{
-	  DB_OTMPL *temp = NULL;
-	  const char *savepoint_name = NULL;
-
-	  /* Don't have to have a real savepoint here because we don't
-	     allow vclass objects in sets. */
-	  error = do_insert_template (parser, &temp, tree,
-				      tree->info.insert.value_clauses,
-				      &savepoint_name, NULL, true);
-	  if (error >= 0)
-	    {
-	      db_make_pointer (db_values, temp);
-	    }
-	  else if (!pt_has_error (parser))
-	    {
-	      if (temp != NULL)
-		{
-		  dbt_abort_object (temp);
-		}
-	      PT_ERRORc (parser, tree, db_error_string (3));
-	    }
-	  break;
-	}
-
-      error = do_insert (parser, tree);
-      if (error >= NO_ERROR)
-	{
-	  if ((val = (DB_VALUE *) (tree->etc)) == NULL)
-	    {
-	      PT_INTERNAL_ERROR (parser, "do_insert returns NULL result");
-	    }
-	  else
-	    {
-	      /* do_insert returns at most one value, inserts with selects
-	       * are not allowed to be nested */
-	      (void) db_value_clone (val, db_values);
-	    }
-	  db_value_free (val);
-	}
-      else if (!pt_has_error (parser))
-	{
-	  PT_ERRORc (parser, tree, db_error_string (3));
-	}
-      break;
-
-    case PT_METHOD_CALL:
-      error = do_call_method (parser, tree);
-      if (error == NO_ERROR)
-	{
-	  if ((val = (DB_VALUE *) (tree->etc)) != NULL)
-	    {			/* do_call_method returns at most one value */
-	      if (db_value_clone (val, db_values) != NO_ERROR)
-		{
-		  db_make_null (db_values);
-		}
-	      pr_free_ext_value (val);
-	    }
-	  else
-	    {
-	      db_make_null (db_values);
-	    }
-	}
-      else if (!pt_has_error (parser))
-	{
-	  PT_ERRORc (parser, tree, db_error_string (3));
-	}
-      break;
-
-    case PT_FUNCTION:
-      switch (tree->info.function.function_type)
-	{
-	  /* we have a set/multiset/sequence constructor function call.
-	   * build the set/multiset/sequence using the function arguments
-	   * as the    set/multiset/sequence element building blocks.
-	   */
-	case F_SET:
-	  db_make_set (db_values, db_set_create_basic (NULL, NULL));
-	  if (!db_get_set (db_values))
-	    {
-	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return;
-	    }
-
-	  if (pt_set_value_to_db (parser, &tree->info.function.arg_list,
-				  db_values, &tree->data_type) == NULL
-	      && !pt_has_error (parser))
-	    {
-	      PT_ERRORc (parser, tree, db_error_string (3));
-	    }
-	  return;
-
-	case F_MULTISET:
-	  db_make_multiset (db_values, db_set_create_multi (NULL, NULL));
-	  if (!db_get_set (db_values))
-	    {
-	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return;
-	    }
-
-	  if (pt_set_value_to_db (parser, &tree->info.function.arg_list,
-				  db_values, &tree->data_type) == NULL
-	      && !pt_has_error (parser))
-	    {
-	      PT_ERRORc (parser, tree, db_error_string (3));
-	    }
-	  return;
-
-	case F_SEQUENCE:
-	  db_make_sequence (db_values, db_seq_create (NULL, NULL, 0));
-	  if (!db_get_set (db_values))
-	    {
-	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return;
-	    }
-
-	  if (pt_seq_value_to_db (parser, tree->info.function.arg_list,
-				  db_values, &tree->data_type) == NULL
-	      && !pt_has_error (parser))
-	    {
-	      PT_ERRORc (parser, tree, db_error_string (3));
-	    }
-	  return;
-
-	case F_TABLE_SET:
-	  db_make_set (db_values, db_set_create_basic (NULL, NULL));
-	  if (!db_get_set (db_values))
-	    {
-	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return;
-	    }
-
-	  if (pt_set_table_to_db (parser, tree->info.function.arg_list,
-				  db_values, 0) == NULL
-	      && !pt_has_error (parser))
-	    {
-	      PT_ERRORc (parser, tree, db_error_string (3));
-	    }
-	  return;
-
-	case F_TABLE_MULTISET:
-	  db_make_multiset (db_values, db_set_create_multi (NULL, NULL));
-	  if (!db_get_set (db_values))
-	    {
-	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return;
-	    }
-
-	  if (pt_set_table_to_db (parser, tree->info.function.arg_list,
-				  db_values, 0) == NULL
-	      && !pt_has_error (parser))
-	    {
-	      PT_ERRORc (parser, tree, db_error_string (3));
-	    }
-	  return;
-
-	case F_TABLE_SEQUENCE:
-	  db_make_sequence (db_values, db_seq_create (NULL, NULL, 0));
-	  if (!db_get_set (db_values))
-	    {
-	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return;
-	    }
-
-	  if (pt_set_table_to_db (parser, tree->info.function.arg_list,
-				  db_values, 1) == NULL
-	      && !pt_has_error (parser))
-	    {
-	      PT_ERRORc (parser, tree, db_error_string (3));
-	    }
-	  return;
-
-	default:
-	  /* fall through: error! */
-	  break;
-	}
-
-    default:
-      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-		  MSGCAT_RUNTIME__CAN_NOT_EVALUATE, pt_short_print (parser,
-								    tree));
-      break;
-    }
-}
-
-/*
- * pt_evaluate_tree_having_serial () -
- *   return:
- *   parser(in):
- *   tree(in):
- *   db_values(in):
- *   values_count(in):
- */
-void
-pt_evaluate_tree_having_serial (PARSER_CONTEXT * parser, PT_NODE * tree,
-				DB_VALUE * db_value, int vals_cnt)
-{
-  pt_evaluate_tree_having_serial_internal (parser, tree, db_value, vals_cnt,
-					   false);
-}
-
-
-/*
- * pt_evaluate_tree_having_serial_internal () -
- *   return:
- *   parser(in):
- *   tree(in):
- *   db_value(in):
- *   vals_cnt(in):
- *   set_insert(in):
- */
-void
-pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
-					 PT_NODE * tree,
-					 DB_VALUE * db_values,
-					 int values_count, bool set_insert)
+			   bool having_serial)
 {
   int error = NO_ERROR;
   PT_NODE *arg1, *arg2, *arg3, *temp;
@@ -1399,7 +966,34 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	break;
       }
 
+    case PT_INSERT_VALUE:
+      if (tree->info.insert_value.is_evaluated)
+	{
+	  /* Node was already evaluated, just copy the stored value */
+	  (void) db_value_clone (&tree->info.insert_value.value, db_values);
+	}
+      else
+	{
+	  /* evaluate original node */
+	  pt_evaluate_tree_having_serial (parser,
+					  tree->info.insert_value.
+					  original_node, db_values,
+					  values_count);
+	}
+      break;
+
     case PT_EXPR:
+      if (tree->info.expr.op == PT_FUNCTION_HOLDER)
+	{
+	  if (pt_evaluate_function (parser, tree->info.expr.arg1, db_values)
+	      != NO_ERROR)
+	    {
+	      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
+			  MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+			  pt_short_print (parser, tree));
+	    }
+	  break;
+	}
       if (tree->or_next)
 	{
 	  /* The expression tree has 'or_next' filed. Evaluate it after
@@ -1446,11 +1040,29 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	    }
 
 	  arg1 = tree->info.expr.arg1;
-	  arg2 = tree->info.expr.arg2;
-	  arg3 = tree->info.expr.arg3;
+	  if (op == PT_BETWEEN || op == PT_NOT_BETWEEN)
+	    {
+	      /* special handling for PT_BETWEEN and PT_NOT_BETWEEN */
+	      assert (tree->info.expr.arg2->node_type == PT_EXPR);
+	      arg2 = tree->info.expr.arg2->info.expr.arg1;
+	      arg3 = tree->info.expr.arg2->info.expr.arg2;
+	    }
+	  else
+	    {
+	      arg2 = tree->info.expr.arg2;
+	      arg3 = tree->info.expr.arg3;
+	    }
 
 	  if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE)
 	    {
+	      if (!having_serial)
+		{
+		  /* Serial not allowed in current context */
+		  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
+			      MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+			      pt_short_print (parser, tree));
+		  break;
+		}
 	      serial_mop = pt_resolve_serial (parser, arg1);
 	      if (serial_mop != NULL)
 		{
@@ -1655,9 +1267,9 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 		}
 	    }
 
-	  pr_clear_value (&opd1);
-	  pr_clear_value (&opd2);
-	  pr_clear_value (&opd3);
+	  db_value_clear (&opd1);
+	  db_value_clear (&opd2);
+	  db_value_clear (&opd3);
 	}			/* if (tree->or_next) */
       break;
 
@@ -1706,8 +1318,6 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
       break;
 
     case PT_INSERT:
-      /* Handle nested inserts within a set the same way we handle
-         standard nested inserts in do_insert_template() */
       assert (tree->info.insert.value_clauses != NULL);
       if (tree->info.insert.value_clauses->next != NULL)
 	{
@@ -1719,33 +1329,10 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	    }
 	  break;
 	}
-      if (set_insert)
-	{
-	  DB_OTMPL *temp = NULL;
-	  const char *savepoint_name = NULL;
 
-	  /* Don't have to have a real savepoint here because we don't
-	     allow vclass objects in sets. */
-	  error = do_insert_template (parser, &temp, tree,
-				      tree->info.insert.value_clauses,
-				      &savepoint_name, NULL, true);
-	  if (error >= 0)
-	    {
-	      db_make_pointer (db_values, temp);
-	    }
-	  else if (!pt_has_error (parser))
-	    {
-	      if (temp != NULL)
-		{
-		  dbt_abort_object (temp);
-		}
-	      PT_ERRORc (parser, tree, db_error_string (3));
-	    }
-	  break;
-	}
-
+      /* Execute insert */
       error = do_insert (parser, tree);
-      if (error >= 0)
+      if (error >= NO_ERROR)
 	{
 	  if ((val = (DB_VALUE *) (tree->etc)) == NULL)
 	    {
@@ -1754,10 +1341,12 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	  else
 	    {
 	      /* do_insert returns at most one value, inserts with selects
-	       * are not allowed to be nested */
+	       * are not allowed to be nested
+	       */
 	      (void) db_value_clone (val, db_values);
 	    }
 	  db_value_free (val);
+	  tree->etc = NULL;
 	}
       else if (!pt_has_error (parser))
 	{
@@ -1767,7 +1356,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 
     case PT_METHOD_CALL:
       error = do_call_method (parser, tree);
-      if (error >= 0)
+      if (error >= NO_ERROR)
 	{
 	  if ((val = (DB_VALUE *) (tree->etc)) != NULL)
 	    {			/* do_call_method returns at most one value */
@@ -1902,8 +1491,23 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 
     default:
       PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-		  MSGCAT_RUNTIME__CAN_NOT_EVALUATE, pt_short_print (parser,
-								    tree));
+		  MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+		  pt_short_print (parser, tree));
       break;
     }
+}
+
+/*
+ * pt_evaluate_tree_having_serial () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   db_values(in):
+ *   values_count(in):
+ */
+void
+pt_evaluate_tree_having_serial (PARSER_CONTEXT * parser, PT_NODE * tree,
+				DB_VALUE * db_value, int vals_cnt)
+{
+  pt_evaluate_tree_internal (parser, tree, db_value, vals_cnt, true);
 }

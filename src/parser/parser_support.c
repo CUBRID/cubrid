@@ -544,6 +544,26 @@ pt_tuple_value (PARSER_CONTEXT * parser, PT_NODE * name, CURSOR_ID * cursor_p,
 }
 
 /*
+ * pt_insert_value () - Creates an insert value setting node argument as
+ *			original node.
+ *
+ * return      : PT_INSERT_VALUE node.
+ * parser (in) : Parser context.
+ * node (in)   : Original node.
+ */
+PT_NODE *
+pt_insert_value (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *insert_val = parser_new_node (parser, PT_INSERT_VALUE);
+  if (insert_val != NULL)
+    {
+      parser_init_node (insert_val);
+      insert_val->info.insert_value.original_node = node;
+    }
+  return insert_val;
+}
+
+/*
  * pt_datatypes_match () -
  *   return:  1 if the two data types are not virtual objects or the same
  * 	      class of virtual object.  0 otherwise.
@@ -4167,6 +4187,32 @@ regu_outlist_init (OUTPTR_LIST * ptr)
 {
   ptr->valptr_cnt = 0;
   ptr->valptrp = NULL;
+}
+
+/*
+ * regu_outlistptr_array_alloc () - Allocate an array of OUTPTR_LIST pointers.
+ *
+ * return	 : Allocated memory pointer.
+ * int size (in) : Array size.
+ */
+OUTPTR_LIST **
+regu_outlistptr_array_alloc (int size)
+{
+  OUTPTR_LIST **ptr;
+
+  if (size == 0)
+    return NULL;
+
+  ptr = (OUTPTR_LIST **) pt_alloc_packing_buf (sizeof (OUTPTR_LIST *) * size);
+  if (ptr == NULL)
+    {
+      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
+      return NULL;
+    }
+  else
+    {
+      return ptr;
+    }
 }
 
 /*

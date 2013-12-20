@@ -36,6 +36,7 @@
 #include "dbi.h"
 #include "object_accessor.h"
 #include "locator_cl.h"
+#include "virtual_object.h"
 
 #define MAX_STACK_OBJECTS 500
 
@@ -543,6 +544,11 @@ static int pt_for_update_prepare_query_internal (PARSER_CONTEXT * parser,
 
 static int pt_for_update_prepare_query (PARSER_CONTEXT * parser,
 					PT_NODE * query);
+
+static PT_NODE *mq_replace_virtual_oid_with_real_oid (PARSER_CONTEXT * parser,
+						      PT_NODE * node,
+						      void *arg,
+						      int *continue_walk);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -1872,7 +1878,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
   PT_NODE *class_spec, *statement_spec;
   PT_NODE *derived_table, *derived_spec, *derived_class;
   bool is_pushable_query, is_outer_joined;
-  bool is_only_spec, is_upd_del_spec, rewrite_as_derived;
+  bool is_only_spec, rewrite_as_derived;
 
   result = tmp_result = NULL;	/* init */
   class_spec = NULL;
@@ -1941,29 +1947,37 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	     && class_spec->info.spec.entity_name->node_type == PT_SPEC);
 	}
 
-      /* determine if class_spec is the only spec in the statement */
-      is_only_spec = (statement_spec->next == NULL ? true : false);
-
-      /* determine if spec is used for update/delete */
-      is_upd_del_spec = class_spec->info.spec.flag
-	& (PT_SPEC_FLAG_UPDATE | PT_SPEC_FLAG_DELETE);
-
-      /* determine if spec is outer joined */
-      is_outer_joined = mq_is_outer_join_spec (parser, class_spec);
-
-      /* determine if vclass_query is pushable */
-      is_pushable_query = mq_is_pushable_subquery (parser, query_spec,
-						   is_only_spec);
-
-      /* determine if we have to rewrite vclass_query as a derived table */
-      rewrite_as_derived =
-	rewrite_as_derived || !is_pushable_query || is_outer_joined;
-
-      if (PT_IS_QUERY (tmp_result))
+      /* do not rewrite vclass_query as a derived table if spec belongs to an
+       * insert statement.
+       */
+      if (tmp_result->node_type == PT_INSERT)
 	{
-	  rewrite_as_derived = rewrite_as_derived
-	    || (tmp_result->info.query.all_distinct == PT_DISTINCT)
-	    || (PT_IS_VALUE_QUERY (query_spec));
+	  rewrite_as_derived = false;
+	}
+      else
+	{
+	  /* determine if class_spec is the only spec in the statement */
+	  is_only_spec = (statement_spec->next == NULL ? true : false);
+
+	  /* determine if spec is outer joined */
+	  is_outer_joined = mq_is_outer_join_spec (parser, class_spec);
+
+	  /* determine if vclass_query is pushable */
+	  is_pushable_query = mq_is_pushable_subquery (parser, query_spec,
+						       is_only_spec);
+
+	  /* rewrite vclass_query as a derived table  if spec is outer joined
+	   * or if query is not pushable
+	   */
+	  rewrite_as_derived =
+	    rewrite_as_derived || !is_pushable_query || is_outer_joined;
+
+	  if (PT_IS_QUERY (tmp_result))
+	    {
+	      rewrite_as_derived = rewrite_as_derived
+		|| (tmp_result->info.query.all_distinct == PT_DISTINCT)
+		|| (PT_IS_VALUE_QUERY (query_spec));
+	    }
 	}
 
       if (rewrite_as_derived)
@@ -4269,6 +4283,84 @@ mq_resolve_insert_statement (PARSER_CONTEXT * parser,
 
 
 /*
+ * mq_replace_virtual_oid_with_real_oid () - Used for insert translate, forces
+ *					     sub-queries to select real
+ *					     instance OID's instead of virtual
+ *					     OID's.
+ *
+ * return	      : Parse tree updated node.
+ * parser (in)	      : Parser context.
+ * node (in)	      : Parse tree node.
+ * arg (in)	      : Void argument.
+ * continue_walk (in) : Continue walk.
+ */
+static PT_NODE *
+mq_replace_virtual_oid_with_real_oid (PARSER_CONTEXT * parser, PT_NODE * node,
+				      void *arg, int *continue_walk)
+{
+  int error = NO_ERROR;
+  if (node->node_type == PT_NAME)
+    {
+      if (node->info.name.meta_class == PT_VID_ATTR)
+	{
+	  node->info.name.meta_class = PT_OID_ATTR;
+	  if (node->data_type)
+	    {
+	      /* set virtual object to NULL and real class entity_name will
+	       * be used
+	       */
+	      node->data_type->info.data_type.virt_object = NULL;
+	    }
+	}
+      else if (node->info.name.meta_class == PT_PARAMETER)
+	{
+	  /* replace with an object value */
+	  DB_VALUE db_val;
+	  DB_OBJECT *obj = NULL;
+	  PT_NODE *result = NULL;
+
+	  pt_evaluate_tree_having_serial (parser, node, &db_val, 1);
+	  if (pt_has_error (parser))
+	    {
+	      /* quit */
+	      return node;
+	    }
+	  if (DB_VALUE_TYPE (&db_val) == DB_TYPE_VOBJ)
+	    {
+	      error = vid_vobj_to_object (&db_val, &obj);
+	      if (error != NO_ERROR)
+		{
+		  PT_ERRORc (parser, node, er_msg ());
+		  return node;
+		}
+	      DB_MAKE_OBJECT (&db_val, obj);
+	    }
+	  else if (DB_VALUE_TYPE (&db_val) == DB_TYPE_OBJECT)
+	    {
+	      obj = db_real_instance (DB_GET_OBJECT (&db_val));
+	      DB_MAKE_OBJECT (&db_val, obj);
+	    }
+	  else
+	    {
+	      /* do nothing */
+	      return node;
+	    }
+	  result = pt_dbval_to_value (parser, &db_val);
+	  if (result == NULL)
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME,
+			  MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+	      return node;
+	    }
+	  PT_NODE_MOVE_NUMBER_OUTERLINK (result, node);
+	  parser_free_tree (parser, node);
+	  return result;
+	}
+    }
+  return node;
+}
+
+/*
  * mq_translate_insert() - leaf expansion or vclass/view expansion
  *   return:
  *   parser(in):
@@ -4277,9 +4369,9 @@ mq_resolve_insert_statement (PARSER_CONTEXT * parser,
 static PT_NODE *
 mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 {
-  PT_NODE *from, *val, *attr, **val_hook;
+  PT_NODE *from = NULL, *val = NULL, *attr = NULL, **val_hook = NULL;
   PT_NODE *next = insert_statement->next;
-  PT_NODE *flat, *temp, **last;
+  PT_NODE *flat = NULL, *temp = NULL, **last = NULL;
   PT_NODE save = *insert_statement;
   PT_NODE *subquery = NULL;
   PT_SPEC_INFO *from_spec = NULL;
@@ -4303,6 +4395,13 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 
   insert_statement = mq_translate_tree (parser, insert_statement, from,
 					NULL, what_for);
+
+  /* check there are no double assignments after translate */
+  pt_no_double_insert_assignments (parser, insert_statement);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
 
   if (insert_statement)
     {
@@ -4501,6 +4600,13 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
     }
 
   subquery = pt_get_subquery_of_insert_select (insert_statement);
+  if (subquery != NULL)
+    {
+      (void) parser_walk_tree (parser, subquery,
+			       mq_replace_virtual_oid_with_real_oid,
+			       NULL, NULL, NULL);
+    }
+
   if (subquery != NULL && PT_IS_SELECT (subquery)
       && insert_statement->info.insert.odku_assignments != NULL)
     {
@@ -4531,6 +4637,12 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
       /* need to recheck this in case something went wrong */
       insert_statement = pt_check_odku_assignments (parser, insert_statement);
     }
+  insert_rewrite_names_in_value_clauses (parser, insert_statement);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+
   return insert_statement;
 }
 

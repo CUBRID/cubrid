@@ -64,6 +64,7 @@ extern SM_DOMAIN *regu_domain_db_alloc (void);
 /* for regu_machead_array_ptr () */
 extern DB_VALUE **regu_dbvalptr_array_alloc (int size);
 extern REGU_VARIABLE **regu_varptr_array_alloc (int size);
+extern OUTPTR_LIST **regu_outlistptr_array_alloc (int size);
 
 /* for regu_machead_array_db () */
 extern int *regu_int_array_db_alloc (int size);

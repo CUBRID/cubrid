@@ -1407,7 +1407,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 43 Utilizatorul %1$s nu se află în baza de date.
 44 UPDATE nu poate conţine agregări.
 45 Numele de atribute din fiecare clasă trebuie să fie unice. Numele atributului '%s' din clasa '%s' este specificat mai mult de o singură dată.
-46 Există asignări multiple pentru %1$s.
+46 Există asignări multiple pentru %1$s.%2$s.
 47 Numărul din specificaţia de ordonare nu este întreg.
 48 %1$d din specificaţia de ordonare este în afara domeniului.
 49 Un element din ORDER BY nu este întreg.

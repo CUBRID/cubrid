@@ -1407,7 +1407,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 43 Người dùng %1$s không ở trong cơ sở dữ liệu.
 44 Update không thể có aggregation.
 45 Tên thuộc tính trong mỗi lớp phải là duy nhất. Tên thuộc tính '%s' trong lớp '%s' được chỉ định nhiều hơn một lần.
-46 Có nhiều phép gán đến %1$s.
+46 Có nhiều phép gán đến %1$s.%2$s.
 47 Số trong sort spec không phải là một số nguyên.
 48 %1$d trong sort spec nằm ngoài phạm vi.
 49 Order by item không phải một số nguyên.

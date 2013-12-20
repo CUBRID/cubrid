@@ -1407,7 +1407,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 43 Utilizador %1$s no esta en la base de datos.
 44 Actualizar no puede tener agregacion.
 45 Nombres de atributo en cada clase tienen que ser unicos. Nombre '%s' de atributo en clase '%s' es especificado mas de una vez.
-46 Hay asignaciones multiples a %1$s.
+46 Hay asignaciones multiples a %1$s.%2$s.
 47 Numero en especificacion de ordenacion no es un entero.
 48 %1$d en especificacion de ordenacion es fuera de rango.
 49 Ordenar por tema no es un entero.

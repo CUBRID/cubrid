@@ -5136,7 +5136,7 @@ thread_rc_track_meter_at (THREAD_RC_METER * meter,
       p--;
     }
 
-#if 1				/* remove me if needed for debug */
+#if 0				/* remove me if needed for debug */
   ptr = NULL;
 #endif
 
@@ -5152,12 +5152,12 @@ thread_rc_track_meter_at (THREAD_RC_METER * meter,
 
   if (amount > 0)
     {
-      if (meter->m_add_buf_size <= ONE_K)
+      if (meter->m_add_buf_size <= ONE_M)
 	{
 	  if (strstr (meter->m_add_buf, buf) == NULL)
 	    {
 	      /* reserve buffer for '\0' */
-	      remain_size = ONE_K - meter->m_add_buf_size - 1;
+	      remain_size = ONE_M - meter->m_add_buf_size - 1;
 	      buf_size = MIN (buf_size, remain_size);
 	      strncat (meter->m_add_buf, buf, buf_size);
 	      meter->m_add_buf_size += buf_size;
@@ -5172,12 +5172,12 @@ thread_rc_track_meter_at (THREAD_RC_METER * meter,
     }
   else if (amount < 0)
     {
-      if (meter->m_sub_buf_size <= ONE_K)
+      if (meter->m_sub_buf_size <= ONE_M)
 	{
 	  if (strstr (meter->m_sub_buf, buf) == NULL)
 	    {
 	      /* reserve buffer for '\0' */
-	      remain_size = ONE_K - meter->m_sub_buf_size - 1;
+	      remain_size = ONE_M - meter->m_sub_buf_size - 1;
 	      buf_size = MIN (buf_size, remain_size);
 	      strncat (meter->m_sub_buf, buf, buf_size);
 	      meter->m_sub_buf_size += buf_size;

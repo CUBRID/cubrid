@@ -1407,7 +1407,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 43 L'utilisateur %1$s n'est pas dans la base de données.
 44 Mise à jour ne peut pas avoir d'agrégation.
 45 Les noms des attributs de chaque classe doit être unique. Nom de l'attribut '%s' dans la classe '%s' est spécifié plus d'une fois.
-46 Il existe plusieurs assignations à %1$s.
+46 Il existe plusieurs assignations à %1$s.%2$s.
 47 Nombre de spécification de tri n'est pas un entier.
 48 %1$d dans la spécification de tri est hors limites.
 49 Élément ORDER BY n'est pas un entier.

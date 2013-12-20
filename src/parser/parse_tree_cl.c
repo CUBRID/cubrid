@@ -324,6 +324,8 @@ static PT_NODE *pt_apply_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p,
 				      PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_query_trace (PARSER_CONTEXT * parser, PT_NODE * p,
 				      PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_insert_value (PARSER_CONTEXT * parser, PT_NODE * p,
+				       PT_NODE_FUNCTION g, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -417,6 +419,7 @@ static PT_NODE *pt_init_value (PT_NODE * p);
 static PT_NODE *pt_init_merge (PT_NODE * p);
 static PT_NODE *pt_init_tuple_value (PT_NODE * p);
 static PT_NODE *pt_init_query_trace (PT_NODE * p);
+static PT_NODE *pt_init_insert_value (PT_NODE * p);
 
 static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_NODE_NUMBER];
 
@@ -591,6 +594,8 @@ static PARSER_VARCHAR *pt_print_tuple_value (PARSER_CONTEXT * parser,
 					     PT_NODE * p);
 static PARSER_VARCHAR *pt_print_query_trace (PARSER_CONTEXT * parser,
 					     PT_NODE * p);
+static PARSER_VARCHAR *pt_print_insert_value (PARSER_CONTEXT * parser,
+					      PT_NODE * p);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p,
 			      PT_NODE_FUNCTION g, void *arg);
@@ -1145,7 +1150,6 @@ pt_continue_walk (PARSER_CONTEXT * parser, PT_NODE * tree,
   *continue_walk = PT_CONTINUE_WALK;
   return tree;
 }
-
 
 /*
  * pt_lambda_with_arg () - walks a tree and modifies it in place to replace
@@ -4952,6 +4956,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_MERGE] = pt_apply_merge;
   pt_apply_func_array[PT_TUPLE_VALUE] = pt_apply_tuple_value;
   pt_apply_func_array[PT_QUERY_TRACE] = pt_apply_query_trace;
+  pt_apply_func_array[PT_INSERT_VALUE] = pt_apply_insert_value;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -5063,6 +5068,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_MERGE] = pt_init_merge;
   pt_init_func_array[PT_TUPLE_VALUE] = pt_init_tuple_value;
   pt_init_func_array[PT_QUERY_TRACE] = pt_init_query_trace;
+  pt_init_func_array[PT_INSERT_VALUE] = pt_init_insert_value;
 
   pt_init_f = pt_init_func_array;
 }
@@ -5175,6 +5181,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_MERGE] = pt_print_merge;
   pt_print_func_array[PT_TUPLE_VALUE] = pt_print_tuple_value;
   pt_print_func_array[PT_QUERY_TRACE] = pt_print_query_trace;
+  pt_print_func_array[PT_INSERT_VALUE] = pt_print_insert_value;
 
   pt_print_f = pt_print_func_array;
 }
@@ -12678,6 +12685,10 @@ pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p,
     g (parser, p->info.insert.waitsecs_hint, arg);
   p->info.insert.odku_assignments =
     g (parser, p->info.insert.odku_assignments, arg);
+  p->info.insert.odku_non_null_attrs =
+    g (parser, p->info.insert.odku_non_null_attrs, arg);
+  p->info.insert.non_null_attrs =
+    g (parser, p->info.insert.non_null_attrs, arg);
   return p;
 }
 
@@ -12698,6 +12709,10 @@ pt_init_insert (PT_NODE * p)
   p->info.insert.waitsecs_hint = NULL;
   p->info.insert.odku_assignments = NULL;
   p->info.insert.do_replace = false;
+  p->info.insert.non_null_attrs = NULL;
+  p->info.insert.odku_non_null_attrs = NULL;
+  p->info.insert.has_uniques = 0;
+  p->info.insert.server_allowed = SERVER_INSERT_NOT_CHECKED;
   return p;
 }
 
@@ -17169,6 +17184,59 @@ pt_print_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   return pt_print_name (parser, p->info.tuple_value.name);
+}
+
+/*
+ * pt_apply_insert_value ()
+ * return :
+ * parser (in) :
+ * p (in) :
+ * g (in) :
+ * arg (in) :
+ */
+static PT_NODE *
+pt_apply_insert_value (PARSER_CONTEXT * parser, PT_NODE * p,
+		       PT_NODE_FUNCTION g, void *arg)
+{
+  p->info.insert_value.original_node =
+    g (parser, p->info.insert_value.original_node, arg);
+  return p;
+}
+
+/*
+ * pt_init_insert_value ()
+ * return :
+ * p (in) :
+ */
+static PT_NODE *
+pt_init_insert_value (PT_NODE * p)
+{
+  p->info.insert_value.original_node = NULL;
+  DB_MAKE_NULL (&p->info.insert_value.value);
+  p->info.insert_value.is_evaluated = false;
+  p->info.insert_value.replace_names = false;
+
+  return p;
+}
+
+/*
+ * pt_print_insert_value ()
+ * return :
+ * parser (in) :
+ * p (in) :
+ */
+static PARSER_VARCHAR *
+pt_print_insert_value (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  if (p->info.insert_value.original_node != NULL)
+    {
+      return pt_print_bytes_l (parser, p->info.insert_value.original_node);
+    }
+  else
+    {
+      assert (false);
+      return NULL;
+    }
 }
 
 /*

@@ -4197,7 +4197,6 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &insert_info->no_logging);
   ptr = or_unpack_int (ptr, &insert_info->release_lock);
   ptr = or_unpack_int (ptr, &insert_info->do_replace);
-  ptr = or_unpack_int (ptr, &insert_info->is_first_value);
   ptr = or_unpack_int (ptr, &insert_info->pruning_type);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -4211,6 +4210,56 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
 	stx_restore_odku_info (thread_p,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (insert_info->odku == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &insert_info->no_val_lists);
+  if (insert_info->no_val_lists > 0)
+    {
+      insert_info->valptr_lists =
+	(OUTPTR_LIST **) stx_alloc_struct (thread_p,
+					   sizeof (OUTPTR_LIST *) *
+					   insert_info->no_val_lists);
+      if (insert_info->valptr_lists == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      for (i = 0; i < insert_info->no_val_lists; i++)
+	{
+	  ptr = or_unpack_int (ptr, &offset);
+	  if (ptr == 0)
+	    {
+	      assert (0);
+	      return NULL;
+	    }
+	  else
+	    {
+	      insert_info->valptr_lists[i] =
+		stx_restore_outptr_list (thread_p,
+					 &xasl_unpack_info->
+					 packed_xasl[offset]);
+	      if (insert_info->valptr_lists[i] == NULL)
+		{
+		  return NULL;
+		}
+	    }
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      insert_info->obj_oid = NULL;
+    }
+  else
+    {
+      insert_info->obj_oid =
+	stx_restore_db_value (thread_p,
+			      &xasl_unpack_info->packed_xasl[offset]);
+      if (insert_info->obj_oid == NULL)
 	{
 	  return NULL;
 	}

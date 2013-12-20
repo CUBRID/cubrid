@@ -151,9 +151,9 @@ struct thread_resource_meter
   const char *m_sub_file_name;	/* last sub file name, line number */
   INT32 m_sub_line_no;
 #if !defined(NDEBUG)
-  char m_add_buf[ONE_K];	/* total add file name, line number */
+  char m_add_buf[ONE_M];	/* total add file name, line number */
   INT32 m_add_buf_size;
-  char m_sub_buf[ONE_K];	/* total sub file name, line number */
+  char m_sub_buf[ONE_M];	/* total sub file name, line number */
   INT32 m_sub_buf_size;
   char m_hold_buf[ONE_K];	/* used specially for each meter */
   INT32 m_hold_buf_size;

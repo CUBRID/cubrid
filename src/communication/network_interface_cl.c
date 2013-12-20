@@ -7810,13 +7810,66 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   return list_id;
 #else /* CS_MODE */
   QFILE_LIST_ID *list_id = NULL;
+  int i;
+  DB_VALUE *server_db_values = NULL;
+  OID *oid;
 
   ENTER_SERVER ();
 
+  /* reallocate dbvals to use server allocation */
+  if (dbval_cnt > 0)
+    {
+      server_db_values =
+	(DB_VALUE *) db_private_alloc (NULL, dbval_cnt * sizeof (DB_VALUE));
+      if (server_db_values == NULL)
+	{
+	  goto cleanup;
+	}
+      for (i = 0; i < dbval_cnt; i++)
+	{
+	  /* Initialize value */
+	  DB_MAKE_NULL (&server_db_values[i]);
+	  switch (DB_VALUE_TYPE (&dbvals[i]))
+	    {
+	    case DB_TYPE_OBJECT:
+	      /* server cannot handle objects, convert to OID instead */
+	      oid = ws_identifier (DB_GET_OBJECT (&dbvals[i]));
+	      if (oid != NULL)
+		{
+		  DB_MAKE_OID (&server_db_values[i], oid);
+		}
+	      break;
+	    default:
+	      /* Clone value */
+	      if (db_value_clone (&dbvals[i], &server_db_values[i]) !=
+		  NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	      break;
+	    }
+	}
+    }
+  else
+    {
+      /* No dbvals */
+      server_db_values = NULL;
+    }
+
   /* call the server routine of query execute */
   list_id = xqmgr_execute_query (NULL, xasl_id, query_idp, dbval_cnt,
-				 dbvals, &flag, clt_cache_time,
+				 server_db_values, &flag, clt_cache_time,
 				 srv_cache_time, query_timeout, NULL);
+
+cleanup:
+  if (server_db_values != NULL)
+    {
+      for (i = 0; i < dbval_cnt; i++)
+	{
+	  db_value_clear (&server_db_values[i]);
+	}
+      db_private_free (NULL, server_db_values);
+    }
 
   EXIT_SERVER ();
 

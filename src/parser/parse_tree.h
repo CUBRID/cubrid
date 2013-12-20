@@ -340,6 +340,9 @@
 #define PT_IS_VALUE_NODE(n) \
         ( (n) ? ((n)->node_type == PT_VALUE) : false )
 
+#define PT_IS_INSERT_VALUE_NODE(n) \
+	( (n) ? ((n)->node_type == PT_INSERT_VALUE) : false )
+
 #define PT_IS_SET_TYPE(n) \
         ( (n) ? ((n)->type_enum == PT_TYPE_SET || \
                  (n)->type_enum == PT_TYPE_MULTISET || \
@@ -829,6 +832,7 @@ enum pt_node_type
   PT_ATTR_ORDERING,
   PT_TUPLE_VALUE,
   PT_QUERY_TRACE,
+  PT_INSERT_VALUE,
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
@@ -1423,6 +1427,17 @@ typedef enum
   CONNECT_BY_CYCLES_IGNORE,
   CONNECT_BY_CYCLES_NONE_IGNORE
 } PT_CONNECT_BY_CHECK_CYCLES;
+
+/* Enum used for insert statements. After checking if insert is allowed on
+ * server, the result is saved to avoid the same check again.
+ */
+typedef enum
+{
+  SERVER_INSERT_NOT_CHECKED = 0,
+  SERVER_INSERT_IS_ALLOWED = 1,
+  SERVER_INSERT_IS_NOT_ALLOWED = -1
+} SERVER_INSERT_ALLOWED;
+
 /*
  * Type definitions
  */
@@ -1539,6 +1554,8 @@ typedef struct pt_set_names_info PT_SET_NAMES_INFO;
 typedef struct pt_trace_info PT_TRACE_INFO;
 
 typedef struct pt_tuple_value_info PT_TUPLE_VALUE_INFO;
+
+typedef struct pt_insert_value_info PT_INSERT_VALUE_INFO;
 
 typedef PT_NODE *(*PT_NODE_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree,
 				      void *arg);
@@ -2193,6 +2210,12 @@ struct pt_insert_info
   PT_NODE *odku_assignments;	/* ON DUPLICATE KEY UPDATE assignments */
   bool do_replace;		/* REPLACE statement was given */
   PT_NODE *insert_mode;		/* insert execution mode */
+  PT_NODE *non_null_attrs;	/* attributes with not null constraint */
+  PT_NODE *odku_non_null_attrs;	/* attributes with not null constraint in
+				 * odku assignments
+				 */
+  int has_uniques;		/* class has unique constraints */
+  SERVER_INSERT_ALLOWED server_allowed;	/* is insert allowed on server */
 };
 
 /* Info for Transaction Isolation Level */
@@ -2898,6 +2921,24 @@ struct pt_trace_info
   PT_MISC_TYPE format;
 };
 
+/* pt_insert_value_info -
+ * Parse tree node info used to replace nodes in insert value list after being
+ * evaluated.
+ */
+struct pt_insert_value_info
+{
+  PT_NODE *original_node;	/* original node before first evaluation.
+				 * if this is NULL, it is considered that
+				 * evaluated value cannot change on different
+				 * execution, and reevaluation is not needed
+				 */
+  DB_VALUE value;		/* evaluated value */
+  int is_evaluated;		/* true if value was already evaluated */
+  int replace_names;		/* true if names in evaluated node need to be
+				 * replaced
+				 */
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -2948,6 +2989,7 @@ union pt_statement_info
   PT_HOST_VAR_INFO host_var;
   PT_INDEX_INFO index;
   PT_INSERT_INFO insert;
+  PT_INSERT_VALUE_INFO insert_value;
   PT_ISOLATION_LVL_INFO isolation_lvl;
   PT_MERGE_INFO merge;
   PT_METHOD_CALL_INFO method_call;

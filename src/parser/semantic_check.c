@@ -375,6 +375,8 @@ static PT_NODE *pt_check_filter_index_expr_post (PARSER_CONTEXT * parser,
 static void pt_check_filter_index_expr (PARSER_CONTEXT * parser,
 					PT_NODE * atts, PT_NODE * node,
 					MOP db_obj);
+static PT_NODE *pt_check_sub_insert (PARSER_CONTEXT * parser, PT_NODE * node,
+				     void *void_arg, int *continue_walk);
 static PT_NODE *pt_get_assignments (PT_NODE * node);
 static int pt_check_cume_dist_percent_rank_order_by (PARSER_CONTEXT * parser,
 						     PT_NODE * func);
@@ -10036,6 +10038,22 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	{
 	  pt_coerce_insert_values (parser, node);
 	}
+      if (pt_has_error (parser))
+	{
+	  break;
+	}
+
+      if (node->info.insert.value_clauses->info.node_list.list_type !=
+	  PT_IS_SUBQUERY)
+	{
+	  /* Search and check sub-inserts in value list */
+	  (void) parser_walk_tree (parser, node->info.insert.value_clauses,
+				   pt_check_sub_insert, NULL, NULL, NULL);
+	}
+      if (pt_has_error (parser))
+	{
+	  break;
+	}
 
       if (top_node
 	  && top_node->node_type != PT_INSERT
@@ -12420,6 +12438,50 @@ pt_no_attr_and_meta_attr_updates (PARSER_CONTEXT * parser,
 }
 
 /*
+ * pt_node_double_insert_assignments () - Check if an attribute is assigned
+ *					  more than once.
+ *
+ * return      : Void.
+ * parser (in) : Parser context.
+ * stmt (in)   : Insert statement.
+ */
+void
+pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
+{
+  PT_NODE *attr = NULL, *spec = NULL;
+
+  if (stmt == NULL || stmt->node_type != PT_INSERT)
+    {
+      return;
+    }
+
+  spec = stmt->info.insert.spec;
+  if (spec->info.spec.entity_name->info.name.original == NULL)
+    {
+      assert (false);
+      PT_ERROR (parser, spec->info.spec.entity_name, er_msg ());
+      return;
+    }
+
+  /* check for duplicate assignments */
+  for (attr = stmt->info.insert.attr_list; attr != NULL; attr = attr->next)
+    {
+      PT_NODE *attr2;
+      for (attr2 = attr->next; attr2 != NULL; attr2 = attr2->next)
+	{
+	  if (pt_name_equal (parser, attr, attr2))
+	    {
+	      PT_ERRORmf2 (parser, attr2, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_GT_1_ASSIGNMENT_TO,
+			   spec->info.spec.entity_name->info.name.original,
+			   attr2->info.name.original);
+	      return;
+	    }
+	}
+    }
+}
+
+/*
  * pt_no_double_updates () - assert that there are no multiple assignments to
  *      the same attribute in the given update or merge statement
  *   return:  none
@@ -12477,10 +12539,11 @@ pt_no_double_updates (PARSER_CONTEXT * parser, PT_NODE * stmt)
 				   CASE_INSENSITIVE)
 		  && att_a->info.name.spec_id == att_b->info.name.spec_id)
 		{
-		  PT_ERRORmf (parser, att_a,
-			      MSGCAT_SET_PARSER_SEMANTIC,
-			      MSGCAT_SEMANTIC_GT_1_ASSIGNMENT_TO,
-			      att_a->info.name.original);
+		  PT_ERRORmf2 (parser, att_a,
+			       MSGCAT_SET_PARSER_SEMANTIC,
+			       MSGCAT_SEMANTIC_GT_1_ASSIGNMENT_TO,
+			       att_a->info.name.resolved,
+			       att_a->info.name.original);
 		  return;
 		}
 	    }
@@ -12520,10 +12583,11 @@ pt_no_double_updates (PARSER_CONTEXT * parser, PT_NODE * stmt)
 				       CASE_INSENSITIVE)
 		      && att_a->info.name.spec_id == att_b->info.name.spec_id)
 		    {
-		      PT_ERRORmf (parser, att_a,
-				  MSGCAT_SET_PARSER_SEMANTIC,
-				  MSGCAT_SEMANTIC_GT_1_ASSIGNMENT_TO,
-				  att_a->info.name.original);
+		      PT_ERRORmf2 (parser, att_a,
+				   MSGCAT_SET_PARSER_SEMANTIC,
+				   MSGCAT_SEMANTIC_GT_1_ASSIGNMENT_TO,
+				   att_a->info.name.resolved,
+				   att_a->info.name.original);
 		      return;
 		    }
 		}
@@ -13905,6 +13969,87 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
     }
   return stmt;
+}
+
+/*
+ * pt_check_sub_insert () - Checks if sub-inserts are semantically correct
+ *
+ * return	      : Unchanged node argument.
+ * parser (in)	      : Parser context.
+ * node (in)	      : Parse tree node.
+ * void_arg (in)      : Unused argument.
+ * continue_walk (in) : Continue walk.
+ */
+static PT_NODE *
+pt_check_sub_insert (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
+		     int *continue_walk)
+{
+  PT_NODE *entity_name = NULL, *value_clauses = NULL;
+
+  if (*continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      /* continue to checks */
+      *continue_walk = PT_LIST_WALK;
+      break;
+    case PT_SELECT:
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+    case PT_UNION:
+      /* stop advancing into this node */
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    default:
+      /* do nothing */
+      *continue_walk = PT_CONTINUE_WALK;
+      return node;
+    }
+  /* Check current insert node */
+  value_clauses = node->info.insert.value_clauses;
+  if (value_clauses->next)
+    {
+      /* Only one row is allowed for sub-inserts */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DO_INSERT_TOO_MANY, 0);
+      if (!pt_has_error (parser))
+	{
+	  PT_ERRORc (parser, node, db_error_string (3));
+	}
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+  entity_name = node->info.insert.spec->info.spec.entity_name;
+  if (entity_name == NULL || entity_name->info.name.db_object == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "Unresolved insert spec");
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+  if (sm_is_reuse_oid_class (entity_name->info.name.db_object))
+    {
+      /* Inserting Reusable OID is not allowed */
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_NON_REFERABLE_VIOLATION,
+		  entity_name->info.name.original);
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  /* check sub-inserts for this sub-insert */
+  if (value_clauses->info.node_list.list_type != PT_IS_SUBQUERY)
+    {
+      (void) parser_walk_tree (parser, value_clauses, pt_check_sub_insert,
+			       NULL, NULL, NULL);
+      if (pt_has_error (parser))
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+  return node;
 }
 
 /*

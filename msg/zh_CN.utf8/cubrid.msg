@@ -1407,7 +1407,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 43 用户 %1$s 没有在数据库中.
 44 Update语句中不能使用聚合函数.
 45 在每一个类中属性名必须唯一. 属性名 '%s' 在类 '%s' 被多于一次的指定.
-46  %1$s 有多个指派.
+46  %1$s.%2$s 有多个指派.
 47 sort spec 中的数字不是整数.
 48 在sort spec中 %1$d 超出了范围.
 49 Order by item 不是一个整数.

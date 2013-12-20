@@ -15837,6 +15837,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	    {
 	    case DB_TYPE_SET:
 	    case DB_TYPE_MULTISET:
+	    case DB_TYPE_SEQUENCE:
 	      if (!pt_product_sets (parser, domain, arg1, arg2, result, o2))
 		{
 		  return 0;	/* set union failed */

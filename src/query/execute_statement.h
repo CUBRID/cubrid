@@ -117,11 +117,6 @@ extern int do_insert (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement);
 
-extern int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
-			       PT_NODE * statement, PT_NODE * values_list,
-			       const char **savepoint_name,
-			       int *row_count_ptr, bool is_first_value);
-
 extern int do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern void do_print_classname_on_method (DB_OBJECT * self,
 					  DB_VALUE * result);
@@ -197,4 +192,9 @@ extern int do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_set_names (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
+
+extern int check_for_default_expr (PARSER_CONTEXT * parser,
+				   PT_NODE * specified_attrs,
+				   PT_NODE ** default_expr_attrs,
+				   DB_OBJECT * class_obj);
 #endif /* _EXECUTE_STATEMENT_H_ */

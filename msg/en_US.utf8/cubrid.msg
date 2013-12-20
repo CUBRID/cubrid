@@ -1407,7 +1407,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 43 User %1$s is not in the database.
 44 Update cannot have aggregation.
 45 Attribute names in each class must be unique. Attribute name '%1$s' in class '%2$s' is specified more than once.
-46 There are multiple assignments to %1$s.
+46 There are multiple assignments to %1$s.%2$s.
 47 Number in sort spec is not an integer.
 48 %1$d in sort spec is out of range.
 49 Order by item is not an integer.

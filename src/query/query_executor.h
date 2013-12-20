@@ -523,10 +523,11 @@ struct insert_proc_node
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
   int do_replace;		/* duplicate tuples should be replaced */
-  int is_first_value;		/* Indicates whether the first value of VALUES
-				 * clause. */
   int pruning_type;		/* DB_CLASS_PARTITION_TYPE indicating the way
 				 * in which pruning should be performed */
+  int no_val_lists;		/* number of value lists in values clause */
+  VALPTR_LIST **valptr_lists;	/* OUTPTR lists for each list of values */
+  DB_VALUE *obj_oid;		/* Inserted object OID, used for sub-inserts */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
