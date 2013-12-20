@@ -86,8 +86,10 @@
 #define LA_MAX_TOLERABLE_DELAY                  2
 #define LA_REINIT_COMMIT_INTERVAL               10
 
-#define LA_WS_CULL_MOPS_PER_APPLY 				(100000)
-#define LA_WS_CULL_MOPS_INTERVAL				(180)
+#define LA_WS_CULL_MOPS_PER_APPLY 		(100000)
+#define LA_WS_CULL_MOPS_INTERVAL		(180)
+#define LA_WS_CULL_MOPS_PER_APPLY_MIN		(100)
+#define LA_WS_CULL_MOPS_INTERVAL_MIN		(2)
 
 #define LA_LOG_IS_IN_ARCHIVE(pageid) \
   ((pageid) < la_Info.act_log.log_hdr->nxarv_pageid)
@@ -248,6 +250,7 @@ struct la_info
   LA_ARV_LOG arv_log;
   int last_file_state;
   unsigned long start_vsize;
+  time_t start_time;
 
   /* map info */
   LOG_LSA final_lsa;		/* last processed log lsa */
@@ -6549,6 +6552,15 @@ la_check_mem_size (void)
   int error = NO_ERROR;
   unsigned long vsize;
   unsigned long max_vsize;
+  int diff_sec;
+  time_t now;
+
+  now = time (NULL);
+  diff_sec = now - la_Info.start_time;
+  if (diff_sec >= 0 && diff_sec <= HB_START_WAITING_TIME_IN_SECS)
+    {
+      return NO_ERROR;
+    }
 
   vsize = la_get_mem_size ();
 #if defined(AIX)
@@ -6588,6 +6600,9 @@ la_commit_transaction (void)
   int diff_time;
   unsigned long long curr_applied_item;
   unsigned long long diff_applied_item;
+  unsigned long ws_cull_mops_interval;
+  unsigned long ws_cull_mops_per_apply;
+  int start_time;
 
   if (last_time == 0)
     {
@@ -6615,8 +6630,20 @@ la_commit_transaction (void)
     la_Info.delete_counter + la_Info.fail_counter;
   diff_applied_item = curr_applied_item - last_applied_item;
 
-  if (diff_time >= LA_WS_CULL_MOPS_INTERVAL
-      || diff_applied_item >= LA_WS_CULL_MOPS_PER_APPLY)
+  start_time = curr_time - la_Info.start_time;
+  if (start_time >= 0 && start_time <= HB_START_WAITING_TIME_IN_SECS)
+    {
+      ws_cull_mops_interval = LA_WS_CULL_MOPS_INTERVAL_MIN;
+      ws_cull_mops_per_apply = LA_WS_CULL_MOPS_PER_APPLY_MIN;
+    }
+  else
+    {
+      ws_cull_mops_interval = LA_WS_CULL_MOPS_INTERVAL;
+      ws_cull_mops_per_apply = LA_WS_CULL_MOPS_PER_APPLY;
+    }
+
+  if (diff_time >= ws_cull_mops_interval
+      || diff_applied_item >= ws_cull_mops_per_apply)
     {
       ws_filter_dirty ();
       ws_cull_mops ();
@@ -6851,6 +6878,7 @@ la_init (const char *log_path, const int max_mem_size)
       start_vsize = la_get_mem_size ();
     }
   la_Info.start_vsize = start_vsize;
+  la_Info.start_time = time (NULL);
 
   la_Info.db_lockf_vdes = NULL_VOLDES;
 

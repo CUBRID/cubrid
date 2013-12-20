@@ -3053,7 +3053,7 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name,
       goto ret;
     }
 
-  sleep (10);
+  sleep (HB_START_WAITING_TIME_IN_SECS);
   if (check_result == true)
     {
       for (i = 0; i < da_size (pids); i++)
@@ -3129,7 +3129,7 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf,
 
       status = us_hb_copylogdb_start (pids, ha_conf, db_name, node_name);
 
-      sleep (10);
+      sleep (HB_START_WAITING_TIME_IN_SECS);
       for (i = 0; i < da_size (pids); i++)
 	{
 	  da_get (pids, i, &pid);
@@ -3182,7 +3182,7 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf,
 
       status = us_hb_applylogdb_start (pids, ha_conf, db_name, node_name);
 
-      sleep (10);
+      sleep (HB_START_WAITING_TIME_IN_SECS);
       for (i = 0; i < da_size (pids); i++)
 	{
 	  da_get (pids, i, &pid);

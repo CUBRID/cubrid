@@ -49,6 +49,8 @@
 #define HB_JOB_TIMER_IMMEDIATELY                        (0)
 #define HB_JOB_TIMER_WAIT_A_SECOND                      (1*1000)
 
+#define HB_START_WAITING_TIME_IN_SECS			(10)
+
 enum HA_READ_MODE
 {
   HA_IGNORE = 0,
