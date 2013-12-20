@@ -19,18 +19,18 @@
 
 AUTOMAKE_OPTIONS = foreign
 SYSTEMTAP_DIR=$(top_srcdir)/contrib/systemtap
+INSTALL_DIR=$(prefix)/share/systemtap
 
 if ENABLE_SYSTEMTAP
-all-local:
-	dtrace -C -h -s $(SYSTEMTAP_DIR)/probes.d -o probes.h
-	dtrace -C -G -s $(SYSTEMTAP_DIR)/probes.d -o probes.o
-	echo "Compile dtrace probe"
 clean-local:
 	-rm -rf probes.h probes.o $(TAPSET_DIR)/cubrid_func.stp
-	-rm -rf $(prefix)/share/systemtap
+	-rm -rf $(INSTALL_DIR)
 
 install-data-local:
 	mkdir -p $(prefix)/share
-	cp -R $(SYSTEMTAP_DIR) $(prefix)/share
-
+	mkdir -p $(INSTALL_DIR)
+	cp $(SYSTEMTAP_DIR)/cubrid_func.stp $(INSTALL_DIR)/
+	cp $(SYSTEMTAP_DIR)/probes.d $(INSTALL_DIR)/
+	cp -R $(SYSTEMTAP_DIR)/scripts $(INSTALL_DIR)/
+	find $(INSTALL_DIR) -name '.\svn' -print | xargs rm -rf
 endif

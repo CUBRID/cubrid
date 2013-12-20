@@ -537,6 +537,7 @@ AC_ARG_ENABLE([systemtap],
 AM_CONDITIONAL([ENABLE_SYSTEMTAP], [test "x$ENABLE_SYSTEMTAP" = xyes])
 if test "x$ENABLE_SYSTEMTAP" = xyes; then
 	AC_DEFINE([ENABLE_SYSTEMTAP], [1], [Enable dynamic tracing support using systemtap])
+	AC_CONFIG_SUBDIRS([contrib/systemtap])
 fi
 AC_MSG_RESULT(${ENABLE_SYSTEMTAP})
 
