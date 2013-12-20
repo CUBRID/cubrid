@@ -14195,8 +14195,17 @@ lock_event_set_xasl_id_to_entry (int tran_index, LK_ENTRY * entry)
 	{
 	  entry->bind_index_in_tran = tdes->num_exec_queries - 1;
 	}
+      else
+        {
+          entry->bind_index_in_tran = -1;
+        }
 
       XASL_ID_COPY (&entry->xasl_id, &tdes->xasl_id);
+    }
+  else
+    {
+      XASL_ID_SET_NULL (&entry->xasl_id);
+      entry->bind_index_in_tran = -1;
     }
 }
 #endif /* SERVER_MODE */
