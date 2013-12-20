@@ -1541,9 +1541,17 @@ cas_free (bool free_srv_handle)
     {
       hm_srv_handle_free_all (true);
     }
-
+#if defined(AIX)
+  /* In linux, getsize() returns VSM(55M). but in AIX, getsize() returns
+   * vritual meory size for data(900K). so, the size of cub_cas process exceeds
+   * 'psize_at_start * 2' very easily. the linux's rule to restart cub_cas
+   * is not suit for AIX. In AIX, we use 20M as max_process_size. */
+  max_process_size = (shm_appl->appl_server_max_size > 0) ?
+    shm_appl->appl_server_max_size : 20 * ONE_K;
+#else
   max_process_size = (shm_appl->appl_server_max_size > 0) ?
     shm_appl->appl_server_max_size : (psize_at_start * 2);
+#endif
   if (as_info->psize > max_process_size)
     {
       cas_log_write_and_end (0, true,
@@ -2672,9 +2680,9 @@ restart_is_needed (void)
   /* In linux, getsize() returns VSM(55M). but in AIX, getsize() returns
    * vritual meory size for data(900K). so, the size of cub_cas process exceeds
    * 'psize_at_start * 2' very easily. the linux's rule to restart cub_cas
-   * is not suit for AIX.*/
+   * is not suit for AIX. In AIX, we use 20M as max_process_size. */
   max_process_size = (shm_appl->appl_server_max_size > 0) ?
-    shm_appl->appl_server_max_size : (psize_at_start * 60);
+    shm_appl->appl_server_max_size : 20 * ONE_K;
 #else
   max_process_size = (shm_appl->appl_server_max_size > 0) ?
     shm_appl->appl_server_max_size : (psize_at_start * 2);
