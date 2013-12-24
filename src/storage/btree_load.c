@@ -3633,8 +3633,6 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
 	  or_pad (&buf, next_size);	/* init as NULL */
 
-	  assert (buf.ptr == PTR_ALIGN (buf.ptr, MAX_ALIGNMENT));
-
 	  /* save has_null */
 	  if (or_put_byte (&buf, value_has_null) != NO_ERROR)
 	    {
@@ -3721,9 +3719,6 @@ compare_driver (const void *first, const void *second, void *arg)
   /* Skip next link */
   mem1 += sizeof (char *);
   mem2 += sizeof (char *);
-
-  assert (PTR_ALIGN (mem1, MAX_ALIGNMENT) == mem1);
-  assert (PTR_ALIGN (mem2, MAX_ALIGNMENT) == mem2);
 
   /* Read value_has_null */
   assert (OR_GET_BYTE (mem1) == 0 || OR_GET_BYTE (mem1) == 1);
