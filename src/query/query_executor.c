@@ -2077,14 +2077,12 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
 #if 0				/* TODO - */
     case TYPE_ORDERBY_NUM:
 #endif
-      pg_cnt +=
-	pr_clear_value (regu_var->value.dbvalptr);
+      pg_cnt += pr_clear_value (regu_var->value.dbvalptr);
       /* Fall through */
     case TYPE_LIST_ID:
       if (regu_var->xasl != NULL && regu_var->xasl->status != XASL_CLEARED)
 	{
-	  pg_cnt +=
-	    qexec_clear_xasl (NULL, regu_var->xasl, final);
+	  pg_cnt += qexec_clear_xasl (NULL, regu_var->xasl, final);
 	}
       break;
     case TYPE_INARITH:
@@ -4449,6 +4447,8 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 		}
 	      if (status != NO_ERROR)
 		{
+		  qmgr_free_old_page_and_init (thread_p, page,
+					       list_idp->tfile_vfid);
 		  return ER_FAILED;
 		}
 
@@ -4458,6 +4458,7 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 	    {
 	      peek = PEEK;	/* avoid unnecessary COPY */
 	    }
+	  qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
 	}
       else
 	{
@@ -11681,8 +11682,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 						&scan_cache, &force_count,
 						false,
 						REPL_INFO_TYPE_STMT_NORMAL,
-						insert->pruning_type, pcontext,
-						NULL) != NO_ERROR)
+						insert->pruning_type,
+						pcontext, NULL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
