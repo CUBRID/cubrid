@@ -114,6 +114,7 @@ extern "C"
 #define fileno		_fileno
 #define vsnprintf	cub_vsnprintf
 #define tempnam         _tempnam
+#define printf          _printf_p
 #define fprintf         _fprintf_p
 #define vfprintf        _vfprintf_p
 #define vprintf         _vprintf_p

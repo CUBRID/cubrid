@@ -2185,11 +2185,13 @@ is_manager_running (unsigned int sleep_time)
   sleep (sleep_time);
 
   /* check cub_auto */
-  make_exec_abspath (cmd, PATH_MAX, (char *) UTIL_CUB_AUTO_NAME " " "getpid");
+  (void) envvar_bindir_file (cmd, PATH_MAX, UTIL_CUB_AUTO_NAME);
   if (stat (cmd, &stbuf) == -1)
     {
       return false;
     }
+
+  strcat (cmd, " getpid");	/* add command argument */
   input = popen (cmd, "r");
   if (input == NULL)
     {
@@ -2206,11 +2208,13 @@ is_manager_running (unsigned int sleep_time)
   pclose (input);
 
   /* chech cub_js */
-  make_exec_abspath (cmd, PATH_MAX, (char *) UTIL_CUB_JS_NAME " " "getpid");
+  (void) envvar_bindir_file (cmd, PATH_MAX, UTIL_CUB_JS_NAME);
   if (stat (cmd, &stbuf) == -1)
     {
       return false;
     }
+
+  strcat (cmd, " getpid");	/* add command argument */
   input = popen (cmd, "r");
   if (input == NULL)
     {
