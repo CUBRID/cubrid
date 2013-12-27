@@ -1365,11 +1365,11 @@ typedef enum
   PT_WIDTH_BUCKET,
 
   PT_TRACE_STATS,
+  PT_INDEX_PREFIX,
   PT_AES_ENCRYPT,
   PT_AES_DECRYPT,
   PT_SHA_ONE,
   PT_SHA_TWO,
-  PT_INDEX_PREFIX,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
