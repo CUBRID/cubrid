@@ -116,6 +116,20 @@ typedef enum
   } while (0)
 #endif /* !WINDOWS */
 
+/* borrowed from optimizer.h: OPT_LEVEL, OPTIMIZATION_ENABLED, 
+ *                            PLAN_DUMP_ENABLED, SIMPLE_DUMP,
+ *                            DETAILED_DUMP
+ */
+#define CHK_OPT_LEVEL(level)                ((level) & 0xff)
+#define CHK_OPTIMIZATION_ENABLED(level)     (CHK_OPT_LEVEL(level) != 0)
+#define CHK_PLAN_DUMP_ENABLED(level)        ((level) >= 0x100)
+#define CHK_SIMPLE_DUMP(level)              ((level) & 0x100)
+#define CHK_DETAILED_DUMP(level)            ((level) & 0x200)
+#define CHK_OPTIMIZATION_LEVEL_VALID(level) \
+	  (CHK_OPTIMIZATION_ENABLED(level) \
+	   || CHK_PLAN_DUMP_ENABLED(level) \
+           || (level == 0))
+
 typedef int (*T_FETCH_FUNC) (T_SRV_HANDLE *, int, int, char, int,
 			     T_NET_BUF *, T_REQ_INFO *);
 
@@ -413,6 +427,7 @@ static char database_name[MAX_HA_DBNAME_LENGTH] = "";
 static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
 static char cas_db_sys_param[128] = "";
+static int saved_Optimization_level = -1;
 
 /*****************************
   move from cas_log.c
@@ -1401,7 +1416,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
     {
       SQL_LOG2_EXEC_APPEND (as_info->cur_sql_log2, stmt_id, n,
 			    cas_log_query_plan_file (srv_handle->id));
-      set_optimization_level (1);
+      reset_optimization_level_as_saved ();
     }
   else
     {
@@ -9631,16 +9646,24 @@ get_tuple_count (T_SRV_HANDLE * srv_handle)
 void
 set_optimization_level (int level)
 {
-  DB_QUERY_RESULT *result = NULL;
-  DB_QUERY_ERROR error;
-  char sql_stmt[64];
+  saved_Optimization_level =
+    prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
+  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, level);
+}
 
-  sprintf (sql_stmt, "set optimization level = %d", level);
-  db_execute (sql_stmt, &result, &error);
-  if (result)
+void
+reset_optimization_level_as_saved (void)
+{
+  if (CHK_OPTIMIZATION_LEVEL_VALID (saved_Optimization_level))
     {
-      db_query_end (result);
+      prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL,
+			     saved_Optimization_level);
     }
+  else
+    {
+      prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, 1);
+    }
+  saved_Optimization_level = -1;
 }
 
 int
@@ -9870,7 +9893,7 @@ serialize_collection_as_string (DB_VALUE * col, char **out)
 
 /*
  * get_backslash_escape_string() - This function returns proper backslash escape
- * string according to the value of 'no_backslash_escapes' confiuration.
+ * string according to the value of 'no_backslash_escapes' configuration.
  */
 static char *
 get_backslash_escape_string (void)

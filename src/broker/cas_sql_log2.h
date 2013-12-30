@@ -62,7 +62,7 @@
 	    sql_log2_flush();					\
 	    sql_log2_restore_stdout();				\
 	    sql_log2_write("execute %d : %d", STMT_ID, RES);	\
-	    set_optimization_level(1);				\
+	    reset_optimization_level_as_saved();		\
 	  }							\
 	} while (0)
 

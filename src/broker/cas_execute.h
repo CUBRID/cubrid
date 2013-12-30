@@ -238,6 +238,7 @@ extern char *cas_log_error_handler_asprint (char *buf, size_t bufsz,
   move from cas_sql_log2.c
  *****************************/
 extern void set_optimization_level (int level);
+extern void reset_optimization_level_as_saved (void);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)

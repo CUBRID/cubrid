@@ -2014,7 +2014,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 end:
   if (sql_stmt != NULL)
     {
-      set_optimization_level (1);
+      reset_optimization_level_as_saved ();
       hm_srv_handle_free (srv_h_id);
     }
 
