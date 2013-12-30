@@ -2387,13 +2387,23 @@ admin_conf_change (int master_shm_id, const char *br_name,
     {
       int size;
 
-      size = (int) ut_size_string_to_kbyte (conf_value, "M");
+      /*
+       * Use "KB" as unit, because MAX_ACCESS_LOG_MAX_SIZE uses this unit.
+       * the range of the config value should be verified to avoid the invalid setting.
+       */
+      size = (int) ut_size_string_to_kbyte (conf_value, "K");
 
       if (size < 0)
 	{
 	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_conf_error;
 	}
+      else if (size > MAX_ACCESS_LOG_MAX_SIZE)
+	{
+	  sprintf (admin_err_msg, "value is out of range : %s", conf_value);
+	  goto set_conf_error;
+	}
+
 
       br_info_p->access_log_max_size = size;
       shm_as_p->access_log_max_size = size;
