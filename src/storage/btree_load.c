@@ -509,7 +509,7 @@ btree_write_node_header (THREAD_ENTRY * thread_p, VFID * vfid,
 			 bool write_undo, bool write_redo)
 {
   RECDES rec;
-  int key_cnt;
+  int key_cnt, saved_header_length;
 
   /* defence code */
   btree_get_node_key_cnt (page_ptr, &key_cnt);
@@ -525,15 +525,21 @@ btree_write_node_header (THREAD_ENTRY * thread_p, VFID * vfid,
       return ER_FAILED;
     }
 
+  saved_header_length = rec.length;
+
   if (write_undo)
     {
-
       /* log the old header record for undo purposes */
       log_append_undo_data2 (thread_p, RVBT_NDHEADER_UPD,
 			     vfid, page_ptr, HEADER, rec.length, rec.data);
     }
 
   btree_pack_node_header (&rec, header);
+  /*
+   * restore rec.length because btree_pack_node_header change rec.length
+   * as btree_node_header but this slot could be a btree_root_header
+   */
+  rec.length = saved_header_length;
 
   if (write_redo)
     {
@@ -752,8 +758,8 @@ btree_write_root_header (THREAD_ENTRY * thread_p, VFID * vfid,
 	{
 	  /* log the old header record for undo purposes */
 	  log_append_undo_data2 (thread_p, RVBT_NDHEADER_UPD,
-				 vfid, page_ptr, HEADER, copy_rec.length,
-				 copy_rec.data);
+				 vfid, page_ptr, HEADER, rec.length,
+				 rec.data);
 	}
 
       if (write_redo)

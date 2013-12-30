@@ -18695,11 +18695,24 @@ int
 btree_rv_nodehdr_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   RECDES rec;
+#if !defined(NDEBUG)
+  RECDES peek_rec;
+#endif
   int sp_success;
 
   rec.area_size = rec.length = recv->length;
   rec.type = REC_HOME;
   rec.data = (char *) recv->data;
+
+#if !defined(NDEBUG)
+  if (spage_get_record (recv->pgptr, HEADER, &peek_rec, PEEK) != S_SUCCESS)
+    {
+      return ER_FAILED;
+    }
+
+  assert (rec.length == peek_rec.length);
+#endif
+
   sp_success = spage_update (thread_p, recv->pgptr, HEADER, &rec);
   if (sp_success != SP_SUCCESS)
     {
