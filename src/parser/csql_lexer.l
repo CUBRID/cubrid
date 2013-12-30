@@ -891,7 +891,6 @@ _[uU][tT][fF]8[']		{
 "."[ \t\r\n]*([a-zA-Z_#]|([\xc0-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* {
 								int i = 0;
 								int len = 0;
-								begin_token(yytext);
 								if (dot_flag == 0)
 								  {
 								    yybuffer_pos -= csql_yyleng;
@@ -901,6 +900,7 @@ _[uU][tT][fF]8[']		{
 								  }
 								else
 								  {
+								    begin_token(yytext);
 								    dot_flag = 0;
 								    len = strlen(yytext);
 								    if (len >= 254)
@@ -918,7 +918,6 @@ _[uU][tT][fF]8[']		{
 "->"[ \t\r\n]*([a-zA-Z_#]|([\xc0-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* {
 								int i = 0;
 								int len = 0;
-								begin_token(yytext);
 								if (dot_flag == 0)
 								  {
 								    yybuffer_pos -= csql_yyleng;
@@ -928,6 +927,7 @@ _[uU][tT][fF]8[']		{
 								  }
 								else
 								  {
+								    begin_token(yytext);
 								    dot_flag = 0;
 								    len = strlen(yytext);
 								    if (len >= 254)
