@@ -1861,6 +1861,7 @@ struct pt_serial_info
   int no_min;
   int no_cyclic;
   int no_cache;
+  unsigned if_exists:1;		/* IF EXISTS clause for drop serial */
 };
 
 /* Info for DATA_DEFAULT */

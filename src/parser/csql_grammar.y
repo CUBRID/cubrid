@@ -651,6 +651,7 @@ typedef struct YYLTYPE
 %type <number> query_trace_spec
 %type <number> opt_trace_output_format
 %type <number> opt_if_not_exists
+%type <number> opt_if_exists
 /*}}}*/
 
 /* define rule type (node) */
@@ -3559,38 +3560,20 @@ do_stmt
 	;
 
 drop_stmt
-	: DROP opt_class_type class_spec_list opt_cascade_constraints
+	: DROP opt_class_type opt_if_exists class_spec_list opt_cascade_constraints
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP);
 			if (node)
 			  {
-			    node->info.drop.spec_list = $3;
-			    node->info.drop.is_cascade_constraints = $4;
+			    node->info.drop.if_exists = ($3 == 1);
+			    node->info.drop.spec_list = $4;
+			    node->info.drop.is_cascade_constraints = $5;
 
 			    if ($2 == PT_EMPTY)
 			      node->info.drop.entity_type = PT_MISC_DUMMY;
 			    else
 			      node->info.drop.entity_type = $2;
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| DROP opt_class_type IF EXISTS class_spec_list opt_cascade_constraints
-		{{
-			PT_NODE *node = parser_new_node (this_parser, PT_DROP);
-			if (node)
-			  {
-			    node->info.drop.spec_list = $5;
-			    node->info.drop.if_exists = true;
-			    node->info.drop.is_cascade_constraints = $6;
-			    if ($2 == PT_EMPTY)
-			      node->info.drop.entity_type = PT_MISC_DUMMY;
-			    else
-			      node->info.drop.entity_type = $2;
-
 			  }
 
 			$$ = node;
@@ -3720,12 +3703,15 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP SERIAL identifier
+	| DROP SERIAL opt_if_exists identifier
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SERIAL);
 			if (node)
-			  node->info.serial.serial_name = $3;
+			  {
+			    node->info.serial.if_exists = $3;
+			    node->info.serial.serial_name = $4;
+			  }
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -7774,6 +7760,21 @@ opt_if_not_exists
 
 		DBG_PRINT}}
 	| IF NOT EXISTS
+		{{
+
+			$$ = 1;
+
+		DBG_PRINT}}
+	;
+
+opt_if_exists
+	: /*empty*/
+		{{
+
+			$$ = 0;
+
+		DBG_PRINT}}
+	| IF EXISTS
 		{{
 
 			$$ = 1;

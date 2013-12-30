@@ -8076,6 +8076,7 @@ pt_init_alter_serial (PT_NODE * p)
 static PT_NODE *
 pt_init_drop_serial (PT_NODE * p)
 {
+  p->info.serial.if_exists = 0;
   return (p);
 }
 
@@ -8277,6 +8278,10 @@ pt_print_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.serial.serial_name);
   q = pt_append_nulstring (parser, q, "drop serial ");
+  if (p->info.serial.if_exists)
+    {
+      q = pt_append_nulstring (parser, q, "if exists ");
+    }
   q = pt_append_varchar (parser, q, r1);
 
   return q;

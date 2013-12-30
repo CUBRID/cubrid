@@ -2509,6 +2509,10 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class, name);
   if (serial_object == NULL)
     {
+      if (statement->info.serial.if_exists)
+	{
+	  return NO_ERROR;
+	}
       error = ER_QPROC_SERIAL_NOT_FOUND;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
       PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
