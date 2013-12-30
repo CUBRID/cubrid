@@ -2685,8 +2685,8 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
   bool free_packing_buff = false;
   PRED_EXPR_WITH_CONTEXT *filter_predicate = NULL;
   int stream_size = 0;
-  SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0, NULL, 0 },
-    *p_pred_index_info = NULL;
+  SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0, NULL, 0 };
+  SM_PREDICATE_INFO *p_pred_index_info = NULL;
   SM_FUNCTION_INFO *func_index_info = NULL;
   int is_partition = DB_NOT_PARTITIONED_CLASS;
 
@@ -3048,6 +3048,13 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
 /*
  * do_alter_index_rebuild() - Alters an index on a class (drop and create).
+ *                            INDEX REBUILD statement ignores any type of the 
+ *                            qualifier, column, and filter predicate (filtered 
+ *                            index). The purpose of this feature is that 
+ *                            reconstructing the corrupted index or improving 
+ *                            the efficiency of indexes. For the backward 
+ *                            compatibility, this function supports the 
+ *                            previous grammar.
  *   return: Error code if it fails
  *   parser(in): Parser context
  *   statement(in): Parse tree of a alter index statement
@@ -3057,26 +3064,21 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   int error = NO_ERROR;
   DB_OBJECT *obj;
-  PT_NODE *n, *c;
   PT_NODE *cls = NULL;
   int i, nnames;
-  DB_CONSTRAINT_TYPE ctype;
+  DB_CONSTRAINT_TYPE ctype, original_ctype;
   char **attnames = NULL;
   int *asc_desc = NULL;
   int *attrs_prefix_length = NULL;
-  char *cname = NULL;
   SM_CLASS *smcls;
-  SM_CLASS_CONSTRAINT *idx;
+  SM_CLASS_CONSTRAINT *idx = NULL;
   SM_ATTRIBUTE **attp;
-  int attnames_allocated = 0;
   const char *index_name = NULL;
   bool free_pred_string = false;
   bool free_packing_buff = false;
-  PT_NODE *where_predicate = NULL;
   SM_FUNCTION_INFO *func_index_info = NULL;
-  SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0, NULL, 0 },
-    *p_pred_index_info = NULL;
-  bool free_funtion_expr_str = false;
+  SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0, NULL, 0 };
+  SM_PREDICATE_INFO *p_pred_index_info = NULL;
   const char *class_name = NULL;
   bool do_rollback = false;
 
@@ -3087,6 +3089,8 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   index_name = statement->info.index.index_name ?
     statement->info.index.index_name->info.name.original : NULL;
+
+  assert (index_name != NULL);
 
   if (statement->info.index.indexed_class)
     {
@@ -3104,229 +3108,77 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
       goto error_exit;
     }
 
+  if (au_fetch_class (obj, &smcls, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+    {
+      error = er_errid ();
+      goto error_exit;
+    }
+
+  idx = classobj_find_class_index (smcls, index_name);
+  if (idx == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_SM_NO_INDEX, 1, index_name);
+      error = ER_SM_NO_INDEX;
+      goto error_exit;
+    }
+
+  /* check the index type */
   ctype = get_reverse_unique_index_type (statement->info.index.reverse,
 					 statement->info.index.unique);
-
-  if (statement->info.index.column_names == NULL)
+  original_ctype = db_constraint_type (idx);
+  if (ctype != original_ctype)
     {
-      /* find the attributes of the index */
-      idx = NULL;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+	      ER_SM_CONSTRAINT_HAS_DIFFERENT_TYPE, 1, index_name);
+    }
 
-      if (au_fetch_class (obj, &smcls, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
-	{
-	  error = er_errid ();
-	  goto error_exit;
-	}
+  /* get attributes of the index */
+  attp = idx->attributes;
+  if (attp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ATTRIBUTE, 1,
+	      "unknown");
+      error = ER_OBJ_INVALID_ATTRIBUTE;
+      goto error_exit;
+    }
 
-      if ((idx = classobj_find_class_index (smcls, index_name)) == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_SM_NO_INDEX, 1, index_name);
-	  error = ER_SM_NO_INDEX;
-	  goto error_exit;
-	}
+  nnames = 0;
+  while (*attp++)
+    {
+      nnames++;
+    }
 
-      attp = idx->attributes;
-      if (attp == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OBJ_INVALID_ATTRIBUTE, 1, "unknown");
-	  error = ER_OBJ_INVALID_ATTRIBUTE;
-	  goto error_exit;
-	}
+  attnames = (char **) malloc ((nnames + 1) * sizeof (const char *));
+  if (attnames == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (nnames + 1) * sizeof (const char *));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error_exit;
+    }
 
-      nnames = 0;
-      while (*attp++)
+  for (i = 0, attp = idx->attributes; *attp; i++, attp++)
+    {
+      attnames[i] = strdup ((*attp)->header.name);
+      if (attnames[i] == NULL)
 	{
-	  nnames++;
-	}
-
-      attnames = (char **) malloc ((nnames + 1) * sizeof (const char *));
-      if (attnames == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  (nnames + 1) * sizeof (const char *));
+	  int j;
+	  for (j = 0; j < i; ++j)
+	    {
+	      free_and_init (attnames[j]);
+	    }
+	  free_and_init (attnames);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (strlen ((*attp)->header.name) + 1) * sizeof (char));
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_exit;
-	}
-
-      attnames_allocated = 1;
-
-      for (i = 0, attp = idx->attributes; *attp; i++, attp++)
-	{
-	  attnames[i] = strdup ((*attp)->header.name);
-	  if (attnames[i] == NULL)
-	    {
-	      int j;
-	      for (j = 0; j < i; ++j)
-		{
-		  free_and_init (attnames[j]);
-		}
-	      free_and_init (attnames);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      (strlen ((*attp)->header.name) + 1) * sizeof (char));
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto error_exit;
-	    }
-	}
-      attnames[i] = NULL;
-
-      if (idx->asc_desc)
-	{
-	  asc_desc = (int *) malloc ((nnames) * sizeof (int));
-	  if (asc_desc == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, nnames * sizeof (int));
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto error_exit;
-	    }
-
-	  for (i = 0; i < nnames; i++)
-	    {
-	      asc_desc[i] = idx->asc_desc[i];
-	    }
-	}
-
-      if (ctype == DB_CONSTRAINT_INDEX)
-	{
-	  assert (idx->attrs_prefix_length);
-
-	  attrs_prefix_length = (int *) malloc ((nnames) * sizeof (int));
-	  if (attrs_prefix_length == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, nnames * sizeof (int));
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto error_exit;
-	    }
-
-	  for (i = 0; i < nnames; i++)
-	    {
-	      attrs_prefix_length[i] = idx->attrs_prefix_length[i];
-	    }
-	}
-
-      if (idx->filter_predicate)
-	{
-	  int pred_str_len;
-	  assert (idx->filter_predicate->pred_string != NULL &&
-		  idx->filter_predicate->pred_stream != NULL);
-
-	  pred_str_len = strlen (idx->filter_predicate->pred_string);
-	  pred_index_info.pred_string =
-	    strdup (idx->filter_predicate->pred_string);
-	  if (pred_index_info.pred_string == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      (strlen (idx->filter_predicate->pred_string) + 1) *
-		      sizeof (char));
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto error_exit;
-	    }
-	  free_pred_string = true;
-
-	  pred_index_info.pred_stream =
-	    (char *) malloc (idx->filter_predicate->
-			     pred_stream_size * sizeof (char));
-	  if (pred_index_info.pred_stream == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      idx->filter_predicate->pred_stream_size *
-		      sizeof (char));
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto error_exit;
-	    }
-	  memcpy (pred_index_info.pred_stream,
-		  idx->filter_predicate->pred_stream,
-		  idx->filter_predicate->pred_stream_size);
-	  pred_index_info.pred_stream_size =
-	    idx->filter_predicate->pred_stream_size;
-
-	  if (idx->filter_predicate->num_attrs == 0)
-	    {
-	      pred_index_info.att_ids = NULL;
-	    }
-	  else
-	    {
-	      pred_index_info.att_ids =
-		(int *) calloc (idx->filter_predicate->num_attrs,
-				sizeof (int));
-	      if (pred_index_info.att_ids == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  idx->filter_predicate->num_attrs * sizeof (int));
-		  error = ER_OUT_OF_VIRTUAL_MEMORY;
-		  goto error_exit;
-		}
-	      for (i = 0; i < idx->filter_predicate->num_attrs; i++)
-		{
-		  pred_index_info.att_ids[i] =
-		    idx->filter_predicate->att_ids[i];
-		}
-	    }
-	  pred_index_info.num_attrs = idx->filter_predicate->num_attrs;
-	  p_pred_index_info = &pred_index_info;
-	}
-
-      if (idx->func_index_info)
-	{
-	  func_index_info = (SM_FUNCTION_INFO *)
-	    db_ws_alloc (sizeof (SM_FUNCTION_INFO));
-	  if (func_index_info == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto error_exit;
-	    }
-	  func_index_info->fi_domain =
-	    tp_domain_copy (idx->func_index_info->fi_domain, true);
-	  func_index_info->expr_str = strdup (idx->func_index_info->expr_str);
-	  if (func_index_info->expr_str == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		      (strlen (idx->func_index_info->expr_str) + 1)
-		      * sizeof (char));
-	      goto error_exit;
-	    }
-	  free_funtion_expr_str = true;
-	  func_index_info->expr_stream =
-	    (char *) calloc (idx->func_index_info->expr_stream_size,
-			     sizeof (char));
-	  if (func_index_info->expr_stream == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		      idx->func_index_info->expr_stream_size * sizeof (char));
-	      goto error_exit;
-	    }
-	  memcpy (func_index_info->expr_stream,
-		  idx->func_index_info->expr_stream,
-		  idx->func_index_info->expr_stream_size);
-	  func_index_info->expr_stream_size =
-	    idx->func_index_info->expr_stream_size;
-	  func_index_info->col_id = idx->func_index_info->col_id;
-	  func_index_info->attr_index_start =
-	    idx->func_index_info->attr_index_start;
 	}
     }
-  else
-    {
-      nnames = pt_length_of_list (statement->info.index.column_names);
-      attnames = (char **) malloc ((nnames + 1) * sizeof (const char *));
-      if (attnames == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (nnames + 1) * sizeof (const char *));
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error_exit;
-	}
+  attnames[i] = NULL;
 
+  if (idx->asc_desc)
+    {
       asc_desc = (int *) malloc ((nnames) * sizeof (int));
       if (asc_desc == NULL)
 	{
@@ -3336,179 +3188,154 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  goto error_exit;
 	}
 
-      for (c = statement->info.index.column_names, i = 0; c != NULL;
-	   c = c->next, i++)
+      for (i = 0; i < nnames; i++)
 	{
-	  asc_desc[i] = c->info.sort_spec.asc_or_desc == PT_ASC ? 0 : 1;
-	  n = c->info.sort_spec.expr;	/* column name node */
-	  attnames[i] = (char *) n->info.name.original;
+	  asc_desc[i] = idx->asc_desc[i];
 	}
-      attnames[i] = NULL;
+    }
 
-      where_predicate = statement->info.index.where;
-      if (where_predicate)
+  if (original_ctype == DB_CONSTRAINT_INDEX)
+    {
+      assert (idx->attrs_prefix_length);
+
+      attrs_prefix_length = (int *) malloc ((nnames) * sizeof (int));
+      if (attrs_prefix_length == NULL)
 	{
-	  PT_NODE *spec = statement->info.index.indexed_class;
-	  PRED_EXPR_WITH_CONTEXT *filter_predicate = NULL;
-	  PARSER_VARCHAR *filter_expr = NULL;
-	  unsigned int save_custom;
-
-	  /* free at parser_free_parser */
-	  /* make sure paren_type is 0 so parenthesis are not printed */
-	  where_predicate->info.expr.paren_type = 0;
-	  save_custom = parser->custom_print;
-	  parser->custom_print |= PT_CHARSET_COLLATE_FULL;
-	  filter_expr = pt_print_bytes ((PARSER_CONTEXT *) parser,
-					(PT_NODE *) where_predicate);
-	  parser->custom_print = save_custom;
-
-	  if (filter_expr)
-	    {
-	      pred_index_info.pred_string = (char *) filter_expr->bytes;
-	      if (strlen (pred_index_info.pred_string) >
-		  MAX_FILTER_PREDICATE_STRING_LENGTH)
-		{
-		  error = ER_SM_INVALID_FILTER_PREDICATE_LENGTH;
-		  PT_ERRORmf ((PARSER_CONTEXT *) parser, where_predicate,
-			      MSGCAT_SET_ERROR,
-			      -(ER_SM_INVALID_FILTER_PREDICATE_LENGTH),
-			      MAX_FILTER_PREDICATE_STRING_LENGTH);
-		  goto error_exit;
-		}
-	    }
-
-	  pt_enter_packing_buf ();
-	  free_packing_buff = true;
-
-	  filter_predicate =
-	    pt_to_pred_with_context (parser, where_predicate, spec);
-	  if (filter_predicate)
-	    {
-	      error = xts_map_filter_pred_to_stream (filter_predicate,
-						     &(pred_index_info.
-						       pred_stream),
-						     &(pred_index_info.
-						       pred_stream_size));
-	      if (error != NO_ERROR)
-		{
-		  goto error_exit;
-		}
-	      pred_index_info.att_ids = filter_predicate->attrids_pred;
-	      pred_index_info.num_attrs = filter_predicate->num_attrs_pred;
-	    }
-	  else
-	    {
-	      error = er_errid ();
-	      goto error_exit;
-	    }
-	  p_pred_index_info = &pred_index_info;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, nnames * sizeof (int));
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error_exit;
 	}
 
-      if (statement->info.index.function_expr)
+      for (i = 0; i < nnames; i++)
 	{
-	  pt_enter_packing_buf ();
-	  free_packing_buff = true;
+	  attrs_prefix_length[i] = idx->attrs_prefix_length[i];
+	}
+    }
 
-	  func_index_info =
-	    pt_node_to_function_index (parser,
-				       statement->info.index.indexed_class,
-				       statement->info.index.function_expr,
-				       DO_INDEX_CREATE);
-	  if (func_index_info == NULL)
+  if (idx->filter_predicate)
+    {
+      int pred_str_len;
+      assert (idx->filter_predicate->pred_string != NULL
+	      && idx->filter_predicate->pred_stream != NULL);
+
+      pred_str_len = strlen (idx->filter_predicate->pred_string);
+
+      pred_index_info.pred_string = strdup (idx->filter_predicate->
+					    pred_string);
+      if (pred_index_info.pred_string == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (strlen (idx->filter_predicate->pred_string) + 1) *
+		  sizeof (char));
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error_exit;
+	}
+      free_pred_string = true;
+
+      pred_index_info.pred_stream = (char *) malloc (idx->filter_predicate->
+						     pred_stream_size *
+						     sizeof (char));
+      if (pred_index_info.pred_stream == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, idx->filter_predicate->pred_stream_size * sizeof (char));
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error_exit;
+	}
+
+      memcpy (pred_index_info.pred_stream,
+	      idx->filter_predicate->pred_stream,
+	      idx->filter_predicate->pred_stream_size);
+
+      pred_index_info.pred_stream_size =
+	idx->filter_predicate->pred_stream_size;
+
+      if (idx->filter_predicate->num_attrs == 0)
+	{
+	  pred_index_info.att_ids = NULL;
+	}
+      else
+	{
+	  pred_index_info.att_ids =
+	    (int *) calloc (idx->filter_predicate->num_attrs, sizeof (int));
+	  if (pred_index_info.att_ids == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      idx->filter_predicate->num_attrs * sizeof (int));
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error_exit;
 	    }
-	  func_index_info->col_id = statement->info.index.func_pos;
-	  func_index_info->attr_index_start =
-	    nnames - statement->info.index.func_no_args;
+	  for (i = 0; i < idx->filter_predicate->num_attrs; i++)
+	    {
+	      pred_index_info.att_ids[i] = idx->filter_predicate->att_ids[i];
+	    }
 	}
+      pred_index_info.num_attrs = idx->filter_predicate->num_attrs;
+      p_pred_index_info = &pred_index_info;
     }
 
-  cname = sm_produce_constraint_name (sm_class_name (obj), ctype,
-				      (const char **) attnames,
-				      asc_desc, index_name);
-  if (cname == NULL)
+  if (idx->func_index_info)
     {
-      if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
+      func_index_info =
+	(SM_FUNCTION_INFO *) db_ws_alloc (sizeof (SM_FUNCTION_INFO));
+      if (func_index_info == NULL)
 	{
-	  error = ER_GENERIC_ERROR;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error_exit;
 	}
+      func_index_info->fi_domain =
+	tp_domain_copy (idx->func_index_info->fi_domain, true);
+      func_index_info->expr_str = strdup (idx->func_index_info->expr_str);
+      if (func_index_info->expr_str == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error,
+		  1, (strlen (idx->func_index_info->expr_str) + 1) *
+		  sizeof (char));
+	  goto error_exit;
+	}
+      func_index_info->expr_stream =
+	(char *) calloc (idx->func_index_info->expr_stream_size,
+			 sizeof (char));
+      if (func_index_info->expr_stream == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  idx->func_index_info->expr_stream_size * sizeof (char));
+	  goto error_exit;
+	}
+      memcpy (func_index_info->expr_stream, idx->func_index_info->expr_stream,
+	      idx->func_index_info->expr_stream_size);
+      func_index_info->expr_stream_size =
+	idx->func_index_info->expr_stream_size;
+      func_index_info->col_id = idx->func_index_info->col_id;
+      func_index_info->attr_index_start =
+	idx->func_index_info->attr_index_start;
+    }
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
+  if (error != NO_ERROR)
+    {
       goto error_exit;
     }
-  else
+  do_rollback = true;
+
+  error = sm_drop_constraint (obj, original_ctype, index_name,
+			      (const char **) attnames, false, false);
+  if (error != NO_ERROR)
     {
-      /* preserve prefix index when only the column names are specified */
-      if (ctype == DB_CONSTRAINT_INDEX && !attrs_prefix_length &&
-	  statement->info.index.column_names && !index_name)
-	{
-	  if (au_fetch_class (obj, &smcls, AU_FETCH_READ, AU_SELECT) !=
-	      NO_ERROR)
-	    {
-	      error = er_errid ();
-	      goto error_exit;
-	    }
-	  else
-	    {
-	      if ((idx = classobj_find_class_index (smcls, cname)) == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_SM_NO_INDEX, 1, cname);
-		  error = ER_SM_NO_INDEX;
-		  goto error_exit;
-		}
-	      else
-		{
-		  assert (idx->attrs_prefix_length);
+      goto error_exit;
+    }
 
-		  attrs_prefix_length =
-		    (int *) malloc ((nnames) * sizeof (int));
-		  if (attrs_prefix_length == NULL)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY,
-			      1, nnames * sizeof (int));
-		      error = ER_OUT_OF_VIRTUAL_MEMORY;
-		      goto error_exit;
-		    }
-		  else
-		    {
-		      for (i = 0; i < nnames; i++)
-			{
-			  attrs_prefix_length[i] =
-			    idx->attrs_prefix_length[i];
-			}
-		    }
-		}
-	    }
-	}
-
-      if (error == NO_ERROR)
-	{
-	  error = tran_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	  do_rollback = true;
-
-	  error = sm_drop_constraint (obj, ctype, cname,
-				      (const char **) attnames, false, false);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-
-	  error = sm_add_constraint (obj, ctype, cname,
-				     (const char **) attnames,
-				     asc_desc, attrs_prefix_length,
-				     false, p_pred_index_info,
-				     func_index_info);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	}
+  error = sm_add_constraint (obj, original_ctype, index_name,
+			     (const char **) attnames, asc_desc,
+			     attrs_prefix_length, false, p_pred_index_info,
+			     func_index_info);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
     }
 
 end:
@@ -3540,16 +3367,12 @@ end:
       pt_exit_packing_buf ();
     }
 
-  if (attnames_allocated)
+  if (attnames)
     {
-      for (i = 0; attnames && attnames[i]; i++)
+      for (i = 0; attnames[i]; i++)
 	{
 	  free_and_init (attnames[i]);
 	}
-    }
-
-  if (attnames)
-    {
       free_and_init (attnames);
     }
 
@@ -3561,11 +3384,6 @@ end:
   if (attrs_prefix_length)
     {
       free_and_init (attrs_prefix_length);
-    }
-
-  if (cname != NULL)
-    {
-      free_and_init (cname);
     }
 
   return error;
