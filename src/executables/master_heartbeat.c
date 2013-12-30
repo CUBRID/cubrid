@@ -83,6 +83,9 @@ static const char *hb_strtime (char *s, unsigned int max,
 static int hb_job_queue (HB_JOB * jobs, unsigned int job_type,
 			 HB_JOB_ARG * arg, unsigned int msec);
 static HB_JOB_ENTRY *hb_job_dequeue (HB_JOB * jobs);
+static void hb_job_set_expire_and_reorder (HB_JOB * jobs,
+					   unsigned int job_type,
+					   unsigned int msec);
 static void hb_job_shutdown (HB_JOB * jobs);
 
 
@@ -102,6 +105,7 @@ static void hb_cluster_receive_heartbeat (char *buffer, int len,
 					  struct sockaddr_in *from,
 					  socklen_t from_len);
 static bool hb_cluster_is_isolated (void);
+static bool hb_cluster_is_received_heartbeat_from_all (void);
 
 static int hb_cluster_calc_score (void);
 
@@ -118,6 +122,9 @@ static int hb_check_ping (const char *host);
 static HB_JOB_ENTRY *hb_cluster_job_dequeue (void);
 static int hb_cluster_job_queue (unsigned int job_type, HB_JOB_ARG * arg,
 				 unsigned int msec);
+static int
+hb_cluster_job_set_expire_and_reorder (unsigned int job_type,
+				       unsigned int msec);
 static void hb_cluster_job_shutdown (void);
 
 /* cluster node */
@@ -149,6 +156,10 @@ static void hb_resource_demote_kill_server_proc (void);
 static HB_JOB_ENTRY *hb_resource_job_dequeue (void);
 static int hb_resource_job_queue (unsigned int job_type, HB_JOB_ARG * arg,
 				  unsigned int msec);
+static int
+hb_resource_job_set_expire_and_reorder (unsigned int job_type,
+					unsigned int msec);
+
 static void hb_resource_job_shutdown (void);
 
 /* resource process */
@@ -535,6 +546,76 @@ hb_job_dequeue (HB_JOB * jobs)
 }
 
 /*
+ * hb_job_set_expire_and_reorder - set expiration time of the first job which match job_type
+ *                                 reorder job with expiration time changed
+ *   return: none
+ *
+ *   jobs(in):
+ *   job_type(in):
+ *   msec(in):
+ */
+static void
+hb_job_set_expire_and_reorder (HB_JOB * jobs, unsigned int job_type,
+			       unsigned int msec)
+{
+  HB_JOB_ENTRY **job = NULL;
+  HB_JOB_ENTRY *target_job = NULL;
+  struct timeval now;
+
+  gettimeofday (&now, NULL);
+  hb_add_timeval (&now, msec);
+
+  pthread_mutex_lock (&jobs->lock);
+
+  if (jobs->shutdown == true)
+    {
+      pthread_mutex_unlock (&jobs->lock);
+      return;
+    }
+
+  for (job = &(jobs->jobs); *job; job = &((*job)->next))
+    {
+      if ((*job)->type == job_type)
+	{
+	  target_job = *job;
+	  break;
+	}
+    }
+
+  if (target_job == NULL)
+    {
+      pthread_mutex_unlock (&jobs->lock);
+      return;
+    }
+
+  memcpy ((void *) &(target_job->expire), (void *) &now,
+	  sizeof (struct timeval));
+
+  /*
+   * so now we change target job's turn to adjust sorted queue
+   */
+  hb_list_remove ((HB_LIST *) target_job);
+
+  for (job = &(jobs->jobs); *job; job = &((*job)->next))
+    {
+      /*
+       * compare expiration time of target job and current job
+       * until target job's expire is larger than current's
+       */
+      if (hb_compare_timeval (&((*job)->expire), &(target_job->expire)) > 0)
+	{
+	  break;
+	}
+    }
+
+  hb_list_add ((HB_LIST **) job, (HB_LIST *) target_job);
+
+  pthread_mutex_unlock (&jobs->lock);
+
+  return;
+}
+
+/*
  * hb_job_shutdown() - clear job queue and stop job worker thread
  *   return: none
  *
@@ -645,6 +726,35 @@ hb_cluster_is_isolated (void)
 }
 
 /*
+ * hb_cluster_is_received_heartbeat_from_all() - 
+ *   return: whether current node received heartbeat from all node
+ */
+static bool
+hb_cluster_is_received_heartbeat_from_all (void)
+{
+  HB_NODE_ENTRY *node;
+  struct timeval now;
+  unsigned int heartbeat_confirm_time;
+
+  heartbeat_confirm_time =
+    prm_get_integer_value (PRM_ID_HA_HEARTBEAT_INTERVAL_IN_MSECS) * 2;
+
+  gettimeofday (&now, NULL);
+
+  for (node = hb_Cluster->nodes; node; node = node->next)
+    {
+      if (hb_Cluster->myself != node
+	  && HB_GET_ELAPSED_TIME (now,
+				  node->last_recv_hbtime) >
+	  heartbeat_confirm_time)
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
  * hb_cluster_job_calc_score() -
  *   return: none
  *
@@ -655,6 +765,7 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 {
   int error, rv;
   int num_master;
+  unsigned int failover_wait_time;
   HB_JOB_ARG *job_arg;
   HB_CLUSTER_JOB_ARG *clst_arg;
   HB_NODE_ENTRY *node;
@@ -750,9 +861,19 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 	}
       else
 	{
-	  error = hb_cluster_job_queue (HB_CJOB_FAILOVER, NULL,
-					prm_get_integer_value
-					(PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
+	  if (hb_cluster_is_received_heartbeat_from_all () == true)
+	    {
+	      failover_wait_time = HB_JOB_TIMER_WAIT_A_SECOND;
+	    }
+	  else
+	    {
+	      /* If current node didn't receive heartbeat from some node, wait for some time */
+	      failover_wait_time =
+		prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS);
+	    }
+
+	  error =
+	    hb_cluster_job_queue (HB_CJOB_FAILOVER, NULL, failover_wait_time);
 	  assert (error == NO_ERROR);
 
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
@@ -802,6 +923,7 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
   char *host_list = NULL;
   char *host_list_p, *host_p, *host_pp;
   int ping_result;
+  unsigned int failover_wait_time;
   HB_CLUSTER_JOB_ARG *clst_arg = (arg) ? &(arg->cluster_job_arg) : NULL;
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
@@ -897,9 +1019,18 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
   else
     {
       /* If this node is Slave, do failover */
-      error = hb_cluster_job_queue (HB_CJOB_FAILOVER, NULL,
-				    prm_get_integer_value
-				    (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
+      if (hb_cluster_is_received_heartbeat_from_all () == true)
+	{
+	  failover_wait_time = HB_JOB_TIMER_WAIT_A_SECOND;
+	}
+      else
+	{
+	  /* If current node didn't receive heartbeat from some node, wait for some time */
+	  failover_wait_time =
+	    prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS);
+	}
+      error =
+	hb_cluster_job_queue (HB_CJOB_FAILOVER, NULL, failover_wait_time);
       assert (error == NO_ERROR);
     }
 
@@ -971,6 +1102,10 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
 		     "Failover completed");
       hb_Cluster->state = HB_NSTATE_MASTER;
       hb_Resource->state = HB_NSTATE_MASTER;
+
+      error = hb_resource_job_set_expire_and_reorder (HB_RJOB_CHANGE_MODE,
+						      HB_JOB_TIMER_IMMEDIATELY);
+      assert (error == NO_ERROR);
     }
   else
     {
@@ -1029,6 +1164,10 @@ hb_cluster_job_demote (HB_JOB_ARG * arg)
     {
       assert (hb_Cluster->state == HB_NSTATE_MASTER);
       assert (hb_Resource->state == HB_NSTATE_SLAVE);
+
+      /* send state (HB_NSTATE_UNKNOWN) to other nodes for making other node be master */
+      hb_Cluster->state = HB_NSTATE_UNKNOWN;
+      hb_cluster_request_heartbeat_to_all ();
 
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
 		     "Waiting for a new node to be elected as master");
@@ -1438,6 +1577,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
   char *p;
 
   int state;
+  bool is_state_changed = false;
 
   hbp_header = (HBP_HEADER *) (buffer);
 
@@ -1519,7 +1659,11 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
 	node = hb_return_node_by_name_except_me (hbp_header->orig_host_name);
 	if (node)
 	  {
-	    node->state = (unsigned short) state;
+	    if (node->state != (unsigned short) state)
+	      {
+		node->state = (unsigned short) state;
+		is_state_changed = true;
+	      }
 	    node->heartbeat_gap = MAX (0, (node->heartbeat_gap - 1));
 	    gettimeofday (&node->last_recv_hbtime, NULL);
 	  }
@@ -1542,6 +1686,12 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
     }
 
   pthread_mutex_unlock (&hb_Cluster->lock);
+
+  if (is_state_changed == true)
+    {
+      hb_cluster_job_set_expire_and_reorder (HB_CJOB_CALC_SCORE,
+					     HB_JOB_TIMER_IMMEDIATELY);
+    }
 
   return;
 }
@@ -1716,6 +1866,30 @@ hb_cluster_job_queue (unsigned int job_type, HB_JOB_ARG * arg,
 
   return hb_job_queue (cluster_Jobs, job_type, arg, msec);
 }
+
+/*
+ * hb_cluster_job_set_expire_and_reorder() -
+ *   return: NO_ERROR or ER_FAILED
+ *
+ *   job_type(in):
+ *   msec(in):
+ */
+static int
+hb_cluster_job_set_expire_and_reorder (unsigned int job_type,
+				       unsigned int msec)
+{
+  if (job_type >= HB_CJOB_MAX)
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "unknown job type. (job_type:%d).\n", job_type);
+      return ER_FAILED;
+    }
+
+  hb_job_set_expire_and_reorder (cluster_Jobs, job_type, msec);
+
+  return NO_ERROR;
+}
+
 
 /*
  * hb_cluster_job_shutdown() -
@@ -2838,6 +3012,29 @@ hb_resource_job_queue (unsigned int job_type, HB_JOB_ARG * arg,
     }
 
   return hb_job_queue (resource_Jobs, job_type, arg, msec);
+}
+
+/*
+ * hb_resource_job_set_expire_and_reorder() -
+ *   return: NO_ERROR or ER_FAILED
+ *
+ *   job_type(in):
+ *   msec(in):
+ */
+static int
+hb_resource_job_set_expire_and_reorder (unsigned int job_type,
+					unsigned int msec)
+{
+  if (job_type >= HB_RJOB_MAX)
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "unknown job type. (job_type:%d).\n", job_type);
+      return ER_FAILED;
+    }
+
+  hb_job_set_expire_and_reorder (resource_Jobs, job_type, msec);
+
+  return NO_ERROR;
 }
 
 /*
@@ -4169,6 +4366,7 @@ hb_resource_cleanup (void)
        loop_count++)
     {
       int server_count = 0;
+      int conn_check_loop_count;
       struct pollfd po[SERVER_DEREG_MAX_POLL_COUNT];
 
       for (proc = hb_Resource->procs; proc; proc = proc->next)
@@ -4220,9 +4418,10 @@ hb_resource_cleanup (void)
       rc = poll (po, server_count, 1);
       if (rc > 0)
 	{
+	  conn_check_loop_count = server_count;
 	  i = 0;
 
-	  while (i < server_count && rc > 0)
+	  while (i < conn_check_loop_count && rc > 0)
 	    {
 	      if ((po[i].revents & POLLPRI) || (po[i].revents & POLLHUP))
 		{
@@ -4242,6 +4441,7 @@ hb_resource_cleanup (void)
 			  proc->conn = NULL;
 			  proc->state = HB_PSTATE_DEAD;
 
+			  server_count--;
 			  break;
 			}
 		    }
@@ -4251,7 +4451,7 @@ hb_resource_cleanup (void)
 	    }
 	}
 
-      if (hb_Deactivate_immediately == true)
+      if (hb_Deactivate_immediately == true || server_count == 0)
 	{
 	  break;
 	}
