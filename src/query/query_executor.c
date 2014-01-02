@@ -1126,6 +1126,8 @@ static int qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 						PRUNING_CONTEXT * pcontext,
 						int *removed_count);
 static int qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
+					      HEAP_SCANCACHE **
+					      pruned_partition_scan_cache,
 					      HEAP_SCANCACHE * scan_cache,
 					      HEAP_CACHE_ATTRINFO * attr_info,
 					      HEAP_CACHE_ATTRINFO *
@@ -1133,7 +1135,7 @@ static int qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 					      const HEAP_IDX_ELEMENTS_INFO *
 					      idx_info, int needs_pruning,
 					      PRUNING_CONTEXT * pcontext,
-					      OID * unique_oid);
+					      OID * unique_oid, int op_type);
 static int qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p,
 					       ODKU_INFO * odku, HFID * hfid,
 					       VAL_DESCR * vd, int op_type,
@@ -10694,6 +10696,7 @@ error_exit:
  *        statements)
  *   return: NO_ERROR or ER_code
  *   thread_p(in):
+ *   pruned_partition_scan_cache(out): the real scan_cache for this oid
  *   scan_cache(in):
  *   attr_info(in/out): The attribute information that will be inserted
  *   index_attr_info(in/out):
@@ -10702,19 +10705,22 @@ error_exit:
  *   pcontext(in):
  *   unique_oid_p(out): the OID of one object to be updated or a NULL OID if
  *                      there are no potential unique index violations
+ *   op_type(int):
  * Note: A single OID is returned even if there are several objects that would
  *       generate unique index violations (this can only happen if there are
  *       several unique indexes).
  */
 static int
 qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
+				   HEAP_SCANCACHE **
+				   pruned_partition_scan_cache,
 				   HEAP_SCANCACHE * scan_cache,
 				   HEAP_CACHE_ATTRINFO * attr_info,
 				   HEAP_CACHE_ATTRINFO * index_attr_info,
 				   const HEAP_IDX_ELEMENTS_INFO * idx_info,
 				   int pruning_type,
 				   PRUNING_CONTEXT * pcontext,
-				   OID * unique_oid_p)
+				   OID * unique_oid_p, int op_type)
 {
   LC_COPYAREA *copyarea = NULL;
   RECDES recdes;
@@ -10731,9 +10737,17 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
   OID class_oid;
   HFID class_hfid;
   bool is_global_index = false;
+  int local_op_type = SINGLE_ROW_UPDATE;
+
+  assert (pruned_partition_scan_cache != NULL);
 
   DB_MAKE_NULL (&dbvalue);
   OID_SET_NULL (unique_oid_p);
+
+  if (BTREE_IS_MULTI_ROW_OP (op_type))
+    {
+      local_op_type = MULTI_ROW_UPDATE;
+    }
 
   if (heap_attrinfo_clear_dbvalues (index_attr_info) != NO_ERROR)
     {
@@ -10799,6 +10813,47 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 			      key_dbvalue, &class_oid, &unique_oid,
 			      is_global_index) == BTREE_KEY_FOUND)
 	{
+	  if (pruning_type != DB_NOT_PARTITIONED_CLASS && is_global_index)
+	    {
+	      /* get actual class oid */
+	      if (heap_get_class_oid (thread_p, &class_oid, &unique_oid)
+		  == NULL)
+		{
+		  goto error_exit;
+		}
+	      /* get actual class hfid */
+	      error_code = heap_get_hfid_from_class_oid (thread_p,
+							 &class_oid,
+							 &class_hfid);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error_exit;
+		}
+	    }
+
+	  if (pruning_type != DB_NOT_PARTITIONED_CLASS
+	      && BTREE_IS_MULTI_ROW_OP (op_type))
+	    {
+	      /* need to provide appropriate scan_cache to
+	       * locator_delete_force in order to correctly compute
+	       * statistics
+	       */
+	      PRUNING_SCAN_CACHE *pruning_cache =
+		locator_get_partition_scancache (pcontext, &class_oid,
+						 &class_hfid, local_op_type,
+						 false);
+	      if (pruning_cache == NULL)
+		{
+		  error_code = er_errid ();
+		  if (error_code == NO_ERROR)
+		    {
+		      error_code = ER_FAILED;
+		    }
+		  goto error_exit;
+		}
+
+	      *pruned_partition_scan_cache = &pruning_cache->scan_cache;
+	    }
 	  /* We now hold an U_LOCK on the instance. It will be upgraded to an
 	   * X_LOCK when the update is executed.
 	   */
@@ -10904,13 +10959,17 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
   bool need_clear = 0;
   OID unique_oid;
   int local_op_type = SINGLE_ROW_UPDATE;
+  HEAP_SCANCACHE *local_scan_cache = NULL;
 
   OID_SET_NULL (&unique_oid);
 
-  error = qexec_oid_of_duplicate_key_update (thread_p, scan_cache, attr_info,
+  local_scan_cache = scan_cache;
+
+  error = qexec_oid_of_duplicate_key_update (thread_p, &local_scan_cache,
+					     scan_cache, attr_info,
 					     index_attr_info, idx_info,
 					     pruning_type, pcontext,
-					     &unique_oid);
+					     &unique_oid, op_type);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -10923,8 +10982,8 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
     }
 
   /* get attribute values */
-  scan_code = heap_get (thread_p, &unique_oid, &rec_descriptor, scan_cache,
-			PEEK, NULL_CHN);
+  scan_code = heap_get (thread_p, &unique_oid, &rec_descriptor,
+			local_scan_cache, PEEK, NULL_CHN);
   if (scan_code != S_SUCCESS)
     {
       goto exit_on_error;
@@ -11003,7 +11062,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
   error = locator_attribute_info_force (thread_p, hfid, &unique_oid, NULL,
 					false, attr_info, odku->attr_ids,
 					odku->no_assigns, LC_FLUSH_UPDATE,
-					local_op_type, scan_cache,
+					local_op_type, local_scan_cache,
 					force_count, false, repl_info,
 					pruning_type, pcontext, NULL);
   if (error != NO_ERROR)
