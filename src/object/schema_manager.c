@@ -6332,85 +6332,86 @@ sm_virtual_queries (DB_OBJECT * class_object)
   unsigned int current_schema_id;
   PARSER_CONTEXT *cache = NULL, *tmp = NULL, *old_cache = NULL;
 
-  if (au_fetch_class_force (class_object, &cl, AU_FETCH_READ) == NO_ERROR)
+  if (au_fetch_class_force (class_object, &cl, AU_FETCH_READ) != NO_ERROR)
     {
-      (void) ws_pin (class_object, 1);
+      return NULL;
+    }
 
-      if (cl->virtual_query_cache != NULL
-	  && cl->virtual_query_cache->view_cache != NULL
-	  && cl->virtual_query_cache->view_cache->vquery_for_query != NULL)
+  (void) ws_pin (class_object, 1);
+
+  if (cl->virtual_query_cache != NULL
+      && cl->virtual_query_cache->view_cache != NULL
+      && cl->virtual_query_cache->view_cache->vquery_for_query != NULL)
+    {
+      (void) pt_class_pre_fetch (cl->virtual_query_cache,
+				 cl->virtual_query_cache->view_cache->
+				 vquery_for_query);
+      if (er_has_error ())
 	{
-	  (void) pt_class_pre_fetch (cl->virtual_query_cache,
-				     cl->virtual_query_cache->view_cache->
-				     vquery_for_query);
-	  if (er_has_error ())
-	    {
-	      return NULL;
-	    }
-
-	  if (pt_has_error (cl->virtual_query_cache))
-	    {
-	      mq_free_virtual_query_cache (cl->virtual_query_cache);
-	      cl->virtual_query_cache = NULL;
-	    }
+	  return NULL;
 	}
 
-      current_schema_id = sm_local_schema_version ()
-	+ sm_global_schema_version ();
-
-      if (cl->virtual_query_cache != NULL
-	  && cl->virtual_cache_schema_id != current_schema_id)
+      if (pt_has_error (cl->virtual_query_cache))
 	{
-	  old_cache = cl->virtual_query_cache;
+	  mq_free_virtual_query_cache (cl->virtual_query_cache);
 	  cl->virtual_query_cache = NULL;
 	}
+    }
 
-      if (cl->class_type != SM_CLASS_CT && cl->virtual_query_cache == NULL)
+  current_schema_id = (sm_local_schema_version ()
+		       + sm_global_schema_version ());
+
+  if (cl->virtual_query_cache != NULL
+      && cl->virtual_cache_schema_id != current_schema_id)
+    {
+      old_cache = cl->virtual_query_cache;
+      cl->virtual_query_cache = NULL;
+    }
+
+  if (cl->class_type != SM_CLASS_CT && cl->virtual_query_cache == NULL)
+    {
+      /* Okay, this is a bit of a kludge:  If there happens to be a
+       * cyclic view definition, then the virtual_query_cache will be
+       * allocated during the call to mq_virtual_queries. So, we'll
+       * assign it to a temp pointer and check it again.  We need to
+       * keep the old one and free the new one because the parser
+       * assigned originally contains the error message.
+       */
+      tmp = mq_virtual_queries (class_object);
+      if (tmp == NULL)
 	{
-	  /* Okay, this is a bit of a kludge:  If there happens to be a
-	   * cyclic view definition, then the virtual_query_cache will be
-	   * allocated during the call to mq_virtual_queries. So, we'll
-	   * assign it to a temp pointer and check it again.  We need to
-	   * keep the old one and free the new one because the parser
-	   * assigned originally contains the error message.
-	   */
-	  tmp = mq_virtual_queries (class_object);
-	  if (tmp == NULL)
-	    {
-	      if (old_cache)
-		{
-		  cl->virtual_query_cache = old_cache;
-		}
-	      return NULL;
-	    }
-
 	  if (old_cache)
 	    {
-	      mq_free_virtual_query_cache (old_cache);
+	      cl->virtual_query_cache = old_cache;
 	    }
-
-	  if (cl->virtual_query_cache)
-	    {
-	      mq_free_virtual_query_cache (tmp);
-	    }
-	  else
-	    {
-	      cl->virtual_query_cache = tmp;
-	    }
-
-	  /* need to re-evalutate current_schema_id as global_schema_version
-	   * was changed by the call to mq_virtual_queries() */
-	  current_schema_id = sm_local_schema_version ()
-	    + sm_global_schema_version ();
-	  cl->virtual_cache_schema_id = current_schema_id;
+	  return NULL;
 	}
 
-      cache = cl->virtual_query_cache;
+      if (old_cache)
+	{
+	  mq_free_virtual_query_cache (old_cache);
+	}
+
+      if (cl->virtual_query_cache)
+	{
+	  mq_free_virtual_query_cache (tmp);
+	}
+      else
+	{
+	  cl->virtual_query_cache = tmp;
+	}
+
+      /* need to re-evalutate current_schema_id as global_schema_version
+       * was changed by the call to mq_virtual_queries() */
+      current_schema_id = (sm_local_schema_version ()
+			   + sm_global_schema_version ());
+      cl->virtual_cache_schema_id = current_schema_id;
     }
+
+  cache = cl->virtual_query_cache;
 
   return cache;
 }
-
 
 /*
  * sm_get_attribute_descriptor() - Find the named attribute structure
