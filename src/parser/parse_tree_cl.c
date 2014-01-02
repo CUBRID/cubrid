@@ -5740,42 +5740,58 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	 * <attr_old_name> and <attr_def_list> should have at most one element*/
 	if (p->info.alter.alter_clause.attr_mthd.attr_old_name != NULL)
 	  {
-	    q = pt_append_nulstring (parser, q, " change attribute ");
+	    q = pt_append_nulstring (parser, q, " change");
 	    names = p->info.alter.alter_clause.attr_mthd.attr_old_name;
-	    if (names != NULL)
-	      {
-		assert (names->next == NULL);
-		r2 = pt_print_bytes (parser, names);
-		q = pt_append_varchar (parser, q, r2);
-		q = pt_append_nulstring (parser, q, " ");
-	      }
 	  }
 	else
 	  {
-	    q = pt_append_nulstring (parser, q, " modify attribute ");
+	    q = pt_append_nulstring (parser, q, " modify");
+	    names = NULL;
 	  }
 
 	attrs = p->info.alter.alter_clause.attr_mthd.attr_def_list;
-	if (attrs != NULL)
+	assert (attrs != NULL);
+	if (attrs->info.attr_def.attr_type == PT_META_ATTR)
 	  {
-	    assert (attrs->next == NULL);
+	    q = pt_append_nulstring (parser, q, " class");
+	  }
+	q = pt_append_nulstring (parser, q, " attribute ");
 
-	    /* ordering is last in <CHANGE> syntax context, suppress in this
-	     * print */
-	    if (attrs->info.attr_def.ordering_info != NULL)
-	      {
-		parser->custom_print |= PT_SUPPRESS_ORDERING;
-	      }
-
-	    assert (attrs->info.attr_def.attr_type != PT_CLASS);
-	    r1 = pt_print_bytes (parser, attrs);
-	    q = pt_append_varchar (parser, q, r1);
+	if (names != NULL)
+	  {
+	    assert (names->next == NULL);
+	    r2 = pt_print_bytes (parser, names);
+	    q = pt_append_varchar (parser, q, r2);
 	    q = pt_append_nulstring (parser, q, " ");
+	  }
 
-	    if (attrs->info.attr_def.ordering_info != NULL)
-	      {
-		parser->custom_print &= ~PT_SUPPRESS_ORDERING;
-	      }
+	assert (attrs->next == NULL);
+
+	/* ordering is last in <CHANGE> syntax context, suppress in this
+	 * print */
+	if (attrs->info.attr_def.ordering_info != NULL)
+	  {
+	    parser->custom_print |= PT_SUPPRESS_ORDERING;
+	  }
+
+	if (attrs->info.attr_def.attr_type == PT_META_ATTR)
+	  {
+	    parser->custom_print |= PT_SUPPRESS_META_ATTR_CLASS;
+	  }
+
+	assert (attrs->info.attr_def.attr_type != PT_CLASS);
+	r1 = pt_print_bytes (parser, attrs);
+	q = pt_append_varchar (parser, q, r1);
+	q = pt_append_nulstring (parser, q, " ");
+
+	if (attrs->info.attr_def.ordering_info != NULL)
+	  {
+	    parser->custom_print &= ~PT_SUPPRESS_ORDERING;
+	  }
+
+	if (attrs->info.attr_def.attr_type == PT_META_ATTR)
+	  {
+	    parser->custom_print &= ~PT_SUPPRESS_META_ATTR_CLASS;
 	  }
 
 	if (p->info.alter.constraint_list != NULL)
