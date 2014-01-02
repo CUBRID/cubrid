@@ -8635,6 +8635,16 @@ mq_invert_insert_select (PARSER_CONTEXT * parser, PT_NODE * attr,
 
   while (*value)
     {
+      /* ignore the the hidden columns
+       * e.g. append when check order by
+       *      see mq_update_order_by (...)
+       */
+      if ((*value)->is_hidden_column == 1)
+	{
+	  value = &(*value)->next;
+	  continue;
+	}
+
       if (!attr)
 	{
 	  /* system error, should be caught in semantic pass */
