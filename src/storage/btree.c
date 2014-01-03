@@ -6202,6 +6202,15 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
 {
   BTREE_CAPACITY cpc;
   int ret = NO_ERROR;
+  char area[FILE_DUMP_DES_AREA_SIZE];
+  char *file_des = NULL;
+  char *index_name = NULL;
+  char *class_name = NULL;
+  int file_des_size = 0;
+  int size = 0;
+  OID class_oid;
+
+  assert (fp != NULL && btid != NULL);
 
   /* get index capacity information */
   ret = btree_index_capacity (thread_p, btid, &cpc);
@@ -6210,11 +6219,35 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
       goto exit_on_error;
     }
 
+  /* get class_name and index_name */
+  file_des = area;
+  file_des_size = FILE_DUMP_DES_AREA_SIZE;
+
+  size = file_get_descriptor (thread_p, &btid->vfid, file_des, file_des_size);
+  if (size <= 0)
+    {
+      goto exit_on_error;
+    }
+
+  class_oid = ((FILE_HEAP_DES *) file_des)->class_oid;
+
+  class_name = heap_get_class_name (thread_p, &class_oid);
+
+  /* get index name */
+  if (heap_get_indexinfo_of_btid (thread_p, &class_oid, btid,
+				  NULL, NULL, NULL, NULL, &index_name,
+				  NULL) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   fprintf (fp,
 	   "\n--------------------------------------------------"
 	   "-----------\n");
-  fprintf (fp, "BTID: {{%d, %d}, %d}  CAPACITY INFORMATION:\n",
-	   btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
+  fprintf (fp, "BTID: {{%d, %d}, %d}, %s ON %s, CAPACITY INFORMATION:\n",
+	   btid->vfid.volid, btid->vfid.fileid, btid->root_pageid,
+	   (index_name == NULL) ? "*UNKOWN_INDEX*" : index_name,
+	   (class_name == NULL) ? "*UNKOWN_CLASS*" : class_name);
 
   /* dump the capacity information */
   fprintf (fp, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
@@ -6234,12 +6267,32 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   fprintf (fp, "--------------------------------------------------"
 	   "-----------\n");
 
+end:
+
+  if (class_name != NULL)
+    {
+      free_and_init (class_name);
+    }
+
+  if (index_name != NULL)
+    {
+      free_and_init (index_name);
+    }
+
   return ret;
 
 exit_on_error:
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  if (ret == NO_ERROR)
+    {
+      ret = er_errid ();
+      if (ret == NO_ERROR)
+	{
+	  ret = ER_FAILED;
+	}
+    }
+
+  goto end;
 }
 
 /*

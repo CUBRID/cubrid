@@ -2596,7 +2596,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp,
 		     const OID * class_oid, const OR_CLASSREP * repr)
 {
   OR_ATTRIBUTE *attrepr;
-  int i, k;
+  int i, k, j;
   char *classname;
   const char *attr_name;
   DB_VALUE def_dbvalue;
@@ -2606,6 +2606,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp,
   bool copy;
   RECDES recdes;		/* Used to obtain attrnames */
   int ret = NO_ERROR;
+  char *index_name = NULL;
 
   /*
    * The class is feteched to print the attribute names.
@@ -2682,10 +2683,23 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp,
 	  fprintf (fp, " Number of Btids = %d,\n", attrepr->n_btids);
 	  for (k = 0; k < attrepr->n_btids; k++)
 	    {
-	      fprintf (fp, " BTID: VFID %d|%d, Root_PGID %d\n",
+	      index_name = NULL;
+	      /* find index_name */
+	      for (j = 0; j < repr->n_indexes; ++j)
+		{
+		  if (BTID_IS_EQUAL (&(repr->indexes[j].btid),
+				     &(attrepr->btids[k])))
+		    {
+		      index_name = repr->indexes[j].btname;
+		      break;
+		    }
+		}
+
+	      fprintf (fp, " BTID: VFID %d|%d, Root_PGID %d, %s\n",
 		       (int) attrepr->btids[k].vfid.volid,
 		       attrepr->btids[k].vfid.fileid,
-		       attrepr->btids[k].root_pageid);
+		       attrepr->btids[k].root_pageid,
+		       (index_name == NULL) ? "unknown" : index_name);
 	    }
 	}
 
@@ -6881,7 +6895,7 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	     OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache)
 {
 #if defined(ENABLE_SYSTEMTAP)
-   CUBRID_OBJ_INSERT_START (class_oid);
+  CUBRID_OBJ_INSERT_START (class_oid);
 #endif /* ENABLE_SYSTEMTAP */
 
   /*
@@ -8051,8 +8065,9 @@ error:
  * overflow, both the relocation and the relocated record are deleted.
  */
 const OID *
-heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
-	     const OID * oid, HEAP_SCANCACHE * scan_cache)
+heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid,
+	     const OID * class_oid, const OID * oid,
+	     HEAP_SCANCACHE * scan_cache)
 {
   int ret = NO_ERROR;
   const OID *del_oid_p = NULL;
@@ -10764,24 +10779,24 @@ try_again:
 
       if (spage_get_record (pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
 			    &chain_recdes, PEEK) != S_SUCCESS)
-        {
-          pgbuf_unfix_and_init (thread_p, pgptr);
-          return S_ERROR;
-        }
+	{
+	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  return S_ERROR;
+	}
 
       chain = (HEAP_CHAIN *) chain_recdes.data;
       COPY_OID (&cls_oid, &(chain->class_oid));
 
       if (OID_ISNULL (&cls_oid))
-        {
-          /* rootclass class oid, substitute with global */
-          cls_oid.volid = oid_Root_class_oid->volid;
-          cls_oid.pageid = oid_Root_class_oid->pageid;
-          cls_oid.slotid = oid_Root_class_oid->slotid;
-        }
-      CUBRID_OBJ_READ_START (&cls_oid); 
+	{
+	  /* rootclass class oid, substitute with global */
+	  cls_oid.volid = oid_Root_class_oid->volid;
+	  cls_oid.pageid = oid_Root_class_oid->pageid;
+	  cls_oid.slotid = oid_Root_class_oid->slotid;
+	}
+      CUBRID_OBJ_READ_START (&cls_oid);
 #endif /* ENABLE_SYSTEMTAP */
-     }
+    }
 
   type = spage_get_record_type (pgptr, oid->slotid);
   if (type == REC_UNKNOWN)
@@ -10817,7 +10832,7 @@ try_again:
 	  pgbuf_unfix_and_init (thread_p, pgptr);
 
 #if defined(ENABLE_SYSTEMTAP)
-          CUBRID_OBJ_READ_END (&cls_oid, scan);
+	  CUBRID_OBJ_READ_END (&cls_oid, scan);
 #endif /* ENABLE_SYSTEMTAP */
 
 	  return scan;
@@ -10850,7 +10865,7 @@ try_again:
 		}
 
 #if defined(ENABLE_SYSTEMTAP)
-      	     CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
+	      CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
 	      return S_ERROR;
@@ -10873,7 +10888,7 @@ try_again:
 		}
 
 #if defined(ENABLE_SYSTEMTAP)
-      	      CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
+	      CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
 	      return S_ERROR;
@@ -10907,7 +10922,7 @@ try_again:
 		  pgbuf_unfix_and_init (thread_p, forward_pgptr);
 
 #if defined(ENABLE_SYSTEMTAP)
-                 CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
+		  CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
 		  return S_ERROR;
@@ -10981,7 +10996,7 @@ try_again:
 		  pgbuf_unfix_and_init (thread_p, pgptr);
 
 #if defined(ENABLE_SYSTEMTAP)
-      		  CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
+		  CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
 		  return S_ERROR;
@@ -11021,7 +11036,7 @@ try_again:
 	  pgbuf_unfix_and_init (thread_p, pgptr);
 
 #if defined(ENABLE_SYSTEMTAP)
-          CUBRID_OBJ_READ_END (&cls_oid, scan);
+	  CUBRID_OBJ_READ_END (&cls_oid, scan);
 #endif /* ENABLE_SYSTEMTAP */
 
 	  return scan;
@@ -11055,7 +11070,7 @@ try_again:
 		  scan_cache->area_size = -1;
 
 #if defined(ENABLE_SYSTEMTAP)
-                  CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
+		  CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
 		  return S_ERROR;
@@ -11082,7 +11097,7 @@ try_again:
 		{
 
 #if defined(ENABLE_SYSTEMTAP)
-      		  CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
+		  CUBRID_OBJ_READ_END (&cls_oid, S_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
 		  return S_ERROR;

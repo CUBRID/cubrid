@@ -554,11 +554,18 @@ static void file_print_name_of_class_with_attrid (THREAD_ENTRY * thread_p,
 						  FILE * fp,
 						  const OID * class_oid_p,
 						  const int attr_id);
+static void file_print_class_name_index_name_with_attrid (THREAD_ENTRY *
+							  thread_p, FILE * fp,
+							  const OID *
+							  class_oid_p,
+							  const VFID * vfid,
+							  const int attr_id);
 
 static int file_descriptor_get_length (const FILE_TYPE file_type);
 static void file_descriptor_dump (THREAD_ENTRY * thread_p, FILE * fp,
 				  const FILE_TYPE file_type,
-				  const void *file_descriptor_p);
+				  const void *file_descriptor_p,
+				  const VFID * vfid);
 static DISK_ISVALID file_make_idsmap_image (THREAD_ENTRY * thread_p,
 					    const VFID * vfid,
 					    char **vol_ids_map,
@@ -2485,7 +2492,8 @@ file_descriptor_dump_internal (THREAD_ENTRY * thread_p, FILE * fp,
 
   if (fhdr->des.total_length == fhdr->des.first_length)
     {
-      file_descriptor_dump (thread_p, fp, fhdr->type, fhdr->des.piece);
+      file_descriptor_dump (thread_p, fp,
+			    fhdr->type, fhdr->des.piece, &fhdr->vfid);
 
     }
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -12935,7 +12943,7 @@ file_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
 
       if (size > 0)
 	{
-	  file_descriptor_dump (thread_p, fp, type, file_des);
+	  file_descriptor_dump (thread_p, fp, type, file_des, &vfid);
 	}
       else
 	{
@@ -14204,7 +14212,8 @@ file_descriptor_get_length (const FILE_TYPE file_type)
 
 static void
 file_descriptor_dump (THREAD_ENTRY * thread_p, FILE * fp,
-		      const FILE_TYPE file_type, const void *file_des_p)
+		      const FILE_TYPE file_type,
+		      const void *file_des_p, const VFID * vfid)
 {
   if (file_des_p == NULL)
     {
@@ -14232,9 +14241,10 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, FILE * fp,
       {
 	const FILE_BTREE_DES *btree_des_p = (FILE_BTREE_DES *) file_des_p;
 
-	file_print_name_of_class_with_attrid (thread_p, fp,
-					      &btree_des_p->class_oid,
-					      btree_des_p->attr_id);
+	file_print_class_name_index_name_with_attrid (thread_p, fp,
+						      &btree_des_p->class_oid,
+						      vfid,
+						      btree_des_p->attr_id);
 	break;
       }
 
@@ -14369,6 +14379,73 @@ file_print_name_of_class_with_attrid (THREAD_ENTRY * thread_p, FILE * fp,
   else
     {
       fprintf (fp, "\n");
+    }
+}
+
+/*
+ * file_print_class_name_index_name_with_attrid () -\
+ * return: void
+ * thread_p(in):
+ * fp(in):
+ * class_oid_p(in):
+ * vfid(in):
+ * attr_id(in);
+ *
+ * Note:
+ */
+static void
+file_print_class_name_index_name_with_attrid (THREAD_ENTRY * thread_p,
+					      FILE * fp,
+					      const OID * class_oid_p,
+					      const VFID * vfid,
+					      const int attr_id)
+{
+  char *class_name_p = NULL;
+  char *index_name_p = NULL;
+  BTID btid;
+
+  assert (fp != NULL && class_oid_p != NULL && vfid != NULL);
+
+  if (OID_ISNULL (class_oid_p) || VFID_ISNULL (vfid))
+    {
+      goto end;
+    }
+
+  /* class_name */
+  class_name_p = heap_get_class_name (thread_p, class_oid_p);
+
+  /* index_name
+   * root_pageid doesn't matter here, see BTID_IS_EQUAL
+   */
+  btid.vfid = *vfid;
+  btid.root_pageid = NULL_PAGEID;
+  if (heap_get_indexinfo_of_btid (thread_p, class_oid_p, &btid,
+				  NULL, NULL, NULL, NULL, &index_name_p,
+				  NULL) != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* print */
+  fprintf (fp, "CLASS_OID:%2d|%4d|%2d (%s), %s, ATTRID: %2d",
+	   class_oid_p->volid, class_oid_p->pageid, class_oid_p->slotid,
+	   (class_name_p == NULL) ? "*UNKNOWN-CLASS*" : class_name_p,
+	   (index_name_p == NULL) ? "*UNKNOWN-INDEX*" : index_name_p,
+	   attr_id);
+
+end:
+
+  fprintf (fp, "\n");
+
+  /* cleanup */
+  if (class_name_p != NULL)
+    {
+      free_and_init (class_name_p);
+    }
+
+  if (index_name_p != NULL)
+    {
+      free_and_init (index_name_p);
     }
 }
 
