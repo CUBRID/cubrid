@@ -1573,7 +1573,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 209 ORDER BY items must appear in the select list if SELECT DISTINCT is specified.
 210 Host variable is not allowed on columns in the query specification.
 211 %1$s can not be an ORDER BY column
-212 %1$s can not be an GROUP BY column
+212 %1$s can not be a GROUP BY column
 213 Can not define '%1$s of %2$s' as a column type.
 214 Invalid value "%1$s" for prefix length of the index.
 215 '%1$s' function is not defined on types %2$s, %3$s, %4$s and %5$s.
