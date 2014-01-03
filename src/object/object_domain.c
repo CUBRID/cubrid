@@ -8375,7 +8375,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  case DB_TYPE_INTEGER:
 	    if (OR_CHECK_USHRT_OVERFLOW (DB_GET_INT (src)))
 	      {
-		status = DOMAIN_OVERFLOW;
+		status = DOMAIN_INCOMPATIBLE;
 	      }
 	    else
 	      {
@@ -8385,7 +8385,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  case DB_TYPE_BIGINT:
 	    if (OR_CHECK_USHRT_OVERFLOW (DB_GET_BIGINT (src)))
 	      {
-		status = DOMAIN_OVERFLOW;
+		status = DOMAIN_INCOMPATIBLE;
 	      }
 	    else
 	      {
@@ -8395,7 +8395,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  case DB_TYPE_FLOAT:
 	    if (OR_CHECK_USHRT_OVERFLOW (floor (DB_GET_FLOAT (src))))
 	      {
-		status = DOMAIN_OVERFLOW;
+		status = DOMAIN_INCOMPATIBLE;
 	      }
 	    else
 	      {
@@ -8405,7 +8405,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  case DB_TYPE_DOUBLE:
 	    if (OR_CHECK_USHRT_OVERFLOW (floor (DB_GET_DOUBLE (src))))
 	      {
-		status = DOMAIN_OVERFLOW;
+		status = DOMAIN_INCOMPATIBLE;
 	      }
 	    else
 	      {
@@ -8430,7 +8430,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		{
 		  if (OR_CHECK_USHRT_OVERFLOW (floor (DB_GET_DOUBLE (&val))))
 		    {
-		      status = DOMAIN_OVERFLOW;
+		      status = DOMAIN_INCOMPATIBLE;
 		    }
 		  else
 		    {
@@ -8443,7 +8443,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    v_money = DB_GET_MONETARY (src);
 	    if (OR_CHECK_USHRT_OVERFLOW (floor (v_money->amount)))
 	      {
-		status = DOMAIN_OVERFLOW;
+		status = DOMAIN_INCOMPATIBLE;
 	      }
 	    else
 	      {
@@ -8631,7 +8631,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		      }
 		    else
 		      {
-			status = DOMAIN_OVERFLOW;
+			status = DOMAIN_INCOMPATIBLE;
 		      }
 		  }
 	      }
@@ -8642,7 +8642,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		 */
 		if (val_idx > DOM_GET_ENUM_ELEMS_COUNT (desired_domain))
 		  {
-		    status = DOMAIN_OVERFLOW;
+		    status = DOMAIN_INCOMPATIBLE;
 		  }
 		else if (val_idx == 0)
 		  {
