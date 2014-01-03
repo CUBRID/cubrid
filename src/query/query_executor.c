@@ -771,7 +771,8 @@ static int qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
 					 GROUPBY_STATE * gbstate,
 					 const RECDES * recdes);
 static void qexec_gby_finalize_group (THREAD_ENTRY * thread_p,
-				      GROUPBY_STATE * gbstate, int N);
+				      GROUPBY_STATE * gbstate, int N,
+				      bool keep_list_file);
 static SORT_STATUS qexec_hash_gby_get_next (THREAD_ENTRY * thread_p,
 					    RECDES * recdes, void *arg);
 static int qexec_hash_gby_put_next (THREAD_ENTRY * thread_p,
@@ -13189,7 +13190,8 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p,
   /* make final pass on aggregate list nodes */
   if (buildvalue->agg_list
       && qdata_finalize_aggregate_list (thread_p,
-					buildvalue->agg_list) != NO_ERROR)
+					buildvalue->agg_list,
+					false) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -19782,7 +19784,8 @@ qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
 {
   int i, j, nkeys, level = 0;
 
-  qexec_gby_finalize_group (thread_p, gbstate, 0);
+  qexec_gby_finalize_group (thread_p, gbstate, 0,
+			    (bool) gbstate->with_rollup);
   if (gbstate->state == SORT_PUT_STOP)
     {
       goto wrapup;
@@ -19817,7 +19820,7 @@ qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
 		      assert (gbstate->g_dim[j].
 			      d_flag & GROUPBY_DIM_FLAG_ROLLUP);
 
-		      qexec_gby_finalize_group (thread_p, gbstate, j);
+		      qexec_gby_finalize_group (thread_p, gbstate, j, true);
 #if 0				/* TODO - sus-11454 */
 		      if (gbstate->state == SORT_PUT_STOP)
 			{
@@ -19839,7 +19842,7 @@ qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
 	    {
 	      assert (gbstate->g_dim[j].d_flag & GROUPBY_DIM_FLAG_ROLLUP);
 
-	      qexec_gby_finalize_group (thread_p, gbstate, j);
+	      qexec_gby_finalize_group (thread_p, gbstate, j, true);
 #if 0				/* TODO - sus-11454 */
 	      if (gbstate->state == SORT_PUT_STOP)
 		{
@@ -19850,6 +19853,13 @@ qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
 	      qexec_gby_start_group (thread_p, gbstate, NULL, j);
 	    }
 	  level = gbstate->g_dim_levels;
+	}
+
+      if (gbstate->g_dim != NULL && gbstate->g_dim[0].d_agg_list != NULL)
+	{
+	  qfile_close_list (thread_p, gbstate->g_dim[0].d_agg_list->list_id);
+	  qfile_destroy_list (thread_p,
+			      gbstate->g_dim[0].d_agg_list->list_id);
 	}
     }
 
@@ -19868,10 +19878,11 @@ exit_on_error:
  *   return:
  *   gbstate(in):
  *   N(in):
+ *   keep_list_file(in) : whether keep the list file for reuse
  */
 static void
 qexec_gby_finalize_group (THREAD_ENTRY * thread_p,
-			  GROUPBY_STATE * gbstate, int N)
+			  GROUPBY_STATE * gbstate, int N, bool keep_list_file)
 {
   QPROC_TPLDESCR_STATUS tpldescr_status;
   XASL_NODE *xptr;
@@ -19892,8 +19903,8 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p,
   assert (gbstate->g_dim[N].d_flag != GROUPBY_DIM_FLAG_NONE);
 
   if (qdata_finalize_aggregate_list (thread_p,
-				     gbstate->g_dim[N].d_agg_list)
-      != NO_ERROR)
+				     gbstate->g_dim[N].d_agg_list,
+				     keep_list_file) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }

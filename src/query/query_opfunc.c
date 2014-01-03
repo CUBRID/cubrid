@@ -5893,6 +5893,9 @@ qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p,
 
   db_private_free_and_init (thread_p, type_list.domp);
 
+  qfile_close_list (thread_p, agg_p->list_id);
+  qfile_destroy_list (thread_p, agg_p->list_id);
+
   if (qfile_copy_list_id (agg_p->list_id, list_id_p, true) != NO_ERROR)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
@@ -6890,12 +6893,14 @@ cleanup:
  * qdata_finalize_aggregate_list () -
  *   return: NO_ERROR, or ER_code
  *   agg_list(in)       : Aggregate expression node list
+ *   keep_list_file(in) : whether keep the list file for reuse
  *
  * Note: Make the final evaluation on the aggregate expression list.
  */
 int
 qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
-			       AGGREGATE_TYPE * agg_list_p)
+			       AGGREGATE_TYPE * agg_list_p,
+			       bool keep_list_file)
 {
   int error = NO_ERROR;
   AGGREGATE_TYPE *agg_p;
@@ -7016,14 +7021,9 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 
 	  if (agg_p->flag_agg_optimize == false)
 	    {
-	      assert ((agg_p->sort_list == NULL
-		       && agg_p->list_id->sort_list != NULL)
-		      || (agg_p->sort_list != NULL
-			  && agg_p->list_id->sort_list == NULL));
-
 	      list_id_p = agg_p->list_id =
 		qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list,
-				 agg_p->option, true);
+				 agg_p->option, false);
 
 	      if (list_id_p == NULL)
 		{
@@ -7285,8 +7285,11 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	    }
 
 	  /* close and destroy temporary list files */
-	  qfile_close_list (thread_p, agg_p->list_id);
-	  qfile_destroy_list (thread_p, agg_p->list_id);
+	  if (!keep_list_file)
+	    {
+	      qfile_close_list (thread_p, agg_p->list_id);
+	      qfile_destroy_list (thread_p, agg_p->list_id);
+	    }
 	}
 
       if (agg_p->function == PT_GROUP_CONCAT

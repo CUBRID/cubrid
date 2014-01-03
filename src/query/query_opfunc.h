@@ -257,7 +257,8 @@ extern int qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p,
 					       HIERARCHY_AGGREGATE_HELPER *
 					       helper);
 extern int qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
-					  AGGREGATE_TYPE * agg_list);
+					  AGGREGATE_TYPE * agg_list,
+					  bool keep_list_file);
 extern int qdata_initialize_analytic_func (THREAD_ENTRY * thread_p,
 					   ANALYTIC_TYPE * func_p,
 					   QUERY_ID query_id);
