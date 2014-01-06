@@ -605,7 +605,7 @@ load_unicode_data (const LOCALE_DATA * ld)
 
 error:
 
-  if (fp == NULL)
+  if (fp != NULL)
     {
       fclose (fp);
     }

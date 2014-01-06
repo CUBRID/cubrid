@@ -4089,7 +4089,7 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
 
 error:
 
-  if (fp == NULL)
+  if (fp != NULL)
     {
       fclose (fp);
     }
