@@ -150,6 +150,8 @@ struct mnt_server_exec_stats
   UINT64 file_num_ioreads;
   UINT64 file_num_iowrites;
   UINT64 file_num_iosynches;
+  UINT64 file_num_page_allocs;
+  UINT64 file_num_page_deallocs;
 
   /* Execution statistics for the page buffer manager */
   UINT64 pb_num_fetches;
@@ -196,6 +198,7 @@ struct mnt_server_exec_stats
   UINT64 bt_num_multi_range_opt;
   UINT64 bt_num_splits;
   UINT64 bt_num_merges;
+  UINT64 bt_num_get_stats;
 
   /* Execution statistics for the query manager */
   UINT64 qm_num_selects;
@@ -246,7 +249,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of field of MNT_SERVER_EXEC_STATS structure */
-#define MNT_SIZE_OF_SERVER_EXEC_STATS 67
+#define MNT_SIZE_OF_SERVER_EXEC_STATS 70
 
 /* The exact size of mnt_server_exec_stats structure */
 #define MNT_SERVER_EXEC_STATS_SIZEOF \
@@ -437,6 +440,10 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_file_iowrites(thread_p, num_pages)
 #define mnt_file_iosynches(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_file_iosynches(thread_p)
+#define mnt_file_page_allocs(thread_p, num_pages) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_page_allocs(thread_p, num_pages)
+#define mnt_file_page_deallocs(thread_p, num_pages) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_page_deallocs(thread_p, num_pages)
 
 /*
  * Statistics at page level
@@ -529,6 +536,8 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_splits(thread_p)
 #define mnt_bt_merges(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_merges(thread_p)
+#define mnt_bt_get_stats(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_get_stats(thread_p)
 
 /* Execution statistics for the query manager */
 #define mnt_qm_selects(thread_p) \
@@ -601,6 +610,8 @@ extern void mnt_x_file_removes (THREAD_ENTRY * thread_p);
 extern void mnt_x_file_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_file_iowrites (THREAD_ENTRY * thread_p, int num_pages);
 extern void mnt_x_file_iosynches (THREAD_ENTRY * thread_p);
+extern void mnt_x_file_page_allocs (THREAD_ENTRY * thread_p, int num_pages);
+extern void mnt_x_file_page_deallocs (THREAD_ENTRY * thread_p, int num_pages);
 extern void mnt_x_pb_fetches (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_dirties (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_ioreads (THREAD_ENTRY * thread_p);
@@ -637,6 +648,7 @@ extern void mnt_x_bt_resumes (THREAD_ENTRY * thread_p);
 extern void mnt_x_bt_multi_range_opt (THREAD_ENTRY * thread_p);
 extern void mnt_x_bt_splits (THREAD_ENTRY * thread_p);
 extern void mnt_x_bt_merges (THREAD_ENTRY * thread_p);
+extern void mnt_x_bt_get_stats (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_selects (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_inserts (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_deletes (THREAD_ENTRY * thread_p);
@@ -682,6 +694,8 @@ extern UINT64 mnt_get_sort_data_pages (THREAD_ENTRY * thread_p);
 #define mnt_file_ioreads(thread_p)
 #define mnt_file_iowrites(thread_p, num_pages)
 #define mnt_file_iosynches(thread_p)
+#define mnt_file_page_allocs(thread_p, num_pages)
+#define mnt_file_page_deallocs(thread_p, num_pages)
 
 #define mnt_pb_fetches(thread_p)
 #define mnt_pb_dirties(thread_p)
@@ -721,6 +735,9 @@ extern UINT64 mnt_get_sort_data_pages (THREAD_ENTRY * thread_p);
 #define mnt_bt_noncovered(thread_p)
 #define mnt_bt_resumes(thread_p)
 #define mnt_bt_multi_range_opt(thread_p)
+#define mnt_bt_splits(thread_p)
+#define mnt_bt_merges(thread_p)
+#define mnt_bt_get_stat(thread_p)
 
 #define mnt_qm_selects(thread_p)
 #define mnt_qm_inserts(thread_p)

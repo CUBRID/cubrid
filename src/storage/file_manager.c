@@ -6919,6 +6919,8 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	}
     }
 
+  mnt_file_page_allocs (thread_p, npages);
+
   return answer;
 
 exit_on_error:
@@ -7923,6 +7925,8 @@ file_allocset_dealloc_contiguous_pages (THREAD_ENTRY * thread_p,
 #if defined(SERVER_MODE)
   thread_set_check_interrupt (thread_p, old_val);
 #endif /* SERVER_MODE */
+
+  mnt_file_page_deallocs (thread_p, ncont_page_entries);
 
   return ret;
 }

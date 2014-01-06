@@ -57,6 +57,10 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->file_num_iosynches));
   ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->file_num_page_allocs));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->file_num_page_deallocs));
+  ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->pb_num_fetches));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->pb_num_dirties));
@@ -128,6 +132,8 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_PUT_INT64 (ptr, &(stats->bt_num_splits));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->bt_num_merges));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->bt_num_get_stats));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->qm_num_selects));
   ptr += OR_INT64_SIZE;
@@ -215,6 +221,10 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->file_num_iosynches));
   ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->file_num_page_allocs));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->file_num_page_deallocs));
+  ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->pb_num_fetches));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->pb_num_dirties));
@@ -286,6 +296,8 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_GET_INT64 (ptr, &(stats->bt_num_splits));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->bt_num_merges));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->bt_num_get_stats));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->qm_num_selects));
   ptr += OR_INT64_SIZE;

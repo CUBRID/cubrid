@@ -374,6 +374,11 @@ mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
     CALC_GLOBAL_STAT_DIFF (p->file_num_iowrites, q->file_num_iowrites);
   stats_diff->file_num_iosynches =
     CALC_GLOBAL_STAT_DIFF (p->file_num_iosynches, q->file_num_iosynches);
+  stats_diff->file_num_page_allocs =
+    CALC_GLOBAL_STAT_DIFF (p->file_num_page_allocs, q->file_num_page_allocs);
+  stats_diff->file_num_page_deallocs =
+    CALC_GLOBAL_STAT_DIFF (p->file_num_page_deallocs,
+			   q->file_num_page_deallocs);
 
   stats_diff->pb_num_fetches =
     CALC_GLOBAL_STAT_DIFF (p->pb_num_fetches, q->pb_num_fetches);
@@ -482,6 +487,8 @@ mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
     CALC_GLOBAL_STAT_DIFF (p->bt_num_splits, q->bt_num_splits);
   stats_diff->bt_num_merges =
     CALC_GLOBAL_STAT_DIFF (p->bt_num_merges, q->bt_num_merges);
+  stats_diff->bt_num_get_stats =
+    CALC_GLOBAL_STAT_DIFF (p->bt_num_get_stats, q->bt_num_get_stats);
 
   stats_diff->qm_num_selects =
     CALC_GLOBAL_STAT_DIFF (p->qm_num_selects, q->qm_num_selects);
@@ -1611,6 +1618,8 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
   "Num_file_ioreads",
   "Num_file_iowrites",
   "Num_file_iosynches",
+  "Num_file_page_allocs",
+  "Num_file_page_deallocs",
   "Num_data_page_fetches",
   "Num_data_page_dirties",
   "Num_data_page_ioreads",
@@ -1647,6 +1656,7 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
   "Num_btree_multirange_optimization",
   "Num_btree_splits",
   "Num_btree_merges",
+  "Num_btree_get_stats",
   "Num_query_selects",
   "Num_query_inserts",
   "Num_query_deletes",
@@ -2070,6 +2080,40 @@ mnt_x_file_iosynches (THREAD_ENTRY * thread_p)
   if (stats != NULL)
     {
       ADD_STATS (stats, file_num_iosynches, 1);
+    }
+}
+
+/*
+ * mnt_x_file_page_allocs - Increase file page alloc counter of the current
+ *                          transaction index
+ *   return: none
+ */
+void
+mnt_x_file_page_allocs (THREAD_ENTRY * thread_p, int num_pages)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, file_num_page_allocs, num_pages);
+    }
+}
+
+/*
+ * mnt_x_file_page_deallocs - Decrease file page alloc counter of the current
+ *                            transaction index
+ *   return: none
+ */
+void
+mnt_x_file_page_deallocs (THREAD_ENTRY * thread_p, int num_pages)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, file_num_page_deallocs, num_pages);
     }
 }
 
@@ -2788,6 +2832,23 @@ mnt_x_bt_merges (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * mnt_x_bt_get_stats - Increase bt_num_get_stats counter of the current
+ *                      transaction index
+ *   return: none
+ */
+void
+mnt_x_bt_get_stats (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_num_get_stats, 1);
+    }
+}
+
+/*
  * mnt_x_qm_selects - Increase qm_num_selects counter of the current
                       transaction index
  *   return: none
@@ -3211,6 +3272,10 @@ mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
 		  q->file_num_iowrites);
   CALC_STAT_DIFF (stats_diff->file_num_iosynches, p->file_num_iosynches,
 		  q->file_num_iosynches);
+  CALC_STAT_DIFF (stats_diff->file_num_page_allocs, p->file_num_page_allocs,
+		  q->file_num_page_allocs);
+  CALC_STAT_DIFF (stats_diff->file_num_page_deallocs,
+		  p->file_num_page_deallocs, q->file_num_page_deallocs);
 
   CALC_STAT_DIFF (stats_diff->pb_num_fetches, p->pb_num_fetches,
 		  q->pb_num_fetches);
@@ -3306,6 +3371,8 @@ mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
 		  q->bt_num_splits);
   CALC_STAT_DIFF (stats_diff->bt_num_merges, p->bt_num_merges,
 		  q->bt_num_merges);
+  CALC_STAT_DIFF (stats_diff->bt_num_get_stats, p->bt_num_get_stats,
+		  q->bt_num_get_stats);
 
   CALC_STAT_DIFF (stats_diff->qm_num_selects, p->qm_num_selects,
 		  q->qm_num_selects);

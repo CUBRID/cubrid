@@ -4524,6 +4524,8 @@ end:
       pr_clear_value (&(env->pkeys_val[i]));
     }
 
+  mnt_bt_get_stats (thread_p);
+
   return ret;
 
 exit_on_error:
