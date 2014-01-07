@@ -4951,7 +4951,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   prv_bufptr = NULL;
   need_sync = false;
 
-  rv = pthread_mutex_lock (&flush_info->flush_mutex);logpb_flush_all_append_pages
+  rv = pthread_mutex_lock (&flush_info->flush_mutex);
   hold_flush_mutex = true;
 
   csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
