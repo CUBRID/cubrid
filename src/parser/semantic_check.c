@@ -14607,7 +14607,9 @@ pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
 
   arg = node->info.expr.arg1;
 
-  if (arg == NULL || arg->node_type != PT_NAME)
+  /* OIDs don't have default value */
+  if (arg == NULL || arg->node_type != PT_NAME
+      || arg->info.name.meta_class == PT_OID_ATTR)
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		 MSGCAT_SEMANTIC_DEFAULT_JUST_COLUMN_NAME);
