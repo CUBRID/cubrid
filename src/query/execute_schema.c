@@ -11066,10 +11066,15 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 
   tp_domain_free (attr_db_domain);
 
-  /* special case : AUTO INCREMENT */
+  /* special case : AUTO INCREMENT
+   * if start value specified, we create a new serial or keep the old one
+   * Be mysql compatible, see CUBRIDSUS-6441
+   */
   if (is_att_prop_set
       (attr_chg_properties->p[P_AUTO_INCR],
-       ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_PRESENT_NEW))
+       ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_PRESENT_NEW)
+      && attr_def->info.attr_def.auto_increment->info.auto_increment.
+      start_val != NULL)
     {
       attr_chg_properties->p[P_AUTO_INCR] |= ATT_CHG_PROPERTY_DIFF;
       /* remove "UNCHANGED" flag */
