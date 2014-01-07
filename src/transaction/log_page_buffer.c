@@ -2677,7 +2677,7 @@ logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p)
  *              flushing this page to disk (e.g., page replacement),
  *              otherwise, during crash recovery we could try to read a log
  *              record that has never been finished and the end of the log may
- *              mot be detected. That is, the log would be corrupted.
+ *              not be detected. That is, the log would be corrupted.
  *
  *              If the current append page does not contain the beginning of
  *              the log record, the page can be freed and flushed at any time.
@@ -4718,7 +4718,7 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 static int
 logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 {
-  LOG_RECORD_HEADER *eof;	/* End of log record */
+  LOG_RECORD_HEADER *tmp_eof = NULL;	/* End of log record */
   struct log_buffer *bufptr;	/* The current buffer log append page
 				 * scanned
 				 */
@@ -4880,12 +4880,12 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	}
 #endif /* CUBRID_DEBUG */
 
-      eof = (LOG_RECORD_HEADER *) LOG_PREV_APPEND_PTR ();
-      save_record = *eof;
+      tmp_eof = (LOG_RECORD_HEADER *) LOG_PREV_APPEND_PTR ();
+      save_record = *tmp_eof;
 
       /* Overwrite it with an end of log marker */
-      LSA_SET_NULL (&eof->forw_lsa);
-      eof->type = LOG_END_OF_LOG;
+      LSA_SET_NULL (&tmp_eof->forw_lsa);
+      tmp_eof->type = LOG_END_OF_LOG;
       LSA_COPY (&log_Gl.hdr.eof_lsa, &log_Gl.append.prev_lsa);
 
       logpb_set_dirty (thread_p, log_Gl.append.delayed_free_log_pgptr,
@@ -4897,17 +4897,15 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        * Add an end of log marker to detect the end of the log. Don't advance the
        * log address, the log end of file is overwritten at a later point.
        */
-      LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*eof));
-      eof = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
+      LOG_RECORD_HEADER eof;
 
-      eof->trid = LOG_READ_NEXT_TRANID;
-      LSA_SET_NULL (&eof->prev_tranlsa);
-      LSA_COPY (&eof->back_lsa, &log_Gl.append.prev_lsa);
-      LSA_SET_NULL (&eof->forw_lsa);
-      eof->type = LOG_END_OF_LOG;
-      LSA_COPY (&log_Gl.hdr.eof_lsa, &log_Gl.hdr.append_lsa);
+      eof.trid = LOG_READ_NEXT_TRANID;
+      LSA_SET_NULL (&eof.prev_tranlsa);
+      LSA_COPY (&eof.back_lsa, &log_Gl.append.prev_lsa);
+      LSA_SET_NULL (&eof.forw_lsa);
+      eof.type = LOG_END_OF_LOG;
 
-      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
+      logpb_start_append (thread_p, &eof);
     }
 
   /*
@@ -4953,7 +4951,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   prv_bufptr = NULL;
   need_sync = false;
 
-  rv = pthread_mutex_lock (&flush_info->flush_mutex);
+  rv = pthread_mutex_lock (&flush_info->flush_mutex);logpb_flush_all_append_pages
   hold_flush_mutex = true;
 
   csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
@@ -5222,7 +5220,9 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       /*
        * Restore the log append record
        */
-      *eof = save_record;
+      assert (tmp_eof != NULL);
+
+      *tmp_eof = save_record;
       logpb_set_dirty (thread_p, log_Gl.append.delayed_free_log_pgptr,
 		       DONT_FREE);
 
@@ -5614,13 +5614,21 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
       log_Gl.append.log_pgptr->hdr.offset = log_Gl.hdr.append_lsa.offset;
     }
 
-  LSA_COPY (&log_Gl.append.prev_lsa, &log_Gl.hdr.append_lsa);
+  if (log_rec->type == LOG_END_OF_LOG)
+    {
+      LSA_COPY (&log_Gl.hdr.eof_lsa, &log_Gl.hdr.append_lsa);
 
-  /*
-   * Set the page dirty, increase and align the append offset
-   */
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER));
+      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
+    }
+  else
+    {
+      LSA_COPY (&log_Gl.append.prev_lsa, &log_Gl.hdr.append_lsa);
 
+      /*
+       * Set the page dirty, increase and align the append offset
+       */
+      LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER));
+    }
 #if 0
   /*
    * LOG_DUMMY_FILLPAGE_FORARCHIVE isn't generated no more
