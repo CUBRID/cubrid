@@ -1775,7 +1775,161 @@ end:
 }
 
 /*
- * classobj_put_foreign_key_ref()
+ * classobj_rename_foreign_key_ref()
+ *
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   properties(in/out):
+ *   old_name(in): The old constraint name.
+ *   new_name(in): The new constraint name.
+ */
+int
+classobj_rename_foreign_key_ref (DB_SEQ ** properties, char *old_name,
+				 char *new_name)
+{
+  DB_VALUE prop_val, pk_val, fk_container_val;
+  DB_VALUE fk_val, new_fk_val;
+  DB_VALUE name_val, new_name_val;
+  DB_SEQ *pk_property, *pk_seq, *fk_container, *fk_seq = NULL;
+  int size;
+  int fk_container_pos, pk_seq_pos;
+  int err = NO_ERROR;
+  int fk_container_len;
+  int i;
+  char *name = NULL;
+  int found = 0;
+
+  PRIM_SET_NULL (&prop_val);
+  PRIM_SET_NULL (&pk_val);
+  PRIM_SET_NULL (&fk_container_val);
+  PRIM_SET_NULL (&fk_val);
+  PRIM_SET_NULL (&new_fk_val);
+  PRIM_SET_NULL (&new_name_val);
+
+  if (classobj_get_prop (*properties, SM_PROPERTY_PRIMARY_KEY, &prop_val) <=
+      0)
+    {
+      err = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+      return err;
+    }
+
+  pk_property = DB_GET_SEQUENCE (&prop_val);
+  err = set_get_element (pk_property, 1, &pk_val);
+  if (err != NO_ERROR)
+    {
+      goto end;
+    }
+
+  pk_seq = DB_GET_SEQUENCE (&pk_val);
+  size = set_size (pk_seq);
+
+  err = set_get_element (pk_seq, size - 1, &fk_container_val);
+  if (err != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (DB_VALUE_TYPE (&fk_container_val) == DB_TYPE_SEQUENCE)
+    {
+      fk_container = DB_GET_SEQUENCE (&fk_container_val);
+      fk_container_len = set_size (fk_container);
+      pk_seq_pos = size - 1;
+
+      /* find the position of the existing FK ref */
+      for (i = 0; i < fk_container_len; i++)
+	{
+	  PRIM_SET_NULL (&fk_val);
+	  PRIM_SET_NULL (&name_val);
+
+	  err = set_get_element (fk_container, i, &fk_val);
+	  if (err != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  fk_seq = DB_GET_SEQUENCE (&fk_val);
+
+	  /* A shallow copy for name_val is enough. 
+	   * So, no need pr_clear_val(&name_val). */
+	  err = set_get_element_nocopy (fk_seq, 4, &name_val);
+	  if (err != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  name = DB_GET_STRING (&name_val);
+
+	  if (SM_COMPARE_NAMES (old_name, name) == 0)
+	    {
+	      fk_container_pos = i;
+
+	      db_make_string (&new_name_val, new_name);
+
+	      err = set_put_element (fk_seq, 4, &new_name_val);
+	      if (err != NO_ERROR)
+		{
+		  goto end;
+		}
+
+	      found = 1;
+	      break;
+	    }
+	  else
+	    {
+	      /* This fk_val is not the one we need. */
+	      pr_clear_value (&fk_val);
+	    }
+	}
+    }
+
+  if (!found)
+    {
+      assert (false);
+
+      err = ER_SM_INVALID_PROPERTY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto end;
+    }
+
+  db_make_sequence (&new_fk_val, fk_seq);
+
+  err = set_put_element (fk_container, fk_container_pos, &new_fk_val);
+  if (err != NO_ERROR)
+    {
+      goto end;
+    }
+
+  err = set_put_element (pk_seq, pk_seq_pos, &fk_container_val);
+  if (err != NO_ERROR)
+    {
+      goto end;
+    }
+
+  err = set_put_element (pk_property, 1, &pk_val);
+  if (err != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (classobj_put_prop (*properties, SM_PROPERTY_PRIMARY_KEY, &prop_val) ==
+      0)
+    {
+      err = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+      goto end;
+    }
+
+end:
+  pr_clear_value (&prop_val);
+  pr_clear_value (&pk_val);
+  pr_clear_value (&fk_container_val);
+  pr_clear_value (&fk_val);
+  pr_clear_value (&new_fk_val);
+  pr_clear_value (&new_name_val);
+
+  return err;
+}
+
+/*
+ * classobj_drop_foreign_key_ref()
  *   return: NO_ERROR on success, non-zero for ERROR
  *   properties(in/out):
  *   fk_info(in):

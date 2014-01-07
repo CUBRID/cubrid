@@ -2730,6 +2730,7 @@ rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
   SM_CLASS_CONSTRAINT *existing_con = NULL;
   const char *property_type = NULL;
   char *norm_new_name = NULL;
+  MOP ref_clsop;
 
   error = classobj_make_class_constraints (ctemplate->properties,
 					   ctemplate->attributes, &sm_cons);
@@ -2800,6 +2801,36 @@ rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
 
   error = classobj_rename_constraint (ctemplate->properties,
 				      property_type, old_name, norm_new_name);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* Rename foreign key ref in owner table. */
+  if (sm_constraint->type == SM_CONSTRAINT_FOREIGN_KEY)
+    {
+      ref_clsop = ws_mop (&(sm_constraint->fk_info->ref_class_oid), NULL);
+      if (ctemplate->op == ref_clsop)
+	{
+	  /* Class references to itself.
+	   * The below rename FK ref in properties of this class.
+	   */
+	  error = classobj_rename_foreign_key_ref (&(ctemplate->properties),
+						   old_name, new_name);
+	}
+      else
+	{
+	  /* Class references to another one (owner class).
+	   * The below rename FK ref in owner class and update the owner class.
+	   */
+	  error = sm_rename_foreign_key_ref (ref_clsop, old_name, new_name);
+	}
+
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
 
 end:
   if (norm_new_name)

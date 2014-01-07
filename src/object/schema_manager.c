@@ -10706,6 +10706,78 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
 }
 
 /*
+ * sm_rename_foreign_key_ref() - Rename constraint name in PK referenced by FK
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   ref_clsop(in): referenced class by FK
+ *   old_name(in): old constraint name
+ *   new_name(in): new constraint name
+ */
+int
+sm_rename_foreign_key_ref (MOP ref_clsop, char *old_name, char *new_name)
+{
+  SM_TEMPLATE *template_;
+  SM_CLASS *ref_class_;
+  SM_CLASS_CONSTRAINT *pk;
+  MOP owner_clsop = NULL;
+  int save, error;
+
+  AU_DISABLE (save);
+
+  error = au_fetch_class_force (ref_clsop, &ref_class_, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      AU_ENABLE (save);
+      return error;
+    }
+
+  if (ref_class_->inheritance != NULL)
+    {
+      /* the PK of referenced table may come from.its parent table */
+      pk = classobj_find_cons_primary_key (ref_class_->constraints);
+      if (pk == NULL)
+	{
+	  AU_ENABLE (save);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_FK_REF_CLASS_HAS_NOT_PK, 1, ref_class_->header.name);
+	  return ER_FK_REF_CLASS_HAS_NOT_PK;
+	}
+      owner_clsop = pk->attributes[0]->class_mop;
+    }
+  else
+    {
+      owner_clsop = ref_clsop;
+    }
+
+  template_ = dbt_edit_class (owner_clsop);
+  if (template_ == NULL)
+    {
+      AU_ENABLE (save);
+      return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+    }
+
+  error =
+    classobj_rename_foreign_key_ref (&(template_->properties), old_name,
+				     new_name);
+  if (error != NO_ERROR)
+    {
+      dbt_abort_class (template_);
+      AU_ENABLE (save);
+      return error;
+    }
+
+  ref_clsop = dbt_finish_class (template_);
+  if (ref_clsop == NULL)
+    {
+      dbt_abort_class (template_);
+      AU_ENABLE (save);
+      return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+    }
+
+  AU_ENABLE (save);
+  return NO_ERROR;
+}
+
+/*
  * allocate_unique_constraint() - Allocate index for unique constraints
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop(in): class object
