@@ -870,6 +870,7 @@ pt_find_aggregate_names (PARSER_CONTEXT * parser, PT_NODE * tree,
   PT_AGG_NAME_INFO *info = (PT_AGG_NAME_INFO *) arg;
   PT_NODE *node = NULL, *select_stack;
   int level = 0;
+  bool max_level_has_gby = false;
 
   switch (tree->node_type)
     {
@@ -915,11 +916,23 @@ pt_find_aggregate_names (PARSER_CONTEXT * parser, PT_NODE * tree,
 	{
 	  /* found! */
 	  info->max_level = level;
+	  max_level_has_gby = (select->info.query.q.select.group_by != NULL);
 	}
 
       /* next stack level */
       select_stack = select_stack->next;
       level++;
+    }
+
+  /* Note: we need to deal with corelated queries when an aggregate
+   *       function in the subquery contains arguments in outer-level 
+   *       queries. For example:
+   *            'select (select sum(t1.i) from t2) from t1;'
+   *       It should be evaluted over the rows of the nearest outer level.
+   */
+  if (!max_level_has_gby)
+    {
+      info->max_level = level - 1;
     }
 
   return tree;
