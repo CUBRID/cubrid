@@ -7789,13 +7789,13 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype,
 			     VAL_DESCR * val_desc_p, OID * obj_oid_p,
 			     QFILE_TUPLE tuple)
 {
-  DB_VALUE dbval, *result_p;
+  DB_VALUE dbval, *result_p = NULL;
   DB_COLLECTION *collection_p = NULL;
-  SETOBJ *setobj_p;
+  SETOBJ *setobj_p = NULL;
   int n, size;
-  REGU_VARIABLE_LIST regu_var_p, operand;
-  int error;
-  TP_DOMAIN *domain_p;
+  REGU_VARIABLE_LIST regu_var_p = NULL, operand = NULL;
+  int error_code = NO_ERROR;
+  TP_DOMAIN *domain_p = NULL;
 
   result_p = regu_func_p->value.funcp->value;
   operand = regu_func_p->value.funcp->operand;
@@ -7825,11 +7825,10 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype,
       return ER_FAILED;
     }
 
-  error = set_get_setobj (collection_p, &setobj_p, 1);
-  if (error != NO_ERROR || !setobj_p)
+  error_code = set_get_setobj (collection_p, &setobj_p, 1);
+  if (error_code != NO_ERROR || !setobj_p)
     {
-      set_free (collection_p);
-      return ER_FAILED;
+      goto error;
     }
 
   /*
@@ -7851,12 +7850,11 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype,
       if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL,
 			    obj_oid_p, tuple, &dbval) != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  goto error;
 	}
 
       if ((stype == DB_TYPE_VOBJ) && (n == 2))
 	{
-
 	  if (DB_IS_NULL (&dbval))
 	    {
 	      set_free (collection_p);
@@ -7867,23 +7865,21 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype,
       /* using setobj_put_value transfers "ownership" of the
        * db_value memory to the set. This avoids a redundant clone/free.
        */
-      error = setobj_put_value (setobj_p, n, &dbval);
+      error_code = setobj_put_value (setobj_p, n, &dbval);
 
       /*
        * if we attempt to add a duplicate value to a set,
-       * clear the value, but do not set an error
+       * clear the value, but do not set an error code
        */
-      if (error == SET_DUPLICATE_VALUE)
+      if (error_code == SET_DUPLICATE_VALUE)
 	{
 	  pr_clear_value (&dbval);
-	  error = NO_ERROR;
+	  error_code = NO_ERROR;
 	}
 
-      if (error != NO_ERROR)
+      if (error_code != NO_ERROR)
 	{
-	  pr_clear_value (&dbval);
-	  set_free (collection_p);
-	  return ER_FAILED;
+	  goto error;
 	}
 
       operand = operand->next;
@@ -7897,6 +7893,14 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype,
     }
 
   return NO_ERROR;
+
+error:
+  pr_clear_value (&dbval);
+  if (collection_p != NULL)
+    {
+      set_free (collection_p);
+    }
+  return ((error_code == NO_ERROR) ? ER_FAILED : error_code);
 }
 
 /*

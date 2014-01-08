@@ -1010,10 +1010,10 @@ bool PRM_QUERY_MODE_SYNC = true;
 static bool prm_query_mode_sync_default = true;
 static unsigned int prm_query_mode_sync_flag = 0;
 
-int PRM_INSERT_MODE = 1 + 8 + 16;
-static int prm_insert_mode_default = 1 + 8 + 16;
+int PRM_INSERT_MODE = 1 + 2;
+static int prm_insert_mode_default = 1 + 2;
 static int prm_insert_mode_lower = 0;
-static int prm_insert_mode_upper = 31;
+static int prm_insert_mode_upper = 31; /* For backward compatibility */
 static unsigned int prm_insert_mode_flag = 0;
 
 int PRM_LK_MAX_SCANID_BIT = 32;

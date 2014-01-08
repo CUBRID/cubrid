@@ -11420,7 +11420,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 	    }
 	  qexec_failure_line (__LINE__, xasl_state);
-	  return ER_FAILED;
+	  GOTO_EXIT_ON_ERROR;
 	}
 
       while ((xb_scan = qexec_next_scan_block_iterations (thread_p,
@@ -11843,7 +11843,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				  &lsa) != TRAN_ACTIVE)
 	{
 	  qexec_failure_line (__LINE__, xasl_state);
-	  return ER_FAILED;
+	  GOTO_EXIT_ON_ERROR;
 	}
     }
 
@@ -12031,7 +12031,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  continue;
 	}
 
-      if (xptr->status == XASL_CLEARED)
+      if (xptr->status == XASL_CLEARED || xptr->status == XASL_INITIALIZED)
 	{
 	  if (qexec_execute_mainblock (thread_p, xptr, xasl_state) !=
 	      NO_ERROR)
@@ -13928,7 +13928,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  continue;
 		}
 
-	      if (xptr2->status == XASL_CLEARED)
+	      if (xptr2->status == XASL_CLEARED
+		  || xptr2->status == XASL_INITIALIZED)
 		{
 		  if (qexec_execute_mainblock (thread_p, xptr2, xasl_state) !=
 		      NO_ERROR)

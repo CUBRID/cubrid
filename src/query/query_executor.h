@@ -592,7 +592,8 @@ typedef enum
 {
   XASL_CLEARED,
   XASL_SUCCESS,
-  XASL_FAILURE
+  XASL_FAILURE,
+  XASL_INITIALIZED
 } XASL_STATUS;
 
 /* To handle selected update list,
@@ -823,7 +824,8 @@ do {                                                                          \
     if (_x) {                                                                 \
         if (XASL_IS_FLAGED(_x, XASL_LINK_TO_REGU_VARIABLE)) {                 \
             /* clear correlated subquery list files                      */   \
-            if ((_x)->status == XASL_CLEARED) {                               \
+            if ((_x)->status == XASL_CLEARED				      \
+		|| (_x)->status == XASL_INITIALIZED) {                        \
                 /* execute xasl query                                    */   \
                 qexec_execute_mainblock((thread_p), _x, (v)->xasl_state);     \
             } /* else: already evaluated. success or failure */               \

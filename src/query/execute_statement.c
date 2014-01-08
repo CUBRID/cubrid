@@ -10384,11 +10384,19 @@ do_evaluate (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 
 typedef enum
-{ INSERT_SELECT = 1,
+{
+  INSERT_SELECT = 1,
   INSERT_VALUES = 2,
+#if defined(ENABLE_UNUSED_FUNCTION)
+  /*
+   * NOT USED ANY MORE.
+   * prm_insert_mode_upper is still left as 31 for backward compatibility.
+   *
+   */
   INSERT_DEFAULT = 4,
   INSERT_REPLACE = 8,
   INSERT_ON_DUP_KEY_UPDATE = 16
+#endif /* ENABLE_UNUSED_FUNCTION */
 } SERVER_PREFERENCE;
 
 typedef struct odku_tuple_value_arg ODKU_TUPLE_VALUE_ARG;
