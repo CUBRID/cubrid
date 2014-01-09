@@ -186,6 +186,9 @@ namespace dbgw
   class _ExecuteQueryBatchJob : public _AsyncWorkerJob
   {
   public:
+    _ExecuteQueryBatchJob(trait<_Service>::sp pService,
+        trait<_QueryMapper>::sp pQueryMapper, unsigned long ulTimeOutMilSec,
+        const char *szSqlName, const _ParameterList &parameterList);
     _ExecuteQueryBatchJob(trait<_ExecutorHandler>::sp pExecHandler,
         unsigned long ulTimeOutMilSec, const char *szSqlName,
         const _ParameterList &parameterList);

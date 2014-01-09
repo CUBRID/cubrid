@@ -405,10 +405,8 @@ namespace dbgw
         {
           checkClientIsValid();
 
-          ulWaitTimeMilSec = bindExecutorHandler(ulWaitTimeMilSec);
-
           trait<_AsyncWorkerJob>::sp pJob(
-              new _ExecuteQueryBatchJob(m_pExecHandler, ulWaitTimeMilSec,
+              new _ExecuteQueryBatchJob(m_pService, m_pQueryMapper, ulWaitTimeMilSec,
                   szSqlName, parameterList));
 
           return delegateJobAsync(pJob, pCallBack, pData);

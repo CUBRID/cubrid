@@ -517,6 +517,14 @@ namespace dbgw
     return m_sqlName.c_str();
   }
 
+  _ExecuteQueryBatchJob::_ExecuteQueryBatchJob(trait<_Service>::sp pService,
+      trait<_QueryMapper>::sp pQueryMapper, unsigned long ulTimeOutMilSec,
+      const char *szSqlName, const _ParameterList &parameterList) :
+    _AsyncWorkerJob(pService, pQueryMapper, ulTimeOutMilSec), m_sqlName(szSqlName),
+    m_parameterList(parameterList)
+  {
+  }
+
   _ExecuteQueryBatchJob::_ExecuteQueryBatchJob(
       trait<_ExecutorHandler>::sp pExecHandler, unsigned long ulTimeOutMilSec,
       const char *szSqlName, const _ParameterList &parameterList) :
