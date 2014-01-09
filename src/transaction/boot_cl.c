@@ -5091,7 +5091,7 @@ boot_define_view_partition (void)
 
   sprintf (stmt,
 	   "SELECT [p].[class_of].[class_name] AS [class_name], [p].[pname] AS [partition_name],"
-	   " [p].[class_of].[class_name] + '__p__' + [p].[pname] AS [partition_class_name],"
+	   " CONCAT([p].[class_of].[class_name], '__p__', [p].[pname]) AS [partition_class_name],"
 	   " CASE WHEN [p].[ptype] = 0 THEN 'HASH'"
 	   " WHEN [p].[ptype] = 1 THEN 'RANGE' ELSE 'LIST' END AS [partition_type],"
 	   " TRIM(SUBSTRING([pi].[pexpr] FROM 8 FOR (POSITION(' FROM ' IN [pi].[pexpr])-8)))"
