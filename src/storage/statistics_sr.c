@@ -85,13 +85,6 @@ static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 						OID * class_oid,
 						OID * partitions, int count,
 						bool with_fullscan);
-static const BTREE_STATS *stats_find_inherited_index_stats (OR_CLASSREP *
-							    cls_rep,
-							    OR_CLASSREP *
-							    subcls_rep,
-							    DISK_ATTR *
-							    subcls_attr,
-							    BTID * cls_btid);
 
 /*
  * xstats_update_statistics () -  Updates the statistics for the objects
@@ -1728,7 +1721,7 @@ cleanup:
  *		     statistics
  * cls_btid (in)   : BTID of the index in the superclass
  */
-static const BTREE_STATS *
+const BTREE_STATS *
 stats_find_inherited_index_stats (OR_CLASSREP * cls_rep,
 				  OR_CLASSREP * subcls_rep,
 				  DISK_ATTR * subcls_attr, BTID * cls_btid)
@@ -1737,6 +1730,7 @@ stats_find_inherited_index_stats (OR_CLASSREP * cls_rep,
   const char *cls_btname = NULL;
   const BTID *subcls_btid = NULL;
   BTREE_STATS *btstats = NULL;
+
   /* find the index representation in the superclass */
   for (i = 0; i < cls_rep->n_indexes; i++)
     {

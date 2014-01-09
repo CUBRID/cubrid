@@ -45,6 +45,8 @@
 #include "heap_file.h"
 #include "storage_common.h"
 #include "xserver_interface.h"
+#include "statistics_sr.h"
+#include "partition.h"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -1531,7 +1533,6 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p,
 {
   VPID root_vpid;
   PAGE_PTR root_page_p;
-  RECDES record;
   BTREE_ROOT_HEADER root_header;
   int i;
 
@@ -5101,6 +5102,20 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
   DISK_REPR *disk_repr_p = NULL;
   bool free_disk_rep = false;
   int key_size;
+  OID *partitions = NULL;
+  int count = 0;
+  CLS_INFO *subcls_info = NULL;
+  DISK_REPR *subcls_disk_rep = NULL;
+  OR_CLASSREP *subcls_rep = NULL;
+  OR_CLASSREP *cls_rep = NULL;
+  DISK_ATTR *subcls_attr = NULL;
+  const BTREE_STATS *subcls_stats = NULL;
+  REPR_ID subcls_repr_id;
+  int subcls_idx_cache;
+  int idx_cache;
+  int i;
+  bool is_subcls_attr_found = false;
+  bool free_cls_rep = false;
 
   assert (class_oid != NULL && btid != NULL && cardinality != NULL);
   *cardinality = -1;
@@ -5132,6 +5147,15 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
 	}
       free_disk_rep = true;
     }
+
+  cls_rep = heap_classrepr_get (thread_p, class_oid, NULL, 0, &idx_cache, true);
+  if (cls_rep == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+      error = ER_UNEXPECTED;
+      goto exit_cleanup;
+    }
+  free_cls_rep = true;
 
   /* There should be only one OR_ATTRIBUTE element that contains the index;
    * this is the element corresponding to the attribute which is the first key
@@ -5219,12 +5243,141 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
       goto exit_cleanup;
     }
 
-  *cardinality = p_stat_info->keys;
+  error = partition_get_partition_oids (thread_p, class_oid,
+					&partitions, &count);
+  if (error != NO_ERROR)
+    {
+      goto exit_cleanup;
+    }
+
+  if (count == 0)
+    {
+      *cardinality = p_stat_info->keys;
+    }
+  else
+    {
+      *cardinality = 0;
+      for (i = 0; i < count; i++)
+	{
+	   /* clean subclass loaded in previous iteration */
+	  if (subcls_info != NULL)
+	    {
+	      catalog_free_class_info (subcls_info);
+	      subcls_info = NULL;
+	    }
+	  if (subcls_disk_rep != NULL)
+	    {
+	      catalog_free_representation (subcls_disk_rep);
+	      subcls_disk_rep = NULL;
+	    }
+	  if (subcls_rep != NULL)
+	    {
+	      heap_classrepr_free (subcls_rep, &subcls_idx_cache);
+	      subcls_rep = NULL;
+	    }
+
+	  /* load new subclass */
+	  subcls_info = catalog_get_class_info (thread_p, &partitions[i]);
+	  if (subcls_info == NULL)
+	    {
+	      error = er_errid ();
+	      goto exit_cleanup;
+	    }
+
+	  /* get disk repr for subclass */
+	  error = catalog_get_last_representation_id (thread_p, &partitions[i],
+						      &subcls_repr_id);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_cleanup;
+	    }
+
+	  subcls_disk_rep = catalog_get_representation (thread_p, &partitions[i],
+							subcls_repr_id);
+	  if (subcls_disk_rep == NULL)
+	    {
+	      error = er_errid ();
+	      goto exit_cleanup;
+	    }
+
+	  subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL, 0,
+					   &subcls_idx_cache, true);
+	  if (subcls_rep == NULL)
+	    {
+	      error = ER_FAILED;
+	      goto exit_cleanup;
+	    }
+
+	  is_subcls_attr_found = false;
+	  for (att_cnt = 0, subcls_attr = subcls_disk_rep->fixed;
+	       att_cnt < subcls_disk_rep->n_fixed; att_cnt++, subcls_attr++)
+	    {
+	      if (disk_attr_p->id == subcls_attr->id)
+		{
+		  is_subcls_attr_found = true;
+		  break;
+		}
+	    }
+	  if (!is_subcls_attr_found)
+	    {
+	       for (att_cnt = 0, subcls_attr = subcls_disk_rep->variable;
+		    att_cnt < subcls_disk_rep->n_variable; att_cnt++,
+							   subcls_attr++)
+		 {
+		  if (disk_attr_p->id == subcls_attr->id)
+		    {
+		      is_subcls_attr_found = true;
+		      break;
+		    }
+		 }
+	    }
+
+	  if (!is_subcls_attr_found)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+	      error = ER_UNEXPECTED;
+	      goto exit_cleanup;
+	    }
+	  subcls_stats = stats_find_inherited_index_stats (cls_rep, subcls_rep,
+							   subcls_attr,
+							   &p_stat_info->btid);
+	  if (subcls_stats == NULL)
+	    {
+	      error = ER_FAILED;
+	      goto exit_cleanup;
+	    }
+
+	  *cardinality = *cardinality + subcls_stats->keys;
+	}
+    }
 
 exit_cleanup:
   if (free_disk_rep)
     {
       catalog_free_representation (disk_repr_p);
+    }
+  if (free_cls_rep)
+    {
+      heap_classrepr_free (cls_rep, &idx_cache);
+    }
+  if (subcls_info != NULL)
+    {
+      catalog_free_class_info (subcls_info);
+      subcls_info = NULL;
+    }
+  if (subcls_disk_rep != NULL)
+    {
+      catalog_free_representation (subcls_disk_rep);
+      subcls_disk_rep = NULL;
+    }
+  if (subcls_rep != NULL)
+    {
+      heap_classrepr_free (subcls_rep, &subcls_idx_cache);
+      subcls_rep = NULL;
+    }
+  if (partitions != NULL)
+    {
+      db_private_free (thread_p, partitions);
     }
 exit:
   return error;
