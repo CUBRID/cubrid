@@ -429,7 +429,18 @@ util_shuffle_string_array (char **array, int count)
   char *temp;
 
   gettimeofday (&t, NULL);
+
+  /* tv_usec returned by gettimeofday on WINDOWS
+   * is millisec * 1000 and seeding it would result in
+   * generating an even random number at first.
+   * To avoid such a pattern in generating a random number,
+   * tv_usec/1000 is used on WINDOWS.
+   */
+#if defined (WINDOWS)
+  srand48_r (t.tv_usec / 1000, &buf);
+#else /* WINDOWS */
   srand48_r (t.tv_usec, &buf);
+#endif /* !WINDOWS */
 
   /* Fisher-Yates shuffle */
   for (i = count - 1; i > 0; i--)
