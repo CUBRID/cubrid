@@ -29,10 +29,9 @@ namespace dbgw
   static const char *DBGW_LOG_PATH = "log/cci_dbgw.log";
   static const int LOG_BUFFER_SIZE = 1024 * 20;
   static system::_Mutex g_logMutex;
-
-  Logger _Logger::m_logger = NULL;
-  std::string _Logger::m_logPath = DBGW_LOG_PATH;
-  CCI_LOG_LEVEL _Logger::m_logLevel = CCI_LOG_LEVEL_ERROR;
+  static Logger g_logger = NULL;
+  static std::string g_logPath = DBGW_LOG_PATH;
+  static CCI_LOG_LEVEL g_logLevel = CCI_LOG_LEVEL_ERROR;
 
   _Logger::_Logger()
   {
@@ -90,7 +89,7 @@ namespace dbgw
 
   void _Logger::initialize()
   {
-    initialize(m_logLevel, DBGW_LOG_PATH);
+    initialize(g_logLevel, DBGW_LOG_PATH);
   }
 
   void _Logger::initialize(CCI_LOG_LEVEL level, const std::string &logPath)
@@ -105,8 +104,8 @@ namespace dbgw
 
     if (logPath != "")
       {
-        m_logPath = logPath;
-        m_logger = cci_log_get(m_logPath.c_str());
+        g_logPath = logPath;
+        g_logger = cci_log_get(g_logPath.c_str());
       }
   }
 
@@ -114,9 +113,9 @@ namespace dbgw
   {
     system::_MutexAutoLock lock(&g_logMutex);
 
-    if (m_logger != NULL)
+    if (g_logger != NULL)
       {
-        cci_log_set_level(m_logger, level);
+        cci_log_set_level(g_logger, level);
       }
   }
 
@@ -124,9 +123,9 @@ namespace dbgw
   {
     system::_MutexAutoLock lock(&g_logMutex);
 
-    if (m_logger != NULL)
+    if (g_logger != NULL)
       {
-        cci_log_set_force_flush(m_logger, bForceFlush);
+        cci_log_set_force_flush(g_logger, bForceFlush);
       }
   }
 
@@ -134,9 +133,9 @@ namespace dbgw
   {
     system::_MutexAutoLock lock(&g_logMutex);
 
-    if (m_logger != NULL)
+    if (g_logger != NULL)
       {
-        cci_log_set_default_postfix(m_logger, postfix);
+        cci_log_set_default_postfix(g_logger, postfix);
       }
   }
 
@@ -144,10 +143,10 @@ namespace dbgw
   {
     system::_MutexAutoLock lock(&g_logMutex);
 
-    if (m_logger != NULL)
+    if (g_logger != NULL)
       {
-        cci_log_remove(m_logPath.c_str());
-        m_logger = NULL;
+        cci_log_remove(g_logPath.c_str());
+        g_logger = NULL;
       }
   }
 
@@ -156,7 +155,7 @@ namespace dbgw
   {
     system::_MutexAutoLock lock(&g_logMutex);
 
-    if (m_logger != NULL)
+    if (g_logger != NULL)
       {
         const char *szBase = strrchr(szFile, '/');
         szBase = szBase ? (szBase + 1) : szFile;
@@ -172,9 +171,9 @@ namespace dbgw
         vsnprintf(szLogFormat, LOG_BUFFER_SIZE, prefixBuf, vl);
         va_end(vl);
 
-        if (cci_log_is_writable(m_logger, level))
+        if (cci_log_is_writable(g_logger, level))
           {
-            cci_log_write(level, m_logger, szLogFormat);
+            cci_log_write(level, g_logger, szLogFormat);
           }
       }
   }
@@ -184,7 +183,7 @@ namespace dbgw
   {
     system::_MutexAutoLock lock(&g_logMutex);
 
-    if (m_logger != NULL)
+    if (g_logger != NULL)
       {
         const char *szBase = strrchr(szFile, '/');
         szBase = szBase ? (szBase + 1) : szFile;
@@ -194,26 +193,26 @@ namespace dbgw
         char logBuf[LOG_BUFFER_SIZE];
         snprintf(logBuf, LOG_BUFFER_SIZE, " %-40s %s", fileLineBuf, szLog);
 
-        if (cci_log_is_writable(m_logger, level))
+        if (cci_log_is_writable(g_logger, level))
           {
-            cci_log_write(level, m_logger, logBuf);
+            cci_log_write(level, g_logger, logBuf);
           }
       }
   }
 
   bool _Logger::isWritable(CCI_LOG_LEVEL level)
   {
-    return cci_log_is_writable(m_logger, level);
+    return cci_log_is_writable(g_logger, level);
   }
 
   const char *_Logger::getLogPath()
   {
-    return m_logPath.c_str();
+    return g_logPath.c_str();
   }
 
   CCI_LOG_LEVEL _Logger::getLogLevel()
   {
-    return m_logLevel;
+    return g_logLevel;
   }
 
   _LogDecorator::_LogDecorator(const char *szHeader) :

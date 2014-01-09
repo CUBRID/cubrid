@@ -55,9 +55,6 @@ namespace dbgw
   private:
     std::string m_groupName;
     std::string m_sqlName;
-    static Logger m_logger;
-    static std::string m_logPath;
-    static CCI_LOG_LEVEL m_logLevel;
   };
 
   class _LogDecorator
