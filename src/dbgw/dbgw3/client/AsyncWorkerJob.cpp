@@ -244,7 +244,7 @@ namespace dbgw
         {
           if (m_pWorker != NULL)
             {
-              m_pWorker->changeWorkerState(DBGW_WORKTER_STATE_IDLE,
+              m_pWorker->changeWorkerState(DBGW_WORKER_STATE_IDLE,
                   m_pSelf->shared_from_this());
               m_pWorker->release(false);
             }
@@ -258,7 +258,7 @@ namespace dbgw
         {
           if (m_pWorker != NULL)
             {
-              m_pWorker->changeWorkerState(DBGW_WORKTER_STATE_TIMEOUT,
+              m_pWorker->changeWorkerState(DBGW_WORKER_STATE_TIMEOUT,
                   m_pSelf->shared_from_this());
               m_pWorker->release(true);
             }

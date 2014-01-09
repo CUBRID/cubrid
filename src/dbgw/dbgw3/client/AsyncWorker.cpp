@@ -50,10 +50,10 @@ namespace dbgw
   class _AsyncWorker::Impl
   {
   public:
-    Impl(_AsyncWorker *pSelf, _AsyncWorkerPool &workerPool,
+    Impl(_AsyncWorker *pSelf,
         trait<_StatisticsMonitor>::sp pMonitor, int nWorkerId) :
-      m_pSelf(pSelf), m_workerPool(workerPool), m_pMonitor(pMonitor),
-      m_state(DBGW_WORKTER_STATE_IDLE), m_nWorkerId(nWorkerId), m_nReqId(-1),
+      m_pSelf(pSelf), m_pMonitor(pMonitor),
+      m_state(DBGW_WORKER_STATE_IDLE), m_nWorkerId(nWorkerId), m_nReqId(-1),
       m_pStatItem(new _StatisticsItem("WS"))
     {
       m_pStatItem->addColumn(
@@ -114,19 +114,30 @@ namespace dbgw
       pJob->bindWorker(
           boost::dynamic_pointer_cast<_AsyncWorker>(m_pSelf->shared_from_this()));
 
-      changeWorkerStateWithOutLock(DBGW_WORKTER_STATE_BUSY, pJob);
+      changeWorkerStateWithOutLock(DBGW_WORKER_STATE_BUSY, pJob);
 
       m_pJob = pJob;
       m_cond.notify();
+    }
+
+    void cancelJob()
+    {
+      system::_MutexAutoLock lock(&m_mutex);
+
+      if (m_pJob && m_state == DBGW_WORKER_STATE_BUSY)
+        {
+          m_pJob->cancel();
+        }
     }
 
     void release(bool bIsForceDrop)
     {
       system::_MutexAutoLock lock(&m_mutex);
 
-      m_workerPool.returnWorker(
-          boost::dynamic_pointer_cast<_AsyncWorker>(m_pSelf->shared_from_this()),
-          bIsForceDrop);
+      if (bIsForceDrop)
+        {
+          m_pSelf->detach();
+        }
     }
 
     static void run(const system::_ThreadEx *pThread)
@@ -173,7 +184,7 @@ namespace dbgw
     {
       m_state = state;
 
-      if (m_state == DBGW_WORKTER_STATE_IDLE)
+      if (m_state == DBGW_WORKER_STATE_IDLE)
         {
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_STATE) = "IDLE";
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_NAME) = "-";
@@ -181,7 +192,7 @@ namespace dbgw
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_START_TIME) = "-";
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_TIMEOUT) = "-";
         }
-      else if (m_state == DBGW_WORKTER_STATE_BUSY)
+      else if (m_state == DBGW_WORKER_STATE_BUSY)
         {
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_STATE) = "BUSY";
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_NAME) =
@@ -202,7 +213,7 @@ namespace dbgw
                   system::getTimeStrFromMilSec(ulTimeOutMilSec).c_str();
             }
         }
-      else if (m_state == DBGW_WORKTER_STATE_TIMEOUT)
+      else if (m_state == DBGW_WORKER_STATE_TIMEOUT)
         {
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_STATE) = "TIMEOUT";
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_NAME) =
@@ -244,7 +255,6 @@ namespace dbgw
         {
           trait<_AsyncWorkerJob>::sp pJob = m_pJob;
           m_pJob.reset();
-          changeWorkerStateWithOutLock(DBGW_WORKTER_STATE_BUSY, pJob);
           return pJob;
         }
       else
@@ -255,7 +265,6 @@ namespace dbgw
 
   private:
     _AsyncWorker *m_pSelf;
-    _AsyncWorkerPool &m_workerPool;
     trait<_StatisticsMonitor>::sp m_pMonitor;
     system::_Mutex m_mutex;
     system::_ConditionVariable m_cond;
@@ -267,10 +276,9 @@ namespace dbgw
     trait<_StatisticsItem>::sp m_pStatItem;
   };
 
-  _AsyncWorker::_AsyncWorker(_AsyncWorkerPool &workerPool,
-      Configuration *pConfiguration, int nWorkerId) :
+  _AsyncWorker::_AsyncWorker(Configuration *pConfiguration, int nWorkerId) :
     system::_ThreadEx(Impl::run),
-    m_pImpl(new Impl(this, workerPool, pConfiguration->getMonitor(), nWorkerId))
+    m_pImpl(new Impl(this, pConfiguration->getMonitor(), nWorkerId))
   {
   }
 
@@ -287,9 +295,17 @@ namespace dbgw
     m_pImpl->delegateJob(pJob);
   }
 
+  void _AsyncWorker::cancelJob()
+  {
+    m_pImpl->cancelJob();
+  }
+
   void _AsyncWorker::release(bool bIsForceDrop)
   {
-    m_pImpl->release(bIsForceDrop);
+    if (getStatus() == system::THREAD_STATUS_RUNNING)
+      {
+        m_pImpl->release(bIsForceDrop);
+      }
   }
 
   void _AsyncWorker::changeWorkerState(_AsyncWorkerState state,
@@ -328,16 +344,20 @@ namespace dbgw
         {
           m_mutex.lock();
 
-          rearrangeWorkerList();
-
           if (m_idleWorkerList.empty())
             {
-              m_mutex.unlock();
-              break;
+              rearrangeWorkerList();
+
+              if (m_idleWorkerList.empty())
+                {
+                  m_mutex.unlock();
+                  break;
+                }
             }
 
           pWorker = m_idleWorkerList.front();
           m_idleWorkerList.pop_front();
+          m_busyWorkerList.push_back(pWorker);
           m_mutex.unlock();
         }
       while (pWorker == NULL);
@@ -352,40 +372,15 @@ namespace dbgw
           m_mutex.unlock();
 
           pWorker = trait<_AsyncWorker>::sp(
-              new _AsyncWorker(*m_pSelf, m_pConfiguration, m_nWorkerId));
+              new _AsyncWorker(m_pConfiguration, m_nWorkerId));
           if (pWorker != NULL)
             {
+              m_busyWorkerList.push_back(pWorker);
               pWorker->start();
             }
         }
 
       return pWorker;
-    }
-
-    void returnWorker(trait<_AsyncWorker>::sp pWorker, bool bIsForceDrop)
-    {
-      if (pWorker == NULL)
-        {
-          return;
-        }
-
-      if (bIsForceDrop)
-        {
-          pWorker->detach();
-        }
-      else
-        {
-          system::_MutexAutoLock lock(&m_mutex);
-
-          if (pWorker->getStateWithoutLock() == DBGW_WORKTER_STATE_BUSY)
-            {
-              m_busyWorkerList.push_back(pWorker);
-            }
-          else
-            {
-              m_idleWorkerList.push_back(pWorker);
-            }
-        }
     }
 
     void clear()
@@ -394,6 +389,8 @@ namespace dbgw
 
       unsigned long ulMaxWaitExitTimeMilSec =
           m_pConfiguration->getMaxWaitExitTimeMilSec();
+
+      rearrangeWorkerList();
 
       trait<_AsyncWorker>::splist::iterator it = m_idleWorkerList.begin();
       for (; it != m_idleWorkerList.end(); it++)
@@ -417,7 +414,7 @@ namespace dbgw
         {
           try
             {
-              (*it)->timedJoin(ulMaxWaitExitTimeMilSec);
+              (*it)->cancelJob();
             }
           catch (CondVarOperationFailException &)
             {
@@ -440,7 +437,7 @@ namespace dbgw
       trait<_AsyncWorker>::splist::iterator it = m_busyWorkerList.begin();
       while (it != m_busyWorkerList.end())
         {
-          if ((*it)->getState() == DBGW_WORKTER_STATE_IDLE)
+          if ((*it)->getState() == DBGW_WORKER_STATE_IDLE)
             {
               m_idleWorkerList.push_back(*it);
               m_busyWorkerList.erase(it++);
@@ -477,12 +474,6 @@ namespace dbgw
   trait<_AsyncWorker>::sp _AsyncWorkerPool::getAsyncWorker()
   {
     return m_pImpl->getAsyncWorker();
-  }
-
-  void _AsyncWorkerPool::returnWorker(trait<_AsyncWorker>::sp pWorker,
-      bool bIsForceDrop)
-  {
-    m_pImpl->returnWorker(pWorker, bIsForceDrop);
   }
 
   void _AsyncWorkerPool::clear()

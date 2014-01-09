@@ -25,9 +25,9 @@ namespace dbgw
 
   enum _AsyncWorkerState
   {
-    DBGW_WORKTER_STATE_IDLE = 0,
-    DBGW_WORKTER_STATE_BUSY,
-    DBGW_WORKTER_STATE_TIMEOUT
+    DBGW_WORKER_STATE_IDLE = 0,
+    DBGW_WORKER_STATE_BUSY,
+    DBGW_WORKER_STATE_TIMEOUT
   };
 
   enum _AsyncWorkderStatColumn
@@ -51,11 +51,12 @@ namespace dbgw
   class _AsyncWorker : public system::_ThreadEx
   {
   public:
-    _AsyncWorker(_AsyncWorkerPool &workerPool, Configuration *pConfiguration,
+    _AsyncWorker(Configuration *pConfiguration,
         int nWorkerId);
     virtual ~_AsyncWorker();
 
     void delegateJob(trait<_AsyncWorkerJob>::sp pJob);
+    void cancelJob();
     void release(bool bIsForceDrop = false);
     void changeWorkerState(_AsyncWorkerState state,
         trait<_AsyncWorkerJob>::sp pJob = trait<_AsyncWorkerJob>::sp());
@@ -80,7 +81,6 @@ namespace dbgw
     virtual ~_AsyncWorkerPool();
 
     trait<_AsyncWorker>::sp getAsyncWorker();
-    void returnWorker(trait<_AsyncWorker>::sp pWorker, bool bIsForceDrop);
     void clear();
 
   private:
