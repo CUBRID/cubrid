@@ -202,6 +202,8 @@ namespace dbgw
 
   bool _Logger::isWritable(CCI_LOG_LEVEL level)
   {
+    system::_MutexAutoLock lock(&g_logMutex);
+
     return cci_log_is_writable(g_logger, level);
   }
 
