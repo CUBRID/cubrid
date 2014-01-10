@@ -2792,13 +2792,13 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   /* record the connection so we know how to clean up on exit */
   csql_Database_connected = true;
 
-#if defined(CSQL_NO_LONGGING)
+#if defined(CSQL_NO_LOGGING)
   if (csql_arg->no_logging && locator_log_force_nologging () != NO_ERROR)
     {
       csql_Error_code = CSQL_ERR_SQL_ERROR;
       goto error;
     }
-#endif /* CSQL_NO_LONGGING */
+#endif /* CSQL_NO_LOGGING */
 
   csql_Editor_cmd[PATH_MAX - 1] = '\0';
   csql_Shell_cmd[PATH_MAX - 1] = '\0';
