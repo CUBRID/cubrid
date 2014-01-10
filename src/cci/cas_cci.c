@@ -1688,8 +1688,20 @@ cci_next_result (int mapped_stmt_id, T_CCI_ERROR * err_buf)
     }
   reset_error_buffer (&(con_handle->err_buf));
 
-  error = next_result_cmd (req_handle, con_handle, CCI_CLOSE_CURRENT_RESULT,
-			   &(con_handle->err_buf));
+  if (req_handle->current_query_res + 1 < req_handle->num_query_res)
+    {
+      error =
+	next_result_cmd (req_handle, con_handle, CCI_CLOSE_CURRENT_RESULT,
+			 &(con_handle->err_buf));
+      if (error >= 0)
+	{
+	  req_handle->current_query_res++;
+	}
+    }
+  else
+    {
+      error = CAS_ER_NO_MORE_RESULT_SET;
+    }
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
   get_last_error (con_handle, err_buf);
