@@ -268,42 +268,6 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, msg_buf);
 	}
     }
-  else if (strcasecmp (argv[1], "suspend") == 0)
-    {
-      if (argc < 3)
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s suspend <broker-name>\n", argv[0]);
-	  return -1;
-	}
-      if (admin_broker_suspend_cmd (master_shm_id, argv[2]) < 0)
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
-	  return -1;
-	}
-      else
-	{
-	  sprintf (msg_buf, "%s suspend", argv[2]);
-	  admin_log_write (admin_log_file, msg_buf);
-	}
-    }
-  else if (strcasecmp (argv[1], "resume") == 0)
-    {
-      if (argc < 3)
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s resume <broker-name>\n", argv[0]);
-	  return -1;
-	}
-      if (admin_broker_resume_cmd (master_shm_id, argv[2]) < 0)
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
-	  return -1;
-	}
-      else
-	{
-	  sprintf (msg_buf, "%s resume", argv[2]);
-	  admin_log_write (admin_log_file, msg_buf);
-	}
-    }
   else if (strcasecmp (argv[1], "reset") == 0)
     {
       if (argc < 3)
@@ -320,49 +284,6 @@ main (int argc, char **argv)
 	{
 	  sprintf (msg_buf, "%s reset", argv[2]);
 	  admin_log_write (admin_log_file, msg_buf);
-	}
-    }
-  else if (strcasecmp (argv[1], "job_first") == 0)
-    {
-      int broker_status, i;
-
-      if (argc < 4)
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s job_first <broker-name> <job-id>\n",
-				 argv[0]);
-	  return -1;
-	}
-      broker_status = admin_get_broker_status (master_shm_id, argv[2]);
-      if (broker_status < 0)
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
-	  return -1;
-	}
-
-      if (broker_status == SUSPEND_NONE)
-	{
-	  if (admin_broker_suspend_cmd (master_shm_id, argv[2]) < 0)
-	    {
-	      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
-	      return -1;
-	    }
-	}
-      for (i = argc - 1; i >= 3; i--)
-	{
-	  if (admin_broker_job_first_cmd
-	      (master_shm_id, argv[2], atoi (argv[i])) < 0)
-	    {
-	      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
-	    }
-	}
-      if (broker_status == SUSPEND_NONE)
-	{
-	  if (admin_broker_resume_cmd (master_shm_id, argv[2]) < 0)
-	    {
-	      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
-	      printf ("broker[%s] SUSPENDED\n", argv[2]);
-	      return -1;
-	    }
 	}
     }
   else if (strcasecmp (argv[1], "info") == 0)
@@ -431,7 +352,6 @@ main (int argc, char **argv)
 
 usage:
   printf ("%s (start | stop | add | drop | restart \
-	    | on | off | suspend | resume | reset | job_first \
-	    | info | acl | getid)\n", argv[0]);
+	    | on | off | reset | info | acl | getid)\n", argv[0]);
   return -1;
 }

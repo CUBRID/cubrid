@@ -217,10 +217,6 @@ DLL_EXPORT int uc_restart (const char *br_name, int as_index, char *err_msg);
 DLL_EXPORT int uc_drop (const char *br_name, char *err_msg);
 DLL_EXPORT int uc_on (const char *br_name, char *err_msg);
 DLL_EXPORT int uc_off (const char *br_name, char *err_msg);
-DLL_EXPORT int uc_suspend (const char *br_name, char *err_msg);
-DLL_EXPORT int uc_resume (const char *br_name, char *err_msg);
-DLL_EXPORT int uc_job_first (const char *br_name, int job_id, char *err_msg);
-DLL_EXPORT int uc_job_queue (const char *br_name, char *err_msg);
 DLL_EXPORT int uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info,
 			   T_JOB_INFO ** job_info, int *num_job,
 			   char *err_msg);

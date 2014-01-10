@@ -307,8 +307,8 @@ static int br_shard_flag = OFF;
 static int num_thr;
 #endif
 
+static pthread_cond_t clt_table_cond;
 static pthread_mutex_t clt_table_mutex;
-static pthread_mutex_t suspend_mutex;
 static pthread_mutex_t run_appl_mutex;
 static pthread_mutex_t broker_shm_mutex;
 static pthread_mutex_t run_proxy_mutex;
@@ -491,8 +491,8 @@ main (int argc, char *argv[])
   signal (SIGPIPE, SIG_IGN);
 #endif
 
+  pthread_cond_init (&clt_table_cond, NULL);
   pthread_mutex_init (&clt_table_mutex, NULL);
-  pthread_mutex_init (&suspend_mutex, NULL);
   pthread_mutex_init (&run_appl_mutex, NULL);
   pthread_mutex_init (&broker_shm_mutex, NULL);
   if (br_shard_flag == ON)
@@ -624,28 +624,6 @@ main (int argc, char *argv[])
 
       while (process_flag)
 	{
-	  if (shm_appl->suspend_mode != SUSPEND_NONE)
-	    {
-	      if (shm_appl->suspend_mode == SUSPEND_REQ)
-		{
-		  pthread_mutex_lock (&suspend_mutex);
-		  shm_appl->suspend_mode = SUSPEND;
-		  pthread_mutex_unlock (&suspend_mutex);
-		}
-	      else if (shm_appl->suspend_mode == SUSPEND_CHANGE_PRIORITY_REQ)
-		{
-		  pthread_mutex_lock (&clt_table_mutex);
-		  shm_appl->suspend_mode = SUSPEND_CHANGE_PRIORITY;
-		}
-	      else if (shm_appl->suspend_mode == SUSPEND_END_CHANGE_PRIORITY)
-		{
-		  shm_appl->suspend_mode = SUSPEND;
-		  pthread_mutex_unlock (&clt_table_mutex);
-		}
-	      SLEEP_MILISEC (1, 0);
-	      continue;
-	    }
-
 	  SLEEP_MILISEC (0, 100);
 
 	  if (shm_br->br_info[br_index].auto_add_appl_server == OFF)
@@ -1057,6 +1035,7 @@ receiver_thr_f (void *arg)
 	    }
 	  else
 	    {
+	      pthread_cond_signal (&clt_table_cond);
 	      pthread_mutex_unlock (&clt_table_mutex);
 	      break;
 	    }
@@ -1183,31 +1162,34 @@ dispatch_thr_f (void *arg)
 	    }
 	}
 
-      if (shm_appl->suspend_mode != SUSPEND_NONE)
-	{
-	  SLEEP_MILISEC (1, 0);
-	  continue;
-	}
-
-      pthread_mutex_lock (&suspend_mutex);
-      if (shm_appl->suspend_mode != SUSPEND_NONE)
-	{
-	  pthread_mutex_unlock (&suspend_mutex);
-	  continue;
-	}
-
       pthread_mutex_lock (&clt_table_mutex);
       if (max_heap_delete (job_queue, &cur_job) < 0)
 	{
-	  pthread_mutex_unlock (&clt_table_mutex);
-	  pthread_mutex_unlock (&suspend_mutex);
-	  SLEEP_MILISEC (0, 30);
-	  continue;
+	  struct timespec ts;
+	  struct timeval tv;
+	  int r;
+
+	  gettimeofday (&tv, NULL);
+	  ts.tv_sec = tv.tv_sec;
+	  ts.tv_nsec = (tv.tv_usec + 30000) * 1000;
+	  if (ts.tv_nsec > 1000000000)
+	    {
+	      ts.tv_sec += 1;
+	      ts.tv_nsec -= 1000000000;
+	    }
+	  r = pthread_cond_timedwait (&clt_table_cond, &clt_table_mutex, &ts);
+	  if (r != 0)
+	    {
+	      pthread_mutex_unlock (&clt_table_mutex);
+	      continue;
+	    }
+	  r = max_heap_delete (job_queue, &cur_job);
+	  assert (r == 0);
 	}
-      pthread_mutex_unlock (&clt_table_mutex);
 
       hold_job = 1;
       max_heap_incr_priority (job_queue);
+      pthread_mutex_unlock (&clt_table_mutex);
 
 #if !defined (WINDOWS)
     retry:
@@ -1316,8 +1298,6 @@ dispatch_thr_f (void *arg)
 #else /* !WIN_FW */
       session_request_q[as_index] = cur_job;
 #endif /* WIN_FW */
-
-      pthread_mutex_unlock (&suspend_mutex);
     }
 
 #if defined(WINDOWS)

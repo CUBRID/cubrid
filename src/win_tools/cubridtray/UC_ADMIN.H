@@ -29,10 +29,6 @@ extern int DLL_EXPORT uc_restart(char *br_name, int as_index, char *err_msg);
 extern int DLL_EXPORT uc_drop(char *br_name, char *err_msg);
 extern int DLL_EXPORT uc_on(char *br_name, char *err_msg);
 extern int DLL_EXPORT uc_off(char *br_name, char *err_msg);
-extern int DLL_EXPORT uc_suspend(char *br_name, char *err_msg);
-extern int DLL_EXPORT uc_resume(char *br_name, char *err_msg);
-extern int DLL_EXPORT uc_job_first(char *br_name, int job_id, char *err_msg);
-extern int DLL_EXPORT uc_job_queue(char *br_name, char *err_msg);
 extern int DLL_EXPORT uc_as_info(char *br_name, T_AS_INFO *as_info, int num_as_info, char *err_msg);
 }
 

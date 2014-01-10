@@ -1130,11 +1130,6 @@ appl_monitor (char *br_vector, double elapsed_time)
 	  else
 	    {
 	      shard_flag = shm_appl->shard_flag;
-
-	      if (shm_appl->suspend_mode != SUSPEND_NONE)
-		{
-		  str_out ("%s", " SUSPENDED");
-		}
 	      print_newline ();
 #if defined (WINDOWS)
 	      print_appl_header (shm_appl->use_pdh_flag);
@@ -1707,13 +1702,6 @@ print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur,
 	}
 
       print_newline ();
-
-      if (mnt_type == MONITOR_T_BROKER
-	  && shm_appl->suspend_mode != SUSPEND_NONE)
-	{
-	  str_out ("%s", "      SUSPENDED");
-	  print_newline ();
-	}
     }
 
   return;

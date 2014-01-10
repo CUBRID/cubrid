@@ -117,14 +117,6 @@
 
 #define		JOB_QUEUE_MAX_SIZE	511
 
-/* SHM_APPL_SERVER->suspend_mode */
-#define		SUSPEND_NONE			0
-#define		SUSPEND_REQ			1
-#define		SUSPEND				2
-#define		SUSPEND_CHANGE_PRIORITY_REQ	3
-#define		SUSPEND_CHANGE_PRIORITY		4
-#define		SUSPEND_END_CHANGE_PRIORITY	5
-
 #define MAX_CRYPT_STR_LENGTH            32
 
 #define APPL_SERVER_NAME_MAX_SIZE	32
@@ -603,7 +595,6 @@ struct t_shm_appl_server
   int query_timeout;
   int mysql_read_timeout;
   int num_appl_server;
-  int suspend_mode;
   int max_string_length;
   int job_queue_size;
   int sql_log_max_size;
