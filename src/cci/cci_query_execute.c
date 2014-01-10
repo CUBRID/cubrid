@@ -2286,7 +2286,10 @@ qe_get_class_num_objs (T_CON_HANDLE * con_handle, char *class_name, char flag,
       else
 	{
 	  NET_STR_TO_INT (tmp_i_value, result_msg + 4);
-	  *num_objs = tmp_i_value;
+	  if (num_objs)
+	    {
+	      *num_objs = tmp_i_value;
+	    }
 	  result_msg_size -= 4;
 	}
 
@@ -2295,7 +2298,10 @@ qe_get_class_num_objs (T_CON_HANDLE * con_handle, char *class_name, char flag,
       else
 	{
 	  NET_STR_TO_INT (tmp_i_value, result_msg + 8);
-	  *num_pages = tmp_i_value;
+	  if (num_pages)
+	    {
+	      *num_pages = tmp_i_value;
+	    }
 	}
     }
 
@@ -2462,7 +2468,11 @@ qe_get_row_count (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
     }
 
   NET_STR_TO_INT (tmp, result_msg + 4);
-  *row_count = tmp;
+
+  if (row_count)
+    {
+      *row_count = tmp;
+    }
 
   return 0;
 }
@@ -2624,7 +2634,10 @@ qe_col_size (T_CON_HANDLE * con_handle, char *oid_str, const char *col_attr,
       return CCI_ER_COMMUNICATION;
     }
 
-  NET_STR_TO_INT (*set_size, result_msg + 4);
+  if (set_size)
+    {
+      NET_STR_TO_INT (*set_size, result_msg + 4);
+    }
   FREE_MEM (result_msg);
 
   return 0;
@@ -5329,7 +5342,10 @@ col_get_info_decode (char *buf_p, int remain_size, int *col_size,
 
   if (remain_size < 1)
     return CCI_ER_COMMUNICATION;
-  *col_type = *cur_p;
+  if (col_type)
+    {
+      *col_type = *cur_p;
+    }
   remain_size -= 1;
   cur_p += 1;
 
@@ -5354,7 +5370,10 @@ col_get_info_decode (char *buf_p, int remain_size, int *col_size,
   if (num_tuple < 0)
     return num_tuple;
 
-  *col_size = num_tuple;
+  if (col_size)
+    {
+      *col_size = num_tuple;
+    }
   req_handle->num_tuple = num_tuple;
   if (num_tuple == 0)
     {

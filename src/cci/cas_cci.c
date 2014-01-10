@@ -318,7 +318,10 @@ cci_end (void)
 int
 cci_get_version_string (char *str, size_t len)
 {
-  snprintf (str, len, "%s", build_number);
+  if (str)
+    {
+      snprintf (str, len, "%s", build_number);
+    }
   return 0;
 }
 
@@ -1887,6 +1890,12 @@ cci_escape_string (int mapped_conn_id, char *to, const char *from,
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_escape_string %d", mapped_conn_id));
 #endif
+  reset_error_buffer (err_buf);
+  if (to == NULL || from == NULL)
+    {
+      set_error_buffer (err_buf, CCI_ER_INVALID_ARGS, NULL);
+      return CCI_ER_INVALID_ARGS;
+    }
 
   if (mapped_conn_id == CCI_NO_BACKSLASH_ESCAPES_FALSE
       || mapped_conn_id == CCI_NO_BACKSLASH_ESCAPES_TRUE)
@@ -1895,7 +1904,6 @@ cci_escape_string (int mapped_conn_id, char *to, const char *from,
       goto convert;
     }
 
-  reset_error_buffer (err_buf);
   error = hm_get_connection (mapped_conn_id, &con_handle);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -2532,6 +2540,10 @@ cci_get_cur_oid (int mapped_stmt_id, char *oid_str_buf)
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_get_cur_oid %d", mapped_stmt_id));
 #endif
+  if (oid_str_buf == NULL)
+    {
+      return CCI_ER_INVALID_ARGS;
+    }
 
   error = hm_get_statement (mapped_stmt_id, &con_handle, &req_handle);
   if (error != CCI_ER_NO_ERROR)
@@ -2615,6 +2627,13 @@ cci_oid_put (int mapped_conn_id, char *oid_str, char **attr_name,
 #endif
 
   reset_error_buffer (err_buf);
+  if (attr_name == NULL || new_val == NULL)
+    {
+      /*  oid_str would be checked in qe_oid_put */
+      set_error_buffer (err_buf, CCI_ER_INVALID_ARGS, NULL);
+      return CCI_ER_INVALID_ARGS;
+    }
+
   error = hm_get_connection (mapped_conn_id, &con_handle);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -2653,6 +2672,13 @@ cci_oid_put2 (int mapped_conn_id, char *oid_str, char **attr_name,
 #endif
 
   reset_error_buffer (err_buf);
+  if (attr_name == NULL || new_val == NULL || a_type == NULL)
+    {
+      /* oid_str would be checked in qe_oid_put2 */
+      set_error_buffer (err_buf, CCI_ER_INVALID_ARGS, NULL);
+      return CCI_ER_INVALID_ARGS;
+    }
+
   error = hm_get_connection (mapped_conn_id, &con_handle);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -2843,6 +2869,12 @@ cci_get_class_num_objs (int mapped_conn_id, char *class_name, int flag,
 #endif
 
   reset_error_buffer (err_buf);
+  if (class_name == NULL)
+    {
+      set_error_buffer (err_buf, CCI_ER_INVALID_ARGS, NULL);
+      return CCI_ER_INVALID_ARGS;
+    }
+
   error = hm_get_connection (mapped_conn_id, &con_handle);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -3182,14 +3214,14 @@ cci_execute_batch (int mapped_conn_id, int num_query, char **sql_stmt,
 		   ("(%d)cci_execute_batch: %d", mapped_conn_id, num_query));
 #endif
 
-  if (qr == NULL)
+  reset_error_buffer (err_buf);
+  if (qr == NULL || sql_stmt == NULL)
     {
+      set_error_buffer (err_buf, CCI_ER_INVALID_ARGS, NULL);
       return CCI_ER_INVALID_ARGS;
     }
 
   *qr = NULL;
-
-  reset_error_buffer (err_buf);
   error = hm_get_connection (mapped_conn_id, &con_handle);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -3198,11 +3230,6 @@ cci_execute_batch (int mapped_conn_id, int num_query, char **sql_stmt,
     }
   reset_error_buffer (&(con_handle->err_buf));
   con_handle->shard_id = CCI_SHARD_ID_INVALID;
-
-  if (qr != NULL)
-    {
-      *qr = NULL;
-    }
 
   if (num_query <= 0)
     {
@@ -3415,6 +3442,10 @@ cci_set_get (T_CCI_SET set, int index, T_CCI_A_TYPE a_type, void *value,
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_set_get %p", set));
 #endif
+  if (value == NULL || ind == NULL)
+    {
+      return CCI_ER_INVALID_ARGS;
+    }
 
   return (t_set_get ((T_SET *) set, index, a_type, value, ind));
 }
@@ -3429,6 +3460,10 @@ cci_set_make (T_CCI_SET * set, T_CCI_U_TYPE u_type, int size, void *value,
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_set_make"));
 #endif
+  if (value == NULL || ind == NULL)
+    {
+      return CCI_ER_INVALID_ARGS;
+    }
 
   if ((error = t_set_alloc (&tmp_set)) < 0)
     {
@@ -3460,6 +3495,12 @@ cci_get_attr_type_str (int mapped_conn_id, char *class_name, char *attr_name,
 #endif
 
   reset_error_buffer (err_buf);
+  if (class_name == NULL || attr_name == NULL)
+    {
+      set_error_buffer (err_buf, CCI_ER_INVALID_ARGS, NULL);
+      return CCI_ER_INVALID_ARGS;
+    }
+
   error = hm_get_connection (mapped_conn_id, &con_handle);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -3812,6 +3853,12 @@ cci_lob_write (int mapped_conn_id, void *lob, long long start_pos,
   int current_write_len;
 
   reset_error_buffer (err_buf);
+  if (buf == NULL)
+    {
+      set_error_buffer (err_buf, CCI_ER_INVALID_ARGS, NULL);
+      return CCI_ER_INVALID_ARGS;
+    }
+
   error = hm_get_connection (mapped_conn_id, &con_handle);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -3905,6 +3952,12 @@ cci_lob_read (int mapped_conn_id, void *lob, long long start_pos,
   INT64 lob_size;
 
   reset_error_buffer (err_buf);
+  if (buf == NULL)
+    {
+      set_error_buffer (err_buf, CCI_ER_INVALID_ARGS, NULL);
+      return CCI_ER_INVALID_ARGS;
+    }
+
   error = hm_get_connection (mapped_conn_id, &con_handle);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -4163,6 +4216,11 @@ cci_set_charset (int mapped_conn_id, char *charset)
   T_CON_HANDLE *con_handle = NULL;
   int error;
 
+  if (charset == NULL)
+    {
+      return CCI_ER_INVALID_ARGS;
+    }
+
   error = hm_get_connection (mapped_conn_id, &con_handle);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -4241,7 +4299,10 @@ cci_get_shard_id_with_con_handle (int mapped_conn_id, int *shard_id,
       return error;
     }
 
-  *shard_id = con_handle->shard_id;
+  if (shard_id)
+    {
+      *shard_id = con_handle->shard_id;
+    }
   con_handle->used = false;
 
   return CCI_ER_NO_ERROR;
@@ -4261,7 +4322,11 @@ cci_get_shard_id_with_req_handle (int mapped_stmt_id, int *shard_id,
     {
       return error;
     }
-  *shard_id = req_handle->shard_id;
+
+  if (shard_id)
+    {
+      *shard_id = req_handle->shard_id;
+    }
   con_handle->used = false;
 
   return CCI_ER_NO_ERROR;
@@ -4291,7 +4356,7 @@ cci_last_insert_id (int mapped_conn_id, void *value, T_CCI_ERROR * err_buf)
   /* value init & null check are in below function */
   error = cci_get_last_insert_id (mapped_conn_id, &ptr, err_buf);
 
-  if (error == CCI_ER_NO_ERROR && ptr != NULL)
+  if (error == CCI_ER_NO_ERROR && ptr != NULL && value != NULL)
     {
       /* 2 for sign & null termination */
       int value_len = strnlen (ptr, MAX_NUMERIC_PRECISION + 2);
@@ -6056,6 +6121,11 @@ cci_datasource_change_property (T_CCI_DATASOURCE * ds, const char *key,
   T_CCI_ERROR err_buf;
   T_CCI_PROPERTIES *properties;
   int error = NO_ERROR;
+
+  if (ds == NULL || !ds->is_init)
+    {
+      return CCI_ER_INVALID_DATASOURCE;
+    }
 
   properties = cci_property_create ();
   if (properties == NULL)
