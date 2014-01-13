@@ -706,7 +706,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
 
   /*
    * after serial.next_value, the currect value maybe changed, but cub_cas
-   * still hold the old value. To get the new value. we need decache it 
+   * still hold the old value. To get the new value. we need decache it
    * then refetch it from server again.
    */
   assert (WS_ISDIRTY (serial_object) == false);
@@ -8619,7 +8619,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      err = qmgr_drop_query_plan (context.sql_hash_text,
 					  ws_identifier (db_get_user ()),
-					  NULL, true);
+					  NULL);
 	    }
 
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -8913,10 +8913,6 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      break;
 	    }
 
-	  if (statement->do_not_keep == 0)
-	    {
-	      query_flag |= KEEP_PLAN_CACHE;
-	    }
 	  query_flag |= NOT_FROM_RESULT_CACHE;
 	  query_flag |= RESULT_CACHE_INHIBITED;
 
@@ -9930,7 +9926,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    {
 	      err = qmgr_drop_query_plan (context.sql_hash_text,
 					  ws_identifier (db_get_user ()),
-					  NULL, true);
+					  NULL);
 	    }
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
 	    {
@@ -10178,10 +10174,6 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
          do_prepare_delete() has saved the XASL file id (XASL_ID) in
          'statement->xasl_id' */
       query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
-      if (statement->do_not_keep == 0)
-	{
-	  query_flag |= KEEP_PLAN_CACHE;
-	}
       query_flag |= NOT_FROM_RESULT_CACHE;
       query_flag |= RESULT_CACHE_INHIBITED;
 
@@ -10600,8 +10592,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
   else
     {
       error = qmgr_drop_query_plan (context.sql_hash_text,
-				    ws_identifier (db_get_user ()), NULL,
-				    true);
+				    ws_identifier (db_get_user ()), NULL);
     }
 
   if (stream.xasl_id == NULL && error == NO_ERROR)
@@ -13307,10 +13298,6 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
 
-  if (statement->do_not_keep == 0)
-    {
-      query_flag |= KEEP_PLAN_CACHE;
-    }
   query_flag |= NOT_FROM_RESULT_CACHE;
   query_flag |= RESULT_CACHE_INHIBITED;
 
@@ -13937,7 +13924,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      err = qmgr_drop_query_plan (context.sql_hash_text,
 					  ws_identifier (db_get_user ()),
-					  NULL, true);
+					  NULL);
 	      stream.xasl_id = NULL;
 	    }
 	}
@@ -13946,7 +13933,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       err =
 	qmgr_drop_query_plan (context.sql_hash_text,
-			      ws_identifier (db_get_user ()), NULL, true);
+			      ws_identifier (db_get_user ()), NULL);
     }
   if (stream.xasl_id == NULL && err == NO_ERROR)
     {
@@ -14253,11 +14240,6 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   else
     {
       query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
-    }
-
-  if (statement->do_not_keep == 0)
-    {
-      query_flag |= KEEP_PLAN_CACHE;
     }
 
   if (statement->si_datetime == 1 || statement->si_tran_id == 1)
@@ -15740,7 +15722,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  err =
 	    qmgr_drop_query_plan (context.sql_hash_text,
-				  ws_identifier (db_get_user ()), NULL, true);
+				  ws_identifier (db_get_user ()), NULL);
 	}
 
       if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -15995,10 +15977,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto exit;
 	}
 
-      if (statement->do_not_keep == 0)
-	{
-	  query_flag |= KEEP_PLAN_CACHE;
-	}
       query_flag |= NOT_FROM_RESULT_CACHE;
       query_flag |= RESULT_CACHE_INHIBITED;
 
@@ -16055,10 +16033,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      goto exit;
 	    }
 
-	  if (statement->do_not_keep == 0)
-	    {
-	      query_flag |= KEEP_PLAN_CACHE;
-	    }
 	  query_flag |= NOT_FROM_RESULT_CACHE;
 	  query_flag |= RESULT_CACHE_INHIBITED;
 

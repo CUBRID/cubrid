@@ -6001,6 +6001,8 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
       free_and_init (sql_id);
     }
 
+  (void) qexec_end_use_of_xasl_cache_ent (thread_p, &xasl_id);
+
   ptr = or_pack_int (ptr, queryinfo_string_length);
 
   /* query id to return as a fourth argument of the reply */
@@ -6508,7 +6510,6 @@ sqmgr_drop_query_plan (THREAD_ENTRY * thread_p, unsigned int rid,
 {
   XASL_ID xasl_id;
   int status;
-  int drop;
   char *ptr, *qstmt, *reply;
   OID user_oid;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -6521,11 +6522,9 @@ sqmgr_drop_query_plan (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_oid (ptr, &user_oid);
   /* unpack XASL_ID */
   OR_UNPACK_XASL_ID (ptr, &xasl_id);
-  /* unpack 'delete' flag */
-  ptr = or_unpack_int (ptr, &drop);
 
   /* call the server routine of query drop plan */
-  status = xqmgr_drop_query_plan (thread_p, qstmt, &user_oid, &xasl_id, drop);
+  status = xqmgr_drop_query_plan (thread_p, qstmt, &user_oid, &xasl_id);
   if (status != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);

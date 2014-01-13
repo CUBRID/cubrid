@@ -363,7 +363,7 @@ extern QFILE_LIST_ID *xqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
 extern int xqmgr_end_query (THREAD_ENTRY * thrd, QUERY_ID query_id);
 extern int xqmgr_drop_query_plan (THREAD_ENTRY * thread_p,
 				  const char *qstmt, const OID * user_oid,
-				  const XASL_ID * xasl_id, bool drop);
+				  const XASL_ID * xasl_id);
 extern int xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p);
 extern void xqmgr_dump_query_plans (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void xqmgr_dump_query_cache (THREAD_ENTRY * thread_p, FILE * outfp);

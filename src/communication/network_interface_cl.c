@@ -8085,7 +8085,7 @@ qmgr_end_query (QUERY_ID query_id)
  */
 int
 qmgr_drop_query_plan (const char *qstmt, const OID * user_oid,
-		      const XASL_ID * xasl_id, bool drop)
+		      const XASL_ID * xasl_id)
 {
 #if defined(CS_MODE)
   int status = ER_FAILED;
@@ -8096,7 +8096,7 @@ qmgr_drop_query_plan (const char *qstmt, const OID * user_oid,
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   request_size = length_const_string (qstmt, &strlen)
-    + OR_OID_SIZE + OR_XASL_ID_SIZE + OR_INT_SIZE;
+    + OR_OID_SIZE + OR_XASL_ID_SIZE;
 
   request = (char *) malloc (request_size);
   if (request)
@@ -8107,8 +8107,6 @@ qmgr_drop_query_plan (const char *qstmt, const OID * user_oid,
       ptr = or_pack_oid (ptr, (OID *) user_oid);
       /* pack XASL file id (XASL_ID) */
       OR_PACK_XASL_ID (ptr, xasl_id);
-      /* pack 'delete' flag */
-      ptr = or_pack_int (ptr, drop);
 
       /* send SERVER_QM_QUERY_DROP_PLAN request with request data;
          receive status code (int) as a reply */
@@ -8136,7 +8134,7 @@ qmgr_drop_query_plan (const char *qstmt, const OID * user_oid,
   ENTER_SERVER ();
 
   /* call the server routine of query drop plan */
-  status = xqmgr_drop_query_plan (NULL, qstmt, user_oid, xasl_id, drop);
+  status = xqmgr_drop_query_plan (NULL, qstmt, user_oid, xasl_id);
 
   EXIT_SERVER ();
 

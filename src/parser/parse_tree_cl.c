@@ -2390,7 +2390,6 @@ parser_init_node (PT_NODE * node)
       node->alias_print = NULL;
       node->recompile = 0;
       node->cannot_prepare = 0;
-      node->do_not_keep = 0;
       node->partition_pruned = 0;
       node->si_datetime = 0;
       node->si_tran_id = 0;

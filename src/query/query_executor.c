@@ -15966,6 +15966,15 @@ qexec_free_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
  *   return:
  *   qstr(in)   :
  *   user_oid(in)       :
+ *
+ * NOTE : If a entry is found in hash table,
+ *        this function marks current transaction id
+ *        to the tran_index_array of the xasl cache entry.
+ *        This mark must be removed with qexec_end_use_of_xasl_cache_ent
+ *        before current request is finished.
+ *
+ *        A marked xasl cache entry cannot be deleted
+ *        from the xasl_id hash table when victimized.
  */
 XASL_CACHE_ENTRY *
 qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
@@ -16026,7 +16035,8 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
       if (ent)
 	{
 	  /* record my transaction id into the entry
-	     and adjust timestamp and reference counter */
+	   * and adjust timestamp and reference counter
+	   */
 #if defined(SERVER_MODE)
 	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 	  if ((ssize_t) ent->last_ta_idx < MAX_NTRANS)
@@ -16226,20 +16236,6 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
          change the given XASL_ID to force to use the cached entry */
       XASL_ID_COPY (stream->xasl_id, &(ent->xasl_id));
 
-      /* record my transaction id into the entry
-         and adjust timestamp and reference counter */
-
-#if defined(SERVER_MODE)
-      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      if ((ssize_t) ent->last_ta_idx < MAX_NTRANS)
-	{
-	  num_elements = (int) ent->last_ta_idx;
-	  (void) tranid_lsearch (&tran_index, ent->tran_index_array,
-				 &num_elements);
-	  ent->last_ta_idx = num_elements;
-	}
-#endif
-
       (void) gettimeofday (&ent->time_last_used, NULL);
       ent->ref_count++;
 
@@ -16262,6 +16258,8 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
   /* check the number of XASL cache entries; compare with qstr hash entries */
   if ((int) mht_count (xasl_ent_cache.qstr_ht) >= xasl_ent_cache.max_entries)
     {
+      int num_mark_deleted_only, num_victimized, old_ent_num;
+
       /* Cache full!
          We need to remove some entries. Select candidates that are old aged
          and recently used. Number of candidates is 5% of total entries.
@@ -16271,6 +16269,15 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
          than 2% or none, select what are most recently used within the old
          aged candiates and what are old aged within the recently used
          candidates. */
+
+      old_ent_num = xasl_ent_cache.num;
+
+      er_log_debug (ARG_FILE_LINE,
+		    "Plan cache victimize started, qstr_ht = %d, xasl_id_ht = %d, "
+		    "class_oid_ht = %d.",
+		    xasl_ent_cache.qstr_ht->nentries,
+		    xasl_ent_cache.xid_ht->nentries,
+		    xasl_ent_cache.oid_ht->nentries);
 
       xasl_ent_cache.counter.full++;	/* counter */
       xasl_ent_cv = &xasl_ent_cache.cv_info;
@@ -16362,8 +16369,26 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 	{
 	  (void) qexec_delete_xasl_cache_ent (thread_p, *r, NULL);
 	}
+
+      /* number of removed */
+      num_victimized = old_ent_num - xasl_ent_cache.num;
+
+      /* number of mark deleted */
+      num_mark_deleted_only = xasl_ent_cv->v_idx - num_victimized;
+
       xasl_ent_cv->v_idx = 0;	/* clear */
 
+      er_log_debug (ARG_FILE_LINE,
+		    "Plan cache victimize finished, qstr_ht = %d, xasl_id_ht = %d, "
+		    "class_oid_ht = %d (victimized entries = %d, "
+		    "mark deleted entries = %d)",
+		    xasl_ent_cache.qstr_ht->nentries,
+		    xasl_ent_cache.xid_ht->nentries,
+		    xasl_ent_cache.oid_ht->nentries,
+		    num_victimized, num_mark_deleted_only);
+
+      assert_release ((int) mht_count (xasl_ent_cache.qstr_ht)
+		      <= xasl_ent_cache.max_entries);
     }				/* if */
 
   /* make new XASL_CACHE_ENTRY */
@@ -16444,19 +16469,6 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
   ent->dbval_cnt = dbval_cnt;
   ent->list_ht_no = -1;
   ent->clo_list = NULL;
-  /* record my transaction id into the entry */
-#if defined(SERVER_MODE)
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if ((ssize_t) ent->last_ta_idx < MAX_NTRANS)
-    {
-      num_elements = (int) ent->last_ta_idx;
-      (void) tranid_lsearch (&tran_index, ent->tran_index_array,
-			     &num_elements);
-      ent->last_ta_idx = num_elements;
-    }
-
-  assert (ent->last_ta_idx == 1);
-#endif
 
   /* insert (or update) the entry into the query string hash table */
   if (mht_put_new (xasl_ent_cache.qstr_ht, ent->sql_info.sql_hash_text, ent)
@@ -16547,8 +16559,8 @@ qexec_remove_my_transaction_id (THREAD_ENTRY * thread_p,
 	  *(r - 1) = 0;
 	}
 
+      assert (ent->last_ta_idx > 0);
       ent->last_ta_idx--;	/* shrink */
-      assert (ent->last_ta_idx >= 0);
     }
 
   return NO_ERROR;
@@ -16559,11 +16571,10 @@ qexec_remove_my_transaction_id (THREAD_ENTRY * thread_p,
  * qexec_end_use_of_xasl_cache_ent () - End use of XASL cache entry
  *   return: NO_ERROR, or ER_code
  *   xasl_id(in)        :
- *   marker(in) :
  */
 int
 qexec_end_use_of_xasl_cache_ent (THREAD_ENTRY * thread_p,
-				 const XASL_ID * xasl_id, bool marker)
+				 const XASL_ID * xasl_id)
 {
   XASL_CACHE_ENTRY *ent;
   int rc;
@@ -16591,12 +16602,6 @@ qexec_end_use_of_xasl_cache_ent (THREAD_ENTRY * thread_p,
 #else /* SA_MODE */
       rc = NO_ERROR;
 #endif /* SERVER_MODE */
-
-      if (marker)
-	{
-	  /* mark it to be deleted */
-	  ent->deletion_marker = true;
-	}
 
 #if defined(SERVER_MODE)
       if (ent->deletion_marker && ent->last_ta_idx == 0)
@@ -16739,12 +16744,8 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 	  return ER_FAILED;
 	}
 
-#if defined(SERVER_MODE)
-      /* remove my transaction id from the entry and do compaction */
-      (void) qexec_remove_my_transaction_id (thread_p, ent);
-#endif
-      (void) qexec_delete_xasl_cache_ent (thread_p, ent, NULL);
-
+      /* mark it to be deleted */
+      ent->deletion_marker = true;
       csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
       ret = ER_FAILED;
@@ -16759,12 +16760,23 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
  *   xasl_id(in)        :
  *   dbval_cnt(in)      :
  *   clop(in)   :
+ *
+ * NOTE : If a entry is found in hash table,
+ *        this function marks current transaction id
+ *        to the tran_index_array of the xasl cache entry.
+ *        This mark must be removed with qexec_end_use_of_xasl_cache_ent
+ *        before current request is finished.
+ *
+ *        A marked xasl cache entry cannot be deleted
+ *        from the xasl_id hash table when victimized.
+ *
  */
 XASL_CACHE_ENTRY *
 qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 				    const XASL_ID * xasl_id, int dbval_cnt,
 				    XASL_CACHE_CLONE ** clop)
 {
+  int num_elements;
   XASL_CACHE_ENTRY *ent;
 #if defined (ENABLE_UNUSED_FUNCTION)
   XASL_CACHE_CLONE *clo;
@@ -16815,6 +16827,20 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 			"mismatch %d vs %d\n", ent->dbval_cnt, dbval_cnt);
 	  ent = NULL;
 	}
+
+#if defined(SERVER_MODE)
+      if (ent)
+	{
+	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	  if ((ssize_t) ent->last_ta_idx < MAX_NTRANS)
+	    {
+	      num_elements = (int) ent->last_ta_idx;
+	      (void) tranid_lsearch (&tran_index, ent->tran_index_array,
+				     &num_elements);
+	      ent->last_ta_idx = num_elements;
+	    }
+	}
+#endif
     }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -21048,6 +21074,9 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 		  agg_p->accumulator_domain.value_dom = tmp_domain_p;
 		  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 		}
+	      break;
+	    default:
+	      break;
 	    }
 
 	  /* initialize accumulators */
@@ -25606,7 +25635,7 @@ qexec_for_update_set_class_locks (THREAD_ENTRY * thread_p,
 	      if (specp->access == SEQUENTIAL
 		  && specp->pruning_type != DB_PARTITIONED_CLASS)
 		{
-		  /* X_LOCK classes which are accessed 
+		  /* X_LOCK classes which are accessed
 		   * sequentially. If this is a partitioned class,
 		   * IX_LOCK is enough. Later in the execution,
 		   * when pruning is performed, partitions will be
@@ -25687,7 +25716,7 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 			  if (specp->access == SEQUENTIAL
 			      && specp->pruning_type != DB_PARTITIONED_CLASS)
 			    {
-			      /* X_LOCK classes which are accessed 
+			      /* X_LOCK classes which are accessed
 			       * sequentially. If this is a partitioned class,
 			       * IX_LOCK is enough. Later in the execution,
 			       * when pruning is performed, partitions will be
@@ -28526,7 +28555,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p,
 	}
     }
 
-  /* 
+  /*
    * keep key domains
    */
   proc->agg_hash_context.key_domains =
@@ -28841,7 +28870,7 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p,
  *   thread_p(in): thread
  *   key(out): aggregate key
  *   regu_list(in): reguvar list for fetching values
- * 
+ *
  * NOTE: the DB_VALUEs in the key structure are transient. If key will be
  * stored for later use, a deep copy of DB_VALUEs must be performed using
  * qexec_copy_agg_key().

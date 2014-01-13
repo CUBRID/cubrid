@@ -1916,18 +1916,12 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
-      if (err == ER_QPROC_INVALID_XASLNODE &&
-	  session->stage[stmt_ndx] == StatementPreparedStage)
+      if (err == ER_QPROC_INVALID_XASLNODE
+	  && session->stage[stmt_ndx] == StatementPreparedStage)
 	{
-	  /* Hmm, there is a kind of problem in the XASL cache.
-	     It is possible when the cache entry was deleted before 'execute'
-	     and after 'prepare' by the other, e.g. qmgr_drop_all_query_plans().
-	     In this case, retry to prepare once more (generate and stored
-	     the XASL again). */
+	  /* The cache entry was deleted before 'execute' */
 	  if (statement->xasl_id)
 	    {
-	      (void) qmgr_drop_query_plan (NULL, NULL, statement->xasl_id,
-					   false);
 	      pt_free_statement_xasl_id (statement);
 	    }
 	  /* forget all errors */
@@ -3040,12 +3034,6 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx,
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  if (session->statements && stmt_ndx > 0 && stmt_ndx <= session->dimension
-      && session->statements[stmt_ndx - 1])
-    {
-      session->statements[stmt_ndx - 1]->do_not_keep = 1;
-    }
-
   err = db_execute_and_keep_statement_local (session, stmt_ndx, result);
 
   statement = session->statements[stmt_ndx - 1];
@@ -3098,16 +3086,6 @@ db_drop_statement (DB_SESSION * session, int stmt)
   statement = session->statements[stmt - 1];
   if (statement != NULL)
     {
-      /* free XASL_ID allocated by query_prepare()
-         before freeing the statement */
-      if (statement->xasl_id)
-	{
-	  if (statement->do_not_keep == 0)
-	    {
-	      (void) qmgr_drop_query_plan (NULL, NULL, statement->xasl_id,
-					   false);
-	    }
-	}
       pt_free_statement_xasl_id (statement);
       parser_free_tree (session->parser, statement);
       session->statements[stmt - 1] = NULL;
@@ -3133,16 +3111,6 @@ db_drop_all_statements (DB_SESSION * session)
       statement = session->statements[stmt];
       if (statement != NULL)
 	{
-	  /* free XASL_ID allocated by query_prepare()
-	     before freeing the statement */
-	  if (statement->xasl_id)
-	    {
-	      if (statement->do_not_keep == 0)
-		{
-		  (void) qmgr_drop_query_plan (NULL, NULL, statement->xasl_id,
-					       false);
-		}
-	    }
 	  pt_free_statement_xasl_id (statement);
 	  parser_free_tree (session->parser, statement);
 	  session->statements[stmt] = NULL;
@@ -3191,16 +3159,6 @@ db_close_session_local (DB_SESSION * session)
 	  statement = session->statements[i];
 	  if (statement != NULL)
 	    {
-	      /* free XASL_ID allocated by query_prepare()
-	         before freeing the statement */
-	      if (statement->xasl_id)
-		{
-		  if (statement->do_not_keep == 0)
-		    {
-		      (void) qmgr_drop_query_plan (NULL, NULL,
-						   statement->xasl_id, false);
-		    }
-		}
 	      pt_free_statement_xasl_id (statement);
 	      parser_free_tree (parser, statement);
 	      session->statements[i] = NULL;

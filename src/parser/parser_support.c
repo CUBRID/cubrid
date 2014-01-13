@@ -6496,7 +6496,6 @@ pt_copy_statement_flags (PT_NODE * source, PT_NODE * destination)
 {
   destination->recompile = source->recompile;
   destination->cannot_prepare = source->cannot_prepare;
-  destination->do_not_keep = source->do_not_keep;
   destination->si_datetime = source->si_datetime;
   destination->si_tran_id = source->si_tran_id;
 }

@@ -107,7 +107,7 @@ struct cache_time
         } while (0)
 
 /* XASL HEADER */
-/* 
+/*
  * XASL_NODE_HEADER has useful information that needs to be passed to client
  * along with XASL_ID
  *
@@ -712,7 +712,7 @@ enum
 {
   ASYNC_EXECUTABLE = 0x00,
   ASYNC_UNEXECUTABLE = 0x02,
-  KEEP_PLAN_CACHE = 0x04,
+  /* This flag is removed = 0x04, */
   NOT_FROM_RESULT_CACHE = 0x08,
   RESULT_CACHE_REQUIRED = 0x10,
   RESULT_CACHE_INHIBITED = 0x20,
@@ -731,9 +731,6 @@ enum
 
 #define IS_ASYNC_UNEXECUTABLE(flag) ((flag) & ASYNC_UNEXECUTABLE)
 #define IS_ASYNC_EXECUTABLE(flag) (!((flag) & ASYNC_UNEXECUTABLE))
-
-#define DO_KEEP_PLAN_CACHE(flag)        ((flag) & KEEP_PLAN_CACHE)
-#define DO_NOT_KEEP_PLAN_CACHE(flag)    !((flag) & KEEP_PLAN_CACHE)
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
 

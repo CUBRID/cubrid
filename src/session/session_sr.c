@@ -78,7 +78,7 @@ xsession_end_session (THREAD_ENTRY * thread_p, const SESSION_KEY * key)
 }
 
 /*
- *  xsession_set_row_count () - set the count of affected rows for the 
+ *  xsession_set_row_count () - set the count of affected rows for the
  *				    session associated to thread_p
  *  return	  : error code
  *  thread_p (in) : worker thread
@@ -91,7 +91,7 @@ xsession_set_row_count (THREAD_ENTRY * thread_p, int row_count)
 }
 
 /*
- *  xsession_get_row_count () - get the count of affected rows for the 
+ *  xsession_get_row_count () - get the count of affected rows for the
  *				    session associated to thread_p
  *  return	  : error code
  *  thread_p (in) : worker thread
@@ -169,7 +169,7 @@ xsession_reset_cur_insert_id (THREAD_ENTRY * thread_p)
  * xsession_create_prepared_statement () - create a prepared statement and add
  *					   it to the prepared statements list
  * return : NO_ERROR or error code
- * thread_p (in)	: 
+ * thread_p (in)	:
  * user (in)		: OID of the user who prepared this statement
  * name (in)		: the name of the statement
  * alias_print(in)	: the printed compiled statement
@@ -194,7 +194,7 @@ xsession_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
  * xsession_get_prepared_statement () - get the information about a prepared
  *					statement
  * return : NO_ERROR or error code
- * thread_p (in)	: 
+ * thread_p (in)	:
  * name (in)		: the name of the statement
  * name (in)		: the name of the prepared statement
  * info (out)		: serialized prepared statement information
@@ -215,6 +215,12 @@ xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
       /* get XASL node header from XASL stream */
       qfile_load_xasl_node_header (thread_p, xasl_id, xasl_header_p);
     }
+
+  if (error == NO_ERROR && !XASL_ID_IS_NULL (xasl_id))
+    {
+      (void) qexec_end_use_of_xasl_cache_ent (thread_p, xasl_id);
+    }
+
   return error;
 }
 

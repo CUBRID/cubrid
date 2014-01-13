@@ -2262,7 +2262,11 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 			  goto error;
 			}
 		    }
+
+		  (void) qexec_end_use_of_xasl_cache_ent (thread_p,
+							  &ent->xasl_id);
 		}
+
 	      /* structure copy */
 	      XASL_ID_COPY (&query_exec_info[i].xasl_id, &tdes->xasl_id);
 	    }

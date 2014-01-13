@@ -965,8 +965,7 @@ extern XASL_CACHE_ENTRY *qexec_update_filter_pred_cache_ent (THREAD_ENTRY *
 							     *tcards,
 							     int dbval_cnt);
 extern int qexec_end_use_of_xasl_cache_ent (THREAD_ENTRY * thread_p,
-					    const XASL_ID * xasl_id,
-					    bool marker);
+					    const XASL_ID * xasl_id);
 extern int qexec_end_use_of_filter_pred_cache_ent (THREAD_ENTRY * thread_p,
 						   const XASL_ID * xasl_id,
 						   bool marker);

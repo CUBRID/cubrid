@@ -3128,7 +3128,6 @@ struct parser_node
   CACHE_TIME cache_time;	/* client or server cache time */
   unsigned recompile:1;		/* the statement should be recompiled - used for plan cache */
   unsigned cannot_prepare:1;	/* the statement cannot be prepared - used for plan cache */
-  unsigned do_not_keep:1;	/* the statement will not be kept after execution - used for plan cache */
   unsigned partition_pruned:1;	/* partition pruning takes place */
   unsigned si_datetime:1;	/* get server info; SYS_DATETIME */
   unsigned si_tran_id:1;	/* get server info; LOCAL_TRANSACTION_ID */

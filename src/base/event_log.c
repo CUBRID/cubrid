@@ -313,6 +313,11 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp,
     {
       fprintf (log_fp, "%s\n", EVENT_EMPTY_QUERY);
     }
+
+  if (ent != NULL)
+    {
+      (void) qexec_end_use_of_xasl_cache_ent (thread_p, &ent->xasl_id);
+    }
 }
 
 /*
