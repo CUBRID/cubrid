@@ -7006,6 +7006,18 @@ qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
       return 0;
     }
 
+  if (!pt_is_single_tuple (env->parser, env->pt_tree))
+    {
+      /* if not a single tuple query, then we either have a GROUP BY clause or
+       * we don't have any kind of aggregation; in these cases, pure NULL keys
+       * qualify iff no terms are used */
+      if (bitset_cardinality (&index_entry->terms) <= 0)
+	{
+	  /* no terms specified, so NULL keys can't be skipped; disable ILS */
+	  return 0;
+	}
+    }
+
   /* all done */
   return prefix_len;
 }

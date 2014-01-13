@@ -468,5 +468,6 @@ extern DISK_ISVALID btree_repair_prev_link (THREAD_ENTRY * thread_p,
 					    OID * oid, bool repair);
 extern int btree_ils_adjust_range (THREAD_ENTRY * thread_p,
 				   KEY_VAL_RANGE * key_range,
-				   DB_VALUE * curr_key, int prefix_len);
+				   DB_VALUE * curr_key, int prefix_len,
+				   bool use_desc_index);
 #endif /* _BTREE_H_ */

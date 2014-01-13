@@ -10420,6 +10420,22 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 	}
 
+      /* check for session variable assignments */
+      {
+	int arg[2];
+
+	arg[0] = PT_DEFINE_VARIABLE;	/* type */
+	arg[1] = 0;		/* found */
+
+	(void) parser_walk_tree (parser, node->info.query.q.select.list,
+				 pt_find_op_type_pre, arg, NULL, NULL);
+
+	if (arg[1])		/* an assignment was found */
+	  {
+	    PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_DISABLE_LOOSE_SCAN);
+	  }
+      }
+
       node = pt_semantic_type (parser, node, info);
       break;
 

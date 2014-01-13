@@ -11843,6 +11843,37 @@ pt_find_node_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 }
 
 /*
+ * pt_find_op_type_pre () - Use parser_walk_tree to find an operator of a
+ *			    specific type.
+ *
+ * return	      : node.
+ * parser (in)	      : parser context.
+ * node (in)	      : node in parse tree.
+ * arg (in)	      : int array containing expr type and found.
+ * continue_walk (in) : continue walk.
+ *
+ * NOTE: Make sure to set found to 0 before calling parser_walk_tree.
+ */
+PT_NODE *
+pt_find_op_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+		     int *continue_walk)
+{
+  int op_type = *((int *) arg);
+  int *found_p = ((int *) arg) + 1;
+
+  if (*found_p || *continue_walk == PT_STOP_WALK || node == NULL)
+    {
+      return node;
+    }
+  if (node->node_type == PT_EXPR && node->info.expr.op == op_type)
+    {
+      *found_p = 1;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
  * pt_partition_name - get actual class name of a partition from root class name
  *		       and partition suffix
  * return: partition class name

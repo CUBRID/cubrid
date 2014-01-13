@@ -21579,12 +21579,13 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
  */
 int
 btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
-			DB_VALUE * curr_key, int prefix_len)
+			DB_VALUE * curr_key, int prefix_len,
+			bool use_desc_index)
 {
-  DB_VALUE new_key, *new_key_dbvals, *target_key = &key_range->key1;
+  DB_VALUE new_key, *new_key_dbvals, *target_key;
+  TP_DOMAIN *dom;
   DB_MIDXKEY midxkey;
   int i;
-  bool limit_suffix = false;
 
   /* check environment */
   if (DB_VALUE_DOMAIN_TYPE (curr_key) != DB_TYPE_MIDXKEY)
@@ -21593,6 +21594,18 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
       return ER_FAILED;
+    }
+
+  /* fetch target key */
+  if (use_desc_index)
+    {
+      /* descending index scan, we adjust upper bound */
+      target_key = &key_range->key2;
+    }
+  else
+    {
+      /* ascending index scan, we adjust lower bound */
+      target_key = &key_range->key1;
     }
 
   /* allocate key buffer */
@@ -21610,28 +21623,96 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
   /* determine target key and adjust range */
   switch (key_range->range)
     {
+    case INF_INF:
+      if (use_desc_index)
+	{
+	  key_range->range = INF_LT;	/* (INF, INF) => (INF, ?) */
+	}
+      else
+	{
+	  key_range->range = GT_INF;	/* (INF, INF) => (?, INF) */
+	}
+      break;
+
     case INF_LE:
-    case GE_LE:
-      key_range->range = GT_LE;
-      limit_suffix = true;
+      if (use_desc_index)
+	{
+	  key_range->range = INF_LT;	/* (INF, ?] => (INF, ?) */
+	}
+      else
+	{
+	  key_range->range = GT_LE;	/* (INF, ?] => (?, ?] */
+	}
       break;
 
     case INF_LT:
-    case GE_LT:
-      key_range->range = GT_LT;
-      limit_suffix = true;
+      if (use_desc_index)
+	{
+	  /* range remains unchanged */
+	}
+      else
+	{
+	  key_range->range = GT_LT;	/* (INF, ?) => (?, ?) */
+	}
       break;
 
-    case INF_INF:
+    case GE_LE:
+      if (use_desc_index)
+	{
+	  key_range->range = GE_LT;	/* [?, ?] => [?, ?) */
+	}
+      else
+	{
+	  key_range->range = GT_LE;	/* [?, ?] => (?, ?] */
+	}
+      break;
+
+    case GE_LT:
+      if (use_desc_index)
+	{
+	  /* range remains unchanged */
+	}
+      else
+	{
+	  key_range->range = GT_LT;	/* [?, ?) => (?, ?) */
+	}
+      break;
+
     case GE_INF:
-      key_range->range = GT_INF;
-      limit_suffix = true;
+      if (use_desc_index)
+	{
+	  key_range->range = GE_LT;	/* [?, INF) => [?, ?) */
+	}
+      else
+	{
+	  key_range->range = GT_INF;	/* [?, INF) => (?, INF)  */
+	}
       break;
 
     case GT_LE:
+      if (use_desc_index)
+	{
+	  key_range->range = GT_LT;	/* (?, ?] => (?, ?) */
+	}
+      else
+	{
+	  /* range remains unchanged */
+	}
+      break;
+
     case GT_LT:
+      /* range remains unchanged */
+      break;
+
     case GT_INF:
-      /* nothing to do */
+      if (use_desc_index)
+	{
+	  key_range->range = GT_LT;	/* (?, INF) => (?, ?) */
+	}
+      else
+	{
+	  /* range remains unchanged */
+	}
       break;
 
     default:
@@ -21647,42 +21728,32 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
     }
 
   /* build suffix */
-  if (limit_suffix)
+
+  dom = curr_key->data.midxkey.domain->setdomain;
+
+  /* get to domain */
+  for (i = 0; i < prefix_len; i++)
     {
-      TP_DOMAIN *dom = curr_key->data.midxkey.domain->setdomain;
-
-      /* get to domain */
-      for (i = 0; i < prefix_len; i++)
-	{
-	  dom = dom->next;
-	}
-
-      /* minimum or maximum suffix */
-      for (i = prefix_len; i < curr_key->data.midxkey.ncolumns; i++)
-	{
-	  if (dom->is_desc)
-	    {
-	      db_value_domain_min (&new_key_dbvals[i], dom->type->id,
-				   dom->precision, dom->scale, dom->codeset,
-				   dom->collation_id, &dom->enumeration);
-	    }
-	  else
-	    {
-	      db_value_domain_max (&new_key_dbvals[i], dom->type->id,
-				   dom->precision, dom->scale, dom->codeset,
-				   dom->collation_id, &dom->enumeration);
-	    }
-	  dom = dom->next;
-	}
+      dom = dom->next;
     }
-  else
+
+  /* minimum or maximum suffix */
+  for (i = prefix_len; i < curr_key->data.midxkey.ncolumns; i++)
     {
-      /* copy remaining of key */
-      for (i = prefix_len; i < target_key->data.midxkey.ncolumns; i++)
+      if ((dom->is_desc && !use_desc_index)
+	  || (!dom->is_desc && use_desc_index))
 	{
-	  pr_midxkey_get_element_nocopy (&target_key->data.midxkey, i,
-					 &new_key_dbvals[i], NULL, NULL);
+	  db_value_domain_min (&new_key_dbvals[i], dom->type->id,
+			       dom->precision, dom->scale, dom->codeset,
+			       dom->collation_id, &dom->enumeration);
 	}
+      else
+	{
+	  db_value_domain_max (&new_key_dbvals[i], dom->type->id,
+			       dom->precision, dom->scale, dom->codeset,
+			       dom->collation_id, &dom->enumeration);
+	}
+      dom = dom->next;
     }
 
   /* build midxkey */
