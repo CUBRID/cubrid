@@ -7179,15 +7179,10 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag,
 	  /* precision = DB_MAX_STRING_LENGTH; */
 #endif /* !LIBCAS_FOR_JSP */
 
-	  set_column_info (net_buf,
-			   (char) cas_type,
-			   scale,
-			   precision,
-			   col_name,
-			   attr_name,
-			   class_name,
-			   (char)
-			   db_query_format_is_non_null (col), client_version);
+	  set_column_info (net_buf, (char) cas_type, scale, precision,
+			   col_name, attr_name, class_name,
+			   (char) db_query_format_is_non_null (col),
+			   client_version);
 
 	  num_cols++;
 	}
@@ -9344,13 +9339,8 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       /* precision = DB_MAX_STRING_LENGTH; */
 #endif /* !LIBCAS_FOR_JSP */
 
-      set_column_info (net_buf,
-		       (char) cas_type,
-		       scale,
-		       precision,
-		       col_name,
-		       attr_name,
-		       class_name,
+      set_column_info (net_buf, (char) cas_type, scale, precision, col_name,
+		       attr_name, class_name,
 		       (char) db_query_format_is_non_null (col),
 		       client_version);
     }
