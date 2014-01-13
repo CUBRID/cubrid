@@ -1924,14 +1924,29 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	    {
 	      pt_free_statement_xasl_id (statement);
 	    }
-	  /* forget all errors */
-	  er_clear ();
-	  pt_reset_error (parser);
 
-	  /* retry the statement by calling do_prepare/execute_statement() */
-	  if (do_prepare_statement (parser, statement) == NO_ERROR)
+	  cls_status = pt_has_modified_class (parser, statement);
+	  if (cls_status == CLS_NOT_MODIFIED)
 	    {
-	      err = do_execute_statement (parser, statement);
+	      /* forget all errors */
+	      er_clear ();
+	      pt_reset_error (parser);
+
+	      /* retry the statement by calling do_prepare/execute_statement() */
+	      if (do_prepare_statement (parser, statement) == NO_ERROR)
+		{
+		  err = do_execute_statement (parser, statement);
+		}
+	    }
+	  else if (cls_status == CLS_MODIFIED)
+	    {
+	      err = ER_QPROC_INVALID_XASLNODE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	    }
+	  else
+	    {
+	      assert (cls_status == CLS_ERROR);
+	      err = er_errid ();
 	    }
 	}
     }

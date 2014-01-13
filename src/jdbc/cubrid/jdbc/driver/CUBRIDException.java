@@ -42,12 +42,12 @@ public class CUBRIDException extends SQLException {
 	}
 
 	public CUBRIDException(UError error) {
-		this(error.getErrorMsg(), error.getJdbcErrorCode());
+		this(error.getErrorMsg(true), error.getJdbcErrorCode());
 		error.changeStackTrace(this);
 	}
 
 	public CUBRIDException(UError error, Throwable t) {
-		this(error.getErrorMsg(), error.getJdbcErrorCode());
+		this(error.getErrorMsg(true), error.getJdbcErrorCode());
 		if (t != null) {
 		    setStackTrace(t.getStackTrace());
 		}

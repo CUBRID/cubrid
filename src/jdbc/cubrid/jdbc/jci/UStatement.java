@@ -893,7 +893,14 @@ public class UStatement {
 		        .prepare(sql_stmt, prepare_flag, true);
 		UError err = relatedConnection.getRecentError();
 		if (err.getErrorCode() != UErrorCode.ER_NO_ERROR) {
-			throw new UJciException(err.getErrorCode());
+			int indicator =
+				(err.getErrorCode() == UErrorCode.ER_DBMS) ?
+						UErrorCode.DBMS_ERROR_INDICATOR :
+							UErrorCode.CAS_ERROR_INDICATOR;
+
+			throw new UJciException(err.getErrorCode(),
+						indicator, err.getJdbcErrorCode(),
+						err.getErrorMsg(false));
 		}
 
 		relatedConnection.pooled_ustmts.remove(tmp);

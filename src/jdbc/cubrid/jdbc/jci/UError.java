@@ -67,8 +67,8 @@ public class UError {
 		return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
 	}
 
-	public String getErrorMsg() {
-		if (connection != null) {
+	public String getErrorMsg(boolean include_con_info) {
+		if (connection != null && include_con_info) {
 			String sessionInfo = "";			
 			if (connection.protoVersionIsAbove(UConnection.PROTOCOL_V3)) {
 				sessionInfo = String.format("[SESSION-%d],",
