@@ -124,17 +124,17 @@ probe process("cub_server").library("*").mark("io_read_start")
 
 probe process("cub_server").library("*").mark("io_read_end")
 {
-  total_io_time[tid()] <<< gettimeofday_ns () - io_times[tid(), $arg2, 0];
+  total_io_time[tid()] <<< gettimeofday_ns () - io_times[tid(), $arg1, 0];
 }
 
 probe process("cub_server").library("*").mark("io_write_start")
 {
-  io_times[tid(), $arg2, 1] = gettimeofday_ns ();
+  io_times[tid(), $arg1, 1] = gettimeofday_ns ();
 }
 
 probe process("cub_server").library("*").mark("io_write_end")
 {
-  total_io_time[tid()] <<< gettimeofday_ns () - io_times[tid(), $arg2, 1];
+  total_io_time[tid()] <<< gettimeofday_ns () - io_times[tid(), $arg1, 1];
 }
 
 probe timer.s(60)

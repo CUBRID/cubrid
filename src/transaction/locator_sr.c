@@ -7263,7 +7263,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
     }
 
 #if defined(ENABLE_SYSTEMTAP)
-  classname = or_class_name (recdes);
+  classname = heap_get_class_name (thread_p, class_oid);
 #endif /* ENABLE_SYSTEMTAP */
 
   for (i = 0; i < num_btids; i++)
@@ -7930,7 +7930,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
     }
 
 #if defined(ENABLE_SYSTEMTAP)
-  classname = or_class_name (old_recdes);
+  classname = heap_get_class_name (thread_p, class_oid);
 #endif /* ENABLE_SYSTEMTAP */
 
   for (i = 0; i < num_btids; i++)
