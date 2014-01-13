@@ -20078,6 +20078,7 @@ char_string_literal
 			    str->info.value.data_value.str =
 			      pt_append_bytes (this_parser, str->info.value.data_value.str, $2,
 					       strlen ($2));
+			    str->info.value.text = NULL;
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, str);
 			  }
 
@@ -20245,6 +20246,7 @@ bit_string_literal
 			    str->info.value.data_value.str =
 			      pt_append_bytes (this_parser, str->info.value.data_value.str, $2,
 					       strlen ($2));
+			    str->info.value.text = NULL;
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, str);
 			  }
 
