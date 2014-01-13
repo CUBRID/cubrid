@@ -6230,25 +6230,11 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  /* don't contain NUMERIC value additions to a certain precision or
-	     scale */
-	  TP_DOMAIN *value_dom =
-	    (TP_DOMAIN_TYPE (domain->value_dom) ==
-	     DB_TYPE_NUMERIC ? NULL : domain->value_dom);
-
 	  /* values are added up in acc.value */
 	  if (qdata_add_dbval
-	      (acc->value, value, acc->value, value_dom) != NO_ERROR)
+	      (acc->value, value, acc->value, domain->value_dom) != NO_ERROR)
 	    {
 	      return ER_FAILED;
-	    }
-
-	  /* retrieve NUMERIC domain */
-	  if (value_dom == NULL
-	      && DB_VALUE_TYPE (acc->value) == DB_TYPE_NUMERIC
-	      && !DB_IS_NULL (acc->value))
-	    {
-	      domain->value_dom = tp_domain_resolve_value (acc->value, NULL);
 	    }
 	}
       break;
@@ -6336,7 +6322,7 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  (*(domain->value_dom->type->setval)) (acc->value, value, true);
+	  pr_clone_value (value, acc->value);
 	}
     }
 
@@ -6430,6 +6416,14 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
       /* eliminate null values */
       if (DB_IS_NULL (&dbval))
 	{
+	  if ((agg_p->function == PT_COUNT
+	       || agg_p->function == PT_COUNT_STAR)
+	      && DB_IS_NULL (accumulator->value))
+	    {
+	      /* we might get a NULL count if aggregating with hash table and
+	         group has only one tuple; correct that */
+	      DB_MAKE_INT (accumulator->value, 0);
+	    }
 	  continue;
 	}
 

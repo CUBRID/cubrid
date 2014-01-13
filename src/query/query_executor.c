@@ -20914,6 +20914,15 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 	  continue;
 	}
 
+      if (agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR)
+	{
+	  /* COUNT and COUNT(*) always have the same signature */
+	  agg_p->accumulator_domain.value_dom = &tp_Integer_domain;
+	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+
+	  continue;
+	}
+
       /* fetch function operand */
       if (fetch_peek_dbval
 	  (thread_p, &agg_p->operand, &xasl_state->vd, NULL, NULL, NULL,
@@ -20929,11 +20938,8 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 	      || agg_p->accumulator_domain.value_dom == NULL
 	      || agg_p->accumulator_domain.value2_dom == NULL)
 	    {
-	      if (agg_p->function != PT_COUNT_STAR)
-		{
-		  /* domains will not be resolved for this function */
-		  *resolved = 0;
-		}
+	      /* domains will not be resolved at this time */
+	      *resolved = 0;
 	    }
 
 	  /* no need to continue */
@@ -20976,18 +20982,30 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 	      break;
 
-	    case PT_COUNT_STAR:
-	    case PT_COUNT:
-	      agg_p->accumulator_domain.value_dom = &tp_Integer_domain;
-	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
-	      break;
-
 	    case PT_AVG:
 	    case PT_SUM:
 	      if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (dbval)))
 		{
-		  agg_p->accumulator_domain.value_dom =
-		    tp_domain_resolve_default (DB_VALUE_TYPE (dbval));
+		  if (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_NUMERIC)
+		    {
+		      agg_p->accumulator_domain.value_dom =
+			tp_domain_resolve (DB_TYPE_NUMERIC, NULL,
+					   DB_MAX_NUMERIC_PRECISION,
+					   agg_p->domain->scale, NULL, NULL);
+		    }
+		  else if (DB_VALUE_TYPE (dbval) == DB_TYPE_NUMERIC)
+		    {
+		      agg_p->accumulator_domain.value_dom =
+			tp_domain_resolve (DB_TYPE_NUMERIC, NULL,
+					   DB_MAX_NUMERIC_PRECISION,
+					   DB_VALUE_SCALE (dbval), NULL,
+					   NULL);
+		    }
+		  else
+		    {
+		      agg_p->accumulator_domain.value_dom =
+			tp_domain_resolve_default (DB_VALUE_TYPE (dbval));
+		    }
 		}
 	      else
 		{
