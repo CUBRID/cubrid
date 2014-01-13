@@ -263,7 +263,7 @@ function build_configure ()
       print_fatal "Build mode [$build_mode] is not valid build mode" ;;
   esac
 
-  configure_options="$configure_options --enable-dbgw --with-nbase-t=yes"
+  configure_options="$configure_options --enable-dbgw --with-nbase-t=yes --enable-systemtap"
 
   if [ $build_mode = "release" ]; then
     # check conflict
