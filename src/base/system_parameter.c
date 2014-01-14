@@ -3234,7 +3234,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_HA_COPY_LOG_TIMEOUT,
-   (PRM_FOR_SERVER | PRM_FOR_HA | PRM_HIDDEN),
+   (PRM_FOR_SERVER | PRM_FOR_HA | PRM_USER_CHANGE),
    PRM_INTEGER,
    (void *) &prm_ha_copy_log_timeout_flag,
    (void *) &prm_ha_copy_log_timeout_default,

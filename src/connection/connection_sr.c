@@ -177,10 +177,14 @@ static void css_process_abort_packet (CSS_CONN_ENTRY * conn,
 				      unsigned short request_id);
 static bool css_is_request_aborted (CSS_CONN_ENTRY * conn,
 				    unsigned short request_id);
+static void clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY *thrdp,
+						    CSS_CONN_ENTRY * conn,
+						    unsigned short rid,
+						    char **bufferp);
 static int css_return_queued_data_timeout (CSS_CONN_ENTRY * conn,
 					   unsigned short rid, char **buffer,
-					   int *bufsize,
-					   int *rc, int waitsec);
+					   int *bufsize, int *rc,
+					   int waitsec);
 
 static void css_queue_data_packet (CSS_CONN_ENTRY * conn,
 				   unsigned short request_id,
@@ -1834,6 +1838,8 @@ css_free_wait_queue_entry (CSS_CONN_ENTRY * conn,
     {
       if (entry->thrd_entry)
 	{
+	  assert (entry->thrd_entry->resume_status ==
+		  THREAD_CSS_QUEUE_SUSPENDED);
 	  thread_wakeup (entry->thrd_entry, THREAD_CSS_QUEUE_RESUMED);
 	}
 
@@ -2346,6 +2352,50 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid,
 }
 
 /*
+ * clear_wait_queue_entry_and_free_buffer () - remove data_wait_queue entry 
+ *                                             when completing or aborting 
+ *                                             to receive buffer 
+ *                                             from data_wait_queue.
+ *   return: void
+ *   conn(in): connection entry
+ *   rid(in): request id
+ *   bufferp(in): data buffer
+ */
+static void
+clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY *thrdp,
+					CSS_CONN_ENTRY * conn,
+					unsigned short rid, char **bufferp)
+{
+  CSS_WAIT_QUEUE_ENTRY *data_wait;
+
+  csect_enter_critical_section (thrdp, &conn->csect, INF_WAIT);
+
+  /* check the deadlock related problem */
+  data_wait = css_find_and_remove_wait_queue_entry (&conn->data_wait_queue,
+						    rid);
+
+  /* data_wait might be always not NULL except the actual connection close */
+  if (data_wait)
+    {
+      assert (data_wait->thrd_entry == thrdp); /* it must be me */
+      data_wait->thrd_entry = NULL;
+      css_free_wait_queue_entry (conn, data_wait);
+    }
+  else
+    {
+      /* connection_handler_thread may proceed ahead of me right after timeout 
+       * has happened. If the case, we must free the buffer.
+       */
+      if (*bufferp != NULL)
+	{
+	  free_and_init (*bufferp);
+	}
+    }
+
+  csect_exit_critical_section (thrdp, &conn->csect);
+}
+
+/*
  * css_return_queued_data_timeout() - get request data from queue until timeout
  *   return: 0 if success, or error code
  *   conn(in): connection entry
@@ -2466,6 +2516,8 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 		      assert (thrd->resume_status ==
 			      THREAD_RESUME_DUE_TO_INTERRUPT);
 
+		      clear_wait_queue_entry_and_free_buffer (thrd, conn, rid,
+							      buffer);
 		      *buffer = NULL;
 		      *bufsize = -1;
 		      return NO_DATA_AVAILABLE;
@@ -2490,17 +2542,20 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 
 		  if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
 		    {
+		      clear_wait_queue_entry_and_free_buffer (thrd, conn, rid,
+							      buffer);
 		      *rc = TIMEDOUT_ON_QUEUE;
 		      *buffer = NULL;
 		      *bufsize = -1;
 		      return TIMEDOUT_ON_QUEUE;
-
 		    }
 		  else if (thrd->resume_status != THREAD_CSS_QUEUE_RESUMED)
 		    {
 		      assert (thrd->resume_status ==
 			      THREAD_RESUME_DUE_TO_INTERRUPT);
 
+		      clear_wait_queue_entry_and_free_buffer (thrd, conn, rid,
+							      buffer);
 		      *buffer = NULL;
 		      *bufsize = -1;
 		      return NO_DATA_AVAILABLE;
@@ -2525,26 +2580,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 		  assert (conn->csect.name == css_Csect_name_conn);
 #endif
 
-		  csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
-
-		  /* check the deadlock related problem */
-		  data_wait = css_find_and_remove_wait_queue_entry
-		    (&conn->data_wait_queue, rid);
-		  /* data_wait might be always not NULL
-		     except the actual connection close */
-		  if (data_wait)
-		    {
-		      data_wait->thrd_entry = NULL;
-		      css_free_wait_queue_entry (conn, data_wait);
-		    }
-
-#if defined(SERVER_MODE)
-		  assert (conn->csect.cs_index ==
-			  CRITICAL_SECTION_COUNT + conn->idx);
-		  assert (conn->csect.name == css_Csect_name_conn);
-#endif
-
-		  csect_exit_critical_section (NULL, &conn->csect);
+		  clear_wait_queue_entry_and_free_buffer (thrd, conn, rid, buffer);
 		}
 
 	      return NO_ERRORS;

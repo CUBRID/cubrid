@@ -9866,6 +9866,7 @@ ssession_create_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       goto error;
     }
 
@@ -10143,6 +10144,7 @@ ssession_set_session_variables (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       goto cleanup;
     }
 
@@ -10289,6 +10291,7 @@ ssession_drop_session_variables (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE,
 	      0);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
       goto cleanup;
     }
 
