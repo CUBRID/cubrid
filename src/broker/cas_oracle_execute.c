@@ -1336,7 +1336,7 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   DB_VALUE **out_vals;
   LOCATOR_LIST locp_list;
   int bind_count = 0;
-  ub4 cur_locp, iters, mode;
+  ub4 cur_locp, iters;
   bool callsp;
   T_OBJECT ins_oid;
 
@@ -1348,7 +1348,6 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
     {
       iters = 0;
-      mode = OCI_DEFAULT;
     }
   else
     {
@@ -1361,13 +1360,10 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	  goto execute_error_internal;
 	}
       iters = 1;
-      if (srv_handle->auto_commit_mode)
+      if (srv_handle->auto_commit_mode
+	  && srv_handle->stmt_type != CUBRID_STMT_CALL_SP)
 	{
-	  mode = OCI_COMMIT_ON_SUCCESS;
-	}
-      else
-	{
-	  mode = OCI_DEFAULT;
+	  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	}
     }
 
@@ -1460,7 +1456,8 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
     }
 
   SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, 1);
-  err_code = OCIStmtExecute (ORA_SVC, stmt, ORA_ERR, iters, 0, 0, 0, mode);
+  err_code =
+    OCIStmtExecute (ORA_SVC, stmt, ORA_ERR, iters, 0, 0, 0, OCI_DEFAULT);
 
   update_query_execution_count (as_info, srv_handle->stmt_type);
 
@@ -2213,6 +2210,7 @@ ora_value_to_net_buf (T_SRV_HANDLE * srv_handle, void *value, int type,
 	srv_h_id = cas_oracle_create_out_srv_handle (&new_handle, v->cursor,
 						     srv_handle->
 						     auto_commit_mode);
+	srv_handle->has_out_result = true;
 	add_res_data_int (net_buf, srv_h_id, col_type);
 	return 4 + 4 + ((col_type) ? 1 : 0);
       }
@@ -2308,6 +2306,11 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
     {
       net_buf_cp_byte (net_buf, 1);	/* fetch_end_flag */
+    }
+
+  if (srv_handle->auto_commit_mode && srv_handle->has_out_result == false)
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 
   return 0;
@@ -3088,6 +3091,11 @@ cas_oracle_create_out_srv_handle (T_SRV_HANDLE ** new_handle, OCIStmt * stmt,
     }
 
   convert_stmt_type_oracle_to_cubrid (*new_handle);
+
+  if (auto_commit_mode && (*new_handle)->stmt_type == CUBRID_STMT_SELECT)
+    {
+      (*new_handle)->forward_only_cursor = true;
+    }
 
   (*new_handle)->session = (void *) stmt;
   (*new_handle)->is_prepared = TRUE;

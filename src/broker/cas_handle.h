@@ -154,6 +154,9 @@ struct t_srv_handle
   int id;
   void *session;		/* query : DB_SESSION*
 				   schema : schema info table pointer */
+#if defined(CAS_FOR_ORACLE)
+  bool has_out_result;
+#endif
   /* CAS4MySQL : MYSQL_STMT* */
   T_PREPARE_CALL_INFO *prepare_call_info;
   T_QUERY_RESULT *q_result;
