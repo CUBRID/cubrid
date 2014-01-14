@@ -8823,8 +8823,9 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
   db_make_int (db_valuep + 1, 0);
   for (i = 2; i < subquery_list_size; i++)
     {
-      db_make_varchar (db_valuep + i, DB_DEFAULT_PRECISION, "", 0,
-		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_value_domain_default (db_valuep + i, DB_TYPE_VARCHAR,
+			       DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
+			       LANG_SYS_COLLATION, NULL);
     }
 
   psubquery_aliases = is_show_full ? subquery_full_aliases : subquery_aliases;
@@ -10222,25 +10223,32 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   intl_identifier_lower (original_cls_id->info.name.original,
 			 lower_table_name);
 
-  db_make_varchar (db_valuep + 0, DB_DEFAULT_PRECISION, "", 0,
-		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_value_domain_default (db_valuep + 0, DB_TYPE_VARCHAR,
+			   DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION, NULL);
   db_make_int (db_valuep + 1, 0);
-  db_make_varchar (db_valuep + 2, DB_DEFAULT_PRECISION, "", 0,
-		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_value_domain_default (db_valuep + 2, DB_TYPE_VARCHAR,
+			   DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION, NULL);
   db_make_int (db_valuep + 3, 0);
-  db_make_varchar (db_valuep + 4, DB_DEFAULT_PRECISION, "", 0,
-		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  db_make_varchar (db_valuep + 5, DB_DEFAULT_PRECISION, "", 0,
-		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_value_domain_default (db_valuep + 4, DB_TYPE_VARCHAR,
+			   DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION, NULL);
+  db_value_domain_default (db_valuep + 5, DB_TYPE_VARCHAR,
+			   DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION, NULL);
   db_make_int (db_valuep + 6, 0);
   db_make_int (db_valuep + 7, 0);
   db_make_null (db_valuep + 8);
-  db_make_varchar (db_valuep + 9, DB_DEFAULT_PRECISION, "", 0,
-		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  db_make_varchar (db_valuep + 10, DB_DEFAULT_PRECISION, "", 0,
-		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  db_make_varchar (db_valuep + 11, DB_DEFAULT_PRECISION, "", 0,
-		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_value_domain_default (db_valuep + 9, DB_TYPE_VARCHAR,
+			   DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION, NULL);
+  db_value_domain_default (db_valuep + 10, DB_TYPE_VARCHAR,
+			   DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION, NULL);
+  db_value_domain_default (db_valuep + 11, DB_TYPE_VARCHAR,
+			   DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION, NULL);
 
   for (i = 0; i < sizeof (db_valuep) / sizeof (db_valuep[0]); i++)
     {

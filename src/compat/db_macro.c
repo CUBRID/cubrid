@@ -6259,14 +6259,14 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p,
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
 	  src_p = DB_GET_STRING (value_p);
-	  
-	  if (src_p != NULL && DB_GET_STRING_SIZE(value_p) == 0)
+
+	  if (src_p != NULL && DB_GET_STRING_SIZE (value_p) == 0)
 	    {
-              buffer_p = valcnv_append_string (buffer_p, "");
-              return buffer_p;
+	      buffer_p = valcnv_append_string (buffer_p, "");
+	      return buffer_p;
 	    }
-	    
-	  
+
+
 	  end_p = src_p + DB_GET_STRING_SIZE (value_p);
 	  while (src_p < end_p)
 	    {
@@ -6446,7 +6446,10 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p,
 	      && db_get_enum_string (value_p) == NULL)
 	    {
 	      /* ENUM special error value */
-	      DB_MAKE_STRING (&dbval, "");
+	      db_value_domain_default (&dbval, DB_TYPE_VARCHAR,
+				       DB_DEFAULT_PRECISION, 0,
+				       LANG_SYS_CODESET, LANG_SYS_COLLATION,
+				       NULL);
 	      buffer_p = valcnv_convert_data_to_string (buffer_p, &dbval);
 	    }
 	  else if (db_get_enum_string_size (value_p) > 0)
