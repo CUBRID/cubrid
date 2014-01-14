@@ -333,6 +333,13 @@ namespace dbgw
     return m_updateCountList;
   }
 
+  InvalidOutParameterException::InvalidOutParameterException() throw() :
+    Exception(
+        ExceptionFactory::create(DBGW_ER_SQL_INVALID_OUT_PARAMETER,
+            "Only procedure can have out parameter."))
+  {
+  }
+
   MismatchValueTypeException::MismatchValueTypeException(int orgType,
       int convType) throw() :
     Exception(

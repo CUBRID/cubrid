@@ -251,6 +251,13 @@ namespace dbgw
             }
         }
 
+      if (m_bExistOutBindParam && m_statementType != sql::DBGW_STMT_TYPE_PROCEDURE)
+        {
+          InvalidOutParameterException e;
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
       m_pStatItem->addColumn(
           new _StatisticsItemColumn(pMonitor, DBGW_STAT_COL_TYPE_STATIC,
               DBGW_STAT_VAL_TYPE_STRING, " ", 1));
@@ -889,3 +896,4 @@ namespace dbgw
   }
 
 }
+

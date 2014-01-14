@@ -52,6 +52,7 @@ namespace dbgw
     DBGW_ER_SQL_UNSUPPORTED_OPERATION                 = -22203,
     DBGW_ER_SQL_INVALID_CURSOR_POSITION               = -22204,
     DBGW_ER_SQL_FAIL_TO_BATCH_UPDATE                  = -22205,
+    DBGW_ER_SQL_INVALID_OUT_PARAMETER                 = -22206,
 
     DBGW_ER_VALUE_MISMATCH_VALUE_TYPE                 = -22301,
     DBGW_ER_VALUE_INVALID_VALUE_TYPE                  = -22302,
@@ -259,6 +260,13 @@ namespace dbgw
 
   private:
     std::vector<int> m_updateCountList;
+  };
+
+  class InvalidOutParameterException : public Exception
+  {
+  public:
+    InvalidOutParameterException() throw();
+    virtual ~InvalidOutParameterException() throw() {}
   };
 
   class MismatchValueTypeException : public Exception
