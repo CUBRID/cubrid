@@ -1585,9 +1585,18 @@ obj_print_help_free_class (CLASS_HELP * info)
 {
   if (info != NULL)
     {
-      free_and_init (info->name);
-      free_and_init (info->class_type);
-      free_and_init (info->object_id);
+      if (info->name != NULL)
+	{
+	  free_and_init (info->name);
+	}
+      if (info->class_type != NULL)
+	{
+	  free_and_init (info->class_type);
+	}
+      if (info->object_id != NULL)
+	{
+	  free_and_init (info->object_id);
+	}
       if (info->collation != NULL)
 	{
 	  free_and_init (info->collation);
