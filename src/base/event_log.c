@@ -112,8 +112,42 @@ static FILE *
 event_file_open (const char *path)
 {
   FILE *fp;
+  char dir[PATH_MAX], *tpath;
 
   assert (path != NULL);
+
+  tpath = strdup (path);
+  if (tpath == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, strlen (path));
+      return NULL;
+    }
+
+  while (1)
+    {
+      if (cub_dirname_r (tpath, dir, PATH_MAX) > 0 && access (dir, F_OK) < 0)
+	{
+	  if (mkdir (dir, 0777) < 0 && errno == ENOENT)
+	    {
+	      free_and_init (tpath);
+
+	      tpath = strdup (dir);
+	      if (tpath == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (dir));
+		  return NULL;
+		}
+
+	      continue;
+	    }
+	}
+
+      break;
+    }
+
+  free_and_init (tpath);
 
   fp = fopen (path, "r+");
   if (fp != NULL)
