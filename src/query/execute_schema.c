@@ -10494,6 +10494,47 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	}
     }
 
+  /* the serial property has not changed, we are only dealing with renaming */
+  if (is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_DIFF)
+      && attribute->info.attr_def.auto_increment != NULL
+      && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
+      && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_LOST)
+      && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR],
+			   ATT_CHG_PROPERTY_GAINED))
+    {
+      OID serial_obj_id;
+
+      OID_SET_NULL (&serial_obj_id);
+
+      if (found_att->auto_increment == NULL)
+	{
+	  char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
+	  MOP serial_class_mop, serial_mop;
+
+	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+
+	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name,
+					  ctemplate->name,
+					  old_name);
+	  serial_mop =
+	    do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
+				  auto_increment_name);
+	  found_att->auto_increment = serial_mop;
+	}
+
+      assert_release (found_att->auto_increment);
+
+      error =
+	    do_update_auto_increment_serial_on_rename (found_att->auto_increment,
+						       ctemplate->name,
+						       new_name);
+
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
   assert (attr_chg_prop->name_space == ID_ATTRIBUTE);
 
 exit:
