@@ -464,7 +464,8 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
       size = 0;
       for (i = 0; i < info->host_variables.size - info->auto_param_count; i++)
 	{
-	  size += or_packed_domain_size (info->host_var_expected_domains[i], 0);
+	  size +=
+	    or_packed_domain_size (info->host_var_expected_domains[i], 0);
 	}
       packed_size += size;
     }
@@ -531,7 +532,8 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 	}
       for (i = 0; i < info->host_variables.size - info->auto_param_count; i++)
 	{
-	  ptr = or_pack_domain (ptr, info->host_var_expected_domains[i], 0, 0);
+	  ptr =
+	    or_pack_domain (ptr, info->host_var_expected_domains[i], 0, 0);
 	}
     }
 
@@ -612,7 +614,8 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 	}
       for (i = 0; i < var_count; i++)
 	{
-	  ptr = or_unpack_domain (ptr, &info->host_var_expected_domains[i], NULL);
+	  ptr =
+	    or_unpack_domain (ptr, &info->host_var_expected_domains[i], NULL);
 	}
     }
   return NO_ERROR;
@@ -1993,7 +1996,11 @@ db_query_format_is_non_null (DB_QUERY_TYPE * query_type)
 	}
     }
 
-  return ER_OBJ_INVALID_ATTRIBUTE;
+  /* 
+   * query_type is not an attribute. 
+   * It may be an expression and will be treated as nullable. 
+   */
+  return 0;
 }
 
 /*
