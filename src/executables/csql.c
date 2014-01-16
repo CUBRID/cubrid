@@ -188,8 +188,8 @@ static void init_readline ();
 
 static void free_csql_column_width_info_list ();
 static int initialize_csql_column_width_info_list ();
-static int get_column_width_argument (char **column_name, int *column_width,
-				      char *argument);
+static int get_column_name_argument (char **column_name,
+				     char **val_str, char *argument);
 static void csql_pipe_handler (int sig_no);
 static void display_buffer (void);
 static void csql_execute_rcfile (CSQL_ARGUMENT * csql_arg);
@@ -1167,7 +1167,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_COLUMN_WIDTH:
       {
 	char *column_name = NULL;
-	int width, result;
+	int width = 0, result;
 
 	if (*argument == '\0')
 	  {
@@ -1193,26 +1193,38 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  }
 	else
 	  {
+	    char *val_str = NULL;
+
 	    result =
-	      get_column_width_argument (&column_name, &width, argument);
-	    if (result == 1)
+	      get_column_name_argument (&column_name, &val_str, argument);
+	    if (result == CSQL_FAILURE)
+	      {
+		fprintf (csql_Error_fp, "ERROR: Column name is too long.\n");
+		break;
+	      }
+
+	    if (val_str == NULL)
 	      {
 		width = csql_get_column_width (column_name);
-		fprintf (csql_Output_fp,
-			 "COLUMN-WIDTH %s : %d\n", column_name, width);
+		fprintf (csql_Output_fp, "COLUMN-WIDTH %s : %d\n",
+			 column_name, width);
 	      }
-	    else if (result == 2)
+	    else
 	      {
+		trim (val_str);
+		result = port_str_to_int (&width, val_str, 10);
+		if (result != 0 || width < 0)
+		  {
+		    fprintf (csql_Error_fp, "ERROR: Invalid argument(%s).\n",
+			     val_str);
+		    break;
+		  }
+
 		if (csql_set_column_width_info (column_name, width) !=
 		    CSQL_SUCCESS)
 		  {
 		    return DO_CMD_FAILURE;
 		  }
-	      }
-	    else
-	      {
-		fprintf (csql_Error_fp,
-			 "ERROR: Invalid argument(%s).\n", argument);
 	      }
 	  }
       }
@@ -2999,34 +3011,31 @@ csql_get_column_width (const char *column_name)
 }
 
 /*
- * get_column_width_argument() - get column_name and column_width from argument
+ * get_column_name_argument() - get column_name and value pointer from argument
  *   return: int
  *   column_name(out): column name
- *   column_width(out): column width
+ *   val_str(out): value string in argument
  *   argument(in): argument
  */
 static int
-get_column_width_argument (char **column_name, int *column_width,
-			   char *argument)
+get_column_name_argument (char **column_name, char **val_str, char *argument)
 {
-  char *p, *s_width = NULL;
-  char *endptr;
-  long result;
+  char *p;
 
-  if (argument == NULL)
-    {
-      return CSQL_FAILURE;
-    }
+  assert (column_name != NULL && val_str != NULL && argument != NULL);
 
+  *column_name = NULL;
+  *val_str = NULL;
+
+  /* argument : "column_name=value" */
   *column_name = argument;
 
   p = strrchr (*column_name, '=');
-  if (p == NULL)
+  if (p != NULL)
     {
-      return 1;
+      *p = '\0';
+      *val_str = (p + 1);
     }
-  *p = '\0';
-  s_width = (p + 1);
 
   trim (*column_name);
 
@@ -3036,34 +3045,7 @@ get_column_width_argument (char **column_name, int *column_width,
       return CSQL_FAILURE;
     }
 
-  trim (s_width);
-
-  errno = 0;			/* To distinguish success/failure after call */
-  result = strtol (s_width, &endptr, 10);
-  if ((errno == ERANGE
-       && (result == LONG_MAX || result == LONG_MIN))
-      || (errno != 0 && result == 0))
-    {
-      strcpy (argument, s_width);
-
-      return CSQL_FAILURE;
-    }
-  if (endptr && *endptr != '\0')
-    {
-      strcpy (argument, s_width);
-
-      return CSQL_FAILURE;
-    }
-  if (result > INT_MAX || result < 0)
-    {
-      strcpy (argument, s_width);
-
-      return CSQL_FAILURE;
-    }
-
-  *column_width = result;
-
-  return 2;
+  return CSQL_SUCCESS;
 }
 
 /*
