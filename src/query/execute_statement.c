@@ -10732,6 +10732,14 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (error == NO_ERROR && stream.xasl_stream != NULL)
     {
       int au_save;
+      QUERY_FLAG query_flag;
+
+      query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
+      /* Do not update LAST_INSERT_ID during executing a trigger. */
+      if (do_Trigger_involved == true)
+	{
+	  query_flag |= TRIGGER_IS_INVOLVED;
+	}
 
       assert (stream.xasl_stream_size > 0);
 
@@ -10745,9 +10753,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 					 (parser->host_var_count +
 					  parser->auto_param_count),
 					 parser->host_variables,
-					 &list_id,
-					 (parser->exec_mode |
-					  ASYNC_UNEXECUTABLE));
+					 &list_id, query_flag);
       AU_RESTORE (au_save);
     }
 

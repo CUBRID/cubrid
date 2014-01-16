@@ -104,6 +104,7 @@ struct session_query_entry
 typedef struct session_state
 {
   SESSION_ID session_id;
+  bool is_trigger_involved;
   bool is_last_insert_id_generated;
   DB_VALUE cur_insert_id;
   DB_VALUE last_insert_id;
@@ -346,6 +347,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
   session_p->session_id = DB_EMPTY_SESSION;
   DB_MAKE_NULL (&session_p->cur_insert_id);
   DB_MAKE_NULL (&session_p->last_insert_id);
+  session_p->is_trigger_involved = false;
   session_p->is_last_insert_id_generated = false;
   session_p->row_count = -1;
   session_p->session_variables = NULL;
@@ -1183,7 +1185,8 @@ session_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
       return ER_FAILED;
     }
 
-  if (force == false && state_p->is_last_insert_id_generated == true)
+  if ((force == false && state_p->is_last_insert_id_generated == true)
+      || state_p->is_trigger_involved == true)
     {
       return NO_ERROR;
     }
@@ -1265,6 +1268,31 @@ session_begin_insert_values (THREAD_ENTRY * thread_p)
 
   return NO_ERROR;
 }
+
+/*
+ * session_set_trigger_state () - set is_trigger_involved
+ *
+ *   return  : NO_ERROR or error code
+ *   thread_p (in) : thread that identifies the session
+ *   in_trigger(in):
+ */
+int
+session_set_trigger_state (THREAD_ENTRY * thread_p, bool in_trigger)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  state_p->is_trigger_involved = in_trigger;
+
+  return NO_ERROR;
+}
+
+
 
 /*
  * session_get_row_count () - get the affected row count from the session

@@ -41,6 +41,7 @@
 #include "page_buffer.h"
 #include "query_manager.h"
 #include "query_opfunc.h"
+#include "session.h"
 
 #if defined (SERVER_MODE)
 #include "connection_defs.h"
@@ -1878,6 +1879,11 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 	}
     }
 
+  if (IS_TRIGGER_INVOLVED (*flag_p))
+    {
+      session_set_trigger_state (thread_p, true);
+    }
+
   /* Check the existance of the given XASL. If someone marked it
      to be deleted, then remove it if possible. */
   cache_clone_p = NULL;		/* mark as pop */
@@ -2237,6 +2243,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
     }
 
 end:
+  if (IS_TRIGGER_INVOLVED (*flag_p))
+    {
+      session_set_trigger_state (thread_p, false);
+    }
 
   if (IS_SYNC_EXEC_MODE (*flag_p))
     {
@@ -2469,6 +2479,11 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 	}
     }
 
+  if (IS_TRIGGER_INVOLVED (*flag_p))
+    {
+      session_set_trigger_state (thread_p, true);
+    }
+
   /* Make an query entry */
   /* mark that this transaction is running a query */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -2619,6 +2634,10 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
     }
 
 end:
+  if (IS_TRIGGER_INVOLVED (*flag_p))
+    {
+      session_set_trigger_state (thread_p, false);
+    }
 
   if (IS_SYNC_EXEC_MODE (*flag_p))
     {

@@ -48,6 +48,8 @@ extern int session_set_cur_insert_id (THREAD_ENTRY * thread_p,
 				      const DB_VALUE * value, bool force);
 extern int session_reset_cur_insert_id (THREAD_ENTRY * thread_p);
 extern int session_begin_insert_values (THREAD_ENTRY * thread_p);
+extern int session_set_trigger_state (THREAD_ENTRY * thread_p,
+				      bool is_trigger);
 extern int session_get_row_count (THREAD_ENTRY * thread_p, int *row_count);
 extern int session_set_row_count (THREAD_ENTRY * thread_p,
 				  const int row_count);
@@ -95,8 +97,8 @@ extern int session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p,
 extern SESSION_PARAM *session_get_session_parameter (THREAD_ENTRY * thread_p,
 						     PARAM_ID id);
 extern int session_get_trace_stats (THREAD_ENTRY * thread_p,
-                                   DB_VALUE * result);
+				    DB_VALUE * result);
 extern int session_set_trace_stats (THREAD_ENTRY * thread_p, char *scan_stats,
-                                   int format);
+				    int format);
 extern int session_clear_trace_stats (THREAD_ENTRY * thread_p);
 #endif /* _SESSION_H_ */
