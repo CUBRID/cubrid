@@ -1394,7 +1394,7 @@ public class UStatement {
 			else if (obj instanceof Time)
 				retValue = ((Time) obj).clone();
 			else if (obj instanceof Timestamp)
-				retValue = ((Timestamp) obj).clone();
+				retValue = new Timestamp(((Timestamp) obj).getTime());
 			else if (obj instanceof CUBRIDOutResultSet) {
 				try {
 					((CUBRIDOutResultSet) obj).createInstance();
