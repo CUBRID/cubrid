@@ -2041,11 +2041,6 @@ proxy_process_client_conn_error (T_SOCKET_IO * sock_io_p)
       return -1;
     }
 
-  /* init shared memory T_CLIENT_INFO */
-  client_info_p =
-    shard_shm_get_client_info (proxy_info_p, sock_io_p->id.client_id);
-  shard_shm_init_client_info (client_info_p);
-
   event_p =
     proxy_event_new (PROXY_EVENT_CLIENT_CONN_ERROR, PROXY_EVENT_FROM_CLIENT);
   if (event_p == NULL)
@@ -3643,14 +3638,6 @@ proxy_cas_io_free (int shard_id, int cas_id)
 
   if (cas_io_p->is_in_tran == true)
     {
-      if (shard_shm_set_as_client_info
-	  (proxy_info_p, shm_as_p, shard_id, cas_id, 0, NULL, NULL) == false)
-	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		     "Unable to find CAS info in shared memory. "
-		     "(shard_id:%d, cas_id:%d).", shard_id, cas_id);
-	}
-
       shard_io_p->num_cas_in_tran--;
 
       PROXY_DEBUG_LOG ("shard/CAS status. (num_cas_in_tran=%d, shard_id=%d).",
@@ -3726,14 +3713,6 @@ proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid,
       cas_io_p->fd = INVALID_SOCKET;
       shard_stmt_del_all_srv_h_id_for_shard_cas (cas_io_p->shard_id,
 						 cas_io_p->cas_id);
-    }
-
-  if (shard_shm_set_as_client_info
-      (proxy_info_p, shm_as_p, shard_id, cas_id, 0, NULL, NULL) == false)
-    {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Unable to find CAS info in shared memory. "
-		 "(shard_id:%d, cas_id:%d).", shard_id, cas_id);
     }
 
   cas_io_p->is_in_tran = false;
@@ -3985,14 +3964,6 @@ proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
 
       EXIT_FUNC ();
       return;
-    }
-
-  if (shard_shm_set_as_client_info
-      (proxy_info_p, shm_as_p, shard_id, cas_id, 0, NULL, NULL) == false)
-    {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Unable to find CAS info in shared memory. "
-		 "(shard_id:%d, cas_id:%d).", shard_id, cas_id);
     }
 
   cas_io_p->is_in_tran = false;

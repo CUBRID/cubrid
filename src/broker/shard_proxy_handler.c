@@ -859,17 +859,21 @@ proxy_handler_process_client_wakeup_by_shard (T_PROXY_EVENT * event_p)
 		 "Unable to find cilent info in shared memory. "
 		 "(context id:%d, context uid:%d)", ctx_p->cid, ctx_p->uid);
     }
-  else if (shard_shm_set_as_client_info (proxy_info_p, shm_as_p,
-					 event_p->shard_id, event_p->cas_id,
-					 client_info_p->client_ip,
-					 client_info_p->driver_info,
-					 client_info_p->driver_info) == false)
+  else
     {
+      if (shard_shm_set_as_client_info (proxy_info_p, shm_as_p,
+					event_p->shard_id, event_p->cas_id,
+					client_info_p->client_ip,
+					client_info_p->driver_info,
+					client_info_p->driver_info) == false)
+	{
 
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Unable to find CAS info in shared memory. "
-		 "(shard_id:%d, cas_id:%d).", event_p->shard_id,
-		 event_p->cas_id);
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Unable to find CAS info in shared memory. "
+		     "(shard_id:%d, cas_id:%d).", event_p->shard_id,
+		     event_p->cas_id);
+	}
+      assert (CAS_MAKE_PROTO_VER (client_info_p->driver_info) != 0);
     }
 
   /* retry */

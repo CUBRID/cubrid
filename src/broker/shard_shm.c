@@ -841,6 +841,7 @@ shard_shm_set_as_client_info_with_db_param (T_PROXY_INFO * proxy_info_p,
   as_info_p->isolation_level = client_info_p->isolation_level;
   as_info_p->lock_timeout = client_info_p->lock_timeout;
 
+  assert (as_info_p->clt_version != 0);
   return true;
 }
 

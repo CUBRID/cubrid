@@ -1790,6 +1790,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  return fn_ret;
 	}
     }
+
 #ifndef LIBCAS_FOR_JSP
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #if !defined(WINDOWS)
@@ -1817,8 +1818,13 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   net_timeout_set (NET_DEFAULT_TIMEOUT);
 #endif /* LIBCAS_FOR_JSP */
 
-  read_msg = (char *) MALLOC (*(client_msg_header.msg_body_size_ptr));
+  if (cas_shard_flag == ON && req_info->client_version == 0)
+    {
+      assert (0);
+      req_info->client_version = CAS_PROTO_CURRENT_VER;
+    }
 
+  read_msg = (char *) MALLOC (*(client_msg_header.msg_body_size_ptr));
   if (read_msg == NULL)
     {
       net_write_error (sock_fd, req_info->client_version,
