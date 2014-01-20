@@ -3989,11 +3989,6 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       return default_value_string;
     }
 
-  if (db_value_is_null (def))
-    {
-      return "NULL";
-    }
-
   switch (attr->default_value.default_expr)
     {
     case DB_DEFAULT_SYSDATE:
@@ -4010,6 +4005,11 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       return "CURRENT_USER";
     case DB_DEFAULT_NONE:
       break;
+    }
+
+  if (db_value_is_null (def))
+    {
+      return "NULL";
     }
 
   switch (db_value_type (def))
