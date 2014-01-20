@@ -20100,6 +20100,8 @@ xheap_get_class_num_objects_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
   int length, num;
   int ret;
 
+  assert (!HFID_IS_NULL (hfid));
+
   if (approximation)
     {
       num = heap_estimate (thread_p, hfid, npages, nobjs, &length);

@@ -2323,6 +2323,14 @@ db_get_class_num_objs_and_pages (DB_OBJECT * classmop, int approximation,
       return ER_FAILED;
     }
 
+  if (HFID_IS_NULL (hfid))
+    {
+      /* If heap is invalid, the class wouldn't have a heap file like virtual class */
+      *nobjs = 0;
+      *npages = 0;
+      return NO_ERROR;
+    }
+
   error =
     heap_get_class_num_objects_pages (hfid, approximation, nobjs, npages);
 
