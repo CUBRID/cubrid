@@ -11968,7 +11968,16 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
     }
 
   into = statement->info.insert.into_var;
-  into_label = into ? into->info.name.original : NULL;
+  if (into != NULL && PT_IS_NAME_NODE (into)
+      && into->info.name.meta_class == PT_PARAMETER)
+    {
+      assert (into->info.name.original != NULL);
+      into_label = into->info.name.original;
+    }
+  else
+    {
+      into_label = NULL;
+    }
   if (into_label)
     {
       ins_val = db_value_create ();
@@ -12015,9 +12024,12 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 		{
 		  DB_MAKE_OBJECT (ins_val, DB_GET_OBJECT (val));
 		}
-	      error =
-		pt_associate_label_with_value_check_reference (into_label,
-							       ins_val);
+	      if (into_label != NULL)
+		{
+		  error =
+		      pt_associate_label_with_value_check_reference (into_label,
+								     ins_val);
+		}
 	    }
 	}
     }
@@ -12230,9 +12242,12 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	      error = dbt_set_label (*otemplate, ins_val);
 	      if (error == NO_ERROR)
 		{
-		  error =
-		    pt_associate_label_with_value_check_reference (into_label,
-								   ins_val);
+		  if (into_label != NULL)
+		    {
+		      error =
+		      pt_associate_label_with_value_check_reference (into_label,
+								     ins_val);
+		    }
 		}
 	      if (error != NO_ERROR)
 		{

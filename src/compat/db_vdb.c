@@ -2321,25 +2321,32 @@ set_prepare_info_into_list (DB_PREPARE_INFO * prepare_info,
   length = 0;
   while (name)
     {
-      if (name->info.name.original == NULL)
+      if (PT_IS_NAME_NODE (name))
 	{
-	  prepare_info->into_list[length] = NULL;
+	  if (name->info.name.original == NULL)
+	    {
+	      prepare_info->into_list[length] = NULL;
+	    }
+	  else
+	    {
+	      char *into_name =
+		(char *) malloc (strlen (name->info.name.original) + 1);
+	      if (into_name == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  strlen (name->info.name.original) + 1);
+		  goto error;
+		}
+	      memcpy (into_name, name->info.name.original,
+		      strlen (name->info.name.original));
+	      into_name[strlen (name->info.name.original)] = 0;
+	      prepare_info->into_list[length] = into_name;
+	    }
 	}
       else
 	{
-	  char *into_name =
-	    (char *) malloc (strlen (name->info.name.original) + 1);
-	  if (into_name == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      strlen (name->info.name.original) + 1);
-	      goto error;
-	    }
-	  memcpy (into_name, name->info.name.original,
-		  strlen (name->info.name.original));
-	  into_name[strlen (name->info.name.original)] = 0;
-	  prepare_info->into_list[length] = into_name;
+	  prepare_info->into_list[length] = NULL;
 	}
       length++;
       name = name->next;
