@@ -1290,8 +1290,8 @@ qo_top_plan_new (QO_PLAN * plan)
 		  /* if index plan and can't skip group by, we search
 		   * that maybe a descending scan can be used.
 		   */
-		  if ((qo_is_iscan (plan) || qo_is_iscan_from_groupby (plan))
-		      && !groupby_skip)
+		  if ((qo_is_iscan (plan) || qo_is_iscan_from_groupby (plan)
+		       || qo_is_iscan_from_orderby (plan)) && !groupby_skip)
 		    {
 		      groupby_skip = qo_check_groupby_skip_descending (plan,
 								       group_sort_list);
@@ -1309,7 +1309,8 @@ qo_top_plan_new (QO_PLAN * plan)
 	    {
 	      /* if the plan is index_groupby, we validate the plan
 	       */
-	      if (qo_is_iscan_from_groupby (plan))
+	      if (qo_is_iscan_from_groupby (plan)
+		  || qo_is_iscan_from_orderby (plan))
 		{
 		  if (!qo_validate_index_for_groupby
 		      (plan->info->env, plan->plan_un.scan.index))
@@ -1333,7 +1334,8 @@ qo_top_plan_new (QO_PLAN * plan)
 	      /* if the order by is not skipped we drop the plan because it
 	       * didn't helped us
 	       */
-	      if (qo_is_iscan_from_groupby (plan))
+	      if (qo_is_iscan_from_groupby (plan)
+		  || qo_is_iscan_from_orderby (plan))
 		{
 		  qo_worst_cost (plan);
 		  return plan;
@@ -10677,9 +10679,9 @@ qo_index_scan_order_by_new (QO_INFO * info, QO_NODE * node,
 }
 
 /*
- * qo_is_all_unique_index_columns_are_equi_terms () - 
- *   check if the current plan uses and 
- *   index scan with all_unique_index_columns_are_equi_terms 
+ * qo_is_all_unique_index_columns_are_equi_terms () -
+ *   check if the current plan uses and
+ *   index scan with all_unique_index_columns_are_equi_terms
  *
  * return    : true/false
  * plan (in) : plan to verify
