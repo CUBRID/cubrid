@@ -790,18 +790,17 @@ area_info (AREA * area, FILE * fp)
 				    / element_size);
 	    }
 
-	  elements += (nblocks * area->alloc_count);
-
 	  for (free = area->free[i]; free != NULL; free = free->next)
 	    {
 	      freed++;
 	    }
 
-	  used += (elements - unallocated - freed);
-
 	  nallocs += area->n_allocs[i];
 	  nfrees += area->n_frees[i];
 	}
+
+      elements = (nblocks * area->alloc_count);
+      used = (elements - unallocated - freed);
 #else /* SERVER_MODE */
       for (block = area->blocks; block != NULL; block = block->next)
 	{
