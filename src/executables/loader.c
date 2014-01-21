@@ -3324,7 +3324,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context,
       elo_init_structure (&elo);
 
       size = strtoll (size_sp, NULL, 10);
-      locator = malloc (locator_ep - locator_sp + 1);
+      locator = db_private_alloc (NULL, locator_ep - locator_sp + 1);
       if (locator == NULL)
 	{
 	  goto error_exit;
@@ -3334,7 +3334,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context,
 
       if (meta_ep - meta_sp > 0)
 	{
-	  meta_data = malloc (meta_ep - meta_sp + 1);
+	  meta_data = db_private_alloc (NULL, meta_ep - meta_sp + 1);
 	  if (meta_data == NULL)
 	    {
 	      goto error_exit;
@@ -3360,12 +3360,12 @@ ldr_elo_ext_elem (LDR_CONTEXT * context,
 error_exit:
   if (locator != NULL)
     {
-      free (locator);
+      db_private_free_and_init (NULL, locator);
     }
 
   if (meta_data != NULL)
     {
-      free (meta_data);
+      db_private_free_and_init (NULL, meta_data);
     }
 
   if (err != NO_ERROR)
