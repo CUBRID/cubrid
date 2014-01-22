@@ -9905,6 +9905,14 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_ASSIGN:
       node->data_type = parser_copy_tree_list (parser, arg1->data_type);
       node->type_enum = arg1_type;
+
+      if (PT_IS_HOSTVAR (arg2) && arg2->expected_domain == NULL)
+	{
+	  d = pt_node_to_db_domain (parser, arg1, NULL);
+	  d = tp_domain_cache (d);
+	  SET_EXPECTED_DOMAIN (arg2, d);
+	  pt_preset_hostvar (parser, arg2);
+	}
       break;
 
     case PT_LIKE_ESCAPE:
