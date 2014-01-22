@@ -1211,7 +1211,8 @@ $ LOADDB
 1142 Handshake 에러 (peer host %1$s): 알 수 없는 서버 버전.
 1143 Handshake 에러 (peer host %1$s): 원격 접속 불허.
 1144 %1$s로의 연결 시도 타임아웃 (timeout: %2$d 초)
-1145 마지막 에러
+1145 시스템 클래스의 소유자를 변경하는 것은 허용되지 않습니다.
+1146 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

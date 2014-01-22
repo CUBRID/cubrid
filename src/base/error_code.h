@@ -1457,7 +1457,9 @@
 
 #define ERR_CSS_TCP_CONNECT_TIMEDOUT                -1144
 
-#define ER_LAST_ERROR                               -1145
+#define ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS      -1145
+
+#define ER_LAST_ERROR                               -1146
 
 /*
  * CAUTION!
