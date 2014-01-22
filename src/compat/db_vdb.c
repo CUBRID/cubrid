@@ -2376,12 +2376,14 @@ char_array_to_name_list (PARSER_CONTEXT * parser, char **names, int length)
 {
   PT_NODE *name = NULL;
   PT_NODE *list = NULL;
-  int i = 0;
+  int i;
+
   for (i = 0; i < length; i++)
     {
       name = pt_name (parser, names[i]);
       list = parser_append_node (name, list);
     }
+
   return list;
 }
 
