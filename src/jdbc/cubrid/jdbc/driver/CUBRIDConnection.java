@@ -710,7 +710,7 @@ public class CUBRIDConnection implements Connection {
 	private void addStatement(Statement s) throws SQLException {
 		statements.add(s);
 		
-		if (u_con.getQueryTimeout() >= 0) {
+		if (u_con.getQueryTimeout() > 0) {
 			s.setQueryTimeout (u_con.getQueryTimeout());
 		}
 	}

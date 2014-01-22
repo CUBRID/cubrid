@@ -371,6 +371,13 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
       goto set_properties_end;
     }
 
+  if (handle->rc_time < 0 || handle->slow_query_threshold_millis < 0
+      || handle->login_timeout < 0 || handle->query_timeout < 0)
+    {
+      error = CCI_ER_INVALID_URL;
+      goto set_properties_end;
+    }
+
   if (handle->rc_time < MONITORING_INTERVAL)
     {
       handle->rc_time = MONITORING_INTERVAL;

@@ -302,15 +302,15 @@ public class ConnectionProperties {
 	    "rcTime", 600, 0, Integer.MAX_VALUE);
 
     IntegerConnectionProperty queryTimeout = new IntegerConnectionProperty(
-	    "queryTimeout", -1, -1, UConnection.MAX_QUERY_TIMEOUT);
+	    "queryTimeout", 0, 0, UConnection.MAX_QUERY_TIMEOUT);
 
     private int getDefaultConnectTimeout() {
 	int timeout = java.sql.DriverManager.getLoginTimeout();
-	return timeout > 0 ? timeout : -1;
+	return timeout > 0 ? timeout : 0;
     }
 
     IntegerConnectionProperty connectTimeout = new IntegerConnectionProperty(
-	    "connectTimeout", getDefaultConnectTimeout(), -1, UConnection.MAX_CONNECT_TIMEOUT);
+	    "connectTimeout", getDefaultConnectTimeout(), 0, UConnection.MAX_CONNECT_TIMEOUT);
 
     StringConnectionProperty altHosts = new StringConnectionProperty(
 	    "altHosts", null);

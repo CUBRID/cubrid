@@ -3360,6 +3360,12 @@ cci_set_login_timeout (int mapped_conn_id, int timeout, T_CCI_ERROR * err_buf)
   int error = CCI_ER_NO_ERROR;
 
   reset_error_buffer (err_buf);
+  if (timeout < 0)
+    {
+      set_error_buffer (err_buf, CCI_ER_INVALID_ARGS, NULL);
+      return CCI_ER_INVALID_ARGS;
+    }
+
   error = hm_get_connection (mapped_conn_id, &con_handle);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -3589,7 +3595,10 @@ cci_set_max_row (int mapped_stmt_id, int max_row)
 		   ("(%d:%d)cci_set_max_row: %d", CON_ID (mapped_stmt_id),
 		    REQ_ID (mapped_stmt_id), max_row));
 #endif
-
+  if (max_row < 0)
+    {
+      return CCI_ER_INVALID_ARGS;
+    }
   error = hm_get_statement (mapped_stmt_id, &con_handle, &req_handle);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -3703,15 +3712,15 @@ cci_set_query_timeout (int mapped_stmt_id, int timeout)
 		    timeout));
 #endif
 
+  if (timeout < 0)
+    {
+      return CCI_ER_INVALID_ARGS;
+    }
+
   error = hm_get_statement (mapped_stmt_id, &con_handle, &req_handle);
   if (error != CCI_ER_NO_ERROR)
     {
       return error;
-    }
-
-  if (timeout < 0)
-    {
-      timeout = 0;
     }
 
   old_value = req_handle->query_timeout;
