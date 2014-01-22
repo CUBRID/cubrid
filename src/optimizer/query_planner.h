@@ -184,9 +184,10 @@ struct qo_plan
   QO_PLAN_ULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this
 							 * plan uses multi range opt
 							 */
+  ANALYTIC_EVAL_TYPE *analytic_eval_list;	/* analytic evaluation list */
   bool has_sort_limit;		/* true if this plan or one if its subplans is a
 				 * SORT-LIMIT plan */
-  ANALYTIC_EVAL_TYPE *analytic_eval_list;	/* analytic evaluation list */
+  bool use_iscan_descending;
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))

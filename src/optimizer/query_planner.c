@@ -288,7 +288,7 @@ static void qo_plan_compute_iscan_group_sort_list (QO_PLAN * root,
 						   bool * is_index_w_prefix);
 
 static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
-static int qo_set_use_desc (QO_PLAN * plan, void *arg);
+static void qo_set_use_desc (QO_PLAN * plan);
 static int qo_set_orderby_skip (QO_PLAN * plan, void *arg);
 static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
@@ -561,6 +561,7 @@ qo_plan_malloc (QO_ENV * env)
   bitset_init (&(plan->subqueries), env);
 
   plan->has_sort_limit = false;
+  plan->use_iscan_descending = false;
 
   return plan;
 }
@@ -1084,25 +1085,39 @@ qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg)
 }
 
 /*
- * qo_set_use_desc () - sets certain plans' use_descending index flag to the
- *                      boolean value given in *arg.
+ * qo_set_use_desc () - sets certain plans' use_descending index flag
  *
  * return: NO_ERROR
  * plan(in):
- * arg(in): will be cast to bool* and its values used to set
- *          the use_descending property
+ *
  * note: the function only cares about index scans and skips other plan types
  */
-static int
-qo_set_use_desc (QO_PLAN * plan, void *arg)
+static void
+qo_set_use_desc (QO_PLAN * plan)
 {
-  if (qo_is_iscan (plan) || qo_is_iscan_from_orderby (plan))
+  switch (plan->plan_type)
     {
-      bool yn = *((bool *) arg);
-      plan->plan_un.scan.index->head->use_descending = yn;
-    }
+    case QO_PLANTYPE_SCAN:
+      if (((qo_is_iscan (plan) || qo_is_iscan_from_groupby (plan))
+	   && plan->plan_un.scan.index->head->groupby_skip == true)
+	  || ((qo_is_iscan (plan) || qo_is_iscan_from_orderby (plan))
+	      && plan->plan_un.scan.index->head->orderby_skip == true))
+	{
+	  plan->plan_un.scan.index->head->use_descending = true;
+	}
+      break;
 
-  return NO_ERROR;
+    case QO_PLANTYPE_FOLLOW:
+      qo_set_use_desc (plan->plan_un.follow.head);
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      qo_set_use_desc (plan->plan_un.join.outer);
+      break;
+
+    default:
+      break;
+    }
 }
 
 /*
@@ -1298,8 +1313,7 @@ qo_top_plan_new (QO_PLAN * plan)
 
 		      if (groupby_skip)
 			{
-			  plan->plan_un.scan.
-			    index->head->use_descending = true;
+			  plan->use_iscan_descending = true;
 			}
 		    }
 		}
@@ -1388,10 +1402,7 @@ qo_top_plan_new (QO_PLAN * plan)
 
 			      if (orderby_skip)
 				{
-				  /* set the use_descending flag */
-				  bool yn = true;
-				  qo_walk_plan_tree (plan, qo_set_use_desc,
-						     &yn);
+				  plan->use_iscan_descending = true;
 				}
 			    }
 			}
@@ -3810,6 +3821,7 @@ qo_worst_cost (QO_PLAN * planp)
   planp->fixed_io_cost = QO_INFINITY;
   planp->variable_cpu_cost = QO_INFINITY;
   planp->variable_io_cost = QO_INFINITY;
+  planp->use_iscan_descending = false;
 }
 
 
@@ -9157,6 +9169,12 @@ qo_search_planner (QO_PLANNER * planner)
       bool has_hint;
       PT_HINT_ENUM *hint;
       PT_NODE *node = NULL;
+
+      if (plan->use_iscan_descending == true
+	  && qo_plan_multi_range_opt (plan) == false)
+	{
+	  qo_set_use_desc (plan);
+	}
 
       hint = &(QO_ENV_PT_TREE (planner->env)->info.query.q.select.hint);
       has_hint = (*hint & PT_HINT_USE_IDX_DESC) > 0;
