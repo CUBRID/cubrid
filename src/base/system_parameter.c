@@ -1013,7 +1013,7 @@ static unsigned int prm_query_mode_sync_flag = 0;
 int PRM_INSERT_MODE = 1 + 2;
 static int prm_insert_mode_default = 1 + 2;
 static int prm_insert_mode_lower = 0;
-static int prm_insert_mode_upper = 31; /* For backward compatibility */
+static int prm_insert_mode_upper = 31;	/* For backward compatibility */
 static unsigned int prm_insert_mode_flag = 0;
 
 int PRM_LK_MAX_SCANID_BIT = 32;
@@ -3991,7 +3991,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_MAX_AGG_HASH_SIZE,
-   (PRM_FOR_SERVER | PRM_TEST_CHANGE),
+   (PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_SIZE_UNIT),
    PRM_BIGINT,
    (void *) &prm_max_agg_hash_size_flag,
    (void *) &prm_max_agg_hash_size_default,
