@@ -136,7 +136,15 @@ ut_check_timeout (struct timeval *start_time, struct timeval *end_time,
       gettimeofday (end_time, NULL);
     }
   ut_timeval_diff (start_time, end_time, res_sec, res_msec);
-  diff_msec = *res_sec * 1000 + *res_msec;
+
+  if (timeout_msec > 0)
+    {
+      diff_msec = *res_sec * 1000 + *res_msec;
+    }
+  else
+    {
+      diff_msec = -1;
+    }
 
   return (diff_msec >= timeout_msec) ? diff_msec : -1;
 }

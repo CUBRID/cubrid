@@ -600,7 +600,7 @@ broker_config_read_internal (const char *conf_file,
 			   DEFAULT_LONG_QUERY_TIME, &lineno),
 	       sizeof (time_str));
       tmp_float = (float) ut_time_string_to_sec (time_str, "sec");
-      if (tmp_float < 0)
+      if (tmp_float < 0 || tmp_float > LONG_QUERY_TIME_LIMIT)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
@@ -613,7 +613,7 @@ broker_config_read_internal (const char *conf_file,
 			   DEFAULT_LONG_TRANSACTION_TIME, &lineno),
 	       sizeof (time_str));
       tmp_float = (float) ut_time_string_to_sec (time_str, "sec");
-      if (tmp_float < 0)
+      if (tmp_float < 0 || tmp_float > LONG_TRANSACTION_TIME_LIMIT)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
@@ -1441,7 +1441,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
       fprintf (fp, "MAX_QUERY_TIMEOUT\t=%d\n", br_info[i].query_timeout);
 
       if (br_info[i].appl_server == APPL_SERVER_CAS_MYSQL
-          || br_info[i].appl_server == APPL_SERVER_CAS_MYSQL51)
+	  || br_info[i].appl_server == APPL_SERVER_CAS_MYSQL51)
 	{
 	  fprintf (fp, "MYSQL_READ_TIMEOUT\t=%d\n",
 		   br_info[i].mysql_read_timeout);

@@ -1972,11 +1972,17 @@ admin_conf_change (int master_shm_id, const char *br_name,
 
       long_query_time = (float) ut_time_string_to_sec (conf_value, "sec");
 
-      if (long_query_time <= 0)
+      if (long_query_time < 0)
 	{
 	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_conf_error;
 	}
+      else if (long_query_time > LONG_QUERY_TIME_LIMIT)
+	{
+	  sprintf (admin_err_msg, "value is out of range : %s", conf_value);
+	  goto set_conf_error;
+	}
+
       br_info_p->long_query_time = (int) (long_query_time * 1000.0);
       shm_as_p->long_query_time = (int) (long_query_time * 1000.0);
     }
@@ -1987,11 +1993,17 @@ admin_conf_change (int master_shm_id, const char *br_name,
       long_transaction_time =
 	(float) ut_time_string_to_sec (conf_value, "sec");
 
-      if (long_transaction_time <= 0)
+      if (long_transaction_time < 0)
 	{
 	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_conf_error;
 	}
+      else if (long_transaction_time > LONG_TRANSACTION_TIME_LIMIT)
+	{
+	  sprintf (admin_err_msg, "value is out of range : %s", conf_value);
+	  goto set_conf_error;
+	}
+
       br_info_p->long_transaction_time =
 	(int) (long_transaction_time * 1000.0);
       shm_as_p->long_transaction_time =
