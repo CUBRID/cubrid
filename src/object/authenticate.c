@@ -7351,6 +7351,7 @@ au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp)
 			       MSGCAT_SET_AUTHORIZATION,
 			       MSGCAT_AUTH_CLASS_NAME),
 	   sm_class_name (db_get_object (&value)));
+  fprintf (fp, " ");
 
   set_get_element (grants, GRANT_ENTRY_SOURCE (grant_index), &value);
   obj_get (db_get_object (&value), "name", &value);
