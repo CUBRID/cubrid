@@ -2152,10 +2152,11 @@ admin_conf_change (int master_shm_id, const char *br_name,
     }
   else if (strcasecmp (conf_name, "SQL_LOG2") == 0)
     {
-      int val;
+      int val, result;
 
-      val = atoi (conf_value);
-      if (val < SQL_LOG2_NONE || val > SQL_LOG2_MAX)
+      result = port_str_to_int (&val, conf_value, 10);
+      if (result != 0 
+         || val < SQL_LOG2_NONE || val > SQL_LOG2_MAX)
 	{
 	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_conf_error;
