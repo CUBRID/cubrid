@@ -6668,7 +6668,7 @@ static void
 pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 {
   PT_NODE *name_list, *part_list;
-  PT_NODE *names, *parts, *val;
+  PT_NODE *names, *parts, *val, *next_parts;
   PT_ALTER_CODE cmd;
   SM_CLASS *smclass, *subcls;
   SM_ATTRIBUTE *keyattr = NULL;
@@ -7218,6 +7218,22 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
 		  /* in-list delete - lost check */
 		  db_value_list_finddel (&inlist_head, parts_val);
+		}
+	    }
+
+	  /* check if has duplicated name in parts_list of itself */
+	  for (next_parts = parts->next; next_parts;
+	       next_parts = next_parts->next)
+	    {
+	      if (!intl_identifier_casecmp
+		  (next_parts->info.parts.name->info.name.original,
+		   part_name))
+		{
+		  PT_ERRORmf (parser, stmt,
+			      MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_DUPLICATE_PARTITION_DEF,
+			      part_name);
+		  goto check_end;
 		}
 	    }
 
