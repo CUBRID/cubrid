@@ -78,6 +78,15 @@ struct pt_bind_names_arg
   SEMANTIC_CHK_INFO *sc_info;
 };
 
+typedef struct natural_join_attr_info NATURAL_JOIN_ATTR_INFO;
+struct natural_join_attr_info
+{
+  char *name;
+  PT_TYPE_ENUM type_enum;
+  PT_MISC_TYPE meta_class;
+  NATURAL_JOIN_ATTR_INFO *next;
+};
+
 static PT_NODE *pt_bind_parameter (PARSER_CONTEXT * parser,
 				   PT_NODE * parameter);
 static PT_NODE *pt_bind_parameter_path (PARSER_CONTEXT * parser,
@@ -208,6 +217,41 @@ static void pt_bind_names_merge_update (PARSER_CONTEXT * parser,
 					PT_BIND_NAMES_ARG * bind_arg,
 					SCOPES * scopestack,
 					PT_EXTRA_SPECS_FRAME * specs_frame);
+
+static PT_NODE *pt_resolve_natural_join (PARSER_CONTEXT * parser,
+					 PT_NODE * node, void *chk_parent,
+					 int *continue_walk);
+
+static void pt_resolve_natural_join_internal (PARSER_CONTEXT * parser,
+					      PT_NODE * join_lhs,
+					      PT_NODE * join_rhs);
+
+static PT_NODE *pt_create_pt_expr_and_node (PARSER_CONTEXT * parser,
+					    PT_NODE * arg1, PT_NODE * arg2);
+
+static PT_NODE *pt_create_pt_name (PARSER_CONTEXT * parser, PT_NODE * spec,
+				   NATURAL_JOIN_ATTR_INFO * attr);
+
+static PT_NODE *pt_create_pt_expr_equal_node (PARSER_CONTEXT * parser,
+					      PT_NODE * arg1, PT_NODE * arg2);
+
+static NATURAL_JOIN_ATTR_INFO
+  * get_natural_join_attrs_from_pt_spec (PARSER_CONTEXT * parser,
+					 PT_NODE * node);
+
+static bool natural_join_equal_attr (NATURAL_JOIN_ATTR_INFO * lhs,
+				     NATURAL_JOIN_ATTR_INFO * rhs);
+
+static void free_natural_join_attrs (NATURAL_JOIN_ATTR_INFO * attrs);
+
+static int generate_natural_join_attrs_from_subquery (PT_NODE *
+						      subquery_attrs_list,
+						      NATURAL_JOIN_ATTR_INFO
+						      ** attrs_p);
+
+static int generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs,
+						      NATURAL_JOIN_ATTR_INFO
+						      ** attrs_p);
 
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
@@ -6925,6 +6969,550 @@ pt_quick_resolve_names (PARSER_CONTEXT * parser, PT_NODE ** spec_p,
 }
 
 /*
+ * natural_join_equal_attr () - If the two attributes have same name,
+ *     the function return true. We don't consider the type there. 
+ *     Whether the join can be executed is dependent on whether the 
+ *     two types are compatible. If not, the error will be threw by 
+ *     subsequent process.
+ *   return:
+ *   lhs(in):
+ *   rhs(in): 
+ */
+static bool
+natural_join_equal_attr (NATURAL_JOIN_ATTR_INFO * lhs,
+			 NATURAL_JOIN_ATTR_INFO * rhs)
+{
+  const char *lhs_name;
+  const char *rhs_name;
+
+  assert (lhs != NULL && rhs != NULL);
+
+  lhs_name = lhs->name;
+  rhs_name = rhs->name;
+
+  if (lhs_name == NULL || rhs_name == NULL)
+    {
+      return false;
+    }
+
+  if (intl_identifier_casecmp (lhs_name, rhs_name) == 0)
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/*
+ * free_natural_join_attrs () - 
+ *   return:
+ *   attrs(in):
+ */
+static void
+free_natural_join_attrs (NATURAL_JOIN_ATTR_INFO * attrs)
+{
+  NATURAL_JOIN_ATTR_INFO *attr_cur;
+  NATURAL_JOIN_ATTR_INFO *attr_cur_next;
+
+  attr_cur = attrs;
+  while (attr_cur != NULL)
+    {
+      attr_cur_next = attr_cur->next;
+      free (attr_cur);
+      attr_cur = attr_cur_next;
+    }
+}
+
+/*
+ * generate_natural_join_attrs_from_subquery () - 
+ *   return:
+ *   subquery_attrs_list(in):
+ *   attrs_p(out): 
+ */
+static int
+generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_list,
+					   NATURAL_JOIN_ATTR_INFO ** attrs_p)
+{
+  PT_NODE *pt_cur;
+  NATURAL_JOIN_ATTR_INFO *attr_head = NULL;
+  NATURAL_JOIN_ATTR_INFO *attr_tail = NULL;
+  NATURAL_JOIN_ATTR_INFO *attr_cur;
+
+  for (pt_cur = subquery_attrs_list; pt_cur != NULL; pt_cur = pt_cur->next)
+    {
+      /* 
+       * We just deal the attributes which have name. It means we just 
+       * deal PT_NAME or other's pt_node have alias_name. For example, 
+       * select 1 from t1. The '1' is impossible to be used in natural
+       * join, so we skip it. 
+       */
+
+      if (pt_cur->alias_print == NULL && pt_cur->node_type != PT_NAME)
+	{
+	  continue;
+	}
+
+      attr_cur =
+	(NATURAL_JOIN_ATTR_INFO *) malloc (sizeof (NATURAL_JOIN_ATTR_INFO));
+      if (attr_cur == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      attr_cur->next = NULL;
+
+      /* 
+       * Alias name have higher priority. select a as txx from .... 
+       * We consider txx as the attribute's name and ignore a.
+       */
+      if (pt_cur->alias_print)
+	{
+	  attr_cur->name = pt_cur->alias_print;
+	}
+      else
+	{
+	  if (pt_cur->node_type == PT_NAME)
+	    {
+	      attr_cur->name = pt_cur->info.name.original;
+	    }
+	}
+
+      attr_cur->type_enum = pt_cur->type_enum;
+
+      attr_cur->meta_class = PT_NORMAL;
+      if (pt_cur->node_type == PT_NAME)
+	{
+	  attr_cur->meta_class = pt_cur->info.name.meta_class;
+	}
+
+      if (attr_head == NULL)
+	{
+	  attr_head = attr_cur;
+	  attr_tail = attr_cur;
+	}
+      else
+	{
+	  attr_tail->next = attr_cur;
+	  attr_tail = attr_cur;
+	}
+    }
+
+  *attrs_p = attr_head;
+  return NO_ERROR;
+
+exit_on_error:
+  free_natural_join_attrs (attr_head);
+  return ER_OUT_OF_VIRTUAL_MEMORY;
+}
+
+
+/*
+ * generate_natural_join_attrs_from_db_attrs () - 
+ *   return:
+ *   db_attrs(in):
+ *   attrs_p(out): 
+ */
+static int
+generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs,
+					   NATURAL_JOIN_ATTR_INFO ** attrs_p)
+{
+  DB_ATTRIBUTE *db_attr_cur;
+  NATURAL_JOIN_ATTR_INFO *attr_head = NULL;
+  NATURAL_JOIN_ATTR_INFO *attr_tail = NULL;
+  NATURAL_JOIN_ATTR_INFO *attr_cur;
+
+  for (db_attr_cur = db_attrs; db_attr_cur != NULL;
+       db_attr_cur = db_attribute_next (db_attr_cur))
+    {
+      attr_cur =
+	(NATURAL_JOIN_ATTR_INFO *) malloc (sizeof (NATURAL_JOIN_ATTR_INFO));
+      if (attr_cur == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      attr_cur->next = NULL;
+      attr_cur->name = db_attribute_name (db_attr_cur);
+      attr_cur->type_enum =
+	(PT_TYPE_ENUM) pt_db_to_type_enum (db_attribute_type (db_attr_cur));
+      attr_cur->meta_class =
+	(db_attribute_is_shared (db_attr_cur) ? PT_SHARED : PT_NORMAL);
+
+      if (attr_head == NULL)
+	{
+	  attr_head = attr_cur;
+	  attr_tail = attr_cur;
+	}
+      else
+	{
+	  attr_tail->next = attr_cur;
+	  attr_tail = attr_cur;
+	}
+    }
+
+  *attrs_p = attr_head;
+  return NO_ERROR;
+
+exit_on_error:
+  free_natural_join_attrs (attr_head);
+  return ER_OUT_OF_VIRTUAL_MEMORY;
+}
+
+/*
+ * get_natural_join_attrs_from_pt_spec () - Get all attributes from a pt_spec 
+ *     node that indicates an table or a subquery.
+ *   return:
+ *   parser(in):
+ *   node(in): 
+ */
+static NATURAL_JOIN_ATTR_INFO *
+get_natural_join_attrs_from_pt_spec (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  DB_OBJECT *cls;
+  DB_ATTRIBUTE *db_attrs;
+  NATURAL_JOIN_ATTR_INFO *natural_join_attrs;
+  PT_NODE *derived_table;
+  PT_NODE *subquery_attrs_list;
+
+  assert (node != NULL && node->node_type == PT_SPEC);
+
+  cls = NULL;
+  db_attrs = NULL;
+  natural_join_attrs = NULL;
+
+  if (node->info.spec.entity_name != NULL)
+    {
+      /* This is a table. */
+      cls = node->info.spec.entity_name->info.name.db_object;
+      if (cls == NULL)
+	{
+	  return NULL;
+	}
+
+      db_attrs = db_get_attributes (cls);
+      if (db_attrs == NULL)
+	{
+	  return NULL;
+	}
+
+      if (generate_natural_join_attrs_from_db_attrs
+	  (db_attrs, &natural_join_attrs) != NO_ERROR)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  goto exit_on_error;
+	}
+    }
+  else
+    {
+      /* This is a subquery. */
+      if (node->info.spec.derived_table
+	  && node->info.spec.derived_table_type == PT_IS_SUBQUERY)
+	{
+	  derived_table = node->info.spec.derived_table;
+
+	  if (node->info.spec.as_attr_list != NULL)
+	    {
+	      subquery_attrs_list = node->info.spec.as_attr_list;
+	    }
+	  else if (derived_table->node_type == PT_SELECT)
+	    {
+	      subquery_attrs_list = derived_table->info.query.q.select.list;
+	    }
+	  else
+	    {
+	      subquery_attrs_list = NULL;
+	    }
+
+	  if (subquery_attrs_list == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  if (generate_natural_join_attrs_from_subquery
+	      (subquery_attrs_list, &natural_join_attrs) != NO_ERROR)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      goto exit_on_error;
+	    }
+	}
+    }
+
+  return natural_join_attrs;
+
+exit_on_error:
+  return NULL;
+}
+
+/*
+ * pt_create_pt_expr_equal_node () - The function creates the PT_expr 
+ *     for natural join. The operator is " = ". 
+ *   return:
+ *   parser(in):
+ *   arg1(in): 
+ *   arg2(in):
+ */
+static PT_NODE *
+pt_create_pt_expr_equal_node (PARSER_CONTEXT * parser, PT_NODE * arg1,
+			      PT_NODE * arg2)
+{
+  PT_NODE *expr = NULL;
+
+  expr = parser_new_node (parser, PT_EXPR);
+  if (expr == NULL)
+    {
+      return NULL;
+    }
+
+  parser_init_node (expr);
+  expr->type_enum = PT_TYPE_LOGICAL;
+  expr->info.expr.op = PT_EQ;
+  expr->info.expr.arg1 = arg1;
+  expr->info.expr.arg2 = arg2;
+
+  return expr;
+}
+
+/*
+ * pt_create_pt_name () - The function creates the PT_NAME name for natural
+ *     join. The pt_name node indicates an attribute in a table/subquery. 
+ *     The spec indicates the table/subquery.
+ *   return:
+ *   parser(in):
+ *   spec(in): 
+ *   attr(in):
+ */
+static PT_NODE *
+pt_create_pt_name (PARSER_CONTEXT * parser, PT_NODE * spec,
+		   NATURAL_JOIN_ATTR_INFO * attr)
+{
+  PT_NODE *name;
+
+  assert (attr != NULL);
+  assert (spec != NULL);
+
+  name = parser_new_node (parser, PT_NAME);
+  if (name == NULL)
+    {
+      return NULL;
+    }
+
+  parser_init_node (name);
+  name->info.name.original = pt_append_string (parser, NULL, attr->name);
+  name->type_enum = attr->type_enum;
+  name->info.name.meta_class = attr->meta_class;
+  if (spec->info.spec.entity_name)
+    {
+      name->info.name.resolved =
+	pt_append_string (parser, NULL,
+			  spec->info.spec.entity_name->info.name.original);
+    }
+  name->info.name.spec_id = spec->info.spec.id;
+
+  return name;
+
+}
+
+/*
+ * pt_create_pt_expr_and_node () - The function create the PT_expr for natural 
+ *     join. The operator is AND. 
+ *   return:
+ *   parser(in):
+ *   arg1(in): 
+ *   arg2(in):
+ */
+static PT_NODE *
+pt_create_pt_expr_and_node (PARSER_CONTEXT * parser, PT_NODE * arg1,
+			    PT_NODE * arg2)
+{
+  PT_NODE *expr = NULL;
+
+  expr = parser_new_node (parser, PT_EXPR);
+  if (expr == NULL)
+    {
+      return NULL;
+    }
+
+  parser_init_node (expr);
+  expr->type_enum = PT_TYPE_LOGICAL;
+  expr->info.expr.op = PT_AND;
+  expr->info.expr.arg1 = arg1;
+  expr->info.expr.arg2 = arg2;
+
+  return expr;
+}
+
+/*
+ * pt_resolve_natural_join_internal () - Resolve natural join into inner/outer join actually.
+ *     For t1 natural join t2, join_lhs is t1 and join_rhs is t2. The function adds on_cond 
+ *     into t2. After the process, the join will become an inner/outer join.
+ *   return:
+ *   parser(in):
+ *   join_lhs(in): 
+ *   join_rhs(in/out):
+ */
+static void
+pt_resolve_natural_join_internal (PARSER_CONTEXT * parser, PT_NODE * join_lhs,
+				  PT_NODE * join_rhs)
+{
+  NATURAL_JOIN_ATTR_INFO *lhs_attrs;
+  NATURAL_JOIN_ATTR_INFO *rhs_attrs;
+  NATURAL_JOIN_ATTR_INFO *lhs_attrs_cur, *rhs_attrs_cur;
+  PT_NODE *on_cond_tail;
+  PT_NODE *join_cond_expr;
+  PT_NODE *join_cond_arg1;
+  PT_NODE *join_cond_arg2;
+  PT_NODE *on_cond_new;
+
+  assert (join_lhs != NULL);
+  assert (join_rhs != NULL);
+
+  on_cond_tail = join_rhs->info.spec.on_cond;
+
+  lhs_attrs = get_natural_join_attrs_from_pt_spec (parser, join_lhs);
+  rhs_attrs = get_natural_join_attrs_from_pt_spec (parser, join_rhs);
+
+  for (lhs_attrs_cur = lhs_attrs; lhs_attrs_cur != NULL;
+       lhs_attrs_cur = lhs_attrs_cur->next)
+    {
+      for (rhs_attrs_cur = rhs_attrs; rhs_attrs_cur;
+	   rhs_attrs_cur = rhs_attrs_cur->next)
+	{
+	  if (!natural_join_equal_attr (lhs_attrs_cur, rhs_attrs_cur))
+	    {
+	      continue;
+	    }
+
+	  /* step 1: we create pt_name for the first attribute */
+	  join_cond_arg1 =
+	    pt_create_pt_name (parser, join_lhs, lhs_attrs_cur);
+	  if (join_cond_arg1 == NULL)
+	    {
+	      PT_ERRORm (parser, join_rhs, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      goto exit_on_create_node_error;
+	    }
+
+	  /* step 2: we create pt_name for the second attribute */
+	  join_cond_arg2 =
+	    pt_create_pt_name (parser, join_rhs, rhs_attrs_cur);
+	  if (join_cond_arg2 == NULL)
+	    {
+	      PT_ERRORm (parser, join_rhs, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      goto exit_on_create_node_error;
+	    }
+
+	  /* step 3: we create the equal pt_expr node. like "join_cond_arg1 = join_cond_arg2" */
+	  join_cond_expr =
+	    pt_create_pt_expr_equal_node (parser, join_cond_arg1,
+					  join_cond_arg2);
+	  if (join_cond_expr == NULL)
+	    {
+	      PT_ERRORm (parser, join_rhs, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      goto exit_on_create_node_error;
+	    }
+
+	  /*
+	   * step4: If there is no on_cond, the new expr we created will be on_cond. 
+	   *   If not, it means there is old on_conds. So we will create a new expr 
+	   *   like "(old on_cond) and (new on_cond)".
+	   */
+	  if (on_cond_tail == NULL)
+	    {
+	      on_cond_tail = join_cond_expr;
+	    }
+	  else
+	    {
+	      on_cond_new =
+		pt_create_pt_expr_and_node (parser, on_cond_tail,
+					    join_cond_expr);
+	      if (on_cond_new == NULL)
+		{
+		  PT_ERRORm (parser, join_rhs, MSGCAT_SET_PARSER_SEMANTIC,
+			     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  goto exit_on_create_node_error;
+		}
+
+	      on_cond_tail = on_cond_new;
+	    }
+	}
+    }
+
+  join_rhs->info.spec.on_cond = on_cond_tail;
+
+  if (lhs_attrs != NULL)
+    {
+      free_natural_join_attrs (lhs_attrs);
+    }
+
+  if (rhs_attrs != NULL)
+    {
+      free_natural_join_attrs (rhs_attrs);
+    }
+
+  return;
+
+exit_on_create_node_error:
+  if (lhs_attrs != NULL)
+    {
+      free_natural_join_attrs (lhs_attrs);
+    }
+
+  if (rhs_attrs != NULL)
+    {
+      free_natural_join_attrs (rhs_attrs);
+    }
+
+  return;
+}
+
+/*
+ * pt_resolve_natural_join () - Resolve natural join into inner/outer join.
+ *   return:
+ *   parser(in):
+ *   node(in/out):
+ *   chk_parent(in):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_resolve_natural_join (PARSER_CONTEXT * parser, PT_NODE * node,
+			 void *chk_parent, int *continue_walk)
+{
+  PT_NODE *join_lhs, *join_rhs;
+  PT_NODE *select_from;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node == NULL || node->node_type != PT_SELECT)
+    {
+      return node;
+    }
+
+  if (node->info.query.q.select.from == NULL)
+    {
+      return node;
+    }
+
+  select_from = node->info.query.q.select.from;
+
+  for (join_lhs = select_from, join_rhs = select_from->next; join_rhs != NULL;
+       join_lhs = join_lhs->next, join_rhs = join_rhs->next)
+    {
+      /* there is a natural join */
+      if (join_rhs->node_type == PT_SPEC
+	  && join_rhs->info.spec.natural == true)
+	{
+	  pt_resolve_natural_join_internal (parser, join_lhs, join_rhs);
+	}
+    }
+
+  return node;
+}
+
+/*
  * pt_resolve_names () -
  *   return:
  *   parser(in):
@@ -6987,6 +7575,14 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
 	{
 	  statement->info.index.index_name = idx_name;
 	}
+
+      /* 
+       * The process converts natural join to inner/outer join. 
+       * The on_cond is added there. 
+       */
+      statement =
+	parser_walk_tree (parser, statement, NULL,
+			  NULL, pt_resolve_natural_join, NULL);
     }
 
   /* Flag specs from FOR UPDATE clause with PT_SPEC_FLAG_FOR_UPDATE_CLAUSE and

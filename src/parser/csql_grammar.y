@@ -4070,6 +4070,21 @@ join_table_spec
 			parser_restore_pseudoc ();
 
 		DBG_PRINT}}
+	| NATURAL opt_of_inner_left_right JOIN table_spec
+		{{
+
+			PT_NODE *sopt = $4;
+			bool natural = true;
+
+			if (sopt)
+			  {
+			    sopt->info.spec.natural = natural;
+			    sopt->info.spec.join_type = $2;
+			    sopt->info.spec.on_cond = NULL;
+			  }
+			$$ = sopt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
 	;
 
 join_condition
