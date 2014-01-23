@@ -845,11 +845,7 @@ public class UStatement {
 
 		if (relatedConnection.isErrorToReconnect(errorHandler
 		        .getJdbcErrorCode())) {
-			if (!relatedConnection.brokerInfoReconnectWhenServerDown()
-			        || !relatedConnection.isServerDownError(errorHandler
-			                .getJdbcErrorCode())) {
-				relatedConnection.clientSocketClose();
-			}
+			relatedConnection.clientSocketClose();
 
 			if (!relatedConnection.isActive() || isFirstExecInTran) {
 				try {
@@ -1033,11 +1029,7 @@ public class UStatement {
 
 		if (relatedConnection.isErrorToReconnect(errorHandler
 		        .getJdbcErrorCode())) {
-			if (!relatedConnection.brokerInfoReconnectWhenServerDown()
-			        || !relatedConnection.isServerDownError(errorHandler
-			                .getJdbcErrorCode())) {
-				relatedConnection.clientSocketClose();
-			}
+			relatedConnection.clientSocketClose();
 
 			if (!relatedConnection.isActive() || isFirstExecInTran) {
 				try {

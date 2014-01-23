@@ -652,6 +652,7 @@ public class CUBRIDConnection implements Connection {
 		UStatement us = null;
 
 		synchronized (u_con) {
+			u_con.setBeginTime();
 			us = u_con.prepare(sql, prepareFlag);
 			error = u_con.getRecentError();
 		}

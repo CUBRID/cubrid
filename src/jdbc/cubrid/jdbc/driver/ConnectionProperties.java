@@ -306,7 +306,7 @@ public class ConnectionProperties {
 
     private int getDefaultConnectTimeout() {
 	int timeout = java.sql.DriverManager.getLoginTimeout();
-	return timeout > 0 ? timeout : 0;
+	return timeout > 0 ? timeout : 30;
     }
 
     IntegerConnectionProperty connectTimeout = new IntegerConnectionProperty(

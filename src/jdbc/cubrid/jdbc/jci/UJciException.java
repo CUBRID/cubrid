@@ -81,18 +81,22 @@ public class UJciException extends Exception {
 
 	public String toString() {
 	    	String msg, indicator;
+		int errorCode;
 		if (jciErrCode == UErrorCode.ER_DBMS) {
 			if (serverErrIndicator == UErrorCode.DBMS_ERROR_INDICATOR) {
 				msg = getMessage();
 				indicator = "ER_DBMS";
+				errorCode = serverErrCode;
 			} else {
 				msg = UErrorCode.codeToCASMessage(serverErrCode);
 				indicator = "ER_BROKER";
+				errorCode = jciErrCode;
 			}
 		} else {
 		    	msg = getMessage();
 		    	indicator = "ER_DRIVER";
+		    	errorCode = jciErrCode;
 		}
-		return String.format("%s[%d,%s]", indicator, jciErrCode, msg);
+		return String.format("%s[%d,%s]", indicator, errorCode, msg);
 	}
 }

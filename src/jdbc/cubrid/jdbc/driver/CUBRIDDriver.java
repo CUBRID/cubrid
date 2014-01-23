@@ -112,6 +112,10 @@ public class CUBRIDDriver implements Driver {
 		brokerHealthCheck.start();
 	}
 
+    public static boolean isUnreachableHost(String host) {
+	return unreachableHosts.contains(host);
+    }
+
 	public static void printDebug(String msg) {
 		Timestamp timestamp = new Timestamp(System.currentTimeMillis());
 		SimpleDateFormat fmt = new SimpleDateFormat("MM-dd hh:mm:ss.SSS");

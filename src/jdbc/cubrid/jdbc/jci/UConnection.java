@@ -99,6 +99,7 @@ public class UConnection {
 	private final static byte CAS_PROTO_VER_MASK = 0x3F;
 	private final static byte CAS_RENEWED_ERROR_CODE = (byte) 0x80;
 	private final static byte CAS_SUPPORT_HOLDABLE_RESULT = (byte) 0x40;
+	/* Do not remove and rename CAS_RECONNECT_WHEN_SERVER_DOWN */
 	private final static byte CAS_RECONNECT_WHEN_SERVER_DOWN = (byte) 0x20;
 
 	@SuppressWarnings("unused")
@@ -213,7 +214,7 @@ public class UConnection {
 		UJCIUtil.copy_bytes(driverInfo, 0, 5, magicString);
 		driverInfo[5] = CAS_CLIENT_JDBC;
 		driverInfo[6] = CAS_PROTO_INDICATOR | CAS_PROTOCOL_VERSION;
-		driverInfo[7] = CAS_RENEWED_ERROR_CODE | CAS_SUPPORT_HOLDABLE_RESULT | CAS_RECONNECT_WHEN_SERVER_DOWN;
+		driverInfo[7] = CAS_RENEWED_ERROR_CODE | CAS_SUPPORT_HOLDABLE_RESULT;
 		driverInfo[8] = 0; // reserved
 		driverInfo[9] = 0; // reserved
 	}
@@ -303,6 +304,7 @@ public class UConnection {
 
 	public void tryConnect() throws CUBRIDException {
 	    	try {
+	    	    	setBeginTime();
 	    	    	checkReconnect();
 	    	    	endTransaction(true);
 		} catch (UJciException e) {
@@ -498,6 +500,7 @@ public class UConnection {
 			return;
 		}
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
@@ -556,6 +559,7 @@ public class UConnection {
 		try {
 			if (client != null
 					&& getCASInfoStatus() != CAS_INFO_STATUS_INACTIVE) {
+			    	setBeginTime();
 				checkReconnect();
 				if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 					return;
@@ -636,6 +640,7 @@ public class UConnection {
 			return null;
 		}
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
@@ -676,6 +681,7 @@ public class UConnection {
 			return null;
 		}
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
@@ -709,6 +715,7 @@ public class UConnection {
 				return CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
 			}
 			try {
+			    	setBeginTime();
 				checkReconnect();
 				if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 					return CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
@@ -748,6 +755,7 @@ public class UConnection {
 		}
 
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			outBuffer.newRequest(UFunctionCode.GET_QUERY_INFO);
 			outBuffer.addInt(0);
@@ -795,6 +803,7 @@ public class UConnection {
 			return null;
 		}
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
@@ -845,6 +854,7 @@ public class UConnection {
 			return 0;
 		}
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return 0;
@@ -912,26 +922,9 @@ public class UConnection {
 	}
     }
 
-    public boolean isServerDownError(int error) {
-	switch (error) {
-	case -111: // ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED
-	case -199: // ER_NET_SERVER_CRASHED
-	case -224: // ER_OBJ_NO_CONNECT
-	case -677: // ER_BO_CONNECT_FAILED
-	    return true;
-	default:
-	    return false;
-	}
-    }
-    
     private UStatement prepareInternal(String sql, byte flag, boolean recompile)
 	    throws IOException, UJciException {
 	errorHandler.clear();
-
-	checkReconnect();
-	if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) {
-	    return null;
-	}
 
 	outBuffer.newRequest(output, UFunctionCode.PREPARE);
 	outBuffer.addStringWithNull(sql);
@@ -981,6 +974,7 @@ public class UConnection {
 
 	// first
 	try {
+	    checkReconnect();
 	    stmt = prepareInternal(sql, flag, recompile);
 	    return stmt;
 	} catch (UJciException e) {
@@ -992,31 +986,45 @@ public class UConnection {
 	    errorHandler.setStackTrace(e.getStackTrace());
 	}
 
-	if (!isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
+	if (isActive() && !isFirstPrepareInTran) {
+	    if (isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
+		clientSocketClose();
+	    }
 	    return null;
-	} 
-
-	if (!brokerInfoReconnectWhenServerDown() 
-	    || !isServerDownError(errorHandler.getJdbcErrorCode())) {
-	    clientSocketClose();
 	}
 
-	// second
-	try {
-	    if (isActive() && !isFirstPrepareInTran) {
+	// second loop
+	while (isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
+	    clientSocketClose();
+	    try {
+		errorHandler.clear();
+		checkReconnect();
+		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) {
+		    return null;
+		}
+	    } catch (UJciException e) {
+		logException(e);
+		e.toUError(errorHandler);
+		return null;
+	    } catch (IOException e) {
+		logException(e);
+		errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+		errorHandler.setStackTrace(e.getStackTrace());
 		return null;
 	    }
-		    
-	    stmt = prepareInternal(sql, flag, recompile);
-	    return stmt;
-	} catch (UJciException e) {
-	    logException(e);
-	    e.toUError(errorHandler);
-	} catch (IOException e) {
-	    logException(e);
-	    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-	    errorHandler.setStackTrace(e.getStackTrace());
-	}
+
+	    try {
+		stmt = prepareInternal(sql, flag, recompile);
+		return stmt;
+	    } catch (UJciException e) {
+		logException(e);
+		e.toUError(errorHandler);
+	    } catch (IOException e) {
+		logException(e);
+		errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+		errorHandler.setStackTrace(e.getStackTrace());
+	    }
+	} 
 
 	return null;
     }
@@ -1038,6 +1046,7 @@ public class UConnection {
 			if (values != null)
 				putParameter = new UPutByOIDParameter(attributeName, values);
 
+			setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
@@ -1096,6 +1105,7 @@ public class UConnection {
 				return;
 			}
 			try {
+			    	setBeginTime();
 				checkReconnect();
 				if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 					return;
@@ -1126,6 +1136,7 @@ public class UConnection {
 		}
 
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
@@ -1158,6 +1169,7 @@ public class UConnection {
 		}
 
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) {
 				return errorHandler.getJdbcErrorCode();
@@ -1279,14 +1291,6 @@ public class UConnection {
 	    	== CAS_SUPPORT_HOLDABLE_RESULT;
 	}
 
-	public boolean brokerInfoReconnectWhenServerDown() {
-		if (broker_info == null)
-			return false;
-			
-	    return (broker_info[BROKER_INFO_FUNCTION_FLAG] & CAS_RECONNECT_WHEN_SERVER_DOWN)
-	    	== CAS_RECONNECT_WHEN_SERVER_DOWN;
-	}
-	
 	public boolean supportHoldableResult() {
 	    if (brokerInfoSupportHoldableResult()
 				|| protoVersionIsSame(UConnection.PROTOCOL_V2)) {
@@ -1305,6 +1309,7 @@ public class UConnection {
 		}
 
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
@@ -1332,6 +1337,7 @@ public class UConnection {
 		}
 
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
@@ -1354,6 +1360,7 @@ public class UConnection {
 		}
 
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
@@ -1451,6 +1458,7 @@ public class UConnection {
 			return null;
 		}
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
@@ -1490,6 +1498,7 @@ public class UConnection {
 			return null;
 		}
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return null;
@@ -1532,6 +1541,7 @@ public class UConnection {
 			return -1;
 		}
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return -1;
@@ -1571,6 +1581,7 @@ public class UConnection {
 			return -1;
 		}
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return -1;
@@ -1724,38 +1735,46 @@ public class UConnection {
 		return url_cache;
 	}
 
-	private void reconnectWorker() throws IOException, UJciException {
-		if (UJCIUtil.isConsoleDebug()) {
-			CUBRIDDriver.printDebug(String.format("Try Connect (%s,%d)", CASIp,
-					CASPort));
-		}
-
-		long begin = System.currentTimeMillis();
-		int timeout = connectionProperties.getConnectTimeout() * 1000;
-		client = BrokerHandler.connectBroker(CASIp, CASPort, timeout);
-		output = new DataOutputStream(client.getOutputStream());
-		input = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort);
-		if (timeout > 0) {
-			timeout -= (System.currentTimeMillis() - begin);
-			if (timeout <= 0) {
-			    throw new UJciException(UErrorCode.ER_TIMEOUT);
-			}
-		}
-		connectDB(timeout);
-
-		client.setTcpNoDelay(true);
-		client.setSoTimeout(SOCKET_TIMEOUT);
-		needReconnection = false;
-		isClosed = false;
-
-		if (lastIsolationLevel != CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION)
-			setIsolationLevel(lastIsolationLevel);
-		if (lastLockTimeout != LOCK_TIMEOUT_NOT_USED)
-			setLockTimeout(lastLockTimeout);
-		/*
-		 * if(!lastAutoCommit) setAutoCommit(lastAutoCommit);
-		 */
+    private int getTimeout(long endTimestamp, int timeout) throws UJciException {
+	if (endTimestamp == 0) {
+	    return timeout;
 	}
+
+	long diff = endTimestamp - System.currentTimeMillis();
+	if (diff <= 0) {
+	    throw new UJciException(UErrorCode.ER_TIMEOUT);
+	}
+	if (diff < timeout) {
+	    return (int)diff;
+	}
+
+	return timeout;
+    }
+
+    private void reconnectWorker(long endTimestamp) throws IOException, UJciException {
+	if (UJCIUtil.isConsoleDebug()) {
+	    CUBRIDDriver.printDebug(String.format("Try Connect (%s,%d)", CASIp, CASPort));
+	}
+
+	int timeout = connectionProperties.getConnectTimeout() * 1000;
+	client = BrokerHandler.connectBroker(CASIp, CASPort, getTimeout(endTimestamp, timeout));
+	output = new DataOutputStream(client.getOutputStream());
+	input = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort);
+	connectDB(getTimeout(endTimestamp, timeout));
+
+	client.setTcpNoDelay(true);
+	client.setSoTimeout(SOCKET_TIMEOUT);
+	needReconnection = false;
+	isClosed = false;
+
+	if (lastIsolationLevel != CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION)
+	    setIsolationLevel(lastIsolationLevel);
+	if (lastLockTimeout != LOCK_TIMEOUT_NOT_USED)
+	    setLockTimeout(lastLockTimeout);
+	/*
+	 * if(!lastAutoCommit) setAutoCommit(lastAutoCommit);
+	 */
+    }
 
 	private void connectDB(int timeout) throws IOException, UJciException {
 		UTimedDataInputStream is = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort, timeout);
@@ -1828,49 +1847,56 @@ public class UConnection {
 		return true;
 	}
 
-	private void reconnect() throws IOException, UJciException {
-		if (altHosts == null) {
-			reconnectWorker();
-		} else {
-			int retry = 0;
-			do {
-				for (int hostId = 0; hostId < altHosts.size(); hostId++) {
-					/*
-					 * if all hosts turn out to be unreachable, ignore host
-					 * reachability and try one more time
-					 */
-					if (!CUBRIDDriver.unreachableHosts.contains(altHosts
-							.get(hostId)) || retry == 1) {
-						try {
-							setActiveHost(hostId);
-							reconnectWorker();
-							connectedHostId = hostId;
-							return; // success to connect
-						} catch (IOException e) {
-							logException(e);
-							throw e;
-						} catch (UJciException e) {
-							logException(e);
-							int errno = e.getJciError();
-							if (errno == UErrorCode.ER_COMMUNICATION
-								|| errno == UErrorCode.ER_CONNECTION
-								|| errno == UErrorCode.ER_TIMEOUT
-								|| errno == UErrorCode.CAS_ER_FREE_SERVER) {
-								CUBRIDDriver.addToUnreachableHosts(altHosts
-										.get(hostId));
-							} else {
-								throw e;
-							}
-						}
-					}
-					lastFailureTime = System.currentTimeMillis() / 1000;
-				}
-				retry++;
-			} while (retry < 2);
-			// failed to connect to neither hosts
-			throw createJciException(UErrorCode.ER_CONNECTION);
-		}
+    private long getLoginEndTimestamp(long timestamp) {
+	int timeout = connectionProperties.getConnectTimeout();
+	if (timeout <= 0) {
+	    return 0;
 	}
+
+	return timestamp + (timeout * 1000);
+    }
+
+    private void reconnect() throws IOException, UJciException {
+	if (altHosts == null) {
+	    reconnectWorker(getLoginEndTimestamp(beginTime));
+	} else {
+	    int retry = 0;
+	    do {
+		for (int hostId = 0; hostId < altHosts.size(); hostId++) {
+		    /*
+		     * if all hosts turn out to be unreachable, ignore host
+		     * reachability and try one more time
+		     */
+		    if (!CUBRIDDriver.isUnreachableHost(altHosts.get(hostId)) || retry == 1) {
+			try {
+			    setActiveHost(hostId);
+			    reconnectWorker(getLoginEndTimestamp(System.currentTimeMillis()));
+			    connectedHostId = hostId;
+			    return; // success to connect
+			} catch (IOException e) {
+			    logException(e);
+			    throw e;
+			} catch (UJciException e) {
+			    logException(e);
+			    int errno = e.getJciError();
+			    if (errno == UErrorCode.ER_COMMUNICATION
+				    || errno == UErrorCode.ER_CONNECTION
+				    || errno == UErrorCode.ER_TIMEOUT
+				    || errno == UErrorCode.CAS_ER_FREE_SERVER) {
+				CUBRIDDriver.addToUnreachableHosts(altHosts.get(hostId));
+			    } else {
+				throw e;
+			    }
+			}
+		    }
+		    lastFailureTime = System.currentTimeMillis() / 1000;
+		}
+		retry++;
+	    } while (retry < 2);
+	    // failed to connect to neither hosts
+	    throw createJciException(UErrorCode.ER_CONNECTION);
+	}
+    }
 
 	private int makeBrokerVersion(int major, int minor, int patch) {
 		int version = 0;
@@ -1931,6 +1957,7 @@ public class UConnection {
 		UAParameter aParameter;
 		aParameter = new UAParameter(attributeName, value);
 
+		setBeginTime();
 		checkReconnect();
 		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 			return;
@@ -1949,6 +1976,7 @@ public class UConnection {
 		UAParameter aParameter;
 		aParameter = new UAParameter(attributeName, value);
 
+		setBeginTime();
 		checkReconnect();
 		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 			return;
@@ -2019,6 +2047,7 @@ public class UConnection {
 
 	public void closeSession() {
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
@@ -2037,6 +2066,7 @@ public class UConnection {
 	// jci 3.0
 	private void disconnect() {
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
@@ -2175,10 +2205,9 @@ public class UConnection {
     }
 
     public boolean isRenewedSessionId() {
-	return (brokerInfoReconnectWhenServerDown()
-		&& (casinfo[CAS_INFO_ADDITIONAL_FLAG] 
+	return (casinfo[CAS_INFO_ADDITIONAL_FLAG] 
 	            & CAS_INFO_FLAG_MASK_NEW_SESSION_ID) 
-	                == CAS_INFO_FLAG_MASK_NEW_SESSION_ID);
+	                == CAS_INFO_FLAG_MASK_NEW_SESSION_ID;
     }
 
     public void setNewSessionId(byte[] newSessionId) {
@@ -2234,6 +2263,7 @@ public class UConnection {
 		}
 
 		try {
+		    	setBeginTime();
 			checkReconnect();
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) {
 				return 0;

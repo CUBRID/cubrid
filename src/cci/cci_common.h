@@ -198,8 +198,8 @@ extern "C"
       else {                                                        \
         time_to_check = (CON_HANDLE)->query_timeout;                \
       }                                                             \
+      gettimeofday(&((CON_HANDLE)->start_time), NULL);              \
       if (time_to_check > 0) {                                      \
-        gettimeofday(&((CON_HANDLE)->start_time), NULL);        \
         (CON_HANDLE)->current_timeout = (time_to_check);            \
       }                                                             \
     }                                                               \
@@ -208,8 +208,8 @@ extern "C"
 #define SET_START_TIME_FOR_LOGIN(CON_HANDLE)                        \
   do {                                                              \
     if (CON_HANDLE) {                                               \
+      gettimeofday(&((CON_HANDLE)->start_time), NULL);              \
       if ((CON_HANDLE)->login_timeout > 0) {                        \
-        gettimeofday(&((CON_HANDLE)->start_time), NULL);        \
         (CON_HANDLE)->current_timeout = (CON_HANDLE)->login_timeout;\
       }                                                             \
     }                                                               \

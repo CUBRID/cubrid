@@ -871,7 +871,6 @@ cas_main (void)
 
   as_info->service_ready_flag = TRUE;
   as_info->con_status = CON_STATUS_IN_TRAN;
-  cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
   as_info->transaction_start_time = time (0);
   as_info->cur_keep_con = KEEP_CON_DEFAULT;
   query_cancel_flag = 0;
@@ -899,6 +898,7 @@ cas_main (void)
       retry:
 #endif
 	error_info_clear ();
+	cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
 
 	unset_hang_check_time ();
 	br_sock_fd = net_connect_client (srv_sock_fd);
@@ -1024,6 +1024,7 @@ cas_main (void)
 
 	if (net_read_stream (client_sock_fd, read_buf, db_info_size) < 0)
 	  {
+	    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
 	    net_write_error (client_sock_fd, req_info.client_version,
 			     req_info.driver_info,
 			     cas_info, cas_info_size, CAS_ERROR_INDICATOR,
@@ -1031,7 +1032,7 @@ cas_main (void)
 	  }
 	else
 	  {
-	    char len;
+	    int len;
 	    unsigned char *ip_addr;
 	    char *db_err_msg = NULL, *url = NULL;
 	    struct timeval cas_start_time;
@@ -1048,6 +1049,7 @@ cas_main (void)
 				       "Incoming health check request from client.");
 
 		net_write_int (client_sock_fd, 0);
+		cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
 		net_write_stream (client_sock_fd, cas_info, cas_info_size);
 		CLOSE_SOCKET (client_sock_fd);
 
@@ -1169,6 +1171,7 @@ cas_main (void)
 		    sprintf (err_msg,
 			     "Authorization error.(Address is rejected)");
 
+		    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
 		    net_write_error (client_sock_fd, req_info.client_version,
 				     req_info.driver_info,
 				     cas_info, cas_info_size,
@@ -1203,6 +1206,7 @@ cas_main (void)
 	      {
 		char msg_buf[LINE_MAX];
 
+		cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
 		net_write_error (client_sock_fd, req_info.client_version,
 				 req_info.driver_info,
 				 cas_info, cas_info_size,
@@ -1279,6 +1283,7 @@ cas_main (void)
 	      }
 	    cas_bi_set_cci_pconnect (shm_appl->cci_pconnect);
 
+	    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
 	    cas_send_connect_reply_to_driver (req_info.client_version,
 					      client_sock_fd, cas_info);
 
@@ -1957,38 +1962,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   set_hang_check_time ();
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#ifndef LIBCAS_FOR_JSP
-  /* retry to prepare or execute after db server is restarted */
-  if (old_con_status == CON_STATUS_OUT_TRAN
-      && ER_IS_SERVER_DOWN_ERROR (err_info.err_number)
-      && cas_di_understand_reconnect_when_server_down (req_info->
-						       driver_info)
-      && (func_code == CAS_FC_PREPARE || func_code == CAS_FC_EXECUTE
-	  || func_code == CAS_FC_EXECUTE_ARRAY
-	  || func_code == CAS_FC_PREPARE_AND_EXECUTE))
-    {
-      if (ux_database_reconnect () == 0)
-	{
-	  as_info->reset_flag = FALSE;
-	  hm_srv_handle_unset_prepare_flag_all ();
-
-	  if (cas_shard_flag == ON)
-	    {
-	      error_info_clear ();
-	      net_buf_clear (net_buf);
-
-	      set_hang_check_time ();
-	      fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
-	      set_hang_check_time ();
-	    }
-	  else
-	    {
-	      retry_by_driver = true;
-	    }
-	}
-    }
-#endif /* !LIBCAS_FOR_JSP */
-
   /* set back original utype for enum */
   if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
     {
