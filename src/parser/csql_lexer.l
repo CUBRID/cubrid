@@ -1410,15 +1410,14 @@ csql_yyerror (const char *s)
 	{
 	  if (strstr (s, "$end"))
 	    {
-              int msg_size = strlen (before_token) + strlen (next_ptr) + 2;
-	      next_ptr = end_of_stmt_str;
-	      msg = (char *) csql_yyalloc (msg_size);
+            next_ptr = end_of_stmt_str;
+	      msg = (char *) csql_yyalloc (strlen (before_token) + strlen (next_ptr) + 2);
 	      if (msg == NULL)
 		{
 		  YY_FATAL_ERROR( "out of dynamic memory in csql_yyerror()" );
 		  goto end;
 		}
-	      snprintf (msg, msg_size, "%s %s", before_token, next_ptr);
+	      sprintf (msg, "%s %s", before_token, next_ptr);
 	      free_msg = 1;
 	    }
 	  else
