@@ -1255,13 +1255,12 @@ connect_srv (unsigned char *ip_addr, int port, char is_retry,
   struct sockaddr_in sock_addr;
   SOCKET sock_fd;
   int sock_addr_len;
-  int one = 1;
   int retry_count = 0;
   int con_retry_count;
   int ret;
-  int keepalive_val = 1;
-  int optlen = sizeof (keepalive_val);
+  int sock_opt;
 #if defined (WINDOWS)
+  u_long ioctl_opt;
   struct timeval timeout_val;
   fd_set rset, wset, eset;
 #else
@@ -1292,7 +1291,8 @@ connect_retry:
   sock_addr_len = sizeof (struct sockaddr_in);
 
 #if defined (WINDOWS)
-  if (ioctlsocket (sock_fd, FIONBIO, (u_long *) & one) < 0)
+  ioctl_opt = 1;
+  if (ioctlsocket (sock_fd, FIONBIO, (u_long *) (&ioctl_opt)) < 0)
     {
       CLOSE_SOCKET (sock_fd);
       return CCI_ER_CONNECT;
@@ -1412,8 +1412,8 @@ connect_retry:
     }
 
 #if defined (WINDOWS)
-  one = 0;
-  if (ioctlsocket (sock_fd, FIONBIO, (u_long *) & one) < 0)
+  ioctl_opt = 0;
+  if (ioctlsocket (sock_fd, FIONBIO, (u_long *) (&ioctl_opt)) < 0)
     {
       CLOSE_SOCKET (sock_fd);
       return CCI_ER_CONNECT;
@@ -1422,8 +1422,13 @@ connect_retry:
   fcntl (sock_fd, F_SETFL, flags);
 #endif
 
-  setsockopt (sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one, sizeof (one));
-  setsockopt (sock_fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive_val, optlen);
+  sock_opt = 1;
+  setsockopt (sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &sock_opt,
+	      sizeof (sock_opt));
+
+  sock_opt = 1;
+  setsockopt (sock_fd, SOL_SOCKET, SO_KEEPALIVE, (char *) &sock_opt,
+	      sizeof (sock_opt));
 
   *ret_sock = sock_fd;
   return CCI_ER_NO_ERROR;
