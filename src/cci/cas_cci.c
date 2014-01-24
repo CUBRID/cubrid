@@ -1130,7 +1130,7 @@ cci_get_result_info (int mapped_stmt_id, T_CCI_CUBRID_STMT * cmd_type,
 
   if (cmd_type)
     {
-      *cmd_type = (T_CCI_CUBRID_STMT) - 1;
+      *cmd_type = (T_CCI_CUBRID_STMT) (-1);
     }
 
   if (num)
