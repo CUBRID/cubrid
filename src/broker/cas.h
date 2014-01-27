@@ -44,6 +44,8 @@
 #define ERR_FILE_LENGTH		256
 #define MAX_SHARD_INFO_LENGTH   30
 
+#define MAX_HA_DBINFO_LENGTH    (SRV_CON_DBNAME_SIZE + MAX_CONN_INFO_LENGTH)
+
 typedef struct t_object T_OBJECT;
 struct t_object
 {

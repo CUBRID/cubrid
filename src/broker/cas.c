@@ -135,7 +135,7 @@ extern void libcas_srv_handle_free (int h_id);
 
 static void set_cas_info_size (void);
 
-static char cas_db_name[MAX_HA_DBNAME_LENGTH];
+static char cas_db_name[MAX_HA_DBINFO_LENGTH];
 static char cas_db_user[SRV_CON_DBUSER_SIZE];
 static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 static int query_sequence_num = 0;
@@ -572,10 +572,10 @@ conn_retry:
   gettimeofday (&cas_start_time, NULL);
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  snprintf (cas_db_name, MAX_HA_DBNAME_LENGTH, "%s",
+  snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s",
 	    shm_appl->shard_conn_info[shm_shard_id].db_name);
 #else
-  snprintf (cas_db_name, MAX_HA_DBNAME_LENGTH, "%s@%s",
+  snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s@%s",
 	    shm_appl->shard_conn_info[shm_shard_id].db_name,
 	    shm_appl->shard_conn_info[shm_shard_id].db_host);
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */

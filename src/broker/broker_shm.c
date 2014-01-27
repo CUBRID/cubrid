@@ -707,13 +707,13 @@ shard_shm_set_shard_conn_info (T_SHM_APPL_SERVER * shm_as_p,
       shard_conn_info_p = &shm_as_p->shard_conn_info[i];
 
       strncpy (shard_conn_info_p->db_user, user_p->db_user,
-	       sizeof (shard_conn_info_p->db_user));
+	       sizeof (shard_conn_info_p->db_user) - 1);
       strncpy (shard_conn_info_p->db_name, conn_p->db_name,
-	       sizeof (shard_conn_info_p->db_name));
+	       sizeof (shard_conn_info_p->db_name) - 1);
       strncpy (shard_conn_info_p->db_host, conn_p->db_conn_info,
-	       sizeof (shard_conn_info_p->db_host));
+	       sizeof (shard_conn_info_p->db_host) - 1);
       strncpy (shard_conn_info_p->db_password, user_p->db_password,
-	       sizeof (shard_conn_info_p->db_password));
+	       sizeof (shard_conn_info_p->db_password) - 1);
     }
 }
 

@@ -314,7 +314,8 @@ c4o_copy_host_to_as_info (char *tns)
 	    }
 	  else
 	    {
-	      strncpy (as_info->database_host, token, MAXHOSTNAMELEN);
+	      strncpy (as_info->database_host, token,
+		       sizeof (as_info->database_host) - 1);
 	      return;
 	    }
 	}
@@ -354,10 +355,11 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
   err_code = cas_oracle_connect_db (tns, db_user, db_passwd, db_err_msg);
   if (ORA_SUCCESS (err_code))
     {
-      strcpy (ORA_NAME, db_alias);
-      strcpy (ORA_USER, db_user);
-      strcpy (ORA_PASS, db_passwd);
-      strncpy (as_info->database_name, db_alias, MAX_HA_DBNAME_LENGTH - 1);
+      strncpy (ORA_NAME, db_alias, sizeof (ORA_NAME) - 1);
+      strncpy (ORA_USER, db_user, sizeof (ORA_USER) - 1);
+      strncpy (ORA_PASS, db_passwd, sizeof (ORA_PASS) - 1);
+      strncpy (as_info->database_name, db_alias,
+	       sizeof (as_info->database_name) - 1);
       c4o_copy_host_to_as_info (tns);
       as_info->last_connect_time = time (NULL);
     }

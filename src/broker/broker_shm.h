@@ -125,15 +125,16 @@
 #define CAS_LOG_RESET_REMOVE            0x02
 #define PROXY_LOG_RESET_REOPEN 		0x01
 
+#define MAX_DBNAME_LENGTH       (64)	/* maximum length of mysql database name and '\0' */
+#define MAX_CONN_INFO_LENGTH    ((MAXHOSTNAMELEN + 1) * 2)	/* host1:host2 */
+
 #define IP_BYTE_COUNT           5
 #define ACL_MAX_ITEM_COUNT      50
 #define ACL_MAX_IP_COUNT        256
-#define ACL_MAX_DBNAME_LENGTH	32
-#define ACL_MAX_DBUSER_LENGTH	32
+#define ACL_MAX_DBNAME_LENGTH   (SRV_CON_DBNAME_SIZE)
+#define ACL_MAX_DBUSER_LENGTH   (SRV_CON_DBUSER_SIZE)
 
 #define MAX_PROXY_NUM            8
-
-#define MAX_CONN_INFO_LENGTH     128
 
 #define APPL_SERVER_NUM_LIMIT    2048
 
@@ -148,6 +149,16 @@
 #define SHARD_KEY_COLUMN_LEN     (32)
 #define SHARD_KEY_RANGE_MAX      (256)
 
+/*
+ * proxy need to reserve FD for 
+ * broker, cas, log etc.. 
+ */
+#if defined(LINUX)
+#define PROXY_RESERVED_FD 	(256)
+#else /* LINUX */
+#define PROXY_RESERVED_FD 	(128)
+#endif /* !LINUX */
+
 #define MAX_QUERY_TIMEOUT_LIMIT         86400	/* seconds; 1 day */
 #define LONG_QUERY_TIME_LIMIT           (MAX_QUERY_TIMEOUT_LIMIT)
 #define LONG_TRANSACTION_TIME_LIMIT     (MAX_QUERY_TIMEOUT_LIMIT)
@@ -157,10 +168,6 @@
 #define MAKE_ACL_SEM_NAME(BUF, BROKER_NAME)  \
   snprintf(BUF, BROKER_NAME_LEN, "%s_acl_sem", BROKER_NAME)
 #endif
-
-#if !defined(MAX_HA_DBNAME_LENGTH)
-#define MAX_HA_DBNAME_LENGTH 		128
-#endif /* !MAX_HA_DBNAME_LENGTH */
 
 #define         SEQ_NUMBER              1
 #define         MAGIC_NUMBER            (MAJOR_VERSION * 1000000 + MINOR_VERSION * 10000 + SEQ_NUMBER)
@@ -206,7 +213,7 @@ struct access_list
 typedef struct t_shard_conn_info T_SHARD_CONN_INFO;
 struct t_shard_conn_info
 {
-  char db_name[MAX_HA_DBNAME_LENGTH];
+  char db_name[MAX_DBNAME_LENGTH];
   char db_host[MAX_CONN_INFO_LENGTH];
   char db_user[SRV_CON_DBUSER_SIZE];
   char db_password[SRV_CON_DBPASSWD_SIZE];
@@ -265,7 +272,7 @@ typedef struct t_shard_conn T_SHARD_CONN;
 struct t_shard_conn
 {
   int shard_id;
-  char db_name[SRV_CON_DBNAME_SIZE];
+  char db_name[MAX_DBNAME_LENGTH];
   char db_conn_info[MAX_CONN_INFO_LENGTH];
 };
 
@@ -338,12 +345,8 @@ struct t_appl_server_info
   INT64 num_interrupts;
   char auto_commit_mode;
   bool fixed_shard_user;
-  char database_name[MAX_HA_DBNAME_LENGTH];
-#if defined(AIX)
+  char database_name[SRV_CON_DBNAME_SIZE];
   char database_host[MAXHOSTNAMELEN];
-#else
-  char database_host[MAX_CONN_INFO_LENGTH];
-#endif
   char database_user[SRV_CON_DBUSER_SIZE];
   char database_passwd[SRV_CON_DBPASSWD_SIZE];
   char cci_default_autocommit;
@@ -512,7 +515,7 @@ struct t_proxy_info
   T_SHM_SHARD_CONN_STAT shard_stat[SHARD_CONN_STAT_SIZE_LIMIT];
 
   T_SHARD_INFO shard_info[SHARD_INFO_SIZE_LIMIT];
-  T_CLIENT_INFO client_info[CLIENT_INFO_SIZE_LIMIT];
+  T_CLIENT_INFO client_info[CLIENT_INFO_SIZE_LIMIT + PROXY_RESERVED_FD];
 };
 
 typedef struct t_shm_proxy T_SHM_PROXY;

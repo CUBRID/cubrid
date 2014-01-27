@@ -423,7 +423,7 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_foreign_keys,		/* SCH_CROSS_REFERENCE */
 };
 
-static char database_name[MAX_HA_DBNAME_LENGTH] = "";
+static char database_name[MAX_HA_DBINFO_LENGTH] = "";
 static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
 static char cas_db_sys_param[128] = "";
@@ -460,13 +460,13 @@ ux_check_connection (void)
 	    }
 	  else
 	    {
-	      char dbname[MAX_HA_DBNAME_LENGTH];
+	      char dbname[MAX_HA_DBINFO_LENGTH];
 	      char dbuser[SRV_CON_DBUSER_SIZE];
 	      char dbpasswd[SRV_CON_DBPASSWD_SIZE];
 
-	      strcpy (dbname, database_name);
-	      strcpy (dbuser, database_user);
-	      strcpy (dbpasswd, database_passwd);
+	      strncpy (dbname, database_name, sizeof (dbname) - 1);
+	      strncpy (dbuser, database_user, sizeof (dbuser) - 1);
+	      strncpy (dbpasswd, database_passwd, sizeof (dbpasswd) - 1);
 
 	      cas_log_debug (ARG_FILE_LINE,
 			     "ux_check_connection: ux_database_shutdown()"
@@ -503,7 +503,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 		     char **db_err_msg)
 {
   int err_code, client_type;
-  char *p;
+  char *p = NULL;
   const char *host_connected = NULL;
 
   as_info->force_reconnect = false;
@@ -592,8 +592,21 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
       cas_log_debug (ARG_FILE_LINE,
 		     "ux_database_connect: db_login(%s) db_restart(%s) at %s",
 		     db_user, db_name, host_connected);
-      strncpy (as_info->database_name, db_name, MAX_HA_DBNAME_LENGTH - 1);
-      strncpy (as_info->database_host, host_connected, MAXHOSTNAMELEN);
+      p = strchr (db_name, '@');
+      if (p)
+	{
+	  *p = '\0';
+	  strncpy (as_info->database_name, db_name,
+		   sizeof (as_info->database_name) - 1);
+	  *p = (char) '@';
+	}
+      else
+	{
+	  strncpy (as_info->database_name, db_name,
+		   sizeof (as_info->database_name) - 1);
+	}
+      strncpy (as_info->database_host, host_connected,
+	       sizeof (as_info->database_host) - 1);
       as_info->last_connect_time = time (NULL);
 
       strncpy (database_name, db_name, sizeof (database_name) - 1);

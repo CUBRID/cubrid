@@ -4401,7 +4401,7 @@ proxy_io_initialize (void)
 
 #if defined(LINUX)
   max_Socket = proxy_get_max_socket ();
-  assert (max_Socket > RESERVED_FD);
+  assert (max_Socket > PROXY_RESERVED_FD);
 
   /* create epoll */
   ep_Fd = epoll_create (max_Socket);

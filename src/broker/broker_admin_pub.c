@@ -2155,8 +2155,7 @@ admin_conf_change (int master_shm_id, const char *br_name,
       int val, result;
 
       result = port_str_to_int (&val, conf_value, 10);
-      if (result != 0 
-         || val < SQL_LOG2_NONE || val > SQL_LOG2_MAX)
+      if (result != 0 || val < SQL_LOG2_NONE || val > SQL_LOG2_MAX)
 	{
 	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_conf_error;
@@ -4000,7 +3999,7 @@ shard_shm_check_max_file_open_limit (T_BROKER_INFO * br_info,
 
   required_fd_num += proxy_info_p->max_context;
   required_fd_num += proxy_info_p->max_shard * shard_info_p->max_appl_server;
-  required_fd_num += RESERVED_FD;
+  required_fd_num += PROXY_RESERVED_FD;
 
   error = getrlimit (RLIMIT_NOFILE, &sys_limit);
   if (error < 0)

@@ -38,13 +38,14 @@
 #define FLAG_ON		1
 #define FLAG_OFF	0
 #define FLAG_SUSPEND	2
-#define FLAG_READ_WRITE  0
-#define FLAG_READ_ONLY 1
+
+#define FLAG_READ_WRITE 0
+#define FLAG_READ_ONLY  1
 #define FLAG_SLAVE_ONLY 2
 
-#if !defined(MAX_HA_DBNAME_LENGTH)
-#define MAX_HA_DBNAME_LENGTH		128
-#endif /* !MAX_HA_DBNAME_LENGTH */
+#if !defined (SRV_CON_DBNAME_SIZE)
+#define SRV_CON_DBNAME_SIZE		32
+#endif /* !SRV_CON_DBNAME_SIZE */
 
 typedef enum t_as_status T_AS_STATUS;
 enum t_as_status
@@ -84,8 +85,8 @@ struct t_as_info
   char clt_appl_name[32];
   char request_file[64];
   char log_msg[64];
-  char database_name[MAX_HA_DBNAME_LENGTH];
-  char database_host[MAXHOSTNAMELEN + 1];
+  char database_name[SRV_CON_DBNAME_SIZE];
+  char database_host[MAXHOSTNAMELEN];
   time_t last_connect_time;
   INT64 num_requests_received;
   INT64 num_transactions_processed;

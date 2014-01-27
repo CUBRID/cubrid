@@ -40,7 +40,7 @@
 typedef struct oracle_info ORACLE_INFO;
 struct oracle_info
 {
-  char name[MAX_HA_DBNAME_LENGTH];
+  char name[SRV_CON_DBNAME_SIZE];
   char user[SRV_CON_DBUSER_SIZE];
   char pass[SRV_CON_DBPASSWD_SIZE];
 

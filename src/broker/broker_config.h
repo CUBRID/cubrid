@@ -91,7 +91,6 @@
 #define BROKER_PATH_MAX       (PATH_MAX)
 #endif
 
-#define SHARD_NAME_LEN 		      64
 #define DEFAULT_SHARD_NUM_PROXY	 1
 #define DEFAULT_SHARD_MAX_CLIENTS 	 256
 

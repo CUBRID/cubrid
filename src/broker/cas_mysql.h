@@ -34,9 +34,6 @@
 
 #define DEFAULT_MYSQL_PORT	3306
 
-#define MAX_DBNAME_LENGTH	64
-#define MAX_HOSTNAME_LENGTH	64
-
 /* GLOBAL STATE */
 #define DB_CONNECTION_STATUS_NOT_CONNECTED      0
 #define DB_CONNECTION_STATUS_CONNECTED          1
@@ -60,6 +57,6 @@ extern void cas_mysql_stmt_free_result (MYSQL_STMT * stmt);
 extern void cas_mysql_stmt_close (MYSQL_STMT * stmt);
 extern int cas_mysql_stmt_num_rows (MYSQL_STMT * stmt);
 extern int cas_mysql_stmt_affected_rows (MYSQL_STMT * stmt);
-extern int cas_mysql_get_mysql_wait_timeout(void);
+extern int cas_mysql_get_mysql_wait_timeout (void);
 extern int cas_mysql_execute_dummy (void);
 #endif /* _CAS_MYSQL_H_ */
