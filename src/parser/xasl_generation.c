@@ -16556,6 +16556,20 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  /* sanity check */
 	  orderby_ok = ((xasl->orderby_list != NULL) || orderby_skip);
 	}
+      else if (select_node->info.query.order_by == NULL
+	       && select_node->info.query.orderby_for != NULL
+	       && xasl->option == Q_DISTINCT)
+	{
+	  ordbynum_flag = 0;
+	  xasl->ordbynum_pred =
+	    pt_to_pred_expr_with_arg (parser,
+				      select_node->info.query.orderby_for,
+				      &ordbynum_flag);
+	  if (ordbynum_flag & PT_PRED_ARG_ORDBYNUM_CONTINUE)
+	    {
+	      xasl->ordbynum_flag = XASL_ORDBYNUM_FLAG_SCAN_CONTINUE;
+	    }
+	}
 
       if ((xasl->instnum_pred != NULL
 	   || buildlist->a_instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)

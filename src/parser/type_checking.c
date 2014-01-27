@@ -7350,6 +7350,16 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 						  node->info.query.limit, 0,
 						  true);
 	    }
+	  else if (node->info.query.all_distinct == PT_DISTINCT)
+	    {
+	      /* When a distinct query has neither orderby nor groupby clause,
+	       * limit must be orderby_num predicate.
+	       */
+	      expr_pred = &node->info.query.orderby_for;
+	      limit = pt_limit_to_numbering_expr (parser,
+						  node->info.query.limit,
+						  PT_ORDERBY_NUM, false);
+	    }
 	  else
 	    {
 	      expr_pred = &node->info.query.q.select.where;
