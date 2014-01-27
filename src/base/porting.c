@@ -87,10 +87,32 @@ realpath (const char *path, char *resolved_path)
 {
   struct stat stat_buf;
   char *tmp_str = _fullpath (resolved_path, path, _MAX_PATH);
-  if (tmp_str != NULL && stat (tmp_str, &stat_buf) == 0)
+  char tmp_path[_MAX_PATH] = { 0 };
+  int len = 0;
+
+  if (tmp_str != NULL)
     {
-      return tmp_str;
+      strncpy (tmp_path, tmp_str, _MAX_PATH);
+
+      /* 
+       * The output of _fullpath() ends with '\'(Windows format) or without it. 
+       * It doesn't end with '/'(Linux format).
+       * 
+       * Even if the directory path exists, the stat() in Windows fails when
+       * the directory path ends with '\'.
+       */
+      len = strlen (tmp_path);
+      if (len > 0 && tmp_path[len - 1] == '\\')
+        {
+          tmp_path[len - 1] = '\0';
+        }
+
+      if (stat (tmp_path, &stat_buf) == 0)
+        {
+          return tmp_str;
+        }
     }
+
   return NULL;
 }
 
