@@ -1236,6 +1236,11 @@ session_reset_cur_insert_id (THREAD_ENTRY * thread_p)
       return ER_FAILED;
     }
 
+  if (state_p->is_trigger_involved)
+    {
+      return NO_ERROR;
+    }
+
   if (state_p->is_last_insert_id_generated == false)
     {
       return NO_ERROR;
@@ -1262,6 +1267,11 @@ session_begin_insert_values (THREAD_ENTRY * thread_p)
   if (state_p == NULL)
     {
       return ER_FAILED;
+    }
+
+  if (state_p->is_trigger_involved)
+    {
+      return NO_ERROR;
     }
 
   state_p->is_last_insert_id_generated = false;
