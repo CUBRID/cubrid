@@ -34,7 +34,10 @@
 #include "object_domain.h"
 
 #undef DB_IS_NULL
+#if !defined(NDEBUG)
+#else
 #undef DB_VALUE_DOMAIN_TYPE
+#endif
 #undef DB_VALUE_TYPE
 #undef DB_VALUE_SCALE
 #undef DB_VALUE_PRECISION
@@ -74,8 +77,11 @@
 #define DB_IS_NULL(v) \
     (((v) && (v)->domain.general_info.is_null == 0) ? false : true)
 
+#if !defined(NDEBUG)
+#else
 #define DB_VALUE_DOMAIN_TYPE(v)	\
     ((DB_TYPE) ((v)->domain.general_info.type))
+#endif
 
 #define DB_VALUE_TYPE(v) \
     (DB_IS_NULL(v) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE(v))

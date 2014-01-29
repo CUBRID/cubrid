@@ -3550,7 +3550,7 @@ ehash_check_merge_possible (THREAD_ENTRY * thread_p, EHID * ehid_p,
 
   first_slot_id = -1;
   if (spage_next_record (sibling_page_p, &first_slot_id, &recdes,
-			 DONT_PEEK) != S_SUCCESS)
+			 COPY) != S_SUCCESS)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
       pgbuf_unfix_and_init (thread_p, sibling_page_p);

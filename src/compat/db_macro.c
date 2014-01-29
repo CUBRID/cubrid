@@ -1095,8 +1095,18 @@ db_string_truncate (DB_VALUE * value, const int precision)
 DB_TYPE
 db_value_domain_type (const DB_VALUE * value)
 {
+  DB_TYPE db_type;
+
   CHECK_1ARG_UNKNOWN (value);
-  return (DB_TYPE) value->domain.general_info.type;
+
+  db_type = (DB_TYPE) value->domain.general_info.type;
+
+#if 0				/* TODO */
+  assert (DB_IS_NULL (value)
+	  || (DB_TYPE_FIRST < db_type && db_type <= DB_TYPE_LAST));
+#endif
+
+  return db_type;
 }
 
 /*

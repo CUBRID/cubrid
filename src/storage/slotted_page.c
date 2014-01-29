@@ -3788,7 +3788,7 @@ spage_search_record (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
  *       be MODIFIED DIRECTLY. Only reads should be performed, otherwise
  *       header information and other records may be corrupted.
  *
- *       When is_peeking is DONT_PEEK (COPY), the next available record is read
+ *       When is_peeking is COPY, the next available record is read
  *       onto the area pointed by the record descriptor. If the record does not
  *       fit in such an area, the length of the record is returned as a
  *       negative value in record_descriptor_p->length and an error is
@@ -3824,7 +3824,7 @@ spage_next_record (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
  *       be MODIFIED DIRECTLY. Only reads should be performed, otherwise
  *       header information and other records may be corrupted.
  *
- *       When is_peeking is DONT_PEEK (COPY), the previous available record is
+ *       When is_peeking is COPY, the previous available record is
  *       read onto the area pointed by the record descriptor. If the record
  *       does not fit in such an area, the length of the record is returned
  *       as a negative value in record_descriptor_p->length and an error is
@@ -3861,7 +3861,7 @@ spage_previous_record (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
  *       be MODIFIED DIRECTLY. Only reads should be performed, otherwise
  *       header information and other records may be corrupted.
  *
- *       When is_peeking is DONT_PEEK (COPY), the desired available record is
+ *       When is_peeking is COPY, the desired available record is
  *       read onto the area pointed by the record descriptor. If the record
  *       does not fit in such an area, the length of the record is returned
  *       as a negative value in record_descriptor_p->length and an error is
