@@ -383,7 +383,7 @@ obj_locate_attribute (MOP op, int attid, int for_write,
       return error;
     }
 
-  class_purpose = ((for_write) ? DB_FETCH_READ : DB_FETCH_WRITE);
+  class_purpose = ((for_write) ? DB_FETCH_WRITE : DB_FETCH_READ);
 
   if (locator_is_class (op, class_purpose))
     {
@@ -403,7 +403,9 @@ obj_locate_attribute (MOP op, int attid, int for_write,
 	       att = (SM_ATTRIBUTE *) att->header.next)
 	    {
 	      if (att->id == attid)
-		found = att;
+		{
+		  found = att;
+		}
 	    }
 	}
     }
