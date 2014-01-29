@@ -334,6 +334,8 @@ extern bool classobj_is_exist_foreign_key_ref (MOP refop,
 
 extern int classobj_put_foreign_key_ref (DB_SEQ ** properties,
 					 SM_FOREIGN_KEY_INFO * fk_info);
+extern int classobj_rename_foreign_key_ref (DB_SEQ ** properties,
+					    char *old_name, char *new_name);
 extern int classobj_drop_foreign_key_ref (DB_SEQ ** properties, BTID * btid);
 
 /* currently this is a private function to be called only by AU_SET_USER */

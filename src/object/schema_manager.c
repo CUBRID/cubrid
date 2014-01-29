@@ -11103,7 +11103,7 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
  *    definition was actually inherited from a super class. When we find these,
  *    go to the super class and use the BTID that will have by now been
  *    allocated in there rather than allocating a new one of our own.
- *   return: NO_ERROR on success, non-zero for ERROR
+ *   return: The number of indexes of the table on success, non-zero for ERROR
  *   classop(in): class object
  *   class(in): class structure
  *   subclasses(in):
@@ -11113,8 +11113,9 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 			  DB_OBJLIST * subclasses)
 {
   SM_CLASS_CONSTRAINT *con;
+  int num_indexes = 0;
+  int err;
   bool recache_cls_cons = false;
-  int num_index = 0;
 
   assert (classop != NULL);
 
@@ -11146,7 +11147,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 	      goto structure_error;
 	    }
 
-	  num_index++;
+	  num_indexes++;
 	}
     }
 
@@ -11163,7 +11164,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 	      goto structure_error;
 	    }
 
-	  num_index++;
+	  num_indexes++;
 	}
     }
 
@@ -11189,21 +11190,14 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
       goto structure_error;
     }
 
-  if (num_index > 0)
-    {
-      if (sm_update_statistics (classop, STATS_WITH_SAMPLING))
-	{
-	  goto structure_error;
-	}
-    }
-
-  return NO_ERROR;
+  return num_indexes;
 
 structure_error:
   /* the workspace has already been damaged by this point, the caller will
    * have to recognize the error and abort the transaction.
    */
-  return er_errid ();
+  err = er_errid ();
+  return ((err == NO_ERROR) ? ER_FAILED : err);
 }
 
 /*
@@ -12549,6 +12543,7 @@ static int
 update_subclasses (DB_OBJLIST * subclasses)
 {
   int error = NO_ERROR;
+  int num_indexes;
   DB_OBJLIST *sub;
   SM_CLASS *class_;
 
@@ -12575,17 +12570,26 @@ update_subclasses (DB_OBJLIST * subclasses)
 		   *   modify install_new_representation and
 		   *   remove allocated_disk_structures
 		   */
-		  error = allocate_disk_structures (sub->op, class_, NULL);
-		  if (error != NO_ERROR)
+		  num_indexes = allocate_disk_structures (sub->op, class_,
+							  NULL);
+		  if (num_indexes > 0)
 		    {
-		      classobj_free_template (class_->new_);
-		      class_->new_ = NULL;
-
-		      return error;
+		      error = sm_update_statistics (sub->op,
+						    STATS_WITH_SAMPLING);
+		    }
+		  else if (num_indexes < 0)
+		    {
+		      /* an error has happened */
+		      error = num_indexes;
 		    }
 
 		  classobj_free_template (class_->new_);
 		  class_->new_ = NULL;
+
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
 		}
 	    }
 	}
@@ -12687,6 +12691,7 @@ static int
 update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 {
   int error = NO_ERROR;
+  int num_indexes;
   SM_CLASS *class_;
   DB_OBJLIST *cursupers, *oldsupers, *newsupers, *cursubs, *newsubs;
   SM_TEMPLATE *flat;
@@ -12817,6 +12822,10 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
       if (class_ == NULL)
 	{
 	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	    }
 	}
       else
 	{
@@ -12875,59 +12884,62 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
     }
 
   /* the next sequence of operations is extremely critical,
-     if any errors are detected, we'll have to abort the current
-     transaction or the database will be left in an inconsistent
-     state */
+   * if any errors are detected, we'll have to abort the current
+   * transaction or the database will be left in an inconsistent
+   * state.
+   */
 
-  if (error == NO_ERROR)
-    {
-      flat->partition_parent_atts = template_->partition_parent_atts;
-      error = install_new_representation (template_->op, class_, flat);
-      if (error == NO_ERROR)
-	{
-	  /* This used to be done toward the end but since the
-	   * unique btid has to be inherited, the disk structures
-	   * have to be created before we update the subclasses.
-	   */
-	  error = allocate_disk_structures (template_->op, class_, newsubs);
-	  if (error == NO_ERROR)
-	    {
-	      error = update_supers (template_->op, oldsupers, newsupers);
-	      if (error == NO_ERROR)
-		{
-		  error = update_subclasses (newsubs);
-		  if (error == NO_ERROR)
-		    {
-		      if (classmop != NULL)
-			{
-			  *classmop = template_->op;
-			}
-		      /* we're done */
-		      class_->new_ = NULL;
-
-		      classobj_free_template (flat);
-		      classobj_free_template (template_);
-		    }
-		}
-	    }
-	}
-    }
-
+  flat->partition_parent_atts = template_->partition_parent_atts;
+  error = install_new_representation (template_->op, class_, flat);
   if (error != NO_ERROR)
     {
-      classobj_free_template (flat);
-      abort_subclasses (newsubs);
-      if (error == ER_BTREE_UNIQUE_FAILED || error == ER_FK_INVALID
-	  || error == ER_SM_PRIMARY_KEY_EXISTS
-	  || error == ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE)
-	{
-	  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_NAME);
-	}
-      else
-	{
-	  (void) tran_unilaterally_abort ();
-	}
+      goto error_return;
     }
+
+  /* This used to be done toward the end but since the
+   * unique btid has to be inherited, the disk structures
+   * have to be created before we update the subclasses.
+   * We also have to disable updating statistics for now
+   * because we haven't finshed modifying the all the classes
+   * yet and the code which updates statistics on partitioned
+   * classes does not work if partitions and the partitioned
+   * class have different schema.
+   */
+
+  num_indexes = allocate_disk_structures (template_->op, class_, newsubs);
+  if (num_indexes < 0)
+    {
+      error = num_indexes;
+      goto error_return;
+    }
+
+  error = update_supers (template_->op, oldsupers, newsupers);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  error = update_subclasses (newsubs);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  /* we're done */
+  if (classmop != NULL)
+    {
+      *classmop = template_->op;
+    }
+  class_->new_ = NULL;
+
+  /* All objects are updated, now we can update class statistics also. */
+  if (num_indexes > 0)
+    {
+      error = sm_update_statistics (template_->op, STATS_WITH_SAMPLING);
+    }
+
+  classobj_free_template (flat);
+  classobj_free_template (template_);
 
 end:
   ml_free (oldsupers);
@@ -12935,6 +12947,21 @@ end:
   ml_free (newsubs);
 
   return error;
+
+error_return:
+  classobj_free_template (flat);
+  abort_subclasses (newsubs);
+  if (error == ER_BTREE_UNIQUE_FAILED || error == ER_FK_INVALID
+      || error == ER_SM_PRIMARY_KEY_EXISTS
+      || error == ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_NAME);
+    }
+  else
+    {
+      (void) tran_unilaterally_abort ();
+    }
+  goto end;
 }
 
 /*
