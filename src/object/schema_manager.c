@@ -257,9 +257,6 @@ const char *sm_Root_class_name = ROOTCLASS_NAME;
 /* Heap file identifier for the root class */
 HFID *sm_Root_class_hfid = &sm_Root_class.header.heap;
 
-/* Flag to do update statistics */
-bool sm_Disable_updating_statistics = false;
-
 static unsigned int local_schema_version = 0;
 static unsigned int global_schema_version = 0;
 
@@ -3851,11 +3848,6 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
-
-  if (sm_Disable_updating_statistics == true)
-    {
-      return NO_ERROR;
-    }
 
   assert_release (classop != NULL);
 

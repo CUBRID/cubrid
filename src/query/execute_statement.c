@@ -2601,7 +2601,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   QUERY_EXEC_MODE old_exec_mode;
-  bool old_disable_update_stats;
   bool need_schema_replication = false;
   int suppress_repl_error = NO_ERROR;
 
@@ -2645,8 +2644,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
        * process them. For any other node, return an error.
        */
 
-      old_disable_update_stats = sm_Disable_updating_statistics;
-
       /* disable data replication log for schema replication log types in HA mode */
       if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
 	  && is_schema_repl_log_statment (statement))
@@ -2676,14 +2673,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       switch (statement->node_type)
 	{
 	case PT_ALTER:
-	  sm_Disable_updating_statistics =
-	    (statement->info.alter.hint & PT_HINT_NO_STATS)
-	    ? true : old_disable_update_stats;
 	  error = do_check_internal_statements (parser, statement,
 						/* statement->info.alter.
 						   internal_stmts, */
 						do_alter);
-	  sm_Disable_updating_statistics = old_disable_update_stats;
 	  break;
 
 	case PT_2PC_ATTACH:
@@ -2699,22 +2692,14 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_CREATE_ENTITY:
-	  sm_Disable_updating_statistics =
-	    (statement->info.create_entity.hint & PT_HINT_NO_STATS)
-	    ? true : old_disable_update_stats;
 	  error = do_check_internal_statements (parser, statement,
 						/* statement->info.create_entity.
 						   internal_stmts, */
 						do_create_entity);
-	  sm_Disable_updating_statistics = old_disable_update_stats;
 	  break;
 
 	case PT_CREATE_INDEX:
-	  sm_Disable_updating_statistics =
-	    (statement->info.index.hint & PT_HINT_NO_STATS)
-	    ? true : old_disable_update_stats;
 	  error = do_create_index (parser, statement);
-	  sm_Disable_updating_statistics = old_disable_update_stats;
 	  break;
 
 	case PT_EVALUATE:
@@ -2737,19 +2722,11 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_DROP_INDEX:
-	  sm_Disable_updating_statistics =
-	    (statement->info.index.hint & PT_HINT_NO_STATS)
-	    ? true : old_disable_update_stats;
 	  error = do_drop_index (parser, statement);
-	  sm_Disable_updating_statistics = old_disable_update_stats;
 	  break;
 
 	case PT_ALTER_INDEX:
-	  sm_Disable_updating_statistics =
-	    (statement->info.index.hint & PT_HINT_NO_STATS)
-	    ? true : old_disable_update_stats;
 	  error = do_alter_index (parser, statement);
-	  sm_Disable_updating_statistics = old_disable_update_stats;
 	  break;
 
 	case PT_DROP_VARIABLE:
@@ -3039,7 +3016,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
   QUERY_EXEC_MODE old_exec_mode;
-  bool old_disable_update_stats;
   bool need_schema_replication = false;
   int suppress_repl_error;
 
@@ -3080,8 +3056,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* for the subset of nodes which represent top level statements,
      process them; for any other node, return an error */
 
-  old_disable_update_stats = sm_Disable_updating_statistics;
-
   /* disable data replication log for schema replication log types in HA mode */
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
       && is_schema_repl_log_statment (statement))
@@ -3111,23 +3085,15 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   switch (statement->node_type)
     {
     case PT_CREATE_ENTITY:
-      sm_Disable_updating_statistics =
-	(statement->info.create_entity.hint & PT_HINT_NO_STATS)
-	? true : old_disable_update_stats;
       /* err = do_create_entity(parser, statement); */
       /* execute internal statements before and after do_create_entity() */
       err = do_check_internal_statements (parser, statement,
 					  /* statement->info.create_entity.
 					     internal_stmts, */
 					  do_create_entity);
-      sm_Disable_updating_statistics = old_disable_update_stats;
       break;
     case PT_CREATE_INDEX:
-      sm_Disable_updating_statistics =
-	(statement->info.index.hint & PT_HINT_NO_STATS)
-	? true : old_disable_update_stats;
       err = do_create_index (parser, statement);
-      sm_Disable_updating_statistics = old_disable_update_stats;
       break;
     case PT_CREATE_SERIAL:
       err = do_create_serial (parser, statement);
@@ -3139,22 +3105,14 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_create_user (parser, statement);
       break;
     case PT_ALTER:
-      sm_Disable_updating_statistics =
-	(statement->info.alter.hint & PT_HINT_NO_STATS)
-	? true : old_disable_update_stats;
       /* err = do_alter(parser, statement); */
       /* execute internal statements before and after do_alter() */
       err = do_check_internal_statements (parser, statement,
 					  /* statement->info.alter.
 					     internal_stmts, */ do_alter);
-      sm_Disable_updating_statistics = old_disable_update_stats;
       break;
     case PT_ALTER_INDEX:
-      sm_Disable_updating_statistics =
-	(statement->info.index.hint & PT_HINT_NO_STATS)
-	? true : old_disable_update_stats;
       err = do_alter_index (parser, statement);
-      sm_Disable_updating_statistics = old_disable_update_stats;
       break;
     case PT_ALTER_SERIAL:
       err = do_alter_serial (parser, statement);
@@ -3173,11 +3131,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 					  do_drop);
       break;
     case PT_DROP_INDEX:
-      sm_Disable_updating_statistics =
-	(statement->info.index.hint & PT_HINT_NO_STATS)
-	? true : old_disable_update_stats;
       err = do_drop_index (parser, statement);
-      sm_Disable_updating_statistics = old_disable_update_stats;
       break;
     case PT_DROP_SERIAL:
       err = do_drop_serial (parser, statement);
@@ -12027,8 +11981,8 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	      if (into_label != NULL)
 		{
 		  error =
-		      pt_associate_label_with_value_check_reference (into_label,
-								     ins_val);
+		    pt_associate_label_with_value_check_reference (into_label,
+								   ins_val);
 		}
 	    }
 	}
@@ -12245,8 +12199,8 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 		  if (into_label != NULL)
 		    {
 		      error =
-		      pt_associate_label_with_value_check_reference (into_label,
-								     ins_val);
+			pt_associate_label_with_value_check_reference
+			(into_label, ins_val);
 		    }
 		}
 	      if (error != NO_ERROR)

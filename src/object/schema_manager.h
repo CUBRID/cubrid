@@ -84,7 +84,6 @@ extern const char TEXT_CONSTRAINT_PREFIX[];
 extern MOP sm_Root_class_mop;
 extern HFID *sm_Root_class_hfid;
 extern const char *sm_Root_class_name;
-extern bool sm_Disable_updating_statistics;
 
 extern int sm_finish_class (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_update_class (SM_TEMPLATE * template_, MOP * classmop);

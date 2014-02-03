@@ -35,7 +35,6 @@
 
 #define PEEK          true	/* Peek for a slotted record */
 #define COPY          false	/* Don't peek, but copy a slotted record */
-#define DONT_PEEK     COPY	/* Same as copy */
 
 enum
 {

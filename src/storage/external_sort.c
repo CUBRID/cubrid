@@ -685,7 +685,7 @@ sort_spage_insert (PAGE_PTR pgptr, RECDES * recdes)
  *       be MODIFIED DIRECTLY. Only reads should be performed, otherwise
  *       header information and other records may be corrupted.
  *
- *       When ispeeking is DONT_PEEK (COPY), the desired available record is
+ *       When ispeeking is COPY, the desired available record is
  *       read onto the area pointed by the record descriptor. If the record
  *       does not fit in such an area, the length of the record is returned
  *       as a negative value in recdes->length and an error is indicated in the

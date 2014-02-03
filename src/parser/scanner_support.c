@@ -333,21 +333,6 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  hint_table[i].arg_list = NULL;
 		}
 	      break;
-	    case PT_HINT_NO_STATS:	/* no stats */
-	      if (node->node_type == PT_CREATE_ENTITY)
-		{
-		  node->info.create_entity.hint |= hint_table[i].hint;
-		}
-	      else if (node->node_type == PT_ALTER)
-		{
-		  node->info.alter.hint |= hint_table[i].hint;
-		}
-	      else if (node->node_type == PT_CREATE_INDEX
-		       || node->node_type == PT_DROP_INDEX)
-		{
-		  node->info.index.hint |= hint_table[i].hint;
-		}
-	      break;
 	    case PT_HINT_USE_IDX_DESC:	/* descending index scan */
 	    case PT_HINT_NO_COVERING_IDX:	/* do not use covering index scan */
 	    case PT_HINT_NO_IDX_DESC:	/* do not use descending index scan */

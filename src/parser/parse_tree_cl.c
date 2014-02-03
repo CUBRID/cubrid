@@ -6194,15 +6194,6 @@ pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p)
   /* ALTER VCLASS XYZ ... */
   r1 = pt_print_bytes (parser, p->info.alter.entity_name);
   q = pt_append_nulstring (parser, q, "alter ");
-  if (p->info.alter.hint != PT_HINT_NONE)
-    {
-      q = pt_append_nulstring (parser, q, "/*+");
-      if (p->info.alter.hint & PT_HINT_NO_STATS)
-	{
-	  q = pt_append_nulstring (parser, q, " NO_STATS");
-	}
-      q = pt_append_nulstring (parser, q, " */ ");
-    }
   q = pt_append_nulstring (parser, q,
 			   pt_show_misc_type (p->info.alter.entity_type));
   q = pt_append_nulstring (parser, q, " ");
@@ -7010,15 +7001,6 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       q = pt_append_nulstring (parser, q, "or replace ");
     }
-  if (p->info.create_entity.hint != PT_HINT_NONE)
-    {
-      q = pt_append_nulstring (parser, q, "/*+");
-      if (p->info.create_entity.hint & PT_HINT_NO_STATS)
-	{
-	  q = pt_append_nulstring (parser, q, " NO_STATS");
-	}
-      q = pt_append_nulstring (parser, q, " */ ");
-    }
 
   q = pt_append_nulstring (parser, q,
 			   pt_show_misc_type (p->info.
@@ -7309,15 +7291,6 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.index.indexed_class);
 
       b = pt_append_nulstring (parser, b, "create");
-      if (p->info.index.hint != PT_HINT_NONE)
-	{
-	  b = pt_append_nulstring (parser, b, " /*+");
-	  if (p->info.index.hint & PT_HINT_NO_STATS)
-	    {
-	      b = pt_append_nulstring (parser, b, " NO_STATS");
-	    }
-	  b = pt_append_nulstring (parser, b, " */ ");
-	}
     }
 
   if (p->info.index.reverse)
@@ -9104,15 +9077,6 @@ pt_print_drop_index (PARSER_CONTEXT * parser, PT_NODE * p)
   parser->custom_print = saved_cp;
 
   b = pt_append_nulstring (parser, b, "drop");
-  if (p->info.index.hint != PT_HINT_NONE)
-    {
-      b = pt_append_nulstring (parser, b, " /*+");
-      if (p->info.index.hint & PT_HINT_NO_STATS)
-	{
-	  b = pt_append_nulstring (parser, b, " NO_STATS");
-	}
-      b = pt_append_nulstring (parser, b, " */ ");
-    }
   if (p->info.index.reverse)
     {
       b = pt_append_nulstring (parser, b, " reverse");
