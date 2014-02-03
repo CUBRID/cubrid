@@ -17648,8 +17648,11 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      /* evaluate CONNECT BY predicate */
 	      if (xasl->if_pred != NULL)
 		{
-		  /* set level_val to children's level */
-		  DB_MAKE_INT (xasl->level_val, level_value + 1);
+		  if (xasl->level_val)
+		    {
+		      /* set level_val to children's level */
+		      DB_MAKE_INT (xasl->level_val, level_value + 1);
+		    }
 		  ev_res = eval_pred (thread_p,
 				      xasl->if_pred, &xasl_state->vd, NULL);
 		  if (ev_res == V_ERROR)

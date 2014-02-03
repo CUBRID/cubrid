@@ -702,6 +702,12 @@ db_private_free_release (void *thrd, void *ptr, bool rc_track)
 
 #else /* SA_MODE */
 
+  if (!db_on_server)
+    {
+      db_ws_free (ptr);
+      return;
+    }
+
   if (private_heap_id == 0)
     {
       free (ptr);

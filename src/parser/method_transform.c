@@ -43,9 +43,7 @@ typedef struct meth_stmt_info METH_STMT_INFO;
 struct meth_stmt_info
 {
   PT_NODE *root;		/* ptr to original statement */
-  PT_NODE *spec_list;		/* scope of the SELECT */
-  PT_NODE **where;		/* where clause of the SELECT */
-  unsigned short correlation_level;	/* correlation of the SELECT */
+  PT_NODE *select_statement;	/* ptr to current statement */
 };
 
 typedef struct meth_corr_info METH_CORR_INFO;
@@ -208,6 +206,23 @@ static int meth_refs_to_scope (PARSER_CONTEXT * parser, PT_NODE * scope,
 			       PT_NODE * tree);
 static PT_NODE *meth_have_methods (PARSER_CONTEXT * parser, PT_NODE * node,
 				   void *arg, int *continue_walk);
+static PT_NODE *meth_find_hierarchical_op (PARSER_CONTEXT *parser,
+					   PT_NODE *node, void *arg,
+					   int* continue_walk);
+static void meth_find_hierarchical_in_method_list (PARSER_CONTEXT *parser,
+						   PT_NODE *method_list,
+						   bool *has_hierarchical_expr);
+static void meth_copy_hierarchical_expr_to_list (PARSER_CONTEXT *parser,
+						 PT_NODE *src_list,
+						 PT_NODE **dst_list_p,
+						 int *copy_count);
+static void meth_move_hierarchical_to_derived (PARSER_CONTEXT *parser,
+					       PT_SELECT_INFO *statement_info,
+					       PT_SELECT_INFO *derived_info);
+static void meth_replace_hierarchical_exprs (PARSER_CONTEXT *parser,
+					     PT_NODE **select_list_p,
+					     PT_NODE *ref_attrs,
+					     int num_methods);
 
 /*
  * meth_have_methods() -
@@ -626,9 +641,7 @@ meth_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement,
   PT_NODE *save_from;
 
   info.root = root;
-  info.correlation_level = select_statement->info.query.correlation_level;
-  info.spec_list = select_statement->info.query.q.select.from;
-  info.where = &select_statement->info.query.q.select.where;
+  info.select_statement = select_statement;
 
   /* translate any entity spec with method calls to a MERGE */
   save_from = select_statement->info.query.q.select.from;	/* save */
@@ -671,21 +684,34 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
   int num_methods;
   int num_method_params = 0;
   int num_referenced_attrs;
+  int num_hierarchical_exprs = 0;
   METH_INFO1 info1;
   METH_INFO6 info6;
-  unsigned short derived1_correlation_level, merge_correlation_level;
+  unsigned short derived1_correlation_level;
+  unsigned short merge_correlation_level;
+  unsigned short correlation_level;
   PT_NODE *dummy_set_tbl;
+  PT_NODE *spec_list, **where;
+  bool has_hierarchical_expr = false;
 
   info1.found = 0;
   *continue_walk = PT_LIST_WALK;
 
-  if ((spec->node_type != PT_SPEC) || (!spec->info.spec.method_list))
+  if ((info->select_statement == NULL) || (spec->node_type != PT_SPEC)
+      || (spec->info.spec.method_list == NULL))
     {
       return spec;		/* nothing to translate */
     }
+  correlation_level = info->select_statement->info.query.correlation_level;
+  spec_list = info->select_statement->info.query.q.select.from;
+  where = &info->select_statement->info.query.q.select.where;
 
   /* squirrel away the referenced_attrs from the original tree */
   save_referenced_attrs = mq_get_references (parser, info->root, spec);
+
+  /* check method calls for hierarchical expressions in arguments */
+  meth_find_hierarchical_in_method_list (parser, spec->info.spec.method_list,
+					 &has_hierarchical_expr);
 
   num_methods = pt_length_of_list (spec->info.spec.method_list);
   num_referenced_attrs = pt_length_of_list (save_referenced_attrs);
@@ -695,7 +721,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
   /* newly create additional dummy_set_tbl as derived1 for instance method
      and stored precdure. check for path-expr. */
   if (spec->info.spec.meta_class == PT_CLASS
-      && spec->info.spec.path_entities == NULL)
+      && spec->info.spec.path_entities == NULL && !has_hierarchical_expr)
     {				/* can't handle path-expr */
       DB_VALUE val;
       PT_NODE *arg, *set;
@@ -831,7 +857,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 		      sub_corr_level = sub_der->info.query.correlation_level;
 		    }
 		  else
-		    if (meth_refs_to_scope (parser, info->spec_list, sub_der))
+		    if (meth_refs_to_scope (parser, spec_list, sub_der))
 		    {
 		      sub_corr_level = 1;
 		    }
@@ -841,7 +867,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 
 		      info4.found = 0;
 		      info4.id = spec->info.spec.id;
-		      info4.spec_list = info->spec_list;
+		      info4.spec_list = spec_list;
 		      (void) parser_walk_tree (parser, sub_der,
 					       meth_find_outside_refs_subquery,
 					       &info4, NULL, NULL);
@@ -871,7 +897,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 	    }
 	  else
 	    {
-	      derived1_correlation_level = info->correlation_level;
+	      derived1_correlation_level = correlation_level;
 	    }
 	}
     }
@@ -891,12 +917,29 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
     meth_get_method_params (parser, spec->info.spec.id,
 			    table2->info.spec.derived_table,
 			    &num_method_params);
+  if (has_hierarchical_expr)
+    {
+      /* copy all hierarchical expressions from select list to derived */
+      meth_copy_hierarchical_expr_to_list (parser,
+					   info->select_statement->info.query.
+					   q.select.list,
+					   &derived1->info.query.q.select.list,
+					   &num_hierarchical_exprs);
+    }
   derived1->info.query.q.select.list =
     parser_append_node (parser_copy_tree_list (parser, save_referenced_attrs),
 			derived1->info.query.q.select.list);
   derived1->info.query.q.select.from->info.spec.path_entities =
     meth_non_method_path_entities (parser, spec->info.spec.path_entities);
   derived1->info.query.correlation_level = derived1_correlation_level;
+  if (has_hierarchical_expr)
+    {
+      /* move hierarchical query to derived */
+      meth_move_hierarchical_to_derived (parser,
+					 &info->select_statement->info.query.q.
+					 select,
+					 &derived1->info.query.q.select);
+    }
 
   /* create and fill in table1 of the merge */
   table1 = parser_new_node (parser, PT_SPEC);
@@ -933,13 +976,11 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 				   derived1->info.query.q.select.from->
 				   info.spec.derived_table,
 				   derived1_correlation_level -
-				   info->correlation_level, 1,
-				   spec->info.spec.id);
+				   correlation_level, 1, spec->info.spec.id);
       meth_bump_correlation_level (parser,
 				   derived1->info.query.q.select.list,
 				   derived1_correlation_level -
-				   info->correlation_level, 1,
-				   spec->info.spec.id);
+				   correlation_level, 1, spec->info.spec.id);
     }
 
   /* create and fill in the merge node */
@@ -1020,7 +1061,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
    * field filled in.  We must first skip over the non-PT_NAME parameters.
    */
   tmp = table1->info.spec.referenced_attrs;
-  for (i = 0; i < num_method_params; i++)
+  for (i = 0; i < num_method_params + num_hierarchical_exprs; i++)
     {
       tmp = tmp->next;
     }
@@ -1041,6 +1082,15 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 			     table2->info.spec.derived_table,
 			     new_spec->info.spec.referenced_attrs,
 			     new_spec, num_methods);
+  /* replace hierarchical exprs in select list with derived attrs */
+  if (has_hierarchical_expr)
+    {
+      meth_replace_hierarchical_exprs (parser,
+				       &info->select_statement->info.query.q.
+				       select.list,
+				       new_spec->info.spec.referenced_attrs,
+				       num_methods);
+    }
   meth_replace_method_calls (parser, new_spec->info.spec.path_entities,
 			     table2->info.spec.derived_table,
 			     new_spec->info.spec.referenced_attrs,
@@ -1052,7 +1102,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
        * the old spec, push the conjuncts for this spec down.
        */
       derived1->info.query.q.select.where =
-	meth_push_conjuncts (parser, spec->info.spec.id, info->where);
+	meth_push_conjuncts (parser, spec->info.spec.id, where);
     }
 
   /* now that we've finished copy stuff to the derived table, reset ids */
@@ -1069,7 +1119,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
    * spec's, we also need to replace any referenced attrs in these trees.
    */
   tmp = new_spec->info.spec.referenced_attrs;
-  for (i = 0; i < num_methods; i++)
+  for (i = 0; i < num_methods + num_hierarchical_exprs; i++)
     {
       tmp = tmp->next;
     }
@@ -2564,4 +2614,203 @@ meth_refs_to_scope (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * tree)
     }
 
   return found;
+}
+
+/*
+ * meth_find_hierarchical_op() - Check expression tree for hierarchical op
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out):
+ *   continue_walk(in):
+ */
+static PT_NODE*
+meth_find_hierarchical_op (PARSER_CONTEXT *parser, PT_NODE *node, void *arg,
+			   int* continue_walk)
+{
+  bool *is_hierarchical_op = (bool *) arg;
+
+  if (node->node_type != PT_EXPR)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else
+    {
+      if (PT_REQUIRES_HIERARCHICAL_QUERY (node->info.expr.op))
+	{
+	  *is_hierarchical_op = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * meth_find_hierarchical_in_method_list() - Check method list for hierarchical
+ *					     expressions in arguments
+ *   return:
+ *   parser(in):
+ *   method_list(in):
+ *   has_hierarchical_expr(out):
+ */
+static void
+meth_find_hierarchical_in_method_list (PARSER_CONTEXT *parser,
+				       PT_NODE *method_list,
+				       bool *has_hierarchical_expr)
+{
+  PT_NODE *node, *arg, *save_next;
+
+  for (node = method_list; node != NULL && !(*has_hierarchical_expr);
+       node = node->next)
+    {
+      if (node->node_type == PT_METHOD_CALL)
+	{
+	  for (arg = node->info.method_call.arg_list; arg != NULL
+	       && !(*has_hierarchical_expr); arg = arg->next)
+	    {
+	      save_next = arg->next;
+	      arg->next = NULL;
+	      (void) parser_walk_tree (parser, arg, meth_find_hierarchical_op,
+				       has_hierarchical_expr, NULL, NULL);
+	      arg->next = save_next;
+	    }
+	}
+    }
+}
+
+/*
+ * meth_copy_hierarchical_expr_to_list() - Copy and hierarchical expressions
+ *					   from source to destination list
+ *   return:
+ *   parser(in):
+ *   src_list(in):
+ *   dst_list(in):
+ *   copy_count(in/out):
+ */
+static void
+meth_copy_hierarchical_expr_to_list (PARSER_CONTEXT *parser, PT_NODE *src_list,
+				     PT_NODE **dst_list_p, int *copy_count)
+{
+  PT_NODE *node, *temp, *save_next;
+  bool found, has_hierarchical_expr;
+
+  for (node = src_list; node != NULL; node = node->next)
+    {
+      has_hierarchical_expr = false;
+      save_next = node->next;
+      node->next = NULL;
+      (void) parser_walk_tree (parser, node, meth_find_hierarchical_op,
+			       &has_hierarchical_expr, NULL, NULL);
+      node->next = save_next;
+      if (has_hierarchical_expr)
+	{
+	  /* don't copy if it's already there */
+	  found = false;
+	  for (temp = *dst_list_p; temp!= NULL && !found; temp = temp->next)
+	    {
+	      if (node == temp)
+		{
+		  found = true;
+		}
+	    }
+	  if (!found)
+	    {
+	      *dst_list_p =
+		parser_append_node (parser_copy_tree (parser, node),
+				    *dst_list_p);
+	      (*copy_count)++;
+	    }
+	}
+    }
+}
+
+/*
+ * meth_move_hierarchical_to_derived() - Move hierarchical statement info to
+ *					 derived
+ *   return:
+ *   parser(in):
+ *   statement_info(in):
+ *   derived_info(in):
+ */
+static void
+meth_move_hierarchical_to_derived (PARSER_CONTEXT *parser,
+				   PT_SELECT_INFO *statement_info,
+				   PT_SELECT_INFO *derived_info)
+{
+  /* copy predicates */
+  derived_info->connect_by =
+    parser_copy_tree_list (parser, statement_info->connect_by);
+  derived_info->start_with =
+    parser_copy_tree_list (parser, statement_info->start_with);
+  derived_info->after_cb_filter =
+    parser_copy_tree_list (parser, statement_info->after_cb_filter);
+
+  /* copy flags */
+  derived_info->check_cycles = statement_info->check_cycles;
+  derived_info->single_table_opt = statement_info->single_table_opt;
+
+  /* clear predicates */
+  parser_free_tree (parser, statement_info->connect_by);
+  parser_free_tree (parser, statement_info->start_with);
+  parser_free_tree (parser, statement_info->after_cb_filter);
+  statement_info->connect_by = NULL;
+  statement_info->start_with = NULL;
+  statement_info->after_cb_filter = NULL;
+
+  /* reset flags */
+  statement_info->check_cycles = 0;
+  statement_info->single_table_opt = 0;
+}
+
+/*
+ * meth_replace_hierarchical_exprs() - Replace hierarchical exprs in list with
+ *				       derived attrs
+ *   return:
+ *   parser(in):
+ *   statement_info(in):
+ *   derived_info(in):
+ */
+static void
+meth_replace_hierarchical_exprs (PARSER_CONTEXT *parser,
+				 PT_NODE **select_list_p, PT_NODE *ref_attrs,
+				 int num_methods)
+{
+  PT_NODE *node, *prev_node, *save_next, *new_node;
+  bool has_hierarchical_expr;
+  int i;
+
+  for (i = 0; i < num_methods; i++)
+    {
+      ref_attrs = ref_attrs->next;
+    }
+  
+  for (node = *select_list_p, prev_node = NULL; node != NULL;
+       node = node->next)
+    {
+      has_hierarchical_expr = false;
+      save_next = node->next;
+      node->next = NULL;
+      (void) parser_walk_tree (parser, node, meth_find_hierarchical_op,
+			       &has_hierarchical_expr, NULL, NULL);
+      node->next = save_next;
+      if (has_hierarchical_expr)
+	{
+	  new_node = parser_copy_tree (parser, ref_attrs);
+	  new_node->next = node->next;
+	  if (prev_node)
+	    {
+	      prev_node->next = new_node;
+	    }
+	  else
+	    {
+	      *select_list_p = new_node;
+	    }
+	  node->next = NULL;
+	  parser_free_tree (parser, node);
+	  node = new_node;
+	  ref_attrs = ref_attrs->next;
+	}
+      prev_node = node;
+    }
 }
