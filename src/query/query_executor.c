@@ -20990,14 +20990,14 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 		    {
 		      agg_p->accumulator_domain.value_dom =
 			tp_domain_resolve (DB_TYPE_NUMERIC, NULL,
-					   DB_MAX_NUMERIC_PRECISION,
+					   DB_MAX_NUMERIC_PRECISION - 1,
 					   agg_p->domain->scale, NULL, NULL);
 		    }
 		  else if (DB_VALUE_TYPE (dbval) == DB_TYPE_NUMERIC)
 		    {
 		      agg_p->accumulator_domain.value_dom =
 			tp_domain_resolve (DB_TYPE_NUMERIC, NULL,
-					   DB_MAX_NUMERIC_PRECISION,
+					   DB_MAX_NUMERIC_PRECISION - 1,
 					   DB_VALUE_SCALE (dbval), NULL,
 					   NULL);
 		    }
