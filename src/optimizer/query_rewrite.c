@@ -1307,9 +1307,17 @@ qo_is_cast_attr (PT_NODE * expr)
 static int
 qo_is_reduceable_const (PT_NODE * expr)
 {
-  while (expr && expr->node_type == PT_EXPR && expr->info.expr.op == PT_CAST)
+  while (expr && expr->node_type == PT_EXPR)
     {
-      expr = expr->info.expr.arg1;
+      if (expr->info.expr.op == PT_CAST
+	  || expr->info.expr.op == PT_TO_ENUMERATION_VALUE)
+	{
+	  expr = expr->info.expr.arg1;
+	}
+      else
+	{
+	  return false;		/* give up */
+	}
     }
 
   return PT_IS_CONST_INPUT_HOSTVAR (expr);
