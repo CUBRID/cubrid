@@ -23131,7 +23131,8 @@ pt_fix_enumeration_comparison (PARSER_CONTEXT * parser, PT_NODE * expr)
 	{
 	  /* Skip nodes that already have been wrapped with
 	   * PT_TO_ENUMERATION_VALUE expression or have the correct type */
-	  if (list->node_type == PT_TO_ENUMERATION_VALUE
+	  if ((list->node_type == PT_EXPR
+	       && list->info.expr.op == PT_TO_ENUMERATION_VALUE)
 	      || (list->type_enum == PT_TYPE_ENUMERATION
 		  && pt_is_same_enum_data_type (arg1->data_type,
 						list->data_type)))
