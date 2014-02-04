@@ -1246,7 +1246,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 Por favor verifique correctitud del token '%1$s'.
 4 'leer esquema no cometida" no es acceptable, utilizando \n'leer esquema cometida' en vez.
 5 Longitud maxima del string de caracteres es 16383.
-6 %s excede limite de %lld.
+6 %s excede limite de %s.
 7 Longitud maxima del string de bits es %1$d bits.
 8 No se puede utilizar una subconsulta en la clausula condición de unión.
 9 No se puede especificar atributo "(%1$s)" en la clausula actualiza privilegio de la declaracion grant/revoke.

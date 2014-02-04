@@ -1246,7 +1246,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 토큰 '%1$s'의 정확성을 점검해 주십시오.
 4 'read uncommitted schema'는 허용되지 않습니다.\n대신에 'read committed schema'를 이용 하시기 바랍니다.
 5 최대 문자열 길이는 16383 입니다.
-6 %1$s는(은) %2$lld의 한계를 초과 했습니다.
+6 %1$s는(은) %2$s의 한계를 초과 했습니다.
 7 비트 문자열의 최대 크기는 %1$d 비트입니다.
 8 조인 조건에는 부 질의를 사용할 수 없습니다.
 9 grant/revoke 문의 update 권한 부분에 에트리뷰트"(%1$s)"를 지정할 수 없습니다.

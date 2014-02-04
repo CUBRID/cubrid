@@ -1026,6 +1026,8 @@ static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 static void pt_value_set_collation_info (PARSER_CONTEXT *parser,
 					 PT_NODE *node,
 					 PT_NODE *coll_node);
+static void pt_value_set_monetary (PARSER_CONTEXT *parser, PT_NODE *node,
+                   const char *str, const char *txt, DB_CURRENCY type);
 static PT_MISC_TYPE parser_attr_type;
 
 static bool allow_attribute_ordering;
@@ -1108,7 +1110,7 @@ typedef struct YYLTYPE
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 574 "../../src/parser/csql_grammar.y"
+#line 576 "../../src/parser/csql_grammar.y"
 {
   int number;
   bool boolean;
@@ -1120,7 +1122,7 @@ typedef union YYSTYPE
   container_10 c10;
 }
 /* Line 2616 of glr.c.  */
-#line 1124 "../../src/parser/csql_grammar.h"
+#line 1126 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1

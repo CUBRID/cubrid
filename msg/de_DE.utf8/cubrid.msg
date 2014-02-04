@@ -1246,7 +1246,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 Überprüfen Sie bitte die Richtigkeit des Tokens '%1$s'.
 4 'read uncommitted schema' ist nicht akzeptabel, \n'read committed schema' wird anstatt benutzt.
 5 Maximale Länge der Zeichenstrings ist 16383.
-6 %s überschreitet den Grenzwert %lld.
+6 %s überschreitet den Grenzwert %s.
 7 Maximale Länge der Bitstrings ist %1$d Bits.
 8 Eie Subanfrage darf in einem Join-Bedingung-Klausel nicht angewendet werden.
 9 Attribut "(%1$s)" kann in Update-Privileg-Klausel der grant/revoke Anweisung nicht spezifiziert werden.

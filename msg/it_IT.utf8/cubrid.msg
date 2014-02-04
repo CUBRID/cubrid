@@ -1246,7 +1246,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 si prega di controlare la correttezza del token '%1$s'.
 4 'read uncommitted schema' non è accettabile, usando\n 'read committed schema' al posto.
 5 Massima lunghezza della stringa di caratteri è 16383.
-6 %s supera il limite di %lld.
+6 %s supera il limite di %s.
 7 La lunghezza massima della stringa di bit è %1$d.
 8 Non è possibile utilizzare una sottoquery nella condizione di clausola JOIN.
 9 Non è possibile specificare l'attributo "(%1$s)" nella clausola di aggiornamento dei privilegi dell'instruzione grant/revoke.

@@ -1246,7 +1246,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 请检测符号 '%1$s' 的正确性.
 4 'read uncommitted schema' 是不可接受的, 使用 \n'read committed schema' 来代替.
 5 最大字符串长度是 16383.
-6 %s 超过了限制 %lld.
+6 %s 超过了限制 %s.
 7 最大比特字符串长度是 %1$d 比特.
 8 无法在join的条件语句中使用子查询.
 9 无法指定属性 "(%1$s)" 在更新grant/revoke的私有分句.

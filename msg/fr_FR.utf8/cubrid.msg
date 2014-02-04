@@ -1246,7 +1246,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 s'il vous plaît vérifier l'exactitude de token '%1$s'.
 4 'read uncommitted schema' n'est pas acceptable, en utilisant \n'read committed schema' au lieu.
 5 Longueur maximale de chaînes de caractères est 16383.
-6 %s dépasse la limite de %lld.
+6 %s dépasse la limite de %s.
 7 Longueur maximale de chaînes de bits est %1$d bits.
 8 Ne peut utiliser une sous-requête dans la clause de condition de jointure.
 9 Puis spécifiez pas l'attribut "(%1$s)" à l'intérieur de la clause de mise à jour les privilège de l'instruction grant/revoke.

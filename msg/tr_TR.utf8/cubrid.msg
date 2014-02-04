@@ -1246,7 +1246,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 Lütfen '%1$s' belirteç doğruluğunu kontrol edin.
 4 'kaydedilmemiş şema okuma' kabul edilemez, kullanarak \n'kaydedilmemiş şema okuma' yerine.
 5 Maksimum karakter dize uzunluğu 16383.
-6 %s, %lld sınırını aşarsa .
+6 %s, %s sınırını aşarsa .
 7 En fazla bit dize uzunluğu %1$d bits.
 8 Join koşulu yan tümcesinde bir alt sorgu kullanamazsınız.
 9 Güncelleştirme ayrıcalığı maddesinin öznitelik "(%1$s)" belirlemek durumu grant/revoke edemezsiniz.

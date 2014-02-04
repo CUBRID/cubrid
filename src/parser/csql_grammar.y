@@ -484,6 +484,8 @@ static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 static void pt_value_set_collation_info (PARSER_CONTEXT *parser,
 					 PT_NODE *node,
 					 PT_NODE *coll_node);
+static void pt_value_set_monetary (PARSER_CONTEXT *parser, PT_NODE *node,
+                   const char *str, const char *txt, DB_CURRENCY type);
 static PT_MISC_TYPE parser_attr_type;
 
 static bool allow_attribute_ordering;
@@ -20405,6 +20407,7 @@ unsigned_real
 	: UNSIGNED_REAL
 		{{
 
+			double dval;
 			PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 			if (val)
 			  {
@@ -20412,16 +20415,30 @@ unsigned_real
 			    if (strchr ($1, 'E') != NULL || strchr ($1, 'e') != NULL)
 			      {
 
+				errno = 0;
+				dval = strtod ($1, NULL);
+				if (errno == ERANGE)
+				  {
+				    PT_ERRORmf2 (this_parser, val, MSGCAT_SET_PARSER_SYNTAX,
+				                 MSGCAT_SYNTAX_FLT_DBL_OVERFLOW, $1, pt_show_type_enum (PT_TYPE_DOUBLE));
+				  }
 				val->info.value.text = $1;
 				val->type_enum = PT_TYPE_DOUBLE;
-				val->info.value.data_value.d = atof ($1);
+				val->info.value.data_value.d = dval;
 			      }
 			    else if (strchr ($1, 'F') != NULL || strchr ($1, 'f') != NULL)
 			      {
 
+				errno = 0;
+				dval = strtod ($1, NULL);
+				if (errno == ERANGE || (dval > FLT_MAX || dval < FLT_MIN))
+				  {
+				    PT_ERRORmf2 (this_parser, val, MSGCAT_SET_PARSER_SYNTAX,
+				                 MSGCAT_SYNTAX_FLT_DBL_OVERFLOW, $1, pt_show_type_enum (PT_TYPE_FLOAT));
+				  }
 				val->info.value.text = $1;
 				val->type_enum = PT_TYPE_FLOAT;
-				val->info.value.data_value.f = (float)atof ($1);
+				val->info.value.data_value.f = (float) dval;
 			      }
 			    else
 			      {
@@ -20453,10 +20470,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_YEN;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_YEN);
 			  }
 
 			$$ = val;
@@ -20474,10 +20488,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_DOLLAR;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_DOLLAR);
 			  }
 
 			$$ = val;
@@ -20495,10 +20506,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_WON;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_WON);
 			  }
 
 			$$ = val;
@@ -20516,10 +20524,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_TL;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_TL);
 			  }
 
 			$$ = val;
@@ -20537,10 +20542,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_BRITISH_POUND;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_BRITISH_POUND);
 			  }
 
 			$$ = val;
@@ -20557,10 +20559,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_CAMBODIAN_RIEL;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_CAMBODIAN_RIEL);
 			  }
 
 			$$ = val;
@@ -20577,10 +20576,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_CHINESE_RENMINBI;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_CHINESE_RENMINBI);
 			  }
 
 			$$ = val;
@@ -20597,10 +20593,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_INDIAN_RUPEE;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_INDIAN_RUPEE);
 			  }
 
 			$$ = val;
@@ -20617,10 +20610,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_RUSSIAN_RUBLE;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_RUSSIAN_RUBLE);
 			  }
 
 			$$ = val;
@@ -20637,10 +20627,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_AUSTRALIAN_DOLLAR;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_AUSTRALIAN_DOLLAR);
 			  }
 
 			$$ = val;
@@ -20657,10 +20644,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_CANADIAN_DOLLAR;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_CANADIAN_DOLLAR);
 			  }
 
 			$$ = val;
@@ -20677,10 +20661,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_BRASILIAN_REAL;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_BRASILIAN_REAL);
 			  }
 
 			$$ = val;
@@ -20697,10 +20678,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_ROMANIAN_LEU;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_ROMANIAN_LEU);
 			  }
 
 			$$ = val;
@@ -20717,10 +20695,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_EURO;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_EURO);
 			  }
 
 			$$ = val;
@@ -20737,10 +20712,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_SWISS_FRANC;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_SWISS_FRANC);
 			  }
 
 			$$ = val;
@@ -20757,10 +20729,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_DANISH_KRONE;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_DANISH_KRONE);
 			  }
 
 			$$ = val;
@@ -20777,10 +20746,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_NORWEGIAN_KRONE;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_NORWEGIAN_KRONE);
 			  }
 
 			$$ = val;
@@ -20797,10 +20763,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_BULGARIAN_LEV;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_BULGARIAN_LEV);
 			  }
 
 			$$ = val;
@@ -20817,10 +20780,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_VIETNAMESE_DONG;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_VIETNAMESE_DONG);
 			  }
 
 			$$ = val;
@@ -20837,10 +20797,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_CZECH_KORUNA;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_CZECH_KORUNA);
 			  }
 
 			$$ = val;
@@ -20857,10 +20814,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_POLISH_ZLOTY;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_POLISH_ZLOTY);
 			  }
 
 			$$ = val;
@@ -20877,10 +20831,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_SWEDISH_KRONA;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_SWEDISH_KRONA);
 			  }
 
 			$$ = val;
@@ -20897,10 +20848,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_CROATIAN_KUNA;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_CROATIAN_KUNA);
 			  }
 
 			$$ = val;
@@ -20917,10 +20865,7 @@ monetary_literal
 
 			if (val)
 			  {
-			    val->info.value.data_value.money.type = PT_CURRENCY_SERBIAN_DINAR;
-			    val->info.value.text = pt_append_string (this_parser, str, txt);
-			    val->type_enum = PT_TYPE_MONETARY;
-			    val->info.value.data_value.money.amount = atof (txt);
+			    pt_value_set_monetary (this_parser, val, str, txt, PT_CURRENCY_SERBIAN_DINAR);
 			  }
 
 			$$ = val;
@@ -24012,6 +23957,32 @@ pt_value_set_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
     }
 
   node->info.value.print_collation = true;
+}
+
+static void 
+pt_value_set_monetary (PARSER_CONTEXT *parser, PT_NODE *node,
+                   const char *currency_str, const char *value, DB_CURRENCY type)
+{
+  double dval;
+
+  assert (node != NULL);
+  assert (node->node_type == PT_VALUE);
+  assert (value != NULL);
+
+  errno = 0;
+  dval = strtod (value, NULL);
+  if (errno == ERANGE)
+    {
+      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SYNTAX,
+                   MSGCAT_SYNTAX_FLT_DBL_OVERFLOW, value, pt_show_type_enum (PT_TYPE_MONETARY));
+    }
+
+  node->info.value.data_value.money.type = type;
+  node->info.value.text = pt_append_string (parser, currency_str, value);
+  node->type_enum = PT_TYPE_MONETARY;
+  node->info.value.data_value.money.amount = dval;
+
+  return;
 }
 
 static PT_NODE *

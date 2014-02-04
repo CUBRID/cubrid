@@ -1246,7 +1246,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 please check correctness of token '%1$s'.
 4 'read uncommitted schema' is not acceptable, using \n'read committed schema' instead.
 5 Maximum char string length is 16383.
-6 %1$s exceeds limit of %2$lld.
+6 %1$s exceeds limit of %2$s.
 7 Maximum bit string length is %1$d bits.
 8 Cannot use a subquery in join condition clause.
 9 Cannot specify attribute "(%1$s)" in update privilege clause of grant/revoke statement.

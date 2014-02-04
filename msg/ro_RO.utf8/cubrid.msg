@@ -1246,7 +1246,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 vă rugăm verificaţi corectitudinea tokenului '%1$s'.
 4 'read uncommitted schema' nu este acceptat, se foloseşte \n'read committed schema' în loc.
 5 Lungimea maximă pentru şiruri de caractere este 16383.
-6 %s depăşeste limita de %lld.
+6 %s depăşeste limita de %s.
 7 Lungimea maximă în biţi pentru un şir de caractere este %1$d bits.
 8 Nu se poate utiliza o subinterogare în clauza condiţie pentru JOIN.
 9 Nu se poate specifica atributul "(%1$s)" în clauza de actualizarea drepturilor din instrucţiunile grant/revoke.

@@ -1246,7 +1246,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 xin vui lòng kiểm tra tính chính xác của mã thông báo '%1$s'.
 4 'read uncommitted schema' không thể chấp nhận, dùng \n'read committed schema' để thay thế.
 5 Độ dài chuỗi ký tự char tối đa là 16383.
-6 %s vượt quá giới hạn của %lld.
+6 %s vượt quá giới hạn của %s.
 7 Độ dài chuỗi bit tối đa là %1$d bits.
 8 Không thể dùng truy vấn con trong mệnh đề điều kiện gia nhập.
 9 Không thể chỉ định thuộc tính "(%1$s)" trong mệnh đề đặc quyền update của câu lệnh grant/revoke.

@@ -1246,7 +1246,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 3 សូមពិនិត្យមើលកំណែនៃtoken '%1$s'។
 4 'read uncommitted schema' មិនអាចទទួលយកបាន, ប្រើ \n'read committed schema' ជាជំនួស។
 5 ប្រវែងchar string length អតិបរមាគឺ 16383។
-6 %s លើសការកំណត់នៃ %lld។
+6 %s លើសការកំណត់នៃ %s។
 7 ប្រវែងbit stringអតិបរមាគឺ %1$d bits។
 8 មិនអាចប្រើ subquery ក្នុង clauseបន្ថែមរួមទេ។
 9 មិនអាចកំណត់ជាពិសេសនូវattribute "(%1$s)" ក្នុង clauseបុព្វសិទ្ធិទំនើបកម្ម នៃ grant/revoke statementទេ
