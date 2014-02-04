@@ -20,6 +20,11 @@
           (ptr) = NULL; \
         } while (0)
 
+#define CA_IS_DML(stmt) \
+  ((stmt) == CUBRID_STMT_UPDATE \
+   || (stmt) == CUBRID_STMT_DELETE \
+   || (stmt) == CUBRID_STMT_INSERT)
+
 #define PROG_NAME                       "cci_applier"
 #define CA_DEFAULT_COMMIT_INTERVAL      5000
 #define CA_MAX_SAMPLE_FILE_SIZE         (100 * 1024 * 1024)
@@ -324,6 +329,7 @@ static int
 execute_sql_query (int conn, char *query, T_CCI_ERROR * error)
 {
   int req, res;
+  T_CCI_CUBRID_STMT stmt_type;
 
   req = cci_prepare_and_execute (conn, query, 0, &res, error);
 
@@ -337,6 +343,13 @@ execute_sql_query (int conn, char *query, T_CCI_ERROR * error)
     {
       er_log_cci (req, query, error);
       return req;
+    }
+
+  cci_get_result_info (req, &stmt_type, NULL);
+
+  if (res == 0 && CA_IS_DML (stmt_type))
+    {
+      er_log (res, query, "No record has been applied");
     }
 
   cci_close_req_handle (req);
