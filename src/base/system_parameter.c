@@ -927,6 +927,8 @@ static unsigned int prm_gc_enable_flag = 0;
 int PRM_TCP_PORT_ID = 1523;
 static int prm_tcp_port_id_default = 1523;
 static unsigned int prm_tcp_port_id_flag = 0;
+static int prm_tcp_port_id_upper = USHRT_MAX;
+static int prm_tcp_port_id_lower = 1;
 
 int PRM_TCP_CONNECTION_TIMEOUT = 5;
 static int prm_tcp_connection_timeout_default = 5;
@@ -1281,6 +1283,8 @@ static unsigned int prm_ha_apply_max_mem_size_flag = 0;
 int PRM_HA_PORT_ID = HB_DEFAULT_HA_PORT_ID;
 static int prm_ha_port_id_default = HB_DEFAULT_HA_PORT_ID;
 static unsigned int prm_ha_port_id_flag = 0;
+static int prm_ha_port_id_upper = USHRT_MAX;
+static int prm_ha_port_id_lower = 1;
 
 int PRM_HA_INIT_TIMER_IN_MSECS = HB_DEFAULT_INIT_TIMER_IN_MSECS;
 static int prm_ha_init_timer_im_msecs_default =
@@ -2217,7 +2221,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_tcp_port_id_flag,
    (void *) &prm_tcp_port_id_default,
    (void *) &PRM_TCP_PORT_ID,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_tcp_port_id_upper, (void *) &prm_tcp_port_id_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -3047,7 +3051,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ha_port_id_flag,
    (void *) &prm_ha_port_id_default,
    (void *) &PRM_HA_PORT_ID,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_ha_port_id_upper, (void *) &prm_ha_port_id_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

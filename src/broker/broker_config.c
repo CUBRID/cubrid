@@ -75,6 +75,8 @@
 #define DEFAULT_SHARD_PROXY_TIMEOUT 		"30s"
 #define DEFAULT_SHARD_PROXY_CONN_WAIT_TIMEOUT   "8h"
 
+#define PORT_NUM_LIMIT                  (USHRT_MAX)	/* 65535 */
+
 #define	TRUE	1
 #define	FALSE	0
 
@@ -1108,7 +1110,7 @@ broker_config_read_internal (const char *conf_file,
 
       for (i = 0; i < num_brs; i++)
 	{
-	  if (br_info[i].port <= 0)
+	  if (br_info[i].port <= 0 || br_info[i].port > PORT_NUM_LIMIT)
 	    {
 	      PRINTERROR ("config error, %s, BROKER_PORT\n", br_info[i].name);
 	      error_flag = TRUE;
