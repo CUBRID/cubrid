@@ -1108,6 +1108,8 @@ typedef struct _ha_config
 #define LOAD_CS_MODE_L                          "CS-hidden"
 #define LOAD_TABLE_NAME_S                       't'
 #define LOAD_TABLE_NAME_L                       "table"
+#define LOAD_COMPARE_STORAGE_ORDER_S		11817
+#define LOAD_COMPARE_STORAGE_ORDER_L		"compare-storage-order"
 
 /* unloaddb option list */
 #define UNLOAD_INPUT_CLASS_FILE_S               'i'
@@ -1146,6 +1148,8 @@ typedef struct _ha_config
 #define UNLOAD_USER_L                           "user"
 #define UNLOAD_PASSWORD_S                       'p'
 #define UNLOAD_PASSWORD_L                       "password"
+#define UNLOAD_KEEP_STORAGE_ORDER_S		11918
+#define UNLOAD_KEEP_STORAGE_ORDER_L		"keep-storage-order"
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'

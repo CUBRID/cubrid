@@ -101,6 +101,7 @@ static int Ignore_logging = 0;
 static int Interrupt_type = LDR_NO_INTERRUPT;
 static int schema_file_start_line = 1;
 static int index_file_start_line = 1;
+static int compare_Storage_order = 0;
 
 #define LOADDB_LOG_FILENAME "loaddb.log"
 static FILE *loaddb_log_file;
@@ -132,6 +133,9 @@ static int ldr_exec_query_from_file (const char *file_name, FILE * file,
 static int get_ignore_class_list (const char *filename);
 static void free_ignoreclasslist (void);
 #endif
+static int ldr_compare_attribute_with_meta (char *table_name, char *meta,
+					    DB_ATTRIBUTE * attribute);
+static int ldr_compare_storage_order (FILE * schema_file);
 
 /*
  * print_log_msg - print log message
@@ -382,6 +386,224 @@ run_proc (char *path, char *cmd_line)
 }
 #endif /* WINDOWS */
 
+static char *
+ldr_get_token (char *str, char **out_str, char start, char end)
+{
+  char *p = NULL;
+
+  if (*out_str)
+    {
+      *out_str = NULL;
+    }
+
+  if (str == NULL)
+    {
+      return NULL;
+    }
+
+  if (*str == start)
+    {
+      str++;
+      p = str;
+    }
+  while (*str != end && *str != '\0')
+    {
+      str++;
+    }
+
+  if (*str != end)
+    {
+      return NULL;
+    }
+
+  *str = '\0';
+  *out_str = p;
+  return str + 1;
+}
+
+/*
+ * ldr_compare_attribute_with_meta -
+ *    return: NO_ERROR if successful, ER_FAILED otherwise
+ */
+static int
+ldr_compare_attribute_with_meta (char *table_name, char *meta,
+				 DB_ATTRIBUTE * attribute)
+{
+  int error;
+  char *p, *name_str, *type_str, *order_str, *storage_order_str, *shared_str;
+  int type, order, storage_order, shared;
+
+  if (meta == NULL || attribute == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  p = meta;
+  p = ldr_get_token (p, &name_str, '[', ']');
+  p = ldr_get_token (p, &type_str, '(', ')');
+  p = ldr_get_token (p, &order_str, '(', ')');
+  p = ldr_get_token (p, &storage_order_str, '(', ')');
+  p = ldr_get_token (p, &shared_str, '(', ')');
+  if (name_str == NULL || type_str == NULL || order_str == NULL
+      || storage_order_str == NULL)
+    {
+      print_log_msg (1, "\nCan not build meta: %s", table_name);
+      error = ER_FAILED;
+      goto compare_end;
+    }
+  if (port_str_to_int (&type, type_str, 10) != NO_ERROR
+      || port_str_to_int (&order, order_str, 10) != NO_ERROR
+      || port_str_to_int (&storage_order, storage_order_str, 10) != NO_ERROR
+      || (shared_str[0] != 'S' && shared_str[0] != 'I'))
+    {
+      print_log_msg (1, "\nCan not build meta: %s", table_name);
+      error = ER_FAILED;
+      goto compare_end;
+    }
+  shared = shared_str[0] == 'S';
+
+  if (type != db_attribute_type (attribute))
+    {
+      print_log_msg (1, "\nThe type of attribute (%s.%s)"
+		     " does not match with the meta information.",
+		     table_name, db_attribute_name (attribute));
+      error = ER_FAILED;
+      goto compare_end;
+    }
+  if (order != db_attribute_order (attribute))
+    {
+      print_log_msg (1, "\nThe order of attribute (%s.%s)"
+		     " does not match with the meta information.",
+		     table_name, db_attribute_name (attribute));
+      error = ER_FAILED;
+      goto compare_end;
+    }
+  if (storage_order != attribute->storage_order)
+    {
+      print_log_msg (1, "\nThe storage order of attribute (%s.%s)"
+		     " does not match with the meta information.",
+		     table_name, db_attribute_name (attribute));
+      error = ER_FAILED;
+      goto compare_end;
+    }
+  if (shared != db_attribute_is_shared (attribute))
+    {
+      print_log_msg (1, "\nThe shared flag of attribute (%s.%s)"
+		     " does not match with the meta information.",
+		     table_name, db_attribute_name (attribute));
+      error = ER_FAILED;
+      goto compare_end;
+    }
+  if (strcmp (name_str, db_attribute_name (attribute)) != 0)
+    {
+      print_log_msg (1, "\nThe name of attribute (%s.%s)"
+		     " does not match with the meta information.",
+		     table_name, db_attribute_name (attribute));
+      error = ER_FAILED;
+      goto compare_end;
+    }
+
+compare_end:
+  return error;
+}
+
+/*
+ * ldr_compare_storage_order -
+ *    return: NO_ERROR if successful, ER_FAILED otherwise
+ *    compare_tables(in): two tables in a string (ex. foo:bar,apple:banana)
+ */
+static int
+ldr_compare_storage_order (FILE * schema_file)
+{
+  char *table_name;
+  char *p, *colon, *comma;
+  DB_ATTRIBUTE *attribute;
+  DB_OBJECT *table_object;
+  char line[LINE_MAX * 100];
+  size_t line_size = LINE_MAX * 100;
+  int error = NO_ERROR;
+
+  if (schema_file == NULL)
+    {
+      return error;
+    }
+
+  if (fseek (schema_file, 0, SEEK_SET) == -1)
+    {
+      print_log_msg (1, "\nCan not build meta...");
+      return ER_FAILED;
+    }
+
+  while (true)
+    {
+      p = fgets (line, line_size - 1, schema_file);
+      if (p == NULL)
+	{
+	  break;
+	}
+
+      if (strncmp (p, "-- !META! ", 10) != 0)
+	{
+	  continue;
+	}
+      p += 10;
+      colon = strchr (p, ':');
+      if (colon == NULL)
+	{
+	  print_log_msg (1, "\nInvalid meta: %s", line);
+	  error = ER_FAILED;
+	  goto compare_end;
+	}
+
+      *colon = '\0';
+      p = ldr_get_token (p, &table_name, '[', ']');
+      table_object = db_find_class (table_name);
+      if (table_object == NULL)
+	{
+	  print_log_msg (1, "\nCan not find table: %s", table_name);
+	  error = ER_FAILED;
+	  goto compare_end;
+	}
+
+      p = colon + 1;
+      comma = p;
+      attribute = db_get_attributes (table_object);
+      for (; attribute && comma; attribute = db_attribute_next (attribute))
+	{
+	  if (db_attribute_class (attribute) != table_object)
+	    {
+	      continue;
+	    }
+
+	  comma = strchr (p, ',');
+	  if (comma)
+	    {
+	      *comma = '\0';
+	    }
+	  if (ldr_compare_attribute_with_meta (table_name, p, attribute)
+	      != NO_ERROR)
+	    {
+	      print_log_msg (1, "\nThe table %s is not suitable to be"
+	                     " replicated since it is different from the original.",
+			     table_name);
+	      error = ER_FAILED;
+	      goto compare_end;
+	    }
+	  p = comma + 1;
+	}
+
+      if (attribute || comma)
+	{
+	  print_log_msg (1, "\nThe number of columns of %s is different"
+	                 " from meta information.", table_name);
+	  error = ER_FAILED;
+	  goto compare_end;
+	}
+    }
+
+compare_end:
+  return error;
+}
 
 /*
  * loaddb_internal - internal main loaddb function
@@ -455,6 +677,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 						       LOAD_IGNORE_CLASS_S,
 						       0);
 #endif
+  compare_Storage_order =
+    utility_get_option_bool_value (arg_map, LOAD_COMPARE_STORAGE_ORDER_S);
 
   Input_file = Input_file ? Input_file : "";
   Schema_file = Schema_file ? Schema_file : "";
@@ -763,6 +987,17 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
       print_log_msg (1,
 		     "Statistics for Catalog classes have been updated.\n\n");
+
+      if (compare_Storage_order)
+	{
+	  if (ldr_compare_storage_order (schema_file) != NO_ERROR)
+	    {
+	      status = 3;
+	      db_shutdown ();
+	      print_log_msg (1, "\nAborting current transaction...\n");
+	      goto error_return;
+	    }
+	}
 
       db_commit_transaction ();
       fclose (schema_file);

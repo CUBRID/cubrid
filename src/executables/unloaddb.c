@@ -97,6 +97,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   int i;
   char *user, *password;
   int au_save;
+  EMIT_STORAGE_ORDER order;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -129,6 +130,14 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   user = utility_get_option_string_value (arg_map, UNLOAD_USER_S, 0);
   password = utility_get_option_string_value (arg_map, UNLOAD_PASSWORD_S, 0);
+  if (utility_get_option_bool_value (arg_map, UNLOAD_KEEP_STORAGE_ORDER_S))
+    {
+      order = FOLLOW_STORAGE_ORDER;
+    }
+  else
+    {
+      order = FOLLOW_ATTRIBUTE_ORDER;
+    }
 
   /* depreciated */
   utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);
@@ -288,7 +297,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   if (!status && (do_schema || !do_objects))
     {
       /* do authorization as well in extractschema() */
-      if (extractschema (exec_name, 1))
+      if (extractschema (exec_name, 1, order))
 	{
 	  status = 1;
 	}

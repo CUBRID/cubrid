@@ -140,7 +140,8 @@ static int emit_indexes (DB_OBJLIST * classes, int has_indexes,
 			 DB_OBJLIST * vclass_list_has_using_index);
 
 static int emit_schema (DB_OBJLIST * classes, int do_auth,
-			DB_OBJLIST ** vclass_list_has_using_index);
+			DB_OBJLIST ** vclass_list_has_using_index,
+			EMIT_STORAGE_ORDER emit_storage_order);
 static bool has_vclass_domains (DB_OBJECT * vclass);
 static DB_OBJLIST *emit_query_specs (DB_OBJLIST * classes);
 static int emit_query_specs_has_using_index (DB_OBJLIST *
@@ -151,11 +152,14 @@ static void emit_resolution_def (DB_RESOLUTION * resolution,
 				 RESOLUTION_QUALIFIER qualifier);
 static bool emit_instance_attributes (DB_OBJECT * class_,
 				      const char *class_type,
-				      int *has_indexes);
+				      int *has_indexes,
+				      EMIT_STORAGE_ORDER storage_order);
 static bool emit_class_attributes (DB_OBJECT * class_,
 				   const char *class_type);
 static bool emit_all_attributes (DB_OBJECT * class_, const char *class_type,
-				 int *has_indexes);
+				 int *has_indexes,
+				 EMIT_STORAGE_ORDER storage_order);
+static bool emit_class_meta (DB_OBJECT * table);
 static void emit_method_files (DB_OBJECT * class_);
 static bool emit_methods (DB_OBJECT * class_, const char *class_type);
 static int ex_contains_object_reference (DB_VALUE * value);
@@ -844,7 +848,8 @@ err:
  *    Always output the entire schema.
  */
 int
-extractschema (const char *exec_name, int do_auth)
+extractschema (const char *exec_name, int do_auth,
+	       EMIT_STORAGE_ORDER storage_order)
 {
   char output_filename[PATH_MAX * 2];
   DB_OBJLIST *classes = NULL;
@@ -919,7 +924,8 @@ extractschema (const char *exec_name, int do_auth)
       err_count++;
     }
 
-  has_indexes = emit_schema (classes, do_auth, &vclass_list_has_using_index);
+  has_indexes = emit_schema (classes, do_auth, &vclass_list_has_using_index,
+			     storage_order);
   if (er_errid () != NO_ERROR)
     {
       err_count++;
@@ -1117,7 +1123,8 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes,
  */
 static int
 emit_schema (DB_OBJLIST * classes, int do_auth,
-	     DB_OBJLIST ** vclass_list_has_using_index)
+	     DB_OBJLIST ** vclass_list_has_using_index,
+	     EMIT_STORAGE_ORDER storage_order)
 {
   DB_OBJLIST *cl;
   bool is_vclass;
@@ -1174,7 +1181,12 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 		       lang_get_collation_name (class_->collation_id));
 	    }
 	}
-      fprintf (output_file, ";\n\n");
+      fprintf (output_file, ";\n");
+      if (!is_vclass && storage_order == FOLLOW_STORAGE_ORDER)
+	{
+	  emit_class_meta (cl->op);
+	}
+      fprintf (output_file, "\n");
     }
 
   fprintf (output_file, "\n");
@@ -1205,7 +1217,8 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 
       class_type = (is_vclass) ? "VCLASS" : "CLASS";
 
-      if (emit_all_attributes (cl->op, class_type, &has_indexes))
+      if (emit_all_attributes (cl->op, class_type, &has_indexes,
+			       storage_order))
 	{
 	  found = true;
 	}
@@ -1710,7 +1723,7 @@ emit_resolution_def (DB_RESOLUTION * resolution,
  */
 static bool
 emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
-			  int *has_indexes)
+			  int *has_indexes, EMIT_STORAGE_ORDER storage_order)
 {
   DB_ATTRIBUTE *attribute_list, *first_attribute, *a;
   int unique_flag = 0;
@@ -1769,9 +1782,115 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 	}
     }
 
-  if (first_attribute != NULL)
+  if (first_attribute == NULL)
     {
-      name = db_get_class_name (class_);
+      return false;
+    }
+
+  name = db_get_class_name (class_);
+  if (storage_order == FOLLOW_STORAGE_ORDER)
+    {
+      DB_ATTRIBUTE **ordered_attributes, **storage_attributes;
+      int i, j, max_order, shared_pos;
+      const char *option, *old_attribute_name;
+
+      max_order = 0;
+      for (a = first_attribute; a != NULL; a = db_attribute_next (a))
+	{
+	  if (db_attribute_class (a) != class_)
+	    {
+	      continue;
+	    }
+
+	  if (a->order > max_order)
+	    {
+	      max_order = a->order;
+	    }
+	}
+      max_order++;
+
+      ordered_attributes =
+	(DB_ATTRIBUTE **) calloc (max_order * 2, sizeof (DB_ATTRIBUTE *));
+      if (ordered_attributes == NULL)
+	{
+	  return false;
+	}
+      storage_attributes = &ordered_attributes[max_order];
+
+      shared_pos = 1;
+      for (a = first_attribute; a != NULL; a = db_attribute_next (a))
+	{
+	  if (db_attribute_class (a) != class_)
+	    {
+	      continue;
+	    }
+
+	  if (db_attribute_is_shared (a))
+	    {
+	      storage_attributes[max_order - shared_pos] = a;
+	      shared_pos++;
+	    }
+	  else
+	    {
+	      assert (storage_attributes[a->storage_order] == NULL);
+	      storage_attributes[a->storage_order] = a;
+	    }
+	}
+
+      for (i = 0; i < max_order; i++)
+	{
+	  a = storage_attributes[i];
+	  if (a == NULL)
+	    {
+	      continue;
+	    }
+
+	  assert (ordered_attributes[a->order] == NULL);
+	  ordered_attributes[a->order] = a;
+
+	  for (j = a->order - 1; j >= 0; j--)
+	    {
+	      if (ordered_attributes[j])
+		{
+		  option = "AFTER ";
+		  old_attribute_name =
+		    db_attribute_name (ordered_attributes[j]);
+		  break;
+		}
+	    }
+
+	  if (j < 0)
+	    {
+	      option = "FIRST";
+	      old_attribute_name = "";
+	    }
+
+	  fprintf (output_file, "ALTER %s %s%s%s ADD ATTRIBUTE ",
+		   class_type, PRINT_IDENTIFIER (name));
+	  if (db_attribute_is_shared (a))
+	    {
+	      emit_attribute_def (a, SHARED_ATTRIBUTE);
+	    }
+	  else
+	    {
+	      emit_attribute_def (a, INSTANCE_ATTRIBUTE);
+	    }
+	  fprintf (output_file, " %s", option);
+	  if (old_attribute_name[0] == '\0')
+	    {
+	      fprintf (output_file, ";\n");
+	    }
+	  else
+	    {
+	      fprintf (output_file, " %s%s%s;\n",
+		       PRINT_IDENTIFIER (old_attribute_name));
+	    }
+	}
+
+      free (ordered_attributes);
+    }
+  else
+    {
       fprintf (output_file, "ALTER %s %s%s%s ADD ATTRIBUTE\n",
 	       class_type, PRINT_IDENTIFIER (name));
       for (a = first_attribute; a != NULL; a = db_attribute_next (a))
@@ -1795,136 +1914,135 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 	}
 
       fprintf (output_file, ";\n");
-      for (a = first_attribute; a != NULL; a = db_attribute_next (a))
+    }
+
+  for (a = first_attribute; a != NULL; a = db_attribute_next (a))
+    {
+      if (db_attribute_class (a) == class_)
 	{
-	  if (db_attribute_class (a) == class_)
+	  /* update attribute's auto increment serial object */
+	  if (a->auto_increment != NULL)
 	    {
-	      /* update attribute's auto increment serial object */
-	      if (a->auto_increment != NULL)
+	      int sr_error = NO_ERROR;
+
+	      DB_MAKE_NULL (&sr_name);
+	      DB_MAKE_NULL (&cur_val);
+	      DB_MAKE_NULL (&started_val);
+	      DB_MAKE_NULL (&min_val);
+	      DB_MAKE_NULL (&max_val);
+	      DB_MAKE_NULL (&inc_val);
+
+	      sr_error = db_get (a->auto_increment, "name", &sr_name);
+	      if (sr_error < 0)
 		{
-		  int sr_error = NO_ERROR;
-
-		  DB_MAKE_NULL (&sr_name);
-		  DB_MAKE_NULL (&cur_val);
-		  DB_MAKE_NULL (&started_val);
-		  DB_MAKE_NULL (&min_val);
-		  DB_MAKE_NULL (&max_val);
-		  DB_MAKE_NULL (&inc_val);
-
-		  sr_error = db_get (a->auto_increment, "name", &sr_name);
-		  if (sr_error < 0)
-		    {
-		      continue;
-		    }
-
-		  sr_error = db_get (a->auto_increment, "current_val",
-				     &cur_val);
-		  if (sr_error < 0)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-
-		  sr_error = db_get (a->auto_increment, "increment_val",
-				     &inc_val);
-		  if (sr_error < 0)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-
-		  sr_error = db_get (a->auto_increment, "min_val", &min_val);
-		  if (sr_error < 0)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-
-		  sr_error = db_get (a->auto_increment, "max_val", &max_val);
-		  if (sr_error < 0)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-
-		  sr_error = db_get (a->auto_increment, "started",
-				     &started_val);
-		  if (sr_error < 0)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-
-		  if (DB_GET_INTEGER (&started_val) == 1)
-		    {
-		      DB_VALUE diff_val, answer_val;
-
-		      sr_error = numeric_db_value_sub (&max_val, &cur_val,
-						       &diff_val);
-		      if (sr_error != NO_ERROR)
-			{
-			  pr_clear_value (&sr_name);
-			  continue;
-			}
-		      sr_error = numeric_db_value_compare (&inc_val,
-							   &diff_val,
-							   &answer_val);
-		      if (sr_error != NO_ERROR)
-			{
-			  pr_clear_value (&sr_name);
-			  continue;
-			}
-		      /* auto_increment is always non-cyclic */
-		      if (DB_GET_INTEGER (&answer_val) > 0)
-			{
-			  pr_clear_value (&sr_name);
-			  continue;
-			}
-
-		      sr_error = numeric_db_value_add (&cur_val, &inc_val,
-						       &answer_val);
-		      if (sr_error != NO_ERROR)
-			{
-			  pr_clear_value (&sr_name);
-			  continue;
-			}
-
-		      pr_clear_value (&cur_val);
-		      cur_val = answer_val;
-		    }
-
-		  start_with = numeric_db_value_print (&cur_val);
-		  if (start_with[0] == '\0')
-		    {
-		      start_with = "NULL";
-		    }
-
-		  fprintf (output_file,
-			   "ALTER SERIAL %s%s%s START WITH %s;\n",
-			   PRINT_IDENTIFIER (DB_PULL_STRING (&sr_name)),
-			   start_with);
-
-		  pr_clear_value (&sr_name);
+		  continue;
 		}
+
+	      sr_error = db_get (a->auto_increment, "current_val", &cur_val);
+	      if (sr_error < 0)
+		{
+		  pr_clear_value (&sr_name);
+		  continue;
+		}
+
+	      sr_error = db_get (a->auto_increment, "increment_val",
+				 &inc_val);
+	      if (sr_error < 0)
+		{
+		  pr_clear_value (&sr_name);
+		  continue;
+		}
+
+	      sr_error = db_get (a->auto_increment, "min_val", &min_val);
+	      if (sr_error < 0)
+		{
+		  pr_clear_value (&sr_name);
+		  continue;
+		}
+
+	      sr_error = db_get (a->auto_increment, "max_val", &max_val);
+	      if (sr_error < 0)
+		{
+		  pr_clear_value (&sr_name);
+		  continue;
+		}
+
+	      sr_error = db_get (a->auto_increment, "started", &started_val);
+	      if (sr_error < 0)
+		{
+		  pr_clear_value (&sr_name);
+		  continue;
+		}
+
+	      if (DB_GET_INTEGER (&started_val) == 1)
+		{
+		  DB_VALUE diff_val, answer_val;
+
+		  sr_error = numeric_db_value_sub (&max_val, &cur_val,
+						   &diff_val);
+		  if (sr_error != NO_ERROR)
+		    {
+		      pr_clear_value (&sr_name);
+		      continue;
+		    }
+		  sr_error = numeric_db_value_compare (&inc_val,
+						       &diff_val,
+						       &answer_val);
+		  if (sr_error != NO_ERROR)
+		    {
+		      pr_clear_value (&sr_name);
+		      continue;
+		    }
+		  /* auto_increment is always non-cyclic */
+		  if (DB_GET_INTEGER (&answer_val) > 0)
+		    {
+		      pr_clear_value (&sr_name);
+		      continue;
+		    }
+
+		  sr_error = numeric_db_value_add (&cur_val, &inc_val,
+						   &answer_val);
+		  if (sr_error != NO_ERROR)
+		    {
+		      pr_clear_value (&sr_name);
+		      continue;
+		    }
+
+		  pr_clear_value (&cur_val);
+		  cur_val = answer_val;
+		}
+
+	      start_with = numeric_db_value_print (&cur_val);
+	      if (start_with[0] == '\0')
+		{
+		  start_with = "NULL";
+		}
+
+	      fprintf (output_file,
+		       "ALTER SERIAL %s%s%s START WITH %s;\n",
+		       PRINT_IDENTIFIER (DB_PULL_STRING (&sr_name)),
+		       start_with);
+
+	      pr_clear_value (&sr_name);
 	    }
-	}
-
-      fprintf (output_file, "\n");
-      if (unique_flag)
-	{
-	  name = db_get_class_name (class_);
-	  fprintf (output_file, "\nALTER %s %s%s%s ADD ATTRIBUTE\n",
-		   class_type, PRINT_IDENTIFIER (name));
-	  emit_unique_def (class_);
-	}
-
-      if (reverse_unique_flag)
-	{
-	  emit_reverse_unique_def (class_);
 	}
     }
 
-  return (first_attribute != NULL);
+  fprintf (output_file, "\n");
+  if (unique_flag)
+    {
+      name = db_get_class_name (class_);
+      fprintf (output_file, "\nALTER %s %s%s%s ADD ATTRIBUTE\n",
+	       class_type, PRINT_IDENTIFIER (name));
+      emit_unique_def (class_);
+    }
+
+  if (reverse_unique_flag)
+    {
+      emit_reverse_unique_def (class_);
+    }
+
+  return true;
 }
 
 
@@ -1975,6 +2093,40 @@ emit_class_attributes (DB_OBJECT * class_, const char *class_type)
   return (first_class_attribute != NULL);
 }
 
+static bool
+emit_class_meta (DB_OBJECT * table)
+{
+  DB_ATTRIBUTE *attribute_list, *a;
+  const char *table_name;
+  bool first_print = true;
+
+  table_name = db_get_class_name (table);
+  fprintf (output_file, "-- !META! %s%s%s:", PRINT_IDENTIFIER (table_name));
+
+  attribute_list = db_get_attributes (table);
+  for (a = attribute_list; a != NULL; a = db_attribute_next (a))
+    {
+      if (db_attribute_class (a) != table)
+	{
+	  continue;
+	}
+      if (!first_print)
+	{
+	  fprintf (output_file, ",");
+	}
+      fprintf (output_file, "%s%s%s",
+	       PRINT_IDENTIFIER (db_attribute_name (a)));
+      fprintf (output_file, "(%d)", db_attribute_type (a));
+      fprintf (output_file, "(%d)", db_attribute_order (a));
+      fprintf (output_file, "(%d)", a->storage_order);
+      fprintf (output_file, "(%c)", db_attribute_is_shared (a) ? 'S' : 'I');
+      first_print = false;
+    }
+
+  fprintf (output_file, "\n");
+
+  return true;
+}
 
 /*
  * emit_all_attributes - Emit both the instance and class attributes.
@@ -1985,11 +2137,12 @@ emit_class_attributes (DB_OBJECT * class_, const char *class_type)
  */
 static bool
 emit_all_attributes (DB_OBJECT * class_, const char *class_type,
-		     int *has_indexes)
+		     int *has_indexes, EMIT_STORAGE_ORDER storage_order)
 {
   bool istatus, cstatus;
 
-  istatus = emit_instance_attributes (class_, class_type, has_indexes);
+  istatus = emit_instance_attributes (class_, class_type, has_indexes,
+				      storage_order);
   cstatus = emit_class_attributes (class_, class_type);
 
   return istatus || cstatus;

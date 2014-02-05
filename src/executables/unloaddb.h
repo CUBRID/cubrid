@@ -29,6 +29,12 @@
 
 #include "locator_cl.h"
 
+typedef enum
+{
+  FOLLOW_STORAGE_ORDER = 0,
+  FOLLOW_ATTRIBUTE_ORDER = 1
+} EMIT_STORAGE_ORDER;
+
 extern char *database_name;
 extern const char *output_dirname;
 extern char *input_filename;
@@ -58,7 +64,8 @@ extern int lo_count;
 #define PRINT_IDENTIFIER(s) "[", (s), "]"
 #define PRINT_FUNCTION_INDEX_NAME(s) "\"", (s), "\""
 
-extern int extractschema (const char *exec_name, int do_auth);
+extern int extractschema (const char *exec_name, int do_auth,
+			  EMIT_STORAGE_ORDER emit_storage_order);
 extern int extractobjects (const char *exec_name);
 
 #endif /* _UNLOADDB_H_ */
