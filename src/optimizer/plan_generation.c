@@ -2633,27 +2633,6 @@ qo_plan_iscan_sort_list (QO_PLAN * plan)
 }
 
 /*
- * qo_subplan_iscan_sort_list () - get after index scan PT_SORT_SPEC list for
- *                                 subplan of a sort plan
- *   return: sort list
- *   plan(in): QO_PLAN
- */
-PT_NODE *
-qo_subplan_iscan_sort_list (QO_PLAN * plan)
-{
-  if (!plan || plan->plan_type != QO_PLANTYPE_SORT)
-    {
-      return NULL;
-    }
-  if (!plan->plan_un.sort.subplan)
-    {
-      return NULL;
-    }
-
-  return plan->plan_un.sort.subplan->iscan_sort_list;
-}
-
-/*
  * qo_plan_skip_orderby () - check the plan info for order by
  *   return: true/false
  *   plan(in): QO_PLAN

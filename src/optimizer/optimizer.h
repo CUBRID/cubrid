@@ -165,7 +165,6 @@ extern void qo_plan_dump (QO_PLAN *, FILE *);
 extern const char *qo_plan_set_cost_fn (const char *, int);
 extern int qo_plan_get_cost_fn (const char *);
 extern PT_NODE *qo_plan_iscan_sort_list (QO_PLAN *);
-extern PT_NODE *qo_subplan_iscan_sort_list (QO_PLAN *);
 extern bool qo_plan_skip_orderby (QO_PLAN * plan);
 extern bool qo_plan_skip_groupby (QO_PLAN * plan);
 extern bool qo_plan_coverage_index (QO_PLAN * plan);

@@ -140,7 +140,6 @@ static void qo_follow_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *,
 
 static void qo_plan_compute_cost (QO_PLAN *);
 static void qo_plan_compute_subquery_cost (PT_NODE *, double *, double *);
-static void qo_plan_compute_iscan_sort_list (QO_PLAN *, bool *);
 static void qo_sscan_cost (QO_PLAN *);
 static void qo_iscan_cost (QO_PLAN *);
 static void qo_sort_cost (QO_PLAN *);
@@ -283,9 +282,9 @@ static PT_NODE *search_isnull_key_expr_groupby (PARSER_CONTEXT * parser,
 						int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
 static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
-static void qo_plan_compute_iscan_group_sort_list (QO_PLAN * root,
-						   PT_NODE ** out_list,
-						   bool * is_index_w_prefix);
+static PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root,
+						 PT_NODE * group_by,
+						 bool * is_index_w_prefix);
 
 static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
 static void qo_set_use_desc (QO_PLAN * plan);
@@ -782,265 +781,6 @@ qo_plan_compute_subquery_cost (PT_NODE * subquery,
 }				/* qo_plan_compute_subquery_cost() */
 
 /*
- * qo_plan_compute_iscan_sort_list () -
- *   return:
- *   root(in):
- */
-static void
-qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
-{
-  QO_PLAN *plan;
-  QO_ENV *env;
-  PARSER_CONTEXT *parser;
-  PT_NODE *tree, *sort_list, *sort, *col, *node, *expr;
-  QO_NODE_INDEX_ENTRY *ni_entryp;
-  QO_INDEX_ENTRY *index_entryp;
-  int nterms, equi_nterms, seg_idx, i, j;
-  QO_SEGMENT *seg;
-  PT_MISC_TYPE asc_or_desc;
-  QFILE_TUPLE_VALUE_POSITION pos_descr;
-  TP_DOMAIN *key_type;
-  BITSET *terms;
-  BITSET_ITERATOR bi;
-  bool is_const_eq_term;
-
-  *is_index_w_prefix = false;
-
-  /* find sortable plan */
-  plan = root;
-  while (plan && plan->plan_type != QO_PLANTYPE_SCAN)
-    {
-      switch (plan->plan_type)
-	{
-	case QO_PLANTYPE_FOLLOW:
-	  plan = plan->plan_un.follow.head;
-	  break;
-
-	case QO_PLANTYPE_JOIN:
-	  if (plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN
-	      || plan->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN)
-	    {
-	      plan = plan->plan_un.join.outer;
-	    }
-	  else
-	    {
-	      /* QO_JOINMETHOD_MERGE_JOIN */
-	      plan = NULL;
-	    }
-	  break;
-
-	case QO_PLANTYPE_SORT:
-	  if (plan->plan_un.sort.sort_type == SORT_LIMIT)
-	    {
-	      plan = plan->plan_un.sort.subplan;
-	    }
-	  else
-	    {
-	      plan = NULL;
-	    }
-	  break;
-
-	default:
-	  plan = NULL;
-	  break;
-	}
-    }
-  /* check for plan type */
-  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN)
-    {
-      return;			/* nop */
-    }
-
-  if (QO_NODE_INFO (plan->plan_un.scan.node) == NULL)
-    {
-      /* may be impossible */
-      return;
-    }
-  else if (QO_NODE_IS_CLASS_HIERARCHY (plan->plan_un.scan.node))
-    {
-      /* exclude class hierarchy scan */
-      return;
-    }
-
-  /* check for index scan plan */
-  if (!qo_is_interesting_order_scan (plan)
-      || (env = (plan->info)->env) == NULL
-      || (parser = QO_ENV_PARSER (env)) == NULL
-      || (tree = QO_ENV_PT_TREE (env)) == NULL)
-    {
-      return;			/* nop */
-    }
-
-  /* pointer to QO_NODE_INDEX_ENTRY structure in QO_PLAN */
-  ni_entryp = plan->plan_un.scan.index;
-  /* pointer to linked list of index node, 'head' field(QO_INDEX_ENTRY
-     strucutre) of QO_NODE_INDEX_ENTRY */
-  index_entryp = (ni_entryp)->head;
-
-  /* if no index scan terms, no index scan */
-  nterms = bitset_cardinality (&(plan->plan_un.scan.terms));
-
-  if (nterms <= 0 && index_entryp->ils_prefix_len == 0
-      && !qo_is_iscan_from_groupby (plan) && !qo_is_iscan_from_orderby (plan))
-    {
-      return;			/* nop */
-    }
-
-  /* check if this is an index with prefix */
-  *is_index_w_prefix = qo_is_prefix_index (index_entryp);
-
-  asc_or_desc =
-    (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (index_entryp->constraints->type) ?
-     PT_DESC : PT_ASC);
-
-  equi_nterms = plan->plan_un.scan.equi ? nterms : nterms - 1;
-  if (index_entryp->rangelist_seg_idx != -1)
-    {
-      equi_nterms = MIN (equi_nterms, index_entryp->rangelist_seg_idx);
-    }
-
-  /* we must have the first index column appear as the first sort column, so
-   * we pretend the number of equi columns is zero, to force it to match
-   * the sort list and the index columns one-for-one. */
-  if (index_entryp->is_iss_candidate ||
-      index_entryp->constraints->func_index_info != NULL)
-    {
-      equi_nterms = 0;
-    }
-
-  key_type = NULL;		/* init */
-  if (asc_or_desc != PT_DESC &&
-      index_entryp->constraints->func_index_info == NULL)
-    {				/* is not reverse index */
-      key_type = index_entryp->key_type;
-      if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
-	{
-	  /* get the column key-type of multi-column index */
-	  key_type = key_type->setdomain;
-	}
-
-      /* get the first non-equal range key domain */
-      for (j = 0; j < equi_nterms && key_type; j++)
-	{
-	  key_type = key_type->next;
-	}
-
-      if (key_type == NULL)
-	{			/* invalid case */
-	  return;		/* nop */
-	}
-    }
-
-  sort_list = NULL;		/* init */
-
-  for (i = equi_nterms; i < index_entryp->nsegs; i++)
-    {
-      if (index_entryp->ils_prefix_len > 0
-	  && i >= index_entryp->ils_prefix_len)
-	{
-	  /* sort list should contain only prefix when using loose index scan */
-	  break;
-	}
-
-      seg_idx = (index_entryp->seg_idxs[i]);
-      if (seg_idx == -1)
-	{			/* not exist in query */
-	  break;		/* give up */
-	}
-
-      seg = QO_ENV_SEG (env, seg_idx);
-
-      if (key_type)
-	{
-	  asc_or_desc = (key_type->is_desc) ? PT_DESC : PT_ASC;
-	  key_type = key_type->next;
-	}
-      else if (index_entryp->constraints->func_index_info != NULL)
-	{
-	  if (QO_SEG_FUNC_INDEX (seg) == true)
-	    {
-	      asc_or_desc = index_entryp->constraints->func_index_info->
-		fi_domain->is_desc ? PT_DESC : PT_ASC;
-	    }
-	}
-
-      node = QO_SEG_PT_NODE (seg);
-      if (node->node_type == PT_DOT_)
-	{
-	  /* FIXME :: we do not handle path-expr here */
-	  break;		/* give up */
-	}
-
-      if (index_entryp->constraints->func_index_info == NULL)
-	{
-	  /* skip segment of const eq term */
-	  terms = &(QO_SEG_INDEX_TERMS (seg));
-	  is_const_eq_term = false;
-	  for (j = bitset_iterate (terms, &bi); j != -1;
-	       j = bitset_next_member (&bi))
-	    {
-	      expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, j));
-	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ) &&
-		  (PT_IS_CONST (expr->info.expr.arg1) ||
-		   PT_IS_CONST (expr->info.expr.arg2)))
-		{
-		  is_const_eq_term = true;
-		}
-	    }
-	  if (is_const_eq_term)
-	    {
-	      continue;
-	    }
-	}
-
-      pt_to_pos_descr (parser, &pos_descr, node, tree, NULL);
-      if (pos_descr.pos_no <= 0)
-	{			/* not found i-th key element */
-	  break;		/* give up */
-	}
-
-      /* check for constant col's order node
-       */
-      col = tree->info.query.q.select.list;
-      for (j = 1; j < pos_descr.pos_no && col; j++)
-	{
-	  col = col->next;
-	}
-      if (col == NULL)
-	{			/* impossible case */
-	  break;		/* give up */
-	}
-
-      col = pt_get_end_path_node (col);
-
-      if (col->node_type == PT_NAME
-	  && PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_CONSTANT))
-	{
-	  continue;		/* skip out constant order */
-	}
-
-      /* set sort info */
-      sort = parser_new_node (parser, PT_SORT_SPEC);
-      if (sort == NULL)
-	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	  break;		/* give up */
-	}
-
-      sort->info.sort_spec.expr = pt_point (parser, col);
-      sort->info.sort_spec.pos_descr = pos_descr;
-      sort->info.sort_spec.asc_or_desc = asc_or_desc;
-
-      sort_list = parser_append_node (sort, sort_list);
-    }
-
-  root->iscan_sort_list = sort_list;
-
-  return;
-}
-
-/*
  * qo_walk_plan_tree () - applies a callback to every plan in a plan tree
  *                        and stops on errors
  *   return:  the error of the first callback function that returns something
@@ -1277,7 +1017,8 @@ qo_top_plan_new (QO_PLAN * plan)
 	}			/* for (t = ...) */
       found_instnum = (t == -1) ? false : true;
 
-      (void) qo_plan_compute_iscan_sort_list (plan, &is_index_w_prefix);
+      plan->iscan_sort_list =
+	qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix);
 
       /* GROUP BY */
       /* if we have rollup, we do not skip the group by */
@@ -1285,9 +1026,9 @@ qo_top_plan_new (QO_PLAN * plan)
 	{
 	  PT_NODE *group_sort_list = NULL;
 
-	  qo_plan_compute_iscan_group_sort_list (plan,
-						 &group_sort_list,
-						 &is_index_w_prefix);
+	  group_sort_list =
+	    qo_plan_compute_iscan_sort_list (plan, group_by,
+					     &is_index_w_prefix);
 
 	  if (group_sort_list)
 	    {
@@ -1298,7 +1039,7 @@ qo_top_plan_new (QO_PLAN * plan)
 	      else
 		{
 		  groupby_skip =
-		    pt_sort_spec_cover_groupby (plan->info->env->parser,
+		    pt_sort_spec_cover_groupby (parser,
 						group_sort_list, group_by,
 						tree);
 
@@ -1317,6 +1058,8 @@ qo_top_plan_new (QO_PLAN * plan)
 			}
 		    }
 		}
+
+	      parser_free_node (parser, group_sort_list);
 	    }
 
 	  if (groupby_skip)
@@ -2039,8 +1782,10 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
   if (qo_check_iscan_for_multi_range_opt (plan))
     {
       bool dummy;
+
       plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_USE;
-      qo_plan_compute_iscan_sort_list (plan, &dummy);
+      plan->iscan_sort_list =
+	qo_plan_compute_iscan_sort_list (plan, NULL, &dummy);
     }
 
   qo_plan_compute_cost (plan);
@@ -3098,8 +2843,10 @@ qo_join_new (QO_INFO * info,
   if (qo_check_join_for_multi_range_opt (plan))
     {
       bool dummy;
+
       plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_USE;
-      qo_plan_compute_iscan_sort_list (plan, &dummy);
+      plan->iscan_sort_list =
+	qo_plan_compute_iscan_sort_list (plan, NULL, &dummy);
     }
 
   qo_plan_compute_cost (plan);
@@ -12385,15 +12132,16 @@ search_isnull_key_expr_groupby (PARSER_CONTEXT * parser,
 }
 
 /*
- * qo_plan_compute_iscan_group_sort_list () -
- *   return:
+ * qo_plan_compute_iscan_sort_list () -
+ *   return: sort_list
  *   root(in):
- *   out_list(out): sort_list for group by node
+ *   group_by(in):
+ *   is_index_w_prefix(out):
  *
  */
-static void
-qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
-				       bool * is_index_w_prefix)
+static PT_NODE *
+qo_plan_compute_iscan_sort_list (QO_PLAN * root,
+				 PT_NODE * group_by, bool * is_index_w_prefix)
 {
   QO_PLAN *plan;
   QO_ENV *env;
@@ -12410,30 +12158,64 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
   BITSET_ITERATOR bi;
   bool is_const_eq_term;
 
+  sort_list = NULL;		/* init */
+
   *is_index_w_prefix = false;
 
   /* find sortable plan */
   plan = root;
-  while (plan->plan_type == QO_PLANTYPE_FOLLOW
-	 || (plan->plan_type == QO_PLANTYPE_JOIN
-	     && (plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN
-		 || (plan->plan_un.join.join_method ==
-		     QO_JOINMETHOD_IDX_JOIN))))
+  while (plan && plan->plan_type != QO_PLANTYPE_SCAN)
     {
-      plan = ((plan->plan_type == QO_PLANTYPE_FOLLOW)
-	      ? plan->plan_un.follow.head : plan->plan_un.join.outer);
+      switch (plan->plan_type)
+	{
+	case QO_PLANTYPE_FOLLOW:
+	  plan = plan->plan_un.follow.head;
+	  break;
+
+	case QO_PLANTYPE_JOIN:
+	  if (plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN
+	      || plan->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN)
+	    {
+	      plan = plan->plan_un.join.outer;
+	    }
+	  else
+	    {
+	      /* QO_JOINMETHOD_MERGE_JOIN */
+	      plan = NULL;
+	    }
+	  break;
+
+	case QO_PLANTYPE_SORT:
+	  if (plan->plan_un.sort.sort_type == SORT_LIMIT)
+	    {
+	      plan = plan->plan_un.sort.subplan;
+	    }
+	  else
+	    {
+	      plan = NULL;
+	    }
+	  break;
+
+	default:
+	  plan = NULL;
+	  break;
+	}
     }
 
   /* check for plan type */
   if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN)
     {
-      return;			/* nop */
+      goto exit_on_end;		/* nop */
     }
-
-  /* exclude class hierarchy scan */
-  if (QO_NODE_IS_CLASS_HIERARCHY (plan->plan_un.scan.node))
+  else if (QO_NODE_INFO (plan->plan_un.scan.node) == NULL)
     {
-      return;			/* nop */
+      /* if there's no class information or the class is not normal class */
+      goto exit_on_end;		/* nop */
+    }
+  else if (QO_NODE_IS_CLASS_HIERARCHY (plan->plan_un.scan.node))
+    {
+      /* exclude class hierarchy scan */
+      goto exit_on_end;		/* nop */
     }
 
   /* check for index scan plan */
@@ -12442,16 +12224,7 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
       || (parser = QO_ENV_PARSER (env)) == NULL
       || (tree = QO_ENV_PT_TREE (env)) == NULL)
     {
-      return;			/* nop */
-    }
-
-  /* if no index scan terms, no index scan */
-  nterms = bitset_cardinality (&(plan->plan_un.scan.terms));
-
-  if (nterms <= 0
-      && !qo_is_iscan_from_groupby (plan) && !qo_is_iscan_from_orderby (plan))
-    {
-      return;			/* nop */
+      goto exit_on_end;		/* nop */
     }
 
   /* pointer to QO_NODE_INDEX_ENTRY structure in QO_PLAN */
@@ -12460,14 +12233,10 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
      strucutre) of QO_NODE_INDEX_ENTRY */
   index_entryp = (ni_entryp)->head;
 
-  /* check if this is an index with prefix */
-  *is_index_w_prefix = qo_is_prefix_index (index_entryp);
-
-  asc_or_desc =
-    (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (index_entryp->constraints->type)
-     ? PT_DESC : PT_ASC);
-
+  nterms = bitset_cardinality (&(plan->plan_un.scan.terms));
   equi_nterms = plan->plan_un.scan.equi ? nterms : nterms - 1;
+  assert (equi_nterms >= 0);
+
   if (index_entryp->rangelist_seg_idx != -1)
     {
       equi_nterms = MIN (equi_nterms, index_entryp->rangelist_seg_idx);
@@ -12476,13 +12245,23 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
   /* we must have the first index column appear as the first sort column, so
    * we pretend the number of equi columns is zero, to force it to match
    * the sort list and the index columns one-for-one. */
-  if (index_entryp->is_iss_candidate)
+  if (index_entryp->is_iss_candidate
+      || index_entryp->constraints->func_index_info != NULL)
     {
       equi_nterms = 0;
     }
+  assert (equi_nterms >= 0);
+
+  /* check if this is an index with prefix */
+  *is_index_w_prefix = qo_is_prefix_index (index_entryp);
+
+  asc_or_desc =
+    (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (index_entryp->constraints->type)
+     ? PT_DESC : PT_ASC);
 
   key_type = NULL;		/* init */
-  if (asc_or_desc != PT_DESC)
+  if (asc_or_desc != PT_DESC
+      && index_entryp->constraints->func_index_info == NULL)
     {				/* is not reverse index */
       key_type = index_entryp->key_type;
       if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
@@ -12499,18 +12278,20 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
 
       if (key_type == NULL)
 	{			/* invalid case */
-	  return;		/* nop */
+#if 0				/* TODO */
+	  assert (false);
+#endif
+	  goto exit_on_end;	/* nop */
 	}
     }
 
-  sort_list = NULL;		/* init */
-
   for (i = equi_nterms; i < index_entryp->nsegs; i++)
     {
-      if (key_type)
+      if (index_entryp->ils_prefix_len > 0
+	  && i >= index_entryp->ils_prefix_len)
 	{
-	  asc_or_desc = (key_type->is_desc) ? PT_DESC : PT_ASC;
-	  key_type = key_type->next;
+	  /* sort list should contain only prefix when using loose index scan */
+	  break;
 	}
 
       seg_idx = (index_entryp->seg_idxs[i]);
@@ -12520,6 +12301,21 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
 	}
 
       seg = QO_ENV_SEG (env, seg_idx);
+
+      if (key_type)
+	{
+	  asc_or_desc = (key_type->is_desc) ? PT_DESC : PT_ASC;
+	  key_type = key_type->next;
+	}
+      else if (index_entryp->constraints->func_index_info != NULL)
+	{
+	  if (QO_SEG_FUNC_INDEX (seg) == true)
+	    {
+	      asc_or_desc = index_entryp->constraints->func_index_info->
+		fi_domain->is_desc ? PT_DESC : PT_ASC;
+	    }
+	}
+
       node = QO_SEG_PT_NODE (seg);
       if (node->node_type == PT_DOT_)
 	{
@@ -12527,23 +12323,26 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
 	  break;		/* give up */
 	}
 
-      /* skip segment of const eq term */
-      terms = &(QO_SEG_INDEX_TERMS (seg));
-      is_const_eq_term = false;
-      for (j = bitset_iterate (terms, &bi); j != -1;
-	   j = bitset_next_member (&bi))
+      if (index_entryp->constraints->func_index_info == NULL)
 	{
-	  expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, j));
-	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ)
-	      && (PT_IS_CONST (expr->info.expr.arg1)
-		  || PT_IS_CONST (expr->info.expr.arg2)))
+	  /* skip segment of const eq term */
+	  terms = &(QO_SEG_INDEX_TERMS (seg));
+	  is_const_eq_term = false;
+	  for (j = bitset_iterate (terms, &bi); j != -1;
+	       j = bitset_next_member (&bi))
 	    {
-	      is_const_eq_term = true;
+	      expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, j));
+	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ)
+		  && (PT_IS_CONST (expr->info.expr.arg1)
+		      || PT_IS_CONST (expr->info.expr.arg2)))
+		{
+		  is_const_eq_term = true;
+		}
 	    }
-	}
-      if (is_const_eq_term)
-	{
-	  continue;
+	  if (is_const_eq_term)
+	    {
+	      continue;
+	    }
 	}
 
       /* check for constant col's order node
@@ -12556,11 +12355,12 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
 	    {
 	      col = col->next;
 	    }
-	  if (col != NULL)
+
+	  if (col)
 	    {
 	      col = pt_get_end_path_node (col);
-
-	      if (col->node_type == PT_NAME
+	      if (col
+		  && col->node_type == PT_NAME
 		  && PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_CONSTANT))
 		{
 		  continue;	/* skip out constant order */
@@ -12568,26 +12368,49 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
 	    }
 	}
 
-      pt_to_pos_descr_groupby (parser, &pos_descr, node, tree);
-      if (pos_descr.pos_no <= 0)
-	{			/* not found i-th key element */
-	  break;		/* give up */
+      if (group_by == NULL)
+	{			/* is for order_by skip */
+	  if (pos_descr.pos_no <= 0 || col == NULL)
+	    {			/* not found i-th key element */
+	      break;		/* give up */
+	    }
 	}
+      else
+	{			/* is for group_by skip */
+	  assert (!group_by->with_rollup);
 
-      col = tree->info.query.q.select.group_by;
-      for (j = 1; j < pos_descr.pos_no && col; j++)
-	{
-	  col = col->next;
-	}
-      while (col != NULL && col->node_type == PT_SORT_SPEC)
-	{
-	  col = col->info.sort_spec.expr;
-	}
-      col = pt_get_end_path_node (col);
+	  /* check for constant col's group node
+	   */
+	  pt_to_pos_descr_groupby (parser, &pos_descr, node, tree);
+	  if (pos_descr.pos_no > 0)
+	    {
+	      assert (group_by == tree->info.query.q.select.group_by);
+	      for (col = group_by, j = 1; j < pos_descr.pos_no && col; j++)
+		{
+		  col = col->next;
+		}
 
-      if (col == NULL)
-	{			/* impossible case */
-	  break;		/* give up */
+	      while (col && col->node_type == PT_SORT_SPEC)
+		{
+		  col = col->info.sort_spec.expr;
+		}
+
+	      if (col)
+		{
+		  col = pt_get_end_path_node (col);
+		  if (col
+		      && col->node_type == PT_NAME
+		      && PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_CONSTANT))
+		    {
+		      continue;	/* skip out constant order */
+		    }
+		}
+	    }
+
+	  if (pos_descr.pos_no <= 0 || col == NULL)
+	    {			/* not found i-th key element */
+	      break;		/* give up */
+	    }
 	}
 
       /* set sort info */
@@ -12606,9 +12429,9 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
       sort_list = parser_append_node (sort, sort_list);
     }
 
-  *out_list = sort_list;
+exit_on_end:
 
-  return;
+  return sort_list;
 }
 
 /*
@@ -12653,7 +12476,8 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
   statement = QO_ENV_PT_TREE (env);
   order_by = statement->info.query.order_by;
 
-  (void) qo_plan_compute_iscan_sort_list (plan, &is_prefix);
+  plan->iscan_sort_list =
+    qo_plan_compute_iscan_sort_list (plan, NULL, &is_prefix);
 
   if (plan->iscan_sort_list == NULL || is_prefix)
     {
