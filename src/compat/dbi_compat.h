@@ -30,12 +30,12 @@
 
 #define bool char
 
-#ifdef WINDOWS
+#if defined(WINDOWS) && !defined(__GNUC__)
 #define int32_t __int32
 #define int64_t __int64
 #define u_int32_t unsigned __int32
 #define u_int64_t unsigned __int64
-#endif
+#endif /* WINDOWS && !__GNUC__ */
 
 
 #ifdef NO_ERROR
