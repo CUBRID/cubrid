@@ -1753,6 +1753,15 @@ qe_fetch (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 	    }
 	}
     }
+  else
+    {
+      if (is_connected_to_oracle (con_handle)
+	  && req_handle->cursor_pos > req_handle->fetched_tuple_end
+	  && req_handle->is_fetch_completed)
+	{
+	  return CCI_ER_NO_MORE_DATA;
+	}
+    }
 
   return 0;
 }
@@ -4755,8 +4764,26 @@ fetch_info_decode (char *buf, int size, int num_cols,
       num_tuple = 1;
     }
 
-  if (num_tuple <= 0)
+  if (num_tuple < 0)
     {
+      return 0;
+    }
+  else if (num_tuple == 0)
+    {
+      if (fetch_type == FETCH_FETCH
+	  && hm_get_broker_version (con_handle) >=
+	  CAS_PROTO_MAKE_VER (PROTOCOL_V5))
+	{
+	  if (remain_size < NET_SIZE_BYTE)
+	    {
+	      return CCI_ER_COMMUNICATION;
+	    }
+
+	  NET_STR_TO_BYTE (req_handle->is_fetch_completed, cur_p);
+	  remain_size -= NET_SIZE_BYTE;
+	  cur_p += NET_SIZE_BYTE;
+	}
+
       return 0;
     }
 

@@ -250,6 +250,11 @@ public class CUBRIDResultSet implements ResultSet {
 		if (error.getJdbcErrorCode() == UErrorCode.CAS_ER_NO_MORE_DATA) {
 			return false;
 		}
+
+		if (u_stmt.isFetchCompleted(current_row)) {
+			return false;
+		}
+		
 		return true;
 	}
 

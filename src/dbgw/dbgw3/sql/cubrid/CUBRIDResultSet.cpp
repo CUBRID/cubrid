@@ -120,7 +120,12 @@ namespace dbgw
       else
         {
           nResult = cci_fetch(m_hCCIRequest, &cciError);
-          if (nResult < 0)
+          if (nResult == CCI_ER_NO_MORE_DATA || nResult == CAS_ER_NO_MORE_DATA)
+            {
+              m_nRowCount = m_nFetchRowCount;
+              return false;
+            }
+          else if (nResult < 0)
             {
               CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
                   cciError, "Failed to fetch data.");
