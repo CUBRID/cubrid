@@ -3696,6 +3696,7 @@ load_properties (void)
   value = prm_get_string_value (PRM_ID_SERVICE_SERVICE_LIST);
   if (value != NULL)
     {
+      const char *error_msg;
       char *util = NULL, *save_ptr = NULL;
       for (util = value;; util = NULL)
 	{
@@ -3723,6 +3724,10 @@ load_properties (void)
 	    }
 	  else
 	    {
+	      error_msg =
+		utility_get_generic_message
+		(MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
+	      fprintf (stderr, error_msg, "service", util);
 	      return ER_GENERIC_ERROR;
 	    }
 	}
