@@ -118,13 +118,6 @@ typedef struct
   COMPATIBLE_LEVEL compatible;	/* how compatible is the sub-tree */
 } COMPATIBLE_INFO;
 
-typedef enum
-{
-  CLS_NOT_MODIFIED,
-  CLS_MODIFIED,
-  CLS_ERROR
-} CLASS_STATUS;
-
 extern char *query_Plan_dump_filename;
 extern FILE *query_Plan_dump_fp;
 
@@ -197,8 +190,10 @@ extern void pt_set_dptr (PARSER_CONTEXT * parser, PT_NODE * node,
 			 XASL_NODE * xasl, UINTPTR id);
 extern PT_NODE *pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * tree,
 				  void *arg, int *continue_walk);
-extern CLASS_STATUS pt_has_modified_class (PARSER_CONTEXT * parser,
-					   PT_NODE * statement);
+extern DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT *
+							   parser,
+							   PT_NODE *
+							   statement);
 extern int pt_is_single_tuple (PARSER_CONTEXT * parser,
 			       PT_NODE * select_node);
 extern void pt_to_pos_descr (PARSER_CONTEXT * parser,

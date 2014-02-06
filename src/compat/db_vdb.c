@@ -1722,7 +1722,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
   int server_info_bits;
 
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
-  CLASS_STATUS cls_status = CLS_NOT_MODIFIED;
+  DB_CLASS_MODIFICATION_STATUS cls_status = DB_CLASS_NOT_MODIFIED;
 
   if (result != NULL)
     {
@@ -1898,16 +1898,16 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
   pt_null_etc (statement);
   if (statement->xasl_id == NULL
       && ((cls_status = pt_has_modified_class (parser, statement))
-	  != CLS_NOT_MODIFIED))
+	  != DB_CLASS_NOT_MODIFIED))
     {
-      if (cls_status == CLS_MODIFIED)
+      if (cls_status == DB_CLASS_MODIFIED)
 	{
 	  err = ER_QPROC_INVALID_XASLNODE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
 	}
       else
 	{
-	  assert (cls_status == CLS_ERROR);
+	  assert (cls_status == DB_CLASS_ERROR);
 	  err = er_errid ();
 	}
     }
@@ -1926,7 +1926,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	    }
 
 	  cls_status = pt_has_modified_class (parser, statement);
-	  if (cls_status == CLS_NOT_MODIFIED)
+	  if (cls_status == DB_CLASS_NOT_MODIFIED)
 	    {
 	      /* forget all errors */
 	      er_clear ();
@@ -1938,14 +1938,14 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		  err = do_execute_statement (parser, statement);
 		}
 	    }
-	  else if (cls_status == CLS_MODIFIED)
+	  else if (cls_status == DB_CLASS_MODIFIED)
 	    {
 	      err = ER_QPROC_INVALID_XASLNODE;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
 	    }
 	  else
 	    {
-	      assert (cls_status == CLS_ERROR);
+	      assert (cls_status == DB_CLASS_ERROR);
 	      err = er_errid ();
 	    }
 	}
@@ -3003,6 +3003,35 @@ is_allowed_as_prepared_statement_with_hv (PT_NODE * node)
     }
 }
 
+
+/*
+ * db_has_modified_class()
+ *
+ *   return:
+ *   session(in):
+ *   stmt_id(in):
+ */
+DB_CLASS_MODIFICATION_STATUS
+db_has_modified_class (DB_SESSION * session, int stmt_id)
+{
+  DB_CLASS_MODIFICATION_STATUS cls_status;
+  PT_NODE *statement;
+
+  assert (session != NULL);
+  assert (stmt_id < session->dimension);
+
+  cls_status = DB_CLASS_NOT_MODIFIED;
+  if (stmt_id < session->dimension)
+    {
+      statement = session->statements[stmt_id];
+      if (statement != NULL)
+	{
+	  cls_status = pt_has_modified_class (session->parser, statement);
+	}
+    }
+
+  return cls_status;
+}
 
 /*
  * db_execute_and_keep_statement() - Please refer to the

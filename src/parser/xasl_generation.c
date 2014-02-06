@@ -3558,10 +3558,10 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node,
  *   parser(in):
  *   statement(in/out):
  */
-CLASS_STATUS
+DB_CLASS_MODIFICATION_STATUS
 pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  CLASS_STATUS status = CLS_NOT_MODIFIED;
+  DB_CLASS_MODIFICATION_STATUS status = DB_CLASS_NOT_MODIFIED;
 
   parser_walk_tree (parser, statement, pt_has_modified_class_helper,
 		    &status, NULL, NULL);
@@ -3582,13 +3582,13 @@ static PT_NODE *
 pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node,
 			      void *arg, int *continue_walk)
 {
-  CLASS_STATUS *status = (CLASS_STATUS *) arg;
+  DB_CLASS_MODIFICATION_STATUS *status = (DB_CLASS_MODIFICATION_STATUS *) arg;
   PT_NODE *class_;
   MOP clsmop = NULL;
   SM_CLASS *sm_class = NULL;
   int error = NO_ERROR;
 
-  if (*status != CLS_NOT_MODIFIED)
+  if (*status != DB_CLASS_NOT_MODIFIED)
     {
       *continue_walk = PT_STOP_WALK;
       return node;
@@ -3610,7 +3610,7 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (clsmop->decached)
 	    {
 	      /* the class might be aborted. */
-	      *status = CLS_MODIFIED;
+	      *status = DB_CLASS_MODIFIED;
 	    }
 	  else
 	    {
@@ -3620,15 +3620,15 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node,
 		  if (error == ER_HEAP_UNKNOWN_OBJECT)
 		    {
 		      /* the class might be dropped. */
-		      *status = CLS_MODIFIED;
+		      *status = DB_CLASS_MODIFIED;
 		    }
 		  else
 		    {
-		      *status = CLS_ERROR;
+		      *status = DB_CLASS_ERROR;
 		    }
 		}
 	    }
-	  if (*status != CLS_NOT_MODIFIED)
+	  if (*status != DB_CLASS_NOT_MODIFIED)
 	    {
 	      /* don't revisit leaves */
 	      *continue_walk = PT_STOP_WALK;
@@ -3648,7 +3648,7 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node,
 	  else if (class_->info.name.db_object_chn
 		   != locator_get_cache_coherency_number (clsmop))
 	    {
-	      *status = CLS_MODIFIED;
+	      *status = DB_CLASS_MODIFIED;
 
 	      /* don't revisit leaves */
 	      *continue_walk = PT_STOP_WALK;

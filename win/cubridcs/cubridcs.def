@@ -696,6 +696,7 @@ EXPORTS
     db_get_user_name
     db_get_vclass_ldb_name
     db_get_warnings
+    db_has_modified_class
     db_init_query_result
     db_instance_equal
     db_is_any_class

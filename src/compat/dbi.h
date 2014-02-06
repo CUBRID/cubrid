@@ -911,6 +911,9 @@ extern int db_execute_statement (DB_SESSION * session,
 extern int db_execute_and_keep_statement (DB_SESSION * session,
 					  int stmt,
 					  DB_QUERY_RESULT ** result);
+extern DB_CLASS_MODIFICATION_STATUS db_has_modified_class (DB_SESSION *
+							   session,
+							   int stmt_id);
 
 extern int db_query_get_info (DB_QUERY_RESULT * result,
 			      int *done, int *count,

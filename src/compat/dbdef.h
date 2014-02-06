@@ -192,6 +192,14 @@ typedef enum
   DB_COL_OTHER
 } DB_COL_TYPE;
 
+typedef enum db_class_modification_status
+{
+  DB_CLASS_NOT_MODIFIED,
+  DB_CLASS_MODIFIED,
+  DB_CLASS_ERROR
+} DB_CLASS_MODIFICATION_STATUS;
+
+
 /* Structure used to contain information about the position of
    an error detected while compiling a statement. */
 typedef struct db_query_error DB_QUERY_ERROR;

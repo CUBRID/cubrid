@@ -367,6 +367,9 @@ static void update_query_execution_count (T_APPL_SERVER_INFO * as_info_p,
 static bool need_reconnect_on_rctime (void);
 static void report_abnormal_host_status (int err_code);
 
+static int set_host_variables (DB_SESSION * session, int num_bind,
+			       DB_VALUE * in_values);
+
 
 static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_INT,		/* 1 */
@@ -1231,7 +1234,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	  goto execute_error;
 	}
 
-      err_code = db_push_values (session, num_bind, value_list);
+      err_code = set_host_variables (session, num_bind, value_list);
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -1549,7 +1552,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	  goto execute_all_error;
 	}
 
-      err_code = db_push_values (session, num_bind, value_list);
+      err_code = set_host_variables (session, num_bind, value_list);
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -1877,11 +1880,17 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
       if (call_info->is_first_out)
 	{
-	  db_push_values (session, num_bind - 1, &(value_list[1]));
+	  err_code = set_host_variables (session, num_bind - 1,
+					 &(value_list[1]));
 	}
       else
 	{
-	  db_push_values (session, num_bind, value_list);
+	  err_code = set_host_variables (session, num_bind, value_list);
+	}
+      if (err_code != NO_ERROR)
+	{
+	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  goto execute_error;
 	}
     }
 
@@ -2357,7 +2366,13 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 	    }
 	}
 
-      db_push_values (session, num_markers, &(value_list[first_value]));
+      err_code = set_host_variables (session, num_markers,
+				     &(value_list[first_value]));
+      if (err_code != NO_ERROR)
+	{
+	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  goto exec_db_error;
+	}
 
       if (is_prepared == FALSE)
 	{
@@ -9964,4 +9979,52 @@ report_abnormal_host_status (int err_code)
 	}
     }
 #endif /* !LIBCAS_FOR_JSP */
+}
+
+/*
+ * set_host_variables ()
+ *
+ *   return: error code or NO_ERROR
+ *   db_session(in):
+ *   num_bind(in):
+ *   in_values(in):
+ */
+static int
+set_host_variables (DB_SESSION * session, int num_bind, DB_VALUE * in_values)
+{
+  int err_code;
+  DB_CLASS_MODIFICATION_STATUS cls_status;
+  int stmt_id, stmt_count;
+
+  err_code = db_push_values (session, num_bind, in_values);
+  if (err_code != NO_ERROR)
+    {
+      stmt_count = db_statement_count (session);
+      for (stmt_id = 0; stmt_id < stmt_count; stmt_id++)
+	{
+	  cls_status = db_has_modified_class (session, stmt_id);
+	  if (cls_status == DB_CLASS_MODIFIED)
+	    {
+	      err_code = ERROR_INFO_SET_FORCE (CAS_ER_STMT_POOLING,
+					       CAS_ERROR_INDICATOR);
+
+	      return err_code;
+	    }
+	  else if (cls_status == DB_CLASS_ERROR)
+	    {
+	      err_code = er_errid ();
+	      if (err_code == NO_ERROR)
+		{
+		  err_code = ER_FAILED;
+		}
+	      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+
+	      return err_code;
+	    }
+	}
+
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+    }
+
+  return err_code;
 }
