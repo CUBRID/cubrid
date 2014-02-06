@@ -57,6 +57,8 @@
 
 #define LOGWR_THREAD_SUSPEND_TIMEOUT 	10
 
+#define LOGWR_COPY_LOG_BUFFER_NPAGES      LOGPB_BUFFER_NPAGES_LOWER
+
 static int prev_ha_server_state = HA_SERVER_STATE_NA;
 static bool logwr_need_shutdown = false;
 
@@ -334,7 +336,7 @@ logwr_initialize (const char *db_name, const char *log_path, int mode)
   /* background archive file path */
   fileio_make_log_archive_temp_name (logwr_Gl.bg_archive_name, log_path,
 				     logwr_Gl.db_name);
-  log_nbuffers = prm_get_integer_value (PRM_ID_LOG_NBUFFERS) + 1;
+  log_nbuffers = LOGWR_COPY_LOG_BUFFER_NPAGES + 1;
 
   if (logwr_Gl.logpg_area == NULL)
     {
@@ -1619,11 +1621,9 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
 	    }
 	}
       /* Pack the pages which can be in the page area of Log Writer */
-      if ((lpageid - fpageid + 1) >
-	  (prm_get_integer_value (PRM_ID_LOG_NBUFFERS) - 1))
+      if ((lpageid - fpageid + 1) > (LOGWR_COPY_LOG_BUFFER_NPAGES - 1))
 	{
-	  lpageid =
-	    fpageid + (prm_get_integer_value (PRM_ID_LOG_NBUFFERS) - 1) - 1;
+	  lpageid = fpageid + (LOGWR_COPY_LOG_BUFFER_NPAGES - 1) - 1;
 	}
       if (lpageid == log_Gl.hdr.eof_lsa.pageid)
 	{
@@ -1639,7 +1639,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
   num_logpgs = (is_hdr_page_only) ? 1 : (int) ((lpageid - fpageid + 1) + 1);
 
   assert (lpageid >= fpageid);
-  assert (num_logpgs <= prm_get_integer_value (PRM_ID_LOG_NBUFFERS));
+  assert (num_logpgs <= LOGWR_COPY_LOG_BUFFER_NPAGES);
 
   p = logpg_area;
 
@@ -1789,9 +1789,9 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
   logpg_used_size = 0;
-  logpg_area = db_private_alloc (thread_p,
-				 (prm_get_integer_value (PRM_ID_LOG_NBUFFERS)
-				  * LOG_PAGESIZE));
+  logpg_area =
+    db_private_alloc (thread_p,
+		      (LOGWR_COPY_LOG_BUFFER_NPAGES * LOG_PAGESIZE));
   if (logpg_area == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;

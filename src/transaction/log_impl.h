@@ -274,6 +274,8 @@
 						 */
 #define LOGPB_IO_NPAGES                  4
 
+#define LOGPB_BUFFER_NPAGES_LOWER        128
+
 #define LOG_READ_NEXT_TRANID (log_Gl.hdr.next_trid)
 #define LOG_HAS_LOGGING_BEEN_IGNORED() \
   (log_Gl.hdr.has_logging_been_skipped == true)

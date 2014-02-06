@@ -861,9 +861,9 @@ static float prm_lk_run_deadlock_interval_default = 1.0f;
 static float prm_lk_run_deadlock_interval_lower = 0.1f;
 static unsigned int prm_lk_run_deadlock_interval_flag = 0;
 
-int PRM_LOG_NBUFFERS = 128;
-static int prm_log_nbuffers_default = 128;
-static int prm_log_nbuffers_lower = 3;
+int PRM_LOG_NBUFFERS = LOGPB_BUFFER_NPAGES_LOWER;
+static int prm_log_nbuffers_default = LOGPB_BUFFER_NPAGES_LOWER;
+static int prm_log_nbuffers_lower = LOGPB_BUFFER_NPAGES_LOWER;
 static unsigned int prm_log_nbuffers_flag = 0;
 
 int PRM_LOG_CHECKPOINT_NPAGES = 100000;
