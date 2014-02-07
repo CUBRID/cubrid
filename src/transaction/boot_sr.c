@@ -3381,15 +3381,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	  cfg_free_directory (dir);
 	  return error_code;
 	}
-      else
-	{
-	  /* if table of contents only do not restart */
-	  if (r_args->printtoc)
-	    {
-	      cfg_free_directory (dir);
-	      return NO_ERROR;
-	    }
-	}
     }
 
   /*
@@ -4041,7 +4032,7 @@ xboot_register_client (THREAD_ENTRY * thread_p,
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
   CUBRID_CONN_START (thread_p->conn_entry->client_id,
-                     client_credential->db_user);
+		     client_credential->db_user);
 #endif /* ENABLE_SYSTEMTAP */
 
   client_credential->db_user = db_user_save;
@@ -4085,7 +4076,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  thread_p->tran_index = save_index;
 
 #if defined(ENABLE_SYSTEMTAP)
-          CUBRID_CONN_END (-1, NULL);
+	  CUBRID_CONN_END (-1, NULL);
 #endif /* ENABLE_SYSTEMTAP */
 
 	  return NO_ERROR;
@@ -4111,7 +4102,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	{
 
 #if defined(ENABLE_SYSTEMTAP)
-          CUBRID_CONN_END (-1, NULL);
+	  CUBRID_CONN_END (-1, NULL);
 #endif /* ENABLE_SYSTEMTAP */
 
 	  return NO_ERROR;

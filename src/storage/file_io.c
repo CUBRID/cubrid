@@ -9919,8 +9919,6 @@ fileio_finish_restore (THREAD_ENTRY * thread_p,
  *   return: session or NULL
  *   db_fullname(in): Name of the database to backup
  *   backup_source(out): Name of backup source device (file or directory)
- *   bkdb_iopagesize(in): Database size of database in backup
- *   bkdb_compatibility(in): Disk compatibility of database in backup
  *   level(in): The presumed backup level
  *   newvolpath(in): restore the database and log volumes to the path
  *                   specified in the database-loc-file
@@ -9929,14 +9927,14 @@ int
 fileio_list_restore (THREAD_ENTRY * thread_p,
 		     const char *db_full_name_p,
 		     char *backup_source_p,
-		     PGLENGTH * db_io_page_size_p,
-		     float *db_compatibility_p,
 		     FILEIO_BACKUP_LEVEL level, bool is_new_vol_path)
 {
   FILEIO_BACKUP_SESSION backup_session;
   FILEIO_BACKUP_SESSION *session_p = &backup_session;
   FILEIO_BACKUP_HEADER *backup_header_p;
   FILEIO_BACKUP_FILE_HEADER *file_header_p;
+  PGLENGTH db_iopagesize;
+  float db_compatibility;
   int nbytes, i;
   INT64 db_creation_time = 0;
   char file_name[PATH_MAX];
@@ -9944,8 +9942,8 @@ fileio_list_restore (THREAD_ENTRY * thread_p,
   char time_val[CTIME_MAX];
 
   if (fileio_start_restore (thread_p, db_full_name_p, backup_source_p,
-			    db_creation_time, db_io_page_size_p,
-			    db_compatibility_p, session_p, level, false, 0,
+			    db_creation_time, &db_iopagesize,
+			    &db_compatibility, session_p, level, false, 0,
 			    NULL, is_new_vol_path) == NULL)
     {
       /* Cannot access backup file.. Restore from backup is cancelled */
@@ -10107,6 +10105,135 @@ error:
   fileio_abort_restore (thread_p, session_p);
   return ER_FAILED;
 }
+
+/*
+ * fileio_get_backup_volume () - Get backup volume 
+ *   return: session or NULL
+ *   db_fullname(in): Name of the database to backup
+ *   logpath(in): Directory where the log volumes reside
+ *   r_args(in): 
+ *   from_volbackup (out) : Name of the backup volume 
+ * 
+ */
+int
+fileio_get_backup_volume (THREAD_ENTRY * thread_p, const char *db_fullname,
+			  const char *logpath, BO_RESTART_ARG * r_args,
+			  char *from_volbackup)
+{
+  FILE *backup_volinfo_fp = NULL;	/* Pointer to backup */
+  const char *nopath_name;	/* Name without path */
+  const char *volnameptr;
+  int retry;
+  int try_level = r_args->level;
+  int error_code = NO_ERROR;
+  char format_string[64];
+  struct stat stbuf;
+
+  sprintf (format_string, "%%%ds", PATH_MAX - 1);
+
+  nopath_name = fileio_get_base_file_name (db_fullname);
+  fileio_make_backup_volume_info_name (from_volbackup, logpath, nopath_name);
+
+  while ((stat (from_volbackup, &stbuf) == -1) ||
+	 (backup_volinfo_fp = fopen (from_volbackup, "r")) == NULL)
+    {
+      /*
+       * When user specifies an explicit location, the backup vinf
+       * file is optional.
+       */
+      if (r_args->backuppath)
+	{
+	  break;
+	}
+
+      /*
+       * Backup volume information is not online
+       */
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
+				       MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
+				       MSGCAT_SET_LOG,
+				       MSGCAT_LOG_BACKUPINFO_NEEDED),
+	       from_volbackup);
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
+				       MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+
+      if (scanf ("%d", &retry) != 1)
+	{
+	  retry = 0;
+	}
+
+      switch (retry)
+	{
+	case 0:		/* quit */
+	  /* Cannot access backup file.. Restore from backup is cancelled */
+	  error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		  error_code, 1, from_volbackup);
+	  return error_code;
+
+	case 2:
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
+					   MSGCAT_SET_LOG,
+					   MSGCAT_LOG_NEWLOCATION));
+	  if (scanf (format_string, from_volbackup) != 1)
+	    {
+	      /* Cannot access backup file.. Restore from backup is cancelled */
+	      error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		      error_code, 1, from_volbackup);
+	      return error_code;
+	    }
+	  break;
+
+	case 1:
+	default:
+	  break;
+	}
+    }
+
+  /*
+   * If we get to here, we can read the bkvinf file, OR one does not
+   * exist and it is not required.
+   */
+  if (backup_volinfo_fp != NULL)
+    {
+      if (fileio_read_backup_info_entries (backup_volinfo_fp,
+					   FILEIO_FIRST_BACKUP_VOL_INFO)
+	  == NO_ERROR)
+	{
+	  volnameptr =
+	    fileio_get_backup_info_volume_name (try_level,
+						FILEIO_INITIAL_BACKUP_UNITS,
+						FILEIO_FIRST_BACKUP_VOL_INFO);
+	  if (volnameptr != NULL)
+	    {
+	      strcpy (from_volbackup, volnameptr);
+	    }
+	  else
+	    {
+	      fileio_make_backup_name (from_volbackup, nopath_name,
+				       logpath, try_level,
+				       FILEIO_INITIAL_BACKUP_UNITS);
+	    }
+	}
+      else
+	{
+	  fclose (backup_volinfo_fp);
+	  return ER_FAILED;
+	}
+
+      fclose (backup_volinfo_fp);
+    }
+
+  if (r_args->backuppath)
+    {
+      strncpy (from_volbackup, r_args->backuppath, PATH_MAX - 1);
+    }
+
+  return NO_ERROR;
+}
+
 
 /*
  * fileio_get_next_restore_file () - Find information of next file to restore

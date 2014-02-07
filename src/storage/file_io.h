@@ -558,9 +558,12 @@ extern void fileio_abort_restore (THREAD_ENTRY * thread_p,
 				  FILEIO_BACKUP_SESSION * session);
 extern int fileio_list_restore (THREAD_ENTRY * thread_p,
 				const char *db_fullname, char *backup_source,
-				PGLENGTH * bkdb_iopagesize,
-				float *bkdb_compatibility,
 				FILEIO_BACKUP_LEVEL level, bool newvolpath);
+extern int fileio_get_backup_volume (THREAD_ENTRY * thread_p,
+				     const char *db_fullname,
+				     const char *logpath,
+				     BO_RESTART_ARG * r_args,
+				     char *from_volbackup);
 extern int fileio_get_next_restore_file (THREAD_ENTRY * thread_p,
 					 FILEIO_BACKUP_SESSION * session,
 					 char *filename, VOLID * volid);

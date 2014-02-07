@@ -10117,7 +10117,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   struct stat stat_buf;
   int error_code = NO_ERROR, success = NO_ERROR;
   bool printtoc;
-  char format_string[64];
   INT64 backup_time;
   REL_COMPATIBILITY compat;
   int dummy;
@@ -10188,20 +10187,10 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
       goto error;
     }
 
-  sprintf (format_string, "%%%ds", PATH_MAX - 1);
-
   /* The enum type can be negative in Windows. */
   while (success == NO_ERROR && try_level >= FILEIO_BACKUP_FULL_LEVEL
 	 && try_level < FILEIO_BACKUP_UNDEFINED_LEVEL)
     {
-      /*
-       * Open the backup information/directory file. This backup file contains
-       * information related to the volumes that were backed up.
-       */
-      nopath_name = fileio_get_base_file_name (db_fullname);
-      fileio_make_backup_volume_info_name (from_volbackup, logpath,
-					   nopath_name);
-
       if (!first_time)
 	{
 	  /* Prepare to reread bkvinf file restored by higher level */
@@ -10223,131 +10212,18 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	    }
 	}
 
-
-      /*
-       * Mount the backup directory information, if it exists.
-       */
-      while ((stat (from_volbackup, &stbuf) == -1) ||
-	     (backup_volinfo_fp = fopen (from_volbackup, "r")) == NULL)
+      error_code = fileio_get_backup_volume (thread_p, db_fullname, logpath,
+					     r_args, from_volbackup);
+      if (error_code == ER_LOG_CANNOT_ACCESS_BACKUP)
 	{
-
-	  /*
-	   * When user specifies an explicit location, the backup vinf
-	   * file is optional.
-	   */
-	  if (r_args->backuppath)
-	    {
-	      break;
-	    }
-
-	  /*
-	   * Backup volume information is not online
-	   */
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_LOG,
-					   MSGCAT_LOG_STARTS));
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_LOG,
-					   MSGCAT_LOG_BACKUPINFO_NEEDED),
-		   from_volbackup);
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_LOG,
-					   MSGCAT_LOG_STARTS));
-
-	  if (scanf ("%d", &retry) != 1)
-	    {
-	      retry = 0;
-	    }
-
-	  switch (retry)
-	    {
-	    case 0:		/* quit */
-	      /* Cannot access backup file.. Restore from backup is cancelled */
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_LOG_CANNOT_ACCESS_BACKUP, 1, from_volbackup);
-	      error_expected = true;
-	      error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
-	      LOG_CS_EXIT (thread_p);
-	      goto error;
-
-	    case 2:
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_LOG,
-					       MSGCAT_LOG_NEWLOCATION));
-	      if (scanf (format_string, from_volbackup) != 1)
-		{
-		  /* Cannot access backup file.. Restore from backup is cancelled */
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_LOG_CANNOT_ACCESS_BACKUP, 1, from_volbackup);
-		  error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
-		  LOG_CS_EXIT (thread_p);
-		  goto error;
-		}
-	      break;
-
-	    case 1:
-	    default:
-	      break;
-	    }
-	}			/* while */
-
-      /*
-       * If we get to here, we can read the bkvinf file, OR one does not
-       * exist and it is not required.
-       */
-      if (backup_volinfo_fp != NULL)
-	{
-	  if (fileio_read_backup_info_entries (backup_volinfo_fp,
-					       FILEIO_FIRST_BACKUP_VOL_INFO)
-	      == NO_ERROR)
-	    {
-	      volnameptr =
-		fileio_get_backup_info_volume_name (try_level,
-						    FILEIO_INITIAL_BACKUP_UNITS,
-						    FILEIO_FIRST_BACKUP_VOL_INFO);
-	      if (volnameptr != NULL)
-		{
-		  strcpy (from_volbackup, volnameptr);
-		}
-	      else
-		{
-		  fileio_make_backup_name (from_volbackup, nopath_name,
-					   logpath, try_level,
-					   FILEIO_INITIAL_BACKUP_UNITS);
-		}
-	    }
-	  else
-	    {
-	      fclose (backup_volinfo_fp);
-	      backup_volinfo_fp = NULL;
-	      error_code = ER_FAILED;
-	      LOG_CS_EXIT (thread_p);
-	      goto error;
-	    }
-
-	  fclose (backup_volinfo_fp);
-	  backup_volinfo_fp = NULL;
-	}
-
-      /* User wishes to override the bkvinf file entry for some locations. */
-      if (r_args->backuppath)
-	{
-	  strncpy (from_volbackup, r_args->backuppath, PATH_MAX);
-	}
-
-      /* User only wants information about the backup */
-      if (r_args->printtoc)
-	{
-	  error_code = fileio_list_restore (thread_p, db_fullname,
-					    from_volbackup, &bkdb_iopagesize,
-					    &bkdb_compatibility, try_level,
-					    r_args->newvolpath);
-
-	  mht_destroy (pages_cache.ht);
-	  db_destroy_fixed_heap (pages_cache.heap_id);
+	  error_expected = true;
 	  LOG_CS_EXIT (thread_p);
-
-	  return error_code;
+	  goto error;
+	}
+      else if (error_code != NO_ERROR)
+	{
+	  LOG_CS_EXIT (thread_p);
+	  goto error;
 	}
 
       printtoc = (r_args->printtoc) ? false : true;

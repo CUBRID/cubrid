@@ -94,6 +94,8 @@ static int parse_user_define_line (char *line, FILE * output_file);
 static int parse_user_define_file (FILE * user_define_file,
 				   FILE * output_file);
 static int parse_up_to_date (char *up_to_date, struct tm *time_date);
+static int print_backup_info (char *database_name,
+			      BO_RESTART_ARG * restart_arg);
 static int synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 			   int *new_sys_coll_cnt);
 /*
@@ -897,6 +899,49 @@ parse_up_to_date (char *date_string, struct tm *time_data)
   return date_index != 6 ? ER_GENERIC_ERROR : status;
 }
 
+static int
+print_backup_info (char *database_name, BO_RESTART_ARG * restart_arg)
+{
+  char from_volbackup[PATH_MAX];
+  int error_code = NO_ERROR;
+  DB_INFO *dir = NULL, *db;
+
+  error_code = cfg_read_directory (&dir, false);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  db = cfg_find_db_list (dir, database_name);
+  if (db == NULL)
+    {
+      error_code = ER_BO_UNKNOWN_DATABASE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, database_name);
+      goto exit;
+    }
+
+  COMPOSE_FULL_NAME (BO_DB_FULLNAME, sizeof (BO_DB_FULLNAME),
+		     db->pathname, database_name);
+
+  error_code = fileio_get_backup_volume (NULL, BO_DB_FULLNAME, db->logpath,
+					 restart_arg, from_volbackup);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  error_code =
+    fileio_list_restore (NULL, BO_DB_FULLNAME, from_volbackup,
+			 restart_arg->level, restart_arg->newvolpath);
+exit:
+  if (dir != NULL)
+    {
+      cfg_free_directory (dir);
+    }
+
+  return error_code;
+}
+
 /*
  * restoredb() - restoredb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -906,7 +951,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
-  int status;
+  int status, error_code;
   struct tm time_data;
   char *up_to_date;
   char *database_name;
@@ -965,6 +1010,21 @@ restoredb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
 	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
+
+  if (restart_arg.printtoc)
+    {
+      error_code = print_backup_info (database_name, &restart_arg);
+      if (error_code != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_RESTOREDB,
+					   RESTOREDB_MSG_FAILURE));
+	  goto error_exit;
+	}
+
+      return EXIT_SUCCESS;
+    }
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
