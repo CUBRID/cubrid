@@ -3956,6 +3956,9 @@ xboot_register_client (THREAD_ENTRY * thread_p,
     }
 #endif /* SA_MODE */
 
+  /* Initialize scan function pointers of show statements */
+  showstmt_scan_init ();
+
   db_user_save = client_credential->db_user;
   if (client_credential->db_user != NULL)
     {

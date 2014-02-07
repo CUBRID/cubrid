@@ -526,4 +526,11 @@ extern int recdes_allocate_data_area (RECDES * rec, int size);
 extern void recdes_free_data_area (RECDES * rec);
 extern void recdes_set_data_area (RECDES * rec, char *data, int size);
 
+extern char *lsa_to_string (char *buf, int buf_size, LOG_LSA * lsa);
+extern char *oid_to_string (char *buf, int buf_size, OID * oid);
+extern char *vpid_to_string (char *buf, int buf_size, VPID * vpid);
+extern char *vfid_to_string (char *buf, int buf_size, VFID * vfid);
+extern char *hfid_to_string (char *buf, int buf_size, HFID * hfid);
+extern char *btid_to_string (char *buf, int buf_size, BTID * btid);
+
 #endif /* _STORAGE_COMMON_H_ */

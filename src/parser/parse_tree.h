@@ -833,6 +833,8 @@ enum pt_node_type
   PT_TUPLE_VALUE,
   PT_QUERY_TRACE,
   PT_INSERT_VALUE,
+  PT_NAMED_ARG,
+  PT_SHOWSTMT,
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
@@ -1070,7 +1072,9 @@ typedef enum
   PT_TRACE_ON,
   PT_TRACE_OFF,
   PT_TRACE_FORMAT_TEXT,
-  PT_TRACE_FORMAT_JSON
+  PT_TRACE_FORMAT_JSON,
+
+  PT_IS_SHOWSTMT		/* query is SHOWSTMT */
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -1495,6 +1499,7 @@ typedef struct pt_merge_info PT_MERGE_INFO;
 typedef struct pt_method_call_info PT_METHOD_CALL_INFO;
 typedef struct pt_method_def_info PT_METHOD_DEF_INFO;
 typedef struct pt_name_info PT_NAME_INFO;
+typedef struct pt_named_arg_info PT_NAMED_ARG_INFO;
 typedef struct pt_remove_trigger_info PT_REMOVE_TRIGGER_INFO;
 typedef struct pt_rename_info PT_RENAME_INFO;
 typedef struct pt_rename_trigger_info PT_RENAME_TRIGGER_INFO;
@@ -1510,6 +1515,7 @@ typedef struct pt_set_opt_lvl_info PT_SET_OPT_LVL_INFO;
 typedef struct pt_set_sys_params_info PT_SET_SYS_PARAMS_INFO;
 typedef struct pt_set_xaction_info PT_SET_XACTION_INFO;
 typedef struct pt_set_trigger_info PT_SET_TRIGGER_INFO;
+typedef struct pt_showstmt_info PT_SHOWSTMT_INFO;
 typedef struct pt_sort_spec_info PT_SORT_SPEC_INFO;
 typedef struct pt_timeout_info PT_TIMEOUT_INFO;
 typedef struct pt_trigger_action_info PT_TRIGGER_ACTION_INFO;
@@ -2008,7 +2014,8 @@ struct pt_spec_info
   UINTPTR id;			/* entity spec unique id # */
   PT_MISC_TYPE only_all;	/* PT_ONLY or PT_ALL */
   PT_MISC_TYPE meta_class;	/* enum 0 or PT_META  */
-  PT_MISC_TYPE derived_table_type;	/* PT_IS_SUBQUERY, PT_IS_SET_EXPR, or PT_IS_CSELECT */
+  PT_MISC_TYPE derived_table_type;	/* PT_IS_SUBQUERY, PT_IS_SET_EXPR, or PT_IS_CSELECT,
+					   PT_IS_SHOWSTMT */
   PT_MISC_TYPE flavor;		/* enum 0 or PT_METHOD_ENTITY */
   PT_NODE *on_cond;
   PT_NODE *using_cond;		/* -- does not support named columns join */
@@ -2314,6 +2321,15 @@ struct pt_name_info
   int coll_modifier;		/* collation modifier = collation + 1 */
 };
 
+/*
+ * information for arguments that has name and value
+ */
+struct pt_named_arg_info
+{
+  PT_NODE *name;		/* an identifier node for argument name */
+  PT_NODE *value;		/* argument value, may be string, int or identifier */
+};
+
 enum
 {
   PT_IDX_HINT_FORCE = 1,
@@ -2530,6 +2546,12 @@ struct pt_set_trigger_info
   PT_MISC_TYPE option;		/* PT_TRIGGER_DEPTH, PT_TRIGGER_TRACE */
 };
 
+/* Info for PT_SHOWSTMT node */
+struct pt_showstmt_info
+{
+  SHOWSTMT_TYPE show_type;	/* show statement type */
+  PT_NODE *show_args;		/* show statement args */
+};
 
 /* Info for OrderBy/GroupBy */
 struct pt_sort_spec_info
@@ -2995,6 +3017,7 @@ union pt_statement_info
   PT_METHOD_CALL_INFO method_call;
   PT_METHOD_DEF_INFO method_def;
   PT_NAME_INFO name;
+  PT_NAMED_ARG_INFO named_arg;
   PT_NODE_LIST_INFO node_list;
   PT_PARTITION_INFO partition;
   PT_PARTS_INFO parts;
@@ -3016,6 +3039,7 @@ union pt_statement_info
   PT_SET_TRIGGER_INFO set_trigger;
   PT_SET_SESSION_VARIABLE_INFO set_variables;
   PT_SET_XACTION_INFO set_xaction;
+  PT_SHOWSTMT_INFO showstmt;
   PT_SORT_SPEC_INFO sort_spec;
   PT_STORED_PROC_INFO sp;
   PT_STORED_PROC_PARAM_INFO sp_param;

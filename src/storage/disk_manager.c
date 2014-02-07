@@ -143,6 +143,20 @@ struct disk_recv_init_pages_info
   INT16 volid;
 };
 
+/* show volume header context structure */
+typedef struct disk_vol_header_context DISK_VOL_HEADER_CONTEXT;
+struct disk_vol_header_context
+{
+  int volume_id;		/* volume id */
+};
+
+typedef struct disk_check_vol_info DISK_CHECK_VOL_INFO;
+struct disk_check_vol_info
+{
+  VOLID volid;			/* volume id be found */
+  bool exists;			/* weather volid does exist */
+};
+
 /* Cache of volumes with their purposes and hint of num of free pages */
 
 typedef struct disk_volfreepgs DISK_VOLFREEPGS;
@@ -303,6 +317,8 @@ static void disk_set_page_to_zeros (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 
 static void disk_verify_volume_header (THREAD_ENTRY * thread_p,
 				       PAGE_PTR pgptr);
+static bool disk_check_volume_exist (THREAD_ENTRY * thread_p, VOLID volid,
+				     void *arg);
 
 static char *
 disk_vhdr_get_vol_fullname (const DISK_VAR_HEADER * vhdr)
@@ -5728,6 +5744,256 @@ disk_dump_goodvol_system (THREAD_ENTRY * thread_p, FILE * fp, INT16 volid,
 
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
+  return NO_ERROR;
+}
+
+/*
+ * disk_check_volume_exist () - check whether volume existed
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   volid(in): 
+ *   arg(in/out):CHECK_VOL_INFO structure
+ */
+static bool
+disk_check_volume_exist (THREAD_ENTRY * thread_p, VOLID volid, void *arg)
+{
+  DISK_CHECK_VOL_INFO *vol_infop = (DISK_CHECK_VOL_INFO *) arg;
+
+  if (volid == vol_infop->volid)
+    {
+      vol_infop->exists = true;
+    }
+  return true;
+}
+
+/*
+ * disk_volume_header_start_scan () -  start scan function for show volume header
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   type (in):
+ *   arg_values(in):
+ *   arg_cnt(in):
+ *   ptr(in/out): volume header context
+ */
+extern int
+disk_volume_header_start_scan (THREAD_ENTRY * thread_p, int type,
+			       DB_VALUE ** arg_values, int arg_cnt,
+			       void **ptr)
+{
+  int error = NO_ERROR;
+  DISK_CHECK_VOL_INFO vol_info;
+  DISK_VOL_HEADER_CONTEXT *ctx = NULL;
+
+  ctx = db_private_alloc (thread_p, sizeof (DISK_VOL_HEADER_CONTEXT));
+  if (ctx == NULL)
+    {
+      error = er_errid ();
+      goto exit_on_error;
+    }
+  memset (ctx, 0, sizeof (DISK_VOL_HEADER_CONTEXT));
+
+  assert (arg_values != NULL && arg_cnt && arg_values[0] != NULL);
+  assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_INTEGER);
+  ctx->volume_id = db_get_int (arg_values[0]);
+
+  /* if volume id is out of range */
+  if (ctx->volume_id < 0 || ctx->volume_id > DB_INT16_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_VOLID_NOT_EXIST, 1,
+	      ctx->volume_id);
+      error = ER_DIAG_VOLID_NOT_EXIST;
+      goto exit_on_error;
+    }
+
+  vol_info.volid = (INT16) ctx->volume_id;
+  vol_info.exists = false;
+  /* check volume id exist or not */
+  (void) fileio_map_mounted (thread_p, disk_check_volume_exist, &vol_info);
+  if (!vol_info.exists)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_VOLID_NOT_EXIST, 1,
+	      ctx->volume_id);
+      error = ER_DIAG_VOLID_NOT_EXIST;
+      goto exit_on_error;
+    }
+
+  *ptr = ctx;
+  return NO_ERROR;
+
+exit_on_error:
+  db_private_free (thread_p, ctx);
+  return error;
+}
+
+/*
+ * disk_volume_header_next_scan () -  next scan function for show volume header
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   ptr(in/out): volume header context
+ */
+SCAN_CODE
+disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor,
+			      DB_VALUE ** out_values, int out_cnt, void *ptr)
+{
+  DISK_VAR_HEADER *vhdr;
+  VPID vpid;
+  int error = NO_ERROR, idx = 0;
+  PAGE_PTR pgptr = NULL;
+  DB_DATETIME create_time;
+  char buf[256];
+  DISK_VOL_HEADER_CONTEXT *ctx = (DISK_VOL_HEADER_CONTEXT *) ptr;
+
+  if (cursor >= 1)
+    {
+      return S_END;
+    }
+
+  vpid.volid = (INT16) ctx->volume_id;
+  vpid.pageid = DISK_VOLHEADER_PAGE;
+  pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, false);
+  if (pgptr == NULL)
+    {
+      error = er_errid ();
+      goto exit_on_error;
+    }
+
+  vhdr = (DISK_VAR_HEADER *) pgptr;
+
+  /* fill each column */
+  db_make_int (out_values[idx], ctx->volume_id);
+  idx++;
+
+  snprintf (buf, sizeof (buf), "MAGIC SYMBOL = %s at disk location = %lld",
+	    vhdr->magic, offsetof (FILEIO_PAGE, page) +
+	    (long long) offsetof (DISK_VAR_HEADER, magic));
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  db_make_int (out_values[idx], vhdr->iopagesize);
+  idx++;
+
+  db_make_string (out_values[idx], disk_purpose_to_string (vhdr->purpose));
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->sect_npgs);
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->total_sects);
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->free_sects);
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->hint_allocsect);
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->total_pages);
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->free_pages);
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->sect_alloctb_npages);
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->page_alloctb_npages);
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->sect_alloctb_page1);
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->page_alloctb_page1);
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->sys_lastpage);
+  idx++;
+
+  db_localdatetime ((time_t *) & vhdr->db_creation, &create_time);
+  db_make_datetime (out_values[idx], &create_time);
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->max_npages);
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->used_data_npages);
+  idx++;
+
+  db_make_int (out_values[idx], vhdr->used_index_npages);
+  idx++;
+
+  error = db_make_string_copy (out_values[idx],
+			       lsa_to_string (buf, sizeof (buf),
+					      &vhdr->chkpt_lsa));
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = db_make_string_copy (out_values[idx],
+			       hfid_to_string (buf, sizeof (buf),
+					       &vhdr->boot_hfid));
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = db_make_string_copy (out_values[idx],
+			       (char *) (vhdr->var_fields +
+					 vhdr->offset_to_vol_fullname));
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = db_make_string_copy (out_values[idx],
+			       (char *) (vhdr->var_fields +
+					 vhdr->offset_to_next_vol_fullname));
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = db_make_string_copy (out_values[idx],
+			       (char *) (vhdr->var_fields +
+					 vhdr->offset_to_vol_remarks));
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  assert (idx == out_cnt);
+
+exit_on_error:
+  if (pgptr)
+    {
+      pgbuf_unfix (thread_p, pgptr);
+    }
+  return error == NO_ERROR ? S_SUCCESS : S_ERROR;
+}
+
+/*
+ * disk_volume_header_end_scan() -- end scan function of show volume header
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   ptr(in):  volume header context
+ */
+int
+disk_volume_header_end_scan (THREAD_ENTRY * thread_p, void **ptr)
+{
+  db_private_free_and_init (thread_p, *ptr);
   return NO_ERROR;
 }
 

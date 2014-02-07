@@ -146,6 +146,7 @@ QUERY_SOURCES = \
 	$(QUERY_DIR)/string_opfunc.c \
 	$(QUERY_DIR)/method_scan.c \
 	$(QUERY_DIR)/query_executor.c \
+	$(QUERY_DIR)/show_scan.c \
 	$(QUERY_DIR)/partition.c \
 	$(QUERY_DIR)/query_opfunc.c \
 	$(QUERY_DIR)/stream_to_xasl.c \

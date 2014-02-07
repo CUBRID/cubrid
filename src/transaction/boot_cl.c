@@ -82,6 +82,7 @@
 #include "client_support.h"
 #include "es.h"
 #include "tsc_timer.h"
+#include "show_meta.h"
 
 #if defined(CS_MODE)
 #include "network.h"
@@ -1324,6 +1325,12 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       (void) tran_reset_wait_times (tran_lock_wait_msecs * 1000);
     }
 
+  error_code = showstmt_metadata_init ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   return error_code;
 
 error:
@@ -1540,6 +1547,7 @@ boot_client_all_finalize (bool is_er_final)
 	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
 	}
 
+      showstmt_metadata_final ();
       tran_free_savepoint_list ();
       sm_flush_static_methods ();
       set_final ();

@@ -335,6 +335,9 @@ extern int str_identifier = '\0';
 										csql_yylval.cptr = pt_makename(yytext);
 										return HASH; }
 [hH][aA][vV][iI][nN][gG]						{ begin_token(yytext);   return HAVING; }
+[hH][eE][aA][dD][eE][rR]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return HEADER; }
 [hH][oO][uU][rR]							{ begin_token(yytext);   return HOUR_; }
 [hH][oO][uU][rR]_[mM][iI][lL][lL][iI][sS][eE][cC][oO][nN][dD]		{ begin_token(yytext);   return HOUR_MILLISECOND; }
 [hH][oO][uU][rR]_[sS][eE][cC][oO][nN][dD]				{ begin_token(yytext);   return HOUR_SECOND; }
@@ -778,6 +781,9 @@ extern int str_identifier = '\0';
 [vV][aA][rR][yY][iI][nN][gG]						{ begin_token(yytext);   return VARYING; }
 [vV][cC][lL][aA][sS][sS]						{ begin_token(yytext);   return VCLASS; }
 [vV][iI][eE][wW]							{ begin_token(yytext);   return VIEW; }
+[vV][oO][lL][uU][mM][eE]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return VOLUME; }
 [wW][eE][eE][kK]							{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return WEEK; }

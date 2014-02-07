@@ -263,6 +263,8 @@ static char *stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *tmp,
 				      CLS_SPEC_TYPE * ptr);
 static char *stx_build_list_spec_type (THREAD_ENTRY * thread_p, char *tmp,
 				       LIST_SPEC_TYPE * ptr);
+static char *stx_build_showstmt_spec_type (THREAD_ENTRY * thread_p, char *ptr,
+					   SHOWSTMT_SPEC_TYPE * spec);
 static char *stx_build_rlist_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 					REGUVAL_LIST_SPEC_TYPE * spec,
 					OUTPTR_LIST * outptr_list);
@@ -4869,6 +4871,12 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 				      &ACCESS_SPEC_LIST_SPEC (access_spec));
       break;
 
+    case TARGET_SHOWSTMT:
+      ptr = stx_build_showstmt_spec_type (thread_p, ptr,
+					  &ACCESS_SPEC_SHOWSTMT_SPEC
+					  (access_spec));
+      break;
+
     case TARGET_REGUVAL_LIST:
       /* only for the customized type, arg is valid for the transition of customized outptr info */
       outptr_list = (OUTPTR_LIST *) arg;
@@ -5359,6 +5367,39 @@ stx_build_list_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->
 					packed_xasl[offset]);
       if (list_spec_type->list_regu_list_rest == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
+}
+
+static char *
+stx_build_showstmt_spec_type (THREAD_ENTRY * thread_p, char *ptr,
+			      SHOWSTMT_SPEC_TYPE * showstmt_spec_type)
+{
+  int offset;
+  XASL_UNPACK_INFO *xasl_unpack_info =
+    stx_get_xasl_unpack_info_ptr (thread_p);
+
+  ptr = or_unpack_int (ptr, &showstmt_spec_type->show_type);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      showstmt_spec_type->arg_list = NULL;
+    }
+  else
+    {
+      showstmt_spec_type->arg_list =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->
+					packed_xasl[offset]);
+      if (showstmt_spec_type->arg_list == NULL)
 	{
 	  goto error;
 	}

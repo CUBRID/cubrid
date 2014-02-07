@@ -699,6 +699,10 @@
 					>
 				</File>
 				<File
+				  RelativePath="..\..\src\query\show_scan.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\query\stream_to_xasl.c"
 					>
 				</File>

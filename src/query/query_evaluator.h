@@ -101,6 +101,17 @@ typedef enum
   PT_PERCENT_RANK
 } FUNC_TYPE;
 
+typedef enum
+{
+  SHOWSTMT_START = 0,
+  SHOWSTMT_NULL = SHOWSTMT_START,
+  SHOWSTMT_VOLUME_HEADER,
+
+  /* append the new show statement types in here */
+
+  SHOWSTMT_END
+} SHOWSTMT_TYPE;
+
 #define QPROC_ANALYTIC_IS_OFFSET_FUNCTION(func_p) \
     (((func_p) != NULL) \
     && (((func_p)->function == PT_LEAD) \

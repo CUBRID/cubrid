@@ -654,6 +654,12 @@ typedef struct YYLTYPE
 %type <number> opt_trace_output_format
 %type <number> opt_if_not_exists
 %type <number> opt_if_exists
+%type <number> show_type_arg1
+/* uncomment it when implement other show statements.
+%type <number> show_type_arg1_opt
+%type <number> show_type_arg_named
+%type <number> show_type_id_dot_id
+*/
 /*}}}*/
 
 /* define rule type (node) */
@@ -950,6 +956,13 @@ typedef struct YYLTYPE
 %type <node> values_expr_item
 %type <node> opt_partition_spec
 %type <node> opt_for_update_clause
+/* uncomment it when implement other show statement.
+%type <node> of_or_where
+%type <node> named_arg
+%type <node> named_args
+%type <node> opt_arg_value
+*/
+%type <node> arg_value
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -1427,6 +1440,7 @@ typedef struct YYLTYPE
 %token <cptr> GT_LE_
 %token <cptr> GT_LT_
 %token <cptr> HASH
+%token <cptr> HEADER
 %token <cptr> IFNULL
 %token <cptr> INACTIVE
 %token <cptr> INCREMENT
@@ -1503,6 +1517,7 @@ typedef struct YYLTYPE
 %token <cptr> VAR_POP
 %token <cptr> VAR_SAMP
 %token <cptr> VARIANCE
+%token <cptr> VOLUME
 %token <cptr> WEEK
 %token <cptr> WORKSPACE
 
@@ -6462,6 +6477,137 @@ show_stmt
 			$$ = node;
 
 		DBG_PRINT}}						
+	| SHOW show_type_arg1 OF arg_value
+		{{
+			int type = $2;
+			PT_NODE *args = $4;
+			PT_NODE *node = pt_make_query_showstmt (this_parser, type, args, NULL);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+/* uncomment it when implement other show statements.
+	| SHOW show_type_arg1_opt opt_arg_value
+		{{
+			PT_NODE *node = NULL;
+			int type = $2;
+			PT_NODE *args = $3;
+
+			node = pt_make_query_showstmt (this_parser, type, args, NULL);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| SHOW show_type_arg_named of_or_where named_args
+		{{
+			PT_NODE *node = NULL;
+			int type = $2;
+			PT_NODE *args = $4;
+
+			node = pt_make_query_showstmt (this_parser, type, args, NULL);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| SHOW show_type_id_dot_id OF identifier DOT identifier
+		{{
+			int type = $2;
+			PT_NODE *args = $4;
+			args->next = $6;
+
+			PT_NODE *node = pt_make_query_showstmt (this_parser, type, args, NULL);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+*/
+	;
+
+show_type_arg1
+	: VOLUME HEADER
+		{{
+			$$ = SHOWSTMT_VOLUME_HEADER;
+		}}
+	;
+
+/* uncomment it when implement other show statement.
+show_type_arg1_opt
+	:
+	;
+
+show_type_arg_named
+	: 
+	;
+
+show_type_id_dot_id
+	: 
+	;
+
+of_or_where
+	: OF
+		{{
+			$$ = NULL;
+		}}
+	| WHERE
+		{{
+			$$ = NULL;
+		}}
+	;
+
+named_args
+	: named_arg
+		{{
+			$$ = $1;
+		DBG_PRINT}}
+	| named_args AND named_arg
+		{{
+			$$ = parser_make_link ($1, $3);
+		DBG_PRINT}}
+	;
+
+named_arg
+	: identifier '=' arg_value
+		{{
+			PT_NODE * node = parser_new_node (this_parser, PT_NAMED_ARG);
+			node->info.named_arg.name = $1;
+			node->info.named_arg.value = $3;
+			$$ = node;
+		DBG_PRINT}}
+	;
+
+opt_arg_value
+	:
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
+			if (node)
+			  node->type_enum = PT_TYPE_NULL;
+
+			$$ = node;
+		}}
+	| OF arg_value
+		{{
+			$$ = $2;
+		}}
+	;
+*/
+
+arg_value
+	: char_string_literal
+		{{
+			$$ = $1;
+		DBG_PRINT}}
+	| unsigned_integer
+		{{
+			$$ = $1;
+		DBG_PRINT}}
+	| identifier
+		{{
+			$$ = $1;
+		DBG_PRINT}}
 	;
 
 opt_full
@@ -19174,6 +19320,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| HEADER
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| INACTIVE
 		{{
 
@@ -19794,6 +19950,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| VOLUME
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| WORKSPACE
 		{{
 
@@ -20382,7 +20548,7 @@ unsigned_int32
 			val = parser_new_node (this_parser, PT_VALUE);
 			if (val)
 			  {
-				PARSER_SAVE_ERR_CONTEXT (val, @$.buffer_pos)
+			    errno = 0;
 			    int_val = strtol($1, &endptr, 10);
 
 			    if ((errno == ERANGE
@@ -20399,6 +20565,7 @@ unsigned_int32
 			    val->type_enum = PT_TYPE_INTEGER;
 			  }
 			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	;

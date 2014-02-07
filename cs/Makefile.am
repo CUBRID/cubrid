@@ -177,6 +177,7 @@ PARSER_SOURCES = \
 	$(PARSER_DIR)/csql_grammar.c \
 	$(PARSER_DIR)/csql_lexer.c \
 	$(PARSER_DIR)/parser_support.c \
+	$(PARSER_DIR)/show_meta.c \
 	$(PARSER_DIR)/double_byte_support.c \
 	$(PARSER_DIR)/method_transform.c \
 	$(PARSER_DIR)/cnf.c \

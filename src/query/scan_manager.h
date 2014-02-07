@@ -52,7 +52,8 @@ typedef enum
   S_LIST_SCAN,
   S_SET_SCAN,
   S_METHOD_SCAN,
-  S_VALUES_SCAN			/* regu_values_list scan */
+  S_VALUES_SCAN,		/* regu_values_list scan */
+  S_SHOWSTMT_SCAN
 } SCAN_TYPE;
 
 typedef struct heap_scan_id HEAP_SCAN_ID;
@@ -209,6 +210,19 @@ struct llist_scan_id
   QFILE_TUPLE_RECORD *tplrecp;	/* tuple record pointer; output param */
 };
 
+typedef struct showstmt_scan_id SHOWSTMT_SCAN_ID;
+struct showstmt_scan_id
+{
+  SHOWSTMT_TYPE show_type;	/* show statement type */
+  DB_VALUE **arg_values;	/* input argument array */
+  int arg_cnt;			/* size of input argment array */
+  DB_VALUE **out_values;	/* out values array */
+  int out_cnt;			/* size of out value array */
+  int cursor;			/* current scan position, start with zero */
+  void *ctx;			/* context for different show stmt */
+  SCAN_PRED scan_pred;		/* scan predicates(filters) */
+};
+
 typedef struct regu_values_scan_id REGU_VALUES_SCAN_ID;
 struct regu_values_scan_id
 {
@@ -305,6 +319,7 @@ struct scan_id_struct
     SET_SCAN_ID ssid;		/* Set Scan Identifier */
     VA_SCAN_ID vaid;		/* Value Array Identifier */
     REGU_VALUES_SCAN_ID rvsid;	/* regu_variable list identifier */
+    SHOWSTMT_SCAN_ID stsid;	/* show stmt identifier */
   } s;
   SCAN_STATS stats;
 };				/* Scan Identifier */
@@ -395,6 +410,17 @@ extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				REGU_VARIABLE_LIST regu_list_pred,
 				PRED_EXPR * pr,
 				REGU_VARIABLE_LIST regu_list_rest);
+extern int scan_open_showstmt_scan (THREAD_ENTRY * thread_p,
+				    SCAN_ID * scan_id,
+				    /* fields of SCAN_ID */
+				    int grouped,
+				    QPROC_SINGLE_FETCH single_fetch,
+				    DB_VALUE * join_dbval,
+				    VAL_LIST * val_list, VAL_DESCR * vd,
+				    /* fields of SHOWSTMT_SCAN_ID */
+				    PRED_EXPR * pr,
+				    SHOWSTMT_TYPE show_type,
+				    REGU_VARIABLE_LIST arg_list);
 extern int scan_open_values_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				  /* fields of SCAN_ID */
 				  int grouped,
@@ -438,6 +464,11 @@ extern int scan_init_iss (INDX_SCAN_ID * isidp);
 extern void scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf);
 extern void scan_initialize (void);
 extern void scan_finalize (void);
+
+extern void showstmt_scan_init (void);
+extern SCAN_CODE showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+extern int showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+extern int showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 
 #if defined(SERVER_MODE)
 extern void scan_print_stats_json (SCAN_ID * scan_id, json_t * stats);

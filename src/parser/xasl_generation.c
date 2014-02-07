@@ -424,6 +424,9 @@ static ACCESS_SPEC_TYPE *pt_to_subquery_table_spec_list (PARSER_CONTEXT *
 							 PT_NODE * subquery,
 							 PT_NODE *
 							 where_part);
+static ACCESS_SPEC_TYPE *pt_to_showstmt_spec_list (PARSER_CONTEXT * parser,
+						   PT_NODE * spec,
+						   PT_NODE * where_part);
 static ACCESS_SPEC_TYPE *pt_to_set_expr_table_spec_list (PARSER_CONTEXT *
 							 parser,
 							 PT_NODE * spec,
@@ -663,6 +666,12 @@ static ACCESS_SPEC_TYPE *pt_make_list_access_spec (XASL_NODE * xasl,
 						   attr_list_pred,
 						   REGU_VARIABLE_LIST
 						   attr_list_rest);
+
+static ACCESS_SPEC_TYPE *pt_make_showstmt_access_spec (PRED_EXPR * where_pred,
+						       SHOWSTMT_TYPE
+						       show_type,
+						       REGU_VARIABLE_LIST
+						       arg_list);
 
 static ACCESS_SPEC_TYPE *pt_make_set_access_spec (REGU_VARIABLE * set_expr,
 						  ACCESS_METHOD access,
@@ -5290,6 +5299,33 @@ pt_make_list_access_spec (XASL_NODE * xasl,
       spec->s.list_node.list_regu_list_pred = attr_list_pred;
       spec->s.list_node.list_regu_list_rest = attr_list_rest;
       spec->s.list_node.xasl_node = xasl;
+    }
+
+  return spec;
+}
+
+/*
+ * pt_make_showstmt_access_spec () - Create an initialized
+ *                               ACCESS_SPEC_TYPE TARGET_SHOWSTMT structure
+ *   return:
+ *   where_pred(in):
+ *   show_type(in):
+ *   arg_list(in):
+ */
+static ACCESS_SPEC_TYPE *
+pt_make_showstmt_access_spec (PRED_EXPR * where_pred,
+			      SHOWSTMT_TYPE show_type,
+			      REGU_VARIABLE_LIST arg_list)
+{
+  ACCESS_SPEC_TYPE *spec;
+
+  spec =
+    pt_make_access_spec (TARGET_SHOWSTMT, SEQUENTIAL, NULL, NULL, where_pred);
+
+  if (spec)
+    {
+      spec->s.showstmt_node.show_type = show_type;
+      spec->s.showstmt_node.arg_list = arg_list;
     }
 
   return spec;
@@ -12574,6 +12610,56 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 }
 
 /*
+ * pt_to_showstmt_spec_list () - Convert a QUERY PT_NODE
+ * 	an showstmt query
+ *   return:
+ *   parser(in):
+ *   spec(in):
+ *   where_part(in):
+ */
+static ACCESS_SPEC_TYPE *
+pt_to_showstmt_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
+			  PT_NODE * where_part)
+{
+  PT_NODE *saved_current_class;
+  PT_NODE *derived_table;
+  SHOWSTMT_TYPE show_type;
+  PT_NODE *show_args;
+  REGU_VARIABLE_LIST arg_list;
+  ACCESS_SPEC_TYPE *access;
+  PRED_EXPR *where = NULL;
+
+  if (spec->info.spec.derived_table_type != PT_IS_SHOWSTMT
+      || (derived_table = spec->info.spec.derived_table) == NULL
+      || derived_table->node_type != PT_SHOWSTMT)
+    {
+      return NULL;
+    }
+
+  saved_current_class = parser->symbols->current_class;
+  parser->symbols->current_class = NULL;
+  where = pt_to_pred_expr (parser, where_part);
+  parser->symbols->current_class = saved_current_class;
+  if (where_part != NULL && where == NULL)
+    {
+      return NULL;
+    }
+
+  show_type = derived_table->info.showstmt.show_type;
+  show_args = derived_table->info.showstmt.show_args;
+  arg_list =
+    pt_to_regu_variable_list (parser, show_args, UNBOX_AS_VALUE, NULL, NULL);
+  if (show_args != NULL && arg_list == NULL)
+    {
+      return NULL;
+    }
+
+  access = pt_make_showstmt_access_spec (where, show_type, arg_list);
+
+  return access;
+}
+
+/*
  * pt_to_subquery_table_spec_list () - Convert a QUERY PT_NODE
  * 	an ACCESS_SPEC_LIST list for its list file
  *   return:
@@ -12797,6 +12883,10 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 	  /* a set expression derived table */
 	  access = pt_to_set_expr_table_spec_list
 	    (parser, spec, spec->info.spec.derived_table, where_part);
+	}
+      else if (spec->info.spec.derived_table_type == PT_IS_SHOWSTMT)
+	{
+	  access = pt_to_showstmt_spec_list (parser, spec, where_part);
 	}
       else
 	{
@@ -17244,10 +17334,13 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && plan)
     {
+      PT_NODE *spec;
       if (!PT_SELECT_INFO_IS_FLAGED (select_node,
 				     PT_SELECT_INFO_COLS_SCHEMA) &&
 	  !PT_SELECT_INFO_IS_FLAGED (select_node,
-				     PT_SELECT_FULL_INFO_COLS_SCHEMA))
+				     PT_SELECT_FULL_INFO_COLS_SCHEMA) &&
+	  !((spec = select_node->info.query.q.select.from) != NULL
+	    && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
 	{
 	  if (query_Plan_dump_fp == NULL)
 	    {

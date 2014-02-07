@@ -177,6 +177,7 @@ PARSER_SOURCES = \
 	$(PARSER_DIR)/csql_grammar.c \
 	$(PARSER_DIR)/csql_lexer.c \
 	$(PARSER_DIR)/parser_support.c \
+	$(PARSER_DIR)/show_meta.c \
 	$(PARSER_DIR)/double_byte_support.c \
 	$(PARSER_DIR)/method_transform.c \
 	$(PARSER_DIR)/cnf.c \
@@ -219,6 +220,7 @@ QUERY_SOURCES = \
 	$(QUERY_DIR)/string_opfunc.c \
 	$(QUERY_DIR)/method_scan.c \
 	$(QUERY_DIR)/query_executor.c \
+	$(QUERY_DIR)/show_scan.c \
 	$(QUERY_DIR)/partition.c \
 	$(QUERY_DIR)/query_opfunc.c \
 	$(QUERY_DIR)/xasl_to_stream.c \

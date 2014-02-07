@@ -44,6 +44,7 @@
 #include "schema_manager.h"
 #include "transform.h"
 #include "execute_statement.h"
+#include "show_meta.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -127,6 +128,9 @@ static PT_NODE *pt_common_attribute (PARSER_CONTEXT * parser, PT_NODE * p,
 static PT_NODE *pt_get_all_attributes_and_types (PARSER_CONTEXT * parser,
 						 PT_NODE * cls,
 						 PT_NODE * from);
+static PT_NODE *pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT *
+							  parser,
+							  PT_NODE * from);
 static void pt_get_attr_data_type (PARSER_CONTEXT * parser,
 				   DB_ATTRIBUTE * att, PT_NODE * attr);
 static PT_NODE *pt_unwhacked_spec (PARSER_CONTEXT * parser, PT_NODE * scope,
@@ -847,6 +851,16 @@ pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
 	  PT_INTERNAL_ERROR (parser, "resolution");
 	  return;
 	}
+      else if (spec->info.spec.derived_table_type == PT_IS_SHOWSTMT)
+	{
+	  spec->info.spec.as_attr_list
+	    = pt_get_all_showstmt_attributes_and_types (parser, spec);
+	  if (spec->info.spec.as_attr_list == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "resolution");
+	      return;
+	    }
+	}
       else
 	{			/* must be a subquery derived table */
 	  /* select_list must have passed star expansion */
@@ -973,6 +987,11 @@ pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
     {
       /* this can't happen since we removed MERGE/CSELECT from grammar */
       PT_INTERNAL_ERROR (parser, "resolution");
+      return;
+    }
+  else if (spec->info.spec.derived_table_type == PT_IS_SHOWSTMT)
+    {
+      /* just skip it, since we have resolved as_attr_list */
       return;
     }
   else				/* must be a subquery derived table */
@@ -4256,10 +4275,10 @@ pt_get_all_attributes_and_types (PARSER_CONTEXT * parser,
   DB_OBJECT *object;
   bool class_atts_only;
 
-  if (!cls
+  if (cls == NULL
       || cls->node_type != PT_NAME
       || (object = cls->info.name.db_object) == NULL
-      || !from || from->node_type != PT_SPEC)
+      || from == NULL || from->node_type != PT_SPEC)
     {
       return NULL;
     }
@@ -4275,10 +4294,14 @@ pt_get_all_attributes_and_types (PARSER_CONTEXT * parser,
       att = (DB_ATTRIBUTE *) db_get_attributes_force (object);
     }
 
-  if (att)
+  if (att != NULL)
     {
       /* make result anchor the list */
       result = tail = pt_name (parser, db_attribute_name (att));
+      if (result == NULL)
+	{
+	  return NULL;
+	}
       result->line_number = from->line_number;
       result->column_number = from->column_number;
 
@@ -4297,10 +4320,14 @@ pt_get_all_attributes_and_types (PARSER_CONTEXT * parser,
       att = db_attribute_next (att);
 
       /* for the rest of the attributes do */
-      while (att)
+      while (att != NULL)
 	{
 	  /* make new node & copy attribute name into it */
 	  node = pt_name (parser, db_attribute_name (att));
+	  if (node == NULL)
+	    {
+	      goto on_error;
+	    }
 	  node->line_number = from->line_number;
 	  node->column_number = from->column_number;
 
@@ -4325,6 +4352,99 @@ pt_get_all_attributes_and_types (PARSER_CONTEXT * parser,
     }
 
   return result;
+
+on_error:
+  if (result != NULL)
+    {
+      parser_free_tree (parser, result);
+    }
+
+  return NULL;
+}
+
+/*
+ * pt_get_all_showstmt_attributes_and_types () -
+ *   return:  show list attributes list if all OK, NULL otherwise.
+ *   parser(in): handle to parser context
+ *   from(in): the entity_spec from which cls was derived
+ *             as a flat_entity_list item
+ */
+static PT_NODE *
+pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT * parser,
+					  PT_NODE * from)
+{
+  PT_NODE *result = NULL, *tail, *node;
+  DB_ATTRIBUTE *att;
+  PT_NODE *derived_table;
+
+  if (from == NULL || from->node_type != PT_SPEC)
+    {
+      return NULL;
+    }
+
+  if (from->info.spec.derived_table_type != PT_IS_SHOWSTMT
+      || (derived_table = from->info.spec.derived_table) == NULL
+      || derived_table->node_type != PT_SHOWSTMT)
+    {
+      return NULL;
+    }
+
+  att =
+    (DB_ATTRIBUTE *) showstmt_get_attributes (derived_table->info.showstmt.
+					      show_type);
+  if (att != NULL)
+    {
+      /* make result anchor the list */
+      result = tail = pt_name (parser, db_attribute_name (att));
+      if (result == NULL)
+	{
+	  return NULL;
+	}
+      result->line_number = from->line_number;
+      result->column_number = from->column_number;
+
+      /* set its type */
+      pt_get_attr_data_type (parser, att, result);
+      result->info.name.spec_id = from->info.spec.id;
+
+      /* advance to next attribute */
+      att = db_attribute_next (att);
+
+      /* for the rest of the attributes do */
+      while (att != NULL)
+	{
+	  /* make new node & copy attribute name into it */
+	  node = pt_name (parser, db_attribute_name (att));
+	  if (node == NULL)
+	    {
+	      goto on_error;
+	    }
+
+	  node->line_number = from->line_number;
+	  node->column_number = from->column_number;
+
+	  /* set its type */
+	  pt_get_attr_data_type (parser, att, node);
+
+	  node->info.name.spec_id = from->info.spec.id;
+
+	  /* append to list */
+	  tail->next = node;
+	  tail = node;
+
+	  /* advance to next attribute */
+	  att = db_attribute_next (att);
+	}
+    }
+
+  return result;
+
+on_error:
+  if (result != NULL)
+    {
+      parser_free_tree (parser, result);
+    }
+  return NULL;
 }
 
 /*

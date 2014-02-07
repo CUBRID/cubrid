@@ -813,6 +813,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\parser\show_meta.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\parser\type_checking.c"
 					>
 				</File>

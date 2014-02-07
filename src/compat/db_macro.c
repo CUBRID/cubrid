@@ -1768,6 +1768,31 @@ db_make_string (DB_VALUE * value, const char *str)
   return error;
 }
 
+
+/*
+ * db_make_string_copy() - alloc buffer and copy str into the buffer.
+ *                         need_clear will set as true.
+ * return :
+ * value(out) :
+ * str(in):
+ */
+int
+db_make_string_copy (DB_VALUE * value, const char *str)
+{
+  int error;
+  DB_VALUE tmp_value;
+
+  CHECK_1ARG_ERROR (value);
+
+  error = db_make_string (&tmp_value, str);
+  if (error == NO_ERROR)
+    {
+      error = pr_clone_value (&tmp_value, value);
+    }
+
+  return error;
+}
+
 /*
  * db_make_char() -
  * return :

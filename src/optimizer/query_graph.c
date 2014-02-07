@@ -6052,6 +6052,7 @@ static QO_ENV *
 qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   QO_ENV *env;
+  PT_NODE *spec;
 
   env = (QO_ENV *) malloc (sizeof (QO_ENV));
   if (env == NULL)
@@ -6088,7 +6089,9 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
 
   assert (query->node_type == PT_SELECT);
   if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_COLS_SCHEMA)
-      || PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_FULL_INFO_COLS_SCHEMA))
+      || PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_FULL_INFO_COLS_SCHEMA)
+      || ((spec = query->info.query.q.select.from) != NULL
+	  && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
     {
       env->plan_dump_enabled = false;
     }

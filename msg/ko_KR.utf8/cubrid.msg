@@ -1212,7 +1212,8 @@ $ LOADDB
 1143 Handshake 에러 (peer host %1$s): 원격 접속 불허.
 1144 %1$s로의 연결 시도 타임아웃 (timeout: %2$d 초)
 1145 시스템 클래스의 소유자를 변경하는 것은 허용되지 않습니다.
-1146 마지막 에러
+1146 volume identifier %1$d does not exist.
+1147 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1644,6 +1645,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 279 Multiple insert targets not allowed.
 280 '%1$s' type is vclass, drop vclass with cascade constraints is not allowed.
 281 The FOR UPDATE clause cannot be used in subqueries, unions, with GROUP BY clause, DISTINCT operator, aggregate functions.
+282 Expects %1$s in argument position %2$d.
+283 Too many arguments specified.
+284 Too few arguments, need %1$d arguments.
+285 Expects %1$s for argument %2$s.
+286 Argument %1$s is missing.
+287 Unknown argument %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

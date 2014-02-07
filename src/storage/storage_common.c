@@ -362,3 +362,55 @@ recdes_set_data_area (RECDES * rec, char *data, int size)
   rec->data = data;
   rec->area_size = size;
 }
+
+char *
+lsa_to_string (char *buf, int buf_size, LOG_LSA * lsa)
+{
+  snprintf (buf, buf_size, "(%lld|%d)", (long long int) lsa->pageid,
+	    lsa->offset);
+  buf[buf_size - 1] = 0;
+  return buf;
+}
+
+char *
+oid_to_string (char *buf, int buf_size, OID * oid)
+{
+  snprintf (buf, buf_size, "(%d|%d|%d)", oid->volid, oid->pageid,
+	    oid->slotid);
+  buf[buf_size - 1] = 0;
+  return buf;
+}
+
+char *
+vpid_to_string (char *buf, int buf_size, VPID * vpid)
+{
+  snprintf (buf, buf_size, "(%d|%d)", vpid->volid, vpid->pageid);
+  buf[buf_size - 1] = 0;
+  return buf;
+}
+
+char *
+vfid_to_string (char *buf, int buf_size, VFID * vfid)
+{
+  snprintf (buf, buf_size, "(%d|%d)", vfid->volid, vfid->fileid);
+  buf[buf_size - 1] = 0;
+  return buf;
+}
+
+char *
+hfid_to_string (char *buf, int buf_size, HFID * hfid)
+{
+  snprintf (buf, buf_size, "(%d|%d|%d)", hfid->vfid.volid,
+	    hfid->vfid.fileid, hfid->hpgid);
+  buf[buf_size - 1] = 0;
+  return buf;
+}
+
+char *
+btid_to_string (char *buf, int buf_size, BTID * btid)
+{
+  snprintf (buf, buf_size, "(%d|%d|%d)", btid->vfid.volid,
+	    btid->vfid.fileid, btid->root_pageid);
+  buf[buf_size - 1] = 0;
+  return buf;
+}

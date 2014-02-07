@@ -2391,6 +2391,8 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 	    qexec_clear_regu_list (xasl_p, p->s_id.s.ssid.scan_pred.regu_list,
 				   final);
 	  break;
+	case S_SHOWSTMT_SCAN:
+	  break;
 	case S_METHOD_SCAN:
 	  break;
 	case S_VALUES_SCAN:
@@ -2445,6 +2447,11 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 				   final);
 	  pg_cnt +=
 	    qexec_clear_regu_list (xasl_p, p->s.list_node.list_regu_list_rest,
+				   final);
+	  break;
+	case TARGET_SHOWSTMT:
+	  pg_cnt +=
+	    qexec_clear_regu_list (xasl_p, p->s.showstmt_node.arg_list,
 				   final);
 	  break;
 	case TARGET_SET:
@@ -7307,6 +7314,23 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 	}
       break;
 
+    case TARGET_SHOWSTMT:
+      /* open a showstmt scan */
+      if (scan_open_showstmt_scan (thread_p, s_id,
+				   grouped,
+				   curr_spec->single_fetch,
+				   curr_spec->s_dbval,
+				   val_list,
+				   vd,
+				   curr_spec->where_pred,
+				   curr_spec->s.showstmt_node.show_type,
+				   curr_spec->s.showstmt_node.arg_list) !=
+	  NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      break;
+
     case TARGET_REGUVAL_LIST:
       /* open a regu value list scan */
       if (scan_open_values_scan (thread_p, s_id,
@@ -7412,6 +7436,9 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	  break;
 	case TARGET_LIST:
 	  mnt_qm_lscans (thread_p);
+	  break;
+	case TARGET_SHOWSTMT:
+	  /* do nothing */
 	  break;
 	case TARGET_REGUVAL_LIST:
 	  /* currently do nothing */

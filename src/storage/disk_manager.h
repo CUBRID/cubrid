@@ -281,6 +281,14 @@ extern INT32 disk_get_max_numpages (THREAD_ENTRY * thread_p,
 extern DISK_ISVALID disk_check (THREAD_ENTRY * thread_p, INT16 volid,
 				bool repair);
 extern int disk_dump_all (THREAD_ENTRY * thread_p, FILE * fp);
+extern int disk_volume_header_start_scan (THREAD_ENTRY * thread_p, int type,
+					  DB_VALUE ** arg_values, int arg_cnt,
+					  void **ctx);
+extern int disk_volume_header_end_scan (THREAD_ENTRY * thread_p, void **ctx);
+extern SCAN_CODE disk_volume_header_next_scan (THREAD_ENTRY * thread_p,
+					       int cursor,
+					       DB_VALUE ** out_values,
+					       int out_cnt, void *ctx);
 
 extern int disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p,
 					  LOG_RCV * rcv);

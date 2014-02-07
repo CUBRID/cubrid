@@ -82,6 +82,7 @@ static bool qdump_print_class (CLS_SPEC_TYPE * ptr);
 static bool qdump_print_hfid (HFID id);
 static bool qdump_print_vfid (VFID id);
 static bool qdump_print_list (LIST_SPEC_TYPE * ptr);
+static bool qdump_print_showstmt (SHOWSTMT_SPEC_TYPE * ptr);
 static bool qdump_print_outlist (const char *title, OUTPTR_LIST * outlist);
 static bool qdump_print_list_id (QFILE_LIST_ID * idptr);
 static bool qdump_print_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * typeptr);
@@ -429,6 +430,8 @@ qdump_target_type_string (TARGET_TYPE type)
       return "class_attr";
     case TARGET_LIST:
       return "list";
+    case TARGET_SHOWSTMT:
+      return "show";
     case TARGET_SET:
       return "set";
     case TARGET_METHOD:
@@ -499,6 +502,11 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
     {
       qdump_print_list (&ACCESS_SPEC_LIST_SPEC (spec_list_p));
     }
+  else if (type == TARGET_SHOWSTMT)
+    {
+      qdump_print_showstmt (&ACCESS_SPEC_SHOWSTMT_SPEC (spec_list_p));
+    }
+
 
   if (spec_list_p->where_key)
     {
@@ -752,6 +760,20 @@ qdump_print_list (LIST_SPEC_TYPE * list_p)
   qdump_print_regu_variable_list (list_p->list_regu_list_pred);
   fprintf (foutput, "\n	regu_list_rest:");
   qdump_print_regu_variable_list (list_p->list_regu_list_rest);
+  return true;
+}
+
+/*
+ * qdump_print_showstmt () -
+ *   return:
+ *   ptr(in):
+ */
+static bool
+qdump_print_showstmt (SHOWSTMT_SPEC_TYPE * showstmt_p)
+{
+  fprintf (foutput, "show_type: %d", showstmt_p->show_type);
+  fprintf (foutput, "\n	show_args: ");
+  qdump_print_regu_variable_list (showstmt_p->arg_list);
   return true;
 }
 
@@ -2972,6 +2994,10 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
       else if (type == TARGET_LIST)
 	{
 	  json_object_set_new (scan, "access", json_string ("temp"));
+	}
+      else if (type == TARGET_SHOWSTMT)
+	{
+	  json_object_set_new (scan, "access", json_string ("show"));
 	}
       else if (type == TARGET_SET)
 	{

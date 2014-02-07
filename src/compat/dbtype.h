@@ -975,6 +975,7 @@ extern int db_make_method_error (DB_VALUE * value,
 extern int db_make_short (DB_VALUE * value, const DB_C_SHORT num);
 extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
 extern int db_make_string (DB_VALUE * value, const char *str);
+extern int db_make_string_copy (DB_VALUE * value, const char *str);
 extern int db_make_numeric (DB_VALUE * value,
 			    const DB_C_NUMERIC num,
 			    const int precision, const int scale);

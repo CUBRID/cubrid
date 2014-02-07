@@ -7037,18 +7037,20 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 {
   int level, seqno = 0;
   PT_NODE *next, *pred, **wherep, **havingp, *dummy;
-  PT_NODE *t_node, *spec;
+  PT_NODE *t_node, *spec, *derived_table;
   PT_NODE **startwithp, **connectbyp, **aftercbfilterp;
   PT_NODE *limit, *derived;
   PT_NODE **merge_upd_wherep, **merge_ins_wherep, **merge_del_wherep;
   PT_NODE **orderby_for_p;
   PT_NODE **limit_ptr;
+  PT_NODE **show_argp;
   bool call_auto_parameterize = false;
 
   dummy = NULL;
   wherep = havingp = startwithp = connectbyp = aftercbfilterp = &dummy;
   merge_upd_wherep = merge_ins_wherep = merge_del_wherep = &dummy;
   orderby_for_p = &dummy;
+  show_argp = &dummy;
 
   switch (node->node_type)
     {
@@ -7137,6 +7139,14 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (node->info.query.q.select.after_cb_filter)
 	{
 	  aftercbfilterp = &node->info.query.q.select.after_cb_filter;
+	}
+      spec = node->info.query.q.select.from;
+      if (spec != NULL
+	  && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT
+	  && (derived_table = spec->info.spec.derived_table) != NULL
+	  && derived_table->node_type == PT_SHOWSTMT)
+	{
+	  show_argp = &derived_table->info.showstmt.show_args;
 	}
       orderby_for_p = &node->info.query.orderby_for;
       qo_rewrite_index_hints (parser, node);
@@ -7304,7 +7314,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
       if (!*wherep && !*havingp && !*aftercbfilterp && !*startwithp
 	  && !*connectbyp && !*merge_upd_wherep && !*merge_ins_wherep
-	  && !*merge_del_wherep && !*orderby_for_p)
+	  && !*merge_del_wherep && !*orderby_for_p && !*show_argp)
 	{
 	  if (node->node_type != PT_SELECT)
 	    {
@@ -7778,6 +7788,25 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   if (node->node_type == PT_UPDATE && call_auto_parameterize)
     {
       qo_do_auto_parameterize (parser, node->info.update.assignment);
+    }
+
+  if (pt_is_const_not_hostvar (*show_argp))
+    {
+      PT_NODE *p = *show_argp;
+      PT_NODE *result_list = NULL;
+      PT_NODE *one_rewrited;
+      PT_NODE *save;
+
+      while (p)
+	{
+	  save = p->next;
+	  p->next = NULL;
+	  one_rewrited = pt_rewrite_to_auto_param (parser, p);
+	  p = save;
+
+	  result_list = parser_append_node (one_rewrited, result_list);
+	}
+      *show_argp = result_list;
     }
 
   limit_ptr = NULL;

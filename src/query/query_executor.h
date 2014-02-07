@@ -64,6 +64,9 @@
 #define ACCESS_SPEC_LIST_SPEC(ptr) \
         ((ptr)->s.list_node)
 
+#define ACCESS_SPEC_SHOWSTMT_SPEC(ptr) \
+        ((ptr)->s.showstmt_node)
+
 #define ACCESS_SPEC_RLIST_SPEC(ptr) \
         ((ptr)->s.reguval_list_node)
 
@@ -202,7 +205,8 @@ typedef enum
   TARGET_LIST,
   TARGET_SET,
   TARGET_METHOD,
-  TARGET_REGUVAL_LIST
+  TARGET_REGUVAL_LIST,
+  TARGET_SHOWSTMT
 } TARGET_TYPE;
 
 typedef enum
@@ -244,6 +248,13 @@ struct list_spec_node
 				 */
 };
 
+typedef struct showstmt_spec_node SHOWSTMT_SPEC_TYPE;
+struct showstmt_spec_node
+{
+  SHOWSTMT_TYPE show_type;	/* show statement type */
+  REGU_VARIABLE_LIST arg_list;	/* show statement args */
+};
+
 typedef struct set_spec_node SET_SPEC_TYPE;
 struct set_spec_node
 {
@@ -272,6 +283,7 @@ union hybrid_node
 {
   CLS_SPEC_TYPE cls_node;	/* class specification */
   LIST_SPEC_TYPE list_node;	/* list specification */
+  SHOWSTMT_SPEC_TYPE showstmt_node;	/* show stmt specification */
   SET_SPEC_TYPE set_node;	/* set specification */
   METHOD_SPEC_TYPE method_node;	/* method specification */
   REGUVAL_LIST_SPEC_TYPE reguval_list_node;	/* reguval_list specification */

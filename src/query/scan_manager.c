@@ -217,6 +217,8 @@ static SCAN_CODE scan_next_index_lookup_heap (THREAD_ENTRY * thread_p,
 					      TRAN_ISOLATION isolation);
 static SCAN_CODE scan_next_list_scan (THREAD_ENTRY * thread_p,
 				      SCAN_ID * scan_id);
+static SCAN_CODE scan_next_showstmt_scan (THREAD_ENTRY * thread_p,
+					  SCAN_ID * scan_id);
 static SCAN_CODE scan_next_set_scan (THREAD_ENTRY * thread_p,
 				     SCAN_ID * scan_id);
 static SCAN_CODE scan_next_value_scan (THREAD_ENTRY * thread_p,
@@ -3531,6 +3533,127 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 }
 
 /*
+ * scan_open_showstmt_scan () -
+ *   return: NO_ERROR
+ *   scan_id(out): Scan identifier
+ *   grouped(in):
+ *   single_fetch(in):
+ *   join_dbval(in):
+ *   val_list(in):
+ *   vd(in):
+ *   show_type(in):
+ *   arg_list(in):
+ */
+int
+scan_open_showstmt_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+			 /* fields of SCAN_ID */
+			 int grouped,
+			 QPROC_SINGLE_FETCH single_fetch,
+			 DB_VALUE * join_dbval, VAL_LIST * val_list,
+			 VAL_DESCR * vd,
+			 /* fields of SHOWSTMT_SCAN_ID */
+			 PRED_EXPR * pr,
+			 SHOWSTMT_TYPE show_type, REGU_VARIABLE_LIST arg_list)
+{
+  SHOWSTMT_SCAN_ID *stsidp;
+  int i, arg_cnt, out_cnt;
+  REGU_VARIABLE_LIST regu_var_p;
+  REGU_VARIABLE *regu;
+  QPROC_DB_VALUE_LIST valp;
+  DB_VALUE **arg_values = NULL, **out_values = NULL;
+  DB_TYPE single_node_type = DB_TYPE_NULL;
+  int error;
+
+  /* scan type is S_SHOWSTMT_SCAN */
+  scan_id->type = S_SHOWSTMT_SCAN;
+
+  /* initialize SCAN_ID structure */
+  /* readonly_scan = true, fixed = true */
+  scan_init_scan_id (scan_id, true, S_SELECT, true, grouped, single_fetch,
+		     join_dbval, val_list, vd);
+
+  /* initialize SHOWSTMT_SCAN_ID structure */
+  stsidp = &scan_id->s.stsid;
+
+  for (regu_var_p = arg_list, i = 0; regu_var_p;
+       regu_var_p = regu_var_p->next)
+    {
+      i++;
+    }
+
+  arg_cnt = i;
+  if (arg_cnt > 0)
+    {
+      arg_values = (DB_VALUE **)
+	db_private_alloc (thread_p, arg_cnt * sizeof (DB_VALUE *));
+      if (arg_values == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit_on_error;
+	}
+
+      for (regu_var_p = arg_list, i = 0; regu_var_p;
+	   regu_var_p = regu_var_p->next, i++)
+	{
+	  regu = &regu_var_p->value;
+	  assert (regu != NULL && regu->type == TYPE_POS_VALUE);
+	  error = fetch_peek_dbval (thread_p, regu, vd, NULL,
+				    NULL, NULL, &arg_values[i]);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      assert (i == arg_cnt);
+    }
+
+  /* prepare out_values */
+  out_cnt = val_list->val_cnt;
+  out_values =
+    (DB_VALUE **) db_private_alloc (thread_p, out_cnt * sizeof (DB_VALUE *));
+  if (out_values == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit_on_error;
+    }
+
+  for (valp = val_list->valp, i = 0; valp; valp = valp->next, i++)
+    {
+      out_values[i] = valp->val;
+    }
+  assert (i == out_cnt);
+
+  stsidp->show_type = show_type;
+  stsidp->arg_values = arg_values;
+  stsidp->arg_cnt = arg_cnt;
+  stsidp->out_values = out_values;
+  stsidp->out_cnt = out_cnt;
+  stsidp->cursor = 0;
+  stsidp->ctx = NULL;
+
+  /* scan predicates */
+  scan_init_scan_pred (&stsidp->scan_pred, NULL, pr,
+		       ((pr) ? eval_fnc (thread_p, pr,
+					 &single_node_type) : NULL));
+
+  return NO_ERROR;
+
+exit_on_error:
+  if (arg_values != NULL)
+    {
+      db_private_free_and_init (thread_p, arg_values);
+    }
+
+  if (out_values != NULL)
+    {
+      db_private_free_and_init (thread_p, out_values);
+    }
+  return error;
+}
+
+
+
+/*
  * scan_open_values_scan () -
  *   return: NO_ERROR
  *   scan_id(out): Scan identifier
@@ -3831,6 +3954,13 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       qfile_start_scan_fix (thread_p, &llsidp->lsid);
       break;
 
+    case S_SHOWSTMT_SCAN:
+      if (showstmt_start_scan (thread_p, scan_id) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      break;
+
     case S_VALUES_SCAN:
       rvsidp = &scan_id->s.rvsid;
       if (rvsidp->regu_list == NULL)
@@ -4118,6 +4248,7 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
     case S_CLASS_ATTR_SCAN:
     case S_LIST_SCAN:
+    case S_SHOWSTMT_SCAN:
     case S_SET_SCAN:
     case S_METHOD_SCAN:
     case S_VALUES_SCAN:
@@ -4230,6 +4361,10 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       qfile_close_scan (thread_p, &llsidp->lsid);
       break;
 
+    case S_SHOWSTMT_SCAN:
+      showstmt_end_scan (thread_p, scan_id);
+      break;
+
     case S_VALUES_SCAN:
       rvsidp = &scan_id->s.rvsid;
       break;
@@ -4257,6 +4392,7 @@ void
 scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   INDX_SCAN_ID *isidp;
+  SHOWSTMT_SCAN_ID *stsidp;
 
   if (scan_id == NULL || scan_id->status == S_CLOSED)
     {
@@ -4381,6 +4517,18 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_LIST_SCAN:
+      break;
+
+    case S_SHOWSTMT_SCAN:
+      stsidp = &scan_id->s.stsid;
+      if (stsidp->arg_values != NULL)
+	{
+	  db_private_free_and_init (thread_p, stsidp->arg_values);
+	}
+      if (stsidp->out_values != NULL)
+	{
+	  db_private_free_and_init (thread_p, stsidp->out_values);
+	}
       break;
 
     case S_SET_SCAN:
@@ -4539,6 +4687,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_LIST_SCAN:
       status = scan_next_list_scan (thread_p, scan_id);
+      break;
+
+    case S_SHOWSTMT_SCAN:
+      status = scan_next_showstmt_scan (thread_p, scan_id);
       break;
 
     case S_VALUES_SCAN:
@@ -5600,6 +5752,100 @@ scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
+ * scan_next_showstmt_scan () - The scan is moved to the next value scan item.
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   scan_id(in/out): Scan identifier
+ *
+ * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
+ */
+static SCAN_CODE
+scan_next_showstmt_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  SHOWSTMT_SCAN_ID *stsidp;
+  SCAN_CODE qp_scan;
+  DB_LOGICAL ev_res;
+
+  stsidp = &scan_id->s.stsid;
+
+  if (scan_id->position == S_BEFORE)
+    {
+      scan_id->position = S_ON;
+    }
+
+  if (scan_id->position == S_ON)
+    {
+      while ((qp_scan = showstmt_next_scan (thread_p, scan_id)) == S_SUCCESS)
+	{
+	  /* evaluate the predicate to see if the tuple qualifies */
+	  ev_res = V_TRUE;
+	  if (stsidp->scan_pred.pr_eval_fnc && stsidp->scan_pred.pred_expr)
+	    {
+	      ev_res = (*stsidp->scan_pred.pr_eval_fnc) (thread_p,
+							 stsidp->
+							 scan_pred.pred_expr,
+							 scan_id->vd, NULL);
+	      if (ev_res == V_ERROR)
+		{
+		  return S_ERROR;
+		}
+	    }
+
+	  if (scan_id->qualification == QPROC_QUALIFIED)
+	    {
+	      if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+		{
+		  continue;	/* not qualified, continue to the next tuple */
+		}
+	    }
+	  else if (scan_id->qualification == QPROC_NOT_QUALIFIED)
+	    {
+	      if (ev_res != V_FALSE)	/* V_TRUE || V_UNKNOWN */
+		{
+		  continue;	/* qualified, continue to the next tuple */
+		}
+	    }
+	  else if (scan_id->qualification == QPROC_QUALIFIED_OR_NOT)
+	    {
+	      if (ev_res == V_TRUE)
+		{
+		  scan_id->qualification = QPROC_QUALIFIED;
+		}
+	      else if (ev_res == V_FALSE)
+		{
+		  scan_id->qualification = QPROC_NOT_QUALIFIED;
+		}
+	      else		/* V_UNKNOWN */
+		{
+		  /* nop */
+		  ;
+		}
+	    }
+	  else
+	    {			/* invalid value; the same as QPROC_QUALIFIED */
+	      if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+		{
+		  continue;	/* not qualified, continue to the next tuple */
+		}
+	    }
+
+	  return S_SUCCESS;
+	}
+
+    }
+  else if (scan_id->position == S_AFTER)
+    {
+      return S_END;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_CRSPOS, 0);
+      return S_ERROR;
+    }
+
+  return qp_scan;
+}
+
+/*
  * scan_next_set_scan () - The scan is moved to the next set scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
@@ -6652,6 +6898,10 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * stats)
 	  json_object_set_new (stats, "iss", json_true ());
 	}
     }
+  else if (scan_id->type == S_SHOWSTMT_SCAN)
+    {
+      json_object_set_new (stats, "show", scan);
+    }
   else if (scan_id->type == S_SET_SCAN)
     {
       json_object_set_new (stats, "set", scan);
@@ -6694,6 +6944,10 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   else if (scan_id->type == S_LIST_SCAN)
     {
       fprintf (fp, "(temp");
+    }
+  else if (scan_id->type == S_SHOWSTMT_SCAN)
+    {
+      fprintf (fp, "(show");
     }
   else if (scan_id->type == S_SET_SCAN)
     {

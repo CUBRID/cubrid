@@ -1212,7 +1212,8 @@ $ LOADDB
 1143 Handshake error (peer host %1$s): remote access to server not allowed.
 1144 Timed out attempting to connect to %1$s. (timeout: %2$d sec(s))
 1145 To change the owner of a system class is not allowed.
-1146 Dernière erreur
+1146 volume identifier %1$d does not exist.
+1147 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1644,6 +1645,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 279 Multiple insert targets not allowed.
 280 '%1$s' type is vclass, drop vclass with cascade constraints is not allowed.
 281 The FOR UPDATE clause cannot be used in subqueries, unions, with GROUP BY clause, DISTINCT operator, aggregate functions.
+282 Expects %1$s in argument position %2$d.
+283 Too many arguments specified.
+284 Too few arguments, need %1$d arguments.
+285 Expects %1$s for argument %2$s.
+286 Argument %1$s is missing.
+287 Unknown argument %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.

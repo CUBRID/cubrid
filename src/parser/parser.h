@@ -806,6 +806,9 @@ extern "C"
 					    bool is_full_syntax,
 					    int like_where_syntax,
 					    PT_NODE * like_or_where_expr);
+  extern PT_NODE *pt_make_query_showstmt (PARSER_CONTEXT * parser,
+					  unsigned int type, PT_NODE * args,
+					  PT_NODE * where_cond);
   extern PT_NODE *pt_make_query_show_columns (PARSER_CONTEXT * parser,
 					      PT_NODE * original_cls_id,
 					      int like_where_syntax,

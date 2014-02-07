@@ -40,6 +40,7 @@
 #include "dbi.h"
 #include "xasl_generation.h"
 #include "view_transform.h"
+#include "show_meta.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -9942,7 +9943,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *next, *top_node = info->top_node;
   PT_NODE *orig = node;
   PT_NODE *t_node;
-  PT_NODE *entity;
+  PT_NODE *entity, *derived_table;
   PT_ASSIGNMENTS_HELPER ea;
   PT_NODE *sort_spec = NULL;
 
@@ -10433,6 +10434,23 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 		  node->info.query.q.select.check_cycles =
 		    CONNECT_BY_CYCLES_IGNORE;
 		}
+	    }
+	}
+
+      entity = node->info.query.q.select.from;
+      if (entity != NULL
+	  && entity->info.spec.derived_table_type == PT_IS_SHOWSTMT
+	  && (derived_table = entity->info.spec.derived_table) != NULL
+	  && derived_table->node_type == PT_SHOWSTMT)
+	{
+	  SHOWSTMT_TYPE show_type;
+	  SHOW_SEMANTIC_CHECK_FUNC check_func = NULL;
+
+	  show_type = derived_table->info.showstmt.show_type;
+	  check_func = showstmt_get_metadata (show_type)->semantic_check_func;
+	  if (check_func != NULL)
+	    {
+	      node = (*check_func) (parser, node);
 	    }
 	}
 

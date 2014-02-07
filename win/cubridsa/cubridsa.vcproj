@@ -531,6 +531,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\query\show_scan.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\query\stream_to_xasl.c"
 					>
 				</File>
@@ -1025,6 +1029,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\parser\semantic_check.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\parser\show_meta.c"
 					>
 				</File>
 				<File
