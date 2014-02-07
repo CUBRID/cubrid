@@ -19341,6 +19341,10 @@ end:
 	      result->info.value.text =
 		pt_append_string (parser, NULL, expr->alias_print);
 	    }
+	  if (PT_IS_VALUE_NODE (result))
+	    {
+	      result->info.value.is_collate_allowed = true;
+	    }
 	  parser_free_tree (parser, expr);
 	}
 
@@ -19503,6 +19507,11 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
 	  if (alias_print == NULL && func->is_alias_enabled_expr)
 	    {
 	      alias_print = func->alias_print;
+	    }
+
+	  if (PT_IS_VALUE_NODE (result))
+	    {
+	      result->info.value.is_collate_allowed = true;
 	    }
 
 	  parser_free_tree (parser, func);
@@ -19989,6 +19998,8 @@ pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 		  dest->info.value.print_charset;
 		temp->info.value.print_collation =
 		  dest->info.value.print_collation;
+		temp->info.value.is_collate_allowed =
+		  dest->info.value.is_collate_allowed;
 		*dest = *temp;
 		if (data_type != NULL)
 		  {

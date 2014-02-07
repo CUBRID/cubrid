@@ -13606,6 +13606,11 @@ primary_w_collate
   			    node = pt_set_collation_modifier (this_parser, node, coll_node);
   			  }
 
+			if (node->node_type == PT_VALUE)
+  			  {
+  			    node->info.value.is_collate_allowed = true;
+  			  }
+
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -18189,7 +18194,6 @@ primitive_type
 			      }
 
 			    assert (elem->node_type == PT_VALUE);
-			    elem->info.value.print_collation = false;
 			    elem->info.value.print_charset = false;
 
 			    elem_cs = elem->data_type->info.data_type.units;
@@ -20209,10 +20213,6 @@ escape_literal
 		{{
 
 			PT_NODE *node = $1;
-			if (node->node_type == PT_VALUE)
-			  {
-			    node->info.value.print_collation = false;
-			  }
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 

@@ -720,9 +720,8 @@ enum pt_custom_print
 				 * instead pt_print_tree
 				 */
   PT_SUPPRESS_BIGINT_CAST = 0x4000000,
-  PT_SUPPRESS_COLLATE_PRINT = 0x8000000,
-  PT_CHARSET_COLLATE_FULL = 0x10000000,
-  PT_CHARSET_COLLATE_USER_ONLY = 0x20000000
+  PT_CHARSET_COLLATE_FULL = 0x8000000,
+  PT_CHARSET_COLLATE_USER_ONLY = 0x10000000
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -2796,6 +2795,9 @@ struct pt_value_info
   bool print_collation;
   bool has_cs_introducer;	/* 1 if charset introducer is used for string
 				 * node e.g. _utf8'a'; 0 otherwise. */
+  bool is_collate_allowed;	/* 1 if this is a PT_VALUE allowed to have 
+				 * the COLLATE modifier (the grammar context
+				 * in which is created allows it) */
   int coll_modifier;		/* collation modifier = collation + 1 */
 };
 

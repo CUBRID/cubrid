@@ -6382,16 +6382,12 @@ static PARSER_VARCHAR *
 pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1;
-  unsigned int save_custom;
 
   r1 = pt_print_bytes (parser, p->info.alter_user.user_name);
   b = pt_append_nulstring (parser, b, "alter user ");
   b = pt_append_varchar (parser, b, r1);
 
-  save_custom = parser->custom_print;
-  parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
   r1 = pt_print_bytes (parser, p->info.alter_user.password);
-  parser->custom_print = save_custom;
   b = pt_append_nulstring (parser, b, " password ");
   b = pt_append_varchar (parser, b, r1);
 
@@ -6557,7 +6553,6 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1;
   char s[PT_MEMB_BUF_SIZE];
-  unsigned int save_custom;
 
   if (!(parser->custom_print & PT_SUPPRESS_META_ATTR_CLASS)
       && p->info.attr_def.attr_type == PT_META_ATTR)
@@ -6658,11 +6653,8 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "(");
       if (p->data_type != NULL)
 	{
-	  save_custom = parser->custom_print;
-	  parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
 	  r1 = pt_print_bytes_l (parser,
 				 p->data_type->info.data_type.enumeration);
-	  parser->custom_print = save_custom;
 	}
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
@@ -7431,7 +7423,6 @@ static PARSER_VARCHAR *
 pt_print_create_user (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1;
-  unsigned int save_custom;
 
   r1 = pt_print_bytes (parser, p->info.create_user.user_name);
   b = pt_append_nulstring (parser, b, "create user ");
@@ -7439,10 +7430,7 @@ pt_print_create_user (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.create_user.password)
     {
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
       r1 = pt_print_bytes (parser, p->info.create_user.password);
-      parser->custom_print = save_custom;
       b = pt_append_nulstring (parser, b, " password ");
       b = pt_append_varchar (parser, b, r1);
     }
@@ -7596,7 +7584,6 @@ static PARSER_VARCHAR *
 pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1, *r2, *r3;
-  unsigned int save_custom;
 
   r1 = pt_print_bytes (parser, p->info.sp.name);
   q = pt_append_nulstring (parser, q, "create ");
@@ -7620,10 +7607,7 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 			       pt_show_type_enum (p->info.sp.ret_type));
     }
 
-  save_custom = parser->custom_print;
-  parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
   r3 = pt_print_bytes (parser, p->info.sp.java_method);
-  parser->custom_print = save_custom;
   q = pt_append_nulstring (parser, q, " as language java name ");
   q = pt_append_varchar (parser, q, r3);
 
@@ -8035,7 +8019,6 @@ pt_print_parts (PARSER_CONTEXT * parser, PT_NODE * p)
 
   save_custom = parser->custom_print;
   parser->custom_print |= PT_SUPPRESS_BIGINT_CAST;
-  parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
 
   r2 = pt_print_bytes_l (parser, p->info.parts.values);
 
@@ -8484,7 +8467,6 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = 0, *r1;
   char buf[PT_MEMB_BUF_SIZE];
   bool show_collation = false;
-  unsigned int save_custom;
 
   switch (p->type_enum)
     {
@@ -8561,10 +8543,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_ENUMERATION:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       q = pt_append_nulstring (parser, q, "(");
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
       r1 = pt_print_bytes_l (parser, p->info.data_type.enumeration);
-      parser->custom_print = save_custom;
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       show_collation = true;
@@ -9926,7 +9905,6 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
   int print_from = 0;
   PT_NODE *arg3;
   PT_NODE *between, *between_ge_lt;
-  unsigned int save_custom;
 
   assert_release (p != p->info.expr.arg1);
   assert_release (p != p->info.expr.arg2);
@@ -10649,10 +10627,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
 
       q = pt_append_nulstring (parser, q, ", ");
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
       r1 = pt_print_bytes (parser, p->info.expr.arg2);
-      parser->custom_print = save_custom;
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
@@ -10858,10 +10833,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_SYS_CONNECT_BY_PATH:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
-      parser->custom_print = save_custom;
       q = pt_append_nulstring (parser, q, " sys_connect_by_path(");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ", ");
@@ -11391,8 +11363,8 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	      /* if argument value was printed with 'collate', then use
 	       * parentheses */
-	      if (!(v->info.value.print_collation)
-		  || (parser->custom_print & PT_SUPPRESS_COLLATE_PRINT)
+	      if (v->info.value.print_collation == false
+		  || v->info.value.is_collate_allowed == false
 		  || (v_coll_id == LANG_SYS_COLLATION
 		      && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT)))
 		{
@@ -11994,10 +11966,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_LIKE_ESCAPE:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
-      parser->custom_print = save_custom;
 
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q,
@@ -12087,14 +12056,10 @@ static PARSER_VARCHAR *
 pt_print_file_path (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1;
-  unsigned int save_custom;
 
   if (p->info.file_path.string)
     {
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
       r1 = pt_print_bytes (parser, p->info.file_path.string);
-      parser->custom_print = save_custom;
       q = pt_append_varchar (parser, q, r1);
     }
   return q;
@@ -12202,15 +12167,10 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 	      if (p->info.function.arg_list->next != NULL)
 		{
 		  PARSER_VARCHAR *r2;
-		  unsigned int save_custom;
 		  /* print separator */
 		  r1 = pt_append_nulstring (parser, r1, " separator ");
-
-		  save_custom = parser->custom_print;
-		  parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
 		  r2 = pt_print_bytes (parser,
 				       p->info.function.arg_list->next);
-		  parser->custom_print = save_custom;
 		  r1 = pt_append_varchar (parser, r1, r2);
 		}
 	    }
@@ -12399,7 +12359,6 @@ pt_print_get_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
   PT_MISC_TYPE option;
-  unsigned int save_custom;
 
   option = p->info.get_opt_lvl.option;
   b = pt_append_nulstring (parser, b, "get optimization ");
@@ -12407,10 +12366,7 @@ pt_print_get_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.get_opt_lvl.args)
     {
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
       r1 = pt_print_bytes (parser, p->info.get_opt_lvl.args);
-      parser->custom_print = save_custom;
       b = pt_append_nulstring (parser, b, " ");
       b = pt_append_varchar (parser, b, r1);
     }
@@ -14821,12 +14777,8 @@ static PARSER_VARCHAR *
 pt_print_set_names (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
-  unsigned int save_custom;
 
   b = pt_append_nulstring (parser, b, "set names ");
-
-  save_custom = parser->custom_print;
-  parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
 
   assert (p->info.set_names.charset_node != NULL);
   if (p->info.set_names.charset_node != NULL)
@@ -14840,8 +14792,6 @@ pt_print_set_names (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.set_names.collation_node);
       b = pt_append_varchar (parser, b, r1);
     }
-
-  parser->custom_print = save_custom;
 
   return b;
 }
@@ -14886,13 +14836,9 @@ pt_print_set_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1, *r2 = NULL;
   PT_MISC_TYPE option;
-  unsigned int save_custom;
 
   option = p->info.set_opt_lvl.option;
-  save_custom = parser->custom_print;
-  parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
   r1 = pt_print_bytes (parser, p->info.set_opt_lvl.val);
-  parser->custom_print = save_custom;
   if (option == PT_OPT_COST)
     {
       r2 = pt_print_bytes (parser, p->info.set_opt_lvl.val->next);
@@ -14949,16 +14895,12 @@ static PARSER_VARCHAR *
 pt_print_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
-  unsigned int save_custom;
 
   b = pt_append_nulstring (parser, b, "set parameters ");
 
   if (p->info.set_sys_params.val)
     {
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
       r1 = pt_print_bytes (parser, p->info.set_sys_params.val);
-      parser->custom_print = save_custom;
       b = pt_append_varchar (parser, b, r1);
     }
 
@@ -15294,7 +15236,6 @@ static PARSER_VARCHAR *
 pt_print_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
-  unsigned int save_custom;
 
   switch (p->info.trigger_action.action_type)
     {
@@ -15304,10 +15245,7 @@ pt_print_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p)
 			       (p->info.trigger_action.action_type));
       break;
     case PT_PRINT:
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
       r1 = pt_print_bytes (parser, p->info.trigger_action.string);
-      parser->custom_print = save_custom;
       b = pt_append_nulstring (parser, b, pt_show_misc_type
 			       (p->info.trigger_action.action_type));
       b = pt_append_nulstring (parser, b, " ");
@@ -15839,16 +15777,12 @@ static PARSER_VARCHAR *
 pt_print_get_stats (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1;
-  unsigned int save_custom;
 
   b = pt_append_nulstring (parser, b, "get statistics ");
 
   if (p->info.get_stats.args)
     {
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_SUPPRESS_COLLATE_PRINT;
       r1 = pt_print_bytes (parser, p->info.get_stats.args);
-      parser->custom_print = save_custom;
       b = pt_append_varchar (parser, b, r1);
     }
   if (p->info.get_stats.class_)
@@ -15991,6 +15925,7 @@ pt_init_value (PT_NODE * p)
   p->info.value.print_charset = false;
   p->info.value.print_collation = false;
   p->info.value.has_cs_introducer = false;
+  p->info.value.is_collate_allowed = false;
   p->info.value.coll_modifier = 0;
   return p;
 }
@@ -16215,7 +16150,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       if ((p->info.value.print_collation == false
 	   && !(parser->custom_print
 		& (PT_CHARSET_COLLATE_FULL | PT_CHARSET_COLLATE_USER_ONLY)))
-	  || (parser->custom_print & PT_SUPPRESS_COLLATE_PRINT)
+	  || (p->info.value.is_collate_allowed == false)
 	  || (prt_coll_id == LANG_SYS_COLLATION
 	      && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
 	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY
