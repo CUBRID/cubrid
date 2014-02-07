@@ -459,6 +459,22 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
     case PT_UNION:
       select_list = query->info.query.q.union_.select_list;
 
+      assert (query->parser_id == parser->id);
+      if (select_list && select_list->parser_id != parser->id)
+	{
+	  /* 
+	   * Union PT_NODE keeps select_list as reference
+	   * this case means, this parser copy other parsers tree
+	   * but union.info.select_list points old reference
+	   * 
+	   * this function can free & realloc select_list->data_type 
+	   * so, to prevent modifying (other parser's) original
+	   * tree, deep copy select_list in this parser's context
+	   */
+	  select_list = parser_copy_tree_list (parser, select_list);
+	  query->info.query.q.union_.select_list = select_list;
+	}
+
       arg1 = pt_get_select_list (parser, query->info.query.q.union_.arg1);
       arg2 = pt_get_select_list (parser, query->info.query.q.union_.arg2);
 
