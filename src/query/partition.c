@@ -139,10 +139,10 @@ static void partition_set_cache_info_for_expr (REGU_VARIABLE * regu_var,
 static MATCH_STATUS partition_match_pred_expr (PRUNING_CONTEXT * pinfo,
 					       const PRED_EXPR * pr,
 					       PRUNING_BITSET * pruned);
-static MATCH_STATUS partition_match_index (PRUNING_CONTEXT * pinfo,
-					   const KEY_INFO * key,
-					   RANGE_TYPE range_type,
-					   PRUNING_BITSET * pruned);
+static MATCH_STATUS partition_match_index_key (PRUNING_CONTEXT * pinfo,
+					       const KEY_INFO * key,
+					       RANGE_TYPE range_type,
+					       PRUNING_BITSET * pruned);
 static MATCH_STATUS partition_match_key_range (PRUNING_CONTEXT * pinfo,
 					       const KEY_RANGE * range,
 					       PRUNING_BITSET * pruned);
@@ -2215,8 +2215,8 @@ partition_match_key_range (PRUNING_CONTEXT * pinfo,
  * partitions (in/out): pruned partitions
  */
 static MATCH_STATUS
-partition_match_index (PRUNING_CONTEXT * pinfo, const KEY_INFO * key,
-		       RANGE_TYPE range_type, PRUNING_BITSET * pruned)
+partition_match_index_key (PRUNING_CONTEXT * pinfo, const KEY_INFO * key,
+			   RANGE_TYPE range_type, PRUNING_BITSET * pruned)
 {
   int error = NO_ERROR, i;
   int ptype = pinfo->partitions[0].partition_type;
@@ -2873,6 +2873,8 @@ partition_prune_index_scan (PRUNING_CONTEXT * pinfo)
 
   assert (pinfo != NULL);
   assert (pinfo->partitions != NULL);
+  assert (pinfo->spec != NULL);
+  assert (pinfo->spec->indexptr != NULL);
 
   pruningset_init (&pruned, PARTITIONS_COUNT (pinfo));
   if (pinfo->spec->where_pred != NULL)
@@ -2898,12 +2900,20 @@ partition_prune_index_scan (PRUNING_CONTEXT * pinfo)
 	  pruningset_set_all (&pruned);
 	  status = MATCH_OK;
 	}
+      else if (pinfo->spec->indexptr->func_idx_col_id != -1)
+	{
+	  /* We are dealing with a function index, so all partitions qualify for
+           * the search.
+	   */
+	  pruningset_set_all (&pruned);
+	  status = MATCH_OK;
+	}
       else
 	{
-	  status = partition_match_index (pinfo,
-					  &pinfo->spec->indexptr->key_info,
-					  pinfo->spec->indexptr->range_type,
-					  &pruned);
+	  status = partition_match_index_key (pinfo,
+					      &pinfo->spec->indexptr->key_info,
+					      pinfo->spec->indexptr->range_type,
+					      &pruned);
 	}
     }
   if (status == MATCH_NOT_FOUND)
@@ -2988,6 +2998,15 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd,
     }
   else
     {
+      if (spec->indexptr == NULL)
+	{
+	  assert (false);
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  partition_clear_pruning_context (&pinfo);
+	  return ER_FAILED;
+	}
+
       if (pinfo.partition_pred->func_regu->type != TYPE_ATTR_ID)
 	{
 	  /* In the case of index keys, we will only apply pruning if the
