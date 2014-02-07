@@ -11044,7 +11044,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
       else
 	{
 	  assert_release (assign->regu_var != NULL);
-	  error = fetch_peek_dbval (thread_p, assign->regu_var, NULL, NULL,
+	  error = fetch_peek_dbval (thread_p, assign->regu_var, vd, NULL,
 				    NULL, NULL, &val);
 	  if (error != NO_ERROR)
 	    {
