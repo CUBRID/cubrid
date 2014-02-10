@@ -326,9 +326,9 @@
 		<row><td>dbghelp.dll</td><td>CUBRID</td><td>dbghelp.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\dbghelp.dll</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>dbgwclient.h</td><td>DBGW</td><td>DBGWClient.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWClient.h</td><td>1</td><td>NewSubFolder14</td></row>
 		<row><td>dbgwconnector3.dll</td><td>DBGW</td><td>DBGWConnector3.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3.dll</td><td>1</td><td>NewSubFolder15</td></row>
-		<row><td>dbgwconnector3mysql.dll</td><td>DBGW</td><td>DBGWConnector3MySQL.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3MySQL.dll</td><td>1</td><td>NewSubFolder15</td></row>
 		<row><td>dbgwconnector3.h</td><td>DBGW</td><td>DBGWConnector3.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\\DBGWConnector3.h</td><td>1</td><td>NewSubFolder14</td></row>
 		<row><td>dbgwconnector3.lib</td><td>DBGW</td><td>DBGWConnector3.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\DBGWConnector3.lib</td><td>1</td><td>NewSubFolder16</td></row>
+		<row><td>dbgwconnector3mysql.dll</td><td>DBGW</td><td>DBGWConnector3MySQL.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3MySQL.dll</td><td>1</td><td>NewSubFolder15</td></row>
 		<row><td>dbgwconnector3mysql.lib</td><td>DBGW</td><td>DBGWConnector3MySQL.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\DBGWConnector3MySQL.lib</td><td>1</td><td>NewSubFolder16</td></row>
 		<row><td>dbgwporting.h</td><td>DBGW</td><td>DBGWPorting.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\system\DBGWPorting.h</td><td>1</td><td>NewSubFolder19</td></row>
 		<row><td>dbi.h</td><td>CUBRID</td><td>dbi.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbi.h</td><td>1</td><td>NewSubFolder6</td></row>
@@ -1647,7 +1647,6 @@ QwBVAEIAUgBJAEQAAQBNAGUAZABpAGEA
 		<row><td>Registry55</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td/><td/><td>CUBRID</td><td>1</td></row>
 		<row><td>Registry56</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_DATABASES</td><td>&lt;TARGETDIR&gt;\databases</td><td>CUBRID</td><td>0</td></row>
 		<row><td>Registry57</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_MODE</td><td>client</td><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry58</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_CHARSET</td><td>en_US</td><td>CUBRID</td><td>0</td></row>
 		<row><td>Registry59</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID</td><td>&lt;TARGETDIR&gt;</td><td>CUBRID</td><td>0</td></row>
 		<row><td>Registry6</td><td>2</td><td>SOFTWARE\cmserver</td><td>Version</td><td>2.1.1</td><td>NoISRegistrySet</td><td>0</td></row>
 		<row><td>Registry7</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>

@@ -47,11 +47,13 @@ CFilename	cubrid, cubrid_databases, unicas;
 	} else if (!getenv(ENV_CUBRID_DATABASES)) {
 		m_errmsg.Format(MSG_ENV_ERROR, ENV_CUBRID_DATABASES);
 		return false;
-	} else if (!getenv(ENV_CUBRID_CHARSET)) {
-		m_errmsg.Format(MSG_ENV_ERROR, ENV_CUBRID_CHARSET);
-		return false;
 	} else {
-		theLang.ReadMessage(getenv(ENV_CUBRID), getenv(ENV_CUBRID_CHARSET));
+		/* ENV_CUBRID_MSG_LANG is an optional parameter */                           
+		if (getenv(ENV_CUBRID_MSG_LANG)) {                                           
+			theLang.ReadMessage(getenv(ENV_CUBRID), getenv(ENV_CUBRID_MSG_LANG));
+		} else {                                                                     
+			theLang.ReadMessage(getenv(ENV_CUBRID), "en_US");                    
+		}                                                                            
 	}
 
 	cubrid.Format("%s", getenv(ENV_CUBRID));
@@ -140,7 +142,6 @@ void CEnv::SetCUBRIDEnvVar()
 	TCHAR sEnvCUBRID_CAS[BUF_LENGTH];
 	TCHAR sEnvCUBRID_MANAGER[BUF_LENGTH];
 	TCHAR sEnvCUBRID_DATABASES[BUF_LENGTH];
-	TCHAR sEnvCUBRID_CHARSET[BUF_LENGTH];
 	TCHAR sEnvCUBRID_MODE[BUF_LENGTH];
 	TCHAR sEnvPath[BUF_LENGTH];
 
@@ -223,20 +224,6 @@ void CEnv::SetCUBRIDEnvVar()
 #ifdef _DEBUG
 		if (debugfd) {
 			fprintf(debugfd, "$CUBRID_MODE = %s\n", getenv("CUBRID_MODE"));
-		}
-#endif
-	}
-
-	dwBufLength = BUF_LENGTH;
-	nResult = RegQueryValueEx(hKey, TEXT("CUBRID_CHARSET"), NULL, NULL, (LPBYTE)sEnvCUBRID_CHARSET, &dwBufLength);
-	if (nResult == ERROR_SUCCESS) {
-		// set CUBRID Environment variable.
-		strcpy(EnvString, "CUBRID_CHARSET=");
-		strcat(EnvString, sEnvCUBRID_CHARSET);
-		_putenv(EnvString);
-#ifdef _DEBUG
-		if (debugfd) {
-			fprintf(debugfd, "$CUBRID_CHARSET = %s\n", getenv("CUBRID_CHARSET"));
 		}
 #endif
 	}

@@ -477,7 +477,6 @@ case $SHELL in
     */csh | */tcsh ) 
     echo "setenv    CUBRID                  $target_dir"             > $XDBMS_ENV_FILE1
     echo "setenv    CUBRID_DATABASES        $target_dir/databases"          >> $XDBMS_ENV_FILE1
-    echo 'setenv    CUBRID_CHARSET          en_US'                          >> $XDBMS_ENV_FILE1
 
     echo 'if (${?LD_LIBRARY_PATH}) then' >> $XDBMS_ENV_FILE1
     echo 'setenv    LD_LIBRARY_PATH         $CUBRID/lib:${LD_LIBRARY_PATH}'  >> $XDBMS_ENV_FILE1
@@ -495,7 +494,6 @@ esac
 #
 echo "CUBRID=$target_dir"                   > $XDBMS_ENV_FILE2
 echo "CUBRID_DATABASES=$target_dir/databases"      >> $XDBMS_ENV_FILE2
-echo 'CUBRID_CHARSET=en_US'                        >> $XDBMS_ENV_FILE2
 
 echo 'ld_lib_path=`printenv LD_LIBRARY_PATH`'          >> $XDBMS_ENV_FILE2
 echo 'if [ "$ld_lib_path" = "" ]'                      >> $XDBMS_ENV_FILE2
@@ -509,7 +507,6 @@ echo 'LIBPATH=$LD_LIBRARY_PATH'                         >> $XDBMS_ENV_FILE2
 echo 'PATH=$CUBRID/bin:$CUBRID/cubridmanager:$PATH' >> $XDBMS_ENV_FILE2
 echo "export CUBRID"                                    >> $XDBMS_ENV_FILE2
 echo "export CUBRID_DATABASES"                          >> $XDBMS_ENV_FILE2
-echo 'export CUBRID_CHARSET'                            >> $XDBMS_ENV_FILE2
 echo 'export LD_LIBRARY_PATH'                           >> $XDBMS_ENV_FILE2
 echo 'export SHLIB_PATH'                                >> $XDBMS_ENV_FILE2
 echo 'export LIBPATH'                                   >> $XDBMS_ENV_FILE2

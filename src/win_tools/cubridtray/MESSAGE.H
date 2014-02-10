@@ -259,7 +259,7 @@
 /* environment variable */
 #define	ENV_CUBRID			"CUBRID"
 #define	ENV_CUBRID_DATABASES	"CUBRID_DATABASES"
-#define	ENV_CUBRID_CHARSET	"CUBRID_CHARSET"
+#define	ENV_CUBRID_MSG_LANG	"CUBRID_MSG_LANG"
 
 /* filename */
 #define	FILE_ORDBLIST		"ordblist.txt"

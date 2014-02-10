@@ -10,9 +10,6 @@
 # set -x
 RootDir="CUBRID"
 
-CUBRID_CHARSET=en_US
-export CUBRID_CHARSET
-
 usage() {
 	echo "usage: $0 database" 1>&2
 	echo "       $0 -a : stop all databases in this host" 1>&2

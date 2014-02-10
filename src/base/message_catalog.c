@@ -618,7 +618,7 @@ msgcat_open (const char *name)
   MSG_CATD msg_catd;
   char path[PATH_MAX];
 
-  /* $CUBRID/msg/$CUBRID_CHARSET/'name' */
+  /* $CUBRID/msg/$CUBRID_MSG_LANG/'name' */
   envvar_localedir_file (path, PATH_MAX, lang_get_msg_Loc_name (), name);
   catd = catopen (path, 0);
   if (catd == NULL)
@@ -714,7 +714,7 @@ msgcat_open_file (const char *name)
   FILE *fp;
   char path[PATH_MAX];
 
-  /* $CUBRID/msg/$CUBRID_CHARSET/'name' */
+  /* $CUBRID/msg/$CUBRID_MSG_LANG/'name' */
   envvar_localedir_file (path, PATH_MAX, lang_get_msg_Loc_name (), name);
   fp = fopen (path, "r");
   if (fp == NULL)

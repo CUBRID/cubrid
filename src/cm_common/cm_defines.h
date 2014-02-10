@@ -28,9 +28,6 @@
 
 #define CUBRID_ENV "CUBRID"
 #define CUBRID_DATABASES_ENV "CUBRID_DATABASES"
-#define CUBRID_CHARSET_ENV "CUBRID_CHARSET"
-
-
 
 #define FREE_MEM(PTR)		\
 	do {			\

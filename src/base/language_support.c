@@ -874,7 +874,7 @@ lang_set_charset_lang (const char *lang_charset)
 
   if (lang_Loc_charset == INTL_CODESET_NONE)
     {
-      /* no charset provided in $CUBRID_CHARSET */
+      /* no charset provided in $CUBRID_MSG_LANG */
       (void) lang_get_builtin_lang_id_from_name (lang_Lang_name,
 						 &lang_Lang_id);
       lang_Loc_charset = lang_get_default_codeset (lang_Lang_id);

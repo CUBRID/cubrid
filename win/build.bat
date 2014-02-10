@@ -473,7 +473,7 @@ GOTO :EOF
 @echo.
 @echo. Examples:
 @echo.  %0                 # Build and pack all packages (32/release)
-@echo.  %0 /32 BUILD       # 64bit release build only
+@echo.  %0 /32 BUILD       # 32bit release build only
 @echo.  %0 /64 /Debug DIST # Create 64bit debug mode packages
 GOTO :EOF
 
