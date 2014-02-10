@@ -21350,11 +21350,22 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	  if (gbstate.input_recs > 0)
 	    {
-	      /* compare old value with current */
-	      int c = db_value_compare (&list_dbvals[i], &val);
+	      /* compare old value with current
+	       * total_order is 1. Then NULLs are equal.
+	       */
+	      int c = tp_value_compare (&list_dbvals[i], &val, 1, 1);
 
 	      if (c != DB_EQ)
 		{
+		  /* must be DB_LT or DB_GT */
+		  if (c != DB_LT && c != DB_GT)
+		    {
+		      assert_release (false);
+		      gbstate.state = ER_FAILED;
+
+		      GOTO_EXIT_ON_ERROR;
+		    }
+
 		  /* new group should begin, check code below */
 		  all_cols_equal = false;
 		}
