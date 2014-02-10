@@ -29,10 +29,16 @@
 namespace dbgw
 {
 
-  class _NClavisGlobal
+  class _NClavisGlobal::Impl
   {
   public:
-    ~_NClavisGlobal()
+    Impl() :
+      m_bIsCleanup(false)
+    {
+      curl_global_init(CURL_GLOBAL_ALL);
+    }
+
+    ~Impl()
     {
       cleanup();
     }
@@ -75,31 +81,49 @@ namespace dbgw
       m_mutex.unlock();
     }
 
-    static trait<_NClavisGlobal>::sp getInstance()
-    {
-      static trait<_NClavisGlobal>::sp m_pInstance;
-      static system::_Mutex mutex;
-
-      system::_MutexAutoLock lock(&mutex);
-
-      if (m_pInstance == NULL)
-        {
-          m_pInstance = trait<_NClavisGlobal>::sp(new _NClavisGlobal());
-        }
-
-      return m_pInstance;
-    }
-
   private:
-    _NClavisGlobal() :
-      m_bIsCleanup(false)
-    {
-      curl_global_init(CURL_GLOBAL_ALL);
-    }
-
     bool m_bIsCleanup;
     system::_Mutex m_mutex;
   };
+
+  _NClavisGlobal::_NClavisGlobal() :
+    m_pImpl(new Impl())
+  {
+  }
+
+  _NClavisGlobal::~_NClavisGlobal()
+  {
+    if (m_pImpl)
+      {
+        delete m_pImpl;
+      }
+  }
+
+  _NClavisGlobal *_NClavisGlobal::getInstance()
+  {
+    static _NClavisGlobal instance;
+    return &instance;
+  }
+
+  void _NClavisGlobal::init()
+  {
+    m_pImpl->init();
+  }
+
+  void _NClavisGlobal::cleanup()
+  {
+    m_pImpl->cleanup();
+  }
+
+  void _NClavisGlobal::lock()
+  {
+    m_pImpl->lock();
+  }
+
+  void _NClavisGlobal::unlock()
+  {
+    m_pImpl->unlock();
+  }
 
   class _NClavisClient::Impl
   {
@@ -109,7 +133,7 @@ namespace dbgw
     {
       int nResult = CURLE_OK;
 
-      trait<_NClavisGlobal>::sp pGlobal = _NClavisGlobal::getInstance();
+      _NClavisGlobal *pGlobal = _NClavisGlobal::getInstance();
       pGlobal->lock();
       m_pCurl = curl_easy_init();
       pGlobal->unlock();
@@ -141,7 +165,7 @@ namespace dbgw
     {
       if (m_pCurl)
         {
-          trait<_NClavisGlobal>::sp pGlobal = _NClavisGlobal::getInstance();
+          _NClavisGlobal *pGlobal = _NClavisGlobal::getInstance();
           pGlobal->lock();
           curl_easy_cleanup(m_pCurl);
           pGlobal->unlock();

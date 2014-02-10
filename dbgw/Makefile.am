@@ -105,6 +105,7 @@ dbgw3_base_SOURCES = \
         $(BASE_DIR)/porting.c \
         $(CCI_DIR)/cci_log.cpp \
         $(DBGW_DIR)/Exception.cpp \
+        $(DBGW_DIR)/GlobalOnce.cpp \
         $(DBGW_DIR)/Logger.cpp \
         $(DBGW_DIR)/SynchronizedResource.cpp \
         $(DBGW_DIR)/Value.cpp \

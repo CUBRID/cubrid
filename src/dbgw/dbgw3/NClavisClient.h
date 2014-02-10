@@ -29,6 +29,24 @@ namespace dbgw
     NCLAVIS_AUTH_TYPE_MAC = 0x0002
   };
 
+  class _NClavisGlobal
+  {
+  public:
+    virtual ~_NClavisGlobal();
+
+    static _NClavisGlobal *getInstance();
+    void init();
+    void cleanup();
+    void lock();
+    void unlock();
+
+  private:
+    _NClavisGlobal();
+
+    class Impl;
+    Impl *m_pImpl;
+  };
+
   class _NClavisClient
   {
   public:

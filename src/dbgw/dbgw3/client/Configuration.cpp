@@ -38,6 +38,7 @@
 #include "dbgw3/client/Query.h"
 #include "dbgw3/client/QueryMapper.h"
 #include "dbgw3/client/XmlParser.h"
+#include "dbgw3/GlobalOnce.h"
 
 namespace dbgw
 {
@@ -389,12 +390,16 @@ namespace dbgw
     m_pImpl(new Impl(this))
   {
     m_pImpl->init(false);
+
+    initializeGlobalOnce();
   }
 
   Configuration::Configuration(const char *szConfFileName, bool bNeedLoadXml) :
     m_pImpl(new Impl(this, szConfFileName))
   {
     m_pImpl->init(bNeedLoadXml);
+
+    initializeGlobalOnce();
   }
 
   Configuration::~Configuration()
