@@ -352,6 +352,10 @@
           >
         </File>
         <File
+          RelativePath="..\..\src\dbgw\dbgw3\GlobalOnce.cpp"
+          >
+        </File>
+        <File
           RelativePath="..\..\src\dbgw\dbgw3\JsonParser.cpp"
           >
         </File>
@@ -671,6 +675,10 @@
         </File>
         <File
           RelativePath="..\..\src\dbgw\dbgw3\Exception.h"
+          >
+        </File>
+        <File
+          RelativePath="..\..\src\dbgw\dbgw3\GloabalOnce.h"
           >
         </File>
         <File

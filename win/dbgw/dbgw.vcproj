@@ -348,6 +348,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\dbgw\dbgw3\GlobalOnce.cpp"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\dbgw\dbgw3\Logger.cpp"
 					>
 				</File>
@@ -659,6 +663,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\dbgw\dbgw3\Exception.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\dbgw\dbgw3\GlobalOnce.h"
 					>
 				</File>
 				<File
