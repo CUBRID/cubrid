@@ -44,7 +44,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\src\winport\pc\oradmn;..\..\pccts\h;..\..\src\heaplayers;..\..\src\heaplayers\util"
+				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;..\..\external\lzo-2.03\include\lzo;..\..\src\winport\pc\oradmn;..\..\pccts\h;..\..\src\heaplayers;..\..\src\heaplayers\util"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;_USE_32BIT_TIME_T;CS_MODE"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -65,7 +65,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib dbghelp.lib cubridcs.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;&quot;..\..\win\$(PlatformName)\$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\$(PlatformName)\$(ConfigurationName)"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
@@ -118,7 +118,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\src\winport\pc\oradmn;..\..\pccts\h;..\..\src\heaplayers;..\..\src\heaplayers\util"
+				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;..\..\external\lzo-2.03\include\lzo;..\..\src\winport\pc\oradmn;..\..\pccts\h;..\..\src\heaplayers;..\..\src\heaplayers\util"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;CS_MODE"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -139,7 +139,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib dbghelp.lib cubridcs.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;&quot;..\..\win\$(PlatformName)\$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\$(PlatformName)\$(ConfigurationName)"
 				GenerateDebugInformation="true"
 				TargetMachine="17"
 			/>
@@ -193,7 +193,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\src\winport\pc\oradmn;..\..\pccts\h;..\..\src\heaplayers;..\..\src\heaplayers\util"
+				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;..\..\external\lzo-2.03\include\lzo;..\..\src\winport\pc\oradmn;..\..\pccts\h;..\..\src\heaplayers;..\..\src\heaplayers\util"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;_USE_32BIT_TIME_T;CS_MODE"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -213,7 +213,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib dbghelp.lib cubridcs.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;&quot;..\..\win\$(PlatformName)\$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\$(PlatformName)\$(ConfigurationName)"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
@@ -270,7 +270,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\src\winport\pc\oradmn;..\..\pccts\h;..\..\src\heaplayers;..\..\src\heaplayers\util"
+				AdditionalIncludeDirectories="..\..\win;..\..\src\broker;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\demo;..\..\src\executables;..\..\src\jsp;..\..\src\ldb;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\qatools;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\winport;..\..\external\lzo-2.03\include\lzo;..\..\src\winport\pc\oradmn;..\..\pccts\h;..\..\src\heaplayers;..\..\src\heaplayers\util"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS;ASYNC_MODE;_XOPEN_SOURCE;_BSD_SOURCE;DIAG_DEVEL;CAS_BROKER;CS_MODE"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -290,7 +290,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib dbghelp.lib cubridcs.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;&quot;..\..\win\$(PlatformName)\$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\$(PlatformName)\$(ConfigurationName)"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"

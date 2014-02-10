@@ -66,7 +66,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib jansson.lib libgcrypt.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib;..\..\win\external\dll\win32\"
+				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib;..\..\win\external\dll\win32\"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="cubridcs.def"
 				GenerateDebugInformation="true"
@@ -142,7 +142,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc_debug.lib libregex38a.lib libexpat.lib jansson64.lib libgcrypt.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib64;..\..\win\external\dll\x64\"
+				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib64;..\..\win\external\dll\x64\"
 				IgnoreDefaultLibraryNames="msvcrt.lib"
 				ModuleDefinitionFile="cubridcs.def"
 				GenerateDebugInformation="true"
@@ -218,7 +218,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib jansson.lib libgcrypt.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib;..\..\win\external\dll\win32\"
+				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib;..\..\win\external\dll\win32\"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile="cubridcs.def"
 				GenerateDebugInformation="true"
@@ -298,7 +298,7 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib libcas.lib lzo2.lib gc.lib libregex38a.lib libexpat.lib jansson64.lib libgcrypt.lib"
 				LinkIncremental="0"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(PlatformName)\$(ConfigurationName)&quot;;..\..\win\external\lib64;..\..\win\external\dll\x64\"
+				AdditionalLibraryDirectories="$(SolutionDir)$(PlatformName)\$(ConfigurationName);..\..\win\external\lib64;..\..\win\external\dll\x64\"
 				IgnoreDefaultLibraryNames="libcmt.lib"
 				ModuleDefinitionFile="cubridcs.def"
 				GenerateDebugInformation="true"

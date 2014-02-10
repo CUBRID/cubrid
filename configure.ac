@@ -417,6 +417,13 @@ AC_ARG_ENABLE([mock],
 AS_IF([test "$enable_mock" = "yes"],
 	[DBGW_DEFS="$DBGW_DEFS -DBUILD_MOCK"])
 
+AC_ARG_ENABLE([nclavis],
+  [AS_HELP_STRING([--enable-nclavis],
+    [build as dbgw lib to use nclavis feature @<:@default=no@:>@])],
+  [enable_nclavis=$enableval],
+  [enable_nclavis=no])
+AM_CONDITIONAL([BUILD_NCLAVIS], [test "$enable_nclavis" != "no"])
+
 AC_MSG_CHECKING(for java home)
 AS_IF([test "$with_cci_only" = "no"],
       	[AS_IF([test "x$JAVA_HOME" != "x"],
@@ -658,6 +665,18 @@ case "$with_nbase_t" in
 		NBASE_T_INC_PATH="-I$with_nbase_t/include"
 		;;
 esac
+
+if test "$with_nbase_t" != "no" || test "$enable_nclavis" != "no"
+then
+  if test -d "$srcdir/ndbgw"
+  then
+    AC_CONFIG_FILES([ndbgw/Makefile])
+    OPTIONAL_DIR="$OPTIONAL_DIR ndbgw"
+  else
+    AC_MSG_ERROR(cannot support nbase_t or nclavis feature)
+  fi
+fi
+
 AC_MSG_RESULT([$with_nbase_t])
 
 AC_MSG_CHECKING([for mysql client library version 5.1])

@@ -41,7 +41,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="&quot;c:\source\php-5.2.9&quot;;&quot;c:\source\php-5.2.9\main&quot;;&quot;c:\source\php-5.2.9\TSRM&quot;;&quot;c:\source\php-5.2.9\Zend&quot;;&quot;$(CUBRID)\include&quot;"
+				AdditionalIncludeDirectories="c:\source\php-5.2.9;c:\source\php-5.2.9\main;c:\source\php-5.2.9\TSRM;c:\source\php-5.2.9\Zend;$(CUBRID)\include"
 				PreprocessorDefinitions="_DEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;ZTS;COMPILE_DL_CUBRID=1;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
@@ -61,7 +61,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="cascci.lib php5ts.lib"
-				AdditionalLibraryDirectories="c:\xampp\php\dev;&quot;$(CUBRID)\lib&quot;"
+				AdditionalLibraryDirectories="c:\xampp\php\dev;$(CUBRID)\lib"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
@@ -112,7 +112,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="&quot;c:\source\php-5.3.1&quot;;&quot;c:\source\php-5.3.1\main&quot;;&quot;c:\source\php-5.3.1\TSRM&quot;;&quot;c:\source\php-5.3.1\Zend&quot;;&quot;$(CUBRID)\include&quot;"
+				AdditionalIncludeDirectories="c:\source\php-5.3.1;c:\source\php-5.3.1\main;c:\source\php-5.3.1\TSRM;c:\source\php-5.3.1\Zend;$(CUBRID)\include"
 				PreprocessorDefinitions="_DEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;ZTS;COMPILE_DL_CUBRID=1;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
@@ -132,7 +132,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="cascci.lib php5ts.lib"
-				AdditionalLibraryDirectories="c:\xampp\php\dev\lib;&quot;$(CUBRID)\lib&quot;"
+				AdditionalLibraryDirectories="c:\xampp\php\dev\lib;$(CUBRID)\lib"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
@@ -182,7 +182,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="&quot;c:\source\php-5.2.9&quot;;&quot;c:\source\php-5.2.9\main&quot;;&quot;c:\source\php-5.2.9\TSRM&quot;;&quot;c:\source\php-5.2.9\Zend&quot;;&quot;$(CUBRID)\include&quot;"
+				AdditionalIncludeDirectories="c:\source\php-5.2.9;c:\source\php-5.2.9\main;c:\source\php-5.2.9\TSRM;c:\source\php-5.2.9\Zend;$(CUBRID)\include"
 				PreprocessorDefinitions="NDEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;ZTS;COMPILE_DL_CUBRID=1;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
 				StringPooling="true"
 				RuntimeLibrary="0"
@@ -204,7 +204,7 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="cascci.lib php5ts.lib"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="c:\xampp\php\dev;&quot;$(CUBRID)\lib&quot;"
+				AdditionalLibraryDirectories="c:\xampp\php\dev;$(CUBRID)\lib"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
@@ -254,7 +254,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="&quot;c:\source\php-5.3.1&quot;;&quot;c:\source\php-5.3.1\main&quot;;&quot;c:\source\php-5.3.1\TSRM&quot;;&quot;c:\source\php-5.3.1\Zend&quot;;&quot;$(CUBRID)\include&quot;"
+				AdditionalIncludeDirectories="c:\source\php-5.3.1;c:\source\php-5.3.1\main;c:\source\php-5.3.1\TSRM;c:\source\php-5.3.1\Zend;$(CUBRID)\include"
 				PreprocessorDefinitions="NDEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;ZTS;COMPILE_DL_CUBRID=1;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
 				StringPooling="true"
 				RuntimeLibrary="0"
@@ -276,7 +276,7 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="cascci.lib php5ts.lib"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="c:\xampp\php\dev\lib;&quot;$(CUBRID)\lib&quot;"
+				AdditionalLibraryDirectories="c:\xampp\php\dev\lib;$(CUBRID)\lib"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>

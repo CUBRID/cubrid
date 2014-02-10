@@ -784,4 +784,72 @@ namespace dbgw
   {
   }
 
+  NClavisException::NClavisException(int nRetCode) throw() :
+    Exception(
+        ExceptionFactory::create(DBGW_ER_EXTERNAL_NCLAVIS_FAIL,
+            (boost::format(
+                "Failed to get nclavis data. (return : %d)")
+                % nRetCode).str()))
+  {
+  }
+
+  NClavisException::NClavisException(const char *szMsg) throw() :
+    Exception(
+        ExceptionFactory::create(DBGW_ER_EXTERNAL_NCLAVIS_FAIL, szMsg))
+  {
+  }
+
+  NClavisOptionException::NClavisOptionException(int nResult,
+      const char *szOption) throw() :
+    Exception(
+        ExceptionFactory::create(DBGW_ER_EXTERNAL_NCLAVIS_OPTION_FAIL,
+            (boost::format("Failed to set nclavis option. (return : %d, %s)") %
+                nResult % szOption).str()))
+  {
+  }
+
+  NClavisOptionException::NClavisOptionException(int nRresult,
+      const char *szOption, long lValue) throw() :
+    Exception(
+        ExceptionFactory::create(DBGW_ER_EXTERNAL_NCLAVIS_OPTION_FAIL,
+            (boost::format("Failed to set nclavis option. (return : %d, %s = %d)") %
+                nRresult % szOption % lValue).str()))
+  {
+  }
+
+  NClavisOptionException::NClavisOptionException(int nRresult,
+      const char *szOption, const char *szValue) throw() :
+    Exception(
+        ExceptionFactory::create(DBGW_ER_EXTERNAL_NCLAVIS_OPTION_FAIL,
+            (boost::format("Failed to set nclavis option. (return : %d, %s = %s)") %
+                nRresult % szOption % szValue).str()))
+  {
+  }
+
+  JsonDecodeFailException::JsonDecodeFailException(int nLine,
+      const char *szMsg) throw() :
+    Exception(
+        ExceptionFactory::create(DBGW_ER_EXTERNAL_JSON_DECODE_FAIL,
+            (boost::format("Failed to decode json on line %d, %s)") %
+                nLine % szMsg).str()))
+  {
+  }
+
+  JsonNotExistKeyException::JsonNotExistKeyException(const char *szKey) throw() :
+    Exception(
+        ExceptionFactory::create(DBGW_ER_EXTERNAL_JSON_DECODE_FAIL,
+            (boost::format("Failed to decode json, not exist key (%s)") %
+                szKey).str()))
+  {
+  }
+
+  JsonMismatchTypeException::JsonMismatchTypeException(
+      const char *szKey, const char *szType) throw() :
+    Exception(
+        ExceptionFactory::create(DBGW_ER_EXTERNAL_JSON_MISMATCH_TYPE,
+            (boost::format("Failed to decode json, (%s) is not %s") %
+                szKey % szType).str()))
+  {
+  }
+
 }

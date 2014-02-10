@@ -65,7 +65,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(ConfigurationName)"
 				ModuleDefinitionFile="cmdep.def"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
@@ -140,7 +140,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(ConfigurationName)"
 				ModuleDefinitionFile="cmdep.def"
 				GenerateDebugInformation="true"
 				TargetMachine="17"
@@ -215,7 +215,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(ConfigurationName)"
 				ModuleDefinitionFile="cmdep.def"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
@@ -293,7 +293,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(ConfigurationName)"
 				ModuleDefinitionFile="cmdep.def"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"

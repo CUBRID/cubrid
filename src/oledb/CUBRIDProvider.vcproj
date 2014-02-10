@@ -112,7 +112,7 @@
 			<Tool
 				Name="VCPostBuildEventTool"
 				Description="Performing registration"
-				CommandLine="regsvr32 /s /c &quot;$(TargetPath)&quot;"
+				CommandLine="regsvr32 /s /c $(TargetPath)"
 			/>
 		</Configuration>
 		<Configuration
@@ -127,7 +127,7 @@
 			>
 			<Tool
 				Name="VCPreBuildEventTool"
-				CommandLine="midl.exe /D &quot;NDEBUG&quot; /env win32 /Oicf  /tlb &quot;Release/CUBRIDProvider.tlb&quot; /h &quot;CUBRIDProvider.h&quot; /iid &quot;CUBRIDProvider_i.c&quot; /proxy &quot;UniProvider_p.c&quot; &quot;_CUBRIDProvider.idl&quot; /nologo"
+				CommandLine="midl.exe /D NDEBUG /env win32 /Oicf  /tlb Release/CUBRIDProvider.tlb /h CUBRIDProvider.h /iid CUBRIDProvider_i.c /proxy UniProvider_p.c _CUBRIDProvider.idl /nologo"
 			/>
 			<Tool
 				Name="VCCustomBuildTool"
@@ -215,7 +215,7 @@
 			<Tool
 				Name="VCPostBuildEventTool"
 				Description="Performing registration"
-				CommandLine="regsvr32 /s /c &quot;$(TargetPath)&quot;"
+				CommandLine="regsvr32 /s /c $(TargetPath)"
 			/>
 		</Configuration>
 	</Configurations>

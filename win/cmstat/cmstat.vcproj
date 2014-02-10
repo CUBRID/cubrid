@@ -44,7 +44,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables;..\..\src\cm_common;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
+				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables;..\..\src\cm_common;$(JAVA_HOME)\include;$(JAVA_HOME)\include\win32"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;DIAG_DEVEL;FSERVER_SLAVE;_USE_32BIT_TIME_T"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -65,7 +65,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib psapi.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(ConfigurationName)"
 				ModuleDefinitionFile="cmstat.def"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
@@ -119,7 +119,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables;..\..\src\cm_common;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
+				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables;..\..\src\cm_common;$(JAVA_HOME)\include;$(JAVA_HOME)\include\win32"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;DIAG_DEVEL;FSERVER_SLAVE"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -140,7 +140,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib psapi.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(ConfigurationName)"
 				ModuleDefinitionFile="cmstat.def"
 				GenerateDebugInformation="true"
 				TargetMachine="17"
@@ -195,7 +195,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables;..\..\src\cm_common;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
+				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables;..\..\src\cm_common;$(JAVA_HOME)\include;$(JAVA_HOME)\include\win32"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;DIAG_DEVEL;FSERVER_SLAVE;_USE_32BIT_TIME_T"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -215,7 +215,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib psapi.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(ConfigurationName)"
 				ModuleDefinitionFile="cmstat.def"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
@@ -273,7 +273,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables;..\..\src\cm_common;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
+				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables;..\..\src\cm_common;$(JAVA_HOME)\include;$(JAVA_HOME)\include\win32"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS;DIAG_DEVEL;FSERVER_SLAVE"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -293,7 +293,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib psapi.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(ConfigurationName)"
 				ModuleDefinitionFile="cmstat.def"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"

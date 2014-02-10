@@ -79,7 +79,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalOptions="/libpath:$(CUBRID)\lib"
 				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5ts.lib"
 				OutputFile=".\php_cubrid___Win32_Release_TS/php_cubrid.dll"
 				LinkIncremental="1"
@@ -176,7 +176,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalOptions="/libpath:$(CUBRID)\lib"
 				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5ts.lib"
 				OutputFile=".\php_cubrid___x64_Release_TS/php_cubrid.dll"
 				LinkIncremental="1"
@@ -273,7 +273,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalOptions="/libpath:$(CUBRID)\lib"
 				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5.lib"
 				OutputFile=".\Debug/php_cubrid.dll"
 				LinkIncremental="2"
@@ -370,7 +370,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalOptions="/libpath:$(CUBRID)\lib"
 				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5.lib"
 				OutputFile=".\Debug/php_cubrid.dll"
 				LinkIncremental="2"
@@ -467,7 +467,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalOptions="/libpath:$(CUBRID)\lib"
 				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5.lib"
 				OutputFile=".\Release/php_cubrid.dll"
 				LinkIncremental="1"
@@ -563,7 +563,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalOptions="/libpath:$(CUBRID)\lib"
 				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5.lib"
 				OutputFile=".\Release/php_cubrid.dll"
 				LinkIncremental="1"
@@ -659,7 +659,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalOptions="/libpath:$(CUBRID)\lib"
 				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5ts.lib"
 				OutputFile=".\php_cubrid___Win32_Debug_TS/php_cubrid.dll"
 				LinkIncremental="2"
@@ -756,7 +756,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalOptions="/libpath:$(CUBRID)\lib"
 				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5ts.lib"
 				OutputFile=".\php_cubrid___Win32_Debug_TS/php_cubrid.dll"
 				LinkIncremental="2"
@@ -854,7 +854,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalOptions="/libpath:$(CUBRID)\lib"
 				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5.lib"
 				OutputFile=".\php_cubrid___Win32_Release_NTS/php_cubrid.dll"
 				LinkIncremental="1"
@@ -951,7 +951,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/libpath:&quot;&quot;$(CUBRID)\lib&quot;&quot;"
+				AdditionalOptions="/libpath:$(CUBRID)\lib"
 				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5.lib"
 				OutputFile=".\php_cubrid___x64_Release_NTS/php_cubrid.dll"
 				LinkIncremental="1"

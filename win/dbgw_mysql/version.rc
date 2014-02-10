@@ -17,7 +17,7 @@
 #undef APSTUDIO_READONLY_SYMBOLS
 
 /////////////////////////////////////////////////////////////////////////////
-// ÇÑ±¹¾î resources
+// ï¿½Ñ±ï¿½ï¿½ï¿½ resources
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_KOR)
 #ifdef _WIN32
@@ -74,12 +74,12 @@ BEGIN
         BLOCK "041204b0"
         BEGIN
             VALUE "CompanyName", "Search Solution Corporation"
-            VALUE "FileDescription", "DBGW 3.0"
+            VALUE "FileDescription", "DBGW 3.0 For MySQL"
             VALUE "FileVersion", VERSION_STRING
-            VALUE "InternalName", "DBGW 3.0"
+            VALUE "InternalName", "DBGW 3.0 For MySQL"
             VALUE "LegalCopyright", "Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution."
-            VALUE "OriginalFilename", "dbgw.dll"
-            VALUE "ProductName", "DBGW 3.0"
+            VALUE "OriginalFilename", "DBGWConnector3MySQL.dll"
+            VALUE "ProductName", "DBGW 3.0 For MySQL"
             VALUE "ProductVersion", VERSION_STRING
         END
     END
@@ -89,7 +89,7 @@ BEGIN
     END
 END
 
-#endif    // ÇÑ±¹¾î resources
+#endif    // ï¿½Ñ±ï¿½ï¿½ï¿½ resources
 /////////////////////////////////////////////////////////////////////////////
 
 

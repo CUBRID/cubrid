@@ -77,6 +77,9 @@ copy %SRC_DIR%\*.dll %DEST_DIR%\bin
 copy %SRC_DIR%\..\..\external\dll\*.dll %DEST_DIR%\bin
 copy %SRC_DIR%\..\..\external\dll\%PLATFORM%\*.dll %DEST_DIR%\bin
 
+copy %SRC_DIR%\DBGWConnector3*.dll %DEST_DIR%\bin
+copy %SRC_DIR%\DBGWConnector3*.pdb %DEST_DIR%\bin
+
 rem -------------------------------------------
 rem Conf
 copy %SRC_DIR%\..\..\..\conf\*conf* %DEST_DIR%\conf

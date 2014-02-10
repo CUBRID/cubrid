@@ -44,7 +44,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\pccts\h"
+				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\external\lzo-2.03\include\lzo;..\..\pccts\h"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;_USE_32BIT_TIME_T"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -65,7 +65,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib "
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(ConfigurationName)"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
@@ -118,7 +118,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\pccts\h"
+				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\external\lzo-2.03\include\lzo;..\..\pccts\h"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -139,7 +139,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib "
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(ConfigurationName)"
 				GenerateDebugInformation="true"
 				TargetMachine="17"
 			/>
@@ -193,7 +193,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\pccts\h"
+				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\external\lzo-2.03\include\lzo;..\..\pccts\h"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;_USE_32BIT_TIME_T"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -213,7 +213,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib "
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(ConfigurationName)"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
@@ -270,7 +270,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;&quot;..\..\external\lzo-2.03\include\lzo&quot;;..\..\pccts\h"
+				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\external\lzo-2.03\include\lzo;..\..\pccts\h"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -290,7 +290,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="ws2_32.lib "
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalLibraryDirectories="$(SolutionDir)$(ConfigurationName)"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"

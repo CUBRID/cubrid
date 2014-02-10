@@ -41,7 +41,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="&quot;C:\ruby\lib\ruby\1.8\i386-mswin32&quot;;C:\CUBRID\include"
+				AdditionalIncludeDirectories="C:\ruby\lib\ruby\1.8\i386-mswin32;C:\CUBRID\include"
 				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;NT=1;IMPORT"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -62,7 +62,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/EXPORT:&quot;Init_cubrid&quot;&#x0D;&#x0A;"
+				AdditionalOptions="/EXPORT:Init_cubrid&#x0D;&#x0A;"
 				AdditionalDependencies="msvcrt-ruby18.lib cascci.lib"
 				OutputFile="$(OutDir)/cubrid.dll"
 				LinkIncremental="2"
@@ -124,7 +124,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="&quot;C:\ruby\lib\ruby\1.8\i386-mswin32&quot;;C:\CUBRID\include"
+				AdditionalIncludeDirectories="C:\ruby\lib\ruby\1.8\i386-mswin32;C:\CUBRID\include"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;NT=1;IMPORT"
 				RuntimeLibrary="0"
 				UsePrecompiledHeader="0"
@@ -143,7 +143,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/EXPORT:&quot;Init_cubrid&quot;"
+				AdditionalOptions="/EXPORT:Init_cubrid"
 				AdditionalDependencies="msvcrt-ruby18.lib cascci.lib"
 				OutputFile="$(OutDir)/cubrid.dll"
 				LinkIncremental="1"
@@ -185,7 +185,7 @@
 	</References>
 	<Files>
 		<Filter
-			Name="¼Ò½º ÆÄÀÏ"
+			Name="ï¿½Ò½ï¿½ ï¿½ï¿½ï¿½ï¿½"
 			Filter="cpp;c;cxx;def;odl;idl;hpj;bat;asm;asmx"
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
@@ -211,7 +211,7 @@
 			</File>
 		</Filter>
 		<Filter
-			Name="Çì´õ ÆÄÀÏ"
+			Name="ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½"
 			Filter="h;hpp;hxx;hm;inl;inc;xsd"
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
@@ -221,7 +221,7 @@
 			</File>
 		</Filter>
 		<Filter
-			Name="¸®¼Ò½º ÆÄÀÏ"
+			Name="ï¿½ï¿½ï¿½Ò½ï¿½ ï¿½ï¿½ï¿½ï¿½"
 			Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx"
 			UniqueIdentifier="{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}"
 			>

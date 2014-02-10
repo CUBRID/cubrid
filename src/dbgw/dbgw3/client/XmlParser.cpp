@@ -42,6 +42,9 @@
 #include "dbgw3/client/ClientResultSetImpl.h"
 #include "dbgw3/client/StatisticsMonitor.h"
 #include "dbgw3/client/AsyncWorkerJob.h"
+#if defined (USE_NCLAVIS)
+#include "dbgw3/NClavisClient.h"
+#endif
 
 namespace dbgw
 {
@@ -115,6 +118,16 @@ namespace dbgw
   static const char *XN_HOST_PR_USER = "user";
   static const char *XN_HOST_PR_PASSWORD = "password";
   static const char *XN_HOST_PR_WEIGHT = "weight";
+
+  static const char *XN_NCLAVIS = "nclavis";
+  static const char *XN_NCLAVIS_PR_TARGET = "target";
+  static const char *XN_NCLAVIS_PR_AUTH_TYPE = "authType";
+  static const char *XN_NCLAVIS_PR_CERT_FILE = "certFile";
+  static const char *XN_NCLAVIS_PR_CERT_PASSWD = "certPasswd";
+  static const char *XN_NCLAVIS_PR_MAC_ADDR = "macAddr";
+  static const char *XN_NCLAVIS_PR_URL = "url";
+  static const char *XN_NCLAVIS_PR_TIMEOUT = "timeout";
+  static const char *XN_NCLAVIS_PR_WEIGHT = "weight";
 
   static const char *XN_ALTHOSTS = "althosts";
 
@@ -704,6 +717,49 @@ namespace dbgw
       }
   }
 
+#if defined (USE_NCLAVIS)
+  int _ExpatXMLProperties::getNClavisAuthType(
+      const char *szName)
+  {
+    std::string authType = get(szName, false);
+
+    if (authType == "")
+      {
+        return NCLAVIS_AUTH_TYPE_IPV4;
+      }
+
+    std::vector<std::string> authTypeList;
+    boost::split(authTypeList, authType, boost::is_any_of(","));
+    std::vector<std::string>::iterator it = authTypeList.begin();
+    int nAuthType = NCLAVIS_AUTH_TYPE_IPV4;
+    for (; it != authTypeList.end(); it++)
+      {
+        boost::trim(*it);
+        if (strcasecmp("ipv4", it->c_str()) == 0)
+          {
+            nAuthType |= NCLAVIS_AUTH_TYPE_IPV4;
+          }
+        else if (strcasecmp("keystore", it->c_str()) == 0)
+          {
+            nAuthType |= NCLAVIS_AUTH_TYPE_KEYSTORE;
+          }
+        else if (strcasecmp("mac", it->c_str()) == 0)
+          {
+            nAuthType |= NCLAVIS_AUTH_TYPE_MAC;
+          }
+        else
+          {
+            InvalidPropertyValueException e(m_xmlParser.getFileName(),
+                authType.c_str(), "IPV4|KEYSTORE");
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+      }
+
+    return nAuthType;
+  }
+#endif /* defined(USE_NCLAVIS) */
+
   const char *_ExpatXMLProperties::getNodeName() const
   {
     return m_nodeName.c_str();
@@ -1039,6 +1095,10 @@ namespace dbgw
         {
           parseHost(properties);
         }
+      else if (!strcasecmp(szName, XN_NCLAVIS))
+        {
+          parseNClavis(properties);
+        }
       else if (!strcasecmp(szName, XN_ALTHOSTS))
         {
           parseAltHost(properties);
@@ -1266,6 +1326,54 @@ namespace dbgw
       m_pHost = trait<_Host>::sp(
           new _Host(m_url, user, pasword, nWeight));
       m_pGroup->addHost(m_pHost);
+    }
+
+    void parseNClavis(_ExpatXMLProperties &properties)
+    {
+      if (m_pSelf->getParentElementName() != XN_GROUP)
+        {
+          return;
+        }
+
+#if defined (USE_NCLAVIS)
+      int nAuthType = properties.getNClavisAuthType(XN_NCLAVIS_PR_AUTH_TYPE);
+
+      _NClavisClient client;
+
+      std::string certFile = "";
+      std::string certPasswd = "";
+      if (nAuthType & NCLAVIS_AUTH_TYPE_KEYSTORE)
+        {
+          certFile = properties.get(XN_NCLAVIS_PR_CERT_FILE, true);
+          certPasswd = properties.get(XN_NCLAVIS_PR_CERT_PASSWD, true);
+          client.setAuthTypeKeyStore(certFile.c_str(), certPasswd.c_str());
+        }
+
+      std::string macAddr = "";
+      if (nAuthType & NCLAVIS_AUTH_TYPE_MAC)
+        {
+          macAddr = properties.get(XN_NCLAVIS_PR_MAC_ADDR, true);
+
+          client.setAuthTypeMac(macAddr.c_str());
+        }
+
+      std::string url = properties.get(XN_NCLAVIS_PR_URL, true);
+      int nTimeout = properties.getInt(XN_NCLAVIS_PR_TIMEOUT, false, 0);
+      int nWeight = properties.getInt(XN_NCLAVIS_PR_WEIGHT, true, 1);
+
+      client.request(url.c_str(), nTimeout);
+
+      m_url = client.getDbUrl();
+      std::string user = client.getDbId();
+      std::string passwd = client.getDbPassword();
+
+      m_pHost = trait<_Host>::sp(new _Host(m_url, user, passwd, nWeight));
+      m_pGroup->addHost(m_pHost);
+#else
+      NClavisException e("not supported nclavis feature");
+      DBGW_LOG_ERROR(e.what());
+      throw e;
+#endif /* defined(USE_NCLAVIS) */
     }
 
     void parseAltHost(_ExpatXMLProperties &properties)

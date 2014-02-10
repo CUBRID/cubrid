@@ -103,6 +103,9 @@ namespace dbgw
     CCI_LOG_POSTFIX getLogPostfix(const char *szName);
     sql::ParameterMode getBindMode(const char *szName);
     sql::DataBaseType getDataBaseType(const char *szName);
+#if defined (USE_NCLAVIS)
+    int getNClavisAuthType(const char *szName);
+#endif /* defined(USE_NCLAVIS */
 
   public:
     const char *getNodeName() const;

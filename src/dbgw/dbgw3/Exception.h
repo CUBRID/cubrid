@@ -102,6 +102,11 @@ namespace dbgw
     DBGW_ER_EXTERNAL_THREAD_OPERATION_FAIL            = -22806,
     DBGW_ER_EXTERNAL_CREATE_CONVERTER_FAIL            = -22807,
     DBGW_ER_EXTERNAL_CONVERT_CHARSET_FAIL             = -22808,
+    DBGW_ER_EXTERNAL_NCLAVIS_FAIL                     = -22809,
+    DBGW_ER_EXTERNAL_NCLAVIS_OPTION_FAIL              = -22810,
+    DBGW_ER_EXTERNAL_JSON_DECODE_FAIL                 = -22811,
+    DBGW_ER_EXTERNAL_JSON_NOT_EXIST_KEY               = -22812,
+    DBGW_ER_EXTERNAL_JSON_MISMATCH_TYPE               = -22813,
 
     DBGW_ER_OLD_DBGW_INTERFACE_ERROR                  = -22900
   };
@@ -266,7 +271,6 @@ namespace dbgw
   {
   public:
     InvalidOutParameterException() throw();
-    virtual ~InvalidOutParameterException() throw() {}
   };
 
   class MismatchValueTypeException : public Exception
@@ -562,6 +566,41 @@ namespace dbgw
   {
   public:
     InvalidDbTypeException(const char *szDbType) throw();
+  };
+
+  class NClavisException : public Exception
+  {
+  public:
+    NClavisException(int nRetCode) throw();
+    NClavisException(const char *szMsg) throw();
+  };
+
+  class NClavisOptionException : public Exception
+  {
+  public:
+    NClavisOptionException(int nResult, const char *szOption) throw();
+    NClavisOptionException(int nResult, const char *szOption,
+        long lValue) throw();
+    NClavisOptionException(int nResult, const char *szOption,
+        const char *szValue) throw();
+  };
+
+  class JsonDecodeFailException : public Exception
+  {
+  public:
+    JsonDecodeFailException(int nLine, const char *szMsg) throw();
+  };
+
+  class JsonNotExistKeyException : public Exception
+  {
+  public:
+    JsonNotExistKeyException(const char *szKey) throw();
+  };
+
+  class JsonMismatchTypeException : public Exception
+  {
+  public:
+    JsonMismatchTypeException(const char *szKey, const char *szType) throw();
   };
 
 }
