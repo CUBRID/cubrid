@@ -22,8 +22,8 @@
  * Partition pruning on server
  */
 
-#ifndef _PARTITION_SR_H_
-#define _PARTITION_SR_H_
+#ifndef _PARTITION_H_
+#define _PARTITION_H_
 
 #include "thread.h"
 #include "query_executor.h"
@@ -141,4 +141,9 @@ extern int partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext,
 					    BTID * root_btid,
 					    HIERARCHY_AGGREGATE_HELPER *
 					    helper);
-#endif /* _PARTITION_SR_H_ */
+extern int partition_is_global_index (THREAD_ENTRY * thread_p,
+				      PRUNING_CONTEXT * contextp,
+				      OID * class_oid, BTID * btid,
+				      BTREE_TYPE * btree_typep,
+				      int *is_global_index);
+#endif /* _PARTITION_H_ */

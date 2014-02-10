@@ -3799,6 +3799,7 @@ partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext,
   int error = NO_ERROR, i = 0;
   char *btree_name = NULL;
   BTREE_TYPE btree_type;
+  int is_global_index;
   PARTITION_SPEC_TYPE *part = NULL;
 
   assert_release (helper != NULL);
@@ -3844,29 +3845,20 @@ partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext,
       goto cleanup;
     }
 
-  if (btree_type == BTREE_PRIMARY_KEY)
+  error = partition_is_global_index (pcontext->thread_p, pcontext,
+				     &pcontext->root_oid, root_btid, 
+				     &btree_type, &is_global_index);
+  if (error != NO_ERROR)
     {
-      /* primary keys are always global */
-      helper->is_global_index = true;
-      helper->btids = NULL;
       goto cleanup;
     }
 
-  if (btree_is_unique_type (btree_type))
+  if (is_global_index > 0)
     {
-      error = partition_get_position_in_key (pcontext, root_btid);
-      if (error != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
-      if (pcontext->attr_position == -1)
-	{
-	  /* this is a global index */
-	  helper->is_global_index = true;
-	  helper->btids = NULL;
-	  goto cleanup;
-	}
+      /* global index, no need to search through each partition */
+      helper->is_global_index = true;
+      helper->btids = NULL;
+      goto cleanup;
     }
 
   /* any other index is a local index */
@@ -3910,5 +3902,95 @@ cleanup:
     {
       free_and_init (btree_name);
     }
+  return error;
+}
+
+/*
+ * partition_is_global_index () - check if an index is global for a partitioned
+ *				class
+ * return : error code or NO_ERROR
+ * thread_p (in) :
+ * class_oid (in)	   : partitioned class OID
+ * contextp (in)	   : pruning context, NULL if it is unknown
+ * btid (in)		   : btree ID of the index
+ * btree_typep (in)	   : btree type of the index, NULL if it is unknown
+ * is_global_index(out)	   :
+ */
+int
+partition_is_global_index (THREAD_ENTRY * thread_p,
+			   PRUNING_CONTEXT * contextp, OID * class_oid,
+			   BTID * btid, BTREE_TYPE * btree_typep,
+			   int *is_global_index)
+{
+  PRUNING_CONTEXT context;
+  BTREE_TYPE btree_type;
+  int error = NO_ERROR;
+
+  assert (class_oid != NULL);
+  assert (btid != NULL);
+
+  *is_global_index = 0;
+
+  if (contextp == NULL)
+    {
+      /* PRUNING_CONTEXT is unknown */
+      contextp = &context;
+
+      partition_init_pruning_context (contextp);
+
+      error = partition_load_pruning_context (thread_p, class_oid,
+					      DB_PARTITIONED_CLASS, contextp);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+  if (contextp->count == 0)
+    {
+      goto cleanup;
+    }
+
+  if (btree_typep == NULL)
+    {
+      /* btree_type is unknown */
+      btree_typep = &btree_type;
+
+      error = heap_get_indexinfo_of_btid (thread_p, class_oid, btid,
+					  btree_typep, NULL, NULL, NULL,
+					  NULL, NULL);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+  if (*btree_typep == BTREE_PRIMARY_KEY)
+    {
+      *is_global_index = 1;
+      goto cleanup;
+    }
+
+  if (btree_is_unique_type (*btree_typep))
+    {
+      error = partition_get_position_in_key (contextp, btid);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      if (contextp->attr_position == -1)
+	{
+	  *is_global_index = 1;
+	  goto cleanup;
+	}
+    }
+
+cleanup:
+  if (contextp == &context)
+    {
+      partition_clear_pruning_context (contextp);
+    }
+
   return error;
 }
