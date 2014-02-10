@@ -1362,6 +1362,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 118 非法使用排序规则\n  COLLATION ( expression )\n
 119 非法使用clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
 120 非法使用index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
+121 Expecting ON. Outer Joins require join condition.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.

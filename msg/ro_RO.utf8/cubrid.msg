@@ -1362,6 +1362,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 118 utilizare invalidă a lui collation\n  COLLATION ( expression )\n
 119 utilizare invalidă a lui clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
 120 utilizare invalidă a lui index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
+121 Expecting ON. Outer Joins require join condition.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.

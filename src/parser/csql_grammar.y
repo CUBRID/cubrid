@@ -4076,6 +4076,18 @@ join_table_spec
 			PT_NODE *sopt = $3;
 			bool natural = false;
 
+			if ($4 == PT_JOIN_NONE)  
+			  {
+				/* Not exists ON condition, if it is outer join, report error */
+				if ($1 == PT_JOIN_LEFT_OUTER 
+				    || $1 == PT_JOIN_RIGHT_OUTER
+				    || $1 == PT_JOIN_FULL_OUTER)
+				  {
+					PT_ERRORm(this_parser, sopt,
+						  MSGCAT_SET_PARSER_SYNTAX,
+						  MSGCAT_SYNTAX_OUTER_JOIN_REQUIRES_JOIN_COND);
+				  }
+			  }
 			if (sopt)
 			  {
 			    sopt->info.spec.natural = natural;
@@ -4105,7 +4117,12 @@ join_table_spec
 	;
 
 join_condition
-	: ON_
+	: /* empty */
+		{{
+			parser_save_and_set_pseudoc (0);
+			$$ = PT_JOIN_NONE;   /* just return NULL */
+		DBG_PRINT}} 
+	| ON_
 		{{
 			parser_save_and_set_pseudoc (0);
 			parser_save_and_set_wjc (1);
