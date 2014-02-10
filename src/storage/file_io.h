@@ -185,11 +185,20 @@ struct fileio_backup_page
  * which pages have already been restored, so we do not overwrite newer
  * pages from an earlier backup.
  */
-typedef struct fileio_restore_page_cache FILEIO_RESTORE_PAGE_CACHE;
-struct fileio_restore_page_cache
+typedef struct page_bitmap FILEIO_RESTORE_PAGE_BITMAP;
+struct page_bitmap
 {
-  MHT_TABLE *ht;
-  HL_HEAPID heap_id;
+  FILEIO_RESTORE_PAGE_BITMAP *next;
+  int vol_id;
+  int size;
+  unsigned char *bitmap;
+};
+
+typedef struct page_bitmap_list FILEIO_RESTORE_PAGE_BITMAP_LIST;
+struct page_bitmap_list
+{
+  FILEIO_RESTORE_PAGE_BITMAP *head;
+  FILEIO_RESTORE_PAGE_BITMAP *tail;
 };
 
 typedef struct fileio_backup_record_info FILEIO_BACKUP_RECORD_INFO;
@@ -571,7 +580,7 @@ extern int fileio_restore_volume (THREAD_ENTRY * thread_p,
 				  FILEIO_BACKUP_SESSION * session,
 				  char *to_vlabel, char *verbose_to_vlabel,
 				  char *prev_vlabel,
-				  FILEIO_RESTORE_PAGE_CACHE * pages_cache,
+				  FILEIO_RESTORE_PAGE_BITMAP * page_bitmap,
 				  bool remember_pages);
 extern int fileio_skip_restore_volume (THREAD_ENTRY * thread_p,
 				       FILEIO_BACKUP_SESSION * session);
@@ -627,4 +636,18 @@ extern void fileio_flush_control_finalize (void);
 extern int fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p,
 					    INT64 diff_usec, int *token_gen,
 					    int *token_consumed);
+
+extern void fileio_page_bitmap_list_init (FILEIO_RESTORE_PAGE_BITMAP_LIST *
+					  page_bitmap_list);
+extern FILEIO_RESTORE_PAGE_BITMAP
+  * fileio_page_bitmap_create (int vol_id, int total_pages);
+extern FILEIO_RESTORE_PAGE_BITMAP
+  * fileio_page_bitmap_list_find (FILEIO_RESTORE_PAGE_BITMAP_LIST *
+				  page_bitmap_list, int vol_id);
+extern void fileio_page_bitmap_list_add (FILEIO_RESTORE_PAGE_BITMAP_LIST *
+					 page_bitmap_list,
+					 FILEIO_RESTORE_PAGE_BITMAP *
+					 page_bitmap);
+extern void fileio_page_bitmap_list_destroy (FILEIO_RESTORE_PAGE_BITMAP_LIST *
+					     page_bitmap_list);
 #endif /* _FILE_IO_H_ */

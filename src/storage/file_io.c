@@ -433,7 +433,7 @@ static int max_flush_pages_per_sec = 0;
  * backup and restore activity.
  * 0         :: no output
  * 1         :: print names and sizes of volumes that are backed-up.
- * 2         :: dump pages_cache after volume is restored.
+ * 2         :: dump page bitmaps after volume is restored.
  */
 static int io_Bkuptrace_debug = -1;
 #endif /* CUBRID_DEBUG */
@@ -544,9 +544,9 @@ static int fileio_read_restore (THREAD_ENTRY * thread_p,
 				FILEIO_BACKUP_SESSION * session,
 				int toread_nbytes);
 static void *fileio_write_restore (THREAD_ENTRY * thread_p,
-				   FILEIO_RESTORE_PAGE_CACHE * pages_cache,
-				   int vdes, void *io_pgptr, VOLID volid,
-				   PAGEID pageid, FILEIO_BACKUP_LEVEL level);
+				   FILEIO_RESTORE_PAGE_BITMAP * page_bitmap,
+				   int vdes, void *io_pgptr, VOLID vol_id,
+				   PAGEID page_id, FILEIO_BACKUP_LEVEL level);
 static int fileio_read_restore_header (FILEIO_BACKUP_SESSION * session);
 static FILEIO_RELOCATION_VOLUME
 fileio_find_restore_volume (THREAD_ENTRY * thread_p, const char *dbname,
@@ -568,8 +568,8 @@ static FILEIO_BACKUP_SESSION
 static int fileio_fill_hole_during_restore (THREAD_ENTRY * thread_p,
 					    int *next_pageid, int stop_pageid,
 					    FILEIO_BACKUP_SESSION * session,
-					    FILEIO_RESTORE_PAGE_CACHE *
-					    cache_ptr);
+					    FILEIO_RESTORE_PAGE_BITMAP *
+					    page_bitmap);
 static int fileio_decompress_restore_volume (THREAD_ENTRY * thread_p,
 					     FILEIO_BACKUP_SESSION * session,
 					     int nbytes);
@@ -627,6 +627,14 @@ static int fileio_flush_control_get_token (THREAD_ENTRY * thread_p,
 					   int ntoken);
 static int fileio_flush_control_get_desired_rate (TOKEN_BUCKET * tb);
 static int fileio_synchronize_bg_archive_volume (THREAD_ENTRY * thread_p);
+
+static void fileio_page_bitmap_set (FILEIO_RESTORE_PAGE_BITMAP * page_bitmap,
+				    int page_id);
+static bool fileio_page_bitmap_is_set (FILEIO_RESTORE_PAGE_BITMAP *
+				       page_bitmap, int page_id);
+static void fileio_page_bitmap_dump (FILE * out_fp,
+				     const FILEIO_RESTORE_PAGE_BITMAP *
+				     page_bitmap);
 
 static int
 fileio_increase_flushed_page_count (int npages)
@@ -10322,8 +10330,8 @@ fileio_get_next_restore_file (THREAD_ENTRY * thread_p,
  *   next_pageid(out):
  *   stop_pageid(in):
  *   session(in/out): The session array
- *   cache_ptr(in): Page and volume cache to record which pages have already
- *                  been restored
+ *   page_bitmap(in): Page bitmap to record which pages have already
+ *                    been restored
  *
  * Note: A hole is likely only for 2 reasons. After the system pages in
  *       permament temp volumes, or at the end of a volume if we stop backing
@@ -10333,7 +10341,7 @@ static int
 fileio_fill_hole_during_restore (THREAD_ENTRY * thread_p, int *next_page_id_p,
 				 int stop_page_id,
 				 FILEIO_BACKUP_SESSION * session_p,
-				 FILEIO_RESTORE_PAGE_CACHE * cache_p)
+				 FILEIO_RESTORE_PAGE_BITMAP * page_bitmap)
 {
   FILEIO_PAGE *malloc_io_pgptr = NULL;
 
@@ -10352,14 +10360,12 @@ fileio_fill_hole_during_restore (THREAD_ENTRY * thread_p, int *next_page_id_p,
 
   while (*next_page_id_p < stop_page_id)
     {
-
       /*
        * We did not back up a page since it was deallocated, or there
        * is a hole of some kind that must be filled in with correctly
        * formatted pages.
        */
-
-      if (fileio_write_restore (thread_p, cache_p, session_p->dbfile.vdes,
+      if (fileio_write_restore (thread_p, page_bitmap, session_p->dbfile.vdes,
 				malloc_io_pgptr, session_p->dbfile.volid,
 				*next_page_id_p,
 				session_p->dbfile.level) == NULL)
@@ -10546,8 +10552,8 @@ exit_on_error:
  *   to_vlabel_p(in): Restore the next file using this name
  *   verbose_to_vlabel_p(in): Printable volume name
  *   prev_vlabel_p(in): Previous restored file name
- *   pages_cache_p(in): Page and volume cache to record which pages have
- *                    already been restored
+ *   page_bitmap(in): Page bitmap to record which pages have already 
+ *                    been restored
  *   is_remember_pages(in): true if we need to track which pages are restored
  */
 int
@@ -10556,14 +10562,14 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
 		       char *to_vol_label_p,
 		       char *verbose_to_vol_label_p,
 		       char *prev_vol_label_p,
-		       FILEIO_RESTORE_PAGE_CACHE * pages_cache_p,
+		       FILEIO_RESTORE_PAGE_BITMAP * page_bitmap,
 		       bool is_remember_pages)
 {
   int next_page_id = 0;
   INT64 total_nbytes = 0;
   int nbytes;
   int from_npages, npages;
-  FILEIO_RESTORE_PAGE_CACHE *cache_p;
+  FILEIO_RESTORE_PAGE_BITMAP *bitmap;
   int check_ratio = 0, check_npages = 0;
   FILEIO_BACKUP_HEADER *backup_header_p = session_p->bkup.bkuphdr;
   int unit;
@@ -10627,7 +10633,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
     }
 
   /* For some volumes we do not keep track of the individual pages restored. */
-  cache_p = (is_remember_pages) ? pages_cache_p : NULL;
+  bitmap = (is_remember_pages) ? page_bitmap : NULL;
   /* Read all file pages until the end of the volume/file. */
   from_npages = (int) CEIL_PTVDIV (session_p->dbfile.nbytes,
 				   backup_header_p->bkpagesize);
@@ -10654,7 +10660,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
 	    {
 	      if (fileio_fill_hole_during_restore (thread_p, &next_page_id,
 						   npages, session_p,
-						   cache_p) != NO_ERROR)
+						   bitmap) != NO_ERROR)
 		{
 		  goto error;
 		}
@@ -10696,9 +10702,9 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
 	      FILEIO_GET_BACKUP_PAGE_ID (session_p->dbfile.area)))
 	{
 	  if (fileio_fill_hole_during_restore (thread_p, &next_page_id,
-					       session_p->dbfile.
-					       area->iopageid, session_p,
-					       cache_p) != NO_ERROR)
+					       session_p->dbfile.area->
+					       iopageid, session_p,
+					       bitmap) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -10711,7 +10717,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
       buffer_p = (char *) &session_p->dbfile.area->iopage;
       for (i = 0; i < unit && next_page_id < npages; i++)
 	{
-	  if (fileio_write_restore (thread_p, cache_p, session_p->dbfile.vdes,
+	  if (fileio_write_restore (thread_p, bitmap, session_p->dbfile.vdes,
 				    buffer_p + i * IO_PAGESIZE,
 				    session_p->dbfile.volid,
 				    next_page_id,
@@ -10741,9 +10747,9 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
     }
 
 #if defined(CUBRID_DEBUG)
-  if (io_Bkuptrace_debug >= 2 && cache_p)
+  if (io_Bkuptrace_debug >= 2 && bitmap)
     {
-      mht_dump (stdout, cache_p->ht, 1, logpb_print_hash_entry, NULL);
+      fileio_page_bitmap_dump (stdout, bitmap);
       (void) fprintf (stdout, "\n\n");
     }
 #endif /* CUBRID_DEBUG */
@@ -10833,14 +10839,14 @@ error:
 
 /*
  * fileio_write_restore () - Write the content of the page described by pageid
- *                       to disk
+ *                           to disk
  *   return: o_pgptr on success, NULL on failure
- *   pages_cache(in): Page and volume cache to record which pages have
- *                    already been restored
+ *   page_bitmap(in): Page bitmap to record which pages have already 
+ *                    been restored
  *   vdes(in): Volume descriptor
  *   io_pgptr(in): In-memory address where the current content of page resides
- *   volid(in):
- *   pageid(in): Page identifier
+ *   vol_id(in): volume identifier 
+ *   page_id(in): Page identifier
  *   level(in): backup level page restored from
  *
  * Note: The contents of the page stored on io_pgptr buffer which is
@@ -10849,14 +10855,13 @@ error:
  */
 static void *
 fileio_write_restore (THREAD_ENTRY * thread_p,
-		      FILEIO_RESTORE_PAGE_CACHE * pages_cache_p, int vol_fd,
+		      FILEIO_RESTORE_PAGE_BITMAP * page_bitmap, int vol_fd,
 		      void *io_page_p, VOLID vol_id, PAGEID page_id,
 		      FILEIO_BACKUP_LEVEL level)
 {
-  VPID vpid;
-  VPID *alloc_vpid_p;
+  bool is_set;
 
-  if (!pages_cache_p)
+  if (page_bitmap == NULL)
     {
       /* don't care about ht for this volume */
       if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE)
@@ -10867,12 +10872,13 @@ fileio_write_restore (THREAD_ENTRY * thread_p,
     }
   else
     {
-      vpid.volid = vol_id;
-      vpid.pageid = page_id;
+#if !defined(NDEBUG)
+      assert (page_bitmap->vol_id == vol_id);
+#endif
+      is_set = fileio_page_bitmap_is_set (page_bitmap, page_id);
 
-      if (!mht_get (pages_cache_p->ht, &vpid))
+      if (!is_set)
 	{
-
 	  if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE)
 	      == NULL)
 	    {
@@ -10881,22 +10887,7 @@ fileio_write_restore (THREAD_ENTRY * thread_p,
 
 	  if (level > FILEIO_BACKUP_FULL_LEVEL)
 	    {
-	      /* Make a new node and ... */
-	      alloc_vpid_p = (VPID *) db_fixed_alloc (pages_cache_p->heap_id,
-						      sizeof (VPID));
-	      if (alloc_vpid_p == NULL)
-		{
-		  return NULL;
-		}
-
-	      /* ... add it to the hash table */
-	      *alloc_vpid_p = vpid;
-	      if (mht_put (pages_cache_p->ht, alloc_vpid_p,
-			   (void *) level) == NULL)
-		{
-		  db_fixed_free (pages_cache_p->heap_id, alloc_vpid_p);
-		  return NULL;
-		}
+	      fileio_page_bitmap_set (page_bitmap, page_id);
 	    }
 	}
     }
@@ -12128,4 +12119,249 @@ fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE_RESERVED * prv_p)
   prv_p->pflag_reserve_1 = '\0';
   prv_p->p_reserve_2 = 0;
   prv_p->p_reserve_3 = 0;
+}
+
+
+/* 
+ * PAGE BITMAP FUNCTIONS 
+ */
+
+/*
+ * fileio_page_bitmap_list_init - initialize a page bitmap list 
+ *   return: void
+ *   page_bitmap_list(in/out): head of the page bitmap list
+ */
+void
+fileio_page_bitmap_list_init (FILEIO_RESTORE_PAGE_BITMAP_LIST *
+			      page_bitmap_list)
+{
+  assert (page_bitmap_list != NULL);
+  page_bitmap_list->head = NULL;
+  page_bitmap_list->tail = NULL;
+}
+
+/*
+ * fileio_page_bitmap_create - create a page bitmap 
+ *   return: page bitmap
+ *   vol_id(in): the number of the page bitmap identification
+ *   total_pages(in): the number of total pages
+ */
+FILEIO_RESTORE_PAGE_BITMAP *
+fileio_page_bitmap_create (int vol_id, int total_pages)
+{
+  FILEIO_RESTORE_PAGE_BITMAP *page_bitmap;
+  int page_bitmap_size;
+
+  page_bitmap =
+    (FILEIO_RESTORE_PAGE_BITMAP *)
+    malloc (sizeof (FILEIO_RESTORE_PAGE_BITMAP));
+  if (page_bitmap == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (FILEIO_RESTORE_PAGE_BITMAP));
+      return NULL;
+    }
+
+  page_bitmap_size = CEIL_PTVDIV (total_pages, 8);
+
+  page_bitmap->next = NULL;
+  page_bitmap->vol_id = vol_id;
+  page_bitmap->size = page_bitmap_size;
+  page_bitmap->bitmap = (unsigned char *) malloc (page_bitmap_size);
+  if (page_bitmap->bitmap == NULL)
+    {
+      free_and_init (page_bitmap);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, page_bitmap_size);
+      return NULL;
+    }
+  memset (page_bitmap->bitmap, 0x0, page_bitmap_size);
+
+  return page_bitmap;
+}
+
+/*
+ * fileio_page_bitmap_list_find - find the page bitmap which is matched 
+ *                                with vol_id
+ *   return: pointer of the page bitmap or NULL
+ *   page_bitmap_list(in): head of the page bitmap list
+ *   vol_id(in): the number of the page bitmap identification
+ */
+FILEIO_RESTORE_PAGE_BITMAP *
+fileio_page_bitmap_list_find (FILEIO_RESTORE_PAGE_BITMAP_LIST *
+			      page_bitmap_list, int vol_id)
+{
+  FILEIO_RESTORE_PAGE_BITMAP *page_bitmap;
+
+  if (page_bitmap_list->head == NULL)
+    {
+      return NULL;
+    }
+
+  assert (page_bitmap_list->tail != NULL);
+
+  page_bitmap = page_bitmap_list->head;
+
+  while (page_bitmap != NULL)
+    {
+      if (page_bitmap->vol_id == vol_id)
+	{
+	  return page_bitmap;
+	}
+      page_bitmap = page_bitmap->next;
+    }
+
+  return NULL;
+}
+
+/*
+ * fileio_page_bitmap_list_add - add a page bitmap to a page bitmap list
+ *   page_bitmap_list(in/out): head of the page bitmap list
+ *   page_bitmap(in): pointer of the page bitmap 
+ */
+void
+fileio_page_bitmap_list_add (FILEIO_RESTORE_PAGE_BITMAP_LIST *
+			     page_bitmap_list,
+			     FILEIO_RESTORE_PAGE_BITMAP * page_bitmap)
+{
+#if !defined(NDEBUG)
+  FILEIO_RESTORE_PAGE_BITMAP *bitmap;
+#endif
+
+  assert (page_bitmap_list != NULL);
+  assert (page_bitmap != NULL);
+
+#if !defined(NDEBUG)
+  /* Check the uniqueness of vol_id */
+  bitmap = page_bitmap_list->head;
+  while (bitmap != NULL)
+    {
+      assert (bitmap->vol_id != page_bitmap->vol_id);
+      bitmap = bitmap->next;
+    }
+#endif
+
+  if (page_bitmap_list->head == NULL)
+    {
+      assert (page_bitmap_list->tail == NULL);
+
+      page_bitmap_list->head = page_bitmap;
+      page_bitmap_list->tail = page_bitmap;
+    }
+  else
+    {
+      assert (page_bitmap_list->tail != NULL);
+
+      page_bitmap_list->tail->next = page_bitmap;
+      page_bitmap_list->tail = page_bitmap;
+    }
+}
+
+/*
+ * fileio_page_bitmap_list_destroy - destroy a page bitmap list
+ *   return: void
+ *   page_bitmap_list(in/out): head of the page bitmap list
+ */
+void
+fileio_page_bitmap_list_destroy (FILEIO_RESTORE_PAGE_BITMAP_LIST *
+				 page_bitmap_list)
+{
+  FILEIO_RESTORE_PAGE_BITMAP *page_bitmap = NULL;
+  FILEIO_RESTORE_PAGE_BITMAP *page_bitmap_next = NULL;
+
+  assert (page_bitmap_list != NULL);
+
+  page_bitmap = page_bitmap_list->head;
+
+  while (page_bitmap != NULL)
+    {
+      page_bitmap_next = page_bitmap->next;
+
+      page_bitmap->vol_id = 0;
+      page_bitmap->size = 0;
+      free_and_init (page_bitmap->bitmap);
+      free_and_init (page_bitmap);
+
+      page_bitmap = page_bitmap_next;
+    }
+  page_bitmap_list->head = NULL;
+  page_bitmap_list->tail = NULL;
+}
+
+/*
+ * fileio_page_bitmap_set - set the bit that represents the exitence of the page
+ *   return: void
+ *   page_bitmap(in): pointer of the page bitmap
+ *   page_id(in): position of the page 
+ */
+static void
+fileio_page_bitmap_set (FILEIO_RESTORE_PAGE_BITMAP * page_bitmap, int page_id)
+{
+  assert (page_bitmap != NULL);
+  assert ((page_bitmap->size - 1) >= (page_id / 8));
+
+  page_bitmap->bitmap[page_id / 8] |= 1 << (page_id % 8);
+}
+
+/*
+ * fileio_page_bitmap_is_set - get the bit that represents the exitence of the page
+ *   return: if the bit of page is set then it returns true. 
+ *   page_bitmap(in): pointer of the page bitmap
+ *   page_id(in): position of the page 
+ */
+static bool
+fileio_page_bitmap_is_set (FILEIO_RESTORE_PAGE_BITMAP * page_bitmap,
+			   int page_id)
+{
+  bool is_set;
+
+  assert (page_bitmap != NULL);
+  assert ((page_bitmap->size - 1) >= (page_id / 8));
+
+  is_set =
+    page_bitmap->bitmap[page_id / 8] & (1 << (page_id % 8)) ? true : false;
+
+  return is_set;
+}
+
+/*
+ * fileio_page_bitmap_dump - dump a page bitmap 
+ *   return: void 
+ *   out_fp(in): FILE stream where to dump; if NULL, stdout
+ *   page_bitmap(in): pointer of the page bitmap
+ */
+static void
+fileio_page_bitmap_dump (FILE * out_fp,
+			 const FILEIO_RESTORE_PAGE_BITMAP * page_bitmap)
+{
+  int i;
+
+  assert (page_bitmap != NULL);
+
+  if (out_fp == NULL)
+    {
+      out_fp = stdout;
+    }
+
+  fprintf (out_fp, "BITMAP_ID = %d, BITMAP_SIZE = %d\n", page_bitmap->vol_id,
+	   page_bitmap->size);
+
+  for (i = 0; i < page_bitmap->size; i++)
+    {
+      if ((i % 32) == 0)
+	{
+	  fprintf (out_fp, "%#08X: ", i);
+	}
+      else
+	{
+	  fprintf (out_fp, "%02X ", page_bitmap->bitmap[i]);
+	}
+
+      if ((i % 32) == 31)
+	{
+	  fprintf (out_fp, "\n");
+	}
+    }
+  fprintf (out_fp, "\n");
 }

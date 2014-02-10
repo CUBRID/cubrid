@@ -10103,7 +10103,11 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   float db_compatibility;
   PGLENGTH bkdb_iopagesize;
   float bkdb_compatibility;
-  FILEIO_RESTORE_PAGE_CACHE pages_cache;
+
+  FILEIO_RESTORE_PAGE_BITMAP_LIST page_bitmap_list;
+  FILEIO_RESTORE_PAGE_BITMAP *page_bitmap = NULL;
+  DKNPAGES total_pages;
+
   FILEIO_BACKUP_LEVEL try_level, start_level;
   bool first_time = true;
   bool remember_pages = false;
@@ -10128,8 +10132,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   memset (lgat_tmpname, 0, PATH_MAX);
 
   LOG_CS_ENTER (thread_p);
-  pages_cache.ht = NULL;
-  pages_cache.heap_id = HL_NULL_HEAPID;
 
   if (logpb_find_header_parameters (thread_p, db_fullname, logpath,
 				    prefix_logname, &db_iopagesize,
@@ -10141,6 +10143,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
       db_creation = 0;
       db_compatibility = rel_disk_compatible ();
     }
+
+  fileio_page_bitmap_list_init (&page_bitmap_list);
 
   /*
    * Must lock the database if possible. Would be nice to have a way
@@ -10156,35 +10160,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	  LOG_CS_EXIT (thread_p);
 	  goto error;
 	}
-    }
-
-  /*
-   * Create a memory hash table to remember the id's of pages
-   * that have been written.  We only need to write the page (once)
-   * from the most recent backup.
-   */
-
-  /* For the hash table size, it would be nice to have a real estimate
-   * of the number of pages.  The trouble is, we are restoring, and thus
-   * haven't the foggiest notion of the eventual number of pages in all
-   * restored volumes.
-   */
-  pages_cache.ht = mht_create ("Restored Pages hash table",
-			       LOG_BKUP_HASH_NUM_PAGEIDS, pgbuf_hash_vpid,
-			       pgbuf_compare_vpid);
-  if (pages_cache.ht == NULL)
-    {
-      error_code = ER_FAILED;
-      LOG_CS_EXIT (thread_p);
-      goto error;
-    }
-  pages_cache.heap_id = db_create_fixed_heap (sizeof (VPID),
-					      LOG_BKUP_HASH_NUM_PAGEIDS);
-  if (pages_cache.heap_id == HL_NULL_HEAPID)
-    {
-      error_code = ER_FAILED;
-      LOG_CS_EXIT (thread_p);
-      goto error;
     }
 
   /* The enum type can be negative in Windows. */
@@ -10272,8 +10247,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		{
 		  error_code = fileio_finish_restore (thread_p, session);
 
-		  mht_destroy (pages_cache.ht);
-		  db_destroy_fixed_heap (pages_cache.heap_id);
+		  fileio_page_bitmap_list_destroy (&page_bitmap_list);
 		  LOG_CS_EXIT (thread_p);
 		  return error_code;
 		}
@@ -10409,7 +10383,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		case LOG_DBVOLINFO_VOLID:
 		case LOG_DBLOG_ARCHIVE_VOLID:
 
-
 		  /* We can only take the most recent information, and we
 		   * do not want to overwrite it with out of data information
 		   * from earlier backups.  This is because we are
@@ -10446,10 +10419,34 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		{
 		  remember_pages = false;
 		}
+	      else
+		{
+		  total_pages = CEIL_PTVDIV (session->dbfile.nbytes,
+					     IO_PAGESIZE);
+		  /*
+		   * Create a page_bitmap to remember the id's of pages
+		   * that have been written. We only need to write the page 
+		   * (once) from the most recent backup.
+		   */
+		  page_bitmap =
+		    fileio_page_bitmap_list_find (&page_bitmap_list,
+						  to_volid);
+		  if (page_bitmap == NULL)
+		    {
+		      page_bitmap = fileio_page_bitmap_create (to_volid,
+							       total_pages);
+		      if (page_bitmap == NULL)
+			{
+			  goto error;
+			}
+		      fileio_page_bitmap_list_add (&page_bitmap_list,
+						   page_bitmap);
+		    }
+		}
 
 	      success = fileio_restore_volume (thread_p, session,
 					       to_volname, verbose_to_volname,
-					       prev_volname, &pages_cache,
+					       prev_volname, page_bitmap,
 					       remember_pages);
 	    }
 	  else if (another_vol == 0)
@@ -10540,8 +10537,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 
   LOG_CS_EXIT (thread_p);
 
-  mht_destroy (pages_cache.ht);
-  db_destroy_fixed_heap (pages_cache.heap_id);
+  fileio_page_bitmap_list_destroy (&page_bitmap_list);
 
   fileio_finalize_backup_info (FILEIO_SECOND_BACKUP_VOL_INFO);
 
@@ -10588,15 +10584,7 @@ error:
       fileio_abort_restore (thread_p, session);
     }
 
-  if (pages_cache.ht != NULL)
-    {
-      mht_destroy (pages_cache.ht);
-    }
-
-  if (pages_cache.heap_id != HL_NULL_HEAPID)
-    {
-      db_destroy_fixed_heap (pages_cache.heap_id);
-    }
+  fileio_page_bitmap_list_destroy (&page_bitmap_list);
 
   if (lgat_vdes != NULL_VOLDES)
     {
