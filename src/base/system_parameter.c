@@ -5046,6 +5046,16 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name,
 	prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha,
 			     check_intl_param);
     }
+
+#if defined (SA_MODE)
+  if (error == NO_ERROR)
+    {
+      error =
+	prm_load_by_section (ini, "standalone", true, reload, prm_file_name,
+			     ha, check_intl_param);
+    }
+#endif /* SA_MODE */
+
   if (error == NO_ERROR && !ha)
     {
       error =
