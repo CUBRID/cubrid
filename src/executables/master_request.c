@@ -129,6 +129,8 @@ static void css_process_activate_heartbeat (CSS_CONN_ENTRY * conn,
 
 static void css_process_register_ha_process (CSS_CONN_ENTRY * conn);
 static void css_process_change_ha_mode (CSS_CONN_ENTRY * conn);
+static void css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn,
+					   unsigned short request_id);
 
 /*
  * css_send_command_to_server()
@@ -972,6 +974,70 @@ css_process_change_ha_mode (CSS_CONN_ENTRY * conn)
 }
 
 /*
+ * css_process_ha_ping_hosts_info()
+ *   return: none
+ *   conn(in):
+ *   request_id(in):
+ */
+static void
+css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn,
+			       unsigned short request_id)
+{
+#if !defined(WINDOWS)
+  char *buffer = NULL;
+
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+    {
+      goto error_return;
+    }
+
+  hb_get_ping_host_info_string (&buffer);
+
+  if (buffer == NULL)
+    {
+      goto error_return;
+    }
+
+  if (css_send_data (conn, request_id,
+		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+
+  if (buffer != NULL)
+    {
+      free_and_init (buffer);
+    }
+  return;
+
+error_return:
+  if (css_send_data (conn, request_id, "\0", 1) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+
+  if (buffer != NULL)
+    {
+      free_and_init (buffer);
+    }
+  return;
+#else
+  char buffer[MASTER_TO_SRV_MSG_SIZE];
+
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS,
+			    MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_PROCESS_ERROR));
+
+  if (css_send_data (conn, request_id,
+		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+#endif
+}
+
+/*
  * css_process_ha_node_list_info()
  *   return: none
  *   conn(in):
@@ -1180,7 +1246,9 @@ css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
     {
       if (hb_is_registered_process (conn, buf))
 	{
-	  if (css_send_data (conn, request_id, "1\0", 2) != NO_ERRORS)
+	  if (css_send_data
+	      (conn, request_id, HA_REQUEST_SUCCESS,
+	       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
 	    {
 	      css_cleanup_info_connection (conn);
 	    }
@@ -1188,7 +1256,9 @@ css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
 	}
     }
 
-  if (css_send_data (conn, request_id, "0\0", 2) != NO_ERRORS)
+  if (css_send_data
+      (conn, request_id, HA_REQUEST_FAILURE,
+       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1469,41 +1539,36 @@ css_process_activate_heartbeat (CSS_CONN_ENTRY * conn,
 				unsigned short request_id)
 {
 #if !defined(WINDOWS)
-  char *buffer = NULL;
+  int error = NO_ERROR;
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       goto error_return;
     }
 
-  hb_activate_heartbeat (&buffer);
-  if (buffer == NULL)
+  error = hb_activate_heartbeat ();
+  if (error != NO_ERROR)
     {
       goto error_return;
     }
 
-  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-      NO_ERRORS)
+  if (css_send_data
+      (conn, request_id, HA_REQUEST_SUCCESS,
+       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
 
-  if (buffer != NULL)
-    {
-      free_and_init (buffer);
-    }
   return;
 
 error_return:
-  if (css_send_data (conn, request_id, "\0", 1) != NO_ERRORS)
+  if (css_send_data
+      (conn, request_id, HA_REQUEST_FAILURE,
+       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
 
-  if (buffer != NULL)
-    {
-      free_and_init (buffer);
-    }
   return;
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
@@ -1599,6 +1664,9 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	    {
 	      css_process_get_server_ha_mode (conn, request_id, buffer);
 	    }
+	  break;
+	case GET_HA_PING_HOST_INFO:
+	  css_process_ha_ping_host_info (conn, request_id);
 	  break;
 	case GET_HA_NODE_LIST:
 	  css_process_ha_node_list_info (conn, request_id, false);

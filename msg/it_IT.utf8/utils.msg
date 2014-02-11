@@ -580,6 +580,7 @@ opzioni valide:\n\
   -c, --server-mode=NOME           stampa NOME database server's modo HA\n\
   -N, --node-list                  list nodes gestito da CUBRID heartbeat\n\
   -L, --process-list               list local processo gestito da CUBRID heartbeat\n\
+  -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          uscire dal processo di destinazione e rimuoverlo dalle voci del processi managed\n\
   -F, --reconfig-node-list         applicare la configurazione CUBRID heartbeat recentemente cambiato\n\
   -U, --deactivate-heartbeat       disattivare CUBRID heartbeat e rimuovere il nodo corrente dal gruppo di nodi\n\

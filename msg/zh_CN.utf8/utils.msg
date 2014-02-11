@@ -580,6 +580,7 @@ usage: cub_commdb [选项]\n\
   -c, --server-mode=NAME           打印名为 NAME 的数据库的HA 模式\n\
   -N, --node-list                  列出由 CUBRID heartbeat 所管理的结点\n\
   -L, --process-list               列出由 CUBRID heartbeat 所管理的本地进程\n\
+  -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          退出目标进程并从被管理的进程条目中将其移除\n\
   -F, --reconfig-node-list         应用最近改变的 CUBRID heartbeat 配置\n\
   -U, --deactivate-heartbeat       撤销 CUBRID heartbeat 特征并从节点组中移除当前节点\n\

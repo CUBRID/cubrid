@@ -106,6 +106,7 @@ static void hb_cluster_receive_heartbeat (char *buffer, int len,
 					  socklen_t from_len);
 static bool hb_cluster_is_isolated (void);
 static bool hb_cluster_is_received_heartbeat_from_all (void);
+static bool hb_cluster_check_valid_ping_server (void);
 
 static int hb_cluster_calc_score (void);
 
@@ -138,6 +139,10 @@ static HB_NODE_ENTRY *hb_return_node_by_name_except_me (char *name);
 static int hb_cluster_load_group_and_node_list (char *ha_node_list,
 						char *ha_replica_list);
 
+/* ping host related functions */
+static HB_PING_HOST_ENTRY *hb_add_ping_host (char *host_name);
+static void hb_remove_ping_host (HB_PING_HOST_ENTRY * entry_p);
+static void hb_cluster_remove_all_ping_hosts (HB_PING_HOST_ENTRY * first);
 
 /* resource jobs */
 static void hb_resource_job_proc_start (HB_JOB_ARG * arg);
@@ -204,12 +209,15 @@ static void hb_kill_process (pid_t * pids, int count);
 /* process command */
 static const char *hb_node_state_string (int nstate);
 static const char *hb_process_state_string (unsigned char ptype, int pstate);
+static const char *hb_ping_result_string (int ping_result);
+
 static int hb_reload_config (void);
 
 static int hb_help_sprint_processes_info (char *buffer, int max_length);
 static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer,
 				     int max_length);
+static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
 
 HB_CLUSTER *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
@@ -277,6 +285,10 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
 #define HA_PROCESS_START_TIME_FORMAT_STRING        \
         "    - start-time        %s\n"
 
+#define HA_PING_HOSTS_INFO_FORMAT_STRING       \
+        " HA-Ping Host Info (PING check %s)\n"
+#define HA_PING_HOSTS_FORMAT_STRING        \
+          "   %-20s %s\n"
 /*
  * linked list
  */
@@ -824,6 +836,13 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
 		     hb_info_str);
 
+      if (hb_Cluster->num_ping_hosts > 0)
+	{
+	  hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
+			 1, hb_info_str);
+	}
+
       pthread_mutex_unlock (&hb_Cluster->lock);
 
       error = hb_cluster_job_queue (HB_CJOB_FAILBACK, NULL,
@@ -857,7 +876,6 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 	  error = hb_cluster_job_queue (HB_CJOB_CHECK_PING, job_arg,
 					HB_JOB_TIMER_IMMEDIATELY);
 	  assert (error == NO_ERROR);
-
 	}
       else
 	{
@@ -920,18 +938,17 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
   int error, rv;
   int ping_try_count = 0;
   bool ping_success = false;
-  char *host_list = NULL;
-  char *host_list_p, *host_p, *host_pp;
   int ping_result;
   unsigned int failover_wait_time;
   HB_CLUSTER_JOB_ARG *clst_arg = (arg) ? &(arg->cluster_job_arg) : NULL;
+  HB_PING_HOST_ENTRY *ping_host;
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
 
-  if (clst_arg == NULL || prm_get_string_value (PRM_ID_HA_PING_HOSTS) == NULL
-      || *prm_get_string_value (PRM_ID_HA_PING_HOSTS) == '\0')
+  if (clst_arg == NULL || hb_Cluster->num_ping_hosts == 0
+      || hb_Cluster->is_ping_check_enabled == false)
     {
-      /* If Ping Host is empty, MASTER->MASTER, SLAVE->MASTER.
+      /* If Ping Host is either empty or marked invalid, MASTER->MASTER, SLAVE->MASTER.
        * It may cause split-brain problem.
        */
       if (hb_Cluster->state == HB_NSTATE_MASTER)
@@ -941,22 +958,12 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
     }
   else
     {
-      host_list = strdup (prm_get_string_value (PRM_ID_HA_PING_HOSTS));
-      if (host_list == NULL)
+      for (ping_host = hb_Cluster->ping_hosts; ping_host;
+	   ping_host = ping_host->next)
 	{
-	  goto ping_check_cancel;
-	}
+	  ping_result = hb_check_ping (ping_host->host_name);
 
-      for (host_list_p = host_list;; host_list_p = NULL)
-	{
-	  host_p = strtok_r (host_list_p, " ,:", &host_pp);
-	  if (host_p == NULL)
-	    {
-	      break;
-	    }
-
-	  ping_result = hb_check_ping (host_p);
-
+	  ping_host->ping_result = ping_result;
 	  if (ping_result == HB_PING_SUCCESS)
 	    {
 	      ping_try_count++;
@@ -994,16 +1001,12 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
 				  HB_JOB_TIMER_WAIT_A_SECOND);
 	  assert (error == NO_ERROR);
 
-	  if (host_list)
-	    {
-	      free_and_init (host_list);
-	    }
-
 	  return;
 	}
     }
 
-  /* Now, we have tried ping test over HB_MAX_PING_CHECK times. (or Slave's ping host is empty.)
+  /* Now, we have tried ping test over HB_MAX_PING_CHECK times.
+   * (or Slave's ping host is either empty or invalid.)
    * So, we can determine this node's next job (failover or failback).
    */
 
@@ -1039,10 +1042,6 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
       free_and_init (arg);
     }
 
-  if (host_list)
-    {
-      free_and_init (host_list);
-    }
   return;
 
 ping_check_cancel:
@@ -1070,10 +1069,6 @@ ping_check_cancel:
       free_and_init (arg);
     }
 
-  if (host_list)
-    {
-      free_and_init (host_list);
-    }
   return;
 }
 
@@ -1117,6 +1112,13 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
   hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
   MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
 		 hb_info_str);
+
+  if (hb_Cluster->num_ping_hosts > 0)
+    {
+      hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+		     hb_info_str);
+    }
 
   hb_cluster_request_heartbeat_to_all ();
   pthread_mutex_unlock (&hb_Cluster->lock);
@@ -1202,9 +1204,17 @@ hb_cluster_job_demote (HB_JOB_ARG * arg)
 
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
 			 1, "Found a new master node");
+
 	  hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
 			 1, hb_info_str);
+
+	  if (hb_Cluster->num_ping_hosts > 0)
+	    {
+	      hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+	      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			     ER_HB_NODE_EVENT, 1, hb_info_str);
+	    }
 
 	  hb_Cluster->hide_to_demote = false;
 
@@ -1266,6 +1276,13 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
   hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
   MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
 		 hb_info_str);
+
+  if (hb_Cluster->num_ping_hosts > 0)
+    {
+      hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+		     hb_info_str);
+    }
 
   pthread_mutex_unlock (&hb_Cluster->lock);
 
@@ -1332,6 +1349,37 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
 }
 
 /*
+ * hb_cluster_check_valid_ping_server() -
+ *   return: whether a valid ping host exists or not
+ *
+ * NOTE: it returns true when no ping host is specified.
+ */
+static bool
+hb_cluster_check_valid_ping_server (void)
+{
+  HB_PING_HOST_ENTRY *ping_host;
+  bool valid_ping_host_exists = false;
+
+  if (hb_Cluster->num_ping_hosts == 0)
+    {
+      return true;
+    }
+
+  for (ping_host = hb_Cluster->ping_hosts; ping_host;
+       ping_host = ping_host->next)
+    {
+      ping_host->ping_result = hb_check_ping (ping_host->host_name);
+
+      if (ping_host->ping_result == HB_PING_SUCCESS)
+	{
+	  valid_ping_host_exists = true;
+	}
+    }
+
+  return valid_ping_host_exists;
+}
+
+/*
  * hb_cluster_job_check_valid_ping_server() -
  *   return: none
  *
@@ -1341,48 +1389,53 @@ static void
 hb_cluster_job_check_valid_ping_server (HB_JOB_ARG * arg)
 {
   int error, rv;
-  char *host_list = NULL;
-  char *host_list_p, *host_p, *host_pp;
-  int ping_result;
+  bool valid_ping_host_exists;
+  char buf[LINE_MAX];
+  int check_interval = HB_DEFAULT_CHECK_VALID_PING_SERVER_INTERVAL_IN_MSECS;
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
-  if (prm_get_string_value (PRM_ID_HA_PING_HOSTS) == NULL
-      || *prm_get_string_value (PRM_ID_HA_PING_HOSTS) == '\0')
+
+  if (hb_Cluster->num_ping_hosts == 0)
     {
-      pthread_mutex_unlock (&hb_Cluster->lock);
-      return;
+      goto check_end;
     }
 
-  host_list = strdup (prm_get_string_value (PRM_ID_HA_PING_HOSTS));
-
-  if (host_list == NULL)
+  valid_ping_host_exists = hb_cluster_check_valid_ping_server ();
+  if (valid_ping_host_exists == false && hb_cluster_is_isolated () == false)
     {
-      pthread_mutex_unlock (&hb_Cluster->lock);
-      return;
-    }
+      check_interval = HB_TEMP_CHECK_VALID_PING_SERVER_INTERVAL_IN_MSECS;
 
-  for (host_list_p = host_list;; host_list_p = NULL)
-    {
-      host_p = strtok_r (host_list_p, " :\t\n", &host_pp);
-      if (host_p == NULL)
+      if (hb_Cluster->is_ping_check_enabled == true)
 	{
-	  break;
+	  hb_Cluster->is_ping_check_enabled = false;
+	  snprintf (buf, LINE_MAX,
+		    "Validity check for PING failed on all hosts "
+		    "and PING check is now temporarily disabled.");
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
+			 1, buf);
 	}
-
-      hb_check_ping (host_p);
     }
+  else if (valid_ping_host_exists == true)
+    {
+      if (hb_Cluster->is_ping_check_enabled == false)
+	{
+	  hb_Cluster->is_ping_check_enabled = true;
+	  snprintf (buf, LINE_MAX, "Validity check for PING succeeded "
+		    "and PING check is now enabled.");
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
+			 1, buf);
+	}
+    }
+
+check_end:
   pthread_mutex_unlock (&hb_Cluster->lock);
 
   error =
     hb_cluster_job_queue (HB_CJOB_CHECK_VALID_PING_SERVER, NULL,
-			  HB_DEFAULT_CHECK_VALID_PING_SERVER_INTERVAL_IN_MSECS);
+			  check_interval);
 
   assert (error == NO_ERROR);
 
-  if (host_list)
-    {
-      free_and_init (host_list);
-    }
   return;
 }
 
@@ -1402,7 +1455,6 @@ hb_cluster_calc_score (void)
   short min_score = HB_NODE_SCORE_UNKNOWN;
   HB_NODE_ENTRY *node;
   struct timeval now;
-  double hb_recv_elapsed_time;
 
   if (hb_Cluster == NULL)
     {
@@ -1890,7 +1942,6 @@ hb_cluster_job_set_expire_and_reorder (unsigned int job_type,
   return NO_ERROR;
 }
 
-
 /*
  * hb_cluster_job_shutdown() -
  *   return: pointer to cluster job entry
@@ -1986,6 +2037,110 @@ hb_cluster_remove_all_nodes (HB_NODE_ENTRY * first)
       next_node = node->next;
       hb_remove_node (node);
     }
+}
+
+/*
+ * hb_add_ping_host() -
+ *   return: pointer to ping host entry
+ *
+ *   host_name(in):
+ */
+static HB_PING_HOST_ENTRY *
+hb_add_ping_host (char *host_name)
+{
+  HB_PING_HOST_ENTRY *p;
+  HB_PING_HOST_ENTRY **first_pp;
+
+  if (host_name == NULL)
+    {
+      return NULL;
+    }
+
+  p = (HB_PING_HOST_ENTRY *) malloc (sizeof (HB_PING_HOST_ENTRY));
+  if (p)
+    {
+      strncpy (p->host_name, host_name, sizeof (p->host_name) - 1);
+      p->host_name[sizeof (p->host_name) - 1] = '\0';
+      p->ping_result = HB_PING_UNKNOWN;
+      p->next = NULL;
+      p->prev = NULL;
+
+      first_pp = &hb_Cluster->ping_hosts;
+
+      hb_list_add ((HB_LIST **) first_pp, (HB_LIST *) p);
+    }
+
+  return (p);
+}
+
+/*
+ * hb_remove_ping_host() -
+ *   return: none
+ *
+ *   entry_p(in):
+ */
+static void
+hb_remove_ping_host (HB_PING_HOST_ENTRY * entry_p)
+{
+  if (entry_p)
+    {
+      hb_list_remove ((HB_LIST *) entry_p);
+      free_and_init (entry_p);
+    }
+  return;
+}
+
+/*
+ * hb_cluster_remove_all_ping_hosts() -
+ *   return: none
+ *
+ *   first(in):
+ */
+static void
+hb_cluster_remove_all_ping_hosts (HB_PING_HOST_ENTRY * first)
+{
+  HB_PING_HOST_ENTRY *host, *next_host;
+
+  for (host = first; host; host = next_host)
+    {
+      next_host = host->next;
+      hb_remove_ping_host (host);
+    }
+}
+
+/*
+ * hb_cluster_load_ping_host_list() -
+ *   return: number of ping hosts
+ *
+ *   host_list(in):
+ */
+static int
+hb_cluster_load_ping_host_list (char *ha_ping_host_list)
+{
+  int num_hosts = 0;
+  char host_list[LINE_MAX];
+  char *host_list_p, *host_p, *host_pp;
+
+  if (ha_ping_host_list == NULL)
+    {
+      return 0;
+    }
+
+  strncpy (host_list, ha_ping_host_list, LINE_MAX);
+
+  for (host_list_p = host_list;; host_list_p = NULL)
+    {
+      host_p = strtok_r (host_list_p, " ,:", &host_pp);
+      if (host_p == NULL)
+	{
+	  break;
+	}
+
+      hb_add_ping_host (host_p);
+      num_hosts++;
+    }
+
+  return num_hosts;
 }
 
 /*
@@ -3920,6 +4075,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   hb_Cluster->shutdown = false;
   hb_Cluster->hide_to_demote = false;
   hb_Cluster->is_isolated = false;
+  hb_Cluster->is_ping_check_enabled = true;
   hb_Cluster->sfd = INVALID_SOCKET;
   strncpy (hb_Cluster->host_name, host_name,
 	   sizeof (hb_Cluster->host_name) - 1);
@@ -3977,6 +4133,18 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
       pthread_mutex_unlock (&hb_Cluster->lock);
       return ERR_CSS_TCP_DATAGRAM_BIND;
     }
+
+  hb_Cluster->ping_hosts = NULL;
+  hb_Cluster->num_ping_hosts =
+    hb_cluster_load_ping_host_list (prm_get_string_value
+				    (PRM_ID_HA_PING_HOSTS));
+
+  if (hb_cluster_check_valid_ping_server () == false)
+    {
+      pthread_mutex_unlock (&hb_Cluster->lock);
+      return ER_FAILED;
+    }
+
   pthread_mutex_unlock (&hb_Cluster->lock);
 
   return NO_ERROR;
@@ -4563,6 +4731,10 @@ hb_cluster_cleanup (void)
       hb_Cluster->sfd = INVALID_SOCKET;
     }
 
+  hb_cluster_remove_all_ping_hosts (hb_Cluster->ping_hosts);
+  hb_Cluster->ping_hosts = NULL;
+  hb_Cluster->num_ping_hosts = 0;
+
   pthread_mutex_unlock (&hb_Cluster->lock);
 }
 
@@ -4650,6 +4822,32 @@ hb_process_state_string (unsigned char ptype, int pstate)
 }
 
 /*
+ * hb_ping_result_string -
+ *   return: ping result string
+ *
+ *   ping_result(in):
+ */
+const char *
+hb_ping_result_string (int ping_result)
+{
+  switch (ping_result)
+    {
+    case HB_PING_UNKNOWN:
+      return HB_PING_UNKNOWN_STR;
+    case HB_PING_SUCCESS:
+      return HB_PING_SUCCESS_STR;
+    case HB_PING_USELESS_HOST:
+      return HB_PING_USELESS_HOST_STR;
+    case HB_PING_SYS_ERR:
+      return HB_PING_SYS_ERR_STR;
+    case HB_PING_FAILURE:
+      return HB_PING_FAILURE_STR;
+    }
+
+  return "invalid";
+}
+
+/*
  * hb_reload_config -
  *   return: NO_ERROR or ER_FAILED
  *
@@ -4657,10 +4855,10 @@ hb_process_state_string (unsigned char ptype, int pstate)
 static int
 hb_reload_config (void)
 {
-  int rv, old_num_nodes;
+  int rv, old_num_nodes, old_num_ping_hosts, error;
   HB_NODE_ENTRY *old_nodes;
   HB_NODE_ENTRY *old_node, *old_myself, *old_master, *new_node;
-  HB_NODE_ENTRY **old_node_pp, **first_node_pp;
+  HB_PING_HOST_ENTRY *old_ping_hosts;
   char node_to_dereg[MAXHOSTNAMELEN * 16], *p, *last;
 
   if (hb_Cluster == NULL)
@@ -4682,14 +4880,33 @@ hb_reload_config (void)
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
 
-  old_node_pp = &old_nodes;
-  first_node_pp = &hb_Cluster->nodes;
-  hb_list_move ((HB_LIST **) old_node_pp, (HB_LIST **) first_node_pp);
+  /* backup old ping hosts */
+  hb_list_move ((HB_LIST **) & old_ping_hosts,
+		(HB_LIST **) & hb_Cluster->ping_hosts);
+  old_num_ping_hosts = hb_Cluster->num_ping_hosts;
+
+  hb_Cluster->ping_hosts = NULL;
+
+  /* backup old node list */
+  hb_list_move ((HB_LIST **) & old_nodes, (HB_LIST **) & hb_Cluster->nodes);
   old_myself = hb_Cluster->myself;
   old_master = hb_Cluster->master;
   old_num_nodes = hb_Cluster->num_nodes;
 
   hb_Cluster->nodes = NULL;
+
+  /* reload ping hosts */
+  hb_Cluster->num_ping_hosts =
+    hb_cluster_load_ping_host_list (prm_get_string_value
+				    (PRM_ID_HA_PING_HOSTS));
+
+  if (hb_cluster_check_valid_ping_server () == false)
+    {
+      error = ER_FAILED;
+      goto reconfig_error;
+    }
+
+  /* reload node list */
   hb_Cluster->num_nodes =
     hb_cluster_load_group_and_node_list ((char *)
 					 prm_get_string_value
@@ -4702,26 +4919,10 @@ hb_reload_config (void)
       (hb_Cluster->master
        && hb_return_node_by_name (hb_Cluster->master->host_name) == NULL))
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "reconfigure heartebat failed. "
-			   "(num_nodes:%d, master:{%s}).\n",
-			   hb_Cluster->num_nodes,
-			   (hb_Cluster->master) ? hb_Cluster->master->
-			   host_name : "-");
-
-      hb_cluster_remove_all_nodes (hb_Cluster->nodes);
-      hb_Cluster->myself = old_myself;
-      hb_Cluster->master = old_master;
-      hb_Cluster->num_nodes = old_num_nodes;
-
-      old_node_pp = &old_nodes;
-      first_node_pp = &hb_Cluster->nodes;
-      hb_list_move ((HB_LIST **) first_node_pp, (HB_LIST **) old_node_pp);
-
-      pthread_mutex_unlock (&hb_Cluster->lock);
-
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
 		     prm_get_name (PRM_ID_HA_NODE_LIST));
-      return ER_PRM_BAD_VALUE;
+      error = ER_PRM_BAD_VALUE;
+      goto reconfig_error;
     }
 
   for (new_node = hb_Cluster->nodes; new_node; new_node = new_node->next)
@@ -4772,6 +4973,16 @@ hb_reload_config (void)
 	}
     }
 
+  hb_cluster_job_set_expire_and_reorder (HB_CJOB_CHECK_VALID_PING_SERVER,
+					 HB_JOB_TIMER_IMMEDIATELY);
+
+  /* clean up ping host backup */
+  if (old_ping_hosts != NULL)
+    {
+      hb_cluster_remove_all_ping_hosts (old_ping_hosts);
+    }
+
+  /* clean up node list backup */
   if (old_nodes)
     {
       hb_cluster_remove_all_nodes (old_nodes);
@@ -4782,6 +4993,33 @@ hb_reload_config (void)
   hb_deregister_nodes (node_to_dereg);
 
   return NO_ERROR;
+
+reconfig_error:
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "reconfigure heartebat failed. "
+		       "(num_nodes:%d, master:{%s}).\n",
+		       hb_Cluster->num_nodes,
+		       (hb_Cluster->master) ? hb_Cluster->master->
+		       host_name : "-");
+
+/* restore ping hosts */
+  hb_Cluster->num_ping_hosts = old_num_ping_hosts;
+
+  hb_cluster_remove_all_ping_hosts (hb_Cluster->ping_hosts);
+
+  hb_list_move ((HB_LIST **) & hb_Cluster->ping_hosts,
+		(HB_LIST **) & old_ping_hosts);
+
+  /* restore node list */
+  hb_cluster_remove_all_nodes (hb_Cluster->nodes);
+  hb_Cluster->myself = old_myself;
+  hb_Cluster->master = old_master;
+  hb_Cluster->num_nodes = old_num_nodes;
+
+  hb_list_move ((HB_LIST **) & hb_Cluster->nodes, (HB_LIST **) & old_nodes);
+
+  pthread_mutex_unlock (&hb_Cluster->lock);
+
+  return error;
 }
 
 static void
@@ -4832,6 +5070,97 @@ hb_deregister_nodes (char *node_to_dereg)
 	}
       (void) pthread_mutex_unlock (&hb_Resource->lock);
     }
+
+  return;
+}
+
+/*
+ * hb_get_ping_host_info_string -
+ *   return: none
+ *
+ *   str(out):
+ */
+void
+hb_get_ping_host_info_string (char **str)
+{
+  int rv, buf_size = 0, required_size = 0;
+  char *p, *last;
+  bool valid_ping_host_exists;
+  bool is_ping_check_enabled = true;
+  HB_PING_HOST_ENTRY *ping_host;
+
+  if (hb_Cluster == NULL)
+    {
+      return;
+    }
+
+  if (*str)
+    {
+      **str = 0;
+      return;
+    }
+
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
+
+  if (hb_Cluster->num_ping_hosts == 0)
+    {
+      pthread_mutex_unlock (&hb_Cluster->lock);
+      return;
+    }
+
+  /* refresh ping host info */
+  valid_ping_host_exists = hb_cluster_check_valid_ping_server ();
+
+  if (valid_ping_host_exists == false && hb_cluster_is_isolated () == false)
+    {
+      is_ping_check_enabled = false;
+    }
+
+  if (is_ping_check_enabled != hb_Cluster->is_ping_check_enabled)
+    {
+      hb_cluster_job_set_expire_and_reorder (HB_CJOB_CHECK_VALID_PING_SERVER,
+					     HB_JOB_TIMER_IMMEDIATELY);
+    }
+
+  required_size = strlen (HA_PING_HOSTS_INFO_FORMAT_STRING);
+  required_size += 7;		/* length of ping check status */
+
+  buf_size += required_size;
+
+  required_size = strlen (HA_PING_HOSTS_FORMAT_STRING);
+  required_size += MAXHOSTNAMELEN;
+  required_size += HB_PING_STR_SIZE;	/* length of ping test result */
+  required_size *= hb_Cluster->num_ping_hosts;
+
+  buf_size += required_size;
+
+  *str = (char *) malloc (sizeof (char) * buf_size);
+  if (*str == NULL)
+    {
+      pthread_mutex_unlock (&hb_Cluster->lock);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char) * buf_size);
+      return;
+    }
+  **str = '\0';
+
+  p = (char *) (*str);
+  last = p + buf_size;
+
+  p +=
+    snprintf (p, MAX ((last - p), 0), HA_PING_HOSTS_INFO_FORMAT_STRING,
+	      is_ping_check_enabled ? "enabled" : "disabled");
+
+  for (ping_host = hb_Cluster->ping_hosts; ping_host;
+       ping_host = ping_host->next)
+    {
+      p +=
+	snprintf (p, MAX ((last - p), 0), HA_PING_HOSTS_FORMAT_STRING,
+		  ping_host->host_name,
+		  hb_ping_result_string (ping_host->ping_result));
+    }
+
+  pthread_mutex_unlock (&hb_Cluster->lock);
 
   return;
 }
@@ -5346,6 +5675,7 @@ hb_reconfig_heartbeat (char **str)
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_RELOAD_STR,
 		     error_string);
+      *str = NULL;
     }
   else
     {
@@ -5353,13 +5683,13 @@ hb_reconfig_heartbeat (char **str)
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_RELOAD_STR,
 		     error_string);
+      hb_get_node_info_string (str, false);
+
+      snprintf (error_string, LINE_MAX, "\n%s", (str && *str) ? *str : "");
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_RELOAD_STR,
+		     error_string);
     }
-
-  hb_get_node_info_string (str, false);
-
-  snprintf (error_string, LINE_MAX, "\n%s", (str && *str) ? *str : "");
-  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
-		 HB_CMD_RELOAD_STR, error_string);
 
   return;
 }
@@ -5438,35 +5768,16 @@ hb_deactivate_heartbeat (char **str)
  *
  *   str(out):
  */
-void
-hb_activate_heartbeat (char **str)
+int
+hb_activate_heartbeat (void)
 {
-  int rv, error;
+  int error;
   char error_string[LINE_MAX] = "";
-  int required_size = 0;
-  char *p, *last;
-  HB_NODE_ENTRY *node;
 
   if (hb_Cluster == NULL)
     {
-      return;
+      return ER_FAILED;
     }
-
-  if (*str)
-    {
-      **str = 0;
-      return;
-    }
-  required_size = 2;
-  *str = (char *) malloc (required_size * sizeof (char));
-  if (NULL == *str)
-    {
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		     ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		     required_size * sizeof (char));
-      return;
-    }
-  **str = '\0';
 
   if (hb_Is_activated == true)
     {
@@ -5476,7 +5787,7 @@ hb_activate_heartbeat (char **str)
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_ACTIVATE_STR,
 		     error_string);
-      return;
+      return NO_ERROR;
     }
 
   error = hb_master_init ();
@@ -5488,7 +5799,8 @@ hb_activate_heartbeat (char **str)
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_ACTIVATE_STR,
 		     error_string);
-      return;
+
+      return ER_FAILED;
     }
 
   hb_Is_activated = true;
@@ -5497,7 +5809,7 @@ hb_activate_heartbeat (char **str)
   MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2,
 		 HB_CMD_ACTIVATE_STR, error_string);
 
-  return;
+  return NO_ERROR;
 }
 
 
@@ -5571,12 +5883,55 @@ hb_check_ping (const char *host)
       return HB_PING_FAILURE;
 
     }
-  /* ping success */
-  snprintf (buf, sizeof (buf), "PING success for host %s", host);
-  MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-		 buf);
 
   return HB_PING_SUCCESS;
+}
+
+static int
+hb_help_sprint_ping_host_info (char *buffer, int max_length)
+{
+  HB_PING_HOST_ENTRY *ping_host;
+  char *p, *last;
+
+  if (*buffer != '\0')
+    {
+      memset (buffer, 0, max_length);
+    }
+
+  p = buffer;
+  last = buffer + max_length;
+
+  p += snprintf (p, MAX ((last - p), 0), "HA Ping Host Info\n");
+  p += snprintf (p, MAX ((last - p), 0), "=============================="
+		 "==================================================\n");
+
+  p +=
+    snprintf (p, MAX ((last - p), 0),
+	      " * PING check is %s\n",
+	      hb_Cluster->is_ping_check_enabled ? "enabled" : "disabled");
+  p +=
+    snprintf (p, MAX ((last - p), 0),
+	      "------------------------------"
+	      "--------------------------------------------------\n");
+  p +=
+    snprintf (p, MAX ((last - p), 0), "%-20s %-20s\n",
+	      "hostname", "PING check result");
+  p +=
+    snprintf (p, MAX ((last - p), 0),
+	      "------------------------------"
+	      "--------------------------------------------------\n");
+  for (ping_host = hb_Cluster->ping_hosts; ping_host;
+       ping_host = ping_host->next)
+    {
+      p +=
+	snprintf (p, MAX ((last - p), 0), "%-20s %-20s\n",
+		  ping_host->host_name,
+		  hb_ping_result_string (ping_host->ping_result));
+    }
+  p += snprintf (p, MAX ((last - p), 0), "=============================="
+		 "==================================================\n");
+
+  return p - buffer;
 }
 
 static int

@@ -35,11 +35,19 @@
 /* ping result */
 enum HB_PING_RESULT
 {
+  HB_PING_UNKNOWN = -1,
   HB_PING_SUCCESS = 0,
   HB_PING_USELESS_HOST = 1,
   HB_PING_SYS_ERR = 2,
   HB_PING_FAILURE = 3
 };
+
+#define HB_PING_UNKNOWN_STR          "UNKNOWN"
+#define HB_PING_SUCCESS_STR          "SUCCESS"
+#define HB_PING_USELESS_HOST_STR     "SKIPPED"
+#define HB_PING_SYS_ERR_STR          "ERROR"
+#define HB_PING_FAILURE_STR          "FAILURE"
+#define HB_PING_STR_SIZE             (7)
 
 /* heartbeat cluster jobs */
 enum HB_CLUSTER_JOB
@@ -174,6 +182,17 @@ struct hb_node_entry
   struct timeval last_recv_hbtime;	/* last received heartbeat time */
 };
 
+/* heartbeat ping host entries */
+typedef struct hb_ping_host_entry HB_PING_HOST_ENTRY;
+struct hb_ping_host_entry
+{
+  HB_PING_HOST_ENTRY *next;
+  HB_PING_HOST_ENTRY **prev;
+
+  char host_name[MAXHOSTNAMELEN];
+  int ping_result;
+};
+
 /* herartbeat cluster */
 typedef struct hb_cluster HB_CLUSTER;
 struct hb_cluster
@@ -195,6 +214,10 @@ struct hb_cluster
   bool shutdown;
   bool hide_to_demote;
   bool is_isolated;
+  bool is_ping_check_enabled;
+
+  HB_PING_HOST_ENTRY *ping_hosts;
+  int num_ping_hosts;
 };
 
 /* heartbeat processs entries */
@@ -241,7 +264,6 @@ struct hb_resource
 
   bool shutdown;
 };
-
 
 /* heartbeat cluster job argument */
 typedef struct hb_cluster_job_arg HB_CLUSTER_JOB_ARG;
@@ -322,6 +344,7 @@ extern void hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn,
 
 extern void hb_get_node_info_string (char **str, bool verbose_yn);
 extern void hb_get_process_info_string (char **str, bool verbose_yn);
+extern void hb_get_ping_host_info_string (char **str);
 extern void hb_kill_all_heartbeat_process (char **str);
 
 extern void hb_deregister_by_pid (pid_t pid);
@@ -329,7 +352,7 @@ extern void hb_deregister_by_args (char *args);
 
 extern void hb_reconfig_heartbeat (char **str);
 extern void hb_deactivate_heartbeat (char **str);
-extern void hb_activate_heartbeat (char **str);
+extern int hb_activate_heartbeat (void);
 
 extern bool hb_is_registered_process (CSS_CONN_ENTRY * conn, char *args);
 extern void hb_register_new_process (CSS_CONN_ENTRY * conn);

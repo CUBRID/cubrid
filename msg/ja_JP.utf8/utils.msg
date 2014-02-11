@@ -580,6 +580,7 @@ cub_commdb: このユーティリティーは使わないでください。そ�
   -c, --server-mode=NAME           NAMEデータベースのHAモードを出力\n\
   -N, --node-list                  CUBRID heartbeatに管理されるノードリストを出力\n\
   -L, --process-list               CUBRID heartbeatに管理されるローカルプロセス情報を出力\n\
+  -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          対象プロセスを終了して管理リストから削除\n\
   -F, --reconfig-node-list         CUBRID heartbeatノードの設定を再適用\n\
   -U, --deactivate-heartbeat       CUBRID heartbeatを止めてノードグルプから抜く\n\

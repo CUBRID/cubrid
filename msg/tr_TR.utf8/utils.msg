@@ -580,6 +580,7 @@ geçerli seçenekler:\n\
   -c, --server-mode=NAME           Yazdırma NAME veritabanı sunucusunun HA modunda\n\
   -N, --node-list                  CUBRID sinyal tarafından yönetilen listesi düğümleri\n\
   -L, --process-list               CUBRID sinyal tarafından yönetilen listesi yerel süreç\n\
+  -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          hedef işlemi çıkmak ve yönetilen süreç girdileri kaldırmak\n\
   -F, --reconfig-node-list         yakın zamanda değişenleri CUBRID sinyal yapılandırmayı uygulamak\n\
   -U, --deactivate-heartbeat       CUBRID sinyal özelliği devre dışı bırakmak ve düğüm grubundan geçerli düğüm kaldırmak\n\

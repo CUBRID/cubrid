@@ -90,6 +90,7 @@ static void process_ha_node_info_query (CSS_CONN_ENTRY * conn,
 					int verbose_yn);
 static void process_ha_process_info_query (CSS_CONN_ENTRY * conn,
 					   int verbose_yn);
+static void process_ha_ping_host_info_query (CSS_CONN_ENTRY * conn);
 static void process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn,
 					  char *pid_string);
 static void process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, char *args);
@@ -107,6 +108,7 @@ static bool commdb_Arg_ha_mode_server_info = false;
 static char *commdb_Arg_ha_mode_server_name = NULL;
 static bool commdb_Arg_print_ha_node_info = false;
 static bool commdb_Arg_print_ha_process_info = false;
+static bool commdb_Arg_print_ha_ping_hosts_info = false;
 static bool commdb_Arg_ha_deregister_by_pid = false;
 static char *commdb_Arg_ha_deregister_pid = NULL;
 static bool commdb_Arg_ha_deregister_by_args = false;
@@ -596,6 +598,36 @@ process_ha_process_info_query (CSS_CONN_ENTRY * conn, int verbose_yn)
 }
 
 /*
+ * process_ha_ping_host_info_query() - process heartbeat ping hosts list
+ *   return:  none
+ *   conn(in): connection info
+ */
+static void
+process_ha_ping_host_info_query (CSS_CONN_ENTRY * conn)
+{
+  char *reply_buffer = NULL;
+  int size = 0;
+#if !defined(WINDOWS)
+  unsigned short rid;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  rid = send_request_no_args (conn, GET_HA_PING_HOST_INFO);
+  return_string (conn, rid, &reply_buffer, &size);
+#endif
+
+  if (size > 0 && reply_buffer[0] != '\0')
+    {
+      printf ("\n%s\n", reply_buffer);
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+}
+
+/*
  * process_kill_all_ha_utils() - kill all copylogdb and applylogdb process
  *   return:  none
  *   conn(in): connection info
@@ -633,6 +665,7 @@ process_kill_all_ha_utils (CSS_CONN_ENTRY * conn)
 static int
 process_is_registered_proc (CSS_CONN_ENTRY * conn, char *args)
 {
+  int error = NO_ERROR;
 #if !defined(WINDOWS)
   char *reply_buffer = NULL;
   int size = 0;
@@ -646,16 +679,13 @@ process_is_registered_proc (CSS_CONN_ENTRY * conn, char *args)
     send_request_one_arg (conn, IS_REGISTERED_HA_PROC, (char *) buffer, len);
   return_string (conn, rid, &reply_buffer, &size);
 
-  if (size > 0)
+  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
     {
-      if (reply_buffer[0] == '1')
-	{
-	  return 0;
-	}
-      else
-	{
-	  return 1;
-	}
+      error = NO_ERROR;
+    }
+  else
+    {
+      error = ER_FAILED;
     }
 
   if (reply_buffer != NULL)
@@ -664,7 +694,7 @@ process_is_registered_proc (CSS_CONN_ENTRY * conn, char *args)
     }
 
 #endif /* !WINDOWS */
-  return 2;
+  return error;
 }
 
 /*
@@ -746,11 +776,12 @@ process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, char *args)
  *   return:  none
  *   conn(in): connection info
  */
-static void
+static int
 process_reconfig_heartbeat (CSS_CONN_ENTRY * conn)
 {
   char *reply_buffer = NULL;
   int size = 0;
+  int error = NO_ERROR;
 #if !defined(WINDOWS)
   unsigned short rid;
 #endif /* !WINDOWS */
@@ -760,15 +791,22 @@ process_reconfig_heartbeat (CSS_CONN_ENTRY * conn)
   return_string (conn, rid, &reply_buffer, &size);
 #endif
 
-  if (size && reply_buffer[0] != '\0')
+  if (size > 0 && reply_buffer[0] != '\0')
     {
       printf ("\n%s\n", reply_buffer);
+      error = NO_ERROR;
+    }
+  else
+    {
+      error = ER_FAILED;
     }
 
   if (reply_buffer != NULL)
     {
       free_and_init (reply_buffer);
     }
+
+  return error;
 }
 
 /*
@@ -823,9 +861,10 @@ process_deactivate_heartbeat (CSS_CONN_ENTRY * conn)
  *   return:  none
  *   conn(in): connection info
  */
-static void
+static int
 process_activate_heartbeat (CSS_CONN_ENTRY * conn)
 {
+  int error = NO_ERROR;
   char *reply_buffer = NULL;
   int size = 0;
 #if !defined(WINDOWS)
@@ -837,15 +876,21 @@ process_activate_heartbeat (CSS_CONN_ENTRY * conn)
   return_string (conn, rid, &reply_buffer, &size);
 #endif
 
-  if (size && reply_buffer[0] != '\0')
+  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
     {
-      printf ("\n%s\n", reply_buffer);
+      error = NO_ERROR;
+    }
+  else
+    {
+      error = ER_FAILED;
     }
 
   if (reply_buffer != NULL)
     {
       free_and_init (reply_buffer);
     }
+
+  return error;
 }
 
 
@@ -902,6 +947,11 @@ process_batch_command (CSS_CONN_ENTRY * conn)
       process_ha_process_info_query (conn, commdb_Arg_verbose_output);
     }
 
+  if (commdb_Arg_print_ha_ping_hosts_info)
+    {
+      process_ha_ping_host_info_query (conn);
+    }
+
   if (commdb_Arg_kill_all_ha_utils)
     {
       process_kill_all_ha_utils (conn);
@@ -926,7 +976,7 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 
   if (commdb_Arg_reconfig_heartbeat)
     {
-      process_reconfig_heartbeat (conn);
+      return process_reconfig_heartbeat (conn);
     }
 
   if (commdb_Arg_deactivate_heartbeat)
@@ -936,7 +986,7 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 
   if (commdb_Arg_activate_heartbeat)
     {
-      process_activate_heartbeat (conn);
+      return process_activate_heartbeat (conn);
     }
 
   return NO_ERROR;
@@ -963,6 +1013,7 @@ main (int argc, char **argv)
     {COMMDB_SERVER_MODE_L, 1, 0, COMMDB_SERVER_MODE_S},
     {COMMDB_HA_NODE_LIST_L, 0, 0, COMMDB_HA_NODE_LIST_S},
     {COMMDB_HA_PROCESS_LIST_L, 0, 0, COMMDB_HA_PROCESS_LIST_S},
+    {COMMDB_HA_PING_HOST_LIST_L, 0, 0, COMMDB_HA_PING_HOST_LIST_S},
     {COMMDB_DEREG_HA_BY_PID_L, 1, 0, COMMDB_DEREG_HA_BY_PID_S},
     {COMMDB_DEREG_HA_BY_ARGS_L, 1, 0, COMMDB_DEREG_HA_BY_ARGS_S},
     {COMMDB_KILL_ALL_HA_PROCESS_L, 0, 0, COMMDB_KILL_ALL_HA_PROCESS_S},
@@ -1046,6 +1097,9 @@ main (int argc, char **argv)
 	  break;
 	case 'L':
 	  commdb_Arg_print_ha_process_info = true;
+	  break;
+	case 'p':
+	  commdb_Arg_print_ha_ping_hosts_info = true;
 	  break;
 	case 'D':
 	  if (commdb_Arg_ha_deregister_pid != NULL)

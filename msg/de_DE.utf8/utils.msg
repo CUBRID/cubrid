@@ -580,6 +580,7 @@ gültige Optionen:\n\
   -c, --Server-mode=NAME           HA-Modus des Datenbankservers NAME anzeigen \n\
   -N, --node-list                  Knoten anzeigen, die von dem CUBRID Herzschlag verwaltet sind\n\
   -L, --process-list               lokale Prozesse anzeigen, die von dem CUBRID Herzschlag verwaltet sind\n\
+  -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          Zielprozess verlassen und aus den verwalteten Prozessen entfernen \n\
   -F, --reconfig-node-list         CUBRID neulich aktualisierte Herzschlagkonfiguration übernehmen\n\
   -U, --deactivate-heartbeat       CUBRID Herzschlag deaktivieren und das aktuelle Knoten aus der Knotengruppe entfernen \n\

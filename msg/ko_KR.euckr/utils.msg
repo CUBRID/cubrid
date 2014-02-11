@@ -581,6 +581,7 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' 명령을 사용하십시�
   -c, --server-mode=NAME           해당 데이터베이스 서버의 HA 모드 출력\n\
   -N, --node-list                  CUBRID heartbeat에 의해 관리되는 노드 조회\n\
   -L, --process-list               CUBRID heartbeat에 의해 관리되는 로컬 프로세스 정보 조회\n\
+  -c, --ping-host                  CUBRID heartbeat를 위한 ping 호스트 정보 조회\n\
   -D, --dereg-process=PID          대상 프로세스를 종료하고 관리 대상 목록에서 제거\n\
   -F, --reconfig-node-list         CUBRID heartbeat 노드 설정 정보를 재 적용\n\
   -U, --deactivate-heartbeat       CUBRID heartbeat 기능을 비활성화하고 노드 그룹에서 탈퇴\n\

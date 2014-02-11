@@ -580,6 +580,7 @@ các tùy chọn hợp lệ:\n\
   -c, --server-mode=NAME           in chế độ HA của server cơ sở dữ liệu NAME\n\
   -N, --node-list                  liệt kê các nút quản lý bởi CUBRID heartbeat\n\
   -L, --process-list               liệt kê tiến trình cục bộ quản lý bởi CUBRID heartbeat\n\
+  -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          thoát tiến trình đích và gỡ bỏ nó từ các mục tiến trình được quản lý\n\
   -F, --reconfig-node-list         áp dụng cấu hình CUBRID heartbeat vừa được thay đổi\n\
   -U, --deactivate-heartbeat       bỏ kích hoạt tính năng CUBRID heartbeat và gỡ bỏ nút hiện tại từ nhóm nút\n\

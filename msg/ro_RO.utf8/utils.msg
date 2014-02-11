@@ -599,6 +599,7 @@ opţiuni valide:\n\
   -c, --server-mode=NUME           afişează modul de execuţie HA al serverului specificat prin NUME\n\
   -N, --node-list                  afişează nodurile gestionate de către CUBRID heartbeat\n\
   -L, --process-list               afişează procesele locale gestionate de către CUBRID heartbeat\n\
+  -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          încheie procesul ţintă şi îl elimină din lista de procese gestionate\n\
   -F, --reconfig-node-list         aplică configuraţia recent modificată pentru CUBRID heartbeat\n\
   -U, --deactivate-heartbeat       dezactivează CUBRID heartbeat şi elimină nodul curent din grup\n\

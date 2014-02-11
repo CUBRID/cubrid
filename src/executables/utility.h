@@ -792,6 +792,7 @@ typedef struct _ha_config
 #define COMMDB_IS_REG           "-C"
 #define COMMDB_HA_NODE_LIST     "-N"
 #define COMMDB_HA_PROC_LIST     "-L"
+#define COMMDB_HA_PING_HOST_LIST "-p"
 #define COMMDB_HA_RELOAD        "-F"
 #define COMMDB_HA_DEACTIVATE    "-U"
 #define COMMDB_HA_ACTIVATE      "-T"
@@ -1221,6 +1222,8 @@ typedef struct _ha_config
 #define COMMDB_HA_NODE_LIST_L                   "node-list"
 #define COMMDB_HA_PROCESS_LIST_S                'L'
 #define COMMDB_HA_PROCESS_LIST_L                "process-list"
+#define COMMDB_HA_PING_HOST_LIST_S              'p'
+#define COMMDB_HA_PING_HOST_LIST_L              "ping-host"
 #define COMMDB_DEREG_HA_BY_PID_S                'D'
 #define COMMDB_DEREG_HA_BY_PID_L                "dereg-process"
 #define COMMDB_DEREG_HA_BY_ARGS_S               'R'

@@ -583,6 +583,7 @@ options valids:\n\
   -c, --server-mode=SERVEUR        afficher le mode de HA du SERVEUR de la base de données\n\
   -N, --node-list                  liste les nœuds gérés par CUBRID heartbeat\n\
   -L, --process-list               liste les processus locals géré par CUBRID heartbeat\n\
+  -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          quitte le processus cible et le supprime des entrées de processus gérés\n\
   -F, --reconfig-node-list         applique la configuration du CUBRID heartbeat récemment changé\n\
   -U, --deactivate-heartbeat       désactiver la fonction CUBRID heartbeat et supprime le nœud actuel du groupe de nœuds\n\

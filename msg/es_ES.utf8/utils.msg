@@ -580,6 +580,7 @@ opciones validas:\n\
   -c, --server-mode=NAME           imprimir el modo HA del servidor NOMBRE de la base de datos\n\
   -N, --node-list                  listar nodos patrocinados por CUBRID heartbeat\n\
   -L, --process-list               listar proceso local patrocinado por CUBRID heartbeat\n\
+  -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          salir del proceso de destino y eliminarlo de las entradas de proceso patrocinadas\n\
   -F, --reconfig-node-list         aplicar la configuracion CUBRID heartbeat recien cambiada\n\
   -U, --deactivate-heartbeat       inhabilitar caracteristica CUBRID heartbeat y eliminar el nodo actual del grupo de nodos\n\

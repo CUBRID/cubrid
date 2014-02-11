@@ -909,7 +909,7 @@ process_master (int command_type)
 	    status = proc_execute (UTIL_MASTER_NAME, args, false, false,
 				   false, NULL);
 	    /* The master process needs a few seconds to bind port */
-	    sleep (2);
+	    sleep (3);
 	    status = css_does_master_exist (master_port) ?
 	      NO_ERROR : ER_GENERIC_ERROR;
 	    print_result (PRINT_MASTER_NAME, status, command_type);
@@ -3311,6 +3311,12 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	    proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 	}
 
+      if (status != NO_ERROR)
+	{
+	  print_result (PRINT_HEARTBEAT_NAME, status, command_type);
+	  break;
+	}
+
       db_name = (argc >= 1) ? argv[0] : NULL;
       if (db_name != NULL)
 	{
@@ -3447,6 +3453,8 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	    { UTIL_COMMDB_NAME, COMMDB_HA_NODE_LIST, NULL };
 	  const char *proc_list_args[] =
 	    { UTIL_COMMDB_NAME, COMMDB_HA_PROC_LIST, NULL };
+	  const char *ping_host_list_args[] =
+	    { UTIL_COMMDB_NAME, COMMDB_HA_PING_HOST_LIST, NULL };
 
 	  status =
 	    proc_execute (UTIL_COMMDB_NAME, node_list_args, true, false,
@@ -3458,6 +3466,14 @@ process_heartbeat (int command_type, int argc, const char **argv)
 
 	  status =
 	    proc_execute (UTIL_COMMDB_NAME, proc_list_args, true, false,
+			  false, NULL);
+	  if (status != NO_ERROR)
+	    {
+	      goto ret;
+	    }
+
+	  status =
+	    proc_execute (UTIL_COMMDB_NAME, ping_host_list_args, true, false,
 			  false, NULL);
 	}
       else
@@ -3478,11 +3494,15 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	}
       else
 	{
+	  status = ER_GENERIC_ERROR;
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			 PRINT_MASTER_NAME);
 	}
 
-      status = us_hb_utils_start (NULL, &ha_conf, NULL, NULL);
+      if (status == NO_ERROR)
+	{
+	  status = us_hb_utils_start (NULL, &ha_conf, NULL, NULL);
+	}
       print_result (PRINT_HEARTBEAT_NAME, status, command_type);
       break;
 

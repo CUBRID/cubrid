@@ -117,6 +117,7 @@ enum css_client_request
   KILL_ALL_HA_PROCESS = 34,	/* HA: kill all ha processes */
   IS_REGISTERED_HA_PROC = 35,	/* HA: check registered ha process */
   DEREGISTER_HA_PROCESS_BY_ARGS = 36,	/* HA: deregister ha process by args */
+  GET_HA_PING_HOST_INFO = 37,	/* HA: get ping hosts info */
 };
 
 /*
@@ -327,6 +328,10 @@ enum ha_log_applier_state
 #define HA_CHANGE_MODE_IMMEDIATELY		0
 
 #define HA_DELAY_ERR_CORRECTION             1
+
+#define HA_REQUEST_SUCCESS      "1\0"
+#define HA_REQUEST_FAILURE      "0\0"
+#define HA_REQUEST_RESULT_SIZE  2
 
 /*
  * This constant defines the maximum size of a msg from the master to the

@@ -580,6 +580,7 @@ usage: cub_commdb [OPTION]\n\
   -c, --server-mode=NAME           ព្រីន/ថតចម្លង HA mode​ របស់ NAME serverដែលតាបេស \n\
   -N, --node-list                  រៀបតារាង nodes ដែលរៀបចំគ្រប់គ្រងដោយ CUBRID heartbeat\n\
   -L, --process-list               រៀបតារាងដំណើរការlocal ដែលរៀបចំគ្រប់គ្រងដោយ CUBRID heartbeat\n\
+  -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          បិទដំណើរការជាគោលដៅ​ និងផ្លាស់វាចេញពីរបៀបចូលដំណើរការដែលបានរៀបចំគ្រប់គ្រងរួច\n\
   -F, --reconfig-node-list         ដាក់ដំណើរការCUBRID heartbeat configurationដែលត្រូវបានផ្លាស់ប្តូរថ្មីៗ\n\
   -U, --deactivate-heartbeat       យកមកប្រើក្នុងដំណើរការនូវdeactivate CUBRID heartbeat និងផ្លាស់nodeបច្ចុប្បន្នពីក្រុមnode \n\

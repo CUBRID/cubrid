@@ -581,6 +581,7 @@ valid options:\n\
   -c, --server-mode=NAME           print NAME database server's HA mode\n\
   -N, --node-list                  list nodes managed by CUBRID heartbeat\n\
   -L, --process-list               list local process managed by CUBRID heartbeat\n\
+  -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          exit the target process and remove it from managed process entries\n\
   -F, --reconfig-node-list         apply CUBRID heartbeat configuration recently changed\n\
   -U, --deactivate-heartbeat       deactivate CUBRID heartbeat feature and remove the current node from node group\n\
