@@ -379,7 +379,7 @@ echo Buiding DBGWCI_NCLAVIS package in %BUILD_DIR% ...
 if NOT EXIST %BUILD_PREFIX% echo Cannot found built directory. & GOTO :EOF
 cd /d %BUILD_PREFIX%
 
-SET DBGWCI_NCLAVIS_TARGET=cubrid-dbgwci-nclavis-%BUILD_NUMBER% 
+SET DBGWCI_NCLAVIS_TARGET=cubrid-dbgwci-nclavis-%BUILD_NUMBER%
 
 if EXIST %DBGWCI_NCLAVIS_TARGET% rd /s /q %DBGWCI_NCLAVIS_TARGET%
 md %DBGWCI_NCLAVIS_TARGET%\include
