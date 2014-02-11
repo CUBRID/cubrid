@@ -254,7 +254,7 @@ broker_create_dir (const char *new_dir)
 	  p++;
 	}
     }
-  return -1;
+  return 0;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -327,6 +327,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
       broker_create_dir (br_info[i].log_dir);
       broker_create_dir (br_info[i].slow_log_dir);
       broker_create_dir (br_info[i].err_log_dir);
+      broker_create_dir (br_info[i].access_log_dir);
 
       if (br_info[i].shard_flag == ON)
 	{
