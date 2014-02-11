@@ -4351,6 +4351,13 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 	    }
 	}
 
+#if !defined(NDEBUG)
+      er_log_debug (ARG_FILE_LINE,
+		    "hash aggregation overflow: dumped %.2fKB entry",
+		    (qdata_get_agg_hkey_size (key) +
+		     qdata_get_agg_hvalue_size (value, false)) / 1024.0f);
+#endif
+
       /* remove entry */
       context->hash_size -= qdata_get_agg_hkey_size (key);
       context->hash_size -= qdata_get_agg_hvalue_size (value, false);
@@ -4370,6 +4377,11 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 	  qdata_save_agg_htable_to_list (thread_p, context->hash_table,
 					 groupby_list, context->part_list_id,
 					 context->temp_dbval_array);
+
+#if !defined(NDEBUG)
+	  er_log_debug (ARG_FILE_LINE,
+			"hash aggregation abandoned: very high selectivity");
+#endif
 	}
     }
 
