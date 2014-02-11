@@ -8486,6 +8486,7 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
   DB_OBJECT *pktable_obj, *fktable_obj;
   DB_ATTRIBUTE **fk_attr = NULL, **pk_attr = NULL;
   DB_CONSTRAINT *fk_const = NULL, *pk = NULL, *pk_const = NULL;
+  DB_CONSTRAINT *pktable_cons = NULL;
   DB_CONSTRAINT_TYPE type;
   SM_FOREIGN_KEY_INFO *fk_info;
   T_FK_INFO_RESULT *fk_res = NULL;
@@ -8539,7 +8540,16 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
 	  goto exit_on_error;
 	}
 
-      pk = db_constraint_find_primary_key (db_get_constraints (pktable_obj));
+      pktable_cons = db_get_constraints (pktable_obj);
+
+      error = db_error_code ();
+      if (error != NO_ERROR)
+	{
+	  error = ERROR_INFO_SET (error, DBMS_ERROR_INDICATOR);
+	  goto exit_on_error;
+	}
+
+      pk = db_constraint_find_primary_key (pktable_cons);
       if (pk == NULL)
 	{
 	  error = ERROR_INFO_SET_WITH_MSG (ER_FK_REF_CLASS_HAS_NOT_PK,
