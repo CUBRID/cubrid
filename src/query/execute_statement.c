@@ -13265,6 +13265,12 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (statement->xasl_id == NULL)
     {
+      /* check if it is not necessary to execute this statement */
+      if (qo_need_skip_execution ())
+	{
+	  statement->etc = NULL;
+	  return NO_ERROR;
+	}
       return do_insert (parser, statement);
     }
 
@@ -14036,6 +14042,13 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool query_trace = false;
 
   assert (pt_node_to_cmd_type (statement) == CUBRID_STMT_EXECUTE_PREPARE);
+
+  /* check if it is not necessary to execute this statement */
+  if (statement->xasl_id == NULL)
+    {
+      statement->etc = NULL;
+      return NO_ERROR;
+    }
 
   if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true
       && parser->query_trace == true)
@@ -15942,8 +15955,14 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP)
     {
       /* server side execution */
-
       int query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
+
+      /* check if it is not necessary to execute this statement */
+      if (statement->xasl_id == NULL)
+	{
+	  statement->etc = NULL;
+	  goto exit;
+	}
 
       /* flush necessary objects before execute */
       err = sm_flush_objects (class_obj);
