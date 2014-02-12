@@ -1362,8 +1362,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 118 sử dụng phân loại vô hiệu\n COLLATION ( expression )\n
 119 sử dụng clob_to_char vô hiệu\n CLOB_TO_CHAR ( expression [using charset] )\n
 120 sử dụng index_prefix vô hiệu\n INDEX_PREFIX ( expression, expression, expression )\n
-121 Expecting ON. Outer Joins require join condition.
-122 Incorrect usage of UNION and ORDER BY
+121 Incorrect usage of UNION and ORDER BY
+122 Expecting ON. Outer Joins require join condition.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Không đủ bộ nhớ.

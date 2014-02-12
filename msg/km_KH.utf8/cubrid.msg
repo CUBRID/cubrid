@@ -1362,8 +1362,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 118 ការរៀបចំឥតបានការ\n  COLLATION ( expression )\n
 119 ការប្រើប្រាស់clob_to_charត្រូវចាត់ទុកជាមោឃៈ\n  CLOB_TO_CHAR ( expression [using charset] )\n
 120 ការប្រើប្រាស់index_prefixត្រូវចាត់ទុកជាមោឃៈ\n  INDEX_PREFIX ( expression, expression, expression )\n
-121 Expecting ON. Outer Joins require join condition.
-122 Incorrect usage of UNION and ORDER BY
+121 Incorrect usage of UNION and ORDER BY
+122 Expecting ON. Outer Joins require join condition.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 គ្មាន memory។
