@@ -15277,6 +15277,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  {
 		    /* operation with zero date returns null */
 		    DB_MAKE_NULL (result);
+		    if (!prm_get_bool_value
+			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				ER_DATE_CONVERSION, 0);
+			goto error_date_conversion;
+		      }
 		    break;
 		  }
 
@@ -15351,6 +15358,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  {
 		    /* operation with zero date returns null */
 		    DB_MAKE_NULL (result);
+		    if (!prm_get_bool_value
+			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				ER_DATE_CONVERSION, 0);
+			goto error_date_conversion;
+		      }
 		    break;
 		  }
 
@@ -15426,6 +15440,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  {
 		    /* operation with zero date returns null */
 		    DB_MAKE_NULL (result);
+		    if (!prm_get_bool_value
+			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				ER_DATE_CONVERSION, 0);
+			goto error_date_conversion;
+		      }
 		    break;
 		  }
 
@@ -15579,6 +15600,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  {
 		    /* operation with zero date returns null */
 		    DB_MAKE_NULL (result);
+		    if (!prm_get_bool_value
+			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				ER_DATE_CONVERSION, 0);
+			goto error_date_conversion;
+		      }
 		    break;
 		  }
 
@@ -15720,6 +15748,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  {
 		    /* operation with zero date returns null */
 		    DB_MAKE_NULL (result);
+		    if (!prm_get_bool_value
+			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				ER_DATE_CONVERSION, 0);
+			goto error_date_conversion;
+		      }
 		    break;
 		  }
 
@@ -15774,6 +15809,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  {
 		    /* operation with zero date returns null */
 		    DB_MAKE_NULL (result);
+		    if (!prm_get_bool_value
+			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				ER_DATE_CONVERSION, 0);
+			goto error_date_conversion;
+		      }
 		    break;
 		  }
 
@@ -15816,6 +15858,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  {
 		    /* operation with zero date returns null */
 		    DB_MAKE_NULL (result);
+		    if (!prm_get_bool_value
+			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				ER_DATE_CONVERSION, 0);
+			goto error_date_conversion;
+		      }
 		    break;
 		  }
 
@@ -18397,6 +18446,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 overflow:
   PT_ERRORmf (parser, o1, MSGCAT_SET_PARSER_SEMANTIC,
 	      MSGCAT_SEMANTIC_DATA_OVERFLOW_ON, pt_show_type_enum (rTyp));
+  return 0;
+
+error_date_conversion:
+  PT_ERRORc (parser, o1, er_msg ());
   return 0;
 }
 
