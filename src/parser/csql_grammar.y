@@ -11342,12 +11342,22 @@ select_expression
      {{
          
          PT_NODE *stmt = $8;
+         PT_NODE *arg1 = $1;
          
          if (stmt)
          {
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
+			    
+			    if (arg1 != NULL
+			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
+			        && arg1->info.query.order_by != NULL)
+			      {
+			        PT_ERRORm (this_parser, stmt,
+			               MSGCAT_SET_PARSER_SYNTAX,
+			               MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
+			      }
          }
 
 
@@ -11425,12 +11435,21 @@ select_expression_without_values_query
      {{
          
          PT_NODE *stmt = $8;
+         PT_NODE *arg1 = $1;
          
          if (stmt)
          {
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
+			    if (arg1 != NULL
+			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
+			        && arg1->info.query.order_by != NULL)
+			      {
+			        PT_ERRORm (this_parser, stmt,
+			               MSGCAT_SET_PARSER_SYNTAX,
+			               MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
+			      }
          }
 
 

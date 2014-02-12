@@ -1363,6 +1363,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 119 Ungültige Nutzung des clob_to_char\n CLOB_TO_CHAR ( expression [using charset] )\n
 120 Ungültige Nutzung des index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
 121 Expecting ON. Outer Joins require join condition.
+122 Incorrect usage of UNION and ORDER BY
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.
