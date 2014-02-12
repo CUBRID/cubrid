@@ -82,12 +82,11 @@ main (int argc, char *argv[])
 
   if (argc == 5)
     {
-      char *p = NULL;
+      int result;
 
-      as_number = (int) strtol (argv[2], &p, 10);
-      if ((errno == ERANGE) ||
-	  (errno != 0 && as_number == 0) || (p && *p != '\0')
-	  || (as_number < 0))
+      result = parse_int (&as_number, argv[2], 10);
+
+      if (result != 0 || as_number < 0)
 	{
 	  printf ("Invalid cas number\n");
 	  exit (0);

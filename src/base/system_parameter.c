@@ -7204,32 +7204,13 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	  }
 	else
 	  {
-	    long l_val = 0;
+	    int result;
 
-	    errno = 0;
-	    l_val = strtol (value, &end, 10);
-	    if ((errno == ERANGE && (l_val == LONG_MAX
-				     || l_val == LONG_MIN))
-		|| (errno != 0 && l_val == 0))
-	      {
-		return PRM_ERR_BAD_VALUE;
-	      }
+	    result = parse_int (&val, value, 10);
 
-	    if (end == value)
+	    if (result != 0)
 	      {
 		return PRM_ERR_BAD_VALUE;
-	      }
-	    else if (*end != '\0')
-	      {
-		return PRM_ERR_BAD_VALUE;
-	      }
-	    else if (l_val > INT_MAX || l_val < INT_MIN)
-	      {
-		return PRM_ERR_BAD_RANGE;
-	      }
-	    else
-	      {
-		val = (int) l_val;
 	      }
 
 	    if (prm_check_range (prm, (void *) &val) != NO_ERROR)
@@ -7255,7 +7236,9 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
     case PRM_BIGINT:
       {
 	/* convert string to UINT64 */
+	int result;
 	UINT64 val;
+	char *end_p;
 
 	if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	  {
@@ -7266,13 +7249,8 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	  }
 	else
 	  {
-	    errno = 0;
-	    val = (UINT64) strtoll (value, &end, 10);
-	    if (end == value)
-	      {
-		return PRM_ERR_BAD_VALUE;
-	      }
-	    else if (*end != '\0')
+	    result = str_to_uint64 (&val, &end_p, value, 10);
+	    if (result != 0)
 	      {
 		return PRM_ERR_BAD_VALUE;
 	      }
@@ -7452,9 +7430,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 		      }
 		    else
 		      {
-			errno = 0;
-			tmp = strtol (p, &end, 10);
-			if (end == p)
+			int result;
+
+			result = parse_int (&tmp, p, 10);
+			if (result != 0)
 			  {
 			    free_and_init (val);
 			    return PRM_ERR_BAD_VALUE;
@@ -7549,10 +7528,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	  }
 	else
 	  {
+	    int result;
 	    /* check if string can be converted to an integer */
-	    errno = 0;
-	    val = strtol (value, &end, 10);
-	    if (end == value)
+	    result = parse_int (&val, value, 10);
+	    if (result != 0)
 	      {
 		return PRM_ERR_BAD_VALUE;
 	      }

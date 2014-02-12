@@ -796,7 +796,9 @@ str_to_log_date_format (char *str, char *date_format_str)
 {
   char *startp;
   char *endp;
-  int val, i;
+  int i;
+  int result = 0;
+  int val;
   int date_val[DATE_VALUE_COUNT];
 
   for (i = 0; i < DATE_VALUE_COUNT; i++)
@@ -804,8 +806,8 @@ str_to_log_date_format (char *str, char *date_format_str)
 
   for (i = 0, startp = str; i < DATE_VALUE_COUNT; i++)
     {
-      val = strtol (startp, &endp, 10);
-      if (startp == endp)
+      result = str_to_int32 (&val, &endp, startp, 10);
+      if (result != 0)
 	{
 	  goto error;
 	}
@@ -917,30 +919,47 @@ read_execute_end_msg (char *msg_p, int *res_code, int *runtime_msec)
   char *p, *next_p;
   int sec, msec;
   int tuple_count;
+  int result = 0;
+  int val;
 
   p = strchr (msg_p, ' ');
   if (p == NULL)
-    return -1;
+    {
+      return -1;
+    }
   p++;
   if (strncmp (p, "error:", 6) == 0)
-    p += 6;
+    {
+      p += 6;
+    }
 
-  *res_code = strtol (p, &next_p, 10);
-  if (p == next_p)
-    return -1;
+  result = str_to_int32 (&val, &next_p, p, 10);
+  if (result != 0)
+    {
+      return -1;
+    }
+  *res_code = val;
 
   p = next_p + 1;
   if (strncmp (p, "tuple ", 6) != 0)
-    return -1;
+    {
+      return -1;
+    }
 
   p += 6;
-  tuple_count = strtol (p, &next_p, 10);
-  if (p == next_p)
-    return -1;
+
+  result = str_to_int32 (&val, &next_p, p, 10);
+  if (result != 0)
+    {
+      return -1;
+    }
+  tuple_count = val;
 
   p = next_p + 1;
   if (strncmp (p, "time ", 5) != 0)
-    return -1;
+    {
+      return -1;
+    }
   p += 5;
 
   sscanf (p, "%d.%d", &sec, &msec);

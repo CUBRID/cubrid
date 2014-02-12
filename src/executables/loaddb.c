@@ -451,9 +451,9 @@ ldr_compare_attribute_with_meta (char *table_name, char *meta,
       error = ER_FAILED;
       goto compare_end;
     }
-  if (port_str_to_int (&type, type_str, 10) != NO_ERROR
-      || port_str_to_int (&order, order_str, 10) != NO_ERROR
-      || port_str_to_int (&storage_order, storage_order_str, 10) != NO_ERROR
+  if (parse_int (&type, type_str, 10) != NO_ERROR
+      || parse_int (&order, order_str, 10) != NO_ERROR
+      || parse_int (&storage_order, storage_order_str, 10) != NO_ERROR
       || (shared_str[0] != 'S' && shared_str[0] != 'I'))
     {
       print_log_msg (1, "\nCan not build meta: %s", table_name);
@@ -584,7 +584,7 @@ ldr_compare_storage_order (FILE * schema_file)
 	      != NO_ERROR)
 	    {
 	      print_log_msg (1, "\nThe table %s is not suitable to be"
-	                     " replicated since it is different from the original.",
+			     " replicated since it is different from the original.",
 			     table_name);
 	      error = ER_FAILED;
 	      goto compare_end;
@@ -595,7 +595,7 @@ ldr_compare_storage_order (FILE * schema_file)
       if (attribute || comma)
 	{
 	  print_log_msg (1, "\nThe number of columns of %s is different"
-	                 " from meta information.", table_name);
+			 " from meta information.", table_name);
 	  error = ER_FAILED;
 	  goto compare_end;
 	}

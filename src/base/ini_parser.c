@@ -901,13 +901,16 @@ ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def,
 	    int *lineno)
 {
   const char *str;
+  int val;
 
   str = ini_getstr (ini, sec, key, INI_INVALID_KEY, lineno);
   if (str == INI_INVALID_KEY)
     {
       return def;
     }
-  return (int) strtol (str, NULL, 0);
+
+  parse_int (&val, str, 0);
+  return val;
 }
 
 /*
@@ -1010,13 +1013,16 @@ ini_gethex (INI_TABLE * ini, const char *sec, const char *key, int def,
 	    int *lineno)
 {
   const char *str;
+  int val;
 
   str = ini_getstr (ini, sec, key, INI_INVALID_KEY, lineno);
   if (str == INI_INVALID_KEY)
     {
       return def;
     }
-  return (int) strtol (str, NULL, 16);
+
+  parse_int (&val, str, 16);
+  return val;
 }
 
 /*

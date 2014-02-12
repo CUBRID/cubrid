@@ -55,8 +55,9 @@
 #include <stdarg.h>
 #endif
 
-#if !defined(CAS_BROKER) && !defined(CAS_CCI)
-#include "storage_common.h"
+#ifndef HAVE_STRLCPY
+#include <sys/types.h>
+#include <string.h>
 #endif
 
 #if defined(AIX) && !defined(DONT_HOOK_MALLOC)
@@ -103,14 +104,14 @@ realpath (const char *path, char *resolved_path)
        */
       len = strlen (tmp_path);
       if (len > 0 && tmp_path[len - 1] == '\\')
-        {
-          tmp_path[len - 1] = '\0';
-        }
+	{
+	  tmp_path[len - 1] = '\0';
+	}
 
       if (stat (tmp_path, &stat_buf) == 0)
-        {
-          return tmp_str;
-        }
+	{
+	  return tmp_str;
+	}
     }
 
   return NULL;
@@ -268,8 +269,6 @@ lockf (int fd, int cmd, long size)
     }
 }
 
-#if !defined(CAS_BROKER) && !defined(CAS_CCI)
-#include "environment_variable.h"
 /*
  * cuserid - returns a pointer to a string containing a user name
  *                    associated with the effective user ID of the process
@@ -303,7 +302,6 @@ cuserid (char *string)
 
   return string;
 }
-#endif
 
 int
 getlogin_r (char *buf, size_t bufsize)
@@ -852,10 +850,10 @@ lock_region (int fd, int cmd, long offset, long size)
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-#if !defined(CAS_BROKER) && !defined(CAS_CCI)
 /* free_space -
  *   return:
  *   path(in):
+ *   page_size(in):
  *
  * Note:
  *   This function is designed to be compatible with both wide character
@@ -865,7 +863,7 @@ lock_region (int fd, int cmd, long offset, long size)
  *   already a wide character type.
  */
 int
-free_space (const char *path)
+free_space (const char *path, int page_size)
 {
   ULARGE_INTEGER freebytes_user, total_bytes, freebytes_system;
   TCHAR disk[PATH_MAX];
@@ -893,11 +891,9 @@ free_space (const char *path)
     }
   else
     {
-      return ((int) (freebytes_user.QuadPart / IO_PAGESIZE));
+      return ((int) (freebytes_user.QuadPart / page_size));
     }
 }
-#endif
-
 #endif /* WINDOWS */
 
 #if !defined(HAVE_STRDUP)
@@ -1273,7 +1269,6 @@ stristr (const char *s, const char *find)
   return (char *) s;
 }
 
-#if !defined(CAS_BROKER) && !defined(CAS_CCI)
 /*
  * wrapper for cuserid() function
  */
@@ -1290,7 +1285,6 @@ getuserid (char *string, int size)
       return string;
     }
 }
-#endif
 
 /*
  * wrapper for OS dependent operations
@@ -2317,9 +2311,10 @@ trim (char *str)
 }
 
 int
-port_str_to_int (int *ret_p, const char *str_p, int base)
+parse_int (int *ret_p, const char *str_p, int base)
 {
-  long int val;
+  int error = 0;
+  int val;
   char *end_p;
 
   assert (ret_p != NULL);
@@ -2327,16 +2322,8 @@ port_str_to_int (int *ret_p, const char *str_p, int base)
 
   *ret_p = 0;
 
-  errno = 0;
-  val = strtol (str_p, &end_p, base);
-
-  if ((errno == ERANGE && (val == LONG_MAX || val == LONG_MIN))
-      || (errno != 0 && val == 0))
-    {
-      return -1;
-    }
-
-  if (end_p == str_p)
+  error = str_to_int32 (&val, &end_p, str_p, base);
+  if (error < 0)
     {
       return -1;
     }
@@ -2355,6 +2342,198 @@ port_str_to_int (int *ret_p, const char *str_p, int base)
 
   return 0;
 }
+
+int
+parse_bigint (INT64 * ret_p, const char *str_p, int base)
+{
+  int error = 0;
+  INT64 val;
+  char *end_p;
+
+  assert (ret_p != NULL);
+  assert (str_p != NULL);
+
+  *ret_p = 0;
+
+  error = str_to_int64 (&val, &end_p, str_p, base);
+  if (error < 0)
+    {
+      return -1;
+    }
+
+  if (*end_p != '\0')
+    {
+      return -1;
+    }
+
+  *ret_p = val;
+
+  return 0;
+}
+
+int
+str_to_int32 (int *ret_p, char **end_p, const char *str_p, int base)
+{
+  long val = 0;
+
+  assert (ret_p != NULL);
+  assert (end_p != NULL);
+  assert (str_p != NULL);
+
+  *ret_p = 0;
+  *end_p = NULL;
+
+  errno = 0;
+  val = strtol (str_p, end_p, base);
+
+  if ((errno == ERANGE && (val == LONG_MAX || val == LONG_MIN))
+      || (errno != 0 && val == 0))
+    {
+      return -1;
+    }
+
+  if (*end_p == str_p)
+    {
+      return -1;
+    }
+
+  *ret_p = (int) val;
+
+  return 0;
+}
+
+int
+str_to_uint32 (unsigned int *ret_p, char **end_p, const char *str_p, int base)
+{
+  unsigned long val = 0;
+
+  assert (ret_p != NULL);
+  assert (end_p != NULL);
+  assert (str_p != NULL);
+
+  *ret_p = 0;
+  *end_p = NULL;
+
+  errno = 0;
+  val = strtoul (str_p, end_p, base);
+
+  if ((errno == ERANGE && val == ULONG_MAX) || (errno != 0 && val == 0))
+    {
+      return -1;
+    }
+
+  if (*end_p == str_p)
+    {
+      return -1;
+    }
+
+  *ret_p = (unsigned int) val;
+
+  return 0;
+}
+
+
+int
+str_to_int64 (INT64 * ret_p, char **end_p, const char *str_p, int base)
+{
+  INT64 val;
+
+  assert (ret_p != NULL);
+  assert (end_p != NULL);
+  assert (str_p != NULL);
+
+  *ret_p = 0;
+  *end_p = NULL;
+
+  errno = 0;
+  val = strtoll (str_p, end_p, base);
+
+  if ((errno == ERANGE && (val == LLONG_MAX || val == LLONG_MIN))
+      || (errno != 0 && val == 0))
+    {
+      return -1;
+    }
+
+  if (*end_p == str_p)
+    {
+      return -1;
+    }
+
+  *ret_p = val;
+
+  return 0;
+}
+
+int
+str_to_uint64 (UINT64 * ret_p, char **end_p, const char *str_p, int base)
+{
+  UINT64 val;
+
+  assert (ret_p != NULL);
+  assert (end_p != NULL);
+  assert (str_p != NULL);
+
+  *ret_p = 0;
+  *end_p = NULL;
+
+  errno = 0;
+  val = strtoull (str_p, end_p, base);
+
+  if ((errno == ERANGE && val == ULLONG_MAX) || (errno != 0 && val == 0))
+    {
+      return -1;
+    }
+
+  if (*end_p == str_p)
+    {
+      return -1;
+    }
+
+  *ret_p = val;
+
+  return 0;
+}
+
+#ifndef HAVE_STRLCPY
+/*
+ * Copy src to string dst of size siz.  At most siz-1 characters
+ * will be copied.  Always NUL terminates (unless siz == 0).
+ * Returns strlen(src); if retval >= siz, truncation occurred.
+ */
+size_t
+strlcpy (char *dst, const char *src, size_t siz)
+{
+  char *d = dst;
+  const char *s = src;
+  size_t n = siz;
+
+  assert (dst != NULL);
+  assert (src != NULL);
+
+  /* Copy as many bytes as will fit */
+  if (n != 0 && --n != 0)
+    {
+      do
+	{
+	  if ((*d++ = *s++) == 0)
+	    break;
+	}
+      while (--n != 0);
+    }
+
+  /* Not enough room in dst, add NUL and traverse rest of src */
+  if (n == 0)
+    {
+      if (siz != 0)
+	*d = '\0';		/* NUL-terminate dst */
+      while (*s++)
+	;
+    }
+
+  return (s - src - 1);		/* count does not include NUL */
+}
+#endif /* !HAVE_STRLCPY */
+
 
 #if (defined(WINDOWS) && defined(_WIN32))
 time_t

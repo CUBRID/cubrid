@@ -794,3 +794,12 @@ EXPORTS
 	db_private_strdup
 	db_private_free_debug
 	db_private_free_release
+;
+;   porting.h
+;
+	parse_int
+	parse_bigint
+	str_to_int32
+	str_to_uint32
+	str_to_int64
+	str_to_uint64

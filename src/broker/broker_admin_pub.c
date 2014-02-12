@@ -1912,11 +1912,11 @@ admin_conf_change (int master_shm_id, const char *br_name,
     }
   else if (strcasecmp (conf_name, "MAX_NUM_DELAYED_HOSTS_LOOKUP") == 0)
     {
-      int max_num_delayed_hosts_lookup;
-      char *end_p = NULL;
+      int max_num_delayed_hosts_lookup = 0, result;
 
-      max_num_delayed_hosts_lookup = (int) strtol (conf_value, &end_p, 10);
-      if (errno == ERANGE || (end_p && *end_p != '\0')
+      result = parse_int (&max_num_delayed_hosts_lookup, conf_value, 10);
+
+      if (result != 0
 	  || max_num_delayed_hosts_lookup <
 	  DEFAULT_MAX_NUM_DELAYED_HOSTS_LOOKUP)
 	{
@@ -2155,7 +2155,7 @@ admin_conf_change (int master_shm_id, const char *br_name,
     {
       int val, result;
 
-      result = port_str_to_int (&val, conf_value, 10);
+      result = parse_int (&val, conf_value, 10);
       if (result != 0 || val < SQL_LOG2_NONE || val > SQL_LOG2_MAX)
 	{
 	  sprintf (admin_err_msg, "invalid value : %s", conf_value);

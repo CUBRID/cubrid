@@ -710,6 +710,8 @@ co_find_conversion (const char *format, int from, int *end,
   const char *p;
   wchar_t wc;
   int csize;
+  int result = 0;
+  int val;
 
   /* No more conversion specs? */
   const char *start = intl_mbs_chr (format + from, WC_CSPEC ());
@@ -738,10 +740,10 @@ co_find_conversion (const char *format, int from, int *end,
       char *rest;
 
       /* Return position specifier. */
-      *position = (int) strtol (p, &rest, 10);
-      if (rest != p && *position > 0
-	  && GET_WC (wc, rest, csize) == WC_PSPEC ())
+      result = str_to_int32 (&val, &rest, p, 10);
+      if (result == 0 && val > 0 && GET_WC (wc, rest, csize) == WC_PSPEC ())
 	{
+	  *position = val;
 	  p = rest + csize;
 	}
       else
@@ -753,9 +755,11 @@ co_find_conversion (const char *format, int from, int *end,
       p += intl_mbs_spn (p, FLAGS ());
 
       /* Width specified? */
-      *width = (int) strtol (p, &rest, 10);
-      if (rest != p)
+      result = str_to_int32 (&val, &rest, p, 10);
+      if (result == 0)
 	{
+	  *width = val;
+
 	  /* Yes, skip precision. */
 	  p = rest;
 	  if (GET_WC (wc, p, csize) == WC_RADIX ())

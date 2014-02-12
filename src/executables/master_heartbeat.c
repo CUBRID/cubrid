@@ -5832,7 +5832,9 @@ hb_check_ping (const char *host)
 
   char ping_command[256], result_str[16];
   char buf[128];
-  long ping_result;
+  char *end_p;
+  int result = 0;
+  int ping_result;
   FILE *fp;
   HB_NODE_ENTRY *node;
 
@@ -5872,8 +5874,8 @@ hb_check_ping (const char *host)
 
   pclose (fp);
 
-  ping_result = strtol (result_str, (char **) NULL, 10);
-  if (ping_result != NO_ERROR)
+  result = str_to_int32 (&ping_result, &end_p, result_str, 10);
+  if (result != 0 || ping_result != NO_ERROR)
     {
       /* ping failed */
       snprintf (buf, sizeof (buf), "PING failed for host %s", host);

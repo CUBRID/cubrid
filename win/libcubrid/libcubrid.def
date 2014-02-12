@@ -9,3 +9,13 @@ EXPORTS
 	util_log_write_errid
 	util_log_write_errstr
 	util_log_write_command
+
+;
+;   porting.h
+;
+	parse_int
+	parse_bigint
+	str_to_int32
+	str_to_uint32
+	str_to_int64
+	str_to_uint64

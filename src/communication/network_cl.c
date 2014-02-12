@@ -2142,6 +2142,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 		int range_lower, range_higher;
 		int reprompt_value;
 		int error2;
+		int result = 0;
 		char *a_ptr;
 
 		ptr = or_unpack_int (ptr, (int *) &prompt_id);
@@ -2201,9 +2202,10 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 				  {
 				  case FILEIO_PROMPT_RANGE_TYPE:
 				    /* Numeric range checking */
-				    x = strtol (user_response_ptr, &a_ptr,
-						10);
-				    if (a_ptr == user_response_ptr
+				    result =
+				      str_to_int32 (&x, &a_ptr,
+						    user_response_ptr, 10);
+				    if (result != 0
 					|| x < range_lower
 					|| x > range_higher)
 				      {
@@ -2258,9 +2260,10 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 				     * but user's answer we really want is the second
 				     * prompt
 				     */
-				    x = strtol (user_response_ptr, &a_ptr,
-						10);
-				    if (a_ptr == user_response_ptr
+				    result =
+				      str_to_int32 (&x, &a_ptr,
+						    user_response_ptr, 10);
+				    if (result != 0
 					|| x < range_lower
 					|| x > range_higher)
 				      {

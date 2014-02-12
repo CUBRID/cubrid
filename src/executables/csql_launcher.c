@@ -255,27 +255,16 @@ main (int argc, char *argv[])
 
 	case CSQL_STRING_WIDTH_S:
 	  {
-	    char *endptr;
-	    long result;
+	    int string_width = 0, result;
 
-	    errno = 0;		/* To distinguish success/failure after call */
-	    result = strtol (optarg, &endptr, 10);
-	    if ((errno == ERANGE
-		 && (result == LONG_MAX || result == LONG_MIN))
-		|| (errno != 0 && result == 0))
-	      {
-		goto print_usage;
-	      }
-	    if (endptr && *endptr != '\0')
-	      {
-		goto print_usage;
-	      }
-	    if (result > INT_MAX || result < 0)
+	    result = parse_int (&string_width, optarg, 10);
+
+	    if (result != 0 || string_width < 0)
 	      {
 		goto print_usage;
 	      }
 
-	    csql_arg.string_width = result;
+	    csql_arg.string_width = string_width;
 	  }
 	  break;
 

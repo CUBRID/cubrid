@@ -327,13 +327,12 @@ sp_make_string_sp_value (SP_VALUE * value_p, const char *pos, int length)
 static int
 sp_make_int_sp_value_from_string (SP_VALUE * value_p, char *pos, int length)
 {
+  int result = 0;
   char tmp = pos[length];
-  char *end;
-  pos[length] = '\0';
 
-  errno = 0;
-  value_p->integer = strtoll (pos, &end, 10);
-  if (errno == ERANGE || *end != '\0')
+  pos[length] = '\0';
+  result = parse_int (&value_p->integer, pos, 10);
+  if (result != 0)
     {
       return ER_SP_INVALID_HINT;
     }

@@ -158,28 +158,33 @@ classobj_decompose_property_oid (const char *buffer,
 				 int *volid, int *fileid, int *pageid)
 {
   char *ptr;
+  int result = 0;
+  int val;
 
   if (buffer == NULL)
     {
       return 0;
     }
 
-  *volid = strtol (buffer, &ptr, 10);
-  if (ptr == buffer)
+  result = str_to_int32 (&val, &ptr, buffer, 10);
+  *volid = val;
+  if (result != 0)
     {
       return 0;
     }
   buffer = ptr + 1;
 
-  *fileid = strtol (buffer, &ptr, 10);
-  if (ptr == buffer)
+  result = str_to_int32 (&val, &ptr, buffer, 10);
+  *fileid = val;
+  if (result != 0)
     {
       return 0;
     }
   buffer = ptr + 1;
 
-  *pageid = strtol (buffer, &ptr, 10);
-  if (ptr == buffer)
+  result = str_to_int32 (&val, &ptr, buffer, 10);
+  *pageid = val;
+  if (result != 0)
     {
       return 0;
     }

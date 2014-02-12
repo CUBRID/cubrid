@@ -20750,20 +20750,14 @@ unsigned_int32
 		{{
 
 			PT_NODE *val;
-			long int_val;
-			char *endptr;
+			int result = 0;
+			int int_val;
 
 			val = parser_new_node (this_parser, PT_VALUE);
 			if (val)
 			  {
-			    errno = 0;
-			    int_val = strtol($1, &endptr, 10);
-
-			    if ((errno == ERANGE
-			         && (int_val == LONG_MAX
-			             || int_val == LONG_MIN))
-				|| (errno != 0 && int_val == 0)
-				|| (int_val > INT_MAX))
+			    result = parse_int (&int_val, $1, 10);
+			    if (result != 0)
 			      {
 				PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX,
 				            MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $1);

@@ -97,7 +97,7 @@ proxy_shm_initialize (void)
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to getenv(PROXY_ID_ENV_STR).");
       goto return_error;
     }
-  proxy_id = strtoul (p, NULL, 10);
+  parse_int (&proxy_id, p, 10);
 
   p = getenv (PROXY_SHM_KEY_STR);
   if (p == NULL)
@@ -106,7 +106,7 @@ proxy_shm_initialize (void)
 		 "Failed to getenv(PROXY_SHM_KEY_STR).");
       goto return_error;
     }
-  proxy_shm_id = strtoul (p, NULL, 10);
+  parse_int (&proxy_shm_id, p, 10);
 
   shm_proxy_p =
     (T_SHM_PROXY *) uw_shm_open (proxy_shm_id, SHM_PROXY, SHM_MODE_ADMIN);

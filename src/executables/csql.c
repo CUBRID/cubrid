@@ -1212,7 +1212,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	    else
 	      {
 		trim (val_str);
-		result = port_str_to_int (&width, val_str, 10);
+		result = parse_int (&width, val_str, 10);
 		if (result != 0 || width < 0)
 		  {
 		    fprintf (csql_Error_fp, "ERROR: Invalid argument(%s).\n",
@@ -1232,37 +1232,21 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
     case S_CMD_STRING_WIDTH:
       {
-	long result;
-	char *endptr;
+	int string_width = 0, result;
 
 	if (*argument != '\0')
 	  {
 	    trim (argument);
 
-	    errno = 0;		/* To distinguish success/failure after call */
-	    result = strtol (argument, &endptr, 10);
-	    if ((errno == ERANGE
-		 && (result == LONG_MAX || result == LONG_MIN))
-		|| (errno != 0 && result == 0))
+	    result = parse_int (&string_width, argument, 10);
+
+	    if (result != 0 || string_width < 0)
 	      {
 		fprintf (csql_Error_fp,
 			 "ERROR: Invalid string-width(%s).\n", argument);
-		break;
-	      }
-	    if (endptr && *endptr != '\0')
-	      {
-		fprintf (csql_Error_fp,
-			 "ERROR: Invalid string-width(%s).\n", argument);
-		break;
-	      }
-	    if (result > INT_MAX || result < 0)
-	      {
-		fprintf (csql_Error_fp,
-			 "ERROR: Invalid string-width(%s).\n", argument);
-		break;
 	      }
 
-	    csql_arg->string_width = result;
+	    csql_arg->string_width = string_width;
 	  }
 	else
 	  {

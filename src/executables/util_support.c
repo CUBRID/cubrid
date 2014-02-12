@@ -252,37 +252,26 @@ util_put_option_value (UTIL_MAP * util_map, int arg_ch,
 	      return NO_ERROR;
 	    case ARG_INTEGER:
 	      {
-		long value;
-		char *endptr;
-		errno = 0;	/* to distinguish success/failure */
-		value = strtol (option_arg, &endptr, 10);
-		if ((errno == ERANGE
-		     && (value == LONG_MAX || value == LONG_MIN))
-		    || (errno != 0 && value == 0))
-		  {
-		    return ER_FAILED;
-		  }
-		if (*endptr != '\0' || value > INT_MAX || value < INT_MIN)
+		int value = 0, result;
+
+		result = parse_int (&value, option_arg, 10);
+
+		if (result != 0)
 		  {
 		    return ER_FAILED;
 		  }
 
-		arg_map[i].arg_value.i = (int) value;
+		arg_map[i].arg_value.i = value;
 		return NO_ERROR;
 	      }
 	    case ARG_BIGINT:
 	      {
+		int result = 0;
 		INT64 value;
-		char *endptr;
-		errno = 0;	/* to distinguish success/failure */
-		value = strtoll (option_arg, &endptr, 10);
-		if ((errno == ERANGE
-		     && (value == LLONG_MAX || value == LLONG_MIN))
-		    || (errno != 0 && value == 0))
-		  {
-		    return ER_FAILED;
-		  }
-		if (*endptr != '\0')
+
+		result = parse_bigint (&value, option_arg, 10);
+
+		if (result != 0)
 		  {
 		    return ER_FAILED;
 		  }

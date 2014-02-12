@@ -456,17 +456,16 @@ load_unicode_data (const LOCALE_DATA * ld)
   while (fgets (str, sizeof (str), fp))
     {
       uint32 cp = 0;
+      int result = 0;
       int i;
-      char *s;
-      char *end;
+      char *s, *end, *end_p;
       UNICODE_CHAR *uc = NULL;
 
       line_count++;
 
-      cp = strtol (str, NULL, 16);
-
+      result = str_to_uint32 (&cp, &end_p, str, 16);
       /* skip Unicode values above 0xFFFF */
-      if ((int) cp >= MAX_UNICODE_CHARS)
+      if (result != 0 || cp >= MAX_UNICODE_CHARS)
 	{
 	  continue;
 	}
@@ -739,18 +738,18 @@ string_to_int_array (char *s, uint32 * cp_list, const int cp_list_size,
 
   while (str != NULL && str < str_end)
     {
-      uint32 code = 0;
+      int result = 0;
+      uint32 val;
 
-      code = strtol (str, &str_cursor, 16);
-
-      if (str_cursor <= str)
+      result = str_to_uint32 (&val, &str_cursor, str, 16);
+      if (result != 0 || str_cursor <= str)
 	{
 	  break;
 	}
 
       if (i < cp_list_size)
 	{
-	  *cp_list++ = code;
+	  *cp_list++ = val;
 	}
       i++;
 

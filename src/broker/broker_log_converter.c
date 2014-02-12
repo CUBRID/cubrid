@@ -135,11 +135,13 @@ log_converter (FILE * infp, FILE * outfp)
 	      if (strncmp (msg_p, "srv_h_id ", 9) == 0)
 		{
 		  char *endp;
+		  int result = 0;
 
 		  in_execute = 1;
 		  msg_p += 9;
-		  exec_h_id = strtol (msg_p, &endp, 10);
-		  if (msg_p == endp)
+
+		  result = str_to_int32 (&exec_h_id, &endp, msg_p, 10);
+		  if (result != 0)
 		    {
 		      in_execute = 0;
 		      continue;

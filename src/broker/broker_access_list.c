@@ -66,20 +66,30 @@ uw_acl_make (char *acl_file)
 
   fp = fopen (acl_file, "r");
   if (fp == NULL)
-    return 0;
+    {
+      return 0;
+    }
 
   while (fgets (read_buf, sizeof (read_buf), fp) != NULL)
     {
       p = trim (read_buf);
       if (p[0] == '#')
-	continue;
+	{
+	  continue;
+	}
       if (convert_ip (p, &ip_addr) < 0)
-	continue;
+	{
+	  continue;
+	}
       num_acl++;
       if (acl == NULL)
-	acl = (T_IP *) malloc (sizeof (T_IP));
+	{
+	  acl = (T_IP *) malloc (sizeof (T_IP));
+	}
       else
-	acl = (T_IP *) realloc (acl, sizeof (T_IP) * num_acl);
+	{
+	  acl = (T_IP *) realloc (acl, sizeof (T_IP) * num_acl);
+	}
       if (acl == NULL)
 	{
 	  fclose (fp);
@@ -150,7 +160,9 @@ convert_ip (char *str, T_IP * ip_addr)
     {
       end_char = '.';
       if (i == 3)
-	end_char = '\0';
+	{
+	  end_char = '\0';
+	}
 
       val = ipstr2int (str, &endp, end_char);
       if (val < 0)
@@ -163,7 +175,9 @@ convert_ip (char *str, T_IP * ip_addr)
 	  return 0;
 	}
       else
-	ip_addr->ip[i] = (unsigned char) val;
+	{
+	  ip_addr->ip[i] = (unsigned char) val;
+	}
 
       str = endp + 1;
     }
@@ -174,6 +188,7 @@ convert_ip (char *str, T_IP * ip_addr)
 static int
 ipstr2int (char *str, char **endp, char next_char)
 {
+  int result = 0;
   int val;
 
   if (*str == '*')
@@ -184,13 +199,18 @@ ipstr2int (char *str, char **endp, char next_char)
 	}
       return 256;
     }
-  val = strtol (str, endp, 10);
-  if ((*endp == str) || (**endp != next_char))
+
+  result = str_to_int32 (&val, endp, str, 10);
+
+  if ((result != 0) || (**endp != next_char))
     {
       return -1;
     }
+
   if (val < 0 || val > 255)
-    return -1;
+    {
+      return -1;
+    }
 
   return val;
 }

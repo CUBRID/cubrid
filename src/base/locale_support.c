@@ -3803,6 +3803,7 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
 {
   TXT_CONV_ITEM *txt_conv_array = NULL;
   FILE *fp = NULL;
+  char *end_p;
   char err_msg[ERR_MSG_SIZE];
   char str[TXT_CONV_LINE_SIZE];
   char conv_file_name[PATH_MAX];
@@ -3883,7 +3884,7 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
 	  continue;
 	}
 
-      cp_text = strtol (s, NULL, 16);
+      str_to_uint32 (&cp_text, &end_p, s, 16);
 
       /* skip codepoints values above 0xFFFF */
       if (cp_text > 0xffff
@@ -3925,7 +3926,8 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
 	    }
 	  continue;
 	}
-      cp_unicode = strtol (s, NULL, 16);
+
+      str_to_uint32 (&cp_unicode, &end_p, s, 16);
 
       /* first codepoints which maps the same character are not included */
       if (((ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_1BYTE

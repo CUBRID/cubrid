@@ -341,7 +341,7 @@ int
 rel_compare (const char *rel_a, const char *rel_b)
 {
   int a, b, retval = 0;
-  char *a_temp, *b_temp;
+  char *a_temp, *b_temp, *end_p;
 
   /*
    * If we get a NULL for one of the values (and we shouldn't), guess that
@@ -365,20 +365,30 @@ rel_compare (const char *rel_a, const char *rel_b)
        */
       while (!retval && *a_temp && *b_temp)
 	{
-	  a = strtol (a_temp, &a_temp, 10);
-	  b = strtol (b_temp, &b_temp, 10);
+	  str_to_int32 (&a, &end_p, a_temp, 10);
+	  a_temp = end_p;
+	  str_to_int32 (&b, &end_p, b_temp, 10);
+	  b_temp = end_p;
 	  if (a < b)
-	    retval = -1;
+	    {
+	      retval = -1;
+	    }
 	  else if (a > b)
-	    retval = 1;
+	    {
+	      retval = 1;
+	    }
 	  /*
 	   * This skips over the '.'.
 	   * This means that "?..?" will parse out to "?.?".
 	   */
 	  while (*a_temp && *a_temp == '.')
-	    a_temp++;
+	    {
+	      a_temp++;
+	    }
 	  while (*b_temp && *b_temp == '.')
-	    b_temp++;
+	    {
+	      b_temp++;
+	    }
 	  if (*a_temp && *b_temp
 	      && char_isalpha (*a_temp) && char_isalpha (*b_temp))
 	    {
@@ -508,6 +518,7 @@ rel_get_compatible_internal (const char *base_rel_str,
   REL_VERSION *version, *base_version, *apply_version;
   REL_COMPATIBILITY compat;
   char *base, *apply, *str_a, *str_b;
+  int val;
 
   unsigned char base_major, base_minor, apply_major, apply_minor;
   unsigned short base_patch, apply_patch;
@@ -520,8 +531,10 @@ rel_get_compatible_internal (const char *base_rel_str,
   /* release string should be in the form of <major>.<minor>[.<patch>] */
 
   /* check major number */
-  apply_major = (unsigned char) strtol (apply_rel_str, &str_a, 10);
-  base_major = (unsigned char) strtol (base_rel_str, &str_b, 10);
+  str_to_int32 (&val, &str_a, apply_rel_str, 10);
+  apply_major = (unsigned char) val;
+  str_to_int32 (&val, &str_b, base_rel_str, 10);
+  base_major = (unsigned char) val;
   if (apply_major == 0 || base_major == 0)
     {
       return REL_NOT_COMPATIBLE;
@@ -540,8 +553,10 @@ rel_get_compatible_internal (const char *base_rel_str,
   /* check minor number */
   apply = str_a;
   base = str_b;
-  apply_minor = (unsigned char) strtol (apply, &str_a, 10);
-  base_minor = (unsigned char) strtol (base, &str_b, 10);
+  str_to_int32 (&val, &str_a, apply, 10);
+  apply_minor = (unsigned char) val;
+  str_to_int32 (&val, &str_b, base, 10);
+  base_minor = (unsigned char) val;
 
   /* skip '.' */
   while (*str_a && *str_a == '.')
@@ -568,8 +583,10 @@ rel_get_compatible_internal (const char *base_rel_str,
   /* check patch number */
   apply = str_a;
   base = str_b;
-  apply_patch = (unsigned short) strtol (apply, &str_a, 10);
-  base_patch = (unsigned short) strtol (base, &str_b, 10);
+  str_to_int32 (&val, &str_a, apply, 10);
+  apply_patch = (unsigned short) val;
+  str_to_int32 (&val, &str_b, base, 10);
+  base_patch = (unsigned short) val;
   if (apply_major == base_major
       && apply_minor == base_minor && apply_patch == base_patch)
     {

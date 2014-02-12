@@ -2909,6 +2909,7 @@ static int
 getservershmid (char *dir, char *dbname)
 {
   int shm_key;
+  int result = 0;
   char key_file[PATH_MAX], cbuf[1024];
   FILE *fdkey_file;
 
@@ -2928,7 +2929,12 @@ getservershmid (char *dir, char *dbname)
       return -1;
     }
 
-  shm_key = strtol (cbuf, NULL, 16);
+  result = parse_int (&shm_key, cbuf, 16);
+  if (result != 0)
+    {
+      return -1;
+    }
+
   fclose (fdkey_file);
   return shm_key;
 }

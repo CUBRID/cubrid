@@ -6127,12 +6127,15 @@ bfmt_new (BIT_STRING_FORMAT * bfmt, const char *format)
 static int
 bin_string_to_int (const char *src, int nbits)
 {
+  int val;
   char my_bin[BITS_IN_BYTE + 1];
 
   strncpy (my_bin, src, BITS_IN_BYTE);
   my_bin[BITS_IN_BYTE] = '\0';
-  return (((int) strtol (my_bin, (char **) NULL, 2)) <<
-	  (BITS_IN_BYTE - nbits));
+
+  parse_int (&val, my_bin, 2);
+
+  return (val << (BITS_IN_BYTE - nbits));
 }
 
 /*
@@ -6147,12 +6150,15 @@ bin_string_to_int (const char *src, int nbits)
 static int
 hex_string_to_int (const char *src, int nhex)
 {
+  int val;
   char my_hex[HEX_IN_BYTE + 1];
 
   strncpy (my_hex, src, HEX_IN_BYTE);
   my_hex[HEX_IN_BYTE] = '\0';
-  return (((int) strtol (my_hex, (char **) NULL, 16))
-	  << ((HEX_IN_BYTE - nhex) * BITS_IN_HEX));
+
+  parse_int (&val, my_hex, 16);
+
+  return (val << ((HEX_IN_BYTE - nhex) * BITS_IN_HEX));
 }
 
 /*

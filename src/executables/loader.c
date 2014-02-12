@@ -1988,7 +1988,7 @@ static int
 ldr_int_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
-  char *str_ptr;
+  int result = 0;
 
   /*
    * Watch out for really long digit strings that really are being
@@ -2001,8 +2001,8 @@ ldr_int_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
       || (len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
     {
       val->domain = ldr_int_tmpl.domain;
-      val->data.i = strtol (str, &str_ptr, 10);
-      if (str == str_ptr)
+      result = parse_int (&val->data.i, str, 10);
+      if (result != 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
 		  db_get_type_name (DB_TYPE_INTEGER));
@@ -2014,8 +2014,8 @@ ldr_int_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 	   || (len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
     {
       val->domain = ldr_bigint_tmpl.domain;
-      val->data.bigint = strtoll (str, &str_ptr, 10);
-      if (str == str_ptr)
+      result = parse_bigint (&val->data.bigint, str, 10);
+      if (result != 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
 		  db_get_type_name (DB_TYPE_BIGINT));
@@ -2088,8 +2088,8 @@ ldr_int_db_bigint (LDR_CONTEXT * context,
 {
   char *mem;
   int err;
+  int result = 0;
   DB_VALUE val;
-  char *str_ptr;
 
   val.domain = ldr_bigint_tmpl.domain;
 
@@ -2102,8 +2102,8 @@ ldr_int_db_bigint (LDR_CONTEXT * context,
   if (len < MAX_DIGITS_FOR_BIGINT
       || (len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
     {
-      val.data.bigint = strtoll (str, &str_ptr, 10);
-      if (str == str_ptr)
+      result = parse_bigint (&val.data.bigint, str, 10);
+      if (result != 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
 		  db_get_type_name (DB_TYPE_BIGINT));
@@ -2153,6 +2153,7 @@ ldr_int_db_int (LDR_CONTEXT * context,
 {
   char *mem;
   int err;
+  int result = 0;
   DB_VALUE val;
   char *str_ptr;
 
@@ -2167,8 +2168,8 @@ ldr_int_db_int (LDR_CONTEXT * context,
   if (len < MAX_DIGITS_FOR_INT
       || (len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
     {
-      val.data.i = strtol (str, &str_ptr, 10);
-      if (str == str_ptr)
+      result = parse_int (&val.data.i, str, 10);
+      if (result != 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
 		  db_get_type_name (DB_TYPE_INTEGER));
@@ -2216,6 +2217,7 @@ ldr_int_db_short (LDR_CONTEXT * context,
 {
   char *mem;
   int err;
+  int result = 0;
   DB_VALUE val;
   char *str_ptr;
 
@@ -2244,14 +2246,17 @@ ldr_int_db_short (LDR_CONTEXT * context,
     }
   else
     {
-      val.data.sh = (short) strtol (str, &str_ptr, 10);
-      if (str == str_ptr)
+      int i_val;
+      result = parse_int (&i_val, str, 10);
+
+      if (result != 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
 		  db_get_type_name (DB_TYPE_SHORT));
 	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_SHORT,
 			   str);
 	}
+      val.data.sh = (short) i_val;
     }
 
   mem = context->mobj + att->offset;
@@ -3323,7 +3328,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context,
       /* make elo */
       elo_init_structure (&elo);
 
-      size = strtoll (size_sp, NULL, 10);
+      parse_bigint (&size, size_sp, 10);
       locator = db_private_alloc (NULL, locator_ep - locator_sp + 1);
       if (locator == NULL)
 	{

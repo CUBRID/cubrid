@@ -2843,7 +2843,7 @@ broker_init_shm (void)
       UW_SET_ERROR_CODE (UW_ER_SHM_OPEN, 0);
       goto return_error;
     }
-  master_shm_key = strtoul (p, NULL, 10);
+  parse_int (&master_shm_key, p, 10);
   SHARD_ERR ("<BROKER> MASTER_SHM_KEY_ENV_STR:[%d:%x]\n", master_shm_key,
 	     master_shm_key);
 
@@ -2860,7 +2860,7 @@ broker_init_shm (void)
       UW_SET_ERROR_CODE (UW_ER_CANT_CREATE_SOCKET, 0);
       goto return_error;
     }
-  port_no = strtoul (p, NULL, 10);
+  parse_int (&port_no, p, 10);
   for (i = 0, br_index = -1; i < shm_br->num_broker; i++)
     {
       if (shm_br->br_info[i].port == port_no)

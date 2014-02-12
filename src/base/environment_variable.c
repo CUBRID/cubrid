@@ -31,9 +31,6 @@
 #include <assert.h>
 
 #include "porting.h"
-#ifndef HAVE_STRLCPY
-#include "stringl.h"
-#endif
 #include "error_code.h"
 #include "environment_variable.h"
 

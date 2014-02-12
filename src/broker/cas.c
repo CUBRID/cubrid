@@ -2780,8 +2780,7 @@ cas_init_shm (void)
       goto return_error;
     }
 
-  as_shm_key = strtoul (p, NULL, 10);
-
+  parse_int (&as_shm_key, p, 10);
   SHARD_ERR ("<CAS> APPL_SERVER_SHM_KEY_STR:[%d:%x]\n", as_shm_key,
 	     as_shm_key);
   shm_appl =
@@ -2799,7 +2798,7 @@ cas_init_shm (void)
       goto return_error;
     }
 
-  as_id = strtoul (p, NULL, 10);
+  parse_int (&as_id, p, 10);
   SHARD_ERR ("<CAS> AS_ID_ENV_STR:[%d]\n", as_id);
   as_info = &shm_appl->as_info[as_id];
 

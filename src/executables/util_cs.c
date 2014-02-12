@@ -2381,7 +2381,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
     {
       if (kill_tran_index != NULL && strlen (kill_tran_index) > 0)
 	{
-	  char *p = NULL;
+	  int result;
 
 	  ptr = kill_tran_index;
 
@@ -2394,8 +2394,8 @@ killtran (UTIL_FUNCTION_ARG * arg)
 		}
 
 	      *tmp = '\0';
-	      value = (int) strtol (ptr, &p, 10);
-	      if ((errno == ERANGE) || (p && *p != '\0') || (value <= 0))
+	      result = parse_int (&value, ptr, 10);
+	      if (result != 0 || value <= 0)
 		{
 		  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
 							 MSGCAT_UTIL_SET_KILLTRAN,
@@ -2415,8 +2415,8 @@ killtran (UTIL_FUNCTION_ARG * arg)
 	      tmp = strchr (ptr, delimiter);
 	    }
 
-	  value = (int) strtol (ptr, &p, 10);
-	  if ((errno == ERANGE) || (p && *p != '\0') || (value <= 0))
+	  result = parse_int (&value, ptr, 10);
+	  if (result != 0 || value <= 0)
 	    {
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
 						     MSGCAT_UTIL_SET_KILLTRAN,

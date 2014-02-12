@@ -99,9 +99,6 @@ typedef bool _Bool;
 # define true 1
 # define __bool_true_false_are_defined 1
 #endif
-#if !defined HAVE_STRLCPY || !defined HAVE_STRLCAT
-# include "stringl.h"
-#endif
 
 /* need more consideration for the system which is not LP64 model */
 #if SIZEOF_VOID_P < 4

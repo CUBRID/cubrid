@@ -31,7 +31,6 @@
 #endif
 
 #include "porting.h"
-#include "stringl.h"
 #include "memory_hash.h"
 #include "es_common.h"
 

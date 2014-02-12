@@ -467,10 +467,6 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\base\stringl.c"
-					>
-				</File>
-				<File
 					RelativePath="..\..\src\base\system_parameter.c"
 					>
 				</File>

@@ -151,7 +151,6 @@ BASE_SOURCES = \
 	$(BASE_DIR)/environment_variable.c \
 	$(BASE_DIR)/misc_string.c \
 	$(BASE_DIR)/variable_string.c \
-	$(BASE_DIR)/stringl.c \
 	$(BASE_DIR)/getopt_long.c \
 	$(BASE_DIR)/binaryheap.c \
 	$(BASE_DIR)/tsc_timer.c \

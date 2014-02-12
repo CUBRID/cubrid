@@ -25189,6 +25189,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
     }
 
   /* convert from string to INT64/UINT64 */
+  errno = 0;
   if (num_is_signed)
     {
       base10 = (UINT64) strtoll (num_p_str, NULL, from_base_int);
@@ -25418,7 +25419,8 @@ db_inet_aton (DB_VALUE * result_numbered_ip, const DB_VALUE * string)
   char *local_ipstring = NULL;
   char *local_ipslice = NULL;
   char *local_pivot = NULL;
-  long int slice = 0;
+  int slice = 0;
+  int result = 0;
   const int ipsegmax = 256;
   DB_BIGINT ipbase;
   int slice_count = 0;
@@ -25473,8 +25475,8 @@ db_inet_aton (DB_VALUE * result_numbered_ip, const DB_VALUE * string)
 	  goto error;
 	}
 
-      slice = strtol (local_ipslice, NULL, 0);
-      if (slice < 0 || slice >= ipsegmax)
+      result = parse_int (&slice, local_ipslice, 0);
+      if (result != 0 || slice < 0 || slice >= ipsegmax)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OPFUNC_INET_ATON_ARG,
 		  1, ip_string);

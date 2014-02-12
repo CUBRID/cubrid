@@ -902,6 +902,12 @@ EXPORTS
 ;   porting.h
 ;
 	port_win_mutex_init_and_lock
+	parse_int
+	parse_bigint
+	str_to_int32
+	str_to_uint32
+	str_to_int64
+	str_to_uint64
 ;
 ; memory hash function
 ;

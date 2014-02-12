@@ -29,7 +29,6 @@ LIBS += @SYS_LIBS@
 
 noinst_HEADERS = \
 	$(BASE_DIR)/porting.h \
-	$(BASE_DIR)/stringl.h \
 	$(BASE_DIR)/error_code.h \
 	$(BROKER_DIR)/cas_protocol.h \
 	$(CCI_DIR)/cas_cci.h \

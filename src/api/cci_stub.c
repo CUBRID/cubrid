@@ -3459,6 +3459,7 @@ oidstr2xoid (const char *oidstr, CI_CONNECTION conn, CI_OID * xoid)
 {
   char *p = (char *) oidstr, *end_p;
   int pageid, slotid, volid;
+  int result = 0;
 
   if (p == NULL)
     {
@@ -3471,22 +3472,22 @@ oidstr2xoid (const char *oidstr, CI_CONNECTION conn, CI_OID * xoid)
     }
 
   p++;
-  pageid = strtol (p, &end_p, 10);
-  if (*end_p != '|')
+  result = str_to_int32 (&pageid, &end_p, p, 10);
+  if (result != 0 || *end_p != '|')
     {
       return ER_INTERFACE_GENERIC;
     }
 
   p = end_p + 1;
-  slotid = strtol (p, &end_p, 10);
-  if (*end_p != '|')
+  result = str_to_int32 (&slotid, &end_p, p, 10);
+  if (result != 0 || *end_p != '|')
     {
       return ER_INTERFACE_GENERIC;
     }
 
   p = end_p + 1;
-  volid = strtol (p, &end_p, 10);
-  if (*end_p != '\0')
+  result = str_to_int32 (&volid, &end_p, p, 10);
+  if (result != 0 || *end_p != '\0')
     {
       return ER_INTERFACE_GENERIC;
     }

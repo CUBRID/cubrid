@@ -268,7 +268,7 @@ extern "C"
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern int lock_region (int fd, int cmd, long offset, long size);
 #endif
-  extern int free_space (const char *);
+  extern int free_space (const char *, int);
 
 #define _longjmp                longjmp
 /*
@@ -759,7 +759,21 @@ extern void port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc);
 
 extern char *trim (char *str);
 
-extern int port_str_to_int (int *ret_p, const char *str_p, int base);
+extern int parse_int (int *ret_p, const char *str_p, int base);
+extern int parse_bigint (INT64 * ret_p, const char *str_p, int base);
+
+extern int str_to_int32 (int *ret_p, char **end_p, const char *str_p,
+			 int base);
+extern int str_to_uint32 (unsigned int *ret_p, char **end_p,
+			  const char *str_p, int base);
+extern int str_to_int64 (INT64 * ret_p, char **end_p, const char *str_p,
+			 int base);
+extern int str_to_uint64 (UINT64 * ret_p, char **end_p, const char *str_p,
+			  int base);
+
+#ifndef HAVE_STRLCPY
+extern size_t strlcpy (char *, const char *, size_t);
+#endif
 
 #if (defined(WINDOWS) && defined(_WIN32))
 extern time_t mktime_for_win32 (struct tm *tm);

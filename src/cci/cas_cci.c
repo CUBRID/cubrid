@@ -462,9 +462,9 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   unsigned i;
 
   char *property = NULL;
-  char *end = NULL;
   char *host, *dbname;
   int port;
+  int result = 0;
   T_CON_HANDLE *con_handle = NULL;
 
   reset_error_buffer (err_buf);
@@ -508,7 +508,11 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
     }
 
   host = token[0];
-  port = (int) strtol (token[1], &end, 10);
+  result = parse_int (&port, token[1], 10);
+  if (result != 0)
+    {
+      return CCI_ER_INVALID_URL;
+    }
   dbname = token[2];
 
   if (*user == '\0')

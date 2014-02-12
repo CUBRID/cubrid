@@ -70,7 +70,6 @@ cub_cas_oracle_SOURCES = \
 	$(BROKER_DIR)/cas_error.c \
 	$(BROKER_DIR)/cas_error_log.c \
 	$(BASE_DIR)/environment_variable.c \
-	$(BASE_DIR)/stringl.c \
 	$(BASE_DIR)/porting.c \
 	$(BROKER_DIR)/broker_acl.c \
 	$(BROKER_DIR)/cas_meta.c

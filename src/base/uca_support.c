@@ -326,12 +326,14 @@ load_ducet (const char *file_path, const int sett_contr_policy)
       uint32 cp_int_list[LOC_MAX_UCA_CHARS_SEQ];
       int cp_list_count = 0;
       bool is_allowed = true;
+      int val;
 
       lines++;
 
       strcpy (str_ref, str);
       strcpy (str_orig, str);
-      cp = strtol (str, NULL, 16);
+      str_to_int32 (&val, &s, str, 16);
+      cp = (unsigned int) val;
 
       /* Skip comment lines and unicode values above max allowed CP */
       if (str[0] == '#' || (cp > MAX_UCA_CODEPOINT))
@@ -373,7 +375,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
        */
       codenum = 1;
       cp_int_list[cp_list_count++] = cp;
-      strtol (str, &s, 16);
+      str_to_int32 (&val, &s, str, 16);
       codenum += string_to_int_array (s, &(cp_int_list[1]),
 				      LOC_MAX_UCA_CHARS_SEQ - 1, " \t");
 
@@ -461,13 +463,14 @@ load_ducet (const char *file_path, const int sett_contr_policy)
 	  while (*s)
 	    {
 	      char *endptr;
-	      int part;
+	      int result = 0;
+	      int val;
 
-	      part = strtol (s + 1, &endptr, 16);
-	      SET_UCA_WEIGHT (ce_list, w, partnum, part);
+	      result = str_to_int32 (&val, &endptr, s + 1, 16);
+	      SET_UCA_WEIGHT (ce_list, w, partnum, (int) val);
 
 	      assert (partnum < 4);
-	      if (part == 0 && is_ignorable[partnum] == -1)
+	      if (val == 0 && is_ignorable[partnum] == -1)
 		{
 		  is_ignorable[partnum] = 1;
 		}
@@ -2782,7 +2785,7 @@ static int
 string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
 {
   UCA_COLL_CE_LIST uca_item;
-  int weight_index, ce_index, state, temp;
+  int weight_index, ce_index, state;
   UCA_W weight;
   bool error_found;
   char *str;
@@ -2799,9 +2802,12 @@ string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
   error_found = false;
   while (strlen (str) > 0 && !error_found)
     {
+      int result = 0;
+      int val;
+
       switch (state)
 	{
-	case 0:		/* read a '[' (first char from the standard string representation
+	case 0:		/* read a '[' (first char from the standard string representation 
 				 * of a collation element) */
 	  c = str[0];
 	  if (c != '[')
@@ -2819,13 +2825,13 @@ string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
 	      break;
 	    }
 	  /* validate weight, to be below 0xFFFF */
-	  temp = strtol (str, &end_ptr, 16);
-	  if (temp > MAX_UCA_WEIGHT)
+	  result = str_to_int32 (&val, &end_ptr, str, 16);
+	  if (result != 0 || val > MAX_UCA_WEIGHT)
 	    {
 	      error_found = true;
 	      break;
 	    }
-	  weight = (UCA_W) temp;
+	  weight = (UCA_W) val;
 	  SET_UCA_WEIGHT (&uca_item, ce_index, weight_index, weight);
 	  str = end_ptr;
 	  if (weight_index != 3)
@@ -3369,9 +3375,10 @@ add_uca_contr_or_exp (LOCALE_COLLATION * lc, UCA_STORAGE * storage,
 static int
 read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
 {
-  long temp_cp;
+  int temp_cp;
+  int result = 0;
   int err_status = NO_ERROR;
-  char **chr_ptr;
+  char *chr_ptr;
   unsigned char *dummy;
   char err_msg[ERR_MSG_SIZE];
 
@@ -3416,10 +3423,9 @@ read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
   else if (type == BUF_TYPE_CODE)
     {
       chr_ptr = NULL;
-      errno = 0;
-      temp_cp = strtol ((const char *) buffer, chr_ptr, 16);
 
-      if (errno != NO_ERROR || temp_cp > 0xFFFF || temp_cp < 0)
+      result = str_to_int32 (&temp_cp, &chr_ptr, (const char *) buffer, 16);
+      if (result != 0 || temp_cp > 0xFFFF || temp_cp < 0)
 	{
 	  err_status = ER_LOC_GEN;
 	  snprintf (err_msg,
@@ -3429,8 +3435,7 @@ read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  goto exit;
 	}
-      else if (temp_cp == 0 && (chr_ptr != NULL)
-	       && (*chr_ptr == (char *) buffer))
+      else if (temp_cp == 0 && (chr_ptr == (char *) buffer))
 	{
 	  /* If tag content does not start with a hex number. */
 	  err_status = ER_LOC_GEN;
@@ -3441,7 +3446,7 @@ read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  goto exit;
 	}
-      else if (temp_cp > 0 && (chr_ptr != NULL) && strlen (*chr_ptr) != 0)
+      else if (temp_cp > 0 && strlen (chr_ptr) != 0)
 	{
 	  /* If tag content looks like "1234ZZZZ". */
 	  err_status = ER_LOC_GEN;

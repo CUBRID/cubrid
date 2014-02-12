@@ -3254,7 +3254,7 @@ update_query_execution_count (T_APPL_SERVER_INFO * as_info_p, char stmt_type)
 static void
 cas_mysql_set_mysql_wait_timeout (void)
 {
-  char *p = NULL;
+  int result = 0;
   int ret_val = 0;
   int wait_timeout = MYSQL_DEFAULT_WAIT_TIMEOUT;
   int num_fields = 0;
@@ -3286,8 +3286,8 @@ cas_mysql_set_mysql_wait_timeout (void)
       goto release_and_return;
     }
 
-  wait_timeout = (int) strtol (row[1], &p, 10);
-  if (p != NULL && *p != '\0')
+  result = parse_int (&wait_timeout, row[1], 10);
+  if (result != 0)
     {
       wait_timeout = MYSQL_DEFAULT_WAIT_TIMEOUT;
 

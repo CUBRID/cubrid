@@ -397,13 +397,11 @@ access_control_read_ip_info (IP_INFO * ip_info, char *filename,
 	    }
 	  else
 	    {
-	      long adr;
-	      char *p = NULL;
+	      int adr = 0, result;
 
-	      adr = strtol (token, &p, 10);
-	      if ((errno == ERANGE) ||
-		  (errno != 0 && adr == 0) ||
-		  (p && *p != '\0') || (adr > 255 || adr < 0))
+	      result = parse_int (&adr, token, 10);
+
+	      if (result != 0 || adr > 255 || adr < 0)
 		{
 		  sprintf (admin_err_msg,
 			   "Error while loading ip info file(%s) line(%d)",

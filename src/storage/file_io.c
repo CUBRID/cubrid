@@ -4930,7 +4930,7 @@ fileio_get_number_of_partition_free_pages (const char *path_p,
 					   size_t page_size)
 {
 #if defined(WINDOWS)
-  return (free_space (path_p));
+  return (free_space (path_p, (int) IO_PAGESIZE));
 #else /* WINDOWS */
   int vol_fd;
   INT64 npages = -1;
@@ -11824,6 +11824,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p,
   char line_buf[PATH_MAX * 2];
   int pr_status, pr_len;
   int x;
+  int result = 0;
   bool is_retry_in = true;
   bool rc;
   char format_string[32];
@@ -11859,9 +11860,8 @@ fileio_request_user_response (THREAD_ENTRY * thread_p,
 		{
 		case FILEIO_PROMPT_RANGE_TYPE:
 		  /* Numeric range checking */
-		  x = strtol (user_response_p, &temp_p, 10);
-		  if (temp_p == user_response_p || x < range_low
-		      || x > range_high)
+		  result = parse_int (&x, user_response_p, 10);
+		  if (result != 0 || x < range_low || x > range_high)
 		    {
 		      fprintf (stdout, failure_prompt_p);
 		      is_retry_in = true;
@@ -11903,9 +11903,8 @@ fileio_request_user_response (THREAD_ENTRY * thread_p,
 		   * but user's answer we really want is the second
 		   * prompt
 		   */
-		  x = strtol (user_response_p, &temp_p, 10);
-		  if (temp_p == user_response_p || x < range_low
-		      || x > range_high)
+		  result = parse_int (&x, user_response_p, 10);
+		  if (result != 0 || x < range_low || x > range_high)
 		    {
 		      fprintf (stdout, failure_prompt_p);
 		      is_retry_in = true;
