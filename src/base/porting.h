@@ -69,6 +69,16 @@ extern "C"
 
 #define CTIME_MAX 64
 
+#ifndef LLONG_MAX
+#define LLONG_MAX	9223372036854775807LL
+#endif
+#ifndef LLONG_MIN
+#define LLONG_MIN	(-LLONG_MAX - 1LL)
+#endif
+#ifndef ULLONG_MAX
+#define ULLONG_MAX	18446744073709551615ULL
+#endif
+
 #if defined(WINDOWS)
 #include <fcntl.h>
 #include <direct.h>
