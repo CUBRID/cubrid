@@ -25764,11 +25764,63 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
   UPDDEL_CLASS_INFO *query_class = NULL;
   bool found = false;
   LOCK class_lock = IX_LOCK;
+  OR_PARTITION * partitions = NULL;
+  int partition_count = 0;
 
   for (aptr = aptr_list; aptr != NULL; aptr = aptr->scan_ptr)
     {
       for (specp = aptr->spec_list; specp; specp = specp->next)
 	{
+	  if (specp->type == TARGET_SET)
+	    {
+	      /* lock all update classes */
+	      
+	      assert (specp->access == SEQUENTIAL);
+
+	      class_lock = X_LOCK;
+
+	      for (i = 0; i < query_classes_count; i++)
+		{
+		  query_class = &query_classes[i];
+
+		  /* search class_oid through subclasses of a query class */
+		  for (j = 0; j < query_class->no_subclasses; j++)
+		    {
+		      class_oid = &query_class->class_oid[j];
+		      error = heap_get_class_partitions (thread_p, class_oid,
+							 &partitions,
+							 &partition_count);
+		      if (error != NO_ERROR)
+			{
+			  return error;
+			}
+
+		      if (partition_count > 0)
+			{
+			  class_lock = IX_LOCK;
+			}
+		      else
+			{
+			  class_lock = X_LOCK;
+			}
+
+		      if (lock_object (thread_p, class_oid,
+				       oid_Root_class_oid, class_lock,
+				       LK_UNCOND_LOCK) != LK_GRANTED)
+			{
+			  error = er_errid ();
+			  if (error == NO_ERROR)
+			    {
+			      error = ER_FAILED;
+			    }
+			  return error;
+			}
+		    }
+		}
+
+	      return error;
+	    }
+
 	  if (specp->type == TARGET_CLASS)
 	    {
 	      class_oid = &specp->s.cls_node.cls_oid;
