@@ -5021,6 +5021,8 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 	      error = net_connect_srv (con_handle, i, err_buf, remained_time);
 	      if (error == CCI_ER_NO_ERROR)
 		{
+		  hm_set_host_status (con_handle, i, REACHABLE);
+
 		  *connect = 1;
 		  return CCI_ER_NO_ERROR;
 		}
@@ -5030,7 +5032,7 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 		  || error == CCI_ER_LOGIN_TIMEOUT
 		  || error == CAS_ER_FREE_SERVER)
 		{
-		  hm_set_host_status (con_handle, i, false);
+		  hm_set_host_status (con_handle, i, UNREACHABLE);
 		}
 	      else
 		{

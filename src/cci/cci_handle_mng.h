@@ -83,6 +83,9 @@ extern "C"
   ((c)->datasource && (c)->datasource->pool_prepared_statement)
 #define HAS_REACHED_LIMIT_OPEN_STATEMENT(c) \
   ((c)->open_prepared_statement_count >= (c)->datasource->max_open_prepared_statement)
+
+#define REACHABLE       true
+#define UNREACHABLE     false
 /************************************************************************
  * PUBLIC TYPE DEFINITIONS						*
  ************************************************************************/

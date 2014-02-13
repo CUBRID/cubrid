@@ -1872,6 +1872,9 @@ public class UConnection {
 			    setActiveHost(hostId);
 			    reconnectWorker(getLoginEndTimestamp(System.currentTimeMillis()));
 			    connectedHostId = hostId;
+			    
+			    CUBRIDDriver.unreachableHosts.remove(altHosts.get(hostId));
+			    
 			    return; // success to connect
 			} catch (IOException e) {
 			    logException(e);
