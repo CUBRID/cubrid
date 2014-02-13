@@ -125,7 +125,6 @@ copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\client\Resource.h  %DEST_DIR%\include\dbg
 copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\client\QueryMapper.h  %DEST_DIR%\include\dbgw3\client
 copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\client\Client.h  %DEST_DIR%\include\dbgw3\client
 copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\adapter\Adapter.h  %DEST_DIR%\include\dbgw3\adapter
-copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\adapter\AdapterForMySQL.h  %DEST_DIR%\include\dbgw3\adapter
 
 rem -------------------------------------------
 rem Messages

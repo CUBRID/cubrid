@@ -355,7 +355,6 @@ copy %BUILD_PREFIX%\include\dbgw3\client\Resource.h %DBGWCI_TARGET%\include\dbgw
 copy %BUILD_PREFIX%\include\dbgw3\client\QueryMapper.h %DBGWCI_TARGET%\include\dbgw3\client
 copy %BUILD_PREFIX%\include\dbgw3\client\Client.h %DBGWCI_TARGET%\include\dbgw3\client
 copy %BUILD_PREFIX%\include\dbgw3\adapter\Adapter.h %DBGWCI_TARGET%\include\dbgw3\adapter
-copy %BUILD_PREFIX%\include\dbgw3\adapter\AdapterForMySQL.h %DBGWCI_TARGET%\include\dbgw3\adapter
 copy %BUILD_PREFIX%\bin\DBGWConnector3.dll %DBGWCI_TARGET%\bin
 copy %BUILD_PREFIX%\bin\DBGWConnector3.pdb %DBGWCI_TARGET%\bin
 copy %BUILD_PREFIX%\bin\DBGWConnector3MySQL.dll %DBGWCI_TARGET%\bin
