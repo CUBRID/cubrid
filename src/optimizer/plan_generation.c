@@ -1025,7 +1025,7 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan,
 	}
     }
 
-  if (plan->plan_un.sort.sort_type == SORT_LIMIT)
+  if (xasl && plan->plan_un.sort.sort_type == SORT_LIMIT)
     {
       /* setup ORDER BY list here */
       int ordbynum_flag;
