@@ -3317,6 +3317,8 @@ pt_get_name (PT_NODE * nam)
 {
   if (nam && nam->node_type == PT_NAME)
     {
+      assert (nam->info.name.original != NULL);
+
       return nam->info.name.original;
     }
   else

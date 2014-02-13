@@ -263,14 +263,18 @@ pt_get_src_domain (PARSER_CONTEXT * parser, const PT_NODE * s,
 
   result = regu_domain_db_alloc ();
   if (result == NULL)
-    return result;
+    {
+      return result;
+    }
 
   /* if s is not a path expression then its source domain is DB_TYPE_NULL */
   result->type = PR_TYPE_FROM_ID (DB_TYPE_NULL);
 
   /* make leaf point to the last leaf name node */
   if (s->node_type == PT_DOT_)
-    leaf = s->info.dot.arg2;
+    {
+      leaf = s->info.dot.arg2;
+    }
 
   /* s's source domain is the domain of leaf's resolvent(s) */
   if (leaf->node_type == PT_NAME

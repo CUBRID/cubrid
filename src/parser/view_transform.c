@@ -964,7 +964,9 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
 	      if (temp->node_type == PT_DOT_
 		  && (temparg2 = temp->info.dot.arg2)
 		  && pt_name_equal (parser, temparg2, arg2))
-		break;
+		{
+		  break;
+		}
 	      temp = temp->next;
 	      i++;
 	    }

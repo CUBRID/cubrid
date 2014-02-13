@@ -2602,8 +2602,10 @@ qo_to_xasl (QO_PLAN * plan, XASL_NODE * xasl)
   if (xasl == NULL)
     {
       int level;
+
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1,
 	      "xasl != NULL");
+
       qo_get_optimization_param (&level, QO_PARAM_LEVEL);
       if (PLAN_DUMP_ENABLED (level))
 	{
@@ -2743,39 +2745,33 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
   BITSET_ITERATOR iter;
   QO_TERM *termp;
 
+  if (!qo_is_interesting_order_scan (plan))
+    {
+      return NULL;		/* give up */
+    }
+
+  assert (plan->plan_un.scan.index != NULL);
+
   /* if no index scan terms, no index scan */
   nterms = bitset_cardinality (&(plan->plan_un.scan.terms));
   nkfterms = bitset_cardinality (&(plan->plan_un.scan.kf_terms));
 
-  /* support also indexes with only sarg terms */
-  if (qo_is_iscan_from_groupby (plan))
+  /* support also full range indexes */
+  if (nterms <= 0 && nkfterms <= 0 &&
+      bitset_cardinality (&(plan->sarged_terms)) == 0)
     {
-      /* if group by skip plan do not return */
-      ;
-    }
-  else if (plan->plan_un.scan.index != NULL
-	   && plan->plan_un.scan.index->head->ils_prefix_len > 0)
-    {
-      /* if loose scan do not return */
-      ;
-    }
-  else if (nterms <= 0 && nkfterms <= 0 &&
-	   bitset_cardinality (&(plan->sarged_terms)) == 0)
-    {
-      if (qo_plan_filtered_index (plan))
+      if (qo_plan_filtered_index (plan)
+	  || plan->plan_un.scan.index->head->ils_prefix_len > 0
+	  || qo_is_iscan_from_groupby (plan)
+	  || qo_is_iscan_from_orderby (plan))
 	{
-	  /* if scan filtered index do not return */
-	  ;
+	  ;			/* if loose scan do not return */
 	}
       else
-	{
-	  return NULL;
+	{			/* is invalid case */
+	  assert (false);
+	  return NULL;		/* give up */
 	}
-    }
-
-  if (plan->plan_un.scan.index == NULL)
-    {
-      return NULL;
     }
 
   /* pointer to QO_NODE_INDEX_ENTRY structure in QO_PLAN */
@@ -2861,7 +2857,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 	    }
 	}
 
-      /* always, pos != -1 and 0 < pos < nsegs */
+      /* always, pos != -1 and 0 <= pos < nsegs */
       if (pos < 0)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
