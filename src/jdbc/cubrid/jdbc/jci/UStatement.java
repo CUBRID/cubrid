@@ -598,6 +598,10 @@ public class UStatement {
 		if (isReturnable) {
 			return;
 		}
+		
+		if (relatedConnection.isConnectedToCubrid() == false) {
+			return;
+		}
 
 		try {
 			byte code = UFunctionCode.CURSOR_CLOSE;

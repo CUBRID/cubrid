@@ -1315,6 +1315,11 @@ qe_close_query_result (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
       return err_code;
     }
 
+  if (is_connected_to_cubrid (con_handle) == false)
+    {
+      return err_code;
+    }
+
   net_buf_init (&net_buf);
 
   broker_ver = hm_get_broker_version (con_handle);
@@ -6555,17 +6560,26 @@ shard_info_decode_error:
 }
 
 bool
+is_connected_to_cubrid (T_CON_HANDLE * con_handle)
+{
+  return ((con_handle->broker_info[BROKER_INFO_DBMS_TYPE] == CAS_DBMS_CUBRID)
+	  || (con_handle->broker_info[BROKER_INFO_DBMS_TYPE] ==
+	      CAS_PROXY_DBMS_CUBRID));
+}
+
+bool
 is_connected_to_oracle (T_CON_HANDLE * con_handle)
 {
-  return con_handle->broker_info[BROKER_INFO_DBMS_TYPE] == CAS_DBMS_ORACLE
-    || con_handle->broker_info[BROKER_INFO_DBMS_TYPE] ==
-    CAS_PROXY_DBMS_ORACLE;
+  return ((con_handle->broker_info[BROKER_INFO_DBMS_TYPE] == CAS_DBMS_ORACLE)
+	  || (con_handle->broker_info[BROKER_INFO_DBMS_TYPE] ==
+	      CAS_PROXY_DBMS_ORACLE));
 }
 
 static bool
 is_set_default_value_if_null (T_CON_HANDLE * con_handle,
 			      T_CCI_CUBRID_STMT stmt_type, char bind_mode)
 {
-  return is_connected_to_oracle (con_handle)
-    && stmt_type == CUBRID_STMT_CALL_SP && bind_mode == CCI_PARAM_MODE_OUT;
+  return (is_connected_to_oracle (con_handle)
+	  && (stmt_type == CUBRID_STMT_CALL_SP
+	      && bind_mode == CCI_PARAM_MODE_OUT));
 }
