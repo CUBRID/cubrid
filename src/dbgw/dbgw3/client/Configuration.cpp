@@ -59,6 +59,7 @@ namespace dbgw
       m_pAsyncJobManager(new _AsyncWorkerJobManager(&m_workerPool)),
       m_pTimeoutJobManager(new _TimeoutWorkerJobManager(&m_workerPool))
     {
+      initializeGlobalOnce();
     }
 
     Impl(Configuration *pSelf, const char *szConfFileName) :
@@ -70,6 +71,7 @@ namespace dbgw
       m_pAsyncJobManager(new _AsyncWorkerJobManager(&m_workerPool)),
       m_pTimeoutJobManager(new _TimeoutWorkerJobManager(&m_workerPool))
     {
+      initializeGlobalOnce();
     }
 
     ~Impl()
@@ -390,16 +392,12 @@ namespace dbgw
     m_pImpl(new Impl(this))
   {
     m_pImpl->init(false);
-
-    initializeGlobalOnce();
   }
 
   Configuration::Configuration(const char *szConfFileName, bool bNeedLoadXml) :
     m_pImpl(new Impl(this, szConfFileName))
   {
     m_pImpl->init(bNeedLoadXml);
-
-    initializeGlobalOnce();
   }
 
   Configuration::~Configuration()
