@@ -729,6 +729,11 @@ hb_cluster_is_isolated (void)
   HB_NODE_ENTRY *node;
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
+      if (node->state == HB_NSTATE_REPLICA)
+	{
+	  continue;
+	}
+
       if (hb_Cluster->myself != node && node->state != HB_NSTATE_UNKNOWN)
 	{
 	  return false;
