@@ -71,6 +71,14 @@ typedef enum
   RANGE_MAX = 1
 } RANGE_MIN_MAX_ENUM;
 
+typedef enum
+{
+  STATEMENT_SET_FOLD_NOTHING = 0,
+  STATEMENT_SET_FOLD_AS_NULL,
+  STATEMENT_SET_FOLD_AS_ARG1,
+  STATEMENT_SET_FOLD_AS_ARG2
+} STATEMENT_SET_FOLD;
+
 typedef struct PT_VALUE_LINKS
 {
   PT_NODE *vallink;
@@ -9946,6 +9954,10 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *entity, *derived_table;
   PT_ASSIGNMENTS_HELPER ea;
   PT_NODE *sort_spec = NULL;
+  bool arg1_is_null, arg2_is_null;
+  STATEMENT_SET_FOLD fold_as;
+  PT_NODE *arg1, *arg2;
+  PT_NODE *union_orderby, *union_orderby_for, *union_limit;
 
   assert (parser != NULL);
 
@@ -10188,6 +10200,135 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
       if (pt_has_error (parser))
 	{
 	  break;
+	}
+
+      arg1 = node->info.query.q.union_.arg1;
+      arg2 = node->info.query.q.union_.arg2;
+
+      arg1_is_null = arg2_is_null = false;
+      if (arg1->node_type == PT_VALUE && arg1->type_enum == PT_TYPE_NULL)
+	{
+	  arg1_is_null = true;
+	}
+      if (arg2->node_type == PT_VALUE && arg2->type_enum == PT_TYPE_NULL)
+	{
+	  arg2_is_null = true;
+	}
+
+      if (!arg1_is_null && !arg2_is_null)
+	{
+	  /* nothing to fold at this moment. */
+	  fold_as = STATEMENT_SET_FOLD_NOTHING;
+	}
+      else if (arg1_is_null && arg2_is_null)
+	{
+	  /* fold the entire node as null */
+	  fold_as = STATEMENT_SET_FOLD_AS_NULL;
+	}
+      else if (arg1_is_null && !arg2_is_null)
+	{
+	  if (node->node_type == PT_UNION)
+	    {
+	      fold_as = STATEMENT_SET_FOLD_AS_ARG2;
+	    }
+	  else if (node->node_type == PT_INTERSECTION
+		   || node->node_type == PT_DIFFERENCE)
+	    {
+	      fold_as = STATEMENT_SET_FOLD_AS_NULL;
+	    }
+	}
+      else
+	{
+	  assert (!arg1_is_null && arg2_is_null);
+
+	  if (node->node_type == PT_UNION || node->node_type == PT_DIFFERENCE)
+	    {
+	      fold_as = STATEMENT_SET_FOLD_AS_ARG1;
+	    }
+	  else if (node->node_type == PT_INTERSECTION)
+	    {
+	      fold_as = STATEMENT_SET_FOLD_AS_NULL;
+	    }
+	}
+
+      if (fold_as == STATEMENT_SET_FOLD_AS_NULL)
+	{
+	  /* fold the statement set as null, we don't need to fold 
+	   * orderby clause clause because we return null.
+	   */
+	  if (arg1_is_null)
+	    {
+	      node->info.query.q.union_.arg1 = NULL;	/* to save arg1 to fold */
+	      parser_free_tree (parser, node);
+
+	      node = arg1;	/* to fold the query with null */
+	    }
+	  else
+	    {
+	      node->info.query.q.union_.arg2 = NULL;	/* to save arg2 to fold */
+	      parser_free_tree (parser, node);
+
+	      node = arg2;	/* to fold the query with null */
+	    }
+
+	  /* don't need do the following steps */
+	  break;
+	}
+      else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1
+	       || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
+	{
+	  /* to save union's orderby or limit clause to arg1 or arg2 */
+	  union_orderby = node->info.query.order_by;
+	  union_orderby_for = node->info.query.orderby_for;
+	  union_limit = node->info.query.limit;
+
+	  node->info.query.order_by = NULL;
+	  node->info.query.orderby_for = NULL;
+	  node->info.query.limit = NULL;
+
+	  if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
+	    {
+	      node->info.query.q.union_.arg1 = NULL;	/* to save arg1 to fold */
+	    }
+	  else
+	    {
+	      node->info.query.q.union_.arg2 = NULL;	/* to save arg2 to fold */
+	    }
+
+	  parser_free_tree (parser, node);
+
+	  /* to fold the query with remaining parts */
+	  if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
+	    {
+	      node = arg1;
+	    }
+	  else
+	    {
+	      node = arg2;
+	    }
+
+	  if (union_orderby != NULL)
+	    {
+	      node->info.query.order_by = union_orderby;
+	      node->info.query.orderby_for = union_orderby_for;
+	    }
+
+	  if (union_limit != NULL)
+	    {
+	      node->info.query.limit = union_limit;
+	    }
+
+	  /* check the union's orderby or limit clause if present */
+	  pt_check_order_by (parser, node);
+
+	  /* don't need do the following steps */
+	  break;
+	}
+      else
+	{
+	  assert (fold_as == STATEMENT_SET_FOLD_NOTHING);
+
+	  /* do nothing */
 	}
 
       pt_check_into_clause (parser, node);
