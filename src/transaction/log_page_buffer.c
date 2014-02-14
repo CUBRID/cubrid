@@ -7668,7 +7668,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
 	    logpb_get_archive_number (thread_p, min_copied_pageid);
 	  if (min_copied_arv_num == -1)
 	    {
-	      LOG_CS_EXIT ();
+	      LOG_CS_EXIT (thread_p);
 	      return deleted_count;
 	    }
 	  else if (min_copied_arv_num > 1)
