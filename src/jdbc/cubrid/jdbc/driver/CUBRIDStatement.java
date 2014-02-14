@@ -343,6 +343,7 @@ public class CUBRIDStatement implements Statement {
 							rs_concurrency = ResultSet.CONCUR_READ_ONLY;
 						current_result_set = new CUBRIDResultSet(con, this,
 								rs_type, rs_concurrency, is_holdable);
+						update_count = -1;
 					} else {
 						update_count = result_info[result_index]
 								.getResultCount();
