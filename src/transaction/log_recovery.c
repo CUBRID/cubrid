@@ -5332,9 +5332,15 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
       /*
        * Don't have the log active, or we are going to the past
        */
-      arv_num =
-	logpb_get_archive_number (thread_p,
-				  log_Gl.hdr.append_lsa.pageid - 1) + 1;
+      arv_num = logpb_get_archive_number (thread_p,
+					  log_Gl.hdr.append_lsa.pageid - 1);
+      if (arv_num == -1)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "log_recovery_resetlog");
+	  return;
+	}
+      arv_num = arv_num + 1;
 
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
 			       MSGCAT_SET_LOG,

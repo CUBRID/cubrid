@@ -6628,8 +6628,11 @@ logpb_get_archive_number (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
 {
   int arv_num = 0;
 
-  (void) logpb_fetch_from_archive (thread_p, pageid, NULL,
-				   &arv_num, NULL, true);
+  if (logpb_fetch_from_archive (thread_p, pageid, NULL, &arv_num, NULL,
+				false) == NULL)
+    {
+      return -1;
+    }
 
   if (arv_num < 0)
     {
@@ -7663,7 +7666,12 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
 	{
 	  min_copied_arv_num =
 	    logpb_get_archive_number (thread_p, min_copied_pageid);
-	  if (min_copied_arv_num > 1)
+	  if (min_copied_arv_num == -1)
+	    {
+	      LOG_CS_EXIT ();
+	      return deleted_count;
+	    }
+	  else if (min_copied_arv_num > 1)
 	    {
 	      min_copied_arv_num--;
 	    }
