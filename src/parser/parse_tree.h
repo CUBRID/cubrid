@@ -692,36 +692,50 @@ enum
 
 enum pt_custom_print
 {
-  PT_SUPPRESS_RESOLVED = 0x2,
-  PT_SUPPRESS_META_ATTR_CLASS = 0x4,
-  PT_SUPPRESS_INTO = 0x8,
-  PT_SUPPRESS_SELECTOR = 0x40,
-  PT_SUPPRESS_SELECT_LIST = 0x80,
-  PT_SUPPRESS_QUOTES = 0x200,
-  PT_PRINT_ALIAS = 0x400,
-  PT_PAD_BYTE = 0x8000,
-  PT_CONVERT_RANGE = 0x10000,
-  PT_INTERNAL_PRINT = 0x40000,
-  PT_SUPPRESS_INDEX = 0x80000,
-  PT_SUPPRESS_ORDERING = 0x100000,
-  PT_PRINT_QUOTES = 0x200000,
-  PT_FORCE_ORIGINAL_TABLE_NAME = 0x400000,	/* this is for PT_NAME nodes.
-						 * prints original table name
-						 * instead of printing resolved
-						 * NOTE: spec_id must point to
-						 * original table
-						 */
-  PT_SUPPRESS_CHARSET_PRINT = 0x800000,
-  PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS = 0x1000000,	/* print session
-							 * parameters
-							 */
-  PT_SHORT_PRINT = 0x2000000,	/* PT_NODE_PRINT_TO_ALIAS
-				 * calls pt_short_print
-				 * instead pt_print_tree
-				 */
-  PT_SUPPRESS_BIGINT_CAST = 0x4000000,
-  PT_CHARSET_COLLATE_FULL = 0x8000000,
-  PT_CHARSET_COLLATE_USER_ONLY = 0x10000000
+  PT_SUPPRESS_RESOLVED = 0x1,
+
+  PT_SUPPRESS_META_ATTR_CLASS = (0x1 << 1),
+
+  PT_SUPPRESS_INTO = (0x1 << 2),
+
+  PT_SUPPRESS_SELECTOR = (0x1 << 3),
+
+  PT_SUPPRESS_SELECT_LIST = (0x1 << 4),
+
+  PT_SUPPRESS_QUOTES = (0x1 << 5),
+
+  PT_PRINT_ALIAS = (0x1 << 6),
+
+  PT_PAD_BYTE = (0x1 << 7),
+
+  PT_CONVERT_RANGE = (0x1 << 8),
+
+  PT_INTERNAL_PRINT = (0x1 << 9),
+
+  PT_SUPPRESS_INDEX = (0x1 << 10),
+
+  PT_SUPPRESS_ORDERING = (0x1 << 11),
+
+  PT_PRINT_QUOTES = (0x1 << 12),
+
+  /* PT_FORCE_ORIGINAL_TABLE_NAME is for PT_NAME nodes.  prints original table name instead of printing resolved
+   * NOTE: spec_id must point to original table
+   */
+  PT_FORCE_ORIGINAL_TABLE_NAME = (0x1 << 13),
+
+  PT_SUPPRESS_CHARSET_PRINT = (0x1 << 14),
+
+  /* PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS print session parameters */
+  PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS = (0x1 << 15),
+
+  /* PT_NODE_PRINT_TO_ALIAS calls pt_short_print instead pt_print_tree */
+  PT_SHORT_PRINT = (0x1 << 16),
+
+  PT_SUPPRESS_BIGINT_CAST = (0x1 << 17),
+
+  PT_CHARSET_COLLATE_FULL = (0x1 << 18),
+
+  PT_CHARSET_COLLATE_USER_ONLY = (0x1 << 19)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
