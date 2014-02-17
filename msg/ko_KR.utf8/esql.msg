@@ -93,8 +93,8 @@ $set 7
 7 uci_ 함수 수행 정보 출력, 디폴트는 off
 8 VARCHAR 호스트 변수의 length 초기화 안 함, 디폴트는 off
 9 다른 VARCHAR 유형 사용, 디폴트는 off
-10 ignore -462(null indicator needed) error, default off
-11 use internal NULL indicator to prevent -462(null indicator needed) error, default off
+10 -462(null indicator needed) 에러를 무시합니다. 디폴트는 off
+11 -462(null indicator needed) 에러를 방지하기 위해 내부 NULL indecator를 사용하십시오. (기본값: off)
 12 입력파일명, 디폴트는 stdin
 
 $set 8

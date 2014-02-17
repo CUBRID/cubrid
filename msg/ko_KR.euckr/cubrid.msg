@@ -63,7 +63,7 @@ $set 4 MSGCAT_SET_PARAMETER
 21 키워드 = '%1$s'    값 = %2$f    기본 설정 값 = %3$f\n
 22 권장되지 않는 파라미터 입니다.
 23 '%1$s'와 '%2$s' 시스템 설정은 같이 사용할 수 없습니다.\n
-31 파라미터 '%1$s':
+31 파라미터 "%1$s":
 
 $set 5 MSGCAT_SET_ERROR
 1 에러 코드 %1$d에 대한 메시지가 없습니다.
@@ -84,11 +84,11 @@ $set 5 MSGCAT_SET_ERROR
 16 "%1$s" 에서 "%2$s"으로 디스크 볼륨의 이름을 바꿀 수 없습니다.
 17 내부 에러: 이미 해제된 볼륨 "%2$s"의 %1$d 페이지에 대한 읽기 시도. 
 18 모든 페이지 버퍼가 fix 되었습니다 (LRU: %1$d).
-19 내부 에러: pageptr = %1$p of page %2$d of volume "%3$s" is not fixed.
-20 내부 에러: unknown pageptr = %1$p.
-21 내부 에러: unknown sector %1$d of volume "%2$s".
-22 내부 에러: unknown page %1$d of volume "%2$s".
-23 내부 에러: trying to deallocate disk system page %1$d of volume "%2$s".
+19 내부 에러: 볼륨 "%3$s"에서 페이지 "%2$d"의 "pageptr = %1$p"이(가) fix 되지 않았습니다.
+20 내부 에러: "pageptr = %1$p"을(를) 알 수 없습니다.
+21 내부 에러: 볼륨 "%2$s"의 섹터 "%1$d"을(를) 알 수 없습니다.
+22 내부 에러: 볼륨 "%2$s"의 페이지 "%1$d"을(를) 알 수 없습니다.
+23 내부 에러: 볼륨 "%2$s"의 시스템 페이지 "%1$d"를 해제하려고 했습니다.
 24 "%1$s" 볼륨에 스페이스가 부족합니다. 총 페이지 수 = %2$d, 여유 페이지 수 = %3$d.
 25 데이터 볼륨에 스페이스가 부족합니다. 총 페이지 수 = %1$d, 여유 페이지 수 = %2$d.
 26 인덱스 볼륨에 스페이스가 부족합니다. 총 페이지 수 = %1$d, 여유 페이지 수 = %2$d.
@@ -99,54 +99,54 @@ $set 5 MSGCAT_SET_ERROR
 31 알림: 인덱스 볼륨 스페이스 부족. 총 페이지 수 = %1$d, 여유 페이지 수 = %2$d.
 32 알림: generic 볼륨 스페이스 부족. 총 페이지 수 = %1$d, 여유 페이지 수 = %2$d. 
 33 알림: temp 볼륨 스페이스 부족. 총 페이지 수 = %1$d, 여유 페이지 수 = %2$d.
-34 내부 에러: %1$d nthpage is out of range for file %2$d in volume "%3$s". Current number of pages are %4$d.
-35 내부 에러: Unknown volume identifier %1$d.
+34 내부 에러: 볼륨 "%3$s"에서 파일 "%2$d"의 "%1$d"번째 페이지가 범위를 벗어났습니다. 현재의 페이지 개수는 "%4$d" 입니다.
+35 내부 에러: 볼륨 식별자 "%1$d"을(를) 알 수 없습니다.
 36 데이터베이스 용량이 디스크 용량을 초과했습니다. 요구 페이지 = %1$d.
 37 "%1$s" 볼륨이 디스크 용량을 초과했습니다. 요구 페이지 = %2$d.
-38 내부 에러: Unknown file VFID %1$d|%2$d.
-39 내부 에러: Page %1$d|%2$d(volume "%3$s") of file VFID %4$d|%5$d(volume "%6$s") is invalid/deallocated according to allocation map.
-40 내부 에러: %1$d expected pages, %2$d found pages for file VFID %3$d|%4$d(volume "%5$s").
-41 내부 에러: Page %1$d|%2$d(volume "%3$s") is not part of file VFID %4$d|%5$d(volume "%6$s").
+38 내부 에러: 파일 VFID "%1$d|%2$d"을(를) 알 수 없습니다.
+39 내부 에러: allocation map에 따르면 파일 VFID "%4$d|%5$d(볼륨 "%6$s")"의 페이지 "%1$d|%2$d(볼륨 "%3$s")"은(는) 유효하지 않거나 할당이 해제되었습니다.
+40 내부 에러: 파일 VFID "%3$d|%4$d(볼륨 "%5$s")"에서 "%1$d"개의 페이지를 예상했지만 "%2$d"개의 페이지를 찾았습니다.
+41 내부 에러: 페이지 "%1$d|%2$d(볼륨 "%3$s")"은(는) 파일 VFID "%4$d|%5$d(볼륨 "%6$s")"에 속하지 않습니다.
 42 볼륨 "%2$s"의 페이지 %1$d 에 연결된 레코드들을 재정렬할 수 없습니다.
-43 내부 에러: The page %1$d of volume "%2$s" may be corrupted. %3$d records was found when %4$d was expected.
+43 내부 에러: 볼륨 "%2$s"의 페이지 "%1$d"에 오류가 생겼을 수 있습니다. "%4$d"개의 레코드를 기대했지만 "%3$d"개의 레코드를 찾았습니다.
 44 "%2$s" 볼륨의 %1$d 페이지에 사용할 수 있는 스페이스가 없습니다.
 45 "%3$s" 볼륨의 %2$d 페이지의 %1$d 슬롯은 anchored record로 할당되었습니다.  이 위치에 새로운 레코드를 삽입할 수 없습니다. 
-46 내부 에러: slot %1$d on page %2$d of volume "%3$s" is not allocated.
+46 내부 에러: 볼륨 "%3$s"의 페이지 "%2$d"에 있는 슬롯 "%1$d"이(가) 할당되지 않았습니다.
 47 "%1$s" 볼륨 내에 heap 파일을 생성할 수 없습니다.
 48 삭제된 오브젝트(%1$d|%2$d|%3$d) 액세스
-49 내부 에러: class of object %1$d|%2$d|%3$d is unknown.
-50 내부 에러: relocation record of object %1$d|%2$d|%3$d may be corrupted.
-51 내부 에러: object %1$d|%2$d|%3$d may be corrupted.
-52 내부 에러: object overflow address %1$d|%2$d|%3$d may be corrupted.
+49 내부 에러: 오브젝트 "%1$d|%2$d|%3$d"의 클래스를 알 수 없습니다.
+50 내부 에러: 오브젝트 "%1$d|%2$d|%3$d"의 재배치 레코드에 오류가 생겼을 수 있습니다.
+51 내부 에러: 오브젝트 "%1$d|%2$d|%3$d"에 오류가 생겼을 수 있습니다.
+52 내부 에러: 오브젝트 오버플로우 주소"%1$d|%2$d|%3$d"에 오류가 생겼을 수 있습니다.
 53 오브젝트의 OID가 주어졌을 때 오브젝트 %1$d|%2$d|%3$d 을(를) 가지고 옵니다.
-54 내부 에러: trying to manipulate an object of %1$d pages long. The maximum size allowed for an object is %2$d pages.
-55 내부 에러: A page cycle reference was detected on page %1$d|%2$d of heap file %3$d|%4$d|%5$d.
-56 내부 에러: unknown extendible hashing file (Volid: %1$d Fileid: %2$d) page (Volid: %3$d Pageid: %4$d) was specified.
-57 키가 extendible hash table 내에 존재하지 않습니다.
+54 내부 에러: "%1$d" 페이지 길이의 오브젝트를 처리하려고 했습니다. 허용된 오브젝트의 최대 길이는 "%2$d" 페이지 입니다.
+55 내부 에러: heap 파일 "%3$d|%4$d|%5$d"의 페이지 "%1$d|%2$d"에서 페이지 순환 참조가 발견되었습니다.
+56 내부 에러: 알 수 없는 확장 해쉬 파일(Volid: %1$d Fileid: %2$d) 페이지(Volid: %3$d Pageid: %4$d)가 지정되었습니다.
+57 키가 확장 해쉬 테이블 내에 존재하지 않습니다.
 58 문자열 "%1$s" 은(는) slotted page에서 처리하기에는 너무 깁니다.
-59 내부 에러: the specified key type %1$d is not valid for the extendible hashing structure.
-60 내부 에러: the extendible hashing structure has been corrupted.
-61 내부 에러: the directory root page of the extendible hashing structure (Volid: %1$d Fileid: %2$d Pageid: %3$d) has been corrupted.
-62 내부 에러: sorting record %1$d (size %2$d) does not fit in a page; the maximum allowable size is %3$d.
-63 내부 에러: a temporary page was corrupted during sorting.
+59 내부 에러: 지정된 키 타입"%1$d"은(는) 확장 해쉬 테이블 구조체로 유효하지 않습니다.
+60 내부 에러: 확장 해쉬 테이블 구조체에 오류가 있습니다.
+61 내부 에러: 확장 해쉬 테이블 구조체의 디렉토리 루트 페이지(Volid: %1$d Fileid: %2$d Pageid: %3$d)에 오류가 있습니다.
+62 내부 에러: 정렬된 레코드 "%1$d (크기: %2$d)"이(가) 페이지 크기에 맞지 않습니다. 허용 가능한 최대 크기는 "%3$d" 입니다.
+63 내부 에러: 정렬하는 과정에서 임시 페이지에 오류가 발생하였습니다.
 64 "%1$s"은(는) 알 수 없는 클래스입니다.
 65 클래스 "%1$s" 이(가) 이미 존재합니다.
-66 내부 에러: unknown force operation %1$d for object %2$d|%3$d|%4$d.
-67 내부 에러: a heap file has not been allocated to store object %1$d|%2$d|%3$d.
-68 내부 에러: different classnames for class with oid = %1$d|%2$d|%3$d were found. Found classnames are "%4$s", "%5$s" using classname hash table and heap, respectively.
-69 내부 에러: different class object identifiers were found for class with name "%1$s". Found OIDS are %2$d|%3$d|%4$d, %5$d|%6$d|%7$d using classname hash table and heap, respectively.
-70 내부 에러: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in classname hash table.
-71 내부 에러: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in its heap.
+66 내부 에러: 알 수 없는 force operation "%1$d" 입니다. (오브젝트 "%2$d|%3$d|%4$d")
+67 내부 에러: 오브젝트 "%1$d|%2$d|%3$d"에 저장하기 위한 heap 파일이 할당되지 않았습니다.
+68 내부 에러: OID "%1$d|%2$d|%3$d"와(과) 다른 클래스 이름이 발견되었습니다. 발견된 클래스 이름은 classname 해쉬 테이블 "%4$s"와(과) heap "%5$s"을(를) 사용하고 있습니다.
+69 내부 에러: 클래스 이름 "%1$s"와(과) 다른 클래스 OID가 발견되었습니다. 발견된 OID들은 classname 해쉬 테이블 "%2$d|%3$d|%4$d"와(과) heap "%5$d|%6$d|%7$d"을(를) 사용하고 있습니다.
+70 내부 에러: classname 해쉬 테이블에서 클래스 이름 "%1$s"와(과) oid "%2$d|%3$d|%4$d"을(를) 가진 클래스는 존재하지 않습니다.
+71 내부 에러: heap에서 클래스 이름 "%1$s"와(과) oid "%2$d|%3$d|%4$d"을(를) 가진 클래스는 존재하지 않습니다.
 72 트랜잭션이(인덱스 %1$d, %2$s@%3$s|%4$d) 시스템에 의해 취소되었습니다.
 73 트랜잭션이(인덱스 %1$d, %2$s@%3$s|%4$d) %6$d|%7$d|%8$d 오브젝트에 대한 %5$s 락 대기 중에 타임아웃 되었습니다. 사용자 %9$s 이(가) 종료할 때까지 기다리고 있었습니다. 
 74 트랜잭션이(인덱스 %1$d, %2$s@%3$s|%4$d) %6$s 클래스에 대한 %5$s 락 대기 중에 타임아웃 되었습니다. 사용자 %7$s 이(가) 종료할 때까지 기다리고 있었습니다.
 75 트랜잭션이(인덱스  %1$d, %2$s@%3$s|%4$d) %9$s 클래스의 %6$d|%7$d|%8$d 인스턴스에 대한 %5$s 락 대기 중에 타임아웃 되었습니다. 사용자 %10$s 이(가) 종료할 때까지 기다리고 있었습니다.
 76 트랜잭션이(인덱스 %1$d, %2$s@%3$s|%4$d) %6$d|%7$d 페이지에 대한 %5$s 락 대기 중에 타임아웃 되었습니다. 사용자 %8$s 이(가) 페이지 락을 해제할 때까지 기다리고 있었습니다.
-77 내부에러: all buffers are fixed.
-78 내부에러: an I/O error occurred while reading logical log page %1$lld (physical page %2$lld) of "%3$s".
-79 내부에러: an I/O error occurred while writing logical log page %1$lld (physical page %2$lld) of "%3$s".
+77 내부에러: 모든 버퍼들이 fix 되었습니다.
+78 내부에러: "%3$s"의 로그페이지 "%1$lld (physical page %2$lld)"을(를) 읽는 동안 I/O 에러가 발생하였습니다.
+79 내부에러: "%3$s"의 로그페이지 "%1$lld (physical page %2$lld)"을(를) 쓰는 동안 I/O 에러가 발생하였습니다.
 80 "%3$s"의 logical log page %1$lld (physical page %2$lld) 쓰는 도중 시스템 디바이스의 공간이 부족합니다. %4$d 바이트 이상은 쓸 수 없습니다. 
-81 내부에러: logical log page %1$lld may be corrupted.
+81 내부에러: 로그 페이지 "%1$lld"에 오류가 있을 수 있습니다.
 82 로그 디스크 볼륨/파일 "%1$s"을(를) 마운트할 수 없습니다.  
 83 경로 "%1$s"의 길이와 로그 prefix "%2$s"의 길이를 더한 것이 %3$d 보다 작아야 합니다.
 84 로그 prefix "%1$s"의 길이가 너무 깁니다. %2$d 보다 작아야 합니다.
@@ -158,11 +158,11 @@ $set 5 MSGCAT_SET_ERROR
 90 redo logging은 페이지 수준 logging 오퍼레이션입니다. 데이터 페이지 포인터가 어드레스 일부분으로 주어져야 합니다.
 91 postpone logging은 페이지 수준 logging 오퍼레이션입니다. 데이터 페이지 포인터가 어드레스 일부분으로 주어져야 합니다.
 92 compensate logging은 페이지 수준 logging 오퍼레이션입니다. 데이터 페이지 포인터가 어드레스 일부분으로 주어져야 합니다.
-93 경고: redo logging is ignored during redo recovery and normal rollbacks.
-94 경고: postpone logging is ignored during redo recovery and normal rollbacks.
-95 경고: undo logging is ignored during recovery and normal rollback.
+93 경고: redo 로그 적용과 normal rollback을 수행하던 중 redo logging이 무시되었습니다.
+94 경고: redo recovery와 normal rollback을 수행하던 중 postpone logging이 무시되었습니다.
+95 경고: recovery와 normal rollback을 수행하던 중 undo logging이 무시되었습니다.
 96 "%1$s" 볼륨에 대해 media recovery가 필요합니다.
-97 내부 에러: unable to find log page %1$lld in log archives.
+97 내부 에러: 로그 아카이브에서 로그 페이지 "%1$lld"을(를) 찾을 수 없습니다.
 98 %2$lld에서 %3$lld까지의 페이지들을 archive하기 위한 archive 로그 "%1$s"를 생성할 수 없습니다.
 99 백업 디렉터리 정보 파일 "%1$s" 을(를) 생성할 수 없습니다.
 100 데이터베이스 "%1$s"를 백업할 수 없습니다.
@@ -188,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 120 볼륨의 최대 개수(%1$d)를 초과했습니다.
 121 데이터베이스의 영구 볼륨 "%1$s"을(를) 제거하려고 합니다.
 122 시스템 메시지 카탈로그를 사용할 수 없습니다. 
-123 Unable to create %1$s for database "%2$s". Please refer "%3$s" for additional information.
+123 데이터베이스 "%2$s"에 "%1$s"을(를) 생성할 수 없습니다. "%3$s"에서 추가 정보를 확인할 수 있습니다.
 124 볼륨 "%1$s"이(가) 이미 존재합니다.
 125 %2$d 페이지의 generic 볼륨 "%1$s"이 자동 생성되어 확장되었습니다. 
 126 라인 %2$d 상의 볼륨 용도 "%1$s"은 허용되지 않습니다.
@@ -242,7 +242,7 @@ $set 5 MSGCAT_SET_ERROR
 174 데이터베이스 파일 "%1$s"에 대한 쓰기 권한을 얻을 수 없습니다.
 175 데이터베이스 파일 "%1$s"의 포맷이 잘못되어 있습니다.
 176 date 포맷 변환 에러.
-177 내부 스토리지에 large object를 생성할 수 없습니다.
+177 내부 스토리지에 large 오브젝트를 생성할 수 없습니다.
 178 MOP 없는 임시 OID가 발견되었습니다.
 179 도메인 "%1$s" 은(는) 도메인 "%2$s"와 호환되지 않습니다.
 180 주어진 값의 도메인 "%1$s"은(는) 대상 도메인 "%2$s"와(과) 호환되지 않습니다.
@@ -357,7 +357,7 @@ $set 5 MSGCAT_SET_ERROR
 289 같은 이름의 애트리뷰트를 이미 가지고 있으므로, 서브클래스 "%1$s"은(는) 클래스 "%3$s"(으)로부터 메소드 "%2$s"을(를) 상속받을 수 없습니다.
 290 같은 이름의 메소드를 이미 가지고 있으므로, 서브클래스 "%1$s"은(는) 클래스 "%3$s"(으)로부터 애트리뷰트 "%2$s"을(를) 상속받을 수 없습니다.
 291 "%1$s"은(는) 클래스 "%2$s"에서는 애트리뷰트로, 클래스 "%3$s"에서는 메소드로 정의되어 있습니다. 
-292 No populate specification with index "%1$s".
+292 명시된 인덱스 "%1$s"이(가) 없습니다.
 293 해당 오퍼레이션이 이 클래스 타입에서는 허용되지 않습니다.
 294 정의되지 않은 환경 변수 "%1$s"이(가) 메소드 파일에서 참조되었습니다.
 295 클래스"%1$s"을(를) 변경할 수 없습니다. 시스템 카탈로그에 스페이스가 없습니다. 스페이스를 얻기 위해 compactdb 유틸리티를 사용하시오.
@@ -395,7 +395,7 @@ $set 5 MSGCAT_SET_ERROR
 327 NULL OID를 가진 MOP는 생성할 수 없습니다.
 328 workspace에서 클래스가 없는 인스턴스가 발견되었습니다.
 329 workspace에 오브젝트 리스트 링크가 할당되지 않았습니다.
-330 workspace pin violation
+330 workspace pin 위반.
 331 가상 메모리가 부족합니다. OS로부터 workspace 블럭을 할당할 수 없습니다. 트랜잭션이 취소되었습니다.
 332 원래 예상된 workspace 크기를 초과했습니다. 자동 확장되었습니다.
 333 workspace 스토리지를 할당하는 동안 메모리가 부족합니다. 트랜잭션은 취소되었습니다.
@@ -609,9 +609,9 @@ $set 5 MSGCAT_SET_ERROR
 541 볼륨 %1$s"에 대한 free 페이지 수가 일치하지 않습니다. 볼륨 헤더에 의해 %2$d를, 비트맵에 의해 %3$d를 얻었습니다. 
 542 용량 "%1$s"에 대한 free 섹터 수가 일치하지 않습니다. 볼륨 헤더에 의해 %2$d를, 비트맵에 의해 %3$d를 얻었습니다.
 543 볼륨 "%1$s"에 대한 디스크 헤더가 불완전합니다.
-544 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). B+tree key %6$s entry for object OID: %7$d|%8$d|%9$d was not found on B+tree: %10$d|%11$d|%12$d.
-545 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Key and OID: %6$d|%7$d|%8$d entry on B+tree: %9$d|%10$d|%11$d is incorrect. The object does not exist.
-546 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Expecting %6$d OID entry values, but %7$d were found on B+tree: %8$d|%9$d|%10$d.
+544 내부 에러 : 클래스 %2$s (CLASS_OID: %3$d|%4$d|%5$d)의 인덱스 %1$s. B+tree 인덱스 "%10$d|%11$d|%12$d"에서 오브젝트 OID "%7$d|%8$d|%9$d"의 키 엔트리 "%6$s"(이)가 발견되지 않았습니다.
+545 내부 에러 : 클래스 %2$s (CLASS_OID: %3$d|%4$d|%5$d)의 인덱스 %1$s. 키와 OID 엔트리 "%6$d|%7$d|%8$d" 이(가) 올바르지 않습니다. 
+546 내부 에러 : 클래스 %2$s (CLASS_OID: %3$d|%4$d|%5$d)의 인덱스 %1$s. B+tree 인덱스 "%8$d|%9$d|%10$d"에서 OID 엔트리 "%6$d"을(를) 기대했지만, "%7$d"을(를) 찾았습니다.
 547 서버 release %1$s은(는) 클라이언트 release %2$s와(과) 다릅니다.
 548 프락시 클래스 "%1$s"에 object_id가 정의되지 않았습니다.
 549 프락시 인스턴스를 찾을 수 없습니다.
@@ -638,7 +638,7 @@ $ LOADDB
 569 애트리뷰트 값이 부족합니다. %1$d 개를 예상했으나, %2$d 개가 주어졌습니다.
 570 GLO 데이터 파일 "%1$s"을(를) 액세스할 수 없습니다.
 571 인스턴스는 이전에 forward reference를 통해 생성되었습니다.\nconstructor 메소드를 사용하여 생성할 경우에는 이런 것은 허용되지 않습니다. 
-572 내부 에러: cannot build disk representation of instance.
+572 내부 에러: 인스턴스의 디스크 표현을 생성할 수 없습니다.
 573 내부 에러: 데이터베이스에 인스턴스를 새로 입력할 수 없습니다.
 574 내부 에러: 데이터베이스에 인스턴스를 새로 갱신할 수 없습니다.
 575 constructor %2$s의 %1$d 번째 인자에 대해 %3$s 타입을 예상했으나 %4$s 타입이 주어졌습니다. 
@@ -650,11 +650,11 @@ $ LOADDB
 581 수정 불가능한 시점에서 데이터베이스를 수정하려고 하고 있습니다.
 582 알 수 없는 볼륨 사용 용도 %1$d입니다. 정상적인 값은 %2$d ~ %3$d입니다.
 583 유효하지 않은 페이지 수(%1$d)를 할당하려고 하고 있습니다. 
-584 내부 에러: A loop was detected in the file table of file %1$d in volume "%2$s". The loop may be caused by page %3$d|%4$d.
+584 내부 에러: 파일 "%1$d" (볼륨 "%2$s")의 파일 테이블에서 loop가 발견되었습니다. 페이지 "%3$d|%4$d"이(가) 원인일 수 있습니다.
 585 알 수 없는 heap %1$s|%2$d|%3$d
-586 내부 에러: Unable to update chain header in VPID %1$d|%2$d for heap %3$d in volume "%4$s".
+586 내부 에러: 볼륨 "%4$s"의 heap "%3$d"에 대한 VPID "%1$d|%2$d"에서 chain header를 업데이트 할 수 없습니다.
 587 "%1$s" volinfo 파일의 영구 볼륨 엔트리들이 정렬되어 있지 않습니다. 엔트리 %2$d: %3$d %4$s이(가) 순서를 벗어 났습니다.
-588 내부 에러: Assertion '%1$s' failed.
+588 내부 에러: Assertion '%1$s'이(가) 실패했습니다.
 589 사용자 이름 "%1$s"이(가) 잘못되었습니다.
 590 클래스의 애트리뷰트 도메인 "%1$s"은(는) 가상 클래스 또는 프락시 가상 클래스일 수 없습니다. 
 591 프락시 가상 클래스의 애트리뷰트 도메인 "%1$s"은(는) 반드시 프락시 가상 클래스이어야 합니다.
@@ -669,9 +669,9 @@ $ LOADDB
 600 기능 "%1$s"은(는) PC에서는 구현되어 있지 않습니다.
 601 "%1$s".
 602 dl 에러: "%1$s"이(가) 여러 번 정의되었습니다.
-603 내부 에러: Sector/page table of file VFID %1$d|%2$d seems corrupted.
-604 내부 에러: An allocation set for file VFID %1$d|%2$d(volume "%3$s") seems inconsistent in %4$d deleted or marked deleted pages and %5$d page holes in table
-605 내부 에러: Inconsistent number of marked deleted pages for file VFID %1$d|%2$d(볼륨 "%3$s"). Expected %4$d, Found %5$d.
+603 내부 에러: 파일 VFID "%1$d|%2$d" 섹터/페이지 테이블에 오류가 있습니다.
+604 내부 에러: 볼륨 "%3$s"의 파일 VFID "%1$d|%2$d"에 대해 deleted 혹은 marked deleted된 페이지의 개수(%4$d)와 페이지 hole의 개수(%5$d)가 allocation set과 일치하지 않습니다.
+605 내부 에러: 볼륨 "%3$s"의 파일 VFID "%1$d|%2$d"에 대해 marked deleted된 페이지의 수가 일치하지 않습니다. "%4$d"개를 예상했지만, "%5$d"개를 찾았습니다.
 606 path "%1$s"에서 odbc.ini를 찾을 수 없습니다.
 607 데이터베이스 "%1$s"이(가) odbc.ini 내에 정의되지 않습니다.
 608 데이터베이스 "%1$s"의 호스트 명세가 odbc.ini 내에 정의되지 않습니다.
@@ -691,7 +691,7 @@ $ LOADDB
 622 부적합한 코트셋입니다. 인자의 코드셋이 호환되지 않습니다.
 623 유효하지 않은 escape sequence입니다. 유효하지 않은 escape sequence는 정규식 컴파일러에서 에러를 발생시킵니다.  
 624 유효하지 않은 escape sequence입니다. Escape 문자는 길이가 1 이상인 NULL이 아닌 문자여야 합니다. 
-625 내부 에러: Trying to update the wrong instance object %1$d|%2$d|%3$d attribute information template with instance object %4$d|%5$d|%6$d.
+625 내부 에러: 인스턴스 오브젝트 %4$d|%5$d|%6$d를 통해 잘못된 인스턴스 오브젝트 %1$d|%2$d|%3$d의 컬럼 정보를 수정하려했습니다.
 626 내부 에러: 요청된 %1$d 애트리뷰트를 찾을 수 없습니다.
 627 trim 피연산자는 길이가 1 이상이어야 합니다. 
 628 잘못된 통화(currency) 타입입니다: %1$d
@@ -705,14 +705,14 @@ $ LOADDB
 636 경고: Num_buffers %1$d이(가) 너무 작습니다. 최소값 %2$d이(가) 취해졌습니다. 
 637 시스템 에러: 로그 버퍼를 너무 많이 free했습니다. Fix count가 0으로 되었습니다.
 638 경고: 수정할 수 없는 보관 로그 페이지 ID:%1$d을(를) flush했습니다. 
-639 시스템 에러: Previous log sequence page %1$d is not the delayed flush page %2$d.
+639 시스템 에러: 이전 log sequence 페이지 %1$d은(는) delayed flush 페이지 %2$d이(가) 아닙니다.
 640 시스템 에러: 트랜잭션이 active한 상태가 아닐 때에는 세이브포인트를 설정할 수 없습니다.
 641 세이브포인트 이름이 주어져야 합니다. 
-642 시스템 에러: there is not an active top system operation for current transaction.
+642 시스템 에러: 현재 트랙젝션을 위한 active top system operation이 없습니다.
 643 시스템 에러일 수 있음: Committing/Aborting transaction = %1$d (index = %2$d) which has permanent operations\n attached to it. Will attach those system operations to the transaction
 644 LOG FATAL ERROR: %1$s
-645 시스템 에러: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
-646 시스템 에러: It seems that a compensating record is missing for logical logging rcvindex = %1$s\n. Without this compensating record crash recovery will not be done correctly
+645 시스템 에러: 트랜잭션 "%2$d"의 상태 "%1$s" (인덱스 "%3$d")은(는)\n 클라이언트 postpone/undo action을 적용하기 위한 올바른 상태가 아니기 때문에 무시됩니다.
+646 시스템 에러: 로그 인덱스 "%1$s"을(를) 위한 compensating 레코드가 없습니다.\n compensating 레코드가 없으면 crash recovery가 올바르게 끝나지 않습니다.
 647 백업 "%1$s"은(는) 주어진 데이터베이스에 속하지 않습니다. 
 648 백업이 현재 "%1$s" release "%2$s"와 호환되지 않습니다.
 649 주어진 precision %1$d는 유효하지 않습니다; %2$d에서 %3$d사이의 값이어야 합니다.
@@ -734,7 +734,7 @@ $ LOADDB
 665 이벤트 처리 pipe가 손상되었습니다. "%1$s"
 666 이벤트 처리 메카니즘 중지됨.
 667 클래스 '%1$s'에 상응하는 C++ 클래스를 찾을 수 없습니다.
-668 내부 에러: Unknown domain type '%1$d'.
+668 내부 에러: 도메인 타입 "%1$d"을(를) 알 수 없습니다.
 669 최대 클라이언트 수 %1$d이(가) 초과되어 서버가 연결을 거부하였습니다.
 670 오퍼레이션은 하나 또는 그 이상의 UNIQUE 제약 사항을 위반하였습니다. 클래스 %3$s%4$s의 인덱스 %1$s%2$s. 키: %5$s%6$s.
 671 트랜잭션(index %2$d, %3$s@%4$s|%5$d)에 연관된 socket %1$d에서 네트워크 read/write 에러가 발생하였습니다.
@@ -744,7 +744,7 @@ $ LOADDB
 675 데이터베이스 위치 파일 "%1$s"을(를) 읽을 수 없습니다. 
 676 데이터베이스 위치 파일 "%2$s"에서 데이터베이스 "%1$s"을(를) 찾을 수 없습니다.
 677 호스트 %2$s에서 "%1$s" 데이터베이스 서버로 연결 설정할 수 없습니다.
-678 내부 에러: Client restart module received NULL database server name.
+678 내부 에러: Client restart module이 NULL인 데이터베이스 서버 이름을 받았습니다.
 679 해당 C++ 트랜잭션은 이미 시작된 상태입니다.
 680 C++ 트랜잭션의 최대 중첩 허용 값(%1$d)를 넘어서려고 하고 있습니다.
 681 시작되지 않은 C++ 트랜잭션에서 %1$s 트랜잭션을 시도하고 있습니다.
@@ -755,7 +755,7 @@ $ LOADDB
 686 통보: 이벤트 핸들러가 재 시작되지 않았습니다.
 687 (%1$s *)로부터 (%2$s *)으로의 형 변환은 허용되지 않습니다.
 688 첨자가 범위를 벗어났습니다. %1$lld 번째 엘리먼트를 액세스 하려고 하고 있습니다. collection 크기를 %2$lld입니다.
-689 내부 에러: Iterator contains corrupt state.
+689 내부 에러: 반복자가 잘못된 상태를 담고 있습니다.
 690 초기화되지 않은 odb_Ref<>의 인스턴스를 참조하려고 하고 있습니다.
 691 유효하지 않은 iterator를 사용하려고 하고 있습니다.
 692 연관되지 않은 collection에 iterator를 사용하려고 하고 있습니다.
@@ -764,12 +764,12 @@ $ LOADDB
 695 클라이언트를 종료하는데 잘못된 인터페이스를 사용하였습니다.
 696 알 수 없는 트랜잭션 입니다. (index %1$d, %2$s@%3$s|%4$d)
 697 주어진 트랜잭션 인덱스 (index %1$d, %2$s@%3$s|%4$d)는 현재 트랜잭션 인덱스 (index %5$d, %6$s@%7$s|%8$d)와 맞지 않습니다. 주어진 트랜잭션은 이미 종료되었고 해당 트랜잭션 인덱스는 다른 트랜잭션에 의해 사용되고 있습니다. 
-698 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs in the unique hierarchy: %6$d does not equal the number of OIDs: %7$d found in the unique B+tree plus the number of NULLs: %8$d found in the unique hierarchy for B+tree: %9$d|%10$d|%11$d.
-699 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs in the unique hierarchy: %6$d does not equal the number of OIDs: %7$d found in the unique B+tree root statistics for B+tree: %8$d|%9$d|%10$d.
-700 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs: %6$d does not equal the number of NULLs: %7$d plus the number of keys: %8$d in the unique B+tree: %9$d|%10$d|%11$d.
+698 내부 에러: 클래스 %2$s (CLASS_OID: %3$d|%4$d|%5$d)의 인덱스 %1$s. UNIQUE 인덱스에서 찾은 OID개수인 "%7$d"와(과) B+tree "%9$d|%10$d|%11$d"에 대한 UNIQUE hierarchy에서 찾은 NULL의 개수 "%8$d"의 합이 UNIQUE hierarchy의 OID 개수인 "%6$d"와(과) 일치하지 않습니다.
+699 내부 에러: 클래스 %2$s (CLASS_OID: %3$d|%4$d|%5$d)의 인덱스 %1$s. UNIQUE hierarchy의 OID 개수 "%6$d"이(가) B+tree "%8$d|%9$d|%10$d"에 대한 root statistics에서 찾은 OID의 개수 "%7$d"와(과) 일치하지 않습니다.
+700 내부 에러: 클래스 %2$s (CLASS_OID: %3$d|%4$d|%5$d)의 인덱스 %1$s. OID의 개수 "%6$d"이(가) B+tree "%9$d|%10$d|%11$d"에서의 NULL의 개수 "%7$d"와(과) 키의 개수 "%8$d"의 합과 일치하지 않습니다.
 701 ldb "%2$s"의 "%1$s"에서 프락시가 정의되지 않았습니다.
-702 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of NULLs in the unique hierarchy: %6$d does not equal the number of NULLs: %7$d found in the unique B+tree root statistics for B+tree: %8$d|%9$d|%10$d.
-703 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). OID: %6$d|%7$d|%8$d found in unique B+tree: %9$d|%10$d|%11$d does not belong to one of the classes for the unique constraint.
+702 내부 에러: 클래스 %2$s (CLASS_OID: %3$d|%4$d|%5$d)의 인덱스 %1$s. UNIQUE hierarchy에서의 NULL의 개수 "%6$d"이(가) B+tree "%8$d|%9$d|%10$d"에 대한 root statistics에서 찾은 NULL의 개수 "%7$d"와(과) 일치하지 않습니다.
+703 내부 에러: 클래스 %2$s (CLASS_OID: %3$d|%4$d|%5$d)의 인덱스 %1$s. UNIQUE B+tree "%9$d|%10$d|%11$d"에서 찾은 OID "%6$d|%7$d|%8$d"이(가) UNIQUE hierarchy에 속한 클래스들에 존재하지 않습니다.
 704 일반 서버 함수를 계산하는데 실패했습니다.
 705 %2$d 개이어야 하나 %1$d 개의 영구 볼륨이 발견되었습니다.
 706 볼륨 용도 %2$s의 영구 볼륨 "%1$s"을(를) 확장할 수 없습니다. 
@@ -791,7 +791,7 @@ $ LOADDB
 722 NOT NULL 제약 사항에 대해 잘못된 애트리뷰트 개수입니다.
 723 존재하는 애트리뷰트의 도메인을 변경할 수는 없습니다.
 724 디폴트 제약 사항 이름 생성 시에 잘못된 인자가 주어졌습니다.
-725 내부 에러: expected temporary oid and encountered permanent oid.
+725 내부 에러: expected temporary oid와 encountered permanent oid.
 726 인스턴스가 이미 생성된 후에는 UNIQUE 제약 사항은 별도의 alter 문장을 통해 추가되어야 합니다. 예를 들어,\n\t alter table1 add attribute a int unique;\n\t 대신 \n\t alter table1 add attribute a int;\n\t alter table1 add unique(a);\n\t 형태를 사용하십시오.  
 727 유효하지 않은 트리거 이벤트 입니다.
 728 트랜잭션 %1$d에 대한 임시 파일의 vfid가 유효하지 않으므로 질의가 실패하였습니다.
@@ -800,7 +800,7 @@ $ LOADDB
 731 나눗셈에서 오버플로우가 발생하였습니다.
 732 부호 변환 시에 오버플로우가 발생하였습니다.
 733 형 변환 시에 오버플로우가 발생하였습니다.
-734 내부 에러: Header of file VFID %1$d|%2$d(Volume "%3$s") is corrupted.
+734 내부 에러: 파일 VFID "%1$d|%2$d"(볼륨 "%3$s")의 헤더에 오류가 있습니다.
 735 알 수 없는 트랜잭션 인덱스 %1$d입니다.
 736 서비스 내지는 포트 번호를 지정해야 합니다. 윈속 에러: %1$d.
 737 알 수 없는 TCP 서비스 입니다: %1$s. 윈속 에러: %2$d.
@@ -823,11 +823,11 @@ $ LOADDB
 754 OO 프락시 인스턴스가 문자열 타입이 아니거나 NULL 키를 가지고 있습니다.
 755 스탠드-얼론 모드에서는 %1$s 을(를) 실행 할 수 없습니다.
 756 지정된 문자열 버퍼가 해당 오브젝트를 인코딩 하기에는 너무 작습니다. 
-757 내부 에러: cannot assign permanent OID during object encode.
+757 내부 에러: 오브젝트를 encode 하는 도중에는 permanent OID를 할당할 수 없습니다.
 758 지정된 문자열 버퍼가 해당 오브젝트를 디코딩하기에 적합하지 않습니다.
 759 대상 오브젝트는 이미 삭제되었습니다.
-760 내부 에러: proxy object instance has NULL key during object encode.
-761 내부 에러: vclass object instance maps to invalid real instance.
+760 내부 에러: 오브젝트를 encode 하는 도중 프록시 오브젝트 인스턴스가 NULL key를 가졌습니다.
+761 내부 에러: 뷰클래스 오브젝트 인스턴스가 유효하지 않은 real 인스턴스에 매핑되었습니다.
 762 내부 에러: in resolving vclass instance to a real instance.
 763 내부 에러: in encoding nonupdatable object instance.
 764 내부 에러: in encoding object into internal vobj form.
@@ -836,7 +836,7 @@ $ LOADDB
 767 레벨 %2$d 백업하지 않은 상태에서 레벨 %1$d 백업할 수 없습니다.
 768 현재 세션에서 데이터베이스 "%1$s"이(가) 액세스되었으므로, 변경이나 제거할 수 없습니다.
 769 클래스 "%2$s"의 애트리뷰트 "%1$s"는 유효하지 않은 class/shared 애트리뷰트입니다.
-770 No table functions.
+770 테이블 함수가 없습니다.
 771 함수가 유효하지 않은 인자가 주어졌습니다.
 772 db_serial 클래스를 찾을 수 없습니다.
 773 Serial "%1$s"을(를) 찾을 수 없습니다.
@@ -1119,7 +1119,7 @@ $ LOADDB
 1050 애트리뷰트 "%1$s"를 변경할 수 없습니다. 애트리뷰트의 도메인을 변경할 수 없습니다. 애트리뷰트가 인덱스를 가지고 있습니다.
 1051 애트리뷰트 "%1$s"를 변경할 수 없습니다. 제약조건을 추가하기 위해 애트리뷰트를 변경할 수 없습니다. 존재하는 애트리뷰트 값들은 제약조건을 검사하지 않을 수 있습니다.
 1052 애트리뷰트 "%1$s"이 변경되지 않았습니다. 애트리뷰트 표현에서 유효한 변경을 감지할 수 없습니다.
-1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
+1053 "REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE" 구문은 상속된 클래스들에 대해 허용되지 않습니다.
 1054 AUTO INCREMENT 제약조건의 새로운 값은 현재 값보다 크거나 같아야 합니다.
 1055 AUTO INCREMENT 제약조건의 새로운 값은 최대 값보다 작아야 합니다.
 1056 모호함을 피하기 위해, 테이블은 하나의 AUTO_INCREMENT 컬럼만 가져야 하며 (seed, increment) 부분이 없어야 합니다.
@@ -1151,11 +1151,11 @@ $ LOADDB
 1082 모든 페이지 버퍼가 dirty 되었습니다 (LRU: %1$d).
 1083 교착상태에 대한 상세정보.\n%1$s
 1084 체크포인트에서 사용할 수 없는 페이지가 존재합니다. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
-1085 활성 로그 '%1$s'의 백업이 시작되었습니다.
-1086 활성 로그 '%1$s'의 백업이 종료되었습니다.
-1087 'max_bestspace_entries=%1$d'를 초과하여 자원 할당이 실패했습니다.
-1088 정규 표현식을 컴파일할 수 없습니다: '%1$s'
-1089 정규 표현식을 실행할 수 없습니다: '%1$s'
+1085 정규 표현식을 컴파일할 수 없습니다: '%1$s'
+1086 정규 표현식을 실행할 수 없습니다: '%1$s'
+1087 활성 로그 '%1$s'의 백업이 시작되었습니다.
+1088 활성 로그 '%1$s'의 백업이 종료되었습니다.
+1089 'max_bestspace_entries=%1$d'를 초과하여 자원 할당이 실패했습니다.
 1090 로캘 초기화: %1$s.
 1091 로캘 생성: %1$s.
 1092 호스트 변수를 갖는 '%1$s' 타입의 문장을 prepare할 수 없습니다.
@@ -1171,7 +1171,7 @@ $ LOADDB
 1102 시스템 파라미터가 존재하지 않거나 값이 잘못되었습니다.
 1103 시스템 파라미터를 변경할 수 없습니다.
 1104 Slow query (%1$d msec)\n%2$s
-1105 내부에러: partially failed to flush dirty object.
+1105 내부에러: dirty 오브젝트를 flush하는 과정에서 일부 실패가 있었습니다.
 1106 원본 테이블의 레코드 수와 대상 테이블의 레코드 수가 일치하지 않습니다. 머지하는 두 테이블의 레코드 수는 동일해야 합니다.
 1107 NTILE 버킷 수는 0보다 크고 2,147,483,647보다 작야야 합니다.
 1108 WIDTH 버킷 수는 0보다 크고 2,147,483,647보다 작아야 합니다. 
@@ -1197,8 +1197,8 @@ $ LOADDB
 1128 로그 복구가 시작되었습니다. 적용될 로그 개수: %1$lld. 로그 페이지: %2$lld ~ %3$lld.
 1129 로그 복구가 완료되었습니다.
 1130 락 횟수가 %1$d 를 초과하여 트랜잭션이 취소되었습니다.
-1131 내부 에러: The page %1$d of volume "%2$s" may be corrupted.\n%3$s
-1132 Encryption library failure: %1$s
+1131 내부 에러: 볼륨 "%2$s"의 페이지 "%1$d"에 오류가 생겼을 수 있습니다.\n%3$s
+1132 암호화 라이브러리 실패: %1$s
 1133 Copylogdb for %1$s은 (는) 이미 존재합니다.
 1134 Applylogdb for %1$s은 (는) 이미 존재합니다.
 1135 B+tree(%1$s)의 프리비어스 링크에 오류가 있습니다.: vpid = (%2$d, %3$d)
@@ -1212,7 +1212,7 @@ $ LOADDB
 1143 Handshake 에러 (peer host %1$s): 원격 접속 불허.
 1144 %1$s로의 연결 시도 타임아웃 (timeout: %2$d 초)
 1145 시스템 클래스의 소유자를 변경하는 것은 허용되지 않습니다.
-1146 volume identifier %1$d does not exist.
+1146 볼륨 식별자 %1$d이(가) 존재하지 않습니다.
 1147 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1643,16 +1643,16 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 275 함수 "%1$s"는 반드시 ORDER BY 절을 포함해야 합니다.
 276 함수 "%1$s"의 인자 수가 ORDER BY 절 컬럼 수와 일치하지 않습니다.
 277 함수 "%1$s"의 ORDER BY 절은 적절하지 않습니다.
-278 Only one table within a view can be updated.
-279 Multiple insert targets not allowed.
-280 '%1$s' type is vclass, drop vclass with cascade constraints is not allowed.
-281 The FOR UPDATE clause cannot be used in subqueries, unions, with GROUP BY clause, DISTINCT operator, aggregate functions.
-282 Expects %1$s in argument position %2$d.
-283 Too many arguments specified.
-284 Too few arguments, need %1$d arguments.
-285 Expects %1$s for argument %2$s.
-286 Argument %1$s is missing.
-287 Unknown argument %1$s.
+278 뷰에 속해있는 하나의 테이블에 대해서만 업데이트 할 수 있습니다.
+279 Multiple insert target은 허용되지 않습니다.
+280 '%1$s' 타입은 뷰클래스이며, cascade constraint를 통한 뷰클래스의 drop은 허용되지 않습니다.
+281 "FOR UPDATE" 절은 "GROUP BY" 절, "DISTINCT" 연산자, "aggregate" 함수와 함께 부질의, UNION질의에서 사용될 수 없습니다.
+282 %2$d번째 인자는 %1$s이어야 합니다.
+283 너무 많은 인자가 사용되었습니다.
+284 인자의 개수가 적습니다. %1$d개의 인자가 필요합니다.
+285 %2$s 인자의 값은 %1$s이어야 합니다.
+286 %1$s 인자가 누락되었습니다.
+287 %1$s은(는) 알 수 없는 인자입니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
@@ -1822,7 +1822,7 @@ $set 14 MSGCAT_SET_LOCK
 40 %1$d ,
 41 교착상태를 제거하기 위해 트랜잭션과 함수를 선택: %1$d %2$s
 42 , %1$d %2$s
-43 락 대상: Index key of class (%1$2d|%2$6d|%3$4d) = %4$s.\n
+43 락 대상: 클래스의 인덱스 키(%1$2d|%2$6d|%3$4d) = %4$s.\n
 44 인덱스 이름: %1$s\n
 
 $set 15 MSGCAT_SET_IO
@@ -1855,7 +1855,7 @@ $set 15 MSGCAT_SET_IO
 13 입력 에러, %1$d 와 %2$d 사이의 값을 선택하시오\n
 14 ** 경고 ** 잘못된 백업 볼륨\n
 15 백업 볼륨 %1$s은(는) 다른 백업 레벨로 작성된 것입니다.\n   (레벨: %2$d, 예상 레벨: %3$d).\n\n
-16 백업 볼륨 %1$s은(는) 잘못된 page 또는 magic identifier를 가지고 있습니다.\n\n
+16 백업 볼륨 %1$s은(는) 잘못된 페이지 또는 magic identifier를 가지고 있습니다.\n\n
 17 백업 볼륨 %1$s은(는) 다른 데이터베이스를 백업한 것입니다.\n   (이름: %2$s, 예상: %3$s).\n\n
 18 백업 볼륨 %1$s의 순서가 올바르지 않습니다.\n  (Unit Num: %2$d, 예상: %3$d).\n\n
 19 백업 볼륨 %1$s의 timestamp가 올바르지 않습니다.\n   (Timestamp: %2$s, 예상: %3$s).\n\n
