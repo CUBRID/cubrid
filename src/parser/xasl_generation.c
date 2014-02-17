@@ -411,7 +411,8 @@ static int pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser,
 						     XASL_NODE * xasl);
 static INDX_INFO *pt_to_index_info (PARSER_CONTEXT * parser,
 				    DB_OBJECT * class_,
-				    QO_XASL_INDEX_INFO * qo_index_infop);
+				    QO_XASL_INDEX_INFO * qo_index_infop,
+				    PRED_EXPR * where_pred);
 static ACCESS_SPEC_TYPE *pt_to_class_spec_list (PARSER_CONTEXT * parser,
 						PT_NODE * spec,
 						PT_NODE * where_key_part,
@@ -12027,10 +12028,11 @@ error:
  *   parser(in):
  *   class(in):
  *   qo_index_infop(in):
+ *   where_pred(in):
  */
 static INDX_INFO *
 pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
-		  QO_XASL_INDEX_INFO * qo_index_infop)
+		  QO_XASL_INDEX_INFO * qo_index_infop, PRED_EXPR * where_pred)
 {
   int nterms;
   int rangelist_idx;
@@ -12143,8 +12145,12 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   /* BTID */
   indx_infop->indx_id.type = T_BTID;
   indx_infop->indx_id.i.btid = *btidp;
-  indx_infop->coverage = (int) qo_xasl_get_coverage (class_, qo_index_infop)
-    && (is_prefix_index == false);
+  indx_infop->coverage = 0;	/* init */
+  if (is_prefix_index == false && where_pred == NULL	/* no data-filter */
+      && qo_xasl_get_coverage (class_, qo_index_infop))
+    {
+      indx_infop->coverage = 1;
+    }
 
   if (indx_infop->coverage)
     {
@@ -12552,7 +12558,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 	       */
 	      index_info = pt_to_index_info (parser,
 					     class_->info.name.db_object,
-					     index_pred);
+					     index_pred, where);
 	      access = pt_make_class_access_spec (parser, flat,
 						  class_->info.name.db_object,
 						  TARGET_CLASS, INDEX,

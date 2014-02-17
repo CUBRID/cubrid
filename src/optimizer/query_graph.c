@@ -6548,7 +6548,8 @@ qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx)
 	      bitset_add (&(index_entry->seg_other_terms[idx]), t);
 	    }
 	}
-    }
+
+    }				/* for (t = 0; ... */
 
 }
 

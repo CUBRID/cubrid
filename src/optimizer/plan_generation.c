@@ -1932,7 +1932,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
 		   * sargable terms. The index used for inner index scan must
 		   * include all term segments that belong to inner node
 		   */
-		  if (qo_plan_coverage_index (inner)
+		  if (qo_is_index_cover_scan (inner)
 		      || qo_plan_multi_range_opt (inner))
 		    {
 		      /* Coverage indexes and indexes using multi range
@@ -2662,23 +2662,24 @@ qo_plan_skip_groupby (QO_PLAN * plan)
 }
 
 /*
- * qo_plan_coverage_index () - check the plan info for coverage index
+ * qo_is_index_cover_scan () - check the plan info for cover index scan
  *   return: true/false
  *   plan(in): QO_PLAN
  */
 bool
-qo_plan_coverage_index (QO_PLAN * plan)
+qo_is_index_cover_scan (QO_PLAN * plan)
 {
   if (qo_is_interesting_order_scan (plan)
       && plan->plan_un.scan.index->head
       && plan->plan_un.scan.index->head->cover_segments)
     {
-      return true;
+      if (bitset_is_empty (&(plan->sarged_terms)))
+	{
+	  return true;		/* no data-filter */
+	}
     }
-  else
-    {
-      return false;
-    }
+
+  return false;
 }
 
 /*
