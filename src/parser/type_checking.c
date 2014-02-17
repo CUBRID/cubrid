@@ -21544,6 +21544,7 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 			  const int coll_id, const INTL_CODESET codeset,
 			  bool force_mode, bool use_collate_modifier)
 {
+  bool is_string_literal = false;
   assert (node != NULL);
 
   switch (node->node_type)
@@ -21569,6 +21570,13 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
     default:
       /* by default, no not coerce */
       goto cannot_coerce;
+    }
+
+  if (node->node_type == PT_VALUE
+      && PT_IS_CHAR_STRING_TYPE (node->type_enum)
+      && node->info.value.is_collate_allowed == false)
+    {
+      is_string_literal = true;
     }
 
   if (node->data_type != NULL)
@@ -21642,7 +21650,9 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 	  /* always wrap with cast except when node is CAST expression (avoid
 	     CAST recursion) or force mode is enabled */
 	  if (!force_mode
-	      && (node->data_type->info.data_type.collation_id != coll_id)
+	      && ((is_string_literal == false
+		   && node->data_type->info.data_type.collation_id != coll_id)
+		  || node->data_type->info.data_type.units != codeset)
 	      && (node->node_type != PT_EXPR
 		  || node->info.expr.op != PT_CAST)
 	      && (node->node_type != PT_HOST_VAR))
@@ -21729,7 +21739,8 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 
 		  if (node->node_type == PT_VALUE)
 		    {
-		      if (node->data_type
+		      if (is_string_literal == false
+			  && node->data_type
 			  && codeset == node->data_type->info.data_type.units)
 			{
 			  /* force using COLLATE modifier for VALUEs when
@@ -21859,6 +21870,27 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
       break;
     case PT_EXPR:
+      if (is_string_literal == true
+	  && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
+	{
+	  /* a PT_VALUE node was wrapped with CAST to change the charset and
+	   * collation, but the value originated from a simple string literal
+	   * which does not allow COLLATE;
+	   * this forces a charset conversion and print with the new charset
+	   * introducer, and without COLLATE */
+	  assert (PT_EXPR_INFO_IS_FLAGED
+		  (node, PT_EXPR_INFO_CAST_SHOULD_FOLD));
+	  node = pt_fold_const_expr (parser, node, NULL);
+	  if (node != NULL)
+	    {
+	      node->info.value.is_collate_allowed = false;
+	      node->info.value.print_charset = true;
+	      /* print text with new charset */
+	      node->info.value.text = NULL;
+	      PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
+	    }
+	  break;
+	}
       /* special case : CAST */
       if (node->info.expr.op == PT_CAST && node->info.expr.cast_type != NULL)
 	{
