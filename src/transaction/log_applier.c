@@ -134,19 +134,6 @@
    select (0, 0, 0, 0, &sleep_time_val); \
  } while(0)
 
-#define LA_RETRY_ON_ERROR(error) \
-  ((error == ER_LK_UNILATERALLY_ABORTED)              || \
-   (error == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG)         || \
-   (error == ER_LK_OBJECT_TIMEOUT_CLASS_MSG)          || \
-   (error == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG)        || \
-   (error == ER_LK_PAGE_TIMEOUT)                      || \
-   (error == ER_PAGE_LATCH_TIMEDOUT)                  || \
-   (error == ER_PAGE_LATCH_ABORTED)                   || \
-   (error == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG)      || \
-   (error == ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG)       || \
-   (error == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG)     || \
-   (error == ER_LK_DEADLOCK_CYCLE_DETECTED))
-
 typedef struct la_cache_buffer LA_CACHE_BUFFER;
 struct la_cache_buffer
 {

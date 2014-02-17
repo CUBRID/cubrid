@@ -1117,7 +1117,7 @@ AS_IF([test "$with_cci_only" = "yes"],
 	EXTRA_DIST_SUBDIRS=""
 	CUBRID_LOGDIR=""
 	CUBRID_TMPDIR=""],
-	[BUILD_SUBDIRS="contrib/systemtap external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales dbgw $OPTIONAL_DIR"
+	[BUILD_SUBDIRS="contrib/systemtap external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales dbgw tools $OPTIONAL_DIR"
 	EXTRA_DIST_SUBDIRS="debian win src"])
 
 AC_SUBST([BUILD_NUMBER])
@@ -1220,6 +1220,7 @@ AS_IF([test "$with_cci_only" = "no"],
 	locales/data/codepages/Makefile
 	locales/data/ldml/Makefile
 	dbgw/Makefile
+	tools/Makefile
 	])])
 
 AC_OUTPUT
