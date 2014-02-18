@@ -26,10 +26,13 @@ Changelog
     Change default output file name when --jira option is given
   2013-11-12 xkyu
     Add --upload option
+  2014-02-18 xkyu
+    Support asterisk in -u option. (eg. -u '*.txt')
 '''
 
 import os
 import sys
+import glob
 import re
 import getopt
 import shutil
@@ -297,7 +300,7 @@ def usage ():
   
 def main ():
   try:
-    opts, args = getopt.getopt (sys.argv[1:], "hd:o:vnyrj:u:",["help", "tempdir=", "output=", "verbose", "nochange", "yes", "revision", "jira=", "confurl="])
+    opts, args = getopt.getopt (sys.argv[1:], "hd:o:vnyrj:u:",["help", "tempdir=", "output=", "verbose", "nochange", "yes", "revision", "jira=", "upload=", "confurl="])
   except getopt.GetoptError:
     print 'get option error.'
     usage ()
@@ -347,7 +350,9 @@ def main ():
       if not crfile:
         crfile = jira_id.lower()
     if o in ("-u", "--upload"):
-      jira_attachs.append(a)
+      print a
+      for attfilename in glob.glob(a):
+        jira_attachs.append(attfilename)
     if o in ("--confurl"):
       import urllib
       try:
