@@ -17290,6 +17290,13 @@ pt_init_insert_value (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_insert_value (PARSER_CONTEXT * parser, PT_NODE * p)
 {
+  /* The original_node is HOST_VAR type.
+   * Use custom print to avoid printing HOST_VAR. */
+  if (parser->custom_print & PT_PRINT_DB_VALUE)
+    {
+      return pt_print_db_value (parser, &p->info.insert_value.value);
+    }
+
   if (p->info.insert_value.original_node != NULL)
     {
       return pt_print_bytes_l (parser, p->info.insert_value.original_node);

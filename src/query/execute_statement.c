@@ -11830,6 +11830,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
   PT_NODE *value_clauses = statement->info.insert.value_clauses;
   PT_NODE *value_list = NULL;
   DB_OBJECT *obj = NULL, *vobj = NULL;
+  unsigned int save_custom;
 
   assert (otemplate != NULL);
   if (otemplate == NULL)
@@ -12113,6 +12114,10 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 		{
 		  if (error < NO_ERROR)
 		    {
+		      save_custom = parser->custom_print;
+		      parser->custom_print =
+			parser->custom_print | PT_PRINT_DB_VALUE;
+
 		      PT_ERRORmf3 (parser, vc, MSGCAT_SET_PARSER_RUNTIME,
 				   MSGCAT_RUNTIME_DBT_PUT_ERROR,
 				   pt_short_print (parser, vc),
@@ -12120,6 +12125,9 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 				   pt_chop_trailing_dots (parser,
 							  db_error_string
 							  (3)));
+
+		      parser->custom_print = save_custom;
+
 		      goto cleanup;
 		    }
 		}
@@ -16625,8 +16633,12 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser,
 	    }
 	  result->info.insert_value.replace_names = eval.replace_names;
 
+	  result->line_number = val->line_number;
+	  result->column_number = val->column_number;
+
 	  /* replace val */
 	  result->next = save_next;
+
 	  if (prev == NULL)
 	    {
 	      eval.value_list = value_list->info.node_list.list = result;

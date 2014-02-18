@@ -555,9 +555,6 @@ static REGU_VARIABLE_LIST pt_to_regu_variable_list (PARSER_CONTEXT * p,
 static REGU_VARIABLE *pt_attribute_to_regu (PARSER_CONTEXT * parser,
 					    PT_NODE * attr);
 
-static PARSER_VARCHAR *pt_print_db_value (PARSER_CONTEXT * parser,
-					  const struct db_value *val);
-
 static TP_DOMAIN *pt_xasl_data_type_to_domain (PARSER_CONTEXT * parser,
 					       const PT_NODE * node);
 static DB_VALUE *pt_index_value (const VAL_LIST * value, int index);
@@ -2736,8 +2733,8 @@ mmddyyyyhhmissms (const DB_DATETIME * datetime, char *buf, int buflen)
  *   parser(in):
  *   val(in):
  */
-static PARSER_VARCHAR *
-pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value *val)
+PARSER_VARCHAR *
+pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
 {
   PARSER_VARCHAR *temp = NULL, *result = NULL, *elem;
   int i, size = 0;

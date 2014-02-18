@@ -710,7 +710,7 @@ enum pt_custom_print
 
   PT_CONVERT_RANGE = (0x1 << 8),
 
-  PT_INTERNAL_PRINT = (0x1 << 9),
+  PT_PRINT_DB_VALUE = (0x1 << 9),
 
   PT_SUPPRESS_INDEX = (0x1 << 10),
 
