@@ -138,8 +138,9 @@ struct qo_plan
       QO_SCANMETHOD scan_method;	/* SEQ_SCAN, INDEX_SCAN */
       QO_NODE *node;
       BITSET terms;
-      bool equi;
       BITSET kf_terms;
+      bool index_equi;
+      bool index_cover;
       QO_NODE_INDEX_ENTRY *index;
     } scan;
 

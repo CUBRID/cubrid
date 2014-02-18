@@ -1896,8 +1896,9 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
 	  /* check for cselect of method */
 	  if (join_type == JOIN_CSELECT)
 	    {
-	      xasl = pt_gen_simple_merge_plan (parser,
-					       xasl, QO_ENV_PT_TREE (env));
+	      xasl =
+		pt_gen_simple_merge_plan (parser, QO_ENV_PT_TREE (env), plan,
+					  xasl);
 	      break;
 	    }
 	  else
@@ -2669,13 +2670,18 @@ qo_plan_skip_groupby (QO_PLAN * plan)
 bool
 qo_is_index_cover_scan (QO_PLAN * plan)
 {
-  if (qo_is_interesting_order_scan (plan)
-      && plan->plan_un.scan.index->head
-      && plan->plan_un.scan.index->head->cover_segments)
+  assert (plan != NULL);
+  assert (plan->info != NULL);
+  assert (plan->info->env != NULL);
+
+  if (qo_is_interesting_order_scan (plan))
     {
-      if (bitset_is_empty (&(plan->sarged_terms)))
+      if (plan->plan_un.scan.index_cover == true)
 	{
-	  return true;		/* no data-filter */
+	  assert (plan->plan_un.scan.index->head);
+	  assert (plan->plan_un.scan.index->head->cover_segments);
+
+	  return true;
 	}
     }
 

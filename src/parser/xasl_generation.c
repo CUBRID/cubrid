@@ -470,12 +470,11 @@ static void pt_to_fetch_proc_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 static XASL_NODE *pt_to_scan_proc_list (PARSER_CONTEXT * parser,
 					PT_NODE * node, XASL_NODE * root);
 static XASL_NODE *pt_gen_optimized_plan (PARSER_CONTEXT * parser,
-					 XASL_NODE * xasl,
 					 PT_NODE * select_node,
-					 QO_PLAN * plan);
+					 QO_PLAN * plan, XASL_NODE * xasl);
 static XASL_NODE *pt_gen_simple_plan (PARSER_CONTEXT * parser,
-				      XASL_NODE * xasl,
-				      PT_NODE * select_node);
+				      PT_NODE * select_node,
+				      QO_PLAN * plan, XASL_NODE * xasl);
 static XASL_NODE *pt_to_buildlist_proc (PARSER_CONTEXT * parser,
 					PT_NODE * select_node,
 					QO_PLAN * qo_plan);
@@ -12143,10 +12142,12 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   indx_infop->indx_id.type = T_BTID;
   indx_infop->indx_id.i.btid = *btidp;
   indx_infop->coverage = 0;	/* init */
-  if (is_prefix_index == false && where_pred == NULL	/* no data-filter */
-      && qo_xasl_get_coverage (class_, qo_index_infop))
+  if (qo_xasl_get_coverage (class_, qo_index_infop) && where_pred == NULL)	/* no data-filter */
     {
-      indx_infop->coverage = 1;
+      if (is_prefix_index == false)
+	{
+	  indx_infop->coverage = 1;
+	}
     }
 
   if (indx_infop->coverage)
@@ -14390,13 +14391,13 @@ pt_to_scan_proc_list (PARSER_CONTEXT * parser, PT_NODE * node,
  * pt_gen_optimized_plan () - Translate a PT_SELECT node to a XASL plan
  *   return:
  *   parser(in):
- *   xasl(in):
  *   select_node(in):
  *   plan(in):
+ *   xasl(in):
  */
 static XASL_NODE *
-pt_gen_optimized_plan (PARSER_CONTEXT * parser, XASL_NODE * xasl,
-		       PT_NODE * select_node, QO_PLAN * plan)
+pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node,
+		       QO_PLAN * plan, XASL_NODE * xasl)
 {
   XASL_NODE *ret = NULL;
 
@@ -14475,12 +14476,13 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, XASL_NODE * xasl,
  * pt_gen_simple_plan () - Translate a PT_SELECT node to a XASL plan
  *   return:
  *   parser(in):
- *   xasl(in):
  *   select_node(in):
+ *   plan(in):
+ *   xasl(in):
  */
 static XASL_NODE *
-pt_gen_simple_plan (PARSER_CONTEXT * parser, XASL_NODE * xasl,
-		    PT_NODE * select_node)
+pt_gen_simple_plan (PARSER_CONTEXT * parser, PT_NODE * select_node,
+		    QO_PLAN * plan, XASL_NODE * xasl)
 {
   PT_NODE *from, *where;
   PT_NODE *access_part, *if_part, *instnum_part;
@@ -14555,8 +14557,8 @@ pt_gen_simple_plan (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 		   lastxasl, from->info.spec.id);
 
       /* this also correctly places correlated subqueries for derived tables */
-      lastxasl->scan_ptr = pt_to_scan_proc_list (parser,
-						 select_node, lastxasl);
+      lastxasl->scan_ptr =
+	pt_to_scan_proc_list (parser, select_node, lastxasl);
 
       while (lastxasl && lastxasl->scan_ptr)
 	{
@@ -14590,12 +14592,14 @@ exit_on_error:
  * pt_gen_simple_merge_plan () - Translate a PT_SELECT node to a XASL plan
  *   return:
  *   parser(in):
- *   xasl(in):
  *   select_node(in):
+ *   plan(in):
+ *   xasl(in):
  */
 XASL_NODE *
-pt_gen_simple_merge_plan (PARSER_CONTEXT * parser, XASL_NODE * xasl,
-			  PT_NODE * select_node)
+pt_gen_simple_merge_plan (PARSER_CONTEXT * parser,
+			  PT_NODE * select_node, QO_PLAN * plan,
+			  XASL_NODE * xasl)
 {
   PT_NODE *table1, *table2;
   PT_NODE *where;
@@ -16519,7 +16523,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
   pt_set_aptr (parser, select_node, xasl);
 
   if (qo_plan == NULL
-      || !pt_gen_optimized_plan (parser, xasl, select_node, qo_plan))
+      || !pt_gen_optimized_plan (parser, select_node, qo_plan, xasl))
     {
       while (from)
 	{
@@ -16534,11 +16538,12 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
       if (select_node->info.query.q.select.flavor == PT_MERGE_SELECT)
 	{
-	  xasl = pt_gen_simple_merge_plan (parser, xasl, select_node);
+	  xasl =
+	    pt_gen_simple_merge_plan (parser, select_node, qo_plan, xasl);
 	}
       else
 	{
-	  xasl = pt_gen_simple_plan (parser, xasl, select_node);
+	  xasl = pt_gen_simple_plan (parser, select_node, qo_plan, xasl);
 	}
 
       if (xasl == NULL)
@@ -16942,7 +16947,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
   pt_set_aptr (parser, select_node, xasl);
 
-  if (!qo_plan || !pt_gen_optimized_plan (parser, xasl, select_node, qo_plan))
+  if (!qo_plan || !pt_gen_optimized_plan (parser, select_node, qo_plan, xasl))
     {
       PT_NODE *from;
 
@@ -16960,11 +16965,12 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
       if (select_node->info.query.q.select.flavor == PT_MERGE_SELECT)
 	{
-	  xasl = pt_gen_simple_merge_plan (parser, xasl, select_node);
+	  xasl =
+	    pt_gen_simple_merge_plan (parser, select_node, qo_plan, xasl);
 	}
       else
 	{
-	  xasl = pt_gen_simple_plan (parser, xasl, select_node);
+	  xasl = pt_gen_simple_plan (parser, select_node, qo_plan, xasl);
 	}
 
       if (xasl == NULL)

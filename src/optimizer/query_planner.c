@@ -1556,6 +1556,7 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method,
   bitset_assign (&(plan->subqueries), pinned_subqueries);
   bitset_init (&(plan->plan_un.scan.terms), info->env);
   bitset_init (&(plan->plan_un.scan.kf_terms), info->env);
+  plan->plan_un.scan.index_equi = plan->plan_un.scan.index_cover = false;
   plan->plan_un.scan.index = NULL;
 
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
@@ -1596,7 +1597,12 @@ qo_seq_scan_new (QO_INFO * info, QO_NODE * node, BITSET * pinned_subqueries)
     }
 
   plan->vtbl = &qo_seq_scan_plan_vtbl;
-  plan->plan_un.scan.index = NULL;
+
+  assert (bitset_is_empty (&(plan->plan_un.scan.terms)));
+  assert (bitset_is_empty (&(plan->plan_un.scan.kf_terms)));
+  assert (plan->plan_un.scan.index_equi == false);
+  assert (plan->plan_un.scan.index_cover == false);
+  assert (plan->plan_un.scan.index == NULL);
 
   qo_plan_compute_cost (plan);
 
@@ -1713,11 +1719,12 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 
   if (t == -1)
     {
-      plan->plan_un.scan.equi = true;	/* is all equi-cond key-range terms */
+      /* is all equi-cond key-range terms */
+      plan->plan_un.scan.index_equi = true;
     }
   else
     {
-      plan->plan_un.scan.equi = false;
+      plan->plan_un.scan.index_equi = false;
     }
 
   /* remove key-range terms from sarged terms */
@@ -1785,6 +1792,40 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
   /* exclude key filter terms from sargs terms */
   bitset_difference (&(plan->sarged_terms), &(plan->plan_un.scan.kf_terms));
 
+  /* check of index cover scan */
+  plan->plan_un.scan.index_cover = false;	/* init */
+  if (index_entryp->cover_segments)
+    {
+      BITSET remaining_terms;
+      bool index_cover = true;	/* guess */
+
+      bitset_init (&remaining_terms, env);
+
+      bitset_assign (&remaining_terms, &(plan->sarged_terms));
+      /* except non-sarg terms; join term */
+      bitset_intersect (&remaining_terms, &(QO_NODE_SARGS (node)));
+
+      /* for each sarged terms */
+      for (t = bitset_iterate (&remaining_terms, &iter);
+	   t != -1; t = bitset_next_member (&iter))
+	{
+	  term = QO_ENV_TERM (env, t);
+
+	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+	    {
+	      /* term contains correlated subquery */
+	      continue;
+	    }
+
+	  index_cover = false;
+	  break;
+	}
+
+      plan->plan_un.scan.index_cover = index_cover;
+
+      bitset_delset (&remaining_terms);
+    }
+
   bitset_delset (&term_segs);
   bitset_delset (&index_segs);
 
@@ -1818,6 +1859,8 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 	  return NULL;
 	}
     }
+
+  assert (plan->plan_un.scan.index != NULL);
 
   qo_plan_compute_cost (plan);
 
@@ -3115,7 +3158,7 @@ qo_nljoin_cost (QO_PLAN * planp)
   inner_cpu_cost = guessed_result_cardinality * (double) QO_CPU_WEIGHT;
   /* join cost */
 
-  if (qo_is_iscan (inner) && inner->plan_un.scan.equi == true)
+  if (qo_is_iscan (inner) && inner->plan_un.scan.index_equi == true)
     {
       /* correlated index equi-join */
       inner_cpu_cost += inner->variable_cpu_cost;
@@ -3993,7 +4036,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
     /* index range terms */
     a_range = bitset_cardinality (&(a->plan_un.scan.terms));
-    if (!(a->plan_un.scan.equi))
+    if (!(a->plan_un.scan.index_equi))
       {
 	a_range--;		/* set the last equal range term */
       }
@@ -4019,7 +4062,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
     /* index range terms */
     b_range = bitset_cardinality (&(b->plan_un.scan.terms));
-    if (!(b->plan_un.scan.equi))
+    if (!(b->plan_un.scan.index_equi))
       {
 	b_range--;		/* set the last equal range term */
       }
@@ -10602,7 +10645,7 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
 
   /* index range terms */
   a_range = bitset_cardinality (&(a->plan_un.scan.terms));
-  if (!(a->plan_un.scan.equi))
+  if (!(a->plan_un.scan.index_equi))
     {
       a_range--;		/* set the last equal range term */
     }
@@ -10618,7 +10661,7 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
 
   /* index range terms */
   b_range = bitset_cardinality (&(b->plan_un.scan.terms));
-  if (!(b->plan_un.scan.equi))
+  if (!(b->plan_un.scan.index_equi))
     {
       b_range--;		/* set the last equal range term */
     }
@@ -10684,7 +10727,7 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
 
   /* STEP 2: check by term cardinality */
 
-  if (a->plan_un.scan.equi == b->plan_un.scan.equi)
+  if (a->plan_un.scan.index_equi == b->plan_un.scan.index_equi)
     {
       if (a_range == b_range)
 	{
@@ -11316,7 +11359,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root,
   index_entryp = (ni_entryp)->head;
 
   nterms = bitset_cardinality (&(plan->plan_un.scan.terms));
-  equi_nterms = plan->plan_un.scan.equi ? nterms : nterms - 1;
+  equi_nterms = plan->plan_un.scan.index_equi ? nterms : nterms - 1;
   assert (equi_nterms >= 0);
 
   if (index_entryp->rangelist_seg_idx != -1)
@@ -11325,7 +11368,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root,
     }
 
   /* we must have the first index column appear as the first sort column, so
-   * we pretend the number of equi columns is zero, to force it to match
+   * we pretend the number of index_equi columns is zero, to force it to match
    * the sort list and the index columns one-for-one. */
   if (index_entryp->is_iss_candidate
       || index_entryp->constraints->func_index_info != NULL)

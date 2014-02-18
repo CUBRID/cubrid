@@ -227,8 +227,8 @@ extern void pt_set_connect_by_operator_node_etc (PARSER_CONTEXT * parser,
 extern void pt_set_qprior_node_etc (PARSER_CONTEXT * parser,
 				    PT_NODE * node_list, XASL_NODE * xasl);
 extern XASL_NODE *pt_gen_simple_merge_plan (PARSER_CONTEXT * parser,
-					    XASL_NODE * xasl,
-					    PT_NODE * select_node);
+					    PT_NODE * select_node,
+					    QO_PLAN * plan, XASL_NODE * xasl);
 extern XASL_NODE *parser_generate_do_stmt_xasl (PARSER_CONTEXT * p,
 						PT_NODE * node);
 extern FUNC_PRED *pt_to_func_pred (PARSER_CONTEXT * parser,
