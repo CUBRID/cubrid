@@ -7593,6 +7593,8 @@ static SCAN_CODE
 qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   SCAN_CODE sb_scan;
+  OID * class_oid;
+  HFID * class_hfid;
 
   if (xasl->curr_spec == NULL)
     {
@@ -7611,7 +7613,28 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  return S_END;
 	}
 
-      /* initialilize scan */
+      assert (xasl->curr_spec != NULL);
+
+      /* initialize scan */
+      if ((xasl->curr_spec->type == TARGET_CLASS
+	  || xasl->curr_spec->type == TARGET_CLASS_ATTR)
+	  && xasl->curr_spec->parts != NULL && xasl->curr_spec->curent == NULL)
+	{
+	  /* initialize the scan_id for partitioned classes */
+	  if (xasl->curr_spec->access == SEQUENTIAL)
+	    {
+	      class_oid = &xasl->curr_spec->s_id.s.hsid.cls_oid;
+	      class_hfid = &xasl->curr_spec->s_id.s.hsid.hfid;
+	    }
+	  else if (xasl->curr_spec->access == INDEX)
+	    {
+	      class_oid = &xasl->curr_spec->s_id.s.isid.cls_oid;
+	      class_hfid = &xasl->curr_spec->s_id.s.isid.hfid;
+	    }
+	  COPY_OID (class_oid, &ACCESS_SPEC_CLS_OID (xasl->curr_spec));
+	  HFID_COPY (class_hfid, &ACCESS_SPEC_HFID (xasl->curr_spec));
+	}
+
       if (scan_start_scan (thread_p, &xasl->curr_spec->s_id) != NO_ERROR)
 	{
 	  return S_ERROR;
@@ -7620,7 +7643,6 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 
   do
     {
-
       sb_scan = scan_next_scan_block (thread_p, &xasl->curr_spec->s_id);
       if (sb_scan == S_SUCCESS)
 	{
