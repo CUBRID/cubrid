@@ -3227,9 +3227,22 @@ typedef union pt_plan_trace_info
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
 
+/*
+ * COMPILE_CONTEXT cover from user input query string to gnerated xasl
+ */
+typedef struct compile_context COMPILE_CONTEXT;
+struct compile_context
+{
+  struct xasl_node *xasl;
 
+  char *sql_user_text;		/* original query statement that user input */
+  int sql_user_text_len;	/* length of sql_user_text */
 
-struct compile_context;
+  char *sql_hash_text;		/* rewrited query string which is used as hash key */
+
+  char *sql_plan_text;		/* plans for this query */
+  int sql_plan_alloc_size;	/* query_plan alloc size */
+};
 
 struct parser_context
 {
@@ -3324,7 +3337,7 @@ struct parser_context
 				   commits */
   bool dont_collect_exec_stats:1;
   char *ddl_stmt_for_replication;
-  struct compile_context *context;
+  struct compile_context context;
 
   bool query_trace;
   int num_plan_trace;

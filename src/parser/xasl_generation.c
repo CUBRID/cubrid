@@ -17412,7 +17412,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
     {
       size_t plan_len, sizeloc;
       char *ptr, *sql_plan = "";
-      COMPILE_CONTEXT *context = parser->context;
+      COMPILE_CONTEXT *contextp = &parser->context;
 
       FILE *fp = port_open_memstream (&ptr, &sizeloc);
       if (fp)
@@ -17448,27 +17448,27 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	    }
 	}
 
-      if (context && sql_plan)
+      if (sql_plan)
 	{
 	  plan_len = strlen (sql_plan);
 
-	  if (context->sql_plan_alloc_size == 0)
+	  if (contextp->sql_plan_alloc_size == 0)
 	    {
 	      int size = MAX (1024, plan_len * 2);
-	      context->sql_plan_text = parser_alloc (parser, size);
-	      if (context->sql_plan_text == NULL)
+	      contextp->sql_plan_text = parser_alloc (parser, size);
+	      if (contextp->sql_plan_text == NULL)
 		{
 		  goto error_exit;
 		}
 
-	      context->sql_plan_alloc_size = size;
-	      context->sql_plan_text[0] = '\0';
+	      contextp->sql_plan_alloc_size = size;
+	      contextp->sql_plan_text[0] = '\0';
 	    }
-	  else if (context->sql_plan_alloc_size -
-		   strlen (context->sql_plan_text) < plan_len)
+	  else if (contextp->sql_plan_alloc_size -
+		   strlen (contextp->sql_plan_text) < plan_len)
 	    {
 	      char *ptr;
-	      int size = (context->sql_plan_alloc_size + plan_len) * 2;
+	      int size = (contextp->sql_plan_alloc_size + plan_len) * 2;
 
 	      ptr = parser_alloc (parser, size);
 	      if (ptr == NULL)
@@ -17477,13 +17477,13 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 		}
 
 	      ptr[0] = '\0';
-	      strcpy (ptr, context->sql_plan_text);
+	      strcpy (ptr, contextp->sql_plan_text);
 
-	      context->sql_plan_text = ptr;
-	      context->sql_plan_alloc_size = size;
+	      contextp->sql_plan_text = ptr;
+	      contextp->sql_plan_alloc_size = size;
 	    }
 
-	  strcat (context->sql_plan_text, sql_plan);
+	  strcat (contextp->sql_plan_text, sql_plan);
 	}
     }
 

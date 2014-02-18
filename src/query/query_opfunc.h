@@ -126,24 +126,6 @@ typedef struct xasl_node XASL_NODE;
 typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
 
 
-/*
- * COMPILE_CONTEXT cover from user input query string to gnerated xasl
- */
-typedef struct compile_context COMPILE_CONTEXT;
-struct compile_context
-{
-  XASL_NODE *xasl;
-
-  char *sql_user_text;		/* original query statement that user input */
-  int sql_user_text_len;	/* length of sql_user_text */
-
-  char *sql_hash_text;		/* rewrited query string which is used as hash key */
-
-  char *sql_plan_text;		/* plans for this query */
-  int sql_plan_alloc_size;	/* query_plan alloc size */
-};
-
-
 typedef struct xasl_stream XASL_STREAM;
 struct xasl_stream
 {
