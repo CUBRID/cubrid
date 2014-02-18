@@ -317,10 +317,9 @@ extern int pr_free_ext_value (DB_VALUE * value);
 extern int pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
 			       int do_coercion, int total_order,
 			       int num_index_term,
-			       int *start_colp,
-			       int *result_size1, int *result_size2,
-			       int *diff_column, bool * dom_is_desc,
-			       bool * next_dom_is_desc);
+			       int *start_colp, int *result_size1,
+			       int *result_size2, int *diff_column,
+			       bool * dom_is_desc, bool * next_dom_is_desc);
 extern int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain);
 extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey,
 					  int index, DB_VALUE * value,
@@ -335,12 +334,6 @@ extern void pr_data_writeval (OR_BUF * buf, DB_VALUE * value);
 extern int pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
 				     const DB_VALUE * db_midxkey2,
 				     DB_VALUE * db_result);
-extern int pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey,
-					  int index);
-extern int pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix,
-				  DB_VALUE * postfix, int n_prefix);
-extern int pr_midxkey_remove_prefix (DB_VALUE * key, int prefix);
-extern int pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2);
 
 extern int pr_Inhibit_oid_promotion;
 

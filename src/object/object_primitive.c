@@ -7460,7 +7460,6 @@ pr_midxkey_compare_element (char *mem1, char *mem2,
   return c;
 }
 
-
 int
 pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
 		    int do_coercion, int total_order, int num_index_term,
@@ -7476,13 +7475,6 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
   char *bitptr1, *bitptr2;
   char *mem1, *mem2;
   int last;
-
-  assert (total_order == 1);
-  if (total_order == 0)
-    {
-      /* unknown case */
-      return DB_UNK;
-    }
 
   assert (mul1->domain != NULL);
   assert (TP_DOMAIN_TYPE (mul1->domain) == DB_TYPE_MIDXKEY);
@@ -7563,9 +7555,7 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
       last = mul1->ncolumns;
     }
 
-  for (i = 0;
-       start_colp && i < *start_colp;
-       i++, dom1 = dom1->next, dom2 = dom2->next)
+  for (i = 0; i < last; i++)
     {
       if (dom1 == NULL || dom2 == NULL || dom1->is_desc != dom2->is_desc)
 	{
@@ -7573,84 +7563,87 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
 	  return DB_UNK;
 	}
 
-      if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
-	{
-	  adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
-	  mem1 += adv_size1;
-	  size1 += adv_size1;
-	}
+      c = DB_EQ;		/* init */
 
-      if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+      /* consume equal-value columns */
+      if (start_colp != NULL)
 	{
-	  adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
-	  mem2 += adv_size2;
-	  size2 += adv_size2;
-	}
-    }
-
-  for (c = DB_EQ; i < last; i++, dom1 = dom1->next, dom2 = dom2->next)
-    {
-      if (dom1 == NULL || dom2 == NULL || dom1->is_desc != dom2->is_desc)
-	{
-	  assert (false);
-	  return DB_UNK;
-	}
-
-      if (OR_MULTI_ATT_IS_BOUND (bitptr1, i)
-	  && OR_MULTI_ATT_IS_BOUND (bitptr2, i))
-	{
-	  /* check for val1 and val2 same domain */
-	  if (dom1 == dom2 || tp_domain_match (dom1, dom2, TP_EXACT_MATCH))
+	  if (i < *start_colp)
 	    {
-	      c = (*(dom1->type->index_cmpdisk)) (mem1, mem2, dom1,
-						  do_coercion, total_order,
-						  NULL);
+	      if (OR_MULTI_ATT_IS_UNBOUND (bitptr1, i)
+		  && OR_MULTI_ATT_IS_UNBOUND (bitptr2, i))
+		{
+		  /* check for val1, val2 is NULL for total_order */
+		  if (total_order)
+		    {
+		      goto check_done;	/* skip and go ahead */
+		    }
+		}
+	      goto check_equal;
+	    }
+	}
+
+      /* val1 or val2 is NULL */
+      if (OR_MULTI_ATT_IS_UNBOUND (bitptr1, i))
+	{			/* element val is null? */
+	  if (OR_MULTI_ATT_IS_UNBOUND (bitptr2, i))
+	    {
+	      c = (total_order ? DB_EQ : DB_UNK);
+	      /* check for val1, val2 is NULL for total_order */
+	      if (total_order)
+		{
+		  goto check_done;	/* skip and go ahead */
+		}
 	    }
 	  else
-	    {			/* coercion and comparision */
-	      /* val1 and val2 have different domain */
-	      c = pr_midxkey_compare_element (mem1, mem2, dom1, dom2,
-					      do_coercion, total_order);
+	    {
+	      c = (total_order ? DB_LT : DB_UNK);
 	    }
+	  goto check_equal;
+	}
+      else if (OR_MULTI_ATT_IS_UNBOUND (bitptr2, i))
+	{
+	  c = (total_order ? DB_GT : DB_UNK);
+	  goto check_equal;
+	}
+
+      /* at here, val1 and val2 is non-NULL */
+
+      /* check for val1 and val2 same domain */
+      if (dom1 == dom2 || tp_domain_match (dom1, dom2, TP_EXACT_MATCH))
+	{
+	  c = (*(dom1->type->index_cmpdisk)) (mem1, mem2, dom1,
+					      do_coercion, total_order, NULL);
 	}
       else
-	{
-	  if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
-	    {
-	      /* val 1 bound, val 2 unbound */
-	      c = DB_GT;
-	    }
-	  else if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
-	    {
-	      /* val 1 unbound, val 2 bound */
-	      c = DB_LT;
-	    }
-	  else
-	    {
-	      /* val 1 unbound, val 2 unbound */
-	      c = DB_EQ;
-	    }
+	{			/* coercion and comparision */
+	  /* val1 and val2 have different domain */
+	  c = pr_midxkey_compare_element (mem1, mem2, dom1, dom2,
+					  do_coercion, total_order);
 	}
+
+    check_equal:
 
       if (c != DB_EQ)
 	{
 	  break;		/* exit for-loop */
 	}
 
-      if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
-	{
-	  adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
-	  mem1 += adv_size1;
-	  size1 += adv_size1;
-	}
+      adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
+      adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
 
-      if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
-	{
-	  adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
-	  mem2 += adv_size2;
-	  size2 += adv_size2;
-	}
-    }
+      mem1 += adv_size1;
+      mem2 += adv_size2;
+      size1 += adv_size1;
+      size2 += adv_size2;
+
+    check_done:
+
+      /* at here, both val1 and val2 can be NULL */
+
+      dom1 = dom1->next;
+      dom2 = dom2->next;
+    }				/* for */
 
   if (start_colp != NULL)
     {
@@ -8788,219 +8781,6 @@ pr_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals, int total)
     }
 
   return total;
-}
-
-
-/*
- * pr_midxkey_get_element_offset - Returns element offset of midxkey
- *    return: 
- *    midxkey(in):
- *    index(in):
- */
-int
-pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index)
-{
-  int idx_ncols = 0, i;
-  int advance_size;
-  int error = NO_ERROR;
-
-  TP_DOMAIN *domain;
-
-  OR_BUF buf_space;
-  OR_BUF *buf;
-  char *bitptr;
-
-  idx_ncols = midxkey->domain->precision;
-  if (idx_ncols <= 0)
-    {
-      assert (false);
-      goto exit_on_error;
-    }
-
-  if (index >= midxkey->ncolumns)
-    {
-      assert (false);
-      goto exit_on_error;
-    }
-
-  /* get bit-mask */
-  bitptr = midxkey->buf;
-  /* get domain list, attr number */
-  domain = midxkey->domain->setdomain;	/* first element's domain */
-
-  {
-    buf = NULL;			/* init */
-    i = 0;			/* init */
-
-    /* 2nd phase: need to set buf info */
-    if (buf == NULL)
-      {
-	buf = &buf_space;
-	or_init (buf, midxkey->buf, midxkey->size);
-
-	advance_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
-	if (or_advance (buf, advance_size) != NO_ERROR)
-	  {
-	    goto exit_on_error;
-	  }
-      }
-
-    for (; i < index; i++, domain = domain->next)
-      {
-	/* check for element is NULL */
-	if (OR_MULTI_ATT_IS_UNBOUND (bitptr, i))
-	  {
-	    continue;		/* skip and go ahead */
-	  }
-
-	advance_size = pr_midxkey_element_disk_size (buf->ptr, domain);
-	or_advance (buf, advance_size);
-      }
-
-    if (error != NO_ERROR)
-      {
-	goto exit_on_error;
-      }
-  }
-
-  return buf->ptr - buf->buffer;
-
-exit_on_error:
-
-  assert (false);
-  return -1;
-}
-
-
-
-/*
- * pr_midxkey_add_prefix - 
- *
- *    return: 
- *    prefix(in):
- *    postfix(in):
- *    result(out):
- *    n_prefix(in):
- */
-int
-pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix,
-		       DB_VALUE * postfix, int n_prefix)
-{
-  int i, j, k, offset_postfix, offset_prefix;
-  DB_MIDXKEY *midx_postfix, *midx_prefix;
-  DB_MIDXKEY midx_result;
-
-  assert (DB_VALUE_TYPE (prefix) == DB_TYPE_MIDXKEY);
-  assert (DB_VALUE_TYPE (postfix) == DB_TYPE_MIDXKEY);
-
-  midx_prefix = (DB_MIDXKEY *) & (prefix->data.midxkey);
-  midx_postfix = (DB_MIDXKEY *) & (postfix->data.midxkey);
-
-  offset_prefix = pr_midxkey_get_element_offset (midx_prefix, n_prefix);
-  offset_postfix = pr_midxkey_get_element_offset (midx_postfix, n_prefix);
-
-  midx_result.size = offset_prefix + (midx_postfix->size - offset_postfix);
-  midx_result.buf = db_private_alloc (NULL, midx_result.size);
-  midx_result.domain = midx_postfix->domain;
-  midx_result.ncolumns = midx_postfix->ncolumns;
-
-  memcpy (midx_result.buf, midx_prefix->buf, offset_prefix);
-
-#if !defined(NDEBUG)
-  for (j = 0; j < n_prefix; j++)
-    {
-      assert (!OR_MULTI_ATT_IS_BOUND (midx_postfix->buf, j));
-    }
-#endif
-
-  for (j = n_prefix; j < midx_result.ncolumns; j++)
-    {
-      if (OR_MULTI_ATT_IS_BOUND (midx_postfix->buf, j))
-	{
-	  OR_MULTI_ENABLE_BOUND_BIT (midx_result.buf, j);
-	}
-      else
-	{
-	  OR_MULTI_CLEAR_BOUND_BIT (midx_result.buf, j);
-	}
-    }
-
-  memcpy (midx_result.buf + offset_prefix,
-	  midx_postfix->buf + offset_postfix,
-	  midx_postfix->size - offset_postfix);
-
-  DB_MAKE_MIDXKEY (result, &midx_result);
-  result->need_clear = true;
-
-  return NO_ERROR;
-}
-
-
-/*
- * pr_midxkey_remove_prefix - 
- *
- *    return: 
- *    key(in):
- *    prefix(in):
- */
-int
-pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
-{
-  int i, j, k;
-  DB_MIDXKEY *midx_key;
-  int start, offset, size;
-
-  midx_key = (DB_MIDXKEY *) & (key->data.midxkey);
-
-  start = pr_midxkey_get_element_offset (midx_key, 0);
-  offset = pr_midxkey_get_element_offset (midx_key, prefix);
-
-  memmove (midx_key->buf + start, midx_key->buf + offset,
-	   midx_key->size - offset + start);
-
-  for (j = 0; j < prefix; j++)
-    {
-      OR_MULTI_CLEAR_BOUND_BIT (midx_key->buf, j);
-    }
-
-  midx_key->size = midx_key->size - offset + start;
-
-  return NO_ERROR;
-}
-
-
-/*
- * pr_midxkey_common_prefix - 
- *
- *    return: 
- *    key1(in):
- *    key2(in):
- */
-int
-pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2)
-{
-  int size1, size2, diff_column, ret;
-  bool dom_is_desc = false, next_dom_is_desc = false;
-  DB_MIDXKEY *midx_lf_key, *midx_uf_key;
-
-  assert (DB_VALUE_TYPE (key1) == DB_TYPE_MIDXKEY);
-  assert (DB_VALUE_TYPE (key2) == DB_TYPE_MIDXKEY);
-
-  midx_lf_key = (DB_MIDXKEY *) & (key1->data.midxkey);
-  midx_uf_key = (DB_MIDXKEY *) & (key2->data.midxkey);
-
-  ret = pr_midxkey_compare (midx_lf_key, midx_uf_key,
-			    0, 1, -1,
-			    NULL, &size1, &size2,
-			    &diff_column, &dom_is_desc, &next_dom_is_desc);
-
-  if (ret == DB_UNK)
-    {
-      assert (false);
-      diff_column = 0;
-    }
-
-  return diff_column;
 }
 
 /*
