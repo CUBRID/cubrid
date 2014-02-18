@@ -4097,6 +4097,8 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   hb_Cluster->myself = NULL;
   hb_Cluster->nodes = NULL;
 
+  hb_Cluster->ping_hosts = NULL;
+
   hb_Cluster->num_nodes =
     hb_cluster_load_group_and_node_list ((char *) nodes, (char *) replicas);
   if (hb_Cluster->num_nodes < 1)
@@ -4109,6 +4111,16 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
 		     prm_get_name (PRM_ID_HA_NODE_LIST));
       return ER_PRM_BAD_VALUE;
+    }
+
+  hb_Cluster->num_ping_hosts =
+    hb_cluster_load_ping_host_list (prm_get_string_value
+				    (PRM_ID_HA_PING_HOSTS));
+
+  if (hb_cluster_check_valid_ping_server () == false)
+    {
+      pthread_mutex_unlock (&hb_Cluster->lock);
+      return ER_FAILED;
     }
 
 #if defined (HB_VERBOSE_DEBUG)
@@ -4137,17 +4149,6 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 				  ERR_CSS_TCP_DATAGRAM_BIND, 0);
       pthread_mutex_unlock (&hb_Cluster->lock);
       return ERR_CSS_TCP_DATAGRAM_BIND;
-    }
-
-  hb_Cluster->ping_hosts = NULL;
-  hb_Cluster->num_ping_hosts =
-    hb_cluster_load_ping_host_list (prm_get_string_value
-				    (PRM_ID_HA_PING_HOSTS));
-
-  if (hb_cluster_check_valid_ping_server () == false)
-    {
-      pthread_mutex_unlock (&hb_Cluster->lock);
-      return ER_FAILED;
     }
 
   pthread_mutex_unlock (&hb_Cluster->lock);
