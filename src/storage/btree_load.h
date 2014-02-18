@@ -59,8 +59,6 @@
 
 /* each page is supposed to have around 30% blank area during merge
    considerations of a delete operation */
-#define FIXED_EMPTY   ( DB_PAGESIZE * 0.33 )
-
 #define BTREE_MAX_ALIGN INT_ALIGNMENT	/* Maximum Alignment            */
 					     /* Maximum Leaf Node Entry Size */
 #define LEAFENTSZ(n)  ( LEAF_RECORD_SIZE + BTREE_MAX_ALIGN \
@@ -260,9 +258,14 @@ extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			       int key_len, bool during_loading,
 			       OID * class_oid, OID * oid, RECDES * rec);
 extern void btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
-			       RECDES * Rec, DB_VALUE * key, void *rec_header,
-			       int node_type, bool * clear_key, int *offset,
-			       int copy);
+			       PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,
+			       void *rec_header, int node_type,
+			       bool * clear_key, int *offset, int copy);
+extern void btree_read_record_helper (THREAD_ENTRY * thread_p,
+				      BTID_INT * btid, RECDES * Rec,
+				      DB_VALUE * key, void *rec_header,
+				      int node_type, bool * clear_key,
+				      int *offset, int copy);
 extern TP_DOMAIN *btree_generate_prefix_domain (BTID_INT * btid);
 extern int btree_glean_root_header_info (THREAD_ENTRY * thread_p,
 					 BTREE_ROOT_HEADER * root_header,
