@@ -2801,8 +2801,14 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
 int
 intl_identifier_casecmp (const char *str1, const char *str2)
 {
-  int str1_size = strlen (str1);
-  int str2_size = strlen (str2);
+  int str1_size;
+  int str2_size;
+
+  assert (str1 != NULL);
+  assert (str2 != NULL);
+
+  str1_size = strlen (str1);
+  str2_size = strlen (str2);
 
   return intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) str1,
 					 (unsigned char *) str2, str1_size,

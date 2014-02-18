@@ -260,16 +260,18 @@ static QO_PLAN *qo_index_scan_new (QO_INFO *, QO_NODE *,
 				   BITSET *, BITSET *, BITSET *);
 static int qo_has_is_not_null_term (QO_NODE * node);
 
+static bool qo_validate_index_term_notnull (QO_ENV * env,
+					    QO_INDEX_ENTRY * index_entryp);
+static bool qo_validate_index_attr_notnull (QO_ENV * env,
+					    QO_INDEX_ENTRY * index_entryp,
+					    PT_NODE * col);
 static int qo_validate_index_for_orderby (QO_ENV * env,
 					  QO_NODE_INDEX_ENTRY * ni_entryp);
 static int qo_validate_index_for_groupby (QO_ENV * env,
 					  QO_NODE_INDEX_ENTRY * ni_entryp);
-static PT_NODE *search_isnull_key_expr_orderby (PARSER_CONTEXT * parser,
-						PT_NODE * tree, void *arg,
-						int *continue_walk);
-static PT_NODE *search_isnull_key_expr_groupby (PARSER_CONTEXT * parser,
-						PT_NODE * tree, void *arg,
-						int *continue_walk);
+static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser,
+					   PT_NODE * tree, void *arg,
+					   int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
 static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
 static PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root,
@@ -10340,73 +10342,275 @@ qo_is_iscan_from_orderby (QO_PLAN * plan)
 }
 
 /*
- * qo_validate_index_for_orderby () - checks for isnull(key) or not null flag
- *  env(in): pointer to the optimizer environment
- *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
- *  return: 1 if the index can be used, 0 elseware
+ * qo_validate_index_term_notnull ()
+ *   return: true/false
  */
-int
-qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
+static bool
+qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
 {
-  int have_orderby_index = 0;
-  PT_NODE *orderby_col = NULL;
-  PT_NODE *node = NULL;
-  int i, pos;
-  QO_CLASS_INFO_ENTRY *index_class = ni_entryp->head->class_;
-  void *env_seg[2];
-  const char *seg_name;
+  bool term_notnull = false;	/* init */
+  PT_NODE *node;
   const char *node_name;
+  QO_CLASS_INFO_ENTRY *index_class;
+  int t;
+  QO_TERM *termp;
+  int iseg;
+  QO_SEGMENT *segp;
+
+  assert (env != NULL);
+  assert (index_entryp != NULL);
+  assert (index_entryp->class_ != NULL);
+
+  index_class = index_entryp->class_;
+
+  /* do a check on the first column - it should be present in the where clause
+   *
+   * check if exists a simple expression with PT_IS_NOT_NULL on the first key
+   * this should not contain OR operator and the PT_IS_NOT_NULL should contain
+   * the column directly as parameter (PT_NAME)
+   */
+  for (t = 0; t < env->nterms && !term_notnull; t++)
+    {
+      /* get the pointer to QO_TERM structure */
+      termp = QO_ENV_TERM (env, t);
+      assert (termp != NULL);
+      if (QO_TERM_LOCATION (termp) > 0)
+	{
+	  continue;
+	}
+
+      node = QO_TERM_PT_EXPR (termp);
+      if (node == NULL)
+	{
+	  continue;
+	}
+
+      if (node && node->or_next)
+	{
+	  continue;
+	}
+
+      if (node->node_type == PT_EXPR
+	  && node->info.expr.op == PT_IS_NOT_NULL
+	  && node->info.expr.arg1->node_type == PT_NAME)
+	{
+	  iseg = index_entryp->seg_idxs[0];
+	  if (iseg != -1 && BITSET_MEMBER (QO_TERM_SEGS (termp), iseg))
+	    {
+	      /* check it's the same column as the first in the index */
+	      node_name = pt_get_name (node->info.expr.arg1);
+	      segp = QO_ENV_SEG (env, iseg);
+	      assert (segp != NULL);
+	      if (!intl_identifier_casecmp (node_name, QO_SEG_NAME (segp)))
+		{
+		  /* we have found a term with no OR and with IS_NOT_NULL
+		   * on our key. The plan is ready for group by skip!
+		   */
+		  term_notnull = true;
+		  break;
+		}
+	    }
+	}
+    }				/* for (t = 0; ...) */
+
+  return term_notnull;
+}
+
+/*
+ * qo_validate_index_attr_notnull ()
+ *   return: true/false
+ */
+static bool
+qo_validate_index_attr_notnull (QO_ENV * env,
+				QO_INDEX_ENTRY * index_entryp, PT_NODE * col)
+{
+  bool attr_notnull = false;	/* init */
+  QO_NODE *node;
+  PT_NODE *dummy;
+  int i;
+  QO_CLASS_INFO_ENTRY *index_class;
+  QO_SEGMENT *segp = NULL;
+  SM_ATTRIBUTE *attr;
+  void *env_seg[2];
 
   /* key_term_status is -1 if no term with key, 0 if isnull or is not null
    * terms with key and 1 if other term with key
    */
   int old_bail_out, key_term_status;
-  bool key_notnull = false;
-  QO_SEGMENT *segm = NULL;
 
-  have_orderby_index = 0;
+  assert (env != NULL);
+  assert (index_entryp != NULL);
+  assert (index_entryp->class_ != NULL);
+  assert (index_entryp->class_->smclass != NULL);
+  assert (col != NULL);
+
+  index_class = index_entryp->class_;
+
+  if (col->node_type != PT_NAME)
+    {
+      return false;		/* give up */
+    }
+
+  node = lookup_node (col, env, &dummy);
+  if (node == NULL)
+    {
+      return false;
+    }
+
+  segp = lookup_seg (node, col, env);
+  if (segp == NULL)
+    {				/* is invalid case */
+      assert (false);
+      return false;
+    }
+
+  for (i = 0; i < index_entryp->col_num; i++)
+    {
+      if (index_entryp->seg_idxs[i] == QO_SEG_IDX (segp))
+	{
+	  break;		/* found */
+	}
+    }
+  if (i >= index_entryp->col_num)
+    {
+      /* col is not included in this index */
+      return false;
+    }
+
+  assert (segp != NULL);
+#if !defined(NDEBUG)
+  {
+    const char *col_name = pt_get_name (col);
+
+    assert (!intl_identifier_casecmp (QO_SEG_NAME (segp), col_name));
+  }
+#endif
+
+  /* we now search in the class columns for the index key */
+  for (i = 0; i < index_class->smclass->att_count; i++)
+    {
+      attr = &index_class->smclass->attributes[i];
+      if (attr
+	  && !intl_identifier_casecmp (QO_SEG_NAME (segp), attr->header.name))
+	{
+	  if (attr->flags & SM_ATTFLAG_NON_NULL)
+	    {
+	      attr_notnull = true;
+	    }
+	  else
+	    {
+	      attr_notnull = false;
+	    }
+
+	  break;
+	}
+    }
+  if (i >= index_class->smclass->att_count)
+    {
+      /* column wasn't found - this should not happen! */
+      assert (false);
+      return false;
+    }
+
+  /* now search for not terms with the key */
+  if (attr_notnull != true)
+    {
+      /* save old value of bail_out */
+      old_bail_out = env->bail_out;
+      env->bail_out = -1;	/* no term found value */
+
+      /* check for isnull terms with the key */
+      env_seg[0] = (void *) env;
+      env_seg[1] = (void *) segp;
+      parser_walk_tree (env->parser,
+			QO_ENV_PT_TREE (env)->info.query.q.select.where,
+			qo_search_isnull_key_expr, env_seg, NULL, NULL);
+
+      /* restore old value and keep walk_tree result in key_term_status */
+      key_term_status = env->bail_out;
+      env->bail_out = old_bail_out;
+
+      /* if there is no isnull on the key, check that the key appears in some term
+       * and if so, make sure that that term doesn't have a OR
+       */
+      if (key_term_status == 1)
+	{
+	  BITSET expr_segments, key_segment;
+	  QO_TERM *termp;
+	  PT_NODE *pt_expr;
+
+	  bitset_init (&expr_segments, env);
+	  bitset_init (&key_segment, env);
+
+	  /* key segment bitset */
+	  bitset_add (&key_segment, QO_SEG_IDX (segp));
+
+	  /* key found in a term */
+	  for (i = 0; i < env->nterms; i++)
+	    {
+	      termp = QO_ENV_TERM (env, i);
+	      assert (termp != NULL);
+
+	      pt_expr = QO_TERM_PT_EXPR (termp);
+	      if (pt_expr == NULL)
+		{
+		  continue;
+		}
+
+	      if (pt_expr->or_next)
+		{
+		  BITSET_CLEAR (expr_segments);
+
+		  qo_expr_segs (env, pt_expr, &expr_segments);
+		  if (bitset_intersects (&expr_segments, &key_segment))
+		    {
+		      break;	/* give up */
+		    }
+		}
+	    }
+
+	  if (i >= env->nterms)
+	    {
+	      attr_notnull = true;	/* OK */
+	    }
+
+	  bitset_delset (&key_segment);
+	  bitset_delset (&expr_segments);
+	}
+    }
+
+  return attr_notnull;
+}
+
+/*
+ * qo_validate_index_for_orderby () - checks for isnull(key) or not null flag
+ *  env(in): pointer to the optimizer environment
+ *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ *  return: 1 if the index can be used, 0 elseware
+ */
+static int
+qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
+{
+  bool key_notnull = false;	/* init */
+  QO_INDEX_ENTRY *index_entryp;
+  QO_CLASS_INFO_ENTRY *index_class;
+
+  int pos;
+  PT_NODE *node = NULL;
+
+  assert (ni_entryp != NULL);
+  assert (ni_entryp->head != NULL);
+  assert (ni_entryp->head->class_ != NULL);
+
+  index_entryp = ni_entryp->head;
+  index_class = index_entryp->class_;
+
   if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.order_by)
     {
       goto end;
     }
 
-  /* do a check on the first column - it should be present in the where clause
-   * with a non-null predicate (id > 3 or isnull(id) = false, etc, some
-   * statement that ensures us the key cannot have null value) or if no
-   * predicate in where clause, the attribute should have the not_null flag
-   */
-
-  /* check if exists a simple expression with PT_IS_NOT_NULL on the first key
-   * this should not contain OR operator and the PT_IS_NOT_NULL should contain
-   * the column directly as parameter (PT_NAME)
-   */
-  for (node = QO_ENV_PT_TREE (env)->info.query.q.select.where; node;
-       node = node->next)
-    {
-      if (node->or_next)
-	{
-	  /* cancel the flag */
-	  key_notnull = false;
-	  break;
-	}
-      if (node->node_type == PT_EXPR && node->info.expr.op == PT_IS_NOT_NULL
-	  && node->info.expr.arg1->node_type == PT_NAME)
-	{
-	  /* check it's the same column as the first in the index */
-	  const char *node_name = pt_get_name (node->info.expr.arg1);
-	  const char *index_key_name =
-	    env->segs[ni_entryp->head->seg_idxs[0]].name;
-
-	  if (!intl_identifier_casecmp (node_name, index_key_name))
-	    {
-	      /* we have found a term with no OR and with IS_NOT_NULL on our
-	       * key. The plan is ready for order by skip!
-	       */
-	      key_notnull = true;
-	      break;
-	    }
-	}
-    }
+  key_notnull = qo_validate_index_term_notnull (env, index_entryp);
   if (key_notnull)
     {
       goto final;
@@ -10438,96 +10642,12 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
 
   node = pt_get_end_path_node (node);
 
-  if (node->node_type == PT_NAME)
-    {
-      node_name = pt_get_name (node);
+  assert (key_notnull == false);
 
-      for (i = 0; i < env->nsegs; i++)
-	{
-	  seg_name = QO_ENV_SEG (env, i)->name;
-
-	  if (!intl_identifier_casecmp (seg_name, node_name))
-	    {
-	      segm = QO_ENV_SEG (env, i);
-	      break;
-	    }
-	}
-    }
-
-  if (!segm)
-    {
-      goto end;
-    }
-
-  /* we now search in the class columns for the index key */
-  for (i = 0; i < index_class->smclass->att_count; i++)
-    {
-      SM_ATTRIBUTE *attr = &index_class->smclass->attributes[i];
-
-      if (attr && !intl_identifier_casecmp (segm->name, attr->header.name))
-	{
-	  key_notnull = (attr->flags & SM_ATTFLAG_NON_NULL) != 0;
-	  break;
-	}			/* end if attr->order == pos */
-    }				/* end for */
-
-  if (i == index_class->smclass->att_count)
-    {
-      /* column wasn't found - this should not happen! */
-      goto end;
-    }
+  key_notnull = qo_validate_index_attr_notnull (env, index_entryp, node);
   if (key_notnull)
     {
       goto final;
-    }
-
-  /* now search for not terms with the key */
-
-  /* save old value of bail_out */
-  old_bail_out = env->bail_out;
-  env->bail_out = -1;		/* no term found value */
-
-  /* check for isnull terms with the key */
-  env_seg[0] = (void *) env;
-  env_seg[1] = (void *) segm;
-  parser_walk_tree (env->parser,
-		    QO_ENV_PT_TREE (env)->info.query.q.select.where,
-		    search_isnull_key_expr_orderby, env_seg, NULL, NULL);
-
-  /* restore old value and keep walk_tree result in key_term_status */
-  key_term_status = env->bail_out;
-  env->bail_out = old_bail_out;
-
-  /* if there is no isnull on the key, check that the key appears in some term
-   * and if so, make sure that that term doesn't have a OR
-   */
-  if (key_term_status == 1)
-    {
-      BITSET expr_segments, key_segment;
-
-      /* key segment bitset */
-      bitset_init (&key_segment, env);
-      bitset_add (&key_segment, QO_SEG_IDX (segm));
-
-      /* key found in a term */
-      for (i = 0; i < env->nterms; i++)
-	{
-	  QO_TERM *term = QO_ENV_TERM (env, i);
-
-	  if (term && term->pt_expr)
-	    {
-	      bitset_init (&expr_segments, env);
-	      qo_expr_segs (env, term->pt_expr, &expr_segments);
-
-	      if (bitset_intersects (&expr_segments, &key_segment))
-		{
-		  if (term->pt_expr->or_next)
-		    {
-		      goto end;
-		    }
-		}
-	    }
-	}
     }
 
   /* Now we have the information we need: if the key column can be null
@@ -10545,7 +10665,7 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
    *    cannot have a null value).
    */
 final:
-  if (key_notnull || key_term_status == 1)
+  if (key_notnull)
     {
       return 1;
     }
@@ -10554,7 +10674,7 @@ end:
 }
 
 /*
- * search_isnull_key_expr_orderby () -
+ * qo_search_isnull_key_expr () -
  *   return: PT_NODE *
  *   parser(in): parser environment
  *   tree(in): tree to walk
@@ -10562,11 +10682,11 @@ end:
  *   continue_walk(in):
  *
  * Note: for env->bail_out values, check key_term_status in
- *	  qo_validate_index_for_orderby
+ *	  qo_validate_index_for_groupby, qo_validate_index_for_orderby
  */
 static PT_NODE *
-search_isnull_key_expr_orderby (PARSER_CONTEXT * parser,
-				PT_NODE * tree, void *arg, int *continue_walk)
+qo_search_isnull_key_expr (PARSER_CONTEXT * parser,
+			   PT_NODE * tree, void *arg, int *continue_walk)
 {
   BITSET expr_segments, key_segment;
   QO_ENV *env;
@@ -10941,26 +11061,21 @@ qo_is_iscan_from_groupby (QO_PLAN * plan)
  *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
  *  return: 1 if the index can be used, 0 elseware
  */
-int
+static int
 qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
 {
-  int have_groupby_index = 0;
-  PT_NODE *groupby_col = NULL;
-  PT_NODE *node = NULL;
-  int i;
-  QO_CLASS_INFO_ENTRY *index_class = ni_entryp->head->class_;
-  void *env_seg[2];
+  bool key_notnull = false;	/* init */
+  QO_INDEX_ENTRY *index_entryp;
+  QO_CLASS_INFO_ENTRY *index_class;
 
-  /* key_term_status is -1 if no term with key, 0 if isnull or is not null
-   * terms with key and 1 if other term with key
-   */
-  int old_bail_out, key_term_status;
-  bool key_notnull = false;
-  const char *first_col_name = NULL;
   PT_NODE *groupby_expr = NULL;
-  QO_SEGMENT *segm = NULL;
 
-  have_groupby_index = 0;
+  assert (ni_entryp != NULL);
+  assert (ni_entryp->head != NULL);
+  assert (ni_entryp->head->class_ != NULL);
+
+  index_entryp = ni_entryp->head;
+  index_class = index_entryp->class_;
 
   if (!QO_ENV_PT_TREE (env)
       || !QO_ENV_PT_TREE (env)->info.query.q.select.group_by)
@@ -10968,43 +11083,7 @@ qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
       goto end;
     }
 
-  /* do a check on the first column - it should be present in the where clause
-   * with a non-null predicate (id > 3 or isnull(id) = false, etc, some
-   * statement that ensures us the key cannot have null value) or if no
-   * predicate in where clause, the attribute should have the not_null flag
-   */
-
-  /* check if exists a simple expression with PT_IS_NOT_NULL on the first key
-   * this should not contain OR operator and the PT_IS_NOT_NULL should contain
-   * the column directly as parameter (PT_NAME)
-   */
-  for (node = QO_ENV_PT_TREE (env)->info.query.q.select.where; node;
-       node = node->next)
-    {
-      if (node->or_next)
-	{
-	  /* cancel the flag */
-	  key_notnull = false;
-	  break;
-	}
-      if (node->node_type == PT_EXPR && node->info.expr.op == PT_IS_NOT_NULL
-	  && node->info.expr.arg1->node_type == PT_NAME)
-	{
-	  /* check it's the same column as the first in the index */
-	  const char *node_name = pt_get_name (node->info.expr.arg1);
-	  const char *index_key_name =
-	    env->segs[ni_entryp->head->seg_idxs[0]].name;
-
-	  if (!intl_identifier_casecmp (node_name, index_key_name))
-	    {
-	      /* we have found a term with no OR and with IS_NOT_NULL on our
-	       * key. The plan is ready for group by skip!
-	       */
-	      key_notnull = true;
-	      break;
-	    }
-	}
-    }
+  key_notnull = qo_validate_index_term_notnull (env, index_entryp);
   if (key_notnull)
     {
       goto final;
@@ -11013,96 +11092,14 @@ qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
   /* get the name of the first column in the group by list */
   groupby_expr =
     QO_ENV_PT_TREE (env)->info.query.q.select.group_by->info.sort_spec.expr;
-  first_col_name = pt_get_name (groupby_expr);
-  if (!first_col_name)
-    {
-      goto end;
-    }
 
-  /* we now search in the class columns for the index key */
-  for (i = 0; i < index_class->smclass->att_count; i++)
-    {
-      SM_ATTRIBUTE *attr = &index_class->smclass->attributes[i];
+  assert (key_notnull == false);
 
-      if (first_col_name && attr &&
-	  !intl_identifier_casecmp (first_col_name, attr->header.name))
-	{
-	  key_notnull = (attr->flags & SM_ATTFLAG_NON_NULL) != 0;
-	  break;
-	}
-    }
-
-  if (i == index_class->smclass->att_count)
-    {
-      /* column wasn't found - this should not happen! */
-      goto end;
-    }
+  key_notnull =
+    qo_validate_index_attr_notnull (env, index_entryp, groupby_expr);
   if (key_notnull)
     {
       goto final;
-    }
-
-  for (i = 0; i < env->nsegs; i++)
-    {
-      if (!intl_identifier_casecmp
-	  (QO_ENV_SEG (env, i)->name, first_col_name))
-	{
-	  segm = QO_ENV_SEG (env, i);
-	  break;
-	}
-    }
-  if (!segm)
-    {
-      goto end;
-    }
-
-  /* now search for not terms with the key */
-
-  /* save old value of bail_out */
-  old_bail_out = env->bail_out;
-  env->bail_out = -1;		/* no term found value */
-
-  env_seg[0] = (void *) env;
-  env_seg[1] = (void *) segm;
-  /* check for isnull terms with the key */
-  parser_walk_tree (env->parser,
-		    QO_ENV_PT_TREE (env)->info.query.q.select.where,
-		    search_isnull_key_expr_groupby, env_seg, NULL, NULL);
-
-  /* restore old value and keep walk_tree result in key_term_status */
-  key_term_status = env->bail_out;
-  env->bail_out = old_bail_out;
-
-  /* if there is no isnull on the key, check that the key appears in some term
-   * and if so, make sure that that term doesn't have a OR
-   */
-  if (key_term_status == 1)
-    {
-      BITSET expr_segments, key_segment;
-
-      /* key segment bitset */
-      bitset_init (&key_segment, env);
-      bitset_add (&key_segment, QO_SEG_IDX (segm));
-
-      /* key found in a term */
-      for (i = 0; i < env->nterms; i++)
-	{
-	  QO_TERM *term = QO_ENV_TERM (env, i);
-
-	  if (term && term->pt_expr)
-	    {
-	      bitset_init (&expr_segments, env);
-	      qo_expr_segs (env, term->pt_expr, &expr_segments);
-
-	      if (bitset_intersects (&expr_segments, &key_segment))
-		{
-		  if (term->pt_expr->or_next)
-		    {
-		      goto end;
-		    }
-		}
-	    }
-	}
     }
 
   /* Now we have the information we need: if the key column can be null
@@ -11120,7 +11117,7 @@ qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
    *    cannot have a null value).
    */
 final:
-  if (key_notnull || key_term_status == 1)
+  if (key_notnull)
     {
       return 1;
     }
@@ -11193,67 +11190,6 @@ qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
     }
 
   return groupby_skip;
-}
-
-/*
- * search_isnull_key_expr_groupby () -
- *   return: PT_NODE *
- *   parser(in): parser environment
- *   tree(in): tree to walk
- *   arg(in):
- *   continue_walk(in):
- *
- * Note: for env->bail_out values, check key_term_status in
- *	  qo_validate_index_for_groupby
- */
-static PT_NODE *
-search_isnull_key_expr_groupby (PARSER_CONTEXT * parser,
-				PT_NODE * tree, void *arg, int *continue_walk)
-{
-  BITSET expr_segments, key_segment;
-  QO_ENV *env;
-  QO_SEGMENT *segm;
-  void **env_seg = (void **) arg;
-
-  env = (QO_ENV *) env_seg[0];
-  segm = (QO_SEGMENT *) env_seg[1];
-
-  *continue_walk = PT_CONTINUE_WALK;
-
-  /* key segment bitset */
-  bitset_init (&key_segment, env);
-  bitset_add (&key_segment, QO_SEG_IDX (segm));
-
-  bitset_init (&expr_segments, env);
-  if (tree->node_type == PT_EXPR)
-    {
-      /* get all segments in this expression */
-      qo_expr_segs (env, tree, &expr_segments);
-
-      /* now check if the key segment is in there */
-      if (bitset_intersects (&expr_segments, &key_segment))
-	{
-	  /* this expr contains the key segment */
-	  if (tree->info.expr.op == PT_IS_NULL
-	      || tree->info.expr.op == PT_IS_NOT_NULL
-	      || tree->info.expr.op == PT_IFNULL
-	      || tree->info.expr.op == PT_NULLSAFE_EQ)
-	    {
-	      /* 0 all the way, suppress other terms found */
-	      env->bail_out = 0;
-	      *continue_walk = PT_STOP_WALK;
-
-	      return tree;
-	    }
-	  else if (env->bail_out == -1)
-	    {
-	      /* set as 1 only if we haven't found any isnull terms */
-	      env->bail_out = 1;
-	    }
-	}
-    }
-
-  return tree;
 }
 
 /*
