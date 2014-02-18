@@ -65,7 +65,8 @@ extern int session_create_prepared_statement (THREAD_ENTRY * thread_p,
 					      int info_len);
 extern int session_get_prepared_statement (THREAD_ENTRY * thread_p,
 					   const char *name, char **info,
-					   int *info_len, XASL_ID * xasl_id);
+					   int *info_len,
+					   XASL_CACHE_ENTRY ** xasl_entry);
 extern int session_delete_prepared_statement (THREAD_ENTRY * thread_p,
 					      const char *name);
 extern int login_user (THREAD_ENTRY * thread_p, const char *username);

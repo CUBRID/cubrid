@@ -877,9 +877,10 @@ struct xasl_cache_ent
   XASL_ID xasl_id;		/* XASL file identifier */
   int xasl_header_flag;		/* XASL header info */
 #if defined(SERVER_MODE)
-  int *tran_index_array;	/* array of TID(tran index)s that are currently
-				   using this XASL; size is MAX_NTRANS */
-  size_t last_ta_idx;		/* index of the last element in TIDs array */
+  char *tran_fix_count_array;	/* fix count of each transaction;
+				 * size is MAX_NTRANS */
+  int num_fixed_tran;		/* number of transactions
+				 * fixed this entry */
 #endif
   OID creator_oid;		/* OID of the user who created this XASL */
   const OID *class_oid_list;	/* list of class/serial OIDs referenced
@@ -976,8 +977,16 @@ extern XASL_CACHE_ENTRY *qexec_update_filter_pred_cache_ent (THREAD_ENTRY *
 							     const int
 							     *tcards,
 							     int dbval_cnt);
-extern int qexec_end_use_of_xasl_cache_ent (THREAD_ENTRY * thread_p,
-					    const XASL_ID * xasl_id);
+
+extern int qexec_remove_my_tran_id_in_filter_pred_xasl_entry (THREAD_ENTRY *
+							      thread_p,
+							      XASL_CACHE_ENTRY
+							      * ent,
+							      bool unfix_all);
+extern int qexec_remove_my_tran_id_in_xasl_entry (THREAD_ENTRY * thread_p,
+						  XASL_CACHE_ENTRY * ent,
+						  bool unfix_all);
+
 extern int qexec_end_use_of_filter_pred_cache_ent (THREAD_ENTRY * thread_p,
 						   const XASL_ID * xasl_id,
 						   bool marker);

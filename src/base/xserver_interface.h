@@ -351,7 +351,8 @@ extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd,
 					   CACHE_TIME * clt_cache_time,
 					   CACHE_TIME * srv_cache_time,
 					   int query_timeout,
-					   EXECUTION_INFO * info);
+					   XASL_CACHE_ENTRY **
+					   ret_cache_entry_p);
 extern QFILE_LIST_ID *xqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
 						       char *xasl_stream,
 						       int xasl_stream_size,

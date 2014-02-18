@@ -350,7 +350,7 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp,
 
   if (ent != NULL)
     {
-      (void) qexec_end_use_of_xasl_cache_ent (thread_p, &ent->xasl_id);
+      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false);
     }
 }
 

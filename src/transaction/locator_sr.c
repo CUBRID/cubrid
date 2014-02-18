@@ -85,9 +85,9 @@ static const int LOCATOR_GUESS_NUM_NESTED_REFERENCES = 100;
 /* flag for INSERT/UPDATE/DELETE statement */
 typedef enum
 {
-  FOR_INSERT_OR_DELETE,		/* It is an delete or insert statement, 
+  FOR_INSERT_OR_DELETE,		/* It is an delete or insert statement,
 				 * not update statement */
-  FOR_MOVE			/* It is an update statement on partitioned table, 
+  FOR_MOVE			/* It is an update statement on partitioned table,
 				 * move a record from one partition to another */
 } LOCATOR_INDEX_ACTION_FLAG;
 
@@ -5842,10 +5842,10 @@ error:
  *   scan_cache(in/out): Scan cache used to estimate the best space pages
  *                   between heap changes.
  *   force_count(in):
- *   idx_action_flag(in): is moving record between partitioned table? 
- *			  If FOR_MOVE, this delete&insert is caused by 
+ *   idx_action_flag(in): is moving record between partitioned table?
+ *			  If FOR_MOVE, this delete&insert is caused by
  *			  'UPDATE ... SET ...', NOT 'DELETE FROM ...'
- *   
+ *
  * Note: The given object is deleted on this heap and all appropiate
  *              index entries are deleted.
  */
@@ -5882,10 +5882,10 @@ locator_delete_force (THREAD_ENTRY * thread_p,
  *   scan_cache(in/out): Scan cache used to estimate the best space pages
  *                   between heap changes.
  *   force_count(in):
- *   idx_action_flag(in): is moving record between partitioned table? 
- *			  If FOR_MOVE, this delete&insert is caused by 
+ *   idx_action_flag(in): is moving record between partitioned table?
+ *			  If FOR_MOVE, this delete&insert is caused by
  *			  'UPDATE ... SET ...', NOT 'DELETE FROM ...'
- *   
+ *
  * Note: The given object is deleted on this heap and all appropiate
  *              index entries are deleted.
  */
@@ -5907,7 +5907,7 @@ locator_delete_force_for_moving (THREAD_ENTRY * thread_p,
 }
 
 /*
- * locator_delete_force_internal () - helper function for 
+ * locator_delete_force_internal () - helper function for
  *                                    locator_delete_force () and
  *                                    locator_delete_force_for_moving ()
  *
@@ -5925,10 +5925,10 @@ locator_delete_force_for_moving (THREAD_ENTRY * thread_p,
  *   scan_cache(in/out): Scan cache used to estimate the best space pages
  *                   between heap changes.
  *   force_count(in):
- *   idx_action_flag(in): is moving record between partitioned table? 
- *			  If FOR_MOVE, this delete&insert is caused by 
+ *   idx_action_flag(in): is moving record between partitioned table?
+ *			  If FOR_MOVE, this delete&insert is caused by
  *			  'UPDATE ... SET ...', NOT 'DELETE FROM ...'
- *   
+ *
  * Note: The given object is deleted on this heap and all appropiate
  *              index entries are deleted.
  */
@@ -7085,10 +7085,10 @@ locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attrinfo,
  *   need_replication(in): true if replication is needed
  *   hfid(in):
  *   func_preds(in): cached function index expressions
- *   idx_action_flag(in): is moving record between partitioned table? 
- *			 If FOR_MOVE, this delete(&insert) is caused by 
+ *   idx_action_flag(in): is moving record between partitioned table?
+ *			 If FOR_MOVE, this delete(&insert) is caused by
  *			 'UPDATE ... SET ...', NOT 'DELETE FROM ...'
- *			 
+ *
  * Note:Either insert indices (in_insert) or delete indices.
  */
 int
@@ -7132,10 +7132,10 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes,
  *   need_replication(in): true if replication is needed
  *   hfid(in):
  *   func_preds(in): cached function index expressions
- *   idx_action_flag(in): is moving record between partitioned table? 
- *			 If FOR_MOVE, this delete(&insert) is caused by 
+ *   idx_action_flag(in): is moving record between partitioned table?
+ *			 If FOR_MOVE, this delete(&insert) is caused by
  *			 'UPDATE ... SET ...', NOT 'DELETE FROM ...'
- *			 
+ *
  * Note:Either insert indices (in_insert) or delete indices.
  */
 static int
@@ -7159,7 +7159,7 @@ locator_add_or_remove_index_for_moving (THREAD_ENTRY * thread_p,
 }
 
 /*
- * locator_add_or_remove_index_internal () - helper function for 
+ * locator_add_or_remove_index_internal () - helper function for
  *                                     locator_add_or_remove_index () and
  *                                     locator_add_or_remove_index_for_moving ()
  *
@@ -7181,10 +7181,10 @@ locator_add_or_remove_index_for_moving (THREAD_ENTRY * thread_p,
  *   need_replication(in): true if replication is needed
  *   hfid(in):
  *   func_preds(in): cached function index expressions
- *   idx_action_flag(in): is moving record between partitioned table? 
- *			 If FOR_MOVE, this delete(&insert) is caused by 
+ *   idx_action_flag(in): is moving record between partitioned table?
+ *			 If FOR_MOVE, this delete(&insert) is caused by
  *			 'UPDATE ... SET ...', NOT 'DELETE FROM ...'
- *			 
+ *
  * Note:Either insert indices (in_insert) or delete indices.
  */
 static int
@@ -7387,11 +7387,11 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 	    {
 	      if (idx_action_flag == FOR_MOVE)
 		{
-		  /* This delete is caused by 'UPDATE ... SET ...' between 
+		  /* This delete is caused by 'UPDATE ... SET ...' between
 		   * partitioned tables.
-		   * It first delete a record in a partitioned table and 
-		   * insert a record in another partioned table. 
-		   * It should check the 'ON UPDATE ...' condition, not check 
+		   * It first delete a record in a partitioned table and
+		   * insert a record in another partioned table.
+		   * It should check the 'ON UPDATE ...' condition, not check
 		   * 'ON DELETE ...' condition.
 		   */
 		  error_code = locator_check_primary_key_update (thread_p,
@@ -7555,6 +7555,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
 			       RECDES ** recs, DB_LOGICAL * results)
 {
   XASL_CACHE_ENTRY *cache_entry_p = NULL;
+  XASL_CACHE_ENTRY *checked_entry_p = NULL;
   OID null_oid;
   XASL_ID pseudo_xasl_id, temp_xasl_id;
   int i;
@@ -7611,7 +7612,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
       if (!XASL_ID_EQ (&temp_xasl_id, &pseudo_xasl_id))
 	{
 	  (void) qexec_end_use_of_filter_pred_cache_ent (thread_p,
-							 &temp_xasl_id,
+							 &pseudo_xasl_id,
 							 false);
 	  er_log_debug (ARG_FILE_LINE,
 			"locator_eval_filter_predicate: "
@@ -7642,11 +7643,11 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
     }
 
   cache_clone_p = NULL;		/* mark as pop */
-  cache_entry_p = qexec_check_filter_pred_cache_ent_by_xasl (thread_p,
-							     &pseudo_xasl_id,
-							     0,
-							     &cache_clone_p);
-  if (cache_entry_p == NULL)
+  checked_entry_p = qexec_check_filter_pred_cache_ent_by_xasl (thread_p,
+							       &pseudo_xasl_id,
+							       0,
+							       &cache_clone_p);
+  if (checked_entry_p == NULL)
     {
       /* It doesn't be there or was marked to be deleted. */
       er_log_debug (ARG_FILE_LINE,
@@ -7657,6 +7658,10 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
 		    pseudo_xasl_id.first_vpid.volid,
 		    pseudo_xasl_id.temp_vfid.fileid,
 		    pseudo_xasl_id.temp_vfid.volid);
+
+      (void) qexec_end_use_of_filter_pred_cache_ent (thread_p,
+						     &pseudo_xasl_id, false);
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return ER_QPROC_INVALID_XASLNODE;
     }
@@ -7779,7 +7784,11 @@ end:
 	  pred_filter = NULL;
 	}
     }
-
+  if (cache_entry_p)
+    {
+      (void) qexec_end_use_of_filter_pred_cache_ent (thread_p,
+						     &pseudo_xasl_id, false);
+    }
   return error_code;
 }
 
@@ -8127,7 +8136,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		      if (!(unique && error_code == ER_BTREE_UNKNOWN_KEY))
 			{
 #if defined(ENABLE_SYSTEMTAP)
-		          CUBRID_IDX_UPDATE_END (classname, index->btname, 1);
+			  CUBRID_IDX_UPDATE_END (classname, index->btname, 1);
 #endif /* ENABLE_SYSTEMTAP */
 
 			  goto error;

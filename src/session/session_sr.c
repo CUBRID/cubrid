@@ -208,17 +208,26 @@ xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
 				 XASL_ID * xasl_id,
 				 XASL_NODE_HEADER * xasl_header_p)
 {
-  int error = session_get_prepared_statement (thread_p, name, info, info_len,
-					      xasl_id);
-  if (error == NO_ERROR && xasl_header_p != NULL)
-    {
-      /* get XASL node header from XASL stream */
-      qfile_load_xasl_node_header (thread_p, xasl_id, xasl_header_p);
-    }
+  XASL_CACHE_ENTRY *xasl_entry = NULL;
 
-  if (error == NO_ERROR && !XASL_ID_IS_NULL (xasl_id))
+  int error = session_get_prepared_statement (thread_p, name, info, info_len,
+					      &xasl_entry);
+
+  assert (xasl_id != NULL);
+  XASL_ID_SET_NULL (xasl_id);
+
+  if (error == NO_ERROR && xasl_entry != NULL)
     {
-      (void) qexec_end_use_of_xasl_cache_ent (thread_p, xasl_id);
+      XASL_ID_COPY (xasl_id, &xasl_entry->xasl_id);
+
+      if (xasl_header_p != NULL)
+	{
+	  /* get XASL node header from XASL stream */
+	  qfile_load_xasl_node_header (thread_p, xasl_id, xasl_header_p);
+	}
+
+      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_entry,
+						    true);
     }
 
   return error;

@@ -5786,6 +5786,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   CACHE_TIME clt_cache_time;
   CACHE_TIME srv_cache_time;
   int query_timeout;
+  XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
 
   int response_time = 0;
 
@@ -5859,11 +5860,16 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   list_id = xqmgr_execute_query (thread_p, &xasl_id, &query_id,
 				 dbval_cnt, data, &query_flag,
 				 &clt_cache_time, &srv_cache_time,
-				 query_timeout, &info);
+				 query_timeout, &xasl_cache_entry_p);
 
   if (data)
     {
       free_and_init (data);
+    }
+
+  if (xasl_cache_entry_p)
+    {
+      info = xasl_cache_entry_p->sql_info;
     }
 
 #if 0
@@ -6001,7 +6007,11 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
       free_and_init (sql_id);
     }
 
-  (void) qexec_end_use_of_xasl_cache_ent (thread_p, &xasl_id);
+  if (xasl_cache_entry_p)
+    {
+      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
+						    xasl_cache_entry_p, true);
+    }
 
   ptr = or_pack_int (ptr, queryinfo_string_length);
 

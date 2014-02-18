@@ -2262,9 +2262,8 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 			  goto error;
 			}
 		    }
-
-		  (void) qexec_end_use_of_xasl_cache_ent (thread_p,
-							  &ent->xasl_id);
+		  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
+								ent, true);
 		}
 
 	      /* structure copy */

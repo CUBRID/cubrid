@@ -254,14 +254,14 @@ cas_log_backup (T_CUBRID_FILE_ID fid)
   char backup_filepath[BROKER_PATH_MAX];
   char *filepath = NULL;
 
-  assert (log_filepath[0] != '\0');
-
   switch (fid)
     {
     case FID_SQL_LOG_DIR:
+      assert (log_filepath[0] != '\0');
       filepath = log_filepath;
       break;
     case FID_SLOW_LOG_DIR:
+      assert (slow_log_filepath[0] != '\0');
       filepath = slow_log_filepath;
       break;
     default:

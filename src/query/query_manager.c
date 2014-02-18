@@ -1213,32 +1213,29 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
 
   if (stream->xasl_stream == NULL)
     {
+      XASL_ID_SET_NULL (stream->xasl_id);
+
       /* lookup the XASL cache with the query string as the key */
       cache_entry_p =
 	qexec_lookup_xasl_cache_ent (thread_p, context->sql_hash_text,
 				     user_oid_p);
 
-      /* check recompilation threshold */
-      if (cache_entry_p
-	  && qexec_RT_xasl_cache_ent (thread_p, cache_entry_p) == NO_ERROR)
-	{
-	  XASL_ID_COPY (stream->xasl_id, &(cache_entry_p->xasl_id));
-	  if (stream->xasl_header)
-	    {
-	      /* also xasl header was requested */
-	      qfile_load_xasl_node_header (thread_p, stream->xasl_id,
-					   stream->xasl_header);
-	    }
-	}
-      else
-	{
-	  XASL_ID_SET_NULL (stream->xasl_id);
-	}
-
       if (cache_entry_p)
 	{
-	  (void) qexec_end_use_of_xasl_cache_ent (thread_p,
-						  &cache_entry_p->xasl_id);
+	  /* check recompilation threshold */
+	  if (qexec_RT_xasl_cache_ent (thread_p, cache_entry_p) == NO_ERROR)
+	    {
+	      XASL_ID_COPY (stream->xasl_id, &(cache_entry_p->xasl_id));
+	      if (stream->xasl_header)
+		{
+		  /* also xasl header was requested */
+		  qfile_load_xasl_node_header (thread_p, stream->xasl_id,
+					       stream->xasl_header);
+		}
+	    }
+
+	  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
+							cache_entry_p, true);
 	}
 
       return stream->xasl_id;
@@ -1262,9 +1259,13 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p,
 		    "qstmt %s\n", context->sql_hash_text);
       XASL_ID_COPY (stream->xasl_id, &(cache_entry_p->xasl_id));
 
-      (void) qexec_end_use_of_xasl_cache_ent (thread_p,
-					      &cache_entry_p->xasl_id);
-
+#if defined (SERVER_MODE)
+      if (cache_entry_p)
+	{
+	  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
+							cache_entry_p, true);
+	}
+#endif
       goto exit_on_end;
     }
 
@@ -1815,7 +1816,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 		     QUERY_FLAG * flag_p,
 		     CACHE_TIME * client_cache_time_p,
 		     CACHE_TIME * server_cache_time_p,
-		     int query_timeout, EXECUTION_INFO * info)
+		     int query_timeout, XASL_CACHE_ENTRY ** ret_cache_entry_p)
 {
   XASL_CACHE_ENTRY *xasl_cache_entry_p;
   QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
@@ -1906,9 +1907,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
       return NULL;
     }
 
-  if (info)
+  if (ret_cache_entry_p)
     {
-      *info = xasl_cache_entry_p->sql_info;
+      *ret_cache_entry_p = xasl_cache_entry_p;
     }
 
 #if defined (SERVER_MODE)

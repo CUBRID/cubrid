@@ -1543,7 +1543,8 @@ error:
  */
 int
 session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
-				char **info, int *info_len, XASL_ID * xasl_id)
+				char **info, int *info_len,
+				XASL_CACHE_ENTRY ** xasl_entry)
 {
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;
@@ -1553,7 +1554,7 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
   const char *alias_print;
   char *data = NULL;
 
-  assert (xasl_id != NULL);
+  assert (xasl_entry != NULL);
   state_p = session_get_session_state (thread_p);
   if (state_p == NULL)
     {
@@ -1604,7 +1605,7 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
   if (alias_print == NULL)
     {
       /* if we don't have an alias print, we do not search for the XASL id */
-      XASL_ID_SET_NULL (xasl_id);
+      *xasl_entry = NULL;
       er_log_debug (ARG_FILE_LINE, "found null xasl_id for %s(%d)\n", name,
 		    state_p->session_id);
       return NO_ERROR;
@@ -1613,7 +1614,6 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
   entry = qexec_lookup_xasl_cache_ent (thread_p, alias_print, &user);
   if (entry == NULL)
     {
-      XASL_ID_SET_NULL (xasl_id);
       er_log_debug (ARG_FILE_LINE, "found null xasl_id for %s(%d)\n", name,
 		    state_p->session_id);
     }
@@ -1621,8 +1621,9 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
     {
       er_log_debug (ARG_FILE_LINE, "found xasl_id for %s(%d)\n", name,
 		    state_p->session_id);
-      XASL_ID_COPY (xasl_id, &entry->xasl_id);
     }
+
+  *xasl_entry = entry;
 
   return NO_ERROR;
 }
