@@ -1783,7 +1783,9 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
   INT16 slotid;
   int ret, sp_success;
   int cur_maxspace;
-  int key_len, key_type;
+  int offset, key_len;
+  int key_type = BTREE_NORMAL_KEY;
+  LEAF_REC leaf_pnt;
 
   /* form the leaf record (create the header & insert the key) */
   cur_maxspace =
@@ -1918,9 +1920,6 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
   LEAF_REC leaf_pnt;
   NON_LEAF_REC nleaf_pnt;
   /* Variables for keeping keys */
-  DB_VALUE last_key;		/* Last key of the current page */
-  DB_VALUE first_key;		/* First key of the next page; used only if
-				   key_type is one of the string types */
   DB_VALUE prefix_key;		/* Prefix key; prefix of last & first keys; used
 				   only if type is one of the string types */
   int last_key_offset, first_key_offset;
@@ -1928,6 +1927,10 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
   int sp_success;
   int ret = NO_ERROR;
   int node_level = 2;		/* leaf level = 1, lowest non-leaf level = 2 */
+
+  DB_VALUE last_key;		/* Last key of the current page */
+  DB_VALUE first_key;		/* First key of the next page; used only if
+				   key_type is one of the string types */
 
   DB_MAKE_NULL (&last_key);
   DB_MAKE_NULL (&first_key);
@@ -2013,8 +2016,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	  goto exit_on_error;
 	}
 
-      btree_read_record (thread_p, load_args->btid, &temp_recdes,
-			 &first_key, &leaf_pnt, BTREE_LEAF_NODE,
+      btree_read_record (thread_p, load_args->btid, load_args->leaf.pgptr,
+			 &temp_recdes, &first_key, &leaf_pnt, BTREE_LEAF_NODE,
 			 &clear_first_key, &first_key_offset, PEEK_KEY_VALUE);
 
       if (pr_is_prefix_key_type (TP_DOMAIN_TYPE (load_args->btid->key_type)))
@@ -2072,10 +2075,10 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	      goto exit_on_error;
 	    }
 
-	  btree_read_record (thread_p, load_args->btid, &temp_recdes,
-			     &last_key, &leaf_pnt, BTREE_LEAF_NODE,
-			     &clear_last_key, &last_key_offset,
-			     PEEK_KEY_VALUE);
+	  btree_read_record (thread_p, load_args->btid, load_args->leaf.pgptr,
+			     &temp_recdes, &last_key, &leaf_pnt,
+			     BTREE_LEAF_NODE, &clear_last_key,
+			     &last_key_offset, PEEK_KEY_VALUE);
 	}
       else
 	{
@@ -2187,10 +2190,10 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	      goto exit_on_error;
 	    }
 
-	  btree_read_record (thread_p, load_args->btid, &temp_recdes,
-			     &first_key, &nleaf_pnt, BTREE_NON_LEAF_NODE,
-			     &clear_first_key, &first_key_offset,
-			     PEEK_KEY_VALUE);
+	  btree_read_record (thread_p, load_args->btid, cur_nleafpgptr,
+			     &temp_recdes, &first_key, &nleaf_pnt,
+			     BTREE_NON_LEAF_NODE, &clear_first_key,
+			     &first_key_offset, PEEK_KEY_VALUE);
 
 	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE,
 						   max_key_len);
