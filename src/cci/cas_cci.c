@@ -1530,16 +1530,15 @@ cci_prepare_and_execute (int mapped_conn_id, char *sql_stmt,
 		    max_col_size, DEBUG_STR (sql_stmt)));
 #endif
 
-  if (exec_retval != NULL)
-    {
-      *exec_retval = 0;
-    }
-
   reset_error_buffer (err_buf);
   error = hm_get_connection (mapped_conn_id, &con_handle);
   if (error != CCI_ER_NO_ERROR)
     {
       set_error_buffer (err_buf, error, NULL);
+      if (exec_retval != NULL)
+	{
+	  *exec_retval = error;
+	}
       return error;
     }
   reset_error_buffer (&(con_handle->err_buf));
@@ -1614,15 +1613,15 @@ cci_prepare_and_execute (int mapped_conn_id, char *sql_stmt,
 	}
     }
 
-  if (exec_retval != NULL)
-    {
-      *exec_retval = error;
-    }
-
   API_ELOG (con_handle, error);
   if (error < 0)
     {
       goto prepare_execute_error;
+    }
+
+  if (exec_retval != NULL)
+    {
+      *exec_retval = error;
     }
 
   if (con_handle->log_slow_queries)
@@ -1684,6 +1683,10 @@ error:
   set_error_buffer (&(con_handle->err_buf), error, NULL);
   get_last_error (con_handle, err_buf);
   con_handle->used = false;
+  if (exec_retval != NULL)
+    {
+      *exec_retval = error;
+    }
 
   return error;
 }
