@@ -30,10 +30,14 @@ namespace dbgw
   namespace system
   {
 
+    /* for windows porting UMR problem */
+    static const pthread_mutex_t g_mutexForInit = PTHREAD_MUTEX_INITIALIZER;
+
     class _Mutex::Impl
     {
     public:
-      Impl()
+      Impl() :
+        m_mutex(g_mutexForInit)
       {
         int nStatus = pthread_mutex_init(&m_mutex, NULL);
         if (nStatus != 0)
