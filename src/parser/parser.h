@@ -928,6 +928,9 @@ extern "C"
   extern void insert_rewrite_names_in_value_clauses (PARSER_CONTEXT * parser,
 						     PT_NODE *
 						     insert_statement);
+  extern int pt_name_occurs_in_from_list (PARSER_CONTEXT * parser,
+					  const char *name,
+					  PT_NODE * from_list);
 #ifdef __cplusplus
 }
 #endif

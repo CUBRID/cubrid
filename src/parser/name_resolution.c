@@ -174,7 +174,6 @@ static PT_NODE *pt_object_to_data_type (PARSER_CONTEXT * parser,
 static int pt_resolve_hint_args (PARSER_CONTEXT * parser, PT_NODE * arg_list,
 				 PT_NODE * spec_list);
 static int pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node);
-static const char *pt_unique_id (PARSER_CONTEXT * parser, UINTPTR t);
 static PT_NODE *pt_copy_data_type_entity (PARSER_CONTEXT * parser,
 					  PT_NODE * data_type);
 static PT_NODE *pt_insert_conjunct (PARSER_CONTEXT * parser,
@@ -221,6 +220,8 @@ static void pt_bind_names_merge_update (PARSER_CONTEXT * parser,
 					PT_BIND_NAMES_ARG * bind_arg,
 					SCOPES * scopestack,
 					PT_EXTRA_SPECS_FRAME * specs_frame);
+static const char *pt_get_unique_exposed_name (PARSER_CONTEXT * parser,
+					       PT_NODE * first_spec);
 
 static PT_NODE *pt_resolve_natural_join (PARSER_CONTEXT * parser,
 					 PT_NODE * node, void *chk_parent,
@@ -262,7 +263,7 @@ static int generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs,
  *			   insert to make sure no "correlated" names are used
  * 			   in subqueries.
  *
- * return	      : Unchanged node argument. 
+ * return	      : Unchanged node argument.
  * parser (in)	      : Parser context.
  * node (in)	      : Parse tree node.
  * arg (in)	      : Insert spec.
@@ -6185,6 +6186,8 @@ static int
 pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PT_NODE *q = 0, *r;
+  PT_NODE *spec_first = p;
+
   while (p)
     {
       if (p->node_type == PT_SPEC)
@@ -6204,6 +6207,7 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 		}
 	      else
 		{
+		  const char *unique_exposed_name;
 		  /*
 		     Was sublist, they didn't give a correlation variable name so
 		     We generate a unique name and attach it.
@@ -6218,8 +6222,17 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 
 		  r->info.name.spec_id = p->info.spec.id;
 		  r->info.name.meta_class = p->info.spec.meta_class;
-		  r->info.name.original = pt_unique_id (parser,
-							r->info.name.spec_id);
+
+		  unique_exposed_name =
+		    pt_get_unique_exposed_name (parser, spec_first);
+
+		  if (unique_exposed_name == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new table name");
+		      return 0;
+		    }
+
+		  r->info.name.original = unique_exposed_name;
 		  r->line_number = p->line_number;
 		  r->column_number = p->column_number;
 		  p->info.spec.range_var = r;
@@ -7007,20 +7020,35 @@ pt_str_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag)
 }
 
 /*
- * pt_unique_id () - Given a long, convert it to a unique identifier
- *   return: const char allocated with pt_append_string()
- *   parser(in):
- *   t(in):
+ * pt_get_unique_exposed_name () -
+ *   return:
  *
- * Note :
- *       Identifier is of form:   a<numeric-characters>
+ *   parser(in):
+ *   first_spec(in):
  */
 static const char *
-pt_unique_id (PARSER_CONTEXT * parser, UINTPTR t)
+pt_get_unique_exposed_name (PARSER_CONTEXT * parser, PT_NODE * first_spec)
 {
-  char c[40];
-  sprintf (c, "a%lld", (long long) t);
-  return pt_append_string (parser, 0, c);
+  char name_buf[32];
+  int i = 1;
+
+  if (first_spec->node_type != PT_SPEC)
+    {
+      assert (first_spec->node_type == PT_SPEC);
+      return NULL;
+    }
+
+  while (1)
+    {
+      snprintf (name_buf, 32, "__t%u", i);
+      if (pt_name_occurs_in_from_list (parser, name_buf, first_spec) == 0)
+	{
+	  return pt_append_string (parser, NULL, name_buf);
+	}
+      i++;
+    }
+
+  return NULL;
 }
 
 /*
@@ -7090,13 +7118,13 @@ pt_quick_resolve_names (PARSER_CONTEXT * parser, PT_NODE ** spec_p,
 
 /*
  * natural_join_equal_attr () - If the two attributes have same name,
- *     the function return true. We don't consider the type there. 
- *     Whether the join can be executed is dependent on whether the 
- *     two types are compatible. If not, the error will be threw by 
+ *     the function return true. We don't consider the type there.
+ *     Whether the join can be executed is dependent on whether the
+ *     two types are compatible. If not, the error will be threw by
  *     subsequent process.
  *   return:
  *   lhs(in):
- *   rhs(in): 
+ *   rhs(in):
  */
 static bool
 natural_join_equal_attr (NATURAL_JOIN_ATTR_INFO * lhs,
@@ -7124,7 +7152,7 @@ natural_join_equal_attr (NATURAL_JOIN_ATTR_INFO * lhs,
 }
 
 /*
- * free_natural_join_attrs () - 
+ * free_natural_join_attrs () -
  *   return:
  *   attrs(in):
  */
@@ -7144,10 +7172,10 @@ free_natural_join_attrs (NATURAL_JOIN_ATTR_INFO * attrs)
 }
 
 /*
- * generate_natural_join_attrs_from_subquery () - 
+ * generate_natural_join_attrs_from_subquery () -
  *   return:
  *   subquery_attrs_list(in):
- *   attrs_p(out): 
+ *   attrs_p(out):
  */
 static int
 generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_list,
@@ -7160,11 +7188,11 @@ generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_list,
 
   for (pt_cur = subquery_attrs_list; pt_cur != NULL; pt_cur = pt_cur->next)
     {
-      /* 
-       * We just deal the attributes which have name. It means we just 
-       * deal PT_NAME or other's pt_node have alias_name. For example, 
+      /*
+       * We just deal the attributes which have name. It means we just
+       * deal PT_NAME or other's pt_node have alias_name. For example,
        * select 1 from t1. The '1' is impossible to be used in natural
-       * join, so we skip it. 
+       * join, so we skip it.
        */
 
       if (pt_cur->alias_print == NULL && pt_cur->node_type != PT_NAME)
@@ -7181,8 +7209,8 @@ generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_list,
 
       attr_cur->next = NULL;
 
-      /* 
-       * Alias name have higher priority. select a as txx from .... 
+      /*
+       * Alias name have higher priority. select a as txx from ....
        * We consider txx as the attribute's name and ignore a.
        */
       if (pt_cur->alias_print)
@@ -7227,10 +7255,10 @@ exit_on_error:
 
 
 /*
- * generate_natural_join_attrs_from_db_attrs () - 
+ * generate_natural_join_attrs_from_db_attrs () -
  *   return:
  *   db_attrs(in):
- *   attrs_p(out): 
+ *   attrs_p(out):
  */
 static int
 generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs,
@@ -7279,11 +7307,11 @@ exit_on_error:
 }
 
 /*
- * get_natural_join_attrs_from_pt_spec () - Get all attributes from a pt_spec 
+ * get_natural_join_attrs_from_pt_spec () - Get all attributes from a pt_spec
  *     node that indicates an table or a subquery.
  *   return:
  *   parser(in):
- *   node(in): 
+ *   node(in):
  */
 static NATURAL_JOIN_ATTR_INFO *
 get_natural_join_attrs_from_pt_spec (PARSER_CONTEXT * parser, PT_NODE * node)
@@ -7366,11 +7394,11 @@ exit_on_error:
 }
 
 /*
- * pt_create_pt_expr_equal_node () - The function creates the PT_expr 
- *     for natural join. The operator is " = ". 
+ * pt_create_pt_expr_equal_node () - The function creates the PT_expr
+ *     for natural join. The operator is " = ".
  *   return:
  *   parser(in):
- *   arg1(in): 
+ *   arg1(in):
  *   arg2(in):
  */
 static PT_NODE *
@@ -7396,11 +7424,11 @@ pt_create_pt_expr_equal_node (PARSER_CONTEXT * parser, PT_NODE * arg1,
 
 /*
  * pt_create_pt_name () - The function creates the PT_NAME name for natural
- *     join. The pt_name node indicates an attribute in a table/subquery. 
+ *     join. The pt_name node indicates an attribute in a table/subquery.
  *     The spec indicates the table/subquery.
  *   return:
  *   parser(in):
- *   spec(in): 
+ *   spec(in):
  *   attr(in):
  */
 static PT_NODE *
@@ -7435,11 +7463,11 @@ pt_create_pt_name (PARSER_CONTEXT * parser, PT_NODE * spec,
 }
 
 /*
- * pt_create_pt_expr_and_node () - The function create the PT_expr for natural 
- *     join. The operator is AND. 
+ * pt_create_pt_expr_and_node () - The function create the PT_expr for natural
+ *     join. The operator is AND.
  *   return:
  *   parser(in):
- *   arg1(in): 
+ *   arg1(in):
  *   arg2(in):
  */
 static PT_NODE *
@@ -7465,11 +7493,11 @@ pt_create_pt_expr_and_node (PARSER_CONTEXT * parser, PT_NODE * arg1,
 
 /*
  * pt_resolve_natural_join_internal () - Resolve natural join into inner/outer join actually.
- *     For t1 natural join t2, join_lhs is t1 and join_rhs is t2. The function adds on_cond 
+ *     For t1 natural join t2, join_lhs is t1 and join_rhs is t2. The function adds on_cond
  *     into t2. After the process, the join will become an inner/outer join.
  *   return:
  *   parser(in):
- *   join_lhs(in): 
+ *   join_lhs(in):
  *   join_rhs(in/out):
  */
 static void
@@ -7536,8 +7564,8 @@ pt_resolve_natural_join_internal (PARSER_CONTEXT * parser, PT_NODE * join_lhs,
 	    }
 
 	  /*
-	   * step4: If there is no on_cond, the new expr we created will be on_cond. 
-	   *   If not, it means there is old on_conds. So we will create a new expr 
+	   * step4: If there is no on_cond, the new expr we created will be on_cond.
+	   *   If not, it means there is old on_conds. So we will create a new expr
 	   *   like "(old on_cond) and (new on_cond)".
 	   */
 	  if (on_cond_tail == NULL)
@@ -7696,9 +7724,9 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  statement->info.index.index_name = idx_name;
 	}
 
-      /* 
-       * The process converts natural join to inner/outer join. 
-       * The on_cond is added there. 
+      /*
+       * The process converts natural join to inner/outer join.
+       * The on_cond is added there.
        */
       statement =
 	parser_walk_tree (parser, statement, NULL,

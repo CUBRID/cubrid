@@ -373,8 +373,6 @@ static PT_NODE *mq_reset_spec_distr_subpath_post (PARSER_CONTEXT * parser,
 						  int *continue_walk);
 static PT_NODE *mq_translate_paths (PARSER_CONTEXT * parser,
 				    PT_NODE * statement, PT_NODE * root_spec);
-static int mq_occurs_in_from_list (PARSER_CONTEXT * parser, const char *name,
-				   PT_NODE * from_list);
 static void mq_invert_insert_select (PARSER_CONTEXT * parser, PT_NODE * attr,
 				     PT_NODE * subquery);
 static void mq_invert_insert_subquery (PARSER_CONTEXT * parser,
@@ -5280,10 +5278,10 @@ mq_check_using_index (PARSER_CONTEXT * parser, PT_NODE * using_index)
       return ER_PT_SEMANTIC;
     }
 
-  /* 
+  /*
    * USING INDEX t.none is incompatible with {USE|FORCE} INDEX [t.]idx
    * Check for USING INDEX class.NONE, class.any-index[(+)] or
-   * {USE|FORCE} INDEX (class.any-index) ... USING INDEX class.NONE 
+   * {USE|FORCE} INDEX (class.any-index) ... USING INDEX class.NONE
    */
   node = using_index;
   while (node != NULL && is_hint_class_none && (is_hint_use || is_hint_force))
@@ -8497,43 +8495,6 @@ mq_rename_resolved (PARSER_CONTEXT * parser, PT_NODE * spec,
   return statement;
 }
 
-
-/*
- * mq_occurs_in_from_list() - counts the number of times a name appears as an
- *                            exposed name in a list of entity_spec's
- *   return:
- *   parser(in):
- *   name(in):
- *   from_list(in):
- */
-static int
-mq_occurs_in_from_list (PARSER_CONTEXT * parser, const char *name,
-			PT_NODE * from_list)
-{
-  PT_NODE *spec;
-  int i = 0;
-
-  if (!name || !from_list)
-    {
-      return i;
-    }
-
-  for (spec = from_list; spec != NULL; spec = spec->next)
-    {
-      if (spec->info.spec.range_var
-	  && spec->info.spec.range_var->info.name.original
-	  && (intl_identifier_casecmp (name,
-				       spec->info.spec.range_var->info.name.
-				       original) == 0))
-	{
-	  i++;
-	}
-    }
-
-  return i;
-}
-
-
 /*
  * mq_regenerate_if_ambiguous() - regenerate the exposed name
  *                                if ambiguity is detected
@@ -8555,7 +8516,7 @@ mq_regenerate_if_ambiguous (PARSER_CONTEXT * parser, PT_NODE * spec,
 
   newexposedname = spec->info.spec.range_var->info.name.original;
 
-  if (1 < mq_occurs_in_from_list (parser, newexposedname, from))
+  if (1 < pt_name_occurs_in_from_list (parser, newexposedname, from))
     {
       /* Ambiguity is detected. rename the newcomer's
        * printable name to fix this.
@@ -8567,7 +8528,7 @@ mq_regenerate_if_ambiguous (PARSER_CONTEXT * parser, PT_NODE * spec,
 	{
 	  generatedname = mq_generate_name (parser, newexposedname, &i);
 
-	  ambiguous = 0 < mq_occurs_in_from_list
+	  ambiguous = 0 < pt_name_occurs_in_from_list
 	    (parser, generatedname, from);
 	}
 

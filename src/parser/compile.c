@@ -1525,3 +1525,38 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
 
   return error;
 }
+
+/*
+ * pt_name_occurs_in_from_list() - counts the number of times a name
+ * appears as an exposed name in a list of entity_spec's
+ *   return:
+ *   parser(in):
+ *   name(in):
+ *   from_list(in):
+ */
+int
+pt_name_occurs_in_from_list (PARSER_CONTEXT * parser, const char *name,
+			     PT_NODE * from_list)
+{
+  PT_NODE *spec;
+  int i = 0;
+
+  if (!name || !from_list)
+    {
+      return i;
+    }
+
+  for (spec = from_list; spec != NULL; spec = spec->next)
+    {
+      if (spec->info.spec.range_var
+	  && spec->info.spec.range_var->info.name.original
+	  && (intl_identifier_casecmp (name,
+				       spec->info.spec.range_var->info.name.
+				       original) == 0))
+	{
+	  i++;
+	}
+    }
+
+  return i;
+}
