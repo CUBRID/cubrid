@@ -26,6 +26,17 @@ namespace dbgw
   namespace sql
   {
 
+    class _MySQLGlobal
+    {
+    public:
+      virtual ~_MySQLGlobal();
+
+      static trait<_MySQLGlobal>::sp getInstance();
+
+    private:
+      _MySQLGlobal();
+    };
+
     class MySQLConnection : public Connection
     {
     public:

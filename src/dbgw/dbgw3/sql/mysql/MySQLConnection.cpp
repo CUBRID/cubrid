@@ -32,15 +32,35 @@ namespace dbgw
   namespace sql
   {
 
+    _MySQLGlobal::_MySQLGlobal()
+    {
+      mysql_library_init(0, NULL, NULL);
+    }
+
+    _MySQLGlobal::~_MySQLGlobal()
+    {
+      mysql_library_end();
+    }
+
+    trait<_MySQLGlobal>::sp _MySQLGlobal::getInstance()
+    {
+      static trait<_MySQLGlobal>::sp pInstance;
+      if (pInstance == NULL)
+        {
+          pInstance = trait<_MySQLGlobal>::sp(new _MySQLGlobal());
+        }
+
+      return pInstance;
+    }
+
     class MySQLConnection::Impl
     {
     public:
       Impl(MySQLConnection *pSelf, const char *szUrl, const char *szUser,
           const char *szPassword) :
-        m_pSelf(pSelf), m_pMySQL(NULL), m_url(szUrl), m_nPort(-1)
+        m_pGlobal(_MySQLGlobal::getInstance()), m_pSelf(pSelf), m_pMySQL(NULL),
+        m_url(szUrl), m_nPort(-1)
       {
-        mysql_library_init(0, NULL, NULL);
-
         parseUrl();
 
         if (szUser != NULL)
@@ -56,7 +76,6 @@ namespace dbgw
 
       ~Impl()
       {
-        mysql_library_end();
       }
 
       void connect()
@@ -235,6 +254,7 @@ namespace dbgw
       }
 
     private:
+      trait<_MySQLGlobal>::sp m_pGlobal;
       MySQLConnection *m_pSelf;
       MYSQL *m_pMySQL;
       std::string m_url;
