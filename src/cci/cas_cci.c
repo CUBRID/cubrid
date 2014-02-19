@@ -375,9 +375,9 @@ cci_connect_internal (char *ip, int port, char *db, char *user, char *pass,
   con_handle = get_new_connection (ip, port, db, user, pass);
   if (con_handle == NULL)
     {
-      set_error_buffer (err_buf, CCI_ER_CON_HANDLE, NULL);
+      set_error_buffer (err_buf, CCI_ER_CONNECT, NULL);
 
-      return CCI_ER_CON_HANDLE;
+      return CCI_ER_CONNECT;
     }
 
   reset_error_buffer (&(con_handle->err_buf));
@@ -553,9 +553,8 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
 	  FREE_MEM (token[i]);
 	}
 
-      set_error_buffer (err_buf, CCI_ER_CON_HANDLE, NULL);
-
-      return CCI_ER_CON_HANDLE;
+      set_error_buffer (err_buf, CCI_ER_CONNECT, NULL);
+      return CCI_ER_CONNECT;
     }
 
   reset_error_buffer (&(con_handle->err_buf));
@@ -5359,7 +5358,10 @@ get_new_connection (char *ip, int port, char *db_name,
   T_CON_HANDLE *con_handle;
   unsigned char ip_addr[4];
 
-  hm_ip_str_to_addr (ip, ip_addr);
+  if (hm_ip_str_to_addr (ip, ip_addr) < 0)
+   {
+     return NULL;
+   }
 
   MUTEX_LOCK (con_handle_table_mutex);
 
