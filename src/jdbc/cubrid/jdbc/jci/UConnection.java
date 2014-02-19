@@ -303,6 +303,7 @@ public class UConnection {
 	}
 
 	public void tryConnect() throws CUBRIDException {
+           initLogger();
 	    	try {
 	    	    	setBeginTime();
 	    	    	checkReconnect();
@@ -371,7 +372,7 @@ public class UConnection {
 	}
 
 	public boolean getLogSlowQuery() {
-	    	return connectionProperties.getLogSlowQueris();
+	    	return connectionProperties.getLogSlowQueries();
 	}
 
 	synchronized public void addElementToSet(CUBRIDOID oid,
@@ -2116,6 +2117,12 @@ public class UConnection {
 		return log;
     }
 
+    private void initLogger() {
+           if (connectionProperties.getLogOnException() || connectionProperties.getLogSlowQueries()) {
+               log = getLogger();
+           }
+    }
+
     public UJciException createJciException(int err) {
 		UJciException e = new UJciException(err);
 		if (connectionProperties == null || !connectionProperties.getLogOnException()) {
@@ -2154,7 +2161,7 @@ public class UConnection {
 
     private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
     public void logSlowQuery(long begin, long end, String sql, UBindParameter p) {
-	if (connectionProperties == null || connectionProperties.getLogSlowQueris() != true) {
+	if (connectionProperties == null || connectionProperties.getLogSlowQueries() != true) {
 	    return;
 	}
 

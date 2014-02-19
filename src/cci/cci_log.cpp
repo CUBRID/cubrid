@@ -217,6 +217,7 @@ _LogAppender::_LogAppender(const _LoggerContext &context) :
 _LogAppenderBase::_LogAppenderBase(const _LoggerContext &context) :
   _LogAppender(context), nextCheckTime(0)
 {
+  open();
 }
 
 _LogAppenderBase::~_LogAppenderBase()

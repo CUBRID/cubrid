@@ -325,7 +325,7 @@ public class ConnectionProperties {
 	return logOnException.getValueAsBoolean();
     }
 
-    public boolean getLogSlowQueris() {
+    public boolean getLogSlowQueries() {
 	return logSlowQueries.getValueAsBoolean();
     }
 
