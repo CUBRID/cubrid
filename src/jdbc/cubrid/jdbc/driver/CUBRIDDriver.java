@@ -87,6 +87,7 @@ public class CUBRIDDriver implements Driver {
 
 	private final static String URL_PATTERN =
 	    "jdbc:cubrid(-oracle|-mysql)?:([a-zA-Z_0-9\\.-]*):([0-9]*):([^:]+):([^:]*):([^:]*):(\\?[a-zA-Z_0-9]+=[^&=?]+(&[a-zA-Z_0-9]+=[^&=?]+)*)?";
+	private final static String CUBRID_JDBC_URL_HEADER = "jdbc:cubrid";
 	private final static String JDBC_DEFAULT_CONNECTION = "jdbc:default:connection";
 
 	static {
@@ -149,6 +150,11 @@ public class CUBRIDDriver implements Driver {
 	    Matcher matcher = pattern.matcher(url);
 	    if (!matcher.find()) {
 		throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url, null);
+	    }
+	    
+	    String match = matcher.group();
+	    if (!match.equals(url)) {
+	      throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url, null);
 	    }
 
 	    String dummy;
@@ -259,20 +265,27 @@ public class CUBRIDDriver implements Driver {
 
 	public boolean acceptsURL(String url) throws SQLException {
 	    if (url == null) {
-                return false;
+	    	return false;
 	    }
-
+	    
+	    String urlHeader = CUBRID_JDBC_URL_HEADER;
+	    String className = CUBRIDDriver.class.getName();
+	    if (className.matches(".*mysql.*")) {
+	    	urlHeader += "-mysql:";
+	    } else if (className.matches(".*oracle.*")) {
+	    	urlHeader += "-oracle:";
+	    }
+	    else {
+	    	urlHeader += ":";
+	    }
+	    
+	    
+	    if (url.toLowerCase().startsWith(urlHeader)) {
+	    	return true;
+	    }
+	    
 	    if (url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION)) {
-		return true;
-	    }
-
-	    Pattern pattern = Pattern.compile(URL_PATTERN, Pattern.CASE_INSENSITIVE);
-	    Matcher matcher = pattern.matcher(url);
-	    if (matcher.find()) {
-		String match = matcher.group();
-		if (match.equals(url)) {
-		    return true;
-		}
+	    	return true;
 	    }
 
 	    return false;
