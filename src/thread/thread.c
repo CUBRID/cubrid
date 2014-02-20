@@ -528,7 +528,7 @@ thread_start_workers (void)
 	}
     }
 
-  for (i = 0; thread_index <= thread_Manager.num_total; thread_index++, i++)
+  for (i = 0; thread_index < thread_Manager.num_total; thread_index++, i++)
     {
       thread_Deamons[i]->thread_index = thread_index;
       thread_p = &thread_Manager.thread_array[thread_index];
