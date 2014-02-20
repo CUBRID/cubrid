@@ -7456,6 +7456,13 @@ error:
 
   heap_attrinfo_end (thread_p, &index_attrinfo);
 
+#if defined(ENABLE_SYSTEMTAP)
+  if (classname != NULL)
+    {
+      free_and_init (classname);
+    }
+#endif /* ENABLE_SYSTEMTAP */
+
   return error_code;
 }
 
@@ -8277,6 +8284,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   heap_attrinfo_end (thread_p, new_attrinfo);
   heap_attrinfo_end (thread_p, old_attrinfo);
 
+#if defined(ENABLE_SYSTEMTAP)
+  if (classname != NULL)
+    {
+      free_and_init (classname);
+    }
+#endif /* ENABLE_SYSTEMTAP */
+
   return error_code;
 
 error:
@@ -8306,6 +8320,13 @@ error:
     {
       heap_attrinfo_end (thread_p, old_attrinfo);
     }
+
+#if defined(ENABLE_SYSTEMTAP)
+  if (classname != NULL)
+    {
+      free_and_init (classname);
+    }
+#endif /* ENABLE_SYSTEMTAP */
 
   return error_code;
 }
