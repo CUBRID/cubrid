@@ -8388,7 +8388,7 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
       new_dt->info.data_type.precision = p;
       new_dt->info.data_type.dec_precision = s;
 
-      if (desired_dt != NULL && false
+      if (desired_dt != NULL
 	  && !PT_IS_COLLECTION_TYPE (desired_dt->type_enum))
 	{
 	  /* desired_dt contains a list of types of elements from the
