@@ -128,21 +128,21 @@ cci_url_get_bool (char *str, bool * value)
 static int
 cci_url_get_int (char *str, int *value)
 {
-  int result = 0;
-  int val;
+  int v;
+  char *end;
 
   if (value == NULL)
     {
       return CCI_ER_INVALID_URL;
     }
 
-  result = parse_int (&val, str, 10);
-  if (result != 0)
+  v = strtol (str, &end, 10);
+  if (end != NULL && end[0] != '\0')
     {
       return CCI_ER_INVALID_URL;
     }
 
-  *value = val;
+  *value = v;
   return CCI_ER_NO_ERROR;
 }
 
@@ -246,7 +246,7 @@ static int
 cci_url_set_althosts (T_CON_HANDLE * handle, char *data)
 {
   T_ALTER_HOST *hosts = handle->alter_hosts;
-  char *token, *save_data = NULL;
+  char *token, *save_data = NULL, *end;
   int i, error = CCI_ER_NO_ERROR;
 
   memcpy (handle->alter_hosts[0].ip_addr, handle->ip_addr, 4);
@@ -256,7 +256,6 @@ cci_url_set_althosts (T_CON_HANDLE * handle, char *data)
     {
       char *host, *port, *save_alter = NULL;
       int v;
-      int result = 0;
 
       if (i >= ALTER_HOST_MAX_SIZE)
 	{
@@ -285,8 +284,8 @@ cci_url_set_althosts (T_CON_HANDLE * handle, char *data)
 	{
 	  return CCI_ER_INVALID_URL;
 	}
-      result = parse_int (&v, port, 10);
-      if (result != 0 || v <= 0)
+      v = strtol (port, &end, 10);
+      if (v <= 0 || (end != NULL && end[0] != '\0'))
 	{
 	  return CCI_ER_INVALID_URL;
 	}

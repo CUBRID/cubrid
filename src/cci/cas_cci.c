@@ -462,9 +462,9 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   unsigned i;
 
   char *property = NULL;
+  char *end = NULL;
   char *host, *dbname;
   int port;
-  int result = 0;
   T_CON_HANDLE *con_handle = NULL;
 
   reset_error_buffer (err_buf);
@@ -508,11 +508,7 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
     }
 
   host = token[0];
-  result = parse_int (&port, token[1], 10);
-  if (result != 0)
-    {
-      return CCI_ER_INVALID_URL;
-    }
+  port = (int) strtol (token[1], &end, 10);
   dbname = token[2];
 
   if (*user == '\0')
@@ -5359,9 +5355,9 @@ get_new_connection (char *ip, int port, char *db_name,
   unsigned char ip_addr[4];
 
   if (hm_ip_str_to_addr (ip, ip_addr) < 0)
-   {
-     return NULL;
-   }
+    {
+      return NULL;
+    }
 
   MUTEX_LOCK (con_handle_table_mutex);
 

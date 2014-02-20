@@ -67,7 +67,6 @@ include_HEADERS = \
 
 lib_LTLIBRARIES = libcascci.la
 libcascci_la_SOURCES = \
-	$(BASE_DIR)/porting.c \
 	$(CCI_DIR)/cas_cci.c \
 	$(CCI_DIR)/cci_util.c \
 	$(CCI_DIR)/cci_query_execute.c \

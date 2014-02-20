@@ -109,15 +109,9 @@ int
 ut_str_to_bigint (char *str, INT64 * value)
 {
   char *end_p;
-  int result = 0;
   INT64 bi_val;
 
-  result = str_to_int64 (&bi_val, &end_p, str, 10);
-  if (result != 0)
-    {
-      return CCI_ER_TYPE_CONVERSION;
-    }
-
+  bi_val = strtoll (str, &end_p, 10);
   if (*end_p == 0 || *end_p == '.' || isspace ((int) *end_p))
     {
       *value = bi_val;
@@ -131,18 +125,12 @@ int
 ut_str_to_int (char *str, int *value)
 {
   char *end_p;
-  int result = 0;
-  int val;
+  int i_val;
 
-  result = str_to_int32 (&val, &end_p, str, 10);
-  if (result != 0)
-    {
-      return CCI_ER_TYPE_CONVERSION;
-    }
-
+  i_val = strtol (str, &end_p, 10);
   if (*end_p == 0 || *end_p == '.' || isspace ((int) *end_p))
     {
-      *value = val;
+      *value = i_val;
       return 0;
     }
 
@@ -373,7 +361,7 @@ ut_str_to_oid (char *str, T_OBJECT * value)
 {
   char *p = str;
   char *end_p;
-  int result = 0;
+  int id;
 
   if (p == NULL)
     {
@@ -386,25 +374,26 @@ ut_str_to_oid (char *str, T_OBJECT * value)
     }
 
   p++;
-  result = str_to_int32 (&value->pageid, &end_p, p, 10);	/* page id */
-  if (result != 0 || *end_p != '|')
+  id = strtol (p, &end_p, 10);	/* page id */
+  if (*end_p != '|')
     {
       return CCI_ER_TYPE_CONVERSION;
     }
+  value->pageid = id;
 
   p = end_p + 1;
-  result = str_to_int32 (&value->slotid, &end_p, p, 10);	/* slot id */
-  if (result != 0 || *end_p != '|')
-    {
-      return CCI_ER_TYPE_CONVERSION;
-    }
+  id = strtol (p, &end_p, 10);	/* slot id */
+  if (*end_p != '|')
+    return CCI_ER_TYPE_CONVERSION;
+  value->slotid = id;
 
   p = end_p + 1;
-  result = str_to_int32 (&value->volid, &end_p, p, 10);	/* vol id */
-  if (result != 0 || *end_p != '\0')
+  id = strtol (p, &end_p, 10);	/* vol id */
+  if (*end_p != '\0')
     {
       return CCI_ER_TYPE_CONVERSION;
     }
+  value->volid = id;
 
   return 0;
 }
