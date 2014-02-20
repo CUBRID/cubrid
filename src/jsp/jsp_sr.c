@@ -133,7 +133,6 @@ extern PfnDliHook __pfnDliFailureHook2 = delay_load_hook;
 
 #else /* WINDOWS */
 static void *jsp_get_create_java_vm_function_ptr (void);
-static void jsp_display_warning_msg (void);
 #endif /* !WINDOWS */
 
 #if defined(WINDOWS)
@@ -350,21 +349,6 @@ jsp_get_create_java_vm_function_ptr (void)
 #endif /* !WINDOWS */
 
 /*
- * display_warning_msg
- *   return: none
- *
- * Note:
- */
-
-static void
-jsp_display_warning_msg ()
-{
-#ifdef SERVER_MODE
-  fprintf (stderr, "WARNING: %s\n", er_msg ());
-#endif
-}
-
-/*
  * jsp_start_server -
  *   return: Error Code
  *   db_name(in): db name
@@ -455,7 +439,6 @@ jsp_start_server (const char *db_name, const char *path)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1,
 	      dlerror ());
-      jsp_display_warning_msg ();
       if (locale != NULL)
 	{
 	  free (locale);
@@ -475,7 +458,6 @@ jsp_start_server (const char *db_name, const char *path)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM,
 	      1, "JNI_CreateJavaVM");
-      jsp_display_warning_msg ();
       jvm = NULL;
       return er_errid ();
     }
@@ -554,7 +536,6 @@ jsp_start_server (const char *db_name, const char *path)
   return 0;
 
 error:
-  jsp_display_warning_msg ();
   jsp_stop_server ();
   jvm = NULL;
 

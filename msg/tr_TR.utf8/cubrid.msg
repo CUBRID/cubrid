@@ -966,8 +966,8 @@ $ LOADDB
 897 Sıkıştırmayı açma başarısız oldu.
 898 Çoğaltma hatası: "%1$s"
 899 Geçersiz bölüm talepleri.
-900 Java VM kitaplığı bulunanadı: %1$s. \nSonuç olarak, çağrı java saklı prosedür izin verilmez.
-901 Java VM başlayan olamaz: %1$s. \nSonuç olarak, çağrı java saklı prosedür izin verilmez.
+900 Java VM kitaplığı bulunanadı: %1$s.
+901 Java VM başlayan olamaz: %1$s.
 902 Java VM çalışmıyor.
 903 Java VM bağlanamıyor: %1$s
 904 Geçersiz saklı prosedür adı.

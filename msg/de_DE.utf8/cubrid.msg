@@ -966,8 +966,8 @@ $ LOADDB
 897 Dekomprimierung fehlgeschlagen.
 898 Nachbildungsfehler: "%1$s"
 899 Ungültige Partitionabfragen.
-900 Java VM Bibliothek nicht gefunden: %1$s. \nFolglich ist die Aufrufung gespeicherter Java-Prozedur nicht erlaubt.
-901 Java VM kann nicht gestartet werden: %1$s. \n Folglich ist die Aufrufung gespeicherter Java-Prozedur nicht erlaubt.
+900 Java VM Bibliothek nicht gefunden: %1$s.
+901 Java VM kann nicht gestartet werden: %1$s.
 902 Java VM läuft nicht.
 903 Verbindung zur Java VM ausgefallen: %1$s
 904 Ungültiger Name gespeicherter Prozedur.

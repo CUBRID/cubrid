@@ -3650,8 +3650,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 	}
     }
 
-  /* if starting jvm fail, it would be ignored. */
-  (void) jsp_start_server (db_name, db->pathname);
+  error_code = jsp_start_server (db_name, db->pathname);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   /* read only mode ? */
   if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE))

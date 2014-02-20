@@ -966,8 +966,8 @@ $ LOADDB
 897 Decompression failed.
 898 Replication error: "%1$s"
 899 Invalid partition requests.
-900 Java VM library is not found: %1$s. \nConsequently, calling java stored procedure is not allowed.
-901 Java VM can not be started: %1$s. \nConsequently, calling java stored procedure is not allowed.
+900 Java VM library is not found: %1$s.
+901 Java VM can not be started: %1$s.
 902 Java VM is not running.
 903 Can't connect Java VM: %1$s
 904 Invalid stored procedure name.

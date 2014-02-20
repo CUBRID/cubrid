@@ -966,8 +966,8 @@ $ LOADDB
 897 Giải nén thất bại.
 898 Lỗi nhân bản: "%1$s"
 899 Yêu cầu phân vùng không hợp lệ.
-900 Không tìm thấy thư viện Java VM: %1$s. \nVì vậy, không được phép gọi thủ tục lưu trữ java.
-901 Java VM không thể được khởi động: %1$s. \nVì vậy, không được phép gọi thủ tục lưu trữ java.
+900 Không tìm thấy thư viện Java VM: %1$s.
+901 Java VM không thể được khởi động: %1$s.
 902 Java VM đang không chạy is not running.
 903 Không thể kết nối Can't connect Java VM: %1$s
 904 Tên thủ tục lưu trữ không hợp lệ Invalid stored procedure name.

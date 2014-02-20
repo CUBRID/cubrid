@@ -966,8 +966,8 @@ $ LOADDB
 897 Décompression a échoué.
 898 Erreur de réplication: "%1$s"
 899 Demandes de partition non valides.
-900 Bibliothèque Java VM est introuvable:: %1$s. \nEn conséquence, appelant une procédure stockée java est interdit.
-901 Machine virtuelle Java ne peut pas être démarré: %1$s. \nEn conséquence, appelant une procédure stockée java est interdit.
+900 Bibliothèque Java VM est introuvable:: %1$s.
+901 Machine virtuelle Java ne peut pas être démarré: %1$s.
 902 Machine virtuelle Java ne fonctionne pas.
 903 Impossible de connecter Java VM: %1$s
 904 Nom incorrect du procédure stockée.

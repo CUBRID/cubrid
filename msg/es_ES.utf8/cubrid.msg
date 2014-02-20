@@ -966,8 +966,8 @@ $ LOADDB
 897 Descompresión fallo.
 898 Error de replicacion: "%1$s"
 899 Peticiones de particion no validas.
-900 Biblioteca Java VM no econtrada: %1$s. \n Por consiguiente, llamar procedimiento java almacenado no es permitido.
-901 Java VM no puede ser inicializada: %1$s. \n Por consiguiente, llamar procedimiento java almacenado no es permitido.
+900 Biblioteca Java VM no econtrada: %1$s.
+901 Java VM no puede ser inicializada: %1$s.
 902 Java VM no se esta ejecutando.
 903 No se puede conectar JAVA VM: %1$s
 904 Nombre de procedimiento almacenado no valido.

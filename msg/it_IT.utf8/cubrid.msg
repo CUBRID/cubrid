@@ -966,8 +966,8 @@ $ LOADDB
 897 Decompressione non riuscita.
 898 Errore di replicazione: "%1$s"
 899 Richieste di partizione non valide.
-900 Java VM non si trova: %1$s.\n Di conseguenza, chiamata della stored procedure Java non è permessa.
-901 Java VM non può essere avviato: %1$s.\n Di conseguenza, chiamata alla stored procedure Java non è permessa.
+900 Java VM non si trova: %1$s.
+901 Java VM non può essere avviato: %1$s.
 902 Java VM non è in esecuzione.
 903 Non è possibile connettersi a Java VM: %1$s
 904 Nome non valido del stored procedure.

@@ -966,8 +966,8 @@ $ LOADDB
 897 Decompresie eşuată.
 898 Eroare de replicare: "%1$s"
 899 Cerere invalidă către un obiect partiţionat.
-900 Libraria maşinii virtuale Java nu a fost găsită: %1$s. \nPrin urmare, apelul la procedura stocată JAVA nu este permis.
-901 Maşina virtuală Java nu poate fi pornită: %1$s. \nPrin urmare, apelul la procedura stocată JAVA nu este permis.
+900 Libraria maşinii virtuale Java nu a fost găsită: %1$s.
+901 Maşina virtuală Java nu poate fi pornită: %1$s.
 902 Maşina virtuală Java nu se află în execuţie.
 903 Conexiunea cu maşina virtuală Java nu poate fi realizată: %1$s
 904 Nume invalid de procedurăa stocată.
