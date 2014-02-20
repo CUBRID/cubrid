@@ -1213,7 +1213,9 @@ $ LOADDB
 1144 Timed out attempting to connect to %1$s. (timeout: %2$d sec(s))
 1145 To change the owner of a system class is not allowed.
 1146 volume identifier %1$d does not exist.
-1147 Lỗi sau cùng
+1147 The size of XASL stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
+1148 The size of filter predicate stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
+1149 Lỗi sau cùng
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Lỗi trong các lỗi hệ thống con (dòng %1$d):

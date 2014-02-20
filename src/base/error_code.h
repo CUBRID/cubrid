@@ -1460,7 +1460,10 @@
 #define ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS      -1145
 #define ER_DIAG_VOLID_NOT_EXIST                     -1146
 
-#define ER_LAST_ERROR                               -1147
+#define ER_ALL_PLAN_CACHE_ENTRIES_ARE_FIXED         -1147
+#define ER_ALL_FILTER_PRED_CACHE_ENTRIES_ARE_FIXED  -1148
+
+#define ER_LAST_ERROR                               -1149
 
 /*
  * CAUTION!

@@ -338,25 +338,6 @@ struct xasl_cache_counter
   unsigned int full;		/* counter of cache full */
 };
 
-/* candidate/victim info */
-typedef struct xasl_cache_ent_cv_info XASL_CACHE_ENT_CV_INFO;
-struct xasl_cache_ent_cv_info
-{
-  bool include_in_use;
-  /* candidate */
-  float c_ratio;		/* candidate ratio such as 5% */
-  int c_num;			/* number of candidates */
-  int c_idx;			/* index of candidates */
-  int c_selcnt;			/* candidates select counter */
-  XASL_CACHE_ENTRY **c_time;	/* candidates who are old aged */
-  XASL_CACHE_ENTRY **c_ref;	/* candidates who are recently used */
-  /* victim */
-  float v_ratio;		/* victim ratio such as 2% */
-  int v_num;			/* number of victims */
-  int v_idx;			/* index of victims */
-  XASL_CACHE_ENTRY **victim;	/* victims to be deleted */
-};
-
 typedef struct xasl_cache_ent_mark_deleted_list XASL_CACHE_MARK_DELETED_LIST;
 struct xasl_cache_ent_mark_deleted_list
 {
@@ -378,7 +359,6 @@ struct xasl_cache_ent_info
 				   referencing by xasl file id (XASL_ID) */
   MHT_TABLE *oid_ht;		/* memory hash table for XASL stream cache
 				   referencing by class/serial oid */
-  XASL_CACHE_ENT_CV_INFO cv_info;	/* candidate/victim info */
 #if defined (SERVER_MODE)
   XASL_CACHE_MARK_DELETED_LIST *mark_deleted_list;
   XASL_CACHE_MARK_DELETED_LIST *mark_deleted_list_tail;
@@ -509,21 +489,9 @@ static XASL_CACHE_ENT_INFO xasl_ent_cache = {
    0 /*full */ },		/*counter */
   NULL,				/*qstr_ht */
   NULL,				/*xid_ht */
-  NULL,				/*oid_ht */
-/* information of candidates to be removed from XASL cache */
-  {false,			/*include_in_use */
-   0.0,				/*c_ratio */
-   0,				/*c_num */
-   0,				/*c_idx */
-   0,				/*c_selcnt */
-   NULL,			/*c_time */
-   NULL,			/*c_ref */
-   0.0,				/*v_ratio */
-   0,				/*v_num */
-   0,				/*v_idx */
-   NULL /*v */ }		/*cv_info */
+  NULL				/*oid_ht */
 #if defined (SERVER_MODE)
-  ,
+    ,
   NULL,				/* mark deleted list */
   NULL				/* mark deleted list tail pointer */
 #if !defined (HAVE_ATOMIC_BUILTINS)
@@ -542,21 +510,9 @@ static XASL_CACHE_ENT_INFO filter_pred_ent_cache = {
    0 /*full */ },		/*counter */
   NULL,				/*qstr_ht */
   NULL,				/*xid_ht */
-  NULL,				/*oid_ht */
-/* information of cacndidates to be removed from XASL cache */
-  {false,			/*include_in_use */
-   0.0,				/*c_ratio */
-   0,				/*c_num */
-   0,				/*c_idx */
-   0,				/*c_selcnt */
-   NULL,			/*c_time */
-   NULL,			/*c_ref */
-   0.0,				/*v_ratio */
-   0,				/*v_num */
-   0,				/*v_idx */
-   NULL /*v */ }		/*cv_info */
+  NULL				/*oid_ht */
 #if defined (SERVER_MODE)
-  ,
+    ,
   NULL,				/* mark deleted list */
   NULL				/* mark deleted list tail pointer */
 #if !defined (HAVE_ATOMIC_BUILTINS)
@@ -7593,8 +7549,8 @@ static SCAN_CODE
 qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   SCAN_CODE sb_scan;
-  OID * class_oid;
-  HFID * class_hfid;
+  OID *class_oid;
+  HFID *class_hfid;
 
   if (xasl->curr_spec == NULL)
     {
@@ -7617,8 +7573,9 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 
       /* initialize scan */
       if ((xasl->curr_spec->type == TARGET_CLASS
-	  || xasl->curr_spec->type == TARGET_CLASS_ATTR)
-	  && xasl->curr_spec->parts != NULL && xasl->curr_spec->curent == NULL)
+	   || xasl->curr_spec->type == TARGET_CLASS_ATTR)
+	  && xasl->curr_spec->parts != NULL
+	  && xasl->curr_spec->curent == NULL)
 	{
 	  /* initialize the scan_id for partitioned classes */
 	  if (xasl->curr_spec->access == SEQUENTIAL)
@@ -15181,7 +15138,6 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
 {
   int i;
   POOLED_XASL_CACHE_ENTRY *pent;
-  XASL_CACHE_ENT_CV_INFO *xasl_ent_cv;
 
   if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) <= 0)
     {
@@ -15218,6 +15174,9 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
 					   mht_1strhash,
 					   mht_compare_strings_are_equal);
     }
+
+  xasl_ent_cache.qstr_ht->build_lru_list = true;
+
   /* memory hash table for XASL stream cache referencing by xasl file id */
   if (xasl_ent_cache.xid_ht)
     {
@@ -15246,28 +15205,6 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
 					  xasl_ent_cache.max_entries,
 					  oid_hash, oid_compare_equals);
     }
-
-  /* information of candidates to be removed from XASL cache */
-  xasl_ent_cv = &xasl_ent_cache.cv_info;
-  xasl_ent_cv->include_in_use = true;
-
-#define ENT_C_RATIO 0.05f	/* candidate ratio such as 5% */
-  xasl_ent_cv->c_ratio = ENT_C_RATIO;
-  xasl_ent_cv->c_num =
-    (int) ceil (xasl_ent_cache.max_entries * xasl_ent_cv->c_ratio);
-  xasl_ent_cv->c_idx = 0;
-  xasl_ent_cv->c_time = (XASL_CACHE_ENTRY **)
-    malloc (sizeof (XASL_CACHE_ENTRY *) * xasl_ent_cv->c_num);
-  xasl_ent_cv->c_ref = (XASL_CACHE_ENTRY **)
-    malloc (sizeof (XASL_CACHE_ENTRY *) * xasl_ent_cv->c_num);
-
-#define ENT_V_RATIO 0.02f	/* victim ratio such as 2% */
-  xasl_ent_cv->v_ratio = ENT_V_RATIO;
-  xasl_ent_cv->v_num =
-    (int) ceil (xasl_ent_cache.max_entries * xasl_ent_cv->v_ratio);
-  xasl_ent_cv->v_idx = 0;
-  xasl_ent_cv->victim = (XASL_CACHE_ENTRY **)
-    malloc (sizeof (XASL_CACHE_ENTRY *) * xasl_ent_cv->v_num);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   /* init cache clone info */
@@ -15331,9 +15268,8 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
   csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
   return ((xasl_ent_cache.qstr_ht && xasl_ent_cache.xid_ht
-	   && xasl_ent_cache.oid_ht && xasl_cache_entry_pool.pool
-	   && xasl_ent_cv->c_time && xasl_ent_cv->c_ref
-	   && xasl_ent_cv->victim) ? NO_ERROR : ER_FAILED);
+	   && xasl_ent_cache.oid_ht
+	   && xasl_cache_entry_pool.pool) ? NO_ERROR : ER_FAILED);
 }
 
 /*
@@ -15380,10 +15316,6 @@ qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p)
       mht_destroy (xasl_ent_cache.oid_ht);
       xasl_ent_cache.oid_ht = NULL;
     }
-
-  free_and_init (xasl_ent_cache.cv_info.c_time);
-  free_and_init (xasl_ent_cache.cv_info.c_ref);
-  free_and_init (xasl_ent_cache.cv_info.victim);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   /* free all cache clone and XASL tree */
@@ -16179,113 +16111,6 @@ end:
 }
 
 /*
- * qexec_select_xasl_cache_ent () - Select candidates to remove from the XASL cache
- *                               Will be used by mht_map_no_key() function
- *   return:
- *   data(in)   :
- *   args(in)   :
- */
-static int
-qexec_select_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
-{
-  XASL_CACHE_ENTRY *ent = (XASL_CACHE_ENTRY *) data;
-  XASL_CACHE_ENT_CV_INFO *info = (XASL_CACHE_ENT_CV_INFO *) args;
-  XASL_CACHE_ENTRY **p, **q;
-  int i;
-  size_t n;
-
-#define timevalcmp(a, CMP, b) \
-    (((a).tv_sec == (b).tv_sec) ? \
-     ((a).tv_usec CMP (b).tv_usec) : \
-     ((a).tv_sec CMP (b).tv_sec))
-
-#if defined(SERVER_MODE)
-  if (info->include_in_use == false && ent->num_fixed_tran > 0)
-    {
-      /* do not select one that is in use */
-      return NO_ERROR;
-    }
-  if (info->include_in_use == true && ent->num_fixed_tran == 0)
-    {
-      /* this entry may be selected in the previous selection step */
-      return NO_ERROR;
-    }
-#endif /* SERVER_MODE */
-
-  p = info->c_time;
-  q = info->c_ref;
-  i = 0;
-
-  while (i < info->c_idx && (p || q))
-    {
-      if (p && timevalcmp (ent->time_created, <, (*p)->time_created))
-	{
-	  if (info->c_idx < info->c_num)
-	    {
-	      n = sizeof (XASL_CACHE_ENTRY *) * (info->c_idx - i);
-	    }
-	  else
-	    {
-	      n = sizeof (XASL_CACHE_ENTRY *) * (info->c_idx - i - 1);
-	    }
-
-	  (void) memmove (p + 1, p, n);
-
-	  *p = ent;
-	  p = NULL;
-	}
-      else if (p)
-	{
-	  p++;
-	}
-
-      if (q && ent->ref_count < (*q)->ref_count)
-	{
-	  if (info->c_idx < info->c_num)
-	    {
-	      n = sizeof (XASL_CACHE_ENTRY *) * (info->c_idx - i);
-	    }
-	  else
-	    {
-	      n = sizeof (XASL_CACHE_ENTRY *) * (info->c_idx - i - 1);
-	    }
-
-	  (void) memmove (q + 1, q, n);
-
-	  *q = ent;
-	  q = NULL;
-	}
-      else if (q)
-	{
-	  q++;
-	}
-
-      i++;
-    }
-
-  if (info->c_idx < info->c_num)
-    {
-      if (p)
-	{
-	  *p = ent;
-	}
-      if (q)
-	{
-	  *q = ent;
-	}
-      info->c_idx++;
-    }
-
-  if (--info->c_selcnt <= 0)
-    {
-      /* due to the performance reason, stop traversing here */
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * qexec_update_xasl_cache_ent () -
  *   return:
  *   context(in)       : sql_hash_text is used as hash key
@@ -16308,15 +16133,17 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 			     const OID * class_oids,
 			     const int *tcards, int dbval_cnt)
 {
-  XASL_CACHE_ENTRY *ent, **p, **q, **r;
-  XASL_CACHE_ENT_CV_INFO *xasl_ent_cv;
+  XASL_CACHE_ENTRY *ent, *victim_ent;
   const OID *o;
-  int sql_hash_text_len, sql_plan_text_len, sql_user_text_len, i, j, k;
+  int sql_hash_text_len, sql_plan_text_len, sql_user_text_len, i;
+  int current_count, max_victim_count;
 #if defined(SERVER_MODE)
+  bool all_entries_are_fixed = false;
   int tran_index;
   int num_elements;
 #endif /* SERVER_MODE */
   XASL_NODE_HEADER xasl_header;
+  HENTRY_PTR h_entry;
 
   if (xasl_ent_cache.max_entries <= 0)
     {
@@ -16370,148 +16197,55 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
   /* check the number of XASL cache entries; compare with qstr hash entries */
   if ((int) mht_count (xasl_ent_cache.qstr_ht) >= xasl_ent_cache.max_entries)
     {
-      int num_mark_deleted_only, num_victimized, old_ent_num;
-
-      /* Cache full!
-         We need to remove some entries. Select candidates that are old aged
-         and recently used. Number of candidates is 5% of total entries.
-         At first, we make two candidate groups, one by time condition and
-         other by frequency. If a candidate belongs to both group, it becomes
-         a victim. If the number of victims is insufficient, that is lower
-         than 2% or none, select what are most recently used within the old
-         aged candiates and what are old aged within the recently used
-         candidates. */
-
-      old_ent_num = xasl_ent_cache.num;
-
-      er_log_debug (ARG_FILE_LINE,
-		    "Plan cache victimize started, qstr_ht = %d, xasl_id_ht = %d, "
-		    "class_oid_ht = %d.",
-		    xasl_ent_cache.qstr_ht->nentries,
-		    xasl_ent_cache.xid_ht->nentries,
-		    xasl_ent_cache.oid_ht->nentries);
-
+      /* Cache full! We need to remove some entries from the cache.
+       * We will refer to the LRU list of query string hash table
+       * to find out victims.
+       */
       xasl_ent_cache.counter.full++;	/* counter */
-      xasl_ent_cv = &xasl_ent_cache.cv_info;
 
-      /* STEP 1: examine hash entries to selet candidates */
-      xasl_ent_cv->c_idx = 0;
-      xasl_ent_cv->v_idx = 0;
-      /* at first, try to find candidates within entries that is not in use */
-      xasl_ent_cv->c_selcnt = xasl_ent_cv->c_num * 2;
-      xasl_ent_cv->include_in_use = false;
-      (void) mht_map_no_key (thread_p, xasl_ent_cache.qstr_ht,
-			     qexec_select_xasl_cache_ent,
-			     (void *) xasl_ent_cv);
-      if (xasl_ent_cv->c_idx < xasl_ent_cv->c_num)
+      /* Number of entries to victimize. It will be one in normal case. */
+      max_victim_count = (int) mht_count (xasl_ent_cache.qstr_ht)
+	- xasl_ent_cache.max_entries + 1;
+
+      h_entry = xasl_ent_cache.qstr_ht->lru_head;
+      assert (h_entry != NULL);
+
+      current_count = 0;
+      while (current_count < max_victim_count && h_entry)
 	{
-	  /* insufficient candidates; try once more */
-	  xasl_ent_cv->include_in_use = true;
-	  (void) mht_map_no_key (thread_p, xasl_ent_cache.qstr_ht,
-				 qexec_select_xasl_cache_ent,
-				 (void *) xasl_ent_cv);
-	}
-
-      /* STEP 2: find victims who appears in both groups */
-      k = xasl_ent_cv->v_idx;
-      r = xasl_ent_cv->victim;
-      for (i = 0, p = xasl_ent_cv->c_time; i < xasl_ent_cv->c_num; i++, p++)
-	{
-	  if (*p == NULL)
-	    {
-	      continue;		/* skip out */
-	    }
-	  for (j = 0, q = xasl_ent_cv->c_ref; j < xasl_ent_cv->c_num;
-	       j++, q++)
-	    {
-	      if (*p == *q && k < xasl_ent_cv->v_num)
-		{
-		  *r++ = *p;
-		  k++;
-		  *p = *q = NULL;
-		  break;
-		}
-	    }
-	  if (k >= xasl_ent_cv->v_num)
-	    {
-	      break;
-	    }
-	}
-
-      /* STEP 3: select more victims if insufficient */
-      if (k < xasl_ent_cv->v_num)
-	{
-	  /* The above victim selection algorithm is not completed yet.
-	     Two double linked lists for XASL cache entries are needed to
-	     implement the algorithm efficiently. One for creation time, and
-	     the other one for referencing.
-	     Instead, select from most significant members from each groups. */
-	  p = xasl_ent_cv->c_time;
-	  q = xasl_ent_cv->c_ref;
-	  for (i = 0; i < xasl_ent_cv->c_num; i++)
-	    {
-	      if (*p)
-		{
-		  *r++ = *p;
-		  k++;
-		  *p = NULL;
-		  if (k >= xasl_ent_cv->v_num)
-		    {
-		      break;
-		    }
-		}
-	      if (*q)
-		{
-		  *r++ = *q;
-		  k++;
-		  *q = NULL;
-		  if (k >= xasl_ent_cv->v_num)
-		    {
-		      break;
-		    }
-		}
-	      p++, q++;
-	    }
-	}			/* if (k < xasl_ent_cv->v_num) */
-      xasl_ent_cv->c_idx = 0;	/* clear */
-      xasl_ent_cv->v_idx = k;
-
-      /* STEP 4: now, delete victims from the cache */
-      for (k = 0, r = xasl_ent_cv->victim; k < xasl_ent_cv->v_idx; k++, r++)
-	{
-	  (void) qexec_delete_xasl_cache_ent (thread_p, *r, NULL);
-	}
-
+	  victim_ent = (XASL_CACHE_ENTRY *) h_entry->data;
+	  h_entry = h_entry->lru_next;
 #if defined (SERVER_MODE)
-      (void) qexec_remove_mark_deleted_xasl_entries (thread_p,
-						     xasl_ent_cv->v_idx);
+	  if (victim_ent->num_fixed_tran > 0)
+	    {
+	      /* This entry is being used. skip this entry */
+	      continue;
+	    }
 #endif
-      /* number of removed */
-      num_victimized = old_ent_num - xasl_ent_cache.num;
+	  (void) qexec_delete_xasl_cache_ent (thread_p, (void *) victim_ent,
+					      NULL);
+	  current_count++;
+	}
 
-      /* number of mark deleted */
-      num_mark_deleted_only = xasl_ent_cv->v_idx - num_victimized;
-
-      xasl_ent_cv->v_idx = 0;	/* clear */
-
-      er_log_debug (ARG_FILE_LINE,
-		    "Plan cache victimize finished, qstr_ht = %d, xasl_id_ht = %d, "
-		    "class_oid_ht = %d (victimized entries = %d, "
-		    "mark deleted entries = %d)",
-		    xasl_ent_cache.qstr_ht->nentries,
-		    xasl_ent_cache.xid_ht->nentries,
-		    xasl_ent_cache.oid_ht->nentries,
-		    num_victimized, num_mark_deleted_only);
-
-      assert_release ((int) mht_count (xasl_ent_cache.qstr_ht)
-		      <= xasl_ent_cache.max_entries);
+      if (current_count == 0)
+	{
+#if defined (SERVER_MODE)
+	  /* we can't remove any entry */
+	  all_entries_are_fixed = true;
+#else
+	  assert (0);
+#endif
+	}
     }				/* if */
 
 #if defined (SERVER_MODE)
-  /* We will remove one entry in the mark deleted list
-   * before add new entry.
-   */
-  (void) qexec_remove_mark_deleted_xasl_entries (thread_p, 1);
+  if (xasl_ent_cache.mark_deleted_list)
+    {
+      /* We will remove two entries(if there are) in the mark deleted list
+       * before add new entry.
+       */
+      (void) qexec_remove_mark_deleted_xasl_entries (thread_p, 2);
+    }
 #endif
 
   /* make new XASL_CACHE_ENTRY */
@@ -16610,6 +16344,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
       ent = NULL;
       goto end;
     }
+
   /* insert (or update) the entry into the xasl file id hash table */
   if (mht_put_new (xasl_ent_cache.xid_ht, &ent->xasl_id, ent) == NULL)
     {
@@ -16639,6 +16374,18 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
     }				/* for (i = 0, ...) */
 
   xasl_ent_cache.num++;
+
+#if defined (SERVER_MODE)
+  if (all_entries_are_fixed)
+    {
+      int current = (int) mht_count (xasl_ent_cache.qstr_ht);
+
+      assert_release (current > xasl_ent_cache.max_entries);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_ALL_PLAN_CACHE_ENTRIES_ARE_FIXED, 2, current,
+	      xasl_ent_cache.max_entries);
+    }
+#endif
 
 end:
   csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
@@ -16949,6 +16696,8 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 
   if (ent)
     {
+      const char *q_str;
+
       if (ent->deletion_marker)
 	{
 	  ent = NULL;
@@ -16995,6 +16744,31 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 	  assert (ent->tran_fix_count_array[tran_index] > 0);
 	}
 #endif
+      if (ent)
+	{
+	  /* Now we must update lru list of the query string hash table.
+	   * So we will call mht_get to the query string hash table.
+	   */
+	  q_str = ent->sql_info.sql_hash_text;	/* the key of qstr_ht */
+	  if (q_str != NULL)
+	    {
+	      (void) (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht,
+						   (void *) q_str);
+	    }
+	  else
+	    {
+	      assert_release (0);
+	    }
+
+#if !defined (NDEBUG)
+	  if (xasl_ent_cache.qstr_ht->lru_tail == NULL
+	      || ((XASL_CACHE_ENTRY *) xasl_ent_cache.qstr_ht->lru_tail->data
+		  != ent))
+	    {
+	      assert (0);
+	    }
+#endif
+	}
     }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -17576,8 +17350,11 @@ qexec_remove_all_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p)
     }
 
 #if defined (SERVER_MODE)
-  (void) qexec_remove_mark_deleted_xasl_entries (thread_p,
-						 xasl_ent_cache.num);
+  if (xasl_ent_cache.mark_deleted_list)
+    {
+      (void) qexec_remove_mark_deleted_xasl_entries (thread_p,
+						     xasl_ent_cache.num);
+    }
 #endif
 
   csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
@@ -24389,7 +24166,6 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
 {
   int i;
   POOLED_XASL_CACHE_ENTRY *pent;
-  XASL_CACHE_ENT_CV_INFO *filter_pred_ent_cv;
 
   if (prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES) <= 0)
     {
@@ -24427,6 +24203,9 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
 		    filter_pred_ent_cache.max_entries, mht_1strhash,
 		    mht_compare_strings_are_equal);
     }
+
+  filter_pred_ent_cache.qstr_ht->build_lru_list = true;
+
   /* memory hash table for XASL stream cache referencing by xasl file id */
   if (filter_pred_ent_cache.xid_ht)
     {
@@ -24456,30 +24235,6 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
 		    filter_pred_ent_cache.max_entries, oid_hash,
 		    oid_compare_equals);
     }
-
-  /* information of candidates to be removed from XASL cache */
-  filter_pred_ent_cv = &filter_pred_ent_cache.cv_info;
-  filter_pred_ent_cv->include_in_use = true;
-
-#define ENT_C_RATIO 0.05f	/* candidate ratio such as 5% */
-  filter_pred_ent_cv->c_ratio = ENT_C_RATIO;
-  filter_pred_ent_cv->c_num =
-    (int) ceil (filter_pred_ent_cache.max_entries *
-		filter_pred_ent_cv->c_ratio);
-  filter_pred_ent_cv->c_idx = 0;
-  filter_pred_ent_cv->c_time = (XASL_CACHE_ENTRY **)
-    malloc (sizeof (XASL_CACHE_ENTRY *) * filter_pred_ent_cv->c_num);
-  filter_pred_ent_cv->c_ref = (XASL_CACHE_ENTRY **)
-    malloc (sizeof (XASL_CACHE_ENTRY *) * filter_pred_ent_cv->c_num);
-
-#define ENT_V_RATIO 0.02f	/* victim ratio such as 2% */
-  filter_pred_ent_cv->v_ratio = ENT_V_RATIO;
-  filter_pred_ent_cv->v_num =
-    (int) ceil (filter_pred_ent_cache.max_entries *
-		filter_pred_ent_cv->v_ratio);
-  filter_pred_ent_cv->v_idx = 0;
-  filter_pred_ent_cv->victim = (XASL_CACHE_ENTRY **)
-    malloc (sizeof (XASL_CACHE_ENTRY *) * filter_pred_ent_cv->v_num);
 
   /* init cache clone info */
   filter_pred_clo_cache.max_clones =
@@ -24545,9 +24300,7 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
 
   return ((filter_pred_ent_cache.qstr_ht && filter_pred_ent_cache.xid_ht
 	   && filter_pred_ent_cache.oid_ht
-	   && filter_pred_cache_entry_pool.pool && filter_pred_ent_cv->c_time
-	   && filter_pred_ent_cv->c_ref
-	   && filter_pred_ent_cv->victim) ? NO_ERROR : ER_FAILED);
+	   && filter_pred_cache_entry_pool.pool) ? NO_ERROR : ER_FAILED);
 }
 
 /*
@@ -24593,10 +24346,6 @@ qexec_finalize_filter_pred_cache (THREAD_ENTRY * thread_p)
       mht_destroy (filter_pred_ent_cache.oid_ht);
       filter_pred_ent_cache.oid_ht = NULL;
     }
-
-  free_and_init (filter_pred_ent_cache.cv_info.c_time);
-  free_and_init (filter_pred_ent_cache.cv_info.c_ref);
-  free_and_init (filter_pred_ent_cache.cv_info.victim);
 
   /* free all cache clone and XASL tree */
   if (filter_pred_clo_cache.head)
@@ -25321,11 +25070,13 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 				    int n_oids, const OID * class_oids,
 				    const int *tcards, int dbval_cnt)
 {
-  XASL_CACHE_ENTRY *ent, **p, **q, **r;
-  XASL_CACHE_ENT_CV_INFO *filter_pred_ent_cv;
+  XASL_CACHE_ENTRY *ent, *victim_ent;
   const OID *o;
-  int len, i, j, k;
+  int len, i;
+  HENTRY_PTR h_entry;
+  int current_count, max_victim_count;
 #if defined(SERVER_MODE)
+  int all_entries_are_fixed = false;
   int tran_index;
   int num_elements;
 #endif /* SERVER_MODE */
@@ -25397,109 +25148,44 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
   if ((int) mht_count (filter_pred_ent_cache.qstr_ht) >=
       filter_pred_ent_cache.max_entries)
     {
-      /* Cache full!
-         We need to remove some entries. Select candidates that are old aged
-         and recently used. Number of candidates is 5% of total entries.
-         At first, we make two candidate groups, one by time condition and
-         other by frequency. If a candidate belongs to both group, it becomes
-         a victim. If the number of victims is insufficient, that is lower
-         than 2% or none, select what are most recently used within the old
-         aged candiates and what are old aged within the recently used
-         candidates. */
-
+      /* Cache full! We need to remove some entries from the cache.
+       * We will refer to the LRU list of query string hash table
+       * to find out victims.
+       */
       filter_pred_ent_cache.counter.full++;	/* counter */
-      filter_pred_ent_cv = &filter_pred_ent_cache.cv_info;
 
-      /* STEP 1: examine hash entries to selet candidates */
-      filter_pred_ent_cv->c_idx = 0;
-      filter_pred_ent_cv->v_idx = 0;
-      /* at first, try to find candidates within entries that is not in use */
-      filter_pred_ent_cv->c_selcnt = filter_pred_ent_cv->c_num * 2;
-      filter_pred_ent_cv->include_in_use = false;
-      (void) mht_map_no_key (thread_p, filter_pred_ent_cache.qstr_ht,
-			     qexec_select_xasl_cache_ent, filter_pred_ent_cv);
-      if (filter_pred_ent_cv->c_idx < filter_pred_ent_cv->c_num)
+      /* Number of entries to victimize. It will be one in normal case. */
+      max_victim_count = (int) mht_count (filter_pred_ent_cache.qstr_ht)
+	- filter_pred_ent_cache.max_entries + 1;
+
+      h_entry = filter_pred_ent_cache.qstr_ht->lru_head;
+      assert (h_entry != NULL);
+
+      current_count = 0;
+      while (current_count < max_victim_count && h_entry)
 	{
-	  /* insufficient candidates; try once more */
-	  filter_pred_ent_cv->include_in_use = true;
-	  (void) mht_map_no_key (thread_p, filter_pred_ent_cache.qstr_ht,
-				 qexec_select_xasl_cache_ent,
-				 filter_pred_ent_cv);
+	  victim_ent = (XASL_CACHE_ENTRY *) h_entry->data;
+	  h_entry = h_entry->lru_next;
+#if defined (SERVER_MODE)
+	  if (victim_ent->num_fixed_tran > 0)
+	    {
+	      continue;
+	    }
+#endif
+	  (void) qexec_delete_filter_pred_cache_ent (thread_p,
+						     (void *) victim_ent,
+						     NULL);
+	  current_count++;
 	}
 
-      /* STEP 2: find victims who appears in both groups */
-      k = filter_pred_ent_cv->v_idx;
-      r = filter_pred_ent_cv->victim;
-      for (i = 0, p = filter_pred_ent_cv->c_time;
-	   i < filter_pred_ent_cv->c_num; i++, p++)
+      if (current_count == 0)
 	{
-	  if (*p == NULL)
-	    {
-	      continue;		/* skip out */
-	    }
-	  for (j = 0, q = filter_pred_ent_cv->c_ref;
-	       j < filter_pred_ent_cv->c_num; j++, q++)
-	    {
-	      if (*p == *q && k < filter_pred_ent_cv->v_num)
-		{
-		  *r++ = *p;
-		  k++;
-		  *p = *q = NULL;
-		  break;
-		}
-	    }
-	  if (k >= filter_pred_ent_cv->v_num)
-	    {
-	      break;
-	    }
+#if defined (SERVER_MODE)
+	  all_entries_are_fixed = true;
+#else
+	  assert (0);
+#endif
 	}
-
-      /* STEP 3: select more victims if insufficient */
-      if (k < filter_pred_ent_cv->v_num)
-	{
-	  /* The above victim selection algorithm is not completed yet.
-	     Two double linked lists for XASL cache entries are needed to
-	     implement the algorithm efficiently. One for creation time, and
-	     the other one for referencing.
-	     Instead, select from most significant members from each groups. */
-	  p = filter_pred_ent_cv->c_time;
-	  q = filter_pred_ent_cv->c_ref;
-	  for (i = 0; i < filter_pred_ent_cv->c_num; i++)
-	    {
-	      if (*p)
-		{
-		  *r++ = *p;
-		  k++;
-		  *p = NULL;
-		  if (k >= filter_pred_ent_cv->v_num)
-		    {
-		      break;
-		    }
-		}
-	      if (*q)
-		{
-		  *r++ = *q;
-		  k++;
-		  *q = NULL;
-		  if (k >= filter_pred_ent_cv->v_num)
-		    {
-		      break;
-		    }
-		}
-	      p++, q++;
-	    }
-	}			/* if (k < filter_pred_ent_cv->v_num) */
-      filter_pred_ent_cv->c_idx = 0;	/* clear */
-      filter_pred_ent_cv->v_idx = k;
-
-      /* STEP 4: now, delete victims from the cache */
-      for (k = 0, r = filter_pred_ent_cv->victim;
-	   k < filter_pred_ent_cv->v_idx; k++, r++)
-	{
-	  (void) qexec_delete_filter_pred_cache_ent (thread_p, *r, NULL);
-	}
-      filter_pred_ent_cv->v_idx = 0;	/* clear */
-
     }				/* if */
 
   /* make new XASL_CACHE_ENTRY */
@@ -25571,6 +25257,7 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
       ent = NULL;
       goto end;
     }
+
   /* insert (or update) the entry into the xasl file id hash table */
   if (mht_put_new (filter_pred_ent_cache.xid_ht, &ent->xasl_id, ent) == NULL)
     {
@@ -25603,6 +25290,18 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
     }				/* for (i = 0, ...) */
 
   filter_pred_ent_cache.num++;
+
+#if defined (SERVER_MODE)
+  if (all_entries_are_fixed)
+    {
+      int current = (int) mht_count (filter_pred_ent_cache.qstr_ht);
+
+      assert_release (current > filter_pred_ent_cache.max_entries);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_ALL_FILTER_PRED_CACHE_ENTRIES_ARE_FIXED, 2, current,
+	      filter_pred_ent_cache.max_entries);
+    }
+#endif
 
 end:
   csect_exit (thread_p, CSECT_QPROC_FILTER_PRED_CACHE);
@@ -25689,6 +25388,7 @@ qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 {
   XASL_CACHE_ENTRY *ent;
   XASL_CACHE_CLONE *clo;
+  const char *q_str;
 
   if (filter_pred_ent_cache.max_entries <= 0)
     {
@@ -25736,6 +25436,31 @@ qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 			"qexec_check_filter_pred_cache_ent_by_xasl: dbval_cnt "
 			"mismatch %d vs %d\n", ent->dbval_cnt, dbval_cnt);
 	  ent = NULL;
+	}
+
+      if (ent)
+	{
+	  /* Now we must update lru list of the query string hash table.
+	   * So we will call mht_get to the query string hash table.
+	   */
+	  q_str = ent->sql_info.sql_hash_text;	/* the key of qstr_ht */
+	  if (q_str != NULL)
+	    {
+	      (void) mht_get (filter_pred_ent_cache.qstr_ht, (void *) q_str);
+	    }
+	  else
+	    {
+	      assert_release (0);
+	    }
+
+#if !defined (NDEBUG)
+	  if (filter_pred_ent_cache.qstr_ht->lru_tail == NULL
+	      || ((XASL_CACHE_ENTRY *) filter_pred_ent_cache.qstr_ht->
+		  lru_tail->data != ent))
+	    {
+	      assert (0);
+	    }
+#endif
 	}
     }
 
