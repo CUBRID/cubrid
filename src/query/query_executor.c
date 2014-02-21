@@ -29198,8 +29198,8 @@ qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p,
 }
 
 /*
- * qexec_agg_resolve_result_type () - In order to keep the precision of 
- *                                    SUM() during the evaluation, we set 
+ * qexec_agg_resolve_result_type () - In order to keep the precision of
+ *                                    SUM() during the evaluation, we set
  *                                    DOUBLE of value type for FLOAT, finally
  *                                    we need to cast the result to FLOAT
  *   return: error indicator.
@@ -29209,7 +29209,7 @@ static int
 qexec_agg_resolve_result_type (XASL_NODE * xasl)
 {
   AGGREGATE_TYPE *agg;
-  int res;
+  int res = NO_ERROR;
 
   /* first get the aggregate list */
   switch (xasl->type)
