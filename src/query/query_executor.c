@@ -21192,8 +21192,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 		      agg_p->accumulator_domain.value_dom =
 			tp_domain_resolve (DB_TYPE_DOUBLE, NULL,
 					   DB_DOUBLE_DECIMAL_PRECISION,
-					   DB_VALUE_SCALE (dbval), NULL,
-					   NULL);
+					   DB_VALUE_SCALE (dbval), NULL, 0);
 		    }
 		  else
 		    {
