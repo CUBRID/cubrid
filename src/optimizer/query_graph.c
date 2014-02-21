@@ -7043,7 +7043,6 @@ static bool
 qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
 {
   int i, term;
-  bool first_col_present = false;
   bool second_col_present = false;
   QO_CLASS_INFO *class_infop = NULL;
   QO_NODE *seg_nodep = NULL;
@@ -7093,70 +7092,74 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
 	  return false;
 	}
     }
+
   /* First segment index should be missing */
-  first_col_present = false;
   if (index_entry->seg_idxs[0] != -1)
     {
       /* So there are references to the first of the index's segment. At least
        * make sure these terms do not qualify as range filter or key filter.*/
 
-      if (bitset_cardinality (&(index_entry->seg_equal_terms[0])) > 0)
+      /* check all the EQ classes to make sure the segment referring to the
+       * first index column is not hiding in there. If it DOES belong to any
+       * EQ class, then there is a risk of chosing Index Skip Scan without it
+       * being the case. */
+      for (i = 0; i < env->neqclasses; i++)
 	{
-	  first_col_present = true;
-	}
-      else
-	{
-	  /* make sure there are no REAL terms in seg_other_terms */
-	  for (term =
-	       bitset_iterate (&index_entry->seg_other_terms[0], &iter);
-	       term != -1; term = bitset_next_member (&iter))
+	  if (BITSET_MEMBER
+	      (env->eqclasses[i].segs, index_entry->seg_idxs[0]))
 	    {
-	      PT_NODE *pt_expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, term));
-	      if (pt_expr &&
-		  PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE))
-		{
-		  /* do not get fooled by those invented terms, there still
-		   * is no real first col present! */
-		  continue;
-		}
-	      else
-		{
-		  /* Now there is ! */
-		  first_col_present = true;
-		  break;
-		}
-	    }
-
-	  /* we either found a first column, and in this case all is lost,
-	   * or we did not find it in seg_other_terms[0], and must also search
-	   * elsewhere */
-	  if (first_col_present == false)
-	    {
-	      /* Not out of the woods yet: we still need to check all the
-	       * EQ classes to make sure the segment referring to the first index
-	       * column is not hiding in there. If it DOES belong to any EQ class,
-	       * then there is a risk of chosing Index Skip Scan without it being
-	       * the case. */
-	      for (i = 0; i < env->neqclasses; i++)
-		{
-		  if (BITSET_MEMBER
-		      (env->eqclasses[i].segs, index_entry->seg_idxs[0]))
-		    {
-		      first_col_present = true;
-		      break;
-		    }
-		}
+	      return false;
 	    }
 	}
-    }
 
-  if (first_col_present)
-    {
-      return false;
+      /* so it's not in an equivalence class; check all terms */
+      for (i = 0; i < env->nterms; i++)
+	{
+	  QO_TERM *t = QO_ENV_TERM (env, i);
+
+	  if (!t->can_use_index || !QO_TERM_PT_EXPR (t))
+	    {
+	      /* fake term or non-indexable term */
+	      continue;
+	    }
+	  if (QO_TERM_CLASS (t) != QO_TC_SARG
+	      && QO_TERM_CLASS (t) != QO_TC_DURING_JOIN)
+	    {
+	      /* we're only looking for sargable or during-join terms */
+	      continue;
+	    }
+	  if (QO_TERM_IS_FLAGED (t, QO_TERM_RANGELIST))
+	    {
+	      /* no rangelists allowed */
+	      continue;
+	    }
+	  if (!BITSET_MEMBER (QO_TERM_SEGS (t), index_entry->seg_idxs[0]))
+	    {
+	      /* term does not contain first column of this index */
+	      continue;
+	    }
+
+	  /* we've got a sargable or during-join term containing the first
+	     column of the index */
+	  if (!QO_TERM_IS_FLAGED (t, QO_TERM_EQUAL_OP))
+	    {
+	      if (!PT_EXPR_INFO_IS_FLAGED (QO_TERM_PT_EXPR (t),
+					   PT_EXPR_INFO_FULL_RANGE))
+		{
+		  /* term is not equality condition and is not "fake" range;
+		     first column qualifies */
+		  return false;
+		}
+	    }
+	  else
+	    {
+	      /* term is equality condition, first column qualifies */
+	      return false;
+	    }
+	}
     }
 
   second_col_present = false;
-
   assert (index_entry->nsegs > 1);
   if (index_entry->seg_idxs[1] != -1)
     {
