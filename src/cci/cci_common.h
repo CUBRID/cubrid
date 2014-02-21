@@ -283,35 +283,35 @@ extern "C"
   typedef int (*REM_FUNC) (void *key, void *data, void *args);
   typedef int (*PRINT_FUNC) (FILE * fp, void *key, void *data, void *args);
 
-/* Hash Table Entry - linked list */
-  typedef struct hentry HENTRY;
-  typedef struct hentry *HENTRY_PTR;
-  struct hentry
+/* CCI Hash Table Entry - linked list */
+  typedef struct cci_hentry CCI_HENTRY;
+  typedef struct cci_hentry *CCI_HENTRY_PTR;
+  struct cci_hentry
   {
-    HENTRY_PTR act_next;	/* Next active entry on hash table */
-    HENTRY_PTR act_prev;	/* Previous active entry on hash table */
-    HENTRY_PTR next;		/* Next hash table entry for colisions */
+    CCI_HENTRY_PTR act_next;	/* Next active entry on hash table */
+    CCI_HENTRY_PTR act_prev;	/* Previous active entry on hash table */
+    CCI_HENTRY_PTR next;	/* Next hash table entry for colisions */
     void *key;			/* Key associated with entry */
     void *data;			/* Data associated with key entry */
   };
 
-/* Memory Hash Table */
-  typedef struct mht_table MHT_TABLE;
-  struct mht_table
+/* CCI Memory Hash Table */
+  typedef struct cci_mht_table CCI_MHT_TABLE;
+  struct cci_mht_table
   {
     HASH_FUNC hash_func;
     CMP_FUNC cmp_func;
     const char *name;
-    HENTRY_PTR *table;		/* The hash table (entries) */
-    HENTRY_PTR act_head;	/* Head of active double link list
+    CCI_HENTRY_PTR *table;	/* The hash table (entries) */
+    CCI_HENTRY_PTR act_head;	/* Head of active double link list
 				 * entries. Used to perform quick
 				 * mappings of hash table.
 				 */
-    HENTRY_PTR act_tail;	/* Tail of active double link list
+    CCI_HENTRY_PTR act_tail;	/* Tail of active double link list
 				 * entries. Used to perform quick
 				 * mappings of hash table.
 				 */
-    HENTRY_PTR prealloc_entries;	/* Free entries allocated for
+    CCI_HENTRY_PTR prealloc_entries;	/* Free entries allocated for
 					 * locality reasons
 					 */
     unsigned int size;		/* Better if prime number */
@@ -328,17 +328,21 @@ extern "C"
  ************************************************************************/
   extern int get_elapsed_time (struct timeval *start_time);
 
-  extern unsigned int mht_5strhash (void *key, unsigned int ht_size);
-  extern int mht_strcasecmpeq (void *key1, void *key2);
+  extern unsigned int cci_mht_5strhash (void *key, unsigned int ht_size);
+  extern int cci_mht_strcasecmpeq (void *key1, void *key2);
 
-  extern MHT_TABLE *mht_create (char *name, int est_size, HASH_FUNC hash_func,
-				CMP_FUNC cmp_func);
-  extern void mht_destroy (MHT_TABLE * ht, bool free_key, bool free_data);
-  extern void *mht_rem (MHT_TABLE * ht, void *key, bool free_key,
-			bool free_data);
-  extern void *mht_get (MHT_TABLE * ht, void *key);
-  extern void *mht_put (MHT_TABLE * ht, void *key, void *data);
-  extern void *mht_put_data (MHT_TABLE * ht, void *key, void *data);
+  extern CCI_MHT_TABLE *cci_mht_create (char *name, int est_size,
+					HASH_FUNC hash_func,
+					CMP_FUNC cmp_func);
+  extern void cci_mht_destroy (CCI_MHT_TABLE * ht, bool free_key,
+			       bool free_data);
+  extern void *cci_mht_rem (CCI_MHT_TABLE * ht, void *key, bool free_key,
+			    bool free_data);
+  extern void *cci_mht_get (CCI_MHT_TABLE * ht, void *key);
+#if defined(ENABLE_UNUSED_FUNCTION)
+  extern void *cci_mht_put (CCI_MHT_TABLE * ht, void *key, void *data);
+#endif
+  extern void *cci_mht_put_data (CCI_MHT_TABLE * ht, void *key, void *data);
 
   extern int hostname2uchar (char *host, unsigned char *ip_addr);
 

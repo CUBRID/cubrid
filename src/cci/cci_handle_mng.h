@@ -223,7 +223,7 @@ extern "C"
     int cas_id;
     T_CCI_SESSION_ID session_id;
     T_CCI_DATASOURCE *datasource;
-    MHT_TABLE *stmt_pool;
+    CCI_MHT_TABLE *stmt_pool;
 
     /* HA */
     int alter_host_count;

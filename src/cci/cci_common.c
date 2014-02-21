@@ -75,16 +75,16 @@
 
 
 /* constants for rehash */
-static const float MHT_REHASH_TRESHOLD = 0.7f;
-static const float MHT_REHASH_FACTOR = 1.3f;
+static const float CCI_MHT_REHASH_TRESHOLD = 0.7f;
+static const float CCI_MHT_REHASH_FACTOR = 1.3f;
 
-/* options for mht_put() */
-typedef enum mht_put_opt MHT_PUT_OPT;
-enum mht_put_opt
+/* options for cci_mht_put() */
+typedef enum cci_mht_put_opt CCI_MHT_PUT_OPT;
+enum cci_mht_put_opt
 {
-  MHT_OPT_DEFAULT,
-  MHT_OPT_KEEP_KEY,
-  MHT_OPT_INSERT_ONLY
+  CCI_MHT_OPT_DEFAULT,
+  CCI_MHT_OPT_KEEP_KEY,
+  CCI_MHT_OPT_INSERT_ONLY
 };
 
 /*
@@ -103,16 +103,16 @@ enum mht_put_opt
  * Note: if x is a prime number, the n is prime if X**(n-1) mod n == 1
  */
 
-static unsigned int mht_5str_pseudo_key (void *key, int key_size);
+static unsigned int cci_mht_5str_pseudo_key (void *key, int key_size);
 
-static unsigned int mht_calculate_htsize (unsigned int ht_size);
-static int mht_rehash (MHT_TABLE * ht);
+static unsigned int cci_mht_calculate_htsize (unsigned int ht_size);
+static int cci_mht_rehash (CCI_MHT_TABLE * ht);
 
-static void *mht_put_internal (MHT_TABLE * ht, void *key, void *data,
-			       MHT_PUT_OPT opt);
+static void *cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data,
+				   CCI_MHT_PUT_OPT opt);
 
 /*
- * mht_5str_pseudo_key() - hash string key into pseudo integer key
+ * cci_mht_5str_pseudo_key() - hash string key into pseudo integer key
  * return: pseudo integer key
  * key(in): string key to hash
  * key_size(in): size of key or -1 when unknown
@@ -120,7 +120,7 @@ static void *mht_put_internal (MHT_TABLE * ht, void *key, void *data,
  * Note: Based on hash method reported by Diniel J. Bernstein.
  */
 static unsigned int
-mht_5str_pseudo_key (void *key, int key_size)
+cci_mht_5str_pseudo_key (void *key, int key_size)
 {
   unsigned int hash = 5381;
   int i = 0;
@@ -154,7 +154,7 @@ mht_5str_pseudo_key (void *key, int key_size)
 }
 
 /*
- * mht_5strhash - hash a string key
+ * cci_mht_5strhash - hash a string key
  *   return: hash value
  *   key(in): key to hash
  *   ht_size(in): size of hash table
@@ -162,19 +162,19 @@ mht_5str_pseudo_key (void *key, int key_size)
  * Note: Based on hash method reported by Diniel J. Bernstein.
  */
 unsigned int
-mht_5strhash (void *key, unsigned int ht_size)
+cci_mht_5strhash (void *key, unsigned int ht_size)
 {
-  return mht_5str_pseudo_key (key, -1) % ht_size;
+  return cci_mht_5str_pseudo_key (key, -1) % ht_size;
 }
 
 /*
- * mht_strcasecmpeq - compare two string keys (ignoring case)
+ * cci_mht_strcasecmpeq - compare two string keys (ignoring case)
  *   return: 0 or 1 (key1 == key2)
  *   key1(in): pointer to string key1
  *   key2(in): pointer to string key2
  */
 int
-mht_strcasecmpeq (void *key1, void *key2)
+cci_mht_strcasecmpeq (void *key1, void *key2)
 {
   if ((strcasecmp ((char *) key1, (char *) key2)) == 0)
     {
@@ -184,7 +184,7 @@ mht_strcasecmpeq (void *key1, void *key2)
 }
 
 /*
- * mht_calculate_htsize - find a good hash table size
+ * cci_mht_calculate_htsize - find a good hash table size
  *   return: adjusted hash table size
  *   ht_size(in): given hash table size
  *
@@ -196,7 +196,7 @@ mht_strcasecmpeq (void *key1, void *key2)
  *       is returned.
  */
 #define NPRIMES 170
-static const unsigned int mht_Primes[NPRIMES] = {
+static const unsigned int cci_mht_Primes[NPRIMES] = {
   11, 23, 37, 53, 67, 79, 97, 109, 127, 149,
   167, 191, 211, 227, 251, 269, 293, 311, 331, 349,
   367, 389, 409, 431, 449, 467, 487, 509, 541, 563,
@@ -221,11 +221,11 @@ static const unsigned int mht_Primes[NPRIMES] = {
         (((dividend) == 0) ? 0 : ((dividend) - 1) / (divisor) + 1)
 
 static unsigned int
-mht_calculate_htsize (unsigned int ht_size)
+cci_mht_calculate_htsize (unsigned int ht_size)
 {
   int left, right, middle;	/* indices for binary search */
 
-  if (ht_size > mht_Primes[NPRIMES - 1])
+  if (ht_size > cci_mht_Primes[NPRIMES - 1])
     {
       /* get a power of two */
       if (!((ht_size & (ht_size - 1)) == 0))
@@ -244,11 +244,11 @@ mht_calculate_htsize (unsigned int ht_size)
       for (middle = 0, left = 0, right = NPRIMES - 1; left <= right;)
 	{
 	  middle = CEIL_PTVDIV ((left + right), 2);
-	  if (ht_size == mht_Primes[middle])
+	  if (ht_size == cci_mht_Primes[middle])
 	    {
 	      break;
 	    }
-	  else if (ht_size > mht_Primes[middle])
+	  else if (ht_size > cci_mht_Primes[middle])
 	    {
 	      left = middle + 1;
 	    }
@@ -258,18 +258,18 @@ mht_calculate_htsize (unsigned int ht_size)
 	    }
 	}
       /* If we didn't find the size, get the larger size and not the small one */
-      if (ht_size > mht_Primes[middle] && middle < (NPRIMES - 1))
+      if (ht_size > cci_mht_Primes[middle] && middle < (NPRIMES - 1))
 	{
 	  middle++;
 	}
-      ht_size = mht_Primes[middle];
+      ht_size = cci_mht_Primes[middle];
     }
 
   return ht_size;
 }
 
 /*
- * mht_create - create a hash table
+ * cci_mht_create - create a hash table
  *   return: hash table
  *   name(in): name of hash table
  *   est_size(in): estimated number of entries
@@ -284,11 +284,12 @@ mht_calculate_htsize (unsigned int ht_size)
  *       table_size - 1. 'cmp_func' must return TRUE if key1 = key2,
  *       otherwise, FALSE.
  */
-MHT_TABLE *
-mht_create (char *name, int est_size, HASH_FUNC hash_func, CMP_FUNC cmp_func)
+CCI_MHT_TABLE *
+cci_mht_create (char *name, int est_size, HASH_FUNC hash_func,
+		CMP_FUNC cmp_func)
 {
-  MHT_TABLE *ht;
-  HENTRY_PTR *hvector;		/* Entries of hash table         */
+  CCI_MHT_TABLE *ht;
+  CCI_HENTRY_PTR *hvector;	/* Entries of hash table         */
   unsigned int ht_estsize;
   unsigned int size;
 
@@ -300,18 +301,18 @@ mht_create (char *name, int est_size, HASH_FUNC hash_func, CMP_FUNC cmp_func)
       est_size = 2;
     }
 
-  ht_estsize = mht_calculate_htsize ((unsigned int) est_size);
+  ht_estsize = cci_mht_calculate_htsize ((unsigned int) est_size);
 
   /* Allocate the header information for hash table */
-  ht = (MHT_TABLE *) MALLOC (sizeof (MHT_TABLE));
+  ht = (CCI_MHT_TABLE *) MALLOC (sizeof (CCI_MHT_TABLE));
   if (ht == NULL)
     {
       return NULL;
     }
 
   /* Allocate the hash table entry pointers */
-  size = ht_estsize * sizeof (HENTRY_PTR);
-  hvector = (HENTRY_PTR *) MALLOC (size);
+  size = ht_estsize * sizeof (CCI_HENTRY_PTR);
+  hvector = (CCI_HENTRY_PTR *) MALLOC (size);
   if (hvector == NULL)
     {
       FREE (ht);
@@ -326,7 +327,7 @@ mht_create (char *name, int est_size, HASH_FUNC hash_func, CMP_FUNC cmp_func)
   ht->act_tail = NULL;
   ht->prealloc_entries = NULL;
   ht->size = ht_estsize;
-  ht->rehash_at = (unsigned int) (ht_estsize * MHT_REHASH_TRESHOLD);
+  ht->rehash_at = (unsigned int) (ht_estsize * CCI_MHT_REHASH_TRESHOLD);
   ht->nentries = 0;
   ht->nprealloc_entries = 0;
   ht->ncollisions = 0;
@@ -341,7 +342,7 @@ mht_create (char *name, int est_size, HASH_FUNC hash_func, CMP_FUNC cmp_func)
 }
 
 /*
- * mht_rehash - rehash all entires of a hash table
+ * cci_mht_rehash - rehash all entires of a hash table
  *   return: error code
  *   ht(in/out): hash table to rehash
  *
@@ -349,12 +350,12 @@ mht_create (char *name, int est_size, HASH_FUNC hash_func, CMP_FUNC cmp_func)
  *       hash table of entries.
  */
 static int
-mht_rehash (MHT_TABLE * ht)
+cci_mht_rehash (CCI_MHT_TABLE * ht)
 {
-  HENTRY_PTR *new_hvector;	/* New entries of hash table       */
-  HENTRY_PTR *hvector;		/* Entries of hash table           */
-  HENTRY_PTR hentry;		/* A hash table entry. linked list */
-  HENTRY_PTR next_hentry = NULL;	/* Next element in linked list     */
+  CCI_HENTRY_PTR *new_hvector;	/* New entries of hash table       */
+  CCI_HENTRY_PTR *hvector;	/* Entries of hash table           */
+  CCI_HENTRY_PTR hentry;	/* A hash table entry. linked list */
+  CCI_HENTRY_PTR next_hentry = NULL;	/* Next element in linked list     */
   float rehash_factor;
   unsigned int hash;
   unsigned int est_size;
@@ -363,20 +364,20 @@ mht_rehash (MHT_TABLE * ht)
 
   /* Find an estimated size for hash table entries */
   rehash_factor = 1.0f + ((float) ht->ncollisions / (float) ht->nentries);
-  if (MHT_REHASH_FACTOR > rehash_factor)
+  if (CCI_MHT_REHASH_FACTOR > rehash_factor)
     {
-      est_size = (unsigned int) (ht->size * MHT_REHASH_FACTOR);
+      est_size = (unsigned int) (ht->size * CCI_MHT_REHASH_FACTOR);
     }
   else
     {
       est_size = (unsigned int) (ht->size * rehash_factor);
     }
 
-  est_size = mht_calculate_htsize (est_size);
+  est_size = cci_mht_calculate_htsize (est_size);
 
   /* Allocate a new vector to keep the estimated hash entries */
-  size = est_size * sizeof (HENTRY_PTR);
-  new_hvector = (HENTRY_PTR *) MALLOC (size);
+  size = est_size * sizeof (CCI_HENTRY_PTR);
+  new_hvector = (CCI_HENTRY_PTR *) MALLOC (size);
   if (new_hvector == NULL)
     {
       return CCI_ER_NO_MORE_MEMORY;
@@ -415,24 +416,24 @@ mht_rehash (MHT_TABLE * ht)
 
   ht->table = new_hvector;
   ht->size = est_size;
-  ht->rehash_at = (int) (est_size * MHT_REHASH_TRESHOLD);
+  ht->rehash_at = (int) (est_size * CCI_MHT_REHASH_TRESHOLD);
 
   return CCI_ER_NO_ERROR;
 }
 
 /*
- * mht_destroy - destroy a hash table
+ * cci_mht_destroy - destroy a hash table
  *   return: void
  *   ht(in/out): hash table
  *
  * Note: ht is set as a side effect
  */
 void
-mht_destroy (MHT_TABLE * ht, bool free_key, bool free_data)
+cci_mht_destroy (CCI_MHT_TABLE * ht, bool free_key, bool free_data)
 {
-  HENTRY_PTR *hvector;
-  HENTRY_PTR hentry;
-  HENTRY_PTR next_hentry = NULL;
+  CCI_HENTRY_PTR *hvector;
+  CCI_HENTRY_PTR hentry;
+  CCI_HENTRY_PTR next_hentry = NULL;
   unsigned int i;
 
   assert (ht != NULL);
@@ -468,7 +469,7 @@ mht_destroy (MHT_TABLE * ht, bool free_key, bool free_data)
 }
 
 /*
- * mht_rem - remove a hash entry
+ * cci_mht_rem - remove a hash entry
  *   return: removed data
  *   ht(in): hash table
  *   key(in): hashing key
@@ -478,11 +479,11 @@ mht_destroy (MHT_TABLE * ht, bool free_key, bool free_data)
  * Note: For each entry in hash table
  */
 void *
-mht_rem (MHT_TABLE * ht, void *key, bool free_key, bool free_data)
+cci_mht_rem (CCI_MHT_TABLE * ht, void *key, bool free_key, bool free_data)
 {
   unsigned int hash;
-  HENTRY_PTR prev_hentry;
-  HENTRY_PTR hentry;
+  CCI_HENTRY_PTR prev_hentry;
+  CCI_HENTRY_PTR hentry;
   int error_code = CCI_ER_NO_ERROR;
   void *data = NULL;
 
@@ -499,8 +500,8 @@ mht_rem (MHT_TABLE * ht, void *key, bool free_key, bool free_data)
     }
 
   /* Now search the linked list.. Is there any entry with the given key ? */
-  for (hentry = ht->table[hash], prev_hentry = NULL;
-       hentry != NULL; prev_hentry = hentry, hentry = hentry->next)
+  for (hentry = ht->table[hash], prev_hentry = NULL; hentry != NULL;
+       prev_hentry = hentry, hentry = hentry->next)
     {
       if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
 	{
@@ -566,7 +567,7 @@ mht_rem (MHT_TABLE * ht, void *key, bool free_key, bool free_data)
 }
 
 /*
- * mht_get - find data associated with key
+ * cci_mht_get - find data associated with key
  *   return: the data associated with the key, or NULL if not found
  *   ht(in): hash table
  *   key(in): hashing key
@@ -574,10 +575,10 @@ mht_rem (MHT_TABLE * ht, void *key, bool free_key, bool free_data)
  * Note: Find the entry in hash table whose key is the value of the given key
  */
 void *
-mht_get (MHT_TABLE * ht, void *key)
+cci_mht_get (CCI_MHT_TABLE * ht, void *key)
 {
   unsigned int hash;
-  HENTRY_PTR hentry;
+  CCI_HENTRY_PTR hentry;
 
   assert (ht != NULL && key != NULL);
 
@@ -603,26 +604,28 @@ mht_get (MHT_TABLE * ht, void *key)
 }
 
 /*
- * mht_put_internal - internal function for mht_put(), mht_put_new(), and
- *                    mht_put_data();
- *                    insert an entry associating key with data
+ * cci_mht_put_internal - internal function for cci_mht_put(), 
+ *                        cci_mht_put_new(), and cci_mht_put_data();
+ *                        insert an entry associating key with data
  *   return: Returns key if insertion was OK, otherwise, it returns NULL
  *   ht(in/out): hash table (set as a side effect)
  *   key(in): hashing key
  *   data(in): data associated with hashing key
  *   opt(in): options;
- *            MHT_OPT_DEFAULT - change data and the key as given of the hash
- *                              entry; replace the old entry with the new one
- *                              if there is an entry with the same key
- *            MHT_OPT_KEEP_KEY - change data but the key of the hash entry
- *            MHT_OPT_INSERT_ONLY - do not replace the existing hash entry
- *                                  even if there is an etnry with the same key
+ *            CCI_MHT_OPT_DEFAULT - change data and the key as given of the hash
+ *                                  entry; replace the old entry with the new
+ *                                  one if there is an entry with the same key
+ *            CCI_MHT_OPT_KEEP_KEY - change data but the key of the hash entry
+ *            CCI_MHT_OPT_INSERT_ONLY - do not replace the existing hash entry
+ *                                      even if there is an etnry with the same
+ *                                      key
  */
 static void *
-mht_put_internal (MHT_TABLE * ht, void *key, void *data, MHT_PUT_OPT opt)
+cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data,
+		      CCI_MHT_PUT_OPT opt)
 {
   unsigned int hash;
-  HENTRY_PTR hentry;
+  CCI_HENTRY_PTR hentry;
 
   assert (ht != NULL && key != NULL);
 
@@ -636,7 +639,7 @@ mht_put_internal (MHT_TABLE * ht, void *key, void *data, MHT_PUT_OPT opt)
       hash %= ht->size;
     }
 
-  if (!(opt & MHT_OPT_INSERT_ONLY))
+  if (!(opt & CCI_MHT_OPT_INSERT_ONLY))
     {
       /* Now search the linked list.. Is there any entry with the given key ? */
       for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
@@ -644,7 +647,7 @@ mht_put_internal (MHT_TABLE * ht, void *key, void *data, MHT_PUT_OPT opt)
 	  if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
 	    {
 	      /* Replace the old data with the new one */
-	      if (!(opt & MHT_OPT_KEEP_KEY))
+	      if (!(opt & CCI_MHT_OPT_KEEP_KEY))
 		{
 		  hentry->key = key;
 		}
@@ -663,7 +666,7 @@ mht_put_internal (MHT_TABLE * ht, void *key, void *data, MHT_PUT_OPT opt)
     }
   else
     {
-      hentry = (HENTRY_PTR) MALLOC (sizeof (HENTRY));
+      hentry = (CCI_HENTRY_PTR) MALLOC (sizeof (CCI_HENTRY));
       if (hentry == NULL)
 	{
 	  return NULL;
@@ -706,7 +709,7 @@ mht_put_internal (MHT_TABLE * ht, void *key, void *data, MHT_PUT_OPT opt)
    */
   if (ht->nentries > ht->rehash_at && ht->ncollisions > (ht->nentries * 0.05))
     {
-      if (mht_rehash (ht) < 0)
+      if (cci_mht_rehash (ht) < 0)
 	{
 	  return NULL;
 	}
@@ -717,7 +720,7 @@ mht_put_internal (MHT_TABLE * ht, void *key, void *data, MHT_PUT_OPT opt)
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
- * mht_put - insert an entry associating key with data
+ * cci_mht_put - insert an entry associating key with data
  *   return: Returns key if insertion was OK, otherwise, it returns NULL
  *   ht(in/out): hash table (set as a side effect)
  *   key(in): hashing key
@@ -732,18 +735,18 @@ mht_put_internal (MHT_TABLE * ht, void *key, void *data, MHT_PUT_OPT opt)
  *       into the hash table
  */
 void *
-mht_put (MHT_TABLE * ht, void *key, void *data)
+cci_mht_put (CCI_MHT_TABLE * ht, void *key, void *data)
 {
   assert (ht != NULL && key != NULL);
-  return mht_put_internal (ht, key, data, MHT_OPT_DEFAULT);
+  return cci_mht_put_internal (ht, key, data, CCI_MHT_OPT_DEFAULT);
 }
 #endif
 
 void *
-mht_put_data (MHT_TABLE * ht, void *key, void *data)
+cci_mht_put_data (CCI_MHT_TABLE * ht, void *key, void *data)
 {
   assert (ht != NULL && key != NULL);
-  return mht_put_internal (ht, key, data, MHT_OPT_KEEP_KEY);
+  return cci_mht_put_internal (ht, key, data, CCI_MHT_OPT_KEEP_KEY);
 }
 
 #ifndef HAVE_GETHOSTBYNAME_R

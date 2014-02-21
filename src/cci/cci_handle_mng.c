@@ -470,7 +470,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id,
   char *key;
   int *data;
 
-  data = mht_get (con->stmt_pool, sql);
+  data = cci_mht_get (con->stmt_pool, sql);
   if (data != NULL)
     {
       hm_pool_drop_node_from_list (&con->pool_use_head, &con->pool_use_tail,
@@ -494,7 +494,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id,
 	   */
 	  qe_close_req_handle (victim, con);
 	}
-      mht_rem (con->stmt_pool, victim->sql_text, true, true);
+      cci_mht_rem (con->stmt_pool, victim->sql_text, true, true);
       hm_req_handle_free (con, victim);
     }
 
@@ -511,7 +511,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id,
     }
 
   map_get_ots_value (mapped_statement_id, data, true);
-  if (!mht_put_data (con->stmt_pool, key, data))
+  if (!cci_mht_put_data (con->stmt_pool, key, data))
     {
       FREE (key);
       FREE (data);
@@ -529,7 +529,7 @@ hm_req_get_from_pool (T_CON_HANDLE * con, T_REQ_HANDLE ** req, char *sql)
   int req_id;
   void *data;
 
-  data = mht_rem (con->stmt_pool, sql, true, false);
+  data = cci_mht_rem (con->stmt_pool, sql, true, false);
   if (data == NULL)
     {
       return CCI_ER_REQ_HANDLE;
@@ -1274,8 +1274,8 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
       return CCI_ER_NO_MORE_MEMORY;
     }
 
-  con_handle->stmt_pool = mht_create (0, 1000, mht_5strhash,
-				      mht_strcasecmpeq);
+  con_handle->stmt_pool = cci_mht_create (0, 1000, cci_mht_5strhash,
+					  cci_mht_strcasecmpeq);
   if (con_handle->stmt_pool == NULL)
     {
       FREE_MEM (con_handle->db_name);
@@ -1403,7 +1403,7 @@ con_handle_content_free (T_CON_HANDLE * con_handle)
 
   if (con_handle->stmt_pool != NULL)
     {
-      mht_destroy (con_handle->stmt_pool, true, true);
+      cci_mht_destroy (con_handle->stmt_pool, true, true);
     }
   FREE_MEM (con_handle->log_filename);
 }
