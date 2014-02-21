@@ -3210,7 +3210,9 @@ thread_log_clock_thread (void *arg_p)
   int rv = 0;
   struct timeval now;
 
+#if defined(HAVE_ATOMIC_BUILTINS)
   assert (sizeof (log_Clock_msec) >= sizeof (now.tv_sec));
+#endif /* HAVE_ATOMIC_BUILTINS */
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
   /* wait until THREAD_CREATE() finishes */
