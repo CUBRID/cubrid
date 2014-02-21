@@ -127,10 +127,6 @@ extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * p, PT_NODE * node);
 extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * p,
 					    PT_NODE * node, int *argp);
 extern XASL_NODE *parser_generate_xasl (PARSER_CONTEXT * p, PT_NODE * node);
-extern PARSER_VARCHAR *pt_print_node_value (PARSER_CONTEXT * parser,
-					    const PT_NODE * val);
-extern PARSER_VARCHAR *pt_print_db_value (PARSER_CONTEXT * parser,
-					  const struct db_value *val);
 extern REGU_VARIABLE *pt_make_regu_arith (const REGU_VARIABLE * arg1,
 					  const REGU_VARIABLE * arg2,
 					  const REGU_VARIABLE * arg3,

@@ -45,6 +45,8 @@
 #include "serial.h"
 #include "system_parameter.h"
 #include "show_meta.h"
+#include "virtual_object.h"
+#include "set_object.h"
 
 #define SAFENUM(node, field)    ((node) ? (node)->field : -1)
 #define PT_MEMB_BUF_SIZE        100
@@ -2619,6 +2621,179 @@ pt_print_bytes_spec_list (PARSER_CONTEXT * parser, const PT_NODE * p)
       q = pt_append_varchar (parser, q, r);
     }
   return q;
+}
+
+/*
+ * pt_print_node_value () -
+ *   return: const sql string customized
+ *   parser(in):
+ *   val(in):
+ */
+PARSER_VARCHAR *
+pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val)
+{
+  PARSER_VARCHAR *q = NULL;
+  DB_VALUE *db_val, new_db_val;
+  DB_TYPE db_typ;
+  int error = NO_ERROR;
+  SETOBJ *setobj;
+
+  if (!(val->node_type == PT_VALUE
+	|| val->node_type == PT_HOST_VAR
+	|| (val->node_type == PT_NAME
+	    && val->info.name.meta_class == PT_PARAMETER)))
+    {
+      return NULL;
+    }
+
+  db_val = pt_value_to_db (parser, (PT_NODE *) val);
+  if (!db_val)
+    {
+      return NULL;
+    }
+  db_typ = DB_VALUE_DOMAIN_TYPE (db_val);
+
+  if (val->type_enum == PT_TYPE_OBJECT)
+    {
+      switch (db_typ)
+	{
+	case DB_TYPE_OBJECT:
+	  vid_get_keys (db_get_object (db_val), &new_db_val);
+	  db_val = &new_db_val;
+	  break;
+	case DB_TYPE_VOBJ:
+	  /* don't want a clone of the db_value, so use lower level functions */
+	  error = set_get_setobj (db_get_set (db_val), &setobj, 0);
+	  if (error >= 0)
+	    {
+	      error = setobj_get_element_ptr (setobj, 2, &db_val);
+	    }
+	  break;
+	default:
+	  break;
+	}
+
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, val, er_msg ());
+	}
+
+      if (db_val)
+	{
+	  db_typ = DB_VALUE_DOMAIN_TYPE (db_val);
+	}
+    }
+
+  q = pt_print_db_value (parser, db_val);
+
+  return q;
+}
+
+/*
+ * pt_print_db_value () -
+ *   return: const sql string customized
+ *   parser(in):
+ *   val(in):
+ */
+PARSER_VARCHAR *
+pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
+{
+  PARSER_VARCHAR *temp = NULL, *result = NULL, *elem;
+  int i, size = 0;
+  DB_VALUE element;
+  int error = NO_ERROR;
+  PT_NODE foo;
+  unsigned int save_custom = parser->custom_print;
+
+  if (val == NULL)
+    {
+      return NULL;
+    }
+
+  memset (&foo, 0, sizeof (foo));
+
+  /* set custom_print here so describe_data() will know to pad bit
+   * strings to full bytes */
+  parser->custom_print = parser->custom_print | PT_PAD_BYTE;
+
+  switch (DB_VALUE_TYPE (val))
+    {
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+      temp = pt_append_nulstring (parser, NULL,
+				  pt_show_type_enum ((PT_TYPE_ENUM)
+						     pt_db_to_type_enum
+						     (DB_VALUE_TYPE (val))));
+      /* fall thru */
+    case DB_TYPE_SEQUENCE:
+      temp = pt_append_nulstring (parser, temp, "{");
+
+      size = db_set_size (db_get_set ((DB_VALUE *) val));
+      if (size > 0)
+	{
+	  error = db_set_get (db_get_set ((DB_VALUE *) val), 0, &element);
+	  elem = describe_value (parser, NULL, &element);
+	  temp = pt_append_varchar (parser, temp, elem);
+	  for (i = 1; i < size; i++)
+	    {
+	      error = db_set_get (db_get_set ((DB_VALUE *) val), i, &element);
+	      temp = pt_append_nulstring (parser, temp, ", ");
+	      elem = describe_value (parser, NULL, &element);
+	      temp = pt_append_varchar (parser, temp, elem);
+	    }
+	}
+      temp = pt_append_nulstring (parser, temp, "}");
+      result = temp;
+      break;
+
+    case DB_TYPE_OBJECT:
+      /* no printable representation!, should not get here */
+      result = pt_append_nulstring (parser, NULL, "NULL");
+      break;
+
+    case DB_TYPE_MONETARY:
+      /* This is handled explicitly because describe_value will
+         add a currency symbol, and it isn't needed here. */
+      result = pt_append_varchar (parser, NULL,
+				  describe_money
+				  (parser, NULL,
+				   DB_GET_MONETARY ((DB_VALUE *) val)));
+      break;
+
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      /* csql & everyone else get X'some_hex_string' */
+      result = describe_value (parser, NULL, val);
+      break;
+
+    case DB_TYPE_DATE:
+      /* csql & everyone else want DATE'mm/dd/yyyy' */
+      result = describe_value (parser, NULL, val);
+      break;
+
+    case DB_TYPE_TIME:
+      /* csql & everyone else get time 'hh:mi:ss' */
+      result = describe_value (parser, NULL, val);
+      break;
+
+    case DB_TYPE_UTIME:
+      /* everyone else gets csql's utime format */
+      result = describe_value (parser, NULL, val);
+
+      break;
+
+    case DB_TYPE_DATETIME:
+      /* everyone else gets csql's utime format */
+      result = describe_value (parser, NULL, val);
+      break;
+
+    default:
+      result = describe_value (parser, NULL, val);
+      break;
+    }
+  /* restore custom print */
+  parser->custom_print = save_custom;
+  return result;
 }
 
 /*
