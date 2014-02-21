@@ -621,7 +621,7 @@ static int pgbuf_invalidate_bcb (PGBUF_BCB * bufptr);
 static PGBUF_BCB *pgbuf_get_bcb_from_invalid_list (void);
 static int pgbuf_put_bcb_into_invalid_list (PGBUF_BCB * bufptr);
 static int pgbuf_get_lru_index (const VPID * vpid);
-static int pgbuf_get_victim_candidates_from_ain (int max_count);
+static int pgbuf_get_victim_candidates_from_ain (int check_count);
 static int pgbuf_get_victim_candidates_from_lru (int check_count,
 						 int victim_count);
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p,
@@ -2365,23 +2365,21 @@ pgbuf_compare_victim_list (const void *p1, const void *p2)
  * pgbuf_get_victim_candidates_from_ain () - get victim candidates from the
  *					     Ain list
  * return : error code or NO_ERROR
- * max_count (in) : maximum number of elements to visit in the queue
+ * check_count (in) : maximum number of elements to visit in the queue
  *
  */
 static int
-pgbuf_get_victim_candidates_from_ain (int max_count)
+pgbuf_get_victim_candidates_from_ain (int check_count)
 {
 #if defined (SERVER_MODE)
   int rv;
 #endif
   PGBUF_BCB *bufptr;
-  int victim_count, check_count;
+  int victim_count;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_list;
 
   victim_list = pgbuf_Pool.victim_cand_list;
   victim_count = 0;
-
-  check_count = max_count * pgbuf_Pool.num_LRU_list;
 
   MUTEX_LOCK_VIA_BUSY_WAIT (rv, pgbuf_Pool.buf_AIN_list.Ain_mutex);
   bufptr = pgbuf_Pool.buf_AIN_list.Ain_bottom;
@@ -2490,7 +2488,10 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 {
   PGBUF_BCB *bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
-  int i, victim_count, check_count, total_flushed_count;
+  int i, victim_count, victim_count_ain, victim_count_lru;
+  int check_count_one_lru, check_count_total;
+  int total_flushed_count;
+  int cnt_in_ain;
   int lru_idx, start_lru_idx;
   int error;
   int num_tries;
@@ -2523,17 +2524,37 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   start_lru_idx = lru_idx;
 
   victim_count = 0;
+  victim_count_ain = 0;
+  victim_count_lru = 0;
   total_flushed_count = 0;
 
-  check_count = MAX (1, (int) (PGBUF_LRU_SIZE * flush_ratio));
+  check_count_one_lru = MAX (1, (int) (PGBUF_LRU_SIZE * flush_ratio));
+  check_count_total = check_count_one_lru * pgbuf_Pool.num_LRU_list;
 
   /* Victims will only be flushed, not decached. The page replacement
-   * algorithm is not affected in any way by this function (other than
-   * allowing it to de-cache some pages at the next pass).
+   * algorithm invokes this function when no victims are found; at threshold
+   * condition, we must flush victims from both lists, because we cannot know
+   * from which list we will try to obtain a victim (pgbuf_get_victim)
    */
-  victim_count = pgbuf_get_victim_candidates_from_ain (check_count);
-  victim_count += pgbuf_get_victim_candidates_from_lru (check_count,
-							victim_count);
+
+  cnt_in_ain = pgbuf_Pool.buf_AIN_list.ain_count;
+  if (cnt_in_ain >= (pgbuf_Pool.buf_AIN_list.max_count - check_count_total)
+      && PGBUF_IS_2Q_ENABLED)
+    {
+      victim_count_ain =
+	pgbuf_get_victim_candidates_from_ain (check_count_total);
+    }
+  check_count_total = MAX (check_count_total - victim_count_ain, 0);
+  check_count_one_lru = (check_count_total + pgbuf_Pool.num_LRU_list)
+    / pgbuf_Pool.num_LRU_list;
+
+  if (check_count_one_lru > 0)
+    {
+      victim_count_lru =
+	pgbuf_get_victim_candidates_from_lru (check_count_one_lru,
+					      victim_count_ain);
+    }
+  victim_count = victim_count_lru + victim_count_ain;
   if (victim_count == 0)
     {
       /* We didn't find any victims */
@@ -2547,7 +2568,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   while (total_flushed_count <= 0 && num_tries <= 2)
     {
       /* for each victim candidate, do flush task */
-      for (i = 0; i < victim_count && total_flushed_count < check_count; i++)
+      for (i = 0; i < victim_count; i++)
 	{
 	  bufptr = victim_cand_list[i].bufptr;
 
@@ -2592,13 +2613,14 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 
 end:
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: "
-		"flush %d pages from (%d) to (%d) list.",
+		"flush %d pages from (%d) to (%d) list. "
+		"Found AIN:%d/%d, Found LRU:%d",
 		total_flushed_count, start_lru_idx,
-		pgbuf_Pool.last_flushed_LRU_list_idx);
+		pgbuf_Pool.last_flushed_LRU_list_idx,
+		victim_count_ain, cnt_in_ain, victim_count_lru);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	  ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
-  er_log_debug (ARG_FILE_LINE, "end flush victim candidates\n");
 
   return NO_ERROR;
 }
