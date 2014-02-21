@@ -1028,6 +1028,7 @@ static int qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain,
 static int qexec_execute_build_columns (THREAD_ENTRY * thread_p,
 					XASL_NODE * xasl,
 					XASL_STATE * xasl_state);
+static int qexec_agg_resolve_result_type (XASL_NODE * xasl);
 
 #if defined(SERVER_MODE)
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -8772,6 +8773,17 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   if (xb_scan != S_END)		/* an error happened */
+    {
+      return S_ERROR;
+    }
+
+  /* Resolve the final result of aggregate function.
+   * Since the evaluation value might be changed to keep the
+   * precision during the aggregate function evaluation, for example,
+   * use DOUBLE instead FLOAT, we need to cast the result to the
+   * original domain.
+   */
+  if (qexec_agg_resolve_result_type (xasl) != NO_ERROR)
     {
       return S_ERROR;
     }
@@ -21176,6 +21188,14 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 					   DB_VALUE_SCALE (dbval), NULL,
 					   NULL);
 		    }
+		  else if (DB_VALUE_TYPE (dbval) == DB_TYPE_FLOAT)
+		    {
+		      agg_p->accumulator_domain.value_dom =
+			tp_domain_resolve (DB_TYPE_DOUBLE, NULL,
+					   DB_DOUBLE_DECIMAL_PRECISION,
+					   DB_VALUE_SCALE (dbval), NULL,
+					   NULL);
+		    }
 		  else
 		    {
 		      agg_p->accumulator_domain.value_dom =
@@ -29175,4 +29195,52 @@ qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p,
   /* reached end of scan, no match */
   *found = false;
   return (context->part_scan_code == S_ERROR ? ER_FAILED : NO_ERROR);
+}
+
+/*
+ * qexec_agg_resolve_result_type () - In order to keep the precision of 
+ *                                    SUM() during the evaluation, we set 
+ *                                    DOUBLE of value type for FLOAT, finally
+ *                                    we need to cast the result to FLOAT
+ *   return: error indicator.
+ *   xasl(in/out): xasl node, provided aggregate info
+ */
+static int
+qexec_agg_resolve_result_type (XASL_NODE * xasl)
+{
+  AGGREGATE_TYPE *agg;
+  int res;
+
+  /* first get the aggregate list */
+  switch (xasl->type)
+    {
+    case BUILDLIST_PROC:
+      agg = xasl->proc.buildlist.g_agg_list;
+      break;
+
+    case BUILDVALUE_PROC:
+      agg = xasl->proc.buildvalue.agg_list;
+      break;
+
+    default:
+      /* no need to do this for others */
+      return NO_ERROR;
+    }
+
+  for (; agg != NULL; agg = agg->next)
+    {
+      if (agg->function == PT_SUM
+	  && agg->domain != agg->accumulator_domain.value_dom)
+	{
+	  /* cast value */
+	  res = db_value_coerce (agg->accumulator.value,
+				 agg->accumulator.value, agg->domain);
+	  if (res != NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+    }
+
+  return res;
 }
