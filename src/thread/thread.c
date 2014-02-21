@@ -168,19 +168,18 @@ static DAEMON_THREAD_MONITOR *thread_Deamons[] = {
   &thread_Auto_volume_expansion_thread
 };
 
-typedef THREAD_RET_T (*THREAD_FUNCTION) (void *args);
-static THREAD_FUNCTION thread_Deamon_functions[] = {
-  thread_log_clock_thread,
-  thread_deadlock_detect_thread,
-  thread_checkpoint_thread,
-  thread_purge_archive_logs_thread,
-  css_oob_handler_thread,
-  thread_page_flush_thread,
-  thread_flush_control_thread,
-  thread_session_control_thread,
-  thread_log_flush_thread,
-  thread_check_ha_delay_info_thread,
-  thread_auto_volume_expansion_thread
+static void *thread_Deamon_functions[] = {
+  (void *) thread_log_clock_thread,
+  (void *) thread_deadlock_detect_thread,
+  (void *) thread_checkpoint_thread,
+  (void *) thread_purge_archive_logs_thread,
+  (void *) css_oob_handler_thread,
+  (void *) thread_page_flush_thread,
+  (void *) thread_flush_control_thread,
+  (void *) thread_session_control_thread,
+  (void *) thread_log_flush_thread,
+  (void *) thread_check_ha_delay_info_thread,
+  (void *) thread_auto_volume_expansion_thread
 };
 
 static int css_initialize_sync_object (void);
