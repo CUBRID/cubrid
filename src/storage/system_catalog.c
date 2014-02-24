@@ -1533,8 +1533,9 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p,
 {
   VPID root_vpid;
   PAGE_PTR root_page_p;
-  BTREE_ROOT_HEADER root_header;
+  BTREE_ROOT_HEADER *root_header;
   int i;
+  OR_BUF buf;
 
   if (catalog_read_unread_portion (thread_p, catalog_record_p,
 				   CATALOG_BT_STATS_SIZE) != NO_ERROR)
@@ -1571,15 +1572,18 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p,
 
   (void) pgbuf_check_page_ptype (thread_p, root_page_p, PAGE_BTREE);
 
-  if (btree_read_root_header (root_page_p, &root_header) != NO_ERROR)
+  root_header = btree_get_root_header_ptr (root_page_p);
+  if (root_header == NULL)
     {
       pgbuf_unfix_and_init (thread_p, root_page_p);
       return ER_FAILED;
     }
 
+  or_init (&buf, root_header->packed_key_domain, -1);
+  btree_stats_p->key_type = or_get_domain (&buf, NULL, NULL);
+
   pgbuf_unfix_and_init (thread_p, root_page_p);
 
-  btree_stats_p->key_type = root_header.key_type;
   if (TP_DOMAIN_TYPE (btree_stats_p->key_type) == DB_TYPE_MIDXKEY)
     {
       btree_stats_p->pkeys_size =
@@ -5149,7 +5153,8 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
       free_disk_rep = true;
     }
 
-  cls_rep = heap_classrepr_get (thread_p, class_oid, NULL, 0, &idx_cache, true);
+  cls_rep =
+    heap_classrepr_get (thread_p, class_oid, NULL, 0, &idx_cache, true);
   if (cls_rep == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
@@ -5274,7 +5279,7 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
       *cardinality = 0;
       for (i = 0; i < count; i++)
 	{
-	   /* clean subclass loaded in previous iteration */
+	  /* clean subclass loaded in previous iteration */
 	  if (subcls_info != NULL)
 	    {
 	      catalog_free_class_info (subcls_info);
@@ -5300,15 +5305,17 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
 	    }
 
 	  /* get disk repr for subclass */
-	  error = catalog_get_last_representation_id (thread_p, &partitions[i],
-						      &subcls_repr_id);
+	  error =
+	    catalog_get_last_representation_id (thread_p, &partitions[i],
+						&subcls_repr_id);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_cleanup;
 	    }
 
-	  subcls_disk_rep = catalog_get_representation (thread_p, &partitions[i],
-							subcls_repr_id);
+	  subcls_disk_rep =
+	    catalog_get_representation (thread_p, &partitions[i],
+					subcls_repr_id);
 	  if (subcls_disk_rep == NULL)
 	    {
 	      error = er_errid ();
@@ -5335,16 +5342,16 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
 	    }
 	  if (!is_subcls_attr_found)
 	    {
-	       for (att_cnt = 0, subcls_attr = subcls_disk_rep->variable;
-		    att_cnt < subcls_disk_rep->n_variable; att_cnt++,
-							   subcls_attr++)
-		 {
+	      for (att_cnt = 0, subcls_attr = subcls_disk_rep->variable;
+		   att_cnt < subcls_disk_rep->n_variable; att_cnt++,
+		   subcls_attr++)
+		{
 		  if (disk_attr_p->id == subcls_attr->id)
 		    {
 		      is_subcls_attr_found = true;
 		      break;
 		    }
-		 }
+		}
 	    }
 
 	  if (!is_subcls_attr_found)

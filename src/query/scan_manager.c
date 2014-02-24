@@ -3162,7 +3162,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   VPID Root_vpid;
   PAGE_PTR Root;
   RECDES Rec;
-  BTREE_ROOT_HEADER root_header;
+  BTREE_ROOT_HEADER *root_header;
   BTREE_SCAN *BTS;
   int coverage_enabled;
   int func_index_col_id;
@@ -3189,16 +3189,32 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   (void) pgbuf_check_page_ptype (thread_p, Root, PAGE_BTREE);
 
-  if (btree_read_root_header (Root, &root_header) != NO_ERROR)
+  root_header = btree_get_root_header_ptr (Root);
+  if (root_header == NULL)
     {
       pgbuf_unfix_and_init (thread_p, Root);
       return ER_FAILED;
     }
 
-  pgbuf_unfix_and_init (thread_p, Root);
-
   /* initialize INDEX_SCAN_ID structure */
   isidp = &scan_id->s.isid;
+
+  /* index scan info */
+  BTS = &isidp->bt_scan;
+
+  /* construct BTID_INT structure */
+  BTS->btid_int.sys_btid = btid;
+
+  if (btree_glean_root_header_info (thread_p,
+				    root_header, &BTS->btid_int) != NO_ERROR)
+    {
+      pgbuf_unfix_and_init (thread_p, Root);
+      goto exit_on_error;
+    }
+
+  pgbuf_unfix_and_init (thread_p, Root);
+
+  BTREE_INIT_SCAN (BTS);
 
   /* index information */
   isidp->indx_info = indx_info;
@@ -3216,19 +3232,6 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* initialize key limits */
   if (scan_init_index_key_limit (thread_p, isidp, &indx_info->key_info, vd) !=
       NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  BTS = &isidp->bt_scan;
-
-  /* index scan info */
-  BTREE_INIT_SCAN (BTS);
-
-  /* construct BTID_INT structure */
-  BTS->btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p,
-				    &root_header, &BTS->btid_int) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -3387,7 +3390,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   if (scan_init_indx_coverage (thread_p, coverage_enabled, output_val_list,
 			       regu_val_list, vd, query_id,
-			       root_header.node.max_key_len,
+			       root_header->node.max_key_len,
 			       func_index_col_id,
 			       &(isidp->indx_cov)) != NO_ERROR)
     {

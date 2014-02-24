@@ -181,7 +181,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
   VPID root_vpid;
   PAGE_PTR root;
   RECDES rec;
-  BTREE_ROOT_HEADER root_header;
+  BTREE_ROOT_HEADER *root_header;
   BTID_INT btid_int;
 
   or_rep = or_get_classrep (record, NULL_REPRID);
@@ -342,22 +342,24 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
 	      (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
 
-	      if (btree_read_root_header (root, &root_header) != NO_ERROR)
+	      root_header = btree_get_root_header_ptr (root);
+	      if (root_header == NULL)
+		{
+		  pgbuf_unfix_and_init (thread_p, root);
+		  continue;
+		}
+
+	      /* construct BTID_INT structure */
+	      btid_int.sys_btid = &bt_statsp->btid;
+	      if (btree_glean_root_header_info (thread_p,
+						root_header,
+						&btid_int) != NO_ERROR)
 		{
 		  pgbuf_unfix_and_init (thread_p, root);
 		  continue;
 		}
 
 	      pgbuf_unfix_and_init (thread_p, root);
-
-	      /* construct BTID_INT structure */
-	      btid_int.sys_btid = &bt_statsp->btid;
-	      if (btree_glean_root_header_info (thread_p,
-						&root_header,
-						&btid_int) != NO_ERROR)
-		{
-		  continue;
-		}
 
 	      bt_statsp->key_type = btid_int.key_type;
 	      if (TP_DOMAIN_TYPE (bt_statsp->key_type) == DB_TYPE_MIDXKEY)

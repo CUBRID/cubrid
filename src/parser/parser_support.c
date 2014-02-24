@@ -57,6 +57,7 @@
 #include "xasl_generation.h"
 #include "schema_manager.h"
 #include "object_print.h"
+#include "btree_load.h"
 #include "show_meta.h"
 
 #define DEFAULT_VAR "."
@@ -90,6 +91,8 @@ struct pt_host_vars
         (pt_is_dot_node(node) || pt_is_attr(node) || pt_is_query(node) \
          || (pt_is_expr_node(node) \
              && PT_EXPR_INFO_IS_FLAGED(node, PT_EXPR_INFO_GROUPBYNUM_NC)))
+
+#define DB_ENUM_ELEMENTS_MAX_AGG_SIZE (DB_PAGESIZE - offsetof (BTREE_ROOT_HEADER, packed_key_domain) - 1)
 
 int qp_Packing_er_code = NO_ERROR;
 

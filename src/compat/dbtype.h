@@ -402,7 +402,6 @@
 #define DB_BIGINT_MIN  (-DB_BIGINT_MAX - 1LL)
 #endif /* (__WORDSIZE == 64) || defined(_WIN64) */
 #define DB_ENUM_ELEMENTS_MAX  512
-#define DB_ENUM_ELEMENTS_MAX_AGG_SIZE (DB_PAGESIZE - ROOT_HEADER_FIXED_SIZE - 1)
 /* special ENUM index for PT_TO_ENUMERATION_VALUE function */
 #define DB_ENUM_OVERFLOW_VAL  0xFFFF
 
