@@ -534,7 +534,7 @@ static int btree_leaf_remove_last_oid (BTID_INT * btid, RECDES * recp,
 static void btree_leaf_set_flag (RECDES * recp, short record_flag);
 static void btree_leaf_clear_flag (RECDES * recp, short record_flag);
 static short btree_leaf_get_flag (RECDES * recp);
-static short btree_leaf_is_flaged (RECDES * recp, short record_flag);
+static bool btree_leaf_is_flaged (RECDES * recp, short record_flag);
 static int btree_leaf_rebuild_record (RECDES * recp, BTID_INT * btid,
 				      OID * oidp, OID * class_oidp);
 static char *btree_leaf_get_oid_from_oidptr (BTREE_SCAN * bts,
@@ -1564,12 +1564,14 @@ btree_leaf_get_flag (RECDES * recp)
  *   recp(in):
  *   record_flag(in):
  */
-static short
+static bool
 btree_leaf_is_flaged (RECDES * recp, short record_flag)
 {
+  short ret;
   assert ((short) (record_flag & ~BTREE_LEAF_RECORD_MASK) == 0);
 
-  return (OR_GET_SHORT (recp->data + OR_OID_SLOTID) & record_flag);
+  ret = OR_GET_SHORT (recp->data + OR_OID_SLOTID) & record_flag;
+  return ret ? true : false;
 }
 
 /*
