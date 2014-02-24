@@ -243,12 +243,8 @@ make_mergelist_proc (QO_ENV * env,
   QO_TERM *term;
   QO_EQCLASS *order;
   BITSET_ITERATOR bi;
-  BITSET merge_eqclass;
-  BITSET merge_terms;
   BITSET term_segs;
 
-  bitset_init (&merge_eqclass, env);
-  bitset_init (&merge_terms, env);
   bitset_init (&term_segs, env);
 
   if (env == NULL || plan == NULL)
@@ -258,9 +254,8 @@ make_mergelist_proc (QO_ENV * env,
 
   parser = QO_ENV_PARSER (env);
 
-  merge =
-    ptqo_to_merge_list_proc (parser, left, rght,
-			     plan->plan_un.join.join_type);
+  merge = ptqo_to_merge_list_proc (parser, left, rght,
+				   plan->plan_un.join.join_type);
 
   if (merge == NULL || left == NULL || left_list == NULL || rght == NULL
       || rght_list == NULL)
@@ -272,25 +267,10 @@ make_mergelist_proc (QO_ENV * env,
 
   ls_merge->join_type = plan->plan_un.join.join_type;
 
-  for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi);
-       i != -1; i = bitset_next_member (&bi))
-    {
-      term = QO_ENV_TERM (env, i);
-      order = QO_TERM_EQCLASS (term);
+  ncols = ls_merge->ls_column_cnt =
+    bitset_cardinality (&(plan->plan_un.join.join_terms));
+  assert (ncols > 0);
 
-      if (order != QO_UNORDERED)
-	{
-	  if (BITSET_MEMBER (merge_eqclass, QO_EQCLASS_IDX (order)))
-	    {
-	      continue;
-	    }
-	  bitset_add (&merge_eqclass, QO_EQCLASS_IDX (order));
-	}
-
-      bitset_add (&merge_terms, i);
-    }
-
-  ncols = ls_merge->ls_column_cnt = bitset_cardinality (&merge_terms);
   ls_merge->ls_outer_column =
     (int *) pt_alloc_packing_buf (ncols * sizeof (int));
   if (ls_merge->ls_outer_column == NULL)
@@ -321,11 +301,11 @@ make_mergelist_proc (QO_ENV * env,
     }
 
   left_order = left->orderby_list = make_sort_list_after_eqclass (env, ncols);
-  rght_order = rght->orderby_list = make_sort_list_after_eqclass (env, ncols);
+  rght_order = rght->orderby_list = make_sort_list_after_eqclass (env, 1);
 
   cnt = 0;			/* init */
   left_epos = rght_epos = 0;	/* init */
-  for (i = bitset_iterate (&merge_terms, &bi);
+  for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi);
        i != -1; i = bitset_next_member (&bi))
     {
 
@@ -403,31 +383,30 @@ make_mergelist_proc (QO_ENV * env,
 
       ls_merge->ls_inner_unique[cnt] = false;	/* currently, unused */
 
-      if (left_order == NULL)
+      if (left_order)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		  ER_FAILED_ASSERTION, 1, "left_order != NULL");
-	  goto exit_on_error;
-	}
-      left_order->s_order = S_ASC;
-      left_order->pos_descr.pos_no = ls_merge->ls_outer_column[cnt];
-      left_order->pos_descr.dom = pt_xasl_node_to_domain (parser, outer_attr);
-      left_order = left_order->next;
-
-      if (rght_order == NULL)
-	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		  ER_FAILED_ASSERTION, 1, "rght_order != NULL");
-	  goto exit_on_error;
+	  left_order->s_order = S_ASC;
+	  left_order->pos_descr.pos_no = ls_merge->ls_outer_column[cnt];
+	  left_order->pos_descr.dom =
+	    pt_xasl_node_to_domain (parser, outer_attr);
+	  left_order = left_order->next;
 	}
 
-      rght_order->s_order = S_ASC;
-      rght_order->pos_descr.pos_no = ls_merge->ls_inner_column[cnt];
-      rght_order->pos_descr.dom = pt_xasl_node_to_domain (parser, inner_attr);
-      rght_order = rght_order->next;
+      if (rght_order)
+	{
+	  assert (cnt == 0);
+
+	  rght_order->s_order = S_ASC;
+	  rght_order->pos_descr.pos_no = ls_merge->ls_inner_column[cnt];
+	  rght_order->pos_descr.dom =
+	    pt_xasl_node_to_domain (parser, inner_attr);
+	  rght_order = rght_order->next;
+	  assert (rght_order == NULL);
+	}
 
       cnt++;
     }				/* for (i = ... ) */
+  assert (cnt == ncols);
 
   left_elen = bitset_cardinality (left_exprs);
   left_nlen = pt_length_of_list (left_list) - left_elen;
@@ -584,8 +563,6 @@ make_mergelist_proc (QO_ENV * env,
 exit_on_end:
 
   bitset_delset (&term_segs);
-  bitset_delset (&merge_terms);
-  bitset_delset (&merge_eqclass);
 
   return merge;
 
