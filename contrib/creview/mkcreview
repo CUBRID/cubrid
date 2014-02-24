@@ -28,6 +28,8 @@ Changelog
     Add --upload option
   2014-02-18 xkyu
     Support asterisk in -u option. (eg. -u '*.txt')
+  2014-02-24 xkyu
+    Use PATH env for svn, indent, touch
 '''
 
 import os
@@ -49,6 +51,16 @@ forceyes = False
 exclude_list = ['configure', 'Makefile.in', 'makefile']
 donottouch_dirs = ['heaplayers', 'contrib']
 donottouch_files = ['loader_grammar.c', 'loader_grammar.h', 'loader_old_grammar.c', 'loader_old_grammar.h', 'esql_grammar.c', 'esql_grammar.h', 'esql_lexer.c', 'loader_lexer.c', 'loader_old_lexer.c', 'csql_lexer.c', 'cnvlex.c']
+
+
+def which (prog):
+  for path in os.environ["PATH"].split(os.pathsep):
+    exec_file = os.path.join(path.strip('"'), prog)
+    if os.path.isfile(exec_file) and os.access(exec_file, os.X_OK):
+      if verbose:
+        print "path for %s: [%s]" % (prog, exec_file)
+      return exec_file
+  return None
 
 
 def getSvnStatusList (inputfiles):
@@ -215,18 +227,18 @@ def prepareCodeReviewFile (output, files):
         if verbose: print 'changing mode...', files[i][1]
         os.chmod (files[i][1], 0644)
         if verbose: print 'indenting...', files[i][1]
-        os.system ('/usr/bin/indent ' + files[i][1])
+        os.system ('indent ' + files[i][1])
       if len (dirname) >= 0:
         shutil.copy (files[i][1], new_path)
         svn_file_path = svn_output_base + '/' + files[i][1]
         if not os.path.exists (svn_file_path):
-          os.system ('/bin/touch ' + '"' + svn_file_path + '"')
+          os.system ('touch ' + '"' + svn_file_path + '"')
     if not files[i][0] == 'A':
       if len (dirname) >= 0:
-        os.system ('/usr/bin/svn cat "%s" > "%s/%s"' % (files[i][1], svn_output_base, files[i][1]))
+        os.system ('svn cat "%s" > "%s/%s"' % (files[i][1], svn_output_base, files[i][1]))
         new_file_path = new_output_base + '/' + files[i][1]
         if not os.path.exists (new_file_path):
-          os.system ('/bin/touch ' + new_file_path)
+          os.system ('touch ' + new_file_path)
 
   print 'Prepared files :'
   for i in range (len (files)):
@@ -251,7 +263,7 @@ def createCodeReviewFile (path, output):
         print 'Aborted.'
         sys.exit()
 
-  os.system ('/usr/bin/svn status > %s/status.txt' % (path))
+  os.system ('svn status > %s/status.txt' % (path))
 
   tar = tarfile.open (output, "w:gz")
   tar.add (path)
@@ -369,6 +381,12 @@ def main ():
     crfile = 'CODE_REVIEW.creview'
   if not crfile.endswith('.creview'):
     crfile += '.creview'
+
+  # check environment (svn, indent, touch)
+  for tool in ['svn', 'indent', 'touch']:
+    if not which (tool):
+      print >> sys.stderr, "Cannot find (%s). Check your PATH environment variable. Aborted." % (tool)
+      sys.exit (2)
 
   # get code review filename
   if len (args) > 0:
