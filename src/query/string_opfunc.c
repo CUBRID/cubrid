@@ -12050,7 +12050,7 @@ db_sys_date_and_epoch_time (DB_VALUE * dt_dbval, DB_VALUE * ts_dbval)
 		      c_time_struct->tm_sec, tloc.millitm);
 
   DB_MAKE_DATETIME (dt_dbval, &datetime);
-  DB_MAKE_TIMESTAMP (ts_dbval, (DB_TIMESTAMP *) (&tloc.time));
+  DB_MAKE_TIMESTAMP (ts_dbval, (DB_TIMESTAMP) tloc.time);
 
   return error_status;
 }
