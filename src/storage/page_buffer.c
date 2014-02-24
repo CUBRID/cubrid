@@ -684,12 +684,6 @@ static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 #endif /* NDEBUG */
 #endif /* SERVER_MODE */
 
-static DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p,
-					 const VPID * vpid,
-					 DISK_ISVALID (*fun) (const VPID *
-							      vpid,
-							      void *args),
-					 void *args);
 static bool pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p,
 					     int page_validation_level);
 static bool pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr);
@@ -1154,7 +1148,8 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
 				       PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
-      if (pgbuf_is_valid_page (thread_p, vpid, NULL, NULL) != DISK_VALID)
+      if (pgbuf_is_valid_page (thread_p, vpid, false,
+			       NULL, NULL) != DISK_VALID)
 	{
 	  return NULL;
 	}
@@ -2894,7 +2889,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 	  if (pgbuf_get_check_page_validation (thread_p,
 					       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	    {
-	      if (pgbuf_is_valid_page (thread_p, vpid,
+	      if (pgbuf_is_valid_page (thread_p, vpid, false
 				       NULL, NULL) != DISK_VALID)
 		{
 		  return NULL;
@@ -2993,7 +2988,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 	  if (pgbuf_get_check_page_validation (thread_p,
 					       PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	    {
-	      if (pgbuf_is_valid_page (thread_p, vpid,
+	      if (pgbuf_is_valid_page (thread_p, vpid, false
 				       NULL, NULL) != DISK_VALID)
 		{
 		  return NULL;
@@ -7591,9 +7586,10 @@ pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p,
  *       The function is a NOOP if we are not running with full debugging
  *       capacbilities.
  */
-static DISK_ISVALID
+DISK_ISVALID
 pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid,
-		     DISK_ISVALID (*fun) (const VPID * vpid, void *args),
+		     bool no_error, DISK_ISVALID (*fun) (const VPID * vpid,
+							 void *args),
 		     void *args)
 {
   DISK_ISVALID valid;
@@ -7601,7 +7597,7 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid,
   if (fileio_get_volume_label (vpid->volid, PEEK) == NULL
       || VPID_ISNULL (vpid))
     {
-      assert (false);
+      assert (no_error);
 
       return DISK_INVALID;
     }
@@ -7610,7 +7606,7 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid,
   if (valid != DISK_VALID
       || (fun != NULL && (valid = (*fun) (vpid, args)) != DISK_VALID))
     {
-      if (valid != DISK_ERROR)
+      if (valid != DISK_ERROR && !no_error)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_PB_BAD_PAGEID, 2, vpid->pageid,

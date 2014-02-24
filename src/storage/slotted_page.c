@@ -114,6 +114,23 @@ struct spage_save_head
   SPAGE_SAVE_ENTRY *first;	/* First saving space entry */
 };
 
+/* context for slotted page header scan */
+typedef struct spage_header_context SPAGE_HEADER_CONTEXT;
+struct spage_header_context
+{
+  VPID vpid;
+  SPAGE_HEADER header;
+};
+
+/* context for slotted page slots scan */
+typedef struct spage_slots_context SPAGE_SLOTS_CONTEXT;
+struct spage_slots_context
+{
+  VPID vpid;			/* vpid of specified page */
+  PAGE_PTR pgptr;		/* The page load by pgbuf_fix */
+  SPAGE_SLOT *slot;		/* Iterator about slot in the page */
+};
+
 static MHT_TABLE *spage_Mht_saving;	/* Memory hash table for savings */
 
 static int spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * sphdr,
@@ -130,6 +147,7 @@ static int spage_get_total_saved_spaces (THREAD_ENTRY * thread_p,
 static void spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p,
 						    FILE * fp, VPID * vpid);
 static int spage_compare_slot_offset (const void *arg1, const void *arg2);
+static bool spage_is_slotted_page_type (PAGE_TYPE ptype);
 
 static int spage_check_space (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 			      SPAGE_HEADER * page_header_p, int space);
@@ -1141,6 +1159,29 @@ spage_compare_slot_offset (const void *arg1, const void *arg2)
 }
 
 /*
+ * spage_is_slotted_page_type () - Whether or not a slotted page type
+ *   return: yes - true, no - false
+ *
+ *   ptype(in): page type
+ */
+static bool
+spage_is_slotted_page_type (PAGE_TYPE ptype)
+{
+  switch (ptype)
+    {
+    case PAGE_HEAP:
+    case PAGE_BTREE:
+    case PAGE_EHASH:
+    case PAGE_LARGEOBJ:
+    case PAGE_CATALOG:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
  * spage_compact () -  Compact an slotted page
  *   return:
  *
@@ -1161,15 +1202,7 @@ spage_compact (PAGE_PTR page_p)
   assert (page_p != NULL);
 
   ptype = pgbuf_get_page_ptype (NULL, page_p);
-  assert_release (ptype < PAGE_LAST);
-  assert_release (ptype != PAGE_UNKNOWN);
-  assert_release (ptype != PAGE_FTAB);
-  assert_release (ptype != PAGE_VOLHEADER);
-  assert_release (ptype != PAGE_VOLBITMAP);
-  assert_release (ptype != PAGE_XASL);
-  assert_release (ptype != PAGE_QRESULT);
-  assert_release (ptype != PAGE_OVERFLOW);
-  assert_release (ptype != PAGE_AREA);
+  assert_release (spage_is_slotted_page_type (ptype));
 
   page_header_p = (SPAGE_HEADER *) page_p;
   spage_verify_header (page_p);
@@ -4732,4 +4765,361 @@ spage_reduce_contiguous_free_space (PAGE_PTR page_p, int space)
   page_header_p->offset_to_free_area += space;
 
   spage_verify_header (page_p);
+}
+
+
+/*
+ * spage_header_start_scan () - 
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   show_type(in):
+ *   arg_values(in):
+ *   arg_cnt(in):
+ *   ptr(out): allocate new context. should free by end_scan() function
+ */
+int
+spage_header_start_scan (THREAD_ENTRY * thread_p, int show_type,
+			 DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+{
+  int error = NO_ERROR;
+  DB_VALUE *arg_val0, *arg_val1;
+  SPAGE_HEADER_CONTEXT *ctx;
+  PAGE_PTR pgptr;
+  PAGE_TYPE ptype;
+
+  *ptr = NULL;
+
+  arg_val0 = arg_values[0];
+  arg_val1 = arg_values[1];
+
+  assert (arg_val0 != NULL && DB_VALUE_TYPE (arg_val0) == DB_TYPE_INTEGER);
+  assert (arg_val1 != NULL && DB_VALUE_TYPE (arg_val1) == DB_TYPE_INTEGER);
+
+  ctx = (SPAGE_HEADER_CONTEXT *)
+    db_private_alloc (thread_p, sizeof (SPAGE_HEADER_CONTEXT));
+
+  if (ctx == NULL)
+    {
+      error = er_errid ();
+      goto exit_on_error;
+    }
+
+  ctx->vpid.volid = db_get_int (arg_val0);
+  ctx->vpid.pageid = db_get_int (arg_val1);
+
+  if (pgbuf_is_valid_page (thread_p, &ctx->vpid, true, NULL, NULL) !=
+      DISK_VALID)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_PAGE_NOT_FOUND, 2,
+	      ctx->vpid.pageid, ctx->vpid.volid);
+      error = ER_DIAG_PAGE_NOT_FOUND;
+      goto exit_on_error;
+    }
+
+  pgptr = pgbuf_fix (thread_p, &ctx->vpid, OLD_PAGE, PGBUF_LATCH_READ,
+		     PGBUF_UNCONDITIONAL_LATCH);
+  if (pgptr == NULL)
+    {
+      error = er_errid ();
+      goto exit_on_error;
+    }
+
+  ptype = pgbuf_get_page_ptype (thread_p, pgptr);
+  if (!spage_is_slotted_page_type (ptype))
+    {
+      pgbuf_unfix_and_init (thread_p, pgptr);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_NOT_SPAGE, 2,
+	      ctx->vpid.pageid, ctx->vpid.volid);
+      error = ER_DIAG_NOT_SPAGE;
+      goto exit_on_error;
+    }
+
+  memcpy (&ctx->header, pgptr, sizeof (ctx->header));
+  pgbuf_unfix_and_init (thread_p, pgptr);
+
+  *ptr = ctx;
+
+  return NO_ERROR;
+
+exit_on_error:
+  if (ctx != NULL)
+    {
+      db_private_free_and_init (thread_p, ctx);
+    }
+
+  return error;
+}
+
+/*
+ * spage_header_next_scan () - 
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   cursor(in):
+ *   out_values(in):
+ *   out_cnt(in):
+ *   ptr(in): context pointer
+ */
+SCAN_CODE
+spage_header_next_scan (THREAD_ENTRY * thread_p, int cursor,
+			DB_VALUE ** out_values, int out_cnt, void *ptr)
+{
+  int idx = 0;
+  SPAGE_HEADER_CONTEXT *ctx = (SPAGE_HEADER_CONTEXT *) ptr;
+  SPAGE_HEADER *header = (SPAGE_HEADER *) (&ctx->header);
+
+  if (cursor >= 1)
+    {
+      return S_END;
+    }
+
+  db_make_int (out_values[idx], ctx->vpid.volid);
+  idx++;
+
+  db_make_int (out_values[idx], ctx->vpid.pageid);
+  idx++;
+
+  db_make_int (out_values[idx], header->num_slots);
+  idx++;
+
+  db_make_int (out_values[idx], header->num_records);
+  idx++;
+
+  db_make_string (out_values[idx],
+		  spage_anchor_flag_string (header->anchor_type));
+  idx++;
+
+  db_make_string (out_values[idx],
+		  spage_alignment_string (header->alignment));
+  idx++;
+
+  db_make_int (out_values[idx], header->total_free);
+  idx++;
+
+  db_make_int (out_values[idx], header->cont_free);
+  idx++;
+
+  db_make_int (out_values[idx], header->offset_to_free_area);
+  idx++;
+
+  db_make_int (out_values[idx], header->is_saving);
+  idx++;
+
+  db_make_int (out_values[idx], header->need_update_best_hint);
+  idx++;
+
+  assert (idx == out_cnt);
+
+  return S_SUCCESS;
+}
+
+/*
+ * spage_header_end_scan () - free the context
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   ptr(in): context pointer
+ */
+int
+spage_header_end_scan (THREAD_ENTRY * thread_p, void **ptr)
+{
+  if (*ptr != NULL)
+    {
+      db_private_free_and_init (thread_p, *ptr);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * spage_slots_start_scan () - 
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   show_type(in):
+ *   arg_values(in):
+ *   arg_cnt(in):
+ *   ptr(out): allocate new context. should free by end_scan() function
+ */
+int
+spage_slots_start_scan (THREAD_ENTRY * thread_p, int show_type,
+			DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+{
+  int error = NO_ERROR;
+  VPID vpid;
+  SPAGE_HEADER *header = NULL;
+  DB_VALUE *arg_val0, *arg_val1;
+  SPAGE_SLOTS_CONTEXT *ctx;
+  PAGE_PTR pgptr;
+  PAGE_TYPE ptype;
+
+  *ptr = NULL;
+
+  arg_val0 = arg_values[0];
+  arg_val1 = arg_values[1];
+
+  assert (arg_val0 != NULL && DB_VALUE_TYPE (arg_val0) == DB_TYPE_INTEGER);
+  assert (arg_val1 != NULL && DB_VALUE_TYPE (arg_val1) == DB_TYPE_INTEGER);
+
+  ctx = (SPAGE_SLOTS_CONTEXT *)
+    db_private_alloc (thread_p, sizeof (SPAGE_SLOTS_CONTEXT));
+
+  if (ctx == NULL)
+    {
+      error = er_errid ();
+      goto exit_on_error;
+    }
+
+  memset (ctx, 0, sizeof (SPAGE_SLOTS_CONTEXT));
+
+  ctx->vpid.volid = db_get_int (arg_val0);
+  ctx->vpid.pageid = db_get_int (arg_val1);
+
+  if (pgbuf_is_valid_page (thread_p, &ctx->vpid, true, NULL, NULL) !=
+      DISK_VALID)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_PAGE_NOT_FOUND, 2,
+	      ctx->vpid.pageid, ctx->vpid.volid);
+      error = ER_DIAG_PAGE_NOT_FOUND;
+      goto exit_on_error;
+    }
+
+  ctx->pgptr = (PAGE_PTR) db_private_alloc (thread_p, DB_PAGESIZE);
+  if (ctx->pgptr == NULL)
+    {
+      error = er_errid ();
+      goto exit_on_error;
+    }
+
+  pgptr = pgbuf_fix (thread_p, &ctx->vpid, OLD_PAGE, PGBUF_LATCH_READ,
+		     PGBUF_UNCONDITIONAL_LATCH);
+  if (pgptr == NULL)
+    {
+      error = er_errid ();
+      goto exit_on_error;
+    }
+
+  ptype = pgbuf_get_page_ptype (thread_p, pgptr);
+  if (!spage_is_slotted_page_type (ptype))
+    {
+      pgbuf_unfix_and_init (thread_p, pgptr);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_NOT_SPAGE, 2,
+	      ctx->vpid.pageid, ctx->vpid.volid);
+      error = ER_DIAG_NOT_SPAGE;
+      goto exit_on_error;
+    }
+
+  memcpy (ctx->pgptr, pgptr, DB_PAGESIZE);
+  pgbuf_unfix_and_init (thread_p, pgptr);
+
+  header = (SPAGE_HEADER *) ctx->pgptr;
+  ctx->slot = spage_find_slot ((PAGE_PTR) header, header, 0, false);
+
+  *ptr = ctx;
+
+  return NO_ERROR;
+
+exit_on_error:
+  if (ctx != NULL)
+    {
+      if (ctx->pgptr != NULL)
+	{
+	  db_private_free (thread_p, ctx->pgptr);
+	}
+
+      db_private_free_and_init (thread_p, ctx);
+    }
+
+  return error;
+}
+
+/*
+ * spage_slots_next_scan () - 
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   cursor(in):
+ *   out_values(in):
+ *   out_cnt(in):
+ *   ptr(in): context pointer
+ */
+SCAN_CODE
+spage_slots_next_scan (THREAD_ENTRY * thread_p, int cursor,
+		       DB_VALUE ** out_values, int out_cnt, void *ptr)
+{
+  int idx = 0;
+  SPAGE_SLOTS_CONTEXT *ctx = (SPAGE_SLOTS_CONTEXT *) ptr;
+  SPAGE_HEADER *header = (SPAGE_HEADER *) ctx->pgptr;
+
+  if (cursor >= header->num_slots)
+    {
+      return S_END;
+    }
+
+  /*
+   * In the case of read a arbitrary specified page as slotted page,
+   * num_slots of SPAGE_HEADER is meaningless data.
+   * num_slots maybe too big to cause slot header address out of the page range.
+   */
+  if ((char *) ctx->slot < ((char *) header) + sizeof (SPAGE_HEADER))
+    {
+      return S_END;
+    }
+
+  db_make_int (out_values[idx], ctx->vpid.volid);
+  idx++;
+
+  db_make_int (out_values[idx], ctx->vpid.pageid);
+  idx++;
+
+  db_make_int (out_values[idx], cursor);
+  idx++;
+
+  db_make_int (out_values[idx], ctx->slot->offset_to_record);
+  idx++;
+
+  db_make_string (out_values[idx],
+		  spage_record_type_string (ctx->slot->record_type));
+  idx++;
+
+  db_make_int (out_values[idx], ctx->slot->record_length);
+  idx++;
+
+  db_make_int (out_values[idx],
+	       DB_WASTED_ALIGN (ctx->slot->record_length, header->alignment));
+  idx++;
+
+  assert (idx == out_cnt);
+
+  ctx->slot--;
+
+  return S_SUCCESS;
+}
+
+/*
+ * spage_slots_end_scan () - free the context
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   ptr(in): context pointer
+ */
+int
+spage_slots_end_scan (THREAD_ENTRY * thread_p, void **ptr)
+{
+  SPAGE_SLOTS_CONTEXT *ctx = (SPAGE_SLOTS_CONTEXT *) * ptr;
+
+  if (ctx != NULL)
+    {
+      if (ctx->pgptr != NULL)
+	{
+	  db_private_free (thread_p, ctx->pgptr);
+	}
+
+      db_private_free (thread_p, ctx);
+      *ptr = NULL;
+    }
+
+  return NO_ERROR;
 }

@@ -400,7 +400,7 @@ typedef union YYSTYPE
   void *ptr;
   int number;
 }
-/* Line 2616 of glr.c.  */
+/* Line 2604 of glr.c.  */
 #line 405 "../../src/executables/esql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1

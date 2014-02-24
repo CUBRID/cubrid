@@ -656,8 +656,8 @@ typedef struct YYLTYPE
 %type <number> opt_if_exists
 %type <number> show_type_arg1
 %type <number> show_type_arg1_opt
-/* uncomment it when implement other show statements.
 %type <number> show_type_arg_named
+/* uncomment it when implement other show statements.
 %type <number> show_type_id_dot_id
 */
 /*}}}*/
@@ -959,11 +959,9 @@ typedef struct YYLTYPE
 %type <node> values_expr_item
 %type <node> opt_partition_spec
 %type <node> opt_for_update_clause
-/* uncomment it when implement other show statement.
 %type <node> of_or_where
 %type <node> named_arg
 %type <node> named_args
-*/
 %type <node> opt_arg_value
 %type <node> arg_value
 /*}}}*/
@@ -1480,6 +1478,7 @@ typedef struct YYLTYPE
 %token <cptr> NULLS
 %token <cptr> OFFSET
 %token <cptr> OWNER
+%token <cptr> PAGE
 %token <cptr> PARTITIONING
 %token <cptr> PARTITIONS
 %token <cptr> PASSWORD
@@ -1501,6 +1500,8 @@ typedef struct YYLTYPE
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
 %token <cptr> SHOW
+%token <cptr> SLOTS
+%token <cptr> SLOTTED
 %token <cptr> STABILITY
 %token <cptr> START_
 %token <cptr> STATEMENT
@@ -6521,7 +6522,6 @@ show_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-/* uncomment it when implement other show statements.
 	| SHOW show_type_arg_named of_or_where named_args
 		{{
 			PT_NODE *node = NULL;
@@ -6534,6 +6534,7 @@ show_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+/* uncomment it when implement other show statements.
 	| SHOW show_type_id_dot_id OF identifier DOT identifier
 		{{
 			int type = $2;
@@ -6567,14 +6568,22 @@ show_type_arg1_opt
 		}}
 	;
 
-/* uncomment it when implement other show statement.
 show_type_arg_named
-	: 
+	: SLOTTED PAGE HEADER
+		{{
+			$$ = SHOWSTMT_SLOTTED_PAGE_HEADER;
+		}}
+	| SLOTTED PAGE SLOTS
+		{{
+			$$ = SHOWSTMT_SLOTTED_PAGE_SLOTS;
+		}}
 	;
 
+/* uncomment it when implement other show statement.
 show_type_id_dot_id
 	: 
 	;
+*/
 
 of_or_where
 	: OF
@@ -6607,7 +6616,6 @@ named_arg
 			$$ = node;
 		DBG_PRINT}}
 	;
-*/
 
 opt_arg_value
 	:
@@ -19839,6 +19847,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| PAGE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| PARTITIONING
 		{{
 
@@ -20022,6 +20040,26 @@ identifier
 
 		DBG_PRINT}}
 	| SHOW
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| SLOTS
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| SLOTTED
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

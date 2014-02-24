@@ -534,6 +534,9 @@ extern int str_identifier = '\0';
 [oO][wW][nN][eE][rR]							{ begin_token(yytext);   
 																		csql_yylval.cptr = pt_makename(yytext);
 																		return OWNER; }
+[pP][aA][gG][eE]							{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return PAGE; }
 [pP][aA][rR][aA][mM][eE][tT][eE][rR][sS]				{ begin_token(yytext);   return PARAMETERS; }
 [pP][aA][rR][tT][iI][aA][lL]						{ begin_token(yytext);   return PARTIAL; }
 [pP][aA][rR][tT][iI][tT][iI][oO][nN]					{ begin_token(yytext);   
@@ -661,6 +664,13 @@ extern int str_identifier = '\0';
 [sS][hH][oO][rR][tT]							{ begin_token(yytext);   return SmallInt; }
 [sS][iI][mM][iI][lL][aA][rR]						{ begin_token(yytext);   return SIMILAR; }
 [sS][iI][zZ][eE]							{ begin_token(yytext);   return SIZE_; }
+[sS][lL][oO][tT][sS]							{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return SLOTS; }
+[sS][lL][oO][tT][tT][eE][dD]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return SLOTTED; }
+
 [sS][oO][mM][eE]							{ begin_token(yytext);   return SOME; }
 [sS][qQ][lL]								{ begin_token(yytext);   return SQL; }
 [sS][qQ][lL][cC][oO][dD][eE]						{ begin_token(yytext);   return SQLCODE; }

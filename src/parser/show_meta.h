@@ -73,7 +73,7 @@ struct showstmt_metadata
   int num_cols;			/* size of cols array */
   const SHOWSTMT_COLUMN_ORDERBY *orderby;	/* SHOWSTMT_COLUMN array */
   int num_orderby;		/* size of orderby array */
-  SHOWSTMT_NAMED_ARG *args;	/* argument rule */
+  const SHOWSTMT_NAMED_ARG *args;	/* argument rule */
   int arg_size;			/* size of args array */
   SHOW_SEMANTIC_CHECK_FUNC semantic_check_func;	/* semantic check function
 						   pointer */

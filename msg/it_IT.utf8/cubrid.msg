@@ -1215,7 +1215,9 @@ $ LOADDB
 1146 volume identifier %1$d does not exist.
 1147 The size of XASL stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
 1148 The size of filter predicate stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
-1149 Ultimo errore
+1149 Cannot find the page %1$d of volume %2$d.
+1150 The page %1$d of volume %2$d is not a slotted page.
+1151 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

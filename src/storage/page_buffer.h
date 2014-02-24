@@ -258,6 +258,12 @@ extern void pgbuf_invalidate_temporary_file (VOLID volid, PAGEID first_pageid,
 					     bool need_invalidate);
 extern bool pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 				    PAGE_TYPE ptype);
+extern DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p,
+					 const VPID * vpid, bool no_error,
+					 DISK_ISVALID (*fun) (const VPID *
+							      vpid,
+							      void *args),
+					 void *args);
 
 #if defined(CUBRID_DEBUG)
 extern void pgbuf_dump_if_any_fixed (void);

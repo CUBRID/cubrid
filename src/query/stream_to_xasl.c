@@ -4799,6 +4799,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 			    ACCESS_SPEC_TYPE * access_spec, void *arg)
 {
   int offset;
+  int val;
   OUTPTR_LIST *outptr_list = NULL;
 
   XASL_UNPACK_INFO *xasl_unpack_info =
@@ -4940,7 +4941,8 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
   access_spec->curent = NULL;
   access_spec->pruned = false;
 
-  ptr = or_unpack_int (ptr, &access_spec->flags);
+  ptr = or_unpack_int (ptr, &val);
+  access_spec->flags = val;
 
   return ptr;
 
@@ -5384,10 +5386,12 @@ stx_build_showstmt_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 			      SHOWSTMT_SPEC_TYPE * showstmt_spec_type)
 {
   int offset;
+  int val;
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
 
-  ptr = or_unpack_int (ptr, &showstmt_spec_type->show_type);
+  ptr = or_unpack_int (ptr, &val);
+  showstmt_spec_type->show_type = val;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

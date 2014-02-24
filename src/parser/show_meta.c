@@ -43,6 +43,12 @@ enum
   ARG_OPTIONAL = true		/* argument is optional */
 };
 
+enum
+{
+  ORDER_DESC = false,		/* order by descending */
+  ORDER_ASC = true		/* order by ascending */
+};
+
 static bool show_Inited = false;
 static SHOWSTMT_METADATA *show_Metas[SHOWSTMT_END];
 
@@ -55,6 +61,8 @@ static void free_db_attribute_list (SHOWSTMT_METADATA * md);
 static SHOWSTMT_METADATA *metadata_of_volume_header (void);
 static SHOWSTMT_METADATA *metadata_of_active_log_header (void);
 static SHOWSTMT_METADATA *metadata_of_archive_log_header (void);
+static SHOWSTMT_METADATA *metadata_of_slotted_page_header (void);
+static SHOWSTMT_METADATA *metadata_of_slotted_page_slots (void);
 
 static SHOWSTMT_METADATA *
 metadata_of_volume_header (void)
@@ -85,9 +93,11 @@ metadata_of_volume_header (void)
     {"Next_vol_full_name", "varchar(255)"},
     {"Remarks", "varchar(64)"}
   };
+
   static const SHOWSTMT_NAMED_ARG args[] = {
     {NULL, AVT_INTEGER, ARG_REQUIRED}
   };
+
   static SHOWSTMT_METADATA md = {
     SHOWSTMT_VOLUME_HEADER, "show volume header of ",
     cols, DIM (cols), NULL, 0, args, DIM (args), NULL, NULL
@@ -169,6 +179,66 @@ metadata_of_archive_log_header (void)
   static SHOWSTMT_METADATA md = {
     SHOWSTMT_ARCHIVE_LOG_HEADER, "show archive log header of ",
     cols, DIM (cols), NULL, 0, args, DIM (args), NULL, NULL
+  };
+
+  return &md;
+}
+
+static SHOWSTMT_METADATA *
+metadata_of_slotted_page_header (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Volume_id", "int"},
+    {"Page_id", "int"},
+    {"Num_slots", "int"},
+    {"Num_records", "int"},
+    {"Anchor_type", "varchar(32)"},
+    {"Alignment", "varchar(8)"},
+    {"Total_free_area", "int"},
+    {"Contiguous_free_area", "int"},
+    {"Free_space_offset", "int"},
+    {"Need_update_best_hint", "int"},
+    {"Is_saving", "int"}
+  };
+
+  static const SHOWSTMT_NAMED_ARG args[] = {
+    {"volume", AVT_INTEGER, ARG_REQUIRED},
+    {"page", AVT_INTEGER, ARG_REQUIRED}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_SLOTTED_PAGE_HEADER, "show slotted page header of ",
+    cols, DIM (cols), NULL, 0, args, DIM (args), NULL, NULL
+  };
+
+  return &md;
+}
+
+static SHOWSTMT_METADATA *
+metadata_of_slotted_page_slots (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Volume_id", "int"},
+    {"Page_id", "int"},
+    {"Slot_id", "int"},
+    {"Offset", "int"},
+    {"Type", "varchar(32)"},
+    {"Length", "int"},
+    {"Waste", "int"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {3, ORDER_ASC}
+  };
+
+  static const SHOWSTMT_NAMED_ARG args[] = {
+    {"volume", AVT_INTEGER, ARG_REQUIRED},
+    {"page", AVT_INTEGER, ARG_REQUIRED}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_SLOTTED_PAGE_SLOTS, "show slotted page slots of ",
+    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), NULL, NULL
   };
 
   return &md;
@@ -316,6 +386,9 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_VOLUME_HEADER] = metadata_of_volume_header ();
   show_Metas[SHOWSTMT_ACTIVE_LOG_HEADER] = metadata_of_active_log_header ();
   show_Metas[SHOWSTMT_ARCHIVE_LOG_HEADER] = metadata_of_archive_log_header ();
+  show_Metas[SHOWSTMT_SLOTTED_PAGE_HEADER] =
+    metadata_of_slotted_page_header ();
+  show_Metas[SHOWSTMT_SLOTTED_PAGE_SLOTS] = metadata_of_slotted_page_slots ();
 
   for (i = 0; i < DIM (show_Metas); i++)
     {

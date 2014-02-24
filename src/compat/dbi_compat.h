@@ -1463,7 +1463,10 @@
 #define ER_ALL_PLAN_CACHE_ENTRIES_ARE_FIXED         -1147
 #define ER_ALL_FILTER_PRED_CACHE_ENTRIES_ARE_FIXED  -1148
 
-#define ER_LAST_ERROR                               -1149
+#define ER_DIAG_PAGE_NOT_FOUND                      -1149
+#define ER_DIAG_NOT_SPAGE                           -1150
+
+#define ER_LAST_ERROR                               -1151
 
 #define DB_TRUE 1
 #define DB_FALSE 0
