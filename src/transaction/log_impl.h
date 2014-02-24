@@ -2100,5 +2100,10 @@ extern int logtb_is_tran_modification_disabled (THREAD_ENTRY * thread_p);
 extern void xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp);
 
 extern bool logpb_need_wal (const LOG_LSA * lsa);
+extern char *logpb_backup_level_info_to_string (char *buf, int buf_size,
+						const LOG_HDR_BKUP_LEVEL_INFO
+						* info);
 extern void logpb_get_nxio_lsa (LOG_LSA * lsa_p);
+extern const char *logpb_perm_status_to_string (enum LOG_PSTATUS val);
+
 #endif /* _LOG_IMPL_H_ */

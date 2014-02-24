@@ -655,8 +655,8 @@ typedef struct YYLTYPE
 %type <number> opt_if_not_exists
 %type <number> opt_if_exists
 %type <number> show_type_arg1
-/* uncomment it when implement other show statements.
 %type <number> show_type_arg1_opt
+/* uncomment it when implement other show statements.
 %type <number> show_type_arg_named
 %type <number> show_type_id_dot_id
 */
@@ -963,8 +963,8 @@ typedef struct YYLTYPE
 %type <node> of_or_where
 %type <node> named_arg
 %type <node> named_args
-%type <node> opt_arg_value
 */
+%type <node> opt_arg_value
 %type <node> arg_value
 /*}}}*/
 
@@ -1411,6 +1411,7 @@ typedef struct YYLTYPE
 %token <cptr> ACTIVE
 %token <cptr> ADDDATE
 %token <cptr> ANALYZE
+%token <cptr> ARCHIVE
 %token <cptr> AUTO_INCREMENT
 %token <cptr> BIT_AND
 %token <cptr> BIT_OR
@@ -1463,6 +1464,7 @@ typedef struct YYLTYPE
 %token <cptr> LCASE
 %token <cptr> LEAD
 %token <cptr> LOCK_
+%token <cptr> LOG
 %token <cptr> MAXIMUM
 %token <cptr> MAXVALUE
 %token <cptr> MEDIAN
@@ -6507,7 +6509,6 @@ show_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-/* uncomment it when implement other show statements.
 	| SHOW show_type_arg1_opt opt_arg_value
 		{{
 			PT_NODE *node = NULL;
@@ -6520,6 +6521,7 @@ show_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+/* uncomment it when implement other show statements.
 	| SHOW show_type_arg_named of_or_where named_args
 		{{
 			PT_NODE *node = NULL;
@@ -6552,13 +6554,20 @@ show_type_arg1
 		{{
 			$$ = SHOWSTMT_VOLUME_HEADER;
 		}}
+	| ARCHIVE LOG HEADER
+		{{
+			$$ = SHOWSTMT_ARCHIVE_LOG_HEADER;
+		}}
+	;
+
+show_type_arg1_opt
+	: LOG HEADER
+		{{
+			$$ = SHOWSTMT_ACTIVE_LOG_HEADER;
+		}}
 	;
 
 /* uncomment it when implement other show statement.
-show_type_arg1_opt
-	:
-	;
-
 show_type_arg_named
 	: 
 	;
@@ -6598,6 +6607,7 @@ named_arg
 			$$ = node;
 		DBG_PRINT}}
 	;
+*/
 
 opt_arg_value
 	:
@@ -6613,7 +6623,6 @@ opt_arg_value
 			$$ = $2;
 		}}
 	;
-*/
 
 arg_value
 	: char_string_literal
@@ -19290,6 +19299,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| ARCHIVE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| AUTO_INCREMENT
 		{{
 
@@ -19701,6 +19720,16 @@ identifier
 
 		DBG_PRINT}}
 	| LOCK_
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| LOG
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

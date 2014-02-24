@@ -268,4 +268,26 @@ extern void xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
 		       LOG_PAGEID start_logpageid, DKNPAGES dump_npages,
 		       TRANID desired_tranid);
 
+extern int log_active_log_header_start_scan (THREAD_ENTRY * thread_p,
+					     int show_type,
+					     DB_VALUE ** arg_values,
+					     int arg_cnt, void **ptr);
+extern SCAN_CODE log_active_log_header_next_scan (THREAD_ENTRY * thread_p,
+						  int cursor,
+						  DB_VALUE ** out_values,
+						  int out_cnt, void *ptr);
+extern int log_active_log_header_end_scan (THREAD_ENTRY * thread_p,
+					   void **ptr);
+
+extern int log_archive_log_header_start_scan (THREAD_ENTRY * thread_p,
+					      int show_type,
+					      DB_VALUE ** arg_values,
+					      int arg_cnt, void **ptr);
+extern SCAN_CODE log_archive_log_header_next_scan (THREAD_ENTRY * thread_p,
+						   int cursor,
+						   DB_VALUE ** out_values,
+						   int out_cnt, void *ptr);
+extern int log_archive_log_header_end_scan (THREAD_ENTRY * thread_p,
+					    void **ptr);
+
 #endif /* _LOG_MANAGER_H_ */

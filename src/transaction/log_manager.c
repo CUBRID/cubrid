@@ -39,6 +39,10 @@
 #include <io.h>
 #endif /* WINDOWS */
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include "porting.h"
 #include "log_manager.h"
 #include "log_impl.h"
@@ -75,6 +79,8 @@
 #include "es.h"
 #include "memory_hash.h"
 #include "partition.h"
+#include "connection_support.h"
+#include "log_writer.h"
 
 #if !defined(SERVER_MODE)
 
@@ -169,6 +175,20 @@ struct lob_locator_entry
   /* normal case: points &key_data[0], search key: supplied */
   char *key;
   char key_data[1];
+};
+
+/* struct for active log header scan */
+typedef struct actve_log_header_scan_context ACTIVE_LOG_HEADER_SCAN_CTX;
+struct actve_log_header_scan_context
+{
+  LOG_HEADER header;
+};
+
+/* struct for archive log header scan */
+typedef struct archive_log_header_scan_context ARCHIVE_LOG_HEADER_SCAN_CTX;
+struct archive_log_header_scan_context
+{
+  struct log_arv_header header;
 };
 
 /*
@@ -10950,3 +10970,517 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log,
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, NULL_TRAN_INDEX);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
+
+
+/*
+ * log_active_log_header_start_scan () - 
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   show_type(in):
+ *   arg_values(in):
+ *   arg_cnt(in):
+ *   ptr(out): allocate new context. should free by end_scan() function
+ */
+int
+log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type,
+				  DB_VALUE ** arg_values, int arg_cnt,
+				  void **ptr)
+{
+  int error = NO_ERROR;
+  DB_DATETIME time_val;
+  int idx_val = 0, i;
+  const char *path;
+  int fd = -1;
+  ACTIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
+
+  *ptr = NULL;
+
+  assert (arg_cnt == 1);
+
+  ctx = (ACTIVE_LOG_HEADER_SCAN_CTX *)
+    db_private_alloc (thread_p, sizeof (ACTIVE_LOG_HEADER_SCAN_CTX));
+
+  if (ctx == NULL)
+    {
+      error = er_errid ();
+      goto exit_on_error;
+    }
+
+  /* In the case of omit file path, first argument is db null */
+  if (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_NULL)
+    {
+      LOG_CS_ENTER_READ_MODE (thread_p);
+      memcpy (&ctx->header, &log_Gl.hdr, sizeof (LOG_HEADER));
+      LOG_CS_EXIT (thread_p);
+    }
+  else
+    {
+      char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+      LOG_PAGE *page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
+
+      assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
+      path = db_get_string (arg_values[0]);
+
+      fd = open (path, O_RDONLY, 0);
+      if (fd == -1)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_IO_MOUNT_FAIL, 1, path);
+	  error = ER_IO_MOUNT_FAIL;
+	  goto exit_on_error;
+	}
+
+      if (read (fd, page_hdr, LOG_PAGESIZE) != LOG_PAGESIZE)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_IO_MOUNT_FAIL, 1, path);
+	  error = ER_IO_MOUNT_FAIL;
+	  goto exit_on_error;
+	}
+
+      memcpy (&ctx->header, page_hdr->area, sizeof (LOG_HEADER));
+
+      ctx->header.magic[sizeof (ctx->header.magic) - 1] = 0;
+      ctx->header.db_release[sizeof (ctx->header.db_release) - 1] = 0;
+      ctx->header.prefix_name[sizeof (ctx->header.prefix_name) - 1] = 0;
+
+      close (fd);
+      fd = -1;
+
+      if (memcmp
+	  (ctx->header.magic, CUBRID_MAGIC_LOG_ACTIVE,
+	   strlen (CUBRID_MAGIC_LOG_ACTIVE)) != 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1,
+		  path);
+	  error = ER_IO_MOUNT_FAIL;
+	  goto exit_on_error;
+	}
+    }
+
+  *ptr = ctx;
+  ctx = NULL;
+
+exit_on_error:
+  if (fd != -1)
+    {
+      close (fd);
+    }
+
+  if (ctx != NULL)
+    {
+      db_private_free_and_init (thread_p, ctx);
+    }
+
+  return error;
+}
+
+/*
+ * log_active_log_header_next_scan () - 
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   cursor(in):
+ *   out_values(in):
+ *   out_cnt(in):
+ *   ptr(in): context pointer
+ */
+SCAN_CODE
+log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor,
+				 DB_VALUE ** out_values, int out_cnt,
+				 void *ptr)
+{
+  int error = NO_ERROR;
+  int idx = 0;
+  int val;
+  const char *str;
+  char buf[256];
+  DB_DATETIME time_val;
+  ACTIVE_LOG_HEADER_SCAN_CTX *ctx = (ACTIVE_LOG_HEADER_SCAN_CTX *) ptr;
+  LOG_HEADER *header = &ctx->header;
+
+  if (cursor >= 1)
+    {
+      return S_END;
+    }
+
+  db_make_int (out_values[idx], LOG_DBLOG_ACTIVE_VOLID);
+  idx++;
+
+  error = db_make_string_copy (out_values[idx], header->magic);
+  idx++;
+
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  val = offsetof (LOG_PAGE, area) + offsetof (LOG_HEADER, magic);
+  db_make_int (out_values[idx], val);
+  idx++;
+
+  db_localdatetime ((time_t *) (&header->db_creation), &time_val);
+  error = db_make_datetime (out_values[idx], &time_val);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = db_make_string_copy (out_values[idx], header->db_release);
+  idx++;
+
+  snprintf (buf, sizeof (buf), "%g", header->db_compatibility);
+  buf[sizeof (buf) - 1] = 0;
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  db_make_int (out_values[idx], header->db_iopagesize);
+  idx++;
+
+  db_make_int (out_values[idx], header->db_logpagesize);
+  idx++;
+
+  db_make_int (out_values[idx], header->is_shutdown);
+  idx++;
+
+  db_make_int (out_values[idx], header->next_trid);
+  idx++;
+
+  db_make_int (out_values[idx], header->avg_ntrans);
+  idx++;
+
+  db_make_int (out_values[idx], header->avg_nlocks);
+  idx++;
+
+  db_make_int (out_values[idx], header->npages);
+  idx++;
+
+  db_make_int (out_values[idx], header->db_charset);
+  idx++;
+
+  db_make_bigint (out_values[idx], header->fpageid);
+  idx++;
+
+  lsa_to_string (buf, sizeof (buf), &header->append_lsa);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  lsa_to_string (buf, sizeof (buf), &header->chkpt_lsa);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  db_make_bigint (out_values[idx], header->nxarv_pageid);
+  idx++;
+
+  db_make_int (out_values[idx], header->nxarv_phy_pageid);
+  idx++;
+
+  db_make_int (out_values[idx], header->nxarv_num);
+  idx++;
+
+  db_make_int (out_values[idx], header->last_arv_num_for_syscrashes);
+  idx++;
+
+  db_make_int (out_values[idx], header->last_deleted_arv_num);
+  idx++;
+
+  lsa_to_string (buf, sizeof (buf), &header->bkup_level0_lsa);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  lsa_to_string (buf, sizeof (buf), &header->bkup_level1_lsa);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  lsa_to_string (buf, sizeof (buf), &header->bkup_level2_lsa);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = db_make_string_copy (out_values[idx], header->prefix_name);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  db_make_int (out_values[idx], header->has_logging_been_skipped);
+  idx++;
+
+  str = logpb_perm_status_to_string (header->perm_status);
+  db_make_string (out_values[idx], str);
+  idx++;
+
+  logpb_backup_level_info_to_string (buf, sizeof (buf),
+				     header->bkinfo +
+				     FILEIO_BACKUP_FULL_LEVEL);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  logpb_backup_level_info_to_string (buf, sizeof (buf),
+				     header->bkinfo +
+				     FILEIO_BACKUP_BIG_INCREMENT_LEVEL);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  logpb_backup_level_info_to_string (buf, sizeof (buf),
+				     header->bkinfo +
+				     FILEIO_BACKUP_SMALL_INCREMENT_LEVEL);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  str = css_ha_server_state_string (header->ha_server_state);
+  db_make_string (out_values[idx], str);
+  idx++;
+
+  str = logwr_log_ha_filestat_to_string (header->ha_file_status);
+  db_make_string (out_values[idx], str);
+  idx++;
+
+  lsa_to_string (buf, sizeof (buf), &header->eof_lsa);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  lsa_to_string (buf, sizeof (buf), &header->smallest_lsa_at_last_chkpt);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  assert (idx == out_cnt);
+
+  return S_SUCCESS;
+
+exit_on_error:
+  return error == NO_ERROR ? S_SUCCESS : S_ERROR;
+}
+
+/*
+ * log_active_log_header_end_scan () - free the context
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   ptr(in): context pointer
+ */
+int
+log_active_log_header_end_scan (THREAD_ENTRY * thread_p, void **ptr)
+{
+  if (*ptr != NULL)
+    {
+      db_private_free_and_init (thread_p, *ptr);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * log_archive_log_header_start_scan () - 
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   show_type(in):
+ *   arg_values(in):
+ *   arg_cnt(in):
+ *   ptr(out): allocate new context. should free by end_scan() function
+ */
+int
+log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type,
+				   DB_VALUE ** arg_values, int arg_cnt,
+				   void **ptr)
+{
+  int idx = 0, i, error = NO_ERROR;
+  const char *path;
+  int fd;
+  char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *page_hdr;
+  ARCHIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
+
+  *ptr = NULL;
+
+  assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
+
+  ctx = (ARCHIVE_LOG_HEADER_SCAN_CTX *)
+    db_private_alloc (thread_p, sizeof (ARCHIVE_LOG_HEADER_SCAN_CTX));
+  if (ctx == NULL)
+    {
+      error = er_errid ();
+      goto exit_on_error;
+    }
+
+  path = db_get_string (arg_values[0]);
+
+  page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
+
+  fd = open (path, O_RDONLY, 0);
+  if (fd == -1)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL,
+			   1, path);
+      error = ER_IO_MOUNT_FAIL;
+      goto exit_on_error;
+    }
+
+  if (read (fd, page_hdr, LOG_PAGESIZE) != LOG_PAGESIZE)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL,
+			   1, path);
+      error = ER_IO_MOUNT_FAIL;
+      goto exit_on_error;
+    }
+
+  memcpy (&ctx->header, page_hdr->area, sizeof (struct log_arv_header));
+  close (fd);
+  fd = -1;
+
+  ctx->header.magic[sizeof (ctx->header.magic) - 1] = 0;
+
+  if (memcmp
+      (ctx->header.magic, CUBRID_MAGIC_LOG_ARCHIVE,
+       strlen (CUBRID_MAGIC_LOG_ARCHIVE)) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, path);
+      error = ER_IO_MOUNT_FAIL;
+      goto exit_on_error;
+    }
+
+  *ptr = ctx;
+  ctx = NULL;
+
+exit_on_error:
+  if (ctx != NULL)
+    {
+      db_private_free_and_init (thread_p, ctx);
+    }
+
+  return error;
+}
+
+/*
+ * log_archive_log_header_next_scan () - 
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   cursor(in):
+ *   out_values(in):
+ *   out_cnt(in):
+ *   ptr(in): context pointer
+ */
+SCAN_CODE
+log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor,
+				  DB_VALUE ** out_values, int out_cnt,
+				  void *ptr)
+{
+  int error = NO_ERROR;
+  int idx = 0;
+  int val;
+  DB_DATETIME time_val;
+
+  ARCHIVE_LOG_HEADER_SCAN_CTX *ctx = (ARCHIVE_LOG_HEADER_SCAN_CTX *) ptr;
+  struct log_arv_header *header = &ctx->header;
+
+  if (cursor >= 1)
+    {
+      return S_END;
+    }
+
+  db_make_int (out_values[idx], LOG_DBLOG_ARCHIVE_VOLID);
+  idx++;
+
+  error = db_make_string_copy (out_values[idx], header->magic);
+  idx++;
+
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  val = offsetof (LOG_PAGE, area) + offsetof (struct log_arv_header, magic);
+  db_make_int (out_values[idx], val);
+  idx++;
+
+  db_localdatetime ((time_t *) (&header->db_creation), &time_val);
+  error = db_make_datetime (out_values[idx], &time_val);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  db_make_bigint (out_values[idx], header->next_trid);
+  idx++;
+
+  db_make_int (out_values[idx], header->npages);
+  idx++;
+
+  db_make_bigint (out_values[idx], header->fpageid);
+  idx++;
+
+  db_make_int (out_values[idx], header->arv_num);
+  idx++;
+
+  assert (idx == out_cnt);
+
+exit_on_error:
+  return error == NO_ERROR ? S_SUCCESS : S_ERROR;
+}
+
+/*
+ * log_archive_log_header_end_scan () - free the context
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   ptr(in): context pointer
+ */
+int
+log_archive_log_header_end_scan (THREAD_ENTRY * thread_p, void **ptr)
+{
+  if (*ptr != NULL)
+    {
+      db_private_free_and_init (thread_p, *ptr);
+    }
+
+  return NO_ERROR;
+}

@@ -299,7 +299,7 @@ typedef union YYSTYPE
 	LDR_CONSTANT *constant;
 	LDR_OBJECT_REF *obj_ref;
 }
-/* Line 193 of yacc.c.  */
+/* Line 187 of yacc.c.  */
 #line 304 "../../src/executables/loader_grammar.c"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */

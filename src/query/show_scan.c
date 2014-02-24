@@ -96,7 +96,20 @@ showstmt_scan_init (void)
   req->next_func = disk_volume_header_next_scan;
   req->end_func = disk_volume_header_end_scan;
 
+  req = &show_Requests[SHOWSTMT_ACTIVE_LOG_HEADER];
+  req->show_type = SHOWSTMT_ACTIVE_LOG_HEADER;
+  req->start_func = log_active_log_header_start_scan;
+  req->next_func = log_active_log_header_next_scan;
+  req->end_func = log_active_log_header_end_scan;
+
+  req = &show_Requests[SHOWSTMT_ARCHIVE_LOG_HEADER];
+  req->show_type = SHOWSTMT_ARCHIVE_LOG_HEADER;
+  req->start_func = log_archive_log_header_start_scan;
+  req->next_func = log_archive_log_header_next_scan;
+  req->end_func = log_archive_log_header_end_scan;
+
   /* append to init other show statement scan function here */
+
 
   show_scan_Inited = true;
 }

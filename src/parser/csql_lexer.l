@@ -111,6 +111,9 @@ extern int str_identifier = '\0';
 										return ANALYZE; }
 [aA][nN][dD]								{ begin_token(yytext);   return AND; }
 [aA][nN][yY]								{ begin_token(yytext);   return ANY; }
+[aA][rR][cC][hH][iI][vV][eE]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return ARCHIVE; }
 [aA][rR][eE]								{ begin_token(yytext);   return ARE; }
 [aA][sS]								{ begin_token(yytext);   return AS; }
 [aA][sS][cC]								{ begin_token(yytext);   return ASC; }
@@ -435,6 +438,9 @@ extern int str_identifier = '\0';
 [lL][oO][cC][kK]							{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return LOCK_; }
+[lL][oO][gG]								{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return LOG; }
 [lL][oO][oO][pP]							{ begin_token(yytext);   return LOOP; }
 [lL][oO][wW][eE][rR]							{ begin_token(yytext);   return LOWER; }
 [mM][aA][tT][cC][hH]							{ begin_token(yytext);   return MATCH; }

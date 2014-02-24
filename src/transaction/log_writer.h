@@ -111,10 +111,12 @@ extern int logwr_copy_log_header_check (const char *db_name, bool verbose,
 extern int logwr_copy_log_file (const char *db_name, const char *log_path,
 				int mode);
 extern LOG_PHY_PAGEID logwr_to_physical_pageid (LOG_PAGEID logical_pageid);
+extern const char *logwr_log_ha_filestat_to_string (enum LOG_HA_FILESTAT val);
 
 #if defined(SERVER_MODE)
 int xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 			  int mode);
 extern LOG_PAGEID logwr_get_min_copied_fpageid (void);
+
 #endif /* SERVER_MODE */
 #endif /* _LOG_WRITER_HEADER_ */

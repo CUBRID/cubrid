@@ -6991,9 +6991,7 @@ la_print_log_header (const char *database_name, struct log_header *hdr,
 	      (long long int) hdr->nxarv_phy_pageid);
       printf ("%-30s : %d\n", "Next archive number", hdr->nxarv_num);
       printf ("%-30s : %s\n", "HA file status",
-	      (hdr->ha_file_status == LOG_HA_FILESTAT_CLEAR)
-	      ? "CLEAR" : ((hdr->ha_file_status == LOG_HA_FILESTAT_ARCHIVED)
-			   ? "ARCHIVED" : "SYNCHRONIZED"));
+	      logwr_log_ha_filestat_to_string (hdr->ha_file_status));
     }
 }
 

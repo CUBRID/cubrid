@@ -106,6 +106,8 @@ typedef enum
   SHOWSTMT_START = 0,
   SHOWSTMT_NULL = SHOWSTMT_START,
   SHOWSTMT_VOLUME_HEADER,
+  SHOWSTMT_ACTIVE_LOG_HEADER,
+  SHOWSTMT_ARCHIVE_LOG_HEADER,
 
   /* append the new show statement types in here */
 

@@ -37,6 +37,12 @@
 #include "error_manager.h"
 #include "parser.h"
 
+enum
+{
+  ARG_REQUIRED = false,		/* argument is required */
+  ARG_OPTIONAL = true		/* argument is optional */
+};
+
 static bool show_Inited = false;
 static SHOWSTMT_METADATA *show_Metas[SHOWSTMT_END];
 
@@ -47,6 +53,8 @@ static void free_db_attribute_list (SHOWSTMT_METADATA * md);
 
 /* meta functions */
 static SHOWSTMT_METADATA *metadata_of_volume_header (void);
+static SHOWSTMT_METADATA *metadata_of_active_log_header (void);
+static SHOWSTMT_METADATA *metadata_of_archive_log_header (void);
 
 static SHOWSTMT_METADATA *
 metadata_of_volume_header (void)
@@ -77,15 +85,90 @@ metadata_of_volume_header (void)
     {"Next_vol_full_name", "varchar(255)"},
     {"Remarks", "varchar(64)"}
   };
-  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
-    {1, PT_ASC}
-  };
   static const SHOWSTMT_NAMED_ARG args[] = {
-    {NULL, AVT_INTEGER, false}
+    {NULL, AVT_INTEGER, ARG_REQUIRED}
   };
   static SHOWSTMT_METADATA md = {
     SHOWSTMT_VOLUME_HEADER, "show volume header of ",
-    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), NULL, NULL
+    cols, DIM (cols), NULL, 0, args, DIM (args), NULL, NULL
+  };
+  return &md;
+}
+
+static SHOWSTMT_METADATA *
+metadata_of_active_log_header (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Volume_id", "int"},
+    {"Magic_symbol", "varchar(32)"},
+    {"Magic_symbol_location", "int"},
+    {"Creation_time", "datetime"},
+    {"Release", "varchar(32)"},
+    {"Compatibility_disk_version", "varchar(32)"},
+    {"Db_page_size", "int"},
+    {"Log_page_size", "int"},
+    {"Shutdown", "int"},
+    {"Next_trans_id", "int"},
+    {"Num_avg_trans", "int"},
+    {"Num_avg_locks", "int"},
+    {"Num_active_log_pages", "int"},
+    {"Db_charset", "int"},
+    {"First_active_log_page", "bigint"},
+    {"Current_append", "varchar(64)"},
+    {"Checkpoint", "varchar(64)"},
+    {"Next_archive_page_id", "bigint"},
+    {"Active_physical_page_id", "int"},
+    {"Next_archive_num", "int"},
+    {"Last_archive_num_for_syscrashes", "int"},
+    {"Last_deleted_archive_num", "int"},
+    {"Backup_lsa_level0", "varchar(64)"},
+    {"Backup_lsa_level1", "varchar(64)"},
+    {"Backup_lsa_level2", "varchar(64)"},
+    {"Log_prefix", "varchar(256)"},
+    {"Has_logging_been_skipped", "int"},
+    {"Perm_status", "varchar(64)"},
+    {"Backup_info_level0", "varchar(128)"},
+    {"Backup_info_level1", "varchar(128)"},
+    {"Backup_info_level2", "varchar(128)"},
+    {"Ha_server_state", "varchar(32)"},
+    {"Ha_file", "varchar(32)"},
+    {"Eof_lsa", "varchar(64)"},
+    {"Smallest_lsa_at_last_checkpoint", "varchar(64)"}
+  };
+
+  static const SHOWSTMT_NAMED_ARG args[] = {
+    {NULL, AVT_STRING, ARG_OPTIONAL}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_ACTIVE_LOG_HEADER, "show log header of ",
+    cols, DIM (cols), NULL, 0, args, DIM (args), NULL, NULL
+  };
+
+  return &md;
+}
+
+static SHOWSTMT_METADATA *
+metadata_of_archive_log_header (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Volume_id", "int"},
+    {"Magic_symbol", "varchar(32)"},
+    {"Magic_symbol_location", "int"},
+    {"Creation_time", "datetime"},
+    {"Next_trans_id", "bigint"},
+    {"Num_pages", "int"},
+    {"First_page_id", "bigint"},
+    {"Archive_num", "int"}
+  };
+
+  static const SHOWSTMT_NAMED_ARG args[] = {
+    {NULL, AVT_STRING, ARG_OPTIONAL}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_ARCHIVE_LOG_HEADER, "show archive log header of ",
+    cols, DIM (cols), NULL, 0, args, DIM (args), NULL, NULL
   };
 
   return &md;
@@ -231,6 +314,8 @@ showstmt_metadata_init (void)
 
   memset (show_Metas, 0, sizeof (show_Metas));
   show_Metas[SHOWSTMT_VOLUME_HEADER] = metadata_of_volume_header ();
+  show_Metas[SHOWSTMT_ACTIVE_LOG_HEADER] = metadata_of_active_log_header ();
+  show_Metas[SHOWSTMT_ARCHIVE_LOG_HEADER] = metadata_of_archive_log_header ();
 
   for (i = 0; i < DIM (show_Metas); i++)
     {

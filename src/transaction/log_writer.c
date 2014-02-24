@@ -893,10 +893,8 @@ logwr_flush_header_page (void)
   er_log_debug (ARG_FILE_LINE,
 		"logwr_flush_header_page, ha_server_state=%s, ha_file_status=%s\n",
 		css_ha_server_state_string (logwr_Gl.hdr.ha_server_state),
-		logwr_Gl.hdr.ha_file_status ==
-		LOG_HA_FILESTAT_SYNCHRONIZED ? "sync" :
-		logwr_Gl.hdr.ha_file_status ==
-		LOG_HA_FILESTAT_ARCHIVED ? "archived" : "clear");
+		logwr_log_ha_filestat_to_string (logwr_Gl.
+						 hdr.ha_file_status));
 }
 
 /*
@@ -1394,6 +1392,29 @@ logwr_copy_log_file (const char *db_name, const char *log_path, int mode)
   return ER_FAILED;
 }
 #endif /* !CS_MODE */
+
+/*
+ * logwr_log_ha_filestat_to_string() - return the string alias of enum value
+ *
+ * return: constant string
+ *
+ *   val(in):
+ */
+const char *
+logwr_log_ha_filestat_to_string (enum LOG_HA_FILESTAT val)
+{
+  switch (val)
+    {
+    case LOG_HA_FILESTAT_CLEAR:
+      return "CLEAR";
+    case LOG_HA_FILESTAT_ARCHIVED:
+      return "ARCHIVED";
+    case LOG_HA_FILESTAT_SYNCHRONIZED:
+      return "SYNCHRONIZED";
+    default:
+      return "UNKNOWN";
+    }
+}
 
 #if defined(SERVER_MODE)
 static int logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p,
@@ -2051,4 +2072,5 @@ logwr_get_min_copied_fpageid (void)
 
   return (min_fpageid);
 }
+
 #endif /* SERVER_MODE */

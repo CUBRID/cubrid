@@ -13174,3 +13174,59 @@ logpb_need_wal (const LOG_LSA * lsa)
       return false;
     }
 }
+
+/*
+ * logpb_backup_level_info_to_string () - format LOG_HDR_BKUP_LEVEL_INFO as string
+ *
+ *   return: the buffer passed to first argument
+ *
+ *   buf(out):
+ *   buf_size(in):
+ *   info(in):
+ */
+char *
+logpb_backup_level_info_to_string (char *buf, int buf_size,
+				   const LOG_HDR_BKUP_LEVEL_INFO * info)
+{
+  char time_str[64];
+
+  if (info->bkup_attime == 0)
+    {
+      snprintf (buf, buf_size, "time: N/A");
+      buf[buf_size - 1] = 0;
+    }
+  else
+    {
+      ctime_r (&info->bkup_attime, time_str);
+      /* ctime_r() will padding one '\n' character to buffer, we need truncate it */
+      time_str[strlen (time_str) - 1] = 0;
+      snprintf (buf, buf_size, "time: %s", time_str);
+      buf[buf_size - 1] = 0;
+    }
+
+  return buf;
+}
+
+/*
+ * logpb_perm_status_to_string() - return the string alias of enum value
+ *
+ *   return: constant string
+ *
+ *   val(in): the enum value
+ */
+const char *
+logpb_perm_status_to_string (enum LOG_PSTATUS val)
+{
+  switch (val)
+    {
+    case LOG_PSTAT_CLEAR:
+      return "LOG_PSTAT_CLEAR";
+    case LOG_PSTAT_BACKUP_INPROGRESS:
+      return "LOG_PSTAT_BACKUP_INPROGRESS";
+    case LOG_PSTAT_RESTORE_INPROGRESS:
+      return "LOG_PSTAT_RESTORE_INPROGRESS";
+    case LOG_PSTAT_HDRFLUSH_INPPROCESS:
+      return "LOG_PSTAT_HDRFLUSH_INPPROCESS";
+    }
+  return "UNKNOWN_LOG_PSTATUS";
+}
