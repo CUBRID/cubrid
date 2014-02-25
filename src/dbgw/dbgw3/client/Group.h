@@ -59,7 +59,7 @@ namespace dbgw
     static int DEFAULT_MIN_IDLE();
     static int DEFAULT_MAX_IDLE();
     static int DEFAULT_MAX_ACTIVE();
-    static unsigned long DEFAULT_MAX_WAIT();
+    static long DEFAULT_MAX_WAIT();
     static unsigned long DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS();
     static int DEFAULT_NUM_TESTS_PER_EVICTIONRUN();
     static unsigned long DEFAULT_MIN_EVICTABLE_IDLE_TIMEMILLIS();

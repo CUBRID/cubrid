@@ -49,6 +49,7 @@ namespace dbgw
   {
   public:
     static unsigned long DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC();
+    static unsigned long DEFAULT_WAIT_TIME_MILSEC();
 
   public:
     Configuration();

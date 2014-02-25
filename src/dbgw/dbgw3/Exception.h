@@ -466,6 +466,8 @@ namespace dbgw
   public:
     InvalidPropertyValueException(const char *szFileName, const char *szValue,
         const char *szCorrectValueSet) throw();
+    InvalidPropertyValueException(const char *szFileName, long lValue,
+        const char *szCorrectValueSet) throw();
   };
 
   class InvalidXMLSyntaxException : public Exception

@@ -644,6 +644,17 @@ namespace dbgw
   {
   }
 
+  InvalidPropertyValueException::InvalidPropertyValueException(
+      const char *szFileName, long lValue,
+      const char *szCorrectValueSet) throw() :
+    Exception(
+        ExceptionFactory::create(
+            DBGW_ER_XML_INVALID_PROPERTY_VALUE,
+            (boost::format("The value of property %d have to be [%s] (%s).")
+                % lValue % szCorrectValueSet % szFileName).str()))
+  {
+  }
+
   InvalidXMLSyntaxException::InvalidXMLSyntaxException(
       const char *szXmlErrorMessage, const char *szFileName, int nLine,
       int nCol) throw() :

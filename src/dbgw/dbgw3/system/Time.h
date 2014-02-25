@@ -32,6 +32,7 @@ namespace dbgw
       static const int NOWAIT_TIMEOUT = 0;
     }
 
+    static const long UNDEFINED_TIMEOUT = -2;
     static const unsigned long INFINITE_TIMEOUT = 0;
 
     unsigned long long int getCurrTimeMilSec();

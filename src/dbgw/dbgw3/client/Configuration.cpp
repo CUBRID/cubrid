@@ -48,6 +48,11 @@ namespace dbgw
     return 5000;
   }
 
+  unsigned long Configuration::DEFAULT_WAIT_TIME_MILSEC()
+  {
+    return system::INFINITE_TIMEOUT;
+  }
+
   class Configuration::Impl
   {
   public:

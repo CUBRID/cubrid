@@ -25,6 +25,7 @@
 #include "dbgw3/client/Client.h"
 #include "dbgw3/system/DBGWPorting.h"
 #include "dbgw3/system/File.h"
+#include "dbgw3/system/Time.h"
 #include "dbgw3/sql/DatabaseInterface.h"
 #include "dbgw3/sql/Statement.h"
 #include "dbgw3/sql/PreparedStatement.h"
@@ -54,6 +55,8 @@ namespace dbgw
   static const char *XN_CONFIGURATION = "configuration";
   static const char *XN_CONFIGURATION_PR_MAX_WAIT_EXIT_TIME_MILLIS =
       "maxWaitExitTimeMillis";
+  static const char *XN_CONFIGURATION_PR_DEFAULT_WAIT_TIME_MILLIS =
+      "defaultWaitTimeMillis";
 
   static const char *XN_JOB_QUEUE= "jobqueue";
   static const char *XN_JOB_QUEUE_MAX_SIZE = "maxSize";
@@ -73,6 +76,8 @@ namespace dbgw
 
   static const char *XN_SERVICE = "service";
   static const char *XN_SERVICE_PR_NAMESPACE = "namespace";
+  static const char *XN_SERVICE_PR_DEFAULT_WAIT_TIME_MILLIS =
+      "defaultWaitTimeMillis";
   static const char *XN_SERVICE_PR_DESCRIPTION = "description";
   static const char *XN_SERVICE_PR_VALIDATE_RESULT = "validateResult";
   static const char *XN_SERVICE_PR_VALIDATE_RESULT_HIDDEN = "validate-result";
@@ -351,13 +356,13 @@ namespace dbgw
   }
 
   long _ExpatXMLProperties::getLong(const char *szName, bool bRequired,
-      unsigned long ulDefault)
+      long lDefault)
   {
-    return getLong(szName, NULL, bRequired, ulDefault);
+    return getLong(szName, NULL, bRequired, lDefault);
   }
 
   long _ExpatXMLProperties::getLong(const char *szName,
-      const char *szHiddenName, bool bRequired, unsigned long ulDefault)
+      const char *szHiddenName, bool bRequired, long lDefault)
   {
     std::string prop;
 
@@ -372,6 +377,44 @@ namespace dbgw
           {
             prop = propertyFromEnv(m_pAttr[i + 1]);
             return propertyToLong(prop.c_str());
+          }
+      }
+
+    if (bRequired)
+      {
+        NotExistPropertyException e(m_xmlParser.getFileName(),
+            m_nodeName.c_str(), szName);
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+    else
+      {
+        return lDefault;
+      }
+  }
+
+  unsigned long _ExpatXMLProperties::getULong(const char *szName, bool bRequired,
+      unsigned long ulDefault)
+  {
+    return getULong(szName, NULL, bRequired, ulDefault);
+  }
+
+  unsigned long _ExpatXMLProperties::getULong(const char *szName,
+      const char *szHiddenName, bool bRequired, unsigned long ulDefault)
+  {
+    std::string prop;
+
+    for (int i = 0; m_pAttr[i] != NULL; i += 2)
+      {
+        if (szName != NULL && !strcmp(m_pAttr[i], szName))
+          {
+            prop = propertyFromEnv(m_pAttr[i + 1]);
+            return propertyToULong(prop.c_str());
+          }
+        else if (szHiddenName != NULL && !strcmp(m_pAttr[i], szHiddenName))
+          {
+            prop = propertyFromEnv(m_pAttr[i + 1]);
+            return propertyToULong(prop.c_str());
           }
       }
 
@@ -852,6 +895,30 @@ namespace dbgw
       }
   }
 
+  unsigned long _ExpatXMLProperties::propertyToULong(const char *szProperty)
+  {
+    try
+      {
+        long lValue = boost::lexical_cast<long>(szProperty);
+        if (lValue < 0)
+          {
+            InvalidPropertyValueException e(m_xmlParser.getFileName(),
+                szProperty, "UNSIGNED NUMERIC");
+            DBGW_LOG_ERROR(e.what());
+            throw e;
+          }
+
+        return lValue;
+      }
+    catch (boost::bad_lexical_cast &)
+      {
+        InvalidPropertyValueException e(m_xmlParser.getFileName(), szProperty,
+            "NUMERIC");
+        DBGW_LOG_ERROR(e.what());
+        throw e;
+      }
+  }
+
   bool _ExpatXMLProperties::propertyToBoolean(const char *szProperty)
   {
     if (szProperty == NULL || !strcasecmp(szProperty, "false"))
@@ -1153,12 +1220,25 @@ namespace dbgw
       properties.getValidateResult(XN_SERVICE_PR_VALIDATE_RESULT,
           XN_SERVICE_PR_VALIDATE_RESULT_HIDDEN, bValidateResult);
 
+      long lWaitTimeMillis = properties.getLong(
+          XN_SERVICE_PR_DEFAULT_WAIT_TIME_MILLIS, false,
+          _Service::DEFAULT_WAIT_TIME_MILSEC());
+      if (lWaitTimeMillis < 0 && lWaitTimeMillis != system::UNDEFINED_TIMEOUT)
+        {
+          InvalidPropertyValueException e(m_pSelf->getRealFileName().c_str(),
+              lWaitTimeMillis, "UNSIGNED NUMERIC");
+          DBGW_LOG_ERROR(e.what());
+          throw e;
+        }
+
       m_pService = trait<_Service>::sp(
           new _Service(*m_pConnector, m_pSelf->getFileName(),
               properties.get(XN_SERVICE_PR_NAMESPACE, true),
-              properties.get(XN_SERVICE_PR_DESCRIPTION, false), bValidateResult,
+              properties.get(XN_SERVICE_PR_DESCRIPTION, false),
+              bValidateResult,
               properties.getInt(XN_SERVICE_PR_VALIDATE_RATIO,
-                  XN_SERVICE_PR_VALIDATE_RATIO_HIDDEN, false, 0)));
+                  XN_SERVICE_PR_VALIDATE_RATIO_HIDDEN, false, 0),
+              lWaitTimeMillis));
 
       m_pConnector->addService(m_pService);
     }
@@ -1262,13 +1342,13 @@ namespace dbgw
           _ExecutorPoolContext::DEFAULT_MAX_ACTIVE());
       m_context.maxWait = properties.getLong(XN_POOL_PR_MAX_WAIT, false,
           _ExecutorPoolContext::DEFAULT_MAX_WAIT());
-      m_context.timeBetweenEvictionRunsMillis = properties.getLong(
+      m_context.timeBetweenEvictionRunsMillis = properties.getULong(
           XN_POOL_PR_TIME_BETWEEN_EVICTION_RUNS_MILLIS, false,
           _ExecutorPoolContext::DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS());
       m_context.numTestsPerEvictionRun = properties.getInt(
           XN_POOL_PR_NUM_TESTS_PER_EVICTIONRUN, false,
           _ExecutorPoolContext::DEFAULT_NUM_TESTS_PER_EVICTIONRUN());
-      m_context.minEvictableIdleTimeMillis = properties.getLong(
+      m_context.minEvictableIdleTimeMillis = properties.getULong(
           XN_POOL_PR_MIN_EVICTABLE_IDLE_TIMEMILLIS, false,
           _ExecutorPoolContext::DEFAULT_MIN_EVICTABLE_IDLE_TIMEMILLIS());
     }
@@ -2200,9 +2280,7 @@ namespace dbgw
       Configuration &configuraion, const std::string &fileName,
       _Connector *pConnector) :
     _BaseXmlParser(fileName), m_configuration(configuraion),
-    m_pConnector(pConnector), m_pQueryMapper(NULL),
-    m_ulMaxWaitExitTimeMilSec(
-        Configuration::DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC())
+    m_pConnector(pConnector), m_pQueryMapper(NULL)
   {
   }
 
@@ -2210,9 +2288,7 @@ namespace dbgw
       Configuration &configuraion, const std::string &fileName,
       _QueryMapper *pQueryMapper) :
     _BaseXmlParser(fileName), m_configuration(configuraion),
-    m_pConnector(NULL), m_pQueryMapper(pQueryMapper),
-    m_ulMaxWaitExitTimeMilSec(
-        Configuration::DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC())
+    m_pConnector(NULL), m_pQueryMapper(pQueryMapper)
   {
   }
 
@@ -2221,9 +2297,7 @@ namespace dbgw
       _Connector *pConnector,
       _QueryMapper *pQueryMapper) :
     _BaseXmlParser(fileName), m_configuration(configuraion),
-    m_pConnector(pConnector), m_pQueryMapper(pQueryMapper),
-    m_ulMaxWaitExitTimeMilSec(
-        Configuration::DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC())
+    m_pConnector(pConnector), m_pQueryMapper(pQueryMapper)
   {
   }
 
@@ -2263,11 +2337,15 @@ namespace dbgw
   void _ConfigurationParser::parseConfiguration(
       _ExpatXMLProperties &properties)
   {
-    m_ulMaxWaitExitTimeMilSec = properties.getLong(
+    unsigned long ulMaxWaitExitTimeMilSec = properties.getULong(
         XN_CONFIGURATION_PR_MAX_WAIT_EXIT_TIME_MILLIS, false,
         Configuration::DEFAULT_MAX_WAIT_EXIT_TIME_MILSEC());
+    unsigned long ulWaitTimeMilSec = properties.getULong(
+        XN_CONFIGURATION_PR_DEFAULT_WAIT_TIME_MILLIS, false,
+        Configuration::DEFAULT_WAIT_TIME_MILSEC());
 
-    m_configuration.setMaxWaitExitTimeMilSec(m_ulMaxWaitExitTimeMilSec);
+    m_configuration.setMaxWaitExitTimeMilSec(ulMaxWaitExitTimeMilSec);
+    m_configuration.setWaitTimeMilSec(ulWaitTimeMilSec);
   }
 
   void _ConfigurationParser::parseQueryMap(_ExpatXMLProperties &properties)
@@ -2441,7 +2519,7 @@ namespace dbgw
           }
       }
 
-    unsigned long ulLogIntervalMilSec = properties.getLong(
+    unsigned long ulLogIntervalMilSec = properties.getULong(
         XN_STATISTICS_TIME_BETWEEN_STATISTICS_RUNS_MILLIS, false,
         _StatisticsMonitor::DEFAULT_LOG_INTERVAL_MILSEC());
 

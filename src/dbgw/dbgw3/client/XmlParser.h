@@ -88,8 +88,12 @@ namespace dbgw
     int getInt(const char *szName, const char *szHiddenName,
         bool bRequired, int nDefault = 0);
     long getLong(const char *szName, bool bRequired,
-        unsigned long ulDefault = 0l);
+        long lDefault = 0l);
     long getLong(const char *szName, const char *szHiddenName,
+        bool bRequired, long lDefault = 0l);
+    unsigned long getULong(const char *szName, bool bRequired,
+        unsigned long ulDefault = 0l);
+    unsigned long getULong(const char *szName, const char *szHiddenName,
         bool bRequired, unsigned long ulDefault = 0l);
     bool getBool(const char *szName, bool bRequired);
     bool getBool(const char *szName, const char *szHiddenName,
@@ -114,6 +118,7 @@ namespace dbgw
     std::string propertyFromEnv(const char *szValue);
     int propertyToInt(const char *szProperty);
     long propertyToLong(const char *szProperty);
+    unsigned long propertyToULong(const char *szProperty);
     bool propertyToBoolean(const char *szProperty);
 
   private:
@@ -332,7 +337,6 @@ namespace dbgw
     Configuration &m_configuration;
     _Connector *m_pConnector;
     _QueryMapper *m_pQueryMapper;
-    unsigned long m_ulMaxWaitExitTimeMilSec;
   };
 
   void parseXml(_XmlParser *pParser);

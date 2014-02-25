@@ -73,7 +73,7 @@ namespace dbgw
     return 8;
   }
 
-  unsigned long _ExecutorPoolContext::DEFAULT_MAX_WAIT()
+  long _ExecutorPoolContext::DEFAULT_MAX_WAIT()
   {
     return system::pool::NOWAIT_TIMEOUT;
   }

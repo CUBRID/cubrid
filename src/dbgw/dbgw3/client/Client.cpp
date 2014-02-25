@@ -51,7 +51,6 @@ namespace dbgw
       m_pSelf(pSelf), m_configuration(configuration),
       m_bIsClosed(false), m_bValidClient(false), m_bIsAutoCommit(true),
       m_ulWaitTimeMilSec(configuration.getWaitTimeMilSec())
-
     {
       clearException();
 
@@ -74,6 +73,12 @@ namespace dbgw
 
           m_pAsyncJobManager = m_configuration.getAsyncWorkerJobManager();
           m_pTimeoutJobManager = m_configuration.getTimeoutWorkerJobManager();
+
+          long lServiceWaitTimeMilSec = m_pService->getWaitTimeMilSec();
+          if (lServiceWaitTimeMilSec != system::UNDEFINED_TIMEOUT)
+            {
+              m_ulWaitTimeMilSec = lServiceWaitTimeMilSec;
+            }
 
           m_bValidClient = true;
         }

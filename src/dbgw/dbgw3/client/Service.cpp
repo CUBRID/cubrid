@@ -25,6 +25,7 @@
 #include "dbgw3/Logger.h"
 #include "dbgw3/Value.h"
 #include "dbgw3/ValueSet.h"
+#include "dbgw3/system/Time.h"
 #include "dbgw3/system/ThreadEx.h"
 #include "dbgw3/sql/DatabaseInterface.h"
 #include "dbgw3/sql/ResultSetMetaData.h"
@@ -52,11 +53,12 @@ namespace dbgw
   public:
     Impl(const std::string &fileName, const std::string &nameSpace,
         const std::string &description, bool bNeedValidation[],
-        int nValidateRatio) :
+        int nValidateRatio, long lWaitTimeMilSec) :
       m_fileName(fileName), m_nameSpace(nameSpace), m_description(description),
       m_nValidateRatio(nValidateRatio), m_lMaxWait(system::pool::NOWAIT_TIMEOUT),
       m_ulTimeBetweenEvictionRunsMillis(
-          _ExecutorPoolContext::DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS())
+          _ExecutorPoolContext::DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS()),
+      m_lWaitTimeMilSec(lWaitTimeMilSec)
     {
       memcpy(m_bNeedValidation, bNeedValidation, sql::DBGW_STMT_TYPE_SIZE);
 
@@ -238,6 +240,11 @@ namespace dbgw
       return m_groupList.empty();
     }
 
+    long getWaitTimeMilSec() const
+    {
+      return m_lWaitTimeMilSec;
+    }
+
     trait<_Group>::sp getGroup(const char *szGroupName) const
     {
       trait<_Group>::spvector::const_iterator it = m_groupList.begin();
@@ -293,17 +300,23 @@ namespace dbgw
     int m_nValidateRatio;
     long m_lMaxWait;
     unsigned long m_ulTimeBetweenEvictionRunsMillis;
+    long m_lWaitTimeMilSec;
     /* (groupName => Group) */
     trait<_Group>::spvector m_groupList;
   };
 
+  long _Service::DEFAULT_WAIT_TIME_MILSEC()
+  {
+    return system::UNDEFINED_TIMEOUT;
+  }
+
   _Service::_Service(const _Connector &connector,
       const std::string &fileName, const std::string &nameSpace,
       const std::string &description, bool bNeedValidation[],
-      int nValidateRatio) :
+      int nValidateRatio, long lWaitTimeMilSec) :
     system::_ThreadEx(Impl::run), _ConfigurationObject(connector),
     m_pImpl(new Impl(fileName, nameSpace, description,
-        bNeedValidation, nValidateRatio))
+        bNeedValidation, nValidateRatio, lWaitTimeMilSec))
   {
   }
 
@@ -353,6 +366,11 @@ namespace dbgw
   bool _Service::empty() const
   {
     return m_pImpl->empty();
+  }
+
+  long _Service::getWaitTimeMilSec() const
+  {
+    return m_pImpl->getWaitTimeMilSec();
   }
 
   trait<_Group>::sp _Service::getGroup(const char *szGroupName) const

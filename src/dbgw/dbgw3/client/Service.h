@@ -31,9 +31,13 @@ namespace dbgw
     public _ConfigurationObject
   {
   public:
+    static long DEFAULT_WAIT_TIME_MILSEC();
+
+  public:
     _Service(const _Connector &connector, const std::string &fileName,
         const std::string &nameSpace, const std::string &description,
-        bool m_bNeedValidation[], int nValidateRatio);
+        bool m_bNeedValidation[], int nValidateRatio,
+        long lWaitTimeMilSec);
     virtual ~ _Service();
 
     void addGroup(trait<_Group>::sp pGroup);
@@ -48,6 +52,7 @@ namespace dbgw
     const std::string &getFileName() const;
     const std::string &getNameSpace() const;
     bool empty() const;
+    long getWaitTimeMilSec() const;
     trait<_Group>::sp getGroup(const char *szGroupName) const;
 
   private:
