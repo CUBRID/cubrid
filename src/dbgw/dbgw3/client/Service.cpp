@@ -36,6 +36,7 @@
 #include "dbgw3/client/Service.h"
 #include "dbgw3/client/CharsetConverter.h"
 #include "dbgw3/client/Group.h"
+#include "dbgw3/system/Time.h"
 
 namespace dbgw
 {
@@ -53,7 +54,7 @@ namespace dbgw
         const std::string &description, bool bNeedValidation[],
         int nValidateRatio) :
       m_fileName(fileName), m_nameSpace(nameSpace), m_description(description),
-      m_nValidateRatio(nValidateRatio),
+      m_nValidateRatio(nValidateRatio), m_lMaxWait(system::pool::NOWAIT_TIMEOUT),
       m_ulTimeBetweenEvictionRunsMillis(
           _ExecutorPoolContext::DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS())
     {
@@ -92,6 +93,7 @@ namespace dbgw
 
     void initGroup(_ExecutorPoolContext &poolContext)
     {
+      m_lMaxWait = poolContext.maxWait;
       m_ulTimeBetweenEvictionRunsMillis =
           poolContext.timeBetweenEvictionRunsMillis;
 
@@ -127,6 +129,15 @@ namespace dbgw
 
           ChangePoolContextException e("initialSize", poolContext.initialSize,
               "initialSize > maxIdle");
+          DBGW_LOG_WARN(e.what());
+        }
+
+      if (poolContext.maxWait < -1)
+        {
+          poolContext.maxWait = system::pool::INFINITE_TIMEOUT;
+
+          ChangePoolContextException e("maxWait", poolContext.maxWait,
+              "INFINITE TIMEOUT is -1");
           DBGW_LOG_WARN(e.what());
         }
 
@@ -280,6 +291,7 @@ namespace dbgw
     std::string m_description;
     bool m_bNeedValidation[sql::DBGW_STMT_TYPE_SIZE];
     int m_nValidateRatio;
+    long m_lMaxWait;
     unsigned long m_ulTimeBetweenEvictionRunsMillis;
     /* (groupName => Group) */
     trait<_Group>::spvector m_groupList;

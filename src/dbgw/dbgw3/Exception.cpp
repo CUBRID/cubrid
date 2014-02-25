@@ -852,4 +852,12 @@ namespace dbgw
   {
   }
 
+  MaxWaitTimeoutException::MaxWaitTimeoutException(
+      unsigned long ulMaxWaitTimeout) throw() :
+    Exception(ExceptionFactory::create(DBGW_ER_CLIENT_MAX_WAIT_TIMEOUT,
+        (boost::format("Connection wait timeout occurred. (%lu msec)")
+            % ulMaxWaitTimeout).str()))
+  {
+  }
+
 }

@@ -37,6 +37,7 @@
 #include "dbgw3/client/StatisticsMonitor.h"
 #include "dbgw3/client/Host.h"
 #include "dbgw3/client/Service.h"
+#include "dbgw3/system/Time.h"
 
 namespace dbgw
 {
@@ -70,6 +71,11 @@ namespace dbgw
   int _ExecutorPoolContext::DEFAULT_MAX_ACTIVE()
   {
     return 8;
+  }
+
+  unsigned long _ExecutorPoolContext::DEFAULT_MAX_WAIT()
+  {
+    return system::pool::NOWAIT_TIMEOUT;
   }
 
   unsigned long _ExecutorPoolContext::DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS()
@@ -275,6 +281,7 @@ namespace dbgw
 
     trait<_Executor>::sp getExecutor()
     {
+      long lRemainWaitTime = m_execPoolContext.maxWait;
       trait<_Executor>::sp pExecutor;
       do
         {
@@ -304,16 +311,35 @@ namespace dbgw
 
       try
         {
-          if (pExecutor == NULL)
+          while (pExecutor == NULL)
             {
               m_poolMutex.lock();
               if (m_execPoolContext.maxActive
                   <= (getConnPoolSize() + m_execPoolContext.currActive))
                 {
                   m_poolMutex.unlock();
-                  CreateMaxConnectionException e(m_execPoolContext.maxActive);
-                  DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
-                  throw e;
+
+                  if ((m_execPoolContext.maxWait == system::pool::NOWAIT_TIMEOUT)
+                      || m_bIsIgnoreResult)
+                    {
+                      CreateMaxConnectionException e(m_execPoolContext.maxActive);
+                      DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+                      throw e;
+                    }
+
+                  if ((m_execPoolContext.maxWait == system::pool::INFINITE_TIMEOUT)
+                      || lRemainWaitTime > 0)
+                    {
+                      lRemainWaitTime -= 10;
+                      SLEEP_MILISEC(0, 10);
+                      continue;
+                    }
+                  else
+                    {
+                      MaxWaitTimeoutException e(m_execPoolContext.maxWait);
+                      DBGW_LOG_ERROR(m_logger.getLogMessage(e.what()).c_str());
+                      throw e;
+                    }
                 }
               m_poolMutex.unlock();
 
@@ -327,6 +353,7 @@ namespace dbgw
                 }
 
               m_pConnPoolStatItem->getColumn(DBGW_CONN_POOL_STAT_COL_SUCC_CNT)++;
+              break;
             }
         }
       catch (Exception &)

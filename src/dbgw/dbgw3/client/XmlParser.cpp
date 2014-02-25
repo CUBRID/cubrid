@@ -99,6 +99,7 @@ namespace dbgw
   static const char *XN_POOL_PR_MIN_IDLE = "minIdle";
   static const char *XN_POOL_PR_MAX_IDLE = "maxIdle";
   static const char *XN_POOL_PR_MAX_ACTIVE = "maxActive";
+  static const char *XN_POOL_PR_MAX_WAIT = "maxWait";
   static const char *XN_POOL_PR_TIME_BETWEEN_EVICTION_RUNS_MILLIS =
       "timeBetweenEvictionRunsMillis";
   static const char *XN_POOL_PR_NUM_TESTS_PER_EVICTIONRUN =
@@ -1259,6 +1260,8 @@ namespace dbgw
           _ExecutorPoolContext::DEFAULT_MAX_IDLE());
       m_context.maxActive = properties.getInt(XN_POOL_PR_MAX_ACTIVE, false,
           _ExecutorPoolContext::DEFAULT_MAX_ACTIVE());
+      m_context.maxWait = properties.getLong(XN_POOL_PR_MAX_WAIT, false,
+          _ExecutorPoolContext::DEFAULT_MAX_WAIT());
       m_context.timeBetweenEvictionRunsMillis = properties.getLong(
           XN_POOL_PR_TIME_BETWEEN_EVICTION_RUNS_MILLIS, false,
           _ExecutorPoolContext::DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS());

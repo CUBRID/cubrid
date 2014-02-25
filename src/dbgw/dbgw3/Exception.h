@@ -75,6 +75,7 @@ namespace dbgw
     DBGW_ER_CLIENT_ACCESS_DATA_BEFORE_FETCH           = -22412,
     DBGW_ER_CLIENT_EXEC_TIMEOUT                       = -22413,
     DBGW_ER_CLIENT_ASYNC_EXEC_TEMP_UNAVAILABLE        = -22414,
+    DBGW_ER_CLIENT_MAX_WAIT_TIMEOUT                   = -22415,
 
     DBGW_ER_FATAL_FAILED_TO_CREATE_THREAD             = -22500,
 
@@ -601,6 +602,12 @@ namespace dbgw
   {
   public:
     JsonMismatchTypeException(const char *szKey, const char *szType) throw();
+  };
+
+  class MaxWaitTimeoutException : public Exception
+  {
+  public:
+    MaxWaitTimeoutException(unsigned long ulMaxWaitTimeout) throw();
   };
 
 }
