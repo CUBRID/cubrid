@@ -1841,21 +1841,19 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
     }
 
   /* check for no key-range, no key-filter index scan */
-  if (bitset_is_empty (&(plan->plan_un.scan.terms))
+  if (scan_method == QO_SCANMETHOD_INDEX_SCAN
+      && bitset_is_empty (&(plan->plan_un.scan.terms))
       && bitset_is_empty (&(plan->plan_un.scan.kf_terms)))
     {
-      if (index_entryp->ils_prefix_len > 0)
-	{			/* is invalid case */
-	  qo_plan_release (plan);
-	  return NULL;
+      /* check for loose index scan */
+      if ((index_entryp->constraints->filter_predicate
+	   && index_entryp->force > 0)
+          || index_entryp->ils_prefix_len > 0)
+	{
+	  ;			/* go ahead */
 	}
-    }
-
-  /* check for loose index scan */
-  if (index_entryp->ils_prefix_len > 0)
-    {
-      if (bitset_is_empty (&(plan->plan_un.scan.kf_terms)))
-	{			/* is invalid case */
+      else
+	{
 	  assert (false);
 	  qo_plan_release (plan);
 	  return NULL;
@@ -2216,8 +2214,6 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
       if (plan->plan_un.scan.index
 	  && plan->plan_un.scan.index->head->ils_prefix_len > 0)
 	{
-	  assert (!bitset_is_empty (&(plan->plan_un.scan.kf_terms)));
-
 	  fprintf (f, " (loose index scan on prefix %d)",
 		   plan->plan_un.scan.index->head->ils_prefix_len);
 	}
@@ -2358,8 +2354,6 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
       if (plan->plan_un.scan.index
 	  && plan->plan_un.scan.index->head->ils_prefix_len > 0)
 	{
-	  assert (!bitset_is_empty (&(plan->plan_un.scan.kf_terms)));
-
 	  fprintf (f, " (loose index scan on prefix %d)",
 		   plan->plan_un.scan.index->head->ils_prefix_len);
 	}
