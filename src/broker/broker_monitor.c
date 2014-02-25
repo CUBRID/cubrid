@@ -1386,7 +1386,7 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items,
 		    }
 		}
 	    }
-#if defined(WIDOWS)
+#if defined(WINDOWS)
 	  else if (as_info_p->uts_status == UTS_STATUS_BUSY_WAIT)
 	    {
 	      mnt_item_p->num_busy++;
