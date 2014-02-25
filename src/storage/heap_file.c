@@ -1307,7 +1307,7 @@ heap_scancache_update_hinted_when_lots_space (THREAD_ENTRY *
   scan_cache->collect_nrecs += nrecords;
   scan_cache->collect_recs_sumlen += rec_length;
 
-  freespace = spage_max_space_for_new_record (thread_p, pgptr);
+  freespace = spage_get_free_space_without_saving (thread_p, pgptr, NULL);
 
   if (freespace > HEAP_DROP_FREE_SPACE)
     {
