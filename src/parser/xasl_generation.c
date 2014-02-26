@@ -411,12 +411,14 @@ static int pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser,
 						     XASL_NODE * xasl);
 static INDX_INFO *pt_to_index_info (PARSER_CONTEXT * parser,
 				    DB_OBJECT * class_,
-				    QO_XASL_INDEX_INFO * qo_index_infop,
-				    PRED_EXPR * where_pred);
+				    PRED_EXPR * where_pred,
+				    QO_PLAN * plan,
+				    QO_XASL_INDEX_INFO * qo_index_infop);
 static ACCESS_SPEC_TYPE *pt_to_class_spec_list (PARSER_CONTEXT * parser,
 						PT_NODE * spec,
 						PT_NODE * where_key_part,
 						PT_NODE * where_part,
+						QO_PLAN * plan,
 						QO_XASL_INDEX_INFO *
 						index_pred);
 static ACCESS_SPEC_TYPE *pt_to_subquery_table_spec_list (PARSER_CONTEXT *
@@ -4875,7 +4877,27 @@ pt_make_access_spec (TARGET_TYPE spec_type,
 {
   ACCESS_SPEC_TYPE *spec = NULL;
 
-  if (access != INDEX || indexptr)
+  /* validation check */
+  if (access == INDEX)
+    {
+      assert (indexptr != NULL);
+      if (indexptr)
+	{
+	  if (indexptr->coverage)
+	    {
+	      assert (where_pred == NULL);	/* no data-filter */
+	      if (where_pred == NULL)
+		{
+		  spec = regu_spec_alloc (spec_type);
+		}
+	    }
+	  else
+	    {
+	      spec = regu_spec_alloc (spec_type);
+	    }
+	}
+    }
+  else
     {
       spec = regu_spec_alloc (spec_type);
     }
@@ -11850,46 +11872,62 @@ error:
  *   return:
  *   parser(in):
  *   class(in):
- *   qo_index_infop(in):
  *   where_pred(in):
+ *   plan(in):
+ *   qo_index_infop(in):
  */
 static INDX_INFO *
 pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
-		  QO_XASL_INDEX_INFO * qo_index_infop, PRED_EXPR * where_pred)
+		  PRED_EXPR * where_pred,
+		  QO_PLAN * plan, QO_XASL_INDEX_INFO * qo_index_infop)
 {
   int nterms;
   int rangelist_idx;
   PT_NODE **term_exprs;
   PT_NODE *pt_expr;
-  bool multi_col;
-  BTID *btidp;
   PT_OP_TYPE op_type;
   INDX_INFO *indx_infop;
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_INDEX_ENTRY *index_entryp;
   KEY_INFO *key_infop;
-  PT_NODE *key_limit;
   int rc;
   int i;
   bool is_prefix_index;
   SM_FUNCTION_INFO *fi_info = NULL;
 
-  assert (parser != NULL
-	  && qo_index_infop->ni_entry != NULL
+  assert (parser != NULL);
+  assert (class_ != NULL);
+  assert (plan != NULL);
+  assert (qo_index_infop->ni_entry != NULL
 	  && qo_index_infop->ni_entry->head != NULL);
+
+  if (!qo_is_interesting_order_scan (plan))
+    {
+      assert (false);
+      PT_INTERNAL_ERROR (parser, "index plan generation - invalid plan");
+      return NULL;
+    }
+
+  ni_entryp = qo_index_infop->ni_entry;
+
+  for (i = 0, index_entryp = ni_entryp->head;
+       i < ni_entryp->n; i++, index_entryp = index_entryp->next)
+    {
+      if (class_ == index_entryp->class_->mop)
+	{
+	  break;		/* found */
+	}
+    }
+  assert (index_entryp != NULL);
 
   /* get array of term expressions and number of them which are associated
      with this index */
   nterms = qo_xasl_get_num_terms (qo_index_infop);
   term_exprs = qo_xasl_get_terms (qo_index_infop);
-  multi_col = qo_xasl_get_multi_col (class_, qo_index_infop);
-  btidp = qo_xasl_get_btid (class_, qo_index_infop);
-
-  ni_entryp = qo_index_infop->ni_entry;
-  index_entryp = ni_entryp->head;
 
   is_prefix_index = qo_is_prefix_index (index_entryp);
-  if (!class_ || nterms < 0 || !btidp)
+
+  if (class_ == NULL || nterms < 0 || index_entryp == NULL)
     {
       PT_INTERNAL_ERROR (parser, "index plan generation - invalid arg");
       return NULL;
@@ -11902,7 +11940,6 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
       pt_fix_first_term_expr_for_iss (parser, index_entryp, term_exprs);
     }
 
-  fi_info = index_entryp->constraints->func_index_info;
   if (nterms > 0)
     {
       int start_column = index_entryp->is_iss_candidate ? 1 : 0;
@@ -11967,11 +12004,17 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
 
   /* BTID */
   indx_infop->indx_id.type = T_BTID;
-  indx_infop->indx_id.i.btid = *btidp;
+  BTID_COPY (&(indx_infop->indx_id.i.btid),
+	     &(index_entryp->constraints->index_btid));
   indx_infop->coverage = 0;	/* init */
-  if (qo_xasl_get_coverage (class_, qo_index_infop) && where_pred == NULL)	/* no data-filter */
+  if (qo_is_index_cover_scan (plan))
     {
-      if (is_prefix_index == false)
+      assert (index_entryp->cover_segments == true);
+      assert (where_pred == NULL);	/* no data-filter */
+      assert (is_prefix_index == false);
+
+      if (index_entryp->cover_segments == true
+	  && where_pred == NULL && is_prefix_index == false)
 	{
 	  indx_infop->coverage = 1;
 	}
@@ -11997,21 +12040,27 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
 
   indx_infop->use_iss = index_entryp->is_iss_candidate;
   indx_infop->ils_prefix_len = index_entryp->ils_prefix_len;
-  indx_infop->func_idx_col_id = fi_info ? fi_info->col_id : -1;
-  if (index_entryp->constraints->func_index_info)
+
+  fi_info = index_entryp->constraints->func_index_info;
+  if (fi_info)
     {
-      SM_FUNCTION_INFO *fi = index_entryp->constraints->func_index_info;
+      indx_infop->func_idx_col_id = fi_info->col_id;
+      assert (indx_infop->func_idx_col_id != -1);
+
       rc = pt_create_iss_range (indx_infop,
-				tp_domain_resolve (fi->fi_domain->type->id,
-						   class_,
-						   fi->fi_domain->precision,
-						   fi->fi_domain->scale,
+				tp_domain_resolve (fi_info->fi_domain->type->
+						   id, class_,
+						   fi_info->fi_domain->
+						   precision,
+						   fi_info->fi_domain->scale,
 						   NULL,
-						   fi->fi_domain->
+						   fi_info->fi_domain->
 						   collation_id));
     }
   else
     {
+      indx_infop->func_idx_col_id = -1;
+
       rc = pt_create_iss_range (indx_infop, index_entryp->constraints->
 				attributes[0]->domain);
     }
@@ -12024,8 +12073,8 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
 
   /* key limits */
   key_infop = &indx_infop->key_info;
-  key_limit = qo_xasl_get_key_limit (class_, qo_index_infop);
-  if (pt_to_key_limit (parser, key_limit, NULL, key_infop, false) != NO_ERROR)
+  if (pt_to_key_limit (parser, index_entryp->key_limit,
+		       NULL, key_infop, false) != NO_ERROR)
     {
       PT_INTERNAL_ERROR (parser, "index plan generation - invalid key limit");
       return NULL;
@@ -12056,7 +12105,8 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
     {
     case PT_EQ:
       rc =
-	pt_to_single_key (parser, term_exprs, nterms, multi_col, key_infop);
+	pt_to_single_key (parser, term_exprs, nterms,
+			  QO_ENTRY_MULTI_COL (index_entryp), key_infop);
       indx_infop->range_type = R_KEY;
       break;
     case PT_GT:
@@ -12064,16 +12114,19 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
     case PT_LT:
     case PT_LE:
     case PT_BETWEEN:
-      rc = pt_to_range_key (parser, term_exprs, nterms, multi_col, key_infop);
+      rc = pt_to_range_key (parser, term_exprs, nterms,
+			    QO_ENTRY_MULTI_COL (index_entryp), key_infop);
       indx_infop->range_type = R_RANGE;
       break;
     case PT_IS_IN:
     case PT_EQ_SOME:
-      rc = pt_to_list_key (parser, term_exprs, nterms, multi_col, key_infop);
+      rc = pt_to_list_key (parser, term_exprs, nterms,
+			   QO_ENTRY_MULTI_COL (index_entryp), key_infop);
       indx_infop->range_type = R_KEYLIST;
       break;
     case PT_RANGE:
-      rc = pt_to_rangelist_key (parser, term_exprs, nterms, multi_col,
+      rc = pt_to_rangelist_key (parser, term_exprs, nterms,
+				QO_ENTRY_MULTI_COL (index_entryp),
 				key_infop, rangelist_idx);
       for (i = 0; i < key_infop->key_cnt; i++)
 	{
@@ -12134,12 +12187,13 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
  *   spec(in):
  *   where_key_part(in):
  *   where_part(in):
+ *   plan(in):
  *   index_pred(in):
  */
 static ACCESS_SPEC_TYPE *
 pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 		       PT_NODE * where_key_part, PT_NODE * where_part,
-		       QO_XASL_INDEX_INFO * index_pred)
+		       QO_PLAN * plan, QO_XASL_INDEX_INFO * index_pred)
 {
   SYMBOL_INFO *symbols;
   ACCESS_SPEC_TYPE *access;
@@ -12232,7 +12286,9 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 	      where = pt_to_pred_expr (parser, where_part);
 
 	      if (scan_type == TARGET_CLASS_ATTR)
-		symbols->current_class = class_;
+		{
+		  symbols->current_class = class_;
+		}
 
 	      regu_attributes_pred = pt_to_regu_variable_list (parser,
 							       pred_attrs,
@@ -12383,7 +12439,8 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 	       */
 	      index_info = pt_to_index_info (parser,
 					     class_->info.name.db_object,
-					     index_pred, where);
+					     where, plan, index_pred);
+	      assert (index_info != NULL);
 	      access = pt_make_class_access_spec (parser, flat,
 						  class_->info.name.db_object,
 						  TARGET_CLASS, INDEX,
@@ -12684,12 +12741,14 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
  *   spec(in):
  *   where_key_part(in):
  *   where_part(in):
+ *   plan(in):
  *   index_part(in):
  *   src_derived_tbl(in):
  */
 ACCESS_SPEC_TYPE *
 pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 		 PT_NODE * where_key_part, PT_NODE * where_part,
+		 QO_PLAN * plan,
 		 QO_XASL_INDEX_INFO * index_part, PT_NODE * src_derived_tbl)
 {
   ACCESS_SPEC_TYPE *access = NULL;
@@ -12697,8 +12756,9 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
   if (spec->info.spec.flat_entity_list != NULL
       && spec->info.spec.derived_table == NULL)
     {
-      access = pt_to_class_spec_list (parser, spec,
-				      where_key_part, where_part, index_part);
+      access =
+	pt_to_class_spec_list (parser, spec, where_key_part, where_part, plan,
+			       index_part);
     }
   else
     {
@@ -13773,7 +13833,7 @@ pt_to_fetch_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * pred)
 		}
 
 	      xasl->spec_list = pt_to_class_spec_list (parser, spec, NULL,
-						       pred, NULL);
+						       pred, NULL, NULL);
 
 	      if (xasl->spec_list == NULL)
 		{
@@ -13910,6 +13970,7 @@ pt_to_fetch_proc_list (PARSER_CONTEXT * parser, PT_NODE * spec,
  * ptqo_to_scan_proc () - Convert a spec pt_node to a SCAN_PROC
  *   return:
  *   parser(in):
+ *   plan(in):
  *   xasl(in):
  *   spec(in):
  *   where_key_part(in):
@@ -13918,6 +13979,7 @@ pt_to_fetch_proc_list (PARSER_CONTEXT * parser, PT_NODE * spec,
  */
 XASL_NODE *
 ptqo_to_scan_proc (PARSER_CONTEXT * parser,
+		   QO_PLAN * plan,
 		   XASL_NODE * xasl,
 		   PT_NODE * spec,
 		   PT_NODE * where_key_part,
@@ -13941,7 +14003,7 @@ ptqo_to_scan_proc (PARSER_CONTEXT * parser,
     {
       xasl->spec_list = pt_to_spec_list (parser, spec,
 					 where_key_part, where_part,
-					 info, NULL);
+					 plan, info, NULL);
       if (xasl->spec_list == NULL)
 	{
 	  goto exit_on_error;
@@ -14180,7 +14242,7 @@ pt_to_scan_proc_list (PARSER_CONTEXT * parser, PT_NODE * node,
 
   while (from)
     {
-      xasl = ptqo_to_scan_proc (parser, NULL, from, NULL, NULL, NULL);
+      xasl = ptqo_to_scan_proc (parser, NULL, NULL, from, NULL, NULL, NULL);
 
       pt_to_pred_terms (parser,
 			node->info.query.q.select.where,
@@ -14341,7 +14403,7 @@ pt_gen_simple_plan (PARSER_CONTEXT * parser, PT_NODE * select_node,
 				  &access_part, &if_part, &instnum_part);
 
       xasl->spec_list = pt_to_spec_list (parser, from, NULL, access_part,
-					 NULL, NULL);
+					 NULL, NULL, NULL);
       if (xasl->spec_list == NULL)
 	{
 	  goto exit_on_error;
@@ -14441,14 +14503,14 @@ pt_gen_simple_merge_plan (PARSER_CONTEXT * parser,
       && !select_node->info.query.q.select.from->next->next)
     {
       xasl->spec_list = pt_to_spec_list (parser, table1, NULL,
-					 NULL, NULL, NULL);
+					 NULL, plan, NULL, NULL);
       if (xasl->spec_list == NULL)
 	{
 	  goto exit_on_error;
 	}
 
       xasl->merge_spec = pt_to_spec_list (parser, table2, NULL,
-					  NULL, NULL, table1);
+					  NULL, plan, NULL, table1);
       if (xasl->merge_spec == NULL)
 	{
 	  goto exit_on_error;

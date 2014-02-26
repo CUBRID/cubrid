@@ -178,11 +178,6 @@ extern void qo_set_cost (DB_OBJECT * target, DB_VALUE * result,
  */
 extern int qo_xasl_get_num_terms (QO_XASL_INDEX_INFO * info);
 extern PT_NODE **qo_xasl_get_terms (QO_XASL_INDEX_INFO *);
-extern BTID *qo_xasl_get_btid (MOP classop, QO_XASL_INDEX_INFO * info);
-extern bool qo_xasl_get_multi_col (MOP class_mop, QO_XASL_INDEX_INFO * infop);
-extern PT_NODE *qo_xasl_get_key_limit (MOP class_mop,
-				       QO_XASL_INDEX_INFO * infop);
-extern bool qo_xasl_get_coverage (MOP class_mop, QO_XASL_INDEX_INFO * infop);
 extern PT_NODE *qo_check_nullable_expr (PARSER_CONTEXT * parser,
 					PT_NODE * node, void *arg,
 					int *continue_walk);

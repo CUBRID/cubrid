@@ -1821,24 +1821,29 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
   plan->plan_un.scan.index_cover = false;	/* init */
   if (index_entryp->cover_segments)
     {
-      bool index_cover = true;	/* guess */
-
-      for (t = bitset_iterate (&remaining_terms, &iter);
-	   t != -1; t = bitset_next_member (&iter))
+      /* do not consider prefix index */
+      if (qo_is_prefix_index (index_entryp) == false)
 	{
-	  term = QO_ENV_TERM (env, t);
-
-	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+	  for (t = bitset_iterate (&remaining_terms, &iter);
+	       t != -1; t = bitset_next_member (&iter))
 	    {
-	      /* term contains correlated subquery */
-	      continue;
+	      term = QO_ENV_TERM (env, t);
+
+	      if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+		{
+		  /* term contains correlated subquery */
+		  continue;
+		}
+
+	      break;		/* found data-filter */
 	    }
 
-	  index_cover = false;
-	  break;
+	  if (t == -1)
+	    {
+	      /* not found data-filter */
+	      plan->plan_un.scan.index_cover = true;
+	    }
 	}
-
-      plan->plan_un.scan.index_cover = index_cover;
     }
 
   assert (!bitset_intersects (&(plan->plan_un.scan.terms),
@@ -2220,9 +2225,10 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
       qo_termset_fprint ((plan->info)->env, &plan->plan_un.scan.terms, f);
 
       /* print index covering */
-      if (qo_is_index_cover_scan (plan)
-	  && qo_is_prefix_index (plan->plan_un.scan.index->head) == false)
+      if (qo_is_index_cover_scan (plan))
 	{
+	  assert (!qo_is_prefix_index (plan->plan_un.scan.index->head));
+
 	  if (bitset_cardinality (&(plan->plan_un.scan.terms)) > 0)
 	    {
 	      fprintf (f, " ");
@@ -2364,9 +2370,10 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
 	}
 
       /* print index covering */
-      if (qo_is_index_cover_scan (plan)
-	  && qo_is_prefix_index (plan->plan_un.scan.index->head) == false)
+      if (qo_is_index_cover_scan (plan))
 	{
+	  assert (!qo_is_prefix_index (plan->plan_un.scan.index->head));
+
 	  fprintf (f, " (covers)");
 	}
 
@@ -11658,9 +11665,10 @@ qo_plan_scan_print_json (QO_PLAN * plan)
 	  json_object_set_new (scan, "key filter", filter);
 	}
 
-      if (qo_is_index_cover_scan (plan)
-	  && qo_is_prefix_index (plan->plan_un.scan.index->head) == false)
+      if (qo_is_index_cover_scan (plan))
 	{
+	  assert (!qo_is_prefix_index (plan->plan_un.scan.index->head));
+
 	  json_object_set_new (scan, "covered", json_true ());
 	}
 
@@ -11978,9 +11986,10 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
 	    }
 	}
 
-      if (qo_is_index_cover_scan (plan)
-	  && qo_is_prefix_index (plan->plan_un.scan.index->head) == false)
+      if (qo_is_index_cover_scan (plan))
 	{
+	  assert (!qo_is_prefix_index (plan->plan_un.scan.index->head));
+
 	  fprintf (fp, ", covered: true");
 	}
 

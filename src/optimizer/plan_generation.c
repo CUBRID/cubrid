@@ -165,7 +165,7 @@ static PT_NODE *qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser,
 static XASL_NODE *
 make_scan_proc (QO_ENV * env)
 {
-  return ptqo_to_scan_proc (QO_ENV_PARSER (env), NULL, NULL, NULL, NULL,
+  return ptqo_to_scan_proc (QO_ENV_PARSER (env), NULL, NULL, NULL, NULL, NULL,
 			    NULL);
 }
 
@@ -706,7 +706,8 @@ init_class_scan_proc (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
 
   info = qo_get_xasl_index_info (env, plan);
   make_pred_from_plan (env, plan, &key_pred, &access_pred, info);
-  xasl = ptqo_to_scan_proc (parser, xasl, spec, key_pred, access_pred, info);
+  xasl =
+    ptqo_to_scan_proc (parser, plan, xasl, spec, key_pred, access_pred, info);
 
   /* free pointer node list */
   parser_free_tree (parser, key_pred);
@@ -836,7 +837,7 @@ add_access_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
   make_pred_from_plan (env, plan, &key_pred, &access_pred, info);
 
   xasl->spec_list = pt_to_spec_list (parser, class_spec,
-				     key_pred, access_pred, info, NULL);
+				     key_pred, access_pred, plan, info, NULL);
   if (xasl->spec_list == NULL)
     {
       goto exit_on_error;
@@ -2670,6 +2671,8 @@ qo_is_index_cover_scan (QO_PLAN * plan)
 	  assert (plan->plan_un.scan.index->head);
 	  assert (plan->plan_un.scan.index->head->cover_segments);
 
+	  assert (!qo_is_prefix_index (plan->plan_un.scan.index->head));
+
 	  return true;
 	}
     }
@@ -2925,112 +2928,6 @@ qo_xasl_get_terms (QO_XASL_INDEX_INFO * info)
 }
 
 /*
- * qo_xasl_get_btid () - Return a point to the index BTID
- *   return: BTID *
- *   classop(in):
- *   info(in): Pointer to info structure
- */
-BTID *
-qo_xasl_get_btid (MOP classop, QO_XASL_INDEX_INFO * info)
-{
-  BTID *btid = NULL;
-  int i, n_classes;
-  QO_INDEX_ENTRY *index;
-
-  n_classes = (info->ni_entry)->n;
-
-  for (i = 0, index = (info->ni_entry)->head;
-       ((i < n_classes) && (btid == NULL)); i++, index = index->next)
-    {
-      if (classop == (index->class_)->mop)
-	{
-	  btid = &(index->constraints->index_btid);
-	}
-    }
-
-  return btid;
-}
-
-/*
- * qo_xasl_get_multi_col () -
- *   return: Return true if the specified index is multi-column index
- *   class_mop(in): Pointer to class MOP to which the index belongs
- *   infop(in):
- */
-bool
-qo_xasl_get_multi_col (MOP class_mop, QO_XASL_INDEX_INFO * infop)
-{
-  int i, n_classes;
-  QO_INDEX_ENTRY *index_entryp;
-
-  n_classes = (infop->ni_entry)->n;
-  for (i = 0, index_entryp = (infop->ni_entry)->head;
-       i < n_classes && index_entryp; i++, index_entryp = index_entryp->next)
-    {
-      if (class_mop == (index_entryp->class_)->mop)
-	{
-	  return QO_ENTRY_MULTI_COL (index_entryp);
-	}
-    }
-
-  /* cannot find the index entry with class MOP, is it possible? */
-  return false;
-}
-
-/*
- * qo_xasl_get_key_limit () - get the index key limits
- *   return: Key limit PT_NODE
- *   class_mop(in): Pointer to class MOP to which the index belongs
- *   infop(in): Pointer to the index info structure
- */
-PT_NODE *
-qo_xasl_get_key_limit (MOP class_mop, QO_XASL_INDEX_INFO * infop)
-{
-  int i, n_classes;
-  QO_INDEX_ENTRY *index_entryp;
-  PT_NODE *key_limit = NULL;
-
-  n_classes = (infop->ni_entry)->n;
-  for (i = 0, index_entryp = (infop->ni_entry)->head;
-       i < n_classes && index_entryp; i++, index_entryp = index_entryp->next)
-    {
-      if (class_mop == (index_entryp->class_)->mop)
-	{
-	  key_limit = index_entryp->key_limit;
-	  break;
-	}
-    }
-
-  return key_limit;
-}
-
-
-/*
- * qo_xasl_get_coverage () - get the index coverage state
- *   return: index coverage state
- *   class_mop(in): Pointer to class MOP to which the index belongs
- *   infop(in): Pointer to the index info structure
- */
-bool
-qo_xasl_get_coverage (MOP class_mop, QO_XASL_INDEX_INFO * infop)
-{
-  int i, n_classes;
-  QO_INDEX_ENTRY *index_entryp;
-
-  n_classes = (infop->ni_entry)->n;
-  for (i = 0, index_entryp = (infop->ni_entry)->head;
-       i < n_classes && index_entryp; i++, index_entryp = index_entryp->next)
-    {
-      if (class_mop == (index_entryp->class_)->mop)
-	{
-	  return index_entryp->cover_segments;
-	}
-    }
-
-  return false;
-}
-
-/*
  * qo_add_hq_iterations_access_spec () - adds hierarchical query iterations
  *	access spec on single table
  *   return:
@@ -3083,8 +2980,8 @@ qo_add_hq_iterations_access_spec (QO_PLAN * plan, XASL_NODE * xasl)
   make_pred_from_plan (env, plan, &key_pred, &access_pred, index_info);
 
   xasl->spec_list =
-    pt_to_spec_list (parser, class_spec, key_pred, access_pred, index_info,
-		     NULL);
+    pt_to_spec_list (parser, class_spec, key_pred, access_pred,
+		     plan, index_info, NULL);
 
   if_pred = make_if_pred_from_plan (env, plan);
   if (if_pred)
