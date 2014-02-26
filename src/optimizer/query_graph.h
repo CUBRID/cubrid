@@ -132,9 +132,6 @@ struct qo_index_entry
   /* terms constrained by the index */
   BITSET terms;
 
-  /* key filtered terms constrained by the index */
-  BITSET key_filter_terms;
-
   /* true if all unique columns are specified in equal terms */
   bool all_unique_index_columns_are_equi_terms;
 

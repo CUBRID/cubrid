@@ -269,8 +269,7 @@ static void qo_partition_init (QO_ENV *, QO_PARTITION *, int);
 static void qo_partition_free (QO_PARTITION *);
 static void qo_partition_dump (QO_PARTITION *, FILE *);
 static void qo_find_index_terms (QO_ENV * env, BITSET * segsp,
-				 BITSET * termsp,
-				 BITSET * just_segments_termsp);
+				 QO_INDEX_ENTRY * index_entry);
 static void qo_find_index_seg_terms (QO_ENV * env,
 				     QO_INDEX_ENTRY * index_entry, int idx);
 static bool qo_find_index_segs (QO_ENV *, SM_CLASS_CONSTRAINT *, QO_NODE *,
@@ -4874,7 +4873,6 @@ qo_alloc_index (QO_ENV * env, int n)
       entryp->seg_equal_terms = NULL;
       entryp->seg_other_terms = NULL;
       bitset_init (&(entryp->terms), env);
-      bitset_init (&(entryp->key_filter_terms), env);
       entryp->all_unique_index_columns_are_equi_terms = false;
       entryp->cover_segments = false;
       entryp->is_iss_candidate = false;
@@ -4914,7 +4912,6 @@ qo_free_index (QO_ENV * env, QO_INDEX * indexp)
     {
       entryp = QO_INDEX_INDEX (indexp, i);
       bitset_delset (&(entryp->terms));
-      bitset_delset (&(entryp->key_filter_terms));
       for (j = 0; j < entryp->nsegs; j++)
 	{
 	  bitset_delset (&(entryp->seg_equal_terms[j]));
@@ -6433,19 +6430,18 @@ qo_discover_edges (QO_ENV * env)
  *   return:
  *   env(in): The environment used
  *   segsp(in): Passed BITSET of interested segments
- *   termsp(in): Returned BITSET of terms which contain the segments
- *   just_segments_termsp(in): Returned BITSET of terms which contain
- *			       just the segments
+ *   index_entry(in):
  */
 static void
-qo_find_index_terms (QO_ENV * env, BITSET * segsp, BITSET * termsp,
-		     BITSET * just_segments_termsp)
+qo_find_index_terms (QO_ENV * env, BITSET * segsp,
+		     QO_INDEX_ENTRY * index_entry)
 {
   int t;
   QO_TERM *qo_termp;
 
-  BITSET_CLEAR (*termsp);
-  BITSET_CLEAR (*just_segments_termsp);
+  assert (index_entry != NULL);
+
+  BITSET_CLEAR (index_entry->terms);
 
   /* traverse all terms */
   for (t = 0; t < env->nterms; t++)
@@ -6461,7 +6457,7 @@ qo_find_index_terms (QO_ENV * env, BITSET * segsp, BITSET * termsp,
 	  continue;
 	}
       /* 'qo_analyze_term()' function verifies that all indexable
-         terms are expression so that they have 'pt_expr' filed of type
+         terms are expression so that they have 'pt_expr' field of type
          PT_EXPR. */
 
       /* if the segments that give rise to the term are in the given segment
@@ -6469,15 +6465,8 @@ qo_find_index_terms (QO_ENV * env, BITSET * segsp, BITSET * termsp,
       if (bitset_intersects (&(QO_TERM_SEGS (qo_termp)), segsp))
 	{
 	  /* collect this term */
-	  bitset_add (termsp, t);
+	  bitset_add (&(index_entry->terms), t);
 	}
-
-      if (bitset_subset (segsp, &(QO_TERM_SEGS (qo_termp)))
-	  && !bitset_is_empty (&(QO_TERM_SEGS (qo_termp))))
-	{
-	  bitset_add (just_segments_termsp, t);
-	}
-
     }				/* for (t = 0; t < env->nterms; t++) */
 
 }
@@ -6517,7 +6506,7 @@ qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx)
 	  continue;
 	}
       /* 'qo_analyze_term()' function verifies that all indexable
-         terms are expression so that they have 'pt_expr' filed of type
+         terms are expression so that they have 'pt_expr' field of type
          PT_EXPR. */
 
       /* if the term is sarg and the given segment is involed in the
@@ -7509,8 +7498,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		      qo_find_index_seg_terms (env, index_entryp, j);
 		    }
 		}
-	      qo_find_index_terms (env, &index_segs, &(index_entryp->terms),
-				   &(index_entryp->key_filter_terms));
+	      qo_find_index_terms (env, &index_segs, index_entryp);
 
 	      index_entryp->cover_segments =
 		qo_is_coverage_index (env, nodep, index_entryp);

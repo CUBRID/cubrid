@@ -3613,7 +3613,6 @@ qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser, QO_PLAN * plan,
  *		WHERE col_1 = ? AND col_2 = ? AND ...
  *		    AND col_(j) IN (?,?,...)
  *		    AND col_(j+1) = ? AND ... AND col_(p-1) = ?
- *		    AND key_filter_terms
  *		ORDER BY col_(p) [ASC/DESC] [, col_(p2) [ASC/DESC], ...]
  *		FOR ordbynum_pred / LIMIT n
  */
