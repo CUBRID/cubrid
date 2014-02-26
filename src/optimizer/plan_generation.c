@@ -87,7 +87,6 @@ static PT_NODE *make_if_pred_from_plan (QO_ENV * env, QO_PLAN * plan);
 static PT_NODE *make_instnum_pred_from_plan (QO_ENV * env, QO_PLAN * plan);
 static PT_NODE *make_namelist_from_projected_segs (QO_ENV * env,
 						   QO_PLAN * plan);
-static SORT_LIST *make_sort_list_after_eqclass (QO_ENV * env, int column_cnt);
 
 static XASL_NODE *gen_outer (QO_ENV *, QO_PLAN *, BITSET *,
 			     XASL_NODE *, XASL_NODE *, XASL_NODE *);
@@ -239,9 +238,8 @@ make_mergelist_proc (QO_ENV * env,
   PT_NODE *outer_attr, *inner_attr;
   int i, left_epos, rght_epos, cnt, seg_idx, ncols;
   int left_nlen, left_elen, rght_nlen, rght_elen, nlen;
-  SORT_LIST *left_order, *rght_order;
+  SORT_LIST *order, *prev_order;
   QO_TERM *term;
-  QO_EQCLASS *order;
   BITSET_ITERATOR bi;
   BITSET term_segs;
 
@@ -300,15 +298,14 @@ make_mergelist_proc (QO_ENV * env,
       goto exit_on_error;
     }
 
-  left_order = left->orderby_list = make_sort_list_after_eqclass (env, ncols);
-  rght_order = rght->orderby_list = make_sort_list_after_eqclass (env, 1);
+  left->orderby_list = NULL;
+  rght->orderby_list = NULL;
 
   cnt = 0;			/* init */
   left_epos = rght_epos = 0;	/* init */
   for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi);
        i != -1; i = bitset_next_member (&bi))
     {
-
       term = QO_ENV_TERM (env, i);
 
       if (ls_merge->join_type == JOIN_INNER && QO_IS_PATH_TERM (term))
@@ -380,28 +377,78 @@ make_mergelist_proc (QO_ENV * env,
 	  ls_merge->ls_inner_column[cnt] =
 	    pt_find_attribute (parser, inner_attr, rght_list);
 	}
-
       ls_merge->ls_inner_unique[cnt] = false;	/* currently, unused */
 
-      if (left_order)
+      /* set outer list order entry */
+      prev_order = NULL;
+      for (order = left->orderby_list; order; order = order->next)
 	{
-	  left_order->s_order = S_ASC;
-	  left_order->pos_descr.pos_no = ls_merge->ls_outer_column[cnt];
-	  left_order->pos_descr.dom =
-	    pt_xasl_node_to_domain (parser, outer_attr);
-	  left_order = left_order->next;
+	  if (order->pos_descr.pos_no == ls_merge->ls_outer_column[cnt])
+	    {
+	      /* found order entry */
+	      break;
+	    }
+	  prev_order = order;
 	}
 
-      if (rght_order)
+      /* not found outer order entry */
+      if (order == NULL)
 	{
-	  assert (cnt == 0);
+	  order = ptqo_single_orderby (parser);
+	  if (order == NULL)
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		      ER_FAILED_ASSERTION, 1, "left_order != NULL");
+	      goto exit_on_error;
+	    }
 
-	  rght_order->s_order = S_ASC;
-	  rght_order->pos_descr.pos_no = ls_merge->ls_inner_column[cnt];
-	  rght_order->pos_descr.dom =
-	    pt_xasl_node_to_domain (parser, inner_attr);
-	  rght_order = rght_order->next;
-	  assert (rght_order == NULL);
+	  order->s_order = S_ASC;
+	  order->pos_descr.pos_no = ls_merge->ls_outer_column[cnt];
+	  order->pos_descr.dom = pt_xasl_node_to_domain (parser, outer_attr);
+	  if (prev_order == NULL)
+	    {
+	      left->orderby_list = order;
+	    }
+	  else
+	    {
+	      prev_order->next = order;
+	    }
+	}
+
+      /* set inner list order entry */
+      prev_order = NULL;
+      for (order = rght->orderby_list; order; order = order->next)
+	{
+	  if (order->pos_descr.pos_no == ls_merge->ls_inner_column[cnt])
+	    {
+	      /* found order entry */
+	      break;
+	    }
+	  prev_order = order;
+	}
+
+      /* not found inner order entry */
+      if (order == NULL)
+	{
+	  order = ptqo_single_orderby (parser);
+	  if (order == NULL)
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		      ER_FAILED_ASSERTION, 1, "right_order != NULL");
+	      goto exit_on_error;
+	    }
+
+	  order->s_order = S_ASC;
+	  order->pos_descr.pos_no = ls_merge->ls_inner_column[cnt];
+	  order->pos_descr.dom = pt_xasl_node_to_domain (parser, inner_attr);
+	  if (prev_order == NULL)
+	    {
+	      rght->orderby_list = order;
+	    }
+	  else
+	    {
+	      prev_order->next = order;
+	    }
 	}
 
       cnt++;
@@ -1548,41 +1595,6 @@ make_namelist_from_projected_segs (QO_ENV * env, QO_PLAN * plan)
     }
 
   return namelist;
-}
-
-/*
- * make_sort_list_after_eqclass () -
- *   return: SORT_LIST *
- *   env(in): The optimizer environment
- *   column_cnt(in): ordering column count
- *
- * Note: Find one of the projected segments that belongs to the right
- *    equivalence class and build a SORT_LIST with a POS_DESC for
- *    that attribute.
- */
-static SORT_LIST *
-make_sort_list_after_eqclass (QO_ENV * env, int column_cnt)
-{
-  SORT_LIST *list, *single;
-  int i;
-
-  list = NULL;			/* init */
-
-  for (i = 0; i < column_cnt; i++)
-    {
-      single = ptqo_single_orderby (env->parser);
-      if (list == NULL)
-	{			/* the first time */
-	  list = single;
-	}
-      else if (single != NULL)
-	{			/* insert into the head of list */
-	  single->next = list;
-	  list = single;
-	}
-    }
-
-  return list;
 }
 
 /*
