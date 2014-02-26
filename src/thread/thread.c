@@ -335,43 +335,15 @@ thread_initialize_manager (void)
 
   assert (NUM_NORMAL_TRANS >= 10);
 
-  if (thread_Manager.initialized == false)
+  if (thread_Manager.initialized)
     {
-      r = thread_initialize_key ();
-      if (r != NO_ERROR)
-	{
-	  return r;
-	}
-
-#if defined(WINDOWS)
-      r = pthread_mutex_init (&css_Internal_mutex_for_mutex_initialize, NULL);
-      if (r != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ER_CSS_PTHREAD_MUTEX_INIT, 0);
-	  return ER_CSS_PTHREAD_MUTEX_INIT;
-	}
-      css_initialize_sync_object ();
-#endif /* WINDOWS */
-
+      return NO_ERROR;
     }
-  else
+
+  r = thread_initialize_key ();
+  if (r != NO_ERROR)
     {
-      /* destroy mutex and cond */
-      for (i = 1; i < thread_Manager.num_total; i++)
-	{
-	  r = thread_finalize_entry (&thread_Manager.thread_array[i]);
-	  if (r != NO_ERROR)
-	    {
-	      return r;
-	    }
-	}
-      r = thread_finalize_entry (&thread_Manager.thread_array[0]);
-      if (r != NO_ERROR)
-	{
-	  return r;
-	}
-      free_and_init (thread_Manager.thread_array);
+      return r;
     }
 
   thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS * 2;
@@ -379,6 +351,17 @@ thread_initialize_manager (void)
   thread_Manager.num_total = (thread_Manager.num_workers
 			      + thread_Manager.num_daemons +
 			      NUM_SYSTEM_TRANS);
+
+#if defined(WINDOWS)
+  r = pthread_mutex_init (&css_Internal_mutex_for_mutex_initialize, NULL);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
+  css_initialize_sync_object ();
+#endif /* WINDOWS */
 
   size = thread_Manager.num_total * sizeof (THREAD_ENTRY);
   tsd_ptr = thread_Manager.thread_array = (THREAD_ENTRY *) malloc (size);
