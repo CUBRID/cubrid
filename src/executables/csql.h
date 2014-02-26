@@ -259,6 +259,7 @@ typedef struct
   bool continue_on_error;
   bool sysadm;
   bool write_on_standby;
+  bool trigger_action_flag;
   int string_width;
 #if defined(CSQL_NO_LONGGING)
   bool no_logging;

@@ -57,6 +57,7 @@
 #include "execute_statement.h"
 #include "network_interface_cl.h"
 #include "connection_support.h"
+#include "trigger_manager.h"
 #if !defined(CS_MODE)
 #include "session.h"
 #endif
@@ -527,6 +528,30 @@ void
 db_clear_delayed_hosts_count (void)
 {
   db_Delayed_hosts_count = 0;
+}
+
+/*
+ * db_enable_trigger() - enable all trigger actions
+ *   return : previous state
+ *
+ *   NOTE: recommend to be called after db_restart is called
+ */
+bool
+db_enable_trigger (void)
+{
+  return tr_set_execution_state (true);
+}
+
+/*
+ * db_disable_trigger() - disable all trigger actions
+ *   return :previous state
+ *
+ *   NOTE: recommend to be called after db_restart is called
+ */
+bool
+db_disable_trigger (void)
+{
+  return tr_set_execution_state (false);
 }
 
 /*

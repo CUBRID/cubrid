@@ -77,7 +77,6 @@
 #include "environment_variable.h"
 #include "locator.h"
 #include "transform.h"
-#include "trigger_manager.h"
 #include "jsp_cl.h"
 #include "client_support.h"
 #include "es.h"
@@ -911,12 +910,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       client_credential->host_name = boot_Host_name;
     }
   client_credential->process_id = getpid ();
-
-  /* disable triggers when a client is a log applier */
-  if (client_credential->client_type == DB_CLIENT_TYPE_LOG_APPLIER)
-    {
-      tr_set_execution_state (false);
-    }
 
   /*
    * Initialize the dynamic loader. Don't care about failures. If dynamic

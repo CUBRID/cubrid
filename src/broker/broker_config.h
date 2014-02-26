@@ -242,6 +242,8 @@ struct t_broker_info
 
   int cas_rctime;		/* sec */
 
+  char trigger_action_flag;	/* enable or disable trigger action */
+
   char shard_flag;
   /*from here, these are used only in shard */
   int proxy_shm_id;

@@ -5885,7 +5885,6 @@ ldr_init (bool verbose)
 
   context->status_count = 10;
 
-  (void) tr_set_execution_state (false);
   obt_enable_unique_checking (false);
 
   return NO_ERROR;

@@ -44,6 +44,7 @@ optiuni valide:\n\
       --no-auto-commit         dezactivarea modului de execuţie auto-commit\n\
       --no-pager               deyactivarea paginatorilor\n\
       --no-single-line         dezactivarea modului de execuţie linie cu linie\n\
+      --no-trigger-action      disable trigger action\n\
 \n\
 Pentru informaţii suplimentare accesaţi http://www.cubrid.com\n
 41 %s: valoarea de mediu pentru %s_MODE este incorectă. \nTrebuie să fie %s sau %s.\n

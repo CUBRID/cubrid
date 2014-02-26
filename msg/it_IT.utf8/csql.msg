@@ -44,6 +44,7 @@ opzioni valide:\n\
       --no-auto-commit         disattivare modalità di esecuzione auto-commit\n\
       --no-pager               non utilizzare pager\n\
       --no-single-line         disattivare l'esecuzione orientata singola riga\n\
+      --no-trigger-action      disable trigger action\n\
 \n\
 Per ulteriori informazioni, vedere http://www.cubrid.com\n
 41 %s: non è corretto il valore di ambiente di %s_MODE. \nDovrebbe essere %s o %s.\n

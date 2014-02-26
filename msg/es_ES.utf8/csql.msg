@@ -44,6 +44,7 @@ opciones validas:\n\
       --no-auto-commit         inhabilitar modo de ejecucion cometer automaticamente\n\
       --no-pager               no utilize pager\n\
       --no-single-line         desactivar modo de ejecucion linea suelta\n\
+      --no-trigger-action      disable trigger action\n\
 \n\
 Para mas informacion, vea http://www.cubrid.com\n
 41 %s: el valor de entorno de %s_MODE es incorrecto. \nDeberia ser sea %s o %s.\n

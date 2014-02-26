@@ -44,6 +44,7 @@ tùy chọn có thể dùng:\n\
       --no-auto-commit         tắt thực thi chế độ tự động cam kết\n\
       --no-pager               không dùng bộ phân trang\n\
       --no-single-line         tắt thực thi theo định hướng dòng đơn\n\
+      --no-trigger-action      disable trigger action\n\
 \n\
 Để biết thêm thông tin, truy cập http://www.cubrid.com\n
 41 %s: giá trị môi trường của %s_MODE không chính xác. \nNó phải là %s hoặc %s.\n

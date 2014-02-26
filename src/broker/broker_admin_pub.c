@@ -2314,6 +2314,43 @@ admin_conf_change (int master_shm_id, const char *br_name,
       br_info_p->proxy_log_max_size = proxy_log_max_size;
       shm_as_p->proxy_log_max_size = proxy_log_max_size;
     }
+  else if (strcasecmp (conf_name, "TRIGGER_ACTION") == 0)
+    {
+      int old_val, val;
+
+      val = conf_get_value_table_on_off (conf_value);
+      if (val < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_conf_error;
+	}
+
+      old_val = br_info_p->trigger_action_flag;
+
+      br_info_p->trigger_action_flag = val;
+      shm_as_p->trigger_action_flag = val;
+
+      if (br_info_p->shard_flag == ON)
+	{
+	  if (shard_shm_set_param_as_in_proxy
+	      (shm_proxy_p, conf_name, conf_value, ALL_PROXY, ALL_SHARD,
+	       ALL_AS) < 0)
+	    {
+	      br_info_p->trigger_action_flag = old_val;
+	      shm_as_p->trigger_action_flag = old_val;
+	      goto set_conf_error;
+	    }
+	}
+      else
+	{
+	  for (i = 0;
+	       i < shm_as_p->num_appl_server && i < APPL_SERVER_NUM_LIMIT;
+	       i++)
+	    {
+	      shm_as_p->as_info[i].reset_flag = TRUE;
+	    }
+	}
+    }
   else
     {
       sprintf (admin_err_msg, "unknown keyword %s", conf_name);
@@ -3874,7 +3911,8 @@ shard_shm_set_param_as_internal (T_APPL_SERVER_INFO * as_info,
       as_info->cas_slow_log_reset = CAS_LOG_RESET_REOPEN;
     }
   else if (strcasecmp (param_name, "ACCESS_MODE") == 0
-	   || strcasecmp (param_name, "CONNECT_ORDER") == 0)
+	   || strcasecmp (param_name, "CONNECT_ORDER") == 0
+	   || strcasecmp (param_name, "TRIGGER_ACTION") == 0)
     {
       as_info->reset_flag = TRUE;
     }

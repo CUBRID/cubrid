@@ -44,6 +44,7 @@ valid options:\n\
       --no-auto-commit         មិនអាចស្វ័យធ្វើប្រតិបត្តិការទម្រង់(mode execution)\n\
       --no-pager               កុំប្រើទំព័រ\n\
       --no-single-line         បិទបន្ទាត់ឯក(single line)ដែលតម្រង់រកការប្រតិបត្តិ\n\
+      --no-trigger-action      disable trigger action\n\
 \n\
 សម្រាប់ពត៌មានបន្ថែម សូមមើលhttp://www.cubrid.com\n
 41 %s: តម្លៃពាក់ព័ន្ធនានានៃ %s_MODE មិនត្រឹមត្រូវទេ។ \nវាគួរតែទាំងជា %s ឬ %s។\n

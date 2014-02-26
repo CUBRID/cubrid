@@ -1008,6 +1008,12 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	      au_disable ();
 	    }
 	  csql_Database_connected = true;
+
+	  if (csql_arg->trigger_action_flag == false)
+	    {
+	      db_disable_trigger ();
+	    }
+
 	  csql_display_msg (csql_get_message (CSQL_STAT_RESTART_TEXT));
 	}
       break;
@@ -2743,6 +2749,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     {
       client_type = DB_CLIENT_TYPE_CSQL;
     }
+
   if (db_restart_ex (argv0, csql_arg->db_name,
 		     csql_arg->user_name, csql_arg->passwd,
 		     NULL, client_type) != NO_ERROR)
@@ -2771,6 +2778,11 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  goto error;
 	}
+    }
+
+  if (csql_arg->trigger_action_flag == false)
+    {
+      db_disable_trigger ();
     }
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))

@@ -592,6 +592,15 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 	  goto connect_error;
 	}
 
+      if (shm_appl->trigger_action_flag == false)
+	{
+	  db_disable_trigger ();
+	}
+      else
+        {
+          db_enable_trigger ();
+        }
+
       cas_log_debug (ARG_FILE_LINE,
 		     "ux_database_connect: db_login(%s) db_restart(%s) at %s",
 		     db_user, db_name, host_connected);

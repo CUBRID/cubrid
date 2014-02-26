@@ -431,6 +431,9 @@ extern void db_set_max_num_delayed_hosts_lookup (int
 						 max_num_delayed_hosts_lookup);
 extern int db_get_max_num_delayed_hosts_lookup (void);
 
+extern bool db_enable_trigger (void);
+extern bool db_disable_trigger (void);
+
 extern DB_OBJECT *db_find_class_of_index (const char *const index,
 					  const DB_CONSTRAINT_TYPE type);
 extern DB_OBJECT *db_find_class (const char *name);

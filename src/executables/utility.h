@@ -1205,6 +1205,8 @@ typedef struct _ha_config
 #define CSQL_STRING_WIDTH_L                     "string-width"
 #define CSQL_WRITE_ON_STANDBY_S                 12015
 #define CSQL_WRITE_ON_STANDBY_L                 "write-on-standby"
+#define CSQL_NO_TRIGGER_ACTION_S                12016
+#define CSQL_NO_TRIGGER_ACTION_L                "no-trigger-action"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"

@@ -44,6 +44,7 @@ geçerli ayarlar:\n\
       --no-auto-commit         Otomatik tamamlama modu yürütme devre dışı\n\
       --no-pager               do not use pager\n\
       --no-single-line         tek satır odaklı yürütmeyi kapatın\n\
+      --no-trigger-action      disable trigger action\n\
 \n\
 Ek bilgi için, adresine bakın http://www.cubrid.com\n
 41 %s: doğru olmayan %s_MODE ortam değeri. \n%s veya %s olmalıdır.\n

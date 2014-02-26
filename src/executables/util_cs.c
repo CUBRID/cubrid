@@ -3426,6 +3426,9 @@ retry:
       goto error_exit;
     }
 
+  /* applylogdb should not fire trigger action */
+  db_disable_trigger ();
+
   if (need_er_reinit)
     {
       er_init (er_msg_file, ER_NEVER_EXIT);

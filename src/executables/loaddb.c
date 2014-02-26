@@ -740,6 +740,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       error = db_restart (arg->command_name, true, Volume);
     }
 
+  /* disable trigger actions to be fired */
+  db_disable_trigger ();
+
   /* open loaddb log file */
   sprintf (log_file_name, "%s_loaddb.log", Volume);
   loaddb_log_file = fopen (log_file_name, "w+");

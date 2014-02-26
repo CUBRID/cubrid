@@ -145,6 +145,7 @@ main (int argc, char *argv[])
     {CSQL_SYSADM_L, 0, 0, CSQL_SYSADM_S},
     {CSQL_WRITE_ON_STANDBY_L, 0, 0, CSQL_WRITE_ON_STANDBY_S},
     {CSQL_STRING_WIDTH_L, 1, 0, CSQL_STRING_WIDTH_S},
+    {CSQL_NO_TRIGGER_ACTION_L, 0, 0, CSQL_NO_TRIGGER_ACTION_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
   };
@@ -153,6 +154,7 @@ main (int argc, char *argv[])
   csql_arg.auto_commit = true;
   csql_arg.single_line_execution = true;
   csql_arg.string_width = 0;
+  csql_arg.trigger_action_flag = true;
   utility_make_getopt_optstring (csql_option, option_string);
 
   while (1)
@@ -266,6 +268,10 @@ main (int argc, char *argv[])
 
 	    csql_arg.string_width = string_width;
 	  }
+	  break;
+
+	case CSQL_NO_TRIGGER_ACTION_S:
+	  csql_arg.trigger_action_flag = false;
 	  break;
 
 	case VERSION_S:

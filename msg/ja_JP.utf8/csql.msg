@@ -44,6 +44,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
       --no-auto-commit         自動コミットしない\n\
       --no-pager               ページ単位で表示しない\n\
       --no-single-line         シングルラインで実行しない\n\
+      --no-trigger-action      disable trigger action\n\
 \n\
 追加情報は「http://www.cubrid.com」で得られます。\n
 41 %s: 正しくない環境バリアブル「%s_MODE」 \n%s、または%sしかできません。\n

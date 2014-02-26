@@ -881,6 +881,16 @@ broker_config_read_internal (const char *conf_file,
 	  br_info[num_brs].hang_timeout = DEFAULT_HANG_TIMEOUT;
 	}
 
+      br_info[num_brs].trigger_action_flag =
+	conf_get_value_table_on_off (ini_getstr
+				     (ini, sec_name, "TRIGGER_ACTION", "ON",
+				      &lineno));
+      if (br_info[num_brs].trigger_action_flag < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
       br_info[num_brs].shard_flag =
 	conf_get_value_table_on_off (ini_getstr (ini, sec_name,
 						 "SHARD", "OFF", &lineno));
@@ -1438,6 +1448,12 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
       if (tmp_str)
 	{
 	  fprintf (fp, "REPLICA_ONLY\t\t=%s\n", tmp_str);
+	}
+
+      tmp_str = get_conf_string (br_info[i].trigger_action_flag, tbl_on_off);
+      if (tmp_str)
+	{
+	  fprintf (fp, "TRIGGER_ACTION\t\t=%s\n", tmp_str);
 	}
 
       fprintf (fp, "MAX_QUERY_TIMEOUT\t=%d\n", br_info[i].query_timeout);

@@ -44,6 +44,7 @@ valid options:\n\
       --no-auto-commit         désactiver le mode de validation automatique\n\
       --no-pager               ne pas utiliser pagineur\n\
       --no-single-line         désactiver exécution ligne par ligne\n\
+      --no-trigger-action      disable trigger action\n\
 \n\
 Pour plus d'informations, visitez le site http://www.cubrid.com\n
 41 %s: la valeur d'environnement du %s_MODE est incorrecte. \nIl doit être %s ou %s.\n

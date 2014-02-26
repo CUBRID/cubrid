@@ -44,6 +44,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
       --no-auto-commit         禁用自动提交执行模式\n\
       --no-pager               不要将查询结果分页\n\
       --no-single-line         关闭单行执行模式\n\
+      --no-trigger-action      disable trigger action\n\
 \n\
 额外的信息, 请浏览 http://www.cubrid.com\n
 41 %s: 环境变量 %s_MODE 的值不正确. \n应该是 %s 或 %s.\n

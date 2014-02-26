@@ -4045,6 +4045,9 @@ extern int db_get_ha_server_state (char *buffer, int maxlen);
 extern void db_clear_host_connected (void);
 extern char *db_get_database_version (void);
 
+extern bool db_enable_trigger (void);
+extern bool db_disable_trigger (void);
+
 extern void db_clear_host_status (void);
 extern void db_set_host_status (char *hostname, int status);
 extern void db_set_connected_host_status (char *host_connected);

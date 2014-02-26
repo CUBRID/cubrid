@@ -564,6 +564,7 @@ struct t_shm_appl_server
   int connect_order;
   int replica_only_flag;
   int max_num_delayed_hosts_lookup;	/* max num of HA delayed hosts to lookup */
+  char trigger_action_flag;	/* enable or disable trigger action */
 
 #if defined(WINDOWS)
   int as_port;
