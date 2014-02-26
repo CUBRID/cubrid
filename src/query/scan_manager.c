@@ -3264,6 +3264,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* indicator whether covering index is used or not */
   coverage_enabled = (indx_info->coverage != 0) && (scan_op_type == S_SELECT);
+  scan_id->stats.loose_index_scan = indx_info->ils_prefix_len > 0;
 
   /* is a single range? */
   isidp->one_range = false;
@@ -6900,6 +6901,11 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * stats)
 	{
 	  json_object_set_new (stats, "iss", json_true ());
 	}
+
+      if (scan_id->stats.loose_index_scan == true)
+	{
+	  json_object_set_new (stats, "loose", json_true ());
+	}
     }
   else if (scan_id->type == S_SHOWSTMT_SCAN)
     {
@@ -7001,6 +7007,10 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	  fprintf (fp, ", iss: true");
 	}
 
+      if (scan_id->stats.loose_index_scan == true)
+	{
+	  fprintf (fp, ", loose: true");
+	}
       fprintf (fp, ")");
 
       if (scan_id->stats.covered_index == false)

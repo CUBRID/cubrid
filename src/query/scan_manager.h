@@ -276,6 +276,7 @@ struct scan_stats
   bool covered_index;
   bool multi_range_opt;
   bool index_skip_scan;
+  bool loose_index_scan;
 };
 
 typedef struct scan_id_struct SCAN_ID;

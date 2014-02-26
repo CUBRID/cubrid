@@ -11678,6 +11678,12 @@ qo_plan_scan_print_json (QO_PLAN * plan)
 	  json_object_set_new (scan, "desc_index forced", json_true ());
 	}
 
+      if (plan->plan_un.scan.index
+	  && plan->plan_un.scan.index->head->ils_prefix_len > 0)
+	{
+	  json_object_set_new (scan, "loose", json_true ());
+	}
+
       break;
     }
 
@@ -11990,6 +11996,12 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
 	   PT_HINT_USE_IDX_DESC))
 	{
 	  fprintf (fp, ", desc_index forced: true");
+	}
+
+      if (plan->plan_un.scan.index
+	  && plan->plan_un.scan.index->head->ils_prefix_len > 0)
+	{
+	  fprintf (fp, ", loose: true");
 	}
 
       fprintf (fp, ")");
