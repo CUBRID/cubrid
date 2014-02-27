@@ -1104,7 +1104,7 @@ $ LOADDB
 1035 log applier: mem size(%1$d MB) of log applier is greater than max mem size (%2$d MB) or has been grow more than 2 times (%3$d MB). required LSA: %4$lld|%5$d. last committed LSA: %6$lld|%7$d.
 1036 log applier: log applier shut itself down by signal.
 1037 log writer: log writer shut itself down by signal.
-1038 log applier: log applier started. required LSA: %1$lld|%2$d. last committed LSA: %3$lld|%4$d. last committed repl LSA: %5$lld|%6$d. 
+1038 log applier: log applier started. required LSA: %1$lld|%2$d. last committed LSA: %3$lld|%4$d. last committed repl LSA: %5$lld|%6$d.
 1039 log writer: log writer started. mode: %1$d.
 1040 HA generic: %1$s. 
 1041 A string was truncated in context of "%1$s".
@@ -1189,7 +1189,7 @@ $ LOADDB
 1120 Internal error: Page id %1$d of volume "%2$s" is currently being used, but it is not allocated according to the allocation map of volume.
 1121 NOT NULL constraints do not allow NULL value.
 1122 Time out in receiving data.
-1123 pthread_cond_timedwait() timed out.
+1123 pthread_cond_timedwait() timed out. 
 1124 Query execution error. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
 1125 Create the overflow key file. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Create a new overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
@@ -1657,6 +1657,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 285 Expects %1$s for argument %2$s.
 286 Argument %1$s is missing.
 287 Unknown argument %1$s.
+285 Cannot remove all partitions, use DROP TABLE instead.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

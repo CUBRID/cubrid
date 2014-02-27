@@ -1657,6 +1657,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 285 Expects %1$s for argument %2$s.
 286 Argument %1$s is missing.
 287 Unknown argument %1$s.
+285 Cannot remove all partitions, use DROP TABLE instead.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

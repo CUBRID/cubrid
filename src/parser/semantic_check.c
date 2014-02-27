@@ -6347,8 +6347,7 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	  || hashsize_nodep->info.value.data_value.i < 1
 	  || hashsize_nodep->info.value.data_value.i > MAX_PARTITIONS)
 	{
-	  PT_ERRORm (parser, stmt,
-		     MSGCAT_SET_PARSER_SEMANTIC,
+	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_INVALID_PARTITION_SIZE);
 	}
     }
@@ -7277,13 +7276,21 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   if (psize == NULL)
     {				/* RANGE or LIST */
       orig_cnt = orig_cnt - name_cnt + parts_cnt;
-      if ((orig_cnt < 1 || orig_cnt > MAX_PARTITIONS)
-	  && cmd != PT_PROMOTE_PARTITION)
+      if (cmd != PT_PROMOTE_PARTITION)
 	{
-	  PT_ERRORmf (parser, stmt,
-		      MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_INVALID_PARTITION_SIZE, class_name);
-	  goto check_end;
+	  if (orig_cnt < 1 && cmd == PT_DROP_PARTITION)
+	    {
+	      PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_CANNOT_DROP_ALL_PARTITIONS);
+	      goto check_end;
+	    }
+
+	  if (orig_cnt < 1 || orig_cnt > MAX_PARTITIONS)
+	    {
+	      PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_INVALID_PARTITION_SIZE);
+	      goto check_end;
+	    }
 	}
 
       if (ptype.data.i == PT_PARTITION_RANGE)
@@ -7414,9 +7421,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
       if (orig_cnt < 1 || psize->data.i < 1 || orig_cnt > MAX_PARTITIONS)
 	{
-	  PT_ERRORmf (parser, stmt,
-		      MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_INVALID_PARTITION_SIZE, class_name);
+	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_INVALID_PARTITION_SIZE);
 	  goto check_end;
 	}
     }
