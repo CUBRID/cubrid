@@ -111,7 +111,10 @@ css_free_queue_entry (CSS_QUEUE_ENTRY * entry_p)
 {
   if (entry_p != NULL)
     {
-      free_and_init (entry_p->buffer);
+      if (entry_p->buffer)
+	{
+	  free_and_init (entry_p->buffer);
+	}
       free_and_init (entry_p);
     }
 }

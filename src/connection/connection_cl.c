@@ -1023,6 +1023,8 @@ CSS_CONN_ENTRY *
 css_connect_to_cubrid_server (char *host_name, char *server_name)
 {
   CSS_CONN_ENTRY *conn;
+  CSS_QUEUE_ENTRY *buffer_q_entry_p;
+  int css_err_code;
   int reason, port_id;
   int size;
   int retry_count;
@@ -1039,95 +1041,115 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
     }
 
   retry_count = 0;
-  if (css_server_connect (host_name, conn, server_name, &rid))
+  if (css_server_connect (host_name, conn, server_name, &rid) == NULL)
     {
-      css_queue_user_data_buffer (conn, rid, sizeof (int), reason_buffer);
-      if (css_receive_data (conn, rid, &buffer, &size, -1) == NO_ERRORS)
-	{
-	  if (buffer != NULL && size == sizeof (int))
-	    {
-	      reason = ntohl (*((int *) buffer));
-	    }
-	  else
-	    {
-	      reason = SERVER_NOT_FOUND;
-	    }
+      goto exit;
+    }
 
-	  if (buffer != NULL && buffer != reason_buffer)
+  css_queue_user_data_buffer (conn, rid, sizeof (int), reason_buffer);
+
+  css_err_code = css_receive_data (conn, rid, &buffer, &size, -1);
+  if (css_err_code != NO_ERRORS)
+    {
+      goto error_receive_data;
+    }
+
+  if (buffer != NULL && size == sizeof (int))
+    {
+      reason = ntohl (*((int *) buffer));
+    }
+  else
+    {
+      reason = SERVER_NOT_FOUND;
+    }
+
+  if (buffer != NULL && buffer != reason_buffer)
+    {
+      free_and_init (buffer);
+    }
+
+  switch (reason)
+    {
+    case SERVER_CONNECTED:
+      return conn;
+
+    case SERVER_STARTED:
+      if (++retry_count > 20)
+	{
+	  break;
+	}
+      else
+	{
+	  css_close_conn (conn);
+	}
+      break;
+
+    case SERVER_CONNECTED_NEW:
+      /* new style of connection protocol, get the server port id */
+      css_queue_user_data_buffer (conn, rid, sizeof (int), reason_buffer);
+
+      css_err_code = css_receive_data (conn, rid, &buffer, &size, -1);
+      if (css_err_code != NO_ERRORS)
+	{
+	  goto error_receive_data;
+	}
+      if (buffer != NULL && size == sizeof (int))
+	{
+	  port_id = ntohl (*((int *) buffer));
+	  css_close_conn (conn);
+	  if (buffer != reason_buffer)
 	    {
 	      free_and_init (buffer);
 	    }
 
-	  switch (reason)
+	  if (css_server_connect_part_two (host_name, conn, port_id, &rid))
 	    {
-	    case SERVER_CONNECTED:
 	      return conn;
-
-	    case SERVER_STARTED:
-	      if (++retry_count > 20)
-		{
-		  break;
-		}
-	      else
-		{
-		  css_close_conn (conn);
-		}
-	      break;
-
-	    case SERVER_CONNECTED_NEW:
-	      /* new style of connection protocol, get the server port id */
-	      css_queue_user_data_buffer (conn, rid, sizeof (int),
-					  reason_buffer);
-	      if (css_receive_data (conn, rid, &buffer, &size, -1) ==
-		  NO_ERRORS)
-		{
-		  if (buffer != NULL && size == sizeof (int))
-		    {
-		      port_id = ntohl (*((int *) buffer));
-		      css_close_conn (conn);
-		      if (buffer != reason_buffer)
-			{
-			  free_and_init (buffer);
-			}
-
-		      if (css_server_connect_part_two (host_name, conn,
-						       port_id, &rid))
-			{
-			  return conn;
-			}
-		    }
-		}
-	      break;
-
-	    case SERVER_IS_RECOVERING:
-	    case SERVER_CLIENTS_EXCEEDED:
-	    case SERVER_INACCESSIBLE_IP:
-	      {
-		error_area = NULL;
-		if (css_receive_error (conn, rid, &error_area, &error_length))
-		  {
-		    if (error_area != NULL)
-		      {
-			er_set_area_error ((void *) error_area);
-			free_and_init (error_area);
-		      }
-		  }
-		break;
-	      }
-	    case SERVER_NOT_FOUND:
-	    default:
-	      break;
 	    }
 	}
+      break;
 
-      if (buffer != NULL && buffer != reason_buffer)
-	{
-	  free_and_init (buffer);
-	}
+    case SERVER_IS_RECOVERING:
+    case SERVER_CLIENTS_EXCEEDED:
+    case SERVER_INACCESSIBLE_IP:
+      {
+	error_area = NULL;
+	if (css_receive_error (conn, rid, &error_area, &error_length))
+	  {
+	    if (error_area != NULL)
+	      {
+		er_set_area_error ((void *) error_area);
+		free_and_init (error_area);
+	      }
+	  }
+	break;
+      }
+    case SERVER_NOT_FOUND:
+    default:
+      break;
     }
 
+  if (buffer != NULL && buffer != reason_buffer)
+    {
+      free_and_init (buffer);
+    }
+
+exit:
   css_free_conn (conn);
   return NULL;
+
+error_receive_data:
+  /* buffer queue should be freed */
+  buffer_q_entry_p = css_find_queue_entry (conn->buffer_queue, rid);
+  if (buffer_q_entry_p != NULL)
+    {
+      /* buffer_q_entry_p->buffer is the pointer of reason_buffer */
+      buffer_q_entry_p->buffer = NULL;
+      css_queue_remove_header_entry_ptr (&conn->buffer_queue,
+					 buffer_q_entry_p);
+    }
+
+  goto exit;
 }
 
 /*

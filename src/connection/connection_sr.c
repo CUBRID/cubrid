@@ -1676,7 +1676,10 @@ css_free_queue_entry (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY * entry)
 {
   if (entry != NULL)
     {
-      free_and_init (entry->buffer);
+      if (entry->buffer)
+	{
+	  free_and_init (entry->buffer);
+	}
 
       entry->next = conn->free_queue_list;
       conn->free_queue_list = entry;
