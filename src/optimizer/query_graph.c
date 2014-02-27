@@ -5589,10 +5589,14 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
   for (i = 0, ni_entryp = QO_NI_ENTRY (node_indexp, 0);
        i < QO_NI_N (node_indexp); i++, ni_entryp++)
     {
-      bool is_iss_and_cover = ni_entryp->head &&
-	ni_entryp->head->is_iss_candidate && ni_entryp->head->cover_segments;
-      if (is_iss_and_cover)
+      bool is_iss_and_cover = false;
+
+      if (ni_entryp->head
+	  && ni_entryp->head->is_iss_candidate
+	  && ni_entryp->head->cover_segments)
 	{
+	  is_iss_and_cover = true;
+
 	  /* temporarily disable potential index skip scan optimization
 	   * and re-enable it only at the end, if there is enough data
 	   * (i.e. pkeys) and if the data shows that the optimization
@@ -5613,7 +5617,15 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	   * index skip scan flag later on (when computing the cost).
 	   */
 
-	  ni_entryp->head->is_iss_candidate = false;
+	  for (j = 0, index_entryp = (ni_entryp)->head;
+	       index_entryp != NULL; j++, index_entryp = index_entryp->next)
+	    {
+	      assert (QO_ENTRY_MULTI_COL (index_entryp));
+	      assert (index_entryp->is_iss_candidate == true);
+	      assert (index_entryp->cover_segments == true);
+
+	      index_entryp->is_iss_candidate = false;
+	    }
 	}
 
       cum_statsp = &(ni_entryp)->cum_stats;
@@ -5825,7 +5837,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 
       /* if index skip scan is possible, check the statistics and confirm or
          infirm it's use */
-      if (j == 1 && (ni_entryp->head->is_iss_candidate || is_iss_and_cover)
+      if ((ni_entryp->head->is_iss_candidate || is_iss_and_cover)
 	  && cum_statsp->pkeys_size > 1 && cum_statsp->keys > 0)
 	{
 	  CLASS_STATS *stats = NULL;
@@ -5856,44 +5868,59 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	  assert (cum_statsp->pkeys[0] >= 0);
 	  first_pkey_card = MAX (cum_statsp->pkeys[0], 1);
 
-	  ni_entryp->head->is_iss_candidate =
-	    (row_count > first_pkey_card * INDEX_SKIP_SCAN_FACTOR);
-
-	  /* disable loose scan if skip scan is possible */
-	  if (ni_entryp->head->is_iss_candidate)
+	  for (j = 0, index_entryp = (ni_entryp)->head;
+	       index_entryp != NULL; j++, index_entryp = index_entryp->next)
 	    {
-	      ni_entryp->head->ils_prefix_len = 0;
-	    }
-	}
+	      assert (QO_ENTRY_MULTI_COL (index_entryp));
 
-      /* if loose index scan is possible, check statistics */
-      if (ni_entryp->head->ils_prefix_len > 0)
-	{
-	  if (cum_statsp->pkeys_size <= 1 || cum_statsp->keys <= 0
-	      || ni_entryp->head->ils_prefix_len > cum_statsp->pkeys_size)
-	    {
-	      ni_entryp->head->ils_prefix_len = 0;
-	    }
-	  else
-	    {
-	      long long int pkey_card, index_card;
+	      index_entryp->is_iss_candidate =
+		(row_count > first_pkey_card * INDEX_SKIP_SCAN_FACTOR);
 
-	      /* acquire cardinalities */
-	      pkey_card =
-		cum_statsp->pkeys[ni_entryp->head->ils_prefix_len - 1];
-	      index_card = cum_statsp->pkeys[cum_statsp->pkeys_size - 1];
-
-	      /* safeguard */
-	      pkey_card = (pkey_card > 0 ? pkey_card : 1);
-	      index_card = (index_card > 0 ? index_card : 1);
-
-	      /* disable if not worth it */
-	      if (pkey_card * INDEX_LOOSE_SCAN_FACTOR > index_card)
+	      /* disable loose scan if skip scan is possible */
+	      if (index_entryp->is_iss_candidate)
 		{
-		  ni_entryp->head->ils_prefix_len = 0;
+		  index_entryp->ils_prefix_len = 0;
 		}
 	    }
 	}
+
+      /* if loose index scan is possible, check the statistics */
+      if (ni_entryp->head->ils_prefix_len > 0)
+	{
+	  long long int pkey_card, index_card;
+
+	  for (j = 0, index_entryp = (ni_entryp)->head;
+	       index_entryp != NULL; j++, index_entryp = index_entryp->next)
+	    {
+	      assert (QO_ENTRY_MULTI_COL (index_entryp));
+	      assert (index_entryp->is_iss_candidate == false);
+	      assert (index_entryp->ils_prefix_len > 0);
+
+	      if (cum_statsp->pkeys_size <= 1 || cum_statsp->keys <= 0
+		  || ni_entryp->head->ils_prefix_len > cum_statsp->pkeys_size)
+		{
+		  index_entryp->ils_prefix_len = 0;
+		}
+	      else
+		{
+		  /* acquire cardinalities */
+		  pkey_card =
+		    cum_statsp->pkeys[ni_entryp->head->ils_prefix_len - 1];
+		  index_card = cum_statsp->pkeys[cum_statsp->pkeys_size - 1];
+
+		  /* safeguard */
+		  pkey_card = (pkey_card > 0 ? pkey_card : 1);
+		  index_card = (index_card > 0 ? index_card : 1);
+
+		  /* disable if not worth it */
+		  if (pkey_card * INDEX_LOOSE_SCAN_FACTOR > index_card)
+		    {
+		      index_entryp->ils_prefix_len = 0;
+		    }
+		}
+	    }
+	}
+
     }				/* for (i = 0, ...) */
 }
 
@@ -7031,8 +7058,10 @@ qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
 static bool
 qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
 {
-  int i, term;
-  bool second_col_present = false;
+  int i, t;
+  QO_TERM *term;
+  PT_NODE *pt_expr;
+  bool first_col_present = false, second_col_present = false;
   QO_CLASS_INFO *class_infop = NULL;
   QO_NODE *seg_nodep = NULL;
   BITSET_ITERATOR iter;
@@ -7057,22 +7086,25 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
     {
       return false;
     }
+  assert (index_entry->nsegs > 1);
 
   /* CONNECT BY messes with the terms, so just refuse any index skip scan
    * in this case */
-  if (env->pt_tree->node_type == PT_SELECT &&
-      env->pt_tree->info.query.q.select.connect_by)
+  if (env->pt_tree->node_type == PT_SELECT
+      && env->pt_tree->info.query.q.select.connect_by)
     {
       return false;
     }
 
   assert (index_entry->constraints != NULL);
+
+  /* do not allow filter ISS with filter index */
   if (index_entry->constraints->filter_predicate != NULL)
     {
-      /* do not allow filter ISS with filter index */
       return false;
     }
 
+  /* do not allow filter ISS with function index */
   for (i = 0; i < index_entry->nsegs; i++)
     {
       if ((index_entry->seg_idxs[i] != -1)
@@ -7083,73 +7115,48 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
     }
 
   /* First segment index should be missing */
+  first_col_present = false;
   if (index_entry->seg_idxs[0] != -1)
     {
-      /* So there are references to the first of the index's segment. At least
-       * make sure these terms do not qualify as range filter or key filter.*/
+      /* it's not enough to have a reference to a segment in seg_idxs[], we
+       * must make sure there is an indexable term that uses it: this means
+       * either an equal term, or an "other" term that is real (i.e. it is
+       * not a full range scan term "invented" by pt_check_orderby to help
+       * with generating index covering.
+       */
 
-      /* check all the EQ classes to make sure the segment referring to the
-       * first index column is not hiding in there. If it DOES belong to any
-       * EQ class, then there is a risk of chosing Index Skip Scan without it
-       * being the case. */
-      for (i = 0; i < env->neqclasses; i++)
+      if (bitset_cardinality (&(index_entry->seg_equal_terms[0])) > 0)
 	{
-	  if (BITSET_MEMBER
-	      (env->eqclasses[i].segs, index_entry->seg_idxs[0]))
-	    {
-	      return false;
-	    }
+	  first_col_present = true;
 	}
-
-      /* so it's not in an equivalence class; check all terms */
-      for (i = 0; i < env->nterms; i++)
+      else
 	{
-	  QO_TERM *t = QO_ENV_TERM (env, i);
+	  for (t = bitset_iterate (&index_entry->seg_other_terms[0], &iter);
+	       t != -1; t = bitset_next_member (&iter))
+	    {
+	      term = QO_ENV_TERM (env, t);
 
-	  if (!t->can_use_index || !QO_TERM_PT_EXPR (t))
-	    {
-	      /* fake term or non-indexable term */
-	      continue;
-	    }
-	  if (QO_TERM_CLASS (t) != QO_TC_SARG
-	      && QO_TERM_CLASS (t) != QO_TC_DURING_JOIN)
-	    {
-	      /* we're only looking for sargable or during-join terms */
-	      continue;
-	    }
-	  if (QO_TERM_IS_FLAGED (t, QO_TERM_RANGELIST))
-	    {
-	      /* no rangelists allowed */
-	      continue;
-	    }
-	  if (!BITSET_MEMBER (QO_TERM_SEGS (t), index_entry->seg_idxs[0]))
-	    {
-	      /* term does not contain first column of this index */
-	      continue;
-	    }
-
-	  /* we've got a sargable or during-join term containing the first
-	     column of the index */
-	  if (!QO_TERM_IS_FLAGED (t, QO_TERM_EQUAL_OP))
-	    {
-	      if (!PT_EXPR_INFO_IS_FLAGED (QO_TERM_PT_EXPR (t),
-					   PT_EXPR_INFO_FULL_RANGE))
+	      pt_expr = QO_TERM_PT_EXPR (term);
+	      if (pt_expr
+		  && PT_EXPR_INFO_IS_FLAGED (pt_expr,
+					     PT_EXPR_INFO_FULL_RANGE))
 		{
-		  /* term is not equality condition and is not "fake" range;
-		     first column qualifies */
-		  return false;
+		  /* second col present == still false ! */
+		  continue;
 		}
-	    }
-	  else
-	    {
-	      /* term is equality condition, first column qualifies */
-	      return false;
+
+	      first_col_present = true;
+	      break;
 	    }
 	}
     }
 
+  if (first_col_present)
+    {
+      return false;
+    }
+
   second_col_present = false;
-  assert (index_entry->nsegs > 1);
   if (index_entry->seg_idxs[1] != -1)
     {
       /* it's not enough to have a reference to a segment in seg_idxs[], we
@@ -7165,22 +7172,22 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
 	}
       else
 	{
-	  for (term =
-	       bitset_iterate (&index_entry->seg_other_terms[1], &iter);
-	       term != -1; term = bitset_next_member (&iter))
+	  for (t = bitset_iterate (&index_entry->seg_other_terms[1], &iter);
+	       t != -1; t = bitset_next_member (&iter))
 	    {
-	      PT_NODE *pt_expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, term));
-	      if (pt_expr &&
-		  PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE))
+	      term = QO_ENV_TERM (env, t);
+
+	      pt_expr = QO_TERM_PT_EXPR (term);
+	      if (pt_expr
+		  && PT_EXPR_INFO_IS_FLAGED (pt_expr,
+					     PT_EXPR_INFO_FULL_RANGE))
 		{
 		  /* second col present == still false ! */
 		  continue;
 		}
-	      else
-		{
-		  second_col_present = true;
-		  break;
-		}
+
+	      second_col_present = true;
+	      break;
 	    }
 	}
     }

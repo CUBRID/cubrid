@@ -11889,6 +11889,9 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   INDX_INFO *indx_infop;
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_INDEX_ENTRY *index_entryp;
+#if !defined(NDEBUG)
+  QO_INDEX_ENTRY *head_idxp;
+#endif
   KEY_INFO *key_infop;
   int rc;
   int i;
@@ -11919,6 +11922,36 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
 	}
     }
   assert (index_entryp != NULL);
+
+#if !defined(NDEBUG)
+  head_idxp = ni_entryp->head;
+
+  if (index_entryp != head_idxp)
+    {
+      assert (qo_is_prefix_index (index_entryp) ==
+	      qo_is_prefix_index (head_idxp));
+      assert (index_entryp->is_iss_candidate == head_idxp->is_iss_candidate);
+      assert (index_entryp->cover_segments == head_idxp->cover_segments);
+      assert (index_entryp->use_descending == head_idxp->use_descending);
+      assert (index_entryp->orderby_skip == head_idxp->orderby_skip);
+      assert (index_entryp->groupby_skip == head_idxp->groupby_skip);
+
+      assert (QO_ENTRY_MULTI_COL (index_entryp) ==
+	      QO_ENTRY_MULTI_COL (head_idxp));
+
+      assert (index_entryp->ils_prefix_len == head_idxp->ils_prefix_len);
+      assert (index_entryp->key_limit == head_idxp->key_limit);
+
+      assert ((index_entryp->constraints->filter_predicate == NULL
+	       && head_idxp->constraints->filter_predicate == NULL)
+	      || (index_entryp->constraints->filter_predicate != NULL
+		  && head_idxp->constraints->filter_predicate != NULL));
+      assert ((index_entryp->constraints->func_index_info == NULL
+	       && head_idxp->constraints->func_index_info == NULL)
+	      || (index_entryp->constraints->func_index_info != NULL
+		  && head_idxp->constraints->func_index_info != NULL));
+    }
+#endif
 
   /* get array of term expressions and number of them which are associated
      with this index */
@@ -12006,6 +12039,8 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   indx_infop->indx_id.type = T_BTID;
   BTID_COPY (&(indx_infop->indx_id.i.btid),
 	     &(index_entryp->constraints->index_btid));
+
+  /* check for covered index scan */
   indx_infop->coverage = 0;	/* init */
   if (qo_is_index_cover_scan (plan))
     {
@@ -12038,8 +12073,25 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   indx_infop->orderby_desc = 0;
   indx_infop->groupby_desc = 0;
 
-  indx_infop->use_iss = index_entryp->is_iss_candidate;
+  indx_infop->use_iss = index_entryp->is_iss_candidate ? 1 : 0;
+  if (indx_infop->use_iss)
+    {
+      assert (QO_ENTRY_MULTI_COL (index_entryp));
+      assert (index_entryp->ils_prefix_len == 0);
+      assert (index_entryp->constraints->filter_predicate == NULL);
+    }
+
+  /* check for loose index scan */
   indx_infop->ils_prefix_len = index_entryp->ils_prefix_len;
+  assert (indx_infop->ils_prefix_len >= 0);
+  if (indx_infop->ils_prefix_len > 0)
+    {
+      assert (QO_ENTRY_MULTI_COL (index_entryp));
+      assert (qo_is_index_cover_scan (plan));
+      assert (index_entryp->is_iss_candidate == false);
+
+      assert (where_pred == NULL);	/* no data-filter */
+    }
 
   fi_info = index_entryp->constraints->func_index_info;
   if (fi_info)
