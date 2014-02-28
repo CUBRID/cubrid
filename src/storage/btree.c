@@ -16580,7 +16580,7 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   if (for_update)
     {
       bts->lock_mode = U_LOCK;
-      bts->key_lock_mode = NULL_LOCK;
+      bts->key_lock_mode = NX_LOCK;
       bts->escalated_mode = X_LOCK;
     }
   else if (readonly_purpose)
