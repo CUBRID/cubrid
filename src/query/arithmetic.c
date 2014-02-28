@@ -69,7 +69,7 @@ static int round_date (DB_VALUE * result,
 		       DB_VALUE * value1, DB_VALUE * value2);
 static double truncate_double (double num, double integer);
 static DB_BIGINT truncate_bigint (DB_BIGINT num, DB_BIGINT integer);
-static DB_DATE *truncate_date (DB_DATE * date, const DB_VALUE * format_str);
+static int truncate_date (DB_DATE * date, const DB_VALUE * format_str);
 static int get_number_dbval_as_double (double *d, const DB_VALUE * value);
 static int get_number_dbval_as_long_double (long double *ld,
 					    const DB_VALUE * value);
@@ -3281,16 +3281,15 @@ truncate_bigint (DB_BIGINT num, DB_BIGINT integer)
 
 /*
  * truncate_date ()
- *   return: truncated date
+ *   return: error or no error
  *   date(in)    :
  *   fmt(in):
  */
-static DB_DATE *
+static int
 truncate_date (DB_DATE * date, const DB_VALUE * format_str)
 {
   int year, month, day;
   int error = NO_ERROR;
-  DB_DATE *retval = date;
   TIMESTAMP_FORMAT format;
   int weekday;
   int days_months[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
@@ -3301,7 +3300,6 @@ truncate_date (DB_DATE * date, const DB_VALUE * format_str)
   error = db_get_date_format (format_str, &format);
   if (error != NO_ERROR)
     {
-      retval = NULL;
       goto end;
     }
 
@@ -3309,7 +3307,6 @@ truncate_date (DB_DATE * date, const DB_VALUE * format_str)
     {
       error = ER_QSTR_INVALID_FORMAT;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      retval = NULL;
       goto end;
     }
 
@@ -3369,20 +3366,18 @@ truncate_date (DB_DATE * date, const DB_VALUE * format_str)
     default:
       error = ER_QSTR_INVALID_FORMAT;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      retval = NULL;
       goto end;
     }
 
   error = db_date_encode (date, month, day, year);
   if (error != NO_ERROR)
     {
-      retval = NULL;
       goto end;
     }
 
 end:
 
-  return retval;
+  return error;
 }
 
 /*
@@ -3407,7 +3402,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   double dtmp;
   DB_VALUE cast_value, cast_format;
   int er_status = NO_ERROR;
-  DB_DATE *date_p, date;
+  DB_DATE date;
   TP_DOMAIN *domain;
   TP_DOMAIN_STATUS cast_status;
 
@@ -3633,20 +3628,19 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_TIMESTAMP:
       if (type1 == DB_TYPE_DATE)
 	{
-	  date_p = DB_GET_DATE (value1);
+	  date = *(DB_GET_DATE (value1));
 	}
       else if (type1 == DB_TYPE_DATETIME)
 	{
-	  date_p = &(DB_GET_DATETIME (value1)->date);
+	  date = DB_GET_DATETIME (value1)->date;
 	}
       else			/* DB_TYPE_TIMESTAMP */
 	{
 	  db_timestamp_decode (DB_GET_TIMESTAMP (value1), &date, NULL);
-	  date_p = &date;
 	}
 
-      date_p = truncate_date (date_p, value2);
-      if (date_p == NULL)
+      er_status = truncate_date (&date, value2);
+      if (er_status != NO_ERROR)
 	{
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
 	      true)
@@ -3654,20 +3648,11 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	      er_clear ();
 	      er_status = NO_ERROR;
 	    }
-	  else
-	    {
-	      er_status = er_errid ();
-	      if (er_status == NO_ERROR)
-		{
-		  er_status = ER_FAILED;
-		}
-	    }
-
 	  goto end;
 	}
       else
 	{
-	  db_value_put_encoded_date (result, date_p);
+	  db_value_put_encoded_date (result, &date);
 	}
       break;
     default:
@@ -4527,7 +4512,8 @@ db_width_bucket_calculate_numeric (double *result,
 
 	  if (DB_GET_INTEGER (&cmp_result) < 1)
 	    {
-	      numeric_coerce_num_to_double ((DB_C_NUMERIC) DB_GET_NUMERIC (value4),
+	      numeric_coerce_num_to_double ((DB_C_NUMERIC)
+					    DB_GET_NUMERIC (value4),
 					    DB_VALUE_SCALE (value4), &res);
 	      res += 1.0;
 	    }
@@ -4594,7 +4580,8 @@ db_width_bucket_calculate_numeric (double *result,
 
 	  if (DB_GET_INTEGER (&cmp_result) < 1)
 	    {
-	      numeric_coerce_num_to_double ((DB_C_NUMERIC) DB_GET_NUMERIC (value4),
+	      numeric_coerce_num_to_double ((DB_C_NUMERIC)
+					    DB_GET_NUMERIC (value4),
 					    DB_VALUE_SCALE (value4), &res);
 	      res += 1.0;
 	    }
