@@ -140,7 +140,8 @@ struct qo_plan
       BITSET terms;
       BITSET kf_terms;
       bool index_equi;
-      bool index_cover;
+      bool index_cover;		/* covered index scan flag */
+      bool index_iss;		/* index skip scan flag */
       QO_NODE_INDEX_ENTRY *index;
     } scan;
 

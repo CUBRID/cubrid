@@ -2681,6 +2681,37 @@ qo_is_index_cover_scan (QO_PLAN * plan)
 }
 
 /*
+ * qo_is_index_iss_scan () - check the plan info for index skip scan
+ *   return: true/false
+ *   plan(in): QO_PLAN
+ */
+bool
+qo_is_index_iss_scan (QO_PLAN * plan)
+{
+  assert (plan != NULL);
+  assert (plan->info != NULL);
+  assert (plan->info->env != NULL);
+
+  if (qo_is_interesting_order_scan (plan))
+    {
+      if (plan->plan_un.scan.index_iss == true)
+	{
+	  assert (plan->plan_un.scan.index->head);
+	  assert (plan->plan_un.scan.index->head->is_iss_candidate);
+
+	  assert (QO_ENTRY_MULTI_COL (plan->plan_un.scan.index->head));
+	  assert (plan->plan_un.scan.index->head->ils_prefix_len == 0);
+	  assert (plan->plan_un.scan.index->head->constraints->
+		  filter_predicate == NULL);
+
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_plan_multi_range_opt () - check the plan info for multi range opt
  *   return: true/false
  *   plan(in): QO_PLAN
@@ -2790,8 +2821,10 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       goto error;
     }
 
-  if (index_entryp->is_iss_candidate)
+  if (qo_is_index_iss_scan (plan))
     {
+      assert (index_entryp->is_iss_candidate);
+
       /* allow space for the first element (NULL actually), for instance
        * in term_exprs */
       nterms++;
@@ -2814,8 +2847,10 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       goto error;
     }
 
-  if (index_entryp->is_iss_candidate)
+  if (qo_is_index_iss_scan (plan))
     {
+      assert (index_entryp->is_iss_candidate);
+
       index_infop->term_exprs[0] = NULL;
     }
 
@@ -2866,7 +2901,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 
       /* if the index is Index Skip Scan, the first column should have
        * never been found in a term */
-      assert (!index_entryp->is_iss_candidate || pos != 0);
+      assert (!qo_is_index_iss_scan (plan) || pos != 0);
 
       index_infop->term_exprs[pos] = QO_TERM_PT_EXPR (termp);
     }				/* for (t = bitset_iterate(...); ...) */

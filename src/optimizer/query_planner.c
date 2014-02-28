@@ -1554,7 +1554,8 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method)
   bitset_assign (&(plan->subqueries), &(QO_NODE_SUBQUERIES (node)));
   bitset_init (&(plan->plan_un.scan.terms), info->env);
   bitset_init (&(plan->plan_un.scan.kf_terms), info->env);
-  plan->plan_un.scan.index_equi = plan->plan_un.scan.index_cover = false;
+  plan->plan_un.scan.index_equi = false;
+  plan->plan_un.scan.index_cover = plan->plan_un.scan.index_iss = false;
   plan->plan_un.scan.index = NULL;
 
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
@@ -1599,6 +1600,7 @@ qo_seq_scan_new (QO_INFO * info, QO_NODE * node)
   assert (bitset_is_empty (&(plan->plan_un.scan.kf_terms)));
   assert (plan->plan_un.scan.index_equi == false);
   assert (plan->plan_un.scan.index_cover == false);
+  assert (plan->plan_un.scan.index_iss == false);
   assert (plan->plan_un.scan.index == NULL);
 
   qo_plan_compute_cost (plan);
@@ -1660,6 +1662,11 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
   BITSET index_segs;
   BITSET term_segs;
   BITSET remaining_terms;
+  int first_seg;
+  bool first_col_present = false;
+
+  assert (ni_entry != NULL);
+  assert (ni_entry->head != NULL);
 
   assert (scan_method == QO_SCANMETHOD_INDEX_SCAN
 	  || scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN
@@ -1697,12 +1704,21 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
   plan->vtbl = &qo_index_scan_plan_vtbl;
   plan->plan_un.scan.index = ni_entry;
 
+  index_entryp = (plan->plan_un.scan.index)->head;
+  first_seg = index_entryp->seg_idxs[0];
+
   /* set key-range terms */
   bitset_assign (&(plan->plan_un.scan.terms), range_terms);
   for (t = bitset_iterate (range_terms, &iter);
        t != -1; t = bitset_next_member (&iter))
     {
       term = QO_ENV_TERM (env, t);
+
+      if (first_seg != -1 && BITSET_MEMBER (QO_TERM_SEGS (term), first_seg))
+	{
+	  first_col_present = true;
+	}
+
       if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 	{
 	  if (bitset_cardinality (&(plan->plan_un.scan.terms)) > 1)
@@ -1734,8 +1750,6 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
     {
       plan->plan_un.scan.index_equi = false;
     }
-
-  index_entryp = (plan->plan_un.scan.index)->head;
 
   if (index_entryp->constraints->func_index_info
       && index_entryp->cover_segments == false)
@@ -1836,6 +1850,18 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 	      /* not found data-filter */
 	      plan->plan_un.scan.index_cover = true;
 	    }
+	}
+    }
+
+  /* check for index skip scan */
+  plan->plan_un.scan.index_iss = false;	/* init */
+  if (index_entryp->is_iss_candidate)
+    {
+      assert (!bitset_is_empty (&(plan->plan_un.scan.terms)));
+
+      if (first_col_present == false)
+	{
+	  plan->plan_un.scan.index_iss = true;
 	}
     }
 
@@ -1988,7 +2014,7 @@ qo_iscan_cost (QO_PLAN * planp)
       bool is_null_sel = false;
       sel = 0.1;
 
-      assert (!index_entryp->is_iss_candidate);
+      assert (!qo_is_index_iss_scan (planp));
 
       sel_limit = 0.0;		/* init */
 
@@ -2032,7 +2058,7 @@ qo_iscan_cost (QO_PLAN * planp)
 
       /* for index skip scan, we should pre-compute the first column's
        * selectivity and check that we have relevant statistics. */
-      if (index_entryp->is_iss_candidate)
+      if (qo_is_index_iss_scan (planp))
 	{
 	  /* we can't do proper index skip scan analysis without
 	   * relevant statistics */
@@ -2106,7 +2132,7 @@ qo_iscan_cost (QO_PLAN * planp)
 	  n--;
 	}
 
-      if (index_entryp->is_iss_candidate)
+      if (qo_is_index_iss_scan (planp))
 	{
 	  sel = sel * (double) cum_statsp->pkeys[0];
 	}
@@ -2129,7 +2155,7 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* Index Skip Scan adds to the index IO cost the K extra BTREE searches
    * it does to fetch the next value for the following BTRangeScan */
-  if (index_entryp->is_iss_candidate)
+  if (qo_is_index_iss_scan (planp))
     {
       /* The btree is scanned an additional K times */
       index_IO += cum_statsp->pkeys[0] * ((ni_entryp)->n * height);
@@ -2250,8 +2276,7 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
 	  fprintf (f, "(covers)");
 	}
 
-      if (plan->plan_un.scan.index
-	  && plan->plan_un.scan.index->head->is_iss_candidate)
+      if (qo_is_index_iss_scan (plan))
 	{
 	  assert (QO_ENTRY_MULTI_COL (plan->plan_un.scan.index->head));
 	  assert (plan->plan_un.scan.index->head->ils_prefix_len == 0);
@@ -2266,7 +2291,7 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
 	{
 	  assert (QO_ENTRY_MULTI_COL (plan->plan_un.scan.index->head));
 	  assert (qo_is_index_cover_scan (plan));
-	  assert (plan->plan_un.scan.index->head->is_iss_candidate == false);
+	  assert (!qo_is_index_iss_scan (plan));
 
 	  fprintf (f, " (loose index scan on prefix %d)",
 		   plan->plan_un.scan.index->head->ils_prefix_len);
@@ -2400,8 +2425,7 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
 	  fprintf (f, " (covers)");
 	}
 
-      if (plan->plan_un.scan.index
-	  && plan->plan_un.scan.index->head->is_iss_candidate)
+      if (qo_is_index_iss_scan (plan))
 	{
 	  assert (QO_ENTRY_MULTI_COL (plan->plan_un.scan.index->head));
 	  assert (plan->plan_un.scan.index->head->ils_prefix_len == 0);
@@ -2416,7 +2440,7 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
 	{
 	  assert (QO_ENTRY_MULTI_COL (plan->plan_un.scan.index->head));
 	  assert (qo_is_index_cover_scan (plan));
-	  assert (plan->plan_un.scan.index->head->is_iss_candidate == false);
+	  assert (!qo_is_index_iss_scan (plan));
 
 	  fprintf (f, " (loose index scan on prefix %d)",
 		   plan->plan_un.scan.index->head->ils_prefix_len);
@@ -11261,7 +11285,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root,
   /* we must have the first index column appear as the first sort column, so
    * we pretend the number of index_equi columns is zero, to force it to match
    * the sort list and the index columns one-for-one. */
-  if (index_entryp->is_iss_candidate
+  if (qo_is_index_iss_scan (plan)
       || index_entryp->constraints->func_index_info != NULL)
     {
       equi_nterms = 0;

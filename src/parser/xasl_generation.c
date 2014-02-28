@@ -11968,14 +11968,16 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
 
   /* fabricate the first term_expr, to complete the proper range
    * search expression */
-  if (index_entryp->is_iss_candidate)
+  if (qo_is_index_iss_scan (plan))
     {
+      assert (index_entryp->is_iss_candidate);
+
       pt_fix_first_term_expr_for_iss (parser, index_entryp, term_exprs);
     }
 
   if (nterms > 0)
     {
-      int start_column = index_entryp->is_iss_candidate ? 1 : 0;
+      int start_column = qo_is_index_iss_scan (plan) ? 1 : 0;
       rangelist_idx = -1;	/* init */
       for (i = start_column; i < nterms; i++)
 	{
@@ -12073,7 +12075,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   indx_infop->orderby_desc = 0;
   indx_infop->groupby_desc = 0;
 
-  indx_infop->use_iss = index_entryp->is_iss_candidate ? 1 : 0;
+  indx_infop->use_iss = qo_is_index_iss_scan (plan) ? 1 : 0;
   if (indx_infop->use_iss)
     {
       assert (QO_ENTRY_MULTI_COL (index_entryp));
@@ -12088,7 +12090,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
     {
       assert (QO_ENTRY_MULTI_COL (index_entryp));
       assert (qo_is_index_cover_scan (plan));
-      assert (index_entryp->is_iss_candidate == false);
+      assert (!qo_is_index_iss_scan (plan));
 
       assert (where_pred == NULL);	/* no data-filter */
     }
