@@ -2632,13 +2632,6 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser,
 	}
     }
 
-  if (dest_sci->type_enum == PT_TYPE_ENUMERATION
-      || src->type_enum == PT_TYPE_ENUMERATION)
-    {
-      /* enumerations might not have the same domain */
-      return false;
-    }
-
   if (PT_IS_STRING_TYPE (dest_sci->type_enum))
     {
       assert_release (dest_sci->prec != 0);
@@ -2665,6 +2658,16 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser,
 	{
 	  return false;
 	}
+    }
+  else if (dest_sci->type_enum == PT_TYPE_ENUMERATION)
+    {
+      /* enumerations might not have the same domain */
+      return false;
+    }
+  else if (PT_IS_COLLECTION_TYPE (dest_sci->type_enum))
+    {
+      /* collections might not have the same domain */
+      return false;
     }
 
   return true;			/* is compatible, no need to cast */

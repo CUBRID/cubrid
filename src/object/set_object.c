@@ -854,35 +854,35 @@ col_new (long size, int settype)
 		  col = NULL;
 		}
 	    }
-
-	  /* initialize the domain with one of the built in domain structures */
-	  if (col)
-	    {
-	      switch (settype)
-		{
-		case DB_TYPE_SET:
-		  col->domain = &tp_Set_domain;
-		  break;
-		case DB_TYPE_MULTISET:
-		  col->domain = &tp_Multiset_domain;
-		  break;
-		case DB_TYPE_SEQUENCE:
-		  col->domain = &tp_Sequence_domain;
-		  break;
-		case DB_TYPE_VOBJ:
-		  col->domain = &tp_Vobj_domain;
-		  break;
-		default:
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_SET_INVALID_DOMAIN, 1,
-			  pr_type_name ((DB_TYPE) settype));
-		  setobj_free (col);
-		  col = NULL;
-		  break;
-		}
-	    }
 	}
 #endif
+
+      /* initialize the domain with one of the built in domain structures */
+      if (col)
+	{
+	  switch (settype)
+	    {
+	    case DB_TYPE_SET:
+	      col->domain = &tp_Set_domain;
+	      break;
+	    case DB_TYPE_MULTISET:
+	      col->domain = &tp_Multiset_domain;
+	      break;
+	    case DB_TYPE_SEQUENCE:
+	      col->domain = &tp_Sequence_domain;
+	      break;
+	    case DB_TYPE_VOBJ:
+	      col->domain = &tp_Vobj_domain;
+	      break;
+	    default:
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_SET_INVALID_DOMAIN, 1,
+		      pr_type_name ((DB_TYPE) settype));
+	      setobj_free (col);
+	      col = NULL;
+	      break;
+	    }
+	}
     }
   return col;
 }
@@ -2549,28 +2549,28 @@ set_create_sequence (int size)
 DB_COLLECTION *
 set_create_with_domain (TP_DOMAIN * domain, int initial_size)
 {
-  DB_COLLECTION *DB_COLLECTION;
+  DB_COLLECTION *col;
   COL *setobj;
 
-  DB_COLLECTION = NULL;
+  col = NULL;
   setobj = setobj_create_with_domain (domain, initial_size);
   if (setobj == NULL)
     {
-      return (DB_COLLECTION);
+      return (col);
     }
 
-  DB_COLLECTION = set_make_reference ();
+  col = set_make_reference ();
 
-  if (DB_COLLECTION == NULL)
+  if (col == NULL)
     {
       setobj_free (setobj);
     }
   else
     {
-      DB_COLLECTION->set = setobj;
-      setobj->references = DB_COLLECTION;
+      col->set = setobj;
+      setobj->references = col;
     }
-  return (DB_COLLECTION);
+  return (col);
 }
 
 /*

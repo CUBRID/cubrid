@@ -7810,25 +7810,28 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   return list_id;
 #else /* CS_MODE */
   QFILE_LIST_ID *list_id = NULL;
-  int i;
   DB_VALUE *server_db_values = NULL;
   OID *oid;
+  int i;
 
   ENTER_SERVER ();
 
   /* reallocate dbvals to use server allocation */
   if (dbval_cnt > 0)
     {
-      server_db_values =
-	(DB_VALUE *) db_private_alloc (NULL, dbval_cnt * sizeof (DB_VALUE));
+      size_t s = dbval_cnt * sizeof (DB_VALUE);
+
+      server_db_values = (DB_VALUE *) db_private_alloc (NULL, s);
       if (server_db_values == NULL)
 	{
 	  goto cleanup;
 	}
       for (i = 0; i < dbval_cnt; i++)
 	{
-	  /* Initialize value */
 	  DB_MAKE_NULL (&server_db_values[i]);
+	}
+      for (i = 0; i < dbval_cnt; i++)
+	{
 	  switch (DB_VALUE_TYPE (&dbvals[i]))
 	    {
 	    case DB_TYPE_OBJECT:
@@ -7839,6 +7842,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 		  DB_MAKE_OID (&server_db_values[i], oid);
 		}
 	      break;
+
 	    default:
 	      /* Clone value */
 	      if (db_value_clone (&dbvals[i], &server_db_values[i]) !=
