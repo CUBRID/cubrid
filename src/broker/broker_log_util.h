@@ -42,11 +42,27 @@
 #define CAS_LOG_MSG_INDEX 22
 #define CAS_RUN_NEW_LINE_CHAR	1
 
+#define DATE_STR_LEN    21
+
+#define GET_CUR_DATE_STR(BUF, LINEBUF)  \
+        do  {                           \
+          strncpy(BUF, LINEBUF, DATE_STR_LEN);  \
+          BUF[DATE_STR_LEN] = '\0';             \
+        } while (0)
+
 extern char *ut_trim (char *);
 extern void ut_tolower (char *str);
 extern int ut_get_line (FILE * fp, T_STRING * t_str, char **out_str,
 			int *lineno);
 extern int is_cas_log (char *str);
 extern char *get_msg_start_ptr (char *linebuf);
+
+extern int str_to_log_date_format (char *str, char *date_format_str);
+extern char *ut_get_execute_type (char *msg_p, int *prepare_flag,
+				  int *execute_flag);
+extern int ut_check_log_valid_time (const char *log_date,
+				    const char *from_date,
+				    const char *to_date);
+extern double ut_diff_time (struct timeval *begin, struct timeval *end);
 
 #endif /* _BROKER_LOG_UTIL_H_ */

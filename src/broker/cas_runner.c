@@ -158,7 +158,6 @@ static int process_bind (char *msg, int *num_bind_p, T_BIND_INFO * bind_info);
 static int process_endtran (int con_h, int *req_h, FILE * result_fp);
 static int process_close_req (char *linebuf, int *req_h, FILE * result_fp);
 static void print_result (int cci_res, int req_id, FILE * fp);
-static double diff_time (struct timeval *begin, struct timeval *end);
 static void free_node (T_NODE_INFO * node);
 static int make_node_info (T_NODE_INFO * node, char *node_name,
 			   char *info_str);
@@ -822,7 +821,7 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 	  req_h[req_id] =
 	    cci_prepare (con_h, sql_stmt, prepare_flag, &cci_error);
 	  gettimeofday (&end, NULL);
-	  prepare_time = diff_time (&begin, &end);
+	  prepare_time = ut_diff_time (&begin, &end);
 	  sum_prepare_time += prepare_time;
 
 	  if (result_fp)
@@ -1255,7 +1254,7 @@ process_execute (char *linebuf, int *req_h, int num_bind,
       gettimeofday (&begin, NULL);
       res = cci_execute (req_h[req_id], exec_flag, 0, &cci_error);
       gettimeofday (&end, NULL);
-      elapsed_time = diff_time (&begin, &end);
+      elapsed_time = ut_diff_time (&begin, &end);
       if (!batch_mode && !cubrid_manager_run)
 	{
 	  fprintf (stdout, "exec_time : %.3f \n", elapsed_time);
@@ -1325,7 +1324,7 @@ process_endtran (int con_h, int *req_h, FILE * result_fp)
       gettimeofday (&begin, NULL);
       res = cci_end_tran (con_h, CCI_TRAN_ROLLBACK, &cci_error);
       gettimeofday (&end, NULL);
-      commit_time = diff_time (&begin, &end);
+      commit_time = ut_diff_time (&begin, &end);
 
       if (result_fp)
 	{
@@ -1445,16 +1444,6 @@ print_result (int cci_res, int req_id, FILE * result_fp)
     }
 
   fprintf (result_fp, "-- %d rows ----------------------------\n", num_tuple);
-}
-
-static double
-diff_time (struct timeval *begin, struct timeval *end)
-{
-  double sec, usec;
-
-  sec = (end->tv_sec - begin->tv_sec);
-  usec = (double) (end->tv_usec - begin->tv_usec) / 1000000;
-  return (sec + usec);
 }
 
 static int

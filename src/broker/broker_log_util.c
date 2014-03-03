@@ -378,3 +378,109 @@ get_msg_start_ptr (char *linebuf)
       return tmp_ptr + 1;
     }
 }
+
+#define  DATE_VALUE_COUNT 7
+int
+str_to_log_date_format (char *str, char *date_format_str)
+{
+  char *startp;
+  char *endp;
+  int i;
+  int result = 0;
+  int val;
+  int date_val[DATE_VALUE_COUNT];
+
+  for (i = 0; i < DATE_VALUE_COUNT; i++)
+    date_val[i] = 0;
+
+  for (i = 0, startp = str; i < DATE_VALUE_COUNT; i++)
+    {
+      result = str_to_int32 (&val, &endp, startp, 10);
+      if (result != 0)
+	{
+	  goto error;
+	}
+      if (val < 0)
+	{
+	  val = 0;
+	}
+      else if (val > 999)
+	{
+	  val = 999;
+	}
+      date_val[i] = val;
+      if (*endp == '\0')
+	{
+	  break;
+	}
+      startp = endp + 1;
+      if (*startp == '\0')
+	{
+	  break;
+	}
+    }
+
+  sprintf (date_format_str,
+	   "%02d-%02d-%02d %02d:%02d:%02d.%03d",
+	   date_val[0], date_val[1], date_val[2], date_val[3], date_val[4],
+	   date_val[5], date_val[6]);
+  return 0;
+
+error:
+  return -1;
+}
+
+char *
+ut_get_execute_type (char *msg_p, int *prepare_flag, int *execute_flag)
+{
+  if (strncmp (msg_p, "execute ", 8) == 0)
+    {
+      *prepare_flag = 0;
+      *execute_flag = 0;
+      return (msg_p += 8);
+    }
+  else if (strncmp (msg_p, "execute_call ", 13) == 0)
+    {
+      *prepare_flag = 0x40;	/* CCI_PREPARE_CALL */
+      *execute_flag = 0;
+      return (msg_p += 13);
+    }
+  else if (strncmp (msg_p, "execute_all ", 12) == 0)
+    {
+      *prepare_flag = 0;
+      *execute_flag = 2;	/* CCI_EXEC_QUERY_ALL */
+      return (msg_p += 12);
+    }
+  else
+    {
+      return NULL;
+    }
+}
+
+int
+ut_check_log_valid_time (const char *log_date, const char *from_date,
+			 const char *to_date)
+{
+  if (from_date[0])
+    {
+      if (strncmp (log_date, from_date, DATE_STR_LEN) < 0)
+	return -1;
+    }
+  if (to_date[0])
+    {
+      if (strncmp (to_date, log_date, DATE_STR_LEN) < 0)
+	return -1;
+    }
+
+  return 0;
+}
+
+double
+ut_diff_time (struct timeval *begin, struct timeval *end)
+{
+  double sec, usec;
+
+  sec = (end->tv_sec - begin->tv_sec);
+  usec = (double) (end->tv_usec - begin->tv_usec) / 1000000;
+  return (sec + usec);
+}

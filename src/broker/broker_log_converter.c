@@ -46,8 +46,6 @@ static int open_file (char *infilename, char *outfilename, FILE ** infp,
 static int log_converter (FILE * infp, FILE * outfp);
 static void close_file (FILE * infp, FILE * outfp);
 static int log_bind_value (char *str, int bind_len, int lineno, FILE * outfp);
-static char *get_execute_type (char *msg_p, int *prepare_flag,
-			       int *execute_flag);
 
 static char add_query_info = 0;
 static char add_query_id = 0;
@@ -126,7 +124,8 @@ log_converter (FILE * infp, FILE * outfp)
 	  msg_p = get_msg_start_ptr (linebuf);
 	  if (strncmp (msg_p, "execute", 7) == 0)
 	    {
-	      msg_p = get_execute_type (msg_p, &prepare_flag, &execute_flag);
+	      msg_p =
+		ut_get_execute_type (msg_p, &prepare_flag, &execute_flag);
 	      if (msg_p == NULL)
 		{
 		  in_execute = 0;
@@ -236,33 +235,6 @@ close_file (FILE * infp, FILE * outfp)
   fflush (outfp);
   if (outfp != stdout)
     fclose (outfp);
-}
-
-static char *
-get_execute_type (char *msg_p, int *prepare_flag, int *execute_flag)
-{
-  if (strncmp (msg_p, "execute ", 8) == 0)
-    {
-      *prepare_flag = 0;
-      *execute_flag = 0;
-      return (msg_p += 8);
-    }
-  else if (strncmp (msg_p, "execute_call ", 13) == 0)
-    {
-      *prepare_flag = 0x40;	/* CCI_PREPARE_CALL */
-      *execute_flag = 0;
-      return (msg_p += 13);
-    }
-  else if (strncmp (msg_p, "execute_all ", 12) == 0)
-    {
-      *prepare_flag = 0;
-      *execute_flag = 2;	/* CCI_EXEC_QUERY_ALL */
-      return (msg_p += 12);
-    }
-  else
-    {
-      return NULL;
-    }
 }
 
 static int

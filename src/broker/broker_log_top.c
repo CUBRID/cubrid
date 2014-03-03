@@ -78,7 +78,6 @@ static void free_file_list (char **list, int size);
 #ifdef MT_MODE
 static void *thr_main (void *arg);
 #endif
-static int str_to_log_date_format (char *str, char *date_format_str);
 static int read_multi_line_sql (FILE * fp, T_STRING * t_str, char **linebuf,
 				int *lineno, T_STRING * sql_buf,
 				T_STRING * cas_log_buf);
@@ -787,57 +786,6 @@ getargs_err:
   return -1;
 date_format_err:
   fprintf (stderr, "invalid date. valid date format is yy-mm-dd hh:mm:ss.\n");
-  return -1;
-}
-
-#define  DATE_VALUE_COUNT 7
-static int
-str_to_log_date_format (char *str, char *date_format_str)
-{
-  char *startp;
-  char *endp;
-  int i;
-  int result = 0;
-  int val;
-  int date_val[DATE_VALUE_COUNT];
-
-  for (i = 0; i < DATE_VALUE_COUNT; i++)
-    date_val[i] = 0;
-
-  for (i = 0, startp = str; i < DATE_VALUE_COUNT; i++)
-    {
-      result = str_to_int32 (&val, &endp, startp, 10);
-      if (result != 0)
-	{
-	  goto error;
-	}
-      if (val < 0)
-	{
-	  val = 0;
-	}
-      else if (val > 999)
-	{
-	  val = 999;
-	}
-      date_val[i] = val;
-      if (*endp == '\0')
-	{
-	  break;
-	}
-      startp = endp + 1;
-      if (*startp == '\0')
-	{
-	  break;
-	}
-    }
-
-  sprintf (date_format_str,
-	   "%02d-%02d-%02d %02d:%02d:%02d.%03d",
-	   date_val[0], date_val[1], date_val[2], date_val[3], date_val[4],
-	   date_val[5], date_val[6]);
-  return 0;
-
-error:
   return -1;
 }
 

@@ -45,11 +45,12 @@ AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ \
 
 BROKER_CAS_LIBS = @CS_LIB@
 LOG_RUNNER_LIBS = @CS_LIB@ @CCI_LIB@
+REPLAY_LIBS = @CS_LIB@ @CCI_LIB@ 
 TESTER_LIBS = @CS_LIB@ @CCI_LIB@
 
 bin_PROGRAMS = cub_broker cubrid_broker cub_cas cub_proxy \
-	broker_monitor broker_changer \
-	broker_log_converter broker_log_runner broker_log_top broker_tester
+	broker_monitor broker_changer broker_tester\
+	broker_log_converter broker_log_runner broker_log_top cubrid_replay
 
 include_HEADERS = \
 	$(BROKER_DIR)/shard_key.h 
@@ -204,6 +205,13 @@ broker_log_top_SOURCES = \
 	$(BROKER_DIR)/broker_log_top_tran.c
 broker_log_top_CPPFLAGS = $(AM_CPPFLAGS) -DBROKER_LOG_TOP
 broker_log_top_LDADD = $(BROKER_CAS_LIBS)
+
+cubrid_replay_SOURCES = \
+	$(BROKER_DIR)/broker_log_replay.c \
+	$(BROKER_DIR)/broker_log_util.c \
+	$(BROKER_DIR)/log_top_string.c 
+cubrid_replay_CPPFLAGS = $(AM_CPPFLAGS) -DCUBRID_REPLAY
+cubrid_replay_LDADD = $(REPLAY_LIBS)
 
 lib_LTLIBRARIES = libbrokeradmin.la
 libbrokeradmin_la_SOURCES = \

@@ -29,14 +29,6 @@
 
 #define LINE_BUF_SIZE           30000
 
-#define DATE_STR_LEN    21
-
-#define GET_CUR_DATE_STR(BUF, LINEBUF)  \
-        do  {                           \
-          strncpy(BUF, LINEBUF, DATE_STR_LEN);  \
-          BUF[DATE_STR_LEN] = '\0';             \
-        } while (0)
-
 typedef enum t_log_top_mode T_LOG_TOP_MODE;
 enum t_log_top_mode
 {

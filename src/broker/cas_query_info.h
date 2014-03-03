@@ -28,6 +28,7 @@
 #ident "$Id$"
 
 #include "broker_log_top.h"
+#include "broker_log_util.h"
 
 typedef struct t_query_info T_QUERY_INFO;
 struct t_query_info
