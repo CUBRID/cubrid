@@ -2037,6 +2037,17 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
       numeric_div (dbv1_copy, db_locate_numeric (dbv2), temp_quo, temp_rem);
     }
 
+  /* round! 
+   * Check if remainder is larger than or equal to 2*divisor.
+   * i.e. rem / divisor >= 0.5
+   */
+  numeric_add (temp_rem, temp_rem, temp_rem, DB_NUMERIC_BUF_SIZE);
+  
+  if (numeric_compare (temp_rem, db_locate_numeric (dbv2)) >= 0)
+  {
+    numeric_increase (temp_quo); 
+  }
+  
   if (numeric_overflow (temp_quo, prec))
     {
       if (prec < DB_MAX_NUMERIC_PRECISION)

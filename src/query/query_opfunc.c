@@ -7256,7 +7256,11 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 
 				  TP_DOMAIN *domain_ptr = NOT_NULL_VALUE
 				    (tmp_domain_ptr,
-				     agg_p->domain);
+				     agg_p->accumulator_domain.value_dom);
+                  /* accumulator domain should be used instead of 
+                   * agg_p->domain for SUM/AVG evaluation
+                   * at the end cast the result to agg_p->domain
+                   */
 				  if ((agg_p->function == PT_AVG) &&
 				      (dbval.domain.general_info.type ==
 				       DB_TYPE_NUMERIC))
@@ -7437,8 +7441,26 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	      pr_clone_value (&dval, agg_p->accumulator.value);
 	    }
 	}
-    }
 
+      /* Resolve the final result of aggregate function.
+       * Since the evaluation value might be changed to keep the
+       * precision during the aggregate function evaluation, for example,
+       * use DOUBLE instead FLOAT, we need to cast the result to the
+       * original domain.
+       */
+      if (agg_p->function == PT_SUM
+          && agg_p->domain != agg_p->accumulator_domain.value_dom)
+      {
+        /* cast value */
+        error = db_value_coerce (agg_p->accumulator.value,
+                                 agg_p->accumulator.value, agg_p->domain);
+        if (error != NO_ERROR)
+        {     
+          return ER_FAILED;           
+        }    
+      }
+    }
+  
 exit:
   (void) pr_clear_value (&dbval);
 
