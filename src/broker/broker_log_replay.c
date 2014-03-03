@@ -45,7 +45,7 @@
 
 #define STAT_MAX_DIFF_TIME              (60000)	/* 60 * 1000 : 10 min */
 #define SORT_BUF_MAX                    (4096)
-#define SQL_INFO_TITLE_LEN              (50)
+#define SQL_INFO_TITLE_LEN              (128)
 
 #define CCI_ERR_FILE_NAME               "replay.err"
 #define PASS_SQL_FILE_NAME              "skip.sql"
@@ -579,8 +579,8 @@ log_prepare (FILE * cci_errfp, FILE * pass_sql, int con, char *sql_log,
       if (req < 0)
 	{
 	  summary->num_err_query++;
-	  free (rewrite_query);
 	  fprintf (cci_errfp, "cci prepare error [sql:%s]\n", rewrite_query);
+	  free_and_init (rewrite_query);
 	  return ER_FAILED;
 	}
 
