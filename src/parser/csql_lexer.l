@@ -147,9 +147,12 @@ extern int str_identifier = '\0';
 [bB][rR][eE][aA][dD][tT][hH]						{ begin_token(yytext);   return BREADTH; }
 [bB][yY]								{ begin_token(yytext);   return BY; }
 [cC][aA][lL][lL]							{ begin_token(yytext);   return CALL; }
-[cC][aA][cC][hH][eE]							{ begin_token(yytext);   
+[cC][aA][cC][hH][eE]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return CACHE; }
+[cC][aA][pP][aA][cC][iI][tT][yY]					{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return CAPACITY; }
 [cC][aA][sS][cC][aA][dD][eE]						{ begin_token(yytext);   return CASCADE; }
 [cC][aA][sS][cC][aA][dD][eE][dD]					{ begin_token(yytext);   return CASCADED; }
 [cC][aA][sS][eE]							{ begin_token(yytext);   return CASE; }
@@ -341,6 +344,9 @@ extern int str_identifier = '\0';
 [hH][eE][aA][dD][eE][rR]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return HEADER; }
+[hH][eE][aA][pP]							{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return HEAP; }
 [hH][oO][uU][rR]							{ begin_token(yytext);   return HOUR_; }
 [hH][oO][uU][rR]_[mM][iI][lL][lL][iI][sS][eE][cC][oO][nN][dD]		{ begin_token(yytext);   return HOUR_MILLISECOND; }
 [hH][oO][uU][rR]_[sS][eE][cC][oO][nN][dD]				{ begin_token(yytext);   return HOUR_SECOND; }

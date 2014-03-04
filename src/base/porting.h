@@ -789,4 +789,8 @@ extern size_t strlcpy (char *, const char *, size_t);
 extern time_t mktime_for_win32 (struct tm *tm);
 #endif
 
+#if (defined(WINDOWS) && !defined(PRId64))
+#define PRId64 "lld"
+#endif
+
 #endif /* _PORTING_H_ */

@@ -563,7 +563,7 @@ extern void heap_rv_dump_reuse_page (FILE * fp, int ignore_length,
 				     void *data);
 
 extern int heap_get_hfid_from_class_oid (THREAD_ENTRY * thread_p,
-					 OID * class_oid, HFID * hfid);
+					 const OID * class_oid, HFID * hfid);
 extern int heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid);
 
 extern void heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp,
@@ -578,5 +578,18 @@ extern int heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
 				       HEAP_SCANCACHE * upd_scancache,
 				       HEAP_CACHE_ATTRINFO * attr_info,
 				       OID * oid, const ATTR_ID att_id);
+
+extern int heap_header_capacity_start_scan (THREAD_ENTRY * thread_p,
+					    int show_type,
+					    DB_VALUE ** arg_values,
+					    int arg_cnt, void **ptr);
+extern SCAN_CODE heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor,
+					DB_VALUE ** out_values, int out_cnt,
+					void *ptr);
+extern SCAN_CODE heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor,
+					  DB_VALUE ** out_values, int out_cnt,
+					  void *ptr);
+extern int heap_header_capacity_end_scan (THREAD_ENTRY * thread_p,
+					  void **ptr);
 
 #endif /* _HEAP_FILE_H_ */

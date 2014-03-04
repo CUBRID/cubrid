@@ -1415,6 +1415,7 @@ typedef struct YYLTYPE
 %token <cptr> BIT_OR
 %token <cptr> BIT_XOR
 %token <cptr> CACHE
+%token <cptr> CAPACITY
 %token <cptr> CHARACTER_SET_
 %token <cptr> CHARSET
 %token <cptr> CHR
@@ -1443,6 +1444,7 @@ typedef struct YYLTYPE
 %token <cptr> GT_LT_
 %token <cptr> HASH
 %token <cptr> HEADER
+%token <cptr> HEAP
 %token <cptr> IFNULL
 %token <cptr> INACTIVE
 %token <cptr> INCREMENT
@@ -6558,6 +6560,22 @@ show_type_arg1
 	| ARCHIVE LOG HEADER
 		{{
 			$$ = SHOWSTMT_ARCHIVE_LOG_HEADER;
+		}}
+	| HEAP HEADER
+		{{
+			$$ = SHOWSTMT_HEAP_HEADER;
+		}}
+	| ALL HEAP HEADER
+		{{
+			$$ = SHOWSTMT_ALL_HEAP_HEADER;
+		}}
+	| HEAP CAPACITY
+		{{
+			$$ = SHOWSTMT_HEAP_CAPACITY;
+		}}
+	| ALL HEAP CAPACITY
+		{{
+			$$ = SHOWSTMT_ALL_HEAP_CAPACITY;
 		}}
 	;
 
@@ -19337,6 +19355,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| CAPACITY
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| CHARACTER_SET_
 		{{
 
@@ -19579,6 +19607,16 @@ identifier
 
 		DBG_PRINT}}
 	| HEADER
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| HEAP
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

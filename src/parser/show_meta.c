@@ -36,6 +36,7 @@
 #include "show_meta.h"
 #include "error_manager.h"
 #include "parser.h"
+#include "schema_manager.h"
 
 enum
 {
@@ -49,6 +50,12 @@ enum
   ORDER_ASC = true		/* order by ascending */
 };
 
+typedef enum
+{
+  SHOW_ONLY,
+  SHOW_ALL
+} SHOW_ONLY_ALL;
+
 static bool show_Inited = false;
 static SHOWSTMT_METADATA *show_Metas[SHOWSTMT_END];
 
@@ -56,6 +63,8 @@ static int init_db_attribute_list (SHOWSTMT_METADATA * md);
 static void free_db_attribute_list (SHOWSTMT_METADATA * md);
 
 /* check functions */
+static PT_NODE *pt_check_table_in_show_heap (PARSER_CONTEXT * parser,
+					     PT_NODE * node);
 
 /* meta functions */
 static SHOWSTMT_METADATA *metadata_of_volume_header (void);
@@ -63,6 +72,8 @@ static SHOWSTMT_METADATA *metadata_of_active_log_header (void);
 static SHOWSTMT_METADATA *metadata_of_archive_log_header (void);
 static SHOWSTMT_METADATA *metadata_of_slotted_page_header (void);
 static SHOWSTMT_METADATA *metadata_of_slotted_page_slots (void);
+static SHOWSTMT_METADATA *metadata_of_heap_header (SHOW_ONLY_ALL flag);
+static SHOWSTMT_METADATA *metadata_of_heap_capacity (SHOW_ONLY_ALL flag);
 
 static SHOWSTMT_METADATA *
 metadata_of_volume_header (void)
@@ -244,6 +255,106 @@ metadata_of_slotted_page_slots (void)
   return &md;
 }
 
+static SHOWSTMT_METADATA *
+metadata_of_heap_header (SHOW_ONLY_ALL flag)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Class_name", "varchar(256)"},
+    {"Class_oid", "varchar(64)"},
+    {"Volume_id", "int"},
+    {"File_id", "int"},
+    {"Header_page_id", "int"},
+    {"Overflow_vfid", "varchar(64)"},
+    {"Next_vpid", "varchar(64)"},
+    {"Unfill_space", "int"},
+    {"Estimates_num_pages", "bigint"},
+    {"Estimates_num_recs", "bigint"},
+    {"Estimates_avg_rec_len", "int"},
+    {"Estimates_num_high_best", "int"},
+    {"Estimates_num_others_high_best", "int"},
+    {"Estimates_head", "int"},
+    {"Estimates_best_list", "varchar(512)"},
+    {"Estimates_num_second_best", "int"},
+    {"Estimates_head_second_best", "int"},
+    {"Estimates_tail_second_best", "int"},
+    {"Estimates_num_substitutions", "int"},
+    {"Estimates_second_best_list", "varchar(256)"},
+    {"Estimates_last_vpid", "varchar(64)"},
+    {"Estimates_full_search_vpid", "varchar(64)"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static const SHOWSTMT_NAMED_ARG args[] = {
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+  };
+
+  static SHOWSTMT_METADATA md_only = {
+    SHOWSTMT_HEAP_HEADER, "show heap header of ",
+    cols, DIM (cols), NULL, 0, args, DIM (args),
+    pt_check_table_in_show_heap, NULL
+  };
+
+  static SHOWSTMT_METADATA md_all = {
+    SHOWSTMT_ALL_HEAP_HEADER, "show all heap header of ",
+    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args),
+    pt_check_table_in_show_heap, NULL
+  };
+
+  return (flag == SHOW_ALL) ? &md_all : &md_only;
+}
+
+static SHOWSTMT_METADATA *
+metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Class_name", "varchar(256)"},
+    {"Class_oid", "varchar(64)"},
+    {"Volume_id", "int"},
+    {"File_id", "int"},
+    {"Header_page_id", "int"},
+    {"Num_recs", "bigint"},
+    {"Num_relocated_recs", "bigint"},
+    {"Num_overflowed_recs", "bigint"},
+    {"Num_pages", "bigint"},
+    {"Avg_rec_len", "int"},
+    {"Avg_free_space_per_page", "int"},
+    {"Avg_overhead_per_page_without_last_page", "int"},
+    {"Avg_overhead_per_page", "int"},
+    {"Repr_id", "int"},
+    {"Num_total_attrs", "int"},
+    {"Num_fixed_width_attrs", "int"},
+    {"Num_variable_width_attrs", "int"},
+    {"Num_shared_attrs", "int"},
+    {"Num_class_attrs", "int"},
+    {"Total_size_fixed_width_attrs", "int"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static const SHOWSTMT_NAMED_ARG args[] = {
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+  };
+
+  static SHOWSTMT_METADATA md_only = {
+    SHOWSTMT_HEAP_CAPACITY, "show heap capacity of ",
+    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args),
+    pt_check_table_in_show_heap, NULL
+  };
+
+  static SHOWSTMT_METADATA md_all = {
+    SHOWSTMT_ALL_HEAP_CAPACITY, "show all heap capacity of ",
+    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args),
+    pt_check_table_in_show_heap, NULL
+  };
+
+  return (flag == SHOW_ALL) ? &md_all : &md_only;
+}
+
 /*
  * showstmt_get_metadata() -  return show statment column infos
  *   return:-
@@ -276,6 +387,76 @@ showstmt_get_attributes (SHOWSTMT_TYPE show_type)
   return show_meta->showstmt_attrs;
 }
 
+/*
+ * pt_check_show_heap () - check table exists or not 
+ *   return: PT_NODE pointer
+ *
+ *   parser(in):
+ *   node(in):
+ */
+static PT_NODE *
+pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  int error = NO_ERROR;
+  PT_NODE *show_args_node = NULL, *spec, *derived_table;
+  PT_NODE *partition_node = NULL;
+  SHOWSTMT_TYPE show_type;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
+  const char *table_name = NULL;
+  MOP cls;
+
+  if (node->node_type != PT_SELECT)
+    {
+      return node;
+    }
+
+  spec = node->info.query.q.select.from;
+  assert (spec != NULL);
+
+  derived_table = spec->info.spec.derived_table;
+  assert (derived_table != NULL);
+
+  show_type = derived_table->info.showstmt.show_type;
+  assert (show_type == SHOWSTMT_HEAP_HEADER
+	  || show_type == SHOWSTMT_ALL_HEAP_HEADER
+	  || show_type == SHOWSTMT_HEAP_CAPACITY
+	  || show_type == SHOWSTMT_ALL_HEAP_CAPACITY);
+
+  show_args_node = derived_table->info.showstmt.show_args;
+  assert (show_args_node != NULL);
+
+  assert (show_args_node->node_type == PT_VALUE);
+  assert (show_args_node->type_enum == PT_TYPE_CHAR);
+
+  table_name =
+    (const char *) show_args_node->info.value.data_value.str->bytes;
+
+  cls = sm_find_class (table_name);
+  if (cls == NULL)
+    {
+      PT_ERRORmf (parser, show_args_node, MSGCAT_SET_ERROR,
+		  -(ER_LC_UNKNOWN_CLASSNAME), table_name);
+      return node;
+    }
+
+  error = sm_partitioned_class_type (cls, &partition_type, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      PT_ERRORc (parser, show_args_node, er_msg ());
+      return node;
+    }
+
+  partition_node = pt_make_integer_value (parser, partition_type);
+  if (partition_node == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return node;
+    }
+
+  parser_append_node (partition_node, show_args_node);
+
+  return node;
+}
 
 /*
  * init_db_attribute_list () : init DB_ATTRIBUTE list for each show statement
@@ -389,6 +570,11 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_SLOTTED_PAGE_HEADER] =
     metadata_of_slotted_page_header ();
   show_Metas[SHOWSTMT_SLOTTED_PAGE_SLOTS] = metadata_of_slotted_page_slots ();
+  show_Metas[SHOWSTMT_HEAP_HEADER] = metadata_of_heap_header (SHOW_ONLY);
+  show_Metas[SHOWSTMT_ALL_HEAP_HEADER] = metadata_of_heap_header (SHOW_ALL);
+  show_Metas[SHOWSTMT_HEAP_CAPACITY] = metadata_of_heap_capacity (SHOW_ONLY);
+  show_Metas[SHOWSTMT_ALL_HEAP_CAPACITY] =
+    metadata_of_heap_capacity (SHOW_ALL);
 
   for (i = 0; i < DIM (show_Metas); i++)
     {
