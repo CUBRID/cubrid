@@ -1923,7 +1923,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries,
 		   * sargable terms. The index used for inner index scan must
 		   * include all term segments that belong to inner node
 		   */
-		  if (qo_is_index_cover_scan (inner)
+		  if (qo_is_covering_index_scan (inner)
 		      || qo_plan_multi_range_opt (inner))
 		    {
 		      /* Coverage indexes and indexes using multi range
@@ -2653,12 +2653,12 @@ qo_plan_skip_groupby (QO_PLAN * plan)
 }
 
 /*
- * qo_is_index_cover_scan () - check the plan info for cover index scan
+ * qo_is_covering_index_scan () - check the plan info for covering index scan
  *   return: true/false
  *   plan(in): QO_PLAN
  */
 bool
-qo_is_index_cover_scan (QO_PLAN * plan)
+qo_is_covering_index_scan (QO_PLAN * plan)
 {
   assert (plan != NULL);
   assert (plan->info != NULL);
@@ -2700,9 +2700,38 @@ qo_is_index_iss_scan (QO_PLAN * plan)
 	  assert (plan->plan_un.scan.index->head->is_iss_candidate);
 
 	  assert (QO_ENTRY_MULTI_COL (plan->plan_un.scan.index->head));
-	  assert (plan->plan_un.scan.index->head->ils_prefix_len == 0);
-	  assert (plan->plan_un.scan.index->head->constraints->
-		  filter_predicate == NULL);
+	  assert (plan->plan_un.scan.index_loose == false);
+	  assert (!qo_is_filter_index_scan (plan));
+
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_is_loose_index_scan () - check the plan info for loose index scan
+ *   return: true/false
+ *   plan(in): QO_PLAN
+ */
+bool
+qo_is_loose_index_scan (QO_PLAN * plan)
+{
+  assert (plan != NULL);
+  assert (plan->info != NULL);
+  assert (plan->info->env != NULL);
+
+  if (qo_is_interesting_order_scan (plan))
+    {
+      if (plan->plan_un.scan.index_loose == true)
+	{
+	  assert (plan->plan_un.scan.index->head);
+	  assert (plan->plan_un.scan.index->head->ils_prefix_len > 0);
+
+	  assert (QO_ENTRY_MULTI_COL (plan->plan_un.scan.index->head));
+	  assert (plan->plan_un.scan.index_cover == true);
+	  assert (plan->plan_un.scan.index_iss == false);
 
 	  return true;
 	}
@@ -2727,19 +2756,20 @@ qo_plan_multi_range_opt (QO_PLAN * plan)
 }
 
 /*
- * qo_plan_filtered_index () - check the plan info for filtered index
+ * qo_is_filter_index_scan () - check the plan info for filtered index
  *   return: true/false
  *   plan(in): QO_PLAN
  */
 bool
-qo_plan_filtered_index (QO_PLAN * plan)
+qo_is_filter_index_scan (QO_PLAN * plan)
 {
   if (qo_is_interesting_order_scan (plan))
     {
       QO_NODE_INDEX_ENTRY *index = plan->plan_un.scan.index;
       if (index != NULL && index->head != NULL
 	  && index->head->constraints != NULL
-	  && index->head->constraints->filter_predicate != NULL)
+	  && index->head->constraints->filter_predicate != NULL
+	  && index->head->force > 0)
 	{
 	  return true;
 	}
@@ -2790,8 +2820,8 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
   if (nterms <= 0 && nkfterms <= 0 &&
       bitset_cardinality (&(plan->sarged_terms)) == 0)
     {
-      if (qo_plan_filtered_index (plan)
-	  || plan->plan_un.scan.index->head->ils_prefix_len > 0
+      if (qo_is_filter_index_scan (plan)
+	  || qo_is_loose_index_scan (plan)
 	  || qo_is_iscan_from_groupby (plan)
 	  || qo_is_iscan_from_orderby (plan))
 	{

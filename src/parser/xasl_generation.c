@@ -12044,7 +12044,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
 
   /* check for covered index scan */
   indx_infop->coverage = 0;	/* init */
-  if (qo_is_index_cover_scan (plan))
+  if (qo_is_covering_index_scan (plan))
     {
       assert (index_entryp->cover_segments == true);
       assert (where_pred == NULL);	/* no data-filter */
@@ -12075,24 +12075,28 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   indx_infop->orderby_desc = 0;
   indx_infop->groupby_desc = 0;
 
-  indx_infop->use_iss = qo_is_index_iss_scan (plan) ? 1 : 0;
-  if (indx_infop->use_iss)
+  indx_infop->use_iss = 0;	/* init */
+  if (qo_is_index_iss_scan (plan))
     {
       assert (QO_ENTRY_MULTI_COL (index_entryp));
-      assert (index_entryp->ils_prefix_len == 0);
-      assert (index_entryp->constraints->filter_predicate == NULL);
+      assert (!qo_is_loose_index_scan (plan));
+      assert (!qo_is_filter_index_scan (plan));
+
+      indx_infop->use_iss = 1;
     }
 
   /* check for loose index scan */
-  indx_infop->ils_prefix_len = index_entryp->ils_prefix_len;
-  assert (indx_infop->ils_prefix_len >= 0);
-  if (indx_infop->ils_prefix_len > 0)
+  indx_infop->ils_prefix_len = 0;	/* init */
+  if (qo_is_loose_index_scan (plan))
     {
       assert (QO_ENTRY_MULTI_COL (index_entryp));
-      assert (qo_is_index_cover_scan (plan));
+      assert (qo_is_covering_index_scan (plan));
       assert (!qo_is_index_iss_scan (plan));
 
       assert (where_pred == NULL);	/* no data-filter */
+
+      indx_infop->ils_prefix_len = index_entryp->ils_prefix_len;
+      assert (indx_infop->ils_prefix_len > 0);
     }
 
   fi_info = index_entryp->constraints->func_index_info;

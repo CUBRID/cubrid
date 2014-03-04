@@ -167,10 +167,11 @@ extern int qo_plan_get_cost_fn (const char *);
 extern PT_NODE *qo_plan_iscan_sort_list (QO_PLAN *);
 extern bool qo_plan_skip_orderby (QO_PLAN * plan);
 extern bool qo_plan_skip_groupby (QO_PLAN * plan);
-extern bool qo_is_index_cover_scan (QO_PLAN * plan);
+extern bool qo_is_covering_index_scan (QO_PLAN * plan);
 extern bool qo_is_index_iss_scan (QO_PLAN * plan);
+extern bool qo_is_loose_index_scan (QO_PLAN * plan);
 extern bool qo_plan_multi_range_opt (QO_PLAN * plan);
-extern bool qo_plan_filtered_index (QO_PLAN * plan);
+extern bool qo_is_filter_index_scan (QO_PLAN * plan);
 extern void qo_set_cost (DB_OBJECT * target, DB_VALUE * result,
 			 DB_VALUE * plan, DB_VALUE * cost);
 

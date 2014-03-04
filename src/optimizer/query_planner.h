@@ -142,6 +142,7 @@ struct qo_plan
       bool index_equi;
       bool index_cover;		/* covered index scan flag */
       bool index_iss;		/* index skip scan flag */
+      bool index_loose;		/* loose index scan flag */
       QO_NODE_INDEX_ENTRY *index;
     } scan;
 

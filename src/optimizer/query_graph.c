@@ -7262,8 +7262,8 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	{
 	  if (SM_IS_CONSTRAINT_INDEX_FAMILY (consp->type))
 	    {
-	      if (consp->filter_predicate &&
-		  QO_NODE_USING_INDEX (nodep) == NULL)
+	      if (consp->filter_predicate != NULL
+		  && QO_NODE_USING_INDEX (nodep) == NULL)
 		{
 		  continue;
 		}
@@ -7292,7 +7292,8 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      continue;		/* neither INDEX nor UNIQUE constraint, skip */
 	    }
 
-	  if (consp->filter_predicate && QO_NODE_USING_INDEX (nodep) == NULL)
+	  if (consp->filter_predicate != NULL
+	      && QO_NODE_USING_INDEX (nodep) == NULL)
 	    {
 	      continue;
 	    }
