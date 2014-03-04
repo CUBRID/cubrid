@@ -185,11 +185,11 @@ public class CUBRIDDriver implements Driver {
 
 	    // getting informations from the Properties object
 	    dummy = info.getProperty("user");
-	    if (dummy != null) {
+	    if (dummy != null && dummy.length() != 0) {
 		user = dummy;
 	    }
 	    dummy = info.getProperty("password");
-	    if (dummy != null) {
+	    if (dummy != null && dummy.length() != 0) {
 		pass = dummy;
 	    }
 
