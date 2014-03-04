@@ -1797,11 +1797,22 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 	  /* check for no key-range index scan */
 	  if (bitset_is_empty (&(plan->plan_un.scan.terms)))
 	    {
-	      if (pt_expr
-		  && pt_expr->node_type == PT_EXPR
-		  && pt_expr->info.expr.op == PT_IS_NULL)
+	      if (qo_is_filter_index_scan (plan)
+		  || qo_is_iscan_from_orderby (plan)
+		  || qo_is_iscan_from_groupby (plan))
 		{
-		  continue;	/* skip out IS_NULL term */
+		  /* filter index has a pre-defined key-range.
+		   * ordery/groupby scan already checked nullable terms 
+		   */
+		  ;		/* go ahead */
+		}
+	      else
+		{
+		  /* do not permit non-indexable term as key-filter */
+		  if (!term->can_use_index)
+		    {
+		      continue;
+		    }
 		}
 	    }
 
@@ -1877,6 +1888,8 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
   if (index_entryp->is_iss_candidate)
     {
       assert (!bitset_is_empty (&(plan->plan_un.scan.terms)));
+      assert (index_entryp->ils_prefix_len == 0);
+      assert (!qo_is_filter_index_scan (plan));
 
       if (first_col_present == false)
 	{
@@ -1888,33 +1901,52 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
   plan->plan_un.scan.index_loose = false;	/* init */
   if (index_entryp->ils_prefix_len > 0)
     {
-      assert (qo_is_covering_index_scan (plan));
+      assert (plan->plan_un.scan.index_iss == false);
 
-      if (!bitset_is_empty (&(plan->sarged_terms))
-	  || !bitset_is_empty (&remaining_terms))
+      for (t = bitset_iterate (&remaining_terms, &iter);
+	   t != -1; t = bitset_next_member (&iter))
+	{
+	  term = QO_ENV_TERM (env, t);
+
+	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+	    {
+	      /* term contains correlated subquery */
+	      continue;
+	    }
+
+	  break;		/* found data-filter */
+	}
+
+      if (qo_is_covering_index_scan (plan)
+	  && bitset_is_empty (&(plan->plan_un.scan.terms)) && t == -1)
+	{
+	  /* covering index, no key-range, no data-filter */
+	  plan->plan_un.scan.index_loose = true;
+	}
+      else
 	{
 	  /* is invalid case, but is possible;
-	   * when found IS_NULL at remaining_terms,
+	   * when found non-indexable(i.e., IS_NULL) terms at remaining_terms,
 	   * do not permit loose index scan
 	   */
 	  qo_plan_release (plan);
 	  return NULL;
 	}
-
-      if (bitset_is_empty (&(plan->plan_un.scan.terms)))
-	{
-	  plan->plan_un.scan.index_loose = true;
-	}
     }
 
   /* check for no key-range, no key-filter index scan */
-  if (scan_method == QO_SCANMETHOD_INDEX_SCAN
+  if (qo_is_iscan (plan)
       && bitset_is_empty (&(plan->plan_un.scan.terms))
       && bitset_is_empty (&(plan->plan_un.scan.kf_terms)))
     {
+      assert (!qo_is_iscan_from_groupby (plan));
+      assert (!qo_is_iscan_from_orderby (plan));
+
       /* check for filter-index, loose index scan */
       if (qo_is_filter_index_scan (plan) || qo_is_loose_index_scan (plan))
 	{
+	  /* filter index has a pre-defined key-range.
+	   */
 	  assert (bitset_is_empty (&(plan->plan_un.scan.terms)));
 
 	  ;			/* go ahead */
@@ -8152,22 +8184,26 @@ qo_generate_join_index_scan (QO_INFO * infop,
       inner_plan = qo_index_scan_new (inner, nodep, ni_entryp,
 				      QO_SCANMETHOD_INDEX_SCAN,
 				      &range_terms, indexable_terms);
-      /* now, key-filter is assigned;
-         exclude key-range, key-filter terms from remaining terms */
-      bitset_difference (&remaining_terms, &range_terms);
-      bitset_difference (&remaining_terms,
-			 &(inner_plan->plan_un.scan.kf_terms));
 
-      n = qo_check_plan_on_info (infop, qo_join_new (infop,
-						     join_type,
-						     QO_JOINMETHOD_IDX_JOIN,
-						     outer_plan,
-						     inner_plan,
-						     &empty_terms,
-						     &empty_terms,
-						     afj_terms,
-						     &remaining_terms,
-						     pinned_subqueries));
+      if (inner_plan)
+	{
+	  /* now, key-filter is assigned;
+	     exclude key-range, key-filter terms from remaining terms */
+	  bitset_difference (&remaining_terms, &range_terms);
+	  bitset_difference (&remaining_terms,
+			     &(inner_plan->plan_un.scan.kf_terms));
+
+	  n = qo_check_plan_on_info (infop, qo_join_new (infop,
+							 join_type,
+							 QO_JOINMETHOD_IDX_JOIN,
+							 outer_plan,
+							 inner_plan,
+							 &empty_terms,
+							 &empty_terms,
+							 afj_terms,
+							 &remaining_terms,
+							 pinned_subqueries));
+	}
     }
 
   bitset_delset (&remaining_terms);
