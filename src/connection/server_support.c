@@ -1703,8 +1703,23 @@ shutdown:
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
 
-  assert_release (LSA_EQ (&log_Gl.append.nxio_lsa,
-			  &log_Gl.prior_info.prior_lsa));
+#if !defined(NDEBUG)
+  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+  if (!LSA_EQ (&log_Gl.append.nxio_lsa, &log_Gl.prior_info.prior_lsa))
+    {
+      LOG_PRIOR_NODE *node;
+
+      assert (LSA_LT (&log_Gl.append.nxio_lsa, &log_Gl.prior_info.prior_lsa));
+      node = log_Gl.prior_info.prior_list_header;
+      while (node != NULL)
+	{
+	  assert (node->log_header.trid == LOG_SYSTEM_TRANID);
+	  node = node->next;
+	}
+    }
+  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+#endif
+
   LOG_CS_EXIT (thread_p);
 
   thread_stop_active_workers (THREAD_STOP_LOGWR);
@@ -2558,11 +2573,11 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p,
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, new_state);
 	  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
-		{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_CSS_SERVER_HA_MODE_CHANGE, 2,
-		  css_ha_server_state_string (ha_Server_state),
-		  css_ha_server_state_string (new_state));
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_CSS_SERVER_HA_MODE_CHANGE, 2,
+		      css_ha_server_state_string (ha_Server_state),
+		      css_ha_server_state_string (new_state));
 	    }
 	  ha_Server_state = new_state;
 	  /* sync up the current HA state with the system parameter */
@@ -2753,12 +2768,12 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, state);
 	  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
-	  {
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_CSS_SERVER_HA_MODE_CHANGE, 2,
-		  css_ha_server_state_string (ha_Server_state),
-		  css_ha_server_state_string (state));
-	  }
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_CSS_SERVER_HA_MODE_CHANGE, 2,
+		      css_ha_server_state_string (ha_Server_state),
+		      css_ha_server_state_string (state));
+	    }
 	}
     }
 
