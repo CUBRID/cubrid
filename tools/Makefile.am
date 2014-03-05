@@ -27,7 +27,7 @@ CCI_APPLIER_LIBS = @CCI_LIB@
 bin_PROGRAMS = cci_applier
 
 cci_applier_SOURCES = \
-	$(TOOLS_DIR)/cci_applier.c
+	$(TOOLS_DIR)/cci_applier.c $(BASE_DIR)/getopt_long.c
 cci_applier_LDADD = $(CCI_APPLIER_LIBS) -lnsl
 
 VERSIONED_FILES = \
