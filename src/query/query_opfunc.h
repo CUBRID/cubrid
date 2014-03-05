@@ -231,7 +231,8 @@ extern int qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 					  alt_acc_list);
 extern int qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p,
 					      AGGREGATE_TYPE * agg_ptr,
-					      HFID * hfid);
+					      HFID * hfid,
+					      OID * partition_cls_oid);
 extern int qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p,
 					       AGGREGATE_TYPE * agg_ptr,
 					       HFID * root_hfid,

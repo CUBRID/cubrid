@@ -146,4 +146,7 @@ extern int partition_is_global_index (THREAD_ENTRY * thread_p,
 				      OID * class_oid, BTID * btid,
 				      BTREE_TYPE * btree_typep,
 				      int *is_global_index);
+extern int partition_find_root_class_oid (THREAD_ENTRY * thread_p,
+					  const OID * class_oid,
+					  OID * super_oid);
 #endif /* _PARTITION_H_ */

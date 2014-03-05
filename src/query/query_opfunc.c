@@ -6646,10 +6646,15 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
  *   return:
  *   agg_ptr(in)        :
  *   hfid(in)   :
+ *   super_oid(in): The super oid of a class. This should be used when dealing
+ *		    with a partition class. It the index is a global index,
+ *		    the min/max value from the partition in this case
+ *		    will be retrieved from the heap.
  */
 int
 qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p,
-				   AGGREGATE_TYPE * agg_p, HFID * hfid_p)
+				   AGGREGATE_TYPE * agg_p, HFID * hfid_p,
+				   OID * super_oid)
 {
   int oid_count = 0, null_count = 0, key_count = 0;
   int flag_btree_stat_needed = true;
@@ -6666,7 +6671,24 @@ qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p,
 
   if ((agg_p->function == PT_MIN) || (agg_p->function == PT_MAX))
     {
+      int is_global_index = 0;
+
       flag_btree_stat_needed = false;
+
+      if (super_oid && !OID_ISNULL (super_oid))
+	{
+	  if (partition_is_global_index (thread_p, NULL, super_oid,
+					 &agg_p->btid, NULL, &is_global_index)
+	      != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  if (is_global_index != 0)
+	    {
+	      agg_p->flag_agg_optimize = false;
+	      return ER_FAILED;
+	    }
+	}
     }
 
   if (agg_p->function == PT_COUNT_STAR)
@@ -6764,7 +6786,7 @@ qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p,
     }
 
   /* evaluate aggregate on the root class */
-  error = qdata_evaluate_aggregate_optimize (thread_p, agg_p, root_hfid);
+  error = qdata_evaluate_aggregate_optimize (thread_p, agg_p, root_hfid, NULL);
   if (error != NO_ERROR)
     {
       return error;
@@ -6794,7 +6816,7 @@ qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p,
 	  BTID_COPY (&agg_p->btid, &helper->btids[i]);
 	}
       error = qdata_evaluate_aggregate_optimize (thread_p, agg_p,
-						 &helper->hfids[i]);
+						 &helper->hfids[i], NULL);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;

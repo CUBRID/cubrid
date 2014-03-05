@@ -27829,6 +27829,9 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
 {
   AGGREGATE_TYPE *agg_ptr;
   int error = NO_ERROR;
+  OID super_oid;
+
+  OID_SET_NULL (&super_oid);
 
   for (agg_ptr = agg_list; agg_ptr; agg_ptr = agg_ptr->next)
     {
@@ -27846,6 +27849,17 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
       return qexec_evaluate_partition_aggregates (thread_p, spec, agg_list,
 						  is_scan_needed);
     }
+  else if (spec->pruning_type == DB_PARTITION_CLASS)
+    {
+      error =
+	partition_find_root_class_oid (thread_p, &ACCESS_SPEC_CLS_OID (spec),
+				       &super_oid);
+      if (error != NO_ERROR)
+	{
+	  *is_scan_needed = true;
+	  return error;
+	}
+    }
 
   for (agg_ptr = agg_list; agg_ptr; agg_ptr = agg_ptr->next)
     {
@@ -27858,7 +27872,8 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
 	      continue;
 	    }
 	  if (qdata_evaluate_aggregate_optimize (thread_p, agg_ptr,
-						 &ACCESS_SPEC_HFID (spec)) !=
+						 &ACCESS_SPEC_HFID (spec),
+						 &super_oid) !=
 	      NO_ERROR)
 	    {
 	      agg_ptr->flag_agg_optimize = false;

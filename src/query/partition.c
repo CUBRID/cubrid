@@ -112,9 +112,6 @@ static int pruningset_to_spec_list (PRUNING_CONTEXT * pinfo,
 				    const PRUNING_BITSET * pruned);
 
 /* pruning operations */
-static int partition_find_root_class_oid (THREAD_ENTRY * thread_p,
-					  const OID * class_oid,
-					  OID * super_oid);
 static int partition_free_cache_entry (const void *key, void *data,
 				       void *args);
 static int partition_cache_pruning_context (PRUNING_CONTEXT * pinfo);
@@ -2297,7 +2294,7 @@ partition_init_pruning_context (PRUNING_CONTEXT * pinfo)
  *			one of the partitions
  * super_oid (in/out) : OID of the partitioned class
  */
-static int
+int
 partition_find_root_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid,
 			       OID * super_oid)
 {
