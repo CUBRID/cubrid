@@ -6537,10 +6537,10 @@ show_stmt
 	| SHOW show_type_id_dot_id OF identifier DOT identifier
 		{{
 			int type = $2;
-			PT_NODE *args = $4;
-			args->next = $6;
+			PT_NODE *node, *args = $4;
 
-			PT_NODE *node = pt_make_query_showstmt (this_parser, type, args, NULL);
+			args->next = $6;
+			node = pt_make_query_showstmt (this_parser, type, args, NULL);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)

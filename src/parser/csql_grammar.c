@@ -16926,10 +16926,10 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem* yyvsp,
 #line 6538 "../../src/parser/csql_grammar.y"
     {{
 			int type = (((yyGLRStackItem const *)yyvsp)[YYFILL ((2) - (6))].yystate.yysemantics.yysval.number);
-			PT_NODE *args = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node);
-			args->next = (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (6))].yystate.yysemantics.yysval.node);
+			PT_NODE *node, *args = (((yyGLRStackItem const *)yyvsp)[YYFILL ((4) - (6))].yystate.yysemantics.yysval.node);
 
-			PT_NODE *node = pt_make_query_showstmt (this_parser, type, args, NULL);
+			args->next = (((yyGLRStackItem const *)yyvsp)[YYFILL ((6) - (6))].yystate.yysemantics.yysval.node);
+			node = pt_make_query_showstmt (this_parser, type, args, NULL);
 
 			((*yyvalp).node) = node;
 			PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
