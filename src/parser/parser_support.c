@@ -240,15 +240,15 @@ static PT_NODE *pt_process_spec_for_delete (PARSER_CONTEXT * parser,
 static PT_NODE *pt_process_spec_for_update (PARSER_CONTEXT * parser,
 					    PT_NODE * spec, PT_NODE * name);
 static bool check_arg_valid (PARSER_CONTEXT * parser,
-			     SHOWSTMT_NAMED_ARG * arg_meta, int arg_num,
+			     const SHOWSTMT_NAMED_ARG * arg_meta, int arg_num,
 			     PT_NODE * val);
 static PT_NODE *pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser,
-						  SHOWSTMT_NAMED_ARG *
+						  const SHOWSTMT_NAMED_ARG *
 						  arg_infos,
 						  int arg_info_count,
 						  PT_NODE * args);
 static PT_NODE *pt_resolve_showstmt_args_named (PARSER_CONTEXT * parser,
-						SHOWSTMT_NAMED_ARG *
+						const SHOWSTMT_NAMED_ARG *
 						arg_infos, int arg_info_count,
 						PT_NODE * args);
 #define NULL_ATTRID -1
@@ -8750,7 +8750,7 @@ pt_make_query_show_table (PARSER_CONTEXT * parser,
  *   val(in): argument value node
  */
 static bool
-check_arg_valid (PARSER_CONTEXT * parser, SHOWSTMT_NAMED_ARG * arg_meta,
+check_arg_valid (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_ARG * arg_meta,
 		 int arg_num, PT_NODE * val)
 {
   bool valid = false;
@@ -8834,7 +8834,7 @@ check_arg_valid (PARSER_CONTEXT * parser, SHOWSTMT_NAMED_ARG * arg_meta,
  */
 static PT_NODE *
 pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser,
-				  SHOWSTMT_NAMED_ARG * arg_infos,
+				  const SHOWSTMT_NAMED_ARG * arg_infos,
 				  int arg_info_count, PT_NODE * args)
 {
   int i;
@@ -8917,7 +8917,7 @@ error:
  */
 static PT_NODE *
 pt_resolve_showstmt_args_named (PARSER_CONTEXT * parser,
-				SHOWSTMT_NAMED_ARG * arg_infos,
+				const SHOWSTMT_NAMED_ARG * arg_infos,
 				int arg_info_count, PT_NODE * args)
 {
   int i;
@@ -10611,7 +10611,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
     "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type",
     "Func"
   };
-  int i = 0;
+  unsigned int i = 0;
 
   assert (original_cls_id != NULL);
   assert (original_cls_id->node_type == PT_NAME);

@@ -657,9 +657,7 @@ typedef struct YYLTYPE
 %type <number> show_type_arg1
 %type <number> show_type_arg1_opt
 %type <number> show_type_arg_named
-/* uncomment it when implement other show statements.
 %type <number> show_type_id_dot_id
-*/
 /*}}}*/
 
 /* define rule type (node) */
@@ -6536,7 +6534,6 @@ show_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-/* uncomment it when implement other show statements.
 	| SHOW show_type_id_dot_id OF identifier DOT identifier
 		{{
 			int type = $2;
@@ -6549,7 +6546,6 @@ show_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-*/
 	;
 
 show_type_arg1
@@ -6577,6 +6573,14 @@ show_type_arg1
 		{{
 			$$ = SHOWSTMT_ALL_HEAP_CAPACITY;
 		}}
+	| ALL INDEXES HEADER
+		{{
+			$$ = SHOWSTMT_ALL_INDEXES_HEADER;
+		}}
+	| ALL INDEXES CAPACITY
+		{{
+			$$ = SHOWSTMT_ALL_INDEXES_CAPACITY;
+		}}
 	;
 
 show_type_arg1_opt
@@ -6597,11 +6601,16 @@ show_type_arg_named
 		}}
 	;
 
-/* uncomment it when implement other show statement.
 show_type_id_dot_id
-	: 
+	: INDEX HEADER
+		{{
+			$$ = SHOWSTMT_INDEX_HEADER;
+		}}
+	| INDEX CAPACITY
+		{{
+			$$ = SHOWSTMT_INDEX_CAPACITY;
+		}}
 	;
-*/
 
 of_or_where
 	: OF

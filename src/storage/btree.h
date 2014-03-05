@@ -470,4 +470,12 @@ extern int btree_ils_adjust_range (THREAD_ENTRY * thread_p,
 				   KEY_VAL_RANGE * key_range,
 				   DB_VALUE * curr_key, int prefix_len,
 				   bool use_desc_index);
+extern int btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type,
+				   DB_VALUE ** arg_values, int arg_cnt,
+				   void **ctx);
+extern int btree_index_end_scan (THREAD_ENTRY * thread_p, void **ctx);
+extern SCAN_CODE btree_index_next_scan (THREAD_ENTRY * thread_p,
+					int cursor,
+					DB_VALUE ** out_values,
+					int out_cnt, void *ctx);
 #endif /* _BTREE_H_ */

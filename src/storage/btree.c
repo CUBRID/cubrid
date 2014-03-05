@@ -53,6 +53,7 @@
 #include "connection_defs.h"
 #include "locator_sr.h"
 #include "network_interface_sr.h"
+#include "utility.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -122,8 +123,8 @@ struct recset_header
 
 typedef enum
 {
-  REGULAR = 1,
-  OVERFLOW
+  LEAF_RECORD_REGULAR = 1,
+  LEAF_RECORD_OVERFLOW
 } LEAF_RECORD_TYPE;
 
 typedef enum
@@ -228,6 +229,17 @@ struct btree_range_search_helper
   bool current_lock_request;	/* Current key needs locking */
   bool read_prev_key;		/* Previous key is read */
 #endif				/* SERVER_MODE */
+};
+
+typedef struct show_index_scan_ctx SHOW_INDEX_SCAN_CTX;
+struct show_index_scan_ctx
+{
+  int indexes_count;		/* The total of indexes */
+  bool is_all;			/* Get all indexes or get a specified index */
+  char *index_name;		/* Index name which user specified  */
+  OID *class_oids;		/* Class oids array */
+  int class_oid_count;		/* The count of above oids array */
+  int show_type;		/* Show type */
 };
 
 static int btree_store_overflow_key (THREAD_ENTRY * thread_p,
@@ -703,6 +715,19 @@ static int btree_compress_records (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				   RECDES * rec, int key_cnt);
 static int btree_compress_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				PAGE_PTR page_ptr);
+static const char *node_type_to_string (short node_type);
+static SCAN_CODE btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
+						   DB_VALUE ** out_values,
+						   int out_cnt,
+						   const char *class_name,
+						   const char *index_name,
+						   BTID * btid_p);
+static SCAN_CODE btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p,
+						     DB_VALUE ** out_values,
+						     int out_cnt,
+						     const char *class_name,
+						     const char *index_name,
+						     BTID * btid_p);
 
 
 static void random_exit (THREAD_ENTRY * thread_p);
@@ -6492,7 +6517,7 @@ btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp,
   fprintf (fp,
 	   "[%s PAGE {%d, %d}, level: %d, depth: %d, keys: %d, "
 	   "Prev: {%d, %d}, Next: {%d, %d}, Max key len: %d]\n",
-	   (node_type == BTREE_LEAF_NODE) ? "LEAF" : "NON_LEAF",
+	   node_type_to_string (node_type),
 	   pg_vpid->volid, pg_vpid->pageid,
 	   header->node_level, depth, key_cnt,
 	   header->prev_vpid.volid, header->prev_vpid.pageid,
@@ -10480,7 +10505,7 @@ btree_insert_oid_into_leaf_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   rv_data = PTR_ALIGN (rv_data_buf, BTREE_MAX_ALIGN);
 
-  recins.rec_type = REGULAR;
+  recins.rec_type = LEAF_RECORD_REGULAR;
   recins.oid_inserted = true;
   COPY_OID (&recins.oid, oid);
 
@@ -10611,7 +10636,7 @@ btree_append_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 						btid->sys_btid);
 
   /* log the changes to the leaf node record for redo purposes */
-  recins.rec_type = REGULAR;
+  recins.rec_type = LEAF_RECORD_REGULAR;
   recins.ovfl_vpid = ovfl_vpid;
   recins.ovfl_changed = true;
   recins.oid_inserted = false;
@@ -20101,7 +20126,7 @@ btree_rv_leafrec_redo_insert_oid (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   rec.area_size = DB_PAGESIZE;
   rec.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
 
-  if (recins->rec_type == REGULAR)
+  if (recins->rec_type == LEAF_RECORD_REGULAR)
     {
       /* read the record */
       if (spage_get_record (recv->pgptr, slotid, &rec, COPY) != S_SUCCESS)
@@ -20269,7 +20294,7 @@ btree_rv_leafrec_dump_insert_oid (FILE * fp, int length, void *data)
   fprintf (fp, "OID: { %d, %d, %d } \n",
 	   recins->oid.volid, recins->oid.pageid, recins->oid.slotid);
   fprintf (fp, "RECORD TYPE: %s \n",
-	   (recins->rec_type == REGULAR) ? "REGULAR" : "OVERFLOW");
+	   (recins->rec_type == LEAF_RECORD_REGULAR) ? "REGULAR" : "OVERFLOW");
   fprintf (fp, "Overflow Page Id: {%d , %d}\n",
 	   recins->ovfl_vpid.volid, recins->ovfl_vpid.pageid);
   fprintf (fp,
@@ -25012,4 +25037,613 @@ btree_prepare_range_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
 
   return NO_ERROR;
+}
+
+static const char *
+node_type_to_string (short node_type)                                                                      
+{
+  return (node_type == BTREE_LEAF_NODE) ? "LEAF" : "NON_LEAF";
+}
+
+/*
+ * btree_index_start_scan () -  start scan function for 
+ *                              show index header/capacity
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   show_type(in):
+ *   arg_values(in):
+ *   arg_cnt(in):
+ *   ptr(in/out): index header/capacity context
+ */
+int
+btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type,
+			DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+{
+  int i, error = NO_ERROR;
+  OID oid;
+  OR_CLASSREP *classrep = NULL;
+  int idx_in_cache;
+  SHOW_INDEX_SCAN_CTX *ctx = NULL;
+  LC_FIND_CLASSNAME status;
+  OR_PARTITION *parts = NULL;
+  int parts_count = 0;
+  DB_CLASS_PARTITION_TYPE partition_type;
+  char *class_name = NULL;
+
+  *ptr = NULL;
+  ctx =
+    (SHOW_INDEX_SCAN_CTX *) db_private_alloc (thread_p,
+					      sizeof (SHOW_INDEX_SCAN_CTX));
+  if (ctx == NULL)
+    {
+      error = er_errid ();
+      goto cleanup;
+    }
+  memset (ctx, 0, sizeof (SHOW_INDEX_SCAN_CTX));
+
+  ctx->show_type = show_type;
+  ctx->is_all = (show_type == SHOWSTMT_ALL_INDEXES_HEADER
+		 || show_type == SHOWSTMT_ALL_INDEXES_CAPACITY);
+
+  class_name = db_get_string (arg_values[0]);
+
+  status = xlocator_find_class_oid (thread_p, class_name, &oid, NULL_LOCK);
+  if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
+    {
+      error = ER_LC_UNKNOWN_CLASSNAME;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, class_name);
+      goto cleanup;
+    }
+
+  classrep =
+    heap_classrepr_get (thread_p, &oid, NULL, 0, &idx_in_cache, true);
+  if (classrep == NULL)
+    {
+      error = er_errid();
+      goto cleanup;
+    }
+
+  if (ctx->is_all)
+    {
+      assert (arg_cnt == 2);
+
+      partition_type = (DB_CLASS_PARTITION_TYPE) db_get_int (arg_values[1]);
+      ctx->indexes_count = classrep->n_indexes;
+    }
+  else
+    {
+      assert (arg_cnt == 3);
+
+      /* get index name which user specified */
+      ctx->index_name =
+	db_private_strdup (thread_p, db_get_string (arg_values[1]));
+      if (ctx->index_name == NULL)
+	{
+	  error = er_errid ();
+	  goto cleanup;
+	}
+
+      partition_type = (DB_CLASS_PARTITION_TYPE) db_get_int (arg_values[2]);
+      ctx->indexes_count = 1;
+    }
+
+  /* save oids to context so that we can get btree info when scan next */
+  if (partition_type == DB_PARTITIONED_CLASS)
+    {
+      error =
+	heap_get_class_partitions (thread_p, &oid, &parts, &parts_count);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      ctx->class_oids =
+	(OID *) db_private_alloc (thread_p, sizeof (OID) * parts_count);
+      if (ctx->class_oids == NULL)
+	{
+	  error = er_errid ();
+	  goto cleanup;
+	}
+
+      for (i = 0; i < parts_count; i++)
+	{
+	  COPY_OID (&ctx->class_oids[i], &parts[i].class_oid);
+	}
+
+      ctx->class_oid_count = parts_count;
+    }
+  else
+    {
+      ctx->class_oids = (OID *) db_private_alloc (thread_p, sizeof (OID));
+      if (ctx->class_oids == NULL)
+	{
+	  error = er_errid ();
+	  goto cleanup;
+	}
+
+      COPY_OID (&ctx->class_oids[0], &oid);
+      ctx->class_oid_count = 1;
+    }
+
+  *ptr = ctx;
+  ctx = NULL;
+
+cleanup:
+
+  if (classrep != NULL)
+    {
+      heap_classrepr_free (classrep, &idx_in_cache);
+    }
+
+  if (parts != NULL)
+    {
+      for (i = 0; i < parts_count; i++)
+	{
+	  if (parts[i].values != NULL)
+	    {
+	      db_seq_free (parts[i].values);
+	    }
+	}
+
+      db_private_free_and_init (thread_p, parts);
+    }
+
+  if (ctx != NULL)
+    {
+      if (ctx->index_name != NULL)
+	{
+	  db_private_free_and_init (thread_p, ctx->index_name);
+	}
+
+      if (ctx->class_oids != NULL)
+	{
+	  db_private_free_and_init (thread_p, ctx->class_oids);
+	}
+
+      db_private_free_and_init (thread_p, ctx);
+    }
+
+  return error;
+}
+
+/*
+ * btree_index_next_scan () -  next scan function for 
+ *                             show index header/capacity
+ *   return: S_ERROR, S_SUCCESS, or S_END
+ *
+ *   thread_p(in): 
+ *   cursor(in): 
+ *   out_values(out):
+ *   out_cnt(in):
+ *   ptr(in): index header/capacity context
+ */
+SCAN_CODE
+btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor,
+		       DB_VALUE ** out_values, int out_cnt, void *ptr)
+{
+  SCAN_CODE ret;
+  BTID *btid_p;
+  const char *btname;
+  char *class_name = NULL;
+  OR_CLASSREP *classrep = NULL;
+  SHOW_INDEX_SCAN_CTX *ctx = NULL;
+  OID *oid_p = NULL;
+  int idx_in_cache;
+  int selected_index = 0;
+  int i, index_idx, oid_idx;
+
+  ctx = (SHOW_INDEX_SCAN_CTX *) ptr;
+  if (cursor >= ctx->indexes_count * ctx->class_oid_count)
+    {
+      return S_END;
+    }
+
+  assert (ctx->indexes_count >= 1);
+  index_idx = cursor % ctx->indexes_count;
+  oid_idx = cursor / ctx->indexes_count;
+
+  oid_p = &ctx->class_oids[oid_idx];
+
+  class_name = heap_get_class_name (thread_p, oid_p);
+  if (class_name == NULL)
+    {
+      ret = S_ERROR;
+      goto cleanup;
+    }
+
+  classrep =
+    heap_classrepr_get (thread_p, oid_p, NULL, 0, &idx_in_cache, true);
+  if (classrep == NULL)
+    {
+      ret = S_ERROR;
+      goto cleanup;
+    }
+
+  if (ctx->is_all)
+    {
+      btname = classrep->indexes[index_idx].btname;
+      btid_p = &classrep->indexes[index_idx].btid;
+    }
+  else
+    {
+      selected_index = -1;
+      for (i = 0; i < classrep->n_indexes; i++)
+	{
+	  if (intl_identifier_casecmp
+	      (classrep->indexes[i].btname, ctx->index_name) == 0)
+	    {
+	      selected_index = i;
+	      break;
+	    }
+	}
+
+      if (selected_index == -1)
+	{
+	  /* it must be found since passed semantic check */
+	  assert (false);
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INDEX_NOT_FOUND,
+		  0);
+	  ret = S_ERROR;
+	  goto cleanup;
+	}
+
+      btname = classrep->indexes[selected_index].btname;
+      btid_p = &classrep->indexes[selected_index].btid;
+    }
+
+  if (ctx->show_type == SHOWSTMT_INDEX_HEADER
+      || ctx->show_type == SHOWSTMT_ALL_INDEXES_HEADER)
+    {
+      ret =
+	btree_scan_for_show_index_header (thread_p, out_values, out_cnt,
+					  class_name, btname, btid_p);
+    }
+  else
+    {
+      assert (ctx->show_type == SHOWSTMT_INDEX_CAPACITY
+	      || ctx->show_type == SHOWSTMT_ALL_INDEXES_CAPACITY);
+
+      ret =
+	btree_scan_for_show_index_capacity (thread_p, out_values, out_cnt,
+					    class_name, btname, btid_p);
+    }
+
+cleanup:
+
+  if (classrep != NULL)
+    {
+      heap_classrepr_free (classrep, &idx_in_cache);
+    }
+
+  if (class_name != NULL)
+    {
+      free_and_init (class_name);
+    }
+
+  return ret;
+}
+
+/*
+ * btree_index_end_scan () -  end scan function 
+ *                            for show index header/capacity
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in): 
+ *   ptr(in/out): index header/capacity context
+ */
+int
+btree_index_end_scan (THREAD_ENTRY * thread_p, void **ptr)
+{
+  SHOW_INDEX_SCAN_CTX *ctx = NULL;
+
+  ctx = (SHOW_INDEX_SCAN_CTX *) (*ptr);
+  if (ctx != NULL)
+    {
+      if (ctx->index_name != NULL)
+	{
+	  db_private_free_and_init (thread_p, ctx->index_name);
+	}
+
+      if (ctx->class_oids != NULL)
+	{
+	  db_private_free_and_init (thread_p, ctx->class_oids);
+	}
+
+      db_private_free_and_init (thread_p, ctx);
+    }
+
+  *ptr = NULL;
+
+  return NO_ERROR;
+}
+
+/*
+ * btree_scan_for_show_index_header () - scan index header information
+ *   return: S_ERROR, S_SUCCESS, or S_END
+ *
+ *   thread_p(in): 
+ *   out_values(out):
+ *   out_cnt(in):
+ *   class_name(in);
+ *   index_name(in);
+ *   btid_p(in);
+ */
+static SCAN_CODE
+btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
+				  DB_VALUE ** out_values, int out_cnt,
+				  const char *class_name,
+				  const char *index_name, BTID * btid_p)
+{
+  int idx = 0;
+  int error = NO_ERROR;
+  BTREE_ROOT_HEADER *root_header_p = NULL;
+  PAGE_PTR root_page_ptr = NULL;
+  VPID root_vpid;
+  char buf[256] = { 0 };
+  OR_BUF or_buf;
+  TP_DOMAIN *key_type;
+  BTREE_NODE_TYPE node_type;
+
+  /* get root header point */
+  root_vpid.pageid = btid_p->root_pageid;
+  root_vpid.volid = btid_p->vfid.volid;
+
+  root_page_ptr =
+    pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ,
+	       PGBUF_UNCONDITIONAL_LATCH);
+  if (root_page_ptr == NULL)
+    {
+      error = er_errid ();
+      goto cleanup;
+    }
+
+  root_header_p = btree_get_root_header_ptr (root_page_ptr);
+  if (root_header_p == NULL)
+    {
+      error = er_errid ();
+      goto cleanup;
+    }
+
+  /* scan index header into out_values */
+  error = db_make_string_copy (out_values[idx], class_name);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  error = db_make_string_copy (out_values[idx], index_name);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  (void) btid_to_string (buf, sizeof (buf), btid_p);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  (void) vpid_to_string (buf, sizeof (buf), &root_header_p->node.prev_vpid);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  (void) vpid_to_string (buf, sizeof (buf), &root_header_p->node.next_vpid);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  node_type =
+    root_header_p->node.node_level >
+    1 ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
+  error = db_make_string (out_values[idx], node_type_to_string (node_type));
+  idx++;
+
+  db_make_int (out_values[idx], root_header_p->node.max_key_len);
+  idx++;
+
+  db_make_int (out_values[idx], root_header_p->num_oids);
+  idx++;
+
+  db_make_int (out_values[idx], root_header_p->num_nulls);
+  idx++;
+
+  db_make_int (out_values[idx], root_header_p->num_keys);
+  idx++;
+
+  buf[0] = '\0';
+  if (!OID_ISNULL (&root_header_p->topclass_oid))
+    {
+      oid_to_string (buf, sizeof (buf), &root_header_p->topclass_oid);
+    }
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  db_make_int (out_values[idx], root_header_p->unique);
+  idx++;
+
+  (void) vfid_to_string (buf, sizeof (buf), &root_header_p->ovfid);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  or_init (&or_buf, root_header_p->packed_key_domain, -1);
+  key_type = or_get_domain (&or_buf, NULL, NULL);
+  error =
+    db_make_string_copy (out_values[idx],
+			 pr_type_name (TP_DOMAIN_TYPE (key_type)));
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  assert (idx == out_cnt);
+
+cleanup:
+
+  if (root_page_ptr != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, root_page_ptr);
+    }
+
+  return (error == NO_ERROR) ? S_SUCCESS : S_ERROR;
+}
+
+/*
+ * btree_scan_for_show_index_capacity () - scan index capacity information
+ *   return: S_ERROR, S_SUCCESS, or S_END
+ *
+ *   thread_p(in): 
+ *   out_values(out):
+ *   out_cnt(in):
+ *   class_name(in);
+ *   index_name(in);
+ *   btid_p(in);
+ */
+static SCAN_CODE
+btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p,
+				    DB_VALUE ** out_values, int out_cnt,
+				    const char *class_name,
+				    const char *index_name, BTID * btid_p)
+{
+  int idx = 0;
+  int error = NO_ERROR;
+  BTREE_CAPACITY cpc;
+  PAGE_PTR root_page_ptr = NULL;
+  VPID root_vpid;
+  char buf[256] = { 0 };
+
+  /* get btree capacity */
+  root_vpid.pageid = btid_p->root_pageid;
+  root_vpid.volid = btid_p->vfid.volid;
+  root_page_ptr =
+    pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ,
+	       PGBUF_UNCONDITIONAL_LATCH);
+  if (root_page_ptr == NULL)
+    {
+      error = er_errid ();
+      goto cleanup;
+    }
+
+  error = btree_index_capacity (thread_p, btid_p, &cpc);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  /* scan index capacity into out_values */
+  error = db_make_string_copy (out_values[idx], class_name);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  error = db_make_string_copy (out_values[idx], index_name);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  (void) btid_to_string (buf, sizeof (buf), btid_p);
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  db_make_int (out_values[idx], cpc.dis_key_cnt);
+  idx++;
+
+  db_make_int (out_values[idx], cpc.tot_val_cnt);
+  idx++;
+
+  db_make_int (out_values[idx], cpc.avg_val_per_key);
+  idx++;
+
+  db_make_int (out_values[idx], cpc.leaf_pg_cnt);
+  idx++;
+
+  db_make_int (out_values[idx], cpc.nleaf_pg_cnt);
+  idx++;
+
+  db_make_int (out_values[idx], cpc.tot_pg_cnt);
+  idx++;
+
+  db_make_int (out_values[idx], cpc.height);
+  idx++;
+
+  db_make_int (out_values[idx], cpc.avg_key_len);
+  idx++;
+
+  db_make_int (out_values[idx], cpc.avg_rec_len);
+  idx++;
+
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_space));
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_used_space));
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_free_space));
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  db_make_int (out_values[idx], cpc.avg_pg_key_cnt);
+  idx++;
+
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.avg_pg_free_sp));
+  error = db_make_string_copy (out_values[idx], buf);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  assert (idx == out_cnt);
+
+cleanup:
+
+  if (root_page_ptr != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, root_page_ptr);
+    }
+
+  return (error == NO_ERROR) ? S_SUCCESS : S_ERROR;
 }

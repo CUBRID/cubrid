@@ -37,6 +37,8 @@
 #include "error_manager.h"
 #include "parser.h"
 #include "schema_manager.h"
+#include "dbtype.h"
+#include "error_code.h"
 
 enum
 {
@@ -65,6 +67,7 @@ static void free_db_attribute_list (SHOWSTMT_METADATA * md);
 /* check functions */
 static PT_NODE *pt_check_table_in_show_heap (PARSER_CONTEXT * parser,
 					     PT_NODE * node);
+static PT_NODE *pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /* meta functions */
 static SHOWSTMT_METADATA *metadata_of_volume_header (void);
@@ -74,6 +77,8 @@ static SHOWSTMT_METADATA *metadata_of_slotted_page_header (void);
 static SHOWSTMT_METADATA *metadata_of_slotted_page_slots (void);
 static SHOWSTMT_METADATA *metadata_of_heap_header (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_heap_capacity (SHOW_ONLY_ALL flag);
+static SHOWSTMT_METADATA *metadata_of_index_header (SHOW_ONLY_ALL flag);
+static SHOWSTMT_METADATA *metadata_of_index_capacity (SHOW_ONLY_ALL flag);
 
 static SHOWSTMT_METADATA *
 metadata_of_volume_header (void)
@@ -355,6 +360,107 @@ metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
   return (flag == SHOW_ALL) ? &md_all : &md_only;
 }
 
+/* for show index header */
+static SHOWSTMT_METADATA *
+metadata_of_index_header (SHOW_ONLY_ALL flag)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Table_name", "varchar(256)"},
+    {"Index_name", "varchar(256)"},
+    {"Btid", "varchar(64)"},
+    {"Prev_vpid", "varchar(32)"},
+    {"Next_vpid", "varchar(32)"},
+    {"Node_type", "varchar(16)"},
+    {"Max_key_len", "int"},
+    {"Num_oids", "int"},
+    {"Num_nulls", "int"},
+    {"Num_keys", "int"},
+    {"Topclass_oid", "varchar(64)"},
+    {"Unique", "int"},
+    {"Overflow_vfid", "varchar(32)"},
+    {"Key_type", "varchar(32)"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC},
+    {2, ORDER_ASC}
+  };
+
+  static const SHOWSTMT_NAMED_ARG args1[] = {
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+  };
+  static const SHOWSTMT_NAMED_ARG args2[] = {
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED},
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+  };
+
+  static SHOWSTMT_METADATA md_all = {
+    SHOWSTMT_ALL_INDEXES_HEADER, "show all indexes header of ",
+    cols, DIM (cols), orderby, DIM (orderby), args1, DIM (args1),
+    pt_check_show_index, NULL
+  };
+
+  static SHOWSTMT_METADATA md_only = {
+    SHOWSTMT_INDEX_HEADER, "show index header of ",
+    cols, DIM (cols), NULL, 0, args2, DIM (args2),
+    pt_check_show_index, NULL
+  };
+
+  return (flag == SHOW_ALL) ? &md_all : &md_only;
+}
+
+/* for show index capacity */
+static SHOWSTMT_METADATA *
+metadata_of_index_capacity (SHOW_ONLY_ALL flag)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Table_name", "varchar(256)"},
+    {"Index_name", "varchar(256)"},
+    {"Btid", "varchar(64)"},
+    {"Num_distinct_key", "int"},
+    {"Total_value", "int"},
+    {"Avg_num_value_per_key", "int"},
+    {"Num_leaf_page", "int"},
+    {"Num_non_leaf_page", "int"},
+    {"Num_total_page", "int"},
+    {"Height", "int"},
+    {"Avg_key_len", "int"},
+    {"Avg_rec_len", "int"},
+    {"Total_space", "varchar(64)"},
+    {"Total_used_space", "varchar(64)"},
+    {"Total_free_space", "varchar(64)"},
+    {"Avg_num_page_key", "int"},
+    {"Avg_page_free_space", "varchar(64)"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC},
+    {2, ORDER_ASC}
+  };
+
+  static const SHOWSTMT_NAMED_ARG args1[] = {
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+  };
+  static const SHOWSTMT_NAMED_ARG args2[] = {
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED},
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+  };
+
+  static SHOWSTMT_METADATA md_all = {
+    SHOWSTMT_ALL_INDEXES_CAPACITY, "show all indexes capacity of ",
+    cols, DIM (cols), orderby, DIM (orderby), args1, DIM (args1),
+    pt_check_show_index, NULL
+  };
+
+  static SHOWSTMT_METADATA md_only = {
+    SHOWSTMT_INDEX_CAPACITY, "show index capacity of ",
+    cols, DIM (cols), NULL, 0, args2, DIM (args2),
+    pt_check_show_index, NULL
+  };
+
+  return (flag == SHOW_ALL) ? &md_all : &md_only;
+}
+
 /*
  * showstmt_get_metadata() -  return show statment column infos
  *   return:-
@@ -575,6 +681,13 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_HEAP_CAPACITY] = metadata_of_heap_capacity (SHOW_ONLY);
   show_Metas[SHOWSTMT_ALL_HEAP_CAPACITY] =
     metadata_of_heap_capacity (SHOW_ALL);
+  show_Metas[SHOWSTMT_INDEX_HEADER] = metadata_of_index_header (SHOW_ONLY);
+  show_Metas[SHOWSTMT_INDEX_CAPACITY] =
+    metadata_of_index_capacity (SHOW_ONLY);
+  show_Metas[SHOWSTMT_ALL_INDEXES_HEADER] =
+    metadata_of_index_header (SHOW_ALL);
+  show_Metas[SHOWSTMT_ALL_INDEXES_CAPACITY] =
+    metadata_of_index_capacity (SHOW_ALL);
 
   for (i = 0; i < DIM (show_Metas); i++)
     {
@@ -613,4 +726,104 @@ showstmt_metadata_final (void)
       free_db_attribute_list (show_Metas[i]);
     }
   show_Inited = false;
+}
+
+/*
+ * pt_check_show_index () - semantic check for show index.
+ *   return:
+ *   parser(in):
+ *   node(in):
+ */
+static PT_NODE *
+pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *show_args_node = NULL;
+  MOP cls;
+  const char *table_name = NULL;
+  const char *index_name = NULL;
+  SM_CLASS_CONSTRAINT *sm_all_constraints = NULL;
+  SM_CLASS_CONSTRAINT *sm_constraint = NULL;
+  PT_NODE *entity = NULL;
+  PT_NODE *derived_table = NULL;
+  SHOWSTMT_TYPE show_type;
+  int error = NO_ERROR;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
+  PT_NODE *partition_node = NULL;
+
+  if (node->node_type != PT_SELECT)
+    {
+      return node;
+    }
+
+  entity = node->info.query.q.select.from;
+  assert (entity != NULL);
+
+  derived_table = entity->info.spec.derived_table;
+  assert (derived_table != NULL);
+
+  show_type = derived_table->info.showstmt.show_type;
+  assert (show_type == SHOWSTMT_INDEX_HEADER
+	  || show_type == SHOWSTMT_INDEX_CAPACITY
+	  || show_type == SHOWSTMT_ALL_INDEXES_HEADER
+	  || show_type == SHOWSTMT_ALL_INDEXES_CAPACITY);
+
+  show_args_node = derived_table->info.showstmt.show_args;
+  assert (show_args_node != NULL);
+
+  assert (show_args_node->node_type == PT_VALUE);
+  assert (show_args_node->type_enum == PT_TYPE_CHAR);
+  assert (show_args_node->info.value.data_value.str->length <
+	  DB_MAX_IDENTIFIER_LENGTH);
+
+  /* check table name */
+  table_name = (const char *) show_args_node->info.value.data_value.str->bytes;
+  cls = sm_find_class (table_name);
+  if (cls == NULL)
+    {
+      PT_ERRORmf (parser, show_args_node, MSGCAT_SET_ERROR,
+		  -(ER_LC_UNKNOWN_CLASSNAME), table_name);
+      return node;
+    }
+
+  /* check index name */
+  if (show_type == SHOWSTMT_INDEX_HEADER
+      || show_type == SHOWSTMT_INDEX_CAPACITY)
+    {
+      show_args_node = show_args_node->next;
+      assert (show_args_node != NULL);
+      assert (show_args_node->node_type == PT_VALUE);
+      assert (show_args_node->type_enum == PT_TYPE_CHAR);
+      assert (show_args_node->info.value.data_value.str->length <
+	      DB_MAX_IDENTIFIER_LENGTH);
+
+      index_name =
+	(const char *) show_args_node->info.value.data_value.str->bytes;
+      sm_all_constraints = sm_class_constraints (cls);
+      sm_constraint =
+	classobj_find_constraint_by_name (sm_all_constraints, index_name);
+      if (sm_all_constraints == NULL || sm_constraint == NULL)
+	{
+	  PT_ERRORmf (parser, show_args_node, MSGCAT_SET_ERROR,
+		      -(ER_SM_NO_INDEX), index_name);
+	  return node;
+	}
+    }
+
+  /* get partition type and pass it by args */
+  error = sm_partitioned_class_type (cls, &partition_type, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      PT_ERRORc (parser, show_args_node, er_msg ());
+      return node;
+    }
+
+  partition_node = pt_make_integer_value (parser, partition_type);
+  if (partition_node == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return node;
+    }
+  parser_append_node (partition_node, show_args_node);
+
+  return node;
 }
