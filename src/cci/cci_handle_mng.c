@@ -1305,7 +1305,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->rc_time = 600;
   con_handle->last_failure_time = 0;
   con_handle->datasource = NULL;
-  con_handle->login_timeout = 30000;
+  con_handle->login_timeout = CCI_LOGIN_TIMEOUT_DEFAULT;
   con_handle->query_timeout = 0;
   con_handle->disconnect_on_query_timeout = false;
   con_handle->start_time.tv_sec = 0;

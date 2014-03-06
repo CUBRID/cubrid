@@ -128,10 +128,10 @@ int wsa_initialize ();
 #define CCI_DS_POOL_PREPARED_STATEMENT_DEFAULT 		false
 #define CCI_DS_MAX_OPEN_PREPARED_STATEMENT_DEFAULT	1000
 #define CCI_DS_DISCONNECT_ON_QUERY_TIMEOUT_DEFAULT	false
-#define CCI_DS_DEFAULT_AUTOCOMMIT_DEFAULT 		-1
+#define CCI_DS_DEFAULT_AUTOCOMMIT_DEFAULT 		(CCI_AUTOCOMMIT_TRUE)
 #define CCI_DS_DEFAULT_ISOLATION_DEFAULT 		TRAN_UNKNOWN_ISOLATION
 #define CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT 		CCI_LOCK_TIMEOUT_DEFAULT
-#define CCI_DS_LOGIN_TIMEOUT_DEFAULT			-1
+#define CCI_DS_LOGIN_TIMEOUT_DEFAULT			(CCI_LOGIN_TIMEOUT_DEFAULT)
 
 #define CON_HANDLE_ID_FACTOR            1000000
 #define CON_ID(a) ((a) / CON_HANDLE_ID_FACTOR)
@@ -6366,23 +6366,18 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
     {
       map_open_otc (id, &mapped_id);
 
-      /* reset to default value when default_xxx property is set by user */
-      if (ds->default_autocommit != CCI_DS_DEFAULT_AUTOCOMMIT_DEFAULT)
-	{
-	  cci_set_autocommit (mapped_id, ds->default_autocommit);
-	}
-      if (ds->default_lock_timeout != CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT)
-	{
-	  cci_set_lock_timeout (mapped_id, ds->default_lock_timeout, err_buf);
-	}
-      if (ds->default_isolation != CCI_DS_DEFAULT_ISOLATION_DEFAULT)
+      /* reset to default value */
+
+      cci_set_autocommit (mapped_id, ds->default_autocommit);
+
+      cci_set_lock_timeout (mapped_id, ds->default_lock_timeout, err_buf);
+
+      if (ds->default_isolation != TRAN_UNKNOWN_ISOLATION)
 	{
 	  cci_set_isolation_level (mapped_id, ds->default_isolation, err_buf);
 	}
-      if (ds->login_timeout != CCI_DS_LOGIN_TIMEOUT_DEFAULT)
-	{
-	  cci_set_login_timeout (mapped_id, ds->login_timeout, err_buf);
-	}
+
+      cci_set_login_timeout (mapped_id, ds->login_timeout, err_buf);
     }
 
   return mapped_id;
