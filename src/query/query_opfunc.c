@@ -48,6 +48,7 @@
 
 #include "query_executor.h"
 #include "databases_file.h"
+#include "partition.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
