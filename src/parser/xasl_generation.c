@@ -12044,7 +12044,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
 
   /* check for covered index scan */
   indx_infop->coverage = 0;	/* init */
-  if (qo_is_covering_index_scan (plan))
+  if (qo_is_index_covering_scan (plan))
     {
       assert (index_entryp->cover_segments == true);
       assert (where_pred == NULL);	/* no data-filter */
@@ -12079,19 +12079,22 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   if (qo_is_index_iss_scan (plan))
     {
       assert (QO_ENTRY_MULTI_COL (index_entryp));
-      assert (!qo_is_loose_index_scan (plan));
-      assert (!qo_is_filter_index_scan (plan));
+      assert (!qo_is_index_loose_scan (plan));
+      assert (!qo_plan_multi_range_opt (plan));
+      assert (!qo_is_filter_index (index_entryp));
 
       indx_infop->use_iss = 1;
     }
 
   /* check for loose index scan */
   indx_infop->ils_prefix_len = 0;	/* init */
-  if (qo_is_loose_index_scan (plan))
+  if (qo_is_index_loose_scan (plan))
     {
       assert (QO_ENTRY_MULTI_COL (index_entryp));
-      assert (qo_is_covering_index_scan (plan));
+      assert (qo_is_index_covering_scan (plan));
+      assert (is_prefix_index == false);
       assert (!qo_is_index_iss_scan (plan));
+      assert (!qo_plan_multi_range_opt (plan));
 
       assert (where_pred == NULL);	/* no data-filter */
 
@@ -25492,6 +25495,7 @@ pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
   /* Set MULTI-RANGE-OPTIMIZATION flags */
   if (qo_plan_multi_range_opt (qo_plan))
     {
+      /* qo_plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_USE */
       /* convert ordbynum to key limit if we have iscan with multiple key
        * ranges */
       int err = pt_ordbynum_to_key_limit_multiple_ranges (parser, qo_plan,

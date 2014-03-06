@@ -4876,7 +4876,6 @@ qo_alloc_index (QO_ENV * env, int n)
       entryp->all_unique_index_columns_are_equi_terms = false;
       entryp->cover_segments = false;
       entryp->is_iss_candidate = false;
-      entryp->multi_range_opt = false;
       entryp->first_sort_column = -1;
       entryp->orderby_skip = false;
       entryp->groupby_skip = false;
@@ -9323,24 +9322,41 @@ qo_seg_nodes (QO_ENV * env, BITSET * segset, BITSET * result)
 bool
 qo_is_prefix_index (QO_INDEX_ENTRY * ent)
 {
-  bool is_prefix_index = false;
-
   if (ent && ent->class_ && ent->class_->smclass)
     {
       SM_CLASS_CONSTRAINT *cons;
-      cons =
-	classobj_find_class_index (ent->class_->smclass,
-				   ent->constraints->name);
+
+      cons = classobj_find_class_index (ent->class_->smclass,
+					ent->constraints->name);
       if (cons)
 	{
 	  if (cons->attrs_prefix_length && cons->attrs_prefix_length[0] != -1)
 	    {
-	      is_prefix_index = true;
+	      return true;
 	    }
 	}
     }
 
-  return is_prefix_index;
+  return false;
+}
+
+/*
+ * qo_is_filter_index () - Find out if this is a filter index
+ *   return: true/false
+ *   ent(in): index entry
+ */
+bool
+qo_is_filter_index (QO_INDEX_ENTRY * ent)
+{
+  if (ent && ent->constraints)
+    {
+      if (ent->constraints->filter_predicate && ent->force > 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 /*

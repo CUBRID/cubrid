@@ -233,7 +233,8 @@ static void qo_plan_fprint (QO_PLAN *, FILE *, int, const char *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp (QO_PLAN *, QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_plan_iscan_terms_cmp (QO_PLAN * a,
 						       QO_PLAN * b);
-static QO_PLAN_COMPARE_RESULT qo_cover_index_plans_cmp (QO_PLAN *, QO_PLAN *);
+static QO_PLAN_COMPARE_RESULT qo_index_covering_plans_cmp (QO_PLAN *,
+							   QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_order_by_skip_plans_cmp (QO_PLAN *,
 							  QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_group_by_skip_plans_cmp (QO_PLAN *,
@@ -861,18 +862,21 @@ qo_set_use_desc (QO_PLAN * plan)
 static int
 qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg)
 {
-  if (qo_is_iscan (plan) && plan->plan_un.scan.index != NULL
-      && plan->plan_un.scan.index->head != NULL)
+  if (plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_NO)
     {
-      QO_INDEX_ENTRY *index_entryp = plan->plan_un.scan.index->head;
-      if (!index_entryp->multi_range_opt)
-	{
-	  /* nothing to do */
-	  return NO_ERROR;
-	}
-      /* set multi_range_opt to false */
-      index_entryp->multi_range_opt = false;
-      index_entryp->first_sort_column = -1;
+      /* nothing to do */
+      return NO_ERROR;
+    }
+
+  /* set multi_range_opt to false */
+  plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
+
+  if (qo_is_index_mro_scan (plan))
+    {
+      QO_INDEX_ENTRY *index_entryp;
+
+      index_entryp = plan->plan_un.scan.index->head;
+
       /* multi_range_opt may have set the descending order on index */
       if (index_entryp->use_descending)
 	{
@@ -888,6 +892,7 @@ qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg)
 	    }
 	}
     }
+
   return NO_ERROR;
 }
 
@@ -1797,7 +1802,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 	  /* check for no key-range index scan */
 	  if (bitset_is_empty (&(plan->plan_un.scan.terms)))
 	    {
-	      if (qo_is_filter_index_scan (plan)
+	      if (qo_is_filter_index (index_entryp)
 		  || qo_is_iscan_from_orderby (plan)
 		  || qo_is_iscan_from_groupby (plan))
 		{
@@ -1889,7 +1894,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
     {
       assert (!bitset_is_empty (&(plan->plan_un.scan.terms)));
       assert (index_entryp->ils_prefix_len == 0);
-      assert (!qo_is_filter_index_scan (plan));
+      assert (!qo_is_filter_index (index_entryp));
 
       if (first_col_present == false)
 	{
@@ -1917,7 +1922,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 	  break;		/* found data-filter */
 	}
 
-      if (qo_is_covering_index_scan (plan)
+      if (qo_is_index_covering_scan (plan)
 	  && bitset_is_empty (&(plan->plan_un.scan.terms)) && t == -1)
 	{
 	  /* covering index, no key-range, no data-filter */
@@ -1943,7 +1948,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
       assert (!qo_is_iscan_from_orderby (plan));
 
       /* check for filter-index, loose index scan */
-      if (qo_is_filter_index_scan (plan) || qo_is_loose_index_scan (plan))
+      if (qo_is_filter_index (index_entryp) || qo_is_index_loose_scan (plan))
 	{
 	  /* filter index has a pre-defined key-range.
 	   */
@@ -2303,7 +2308,7 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
       qo_termset_fprint ((plan->info)->env, &plan->plan_un.scan.terms, f);
 
       /* print index covering */
-      if (qo_is_covering_index_scan (plan))
+      if (qo_is_index_covering_scan (plan))
 	{
 	  if (bitset_cardinality (&(plan->plan_un.scan.terms)) > 0)
 	    {
@@ -2317,14 +2322,13 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
 	  fprintf (f, " (index skip scan)");
 	}
 
-      if (qo_is_loose_index_scan (plan))
+      if (qo_is_index_loose_scan (plan))
 	{
 	  fprintf (f, " (loose index scan on prefix %d)",
 		   plan->plan_un.scan.index->head->ils_prefix_len);
 	}
 
-      if (plan->plan_un.scan.index
-	  && plan->plan_un.scan.index->head->multi_range_opt)
+      if (qo_plan_multi_range_opt (plan))
 	{
 	  fprintf (f, " (multi_range_opt)");
 	}
@@ -2444,7 +2448,7 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
 	}
 
       /* print index covering */
-      if (qo_is_covering_index_scan (plan))
+      if (qo_is_index_covering_scan (plan))
 	{
 	  fprintf (f, " (covers)");
 	}
@@ -2454,14 +2458,13 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
 	  fprintf (f, " (index skip scan)");
 	}
 
-      if (qo_is_loose_index_scan (plan))
+      if (qo_is_index_loose_scan (plan))
 	{
 	  fprintf (f, " (loose index scan on prefix %d)",
 		   plan->plan_un.scan.index->head->ils_prefix_len);
 	}
 
-      if (plan->plan_un.scan.index
-	  && plan->plan_un.scan.index->head->multi_range_opt)
+      if (qo_plan_multi_range_opt (plan))
 	{
 	  fprintf (f, " (multi_range_opt)");
 	}
@@ -3780,7 +3783,7 @@ qo_plan_order_by (QO_PLAN * plan, QO_EQCLASS * order)
 }
 
 /*
- * qo_plan_cmp_prefer_covering_index () -
+ * qo_plan_cmp_prefer_covering_index () - TODO
  *   return: one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_GT}
  *   scan_plan_p(in):
  *   sort_plan_p(in):
@@ -3791,16 +3794,23 @@ qo_plan_cmp_prefer_covering_index (QO_PLAN * scan_plan_p,
 {
   QO_PLAN *sort_subplan_p;
 
-  assert (scan_plan_p->plan_type == QO_PLANTYPE_SCAN
-	  && sort_plan_p->plan_type == QO_PLANTYPE_SORT);
+  assert (scan_plan_p->plan_type == QO_PLANTYPE_SCAN);
+  assert (sort_plan_p->plan_type == QO_PLANTYPE_SORT);
 
   sort_subplan_p = sort_plan_p->plan_un.sort.subplan;
-  if (qo_is_covering_index_scan (sort_subplan_p))
+
+  if (!qo_is_interesting_order_scan (scan_plan_p)
+      || !qo_is_interesting_order_scan (sort_subplan_p))
+    {
+      return PLAN_COMP_UNK;
+    }
+
+  if (qo_is_index_covering_scan (sort_subplan_p))
     {
       /* if the sort plan contains a index plan with segment covering,
        * prefer it
        */
-      if (qo_is_covering_index_scan (scan_plan_p))
+      if (qo_is_index_covering_scan (scan_plan_p))
 	{
 	  if (scan_plan_p->plan_un.scan.index->head ==
 	      sort_subplan_p->plan_un.scan.index->head)
@@ -3810,7 +3820,11 @@ qo_plan_cmp_prefer_covering_index (QO_PLAN * scan_plan_p,
 	}
       else
 	{
-	  return PLAN_COMP_GT;
+	  if (!bitset_is_empty (&(sort_subplan_p->plan_un.scan.terms)))
+	    {
+	      /* prefer covering index scan with key-range */
+	      return PLAN_COMP_GT;
+	    }
 	}
     }
 
@@ -3826,6 +3840,11 @@ qo_plan_cmp_prefer_covering_index (QO_PLAN * scan_plan_p,
 static QO_PLAN_COMPARE_RESULT
 qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 {
+#if 1				/* TODO - do not delete me */
+#define QO_PLAN_CMP_CHECK_COST(a, b)
+#else
+#define QO_PLAN_CMP_CHECK_COST(a, b) assert ((a) < ((b)*10));
+#endif
 
 #ifdef OLD_CODE
   if (QO_PLAN_FIXED_COST (a) <= QO_PLAN_FIXED_COST (b))
@@ -3841,6 +3860,11 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   QO_NODE *a_node, *b_node;
   QO_PLAN_COMPARE_RESULT temp_res;
 
+  af = a->fixed_cpu_cost + a->fixed_io_cost;
+  aa = a->variable_cpu_cost + a->variable_io_cost;
+  bf = b->fixed_cpu_cost + b->fixed_io_cost;
+  ba = b->variable_cpu_cost + b->variable_io_cost;
+
   if (qo_is_sort_limit (a))
     {
       if (qo_is_sort_limit (b))
@@ -3852,11 +3876,13 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       else if (a->plan_un.sort.subplan == b)
 	{
 	  /* a is a SORT-LIMIT plan over b */
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
     }
   else if (qo_is_sort_limit (b) && a == b->plan_un.sort.subplan)
     {
+      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
       return PLAN_COMP_GT;
     }
 
@@ -3900,13 +3926,10 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
   if (a == b)
     {
+      QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
       return PLAN_COMP_EQ;
     }
-
-  af = a->fixed_cpu_cost + a->fixed_io_cost;
-  aa = a->variable_cpu_cost + a->variable_io_cost;
-  bf = b->fixed_cpu_cost + b->fixed_io_cost;
-  ba = b->variable_cpu_cost + b->variable_io_cost;
 
   if ((a->plan_type != QO_PLANTYPE_SCAN && a->plan_type != QO_PLANTYPE_SORT)
       || (b->plan_type != QO_PLANTYPE_SCAN
@@ -3914,9 +3937,15 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     {
       /* there may be joins with multi range optimizations */
       temp_res = qo_multi_range_opt_plans_cmp (a, b);
-      if (temp_res == PLAN_COMP_GT || temp_res == PLAN_COMP_LT)
+      if (temp_res == PLAN_COMP_LT)
 	{
-	  return temp_res;
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	  return PLAN_COMP_LT;
+	}
+      else if (temp_res == PLAN_COMP_GT)
+	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+	  return PLAN_COMP_GT;
 	}
       else
 	{
@@ -3928,23 +3957,32 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   if (a->plan_type == QO_PLANTYPE_SCAN && b->plan_type == QO_PLANTYPE_SORT)
     {
       /* prefer scan if it is multi range opt */
-      if (qo_is_iscan_with_multi_range_opt (a))
+      if (qo_is_index_mro_scan (a))
 	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
 
       temp_res = qo_plan_cmp_prefer_covering_index (a, b);
-      if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
+      if (temp_res == PLAN_COMP_LT)
 	{
-	  return temp_res;
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	  return PLAN_COMP_LT;
+	}
+      else if (temp_res == PLAN_COMP_GT)
+	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+	  return PLAN_COMP_GT;
 	}
 
       if (a->plan_un.scan.index && a->plan_un.scan.index->head->groupby_skip)
 	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
       if (a->plan_un.scan.index && a->plan_un.scan.index->head->orderby_skip)
 	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
     }
@@ -3952,8 +3990,9 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   if (b->plan_type == QO_PLANTYPE_SCAN && a->plan_type == QO_PLANTYPE_SORT)
     {
       /* prefer scan if it is multi range opt */
-      if (qo_is_iscan_with_multi_range_opt (b))
+      if (qo_is_index_mro_scan (b))
 	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
 	}
 
@@ -3962,19 +4001,23 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       /* Since we swapped its position, we have to negate the comp result */
       if (temp_res == PLAN_COMP_LT)
 	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
 	}
       else if (temp_res == PLAN_COMP_GT)
 	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
 
       if (b->plan_un.scan.index && b->plan_un.scan.index->head->groupby_skip)
 	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
 	}
       if (b->plan_un.scan.index && b->plan_un.scan.index->head->orderby_skip)
 	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
 	}
     }
@@ -3985,33 +4028,37 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       if (qo_is_all_unique_index_columns_are_equi_terms (a)
 	  && !qo_is_all_unique_index_columns_are_equi_terms (b))
 	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
       if (!qo_is_all_unique_index_columns_are_equi_terms (a)
 	  && qo_is_all_unique_index_columns_are_equi_terms (b))
 	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
 	}
 
       /* check multi range optimization */
-      if (qo_is_iscan_with_multi_range_opt (a)
-	  && !qo_is_iscan_with_multi_range_opt (b))
+      if (qo_is_index_mro_scan (a) && !qo_is_index_mro_scan (b))
 	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
-      if (!qo_is_iscan_with_multi_range_opt (a)
-	  && qo_is_iscan_with_multi_range_opt (b))
+      if (!qo_is_index_mro_scan (a) && qo_is_index_mro_scan (b))
 	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
 	}
 
       /* check covering index scan */
-      if (qo_is_covering_index_scan (a) && qo_is_seq_scan (b))
+      if (qo_is_index_covering_scan (a) && qo_is_seq_scan (b))
 	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
-      if (qo_is_covering_index_scan (b) && qo_is_seq_scan (a))
+      if (qo_is_index_covering_scan (b) && qo_is_seq_scan (a))
 	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
 	}
 
@@ -4024,11 +4071,13 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  if (a->plan_un.scan.index->head->orderby_skip
 	      && b->plan_un.scan.index->head->groupby_skip)
 	    {
+	      QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	      return PLAN_COMP_LT;
 	    }
 	  else if (a->plan_un.scan.index->head->groupby_skip
 		   && b->plan_un.scan.index->head->orderby_skip)
 	    {
+	      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	      return PLAN_COMP_GT;
 	    }
 	}
@@ -4049,10 +4098,13 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	{
 	  goto cost_cmp;	/* give up */
 	}
+
+      QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
       return PLAN_COMP_LT;
     }
   else if (QO_NODE_NCARD (b_node) == 0 && QO_NODE_TCARD (b_node) == 0)
     {
+      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
       return PLAN_COMP_GT;
     }
 
@@ -4069,37 +4121,55 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
   /* check multi range optimization */
   temp_res = qo_multi_range_opt_plans_cmp (a, b);
-  if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
+  if (temp_res == PLAN_COMP_LT)
     {
-      return temp_res;
+      QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+      return PLAN_COMP_LT;
+    }
+  else if (temp_res == PLAN_COMP_GT)
+    {
+      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+      return PLAN_COMP_GT;
     }
 
   /* check index coverage */
-  temp_res = qo_cover_index_plans_cmp (a, b);
-  if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
+  temp_res = qo_index_covering_plans_cmp (a, b);
+  if (temp_res == PLAN_COMP_LT)
     {
-      return temp_res;
+      QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+      return PLAN_COMP_LT;
+    }
+  else if (temp_res == PLAN_COMP_GT)
+    {
+      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+      return PLAN_COMP_GT;
     }
 
   /* check if one of the plans skips the order by, and if so, prefer it */
-  {
-    QO_PLAN_COMPARE_RESULT temp_res;
-    temp_res = qo_order_by_skip_plans_cmp (a, b);
-    if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
-      {
-	return temp_res;
-      }
-  }
+  temp_res = qo_order_by_skip_plans_cmp (a, b);
+  if (temp_res == PLAN_COMP_LT)
+    {
+      QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+      return PLAN_COMP_LT;
+    }
+  else if (temp_res == PLAN_COMP_GT)
+    {
+      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+      return PLAN_COMP_GT;
+    }
 
   /* check if one of the plans skips the group by, and if so, prefer it */
-  {
-    QO_PLAN_COMPARE_RESULT temp_res;
-    temp_res = qo_group_by_skip_plans_cmp (a, b);
-    if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
-      {
-	return temp_res;
-      }
-  }
+  temp_res = qo_group_by_skip_plans_cmp (a, b);
+  if (temp_res == PLAN_COMP_LT)
+    {
+      QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+      return PLAN_COMP_LT;
+    }
+  else if (temp_res == PLAN_COMP_GT)
+    {
+      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+      return PLAN_COMP_GT;
+    }
 
   /* iscan vs iscan index rule comparison */
 
@@ -4180,10 +4250,12 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  }
 	else if (a_range >= b_range && a_filter >= b_filter)
 	  {
+	    QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	    return PLAN_COMP_LT;
 	  }
 	else if (a_range <= b_range && a_filter <= b_filter)
 	  {
+	    QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	    return PLAN_COMP_GT;
 	  }
       }
@@ -4191,9 +4263,15 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     /* STEP 2: check by index terms */
 
     temp_res = qo_plan_iscan_terms_cmp (a, b);
-    if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
+    if (temp_res == PLAN_COMP_LT)
       {
-	return temp_res;
+	QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	return PLAN_COMP_LT;
+      }
+    else if (temp_res == PLAN_COMP_GT)
+      {
+	QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+	return PLAN_COMP_GT;
       }
 
     /* STEP 3: take the smaller access pages */
@@ -4299,10 +4377,12 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
     if (a_pages < b_pages)
       {
+	QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	return PLAN_COMP_LT;
       }
     else if (a_pages > b_pages)
       {
+	QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	return PLAN_COMP_GT;
       }
 
@@ -4312,10 +4392,12 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	/* each index is big enough */
 	if (a_cum->pages < b_cum->pages)
 	  {
+	    QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	    return PLAN_COMP_LT;
 	  }
 	else if (a_cum->pages > b_cum->pages)
 	  {
+	    QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	    return PLAN_COMP_GT;
 	  }
       }
@@ -4323,35 +4405,44 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     /* STEP 5: take the smaller key range */
     if (a_keys > b_keys)
       {
+	QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	return PLAN_COMP_LT;
       }
     else if (a_keys < b_keys)
       {
+	QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	return PLAN_COMP_GT;
       }
 
     if (af == bf && aa == ba)
       {
-	if (qo_is_covering_index_scan (a) && qo_is_covering_index_scan (b))
+	if (qo_is_index_covering_scan (a)
+	    && bitset_cardinality (&(a->plan_un.scan.terms)) > 0
+	    && qo_is_index_covering_scan (b)
+	    && bitset_cardinality (&(b->plan_un.scan.terms)) > 0)
 	  {
 	    if (a_ent->col_num > b_ent->col_num)
 	      {
+		QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 		return PLAN_COMP_GT;
 	      }
 	    else if (a_ent->col_num < b_ent->col_num)
 	      {
+		QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 		return PLAN_COMP_LT;
 	      }
 	  }
 
-	if (a_ent->multi_range_opt && b_ent->multi_range_opt)
+	if (qo_is_index_mro_scan (a) && qo_is_index_mro_scan (b))
 	  {
 	    if (a_ent->col_num > b_ent->col_num)
 	      {
+		QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 		return PLAN_COMP_GT;
 	      }
 	    else if (a_ent->col_num < b_ent->col_num)
 	      {
+		QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 		return PLAN_COMP_LT;
 	      }
 	  }
@@ -4361,11 +4452,13 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  {
 	    if (a_ent->col_num > b_ent->col_num)
 	      {
+		QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 		return PLAN_COMP_LT;
 	      }
 	    else if (a_ent->col_num < b_ent->col_num)
 	      {
 		/* if the new plan has more columns, prefer it */
+		QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 		return PLAN_COMP_GT;
 	      }
 	  }
@@ -4375,11 +4468,13 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  {
 	    if (a_ent->col_num > b_ent->col_num)
 	      {
+		QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 		return PLAN_COMP_LT;
 	      }
 	    else if (a_ent->col_num < b_ent->col_num)
 	      {
 		/* if the new plan has more columns, prefer it */
+		QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 		return PLAN_COMP_GT;
 	      }
 	  }
@@ -4395,10 +4490,12 @@ cost_cmp:
     }
   if (af <= bf && aa <= ba)
     {
+      QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
       return PLAN_COMP_LT;
     }
   if (bf <= af && ba <= aa)
     {
+      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
       return PLAN_COMP_GT;
     }
 
@@ -4417,7 +4514,7 @@ cost_cmp:
 static QO_PLAN_COMPARE_RESULT
 qo_multi_range_opt_plans_cmp (QO_PLAN * a, QO_PLAN * b)
 {
-  QO_INDEX_ENTRY *a_ent = NULL, *b_ent = NULL;
+  QO_PLAN_COMPARE_RESULT temp_res;
 
   /* if no plan uses multi range optimization, nothing to do here */
   if (!qo_plan_multi_range_opt (a) && !qo_plan_multi_range_opt (b))
@@ -4435,11 +4532,13 @@ qo_multi_range_opt_plans_cmp (QO_PLAN * a, QO_PLAN * b)
       return PLAN_COMP_GT;
     }
 
-  /* both plans use multi range optimization */
+  /* at here, both plans use multi range optimization */
+
   if (a->plan_type == QO_PLANTYPE_JOIN && b->plan_type == QO_PLANTYPE_JOIN)
     {
       /* choose the plan where the optimized index scan is "outer-most" */
       int a_mro_join_idx = -1, b_mro_join_idx = -1;
+
       if (qo_find_subplan_using_multi_range_opt (a, NULL, &a_mro_join_idx) !=
 	  NO_ERROR
 	  || qo_find_subplan_using_multi_range_opt (b, NULL,
@@ -4470,103 +4569,69 @@ qo_multi_range_opt_plans_cmp (QO_PLAN * a, QO_PLAN * b)
     }
 
   /* both plans must be optimized index scans */
-  assert (qo_is_iscan_with_multi_range_opt (a)
-	  && qo_is_iscan_with_multi_range_opt (b));
-  a_ent = a->plan_un.scan.index->head;
-  b_ent = b->plan_un.scan.index->head;
+  assert (qo_is_index_mro_scan (a));
+  assert (qo_is_index_mro_scan (b));
 
-  if (a_ent == NULL || b_ent == NULL)
+  assert (bitset_cardinality (&(a->plan_un.scan.terms)) > 0);
+  assert (bitset_cardinality (&(b->plan_un.scan.terms)) > 0);
+
+  /* choose the plan that also covers all segments */
+  temp_res = qo_index_covering_plans_cmp (a, b);
+  if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
     {
-      return PLAN_COMP_UNK;
+      return temp_res;
     }
 
-  if (a_ent->multi_range_opt)
-    {
-      if (b_ent->multi_range_opt)
-	{
-	  /* choose the plan that also covers all segments */
-	  if (qo_is_covering_index_scan (a) && !qo_is_covering_index_scan (b))
-	    {
-	      return PLAN_COMP_LT;
-	    }
-	  else if (!qo_is_covering_index_scan (a)
-		   && qo_is_covering_index_scan (b))
-	    {
-	      return PLAN_COMP_GT;
-	    }
-	  else if (qo_is_covering_index_scan (a)
-		   && qo_is_covering_index_scan (b))
-	    {
-	      return qo_cover_index_plans_cmp (a, b);
-	    }
-
-	  return qo_plan_iscan_terms_cmp (a, b);
-	}
-      else
-	{
-	  return PLAN_COMP_LT;
-	}
-    }
-  else if (b_ent->multi_range_opt)
-    {
-      return PLAN_COMP_GT;
-    }
-  return PLAN_COMP_EQ;
+  return qo_plan_iscan_terms_cmp (a, b);
 }
 
 /*
- * qo_cover_index_plans_cmp () - compare 2 index scan plans by coverage
+ * qo_index_covering_plans_cmp () - compare 2 index scan plans by coverage
  *   return:  one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}
  *   a(in):
  *   b(in):
  */
 static QO_PLAN_COMPARE_RESULT
-qo_cover_index_plans_cmp (QO_PLAN * a, QO_PLAN * b)
+qo_index_covering_plans_cmp (QO_PLAN * a, QO_PLAN * b)
 {
-  QO_INDEX_ENTRY *a_ent, *b_ent;
-
-  if ((!qo_is_iscan (a) && !qo_is_iscan_from_orderby (a))
-      || (!qo_is_iscan (b) && !qo_is_iscan_from_orderby (b)))
+  if (!qo_is_interesting_order_scan (a) || !qo_is_interesting_order_scan (b))
     {
       return PLAN_COMP_UNK;
     }
 
-  a_ent = a->plan_un.scan.index->head;
-  b_ent = b->plan_un.scan.index->head;
+  assert (a->plan_un.scan.index->head != NULL);
+  assert (b->plan_un.scan.index->head != NULL);
 
-  if (a_ent == NULL || b_ent == NULL)
+  if (qo_is_index_iss_scan (a) || qo_is_index_loose_scan (a))
     {
       return PLAN_COMP_UNK;
     }
 
-  if (qo_is_covering_index_scan (a))
+  if (qo_is_index_iss_scan (b) || qo_is_index_loose_scan (b))
     {
-      if (qo_is_covering_index_scan (b))
+      return PLAN_COMP_UNK;
+    }
+
+  if (qo_is_index_covering_scan (a))
+    {
+      if (qo_is_index_covering_scan (b))
 	{
-	  if (bitset_cardinality (&(a->plan_un.scan.terms)) > 0)
-	    {
-	      if (bitset_cardinality ((&b->plan_un.scan.terms)) == 0)
-		{
-		  return PLAN_COMP_LT;
-		}
-	    }
-	  else
-	    {
-	      if (bitset_cardinality (&(b->plan_un.scan.terms)) > 0)
-		{
-		  return PLAN_COMP_GT;
-		}
-	    }
+	  return qo_plan_iscan_terms_cmp (a, b);
 	}
       else
 	{
-	  return PLAN_COMP_LT;
+	  if (!bitset_is_empty (&(a->plan_un.scan.terms)))
+	    {
+	      /* prefer covering index scan with key-range */
+	      return PLAN_COMP_LT;
+	    }
 	}
     }
-  else
+  else if (qo_is_index_covering_scan (b))
     {
-      if (qo_is_covering_index_scan (b))
+      if (!bitset_is_empty (&(b->plan_un.scan.terms)))
 	{
+	  /* prefer covering index scan with key-range */
 	  return PLAN_COMP_GT;
 	}
     }
@@ -8782,7 +8847,6 @@ qo_search_planner (QO_PLANNER * planner)
 		    }
 
 		  if (tree->info.query.q.select.connect_by != NULL
-		      || index_entry->multi_range_opt
 		      || qo_is_prefix_index (index_entry))
 		    {
 		      continue;	/* nop; go ahead */
@@ -8848,7 +8912,7 @@ qo_search_planner (QO_PLANNER * planner)
 	  QO_PLAN *best_plan;
 	  best_plan = qo_find_best_plan_on_info (info, QO_UNORDERED, 1.0);
 	  if (best_plan->plan_type == QO_PLANTYPE_SCAN
-	      && best_plan->multi_range_opt_use != PLAN_MULTI_RANGE_OPT_USE
+	      && !qo_plan_multi_range_opt (best_plan)
 	      && !qo_is_iscan_from_orderby (best_plan)
 	      && !qo_is_iscan_from_groupby (best_plan))
 	    {
@@ -8984,7 +9048,7 @@ qo_search_planner (QO_PLANNER * planner)
 	       */
 	    }
 	  else if (plan->plan_un.scan.index->head->orderby_skip
-		   || plan->plan_un.scan.index->head->multi_range_opt)
+		   || qo_is_index_mro_scan (plan))
 	    {
 	      if (plan->info->env != NULL)
 		{
@@ -10294,26 +10358,6 @@ qo_is_all_unique_index_columns_are_equi_terms (QO_PLAN * plan)
 }
 
 /*
- * qo_is_iscan_with_multi_range_opt () - check if the current plan uses and
- *					 index scan with multi range
- *					 optimization
- *
- * return    : true/false
- * plan (in) : plan to verify
- */
-bool
-qo_is_iscan_with_multi_range_opt (QO_PLAN * plan)
-{
-  if (qo_is_iscan (plan) && plan->plan_un.scan.index
-      && plan->plan_un.scan.index->head
-      && plan->plan_un.scan.index->head->multi_range_opt)
-    {
-      return true;
-    }
-  return false;
-}
-
-/*
  * qo_is_iscan_from_orderby ()
  *   return: true/false
  *   plan(in):
@@ -10826,12 +10870,18 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
       /* both have the same number of index pages and pkeys_size */
       return PLAN_COMP_EQ;
     }
-  else if (bitset_subset (&(a->plan_un.scan.terms), &(b->plan_un.scan.terms)))
+  else if (!bitset_is_empty (&(a->plan_un.scan.terms))
+	   && bitset_subset (&(a->plan_un.scan.terms),
+			     &(b->plan_un.scan.terms)))
     {
+      /* keep out no key-range scan */
       return PLAN_COMP_LT;
     }
-  else if (bitset_subset (&(b->plan_un.scan.terms), &(a->plan_un.scan.terms)))
+  else if (!bitset_is_empty (&(b->plan_un.scan.terms))
+	   && bitset_subset (&(b->plan_un.scan.terms),
+			     &(a->plan_un.scan.terms)))
     {
+      /* keep out no key-range scan */
       return PLAN_COMP_GT;
     }
 
@@ -11702,7 +11752,7 @@ qo_plan_scan_print_json (QO_PLAN * plan)
 	  json_object_set_new (scan, "key filter", filter);
 	}
 
-      if (qo_is_covering_index_scan (plan))
+      if (qo_is_index_covering_scan (plan))
 	{
 	  json_object_set_new (scan, "covered", json_true ());
 	}
@@ -11721,7 +11771,7 @@ qo_plan_scan_print_json (QO_PLAN * plan)
 	  json_object_set_new (scan, "desc_index forced", json_true ());
 	}
 
-      if (qo_is_loose_index_scan (plan))
+      if (qo_is_index_loose_scan (plan))
 	{
 	  json_object_set_new (scan, "loose", json_true ());
 	}
@@ -12020,7 +12070,7 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
 	    }
 	}
 
-      if (qo_is_covering_index_scan (plan))
+      if (qo_is_index_covering_scan (plan))
 	{
 	  fprintf (fp, ", covered: true");
 	}
@@ -12039,7 +12089,7 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
 	  fprintf (fp, ", desc_index forced: true");
 	}
 
-      if (qo_is_loose_index_scan (plan))
+      if (qo_is_index_loose_scan (plan))
 	{
 	  fprintf (fp, ", loose: true");
 	}
