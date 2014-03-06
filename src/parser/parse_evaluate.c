@@ -1104,6 +1104,10 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 		    {
 		      switch (er_errid ())
 			{
+			case ER_DB_NO_MODIFICATIONS:
+			  PT_ERRORm (parser, tree, MSGCAT_SET_ERROR,
+				     -(ER_DB_NO_MODIFICATIONS));
+			  return;
 			case ER_QPROC_DB_SERIAL_NOT_FOUND:
 			  error_code = MSGCAT_SEMANTIC_SERIAL_NOT_DEFINED;
 			  break;
