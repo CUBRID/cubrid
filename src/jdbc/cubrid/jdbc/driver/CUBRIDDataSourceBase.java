@@ -56,15 +56,15 @@ public class CUBRIDDataSourceBase {
 	private String dataSourceID;
 
 	protected CUBRIDDataSourceBase() {
-		databaseName = "";
-		dataSourceName = "";
-		description = "";
-		networkProtocol = "";
-		password = "";
+		databaseName = null;
+		dataSourceName = null;
+		description = null;
+		networkProtocol = null;
+		password = null;
 		portNumber = 0;
-		roleName = "";
-		serverName = "";
-		user = "public";
+		roleName = null;
+		serverName = null;
+		user = null;
 		url = null;
 
 		loginTimeout = 0;
@@ -191,21 +191,25 @@ public class CUBRIDDataSourceBase {
 	}
 
 	synchronized String getDataSourceID(String username) {
+		if (username == null) {
+			username = "";
+		}
 		if (dataSourceID == null) {
 			if (url != null) {
 				dataSourceID = url;
 			} else {
 				String host;
+				String hostName = ((serverName != null) ? serverName : "");
 				try {
 					host = InetAddress
-							.getByName(serverName)
+							.getByName(hostName)
 							.getHostAddress();
 				} catch (Exception e) {
-					host = serverName;
+					host = hostName;
 				}
 				dataSourceID = "jdbc:cubrid:" + host + ":"
 						+ portNumber + ":"
-						+ databaseName;
+						+ ((databaseName != null) ? databaseName : "");
 			}
 		}
 		return (dataSourceID + ":" + username);

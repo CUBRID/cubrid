@@ -170,7 +170,7 @@ public class UConnection {
 	private boolean needReconnection;
 	private UTimedDataInputStream input;
 	private DataOutputStream output;
-	public String CASIp;
+	public String CASIp = "";
 	public int CASPort;
 	public int processId;
 	public int casId;
@@ -181,7 +181,10 @@ public class UConnection {
 	private int lastIsolationLevel;
 	private int lastLockTimeout = LOCK_TIMEOUT_NOT_USED;
 	private boolean lastAutoCommit = true;
-	String dbname, user, passwd, url;
+	String dbname = "";
+	String user = "";
+	String passwd = "";
+	String url = null;
 	private ArrayList<String> altHosts = null;
 	private int connectedHostId = 0;
 	// jci 3.0
@@ -230,11 +233,19 @@ public class UConnection {
 
 	UConnection(String ip, int port, String dbname, String user, String passwd,
 			String url) throws CUBRIDException {
-		CASIp = ip;
+		if (ip != null) {
+			CASIp = ip;
+		}
 		CASPort = port;
-		this.dbname = dbname;
-		this.user = user;
-		this.passwd = passwd;
+		if (dbname != null) {
+			this.dbname = dbname;
+		}
+		if (user != null) {
+			this.user = user;
+		}
+		if (passwd != null) {
+			this.passwd = passwd;
+		}
 		this.url = url;
 		update_executed = false;
 
@@ -245,9 +256,15 @@ public class UConnection {
 	UConnection(ArrayList<String> altHostList, String dbname, String user,
 			String passwd, String url) throws CUBRIDException {
 		setAltHosts(altHostList);
-		this.dbname = dbname;
-		this.user = user;
-		this.passwd = passwd;
+		if (dbname != null) {
+			this.dbname = dbname;
+		}
+		if (user != null) {
+			this.user = user;
+		}
+		if (passwd != null) {
+			this.passwd = passwd;
+		}
 		this.url = url;
 		update_executed = false;
 
