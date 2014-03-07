@@ -1866,7 +1866,9 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 
 	  if (t == -1)
 	    {
-	      /* not found data-filter */
+	      /* not found data-filter;
+	       * mark as covering index scan
+	       */
 	      plan->plan_un.scan.index_cover = true;
 	    }
 	}
@@ -1908,34 +1910,35 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
     {
       assert (plan->plan_un.scan.index_iss == false);
 
-      for (t = bitset_iterate (&remaining_terms, &iter);
-	   t != -1; t = bitset_next_member (&iter))
+      /* do not consider prefix index */
+      if (qo_is_prefix_index (index_entryp) == false)
 	{
-	  term = QO_ENV_TERM (env, t);
-
-	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+	  if (scan_method == QO_SCANMETHOD_INDEX_SCAN
+	      && qo_is_index_covering_scan (plan)
+	      && bitset_is_empty (&(plan->plan_un.scan.terms)))
 	    {
-	      /* term contains correlated subquery */
-	      continue;
+	      /* covering index, no key-range, no data-filter;
+	       * mark as loose index scan
+	       */
+	      plan->plan_un.scan.index_loose = true;
 	    }
 
-	  break;		/* found data-filter */
-	}
+	  /* keep out not good index scan */
+	  if (!qo_is_index_loose_scan (plan))
+	    {
+	      /* check for no key-range, no key-filter index scan */
+	      if (qo_is_iscan (plan)
+		  && bitset_is_empty (&(plan->plan_un.scan.terms))
+		  && bitset_is_empty (&(plan->plan_un.scan.kf_terms)))
+		{
+		  assert (!qo_is_iscan_from_groupby (plan));
+		  assert (!qo_is_iscan_from_orderby (plan));
 
-      if (qo_is_index_covering_scan (plan)
-	  && bitset_is_empty (&(plan->plan_un.scan.terms)) && t == -1)
-	{
-	  /* covering index, no key-range, no data-filter */
-	  plan->plan_un.scan.index_loose = true;
-	}
-      else
-	{
-	  /* is invalid case, but is possible;
-	   * when found non-indexable(i.e., IS_NULL) terms at remaining_terms,
-	   * do not permit loose index scan
-	   */
-	  qo_plan_release (plan);
-	  return NULL;
+		  /* is not good index scan */
+		  qo_plan_release (plan);
+		  return NULL;
+		}
+	    }
 	}
     }
 
@@ -4416,10 +4419,8 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
     if (af == bf && aa == ba)
       {
-	if (qo_is_index_covering_scan (a)
-	    && bitset_cardinality (&(a->plan_un.scan.terms)) > 0
-	    && qo_is_index_covering_scan (b)
-	    && bitset_cardinality (&(b->plan_un.scan.terms)) > 0)
+	if (a->plan_un.scan.index_equi == b->plan_un.scan.index_equi
+	    && qo_is_index_covering_scan (a) && qo_is_index_covering_scan (b))
 	  {
 	    if (a_ent->col_num > b_ent->col_num)
 	      {
@@ -4594,6 +4595,8 @@ qo_multi_range_opt_plans_cmp (QO_PLAN * a, QO_PLAN * b)
 static QO_PLAN_COMPARE_RESULT
 qo_index_covering_plans_cmp (QO_PLAN * a, QO_PLAN * b)
 {
+  int a_range, b_range;		/* num iscan range terms */
+
   if (!qo_is_interesting_order_scan (a) || !qo_is_interesting_order_scan (b))
     {
       return PLAN_COMP_UNK;
@@ -4612,6 +4615,12 @@ qo_index_covering_plans_cmp (QO_PLAN * a, QO_PLAN * b)
       return PLAN_COMP_UNK;
     }
 
+  a_range = bitset_cardinality (&(a->plan_un.scan.terms));
+  b_range = bitset_cardinality (&(b->plan_un.scan.terms));
+
+  assert (a_range >= 0);
+  assert (b_range >= 0);
+
   if (qo_is_index_covering_scan (a))
     {
       if (qo_is_index_covering_scan (b))
@@ -4620,7 +4629,7 @@ qo_index_covering_plans_cmp (QO_PLAN * a, QO_PLAN * b)
 	}
       else
 	{
-	  if (!bitset_is_empty (&(a->plan_un.scan.terms)))
+	  if (a_range >= b_range)
 	    {
 	      /* prefer covering index scan with key-range */
 	      return PLAN_COMP_LT;
@@ -4629,7 +4638,7 @@ qo_index_covering_plans_cmp (QO_PLAN * a, QO_PLAN * b)
     }
   else if (qo_is_index_covering_scan (b))
     {
-      if (!bitset_is_empty (&(b->plan_un.scan.terms)))
+      if (b_range >= a_range)
 	{
 	  /* prefer covering index scan with key-range */
 	  return PLAN_COMP_GT;
@@ -10823,6 +10832,9 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
   /* index filter terms */
   b_filter = bitset_cardinality (&(b->plan_un.scan.kf_terms));
 
+  assert (a_range >= 0);
+  assert (b_range >= 0);
+
   /* STEP 1: check by terms containment */
 
   if (bitset_is_equivalent (&(a->plan_un.scan.terms),
@@ -10870,46 +10882,24 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
       /* both have the same number of index pages and pkeys_size */
       return PLAN_COMP_EQ;
     }
-  else if (!bitset_is_empty (&(a->plan_un.scan.terms))
+  else if (a_range > 0
 	   && bitset_subset (&(a->plan_un.scan.terms),
 			     &(b->plan_un.scan.terms)))
     {
-      /* keep out no key-range scan */
       return PLAN_COMP_LT;
     }
-  else if (!bitset_is_empty (&(b->plan_un.scan.terms))
+  else if (b_range > 0
 	   && bitset_subset (&(b->plan_un.scan.terms),
 			     &(a->plan_un.scan.terms)))
     {
-      /* keep out no key-range scan */
       return PLAN_COMP_GT;
     }
 
   /* STEP 2: check by term cardinality */
 
-  if (a_range > 0
-      && b_range > 0
-      && a->plan_un.scan.index_equi == b->plan_un.scan.index_equi)
+  if (a->plan_un.scan.index_equi == b->plan_un.scan.index_equi)
     {
-      if (a_range == b_range)
-	{
-	  /* both plans have the same number of range terms
-	   * we will check now the key filter terms
-	   */
-	  if (a_filter > b_filter)
-	    {
-	      return PLAN_COMP_LT;
-	    }
-	  else if (a_filter < b_filter)
-	    {
-	      return PLAN_COMP_GT;
-	    }
-
-	  /* both have the same number of range terms and same number of filters
-	   */
-	  return PLAN_COMP_EQ;
-	}
-      else if (a_range > b_range)
+      if (a_range > b_range)
 	{
 	  return PLAN_COMP_LT;
 	}
@@ -10917,6 +10907,24 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
 	{
 	  return PLAN_COMP_GT;
 	}
+
+      assert (a_range == b_range);
+
+      /* both plans have the same number of range terms
+       * we will check now the key filter terms
+       */
+      if (a_filter > b_filter)
+	{
+	  return PLAN_COMP_LT;
+	}
+      else if (a_filter < b_filter)
+	{
+	  return PLAN_COMP_GT;
+	}
+
+      /* both have the same number of range terms and same number of filters
+       */
+      return PLAN_COMP_EQ;
     }
 
   return PLAN_COMP_EQ;		/* is equal with terms not cost */
