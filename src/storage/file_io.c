@@ -10119,20 +10119,19 @@ error:
  *   return: session or NULL
  *   db_fullname(in): Name of the database to backup
  *   logpath(in): Directory where the log volumes reside
- *   r_args(in): 
+ *   user_backuppath(in): Backup path that user specified
  *   from_volbackup (out) : Name of the backup volume 
  * 
  */
 int
 fileio_get_backup_volume (THREAD_ENTRY * thread_p, const char *db_fullname,
-			  const char *logpath, BO_RESTART_ARG * r_args,
-			  char *from_volbackup)
+			  const char *logpath, const char *user_backuppath,
+			  int try_level, char *from_volbackup)
 {
   FILE *backup_volinfo_fp = NULL;	/* Pointer to backup */
   const char *nopath_name;	/* Name without path */
   const char *volnameptr;
   int retry;
-  int try_level = r_args->level;
   int error_code = NO_ERROR;
   char format_string[64];
   struct stat stbuf;
@@ -10149,7 +10148,7 @@ fileio_get_backup_volume (THREAD_ENTRY * thread_p, const char *db_fullname,
        * When user specifies an explicit location, the backup vinf
        * file is optional.
        */
-      if (r_args->backuppath)
+      if (user_backuppath != NULL)
 	{
 	  break;
 	}
@@ -10234,9 +10233,9 @@ fileio_get_backup_volume (THREAD_ENTRY * thread_p, const char *db_fullname,
       fclose (backup_volinfo_fp);
     }
 
-  if (r_args->backuppath)
+  if (user_backuppath != NULL)
     {
-      strncpy (from_volbackup, r_args->backuppath, PATH_MAX - 1);
+      strncpy (from_volbackup, user_backuppath, PATH_MAX - 1);
     }
 
   return NO_ERROR;

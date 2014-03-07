@@ -10193,10 +10193,13 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	    {
 	      success = ER_FAILED;
 	    }
+        
+          assert (try_level != r_args->level);
 	}
 
       error_code = fileio_get_backup_volume (thread_p, db_fullname, logpath,
-					     r_args, from_volbackup);
+					     r_args->backuppath, try_level,
+					     from_volbackup);
       if (error_code == ER_LOG_CANNOT_ACCESS_BACKUP)
 	{
 	  error_expected = true;

@@ -924,7 +924,8 @@ print_backup_info (char *database_name, BO_RESTART_ARG * restart_arg)
 		     db->pathname, database_name);
 
   error_code = fileio_get_backup_volume (NULL, BO_DB_FULLNAME, db->logpath,
-					 restart_arg, from_volbackup);
+					 restart_arg->backuppath,
+					 restart_arg->level, from_volbackup);
   if (error_code != NO_ERROR)
     {
       goto exit;
