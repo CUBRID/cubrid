@@ -41,6 +41,7 @@
 
 static KEYWORD_RECORD keywords[] = {
   {ABSOLUTE_, "ABSOLUTE", 0},
+  {ACCESS, "ACCESS", 1},
   {ACTION, "ACTION", 0},
   {ACTIVE, "ACTIVE", 1},
   {ADD, "ADD", 0},

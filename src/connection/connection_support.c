@@ -81,6 +81,11 @@
 #include "network_interface_cl.h"
 #endif
 
+#include "storage_common.h"
+#include "heap_file.h"
+#include "dbval.h"
+#include "db_date.h"
+
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
@@ -102,6 +107,20 @@ struct iovec
   long iov_len;
 };
 #endif /* WINDOWS */
+
+typedef struct ctx_access_status_header
+{
+  HFID hfid;
+  OID inst_oid;
+  HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes;
+
+  bool attr_info_inited;
+  bool scan_cache_inited;
+
+  int attr_idx;
+} CTX_ACCESS_STATUS_HEADER;
 
 static const int CSS_TCP_MIN_NUM_RETRIES = 3;
 #define CSS_TRUNCATE_BUFFER_SIZE    512
@@ -2554,3 +2573,209 @@ css_check_magic (CSS_CONN_ENTRY * conn)
 
   return NO_ERRORS;
 }
+
+#if !defined (CS_MODE)
+/*
+ * user_access_status_start_scan () -  start scan function for show access status 
+ *   return: NO_ERROR, or ER_CODE
+ *
+ *   thread_p(in): 
+ *   show_type(in):
+ *   arg_values(in):
+ *   arg_cnt(in):
+ *   ptr(in/out): address of CTX_ACCESS_STATUS_HEADER 
+ */
+int
+css_user_access_status_start_scan (THREAD_ENTRY * thread_p, int type,
+				   DB_VALUE ** arg_values, int arg_cnt,
+				   void **ptr)
+{
+  int error = NO_ERROR;
+  OID *class_oid;
+  int i;
+  CTX_ACCESS_STATUS_HEADER *ctx;
+
+  *ptr = NULL;
+  ctx = db_private_alloc (thread_p, sizeof (CTX_ACCESS_STATUS_HEADER));
+  if (ctx == NULL)
+    {
+      error = er_errid ();
+      return error;
+    }
+  *ptr = ctx;
+
+  OID_SET_NULL (&ctx->inst_oid);
+
+  assert (arg_cnt == 1);
+  class_oid = db_get_oid (arg_values[0]);	/* db_user class oid */
+
+  error = heap_attrinfo_start (thread_p, class_oid, -1, NULL,
+			       &ctx->attr_info);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  ctx->attr_info_inited = true;
+
+  heap_scancache_quick_start (&ctx->scan_cache);
+  ctx->scan_cache_inited = true;
+
+  if (heap_get (thread_p, class_oid, &ctx->recdes, &ctx->scan_cache, PEEK,
+		NULL_CHN) != S_SUCCESS)
+    {
+      error = er_errid ();
+      return error;
+    }
+
+  for (i = 0; i < ctx->attr_info.num_values; i++)
+    {
+      const char *rec_attr_name_p = or_get_attrname (&ctx->recdes, i);
+      if (rec_attr_name_p == NULL)
+	{
+	  continue;
+	}
+
+      if (strcmp ("name", rec_attr_name_p) == 0)
+	{
+	  ctx->attr_idx = i;
+	  break;
+	}
+    }
+  heap_scancache_end (thread_p, &ctx->scan_cache);
+  ctx->scan_cache_inited = false;
+
+  error = heap_get_hfid_from_class_oid (thread_p, class_oid, &ctx->hfid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (HFID_IS_NULL (&ctx->hfid))
+    {
+      return ER_FAILED;
+    }
+
+  error = heap_scancache_start (thread_p, &ctx->scan_cache, &ctx->hfid,
+				NULL, true, false, LOCKHINT_NONE);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  ctx->scan_cache_inited = true;
+
+  return NO_ERROR;
+}
+
+/*
+ * user_access_status_next_scan () - next scan function for show access status
+ *   return: S_ERROR, S_SUCCESS, or S_END
+ *
+ *   thread_p(in): 
+ *   cursor(in):
+ *   out_values(in):
+ *   out_cnt(in):
+ *   ptr(in): address of CTX_ACCESS_STATUS_HEADER 
+ */
+SCAN_CODE
+css_user_access_status_next_scan (THREAD_ENTRY * thread_p, int cursor,
+				  DB_VALUE ** out_values, int out_cnt,
+				  void *ptr)
+{
+  int i;
+  char *user_name = NULL;
+  time_t last_access_time = 0;
+  DB_DATETIME access_time;
+  char *last_access_host = NULL;
+  char *program_name = NULL;
+  LAST_ACCESS_STATUS *access_status = NULL;
+  HEAP_ATTRVALUE *heap_value = NULL;
+  SCAN_CODE scan;
+  CTX_ACCESS_STATUS_HEADER *ctx = (CTX_ACCESS_STATUS_HEADER *) ptr;
+
+  scan = heap_next (thread_p, &ctx->hfid, NULL, &ctx->inst_oid,
+		    &ctx->recdes, &ctx->scan_cache, PEEK);
+  if (scan != S_SUCCESS)
+    {
+      return scan;
+    }
+
+  if (heap_attrinfo_read_dbvalues (thread_p, &ctx->inst_oid,
+				   &ctx->recdes, &ctx->attr_info) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+
+  for (i = 0, heap_value = ctx->attr_info.values;
+       i < ctx->attr_info.num_values; i++, heap_value++)
+    {
+      if (heap_value->attrid == ctx->attr_idx)
+	{
+	  user_name = DB_GET_STRING (&heap_value->dbvalue);
+	}
+    }
+
+  assert (user_name != NULL);
+
+#if defined (SERVER_MODE)
+  access_status = css_get_user_access_status (user_name);
+#endif /* SERVER_MODE */
+  if (access_status != NULL)
+    {
+      last_access_time = access_status->time;
+      last_access_host = access_status->host;
+      program_name = access_status->program_name;
+    }
+  db_make_string_copy (out_values[0], user_name);	/* user_name */
+
+  if (last_access_time != 0)
+    {
+      db_localdatetime (&last_access_time, &access_time);
+      db_make_datetime (out_values[1], &access_time);	/* last_access_time */
+    }
+  else
+    {
+      db_make_datetime (out_values[1], NULL);
+    }
+
+  db_make_string_copy (out_values[2], last_access_host);	/* last_access_host */
+
+  db_make_string_copy (out_values[3], program_name);	/* program_name */
+
+  return S_SUCCESS;
+}
+
+/*
+ * user_access_status_end_scan () - end scan function for show access status
+ *   return: NO_ERROR
+ *
+ *   thread_p(in): 
+ *   ptr(in): address of CTX_ACCESS_STATUS_HEADER 
+ */
+int
+css_user_access_status_end_scan (THREAD_ENTRY * thread_p, void **ptr)
+{
+  CTX_ACCESS_STATUS_HEADER *ctx = *(CTX_ACCESS_STATUS_HEADER **) ptr;
+
+  if (ctx == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  if (ctx->scan_cache_inited == true)
+    {
+      (void) heap_scancache_end (thread_p, &ctx->scan_cache);
+    }
+
+  if (ctx->attr_info_inited == true)
+    {
+      heap_attrinfo_end (thread_p, &ctx->attr_info);
+    }
+
+  if (ctx)
+    {
+      db_private_free (thread_p, ctx);
+    }
+
+  return NO_ERROR;
+}
+#endif /* CS_MODE */

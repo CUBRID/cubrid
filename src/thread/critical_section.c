@@ -95,7 +95,8 @@ static const char *css_Csect_name[] = {
   "CONN_FREE",
   "TEMPFILE_CACHE",
   "LOG_PB",
-  "LOG_ARCHIVE"
+  "LOG_ARCHIVE",
+  "ACCESS_STATUS"
 };
 
 const char *css_Csect_name_conn = "CONN_ENTRY";

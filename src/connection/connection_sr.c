@@ -124,6 +124,8 @@ CSS_CONN_ENTRY *css_Conn_array = NULL;
 CSS_CONN_ENTRY *css_Active_conn_anchor = NULL;
 static int css_Num_active_conn = 0;
 
+static LAST_ACCESS_STATUS *css_Access_status_anchor = NULL;
+
 /* This will handle new connections */
 int (*css_Connect_handler) (CSS_CONN_ENTRY *) = NULL;
 
@@ -177,7 +179,7 @@ static void css_process_abort_packet (CSS_CONN_ENTRY * conn,
 				      unsigned short request_id);
 static bool css_is_request_aborted (CSS_CONN_ENTRY * conn,
 				    unsigned short request_id);
-static void clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY *thrdp,
+static void clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp,
 						    CSS_CONN_ENTRY * conn,
 						    unsigned short rid,
 						    char **bufferp);
@@ -2365,7 +2367,7 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid,
  *   bufferp(in): data buffer
  */
 static void
-clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY *thrdp,
+clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp,
 					CSS_CONN_ENTRY * conn,
 					unsigned short rid, char **bufferp)
 {
@@ -2380,7 +2382,7 @@ clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY *thrdp,
   /* data_wait might be always not NULL except the actual connection close */
   if (data_wait)
     {
-      assert (data_wait->thrd_entry == thrdp); /* it must be me */
+      assert (data_wait->thrd_entry == thrdp);	/* it must be me */
       data_wait->thrd_entry = NULL;
       css_free_wait_queue_entry (conn, data_wait);
     }
@@ -2583,7 +2585,8 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 		  assert (conn->csect.name == css_Csect_name_conn);
 #endif
 
-		  clear_wait_queue_entry_and_free_buffer (thrd, conn, rid, buffer);
+		  clear_wait_queue_entry_and_free_buffer (thrd, conn, rid,
+							  buffer);
 		}
 
 	      return NO_ERRORS;
@@ -2845,4 +2848,115 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 #endif
 
   csect_exit_critical_section (NULL, &conn->csect);
+}
+
+/*
+ * css_set_user_access_status() - set user access status information
+ *   return: void
+ *   db_user(in): 
+ *   host(in): 
+ *   program_name(in):
+ */
+void
+css_set_user_access_status (const char *db_user, const char *host,
+			    const char *program_name)
+{
+  LAST_ACCESS_STATUS *access = NULL;
+
+  assert (db_user != NULL);
+  assert (host != NULL);
+  assert (program_name != NULL);
+
+  csect_enter (NULL, CSECT_ACCESS_STATUS, INF_WAIT);
+
+  for (access = css_Access_status_anchor; access != NULL;
+       access = access->next)
+    {
+      if (strcmp (access->db_user, db_user) == 0)
+	{
+	  break;
+	}
+    }
+
+  if (access == NULL)
+    {
+      access = (LAST_ACCESS_STATUS *) malloc (sizeof (LAST_ACCESS_STATUS));
+      if (access == NULL)
+	{
+	  /* if memory allocation fail, just ignore and return */
+	  csect_exit (NULL, CSECT_ACCESS_STATUS);
+	  return;
+	}
+      memset (access, 0, sizeof (LAST_ACCESS_STATUS));
+
+      access->next = css_Access_status_anchor;
+      css_Access_status_anchor = access;
+
+      strncpy (access->db_user, db_user, sizeof (access->db_user) - 1);
+    }
+
+  csect_exit (NULL, CSECT_ACCESS_STATUS);
+
+  access->time = time (NULL);
+  strncpy (access->host, host, sizeof (access->host) - 1);
+  strncpy (access->program_name, program_name,
+	   sizeof (access->program_name) - 1);
+
+  return;
+}
+
+/*
+ * css_get_user_access_status() - get user access status information matched with db_user
+ *   return: address of user access status information structure or NULL
+ *   db_user(in): 
+ */
+LAST_ACCESS_STATUS *
+css_get_user_access_status (char *db_user)
+{
+  int i = 0;
+  LAST_ACCESS_STATUS *access = NULL;
+
+  if (db_user == NULL)
+    {
+      return NULL;
+    }
+
+  csect_enter_as_reader (NULL, CSECT_ACCESS_STATUS, INF_WAIT);
+
+  for (access = css_Access_status_anchor; access != NULL;
+       access = access->next)
+    {
+      if (strcmp (access->db_user, db_user) == 0)
+	{
+	  break;
+	}
+    }
+
+  csect_exit (NULL, CSECT_ACCESS_STATUS);
+
+  return access;
+}
+
+/*
+ * css_free_user_access_status() - free all user access status information
+ *   return: void
+ */
+void
+css_free_user_access_status (void)
+{
+  LAST_ACCESS_STATUS *access = NULL;
+
+  csect_enter (NULL, CSECT_ACCESS_STATUS, INF_WAIT);
+
+  while (css_Access_status_anchor != NULL)
+    {
+      access = css_Access_status_anchor;
+      css_Access_status_anchor = access->next;
+
+      free_and_init (access);
+    }
+
+  csect_exit (NULL, CSECT_ACCESS_STATUS);
+
+  return;
 }

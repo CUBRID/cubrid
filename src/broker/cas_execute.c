@@ -645,7 +645,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 	  return ux_database_connect (db_name, db_user, db_passwd,
 				      db_err_msg);
 	}
-      db_check_session ();
+      (void) db_check_session (db_user, program_name);
 
       strncpy (database_user, db_user, sizeof (database_user) - 1);
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
@@ -657,7 +657,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
        */
       er_clear ();
       /* check session to see if it is still active */
-      db_check_session ();
+      (void) db_check_session (db_user, program_name);
     }
   return 0;
 

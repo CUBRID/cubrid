@@ -98,7 +98,8 @@ extern char *db_get_server_session_key (void);
 extern SESSION_ID db_get_session_id (void);
 extern void db_set_session_id (const SESSION_ID session_id);
 extern int db_end_session (void);
-extern int db_check_session (void);
+extern int db_check_session (const char *db_user,
+					 const char *program_name);
 extern int db_get_row_count_cache (void);
 extern void db_update_row_count_cache (const int row_count);
 extern int db_get_row_count (int *row_count);

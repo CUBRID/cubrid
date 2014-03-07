@@ -524,14 +524,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 
   if (client_credential->host_name == NULL)
     {
-      if (boot_Host_name[0] == '\0')
-	{
-	  if (GETHOSTNAME (boot_Host_name, MAXHOSTNAMELEN) != 0)
-	    {
-	      strcpy (boot_Host_name, boot_Client_id_unknown_string);
-	    }
-	}
-      client_credential->host_name = boot_Host_name;
+      client_credential->host_name = boot_get_host_name ();
     }
 
   /*
@@ -899,15 +892,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
   if (client_credential->host_name == NULL)
     {
-      if (boot_Host_name[0] == '\0')
-	{
-	  if (GETHOSTNAME (boot_Host_name, MAXHOSTNAMELEN) != 0)
-	    {
-	      strcpy (boot_Host_name, boot_Client_id_unknown_string);
-	    }
-	  boot_Host_name[MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
-	}
-      client_credential->host_name = boot_Host_name;
+      client_credential->host_name = boot_get_host_name ();
     }
   client_credential->process_id = getpid ();
 
@@ -5717,6 +5702,21 @@ boot_clear_host_connected (void)
 #if defined(CS_MODE)
   boot_Host_connected[0] = '\0';
 #endif
+}
+
+char *
+boot_get_host_name (void)
+{
+  if (boot_Host_name[0] == '\0')
+    {
+      if (GETHOSTNAME (boot_Host_name, MAXHOSTNAMELEN) != 0)
+	{
+	  strcpy (boot_Host_name, boot_Client_id_unknown_string);
+	}
+      boot_Host_name[MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
+    }
+
+  return boot_Host_name;
 }
 
 #if defined(CS_MODE)

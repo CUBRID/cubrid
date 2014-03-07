@@ -93,6 +93,7 @@ extern int str_identifier = '\0';
 
 
 [aA][bB][sS][oO][lL][uU][tT][eE]					{ begin_token(yytext);   return ABSOLUTE_; }
+[aA][cC][cC][eE][sS][sS]						{ begin_token(yytext);   return ACCESS; }
 [aA][cC][tT][iI][oO][nN]						{ begin_token(yytext);   return ACTION; }
 [aA][cC][tT][iI][vV][eE]						{ begin_token(yytext);  
 										csql_yylval.cptr = pt_makename(yytext);

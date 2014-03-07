@@ -65,12 +65,15 @@ static int init_db_attribute_list (SHOWSTMT_METADATA * md);
 static void free_db_attribute_list (SHOWSTMT_METADATA * md);
 
 /* check functions */
+static PT_NODE *pt_check_access_status (PARSER_CONTEXT * parser,
+					PT_NODE * node);
 static PT_NODE *pt_check_table_in_show_heap (PARSER_CONTEXT * parser,
 					     PT_NODE * node);
 static PT_NODE *pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /* meta functions */
 static SHOWSTMT_METADATA *metadata_of_volume_header (void);
+static SHOWSTMT_METADATA *metadata_of_access_status (void);
 static SHOWSTMT_METADATA *metadata_of_active_log_header (void);
 static SHOWSTMT_METADATA *metadata_of_archive_log_header (void);
 static SHOWSTMT_METADATA *metadata_of_slotted_page_header (void);
@@ -255,6 +258,29 @@ metadata_of_slotted_page_slots (void)
   static SHOWSTMT_METADATA md = {
     SHOWSTMT_SLOTTED_PAGE_SLOTS, "show slotted page slots of ",
     cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), NULL, NULL
+  };
+
+  return &md;
+}
+
+static SHOWSTMT_METADATA *
+metadata_of_access_status (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"user_name", "varchar(32)"},
+    {"last_access_time", "datetime"},
+    {"last_access_host", "varchar(32)"},
+    {"program_name", "varchar(32)"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, PT_ASC}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_ACCESS_STATUS, "show access status",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0,
+    pt_check_access_status, NULL
   };
 
   return &md;
@@ -671,6 +697,7 @@ showstmt_metadata_init (void)
 
   memset (show_Metas, 0, sizeof (show_Metas));
   show_Metas[SHOWSTMT_VOLUME_HEADER] = metadata_of_volume_header ();
+  show_Metas[SHOWSTMT_ACCESS_STATUS] = metadata_of_access_status ();
   show_Metas[SHOWSTMT_ACTIVE_LOG_HEADER] = metadata_of_active_log_header ();
   show_Metas[SHOWSTMT_ARCHIVE_LOG_HEADER] = metadata_of_archive_log_header ();
   show_Metas[SHOWSTMT_SLOTTED_PAGE_HEADER] =
@@ -726,6 +753,18 @@ showstmt_metadata_final (void)
       free_db_attribute_list (show_Metas[i]);
     }
   show_Inited = false;
+}
+
+static PT_NODE *
+pt_check_access_status (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  if (!au_is_dba_group_member (Au_user))
+    {
+      PT_ERRORmf (parser, NULL, MSGCAT_SET_ERROR,
+		  -(ER_AU_DBA_ONLY), "show access status");
+    }
+
+  return node;
 }
 
 /*

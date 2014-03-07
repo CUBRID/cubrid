@@ -2910,21 +2910,24 @@ db_set_session_id (const SESSION_ID session_id)
 /*
  * db_check_session - check if current session is still active
  * return error code or NO_ERROR
- *
+ * db_user(in)  : 
+ * program_name(in)  :
  * Note: This function will check if the current session is active and will
- *	 create a new one if needed
+ *	 create a new one if needed and save user access status in server
  */
 int
-db_check_session (void)
+db_check_session (const char *db_user, const char *program_name)
 {
   int err = NO_ERROR;
   SESSION_ID sess_id = db_get_session_id ();
   int row_count = DB_ROW_COUNT_NOT_SET;
   char *server_session_key;
+  const char *host_name = boot_get_host_name ();
 
   server_session_key = db_get_server_session_key ();
   /* server_session_key is in/out parameter, it is replaced new key */
-  err = csession_check_session (&sess_id, &row_count, server_session_key);
+  err = csession_check_session (&sess_id, &row_count, server_session_key,
+				db_user, host_name, program_name);
   if (err != NO_ERROR)
     {
       db_set_session_id (DB_EMPTY_SESSION);

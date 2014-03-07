@@ -1421,6 +1421,7 @@ net_server_start (const char *server_name)
       thread_kill_all_workers ();
       css_final_job_queue ();
       css_final_conn_list ();
+      css_free_user_access_status ();
     }
 
   if (error != NO_ERROR)

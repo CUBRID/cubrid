@@ -654,6 +654,7 @@ typedef struct YYLTYPE
 %type <number> opt_trace_output_format
 %type <number> opt_if_not_exists
 %type <number> opt_if_exists
+%type <number> show_type
 %type <number> show_type_arg1
 %type <number> show_type_arg1_opt
 %type <number> show_type_arg_named
@@ -1404,6 +1405,7 @@ typedef struct YYLTYPE
 %token COMP_LE
 %token PARAM_HEADER
 
+%token <cptr> ACCESS
 %token <cptr> ACTIVE
 %token <cptr> ADDDATE
 %token <cptr> ANALYZE
@@ -6500,11 +6502,45 @@ show_stmt
 			$$ = node;
 
 		DBG_PRINT}}						
+	| SHOW show_type
+		{{
+			int type = $2;
+			PT_NODE *node = pt_make_query_showstmt (this_parser, type, NULL, 0, NULL);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}						
+	| SHOW show_type LIKE expression_
+		{{
+
+			const int like_where_syntax = 1;  /* is LIKE */
+			int type = $2;
+			PT_NODE *like_rhs = $4;
+			PT_NODE *node = pt_make_query_showstmt (this_parser, type, NULL, 
+                                                                like_where_syntax, like_rhs);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}						
+	| SHOW show_type WHERE search_condition
+		{{
+			const int like_where_syntax = 2;  /* is WHERE */
+			int type = $2;
+			PT_NODE *where_cond = $4;
+			PT_NODE *node = pt_make_query_showstmt (this_parser, type, NULL, 
+                                                               like_where_syntax, where_cond);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}						
 	| SHOW show_type_arg1 OF arg_value
 		{{
 			int type = $2;
 			PT_NODE *args = $4;
-			PT_NODE *node = pt_make_query_showstmt (this_parser, type, args, NULL);
+			PT_NODE *node = pt_make_query_showstmt (this_parser, type, args, 0, NULL);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -6516,7 +6552,7 @@ show_stmt
 			int type = $2;
 			PT_NODE *args = $3;
 
-			node = pt_make_query_showstmt (this_parser, type, args, NULL);
+			node = pt_make_query_showstmt (this_parser, type, args, 0, NULL);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -6528,7 +6564,7 @@ show_stmt
 			int type = $2;
 			PT_NODE *args = $4;
 
-			node = pt_make_query_showstmt (this_parser, type, args, NULL);
+			node = pt_make_query_showstmt (this_parser, type, args, 0, NULL);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -6540,12 +6576,19 @@ show_stmt
 			PT_NODE *node, *args = $4;
 
 			args->next = $6;
-			node = pt_make_query_showstmt (this_parser, type, args, NULL);
+			node = pt_make_query_showstmt (this_parser, type, args, 0, NULL);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	;
+
+show_type
+	: ACCESS STATUS
+		{{
+			$$ = SHOWSTMT_ACCESS_STATUS;
+		}}
 	;
 
 show_type_arg1

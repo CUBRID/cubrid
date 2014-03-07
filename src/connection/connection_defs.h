@@ -483,6 +483,21 @@ struct css_mapping_entry
 #endif
   unsigned short id;		/* host id to help identify the connection */
 };
+
+/*
+ * This data structure is the information of user access status written
+ * when client login server.
+ */
+typedef struct last_access_status LAST_ACCESS_STATUS;
+struct last_access_status
+{
+  char db_user[DB_MAX_USER_LENGTH];
+  time_t time;
+  char host[MAXHOSTNAMELEN];
+  char program_name[32];
+  LAST_ACCESS_STATUS *next;
+};
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void css_shutdown (int exit_reason);
 #endif

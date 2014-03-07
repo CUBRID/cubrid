@@ -43,6 +43,7 @@
 #include "slotted_page.h"
 #include "heap_file.h"
 #include "btree.h"
+#include "connection_support.h"
 
 #if defined(SERVER_MODE)
 #include "thread.h"
@@ -95,6 +96,12 @@ showstmt_scan_init (void)
   req->start_func = disk_volume_header_start_scan;
   req->next_func = disk_volume_header_next_scan;
   req->end_func = disk_volume_header_end_scan;
+
+  req = &show_Requests[SHOWSTMT_ACCESS_STATUS];
+  req->show_type = SHOWSTMT_ACCESS_STATUS;
+  req->start_func = css_user_access_status_start_scan;
+  req->next_func = css_user_access_status_next_scan;
+  req->end_func = css_user_access_status_end_scan;
 
   req = &show_Requests[SHOWSTMT_ACTIVE_LOG_HEADER];
   req->show_type = SHOWSTMT_ACTIVE_LOG_HEADER;

@@ -4703,7 +4703,8 @@ boot_shutdown_server (bool iserfinal)
  */
 int
 csession_check_session (SESSION_ID * session_id, int *row_count,
-			char *server_session_key)
+			char *server_session_key, const char *db_user,
+			const char *host, const char *program_name)
 {
 #if defined (CS_MODE)
   int req_error;
@@ -4712,6 +4713,7 @@ csession_check_session (SESSION_ID * session_id, int *row_count,
   char *request = NULL, *area = NULL;
   char *ptr;
   int request_size, area_size;
+  int db_user_len, host_len, program_name_len;
   SESSION_PARAM *session_params = NULL;
   int error = NO_ERROR, update_parameter_values = 0;
 
@@ -4721,6 +4723,9 @@ csession_check_session (SESSION_ID * session_id, int *row_count,
   request_size +=
     sysprm_packed_session_parameters_length (cached_session_parameters,
 					     request_size);
+  request_size += length_const_string (db_user, &db_user_len);
+  request_size += length_const_string (host, &host_len);
+  request_size += length_const_string (program_name, &program_name_len);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4730,6 +4735,9 @@ csession_check_session (SESSION_ID * session_id, int *row_count,
       ptr = or_pack_int (request, ((int) *session_id));
       ptr = or_pack_stream (ptr, server_session_key, SERVER_SESSION_KEY_SIZE);
       ptr = sysprm_pack_session_parameters (ptr, cached_session_parameters);
+      ptr = pack_const_string_with_length (ptr, db_user, db_user_len);
+      ptr = pack_const_string_with_length (ptr, host, host_len);
+      ptr = pack_const_string_with_length (ptr, program_name, program_name_len);
 
       req_error = net_client_request2 (NET_SERVER_SES_CHECK_SESSION,
 				       request, request_size,

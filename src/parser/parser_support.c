@@ -9021,7 +9021,8 @@ error:
  */
 PT_NODE *
 pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type,
-			PT_NODE * args, PT_NODE * where_cond)
+			PT_NODE * args, int like_where_syntax,
+			PT_NODE * like_or_where_expr)
 {
   const SHOWSTMT_METADATA *meta = NULL;
   const SHOWSTMT_COLUMN_ORDERBY *orderby = NULL;
@@ -9030,6 +9031,8 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type,
   PT_NODE *value, *from_item, *showstmt_info;
   PT_NODE *order_by_item;
   int i, err;
+  DB_VALUE oid_val;
+  MOP classop;
 
   /* get show column info */
   meta = showstmt_get_metadata (type);
@@ -9078,6 +9081,14 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type,
 	}
     }
 
+  if (type == SHOWSTMT_ACCESS_STATUS)
+    {
+      classop = sm_find_class ("db_user");
+      db_make_oid (&oid_val, &classop->oid_info.oid);
+      showstmt_info->info.showstmt.show_args =
+	pt_dbval_to_value (parser, &oid_val);
+    }
+
   /* add to FROM an empty entity, the entity will be populated later */
   from_item = pt_add_table_name_to_from_list (parser,
 					      query, NULL, NULL,
@@ -9091,10 +9102,30 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type,
   from_item->info.spec.meta_class = 0;
   from_item->info.spec.join_type = PT_JOIN_NONE;
 
-  if (where_cond != NULL)
+  if (like_or_where_expr != NULL)
     {
+      PT_NODE *where_item = NULL;
+
+      if (like_where_syntax == 1)
+	{
+	  /* there would be least one column */
+	  assert (meta->num_cols > 0);
+	  where_item =
+	    pt_make_like_col_expr (parser, like_or_where_expr,
+				   meta->cols[0].name);
+	}
+      else
+	{
+	  assert (like_where_syntax == 2);
+	  where_item = like_or_where_expr;
+	}
+
       query->info.query.q.select.where =
-	parser_append_node (where_cond, query->info.query.q.select.where);
+	parser_append_node (where_item, query->info.query.q.select.where);
+    }
+  else
+    {
+      assert (like_where_syntax == 0);
     }
 
   for (i = 0; i < num_orderby; i++)

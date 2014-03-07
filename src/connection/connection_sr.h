@@ -122,4 +122,9 @@ extern int css_free_ip_info (IP_INFO * ip_info);
 extern int css_read_ip_info (IP_INFO ** out_ip_info, char *filename);
 extern int css_check_ip (IP_INFO * ip_info, unsigned char *address);
 
+extern LAST_ACCESS_STATUS *css_get_user_access_status (char *db_user);
+extern void css_set_user_access_status (const char *db_user,
+					const char *host,
+					const char *program_name);
+extern void css_free_user_access_status (void);
 #endif /* _CONNECTION_SR_H_ */

@@ -69,6 +69,8 @@ extern int boot_get_ha_server_state (void);
 extern const char *boot_get_lob_path (void);
 #endif /* CS_MODE */
 
+extern char *boot_get_host_name (void);
+
 #if defined(SA_MODE)
 extern int boot_build_catalog_classes (const char *dbname);
 extern int boot_destroy_catalog_classes (void);
