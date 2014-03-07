@@ -3150,6 +3150,19 @@ qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
       json_object_set_new (groupby, "time",
 			   json_integer (TO_MSEC (gstats->groupby_time)));
 
+      if (gstats->groupby_hash == HS_ACCEPT_ALL)
+        {
+          json_object_set_new (groupby, "hash", json_true ());
+        }
+      else if (gstats->groupby_hash == HS_REJECT_ALL)
+        {
+          json_object_set_new (groupby, "hash", json_string ("partial"));
+        }
+      else
+        {
+          json_object_set_new (groupby, "hash", json_false ());
+        }
+
       if (gstats->groupby_sort)
 	{
 	  json_object_set_new (groupby, "sort", json_true ());
@@ -3396,6 +3409,19 @@ qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
     {
       fprintf (fp, "%*c", indent, ' ');
       fprintf (fp, "GROUPBY (time: %d", TO_MSEC (gstats->groupby_time));
+
+      if (gstats->groupby_hash == HS_ACCEPT_ALL)
+        {
+          fprintf (fp, ", hash: true");
+        }
+      else if (gstats->groupby_hash == HS_REJECT_ALL)
+        {
+          fprintf (fp, ", hash: partial");
+        }
+      else
+        {
+          fprintf (fp, ", hash: false");
+        }
 
       if (gstats->groupby_sort)
 	{

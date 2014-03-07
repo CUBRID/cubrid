@@ -350,8 +350,9 @@ struct fetch_proc_node
 
 typedef enum
 {
-  HS_ACCEPT_ALL = 0,		/* accept tuples in hash table */
-  HS_REJECT_ALL,		/* reject tuples, use normal sort-based aggregation */
+  HS_NONE = 0,                  /* no hash aggregation */
+  HS_ACCEPT_ALL,                /* accept tuples in hash table */
+  HS_REJECT_ALL                 /* reject tuples, use normal sort-based aggregation */
 } AGGREGATE_HASH_STATE;
 
 typedef struct aggregate_hash_context AGGREGATE_HASH_CONTEXT;
@@ -667,6 +668,7 @@ struct groupby_stat
   UINT64 groupby_pages;
   UINT64 groupby_ioreads;
   int rows;
+  AGGREGATE_HASH_STATE groupby_hash;
   bool run_groupby;
   bool groupby_sort;
 };

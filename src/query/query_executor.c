@@ -739,6 +739,7 @@ static void qexec_gby_agg_tuple (THREAD_ENTRY * thread_p,
 				 GROUPBY_STATE * gbstate, QFILE_TUPLE tpl,
 				 int peek);
 static int qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p,
+				     XASL_NODE * xasl,
 				     XASL_STATE * xasl_state,
 				     BUILDLIST_PROC_NODE * proc,
 				     QFILE_TUPLE_RECORD * tplrec,
@@ -1814,7 +1815,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      && xasl->proc.buildlist.agg_hash_context.state != HS_REJECT_ALL)
 	    {
 	      /* aggregate using hash table */
-	      if (qexec_hash_gby_agg_tuple (thread_p, xasl_state,
+	      if (qexec_hash_gby_agg_tuple (thread_p, xasl, xasl_state,
 					    &xasl->proc.buildlist, tplrec,
 					    &xasl->list_id->tpl_descr,
 					    xasl->list_id,
@@ -4184,8 +4185,8 @@ exit_on_error:
  *   output_tuple(out): set if tuple should be output to list file
  */
 static int
-qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
-			  BUILDLIST_PROC_NODE * proc,
+qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+			  XASL_STATE * xasl_state, BUILDLIST_PROC_NODE * proc,
 			  QFILE_TUPLE_RECORD * tplrec,
 			  QFILE_TUPLE_DESCRIPTOR * tpldesc,
 			  QFILE_LIST_ID * groupby_list, bool * output_tuple)
@@ -4196,11 +4197,18 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
   HENTRY_PTR hentry;
   UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE);
   int rc = NO_ERROR;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 
   if (context->state == HS_REJECT_ALL)
     {
       /* no tuples should be allowed */
       return NO_ERROR;
+    }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      tsc_getticks (&start_tick);
     }
 
   /* build key */
@@ -4375,6 +4383,14 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 			"hash aggregation abandoned: very high selectivity");
 #endif
 	}
+    }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (xasl->groupby_stats.groupby_time, tv_diff);
+      xasl->groupby_stats.groupby_hash = context->state;
     }
 
   /* all ok */
@@ -4923,6 +4939,13 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       return NO_ERROR;
     }
 
+  if (thread_is_on_trace (thread_p))
+    {
+      tsc_getticks (&start_tick);
+      xasl->groupby_stats.run_groupby = true;
+      xasl->groupby_stats.rows = 0;
+    }
+
   /* initialize groupby_num() value */
   if (buildlist->g_grbynum_val && DB_IS_NULL (buildlist->g_grbynum_val))
     {
@@ -5086,6 +5109,13 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
     }
 
+  if (thread_is_on_trace (thread_p))
+    {
+      xasl->groupby_stats.groupby_sort = true;
+      old_sort_pages = mnt_get_sort_data_pages (thread_p);
+      old_sort_ioreads = mnt_get_sort_io_pages (thread_p);
+    }
+
   /* unsorted list is not empty; dump hash table to partial list */
   if (gbstate.hash_eligible && gbstate.agg_hash_context->tuple_count > 0
       && mht_count (gbstate.agg_hash_context->hash_table) > 0)
@@ -5203,17 +5233,6 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       gbstate.agg_hash_context->part_scan_code = S_END;
     }
 
-  if (thread_is_on_trace (thread_p))
-    {
-      tsc_getticks (&start_tick);
-
-      xasl->groupby_stats.run_groupby = true;
-      xasl->groupby_stats.groupby_sort = true;
-      xasl->groupby_stats.rows = 0;
-      old_sort_pages = mnt_get_sort_data_pages (thread_p);
-      old_sort_ioreads = mnt_get_sort_io_pages (thread_p);
-    }
-
   /*
    * Open a scan on the unsorted input file
    */
@@ -5306,10 +5325,13 @@ wrapup:
 	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	TSC_ADD_TIMEVAL (xasl->groupby_stats.groupby_time, tv_diff);
 
-	xasl->groupby_stats.groupby_pages =
-	  mnt_get_sort_data_pages (thread_p) - old_sort_pages;
-	xasl->groupby_stats.groupby_ioreads =
-	  mnt_get_sort_io_pages (thread_p) - old_sort_ioreads;
+	if (xasl->groupby_stats.groupby_sort == true)
+	  {
+	    xasl->groupby_stats.groupby_pages =
+	      mnt_get_sort_data_pages (thread_p) - old_sort_pages;
+	    xasl->groupby_stats.groupby_ioreads =
+	      mnt_get_sort_io_pages (thread_p) - old_sort_ioreads;
+	  }
       }
 
     return result;
@@ -21347,6 +21369,15 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       return NO_ERROR;
     }
 
+  if (thread_is_on_trace (thread_p))
+    {
+      tsc_getticks (&start_tick);
+      xasl->groupby_stats.run_groupby = true;
+      xasl->groupby_stats.groupby_sort = false;
+      xasl->groupby_stats.groupby_hash = HS_NONE;
+      xasl->groupby_stats.rows = 0;
+    }
+
   assert (buildlist->g_with_rollup == 0);
 
   if (qexec_initialize_groupby_state (&gbstate, buildlist->groupby_list,
@@ -21425,15 +21456,6 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   else
     {
       tuple_cnt = list_id->tuple_cnt;
-    }
-
-  if (thread_is_on_trace (thread_p))
-    {
-      tsc_getticks (&start_tick);
-
-      xasl->groupby_stats.run_groupby = true;
-      xasl->groupby_stats.groupby_sort = false;
-      xasl->groupby_stats.rows = 0;
     }
 
   /*
