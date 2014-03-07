@@ -1082,6 +1082,7 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan,
 	}
       save_next = upper_bound->next;
       upper_bound->next = NULL;
+      ordbynum_flag = 0;
       xasl->ordbynum_pred = pt_to_pred_expr_with_arg (parser, upper_bound,
 						      &ordbynum_flag);
       upper_bound->next = save_next;
@@ -3915,7 +3916,7 @@ qo_check_plan_index_for_multi_range_opt (PT_NODE * orderby_nodes,
       if ((*reverse ? !key_type->is_desc : key_type->is_desc) !=
 	  (orderby_sort_column->info.sort_spec.asc_or_desc == PT_DESC))
 	{
-	  /* normally, key_type->is_desc must match sort order == PT_DESC, 
+	  /* normally, key_type->is_desc must match sort order == PT_DESC,
 	   * if reversed, !key_type->is_desc must match instead.
 	   */
 	  return NO_ERROR;

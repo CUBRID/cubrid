@@ -2353,7 +2353,7 @@ pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list,
     {
       argp = &dummy;
     }
-
+  *argp = 0;
 
   /* convert CNF list into right-linear chains of AND terms */
   cnf_pred = NULL;
