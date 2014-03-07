@@ -467,12 +467,9 @@ AS_IF([test "x$with_jdbc" = "xyes"],
 			mddir=""
 	esac
 
-	if test "x$mddir" != "xaix"
-	then  
-		AC_CHECK_FILE($JAVA_HOME/include/$mddir/jni_md.h,
-			[JAVA_INC="$JAVA_INC -I$JAVA_HOME/include/$mddir"],
-			AC_MSG_ERROR(jni_md.h is required.))
-	fi
+	AC_CHECK_FILE($JAVA_HOME/include/$mddir/jni_md.h,
+		[JAVA_INC="$JAVA_INC -I$JAVA_HOME/include/$mddir"],
+		AC_CHECK_FILE($JAVA_HOME/include/jniport.h,,AC_MSG_ERROR(jni_md.h or jniport.h is required.)))
 
 	AC_MSG_CHECKING([whether JNI programs can be compiled with $JAVA_INC])
 	CFLAGS="$CFLAGS $JAVA_INC"
