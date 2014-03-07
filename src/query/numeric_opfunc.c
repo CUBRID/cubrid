@@ -2041,13 +2041,35 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
    * Check if remainder is larger than or equal to 2*divisor.
    * i.e. rem / divisor >= 0.5
    */
+
+  /* first convert to positive number 
+   * Note that reminder and dbv2 must be numeric, so we don't consider 
+   * long numeric.
+   */
+  if (numeric_is_negative (temp_rem))
+    {
+      numeric_negate (temp_rem);
+    }
+
+  if (numeric_is_negative (db_locate_numeric (dbv2)))
+    {
+      numeric_negate (db_locate_numeric (dbv2));
+    }
+
   numeric_add (temp_rem, temp_rem, temp_rem, DB_NUMERIC_BUF_SIZE);
-  
   if (numeric_compare (temp_rem, db_locate_numeric (dbv2)) >= 0)
-  {
-    numeric_increase (temp_quo); 
-  }
-  
+    {
+      if (numeric_is_negative (temp_quo))
+	{
+	  /* for negative number */
+	  numeric_decrease (temp_quo);
+	}
+      else
+	{
+	  numeric_increase (temp_quo);
+	}
+    }
+
   if (numeric_overflow (temp_quo, prec))
     {
       if (prec < DB_MAX_NUMERIC_PRECISION)
