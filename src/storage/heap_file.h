@@ -367,6 +367,8 @@ extern int heap_get_class_partitions (THREAD_ENTRY * thread_p,
 				      const OID * class_oid,
 				      OR_PARTITION ** parts,
 				      int *parts_count);
+extern void heap_clear_partition_info (THREAD_ENTRY * thread_p,
+				       OR_PARTITION * parts, int parts_count);
 extern int heap_get_class_supers (THREAD_ENTRY * thread_p,
 				  const OID * class_oid, OID ** super_oids,
 				  int *count);

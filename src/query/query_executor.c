@@ -25892,6 +25892,11 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 		      error = heap_get_class_partitions (thread_p, class_oid,
 							 &partitions,
 							 &partition_count);
+		      if (partitions != NULL)
+			{
+			  heap_clear_partition_info (thread_p, partitions,
+						     partition_count);
+			}
 		      if (error != NO_ERROR)
 			{
 			  return error;
@@ -27895,8 +27900,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
 	    }
 	  if (qdata_evaluate_aggregate_optimize (thread_p, agg_ptr,
 						 &ACCESS_SPEC_HFID (spec),
-						 &super_oid) !=
-	      NO_ERROR)
+						 &super_oid) != NO_ERROR)
 	    {
 	      agg_ptr->flag_agg_optimize = false;
 	      *is_scan_needed = true;

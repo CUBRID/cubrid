@@ -8502,7 +8502,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 				       BTREE_NON_LEAF_NODE);
       if (ret != NO_ERROR)
 	{
-          assert (false);
+	  assert (false);
 	  goto exit_on_error;
 	}
     }
@@ -9035,8 +9035,8 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	    {
 	      /* update the root header */
 	      ret_val =
-		btree_change_root_header_delta (thread_p, &btid->vfid, P, -1, -1,
-					     0);
+		btree_change_root_header_delta (thread_p, &btid->vfid, P, -1,
+						-1, 0);
 	      if (ret_val != NO_ERROR)
 		{
 		  goto error;
@@ -9094,9 +9094,10 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	{
 	  /* update the root header
 	   * guess existing key delete
-           */
+	   */
 	  ret_val =
-	    btree_change_root_header_delta (thread_p, &btid->vfid, P, 0, -1, -1);
+	    btree_change_root_header_delta (thread_p, &btid->vfid, P, 0, -1,
+					    -1);
 	  if (ret_val != NO_ERROR)
 	    {
 	      goto error;
@@ -13959,7 +13960,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	    {
 	      ret_val =
 		btree_change_root_header_delta (thread_p, &btid->vfid, P,
-					     1, 1, 0);
+						1, 1, 0);
 	      if (ret_val != NO_ERROR)
 		{
 		  goto error;
@@ -14016,7 +14017,8 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	{
 	  /* update the root header */
 	  ret_val =
-	    btree_change_root_header_delta (thread_p, &btid->vfid, P, 0, 1, 1);
+	    btree_change_root_header_delta (thread_p, &btid->vfid, P, 0, 1,
+					    1);
 	  if (ret_val != NO_ERROR)
 	    {
 	      goto error;
@@ -15302,10 +15304,10 @@ btree_reflect_unique_statistics (THREAD_ENTRY * thread_p,
       /* update header information */
       ret =
 	btree_change_root_header_delta (thread_p,
-				     &unique_stat_info->btid.vfid, root,
-				     unique_stat_info->num_nulls,
-				     unique_stat_info->num_oids,
-				     unique_stat_info->num_keys);
+					&unique_stat_info->btid.vfid, root,
+					unique_stat_info->num_nulls,
+					unique_stat_info->num_oids,
+					unique_stat_info->num_keys);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -20294,13 +20296,13 @@ btree_rv_leafrec_dump_insert_oid (FILE * fp, int length, void *data)
   fprintf (fp, "OID: { %d, %d, %d } \n",
 	   recins->oid.volid, recins->oid.pageid, recins->oid.slotid);
   fprintf (fp, "RECORD TYPE: %s \n",
-	   (recins->rec_type == LEAF_RECORD_REGULAR) ? "REGULAR" : "OVERFLOW");
-  fprintf (fp, "Overflow Page Id: {%d , %d}\n",
-	   recins->ovfl_vpid.volid, recins->ovfl_vpid.pageid);
+	   (recins->rec_type ==
+	    LEAF_RECORD_REGULAR) ? "REGULAR" : "OVERFLOW");
+  fprintf (fp, "Overflow Page Id: {%d , %d}\n", recins->ovfl_vpid.volid,
+	   recins->ovfl_vpid.pageid);
   fprintf (fp,
-	   "Oid_Inserted: %d \n Ovfl_Changed: %d \n"
-	   "New_Ovfl Page: %d \n", recins->oid_inserted,
-	   recins->ovfl_changed, recins->new_ovflpg);
+	   "Oid_Inserted: %d \n Ovfl_Changed: %d \n" "New_Ovfl Page: %d \n",
+	   recins->oid_inserted, recins->ovfl_changed, recins->new_ovflpg);
 }
 
 /*
@@ -25040,7 +25042,7 @@ btree_prepare_range_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 }
 
 static const char *
-node_type_to_string (short node_type)                                                                      
+node_type_to_string (short node_type)
 {
   return (node_type == BTREE_LEAF_NODE) ? "LEAF" : "NON_LEAF";
 }
@@ -25100,7 +25102,7 @@ btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type,
     heap_classrepr_get (thread_p, &oid, NULL, 0, &idx_in_cache, true);
   if (classrep == NULL)
     {
-      error = er_errid();
+      error = er_errid ();
       goto cleanup;
     }
 
@@ -25178,15 +25180,7 @@ cleanup:
 
   if (parts != NULL)
     {
-      for (i = 0; i < parts_count; i++)
-	{
-	  if (parts[i].values != NULL)
-	    {
-	      db_seq_free (parts[i].values);
-	    }
-	}
-
-      db_private_free_and_init (thread_p, parts);
+      heap_clear_partition_info (thread_p, parts, parts_count);
     }
 
   if (ctx != NULL)

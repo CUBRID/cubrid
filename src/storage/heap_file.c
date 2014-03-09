@@ -1294,8 +1294,7 @@ heap_is_reusable_oid (const FILE_TYPE file_type)
  *   pgptr(in):
  */
 static int
-heap_scancache_update_hinted_when_lots_space (THREAD_ENTRY *
-					      thread_p,
+heap_scancache_update_hinted_when_lots_space (THREAD_ENTRY * thread_p,
 					      HEAP_SCANCACHE * scan_cache,
 					      PAGE_PTR pgptr)
 {
@@ -15305,16 +15304,19 @@ heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid,
   REPR_ID class_repr_id = NULL_REPRID;
   HFID class_hfid;
 
+  *parts = NULL;
+  *parts_count = 0;
+
   OID_SET_NULL (&_db_part_oid);
+
   /* This class might have partitions and subclasses. In order to get
    * partition information we have to:
    *  1. Get the OIDs for all subclasses
    *  2. Get partition information for all OIDs
    *  3. Build information only for those subclasses which are partitions
    */
-  error =
-    heap_class_get_partition_info (thread_p, class_oid, &part_info,
-				   &class_hfid, &class_repr_id);
+  error = heap_class_get_partition_info (thread_p, class_oid, &part_info,
+					 &class_hfid, &class_repr_id);
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -15369,10 +15371,9 @@ heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid,
       goto cleanup;
     }
 
-  error =
-    heap_get_partitions_from_subclasses (thread_p, subclasses, &part_info,
-					 &_db_part_oid, parts_count,
-					 partitions);
+  error = heap_get_partitions_from_subclasses (thread_p, subclasses,
+					       &part_info, &_db_part_oid,
+					       parts_count, partitions);
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -15397,6 +15398,33 @@ cleanup:
       *parts_count = 0;
     }
   return error;
+}
+
+/*
+ * heap_clear_partition_info () - free partitions info from heap_get_class_partitions
+ * return : void
+ * thread_p (in)	:
+ * parts (in)		: partitions information
+ * parts_count (in)	: number of partitions
+ */
+void
+heap_clear_partition_info (THREAD_ENTRY * thread_p,
+			   OR_PARTITION * parts, int parts_count)
+{
+  if (parts != NULL)
+    {
+      int i;
+
+      for (i = 0; i < parts_count; i++)
+	{
+	  if (parts[i].values != NULL)
+	    {
+	      db_seq_free (parts[i].values);
+	    }
+	}
+
+      db_private_free (thread_p, parts);
+    }
 }
 
 /*
@@ -21463,15 +21491,7 @@ cleanup:
 
   if (parts != NULL)
     {
-      for (i = 0; i < parts_count; i++)
-	{
-	  if (parts[i].values != NULL)
-	    {
-	      db_seq_free (parts[i].values);
-	    }
-	}
-
-      db_private_free_and_init (thread_p, parts);
+      heap_clear_partition_info (thread_p, parts, parts_count);
     }
 
   if (ctx != NULL)
