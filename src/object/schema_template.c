@@ -143,10 +143,11 @@ static int smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att,
 
 
 static int rename_constraint (SM_TEMPLATE * ctemplate,
+			      SM_CLASS_CONSTRAINT * sm_cons,
 			      const char *old_name, const char *new_name,
 			      SM_CONSTRAINT_FAMILY element_type);
 
-static int rename_constraints_partitioned_class (MOP obj,
+static int rename_constraints_partitioned_class (SM_TEMPLATE * ctemplate,
 						 const char *old_name,
 						 const char *new_name,
 						 SM_CONSTRAINT_FAMILY
@@ -477,8 +478,8 @@ find_signature (SM_TEMPLATE * template_, const char *name,
   error = find_method (template_, name, class_method, &method);
   if (error == NO_ERROR)
     {
-      /* punt, can only have one signature so first one wins need to do 
-       * a "real" search here if we ever support multiple signatures 
+      /* punt, can only have one signature so first one wins need to do
+       * a "real" search here if we ever support multiple signatures
        */
       sig = method->signatures;
 
@@ -1496,11 +1497,11 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
 	      /* if there wasn't an previous original value, take this one.
 	       * This can only happen for new templates OR if this is a new
 	       * attribute that was added during this template OR if this is
-	       * the first time setting a default value to the attribute. 
-	       * This should be handled by using candidates in the template 
+	       * the first time setting a default value to the attribute.
+	       * This should be handled by using candidates in the template
 	       * and storing an extra bit field in the candidate structure.
 	       * See the comment above sm_attribute for more information
-	       * about "original_value". 
+	       * about "original_value".
 	       */
 	      if (att->flags & SM_ATTFLAG_NEW)
 		{
@@ -1527,7 +1528,7 @@ end:
  *					    No domain checking is performed.
  *   return: void
  *   att(in): attribute
- *   new_orig_value(in): original value to set 
+ *   new_orig_value(in): original value to set
  *
  *  Note : This function modifies the initial default value of the attribute.
  *	   The initial default value is the default value assigned when adding
@@ -2713,37 +2714,28 @@ smt_rename_any (SM_TEMPLATE * template_, const char *name,
 /*
  * rename_constraint() - Renames a constraint.
  *   return: NO_ERROR on success, non-zero for ERROR
- *   template(in/out): schema template
+ *   ctemplate(in/out): schema template
+ *   sm_cons(in/out) : list of constraints
  *   old_name(in): old name of constraint
  *   new_name(in): new name of constraint
  *   element_type(in): type of constraint
  */
 
 static int
-rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
-		   const char *new_name, SM_CONSTRAINT_FAMILY element_type)
+rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons,
+		   const char *old_name, const char *new_name,
+		   SM_CONSTRAINT_FAMILY element_type)
 {
   int error = NO_ERROR;
   DB_CONSTRAINT_TYPE ctype;
   SM_CLASS_CONSTRAINT *sm_constraint = NULL;
-  SM_CLASS_CONSTRAINT *sm_cons = NULL;
   SM_CLASS_CONSTRAINT *existing_con = NULL;
   const char *property_type = NULL;
   char *norm_new_name = NULL;
   MOP ref_clsop;
 
-  error = classobj_make_class_constraints (ctemplate->properties,
-					   ctemplate->attributes, &sm_cons);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-  if (sm_cons == NULL)
-    {
-      error = ER_SM_CONSTRAINT_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
-      goto error_exit;
-    }
+  assert (ctemplate != NULL);
+  assert (sm_cons != NULL);
 
   sm_constraint = classobj_find_constraint_by_name (sm_cons, old_name);
   if (sm_constraint == NULL)
@@ -2816,14 +2808,17 @@ rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
 	   * The below rename FK ref in properties of this class.
 	   */
 	  error = classobj_rename_foreign_key_ref (&(ctemplate->properties),
-						   old_name, new_name);
+						   (char *) old_name,
+						   (char *) new_name);
 	}
       else
 	{
 	  /* Class references to another one (owner class).
 	   * The below rename FK ref in owner class and update the owner class.
 	   */
-	  error = sm_rename_foreign_key_ref (ref_clsop, old_name, new_name);
+	  error =
+	    sm_rename_foreign_key_ref (ref_clsop, (char *) old_name,
+				       (char *) new_name);
 	}
 
       if (error != NO_ERROR)
@@ -2837,10 +2832,6 @@ end:
     {
       free_and_init (norm_new_name);
     }
-  if (sm_cons)
-    {
-      classobj_free_class_constraints (sm_cons);
-    }
   return error;
 
 error_exit:
@@ -2851,23 +2842,26 @@ error_exit:
  * rename_constraints_partitioned_class () - This function renames
  *                   constraints in sub-classes(partition classes).
  *   return: NO_ERROR on success, non-zero for ERROR
- *   obj(in): database object of the super class (partition class)
+ *   ctemplate(in): sm_template of the super class (partition class)
  *   old_name(in): old name of constraint
  *   new_name(in): new name of constraint
  *   element_type(in): type of constraint
  */
-
 static int
-rename_constraints_partitioned_class (MOP obj, const char *old_name,
+rename_constraints_partitioned_class (SM_TEMPLATE * ctemplate,
+				      const char *old_name,
 				      const char *new_name,
 				      SM_CONSTRAINT_FAMILY element_type)
 {
   int error = NO_ERROR;
   int i, is_partition = 0;
   MOP *sub_partitions = NULL;
-  SM_TEMPLATE *ctemplate = NULL;
+  SM_TEMPLATE *sub_ctemplate = NULL;
+  SM_CLASS_CONSTRAINT *sm_cons = NULL;
 
-  error = sm_partitioned_class_type (obj, &is_partition, NULL,
+  assert (ctemplate != NULL);
+
+  error = sm_partitioned_class_type (ctemplate->op, &is_partition, NULL,
 				     &sub_partitions);
   if (error != NO_ERROR)
     {
@@ -2894,27 +2888,50 @@ rename_constraints_partitioned_class (MOP obj, const char *old_name,
 	  continue;
 	}
 
-      ctemplate = smt_edit_class_mop (sub_partitions[i], AU_INDEX);
-      if (ctemplate == NULL)
+      sub_ctemplate = smt_edit_class_mop (sub_partitions[i], AU_INDEX);
+      if (sub_ctemplate == NULL)
 	{
 	  error = er_errid ();
 	  assert (error != NO_ERROR);
 	  goto error_exit;
 	}
 
-      error = rename_constraint (ctemplate, old_name, new_name, element_type);
+      /* make a list of constraints that is included in the partitioned class. */
+      error = classobj_make_class_constraints (sub_ctemplate->properties,
+					       sub_ctemplate->attributes,
+					       &sm_cons);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
 	}
 
+      if (sm_cons == NULL)
+	{
+	  error = ER_SM_CONSTRAINT_NOT_FOUND;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
+	  goto error_exit;
+	}
+
+      error = rename_constraint (sub_ctemplate, sm_cons, old_name, new_name,
+				 element_type);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      if (sm_cons)
+	{
+	  classobj_free_class_constraints (sm_cons);
+	  sm_cons = NULL;
+	}
+
       /* classobj_free_template() is included in sm_update_class() */
-      error = sm_update_class (ctemplate, NULL);
+      error = sm_update_class (sub_ctemplate, NULL);
       if (error != NO_ERROR)
 	{
 	  /* Even though sm_update() did not return NO_ERROR,
-	   * ctemplate is already freed */
-	  ctemplate = NULL;
+	   * sub_ctemplate is already freed */
+	  sub_ctemplate = NULL;
 	  goto error_exit;
 	}
     }
@@ -2927,10 +2944,14 @@ end:
   return error;
 
 error_exit:
-  if (ctemplate != NULL)
+  if (sm_cons)
+    {
+      classobj_free_class_constraints (sm_cons);
+    }
+  if (sub_ctemplate != NULL)
     {
       /* smt_quit() always returns NO_ERROR */
-      smt_quit (ctemplate);
+      smt_quit (sub_ctemplate);
     }
   goto end;
 }
@@ -2951,23 +2972,58 @@ smt_rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
 		       SM_CONSTRAINT_FAMILY element_type)
 {
   int error = NO_ERROR;
+  SM_CLASS_CONSTRAINT *sm_cons = NULL;
+  SM_CLASS_CONSTRAINT *sm_constraint = NULL;
 
   assert (ctemplate != NULL);
 
-  error = rename_constraints_partitioned_class (ctemplate->op, old_name,
-						new_name, element_type);
+  error = classobj_make_class_constraints (ctemplate->properties,
+					   ctemplate->attributes, &sm_cons);
   if (error != NO_ERROR)
     {
       goto error_exit;
     }
 
-  error = rename_constraint (ctemplate, old_name, new_name, element_type);
+  if (sm_cons == NULL)
+    {
+      error = ER_SM_CONSTRAINT_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
+      goto error_exit;
+    }
+
+  sm_constraint = classobj_find_constraint_by_name (sm_cons, old_name);
+  if (sm_constraint == NULL)
+
+    {
+      error = ER_SM_CONSTRAINT_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
+      goto error_exit;
+    }
+
+  /* The global constraint is not included in the partitioned class. */
+  if (sm_is_global_only_constraint (sm_constraint) == false)
+    {
+      error = rename_constraints_partitioned_class (ctemplate, old_name,
+						    new_name, element_type);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
+  error = rename_constraint (ctemplate, sm_cons, old_name, new_name,
+			     element_type);
   if (error != NO_ERROR)
     {
       goto error_exit;
     }
 
 end:
+  if (sm_cons)
+    {
+      classobj_free_class_constraints (sm_cons);
+    }
+
   return error;
 
   /* in order to show explicitly the error */
@@ -4097,7 +4153,7 @@ smt_downcase_all_class_info (void)
 #endif
 
 /*
- * smt_change_attribute() - Changes an attribute of a template (name, domain 
+ * smt_change_attribute() - Changes an attribute of a template (name, domain
  *    and ordering).
  *    For class and shared atribute the value is changed according to new
  *    domain. For normal attribute, the instance values are not changed, only
@@ -4108,7 +4164,7 @@ smt_downcase_all_class_info (void)
  *    The attribute ordering may be changed if either the "change_first"
  *    argument is "true" or "change_after_attribute" is non-null and contains
  *    the name of an existing attribute.
- *    If all operations are successful, the changed attribute is returned in 
+ *    If all operations are successful, the changed attribute is returned in
  *    "found_att".
  *
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -4350,7 +4406,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
   orig_value = &((*found_att)->default_value.original_value);
   if (DB_IS_NULL (orig_value))
     {
-      /* the attribute has not set a default original value, so need to 
+      /* the attribute has not set a default original value, so need to
        * continue*/
       assert (error == NO_ERROR);
       return error;
@@ -4426,7 +4482,7 @@ smt_change_attribute_pos_in_list (SM_ATTRIBUTE ** att_list,
 }
 
 /*
- * smt_change_class_shared_attribute_domain() - changes the value domain of a 
+ * smt_change_class_shared_attribute_domain() - changes the value domain of a
  *   shared or class attribute
  *
  *   return: NO_ERROR on success, non-zero for ERROR
