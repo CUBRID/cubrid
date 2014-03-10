@@ -15213,6 +15213,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
 					  xasl_ent_cache.max_entries,
 					  xasl_id_hash, xasl_id_hash_cmpeq);
     }
+
   /* memory hash table for XASL stream cache referencing by class/serial oid */
   if (xasl_ent_cache.oid_ht)
     {
@@ -16016,6 +16017,8 @@ qexec_free_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 	CAST_BUFLEN (pent - xasl_cache_entry_pool.pool);
     }
 
+  mnt_pc_delete (thread_p);
+
   return NO_ERROR;
 }				/* qexec_free_xasl_cache_ent() */
 
@@ -16062,6 +16065,8 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
   /* look up the hash table with the key */
   ent = (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht, qstr);
   xasl_ent_cache.counter.lookup++;	/* counter */
+  mnt_pc_lookup (thread_p);
+
   if (ent)
     {
       /* check if it is marked to be deleted */
@@ -16120,10 +16125,12 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
   if (ent)
     {
       xasl_ent_cache.counter.hit++;	/* counter */
+      mnt_pc_hit (thread_p);
     }
   else
     {
       xasl_ent_cache.counter.miss++;	/* counter */
+      mnt_pc_miss (thread_p);
     }
 
 end:
@@ -16178,9 +16185,8 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
     }
 
   /* check again whether the entry is in the cache */
-  ent =
-    (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht,
-				  context->sql_hash_text);
+  ent = (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht,
+				      context->sql_hash_text);
   if (ent != NULL && OID_EQ (&ent->creator_oid, oid))
     {
       if (ent->deletion_marker)
@@ -16224,6 +16230,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
        * to find out victims.
        */
       xasl_ent_cache.counter.full++;	/* counter */
+      mnt_pc_full (thread_p);
 
       /* Number of entries to victimize. It will be one in normal case. */
       max_victim_count = (int) mht_count (xasl_ent_cache.qstr_ht)
@@ -16286,10 +16293,9 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
     }
 
   /* get new entry from the XASL_CACHE_ENTRY_POOL */
-  ent =
-    qexec_alloc_xasl_cache_ent (XASL_CACHE_ENTRY_ALLOC_SIZE
-				(sql_hash_text_len + sql_plan_text_len +
-				 sql_user_text_len, n_oids));
+  ent = qexec_alloc_xasl_cache_ent (XASL_CACHE_ENTRY_ALLOC_SIZE
+				    (sql_hash_text_len + sql_plan_text_len +
+				     sql_user_text_len, n_oids));
   if (ent == NULL)
     {
       goto end;
@@ -16380,6 +16386,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
       ent = NULL;
       goto end;
     }
+
   /* insert the entry into the class oid hash table
      Note that mht_put2() allows mutiple data with the same key */
   for (i = 0, o = ent->class_oid_list; i < n_oids; i++, o++)
@@ -16396,6 +16403,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
     }				/* for (i = 0, ...) */
 
   xasl_ent_cache.num++;
+  mnt_pc_add (thread_p);
 
 #if defined (SERVER_MODE)
   if (all_entries_are_fixed)
@@ -16865,6 +16873,11 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 
   csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
 
+  if (ent == NULL)
+    {
+      mnt_pc_invalid_xasl_id (thread_p);
+    }
+
   return ent;
 }
 
@@ -17040,6 +17053,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 			"qexec_delete_xasl_cache_ent: mht_rem2 failed for qstr %s\n",
 			ent->sql_info.sql_hash_text);
 	}
+
       /* remove the entry from xasl file id hash table */
       if (mht_rem2 (xasl_ent_cache.xid_ht, &ent->xasl_id, ent,
 		    NULL, NULL) != NO_ERROR)
@@ -17052,6 +17066,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 			ent->xasl_id.temp_vfid.fileid,
 			ent->xasl_id.temp_vfid.volid);
 	}
+
       /* remove the entries from class/serial oid hash table */
       for (i = 0, o = ent->class_oid_list; i < ent->n_oid_list; i++, o++)
 	{
@@ -17066,6 +17081,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 			    ent->class_oid_list[i].volid);
 	    }
 	}
+
       /* destroy the temp file of XASL_ID */
       if (file_destroy (thread_p, &(ent->xasl_id.temp_vfid)) != NO_ERROR)
 	{
@@ -29222,4 +29238,19 @@ qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p,
   /* reached end of scan, no match */
   *found = false;
   return (context->part_scan_code == S_ERROR ? ER_FAILED : NO_ERROR);
+}
+
+/*
+ * qexec_update_plan_cache_hash_entries () - Update the number of hash entries 
+ *                                           of xasl_ent_cache.
+ *   return: none
+ *   thread_p(in): thread
+ */
+void
+qexec_update_plan_cache_hash_entries (THREAD_ENTRY * thread_p)
+{
+  mnt_pc_query_string_hash_entries (thread_p,
+				    mht_count (xasl_ent_cache.qstr_ht));
+  mnt_pc_xasl_id_hash_entries (thread_p, mht_count (xasl_ent_cache.xid_ht));
+  mnt_pc_class_oid_hash_entries (thread_p, mht_count (xasl_ent_cache.oid_ht));
 }

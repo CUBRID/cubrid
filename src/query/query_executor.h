@@ -350,9 +350,9 @@ struct fetch_proc_node
 
 typedef enum
 {
-  HS_NONE = 0,                  /* no hash aggregation */
-  HS_ACCEPT_ALL,                /* accept tuples in hash table */
-  HS_REJECT_ALL                 /* reject tuples, use normal sort-based aggregation */
+  HS_NONE = 0,			/* no hash aggregation */
+  HS_ACCEPT_ALL,		/* accept tuples in hash table */
+  HS_REJECT_ALL			/* reject tuples, use normal sort-based aggregation */
 } AGGREGATE_HASH_STATE;
 
 typedef struct aggregate_hash_context AGGREGATE_HASH_CONTEXT;
@@ -1085,6 +1085,9 @@ extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p,
 						      XASL_NODE * xasl,
 						      XASL_NODE *
 						      connect_by_ptr);
+
+extern void qexec_update_plan_cache_hash_entries (THREAD_ENTRY * thread_p);
+
 #if defined (SERVER_MODE)
 extern void qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent);
 extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p,

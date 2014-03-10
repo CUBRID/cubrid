@@ -528,6 +528,29 @@ mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
 
   stats_diff->ha_repl_delay = p->ha_repl_delay;
 
+  stats_diff->pc_num_add =
+    CALC_GLOBAL_STAT_DIFF (p->pc_num_add, q->pc_num_add);
+  stats_diff->pc_num_lookup =
+    CALC_GLOBAL_STAT_DIFF (p->pc_num_lookup, q->pc_num_lookup);
+  stats_diff->pc_num_hit =
+    CALC_GLOBAL_STAT_DIFF (p->pc_num_hit, q->pc_num_hit);
+  stats_diff->pc_num_miss =
+    CALC_GLOBAL_STAT_DIFF (p->pc_num_miss, q->pc_num_miss);
+  stats_diff->pc_num_full =
+    CALC_GLOBAL_STAT_DIFF (p->pc_num_full, q->pc_num_full);
+  stats_diff->pc_num_delete =
+    CALC_GLOBAL_STAT_DIFF (p->pc_num_delete, q->pc_num_delete);
+  stats_diff->pc_num_invalid_xasl_id =
+    CALC_GLOBAL_STAT_DIFF (p->pc_num_invalid_xasl_id,
+			   q->pc_num_invalid_xasl_id);
+
+  /* Do not need to diff following non-accumulative stats */
+  stats_diff->pc_num_query_string_hash_entries =
+    p->pc_num_query_string_hash_entries;
+  stats_diff->pc_num_xasl_id_hash_entries = p->pc_num_xasl_id_hash_entries;
+  stats_diff->pc_num_class_oid_hash_entries =
+    p->pc_num_class_oid_hash_entries;
+
   mnt_server_calc_stats (stats_diff);
 
   return NO_ERROR;
@@ -1682,6 +1705,16 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
   "Num_heap_stats_bestspace_entries",
   "Num_heap_stats_bestspace_maxed",
   "Time_ha_replication_delay",
+  "Num_plan_cache_add",
+  "Num_plan_cache_lookup",
+  "Num_plan_cache_hit",
+  "Num_plan_cache_miss",
+  "Num_plan_cache_full",
+  "Num_plan_cache_delete",
+  "Num_plan_cache_invalid_xasl_id",
+  "Num_plan_cache_query_string_hash_entries",
+  "Num_plan_cache_xasl_id_hash_entries",
+  "Num_plan_cache_class_oid_hash_entries",
   "Data_page_buffer_hit_ratio"
 };
 
@@ -1948,6 +1981,8 @@ xmnt_server_copy_stats (THREAD_ENTRY * thread_p,
 {
   MNT_SERVER_EXEC_STATS *from_stats;
 
+  qexec_update_plan_cache_hash_entries (thread_p);
+
   from_stats = mnt_server_get_stats (thread_p);
 
   if (from_stats != NULL)
@@ -1968,6 +2003,8 @@ xmnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
 {
   if (to_stats)
     {
+      qexec_update_plan_cache_hash_entries (thread_p);
+
       *to_stats = *mnt_Server_table.global_stats;
       mnt_server_calc_stats (to_stats);
     }
@@ -3235,6 +3272,182 @@ mnt_x_ha_repl_delay (THREAD_ENTRY * thread_p, int delay)
     }
 
 }
+
+/*
+ * mnt_x_pc_add - Increase pc_num_add when a plan cache entry is added.
+ *   return: none
+ */
+void
+mnt_x_pc_add (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, pc_num_add, 1);
+    }
+}
+
+/*
+ * mnt_x_pc_lookup - Increase pc_num_lookup when a plan cache entry is 
+ *                   looked up. 
+ *   return: none
+ */
+void
+mnt_x_pc_lookup (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, pc_num_lookup, 1);
+    }
+}
+
+/*
+ * mnt_x_pc_hit - Increase pc_num_hit when a plan cache entry is hit.
+ *   return: none
+ */
+void
+mnt_x_pc_hit (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, pc_num_hit, 1);
+    }
+}
+
+/*
+ * mnt_x_pc_miss - Increase pc_num_miss when a plan cache entry is not hit. 
+ *   return: none
+ */
+void
+mnt_x_pc_miss (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, pc_num_miss, 1);
+    }
+}
+
+/*
+ * mnt_x_pc_full - Increase pc_num_full when the number of plan cache entries 
+ *                 is exceed the maximum entries.
+ *   return: none
+ */
+void
+mnt_x_pc_full (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, pc_num_full, 1);
+    }
+}
+
+/*
+ * mnt_x_pc_delete - Increase pc_num_delete when a plan cache entry is deleted.
+ *   return: none
+ */
+void
+mnt_x_pc_delete (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, pc_num_delete, 1);
+    }
+}
+
+/*
+ * mnt_x_pc_invalid_xasl_id - Increase pc_num_invalid_xasl_id when a xasl_id 
+ *                            is invalid.
+ *   return: none
+ */
+void
+mnt_x_pc_invalid_xasl_id (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, pc_num_invalid_xasl_id, 1);
+    }
+}
+
+/*
+ * mnt_x_pc_query_string_hash_entries - update pc_num_query_string_hash_entries
+ *                                      that represent the current number of 
+ *                                      entries of the query string hash.
+ *   return: none
+ *   num_entries(in): the number of entries.
+ */
+void
+mnt_x_pc_query_string_hash_entries (THREAD_ENTRY * thread_p,
+				    unsigned int num_entries)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      SET_STATS (stats, pc_num_query_string_hash_entries, num_entries);
+    }
+}
+
+/*
+ * mnt_x_pc_xasl_id_hash_entries - update pc_num_xasl_id_hash_entries that 
+ *                                 represent the current numver of entries 
+ *                                 of the xasl id hash.
+ *   return: none
+ *   num_entries(in): the number of entries.
+ */
+void
+mnt_x_pc_xasl_id_hash_entries (THREAD_ENTRY * thread_p,
+			       unsigned int num_entries)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      SET_STATS (stats, pc_num_xasl_id_hash_entries, num_entries);
+    }
+}
+
+/*
+ * mnt_x_pc_class_oid_hash_entries - update pc_num_class_oid_hash_entries
+ *                                   that represent the current number of 
+ *                                   entries of the class oid hash.
+ *   return: none
+ *   num_entries(in): the number of entries.
+ */
+void
+mnt_x_pc_class_oid_hash_entries (THREAD_ENTRY * thread_p,
+				 unsigned int num_entries)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      SET_STATS (stats, pc_num_class_oid_hash_entries, num_entries);
+    }
+}
+
 #endif /* SERVER_MODE || SA_MODE */
 
 
@@ -3406,6 +3619,24 @@ mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
 
   CALC_STAT_DIFF (stats_diff->net_num_requests, p->net_num_requests,
 		  q->net_num_requests);
+
+  CALC_STAT_DIFF (stats_diff->pc_num_add, p->pc_num_add, q->pc_num_add);
+  CALC_STAT_DIFF (stats_diff->pc_num_lookup, p->pc_num_lookup,
+		  q->pc_num_lookup);
+  CALC_STAT_DIFF (stats_diff->pc_num_hit, p->pc_num_hit, q->pc_num_hit);
+  CALC_STAT_DIFF (stats_diff->pc_num_miss, p->pc_num_miss, q->pc_num_miss);
+  CALC_STAT_DIFF (stats_diff->pc_num_full, p->pc_num_full, q->pc_num_full);
+  CALC_STAT_DIFF (stats_diff->pc_num_delete, p->pc_num_delete,
+		  q->pc_num_delete);
+  CALC_STAT_DIFF (stats_diff->pc_num_invalid_xasl_id,
+		  p->pc_num_invalid_xasl_id, q->pc_num_invalid_xasl_id);
+
+  /* Do not need to diff following non-accumulative stats */
+  stats_diff->pc_num_query_string_hash_entries =
+    p->pc_num_query_string_hash_entries;
+  stats_diff->pc_num_xasl_id_hash_entries = p->pc_num_xasl_id_hash_entries;
+  stats_diff->pc_num_class_oid_hash_entries =
+    p->pc_num_class_oid_hash_entries;
 
   mnt_server_calc_stats (stats_diff);
 

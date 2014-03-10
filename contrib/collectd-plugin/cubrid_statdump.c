@@ -146,10 +146,22 @@ cubrid_statdump_read ()
   /* Execution statistics for network communication */
   value_t net_num_requests[1];
 
+  /* Execution statistics for Plan cache */
+  value_t pc_num_add[1];
+  value_t pc_num_lookup[1];
+  value_t pc_num_hit[1];
+  value_t pc_num_miss[1];
+  value_t pc_num_full[1];
+  value_t pc_num_delete[1];
+  value_t pc_num_invalid_xasl_id[1];
+  value_t pc_num_query_string_hash_entries[1];
+  value_t pc_num_xasl_id_hash_entries[1];
+  value_t pc_num_class_oid_hash_entries[1];
+
   value_t pb_hit_ratio[1];
 
   MNT_SERVER_EXEC_STATS mystat;
-
+  
   if (is_restarted == false)
     {
       /* restart needed */
@@ -237,6 +249,20 @@ cubrid_statdump_read ()
 
   net_num_requests[0].gauge = mystat.net_num_requests;
 
+  pc_num_add[0].gauge = mystat.pc_num_add;
+  pc_num_lookup[0].gauge = mystat.pc_num_lookup;
+  pc_num_hit[0].gauge = mystat.pc_num_hit;
+  pc_num_miss[0].gauge = mystat.pc_num_miss;
+  pc_num_full[0].gauge = mystat.pc_num_full;
+  pc_num_delete[0].gauge = mystat.pc_num_delete;
+  pc_num_invalid_xasl_id[0].gauge = mystat.pc_num_invalid_xasl_id;
+  pc_num_query_string_hash_entries[0].gauge =
+    mystat.pc_num_query_string_hash_entries;
+  pc_num_xasl_id_hash_entries[0].gauge =
+    mystat.pc_num_xasl_id_hash_entries;
+  pc_num_class_oid_hash_entries[0].gauge =
+    mystat.pc_num_class_oid_hash_entries;
+
   pb_hit_ratio[0].gauge = mystat.pb_hit_ratio;
 
   submit ("file_num_creates", submit_name, file_num_creates, 1);
@@ -306,6 +332,20 @@ cubrid_statdump_read ()
   submit ("fc_tokens", submit_name, fc_tokens, 1);
 
   submit ("net_num_requests", submit_name, net_num_requests, 1);
+
+  submit ("pc_num_add", submit_name, pc_num_add, 1);
+  submit ("pc_num_lookup", submit_name, pc_num_lookup, 1);
+  submit ("pc_num_hit", submit_name, pc_num_hit, 1);
+  submit ("pc_num_miss", submit_name, pc_num_miss, 1);
+  submit ("pc_num_full", submit_name, pc_num_full, 1);
+  submit ("pc_num_delete", submit_name, pc_num_delete, 1);
+  submit ("pc_num_invalid_xasl_id", submit_name, pc_num_invalid_xasl_id, 1);
+  submit ("pc_num_query_string_hash_entries", submit_name,
+	  pc_num_query_string_hash_entries, 1);
+  submit ("pc_num_xasl_id_hash_entries", submit_name, 
+          pc_num_xasl_id_hash_entries, 1);
+  submit ("pc_num_class_oid_hash_entries", submit_name,
+	  pc_num_class_oid_hash_entries, 1);
 
   submit ("pb_hit_ratio", submit_name, pb_hit_ratio, 1);
 

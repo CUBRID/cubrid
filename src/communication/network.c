@@ -189,6 +189,27 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_PUT_INT64 (ptr, &(stats->ha_repl_delay));
   ptr += OR_INT64_SIZE;
 
+  OR_PUT_INT64 (ptr, &(stats->pc_num_add));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pc_num_lookup));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pc_num_hit));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pc_num_miss));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pc_num_full));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pc_num_delete));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pc_num_invalid_xasl_id));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pc_num_query_string_hash_entries));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pc_num_xasl_id_hash_entries));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->pc_num_class_oid_hash_entries));
+  ptr += OR_INT64_SIZE;
+
   OR_PUT_INT64 (ptr, &(stats->pb_hit_ratio));
   ptr += OR_INT64_SIZE;
 
@@ -351,6 +372,27 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
 
   OR_GET_INT64 (ptr, &(stats->ha_repl_delay));
+  ptr += OR_INT64_SIZE;
+
+  OR_GET_INT64 (ptr, &(stats->pc_num_add));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pc_num_lookup));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pc_num_hit));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pc_num_miss));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pc_num_full));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pc_num_delete));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pc_num_invalid_xasl_id));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pc_num_query_string_hash_entries));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pc_num_xasl_id_hash_entries));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->pc_num_class_oid_hash_entries));
   ptr += OR_INT64_SIZE;
 
   OR_GET_INT64 (ptr, &(stats->pb_hit_ratio));

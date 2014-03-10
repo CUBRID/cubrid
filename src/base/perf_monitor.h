@@ -239,6 +239,18 @@ struct mnt_server_exec_stats
   /* HA replication delay */
   UINT64 ha_repl_delay;
 
+  /* Execution statistics for Plan cache */
+  UINT64 pc_num_add;
+  UINT64 pc_num_lookup;
+  UINT64 pc_num_hit;
+  UINT64 pc_num_miss;
+  UINT64 pc_num_full;
+  UINT64 pc_num_delete;
+  UINT64 pc_num_invalid_xasl_id;
+  UINT64 pc_num_query_string_hash_entries;
+  UINT64 pc_num_xasl_id_hash_entries;
+  UINT64 pc_num_class_oid_hash_entries;
+
   /* Other statistics */
   UINT64 pb_hit_ratio;
   /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
@@ -249,7 +261,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of field of MNT_SERVER_EXEC_STATS structure */
-#define MNT_SIZE_OF_SERVER_EXEC_STATS 70
+#define MNT_SIZE_OF_SERVER_EXEC_STATS 80
 
 /* The exact size of mnt_server_exec_stats structure */
 #define MNT_SERVER_EXEC_STATS_SIZEOF \
@@ -597,6 +609,28 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_net_requests(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_net_requests(thread_p)
 
+/* Plan cache */
+#define mnt_pc_add(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_add(thread_p)
+#define mnt_pc_lookup(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_lookup(thread_p)
+#define mnt_pc_hit(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_hit(thread_p)
+#define mnt_pc_miss(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_miss(thread_p)
+#define mnt_pc_full(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_full(thread_p)
+#define mnt_pc_delete(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_delete(thread_p)
+#define mnt_pc_invalid_xasl_id(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_invalid_xasl_id(thread_p)
+#define mnt_pc_query_string_hash_entries(thread_p, num_entries) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_query_string_hash_entries(thread_p, num_entries)
+#define mnt_pc_xasl_id_hash_entries(thread_p, num_entries) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_xasl_id_hash_entries(thread_p, num_entries)
+#define mnt_pc_class_oid_hash_entries(thread_p, num_entries) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_class_oid_hash_entries(thread_p, num_entries)
+
 extern MNT_SERVER_EXEC_STATS *mnt_server_get_stats (THREAD_ENTRY * thread_p);
 extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
 
@@ -687,6 +721,20 @@ extern UINT64 mnt_get_pb_ioreads (THREAD_ENTRY * thread_p);
 extern UINT64 mnt_get_sort_io_pages (THREAD_ENTRY * thread_p);
 extern UINT64 mnt_get_sort_data_pages (THREAD_ENTRY * thread_p);
 
+extern void mnt_x_pc_add (THREAD_ENTRY * thread_p);
+extern void mnt_x_pc_lookup (THREAD_ENTRY * thread_p);
+extern void mnt_x_pc_hit (THREAD_ENTRY * thread_p);
+extern void mnt_x_pc_miss (THREAD_ENTRY * thread_p);
+extern void mnt_x_pc_full (THREAD_ENTRY * thread_p);
+extern void mnt_x_pc_delete (THREAD_ENTRY * thread_p);
+extern void mnt_x_pc_invalid_xasl_id (THREAD_ENTRY * thread_p);
+extern void mnt_x_pc_query_string_hash_entries (THREAD_ENTRY * thread_p,
+						unsigned int num_entries);
+extern void mnt_x_pc_xasl_id_hash_entries (THREAD_ENTRY * thread_p,
+					   unsigned int num_entries);
+extern void mnt_x_pc_class_oid_hash_entries (THREAD_ENTRY * thread_p,
+					     unsigned int num_entries);
+
 #else /* SERVER_MODE || SA_MODE */
 
 #define mnt_file_creates(thread_p)
@@ -755,14 +803,26 @@ extern UINT64 mnt_get_sort_data_pages (THREAD_ENTRY * thread_p);
 
 #define mnt_net_requests(thread_p)
 
-#define mnt_prior_lsa_list_size (thread_p, list_size)
-#define mnt_prior_lsa_list_maxed (thread_p)
-#define mnt_prior_lsa_list_removed (thread_p)
+#define mnt_prior_lsa_list_size(thread_p, list_size)
+#define mnt_prior_lsa_list_maxed(thread_p)
+#define mnt_prior_lsa_list_removed(thread_p)
 
-#define mnt_hf_stats_bestspace_entries (thread_p, num_entries)
-#define mnt_hf_stats_bestspace_maxed (thread_p)
+#define mnt_hf_stats_bestspace_entries(thread_p, num_entries)
+#define mnt_hf_stats_bestspace_maxed(thread_p)
 
-#define mnt_fc_stats (thread_p, num_pages, num_log_pages, num_tokens)
+#define mnt_fc_stats(thread_p, num_pages, num_log_pages, num_tokens)
+
+#define mnt_pc_add(thread_p)
+#define mnt_pc_lookup(thread_p)
+#define mnt_pc_hit(thread_p)
+#define mnt_pc_miss(thread_p)
+#define mnt_pc_full(thread_p)
+#define mnt_pc_delete(thread_p)
+#define mnt_pc_invalid_xasl_id(thread_p)
+#define mnt_pc_query_string_hash_entries(thread_p, num_entries)
+#define mnt_pc_xasl_id_hash_entries(thread_p, num_entries)
+#define mnt_pc_class_oid_hash_entries(thread_p, num_entries)
+
 #endif /* CS_MODE */
 
 #endif /* _PERF_MONITOR_H_ */
