@@ -4589,8 +4589,9 @@ cci_get_err_msg_internal (int error)
     case CCI_ER_NO_PROPERTY:
       return "Cannot find a property";
 
-    case CCI_ER_PROPERTY_TYPE:
-      return "Invalid property type";
+      /* CCI_ER_INVALID_PROPERTY_VALUE equals to CCI_ER_PROPERTY_TYPE */
+    case CCI_ER_INVALID_PROPERTY_VALUE:
+      return "Invalid property value";
 
     case CCI_ER_INVALID_DATASOURCE:
       return "Invalid CCI datasource";
@@ -5557,7 +5558,7 @@ cci_property_get_int (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
 	}
       else
 	{
-	  set_error_buffer (err_buf, CCI_ER_PROPERTY_TYPE,
+	  set_error_buffer (err_buf, CCI_ER_INVALID_PROPERTY_VALUE,
 			    "strtol: %s", strerror (errno));
 	  return false;
 	}
@@ -5566,7 +5567,7 @@ cci_property_get_int (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
   if (*out_value < min || *out_value > max)
     {
       reset_error_buffer (err_buf);
-      set_error_buffer (err_buf, CCI_ER_PROPERTY_TYPE,
+      set_error_buffer (err_buf, CCI_ER_INVALID_PROPERTY_VALUE,
 			"The %d is out of range (%s, %d to %d).",
 			*out_value, datasource_key[key], min, max);
       return false;
@@ -5613,7 +5614,7 @@ cci_property_get_bool_internal (T_CCI_PROPERTIES * prop,
 	}
       else
 	{
-	  set_error_buffer (err_buf, CCI_ER_PROPERTY_TYPE,
+	  set_error_buffer (err_buf, CCI_ER_INVALID_PROPERTY_VALUE,
 			    "boolean parsing : %s", tmp);
 	  return false;
 	}
@@ -5696,7 +5697,7 @@ cci_property_get_isolation (T_CCI_PROPERTIES * prop,
       T_CCI_TRAN_ISOLATION i = cci_property_conv_isolation (tmp);
       if (i > TRAN_ISOLATION_MAX)
 	{
-	  set_error_buffer (err_buf, CCI_ER_PROPERTY_TYPE,
+	  set_error_buffer (err_buf, CCI_ER_INVALID_PROPERTY_VALUE,
 			    "isolation parsing : %s", tmp);
 	  return false;
 	}
@@ -5944,16 +5945,16 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
 
   if (!cci_property_get_int (prop, CCI_DS_KEY_MAX_POOL_SIZE,
 			     &ds->max_pool_size, ds->pool_size,
-			     1, INT_MAX, err_buf))
+			     1, INT_MAX, &latest_err_buf))
     {
       goto create_datasource_error;
     }
   if (ds->max_pool_size < ds->pool_size)
     {
-      err_buf->err_code = CCI_ER_PROPERTY_TYPE;
-      if (err_buf->err_msg)
+      latest_err_buf.err_code = CCI_ER_INVALID_PROPERTY_VALUE;
+      if (latest_err_buf.err_msg)
 	{
-	  snprintf (err_buf->err_msg, 1023,
+	  snprintf (latest_err_buf.err_msg, 1023,
 		    "'max_pool_size' should be greater than 'pool_size'");
 	}
       goto create_datasource_error;
@@ -6265,7 +6266,7 @@ cci_datasource_change_property (T_CCI_DATASOURCE * ds, const char *key,
 
       if (v > ds->max_pool_size)
 	{
-	  error = CCI_ER_PROPERTY_TYPE;
+	  error = CCI_ER_INVALID_PROPERTY_VALUE;
 	  goto change_property_end;
 	}
 
