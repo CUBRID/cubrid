@@ -123,7 +123,7 @@ static void qo_plan_del_ref_func (QO_PLAN * plan, void *ignore);
 
 static void qo_generic_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *,
 			     void (*)(QO_PLAN *, void *), void *);
-static void qo_plan_print_sort_spec_helper (PT_NODE *, FILE *, int);
+static void qo_plan_print_sort_spec_helper (PT_NODE *, bool, FILE *, int);
 static void qo_plan_print_sort_spec (QO_PLAN *, FILE *, int);
 static void qo_plan_print_costs (QO_PLAN *, FILE *, int);
 static void qo_plan_print_projected_segs (QO_PLAN *, FILE *, int);
@@ -1229,9 +1229,11 @@ qo_generic_walk (QO_PLAN * plan,
  *   howfar(in):
  */
 static void
-qo_plan_print_sort_spec_helper (PT_NODE * list, FILE * f, int howfar)
+qo_plan_print_sort_spec_helper (PT_NODE * list, bool is_iscan_asc, FILE * f,
+				int howfar)
 {
   const char *prefix;
+  bool is_sort_spec_asc = true;
 
   if (list == NULL)
     {
@@ -1248,9 +1250,20 @@ qo_plan_print_sort_spec_helper (PT_NODE * list, FILE * f, int howfar)
 	  break;
 	}
       fputs (prefix, f);
+
+      if (list->info.sort_spec.asc_or_desc == PT_ASC)
+	{
+	  is_sort_spec_asc = true;
+	}
+      else
+	{
+	  is_sort_spec_asc = false;
+	}
+
       fprintf (f, "%d %s",
 	       list->info.sort_spec.pos_descr.pos_no,
-	       list->info.sort_spec.asc_or_desc == PT_ASC ? "asc" : "desc");
+	       (is_sort_spec_asc == is_iscan_asc) ? "asc" : "desc");
+
       if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE
 				 (list->info.sort_spec.pos_descr.dom))
 	  && TP_DOMAIN_COLLATION (list->info.sort_spec.pos_descr.dom)
@@ -1275,12 +1288,25 @@ qo_plan_print_sort_spec_helper (PT_NODE * list, FILE * f, int howfar)
 static void
 qo_plan_print_sort_spec (QO_PLAN * plan, FILE * f, int howfar)
 {
+  bool is_iscan_asc = true;
+
   if (plan->top_rooted != true)
     {				/* check for top level plan */
       return;
     }
 
-  qo_plan_print_sort_spec_helper (plan->iscan_sort_list, f, howfar);
+  is_iscan_asc = plan->use_iscan_descending ? false : true;
+
+  if (is_iscan_asc == false)
+    {
+      assert (plan->iscan_sort_list != NULL);
+      assert (qo_is_iscan (plan)
+	      || qo_is_iscan_from_groupby (plan)
+	      || qo_is_iscan_from_orderby (plan));
+    }
+
+  qo_plan_print_sort_spec_helper (plan->iscan_sort_list, is_iscan_asc, f,
+				  howfar);
 
   if (plan->plan_type == QO_PLANTYPE_SORT)
     {
@@ -1304,7 +1330,7 @@ qo_plan_print_sort_spec (QO_PLAN * plan, FILE * f, int howfar)
 	  && tree->node_type == PT_SELECT)
 	{
 	  qo_plan_print_sort_spec_helper (tree->info.query.q.select.group_by,
-					  f, howfar);
+					  true, f, howfar);
 	}
 
       if ((plan->plan_un.sort.sort_type == SORT_DISTINCT ||
@@ -1312,7 +1338,7 @@ qo_plan_print_sort_spec (QO_PLAN * plan, FILE * f, int howfar)
 	  && PT_IS_QUERY (tree))
 	{
 	  qo_plan_print_sort_spec_helper (tree->info.query.order_by,
-					  f, howfar);
+					  true, f, howfar);
 	}
     }
 }
