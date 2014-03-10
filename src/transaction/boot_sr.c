@@ -3805,9 +3805,6 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
 
   tp_init ();
 
-  /* Initialize tsc-timer */
-  tsc_init ();
-
   if (boot_restart_server (thread_p, print_restart, db_name, true, true,
 			   r_args) != NO_ERROR)
     {
