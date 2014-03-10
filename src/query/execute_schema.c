@@ -355,7 +355,7 @@ static int do_recreate_att_constraints (MOP class_mop,
 static int check_change_attribute (PARSER_CONTEXT * parser,
 				   DB_CTMPL * ctemplate, PT_NODE * attribute,
 				   PT_NODE * old_name_node,
-				   PT_NODE * constraints,
+				   PT_NODE ** pointer_constraints,
 				   SM_ATTR_PROP_CHG * attr_chg_prop,
 				   SM_ATTR_CHG_SOL * change_mode);
 
@@ -9650,7 +9650,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 				  attr_def_list,
 				  alter->info.alter.alter_clause.attr_mthd.
 				  attr_old_name,
-				  alter->info.alter.constraint_list,
+				  &(alter->info.alter.constraint_list),
 				  &attr_chg_prop, &change_mode);
   if (error != NO_ERROR)
     {
@@ -10497,8 +10497,10 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   /* the serial property has not changed, we are only dealing with renaming */
   if (is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_DIFF)
       && attribute->info.attr_def.auto_increment != NULL
-      && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
-      && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_LOST)
+      && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR],
+			   ATT_CHG_PROPERTY_DIFF)
+      && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR],
+			   ATT_CHG_PROPERTY_LOST)
       && !is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR],
 			   ATT_CHG_PROPERTY_GAINED))
     {
@@ -10514,8 +10516,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
 	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name,
-					  ctemplate->name,
-					  old_name);
+					  ctemplate->name, old_name);
 	  serial_mop =
 	    do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
 				  auto_increment_name);
@@ -10525,9 +10526,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       assert_release (found_att->auto_increment);
 
       error =
-	    do_update_auto_increment_serial_on_rename (found_att->auto_increment,
-						       ctemplate->name,
-						       new_name);
+	do_update_auto_increment_serial_on_rename (found_att->auto_increment,
+						   ctemplate->name, new_name);
 
       if (error != NO_ERROR)
 	{
@@ -13049,7 +13049,7 @@ error_exit:
 static int
 check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 			PT_NODE * attribute, PT_NODE * old_name_node,
-			PT_NODE * constraints,
+			PT_NODE ** pointer_constraints,
 			SM_ATTR_PROP_CHG * attr_chg_prop,
 			SM_ATTR_CHG_SOL * change_mode)
 {
@@ -13063,6 +13063,9 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   DB_VALUE def_value;
   DB_VALUE *ptr_def = &def_value;
   PT_NODE *cnstr;
+  PT_NODE *not_null_node = NULL, *pk_node = NULL, *previous_node =
+    NULL, *tmp_node = NULL;
+  PT_NODE *constraints = *pointer_constraints;
 
   assert (attr_chg_prop != NULL);
   assert (change_mode != NULL);
@@ -13120,6 +13123,46 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	      goto exit;
 	    }
 	}
+    }
+
+  /* Try to find out the combined constraints definition of NOT_NULL and PK */
+  for (cnstr = constraints; cnstr != NULL;
+       tmp_node = cnstr, cnstr = cnstr->next)
+    {
+      if (cnstr->info.constraint.type == PT_CONSTRAIN_NOT_NULL)
+	{
+	  not_null_node = cnstr;
+	  previous_node = tmp_node;
+	}
+      else if (cnstr->info.constraint.type == PT_CONSTRAIN_PRIMARY_KEY)
+	{
+	  pk_node = cnstr;
+	}
+
+      if (not_null_node != NULL && pk_node != NULL)
+	{
+	  break;
+	}
+    }
+
+  /* Exclude/remove the duplicated NOT_NULL constraint which would be
+   * implicitly defined by PK.
+   */
+  if (not_null_node != NULL && pk_node != NULL)
+    {
+      if (previous_node == NULL)
+	{
+	  /* At the head of the list */
+	  constraints = not_null_node->next;
+	  *pointer_constraints = constraints;
+	}
+      else
+	{
+	  previous_node->next = not_null_node->next;
+	}
+
+      not_null_node->next = NULL;
+      parser_free_node (parser, not_null_node);
     }
 
   error =
