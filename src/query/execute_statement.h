@@ -52,6 +52,13 @@ extern int do_create_auto_increment_serial (PARSER_CONTEXT * parser,
 					    const char *class_name,
 					    PT_NODE * att);
 
+extern int do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT *
+							parser,
+							MOP * serial_object,
+							const char
+							*class_name,
+							PT_NODE * att);
+
 extern int do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement);
 

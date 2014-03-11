@@ -10423,6 +10423,13 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       /* delete current serial */
       int save;
       OID *oidp, serial_obj_id;
+      char *name = found_att->header.name;
+
+      if (is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_DIFF))
+	{
+	  name = old_name;
+	  assert (name != NULL);
+	}
 
       OID_SET_NULL (&serial_obj_id);
 
@@ -10434,8 +10441,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
 	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name,
-					  ctemplate->name,
-					  found_att->header.name);
+					  ctemplate->name, name);
 	  serial_mop =
 	    do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
 				  auto_increment_name);
@@ -10472,6 +10478,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       found_att->flags &= ~(SM_ATTFLAG_AUTO_INCREMENT);
       found_att->auto_increment = NULL;
     }
+
   /* create or re-create serial with new properties */
   if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
       || is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR],
@@ -10491,6 +10498,10 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	      found_att->auto_increment = auto_increment_obj;
 	      found_att->flags |= SM_ATTFLAG_AUTO_INCREMENT;
 	    }
+	}
+      else
+	{
+	  goto exit;
 	}
     }
 
@@ -10530,6 +10541,40 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 						   ctemplate->name, new_name);
 
       if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
+  /* attribute type changed, and auto_increment is set to use(unchanged),
+   * update max_val in db_serial according to new type
+   */
+  if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR],
+		       ATT_CHG_PROPERTY_PRESENT_OLD
+		       | ATT_CHG_PROPERTY_UNCHANGED)
+      && is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_DIFF))
+    {
+      MOP auto_increment_obj = NULL;
+
+      assert (attribute->info.attr_def.auto_increment != NULL);
+      assert_release (found_att->auto_increment != NULL);
+
+      error =
+	do_update_maxvalue_of_auto_increment_serial (parser,
+						     &auto_increment_obj,
+						     ctemplate->name,
+						     attribute);
+
+      if (error == NO_ERROR)
+	{
+	  assert_release (auto_increment_obj != NULL);
+	  if (found_att != NULL)
+	    {
+	      found_att->auto_increment = auto_increment_obj;
+	      found_att->flags |= SM_ATTFLAG_AUTO_INCREMENT;
+	    }
+	}
+      else
 	{
 	  goto exit;
 	}

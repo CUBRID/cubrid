@@ -1864,6 +1864,212 @@ end:
 }
 
 /*
+ * do_update_maxvalue_of_auto_increment_serial()
+ *   usage: update max_val of serial object
+ *   return: Error code
+ *   parser(in): Parser context
+ *   serial_object(out):
+ *   class_name(in):
+ *   att(in):
+ *
+ * Note:
+ */
+int
+do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser,
+					     MOP * serial_object,
+					     const char *class_name,
+					     PT_NODE * att)
+{
+  MOP serial_class, serial_mop;
+  DB_OTMPL *obj_tmpl = NULL;
+  DB_IDENTIFIER serial_obj_id;
+  DB_DATA_STATUS data_stat;
+  int error = NO_ERROR;
+  PT_NODE *dtyp;
+  char *att_name = NULL, *serial_name = NULL;
+  DB_VALUE e38, current_val, max_val, value;
+  int i, compare_result, save;
+  char *p, num[DB_MAX_NUMERIC_PRECISION + 1];
+  char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
+  size_t name_len;
+  bool au_disable_flag = false;
+
+  db_make_null (&e38);
+  db_make_null (&value);
+  db_make_null (&current_val);
+  db_make_null (&max_val);
+  OID_SET_NULL (&serial_obj_id);
+
+  numeric_coerce_string_to_num ("99999999999999999999999999999999999999",
+				DB_MAX_NUMERIC_PRECISION,
+				INTL_CODESET_ISO88591, &e38);
+
+  assert_release (att->info.attr_def.auto_increment != NULL);
+  assert (serial_object != NULL);
+
+  /* find db_serial */
+  serial_class = sm_find_class (CT_SERIAL_NAME);
+  if (serial_class == NULL)
+    {
+      error = ER_QPROC_DB_SERIAL_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  att_name = (char *) (att->info.attr_def.attr_name->alias_print
+		       ? att->info.attr_def.attr_name->alias_print
+		       : att->info.attr_def.attr_name->info.name.original);
+
+  sm_downcase_name (att_name, att_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
+  att_name = att_downcase_name;
+
+  /* serial_name : <class_name>_ai_<att_name> */
+  name_len = (strlen (class_name) + strlen (att_name)
+	      + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
+  serial_name = (char *) malloc (name_len);
+  if (serial_name == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name_len);
+      goto end;
+    }
+
+  SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, att_name);
+
+  /* get serial mop by serial name */
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class,
+				     serial_name);
+  if (serial_mop == NULL)
+    {
+      error = ER_QPROC_SERIAL_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, serial_name);
+      goto end;
+    }
+
+  /*
+   * after serial.next_value, the currect value maybe changed, but cub_cas
+   * still hold the old value. To get the new value. we need decache it
+   * then refetch it from server again.
+   */
+  assert (WS_ISDIRTY (serial_mop) == false);
+
+  ws_decache (serial_mop);
+
+  error = au_fetch_instance_force (serial_mop, NULL, DB_FETCH_WRITE);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* get current value */
+  error = db_get (serial_mop, SERIAL_ATTR_CURRENT_VAL, &current_val);
+  if (error < 0)
+    {
+      goto end;
+    }
+
+  /* max value - depends on att's domain */
+  db_value_domain_init (&max_val,
+			DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+
+  dtyp = att->data_type;
+  switch (att->type_enum)
+    {
+    case PT_TYPE_INTEGER:
+      db_make_int (&value, DB_INT32_MAX);
+      break;
+    case PT_TYPE_BIGINT:
+      db_make_bigint (&value, DB_BIGINT_MAX);
+      break;
+    case PT_TYPE_SMALLINT:
+      db_make_int (&value, DB_INT16_MAX);
+      break;
+    case PT_TYPE_NUMERIC:
+      memset (num, '\0', DB_MAX_NUMERIC_PRECISION + 1);
+      for (i = 0, p = num; i < dtyp->info.data_type.precision; i++, p++)
+	{
+	  *p = '9';
+	}
+
+      *p = '\0';
+
+      (void) numeric_coerce_string_to_num (num,
+					   dtyp->info.data_type.precision,
+					   INTL_CODESET_ISO88591, &value);
+      break;
+    default:
+      /* max numeric */
+      db_value_clone (&e38, &value);
+    }
+
+  error = numeric_db_value_coerce_to_num (&value, &max_val, &data_stat);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* check (current_val <= max_val) */
+  compare_result = tp_value_compare (&current_val, &max_val, 1, 0);
+  if (compare_result != DB_LT && compare_result != DB_EQ)
+    {
+      error = ER_AUTO_INCREMENT_STARTVAL_MUST_LT_MAXVAL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  /* update serial object in db_serial */
+  AU_DISABLE (save);
+  au_disable_flag = true;
+
+  obj_tmpl = dbt_edit_object (serial_mop);
+  if (obj_tmpl == NULL)
+    {
+      error = er_errid ();
+      goto end;
+    }
+
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, &max_val);
+  if (error < 0)
+    {
+      goto end;
+    }
+
+  serial_mop = dbt_finish_object (obj_tmpl);
+  if (serial_mop == NULL)
+    {
+      error = er_errid ();
+      goto end;
+    }
+  else
+    {
+      *serial_object = serial_mop;
+    }
+
+end:
+  if (!OID_ISNULL (&serial_obj_id))
+    {
+      (void) serial_decache ((OID *) (&serial_obj_id));
+    }
+
+  if (au_disable_flag == true)
+    {
+      AU_ENABLE (save);
+    }
+
+  pr_clear_value (&e38);
+  pr_clear_value (&value);
+  pr_clear_value (&current_val);
+  pr_clear_value (&max_val);
+
+  if (serial_name != NULL)
+    {
+      free_and_init (serial_name);
+    }
+
+  return error;
+}
+
+/*
  * do_alter_serial() -
  *   return: Error code
  *   parser(in): Parser context
@@ -1929,6 +2135,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&class_name_val);
   db_make_null (&abs_inc_val);
   db_make_null (&range_val);
+  OID_SET_NULL (&serial_obj_id);
 
 
   /*
@@ -2448,22 +2655,17 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   serial_object = dbt_finish_object (obj_tmpl);
-
-  AU_ENABLE (save);
-  au_disable_flag = false;
-
   if (serial_object == NULL)
     {
       error = er_errid ();
       goto end;
     }
 
-  (void) serial_decache ((OID *) (&serial_obj_id));
-
-  return NO_ERROR;
-
 end:
-  (void) serial_decache ((OID *) (&serial_obj_id));
+  if (!OID_ISNULL (&serial_obj_id))
+    {
+      (void) serial_decache ((OID *) (&serial_obj_id));
+    }
 
   if (au_disable_flag == true)
     {
@@ -2559,20 +2761,17 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  AU_ENABLE (save);
-  au_disable_flag = false;
-
-  (void) serial_decache (&serial_obj_id);
-
-  return NO_ERROR;
-
 end:
-  (void) serial_decache (&serial_obj_id);
+  if (!OID_ISNULL (&serial_obj_id))
+    {
+      (void) serial_decache (&serial_obj_id);
+    }
 
   if (au_disable_flag == true)
     {
       AU_ENABLE (save);
     }
+
   return error;
 }
 
