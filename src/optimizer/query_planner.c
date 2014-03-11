@@ -1041,8 +1041,7 @@ qo_top_plan_new (QO_PLAN * plan)
 		  /* if index plan and can't skip group by, we search
 		   * that maybe a descending scan can be used.
 		   */
-		  if ((qo_is_iscan (plan) || qo_is_iscan_from_groupby (plan)
-		       || qo_is_iscan_from_orderby (plan)) && !groupby_skip)
+		  if (qo_is_interesting_order_scan (plan) && !groupby_skip)
 		    {
 		      groupby_skip = qo_check_groupby_skip_descending (plan,
 								       group_sort_list);
@@ -1094,6 +1093,7 @@ qo_top_plan_new (QO_PLAN * plan)
 		}
 
 	      plan = qo_sort_new (plan, QO_UNORDERED, SORT_GROUPBY);
+	      assert (plan->iscan_sort_list == NULL);
 	    }
 	}
 
@@ -1140,6 +1140,9 @@ qo_top_plan_new (QO_PLAN * plan)
 
 			      if (orderby_skip)
 				{
+				  assert (qo_is_interesting_order_scan (plan)
+					  || plan->plan_type ==
+					  QO_PLANTYPE_JOIN);
 				  plan->use_iscan_descending = true;
 				}
 			    }
@@ -1296,14 +1299,6 @@ qo_plan_print_sort_spec (QO_PLAN * plan, FILE * f, int howfar)
     }
 
   is_iscan_asc = plan->use_iscan_descending ? false : true;
-
-  if (is_iscan_asc == false)
-    {
-      assert (plan->iscan_sort_list != NULL);
-      assert (qo_is_iscan (plan)
-	      || qo_is_iscan_from_groupby (plan)
-	      || qo_is_iscan_from_orderby (plan));
-    }
 
   qo_plan_print_sort_spec_helper (plan->iscan_sort_list, is_iscan_asc, f,
 				  howfar);
