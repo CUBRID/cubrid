@@ -1658,6 +1658,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 286 %1$s 인자가 누락되었습니다.
 287 %1$s은(는) 알 수 없는 인자입니다.
 288 분할 테이블 내의 모든 분할을 제거하는 것은 허용되지 않습니다. 'DROP TABLE' 구문을 사용하십시오.
+289 The expression including %1$s is not allowed in this context.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

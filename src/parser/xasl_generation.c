@@ -7049,7 +7049,28 @@ pt_make_regu_numbering (PARSER_CONTEXT * parser, const PT_NODE * node)
     }
   else
     {
-      PT_INTERNAL_ERROR (parser, "generate inst_num or orderby_num");
+      if (parser && !pt_has_error (parser))
+	{
+	  switch (node->info.expr.op)
+	    {
+	    case PT_INST_NUM:
+	    case PT_ROWNUM:
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_INSTORDERBY_NUM_NOT_ALLOWED,
+			  "INST_NUM() or ROWNUM");
+	      break;
+
+	    case PT_ORDERBY_NUM:
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_INSTORDERBY_NUM_NOT_ALLOWED,
+			  "ORDERBY_NUM()");
+	      break;
+
+	    default:
+	      assert (false);
+
+	    }
+	}
     }
 
   return regu;

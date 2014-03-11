@@ -1658,6 +1658,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 286 Argument %1$s is missing.
 287 Unknown argument %1$s.
 288 Cannot remove all partitions, use DROP TABLE instead.
+289 The expression including %1$s is not allowed in this context.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.
