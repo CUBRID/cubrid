@@ -3834,6 +3834,18 @@ qo_plan_cmp_prefer_covering_index (QO_PLAN * scan_plan_p,
       return PLAN_COMP_UNK;
     }
 
+  if (qo_is_index_iss_scan (scan_plan_p)
+      || qo_is_index_loose_scan (scan_plan_p))
+    {
+      return PLAN_COMP_UNK;
+    }
+
+  if (qo_is_index_iss_scan (sort_subplan_p)
+      || qo_is_index_loose_scan (sort_subplan_p))
+    {
+      return PLAN_COMP_UNK;
+    }
+
   if (qo_is_index_covering_scan (sort_subplan_p))
     {
       /* if the sort plan contains a index plan with segment covering,
@@ -4004,15 +4016,20 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  return PLAN_COMP_GT;
 	}
 
-      if (a->plan_un.scan.index && a->plan_un.scan.index->head->groupby_skip)
+      if (!qo_is_index_iss_scan (a) && !qo_is_index_loose_scan (a))
 	{
-	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
-	  return PLAN_COMP_LT;
-	}
-      if (a->plan_un.scan.index && a->plan_un.scan.index->head->orderby_skip)
-	{
-	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
-	  return PLAN_COMP_LT;
+	  if (a->plan_un.scan.index
+	      && a->plan_un.scan.index->head->groupby_skip)
+	    {
+	      QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	      return PLAN_COMP_LT;
+	    }
+	  if (a->plan_un.scan.index
+	      && a->plan_un.scan.index->head->orderby_skip)
+	    {
+	      QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	      return PLAN_COMP_LT;
+	    }
 	}
     }
 
@@ -4039,15 +4056,20 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  return PLAN_COMP_LT;
 	}
 
-      if (b->plan_un.scan.index && b->plan_un.scan.index->head->groupby_skip)
+      if (!qo_is_index_iss_scan (b) && !qo_is_index_loose_scan (b))
 	{
-	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
-	  return PLAN_COMP_GT;
-	}
-      if (b->plan_un.scan.index && b->plan_un.scan.index->head->orderby_skip)
-	{
-	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
-	  return PLAN_COMP_GT;
+	  if (b->plan_un.scan.index
+	      && b->plan_un.scan.index->head->groupby_skip)
+	    {
+	      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+	      return PLAN_COMP_GT;
+	    }
+	  if (b->plan_un.scan.index
+	      && b->plan_un.scan.index->head->orderby_skip)
+	    {
+	      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+	      return PLAN_COMP_GT;
+	    }
 	}
     }
 
@@ -4097,17 +4119,21 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       if (qo_is_interesting_order_scan (a)
 	  && qo_is_interesting_order_scan (b))
 	{
-	  if (a->plan_un.scan.index->head->orderby_skip
-	      && b->plan_un.scan.index->head->groupby_skip)
+	  if (!qo_is_index_iss_scan (a) && !qo_is_index_loose_scan (a)
+	      && !qo_is_index_iss_scan (b) && !qo_is_index_loose_scan (b))
 	    {
-	      QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
-	      return PLAN_COMP_LT;
-	    }
-	  else if (a->plan_un.scan.index->head->groupby_skip
-		   && b->plan_un.scan.index->head->orderby_skip)
-	    {
-	      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
-	      return PLAN_COMP_GT;
+	      if (a->plan_un.scan.index->head->orderby_skip
+		  && b->plan_un.scan.index->head->groupby_skip)
+		{
+		  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+		  return PLAN_COMP_LT;
+		}
+	      else if (a->plan_un.scan.index->head->groupby_skip
+		       && b->plan_un.scan.index->head->orderby_skip)
+		{
+		  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+		  return PLAN_COMP_GT;
+		}
 	    }
 	}
     }
@@ -4475,18 +4501,22 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  }
 
 	/* if both plans skip order by and same costs, take the larger one */
-	if (a_ent->orderby_skip && b_ent->orderby_skip)
+	if (!qo_is_index_iss_scan (a) && !qo_is_index_loose_scan (a)
+	    && !qo_is_index_iss_scan (b) && !qo_is_index_loose_scan (b))
 	  {
-	    if (a_ent->col_num > b_ent->col_num)
+	    if (a_ent->orderby_skip && b_ent->orderby_skip)
 	      {
-		QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
-		return PLAN_COMP_LT;
-	      }
-	    else if (a_ent->col_num < b_ent->col_num)
-	      {
-		/* if the new plan has more columns, prefer it */
-		QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
-		return PLAN_COMP_GT;
+		if (a_ent->col_num > b_ent->col_num)
+		  {
+		    QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+		    return PLAN_COMP_LT;
+		  }
+		else if (a_ent->col_num < b_ent->col_num)
+		  {
+		    /* if the new plan has more columns, prefer it */
+		    QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+		    return PLAN_COMP_GT;
+		  }
 	      }
 	  }
 
@@ -10977,6 +11007,17 @@ qo_group_by_skip_plans_cmp (QO_PLAN * a, QO_PLAN * b)
 
   if (a_ent == NULL || b_ent == NULL)
     {
+      assert (false);
+      return PLAN_COMP_UNK;
+    }
+
+  if (qo_is_index_iss_scan (a) || qo_is_index_loose_scan (a))
+    {
+      return PLAN_COMP_UNK;
+    }
+
+  if (qo_is_index_iss_scan (b) || qo_is_index_loose_scan (b))
+    {
       return PLAN_COMP_UNK;
     }
 
@@ -11022,6 +11063,17 @@ qo_order_by_skip_plans_cmp (QO_PLAN * a, QO_PLAN * b)
   b_ent = b->plan_un.scan.index->head;
 
   if (a_ent == NULL || b_ent == NULL)
+    {
+      assert (false);
+      return PLAN_COMP_UNK;
+    }
+
+  if (qo_is_index_iss_scan (a) || qo_is_index_loose_scan (a))
+    {
+      return PLAN_COMP_UNK;
+    }
+
+  if (qo_is_index_iss_scan (b) || qo_is_index_loose_scan (b))
     {
       return PLAN_COMP_UNK;
     }
