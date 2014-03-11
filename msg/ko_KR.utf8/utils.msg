@@ -221,6 +221,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     stop        [-i|데이터베이스 이름]\n\
     copylogdb   <start|stop> <데이터베이스 이름> <노드 이름>\n\
     applylogdb  <start|stop> <데이터베이스 이름> <노드 이름>\n\
+    replication <start|stop> <노드 이름>\n\
     status\n\
     reload\n
 31 '%1$s' 인자가 필요 없습니다.\n

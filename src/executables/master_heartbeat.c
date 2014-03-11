@@ -177,7 +177,9 @@ static HB_PROC_ENTRY *hb_return_proc_by_pid (int pid);
 static HB_PROC_ENTRY *hb_return_proc_by_fd (int sfd);
 static void hb_proc_make_arg (char **arg, char *argv);
 static HB_JOB_ARG *hb_deregister_process (HB_PROC_ENTRY * proc);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static void hb_deregister_nodes (char *node_to_dereg);
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* resource process connection */
 static int hb_resource_send_changemode (HB_PROC_ENTRY * proc);
@@ -4865,7 +4867,6 @@ hb_reload_config (void)
   HB_NODE_ENTRY *old_nodes;
   HB_NODE_ENTRY *old_node, *old_myself, *old_master, *new_node;
   HB_PING_HOST_ENTRY *old_ping_hosts;
-  char node_to_dereg[MAXHOSTNAMELEN * 16], *p, *last;
 
   if (hb_Cluster == NULL)
     {
@@ -4962,23 +4963,6 @@ hb_reload_config (void)
 	}
     }
 
-  /* find node to deregister */
-  node_to_dereg[0] = '\0';
-  p = node_to_dereg;
-  last = (char *) (p + sizeof (node_to_dereg));
-  for (old_node = old_nodes; old_node; old_node = old_node->next)
-    {
-      if (old_node->state != HB_NSTATE_REPLICA
-	  && old_node->host_name[0] != '\0')
-	{
-	  if (p != node_to_dereg)
-	    {
-	      p += snprintf (p, (last - p), ":");
-	    }
-	  p += snprintf (p, (last - p), "%s", old_node->host_name);
-	}
-    }
-
   hb_cluster_job_set_expire_and_reorder (HB_CJOB_CHECK_VALID_PING_SERVER,
 					 HB_JOB_TIMER_IMMEDIATELY);
 
@@ -4994,9 +4978,6 @@ hb_reload_config (void)
       hb_cluster_remove_all_nodes (old_nodes);
     }
   pthread_mutex_unlock (&hb_Cluster->lock);
-
-  /* deregister copylogdb/applylogdb if exists */
-  hb_deregister_nodes (node_to_dereg);
 
   return NO_ERROR;
 
@@ -5028,6 +5009,7 @@ reconfig_error:
   return error;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static void
 hb_deregister_nodes (char *node_to_dereg)
 {
@@ -5079,6 +5061,7 @@ hb_deregister_nodes (char *node_to_dereg)
 
   return;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * hb_get_ping_host_info_string -

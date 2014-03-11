@@ -221,6 +221,7 @@ Lệnh có thể dùng :\n\
     stop        [-i|tên cơ sở dữ liệu]\n\
     copylogdb   <start|stop> <tên cơ sở dữ> <liệu tên> node\n\
     applylogdb  <start|stop> <tên cơ sở dữ> <liệu tên> node\n\
+    replication <start|stop> node-name\n\
     status\n\
     reload\n
 31 Đối số'%1$s' không cần thiết.\n

@@ -221,6 +221,7 @@ cubrid 管理工具，版本 %s\n\
     stop        [-i|数据库名]\n\
     copylogdb   <start|stop> 数据库名 节点名\n\
     applylogdb  <start|stop> 数据库名 节点名\n\
+    replication <start|stop> node-name\n\
     status\n\
     reload\n
 31 不需要参数 '%1$s' .\n

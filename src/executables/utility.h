@@ -775,6 +775,7 @@ typedef struct _ha_config
 #define PRINT_CMD_APPLYLOGDB    "applylogdb"
 #define PRINT_CMD_GETID         "getid"
 #define PRINT_CMD_TEST          "test"
+#define PRINT_CMD_REPLICATION	"replication"
 
 #define PRINT_RESULT_SUCCESS    "success"
 #define PRINT_RESULT_FAIL       "fail"

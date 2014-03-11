@@ -221,6 +221,7 @@ commandដែលមាន:\n\
     stop        [-i|database-name]\n\
     copylogdb   <start|stop> database-name node-name\n\
     applylogdb  <start|stop> database-name node-name\n\
+    replication <start|stop> node-name\n\
     status\n\
     reload\n
 31 មិនត្រូវការពាក្យសំអាងខ្ទាស់'%1$s'។\n

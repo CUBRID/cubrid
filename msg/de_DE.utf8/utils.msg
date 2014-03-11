@@ -221,6 +221,7 @@ Vorhandene Befehle:\n\
     stop        [-i|database-name]\n\
     copylogdb   <start|stop> database-name node-name\n\
     applylogdb  <start|stop> database-name node-name\n\
+    replication <start|stop> node-name\n\
     status\n\
     reload\n
 31 '%1$s' Argument ist nicht nötig.\n

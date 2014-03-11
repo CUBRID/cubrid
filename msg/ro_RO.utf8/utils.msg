@@ -221,6 +221,7 @@ Comenzi disponibile:\n\
     stop        [-i|nume-baza-de-date]\n\
     copylogdb   <start|stop> nume-baza-de-date nume-nod\n\
     applylogdb  <start|stop> nume-baza-de-date nume-nod\n\
+    replication <start|stop> node-name\n\
     status\n\
     reload\n
 31 Argumentul '%1$s' nu este necesar.\n
