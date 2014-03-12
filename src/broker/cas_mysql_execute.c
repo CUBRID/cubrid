@@ -2038,6 +2038,10 @@ ignore_sql_comment (const char *stmt)
 	    {
 	      p += 1;
 	    }
+	  else if (*(p) == '(')
+	    {
+	      p += 1;
+	    }
 	  else if (*p == '#')
 	    {
 	      cmt_type = COMMENT_TYPE_SHARP;
