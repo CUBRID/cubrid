@@ -1135,8 +1135,9 @@ typedef enum
   PT_HINT_USE_INSERT_IDX = 0x400000,	/* 0100 0000 0000 0000 0000 0000 */
   /* do not generate SORT-LIMIT plan */
   PT_HINT_NO_SORT_LIMIT = 0x800000,	/* 1000 0000 0000 0000 0000 0000 */
-  PT_HINT_NO_HASH_AGGREGATE = 0x1000000	/* 0001 0000 0000 0000 0000 0000 0000 */
-    /* no hash aggregate evaluation */
+  PT_HINT_NO_HASH_AGGREGATE = 0x1000000,	/* 0001 0000 0000 0000 0000 0000 0000 */
+  /* no hash aggregate evaluation */
+  PT_HINT_SKIP_UPDATE_NULL = 0x2000000	/* 0010 0000 0000 0000 0000 0000 0000 */
 } PT_HINT_ENUM;
 
 
@@ -1729,6 +1730,7 @@ struct pt_alter_info
   PT_NODE *constraint_list;	/* constraints from ADD and CHANGE clauses */
   PT_NODE *create_index;	/* PT_CREATE_INDEX from ALTER ADD INDEX */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
+  PT_HINT_ENUM hint;
 };
 
 /* ALTER USER INFO */

@@ -9928,8 +9928,8 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 	    {
 	      const char *att_name = *(ci->att_names);
 
-	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT)
-		  == false)
+	      if (!prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT)
+		  && !(alter->info.alter.hint & PT_HINT_SKIP_UPDATE_NULL))
 		{
 		  char query[SM_MAX_IDENTIFIER_LENGTH * 4 + 36] = { 0 };
 		  const char *class_name = NULL;
@@ -9968,8 +9968,16 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 		    }
 		}
 
-	      error = db_constrain_non_null (class_mop, *(ci->att_names), 0,
-					     1);
+	      if (alter->info.alter.hint & PT_HINT_SKIP_UPDATE_NULL)
+		{
+		  error = db_add_constraint (class_mop, ci->constraint_type,
+					     NULL, ci->att_names, 0);
+		}
+	      else
+		{
+		  error = db_constrain_non_null (class_mop, *(ci->att_names),
+						 0, 1);
+		}
 	      if (error != NO_ERROR)
 		{
 		  goto exit;
@@ -12876,7 +12884,7 @@ do_update_new_notnull_cols_without_default (PARSER_CONTEXT * parser,
   PT_NODE *copy = NULL;
 
   assert (alter->node_type == PT_ALTER);
-  assert (alter->info.alter.code = PT_ADD_ATTR_MTHD);
+  assert (alter->info.alter.code == PT_ADD_ATTR_MTHD);
 
   /* Look for attributes that: have NOT NULL, do not have a DEFAULT
    * and their type has a "hard" default.
@@ -12929,6 +12937,7 @@ do_update_new_notnull_cols_without_default (PARSER_CONTEXT * parser,
       copy = parser_copy_tree (parser, attr);
       if (copy == NULL)
 	{
+	  attr->next = save;
 	  ERROR0 (error, ER_OUT_OF_VIRTUAL_MEMORY);
 	  parser_free_tree (parser, relevant_attrs);
 	  goto end;

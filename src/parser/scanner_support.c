@@ -394,6 +394,11 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.query.q.select.hint |= hint_table[i].hint;
 		}
 	      break;
+	    case PT_HINT_SKIP_UPDATE_NULL:
+	      if (node->node_type == PT_ALTER)
+		{
+		  node->info.alter.hint |= hint_table[i].hint;
+		}
 	    default:
 	      break;
 	    }

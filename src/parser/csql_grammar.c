@@ -37669,6 +37669,8 @@ PT_HINT parser_hint_table[] = {
   ,
   {"NO_HASH_AGGREGATE", NULL, PT_HINT_NO_HASH_AGGREGATE}
   ,
+  {"SKIP_UPDATE_NULL", NULL, PT_HINT_SKIP_UPDATE_NULL}
+  ,
   {NULL, NULL, -1}		/* mark as end */
 };
 
