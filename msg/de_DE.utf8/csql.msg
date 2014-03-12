@@ -46,7 +46,7 @@ gültigen Optionen:\n\
       --no-single-line         Ausführung ausgerichtet auf einer Zeile deaktivieren\n\
       --no-trigger-action      disable trigger action\n\
 \n\
-Für weitere Informationen, siehe http://www.cubrid.com\n
+Für weitere Informationen, siehe http://www.cubrid.org\n
 41 %s: der Umgebungswert von %s_MODE ist inkorrekt. \nEr sollte entweder %s oder %s sein.\n
 42 %s: zu viele Argumente gegeben. Maximum ist %d.\n
 43 %1$s: Das Root-Verzeichnis Umgebungsvariable ($CUBRID) soll gesetzt werden.\n

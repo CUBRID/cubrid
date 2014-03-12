@@ -117,7 +117,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     synccolldb\n\
 \n\
 %4$s (은)는 DBMS 관리 도구입니다.\n\
-추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.com\n
+추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
 12 '%1$s' 는 없는 유틸리티 이름입니다.\n'cubrid --help' 명령어로 사용법을 알아보세요.\n
 13 '%1$s' 는 잘못된 명령어입니다.\n'cubrid --help' 명령어로 사용법을 알아보세요.\n
 14 설정 파일에서 하나 이상의 필요한 속성을 읽어 들일 수 없습니다.\n
@@ -172,7 +172,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     synccolldb\n\
 \n\
 %4$s (은)는 DBMS  도구입니다.\n\
-추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.com\n
+추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
 24 cubrid 유틸리티, 버전 %1$s\n\
 사용법: %2$s service <명령어>\n\
 \n\

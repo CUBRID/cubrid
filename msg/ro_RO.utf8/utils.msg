@@ -117,7 +117,7 @@ Nume de utilitare de administrare disponibile:\n\
     synccolldb\n\
 \n\
 %s este un utilitar pentru SGDB.\n\
-Pentru informaţii suplimentare, accesaţi http://www.cubrid.com\n
+Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
 12 Numele de utilitar '%1$s' este invalid.\nTastaţi 'cubrid --help' pentru informaţii despre utilizare.\n
 13 comanda '%1$s' este invalidă.\nTastaţi 'cubrid --help' pentru informaţii despre utilizare.\n
 14 Una sau mai multe proprietăţi obligatorii din fişierele de configurare nu au putut fi încarcate.\n
@@ -172,7 +172,7 @@ Utilitare de administrare disponibile:\n\
     synccolldb\n\
 \n\
 %s este un utilitar pentru SGBD.\n\
-Pentru informaţii suplimentare, accesaţi http://www.cubrid.com\n
+Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
 24 utilitar CUBRID, versiunea %s\n\
 utilizare: %s service <comanda>\n\
 \n\

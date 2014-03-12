@@ -117,7 +117,7 @@ Nombre de utilidad admin disponible:\n\
     synccolldb\n\
 \n\
 %s es una hieramenta para DBMS.\n\
-Para informacion adicional, vea http://www.cubrid.com\n
+Para informacion adicional, vea http://www.cubrid.org\n
 12 '%1$s' nombre de utilidad es invalido.\nEscriba 'cubrid --help' para ver uso.\n
 13 '%1$s' comando es invalido.\nEscriba 'cubrid --help' para ver uso.\n
 14 No se pueden cargar una o más propiedades obligatorias en los archivos de configuración.\n
@@ -172,7 +172,7 @@ Utilidades de administrador disponible:\n\
     synccolldb\n\
 \n\
 %s es una hieramenta para DBMS.\n\
-Para informacion adicional, vea http://www.cubrid.com\n
+Para informacion adicional, vea http://www.cubrid.org\n
 24 utilidad de cubrid, version %s\n\
 uso: %s service <command>\n\
 \n\

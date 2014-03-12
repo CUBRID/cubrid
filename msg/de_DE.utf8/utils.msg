@@ -117,7 +117,7 @@ Vorhandene Admin-Utilitynamen:\n\
     synccolldb\n\
 \n\
 %s ist ein Werkzeug für DBMS.\n\
-Für zusätzliche Informationen, http://www.cubrid.com besuchen\n
+Für zusätzliche Informationen, http://www.cubrid.org besuchen\n
 12 '%1$s' Utilityname ist ungültig.\n'cubrid --help' für Anwendungshilfe eintippen.\n
 13 '%1$s' Befehl ist ungültig.\nType 'cubrid --help' für Anwendungshilfe eintippen.\n
 14 Eine oder mehrere Pflichteigenschaften konnten in den Konfigurationsdateien nicht geladen werden.\n
@@ -172,7 +172,7 @@ Vorhandene Administratorutilities:\n\
     synccolldb\n\
 \n\
 %s ist ein Werkzeug für DBMS.\n\
-Für zusätzliche Informationen, http://www.cubrid.com, besuchen\n
+Für zusätzliche Informationen, http://www.cubrid.org, besuchen\n
 24 Cubrid Utility, Version %s\n\
 Anwendung: %s service <Befehl>\n\
 \n\

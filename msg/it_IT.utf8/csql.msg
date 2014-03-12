@@ -46,7 +46,7 @@ opzioni valide:\n\
       --no-single-line         disattivare l'esecuzione orientata singola riga\n\
       --no-trigger-action      disable trigger action\n\
 \n\
-Per ulteriori informazioni, vedere http://www.cubrid.com\n
+Per ulteriori informazioni, vedere http://www.cubrid.org\n
 41 %s: non è corretto il valore di ambiente di %s_MODE. \nDovrebbe essere %s o %s.\n
 42 %s: troppi argomenti trovati. massimo è %d.\n
 43 %1$s: Deve essere impostata la variabile di ambiente di root directory ($CUBRID).\n

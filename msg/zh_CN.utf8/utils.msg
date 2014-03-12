@@ -117,7 +117,7 @@ cubrid 管理工具，版本 %s\n\
     synccolldb\n\
 \n\
 %s 是一个 DBMS 工具.\n\
-要寻找额外的信息, 可浏览 http://www.cubrid.com\n
+要寻找额外的信息, 可浏览 http://www.cubrid.org\n
 12 '%1$s' 应用工具名是无效的.\n输入 'cubrid --help' 查询帮助.\n
 13 '%1$s' 命令无效.\n输入 'cubrid --help' 查询帮助.\n
 14 无法读取从配置文件中读取一个或多个强制属性.\n
@@ -172,7 +172,7 @@ cubrid 管理工具，版本 %s\n\
     synccolldb\n\
 \n\
 %s 是一个 DBMS 工具.\n\
-要寻找额外的信息, 可浏览 http://www.cubrid.com\n
+要寻找额外的信息, 可浏览 http://www.cubrid.org\n
 24 cubrid 应用工具, 版本 %s\n\
 用法: %s service <命令>\n\
 \n\

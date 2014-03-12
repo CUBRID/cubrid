@@ -46,7 +46,7 @@ valid options:\n\
       --no-single-line         turn off single line oriented execution\n\
       --no-trigger-action      disable trigger action\n\
 \n\
-For additional information, see http://www.cubrid.com\n
+For additional information, see http://www.cubrid.org\n
 41 %1$s: the environment value of %2$s_MODE is incorrect. \nIt should be either %3$s or %4$s.\n
 42 %1$s: too many arguments given. maximum is %2$d.\n
 43 %1$s: The root directory environment variable ($CUBRID) should be set.\n

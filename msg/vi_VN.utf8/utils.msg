@@ -117,7 +117,7 @@ Các tên-tiện ích quản trị có thể dùng:\n\
     synccolldb\n\
 \n\
 %s là một công cụ cho DBMS.\n\
-Để biết thêm thông tin, truy cập http://www.cubrid.com\n
+Để biết thêm thông tin, truy cập http://www.cubrid.org\n
 12 tên-tiện ích '%1$s' không hợp lệ.\nGõ 'cubrid --help' để xem cách sử dụng.\n
 13 Lệnh '%1$s' không hợp lệ.\nGõ 'cubrid --help' để xem cách sử dụng.\n
 14 Không thể tải một hoặc nhiều thuộc tính bắt buộc trong tệp tin cấu hình.\n
@@ -172,7 +172,7 @@ Các tiện ích của quản trị viên có thể dùng:\n\
     synccolldb\n\
 \n\
 %s là một công cụ cho DBMS.\n\
-Để biết thêm thông tin, truy cập http://www.cubrid.com\n
+Để biết thêm thông tin, truy cập http://www.cubrid.org\n
 24 tiện ích cubrid, phiên bản %s\n\
 cách sử dụng: %s service <lệnh>\n\
 \n\

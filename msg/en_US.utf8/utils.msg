@@ -117,7 +117,7 @@ Available admin utility-name:\n\
     synccolldb\n\
 \n\
 %4$s is a tool for DBMS.\n\
-For additional information, see http://www.cubrid.com\n
+For additional information, see http://www.cubrid.org\n
 12 '%1$s' utility-name is invalid.\nType 'cubrid --help' to see usage.\n
 13 '%1$s' command is invalid.\nType 'cubrid --help' to see usage.\n
 14 Could not load one or more mandatory properties in configuration files.\n
@@ -172,7 +172,7 @@ Available administrator's utilities:\n\
     synccolldb\n\
 \n\
 %4$s is a tool for DBMS.\n\
-For additional information, see http://www.cubrid.com\n
+For additional information, see http://www.cubrid.org\n
 24 cubrid utility, version %1$s\n\
 usage: %2$s service <command>\n\
 \n\

@@ -46,7 +46,7 @@ optiuni valide:\n\
       --no-single-line         dezactivarea modului de execuţie linie cu linie\n\
       --no-trigger-action      disable trigger action\n\
 \n\
-Pentru informaţii suplimentare accesaţi http://www.cubrid.com\n
+Pentru informaţii suplimentare accesaţi http://www.cubrid.org\n
 41 %s: valoarea de mediu pentru %s_MODE este incorectă. \nTrebuie să fie %s sau %s.\n
 42 %s: prea multe argumente date. Maximul este %d.\n
 43 %1$s: Variabila de mediu ce indică directorul rădăcină ($CUBRID) trebuie setată.\n

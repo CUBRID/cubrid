@@ -117,7 +117,7 @@ Nom d'utilitaires d'administration disponible:\n\
     synccolldb\n\
 \n\
 %s est un outil de SGBD.\n\
-Pour plus d'informations, reportez-vous à http://www.cubrid.com\n
+Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
 12 '%1$s' Nom d'utilitaire pas valid.\nEntrez 'cubrid --help' pour voir l'utilisation.\n
 13 '%1$s' commande is invalide.\nEntrez 'cubrid --help' pour voir l'utilisation.\n
 14 Impossible de charger une ou plusieurs propriétés obligatoires dans les fichiers de configuration..\n
@@ -172,7 +172,7 @@ Utilitaires d'administrateur disponibles:\n\
     synccolldb\n\
 \n\
 %s is a tool for DBMS.\n\
-Pour plus d'informations, reportez-vous à http://www.cubrid.com\n
+Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
 24 utilitaire CUBRID, version %s\n\
 usage: %s service <command>\n\
 \n\

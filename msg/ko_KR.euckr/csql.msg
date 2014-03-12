@@ -46,7 +46,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
       --no-single-line         단일 라인 실행 안 함\n\
       --no-trigger-action      트리거 실행 안함\n\
 \n\
-추가적인 정보는 http://www.cubrid.com 에서 얻을 수 있습니다.\n
+추가적인 정보는 http://www.cubrid.org 에서 얻을 수 있습니다.\n
 41 %1$s: 환경 변수 %2$s_MODE 의 값이 틀림. \n%3$s 또는 %4$s 이어야 합니다.\n
 42 %1$s: 너무 많은 인자가 주어짐. 최대 개수는 %2$d 입니다.\n
 43 %1$s: 환경 변수 ($CUBRID) 가 설정되어야 합니다.\n

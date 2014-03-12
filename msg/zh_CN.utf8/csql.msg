@@ -46,7 +46,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
       --no-single-line         关闭单行执行模式\n\
       --no-trigger-action      disable trigger action\n\
 \n\
-额外的信息, 请浏览 http://www.cubrid.com\n
+额外的信息, 请浏览 http://www.cubrid.org\n
 41 %s: 环境变量 %s_MODE 的值不正确. \n应该是 %s 或 %s.\n
 42 %s: 指定的参数太多. 最大参数个数是 %d.\n
 43 %1$s: 根目录环境变量($CUBRID) 没有设置.\n

@@ -117,7 +117,7 @@ usage: %s <utility-name> [args]\n\
     synccolldb\n\
 \n\
 %s ជាឧបករណ៍សម្រាប់ DBMS។\n\
-សម្រាប់ពត៌មានបន្ថែម, សូមមើលhttp://www.cubrid.com\n
+សម្រាប់ពត៌មានបន្ថែម, សូមមើលhttp://www.cubrid.org\n
 12 ឈ្មោះ'%1$s' utility មិនសុពល។\nType 'cubrid --help' ដើម្បីមើល usage។\n
 13 '%1$s' command មិនសុពល។\nType 'cubrid --help' ដើម្បីមើលusage។\n
 14 មិនអាចផ្ទុកpropertiesមួយឬច្រើនក្នុងបញ្ជីconfigurationទេ។\n
@@ -172,7 +172,7 @@ administrator's utilitiesដែលមាន:\n\
     synccolldb\n\
 \n\
 %s ជាឧបករណ៍សម្រាប់ DBMS។\n\
-សម្រាប់ពត៌មានបន្ថែម, សូមមើលhttp://www.cubrid.com\n
+សម្រាប់ពត៌មានបន្ថែម, សូមមើលhttp://www.cubrid.org\n
 24 cubrid utility, version %s\n\
 usage: %s service <command>\n\
 \n\

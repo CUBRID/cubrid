@@ -46,7 +46,7 @@ tùy chọn có thể dùng:\n\
       --no-single-line         tắt thực thi theo định hướng dòng đơn\n\
       --no-trigger-action      disable trigger action\n\
 \n\
-Để biết thêm thông tin, truy cập http://www.cubrid.com\n
+Để biết thêm thông tin, truy cập http://www.cubrid.org\n
 41 %s: giá trị môi trường của %s_MODE không chính xác. \nNó phải là %s hoặc %s.\n
 42 %s: quá nhiều đối số được đưa ra. Tối đa là %d.\n
 43 %1$s: Biến môi trường thư mục gốc ($CUBRID) phải được thiết lập.\n

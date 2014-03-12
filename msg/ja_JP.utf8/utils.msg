@@ -117,7 +117,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     synccolldb\n\
 \n\
 %sはDBMS管理道具です。\n\
-追加情報は次のサイトをご覧になってください。http://www.cubrid.com\n
+追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n
 12 '%1$s'は正しくないユーティリティー名です。\n'cubrid --help'コマンドで使い方を確認してください。\n
 13 '%1$s'は正しくないコマンドです。\n'cubrid --help'コマンドで使い方を確認してください。\n
 14 設定ファイルから必要な一つ以上のアトリビュートを読み込むことができません。\n
@@ -172,7 +172,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     synccolldb\n\
 \n\
 %sはDBMS道具です。\n\
-追加情報は次のサイトをご覧になってください。http://www.cubrid.com\n
+追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n
 24 cubridユーティリティー、バージョン %s\n\
 使い方: %s service <コマンド>\n\
 \n\

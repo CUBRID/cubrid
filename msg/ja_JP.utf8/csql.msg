@@ -46,7 +46,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
       --no-single-line         シングルラインで実行しない\n\
       --no-trigger-action      disable trigger action\n\
 \n\
-追加情報は「http://www.cubrid.com」で得られます。\n
+追加情報は「http://www.cubrid.org」で得られます。\n
 41 %s: 正しくない環境バリアブル「%s_MODE」 \n%s、または%sしかできません。\n
 42 %s: 多すぎるパラメーター。最大%dです。\n
 43 %1$s: 環境バリアブル($CUBRID)が必要です。\n

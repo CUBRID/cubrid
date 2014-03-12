@@ -117,7 +117,7 @@ Mevcut yönetici yardımcı programı-adı:\n\
     synccolldb\n\
 \n\
 %s DBMS için bir araçtır.\n\
-Daha fazla bilgi için bkz:http://www.cubrid.com\n
+Daha fazla bilgi için bkz:http://www.cubrid.org\n
 12 '%1$s' yardımcı programı-adı geçersiz.\nTür 'cubrid --help' kullanıma bak.\n
 13 '%1$s' komutu geçersiz.\nTür 'cubrid --help' kullanıma bak.\n
 14 Yapılandırma dosyaları bir veya daha fazla zorunlu özellikleri yüklenemedi.\n
@@ -172,7 +172,7 @@ Mevcut yönetici programları:\n\
     synccolldb\n\
 \n\
 %s DBMS için bir araçtır.\n\
-Daha fazla bilgi için bkz: http://www.cubrid.com\n
+Daha fazla bilgi için bkz: http://www.cubrid.org\n
 24 cubrid yardımcı programı, sürüm %s\n\
 kullanım: %s service <komut>\n\
 \n\

@@ -46,7 +46,7 @@ opciones validas:\n\
       --no-single-line         desactivar modo de ejecucion linea suelta\n\
       --no-trigger-action      disable trigger action\n\
 \n\
-Para mas informacion, vea http://www.cubrid.com\n
+Para mas informacion, vea http://www.cubrid.org\n
 41 %s: el valor de entorno de %s_MODE es incorrecto. \nDeberia ser sea %s o %s.\n
 42 %s: demasiados argumentos dados. maximo es %d.\n
 43 %1$s: La variable ($CUBRID) de entorno del directorio de raiz deberia ser ajustada.\n

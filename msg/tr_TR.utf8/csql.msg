@@ -46,7 +46,7 @@ geçerli ayarlar:\n\
       --no-single-line         tek satır odaklı yürütmeyi kapatın\n\
       --no-trigger-action      disable trigger action\n\
 \n\
-Ek bilgi için, adresine bakın http://www.cubrid.com\n
+Ek bilgi için, adresine bakın http://www.cubrid.org\n
 41 %s: doğru olmayan %s_MODE ortam değeri. \n%s veya %s olmalıdır.\n
 42 %s: çok fazla argüman verildi.en fazla %d.\n
 43 %1$s: Kök dizin ortam değişkeni ($CUBRID) ayarlanmalıdır.\n
