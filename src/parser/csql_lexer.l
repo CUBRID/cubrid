@@ -939,7 +939,26 @@ _[uU][tT][fF]8[']		{
 								      
 								    for (i = 1; i < len - 1 && IS_BLANK_CHAR (yytext[i]); i++)
 								    ;
+
 								    csql_yylval.cptr = pt_makename(&yytext[i]);
+
+								    /* Distinguish some special words/tokens from normal identifiers (IdName). 
+								     * Because these special words (companioned with DOT/RIGHT_ARROW) are 
+								     * reserved for special use purpose in some clauses' context.
+								     */
+								    if (strcasecmp (csql_yylval.cptr, "NONE") == 0)
+								      {
+								        return NONE;
+								      }
+								    else if (strcasecmp (csql_yylval.cptr, "IDENTITY") == 0)
+								      {
+								        return IDENTITY;
+								      }
+								    else if (strcasecmp (csql_yylval.cptr, "OBJECT") == 0)
+								      {
+								        return OBJECT;
+								      }
+
 								    return IdName;
 								  }
 								}
@@ -966,7 +985,26 @@ _[uU][tT][fF]8[']		{
 								    
 								    for (i = 2; i < len - 1 && IS_BLANK_CHAR (yytext[i]); i++)
 								    ;
+								    
 								    csql_yylval.cptr = pt_makename(&yytext[i]);
+
+								    /* Distinguish some special words/tokens from normal identifiers (IdName). 
+								     * Because these special words (companioned with DOT/RIGHT_ARROW) are 
+								     * reserved for special use purpose in some clauses' context.
+								     */
+								    if (strcasecmp (csql_yylval.cptr, "NONE") == 0)
+								      {
+								        return NONE;
+								      }
+								    else if (strcasecmp (csql_yylval.cptr, "IDENTITY") == 0)
+								      {
+								        return IDENTITY;
+								      }
+								    else if (strcasecmp (csql_yylval.cptr, "OBJECT") == 0)
+								      {
+								        return OBJECT;
+								      }
+
 								    return IdName;
 								  }
 								}

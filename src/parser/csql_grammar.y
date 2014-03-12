@@ -1215,7 +1215,6 @@ typedef struct YYLTYPE
 %token NCHAR
 %token NEXT
 %token NO
-%token NONE
 %token NOT
 %token Null
 %token NULLIF
@@ -1475,6 +1474,7 @@ typedef struct YYLTYPE
 %token <cptr> NOCACHE
 %token <cptr> NOMAXVALUE
 %token <cptr> NOMINVALUE
+%token <cptr> NONE
 %token <cptr> NTH_VALUE
 %token <cptr> NTILE
 %token <cptr> NULLS
@@ -12907,18 +12907,6 @@ index_name
 		{{
 
 			PT_NODE *node = $1;
-			/* Since both .NONE and ."NONE" (or .[NONE], .`NONE`) will be
-			 * parsed as DOT IdName by lexer. In order to distinguish the 
-			 * ambiguous word "NONE" (reserved word or normal IdName) in the 
-			 * context of USING INDEX clause, we have to check the
-			 * last character of the word "NONE" in the original SQL text.
-			 */
-			if (strcasecmp (node->info.name.original, "none") == 0
-			    && toupper (node->sql_user_text[node->buffer_pos - 1]) == 'E')
-			  { 
-			    PT_ERRORmf2 (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
-			        MSGCAT_SYNTAX_KEYWORD_ERROR, "NONE", "a valid index name");
-			  }
 			node->info.name.meta_class = PT_INDEX_NAME;
 			node->etc = (void *) PT_IDX_HINT_FORCE;
 			$$ = node;
@@ -12929,18 +12917,6 @@ index_name
 		{{
 
 			PT_NODE *node = $1;
-			/* Since both .NONE and ."NONE" (or .[NONE], .`NONE`) will be
-			 * parsed as DOT IdName by lexer. In order to distinguish the 
-			 * ambiguous word "NONE" (reserved word or normal IdName) in the 
-			 * context of USING INDEX clause, we have to check the
-			 * last character of the word "NONE" in the original SQL text.
-			 */
-			if (strcasecmp (node->info.name.original, "none") == 0
-			    && toupper (node->sql_user_text[node->buffer_pos - 1]) == 'E')
-			  { 
-			    PT_ERRORmf2 (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
-			        MSGCAT_SYNTAX_KEYWORD_ERROR, "NONE", "a valid index name");
-			  }
 			node->info.name.meta_class = PT_INDEX_NAME;
 			node->etc = (void *) PT_IDX_HINT_IGNORE;
 			$$ = node;
@@ -12952,25 +12928,22 @@ index_name
 
 			PT_NODE *node = $1;
 			node->info.name.meta_class = PT_INDEX_NAME;
-			/* Since both .NONE and ."NONE" (or .[NONE], .`NONE`) will be
-			 * parsed as DOT IdName by lexer. In order to distinguish the 
-			 * ambiguous word "NONE" (reserved word or normal IdName) in the 
-			 * context of USING INDEX clause, we have to check the
-			 * last character of the word "NONE" in the original SQL text.
-			 */
-			if (strcasecmp (node->info.name.original, "none") == 0
-			    && toupper (node->sql_user_text[node->buffer_pos - 1]) == 'E')
-			  {
-			    node->info.name.original = NULL;
-			    node->etc = (void *) PT_IDX_HINT_CLASS_NONE;
-			  }
-			else
-			  {
-			    node->etc = (void *) PT_IDX_HINT_USE;
-			  }
+			node->etc = (void *) PT_IDX_HINT_USE;
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
+		DBG_PRINT}}
+	| identifier DOT NONE
+		{{
+		
+			PT_NODE *node = $1;
+			node->info.name.meta_class = PT_INDEX_NAME;
+			node->info.name.resolved = node->info.name.original;
+			node->info.name.original = NULL;
+			node->etc = (void *) PT_IDX_HINT_CLASS_NONE;
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		
 		DBG_PRINT}}
 	;
 
@@ -17432,14 +17405,26 @@ subquery
 
 
 path_expression
-	: path_header DOT IDENTITY		%dprec 5
+	: path_header path_dot NONE		%dprec 6
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  {
+			    p->info.name.original = $3;
+			  }
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| path_header path_dot IDENTITY		%dprec 5
 		{{
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| path_header DOT OBJECT		%dprec 4
+	| path_header path_dot OBJECT		%dprec 4
 		{{
 
 			PT_NODE *node = $1;
