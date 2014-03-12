@@ -40,6 +40,7 @@
 #else
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <netdb.h>
 #endif
 
 #include "cas_common.h"
@@ -59,8 +60,8 @@
 static int shm_id_cmp_func (void *key1, void *key2);
 static int shm_info_assign_func (T_LIST * node, void *key, void *value);
 static char *shm_id_to_name (int shm_key);
-static int get_host_ip (unsigned char *ip_addr);
 #endif
+static int get_host_ip (unsigned char *ip_addr);
 
 #if defined(WINDOWS)
 T_LIST *shm_id_list_header = NULL;
@@ -437,14 +438,12 @@ broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info,
 {
   int i, shm_size;
   T_SHM_BROKER *shm_br = NULL;
-#if defined(WINDOWS)
   unsigned char ip_addr[4];
 
   if (get_host_ip (ip_addr) < 0)
     {
       return NULL;
     }
-#endif /* WINDOWS */
 
   shm_size = sizeof (T_SHM_BROKER) + (br_num - 1) * sizeof (T_BROKER_INFO);
 
@@ -456,9 +455,9 @@ broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info,
       return NULL;
     }
 
+  memcpy (shm_br->my_ip_addr, ip_addr, 4);
 #if defined(WINDOWS)
   shm_br->magic = uw_shm_get_magic_number ();
-  memcpy (shm_br->my_ip_addr, ip_addr, 4);
 #else /* WINDOWS */
   shm_br->owner_uid = getuid ();
 
@@ -776,6 +775,7 @@ shm_id_to_name (int shm_key)
   sprintf (shm_name, "Global\\v3mapfile%d", shm_key);
   return shm_name;
 }
+#endif /* WINDOWS */
 
 static int
 get_host_ip (unsigned char *ip_addr)
@@ -793,11 +793,10 @@ get_host_ip (unsigned char *ip_addr)
       fprintf (stderr, "unknown host : %s\n", hostname);
       return -1;
     }
-  memcpy (ip_addr, hp->h_addr_list[0], 4);
+  memcpy ((void *) ip_addr, (void *) hp->h_addr_list[0], 4);
 
   return 0;
 }
-#endif /* WINDOWS */
 
 
 #if 0

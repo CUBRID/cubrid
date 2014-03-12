@@ -579,6 +579,7 @@ struct t_shm_appl_server
 
   char access_log_file[CONF_LOG_FILE_LEN];
   char db_connection_file[BROKER_INFO_PATH_MAX];
+  unsigned char local_ip_addr[4];
 
   /* from br_info */
   /*from here, these are used only in shard */
@@ -632,11 +633,10 @@ struct t_shm_broker
   int lock;			/* shared variable for mutual excl */
 #endif				/* USE_MUTEX */
   int magic;			/* the magic number */
-#if defined(WINDOWS)
   unsigned char my_ip_addr[4];
-#else
+#if !defined(WINDOWS)
   uid_t owner_uid;
-#endif
+#endif				/* !WINDOWS */
   int num_broker;		/* number of broker */
   char access_control_file[SHM_BROKER_PATH_MAX];
   bool access_control;

@@ -101,6 +101,8 @@ access_control_set_shm (T_SHM_APPL_SERVER * shm_as_p,
 	}
     }
 
+  memcpy (shm_as_p->local_ip_addr, shm_br->my_ip_addr, 4);
+
   return 0;
 }
 
@@ -472,11 +474,12 @@ access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p,
   int i;
   char *address_ptr;
   int ret_val = -1;
+  bool local_ip_flag = false;
 
   if (address[0] == 127 && address[1] == 0 &&
       address[2] == 0 && address[3] == 1)
     {
-      return 0;
+      local_ip_flag = true;
     }
 
   address_ptr = strchr (dbname, '@');
@@ -500,12 +503,24 @@ access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p,
 	      ret_val = 0;
 	      break;
 	    }
+
+	  if (local_ip_flag == true
+	      && access_control_check_ip (shm_as_p, &access_info[i].ip_info,
+					  shm_as_p->local_ip_addr, i) == 0)
+	    {
+	      break;
+	    }
 	}
     }
 
   if (address_ptr != NULL)
     {
       *address_ptr = '@';
+    }
+
+  if (local_ip_flag == true)
+    {
+      return 0;
     }
 
   return ret_val;
@@ -518,12 +533,6 @@ access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, IP_INFO * ip_info,
   int i;
 
   assert (ip_info && address);
-
-  if (address[0] == 127 && address[1] == 0 &&
-      address[2] == 0 && address[3] == 1)
-    {
-      return 0;
-    }
 
   for (i = 0; i < ip_info->num_list; i++)
     {
