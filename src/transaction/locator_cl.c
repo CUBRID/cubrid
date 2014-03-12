@@ -54,16 +54,6 @@
 #define WS_SET_FOUND_DELETED(mop) WS_SET_DELETED(mop)
 #define MAX_FETCH_SIZE 64
 
-#define LC_INSERT_OPERATION_TYPE(p) \
-        ((p)==DB_NOT_PARTITIONED_CLASS ? LC_FLUSH_INSERT :   \
-         ((p)==DB_PARTITIONED_CLASS ? LC_FLUSH_INSERT_PRUNE :\
-				      LC_FLUSH_INSERT_PRUNE_VERIFY))
-
-#define LC_UPDATE_OPERATION_TYPE(p) \
-        ((p)==DB_NOT_PARTITIONED_CLASS ? LC_FLUSH_UPDATE :   \
-         ((p)==DB_PARTITIONED_CLASS ? LC_FLUSH_UPDATE_PRUNE :\
-				      LC_FLUSH_UPDATE_PRUNE_VERIFY))
-
 /* Mflush structures */
 typedef struct locator_mflush_temp_oid LOCATOR_MFLUSH_TEMP_OID;
 struct locator_mflush_temp_oid

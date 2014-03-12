@@ -926,6 +926,12 @@ net_server_init (void)
     sbtree_find_multi_uniques;
   net_Requests[NET_SERVER_FIND_MULTI_UNIQUES].name =
     "NET_SERVER_FIND_MULTI_UNIQUES";
+
+  req_p = &net_Requests[NET_SERVER_LC_FORCE_REPL_UPDATE];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO
+			     | IN_TRANSACTION);
+  req_p->processing_function = slocator_force_repl_update;
+  req_p->name = "NET_SERVER_LC_FORCE_REPL_UPDATE";
 }
 
 #if defined(CUBRID_DEBUG)

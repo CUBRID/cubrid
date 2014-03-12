@@ -156,6 +156,10 @@ extern int xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn,
 extern int xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * copy_area,
 			   int num_ignore_error_list, int *ignore_error_list,
 			   int continue_on_error);
+extern int xlocator_force_repl_update (THREAD_ENTRY * thread_p, BTID * btid,
+                                       OID * class_oid, DB_VALUE * key_value,
+                                       LC_COPYAREA_OPERATION operation,
+                                       bool has_index, RECDES *recdes);
 extern bool xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p,
 					      LC_COPYAREA ** synch_area);
 

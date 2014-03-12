@@ -398,6 +398,24 @@ or_chn (RECDES * record)
   return chn;
 }
 
+int
+or_set_chn (RECDES * record, int chn)
+{
+  char *p = NULL;
+
+  if (record->length < OR_HEADER_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
+      return ER_FAILED;
+    }
+
+  p = record->data;
+  p += OR_CHN_OFFSET;
+  OR_PUT_INT (p, chn);
+
+  return NO_ERROR;
+}
+
 #if !defined (SERVER_MODE)
 /*
  * BOUND BIT FUNCTIONS
@@ -665,6 +683,12 @@ int
 or_varchar_length (int charlen)
 {
   return or_varchar_length_internal (charlen, CHAR_ALIGNMENT);
+}
+
+int
+or_packed_recdesc_length (int length)
+{
+  return OR_INT_SIZE * 2 + or_packed_stream_length (length);
 }
 
 static int
@@ -2893,6 +2917,15 @@ or_pack_ehid (char *ptr, EHID * ehid)
   OR_PUT_EHID (ptr, ehid);
 
   return (ptr + OR_EHID_SIZE);
+}
+
+char *
+or_pack_recdes (char *buf, RECDES * recdes)
+{
+  buf = or_pack_int (buf, recdes->length);
+  buf = or_pack_int (buf, recdes->type);
+  buf = or_pack_stream (buf, recdes->data, recdes->length);
+  return buf;
 }
 
 /*
@@ -6329,6 +6362,37 @@ or_pack_listid (char *ptr, void *listid_ptr)
     }
 
   return ptr;
+}
+
+char *
+or_unpack_recdes (char *buf, RECDES ** recdes)
+{
+  RECDES *tmp_recdes = NULL;
+  int length;
+
+  if (buf == NULL)
+    {
+      return NULL;
+    }
+
+  buf = or_unpack_int (buf, &length);
+  tmp_recdes = (RECDES *) malloc (sizeof (RECDES) + length);
+  if (tmp_recdes == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (RECDES) + length);
+      return NULL;
+    }
+
+  tmp_recdes->area_size = length;
+  tmp_recdes->length = length;
+  tmp_recdes->data = ((char *) tmp_recdes) + sizeof (RECDES);
+
+  buf = or_unpack_int (buf, &tmp_recdes->type);
+  buf = or_unpack_stream (buf, tmp_recdes->data, length);
+
+  *recdes = tmp_recdes;
+  return buf;
 }
 
 /*

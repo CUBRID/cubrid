@@ -662,6 +662,73 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
 #endif /* !CS_MODE */
 }
 
+int
+locator_force_repl_update (BTID * btid, OID * class_oid,
+			   DB_VALUE * key_value, bool has_index,
+			   int operation, RECDES * recdes)
+{
+  int error_code = ER_FAILED;
+#ifdef CS_MODE
+  int req_error, request_size, key_size;
+  char *ptr = NULL;
+  char *request = NULL;
+  char *reply = NULL;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+
+  if (btid == NULL || class_oid == NULL || key_value == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  key_size = OR_VALUE_ALIGNED_SIZE (key_value);
+  request_size = OR_BTID_ALIGNED_SIZE	/* btid */
+    + OR_OID_SIZE		/* class_oid */
+    + key_size			/* key_value */
+    + OR_INT_SIZE		/* has_index */
+    + OR_INT_SIZE		/* operation */
+    + or_packed_recdesc_length (recdes->length);	/* recdes */
+
+  request = (char *) malloc (request_size);
+
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_btid (request, btid);
+  ptr = or_pack_oid (ptr, class_oid);
+  ptr = or_pack_mem_value (ptr, key_value);
+  if (ptr == NULL)
+    {
+      goto free_and_return;
+    }
+
+  ptr = or_pack_int (ptr, has_index ? 1 : 0);
+  ptr = or_pack_int (ptr, operation);
+  ptr = or_pack_recdes (ptr, recdes);
+
+  request_size = ptr - request;
+
+  req_error = net_client_request (NET_SERVER_LC_FORCE_REPL_UPDATE,
+				  request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				  NULL, 0);
+
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &error_code);
+    }
+
+free_and_return:
+  free_and_init (request);
+#endif /* CS_MODE */
+  return error_code;
+}
+
 /*
  * locator_fetch_lockset -
  *
@@ -4737,7 +4804,8 @@ csession_check_session (SESSION_ID * session_id, int *row_count,
       ptr = sysprm_pack_session_parameters (ptr, cached_session_parameters);
       ptr = pack_const_string_with_length (ptr, db_user, db_user_len);
       ptr = pack_const_string_with_length (ptr, host, host_len);
-      ptr = pack_const_string_with_length (ptr, program_name, program_name_len);
+      ptr =
+	pack_const_string_with_length (ptr, program_name, program_name_len);
 
       req_error = net_client_request2 (NET_SERVER_SES_CHECK_SESSION,
 				       request, request_size,

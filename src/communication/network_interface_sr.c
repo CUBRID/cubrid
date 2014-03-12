@@ -995,6 +995,52 @@ end:
     }
 }
 
+void
+slocator_force_repl_update (THREAD_ENTRY * thread_p,
+			    unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  DB_VALUE key_value;
+  char *ptr = NULL;
+  OID class_oid;
+  BTID btid;
+  int has_index = 0;
+  int operation = 0;
+  RECDES *recdes = NULL;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_oid (ptr, &class_oid);
+  ptr = or_unpack_mem_value (ptr, &key_value);
+  ptr = or_unpack_int (ptr, &has_index);
+  ptr = or_unpack_int (ptr, &operation);
+  ptr = or_unpack_recdes (ptr, &recdes);
+
+  error_code =
+    xlocator_force_repl_update (thread_p, &btid, &class_oid,
+				&key_value,
+				(LC_COPYAREA_OPERATION) operation,
+				has_index, recdes);
+
+  ptr = or_pack_int (reply, error_code);
+
+  if (error_code != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+
+  if (recdes != NULL)
+    {
+      free_and_init (recdes);
+    }
+
+  pr_clear_value (&key_value);
+}
+
 /*
  * slocator_fetch_lockset -
  *

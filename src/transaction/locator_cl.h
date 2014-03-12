@@ -46,6 +46,16 @@
 
 #define OID_BATCH_SIZE  2000
 
+#define LC_INSERT_OPERATION_TYPE(p) \
+        ((p)==DB_NOT_PARTITIONED_CLASS ? LC_FLUSH_INSERT :   \
+         ((p)==DB_PARTITIONED_CLASS ? LC_FLUSH_INSERT_PRUNE :\
+				      LC_FLUSH_INSERT_PRUNE_VERIFY))
+
+#define LC_UPDATE_OPERATION_TYPE(p) \
+        ((p)==DB_NOT_PARTITIONED_CLASS ? LC_FLUSH_UPDATE :   \
+         ((p)==DB_PARTITIONED_CLASS ? LC_FLUSH_UPDATE_PRUNE :\
+				      LC_FLUSH_UPDATE_PRUNE_VERIFY))
+
 typedef struct list_mops LIST_MOPS;
 struct list_mops
 {

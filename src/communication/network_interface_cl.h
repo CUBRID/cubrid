@@ -82,6 +82,10 @@ extern int locator_does_exist (OID * oidp, int chn, LOCK lock,
 extern int locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea);
 extern int locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list,
 			  int *ignore_error_list, int continue_on_error);
+extern int locator_force_repl_update (BTID * btid, OID * class_oid,
+				      DB_VALUE * key_value,
+				      bool has_index,
+				      int operation, RECDES * recdes);
 extern int locator_fetch_lockset (LC_LOCKSET * lockset,
 				  LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_all_reference_lockset (OID * oid, int chn,

@@ -6749,6 +6749,133 @@ error:
   return error_code;
 }
 
+int
+xlocator_force_repl_update (THREAD_ENTRY * thread_p, BTID * btid,
+			    OID * class_oid, DB_VALUE * key_value,
+			    LC_COPYAREA_OPERATION operation,
+			    bool has_index, RECDES * recdes)
+{
+  int error_code = NO_ERROR;
+
+  LOG_LSA lsa;
+  OID unique_oid;
+  HFID hfid;
+  HEAP_SCANCACHE *force_scancache = NULL;
+  HEAP_SCANCACHE scan_cache;
+  RECDES old_recdes;
+  SCAN_CODE scan;
+  int pruning_type = 0;
+  int force_count;
+  int old_rep_id = -1;
+  int old_chn = -1;
+
+  memset (&old_recdes, 0, sizeof (RECDES));
+
+  /* need to start a topop to ensure the atomic operation. */
+  error_code = xtran_server_start_topop (thread_p, &lsa);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (xbtree_find_unique (thread_p, btid, false, S_UPDATE, key_value,
+			  class_oid, &unique_oid, true) == BTREE_KEY_FOUND)
+    {
+      error_code = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      error_code = locator_start_force_scan_cache (thread_p, &scan_cache,
+						   &hfid, NULL,
+						   SINGLE_ROW_UPDATE);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      force_scancache = &scan_cache;
+
+      pruning_type = locator_area_op_to_pruning_type (operation);
+
+      scan =
+	heap_get (thread_p, &unique_oid, &old_recdes, force_scancache, PEEK,
+		  NULL_CHN);
+      if (scan != S_SUCCESS)
+	{
+	  int err_id = er_errid ();
+	  if (err_id == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "xlocator_force_repl_update : "
+			    "unknown oid ( %d|%d|%d )\n", unique_oid.pageid,
+			    unique_oid.slotid, unique_oid.volid);
+	    }
+
+	  error_code = ER_FAILED;
+	  goto error;
+	}
+
+      old_rep_id = or_rep_id (&old_recdes);
+      error_code = or_set_rep_id (recdes, old_rep_id);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      old_chn = or_chn (&old_recdes);
+      error_code = or_set_chn (recdes, old_chn + 1);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      error_code = locator_update_force (thread_p, &hfid, class_oid,
+					 &unique_oid, NULL, false,
+					 &old_recdes, recdes, has_index, NULL,
+					 0, SINGLE_ROW_UPDATE,
+					 force_scancache, &force_count, false,
+					 REPL_INFO_TYPE_STMT_NORMAL,
+					 pruning_type, NULL);
+      if (error_code == NO_ERROR)
+	{
+	  /* monitor */
+	  mnt_qm_updates (thread_p);
+	}
+      else
+	{
+	  goto error;
+	}
+    }
+  else
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
+      error_code = ER_OBJ_OBJECT_NOT_FOUND;
+      goto error;
+    }
+
+done:
+  if (force_scancache != NULL)
+    {
+      locator_end_force_scan_cache (thread_p, force_scancache);
+    }
+
+  xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &lsa);
+
+  return error_code;
+
+error:
+  if (force_scancache != NULL)
+    {
+      locator_end_force_scan_cache (thread_p, force_scancache);
+    }
+
+  xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
+
+  return error_code;
+}
+
 /*
  * locator_allocate_copy_area_by_attr_info () - Transforms attribute
  *              information into a disk representation and allocates a

@@ -51,6 +51,9 @@ extern void slocator_notify_isolation_incons (THREAD_ENTRY * thread_p,
 					      int reqlen);
 extern void slocator_force (THREAD_ENTRY * thread_p, unsigned int rid,
 			    char *request, int reqlen);
+extern void slocator_force_repl_update (THREAD_ENTRY * thread_p,
+					unsigned int rid,
+					char *request, int reqlen);
 extern void slocator_fetch_lockset (THREAD_ENTRY * thread_p, unsigned int rid,
 				    char *request, int reqlen);
 extern void slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p,

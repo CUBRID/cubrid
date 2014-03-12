@@ -359,6 +359,7 @@ static char la_slave_db_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 static char la_peer_host[MAXHOSTNAMELEN + 1];
 
 static bool la_enable_sql_logging = false;
+static bool la_use_server_side_update_repl = true;
 
 static void la_shutdown_by_signal ();
 static void la_init_ha_apply_info (LA_HA_APPLY_INFO * ha_apply_info);
@@ -475,6 +476,7 @@ static int la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes,
 static int la_flush_unflushed_insert (MOP class_mop);
 static int la_apply_delete_log (LA_ITEM * item);
 static int la_apply_update_log (LA_ITEM * item);
+static int la_apply_update_log_server_side (LA_ITEM * item);
 static int la_apply_insert_log (LA_ITEM * item);
 static int la_update_query_execute (const char *sql, bool au_disable);
 static int la_update_query_execute_with_values (const char *sql,
@@ -5017,6 +5019,170 @@ error_rtn:
 }
 
 /*
+ * la_apply_update_log_server_side() - apply the update log to the target slave using server side update
+ *   return: NO_ERROR or error code
+ *   item : replication item
+ *
+ * Note:
+ *      Apply the update log to the target slave.
+ *      . get the target log page
+ *      . get the record description
+ *      . fetch the class info
+ *      . request server side update
+ */
+static int
+la_apply_update_log_server_side (LA_ITEM * item)
+{
+  int error = NO_ERROR;
+  unsigned int rcvindex;
+  bool ovfyn = false;
+  RECDES recdes;
+  LOG_PAGE *pgptr = NULL;
+  LOG_PAGEID old_pageid = -1;
+  DB_OBJECT *class_obj;
+  MOBJ mclass;
+  DB_OTMPL *inst_tp = NULL;
+  char buf[255];
+  char sql_log_err[LINE_MAX];
+
+  /* get the target log page */
+  old_pageid = item->target_lsa.pageid;
+  pgptr = la_get_page (old_pageid);
+  if (pgptr == NULL)
+    {
+      return er_errid ();
+    }
+
+  /* retrieve the target record description */
+  error = la_get_recdes (&item->target_lsa, pgptr, &recdes, &rcvindex,
+			 la_Info.log_data, la_Info.rec_type, &ovfyn);
+  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+    {
+      la_release_page_buffer (old_pageid);
+      return ER_NET_CANT_CONNECT_SERVER;
+    }
+  if (error != NO_ERROR)
+    {
+      la_release_page_buffer (old_pageid);
+      return error;
+    }
+
+  if (recdes.type == REC_ASSIGN_ADDRESS || recdes.type == REC_RELOCATION)
+    {
+      er_log_debug (ARG_FILE_LINE, "apply_update : rectype.type = %d\n",
+		    recdes.type);
+      la_release_page_buffer (old_pageid);
+      return error;
+    }
+  if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK)
+    {
+      er_log_debug (ARG_FILE_LINE, "apply_update : rcvindex = %d\n",
+		    rcvindex);
+      la_release_page_buffer (old_pageid);
+      return error;
+    }
+
+  error = la_flush_unflushed_insert (NULL);
+  if (error != NO_ERROR)
+    {
+      la_release_page_buffer (old_pageid);
+      return error;
+    }
+
+  class_obj = db_find_class (item->class_name);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      goto error_return;
+    }
+
+  /* write sql log */
+  if (la_enable_sql_logging)
+    {
+      mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
+      if (mclass == NULL)
+	{
+	  goto error_return;
+	}
+
+      inst_tp = dbt_create_object_internal (class_obj);
+      if (inst_tp == NULL)
+	{
+	  error = er_errid ();
+	  goto error_return;
+	}
+
+      error = la_disk_to_obj (mclass, &recdes, inst_tp, &item->key);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+
+      if (sl_write_update_sql (inst_tp, &item->key) != NO_ERROR)
+	{
+	  help_sprint_value (&item->key, buf, 255);
+	  snprintf (sql_log_err, sizeof (sql_log_err),
+		    "failed to write SQL log. class: %s, key: %s",
+		    item->class_name, buf);
+
+	  er_stack_push ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+		  1, sql_log_err);
+	  er_stack_pop ();
+	}
+    }
+
+  error = obj_repl_update_object (class_obj, &item->key, &recdes);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  la_Info.update_counter++;
+
+  goto free_and_return;
+
+error_return:
+  help_sprint_value (&item->key, buf, 255);
+#if defined (LA_VERBOSE_DEBUG)
+  er_log_debug (ARG_FILE_LINE,
+		"apply_update : error %d %s\n\tclass %s key %s\n",
+		error, er_msg (), item->class_name, buf);
+#endif
+  er_stack_push ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	  ER_HA_LA_FAILED_TO_APPLY_UPDATE, 3, item->class_name, buf, error);
+  er_stack_pop ();
+
+  la_Info.fail_counter++;
+
+  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+    {
+      error = ER_NET_CANT_CONNECT_SERVER;
+    }
+
+free_and_return:
+  if (ovfyn)
+    {
+      free_and_init (recdes.data);
+    }
+
+  if (inst_tp)
+    {
+      if (inst_tp->object)
+	{
+	  ws_release_user_instance (inst_tp->object);
+	  ws_decache (inst_tp->object);
+	}
+      dbt_abort_object (inst_tp);
+    }
+
+  la_release_page_buffer (old_pageid);
+
+  return error;
+}
+
+/*
  * la_apply_insert_log() - apply the insert log to the target slave
  *   return: NO_ERROR or error code
  *   item : replication item
@@ -5624,7 +5790,14 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 		case RVREPL_DATA_UPDATE_START:
 		case RVREPL_DATA_UPDATE_END:
 		case RVREPL_DATA_UPDATE:
-		  error = la_apply_update_log (item);
+		  if (la_use_server_side_update_repl)
+		    {
+		      error = la_apply_update_log_server_side (item);
+		    }
+		  else
+		    {
+		      error = la_apply_update_log (item);
+		    }
 		  break;
 
 		case RVREPL_DATA_INSERT:
@@ -7609,6 +7782,9 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	  la_enable_sql_logging = true;
 	}
     }
+
+  la_use_server_side_update_repl =
+    prm_get_bool_value (PRM_ID_HA_REPL_ENABLE_SERVER_SIDE_UPDATE);
 
   error = la_check_duplicated (la_Info.log_path, la_slave_db_name,
 			       &la_Info.log_path_lockf_vdes,

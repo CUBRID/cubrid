@@ -557,6 +557,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_OPTIMIZER_RESERVE_19 "optimizer_reserve_19"
 #define PRM_NAME_OPTIMIZER_RESERVE_20 "optimizer_reserve_20"
 
+#define PRM_NAME_HA_REPL_ENABLE_SERVER_SIDE_UPDATE "ha_repl_enable_server_side_update"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -1816,6 +1818,10 @@ static unsigned int prm_optimizer_reserve_19_flag = 0;
 bool PRM_OPTIMIZER_RESERVE_20 = false;
 static bool prm_optimizer_reserve_20_default = false;
 static unsigned int prm_optimizer_reserve_20_flag = 0;
+
+bool PRM_HA_REPL_ENABLE_SERVER_SIDE_UPDATE = true;
+static bool prm_ha_repl_enable_server_side_update_default = true;
+static bool prm_ha_repl_enable_server_side_update_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -4355,6 +4361,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_HA_REPL_ENABLE_SERVER_SIDE_UPDATE,
+   (PRM_FOR_HA | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_ha_repl_enable_server_side_update_flag,
+   (void *) &prm_ha_repl_enable_server_side_update_default,
+   (void *) &PRM_HA_REPL_ENABLE_SERVER_SIDE_UPDATE,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

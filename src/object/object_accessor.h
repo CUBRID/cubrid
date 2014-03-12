@@ -196,6 +196,8 @@ extern MOP obj_repl_find_object_by_pkey (MOP classop, DB_VALUE * key,
 extern MOP obj_desc_find_unique (MOP op, SM_DESCRIPTOR * desc,
 				 DB_VALUE * value, AU_FETCHMODE fetchmode);
 
+extern int obj_repl_update_object (MOP classop, DB_VALUE * key_value,
+				   RECDES * recdes);
 extern int obj_repl_delete_object_by_pkey (MOP classop, DB_VALUE * key_value);
 
 /* Internal support for specific modules */
