@@ -54,6 +54,8 @@ import cubrid.jdbc.jci.UShardInfo;
  */
 
 public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
+	private static final int  SQL_MAX_CHAR_LITERAL_LEN = 1073741823;
+	
 	CUBRIDConnection con;
 	UConnection u_con;
 	UError error;
@@ -615,12 +617,12 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	public synchronized int getMaxBinaryLiteralLength() throws SQLException {
 		checkIsOpen();
-		return 0;
+		return (SQL_MAX_CHAR_LITERAL_LEN / 8);
 	}
 
 	public synchronized int getMaxCharLiteralLength() throws SQLException {
 		checkIsOpen();
-		return 0;
+		return SQL_MAX_CHAR_LITERAL_LEN;
 	}
 
 	public synchronized int getMaxColumnNameLength() throws SQLException {
@@ -716,7 +718,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	public synchronized int getMaxUserNameLength() throws SQLException {
 		checkIsOpen();
-		return 254;
+		return 31;
 	}
 
 	public synchronized int getDefaultTransactionIsolation()
@@ -733,19 +735,17 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 	public synchronized boolean supportsTransactionIsolationLevel(int level)
 			throws SQLException {
 		checkIsOpen();
-		if (level == Connection.TRANSACTION_READ_COMMITTED)
+		switch (level) {
+		case Connection.TRANSACTION_READ_COMMITTED:
+		case Connection.TRANSACTION_READ_UNCOMMITTED:
+		case Connection.TRANSACTION_REPEATABLE_READ:
+		case Connection.TRANSACTION_SERIALIZABLE:
+		case CUBRIDConnection.TRAN_REP_CLASS_COMMIT_INSTANCE:
+		case CUBRIDConnection.TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
 			return true;
-		if (level == Connection.TRANSACTION_READ_UNCOMMITTED)
-			return true;
-		if (level == Connection.TRANSACTION_REPEATABLE_READ)
-			return true;
-		if (level == Connection.TRANSACTION_SERIALIZABLE)
-			return true;
-		if (level == CUBRIDConnection.TRAN_REP_CLASS_COMMIT_INSTANCE)
-			return true;
-		if (level == CUBRIDConnection.TRAN_REP_CLASS_UNCOMMIT_INSTANCE)
-			return true;
-		return false;
+		default:
+			return false;
+		}
 	}
 
 	public synchronized boolean supportsDataDefinitionAndDataManipulationTransactions()
@@ -2123,7 +2123,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	public synchronized int getResultSetHoldability() throws SQLException {
 		checkIsOpen();
-		return ResultSet.HOLD_CURSORS_OVER_COMMIT;
+		return con.getHoldability();
 	}
 
 	public synchronized int getSQLStateType() throws SQLException {
