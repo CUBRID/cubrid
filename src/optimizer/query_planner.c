@@ -6304,7 +6304,6 @@ qo_examine_merge_join (QO_INFO * info,
     }
 #endif /* OUTER_MERGE_JOIN_RESTRICTION */
 
-#if 1				/* RIGHT_OUTER_MERGE_JOIN */
   /* At here, inner is single class spec */
   inner_node =
     QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
@@ -6320,6 +6319,12 @@ qo_examine_merge_join (QO_INFO * info,
        */
       goto exit;
     }
+  else if (!prm_get_bool_value (PRM_ID_OPTIMIZER_ENABLE_MERGE_JOIN))
+    {
+      /* optimizer prm: keep out m-join;
+       */
+      goto exit;
+    }
 
   outer_plan = qo_find_best_plan_on_info (outer, order, 1.0);
   if (outer_plan == NULL)
@@ -6332,86 +6337,6 @@ qo_examine_merge_join (QO_INFO * info,
     {
       goto exit;
     }
-#else /* RIGHT_OUTER_MERGE_JOIN */
-  /* if right outer join, select outer plan from the inner node
-     and inner plan from the outer node */
-  if (join_type == JOIN_RIGHT)
-    {
-      /* converse outer join type
-       */
-      join_type = JOIN_LEFT;
-
-      if (bitset_cardinality (&(outer->nodes)) == 1)
-	{			/* single class spec */
-	  inner_node = QO_ENV_NODE (outer->env,
-				    bitset_first_member (&(outer->nodes)));
-	  if (QO_NODE_HINT (inner_node) & PT_HINT_ORDERED)
-	    {
-	      /* join hint: force join left-to-right; fail
-	       */
-	      goto exit;
-	    }
-
-
-	  if (QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE)
-	    {
-	      /* join hint: force m-join;
-	       */
-	    }
-	  else
-	    if (QO_NODE_HINT (inner_node) &
-		(PT_HINT_USE_NL | PT_HINT_USE_IDX))
-	    {
-	      /* join hint: force nl-join, idx-join;
-	       */
-	      goto exit;
-	    }
-
-	}
-
-      outer_plan = qo_find_best_plan_on_info (inner, order, 1.0);
-      if (outer_plan == NULL)
-	{
-	  goto exit;
-	}
-
-      inner_plan = qo_find_best_plan_on_info (outer, order, 1.0);
-      if (inner_plan == NULL)
-	{
-	  goto exit;
-	}
-    }
-  else
-    {
-      /* At here, inner is single class spec */
-      inner_node = QO_ENV_NODE (inner->env,
-				bitset_first_member (&(inner->nodes)));
-
-      if (QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE)
-	{
-	  /* join hint: force m-join;
-	   */
-	}
-      else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX))
-	{
-	  /* join hint: force nl-join, idx-join;
-	   */
-	  goto exit;
-	}
-
-      outer_plan = qo_find_best_plan_on_info (outer, order, 1.0);
-      if (outer_plan == NULL)
-	{
-	  goto exit;
-	}
-
-      inner_plan = qo_find_best_plan_on_info (inner, order, 1.0);
-      if (inner_plan == NULL)
-	{
-	  goto exit;
-	}
-    }
-#endif /* RIGHT_OUTER_MERGE_JOIN */
 
 #ifdef CHAINS_ONLY
   /* If CHAINS_ONLY is defined, we want the optimizer constrained to
