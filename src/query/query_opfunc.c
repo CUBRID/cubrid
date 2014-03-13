@@ -6324,8 +6324,9 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p,
 
       if (TP_DOMAIN_TYPE (domain->value_dom) != type)
 	{
-	  if (tp_value_coerce (value, acc->value, domain->value_dom) !=
-	      DOMAIN_COMPATIBLE)
+	  int coerce_error =
+	    db_value_coerce (value, acc->value, domain->value_dom);
+	  if (coerce_error != NO_ERROR)
 	    {
 	      /* set error here */
 	      return ER_FAILED;
