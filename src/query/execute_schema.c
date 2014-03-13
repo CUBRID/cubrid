@@ -9928,8 +9928,14 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 	    {
 	      const char *att_name = *(ci->att_names);
 
-	      if (!prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT)
-		  && !(alter->info.alter.hint & PT_HINT_SKIP_UPDATE_NULL))
+	      if (alter->info.alter.hint & PT_HINT_SKIP_UPDATE_NULL)
+		{
+		  error = db_add_constraint (class_mop, ci->constraint_type,
+					     NULL, ci->att_names, 0);
+		}
+	      else
+		if (!prm_get_bool_value
+		    (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT))
 		{
 		  char query[SM_MAX_IDENTIFIER_LENGTH * 4 + 36] = { 0 };
 		  const char *class_name = NULL;
@@ -9966,10 +9972,6 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 			      ER_ALTER_CHANGE_ADD_NOT_NULL_SET_HARD_DEFAULT,
 			      0);
 		    }
-		}
-
-	      if (alter->info.alter.hint & PT_HINT_SKIP_UPDATE_NULL)
-		{
 		  error = db_add_constraint (class_mop, ci->constraint_type,
 					     NULL, ci->att_names, 0);
 		}

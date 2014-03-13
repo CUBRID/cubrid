@@ -6390,6 +6390,15 @@ pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p)
   /* ALTER VCLASS XYZ ... */
   r1 = pt_print_bytes (parser, p->info.alter.entity_name);
   q = pt_append_nulstring (parser, q, "alter ");
+  if (p->info.alter.hint != PT_HINT_NONE)
+    {
+      q = pt_append_nulstring (parser, q, "/*+ ");
+      if (p->info.alter.hint == PT_HINT_SKIP_UPDATE_NULL)
+	{
+	  q = pt_append_nulstring (parser, q, "SKIP_UPDATE_NULL");
+	}
+      q = pt_append_nulstring (parser, q, " */ ");
+    }
   q = pt_append_nulstring (parser, q,
 			   pt_show_misc_type (p->info.alter.entity_type));
   q = pt_append_nulstring (parser, q, " ");
