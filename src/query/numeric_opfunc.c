@@ -1937,11 +1937,13 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
   unsigned char long_temp_quo[DB_LONG_NUMERIC_MULTIPLIER *
 			      DB_NUMERIC_BUF_SIZE];
   unsigned char dbv1_copy[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
+  unsigned char dbv2_copy[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   unsigned char temp_quo[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   unsigned char temp_rem[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   int scale, scaleup = 0;
   int ret = NO_ERROR;
   TP_DOMAIN *domain;
+  DB_C_NUMERIC divisor_p;
 
   /* Check for bad inputs */
   if (answer == NULL)
@@ -2053,11 +2055,17 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
 
   if (numeric_is_negative (db_locate_numeric (dbv2)))
     {
-      numeric_negate (db_locate_numeric (dbv2));
+      numeric_copy (dbv2_copy, db_locate_numeric (dbv2));
+      numeric_negate (dbv2_copy);
+      divisor_p = dbv2_copy;
+    }
+  else
+    {
+      divisor_p = db_locate_numeric (dbv2);
     }
 
   numeric_add (temp_rem, temp_rem, temp_rem, DB_NUMERIC_BUF_SIZE);
-  if (numeric_compare (temp_rem, db_locate_numeric (dbv2)) >= 0)
+  if (numeric_compare (temp_rem, divisor_p) >= 0)
     {
       if (numeric_is_negative (temp_quo))
 	{
