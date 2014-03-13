@@ -7634,27 +7634,20 @@ pt_resolve_natural_join (PARSER_CONTEXT * parser, PT_NODE * node,
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (node == NULL || node->node_type != PT_SELECT)
+  if (node == NULL || node->node_type != PT_SPEC)
     {
       return node;
     }
 
-  if (node->info.query.q.select.from == NULL)
-    {
-      return node;
-    }
+  join_lhs = node;
+  join_rhs = node->next;
 
-  select_from = node->info.query.q.select.from;
-
-  for (join_lhs = select_from, join_rhs = select_from->next; join_rhs != NULL;
-       join_lhs = join_lhs->next, join_rhs = join_rhs->next)
+  /* there is a natural join */
+  if (join_rhs != NULL
+      && join_rhs->node_type == PT_SPEC
+      && join_rhs->info.spec.natural == true)
     {
-      /* there is a natural join */
-      if (join_rhs->node_type == PT_SPEC
-	  && join_rhs->info.spec.natural == true)
-	{
-	  pt_resolve_natural_join_internal (parser, join_lhs, join_rhs);
-	}
+      pt_resolve_natural_join_internal (parser, join_lhs, join_rhs);
     }
 
   return node;
