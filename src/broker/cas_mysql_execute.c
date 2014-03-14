@@ -2916,6 +2916,9 @@ cas_mysql_free_result (MYSQL_RES * result)
 void
 cas_mysql_stmt_free_result (MYSQL_STMT * stmt)
 {
+  int ret;
+  MYSQL_RES *result;
+
   (void) mysql_stmt_free_result (stmt);
 
   if (_db_conn == NULL)
@@ -2929,7 +2932,25 @@ cas_mysql_stmt_free_result (MYSQL_STMT * stmt)
    */
   while (mysql_more_results (_db_conn))
     {
-      mysql_next_result (_db_conn);
+      ret = mysql_next_result (_db_conn);
+      if (ret != 0)
+	{
+	  break;
+	}
+
+      result = mysql_store_result (_db_conn);
+      if (result)
+	{
+	  (void) mysql_free_result (result);
+	}
+      else
+	{
+	  ret = mysql_field_count (&_db_conn);
+	  if (ret != 0)
+	    {
+	      break;
+	    }
+	}
     }
 }
 
