@@ -6011,7 +6011,7 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
   if (!cci_property_get_int (prop, CCI_DS_KEY_LOGIN_TIMEOUT,
 			     &ds->login_timeout,
 			     CCI_DS_LOGIN_TIMEOUT_DEFAULT,
-			     CCI_DS_LOGIN_TIMEOUT_DEFAULT, INT_MAX,
+			     CCI_LOGIN_TIMEOUT_INFINITE, INT_MAX,
 			     &latest_err_buf))
     {
       goto create_datasource_error;
@@ -6243,7 +6243,7 @@ cci_datasource_change_property (T_CCI_DATASOURCE * ds, const char *key,
 
       if (!cci_property_get_int (properties, CCI_DS_KEY_LOGIN_TIMEOUT, &v,
 				 CCI_DS_LOGIN_TIMEOUT_DEFAULT,
-				 CCI_DS_LOGIN_TIMEOUT_DEFAULT, INT_MAX,
+				 CCI_LOGIN_TIMEOUT_INFINITE, INT_MAX,
 				 &err_buf))
 	{
 	  error = err_buf.err_code;
@@ -6371,7 +6371,10 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 
       cci_set_autocommit (mapped_id, ds->default_autocommit);
 
-      cci_set_lock_timeout (mapped_id, ds->default_lock_timeout, err_buf);
+      if (ds->default_lock_timeout != CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT)
+	{
+	  cci_set_lock_timeout (mapped_id, ds->default_lock_timeout, err_buf);
+	}
 
       if (ds->default_isolation != TRAN_UNKNOWN_ISOLATION)
 	{
