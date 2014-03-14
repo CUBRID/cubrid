@@ -4932,12 +4932,15 @@ fetch_info_decode_error:
       for (i = 0; i < num_tuple; i++)
 	{
 #if defined (WINDOWS)
-	  for (j = 0; j < num_cols; j++)
+	  if (tmp_tuple_value[i].decoded_ptr)
 	    {
-	      FREE_MEM (tmp_tuple_value[i].decoded_ptr[j]);
-	    }
+	      for (j = 0; j < num_cols; j++)
+		{
+		  FREE_MEM (tmp_tuple_value[i].decoded_ptr[j]);
+		}
 
-	  FREE_MEM (tmp_tuple_value[i].decoded_ptr);
+	      FREE_MEM (tmp_tuple_value[i].decoded_ptr);
+	    }
 #endif
 	  FREE_MEM (tmp_tuple_value[i].column_ptr);
 	}

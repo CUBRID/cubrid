@@ -341,6 +341,16 @@ pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement,
       statement->info.query.q.union_.arg2 =
 	pt_add_oid_to_select_list (parser,
 				   statement->info.query.q.union_.arg2, how);
+
+      if (statement->info.query.q.union_.select_list != NULL)
+	{
+	  /* after adding oid, we need to get select_list again */
+	  parser_free_tree (parser,
+			    statement->info.query.q.union_.select_list);
+	  statement->info.query.q.union_.select_list = NULL;
+
+	  (void) pt_get_select_list (parser, statement);
+	}
     }
 
   return statement;
