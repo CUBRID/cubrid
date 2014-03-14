@@ -37,6 +37,7 @@
 #include "query_manager.h"
 #include "object_primitive.h"
 #include "scan_manager.h"
+#include "show_scan.h"
 
 #include "disk_manager.h"
 #include "log_manager.h"
@@ -69,6 +70,12 @@ struct show_request
   NEXT_SCAN_FUNC next_func;	/* next scan function */
   END_SCAN_FUNC end_func;	/* end scan function */
 };
+
+static SCAN_CODE showstmt_array_next_scan (THREAD_ENTRY * thread_p,
+					   int cursor, DB_VALUE ** out_values,
+					   int out_cnt, void *ptr);
+static int showstmt_array_end_scan (THREAD_ENTRY * thread_p, void **ptr);
+
 
 static bool show_scan_Inited = false;
 
@@ -258,4 +265,174 @@ showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     }
   error = (*end_func) (thread_p, &stsidp->ctx);
   return error;
+}
+
+/*
+ *   showstmt_alloc_array_context () - init context for db_values arrays
+ *   return: NO_ERROR, or ER_code
+ *   thread_p(in): 
+ *   num_total(in):
+ *   num_col(in):
+ */
+SHOWSTMT_ARRAY_CONTEXT *
+showstmt_alloc_array_context (THREAD_ENTRY * thread_p, int num_total,
+			      int num_cols)
+{
+  SHOWSTMT_ARRAY_CONTEXT *ctx;
+
+  ctx = db_private_alloc (thread_p, sizeof (SHOWSTMT_ARRAY_CONTEXT));
+  if (ctx == NULL)
+    {
+      return NULL;
+    }
+
+  ctx->num_used = 0;
+  ctx->num_cols = num_cols;
+  ctx->num_total = num_total;
+  ctx->tuples = db_private_alloc (thread_p, sizeof (DB_VALUE *) * num_total);
+  if (ctx->tuples == NULL)
+    {
+      goto on_error;
+    }
+
+  memset (ctx->tuples, 0, sizeof (DB_VALUE *) * num_total);
+  return ctx;
+
+on_error:
+  if (ctx != NULL)
+    {
+      db_private_free (thread_p, ctx);
+    }
+  return NULL;
+}
+
+/*
+ *  showstmt_free_array_context () - free context for db_values arrays
+ *   return: NO_ERROR, or ER_code
+ *   thread_p(in): 
+ *   ctx(in):
+ */
+void
+showstmt_free_array_context (THREAD_ENTRY * thread_p,
+			     SHOWSTMT_ARRAY_CONTEXT * ctx)
+{
+  int i, j;
+  DB_VALUE *vals;
+
+  assert (ctx != NULL);
+
+  for (i = 0; i < ctx->num_used; i++)
+    {
+      vals = ctx->tuples[i];
+      for (j = 0; j < ctx->num_cols; j++)
+	{
+	  db_value_clear (&vals[j]);
+	}
+
+      db_private_free (thread_p, vals);
+    }
+
+  db_private_free (thread_p, ctx->tuples);
+  db_private_free (thread_p, ctx);
+}
+
+/*
+ *  showstmt_alloc_tuple_in_context () - alloc and return next tuple from context
+ *   return:  tuple pointer
+ *   thread_p(in): 
+ *   ctx(in):
+ */
+DB_VALUE *
+showstmt_alloc_tuple_in_context (THREAD_ENTRY * thread_p,
+				 SHOWSTMT_ARRAY_CONTEXT * ctx)
+{
+  int i, num_new_total;
+  DB_VALUE **new_tuples = NULL;
+  DB_VALUE *vals = NULL;
+
+  if (ctx->num_used == ctx->num_total)
+    {
+      num_new_total = ctx->num_total * 1.5 + 1;
+      new_tuples =
+	(DB_VALUE **) db_private_realloc (thread_p, ctx->tuples,
+					  sizeof (DB_VALUE *) *
+					  num_new_total);
+      if (new_tuples == NULL)
+	{
+	  return NULL;
+	}
+
+      memset (new_tuples + ctx->num_total, 0,
+	      sizeof (DB_VALUE *) * (num_new_total - ctx->num_total));
+
+      ctx->tuples = new_tuples;
+      ctx->num_total = num_new_total;
+    }
+
+  vals =
+    (DB_VALUE *) db_private_alloc (thread_p,
+				   sizeof (DB_VALUE) * ctx->num_cols);
+  if (vals == NULL)
+    {
+      return NULL;
+    }
+  for (i = 0; i < ctx->num_cols; i++)
+    {
+      db_make_null (&vals[i]);
+    }
+
+  ctx->tuples[ctx->num_used++] = vals;
+  return vals;
+}
+
+/*
+ *  showstmt_array_next_scan () - next scan function for array
+ *   return: NO_ERROR, or ER_code
+ *   thread_p(in):
+ *   cursor(in):
+ *   out_values(in/out):
+ *   out_cnt(in):
+ *   ptr(in):
+ */
+static SCAN_CODE
+showstmt_array_next_scan (THREAD_ENTRY * thread_p, int cursor,
+			  DB_VALUE ** out_values, int out_cnt, void *ptr)
+{
+  SHOWSTMT_ARRAY_CONTEXT *ctx = (SHOWSTMT_ARRAY_CONTEXT *) ptr;
+  DB_VALUE *vals = NULL;
+  int i;
+
+  if (cursor < 0 || cursor >= ctx->num_used)
+    {
+      return S_END;
+    }
+
+  assert (out_cnt == ctx->num_cols);
+
+  vals = ctx->tuples[cursor];
+
+  for (i = 0; i < ctx->num_cols; i++)
+    {
+      db_value_clone (&vals[i], out_values[i]);
+    }
+
+  return S_SUCCESS;
+}
+
+/*
+ *  showstmt_array_end_scan () - end scan function for array
+ *   return: NO_ERROR, or ER_code
+ *   thread_p(in):
+ *   ptr(in/out):
+ */
+static int
+showstmt_array_end_scan (THREAD_ENTRY * thread_p, void **ptr)
+{
+  if (*ptr != NULL)
+    {
+      showstmt_free_array_context (thread_p,
+				   (SHOWSTMT_ARRAY_CONTEXT *) (*ptr));
+      *ptr = NULL;
+    }
+  return NO_ERROR;
 }

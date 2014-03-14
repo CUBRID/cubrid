@@ -4135,6 +4135,11 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       s_id->s.llsid.lsid.position = S_BEFORE;
       break;
 
+    case S_SHOWSTMT_SCAN:
+      s_id->s.stsid.cursor = 0;
+      s_id->position = S_BEFORE;
+      break;
+
     case S_CLASS_ATTR_SCAN:
     case S_SET_SCAN:
       s_id->position = S_BEFORE;
