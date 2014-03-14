@@ -1107,8 +1107,8 @@ typedef enum
 {
   PT_HINT_NONE = 0x00,		/* 0000 0000 *//* no hint */
   PT_HINT_ORDERED = 0x01,	/* 0000 0001 *//* force join left-to-right */
-  PT_HINT_W = 0x02,		/* 0000 0010 -- not used */
-  PT_HINT_X = 0x04,		/* 0000 0100 -- not used */
+  PT_HINT_NO_INDEX_SS = 0x02,	/* 0000 0010 *//* disable index skip scan */
+  PT_HINT_INDEX_SS = 0x04,	/* 0000 0100 *//* enable index skip scan */
   PT_HINT_Y = 0x08,		/* 0000 1000 -- not used */
   PT_HINT_USE_NL = 0x10,	/* 0001 0000 *//* force nl-join */
   PT_HINT_USE_IDX = 0x20,	/* 0010 0000 *//* force idx-join */

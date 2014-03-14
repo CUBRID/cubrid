@@ -5588,45 +5588,6 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
   for (i = 0, ni_entryp = QO_NI_ENTRY (node_indexp, 0);
        i < QO_NI_N (node_indexp); i++, ni_entryp++)
     {
-      bool is_iss_and_cover = false;
-
-      if (ni_entryp->head
-	  && ni_entryp->head->is_iss_candidate
-	  && ni_entryp->head->cover_segments)
-	{
-	  is_iss_and_cover = true;
-
-	  /* temporarily disable potential index skip scan optimization
-	   * and re-enable it only at the end, if there is enough data
-	   * (i.e. pkeys) and if the data shows that the optimization
-	   * would be a good thing.
-	   *
-	   * Index Skip Scan && Covering is a VERY rare occurence, it
-	   * happens only on SELECT A,B,C where B = 0 ORDER BY A, with
-	   * an index on A,B,C. The ORDER BY clause generates a fake term
-	   * (A > minus infinity) in order to qualify for a possible index
-	   * covering, but the fake term is ignored by the index skip scan
-	   * decision logic.
-	   * In this scenario, we want to disable the "index skip scan"
-	   * flag as soon as we have enough data to disqualify it, or as
-	   * soon as we learn that there is no data.
-	   * The reason is that if an (inefficient) ISS plan also has the
-	   * covering flag set, it will be preferred regardless of the
-	   * cost computed later on, and there is no way to "unset" the
-	   * index skip scan flag later on (when computing the cost).
-	   */
-
-	  for (j = 0, index_entryp = (ni_entryp)->head;
-	       index_entryp != NULL; j++, index_entryp = index_entryp->next)
-	    {
-	      assert (QO_ENTRY_MULTI_COL (index_entryp));
-	      assert (index_entryp->is_iss_candidate == true);
-	      assert (index_entryp->cover_segments == true);
-
-	      index_entryp->is_iss_candidate = false;
-	    }
-	}
-
       cum_statsp = &(ni_entryp)->cum_stats;
       cum_statsp->is_indexed = true;
 
@@ -5833,55 +5794,6 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		}
 	    }
 	}			/* for (j = 0, ... ) */
-
-      /* if index skip scan is possible, check the statistics and confirm or
-         infirm it's use */
-      if ((ni_entryp->head->is_iss_candidate || is_iss_and_cover)
-	  && cum_statsp->pkeys_size > 1 && cum_statsp->keys > 0)
-	{
-	  CLASS_STATS *stats = NULL;
-	  long long int first_pkey_card;
-	  long long int row_count;
-
-	  if (class_info_entryp != NULL)
-	    {
-	      stats = QO_GET_CLASS_STATS (class_info_entryp);
-	    }
-
-	  if (stats != NULL && stats->heap_num_objects > 0)
-	    {
-	      /* we have what seems like valid statistics; fetch row count */
-	      row_count = stats->heap_num_objects;
-	    }
-	  else
-	    {
-	      /* class statistics are not present; we'll consider the card
-	         of the index for calculating selectivity. this should only
-	         give us some false negatives in ISS usage */
-	      row_count = cum_statsp->keys;
-	    }
-
-	  /* fetch the cardinality of the first partial key. NULL values are
-	     not counted when the index statistics are built, so a zero card
-	     pkey is possible; we must avoid this case */
-	  assert (cum_statsp->pkeys[0] >= 0);
-	  first_pkey_card = MAX (cum_statsp->pkeys[0], 1);
-
-	  for (j = 0, index_entryp = (ni_entryp)->head;
-	       index_entryp != NULL; j++, index_entryp = index_entryp->next)
-	    {
-	      assert (QO_ENTRY_MULTI_COL (index_entryp));
-
-	      index_entryp->is_iss_candidate =
-		(row_count > first_pkey_card * INDEX_SKIP_SCAN_FACTOR);
-
-	      /* disable loose scan if skip scan is possible */
-	      if (index_entryp->is_iss_candidate)
-		{
-		  index_entryp->ils_prefix_len = 0;
-		}
-	    }
-	}
 
       /* if loose index scan is possible, check the statistics */
       if (ni_entryp->head->ils_prefix_len > 0)
@@ -7059,7 +6971,7 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
 {
   int i, t;
   QO_TERM *term;
-  PT_NODE *pt_expr;
+  PT_NODE *tree, *pt_expr;
   bool first_col_present = false, second_col_present = false;
   QO_CLASS_INFO *class_infop = NULL;
   QO_NODE *seg_nodep = NULL;
@@ -7087,10 +6999,24 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
     }
   assert (index_entry->nsegs > 1);
 
+  tree = env->pt_tree;
+  QO_ASSERT (env, tree != NULL);
+
+  if (tree->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
   /* CONNECT BY messes with the terms, so just refuse any index skip scan
    * in this case */
-  if (env->pt_tree->node_type == PT_SELECT
-      && env->pt_tree->info.query.q.select.connect_by)
+  if (tree->info.query.q.select.connect_by)
+    {
+      return false;
+    }
+
+  /* check hint */
+  if ((tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS)
+      || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS))
     {
       return false;
     }
@@ -7513,8 +7439,16 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      index_entryp->is_iss_candidate =
 		qo_is_iss_index (env, nodep, index_entryp);
 
-	      index_entryp->ils_prefix_len =
-		qo_get_ils_prefix_length (env, nodep, index_entryp);
+	      /* disable loose scan if skip scan is possible */
+	      if (index_entryp->is_iss_candidate == true)
+		{
+		  index_entryp->ils_prefix_len = 0;
+		}
+	      else
+		{
+		  index_entryp->ils_prefix_len =
+		    qo_get_ils_prefix_length (env, nodep, index_entryp);
+		}
 
 	      index_entryp->statistics_attribute_name = NULL;
 	      index_entryp->is_func_index = false;

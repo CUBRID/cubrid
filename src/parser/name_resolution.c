@@ -6730,12 +6730,6 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
 #if 0
-  if (hint & PT_HINT_W)
-    {				/* not used */
-    }
-  if (hint & PT_HINT_X)
-    {				/* not used */
-    }
   if (hint & PT_HINT_Y)
     {				/* not used */
     }

@@ -14469,17 +14469,16 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 		}
 	    }
 
+	  if (p->info.query.q.select.hint & PT_HINT_NO_INDEX_SS)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_INDEX_SS ");
+	    }
+	  else if (p->info.query.q.select.hint & PT_HINT_INDEX_SS)
+	    {
+	      q = pt_append_nulstring (parser, q, "INDEX_SS ");
+	    }
+
 #if 0
-	  if (p->info.query.q.select.hint & PT_HINT_W)
-	    {
-	      /* -- not used */
-	      q = pt_append_nulstring (parser, q, "W ");
-	    }
-	  if (p->info.query.q.select.hint & PT_HINT_X)
-	    {
-	      /* -- not used */
-	      q = pt_append_nulstring (parser, q, "X ");
-	    }
 	  if (p->info.query.q.select.hint & PT_HINT_Y)
 	    {
 	      /* -- not used */

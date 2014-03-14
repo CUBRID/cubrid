@@ -22987,6 +22987,10 @@ parse_one_statement (int state)
 PT_HINT parser_hint_table[] = {
   {"ORDERED", NULL, PT_HINT_ORDERED}
   ,
+  {"NO_INDEX_SS", NULL, PT_HINT_NO_INDEX_SS}
+  ,
+  {"INDEX_SS", NULL, PT_HINT_INDEX_SS}
+  ,
   {"USE_NL", NULL, PT_HINT_USE_NL}
   ,
   {"USE_IDX", NULL, PT_HINT_USE_IDX}
