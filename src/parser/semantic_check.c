@@ -12649,6 +12649,7 @@ void
 pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   PT_NODE *attr = NULL, *spec = NULL;
+  PT_NODE *entity_name;
 
   if (stmt == NULL || stmt->node_type != PT_INSERT)
     {
@@ -12656,10 +12657,20 @@ pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
     }
 
   spec = stmt->info.insert.spec;
-  if (spec->info.spec.entity_name->info.name.original == NULL)
+  entity_name = spec->info.spec.entity_name;
+  if (entity_name == NULL)
     {
       assert (false);
-      PT_ERROR (parser, spec->info.spec.entity_name, er_msg ());
+      PT_ERROR (parser, stmt,
+		"The parse tree of the insert statement is incorrect."
+		" entity_name of spec must be set.");
+      return;
+    }
+
+  if (entity_name->info.name.original == NULL)
+    {
+      assert (false);
+      PT_ERROR (parser, entity_name, er_msg ());
       return;
     }
 
@@ -12673,7 +12684,7 @@ pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	    {
 	      PT_ERRORmf2 (parser, attr2, MSGCAT_SET_PARSER_SEMANTIC,
 			   MSGCAT_SEMANTIC_GT_1_ASSIGNMENT_TO,
-			   spec->info.spec.entity_name->info.name.original,
+			   entity_name->info.name.original,
 			   attr2->info.name.original);
 	      return;
 	    }
