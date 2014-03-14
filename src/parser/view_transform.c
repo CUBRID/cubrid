@@ -9424,6 +9424,16 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  spec->info.spec.path_entities = NULL;
 	  if (newspec)
 	    {
+	      if (newspec->info.spec.entity_name == NULL)
+		{
+		  newspec->info.spec.entity_name =
+		    spec->info.spec.entity_name;
+		  /* spec will be free later, we don't want the entity_name
+		   * will be freed
+		   */
+		  spec->info.spec.entity_name = NULL;
+		}
+
 	      newspec->info.spec.range_var->info.name.original =
 		spec->info.spec.range_var->info.name.original;
 	      newspec->info.spec.location = spec->info.spec.location;
