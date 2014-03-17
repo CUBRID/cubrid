@@ -402,6 +402,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		{
 		  node->info.alter.hint |= hint_table[i].hint;
 		}
+	      break;
 	    default:
 	      break;
 	    }
