@@ -2473,7 +2473,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 
 	  c = btree_compare_key (&this_key, &load_args->current_key,
 				 load_args->btid->key_type, 0, 1, NULL);
-	  if (c == DB_GT)
+	  if (c == DB_EQ || c == DB_GT)
 	    {
 	      ;			/* ok */
 	    }
