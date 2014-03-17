@@ -8543,14 +8543,15 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       goto exit_on_error;
     }
 
-  btree_node_header_undo_log (thread_p, &btid->sys_btid->vfid, left_pg);
-
   header->next_vpid = right_next_vpid;
   header->max_key_len = MAX (header->max_key_len, right_max_key_len);
   header->split_info.pivot = BTREE_SPLIT_DEFAULT_PIVOT;
   header->split_info.index = 1;
 
-  btree_node_header_redo_log (thread_p, &btid->sys_btid->vfid, left_pg);
+  /* add redo logging for left_pg */
+  log_append_redo_data2 (thread_p, RVBT_COPYPAGE,
+			 &btid->sys_btid->vfid, left_pg, -1,
+			 DB_PAGESIZE, left_pg);
 
   pgbuf_set_dirty (thread_p, left_pg, DONT_FREE);
 
@@ -12308,9 +12309,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
    * the max key length.  This can happen due to disk padding when the
    * prefix key length approaches the fixed key length.
    */
-
-  btree_node_header_undo_log (thread_p, &btid->sys_btid->vfid, Q);
-
   sep_key_len = btree_get_key_length (sep_key);
   sep_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, sep_key_len);
   qheader->max_key_len = MAX (sep_key_len, qheader->max_key_len);
@@ -12335,8 +12333,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
     }
 
   qheader->split_info.index = 1;
-
-  btree_node_header_redo_log (thread_p, &btid->sys_btid->vfid, Q);
 
   rheader.node_level = qheader->node_level;
   rheader.max_key_len = right_max_key_len;
@@ -12365,8 +12361,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
     {
       goto exit_on_error;
     }
-
-
 
 
   /*******************************************************************
@@ -13323,7 +13317,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   /****************************************************************************
    ***   STEP 5: insert sep_key to P
-   ***           add undo/redo log for page P
+   ***           add redo log for page P
    ****************************************************************************/
 
   /* Log deletion of all page P records (except the header!!)
@@ -13370,10 +13364,9 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 			     BTREE_NON_LEAF_NODE);
 
   log_addr_offset = 1;
-  log_append_undoredo_data2 (thread_p, RVBT_NDRECORD_INS,
-			     &btid->sys_btid->vfid, P, log_addr_offset,
-			     sizeof (log_addr_offset), recset_length,
-			     &log_addr_offset, recset_data);
+  log_append_redo_data2 (thread_p, RVBT_NDRECORD_INS,
+			 &btid->sys_btid->vfid, P, log_addr_offset,
+			 recset_length, recset_data);
 
   nleaf_rec.pnt = *R_vpid;
   key_len = btree_get_key_length (sep_key);
@@ -13407,10 +13400,9 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 			     BTREE_NON_LEAF_NODE);
 
   log_addr_offset = 2;
-  log_append_undoredo_data2 (thread_p, RVBT_NDRECORD_INS,
-			     &btid->sys_btid->vfid, P, log_addr_offset,
-			     sizeof (log_addr_offset), recset_length,
-			     &log_addr_offset, recset_data);
+  log_append_redo_data2 (thread_p, RVBT_NDRECORD_INS,
+			 &btid->sys_btid->vfid, P, log_addr_offset,
+			 recset_length, recset_data);
 
   /* find the child page to be followed */
 
