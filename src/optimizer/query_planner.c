@@ -2019,6 +2019,7 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_ATTR_CUM_STATS *cum_statsp;
   QO_INDEX_ENTRY *index_entryp;
   double sel, sel_limit, objects, height, leaves, opages;
+  bool is_null_sel;
   double object_IO, index_IO;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
@@ -2041,10 +2042,7 @@ qo_iscan_cost (QO_PLAN * planp)
       return;
     }
 
-  /* selectivity of the index terms */
-  sel = 1.0;
   n = index_entryp->col_num;
-
   if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (index_entryp->constraints->type)
       && n == index_entryp->nsegs)
     {
@@ -2073,71 +2071,62 @@ qo_iscan_cost (QO_PLAN * planp)
 	}
     }
 
+  /* selectivity of the index terms */
+  sel = 1.0;
+  is_null_sel = false;
+
   pkeys_num = MIN (n, cum_statsp->pkeys_size);
   assert (pkeys_num <= BTREE_STATS_PKEYS_NUM);
 
   if (bitset_is_empty (&(planp->plan_un.scan.terms)))
     {
-      bool is_null_sel = false;
-      sel = 0.1;
-
       assert (!qo_is_index_iss_scan (planp));
+    }
 
-      sel_limit = 0.0;		/* init */
+  sel_limit = 0.0;		/* init */
 
-      /* set selectivity limit */
-      if (pkeys_num > 0 && cum_statsp->pkeys[0] > 1)
-	{
-	  sel_limit = 1.0 / (double) cum_statsp->pkeys[0];
-	}
-      else
-	{
-	  /* can not use btree partial-key statistics */
-	  if (cum_statsp->keys > 1)
-	    {
-	      sel_limit = 1.0 / (double) cum_statsp->keys;
-	    }
-	  else
-	    {
-	      if (QO_NODE_NCARD (nodep) == 0)
-		{		/* empty class */
-		  sel = 0.0;
-		  is_null_sel = true;
-		}
-	      else if (QO_NODE_NCARD (nodep) > 1)
-		{
-		  sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
-		}
-	    }
-	}
-
-      assert (sel_limit < 1.0);
-
-      /* check lower bound */
-      if (is_null_sel == false)
-	{
-	  sel = MAX (sel, sel_limit);
-	}
+  /* set selectivity limit */
+  if (pkeys_num > 0 && cum_statsp->pkeys[0] > 1)
+    {
+      sel_limit = 1.0 / (double) cum_statsp->pkeys[0];
     }
   else
     {
-      i = 0;
-
-      /* for index skip scan, we should pre-compute the first column's
-       * selectivity and check that we have relevant statistics. */
-      if (qo_is_index_iss_scan (planp))
+      /* can not use btree partial-key statistics */
+      if (cum_statsp->keys > 1)
 	{
-	  /* we can't do proper index skip scan analysis without
-	   * relevant statistics */
-	  if (pkeys_num <= 0 || cum_statsp->pkeys[0] <= 0)
-	    {
-	      qo_worst_cost (planp);
-	      return;
-	    }
-
-	  i = 1;
-	  n--;
+	  sel_limit = 1.0 / (double) cum_statsp->keys;
 	}
+      else
+	{
+	  if (QO_NODE_NCARD (nodep) == 0)
+	    {			/* empty class */
+	      sel = 0.0;
+	      is_null_sel = true;
+	    }
+	  else if (QO_NODE_NCARD (nodep) > 1)
+	    {
+	      sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
+	    }
+	}
+    }
+
+  assert (sel_limit < 1.0);
+
+  /* check lower bound */
+  if (is_null_sel == false)
+    {
+      sel = MAX (sel, sel_limit);
+    }
+
+  assert ((is_null_sel == false && sel == 1.0)
+	  || (is_null_sel == true && sel == 0.0));
+
+  if (!is_null_sel)
+    {
+      assert (QO_NODE_NCARD (nodep) > 0);
+
+      i = 0;
 
       for (t = bitset_iterate (&(planp->plan_un.scan.terms), &iter);
 	   t != -1; t = bitset_next_member (&iter))
@@ -2178,12 +2167,7 @@ qo_iscan_cost (QO_PLAN * planp)
 		}
 	      else
 		{
-		  if (QO_NODE_NCARD (nodep) == 0)
-		    {		/* empty class */
-		      sel = 0.0;
-		      break;	/* immediately exit loop */
-		    }
-		  else if (QO_NODE_NCARD (nodep) > 1)
+		  if (QO_NODE_NCARD (nodep) > 1)
 		    {
 		      sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
 		    }
@@ -2197,13 +2181,10 @@ qo_iscan_cost (QO_PLAN * planp)
 
 	  i++;
 	  n--;
-	}
-
-      if (qo_is_index_iss_scan (planp))
-	{
-	  sel = sel * (double) cum_statsp->pkeys[0];
-	}
+	}			/* for (t = ... ) */
     }
+
+  assert ((is_null_sel == false) || (is_null_sel == true && sel == 0.0));
 
   /* number of objects to be selected */
   objects = sel * (double) QO_NODE_NCARD (nodep);
