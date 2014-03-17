@@ -135,10 +135,4 @@ extern int css_user_access_status_start_scan (THREAD_ENTRY * thread_p,
 					      int type,
 					      DB_VALUE ** arg_values,
 					      int arg_cnt, void **ptr);
-extern SCAN_CODE css_user_access_status_next_scan (THREAD_ENTRY * thread_p,
-						   int cursor,
-						   DB_VALUE ** out_values,
-						   int out_cnt, void *ptr);
-extern int css_user_access_status_end_scan (THREAD_ENTRY * thread_p,
-					    void **ptr);
 #endif /* _CONNECTION_SUPPORT_H_ */

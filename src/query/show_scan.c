@@ -107,8 +107,8 @@ showstmt_scan_init (void)
   req = &show_Requests[SHOWSTMT_ACCESS_STATUS];
   req->show_type = SHOWSTMT_ACCESS_STATUS;
   req->start_func = css_user_access_status_start_scan;
-  req->next_func = css_user_access_status_next_scan;
-  req->end_func = css_user_access_status_end_scan;
+  req->next_func = showstmt_array_next_scan;
+  req->end_func = showstmt_array_end_scan;
 
   req = &show_Requests[SHOWSTMT_ACTIVE_LOG_HEADER];
   req->show_type = SHOWSTMT_ACTIVE_LOG_HEADER;

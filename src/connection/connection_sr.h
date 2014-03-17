@@ -51,6 +51,8 @@ struct ip_info
 extern CSS_CONN_ENTRY *css_Conn_array;
 extern CSS_CONN_ENTRY *css_Active_conn_anchor;
 
+extern int css_Num_access_user;
+
 extern int (*css_Connect_handler) (CSS_CONN_ENTRY *);
 extern CSS_THREAD_FN css_Request_handler;
 extern CSS_THREAD_FN css_Connection_error_handler;
@@ -122,9 +124,11 @@ extern int css_free_ip_info (IP_INFO * ip_info);
 extern int css_read_ip_info (IP_INFO ** out_ip_info, char *filename);
 extern int css_check_ip (IP_INFO * ip_info, unsigned char *address);
 
-extern LAST_ACCESS_STATUS *css_get_user_access_status (char *db_user);
 extern void css_set_user_access_status (const char *db_user,
 					const char *host,
 					const char *program_name);
+extern void css_get_user_access_status (int num_user,
+					LAST_ACCESS_STATUS **
+					access_status_array);
 extern void css_free_user_access_status (void);
 #endif /* _CONNECTION_SR_H_ */

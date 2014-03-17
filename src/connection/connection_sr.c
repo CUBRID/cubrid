@@ -125,6 +125,7 @@ CSS_CONN_ENTRY *css_Active_conn_anchor = NULL;
 static int css_Num_active_conn = 0;
 
 static LAST_ACCESS_STATUS *css_Access_status_anchor = NULL;
+int css_Num_access_user = 0;
 
 /* This will handle new connections */
 int (*css_Connect_handler) (CSS_CONN_ENTRY *) = NULL;
@@ -2887,6 +2888,8 @@ css_set_user_access_status (const char *db_user, const char *host,
 	  csect_exit (NULL, CSECT_ACCESS_STATUS);
 	  return;
 	}
+      css_Num_access_user++;
+
       memset (access, 0, sizeof (LAST_ACCESS_STATUS));
 
       access->next = css_Access_status_anchor;
@@ -2906,35 +2909,29 @@ css_set_user_access_status (const char *db_user, const char *host,
 }
 
 /*
- * css_get_user_access_status() - get user access status information matched with db_user
- *   return: address of user access status information structure or NULL
- *   db_user(in): 
+ * css_get_user_access_status() - get user access status informations
+ *   return: void
+ *   num_user(in): 
+ *   access_status_array(out):
  */
-LAST_ACCESS_STATUS *
-css_get_user_access_status (char *db_user)
+void
+css_get_user_access_status (int num_user,
+			    LAST_ACCESS_STATUS ** access_status_array)
 {
   int i = 0;
   LAST_ACCESS_STATUS *access = NULL;
 
-  if (db_user == NULL)
-    {
-      return NULL;
-    }
-
   csect_enter_as_reader (NULL, CSECT_ACCESS_STATUS, INF_WAIT);
 
-  for (access = css_Access_status_anchor; access != NULL;
-       access = access->next)
+  for (access = css_Access_status_anchor; (access != NULL && i < num_user);
+       access = access->next, i++)
     {
-      if (strcmp (access->db_user, db_user) == 0)
-	{
-	  break;
-	}
+      access_status_array[i] = access;
     }
 
   csect_exit (NULL, CSECT_ACCESS_STATUS);
 
-  return access;
+  return;
 }
 
 /*
@@ -2955,6 +2952,8 @@ css_free_user_access_status (void)
 
       free_and_init (access);
     }
+
+  css_Num_access_user = 0;
 
   csect_exit (NULL, CSECT_ACCESS_STATUS);
 
