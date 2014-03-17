@@ -1,0 +1,35 @@
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "dbgw_nclaivs", "dbgw_nclavis\dbgw_nclavis_2010.vcxproj", "{79149658-6BE3-44D2-AC2E-40CE4EC33AA8}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "dbgw_nclaivs_mysql", "dbgw_nclavis_mysql\dbgw_nclavis_mysql_2010.vcxproj", "{D010CB0E-1476-427F-B728-D80A4B27FCE6}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Debug|x64 = Debug|x64
+		Release|Win32 = Release|Win32
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{79149658-6BE3-44D2-AC2E-40CE4EC33AA8}.Debug|Win32.ActiveCfg = Debug|Win32
+		{79149658-6BE3-44D2-AC2E-40CE4EC33AA8}.Debug|Win32.Build.0 = Debug|Win32
+		{79149658-6BE3-44D2-AC2E-40CE4EC33AA8}.Debug|x64.ActiveCfg = Debug|x64
+		{79149658-6BE3-44D2-AC2E-40CE4EC33AA8}.Debug|x64.Build.0 = Debug|x64
+		{79149658-6BE3-44D2-AC2E-40CE4EC33AA8}.Release|Win32.ActiveCfg = Release|Win32
+		{79149658-6BE3-44D2-AC2E-40CE4EC33AA8}.Release|Win32.Build.0 = Release|Win32
+		{79149658-6BE3-44D2-AC2E-40CE4EC33AA8}.Release|x64.ActiveCfg = Release|x64
+		{79149658-6BE3-44D2-AC2E-40CE4EC33AA8}.Release|x64.Build.0 = Release|x64
+		{D010CB0E-1476-427F-B728-D80A4B27FCE6}.Debug|Win32.ActiveCfg = Debug|Win32
+		{D010CB0E-1476-427F-B728-D80A4B27FCE6}.Debug|Win32.Build.0 = Debug|Win32
+		{D010CB0E-1476-427F-B728-D80A4B27FCE6}.Debug|x64.ActiveCfg = Debug|x64
+		{D010CB0E-1476-427F-B728-D80A4B27FCE6}.Debug|x64.Build.0 = Debug|x64
+		{D010CB0E-1476-427F-B728-D80A4B27FCE6}.Release|Win32.ActiveCfg = Release|Win32
+		{D010CB0E-1476-427F-B728-D80A4B27FCE6}.Release|Win32.Build.0 = Release|Win32
+		{D010CB0E-1476-427F-B728-D80A4B27FCE6}.Release|x64.ActiveCfg = Release|x64
+		{D010CB0E-1476-427F-B728-D80A4B27FCE6}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
