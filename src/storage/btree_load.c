@@ -335,8 +335,8 @@ btree_node_header_redo_log (THREAD_ENTRY * thread_p, VFID * vfid,
  */
 int
 btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid,
-			     PAGE_PTR page_ptr, int null_delta, int oid_delta,
-			     int key_delta)
+				PAGE_PTR page_ptr, int null_delta,
+				int oid_delta, int key_delta)
 {
   RECDES rec, delta_rec;
   char delta_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -2473,7 +2473,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 
 	  c = btree_compare_key (&this_key, &load_args->current_key,
 				 load_args->btid->key_type, 0, 1, NULL);
-	  if (c == DB_EQ || c == DB_GT)
+	  if (c == DB_GT)
 	    {
 	      ;			/* ok */
 	    }
@@ -3408,10 +3408,23 @@ compare_driver (const void *first, const void *second, void *arg)
       mem1 += bitmap_size;
       mem2 += bitmap_size;
 
+#if !defined(NDEBUG)
+      for (i = 0, dom = key_type->setdomain; dom; dom = dom->next, i++);
+      assert (i == key_type->precision);
+#endif
+
+      if (sort_args->func_index_info != NULL)
+	{
+	  assert (sort_args->n_attrs <= key_type->precision);
+	}
+      else
+	{
+	  assert (sort_args->n_attrs == key_type->precision);
+	}
       assert (key_type->setdomain != NULL);
 
       for (i = 0, dom = key_type->setdomain;
-	   i < sort_args->n_attrs && dom; i++, dom = dom->next)
+	   i < key_type->precision && dom; i++, dom = dom->next)
 	{
 	  /* val1 or val2 is NULL */
 	  if (has_null)
