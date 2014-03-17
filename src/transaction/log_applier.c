@@ -257,6 +257,8 @@ struct la_info
   LA_COMMIT *commit_head;	/* queue list head */
   LA_COMMIT *commit_tail;	/* queue list tail */
   int last_deleted_archive_num;
+  /* last time that one or more archives were deleted */
+  time_t last_time_archive_deleted;
 
   /* slave info */
   char *log_data;
@@ -508,7 +510,8 @@ static int la_unlock_dbname (int *lockf_vdes, char *db_name,
 static void la_shutdown (void);
 
 static int la_remove_archive_logs (const char *db_name,
-				   int last_deleted_arv_num, int nxarv_num);
+				   int last_deleted_arv_num, int nxarv_num,
+				   int max_arv_count_to_delete);
 
 static LA_ITEM *la_get_next_repl_item (LA_ITEM * item, bool is_long_trans,
 				       LOG_LSA * last_lsa);
@@ -7040,6 +7043,8 @@ la_init (const char *log_path, const int max_mem_size)
   la_Info.start_vsize = start_vsize;
   la_Info.start_time = time (NULL);
 
+  la_Info.last_time_archive_deleted = la_Info.start_time;
+
   la_Info.db_lockf_vdes = NULL_VOLDES;
 
   return;
@@ -7487,10 +7492,11 @@ la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa,
  *   db_name(in):
  *   last_deleted_arv_num(in):
  *   nxarv_num(in):
+ *   max_count_arv_to_delete(in): max number of archive files to remove
  */
 int
 la_remove_archive_logs (const char *db_name, int last_deleted_arv_num,
-			int nxarv_num)
+			int nxarv_num, int max_arv_count_to_delete)
 {
   int error = NO_ERROR;
   int log_max_archives =
@@ -7528,6 +7534,13 @@ la_remove_archive_logs (const char *db_name, int last_deleted_arv_num,
 	  || (last_arv_num_to_delete < first_arv_num_to_delete))
 	{
 	  return last_deleted_arv_num;
+	}
+
+      if (max_arv_count_to_delete <
+	  last_arv_num_to_delete - first_arv_num_to_delete + 1)
+	{
+	  last_arv_num_to_delete =
+	      first_arv_num_to_delete + max_arv_count_to_delete - 1;
 	}
 
       for (i = first_arv_num_to_delete; i <= last_arv_num_to_delete; i++)
@@ -7719,10 +7732,11 @@ la_apply_log_file (const char *database_name, const char *log_path,
   bool clear_owner;
   int now = 0, last_eof_time = 0;
   LOG_LSA last_eof_lsa;
-
   int time_commit_interval;
   int delay_hist[LA_NUM_DELAY_HISTORY];
   int i;
+  int remove_arv_interval_in_secs;
+  int max_arv_count_to_delete = 0;
 
   assert (database_name != NULL);
   assert (log_path != NULL);
@@ -7831,6 +7845,9 @@ la_apply_log_file (const char *database_name, const char *log_path,
       la_Info.last_deleted_archive_num = la_find_last_deleted_arv_num ();
     }
 
+  remove_arv_interval_in_secs =
+    prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
+
   /* find out the last log applied LSA */
   error = la_get_last_ha_applied_info ();
   if (error != NO_ERROR)
@@ -7898,12 +7915,26 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	      last_nxarv_num = la_Info.act_log.log_hdr->nxarv_num;
 	    }
 
-	  if (last_nxarv_num != la_Info.act_log.log_hdr->nxarv_num)
+	  if (remove_arv_interval_in_secs == 0)
+	    {
+	      if (last_nxarv_num != la_Info.act_log.log_hdr->nxarv_num)
+		{
+		  max_arv_count_to_delete = INT_MAX;
+		}
+	    }
+	  else if (time (NULL) - la_Info.last_time_archive_deleted >
+		   remove_arv_interval_in_secs)
+	    {
+	      max_arv_count_to_delete = 1;
+	    }
+
+	  if (max_arv_count_to_delete > 0)
 	    {
 	      la_Info.last_deleted_archive_num =
 		la_remove_archive_logs (la_slave_db_name,
 					la_Info.last_deleted_archive_num,
-					la_Info.act_log.log_hdr->nxarv_num);
+					la_Info.act_log.log_hdr->nxarv_num,
+					max_arv_count_to_delete);
 	      if (la_Info.last_deleted_archive_num >= 0)
 		{
 		  (void) la_update_last_deleted_arv_num (la_Info.
@@ -7912,6 +7943,9 @@ la_apply_log_file (const char *database_name, const char *log_path,
 							 last_deleted_archive_num);
 		}
 	      last_nxarv_num = la_Info.act_log.log_hdr->nxarv_num;
+
+	      la_Info.last_time_archive_deleted = time (NULL);
+	      max_arv_count_to_delete = 0;
 	    }
 
 	  memcpy (&final_log_hdr, la_Info.act_log.log_hdr,
