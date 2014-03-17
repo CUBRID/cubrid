@@ -3651,6 +3651,11 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 	   * Either we timeout and we want to continue in this case, or
 	   * we have another kind of problem.
 	   */
+	  if (bestspace_type == USE_MEMORY_CACHE)
+	    {
+	      heap_stats_del_bestspace_by_vpid (thread_p, &best.vpid);
+	    }
+
 	  switch (er_errid ())
 	    {
 	    case NO_ERROR:
@@ -3852,8 +3857,13 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
   heap_hdr->estimates.recs_sumlen += (float) newrec_size;
 
+  assert (!heap_is_big_length (needed_space));
   /* Take into consideration the unfill factor for pages with objects */
   total_space = needed_space + heap_Slotted_overhead + heap_hdr->unfill_space;
+  if (heap_is_big_length (total_space))
+    {
+      total_space = needed_space + heap_Slotted_overhead;
+    }
 
   try_find = 0;
   while (true)
