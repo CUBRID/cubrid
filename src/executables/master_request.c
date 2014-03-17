@@ -128,6 +128,7 @@ static void css_process_activate_heartbeat (CSS_CONN_ENTRY * conn,
 					    unsigned short request_id);
 
 static void css_process_register_ha_process (CSS_CONN_ENTRY * conn);
+static void css_process_deregister_ha_process (CSS_CONN_ENTRY * conn);
 static void css_process_change_ha_mode (CSS_CONN_ENTRY * conn);
 static void css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn,
 					   unsigned short request_id);
@@ -960,6 +961,35 @@ css_process_register_ha_process (CSS_CONN_ENTRY * conn)
 }
 
 /*
+ * css_process_deregister_ha_process()
+ *   return: none
+ *   conn(in):
+ *
+ *   NOTE: this deregistration is requested directly by HA process itself
+ *   , not by commdb
+ */
+static void
+css_process_deregister_ha_process (CSS_CONN_ENTRY * conn)
+{
+#if !defined(WINDOWS)
+  int rv, pid;
+
+  rv = css_receive_heartbeat_data (conn, (char *) &pid, sizeof (pid));
+  if (rv != NO_ERRORS)
+    {
+      return;
+    }
+
+  pid = ntohl (pid);
+  hb_deregister_by_pid (pid);
+
+  /* deregister will clean up this connection */
+#else /* !WINDOWS */
+  css_cleanup_info_connection (conn);
+#endif /* WINDOWS */
+}
+
+/*
  * css_process_register_ha_process()
  *   return: none
  *   conn(in):
@@ -1740,6 +1770,9 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 	{
 	case SERVER_REGISTER_HA_PROCESS:
 	  css_process_register_ha_process (conn);
+	  break;
+	case SERVER_DEREGISTER_HA_PROCESS:
+	  css_process_deregister_ha_process (conn);
 	  break;
 	case SERVER_CHANGE_HA_MODE:
 	  css_process_change_ha_mode (conn);

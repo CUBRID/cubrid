@@ -317,6 +317,39 @@ hb_make_set_hbp_register (int type)
 }
 
 
+/*
+* hb_deregister_from_master () -
+*   return: NO_ERROR or ER_FAILED
+*
+*/
+int
+hb_deregister_from_master (void)
+{
+  int css_error;
+  int pid;
+
+  if (hb_Conn == NULL || IS_INVALID_SOCKET (hb_Conn->fd))
+    {
+      return ER_FAILED;
+    }
+
+  css_error =
+    css_send_heartbeat_request (hb_Conn, SERVER_DEREGISTER_HA_PROCESS);
+  if (css_error != NO_ERRORS)
+    {
+      return ER_FAILED;
+    }
+
+  pid = htonl (getpid ());
+  css_error = css_send_heartbeat_data (hb_Conn, (char *) &pid, sizeof (pid));
+  if (css_error != NO_ERRORS)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
 /*    
 * hb_register_to_master () - 
 *   return: NO_ERROR or ER_FAILED

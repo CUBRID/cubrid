@@ -141,6 +141,7 @@ extern int css_receive_heartbeat_data (CSS_CONN_ENTRY * conn, char *data,
 				       int size);
 extern int hb_process_master_request (void);
 extern int hb_register_to_master (CSS_CONN_ENTRY * conn, int type);
+extern int hb_deregister_from_master (void);
 extern int hb_process_init (const char *server_name, const char *log_path,
 			    bool copylogdbyn);
 extern void hb_process_term (void);

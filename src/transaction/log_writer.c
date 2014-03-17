@@ -1339,6 +1339,17 @@ logwr_copy_log_file (const char *db_name, const char *log_path, int mode)
       if ((error = logwr_get_log_pages (&ctx)) != NO_ERROR)
 	{
 	  ctx.last_error = error;
+
+	  if (error == ER_HA_LW_FAILED_GET_LOG_PAGE)
+	    {
+#if !defined(WINDOWS)
+	      hb_deregister_from_master ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT,
+		      2,
+		      "Encountered an unrecoverable error "
+		      "and will shut itself down", "");
+#endif /* !WINDOWS */
+	    }
 	}
       else
 	{

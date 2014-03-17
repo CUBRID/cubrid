@@ -7083,16 +7083,23 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 					  false, false)) == NULL_VOLDES)
 	    {
 	      char line_buf[PATH_MAX * 2];
+	      bool is_in_crash_recovery;
+
+	      is_in_crash_recovery = log_is_in_crash_recovery ();
 
 	      /*
 	       * The archive is not online.
 	       */
-	      fprintf (stdout, "%s\n", er_msg ());
+	      if (is_in_crash_recovery == true)
+		{
+		  fprintf (stdout, "%s\n", er_msg ());
+		}
+
 	    retry_prompt:
 	      if (log_default_input_for_archive_log_location >= 0)
 		{
 		  retry = log_default_input_for_archive_log_location;
-		  if (retry == 1)
+		  if (retry == 1 && is_in_crash_recovery == true)
 		    {
 		      fprintf (stdout,
 			       "Continue without present archive. (Partial recovery).\n");
@@ -10194,8 +10201,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	    {
 	      success = ER_FAILED;
 	    }
-        
-          assert (try_level != r_args->level);
+
+	  assert (try_level != r_args->level);
 	}
 
       error_code = fileio_get_backup_volume (thread_p, db_fullname, logpath,
