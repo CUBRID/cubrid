@@ -5794,44 +5794,6 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		}
 	    }
 	}			/* for (j = 0, ... ) */
-
-      /* if loose index scan is possible, check the statistics */
-      if (ni_entryp->head->ils_prefix_len > 0)
-	{
-	  long long int pkey_card, index_card;
-
-	  for (j = 0, index_entryp = (ni_entryp)->head;
-	       index_entryp != NULL; j++, index_entryp = index_entryp->next)
-	    {
-	      assert (QO_ENTRY_MULTI_COL (index_entryp));
-	      assert (index_entryp->is_iss_candidate == false);
-	      assert (index_entryp->ils_prefix_len > 0);
-
-	      if (cum_statsp->pkeys_size <= 1 || cum_statsp->keys <= 0
-		  || ni_entryp->head->ils_prefix_len > cum_statsp->pkeys_size)
-		{
-		  index_entryp->ils_prefix_len = 0;
-		}
-	      else
-		{
-		  /* acquire cardinalities */
-		  pkey_card =
-		    cum_statsp->pkeys[ni_entryp->head->ils_prefix_len - 1];
-		  index_card = cum_statsp->pkeys[cum_statsp->pkeys_size - 1];
-
-		  /* safeguard */
-		  pkey_card = (pkey_card > 0 ? pkey_card : 1);
-		  index_card = (index_card > 0 ? index_card : 1);
-
-		  /* disable if not worth it */
-		  if (pkey_card * INDEX_LOOSE_SCAN_FACTOR > index_card)
-		    {
-		      index_entryp->ils_prefix_len = 0;
-		    }
-		}
-	    }
-	}
-
     }				/* for (i = 0, ...) */
 }
 
@@ -6891,6 +6853,7 @@ qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
 			  QO_INDEX_ENTRY * index_entry)
 {
   BITSET segments;
+  PT_NODE *tree;
   int prefix_len = 0, i;
 
   /* check for nulls */
@@ -6904,16 +6867,51 @@ qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
     {
       return 0;
     }
+  assert (index_entry->nsegs > 1);
 
-  if (env->pt_tree->node_type == PT_SELECT
-      && index_entry->cover_segments
-      && !PT_SELECT_INFO_IS_FLAGED (env->pt_tree,
-				    PT_SELECT_INFO_DISABLE_LOOSE_SCAN)
-      && (env->pt_tree->info.query.all_distinct == PT_DISTINCT
-	  || PT_SELECT_INFO_IS_FLAGED (env->pt_tree, PT_SELECT_INFO_HAS_AGG)))
+  tree = env->pt_tree;
+  QO_ASSERT (env, tree != NULL);
+
+
+  if (tree->node_type != PT_SELECT)
+    {
+      return 0;			/* not applicable */
+    }
+
+  /* check hint */
+  if (tree->info.query.q.select.hint & PT_HINT_NO_INDEX_LS)
+    {
+      return 0;			/* disable loose index scan */
+    }
+  else if (tree->info.query.q.select.hint & PT_HINT_INDEX_LS)
+    {				/* enable loose index scan */
+      if ((tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS)
+	  || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS))
+	{			/* skip scan is disabled */
+	  ;			/* go ahead */
+	}
+      else
+	{			/* skip scan is enabled */
+	  return 0;
+	}
+    }
+  else
+    {
+      return 0;			/* no hint */
+    }
+
+  if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_DISABLE_LOOSE_SCAN))
+    {
+      return 0;			/* not applicable */
+    }
+
+  if (index_entry->cover_segments
+      && (tree->info.query.all_distinct == PT_DISTINCT
+	  || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_HAS_AGG)))
     {
       /* this is a select, index is covering all segments and it's either a
-       * DISTINCT query or GROUP BY query with DISTINCT functions */
+       * DISTINCT query or GROUP BY query with DISTINCT functions
+       */
 
       /* see if only a prefix of the index is used */
       for (i = index_entry->nsegs - 1; i >= 0; i--)
@@ -7066,7 +7064,7 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
 		  && PT_EXPR_INFO_IS_FLAGED (pt_expr,
 					     PT_EXPR_INFO_FULL_RANGE))
 		{
-		  /* second col present == still false ! */
+		  /* first col present == still false ! */
 		  continue;
 		}
 

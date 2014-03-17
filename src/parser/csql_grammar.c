@@ -17832,12 +17832,13 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 
 	  PT_NODE *ins = parser_pop_hint_node ();
 	  PT_NODE *ocs = parser_new_node (this_parser, PT_SPEC);
-	  PT_NODE *nls =
-	    pt_node_list (this_parser, PT_IS_VALUE,
-			  CONTAINER_AT_1 ((((yyGLRStackItem const *)
-					    yyvsp)[YYFILL ((5) -
-							   (5))].yystate.
-					   yysemantics.yysval.c2)));
+	  PT_NODE *nls = pt_node_list (this_parser, PT_IS_VALUE,
+				       CONTAINER_AT_1 ((((yyGLRStackItem const
+							  *)
+							 yyvsp)[YYFILL ((5) -
+									(5))].
+							yystate.yysemantics.
+							yysval.c2)));
 
 	  if (ocs)
 	    {
@@ -17901,12 +17902,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 #line 5843 "../../src/parser/csql_grammar.y"
       {
 	{
-	  PT_NODE *arg =
-	    parser_copy_tree (this_parser,
-			      (((yyGLRStackItem const *)
-				yyvsp)[YYFILL ((3) -
-					       (5))].yystate.yysemantics.
-			       yysval.node));
+	  PT_NODE *arg = parser_copy_tree (this_parser,
+					   (((yyGLRStackItem const *)
+					     yyvsp)[YYFILL ((3) -
+							    (5))].yystate.
+					    yysemantics.yysval.node));
 
 	  if (arg)
 	    {
@@ -17965,12 +17965,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  container_2 ctn;
-	  PT_NODE *arg =
-	    parser_copy_tree (this_parser,
-			      (((yyGLRStackItem const *)
-				yyvsp)[YYFILL ((1) -
-					       (3))].yystate.yysemantics.
-			       yysval.node));
+	  PT_NODE *arg = parser_copy_tree (this_parser,
+					   (((yyGLRStackItem const *)
+					     yyvsp)[YYFILL ((1) -
+							    (3))].yystate.
+					    yysemantics.yysval.node));
 
 	  if (arg)
 	    {
@@ -18198,12 +18197,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  PT_NODE *nls =
-	    pt_node_list (this_parser, PT_IS_SUBQUERY,
-			  (((yyGLRStackItem const *)
-			    yyvsp)[YYFILL ((1) -
-					   (1))].yystate.yysemantics.yysval.
-			   node));
+	  PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY,
+				       (((yyGLRStackItem const *)
+					 yyvsp)[YYFILL ((1) -
+							(1))].yystate.
+					yysemantics.yysval.node));
 	  ((*yyvalp).node) = nls;
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 	    DBG_PRINT};
@@ -18310,12 +18308,11 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  PT_NODE *nls =
-	    pt_node_list (this_parser, PT_IS_VALUE,
-			  (((yyGLRStackItem const *)
-			    yyvsp)[YYFILL ((2) -
-					   (3))].yystate.yysemantics.yysval.
-			   node));
+	  PT_NODE *nls = pt_node_list (this_parser, PT_IS_VALUE,
+				       (((yyGLRStackItem const *)
+					 yyvsp)[YYFILL ((2) -
+							(3))].yystate.
+					yysemantics.yysval.node));
 	  ((*yyvalp).node) = nls;
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 	    DBG_PRINT};
@@ -19602,12 +19599,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  PT_NODE *exp =
-	    parser_make_expression (this_parser, PT_ASSIGN,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((1) -
-						     (3))].yystate.
-				     yysemantics.yysval.node), NULL, NULL);
+	  PT_NODE *exp = parser_make_expression (this_parser, PT_ASSIGN,
+						 (((yyGLRStackItem const *)
+						   yyvsp)[YYFILL ((1) -
+								  (3))].
+						  yystate.yysemantics.yysval.
+						  node), NULL, NULL);
 	  PT_NODE *arg1, *arg2, *list, *tmp;
 	  PT_NODE *e1, *e2 = NULL, *e1_next, *e2_next;
 	  bool is_subquery = false;
@@ -29665,12 +29662,12 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_PRIOR,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((3) -
-						     (3))].yystate.
-				     yysemantics.yysval.node), NULL, NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_PRIOR,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((3) -
+								   (3))].
+						   yystate.yysemantics.yysval.
+						   node), NULL, NULL);
 	  PARSER_SAVE_ERR_CONTEXT (node,
 				   (*yylocp).
 				   buffer_pos) parser_restore_sysc ();
@@ -30793,20 +30790,22 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_SUBSTRING,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (10))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((6) -
-						     (10))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((8) -
-						     (10))].yystate.
-				     yysemantics.yysval.node));
+	  PT_NODE *node = parser_make_expression (this_parser, PT_SUBSTRING,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (10))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((6) -
+								   (10))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((8) -
+								   (10))].
+						   yystate.yysemantics.yysval.
+						   node));
 	  node->info.expr.qualifier = PT_SUBSTR_ORG;
 	  PICE (node);
 	  ((*yyvalp).node) = node;
@@ -30834,16 +30833,17 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_SUBSTRING,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (8))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((6) -
-						     (8))].yystate.
-				     yysemantics.yysval.node), NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_SUBSTRING,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((6) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node), NULL);
 	  node->info.expr.qualifier = PT_SUBSTR_ORG;
 	  PICE (node);
 	  ((*yyvalp).node) = node;
@@ -30871,20 +30871,22 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_SUBSTRING,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (10))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((6) -
-						     (10))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((8) -
-						     (10))].yystate.
-				     yysemantics.yysval.node));
+	  PT_NODE *node = parser_make_expression (this_parser, PT_SUBSTRING,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (10))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((6) -
+								   (10))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((8) -
+								   (10))].
+						   yystate.yysemantics.yysval.
+						   node));
 	  node->info.expr.qualifier = PT_SUBSTR_ORG;
 	  PICE (node);
 	  ((*yyvalp).node) = node;
@@ -30912,16 +30914,17 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_SUBSTRING,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (8))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((6) -
-						     (8))].yystate.
-				     yysemantics.yysval.node), NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_SUBSTRING,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((6) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node), NULL);
 	  node->info.expr.qualifier = PT_SUBSTR_ORG;
 	  PICE (node);
 	  ((*yyvalp).node) = node;
@@ -30949,12 +30952,12 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_DATEF,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (6))].yystate.
-				     yysemantics.yysval.node), NULL, NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_DATEF,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (6))].
+						   yystate.yysemantics.yysval.
+						   node), NULL, NULL);
 	  PICE (node);
 	  ((*yyvalp).node) = node;
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
@@ -30981,12 +30984,12 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_TIMEF,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (6))].yystate.
-				     yysemantics.yysval.node), NULL, NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_TIMEF,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (6))].
+						   yystate.yysemantics.yysval.
+						   node), NULL, NULL);
 	  PICE (node);
 	  ((*yyvalp).node) = node;
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
@@ -31013,16 +31016,17 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_ADDDATE,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (8))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((6) -
-						     (8))].yystate.
-				     yysemantics.yysval.node), NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_ADDDATE,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((6) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node), NULL);
 	  PICE (node);
 	  ((*yyvalp).node) = node;
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
@@ -31096,16 +31100,17 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_SUBDATE,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (8))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((6) -
-						     (8))].yystate.
-				     yysemantics.yysval.node), NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_SUBDATE,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((6) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node), NULL);
 	  PICE (node);
 	  ((*yyvalp).node) = node;
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
@@ -31459,16 +31464,17 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_TRIM,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((7) -
-						     (9))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((5) -
-						     (9))].yystate.
-				     yysemantics.yysval.node), NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_TRIM,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((7) -
+								   (9))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((5) -
+								   (9))].
+						   yystate.yysemantics.yysval.
+						   node), NULL);
 	  node->info.expr.qualifier =
 	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (9))].yystate.
 	     yysemantics.yysval.number);
@@ -31498,12 +31504,12 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_TRIM,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((6) -
-						     (8))].yystate.
-				     yysemantics.yysval.node), NULL, NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_TRIM,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((6) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node), NULL, NULL);
 	  node->info.expr.qualifier =
 	    (((yyGLRStackItem const *) yyvsp)[YYFILL ((4) - (8))].yystate.
 	     yysemantics.yysval.number);
@@ -31533,16 +31539,17 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_TRIM,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((6) -
-						     (8))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (8))].yystate.
-				     yysemantics.yysval.node), NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_TRIM,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((6) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node), NULL);
 	  node->info.expr.qualifier = PT_BOTH;
 	  PICE (node);
 	  ((*yyvalp).node) = node;
@@ -31570,12 +31577,12 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_TRIM,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (6))].yystate.
-				     yysemantics.yysval.node), NULL, NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_TRIM,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (6))].
+						   yystate.yysemantics.yysval.
+						   node), NULL, NULL);
 	  node->info.expr.qualifier = PT_BOTH;
 	  PICE (node);
 	  ((*yyvalp).node) = node;
@@ -31603,16 +31610,17 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_CHR,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (7))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((5) -
-						     (7))].yystate.
-				     yysemantics.yysval.node), NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_CHR,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (7))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((5) -
+								   (7))].
+						   yystate.yysemantics.yysval.
+						   node), NULL);
 	  PICE (node);
 	  ((*yyvalp).node) = node;
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
@@ -31675,12 +31683,12 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *expr =
-	    parser_make_expression (this_parser, PT_CAST,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (8))].yystate.
-				     yysemantics.yysval.node), NULL, NULL);
+	  PT_NODE *expr = parser_make_expression (this_parser, PT_CAST,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node), NULL, NULL);
 	  PT_TYPE_ENUM typ =
 	    TO_NUMBER (CONTAINER_AT_0
 		       ((((yyGLRStackItem const *) yyvsp)[YYFILL ((6) - (8))].
@@ -32318,16 +32326,17 @@ PT_IS_SUBINSERT;
 #line 15186 "../../src/parser/csql_grammar.y"
       {
 	{
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_LEFT,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (8))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((6) -
-						     (8))].yystate.
-				     yysemantics.yysval.node), NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_LEFT,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((6) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node), NULL);
 	  PICE (node);
 	  ((*yyvalp).node) = node;
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
@@ -32353,16 +32362,17 @@ PT_IS_SUBINSERT;
 #line 15198 "../../src/parser/csql_grammar.y"
       {
 	{
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_RIGHT,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (8))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((6) -
-						     (8))].yystate.
-				     yysemantics.yysval.node), NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_RIGHT,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((6) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node), NULL);
 	  PICE (node);
 	  ((*yyvalp).node) = node;
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
@@ -32388,16 +32398,17 @@ PT_IS_SUBINSERT;
 #line 15210 "../../src/parser/csql_grammar.y"
       {
 	{
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_MODULUS,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (8))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((6) -
-						     (8))].yystate.
-				     yysemantics.yysval.node), NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_MODULUS,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((6) -
+								   (8))].
+						   yystate.yysemantics.yysval.
+						   node), NULL);
 	  PICE (node);
 	  ((*yyvalp).node) = node;
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
@@ -32639,12 +32650,12 @@ PT_IS_SUBINSERT;
 #line 15288 "../../src/parser/csql_grammar.y"
       {
 	{
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_CHARSET,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (6))].yystate.
-				     yysemantics.yysval.node), NULL, NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_CHARSET,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (6))].
+						   yystate.yysemantics.yysval.
+						   node), NULL, NULL);
 	  PICE (node);
 	  ((*yyvalp).node) = node;
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
@@ -32670,12 +32681,12 @@ PT_IS_SUBINSERT;
 #line 15300 "../../src/parser/csql_grammar.y"
       {
 	{
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_COLLATION,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((4) -
-						     (6))].yystate.
-				     yysemantics.yysval.node), NULL, NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_COLLATION,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((4) -
+								   (6))].
+						   yystate.yysemantics.yysval.
+						   node), NULL, NULL);
 	  PICE (node);
 	  ((*yyvalp).node) = node;
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
@@ -34322,18 +34333,20 @@ PT_IS_SUBINSERT;
 #line 16390 "../../src/parser/csql_grammar.y"
       {
 	{
-	  PT_NODE *arg1 =
-	    pt_convert_to_logical_expr (this_parser,
-					(((yyGLRStackItem const *)
-					  yyvsp)[YYFILL ((1) -
-							 (3))].yystate.
-					 yysemantics.yysval.node), 1, 1);
-	  PT_NODE *arg2 =
-	    pt_convert_to_logical_expr (this_parser,
-					(((yyGLRStackItem const *)
-					  yyvsp)[YYFILL ((3) -
-							 (3))].yystate.
-					 yysemantics.yysval.node), 1, 1);
+	  PT_NODE *arg1 = pt_convert_to_logical_expr (this_parser,
+						      (((yyGLRStackItem const
+							 *) yyvsp)[YYFILL ((1)
+									   -
+									   (3))].
+						       yystate.yysemantics.
+						       yysval.node), 1, 1);
+	  PT_NODE *arg2 = pt_convert_to_logical_expr (this_parser,
+						      (((yyGLRStackItem const
+							 *) yyvsp)[YYFILL ((3)
+									   -
+									   (3))].
+						       yystate.yysemantics.
+						       yysval.node), 1, 1);
 	  ((*yyvalp).node) =
 	    parser_make_expression (this_parser, PT_OR, arg1, arg2, NULL);
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node),
@@ -34361,18 +34374,20 @@ PT_IS_SUBINSERT;
 #line 16408 "../../src/parser/csql_grammar.y"
       {
 	{
-	  PT_NODE *arg1 =
-	    pt_convert_to_logical_expr (this_parser,
-					(((yyGLRStackItem const *)
-					  yyvsp)[YYFILL ((1) -
-							 (3))].yystate.
-					 yysemantics.yysval.node), 1, 1);
-	  PT_NODE *arg2 =
-	    pt_convert_to_logical_expr (this_parser,
-					(((yyGLRStackItem const *)
-					  yyvsp)[YYFILL ((3) -
-							 (3))].yystate.
-					 yysemantics.yysval.node), 1, 1);
+	  PT_NODE *arg1 = pt_convert_to_logical_expr (this_parser,
+						      (((yyGLRStackItem const
+							 *) yyvsp)[YYFILL ((1)
+									   -
+									   (3))].
+						       yystate.yysemantics.
+						       yysval.node), 1, 1);
+	  PT_NODE *arg2 = pt_convert_to_logical_expr (this_parser,
+						      (((yyGLRStackItem const
+							 *) yyvsp)[YYFILL ((3)
+									   -
+									   (3))].
+						       yystate.yysemantics.
+						       yysval.node), 1, 1);
 	  ((*yyvalp).node) =
 	    parser_make_expression (this_parser, PT_XOR, arg1, arg2, NULL);
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node),
@@ -34397,12 +34412,13 @@ PT_IS_SUBINSERT;
 #line 16425 "../../src/parser/csql_grammar.y"
       {
 	{
-	  PT_NODE *arg =
-	    pt_convert_to_logical_expr (this_parser,
-					(((yyGLRStackItem const *)
-					  yyvsp)[YYFILL ((1) -
-							 (3))].yystate.
-					 yysemantics.yysval.node), 1, 1);
+	  PT_NODE *arg = pt_convert_to_logical_expr (this_parser,
+						     (((yyGLRStackItem const
+							*) yyvsp)[YYFILL ((1)
+									  -
+									  (3))].
+						      yystate.yysemantics.
+						      yysval.node), 1, 1);
 	  ((*yyvalp).node) =
 	    parser_make_expression (this_parser,
 				    (((yyGLRStackItem const *)
@@ -34457,18 +34473,20 @@ PT_IS_SUBINSERT;
 #line 16457 "../../src/parser/csql_grammar.y"
       {
 	{
-	  PT_NODE *arg1 =
-	    pt_convert_to_logical_expr (this_parser,
-					(((yyGLRStackItem const *)
-					  yyvsp)[YYFILL ((1) -
-							 (3))].yystate.
-					 yysemantics.yysval.node), 1, 1);
-	  PT_NODE *arg2 =
-	    pt_convert_to_logical_expr (this_parser,
-					(((yyGLRStackItem const *)
-					  yyvsp)[YYFILL ((3) -
-							 (3))].yystate.
-					 yysemantics.yysval.node), 1, 1);
+	  PT_NODE *arg1 = pt_convert_to_logical_expr (this_parser,
+						      (((yyGLRStackItem const
+							 *) yyvsp)[YYFILL ((1)
+									   -
+									   (3))].
+						       yystate.yysemantics.
+						       yysval.node), 1, 1);
+	  PT_NODE *arg2 = pt_convert_to_logical_expr (this_parser,
+						      (((yyGLRStackItem const
+							 *) yyvsp)[YYFILL ((3)
+									   -
+									   (3))].
+						       yystate.yysemantics.
+						       yysval.node), 1, 1);
 	  ((*yyvalp).node) =
 	    parser_make_expression (this_parser, PT_AND, arg1, arg2, NULL);
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node),
@@ -34494,12 +34512,13 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *arg =
-	    pt_convert_to_logical_expr (this_parser,
-					(((yyGLRStackItem const *)
-					  yyvsp)[YYFILL ((2) -
-							 (2))].yystate.
-					 yysemantics.yysval.node), 1, 1);
+	  PT_NODE *arg = pt_convert_to_logical_expr (this_parser,
+						     (((yyGLRStackItem const
+							*) yyvsp)[YYFILL ((2)
+									  -
+									  (2))].
+						      yystate.yysemantics.
+						      yysval.node), 1, 1);
 	  ((*yyvalp).node) =
 	    parser_make_expression (this_parser, PT_NOT, arg, NULL, NULL);
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node),
@@ -34512,12 +34531,13 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *arg =
-	    pt_convert_to_logical_expr (this_parser,
-					(((yyGLRStackItem const *)
-					  yyvsp)[YYFILL ((2) -
-							 (2))].yystate.
-					 yysemantics.yysval.node), 1, 1);
+	  PT_NODE *arg = pt_convert_to_logical_expr (this_parser,
+						     (((yyGLRStackItem const
+							*) yyvsp)[YYFILL ((2)
+									  -
+									  (2))].
+						      yystate.yysemantics.
+						      yysval.node), 1, 1);
 	  ((*yyvalp).node) =
 	    parser_make_expression (this_parser, PT_NOT, arg, NULL, NULL);
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node),
@@ -34802,26 +34822,28 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *esc =
-	    parser_make_expression (this_parser, PT_LIKE_ESCAPE,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((3) -
-						     (5))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((5) -
-						     (5))].yystate.
-				     yysemantics.yysval.node), NULL);
-	  PT_NODE *node =
-	    parser_make_expression (this_parser,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((2) -
-						     (5))].yystate.
-				     yysemantics.yysval.number),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((1) -
-						     (5))].yystate.
-				     yysemantics.yysval.node), esc, NULL);
+	  PT_NODE *esc = parser_make_expression (this_parser, PT_LIKE_ESCAPE,
+						 (((yyGLRStackItem const *)
+						   yyvsp)[YYFILL ((3) -
+								  (5))].
+						  yystate.yysemantics.yysval.
+						  node),
+						 (((yyGLRStackItem const *)
+						   yyvsp)[YYFILL ((5) -
+								  (5))].
+						  yystate.yysemantics.yysval.
+						  node), NULL);
+	  PT_NODE *node = parser_make_expression (this_parser,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((2) -
+								   (5))].
+						   yystate.yysemantics.yysval.
+						   number),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((1) -
+								   (5))].
+						   yystate.yysemantics.yysval.
+						   node), esc, NULL);
 	  ((*yyvalp).node) = node;
 	PARSER_SAVE_ERR_CONTEXT (((*yyvalp).node), (*yylocp).buffer_pos)
 	    DBG_PRINT};
@@ -34955,16 +34977,17 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser, PT_BETWEEN_AND,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((3) -
-						     (5))].yystate.
-				     yysemantics.yysval.node),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((5) -
-						     (5))].yystate.
-				     yysemantics.yysval.node), NULL);
+	  PT_NODE *node = parser_make_expression (this_parser, PT_BETWEEN_AND,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((3) -
+								   (5))].
+						   yystate.yysemantics.yysval.
+						   node),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((5) -
+								   (5))].
+						   yystate.yysemantics.yysval.
+						   node), NULL);
 	  ((*yyvalp).node) =
 	    parser_make_expression (this_parser,
 				    (((yyGLRStackItem const *)
@@ -34985,16 +35008,17 @@ PT_IS_SUBINSERT;
       {
 	{
 
-	  PT_NODE *node =
-	    parser_make_expression (this_parser,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((2) -
-						     (3))].yystate.
-				     yysemantics.yysval.number),
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((1) -
-						     (3))].yystate.
-				     yysemantics.yysval.node), NULL, NULL);
+	  PT_NODE *node = parser_make_expression (this_parser,
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((2) -
+								   (3))].
+						   yystate.yysemantics.yysval.
+						   number),
+						  (((yyGLRStackItem const *)
+						    yyvsp)[YYFILL ((1) -
+								   (3))].
+						   yystate.yysemantics.yysval.
+						   node), NULL, NULL);
 	  PT_NODE *t =
 	    CONTAINER_AT_1 ((((yyGLRStackItem const *)
 			      yyvsp)[YYFILL ((3) -
@@ -45213,6 +45237,10 @@ PT_HINT parser_hint_table[] = {
   {"NO_HASH_AGGREGATE", NULL, PT_HINT_NO_HASH_AGGREGATE}
   ,
   {"SKIP_UPDATE_NULL", NULL, PT_HINT_SKIP_UPDATE_NULL}
+  ,
+  {"NO_INDEX_LS", NULL, PT_HINT_NO_INDEX_LS}
+  ,
+  {"INDEX_LS", NULL, PT_HINT_INDEX_LS}
   ,
   {NULL, NULL, -1}		/* mark as end */
 };

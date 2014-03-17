@@ -403,6 +403,13 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.alter.hint |= hint_table[i].hint;
 		}
 	      break;
+	    case PT_HINT_NO_INDEX_LS:	/* disable loose index scan */
+	    case PT_HINT_INDEX_LS:	/* enable loose index scan */
+	      if (node->node_type == PT_SELECT)
+		{
+		  node->info.query.q.select.hint |= hint_table[i].hint;
+		}
+	      break;
 	    default:
 	      break;
 	    }

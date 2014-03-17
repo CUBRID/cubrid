@@ -14586,6 +14586,19 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "NO_HASH_AGGREGATE ");
 	    }
 
+	  if (p->info.query.q.select.hint & PT_HINT_NO_INDEX_LS)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_INDEX_LS ");
+	    }
+	  else if (p->info.query.q.select.hint & PT_HINT_INDEX_LS)
+	    {
+	      if ((p->info.query.q.select.hint & PT_HINT_NO_INDEX_SS)
+		  || !(p->info.query.q.select.hint & PT_HINT_INDEX_SS))
+		{		/* skip scan is disabled */
+		  q = pt_append_nulstring (parser, q, "INDEX_LS ");
+		}
+	    }
+
 	  q = pt_append_nulstring (parser, q, "*/ ");
 	}
 

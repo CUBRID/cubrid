@@ -23031,6 +23031,10 @@ PT_HINT parser_hint_table[] = {
   ,
   {"SKIP_UPDATE_NULL", NULL, PT_HINT_SKIP_UPDATE_NULL}
   ,
+  {"NO_INDEX_LS", NULL, PT_HINT_NO_INDEX_LS}
+  ,
+  {"INDEX_LS", NULL, PT_HINT_INDEX_LS}
+  ,
   {NULL, NULL, -1}		/* mark as end */
 };
 
