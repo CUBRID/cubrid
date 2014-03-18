@@ -3447,7 +3447,7 @@ parse_timestamp (const char *buf, int buf_len, DB_TIMESTAMP * utime)
   p = parse_date (buf, buf_len, &date);
   if (p)
     {
-      p = parse_time (p, buf_len, &time);
+      p = parse_time (p, buf_len - (p - buf), &time);
       if (p)
 	{
 	  goto finalcheck;
@@ -3458,7 +3458,7 @@ parse_timestamp (const char *buf, int buf_len, DB_TIMESTAMP * utime)
   p = parse_time (buf, buf_len, &time);
   if (p)
     {
-      p = parse_date (p, buf_len, &date);
+      p = parse_date (p, buf_len - (p - buf), &date);
       if (p)
 	{
 	  goto finalcheck;
@@ -3516,7 +3516,7 @@ parse_datetime (const char *buf, int buf_len, DB_DATETIME * datetime)
   p = parse_date (buf, buf_len, &date);
   if (p)
     {
-      p = parse_mtime (p, buf_len, &mtime, NULL, NULL);
+      p = parse_mtime (p, buf_len - (p - buf), &mtime, NULL, NULL);
       if (p)
 	{
 	  goto finalcheck;
@@ -3526,7 +3526,7 @@ parse_datetime (const char *buf, int buf_len, DB_DATETIME * datetime)
   p = parse_mtime (buf, buf_len, &mtime, NULL, NULL);
   if (p)
     {
-      p = parse_date (p, buf_len, &date);
+      p = parse_date (p, buf_len - (p - buf), &date);
       if (p)
 	{
 	  goto finalcheck;
