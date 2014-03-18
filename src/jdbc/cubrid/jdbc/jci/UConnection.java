@@ -320,22 +320,26 @@ public class UConnection {
 	}
 
 	public void tryConnect() throws CUBRIDException {
-           initLogger();
-	    	try {
-	    	    	setBeginTime();
-	    	    	checkReconnect();
-	    	    	endTransaction(true);
-		} catch (UJciException e) {
-		    	clientSocketClose();
-	    	    	e.toUError(errorHandler);
-	    	    	throw new CUBRIDException(errorHandler, e);
-		} catch (IOException e) {
-		    	clientSocketClose();
-		    	if (e instanceof SocketTimeoutException) {
-		    	    	throw new CUBRIDException(CUBRIDJDBCErrorCode.request_timeout, e);
-		    	}
-		    	throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream, e);
+	    initLogger();
+	    try {
+		if (connectionProperties.getUseLazyConnection()) {
+		    needReconnection = true;
+		    return;
 		}
+		setBeginTime();
+		checkReconnect();
+		endTransaction(true);
+	    } catch (UJciException e) {
+		clientSocketClose();
+		e.toUError(errorHandler);
+		throw new CUBRIDException(errorHandler, e);
+	    } catch (IOException e) {
+		clientSocketClose();
+		if (e instanceof SocketTimeoutException) {
+		    throw new CUBRIDException(CUBRIDJDBCErrorCode.request_timeout, e);
+		}
+		throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream, e);
+	    }
 	}
 
 	public void setAltHosts(ArrayList<String> altHostList)
@@ -1734,6 +1738,9 @@ public class UConnection {
 	}
 
 	UInputBuffer send_recv_msg() throws UJciException, IOException {
+		if (client == null) {
+			createJciException(UErrorCode.ER_COMMUNICATION);
+		}
 		return send_recv_msg(true);
 	}
 
@@ -2023,8 +2030,7 @@ public class UConnection {
 			*/
 			String id = "0";
 			UJCIUtil.copy_bytes(dbInfo, 608, 20, id);
-		}
-		else if (protoVersionIsAbove(PROTOCOL_V3)) {
+		} else if (protoVersionIsAbove(PROTOCOL_V3)) {
 			System.arraycopy(sessionId, 0, dbInfo, 608, 20);
 		} else {
 		    	UJCIUtil.copy_bytes(dbInfo, 608, 20, new Integer(oldSessionId).toString());
@@ -2033,7 +2039,6 @@ public class UConnection {
 		if (outBuffer == null) {
 			outBuffer = new UOutputBuffer(this);
 		}
-
 
 		if (pooled_ustmts == null) {
 			pooled_ustmts = new Vector<UStatement>();

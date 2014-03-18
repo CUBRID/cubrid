@@ -77,10 +77,10 @@ public class ConnectionProperties {
 	    }
 	}
 	if (this.getConnLoadBal() && this.getAltHosts() == null){
-		this.connLoadBal.setValue("false");
+	    this.connLoadBal.setValue("false");
 	}
 	if (this.getReconnectTime() < (BrokerHealthCheck.MONITORING_INTERVAL / 1000)) {
-		this.rcTime.setValue((Integer)(BrokerHealthCheck.MONITORING_INTERVAL / 1000));
+	    this.rcTime.setValue((Integer)(BrokerHealthCheck.MONITORING_INTERVAL / 1000));
 	}
     }
 
@@ -169,7 +169,7 @@ public class ConnectionProperties {
 	@Override
 	boolean validateValue(Object o) {
 	    long value;
-	    
+
 	    if (o instanceof Integer) {
 		value = ((Integer)o).intValue();
 	    } else if (o instanceof String) {
@@ -180,12 +180,12 @@ public class ConnectionProperties {
 		}
 	    } else {
 		return false;
-	      }
-	    
-	   if (value < this.lowerBound || value > this.upperBound) {
-		   return false;
-	   } else {
-		   return true;
+	    }
+
+	    if (value < this.lowerBound || value > this.upperBound) {
+		return false;
+	    } else {
+		return true;
 	    }
 	}
     }
@@ -314,13 +314,16 @@ public class ConnectionProperties {
 
     StringConnectionProperty altHosts = new StringConnectionProperty(
 	    "altHosts", null);
-    
+
     BooleanConnectionProperty connLoadBal = new BooleanConnectionProperty(
-    		"loadBalance", false);
+	    "loadBalance", false);
 
     ZeroDateTimeBehaviorConnectionProperty zeroDateTimeBehavior = new ZeroDateTimeBehaviorConnectionProperty(
 	    "zeroDateTimeBehavior", UConnection.ZERO_DATETIME_BEHAVIOR_EXCEPTION);
-    
+
+    BooleanConnectionProperty useLazyConnection = new BooleanConnectionProperty(
+	    "useLazyConnection", false);
+
     public boolean getLogOnException() {
 	return logOnException.getValueAsBoolean();
     }
@@ -358,9 +361,13 @@ public class ConnectionProperties {
     }
 
     public boolean getConnLoadBal() {
-   return connLoadBal.getValueAsBoolean();
+	return connLoadBal.getValueAsBoolean();
     }
     public String getZeroDateTimeBehavior() {
 	return zeroDateTimeBehavior.getValueAsString();
+    }
+
+    public boolean getUseLazyConnection() {
+	return useLazyConnection.getValueAsBoolean();
     }
 }
