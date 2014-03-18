@@ -1536,11 +1536,6 @@ static QO_PLAN *
 qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method)
 {
   QO_PLAN *plan;
-  QO_ENV *env = info->env;
-  BITSET_ITERATOR iter;
-  int t;
-  QO_TERM *term;
-  PT_NODE *pt_expr;
 
   plan = qo_plan_malloc (info->env);
   if (plan == NULL)
@@ -1560,23 +1555,8 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method)
   plan->plan_un.scan.scan_method = scan_method;
   plan->plan_un.scan.node = node;
 
-  for (t = bitset_iterate (&(QO_NODE_SARGS (node)), &iter);
-       t != -1; t = bitset_next_member (&iter))
-    {
-      term = QO_ENV_TERM (env, t);
-      pt_expr = QO_TERM_PT_EXPR (term);
+  bitset_assign (&(plan->sarged_terms), &(QO_NODE_SARGS (node)));
 
-      /* check for non-null RANGE sarg term only used for index scan
-       * only used for the first segment of the index key
-       */
-      if (pt_expr
-	  && PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE))
-	{
-	  continue;		/* skip and go ahead */
-	}
-
-      bitset_add (&(plan->sarged_terms), QO_TERM_IDX (term));
-    }
   bitset_assign (&(plan->subqueries), &(QO_NODE_SUBQUERIES (node)));
   bitset_init (&(plan->plan_un.scan.terms), info->env);
   bitset_init (&(plan->plan_un.scan.kf_terms), info->env);
@@ -1687,7 +1667,6 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
   QO_ENV *env = info->env;
   QO_INDEX_ENTRY *index_entryp = NULL;
   QO_TERM *term = NULL;
-  PT_NODE *pt_expr = NULL;
   BITSET index_segs;
   BITSET term_segs;
   BITSET remaining_terms;
@@ -1750,22 +1729,6 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 
       if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 	{
-	  if (bitset_cardinality (&(plan->plan_un.scan.terms)) > 1)
-	    {			/* is not the first term */
-	      pt_expr = QO_TERM_PT_EXPR (term);
-
-	      /* check for non-null RANGE sarg term only used for index scan
-	       * only used for the first segment of the index key
-	       */
-	      if (pt_expr
-		  && PT_EXPR_INFO_IS_FLAGED (pt_expr,
-					     PT_EXPR_INFO_FULL_RANGE))
-		{
-		  bitset_remove (&(plan->plan_un.scan.terms),
-				 QO_TERM_IDX (term));
-		  continue;	/* go ahead */
-		}
-	    }
 	  break;
 	}
     }
@@ -1805,19 +1768,6 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
 	    {
 	      continue;		/* term contains correlated subquery */
-	    }
-
-	  pt_expr = QO_TERM_PT_EXPR (term);
-
-	  /* check for non-null RANGE sarg term only used for index scan
-	   * only used for the first segment of the index key
-	   */
-	  if (pt_expr
-	      && PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE))
-	    {
-	      bitset_remove (&(plan->sarged_terms), QO_TERM_IDX (term));
-	      bitset_remove (&remaining_terms, QO_TERM_IDX (term));
-	      continue;		/* skip out unnecessary term */
 	    }
 
 	  /* check for no key-range index scan */
@@ -6948,7 +6898,6 @@ planner_visit_node (QO_PLANNER * planner,
   QO_TERM *follow_term = NULL;
   int idx_join_cnt = 0;		/* number of idx-join edges */
   QO_TERM *term;
-  PT_NODE *pt_expr;
   QO_NODE *node;
   QO_INFO *head_info = (QO_INFO *) NULL;
   QO_INFO *tail_info = (QO_INFO *) NULL;
@@ -7191,17 +7140,6 @@ planner_visit_node (QO_PLANNER * planner,
 	if (!bitset_subset (visited_nodes, &(QO_TERM_NODES (term))))
 	  {
 	    continue;
-	  }
-
-	pt_expr = QO_TERM_PT_EXPR (term);
-
-	/* check for non-null RANGE sarg term only used for index scan
-	 * only used for the first segment of the index key
-	 */
-	if (pt_expr
-	    && PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE))
-	  {
-	    continue;		/* skip and go ahead */
 	  }
 
 	found_edge = false;	/* init */
@@ -8316,8 +8254,6 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 {
   QO_INDEX_ENTRY *index_entryp;
   BITSET_ITERATOR iter;
-  QO_TERM *term;
-  PT_NODE *pt_expr;
   int i, t, n, normal_index_plan_n = 0;
   QO_PLAN *planp;
   BITSET range_terms;
@@ -8382,22 +8318,6 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
   for (t = bitset_iterate (&seg_other_terms, &iter);
        t != -1; t = bitset_next_member (&iter))
     {
-      term = QO_ENV_TERM (infop->env, t);
-      if (bitset_cardinality (&(index_entryp->seg_other_terms[nsegs - 1]))
-	  > 1)
-	{
-	  pt_expr = QO_TERM_PT_EXPR (term);
-
-	  /* check for non-null RANGE sarg term only used for index scan
-	   * only used for the first segment of the index key
-	   */
-	  if (pt_expr
-	      && PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE))
-	    {
-	      continue;		/* skip */
-	    }
-	}
-
       bitset_add (&range_terms, t);
 
       /* generate index scan plan */
@@ -10059,13 +9979,9 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       return DEFAULT_RANGE_SELECTIVITY;
     }
 
-  /* check for non-null RANGE sarg term only used for index scan;
-   * 'attr RANGE ( Min ge_inf )'
-   */
-  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE))
-    {
-      return 1.0;
-    }
+#if 1				/* unused anymore - DO NOT DELETE ME */
+  QO_ASSERT (env, !PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE));
+#endif
 
   /* get index cardinality */
   lhs_icard = qo_index_cardinality (env, lhs);

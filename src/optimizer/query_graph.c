@@ -2253,9 +2253,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		    case PT_NULLSAFE_EQ:
 		      break;
 		    case PT_RANGE:
-		      if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP)
-			  && !PT_EXPR_INFO_IS_FLAGED (pt_expr,
-						      PT_EXPR_INFO_FULL_RANGE))
+		      if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 			{
 			  lhs_indexable = 0;
 			}
@@ -6967,13 +6965,9 @@ qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
 static bool
 qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
 {
-  int i, t;
-  QO_TERM *term;
-  PT_NODE *tree, *pt_expr;
+  int i;
+  PT_NODE *tree;
   bool first_col_present = false, second_col_present = false;
-  QO_CLASS_INFO *class_infop = NULL;
-  QO_NODE *seg_nodep = NULL;
-  BITSET_ITERATOR iter;
 
   if (env == NULL || nodep == NULL || index_entry == NULL)
     {
@@ -7048,29 +7042,10 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
        * with generating index covering.
        */
 
-      if (bitset_cardinality (&(index_entry->seg_equal_terms[0])) > 0)
+      if (bitset_cardinality (&(index_entry->seg_equal_terms[0])) > 0
+	  || bitset_cardinality (&(index_entry->seg_other_terms[0])) > 0)
 	{
 	  first_col_present = true;
-	}
-      else
-	{
-	  for (t = bitset_iterate (&index_entry->seg_other_terms[0], &iter);
-	       t != -1; t = bitset_next_member (&iter))
-	    {
-	      term = QO_ENV_TERM (env, t);
-
-	      pt_expr = QO_TERM_PT_EXPR (term);
-	      if (pt_expr
-		  && PT_EXPR_INFO_IS_FLAGED (pt_expr,
-					     PT_EXPR_INFO_FULL_RANGE))
-		{
-		  /* first col present == still false ! */
-		  continue;
-		}
-
-	      first_col_present = true;
-	      break;
-	    }
 	}
     }
 
@@ -7089,29 +7064,10 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
        * with generating index covering.
        */
 
-      if (bitset_cardinality (&(index_entry->seg_equal_terms[1])) > 0)
+      if (bitset_cardinality (&(index_entry->seg_equal_terms[1])) > 0
+	  || bitset_cardinality (&(index_entry->seg_other_terms[1])) > 0)
 	{
 	  second_col_present = true;
-	}
-      else
-	{
-	  for (t = bitset_iterate (&index_entry->seg_other_terms[1], &iter);
-	       t != -1; t = bitset_next_member (&iter))
-	    {
-	      term = QO_ENV_TERM (env, t);
-
-	      pt_expr = QO_TERM_PT_EXPR (term);
-	      if (pt_expr
-		  && PT_EXPR_INFO_IS_FLAGED (pt_expr,
-					     PT_EXPR_INFO_FULL_RANGE))
-		{
-		  /* second col present == still false ! */
-		  continue;
-		}
-
-	      second_col_present = true;
-	      break;
-	    }
 	}
     }
 

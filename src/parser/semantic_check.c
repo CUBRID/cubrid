@@ -13426,14 +13426,6 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
   bool ordbynum_flag;
   char *r_str = NULL;
   int error;
-  /* check for non-null RANGE term */
-  PT_NODE *from, *spec, *entity_name;
-  const char *cls_name;
-  DB_OBJECT *cls_obj;
-  DB_ATTRIBUTE *attr;
-  DB_DOMAIN *dp;
-  DB_VALUE value;
-  PT_NODE *llim, *expr, *rnge;
   bool skip_orderby_num = false;
 
   /* initinalize local variables */
@@ -13762,78 +13754,14 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
 
       /* at here, query->node_type == PT_SELECT
-         set order_by domain info */
+       * set order_by domain info
+       */
       if (col->type_enum != PT_TYPE_NONE && col->type_enum != PT_TYPE_MAYBE)
 	{			/* is resolved */
 	  order->info.sort_spec.pos_descr.dom =
 	    pt_xasl_node_to_domain (parser, col);
 	}
-
-      /* check for adding col's indexable(i.e., non-null full RANGE) term */
-      col = pt_get_end_path_node (col);
-
-      if (col->node_type == PT_NAME
-	  && col->info.name.original
-	  && (from = query->info.query.q.select.from)
-	  && (spec = pt_find_spec (parser, from, col))
-	  && (entity_name = spec->info.spec.entity_name)
-	  && (cls_name = entity_name->info.name.original))
-	{
-	  /* get class mop */
-	  cls_obj = entity_name->info.name.db_object;
-	  if (cls_obj == NULL)
-	    {
-	      cls_obj = entity_name->info.name.db_object =
-		db_find_class (cls_name);
-	    }
-
-	  /* get attribute */
-	  attr = db_get_attribute (cls_obj, col->info.name.original);
-
-	  /* check for non-null constraint */
-	  if (cls_obj && attr && db_attribute_is_non_null (attr))
-	    {
-	      /* check for indexable order by col */
-	      if (db_attribute_is_unique (attr)
-		  || db_attribute_is_reverse_unique (attr)
-		  || db_attribute_is_indexed (attr))
-		{
-		  if ((dp = db_attribute_domain (attr))
-		      && (db_value_domain_min (&value,
-					       TP_DOMAIN_TYPE (dp),
-					       dp->precision,
-					       dp->scale,
-					       dp->codeset,
-					       dp->collation_id,
-					       &dp->enumeration) == NO_ERROR)
-		      && (llim = pt_dbval_to_value (parser, &value))
-		      && (temp = parser_copy_tree (parser, col))
-		      && (expr = parser_new_node (parser, PT_EXPR))
-		      && (rnge = parser_new_node (parser, PT_EXPR)))
-		    {
-		      /* add range term; 'attr range ( min_val ge_inf )' */
-		      expr->type_enum = PT_TYPE_LOGICAL;
-		      expr->info.expr.op = PT_RANGE;
-		      expr->info.expr.arg1 = temp;
-		      expr->info.expr.arg2 = rnge;
-		      expr->info.expr.location = spec->info.spec.location;
-		      rnge->type_enum = PT_TYPE_LOGICAL;
-		      rnge->info.expr.op = PT_BETWEEN_GE_INF;
-		      rnge->info.expr.arg1 = llim;
-		      rnge->info.expr.arg2 = NULL;
-		      rnge->info.expr.location = 0;
-		      pr_clear_value (&value);
-
-		      /* mark as non-null RANGE term for index scan */
-		      PT_EXPR_INFO_SET_FLAG (expr, PT_EXPR_INFO_FULL_RANGE);
-		      query->info.query.q.select.where =
-			parser_append_node (expr,
-					    query->info.query.q.select.where);
-		    }
-		}
-	    }
-	}
-    }
+    }				/* for (order = order_by; ...) */
 
   /* now check for duplicate entries.
    *  - If they match on ascending/descending, remove the second.

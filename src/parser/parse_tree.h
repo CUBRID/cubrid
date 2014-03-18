@@ -2114,7 +2114,9 @@ struct pt_expr_info
 					 * the derived subquery ?
 					 * is removed at the last rewrite stage
 					 * of query optimizer */
+#if 1				/* unused anymore - DO NOT DELETE ME */
 #define PT_EXPR_INFO_FULL_RANGE  1024	/* non-null full RANGE term ? */
+#endif
 #define	PT_EXPR_INFO_CAST_NOFAIL 2048	/* flag for non failing cast operation;
 					 * at runtime will return null DB_VALUE
 					 * instead of failing */

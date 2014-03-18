@@ -5273,15 +5273,6 @@ qo_apply_range_intersection_helper (PARSER_CONTEXT * parser,
 	  else
 	    {
 	      node1->info.expr.arg2 = new_range;
-	      if (PT_EXPR_INFO_IS_FLAGED (node1, PT_EXPR_INFO_FULL_RANGE))
-		{
-		  /*
-		   * Since we are now going to merge a full-range-term and a range-term
-		   * and convert that to this, we should clear FULL_RANGE flag.
-		   * Note that we just reuse the existing node rather than create new one.
-		   */
-		  PT_EXPR_INFO_CLEAR_FLAG (node1, PT_EXPR_INFO_FULL_RANGE);
-		}
 	    }
 	  for (prev = new_range; prev->or_next; prev = prev->or_next)
 	    {
@@ -5387,29 +5378,7 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	{
 	  /* LHS is not an attribute */
 
-	  if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_FULL_RANGE))
-	    {
-	      /* remove the non-null full RANGE sarg term
-	       * e.g
-	       *   term[1]: ?:0 range (-2147483648 ge_inf max) <-- remove this
-	       *   term[0]: foo.i= ?:0 (sel 0.001) (sarg term)
-	       */
-	      if (node_prev)
-		{
-		  node_prev->next = node->next;
-		}
-	      else
-		{
-		  *wherep = node->next;
-		}
-
-	      node->next = NULL;
-	      parser_free_tree (parser, node);
-	    }
-	  else
-	    {
-	      node_prev = node_prev ? node_prev->next : *wherep;
-	    }
+	  node_prev = node_prev ? node_prev->next : *wherep;
 
 	  continue;
 	}
@@ -5523,10 +5492,8 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	  /* combine each range specs of two RANGE nodes */
 	  qo_apply_range_intersection_helper (parser, node, sibling);
 
-	  /* remove the sibling node if its range is empty
-	     or non-null full RANGE sarg term */
-	  if (sibling->info.expr.arg2 == NULL
-	      || PT_EXPR_INFO_IS_FLAGED (sibling, PT_EXPR_INFO_FULL_RANGE))
+	  /* remove the sibling node if its range is empty */
+	  if (sibling->info.expr.arg2 == NULL)
 	    {
 	      sibling_prev->next = sibling->next;
 	      sibling->next = NULL;
@@ -5707,15 +5674,6 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      for (expr = node->info.query.q.select.where;
 		   expr; expr = expr->next)
 		{
-
-		  /* skip out non-null RANGE sarg term only used for index scan;
-		   * 'attr RANGE ( Min ge_inf )'
-		   */
-		  if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_FULL_RANGE))
-		    {
-		      continue;
-		    }
-
 		  if (expr->node_type == PT_EXPR
 		      && expr->info.expr.location == 0
 		      && expr->info.expr.op != PT_IS_NULL
@@ -6882,10 +6840,6 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 	      && !pt_is_orderbynum (node_prior))
 	    {
 	      /* neither LHS is an attribute, inst_num, nor orderby_num */
-	      continue;
-	    }
-	  if (PT_EXPR_INFO_IS_FLAGED (dnf_node, PT_EXPR_INFO_FULL_RANGE))
-	    {
 	      continue;
 	    }
 
