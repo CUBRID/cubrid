@@ -6766,7 +6766,7 @@ xlocator_force_repl_update (THREAD_ENTRY * thread_p, BTID * btid,
   SCAN_CODE scan;
   int pruning_type = 0;
   int force_count;
-  int old_rep_id = -1;
+  int last_repr_id = -1;
   int old_chn = -1;
 
   memset (&old_recdes, 0, sizeof (RECDES));
@@ -6784,6 +6784,15 @@ xlocator_force_repl_update (THREAD_ENTRY * thread_p, BTID * btid,
       error_code = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
       if (error_code != NO_ERROR)
 	{
+	  goto error;
+	}
+
+      last_repr_id = heap_get_class_repr_id (thread_p, class_oid);
+      if (last_repr_id == 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_INVALID_REPRID, 1,
+		  last_repr_id);
+	  error_code = ER_CT_INVALID_REPRID;
 	  goto error;
 	}
 
@@ -6817,8 +6826,7 @@ xlocator_force_repl_update (THREAD_ENTRY * thread_p, BTID * btid,
 	  goto error;
 	}
 
-      old_rep_id = or_rep_id (&old_recdes);
-      error_code = or_set_rep_id (recdes, old_rep_id);
+      error_code = or_set_rep_id (recdes, last_repr_id);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
