@@ -5043,8 +5043,13 @@ qstr_eval_like (const char *tar, int tar_length,
   bool escape_is_match_many =
     ((escape != NULL) && *escape == LIKE_WILDCARD_MATCH_MANY);
   unsigned char pad_char[2];
+
+
+  LANG_COLLATION *current_collation;
+
   int pad_char_size;
 
+  current_collation = lang_get_collation (coll_id);
   intl_pad_char (codeset, pad_char, &pad_char_size);
 
   tar_ptr = (unsigned char *) tar;
@@ -5103,7 +5108,7 @@ qstr_eval_like (const char *tar, int tar_length,
 		  if (stackp >= 0 && stackp < STACK_SIZE)
 		    {
 		      tar_ptr = tarstack[stackp];
-		      tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
+		      INTL_NEXT_CHAR (tar_ptr, tar_ptr, codeset, &dummy);
 		      expr_ptr = exprstack[stackp--];
 		    }
 		  else
@@ -5128,7 +5133,7 @@ qstr_eval_like (const char *tar, int tar_length,
 	      if (!escape_is_match_one
 		  && *expr_ptr == LIKE_WILDCARD_MATCH_ONE)
 		{
-		  tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
+		  INTL_NEXT_CHAR (tar_ptr, tar_ptr, codeset, &dummy);
 		  expr_ptr++;
 		  go_back = false;
 		}
@@ -5177,9 +5182,8 @@ qstr_eval_like (const char *tar, int tar_length,
 			{
 			  inescape = false;
 			}
-
-		      expr_seq_end = intl_next_char (expr_seq_end, codeset,
-						     &dummy);
+		      INTL_NEXT_CHAR (expr_seq_end, expr_seq_end, codeset,
+				      &dummy);
 		    }
 		  while (expr_seq_end < end_expr);
 
@@ -5187,10 +5191,14 @@ qstr_eval_like (const char *tar, int tar_length,
 		  assert (expr_seq_end - expr_ptr > 0);
 
 		  /* match using collation */
-		  cmp = QSTR_MATCH (coll_id, tar_ptr, end_tar - tar_ptr,
-				    expr_ptr, expr_seq_end - expr_ptr,
-				    match_escape, has_last_escape,
-				    &tar_matched_size);
+		  cmp =
+		    current_collation->strmatch (current_collation, true,
+						 tar_ptr, end_tar - tar_ptr,
+						 expr_ptr,
+						 expr_seq_end - expr_ptr,
+						 match_escape,
+						 has_last_escape,
+						 &tar_matched_size);
 
 		  if (cmp == 0)
 		    {
@@ -5209,7 +5217,7 @@ qstr_eval_like (const char *tar, int tar_length,
 	      if (stackp >= 0 && stackp < STACK_SIZE)
 		{
 		  tar_ptr = tarstack[stackp];
-		  tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
+		  INTL_NEXT_CHAR (tar_ptr, tar_ptr, codeset, &dummy);
 		  expr_ptr = exprstack[stackp--];
 		}
 	      else if (stackp > STACK_SIZE)
@@ -5224,8 +5232,8 @@ qstr_eval_like (const char *tar, int tar_length,
 	}
       else
 	{
-	  unsigned char *next_expr_ptr = intl_next_char (expr_ptr, codeset,
-							 &dummy);
+	  unsigned char *next_expr_ptr;
+	  INTL_NEXT_CHAR (next_expr_ptr, expr_ptr, codeset, &dummy);
 
 	  assert (status == IN_PERCENT);
 	  if ((next_expr_ptr < end_expr)
@@ -5239,7 +5247,7 @@ qstr_eval_like (const char *tar, int tar_length,
 	      tarstack[++stackp] = tar_ptr;
 	      exprstack[stackp] = expr_ptr;
 	      expr_ptr = next_expr_ptr;
-	      next_expr_ptr = intl_next_char (expr_ptr, codeset, &dummy);
+	      INTL_NEXT_CHAR (next_expr_ptr, expr_ptr, codeset, &dummy);
 
 	      if (stackp > STACK_SIZE)
 		{
@@ -5300,8 +5308,8 @@ qstr_eval_like (const char *tar, int tar_length,
 		      inescape = false;
 		    }
 
-		  expr_seq_end = intl_next_char (expr_seq_end, codeset,
-						 &dummy);
+		  INTL_NEXT_CHAR (expr_seq_end, expr_seq_end, codeset,
+				  &dummy);
 		}
 	      while (expr_seq_end < end_expr);
 
@@ -5311,11 +5319,14 @@ qstr_eval_like (const char *tar, int tar_length,
 	      do
 		{
 		  /* match using collation */
-		  cmp = QSTR_MATCH (coll_id, tar_ptr, end_tar - tar_ptr,
-				    next_expr_ptr,
-				    expr_seq_end - next_expr_ptr,
-				    match_escape, has_last_escape,
-				    &tar_matched_size);
+		  cmp =
+		    current_collation->strmatch (current_collation, true,
+						 tar_ptr, end_tar - tar_ptr,
+						 next_expr_ptr,
+						 expr_seq_end - next_expr_ptr,
+						 match_escape,
+						 has_last_escape,
+						 &tar_matched_size);
 
 		  if (cmp == 0)
 		    {
@@ -5339,7 +5350,7 @@ qstr_eval_like (const char *tar, int tar_length,
 		  else
 		    {
 		      /* check starting from next char */
-		      tar_ptr = intl_next_char (tar_ptr, codeset, &dummy);
+		      INTL_NEXT_CHAR (tar_ptr, tar_ptr, codeset, &dummy);
 		    }
 		}
 	      while (tar_ptr < end_tar);
@@ -5572,7 +5583,7 @@ qstr_replace (unsigned char *src_buf,
 	}
       else
 	{
-	  src_ptr = intl_next_char (src_ptr, codeset, &char_size);
+	  INTL_NEXT_CHAR (src_ptr, src_ptr, codeset, &char_size);
 	  *result_size += char_size;
 	  *result_len += 1;
 	}
@@ -9478,8 +9489,9 @@ qstr_position (const char *sub_string, const int sub_size,
 		{
 		  break;
 		}
-	      ptr = intl_next_char ((unsigned char *) ptr,
-				    codeset, &char_size);
+
+	      INTL_NEXT_CHAR (ptr, (unsigned char *) ptr,
+			      codeset, &char_size);
 	    }
 	  else
 	    {
@@ -18593,13 +18605,12 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type,
       while (sp[*format_length] != '"')
 	{
 	  int char_size;
-
+	  unsigned char *ptr = (unsigned char *) sp + (*format_length);
 	  if (sp[*format_length] == '\0')
 	    {
 	      return DT_INVALID;
 	    }
-	  intl_next_char ((unsigned char *) sp + (*format_length),
-			  codeset, &char_size);
+	  INTL_NEXT_CHAR (ptr, ptr, codeset, &char_size);
 	  *format_length += char_size;
 	}
       *format_length += 1;

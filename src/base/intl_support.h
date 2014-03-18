@@ -95,6 +95,31 @@
  */
 #define INTL_CAN_COERCE_CS(cs_from,cs_to)  true
 
+#define INTL_NEXT_CHAR(ptr, s, codeset, current_char_size) \
+  do \
+    { \
+      if ((codeset) == INTL_CODESET_ISO88591) \
+	{ \
+	  (*(current_char_size)) = 1; \
+	  (ptr) = (s) + 1; \
+	} \
+      else if ((codeset) == INTL_CODESET_UTF8) \
+	{ \
+	  (ptr) = intl_nextchar_utf8 ((s), (current_char_size)); \
+	} \
+      else if ((codeset) == INTL_CODESET_KSC5601_EUC) \
+	{ \
+	  (ptr) = intl_nextchar_euc ((s), (current_char_size)); \
+	} \
+      else \
+	{ \
+	  assert (false); \
+	  (*(current_char_size)) = 0; \
+	  ptr = (s); \
+	} \
+    } \
+  while (0)
+
 extern bool intl_Mbs_support;
 #if !defined (SERVER_MODE)
 extern bool intl_String_validation;

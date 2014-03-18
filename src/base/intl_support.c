@@ -3230,7 +3230,7 @@ check_truncation:
        * char */
       for (i = 0; i < length_bytes;)
 	{
-	  name_char = intl_next_char (name_char, codeset, &char_size);
+	  INTL_NEXT_CHAR (name_char, name_char, codeset, &char_size);
 	  i += char_size;
 	}
 
