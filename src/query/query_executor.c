@@ -4318,7 +4318,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   /* keep hash table within memory limit */
-  while (context->hash_size > mem_limit)
+  while (context->hash_size > (int) mem_limit)
     {
       /* get least recently used entry */
       hentry = context->hash_table->lru_head;
@@ -15196,6 +15196,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
 					   mht_1strhash,
 					   mht_compare_strings_are_equal);
     }
+  mnt_pc_query_string_hash_entries (thread_p, 0);
 
   xasl_ent_cache.qstr_ht->build_lru_list = true;
 
@@ -15213,6 +15214,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
 					  xasl_ent_cache.max_entries,
 					  xasl_id_hash, xasl_id_hash_cmpeq);
     }
+  mnt_pc_xasl_id_hash_entries (thread_p, 0);
 
   /* memory hash table for XASL stream cache referencing by class/serial oid */
   if (xasl_ent_cache.oid_ht)
@@ -15228,6 +15230,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
 					  xasl_ent_cache.max_entries,
 					  oid_hash, oid_compare_equals);
     }
+  mnt_pc_class_oid_hash_entries (thread_p, 0);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   /* init cache clone info */
@@ -15325,6 +15328,7 @@ qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p)
       mht_destroy (xasl_ent_cache.qstr_ht);
       xasl_ent_cache.qstr_ht = NULL;
     }
+  mnt_pc_query_string_hash_entries (thread_p, 0);
 
   /* memory hash table for XASL stream cache referencing by xasl file id */
   if (xasl_ent_cache.xid_ht)
@@ -15332,6 +15336,7 @@ qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p)
       mht_destroy (xasl_ent_cache.xid_ht);
       xasl_ent_cache.xid_ht = NULL;
     }
+  mnt_pc_xasl_id_hash_entries (thread_p, 0);
 
   /* memory hash table for XASL stream cache referencing by class/serial oid */
   if (xasl_ent_cache.oid_ht)
@@ -15339,6 +15344,7 @@ qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p)
       mht_destroy (xasl_ent_cache.oid_ht);
       xasl_ent_cache.oid_ht = NULL;
     }
+  mnt_pc_class_oid_hash_entries (thread_p, 0);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   /* free all cache clone and XASL tree */
@@ -16372,6 +16378,8 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
       ent = NULL;
       goto end;
     }
+  mnt_pc_query_string_hash_entries (thread_p,
+				    mht_count (xasl_ent_cache.qstr_ht));
 
   /* insert (or update) the entry into the xasl file id hash table */
   if (mht_put_new (xasl_ent_cache.xid_ht, &ent->xasl_id, ent) == NULL)
@@ -16386,6 +16394,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
       ent = NULL;
       goto end;
     }
+  mnt_pc_xasl_id_hash_entries (thread_p, mht_count (xasl_ent_cache.xid_ht));
 
   /* insert the entry into the class oid hash table
      Note that mht_put2() allows mutiple data with the same key */
@@ -16401,6 +16410,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 	  goto end;
 	}
     }				/* for (i = 0, ...) */
+  mnt_pc_class_oid_hash_entries (thread_p, mht_count (xasl_ent_cache.oid_ht));
 
   xasl_ent_cache.num++;
   mnt_pc_add (thread_p);
@@ -17053,6 +17063,8 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 			"qexec_delete_xasl_cache_ent: mht_rem2 failed for qstr %s\n",
 			ent->sql_info.sql_hash_text);
 	}
+      mnt_pc_query_string_hash_entries (thread_p,
+					mht_count (xasl_ent_cache.qstr_ht));
 
       /* remove the entry from xasl file id hash table */
       if (mht_rem2 (xasl_ent_cache.xid_ht, &ent->xasl_id, ent,
@@ -17066,6 +17078,8 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 			ent->xasl_id.temp_vfid.fileid,
 			ent->xasl_id.temp_vfid.volid);
 	}
+      mnt_pc_xasl_id_hash_entries (thread_p,
+				   mht_count (xasl_ent_cache.xid_ht));
 
       /* remove the entries from class/serial oid hash table */
       for (i = 0, o = ent->class_oid_list; i < ent->n_oid_list; i++, o++)
@@ -17081,6 +17095,8 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 			    ent->class_oid_list[i].volid);
 	    }
 	}
+      mnt_pc_class_oid_hash_entries (thread_p,
+				     mht_count (xasl_ent_cache.oid_ht));
 
       /* destroy the temp file of XASL_ID */
       if (file_destroy (thread_p, &(ent->xasl_id.temp_vfid)) != NO_ERROR)
@@ -17124,6 +17140,8 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 			ent->sql_info.sql_hash_text);
 	  rc = ER_FAILED;
 	}
+      mnt_pc_query_string_hash_entries (thread_p,
+					mht_count (xasl_ent_cache.qstr_ht));
 
       if (rc == NO_ERROR)
 	{
@@ -17322,6 +17340,8 @@ qexec_free_mark_deleted_xasl_entry (THREAD_ENTRY * thread_p,
 			ent->xasl_id.temp_vfid.fileid,
 			ent->xasl_id.temp_vfid.volid);
 	}
+      mnt_pc_xasl_id_hash_entries (thread_p,
+				   mht_count (xasl_ent_cache.xid_ht));
 
       for (i = 0, o = ent->class_oid_list; i < ent->n_oid_list; i++, o++)
 	{
@@ -17336,6 +17356,8 @@ qexec_free_mark_deleted_xasl_entry (THREAD_ENTRY * thread_p,
 			    ent->class_oid_list[i].volid);
 	    }
 	}
+      mnt_pc_class_oid_hash_entries (thread_p,
+				     mht_count (xasl_ent_cache.oid_ht));
 
       /* destroy the temp file of XASL_ID */
       if (file_destroy (thread_p, &(ent->xasl_id.temp_vfid)) != NO_ERROR)
@@ -29238,19 +29260,4 @@ qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p,
   /* reached end of scan, no match */
   *found = false;
   return (context->part_scan_code == S_ERROR ? ER_FAILED : NO_ERROR);
-}
-
-/*
- * qexec_update_plan_cache_hash_entries () - Update the number of hash entries 
- *                                           of xasl_ent_cache.
- *   return: none
- *   thread_p(in): thread
- */
-void
-qexec_update_plan_cache_hash_entries (THREAD_ENTRY * thread_p)
-{
-  mnt_pc_query_string_hash_entries (thread_p,
-				    mht_count (xasl_ent_cache.qstr_ht));
-  mnt_pc_xasl_id_hash_entries (thread_p, mht_count (xasl_ent_cache.xid_ht));
-  mnt_pc_class_oid_hash_entries (thread_p, mht_count (xasl_ent_cache.oid_ht));
 }

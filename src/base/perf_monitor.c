@@ -1981,8 +1981,6 @@ xmnt_server_copy_stats (THREAD_ENTRY * thread_p,
 {
   MNT_SERVER_EXEC_STATS *from_stats;
 
-  qexec_update_plan_cache_hash_entries (thread_p);
-
   from_stats = mnt_server_get_stats (thread_p);
 
   if (from_stats != NULL)
@@ -2003,8 +2001,6 @@ xmnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
 {
   if (to_stats)
     {
-      qexec_update_plan_cache_hash_entries (thread_p);
-
       *to_stats = *mnt_Server_table.global_stats;
       mnt_server_calc_stats (to_stats);
     }
