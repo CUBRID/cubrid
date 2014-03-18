@@ -8753,7 +8753,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 {
   VPID vpid;
   VPID prv_vpid;
-  int best;
+  int best, i;
   PAGE_PTR hdr_pgptr = NULL;
   HEAP_HDR_STATS initial_heap_hdr;
   HEAP_HDR_STATS heap_hdr;
@@ -8820,6 +8820,27 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
   heap_hdr.estimates.num_high_best = 0;
   heap_hdr.estimates.num_other_high_best = 0;
   heap_hdr.estimates.head = 0;
+
+  for (i = 0; i < HEAP_NUM_BEST_SPACESTATS; i++)
+    {
+      VPID_SET_NULL (&heap_hdr.estimates.best[i].vpid);
+      heap_hdr.estimates.best[0].freespace = 0;
+    }
+
+  /* Initialize second best estimates */
+  heap_hdr.estimates.num_second_best = 0;
+  heap_hdr.estimates.head_second_best = 0;
+  heap_hdr.estimates.tail_second_best = 0;
+  heap_hdr.estimates.num_substitutions = 0;
+
+  for (i = 0; i < HEAP_NUM_BEST_SPACESTATS; i++)
+    {
+      VPID_SET_NULL (&heap_hdr.estimates.second_best[i]);
+    }
+
+  /* initialize full_search_vpid */
+  heap_hdr.estimates.full_search_vpid.volid = hfid->vfid.volid;
+  heap_hdr.estimates.full_search_vpid.pageid = hfid->hpgid;
 
   best = 0;
 
@@ -8898,22 +8919,25 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	  free_space = spage_get_free_space_without_saving (thread_p, pgptr,
 							    &need_update);
 
-	  if (free_space > HEAP_DROP_FREE_SPACE
-	      && best < HEAP_NUM_BEST_SPACESTATS)
+	  if (free_space > HEAP_DROP_FREE_SPACE)
 	    {
-	      heap_hdr.estimates.best[best].vpid = vpid;
-	      heap_hdr.estimates.best[best].freespace = free_space;
-	      best++;
-	    }
-	  else
-	    {
-	      heap_hdr.estimates.num_other_high_best++;
-	    }
+	      if (best < HEAP_NUM_BEST_SPACESTATS)
+		{
+		  heap_hdr.estimates.best[best].vpid = vpid;
+		  heap_hdr.estimates.best[best].freespace = free_space;
+		  best++;
+		}
+	      else
+		{
+		  heap_hdr.estimates.num_other_high_best++;
+		  heap_stats_put_second_best (&heap_hdr, &vpid);
+		}
 
-	  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
-	    {
-	      (void) heap_stats_add_bestspace (thread_p, hfid, &vpid,
-					       free_space);
+	      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
+		{
+		  (void) heap_stats_add_bestspace (thread_p, hfid, &vpid,
+						   free_space);
+		}
 	    }
 
 	  pgbuf_unfix_and_init (thread_p, pgptr);
