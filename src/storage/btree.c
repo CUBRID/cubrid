@@ -20629,7 +20629,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
   index_name = class_name = keyval = NULL;
 
   /* fetch index name from the class representation */
-  if (class_oid)
+  if (class_oid != NULL && !OID_ISNULL (class_oid))
     {
       if (heap_get_indexinfo_of_btid (thread_p,
 				      class_oid, btid,
@@ -20647,7 +20647,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key,
 		btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
     }
 
-  if (class_oid)
+  if (class_oid != NULL && !OID_ISNULL (class_oid))
     {
       class_name = heap_get_class_name (thread_p, class_oid);
       if (class_name)

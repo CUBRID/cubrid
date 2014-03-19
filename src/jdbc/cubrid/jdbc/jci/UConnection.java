@@ -193,8 +193,7 @@ public class UConnection {
 	private int brokerVersion = 0;
 
 	private boolean isServerSideJdbc = false;
-	boolean skip_checkcas;
-	boolean need_checkcas;
+	boolean skip_checkcas = false;
 	Vector<UStatement> pooled_ustmts;
 	Vector<Integer> deferred_close_handle;
 	Object curThread;
@@ -992,7 +991,6 @@ public class UConnection {
 	boolean isFirstPrepareInTran = !isActive();
 
 	skip_checkcas = true;
-	need_checkcas = false;
 
 	// first
 	try {
@@ -1006,12 +1004,15 @@ public class UConnection {
 	    logException(e);
 	    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 	    errorHandler.setStackTrace(e.getStackTrace());
+	} finally {
+	    skip_checkcas = false;
 	}
 
 	if (isActive() && !isFirstPrepareInTran) {
 	    if (isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
 		clientSocketClose();
 	    }
+	    
 	    return null;
 	}
 
@@ -1432,7 +1433,6 @@ public class UConnection {
 			return true;
 
 		if (skip_checkcas) {
-			need_checkcas = true;
 			return true;
 		}
 
