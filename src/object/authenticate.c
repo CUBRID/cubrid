@@ -2803,7 +2803,12 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 	    }
 	  else
 	    {
-	      error = au_get_set (member, "groups", &member_groups);
+	      error = obj_lock (member, 1);
+	      if (error == NO_ERROR)
+		{
+		  error = au_get_set (member, "groups", &member_groups);
+		}
+
 	      if (error == NO_ERROR)
 		{
 		  error = au_get_set (member, "direct_groups",
@@ -2992,8 +2997,14 @@ au_drop_member (MOP group, MOP member)
 	    }
 	  else
 	    {
-	      if ((error = au_get_set (member, "direct_groups",
-				       &member_direct_groups)) == NO_ERROR)
+	      error = obj_lock (member, 1);
+	      if (error == NO_ERROR)
+		{
+		  error = au_get_set (member, "direct_groups",
+				      &member_direct_groups);
+		}
+
+	      if (error == NO_ERROR)
 		{
 		  if ((error = db_get (member, "name", &member_name_val))
 		      == NO_ERROR)
@@ -4091,7 +4102,8 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	      error = ER_AU_CANT_UPDATE;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
-	  else if ((error = get_grants (auth, &grants, 1)) == NO_ERROR)
+	  else if ((error = obj_lock (auth, 1)) == NO_ERROR
+		   && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	    {
 	      gindex = find_grant_entry (grants, class_mop, Au_user);
 	      if (gindex == -1)
@@ -4470,7 +4482,9 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
 	{
 	  if (!g->legal)
 	    {
-	      if (get_grants (g->auth_object, &grants, 0) == NO_ERROR)
+	      if ((error = obj_lock (g->auth_object, 1)) == NO_ERROR
+		  && (error =
+		      get_grants (g->auth_object, &grants, 0)) == NO_ERROR)
 		{
 		  if ((error =
 		       set_get_element (grants,
@@ -4503,7 +4517,9 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
 	{
 	  if (!g->legal)
 	    {
-	      if (get_grants (g->auth_object, &grants, 0) == NO_ERROR)
+	      if ((error = obj_lock (g->auth_object, 1)) == NO_ERROR
+		  && (error
+		      = get_grants (g->auth_object, &grants, 0)) == NO_ERROR)
 		{
 		  length = set_size (grants);
 		  for (i = 0; i < length; i += GRANT_ENTRY_LENGTH)
@@ -4628,7 +4644,8 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	  goto fail_end;
 	}
-      else if ((error = get_grants (auth, &grants, 1)) == NO_ERROR)
+      else if ((error = obj_lock (auth, 1)) == NO_ERROR
+	       && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	{
 	  gindex = find_grant_entry (grants, class_mop, Au_user);
 	  if (gindex == -1)

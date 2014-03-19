@@ -1852,6 +1852,7 @@ register_user_trigger (DB_OBJECT * object)
 
   AU_DISABLE (save);
   if (Au_user != NULL
+      && (error = obj_lock (Au_user, 1)) == NO_ERROR
       && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
@@ -1932,6 +1933,7 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
 
   AU_DISABLE (save);
   if (Au_user != NULL
+      && (error = obj_lock (Au_user, 1)) == NO_ERROR
       && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
@@ -2912,12 +2914,14 @@ static int
 trigger_table_add (const char *name, DB_OBJECT * trigger)
 {
   int error = NO_ERROR;
-  DB_SET *table;
+  DB_SET *table = NULL;
   DB_VALUE value;
   int max, save;
 
   AU_DISABLE (save);
+
   if (Au_root != NULL
+      && (error = obj_lock (Au_root, 1)) == NO_ERROR
       && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
@@ -2931,18 +2935,48 @@ trigger_table_add (const char *name, DB_OBJECT * trigger)
       if (table == NULL)
 	{
 	  table = set_create_sequence (0);
-	  db_make_sequence (&value, table);
-	  obj_set (Au_root, "triggers", &value);
+	  if (table == NULL)
+	    {
+	      error = er_errid ();
+	      if (error == NO_ERROR)
+		{
+		  error = ER_GENERIC_ERROR;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		}
+
+	      goto end;
+	    }
+
+	  error = db_make_sequence (&value, table);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  error = obj_set (Au_root, "triggers", &value);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
 	  /*
 	   * remember, because of coercion, we have to either set the
 	   * domain properly to begin with or we have to get the
 	   * coerced set back out after it has been assigned
 	   */
 	  set_free (table);
-	  obj_get (Au_root, "triggers", &value);
+	  table = NULL;
+
+	  error = obj_get (Au_root, "triggers", &value);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
 	  if (DB_IS_NULL (&value))
 	    {
 	      table = NULL;
+
+	      goto end;
 	    }
 	  else
 	    {
@@ -2963,8 +2997,19 @@ trigger_table_add (const char *name, DB_OBJECT * trigger)
 	   */
 	}
       set_free (table);
+      table = NULL;
     }
+
+end:
+
+  if (table != NULL)
+    {
+      set_free (table);
+      table = NULL;
+    }
+
   AU_ENABLE (save);
+
   return error;
 }
 
@@ -3084,6 +3129,7 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
   /* change the name */
   AU_DISABLE (save);
   if (Au_root != NULL
+      && (error = obj_lock (Au_root, 1)) == NO_ERROR
       && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
@@ -3154,7 +3200,9 @@ trigger_table_drop (const char *name)
   int max, i, found, save;
 
   AU_DISABLE (save);
+
   if (Au_root != NULL
+      && (error = obj_lock (Au_root, 1)) == NO_ERROR
       && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
@@ -3214,7 +3262,9 @@ trigger_table_drop (const char *name)
 	  set_free (table);
 	}
     }
+
   AU_ENABLE (save);
+
   return error;
 }
 
@@ -3791,6 +3841,7 @@ tr_create_trigger (const char *name,
   TR_TRIGGER *trigger;
   DB_OBJECT *object;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
+  bool tr_object_map_added = false;
 
   object = NULL;
   trigger = tr_make_trigger ();
@@ -3935,6 +3986,8 @@ tr_create_trigger (const char *name,
   if (mht_put (tr_object_map, object, trigger) == NULL)
     goto error;
 
+  tr_object_map_added = true;
+
   /*
    * cache the trigger in the the schema or the user object
    * for later reference
@@ -3958,6 +4011,11 @@ error:
     {
       if (object != NULL)
 	{
+	  if (tr_object_map_added)
+	    {
+	      (void) mht_rem (tr_object_map, trigger->object, NULL, NULL);
+	    }
+
 	  (void) trigger_table_drop (trigger->name);
 	}
       remove_trigger_list (&tr_Uncommitted_triggers, trigger);

@@ -5089,6 +5089,13 @@ adjust_partition_size (MOP class_)
 	}
       partcnt++;
     }
+
+  error = db_lock_write (smclass->partition_of);
+  if (error != NO_ERROR)
+    {
+      goto fail_end;
+    }
+
   error = db_get (smclass->partition_of, PARTITION_ATT_PVALUES, &pattr);
   if (error != NO_ERROR)
     {

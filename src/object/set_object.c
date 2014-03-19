@@ -2773,9 +2773,25 @@ set_add_element (DB_COLLECTION * set, DB_VALUE * value)
 
 #if !defined(SERVER_MODE)
 	  /* get write lock on owner and mark as dirty */
-	  else if ((error = obj_lock (set->owner, 1)) == NO_ERROR)
+	  else
 	    {
-	      error = setobj_add_element (obj, value);
+#if !defined (NDEBUG)
+	      MOP class_mop = NULL;
+
+	      class_mop = ws_class_mop (set->owner);
+	      assert (ws_get_lock (set->owner) == X_LOCK
+		      || (class_mop != NULL
+			  && (ws_get_lock (class_mop) == X_LOCK
+			      || ws_get_lock (class_mop) == SCH_M_LOCK)));
+#endif
+	      /* the caller should have holden a lock already
+	       * we need write lock here
+	       */
+	      error = obj_lock (set->owner, 1);
+	      if (error == NO_ERROR)
+		{
+		  error = setobj_add_element (obj, value);
+		}
 	    }
 #endif
 
@@ -2840,9 +2856,25 @@ set_put_element (DB_COLLECTION * set, int index, DB_VALUE * value)
 
 #if !defined(SERVER_MODE)
       /* get write lock on owner and mark as dirty */
-      else if ((error = obj_lock (set->owner, 1)) == NO_ERROR)
+      else
 	{
-	  error = setobj_put_element (obj, index, value);
+#if !defined (NDEBUG)
+	  MOP class_mop = NULL;
+
+	  class_mop = ws_class_mop (set->owner);
+	  assert (ws_get_lock (set->owner) == X_LOCK
+		  || (class_mop != NULL
+		      && (ws_get_lock (class_mop) == X_LOCK
+			  || ws_get_lock (class_mop) == SCH_M_LOCK)));
+#endif
+	  /* the caller should have holden a lock already
+	   * we need write lock here
+	   */
+	  error = obj_lock (set->owner, 1);
+	  if (error == NO_ERROR)
+	    {
+	      error = setobj_put_element (obj, index, value);
+	    }
 	}
 #endif
 
@@ -2889,9 +2921,25 @@ set_insert_element (DB_COLLECTION * set, int index, DB_VALUE * value)
 	}
 
 #if !defined(SERVER_MODE)
-      else if ((error = obj_lock (set->owner, 1)) == NO_ERROR)
+      else
 	{
-	  error = setobj_insert_element (obj, index, value);
+#if !defined (NDEBUG)
+	  MOP class_mop = NULL;
+
+	  class_mop = ws_class_mop (set->owner);
+	  assert (ws_get_lock (set->owner) == X_LOCK
+		  || (class_mop != NULL
+		      && (ws_get_lock (class_mop) == X_LOCK
+			  || ws_get_lock (class_mop) == SCH_M_LOCK)));
+#endif
+	  /* the caller should have holden a lock already
+	   * we need write lock here
+	   */
+	  error = obj_lock (set->owner, 1);
+	  if (error == NO_ERROR)
+	    {
+	      error = setobj_insert_element (obj, index, value);
+	    }
 	}
 #endif
 
@@ -2936,9 +2984,25 @@ set_drop_element (DB_COLLECTION * set, DB_VALUE * value, bool match_nulls)
 	}
 
 #if !defined(SERVER_MODE)
-      else if ((error = obj_lock (set->owner, 1)) == NO_ERROR)
+      else
 	{
-	  error = setobj_drop_element (obj, value, match_nulls);
+#if !defined (NDEBUG)
+	  MOP class_mop = NULL;
+
+	  class_mop = ws_class_mop (set->owner);
+	  assert (ws_get_lock (set->owner) == X_LOCK
+		  || (class_mop != NULL
+		      && (ws_get_lock (class_mop) == X_LOCK
+			  || ws_get_lock (class_mop) == SCH_M_LOCK)));
+#endif
+	  /* the caller should have holden a lock already
+	   * we need write lock here
+	   */
+	  error = obj_lock (set->owner, 1);
+	  if (error == NO_ERROR)
+	    {
+	      error = setobj_drop_element (obj, value, match_nulls);
+	    }
 	}
 #endif
 
@@ -2983,9 +3047,25 @@ set_drop_seq_element (DB_COLLECTION * set, int index)
 	}
 
 #if !defined(SERVER_MODE)
-      else if ((error = obj_lock (set->owner, 1)) == NO_ERROR)
+      else
 	{
-	  error = setobj_drop_seq_element (obj, index);
+#if !defined (NDEBUG)
+	  MOP class_mop = NULL;
+
+	  class_mop = ws_class_mop (set->owner);
+	  assert (ws_get_lock (set->owner) == X_LOCK
+		  || (class_mop != NULL
+		      && (ws_get_lock (class_mop) == X_LOCK
+			  || ws_get_lock (class_mop) == SCH_M_LOCK)));
+#endif
+	  /* the caller should have holden a lock already
+	   * we need write lock here
+	   */
+	  error = obj_lock (set->owner, 1);
+	  if (error == NO_ERROR)
+	    {
+	      error = setobj_drop_seq_element (obj, index);
+	    }
 	}
 #endif
 
