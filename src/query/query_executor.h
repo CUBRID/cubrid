@@ -870,6 +870,13 @@ struct xasl_state
  * xasl head node information
  */
 
+typedef struct xasl_qstr_ht_key XASL_QSTR_HT_KEY;
+struct xasl_qstr_ht_key
+{
+  const char *query_string;
+  OID creator_oid;  /* OID of the user who created this XASL */
+};
+
 /* XASL cache entry type definition */
 typedef struct xasl_cache_ent XASL_CACHE_ENTRY;
 struct xasl_cache_ent
@@ -884,7 +891,6 @@ struct xasl_cache_ent
   int num_fixed_tran;		/* number of transactions
 				 * fixed this entry */
 #endif
-  OID creator_oid;		/* OID of the user who created this XASL */
   const OID *class_oid_list;	/* list of class/serial OIDs referenced
 				 * in the XASL */
   const int *tcard_list;	/* list of #pages of the class OIDs */
@@ -899,6 +905,7 @@ struct xasl_cache_ent
 				   the result */
   struct xasl_cache_clo *clo_list;	/* list of cache clones for this XASL */
   bool deletion_marker;		/* this entry will be deleted if marker set */
+  XASL_QSTR_HT_KEY qstr_ht_key;	/* The key of query string hash table */
 };
 
 /* XASL cache clone type definition */

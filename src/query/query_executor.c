@@ -164,6 +164,13 @@
     } \
   while (0)
 
+#define MAKE_XASL_QSTR_HT_KEY(K, SQL, O)\
+  do {\
+    assert ((SQL) != NULL && (O) != NULL);\
+    (K).query_string = (SQL);\
+    COPY_OID((&(K).creator_oid), (O));\
+  } while (0)
+
 /* XASL scan block function */
 typedef SCAN_CODE (*XSAL_SCAN_FUNC) (THREAD_ENTRY * thread_p, XASL_NODE *,
 				     XASL_STATE *, QFILE_TUPLE_RECORD *,
@@ -1268,7 +1275,10 @@ static int qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p,
 					    AGGREGATE_HASH_CONTEXT * context,
 					    AGGREGATE_HASH_KEY * key,
 					    bool * found);
-
+static unsigned int qexec_xasl_qstr_ht_hash (const void *key,
+					     unsigned int ht_size);
+static int qexec_xasl_qstr_ht_keys_are_equal (const void *key1,
+					      const void *key2);
 
 /*
  * Utility routines
@@ -15193,8 +15203,8 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
       /* create */
       xasl_ent_cache.qstr_ht = mht_create ("XASL stream cache (query string)",
 					   xasl_ent_cache.max_entries,
-					   mht_1strhash,
-					   mht_compare_strings_are_equal);
+					   qexec_xasl_qstr_ht_hash,
+					   qexec_xasl_qstr_ht_keys_are_equal);
     }
   mnt_pc_query_string_hash_entries (thread_p, 0);
 
@@ -15456,8 +15466,10 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
   fprintf (fp, " ]\n");
   fprintf (fp, "       num_fixed_tran = %d\n", num_tran);
 #endif
-  fprintf (fp, "       creator_oid = { %d %d %d }\n", ent->creator_oid.pageid,
-	   ent->creator_oid.slotid, ent->creator_oid.volid);
+  fprintf (fp, "       creator_oid = { %d %d %d }\n",
+	   ent->qstr_ht_key.creator_oid.pageid,
+	   ent->qstr_ht_key.creator_oid.slotid,
+	   ent->qstr_ht_key.creator_oid.volid);
   fprintf (fp, "        n_oid_list = %d\n", ent->n_oid_list);
   fprintf (fp, "    class_oid_list = [");
   for (i = 0, o = ent->class_oid_list; i < ent->n_oid_list; i++, o++)
@@ -16048,6 +16060,7 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 			     const OID * user_oid)
 {
   XASL_CACHE_ENTRY *ent;
+  XASL_QSTR_HT_KEY key;
 #if 0
   const OID *oidp;
   int id;
@@ -16068,8 +16081,10 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
       return NULL;
     }
 
+  MAKE_XASL_QSTR_HT_KEY (key, qstr, user_oid);
+
   /* look up the hash table with the key */
-  ent = (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht, qstr);
+  ent = (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht, &key);
   xasl_ent_cache.counter.lookup++;	/* counter */
   mnt_pc_lookup (thread_p);
 
@@ -16082,12 +16097,6 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 	  assert (0);
 	  ent = NULL;
 	  goto end;
-	}
-
-      /* check ownership */
-      if (ent && !OID_EQ (&ent->creator_oid, user_oid))
-	{
-	  ent = NULL;
 	}
 
       /* check age - timeout */
@@ -16179,6 +16188,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
 #endif /* SERVER_MODE */
   XASL_NODE_HEADER xasl_header;
   HENTRY_PTR h_entry;
+  XASL_QSTR_HT_KEY key;
 
   if (xasl_ent_cache.max_entries <= 0)
     {
@@ -16190,10 +16200,11 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
       return NULL;
     }
 
+  MAKE_XASL_QSTR_HT_KEY (key, context->sql_hash_text, oid);
+
   /* check again whether the entry is in the cache */
-  ent = (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht,
-				      context->sql_hash_text);
-  if (ent != NULL && OID_EQ (&ent->creator_oid, oid))
+  ent = (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht, &key);
+  if (ent != NULL)
     {
       if (ent->deletion_marker)
 	{
@@ -16358,7 +16369,6 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
   qfile_load_xasl_node_header (thread_p, stream->xasl_id, &xasl_header);
   ent->xasl_header_flag = xasl_header.xasl_flag;
 
-  COPY_OID (&ent->creator_oid, oid);
   (void) gettimeofday (&ent->time_created, NULL);
   (void) gettimeofday (&ent->time_last_used, NULL);
   ent->ref_count = 0;
@@ -16367,9 +16377,10 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
   ent->list_ht_no = -1;
   ent->clo_list = NULL;
 
+  MAKE_XASL_QSTR_HT_KEY (ent->qstr_ht_key, ent->sql_info.sql_hash_text, oid);
+
   /* insert (or update) the entry into the query string hash table */
-  if (mht_put_new (xasl_ent_cache.qstr_ht, ent->sql_info.sql_hash_text, ent)
-      == NULL)
+  if (mht_put_new (xasl_ent_cache.qstr_ht, &ent->qstr_ht_key, ent) == NULL)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "qexec_update_xasl_cache_ent: mht_put failed for sql_hash_text %s\n",
@@ -16736,8 +16747,6 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 
   if (ent)
     {
-      const char *q_str;
-
       if (ent->deletion_marker)
 	{
 	  ent = NULL;
@@ -16789,16 +16798,8 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 	  /* Now we must update lru list of the query string hash table.
 	   * So we will call mht_get to the query string hash table.
 	   */
-	  q_str = ent->sql_info.sql_hash_text;	/* the key of qstr_ht */
-	  if (q_str != NULL)
-	    {
-	      (void) (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht,
-						   (void *) q_str);
-	    }
-	  else
-	    {
-	      assert_release (0);
-	    }
+	  assert (ent->qstr_ht_key.query_string != NULL);
+	  mht_get (xasl_ent_cache.qstr_ht, (void *) &ent->qstr_ht_key);
 
 #if !defined (NDEBUG)
 	  if (xasl_ent_cache.qstr_ht->lru_tail == NULL
@@ -16954,6 +16955,7 @@ qexec_remove_xasl_cache_ent_by_qstr (THREAD_ENTRY * thread_p,
 				     const char *qstr, const OID * user_oid)
 {
   XASL_CACHE_ENTRY *ent;
+  XASL_QSTR_HT_KEY key;
 
   if (xasl_ent_cache.max_entries <= 0)
     {
@@ -16965,17 +16967,15 @@ qexec_remove_xasl_cache_ent_by_qstr (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
+  MAKE_XASL_QSTR_HT_KEY (key, qstr, user_oid);
+
   /* look up the hash table with the key, which is query string */
-  ent = (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht, qstr);
+  ent = (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht, &key);
   if (ent)
     {
-      /* check ownership */
-      if (OID_EQ (&ent->creator_oid, user_oid))
-	{
-	  /* remove my transaction id from the entry and do compaction */
-	  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false);
-	  (void) qexec_delete_xasl_cache_ent (thread_p, ent, NULL);
-	}
+      /* remove my transaction id from the entry and do compaction */
+      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false);
+      (void) qexec_delete_xasl_cache_ent (thread_p, ent, NULL);
     }
 
   csect_exit (thread_p, CSECT_QPROC_XASL_CACHE);
@@ -17056,7 +17056,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 #endif /* SERVER_MODE */
     {
       /* remove the entry from query string hash table */
-      if (mht_rem2 (xasl_ent_cache.qstr_ht, ent->sql_info.sql_hash_text, ent,
+      if (mht_rem2 (xasl_ent_cache.qstr_ht, &ent->qstr_ht_key, ent,
 		    NULL, NULL) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
@@ -17132,7 +17132,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
       /* remove from the query string hash table to allow
          new XASL with the same query string to be registered */
       rc = NO_ERROR;
-      if (mht_rem2 (xasl_ent_cache.qstr_ht, ent->sql_info.sql_hash_text, ent,
+      if (mht_rem2 (xasl_ent_cache.qstr_ht, &ent->qstr_ht_key, ent,
 		    NULL, NULL) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
@@ -24266,8 +24266,9 @@ qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p)
       /* create */
       filter_pred_ent_cache.qstr_ht =
 	mht_create ("filter predicate stream cache (query string)",
-		    filter_pred_ent_cache.max_entries, mht_1strhash,
-		    mht_compare_strings_are_equal);
+		    filter_pred_ent_cache.max_entries,
+		    qexec_xasl_qstr_ht_hash,
+		    qexec_xasl_qstr_ht_keys_are_equal);
     }
 
   filter_pred_ent_cache.qstr_ht->build_lru_list = true;
@@ -25048,6 +25049,7 @@ qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
   int tran_index;
   int num_elements;
 #endif
+  XASL_QSTR_HT_KEY key;
 
   if (filter_pred_ent_cache.max_entries <= 0 || qstr == NULL)
     {
@@ -25060,8 +25062,10 @@ qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
       return NULL;
     }
 
+  MAKE_XASL_QSTR_HT_KEY (key, qstr, user_oid);
+
   /* look up the hash table with the key */
-  ent = (XASL_CACHE_ENTRY *) mht_get (filter_pred_ent_cache.qstr_ht, qstr);
+  ent = (XASL_CACHE_ENTRY *) mht_get (filter_pred_ent_cache.qstr_ht, &key);
   filter_pred_ent_cache.counter.lookup++;	/* counter */
   if (ent)
     {
@@ -25072,12 +25076,6 @@ qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 	  assert (0);
 	  ent = NULL;
 	  goto end;
-	}
-
-      /* check ownership */
-      if (ent && !OID_EQ (&ent->creator_oid, user_oid))
-	{
-	  ent = NULL;
 	}
 
       /* finally, we found an useful cache entry to reuse */
@@ -25146,6 +25144,7 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
   int tran_index;
   int num_elements;
 #endif /* SERVER_MODE */
+  XASL_QSTR_HT_KEY key;
 
   assert (tcards == NULL);
   assert (dbval_cnt == 0);
@@ -25161,9 +25160,11 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
       return NULL;
     }
 
+  MAKE_XASL_QSTR_HT_KEY (key, qstr, oid);
+
   /* check again whether the entry is in the cache */
-  ent = (XASL_CACHE_ENTRY *) mht_get (filter_pred_ent_cache.qstr_ht, qstr);
-  if (ent != NULL && OID_EQ (&ent->creator_oid, oid))
+  ent = (XASL_CACHE_ENTRY *) mht_get (filter_pred_ent_cache.qstr_ht, &key);
+  if (ent != NULL)
     {
       if (ent->deletion_marker)
 	{
@@ -25293,7 +25294,6 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
     (char *) memcpy (XASL_CACHE_ENTRY_SQL_HASH_TEXT (ent), (void *) qstr,
 		     len);
   XASL_ID_COPY (&ent->xasl_id, xasl_id);
-  COPY_OID (&ent->creator_oid, oid);
   (void) gettimeofday (&ent->time_created, NULL);
   (void) gettimeofday (&ent->time_last_used, NULL);
   ent->ref_count = 0;
@@ -25312,9 +25312,10 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 #endif
 
   /* insert (or update) the entry into the query string hash table */
-  if (mht_put_new
-      (filter_pred_ent_cache.qstr_ht, ent->sql_info.sql_hash_text,
-       ent) == NULL)
+  MAKE_XASL_QSTR_HT_KEY (ent->qstr_ht_key, ent->sql_info.sql_hash_text, oid);
+
+  if (mht_put_new (filter_pred_ent_cache.qstr_ht,
+		   &ent->qstr_ht_key, ent) == NULL)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "qexec_update_filter_pred_cache_ent: mht_put failed for "
@@ -25454,7 +25455,6 @@ qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 {
   XASL_CACHE_ENTRY *ent;
   XASL_CACHE_CLONE *clo;
-  const char *q_str;
 
   if (filter_pred_ent_cache.max_entries <= 0)
     {
@@ -25509,15 +25509,8 @@ qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 	  /* Now we must update lru list of the query string hash table.
 	   * So we will call mht_get to the query string hash table.
 	   */
-	  q_str = ent->sql_info.sql_hash_text;	/* the key of qstr_ht */
-	  if (q_str != NULL)
-	    {
-	      (void) mht_get (filter_pred_ent_cache.qstr_ht, (void *) q_str);
-	    }
-	  else
-	    {
-	      assert_release (0);
-	    }
+	  assert (ent->qstr_ht_key.query_string != NULL);
+	  mht_get (filter_pred_ent_cache.qstr_ht, (void *) &ent->qstr_ht_key);
 
 #if !defined (NDEBUG)
 	  if (filter_pred_ent_cache.qstr_ht->lru_tail == NULL
@@ -25681,10 +25674,10 @@ qexec_delete_filter_pred_cache_ent (THREAD_ENTRY * thread_p, void *data,
 
   /* mark it to be deleted */
   ent->deletion_marker = true;
+
   /* remove the entry from query string hash table */
-  if (mht_rem2
-      (filter_pred_ent_cache.qstr_ht, ent->sql_info.sql_hash_text, ent, NULL,
-       NULL) != NO_ERROR)
+  if (mht_rem2 (filter_pred_ent_cache.qstr_ht,
+		&ent->qstr_ht_key, ent, NULL, NULL) != NO_ERROR)
     {
       if (!ent->deletion_marker)
 	{
@@ -29260,4 +29253,54 @@ qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p,
   /* reached end of scan, no match */
   *found = false;
   return (context->part_scan_code == S_ERROR ? ER_FAILED : NO_ERROR);
+}
+
+/*
+ * qexec_xasl_qstr_ht_hash () - xasl query string hash function
+ *
+ *   return:
+ *   key(in):
+ *   ht_size(in):
+ */
+static unsigned int
+qexec_xasl_qstr_ht_hash (const void *key, unsigned int ht_size)
+{
+  XASL_QSTR_HT_KEY *ht_key;
+
+  assert (key != NULL);
+  ht_key = (XASL_QSTR_HT_KEY *) key;
+
+  assert (ht_key->query_string != NULL);
+
+  return mht_1strhash ((void *) ht_key->query_string, ht_size);
+}
+
+/*
+ * qexec_xasl_qstr_ht_keys_are_equal () -
+ *    xasl query string hash table key compare function
+ *
+ *   return:
+ *   key1(in):
+ *   key2(in):
+ */
+static int
+qexec_xasl_qstr_ht_keys_are_equal (const void *key1, const void *key2)
+{
+  int ret = 0;			/* initialize as keys are not equal */
+  XASL_QSTR_HT_KEY *ht_key1, *ht_key2;
+
+  assert (key1 != NULL && key2 != NULL);
+
+  ht_key1 = (XASL_QSTR_HT_KEY *) key1;
+  ht_key2 = (XASL_QSTR_HT_KEY *) key2;
+
+  assert (ht_key1->query_string != NULL && ht_key2->query_string != NULL);
+
+  if (OID_EQ (&ht_key1->creator_oid, &ht_key2->creator_oid))
+    {
+      ret = mht_compare_strings_are_equal (ht_key1->query_string,
+					   ht_key2->query_string);
+    }
+
+  return ret;
 }
