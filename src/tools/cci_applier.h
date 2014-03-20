@@ -5,7 +5,7 @@
 
 #include "error_code.h"
 
-#define IS_SERVER_DOWN(e) \
+#define CA_IS_SERVER_DOWN(e) \
   (((e) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED) \
    || ((e) == ER_OBJ_NO_CONNECT) || ((e) == ER_NET_SERVER_CRASHED) \
    || ((e) == ER_BO_CONNECT_FAILED))
