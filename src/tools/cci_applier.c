@@ -150,7 +150,9 @@ update_ca_catalog (void)
 static int
 read_src_catalog (void)
 {
-  return read_catalog_file (&ca_Info.src_file_id, &ca_Info.src_last_inserted_sql_id, applylogdb_catalog_path, false);
+  return read_catalog_file (&ca_Info.src_file_id,
+			    &ca_Info.src_last_inserted_sql_id,
+			    applylogdb_catalog_path, false);
 }
 
 /*
@@ -161,7 +163,9 @@ read_src_catalog (void)
 static int
 read_ca_catalog (void)
 {
-  return read_catalog_file (&ca_Info.curr_file_id, &ca_Info.last_applied_sql_id, ca_catalog_path, true);
+  return read_catalog_file (&ca_Info.curr_file_id,
+			    &ca_Info.last_applied_sql_id, ca_catalog_path,
+			    true);
 }
 
 /*
@@ -292,7 +296,7 @@ process_sample_query (FILE * fp, char **sample, int length)
   /* skip "-- " in the front */
   fseek (fp, 3, SEEK_CUR);
 
-  if (fread (*sample, sizeof (char), length, fp) != (size_t)length)
+  if (fread (*sample, sizeof (char), length, fp) != (size_t) length)
     {
       goto read_sample_error;
     }
@@ -377,7 +381,7 @@ read_sql_query (FILE * fp, char **query, int length)
     }
   memset (*query, 0, length + 1);
 
-  if (fread (*query, sizeof (char), length, fp) != (size_t)length)
+  if (fread (*query, sizeof (char), length, fp) != (size_t) length)
     {
       free_and_init (*query);
       return ER_CA_FILE_IO;
@@ -405,8 +409,10 @@ execute_sql_query (int conn, char *query, T_CCI_ERROR * error)
 
   req = cci_prepare_and_execute (conn, query, 0, &res, error);
 
-  while (req < 0 && LA_RETRY_ON_ERROR (error->err_code))
+  while (req < 0 && CA_RETRY_ON_ERROR (error->err_code))
     {
+      er_log (error->err_code, query, "attempts to try applying "
+	      "failed SQL log again - %s", error->err_msg);
       sleep (10);
       req = cci_prepare_and_execute (conn, query, 0, &res, error);
     }
@@ -550,10 +556,10 @@ process_sql_log_file (FILE * fp, int conn)
 	      fail_count++;
 	    }
 
-	  if (CA_STOP_ON_ERROR (cci_error.err_code))
+	  if (CA_STOP_ON_ERROR (error, cci_error.err_code))
 	    {
-	      er_log (cci_error.err_code, query,
-		      "The program will be terminated: %s", cci_error.err_msg);
+	      er_log ((error == CCI_ER_DBMS) ? cci_error.err_code : error,
+		      NULL, "%s will be terminated.", PROG_NAME);
 	      goto process_sql_error;
 	    }
 	  count++;
