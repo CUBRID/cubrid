@@ -314,10 +314,9 @@ extern int qe_prepare_and_execute (T_REQ_HANDLE * req_handle,
 				   T_CCI_ERROR * err_buf);
 
 extern void qe_bind_value_free (T_REQ_HANDLE * req_handle);
-extern int qe_bind_param (T_REQ_HANDLE * req_handle,
-			  int index,
-			  T_CCI_A_TYPE a_type,
-			  void *value, T_CCI_U_TYPE u_type, char flag);
+extern int qe_bind_param (T_REQ_HANDLE * req_handle, int index,
+			  T_CCI_A_TYPE a_type, void *value, int length,
+			  T_CCI_U_TYPE u_type, char flag);
 extern int qe_execute (T_REQ_HANDLE * req_handle,
 		       T_CON_HANDLE * con_handle,
 		       char flag, int max_col_size, T_CCI_ERROR * err_buf);

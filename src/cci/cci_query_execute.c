@@ -180,7 +180,7 @@ static int col_get_info_decode (char *buf_p, int remain_size, int *col_size,
 static int next_result_info_decode (char *buf, int size,
 				    T_REQ_HANDLE * req_handle);
 static int bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type,
-				  char flag, void *value,
+				  char flag, void *value, int length,
 				  T_BIND_VALUE * bind_value);
 static int bind_value_to_net_buf (T_NET_BUF * net_buf, char u_type,
 				  void *value, int size, char *charset,
@@ -536,7 +536,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
 int
 qe_bind_param (T_REQ_HANDLE * req_handle, int index, T_CCI_A_TYPE a_type,
-	       void *value, T_CCI_U_TYPE u_type, char flag)
+	       void *value, int length, T_CCI_U_TYPE u_type, char flag)
 {
   int err_code;
 
@@ -561,9 +561,8 @@ qe_bind_param (T_REQ_HANDLE * req_handle, int index, T_CCI_A_TYPE a_type,
       return 0;
     }
 
-  err_code =
-    bind_value_conversion (a_type, u_type, flag, value,
-			   &(req_handle->bind_value[index]));
+  err_code = bind_value_conversion (a_type, u_type, flag, value, length,
+				    &(req_handle->bind_value[index]));
 
   return err_code;
 }
@@ -2157,7 +2156,8 @@ qe_oid_put2 (T_CON_HANDLE * con_handle, char *oid_str, char **attr_name,
 	      err_code = bind_value_conversion (CCI_A_TYPE_SET,
 						CCI_U_TYPE_SEQUENCE,
 						CCI_BIND_PTR,
-						new_val[i], &tmp_cell);
+						new_val[i], UNMEASURED_LENGTH,
+						&tmp_cell);
 	      if (err_code < 0)
 		{
 		  net_buf_clear (&net_buf);
@@ -2894,7 +2894,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		    err_code =
 		      bind_value_conversion ((T_CCI_A_TYPE) a_type, u_type,
 					     CCI_BIND_PTR, value[row],
-					     &cur_cell);
+					     UNMEASURED_LENGTH, &cur_cell);
 		  }
 		  break;
 		case CCI_A_TYPE_BIGINT:
@@ -2904,7 +2904,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		    err_code =
 		      bind_value_conversion ((T_CCI_A_TYPE) a_type, u_type,
 					     CCI_BIND_PTR, &(value[row]),
-					     &cur_cell);
+					     UNMEASURED_LENGTH, &cur_cell);
 		  }
 		  break;
 		case CCI_A_TYPE_INT:
@@ -2914,7 +2914,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		    err_code =
 		      bind_value_conversion ((T_CCI_A_TYPE) a_type, u_type,
 					     CCI_BIND_PTR, &(value[row]),
-					     &cur_cell);
+					     UNMEASURED_LENGTH, &cur_cell);
 		  }
 		  break;
 		case CCI_A_TYPE_FLOAT:
@@ -2924,7 +2924,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		    err_code =
 		      bind_value_conversion ((T_CCI_A_TYPE) a_type, u_type,
 					     CCI_BIND_PTR, &(value[row]),
-					     &cur_cell);
+					     UNMEASURED_LENGTH, &cur_cell);
 		  }
 		  break;
 		case CCI_A_TYPE_DOUBLE:
@@ -2934,7 +2934,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		    err_code =
 		      bind_value_conversion ((T_CCI_A_TYPE) a_type, u_type,
 					     CCI_BIND_PTR, &(value[row]),
-					     &cur_cell);
+					     UNMEASURED_LENGTH, &cur_cell);
 		  }
 		  break;
 		case CCI_A_TYPE_BIT:
@@ -2944,7 +2944,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		    err_code =
 		      bind_value_conversion ((T_CCI_A_TYPE) a_type, u_type,
 					     CCI_BIND_PTR, &(value[row]),
-					     &cur_cell);
+					     UNMEASURED_LENGTH, &cur_cell);
 		  }
 		  break;
 		case CCI_A_TYPE_DATE:
@@ -2954,7 +2954,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		    err_code =
 		      bind_value_conversion ((T_CCI_A_TYPE) a_type, u_type,
 					     CCI_BIND_PTR, &(value[row]),
-					     &cur_cell);
+					     UNMEASURED_LENGTH, &cur_cell);
 		  }
 		  break;
 		case CCI_A_TYPE_SET:
@@ -2964,7 +2964,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		    err_code =
 		      bind_value_conversion ((T_CCI_A_TYPE) a_type, u_type,
 					     CCI_BIND_PTR, value[row],
-					     &cur_cell);
+					     UNMEASURED_LENGTH, &cur_cell);
 		  }
 		  break;
 		case CCI_A_TYPE_BLOB:
@@ -2975,7 +2975,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 		    err_code =
 		      bind_value_conversion ((T_CCI_A_TYPE) a_type, u_type,
 					     CCI_BIND_PTR, value[row],
-					     &cur_cell);
+					     UNMEASURED_LENGTH, &cur_cell);
 		  }
 		  break;
 		default:
@@ -3143,7 +3143,7 @@ qe_cursor_update (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
       err_code =
 	bind_value_conversion (a_type, (T_CCI_U_TYPE) u_type, CCI_BIND_PTR,
-			       value, &bind_value);
+			       value, UNMEASURED_LENGTH, &bind_value);
       if (err_code < 0)
 	{
 	  net_buf_clear (&net_buf);
@@ -5495,7 +5495,7 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
 
 static int
 bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
-		       void *value, T_BIND_VALUE * bind_value)
+		       void *value, int length, T_BIND_VALUE * bind_value)
 {
   int err_code;
 
@@ -5509,19 +5509,31 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
 	case CCI_U_TYPE_ENUM:
-	  if (flag == CCI_BIND_PTR)
+	  if (length == UNMEASURED_LENGTH)
 	    {
-	      bind_value->value = value;
-	      bind_value->flag = BIND_PTR_STATIC;
+	      bind_value->size = strlen (value);
 	    }
 	  else
 	    {
-	      ALLOC_COPY (bind_value->value, value);
-	      if (bind_value->value == NULL)
-		return CCI_ER_NO_MORE_MEMORY;
-	      bind_value->flag = BIND_PTR_DYNAMIC;
+	      bind_value->size = length;
 	    }
-	  bind_value->size = strlen ((char *) value) + 1;
+
+	  if (flag == CCI_BIND_PTR)
+	    {
+	      bind_value->flag = BIND_PTR_STATIC;
+	      bind_value->value = value;
+	    }
+	  else
+	    {
+	      bind_value->flag = BIND_PTR_DYNAMIC;
+	      ALLOC_COPY_BIT (bind_value->value, value, bind_value->size);
+	      if (bind_value->value == NULL)
+		{
+		  return CCI_ER_NO_MORE_MEMORY;
+		}
+	    }
+
+	  bind_value->size += 1;	/* null padding by cas */
 	  break;
 	case CCI_U_TYPE_BIGINT:
 	  {

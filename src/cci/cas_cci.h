@@ -347,6 +347,11 @@ extern "C"
     CCI_A_TYTP_LAST = CCI_A_TYPE_LAST	/* typo but backward compatibility */
   } T_CCI_A_TYPE;
 
+  enum
+  {
+    UNMEASURED_LENGTH = -1
+  };
+
   typedef enum
   {
     CCI_PARAM_FIRST = 1,
@@ -744,10 +749,11 @@ extern "C"
   extern T_CCI_COL_INFO *cci_get_result_info (int req_handle,
 					      T_CCI_CUBRID_STMT * cmd_type,
 					      int *num);
-  extern int cci_bind_param (int req_handle,
-			     int index,
-			     T_CCI_A_TYPE a_type,
+  extern int cci_bind_param (int req_handle, int index, T_CCI_A_TYPE a_type,
 			     void *value, T_CCI_U_TYPE u_type, char flag);
+  extern int cci_bind_param_ex (int mapped_stmt_id, int index,
+				T_CCI_A_TYPE a_type, void *value, int length,
+				T_CCI_U_TYPE u_type, char flag);
   extern int cci_execute (int req_handle,
 			  char flag, int max_col_size, T_CCI_ERROR * err_buf);
   extern int cci_prepare_and_execute (int con_handle, char *sql_stmt,

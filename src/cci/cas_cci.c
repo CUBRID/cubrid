@@ -1204,7 +1204,30 @@ cci_bind_param (int mapped_stmt_id, int index, T_CCI_A_TYPE a_type,
       return error;
     }
 
-  error = qe_bind_param (req_handle, index, a_type, value, u_type, flag);
+  error = qe_bind_param (req_handle, index, a_type, value,
+			 UNMEASURED_LENGTH, u_type, flag);
+
+  con_handle->used = false;
+
+  return error;
+}
+
+int
+cci_bind_param_ex (int mapped_stmt_id, int index, T_CCI_A_TYPE a_type,
+		   void *value, int length, T_CCI_U_TYPE u_type, char flag)
+{
+  int error;
+  T_CON_HANDLE *con_handle = NULL;
+  T_REQ_HANDLE *req_handle = NULL;
+
+  error = hm_get_statement (mapped_stmt_id, &con_handle, &req_handle);
+  if (error != CCI_ER_NO_ERROR)
+    {
+      return error;
+    }
+
+  error =
+    qe_bind_param (req_handle, index, a_type, value, length, u_type, flag);
 
   con_handle->used = false;
 
