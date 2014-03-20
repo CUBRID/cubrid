@@ -5518,6 +5518,8 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	      bind_value->size = length;
 	    }
 
+	  bind_value->size += 1;	/* null padding by cas */
+
 	  if (flag == CCI_BIND_PTR)
 	    {
 	      bind_value->flag = BIND_PTR_STATIC;
@@ -5532,8 +5534,6 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 		  return CCI_ER_NO_MORE_MEMORY;
 		}
 	    }
-
-	  bind_value->size += 1;	/* null padding by cas */
 	  break;
 	case CCI_U_TYPE_BIGINT:
 	  {
