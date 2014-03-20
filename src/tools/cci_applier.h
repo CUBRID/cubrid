@@ -8,7 +8,7 @@
 #define CA_IS_SERVER_DOWN(e) \
   (((e) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED) \
    || ((e) == ER_OBJ_NO_CONNECT) || ((e) == ER_NET_SERVER_CRASHED) \
-   || ((e) == ER_BO_CONNECT_FAILED))
+   || ((e) == ER_BO_CONNECT_FAILED) || ((e) == ER_NET_CANT_CONNECT_SERVER))
 
 #define CA_STOP_ON_ERROR(cci_err, server_err) \
   ((cci_err) != CCI_ER_NO_ERROR && \
