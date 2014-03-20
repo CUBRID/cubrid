@@ -2733,7 +2733,6 @@ qo_is_index_loose_scan (QO_PLAN * plan)
 
 	  assert (QO_ENTRY_MULTI_COL (plan->plan_un.scan.index->head));
 	  assert (plan->plan_un.scan.index_cover == true);
-	  assert (bitset_is_empty (&(plan->plan_un.scan.terms)));
 
 	  assert (!qo_is_prefix_index (plan->plan_un.scan.index->head));
 	  assert (plan->plan_un.scan.index_iss == false);

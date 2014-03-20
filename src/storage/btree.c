@@ -22205,15 +22205,19 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
  *   key_range(in/out): key range to adjust
  *   curr_key(in): current key in btree scan
  *   prefix_len(in): loose scan prefix length
+ *   use_desc_index(in): using descending index scan
+ *   part_key_desc(in): partial key has descending domain
  */
 int
 btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
 			DB_VALUE * curr_key, int prefix_len,
-			bool use_desc_index)
+			bool use_desc_index, bool part_key_desc)
 {
   DB_VALUE new_key, *new_key_dbvals, *target_key;
   TP_DOMAIN *dom;
   DB_MIDXKEY midxkey;
+  RANGE old_range;
+  bool swap_ranges = false;
   int i;
 
   /* check environment */
@@ -22227,6 +22231,21 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
 
   /* fetch target key */
   if (use_desc_index)
+    {
+      if (!part_key_desc)
+	{
+	  swap_ranges = true;
+	}
+    }
+  else
+    {
+      if (part_key_desc)
+	{
+	  swap_ranges = true;
+	}
+    }
+
+  if (swap_ranges)
     {
       /* descending index scan, we adjust upper bound */
       target_key = &key_range->key2;
@@ -22250,10 +22269,11 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
     }
 
   /* determine target key and adjust range */
+  old_range = key_range->range;
   switch (key_range->range)
     {
     case INF_INF:
-      if (use_desc_index)
+      if (swap_ranges)
 	{
 	  key_range->range = INF_LT;	/* (INF, INF) => (INF, ?) */
 	}
@@ -22264,7 +22284,7 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
       break;
 
     case INF_LE:
-      if (use_desc_index)
+      if (swap_ranges)
 	{
 	  key_range->range = INF_LT;	/* (INF, ?] => (INF, ?) */
 	}
@@ -22275,7 +22295,7 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
       break;
 
     case INF_LT:
-      if (use_desc_index)
+      if (swap_ranges)
 	{
 	  /* range remains unchanged */
 	}
@@ -22286,7 +22306,7 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
       break;
 
     case GE_LE:
-      if (use_desc_index)
+      if (swap_ranges)
 	{
 	  key_range->range = GE_LT;	/* [?, ?] => [?, ?) */
 	}
@@ -22297,7 +22317,7 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
       break;
 
     case GE_LT:
-      if (use_desc_index)
+      if (swap_ranges)
 	{
 	  /* range remains unchanged */
 	}
@@ -22308,7 +22328,7 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
       break;
 
     case GE_INF:
-      if (use_desc_index)
+      if (swap_ranges)
 	{
 	  key_range->range = GE_LT;	/* [?, INF) => [?, ?) */
 	}
@@ -22319,7 +22339,7 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
       break;
 
     case GT_LE:
-      if (use_desc_index)
+      if (swap_ranges)
 	{
 	  key_range->range = GT_LT;	/* (?, ?] => (?, ?) */
 	}
@@ -22334,7 +22354,7 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
       break;
 
     case GT_INF:
-      if (use_desc_index)
+      if (swap_ranges)
 	{
 	  key_range->range = GT_LT;	/* (?, INF) => (?, ?) */
 	}
@@ -22372,9 +22392,7 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
       if ((dom->is_desc && !use_desc_index)
 	  || (!dom->is_desc && use_desc_index))
 	{
-	  db_value_domain_min (&new_key_dbvals[i], dom->type->id,
-			       dom->precision, dom->scale, dom->codeset,
-			       dom->collation_id, &dom->enumeration);
+	  DB_MAKE_NULL (&new_key_dbvals[i]);
 	}
       else
 	{
@@ -22395,6 +22413,29 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, KEY_VAL_RANGE * key_range,
   pr_midxkey_add_elements (&new_key, new_key_dbvals,
 			   curr_key->data.midxkey.ncolumns,
 			   curr_key->data.midxkey.domain->setdomain);
+
+#if !defined(NDEBUG)
+  if (DB_IS_NULL (target_key))
+    {
+      assert (!DB_IS_NULL (&new_key));
+    }
+  else if (old_range == key_range->range)
+    {
+      int cmp_res;
+
+      /* range did not modify, check if we're advancing */
+      cmp_res =
+	btree_compare_key (target_key, &new_key, midxkey.domain, 1, 1, NULL);
+      if (use_desc_index)
+	{
+	  assert (cmp_res == DB_GT);
+	}
+      else
+	{
+	  assert (cmp_res == DB_LT);
+	}
+    }
+#endif
 
   /* register key in range */
   pr_clear_value (target_key);

@@ -2450,7 +2450,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	  /* adjust range */
 	  btree_ils_adjust_range (thread_p, &key_vals[iscan_id->curr_keyno],
 				  &BTS->cur_key, indx_infop->ils_prefix_len,
-				  indx_infop->use_desc_index);
+				  indx_infop->use_desc_index,
+				  BTREE_IS_PART_KEY_DESC (&(BTS->btid_int)));
 	}
 
       if (iscan_id->multi_range_opt.use)
@@ -2552,7 +2553,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	  /* adjust range */
 	  btree_ils_adjust_range (thread_p, &key_vals[iscan_id->curr_keyno],
 				  &BTS->cur_key, indx_infop->ils_prefix_len,
-				  indx_infop->use_desc_index);
+				  indx_infop->use_desc_index,
+				  BTREE_IS_PART_KEY_DESC (&(BTS->btid_int)));
 	}
 
       if (iscan_id->multi_range_opt.use)
@@ -2633,12 +2635,15 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	    }
 	  else if (indx_infop->ils_prefix_len > 0)
 	    {
+	      bool part_key_desc = BTREE_IS_PART_KEY_DESC (&(BTS->btid_int));
+
 	      /* adjust range */
 	      btree_ils_adjust_range (thread_p,
 				      &key_vals[iscan_id->curr_keyno],
 				      &BTS->cur_key,
 				      indx_infop->ils_prefix_len,
-				      indx_infop->use_desc_index);
+				      indx_infop->use_desc_index,
+				      part_key_desc);
 	    }
 
 	  if (iscan_id->multi_range_opt.use)
@@ -2778,12 +2783,15 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 	    }
 	  else if (indx_infop->ils_prefix_len > 0)
 	    {
+	      bool part_key_desc = BTREE_IS_PART_KEY_DESC (&(BTS->btid_int));
+
 	      /* adjust range */
 	      btree_ils_adjust_range (thread_p,
 				      &key_vals[iscan_id->curr_keyno],
 				      &BTS->cur_key,
 				      indx_infop->ils_prefix_len,
-				      indx_infop->use_desc_index);
+				      indx_infop->use_desc_index,
+				      part_key_desc);
 	    }
 
 	  if (iscan_id->multi_range_opt.use)

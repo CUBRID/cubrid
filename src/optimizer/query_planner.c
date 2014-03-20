@@ -1885,8 +1885,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
       if (qo_is_prefix_index (index_entryp) == false)
 	{
 	  if (scan_method == QO_SCANMETHOD_INDEX_SCAN
-	      && qo_is_index_covering_scan (plan)
-	      && bitset_is_empty (&(plan->plan_un.scan.terms)))
+	      && qo_is_index_covering_scan (plan))
 	    {
 	      /* covering index, no key-range, no data-filter;
 	       * mark as loose index scan
