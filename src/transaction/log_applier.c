@@ -4813,7 +4813,7 @@ la_apply_delete_log (LA_ITEM * item)
 static int
 la_apply_update_log (LA_ITEM * item)
 {
-  int error = NO_ERROR, au_save = 0;
+  int error = NO_ERROR, au_save;
   DB_OBJECT *class_obj;
   DB_OBJECT *object = NULL;
   DB_OBJECT *new_object = NULL;
@@ -4907,6 +4907,7 @@ la_apply_update_log (LA_ITEM * item)
   inst_tp = dbt_edit_object (object);
   if (inst_tp == NULL)
     {
+      AU_RESTORE (au_save);
       error = er_errid ();
       goto error_rtn;
     }
@@ -4915,6 +4916,7 @@ la_apply_update_log (LA_ITEM * item)
   error = la_disk_to_obj (mclass, &recdes, inst_tp, &item->key);
   if (error != NO_ERROR)
     {
+      AU_RESTORE (au_save);
       goto error_rtn;
     }
 
@@ -4939,6 +4941,7 @@ la_apply_update_log (LA_ITEM * item)
   new_object = dbt_finish_object_and_decache_when_failure (inst_tp);
   if (new_object == NULL)
     {
+      AU_RESTORE (au_save);
       goto error_rtn;
     }
 
@@ -4968,7 +4971,6 @@ la_apply_update_log (LA_ITEM * item)
 
   /* error */
 error_rtn:
-  AU_RESTORE (au_save);
 
   if (error == NO_ERROR)
     {
@@ -5036,7 +5038,7 @@ error_rtn:
 static int
 la_apply_update_log_server_side (LA_ITEM * item)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, au_save;
   unsigned int rcvindex;
   bool ovfyn = false;
   RECDES recdes;
@@ -5096,32 +5098,65 @@ la_apply_update_log_server_side (LA_ITEM * item)
   if (class_obj == NULL)
     {
       error = er_errid ();
-      goto error_return;
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+      goto end;
     }
 
-  /* write sql log */
+  error = obj_repl_update_object (class_obj, &item->key, &recdes);
+
+  /* 
+   * regardless of the success or failure of obj_repl_update_object, 
+   * we should write sql log.
+   */
   if (la_enable_sql_logging)
     {
-      mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
-      if (mclass == NULL)
-	{
-	  goto error_return;
-	}
+      bool sql_logging_failed = false;
+      int rc;
 
-      inst_tp = dbt_create_object_internal (class_obj);
-      if (inst_tp == NULL)
+      er_stack_push ();
+      do
 	{
-	  error = er_errid ();
-	  goto error_return;
-	}
+	  mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
+	  if (mclass == NULL)
+	    {
+	      sql_logging_failed = true;
+	      break;
+	    }
 
-      error = la_disk_to_obj (mclass, &recdes, inst_tp, &item->key);
-      if (error != NO_ERROR)
-	{
-	  goto error_return;
-	}
+	  AU_SAVE_AND_DISABLE (au_save);
 
-      if (sl_write_update_sql (inst_tp, &item->key) != NO_ERROR)
+	  inst_tp = dbt_create_object_internal (class_obj);
+	  if (inst_tp == NULL)
+	    {
+	      sql_logging_failed = true;
+	      AU_RESTORE (au_save);
+	      break;
+	    }
+
+	  rc = la_disk_to_obj (mclass, &recdes, inst_tp, &item->key);
+	  if (rc != NO_ERROR)
+	    {
+	      sql_logging_failed = true;
+	      AU_RESTORE (au_save);
+	      break;
+	    }
+
+	  if (sl_write_update_sql (inst_tp, &item->key) != NO_ERROR)
+	    {
+	      AU_RESTORE (au_save);
+	      sql_logging_failed = true;
+	      break;
+	    }
+
+	  AU_RESTORE (au_save);
+	}
+      while (0);
+      er_stack_pop ();
+
+      if (sql_logging_failed == true)
 	{
 	  help_sprint_value (&item->key, buf, 255);
 	  snprintf (sql_log_err, sizeof (sql_log_err),
@@ -5135,36 +5170,33 @@ la_apply_update_log_server_side (LA_ITEM * item)
 	}
     }
 
-  error = obj_repl_update_object (class_obj, &item->key, &recdes);
+end:
   if (error != NO_ERROR)
     {
-      goto error_return;
-    }
-
-  la_Info.update_counter++;
-
-  goto free_and_return;
-
-error_return:
-  help_sprint_value (&item->key, buf, 255);
+      help_sprint_value (&item->key, buf, 255);
 #if defined (LA_VERBOSE_DEBUG)
-  er_log_debug (ARG_FILE_LINE,
-		"apply_update : error %d %s\n\tclass %s key %s\n",
-		error, er_msg (), item->class_name, buf);
+      er_log_debug (ARG_FILE_LINE,
+		    "apply_update : error %d %s\n\tclass %s key %s\n",
+		    error, er_msg (), item->class_name, buf);
 #endif
-  er_stack_push ();
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	  ER_HA_LA_FAILED_TO_APPLY_UPDATE, 3, item->class_name, buf, error);
-  er_stack_pop ();
+      er_stack_push ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_HA_LA_FAILED_TO_APPLY_UPDATE, 3, item->class_name, buf,
+	      error);
+      er_stack_pop ();
 
-  la_Info.fail_counter++;
+      la_Info.fail_counter++;
 
-  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+      if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+	{
+	  error = ER_NET_CANT_CONNECT_SERVER;
+	}
+    }
+  else
     {
-      error = ER_NET_CANT_CONNECT_SERVER;
+      la_Info.update_counter++;
     }
 
-free_and_return:
   if (ovfyn)
     {
       free_and_init (recdes.data);
@@ -5203,7 +5235,7 @@ free_and_return:
 static int
 la_apply_insert_log (LA_ITEM * item)
 {
-  int error = NO_ERROR, au_save = 0;
+  int error = NO_ERROR, au_save;
   DB_OBJECT *class_obj;
   DB_OBJECT *new_object = NULL;
   MOBJ mclass;
@@ -5293,6 +5325,7 @@ la_apply_insert_log (LA_ITEM * item)
   inst_tp = dbt_create_object_internal (class_obj);
   if (inst_tp == NULL)
     {
+      AU_RESTORE (au_save);
       error = er_errid ();
       goto error_rtn;
     }
@@ -5301,6 +5334,7 @@ la_apply_insert_log (LA_ITEM * item)
   error = la_disk_to_obj (mclass, &recdes, inst_tp, &item->key);
   if (error != NO_ERROR)
     {
+      AU_RESTORE (au_save);
       goto error_rtn;
     }
 
@@ -5326,6 +5360,7 @@ la_apply_insert_log (LA_ITEM * item)
   new_object = dbt_finish_object_and_decache_when_failure (inst_tp);
   if (new_object == NULL)
     {
+      AU_RESTORE (au_save);
       goto error_rtn;
     }
   la_Info.num_unflushed_insert++;
@@ -5355,7 +5390,6 @@ la_apply_insert_log (LA_ITEM * item)
 
   /* error */
 error_rtn:
-  AU_RESTORE (au_save);
 
   if (error == NO_ERROR)
     {
@@ -7540,7 +7574,7 @@ la_remove_archive_logs (const char *db_name, int last_deleted_arv_num,
 	  last_arv_num_to_delete - first_arv_num_to_delete + 1)
 	{
 	  last_arv_num_to_delete =
-	      first_arv_num_to_delete + max_arv_count_to_delete - 1;
+	    first_arv_num_to_delete + max_arv_count_to_delete - 1;
 	}
 
       for (i = first_arv_num_to_delete; i <= last_arv_num_to_delete; i++)
