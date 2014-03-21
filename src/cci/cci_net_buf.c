@@ -138,6 +138,20 @@ cnet_buf_cp_bigint (T_NET_BUF * net_buf, INT64 value)
 }
 
 int
+cnet_buf_cp_byte (T_NET_BUF * net_buf, char value)
+{
+  int size = NET_SIZE_BYTE;
+
+  if (net_buf_realloc (net_buf, size) < 0)
+    return CCI_ER_NO_MORE_MEMORY;
+
+  *(net_buf->data + net_buf->data_size) = value;	/* do not call memcpy(); simply assign */
+  net_buf->data_size += size;
+
+  return 0;
+}
+
+int
 cnet_buf_cp_int (T_NET_BUF * net_buf, int value)
 {
   int size = NET_SIZE_INT;

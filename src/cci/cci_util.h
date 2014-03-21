@@ -94,12 +94,6 @@ extern int ut_is_deleted_oid (T_OBJECT * oid);
 extern int cci_url_match (const char *src, char *token[]);
 extern long ut_timeval_diff_msec (struct timeval *start, struct timeval *end);
 
-#ifdef UNICODE_DATA
-extern char *ut_ansi_to_unicode (char *str);
-extern char *ut_unicode_to_ansi (char *str);
-#endif
-
-
 /************************************************************************
  * EXPORTED VARIABLES							*
  ************************************************************************/

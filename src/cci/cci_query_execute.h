@@ -196,19 +196,6 @@
 #define ADD_ARG_BIGINT(BUF, VALUE)  ADD_ARG_INT64(BUF, VALUE)
 
 
-#ifdef UNICODE_DATA
-#define ADD_ARG_STR(BUF, STR, SIZE, CHARSET)			\
-	do {							\
-	  char *_macro_tmp_str = STR;				\
-	  int _macro_tmp_int = 0;				\
-	  _macro_tmp_str = ut_ansi_to_unicode(STR);		\
-	  if (_macro_tmp_str != NULL)				\
-	    _macro_tmp_int = strlen(_macro_tmp_str) + 1;	\
-	  net_buf_cp_int(BUF, _macro_tmp_int);			\
-	  net_buf_cp_str(BUF, _macro_tmp_str, _macro_tmp_int);	\
-	  FREE_MEM(_macro_tmp_str);				\
-	} while (0)
-#else
 #if defined (WINDOWS)
 #define ADD_ARG_STR(BUF, STR, SIZE, CHARSET)		 \
 	do {                                             \
@@ -227,7 +214,7 @@
 	    else                                         \
 	      {                                          \
  	        ADD_ARG_BYTES(BUF, target, new_size);    \
- 	        free (target);                           \
+ 	        FREE (target);                           \
 	      }                                          \
  	  }                                              \
  	  else {                                         \
@@ -238,6 +225,45 @@
 #define ADD_ARG_STR(BUF, STR, SIZE, CHARSET)		 \
  	ADD_ARG_BYTES(BUF, STR, SIZE);
 #endif
+
+#if defined (WINDOWS)
+#define ADD_ARG_BIND_STR(BUF, STR, SIZE, CHARSET) \
+	do {                                             \
+ 	  if (CHARSET != NULL) {                         \
+ 	    int new_size;                                \
+ 	    char * target;                               \
+	    new_size = encode_string(STR, SIZE - 1, &target, CHARSET);\
+ 	    if (new_size < 0)                            \
+ 	      {                                          \
+ 		return new_size;                         \
+ 	      }                                          \
+	    else if (new_size == 0)                      \
+	      {                                          \
+		net_buf_cp_int (BUF, SIZE); \
+		net_buf_cp_str (BUF, STR, SIZE - 1); \
+		net_buf_cp_byte (BUF, '\0'); \
+	      }                                          \
+	    else                                         \
+	      {                                          \
+		net_buf_cp_int (BUF, new_size); \
+		net_buf_cp_str (BUF, target, new_size - 1); \
+		net_buf_cp_byte (BUF, '\0'); \
+ 	        FREE (target);                           \
+	      }                                          \
+ 	  }                                              \
+ 	  else {                                         \
+	    net_buf_cp_int (BUF, SIZE); \
+	    net_buf_cp_str (BUF, STR, SIZE - 1);         \
+	    net_buf_cp_byte (BUF, '\0');                 \
+ 	  }                                              \
+ 	} while (0)
+#else
+#define ADD_ARG_BIND_STR(BUF, STR, SIZE, CHARSET) \
+	do { \
+	  net_buf_cp_int (net_buf, size); \
+	  net_buf_cp_str (net_buf, (char*) value, size - 1); \
+	  net_buf_cp_byte (net_buf, '\0'); \
+	} while (0)
 #endif
 
 #define ADD_ARG_BYTES(BUF, STR, SIZE)		\

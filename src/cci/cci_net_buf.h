@@ -95,6 +95,7 @@
   */
 #define net_buf_init		cnet_buf_init
 #define net_buf_clear		cnet_buf_clear
+#define net_buf_cp_byte		cnet_buf_cp_byte
 #define net_buf_cp_str		cnet_buf_cp_str
 #define net_buf_cp_int		cnet_buf_cp_int
 #define net_buf_cp_bigint       cnet_buf_cp_bigint

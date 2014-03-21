@@ -76,10 +76,6 @@
  * PRIVATE FUNCTION PROTOTYPES						*
  ************************************************************************/
 
-#ifdef UNICODE_DATA
-static char *wstr2str (WCHAR * wstr, UINT CodePage);
-static WCHAR *str2wstr (char *str, UINT CodePage);
-#endif
 static char is_float_str (char *str);
 static void *cci_reg_malloc (void *dummy, size_t s);
 static void *cci_reg_realloc (void *dummy, void *p, size_t s);
@@ -516,74 +512,9 @@ ut_is_deleted_oid (T_OBJECT * oid)
 }
 
 
-#ifdef UNICODE_DATA
-char *
-ut_ansi_to_unicode (char *str)
-{
-  WCHAR *wstr;
-
-  wstr = str2wstr (str, CP_ACP);
-  str = wstr2str (wstr, CP_UTF8);
-  FREE_MEM (wstr);
-  return str;
-}
-
-char *
-ut_unicode_to_ansi (char *str)
-{
-  WCHAR *wstr;
-
-  wstr = str2wstr (str, CP_UTF8);
-  str = wstr2str (wstr, CP_ACP);
-  FREE_MEM (wstr);
-  return str;
-}
-#endif
-
 /************************************************************************
  * IMPLEMENTATION OF PRIVATE FUNCTIONS	 				*
  ************************************************************************/
-
-#ifdef UNICODE_DATA
-static WCHAR *
-str2wstr (char *str, UINT CodePage)
-{
-  int len;
-  WCHAR *wstr;
-
-  if (str == NULL)
-    return NULL;
-
-  len = (int) strlen (str) + 1;
-  wstr = (WCHAR *) MALLOC (sizeof (WCHAR) * len);
-  if (wstr == NULL)
-    return NULL;
-  memset (wstr, 0, sizeof (WCHAR) * len);
-
-  MultiByteToWideChar (CodePage, 0, str, len, wstr, len);
-  return wstr;
-}
-
-static char *
-wstr2str (WCHAR * wstr, UINT CodePage)
-{
-  int len, buf_len;
-  char *str;
-
-  if (wstr == NULL)
-    return NULL;
-
-  len = wcslen (wstr) + 1;
-  buf_len = len * 2 + 10;
-  str = (char *) MALLOC (buf_len);
-  if (str == NULL)
-    return NULL;
-  memset (str, 0, buf_len);
-
-  WideCharToMultiByte (CodePage, 0, wstr, len, str, buf_len, NULL, NULL);
-  return str;
-}
-#endif
 
 static char
 is_float_str (char *str)

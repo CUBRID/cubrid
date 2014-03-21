@@ -3292,23 +3292,8 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
     case CCI_U_TYPE_NUMERIC:
     case CCI_U_TYPE_ENUM:
       {
-#ifdef UNICODE_DATA
-	char *tmp_p;
-	tmp_p = ut_unicode_to_ansi (col_value_p);
-	if (tmp_p == NULL)
-	  {
-	    return CCI_ER_NO_MORE_MEMORY;
-	  }
-	if (hm_conv_value_buf_alloc (conv_val_buf, strlen (tmp_p) + 1) < 0)
-	  return CCI_ER_NO_MORE_MEMORY;
-	strcpy (conv_val_buf->data, tmp_p);
-	FREE_MEM (tmp_p);
-	*((char **) value) = conv_val_buf->data;
-	*indicator = strlen (conv_val_buf->data);
-#else
 	*((char **) value) = col_value_p;
 	*indicator = col_val_size - 1;
-#endif
       }
       return 0;
     case CCI_U_TYPE_BIT:
@@ -4484,18 +4469,16 @@ encode_string (char *str, int size, char **target, char *charset)
       return 0;
     }
 
-  nLength =
-    MultiByteToWideChar (CP_ACP, 0, (LPCSTR) str, lstrlen (str), NULL, 0);
+  nLength = MultiByteToWideChar (CP_ACP, 0, (LPCSTR) str, size, NULL, 0);
   bstrCode = SysAllocStringLen (NULL, nLength);
   if (bstrCode == NULL)
     {
       return CCI_ER_NO_MORE_MEMORY;
     }
-  MultiByteToWideChar (CP_ACP, 0, (LPCSTR) str, lstrlen (str), bstrCode,
-		       nLength);
+  MultiByteToWideChar (CP_ACP, 0, (LPCSTR) str, size, bstrCode, nLength);
 
-  nLength =
-    WideCharToMultiByte (wincode, 0, bstrCode, -1, NULL, 0, NULL, NULL);
+  nLength = WideCharToMultiByte (wincode, 0, bstrCode, -1, NULL, 0, NULL,
+				 NULL);
   tmp_string = (char *) MALLOC (sizeof (char) * (nLength + 1));
   if (tmp_string == NULL)
     {
@@ -5518,8 +5501,6 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	      bind_value->size = length;
 	    }
 
-	  bind_value->size += 1;	/* null padding by cas */
-
 	  if (flag == CCI_BIND_PTR)
 	    {
 	      bind_value->flag = BIND_PTR_STATIC;
@@ -5534,6 +5515,8 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 		  return CCI_ER_NO_MORE_MEMORY;
 		}
 	    }
+
+	  bind_value->size += 1;	/* protocol with cas */
 	  break;
 	case CCI_U_TYPE_BIGINT:
 	  {
@@ -6032,11 +6015,11 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, char u_type, void *value,
     case CCI_U_TYPE_ENUM:
       if (value == NULL)
 	{
-	  ADD_ARG_STR (net_buf, "", 1, charset);
+	  ADD_ARG_BIND_STR (net_buf, "", 1, charset);
 	}
       else
 	{
-	  ADD_ARG_STR (net_buf, value, size, charset);
+	  ADD_ARG_BIND_STR (net_buf, value, size, charset);
 	}
       break;
     case CCI_U_TYPE_NUMERIC:
