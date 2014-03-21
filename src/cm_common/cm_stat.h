@@ -262,6 +262,8 @@ extern "C"
     unsigned int file_num_ioreads;
     unsigned int file_num_iowrites;
     unsigned int file_num_iosynches;
+    unsigned int file_num_page_allocs;
+    unsigned int file_num_page_deallocs;
 
     /* Execution statistics for the page buffer manager */
     unsigned int pb_num_fetches;
@@ -308,6 +310,7 @@ extern "C"
     unsigned int bt_num_multi_range_opt;
     unsigned int bt_num_splits;
     unsigned int bt_num_merges;
+    unsigned int bt_num_get_stats;
 
     /* Execution statistics for the query manager */
     unsigned int qm_num_selects;
@@ -331,20 +334,38 @@ extern "C"
     /* Execution statistics for network communication */
     unsigned int net_num_requests;
 
-    /* Other statistics */
-    unsigned int pb_hit_ratio;
-    /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
-
+    /* flush control stat */
     unsigned int fc_num_log_pages;
     unsigned int fc_num_pages;
     unsigned int fc_tokens;
 
+    /* prior lsa info */
     unsigned int prior_lsa_list_size;
     unsigned int prior_lsa_list_maxed;
     unsigned int prior_lsa_list_removed;
 
+    /* best space info */
     unsigned int hf_stats_bestspace_entries;
     unsigned int hf_stats_bestspace_maxed;
+
+    /* HA replication delay */
+    unsigned int ha_repl_delay;
+
+    /* Execution statistics for Plan cache */
+    unsigned int pc_num_add;
+    unsigned int pc_num_lookup;
+    unsigned int pc_num_hit;
+    unsigned int pc_num_miss;
+    unsigned int pc_num_full;
+    unsigned int pc_num_delete;
+    unsigned int pc_num_invalid_xasl_id;
+    unsigned int pc_num_query_string_hash_entries;
+    unsigned int pc_num_xasl_id_hash_entries;
+    unsigned int pc_num_class_oid_hash_entries;
+
+    /* Other statistics */
+    unsigned int pb_hit_ratio;
+    /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
   } T_CM_DB_EXEC_STAT;
 
   int cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat,
