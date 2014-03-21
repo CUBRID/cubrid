@@ -4133,11 +4133,9 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
 #if defined(CS_MODE)
   int tran_index = NULL_TRAN_INDEX;
   int request_size, area_size, req_error, temp_int;
-  char *request, *reply, *area, *ptr, *session_key;
+  char *request, *reply, *area, *ptr;
   int row_count = DB_ROW_COUNT_NOT_SET;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  SESSION_PARAM *session_params = NULL;
-  int update_parameter_values = 0;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4151,15 +4149,8 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
     + length_const_string (client_credential->host_name, NULL)	/* host_name */
     + OR_INT_SIZE		/* process_id */
     + OR_INT_SIZE		/* client_lock_wait */
-    + OR_INT_SIZE		/* client_isolation */
-    + or_packed_stream_length (SERVER_SESSION_KEY_SIZE)	/* server session key */
-    + OR_INT_SIZE;		/* session state id */
-  /* session parameters */
-  request_size +=
-    sysprm_packed_session_parameters_length (cached_session_parameters,
-					     request_size);
+    + OR_INT_SIZE;		/* client_isolation */
 
-  session_key = boot_get_server_session_key ();
   request = (char *) malloc (request_size);
   if (request)
     {
@@ -4174,9 +4165,6 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
       ptr = or_pack_int (ptr, client_credential->process_id);
       ptr = or_pack_int (ptr, client_lock_wait);
       ptr = or_pack_int (ptr, (int) client_isolation);
-      ptr = or_pack_stream (ptr, session_key, SERVER_SESSION_KEY_SIZE);
-      ptr = or_pack_int (ptr, db_Session_id);
-      ptr = sysprm_pack_session_parameters (ptr, cached_session_parameters);
 
       req_error = net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT,
 				       request, request_size, reply,
@@ -4203,17 +4191,6 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
 	      ptr = or_unpack_float (ptr,
 				     &server_credential->disk_compatibility);
 	      ptr = or_unpack_int (ptr, &server_credential->ha_server_state);
-	      ptr = or_unpack_stream (ptr,
-				      server_credential->server_session_key,
-				      SERVER_SESSION_KEY_SIZE);
-	      ptr = or_unpack_int (ptr, &db_Session_id);
-	      ptr = or_unpack_int (ptr, &row_count);
-	      ptr = or_unpack_int (ptr, &update_parameter_values);
-	      if (update_parameter_values)
-		{
-		  ptr =
-		    sysprm_unpack_session_parameters (ptr, &session_params);
-		}
 	      ptr = or_unpack_int (ptr, &server_credential->db_charset);
 	      ptr = or_unpack_string (ptr, &server_credential->db_lang);
 	    }
@@ -4227,13 +4204,6 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
 	      request_size);
     }
 
-  if (update_parameter_values)
-    {
-      sysprm_update_client_session_parameters (session_params);
-    }
-  sysprm_free_session_parameters (&session_params);
-  db_update_row_count_cache (row_count);
-
   return tran_index;
 #else /* CS_MODE */
   int err_code = NO_ERROR;
@@ -4246,36 +4216,8 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
   tran_index = xboot_register_client (NULL, client_credential,
 				      client_lock_wait, client_isolation,
 				      tran_state, server_credential);
-  if (tran_index == NULL_TRAN_INDEX)
-    {
-      EXIT_SERVER ();
-      return NULL_TRAN_INDEX;
-    }
-
-  key.fd = INVALID_SOCKET;
-  if (db_Session_id == DB_EMPTY_SESSION)
-    {
-      err_code = xsession_create_new (NULL, &key);
-    }
-  else
-    {
-      key.id = db_Session_id;
-      if (xsession_check_session (NULL, &key) != NO_ERROR)
-	{
-	  err_code = xsession_create_new (NULL, &key);
-	}
-    }
-
-  db_Session_id = key.id;
-  xsession_get_row_count (NULL, &row_count);
   EXIT_SERVER ();
 
-  if (err_code != NO_ERROR)
-    {
-      return NULL_TRAN_INDEX;
-    }
-
-  db_update_row_count_cache (row_count);
   return tran_index;
 #endif /* !CS_MODE */
 }
@@ -4761,7 +4703,8 @@ boot_shutdown_server (bool iserfinal)
 }
 
 /*
- * csession_check_session - check if session is still active
+ * csession_find_or_create_session - check if session is still active
+ *                                     if not, create a new session
  *
  * return	   : error code or NO_ERROR
  * session_id (in/out) : the id of the session to end
@@ -4769,9 +4712,10 @@ boot_shutdown_server (bool iserfinal)
  * server_session_key (in/out) :
  */
 int
-csession_check_session (SESSION_ID * session_id, int *row_count,
-			char *server_session_key, const char *db_user,
-			const char *host, const char *program_name)
+csession_find_or_create_session (SESSION_ID * session_id, int *row_count,
+				 char *server_session_key,
+				 const char *db_user, const char *host,
+				 const char *program_name)
 {
 #if defined (CS_MODE)
   int req_error;
@@ -4880,16 +4824,25 @@ csession_check_session (SESSION_ID * session_id, int *row_count,
 
   ENTER_SERVER ();
 
-  key.id = *session_id;
   key.fd = INVALID_SOCKET;
-  if (xsession_check_session (NULL, &key) != NO_ERROR)
+  if (db_Session_id == DB_EMPTY_SESSION)
     {
-      /* create new session */
-      if (xsession_create_new (NULL, &key) != NO_ERROR)
+      result = xsession_create_new (NULL, &key);
+    }
+  else
+    {
+      key.id = db_Session_id;
+      if (xsession_check_session (NULL, &key) != NO_ERROR)
 	{
-	  result = ER_FAILED;
+	  /* create new session */
+	  if (xsession_create_new (NULL, &key) != NO_ERROR)
+	    {
+	      result = ER_FAILED;
+	    }
 	}
     }
+
+  db_Session_id = key.id;
 
   /* get row count */
   if (result != ER_FAILED)

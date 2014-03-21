@@ -3676,11 +3676,6 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   TRAN_STATE tran_state;
   int area_size, strlen1, strlen2, strlen3, strlen4;
   char *reply, *area, *ptr;
-  char server_session_key[SERVER_SESSION_KEY_SIZE];
-  SESSION_KEY session_key;
-  int row_count = DB_ROW_COUNT_NOT_SET;
-  SESSION_PARAM *session_params = NULL;
-  int update_parameter_values = 0;
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
@@ -3701,9 +3696,6 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (ptr, &client_credential.process_id);
   ptr = or_unpack_int (ptr, &client_lock_wait);
   ptr = or_unpack_int (ptr, &xint);
-  ptr = or_unpack_stream (ptr, server_session_key, SERVER_SESSION_KEY_SIZE);
-  ptr = or_unpack_int (ptr, &session_key.id);
-  ptr = sysprm_unpack_session_parameters (ptr, &session_params);
   client_isolation = (TRAN_ISOLATION) xint;
 
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
@@ -3722,28 +3714,6 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
       return_error_to_client (thread_p, rid);
     }
 
-  if (session_key.id == DB_EMPTY_SESSION
-      || memcmp (server_session_key, server_credential.server_session_key,
-		 SERVER_SESSION_KEY_SIZE) != 0
-      || xsession_check_session (thread_p, &session_key) != NO_ERROR)
-    {
-      /* create new session */
-      if (xsession_create_new (thread_p, &session_key) != NO_ERROR)
-	{
-	  return_error_to_client (thread_p, rid);
-	}
-    }
-  session_key.fd = thread_p->conn_entry->fd;
-  xsession_set_session_key (thread_p, &session_key);
-
-  thread_p->conn_entry->session_id = session_key.id;
-  xsession_get_row_count (thread_p, &row_count);
-  if (sysprm_session_init_session_parameters
-      (&session_params, &update_parameter_values) != NO_ERROR)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
   area_size = OR_INT_SIZE	/* tran_index */
     + OR_INT_SIZE		/* tran_state */
     + or_packed_string_length (server_credential.db_full_name, &strlen1)	/* db_full_name */
@@ -3755,18 +3725,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
     + OR_INT_SIZE		/* page_size */
     + OR_INT_SIZE		/* log_page_size */
     + OR_FLOAT_SIZE		/* disk_compatibility */
-    + OR_INT_SIZE		/* ha_server_state */
-    + or_packed_stream_length (SERVER_SESSION_KEY_SIZE)	/* server session key */
-    + OR_INT_SIZE		/* session_id */
-    + OR_INT_SIZE;		/* row count */
-
-  area_size += OR_INT_SIZE;	/* update_parameter_values */
-  if (update_parameter_values)
-    {
-      /* session parameters will be sent back to client */
-      area_size += sysprm_packed_session_parameters_length (session_params,
-							    area_size);
-    }
+    + OR_INT_SIZE;		/* ha_server_state */
 
   area_size += OR_INT_SIZE;	/* db_charset */
   area_size += or_packed_string_length (server_credential.db_lang, &strlen4);
@@ -3794,15 +3753,6 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
       ptr = or_pack_int (ptr, (int) server_credential.log_page_size);
       ptr = or_pack_float (ptr, server_credential.disk_compatibility);
       ptr = or_pack_int (ptr, (int) server_credential.ha_server_state);
-      ptr = or_pack_stream (ptr, server_credential.server_session_key,
-			    SERVER_SESSION_KEY_SIZE);
-      ptr = or_pack_int (ptr, session_key.id);
-      ptr = or_pack_int (ptr, row_count);
-      ptr = or_pack_int (ptr, update_parameter_values);
-      if (update_parameter_values)
-	{
-	  ptr = sysprm_pack_session_parameters (ptr, session_params);
-	}
       ptr = or_pack_int (ptr, server_credential.db_charset);
       ptr = or_pack_string_with_length (ptr, server_credential.db_lang,
 					strlen4);
@@ -9573,7 +9523,7 @@ slocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
- * ssession_check_session -
+ * ssession_find_or_create_session -
  *
  * return: void
  *
@@ -9585,8 +9535,8 @@ slocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, unsigned int rid,
  * one if needed
  */
 void
-ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
-			char *request, int reqlen)
+ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid,
+				 char *request, int reqlen)
 {
   SESSION_KEY key = { DB_EMPTY_SESSION, INVALID_SOCKET };
   int row_count = -1, area_size;
@@ -9606,8 +9556,9 @@ ssession_check_session (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_string_alloc (ptr, &host);
   ptr = or_unpack_string_alloc (ptr, &program_name);
 
-  if (memcmp (server_session_key, xboot_get_server_session_key (),
-	      SERVER_SESSION_KEY_SIZE) != 0
+  if (key.id == DB_EMPTY_SESSION
+      || memcmp (server_session_key, xboot_get_server_session_key (),
+		 SERVER_SESSION_KEY_SIZE) != 0
       || xsession_check_session (thread_p, &key) != NO_ERROR)
     {
       /* not an error yet */

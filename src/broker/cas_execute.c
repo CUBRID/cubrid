@@ -597,9 +597,9 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 	  db_disable_trigger ();
 	}
       else
-        {
-          db_enable_trigger ();
-        }
+	{
+	  db_enable_trigger ();
+	}
 
       cas_log_debug (ARG_FILE_LINE,
 		     "ux_database_connect: db_login(%s) db_restart(%s) at %s",
@@ -645,7 +645,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
 	  return ux_database_connect (db_name, db_user, db_passwd,
 				      db_err_msg);
 	}
-      (void) db_check_session (db_user, program_name);
+      (void) db_find_or_create_session (db_user, program_name);
 
       strncpy (database_user, db_user, sizeof (database_user) - 1);
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
@@ -656,8 +656,8 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd,
        * previous clients
        */
       er_clear ();
-      /* check session to see if it is still active */
-      (void) db_check_session (db_user, program_name);
+      /* check session to see if it is still active and create if isn't */
+      (void) db_find_or_create_session (db_user, program_name);
     }
   return 0;
 

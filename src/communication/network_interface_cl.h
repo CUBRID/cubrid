@@ -550,10 +550,12 @@ extern int boot_get_server_locales (LANG_COLL_COMPAT ** server_collations,
 				    int *server_locales_cnt);
 
 /* session state API */
-extern int csession_check_session (SESSION_ID * session_id, int *row_count,
-				   char *server_session_key,
-				   const char *db_user, const char *host,
-				   const char *program_name);
+extern int csession_find_or_create_session (SESSION_ID * session_id,
+					    int *row_count,
+					    char *server_session_key,
+					    const char *db_user,
+					    const char *host,
+					    const char *program_name);
 extern int csession_end_session (SESSION_ID session_id);
 extern int csession_set_row_count (int rows);
 extern int csession_get_row_count (int *rows);

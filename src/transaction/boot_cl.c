@@ -1165,15 +1165,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 				     tran_lock_wait_msecs, tran_isolation,
 				     &transtate, &boot_Server_credential);
 
-  /* free the thing get from au_user_name_dup() */
-  if (is_db_user_alloced == true)
-    {
-      assert (client_credential->db_user != NULL);
-      assert (client_credential->db_user != boot_Client_no_user_string);
-      assert (client_credential->db_user != AU_PUBLIC_USER_NAME);
-      free_and_init (client_credential->db_user);
-      is_db_user_alloced = false;
-    }
   if (tran_index == NULL_TRAN_INDEX)
     {
       error_code = er_errid ();
@@ -1207,8 +1198,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 #endif /* CS_MODE */
 
-  sysprm_init_intl_param ();
-
   /* Initialize client modules for execution */
   boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
 
@@ -1225,6 +1214,21 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       goto error;
     }
+
+  (void) db_find_or_create_session (client_credential->db_user,
+				    client_credential->program_name);
+
+  /* free the thing get from au_user_name_dup() */
+  if (is_db_user_alloced == true)
+    {
+      assert (client_credential->db_user != NULL);
+      assert (client_credential->db_user != boot_Client_no_user_string);
+      assert (client_credential->db_user != AU_PUBLIC_USER_NAME);
+      free_and_init (client_credential->db_user);
+      is_db_user_alloced = false;
+    }
+
+  sysprm_init_intl_param ();
 
 #if defined(CS_MODE)
   error_code = boot_check_locales (client_credential);

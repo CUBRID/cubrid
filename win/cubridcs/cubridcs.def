@@ -288,7 +288,7 @@ EXPORTS
     db_restart_ex
     db_set_session_id
     db_get_session_id
-    db_check_session
+    db_find_or_create_session
     db_end_session
     db_set_connect_status
     db_set_server_session_key

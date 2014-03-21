@@ -452,12 +452,11 @@ extern void sboot_compact_stop (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void slocator_upgrade_instances_domain (THREAD_ENTRY * thread_p,
 					       unsigned int rid,
 					       char *request, int reqlen);
-extern void ssession_check_session (THREAD_ENTRY * thread_p,
-				    unsigned int rid, char *request,
-				    int reqlen);
-extern void ssession_end_session (THREAD_ENTRY * thread_p,
-				  unsigned int rid, char *request,
-				  int reqlen);
+extern void ssession_find_or_create_session (THREAD_ENTRY * thread_p,
+					     unsigned int rid,
+					     char *request, int reqlen);
+extern void ssession_end_session (THREAD_ENTRY * thread_p, unsigned int rid,
+				  char *request, int reqlen);
 extern void ssession_set_row_count (THREAD_ENTRY * thread_p, unsigned int rid,
 				    char *request, int reqlen);
 extern void ssession_get_row_count (THREAD_ENTRY * thread_p, unsigned int rid,

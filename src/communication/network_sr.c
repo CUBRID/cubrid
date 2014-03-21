@@ -857,7 +857,7 @@ net_server_init (void)
 
   /* session state */
   req_p = &net_Requests[NET_SERVER_SES_CHECK_SESSION];
-  req_p->processing_function = ssession_check_session;
+  req_p->processing_function = ssession_find_or_create_session;
   req_p->name = "NET_SERVER_SES_CHECK_SESSION";
 
   req_p = &net_Requests[NET_SERVER_SES_END_SESSION];

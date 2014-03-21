@@ -4025,10 +4025,6 @@ xboot_register_client (THREAD_ENTRY * thread_p,
 	  css_notify_ha_log_applier_state (thread_p,
 					   HA_LOG_APPLIER_STATE_UNREGISTERED);
 	}
-
-      css_set_user_access_status (client_credential->db_user,
-				  client_credential->host_name,
-				  client_credential->program_name);
 #endif /* SERVER_MODE */
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
