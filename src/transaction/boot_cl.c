@@ -1197,6 +1197,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       rel_set_disk_compatible (boot_Server_credential.disk_compatibility);
     }
 #endif /* CS_MODE */
+  sysprm_init_intl_param ();
 
   /* Initialize client modules for execution */
   boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
@@ -1217,7 +1218,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   (void) db_find_or_create_session (client_credential->db_user,
 				    client_credential->program_name);
-
   /* free the thing get from au_user_name_dup() */
   if (is_db_user_alloced == true)
     {
@@ -1227,8 +1227,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       free_and_init (client_credential->db_user);
       is_db_user_alloced = false;
     }
-
-  sysprm_init_intl_param ();
 
 #if defined(CS_MODE)
   error_code = boot_check_locales (client_credential);

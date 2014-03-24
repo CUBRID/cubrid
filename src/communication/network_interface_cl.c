@@ -4843,6 +4843,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count,
     }
 
   db_Session_id = key.id;
+  *session_id = db_Session_id;
 
   /* get row count */
   if (result != ER_FAILED)
