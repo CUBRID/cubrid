@@ -88,6 +88,8 @@ struct natural_join_attr_info
   NATURAL_JOIN_ATTR_INFO *next;
 };
 
+static const char *CPTR_PT_NAME_IN_GROUP_HAVING = "name_in_group_having";
+
 static PT_NODE *pt_bind_parameter (PARSER_CONTEXT * parser,
 				   PT_NODE * parameter);
 static PT_NODE *pt_bind_parameter_path (PARSER_CONTEXT * parser,
@@ -257,6 +259,39 @@ static int generate_natural_join_attrs_from_subquery (PT_NODE *
 static int generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs,
 						      NATURAL_JOIN_ATTR_INFO
 						      ** attrs_p);
+
+static bool is_pt_name_in_group_having (PT_NODE * node);
+
+static PT_NODE *pt_mark_pt_name (PARSER_CONTEXT * parser, PT_NODE * node,
+				 void *chk_parent, int *continue_walk);
+
+static PT_NODE *pt_mark_group_having_pt_name (PARSER_CONTEXT * parser,
+					      PT_NODE * node,
+					      void *chk_parent,
+					      int *continue_walk);
+
+static void pt_resolve_group_having_alias_pt_sort_spec (PARSER_CONTEXT *
+							parser,
+							PT_NODE * node,
+							PT_NODE *
+							select_list);
+
+static void pt_resolve_group_having_alias_pt_name (PARSER_CONTEXT * parser,
+						   PT_NODE ** node_p,
+						   PT_NODE * select_list);
+
+static void pt_resolve_group_having_alias_pt_expr (PARSER_CONTEXT * parser,
+						   PT_NODE * node,
+						   PT_NODE * select_list);
+
+static void pt_resolve_group_having_alias_internal (PARSER_CONTEXT * parser,
+						    PT_NODE ** node_p,
+						    PT_NODE * select_list);
+
+static PT_NODE *pt_resolve_group_having_alias (PARSER_CONTEXT * parser,
+					       PT_NODE * node,
+					       void *chk_parent,
+					       int *continue_walk);
 
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
@@ -692,19 +727,25 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser,
       node = pt_bind_parameter_path (parser, in_node);
     }
 
-  if (!node)
+  if (node == NULL)
     {
-      if (!pt_has_error (parser))
+      /* If pt_name in group by/ having, maybe it's alias. We will try 
+       * to resolve it later.
+       */
+      if (is_pt_name_in_group_having (in_node) == false)
 	{
-	  if (er_errid () != NO_ERROR)
+	  if (!pt_has_error (parser))
 	    {
-	      PT_ERRORc (parser, in_node, er_msg ());
-	    }
-	  else
-	    {
-	      PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_IS_NOT_DEFINED,
-			  pt_short_print (parser, in_node));
+	      if (er_errid () != NO_ERROR)
+		{
+		  PT_ERRORc (parser, in_node, er_msg ());
+		}
+	      else
+		{
+		  PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_IS_NOT_DEFINED,
+			      pt_short_print (parser, in_node));
+		}
 	    }
 	}
     }
@@ -7648,6 +7689,312 @@ pt_resolve_natural_join (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
+ * is_pt_name_in_group_having () -
+ *   return:
+ *   node(in):
+ */
+static bool
+is_pt_name_in_group_having (PT_NODE * node)
+{
+  if (node == NULL || node->node_type != PT_NAME || node->etc == NULL)
+    {
+      return false;
+    }
+
+  if (intl_identifier_casecmp
+      ((char *) node->etc, CPTR_PT_NAME_IN_GROUP_HAVING) == 0)
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/*
+ * pt_mark_pt_name () -
+ *   return:
+ *   parser(in):
+ *   node(in/out):
+ *   chk_parent(in):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_mark_pt_name (PARSER_CONTEXT * parser, PT_NODE * node,
+		 void *chk_parent, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node == NULL || node->node_type != PT_NAME)
+    {
+      return node;
+    }
+  node->etc =
+    (void *) pt_append_string (parser, NULL, CPTR_PT_NAME_IN_GROUP_HAVING);
+
+  return node;
+}
+
+/*
+ * pt_mark_group_having_pt_name () - Mark the PT_NAME in group by / having.
+ *   return:
+ *   parser(in):
+ *   node(in/out):
+ *   chk_parent(in):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_mark_group_having_pt_name (PARSER_CONTEXT * parser, PT_NODE * node,
+			      void *chk_parent, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node == NULL || node->node_type != PT_SELECT)
+    {
+      return node;
+    }
+
+  if (node->info.query.q.select.group_by != NULL)
+    {
+      node->info.query.q.select.group_by =
+	parser_walk_tree (parser, node->info.query.q.select.group_by,
+			  pt_mark_pt_name, NULL, NULL, NULL);
+    }
+
+  if (node->info.query.q.select.having != NULL)
+    {
+      node->info.query.q.select.having =
+	parser_walk_tree (parser, node->info.query.q.select.having,
+			  pt_mark_pt_name, NULL, NULL, NULL);
+    }
+
+  return node;
+}
+
+/*
+ * pt_resolve_group_having_alias_pt_sort_spec () - 
+ *   return:
+ *   parser(in):
+ *   node(in/out):
+ *   select_list(in):
+ */
+static void
+pt_resolve_group_having_alias_pt_sort_spec (PARSER_CONTEXT * parser,
+					    PT_NODE * node,
+					    PT_NODE * select_list)
+{
+  if (node != NULL && node->node_type == PT_SORT_SPEC)
+    {
+      pt_resolve_group_having_alias_internal (parser,
+					      &(node->info.sort_spec.expr),
+					      select_list);
+    }
+}
+
+/*
+ * pt_resolve_group_having_alias_pt_name () - 
+ *   return:
+ *   parser(in):
+ *   node_p(in/out):
+ *   select_list(in):
+ */
+static void
+pt_resolve_group_having_alias_pt_name (PARSER_CONTEXT * parser,
+				       PT_NODE ** node_p,
+				       PT_NODE * select_list)
+{
+  PT_NODE *col;
+  char *n_str;
+  PT_NODE *node;
+
+  assert (node_p != NULL);
+
+  node = *node_p;
+
+  if (node == NULL || node->node_type != PT_NAME)
+    {
+      return;
+    }
+
+  /* It have been resolved. */
+  if (node->info.name.resolved != NULL)
+    {
+      return;
+    }
+
+  n_str = parser_print_tree (parser, *node_p);
+
+  for (col = select_list; col != NULL; col = col->next)
+    {
+      if (col->alias_print != NULL
+	  && intl_identifier_casecmp (n_str, col->alias_print) == 0)
+	{
+	  parser_free_node (parser, *node_p);
+	  *node_p = parser_copy_tree (parser, col);
+	  if ((*node_p) != NULL)
+	    {
+	      (*node_p)->next = NULL;
+	    }
+	  break;
+	}
+    }
+
+  /* We can not resolve the pt_name. */
+  if (col == NULL)
+    {
+      PT_ERRORmf (parser, (*node_p), MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_IS_NOT_DEFINED,
+		  pt_short_print (parser, (*node_p)));
+    }
+}
+
+/*
+ * pt_resolve_group_having_alias_pt_expr () - 
+ *   return:
+ *   parser(in):
+ *   node(in/out):
+ *   select_list(in):
+ */
+static void
+pt_resolve_group_having_alias_pt_expr (PARSER_CONTEXT * parser,
+				       PT_NODE * node, PT_NODE * select_list)
+{
+  if (node == NULL || node->node_type != PT_EXPR)
+    {
+      return;
+    }
+
+  /* Resolve arg1 */
+  if (node->info.expr.arg1 != NULL
+      && node->info.expr.arg1->node_type == PT_NAME)
+    {
+      pt_resolve_group_having_alias_pt_name (parser, &node->info.expr.arg1,
+					     select_list);
+    }
+  else if (node->info.expr.arg1 != NULL
+	   && node->info.expr.arg1->node_type == PT_EXPR)
+    {
+      pt_resolve_group_having_alias_pt_expr (parser, node->info.expr.arg1,
+					     select_list);
+    }
+  else
+    {
+
+    }
+
+  /* Resolve arg2 */
+  if (node->info.expr.arg2 != NULL
+      && node->info.expr.arg2->node_type == PT_NAME)
+    {
+      pt_resolve_group_having_alias_pt_name (parser, &node->info.expr.arg2,
+					     select_list);
+    }
+  else if (node->info.expr.arg2 != NULL
+	   && node->info.expr.arg2->node_type == PT_EXPR)
+    {
+      pt_resolve_group_having_alias_pt_expr (parser, node->info.expr.arg2,
+					     select_list);
+    }
+  else
+    {
+
+    }
+
+  /* Resolve arg3 */
+  if (node->info.expr.arg3 != NULL
+      && node->info.expr.arg3->node_type == PT_NAME)
+    {
+      pt_resolve_group_having_alias_pt_name (parser, &node->info.expr.arg3,
+					     select_list);
+    }
+  else if (node->info.expr.arg3 != NULL
+	   && node->info.expr.arg3->node_type == PT_EXPR)
+    {
+      pt_resolve_group_having_alias_pt_expr (parser, node->info.expr.arg3,
+					     select_list);
+    }
+  else
+    {
+
+    }
+}
+
+/*
+ * pt_resolve_group_having_alias_internal () - Rosolve alias name in groupby and having clause.
+ *   return:
+ *   parser(in):
+ *   node_p(in/out):
+ *   select_list(in):
+ */
+static void
+pt_resolve_group_having_alias_internal (PARSER_CONTEXT * parser,
+					PT_NODE ** node_p,
+					PT_NODE * select_list)
+{
+  assert (node_p != NULL);
+  assert ((*node_p) != NULL);
+
+  switch ((*node_p)->node_type)
+    {
+    case PT_NAME:
+      pt_resolve_group_having_alias_pt_name (parser, node_p, select_list);
+      break;
+    case PT_EXPR:
+      pt_resolve_group_having_alias_pt_expr (parser, *node_p, select_list);
+      break;
+    case PT_SORT_SPEC:
+      pt_resolve_group_having_alias_pt_sort_spec (parser, *node_p,
+						  select_list);
+      break;
+    default:
+      return;
+    }
+  return;
+}
+
+/*
+ * pt_resolve_group_having_alias () - Resolve alias name in groupby and having clause. We 
+ *     resolve groupby/having alias after bind_name, it means when the alias name is same
+ *     with table attribute, we choose table attribute firstly.
+ *   return:
+ *   parser(in):
+ *   node(in/out):
+ *   chk_parent(in):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_resolve_group_having_alias (PARSER_CONTEXT * parser, PT_NODE * node,
+			       void *chk_parent, int *continue_walk)
+{
+  PT_NODE *pt_cur;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node == NULL || node->node_type != PT_SELECT)
+    {
+      return node;
+    }
+
+  /* support for alias in GROUP BY */
+  pt_cur = node->info.query.q.select.group_by;
+  while (pt_cur != NULL)
+    {
+      pt_resolve_group_having_alias_internal (parser, &pt_cur,
+					      node->info.query.q.select.list);
+      pt_cur = pt_cur->next;
+    }
+
+  /* support for alias in HAVING */
+  pt_cur = node->info.query.q.select.having;
+  while (pt_cur != NULL)
+    {
+      pt_resolve_group_having_alias_internal (parser, &pt_cur,
+					      node->info.query.q.select.list);
+      pt_cur = pt_cur->next;
+    }
+  return node;
+}
+
+/*
  * pt_resolve_names () -
  *   return:
  *   parser(in):
@@ -7701,6 +8048,12 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  idx_name = statement->info.index.index_name;
 	  statement->info.index.index_name = NULL;
 	}
+
+      /* Before pt_bind_name, we mark PT_NAME in group by/ having. */
+      statement =
+	parser_walk_tree (parser, statement, pt_mark_group_having_pt_name,
+			  NULL, NULL, NULL);
+
       statement =
 	parser_walk_tree (parser, statement, pt_bind_names, &bind_arg,
 			  pt_bind_names_post, &bind_arg);
@@ -7710,6 +8063,11 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
 	{
 	  statement->info.index.index_name = idx_name;
 	}
+
+      /* Resolve alias in group by/having. */
+      statement =
+	parser_walk_tree (parser, statement, pt_resolve_group_having_alias,
+			  NULL, NULL, NULL);
 
       /*
        * The process converts natural join to inner/outer join.

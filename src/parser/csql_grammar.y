@@ -11944,22 +11944,6 @@ opt_from_clause
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
 
-			    /* support for alias in GROUP BY */
-			    n = node->info.query.q.select.group_by;
-			    while (n)
-			      {
-				resolve_alias_in_expr_node (n, node->info.query.q.select.list);
-				n = n->next;
-			      }
-
-			    /* support for alias in HAVING */
-			    n = node->info.query.q.select.having;
-			    while (n)
-			      {
-				resolve_alias_in_expr_node (n, node->info.query.q.select.list);
-				n = n->next;
-			      }
-
 			    node->info.query.q.select.using_index =
 			      (node->info.query.q.select.using_index ?
 			       parser_make_link (node->info.query.q.select.using_index, $9) : $9);
