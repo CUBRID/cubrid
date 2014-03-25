@@ -3753,6 +3753,7 @@ qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
 
   plan->plan_un.scan.index->head->use_descending = reverse;
   plan->plan_un.scan.index->head->first_sort_column = first_col_idx_pos;
+  plan->use_iscan_descending = reverse;
 
 exit:
   if (orderby_nodes != NULL)
