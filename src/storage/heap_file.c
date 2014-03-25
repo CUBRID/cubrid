@@ -3959,41 +3959,6 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
     }
 
-#if !defined(NDEBUG)
-  if (pgptr != NULL)
-    {
-      VPID *vpid_p;
-      HEAP_BESTSPACE best;
-      int i;
-
-      vpid_p = pgbuf_get_vpid_ptr (pgptr);
-
-      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
-	{
-	  best = heap_stats_get_bestspace_by_vpid (thread_p, vpid_p);
-
-	  assert (best.freespace + needed_space + heap_Slotted_overhead
-		  == spage_max_space_for_new_record (thread_p, pgptr));
-	}
-      else
-	{
-	  for (i = 0; i < HEAP_NUM_BEST_SPACESTATS; i++)
-	    {
-	      if (VPID_EQ (&heap_hdr->estimates.best[i].vpid, vpid_p))
-		{
-		  assert (heap_hdr->estimates.best[i].freespace +
-			  needed_space + heap_Slotted_overhead
-			  == spage_max_space_for_new_record (thread_p,
-							     pgptr));
-		  break;
-		}
-	    }
-
-	  assert (i != HEAP_NUM_BEST_SPACESTATS);
-	}
-    }
-#endif
-
   if (pgptr == NULL)
     {
       /*
