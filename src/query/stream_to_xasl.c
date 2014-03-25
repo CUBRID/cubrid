@@ -4218,8 +4218,14 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
     }
 
   ptr = or_unpack_int (ptr, &insert_info->no_val_lists);
-  if (insert_info->no_val_lists > 0)
+  if (insert_info->no_val_lists == 0)
     {
+      insert_info->valptr_lists = NULL;
+    }
+  else
+    {
+      assert (insert_info->no_val_lists > 0);
+
       insert_info->valptr_lists =
 	(OUTPTR_LIST **) stx_alloc_struct (thread_p,
 					   sizeof (OUTPTR_LIST *) *
