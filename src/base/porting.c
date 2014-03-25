@@ -2333,11 +2333,6 @@ parse_int (int *ret_p, const char *str_p, int base)
       return -1;
     }
 
-  if (val < INT_MIN || val > INT_MAX)
-    {
-      return -1;
-    }
-
   *ret_p = val;
 
   return 0;
@@ -2397,6 +2392,14 @@ str_to_int32 (int *ret_p, char **end_p, const char *str_p, int base)
       return -1;
     }
 
+  /* Long is 8 bytes and int is 4 bytes in Linux 64bit, so the
+   * additional check of integer range is necessary.
+   */
+  if (val < INT_MIN || val > INT_MAX)
+    {
+      return -1;
+    }
+
   *ret_p = (int) val;
 
   return 0;
@@ -2423,6 +2426,14 @@ str_to_uint32 (unsigned int *ret_p, char **end_p, const char *str_p, int base)
     }
 
   if (*end_p == str_p)
+    {
+      return -1;
+    }
+
+  /* Long is 8 bytes and int is 4 bytes in Linux 64bit, so the
+   * additional check of integer range is necessary.
+   */
+  if (val > UINT_MAX)
     {
       return -1;
     }
