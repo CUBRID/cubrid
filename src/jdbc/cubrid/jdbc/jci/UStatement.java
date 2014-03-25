@@ -2149,6 +2149,7 @@ public class UStatement {
 			name = inBuffer.readString(inBuffer.readInt(),
 			        relatedConnection.getCharset());
 			columnInfo[i] = new UColumnInfo(type, scale, precision, name);
+			name = name.toLowerCase();
 			if (statementType == NORMAL) {
 				/*
 				 * read extra data here (according to broker cas_execute
@@ -2176,8 +2177,9 @@ public class UStatement {
 				columnInfo[i].setExtraData(defValue, bAI, bUK, bPK, bFK, bRI,
 				        bRU, bSh);
 			}
-
-			colNameToIndex.put(name.toLowerCase(), i);
+			if (colNameToIndex.containsKey(name) == false) {
+				colNameToIndex.put(name, i);
+			}
 		}
 	}
 
