@@ -559,6 +559,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_REPL_ENABLE_SERVER_SIDE_UPDATE "ha_repl_enable_server_side_update"
 
+#define PRM_NAME_PB_LRU_HOT_RATIO "lru_hot_ratio"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -1822,6 +1824,12 @@ static unsigned int prm_optimizer_reserve_20_flag = 0;
 bool PRM_HA_REPL_ENABLE_SERVER_SIDE_UPDATE = true;
 static bool prm_ha_repl_enable_server_side_update_default = true;
 static bool prm_ha_repl_enable_server_side_update_flag = 0;
+
+float PRM_PB_LRU_HOT_RATIO = 0.4f;
+static float prm_pb_lru_hot_ratio_default = 0.4f;
+static float prm_pb_lru_hot_ratio_upper = 0.95f;
+static float prm_pb_lru_hot_ratio_lower = 0.05f;
+static unsigned int prm_pb_lru_hot_ratio_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -4370,6 +4378,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (void *) NULL,
    (void *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_PB_LRU_HOT_RATIO,
+   (PRM_FOR_SERVER | PRM_RELOADABLE),
+   PRM_FLOAT,
+   (void *) &prm_pb_lru_hot_ratio_flag,
+   (void *) &prm_pb_lru_hot_ratio_default,
+   (void *) &PRM_PB_LRU_HOT_RATIO,
+   (void *) &prm_pb_lru_hot_ratio_upper,
+   (void *) &prm_pb_lru_hot_ratio_lower,
+   (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };
