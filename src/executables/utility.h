@@ -908,7 +908,7 @@ typedef struct _ha_config
 #define COPY_DELETE_SOURCE_S                    'd'
 #define COPY_DELETE_SOURCE_L                    "delete-source"
 #define COPY_LOB_PATH_S				'B'
-#define COPY_LOB_PATH_L				"lob-path"
+#define COPY_LOB_PATH_L				"lob-base-path"
 #define COPY_COPY_LOB_PATH_S			10308
 #define COPY_COPY_LOB_PATH_L			"copy-lob-path"
 
