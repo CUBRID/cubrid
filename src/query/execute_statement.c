@@ -16925,7 +16925,7 @@ insert_rewrite_names_in_value_clauses (PARSER_CONTEXT * parser,
 				       PT_NODE * insert_statement)
 {
   PT_NODE *attr_list = NULL, *value_clauses = NULL, *value_list = NULL;
-  PT_NODE *value = NULL, *save_next = NULL, *prev = NULL;
+  PT_NODE *value = NULL, *value_tmp = NULL, *save_next = NULL, *prev = NULL;
 
   EVAL_INSERT_VALUE eval;
   if (insert_statement == NULL || insert_statement->node_type != PT_INSERT)
@@ -16969,7 +16969,17 @@ insert_rewrite_names_in_value_clauses (PARSER_CONTEXT * parser,
 			      NULL, NULL);
 	  if (!pt_has_error (parser))
 	    {
-	      value = pt_semantic_type (parser, value, NULL);
+	      value_tmp = pt_semantic_type (parser, value, NULL);
+	      if (value_tmp == NULL)
+		{
+		  /* In this case, pt_has_error (parser) is true,
+		   * we need recovery the link list firstly, then return. */
+		  ;
+		}
+	      else
+		{
+		  value = value_tmp;
+		}
 	    }
 	  value->next = save_next;
 	  if (prev == NULL)
