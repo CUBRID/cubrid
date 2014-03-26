@@ -1698,7 +1698,7 @@ parse_mtime_separated (char const *str, char const *strend,
 	    }
 
 	  /* read milliseconds value */
-	  if (*p == '.')
+	  if (p < strend && *p == '.')
 	    {
 	      p++;
 	      if (p < strend && char_isdigit (*p))
