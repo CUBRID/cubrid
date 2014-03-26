@@ -4255,7 +4255,17 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 					    NULL, &isid, true, false,
 					    NULL, NULL, false, 0);
 
-	      if (oid_cnt < 1)
+	      if (oid_cnt < 0)
+		{
+		  error_code = er_errid ();
+		  if (error_code == NO_ERROR)
+		    {
+		      error_code = ER_FAILED;
+		    }
+
+		  goto error2;
+		}
+	      else if (oid_cnt == 0)
 		{
 		  break;
 		}
@@ -4553,7 +4563,17 @@ locator_repair_object_cache (THREAD_ENTRY * thread_p, OR_INDEX * index,
 					oid_buf_size, NULL, &isid, true,
 					false, NULL, NULL, false, 0);
 
-	  if (oid_cnt < 1)
+	  if (oid_cnt < 0)
+	    {
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		}
+
+	      goto error2;
+	    }
+	  else if (oid_cnt == 0)
 	    {
 	      break;
 	    }
@@ -4804,7 +4824,17 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 					    NULL, &isid, true, false, NULL,
 					    NULL, false, 0);
 
-	      if (oid_cnt < 1)
+	      if (oid_cnt < 0)
+		{
+		  error_code = er_errid ();
+		  if (error_code == NO_ERROR)
+		    {
+		      error_code = ER_FAILED;
+		    }
+
+		  goto error2;
+		}
+	      else if (oid_cnt == 0)
 		{
 		  break;
 		}
