@@ -85,7 +85,7 @@ static void cas_log_write_internal (FILE * fp, struct timeval *log_time,
 static void cas_log_write2_internal (FILE * fp, bool do_flush,
 				     const char *fmt, va_list ap);
 
-static FILE *sql_log_open (char *log_file_name);
+static FILE *access_log_open (char *log_file_name);
 static bool cas_log_begin_hang_check_time (void);
 static void cas_log_end_hang_check_time (bool is_prev_time_set);
 static void
@@ -104,6 +104,9 @@ static size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb,
 static long int cas_ftell (FILE * stream);
 static int cas_fseek (FILE * stream, long int offset, int whence);
 static FILE *cas_fopen (const char *path, const char *mode);
+#if defined (WINDOWS)
+static FILE *cas_fopen_and_lock (const char *path, const char *mode);
+#endif
 static int cas_fclose (FILE * fp);
 static int cas_ftruncate (int fd, off_t length);
 static int cas_fflush (FILE * stream);
@@ -769,7 +772,7 @@ cas_error_log (int err_code, char *err_msg_str, int client_ip_addr)
   localtime_r (&t, &ct1);
   ct1.tm_year += 1900;
 
-  fp = sql_log_open (err_log_file);
+  fp = access_log_open (err_log_file);
   if (fp == NULL)
     {
       return;
@@ -839,7 +842,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
       access_log_file = log_file_buf;
     }
 
-  fp = sql_log_open (access_log_file);
+  fp = access_log_open (access_log_file);
   if (fp == NULL)
     {
       return -1;
@@ -858,7 +861,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
 
 	  access_log_backup (access_log_file, &ct);
 
-	  fp = sql_log_open (access_log_file);
+	  fp = access_log_open (access_log_file);
 	  if (fp == NULL)
 	    {
 	      return -1;
@@ -927,7 +930,7 @@ cas_log_query_plan_file (int id)
 }
 
 static FILE *
-sql_log_open (char *log_file_name)
+access_log_open (char *log_file_name)
 {
   FILE *fp;
   int log_file_len = 0;
@@ -939,7 +942,17 @@ sql_log_open (char *log_file_name)
   if (log_file_name == NULL)
     return NULL;
 
+#if defined (WINDOWS)
+  fp = cas_fopen_and_lock (log_file_name, "a");
+#else
+  /* In case of Linux and solaris...,
+   * Openning a file in append mode guarantees subsequent
+   * write operations to occur at ent-of-file.
+   * So we don't need to lock to the opened file.
+   */
   fp = cas_fopen (log_file_name, "a");
+#endif
+
   if (fp == NULL)
     {
       if (errno == ENOENT)
@@ -954,7 +967,11 @@ sql_log_open (char *log_file_name)
 	  free (tmp_filename);
 	  if (ret == 0)
 	    {
+#if defined (WINDOWS)
+	      fp = cas_fopen_and_lock (log_file_name, "a");
+#else
 	      fp = cas_fopen (log_file_name, "a");
+#endif
 	      if (fp == NULL)
 		{
 		  return NULL;
@@ -1254,6 +1271,40 @@ cas_fopen (const char *path, const char *mode)
 
   return result;
 }
+
+#if defined (WINDOWS)
+static FILE *
+cas_fopen_and_lock (const char *path, const char *mode)
+{
+#define MAX_RETRY_COUNT 100
+  int retry_count;
+  bool is_prev_time_set;
+  FILE *result;
+
+  retry_count = 0;
+  is_prev_time_set = cas_log_begin_hang_check_time ();
+
+retry:
+  result = fopen (path, mode);
+  if (result != NULL)
+    {
+      if (lockf (fileno (result), F_TLOCK, 0) < 0)
+	{
+	  fclose (result);
+	  if (retry_count < MAX_RETRY_COUNT)
+	    {
+	      SLEEP_MILISEC (0, 10);
+	      retry_count++;
+	      goto retry;
+	    }
+	  result = NULL;
+	}
+    }
+  cas_log_end_hang_check_time (is_prev_time_set);
+
+  return result;
+}
+#endif
 
 static int
 cas_fclose (FILE * fp)
