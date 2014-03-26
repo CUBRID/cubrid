@@ -97,8 +97,7 @@ static void init_ca_Info (void);
 static void set_file_path (CA_CON_INFO * con_info, char *repl_log_path);
 static FILE *open_sample_file (void);
 
-static void er_log (int error_code, const char *query, const char *format,
-		    ...);
+static void er_log (int error_code, const char *query, const char *err_msg);
 static void er_log_cci (int res, const char *query, T_CCI_ERROR * error);
 
 static int apply_sql_logs (int conn);
@@ -183,6 +182,7 @@ read_catalog_file (int *file_id, unsigned int *sql_id, char *path,
 {
   FILE *fp = NULL;
   char buf[LINE_MAX];
+  char err_msg[LINE_MAX];
 
   assert (path != NULL);
 
@@ -200,7 +200,9 @@ read_catalog_file (int *file_id, unsigned int *sql_id, char *path,
 	}
       else
 	{
-	  er_log (ER_CA_FILE_IO, NULL, "Cannot find %s", path);
+	  snprintf (err_msg, LINE_MAX, "Cannot find %s", path);
+	  er_log (ER_CA_FILE_IO, NULL, err_msg);
+
 	  return ER_CA_FILE_IO;
 	}
     }
@@ -213,7 +215,8 @@ read_catalog_file (int *file_id, unsigned int *sql_id, char *path,
 	      goto end_read_catalog;
 	    }
 	}
-      er_log (ER_CA_FILE_IO, NULL, "Failed to read catalog info in %s", path);
+      snprintf (err_msg, LINE_MAX, "Failed to read catalog info in %s", path);
+      er_log (ER_CA_FILE_IO, NULL, err_msg);
 
       fclose (fp);
       return ER_CA_FILE_IO;
@@ -406,14 +409,18 @@ execute_sql_query (int conn, char *query, T_CCI_ERROR * error)
 {
   int req, res;
   T_CCI_CUBRID_STMT stmt_type;
+  char err_msg[LINE_MAX];
 
   req = cci_prepare_and_execute (conn, query, 0, &res, error);
 
   while (req < 0 && CA_RETRY_ON_ERROR (error->err_code))
     {
-      er_log (error->err_code, query, "attempts to try applying "
-	      "failed SQL log again - %s", error->err_msg);
+      snprintf (err_msg, LINE_MAX, "attempts to try applying "
+		"failed SQL log again - %s", error->err_msg);
+      er_log (error->err_code, query, err_msg);
+
       sleep (10);
+
       req = cci_prepare_and_execute (conn, query, 0, &res, error);
     }
 
@@ -450,6 +457,7 @@ process_sql_log_file (FILE * fp, int conn)
   int count = 0;
   int sampling_count = 0, fail_count = 0;
   char *query = NULL, *sample = NULL;
+  char err_msg[LINE_MAX];
   bool is_committed = false;
   time_t start_time, commit_time;
   int elapsed_time;
@@ -477,8 +485,11 @@ process_sql_log_file (FILE * fp, int conn)
 	  error = read_src_catalog ();
 	  if (error != ER_CA_NO_ERROR)
 	    {
-	      er_log (error, NULL, "Failed to read applylogdb catalog: %s",
-		      applylogdb_catalog_path);
+	      snprintf (err_msg, LINE_MAX,
+			"Failed to read applylogdb catalog: %s",
+			applylogdb_catalog_path);
+	      er_log (error, NULL, err_msg);
+
 	      return error;
 	    }
 	}
@@ -493,10 +504,12 @@ process_sql_log_file (FILE * fp, int conn)
 	    }
 	  else
 	    {
-	      er_log (error, NULL,
-		      "Failed to read SQL meta info (last retrieved SQL ID: "
-		      SQL_ID_FORMAT " in file " FILE_ID_FORMAT ")",
-		      ca_Info.last_applied_sql_id, ca_Info.curr_file_id);
+	      snprintf (err_msg, LINE_MAX,
+			"Failed to read SQL meta info (last retrieved SQL ID: "
+			SQL_ID_FORMAT " in file " FILE_ID_FORMAT ")",
+			ca_Info.last_applied_sql_id, ca_Info.curr_file_id);
+	      er_log (error, NULL, err_msg);
+
 	      return ER_CA_FAILED;
 	    }
 	}
@@ -511,11 +524,12 @@ process_sql_log_file (FILE * fp, int conn)
 
       if (ca_Info.meta_sql_id - ca_Info.last_applied_sql_id > 1)
 	{
-	  er_log (ER_CA_DISCREPANT_INFO, NULL,
-		  "Read unexpected SQL with ID " SQL_ID_FORMAT " in file "
-		  FILE_ID_FORMAT " (expected ID: " SQL_ID_FORMAT ")",
-		  ca_Info.meta_sql_id, ca_Info.curr_file_id,
-		  ca_Info.last_applied_sql_id + 1);
+	  snprintf (err_msg, LINE_MAX,
+		    "Read unexpected SQL with ID " SQL_ID_FORMAT " in file "
+		    FILE_ID_FORMAT " (expected ID: " SQL_ID_FORMAT ")",
+		    ca_Info.meta_sql_id, ca_Info.curr_file_id,
+		    ca_Info.last_applied_sql_id + 1);
+	  er_log (ER_CA_DISCREPANT_INFO, NULL, err_msg);
 
 	  return ER_CA_DISCREPANT_INFO;
 	}
@@ -542,9 +556,12 @@ process_sql_log_file (FILE * fp, int conn)
       error = read_sql_query (fp, &query, ca_Info.meta_sql_length);
       if (error != ER_CA_NO_ERROR)
 	{
-	  er_log (error, NULL,
-		  "Failed to read SQL id: " SQL_ID_FORMAT " in file "
-		  FILE_ID_FORMAT, ca_Info.meta_sql_id, ca_Info.curr_file_id);
+	  snprintf (err_msg, LINE_MAX,
+		    "Failed to read SQL id: " SQL_ID_FORMAT " in file "
+		    FILE_ID_FORMAT, ca_Info.meta_sql_id,
+		    ca_Info.curr_file_id);
+	  er_log (error, NULL, err_msg);
+
 	  return error;
 	}
 
@@ -558,8 +575,11 @@ process_sql_log_file (FILE * fp, int conn)
 
 	  if (CA_STOP_ON_ERROR (error, cci_error.err_code))
 	    {
+	      snprintf (err_msg, LINE_MAX, "%s will be terminated.",
+			PROG_NAME);
 	      er_log ((error == CCI_ER_DBMS) ? cci_error.err_code : error,
-		      NULL, "%s will be terminated.", PROG_NAME);
+		      NULL, err_msg);
+
 	      goto process_sql_error;
 	    }
 	  count++;
@@ -634,6 +654,7 @@ apply_sql_logs (int conn)
 {
   FILE *sql_log_fp;
   char sql_log_path[PATH_MAX];
+  char err_msg[LINE_MAX];
   int error = ER_CA_NO_ERROR;
 
   /* read catalog info to find out the right log file to read */
@@ -659,7 +680,9 @@ apply_sql_logs (int conn)
       sql_log_fp = fopen (sql_log_path, "r");
       if (sql_log_fp == NULL)
 	{
-	  er_log (ER_CA_FILE_IO, NULL, "Could not find %s", sql_log_path);
+	  snprintf (err_msg, LINE_MAX, "Could not find %s", sql_log_path);
+	  er_log (ER_CA_FILE_IO, NULL, err_msg);
+
 	  return ER_CA_FILE_IO;
 	}
 
@@ -683,9 +706,10 @@ apply_sql_logs (int conn)
 	{
 	  if (error == ER_CA_DISCREPANT_INFO)
 	    {
-	      er_log (error, NULL,
-		      "Discrepant catalog info in either %s or %s",
-		      applylogdb_catalog_path, ca_catalog_path);
+	      snprintf (err_msg, LINE_MAX,
+			"Discrepant catalog info in either %s or %s",
+			applylogdb_catalog_path, ca_catalog_path);
+	      er_log (error, NULL, err_msg);
 	    }
 	  fclose (sql_log_fp);
 
@@ -718,14 +742,17 @@ open_sample_file (void)
 {
   FILE *fp;
   char tmp_sample_file_path[PATH_MAX];
+  char err_msg[LINE_MAX];
 
   fp = fopen (sample_file_path, "a");
 
   if (fp == NULL)
     {
-      er_log (ER_CA_FAILED,
-	      "Failed to open or create %s. Now sampling log is disabled",
-	      sample_file_path);
+      snprintf (err_msg, LINE_MAX,
+		"Failed to open or create %s. Now sampling log is disabled",
+		sample_file_path);
+      er_log (ER_CA_FAILED, NULL, err_msg);
+
       ca_Info.sampling_rate = 0;
     }
   else
@@ -740,9 +767,12 @@ open_sample_file (void)
 	  fp = fopen (tmp_sample_file_path, "a");
 	  if (fp == NULL)
 	    {
-	      er_log (ER_CA_FAILED,
-		      "Failed to open or create %s. Now sampling log is disabled",
-		      tmp_sample_file_path);
+	      snprintf (err_msg, LINE_MAX,
+			"Failed to open or create %s. "
+			"Now sampling log is disabled",
+			tmp_sample_file_path);
+	      er_log (ER_CA_FAILED, NULL, err_msg);
+
 	      ca_Info.sampling_rate = 0;
 	    }
 	}
@@ -761,7 +791,7 @@ open_sample_file (void)
 static void
 er_log_cci (int res, const char *query, T_CCI_ERROR * error)
 {
-  char msg_buf[255];
+  char err_msg[255];
 
   if (res == CCI_ER_DBMS)
     {
@@ -770,13 +800,13 @@ er_log_cci (int res, const char *query, T_CCI_ERROR * error)
     }
   else
     {
-      if (cci_get_err_msg (res, msg_buf, sizeof (msg_buf)) < 0)
+      if (cci_get_err_msg (res, err_msg, sizeof (err_msg)) < 0)
 	{
 	  er_log (res, query, "UNKNOWN");
 	}
       else
 	{
-	  er_log (res, query, msg_buf);
+	  er_log (res, query, err_msg);
 	}
       return;
     }
@@ -791,26 +821,39 @@ er_log_cci (int res, const char *query, T_CCI_ERROR * error)
  *   format(in):
  */
 static void
-er_log (int error_code, const char *query, const char *format, ...)
+er_log (int error_code, const char *query, const char *err_msg)
 {
-  va_list args;
   time_t cur_time;
   char time_buf[20];
-  char err_msg[LINE_MAX];
   FILE *fp;
-
-  va_start (args, format);
+  char *tmp_err_msg;
+  char *p, *token;
 
   cur_time = time (NULL);
   strftime (time_buf, sizeof (time_buf), "%Y-%m-%d %H:%M:%S",
 	    localtime (&cur_time));
 
-  vsnprintf (err_msg, LINE_MAX, format, args);
-
   fp = fopen (err_file_path, "a");
 
+  tmp_err_msg = strdup (err_msg);
+
   fprintf (fp, "# Time: %s - ERROR CODE = %d\n", time_buf, error_code);
-  fprintf (fp, "# %s\n", err_msg);
+
+  if (tmp_err_msg != NULL)
+    {
+      for (p = tmp_err_msg; ; p = NULL)
+        {
+          token = strtok (p, "\n");
+          if (token == NULL)
+            {
+              break;
+            }
+
+          fprintf (fp, "# %s\n", token);
+        }
+
+      free_and_init (tmp_err_msg);
+    }
 
   if (query != NULL)
     {
@@ -820,8 +863,6 @@ er_log (int error_code, const char *query, const char *format, ...)
 
   fflush (fp);
   fclose (fp);
-
-  va_end (args);
 
   return;
 }
