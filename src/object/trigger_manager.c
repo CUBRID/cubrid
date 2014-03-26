@@ -5717,7 +5717,20 @@ its_deleted (DB_OBJECT * object)
   if (object != NULL)
     {
       /* fast way */
-      deleted = WS_ISMARK_DELETED (object);
+      if (object->decached == 0)
+	{
+	  deleted = WS_ISMARK_DELETED (object);
+	}
+      else
+	{
+	  int error;
+
+	  error = au_fetch_instance_force (object, NULL, AU_FETCH_READ);
+	  if (error == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      deleted = 1;
+	    }
+	}
 
       /* Slow but safe way */
 #if 0
