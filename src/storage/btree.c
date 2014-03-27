@@ -3283,9 +3283,12 @@ xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid,
   int error = NO_ERROR;
   OID unique_oid;
   HEAP_SCANCACHE scan_cache;
+  BTREE_SEARCH r;
 
-  if (xbtree_find_unique (thread_p, btid, false, S_DELETE, key_value,
-			  class_oid, &unique_oid, true) == BTREE_KEY_FOUND)
+  r = xbtree_find_unique (thread_p, btid, false, S_DELETE, key_value,
+			  class_oid, &unique_oid, true);
+
+  if (r == BTREE_KEY_FOUND)
     {
       HFID hfid;
       int force_count;
@@ -3314,7 +3317,7 @@ xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid,
 
       heap_scancache_end_modify (thread_p, &scan_cache);
     }
-  else
+  else if (r == BTREE_KEY_NOTFOUND)
     {
       char *err_key = pr_valstring (key_value);
       DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (key_value);
@@ -3333,6 +3336,12 @@ xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid,
 	}
 
       error = ER_BTREE_UNKNOWN_KEY;
+    }
+  else
+    {
+      /* r == BTREE_ERROR_OCCURRED */
+      error = er_errid ();
+      error = (error == NO_ERROR) ? ER_FAILED : error;
     }
 
   return error;
@@ -3390,8 +3399,8 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 			     index_scan_id.oid_list.oidp,
 			     2 * sizeof (OID), NULL, &index_scan_id,
 			     is_all_class_srch);
-      if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY &&
-	  key->data.midxkey.domain == NULL)
+      if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY
+	  && key->data.midxkey.domain == NULL)
 	{
 	  /* set the appropriate domain, as it might be needed for printing
 	   * if the unique constraint is violated */
@@ -3400,25 +3409,24 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 
       btree_scan_clear_key (&btree_scan);
 
-      if (oid_cnt == -1 || (oid_cnt > 1))
+      if (oid_cnt == 1)
 	{
-	  if (oid_cnt > 1)
-	    {
-	      COPY_OID (oid, index_scan_id.oid_list.oidp);
-
-	      /* clear all the used keys */
-	      btree_scan_clear_key (&btree_scan);
-	    }
-	  status = BTREE_ERROR_OCCURRED;
+	  COPY_OID (oid, index_scan_id.oid_list.oidp);
+	  status = BTREE_KEY_FOUND;
 	}
       else if (oid_cnt == 0)
 	{
 	  status = BTREE_KEY_NOTFOUND;
 	}
+      else if (oid_cnt < 0)
+	{
+	  status = BTREE_ERROR_OCCURRED;
+	}
       else
 	{
+	  /* (oid_cnt > 1) */
 	  COPY_OID (oid, index_scan_id.oid_list.oidp);
-	  status = BTREE_KEY_FOUND;
+	  status = BTREE_ERROR_OCCURRED;
 	}
     }
 
@@ -3508,6 +3516,7 @@ xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid,
       result = xbtree_find_unique (thread_p, &pruned_btid, 0, op_type,
 				   &values[i], &pruned_class_oid,
 				   &found_oids[idx], is_global_index);
+
       if (result == BTREE_KEY_FOUND)
 	{
 	  if (pruning_type == DB_PARTITION_CLASS)
@@ -3559,7 +3568,13 @@ xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid,
 	{
 	  goto error_return;
 	}
+      else
+	{
+	  /* result == BTREE_KEY_NOTFOUND */
+	  ;			/* just go to the next one */
+	}
     }
+
   if (is_at_least_one)
     {
       *oids_count = idx;

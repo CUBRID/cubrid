@@ -692,7 +692,8 @@ catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p,
   if (error == BTREE_ERROR_OCCURRED)
     {
       pr_clear_value (&key_val);
-      return error;
+      error = er_errid ();
+      return ((error == NO_ERROR) ? ER_FAILED : error);
     }
   else if (error == BTREE_KEY_NOTFOUND)
     {

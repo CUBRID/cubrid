@@ -6809,87 +6809,84 @@ xlocator_force_repl_update (THREAD_ENTRY * thread_p, BTID * btid,
     }
 
   if (xbtree_find_unique (thread_p, btid, false, S_UPDATE, key_value,
-			  class_oid, &unique_oid, true) == BTREE_KEY_FOUND)
-    {
-      error_code = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      last_repr_id = heap_get_class_repr_id (thread_p, class_oid);
-      if (last_repr_id == 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_INVALID_REPRID, 1,
-		  last_repr_id);
-	  error_code = ER_CT_INVALID_REPRID;
-	  goto error;
-	}
-
-      error_code = locator_start_force_scan_cache (thread_p, &scan_cache,
-						   &hfid, NULL,
-						   SINGLE_ROW_UPDATE);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      force_scancache = &scan_cache;
-
-      pruning_type = locator_area_op_to_pruning_type (operation);
-
-      scan =
-	heap_get (thread_p, &unique_oid, &old_recdes, force_scancache, PEEK,
-		  NULL_CHN);
-      if (scan != S_SUCCESS)
-	{
-	  int err_id = er_errid ();
-	  if (err_id == ER_HEAP_UNKNOWN_OBJECT)
-	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "xlocator_force_repl_update : "
-			    "unknown oid ( %d|%d|%d )\n", unique_oid.pageid,
-			    unique_oid.slotid, unique_oid.volid);
-	    }
-
-	  error_code = ER_FAILED;
-	  goto error;
-	}
-
-      error_code = or_set_rep_id (recdes, last_repr_id);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      old_chn = or_chn (&old_recdes);
-      error_code = or_set_chn (recdes, old_chn + 1);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      error_code = locator_update_force (thread_p, &hfid, class_oid,
-					 &unique_oid, NULL, false,
-					 &old_recdes, recdes, has_index, NULL,
-					 0, SINGLE_ROW_UPDATE,
-					 force_scancache, &force_count, false,
-					 REPL_INFO_TYPE_STMT_NORMAL,
-					 pruning_type, NULL);
-      if (error_code == NO_ERROR)
-	{
-	  /* monitor */
-	  mnt_qm_updates (thread_p);
-	}
-      else
-	{
-	  goto error;
-	}
-    }
-  else
+			  class_oid, &unique_oid, true) != BTREE_KEY_FOUND)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
       error_code = ER_OBJ_OBJECT_NOT_FOUND;
+      goto error;
+    }
+
+  error_code = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  last_repr_id = heap_get_class_repr_id (thread_p, class_oid);
+  if (last_repr_id == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_INVALID_REPRID, 1,
+	      last_repr_id);
+      error_code = ER_CT_INVALID_REPRID;
+      goto error;
+    }
+
+  error_code = locator_start_force_scan_cache (thread_p, &scan_cache,
+					       &hfid, NULL,
+					       SINGLE_ROW_UPDATE);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  force_scancache = &scan_cache;
+
+  pruning_type = locator_area_op_to_pruning_type (operation);
+
+  scan = heap_get (thread_p, &unique_oid, &old_recdes, force_scancache, PEEK,
+		   NULL_CHN);
+  if (scan != S_SUCCESS)
+    {
+      int err_id = er_errid ();
+      if (err_id == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"xlocator_force_repl_update : "
+			"unknown oid ( %d|%d|%d )\n", unique_oid.pageid,
+			unique_oid.slotid, unique_oid.volid);
+	}
+
+      error_code = ER_FAILED;
+      goto error;
+    }
+
+  error_code = or_set_rep_id (recdes, last_repr_id);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  old_chn = or_chn (&old_recdes);
+  error_code = or_set_chn (recdes, old_chn + 1);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  error_code = locator_update_force (thread_p, &hfid, class_oid,
+				     &unique_oid, NULL, false,
+				     &old_recdes, recdes, has_index, NULL,
+				     0, SINGLE_ROW_UPDATE,
+				     force_scancache, &force_count, false,
+				     REPL_INFO_TYPE_STMT_NORMAL,
+				     pruning_type, NULL);
+  if (error_code == NO_ERROR)
+    {
+      /* monitor */
+      mnt_qm_updates (thread_p);
+    }
+  else
+    {
       goto error;
     }
 

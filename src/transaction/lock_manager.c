@@ -2706,6 +2706,12 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   thread_wakeup_deadlock_detect_thread ();
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+#if !defined (NDEBUG) && defined (SERVER_MODE)
+  /* assert - I'm not a deadlock-victim thread */
+  assert (tdes->tran_abort_reason == TRAN_NORMAL);
+#endif
+
   if (tdes)
     {
       tdes->waiting_for_res = entry_ptr->res_head;
@@ -3989,8 +3995,8 @@ start:
 	      TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION)
 	    {
 #if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				   LK_NOTGRANTED_DUE_ABORTED);
+	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
+				       LK_NOTGRANTED_DUE_ABORTED);
 #endif /* ENABLE_SYSTEMTAP */
 	      return ret_val;
 	    }
@@ -4425,8 +4431,8 @@ start:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
 		  1, "lock heap entry");
 #if defined(ENABLE_SYSTEMTAP)
-	 CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				  LK_NOTGRANTED_DUE_ERROR);
+	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
+				   LK_NOTGRANTED_DUE_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 	  return LK_NOTGRANTED_DUE_ERROR;
 	}
@@ -4582,8 +4588,8 @@ start:
 	    {
 	      pthread_mutex_unlock (&res_ptr->res_mutex);
 #if defined(ENABLE_SYSTEMTAP)
-	     CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				      LK_NOTGRANTED_DUE_ERROR);
+	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
+				       LK_NOTGRANTED_DUE_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
 	      return LK_NOTGRANTED_DUE_ERROR;
@@ -8947,7 +8953,7 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid,
 	}
 
 #if defined(ENABLE_SYSTEMTAP)
-   CUBRID_LOCK_RELEASE_END (oid, class_oid, lock);
+      CUBRID_LOCK_RELEASE_END (oid, class_oid, lock);
 #endif /* ENABLE_SYSTEMTAP */
 
       return;
@@ -9001,7 +9007,7 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid,
     }
 
 #if defined(ENABLE_SYSTEMTAP)
-   CUBRID_LOCK_RELEASE_END (oid, class_oid, lock);
+  CUBRID_LOCK_RELEASE_END (oid, class_oid, lock);
 #endif /* ENABLE_SYSTEMTAP */
 
 #endif /* !SERVER_MODE */
@@ -14196,9 +14202,9 @@ lock_event_set_xasl_id_to_entry (int tran_index, LK_ENTRY * entry)
 	  entry->bind_index_in_tran = tdes->num_exec_queries - 1;
 	}
       else
-        {
-          entry->bind_index_in_tran = -1;
-        }
+	{
+	  entry->bind_index_in_tran = -1;
+	}
 
       XASL_ID_COPY (&entry->xasl_id, &tdes->xasl_id);
     }

@@ -10571,6 +10571,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
   HFID class_hfid, pruned_hfid;
   int local_op_type = SINGLE_ROW_DELETE;
   HEAP_SCANCACHE *local_scan_cache = NULL;
+  BTREE_SEARCH r;
+
   *removed_count = 0;
 
   DB_MAKE_NULL (&dbvalue);
@@ -10644,9 +10646,11 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 	    }
 	}
 
-      if (xbtree_find_unique (thread_p, &btid, false, S_DELETE,
+      r = xbtree_find_unique (thread_p, &btid, false, S_DELETE,
 			      key_dbvalue, &pruned_oid, &unique_oid,
-			      is_global_index) == BTREE_KEY_FOUND)
+			      is_global_index);
+
+      if (r == BTREE_KEY_FOUND)
 	{
 	  if (pruning_type && is_global_index)
 	    {
@@ -10743,6 +10747,16 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 	      force_count = 0;
 	    }
 	}
+      else if (r == BTREE_ERROR_OCCURRED)
+	{
+	  goto error_exit;
+	}
+      else
+	{
+	  /* BTREE_KEY_NOTFOUND */
+	  ;			/* just go to the next one */
+	}
+
       if (key_dbvalue == &dbvalue)
 	{
 	  pr_clear_value (&dbvalue);
@@ -10825,6 +10839,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
   HFID class_hfid;
   bool is_global_index = false;
   int local_op_type = SINGLE_ROW_UPDATE;
+  BTREE_SEARCH r;
 
   assert (pruned_partition_scan_cache != NULL);
 
@@ -10896,9 +10911,11 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 	    }
 	}
 
-      if (xbtree_find_unique (thread_p, &btid, false, S_UPDATE,
+      r = xbtree_find_unique (thread_p, &btid, false, S_UPDATE,
 			      key_dbvalue, &class_oid, &unique_oid,
-			      is_global_index) == BTREE_KEY_FOUND)
+			      is_global_index);
+
+      if (r == BTREE_KEY_FOUND)
 	{
 	  if (pruning_type != DB_NOT_PARTITIONED_CLASS && is_global_index)
 	    {
@@ -10950,8 +10967,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 	      if (is_global_index)
 		{
 		  /* find the class to which unique_oid belongs to */
-		  if (heap_get_class_oid
-		      (thread_p, &pruned_class, &unique_oid) == NULL)
+		  if (heap_get_class_oid (thread_p, &pruned_class,
+					  &unique_oid) == NULL)
 		    {
 		      goto error_exit;
 		    }
@@ -10960,8 +10977,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 		{
 		  COPY_OID (&pruned_class, &class_oid);
 		}
-	      if (!OID_EQ
-		  (&pruned_class, &pcontext->selected_partition->class_oid))
+	      if (!OID_EQ (&pruned_class,
+			   &pcontext->selected_partition->class_oid))
 		{
 		  /* found a duplicate OID but not in the right partition */
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -10972,6 +10989,16 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 	  found_duplicate = true;
 	  COPY_OID (unique_oid_p, &unique_oid);
 	}
+      else if (r == BTREE_ERROR_OCCURRED)
+	{
+	  goto error_exit;
+	}
+      else
+	{
+	  /* BTREE_KEY_NOTFOUND */
+	  ;			/* just go to the next one */
+	}
+
       if (key_dbvalue == &dbvalue)
 	{
 	  pr_clear_value (&dbvalue);

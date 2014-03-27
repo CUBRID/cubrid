@@ -2909,9 +2909,10 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
       is_null = DB_IS_NULL (keyval);
     }
 
-  if (!is_null && xbtree_find_unique (thread_p, pk_btid, true, S_SELECT,
-				      keyval, pk_cls_oid, &unique_oid,
-				      true) != BTREE_KEY_FOUND)
+  if (!is_null
+      && xbtree_find_unique (thread_p, pk_btid, true, S_SELECT, keyval,
+			     pk_cls_oid, &unique_oid,
+			     true) != BTREE_KEY_FOUND)
     {
       char *val_print = NULL;
 
