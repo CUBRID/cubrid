@@ -1373,13 +1373,6 @@ copydb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (lob_path == NULL)
-    {
-      snprintf (lob_pathbuf, sizeof (lob_pathbuf), "%s%s/lob",
-		LOB_PATH_DEFAULT_PREFIX, db_path);
-      lob_path = lob_pathbuf;
-    }
-
   if (copy_lob_path)
     {
       const char *s = boot_get_lob_path ();

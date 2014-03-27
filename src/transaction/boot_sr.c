@@ -4685,6 +4685,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
   char new_db_pathbuf[PATH_MAX];
   char new_db_pathbuf2[PATH_MAX];
   char new_log_pathbuf[PATH_MAX];
+  char new_lob_pathbuf2[PATH_MAX];
   char new_lob_pathbuf[PATH_MAX];
   char new_volext_pathbuf[PATH_MAX];
   char fixed_pathbuf[PATH_MAX];
@@ -4738,6 +4739,14 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
       /* Assign the data volume directory */
       strcpy (new_log_pathbuf, new_db_path);
       new_log_path = new_log_pathbuf;
+    }
+
+  if (new_lob_path == NULL)
+    {
+      assert_release (new_db_path != NULL);
+      snprintf (new_lob_pathbuf2, sizeof (new_lob_pathbuf2), "%s%s/lob",
+		LOB_PATH_DEFAULT_PREFIX, new_db_path);
+      new_lob_path = new_lob_pathbuf2;
     }
 
   if (new_lob_path != NULL)
