@@ -536,6 +536,8 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
   int partition_type = DB_NOT_PARTITIONED_CLASS;
   const char *table_name = NULL;
   MOP cls;
+  SM_CLASS *sm_class = NULL;
+  int save;
 
   if (node->node_type != PT_SELECT)
     {
@@ -569,6 +571,19 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
       PT_ERRORmf (parser, show_args_node, MSGCAT_SET_ERROR,
 		  -(ER_LC_UNKNOWN_CLASSNAME), table_name);
       return node;
+    }
+
+  AU_DISABLE (save);
+  error = au_fetch_class_force (cls, &sm_class, AU_FETCH_READ);
+  AU_ENABLE (save);
+  if (error == NO_ERROR)
+    {
+      if (sm_get_class_type (sm_class) != SM_CLASS_CT)
+	{
+	  PT_ERRORm (parser, show_args_node, MSGCAT_SET_ERROR,
+		     -(ER_OBJ_NOT_A_CLASS));
+	  return node;
+	}
     }
 
   error = sm_partitioned_class_type (cls, &partition_type, NULL, NULL);
@@ -780,12 +795,14 @@ pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node)
   MOP cls;
   const char *table_name = NULL;
   const char *index_name = NULL;
+  SM_CLASS *sm_class = NULL;
   SM_CLASS_CONSTRAINT *sm_all_constraints = NULL;
   SM_CLASS_CONSTRAINT *sm_constraint = NULL;
   PT_NODE *entity = NULL;
   PT_NODE *derived_table = NULL;
   SHOWSTMT_TYPE show_type;
   int error = NO_ERROR;
+  int save;
   int partition_type = DB_NOT_PARTITIONED_CLASS;
   PT_NODE *partition_node = NULL;
 
@@ -815,13 +832,27 @@ pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node)
 	  DB_MAX_IDENTIFIER_LENGTH);
 
   /* check table name */
-  table_name = (const char *) show_args_node->info.value.data_value.str->bytes;
+  table_name =
+    (const char *) show_args_node->info.value.data_value.str->bytes;
   cls = sm_find_class (table_name);
   if (cls == NULL)
     {
       PT_ERRORmf (parser, show_args_node, MSGCAT_SET_ERROR,
 		  -(ER_LC_UNKNOWN_CLASSNAME), table_name);
       return node;
+    }
+
+  AU_DISABLE (save);
+  error = au_fetch_class_force (cls, &sm_class, AU_FETCH_READ);
+  AU_ENABLE (save);
+  if (error == NO_ERROR)
+    {
+      if (sm_get_class_type (sm_class) != SM_CLASS_CT)
+	{
+	  PT_ERRORm (parser, show_args_node, MSGCAT_SET_ERROR,
+		     -(ER_OBJ_NOT_A_CLASS));
+	  return node;
+	}
     }
 
   /* check index name */
