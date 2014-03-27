@@ -1750,10 +1750,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       if (err_code < 0)
 	{
 	  const char *cas_log_msg = NULL;
-	  net_write_error (sock_fd, req_info->client_version,
-			   req_info->driver_info,
-			   cas_msg_header.info_ptr, cas_info_size,
-			   CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
+
 	  fn_ret = FN_CLOSE_CONN;
 
 #ifndef LIBCAS_FOR_JSP

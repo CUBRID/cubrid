@@ -1480,10 +1480,6 @@ qe_send_close_handle_msg (T_CON_HANDLE * con_handle, int server_handle_id)
   net_buf_clear (&net_buf);
   if (err_code < 0)
     {
-      if (con_handle->con_status == CCI_CON_STATUS_OUT_TRAN)
-	{
-	  err_code = 0;
-	}
       return err_code;
     }
 
