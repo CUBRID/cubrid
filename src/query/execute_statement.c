@@ -11540,10 +11540,19 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl,
 	{
 	  continue;
 	}
+
       dom = (*attr)->domain;
       val = tmpl->assignments[(*attr)->order]->variable;
-      OR_ENABLE_BOUND_BIT (bound_bits, i);
-      (*((dom->type)->index_writeval)) (&buf, val);
+
+      if (DB_IS_NULL (val))
+	{
+	  OR_CLEAR_BOUND_BIT (bound_bits, i);
+	}
+      else
+	{
+	  (*((dom->type)->index_writeval)) (&buf, val);
+	  OR_ENABLE_BOUND_BIT (bound_bits, i);
+	}
     }
 
   midxkey.size = buf_size;
