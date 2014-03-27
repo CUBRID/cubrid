@@ -4399,7 +4399,6 @@ heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 
       if (file_find_last_page (thread_p, &hfid->vfid, last_vpid) == NULL)
 	{
-	  assert (false);
 	  goto exit_on_error;
 	}
 
@@ -4992,7 +4991,6 @@ heap_vpid_prealloc_set (THREAD_ENTRY * thread_p, const HFID * hfid,
   if (file_find_last_page
       (thread_p, &hfid->vfid, &heap_hdr->estimates.last_vpid) == NULL)
     {
-      assert (false);
       return NULL;
     }
 
@@ -5041,7 +5039,6 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
   if (last_pgptr == NULL)
     {
       /* something went wrong, return error */
-      assert (false);
       return NULL;
     }
   assert (!VPID_ISNULL (&last_vpid));
