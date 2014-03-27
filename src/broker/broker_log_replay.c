@@ -1080,7 +1080,7 @@ print_summary_info (T_SUMMARY_INFO * summary)
 	   "------------------- Result Summary --------------------------\n");
   fprintf (stdout, "* %-35s : %d\n", "Total queries",
 	   summary->num_total_query);
-  fprintf (stdout, "* %-35s : %d\n", "Skiped queries (out : skip.sql)",
+  fprintf (stdout, "* %-35s : %d\n", "Skipped queries (out : skip.sql)",
 	   summary->num_skip_query);
   fprintf (stdout, "* %-35s : %d\n", "Error queries (out : replay.err)",
 	   summary->num_err_query);
