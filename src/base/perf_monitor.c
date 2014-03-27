@@ -81,19 +81,130 @@ static int rv;
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
-#define CALC_GLOBAL_STAT_DIFF(NEW,OLD) (((NEW)>=(OLD))?((NEW)-(OLD)):0)
-#define CALC_STAT_DIFF(DIFF, NEW, OLD) \
-  do {                                 \
-    if ((NEW)>=(OLD))                  \
-      {                                \
-        (DIFF) = (NEW)-(OLD);          \
-      }                                \
-   else                                \
-     {                                 \
-       (DIFF) = (NEW);                 \
-       (OLD) = 0;                      \
-     }                                 \
+#define CALC_GLOBAL_STAT_DIFF(DIFF, NEW, OLD, MEMBER)       \
+  do {                                                      \
+    if ((NEW)->MEMBER >= (OLD)->MEMBER)                     \
+      {                                                     \
+        (DIFF)->MEMBER = (NEW)->MEMBER - (OLD)->MEMBER;     \
+      }                                                     \
+    else                                                    \
+     {                                                      \
+       (DIFF)->MEMBER = 0;                                  \
+     }                                                      \
   } while (0)
+
+#define CALC_STAT_DIFF(DIFF, NEW, OLD, MEMBER)              \
+  do {                                                      \
+    if ((NEW)->MEMBER >= (OLD)->MEMBER)                     \
+      {                                                     \
+        (DIFF)->MEMBER = (NEW)->MEMBER - (OLD)->MEMBER;     \
+      }                                                     \
+    else                                                    \
+     {                                                      \
+       (DIFF)->MEMBER = (NEW)->MEMBER;                      \
+       (OLD)->MEMBER = 0;                                   \
+     }                                                      \
+  } while (0)
+
+#define PUT_STAT(RES, NEW, MEMBER)     ((RES)->MEMBER = (NEW)->MEMBER)
+
+#define MNT_CALC_STATS(RES, NEW, OLD, DIFF_METHOD)                      \
+  do {                                                                  \
+    DIFF_METHOD (RES, NEW, OLD, file_num_creates);                      \
+    DIFF_METHOD (RES, NEW, OLD, file_num_removes);                      \
+    DIFF_METHOD (RES, NEW, OLD, file_num_ioreads);                      \
+    DIFF_METHOD (RES, NEW, OLD, file_num_iowrites);                     \
+    DIFF_METHOD (RES, NEW, OLD, file_num_iosynches);                    \
+    DIFF_METHOD (RES, NEW, OLD, file_num_page_allocs);                  \
+    DIFF_METHOD (RES, NEW, OLD, file_num_page_deallocs);                \
+                                                                        \
+    DIFF_METHOD (RES, NEW, OLD, pb_num_fetches);                        \
+    DIFF_METHOD (RES, NEW, OLD, pb_num_dirties);                        \
+    DIFF_METHOD (RES, NEW, OLD, pb_num_ioreads);                        \
+    DIFF_METHOD (RES, NEW, OLD, pb_num_iowrites);                       \
+    DIFF_METHOD (RES, NEW, OLD, pb_num_victims);                        \
+    DIFF_METHOD (RES, NEW, OLD, pb_num_replacements);                   \
+                                                                        \
+    DIFF_METHOD (RES, NEW, OLD, log_num_ioreads);                       \
+    DIFF_METHOD (RES, NEW, OLD, log_num_iowrites);                      \
+    DIFF_METHOD (RES, NEW, OLD, log_num_appendrecs);                    \
+    DIFF_METHOD (RES, NEW, OLD, log_num_archives);                      \
+    DIFF_METHOD (RES, NEW, OLD, log_num_start_checkpoints);             \
+    DIFF_METHOD (RES, NEW, OLD, log_num_end_checkpoints);               \
+    DIFF_METHOD (RES, NEW, OLD, log_num_wals);                          \
+                                                                        \
+    DIFF_METHOD (RES, NEW, OLD, lk_num_acquired_on_pages);              \
+    DIFF_METHOD (RES, NEW, OLD, lk_num_acquired_on_objects);            \
+    DIFF_METHOD (RES, NEW, OLD, lk_num_converted_on_pages);             \
+    DIFF_METHOD (RES, NEW, OLD, lk_num_converted_on_objects);           \
+    DIFF_METHOD (RES, NEW, OLD, lk_num_re_requested_on_pages);          \
+    DIFF_METHOD (RES, NEW, OLD, lk_num_re_requested_on_objects);        \
+    DIFF_METHOD (RES, NEW, OLD, lk_num_waited_on_pages);                \
+    DIFF_METHOD (RES, NEW, OLD, lk_num_waited_on_objects);              \
+                                                                        \
+    DIFF_METHOD (RES, NEW, OLD, tran_num_commits);                      \
+    DIFF_METHOD (RES, NEW, OLD, tran_num_rollbacks);                    \
+    DIFF_METHOD (RES, NEW, OLD, tran_num_savepoints);                   \
+    DIFF_METHOD (RES, NEW, OLD, tran_num_start_topops);                 \
+    DIFF_METHOD (RES, NEW, OLD, tran_num_end_topops);                   \
+    DIFF_METHOD (RES, NEW, OLD, tran_num_interrupts);                   \
+                                                                        \
+    DIFF_METHOD (RES, NEW, OLD, bt_num_inserts);                        \
+    DIFF_METHOD (RES, NEW, OLD, bt_num_deletes);                        \
+    DIFF_METHOD (RES, NEW, OLD, bt_num_updates);                        \
+    DIFF_METHOD (RES, NEW, OLD, bt_num_covered);                        \
+    DIFF_METHOD (RES, NEW, OLD, bt_num_noncovered);                     \
+    DIFF_METHOD (RES, NEW, OLD, bt_num_resumes);                        \
+    DIFF_METHOD (RES, NEW, OLD, bt_num_multi_range_opt);                \
+    DIFF_METHOD (RES, NEW, OLD, bt_num_splits);                         \
+    DIFF_METHOD (RES, NEW, OLD, bt_num_merges);                         \
+    DIFF_METHOD (RES, NEW, OLD, bt_num_get_stats);                      \
+                                                                        \
+    DIFF_METHOD (RES, NEW, OLD, qm_num_selects);                        \
+    DIFF_METHOD (RES, NEW, OLD, qm_num_inserts);                        \
+    DIFF_METHOD (RES, NEW, OLD, qm_num_deletes);                        \
+    DIFF_METHOD (RES, NEW, OLD, qm_num_updates);                        \
+    DIFF_METHOD (RES, NEW, OLD, qm_num_sscans);                         \
+    DIFF_METHOD (RES, NEW, OLD, qm_num_iscans);                         \
+    DIFF_METHOD (RES, NEW, OLD, qm_num_lscans);                         \
+    DIFF_METHOD (RES, NEW, OLD, qm_num_setscans);                       \
+    DIFF_METHOD (RES, NEW, OLD, qm_num_methscans);                      \
+    DIFF_METHOD (RES, NEW, OLD, qm_num_nljoins);                        \
+    DIFF_METHOD (RES, NEW, OLD, qm_num_mjoins);                         \
+    DIFF_METHOD (RES, NEW, OLD, qm_num_objfetches);                     \
+    DIFF_METHOD (RES, NEW, OLD, qm_num_holdable_cursors);               \
+                                                                        \
+    DIFF_METHOD (RES, NEW, OLD, sort_num_io_pages);                     \
+    DIFF_METHOD (RES, NEW, OLD, sort_num_data_pages);                   \
+                                                                        \
+    DIFF_METHOD (RES, NEW, OLD, net_num_requests);                      \
+                                                                        \
+    DIFF_METHOD (RES, NEW, OLD, fc_num_pages);                          \
+    DIFF_METHOD (RES, NEW, OLD, fc_num_log_pages);                      \
+    DIFF_METHOD (RES, NEW, OLD, fc_tokens);                             \
+                                                                        \
+    DIFF_METHOD (RES, NEW, OLD, prior_lsa_list_size);                   \
+    DIFF_METHOD (RES, NEW, OLD, prior_lsa_list_maxed);                  \
+    DIFF_METHOD (RES, NEW, OLD, prior_lsa_list_removed);                \
+                                                                        \
+    DIFF_METHOD (RES, NEW, OLD, hf_num_stats_entries);                  \
+    DIFF_METHOD (RES, NEW, OLD, hf_num_stats_maxed);                    \
+                                                                        \
+    DIFF_METHOD (RES, NEW, OLD, pc_num_add);                            \
+    DIFF_METHOD (RES, NEW, OLD, pc_num_lookup);                         \
+    DIFF_METHOD (RES, NEW, OLD, pc_num_hit);                            \
+    DIFF_METHOD (RES, NEW, OLD, pc_num_miss);                           \
+    DIFF_METHOD (RES, NEW, OLD, pc_num_full);                           \
+    DIFF_METHOD (RES, NEW, OLD, pc_num_delete);                         \
+    DIFF_METHOD (RES, NEW, OLD, pc_num_invalid_xasl_id);                \
+                                                                        \
+    /* Do not need to diff following non-accumulative stats */          \
+    PUT_STAT (RES, NEW, ha_repl_delay);                                 \
+    PUT_STAT (RES, NEW, pc_num_query_string_hash_entries);              \
+    PUT_STAT (RES, NEW, pc_num_xasl_id_hash_entries);                   \
+    PUT_STAT (RES, NEW, pc_num_class_oid_hash_entries);                 \
+  } while (0)
+
 
 static void mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats);
 static void mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats);
@@ -352,8 +463,6 @@ mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
 			    MNT_SERVER_EXEC_STATS * new_stats,
 			    MNT_SERVER_EXEC_STATS * old_stats)
 {
-  MNT_SERVER_EXEC_STATS *p, *q;
-
   assert (stats_diff && new_stats && old_stats);
 
   if (!stats_diff || !new_stats || !old_stats)
@@ -361,195 +470,7 @@ mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
       return ER_FAILED;
     }
 
-  p = new_stats;
-  q = old_stats;
-
-  stats_diff->file_num_creates =
-    CALC_GLOBAL_STAT_DIFF (p->file_num_creates, q->file_num_creates);
-  stats_diff->file_num_removes =
-    CALC_GLOBAL_STAT_DIFF (p->file_num_removes, q->file_num_removes);
-  stats_diff->file_num_ioreads =
-    CALC_GLOBAL_STAT_DIFF (p->file_num_ioreads, q->file_num_ioreads);
-  stats_diff->file_num_iowrites =
-    CALC_GLOBAL_STAT_DIFF (p->file_num_iowrites, q->file_num_iowrites);
-  stats_diff->file_num_iosynches =
-    CALC_GLOBAL_STAT_DIFF (p->file_num_iosynches, q->file_num_iosynches);
-  stats_diff->file_num_page_allocs =
-    CALC_GLOBAL_STAT_DIFF (p->file_num_page_allocs, q->file_num_page_allocs);
-  stats_diff->file_num_page_deallocs =
-    CALC_GLOBAL_STAT_DIFF (p->file_num_page_deallocs,
-			   q->file_num_page_deallocs);
-
-  stats_diff->pb_num_fetches =
-    CALC_GLOBAL_STAT_DIFF (p->pb_num_fetches, q->pb_num_fetches);
-  stats_diff->pb_num_dirties =
-    CALC_GLOBAL_STAT_DIFF (p->pb_num_dirties, q->pb_num_dirties);
-  stats_diff->pb_num_ioreads =
-    CALC_GLOBAL_STAT_DIFF (p->pb_num_ioreads, q->pb_num_ioreads);
-  stats_diff->pb_num_iowrites =
-    CALC_GLOBAL_STAT_DIFF (p->pb_num_iowrites, q->pb_num_iowrites);
-  stats_diff->pb_num_victims =
-    CALC_GLOBAL_STAT_DIFF (p->pb_num_victims, q->pb_num_victims);
-  stats_diff->pb_num_replacements =
-    CALC_GLOBAL_STAT_DIFF (p->pb_num_replacements, q->pb_num_replacements);
-
-  stats_diff->fc_num_pages =
-    CALC_GLOBAL_STAT_DIFF (p->fc_num_pages, q->fc_num_pages);
-  stats_diff->fc_num_log_pages =
-    CALC_GLOBAL_STAT_DIFF (p->fc_num_log_pages, q->fc_num_log_pages);
-  stats_diff->fc_tokens = CALC_GLOBAL_STAT_DIFF (p->fc_tokens, q->fc_tokens);
-
-  stats_diff->prior_lsa_list_size =
-    CALC_GLOBAL_STAT_DIFF (p->prior_lsa_list_size, q->prior_lsa_list_size);
-  stats_diff->prior_lsa_list_maxed =
-    CALC_GLOBAL_STAT_DIFF (p->prior_lsa_list_maxed, q->prior_lsa_list_maxed);
-  stats_diff->prior_lsa_list_removed =
-    CALC_GLOBAL_STAT_DIFF (p->prior_lsa_list_removed,
-			   q->prior_lsa_list_removed);
-
-  stats_diff->hf_num_stats_entries =
-    CALC_GLOBAL_STAT_DIFF (p->hf_num_stats_entries, q->hf_num_stats_entries);
-  stats_diff->hf_num_stats_maxed =
-    CALC_GLOBAL_STAT_DIFF (p->hf_num_stats_maxed, q->hf_num_stats_maxed);
-
-  stats_diff->log_num_ioreads =
-    CALC_GLOBAL_STAT_DIFF (p->log_num_ioreads, q->log_num_ioreads);
-  stats_diff->log_num_iowrites =
-    CALC_GLOBAL_STAT_DIFF (p->log_num_iowrites, q->log_num_iowrites);
-  stats_diff->log_num_appendrecs =
-    CALC_GLOBAL_STAT_DIFF (p->log_num_appendrecs, q->log_num_appendrecs);
-  stats_diff->log_num_archives =
-    CALC_GLOBAL_STAT_DIFF (p->log_num_archives, q->log_num_archives);
-  stats_diff->log_num_start_checkpoints =
-    CALC_GLOBAL_STAT_DIFF (p->log_num_start_checkpoints,
-			   q->log_num_start_checkpoints);
-  stats_diff->log_num_end_checkpoints =
-    CALC_GLOBAL_STAT_DIFF (p->log_num_end_checkpoints,
-			   q->log_num_end_checkpoints);
-  stats_diff->log_num_wals =
-    CALC_GLOBAL_STAT_DIFF (p->log_num_wals, q->log_num_wals);
-
-  stats_diff->lk_num_acquired_on_pages =
-    CALC_GLOBAL_STAT_DIFF (p->lk_num_acquired_on_pages,
-			   q->lk_num_acquired_on_pages);
-  stats_diff->lk_num_acquired_on_objects =
-    CALC_GLOBAL_STAT_DIFF (p->lk_num_acquired_on_objects,
-			   q->lk_num_acquired_on_objects);
-  stats_diff->lk_num_converted_on_pages =
-    CALC_GLOBAL_STAT_DIFF (p->lk_num_converted_on_pages,
-			   q->lk_num_converted_on_pages);
-  stats_diff->lk_num_converted_on_objects =
-    CALC_GLOBAL_STAT_DIFF (p->lk_num_converted_on_objects,
-			   q->lk_num_converted_on_objects);
-  stats_diff->lk_num_re_requested_on_pages =
-    CALC_GLOBAL_STAT_DIFF (p->lk_num_re_requested_on_pages,
-			   q->lk_num_re_requested_on_pages);
-  stats_diff->lk_num_re_requested_on_objects =
-    CALC_GLOBAL_STAT_DIFF (p->lk_num_re_requested_on_objects,
-			   q->lk_num_re_requested_on_objects);
-  stats_diff->lk_num_waited_on_pages =
-    CALC_GLOBAL_STAT_DIFF (p->lk_num_waited_on_pages,
-			   q->lk_num_waited_on_pages);
-  stats_diff->lk_num_waited_on_objects =
-    CALC_GLOBAL_STAT_DIFF (p->lk_num_waited_on_objects,
-			   q->lk_num_waited_on_objects);
-
-  stats_diff->tran_num_commits =
-    CALC_GLOBAL_STAT_DIFF (p->tran_num_commits, q->tran_num_commits);
-  stats_diff->tran_num_rollbacks =
-    CALC_GLOBAL_STAT_DIFF (p->tran_num_rollbacks, q->tran_num_rollbacks);
-  stats_diff->tran_num_savepoints =
-    CALC_GLOBAL_STAT_DIFF (p->tran_num_savepoints, q->tran_num_savepoints);
-  stats_diff->tran_num_start_topops =
-    CALC_GLOBAL_STAT_DIFF (p->tran_num_start_topops,
-			   q->tran_num_start_topops);
-  stats_diff->tran_num_end_topops =
-    CALC_GLOBAL_STAT_DIFF (p->tran_num_end_topops, q->tran_num_end_topops);
-  stats_diff->tran_num_interrupts =
-    CALC_GLOBAL_STAT_DIFF (p->tran_num_interrupts, q->tran_num_interrupts);
-
-  stats_diff->bt_num_inserts =
-    CALC_GLOBAL_STAT_DIFF (p->bt_num_inserts, q->bt_num_inserts);
-  stats_diff->bt_num_deletes =
-    CALC_GLOBAL_STAT_DIFF (p->bt_num_deletes, q->bt_num_deletes);
-  stats_diff->bt_num_updates =
-    CALC_GLOBAL_STAT_DIFF (p->bt_num_updates, q->bt_num_updates);
-  stats_diff->bt_num_covered =
-    CALC_GLOBAL_STAT_DIFF (p->bt_num_covered, q->bt_num_covered);
-  stats_diff->bt_num_noncovered =
-    CALC_GLOBAL_STAT_DIFF (p->bt_num_noncovered, q->bt_num_noncovered);
-  stats_diff->bt_num_resumes =
-    CALC_GLOBAL_STAT_DIFF (p->bt_num_resumes, q->bt_num_resumes);
-  stats_diff->bt_num_multi_range_opt =
-    CALC_GLOBAL_STAT_DIFF (p->bt_num_multi_range_opt,
-			   q->bt_num_multi_range_opt);
-  stats_diff->bt_num_splits =
-    CALC_GLOBAL_STAT_DIFF (p->bt_num_splits, q->bt_num_splits);
-  stats_diff->bt_num_merges =
-    CALC_GLOBAL_STAT_DIFF (p->bt_num_merges, q->bt_num_merges);
-  stats_diff->bt_num_get_stats =
-    CALC_GLOBAL_STAT_DIFF (p->bt_num_get_stats, q->bt_num_get_stats);
-
-  stats_diff->qm_num_selects =
-    CALC_GLOBAL_STAT_DIFF (p->qm_num_selects, q->qm_num_selects);
-  stats_diff->qm_num_inserts =
-    CALC_GLOBAL_STAT_DIFF (p->qm_num_inserts, q->qm_num_inserts);
-  stats_diff->qm_num_deletes =
-    CALC_GLOBAL_STAT_DIFF (p->qm_num_deletes, q->qm_num_deletes);
-  stats_diff->qm_num_updates =
-    CALC_GLOBAL_STAT_DIFF (p->qm_num_updates, q->qm_num_updates);
-  stats_diff->qm_num_sscans =
-    CALC_GLOBAL_STAT_DIFF (p->qm_num_sscans, q->qm_num_sscans);
-  stats_diff->qm_num_iscans =
-    CALC_GLOBAL_STAT_DIFF (p->qm_num_iscans, q->qm_num_iscans);
-  stats_diff->qm_num_lscans =
-    CALC_GLOBAL_STAT_DIFF (p->qm_num_lscans, q->qm_num_lscans);
-  stats_diff->qm_num_setscans =
-    CALC_GLOBAL_STAT_DIFF (p->qm_num_setscans, q->qm_num_setscans);
-  stats_diff->qm_num_methscans =
-    CALC_GLOBAL_STAT_DIFF (p->qm_num_methscans, q->qm_num_methscans);
-  stats_diff->qm_num_nljoins =
-    CALC_GLOBAL_STAT_DIFF (p->qm_num_nljoins, q->qm_num_nljoins);
-  stats_diff->qm_num_mjoins =
-    CALC_GLOBAL_STAT_DIFF (p->qm_num_mjoins, q->qm_num_mjoins);
-  stats_diff->qm_num_objfetches =
-    CALC_GLOBAL_STAT_DIFF (p->qm_num_objfetches, q->qm_num_objfetches);
-  stats_diff->qm_num_holdable_cursors =
-    CALC_GLOBAL_STAT_DIFF (p->qm_num_holdable_cursors,
-			   q->qm_num_holdable_cursors);
-
-  stats_diff->sort_num_io_pages =
-    CALC_GLOBAL_STAT_DIFF (p->sort_num_io_pages, q->sort_num_io_pages);
-  stats_diff->sort_num_data_pages =
-    CALC_GLOBAL_STAT_DIFF (p->sort_num_data_pages, q->sort_num_data_pages);
-
-  stats_diff->net_num_requests =
-    CALC_GLOBAL_STAT_DIFF (p->net_num_requests, q->net_num_requests);
-
-  stats_diff->ha_repl_delay = p->ha_repl_delay;
-
-  stats_diff->pc_num_add =
-    CALC_GLOBAL_STAT_DIFF (p->pc_num_add, q->pc_num_add);
-  stats_diff->pc_num_lookup =
-    CALC_GLOBAL_STAT_DIFF (p->pc_num_lookup, q->pc_num_lookup);
-  stats_diff->pc_num_hit =
-    CALC_GLOBAL_STAT_DIFF (p->pc_num_hit, q->pc_num_hit);
-  stats_diff->pc_num_miss =
-    CALC_GLOBAL_STAT_DIFF (p->pc_num_miss, q->pc_num_miss);
-  stats_diff->pc_num_full =
-    CALC_GLOBAL_STAT_DIFF (p->pc_num_full, q->pc_num_full);
-  stats_diff->pc_num_delete =
-    CALC_GLOBAL_STAT_DIFF (p->pc_num_delete, q->pc_num_delete);
-  stats_diff->pc_num_invalid_xasl_id =
-    CALC_GLOBAL_STAT_DIFF (p->pc_num_invalid_xasl_id,
-			   q->pc_num_invalid_xasl_id);
-
-  /* Do not need to diff following non-accumulative stats */
-  stats_diff->pc_num_query_string_hash_entries =
-    p->pc_num_query_string_hash_entries;
-  stats_diff->pc_num_xasl_id_hash_entries = p->pc_num_xasl_id_hash_entries;
-  stats_diff->pc_num_class_oid_hash_entries =
-    p->pc_num_class_oid_hash_entries;
+  MNT_CALC_STATS (stats_diff, new_stats, old_stats, CALC_GLOBAL_STAT_DIFF);
 
   mnt_server_calc_stats (stats_diff);
 
@@ -3459,8 +3380,6 @@ mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
 		     MNT_SERVER_EXEC_STATS * new_stats,
 		     MNT_SERVER_EXEC_STATS * old_stats)
 {
-  MNT_SERVER_EXEC_STATS *p, *q;
-
   assert (stats_diff && new_stats && old_stats);
 
   if (!stats_diff || !new_stats || !old_stats)
@@ -3468,171 +3387,7 @@ mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
       return ER_FAILED;
     }
 
-  p = new_stats;
-  q = old_stats;
-
-  CALC_STAT_DIFF (stats_diff->file_num_creates, p->file_num_creates,
-		  q->file_num_creates);
-  CALC_STAT_DIFF (stats_diff->file_num_removes, p->file_num_removes,
-		  q->file_num_removes);
-  CALC_STAT_DIFF (stats_diff->file_num_ioreads, p->file_num_ioreads,
-		  q->file_num_ioreads);
-  CALC_STAT_DIFF (stats_diff->file_num_iowrites, p->file_num_iowrites,
-		  q->file_num_iowrites);
-  CALC_STAT_DIFF (stats_diff->file_num_iosynches, p->file_num_iosynches,
-		  q->file_num_iosynches);
-  CALC_STAT_DIFF (stats_diff->file_num_page_allocs, p->file_num_page_allocs,
-		  q->file_num_page_allocs);
-  CALC_STAT_DIFF (stats_diff->file_num_page_deallocs,
-		  p->file_num_page_deallocs, q->file_num_page_deallocs);
-
-  CALC_STAT_DIFF (stats_diff->pb_num_fetches, p->pb_num_fetches,
-		  q->pb_num_fetches);
-  CALC_STAT_DIFF (stats_diff->pb_num_dirties, p->pb_num_dirties,
-		  q->pb_num_dirties);
-  CALC_STAT_DIFF (stats_diff->pb_num_ioreads, p->pb_num_ioreads,
-		  q->pb_num_ioreads);
-  CALC_STAT_DIFF (stats_diff->pb_num_iowrites, p->pb_num_iowrites,
-		  q->pb_num_iowrites);
-  CALC_STAT_DIFF (stats_diff->pb_num_victims, p->pb_num_victims,
-		  q->pb_num_victims);
-  CALC_STAT_DIFF (stats_diff->pb_num_replacements, p->pb_num_replacements,
-		  q->pb_num_replacements);
-
-  CALC_STAT_DIFF (stats_diff->fc_num_pages, p->fc_num_pages, q->fc_num_pages);
-  CALC_STAT_DIFF (stats_diff->fc_num_log_pages, p->fc_num_log_pages,
-		  q->fc_num_log_pages);
-  CALC_STAT_DIFF (stats_diff->fc_tokens, p->fc_tokens, q->fc_tokens);
-
-  CALC_STAT_DIFF (stats_diff->prior_lsa_list_size, p->prior_lsa_list_size,
-		  q->prior_lsa_list_size);
-  CALC_STAT_DIFF (stats_diff->prior_lsa_list_maxed, p->prior_lsa_list_maxed,
-		  q->prior_lsa_list_maxed);
-  CALC_STAT_DIFF (stats_diff->prior_lsa_list_removed,
-		  p->prior_lsa_list_removed, q->prior_lsa_list_removed);
-
-  CALC_STAT_DIFF (stats_diff->hf_num_stats_entries, p->hf_num_stats_entries,
-		  q->hf_num_stats_entries);
-  CALC_STAT_DIFF (stats_diff->hf_num_stats_maxed, p->hf_num_stats_maxed,
-		  q->hf_num_stats_maxed);
-
-  CALC_STAT_DIFF (stats_diff->log_num_ioreads, p->log_num_ioreads,
-		  q->log_num_ioreads);
-  CALC_STAT_DIFF (stats_diff->log_num_iowrites, p->log_num_iowrites,
-		  q->log_num_iowrites);
-  CALC_STAT_DIFF (stats_diff->log_num_appendrecs, p->log_num_appendrecs,
-		  q->log_num_appendrecs);
-  CALC_STAT_DIFF (stats_diff->log_num_archives, p->log_num_archives,
-		  q->log_num_archives);
-  CALC_STAT_DIFF (stats_diff->log_num_start_checkpoints,
-		  p->log_num_start_checkpoints, q->log_num_start_checkpoints);
-  CALC_STAT_DIFF (stats_diff->log_num_end_checkpoints,
-		  p->log_num_end_checkpoints, q->log_num_end_checkpoints);
-  CALC_STAT_DIFF (stats_diff->log_num_wals, p->log_num_wals, q->log_num_wals);
-
-  CALC_STAT_DIFF (stats_diff->lk_num_acquired_on_pages,
-		  p->lk_num_acquired_on_pages, q->lk_num_acquired_on_pages);
-  CALC_STAT_DIFF (stats_diff->lk_num_acquired_on_objects,
-		  p->lk_num_acquired_on_objects,
-		  q->lk_num_acquired_on_objects);
-  CALC_STAT_DIFF (stats_diff->lk_num_converted_on_pages,
-		  p->lk_num_converted_on_pages, q->lk_num_converted_on_pages);
-  CALC_STAT_DIFF (stats_diff->lk_num_converted_on_objects,
-		  p->lk_num_converted_on_objects,
-		  q->lk_num_converted_on_objects);
-  CALC_STAT_DIFF (stats_diff->lk_num_re_requested_on_pages,
-		  p->lk_num_re_requested_on_pages,
-		  q->lk_num_re_requested_on_pages);
-  CALC_STAT_DIFF (stats_diff->lk_num_re_requested_on_objects,
-		  p->lk_num_re_requested_on_objects,
-		  q->lk_num_re_requested_on_objects);
-  CALC_STAT_DIFF (stats_diff->lk_num_waited_on_pages,
-		  p->lk_num_waited_on_pages, q->lk_num_waited_on_pages);
-  CALC_STAT_DIFF (stats_diff->lk_num_waited_on_objects,
-		  p->lk_num_waited_on_objects, q->lk_num_waited_on_objects);
-
-  CALC_STAT_DIFF (stats_diff->tran_num_commits, p->tran_num_commits,
-		  q->tran_num_commits);
-  CALC_STAT_DIFF (stats_diff->tran_num_rollbacks, p->tran_num_rollbacks,
-		  q->tran_num_rollbacks);
-  CALC_STAT_DIFF (stats_diff->tran_num_savepoints, p->tran_num_savepoints,
-		  q->tran_num_savepoints);
-  CALC_STAT_DIFF (stats_diff->tran_num_start_topops, p->tran_num_start_topops,
-		  q->tran_num_start_topops);
-  CALC_STAT_DIFF (stats_diff->tran_num_end_topops, p->tran_num_end_topops,
-		  q->tran_num_end_topops);
-  CALC_STAT_DIFF (stats_diff->tran_num_interrupts, p->tran_num_interrupts,
-		  q->tran_num_interrupts);
-
-  CALC_STAT_DIFF (stats_diff->bt_num_inserts, p->bt_num_inserts,
-		  q->bt_num_inserts);
-  CALC_STAT_DIFF (stats_diff->bt_num_deletes, p->bt_num_deletes,
-		  q->bt_num_deletes);
-  CALC_STAT_DIFF (stats_diff->bt_num_updates, p->bt_num_updates,
-		  q->bt_num_updates);
-  CALC_STAT_DIFF (stats_diff->bt_num_covered, p->bt_num_covered,
-		  q->bt_num_covered);
-  CALC_STAT_DIFF (stats_diff->bt_num_noncovered, p->bt_num_noncovered,
-		  q->bt_num_noncovered);
-  CALC_STAT_DIFF (stats_diff->bt_num_resumes, p->bt_num_resumes,
-		  q->bt_num_resumes);
-  CALC_STAT_DIFF (stats_diff->bt_num_splits, p->bt_num_splits,
-		  q->bt_num_splits);
-  CALC_STAT_DIFF (stats_diff->bt_num_merges, p->bt_num_merges,
-		  q->bt_num_merges);
-  CALC_STAT_DIFF (stats_diff->bt_num_get_stats, p->bt_num_get_stats,
-		  q->bt_num_get_stats);
-
-  CALC_STAT_DIFF (stats_diff->qm_num_selects, p->qm_num_selects,
-		  q->qm_num_selects);
-  CALC_STAT_DIFF (stats_diff->qm_num_inserts, p->qm_num_inserts,
-		  q->qm_num_inserts);
-  CALC_STAT_DIFF (stats_diff->qm_num_deletes, p->qm_num_deletes,
-		  q->qm_num_deletes);
-  CALC_STAT_DIFF (stats_diff->qm_num_updates, p->qm_num_updates,
-		  q->qm_num_updates);
-  CALC_STAT_DIFF (stats_diff->qm_num_sscans, p->qm_num_sscans,
-		  q->qm_num_sscans);
-  CALC_STAT_DIFF (stats_diff->qm_num_iscans, p->qm_num_iscans,
-		  q->qm_num_iscans);
-  CALC_STAT_DIFF (stats_diff->qm_num_lscans, p->qm_num_lscans,
-		  q->qm_num_lscans);
-  CALC_STAT_DIFF (stats_diff->qm_num_setscans, p->qm_num_setscans,
-		  q->qm_num_setscans);
-  CALC_STAT_DIFF (stats_diff->qm_num_methscans, p->qm_num_methscans,
-		  q->qm_num_methscans);
-  CALC_STAT_DIFF (stats_diff->qm_num_nljoins, p->qm_num_nljoins,
-		  q->qm_num_nljoins);
-  CALC_STAT_DIFF (stats_diff->qm_num_mjoins, p->qm_num_mjoins,
-		  q->qm_num_mjoins);
-  CALC_STAT_DIFF (stats_diff->qm_num_objfetches, p->qm_num_objfetches,
-		  q->qm_num_objfetches);
-
-  CALC_STAT_DIFF (stats_diff->sort_num_io_pages, p->sort_num_io_pages,
-		  q->sort_num_io_pages);
-  CALC_STAT_DIFF (stats_diff->sort_num_data_pages, p->sort_num_data_pages,
-		  q->sort_num_data_pages);
-
-  CALC_STAT_DIFF (stats_diff->net_num_requests, p->net_num_requests,
-		  q->net_num_requests);
-
-  CALC_STAT_DIFF (stats_diff->pc_num_add, p->pc_num_add, q->pc_num_add);
-  CALC_STAT_DIFF (stats_diff->pc_num_lookup, p->pc_num_lookup,
-		  q->pc_num_lookup);
-  CALC_STAT_DIFF (stats_diff->pc_num_hit, p->pc_num_hit, q->pc_num_hit);
-  CALC_STAT_DIFF (stats_diff->pc_num_miss, p->pc_num_miss, q->pc_num_miss);
-  CALC_STAT_DIFF (stats_diff->pc_num_full, p->pc_num_full, q->pc_num_full);
-  CALC_STAT_DIFF (stats_diff->pc_num_delete, p->pc_num_delete,
-		  q->pc_num_delete);
-  CALC_STAT_DIFF (stats_diff->pc_num_invalid_xasl_id,
-		  p->pc_num_invalid_xasl_id, q->pc_num_invalid_xasl_id);
-
-  /* Do not need to diff following non-accumulative stats */
-  stats_diff->pc_num_query_string_hash_entries =
-    p->pc_num_query_string_hash_entries;
-  stats_diff->pc_num_xasl_id_hash_entries = p->pc_num_xasl_id_hash_entries;
-  stats_diff->pc_num_class_oid_hash_entries =
-    p->pc_num_class_oid_hash_entries;
+  MNT_CALC_STATS (stats_diff, new_stats, old_stats, CALC_STAT_DIFF);
 
   mnt_server_calc_stats (stats_diff);
 
