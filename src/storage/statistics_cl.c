@@ -448,6 +448,10 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	  fprintf (file_p, "DB_TYPE_DB_VALUE\n");
 	  break;
 
+	case DB_TYPE_ENUMERATION:
+	  fprintf (file_p, "DB_TYPE_ENUMERATION\n");
+	  break;
+
 	default:
 	  assert (false);
 	  fprintf (file_p, "UNKNOWN_TYPE\n");
