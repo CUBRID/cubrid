@@ -50,6 +50,7 @@
 #include "md5.h"
 #include "porting.h"
 #include "crypt_opfunc.h"
+#include "base64.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -25936,4 +25937,198 @@ db_string_index_prefix (const DB_VALUE * string1,
 					  &key_domain);
 
   return error_status;
+}
+
+/*
+ *  db_string_to_base64 () - Using base64 to encode arbitrary input
+ *   return: int(NO_ERROR if successful, other error status if fail)
+ *   src(in):       source which holds plain-text string
+ *   result(in/out): dest which holds encoded buffer
+ *
+ *   Note: handling of special cases:
+ *         1. source string is NULL, result is NULL
+ *         2. source string is empty string, result is empty string
+ */
+int
+db_string_to_base64 (DB_VALUE const *src, DB_VALUE * result)
+{
+  int error_status, encode_len, src_len;
+  const unsigned char *src_buf = NULL;
+  unsigned char *encode_buf = NULL;
+  DB_TYPE val_type;
+
+  assert (src != (DB_VALUE *) NULL);
+  assert (result != (DB_VALUE *) NULL);
+
+  error_status = NO_ERROR;
+
+  if (DB_IS_NULL (src))
+    {
+      DB_MAKE_NULL (result);
+      return error_status;
+    }
+
+  src_buf = (const unsigned char *) DB_PULL_STRING (src);
+
+  /* length in bytes */
+  src_len = DB_GET_STRING_SIZE (src);
+
+  assert (src_len >= 0);
+
+  /* if input is empty string, output is also empty string */
+  if (src_len == 0)
+    {
+      db_string_make_empty_typed_string (NULL, result, DB_TYPE_VARCHAR, 0,
+					 DB_GET_STRING_CODESET (src),
+					 DB_GET_STRING_COLLATION (src));
+      return NO_ERROR;
+    }
+
+  val_type = DB_VALUE_DOMAIN_TYPE (src);
+  if (QSTR_IS_ANY_CHAR (val_type))
+    {
+      /* currently base64_encode always returns NO_ERROR except
+       * for memory buffer allocation fail */
+      error_status =
+	base64_encode (src_buf, src_len, &encode_buf, &encode_len);
+
+      if (error_status == NO_ERROR)
+	{
+	  qstr_make_typed_string (DB_TYPE_VARCHAR, result, encode_len,
+				  encode_buf, encode_len,
+				  DB_GET_STRING_CODESET (src),
+				  DB_GET_STRING_COLLATION (src));
+
+	  result->need_clear = true;
+
+	  return NO_ERROR;
+	}
+
+    }
+  else				/* val_type != QSTR_IS_ANY_CHAR  */
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;	/* reset error code */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+    }
+
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+  else
+    {
+      return error_status;
+    }
+
+}
+
+/*
+ *  db_string_from_base64 () - Convert a buffer into plain-text by base64 decoding
+ *                             There is no assumption the input is base64 encoded,
+ *                             in this case, result is NULL
+ *   return:   int(NO_ERROR if successful, other error status if fail)
+ *   src(in):       source which holds encoded buffer
+ *   result(in/out): dest which holds plain-text string
+ *
+ *   Note: handling of special cases:
+ *         1. source string is NULL, result is NULL
+ *         2. source string is empty string, result is empty string
+ *         3. source string contains invalid base64 encoded character,
+ *            result is NULL
+ *         4. source string has insufficient length even some bytes have been
+ *            decoded, result is NULL
+ */
+int
+db_string_from_base64 (DB_VALUE const *src, DB_VALUE * result)
+{
+  int error_status, err, decode_len, src_len;
+  const unsigned char *src_buf = NULL;
+  unsigned char *decode_buf = NULL;
+  DB_TYPE val_type;
+
+  assert (src != (DB_VALUE *) NULL);
+  assert (result != (DB_VALUE *) NULL);
+
+  error_status = NO_ERROR;
+
+  /* source is NULL */
+  if (DB_IS_NULL (src))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  src_buf = (const unsigned char *) DB_PULL_STRING (src);
+
+  /* length in bytes */
+  src_len = DB_GET_STRING_SIZE (src);
+
+  assert (src_len >= 0);
+
+  /* source is empty string */
+  if (src_len == 0)
+    {
+      db_string_make_empty_typed_string (NULL, result, DB_TYPE_VARCHAR, 0,
+					 DB_GET_STRING_CODESET (src),
+					 DB_GET_STRING_COLLATION (src));
+      return NO_ERROR;
+    }
+
+  val_type = DB_VALUE_DOMAIN_TYPE (src);
+
+  if (QSTR_IS_ANY_CHAR (val_type))
+    {
+      err = base64_decode (src_buf, src_len, &decode_buf, &decode_len);
+
+      switch (err)
+	{
+
+	case BASE64_EMPTY_INPUT:
+	  db_string_make_empty_typed_string (NULL, result, DB_TYPE_VARCHAR, 0,
+					     DB_GET_STRING_CODESET (src),
+					     DB_GET_STRING_COLLATION (src));
+	  error_status = NO_ERROR;
+	  break;
+
+	case NO_ERROR:
+	  qstr_make_typed_string (DB_TYPE_VARCHAR, result, decode_len,
+				  decode_buf, decode_len,
+				  DB_GET_STRING_CODESET (src),
+				  DB_GET_STRING_COLLATION (src));
+	  result->need_clear = true;
+	  error_status = NO_ERROR;
+	  break;
+
+	case BASE64_INVALID_INPUT:
+	  error_status = ER_QSTR_INVALID_FORMAT;	/* reset error code */
+	  goto error_handling;
+
+	default:
+	  error_status = ER_FAILED;
+	  goto error_handling;
+	}
+
+    }
+  else				/* val_type != QSTR_IS_ANY_CHAR  */
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;	/* reset error code */
+      goto error_handling;
+    }
+
+  assert (error_status == NO_ERROR);
+  return error_status;
+
+error_handling:
+
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
 }

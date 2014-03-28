@@ -227,7 +227,9 @@ static FUNCTION_MAP functions[] = {
   {"coercibility", PT_COERCIBILITY},
   {"width_bucket", PT_WIDTH_BUCKET},
   {"trace_stats", PT_TRACE_STATS},
-  {"str_to_date", PT_STR_TO_DATE}
+  {"str_to_date", PT_STR_TO_DATE},
+  {"to_base64", PT_TO_BASE64},
+  {"from_base64", PT_FROM_BASE64}
 };
 
 
@@ -23181,7 +23183,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_INET_ATON:
     case PT_INET_NTOA:
     case PT_COERCIBILITY:
-    case PT_SHA_ONE:	
+    case PT_SHA_ONE:
+    case PT_TO_BASE64:
+    case PT_FROM_BASE64:
       if (c != 1)
         {
 	  return NULL;

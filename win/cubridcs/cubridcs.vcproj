@@ -353,6 +353,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\base64.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\chartype.c"
 					>
 				</File>

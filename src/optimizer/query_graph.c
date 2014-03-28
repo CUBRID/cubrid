@@ -3538,6 +3538,8 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_ENCRYPT:
     case PT_DECRYPT:
     case PT_INDEX_CARDINALITY:
+    case PT_TO_BASE64:
+    case PT_FROM_BASE64:
 
       return RANK_EXPR_HEAVY;
       /* special case operator */
@@ -4001,6 +4003,8 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_SPACE:
 	case PT_MD5:
 	case PT_SHA_ONE:
+	case PT_TO_BASE64:
+	case PT_FROM_BASE64:
 	case PT_BIN:
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_TRIM:

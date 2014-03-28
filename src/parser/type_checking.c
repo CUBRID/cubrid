@@ -2036,6 +2036,24 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       def->overloads_count = num;
       break;
 
+    case PT_TO_BASE64:
+    case PT_FROM_BASE64:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_MID:
       num = 0;
 
@@ -11349,7 +11367,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
       || op == PT_UNIX_TIMESTAMP || op == PT_BIT_COUNT || op == PT_REPEAT
       || op == PT_SPACE || op == PT_MD5 || op == PT_TIMEF
       || op == PT_AES_ENCRYPT
-      || op == PT_AES_DECRYPT || op == PT_SHA_TWO || op == PT_SHA_ONE)
+      || op == PT_AES_DECRYPT || op == PT_SHA_TWO || op == PT_SHA_ONE
+      || op == PT_TO_BASE64 || op == PT_FROM_BASE64)
     {
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt == NULL)
@@ -11752,6 +11771,12 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_SHA_ONE:
       assert (dt != NULL);
       dt->info.data_type.precision = 40;
+      break;
+
+    case PT_TO_BASE64:
+    case PT_FROM_BASE64:
+      assert (dt != NULL);
+      dt->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
       break;
 
     case PT_LAST_INSERT_ID:
@@ -16924,6 +16949,30 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 
     case PT_SHA_TWO:
       error = db_string_sha_two (arg1, arg2, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_TO_BASE64:
+      error = db_string_to_base64 (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_FROM_BASE64:
+      error = db_string_from_base64 (arg1, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());

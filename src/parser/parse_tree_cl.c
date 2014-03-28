@@ -3801,6 +3801,10 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "sha1 ";
     case PT_SHA_TWO:
       return "sha2 ";
+    case PT_TO_BASE64:
+      return "to_base64 ";
+    case PT_FROM_BASE64:
+      return "from_base64 ";
     case PT_BIN:
       return "bin ";
     case PT_TRIM:
@@ -10458,6 +10462,18 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ", ");
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
       q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_TO_BASE64:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " to_base64(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_FROM_BASE64:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " from_base64(");
+      q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_EXTRACT:
@@ -17795,6 +17811,8 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_MD5:
 	case PT_SHA_ONE:
 	case PT_REVERSE:
+	case PT_TO_BASE64:
+	case PT_FROM_BASE64:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_TRIM:
 	case PT_LTRIM:
@@ -18376,6 +18394,8 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_AES_DECRYPT:
     case PT_SHA_ONE:
     case PT_SHA_TWO:
+    case PT_TO_BASE64:
+    case PT_FROM_BASE64:
     case PT_LPAD:
     case PT_RPAD:
     case PT_REPLACE:

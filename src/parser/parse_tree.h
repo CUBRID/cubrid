@@ -1392,6 +1392,8 @@ typedef enum
   PT_AES_DECRYPT,
   PT_SHA_ONE,
   PT_SHA_TWO,
+  PT_TO_BASE64,
+  PT_FROM_BASE64,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE

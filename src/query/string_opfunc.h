@@ -476,4 +476,6 @@ extern int db_string_index_prefix (const DB_VALUE * string1,
 				   const DB_VALUE * string2,
 				   const DB_VALUE * index_type,
 				   DB_VALUE * prefix_index);
+extern int db_string_to_base64 (DB_VALUE const *val, DB_VALUE * result);
+extern int db_string_from_base64 (DB_VALUE const *val, DB_VALUE * result);
 #endif /* _STRING_OPFUNC_H_ */

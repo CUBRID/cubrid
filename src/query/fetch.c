@@ -466,6 +466,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_SPACE:
     case T_MD5:
     case T_SHA_ONE:
+    case T_TO_BASE64:
+    case T_FROM_BASE64:
     case T_BIN:
     case T_CAST:
     case T_CAST_NOFAIL:
@@ -1417,6 +1419,29 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       else if (db_string_sha_two (peek_left, peek_right,
 				  arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_TO_BASE64:
+      if (DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_string_to_base64 (peek_right, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_FROM_BASE64:
+      if (DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_string_from_base64 (peek_right, arithptr->value) !=
+	       NO_ERROR)
 	{
 	  goto error;
 	}

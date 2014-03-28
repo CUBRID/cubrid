@@ -124,6 +124,7 @@ BASE_SOURCES = \
 	$(BASE_DIR)/encryption.c \
 	$(BASE_DIR)/sha1.c \
 	$(BASE_DIR)/md5.c \
+	$(BASE_DIR)/base64.c \
 	$(BASE_DIR)/error_manager.c \
 	$(BASE_DIR)/language_support.c \
 	$(BASE_DIR)/locale_support.c \

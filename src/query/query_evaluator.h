@@ -434,6 +434,8 @@ typedef enum
   T_SHA_ONE,
   T_SHA_TWO,
   T_INDEX_PREFIX,
+  T_TO_BASE64,
+  T_FROM_BASE64
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;

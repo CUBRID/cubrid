@@ -5666,6 +5666,8 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_CONV:
     case PT_BIN:
     case PT_MD5:
+    case PT_TO_BASE64:
+    case PT_FROM_BASE64:
     case PT_TRIM:
     case PT_LTRIM:
     case PT_RTRIM:

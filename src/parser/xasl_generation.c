@@ -7861,7 +7861,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_INET_ATON
 		       || node->info.expr.op == PT_INET_NTOA
 		       || node->info.expr.op == PT_CHARSET
-		       || node->info.expr.op == PT_COLLATION)
+		       || node->info.expr.op == PT_COLLATION
+		       || node->info.expr.op == PT_TO_BASE64
+		       || node->info.expr.op == PT_FROM_BASE64)
 		{
 		  r1 = NULL;
 
@@ -8796,6 +8798,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_SHA_TWO:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_SHA_TWO, domain);
+		  break;
+
+		case PT_FROM_BASE64:
+		  regu =
+		    pt_make_regu_arith (r1, r2, NULL, T_FROM_BASE64, domain);
+		  break;
+
+		case PT_TO_BASE64:
+		  regu =
+		    pt_make_regu_arith (r1, r2, NULL, T_TO_BASE64, domain);
 		  break;
 
 		case PT_SPACE:
@@ -23890,6 +23902,8 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_SUBDATE:
 	case T_INET_ATON:
 	case T_INET_NTOA:
+	case T_TO_BASE64:
+	case T_FROM_BASE64:
 	  break;
 	default:
 	  return true;
