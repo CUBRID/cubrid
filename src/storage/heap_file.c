@@ -4076,51 +4076,61 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   if (scan_all != true)
     {
-      if (heap_hdr->estimates.num_high_best > 0)
+      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
 	{
-	  /* Use recently inserted one first. */
-	  start_pos = HEAP_STATS_PREV_BEST_INDEX (heap_hdr->estimates.head);
-	  for (i = 0; i < HEAP_NUM_BEST_SPACESTATS; i++)
-	    {
-	      if (!VPID_ISNULL (&heap_hdr->estimates.best[start_pos].vpid))
-		{
-		  next_vpid = heap_hdr->estimates.best[start_pos].vpid;
-		  start_vpid = next_vpid;
-		  break;
-		}
-
-	      start_pos = HEAP_STATS_PREV_BEST_INDEX (start_pos);
-	    }
+	  search_all = true;
+	  next_vpid = heap_hdr->estimates.full_search_vpid;
 	}
       else
 	{
-	  /* If there are hint pages in second best array,
-	   * we will try to use it first.
-	   * Otherwise, we will search all pages in the file.
-	   */
-	  if (heap_hdr->estimates.num_second_best > 0)
+	  if (heap_hdr->estimates.num_high_best > 0)
 	    {
-	      if (heap_stats_get_second_best (heap_hdr, &next_vpid) !=
-		  NO_ERROR)
+	      /* Use recently inserted one first. */
+	      start_pos =
+		HEAP_STATS_PREV_BEST_INDEX (heap_hdr->estimates.head);
+	      for (i = 0; i < HEAP_NUM_BEST_SPACESTATS; i++)
 		{
-		  /* This should not be happened. */
-		  assert (false);
-		  search_all = true;
+		  if (!VPID_ISNULL
+		      (&heap_hdr->estimates.best[start_pos].vpid))
+		    {
+		      next_vpid = heap_hdr->estimates.best[start_pos].vpid;
+		      start_vpid = next_vpid;
+		      break;
+		    }
+
+		  start_pos = HEAP_STATS_PREV_BEST_INDEX (start_pos);
 		}
 	    }
 	  else
 	    {
-	      search_all = true;
-	    }
+	      /* If there are hint pages in second best array,
+	       * we will try to use it first.
+	       * Otherwise, we will search all pages in the file.
+	       */
+	      if (heap_hdr->estimates.num_second_best > 0)
+		{
+		  if (heap_stats_get_second_best (heap_hdr, &next_vpid) !=
+		      NO_ERROR)
+		    {
+		      /* This should not be happened. */
+		      assert (false);
+		      search_all = true;
+		    }
+		}
+	      else
+		{
+		  search_all = true;
+		}
 
-	  if (search_all == true)
-	    {
-	      assert (VPID_ISNULL (&next_vpid));
-	      next_vpid = heap_hdr->estimates.full_search_vpid;
-	    }
+	      if (search_all == true)
+		{
+		  assert (VPID_ISNULL (&next_vpid));
+		  next_vpid = heap_hdr->estimates.full_search_vpid;
+		}
 
-	  start_vpid = next_vpid;
-	  start_pos = -1;
+	      start_vpid = next_vpid;
+	      start_pos = -1;
+	    }
 	}
 
       if (can_cycle == true)
@@ -4189,7 +4199,6 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 		      VPID_SET_NULL (&best_pages_hint_p[start_pos].vpid);
 		      best_pages_hint_p[start_pos].freespace = 0;
 
-		      assert (heap_hdr->estimates.num_high_best > 0);
 		      heap_hdr->estimates.num_high_best--;
 		    }
 		  iterate_all = true;
@@ -4210,8 +4219,14 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  ret = heap_vpid_next (hfid, pgptr, &next_vpid);
 	  if (ret != NO_ERROR)
 	    {
+	      assert (false);
 	      pgbuf_unfix_and_init (thread_p, pgptr);
 	      break;
+	    }
+	  if (search_all)
+	    {
+	      /* Save the last position to be searched next time. */
+	      heap_hdr->estimates.full_search_vpid = next_vpid;
 	    }
 
 	  spage_collect_statistics (pgptr, &npages, &nrecords, &rec_length);
@@ -4252,11 +4267,6 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  && (iterate_all == true || num_high_best == HEAP_NUM_BEST_SPACESTATS
 	      || (can_cycle == false && VPID_EQ (&next_vpid, &stopat_vpid))))
 	{
-	  if (search_all)
-	    {
-	      /* Save the last position to be searched next time. */
-	      heap_hdr->estimates.full_search_vpid = next_vpid;
-	    }
 	  break;
 	}
 
