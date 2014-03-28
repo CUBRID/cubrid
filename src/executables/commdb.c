@@ -121,6 +121,9 @@ static bool commdb_Arg_deactivate_heartbeat = false;
 static bool commdb_Arg_deact_immediately = false;
 static bool commdb_Arg_activate_heartbeat = false;
 static bool commdb_Arg_verbose_output = false;
+static bool commdb_Arg_deact_stop_all = false;
+static bool commdb_Arg_deact_confirm_stop_all = false;
+static bool commdb_Arg_deact_confirm_no_server = false;
 
 /*
  * send_request_no_args() - send request without argument
@@ -814,11 +817,119 @@ process_reconfig_heartbeat (CSS_CONN_ENTRY * conn)
  *   return:  none
  *   conn(in): connection info
  */
-static void
+static int
 process_deactivate_heartbeat (CSS_CONN_ENTRY * conn)
 {
-  char *reply_buffer1 = NULL;
-  char *reply_buffer2 = NULL;
+  int error = NO_ERROR;
+  char *msg_reply_buffer = NULL;
+  char *result_reply_buffer = NULL;
+  int size = 0;
+  char *message;
+#if !defined(WINDOWS)
+  unsigned short rid;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  rid = send_request_no_args (conn, DEACTIVATE_HEARTBEAT);
+
+  return_string (conn, rid, &msg_reply_buffer, &size);
+  if (size > 0 && msg_reply_buffer[0] != '\0')
+    {
+      printf ("\n%s\n", msg_reply_buffer);
+    }
+
+  return_string (conn, rid, &result_reply_buffer, &size);
+#endif
+  if (size > 0 && strcmp (result_reply_buffer, HA_REQUEST_SUCCESS) == 0)
+    {
+      error = NO_ERROR;
+    }
+  else
+    {
+      error = ER_FAILED;
+    }
+
+  if (msg_reply_buffer != NULL)
+    {
+      free_and_init (msg_reply_buffer);
+    }
+
+  if (result_reply_buffer != NULL)
+    {
+      free_and_init (result_reply_buffer);
+    }
+  return error;
+}
+
+static int
+process_deact_confirm_no_server (CSS_CONN_ENTRY * conn)
+{
+  int error = NO_ERROR;
+  char *reply_buffer = NULL;
+  int size = 0;
+#if !defined(WINDOWS)
+  unsigned short rid;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  rid = send_request_no_args (conn, DEACT_CONFIRM_NO_SERVER);
+  return_string (conn, rid, &reply_buffer, &size);
+#endif
+
+  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
+    {
+      error = NO_ERROR;
+    }
+  else
+    {
+      error = ER_FAILED;
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+
+  return error;
+}
+
+static int
+process_deact_confirm_stop_all (CSS_CONN_ENTRY * conn)
+{
+  int error = NO_ERROR;
+  char *reply_buffer = NULL;
+  int size = 0;
+#if !defined(WINDOWS)
+  unsigned short rid;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  rid = send_request_no_args (conn, DEACT_CONFIRM_STOP_ALL);
+  return_string (conn, rid, &reply_buffer, &size);
+#endif
+
+  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
+    {
+      error = NO_ERROR;
+    }
+  else
+    {
+      error = ER_FAILED;
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+
+  return error;
+}
+
+static int
+process_deact_stop_all (CSS_CONN_ENTRY * conn)
+{
+  int error = NO_ERROR;
+  char *reply_buffer = NULL;
   int size = 0;
 #if !defined(WINDOWS)
   unsigned short rid;
@@ -826,34 +937,28 @@ process_deactivate_heartbeat (CSS_CONN_ENTRY * conn)
 
 #if !defined(WINDOWS)
   rid =
-    send_request_one_arg (conn, DEACTIVATE_HEARTBEAT,
+    send_request_one_arg (conn, DEACT_STOP_ALL,
 			  (char *) &commdb_Arg_deact_immediately,
 			  sizeof (bool));
 
-  return_string (conn, rid, &reply_buffer1, &size);
+  return_string (conn, rid, &reply_buffer, &size);
+#endif /* !WINDOWS */
 
-  if (size && reply_buffer1[0] != '\0')
+  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
     {
-      printf ("\n%s\n", reply_buffer1);
-
-      return_string (conn, rid, &reply_buffer2, &size);
-
-      if (size && reply_buffer2[0] != '\0')
-	{
-	  printf ("\n%s\n", reply_buffer2);
-	}
+      error = NO_ERROR;
+    }
+  else
+    {
+      error = ER_FAILED;
     }
 
-  if (reply_buffer1 != NULL)
+  if (reply_buffer != NULL)
     {
-      free_and_init (reply_buffer1);
+      free_and_init (reply_buffer);
     }
 
-  if (reply_buffer2 != NULL)
-    {
-      free_and_init (reply_buffer2);
-    }
-#endif
+  return error;
 }
 
 /*
@@ -981,7 +1086,22 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 
   if (commdb_Arg_deactivate_heartbeat)
     {
-      process_deactivate_heartbeat (conn);
+      return process_deactivate_heartbeat (conn);
+    }
+
+  if (commdb_Arg_deact_stop_all)
+    {
+      return process_deact_stop_all (conn);
+    }
+
+  if (commdb_Arg_deact_confirm_stop_all)
+    {
+      return process_deact_confirm_stop_all (conn);
+    }
+
+  if (commdb_Arg_deact_confirm_no_server)
+    {
+      return process_deact_confirm_no_server (conn);
     }
 
   if (commdb_Arg_activate_heartbeat)
@@ -1023,6 +1143,11 @@ main (int argc, char **argv)
     {COMMDB_ACTIVATE_HEARTBEAT_L, 0, 0, COMMDB_ACTIVATE_HEARTBEAT_S},
     {COMMDB_VERBOSE_OUTPUT_L, 0, 0, COMMDB_VERBOSE_OUTPUT_S},
     {COMMDB_HB_DEACT_IMMEDIATELY_L, 0, 0, COMMDB_HB_DEACT_IMMEDIATELY_S},
+    {COMMDB_DEACT_STOP_ALL_L, 0, 0, COMMDB_DEACT_STOP_ALL_S},
+    {COMMDB_DEACT_CONFIRM_STOP_ALL_L, 0, 0,
+     COMMDB_DEACT_CONFIRM_STOP_ALL_S},
+    {COMMDB_DEACT_CONFIRM_NO_SERVER_L, 0, 0,
+     COMMDB_DEACT_CONFIRM_NO_SERVER_S},
     {0, 0, 0, 0}
   };
 
@@ -1131,10 +1256,10 @@ main (int argc, char **argv)
 	case 'F':
 	  commdb_Arg_reconfig_heartbeat = true;
 	  break;
-	case 'U':
+	case COMMDB_DEACTIVATE_HEARTBEAT_S:
 	  commdb_Arg_deactivate_heartbeat = true;
 	  break;
-	case 'T':
+	case COMMDB_ACTIVATE_HEARTBEAT_S:
 	  commdb_Arg_activate_heartbeat = true;
 	  break;
 	case 'V':
@@ -1142,6 +1267,15 @@ main (int argc, char **argv)
 	  break;
 	case 'i':
 	  commdb_Arg_deact_immediately = true;
+	  break;
+	case COMMDB_DEACT_STOP_ALL_S:
+	  commdb_Arg_deact_stop_all = true;
+	  break;
+	case COMMDB_DEACT_CONFIRM_STOP_ALL_S:
+	  commdb_Arg_deact_confirm_stop_all = true;
+	  break;
+	case COMMDB_DEACT_CONFIRM_NO_SERVER_S:
+	  commdb_Arg_deact_confirm_no_server = true;
 	  break;
 	default:
 	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
@@ -1151,7 +1285,7 @@ main (int argc, char **argv)
 
   er_init (NULL, ER_NEVER_EXIT);
 
-  if (commdb_Arg_deact_immediately && !commdb_Arg_deactivate_heartbeat)
+  if (commdb_Arg_deact_immediately && !commdb_Arg_deact_stop_all)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
 					     MSGCAT_UTIL_SET_COMMDB,

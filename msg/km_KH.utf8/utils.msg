@@ -584,9 +584,6 @@ usage: cub_commdb [OPTION]\n\
   -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          បិទដំណើរការជាគោលដៅ​ និងផ្លាស់វាចេញពីរបៀបចូលដំណើរការដែលបានរៀបចំគ្រប់គ្រងរួច\n\
   -F, --reconfig-node-list         ដាក់ដំណើរការCUBRID heartbeat configurationដែលត្រូវបានផ្លាស់ប្តូរថ្មីៗ\n\
-  -U, --deactivate-heartbeat       យកមកប្រើក្នុងដំណើរការនូវdeactivate CUBRID heartbeat និងផ្លាស់nodeបច្ចុប្បន្នពីក្រុមnode \n\
-  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
-  -T, --activate-heartbeat         យកមកប្រើក្នុងដំណើរការនូវactivate CUBRID heartbeat feature ហើយ nodeបច្ចុប្បន្ន ក្លាយជាចំនួនក្រុម node \n\
   -V, --verbose                    បង្កើនសមត្ថភាពសារ verbose status ; default: ដែលមិនអាច\n
 28 សុំអធ្យាស្រ័យ, commandដែលមិនស្គាល់: %1$s\n
 29 មិនអាចទទួលយកឈ្មោះ host សម្រាប់local host - ទម្លាក់ចោល\n
@@ -599,7 +596,7 @@ usage: cub_commdb [OPTION]\n\
 36 មិនអាចប្រតិបត្តិ shell (%s) សម្រាប់ %s, %s
 37 ដំណើរការ fork %s, %d ត្រូវត្រឡប់, %s
 38 មិនអាចប្រតិបត្តិ %1$s
-39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
+39 -i(--immediately) option must be used with --deact-stop-all option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

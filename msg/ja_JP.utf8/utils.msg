@@ -584,9 +584,6 @@ cub_commdb: このユーティリティーは使わないでください。そ�
   -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          対象プロセスを終了して管理リストから削除\n\
   -F, --reconfig-node-list         CUBRID heartbeatノードの設定を再適用\n\
-  -U, --deactivate-heartbeat       CUBRID heartbeatを止めてノードグルプから抜く\n\
-  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
-  -T, --activate-heartbeat         CUBRID heartbeatを始める\n\
   -V, --verbose                    多様な進行情報を出力; デフォルト: 出力しない\n
 28 正しくないコマンドです。: %1$s\n
 29 ローカルホスト名が検索できません。　-　中止\n
@@ -599,7 +596,7 @@ cub_commdb: このユーティリティーは使わないでください。そ�
 36 シェル「%s」が始まりません。%s, %s 
 37 プロセスfork %s, 返還 %d, %s
 38 %1$sが実行せきません。
-39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
+39 -i(--immediately) option must be used with --deact-stop-all option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

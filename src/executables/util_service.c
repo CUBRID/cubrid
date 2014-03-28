@@ -3135,6 +3135,134 @@ ret:
   return status;
 }
 
+/*
+ * us_hb_start_shutdown_all_ha_proc - start to shutdown all HA processes for deactivation
+ *    return:
+ *
+ */
+static int
+us_hb_deact_start_shutdown_all_ha_proc (int argc, const char **argv)
+{
+  int status;
+  const char *args[] =
+    { UTIL_COMMDB_NAME, COMMDB_HA_DEACT_STOP_ALL, NULL, NULL };
+
+  if (argc >= 1 && strcmp (argv[0], "-i") == 0)
+    {
+      args[2] = argv[0];
+    }
+
+  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+
+  return status;
+}
+
+/*
+ * us_hb_confirm_shutdown_all_ha_proc - confirm that all HA processes are shutdown
+ *
+ *    return:
+ *
+ */
+static int
+us_hb_deact_confirm_shutdown_all_ha_proc (void)
+{
+  int status;
+  const char *args[] =
+    { UTIL_COMMDB_NAME, COMMDB_HA_DEACT_CONFIRM_STOP_ALL, NULL, NULL };
+
+  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+
+  return status;
+}
+
+/*
+ * us_hb_confirm_no_ha_server_running - confirm that no cub_server is running
+ *
+ *    return:
+ *
+ */
+static int
+us_hb_deact_confirm_no_ha_server_running (void)
+{
+  int status;
+  const char *args[] =
+    { UTIL_COMMDB_NAME, COMMDB_HA_DEACT_CONFIRM_NO_SERVER, NULL, NULL };
+
+  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+
+  return status;
+}
+
+/*
+ * us_hb_start_deactivation - start deactivating CUBRID heartbeat
+ *    return:
+ *
+ */
+static int
+us_hb_deact_start_deactivation (void)
+{
+  int status;
+  const char *deactivate_args[] =
+    { UTIL_COMMDB_NAME, COMMDB_HA_DEACTIVATE, NULL, NULL };
+  status =
+    proc_execute (UTIL_COMMDB_NAME, deactivate_args, true, false, false,
+		  NULL);
+
+  return status;
+}
+
+/*
+ * us_hb_deactivate - deactivate CUBRID heartbeat
+ *    return:
+ *
+ *    argc(in):
+ *    argv(in);
+ */
+static int
+us_hb_deactivate (int argc, const char **argv)
+{
+  int status = NO_ERROR;
+
+  /* stop all HA processes including cub_server */
+  status = us_hb_deact_start_shutdown_all_ha_proc (argc, argv);
+
+  if (status != NO_ERROR)
+    {
+      return status;
+    }
+
+  /* wait until all processes are shutdown */
+  while ((status = us_hb_deact_confirm_shutdown_all_ha_proc ()) != NO_ERROR)
+    {
+      if (status == EXIT_FAILURE)
+	{
+	  return status;
+	}
+
+      sleep (1);
+    }
+
+  /* start deactivation */
+  status = us_hb_deact_start_deactivation ();
+  if (status != NO_ERROR)
+    {
+      return status;
+    }
+
+  /* wait until no cub_server processes are running */
+  while ((status = us_hb_deact_confirm_no_ha_server_running ()) != NO_ERROR)
+    {
+      if (status == EXIT_FAILURE)
+	{
+	  return status;
+	}
+
+      sleep (1);
+    }
+
+  return NO_ERROR;
+}
+
 static int
 us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
 {
@@ -3398,9 +3526,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	{
 	  if (db_name == NULL)
 	    {
-	      const char *args[] =
-		{ UTIL_COMMDB_NAME, COMMDB_HA_DEACTIVATE, NULL };
-	      proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+	      (void) us_hb_deactivate (argc, argv);
 	    }
 	  else
 	    {
@@ -3445,17 +3571,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
 	    }
 	  else
 	    {
-	      const char *args[] =
-		{ UTIL_COMMDB_NAME, COMMDB_HA_DEACTIVATE, NULL, NULL };
-
-	      if (argc >= 1)
-		{
-		  args[2] = argv[0];
-		}
-
-	      status =
-		proc_execute (UTIL_COMMDB_NAME, args, true, false, false,
-			      NULL);
+	      status = us_hb_deactivate (argc, argv);
 	    }
 	}
       else

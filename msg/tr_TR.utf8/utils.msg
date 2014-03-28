@@ -584,9 +584,6 @@ geçerli seçenekler:\n\
   -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          hedef işlemi çıkmak ve yönetilen süreç girdileri kaldırmak\n\
   -F, --reconfig-node-list         yakın zamanda değişenleri CUBRID sinyal yapılandırmayı uygulamak\n\
-  -U, --deactivate-heartbeat       CUBRID sinyal özelliği devre dışı bırakmak ve düğüm grubundan geçerli düğüm kaldırmak\n\
-  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
-  -T, --activate-heartbeat         etkinleştirme CUBRID sinyal özelliği ve geçerli düğüm düğümün grubunun bir üyesi olur\n\
   -V, --verbose                    Ayrıntılı durum Mesajını sağlamak; varsayılan: Devre Dışı\n
 28 Üzgünüz, bilinmeyen komut: %1$s\n
 29 Yerel bilgisayar için ana bilgisayar adı alınamadı - durduruluyor\n
@@ -599,7 +596,7 @@ geçerli seçenekler:\n\
 36 %s kabuk çalıştırma (%s), %s yapamam
 37 süreç çatalı %s,%d,%s döndürülen
 38 %1$s yürütemez
-39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
+39 -i(--immediately) option must be used with --deact-stop-all option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

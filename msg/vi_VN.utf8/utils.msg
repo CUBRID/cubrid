@@ -584,9 +584,6 @@ các tùy chọn hợp lệ:\n\
   -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          thoát tiến trình đích và gỡ bỏ nó từ các mục tiến trình được quản lý\n\
   -F, --reconfig-node-list         áp dụng cấu hình CUBRID heartbeat vừa được thay đổi\n\
-  -U, --deactivate-heartbeat       bỏ kích hoạt tính năng CUBRID heartbeat và gỡ bỏ nút hiện tại từ nhóm nút\n\
-  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
-  -T, --activate-heartbeat         kích hoạt tính năng CUBRID heartbeat và nút hiện tại trở thành một thành viên của nhóm nút\n\
   -V, --verbose                    bật thông báo trạng thái chi tiết; mặc định: tắt\n
 28 Xin lỗi, câu lệnh không rõ: %1$s\n
 29 Không thể lấy tên máy chủ cho máy chủ cục bộ - bỏ dở\n
@@ -599,7 +596,7 @@ các tùy chọn hợp lệ:\n\
 36 không thể thực thi shell (%s) cho %s, %s
 37 xử lý fork %s, trả về %d, %s
 38 không thể thực thi %1$s
-39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
+39 -i(--immediately) option must be used with --deact-stop-all option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

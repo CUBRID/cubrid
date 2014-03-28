@@ -603,9 +603,6 @@ opţiuni valide:\n\
   -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          încheie procesul ţintă şi îl elimină din lista de procese gestionate\n\
   -F, --reconfig-node-list         aplică configuraţia recent modificată pentru CUBRID heartbeat\n\
-  -U, --deactivate-heartbeat       dezactivează CUBRID heartbeat şi elimină nodul curent din grup\n\
-  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
-  -T, --activate-heartbeat         activează CUBRID heartbeat şi nodul curent devine un membru al grupului de noduri\n\
   -V, --verbose                    activează emsaje de stare detaliate; implicit: dezactivate\n
 28 Regretăm, comandă necunoscută: %1$s\n
 29 Numele de gazdă pentru maşina locală nu a putut fi recuperat - abandon\n
@@ -618,7 +615,7 @@ opţiuni valide:\n\
 36 nu se poate executa shell-ul (%s) pentru %s, %s
 37 creare de proces (fork) %s, a întors %d, %s
 38 nu se poate executa %1$s
-39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
+39 -i(--immediately) option must be used with --deact-stop-all option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

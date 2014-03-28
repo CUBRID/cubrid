@@ -584,9 +584,6 @@ opciones validas:\n\
   -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          salir del proceso de destino y eliminarlo de las entradas de proceso patrocinadas\n\
   -F, --reconfig-node-list         aplicar la configuracion CUBRID heartbeat recien cambiada\n\
-  -U, --deactivate-heartbeat       inhabilitar caracteristica CUBRID heartbeat y eliminar el nodo actual del grupo de nodos\n\
-  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
-  -T, --activate-heartbeat         habilitar caracteristica CUBRID heartbeat y nodo actual se convierte en un miembro del grupo de nodos\n\
   -V, --verbose                    habilitar mensajes de estado verbose; estandar: inhabilitado\n
 28 Disculpe, comando desconocido: %1$s\n
 29 No se puede obtener el nombre de host para el host local - abortando\n
@@ -599,7 +596,7 @@ opciones validas:\n\
 36 no se puede ejecutar shell (%s) para %s, %s
 37 proceso fork %s, regreso %d, %s
 38 no se puede ejecutar %1$s
-39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
+39 -i(--immediately) option must be used with --deact-stop-all option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

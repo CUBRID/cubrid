@@ -584,9 +584,6 @@ gültige Optionen:\n\
   -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          Zielprozess verlassen und aus den verwalteten Prozessen entfernen \n\
   -F, --reconfig-node-list         CUBRID neulich aktualisierte Herzschlagkonfiguration übernehmen\n\
-  -U, --deactivate-heartbeat       CUBRID Herzschlag deaktivieren und das aktuelle Knoten aus der Knotengruppe entfernen \n\
-  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
-  -T, --activate-heartbeat         CUBRID Herzschlag aktivieren und das aktuelle Knoten wird Mitglied der Knotengruppe \n\
   -V, --verbose                    ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n
 28 Unbekannter Befehl: %1$s\n
 29 Konnte den Hostnamen vom lokalen Host nicht erhalten - abbgebrochen\n
@@ -599,7 +596,7 @@ gültige Optionen:\n\
 36 Die Shell (%s) für %s, %s kann nicht ausgeführt werden
 37 Prozessabspaltung %s, %d, %s zurückgegeben 
 38 %1$s kann nicht ausgeführt werden
-39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
+39 -i(--immediately) option must be used with --deact-stop-all option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

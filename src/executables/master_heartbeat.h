@@ -92,6 +92,8 @@ enum HB_RESOURCE_JOB
   HB_RJOB_CHANGE_MODE = 4,
   HB_RJOB_DEMOTE_START_SHUTDOWN = 5,
   HB_RJOB_DEMOTE_CONFIRM_SHUTDOWN = 6,
+  HB_RJOB_CLEANUP_ALL = 7,
+  HB_RJOB_CONFIRM_CLEANUP_ALL = 8,
   HB_RJOB_MAX
 };
 
@@ -351,7 +353,8 @@ extern void hb_deregister_by_pid (pid_t pid);
 extern void hb_deregister_by_args (char *args);
 
 extern void hb_reconfig_heartbeat (char **str);
-extern void hb_deactivate_heartbeat (char **str);
+extern int hb_prepare_deactivate_heartbeat (void);
+extern int hb_deactivate_heartbeat (void);
 extern int hb_activate_heartbeat (void);
 
 extern bool hb_is_registered_process (CSS_CONN_ENTRY * conn, char *args);
@@ -360,6 +363,8 @@ extern void hb_resource_receive_changemode (CSS_CONN_ENTRY * conn);
 
 extern void hb_start_deactivate_server_info (void);
 extern int hb_get_deactivating_server_count (void);
+extern bool hb_is_deactivation_started (void);
+extern bool hb_is_deactivation_ready (void);
 extern void hb_finish_deactivate_server_info (void);
 
 #endif /* _MASTER_HEARTBEAT_H_ */

@@ -118,6 +118,9 @@ enum css_client_request
   IS_REGISTERED_HA_PROC = 35,	/* HA: check registered ha process */
   DEREGISTER_HA_PROCESS_BY_ARGS = 36,	/* HA: deregister ha process by args */
   GET_HA_PING_HOST_INFO = 37,	/* HA: get ping hosts info */
+  DEACT_STOP_ALL = 38,		/* HA: prepare for deactivation */
+  DEACT_CONFIRM_STOP_ALL = 39,	/* HA: confirm preparation for deactiavtion */
+  DEACT_CONFIRM_NO_SERVER = 40,	/* HA: confirm the completion of deactivation */
 };
 
 /*

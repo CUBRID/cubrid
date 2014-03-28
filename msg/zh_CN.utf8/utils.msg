@@ -584,9 +584,6 @@ usage: cub_commdb [选项]\n\
   -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
   -D, --dereg-process=PID          退出目标进程并从被管理的进程条目中将其移除\n\
   -F, --reconfig-node-list         应用最近改变的 CUBRID heartbeat 配置\n\
-  -U, --deactivate-heartbeat       撤销 CUBRID heartbeat 特征并从节点组中移除当前节点\n\
-  -i, --immediately                Immediately kill active ones, if one of HA processes are not terminated while CUBRID heartbeat is shutting down; with -U option; default: disabled\n\
-  -T, --activate-heartbeat         激活CUBRID heartbeat 特征并将当前节点加入到节点组中\n\
   -V, --verbose                    开启详细状态信息; 默认: 不可用\n
 28 对不起，未知的命令: %1$s\n
 29 无法得到主机名或本地主机 - 终止\n
@@ -599,7 +596,7 @@ usage: cub_commdb [选项]\n\
 36 无法执行 shell (%s) 关于 %s, %s
 37 进程 fork %s, 返回 %d, %s
 38 无法执行 %1$s
-39 -i(--immediately) option must be used with -U(--deactivate-heartbeat) option.\n
+39 -i(--immediately) option must be used with --deact-stop-all option.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \

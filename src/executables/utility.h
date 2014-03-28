@@ -795,8 +795,11 @@ typedef struct _ha_config
 #define COMMDB_HA_PROC_LIST     "-L"
 #define COMMDB_HA_PING_HOST_LIST "-p"
 #define COMMDB_HA_RELOAD        "-F"
-#define COMMDB_HA_DEACTIVATE    "-U"
-#define COMMDB_HA_ACTIVATE      "-T"
+#define COMMDB_HA_DEACT_STOP_ALL          "--deact-stop-all"
+#define COMMDB_HA_DEACT_CONFIRM_STOP_ALL  "--deact-confirm-stop-all"
+#define COMMDB_HA_DEACT_CONFIRM_NO_SERVER "--deact-confirm-no-server"
+#define COMMDB_HA_DEACTIVATE              "--deactivate-heartbeat"
+#define COMMDB_HA_ACTIVATE                "--activate-heartbeat"
 
 #define ACLDB_RELOAD            "-r"
 
@@ -1237,9 +1240,15 @@ typedef struct _ha_config
 #define COMMDB_IS_REGISTERED_PROC_L             "is-registered-proc"
 #define COMMDB_RECONFIG_HEARTBEAT_S             'F'
 #define COMMDB_RECONFIG_HEARTBEAT_L             "reconfig-node-list"
-#define COMMDB_DEACTIVATE_HEARTBEAT_S           'U'
+#define COMMDB_DEACTIVATE_HEARTBEAT_S           12110
 #define COMMDB_DEACTIVATE_HEARTBEAT_L           "deactivate-heartbeat"
-#define COMMDB_ACTIVATE_HEARTBEAT_S             'T'
+#define COMMDB_DEACT_STOP_ALL_S                 12111
+#define COMMDB_DEACT_STOP_ALL_L                 "deact-stop-all"
+#define COMMDB_DEACT_CONFIRM_STOP_ALL_S         12112
+#define COMMDB_DEACT_CONFIRM_STOP_ALL_L         "deact-confirm-stop-all"
+#define COMMDB_DEACT_CONFIRM_NO_SERVER_S        12113
+#define COMMDB_DEACT_CONFIRM_NO_SERVER_L        "deact-confirm-no-server"
+#define COMMDB_ACTIVATE_HEARTBEAT_S             12114
 #define COMMDB_ACTIVATE_HEARTBEAT_L             "activate-heartbeat"
 #define COMMDB_VERBOSE_OUTPUT_S                 'V'
 #define COMMDB_VERBOSE_OUTPUT_L	                "verbose"

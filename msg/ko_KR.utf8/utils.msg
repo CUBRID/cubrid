@@ -584,9 +584,6 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' �
   -p, --ping-host                  CUBRID heartbeat를 위한 ping 호스트 정보 조회\n\
   -D, --dereg-process=PID          대상 프로세스를 종료하고 관리 대상 목록에서 제거\n\
   -F, --reconfig-node-list         CUBRID heartbeat 노드 설정 정보를 재 적용\n\
-  -U, --deactivate-heartbeat       CUBRID heartbeat 기능을 비활성화하고 노드 그룹에서 탈퇴\n\
-  -i, --immediately                비활성화 과정에서, 로컬 프로세스들이 즉시 종료되지 않으면 강제로 종료함;-U 가 지정 되야 함;기본값: 강제종료하지 않음\n\
-  -T, --activate-heartbeat         CUBRID heartbeat 기능을 활성화\n\
   -V, --verbose                    많은 상태 메시지 출력; 기본값: 출력하지 않음\n
 28 알 수 없는 명령입니다: %1$s\n
 29 호스트 이름을 찾을 수 없습니다-중지\n
@@ -599,7 +596,7 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' �
 36 쉘 (%1$s) 를 수행할 수 없습니다. %2$s, %3$s 
 37 프로세스 fork %1$s, 반환 %2$d, %3$s
 38 %1$s을(를) 수행할 수 없습니다
-39 -i(--immediately)옵션은 -U(--deactivate-heartbeat)옵션이 지정되어야합니다.\n
+39 -i(--immediately)옵션은 --deact-stop-all 옵션이 지정되어야합니다.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
