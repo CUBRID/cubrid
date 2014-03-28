@@ -5168,7 +5168,7 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p,
   /* remove XASL cache entries which are relevant with this class */
   if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
       && (qexec_remove_xasl_cache_ent_by_class (thread_p,
-						&class->class_oid, 1) !=
+						&class->class_oid) !=
 	  NO_ERROR))
     {
       er_log_debug (ARG_FILE_LINE,
@@ -10973,10 +10973,10 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log,
 
 
 /*
- * log_active_log_header_start_scan () - 
+ * log_active_log_header_start_scan () -
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   show_type(in):
  *   arg_values(in):
  *   arg_cnt(in):
@@ -11077,10 +11077,10 @@ exit_on_error:
 }
 
 /*
- * log_active_log_header_next_scan () - 
+ * log_active_log_header_next_scan () -
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   cursor(in):
  *   out_values(in):
  *   out_cnt(in):
@@ -11302,7 +11302,7 @@ exit_on_error:
  * log_active_log_header_end_scan () - free the context
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   ptr(in): context pointer
  */
 int
@@ -11317,10 +11317,10 @@ log_active_log_header_end_scan (THREAD_ENTRY * thread_p, void **ptr)
 }
 
 /*
- * log_archive_log_header_start_scan () - 
+ * log_archive_log_header_start_scan () -
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   show_type(in):
  *   arg_values(in):
  *   arg_cnt(in):
@@ -11399,10 +11399,10 @@ exit_on_error:
 }
 
 /*
- * log_archive_log_header_next_scan () - 
+ * log_archive_log_header_next_scan () -
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   cursor(in):
  *   out_values(in):
  *   out_cnt(in):
@@ -11471,7 +11471,7 @@ exit_on_error:
  * log_archive_log_header_end_scan () - free the context
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   ptr(in): context pointer
  */
 int

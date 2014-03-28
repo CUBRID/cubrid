@@ -157,9 +157,9 @@ extern int xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * copy_area,
 			   int num_ignore_error_list, int *ignore_error_list,
 			   int continue_on_error);
 extern int xlocator_force_repl_update (THREAD_ENTRY * thread_p, BTID * btid,
-                                       OID * class_oid, DB_VALUE * key_value,
-                                       LC_COPYAREA_OPERATION operation,
-                                       bool has_index, RECDES *recdes);
+				       OID * class_oid, DB_VALUE * key_value,
+				       LC_COPYAREA_OPERATION operation,
+				       bool has_index, RECDES * recdes);
 extern bool xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p,
 					      LC_COPYAREA ** synch_area);
 
@@ -356,7 +356,8 @@ extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd,
 					   CACHE_TIME * srv_cache_time,
 					   int query_timeout,
 					   XASL_CACHE_ENTRY **
-					   ret_cache_entry_p);
+					   ret_cache_entry_p,
+					   LC_LOCKHINT * lockhint);
 extern QFILE_LIST_ID *xqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd,
 						       char *xasl_stream,
 						       int xasl_stream_size,

@@ -167,7 +167,7 @@ extern "C"
   extern PARSER_VARCHAR *pt_print_node_value (PARSER_CONTEXT * parser,
 					      const PT_NODE * val);
   extern PARSER_VARCHAR *pt_print_db_value (PARSER_CONTEXT * parser,
-					   const struct db_value * val);
+					    const struct db_value *val);
 
   extern char *pt_print_query_spec_no_list (PARSER_CONTEXT * parser,
 					    const PT_NODE * node);
@@ -238,7 +238,8 @@ extern "C"
 					    int server_op);
 
   extern PT_NODE *pt_class_pre_fetch (PARSER_CONTEXT * parser,
-				      PT_NODE * statement);
+				      PT_NODE * statement,
+				      LC_LOCKHINT ** lockhint);
 
   extern PT_NODE *pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
 					   const char *trigger_stmt,

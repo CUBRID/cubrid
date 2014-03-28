@@ -7722,6 +7722,7 @@ db_free_execution_plan (void)
  *   srv_cache_time(in):
  *   query_timeout(in):
  *   end_of_queries(in):
+ *   lockhint (in):
  *
  * NOTE:
  */
@@ -7729,16 +7730,20 @@ QFILE_LIST_ID *
 qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 		    int dbval_cnt, const DB_VALUE * dbvals,
 		    QUERY_FLAG flag, CACHE_TIME * clt_cache_time,
-		    CACHE_TIME * srv_cache_time, int query_timeout)
+		    CACHE_TIME * srv_cache_time, int query_timeout,
+		    LC_LOCKHINT * lockhint)
 {
 #if defined(CS_MODE)
   QFILE_LIST_ID *list_id = NULL;
-  int req_error, senddata_size, replydata_size_listid, replydata_size_page,
+  int req_error, replydata_size_listid, replydata_size_page,
     replydata_size_plan;
-  char *request, *reply, *senddata = NULL;
+  int dbvalue_send_size = 0, lock_hint_send_size = 0;
+  int senddata_size = 0, senddata_size2 = 0;
+  char *dbvalue_data = NULL, *lockhint_data = NULL;
+  char *request, *reply, *senddata = NULL, *senddata2 = NULL;
   char *replydata_listid = NULL, *replydata_page = NULL, *replydata_plan =
     NULL, *ptr;
-  OR_ALIGNED_BUF (OR_XASL_ID_SIZE + OR_INT_SIZE * 4 +
+  OR_ALIGNED_BUF (OR_XASL_ID_SIZE + OR_INT_SIZE * 5 +
 		  OR_CACHE_TIME_SIZE) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE +
 		  OR_CACHE_TIME_SIZE) a_reply;
@@ -7749,29 +7754,65 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   /* make send data using if parameter values for host variables are given */
-  senddata_size = 0;
+  dbvalue_send_size = 0;
   for (i = 0, dbval = dbvals; i < dbval_cnt; i++, dbval++)
     {
-      senddata_size += OR_VALUE_ALIGNED_SIZE ((DB_VALUE *) dbval);
+      dbvalue_send_size += OR_VALUE_ALIGNED_SIZE ((DB_VALUE *) dbval);
     }
-  if (senddata_size != 0)
+  if (dbvalue_send_size != 0)
     {
-      senddata = (char *) malloc (senddata_size);
-      if (senddata == NULL)
+      dbvalue_data = (char *) malloc (dbvalue_send_size);
+      if (dbvalue_data == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, senddata_size);
+		  1, dbvalue_send_size);
 	  return NULL;
 	}
 
-      ptr = senddata;
+      ptr = dbvalue_data;
       for (i = 0, dbval = dbvals; i < dbval_cnt; i++, dbval++)
 	{
 	  ptr = or_pack_db_value (ptr, (DB_VALUE *) dbval);
 	}
 
-      /* change senddata_size as real packing size */
-      senddata_size = ptr - senddata;
+      /* change dbvalue_send_size as real packing size */
+      dbvalue_send_size = ptr - dbvalue_data;
+    }
+
+  if (lockhint != NULL)
+    {
+      lock_hint_send_size = locator_pack_lockhint (lockhint, true);
+      if (lock_hint_send_size == 0)
+	{
+	  size_t size = LC_LOCKHINT_PACKED_SIZE (lockhint);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
+	  if (dbvalue_data)
+	    {
+	      free_and_init (dbvalue_data);
+	    }
+
+	  return NULL;
+	}
+      lockhint_data = lockhint->packed;
+    }
+
+  if (dbvalue_send_size > 0)
+    {
+      senddata = dbvalue_data;
+      senddata_size = dbvalue_send_size;
+      if (lock_hint_send_size > 0)
+	{
+	  senddata2 = lockhint_data;
+	  senddata_size2 = lock_hint_send_size;
+	}
+    }
+  else if (lock_hint_send_size > 0)
+    {
+      senddata = lockhint_data;
+      senddata_size = lock_hint_send_size;
+      senddata2 = NULL;
+      senddata_size2 = 0;
     }
 
   /* pack XASL file id (XASL_ID), number of parameter values,
@@ -7779,7 +7820,8 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   ptr = request;
   OR_PACK_XASL_ID (ptr, xasl_id);
   ptr = or_pack_int (ptr, dbval_cnt);
-  ptr = or_pack_int (ptr, senddata_size);
+  ptr = or_pack_int (ptr, dbvalue_send_size);
+  ptr = or_pack_int (ptr, lock_hint_send_size);
   ptr = or_pack_int (ptr, flag);
   OR_PACK_CACHE_TIME (ptr, clt_cache_time);
   ptr = or_pack_int (ptr, query_timeout);
@@ -7789,8 +7831,9 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 						OR_ALIGNED_BUF_SIZE
 						(a_request), reply,
 						OR_ALIGNED_BUF_SIZE (a_reply),
-						senddata, senddata_size, NULL,
-						0,
+						senddata, senddata_size,
+						senddata2,
+						senddata_size2,
 						&replydata_listid,
 						&replydata_size_listid,
 						&replydata_page,
@@ -7800,9 +7843,9 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 
   db_set_execution_plan (replydata_plan, replydata_size_plan);
 
-  if (senddata)
+  if (dbvalue_data)
     {
-      free_and_init (senddata);
+      free_and_init (dbvalue_data);
     }
 
   if (!req_error)
@@ -7893,7 +7936,8 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   /* call the server routine of query execute */
   list_id = xqmgr_execute_query (NULL, xasl_id, query_idp, dbval_cnt,
 				 server_db_values, &flag, clt_cache_time,
-				 srv_cache_time, query_timeout, NULL);
+				 srv_cache_time, query_timeout, NULL,
+				 lockhint);
 
 cleanup:
   if (server_db_values != NULL)

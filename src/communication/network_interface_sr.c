@@ -5781,9 +5781,10 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 		  + OR_CACHE_TIME_SIZE) a_reply;
   CACHE_TIME clt_cache_time;
   CACHE_TIME srv_cache_time;
-  int query_timeout;
+  int query_timeout, lock_hint_size;
   XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
-
+  LC_LOCKHINT *lockhint = NULL;
+  char *packed_lockhint = NULL;
   int response_time = 0;
 
   TSC_TICKS start_tick, end_tick;
@@ -5826,6 +5827,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   OR_UNPACK_XASL_ID (ptr, &xasl_id);
   ptr = or_unpack_int (ptr, &dbval_cnt);
   ptr = or_unpack_int (ptr, &data_size);
+  ptr = or_unpack_int (ptr, &lock_hint_size);
   ptr = or_unpack_int (ptr, &query_flag);
   OR_UNPACK_CACHE_TIME (ptr, &clt_cache_time);
   ptr = or_unpack_int (ptr, &query_timeout);
@@ -5850,19 +5852,62 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	}
     }
 
+  if (lock_hint_size > 0)
+    {
+      csserror = css_receive_data_from_client (thread_p->conn_entry,
+					       rid, &packed_lockhint,
+					       &lock_hint_size);
+
+      if (csserror)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_NET_SERVER_DATA_RECEIVE, 0);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  if (packed_lockhint)
+	    {
+	      free_and_init (packed_lockhint);
+	    }
+	  if (data)
+	    {
+	      free_and_init (data);
+	    }
+	  return;		/* error */
+	}
+      lockhint =
+	locator_allocate_and_unpack_lockhint (packed_lockhint, lock_hint_size,
+					      true, false);
+      free_and_init (packed_lockhint);
+
+      if (lockhint == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_NET_SERVER_DATA_RECEIVE, 0);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  if (data)
+	    {
+	      free_and_init (data);
+	    }
+	  return;		/* error */
+	}
+    }
+
   CACHE_TIME_RESET (&srv_cache_time);
 
   /* call the server routine of query execute */
   list_id = xqmgr_execute_query (thread_p, &xasl_id, &query_id,
 				 dbval_cnt, data, &query_flag,
 				 &clt_cache_time, &srv_cache_time,
-				 query_timeout, &xasl_cache_entry_p);
+				 query_timeout, &xasl_cache_entry_p,
+				 lockhint);
 
   if (data)
     {
       free_and_init (data);
     }
-
+  if (lockhint)
+    {
+      locator_free_lockhint (lockhint);
+    }
   if (xasl_cache_entry_p)
     {
       info = xasl_cache_entry_p->sql_info;

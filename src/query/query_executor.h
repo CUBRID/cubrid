@@ -874,7 +874,7 @@ typedef struct xasl_qstr_ht_key XASL_QSTR_HT_KEY;
 struct xasl_qstr_ht_key
 {
   const char *query_string;
-  OID creator_oid;  /* OID of the user who created this XASL */
+  OID creator_oid;		/* OID of the user who created this XASL */
 };
 
 /* XASL cache entry type definition */
@@ -1020,8 +1020,7 @@ extern int qexec_free_filter_pred_cache_clo (THREAD_ENTRY * thread_p,
 					     XASL_CACHE_CLONE * clo);
 extern int xasl_id_hash_cmpeq (const void *key1, const void *key2);
 extern int qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p,
-						 const OID * class_oid,
-						 int force_remove);
+						 const OID * oid);
 extern int qexec_remove_filter_pred_cache_ent_by_class (THREAD_ENTRY *
 							thread_p,
 							const OID *

@@ -2815,7 +2815,7 @@ struct pt_value_info
   bool print_collation;
   bool has_cs_introducer;	/* 1 if charset introducer is used for string
 				 * node e.g. _utf8'a'; 0 otherwise. */
-  bool is_collate_allowed;	/* 1 if this is a PT_VALUE allowed to have 
+  bool is_collate_allowed;	/* 1 if this is a PT_VALUE allowed to have
 				 * the COLLATE modifier (the grammar context
 				 * in which is created allows it) */
   int coll_modifier;		/* collation modifier = collation + 1 */
@@ -3348,6 +3348,7 @@ struct parser_context
   bool query_trace;
   int num_plan_trace;
   PT_PLAN_TRACE_INFO plan_trace[MAX_NUM_PLAN_TRACE];
+  LC_LOCKHINT *lockhint;
 };
 
 /* used in assignments enumeration */

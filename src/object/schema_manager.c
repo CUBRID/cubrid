@@ -6337,7 +6337,7 @@ sm_virtual_queries (DB_OBJECT * class_object)
     {
       (void) pt_class_pre_fetch (cl->virtual_query_cache,
 				 cl->virtual_query_cache->view_cache->
-				 vquery_for_query);
+				 vquery_for_query, NULL);
       if (er_has_error ())
 	{
 	  return NULL;
@@ -12615,7 +12615,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
       names[0] = class_->header.name;
       locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS);
       subs[0] = 1;
-      if (locator_lockhint_classes (1, names, locks, subs, 1) ==
+      if (locator_lockhint_classes (1, names, locks, subs, 1, NULL) ==
 	  LC_CLASSNAME_ERROR)
 	{
 	  error = er_errid ();
@@ -12626,7 +12626,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
       names[0] = temp->name;
       locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS);
       subs[0] = 1;
-      if (locator_lockhint_classes (1, names, locks, subs, 1) ==
+      if (locator_lockhint_classes (1, names, locks, subs, 1, NULL) ==
 	  LC_CLASSNAME_ERROR)
 	{
 	  error = er_errid ();

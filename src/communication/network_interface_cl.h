@@ -312,7 +312,8 @@ extern QFILE_LIST_ID *qmgr_execute_query (const XASL_ID * xasl_id,
 					  QUERY_FLAG flag,
 					  CACHE_TIME * clt_cache_time,
 					  CACHE_TIME * srv_cache_time,
-					  int query_timeout);
+					  int query_timeout,
+					  LC_LOCKHINT * lockhint);
 extern QFILE_LIST_ID *qmgr_prepare_and_execute_query (char *xasl_stream,
 						      int xasl_stream_size,
 						      QUERY_ID * query_id,
