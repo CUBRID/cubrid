@@ -5407,7 +5407,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
     }
   assert (!LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  if (thread_Log_flush_thread.is_valid == false)
+  if (thread_Log_flush_thread.is_available == false)
     {
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);

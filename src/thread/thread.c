@@ -123,7 +123,7 @@ DAEMON_THREAD_MONITOR
   thread_Log_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR
   thread_Check_ha_delay_info_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-DAEMON_THREAD_MONITOR
+static DAEMON_THREAD_MONITOR
   thread_Auto_volume_expansion_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR
   thread_Log_clock_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
@@ -132,6 +132,12 @@ static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
 static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
 
 static THREAD_ENTRY *thread_find_entry_by_tran_index (int tran_index);
+
+static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
+static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR *
+					 daemon_monitor);
+static int thread_compare_shutdown_sequence_of_daemon (const void *p1,
+						       const void *p2);
 
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_deadlock_detect_thread (void *);
@@ -154,32 +160,41 @@ thread_auto_volume_expansion_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_log_clock_thread (void *);
 
-static DAEMON_THREAD_MONITOR *thread_Deamons[] = {
-  &thread_Log_clock_thread,
-  &thread_Deadlock_detect_thread,
-  &thread_Checkpoint_thread,
-  &thread_Purge_archive_logs_thread,
-  &thread_Oob_thread,
-  &thread_Page_flush_thread,
-  &thread_Flush_control_thread,
-  &thread_Session_control_thread,
-  &thread_Log_flush_thread,
-  &thread_Check_ha_delay_info_thread,
-  &thread_Auto_volume_expansion_thread
+typedef struct thread_daemon THREAD_DAEMON;
+struct thread_daemon
+{
+  DAEMON_THREAD_MONITOR *daemon_monitor;
+  int shutdown_sequence;
+  void *daemon_function;
 };
 
-static void *thread_Deamon_functions[] = {
-  (void *) thread_log_clock_thread,
-  (void *) thread_deadlock_detect_thread,
-  (void *) thread_checkpoint_thread,
-  (void *) thread_purge_archive_logs_thread,
-  (void *) css_oob_handler_thread,
-  (void *) thread_page_flush_thread,
-  (void *) thread_flush_control_thread,
-  (void *) thread_session_control_thread,
-  (void *) thread_log_flush_thread,
-  (void *) thread_check_ha_delay_info_thread,
-  (void *) thread_auto_volume_expansion_thread
+static THREAD_DAEMON thread_Daemons[] = {
+  {&thread_Oob_thread, 1,
+   (void *) css_oob_handler_thread},
+  {&thread_Deadlock_detect_thread, 2,
+   (void *) thread_deadlock_detect_thread},
+  {&thread_Purge_archive_logs_thread, 3,
+   (void *) thread_purge_archive_logs_thread},
+  {&thread_Checkpoint_thread, 4,
+   (void *) thread_purge_archive_logs_thread},
+  {&thread_Session_control_thread, 5,
+   (void *) thread_session_control_thread},
+  {&thread_Check_ha_delay_info_thread, 6,
+   (void *) thread_check_ha_delay_info_thread},
+  {&thread_Auto_volume_expansion_thread, 7,
+   (void *) thread_auto_volume_expansion_thread},
+  {&thread_Log_clock_thread, 8,
+   (void *) thread_log_clock_thread},
+
+
+  /* the following threads must be shutdown at the last iterations */
+
+  {&thread_Page_flush_thread, INT_MAX - 2,
+   (void *) thread_page_flush_thread},
+  {&thread_Flush_control_thread, INT_MAX - 1,
+   (void *) thread_flush_control_thread},
+  {&thread_Log_flush_thread, INT_MAX,
+   (void *) thread_log_flush_thread}
 };
 
 static int css_initialize_sync_object (void);
@@ -375,7 +390,7 @@ thread_initialize_manager (void)
     }
 
   thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS * 2;
-  thread_Manager.num_daemons = DIM (thread_Deamons);
+  thread_Manager.num_daemons = DIM (thread_Daemons);
   thread_Manager.num_total = (thread_Manager.num_workers
 			      + thread_Manager.num_daemons +
 			      NUM_SYSTEM_TRANS);
@@ -529,7 +544,7 @@ thread_start_workers (void)
 
   for (i = 0; thread_index < thread_Manager.num_total; thread_index++, i++)
     {
-      thread_Deamons[i]->thread_index = thread_index;
+      thread_Daemons[i].daemon_monitor->thread_index = thread_index;
       thread_p = &thread_Manager.thread_array[thread_index];
 
       r = pthread_mutex_lock (&thread_p->th_entry_lock);
@@ -542,7 +557,7 @@ thread_start_workers (void)
 
       /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
       r = pthread_create (&thread_p->tid, &thread_attr,
-			  thread_Deamon_functions[i], thread_p);
+			  thread_Daemons[i].daemon_function, thread_p);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -691,63 +706,84 @@ loop:
 }
 
 /*
+ * thread_wakeup_daemon_thread() -
+ *
+ */
+static void
+thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor)
+{
+  int rv;
+
+  rv = pthread_mutex_lock (&daemon_monitor->lock);
+  pthread_cond_signal (&daemon_monitor->cond);
+  pthread_mutex_unlock (&daemon_monitor->lock);
+}
+
+/*
+ * thread_stop_daemon() -
+ *
+ */
+static void
+thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor)
+{
+  THREAD_ENTRY *thread_p;
+  bool repeat_loop = true;
+
+  thread_p = &thread_Manager.thread_array[daemon_monitor->thread_index];
+  thread_p->shutdown = true;
+
+  while (thread_p->status != TS_DEAD)
+    {
+      thread_wakeup_daemon_thread (daemon_monitor);
+
+      if (css_is_shutdown_timeout_expired ())
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"thread_stop_daemon(%d): _exit(0)\n",
+			daemon_monitor->thread_index);
+	  /* exit process after some tries */
+	  _exit (0);
+	}
+      thread_sleep (10);	/* 10 msec */
+    }
+}
+
+/*
+ * thread_compare_shutdown_sequence_of_daemon () -
+ *   return: p1 - p2
+ *   p1(in): daemon thread 1
+ *   p2(in): daemon thread 2
+ */
+static int
+thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2)
+{
+  THREAD_DAEMON *daemon1, *daemon2;
+
+  daemon1 = (THREAD_DAEMON *) p1;
+  daemon2 = (THREAD_DAEMON *) p2;
+
+  return daemon1->shutdown_sequence - daemon2->shutdown_sequence;
+}
+
+/*
  * thread_stop_active_daemons() - Stop deadlock detector/checkpoint threads
- *   return: 0 if no error, or error code
+ *   return: NO_ERROR
  */
 int
 thread_stop_active_daemons (void)
 {
   int i;
-  bool repeat_loop;
-  int idx;
-  THREAD_ENTRY *thread_p;
 
-  assert (thread_Manager.initialized == true);
-
-  for (i = 0; i < thread_Manager.num_daemons; i++)
-    {
-      idx = thread_Manager.num_workers + i + 1;	/* 1 for master thread */
-      thread_p = &thread_Manager.thread_array[idx];
-      thread_p->shutdown = true;
-    }
-
-  thread_wakeup_deadlock_detect_thread ();
-  thread_wakeup_checkpoint_thread ();
-  thread_wakeup_purge_archive_logs_thread ();
+  /* stop oob thread */
   thread_wakeup_oob_handler_thread ();
-  thread_wakeup_page_flush_thread ();
-  thread_wakeup_flush_control_thread ();
-  thread_wakeup_log_flush_thread ();
-  thread_wakeup_session_control_thread ();
-  thread_wakeup_auto_volume_expansion_thread ();
-  thread_wakeup_check_ha_delay_info_thread ();
 
-loop:
-  repeat_loop = false;
   for (i = 0; i < thread_Manager.num_daemons; i++)
     {
-      idx = thread_Manager.num_workers + i + 1;	/* 1 for master thread */
-      thread_p = &thread_Manager.thread_array[idx];
-      if (thread_p->status != TS_DEAD)
-	{
-	  repeat_loop = true;
-	}
-    }
+      assert ((i == 0)
+	      || (thread_Daemons[i - 1].shutdown_sequence
+		  < thread_Daemons[i].shutdown_sequence));
 
-  if (repeat_loop)
-    {
-      if (css_is_shutdown_timeout_expired ())
-	{
-#if CUBRID_DEBUG
-	  xlogtb_dump_trantable (NULL, stderr);
-#endif
-	  er_log_debug (ARG_FILE_LINE,
-			"thread_stop_active_daemons: _exit(0)\n");
-	  /* exit process after some tries */
-	  _exit (0);
-	}
-      thread_sleep (1000);	/* 1000 msec */
-      goto loop;
+      thread_stop_daemon (thread_Daemons[i].daemon_monitor);
     }
 
   return NO_ERROR;
@@ -2198,7 +2234,7 @@ thread_worker (void *arg_p)
 }
 
 /* Special Purpose Threads
-   deadlock detector, check point deamon */
+   deadlock detector, check point daemon */
 
 #if defined(WINDOWS)
 /*
@@ -2212,16 +2248,17 @@ css_initialize_sync_object (void)
 
   r = NO_ERROR;
 
-  for (i = 0; i < DIM (thread_Deamons); i++)
+  assert (thread_Manager.num_daemons == DIM (thread_Daemons));
+  for (i = 0; i < thread_Manager.num_daemons; i++)
     {
-      r = pthread_cond_init (&thread_Deamons[i]->cond, NULL);
+      r = pthread_cond_init (&thread_Daemons[i].daemon_monitor->cond, NULL);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_CSS_PTHREAD_COND_INIT, 0);
 	  return ER_CSS_PTHREAD_COND_INIT;
 	}
-      r = pthread_mutex_init (&thread_Deamons[i]->lock, NULL);
+      r = pthread_mutex_init (&thread_Daemons[i].daemon_monitor->lock, NULL);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2259,7 +2296,7 @@ thread_deadlock_detect_thread (void *arg_p)
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
-  thread_Deadlock_detect_thread.is_valid = true;
+  thread_Deadlock_detect_thread.is_available = true;
   thread_Deadlock_detect_thread.is_running = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
@@ -2322,7 +2359,7 @@ thread_deadlock_detect_thread (void *arg_p)
 
   rv = pthread_mutex_lock (&thread_Deadlock_detect_thread.lock);
   thread_Deadlock_detect_thread.is_running = false;
-  thread_Deadlock_detect_thread.is_valid = false;
+  thread_Deadlock_detect_thread.is_available = false;
   pthread_mutex_unlock (&thread_Deadlock_detect_thread.lock);
 
   er_final (false);
@@ -2369,7 +2406,7 @@ thread_session_control_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  thread_Session_control_thread.is_valid = true;
+  thread_Session_control_thread.is_available = true;
   thread_Session_control_thread.is_running = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
@@ -2394,7 +2431,7 @@ thread_session_control_thread (void *arg_p)
       session_remove_expired_sessions (&timeout);
     }
   rv = pthread_mutex_lock (&thread_Session_control_thread.lock);
-  thread_Session_control_thread.is_valid = false;
+  thread_Session_control_thread.is_available = false;
   thread_Session_control_thread.is_running = false;
   pthread_mutex_unlock (&thread_Session_control_thread.lock);
 
@@ -2404,6 +2441,7 @@ thread_session_control_thread (void *arg_p)
   return (THREAD_RET_T) 0;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * thread_wakeup_session_control_thread() -
  *   return:
@@ -2415,6 +2453,7 @@ thread_wakeup_session_control_thread (void)
   pthread_cond_signal (&thread_Session_control_thread.cond);
   pthread_mutex_unlock (&thread_Session_control_thread.lock);
 }
+#endif
 
 /*
  * css_checkpoint_thread() -
@@ -2442,7 +2481,7 @@ thread_checkpoint_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  thread_Checkpoint_thread.is_valid = true;
+  thread_Checkpoint_thread.is_available = true;
   thread_Checkpoint_thread.is_running = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
@@ -2469,7 +2508,7 @@ thread_checkpoint_thread (void *arg_p)
     }
 
   rv = pthread_mutex_lock (&thread_Checkpoint_thread.lock);
-  thread_Checkpoint_thread.is_valid = false;
+  thread_Checkpoint_thread.is_available = false;
   thread_Checkpoint_thread.is_running = false;
   pthread_mutex_unlock (&thread_Checkpoint_thread.lock);
 
@@ -2520,7 +2559,7 @@ thread_purge_archive_logs_thread (void *arg_p)
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
-  thread_Purge_archive_logs_thread.is_valid = true;
+  thread_Purge_archive_logs_thread.is_available = true;
   thread_Purge_archive_logs_thread.is_running = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
@@ -2590,7 +2629,7 @@ thread_purge_archive_logs_thread (void *arg_p)
 
     }
   rv = pthread_mutex_lock (&thread_Purge_archive_logs_thread.lock);
-  thread_Purge_archive_logs_thread.is_valid = false;
+  thread_Purge_archive_logs_thread.is_available = false;
   thread_Purge_archive_logs_thread.is_running = false;
   pthread_mutex_unlock (&thread_Purge_archive_logs_thread.lock);
 
@@ -2670,7 +2709,7 @@ thread_check_ha_delay_info_thread (void *arg_p)
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
   thread_Check_ha_delay_info_thread.is_running = true;
-  thread_Check_ha_delay_info_thread.is_valid = true;
+  thread_Check_ha_delay_info_thread.is_available = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
@@ -2790,7 +2829,7 @@ thread_check_ha_delay_info_thread (void *arg_p)
 
   rv = pthread_mutex_lock (&thread_Check_ha_delay_info_thread.lock);
   thread_Check_ha_delay_info_thread.is_running = false;
-  thread_Check_ha_delay_info_thread.is_valid = false;
+  thread_Check_ha_delay_info_thread.is_available = false;
   pthread_mutex_unlock (&thread_Check_ha_delay_info_thread.lock);
 
   er_final (false);
@@ -2832,7 +2871,7 @@ thread_page_flush_thread (void *arg_p)
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
   thread_Page_flush_thread.is_running = true;
-  thread_Page_flush_thread.is_valid = true;
+  thread_Page_flush_thread.is_available = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
@@ -2892,7 +2931,7 @@ thread_page_flush_thread (void *arg_p)
 
   rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
   thread_Page_flush_thread.is_running = false;
-  thread_Page_flush_thread.is_valid = false;
+  thread_Page_flush_thread.is_available = false;
   pthread_mutex_unlock (&thread_Page_flush_thread.lock);
 
   er_final (false);
@@ -2918,6 +2957,23 @@ thread_wakeup_page_flush_thread (void)
       pthread_cond_signal (&thread_Page_flush_thread.cond);
     }
   pthread_mutex_unlock (&thread_Page_flush_thread.lock);
+}
+
+/*
+ * thread_is_page_flush_thread_available() -
+ *   return:
+ */
+bool
+thread_is_page_flush_thread_available (void)
+{
+  int rv;
+  bool is_available;
+
+  rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
+  is_available = thread_Page_flush_thread.is_available;
+  pthread_mutex_unlock (&thread_Page_flush_thread.lock);
+
+  return is_available;
 }
 
 static THREAD_RET_T THREAD_CALLING_CONVENTION
@@ -2955,7 +3011,7 @@ thread_flush_control_thread (void *arg_p)
   tsd_ptr->type = TT_DAEMON;	/* daemon thread */
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
-  thread_Flush_control_thread.is_valid = true;
+  thread_Flush_control_thread.is_available = true;
   thread_Flush_control_thread.is_running = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
@@ -3009,7 +3065,7 @@ thread_flush_control_thread (void *arg_p)
 					      &token_consumed);
     }
   rv = pthread_mutex_lock (&thread_Flush_control_thread.lock);
-  thread_Flush_control_thread.is_valid = false;
+  thread_Flush_control_thread.is_available = false;
   thread_Flush_control_thread.is_running = false;
   pthread_mutex_unlock (&thread_Flush_control_thread.lock);
 
@@ -3071,7 +3127,7 @@ thread_log_flush_thread (void *arg_p)
   tsd_ptr->type = TT_DAEMON;	/* daemon thread */
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
-  thread_Log_flush_thread.is_valid = true;
+  thread_Log_flush_thread.is_available = true;
   thread_Log_flush_thread.is_running = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
@@ -3150,7 +3206,7 @@ thread_log_flush_thread (void *arg_p)
     }
 
   rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
-  thread_Log_flush_thread.is_valid = false;
+  thread_Log_flush_thread.is_available = false;
   thread_Log_flush_thread.is_running = false;
   pthread_mutex_unlock (&thread_Log_flush_thread.lock);
 
@@ -3222,7 +3278,7 @@ thread_log_clock_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  thread_Log_clock_thread.is_valid = true;
+  thread_Log_clock_thread.is_available = true;
   thread_Log_clock_thread.is_running = true;
 
   while (!tsd_ptr->shutdown)
@@ -3270,7 +3326,7 @@ thread_log_clock_thread (void *arg_p)
 #endif /* HAVE_ATOMIC_BUILTINS */
     }
 
-  thread_Log_clock_thread.is_valid = false;
+  thread_Log_clock_thread.is_available = false;
   thread_Log_clock_thread.is_running = false;
 
   er_final (false);
@@ -3302,7 +3358,7 @@ thread_auto_volume_expansion_thread (void *arg_p)
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
-  thread_Auto_volume_expansion_thread.is_valid = true;
+  thread_Auto_volume_expansion_thread.is_available = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
@@ -3379,7 +3435,7 @@ thread_auto_volume_expansion_thread (void *arg_p)
   (void) pthread_cond_destroy (&boot_Auto_addvol_job.cond);
 
   er_final (false);
-  thread_Auto_volume_expansion_thread.is_valid = false;
+  thread_Auto_volume_expansion_thread.is_available = false;
   tsd_ptr->status = TS_DEAD;
 
   return (THREAD_RET_T) 0;
@@ -3419,6 +3475,7 @@ thread_wakeup_auto_volume_expansion_thread (void)
   pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * thread_wakeup_check_ha_delay_info_thread() -
  *   return:
@@ -3435,6 +3492,7 @@ thread_wakeup_check_ha_delay_info_thread (void)
     }
   pthread_mutex_unlock (&thread_Check_ha_delay_info_thread.lock);
 }
+#endif
 
 /*
  * thread_slam_tran_index() -

@@ -2531,12 +2531,14 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   er_log_debug (ARG_FILE_LINE, "start flush victim candidates\n");
 
 #if !defined(NDEBUG) && defined(SERVER_MODE)
-  if (!log_is_in_crash_recovery ())
+  if (thread_is_page_flush_thread_available ())
     {
       if (page_flush_thread == NULL)
 	{
 	  page_flush_thread = thread_p;
 	}
+
+      /* This should be fixed */
       assert (page_flush_thread == thread_p);
     }
 #endif
@@ -6134,7 +6136,9 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	}
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	      ER_PB_ALL_BUFFERS_DIRTY, 1, -1);
+	      ER_PB_ALL_BUFFERS_DIRTY, 1, check_count);
+
+      check_count = PGBUF_LRU_SIZE - PGBUF_LRU_1_ZONE_THRESHOLD;
     }
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_ALL_BUFFERS_FIXED, 1, -1);
@@ -6636,7 +6640,7 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
       return NULL;
     }
 
-  /* maximum amount to check in AIN is same as maximum amout to check in 
+  /* maximum amount to check in AIN is same as maximum amout to check in
    * all LRU lists, but limited to half of target size of AIN list */
   check_count_max = max_count * pgbuf_Pool.num_LRU_list;
   check_count_max = MIN (check_count_max, ain_list->max_count / 2);
@@ -8594,19 +8598,14 @@ static void
 pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
 {
 #if defined(SERVER_MODE)
-  if (!log_is_in_crash_recovery ())
+  if (thread_is_page_flush_thread_available ())
     {
       thread_wakeup_page_flush_thread ();
+      return;
     }
-  else
-    {
-      pgbuf_flush_victim_candidate (thread_p,
-				    prm_get_float_value
-				    (PRM_ID_PB_BUFFER_FLUSH_RATIO));
-    }
-#else
+#endif
+
   pgbuf_flush_victim_candidate (thread_p,
 				prm_get_float_value
 				(PRM_ID_PB_BUFFER_FLUSH_RATIO));
-#endif /* SERVER_MODE */
 }

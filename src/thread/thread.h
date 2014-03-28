@@ -275,7 +275,7 @@ typedef struct daemon_thread_monitor DAEMON_THREAD_MONITOR;
 struct daemon_thread_monitor
 {
   int thread_index;
-  bool is_valid;
+  bool is_available;
   bool is_running;
   int nrequestors;
   pthread_mutex_t lock;
@@ -290,7 +290,6 @@ typedef void *CSS_THREAD_ARG;
 typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
 extern DAEMON_THREAD_MONITOR thread_Log_flush_thread;
-extern DAEMON_THREAD_MONITOR thread_Auto_volume_expansion_thread;
 
 #if !defined(HPUX)
 extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
@@ -361,6 +360,8 @@ extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p,
 					   int tran_index);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void thread_set_tran_index (THREAD_ENTRY * thread_p, int tran_index);
+extern void thread_wakeup_session_control_thread (void);
+extern void thread_wakeup_check_ha_delay_info_thread (void);
 #endif
 extern struct css_conn_entry *thread_get_current_conn_entry (void);
 extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index,
@@ -375,9 +376,9 @@ extern void thread_wakeup_flush_control_thread (void);
 extern void thread_wakeup_checkpoint_thread (void);
 extern void thread_wakeup_purge_archive_logs_thread (void);
 extern void thread_wakeup_oob_handler_thread (void);
-extern void thread_wakeup_session_control_thread (void);
 extern void thread_wakeup_auto_volume_expansion_thread (void);
-extern void thread_wakeup_check_ha_delay_info_thread (void);
+
+extern bool thread_is_page_flush_thread_available (void);
 
 extern bool thread_auto_volume_expansion_thread_is_running (void);
 
