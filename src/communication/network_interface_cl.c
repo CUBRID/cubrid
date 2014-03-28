@@ -4441,7 +4441,8 @@ boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
  * NOTE:
  */
 int
-boot_check_db_consistency (int check_flag, OID * oids, int num_oids)
+boot_check_db_consistency (int check_flag, OID * oids, int num_oids,
+			   BTID * index_btid)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
@@ -4455,7 +4456,11 @@ boot_check_db_consistency (int check_flag, OID * oids, int num_oids)
   size_t request_size;
   int i;
 
-  request_size = (sizeof (int) * 2) + (sizeof (OID) * num_oids);
+  request_size = OR_INT_SIZE;	/* check_flag */
+  request_size += OR_INT_SIZE;	/* num_oid */
+  request_size += (OR_OID_SIZE * num_oids);
+  request_size += OR_BTID_SIZE;
+
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -4467,6 +4472,7 @@ boot_check_db_consistency (int check_flag, OID * oids, int num_oids)
     {
       ptr = or_pack_oid (ptr, &oids[i]);
     }
+  ptr = or_pack_btid (ptr, index_btid);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
   req_error =
@@ -4489,7 +4495,8 @@ boot_check_db_consistency (int check_flag, OID * oids, int num_oids)
 
   ENTER_SERVER ();
 
-  success = xboot_check_db_consistency (NULL, check_flag, oids, num_oids);
+  success =
+    xboot_check_db_consistency (NULL, check_flag, oids, num_oids, index_btid);
 
   EXIT_SERVER ();
 

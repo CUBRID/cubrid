@@ -3925,10 +3925,11 @@ sboot_check_db_consistency (THREAD_ENTRY * thread_p, unsigned int rid,
   int check_flag;
   int num = 0, i;
   OID *oids = NULL;
+  BTID index_btid;
 
   if (request == NULL)
     {
-      check_flag = CHECKDB_ALL_CHECK;
+      check_flag = CHECKDB_ALL_CHECK_EXCEPT_PREV_LINK;
     }
   else
     {
@@ -3944,9 +3945,11 @@ sboot_check_db_consistency (THREAD_ENTRY * thread_p, unsigned int rid,
 	{
 	  ptr = or_unpack_oid (ptr, &oids[i]);
 	}
+      ptr = or_unpack_btid (ptr, &index_btid);
     }
 
-  success = xboot_check_db_consistency (thread_p, check_flag, oids, num);
+  success =
+    xboot_check_db_consistency (thread_p, check_flag, oids, num, &index_btid);
   success = success == NO_ERROR ? NO_ERROR : ER_FAILED;
   free_and_init (oids);
 

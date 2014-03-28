@@ -632,6 +632,7 @@ các tùy chọn hợp lệ:\n\
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 Một vài sự không đồng nhất được phát hiện trong cơ sở dữ liệu của bạn.\n Xin vui lòng tham khảo error_log_file %1$s để biết thêm thông tin.\n
 21 %1$s: Không thể tìm thấy lớp. Nó sẽ bị bỏ qua.\n
+22 %1$s: Cannot find the index on class %2$s.\n
 60 \
 checkdb: Kiểm tra tính đồng nhất của cơ sở dữ liệu.\n\
 cách sử dụng: %1$s checkdb [TÙY CHỌN] tên-cơ sở dữ liệu [class_name1 class_name2 ...]\n\
@@ -642,8 +643,16 @@ các tùy chọn hợp lệ:\n\
   -r, --repair                 sửa chữa khi tìm thấy sự không đồng nhất\n\
   -i, --input-class-file=FILE  tệp tin đầu vào của tên lớp\n\
                                mặc định: kiểm tra tất cả các lớp\n\
+  -I, --index-name             index name that will be checked only\n\
+                               default: check all indices\n\
       --check-prev-link        check only previous links of indices\n\
-      --repair-prev-link       repair previous links of indices\n
+      --repair-prev-link       repair previous links of indices\n\
+      --check-file-tracker     check all allocated pages of file\n\
+      --check-heap             check all pages of heap files\n\
+      --check-catalog          check catalog consistency\n\
+      --check-btree            check all btree indices\n\
+      --check-class-name       check class name consistency\n\
+      --check-btree-entries    check entries of btree consistency\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB

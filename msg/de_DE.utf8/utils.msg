@@ -632,6 +632,7 @@ gültige Optionen:\n\
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 Einige Widersprüche wurden in der Datenbank festgestellt.\n Bitte error_log_file %1$s für zusätzliche Informationen einsehen.\n
 21 %1$s: Klasse konnte nicht gefunden werden. Es wird weggelassen werden.\n
+22 %1$s: Cannot find the index on class %2$s.\n
 60 \
 checkdb: Konsistenz der Datenbank prüfen.\n\
 Anwendung: %1$s checkdb [OPTION] Datenbanknamen [Klassenname1 Klassenname 2 ...]\n\
@@ -642,8 +643,16 @@ gültige Optionen:\n\
   -r, --repair                 Inkonsistenzen reparieren, wenn gefunden\n\
   -i, --input-class-file=DATEI  Eingangsdatei mit Klassennamen \n\
                                Standard: alle Klassen prüfen\n\
+  -I, --index-name             index name that will be checked only\n\
+                               default: check all indices\n\
       --check-prev-link        check only previous links of indices\n\
-      --repair-prev-link       repair previous links of indices\n
+      --repair-prev-link       repair previous links of indices\n\
+      --check-file-tracker     check all allocated pages of file\n\
+      --check-heap             check all pages of heap files\n\
+      --check-catalog          check catalog consistency\n\
+      --check-btree            check all btree indices\n\
+      --check-class-name       check class name consistency\n\
+      --check-btree-entries    check entries of btree consistency\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB

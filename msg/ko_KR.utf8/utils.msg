@@ -632,6 +632,7 @@ addvoldb: 데이터베이스 볼륨 파일을 추가\n\
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 데이터베이스에서 비일관성이 발견되었습니다.\n추가적인 정보는 error_log_file %1$s 을(를) 참고 하십시오\n
 21 %1$s: 클래스를 찾을 수 없어 무시합니다.\n
+22 %1$s: Cannot find the index on class %2$s.\n
 60 \
 checkdb: 데이터베이스 일관성 검사.\n\
 사용법: %1$s checkdb [옵션] <데이터베이스 이름> [class_name1 class_name2 ...]\n\
@@ -642,8 +643,16 @@ checkdb: 데이터베이스 일관성 검사.\n\
   -r, --repair                 비 일관성 발견 시 복구\n\
   -i, --input-class-file=FILE  클래스 이름이 나열된 입력 파일 명시\n\
                                기본값: 모든 클래스를 검사\n\
+  -I, --index-name             index name that will be checked only\n\
+                               default: check all indices\n\
       --check-prev-link        인덱스 링크의 오류를 검사\n\
-      --repair-prev-link       인덱스 링크가 잘못된 경우 복구 수행\n
+      --repair-prev-link       인덱스 링크가 잘못된 경우 복구 수행\n\
+      --check-file-tracker     check all allocated pages of file\n\
+      --check-heap             check all pages of heap files\n\
+      --check-catalog          check catalog consistency\n\
+      --check-btree            check all btree indices\n\
+      --check-class-name       check class name consistency\n\
+      --check-btree-entries    check entries of btree consistency\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB

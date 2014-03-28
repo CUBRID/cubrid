@@ -706,6 +706,7 @@ static DISK_ISVALID btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p,
 						    char *index_name);
 static DISK_ISVALID btree_repair_prev_link_by_class_oid (THREAD_ENTRY *
 							 thread_p, OID * oid,
+							 BTID * idx_btid,
 							 bool repair);
 static bool btree_check_compress (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				  PAGE_PTR page_ptr);
@@ -5266,7 +5267,8 @@ exit_on_end:
  *
  */
 DISK_ISVALID
-btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid)
+btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
+			  BTID * idx_btid)
 {
   OR_CLASSREP *cls_repr;
   OR_INDEX *curr;
@@ -5290,6 +5292,11 @@ btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
 	  rv = DISK_ERROR;
 	  break;
+	}
+
+      if (idx_btid != NULL && !BTID_IS_EQUAL (&curr->btid, idx_btid))
+	{
+	  continue;
 	}
 
       BTID_COPY (&btid, &curr->btid);
@@ -5499,7 +5506,7 @@ exit_repair:
  */
 static DISK_ISVALID
 btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid,
-				     bool repair)
+				     BTID * index_btid, bool repair)
 {
   OR_CLASSREP *cls_repr;
   OR_INDEX *curr;
@@ -5518,6 +5525,11 @@ btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid,
   for (i = 0, curr = cls_repr->indexes;
        i < cls_repr->n_indexes && curr && valid == DISK_VALID; i++, curr++)
     {
+      if (index_btid != NULL && !BTID_IS_EQUAL (&curr->btid, index_btid))
+	{
+	  continue;
+	}
+
       heap_get_indexinfo_of_btid (thread_p, oid, &curr->btid, NULL, NULL,
 				  NULL, NULL, &index_name, NULL);
       valid =
@@ -5540,11 +5552,13 @@ btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid,
 /*
  * btree_repair_prev_link () -
  *   oid(in) :
+ *   index_btid(in) :
  *   repair(in) :
  *   return:
  */
 DISK_ISVALID
-btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, bool repair)
+btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid,
+			bool repair)
 {
   int num_files;
   BTID btid;
@@ -5557,7 +5571,8 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, bool repair)
 
   if (oid != NULL && !OID_ISNULL (oid))
     {
-      return btree_repair_prev_link_by_class_oid (thread_p, oid, repair);
+      return btree_repair_prev_link_by_class_oid (thread_p, oid, index_btid,
+						  repair);
     }
 
   /* Find number of files */

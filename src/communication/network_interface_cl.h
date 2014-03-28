@@ -223,7 +223,7 @@ extern int boot_backup (const char *backup_path,
 			int sleep_msecs);
 extern VOLID boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info);
 extern int boot_check_db_consistency (int check_flag, OID * oids,
-				      int num_oids);
+				      int num_oids, BTID * idx_btid);
 extern int boot_find_number_permanent_volumes (void);
 extern int boot_find_number_temp_volumes (void);
 extern int boot_find_last_temp (void);

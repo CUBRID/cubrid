@@ -112,9 +112,11 @@ extern int locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid,
 					REPR_ID * new_reprid);
 extern DISK_ISVALID locator_check_class (THREAD_ENTRY * thtread_p,
 					 OID * class_oid, RECDES * peek,
-					 HFID * class_hfid, bool repair);
+					 HFID * class_hfid,
+					 BTID * index_btid, bool repair);
 extern DISK_ISVALID locator_check_by_class_oid (THREAD_ENTRY * thread_p,
 						OID * cls_oid, HFID * hfid,
+						BTID * index_btid,
 						bool repair);
 extern DISK_ISVALID locator_check_all_entries_of_all_btrees (THREAD_ENTRY *
 							     thread_p,
@@ -129,9 +131,8 @@ extern DISK_ISVALID locator_check_btree_entries (THREAD_ENTRY * thread_p,
 						 bool repair);
 extern int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid,
 				 OID * oid, BTID * search_btid,
-				 bool duplicate_key_locked,
-				 int has_index, int op_type,
-				 HEAP_SCANCACHE * scan_cache,
+				 bool duplicate_key_locked, int has_index,
+				 int op_type, HEAP_SCANCACHE * scan_cache,
 				 int *force_count);
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p,
 					RECDES * recdes, OID * inst_oid,
@@ -139,15 +140,14 @@ extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p,
 					bool duplicate_key_locked,
 					int is_insert, int op_type,
 					HEAP_SCANCACHE * scan_cache,
-					bool datayn, bool replyn,
-					HFID * hfid,
+					bool datayn, bool replyn, HFID * hfid,
 					FUNC_PRED_UNPACK_INFO * func_preds);
 extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 				 RECDES * old_recdes, ATTR_ID * att_id,
 				 int n_att_id, OID * inst_oid,
 				 OID * class_oid, BTID * search_btid,
-				 bool duplicate_key_locked,
-				 int op_type, HEAP_SCANCACHE * scan_cache,
+				 bool duplicate_key_locked, int op_type,
+				 HEAP_SCANCACHE * scan_cache,
 				 bool data_update, bool replyn,
 				 REPL_INFO_TYPE repl_info);
 extern int locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid,

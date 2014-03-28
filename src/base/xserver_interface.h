@@ -71,10 +71,10 @@ extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path,
 			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
 			 int sleep_msecs);
 extern int xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag,
-				OID * oid);
+				OID * oid, BTID * index_btid);
 extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p,
 				       int check_flag, OID * oids,
-				       int num_oids);
+				       int num_oids, BTID * index_btid);
 extern VOLID xboot_add_volume_extension (THREAD_ENTRY * thread_p,
 					 DBDEF_VOL_EXT_INFO * ext_info);
 extern int xboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p);

@@ -9948,7 +9948,8 @@ error:
  */
 DISK_ISVALID
 locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
-		     RECDES * peek, HFID * class_hfid, bool repair)
+		     RECDES * peek, HFID * class_hfid, BTID * index_btid,
+		     bool repair)
 {
   DISK_ISVALID isvalid = DISK_VALID, rv = DISK_VALID;
   HEAP_CACHE_ATTRINFO attr_info;
@@ -9980,6 +9981,12 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
 	  isvalid = DISK_ERROR;
 	  break;
 	}
+
+      if (index_btid != NULL && !BTID_IS_EQUAL (btid, index_btid))
+	{
+	  continue;
+	}
+
       n_attrs = heap_indexinfo_get_num_attrs (i, &attr_info);
       if (n_attrs <= 0)
 	{
@@ -10074,7 +10081,7 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
  */
 DISK_ISVALID
 locator_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
-			    HFID * hfid, bool repair)
+			    HFID * hfid, BTID * index_btid, bool repair)
 {
   RECDES peek;
   HEAP_SCANCACHE scan;
@@ -10087,7 +10094,9 @@ locator_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
 
   if (heap_get (thread_p, cls_oid, &peek, &scan, PEEK, NULL_CHN) == S_SUCCESS)
     {
-      rv = locator_check_class (thread_p, cls_oid, &peek, hfid, repair);
+      rv =
+	locator_check_class (thread_p, cls_oid, &peek, hfid, index_btid,
+			     repair);
     }
   else
     {
@@ -10154,7 +10163,7 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 	  continue;
 	}
 
-      if (locator_check_class (thread_p, &oid, &peek, &hfid, repair) !=
+      if (locator_check_class (thread_p, &oid, &peek, &hfid, NULL, repair) !=
 	  DISK_VALID)
 	{
 	  isallvalid = DISK_ERROR;

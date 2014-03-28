@@ -289,7 +289,7 @@ extern DISK_ISVALID btree_check_tree (THREAD_ENTRY * thread_p,
 extern DISK_ISVALID btree_check_by_btid (THREAD_ENTRY * thread_p,
 					 BTID * btid);
 extern DISK_ISVALID btree_check_by_class_oid (THREAD_ENTRY * thread_p,
-					      OID * cls_oid);
+					      OID * cls_oid, BTID * idx_btid);
 extern DISK_ISVALID btree_check_all (THREAD_ENTRY * thread_p);
 extern int btree_keyoid_checkscan_start (THREAD_ENTRY * thread_p,
 					 BTID * btid,
@@ -465,7 +465,8 @@ extern BTREE_LOCKED_KEYS btree_get_locked_keys (BTID * delete_btid,
 						BTID * search_btid,
 						bool duplicate_key_locked);
 extern DISK_ISVALID btree_repair_prev_link (THREAD_ENTRY * thread_p,
-					    OID * oid, bool repair);
+					    OID * oid, BTID * btid,
+					    bool repair);
 extern int btree_ils_adjust_range (THREAD_ENTRY * thread_p,
 				   KEY_VAL_RANGE * key_range,
 				   DB_VALUE * curr_key, int prefix_len,

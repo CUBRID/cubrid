@@ -225,6 +225,7 @@ typedef enum
 {
   CHECKDB_MSG_INCONSISTENT = 20,
   CHECKDB_MSG_NO_SUCH_CLASS = 21,
+  CHECKDB_MSG_NO_SUCH_INDEX = 22,
   CHECKDB_MSG_USAGE = 60
 } MSGCAT_CHECKDB_MSG;
 
@@ -1032,10 +1033,24 @@ typedef struct _ha_config
 #define CHECK_REPAIR_L                          "repair"
 #define CHECK_INPUT_FILE_S                      'i'
 #define CHECK_INPUT_FILE_L                      "input-file"
-#define CHECK_CHECK_PREV_LINK_S			11501
-#define CHECK_CHECK_PREV_LINK_L			"check-prev-link"
-#define CHECK_REPAIR_PREV_LINK_S		11502
-#define CHECK_REPAIR_PREV_LINK_L		"repair-prev-link"
+#define CHECK_INDEXNAME_S                       'I'
+#define CHECK_INDEXNAME_L                       "index-name"
+#define CHECK_CHECK_PREV_LINK_S                 11501
+#define CHECK_CHECK_PREV_LINK_L                 "check-prev-link"
+#define CHECK_REPAIR_PREV_LINK_S                11502
+#define CHECK_REPAIR_PREV_LINK_L                "repair-prev-link"
+#define CHECK_FILE_TRACKER_S                    11503
+#define CHECK_FILE_TRACKER_L                    "check-file-tracker"
+#define CHECK_HEAP_ALLHEAPS_S                   11504
+#define CHECK_HEAP_ALLHEAPS_L                   "check-heap"
+#define CHECK_CAT_CONSISTENCY_S                 11505
+#define CHECK_CAT_CONSISTENCY_L                 "check-catalog"
+#define CHECK_BTREE_ALL_BTREES_S                11506
+#define CHECK_BTREE_ALL_BTREES_L                "check-btree"
+#define CHECK_LC_CLASSNAMES_S                   11507
+#define CHECK_LC_CLASSNAMES_L                   "check-class-name"
+#define CHECK_LC_ALLENTRIES_OF_ALLBTREES_S      11508
+#define CHECK_LC_ALLENTRIES_OF_ALLBTREES_L      "check-btree-entries"
 
 /* plandump option list */
 #define PLANDUMP_DROP_S			        'd'

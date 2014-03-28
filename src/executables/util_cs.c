@@ -103,6 +103,9 @@ static void print_timestamp (FILE * outfp);
 static int print_tran_entry (const ONE_TRAN_INFO * tran_info,
 			     TRANDUMP_LEVEL dump_level);
 static int tranlist_cmp_f (const void *p1, const void *p2);
+static OID *util_get_class_oids_and_index_btid (dynamic_array * darray,
+						const char *index_name,
+						BTID * index_btid);
 
 /*
  * backupdb() - backupdb main routine
@@ -238,7 +241,8 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	  check_flag |= CHECKDB_LC_CHECK_CLASSNAMES;
 
 	  if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR
-	      || boot_check_db_consistency (check_flag, 0, 0) != NO_ERROR)
+	      || boot_check_db_consistency (check_flag, 0, 0,
+					    NULL) != NO_ERROR)
 	    {
 	      const char *tmpname;
 	      if ((tmpname = er_get_msglog_filename ()) == NULL)
@@ -520,16 +524,20 @@ error_exit:
 }
 
 /*
- * util_get_class_oids() -
+ * util_get_class_oids_and_index_btid() -
  *   return: OID array/NULL
+ *   index_name(in)
+ *   index_btid(out)
  */
 static OID *
-util_get_class_oids (dynamic_array * darray)
+util_get_class_oids_and_index_btid (dynamic_array * darray,
+				    const char *index_name, BTID * index_btid)
 {
   MOP cls_mop;
   OID *oids;
   OID *cls_oid;
   SM_CLASS *cls_sm;
+  SM_CLASS_CONSTRAINT *constraint;
   char table[SM_MAX_IDENTIFIER_LENGTH];
   char name[SM_MAX_IDENTIFIER_LENGTH];
   int i;
@@ -584,6 +592,24 @@ util_get_class_oids (dynamic_array * darray)
 						 CHECKDB_MSG_NO_SUCH_CLASS),
 				 table);
 	  continue;
+	}
+
+      if (index_name != NULL)
+	{
+	  constraint = classobj_find_class_index (cls_sm, index_name);
+	  if (constraint == NULL)
+	    {
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+						     MSGCAT_UTIL_SET_CHECKDB,
+						     CHECKDB_MSG_NO_SUCH_INDEX),
+				     index_name, name);
+	      free_and_init (oids);
+	      return NULL;
+	    }
+
+	  db_constraint_index (constraint, index_btid);
+
+	  assert (i == 0);
 	}
     }
 
@@ -658,12 +684,13 @@ checkdb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   char *fname;
+  char *index_name = NULL;
   bool repair = false;
-  bool check_plink = false;
   bool repair_plink = false;
-  int flag;
+  int flag = 0;
   int i, num_tables;
   OID *oids = NULL;
+  BTID index_btid;
   dynamic_array *darray = NULL;
 
   if (utility_get_option_string_table_size (arg_map) < 1)
@@ -684,14 +711,71 @@ checkdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  check_plink = utility_get_option_bool_value (arg_map,
-					       CHECK_CHECK_PREV_LINK_S);
+  if (utility_get_option_bool_value (arg_map, CHECK_FILE_TRACKER_S))
+    {
+      flag |= CHECKDB_FILE_TRACKER_CHECK;
+    }
+
+  if (utility_get_option_bool_value (arg_map, CHECK_HEAP_ALLHEAPS_S))
+    {
+      flag |= CHECKDB_HEAP_CHECK_ALLHEAPS;
+    }
+
+  if (utility_get_option_bool_value (arg_map, CHECK_CAT_CONSISTENCY_S))
+    {
+      flag |= CHECKDB_CT_CHECK_CAT_CONSISTENCY;
+    }
+
+  if (utility_get_option_bool_value (arg_map, CHECK_BTREE_ALL_BTREES_S))
+    {
+      flag |= CHECKDB_BTREE_CHECK_ALL_BTREES;
+    }
+
+  if (utility_get_option_bool_value (arg_map, CHECK_LC_CLASSNAMES_S))
+    {
+      flag |= CHECKDB_LC_CHECK_CLASSNAMES;
+    }
+
+  if (utility_get_option_bool_value
+      (arg_map, CHECK_LC_ALLENTRIES_OF_ALLBTREES_S))
+    {
+      flag |= CHECKDB_LC_CHECK_ALLENTRIES_OF_ALLBTREES;
+    }
+
   repair_plink = utility_get_option_bool_value (arg_map,
 						CHECK_REPAIR_PREV_LINK_S);
+  if (repair_plink)
+    {
+      flag |= CHECKDB_REPAIR_PREV_LINK;
+    }
+  else if (utility_get_option_bool_value (arg_map, CHECK_CHECK_PREV_LINK_S))
+    {
+      flag |= CHECKDB_CHECK_PREV_LINK;
+    }
+
+  if (flag == 0)
+    {
+      flag = CHECKDB_ALL_CHECK_EXCEPT_PREV_LINK;
+    }
+
   repair = utility_get_option_bool_value (arg_map, CHECK_REPAIR_S);
+  if (repair)
+    {
+      flag |= CHECKDB_REPAIR;
+    }
+
   fname = utility_get_option_string_value (arg_map, CHECK_INPUT_FILE_S, 0);
+  index_name =
+    utility_get_option_string_value (arg_map, CHECK_INDEXNAME_S, 0);
   num_tables = utility_get_option_string_table_size (arg_map);
   num_tables -= 1;
+
+  if (index_name != NULL && num_tables != 1)
+    {
+      PRINT_AND_LOG_ERR_MSG
+	("Only one table is supported to check specific index.\n");
+      goto error_exit;
+    }
 
   darray = da_create (num_tables, SM_MAX_IDENTIFIER_LENGTH);
   if (darray == NULL)
@@ -733,7 +817,6 @@ checkdb (UTIL_FUNCTION_ARG * arg)
     }
 
   num_tables = da_size (darray);
-  flag = CHECKDB_ALL_CHECK;
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
@@ -747,22 +830,12 @@ checkdb (UTIL_FUNCTION_ARG * arg)
   db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
-      if (repair_plink)
-	{
-	  flag = CHECKDB_REPAIR_PREV_LINK;
-	}
-      else if (check_plink)
-	{
-	  flag = CHECKDB_CHECK_PREV_LINK;
-	}
-      else if (repair)
-	{
-	  flag |= CHECKDB_REPAIR;
-	}
-
       if (num_tables > 0)
 	{
-	  oids = util_get_class_oids (darray);
+	  BTID_SET_NULL (&index_btid);
+	  oids =
+	    util_get_class_oids_and_index_btid (darray, index_name,
+						&index_btid);
 	  if (oids == NULL)
 	    {
 	      db_shutdown ();
@@ -771,7 +844,8 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 	}
 
       if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR
-	  || boot_check_db_consistency (flag, oids, num_tables) != NO_ERROR)
+	  || boot_check_db_consistency (flag, oids, num_tables,
+					&index_btid) != NO_ERROR)
 	{
 	  const char *tmpname;
 
