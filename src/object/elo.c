@@ -885,6 +885,8 @@ elo_delete (DB_ELO * elo, bool force_delete)
 	      break;
 
 	    case LOB_TRANSIENT_DELETED:
+	      break;
+
 	    case LOB_NOT_FOUND:
 	      ret = add_lob_locator (elo->locator, LOB_TRANSIENT_DELETED);
 	      break;
