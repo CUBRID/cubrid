@@ -21367,6 +21367,11 @@ pt_get_collation_info (PT_NODE * node, PT_COLL_INFER * coll_infer)
 	    }
 	  break;
 	}
+      else if (pt_is_input_parameter (node))
+	{
+	  coll_infer->coerc_level = PT_COLLATION_L5_COERC;
+	  break;
+	}
       /* Fall through */
     case PT_DOT_:
       if (coll_infer->coll_id == LANG_COLL_ISO_BINARY)

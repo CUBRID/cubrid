@@ -11447,6 +11447,11 @@ pt_check_and_replace_hostvar (PARSER_CONTEXT * parser, PT_NODE * node,
 	  value = pt_dbval_to_value (parser, dbval);
 	  if (value)
 	    {
+	      if (PT_HAS_COLLATION (value->type_enum))
+		{
+		  value->info.value.print_charset = true;
+		  value->info.value.print_collation = true;
+		}
 	      PT_NODE_MOVE_NUMBER_OUTERLINK (value, node);
 	      parser_free_tree (parser, node);
 	      node = value;
