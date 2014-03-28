@@ -185,6 +185,9 @@ struct event_stat
 
   /* save PRM_ID_SQL_TRACE_SLOW_MSECS for performance */
   bool trace_slow_query;
+
+  /* log flush thread wait time */
+  int trace_log_flush_time;
 };
 
 struct thread_entry
@@ -433,6 +436,8 @@ extern int thread_get_recursion_depth (THREAD_ENTRY * thread_p);
 extern void thread_inc_recursion_depth (THREAD_ENTRY * thread_p);
 extern void thread_dec_recursion_depth (THREAD_ENTRY * thread_p);
 extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
+
+extern INT64 thread_get_log_clock_msec (void);
 
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);

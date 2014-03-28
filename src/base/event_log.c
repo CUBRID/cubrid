@@ -289,6 +289,32 @@ event_log_end (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * event_log_print_client_ids_info -
+ *   return:
+ */
+void
+event_log_print_client_ids_info (LOG_CLIENTIDS * client_info, int indent)
+{
+  if (event_Fp == NULL)
+    {
+      return;
+    }
+
+  if (client_info->client_type < 0)
+    {
+      return;
+    }
+
+  if (indent > 0)
+    {
+      fprintf (event_Fp, "%*c", indent, ' ');
+    }
+  fprintf (event_Fp, "client: %s@%s|%s(%d)\n", client_info->db_user,
+	   client_info->host_name, client_info->program_name,
+	   client_info->process_id);
+}
+
+/*
  * event_log_print_client_info -
  *   return:
  *   tran_index(in):
@@ -391,4 +417,43 @@ event_log_bind_values (FILE * log_fp, int tran_index, int bind_index)
 	  free_and_init (val_str);
 	}
     }
+}
+
+/*
+ * event_log_log_flush_thr_wait -
+ *   return:
+ *   thread_p(in):
+ *   flush_count(in): the num of flushed pages
+ *   client_info(in): last log writer client info
+ *   flush_time(in): total time spent for flushing
+ *   flush_wait_time(in): time waiting for LWT to be finished
+ *   writer_time(in): time spent by last LWT (normally same as flush wait time)
+ */
+void
+event_log_log_flush_thr_wait (THREAD_ENTRY * thread_p, int flush_count,
+			      LOG_CLIENTIDS * client_info, int flush_time,
+			      int flush_wait_time, int writer_time)
+{
+  FILE *log_fp;
+  int indent = 2;
+
+  log_fp = event_log_start (thread_p, "LOG_FLUSH_THREAD_WAIT");
+  if (log_fp == NULL)
+    {
+      return;
+    }
+
+  fprintf (log_fp, "%*ctotal flush count: %d page(s)\n", indent, ' ',
+	   flush_count);
+  fprintf (log_fp, "%*ctotal flush time: %d ms\n", indent, ' ', flush_time);
+  fprintf (log_fp, "%*ctime waiting for log writer: %d ms\n", indent, ' ',
+	   flush_wait_time);
+  fprintf (log_fp, "%*clast log writer info\n", indent, ' ');
+
+  indent *= 2;
+  event_log_print_client_ids_info (client_info, indent);
+  fprintf (log_fp, "%*ctime spent by last log writer: %d ms\n", indent, ' ',
+	   writer_time);
+
+  event_log_end (thread_p);
 }

@@ -2123,6 +2123,22 @@ logtb_find_client_name_host_pid (int tran_index, char **client_prog_name,
   return NO_ERROR;
 }
 
+int
+logtb_get_client_ids (int tran_index, LOG_CLIENTIDS * client_info)
+{
+  LOG_TDES *tdes;
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL || tdes->trid == NULL_TRANID)
+    {
+      return ER_FAILED;
+    }
+
+  *client_info = tdes->client;
+
+  return NO_ERROR;
+}
+
 /*
  * xlogtb_get_pack_tran_table - return transaction info stored on transaction table
  *
@@ -2153,9 +2169,6 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
   UINT64 current_msec;
   TRAN_QUERY_EXEC_INFO *query_exec_info = NULL;
   XASL_CACHE_ENTRY *ent;
-#if !defined(HAVE_ATOMIC_BUILTINS)
-  struct timeval tv;
-#endif
 #endif
 
 #if defined(SERVER_MODE)
@@ -2171,12 +2184,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 	  goto error;
 	}
 
-#if !defined(HAVE_ATOMIC_BUILTINS)
-      gettimeofday (&tv, NULL);
-      current_msec = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
-#else
-      current_msec = log_Clock_msec;
-#endif /* !HAVE_ATOMIC_BUILTINS */
+      current_msec = thread_get_log_clock_msec ();
     }
 #endif
 
@@ -2704,9 +2712,9 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 {
   int interrupt;
   INT64 now;
-#if !defined(HAVE_ATOMIC_BUILTINS)
+#if !defined(SERVER_MODE)
   struct timeval tv;
-#endif /* !HAVE_ATOMIC_BUILTINS */
+#endif /* !SERVER_MODE */
 
   interrupt = tdes->interrupt;
   if (!LOG_ISTRAN_ACTIVE (tdes))
@@ -2744,12 +2752,12 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
        * set by thread_log_clock_thread instead of calling gettimeofday here
        * if the system supports atomic built-ins.
        */
-#if defined(HAVE_ATOMIC_BUILTINS)
-      now = log_Clock_msec;
-#else /* HAVE_ATOMIC_BUILTINS */
+#if defined(SERVER_MODE)
+      now = thread_get_log_clock_msec ();
+#else /* SERVER_MODE */
       gettimeofday (&tv, NULL);
       now = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
-#endif /* HAVE_ATOMIC_BUILTINS */
+#endif /* !SERVER_MODE */
       if (tdes->query_timeout < now)
 	{
 	  er_log_debug (ARG_FILE_LINE,

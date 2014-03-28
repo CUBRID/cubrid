@@ -234,6 +234,9 @@ static QFILE_LIST_ID *qmgr_process_async_select (THREAD_ENTRY * thread_p,
 						 cache_clone_p,
 						 QMGR_QUERY_ENTRY * query_p);
 static void qmgr_reset_query_exec_info (int tran_index);
+static void qmgr_set_query_exec_info_to_tdes (int tran_index,
+					      int query_timeout,
+					      const XASL_ID * xasl_id);
 #endif
 
 static void qmgr_initialize_temp_file_list (QMGR_TEMP_FILE_LIST *
@@ -245,9 +248,7 @@ static void qmgr_finalize_temp_file_list (QMGR_TEMP_FILE_LIST *
 static QMGR_TEMP_FILE *qmgr_get_temp_file_from_list (QMGR_TEMP_FILE_LIST *
 						     temp_file_list_p);
 static void qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p);
-static void qmgr_set_query_exec_info_to_tdes (int tran_index,
-					      int query_timeout,
-					      const XASL_ID * xasl_id);
+
 static int copy_bind_value_to_tdes (THREAD_ENTRY * thread_p,
 				    int num_bind_vals, DB_VALUE * bind_vals);
 
@@ -5398,6 +5399,7 @@ qmgr_get_temp_file_membuf_pages (QMGR_TEMP_FILE * temp_file_p)
   return temp_file_p->membuf_npages;
 }
 
+#if defined (SERVER_MODE)
 /*
  * qmgr_set_query_exec_info_to_tdes () - calculate timeout and set to transaction
  *                                     descriptor
@@ -5410,9 +5412,6 @@ qmgr_set_query_exec_info_to_tdes (int tran_index, int query_timeout,
 				  const XASL_ID * xasl_id)
 {
   LOG_TDES *tdes_p;
-#if !defined(HAVE_ATOMIC_BUILTINS)
-  struct timeval tv;
-#endif /* !HAVE_ATOMIC_BUILTINS */
 
   tdes_p = LOG_FIND_TDES (tran_index);
   assert (tdes_p != NULL);
@@ -5421,13 +5420,7 @@ qmgr_set_query_exec_info_to_tdes (int tran_index, int query_timeout,
       /* We use log_Clock_msec instead of calling gettimeofday
        * if the system supports atomic built-ins.
        */
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-      tdes_p->query_start_time = log_Clock_msec;
-#else /* HAVE_ATOMIC_BUILTINS */
-      gettimeofday (&tv, NULL);
-      tdes_p->query_start_time = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
-#endif /* HAVE_ATOMIC_BUILTINS */
+      tdes_p->query_start_time = thread_get_log_clock_msec ();
 
       if (query_timeout > 0)
 	{
@@ -5463,7 +5456,6 @@ qmgr_set_query_exec_info_to_tdes (int tran_index, int query_timeout,
     }
 }
 
-#if defined (SERVER_MODE)
 /*
  * qmgr_reset_query_exec_info () - reset query_start_time and xasl_id of tdes
  *   return: void

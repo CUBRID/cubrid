@@ -509,6 +509,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_SQL_TRACE_SLOW "sql_trace_slow"
 
+#define PRM_NAME_LOG_TRACE_FLUSH_TIME "log_trace_flush_time"
+
 #define PRM_NAME_INTL_COLLATION "intl_collation"
 
 #define PRM_NAME_GENERIC_VOL_PREALLOC_SIZE "generic_vol_prealloc_size"
@@ -1673,6 +1675,11 @@ static unsigned int prm_sql_trace_slow_msecs_flag = 0;
 bool PRM_SQL_TRACE_EXECUTION_PLAN = false;
 static bool prm_sql_trace_execution_plan_default = false;
 static unsigned int prm_sql_trace_execution_plan_flag = 0;
+
+int PRM_LOG_TRACE_FLUSH_TIME_MSECS = 0;
+static int prm_log_trace_flush_time_msecs_default = 0;
+static int prm_log_trace_flush_time_msecs_lower = 0;
+static unsigned int prm_log_trace_flush_time_msecs_flag = 0;
 
 char *PRM_INTL_COLLATION = NULL;
 static char *prm_intl_collation_default = NULL;
@@ -4003,6 +4010,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_SQL_TRACE_EXECUTION_PLAN,
    (void *) NULL,
    (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_LOG_TRACE_FLUSH_TIME,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_TIME_UNIT),
+   PRM_INTEGER,
+   (void *) &prm_log_trace_flush_time_msecs_flag,
+   (void *) &prm_log_trace_flush_time_msecs_default,
+   (void *) &PRM_LOG_TRACE_FLUSH_TIME_MSECS,
+   (void *) NULL,
+   (void *) &prm_log_trace_flush_time_msecs_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

@@ -3112,8 +3112,9 @@ thread_log_flush_thread (void *arg_p)
   struct timeval wait_time = { 0, 0 };
   struct timeval tmp_timeval = { 0, 0 };
 
-  int working_time, remained_time, total_elapsed_time;
+  int working_time, remained_time, total_elapsed_time, param_refresh_remained;
   int gc_interval, wakeup_interval;
+  int param_refresh_interval = 3000;
   int max_wait_time = 1000;
 
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
@@ -3134,6 +3135,10 @@ thread_log_flush_thread (void *arg_p)
 
   gettimeofday (&wakeup_time, NULL);
   total_elapsed_time = 0;
+  param_refresh_remained = param_refresh_interval;
+
+  tsd_ptr->event_stats.trace_log_flush_time =
+    prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
 
   while (!tsd_ptr->shutdown)
     {
@@ -3184,6 +3189,16 @@ thread_log_flush_thread (void *arg_p)
 	    {
 	      continue;
 	    }
+	}
+
+      /* to prevent performance degradation */
+      param_refresh_remained -= total_elapsed_time;
+      if (param_refresh_remained < 0)
+	{
+	  tsd_ptr->event_stats.trace_log_flush_time
+	    = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
+
+	  param_refresh_remained = param_refresh_interval;
 	}
 
       LOG_CS_ENTER (tsd_ptr);
@@ -3249,6 +3264,23 @@ thread_reset_nrequestors_of_log_flush_thread (void)
   rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
   thread_Log_flush_thread.nrequestors = 0;
   pthread_mutex_unlock (&thread_Log_flush_thread.lock);
+}
+
+INT64
+thread_get_log_clock_msec (void)
+{
+  struct timeval tv;
+#if defined(HAVE_ATOMIC_BUILTINS)
+  int rv;
+
+  if (thread_Log_clock_thread.is_available == true)
+    {
+      return log_Clock_msec;
+    }
+#endif
+  gettimeofday (&tv, NULL);
+
+  return (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
 }
 
 /*

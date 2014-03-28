@@ -90,6 +90,7 @@
 #endif /* WINDOWS */
 #include "db.h"			/* for db_Connect_status */
 #include "log_compress.h"
+#include "event_log.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -4761,6 +4762,10 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     LOG_SMALLER_LOGREC_TYPE	/* type */
   };				/* Save last record */
 
+  INT64 flush_start_time = 0;
+  INT64 flush_completed_time = 0;
+  INT64 all_writer_thr_end_time = 0;
+
 #if defined(SERVER_MODE)
   int rv;
   LOGWR_ENTRY *entry;
@@ -4924,6 +4929,17 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       rv = pthread_mutex_lock (&writer_info->flush_start_mutex);
       rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
+
+      if (thread_p != NULL && thread_p->event_stats.trace_log_flush_time > 0)
+	{
+	  flush_start_time = thread_get_log_clock_msec ();
+
+	  memset (&writer_info->last_writer_client_info, 0, sizeof (LOG_CLIENTIDS));
+
+	  writer_info->trace_last_writer = true;
+	  writer_info->last_writer_elapsed_time = 0;
+	  writer_info->last_writer_client_info.client_type = -1;
+	}
 
       entry = writer_info->writer_list;
       while (entry)
@@ -5290,6 +5306,11 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       /* it sends signal to LWT to notify that flush is completed */
       rv = pthread_mutex_lock (&writer_info->flush_wait_mutex);
 
+      if (thread_p != NULL && thread_p->event_stats.trace_log_flush_time > 0)
+	{
+	  flush_completed_time = thread_get_log_clock_msec ();
+	}
+
       writer_info->flush_completed = true;
       rv = pthread_cond_broadcast (&writer_info->flush_wait_cond);
 
@@ -5313,6 +5334,30 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  rv = pthread_cond_wait (&writer_info->flush_end_cond,
 				  &writer_info->flush_end_mutex);
 	}
+
+      rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
+      writer_info->trace_last_writer = false;
+
+      if (thread_p != NULL && thread_p->event_stats.trace_log_flush_time > 0)
+	{
+	  all_writer_thr_end_time = thread_get_log_clock_msec ();
+
+	  if (all_writer_thr_end_time - flush_start_time >
+	      thread_p->event_stats.trace_log_flush_time)
+	    {
+	      event_log_log_flush_thr_wait (thread_p, flush_page_count,
+					    &writer_info->
+					    last_writer_client_info,
+					    all_writer_thr_end_time -
+					    flush_start_time,
+					    all_writer_thr_end_time -
+					    flush_completed_time,
+					    writer_info->
+					    last_writer_elapsed_time);
+	    }
+	}
+
+      pthread_mutex_unlock (&writer_info->wr_list_mutex);
 
       pthread_mutex_unlock (&writer_info->flush_end_mutex);
       assert (hold_flush_mutex == false);
