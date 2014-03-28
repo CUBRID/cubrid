@@ -176,7 +176,7 @@ static THREAD_DAEMON thread_Daemons[] = {
   {&thread_Purge_archive_logs_thread, 3,
    (void *) thread_purge_archive_logs_thread},
   {&thread_Checkpoint_thread, 4,
-   (void *) thread_purge_archive_logs_thread},
+   (void *) thread_checkpoint_thread},
   {&thread_Session_control_thread, 5,
    (void *) thread_session_control_thread},
   {&thread_Check_ha_delay_info_thread, 6,
