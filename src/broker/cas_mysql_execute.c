@@ -130,6 +130,8 @@ static int cubval_to_mysqlval (int cub_type);
 static int make_bind_value (int num_bind, int argc, void **argv,
 			    MYSQL_BIND * ret_val, DB_VALUE ** db_vals,
 			    T_NET_BUF * net_buf, int desired_type);
+static int fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
+		       T_REQ_INFO * req_info);
 static int netval_to_dbval (void *type, void *value, MYSQL_BIND * out_val,
 			    DB_VALUE * db_val, T_NET_BUF * net_buf,
 			    int desired_type);
@@ -368,6 +370,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
 {
   T_SRV_HANDLE *srv_handle = NULL;
   int err_code = CAS_NO_ERROR;
+  int stmt_type;
   int srv_h_id;
 
   srv_h_id = cas_mysql_prepare (&srv_handle, sql_stmt, flag,
@@ -387,7 +390,18 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
 
   net_buf_cp_int (net_buf, srv_h_id, NULL);
   net_buf_cp_int (net_buf, -1, NULL);	/* result_cache_lifetime */
-  net_buf_cp_byte (net_buf, srv_handle->stmt_type);
+
+  if (srv_handle->stmt_type == CUBRID_STMT_CALL_SP &&
+      !(srv_handle->prepare_flag & CCI_PREPARE_CALL))
+    {
+      stmt_type = CUBRID_STMT_SELECT;
+    }
+  else
+    {
+      stmt_type = srv_handle->stmt_type;
+    }
+  net_buf_cp_byte (net_buf, stmt_type);
+
   net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
 
   srv_handle->prepare_call_info =
@@ -562,8 +576,10 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       goto execute_all_error;
     }
 
-  if (srv_handle->stmt_type == CUBRID_STMT_SELECT &&
-      srv_handle->send_metadata_before_execute == FALSE)
+  if ((srv_handle->stmt_type == CUBRID_STMT_SELECT
+       || (srv_handle->stmt_type == CUBRID_STMT_CALL_SP
+	   && !(srv_handle->prepare_flag & CCI_PREPARE_CALL)))
+      && srv_handle->send_metadata_before_execute == FALSE)
     {
       err_code = set_metadata_info (srv_handle);
       if (err_code != CAS_NO_ERROR)
@@ -571,7 +587,10 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	  goto execute_all_error;
 	}
 
-      srv_handle->send_metadata_before_execute = TRUE;
+      if (srv_handle->stmt_type != CUBRID_STMT_CALL_SP)
+	{
+	  srv_handle->send_metadata_before_execute = TRUE;
+	}
     }
 
   if ((is_all == TRUE) && (is_first_stmt == TRUE))
@@ -829,12 +848,8 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 		 T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time,
 		 int *clt_cache_reusable)
 {
-  int err_code;
-
-  err_code = ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
-  NET_BUF_ERR_SET (net_buf);
-
-  return err_code;
+  return ux_execute (srv_handle, flag, max_col_size, max_row, argc, argv,
+		     net_buf, req_info, clt_cache_time, clt_cache_reusable);
 }
 
 int
@@ -855,6 +870,11 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       err_code =
 	ERROR_INFO_SET (CAS_ER_INVALID_CURSOR_POS, CAS_ERROR_INDICATOR);
       goto fetch_error;
+    }
+
+  if (srv_handle->prepare_flag & CCI_PREPARE_CALL)
+    {
+      return fetch_call (srv_handle, net_buf, req_info);
     }
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
@@ -926,6 +946,52 @@ make_bind_value (int num_bind, int argc, void **argv, MYSQL_BIND * value_list,
 	  return err_code;
 	}
     }				/* end of for */
+
+  return 0;
+}
+
+static int
+fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
+	    T_REQ_INFO * req_info)
+{
+  int i;
+  T_OBJECT tuple_obj;
+  DB_VALUE **out_vals, *val_ptr;
+  T_PREPARE_CALL_INFO *call_info = srv_handle->prepare_call_info;
+  T_BROKER_VERSION client_version = req_info->client_version;
+
+  if (call_info == NULL)
+    {
+      int err_code;
+      err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 1, NULL);	/* tuple count */
+  net_buf_cp_int (net_buf, 1, NULL);	/* cursor position */
+  memset (&tuple_obj, 0, sizeof (T_OBJECT));
+  net_buf_cp_object (net_buf, &tuple_obj);
+
+  /* dbval ret */
+  dbval_to_net_buf (NULL, 0, true, 0, net_buf);
+
+  for (i = 0; i < call_info->num_args; i++)
+    {
+      dbval_to_net_buf (NULL, 0, true, 0, net_buf);
+    }
+
+  srv_handle->next_cursor_pos += 1;
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, 1);	/* fetch_end_flag */
+    }
+
+  if (srv_handle->auto_commit_mode)
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
 
   return 0;
 }
@@ -1593,6 +1659,17 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   result = (T_QUERY_RESULT *) srv_handle->q_result;
   if (result == NULL || has_stmt_result_set (srv_handle->stmt_type) == false)
     {
+      if (srv_handle->stmt_type == CUBRID_STMT_CALL_SP)
+	{
+	  num_tuple = 0;
+	  net_buf_cp_int (net_buf, num_tuple, &num_tuple_msg_offset);
+
+	  tuple = 0;
+	  fetch_end_flag = 1;
+
+	  goto end;
+	}
+
       return ERROR_INFO_SET (CAS_ER_NO_MORE_DATA, CAS_ERROR_INDICATOR);
     }
 
@@ -1645,6 +1722,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	}
     }
 
+end:
   if (fetch_end_flag == 1
       && check_auto_commit_after_fetch_done (srv_handle) == true)
     {
@@ -2114,8 +2192,9 @@ prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
       return err_code;
     }
 
-  if (srv_handle->stmt_type == CUBRID_STMT_SELECT &&
-      srv_handle->send_metadata_before_execute)
+  if ((srv_handle->stmt_type == CUBRID_STMT_SELECT
+       || srv_handle->stmt_type == CUBRID_STMT_CALL_SP)
+      && srv_handle->send_metadata_before_execute)
     {
       err_code = set_metadata_info (srv_handle);
       if (err_code != CAS_NO_ERROR)
@@ -2201,6 +2280,7 @@ static int
 set_metadata_info (T_SRV_HANDLE * srv_handle)
 {
   int err_code = CAS_NO_ERROR;
+  int mysql_errno;
   MYSQL_STMT *stmt = NULL;
   MYSQL_RES *result = NULL;
   int asize;
@@ -2218,8 +2298,20 @@ set_metadata_info (T_SRV_HANDLE * srv_handle)
   err_code = cas_mysql_stmt_result_metadata (stmt, &result);
   if (err_code != CAS_NO_ERROR)
     {
-      err_code = cas_mysql_get_stmt_errno (stmt);
+      mysql_errno = mysql_stmt_errno (stmt);
+      if (mysql_errno == 0 && srv_handle->stmt_type == CUBRID_STMT_CALL_SP)
+	{
+	  /* it could be happend, when stored procedure has no resultset */
+	  return CAS_NO_ERROR;
+	}
+
       goto error;
+    }
+
+  if (srv_handle->stmt_type == CUBRID_STMT_CALL_SP)
+    {
+      /* if there's resultset */
+      srv_handle->stmt_type = CUBRID_STMT_SELECT;
     }
 
   asize = sizeof (T_QUERY_RESULT);
@@ -2413,6 +2505,10 @@ execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
     {
       tuple_count =
 	cas_mysql_stmt_num_rows ((MYSQL_STMT *) srv_handle->session);
+    }
+  else if (srv_handle->stmt_type == CUBRID_STMT_CALL_SP)
+    {
+      tuple_count = 0;
     }
   else
     {
@@ -2769,12 +2865,6 @@ cas_mysql_prepare (T_SRV_HANDLE ** new_handle, char *sql_stmt, int flag,
       goto prepare_error_internal;
     }
 
-  if (flag & CCI_PREPARE_CALL)
-    {
-      err_code = ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
-      goto prepare_error_internal;
-    }
-
   srv_h_id = hm_new_srv_handle (new_handle, query_seq_num);
   if (srv_h_id < 0)
     {
@@ -2814,8 +2904,6 @@ cas_mysql_prepare (T_SRV_HANDLE ** new_handle, char *sql_stmt, int flag,
   (*new_handle)->stmt_type = get_stmt_type (sql_stmt);
   if ((*new_handle)->stmt_type == CUBRID_STMT_CALL_SP)
     {
-      /* in cas4mysql, we treat call statement like select statement. */
-      (*new_handle)->stmt_type = CUBRID_STMT_SELECT;
       (*new_handle)->send_metadata_before_execute = FALSE;
     }
 

@@ -536,8 +536,11 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
       if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version,
 					  PROTOCOL_V2))
 	{
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+#if defined(CAS_FOR_ORACLE)
 	  if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
+#elif defined(CAS_FOR_MYSQL)
+	  if (srv_handle->stmt_type == CUBRID_STMT_SELECT
+	      || srv_handle->stmt_type == CUBRID_STMT_CALL_SP)
 #else
 	  if (srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
 #endif
@@ -682,7 +685,14 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv,
 
   if (fetch_flag && ret_code >= 0 && client_cache_reusable == FALSE)
     {
-      ux_fetch (srv_handle, 1, 50, 0, 0, net_buf, req_info);
+#if defined(CAS_FOR_MYSQL)
+      if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
+	{
+#endif /* CAS_FOR_MYSQL */
+	  ux_fetch (srv_handle, 1, 50, 0, 0, net_buf, req_info);
+#if defined(CAS_FOR_MYSQL)
+	}
+#endif /* CAS_FOR_MYSQL */
     }
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
