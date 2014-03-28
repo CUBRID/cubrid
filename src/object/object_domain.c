@@ -3090,6 +3090,12 @@ tp_domain_resolve (DB_TYPE domain_type, DB_OBJECT * class_obj,
 TP_DOMAIN *
 tp_domain_resolve_default (DB_TYPE type)
 {
+  if (type < 0 || type >= sizeof (tp_Domains) / sizeof (tp_Domains[0]))
+    {
+      assert_release (false);
+      return NULL;
+    }
+
   return tp_Domains[type];
 }
 

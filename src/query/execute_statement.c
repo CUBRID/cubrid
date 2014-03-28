@@ -11490,13 +11490,16 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl,
 	    }
 	}
 
-      if (attr_dom->type->index_lengthval == NULL || val == NULL)
+      if (val != NULL)
 	{
-	  buf_size += attr_dom->type->disksize;
-	}
-      else
-	{
-	  buf_size += (*(attr_dom->type->index_lengthval)) (val);
+	  if (attr_dom->type->index_lengthval == NULL)
+	    {
+	      buf_size += attr_dom->type->disksize;
+	    }
+	  else
+	    {
+	      buf_size += (*(attr_dom->type->index_lengthval)) (val);
+	    }
 	}
 
       if (setdomain == NULL)

@@ -4451,6 +4451,11 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	   * must adjust prior to indexing the table.
 	   */
 	  domain = tp_domain_resolve_default (index - 1);
+	  if (domain == NULL)
+	    {
+	      goto error;
+	    }
+
 	  /* stop the loop */
 	  more = false;
 	}
