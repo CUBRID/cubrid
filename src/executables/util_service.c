@@ -2218,7 +2218,7 @@ get_manager_running_status (unsigned int sleep_time)
       if (input != NULL)
 	{
 	  memset (buf, '\0', sizeof (buf));
-	  if ((fgets (buf, 16, input) != NULL) || atoi (buf) > 0)
+	  if ((fgets (buf, 16, input) != NULL) && atoi (buf) > 0)
 	    {
 	      manager_proc_running_counts++;
 	    }
@@ -2235,7 +2235,7 @@ get_manager_running_status (unsigned int sleep_time)
       if (input != NULL)
 	{
 	  memset (buf, '\0', sizeof (buf));
-	  if ((fgets (buf, 16, input) != NULL) || atoi (buf) > 0)
+	  if ((fgets (buf, 16, input) != NULL) && atoi (buf) > 0)
 	    {
 	      manager_proc_running_counts++;
 	    }
