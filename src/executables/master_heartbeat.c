@@ -2351,8 +2351,11 @@ hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg)
   if (++(resource_job_arg->retries) > resource_job_arg->max_retries
       || hb_Deactivate_immediately == true)
     {
-      for (proc = hb_Resource->procs; proc; proc = proc->next)
+      for (proc = hb_Resource->procs; proc; proc = proc_next)
 	{
+	  assert (proc->state == HB_PSTATE_DEREGISTERED);
+	  proc_next = proc->next;
+
 	  if (!(kill (proc->pid, 0) && errno == ESRCH))
 	    {
 	      snprintf (error_string, LINE_MAX, "(pid: %d, args:%s)",
@@ -2373,6 +2376,10 @@ hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg)
 		}
 
 	      kill (proc->pid, SIGKILL);
+
+	      hb_Resource->num_procs--;
+	      hb_remove_proc (proc);
+	      proc = NULL;
 	    }
 	}
 
