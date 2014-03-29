@@ -4054,12 +4054,11 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
   int free_space = 0;
   int min_freespace;
   int ret = NO_ERROR;
-  int npages, nrecords, rec_length;
+  int npages = 0, nrecords = 0, rec_length;
   int num_iterations = 0, max_iterations;
   HEAP_BESTSPACE *best_pages_hint_p;
   bool iterate_all = false;
   bool search_all = false;
-  int rc;
 #if defined (CUBRID_DEBUG)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
@@ -4072,6 +4071,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
   min_freespace = heap_stats_get_min_freespace (heap_hdr);
 
   best = 0;
+  start_pos = -1;
   num_high_best = num_other_best = 0;
 
   if (scan_all != true)
@@ -4079,6 +4079,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
       if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
 	{
 	  search_all = true;
+	  start_pos = -1;
 	  next_vpid = heap_hdr->estimates.full_search_vpid;
 	}
       else
