@@ -1009,10 +1009,6 @@ public class UConnection {
 	}
 
 	if (isActive() && !isFirstPrepareInTran) {
-	    if (isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
-		clientSocketClose();
-	    }
-	    
 	    return null;
 	}
 

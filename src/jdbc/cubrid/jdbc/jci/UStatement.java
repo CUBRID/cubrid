@@ -847,11 +847,9 @@ public class UStatement {
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 
-		if (relatedConnection.isErrorToReconnect(errorHandler
-		        .getJdbcErrorCode())) {
-			relatedConnection.clientSocketClose();
-
+		if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
 			if (!relatedConnection.isActive() || isFirstExecInTran) {
+				relatedConnection.clientSocketClose();
 				try {
 					reset();
 					executeInternal(maxRow, maxField, isScrollable,
@@ -864,8 +862,6 @@ public class UStatement {
 					relatedConnection.logException(e);
 					errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 				}
-			} else {
-				relatedConnection.clientSocketClose();
 			}
 		}
 
@@ -1031,11 +1027,9 @@ public class UStatement {
 				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 
-		if (relatedConnection.isErrorToReconnect(errorHandler
-		        .getJdbcErrorCode())) {
-			relatedConnection.clientSocketClose();
-
+		if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
 			if (!relatedConnection.isActive() || isFirstExecInTran) {
+				relatedConnection.clientSocketClose();
 				try {
 					reset();
 					batchResult = executeBatchInternal(queryTimeout);
@@ -1047,8 +1041,6 @@ public class UStatement {
 					relatedConnection.logException(e);
 					errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 				}
-			} else {
-				relatedConnection.clientSocketClose();
 			}
 		}
 

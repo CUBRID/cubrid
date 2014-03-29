@@ -1497,3 +1497,13 @@ hm_thread_health_checker (void *arg)
     }
   return (THREAD_RET_T) 0;
 }
+
+void
+hm_force_close_connection (T_CON_HANDLE * con_handle)
+{
+  con_handle->alter_host_id = -1;
+  CLOSE_SOCKET (con_handle->sock_fd);
+  con_handle->sock_fd = INVALID_SOCKET;
+  con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+  con_handle->force_failback = 0;
+}

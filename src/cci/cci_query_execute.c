@@ -280,6 +280,7 @@ qe_end_tran (T_CON_HANDLE * con_handle, char type, T_CCI_ERROR * err_buf)
   if (IS_INVALID_SOCKET (con_handle->sock_fd))
     {
       hm_req_handle_free_all (con_handle);
+      con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
       return 0;
     }
 
@@ -298,13 +299,17 @@ qe_end_tran (T_CON_HANDLE * con_handle, char type, T_CCI_ERROR * err_buf)
     {
       err_code = net_buf.err_code;
       net_buf_clear (&net_buf);
+      hm_force_close_connection (con_handle);
       return err_code;
     }
 
   err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      hm_force_close_connection (con_handle);
+      return err_code;
+    }
 
   err_code = net_recv_msg (con_handle, NULL, NULL, err_buf);
 
@@ -355,8 +360,7 @@ qe_end_tran (T_CON_HANDLE * con_handle, char type, T_CCI_ERROR * err_buf)
 
   if (keep_connection == false)
     {
-      CLOSE_SOCKET (con_handle->sock_fd);
-      con_handle->sock_fd = INVALID_SOCKET;
+      hm_force_close_connection (con_handle);
     }
 
   con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;

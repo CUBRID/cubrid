@@ -360,6 +360,8 @@ extern "C"
 
   extern bool hm_is_empty_session (T_CCI_SESSION_ID * id);
   extern void hm_make_empty_session (T_CCI_SESSION_ID * id);
+
+  extern void hm_force_close_connection (T_CON_HANDLE * con_handle);
 /************************************************************************
  * PUBLIC VARIABLES							*
  ************************************************************************/
