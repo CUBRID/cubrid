@@ -384,31 +384,37 @@ void
 css_add_to_job_queue (CSS_JOB_ENTRY * job_entry_p)
 {
   int rv;
-  int i, jobq_index;
+  int i, j, jobq_index;
+  const int MAX_NTRIES = 100;
 
   jobq_index = job_entry_p->jobq_index;
 
-  for (i = 0; i <= CSS_NUM_JOB_QUEUE; i++)
+  for (i = 0; i <= MAX_NTRIES; i++)
     {
-      rv = pthread_mutex_lock (&css_Job_queue[jobq_index].job_lock);
-
-      if (i == CSS_NUM_JOB_QUEUE
-	  || css_can_occupy_worker_thread_on_jobq (jobq_index))
+      for (j = 0; j < CSS_NUM_JOB_QUEUE; j++)
 	{
-	  /* If there's no available thread even though it has probed
-	   * the entire job queues, just add the job to the original job queue.
-	   */
-	  css_add_list (&css_Job_queue[jobq_index].job_list, job_entry_p);
-	  css_wakeup_worker_thread_on_jobq (jobq_index);
+	  rv = pthread_mutex_lock (&css_Job_queue[jobq_index].job_lock);
+
+	  if (css_can_occupy_worker_thread_on_jobq (jobq_index)
+	      || i == MAX_NTRIES)
+	    {
+	      /* If there's no available thread even though it has probed
+	       * the entire job queues, just add the job to the original job queue.
+	       */
+	      css_add_list (&css_Job_queue[jobq_index].job_list, job_entry_p);
+	      css_wakeup_worker_thread_on_jobq (jobq_index);
+
+	      pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
+	      return;
+	    }
 
 	  pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
-	  return;
+
+	  /* linear probing */
+	  jobq_index = (++jobq_index) % CSS_NUM_JOB_QUEUE;
 	}
 
-      pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
-
-      /* linear probing */
-      jobq_index = (++jobq_index) % CSS_NUM_JOB_QUEUE;
+      thread_sleep (10 * ((i / 10) + 1));	/* sleep 10ms upto 100ms */
     }
 }
 
