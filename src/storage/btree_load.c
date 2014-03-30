@@ -183,7 +183,7 @@ static void btree_rv_save_root_head (int max_key_len, int null_delta,
 
 
 /*
- * btree_get_node_header_ptr () - 
+ * btree_get_node_header_ptr () -
  *
  *   return:
  *   page_ptr(in):
@@ -208,7 +208,7 @@ btree_get_node_header_ptr (PAGE_PTR page_ptr)
 }
 
 /*
- * btree_get_root_header_ptr () - 
+ * btree_get_root_header_ptr () -
  *
  *   return:
  *   page_ptr(in):
@@ -221,7 +221,7 @@ btree_get_root_header_ptr (PAGE_PTR page_ptr)
 }
 
 /*
- * btree_get_overflow_header_ptr () - 
+ * btree_get_overflow_header_ptr () -
  *
  *   return:
  *   page_ptr(in):
@@ -275,7 +275,7 @@ btree_init_node_header (THREAD_ENTRY * thread_p, VFID * vfid,
 
 
 /*
- * btree_node_header_undo_log () - 
+ * btree_node_header_undo_log () -
  *
  *   return:
  *   vfid(in):
@@ -299,7 +299,7 @@ btree_node_header_undo_log (THREAD_ENTRY * thread_p, VFID * vfid,
 }
 
 /*
- * btree_node_header_redo_log () - 
+ * btree_node_header_redo_log () -
  *
  *   return:
  *   vfid(in):
@@ -323,7 +323,7 @@ btree_node_header_redo_log (THREAD_ENTRY * thread_p, VFID * vfid,
 }
 
 /*
- * btree_change_root_header_delta () - 
+ * btree_change_root_header_delta () -
  *
  *   return:
  *   vfid(in):
@@ -788,6 +788,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   void *buf_info = NULL;
   void *func_unpack_info = NULL;
   HL_HEAPID old_pri_heap_id;
+  VPID *ret_vpid;
 #if !defined(NDEBUG)
   int track_id;
 #endif
@@ -977,33 +978,29 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
    *       since this is a new file.
    *       The pages are initialized in btree_get_page
    */
-  if (file_alloc_pages_as_noncontiguous (thread_p, &btid->vfid, &vpid,
-					 &first_alloc_nthpage,
-					 init_pgcnt, NULL, NULL,
-					 NULL, NULL) == NULL)
-    {
 
-      /* allocation failed, allocate maximum possible */
-      init_pgcnt = file_find_maxpages_allocable (thread_p, &btid->vfid);
-      if (init_pgcnt > 0)
+  ret_vpid = file_alloc_pages_as_noncontiguous (thread_p, &btid->vfid, &vpid,
+						&first_alloc_nthpage,
+						init_pgcnt, NULL, NULL,
+						NULL, NULL);
+
+  if (ret_vpid == NULL && er_errid () != ER_INTERRUPTED)
+    {
+      /* try to allocate pages as many as possible */
+      for (i = 0; i < init_pgcnt; i++)
 	{
-	  if (file_alloc_pages_as_noncontiguous (thread_p, &btid->vfid, &vpid,
-						 &first_alloc_nthpage,
-						 init_pgcnt, NULL,
-						 NULL, NULL, NULL) == NULL)
+	  if (file_alloc_pages (thread_p, &btid->vfid, &vpid, 1,
+				NULL, NULL, NULL) == NULL)
 	    {
-	      /* allocate pages one by one */
-	      for (i = 0; i < init_pgcnt; i++)
-		{
-		  if (file_alloc_pages (thread_p, &btid->vfid, &vpid, 1,
-					NULL, NULL, NULL) == NULL)
-		    {
-		      break;
-		    }
-		}
-	      init_pgcnt = i;	/* add also the root page allocated */
+	      break;
 	    }
 	}
+      init_pgcnt = i;
+    }
+
+  if (init_pgcnt == 0 || er_errid () == ER_INTERRUPTED)
+    {
+      goto error;
     }
 
   init_pgcnt++;			/* increment for the root page allocated */

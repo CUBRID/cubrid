@@ -5856,6 +5856,7 @@ btree_keyoid_checkscan_end (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan)
  *       		     b+tree space routines
  */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * btree_estimate_total_numpages () -
  *   return: int
@@ -6037,6 +6038,7 @@ btree_estimate_total_numpages (THREAD_ENTRY * thread_p, int dis_key_cnt,
 
   return load_pgcnt_est;
 }
+#endif
 
 /*
  * btree_get_subtree_capacity () -
@@ -8588,7 +8590,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
 
   /***********************************************************
-   ***  STEP 7: increment lsa of right page to be deallocated 
+   ***  STEP 7: increment lsa of right page to be deallocated
    ***          verify P, left, right
    ***********************************************************/
 
@@ -8784,9 +8786,9 @@ end:
 }
 
 /*
- * btree_page_uncompress_size - 
+ * btree_page_uncompress_size -
  *
- *   return: 
+ *   return:
  *   thread_p(in):
  *   btid(in):
  *   page_ptr(in):
@@ -8839,9 +8841,9 @@ btree_page_uncompress_size (THREAD_ENTRY * thread_p, BTID_INT * btid,
 }
 
 /*
- * btree_node_mergeable - 
+ * btree_node_mergeable -
  *
- *   return: 
+ *   return:
  *   thread_p(in):
  *   btid(in):
  *   L_page(in):
@@ -12329,7 +12331,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   /*********************************************************************
    ***  STEP 2: save undo image of Q
-   ***		update Q, R header info 
+   ***		update Q, R header info
    *********************************************************************/
   /* add undo logging for page Q */
   log_append_undo_data2 (thread_p, RVBT_COPYPAGE,
@@ -12469,7 +12471,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   /****************************************************************************
    ***   STEP 5: insert sep_key to P
    ***           add undo/redo log for page P
-   *** 
+   ***
    ***    update the parent page P to keep the middle key and to point to
    ***    pages Q and R.  Remember that this mid key will be on a non leaf page
    ***    regardless of whether we are splitting a leaf or non leaf page.
@@ -12794,7 +12796,7 @@ btree_set_split_point (THREAD_ENTRY * thread_p,
  * btree_split_test () -
  *
  *   btid(in):
- *   key(in): 
+ *   key(in):
  *   S_vpid(in):
  *   S_page(in):
  *   node_type(in):
@@ -16684,12 +16686,12 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   int ret_val =
     btree_find_next_index_record_holding_current (thread_p, bts, NULL);
 
-  /* 
+  /*
    * unfix first page unfix first page if fix next page and move to it
-   * 
+   *
    *  case 1: P_page == NULL, C_page == first_page       x do not fix 1 next page
    *  case 2: P_page == first_page, C_page == NULL       x can't fix 1 next page
-   *  case 3: P_page == first_page, C_page != first_pag  o fix 1 next 
+   *  case 3: P_page == first_page, C_page != first_pag  o fix 1 next
    *  case 4: P_page == NULL, C_page == NULL             o can't fix N next, unfix N-1 prev
    *  case 5: P_page == NULL, C_page != first_page       o fix N next, unfix N-1 prev
    *  other case: imppossible (assert)
@@ -16734,7 +16736,7 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
  *   bts(in):
  *
  * Note: This functions finds & peek next index record
- * this function does not unfix first page 
+ * this function does not unfix first page
  */
 static int
 btree_find_next_index_record_holding_current (THREAD_ENTRY * thread_p,
@@ -22114,7 +22116,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
       btree_read_record_helper (thread_p, btid, &rec, &prev_key, &leaf_pnt,
 				BTREE_LEAF_NODE, &clear_prev_key, &offset,
 				PEEK_KEY_VALUE);
-      /* 
+      /*
        * record oid check
        */
       oid_cnt =
@@ -22600,7 +22602,7 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
       /* scan should not be restarted for now */
       bts->restart_scan = 0;
 
-      /* if (key_desc && scan_asc) || (key_asc && scan_desc), 
+      /* if (key_desc && scan_asc) || (key_asc && scan_desc),
        * then swap lower value and upper value
        */
       btrs_helper.swap_key_range = false;
@@ -25111,11 +25113,11 @@ node_type_to_string (short node_type)
 }
 
 /*
- * btree_index_start_scan () -  start scan function for 
+ * btree_index_start_scan () -  start scan function for
  *                              show index header/capacity
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   show_type(in):
  *   arg_values(in):
  *   arg_cnt(in):
@@ -25265,12 +25267,12 @@ cleanup:
 }
 
 /*
- * btree_index_next_scan () -  next scan function for 
+ * btree_index_next_scan () -  next scan function for
  *                             show index header/capacity
  *   return: S_ERROR, S_SUCCESS, or S_END
  *
- *   thread_p(in): 
- *   cursor(in): 
+ *   thread_p(in):
+ *   cursor(in):
  *   out_values(out):
  *   out_cnt(in):
  *   ptr(in): index header/capacity context
@@ -25383,11 +25385,11 @@ cleanup:
 }
 
 /*
- * btree_index_end_scan () -  end scan function 
+ * btree_index_end_scan () -  end scan function
  *                            for show index header/capacity
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   ptr(in/out): index header/capacity context
  */
 int
@@ -25420,7 +25422,7 @@ btree_index_end_scan (THREAD_ENTRY * thread_p, void **ptr)
  * btree_scan_for_show_index_header () - scan index header information
  *   return: S_ERROR, S_SUCCESS, or S_END
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   out_values(out):
  *   out_cnt(in):
  *   class_name(in);
@@ -25570,7 +25572,7 @@ cleanup:
  * btree_scan_for_show_index_capacity () - scan index capacity information
  *   return: S_ERROR, S_SUCCESS, or S_END
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   out_values(out):
  *   out_cnt(in):
  *   class_name(in);

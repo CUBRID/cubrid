@@ -300,10 +300,13 @@ extern DISK_ISVALID btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p,
 						  DB_VALUE * key, OID * oid);
 extern void btree_keyoid_checkscan_end (THREAD_ENTRY * thread_p,
 					BTREE_CHECKSCAN * btscan);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int btree_estimate_total_numpages (THREAD_ENTRY * thread_p,
 					  int dis_key_cnt, int avg_key_len,
 					  int tot_val_cnt, int *blt_pgcnt_est,
 					  int *blt_wrs_pgcnt_est);
+#endif
+
 extern int btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid,
 				 BTREE_CAPACITY * cpc);
 extern DB_VALUE *btree_delete (THREAD_ENTRY * thread_p, BTID * btid,
