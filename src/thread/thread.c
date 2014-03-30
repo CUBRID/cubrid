@@ -132,7 +132,7 @@ static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
 static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
 
 static THREAD_ENTRY *thread_find_entry_by_tran_index (int tran_index);
-
+static void thread_stop_oob_handler_thread ();
 static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
 static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR *
 					 daemon_monitor);
@@ -727,7 +727,6 @@ static void
 thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor)
 {
   THREAD_ENTRY *thread_p;
-  bool repeat_loop = true;
 
   thread_p = &thread_Manager.thread_array[daemon_monitor->thread_index];
   thread_p->shutdown = true;
@@ -766,6 +765,32 @@ thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2)
 }
 
 /*
+ * thread_stop_oob_handler_thread () -
+ */
+static void
+thread_stop_oob_handler_thread ()
+{
+  THREAD_ENTRY *thread_p;
+
+  thread_p = &thread_Manager.thread_array[thread_Oob_thread.thread_index];
+  thread_p->shutdown = true;
+
+  while (thread_p->status != TS_DEAD)
+    {
+      thread_wakeup_oob_handler_thread ();
+
+      if (css_is_shutdown_timeout_expired ())
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"thread_stop_oob_handler_thread: _exit(0)\n");
+	  /* exit process after some tries */
+	  _exit (0);
+	}
+      thread_sleep (10);	/* 10 msec */
+    }
+}
+
+/*
  * thread_stop_active_daemons() - Stop deadlock detector/checkpoint threads
  *   return: NO_ERROR
  */
@@ -774,8 +799,7 @@ thread_stop_active_daemons (void)
 {
   int i;
 
-  /* stop oob thread */
-  thread_wakeup_oob_handler_thread ();
+  thread_stop_oob_handler_thread ();
 
   for (i = 0; i < thread_Manager.num_daemons; i++)
     {
