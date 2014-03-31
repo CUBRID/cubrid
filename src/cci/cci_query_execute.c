@@ -1815,6 +1815,11 @@ qe_get_data (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, int col_no,
   if (data_size <= 0)
     {
       *indicator = -1;
+      if (a_type == CCI_A_TYPE_STR || a_type == CCI_A_TYPE_SET
+	  || a_type == CCI_A_TYPE_BLOB || a_type == CCI_A_TYPE_CLOB)
+	{
+	  *((void **) value) = NULL;
+	}
       return 0;
     }
 

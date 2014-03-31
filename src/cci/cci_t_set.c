@@ -136,6 +136,10 @@ t_set_get (T_SET * set, int index, T_CCI_A_TYPE a_type, void *value,
   if (data_size <= 0)
     {
       *indicator = -1;
+      if (a_type == CCI_A_TYPE_STR)
+	{
+	  *((void **) value) = NULL;
+	}
       return 0;
     }
 
