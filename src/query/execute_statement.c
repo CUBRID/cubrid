@@ -12251,7 +12251,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	  degree = pt_length_of_list (attr);
 
 	  /* allocate attribute descriptors */
-	  if (attr)
+	  if (attr != NULL && attr_descs == NULL)
 	    {
 	      attr_descs =
 		(DB_ATTDESC **) calloc (degree, sizeof (DB_ATTDESC *));
@@ -12298,8 +12298,9 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 		}
 
 	      /* don't get descriptors for shared attrs of views */
-	      if (!attr->info.name.db_object
-		  || !db_is_vclass (attr->info.name.db_object))
+	      if (attr_descs[i] == NULL
+		  && (!attr->info.name.db_object
+		      || !db_is_vclass (attr->info.name.db_object)))
 		{
 		  error =
 		    db_get_attribute_descriptor (class_->info.name.db_object,
