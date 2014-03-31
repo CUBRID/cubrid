@@ -277,6 +277,8 @@ static int btree_start_overflow_page (THREAD_ENTRY * thread_p,
 				      VPID * next_ovfl_vpid);
 static PAGE_PTR btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				    VPID * vpid, VPID * near_vpid);
+static int btree_dealloc_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
+			       VPID * vpid);
 static bool btree_initialize_new_page (THREAD_ENTRY * thread_p,
 				       const VFID * vfid,
 				       const FILE_TYPE file_type,
@@ -2637,6 +2639,37 @@ btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid,
   (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
 
   return page_ptr;
+}
+
+/*
+ * btree_dealloc_page () -
+ *   return: NO_ERROR or error code
+ *
+ *   btid(in):
+ *   vpid(in):
+ */
+static int
+btree_dealloc_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid)
+{
+  int error = NO_ERROR;
+
+  if (log_start_system_op (thread_p) == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  error = file_dealloc_page (thread_p, &btid->sys_btid->vfid, vpid);
+
+  if (btree_is_new_file (btid))
+    {
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+    }
+  else
+    {
+      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+    }
+
+  return error;
 }
 
 /*
@@ -9354,13 +9387,15 @@ start_point:
 
 	  top_op_active = 0;
 	  pgbuf_unfix_and_init (thread_p, Q);
-	  if (file_dealloc_page (thread_p, &btid->vfid, &Q_vpid) != NO_ERROR)
+
+	  assert (VFID_EQ (&btid->vfid, &btid_int.sys_btid->vfid));
+	  if (btree_dealloc_page (thread_p, &btid_int, &Q_vpid) != NO_ERROR)
 	    {
 	      pgbuf_unfix_and_init (thread_p, R);
 	      goto error;
 	    }
 	  pgbuf_unfix_and_init (thread_p, R);
-	  if (file_dealloc_page (thread_p, &btid->vfid, &R_vpid) != NO_ERROR)
+	  if (btree_dealloc_page (thread_p, &btid_int, &R_vpid) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -9497,7 +9532,8 @@ start_point:
 
 		  /* child page to be followed is Q */
 		  pgbuf_unfix_and_init (thread_p, Right);
-		  if (file_dealloc_page (thread_p, &btid->vfid, &Right_vpid)
+
+		  if (btree_dealloc_page (thread_p, &btid_int, &Right_vpid)
 		      != NO_ERROR)
 		    {
 		      goto error;
@@ -9622,7 +9658,8 @@ start_point:
 
 		  /* child page to be followed is Left */
 		  pgbuf_unfix_and_init (thread_p, Q);
-		  if (file_dealloc_page (thread_p, &btid->vfid, &Q_vpid) !=
+
+		  if (btree_dealloc_page (thread_p, &btid_int, &Q_vpid) !=
 		      NO_ERROR)
 		    {
 		      goto error;
