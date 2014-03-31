@@ -161,8 +161,8 @@ public class CUBRIDDriver implements Driver {
 	    String host = matcher.group(2);
 	    String portString = matcher.group(3);
 	    String db = matcher.group(4);
-	    String user = matcher.group(5);
-	    String pass = matcher.group(6);
+	    String user;
+	    String pass;
 	    String prop = matcher.group(7);
 	    int port = default_port;
 
@@ -183,21 +183,14 @@ public class CUBRIDDriver implements Driver {
 	    connProperties = new ConnectionProperties();
 	    connProperties.setProperties(prop);
 
-	    // getting informations from the Properties object
-	    dummy = info.getProperty("user");
-	    if (dummy != null && dummy.length() != 0) {
-		user = dummy;
-	    }
-	    dummy = info.getProperty("password");
-	    if (dummy != null && dummy.length() != 0) {
-		pass = dummy;
+	    user = info.getProperty("user");
+	    if (user == null) {
+		user = matcher.group(5);
 	    }
 
-	    if (user == null) {
-		user = default_user;
-	    }
+	    pass = info.getProperty("password");
 	    if (pass == null) {
-		pass = default_password;
+		pass = matcher.group(6);
 	    }
 
 	    resolvedUrl = "jdbc:cubrid:" + host + ":" + port + ":" + db + ":" + user + ":********:";

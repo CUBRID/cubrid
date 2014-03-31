@@ -486,17 +486,6 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
     }
 #endif
 
-  /* The NULL is same as "". */
-  if (user == NULL)
-    {
-      user = (char *) "";
-    }
-
-  if (pass == NULL)
-    {
-      pass = (char *) "";
-    }
-
   error = cci_url_match (url, token);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -508,11 +497,11 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   port = (int) strtol (token[1], &end, 10);
   dbname = token[2];
 
-  if (*user == '\0')
+  if (user == NULL)
     {
       user = token[3];
     }
-  if (*pass == '\0')
+  if (pass == NULL)
     {
       pass = token[4];
     }
@@ -521,12 +510,6 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   if (property == NULL)
     {
       property = (char *) "";
-    }
-
-  if (user[0] == '\0')
-    {
-      /* A user don't exist in the parameter and url */
-      user = (char *) "PUBLIC";
     }
 
   /* start health check thread */
