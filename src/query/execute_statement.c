@@ -10927,7 +10927,14 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = sm_flush_and_decache_objects (class_obj, true);
 	}
 
-      regu_free_listid (list_id);
+      if (parser->return_generated_keys)
+        {
+          statement->etc = (void *) list_id;
+        }
+      else
+        {
+          regu_free_listid (list_id);
+        }
     }
 
   pt_end_query (parser);
@@ -12035,6 +12042,9 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
   PT_NODE *value_list = NULL;
   DB_OBJECT *obj = NULL, *vobj = NULL;
   unsigned int save_custom;
+  DB_VALUE *value = NULL;
+  DB_SEQ *seq = NULL;
+  int obj_count = 0;
 
   assert (otemplate != NULL);
   if (otemplate == NULL)
@@ -12206,6 +12216,16 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	{
 	  error = er_errid ();
 	  goto cleanup;
+	}
+
+      if (parser->return_generated_keys == true)
+	{
+	  seq = set_create_sequence (0);
+	  if (seq == NULL)
+	    {
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
 	}
 
       error = do_evaluate_insert_values (parser, statement);
@@ -12432,6 +12452,20 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 		  dbt_abort_object (*otemplate);
 		  *otemplate = NULL;
 		}
+	      else
+		{
+		  if (parser->return_generated_keys
+		      && (*otemplate)->is_autoincrement_set > 0)
+		    {
+		      db_make_object (&db_value, obj);
+		      error = set_put_element (seq, obj_count, &db_value);
+		      if (error != NO_ERROR)
+			{
+			  goto cleanup;
+			}
+		      obj_count++;
+		    }
+		}
 
 	      if (error >= NO_ERROR)
 		{
@@ -12469,6 +12503,45 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
   if (error < NO_ERROR)
     {
       goto cleanup;
+    }
+
+  if (*otemplate != NULL && parser->return_generated_keys)
+    {
+      /* a client side insert with template, with requested generated keys */
+      value = db_value_create ();
+      if (value == NULL)
+	{
+	  error = er_errid ();
+	  goto cleanup;
+	}
+      error = db_make_sequence (value, seq);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      statement->etc = (void *) value;
+
+      goto cleanup;
+    }
+  else
+    {
+      if (parser->return_generated_keys == false
+	  && (*otemplate == NULL || value_clauses->next != NULL))
+	{
+	  /* a client side insert with subquery and no template, a client side
+	   * insert with multiple insert values or a server side insert
+	   * for which the generated keys have not been requested */
+	  value = db_value_create ();
+	  if (value == NULL)
+	    {
+	      error = er_errid ();
+	      goto cleanup;
+	    }
+	  db_make_object (value, NULL);
+	  statement->etc = (void *) value;
+
+	  goto cleanup;
+	}
     }
 
   if (*otemplate != NULL && value_clauses->next == NULL)
@@ -12537,6 +12610,11 @@ cleanup:
       *otemplate = NULL;
     }
 
+  if (seq != NULL && error != NO_ERROR)
+    {
+      set_free (seq);
+    }
+
   if (row_count_ptr != NULL)
     {
       *row_count_ptr = row_count;
@@ -12579,6 +12657,10 @@ insert_subquery_results (PARSER_CONTEXT * parser,
   DB_ATTDESC **attr_descs = NULL;
   ODKU_TUPLE_VALUE_ARG odku_arg;
   int pruning_type = DB_NOT_PARTITIONED_CLASS;
+  int obj_count = 0;
+  DB_SEQ *seq = NULL;
+  DB_VALUE db_value;
+  DB_VALUE *value = NULL;
 
   if (values_list == NULL || values_list->node_type != PT_NODE_LIST
       || values_list->info.node_list.list_type != PT_IS_SUBQUERY
@@ -12603,6 +12685,16 @@ insert_subquery_results (PARSER_CONTEXT * parser,
     }
 
   cnt = 0;
+
+  if (parser->return_generated_keys)
+    {
+      seq = set_create_sequence (0);
+      if (seq == NULL)
+	{
+	  error = ER_GENERIC_ERROR;
+	  return error;
+	}
+    }
 
   switch (qry->node_type)
     {
@@ -12831,6 +12923,19 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 		      /* apply the object template */
 		      obj = dbt_finish_object (otemplate);
 
+		      if (obj && parser->return_generated_keys
+			  && otemplate->is_autoincrement_set > 0)
+			{
+			  db_make_object (&db_value, obj);
+			  error = set_put_element (seq, obj_count, &db_value);
+			  if (error != NO_ERROR)
+			    {
+			      cnt = error;
+			      goto cleanup;
+			    }
+			  obj_count++;
+			}
+
 		      if (obj && error >= NO_ERROR)
 			{
 			  if (statement->node_type == PT_INSERT)
@@ -12879,6 +12984,22 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 	}
     }
 
+  if (parser->return_generated_keys && seq != NULL)
+    {
+      value = db_value_create ();
+      if (value == NULL)
+	{
+	  error = er_errid ();
+	  goto cleanup;
+	}
+      error = db_make_sequence (value, seq);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      statement->etc = (void *) value;
+    }
+
 cleanup:
   if (update != NULL)
     {
@@ -12911,6 +13032,11 @@ cleanup:
 	    }
 	}
       free_and_init (attr_descs);
+    }
+
+  if (cnt < 0 && seq != NULL)
+    {
+      set_free (seq);
     }
 
   regu_free_listid ((QFILE_LIST_ID *) qry->etc);
@@ -13494,6 +13620,10 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   query_flag |= NOT_FROM_RESULT_CACHE;
   query_flag |= RESULT_CACHE_INHIBITED;
+  if (parser->return_generated_keys)
+    {
+      query_flag |= RETURN_GENERATED_KEYS;
+    }
 
   if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true
       && parser->query_trace == true)
@@ -13516,7 +13646,14 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       /* set as result */
       err = list_id->tuple_cnt;
-      regu_free_listid (list_id);
+      if (parser->return_generated_keys)
+        {
+          statement->etc = (void *) list_id;
+        }
+      else
+        {
+          regu_free_listid (list_id);
+        }
     }
 
   /* end the query; reset query_id and call qmgr_end_query() */

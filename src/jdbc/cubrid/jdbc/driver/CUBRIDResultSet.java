@@ -158,7 +158,7 @@ public class CUBRIDResultSet implements ResultSet {
 		con = null;
 		stmt = null;
 		u_stmt = s;
-		number_of_rows = 1;
+		number_of_rows = u_stmt.getExecuteResult();
 		current_row = -1;
 		if (u_stmt != null) {
 			column_info = u_stmt.getColumnInfo();

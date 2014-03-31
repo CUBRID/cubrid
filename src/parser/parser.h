@@ -531,7 +531,7 @@ extern "C"
 					     const int include_oid,
 					     bool want_spec_entity_name,
 					     bool fixup_columns_type);
-  extern void pt_free_query_etc_area (PT_NODE * query);
+  extern void pt_free_query_etc_area (PARSER_CONTEXT * parser, PT_NODE * query);
   DB_OBJECT *pt_find_users_class (PARSER_CONTEXT * parser, PT_NODE * name);
   DB_ATTRIBUTE *db_get_attribute_force (DB_OBJECT * obj, const char *name);
   DB_ATTRIBUTE *db_get_attributes_force (DB_OBJECT * obj);
@@ -937,6 +937,8 @@ extern "C"
   extern int pt_name_occurs_in_from_list (PARSER_CONTEXT * parser,
 					  const char *name,
 					  PT_NODE * from_list);
+  extern int pt_is_server_insert_with_generated_keys (PARSER_CONTEXT * parser,
+						      PT_NODE * statement);
 #ifdef __cplusplus
 }
 #endif

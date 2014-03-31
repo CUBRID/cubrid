@@ -369,7 +369,10 @@ static void report_abnormal_host_status (int err_code);
 
 static int set_host_variables (DB_SESSION * session, int num_bind,
 			       DB_VALUE * in_values);
-
+static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle,
+					        T_NET_BUF * net_buf);
+static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle,
+						T_NET_BUF * net_buf);
 
 static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_INT,		/* 1 */
@@ -1251,6 +1254,15 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 	}
     }
 
+  if (flag & CCI_EXEC_RETURN_GENERATED_KEYS)
+    {
+      db_session_set_return_generated_keys (srv_handle->session, true);
+    }
+  else
+    {
+      db_session_set_return_generated_keys (srv_handle->session, false);
+    }
+
   if (srv_handle->is_prepared == FALSE)
     {
       if (flag & CCI_EXEC_QUERY_INFO)
@@ -1583,6 +1595,15 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   while (1)
     {
+      if (flag & CCI_EXEC_RETURN_GENERATED_KEYS)
+	{
+	  db_session_set_return_generated_keys (srv_handle->session, true);
+	}
+      else
+	{
+	  db_session_set_return_generated_keys (srv_handle->session, false);
+	}
+
       if (is_prepared == FALSE)
 	{
 	  stmt_id = db_compile_statement (session);
@@ -7184,22 +7205,59 @@ execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
       net_buf_cp_byte (net_buf, stmt_type);
       net_buf_cp_int (net_buf, tuple_count, NULL);
 
-      if (stmt_type == CUBRID_STMT_INSERT && tuple_count == 1
+      if (stmt_type == CUBRID_STMT_INSERT
 	  && srv_handle->q_result[i].result != NULL)
 	{
-	  error =
-	    db_query_get_tuple_value ((DB_QUERY_RESULT *)
-				      srv_handle->q_result[i].result, 0,
-				      &val);
-	  if (error < 0)
+	  DB_QUERY_RESULT *qres =
+			     (DB_QUERY_RESULT *) srv_handle->q_result[i].result;
+
+	  if (qres->type == T_SELECT)
 	    {
+	      /* result of a GET_GENERATED_KEYS request, server insert */
 	      memset (&ins_oid, 0, sizeof (T_OBJECT));
 	    }
 	  else
 	    {
-	      ins_obj_p = db_get_object (&val);
-	      dbobj_to_casobj (ins_obj_p, &ins_oid);
-	      db_value_clear (&val);
+	      error =
+		db_query_get_tuple_value ((DB_QUERY_RESULT *)
+					  srv_handle->q_result[i].result, 0,
+					  &val);
+	      if (error < 0)
+		{
+		  memset (&ins_oid, 0, sizeof (T_OBJECT));
+		}
+	      else
+		{
+		  if (DB_VALUE_DOMAIN_TYPE (&val) == DB_TYPE_OBJECT)
+		    {
+		      ins_obj_p = db_get_object (&val);
+		      dbobj_to_casobj (ins_obj_p, &ins_oid);
+		      db_value_clear (&val);
+		    }
+		  else if (DB_VALUE_DOMAIN_TYPE (&val) == DB_TYPE_SEQUENCE)
+		    {
+		      /* result of a GET_GENERATED_KEYS request, client insert */
+		      DB_VALUE value;
+		      DB_SEQ *seq = DB_GET_SEQUENCE (&val);
+		      
+		      if (seq != NULL && db_col_size (seq) == 1)
+			{
+			  db_col_get (seq, 0, &value);
+			  ins_obj_p = db_get_object (&value);
+			  dbobj_to_casobj (ins_obj_p, &ins_oid);
+			  db_value_clear (&value);
+			}
+		      else
+			{
+			  memset (&ins_oid, 0, sizeof (T_OBJECT));
+			}
+		      db_value_clear (&val);
+		    }
+		  else
+		    {
+		      memset (&ins_oid, 0, sizeof (T_OBJECT));
+		    }
+		}
 	    }
 	}
       else
@@ -9092,6 +9150,35 @@ ux_use_sp_out (int srv_h_id)
 int
 ux_get_generated_keys (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 {
+  int err_code = CAS_NO_ERROR;
+  DB_QUERY_RESULT *qres = NULL;
+
+  qres = (DB_QUERY_RESULT *) srv_handle->q_result->result;
+
+  if (qres == NULL)
+    {
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      goto ux_get_generated_keys_error;
+    }
+
+  if (qres->type == T_SELECT)
+    {
+      return ux_get_generated_keys_server_insert (srv_handle, net_buf);
+    }
+  if (qres->type == T_CALL)
+    {
+      return ux_get_generated_keys_client_insert (srv_handle, net_buf);
+    }
+
+ux_get_generated_keys_error:
+  NET_BUF_ERR_SET (net_buf);
+  return err_code;
+}
+
+static int
+ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle,
+				     T_NET_BUF * net_buf)
+{
   T_NET_BUF *tuple_buf, temp_buf;
   DB_OBJECT *obj;
   DB_OBJECT *class_obj;
@@ -9099,81 +9186,282 @@ ux_get_generated_keys (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
   DB_VALUE oid_val, value;
   const char *attr_name = "";
   char updatable_flag = TRUE;
-  int err_code;
+  int err_code = CAS_NO_ERROR;
   int num_col_offset, num_cols = 0;
+  int tuple_count_offset, fetched_offset;
+  int tuple_count = 0;
   T_OBJECT t_object_autoincrement;
+  DB_QUERY_RESULT *qres = NULL;
+  int save_stmt_type;
 
-  tuple_buf = &temp_buf;
-  net_buf_init (tuple_buf);
-  err_code =
-    db_query_get_tuple_value ((DB_QUERY_RESULT *) srv_handle->q_result->
-			      result, 0, &oid_val);
+  qres = (DB_QUERY_RESULT *) srv_handle->q_result->result;
+
+  assert (qres != NULL && qres->type == T_SELECT);
+
+  /* save original statement type, since it should not create a resultset */
+  save_stmt_type = srv_handle->q_result->stmt_type;
+
+  srv_handle->q_result->stmt_type = qres->res.s.stmt_type;
+  srv_handle->q_result->include_oid = 0;
+
+  net_buf_cp_int (net_buf, 0, NULL);	/* result code */
+
+  /* Result Set make */
+  net_buf_cp_byte (net_buf, srv_handle->q_result->stmt_type);	/* commandTypeIs */
+  net_buf_cp_int (net_buf, srv_handle->q_result->tuple_count,
+		  &tuple_count_offset);	/* totalTupleNumber */
+  net_buf_cp_byte (net_buf, updatable_flag);	/* isUpdatable */
+  net_buf_cp_int (net_buf, 0, &num_col_offset);	/* columnNumber */
+
+  err_code = db_query_next_tuple (qres);
   if (err_code < 0)
     {
       err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       goto ux_get_generated_keys_error;
     }
 
-  obj = db_get_object (&oid_val);
-  dbobj_to_casobj (obj, &t_object_autoincrement);
+  while (qres->res.s.cursor_id.position == C_ON)
+    {
+      tuple_count++;
 
-  class_obj = db_get_class (obj);
-  attributes = db_get_attributes (class_obj);
+      tuple_buf = &temp_buf;
+      net_buf_init (tuple_buf);
+
+      err_code =
+	db_query_get_tuple_value ((DB_QUERY_RESULT *) srv_handle->q_result->
+				  result, 0, &oid_val);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  goto ux_get_generated_keys_error;
+	}
+
+      obj = db_get_object (&oid_val);
+      dbobj_to_casobj (obj, &t_object_autoincrement);
+
+      class_obj = db_get_class (obj);
+      attributes = db_get_attributes (class_obj);
+      num_cols = 0;
+
+      for (attr = attributes; attr; attr = db_attribute_next (attr))
+	{
+	  if (db_attribute_is_auto_increment (attr))
+	    {
+	      DB_DOMAIN *domain;
+	      char set_type;
+	      short scale;
+	      int precision;
+	      int temp_type;
+
+	      domain = db_attribute_domain (attr);
+	      precision = db_domain_precision (domain);
+	      scale = db_domain_scale (domain);
+	      temp_type = TP_DOMAIN_TYPE (domain);
+	      set_type = ux_db_type_to_cas_type (temp_type);
+
+	      attr_name = (char *) db_attribute_name (attr);
+	      err_code = db_get (obj, attr_name, &value);
+	      if (err_code < 0)
+		{
+		  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+		  goto ux_get_generated_keys_error;
+		}
+
+	      if (tuple_count == 1)
+		{
+		  net_buf_cp_byte (net_buf, set_type);
+		  net_buf_cp_short (net_buf, scale);
+		  net_buf_cp_int (net_buf, precision, NULL);
+		  net_buf_cp_int (net_buf, strlen (attr_name) + 1, NULL);
+		  net_buf_cp_str (net_buf, attr_name, strlen (attr_name) + 1);
+		}
+
+	      /* tuple data */
+	      dbval_to_net_buf (&value, tuple_buf, 1, 0, 0);
+	      num_cols++;
+	    }
+	}
+      net_buf_overwrite_int (net_buf, num_col_offset, num_cols);
+
+      /* UTuples make */
+      if (tuple_count == 1)
+	{
+	  net_buf_cp_int (net_buf, 1, &fetched_offset);	/* fetchedTupleNumber */
+	}
+
+      net_buf_cp_int (net_buf, tuple_count, NULL);	/* index */
+      net_buf_cp_object (net_buf, &t_object_autoincrement);	/* readOID 8 byte */
+      net_buf_cp_str (net_buf, tuple_buf->data + NET_BUF_HEADER_SIZE,
+		      tuple_buf->data_size);
+      net_buf_clear (tuple_buf);
+      net_buf_destroy (tuple_buf);
+
+      err_code = db_query_next_tuple (qres);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  goto ux_get_generated_keys_error;
+	}
+    }
+
+  net_buf_overwrite_int (net_buf, tuple_count_offset, tuple_count);
+  if (tuple_count > 0)
+    {
+      net_buf_overwrite_int (net_buf, fetched_offset, tuple_count);
+    }
+  else
+    {
+      net_buf_cp_int (net_buf, 0, NULL); /* fetchedTupleNumber */
+    }
+
+  /* restore original statement type */
+  srv_handle->q_result->stmt_type = save_stmt_type;
+
+  return NO_ERROR;
+
+ux_get_generated_keys_error:
+  srv_handle->q_result->stmt_type = save_stmt_type;
+  NET_BUF_ERR_SET (net_buf);
+  return err_code;
+}
+
+static int
+ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle,
+				     T_NET_BUF * net_buf)
+{
+  T_NET_BUF *tuple_buf, temp_buf;
+  DB_OBJECT *obj;
+  DB_OBJECT *class_obj;
+  DB_ATTRIBUTE *attributes, *attr;
+  DB_VALUE oid_val, value;
+  const char *attr_name = "";
+  char updatable_flag = TRUE;
+  int err_code = CAS_NO_ERROR;
+  int num_col_offset, num_cols = 0;
+  int tuple_count = 0;
+  T_OBJECT t_object_autoincrement;
+  DB_QUERY_RESULT *qres = NULL;
+  DB_SEQ *seq = NULL;
+  int i;
+
+  qres = (DB_QUERY_RESULT *) srv_handle->q_result->result;
+
+  assert (qres != NULL && qres->type == T_CALL);
+
+  if (DB_VALUE_DOMAIN_TYPE (qres->res.c.val_ptr) == DB_TYPE_SEQUENCE)
+    {
+      seq = DB_GET_SEQUENCE (qres->res.c.val_ptr);
+      if (seq == NULL)
+	{
+	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  goto ux_get_generated_keys_error;
+	}
+
+      tuple_count = db_col_size (seq);
+    }
+  else if (DB_VALUE_DOMAIN_TYPE (qres->res.c.val_ptr) == DB_TYPE_OBJECT)
+    {
+      /* the default result, when the generated keys have not been requested */
+      tuple_count = 1;
+      db_make_object (&oid_val, DB_GET_OBJECT (qres->res.c.val_ptr));
+    }
+  else
+    {
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      goto ux_get_generated_keys_error;
+    }
+
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
 
   /* Result Set make */
   net_buf_cp_byte (net_buf, srv_handle->q_result->stmt_type);	/* commandTypeIs */
-  net_buf_cp_int (net_buf, 1, NULL);	/* totalTupleNumber */
+  net_buf_cp_int (net_buf, tuple_count, NULL);	/* totalTupleNumber */
   net_buf_cp_byte (net_buf, updatable_flag);	/* isUpdatable */
-  net_buf_cp_int (net_buf, num_cols, &num_col_offset);	/* columnNumber */
+  net_buf_cp_int (net_buf, 0, &num_col_offset);	/* columnNumber */
 
-  for (attr = attributes; attr; attr = db_attribute_next (attr))
+  if (tuple_count == 0)
     {
-      if (db_attribute_is_auto_increment (attr))
+      net_buf_cp_int (net_buf, 0, NULL);	/* fetchedTupleNumber */
+    }
+
+  for (i = 0; i < tuple_count; i++)
+    {
+      tuple_buf = &temp_buf;
+      net_buf_init (tuple_buf);
+
+      if (seq != NULL)
 	{
-	  DB_DOMAIN *domain;
-	  char set_type;
-	  short scale;
-	  int precision;
-	  int temp_type;
-
-	  domain = db_attribute_domain (attr);
-	  precision = db_domain_precision (domain);
-	  scale = db_domain_scale (domain);
-	  temp_type = TP_DOMAIN_TYPE (domain);
-	  set_type = ux_db_type_to_cas_type (temp_type);
-
-	  attr_name = (char *) db_attribute_name (attr);
-	  err_code = db_get (obj, attr_name, &value);
+	  err_code = db_col_get (seq, i, &oid_val);
 	  if (err_code < 0)
 	    {
 	      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	      goto ux_get_generated_keys_error;
 	    }
-
-	  net_buf_cp_byte (net_buf, set_type);
-	  net_buf_cp_short (net_buf, scale);
-	  net_buf_cp_int (net_buf, precision, NULL);
-	  net_buf_cp_int (net_buf, strlen (attr_name) + 1, NULL);
-	  net_buf_cp_str (net_buf, attr_name, strlen (attr_name) + 1);
-
-	  /* tuple data */
-	  dbval_to_net_buf (&value, tuple_buf, 1, 0, 0);
-	  num_cols++;
 	}
+
+      obj = db_get_object (&oid_val);
+      dbobj_to_casobj (obj, &t_object_autoincrement);
+
+      class_obj = db_get_class (obj);
+      attributes = db_get_attributes (class_obj);
+      num_cols = 0;
+
+      for (attr = attributes; attr; attr = db_attribute_next (attr))
+	{
+	  if (db_attribute_is_auto_increment (attr))
+	    {
+	      DB_DOMAIN *domain;
+	      char set_type;
+	      short scale;
+	      int precision;
+	      int temp_type;
+
+	      domain = db_attribute_domain (attr);
+	      precision = db_domain_precision (domain);
+	      scale = db_domain_scale (domain);
+	      temp_type = TP_DOMAIN_TYPE (domain);
+	      set_type = ux_db_type_to_cas_type (temp_type);
+
+	      attr_name = (char *) db_attribute_name (attr);
+	      err_code = db_get (obj, attr_name, &value);
+	      if (err_code < 0)
+		{
+		  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+		  goto ux_get_generated_keys_error;
+		}
+
+	      if (i == 0)
+		{
+		  net_buf_cp_byte (net_buf, set_type);
+		  net_buf_cp_short (net_buf, scale);
+		  net_buf_cp_int (net_buf, precision, NULL);
+		  net_buf_cp_int (net_buf, strlen (attr_name) + 1, NULL);
+		  net_buf_cp_str (net_buf, attr_name, strlen (attr_name) + 1);
+		}
+
+	      /* tuple data */
+	      dbval_to_net_buf (&value, tuple_buf, 1, 0, 0);
+	      num_cols++;
+	    }
+	}
+      net_buf_overwrite_int (net_buf, num_col_offset, num_cols);
+
+      /* UTuples make */
+      if (i == 0)
+	{
+	  net_buf_cp_int (net_buf, tuple_count, NULL);	/* fetchedTupleNumber */
+	}
+
+      net_buf_cp_int (net_buf, i + 1, NULL);	/* index */
+      net_buf_cp_object (net_buf, &t_object_autoincrement);	/* readOID 8 byte */
+      net_buf_cp_str (net_buf, tuple_buf->data + NET_BUF_HEADER_SIZE,
+		      tuple_buf->data_size);
+      net_buf_clear (tuple_buf);
+      net_buf_destroy (tuple_buf);
+      db_value_clear (&oid_val);
     }
-  net_buf_overwrite_int (net_buf, num_col_offset, num_cols);
 
-  /* UTuples make */
-  net_buf_cp_int (net_buf, 1, NULL);	/* fetchedTupleNumber */
-  net_buf_cp_int (net_buf, 1, NULL);	/* index */
-  net_buf_cp_object (net_buf, &t_object_autoincrement);	/* readOID 8 byte */
-  net_buf_cp_str (net_buf, tuple_buf->data + NET_BUF_HEADER_SIZE,
-		  tuple_buf->data_size);
-  net_buf_clear (tuple_buf);
-  net_buf_destroy (tuple_buf);
-
-  return 0;
+  return NO_ERROR;
 
 ux_get_generated_keys_error:
   NET_BUF_ERR_SET (net_buf);

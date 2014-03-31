@@ -3351,6 +3351,7 @@ struct parser_context
   int num_plan_trace;
   PT_PLAN_TRACE_INFO plan_trace[MAX_NUM_PLAN_TRACE];
   LC_LOCKHINT *lockhint;
+  bool return_generated_keys;
 };
 
 /* used in assignments enumeration */

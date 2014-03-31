@@ -1144,6 +1144,7 @@ parser_create_parser (void)
   parser->auto_param_count = 0;
   parser->ddl_stmt_for_replication = NULL;
   parser->lockhint = NULL;
+  parser->return_generated_keys = false;
 
   return parser;
 }

@@ -9058,6 +9058,19 @@ qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
    */
   list_id->type_list.domp[0] = &tp_Object_domain;
 
+  if (xasl->type == INSERT_PROC
+      && XASL_IS_FLAGED (xasl, XASL_RETURN_GENERATED_KEYS))
+    {
+        list_id->tfile_vfid = qmgr_create_new_temp_file (thread_p,
+							 list_id->query_id,
+							 TEMP_FILE_MEMBUF_NORMAL);
+	if (list_id->tfile_vfid == NULL)
+	  {
+	    return ER_FAILED;
+	  }
+	VFID_COPY (&(list_id->temp_vfid), &(list_id->tfile_vfid->temp_vfid));
+    }
+
 #if !defined (NDEBUG)
   assert (list_id->type_list.type_cnt == 1);
   if (list_id->type_list.type_cnt != 0)
@@ -11241,6 +11254,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int n_indexes = 0;
   int error = 0;
   ODKU_INFO *odku_assignments = insert->odku;
+  DB_VALUE oid_val;
+  int is_autoincrement_set = 0;
 
   aptr = xasl->aptr_list;
   val_no = insert->no_vals;
@@ -11253,6 +11268,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  qexec_failure_line (__LINE__, xasl_state);
 	  return ER_FAILED;
 	}
+    }
+
+  if (XASL_IS_FLAGED (xasl, XASL_RETURN_GENERATED_KEYS) && xasl->list_id)
+    {
+      xasl->list_id->query_id = xasl_state->query_id;
     }
 
   /* This guarantees that the result list file will have a type list.
@@ -11608,7 +11628,9 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 
 	      if (heap_set_autoincrement_value (thread_p, &attr_info,
-						&scan_cache) != NO_ERROR)
+						&scan_cache,
+						&is_autoincrement_set)
+		  != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -11685,7 +11707,21 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      if (force_count)
 		{
 		  assert (force_count == 1);
-		  xasl->list_id->tuple_cnt += force_count;
+		  if (!OID_ISNULL (&oid)
+		      && XASL_IS_FLAGED (xasl, XASL_RETURN_GENERATED_KEYS)
+		      && is_autoincrement_set > 0)
+		    {
+		      db_make_oid (&oid_val, &oid);
+		      if (qfile_fast_val_tuple_to_list (thread_p, xasl->list_id,
+							&oid_val) != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
+		  else
+		    {
+		      xasl->list_id->tuple_cnt += force_count;
+		    }
 		}
 	    }
 
@@ -11795,7 +11831,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 	    }
 
-	  if (heap_set_autoincrement_value (thread_p, &attr_info, &scan_cache)
+	  if (heap_set_autoincrement_value (thread_p, &attr_info, &scan_cache,
+					    &is_autoincrement_set)
 	      != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
@@ -11865,7 +11902,21 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      if (force_count)
 		{
 		  assert (force_count == 1);
-		  xasl->list_id->tuple_cnt += force_count;
+		  if (!OID_ISNULL (&oid)
+		      && XASL_IS_FLAGED (xasl, XASL_RETURN_GENERATED_KEYS)
+		      && is_autoincrement_set > 0)
+		    {
+		      db_make_oid (&oid_val, &oid);
+		      if (qfile_fast_val_tuple_to_list (thread_p, xasl->list_id,
+							&oid_val) != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
+		  else
+		    {
+		      xasl->list_id->tuple_cnt += force_count;
+		    }
 		}
 	    }
 
@@ -12035,7 +12086,8 @@ exit_on_error:
       partition_clear_pruning_context (pcontext);
       pcontext = NULL;
     }
-  if (XASL_IS_FLAGED (xasl, XASL_LINK_TO_REGU_VARIABLE)
+  if ((XASL_IS_FLAGED (xasl, XASL_LINK_TO_REGU_VARIABLE)
+       || XASL_IS_FLAGED (xasl, XASL_RETURN_GENERATED_KEYS))
       && xasl->list_id != NULL)
     {
       qfile_clear_list_id (xasl->list_id);

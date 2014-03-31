@@ -310,6 +310,7 @@ EXPORTS
     db_seq_put
     db_seq_size
     db_session_set_holdable
+    db_session_set_return_generated_keys
     db_session_is_last_statement
     db_set_add
     db_set_client_cache_time

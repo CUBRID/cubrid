@@ -20219,11 +20219,13 @@ heap_get_class_repr_id (THREAD_ENTRY * thread_p, OID * class_oid)
  *   return: NO_ERROR, or ER_code
  *   attr_info(in):
  *   scan_cache(in):
+ *   is_set(out): 1 if at least one autoincrement value has been set
  */
 int
 heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 			      HEAP_CACHE_ATTRINFO * attr_info,
-			      HEAP_SCANCACHE * scan_cache)
+			      HEAP_SCANCACHE * scan_cache,
+			      int * is_set)
 {
   int i, idx_in_cache;
   char *classname;
@@ -20243,6 +20245,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
     {
       return ER_FAILED;
     }
+
+  *is_set = 0;
 
   recdes.data = NULL;
   recdes.area_size = 0;
@@ -20363,6 +20367,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 		}
 	    }
 
+	  *is_set = 1;
 	  value->state = HEAP_READ_ATTRVALUE;
 	}
     }

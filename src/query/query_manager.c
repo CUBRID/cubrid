@@ -1732,6 +1732,10 @@ qmgr_process_query (THREAD_ENTRY * thread_p,
     }
 #endif
 
+  if (flag & RETURN_GENERATED_KEYS)
+    {
+      XASL_SET_FLAG (xasl_p, XASL_RETURN_GENERATED_KEYS);
+    }
   /* execute the query with the value list, if any */
   query_p->list_id = qexec_execute_query (thread_p, xasl_p,
 					  dbval_count, dbvals_p,

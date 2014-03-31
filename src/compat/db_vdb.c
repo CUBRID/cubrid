@@ -1193,6 +1193,24 @@ db_session_set_holdable (DB_SESSION * session, bool holdable)
 }
 
 /*
+ * db_session_set_return_generated_keys () - return generated keys for insert
+ *					  statements
+ * return : void
+ * session (in) :
+ * return_generated_keys (in) :
+ */
+void
+db_session_set_return_generated_keys (DB_SESSION * session,
+				      bool return_generated_keys)
+{
+  if (session->parser == NULL)
+    {
+      return;
+    }
+  session->parser->return_generated_keys = return_generated_keys;
+}
+
+/*
  * db_get_line_col_of_1st_error() - get the source line & column of first error
  * returns: 1 if there were any query compilation errors, 0, otherwise.
  * session(in) : contains the SQL query that has just been compiled
@@ -2113,11 +2131,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	  err = er_errid ();
 	}
       /* free the allocated list_id area before leaving */
-      if (pt_node_to_cmd_type (statement) == CUBRID_STMT_SELECT ||
-	  pt_node_to_cmd_type (statement) == CUBRID_STMT_DO)
-	{
-	  pt_free_query_etc_area (statement);
-	}
+      pt_free_query_etc_area (parser, statement);
     }
 
   /* so now, the statement is executed */
@@ -2162,7 +2176,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	      break;
 
 	    case CUBRID_STMT_DO:
-	      pt_free_query_etc_area (statement);
+	      pt_free_query_etc_area (parser, statement);
 	      break;
 
 	    case CUBRID_STMT_GET_ISO_LVL:
@@ -2176,7 +2190,39 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	      /* csql (in csql.c) may throw away any non-null *result,
 	         but we create a DB_QUERY_RESULT structure anyway for other
 	         callers of db_execute that use the *result like esql_cli.c  */
-	      val = (DB_VALUE *) pt_node_etc (statement);
+	      if (pt_is_server_insert_with_generated_keys (parser, statement))
+		{
+		  qres = pt_new_query_result_descriptor (parser, statement);
+		  if (qres)
+		    {
+		      /* get number of rows as result */
+		      qres->query_type =
+			db_cp_query_type (session->type_list[stmt_ndx], false);
+		      qres->res.s.stmt_id = stmt_ndx;
+		    }
+		  else
+		    {
+		      err = er_errid ();
+		    }
+		  break;
+		}
+	      if (pt_node_to_cmd_type (statement) == CUBRID_STMT_INSERT
+		  && statement->info.insert.server_allowed ==
+						       SERVER_INSERT_IS_ALLOWED)
+		{
+		  val = db_value_create ();
+		  if (val == NULL)
+		    {
+		      err = er_errid ();
+		      break;
+		    }
+		  db_make_object (val, NULL);
+		}
+	      else
+		{
+		  val = (DB_VALUE *) pt_node_etc (statement);
+		}
+
 	      if (val)
 		{
 		  /* got a result, so use it */
@@ -2191,11 +2237,12 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		         but we might have done a delete before.
 		         For this case, if err>row_count we will not change
 		         the row count */
-		      if (pt_node_to_cmd_type (statement)
-			  == CUBRID_STMT_INSERT)
+		      if (pt_node_to_cmd_type (statement) == CUBRID_STMT_INSERT)
 			{
-			  if (statement->info.insert.do_replace &&
-			      row_count > err)
+			  if ((DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_OBJECT
+			       && DB_IS_NULL (val))
+			      || (statement->info.insert.do_replace
+				  && row_count > err))
 			    {
 			      err = row_count;
 			    }

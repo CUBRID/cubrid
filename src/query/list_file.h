@@ -233,6 +233,9 @@ extern int qfile_fast_intint_tuple_to_list (THREAD_ENTRY * thread_p,
 extern int qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p,
 					    QFILE_LIST_ID * list_id_p,
 					    int v1, DB_VALUE * v2);
+extern int qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p,
+					 QFILE_LIST_ID * list_id_p,
+					 DB_VALUE * val);
 extern int qfile_add_item_to_list (THREAD_ENTRY * thread_p, char *item,
 				   int item_size, QFILE_LIST_ID * list_id);
 extern QFILE_LIST_ID *qfile_combine_two_list (THREAD_ENTRY * thread_p,

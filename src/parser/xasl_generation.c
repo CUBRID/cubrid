@@ -18505,6 +18505,10 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (xasl)
     {
+      if (parser->return_generated_keys)
+	{
+	  XASL_SET_FLAG (xasl, XASL_RETURN_GENERATED_KEYS);
+	}
       insert = &xasl->proc.insert;
       insert->class_hfid = *hfid;
       class_oid = ws_identifier (class_obj);

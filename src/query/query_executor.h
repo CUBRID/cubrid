@@ -825,6 +825,7 @@ struct func_pred
 #define XASL_IS_MERGE_QUERY	      2048	/* query belongs to a merge statement */
 #define XASL_USES_MRO	      4096	/* query uses multi range optimization */
 #define XASL_KEEP_DBVAL	      8192	/* do not clear db_value */
+#define XASL_RETURN_GENERATED_KEYS	     16384 /* return generated keys */ 
 
 #define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)

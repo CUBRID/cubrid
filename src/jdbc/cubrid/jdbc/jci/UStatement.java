@@ -65,7 +65,8 @@ public class UStatement {
 
 	private final static byte EXEC_FLAG_ASYNC = 0x01,
 	        EXEC_FLAG_QUERY_ALL = 0x02, EXEC_FLAG_QUERY_INFO = 0x04,
-	        EXEC_FLAG_ONLY_QUERY_PLAN = 0x08, EXEC_FLAG_HOLDABLE_RESULT = 0x20;
+	        EXEC_FLAG_ONLY_QUERY_PLAN = 0x08, EXEC_FLAG_HOLDABLE_RESULT = 0x20,
+			EXEC_FLAG_GET_GENERATED_KEYS = 0x40;
 
 	private byte statementType;
 
@@ -666,6 +667,10 @@ public class UStatement {
 		}
 		if (isHoldable && relatedConnection.supportHoldableResult()) {
 			executeFlag |= EXEC_FLAG_HOLDABLE_RESULT;
+		}
+
+		if (isGeneratedKeys) {
+			executeFlag |= EXEC_FLAG_GET_GENERATED_KEYS;
 		}
 
 		this.isSensitive = isSensitive;
@@ -2093,6 +2098,9 @@ public class UStatement {
 		for (int i = 0; i < fetchedTupleNumber; i++) {
 			readATuple(i, inBuffer);
 		}
+			if (functionCode == UFunctionCode.GET_GENERATED_KEYS) {
+				isFetchCompleted = true;
+			}
 
 		if (functionCode == UFunctionCode.FETCH
 		        && relatedConnection
