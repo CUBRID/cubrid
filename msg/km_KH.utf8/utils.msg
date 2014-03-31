@@ -67,6 +67,7 @@ $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
 $       49      tranlist
+$       50      prefetchlogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 ប្រវែងមិនសុពល ឬអក្សរ`%c' ក្នុងឈ្មោះដែលតាបេស`%s'\n
@@ -115,6 +116,7 @@ usage: %s <utility-name> [args]\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %s ជាឧបករណ៍សម្រាប់ DBMS។\n\
 សម្រាប់ពត៌មានបន្ថែម, សូមមើលhttp://www.cubrid.org\n
@@ -170,6 +172,7 @@ administrator's utilitiesដែលមាន:\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %s ជាឧបករណ៍សម្រាប់ DBMS។\n\
 សម្រាប់ពត៌មានបន្ថែម, សូមមើលhttp://www.cubrid.org\n
@@ -217,11 +220,12 @@ commandដែលមាន:\n\
 usage: %s heartbeat <command> [args]\n\
 \n\
 commandដែលមាន:\n\
-    start       [database-name]\n\
-    stop        [-i|database-name]\n\
-    copylogdb   <start|stop> database-name node-name\n\
-    applylogdb  <start|stop> database-name node-name\n\
-    replication <start|stop> node-name\n\
+    start          [database-name]\n\
+    stop           [-i|database-name]\n\
+    copylogdb      <start|stop> database-name node-name\n\
+    applylogdb     <start|stop> database-name node-name\n\
+    prefetchlogdb  <start|stop> database-name node-name\n\
+    replication    <start|stop> node-name\n\
     status\n\
     reload\n
 31 មិនត្រូវការពាក្យសំអាងខ្ទាស់'%1$s'។\n
@@ -1062,3 +1066,15 @@ usage: %1$s tranlist [OPTION] database-name\n\
   -s, --summary                ចេញក្រដាស(បោះពុម្ព)ព័ត៌មានអំពីការជួញដូរ\n\
       --sort-key=COLUMN_NUMBER ចំនួនវ៉ូលូមត្រូវដាក់ទៅតាមប្រភេទ\n\
       --reverse                ដាក់បញ្ច្រាសលទ្ធផលតាមប្រភេទ\n
+
+$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
+22 The server was not configured for HA.\n
+23 Prefetch feature is disabled.\n
+58 HA feature is not supported in this platform.\n
+59 prefetchlogdb cannot run as standalone mode.\n
+60 \
+prefetchlogdb: Prefetch log pages from the server.\n\
+usage: %1$s prefetchlogdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -L, --log-path=PATH         directory PATH for copied log volumes\n

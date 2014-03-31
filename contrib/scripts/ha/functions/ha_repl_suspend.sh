@@ -119,12 +119,49 @@ function suspend_applylogdb()
 	exit 1
 }
 
+function suspend_prefetchlogdb()
+{
+  local i=0
+  
+  ps=$(ps -f -U $(whoami) | grep "cub_admin prefetchlogdb" | grep "${db_name}_${host}" | grep -v grep)
+  if [ "$ps" == "" ]; then
+    return;
+  fi
+  
+  arg=$(echo $ps | cut -d ' ' -f 8-)         
+  pid=$(echo $ps | cut -d ' ' -f 2)
+
+  arg_list=($arg)   
+  for ((; $i < ${#arg_list[@]}; i++)); do
+    if [ "${arg_list[$i]}" == "-L" ]; then
+      ps_log_path=${arg_list[(($i + 1))]}
+      break
+    fi
+  done
+
+  ps_log_path=$(readlink -f $ps_log_path)
+
+  if [ "$ps_log_path" == "$log_path" ]; then
+    echo "$current_host ]$ cubrid heartbeat deregister $pid" 
+    echo "suspend: ($pid) $arg"
+    cubrid heartbeat deregister $pid >/dev/null 2>&1
+    
+    [ -n "$output_file" ] && echo $arg >> $output_file
+    
+    return
+  fi
+  
+  echo -e "\033[38mCannot find the prefetchlogdb process.\033[39m"
+  exit 1
+}
+
 function ha_repl_suspend()
 {
 	rm -f $output_file
 	
 	suspend_copylogdb 
 	suspend_applylogdb
+	suspend_prefetchlogdb
 
 	sleep 1
 

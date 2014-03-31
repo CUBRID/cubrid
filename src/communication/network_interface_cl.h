@@ -127,6 +127,10 @@ extern int locator_check_fk_validity (OID * cls_oid, HFID * hfid,
 				      int *attr_ids, OID * pk_cls_oid,
 				      BTID * pk_btid, int cache_attr_id,
 				      char *fk_name);
+extern int locator_prefetch_repl_insert (OID * class_oid, RECDES * recdes);
+extern int locator_prefetch_repl_update_or_delete (OID * class_oid,
+						   BTID * btid,
+						   DB_VALUE * key_value);
 extern int heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int heap_destroy (const HFID * hfid);

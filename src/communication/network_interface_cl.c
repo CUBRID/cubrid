@@ -10064,6 +10064,111 @@ locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
 #endif /* !CS_MODE */
 }
 
+
+int
+locator_prefetch_repl_insert (OID * class_oid, RECDES * recdes)
+{
+  int error = NO_ERROR;
+#if defined (CS_MODE)
+  char *ptr = NULL;
+  char *request = NULL;
+  int req_error, request_size;
+  char *reply = NULL;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = OR_OID_SIZE + or_packed_recdesc_length (recdes->length);
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_oid (request, class_oid);
+  ptr = or_pack_recdes (ptr, recdes);
+
+  req_error = net_client_request (NET_SERVER_LC_PREFETCH_REPL_INSERT,
+				  request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				  NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &error);
+    }
+
+  free_and_init (request);
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1,
+	  "log prefetcher");
+  error = ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+  return error;
+}
+
+int
+locator_prefetch_repl_update_or_delete (OID * class_oid, BTID * btid,
+					DB_VALUE * key_value)
+{
+  int error = NO_ERROR;
+#if defined (CS_MODE)
+  int req_error, request_size, key_size;
+  char *ptr = NULL;
+  char *request = NULL;
+  char *reply = NULL;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+
+  if (btid == NULL || class_oid == NULL || key_value == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  key_size = OR_VALUE_ALIGNED_SIZE (key_value);
+  request_size = OR_BTID_ALIGNED_SIZE	/* btid */
+    + OR_OID_SIZE		/* class_oid */
+    + key_size;			/* key_value */
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_btid (request, btid);
+  ptr = or_pack_oid (ptr, class_oid);
+  ptr = or_pack_mem_value (ptr, key_value);
+  if (ptr == NULL)
+    {
+      goto free_and_return;
+    }
+
+  request_size = ptr - request;
+
+  req_error =
+    net_client_request (NET_SERVER_LC_PREFETCH_REPL_UPDATE_OR_DELETE, request,
+			request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &error);
+    }
+
+free_and_return:
+  free_and_init (request);
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1,
+	  "log prefetcher");
+  error = ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+  return error;
+}
+
 /*
  * logwr_get_log_pages -
  *

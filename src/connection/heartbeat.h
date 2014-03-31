@@ -58,21 +58,23 @@ enum HA_READ_MODE
   HA_READ = 1
 };
 
-#if !defined(WINDOWS)
-
 /* heartbeat resource process type */
-enum HB_PROC_TYPE
+typedef enum hb_proc_type HB_PROC_TYPE;
+enum hb_proc_type
 {
   HB_PTYPE_SERVER = 0,
   HB_PTYPE_COPYLOGDB = 1,
   HB_PTYPE_APPLYLOGDB = 2,
+  HB_PTYPE_PREFETCHLOGDB = 3,
   HB_PTYPE_MAX
 };
 #define HB_PTYPE_SERVER_STR             "HA-server"
 #define HB_PTYPE_COPYLOGDB_STR          "HA-copylogdb"
 #define HB_PTYPE_APPLYLOGDB_STR         "HA-applylogdb"
+#define HB_PTYPE_PREFETCHLOGDB_STR      "HA-prefetchlogdb"
 #define HB_PTYPE_STR_SZ                 (16)
 
+#if !defined(WINDOWS)
 enum HBP_CLUSTER_MESSAGE
 {
   HBP_CLUSTER_HEARTBEAT = 0,
@@ -143,7 +145,7 @@ extern int hb_process_master_request (void);
 extern int hb_register_to_master (CSS_CONN_ENTRY * conn, int type);
 extern int hb_deregister_from_master (void);
 extern int hb_process_init (const char *server_name, const char *log_path,
-			    bool copylogdbyn);
+			    HB_PROC_TYPE type);
 extern void hb_process_term (void);
 
 extern bool hb_Proc_shutdown;

@@ -388,8 +388,12 @@ extern int heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p,
 					const OID * inst_oid, RECDES * recdes,
 					HEAP_CACHE_ATTRINFO * attr_info);
-extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p,
-				     RECDES * recdes,
+extern int heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p,
+						    REPR_ID last_repr_id,
+						    RECDES * recdes,
+						    HEAP_CACHE_ATTRINFO *
+						    attr_info);
+extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes,
 				     HEAP_CACHE_ATTRINFO * attr_info);
 extern DB_VALUE *heap_attrinfo_access (ATTR_ID attrid,
 				       HEAP_CACHE_ATTRINFO * attr_info);

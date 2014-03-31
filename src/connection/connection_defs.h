@@ -447,6 +447,8 @@ struct css_conn_entry
 
   char *version_string;		/* client version string */
 
+  int prefetcher_thread_count;          /* number of active thread */
+  int prefetchlogdb_max_thread_count;      /* max number of active thread */
   CSS_QUEUE_ENTRY *free_queue_list;
   struct css_wait_queue_entry *free_wait_queue_list;
   char *free_net_header_list;

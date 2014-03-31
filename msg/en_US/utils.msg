@@ -67,6 +67,7 @@ $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
 $       49      tranlist
+$       50      prefetchlogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Invalid length or character '%1$c' in database name '%2$s'\n
@@ -115,6 +116,7 @@ Available admin utility-name:\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -170,6 +172,7 @@ Available administrator's utilities:\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -217,11 +220,12 @@ Available command:\n\
 usage: %2$s heartbeat <command> [args]\n\
 \n\
 Available command:\n\
-    start       [database-name]\n\
-    stop        [-i|database-name]\n\
-    copylogdb   <start|stop> database-name node-name\n\
-    applylogdb  <start|stop> database-name node-name\n\
-    replication <start|stop> node-name\n\
+    start          [database-name]\n\
+    stop           [-i|database-name]\n\
+    copylogdb      <start|stop> database-name node-name\n\
+    applylogdb     <start|stop> database-name node-name\n\
+    prefetchlogdb  <start|stop> database-name node-name\n\
+    replication    <start|stop> node-name\n\
     status\n\
     reload\n
 31 '%1$s' argument is not needed.\n
@@ -1065,3 +1069,15 @@ valid options:\n\
   -s, --summary                print summarized information of transaction\n\
       --sort-key=COLUMN_NUMBER column number to be sorted\n\
       --reverse                reverse the sort result\n
+
+$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
+22 The server was not configured for HA.\n
+23 Prefetch feature is disabled.\n
+58 HA feature is not supported in this platform.\n
+59 prefetchlogdb cannot run as standalone mode.\n
+60 \
+prefetchlogdb: Prefetch log pages from the server.\n\
+usage: %1$s prefetchlogdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -L, --log-path=PATH         directory PATH for copied log volumes\n

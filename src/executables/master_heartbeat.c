@@ -278,6 +278,8 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
 	"   Copylogdb %s (pid %d, state %s)\n"
 #define HA_APPLYLOG_PROCESS_FORMAT_STRING        \
 	"   Applylogdb %s (pid %d, state %s)\n"
+#define HA_PREFETCHLOG_PROCESS_FORMAT_STRING        \
+        "   Prefetchlogdb %s (pid %d, state %s)\n"
 #define HA_PROCESS_EXEC_PATH_FORMAT_STRING       \
         "    - exec-path [%s] \n"
 #define HA_PROCESS_ARGV_FORMAT_STRING            \
@@ -5528,6 +5530,12 @@ hb_get_process_info_string (char **str, bool verbose_yn)
 			 sock_entq->name + 1, proc->pid,
 			 hb_process_state_string (proc->type, proc->state));
 	  break;
+	case HB_PTYPE_PREFETCHLOGDB:
+	  p += snprintf (p, MAX ((last - p), 0),
+			 HA_PREFETCHLOG_PROCESS_FORMAT_STRING,
+			 sock_entq->name + 1, proc->pid,
+			 hb_process_state_string (proc->type, proc->state));
+	  break;
 	default:
 	  break;
 	}
@@ -5641,7 +5649,8 @@ hb_kill_all_heartbeat_process (char **str)
   for (proc = hb_Resource->procs; proc; proc = proc->next)
     {
       if (proc->type == HB_PTYPE_APPLYLOGDB ||
-	  proc->type == HB_PTYPE_COPYLOGDB)
+	  proc->type == HB_PTYPE_COPYLOGDB ||
+	  proc->type == HB_PTYPE_PREFETCHLOGDB)
 	{
 	  size = sizeof (pid_t) * (count + 1);
 	  pids = (pid_t *) realloc (pids, size);

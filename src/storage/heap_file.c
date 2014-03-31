@@ -14539,6 +14539,62 @@ exit_on_error:
 	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
+int
+heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p,
+					 REPR_ID last_repr_id,
+					 RECDES * recdes,
+					 HEAP_CACHE_ATTRINFO * attr_info)
+{
+  int i;
+  HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
+  int ret = NO_ERROR;
+
+  /* check to make sure the attr_info has been used */
+  if (attr_info->num_values == -1)
+    {
+      return NO_ERROR;
+    }
+
+  /*
+   * Make sure that we have the needed cached representation.
+   */
+
+  if (recdes != NULL)
+    {
+      if (attr_info->read_classrepr == NULL)
+	{
+	  /* Get the needed representation */
+	  ret = heap_attrinfo_recache (thread_p, last_repr_id, attr_info);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+    }
+
+  /*
+   * Go over each attribute and read it
+   */
+
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      value = &attr_info->values[i];
+      ret = heap_attrvalue_read (recdes, value, attr_info);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  return ret;
+
+exit_on_error:
+
+  return (ret == NO_ERROR
+	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+
 /*
  * heap_attrinfo_delete_lob ()
  *   return: NO_ERROR

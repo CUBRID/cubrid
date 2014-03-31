@@ -1406,7 +1406,8 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p,
 #if !defined(WINDOWS)
 	  if (IS_MASTER_CONN_NAME_HA_SERVER (p->name) ||
 	      IS_MASTER_CONN_NAME_HA_COPYLOG (p->name) ||
-	      IS_MASTER_CONN_NAME_HA_APPLYLOG (p->name))
+	      IS_MASTER_CONN_NAME_HA_APPLYLOG (p->name) ||
+	      IS_MASTER_CONN_NAME_HA_PREFETCHLOG (p->name))
 	    {
 	      p->ha_mode = TRUE;
 	    }

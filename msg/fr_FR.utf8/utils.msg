@@ -67,6 +67,7 @@ $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
 $       49      tranlist
+$       50      prefetchlogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longueur ou caractère non valide '%c' dans le nom de la base de données '%s'\n
@@ -115,6 +116,7 @@ Nom d'utilitaires d'administration disponible:\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %s est un outil de SGBD.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
@@ -170,6 +172,7 @@ Utilitaires d'administrateur disponibles:\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %s is a tool for DBMS.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
@@ -217,11 +220,12 @@ Commandes disponibles:\n\
 usage: %s heartbeat <command> [args]\n\
 \n\
 Commandes disponibles:\n\
-    start       [database-name]\n\
-    stop        [-i|database-name]\n\
-    copylogdb   <start|stop> database-name node-name\n\
-    applylogdb  <start|stop> database-name node-name\n\
-    replication <start|stop> node-name\n\
+    start          [database-name]\n\
+    stop           [-i|database-name]\n\
+    copylogdb      <start|stop> database-name node-name\n\
+    applylogdb     <start|stop> database-name node-name\n\
+    prefetchlogdb  <start|stop> database-name node-name\n\
+    replication    <start|stop> node-name\n\
     status\n\
     reload\n
 31 Argument '%1$s' n'est pas nécessaire.\n
@@ -1072,3 +1076,15 @@ options valides:\n\
   -s, --summary                affichage des informations résumées de(s) transaction(s)\n\
       --sort-key=COLUMN_NUMBER numéro de colonne à trier\n\
       --reverse                inverser le résultat du tri\n
+
+$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
+22 The server was not configured for HA.\n
+23 Prefetch feature is disabled.\n
+58 HA feature is not supported in this platform.\n
+59 prefetchlogdb cannot run as standalone mode.\n
+60 \
+prefetchlogdb: Prefetch log pages from the server.\n\
+usage: %1$s prefetchlogdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -L, --log-path=PATH         directory PATH for copied log volumes\n

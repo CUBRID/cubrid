@@ -47,7 +47,6 @@
 #include "log_applier.h"
 #include "network_interface_cl.h"
 #include "transform.h"
-#include "object_print.h"
 #include "file_io.h"
 #include "memory_hash.h"
 #include "schema_manager.h"
@@ -351,9 +350,30 @@ struct la_ha_apply_info
   DB_DATETIME start_time;
 };
 
+typedef enum lp_op LP_OP;
+enum lp_op
+{
+  LP_OP_PREFETCH = 0,
+  LP_OP_SYNC,
+  LP_OP_IGNORE
+};
+
+typedef struct lp_info LP_INFO;
+struct lp_info
+{
+  LOG_LSA final_lsa;		/* last processed log lsa */
+  LOG_LSA la_sync_lsa;		/* wait until applier's final_las == la_sync_lsa */
+  LOG_LSA next_lsa;		/* ignore log until prefetcher's final_lsa == next_lsa */
+  int page_distance;		/* gap between applier's final_lsa and prefetcher's final_lsa */
+  LP_OP op;
+  bool need_rollback;
+};
 
 /* Global variable for LA */
 LA_INFO la_Info;
+
+/* Global variable for LP */
+LP_INFO lp_Info;
 
 static bool la_applier_need_shutdown = false;
 static bool la_applier_shutdown_by_signal = false;
@@ -531,6 +551,20 @@ static float la_get_avg (int *array, int size);
 static void la_get_adaptive_time_commit_interval (int *time_commit_interval,
 						  int *delay_hist);
 
+static void lp_init (const char *log_path);
+static int lp_init_prefetcher (const char *database_name,
+			       const char *log_path);
+static int lp_get_log_record (struct log_header *final_log_hdr,
+			      LA_CACHE_BUFFER ** log_buf);
+static int lp_adjust_prefetcher_speed (void);
+static int lp_process_log_record (struct log_header *final_log_hdr,
+				  LA_CACHE_BUFFER * log_buf);
+static int lp_prefetch_log_record (LOG_RECORD_HEADER * lrec,
+				   LOG_LSA * final, LOG_PAGE * pg_ptr);
+static int lp_prefetch_update_or_delete (LA_ITEM * item);
+static int lp_prefetch_insert (LA_ITEM * item);
+static int lp_get_ha_applied_info (bool is_first);
+static void *lp_calc_applier_speed_thread_f (void *arg);
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
  *                                it does the shutdown process.
@@ -7517,6 +7551,750 @@ la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa,
     {
       printf ("%-30s : %lld second(s)\n", "Estimated Delay", estimated_delay);
     }
+}
+
+int
+lp_prefetch_log_file (const char *database_name, const char *log_path)
+{
+  int error = NO_ERROR;
+  struct log_header final_log_hdr;
+  LA_CACHE_BUFFER *log_buf = NULL;
+
+  error = lp_init_prefetcher (database_name, log_path);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  do
+    {
+      if (la_apply_pre () == false)
+	{
+	  error = er_errid ();
+	  la_applier_need_shutdown = true;
+	  break;
+	}
+
+      while (!LSA_ISNULL (&lp_Info.final_lsa) && !la_applier_need_shutdown)
+	{
+	  error = lp_adjust_prefetcher_speed ();
+	  if (error != NO_ERROR || la_applier_need_shutdown)
+	    {
+	      break;
+	    }
+
+	  error = lp_get_log_record (&final_log_hdr, &log_buf);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+
+	  if (log_buf == NULL)
+	    {
+	      assert (la_applier_need_shutdown);
+	      break;
+	    }
+
+	  error = lp_process_log_record (&final_log_hdr, log_buf);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+
+	  if (lp_Info.need_rollback)
+	    {
+	      /**
+	       * we rollback transaction to unlock class.
+	       * if we don't do this, log applier will be hang when ddl is executed.
+	       */
+	      lp_Info.need_rollback = false;
+	      db_abort_transaction ();
+	    }
+	}
+    }
+  while (!la_applier_need_shutdown);
+
+  return error;
+}
+
+static void
+lp_init (const char *log_path)
+{
+  la_init (log_path, 0);
+
+  LSA_SET_NULL (&lp_Info.final_lsa);
+  LSA_SET_NULL (&lp_Info.la_sync_lsa);
+  LSA_SET_NULL (&lp_Info.next_lsa);
+  lp_Info.page_distance =
+    prm_get_integer_value (PRM_ID_HA_PREFETCHLOGDB_PAGE_DISTANCE);
+  lp_Info.need_rollback = false;
+  lp_Info.op = LP_OP_PREFETCH;
+}
+
+static int
+lp_init_prefetcher (const char *database_name, const char *log_path)
+{
+  char *p = NULL;
+  int retry_cnt = 0;
+  int error = NO_ERROR;
+  int estimated_page_distance = 0;
+
+  la_applier_need_shutdown = false;
+
+  /* signal processing */
+#if defined(WINDOWS)
+  (void) os_set_signal_handler (SIGABRT, la_shutdown_by_signal);
+  (void) os_set_signal_handler (SIGINT, la_shutdown_by_signal);
+  (void) os_set_signal_handler (SIGTERM, la_shutdown_by_signal);
+#else /* ! WINDOWS */
+  (void) os_set_signal_handler (SIGSTOP, la_shutdown_by_signal);
+  (void) os_set_signal_handler (SIGTERM, la_shutdown_by_signal);
+  (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
+#endif /* ! WINDOWS */
+
+  if (lzo_init () != LZO_E_OK)
+    {
+      /* may be impossible */
+      er_log_debug (ARG_FILE_LINE, "Cannot initialize LZO");
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  strncpy (la_slave_db_name, database_name, DB_MAX_IDENTIFIER_LENGTH);
+  p = strchr (la_slave_db_name, '@');
+  if (p)
+    {
+      *p = '\0';
+    }
+
+  p = la_get_hostname_from_log_path (log_path);
+  if (p)
+    {
+      strncpy (la_peer_host, p, MAXHOSTNAMELEN);
+    }
+  else
+    {
+      strncpy (la_peer_host, "unknown", MAXHOSTNAMELEN);
+    }
+
+  lp_init (log_path);
+
+  /* init cache buffer */
+  la_Info.cache_pb = la_init_cache_pb ();
+  if (la_Info.cache_pb == NULL)
+    {
+      er_log_debug (ARG_FILE_LINE, "Cannot initialize cache page buffer");
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  /* get log header info. page size. start_page id, etc */
+  error = la_find_log_pagesize (&la_Info.act_log, la_Info.log_path,
+				la_slave_db_name, true);
+  if (error != NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE, "Cannot find log page size");
+      return error;
+    }
+
+  error =
+    la_init_cache_log_buffer (la_Info.cache_pb, la_Info.cache_buffer_size,
+			      SIZEOF_LA_CACHE_LOG_BUFFER (la_Info.act_log.
+							  db_logpagesize));
+  if (error != NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE, "Cannot initialize cache log buffer");
+      return error;
+    }
+
+  /* find out the last log applied LSA */
+  do
+    {
+      error = lp_get_ha_applied_info (true);
+      if (error == NO_ERROR)
+	{
+	  break;
+	}
+
+      er_log_debug (ARG_FILE_LINE, "Cannot find last LSA from DB");
+      if (retry_cnt++ > 1)
+	{
+	  return error;
+	}
+      else
+	{
+	  LA_SLEEP (10, 0);
+	}
+    }
+  while (error != NO_ERROR);
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_STARTED, 4,
+	  la_Info.required_lsa.pageid,
+	  la_Info.required_lsa.offset,
+	  la_Info.committed_lsa.pageid,
+	  la_Info.committed_lsa.offset,
+	  la_Info.committed_rep_lsa.pageid, la_Info.committed_rep_lsa.offset);
+
+  return NO_ERROR;
+}
+
+static int
+lp_get_log_record (struct log_header *final_log_hdr,
+		   LA_CACHE_BUFFER ** log_buf)
+{
+  int error = NO_ERROR;
+  LA_CACHE_BUFFER *tmp_log_buf = NULL;
+
+  while (!LSA_ISNULL (&lp_Info.final_lsa) && !la_applier_need_shutdown)
+    {
+      /* release all page buffers */
+      la_release_all_page_buffers (NULL_PAGEID);
+
+      /* we should fetch final log page from disk not cache buffer */
+      la_decache_page_buffers (lp_Info.final_lsa.pageid, LOGPAGEID_MAX);
+
+      error = la_fetch_log_hdr (&la_Info.act_log);
+      if (error != NO_ERROR)
+	{
+	  la_applier_need_shutdown = true;
+	  return error;
+	}
+
+      memcpy (final_log_hdr, la_Info.act_log.log_hdr,
+	      sizeof (struct log_header));
+
+      if (final_log_hdr->eof_lsa.pageid < lp_Info.final_lsa.pageid)
+	{
+	  LA_SLEEP (0, 100);
+	  continue;
+	}
+
+      /* get the target page from log */
+      tmp_log_buf = la_get_page_buffer (lp_Info.final_lsa.pageid);
+      if (tmp_log_buf == NULL)
+	{
+	  LA_SLEEP (0, 100);
+	  continue;
+	}
+
+      /* check it and verify it */
+      if (tmp_log_buf->logpage.hdr.logical_pageid == lp_Info.final_lsa.pageid)
+	{
+	  if (tmp_log_buf->logpage.hdr.offset < 0)
+	    {
+	      la_invalidate_page_buffer (tmp_log_buf);
+	      if ((final_log_hdr->ha_file_status ==
+		   LOG_HA_FILESTAT_SYNCHRONIZED)
+		  && ((lp_Info.final_lsa.pageid + 1) <=
+		      final_log_hdr->eof_lsa.pageid)
+		  && (la_does_page_exist (lp_Info.final_lsa.pageid + 1)
+		      != LA_PAGE_DOESNOT_EXIST))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET, 10,
+			  tmp_log_buf->logpage.hdr.logical_pageid,
+			  tmp_log_buf->logpage.hdr.offset,
+			  lp_Info.final_lsa.pageid,
+			  lp_Info.final_lsa.offset,
+			  final_log_hdr->append_lsa.pageid,
+			  final_log_hdr->append_lsa.offset,
+			  final_log_hdr->eof_lsa.pageid,
+			  final_log_hdr->eof_lsa.offset,
+			  final_log_hdr->ha_file_status,
+			  la_Info.is_end_of_record);
+
+		  /* make sure to target page does not exist */
+		  if (la_does_page_exist (lp_Info.final_lsa.pageid) ==
+		      LA_PAGE_DOESNOT_EXIST &&
+		      lp_Info.final_lsa.pageid <
+		      final_log_hdr->eof_lsa.pageid)
+		    {
+		      er_log_debug (ARG_FILE_LINE,
+				    "skip this page (pageid=%lld/%lld/%lld)",
+				    (long long int) lp_Info.final_lsa.
+				    pageid,
+				    (long long int) final_log_hdr->eof_lsa.
+				    pageid,
+				    (long long int) final_log_hdr->
+				    append_lsa.pageid);
+		      /* skip it */
+		      lp_Info.final_lsa.pageid++;
+		      lp_Info.final_lsa.offset = 0;
+		      continue;
+		    }
+		}
+
+	      /* wait a moment and retry it */
+	      LA_SLEEP (0, 100);
+	      continue;
+	    }
+	  else
+	    {
+	      *log_buf = tmp_log_buf;
+	      return NO_ERROR;
+	    }
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET, 10,
+		  tmp_log_buf->logpage.hdr.logical_pageid,
+		  tmp_log_buf->logpage.hdr.offset,
+		  lp_Info.final_lsa.pageid,
+		  lp_Info.final_lsa.offset,
+		  final_log_hdr->append_lsa.pageid,
+		  final_log_hdr->append_lsa.offset,
+		  final_log_hdr->eof_lsa.pageid,
+		  final_log_hdr->eof_lsa.offset,
+		  final_log_hdr->ha_file_status, la_Info.is_end_of_record);
+
+	  la_invalidate_page_buffer (tmp_log_buf);
+	  LA_SLEEP (0, 100);
+	  continue;
+	}
+    }
+}
+
+static int
+lp_adjust_prefetcher_speed (void)
+{
+  int error = NO_ERROR;
+  int pageid_diff = 0;
+  int next_estimated_pageid = 0;
+  static int max_prefetch_page_count = -1;
+
+  if (max_prefetch_page_count < 0)
+    {
+      max_prefetch_page_count =
+	prm_get_integer_value (PRM_ID_HA_PREFETCHLOGDB_MAX_PAGE_COUNT);
+    }
+
+  while (la_applier_need_shutdown == false)
+    {
+      error = lp_get_ha_applied_info (false);
+      if (error != NO_ERROR)
+	{
+	  la_applier_need_shutdown = true;
+	  return error;
+	}
+
+      if (LSA_ISNULL (&lp_Info.la_sync_lsa) == false)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"prefetcher is waiting that applier apply ddl. "
+			"(pageid:%d, offset:%d)",
+			lp_Info.la_sync_lsa.pageid,
+			lp_Info.la_sync_lsa.offset);
+
+	  if (LSA_GT (&la_Info.final_lsa, &lp_Info.la_sync_lsa))
+	    {
+	      LSA_SET_NULL (&lp_Info.la_sync_lsa);
+	      lp_Info.op = LP_OP_PREFETCH;
+	    }
+	  else
+	    {
+	      LA_SLEEP (0, 10);
+	      continue;
+	    }
+	}
+
+      pageid_diff = lp_Info.final_lsa.pageid - la_Info.final_lsa.pageid;
+
+      if (LSA_ISNULL (&lp_Info.next_lsa) == false)
+	{
+	  if (LSA_GE (&lp_Info.final_lsa, &lp_Info.next_lsa))
+	    {
+	      LSA_SET_NULL (&lp_Info.next_lsa);
+	      lp_Info.op = LP_OP_PREFETCH;
+	    }
+
+	  break;
+	}
+      else if (pageid_diff > max_prefetch_page_count)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"prefetcher is waiting for applier (limit max_prefetch_page_count). "
+			"(pageid:%d, offset:%d)",
+			lp_Info.final_lsa.pageid, lp_Info.final_lsa.offset);
+
+	  LA_SLEEP (1, 0);
+	  continue;
+	}
+      else if (pageid_diff < lp_Info.page_distance)
+	{
+	  next_estimated_pageid = la_Info.final_lsa.pageid
+	    + lp_Info.page_distance;
+	  if (next_estimated_pageid > la_Info.eof_lsa.pageid)
+	    {
+	      next_estimated_pageid = la_Info.eof_lsa.pageid;
+	    }
+
+	  lp_Info.op = LP_OP_IGNORE;
+	  lp_Info.next_lsa.pageid = next_estimated_pageid;
+	  lp_Info.next_lsa.offset = 0;
+	  break;
+	}
+      else
+	{
+	  break;
+	}
+    }
+
+  return error;
+}
+
+static int
+lp_process_log_record (struct log_header *final_log_hdr,
+		       LA_CACHE_BUFFER * log_buf)
+{
+  int error = NO_ERROR;
+  LOG_LSA prev_final;
+  LOG_PAGE *pg_ptr = NULL;
+  LOG_RECORD_HEADER *lrec = NULL;
+  LOG_LSA old_lsa = { -1, -1 };
+
+  LSA_COPY (&old_lsa, &lp_Info.final_lsa);
+  LSA_SET_NULL (&prev_final);
+  pg_ptr = &(log_buf->logpage);
+  while (lp_Info.final_lsa.pageid == log_buf->pageid
+	 && !la_applier_need_shutdown)
+    {
+      /* adjust the offset when the offset is 0.
+       * If we read final log record from the archive,
+       * we don't know the exact offset of the next record,
+       * In this case, we set the offset as 0, increase the pageid.
+       * So, before getting the log record, check the offset and
+       * adjust it
+       */
+      if ((lp_Info.final_lsa.offset == 0)
+	  || (lp_Info.final_lsa.offset == NULL_OFFSET))
+	{
+	  lp_Info.final_lsa.offset = log_buf->logpage.hdr.offset;
+	}
+
+      /* check for end of log */
+      if (LSA_GE (&lp_Info.final_lsa, &final_log_hdr->eof_lsa))
+	{
+	  la_Info.is_end_of_record = true;
+	  /* it should be refetched and release later */
+	  la_invalidate_page_buffer (log_buf);
+	  break;
+	}
+      else if (LSA_GT (&lp_Info.final_lsa, &final_log_hdr->append_lsa))
+	{
+	  la_invalidate_page_buffer (log_buf);
+	  break;
+	}
+
+      lrec = LOG_GET_LOG_RECORD_HEADER (pg_ptr, &lp_Info.final_lsa);
+
+      if (!LSA_ISNULL (&prev_final) && !LSA_EQ (&prev_final, &lrec->back_lsa))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_LOG_PAGE_CORRUPTED, 1, lp_Info.final_lsa.pageid);
+	  /* it should be refetched and release later */
+	  la_invalidate_page_buffer (log_buf);
+	  break;
+	}
+
+      if (LSA_EQ (&lp_Info.final_lsa, &final_log_hdr->eof_lsa)
+	  && lrec->type != LOG_END_OF_LOG)
+	{
+	  la_invalidate_page_buffer (log_buf);
+	  break;
+	}
+
+      /* process the log record */
+      error = lp_prefetch_log_record (lrec, &lp_Info.final_lsa, pg_ptr);
+      if (error != NO_ERROR)
+	{
+	  /* check connection error */
+	  if (error == ER_NET_CANT_CONNECT_SERVER
+	      || error == ER_OBJ_NO_CONNECT)
+	    {
+	      la_shutdown ();
+	      return ER_NET_CANT_CONNECT_SERVER;
+	    }
+	  else if (error == ER_HA_LA_EXCEED_MAX_MEM_SIZE)
+	    {
+	      la_shutdown ();
+	      return error;
+	    }
+
+	  if (error == ER_LOG_PAGE_CORRUPTED)
+	    {
+	      /* it should be refetched and release later */
+	      la_invalidate_page_buffer (log_buf);
+	    }
+
+	  break;
+	}
+
+      if (!LSA_ISNULL (&lrec->forw_lsa)
+	  && LSA_GT (&lp_Info.final_lsa, &lrec->forw_lsa))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_LOG_PAGE_CORRUPTED, 1, lp_Info.final_lsa.pageid);
+	  /* it should be refetched and release later */
+	  la_invalidate_page_buffer (log_buf);
+	  break;
+	}
+
+      /* set the prev/next record */
+      LSA_COPY (&prev_final, &lp_Info.final_lsa);
+      LSA_COPY (&lp_Info.final_lsa, &lrec->forw_lsa);
+      if (lp_Info.op == LP_OP_SYNC)
+	{
+	  LSA_COPY (&lp_Info.la_sync_lsa, &lp_Info.final_lsa);
+	  break;
+	}
+    }
+
+  return error;
+}
+
+static int
+lp_prefetch_log_record (LOG_RECORD_HEADER * lrec, LOG_LSA * final,
+			LOG_PAGE * pg_ptr)
+{
+  int error = NO_ERROR;
+  LA_ITEM *item = NULL;
+  char buffer[256];
+
+  if (lrec->trid == NULL_TRANID ||
+      LSA_GT (&lrec->prev_tranlsa, final) || LSA_GT (&lrec->back_lsa, final))
+    {
+      if (lrec->type != LOG_END_OF_LOG && lrec->type != LOG_DUMMY_FILLPAGE_FORARCHIVE)	/* for backward compatibility */
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HA_LA_INVALID_REPL_LOG_RECORD,
+		  10, final->pageid, final->offset, lrec->forw_lsa.pageid,
+		  lrec->forw_lsa.offset, lrec->back_lsa.pageid,
+		  lrec->back_lsa.offset, lrec->trid,
+		  lrec->prev_tranlsa.pageid, lrec->prev_tranlsa.offset,
+		  lrec->type);
+	  return ER_LOG_PAGE_CORRUPTED;
+	}
+    }
+
+  if (lrec->type == LOG_REPLICATION_DATA)
+    {
+      if (lp_Info.op == LP_OP_PREFETCH)
+	{
+	  lp_Info.need_rollback = true;
+
+	  item = la_make_repl_item (pg_ptr, lrec->type, lrec->trid, final);
+	  if (item == NULL)
+	    {
+	      la_applier_need_shutdown = true;
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
+	  switch (item->item_type)
+	    {
+	    case RVREPL_DATA_INSERT:
+	      error = lp_prefetch_insert (item);
+	      break;
+	    case RVREPL_DATA_UPDATE:
+	    case RVREPL_DATA_DELETE:
+	      error = lp_prefetch_update_or_delete (item);
+	      break;
+	    }
+
+	  if (item->class_name != NULL)
+	    {
+	      db_private_free_and_init (NULL, item->class_name);
+	      pr_clear_value (&item->key);
+	    }
+
+	  if (item->db_user != NULL)
+	    {
+	      db_private_free_and_init (NULL, item->db_user);
+	    }
+
+	  free_and_init (item);
+	}
+    }
+  else if (lrec->type == LOG_REPLICATION_SCHEMA)
+    {
+      lp_Info.op = LP_OP_SYNC;
+    }
+
+  /*
+   * if this is the final record of the archive log..
+   * we have to fetch the next page. So, increase the pageid,
+   * but we don't know the exact offset of the next record.
+   * the offset would be adjusted after getting the next log page
+   */
+  if (lrec->forw_lsa.pageid == -1 ||
+      lrec->type <= LOG_SMALLER_LOGREC_TYPE ||
+      lrec->type >= LOG_LARGER_LOGREC_TYPE)
+    {
+      if (la_does_page_exist (final->pageid) == LA_PAGE_EXST_IN_ARCHIVE_LOG)
+	{
+	  snprintf (buffer, sizeof (buffer),
+		    "process last log record in archive. LSA: %lld|%d",
+		    (long long int) final->pageid, final->offset);
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_HA_GENERIC_ERROR, 1, buffer);
+
+	  final->pageid++;
+	  final->offset = 0;
+	}
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_HA_LA_INVALID_REPL_LOG_RECORD, 10,
+	      final->pageid, final->offset,
+	      lrec->forw_lsa.pageid, lrec->forw_lsa.offset,
+	      lrec->back_lsa.pageid, lrec->back_lsa.offset,
+	      lrec->trid,
+	      lrec->prev_tranlsa.pageid, lrec->prev_tranlsa.offset,
+	      lrec->type);
+
+      return ER_LOG_PAGE_CORRUPTED;
+    }
+
+  return error;
+}
+
+static int
+lp_prefetch_update_or_delete (LA_ITEM * item)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *class_obj = NULL;
+
+  class_obj = db_find_class (item->class_name);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      return error;
+    }
+
+  error = obj_prefetch_repl_update_or_delete_object (class_obj, &item->key);
+  return error;
+}
+
+static int
+lp_prefetch_insert (LA_ITEM * item)
+{
+  int error = NO_ERROR;
+  unsigned int rcvindex;
+  bool ovfyn = false;
+  RECDES recdes;
+  LOG_PAGE *pgptr = NULL;
+  LOG_PAGEID old_pageid = -1;
+  DB_OBJECT *class_obj = NULL;
+  OID *class_oid;
+
+  /* get the target log page */
+  old_pageid = item->target_lsa.pageid;
+  pgptr = la_get_page (old_pageid);
+  if (pgptr == NULL)
+    {
+      return er_errid ();
+    }
+
+  /* retrieve the target record description */
+  error = la_get_recdes (&item->target_lsa, pgptr, &recdes, &rcvindex,
+			 la_Info.log_data, la_Info.rec_type, &ovfyn);
+  if (error != NO_ERROR)
+    {
+      la_release_page_buffer (old_pageid);
+      return error;
+    }
+
+  if (recdes.type == REC_ASSIGN_ADDRESS || recdes.type == REC_RELOCATION)
+    {
+      er_log_debug (ARG_FILE_LINE, "prefetch_insert : rectype.type = %d\n",
+		    recdes.type);
+      la_release_page_buffer (old_pageid);
+      return error;
+    }
+  if (rcvindex != RVHF_INSERT && rcvindex != RVOVF_CHANGE_LINK)
+    {
+      er_log_debug (ARG_FILE_LINE, "prefetch_insert : rcvindex = %d\n",
+		    rcvindex);
+      la_release_page_buffer (old_pageid);
+      return error;
+    }
+
+  class_obj = db_find_class (item->class_name);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      return error;
+    }
+
+  class_oid = ws_oid (class_obj);
+
+  error = locator_prefetch_repl_insert (class_oid, &recdes);
+  return error;
+}
+
+static int
+lp_get_ha_applied_info (bool is_first)
+{
+  int error = NO_ERROR;
+  LA_ACT_LOG *act_log;
+  LA_HA_APPLY_INFO apply_info;
+  act_log = &la_Info.act_log;
+
+  error =
+    la_get_ha_apply_info (la_Info.log_path, act_log->log_hdr->prefix_name,
+			  &apply_info);
+  if (error != NO_ERROR)
+    {
+      er_stack_push ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_HA_GENERIC_ERROR, 1, "failed to get db_ha_apply_info");
+      er_stack_pop ();
+
+      return ER_FAILED;
+
+    }
+  LSA_COPY (&la_Info.committed_lsa, &apply_info.committed_lsa);
+  LSA_COPY (&la_Info.committed_rep_lsa, &apply_info.committed_rep_lsa);
+  LSA_COPY (&la_Info.append_lsa, &apply_info.append_lsa);
+  LSA_COPY (&la_Info.eof_lsa, &apply_info.eof_lsa);
+  LSA_COPY (&la_Info.final_lsa, &apply_info.final_lsa);
+  if (is_first == true)
+    {
+      LSA_COPY (&lp_Info.final_lsa, &apply_info.final_lsa);
+      lp_Info.final_lsa.pageid += 64;
+      lp_Info.final_lsa.offset = 0;
+    }
+  LSA_COPY (&la_Info.required_lsa, &apply_info.required_lsa);
+
+  la_Info.insert_counter = apply_info.insert_counter;
+  la_Info.update_counter = apply_info.update_counter;
+  la_Info.delete_counter = apply_info.delete_counter;
+  la_Info.schema_counter = apply_info.schema_counter;
+  la_Info.commit_counter = apply_info.commit_counter;
+  la_Info.fail_counter = apply_info.fail_counter;
+
+  if (LSA_ISNULL (&la_Info.required_lsa))
+    {
+      LSA_COPY (&la_Info.required_lsa, &act_log->log_hdr->eof_lsa);
+    }
+
+  if (LSA_ISNULL (&la_Info.committed_lsa))
+    {
+      LSA_COPY (&la_Info.committed_lsa, &la_Info.required_lsa);
+    }
+
+  if (LSA_ISNULL (&la_Info.committed_rep_lsa))
+    {
+      LSA_COPY (&la_Info.committed_rep_lsa, &la_Info.required_lsa);
+    }
+
+  if (is_first == true && LSA_ISNULL (&la_Info.final_lsa))
+    {
+      LSA_COPY (&la_Info.final_lsa, &la_Info.required_lsa);
+    }
+
+  LSA_COPY (&la_Info.last_committed_lsa, &la_Info.committed_lsa);
+  LSA_COPY (&la_Info.last_committed_rep_lsa, &la_Info.committed_rep_lsa);
+
+  return error;
 }
 
 /*

@@ -116,8 +116,10 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 TRAN_STATE
 xtran_server_abort (THREAD_ENTRY * thread_p)
 {
+  CSS_CONN_ENTRY *conn = NULL;
   TRAN_STATE state;
   int tran_index;
+  bool continue_check;
 
   /*
    * Execute some few remaining actions before the log manager is notified of
@@ -125,6 +127,25 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
    */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+#if defined(SERVER_MODE)
+  conn = thread_p->conn_entry;
+  assert (conn);
+
+  if (conn->client_type == BOOT_CLIENT_LOG_PREFETCHER)
+    {
+      while (conn->prefetcher_thread_count > 0)
+	{
+	  if (logtb_is_interrupted (thread_p, true, &continue_check) == true)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      return ER_INTERRUPTED;
+	    }
+
+	  thread_sleep (10);	/* 10 msec */
+	}
+    }
+#endif
 
   state = log_abort (thread_p, tran_index);
 

@@ -1228,6 +1228,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 {
   CSS_JOB_ENTRY *job;
   int n, type, rv, status, timeout;
+  int prefetchlogdb_max_thread_count = 0;
   SOCKET fd;
   struct pollfd po[1] = { {0, 0, 0} };
 
@@ -1241,6 +1242,9 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   pthread_mutex_unlock (&thread_p->tran_index_lock);
 
   thread_p->type = TT_SERVER;	/* server thread */
+
+  prefetchlogdb_max_thread_count =
+    prm_get_integer_value (PRM_ID_HA_PREFETCHLOGDB_MAX_THREAD_COUNT);
 
   status = NO_ERRORS;
   /* check if socket has error or client is down */
@@ -1325,6 +1329,23 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	         make new job and add it to job queue */
 	      if (type == COMMAND_TYPE)
 		{
+		  do
+		    {
+		      if (conn->client_type == BOOT_CLIENT_LOG_PREFETCHER
+			  && (prefetchlogdb_max_thread_count
+			      > 0)
+			  && (conn->prefetcher_thread_count >=
+			      prefetchlogdb_max_thread_count))
+			{
+			  thread_sleep (10);	/* 10 msec */
+			  continue;
+			}
+
+		      break;
+		    }
+		  while (thread_p->shutdown == false
+			 && conn->stop_talk == false);
+
 		  job = css_make_job_entry (conn, css_Request_handler,
 					    (CSS_THREAD_ARG) conn, -1);
 		  if (job)

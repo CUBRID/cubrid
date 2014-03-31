@@ -175,6 +175,11 @@ extern int xlocator_check_fk_validity (THREAD_ENTRY * thread_p,
 				       int *attr_ids, OID * pk_cls_oid,
 				       BTID * pk_btid, int cache_attr_id,
 				       char *fk_name);
+extern int xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
+                                          OID * class_oid, RECDES *recdes);
+extern int xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p,
+                                          BTID * btid, OID * class_oid,
+                                          DB_VALUE * key_value);
 extern LOG_LSA *xrepl_log_get_append_lsa (void);
 extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 

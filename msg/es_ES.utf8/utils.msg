@@ -67,6 +67,7 @@ $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
 $       49      tranlist
+$       50      prefetchlogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longitud o caracter '%c' en el nombre de la base de datos '%s'\n no valida.
@@ -115,6 +116,7 @@ Nombre de utilidad admin disponible:\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
@@ -170,6 +172,7 @@ Utilidades de administrador disponible:\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
@@ -217,11 +220,12 @@ Comando disponible: \n\
 uso: %s heartbeat <command> [args]\n\
 \n\
 Comando disponible: \n\
-    start       [database-name]\n\
-    stop        [-i|database-name]\n\
-    copylogdb   <start|stop> database-name node-name\n\
-    applylogdb  <start|stop> database-name node-name\n\
-    replication <start|stop> node-name\n\
+    start          [database-name]\n\
+    stop           [-i|database-name]\n\
+    copylogdb      <start|stop> database-name node-name\n\
+    applylogdb     <start|stop> database-name node-name\n\
+    prefetchlogdb  <start|stop> database-name node-name\n\
+    replication    <start|stop> node-name\n\
     status\n\
     reload\n
 31 Argumento '%1$s' no es necesario.\n
@@ -1062,3 +1066,15 @@ opciones validas:\n\
   -s, --summary                imprimir resume de informacion de la transaccion\n\
       --sort-key=COLUMN_NUMBER numero de la columna de ordenacion \n\
       --reverse                invierte el resultado de la clasificacion\n
+
+$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
+22 The server was not configured for HA.\n
+23 Prefetch feature is disabled.\n
+58 HA feature is not supported in this platform.\n
+59 prefetchlogdb cannot run as standalone mode.\n
+60 \
+prefetchlogdb: Prefetch log pages from the server.\n\
+usage: %1$s prefetchlogdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -L, --log-path=PATH         directory PATH for copied log volumes\n

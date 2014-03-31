@@ -79,7 +79,8 @@ typedef enum
   MSGCAT_UTIL_SET_GENLOCALE = 46,
   MSGCAT_UTIL_SET_DUMPLOCALE = 47,
   MSGCAT_UTIL_SET_SYNCCOLLDB = 48,
-  MSGCAT_UTIL_SET_TRANLIST = 49
+  MSGCAT_UTIL_SET_TRANLIST = 49,
+  MSGCAT_UTIL_SET_PREFETCHLOGDB = 50
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -619,6 +620,15 @@ typedef enum
   SYNCCOLLDB_MSG_USAGE = 60
 } MSGCAT_SYNCCOLLDB_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_PREFETCHLOGDB */
+typedef enum
+{
+  PREFETCHLOGDB_MSG_NOT_HA_MODE = 22,
+  PREFETCHLOGDB_MSG_FEATURE_DISABLE = 23,
+  PREFETCHLOGDB_MSG_HA_NOT_SUPPORT = 58,
+  PREFETCHLOGDB_MSG_NOT_IN_STANDALONE = 59,
+  PREFETCHLOGDB_MSG_USAGE = 60
+} MSGCAT_PREFETCHLOGDB_MSG;
 
 typedef void *DSO_HANDLE;
 
@@ -657,7 +667,7 @@ typedef enum
   DUMPLOCALE,
   SYNCCOLLDB,
   TRANLIST,
-  LOGFILEDUMP
+  PREFETCHLOGDB
 } UTIL_INDEX;
 
 typedef enum
@@ -748,6 +758,7 @@ typedef struct _ha_config
 #define UTIL_CUBRID             "cubrid" UTIL_EXE_EXT
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
+#define UTIL_PREFETCHLOGDB      "prefetchlogdb" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"
@@ -774,6 +785,7 @@ typedef struct _ha_config
 #define PRINT_CMD_ACL           "acl"
 #define PRINT_CMD_COPYLOGDB     "copylogdb"
 #define PRINT_CMD_APPLYLOGDB    "applylogdb"
+#define PRINT_CMD_PREFETCHLOGDB "prefetchlogdb"
 #define PRINT_CMD_GETID         "getid"
 #define PRINT_CMD_TEST          "test"
 #define PRINT_CMD_REPLICATION	"replication"
@@ -847,6 +859,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_GENERATE_LOCALE		"genlocale"
 #define UTIL_OPTION_DUMP_LOCALE			"dumplocale"
 #define UTIL_OPTION_SYNCCOLLDB			"synccolldb"
+#define UTIL_OPTION_PREFETCHLOGDB		"prefetchlogdb"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -1372,6 +1385,10 @@ typedef struct _ha_config
 #define VERSION_S                               20000
 #define VERSION_L                               "version"
 
+/* prepatchlogdb option list */
+#define PREFETCH_LOG_PATH_S                      'L'
+#define PREFETCH_LOG_PATH_L                      "log-path"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1490,6 +1507,7 @@ extern int genlocale (UTIL_FUNCTION_ARG * arg_map);
 extern int dumplocale (UTIL_FUNCTION_ARG * arg_map);
 extern int synccolldb (UTIL_FUNCTION_ARG * arg_map);
 extern int synccoll_force (void);
+extern int prefetchlogdb(UTIL_FUNCTION_ARG * arg_map);
 
 extern void util_admin_usage (const char *argv0);
 extern void util_admin_version (const char *argv0);

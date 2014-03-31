@@ -2232,6 +2232,7 @@ thread_worker (void *arg_p)
 
       handler_func = job_entry_p->func;
       handler_func_arg = job_entry_p->arg;
+
       css_free_job_entry (job_entry_p);
 
       handler_func (tsd_ptr, handler_func_arg);	/* invoke request handler */

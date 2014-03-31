@@ -560,8 +560,12 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_OPTIMIZER_RESERVE_20 "optimizer_reserve_20"
 
 #define PRM_NAME_HA_REPL_ENABLE_SERVER_SIDE_UPDATE "ha_repl_enable_server_side_update"
-
 #define PRM_NAME_PB_LRU_HOT_RATIO "lru_hot_ratio"
+
+#define PRM_NAME_HA_PREFETCHLOGDB_ENABLE "ha_prefetchlogdb_enable"
+#define PRM_NAME_HA_PREFETCHLOGDB_MAX_THREAD_COUNT "ha_prefetchlogdb_max_thread_count"
+#define PRM_NAME_HA_PREFETCHLOGDB_PAGE_DISTANCE "ha_prefetchlogdb_page_distance"
+#define PRM_NAME_HA_PREFETCHLOGDB_MAX_PAGE_COUNT "ha_prefetchlogdb_max_page_count"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1837,6 +1841,28 @@ static float prm_pb_lru_hot_ratio_default = 0.4f;
 static float prm_pb_lru_hot_ratio_upper = 0.95f;
 static float prm_pb_lru_hot_ratio_lower = 0.05f;
 static unsigned int prm_pb_lru_hot_ratio_flag = 0;
+
+bool PRM_HA_PREFETCHLOGDB_ENABLE = false;
+static unsigned int prm_ha_prefetchlogdb_enable_flag = 0;
+static unsigned int prm_ha_prefetchlogdb_enable_default = false;
+
+unsigned int PRM_HA_PREFETCHLOGDB_MAX_THREAD_COUNT = 4;
+static unsigned int prm_ha_prefetchlogdb_max_thread_count_flag = 0;
+static unsigned int prm_ha_prefetchlogdb_max_thread_count_default = 4;
+static unsigned int prm_ha_prefetchlogdb_max_thread_count_lower = 1;
+static unsigned int prm_ha_prefetchlogdb_max_thread_count_upper = INT_MAX;
+
+unsigned int PRM_HA_PREFETCHLOGDB_PAGE_DISTANCE = 500;
+static unsigned int prm_ha_prefetchlogdb_page_distance_flag = 0;
+static unsigned int prm_ha_prefetchlogdb_page_distance_default = 500;
+static unsigned int prm_ha_prefetchlogdb_page_distance_lower = 50;
+static unsigned int prm_ha_prefetchlogdb_page_distance_upper = INT_MAX;
+
+unsigned int PRM_HA_PREFETCHLOGDB_MAX_PAGE_COUNT = 1000;
+static unsigned int prm_ha_prefetchlogdb_max_page_count_flag = 0;
+static unsigned int prm_ha_prefetchlogdb_max_page_count_default = 1000;
+static unsigned int prm_ha_prefetchlogdb_max_page_count_lower = 0;
+static unsigned int prm_ha_prefetchlogdb_max_page_count_upper = INT_MAX;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -4176,7 +4202,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-
   {PRM_NAME_OPTIMIZER_ENABLE_MERGE_JOIN,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
@@ -4407,6 +4432,50 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_pb_lru_hot_ratio_upper,
    (void *) &prm_pb_lru_hot_ratio_lower,
    (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_HA_PREFETCHLOGDB_ENABLE,
+   (PRM_FOR_HA | PRM_FOR_CLIENT),
+   PRM_BOOLEAN,
+   (void *) &prm_ha_prefetchlogdb_enable_flag,
+   (void *) &prm_ha_prefetchlogdb_enable_default,
+   (void *) &PRM_HA_PREFETCHLOGDB_ENABLE,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_HA_PREFETCHLOGDB_MAX_THREAD_COUNT,
+   (PRM_FOR_HA | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   (void *) &prm_ha_prefetchlogdb_max_thread_count_flag,
+   (void *) &prm_ha_prefetchlogdb_max_thread_count_default,
+   (void *) &PRM_HA_PREFETCHLOGDB_MAX_THREAD_COUNT,
+   (void *) &prm_ha_prefetchlogdb_max_thread_count_upper,
+   (void *) &prm_ha_prefetchlogdb_max_thread_count_lower,
+   (void *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_HA_PREFETCHLOGDB_PAGE_DISTANCE,
+   (PRM_FOR_HA | PRM_FOR_CLIENT | PRM_HIDDEN),
+   PRM_INTEGER,
+   (void *) &prm_ha_prefetchlogdb_page_distance_flag,
+   (void *) &prm_ha_prefetchlogdb_page_distance_default,
+   (void *) &PRM_HA_PREFETCHLOGDB_PAGE_DISTANCE,
+   (void *) &prm_ha_prefetchlogdb_page_distance_upper,
+   (void *) &prm_ha_prefetchlogdb_page_distance_lower,
+   (void *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_HA_PREFETCHLOGDB_MAX_PAGE_COUNT,
+   (PRM_FOR_HA | PRM_FOR_CLIENT),
+   PRM_INTEGER,
+   (void *) &prm_ha_prefetchlogdb_max_page_count_flag,
+   (void *) &prm_ha_prefetchlogdb_max_page_count_default,
+   (void *) &PRM_HA_PREFETCHLOGDB_MAX_PAGE_COUNT,
+   (void *) &prm_ha_prefetchlogdb_max_page_count_upper,
+   (void *) &prm_ha_prefetchlogdb_max_page_count_lower,
+   (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };

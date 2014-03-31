@@ -67,6 +67,7 @@ $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
 $       49      tranlist
+$       50      prefetchlogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 レングスが正しくないか、正しくない文字「%c」がデータベース名「%s」に入っています。\n
@@ -115,6 +116,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %sはDBMS管理道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n
@@ -170,6 +172,7 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %sはDBMS道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n
@@ -217,11 +220,12 @@ cubrid 管理者ユーティリティー、バージョン　%s\n\
 使い方: %s heartbeat <コマンド> [パラメーター]\n\
 \n\
 正しいコマンド:\n\
-    start           [データベース名]\n\
-    stop            [-i|データベース名]\n\
-    copylogdb       <start|stop> [データベース名] [ノード名]\n\
-    applylogdb      <start|stop> [データベース名] [ノード名]\n\
-    replication <start|stop> node-name\n\
+    start          [データベース名]\n\
+    stop           [-i|データベース名]\n\
+    copylogdb      <start|stop> [データベース名] [ノード名]\n\
+    applylogdb     <start|stop> [データベース名] [ノード名]\n\
+    prefetchlogdb  <start|stop> [データベース名] [ノード名]\n\
+    replication    <start|stop> node-name\n\
     status\n\
     reload\n
 31 '%1$s'パラメーターが必要です。\n
@@ -1062,3 +1066,15 @@ tranlist: アクティブトランザクション情報をダンプします。\
   -s, --summary                トランザクション情報を要約して出力する。\n\
       --sort-key=COLUMN_NUMBER ソートされるカラム番号\n\
       --reverse                ソート結果を逆にする。\n
+
+$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
+22 The server was not configured for HA.\n
+23 Prefetch feature is disabled.\n
+58 HA feature is not supported in this platform.\n
+59 prefetchlogdb cannot run as standalone mode.\n
+60 \
+prefetchlogdb: Prefetch log pages from the server.\n\
+usage: %1$s prefetchlogdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -L, --log-path=PATH         directory PATH for copied log volumes\n

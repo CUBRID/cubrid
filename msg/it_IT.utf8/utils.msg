@@ -67,6 +67,7 @@ $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
 $       49      tranlist
+$       50      prefetchlogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Lunghezza non valida o un carattere '%c' non valido nel nome del database '%s'\n
@@ -115,6 +116,7 @@ Utilità admin disponibile:\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %s è un tool per DBMS.\n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
@@ -170,6 +172,7 @@ Utilità amministrazione disponibili:\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %s è un tool per DBMS.\n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
@@ -217,11 +220,12 @@ Commandi disponibili:\n\
 uso: %s heartbeat <commando> [args]\n\
 \n\
 Commandi disponibili:\n\
-    start       [database-name]\n\
-    stop        [-i|database-name]\n\
-    copylogdb   <start|stop> database-name node-name\n\
-    applylogdb  <start|stop> database-name node-name\n\
-    replication <start|stop> node-name\n\
+    start          [database-name]\n\
+    stop           [-i|database-name]\n\
+    copylogdb      <start|stop> database-name node-name\n\
+    applylogdb     <start|stop> database-name node-name\n\
+    prefetchlogdb  <start|stop> database-name node-name\n\
+    replication    <start|stop> node-name\n\
     status\n\
     reload\n
 31 argomento '%1$s' non è necessaria.\n
@@ -1062,3 +1066,15 @@ opzioni valide:\n\
   -s, --summary                stampa informazioni riepilogative della transazione\n\
       --sort-key=COLUMN_NUMBER numero di colonna da ordinare\n\
       --reverse                invertire l'ordinamento\n
+
+$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
+22 The server was not configured for HA.\n
+23 Prefetch feature is disabled.\n
+58 HA feature is not supported in this platform.\n
+59 prefetchlogdb cannot run as standalone mode.\n
+60 \
+prefetchlogdb: Prefetch log pages from the server.\n\
+usage: %1$s prefetchlogdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -L, --log-path=PATH         directory PATH for copied log volumes\n

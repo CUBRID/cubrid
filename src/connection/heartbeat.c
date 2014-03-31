@@ -78,13 +78,14 @@ extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 static THREAD_RET_T THREAD_CALLING_CONVENTION hb_thread_master_reader (void
 								       *arg);
 static char *hb_pack_server_name (const char *server_name, int *name_length,
-				  const char *log_path, bool copylogdbyn);
+				  const char *log_path, HB_PROC_TYPE type);
 
 static CSS_CONN_ENTRY *hb_connect_to_master (const char *server_name,
 					     const char *log_path,
-					     bool copylogdbyn);
+					     HB_PROC_TYPE type);
 static int hb_create_master_reader (void);
 static int hb_process_master_request_info (CSS_CONN_ENTRY * conn);
+static const char *hb_type_to_str (HB_PROC_TYPE type);
 
 static pthread_t hb_Master_mon_th;
 
@@ -428,6 +429,27 @@ hb_process_master_request_info (CSS_CONN_ENTRY * conn)
   return (ER_FAILED);
 }
 
+static const char *
+hb_type_to_str (HB_PROC_TYPE type)
+{
+  if (type == HB_PTYPE_COPYLOGDB)
+    {
+      return "copylogdb";
+    }
+  else if (type == HB_PTYPE_APPLYLOGDB)
+    {
+      return "applylogdb";
+    }
+  else if (type == HB_PTYPE_PREFETCHLOGDB)
+    {
+      return "prefetchlogdb";
+    }
+  else
+    {
+      return "";
+    }
+}
+
 /*    
 * hb_process_to_master () - 
 *   return: NO_ERROR or ER_FAILED
@@ -502,7 +524,7 @@ hb_process_master_request (void)
  */
 static char *
 hb_pack_server_name (const char *server_name, int *name_length,
-		     const char *log_path, bool copylogdbyn)
+		     const char *log_path, HB_PROC_TYPE type)
 {
   char *packed_name = NULL;
   const char *env_name = NULL;
@@ -538,7 +560,25 @@ hb_pack_server_name (const char *server_name, int *name_length,
 	  return NULL;
 	}
 
-      packed_name[0] = (copylogdbyn) ? '$' : '%';
+      if (type == HB_PTYPE_COPYLOGDB)
+	{
+	  packed_name[0] = '$';
+	}
+      else if (type == HB_PTYPE_APPLYLOGDB)
+	{
+	  packed_name[0] = '%';
+	}
+      else if (type == HB_PTYPE_PREFETCHLOGDB)
+	{
+	  packed_name[0] = '_';
+	}
+      else
+	{
+	  assert (0);
+
+	  free_and_init (packed_name);
+	  return NULL;
+	}
       memcpy (packed_name + 1, server_name, n_len);
       if (l_len)
 	{
@@ -563,7 +603,7 @@ hb_pack_server_name (const char *server_name, int *name_length,
  */
 static CSS_CONN_ENTRY *
 hb_connect_to_master (const char *server_name, const char *log_path,
-		      bool copylogdbyn)
+		      HB_PROC_TYPE type)
 {
   CSS_CONN_ENTRY *conn;
   int error = NO_ERROR;
@@ -571,7 +611,7 @@ hb_connect_to_master (const char *server_name, const char *log_path,
   int name_length = 0;
 
   packed_name =
-    hb_pack_server_name (server_name, &name_length, log_path, copylogdbyn);
+    hb_pack_server_name (server_name, &name_length, log_path, type);
   if (packed_name == NULL)
     {
       return NULL;
@@ -677,7 +717,7 @@ hb_create_master_reader (void)
 */
 int
 hb_process_init (const char *server_name, const char *log_path,
-		 bool copylogdbyn)
+		 HB_PROC_TYPE type)
 {
   int error;
   static bool is_first = true;
@@ -688,8 +728,8 @@ hb_process_init (const char *server_name, const char *log_path,
       return (NO_ERROR);
     }
 
-  er_log_debug (ARG_FILE_LINE, "hb_process_init. (copylogdbyn:%s). \n",
-		(copylogdbyn) ? "copylogdb" : "applylogdb");
+  er_log_debug (ARG_FILE_LINE, "hb_process_init. (type:%s). \n",
+		hb_type_to_str (type));
 
   if (hb_Exec_path[0] == '\0' || *(hb_Argv) == 0)
     {
@@ -697,14 +737,12 @@ hb_process_init (const char *server_name, const char *log_path,
       return (ER_FAILED);
     }
 
-  hb_Conn = hb_connect_to_master (server_name, log_path, copylogdbyn);
+  hb_Conn = hb_connect_to_master (server_name, log_path, type);
 
   /* wait 1 sec */
   sleep (1);
 
-  error = hb_register_to_master (hb_Conn,
-				 (copylogdbyn) ? HB_PTYPE_COPYLOGDB :
-				 HB_PTYPE_APPLYLOGDB);
+  error = hb_register_to_master (hb_Conn, type);
   if (NO_ERROR != error)
     {
       er_log_debug (ARG_FILE_LINE, "hb_register_to_master failed. \n");

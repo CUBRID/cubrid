@@ -4530,6 +4530,70 @@ ret_error:
   return ER_OBJ_OBJECT_NOT_FOUND;
 }
 
+int
+obj_prefetch_repl_update_or_delete_object (MOP classop, DB_VALUE * key_value)
+{
+  int error = NO_ERROR;
+  SM_CLASS *class_;
+  SM_CLASS_CONSTRAINT *cons;
+  DB_TYPE value_type;
+  MOP mop;
+  OID *oid = NULL;
+
+  if (classop == NULL || key_value == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  oid = ws_oid (classop);
+
+  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (!TM_TRAN_ASYNC_WS ())
+    {
+      error = sm_flush_objects (classop);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  cons = classobj_find_class_primary_key (class_);
+  if (cons == NULL)
+    {
+      goto error_return;
+    }
+
+  value_type = DB_VALUE_TYPE (key_value);
+
+  if (value_type == DB_TYPE_NULL)
+    {
+      goto error_return;
+    }
+  else if (value_type == DB_TYPE_OBJECT)
+    {
+      error = flush_temporary_OID (classop, key_value);
+      if (error != TEMPOID_FLUSH_OK)
+	{
+	  goto error_return;
+	}
+    }
+
+  error =
+    locator_prefetch_repl_update_or_delete (oid, &cons->index_btid,
+					    key_value);
+  return error;
+
+error_return:
+  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
+  return ER_OBJ_OBJECT_NOT_FOUND;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * obj_isclass - Tests to see if an object is a class object.

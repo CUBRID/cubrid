@@ -67,6 +67,7 @@ $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
 $       49      tranlist
+$       50      prefetchlogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 '%1$c'이(가) 데이터베이스 이름 '%2$s'에 포함되어 있습니다\n
@@ -115,6 +116,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %4$s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -170,6 +172,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %4$s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -217,11 +220,12 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
 사용법: %2$s heartbeat <명령어> [인자]\n\
 \n\
 가용한 명령어:\n\
-    start       [데이터베이스 이름]\n\
-    stop        [-i|데이터베이스 이름]\n\
-    copylogdb   <start|stop> <데이터베이스 이름> <노드 이름>\n\
-    applylogdb  <start|stop> <데이터베이스 이름> <노드 이름>\n\
-    replication <start|stop> <노드 이름>\n\
+    start          [데이터베이스 이름]\n\
+    stop           [-i|데이터베이스 이름]\n\
+    copylogdb      <start|stop> <데이터베이스 이름> <노드 이름>\n\
+    applylogdb     <start|stop> <데이터베이스 이름> <노드 이름>\n\
+    prefetchlogdb  <start|stop> <데이터베이스 이름> <노드 이름>\n\
+    replication    <start|stop> <노드 이름>\n\
     status\n\
     reload\n
 31 '%1$s' 인자가 필요 없습니다.\n
@@ -1060,3 +1064,15 @@ valid options:\n\
   -s, --summary                질의정보 및 락 정보 생략\n\
       --sort-key=COLUMN_NUMBER 정렬할 컬럼번호; 기본값 : 1\n\
       --reverse                내림차순 정렬수행; 기본값 : 오름차순 정렬\n
+
+$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
+22 서버가 HA 모드로 설정되지 않았습니다.\n
+23 Prefetch 기능을 활성화 시키지 않았습니다.\n
+58 HA 기능이 지원되지 않는 플랫폼입니다.\n
+59 prefetchlogdb는 독립 모드에서 실행할 수 없습니다.\n
+60 \
+prefetchlogdb: 복사된 로그를 서버에 반영하기 위해 필요한 데이터를 prefetch\n\
+사용법: %1$s prefetchlogdb [옵션] <데이터베이스 이름>\n\
+\n\
+valid options:\n\
+  -L, --log-path=PATH         복사된 로그 볼륨의 디렉터리 PATH\n

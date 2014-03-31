@@ -67,6 +67,7 @@ $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
 $       49      tranlist
+$       50      prefetchlogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 无效的长度或字符 '%c' 在数据库名 '%s' 中\n
@@ -115,6 +116,7 @@ cubrid 管理工具，版本 %s\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n
@@ -170,6 +172,7 @@ cubrid 管理工具，版本 %s\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n
@@ -217,11 +220,12 @@ cubrid 管理工具，版本 %s\n\
 用法: %s heartbeat <命令> [参数]\n\
 \n\
 可用命令:\n\
-    start       [数据库名]\n\
-    stop        [-i|数据库名]\n\
-    copylogdb   <start|stop> 数据库名 节点名\n\
-    applylogdb  <start|stop> 数据库名 节点名\n\
-    replication <start|stop> node-name\n\
+    start          [数据库名]\n\
+    stop           [-i|数据库名]\n\
+    copylogdb      <start|stop> 数据库名 节点名\n\
+    applylogdb     <start|stop> 数据库名 节点名\n\
+    prefetchlogdb  <start|stop> 数据库名 节点名\n\
+    replication    <start|stop> node-name\n\
     status\n\
     reload\n
 31 不需要参数 '%1$s' .\n
@@ -1062,3 +1066,15 @@ usage: %1$s tranlist [OPTION] 数据库名\n\
   -s, --summary                打印事务的汇总信息\n\
       --sort-key=COLUMN_NUMBER 列序号将被排序\n\
       --reverse                反转排序结果\n
+
+$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
+22 The server was not configured for HA.\n
+23 Prefetch feature is disabled.\n
+58 HA feature is not supported in this platform.\n
+59 prefetchlogdb cannot run as standalone mode.\n
+60 \
+prefetchlogdb: Prefetch log pages from the server.\n\
+usage: %1$s prefetchlogdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -L, --log-path=PATH         directory PATH for copied log volumes\n

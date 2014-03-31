@@ -67,6 +67,7 @@ $       46      genlocale
 $       47      dumplocale
 $       48      synccolldb
 $       49      tranlist
+$       50      prefetchlogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Độ dài hoặc ký tự '%c' không hợp lệ trong tên cơ sở dữ liệu '%s'\n
@@ -115,6 +116,7 @@ Các tên-tiện ích quản trị có thể dùng:\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %s là một công cụ cho DBMS.\n\
 Để biết thêm thông tin, truy cập http://www.cubrid.org\n
@@ -170,6 +172,7 @@ Các tiện ích của quản trị viên có thể dùng:\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    prefetchlogdb\n\
 \n\
 %s là một công cụ cho DBMS.\n\
 Để biết thêm thông tin, truy cập http://www.cubrid.org\n
@@ -217,11 +220,12 @@ Lệnh có thể dùng :\n\
 cách sử dụng: %s heartbeat <lệnh> [đối số]\n\
 \n\
 Lệnh có thể dùng :\n\
-    start       [tên cơ sở dữ liệu]\n\
-    stop        [-i|tên cơ sở dữ liệu]\n\
-    copylogdb   <start|stop> <tên cơ sở dữ> <liệu tên> node\n\
-    applylogdb  <start|stop> <tên cơ sở dữ> <liệu tên> node\n\
-    replication <start|stop> node-name\n\
+    start          [tên cơ sở dữ liệu]\n\
+    stop           [-i|tên cơ sở dữ liệu]\n\
+    copylogdb      <start|stop> <tên cơ sở dữ> <liệu tên> node\n\
+    applylogdb     <start|stop> <tên cơ sở dữ> <liệu tên> node\n\
+    prefetchlogdb  <start|stop> <tên cơ sở dữ> <liệu tên> node\n\
+    replication    <start|stop> node-name\n\
     status\n\
     reload\n
 31 Đối số'%1$s' không cần thiết.\n
@@ -1062,3 +1066,15 @@ lựa chọn có giá trị:\n\
   -s, --summary                in các thông tin tổng hợp về giao dịch\n\
       --sort-key=COLUMN_NUMBER số cột được sắp xếp\n\
       --reverse                đảo ngược thứ hạng kết quả\n
+
+$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
+22 The server was not configured for HA.\n
+23 Prefetch feature is disabled.\n
+58 HA feature is not supported in this platform.\n
+59 prefetchlogdb cannot run as standalone mode.\n
+60 \
+prefetchlogdb: Prefetch log pages from the server.\n\
+usage: %1$s prefetchlogdb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -L, --log-path=PATH         directory PATH for copied log volumes\n

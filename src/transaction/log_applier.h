@@ -55,6 +55,8 @@ void la_print_log_arv_header (const char *database_name,
 void la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa,
 			  float process_rate);
 
+extern int lp_prefetch_log_file (const char *database_name,
+				 const char *log_path);
 #endif /* CS_MODE */
 
 #endif /* _LOG_APPLIER_HEADER_ */

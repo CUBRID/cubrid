@@ -10553,3 +10553,75 @@ sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid,
       free_and_init (data_reply);
     }
 }
+
+
+void
+slocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
+			       unsigned int rid, char *request, int reqlen)
+{
+  int error = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = NULL;
+  OID class_oid;
+  RECDES *recdes = NULL;
+
+  css_inc_prefetcher_thread_count (thread_p);
+
+  ptr = or_pack_int (reply, error);
+
+  error = css_send_data_to_client (thread_p->conn_entry, rid,
+				   reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  ptr = or_unpack_oid (request, &class_oid);
+  ptr = or_unpack_recdes (ptr, &recdes);
+
+  xlocator_prefetch_repl_insert (thread_p, &class_oid, recdes);
+
+  if (recdes != NULL)
+    {
+      free_and_init (recdes);
+    }
+
+end:
+  css_dec_prefetcher_thread_count (thread_p);
+}
+
+void
+slocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p,
+					 unsigned int rid, char *request,
+					 int reqlen)
+{
+  int error = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = NULL;
+  OID class_oid;
+  BTID btid;
+  DB_VALUE key_value;
+
+  css_inc_prefetcher_thread_count (thread_p);
+
+  ptr = or_pack_int (reply, error);
+
+  error = css_send_data_to_client (thread_p->conn_entry, rid,
+				   reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_oid (ptr, &class_oid);
+  ptr = or_unpack_mem_value (ptr, &key_value);
+
+  xlocator_prefetch_repl_update_or_delete (thread_p, &btid, &class_oid,
+					   &key_value);
+
+end:
+  css_dec_prefetcher_thread_count (thread_p);
+}

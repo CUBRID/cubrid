@@ -72,6 +72,8 @@ extern int css_increment_num_conn (BOOT_CLIENT_TYPE client_type);
 extern void css_decrement_num_conn (BOOT_CLIENT_TYPE client_type);
 
 extern void css_free_conn (CSS_CONN_ENTRY * conn);
+extern void css_inc_prefetcher_thread_count (THREAD_ENTRY * thread_entry);
+extern void css_dec_prefetcher_thread_count (THREAD_ENTRY * thread_entry);
 extern void css_print_conn_entry_info (CSS_CONN_ENTRY * p);
 extern void css_print_conn_list (void);
 extern void css_print_free_conn_list (void);

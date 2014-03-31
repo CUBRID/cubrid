@@ -280,7 +280,8 @@ css_process_server_count_info (CSS_CONN_ENTRY * conn,
 	  temp->name &&
 	  !IS_MASTER_CONN_NAME_DRIVER (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
+	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) &&
+	  !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
 	{
 	  count++;
 	}
@@ -343,7 +344,8 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn,
 	  temp->name != NULL &&
 	  !IS_MASTER_CONN_NAME_DRIVER (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
+	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) &&
+	  !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
 	{
 	  required_size = 0;
 
@@ -656,7 +658,8 @@ css_process_kill_immediate (CSS_CONN_ENTRY * conn, unsigned short request_id,
       if ((temp->name != NULL) && (strcmp (temp->name, server_name) == 0) &&
 	  !IS_MASTER_CONN_NAME_HA_SERVER (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
+	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) &&
+	  !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
 	{
 	  css_send_command_to_server (temp, SERVER_SHUTDOWN_IMMEDIATE);
 
@@ -809,7 +812,8 @@ css_process_shutdown (char *time_buffer)
 	  !IS_MASTER_CONN_NAME_DRIVER (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_SERVER (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
+	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) &&
+	  !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
 	{
 	  css_process_start_shutdown (temp, timeout * 60, buffer);
 
@@ -865,7 +869,8 @@ css_process_stop_shutdown (void)
 	  !IS_MASTER_CONN_NAME_DRIVER (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_SERVER (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
+	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) &&
+	  !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
 	{
 	  css_send_command_to_server (temp, SERVER_STOP_SHUTDOWN);
 	}

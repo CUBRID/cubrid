@@ -913,7 +913,6 @@ net_server_init (void)
   req_p->processing_function = sacl_reload;
   req_p->name = "NET_SERVER_ACL_RELOAD";
 
-
   req_p = &net_Requests[NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY];
   req_p->processing_function = sbtree_delete_with_unique_key;
   req_p->name = "NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY";
@@ -922,16 +921,23 @@ net_server_init (void)
   req_p->processing_function = slogin_user;
   req_p->name = "NET_SERVER_SET_USERNAME";
 
-  net_Requests[NET_SERVER_FIND_MULTI_UNIQUES].processing_function =
-    sbtree_find_multi_uniques;
-  net_Requests[NET_SERVER_FIND_MULTI_UNIQUES].name =
-    "NET_SERVER_FIND_MULTI_UNIQUES";
+  req_p = &net_Requests[NET_SERVER_FIND_MULTI_UNIQUES];
+  req_p->processing_function = sbtree_find_multi_uniques;
+  req_p->name = "NET_SERVER_FIND_MULTI_UNIQUES";
 
   req_p = &net_Requests[NET_SERVER_LC_FORCE_REPL_UPDATE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO
 			     | IN_TRANSACTION);
   req_p->processing_function = slocator_force_repl_update;
   req_p->name = "NET_SERVER_LC_FORCE_REPL_UPDATE";
+
+  req_p = &net_Requests[NET_SERVER_LC_PREFETCH_REPL_INSERT];
+  req_p->processing_function = slocator_prefetch_repl_insert;
+  req_p->name = "NET_SERVER_LC_PREFETCH_PAGE_REPL_INSERT";
+
+  req_p = &net_Requests[NET_SERVER_LC_PREFETCH_REPL_UPDATE_OR_DELETE];
+  req_p->processing_function = slocator_prefetch_repl_update_or_delete;
+  req_p->name = "NET_SERVER_LC_PREFETCH_PAGE_REPL_UPDATE_OR_DELETE";
 }
 
 #if defined(CUBRID_DEBUG)
@@ -1129,7 +1135,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
 
   /* set event logging parameter */
   thread_p->event_stats.trace_log_flush_time =
-              prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
+    prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
 
   /* call a request processing function */
   if (thread_p->tran_index > 0)

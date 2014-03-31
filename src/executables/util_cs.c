@@ -3112,6 +3112,205 @@ error_exit:
 #endif /* !WINDOWS */
 }
 
+int
+prefetchlogdb (UTIL_FUNCTION_ARG * arg)
+{
+#if defined (WINDOWS)
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					 MSGCAT_UTIL_SET_PREFETCHLOGDB,
+					 PREFETCHLOGDB_MSG_HA_NOT_SUPPORT),
+			 basename (arg->argv0));
+  return EXIT_FAILURE;
+#else /* WINDOWS */
+#if defined (CS_MODE)
+  int error = NO_ERROR;
+  int retried = 0, sleep_nsecs = 1;
+  bool need_er_reinit = false;
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name = NULL;
+  const char *log_path = NULL;
+  char *log_path_base = NULL;
+  char log_path_buf[PATH_MAX];
+  char *binary_name = NULL;
+  char executable_path[PATH_MAX];
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_prefetchlog_usage;
+    }
+
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_prefetchlog_usage;
+    }
+
+  log_path =
+    utility_get_option_string_value (arg_map, PREFETCH_LOG_PATH_S, 0);
+  if (log_path == NULL)
+    {
+      goto print_prefetchlog_usage;
+    }
+  else
+    {
+      log_path = realpath (log_path, log_path_buf);
+    }
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+#if defined(NDEBUG)
+  util_redirect_stdout_to_null ();
+#endif
+
+  /* error message log file */
+  log_path_base = strdup (log_path);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s_%s.err",
+	    database_name, arg->command_name, basename (log_path_base));
+  free (log_path_base);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_LOG_PREFETCHER);
+  if (db_login ("DBA", NULL) != NO_ERROR)
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  /* save executable path */
+  binary_name = basename (arg->argv0);
+  envvar_bindir_file (executable_path, PATH_MAX, binary_name);
+
+  hb_set_exec_path (executable_path);
+  hb_set_argv (arg->argv);
+
+  /* initialize system parameters */
+  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
+      error = ER_FAILED;
+      goto error_exit;
+    }
+
+  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+    {
+      /* initialize heartbeat */
+      error =
+	hb_process_init (database_name, log_path, HB_PTYPE_PREFETCHLOGDB);
+      if (error != NO_ERROR)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"Cannot connect to cub_master for heartbeat. \n");
+	  if (er_errid () != NO_ERROR)
+	    {
+	      util_log_write_errstr ("%s\n", db_error_string (3));
+	    }
+	  return EXIT_FAILURE;
+	}
+    }
+
+retry:
+  error = db_restart (arg->command_name, TRUE, database_name);
+  if (error != NO_ERROR)
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  if (need_er_reinit)
+    {
+      er_init (er_msg_file, ER_NEVER_EXIT);
+      need_er_reinit = false;
+    }
+
+  db_set_lock_timeout (5);
+
+  /* initialize system parameters */
+  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+    {
+      db_shutdown ();
+      error = ER_FAILED;
+      goto error_exit;
+    }
+
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_PREFETCHLOGDB,
+				       PREFETCHLOGDB_MSG_NOT_HA_MODE));
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  if (prm_get_bool_value (PRM_ID_HA_PREFETCHLOGDB_ENABLE) == false)
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_PREFETCHLOGDB,
+				       PREFETCHLOGDB_MSG_FEATURE_DISABLE));
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  error = lp_prefetch_log_file (database_name, log_path);
+  if (error != NO_ERROR)
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));
+      (void) db_shutdown ();
+      goto error_exit;
+    }
+
+  db_shutdown ();
+  return EXIT_SUCCESS;
+
+print_prefetchlog_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_PREFETCHLOGDB,
+				   PREFETCHLOGDB_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
+  return EXIT_FAILURE;
+
+error_exit:
+  if (hb_Proc_shutdown)
+    {
+      return EXIT_SUCCESS;
+    }
+
+  if (error == ER_NET_SERVER_CRASHED
+      || error == ER_NET_CANT_CONNECT_SERVER
+      || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER
+      || error == ER_BO_CONNECT_FAILED || error == ER_NET_SERVER_COMM_ERROR
+      || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+    {
+      (void) sleep (sleep_nsecs);
+      /* sleep 1, 2, 4, 8, etc; don't wait for more than 10 sec */
+      if ((sleep_nsecs *= 2) > 10)
+	{
+	  sleep_nsecs = 1;
+	}
+      need_er_reinit = true;
+      ++retried;
+      goto retry;
+    }
+
+  return EXIT_FAILURE;
+
+#else /* CS_MODE */
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
+					 MSGCAT_UTIL_SET_PREFETCHLOGDB,
+					 PREFETCHLOGDB_MSG_NOT_IN_STANDALONE),
+			 basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
+#endif /* !WINDOWS */
+}
+
 /*
  * copylogdb() - copylogdb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -3237,7 +3436,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
-      error = hb_process_init (database_name, log_path, true);
+      error = hb_process_init (database_name, log_path, HB_PTYPE_COPYLOGDB);
       if (error != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
@@ -3458,7 +3657,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       /* initialize heartbeat */
-      error = hb_process_init (database_name, log_path, false);
+      error = hb_process_init (database_name, log_path, HB_PTYPE_APPLYLOGDB);
       if (error != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
