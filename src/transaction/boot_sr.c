@@ -4753,34 +4753,31 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
   if (new_lob_path != NULL)
     {
       ES_TYPE es_type = es_get_type (new_lob_path);
-      char *p;
+      char *p = NULL;
 
-      p = strchr (new_lob_path, ':');
-      if (p == NULL)
+      switch (es_type)
 	{
+	case ES_NONE:
 	  /* prepend default prefix */
 	  snprintf (new_lob_pathbuf, sizeof (new_lob_pathbuf), "%s%s",
 		    LOB_PATH_DEFAULT_PREFIX, new_lob_path);
 	  new_lob_path = new_lob_pathbuf;
 	  es_type = ES_POSIX;
 	  p = strchr (new_lob_path, ':') + 1;
-	}
-      else
-	{
-	  switch (es_type)
-	    {
-	    case ES_NONE:
-#if !defined (CUBRID_OWFS)
-	    case ES_OWFS:
-#endif /* !CUBRID_OWFS */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_ES_INVALID_PATH, 1, new_lob_path);
-	      error_code = ER_ES_INVALID_PATH;
-	      goto error;
-	    default:
-	      break;
-	    }
+	  break;
+	case ES_POSIX:
 	  p = strchr (strcpy (new_lob_pathbuf, new_lob_path), ':') + 1;
+	  break;
+	case ES_OWFS:
+#if !defined (CUBRID_OWFS)
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_ES_INVALID_PATH, 1, new_lob_path);
+	  error_code = ER_ES_INVALID_PATH;
+	  goto error;
+#endif /* !CUBRID_OWFS */
+	case ES_LOCAL:
+	default:
+	  break;
 	}
 
       if (es_type == ES_POSIX && p != NULL)
