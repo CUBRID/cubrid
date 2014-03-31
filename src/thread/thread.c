@@ -2273,8 +2273,7 @@ css_initialize_sync_object (void)
 
   r = NO_ERROR;
 
-  assert (thread_Manager.num_daemons == DIM (thread_Daemons));
-  for (i = 0; i < thread_Manager.num_daemons; i++)
+  for (i = 0; i < DIM (thread_Daemons); i++)
     {
       r = pthread_cond_init (&thread_Daemons[i].daemon_monitor->cond, NULL);
       if (r != 0)
