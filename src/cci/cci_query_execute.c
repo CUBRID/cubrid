@@ -6028,6 +6028,15 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, char u_type, void *value,
 	}
       break;
     case CCI_U_TYPE_NUMERIC:
+      if (value == NULL)
+	{
+	  ADD_ARG_BYTES (net_buf, NULL, 0);
+	}
+      else
+	{
+	  ADD_ARG_BIND_STR (net_buf, value, size, charset);
+	}
+      break;
     case CCI_U_TYPE_SET:
     case CCI_U_TYPE_MULTISET:
     case CCI_U_TYPE_SEQUENCE:
