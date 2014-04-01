@@ -4413,7 +4413,7 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag,
   error_code = boot_check_permanent_volumes (thread_p);
   nperm_vols = xboot_find_number_permanent_volumes (thread_p);
 
-  if (BTID_IS_NULL (index_btid))
+  if (index_btid != NULL && BTID_IS_NULL (index_btid))
     {
       index_btid = NULL;
     }
