@@ -73,11 +73,26 @@
 /* common collation to be used at runtime */
 #define LANG_RT_COMMON_COLL(c1, c2, coll)     \
   do {					      \
-    if (LANG_IS_COERCIBLE_COLL (c1))          \
+    coll = -1;				      \
+    if ((c1) == (c2))			      \
       {					      \
-	coll = (c2);			      \
+	coll = (c1);			      \
       }					      \
-    else				      \
+    else if (LANG_IS_COERCIBLE_COLL (c1))     \
+      {					      \
+	if (!LANG_IS_COERCIBLE_COLL (c2))     \
+	  {				      \
+	    coll = (c2);		      \
+	  }				      \
+	else				      \
+	  {				      \
+	    if ((c2) == LANG_COLL_ISO_BINARY) \
+	      {				      \
+		coll = (c2);		      \
+	      }				      \
+	  }				      \
+      }					      \
+    else if (LANG_IS_COERCIBLE_COLL (c2))     \
       {					      \
 	coll = (c1);			      \
       }					      \

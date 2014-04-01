@@ -848,7 +848,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2,
   else
     {
       *compare_result = (*(pr_type_p->cmpval)) (&dbval1, &dbval2, 0, 1, NULL,
-						-1);
+						domain_p->collation_id);
     }
 
   if (is_copy)
@@ -932,6 +932,16 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p,
 		  return ER_QPROC_INCOMPATIBLE_TYPES;
 		}
 	    }
+	}
+
+      if (TP_DOMAIN_COLLATION_FLAG (list_id1_p->type_list.domp[i])
+	  != TP_DOMAIN_COLL_NORMAL
+	  || TP_DOMAIN_COLLATION_FLAG (list_id2_p->type_list.domp[i])
+	  != TP_DOMAIN_COLL_NORMAL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+	  return ER_QSTR_INCOMPATIBLE_COLLATIONS;
 	}
     }
 
@@ -7471,6 +7481,26 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p,
 	  DB_TYPE_VARIABLE)
 	{
 	  if (TP_DOMAIN_TYPE (reg_var_p->value.domain) == DB_TYPE_VARIABLE)
+	    {
+	      /* In this case, we cannot resolve the value's domain.
+	       * We will try to do for the next tuple.
+	       */
+	      if (list_id_p->is_domain_resolved)
+		{
+		  list_id_p->is_domain_resolved = false;
+		}
+	    }
+	  else
+	    {
+	      list_id_p->type_list.domp[count] = reg_var_p->value.domain;
+	    }
+	}
+
+      if (list_id_p->type_list.domp[count]->collation_flag
+	  != TP_DOMAIN_COLL_NORMAL)
+	{
+	  if (reg_var_p->value.domain->collation_flag
+	      != TP_DOMAIN_COLL_NORMAL)
 	    {
 	      /* In this case, we cannot resolve the value's domain.
 	       * We will try to do for the next tuple.

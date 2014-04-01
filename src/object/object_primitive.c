@@ -10019,6 +10019,12 @@ mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value,
       mem_length = *(int *) cur;
       cur += sizeof (int);
 
+      if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
+
       if (!copy)
 	{
 	  db_make_varchar (value, domain->precision, cur, mem_length,
@@ -10446,6 +10452,11 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value,
 	  str_length = or_get_varchar_length (buf, &rc);
 	  if (rc == NO_ERROR)
 	    {
+	      if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+		{
+		  assert (false);
+		  return ER_FAILED;
+		}
 	      db_make_varchar (value, precision, buf->ptr, str_length,
 			       TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
@@ -10537,6 +10548,12 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value,
 		    }
 
 		  new_[str_length] = '\0';	/* append the kludge NULL terminator */
+		  if (TP_DOMAIN_COLLATION_FLAG (domain)
+		      != TP_DOMAIN_COLL_NORMAL)
+		    {
+		      assert (false);
+		      return ER_FAILED;
+		    }
 		  db_make_varchar (value, precision, new_, str_length,
 				   TP_DOMAIN_CODESET (domain),
 				   TP_DOMAIN_COLLATION (domain));
@@ -10633,7 +10650,7 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2,
 		  int do_coercion, int total_order, int *start_colp,
 		  int collation)
 {
-  int c, coll;
+  int c;
   unsigned char *string1, *string2;
   int size1, size2;
 
@@ -10659,17 +10676,13 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2,
       size2 = strlen ((char *) string2);
     }
 
-  if (collation != -1)
+  if (collation == -1)
     {
-      coll = collation;
-    }
-  else
-    {
-      LANG_RT_COMMON_COLL (value1->domain.char_info.collation_id,
-			   value2->domain.char_info.collation_id, coll);
+      assert (false);
+      return DB_UNK;
     }
 
-  c = QSTR_COMPARE (coll, string1, size1, string2, size2);
+  c = QSTR_COMPARE (collation, string1, size1, string2, size2);
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -10840,6 +10853,11 @@ mr_getmem_char (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
   char *new_;
 
   assert (!IS_FLOATING_PRECISION (domain->precision));
+  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
 
   intl_char_size ((unsigned char *) mem, domain->precision,
 		  TP_DOMAIN_CODESET (domain), &mem_length);
@@ -11233,6 +11251,11 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
   int rc = NO_ERROR;
 
   precision = domain->precision;
+  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
 
   if (IS_FLOATING_PRECISION (domain->precision))
     {
@@ -11483,7 +11506,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2,
 		int do_coercion, int total_order, int *start_colp,
 		int collation)
 {
-  int c, coll;
+  int c;
   unsigned char *string1, *string2;
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
@@ -11495,17 +11518,13 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2,
       return DB_UNK;
     }
 
-  if (collation != -1)
+  if (collation == -1)
     {
-      coll = collation;
-    }
-  else
-    {
-      LANG_RT_COMMON_COLL (value1->domain.char_info.collation_id,
-			   value2->domain.char_info.collation_id, coll);
+      assert (false);
+      return DB_UNK;
     }
 
-  c = QSTR_CHAR_COMPARE (coll,
+  c = QSTR_CHAR_COMPARE (collation,
 			 string1, (int) DB_GET_STRING_SIZE (value1),
 			 string2, (int) DB_GET_STRING_SIZE (value2));
   c = MR_CMP_RETURN_CODE (c);
@@ -11676,6 +11695,11 @@ mr_getmem_nchar (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
   int mem_length;
   char *new_;
 
+  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
   intl_char_size ((unsigned char *) mem, domain->precision,
 		  TP_DOMAIN_CODESET (domain), &mem_length);
   if (mem_length == 0)
@@ -11697,6 +11721,11 @@ mr_getmem_nchar (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
       new_[mem_length] = '\0';
     }
 
+  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
   db_make_nchar (value, domain->precision, new_, mem_length,
 		 TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
   if (copy)
@@ -12122,6 +12151,12 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value,
   char *new_;
   int rc = NO_ERROR;
 
+  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
   if (IS_FLOATING_PRECISION (domain->precision))
     {
       if (align == INT_ALIGNMENT)
@@ -12396,7 +12431,7 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2,
 		 int do_coercion, int total_order, int *start_colp,
 		 int collation)
 {
-  int c, coll;
+  int c;
   unsigned char *string1, *string2;
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
@@ -12408,17 +12443,13 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2,
       return DB_UNK;
     }
 
-  if (collation != -1)
+  if (collation == -1)
     {
-      coll = collation;
-    }
-  else
-    {
-      LANG_RT_COMMON_COLL (value1->domain.char_info.collation_id,
-			   value2->domain.char_info.collation_id, coll);
+      assert (false);
+      return DB_UNK;
     }
 
-  c = QSTR_NCHAR_COMPARE (coll,
+  c = QSTR_NCHAR_COMPARE (collation,
 			  string1, (int) DB_GET_STRING_SIZE (value1),
 			  string2, (int) DB_GET_STRING_SIZE (value2),
 			  (INTL_CODESET) DB_GET_STRING_CODESET (value2));
@@ -12590,6 +12621,12 @@ mr_getmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value,
       /* extract the length prefix and the pointer to the actual string data */
       mem_length = *(int *) cur;
       cur += sizeof (int);
+
+      if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
 
       if (!copy)
 	{
@@ -13065,6 +13102,11 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value,
       if (!copy)
 	{
 	  str_length = or_get_varchar_length (buf, &rc);
+	  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+	    {
+	      assert (false);
+	      return ER_FAILED;
+	    }
 	  db_make_varnchar (value, precision, buf->ptr, str_length,
 			    TP_DOMAIN_CODESET (domain),
 			    TP_DOMAIN_COLLATION (domain));
@@ -13153,6 +13195,12 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value,
 		      return ER_FAILED;
 		    }
 
+		  if (TP_DOMAIN_COLLATION_FLAG (domain)
+		      != TP_DOMAIN_COLL_NORMAL)
+		    {
+		      assert (false);
+		      return ER_FAILED;
+		    }
 		  db_make_varnchar (value, precision, new_, str_length,
 				    TP_DOMAIN_CODESET (domain),
 				    TP_DOMAIN_COLLATION (domain));
@@ -13198,6 +13246,11 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value,
 					   (unsigned char *) new_,
 					   LANG_SYS_CODESET, &unconverted);
 	      db_value_clear (value);
+	      if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+		{
+		  assert (false);
+		  return ER_FAILED;
+		}
 	      db_make_varnchar (value, precision, new_,
 				STR_SIZE (char_count, codeset),
 				codeset, TP_DOMAIN_COLLATION (domain));
@@ -13278,7 +13331,7 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2,
 		    int do_coercion, int total_order, int *start_colp,
 		    int collation)
 {
-  int c, coll;
+  int c;
   unsigned char *string1, *string2;
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
@@ -13290,17 +13343,13 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2,
       return DB_UNK;
     }
 
-  if (collation != -1)
+  if (collation == -1)
     {
-      coll = collation;
-    }
-  else
-    {
-      LANG_RT_COMMON_COLL (value1->domain.char_info.collation_id,
-			   value2->domain.char_info.collation_id, coll);
+      assert (false);
+      return DB_UNK;
     }
 
-  c = QSTR_NCHAR_COMPARE (value1->domain.char_info.collation_id,
+  c = QSTR_NCHAR_COMPARE (collation,
 			  string1, (int) DB_GET_STRING_SIZE (value1),
 			  string2, (int) DB_GET_STRING_SIZE (value2),
 			  (INTL_CODESET) DB_GET_STRING_CODESET (value2));

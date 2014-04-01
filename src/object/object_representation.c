@@ -3660,6 +3660,10 @@ or_decode (const char *buffer, char *dest, int size)
 #define OR_DOMAIN_PRECISION_SHIFT	(16)
 #define OR_DOMAIN_PRECISION_MAX		(0xFFFF)
 
+#define OR_DOMAIN_COLLATION_MASK	(0x000000FF)
+#define OR_DOMAIN_COLL_ENFORCE_FLAG	(0x80000000)
+#define OR_DOMAIN_COLL_LEAVE_FLAG	(0x40000000)
+
 /*
  * or_packed_domain_size - calcualte the necessary buffer size required
  * to hold a packed representation of a hierarchical domain structure.
@@ -3813,6 +3817,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
   TP_DOMAIN *d;
   DB_TYPE id;
   int rc = NO_ERROR;
+  unsigned int collation_storage;
 
   /*
    * Hack, if this is a built-in domain, store a single word reference.
@@ -4021,7 +4026,17 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 
       if (has_collation)
 	{
-	  rc = or_put_int (buf, d->collation_id);
+	  collation_storage = d->collation_id;
+	  if (d->collation_flag == TP_DOMAIN_COLL_ENFORCE)
+	    {
+	      collation_storage |= OR_DOMAIN_COLL_ENFORCE_FLAG;
+	    }
+	  else if (d->collation_flag == TP_DOMAIN_COLL_LEAVE)
+	    {
+	      collation_storage |= OR_DOMAIN_COLL_LEAVE_FLAG;
+	    }
+
+	  rc = or_put_int (buf, collation_storage);
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
@@ -4096,11 +4111,12 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 {
   TP_DOMAIN *domain, *last, *d;
   unsigned int carrier, precision, scale, codeset, has_classoid,
-    has_setdomain, has_enum, collation_id;
+    has_setdomain, has_enum, collation_id, collation_storage;
   bool more, auto_precision, is_desc, has_collation;
   DB_TYPE type;
   int index;
   int rc = NO_ERROR;
+  unsigned char collation_flag;
 
   domain = last = NULL;
 
@@ -4248,15 +4264,32 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 
 	  if (has_collation)
 	    {
-	      collation_id = or_get_int (buf, &rc);
+	      collation_storage = or_get_int (buf, &rc);
 	      if (rc != NO_ERROR)
 		{
 		  goto error;
+		}
+	      collation_id = collation_storage & OR_DOMAIN_COLLATION_MASK;
+
+	      if ((collation_storage & OR_DOMAIN_COLL_ENFORCE_FLAG)
+		  == OR_DOMAIN_COLL_ENFORCE_FLAG)
+		{
+		  collation_flag = TP_DOMAIN_COLL_ENFORCE;
+		}
+	      else if ((collation_storage & OR_DOMAIN_COLL_LEAVE_FLAG)
+		       == OR_DOMAIN_COLL_LEAVE_FLAG)
+		{
+		  collation_flag = TP_DOMAIN_COLL_LEAVE;
+		}
+	      else
+		{
+		  collation_flag = TP_DOMAIN_COLL_NORMAL;
 		}
 	    }
 	  else
 	    {
 	      collation_id = 0;
+	      collation_flag = TP_DOMAIN_COLL_NORMAL;
 	    }
 
 	  /* do we have an extra precision word ? */
@@ -4332,11 +4365,13 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      d->codeset = codeset;
 	      d->collation_id = collation_id;
 	      d->enumeration.collation_id = collation_id;
+	      d->collation_flag = collation_flag;
 	    }
 	  else
 	    {
 	      d->codeset = codeset;
 	      d->collation_id = collation_id;
+	      d->collation_flag = collation_flag;
 	    }
 
 	  if (has_enum)
@@ -4420,6 +4455,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
   int rc = NO_ERROR;
   int enum_vals_cnt = 0;
   DB_ENUMERATION db_enum = { NULL, 0, 0 };
+  unsigned int collation_storage;
+  unsigned char collation_flag;
 
   domain = last = dom = setdomain = NULL;
   precision = scale = 0;
@@ -4466,6 +4503,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	  is_desc = (carrier & OR_DOMAIN_DESC_FLAG) ? true : false;
 
 	  collation_id = 0;
+	  collation_flag = TP_DOMAIN_COLL_NORMAL;
 
 	  switch (type)		/* try to find */
 	    {
@@ -4519,11 +4557,28 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_VARNCHAR:
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
-	      collation_id = or_get_int (buf, &rc);
+	      collation_storage = or_get_int (buf, &rc);
 	      if (rc != NO_ERROR)
 		{
 		  goto error;
 		}
+	      collation_id = collation_storage & OR_DOMAIN_COLLATION_MASK;
+
+	      if ((collation_storage & OR_DOMAIN_COLL_ENFORCE_FLAG)
+		  == OR_DOMAIN_COLL_ENFORCE_FLAG)
+		{
+		  collation_flag = TP_DOMAIN_COLL_ENFORCE;
+		}
+	      else if ((collation_storage & OR_DOMAIN_COLL_LEAVE_FLAG)
+		       == OR_DOMAIN_COLL_LEAVE_FLAG)
+		{
+		  collation_flag = TP_DOMAIN_COLL_LEAVE;
+		}
+	      else
+		{
+		  collation_flag = TP_DOMAIN_COLL_NORMAL;
+		}
+
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
 	      codeset = ((carrier & OR_DOMAIN_CODSET_MASK)
@@ -4565,7 +4620,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		}
 	      dom =
 		tp_domain_find_charbit (type, codeset, collation_id,
-					precision, is_desc);
+					collation_flag, precision, is_desc);
 	      break;
 
 	    case DB_TYPE_OBJECT:
@@ -4693,6 +4748,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		case DB_TYPE_CHAR:
 		case DB_TYPE_VARCHAR:
 		  dom->collation_id = collation_id;
+		  dom->collation_flag = collation_flag;
 		case DB_TYPE_BIT:
 		case DB_TYPE_VARBIT:
 		  dom->codeset = codeset;
@@ -4707,6 +4763,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  dom->collation_id = collation_id;
 		  dom->enumeration.collation_id = collation_id;
 		  dom->codeset = codeset;
+		  dom->collation_flag = collation_flag;
 		default:
 		  break;
 		}

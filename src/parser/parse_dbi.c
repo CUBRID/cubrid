@@ -1719,6 +1719,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
   int precision = 0, scale = 0, codeset = 0;
   DB_ENUMERATION enumeration;
   int collation_id = 0;
+  TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_NORMAL;
 
   if (dt == NULL)
     {
@@ -1792,6 +1793,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
       codeset = dt->info.data_type.units;
       collation_id = dt->info.data_type.collation_id;
       assert (collation_id >= 0);
+      collation_flag = dt->info.data_type.collation_flag;
       break;
 
     case DB_TYPE_BIT:
@@ -1820,6 +1822,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
       codeset = dt->info.data_type.units;
       collation_id = dt->info.data_type.collation_id;
       assert (collation_id >= 0);
+      collation_flag = dt->info.data_type.collation_flag;
       break;
 
     case DB_TYPE_NULL:
@@ -1849,10 +1852,23 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
 	      retval->class_oid = class_obj->oid_info.oid;
 	    }
 	}
+      if (collation_flag == TP_DOMAIN_COLL_ENFORCE)
+	{
+	  /* need to create a domain which enforces only the collation
+	   * precision is set to default to keep list of domains to minimum */
+	  precision = DB_DEFAULT_PRECISION;
+	}
+      else if (collation_flag == TP_DOMAIN_COLL_LEAVE)
+	{
+	  /* need to create a domain which ignores the collation */
+	  codeset = LANG_SYS_CODESET;
+	  collation_id = LANG_SYS_COLLATION;
+	}
       retval->precision = precision;
       retval->scale = scale;
       retval->codeset = codeset;
       retval->collation_id = collation_id;
+      retval->collation_flag = collation_flag;
       retval->enumeration.collation_id = collation_id;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
@@ -1904,6 +1920,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
   DB_DOMAIN *setdomain = (DB_DOMAIN *) 0;
   DB_ENUMERATION enumeration;
   int error = NO_ERROR;
+  TP_DOMAIN_COLL_ACTION collation_flag;
 
   if (dt == NULL)
     {
@@ -1912,6 +1929,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
 
   enumeration.count = 0;
   enumeration.elements = NULL;
+  collation_flag = TP_DOMAIN_COLL_NORMAL;
 
   domain_type = pt_type_enum_to_db ((PT_TYPE_ENUM) type);
   switch (domain_type)
@@ -1969,6 +1987,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
       precision = dt->info.data_type.precision;
       codeset = dt->info.data_type.units;
       collation_id = dt->info.data_type.collation_id;
+      collation_flag = dt->info.data_type.collation_flag;
       break;
 
     case DB_TYPE_NUMERIC:
@@ -2018,10 +2037,23 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     {
       retval->class_mop = class_obj;
       retval->self_ref = 0;
+      if (collation_flag == TP_DOMAIN_COLL_ENFORCE)
+	{
+	  /* need to create a domain which enforces only the collation
+	   * precision is set to default to keep list of domains to minimum */
+	  precision = DB_DEFAULT_PRECISION;
+	}
+      else if (collation_flag == TP_DOMAIN_COLL_LEAVE)
+	{
+	  /* need to create a domain which ignores the collation */
+	  codeset = LANG_SYS_CODESET;
+	  collation_id = LANG_SYS_COLLATION;
+	}
       retval->precision = precision;
       retval->scale = scale;
       retval->codeset = codeset;
       retval->collation_id = collation_id;
+      retval->collation_flag = collation_flag;
       retval->enumeration.collation_id = collation_id;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);

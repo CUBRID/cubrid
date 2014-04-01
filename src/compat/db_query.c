@@ -1330,13 +1330,25 @@ db_cp_query_type_helper (DB_QUERY_TYPE * src, DB_QUERY_TYPE * dest)
 {
   int size;
 
-  dest->db_type = src->db_type;
-  dest->size = src->size;
+  if (TP_DOMAIN_COLLATION_FLAG (src->domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      /* special collation domain behave like VARIABLE in query output */
+      assert (TP_TYPE_HAS_COLLATION (src->db_type));
+      dest->db_type = DB_TYPE_VARIABLE;
+      dest->size = 0;
+      dest->domain = tp_domain_resolve_default (DB_TYPE_VARIABLE);
+    }
+  else
+    {
+      dest->db_type = src->db_type;
+      dest->size = src->size;
+      dest->domain = src->domain;
+    }
+
   dest->name = NULL;
   dest->attr_name = NULL;
   dest->spec_name = NULL;
   dest->original_name = NULL;
-  dest->domain = src->domain;
   dest->src_domain = NULL;
   dest->visible_type = src->visible_type;
   dest->col_type = src->col_type;

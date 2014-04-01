@@ -174,6 +174,7 @@ extern unsigned int db_on_server;
   1,            /* built_in_index (set in tp_init) */  \
   0,            /* codeset */                          \
   0,            /* collation id */		       \
+  TP_DOMAIN_COLL_NORMAL,  /* collation flag */	       \
   0,            /* self_ref */                         \
   1,            /* is_cached */                        \
   0,            /* is_parameterized */                 \
@@ -189,6 +190,7 @@ extern unsigned int db_on_server;
   1,            /* built_in_index (set in tp_init) */  \
   (codeset),    /* codeset */                          \
   (coll),	/* collation id */		       \
+  TP_DOMAIN_COLL_NORMAL,  /* collation flag */	       \
   0,            /* self_ref */                         \
   1,            /* is_cached */                        \
   1,            /* is_parameterized */                 \
@@ -210,6 +212,7 @@ extern unsigned int db_on_server;
   1,            /* built_in_index (set in tp_init) */  \
   0,            /* codeset */                          \
   0,            /* collation id */		       \
+  TP_DOMAIN_COLL_NORMAL,  /* collation flag */	       \
   0,            /* self_ref */                         \
   1,            /* is_cached */                        \
   1,            /* is_parameterized */                 \
@@ -222,11 +225,12 @@ extern unsigned int db_on_server;
   (scale),      /* scale */                            \
   NULL,         /* class */                            \
   NULL,         /* set domain */                       \
-  {NULL, 0, 0},    /* enumeration */                      \
+  {NULL, 0, 0},    /* enumeration */                   \
   {-1, -1, -1}, /* class OID */                        \
   1,            /* built_in_index (set in tp_init) */  \
   0,            /* codeset */                          \
   0,            /* collation id */                     \
+  TP_DOMAIN_COLL_NORMAL,  /* collation flag */	       \
   0,            /* self_ref */                         \
   1,            /* is_cached */                        \
   0,            /* is_parameterized */                 \
@@ -986,6 +990,7 @@ domain_init (TP_DOMAIN * domain, DB_TYPE typeid_)
   DOM_SET_ENUM (domain, NULL, 0);
   OID_SET_NULL (&domain->class_oid);
 
+  domain->collation_flag = TP_DOMAIN_COLL_NORMAL;
   if (TP_TYPE_HAS_COLLATION (typeid_))
     {
       domain->codeset = LANG_SYS_CODESET;
@@ -1394,8 +1399,17 @@ tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain),
-				      TP_DOMAIN_COLLATION (domain));
+      if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL
+	  || domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
+	{
+	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain),
+					  TP_DOMAIN_COLLATION (domain));
+	}
+      if (domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
+	{
+	  /* don't apply precision and type */
+	  break;
+	}
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value->domain.char_info.type = TP_DOMAIN_TYPE (domain);
@@ -2203,7 +2217,9 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 
 	      match = ((domain->precision == transient->precision)
 		       && (domain->collation_id == transient->collation_id)
-		       && (domain->is_desc == transient->is_desc));
+		       && (domain->is_desc == transient->is_desc)
+		       && (domain->collation_flag
+			   == transient->collation_flag));
 	    }
 	  else if (exact == TP_STR_MATCH)
 	    {
@@ -2213,7 +2229,9 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	       */
 	      match = ((domain->precision >= transient->precision)
 		       && (domain->collation_id == transient->collation_id)
-		       && (domain->is_desc == transient->is_desc));
+		       && (domain->is_desc == transient->is_desc)
+		       && (domain->collation_flag
+			   == transient->collation_flag));
 	    }
 	  else
 	    {
@@ -2226,7 +2244,9 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	       * destination domain tolerance.
 	       */
 	      match = ((domain->collation_id == transient->collation_id)
-		       && (domain->is_desc == transient->is_desc));
+		       && (domain->is_desc == transient->is_desc)
+		       && (domain->collation_flag
+			   == transient->collation_flag));
 	    }
 
 	  if (match)
@@ -2346,7 +2366,9 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 
 	      match = ((domain->precision == transient->precision)
 		       && (domain->collation_id == transient->collation_id)
-		       && (domain->is_desc == transient->is_desc));
+		       && (domain->is_desc == transient->is_desc)
+		       && (domain->collation_flag
+			   == transient->collation_flag));
 	    }
 	  else
 	    {
@@ -2359,7 +2381,9 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 			   || (transient->precision ==
 			       TP_FLOATING_PRECISION_VALUE)
 			   || domain->precision >= transient->precision)
-		       && (domain->is_desc == transient->is_desc));
+		       && (domain->is_desc == transient->is_desc)
+		       && (domain->collation_flag
+			   == transient->collation_flag));
 	    }
 
 	  if (match)
@@ -2388,13 +2412,17 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 
 	      match = ((domain->precision == transient->precision)
 		       && (domain->collation_id == transient->collation_id)
-		       && (domain->is_desc == transient->is_desc));
+		       && (domain->is_desc == transient->is_desc)
+		       && (domain->collation_flag
+			   == transient->collation_flag));
 	    }
 	  else
 	    {
 	      /* see notes above under the DB_TYPE_VARCHAR clause */
 	      match = ((domain->collation_id == transient->collation_id)
-		       && (domain->is_desc == transient->is_desc));
+		       && (domain->is_desc == transient->is_desc)
+		       && (domain->collation_flag
+			   == transient->collation_flag));
 	    }
 
 	  if (match)
@@ -2627,7 +2655,8 @@ tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc)
  */
 TP_DOMAIN *
 tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id,
-			int precision, bool is_desc)
+			unsigned char collation_flag, int precision,
+			bool is_desc)
 {
   TP_DOMAIN *dom;
 
@@ -2661,7 +2690,8 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id,
 		{
 		  break;	/* found */
 		}
-	      else if (dom->collation_id == collation_id)
+	      else if (dom->collation_id == collation_id
+		       && dom->collation_flag == collation_flag)
 		{
 		  /* codeset should be the same if collations are equal */
 		  assert (dom->codeset == codeset);
@@ -2689,7 +2719,8 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id,
 		{
 		  break;	/* found */
 		}
-	      else if (dom->collation_id == collation_id)
+	      else if (dom->collation_id == collation_id
+		       && dom->collation_flag == collation_flag)
 		{
 		  /* codeset should be the same if collations are equal */
 		  assert (dom->codeset == codeset);
@@ -3098,6 +3129,55 @@ tp_domain_resolve_default (DB_TYPE type)
 
   return tp_Domains[type];
 }
+
+/*
+ * tp_domain_resolve_default_w_coll -
+ *
+ *    return: cached domain
+ *    type(in): type id
+ *    coll_id(in): collation
+ *    coll_flag(in): collation flag
+ * Note:
+ *  It returns a special domain having the desired collation and collation
+ *  mode flag. Use this in context of type inference for argument coercion 
+ */
+TP_DOMAIN *
+tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id,
+				  TP_DOMAIN_COLL_ACTION coll_flag)
+{
+  TP_DOMAIN *default_dom;
+  TP_DOMAIN *resolved_dom;
+
+  default_dom = tp_domain_resolve_default (type);
+
+  if (TP_TYPE_HAS_COLLATION (type) && coll_flag != TP_DOMAIN_COLL_NORMAL)
+    {
+      resolved_dom = tp_domain_copy (default_dom, false);
+
+      if (coll_flag == TP_DOMAIN_COLL_ENFORCE)
+	{
+	  LANG_COLLATION *lc = lang_get_collation (coll_id);
+
+	  resolved_dom->collation_id = coll_id;
+	  resolved_dom->codeset = lc->codeset;
+	}
+      else
+	{
+	  assert (coll_flag == TP_DOMAIN_COLL_LEAVE);
+	}
+
+      resolved_dom->collation_flag = coll_flag;
+
+      resolved_dom = tp_domain_cache (resolved_dom);
+    }
+  else
+    {
+      resolved_dom = default_dom;
+    }
+
+  return resolved_dom;
+}
+
 
 /*
  * tp_domain_resolve_value - Find a domain object that describes the type info
@@ -4479,18 +4559,25 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
   if (TP_IS_CHAR_TYPE (original_type)
       && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (desired_domain)))
     {
-      if (DB_GET_STRING_COLLATION (val)
+      if (desired_domain->collation_flag != TP_DOMAIN_COLL_LEAVE
+	  && DB_GET_STRING_COLLATION (val)
 	  != TP_DOMAIN_COLLATION (desired_domain)
 	  && !LANG_IS_COERCIBLE_COLL (DB_GET_STRING_COLLATION (val)))
 	{
 	  return 0;
 	}
 
-      if (!INTL_CAN_STEAL_CS (DB_GET_STRING_CODESET (val),
-			      TP_DOMAIN_CODESET (desired_domain)))
+      if (desired_domain->collation_flag != TP_DOMAIN_COLL_LEAVE
+	  && !INTL_CAN_STEAL_CS (DB_GET_STRING_CODESET (val),
+				 TP_DOMAIN_CODESET (desired_domain)))
 	{
 	  return 0;
 	}
+    }
+
+  if (desired_domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
+    {
+      return 1;
     }
 
   if (desired_precision == TP_FLOATING_PRECISION_VALUE)
@@ -5645,6 +5732,9 @@ make_desired_string_db_value (DB_TYPE desired_type,
 {
   DB_VALUE temp;
 
+  assert (desired_domain->collation_flag == TP_DOMAIN_COLL_NORMAL
+	  || desired_domain->collation_flag == TP_DOMAIN_COLL_LEAVE);
+
   *status = DOMAIN_COMPATIBLE;
   switch (desired_type)
     {
@@ -6467,7 +6557,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
   DB_TYPE desired_type, original_type;
   int err;
   TP_DOMAIN_STATUS status;
-  TP_DOMAIN *best;
+  TP_DOMAIN *best, *p_tmp_desired_domain;
+  TP_DOMAIN tmp_desired_domain;
   const DB_MONETARY *v_money;
   DB_UTIME v_utime;
   DB_DATETIME v_datetime;
@@ -6608,9 +6699,96 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
   if (TP_IS_CHAR_TYPE (desired_type))
     {
-      db_string_put_cs_and_collation (target,
-				      TP_DOMAIN_CODESET (desired_domain),
-				      TP_DOMAIN_COLLATION (desired_domain));
+      if (desired_domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
+	{
+	  if (TP_IS_CHAR_TYPE (original_type))
+	    {
+	      db_string_put_cs_and_collation (target,
+					      TP_DOMAIN_CODESET
+					      (desired_domain),
+					      TP_DOMAIN_COLLATION
+					      (desired_domain));
+
+	      /* create a domain from source value */
+	      p_tmp_desired_domain =
+		tp_domain_resolve_value ((DB_VALUE *) src,
+					 &tmp_desired_domain);
+	      p_tmp_desired_domain->codeset =
+		TP_DOMAIN_CODESET (desired_domain);
+	      p_tmp_desired_domain->collation_id =
+		TP_DOMAIN_COLLATION (desired_domain);
+
+	      desired_domain = p_tmp_desired_domain;
+	    }
+	  else if (TP_IS_SET_TYPE (original_type))
+	    {
+	      TP_DOMAIN *curr_set_dom;
+	      TP_DOMAIN *elem_dom;
+	      TP_DOMAIN *new_elem_dom;
+	      TP_DOMAIN *save_elem_dom_next;
+
+	      /* source value already exists, we expect that a collection
+	       * domain already exists and is cached */
+	      curr_set_dom = tp_domain_resolve_value ((DB_VALUE *) src, NULL);
+	      elem_dom = curr_set_dom->setdomain;
+	      curr_set_dom->setdomain = NULL;
+
+	      /* copy only parent collection domain */
+	      p_tmp_desired_domain = tp_domain_copy (curr_set_dom, false);
+	      curr_set_dom->setdomain = elem_dom;
+	      while (elem_dom != NULL)
+		{
+		  /* create a new domain from this */
+		  save_elem_dom_next = elem_dom->next;
+		  elem_dom->next = NULL;
+		  new_elem_dom = tp_domain_copy (elem_dom, false);
+		  elem_dom->next = save_elem_dom_next;
+
+		  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (elem_dom)))
+		    {
+		      /* for string domains overwrite collation */
+		      new_elem_dom->collation_id =
+			TP_DOMAIN_COLLATION (desired_domain);
+		      new_elem_dom->codeset =
+			TP_DOMAIN_CODESET (desired_domain);
+		    }
+
+		  tp_domain_add (&(p_tmp_desired_domain->setdomain),
+				 new_elem_dom);
+		  elem_dom = elem_dom->next;
+		}
+
+	      desired_domain = p_tmp_desired_domain;
+	    }
+	  else
+	    {
+	      /* ENUM values are included here (cannot be HV) */
+	      /* source value does not have collation, we leave it as it is */
+	      if (src != dest)
+		{
+		  pr_clone_value ((DB_VALUE *) src, dest);
+		}
+	      return DOMAIN_COMPATIBLE;
+	    }
+	  desired_type = TP_DOMAIN_TYPE (desired_domain);
+	}
+      else if (desired_domain->collation_flag == TP_DOMAIN_COLL_NORMAL)
+	{
+	  db_string_put_cs_and_collation (target,
+					  TP_DOMAIN_CODESET (desired_domain),
+					  TP_DOMAIN_COLLATION
+					  (desired_domain));
+	}
+      else
+	{
+	  assert (desired_domain->collation_flag == TP_DOMAIN_COLL_LEAVE);
+	  if (TP_IS_CHAR_TYPE (original_type))
+	    {
+	      db_string_put_cs_and_collation (target,
+					      DB_GET_STRING_CODESET (src),
+					      DB_GET_STRING_COLLATION (src));
+	    }
+	}
     }
 
   switch (desired_type)
@@ -7943,7 +8121,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      status = DOMAIN_OVERFLOW;
 	      db_value_clear (target);
 	    }
-	  else
+	  else if (desired_domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
 	    {
 	      db_string_put_cs_and_collation (target,
 					      TP_DOMAIN_CODESET
@@ -9400,9 +9578,19 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		      || (vtype1 != DB_TYPE_ENUMERATION
 			  && vtype2 != DB_TYPE_ENUMERATION));
 
-	      if (TP_IS_CHAR_TYPE (vtype1)
-		  && (DB_GET_STRING_CODESET (v1)
-		      != DB_GET_STRING_CODESET (v2)))
+	      if (!TP_IS_CHAR_TYPE (vtype1))
+		{
+		  common_coll = 0;
+		}
+	      else if (DB_GET_STRING_COLLATION (v1)
+		       == DB_GET_STRING_COLLATION (v2))
+		{
+		  common_coll = DB_GET_STRING_COLLATION (v1);
+		}
+	      else if (TP_IS_CHAR_TYPE (vtype1)
+		       && (DB_GET_STRING_CODESET (v1)
+			   != DB_GET_STRING_CODESET (v2))
+		       && (use_collation_of_v1 || use_collation_of_v2))
 		{
 		  INTL_CODESET codeset;
 		  DB_DATA_STATUS data_status;
@@ -9416,15 +9604,10 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		      assert (!use_collation_of_v2);
 		      common_coll = DB_GET_STRING_COLLATION (v1);
 		    }
-		  else if (use_collation_of_v2)
-		    {
-		      common_coll = DB_GET_STRING_COLLATION (v2);
-		    }
 		  else
 		    {
-		      LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (v1),
-					   DB_GET_STRING_COLLATION (v2),
-					   common_coll);
+		      assert (use_collation_of_v2 == true);
+		      common_coll = DB_GET_STRING_COLLATION (v2);
 		    }
 
 		  codeset = lang_get_collation (common_coll)->codeset;
@@ -9485,11 +9668,33 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 
 		      v2 = &tmp_char_conv;
 		    }
-
 		}
-	      status = (*(pr_type->cmpval)) (v1, v2,
-					     do_coercion, total_order, NULL,
-					     common_coll);
+	      else if (TP_IS_CHAR_TYPE (vtype1)
+		       && DB_GET_STRING_CODESET (v1)
+		       == DB_GET_STRING_CODESET (v2))
+		{
+		  LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (v1),
+				       DB_GET_STRING_COLLATION (v2),
+				       common_coll);
+		}
+
+	      if (common_coll == -1)
+		{
+		  status = DB_UNK;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+		  if (can_compare != NULL)
+		    {
+		      *can_compare = false;
+		    }
+		}
+	      else
+		{
+		  status = (*(pr_type->cmpval)) (v1, v2, do_coercion,
+						 total_order, NULL,
+						 common_coll);
+		}
+
 	      if (status == DB_UNK)
 		{
 		  /* safe guard */

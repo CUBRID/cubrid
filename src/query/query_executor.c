@@ -1922,15 +1922,18 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
-	  /*resolve domains for aggregates */
+	  /* resolve domains for aggregates */
 	  for (out_list_val = xasl->outptr_list->valptrp;
 	       out_list_val != NULL; out_list_val = out_list_val->next)
 	    {
 	      assert (out_list_val->value.domain != NULL);
+
 	      /* aggregates corresponds to CONSTANT regu vars in outptr_list */
 	      if (out_list_val->value.type != TYPE_CONSTANT ||
-		  TP_DOMAIN_TYPE (out_list_val->value.domain) !=
-		  DB_TYPE_VARIABLE)
+		  (TP_DOMAIN_TYPE (out_list_val->value.domain) !=
+		   DB_TYPE_VARIABLE
+		   && TP_DOMAIN_COLLATION_FLAG (out_list_val->value.domain)
+		   == TP_DOMAIN_COLL_NORMAL))
 		{
 		  continue;
 		}
@@ -1944,6 +1947,8 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      && TP_DOMAIN_TYPE (agg_node->domain) != DB_TYPE_NULL)
 		    {
 		      assert (agg_node->domain != NULL);
+		      assert (TP_DOMAIN_COLLATION_FLAG (agg_node->domain)
+			      == TP_DOMAIN_COLL_NORMAL);
 		      out_list_val->value.domain = agg_node->domain;
 		    }
 		}
@@ -19066,8 +19071,8 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl,
       else
 	{
 	  equal =
-	    ((*(pr_type_p->cmpval)) (&dbval1, dbvalp2, 0, 1, NULL, -1)
-	     == DB_EQ);
+	    ((*(pr_type_p->cmpval)) (&dbval1, dbvalp2, 0, 1, NULL,
+				     domp->collation_id) == DB_EQ);
 	}
 
       if (copy)
@@ -20892,7 +20897,9 @@ qexec_resolve_domains_on_sort_list (SORT_LIST * order_list,
   for (orderby_ptr = order_list; orderby_ptr != NULL;
        orderby_ptr = orderby_ptr->next)
     {
-      if (TP_DOMAIN_TYPE (orderby_ptr->pos_descr.dom) == DB_TYPE_VARIABLE)
+      if (TP_DOMAIN_TYPE (orderby_ptr->pos_descr.dom) == DB_TYPE_VARIABLE
+	  || TP_DOMAIN_COLLATION_FLAG (orderby_ptr->pos_descr.dom)
+	  != TP_DOMAIN_COLL_NORMAL)
 	{
 	  ref_curr_pos = orderby_ptr->pos_descr.pos_no;
 	  regu_list = reference_regu_list;
@@ -20955,7 +20962,9 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
       REGU_VARIABLE_LIST hk_regu = NULL;
 
       if (group_regu->value.domain == NULL ||
-	  TP_DOMAIN_TYPE (group_regu->value.domain) != DB_TYPE_VARIABLE)
+	  (TP_DOMAIN_TYPE (group_regu->value.domain) != DB_TYPE_VARIABLE
+	   && TP_DOMAIN_COLLATION_FLAG (group_regu->value.domain)
+	   == TP_DOMAIN_COLL_NORMAL))
 	{
 	  continue;
 	}
@@ -20981,9 +20990,11 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
       assert (ref_index == pos_in_ref_list);
 
       ref_domain = ref_regu->value.domain;
-      if (TP_DOMAIN_TYPE (ref_domain) == DB_TYPE_VARIABLE)
+      if (TP_DOMAIN_TYPE (ref_domain) == DB_TYPE_VARIABLE
+	  || TP_DOMAIN_COLLATION_FLAG (ref_domain) != TP_DOMAIN_COLL_NORMAL)
 	{
-	  return;
+	  /* next GROUP BY item */
+	  continue;
 	}
 
       /* update domain in g_regu_list */
@@ -21010,7 +21021,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
 
       /* find value in g_val_list pointed to by vfetch_to ;
        * also find in g_agg_list (if any), the same value indentified by
-       * pointer value in operand*/
+       * pointer value in operand */
       for (g_val_list = buildlist->g_val_list->valp;
 	   g_val_list != NULL; g_val_list = g_val_list->next)
 	{
@@ -21027,26 +21038,56 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
       for (group_agg = buildlist->g_agg_list;
 	   group_agg != NULL; group_agg = group_agg->next)
 	{
-	  if (group_agg->opr_dbtype != DB_TYPE_VARIABLE)
+	  if (group_agg->opr_dbtype != DB_TYPE_VARIABLE
+	      && !TP_TYPE_HAS_COLLATION (group_agg->opr_dbtype))
 	    {
 	      continue;
 	    }
 
 	  assert (group_agg->operand.type == TYPE_CONSTANT);
 
-	  if (TP_DOMAIN_TYPE (group_agg->operand.domain) == DB_TYPE_VARIABLE
+	  if ((TP_DOMAIN_TYPE (group_agg->operand.domain) == DB_TYPE_VARIABLE
+	       || TP_DOMAIN_COLLATION_FLAG (group_agg->operand.domain)
+	       != TP_DOMAIN_COLL_NORMAL)
 	      && group_agg->operand.value.dbvalptr == val_list_ref_dbvalue)
 	    {
 	      /* update domain of aggregate's operand */
 	      group_agg->operand.domain = ref_domain;
 	      group_agg->opr_dbtype = TP_DOMAIN_TYPE (ref_domain);
 
-	      if (TP_DOMAIN_TYPE (group_agg->domain) == DB_TYPE_VARIABLE)
+	      if (TP_DOMAIN_TYPE (group_agg->domain) == DB_TYPE_VARIABLE
+		  || TP_DOMAIN_COLLATION_FLAG (group_agg->domain)
+		  != TP_DOMAIN_COLL_NORMAL)
 		{
 		  /* set domain at run-time for MEDIAN */
 		  if (group_agg->function == PT_MEDIAN)
 		    {
 		      continue;
+		    }
+		  else if (group_agg->function == PT_GROUP_CONCAT)
+		    {
+		      /* result of GROUP_CONCAT is always string */
+		      if (!TP_TYPE_HAS_COLLATION
+			  (TP_DOMAIN_TYPE (ref_domain)))
+			{
+			  ref_domain =
+			    tp_domain_resolve_default (DB_TYPE_VARCHAR);
+			}
+		      group_agg->domain = ref_domain;
+
+		      db_value_domain_init (group_agg->accumulator.value,
+					    TP_DOMAIN_TYPE (ref_domain),
+					    DB_DEFAULT_PRECISION,
+					    DB_DEFAULT_SCALE);
+		      db_string_put_cs_and_collation (group_agg->
+						      accumulator.value,
+						      TP_DOMAIN_CODESET
+						      (ref_domain),
+						      TP_DOMAIN_COLLATION
+						      (ref_domain));
+
+		      g_agg_val_found = true;
+		      break;
 		    }
 
 		  assert (group_agg->function == PT_MIN ||
@@ -21058,6 +21099,16 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
 					group_agg->opr_dbtype,
 					DB_DEFAULT_PRECISION,
 					DB_DEFAULT_SCALE);
+		  if (TP_TYPE_HAS_COLLATION (DB_VALUE_TYPE
+					     (group_agg->accumulator.value)))
+		    {
+		      db_string_put_cs_and_collation (group_agg->
+						      accumulator.value,
+						      TP_DOMAIN_CODESET
+						      (ref_domain),
+						      TP_DOMAIN_COLLATION
+						      (ref_domain));
+		    }
 		}
 	      else
 		{
@@ -21098,7 +21149,9 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
 	      group_agg->accumulator.value)
 	    {
 	      if (TP_DOMAIN_TYPE (group_out_regu->value.domain) ==
-		  DB_TYPE_VARIABLE)
+		  DB_TYPE_VARIABLE
+		  || TP_DOMAIN_COLLATION_FLAG (group_out_regu->value.domain)
+		  != TP_DOMAIN_COLL_NORMAL)
 		{
 		  group_out_regu->value.domain = ref_domain;
 		}
@@ -21133,7 +21186,9 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist,
       for (i = 0; i < buildlist->g_hkey_size, group_regu != NULL;
 	   i++, group_regu = group_regu->next)
 	{
-	  if (TP_DOMAIN_TYPE (context->key_domains[i]) == DB_TYPE_VARIABLE)
+	  if (TP_DOMAIN_TYPE (context->key_domains[i]) == DB_TYPE_VARIABLE
+	      || TP_DOMAIN_COLLATION_FLAG (context->key_domains[i])
+	      != TP_DOMAIN_COLL_NORMAL)
 	    {
 	      context->key_domains[i] = group_regu->value.domain;
 	    }
@@ -21254,7 +21309,9 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p,
 	}
 
       /* update variable domain of function */
-      if (agg_p->opr_dbtype == DB_TYPE_VARIABLE)
+      if (agg_p->opr_dbtype == DB_TYPE_VARIABLE
+	  || TP_DOMAIN_COLLATION_FLAG (agg_p->domain)
+	  != TP_DOMAIN_COLL_NORMAL)
 	{
 	  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (dbval))
 	      && (agg_p->function == PT_SUM || agg_p->function == PT_AVG))
@@ -22462,8 +22519,10 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p,
     {
       /* if it's position, resolve domain */
       if (regu_list->value.type == TYPE_POSITION
-	  && TP_DOMAIN_TYPE (regu_list->value.value.pos_descr.dom) ==
-	  DB_TYPE_VARIABLE)
+	  && (TP_DOMAIN_TYPE (regu_list->value.value.pos_descr.dom) ==
+	      DB_TYPE_VARIABLE
+	      || TP_DOMAIN_COLLATION_FLAG (regu_list->value.value.pos_descr.
+					   dom) != TP_DOMAIN_COLL_NORMAL))
 	{
 	  int pos = regu_list->value.value.pos_descr.pos_no;
 	  if (pos <= type_list->type_cnt)
@@ -28276,7 +28335,9 @@ qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec)
     }
   else
     {
-      if (TP_DOMAIN_TYPE (sort_spec->pos_descr.dom) == DB_TYPE_VARIABLE)
+      if (TP_DOMAIN_TYPE (sort_spec->pos_descr.dom) == DB_TYPE_VARIABLE
+	  || TP_DOMAIN_COLLATION_FLAG (sort_spec->pos_descr.dom)
+	  != TP_DOMAIN_COLL_NORMAL)
 	{
 	  /* In cases like order by val + ?, the domain of the expression
 	   * is not known at compile time */

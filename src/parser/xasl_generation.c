@@ -7148,6 +7148,14 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
     }
 
   dt->type_enum = e;
+  dt->info.data_type.collation_flag = TP_DOMAIN_COLL_NORMAL;
+
+  if (PT_HAS_COLLATION (e))
+    {
+      dt->info.data_type.units = (int) LANG_COERCIBLE_CODESET;
+      dt->info.data_type.collation_id = LANG_COERCIBLE_COLL;
+    }
+
   switch (e)
     {
     case PT_TYPE_INTEGER:
@@ -7166,26 +7174,18 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
 
     case PT_TYPE_CHAR:
       dt->info.data_type.precision = DB_MAX_CHAR_PRECISION;
-      dt->info.data_type.units = (int) LANG_COERCIBLE_CODESET;
-      dt->info.data_type.collation_id = LANG_COERCIBLE_COLL;
       break;
 
     case PT_TYPE_NCHAR:
       dt->info.data_type.precision = DB_MAX_NCHAR_PRECISION;
-      dt->info.data_type.units = (int) LANG_COERCIBLE_CODESET;
-      dt->info.data_type.collation_id = LANG_COERCIBLE_COLL;
       break;
 
     case PT_TYPE_VARCHAR:
       dt->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
-      dt->info.data_type.units = (int) LANG_COERCIBLE_CODESET;
-      dt->info.data_type.collation_id = LANG_COERCIBLE_COLL;
       break;
 
     case PT_TYPE_VARNCHAR:
       dt->info.data_type.precision = DB_MAX_VARNCHAR_PRECISION;
-      dt->info.data_type.units = (int) LANG_COERCIBLE_CODESET;
-      dt->info.data_type.collation_id = LANG_COERCIBLE_COLL;
       break;
 
     case PT_TYPE_BIT:
@@ -9106,6 +9106,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      data_type =
 			pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
+		      data_type->info.data_type.collation_flag =
+			TP_DOMAIN_COLL_LEAVE;
 		    }
 		  domain = pt_xasl_data_type_to_domain (parser, data_type);
 
@@ -9470,13 +9472,20 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_CLOB_TO_CHAR:
-		  data_type =
-		    pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
+		  if (node->data_type == NULL)
+		    {
+		      data_type =
+			pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
+		    }
+		  else
+		    {
+		      data_type = node->data_type;
+		    }
+
 		  domain = pt_xasl_data_type_to_domain (parser, data_type);
 
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_CLOB_TO_CHAR,
 					     domain);
-		  parser_free_tree (parser, data_type);
 		  break;
 
 		case PT_BLOB_LENGTH:

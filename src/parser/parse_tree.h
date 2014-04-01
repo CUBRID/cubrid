@@ -1935,6 +1935,8 @@ struct pt_data_type_info
   int dec_precision;		/* decimal precision for float */
   int units;			/* for money (or string's codeset) */
   int collation_id;		/* collation identifier (strings) */
+  /* how the collation should be taken into account */
+  TP_DOMAIN_COLL_ACTION collation_flag;
   bool has_coll_spec;		/* this is used only when defining collatable
 				 * types: true if collation was explicitly
 				 * set, false otherwise (collation defaulted
@@ -3199,6 +3201,7 @@ struct parser_node
 					   view, do not replace order by */
   unsigned is_added_by_parser:1;	/* is added by parser during parsing */
   unsigned is_alias_enabled_expr:1;	/* node allowed to have alias */
+  unsigned is_wrapped_res_for_coll:1;	/* is a result node wrapped with CAST by collation inference */
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 

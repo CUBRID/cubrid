@@ -21096,7 +21096,8 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
 	{
 	  c =
 	    (*(key_domain->type->cmpval)) (key1, key2, do_coercion,
-					   total_order, NULL, -1);
+					   total_order, NULL,
+					   key_domain->collation_id);
 	}
       else
 	{
@@ -21232,7 +21233,8 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 
 	  c =
 	    (*(multi_range_opt->sort_col_dom[i]->type->cmpval))
-	    (&comp_key_value, &new_key_value[i], 1, 1, NULL, -1);
+	    (&comp_key_value, &new_key_value[i], 1, 1, NULL,
+	     multi_range_opt->sort_col_dom[i]->collation_id);
 	  if (c != 0)
 	    {
 	      /* see if new element should be rejected or accepted and stop
@@ -21509,7 +21511,8 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items,
 	      c =
 		(*(domains[i]->type->cmpval)) (&comp_key_value,
 					       &new_key_values[i], 1, 1,
-					       NULL, -1);
+					       NULL,
+					       domains[i]->collation_id);
 	      if (c != 0)
 		{
 		  if ((desc_order != NULL && desc_order[i] ? c > 0 : c < 0))
@@ -21549,7 +21552,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items,
 	}
       c =
 	(*(domains[i]->type->cmpval)) (&comp_key_value, &new_key_values[i], 1,
-				       1, NULL, -1);
+				       1, NULL, domains[i]->collation_id);
       if (c != 0)
 	{
 	  if ((desc_order != NULL && desc_order[i] ? c > 0 : c < 0))

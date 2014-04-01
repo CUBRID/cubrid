@@ -533,9 +533,19 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2,
 	  assert (DB_GET_STRING_CODESET (string1)
 		  == DB_GET_STRING_CODESET (string2));
 
-	  LANG_RT_COMMON_COLL (string1->domain.char_info.collation_id,
-			       string2->domain.char_info.collation_id,
-			       coll_id);
+	  LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (string1),
+			       DB_GET_STRING_COLLATION (string2), coll_id);
+
+	  if (coll_id == -1)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+	      return ER_QSTR_INCOMPATIBLE_COLLATIONS;
+	    }
+
+	  coll_id = DB_GET_STRING_COLLATION (string1);
+	  assert (DB_GET_STRING_COLLATION (string1)
+		  == DB_GET_STRING_COLLATION (string2));
 
 	  cmp_result =
 	    QSTR_COMPARE (coll_id,
@@ -1359,6 +1369,12 @@ db_string_concatenate (const DB_VALUE * string1,
 	  LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (string1),
 			       DB_GET_STRING_COLLATION (string2),
 			       common_coll);
+	  if (common_coll == -1)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+	      return ER_QSTR_INCOMPATIBLE_COLLATIONS;
+	    }
 
 	  if (DB_GET_STRING_CODESET (string1)
 	      != DB_GET_STRING_CODESET (string2))

@@ -1511,6 +1511,7 @@ get_string (OR_BUF * buf, int length)
 
   my_domain.codeset = lang_charset ();
   my_domain.collation_id = LANG_SYS_COLLATION;
+  my_domain.collation_flag = TP_DOMAIN_COLL_NORMAL;
 
   (*(tp_VarNChar.data_readval)) (buf, &value, &my_domain, length, true, NULL,
 				 0);
@@ -2013,6 +2014,13 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 {
   char *start;
   int offset;
+
+  /* safe-guard : domain collation flags should only be used for execution */
+  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_OUT_OF_SYNC, 0);
+    }
 
   /* VARIABLE OFFSET TABLE */
   start = buf->ptr;

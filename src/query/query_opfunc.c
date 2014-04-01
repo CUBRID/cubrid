@@ -6123,11 +6123,14 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p,
   TP_DOMAIN *double_domain = NULL;
   DB_VALUE squared;
   bool copy_operator = false;
+  int coll_id;
 
   if (DB_IS_NULL (value))
     {
       return NO_ERROR;
     }
+
+  coll_id = domain->value_dom->collation_id;
 
   /* aggregate new value */
   switch (func_type)
@@ -6135,7 +6138,7 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p,
     case PT_MIN:
       if (acc->curr_cnt < 1
 	  || (*(domain->value_dom->type->cmpval)) (acc->value, value, 1, 1,
-						   NULL, -1) > 0)
+						   NULL, coll_id) > 0)
 	{
 	  /* we have new minimum */
 	  copy_operator = true;
@@ -6145,7 +6148,7 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p,
     case PT_MAX:
       if (acc->curr_cnt < 1
 	  || (*(domain->value_dom->type->cmpval)) (acc->value, value, 1, 1,
-						   NULL, -1) < 0)
+						   NULL, coll_id) < 0)
 	{
 	  /* we have new maximum */
 	  copy_operator = true;
@@ -7036,8 +7039,10 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	  && agg_p->function != PT_MAX && agg_p->function != PT_MIN)
 	{
 	  if (agg_p->sort_list != NULL &&
-	      TP_DOMAIN_TYPE (agg_p->sort_list->pos_descr.dom) ==
-	      DB_TYPE_VARIABLE)
+	      (TP_DOMAIN_TYPE (agg_p->sort_list->pos_descr.dom) ==
+	       DB_TYPE_VARIABLE
+	       || TP_DOMAIN_COLLATION_FLAG (agg_p->sort_list->pos_descr.dom)
+	       != TP_DOMAIN_COLL_NORMAL))
 	    {
 	      /* set domain of SORT LIST same as the domain from agg list */
 	      assert (agg_p->sort_list->pos_descr.pos_no <
@@ -10030,6 +10035,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
   double ntile_bucket = 0.0;
   int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
+  int coll_id;
 
   DB_MAKE_NULL (&dbval);
   DB_MAKE_NULL (&sqr_val);
@@ -10042,7 +10048,9 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  if (func_p->opr_dbtype == DB_TYPE_VARIABLE && !DB_IS_NULL (&dbval))
+  if ((func_p->opr_dbtype == DB_TYPE_VARIABLE
+       || TP_DOMAIN_COLLATION_FLAG (func_p->domain) != TP_DOMAIN_COLL_NORMAL)
+      && !DB_IS_NULL (&dbval))
     {
       /* set function default domain when late binding */
       switch (func_p->function)
@@ -10161,6 +10169,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
     }
 
   copy_opr = false;
+  coll_id = func_p->domain->collation_id;
   switch (func_p->function)
     {
     case PT_CUME_DIST:
@@ -10238,7 +10247,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       opr_dbval_p = &dbval;
       if ((func_p->curr_cnt < 1 || DB_IS_NULL (func_p->value))
 	  || (*(func_p->domain->type->cmpval)) (func_p->value, &dbval,
-						1, 1, NULL, -1) > 0)
+						1, 1, NULL, coll_id) > 0)
 	{
 	  copy_opr = true;
 	}
@@ -10248,7 +10257,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p,
       opr_dbval_p = &dbval;
       if ((func_p->curr_cnt < 1 || DB_IS_NULL (func_p->value))
 	  || (*(func_p->domain->type->cmpval)) (func_p->value, &dbval,
-						1, 1, NULL, -1) < 0)
+						1, 1, NULL, coll_id) < 0)
 	{
 	  copy_opr = true;
 	}
@@ -11709,7 +11718,8 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p,
 	  /* non-NULL values comparison */
 	  pr_type_p = PR_TYPE_FROM_ID (DB_VALUE_DOMAIN_TYPE (val_node));
 	  cmp = (*(pr_type_p->cmpval))
-	    (val_node, info_p->const_array[i], 1, 0, NULL, -1);
+	    (val_node, info_p->const_array[i], 1, 0, NULL,
+	     regu_var_node->value.domain->collation_id);
 
 	  assert (cmp != DB_UNK);
 	}
@@ -12535,7 +12545,6 @@ qdata_update_agg_interpolate_func_value_and_domain (AGGREGATE_TYPE * agg_p,
 {
   int error = NO_ERROR;
   DB_TYPE dbval_type;
-  TP_DOMAIN_STATUS status;
 
   assert (dbval != NULL
 	  && agg_p != NULL
@@ -12550,7 +12559,8 @@ qdata_update_agg_interpolate_func_value_and_domain (AGGREGATE_TYPE * agg_p,
     }
 
   dbval_type = TP_DOMAIN_TYPE (agg_p->domain);
-  if (dbval_type == DB_TYPE_VARIABLE)
+  if (dbval_type == DB_TYPE_VARIABLE
+      || TP_DOMAIN_COLLATION_FLAG (agg_p->domain) != TP_DOMAIN_COLL_NORMAL)
     {
       dbval_type = DB_VALUE_DOMAIN_TYPE (dbval);
       agg_p->domain = tp_domain_resolve_default (dbval_type);

@@ -6589,11 +6589,12 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
       return;
     }
 
-  /*resolve domains on regu_list of scan predicate */
+  /* resolve domains on regu_list of scan predicate */
   for (scan_regu = llsidp->scan_pred.regu_list; scan_regu != NULL;
        scan_regu = scan_regu->next)
     {
-      if (TP_DOMAIN_TYPE (scan_regu->value.domain) == DB_TYPE_VARIABLE
+      if ((TP_DOMAIN_TYPE (scan_regu->value.domain) == DB_TYPE_VARIABLE
+	   || TP_DOMAIN_COLLATION_FLAG (scan_regu->value.domain))
 	  && scan_regu->value.type == TYPE_POSITION)
 	{
 	  int pos = scan_regu->value.value.pos_descr.pos_no;
@@ -6602,8 +6603,8 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
 	  assert (pos < llsidp->list_id->type_list.type_cnt);
 	  new_dom = llsidp->list_id->type_list.domp[pos];
 
-
-	  if (TP_DOMAIN_TYPE (new_dom) == DB_TYPE_VARIABLE)
+	  if (TP_DOMAIN_TYPE (new_dom) == DB_TYPE_VARIABLE
+	      || TP_DOMAIN_COLLATION_FLAG (new_dom) != TP_DOMAIN_COLL_NORMAL)
 	    {
 	      continue;
 	    }
@@ -6613,11 +6614,13 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
 	}
     }
 
-  /*resolve domains on rest_regu_list of scan predicate */
+  /* resolve domains on rest_regu_list of scan predicate */
   for (scan_regu = llsidp->rest_regu_list; scan_regu != NULL;
        scan_regu = scan_regu->next)
     {
-      if (TP_DOMAIN_TYPE (scan_regu->value.domain) == DB_TYPE_VARIABLE
+      if ((TP_DOMAIN_TYPE (scan_regu->value.domain) == DB_TYPE_VARIABLE
+	   || TP_DOMAIN_COLLATION_FLAG (scan_regu->value.domain)
+	   != TP_DOMAIN_COLL_NORMAL)
 	  && scan_regu->value.type == TYPE_POSITION)
 	{
 	  int pos = scan_regu->value.value.pos_descr.pos_no;
@@ -6626,8 +6629,8 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
 	  assert (pos < llsidp->list_id->type_list.type_cnt);
 	  new_dom = llsidp->list_id->type_list.domp[pos];
 
-
-	  if (TP_DOMAIN_TYPE (new_dom) == DB_TYPE_VARIABLE)
+	  if (TP_DOMAIN_TYPE (new_dom) == DB_TYPE_VARIABLE
+	      || TP_DOMAIN_COLLATION_FLAG (new_dom) != TP_DOMAIN_COLL_NORMAL)
 	    {
 	      continue;
 	    }
@@ -6636,7 +6639,7 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
 	}
     }
 
-  /*resolve domains on predicate expression of scan predicate */
+  /* resolve domains on predicate expression of scan predicate */
   if (llsidp->scan_pred.pred_expr == NULL)
     {
       return;
@@ -6649,16 +6652,20 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
       if (ev_t.et_type == T_COMP_EVAL_TERM)
 	{
 	  if (ev_t.et.et_comp.lhs != NULL &&
-	      TP_DOMAIN_TYPE (ev_t.et.et_comp.lhs->domain) ==
-	      DB_TYPE_VARIABLE)
+	      (TP_DOMAIN_TYPE (ev_t.et.et_comp.lhs->domain) ==
+	       DB_TYPE_VARIABLE ||
+	       TP_DOMAIN_COLLATION_FLAG (ev_t.et.et_comp.lhs->domain)
+	       != TP_DOMAIN_COLL_NORMAL))
 	    {
 	      resolve_domain_on_regu_operand (ev_t.et.et_comp.lhs,
 					      ref_val_list,
 					      &(llsidp->list_id->type_list));
 	    }
 	  if (ev_t.et.et_comp.rhs != NULL &&
-	      TP_DOMAIN_TYPE (ev_t.et.et_comp.rhs->domain) ==
-	      DB_TYPE_VARIABLE)
+	      (TP_DOMAIN_TYPE (ev_t.et.et_comp.rhs->domain) ==
+	       DB_TYPE_VARIABLE ||
+	       TP_DOMAIN_COLLATION_FLAG (ev_t.et.et_comp.rhs->domain)
+	       != TP_DOMAIN_COLL_NORMAL))
 	    {
 	      resolve_domain_on_regu_operand (ev_t.et.et_comp.rhs,
 					      ref_val_list,
@@ -6692,7 +6699,7 @@ resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var,
       int pos = 0;
       bool found = false;
 
-      /*search in ref_val_list for the corresponding DB_VALUE */
+      /* search in ref_val_list for the corresponding DB_VALUE */
       for (value_list = ref_val_list->valp; value_list != NULL;
 	   value_list = value_list->next, pos++)
 	{

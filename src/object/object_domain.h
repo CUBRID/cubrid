@@ -58,6 +58,16 @@
  */
 #define TP_DOMAIN_SELF_REF -1
 
+typedef enum
+{
+  /* normal mode, collation applies as other domain parameters */
+  TP_DOMAIN_COLL_NORMAL = 0,
+  /* only collation applies, the type and precision are not changed */
+  TP_DOMAIN_COLL_ENFORCE = 1,
+  /* type and precision are applied, collation is leaved intact */
+  TP_DOMAIN_COLL_LEAVE = 2
+} TP_DOMAIN_COLL_ACTION;
+
 typedef struct tp_domain
 {
   struct tp_domain *next;	/* next in the same domain list */
@@ -77,8 +87,10 @@ typedef struct tp_domain
   /* built-in reference number */
   int built_in_index;
 
-  unsigned char codeset;	/* codeset if national char */
+  unsigned char codeset;	/* codeset if char */
   int collation_id;		/* collation identifier */
+
+  TP_DOMAIN_COLL_ACTION collation_flag;
 
   unsigned self_ref:1;		/* object self reference */
   /*
@@ -353,7 +365,8 @@ typedef enum tp_match
 #define TP_DOMAIN_CODESET(dom) ((dom) ? (dom)->codeset : LANG_SYS_CODESET)
 #define TP_DOMAIN_COLLATION(dom) \
     ((dom) ? (dom)->collation_id : LANG_SYS_COLLATION)
-
+#define TP_DOMAIN_COLLATION_FLAG(dom) \
+  ((dom) ? (dom)->collation_flag: TP_DOMAIN_COLL_NORMAL)
 /*
  * FUNCTIONS
  */
@@ -373,6 +386,9 @@ extern TP_DOMAIN *tp_domain_resolve (DB_TYPE domain_type,
 				     int scale, TP_DOMAIN * setdomain,
 				     int collation);
 extern TP_DOMAIN *tp_domain_resolve_default (DB_TYPE type);
+extern TP_DOMAIN *tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id,
+						    TP_DOMAIN_COLL_ACTION
+						    coll_flag);
 
 extern void tp_domain_free (TP_DOMAIN * dom);
 extern TP_DOMAIN *tp_domain_new (DB_TYPE type);
@@ -424,8 +440,9 @@ TP_DOMAIN *tp_domain_find_noparam (DB_TYPE type, bool is_desc);
 TP_DOMAIN *tp_domain_find_numeric (DB_TYPE type, int precision, int scale,
 				   bool is_desc);
 TP_DOMAIN *tp_domain_find_charbit (DB_TYPE type, int codeset,
-				   int collation_id, int precision,
-				   bool is_desc);
+				   int collation_id,
+				   unsigned char collation_flag,
+				   int precision, bool is_desc);
 TP_DOMAIN *tp_domain_find_object (DB_TYPE type, OID * class_oid,
 				  struct db_object *class_, bool is_desc);
 TP_DOMAIN *tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain,

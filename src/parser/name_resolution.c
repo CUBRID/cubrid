@@ -4074,6 +4074,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
       result->info.data_type.dec_precision = db_domain_scale (domain);
       result->info.data_type.units = db_domain_codeset (domain);
       result->info.data_type.collation_id = db_domain_collation_id (domain);
+      result->info.data_type.collation_flag = domain->collation_flag;
       assert (result->info.data_type.collation_id >= 0);
       break;
 

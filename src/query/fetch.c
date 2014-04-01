@@ -2771,27 +2771,43 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FIELD_COMPARE))
 	{
-	  if (tp_value_compare (peek_third, peek_left, 1, 0) == DB_EQ)
+	  bool can_compare = false;
+	  int cmp_res = DB_UNK;
+
+	  cmp_res = tp_value_compare_with_error (peek_third, peek_left, 1, 0,
+						 &can_compare);
+	  if (cmp_res == DB_EQ)
 	    {
 	      db_make_int (arithptr->value, 1);
+	      break;
 	    }
-	  else if (tp_value_compare (peek_third, peek_right, 1, 0) == DB_EQ)
+	  else if (cmp_res == DB_UNK && can_compare == false)
+	    {
+	      goto error;
+	    }
+
+
+	  cmp_res = tp_value_compare_with_error (peek_third, peek_right, 1, 0,
+						 &can_compare);
+	  if (cmp_res == DB_EQ)
 	    {
 	      db_make_int (arithptr->value, 2);
+	      break;
+	    }
+	  else if (cmp_res == DB_UNK && can_compare == false)
+	    {
+	      goto error;
+	    }
+
+	  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FIELD_NESTED))
+	    {
+	      /* we have a T_FIELD parent, return level */
+	      db_make_int (arithptr->value, -3);
 	    }
 	  else
 	    {
-	      if (REGU_VARIABLE_IS_FLAGED
-		  (regu_var, REGU_VARIABLE_FIELD_NESTED))
-		{
-		  /* we have a T_FIELD parent, return level */
-		  db_make_int (arithptr->value, -3);
-		}
-	      else
-		{
-		  /* no parent and no match */
-		  db_make_int (arithptr->value, 0);
-		}
+	      /* no parent and no match */
+	      db_make_int (arithptr->value, 0);
 	    }
 	}
       else
@@ -2803,10 +2819,19 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    }
 	  else
 	    {
-	      if (tp_value_compare (peek_third, peek_right, 1, 0) == DB_EQ)
+	      bool can_compare = false;
+	      int cmp_res = DB_UNK;
+
+	      cmp_res = tp_value_compare_with_error (peek_third, peek_right,
+						     1, 0, &can_compare);
+	      if (cmp_res == DB_EQ)
 		{
 		  /* match */
 		  db_make_int (arithptr->value, -i);
+		}
+	      else if (cmp_res == DB_UNK && can_compare == false)
+		{
+		  goto error;
 		}
 	      else
 		{
@@ -3123,6 +3148,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       {
 	TP_DOMAIN *target_domain;
 	bool need_free = false;
+	bool can_compare = false;
+	int cmp_res = DB_UNK;
 
 	target_domain = regu_var->domain;
 	if (DB_IS_NULL (peek_left))
@@ -3140,9 +3167,19 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    target_domain = tp_infer_common_domain (arg1, arg2, &need_free);
 	  }
 
-	if (tp_value_compare (peek_left, peek_right, 1, 0) == DB_EQ)
+	cmp_res = tp_value_compare_with_error (peek_left, peek_right, 1, 0,
+					       &can_compare);
+	if (cmp_res == DB_EQ)
 	  {
 	    PRIM_SET_NULL (arithptr->value);
+	  }
+	else if (cmp_res == DB_UNK && can_compare == false)
+	  {
+	    if (need_free)
+	      {
+		tp_domain_free (target_domain);
+	      }
+	    goto error;
 	  }
 	else
 	  {
@@ -3181,8 +3218,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	int cmp_result;
 	TP_DOMAIN *target_domain;
 	bool need_free = false;
+	bool can_compare = false;
 
-	cmp_result = tp_value_compare (peek_left, peek_right, 1, 0);
+	cmp_result = tp_value_compare_with_error (peek_left, peek_right, 1, 0,
+						  &can_compare);
 	if (cmp_result == DB_EQ || cmp_result == DB_LT)
 	  {
 	    pr_clone_value (peek_left, arithptr->value);
@@ -3190,6 +3229,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	else if (cmp_result == DB_GT)
 	  {
 	    pr_clone_value (peek_right, arithptr->value);
+	  }
+	else if (cmp_result == DB_UNK && can_compare == false)
+	  {
+	    goto error;
 	  }
 	else
 	  {
@@ -3242,8 +3285,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	int cmp_result;
 	TP_DOMAIN *target_domain;
 	bool need_free = false;
+	bool can_compare = false;
 
-	cmp_result = tp_value_compare (peek_left, peek_right, 1, 0);
+	cmp_result = tp_value_compare_with_error (peek_left, peek_right, 1, 0,
+						  &can_compare);
 	if (cmp_result == DB_EQ || cmp_result == DB_GT)
 	  {
 	    pr_clone_value (peek_left, arithptr->value);
@@ -3251,6 +3296,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	else if (cmp_result == DB_LT)
 	  {
 	    pr_clone_value (peek_right, arithptr->value);
+	  }
+	else if (cmp_result == DB_UNK && can_compare == false)
+	  {
+	    goto error;
 	  }
 	else
 	  {
@@ -3631,6 +3680,23 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
     }
 
+  if (arithptr->domain != NULL
+      && arithptr->domain->collation_flag != TP_DOMAIN_COLL_NORMAL
+      && !DB_IS_NULL (arithptr->value))
+    {
+      TP_DOMAIN *resolved_dom;
+
+      assert (TP_TYPE_HAS_COLLATION (arithptr->domain->type->id));
+
+      resolved_dom = tp_domain_resolve_value (arithptr->value, NULL);
+
+      /*keep DB_TYPE_VARIABLE if resolved domain is NULL */
+      if (TP_DOMAIN_TYPE (resolved_dom) != DB_TYPE_NULL)
+	{
+	  regu_var->domain = resolved_dom;
+	}
+    }
+
 fetch_peek_arith_end:
   thread_dec_recursion_depth (thread_p);
 
@@ -3851,7 +3917,9 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
   if (*peek_dbval != NULL && !DB_IS_NULL (*peek_dbval))
     {
-      if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE)
+      if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE
+	  || TP_DOMAIN_COLLATION_FLAG (regu_var->domain)
+	  != TP_DOMAIN_COLL_NORMAL)
 	{
 	  regu_var->domain = tp_domain_resolve_value (*peek_dbval, NULL);
 	}
@@ -3867,7 +3935,9 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  regu = reguval_list->current_value->value;
 
 	  if (regu->domain == NULL
-	      || TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
+	      || TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE
+	      || TP_DOMAIN_COLLATION_FLAG (regu->domain)
+	      != TP_DOMAIN_COLL_NORMAL)
 	    {
 	      regu->domain = tp_domain_resolve_value (*peek_dbval, NULL);
 	    }
@@ -3877,14 +3947,23 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  /* compare the type */
 	  if (head_type != DB_TYPE_NULL
 	      && cur_type != DB_TYPE_NULL
-	      && head_regu->domain != regu->domain
-	      && (head_type != cur_type
-		  || !pr_is_string_type (head_type)
-		  || !pr_is_variable_type (head_type)))
+	      && head_regu->domain != regu->domain)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_QPROC_INCOMPATIBLE_TYPES, 0);
-	      goto exit_on_error;
+	      if (head_type != cur_type
+		  || !pr_is_string_type (head_type)
+		  || !pr_is_variable_type (head_type))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_QPROC_INCOMPATIBLE_TYPES, 0);
+		  goto exit_on_error;
+		}
+	      else if (TP_DOMAIN_COLLATION (head_regu->domain) !=
+		       TP_DOMAIN_COLLATION (regu->domain))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+		  goto exit_on_error;
+		}
 	    }
 	}
     }

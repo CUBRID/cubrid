@@ -1466,7 +1466,9 @@
 #define ER_DIAG_PAGE_NOT_FOUND                      -1149
 #define ER_DIAG_NOT_SPAGE                           -1150
 
-#define ER_LAST_ERROR                               -1151
+#define ER_QSTR_INCOMPATIBLE_COLLATIONS		    -1151
+
+#define ER_LAST_ERROR                               -1152
 
 /*
  * CAUTION!

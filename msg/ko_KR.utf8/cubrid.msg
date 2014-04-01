@@ -1217,7 +1217,8 @@ $ LOADDB
 1148 Filter predicate stream 캐시의 현재크기(%1$d)가 최대크기(%2$d)를 초과합니다. 캐시의 엔트리가 모두 사용중이기 때문에 엔트리를 제거하지 못하고 새로운 엔트리가 추가되었습니다.
 1149 volume identifier %1$d does not exist.
 1150 Cannot find the page %1$d of volume %2$d.
-1151 마지막 에러
+1151 Context requires compatible collations.
+1152 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

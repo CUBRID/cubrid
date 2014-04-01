@@ -2423,6 +2423,7 @@ parser_init_node (PT_NODE * node)
       node->do_not_replace_orderby = 0;
       node->is_added_by_parser = 0;
       node->is_alias_enabled_expr = 0;
+      node->is_wrapped_res_for_coll = 0;
       /* initialize  node info field */
       memset (&(node->info), 0, sizeof (node->info));
 
@@ -8639,6 +8640,7 @@ pt_init_datatype (PT_NODE * p)
   p->info.data_type.dec_precision = 0;
   p->info.data_type.units = (int) LANG_COERCIBLE_CODESET;
   p->info.data_type.collation_id = LANG_COERCIBLE_COLL;
+  p->info.data_type.collation_flag = 0;
   p->info.data_type.enumeration = NULL;
   return p;
 }
@@ -11596,6 +11598,15 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	    {
 	      q = pt_append_nulstring (parser, r1, buf);
 	    }
+	}
+      else if (p->info.expr.cast_type->info.data_type.collation_flag
+	       != TP_DOMAIN_COLL_NORMAL)
+	{
+	  assert (PT_HAS_COLLATION (p->info.expr.cast_type->type_enum));
+	  assert (p->data_type == NULL
+		  || p->data_type->type_enum
+		  == p->info.expr.cast_type->type_enum);
+	  q = pt_append_varchar (parser, q, r1);
 	}
       else
 	{
