@@ -10928,13 +10928,13 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       if (parser->return_generated_keys)
-        {
-          statement->etc = (void *) list_id;
-        }
+	{
+	  statement->etc = (void *) list_id;
+	}
       else
-        {
-          regu_free_listid (list_id);
-        }
+	{
+	  regu_free_listid (list_id);
+	}
     }
 
   pt_end_query (parser);
@@ -12218,7 +12218,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	  goto cleanup;
 	}
 
-      if (parser->return_generated_keys == true)
+      if (parser->return_generated_keys)
 	{
 	  seq = set_create_sequence (0);
 	  if (seq == NULL)
@@ -12525,12 +12525,13 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
     }
   else
     {
-      if (parser->return_generated_keys == false
+      if (!parser->return_generated_keys
 	  && (*otemplate == NULL || value_clauses->next != NULL))
 	{
 	  /* a client side insert with subquery and no template, a client side
 	   * insert with multiple insert values or a server side insert
-	   * for which the generated keys have not been requested */
+	   * for which the generated keys have not been requested 
+	   */
 	  value = db_value_create ();
 	  if (value == NULL)
 	    {
@@ -13647,13 +13648,13 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* set as result */
       err = list_id->tuple_cnt;
       if (parser->return_generated_keys)
-        {
-          statement->etc = (void *) list_id;
-        }
+	{
+	  statement->etc = (void *) list_id;
+	}
       else
-        {
-          regu_free_listid (list_id);
-        }
+	{
+	  regu_free_listid (list_id);
+	}
     }
 
   /* end the query; reset query_id and call qmgr_end_query() */
@@ -14039,7 +14040,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
     }
 
-  if (parser->dont_collect_exec_stats == true)
+  if (parser->dont_collect_exec_stats)
     {
       query_flag |= DONT_COLLECT_EXEC_STATS;
     }
@@ -14605,7 +14606,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= RESULT_HOLDABLE;
     }
 
-  if (parser->dont_collect_exec_stats == true)
+  if (parser->dont_collect_exec_stats)
     {
       query_flag |= DONT_COLLECT_EXEC_STATS;
     }

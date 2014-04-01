@@ -9769,7 +9769,7 @@ pt_make_query_show_exec_stats (PARSER_CONTEXT * parser)
       return NULL;
     }
 
-  parser->dont_collect_exec_stats = true;
+  parser->dont_collect_exec_stats = 1;
 
   show_node = pt_pop (parser);
   assert (show_node == node[0]);
@@ -9862,7 +9862,7 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
 
   show_node = pt_pop (parser);
   assert (show_node == node[0]);
-  parser->dont_collect_exec_stats = true;
+  parser->dont_collect_exec_stats = 1;
 
   return node[0];
 }
@@ -12643,7 +12643,7 @@ pt_make_query_show_trace (PARSER_CONTEXT * parser)
   select->info.query.q.select.list =
     parser_append_node (trace_func, select->info.query.q.select.list);
 
-  parser->dont_collect_exec_stats = true;
+  parser->dont_collect_exec_stats = 1;
   parser->query_trace = false;
 
   return select;

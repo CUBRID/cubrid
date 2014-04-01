@@ -9061,14 +9061,14 @@ qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   if (xasl->type == INSERT_PROC
       && XASL_IS_FLAGED (xasl, XASL_RETURN_GENERATED_KEYS))
     {
-        list_id->tfile_vfid = qmgr_create_new_temp_file (thread_p,
-							 list_id->query_id,
-							 TEMP_FILE_MEMBUF_NORMAL);
-	if (list_id->tfile_vfid == NULL)
-	  {
-	    return ER_FAILED;
-	  }
-	VFID_COPY (&(list_id->temp_vfid), &(list_id->tfile_vfid->temp_vfid));
+      list_id->tfile_vfid = qmgr_create_new_temp_file (thread_p,
+						       list_id->query_id,
+						       TEMP_FILE_MEMBUF_NORMAL);
+      if (list_id->tfile_vfid == NULL)
+	{
+	  return ER_FAILED;
+	}
+      VFID_COPY (&(list_id->temp_vfid), &(list_id->tfile_vfid->temp_vfid));
     }
 
 #if !defined (NDEBUG)
@@ -11712,7 +11712,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      && is_autoincrement_set > 0)
 		    {
 		      db_make_oid (&oid_val, &oid);
-		      if (qfile_fast_val_tuple_to_list (thread_p, xasl->list_id,
+		      if (qfile_fast_val_tuple_to_list (thread_p,
+							xasl->list_id,
 							&oid_val) != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -11907,7 +11908,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      && is_autoincrement_set > 0)
 		    {
 		      db_make_oid (&oid_val, &oid);
-		      if (qfile_fast_val_tuple_to_list (thread_p, xasl->list_id,
+		      if (qfile_fast_val_tuple_to_list (thread_p,
+							xasl->list_id,
 							&oid_val) != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;

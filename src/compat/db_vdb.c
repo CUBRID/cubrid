@@ -1189,7 +1189,7 @@ db_session_set_holdable (DB_SESSION * session, bool holdable)
     {
       return;
     }
-  session->parser->is_holdable = holdable;
+  session->parser->is_holdable = holdable ? 1 : 0;
 }
 
 /*
@@ -1207,7 +1207,7 @@ db_session_set_return_generated_keys (DB_SESSION * session,
     {
       return;
     }
-  session->parser->return_generated_keys = return_generated_keys;
+  session->parser->return_generated_keys = return_generated_keys ? 1 : 0;
 }
 
 /*
@@ -2197,7 +2197,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		    {
 		      /* get number of rows as result */
 		      qres->query_type =
-			db_cp_query_type (session->type_list[stmt_ndx], false);
+			db_cp_query_type (session->type_list[stmt_ndx],
+					  false);
 		      qres->res.s.stmt_id = stmt_ndx;
 		    }
 		  else
@@ -2206,9 +2207,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		    }
 		  break;
 		}
-	      if (pt_node_to_cmd_type (statement) == CUBRID_STMT_INSERT
-		  && statement->info.insert.server_allowed ==
-						       SERVER_INSERT_IS_ALLOWED)
+
+	      if (stmt_type == CUBRID_STMT_INSERT
+		  && (statement->info.insert.server_allowed ==
+		      SERVER_INSERT_IS_ALLOWED))
 		{
 		  val = db_value_create ();
 		  if (val == NULL)
@@ -2237,7 +2239,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		         but we might have done a delete before.
 		         For this case, if err>row_count we will not change
 		         the row count */
-		      if (pt_node_to_cmd_type (statement) == CUBRID_STMT_INSERT)
+		      if (stmt_type == CUBRID_STMT_INSERT)
 			{
 			  if ((DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_OBJECT
 			       && DB_IS_NULL (val))

@@ -515,7 +515,7 @@ extern void heap_free_func_pred_unpack_info (THREAD_ENTRY * thread_p,
 extern int heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 					 HEAP_CACHE_ATTRINFO * attr_info,
 					 HEAP_SCANCACHE * scan_cache,
-					 int * is_set);
+					 int *is_set);
 
 extern void heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid,
 		       bool dump_records);

@@ -1203,7 +1203,6 @@ pt_make_cache_hit_result_descriptor (void)
 void
 pt_free_query_etc_area (PARSER_CONTEXT * parser, PT_NODE * query)
 {
-
   if (query && query->etc
       && (pt_node_to_cmd_type (query) == CUBRID_STMT_SELECT
 	  || pt_node_to_cmd_type (query) == CUBRID_STMT_DO
@@ -1478,7 +1477,7 @@ int
 pt_is_server_insert_with_generated_keys (PARSER_CONTEXT * parser,
 					 PT_NODE * statement)
 {
-  if (pt_node_to_cmd_type (statement) == CUBRID_STMT_INSERT
+  if (statement && statement->node_type == PT_INSERT
       && parser && parser->return_generated_keys
       && statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
     {

@@ -1933,8 +1933,8 @@ parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer,
       parser->casecmp = intl_identifier_casecmp;
     }
 
-  parser->strings_have_no_escapes = strings_have_no_escapes;
-  parser->dont_collect_exec_stats = false;
+  parser->strings_have_no_escapes = strings_have_no_escapes ? 1 : 0;
+  parser->dont_collect_exec_stats = 0;
 
   if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true)
     {
@@ -2043,9 +2043,9 @@ parser_parse_file (PARSER_CONTEXT * parser, FILE * file)
       parser->casecmp = intl_identifier_casecmp;
     }
 
-  parser->strings_have_no_escapes = false;
-  parser->is_in_and_list = false;
-  parser->dont_collect_exec_stats = false;
+  parser->strings_have_no_escapes = 0;
+  parser->is_in_and_list = 0;
+  parser->dont_collect_exec_stats = 0;
 
   if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true)
     {
@@ -2492,9 +2492,9 @@ pt_print_bytes (PARSER_CONTEXT * parser, const PT_NODE * node)
   /* avoid recursion */
   if (parser->is_in_and_list)
     {
-      parser->is_in_and_list = false;
+      parser->is_in_and_list = 0;
       result = f (parser, (PT_NODE *) node);
-      parser->is_in_and_list = true;
+      parser->is_in_and_list = 1;
       return result;
     }
   else
@@ -2932,7 +2932,7 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
       return NULL;
     }
 
-  parser->is_in_and_list = true;
+  parser->is_in_and_list = 1;
 
   for (n = p; n; n = n->next)
     {				/* print in the original order ... */
@@ -2955,7 +2955,7 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 	}
     }
 
-  parser->is_in_and_list = false;
+  parser->is_in_and_list = 0;
 
   return q;
 }

@@ -2342,8 +2342,7 @@ qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p,
  */
 int
 qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p,
-			      QFILE_LIST_ID * list_id_p,
-			      DB_VALUE * val)
+			      QFILE_LIST_ID * list_id_p, DB_VALUE * val)
 {
   PAGE_PTR cur_page_p;
   int tuple_length;
@@ -2373,7 +2372,7 @@ qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p,
   /* fetch page or alloc if necessary */
   cur_page_p = list_id_p->last_pgptr;
   if (qfile_allocate_new_page_if_need (thread_p, list_id_p, &cur_page_p,
-                                       tuple_length, false) != NO_ERROR)
+				       tuple_length, false) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -2398,21 +2397,21 @@ qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p,
       QFILE_PUT_TUPLE_VALUE_LENGTH (tuple_p, tuple_value_size);
 
       OR_BUF_INIT (buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE,
-                   tuple_value_size);
+		   tuple_value_size);
       if (pr_type == NULL
-          || (*(pr_type->data_writeval)) (&buf, val) != NO_ERROR)
-        {
-          return ER_FAILED;
-        }
+	  || (*(pr_type->data_writeval)) (&buf, val) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
     }
 
   /* list_id maintainance stuff */
   offset = ((tuple_length + list_id_p->last_offset) > DB_PAGESIZE ?
-            DB_PAGESIZE : tuple_length);
+	    DB_PAGESIZE : tuple_length);
   qfile_add_tuple_to_list_id (list_id_p, page_p, tuple_length, offset);
 
   qfile_set_dirty_page (thread_p, cur_page_p, DONT_FREE,
-                        list_id_p->tfile_vfid);
+			list_id_p->tfile_vfid);
   return NO_ERROR;
 }
 

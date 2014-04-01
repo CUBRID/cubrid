@@ -1139,12 +1139,12 @@ parser_create_parser (void)
   db_make_null (&parser->sys_epochtime);
 
   /* initialization */
-  parser->is_in_and_list = false;
-  parser->is_holdable = false;
+  parser->is_in_and_list = 0;
+  parser->is_holdable = 0;
   parser->auto_param_count = 0;
   parser->ddl_stmt_for_replication = NULL;
   parser->lockhint = NULL;
-  parser->return_generated_keys = false;
+  parser->return_generated_keys = 0;
 
   return parser;
 }

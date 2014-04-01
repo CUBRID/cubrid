@@ -20224,8 +20224,7 @@ heap_get_class_repr_id (THREAD_ENTRY * thread_p, OID * class_oid)
 int
 heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 			      HEAP_CACHE_ATTRINFO * attr_info,
-			      HEAP_SCANCACHE * scan_cache,
-			      int * is_set)
+			      HEAP_SCANCACHE * scan_cache, int *is_set)
 {
   int i, idx_in_cache;
   char *classname;

@@ -3321,6 +3321,16 @@ struct parser_context
   long int lrand;		/* integer random value used by rand() */
   double drand;			/* floating-point random value used by drand() */
 
+  char *ddl_stmt_for_replication;
+
+  COMPILE_CONTEXT context;
+
+  bool query_trace;
+  int num_plan_trace;
+  PT_PLAN_TRACE_INFO plan_trace[MAX_NUM_PLAN_TRACE];
+
+  LC_LOCKHINT *lockhint;
+
   unsigned has_internal_error:1;	/* 0 or 1 */
   unsigned abort:1;		/* this flag is for aborting a transaction */
   /* if deadlock occurs during query execution */
@@ -3333,25 +3343,18 @@ struct parser_context
 					   when it printed a value whose type
 					   cannot be clearly determined from
 					   the string representation */
-  bool strings_have_no_escapes:1;
-  bool is_in_and_list:1;	/* set to 1 when the caller immediately above is
+  unsigned strings_have_no_escapes:1;
+  unsigned is_in_and_list:1;	/* set to 1 when the caller immediately above is
 				   pt_print_and_list(). Used because AND lists (CNF
 				   trees) can be printed via print_and_list or
 				   straight via pt_print_expr().
 				   We need to keep print_and_list because it could
 				   get called before we get a chance to mark the
 				   CNF start nodes. */
-  bool is_holdable;		/* set to true if result must be available across
+  unsigned is_holdable:1;	/* set to true if result must be available across
 				   commits */
-  bool dont_collect_exec_stats:1;
-  char *ddl_stmt_for_replication;
-  struct compile_context context;
-
-  bool query_trace;
-  int num_plan_trace;
-  PT_PLAN_TRACE_INFO plan_trace[MAX_NUM_PLAN_TRACE];
-  LC_LOCKHINT *lockhint;
-  bool return_generated_keys;
+  unsigned dont_collect_exec_stats:1;
+  unsigned return_generated_keys:1;
 };
 
 /* used in assignments enumeration */

@@ -370,7 +370,7 @@ static void report_abnormal_host_status (int err_code);
 static int set_host_variables (DB_SESSION * session, int num_bind,
 			       DB_VALUE * in_values);
 static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle,
-					        T_NET_BUF * net_buf);
+						T_NET_BUF * net_buf);
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle,
 						T_NET_BUF * net_buf);
 
@@ -7209,7 +7209,7 @@ execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
 	  && srv_handle->q_result[i].result != NULL)
 	{
 	  DB_QUERY_RESULT *qres =
-			     (DB_QUERY_RESULT *) srv_handle->q_result[i].result;
+	    (DB_QUERY_RESULT *) srv_handle->q_result[i].result;
 
 	  if (qres->type == T_SELECT)
 	    {
@@ -7239,7 +7239,7 @@ execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
 		      /* result of a GET_GENERATED_KEYS request, client insert */
 		      DB_VALUE value;
 		      DB_SEQ *seq = DB_GET_SEQUENCE (&val);
-		      
+
 		      if (seq != NULL && db_col_size (seq) == 1)
 			{
 			  db_col_get (seq, 0, &value);
@@ -9208,8 +9208,7 @@ ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle,
 
   /* Result Set make */
   net_buf_cp_byte (net_buf, srv_handle->q_result->stmt_type);	/* commandTypeIs */
-  net_buf_cp_int (net_buf, srv_handle->q_result->tuple_count,
-		  &tuple_count_offset);	/* totalTupleNumber */
+  net_buf_cp_int (net_buf, srv_handle->q_result->tuple_count, &tuple_count_offset);	/* totalTupleNumber */
   net_buf_cp_byte (net_buf, updatable_flag);	/* isUpdatable */
   net_buf_cp_int (net_buf, 0, &num_col_offset);	/* columnNumber */
 
@@ -9247,18 +9246,6 @@ ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle,
 	{
 	  if (db_attribute_is_auto_increment (attr))
 	    {
-	      DB_DOMAIN *domain;
-	      char set_type;
-	      short scale;
-	      int precision;
-	      int temp_type;
-
-	      domain = db_attribute_domain (attr);
-	      precision = db_domain_precision (domain);
-	      scale = db_domain_scale (domain);
-	      temp_type = TP_DOMAIN_TYPE (domain);
-	      set_type = ux_db_type_to_cas_type (temp_type);
-
 	      attr_name = (char *) db_attribute_name (attr);
 	      err_code = db_get (obj, attr_name, &value);
 	      if (err_code < 0)
@@ -9269,6 +9256,18 @@ ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle,
 
 	      if (tuple_count == 1)
 		{
+		  DB_DOMAIN *domain;
+		  char set_type;
+		  short scale;
+		  int precision;
+		  int temp_type;
+
+		  domain = db_attribute_domain (attr);
+		  precision = db_domain_precision (domain);
+		  scale = db_domain_scale (domain);
+		  temp_type = TP_DOMAIN_TYPE (domain);
+		  set_type = ux_db_type_to_cas_type (temp_type);
+
 		  net_buf_cp_byte (net_buf, set_type);
 		  net_buf_cp_short (net_buf, scale);
 		  net_buf_cp_int (net_buf, precision, NULL);
@@ -9311,7 +9310,7 @@ ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle,
     }
   else
     {
-      net_buf_cp_int (net_buf, 0, NULL); /* fetchedTupleNumber */
+      net_buf_cp_int (net_buf, 0, NULL);	/* fetchedTupleNumber */
     }
 
   /* restore original statement type */
@@ -9410,18 +9409,6 @@ ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle,
 	{
 	  if (db_attribute_is_auto_increment (attr))
 	    {
-	      DB_DOMAIN *domain;
-	      char set_type;
-	      short scale;
-	      int precision;
-	      int temp_type;
-
-	      domain = db_attribute_domain (attr);
-	      precision = db_domain_precision (domain);
-	      scale = db_domain_scale (domain);
-	      temp_type = TP_DOMAIN_TYPE (domain);
-	      set_type = ux_db_type_to_cas_type (temp_type);
-
 	      attr_name = (char *) db_attribute_name (attr);
 	      err_code = db_get (obj, attr_name, &value);
 	      if (err_code < 0)
@@ -9432,6 +9419,18 @@ ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle,
 
 	      if (i == 0)
 		{
+		  DB_DOMAIN *domain;
+		  char set_type;
+		  short scale;
+		  int precision;
+		  int temp_type;
+
+		  domain = db_attribute_domain (attr);
+		  precision = db_domain_precision (domain);
+		  scale = db_domain_scale (domain);
+		  temp_type = TP_DOMAIN_TYPE (domain);
+		  set_type = ux_db_type_to_cas_type (temp_type);
+
 		  net_buf_cp_byte (net_buf, set_type);
 		  net_buf_cp_short (net_buf, scale);
 		  net_buf_cp_int (net_buf, precision, NULL);
