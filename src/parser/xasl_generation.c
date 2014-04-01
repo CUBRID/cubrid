@@ -17470,7 +17470,8 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
     }
 
-  if (plan != NULL && xasl != NULL && parser->query_trace == true)
+  if (parser->query_trace == true && !qo_need_skip_execution ()
+      && plan != NULL && xasl != NULL)
     {
       trace_format = prm_get_integer_value (PRM_ID_QUERY_TRACE_FORMAT);
 

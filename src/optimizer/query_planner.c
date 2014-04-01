@@ -11909,7 +11909,8 @@ qo_top_plan_print_json (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 
   parser->custom_print = save_custom;
 
-  parser->plan_trace[parser->num_plan_trace].json_plan = json;
+  parser->plan_trace[parser->num_plan_trace].format = QUERY_TRACE_JSON;
+  parser->plan_trace[parser->num_plan_trace].trace.json_plan = json;
   parser->num_plan_trace++;
 
   return;
@@ -12234,7 +12235,8 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 
   if (ptr != NULL)
     {
-      parser->plan_trace[parser->num_plan_trace].text_plan = ptr;
+      parser->plan_trace[parser->num_plan_trace].format = QUERY_TRACE_TEXT;
+      parser->plan_trace[parser->num_plan_trace].trace.text_plan = ptr;
       parser->num_plan_trace++;
     }
 

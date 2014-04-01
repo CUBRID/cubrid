@@ -17450,7 +17450,7 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
       return;
     }
 
-  format = prm_get_integer_value (PRM_ID_QUERY_TRACE_FORMAT);
+  format = parser->plan_trace[0].format;
 
   if (format == QUERY_TRACE_TEXT)
     {
@@ -17462,8 +17462,9 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
 	    {
 	      for (i = 0; i < parser->num_plan_trace; i++)
 		{
-		  fprintf (fp, "%s\n", parser->plan_trace[i].text_plan);
-		  free_and_init (parser->plan_trace[i].text_plan);
+		  assert (parser->plan_trace[i].format == format);
+		  fprintf (fp, "%s\n", parser->plan_trace[i].trace.text_plan);
+		  free_and_init (parser->plan_trace[i].trace.text_plan);
 		}
 
 	      port_close_memstream (fp, &plan_str, &sizeloc);
@@ -17471,7 +17472,8 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
 	}
       else
 	{
-	  plan_str = parser->plan_trace[0].text_plan;
+	  plan_str = parser->plan_trace[0].trace.text_plan;
+	  parser->plan_trace[0].trace.text_plan = NULL;
 	}
     }
   else if (format == QUERY_TRACE_JSON)
@@ -17484,12 +17486,16 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
 
 	  for (i = 0; i < parser->num_plan_trace; i++)
 	    {
-	      json_array_append_new (jplan, parser->plan_trace[i].json_plan);
+              assert (parser->plan_trace[i].format == format);
+	      json_array_append_new (jplan,
+				     parser->plan_trace[i].trace.json_plan);
+	      parser->plan_trace[i].trace.json_plan = NULL;
 	    }
 	}
       else
 	{
-	  jplan = parser->plan_trace[0].json_plan;
+	  jplan = parser->plan_trace[0].trace.json_plan;
+	  parser->plan_trace[0].trace.json_plan = NULL;
 	}
 
       plan_str = json_dumps (jplan, JSON_INDENT (2) | JSON_PRESERVE_ORDER);

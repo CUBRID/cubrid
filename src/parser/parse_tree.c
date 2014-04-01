@@ -1160,6 +1160,9 @@ parser_create_parser (void)
 void
 parser_free_parser (PARSER_CONTEXT * parser)
 {
+  DB_VALUE *hv;
+  int i;
+
   assert (parser != NULL);
 
   /* free string blocks */
@@ -1175,9 +1178,6 @@ parser_free_parser (PARSER_CONTEXT * parser)
 
   if (parser->host_variables)
     {
-      DB_VALUE *hv;
-      int i;
-
       for (i = 0, hv = parser->host_variables;
 	   i < parser->host_var_count + parser->auto_param_count; i++, hv++)
 	{
@@ -1192,6 +1192,32 @@ parser_free_parser (PARSER_CONTEXT * parser)
     }
 
   parser_free_lcks_classes (parser);
+
+  /* free remaining plan trace string */
+  if (parser->query_trace == true && parser->num_plan_trace > 0)
+    {
+      for (i = 0; i < parser->num_plan_trace; i++)
+	{
+	  if (parser->plan_trace[i].format == QUERY_TRACE_TEXT)
+	    {
+	      if (parser->plan_trace[i].trace.text_plan != NULL)
+		{
+		  free_and_init (parser->plan_trace[i].trace.text_plan);
+		}
+	    }
+	  else if (parser->plan_trace[i].format == QUERY_TRACE_JSON)
+	    {
+	      if (parser->plan_trace[i].trace.json_plan != NULL)
+		{
+		  json_object_clear (parser->plan_trace[i].trace.json_plan);
+		  json_decref (parser->plan_trace[i].trace.json_plan);
+		  parser->plan_trace[i].trace.json_plan = NULL;
+		}
+	    }
+	}
+
+      parser->num_plan_trace = 0;
+    }
 
   free_and_init (parser);
 }

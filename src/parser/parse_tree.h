@@ -37,6 +37,7 @@
 #include "string_opfunc.h"
 #include "message_catalog.h"
 #include "authenticate.h"
+#include "system_parameter.h"
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -3226,10 +3227,14 @@ struct keyword_record
   short unreserved;		/* keyword can be used as an identifier, 0 means it is reserved and cannot be used as an identifier, nonzero means it can be  */
 };
 
-typedef union pt_plan_trace_info
+typedef struct pt_plan_trace_info
 {
-  char *text_plan;
-  json_t *json_plan;
+  QUERY_TRACE_FORMAT format;
+  union
+  {
+    char *text_plan;
+    json_t *json_plan;
+  } trace;
 } PT_PLAN_TRACE_INFO;
 
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
