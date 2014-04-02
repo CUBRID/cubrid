@@ -158,11 +158,14 @@ public class CUBRIDResultSet implements ResultSet {
 		con = null;
 		stmt = null;
 		u_stmt = s;
-		number_of_rows = u_stmt.getExecuteResult();
 		current_row = -1;
 		if (u_stmt != null) {
+			number_of_rows = u_stmt.getExecuteResult();
 			column_info = u_stmt.getColumnInfo();
 			col_name_to_index = u_stmt.getColumnNameToIndexMap();
+		}
+		else {
+			number_of_rows = 0;
 		}
 		is_closed = false;
 		was_null = false;
