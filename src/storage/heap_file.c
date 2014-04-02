@@ -14541,11 +14541,11 @@ exit_on_error:
 
 int
 heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p,
-					 REPR_ID last_repr_id,
 					 RECDES * recdes,
 					 HEAP_CACHE_ATTRINFO * attr_info)
 {
   int i;
+  REPR_ID reprid;		/* The disk representation of the object      */
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   int ret = NO_ERROR;
 
@@ -14561,10 +14561,12 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p,
 
   if (recdes != NULL)
     {
+      reprid = or_rep_id (recdes);
+
       if (attr_info->read_classrepr == NULL)
 	{
 	  /* Get the needed representation */
-	  ret = heap_attrinfo_recache (thread_p, last_repr_id, attr_info);
+	  ret = heap_attrinfo_recache (thread_p, reprid, attr_info);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;

@@ -389,7 +389,6 @@ extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p,
 					const OID * inst_oid, RECDES * recdes,
 					HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p,
-						    REPR_ID last_repr_id,
 						    RECDES * recdes,
 						    HEAP_CACHE_ATTRINFO *
 						    attr_info);

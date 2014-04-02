@@ -333,14 +333,12 @@ static int locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op);
 
 static int locator_prefetch_index_page (THREAD_ENTRY * thread_p,
 					OID * class_oid, RECDES * classrec,
-					REPR_ID last_repr_id,
 					RECDES * recdes, int btid_index,
 					HEAP_CACHE_ATTRINFO * attr_info,
 					HEAP_IDX_ELEMENTS_INFO * idx_info);
 static int locator_prefetch_unique_index_page_internal (THREAD_ENTRY *
 							thread_p,
 							RECDES * classrec,
-							REPR_ID last_repr_id,
 							RECDES * recdes,
 							BTID * btid,
 							int btid_index,
@@ -350,7 +348,6 @@ static int locator_prefetch_unique_index_page_internal (THREAD_ENTRY *
 static int locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p,
 						 BTID * btid, OID * class_oid,
 						 RECDES * classrec,
-						 REPR_ID last_repr_id,
 						 RECDES * recdes,
 						 int n_attr_ids,
 						 int btid_index,
@@ -11530,6 +11527,8 @@ xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
       goto free_and_return;
     }
 
+  or_set_rep_id (recdes, last_repr_id);
+
   if (idx_info.num_btids <= 0)
     {
       goto free_and_return;
@@ -11538,8 +11537,7 @@ xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
   for (i = 0; i < idx_info.num_btids; i++)
     {
       error = locator_prefetch_index_page (thread_p, class_oid, &classrec,
-					   last_repr_id, recdes, i,
-					   &attr_info, &idx_info);
+					   recdes, i, &attr_info, &idx_info);
       if (error != NO_ERROR)
 	{
 	  goto free_and_return;
@@ -12176,9 +12174,8 @@ locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op)
 
 static int
 locator_prefetch_index_page (THREAD_ENTRY * thread_p, OID * class_oid,
-			     RECDES * classrec, REPR_ID last_repr_id,
-			     RECDES * recdes, int btid_index,
-			     HEAP_CACHE_ATTRINFO * attr_info,
+			     RECDES * classrec, RECDES * recdes,
+			     int btid_index, HEAP_CACHE_ATTRINFO * attr_info,
 			     HEAP_IDX_ELEMENTS_INFO * idx_info)
 {
   int error = NO_ERROR;
@@ -12240,14 +12237,14 @@ locator_prefetch_index_page (THREAD_ENTRY * thread_p, OID * class_oid,
   if (btree_is_unique (thread_p, btid))
     {
       locator_prefetch_unique_index_page_internal (thread_p, classrec,
-						   last_repr_id, recdes,
+						   recdes,
 						   btid, btid_index,
 						   attr_info, attrids);
     }
   else
     {
       locator_prefetch_index_page_internal (thread_p, btid, class_oid,
-					    classrec, last_repr_id, recdes,
+					    classrec, recdes,
 					    n_attrs, btid_index, attr_info,
 					    attrids, attrs_prefix_length);
     }
@@ -12272,7 +12269,6 @@ free_and_return:
 static int
 locator_prefetch_unique_index_page_internal (THREAD_ENTRY * thread_p,
 					     RECDES * classrec,
-					     REPR_ID last_repr_id,
 					     RECDES * recdes, BTID * btid,
 					     int btid_index,
 					     HEAP_CACHE_ATTRINFO * attr_info,
@@ -12354,8 +12350,7 @@ locator_prefetch_unique_index_page_internal (THREAD_ENTRY * thread_p,
       BTREE_INIT_SCAN (&bt_checkscan.btree_scan);
       scan_init_index_scan (&isid, bt_checkscan.oid_ptr);
 
-      if ((heap_attrinfo_read_dbvalues_without_oid (thread_p,
-						    last_repr_id, recdes,
+      if ((heap_attrinfo_read_dbvalues_without_oid (thread_p, recdes,
 						    attr_info) != NO_ERROR) ||
 	  (key =
 	   heap_attrvalue_get_key (thread_p, index_id, attr_info, recdes,
@@ -12414,7 +12409,7 @@ free_and_return:
 static int
 locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
 				      OID * class_oid, RECDES * classrec,
-				      REPR_ID last_repr_id, RECDES * recdes,
+				      RECDES * recdes,
 				      int n_attr_ids, int btid_index,
 				      HEAP_CACHE_ATTRINFO * attr_info,
 				      ATTR_ID * attr_ids,
@@ -12464,7 +12459,7 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
   scan_init_index_scan (&isid, bt_checkscan_p->oid_ptr);
 
   if ((heap_attrinfo_read_dbvalues_without_oid
-       (thread_p, last_repr_id, recdes, attr_info) != NO_ERROR)
+       (thread_p, recdes, attr_info) != NO_ERROR)
       || (key =
 	  heap_attrvalue_get_key (thread_p, index_id, attr_info, recdes, btid,
 				  &dbvalue, aligned_buf, NULL)) == NULL)
