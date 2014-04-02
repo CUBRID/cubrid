@@ -19003,6 +19003,17 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
 	}
       else
 	{
+	  if (pt_is_query (assignments_helper.rhs))
+	    {
+	      XASL_NODE *rhs_xasl = NULL;
+
+	      rhs_xasl = parser_generate_xasl (parser, assignments_helper.rhs);
+	      if (rhs_xasl == NULL)
+		{
+		  error = er_errid ();
+		  goto exit_on_error;
+		}
+	    }
 	  odku->assignments[i].regu_var =
 	    pt_to_regu_variable (parser, assignments_helper.rhs,
 				 UNBOX_AS_VALUE);
