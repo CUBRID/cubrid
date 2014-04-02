@@ -290,7 +290,7 @@ static SHOWSTMT_METADATA *
 metadata_of_heap_header (SHOW_ONLY_ALL flag)
 {
   static const SHOWSTMT_COLUMN cols[] = {
-    {"Class_name", "varchar(256)"},
+    {"Table_name", "varchar(256)"},
     {"Class_oid", "varchar(64)"},
     {"Volume_id", "int"},
     {"File_id", "int"},
@@ -341,7 +341,7 @@ static SHOWSTMT_METADATA *
 metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
 {
   static const SHOWSTMT_COLUMN cols[] = {
-    {"Class_name", "varchar(256)"},
+    {"Table_name", "varchar(256)"},
     {"Class_oid", "varchar(64)"},
     {"Volume_id", "int"},
     {"File_id", "int"},
@@ -352,7 +352,7 @@ metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
     {"Num_pages", "bigint"},
     {"Avg_rec_len", "int"},
     {"Avg_free_space_per_page", "int"},
-    {"Avg_overhead_per_page_without_last_page", "int"},
+    {"Avg_free_space_per_page_except_last_page", "int"},
     {"Avg_overhead_per_page", "int"},
     {"Repr_id", "int"},
     {"Num_total_attrs", "int"},

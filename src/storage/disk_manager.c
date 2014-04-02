@@ -5903,10 +5903,10 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor,
   db_make_int (out_values[idx], vhdr->sect_alloctb_npages);
   idx++;
 
-  db_make_int (out_values[idx], vhdr->page_alloctb_npages);
+  db_make_int (out_values[idx], vhdr->sect_alloctb_page1);
   idx++;
 
-  db_make_int (out_values[idx], vhdr->sect_alloctb_page1);
+  db_make_int (out_values[idx], vhdr->page_alloctb_npages);
   idx++;
 
   db_make_int (out_values[idx], vhdr->page_alloctb_page1);

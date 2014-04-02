@@ -4904,10 +4904,10 @@ spage_header_next_scan (THREAD_ENTRY * thread_p, int cursor,
   db_make_int (out_values[idx], header->offset_to_free_area);
   idx++;
 
-  db_make_int (out_values[idx], header->is_saving);
+  db_make_int (out_values[idx], header->need_update_best_hint);
   idx++;
 
-  db_make_int (out_values[idx], header->need_update_best_hint);
+  db_make_int (out_values[idx], header->is_saving);
   idx++;
 
   assert (idx == out_cnt);
