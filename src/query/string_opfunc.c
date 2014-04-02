@@ -1231,6 +1231,7 @@ db_string_concatenate (const DB_VALUE * string1,
   else if ((string1_code_set != string2_code_set))
     {
       error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
     }
   else if (DB_IS_NULL (string1) || DB_IS_NULL (string2))
     {
