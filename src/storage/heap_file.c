@@ -2888,7 +2888,8 @@ heap_stats_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HFID * hfid,
 	  (void) heap_stats_add_bestspace (thread_p, hfid, vpid, freespace);
 	}
     }
-  else if (need_update || prev_freespace <= HEAP_DROP_FREE_SPACE)
+
+  if (need_update || prev_freespace <= HEAP_DROP_FREE_SPACE)
     {
       if (freespace > HEAP_DROP_FREE_SPACE)
 	{
