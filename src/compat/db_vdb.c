@@ -1185,7 +1185,7 @@ db_get_next_warning (DB_SESSION_WARNING * warnings, int *line, int *col)
 void
 db_session_set_holdable (DB_SESSION * session, bool holdable)
 {
-  if (session->parser == NULL)
+  if (session == NULL || session->parser == NULL)
     {
       return;
     }
@@ -1203,7 +1203,7 @@ void
 db_session_set_return_generated_keys (DB_SESSION * session,
 				      bool return_generated_keys)
 {
-  if (session->parser == NULL)
+  if (session == NULL || session->parser == NULL)
     {
       return;
     }
