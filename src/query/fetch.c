@@ -3463,7 +3463,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	   *     976015093            89400484
 	   *    1792756325            89400484
 	   */
-	  if (arithptr->rightptr->type == TYPE_CONSTANT)
+	  if (arithptr->rightptr->type == TYPE_CONSTANT
+	      || arithptr->rightptr->type == TYPE_ATTR_ID)
 	    {
 	      struct drand48_data buf;
 	      long int r;
@@ -3517,7 +3518,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       else
 	{
-	  if (arithptr->rightptr->type == TYPE_CONSTANT)
+	  if (arithptr->rightptr->type == TYPE_CONSTANT
+	      || arithptr->rightptr->type == TYPE_ATTR_ID)
 	    {
 	      struct drand48_data buf;
 	      double r;
