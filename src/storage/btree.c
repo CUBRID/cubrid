@@ -4365,24 +4365,9 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p,
 
       for (i = 0; i < env->pkeys_val_num; i++)
 	{
-#if 1				/* TODO - do not delete me */
-	  /* to support index skip scan; refer qo_get_index_info () */
-	  if (env->pkeys_val_num > 1)
-	    {
-	      if (i == 0)
-		{
-		  /* is the first column of multi column index.
-		   * index skip scan requirement is
-		   * (row_count > pkeys[0] * INDEX_SKIP_SCAN_FACTOR)
-		   */
-		  continue;
-		}
-	    }
-#endif
-
 	  env->stat_info->pkeys[i] *= exp_ratio;
 	  if (env->stat_info->pkeys[i] < 0)
-	    {
+	    {			/* multiply-overflow defence */
 	      env->stat_info->pkeys[i] = INT_MAX;
 	    }
 	}
