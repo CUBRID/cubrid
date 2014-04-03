@@ -12651,6 +12651,17 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 			 pt_show_type_enum (sep_type));
 	    break;
 	  }
+
+	if ((arg_type != PT_TYPE_BIT && arg_type != PT_TYPE_VARBIT)
+	    && (sep_type == PT_TYPE_BIT || sep_type == PT_TYPE_VARBIT))
+	  {
+	    PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+			 pt_show_function (fcode),
+			 pt_show_type_enum (arg_type),
+			 pt_show_type_enum (sep_type));
+	    break;
+	  }
       }
       break;
 
