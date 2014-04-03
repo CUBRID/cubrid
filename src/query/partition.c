@@ -191,6 +191,10 @@ static int partition_prune_index_scan (PRUNING_CONTEXT * pinfo);
 static int partition_find_inherited_btid (THREAD_ENTRY * thread_p,
 					  OID * src_class, OID * dest_class,
 					  BTID * src_btid, BTID * dest_btid);
+static int partition_attrinfo_get_key (THREAD_ENTRY * thread_p,
+				       PRUNING_CONTEXT * pcontext,
+				       DB_VALUE * curr_key, OID * class_oid,
+				       BTID * btid, DB_VALUE * partition_key);
 
 /* misc pruning functions */
 static bool partition_decrement_value (DB_VALUE * val);
@@ -2512,6 +2516,7 @@ partition_clear_pruning_context (PRUNING_CONTEXT * pinfo)
   if (pinfo->is_attr_info_inited)
     {
       heap_attrinfo_end (pinfo->thread_p, &(pinfo->attr_info));
+      pinfo->is_attr_info_inited = false;
     }
 
   list = pinfo->scan_cache_list;
@@ -3646,6 +3651,8 @@ partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key,
   OID partition_oid;
   HFID partition_hfid;
   BTID partition_btid;
+  int is_global_index = 0;
+  DB_VALUE partition_key;
 
   if (pcontext == NULL)
     {
@@ -3666,22 +3673,34 @@ partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key,
 	  return error;
 	}
     }
-  error = partition_get_position_in_key (pcontext, btid);
+  error = partition_is_global_index (pcontext->thread_p, pcontext,
+				     &pcontext->root_oid, btid, NULL,
+				     &is_global_index);
   if (error != NO_ERROR)
     {
       pcontext->attr_position = -1;
       return error;
     }
-
-  if (pcontext->attr_position == -1)
+  else
     {
-      /* Cannot use key for pruning. This must be a global index */
-      *is_global_btid = true;
-      return NO_ERROR;
+      if (is_global_index == 1)
+	{
+	  *is_global_btid = true;
+	  return NO_ERROR;
+	}
+    }
+
+  error = partition_attrinfo_get_key (pcontext->thread_p, pcontext, key,
+				      &pcontext->root_oid, btid,
+				      &partition_key);
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   pruningset_init (&pruned, PARTITIONS_COUNT (pcontext));
-  status = partition_prune_db_val (pcontext, key, PO_EQ, &pruned);
+  status = partition_prune_db_val (pcontext, &partition_key, PO_EQ, &pruned);
+  pr_clear_value (&partition_key);
 
   if (status == MATCH_NOT_FOUND)
     {
@@ -3980,6 +3999,112 @@ cleanup:
   if (contextp == &context)
     {
       partition_clear_pruning_context (contextp);
+    }
+
+  return error;
+}
+
+/*
+ * partition_attrinfo_get_key () - retrieves the appropiate partitioning key
+ *			    from a given index key, by which prunning will be
+ *			    performed.
+ * return : error code or NO_ERROR
+ * thread_p (in) :
+ * pcontext (in)	   : pruning context, NULL if it is unknown
+ * curr_key (in)	   : index key to be searched
+ * class_oid (in)	   : partitioned class OID
+ * btid (in)		   : btree ID of the index
+ * partition_key(out)	   : value holding the extracted partition key
+ */
+static int
+partition_attrinfo_get_key (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext,
+			    DB_VALUE * curr_key,
+			    OID * class_oid, BTID * btid,
+			    DB_VALUE * partition_key)
+{
+  PRUNING_CONTEXT context;
+  int error = NO_ERROR;
+  ATTR_ID *btree_attr_ids = NULL;
+  int btree_num_attr = 0;
+
+  if (pcontext == NULL)
+    {
+      /* PRUNING_CONTEXT is unknown */
+      pcontext = &context;
+
+      partition_init_pruning_context (pcontext);
+
+      error = partition_load_pruning_context (thread_p, class_oid,
+					      DB_PARTITIONED_CLASS, pcontext);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+  /* read partition attribute information */
+  if (pcontext->is_attr_info_inited == false)
+    {
+      error = heap_attrinfo_start (thread_p, &pcontext->root_oid, 1,
+				   &pcontext->attr_id, &pcontext->attr_info);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      partition_set_cache_info_for_expr (pcontext->partition_pred->func_regu,
+					 pcontext->attr_id,
+					 &pcontext->attr_info);
+      pcontext->is_attr_info_inited = true;
+    }
+
+  /* read btree information */
+  error = heap_get_indexinfo_of_btid (thread_p, class_oid, btid,
+				      NULL, &btree_num_attr, &btree_attr_ids,
+				      NULL, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  if (DB_VALUE_TYPE (curr_key) == DB_TYPE_MIDXKEY)
+    {
+      curr_key->data.midxkey.domain = btree_read_key_type (thread_p, btid);
+      if (curr_key->data.midxkey.domain == NULL)
+	{
+	  error = ER_FAILED;
+	  goto cleanup;
+	}
+    }
+  error = btree_attrinfo_read_dbvalues (thread_p, curr_key, btree_attr_ids,
+					btree_num_attr, &pcontext->attr_info,
+					-1);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  /* just use the corresponding db_value from attribute information */
+  if (pcontext->attr_info.values[0].state == HEAP_UNINIT_ATTRVALUE)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+  error = pr_clone_value (&pcontext->attr_info.values[0].dbvalue,
+			  partition_key);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+cleanup:
+  if (pcontext == &context)
+    {
+      partition_clear_pruning_context (pcontext);
+    }
+  if (btree_attr_ids)
+    {
+      db_private_free_and_init (thread_p, btree_attr_ids);
     }
 
   return error;

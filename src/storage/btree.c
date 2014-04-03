@@ -6763,8 +6763,6 @@ end:
 }
 
 
-
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * btree_read_key_type () -
  *   return:
@@ -6776,7 +6774,7 @@ btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid)
   VPID p_vpid;
   PAGE_PTR root = NULL;
   TP_DOMAIN *key_type = NULL;
-  RECDES header_record;
+  BTREE_ROOT_HEADER * root_header = NULL;
 
   p_vpid.pageid = btid->root_pageid;	/* read root page */
   p_vpid.volid = btid->vfid.volid;
@@ -6789,19 +6787,19 @@ btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid)
 
   (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
 
-  if (spage_get_record (root, HEADER, &header_record, PEEK) != S_SUCCESS)
+  root_header = btree_get_root_header_ptr (root);
+  if (root_header == NULL)
     {
+      pgbuf_unfix_and_init (thread_p, root);
       return NULL;
     }
 
-  (void) or_unpack_domain (header_record.data + BTREE_KEY_TYPE_OFFSET,
-			   &key_type, 0);
+  (void) or_unpack_domain (root_header->packed_key_domain, &key_type, 0);
 
   pgbuf_unfix_and_init (thread_p, root);
 
   return key_type;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * btree_delete_key_from_leaf () -

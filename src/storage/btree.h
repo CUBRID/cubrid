@@ -347,11 +347,8 @@ extern int btree_get_prefix_separator (const DB_VALUE * key1,
 				       const DB_VALUE * key2,
 				       DB_VALUE * prefix_key,
 				       TP_DOMAIN * key_domain);
-
-#if defined(ENABLE_UNUSED_FUNCTION)
 /* for migration */
 extern TP_DOMAIN *btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid);
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 #if 0				/* TODO: currently not used */
 #if defined(SA_MODE)
