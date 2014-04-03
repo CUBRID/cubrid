@@ -208,7 +208,7 @@ public class UStatement {
 
 		bindParameter = null;
 		batchParameter = null;
-		totalTupleNumber = fetchedTupleNumber = 1;
+		executeResult = totalTupleNumber = fetchedTupleNumber = 1;
 		currentFirstCursor = cursorPosition = 0;
 		maxFetchSize = 0;
 		realFetched = false;
