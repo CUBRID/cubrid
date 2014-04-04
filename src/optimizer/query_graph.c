@@ -179,8 +179,8 @@ static void
 qo_add_dep_term (QO_NODE * derived_node, BITSET * depend_nodes,
 		 BITSET * depend_segs, QO_ENV * env);
 
-static QO_TERM *qo_add_dummy_join_term (QO_ENV * env, QO_NODE * head_node,
-					QO_NODE * tail_node);
+static QO_TERM *qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node,
+					QO_NODE * on_node);
 
 static void qo_analyze_term (QO_TERM * term, int term_type);
 
@@ -293,6 +293,7 @@ static void qo_discover_partitions (QO_ENV *);
 static void qo_discover_indexes (QO_ENV *);
 static void qo_assign_eq_classes (QO_ENV *);
 static void qo_discover_edges (QO_ENV *);
+static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
 static void qo_seg_clear (QO_ENV *, int);
 static void qo_node_clear (QO_ENV *, int);
@@ -561,6 +562,7 @@ qo_optimize_helper (QO_ENV * env)
   }
 
   bitset_init (&nodeset, env);
+
   /* add term in the ON clause */
   for (spec = tree->info.query.q.select.from; spec; spec = spec->next)
     {
@@ -585,6 +587,8 @@ qo_optimize_helper (QO_ENV * env)
 
 	      if (QO_TERM_CLASS (term) == QO_TC_JOIN)
 		{
+		  QO_ASSERT (env, QO_ON_COND_TERM (term));
+
 		  n = QO_TERM_LOCATION (term);
 		  if (QO_NODE_LOCATION (QO_TERM_HEAD (term)) == n - 1
 		      && QO_NODE_LOCATION (QO_TERM_TAIL (term)) == n)
@@ -612,12 +616,10 @@ qo_optimize_helper (QO_ENV * env)
   for (n = 1; n < env->nnodes; n++)
     {
       node = QO_ENV_NODE (env, n);
-      spec = QO_NODE_ENTITY_SPEC (node);
+
       /* check join-edge for explicit join */
-      if (spec->node_type == PT_SPEC
-	  && (spec->info.spec.join_type == PT_JOIN_INNER
-	      || spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
-	      || spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_NONE
+	  && QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_CROSS
 	  && !BITSET_MEMBER (nodeset, n))
 	{
 	  p_node = QO_ENV_NODE (env, n - 1);
@@ -627,6 +629,9 @@ qo_optimize_helper (QO_ENV * env)
 	     the sequence of PT_SPEC list */
 	}
     }
+
+  /* classify terms for outer join */
+  qo_classify_outerjoin_terms (env);
 
   bitset_delset (&nodeset);
 
@@ -661,14 +666,14 @@ qo_optimize_helper (QO_ENV * env)
   /* finish the rest of the opt structures */
   qo_discover_edges (env);
 
-  /*
-   * Don't do these things until *after* qo_discover_edges(); that
+  /* Don't do these things until *after* qo_discover_edges(); that
    * function may rearrange the QO_TERM structures that were discovered
    * during the earlier phases, and anyone who grabs the idx of one of
    * the terms (or even a pointer to one) will be pointing to the wrong
    * term after they're rearranged.
    */
   qo_assign_eq_classes (env);
+
   get_local_subqueries (env, tree);
   get_rank (env);
   qo_discover_indexes (env);
@@ -698,7 +703,6 @@ qo_optimize_helper (QO_ENV * env)
     }
 
   return plan;
-
 }
 
 /*
@@ -1368,6 +1372,8 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
   CLASS_STATS *stats;
 
   QO_ASSERT (env, env->nnodes < env->Nnodes);
+  QO_ASSERT (env, entity != NULL);
+  QO_ASSERT (env, entity->node_type == PT_SPEC);
 
   node = QO_ENV_NODE (env, env->nnodes);
 
@@ -1450,6 +1456,7 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 
   n = QO_NODE_IDX (node);
   QO_NODE_SARGABLE (node) = true;
+
   switch (QO_NODE_PT_JOIN_TYPE (node))
     {
     case PT_JOIN_LEFT_OUTER:
@@ -1887,7 +1894,7 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
 	    case PT_JOIN_RIGHT_OUTER:
 	      bitset_add (&(QO_TERM_NODES (term)), QO_NODE_IDX (node) - 1);
 	      break;
-	    case PT_JOIN_FULL_OUTER:
+	    case PT_JOIN_FULL_OUTER:	/* not used */
 	      /* I don't know what is to be done for full outer. */
 	      break;
 	    default:
@@ -1990,43 +1997,49 @@ qo_add_dep_term (QO_NODE * derived_node,
  *			    join term related with given two nodes
  *   return: void
  *   env(in): optimizer environment
- *   head_node(in):
- *   tail_node(in):
+ *   p_node(in):
+ *   on_node(in):
  */
 static QO_TERM *
-qo_add_dummy_join_term (QO_ENV * env, QO_NODE * head_node,
-			QO_NODE * tail_node)
+qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
 {
   QO_TERM *term;
 
   QO_ASSERT (env, env->nterms < env->Nterms);
+  QO_ASSERT (env, QO_NODE_IDX (p_node) >= 0);
+  QO_ASSERT (env, QO_NODE_IDX (p_node) + 1 == QO_NODE_IDX (on_node));
+  QO_ASSERT (env, QO_NODE_LOCATION (on_node) > 0);
 
   term = QO_ENV_TERM (env, env->nterms);
 
   /* fill in term */
   QO_TERM_CLASS (term) = QO_TC_DUMMY_JOIN;
-  bitset_add (&(QO_TERM_NODES (term)), QO_NODE_IDX (head_node));
-  bitset_add (&(QO_TERM_NODES (term)), QO_NODE_IDX (tail_node));
-  QO_TERM_HEAD (term) = head_node;
-  QO_TERM_TAIL (term) = tail_node;
+  bitset_add (&(QO_TERM_NODES (term)), QO_NODE_IDX (p_node));
+  bitset_add (&(QO_TERM_NODES (term)), QO_NODE_IDX (on_node));
+  QO_TERM_HEAD (term) = p_node;
+  QO_TERM_TAIL (term) = on_node;
   QO_TERM_PT_EXPR (term) = NULL;
-  QO_TERM_LOCATION (term) = QO_NODE_LOCATION (tail_node);
+  QO_TERM_LOCATION (term) = QO_NODE_LOCATION (on_node);
   QO_TERM_SELECTIVITY (term) = 1.0;
   QO_TERM_RANK (term) = 0;
 
-  switch (QO_NODE_PT_JOIN_TYPE (tail_node))
+  switch (QO_NODE_PT_JOIN_TYPE (on_node))
     {
+    case PT_JOIN_INNER:
+      QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
+      break;
     case PT_JOIN_LEFT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
       break;
     case PT_JOIN_RIGHT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_RIGHT;
       break;
-    case PT_JOIN_FULL_OUTER:
+    case PT_JOIN_FULL_OUTER:	/* not used */
       QO_TERM_JOIN_TYPE (term) = JOIN_OUTER;
       break;
     default:
       /* this should not happen */
+      assert (false);
       QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
       break;
     }
@@ -2036,15 +2049,16 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * head_node,
   env->nterms++;
 
   /* record outer join dependecy */
-  if (QO_OUTER_JOIN_TERM (term))
+  if (QO_ON_COND_TERM (term))
     {
-      QO_NODE *p_node;
+      QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
-      p_node = QO_ENV_NODE (env, QO_NODE_IDX (tail_node) - 1);
-      bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)),
+      bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)),
 		    &(QO_NODE_OUTER_DEP_SET (p_node)));
-      bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)), QO_NODE_IDX (p_node));
+      bitset_add (&(QO_NODE_OUTER_DEP_SET (on_node)), QO_NODE_IDX (p_node));
     }
+
+  QO_ASSERT (env, QO_TERM_CAN_USE_INDEX (term) == 0);
 
   return term;
 }
@@ -2062,13 +2076,14 @@ qo_analyze_term (QO_TERM * term, int term_type)
   PARSER_CONTEXT *parser;
   int merge_applies, lhs_indexable, rhs_indexable;
   PT_NODE *pt_expr, *lhs_expr, *rhs_expr;
-  QO_NODE *head_node = NULL, *tail_node = NULL, *on_node;
+  QO_NODE *head_node = NULL, *tail_node = NULL;
   QO_SEGMENT *head_seg, *tail_seg;
   BITSET lhs_segs, rhs_segs, lhs_nodes, rhs_nodes;
   BITSET_ITERATOR iter;
   PT_OP_TYPE op_type = PT_AND;
-  int i, n, location;
-  bool is_outer_on_cond;
+  int i, n;
+
+  QO_ASSERT (env, QO_TERM_LOCATION (term) >= 0);
 
   env = QO_TERM_ENV (term);
   parser = QO_ENV_PARSER (env);
@@ -2215,11 +2230,9 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
     }				/* if (pt_expr->or_next == NULL) */
 
-
   /* get nodes from segments */
   qo_seg_nodes (env, &lhs_segs, &lhs_nodes);
   qo_seg_nodes (env, &rhs_segs, &rhs_nodes);
-
 
   /* do LHS and RHS of the term belong to the different node? */
   if (!bitset_intersects (&lhs_nodes, &rhs_nodes))
@@ -2466,191 +2479,50 @@ qo_analyze_term (QO_TERM * term, int term_type)
   bitset_assign (&(QO_TERM_NODES (term)), &lhs_nodes);
   bitset_union (&(QO_TERM_NODES (term)), &rhs_nodes);
 
-  /* location of this term */
-  location = QO_TERM_LOCATION (term);
-  QO_ASSERT (env, location >= 0);
-
-  is_outer_on_cond = false;	/* init */
-  if (location > 0)
-    {
-      on_node = QO_ENV_NODE (env, location);
-      if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_LEFT_OUTER
-	  || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_RIGHT_OUTER
-	  || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_FULL_OUTER)
-	{
-	  is_outer_on_cond = true;
-	}
-    }
-
   /* number of nodes with which this term associated */
   n = bitset_cardinality (&(QO_TERM_NODES (term)));
   /* determine the class of the term */
-  if (n == 0)
+  if (term_type != PREDICATE_TERM)
     {
-      if (QO_TERM_LOCATION (term) > 0)
-	{
-	  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
-	}
-      else
-	{
-	  bool inst_num = false;
+      QO_ASSERT (env, n >= 2);
 
-	  (void) parser_walk_tree (parser, pt_expr, pt_check_instnum_pre,
-				   NULL, pt_check_instnum_post, &inst_num);
-	  QO_TERM_CLASS (term) =
-	    inst_num ? QO_TC_TOTALLY_AFTER_JOIN : QO_TC_OTHER;
+      QO_TERM_CLASS (term) = QO_TC_PATH;
+
+      if (n == 2)
+	{
+	  /* i.e., it's a path term...
+	     In this case, it's imperative that we get the head and tail
+	     nodes and segs right. Fortunately, in this particular case
+	     we can rely on the compiler to produce the term in a
+	     consistent way, with the head on the lhs and the tail on
+	     the rhs. */
+	  head_node = QO_ENV_NODE (env, bitset_first_member (&lhs_nodes));
+	  tail_node = QO_ENV_NODE (env, bitset_first_member (&rhs_nodes));
+
+	  QO_ASSERT (env, QO_NODE_IDX (head_node) < QO_NODE_IDX (tail_node));
 	}
     }
-  else
+  else if (n == 0)
     {
-      if (term_type != PREDICATE_TERM)
-	{
-	  QO_TERM_CLASS (term) = QO_TC_PATH;
-	}
-      else if (n == 1)
-	{
-	  QO_TERM_CLASS (term) = QO_TC_SARG;
-	}
-      else
-	{			/* n >= 2 */
-	  if (location == 0)
-	    {			/* in WHERE condition */
-	      QO_TERM_CLASS (term) = QO_TC_OTHER;	/* init */
-	      if (n == 2)
-		{
-		  QO_TERM_CLASS (term) = QO_TC_JOIN;	/* init */
-		}
-	    }
-	  else
-	    {			/* in ON condition */
-	      on_node = QO_ENV_NODE (env, location);
-	      switch (QO_NODE_PT_JOIN_TYPE (on_node))
-		{
-		case PT_JOIN_LEFT_OUTER:
-		case PT_JOIN_RIGHT_OUTER:
-		  /*  case PT_JOIN_FULL_OUTER: *//* not used */
-		  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;	/* init */
-		  break;
+      bool inst_num = false;
 
-		default:
-		  QO_TERM_CLASS (term) = QO_TC_OTHER;	/* init */
-		  break;
-		}
-
-	      if (n == 2)
-		{
-		  head_node =
-		    QO_ENV_NODE (env,
-				 bitset_iterate (&(QO_TERM_NODES (term)),
-						 &iter));
-		  tail_node = QO_ENV_NODE (env, bitset_next_member (&iter));
-
-		  if ((QO_NODE_IDX (head_node) == QO_NODE_IDX (on_node) - 1
-		       && QO_NODE_IDX (tail_node) == QO_NODE_IDX (on_node))
-		      || (QO_NODE_IDX (head_node) == QO_NODE_IDX (on_node)
-			  && (QO_NODE_IDX (tail_node) ==
-			      QO_NODE_IDX (on_node) - 1)))
-		    {
-		      QO_TERM_CLASS (term) = QO_TC_JOIN;
-		    }
-		}
-	    }
-	}
+      (void) parser_walk_tree (parser, pt_expr, pt_check_instnum_pre,
+			       NULL, pt_check_instnum_post, &inst_num);
+      QO_TERM_CLASS (term) =
+	inst_num ? QO_TC_TOTALLY_AFTER_JOIN : QO_TC_OTHER;
     }
-
-  /* outer join cond shall not be others except QO_TC_SARG and QO_TC_JOIN */
-  if (is_outer_on_cond
-      && QO_TERM_CLASS (term) != QO_TC_SARG
-      && QO_TERM_CLASS (term) != QO_TC_JOIN
-      && QO_TERM_CLASS (term) != QO_TC_DURING_JOIN)
+  else if (n == 1)
     {
-      QO_ABORT (env);
-    }
+      QO_TERM_CLASS (term) = QO_TC_SARG;
 
-  /* re-classify QO_TC_SARG term for outer join */
-  if (n == 1)
-    {				/* QO_TERM_CLASS(term) == QO_TC_SARG */
       /* QO_NODE to which this sarg term belongs */
       head_node =
-	QO_ENV_NODE (env, bitset_first_member (&(QO_TERM_NODES (term))));
-
-      if (location > 0)
-	{
-	  if (is_outer_on_cond)
-	    {
-	      /* this term appears in outer join condition of FROM clause */
-
-	      if (!QO_NODE_SARGABLE (head_node))
-		{
-		  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
-		}
-	      else if (QO_NODE_LOCATION (head_node) < location)
-		{
-		  PT_NODE *entity;
-
-		  entity = QO_NODE_ENTITY_SPEC (head_node);
-		  if (entity->node_type == PT_SPEC
-		      && entity->info.spec.on_cond)
-		    {
-		      /* example: change 'Y.i = 2' to during-join term
-		       *  SELECT ...
-		       *  FROM X right join Y on ... rigint join Z on Y.i = 2
-		       */
-		      QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
-		    }
-		  else if (QO_NODE_LOCATION (head_node) + 1 < location)
-		    {
-		      /* example: change 'X.i = 1' to during-join term
-		       *  SELECT ...
-		       *  FROM X right join Y on ... rigint join Z on X.i = 1
-		       */
-		      QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
-		    }
-		}
-	    }			/* if (is_outer_on_cond) */
-	}
-      else
-	{			/* if (location > 0) */
-	  int join_idx, node_idx;
-
-	  /* this term appears in search condition of WHERE clause */
-
-
-	  /* set the start node of outer join - init */
-	  join_idx = -1;
-
-	  node_idx = QO_NODE_IDX (head_node);
-	  /* if the sarg term belongs to null padding table; */
-	  if (QO_NODE_PT_JOIN_TYPE (head_node) == PT_JOIN_LEFT_OUTER)
-	    {
-	      join_idx = node_idx;	/* case 4.2 */
-	    }
-	  else
-	    {
-	      /* NEED MORE OPTIMIZATION for future */
-	      for (node_idx += 1; node_idx < env->nnodes; node_idx++)
-		{
-		  if (QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (env, node_idx)) ==
-		      PT_JOIN_RIGHT_OUTER)
-		    {
-		      join_idx = node_idx;	/* case 4.3 */
-		      break;
-		    }
-		}
-	    }
-
-	  /* check for the next right outer join;
-	     case no.4 of term class in 'outer join TM document' */
-	  if (join_idx != -1)
-	    {
-	      QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
-	    }
-	}			/* if (location > 0) */
-    }				/* if (n == 1) */
-
-
-  if (n == 2)
+	QO_ENV_NODE (env, bitset_iterate (&(QO_TERM_NODES (term)), &iter));
+    }
+  else if (n == 2)
     {
+      QO_TERM_CLASS (term) = QO_TC_JOIN;
+
       /* Although it may be tempting to say that the head node is the first
          member of the lhs_nodes and the tail node is the first member of the
          rhs_nodes, that's not always true. For example, a term like
@@ -2658,9 +2530,31 @@ qo_analyze_term (QO_TERM * term, int term_type)
          can get in here, and then *both* head and tail are in lhs_nodes.
          If you get down into the code guarded by 'merge_applies' you can
          safely make more stringent assumptions, but not before then. */
+
       head_node =
 	QO_ENV_NODE (env, bitset_iterate (&(QO_TERM_NODES (term)), &iter));
       tail_node = QO_ENV_NODE (env, bitset_next_member (&iter));
+
+      if (QO_NODE_IDX (head_node) > QO_NODE_IDX (tail_node))
+	{
+	  QO_NODE *swap_node = NULL;
+
+	  swap_node = head_node;
+	  head_node = tail_node;
+	  tail_node = swap_node;
+	}
+      QO_ASSERT (env, QO_NODE_IDX (head_node) < QO_NODE_IDX (tail_node));
+      QO_ASSERT (env, QO_NODE_IDX (tail_node) > 0);
+    }
+  else
+    {				/* n >= 3 */
+      QO_TERM_CLASS (term) = QO_TC_OTHER;
+    }
+
+  if (n == 2)
+    {
+      QO_ASSERT (env, QO_TERM_CLASS (term) == QO_TC_PATH
+		 || QO_TERM_CLASS (term) == QO_TC_JOIN);
 
       /* This is a pretty weak test; it only looks for equality
          comparisons. */
@@ -2671,7 +2565,6 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  || BITSET_MEMBER (QO_NODE_DEP_SET (tail_node),
 			    QO_NODE_IDX (head_node)))
 	{
-
 	  QO_TERM_CLASS (term) = QO_TC_OTHER;
 
 	  merge_applies = 0;
@@ -2687,36 +2580,25 @@ qo_analyze_term (QO_TERM * term, int term_type)
       merge_applies &= (!bitset_is_empty (&lhs_segs)
 			&& !bitset_is_empty (&rhs_segs));
 
-      if (merge_applies || term_type != PREDICATE_TERM)
+      if (merge_applies || QO_TERM_CLASS (term) == QO_TC_PATH)
 	{
 	  head_seg =
 	    QO_ENV_SEG (env, bitset_iterate (&(QO_TERM_SEGS (term)), &iter));
 	  tail_seg = QO_ENV_SEG (env, bitset_next_member (&iter));
 
-	  if (term_type != PREDICATE_TERM)
-	    {
-	      /* i.e., it's a path term...
-	         In this case, it's imperative that we get the head and tail
-	         nodes and segs right. Fortunately, in this particular case
-	         we can rely on the compiler to produce the term in a
-	         consistent way, with the head on the lhs and the tail on
-	         the rhs. */
-	      head_node = QO_ENV_NODE (env, bitset_first_member (&lhs_nodes));
-	      tail_node = QO_ENV_NODE (env, bitset_first_member (&rhs_nodes));
-	    }
-
 	  /* Now make sure that the head and tail segs correspond to the
 	     proper nodes. */
 	  if (QO_SEG_HEAD (head_seg) != head_node)
 	    {
-	      QO_SEGMENT *tmp;
+	      QO_SEGMENT *swap_seg = NULL;
 
-	      tmp = head_seg;
+	      swap_seg = head_seg;
 	      head_seg = tail_seg;
-	      tail_seg = tmp;
-	      QO_ASSERT (env, QO_SEG_HEAD (head_seg) == head_node);
-	      QO_ASSERT (env, QO_SEG_HEAD (tail_seg) == tail_node);
+	      tail_seg = swap_seg;
 	    }
+
+	  QO_ASSERT (env, QO_SEG_HEAD (head_seg) == head_node);
+	  QO_ASSERT (env, QO_SEG_HEAD (tail_seg) == tail_node);
 
 	  /* These are really only interesting for path terms, but it doesn't
 	     hurt to set them for others too. */
@@ -2732,15 +2614,14 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      qo_equivalence (head_seg, tail_seg);
 	      QO_TERM_NOMINAL_SEG (term) = head_seg;
 	    }
+	}
 
-	  /* always true transitive equi-join term is not suitable as
-	   * m-join edge.
-	   */
-	  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_TRANSITIVE))
-	    {
-	      merge_applies = 0;
-	    }
-	}			/* if (merge_applies) */
+      /* always true transitive equi-join term is not suitable as m-join edge.
+       */
+      if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_TRANSITIVE))
+	{
+	  merge_applies = 0;
+	}
 
       if (merge_applies)
 	{
@@ -2752,123 +2633,73 @@ qo_analyze_term (QO_TERM * term, int term_type)
       QO_TERM_HEAD (term) = head_node;
       QO_TERM_TAIL (term) = tail_node;
 
+      QO_ASSERT (env,
+		 QO_NODE_IDX (QO_TERM_HEAD (term)) <
+		 QO_NODE_IDX (QO_TERM_TAIL (term)));
     }
 
-  /* re-classify TC_JOIN term for outer join and determine its join type */
+  if (n == 1)
+    {
+      QO_ASSERT (env, QO_TERM_CLASS (term) == QO_TC_SARG);
+    }
+
+  /* classify TC_JOIN term for outer join and determine its join type */
   if (QO_TERM_CLASS (term) == QO_TC_JOIN)
     {
-      /* head and tail QO_NODE to which this join term belongs;
-         always 'head_node' precedents to 'tail_node' and
-         tail has outer join spec */
-      head_node = QO_TERM_HEAD (term);
-      tail_node = QO_TERM_TAIL (term);
-
       /* inner join until proven otherwise */
       QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
 
-      if (location > 0)
+      /* check iff explicit join term */
+      if (QO_ON_COND_TERM (term))
 	{
-	  if (QO_NODE_IDX (tail_node) > 0)
+	  QO_NODE *on_node;
+
+	  QO_ASSERT (env,
+		     QO_NODE_LOCATION (head_node) <
+		     QO_NODE_LOCATION (tail_node));
+	  QO_ASSERT (env, QO_NODE_LOCATION (tail_node) > 0);
+
+	  on_node = QO_ENV_NODE (env, QO_TERM_LOCATION (term));
+	  QO_ASSERT (env, on_node != NULL);
+	  QO_ASSERT (env, QO_NODE_IDX (on_node) > 0);
+	  QO_ASSERT (env, QO_NODE_LOCATION (on_node) > 0);
+
+	  QO_ASSERT (env,
+		     QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
+
+	  if (QO_NODE_IDX (tail_node) == QO_NODE_IDX (on_node))
 	    {
-	      QO_NODE *p_node;
-
-	      p_node = QO_ENV_NODE (env, QO_NODE_IDX (tail_node) - 1);
-
-	      /* if explicit inner join */
-	      if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_INNER)
-		{
-		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-		  /* record explicit inner join dependecy */
-		  bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)),
-				&(QO_NODE_OUTER_DEP_SET (p_node)));
-		  bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)),
-			      QO_NODE_IDX (p_node));
-		}
-	      /* if left outer join;
-	         case no.7 of term class in 'outer join TM document' */
-	      if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_LEFT_OUTER)
+	      if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_LEFT_OUTER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
-		  /* record outer join dependecy */
-		  bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)),
-				&(QO_NODE_OUTER_DEP_SET (p_node)));
-		  bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)),
-			      QO_NODE_IDX (p_node));
 		}
-	      /* if right outer join;
-	         case no.8 of term class in 'outer join TM document' */
-	      if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_RIGHT_OUTER)
+	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_RIGHT_OUTER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_RIGHT;
-		  /* record outer join dependecy */
-		  bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)),
-				&(QO_NODE_OUTER_DEP_SET (p_node)));
-		  bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)),
-			      QO_NODE_IDX (p_node));
 		}
-	    }
-
-	  /* check for during join term
-	   * for example:
-	   *   SELECT ...
-	   *   FROM X left outer join Y on ... left outer join Z on X.i = Y.i
-	   */
-	  if (IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term))
-	      && (QO_TERM_LOCATION (term) > QO_NODE_LOCATION (tail_node)))
-	    {
-	      QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
-	    }
-	}
-      else
-	{
-	  int join_idx, node_idx;
-
-	  /* if explicit join;
-	     case no.9 of term class in 'outer join TM document' */
-
-	  /* set the start node of outer join - init */
-	  join_idx = -1;
-
-	  /* if the sarg term belongs to null padding table; */
-	  for (i = bitset_iterate (&(QO_TERM_NODES (term)), &iter); i >= 0;
-	       i = bitset_next_member (&iter))
-	    {
-	      QO_NODE *tmp = QO_ENV_NODE (env, i);
-	      if (QO_NODE_PT_JOIN_TYPE (tmp) == PT_JOIN_LEFT_OUTER)
-		{
-		  join_idx = i;	/* case 4.2 */
-		  break;
+	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_FULL_OUTER)
+		{		/* not used */
+		  QO_TERM_JOIN_TYPE (term) = JOIN_OUTER;
 		}
-	    }
 
-	  if (join_idx == -1)
-	    {
-	      /* NEED MORE OPTIMIZATION for future */
-	      node_idx = MIN (QO_NODE_IDX (head_node),
-			      QO_NODE_IDX (tail_node));
-	      for (; node_idx < env->nnodes; node_idx++)
-		{
-		  if (QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (env, node_idx)) ==
-		      PT_JOIN_RIGHT_OUTER)
-		    {
-		      join_idx = node_idx;	/* case 4.3 */
-		      break;
-		    }
-		}
+	      /* record explicit join dependecy */
+	      bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)),
+			    &(QO_NODE_OUTER_DEP_SET (head_node)));
+	      bitset_add (&(QO_NODE_OUTER_DEP_SET (on_node)),
+			  QO_NODE_IDX (head_node));
 	    }
-
-	  /* check for the next right outer join;
-	     case no.9 of term class in 'outer join TM document' */
-	  if (join_idx != -1)
+	  else
 	    {
-	      QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
+	      /* is not valid explicit join term */
+	      QO_TERM_CLASS (term) = QO_TC_OTHER;
+
 	      QO_TERM_JOIN_TYPE (term) = NO_JOIN;
 
 	      /* keep out from m-join edge */
 	      QO_TERM_CLEAR_FLAG (term, QO_TERM_MERGEABLE_EDGE);
 	    }
-	}			/* if (location > 0) */
-    }				/* if (QO_TERM_CLASS(term) == QO_TC_JOIN) */
+	}
+    }
 
 wrapup:
 
@@ -6195,8 +6026,8 @@ qo_discover_edges (QO_ENV * env)
       term = QO_ENV_TERM (env, i);
       if (QO_IS_EDGE_TERM (term))
 	{
-	  ++env->nedges;
-	  ++i;
+	  env->nedges++;
+	  i++;
 	}
       else
 	{
@@ -6242,7 +6073,7 @@ qo_discover_edges (QO_ENV * env)
 	}
     }
 
-  for (n = env->nterms; i < n; ++i)
+  for (n = env->nterms; i < n; i++)
     {
       term = QO_ENV_TERM (env, i);
       if (QO_TERM_CLASS (term) == QO_TC_SARG)
@@ -6261,7 +6092,7 @@ qo_discover_edges (QO_ENV * env)
    * death for later phases, so we need to discover it now while it's
    * convenient.
    */
-  for (i = 0, n = env->nedges; i < n; ++i)
+  for (i = 0, n = env->nedges; i < n; i++)
     {
       edge = QO_ENV_TERM (env, i);
       QO_ASSERT (env, QO_TERM_HEAD (edge) != NULL);
@@ -6288,7 +6119,6 @@ qo_discover_edges (QO_ENV * env)
       if (pt_expr
 	  && PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_TRANSITIVE))
 	{
-
 	  BITSET_CLEAR (direct_nodes);
 
 	  for (j = 0; j < n; j++)
@@ -6317,6 +6147,8 @@ qo_discover_edges (QO_ENV * env)
 	    {
 	      QO_TERM_CLASS (edge) = QO_TC_DUMMY_JOIN;
 
+	      QO_TERM_CAN_USE_INDEX (edge) = 0;
+
 	      /* keep out from m-join edge */
 	      QO_TERM_CLEAR_FLAG (edge, QO_TERM_MERGEABLE_EDGE);
 	    }
@@ -6324,6 +6156,305 @@ qo_discover_edges (QO_ENV * env)
     }
 
   bitset_delset (&direct_nodes);
+}
+
+/*
+ * qo_classify_outerjoin_terms () -
+ *   return:
+ *   env(in):
+ *
+ * Note:
+ * Term Classify Matric
+ * --+-----+---------------------+----------+---------------+------------------
+ * NO|Major|Minor                |nidx_self |dep_set        | Classify
+ * --+-----+---------------------+----------+---------------+------------------
+ * O1|ON   |TC_sarg(on_conn)     |!Right    |!Outer(ex R_on)|TC_sarg(ow TC_dj) 
+ * O2|ON   |TC_join              |term_tail=|=on_node       |TC_join(ow O3)
+ * O3|ON   |TC_other(n>0,on_conn)|-         |!Outer(ex R_on)|TC_other(ow TC_dj)
+ * O4|ON   |TC_other(n==0)       |-         |-              |TC_dj
+ * W1|WHERE|TC_sarg              |!Left     |!Right         |TC_sarg(ow TC_aj)
+ * W2|WHERE|TC_join              |!Outer    |!Right         |TC_join(ow TC_aj)
+ * W3|WHERE|TC_other(n>0)        |!Outer    |!Right         |TC_other(ow TC_aj)
+ * W4|WHERE|TC_other(n==0)       |-         |-              |TC_aj
+ * --+-----+---------------------+----------+---------------+------------------
+ */
+static void
+qo_classify_outerjoin_terms (QO_ENV * env)
+{
+  bool is_null_padded, found_left, found_right;
+  int n, i, t;
+  BITSET_ITERATOR iter;
+  QO_NODE *node, *on_node;
+  QO_TERM *term;
+  int nidx_self;		/* node index of term */
+  BITSET dep_set, prev_dep_set;
+
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+      QO_ASSERT (env, QO_TERM_LOCATION (term) >= 0);
+
+      if (QO_OUTER_JOIN_TERM (term))
+	{
+	  break;
+	}
+    }
+
+  if (i >= env->nterms)
+    {
+      return;			/* not found outer join term; do nothing */
+    }
+
+  bitset_init (&dep_set, env);
+  bitset_init (&prev_dep_set, env);
+
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+      QO_ASSERT (env, QO_TERM_LOCATION (term) >= 0);
+
+      on_node = QO_ENV_NODE (env, QO_TERM_LOCATION (term));
+      QO_ASSERT (env, on_node != NULL);
+
+      if (QO_ON_COND_TERM (term))
+	{
+	  QO_ASSERT (env, QO_NODE_IDX (on_node) > 0);
+	  QO_ASSERT (env, QO_NODE_LOCATION (on_node) > 0);
+	  QO_ASSERT (env, QO_NODE_PT_JOIN_TYPE (on_node) != PT_JOIN_NONE);
+
+	  /* is explicit join ON cond */
+	  QO_ASSERT (env,
+		     QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
+
+	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
+	    {
+	      continue;		/* is inner join; no need to classify */
+	    }
+
+	  /* is explicit outer-joined ON cond */
+	  QO_ASSERT (env, QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_LEFT_OUTER
+		     || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_RIGHT_OUTER
+		     || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_FULL_OUTER);
+	}
+      else
+	{
+	  QO_ASSERT (env, QO_NODE_IDX (on_node) == 0);
+	  QO_ASSERT (env, QO_NODE_LOCATION (on_node) == 0);
+	  QO_ASSERT (env, QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_NONE);
+	}
+
+      nidx_self = -1;		/* init */
+      for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1;
+	   t = bitset_next_member (&iter))
+	{
+	  node = QO_ENV_NODE (env, t);
+
+	  nidx_self = MAX (nidx_self, QO_NODE_IDX (node));
+	}
+      QO_ASSERT (env, nidx_self < env->nnodes);
+
+      /* nidx_self is -1 iff term nodes is empty */
+
+      /* STEP 1: check nidx_self
+       */
+      if (QO_TERM_CLASS (term) == QO_TC_SARG)
+	{
+	  QO_ASSERT (env, nidx_self >= 0);
+
+	  node = QO_ENV_NODE (env, nidx_self);
+
+	  if (QO_ON_COND_TERM (term))
+	    {
+	      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER
+		  || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER)
+		{
+		  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
+		}
+	    }
+	  else
+	    {
+	      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_LEFT_OUTER
+		  || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER)
+		{
+		  QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
+		}
+	    }
+	}
+      else if (QO_TERM_CLASS (term) == QO_TC_JOIN)
+	{
+	  QO_ASSERT (env, nidx_self >= 0);
+
+	  node = QO_ENV_NODE (env, nidx_self);
+
+	  if (QO_ON_COND_TERM (term))
+	    {
+	      /* is already checked at qo_analyze_term () */
+	      QO_ASSERT (env,
+			 QO_NODE_IDX (QO_TERM_TAIL (term)) ==
+			 QO_NODE_IDX (on_node));
+	      QO_ASSERT (env,
+			 QO_NODE_IDX (QO_TERM_HEAD (term)) <
+			 QO_NODE_IDX (QO_TERM_TAIL (term)));
+	    }
+	  else
+	    {
+	      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_LEFT_OUTER
+		  || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER
+		  || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER)
+		{
+		  QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
+
+		  QO_TERM_JOIN_TYPE (term) = NO_JOIN;
+
+		  /* keep out from m-join edge */
+		  QO_TERM_CLEAR_FLAG (term, QO_TERM_MERGEABLE_EDGE);
+		}
+	    }
+	}
+      else if (QO_TERM_CLASS (term) == QO_TC_OTHER)
+	{
+	  if (nidx_self >= 0)
+	    {
+	      node = QO_ENV_NODE (env, nidx_self);
+
+	      if (QO_ON_COND_TERM (term))
+		{
+		  ;		/* no restriction on nidx_self; go ahead */
+		}
+	      else
+		{
+		  if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_LEFT_OUTER
+		      || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER
+		      || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER)
+		    {
+		      QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
+		    }
+		}
+	    }
+	  else
+	    {
+	      if (QO_ON_COND_TERM (term))
+		{
+		  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
+		}
+	      else
+		{
+		  QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
+		}
+	    }
+	}
+
+      if (!(QO_TERM_CLASS (term) == QO_TC_SARG
+	    || QO_TERM_CLASS (term) == QO_TC_JOIN
+	    || QO_TERM_CLASS (term) == QO_TC_OTHER))
+	{
+	  continue;		/* no need to classify */
+	}
+
+      /* traverse outer-dep nodeset */
+
+      QO_ASSERT (env, nidx_self >= 0);
+
+      is_null_padded = false;	/* init */
+
+      BITSET_CLEAR (dep_set);
+
+      bitset_add (&dep_set, nidx_self);
+
+      do
+	{
+	  bitset_assign (&prev_dep_set, &dep_set);
+
+	  for (n = 0; n < env->nnodes; n++)
+	    {
+	      node = QO_ENV_NODE (env, n);
+
+	      if (bitset_intersects (&dep_set,
+				     &(QO_NODE_OUTER_DEP_SET (node))))
+		{
+		  bitset_add (&dep_set, QO_NODE_IDX (node));
+		}
+	    }
+	}
+      while (!bitset_is_equivalent (&prev_dep_set, &dep_set));
+
+      /* STEP 2: check iff term nodes are connected with ON cond
+       */
+      if (QO_ON_COND_TERM (term))
+	{
+	  if (!BITSET_MEMBER (dep_set, QO_NODE_IDX (on_node)))
+	    {
+	      is_null_padded = true;
+	    }
+	}
+
+      /* STEP 3: check outer-dep nodeset join type
+       */
+      bitset_remove (&dep_set, nidx_self);	/* remove me */
+      if (QO_ON_COND_TERM (term))
+	{
+	  QO_ASSERT (env,
+		     QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
+
+	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_RIGHT_OUTER)
+	    {
+	      bitset_remove (&dep_set, QO_NODE_IDX (on_node));	/* remove ON */
+	    }
+	}
+
+      for (t = bitset_iterate (&dep_set, &iter);
+	   t != -1 && !is_null_padded; t = bitset_next_member (&iter))
+	{
+	  node = QO_ENV_NODE (env, t);
+
+	  if (QO_ON_COND_TERM (term))
+	    {
+	      if (QO_NODE_LOCATION (node) > QO_NODE_LOCATION (on_node))
+		{
+		  continue;	/* out of ON cond scope */
+		}
+
+	      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_LEFT_OUTER)
+		{
+		  is_null_padded = true;
+		}
+	    }
+
+	  if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER
+	      || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER)
+	    {
+	      is_null_padded = true;
+	    }
+	}
+
+      if (!is_null_padded)
+	{
+	  continue;		/* go ahead */
+	}
+
+      /* at here, found non-sargable node in outer-dep nodeset */
+
+      if (QO_ON_COND_TERM (term))
+	{
+	  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
+	}
+      else
+	{
+	  QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
+	}
+
+      if (QO_TERM_CLASS (term) != QO_TC_JOIN)
+	{
+	  QO_TERM_JOIN_TYPE (term) = NO_JOIN;
+
+	  /* keep out from m-join edge */
+	  QO_TERM_CLEAR_FLAG (term, QO_TERM_MERGEABLE_EDGE);
+	}
+
+    }				/* for (i = 0; ...) */
+
+  bitset_delset (&prev_dep_set);
+  bitset_delset (&dep_set);
 }
 
 /*
@@ -8236,6 +8367,12 @@ qo_node_dump (QO_NODE * node, FILE * f)
       bitset_print (&(QO_NODE_SARGS (node)), f);
       fputs (")", f);
     }
+  if (!bitset_is_empty (&(QO_NODE_OUTER_DEP_SET (node))))
+    {
+      fputs (" (outer-dep-set ", f);
+      bitset_print (&(QO_NODE_OUTER_DEP_SET (node)), f);
+      fputs (")", f);
+    }
 }
 
 /*
@@ -9015,7 +9152,7 @@ qo_term_dump (QO_TERM * term, FILE * f)
       fputs (" (right-join)", f);
       break;
 
-    case JOIN_OUTER:
+    case JOIN_OUTER:		/* not used */
       fputs (" (outer-join)", f);
       break;
 

@@ -38,9 +38,6 @@
 #include "query_bitset.h"
 #include "system_parameter.h"
 
-#define IS_DERIVED_TABLE(node) \
-    (QO_NODE_ENTITY_SPEC(node)->info.spec.derived_table)
-
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 
 static XASL_NODE *make_scan_proc (QO_ENV * env);

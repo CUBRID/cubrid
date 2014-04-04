@@ -9543,7 +9543,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_JOIN_RIGHT_OUTER:
       q = pt_append_nulstring (parser, q, " right outer join ");
       break;
-    case PT_JOIN_FULL_OUTER:
+    case PT_JOIN_FULL_OUTER:	/* not used */
       q = pt_append_nulstring (parser, q, " full outer join ");
       break;
       /*case PT_JOIN_UNION: -- does not support */

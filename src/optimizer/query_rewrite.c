@@ -5846,7 +5846,9 @@ qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  for (spec2 = info.start_spec; spec2 != spec; spec2 = spec2->next)
 	    {
 	      if (spec2->info.spec.join_type == PT_JOIN_INNER)
-		spec2->info.spec.join_type = PT_JOIN_NONE;
+		{
+		  spec2->info.spec.join_type = PT_JOIN_NONE;
+		}
 	    }
 
 	  /* reset location of spec list */

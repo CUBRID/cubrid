@@ -949,6 +949,9 @@ struct qo_xasl_index_info
   struct qo_node_index_entry *ni_entry;
 };
 
+#define QO_ON_COND_TERM(term) \
+        (QO_TERM_LOCATION(term) > 0)
+
 #define QO_INNER_JOIN_TERM(term) \
         (QO_TERM_CLASS(term) == QO_TC_JOIN && \
          QO_TERM_JOIN_TYPE(term) == JOIN_INNER)
