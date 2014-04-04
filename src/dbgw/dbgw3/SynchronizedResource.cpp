@@ -39,7 +39,8 @@ namespace dbgw
 
     void registerResource(_SynchronizedResource *pResource)
     {
-      system::_MutexAutoLock lock(&m_mutex);
+      system::_MutexAutoLock resourceLock(&m_resourceMutex);
+      system::_MutexAutoLock idLock(&m_idMutex);
 
       int nId = -1;
       if (m_idList.empty())
@@ -59,7 +60,7 @@ namespace dbgw
 
     void unregisterResource(int nId)
     {
-      system::_MutexAutoLock lock(&m_mutex);
+      system::_MutexAutoLock idLock(&m_idMutex);
 
       m_resourceList[nId] = NULL;
       m_idList.push_back(nId);
@@ -67,7 +68,7 @@ namespace dbgw
 
     void unregisterResourceAll()
     {
-      system::_MutexAutoLock lock(&m_mutex);
+      system::_MutexAutoLock resourceLock(&m_resourceMutex);
 
       for (int i = 0, size = m_resourceList.size(); i < size; i++)
         {
@@ -75,14 +76,18 @@ namespace dbgw
             {
               m_resourceList[i]->unlinkSubject();
               m_resourceList[i] = NULL;
+
+              m_idMutex.lock();
               m_idList.push_back(i);
+              m_idMutex.unlock();
             }
         }
     }
 
   private:
     _SynchronizedResourceSubject *m_pSelf;
-    system::_Mutex m_mutex;
+    system::_Mutex m_idMutex;
+    system::_Mutex m_resourceMutex;
     trait<int>::list m_idList;
     trait<_SynchronizedResource *>::vector m_resourceList;
   };
