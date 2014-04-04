@@ -9439,7 +9439,8 @@ static void
 sysprm_update_flag_different (SYSPRM_PARAM * prm)
 {
 #if defined (CS_MODE)
-  if (!PRM_IS_FOR_QRY_STRING (prm->static_flag))
+  if (!PRM_IS_FOR_QRY_STRING (prm->static_flag)
+      && !PRM_IS_FOR_HA_CONTEXT (prm->static_flag))
     {
       /* nothing to do */
       return;
