@@ -207,7 +207,15 @@ dbgw3_nbase_t_SOURCES = \
         $(DBGW_SQL_DIR)/nbase_t/NBaseTPreparedStatement.cpp \
         $(DBGW_SQL_DIR)/nbase_t/NBaseTExecutor.cpp \
         $(DBGW_SQL_DIR)/nbase_t/NBaseTResultSetMetaData.cpp \
-        $(DBGW_SQL_DIR)/nbase_t/NBaseTResultSet.cpp
+        $(DBGW_SQL_DIR)/nbase_t/NBaseTResultSet.cpp \
+        $(DBGW_SQL_DIR)/cubrid/CUBRIDCallableStatement.cpp \
+        $(DBGW_SQL_DIR)/cubrid/CUBRIDConnection.cpp \
+        $(DBGW_SQL_DIR)/cubrid/CUBRIDException.cpp \
+        $(DBGW_SQL_DIR)/cubrid/CUBRIDPreparedStatement.cpp \
+        $(DBGW_SQL_DIR)/cubrid/CUBRIDResultSet.cpp \
+        $(DBGW_SQL_DIR)/cubrid/CUBRIDResultSetMetaData.cpp \
+        $(DBGW_SQL_DIR)/cubrid/CUBRIDStatementBase.cpp \
+        $(DBGW_SQL_DIR)/cubrid/CUBRIDMock.cpp
 dbgw3_all_SOURCES = \
 				$(dbgw3_base_SOURCES) \
         $(DBGW_SQL_DIR)/oracle/OracleCallableStatement.cpp \

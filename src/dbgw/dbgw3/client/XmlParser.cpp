@@ -1292,7 +1292,8 @@ namespace dbgw
           throw e;
         }
 #elif defined(DBGW_NBASE_T)
-      if (dbType != sql::DBGW_DB_TYPE_NBASE_T)
+      if (dbType != sql::DBGW_DB_TYPE_NBASE_T
+          && dbType != sql::DBGW_DB_TYPE_CUBRID)
         {
           InvalidDbTypeException e(getDbTypeString(dbType));
           DBGW_LOG_ERROR(e.what());
