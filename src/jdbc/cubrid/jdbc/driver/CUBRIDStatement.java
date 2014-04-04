@@ -607,6 +607,10 @@ public class CUBRIDStatement implements Statement {
 	public synchronized ResultSet getGeneratedKeys() throws SQLException {
 		checkIsOpen();
 
+		if (auto_generatedkeys_result_set == null) {
+			auto_generatedkeys_result_set = new CUBRIDResultSet(null);
+		}
+
 		return auto_generatedkeys_result_set;
 	}
 
