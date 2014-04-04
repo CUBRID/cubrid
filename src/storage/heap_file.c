@@ -92,6 +92,7 @@
 static int rv;
 #endif /* not SERVER_MODE */
 
+#define HEAP_BESTSPACE_SYNC_THRESHOLD (0.1f)
 
 /* ATTRIBUTE LOCATION */
 
@@ -164,9 +165,6 @@ typedef enum
   (((i) + 1) % HEAP_NUM_BEST_SPACESTATS)
 #define HEAP_STATS_PREV_BEST_INDEX(i)   \
   (((i) == 0) ? (HEAP_NUM_BEST_SPACESTATS - 1) : ((i) - 1));
-
-#define USE_MEMORY_CACHE 1
-#define DONT_USE_MEMORY_CACHE 2
 
 typedef struct heap_hdr_stats HEAP_HDR_STATS;
 struct heap_hdr_stats
@@ -3548,13 +3546,14 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 
   HEAP_FINDSPACE found;
   int old_wait_msecs;
-  int bestspace_type;
   int notfound_cnt;
   HEAP_STATS_ENTRY *ent;
   HEAP_BESTSPACE best;
   int rc;
   int idx_worstspace;
-  int i;
+  int i, best_array_index = -1;
+  bool hash_is_available;
+  bool best_hint_is_used;
 
   *pgptr = NULL;
 
@@ -3570,23 +3569,18 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
   /* backup previous error */
   er_stack_push ();
 
-  if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
-    {
-      bestspace_type = USE_MEMORY_CACHE;
-    }
-  else
-    {
-      bestspace_type = DONT_USE_MEMORY_CACHE;
-    }
-
   found = HEAP_FINDSPACE_NOTFOUND;
   notfound_cnt = 0;
+  best_array_index = 0;
+  hash_is_available =
+    prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0;
 
   while (found == HEAP_FINDSPACE_NOTFOUND)
     {
       best.freespace = -1;	/* init */
+      best_hint_is_used = false;
 
-      if (bestspace_type == USE_MEMORY_CACHE)
+      if (hash_is_available)
 	{
 	  rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
 
@@ -3622,20 +3616,25 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 
 	  pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
 	}
-      else
+
+      if (best.freespace == -1)
 	{
-	  while (notfound_cnt < HEAP_NUM_BEST_SPACESTATS)
+	  /* Maybe PRM_ID_HF_MAX_BESTSPACE_ENTRIES <= 0
+	   * or There is no best space in heap_Bestspace hashtable.
+	   * We will use bestspace hint in heap_header.
+	   */
+	  while (best_array_index < HEAP_NUM_BEST_SPACESTATS)
 	    {
-	      if (bestspace[notfound_cnt].freespace >= needed_space)
+	      if (bestspace[best_array_index].freespace >= needed_space)
 		{
-		  best.vpid = bestspace[notfound_cnt].vpid;
-		  best.freespace = bestspace[notfound_cnt].freespace;
+		  best.vpid = bestspace[best_array_index].vpid;
+		  best.freespace = bestspace[best_array_index].freespace;
 		  assert (best.freespace > 0
 			  && best.freespace <= PGLENGTH_MAX);
-
+		  best_hint_is_used = true;
 		  break;
 		}
-	      notfound_cnt++;
+	      best_array_index++;
 	    }
 	}
 
@@ -3652,7 +3651,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 	   * Either we timeout and we want to continue in this case, or
 	   * we have another kind of problem.
 	   */
-	  if (bestspace_type == USE_MEMORY_CACHE)
+	  if (best_hint_is_used == false)
 	    {
 	      heap_stats_del_bestspace_by_vpid (thread_p, &best.vpid);
 	    }
@@ -3685,17 +3684,11 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 	      /*
 	       * Something went wrong, we are unable to fetch this page.
 	       */
-	      if (bestspace_type == USE_MEMORY_CACHE)
+	      if (best_hint_is_used == true)
 
 		{
-		  (void) heap_stats_del_bestspace_by_vpid (thread_p,
-							   &best.vpid);
-		}
-	      else
-		{
-		  assert (notfound_cnt < HEAP_NUM_BEST_SPACESTATS);
-
-		  bestspace[notfound_cnt].freespace = 0;
+		  assert (best_array_index < HEAP_NUM_BEST_SPACESTATS);
+		  bestspace[best_array_index].freespace = 0;
 		}
 	      found = HEAP_FINDSPACE_ERROR;
 	      break;
@@ -3716,18 +3709,20 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 	      found = HEAP_FINDSPACE_FOUND;
 	    }
 
-	  /* just refresh the free space of the page */
-	  if (bestspace_type == USE_MEMORY_CACHE)
+	  if (hash_is_available)
 	    {
+	      /* Add or refresh the free space of the page */
 	      (void) heap_stats_add_bestspace (thread_p, hfid, &best.vpid,
 					       best.freespace);
 	    }
-	  else
-	    {
-	      assert (VPID_EQ (&best.vpid, &(bestspace[notfound_cnt].vpid)));
-	      assert (notfound_cnt < HEAP_NUM_BEST_SPACESTATS);
 
-	      bestspace[notfound_cnt].freespace = best.freespace;
+	  if (best_hint_is_used == true)
+	    {
+	      assert (VPID_EQ
+		      (&best.vpid, &(bestspace[best_array_index].vpid)));
+	      assert (best_array_index < HEAP_NUM_BEST_SPACESTATS);
+
+	      bestspace[best_array_index].freespace = best.freespace;
 	    }
 
 	  if (found != HEAP_FINDSPACE_FOUND)
@@ -3735,10 +3730,16 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 	      pgbuf_unfix_and_init (thread_p, *pgptr);
 	    }
 	}
+
+      if (found == HEAP_FINDSPACE_NOTFOUND && best_hint_is_used)
+	{
+	  /* Increment best_array_index for next search */
+	  best_array_index++;
+	}
     }
 
   idx_worstspace = 0;
-  for (i = 1; i < HEAP_NUM_BEST_SPACESTATS; i++)
+  for (i = 0; i < HEAP_NUM_BEST_SPACESTATS; i++)
     {
       /* find worst space in bestspace */
       if (bestspace[idx_worstspace].freespace > bestspace[i].freespace)
@@ -3747,7 +3748,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 	}
 
       /* update bestspace of heap header page if found best page at memory hash table */
-      if (bestspace_type == USE_MEMORY_CACHE && found == HEAP_FINDSPACE_FOUND
+      if (best_hint_is_used == false && found == HEAP_FINDSPACE_FOUND
 	  && VPID_EQ (&best.vpid, &bestspace[i].vpid))
 	{
 	  bestspace[i].freespace = best.freespace;
@@ -3804,6 +3805,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
   int try_find, try_sync;
   int num_pages_found;
   FILE_IS_NEW_FILE is_new_file = FILE_ERROR;
+  float other_high_best_ratio;
 
   /*
    * Try to use the space cache for as much information as possible to avoid
@@ -3888,15 +3890,28 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  break;
 	}
 
+      if (heap_hdr->estimates.num_other_high_best <= 0
+	  || heap_hdr->estimates.num_pages <= 0)
+	{
+	  assert (heap_hdr->estimates.num_pages > 0);
+	  other_high_best_ratio = 0;
+	}
+      else
+	{
+	  other_high_best_ratio =
+	    (float) heap_hdr->estimates.num_other_high_best /
+	    (float) heap_hdr->estimates.num_pages;
+	}
+
       if (try_find >= 2
-	  || (heap_hdr->estimates.num_other_high_best <= 0
-	      && heap_hdr->estimates.num_second_best <= 0))
+	  || other_high_best_ratio < HEAP_BESTSPACE_SYNC_THRESHOLD)
 	{
 	  /* We stop to find free pages if:
 	   * (1) we have tried to do it twice
 	   * (2) it is first trying but we have no hints
 	   * Regarding (2), we will find free pages by heap_stats_sync_bestspace
 	   * only if we know that a free page exists somewhere.
+	   * and (num_other_high_best/total page) > HEAP_BESTSPACE_SYNC_THRESHOLD.
 	   * num_other_high_best means the number of free pages existing somewhere
 	   * in the heap file.
 	   */
