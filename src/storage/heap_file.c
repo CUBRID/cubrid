@@ -14655,9 +14655,7 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p,
 		  goto exit_on_error;
 		}
 	    }
-	  if ((value->state == HEAP_READ_ATTRVALUE ||
-	       value->state == HEAP_WRITTEN_LOB_ATTRVALUE) &&
-	      !db_value_is_null (&value->dbvalue))
+	  if (!db_value_is_null (&value->dbvalue))
 	    {
 	      DB_ELO *elo;
 	      assert (db_value_type (&value->dbvalue) == DB_TYPE_BLOB ||
@@ -14667,10 +14665,7 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p,
 		{
 		  ret = db_elo_delete (elo);
 		}
-	      if (value->state == HEAP_WRITTEN_LOB_ATTRVALUE)
-		{
-		  value->state = HEAP_WRITTEN_ATTRVALUE;
-		}
+	      value->state = HEAP_WRITTEN_ATTRVALUE;
 	    }
 	}
     }
@@ -16094,6 +16089,12 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p,
 		      free_and_init (elo_p->meta_data);
 		      elo_p->meta_data = save_meta_data;
 
+		      /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid
+		       * reenter this branch. In the first pass, this branch
+		       * is entered and elo is copied. When BUFFER_OVERFLOW
+		       * happens, we need avoid to copy elo again. Otherwize
+		       * it will generate 2 copies.
+		       */
 		      value->state = HEAP_WRITTEN_LOB_ATTRVALUE;
 
 		      error = (error >= 0 ? NO_ERROR : error);
@@ -16147,28 +16148,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p,
 
       status = S_DOESNT_FIT;
 
-      if (lob_create_flag == LOB_FLAG_INCLUDE_LOB)
-	{
-	  for (i = 0; i < attr_info->num_values; i++)
-	    {
-	      value = &attr_info->values[i];
-	      if (value->last_attrepr->type == DB_TYPE_BLOB ||
-		  value->last_attrepr->type == DB_TYPE_CLOB)
-		{
-		  break;
-		}
-	    }
-
-	  if (i < attr_info->num_values)
-	    {
-	      if (heap_attrinfo_delete_lob (thread_p, NULL, attr_info) !=
-		  NO_ERROR)
-		{
-		  status = S_ERROR;
-		  break;
-		}
-	    }
-	}
 
       /*
        * Give a hint of the needed space. The hint is given as a negative
