@@ -1631,7 +1631,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #endif
   T_SERVER_FUNC server_fn;
   FN_RETURN fn_ret = FN_KEEP_CONN;
-  bool retry_by_driver = false;
 
   error_info_clear ();
   init_msg_header (&client_msg_header);
@@ -1992,8 +1991,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (fn_ret == FN_KEEP_CONN && net_buf->err_code == 0
       && as_info->con_status == CON_STATUS_IN_TRAN
       && req_info->need_auto_commit != TRAN_NOT_AUTOCOMMIT
-      && err_info.err_number != CAS_ER_STMT_POOLING
-      && retry_by_driver == false)
+      && err_info.err_number != CAS_ER_STMT_POOLING)
     {
       /* no communication error and auto commit is needed */
       err_code = ux_auto_commit (net_buf, req_info);
@@ -2073,9 +2071,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if (cas_send_result_flag && net_buf->data != NULL)
     {
-      cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &=
-	~CAS_INFO_FLAG_MASK_NEW_SESSION_ID;
-
 #ifndef LIBCAS_FOR_JSP
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &=
 	~CAS_INFO_FLAG_MASK_AUTOCOMMIT;
@@ -2087,21 +2082,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &=
 	    ~CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN;
 	}
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-      else if (retry_by_driver == true)
-	{
-	  char sessid[DRIVER_SESSION_SIZE];
-
-	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |=
-	    CAS_INFO_FLAG_MASK_NEW_SESSION_ID;
-
-	  cas_make_session_for_driver (sessid);
-	  net_buf_cp_str (net_buf, sessid, DRIVER_SESSION_SIZE);
-
-	  as_info->con_status = CON_STATUS_OUT_TRAN;
-	  cas_msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
-	}
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas<->jdbc info */
       cas_msg_header.info_ptr[CAS_INFO_RESERVED_1] = func_code - 1;
       cas_msg_header.info_ptr[CAS_INFO_RESERVED_2] =

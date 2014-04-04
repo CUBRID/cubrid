@@ -649,12 +649,16 @@ cas_end_session (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
+
 
       error = qe_end_session (con_handle, err_buf);
     }
@@ -926,11 +930,15 @@ cci_prepare (int mapped_conn_id, char *sql_stmt, char flag,
   while ((IS_OUT_TRAN (con_handle) || is_first_prepare_in_tran)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, req_handle, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error =
+	    reset_connect (con_handle, req_handle, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_prepare (req_handle, con_handle, sql_stmt, flag,
@@ -1376,11 +1384,15 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
   while ((IS_OUT_TRAN (con_handle) || is_first_exec_in_tran)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, req_handle, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error =
+	    reset_connect (con_handle, req_handle, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_prepare (req_handle, con_handle, req_handle->sql_text,
@@ -1536,11 +1548,15 @@ cci_prepare_and_execute (int mapped_conn_id, char *sql_stmt,
   while ((IS_OUT_TRAN (con_handle) || is_first_prepare_in_tran)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, req_handle, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error =
+	    reset_connect (con_handle, req_handle, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_prepare_and_execute (req_handle, con_handle,
@@ -1725,11 +1741,15 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
   while ((IS_OUT_TRAN (con_handle) || is_first_exec_in_tran)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, req_handle, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, req_handle,
+				 &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_prepare (req_handle, con_handle, req_handle->sql_text,
@@ -1812,11 +1832,14 @@ cci_get_db_parameter (int mapped_conn_id, T_CCI_DB_PARAM param_name,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_get_db_parameter (con_handle, param_name, value,
@@ -1874,11 +1897,15 @@ cci_escape_string (int mapped_conn_id, char *to, const char *from,
       while (IS_OUT_TRAN (con_handle)
 	     && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
 	{
-	  /* Finally, reset_connect will return ER_TIMEOUT */
-	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-	  if (error != CCI_ER_NO_ERROR)
+	  if (!hm_broker_reconnect_when_server_down (con_handle))
 	    {
-	      break;
+	      /* Finally, reset_connect will return ER_TIMEOUT */
+	      error = reset_connect (con_handle, NULL,
+				     &(con_handle->err_buf));
+	      if (error != CCI_ER_NO_ERROR)
+		{
+		  break;
+		}
 	    }
 
 	  error = qe_get_db_parameter (con_handle,
@@ -2006,11 +2033,14 @@ cci_set_db_parameter (int mapped_conn_id, T_CCI_DB_PARAM param_name,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_set_db_parameter (con_handle, param_name, value,
@@ -2116,11 +2146,14 @@ cci_set_cas_change_mode (int mapped_conn_id, int driver_mode,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (cas_mode, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      cas_mode = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (cas_mode != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  cas_mode = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (cas_mode != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       cas_mode = qe_set_cas_change_mode (con_handle, cas_mode,
@@ -2431,11 +2464,14 @@ cci_schema_info_internal (int mapped_conn_id, T_CCI_SCH_TYPE type, char *arg1,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_schema_info (req_handle, con_handle, (int) type, arg1, arg2,
@@ -2576,11 +2612,14 @@ cci_oid_get (int mapped_conn_id, char *oid_str, char **attr_name,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_oid_get (req_handle, con_handle, oid_str, attr_name,
@@ -2639,11 +2678,14 @@ cci_oid_put (int mapped_conn_id, char *oid_str, char **attr_name,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_oid_put (con_handle, oid_str, attr_name, new_val,
@@ -2689,11 +2731,14 @@ cci_oid_put2 (int mapped_conn_id, char *oid_str, char **attr_name,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_oid_put2 (con_handle, oid_str, attr_name, new_val, a_type,
@@ -2846,11 +2891,14 @@ cci_get_db_version (int mapped_conn_id, char *out_buf, int buf_size)
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_get_db_version (con_handle, out_buf, buf_size);
@@ -2895,11 +2943,14 @@ cci_get_class_num_objs (int mapped_conn_id, char *class_name, int flag,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_get_class_num_objs (con_handle, class_name, (char) flag,
@@ -2941,11 +2992,14 @@ cci_oid (int mapped_conn_id, T_CCI_OID_CMD cmd, char *oid_str,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_oid_cmd (con_handle, (char) cmd, oid_str, NULL, 0,
@@ -2985,11 +3039,14 @@ cci_oid_get_class_name (int mapped_conn_id, char *oid_str, char *out_buf,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_oid_cmd (con_handle, (char) CCI_OID_CLASS_NAME, oid_str,
@@ -3037,11 +3094,14 @@ cci_col_get (int mapped_conn_id, char *oid_str, char *col_attr, int *col_size,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_col_get (req_handle, con_handle, oid_str, col_attr, col_size,
@@ -3092,11 +3152,14 @@ cci_col_size (int mapped_conn_id, char *oid_str, char *col_attr,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_col_size (con_handle, oid_str, col_attr, col_size,
@@ -3277,11 +3340,14 @@ cci_execute_batch (int mapped_conn_id, int num_query, char **sql_stmt,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_execute_batch (con_handle, num_query, sql_stmt, qr,
@@ -3554,11 +3620,14 @@ cci_get_attr_type_str (int mapped_conn_id, char *class_name, char *attr_name,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_get_attr_type_str (con_handle, class_name, attr_name, buf,
@@ -3663,11 +3732,14 @@ cci_savepoint (int mapped_conn_id, T_CCI_SAVEPOINT_CMD cmd,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_savepoint_cmd (con_handle, (char) cmd, savepoint_name,
@@ -3813,11 +3885,14 @@ cci_lob_new (int mapped_conn_id, void *lob, T_CCI_U_TYPE type,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_lob_new (con_handle, &lob_handle, type,
@@ -4161,11 +4236,14 @@ cci_xa_prepare (int mapped_conn_id, XID * xid, T_CCI_ERROR * err_buf)
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_xa_prepare (con_handle, xid, &(con_handle->err_buf));
@@ -4201,11 +4279,14 @@ cci_xa_recover (int mapped_conn_id, XID * xid, int num_xid,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_xa_recover (con_handle, xid, num_xid,
@@ -4242,11 +4323,14 @@ cci_xa_end_tran (int mapped_conn_id, XID * xid, char type,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_xa_end_tran (con_handle, xid, type, &(con_handle->err_buf));
@@ -4343,11 +4427,14 @@ cci_row_count (int mapped_conn_id, int *row_count, T_CCI_ERROR * err_buf)
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_get_row_count (req_handle, con_handle, row_count,
@@ -4502,11 +4589,14 @@ cci_get_last_insert_id (int mapped_conn_id, void *value,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_get_last_insert_id (req_handle, con_handle, value,
@@ -4873,11 +4963,14 @@ col_set_add_drop (int resolved_id, char col_cmd, char *oid_str,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_col_set_add_drop (con_handle, col_cmd, oid_str, col_attr,
@@ -4912,11 +5005,14 @@ col_seq_op (int resolved_id, char col_cmd, char *oid_str, char *col_attr,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_col_seq_op (con_handle, col_cmd, oid_str, col_attr, index,
@@ -6537,11 +6633,14 @@ cci_get_shard_info (int mapped_conn_id, T_CCI_SHARD_INFO ** shard_info,
   while (IS_OUT_TRAN (con_handle)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
-      /* Finally, reset_connect will return ER_TIMEOUT */
-      error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-      if (error != CCI_ER_NO_ERROR)
+      if (!hm_broker_reconnect_when_server_down (con_handle))
 	{
-	  break;
+	  /* Finally, reset_connect will return ER_TIMEOUT */
+	  error = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (error != CCI_ER_NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       error = qe_get_shard_info (con_handle, shard_info,

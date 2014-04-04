@@ -367,6 +367,11 @@ init_msg_header (MSG_HEADER * header)
   header->info_ptr[CAS_INFO_RESERVED_1] = CAS_INFO_RESERVED_DEFAULT;
   header->info_ptr[CAS_INFO_RESERVED_2] = CAS_INFO_RESERVED_DEFAULT;
   header->info_ptr[CAS_INFO_ADDITIONAL_FLAG] = CAS_INFO_RESERVED_DEFAULT;
+
+  /* BROKER_RECONNECT_DOWN_SERVER does not supported.
+   * so CAS_INFO_FLAG_MASK_NEW_SESSION_ID flag must be disabled. */
+  header->info_ptr[CAS_INFO_ADDITIONAL_FLAG]
+    &= ~CAS_INFO_FLAG_MASK_NEW_SESSION_ID;
 }
 
 

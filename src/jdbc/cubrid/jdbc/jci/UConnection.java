@@ -1014,7 +1014,10 @@ public class UConnection {
 
 	// second loop
 	while (isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
-	    clientSocketClose();
+	    if (!brokerInfoReconnectWhenServerDown()) { 
+		clientSocketClose();
+	    }
+
 	    try {
 		errorHandler.clear();
 		checkReconnect();
@@ -1308,6 +1311,14 @@ public class UConnection {
 			
 	    return (broker_info[BROKER_INFO_FUNCTION_FLAG] & CAS_SUPPORT_HOLDABLE_RESULT)
 	    	== CAS_SUPPORT_HOLDABLE_RESULT;
+	}
+
+	public boolean brokerInfoReconnectWhenServerDown() {
+		if (broker_info == null)
+			return false;
+			
+	    return (broker_info[BROKER_INFO_FUNCTION_FLAG] & CAS_RECONNECT_WHEN_SERVER_DOWN)
+	    	== CAS_RECONNECT_WHEN_SERVER_DOWN;
 	}
 
 	public boolean supportHoldableResult() {
@@ -2233,9 +2244,10 @@ public class UConnection {
     }
 
     public boolean isRenewedSessionId() {
-	return (casinfo[CAS_INFO_ADDITIONAL_FLAG] 
-	            & CAS_INFO_FLAG_MASK_NEW_SESSION_ID) 
-	                == CAS_INFO_FLAG_MASK_NEW_SESSION_ID;
+	return (brokerInfoReconnectWhenServerDown()
+		  && ((casinfo[CAS_INFO_ADDITIONAL_FLAG] 
+	             & CAS_INFO_FLAG_MASK_NEW_SESSION_ID) 
+	                == CAS_INFO_FLAG_MASK_NEW_SESSION_ID));
     }
 
     public void setNewSessionId(byte[] newSessionId) {

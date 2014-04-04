@@ -854,7 +854,10 @@ public class UStatement {
 
 		if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
 			if (!relatedConnection.isActive() || isFirstExecInTran) {
-				relatedConnection.clientSocketClose();
+				if (!relatedConnection.brokerInfoReconnectWhenServerDown()) {
+					relatedConnection.clientSocketClose();
+				}
+
 				try {
 					reset();
 					executeInternal(maxRow, maxField, isScrollable,
@@ -1034,7 +1037,10 @@ public class UStatement {
 
 		if (relatedConnection.isErrorToReconnect(errorHandler.getJdbcErrorCode())) {
 			if (!relatedConnection.isActive() || isFirstExecInTran) {
-				relatedConnection.clientSocketClose();
+				if (!relatedConnection.brokerInfoReconnectWhenServerDown()) {
+					relatedConnection.clientSocketClose();
+				}
+
 				try {
 					reset();
 					batchResult = executeBatchInternal(queryTimeout);

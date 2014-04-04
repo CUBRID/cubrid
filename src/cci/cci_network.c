@@ -783,8 +783,9 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 		(CAS_PROTOCOL_ERR_INDICATOR_SIZE +
 		 CAS_PROTOCOL_ERR_CODE_SIZE);
 
-	      if (con_handle->cas_info[CAS_INFO_ADDITIONAL_FLAG]
-		  & CAS_INFO_FLAG_MASK_NEW_SESSION_ID)
+	      if (hm_broker_reconnect_when_server_down (con_handle)
+		  && (con_handle->cas_info[CAS_INFO_ADDITIONAL_FLAG]
+		      & CAS_INFO_FLAG_MASK_NEW_SESSION_ID))
 		{
 		  char *p;
 
