@@ -12275,7 +12275,6 @@ locator_prefetch_unique_index_page_internal (THREAD_ENTRY * thread_p,
 					     ATTR_ID * attr_ids)
 {
   int error = NO_ERROR;
-  int index_id;
   int i, j;
   HEAP_SCANCACHE *scan_cache = NULL;
   BTREE_CHECKSCAN bt_checkscan, *bt_checkscan_p = NULL;
@@ -12353,7 +12352,7 @@ locator_prefetch_unique_index_page_internal (THREAD_ENTRY * thread_p,
       if ((heap_attrinfo_read_dbvalues_without_oid (thread_p, recdes,
 						    attr_info) != NO_ERROR) ||
 	  (key =
-	   heap_attrvalue_get_key (thread_p, index_id, attr_info, recdes,
+	   heap_attrvalue_get_key (thread_p, btid_index, attr_info, recdes,
 				   btid, &dbvalue, aligned_buf,
 				   NULL)) == NULL)
 	{
@@ -12420,7 +12419,6 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
   HEAP_SCANCACHE scan_cache, *scan_cache_p = NULL;
   BTREE_CHECKSCAN bt_checkscan, *bt_checkscan_p = NULL;
   HFID hfid;
-  int index_id;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   OR_INDEX *index = NULL;
   DB_VALUE dbvalue;
@@ -12461,8 +12459,8 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
   if ((heap_attrinfo_read_dbvalues_without_oid
        (thread_p, recdes, attr_info) != NO_ERROR)
       || (key =
-	  heap_attrvalue_get_key (thread_p, index_id, attr_info, recdes, btid,
-				  &dbvalue, aligned_buf, NULL)) == NULL)
+	  heap_attrvalue_get_key (thread_p, btid_index, attr_info, recdes,
+				  btid, &dbvalue, aligned_buf, NULL)) == NULL)
     {
       error = ER_FAILED;
       goto free_and_return;
