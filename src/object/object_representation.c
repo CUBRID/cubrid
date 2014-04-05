@@ -2923,7 +2923,7 @@ char *
 or_pack_recdes (char *buf, RECDES * recdes)
 {
   buf = or_pack_int (buf, recdes->length);
-  buf = or_pack_int (buf, recdes->type);
+  buf = or_pack_short (buf, recdes->type);
   buf = or_pack_stream (buf, recdes->data, recdes->length);
   return buf;
 }
@@ -6450,7 +6450,7 @@ or_unpack_recdes (char *buf, RECDES ** recdes)
   tmp_recdes->length = length;
   tmp_recdes->data = ((char *) tmp_recdes) + sizeof (RECDES);
 
-  buf = or_unpack_int (buf, &tmp_recdes->type);
+  buf = or_unpack_short (buf, &tmp_recdes->type);
   buf = or_unpack_stream (buf, tmp_recdes->data, length);
 
   *recdes = tmp_recdes;
