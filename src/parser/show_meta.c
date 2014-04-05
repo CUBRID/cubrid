@@ -274,7 +274,7 @@ metadata_of_access_status (void)
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
-    {1, PT_ASC}
+    {1, ORDER_ASC}
   };
 
   static SHOWSTMT_METADATA md = {
