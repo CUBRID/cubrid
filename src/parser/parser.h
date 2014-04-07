@@ -238,8 +238,7 @@ extern "C"
 					    int server_op);
 
   extern PT_NODE *pt_class_pre_fetch (PARSER_CONTEXT * parser,
-				      PT_NODE * statement,
-				      LC_LOCKHINT ** lockhint);
+				      PT_NODE * statement);
 
   extern PT_NODE *pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
 					   const char *trigger_stmt,

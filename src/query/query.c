@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
+ *   the Free Software Foundation; either version 2 of the License, or 
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -110,8 +110,7 @@ int
 execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 	       int var_cnt, const DB_VALUE * varptr,
 	       QFILE_LIST_ID ** list_idp, QUERY_FLAG flag,
-	       CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time,
-	       LC_LOCKHINT * lockhint)
+	       CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time)
 {
   int query_timeout;
   int ret = NO_ERROR;
@@ -128,7 +127,7 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   /* send XASL file id and host variables to the server and get QFILE_LIST_ID */
   *list_idp = qmgr_execute_query (xasl_id, query_idp, var_cnt, varptr, flag,
 				  clt_cache_time, srv_cache_time,
-				  query_timeout, lockhint);
+				  query_timeout);
 
   if (*list_idp == NULL)
     {

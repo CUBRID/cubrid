@@ -5628,7 +5628,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
       /* remove XASL cache entries which is relevant with that class */
       if (!OID_IS_ROOTOID (oid)
 	  && prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
-	  && qexec_remove_xasl_cache_ent_by_class (thread_p, oid) != NO_ERROR)
+	  && qexec_remove_xasl_cache_ent_by_class (thread_p, oid,
+						   1) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"locator_update_force:"
@@ -6122,7 +6123,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
       /* remove XASL cache entries which is relevant with that class */
       if (!OID_IS_ROOTOID (oid)
 	  && prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
-	  && qexec_remove_xasl_cache_ent_by_class (thread_p, oid) != NO_ERROR)
+	  && qexec_remove_xasl_cache_ent_by_class (thread_p, oid,
+						   1) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"locator_delete_force:"

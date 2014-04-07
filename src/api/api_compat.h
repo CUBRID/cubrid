@@ -39,8 +39,6 @@ struct db_session
   /* type_list[stmt_ndx] is itself an array.  */
   PT_NODE **statements;		/* statements to be processed in this session */
 
-  LC_LOCKHINT **lock_hint_classes;
-
   bool is_subsession_for_prepared;	/* whether this session is created for
 					   running a prepared statement, as a
 					   sub-session of a "true" client session */

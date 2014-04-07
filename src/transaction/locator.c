@@ -416,7 +416,7 @@ locator_allocate_copyarea (DKNPAGES npages)
 #endif
 
 /*
- * locator_allocate_copy_area_by_length: Allocate a copy area for
+ * locator_allocate_copy_area_by_length: Allocate a copy area for 
  *                              fetching and flushing purposes.
  *
  * return: LC_COPYAREA *
@@ -1749,33 +1749,23 @@ LC_LOCKHINT *
 locator_reallocate_lockhint (LC_LOCKHINT * lockhint, int max_classes)
 {
   int length;
-  LC_LOCKHINT *ret_lockhint;
 
-  if (lockhint->max_classes < max_classes)
+  length = sizeof (*lockhint) + (max_classes * sizeof (*(lockhint->classes)));
+
+  if (lockhint->length < length)
     {
-      ret_lockhint =
-	(LC_LOCKHINT *) locator_allocate_lockhint (max_classes, true);
-      if (ret_lockhint == NULL)
+      lockhint = (LC_LOCKHINT *) realloc (lockhint, length);
+      if (lockhint == NULL)
 	{
-	  length = sizeof (LC_LOCKHINT)
-	    + (max_classes * sizeof (LC_LOCKHINT_CLASS));
-
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
 	  return NULL;
 	}
 
-      ret_lockhint->num_classes = lockhint->num_classes;
-      ret_lockhint->num_classes_processed = lockhint->num_classes_processed;
-      ret_lockhint->quit_on_errors = lockhint->quit_on_errors;
-      ret_lockhint->packed = NULL;
-      ret_lockhint->packed_size = 0;
-      memcpy (ret_lockhint->classes, lockhint->classes,
-	      lockhint->num_classes * sizeof (LC_LOCKHINT_CLASS));
-
-      locator_free_lockhint (lockhint);
-
-      return ret_lockhint;
+      /* Reset to new areas */
+      lockhint->mem = (char *) lockhint;
+      lockhint->length = length;
+      lockhint->max_classes = max_classes;
+      lockhint->classes = ((struct lc_lockhint_class *)
+			   (lockhint->mem + sizeof (*lockhint)));
     }
 
   return lockhint;

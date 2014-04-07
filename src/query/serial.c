@@ -1369,7 +1369,7 @@ xserial_decache (THREAD_ENTRY * thread_p, OID * oidp)
 #endif /* SERVER_MODE */
 
   if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
-      && qexec_remove_xasl_cache_ent_by_class (thread_p, oidp) != NO_ERROR)
+      && qexec_remove_xasl_cache_ent_by_class (thread_p, oidp, 0) != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "xserial_decache:"

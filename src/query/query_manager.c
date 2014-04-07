@@ -1821,8 +1821,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 		     QUERY_FLAG * flag_p,
 		     CACHE_TIME * client_cache_time_p,
 		     CACHE_TIME * server_cache_time_p,
-		     int query_timeout, XASL_CACHE_ENTRY ** ret_cache_entry_p,
-		     LC_LOCKHINT * lockhint)
+		     int query_timeout, XASL_CACHE_ENTRY ** ret_cache_entry_p)
 {
   XASL_CACHE_ENTRY *xasl_cache_entry_p;
   QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
@@ -1839,7 +1838,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   int tran_index = -1;
   QMGR_TRAN_ENTRY *tran_entry_p;
   QFILE_LIST_ID *list_id_p, *tmp_list_id_p;
-  XASL_CACHE_CLONE *cache_clone_p = NULL;
+  XASL_CACHE_CLONE *cache_clone_p;
   bool cached_result;
   bool saved_is_stats_on;
   bool xasl_trace;
@@ -1891,16 +1890,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
       session_set_trigger_state (thread_p, true);
     }
 
-  if (lockhint)
-    {
-      if (lock_classes_lock_hint (thread_p, lockhint) != LK_GRANTED)
-	{
-	  goto exit_on_error;
-	}
-    }
-
   /* Check the existance of the given XASL. If someone marked it
      to be deleted, then remove it if possible. */
+  cache_clone_p = NULL;		/* mark as pop */
   xasl_cache_entry_p = qexec_check_xasl_cache_ent_by_xasl (thread_p,
 							   xasl_id_p,
 							   dbval_count,
@@ -2303,10 +2295,7 @@ end:
     }
 
 #if defined (SERVER_MODE)
-  if (tran_index >= 0)
-    {
-      qmgr_reset_query_exec_info (tran_index);
-    }
+  qmgr_reset_query_exec_info (tran_index);
 #endif
 
   return list_id_p;

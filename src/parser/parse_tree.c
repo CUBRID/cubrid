@@ -1143,7 +1143,6 @@ parser_create_parser (void)
   parser->is_holdable = 0;
   parser->auto_param_count = 0;
   parser->ddl_stmt_for_replication = NULL;
-  parser->lockhint = NULL;
   parser->return_generated_keys = 0;
 
   return parser;

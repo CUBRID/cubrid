@@ -53,9 +53,6 @@
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #include "thread.h"
-#if !defined(NDEBUG)
-#include "transform.h"
-#endif
 #endif /* SERVER_MODE */
 
 #include "query_manager.h"
@@ -352,6 +349,7 @@ typedef struct xasl_cache_ent_mark_deleted_list XASL_CACHE_MARK_DELETED_LIST;
 struct xasl_cache_ent_mark_deleted_list
 {
   XASL_CACHE_ENTRY *entry;
+  bool removed_from_hash;
   XASL_CACHE_MARK_DELETED_LIST *next;
 };
 
@@ -1257,9 +1255,11 @@ static void qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p,
 static int qexec_remove_mark_deleted_xasl_entries (THREAD_ENTRY * thread_p,
 						   int remove_count);
 static int qexec_free_mark_deleted_xasl_entry (THREAD_ENTRY * thread_p,
-					       XASL_CACHE_ENTRY * ent);
+					       XASL_CACHE_ENTRY * ent,
+					       bool removed_from_hash);
 static int qexec_mark_delete_xasl_entry (THREAD_ENTRY * thread_p,
-					 XASL_CACHE_ENTRY * ent);
+					 XASL_CACHE_ENTRY * ent,
+					 bool removed_from_hash);
 #endif /* SERVER_MODE */
 
 static int qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p,
@@ -16982,11 +16982,11 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
  * qexec_remove_xasl_cache_ent_by_class () - Remove the XASL cache entries by
  *                                        class/serial OID
  *   return: NO_ERROR, or ER_code
- *   oid(in) :
+ *   class_oid(in)      :
  */
 int
 qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p,
-				      const OID * oid)
+				      const OID * class_oid, int force_remove)
 {
   XASL_CACHE_ENTRY *ent;
   void *last;
@@ -17008,34 +17008,15 @@ qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p,
   do
     {
       /* look up the hash table with the key */
-      ent = (XASL_CACHE_ENTRY *) mht_get2 (xasl_ent_cache.oid_ht, oid, &last);
+      ent = (XASL_CACHE_ENTRY *) mht_get2 (xasl_ent_cache.oid_ht, class_oid,
+					   &last);
       if (ent)
 	{
-#if !defined (NDEBUG) && defined (SERVER_MODE)
-	  LC_FIND_CLASSNAME status;
-	  OID db_serial_class_oid, class_oid;
-#endif
-
 	  /* remove my transaction id from the entry and do compaction */
 	  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false);
 
-#if !defined (NDEBUG) && defined (SERVER_MODE)
-	  /* If oid is not a serial oid, it's a class oid.
-	   * In this case ent->num_fixed_tran should be 0.
-	   */
-	  status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME,
-					    &db_serial_class_oid, NULL_LOCK);
-
-	  if (status == LC_CLASSNAME_EXIST
-	      && (heap_get_class_oid (thread_p, &class_oid, oid) != NULL)
-	      && !OID_EQ (&class_oid, &db_serial_class_oid))
-	    {
-	      /* This oid is not a serial oid */
-	      assert (ent->num_fixed_tran == 0);
-	    }
-#endif
-
-	  if (qexec_delete_xasl_cache_ent (thread_p, ent, NULL) == NO_ERROR)
+	  if (qexec_delete_xasl_cache_ent (thread_p, ent, &force_remove) ==
+	      NO_ERROR)
 	    {
 	      last = NULL;	/* for mht_get2() */
 	    }
@@ -17138,6 +17119,12 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
   int rc;
   const OID *o;
   int i;
+  int force_delete = 0;
+
+  if (args)
+    {
+      force_delete = *((int *) args);
+    }
 
   if (!ent)
     {
@@ -17151,7 +17138,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
     }
 
 #if defined(SERVER_MODE)
-  if (ent->num_fixed_tran == 0)
+  if (ent->num_fixed_tran == 0 || force_delete)
 #endif /* SERVER_MODE */
     {
       /* remove the entry from query string hash table */
@@ -17212,6 +17199,16 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 	  (void) qfile_clear_list_cache (thread_p, ent->list_ht_no, true);
 	}
 
+#if defined (SERVER_MODE)
+      if (force_delete && ent->num_fixed_tran > 0)
+	{
+	  /* This entry is not removed now, just added to mark deleted list.
+	   * Entries in mark deleted list will be removed later.
+	   */
+	  rc = qexec_mark_delete_xasl_entry (thread_p, ent, true);
+	  return rc;
+	}
+#endif
       rc = qexec_free_xasl_cache_ent (thread_p, ent, NULL);
       xasl_ent_cache.num--;	/* counter */
     }
@@ -17234,7 +17231,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 
       if (rc == NO_ERROR)
 	{
-	  rc = qexec_mark_delete_xasl_entry (thread_p, ent);
+	  rc = qexec_mark_delete_xasl_entry (thread_p, ent, false);
 	}
     }
 #endif
@@ -17287,7 +17284,9 @@ qexec_remove_mark_deleted_xasl_entries (THREAD_ENTRY * thread_p,
 	      xasl_ent_cache.mark_deleted_list_tail = prev;
 	    }
 
-	  (void) qexec_free_mark_deleted_xasl_entry (thread_p, cache_ent);
+	  (void) qexec_free_mark_deleted_xasl_entry (thread_p, cache_ent,
+						     current->
+						     removed_from_hash);
 	  free_and_init (current);
 	  i++;
 	}
@@ -17328,9 +17327,11 @@ qexec_remove_mark_deleted_xasl_entries (THREAD_ENTRY * thread_p,
  *
  *   return:
  *   ent (in) :
+ *   removed_from_hash (in) :
  */
 static int
-qexec_mark_delete_xasl_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
+qexec_mark_delete_xasl_entry (THREAD_ENTRY * thread_p,
+			      XASL_CACHE_ENTRY * ent, bool removed_from_hash)
 {
   XASL_CACHE_MARK_DELETED_LIST *deleted_entry;
 
@@ -17370,6 +17371,7 @@ qexec_mark_delete_xasl_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 
   deleted_entry->entry = ent;
   deleted_entry->next = NULL;
+  deleted_entry->removed_from_hash = removed_from_hash;
 
   if (xasl_ent_cache.mark_deleted_list_tail == NULL)
     {
@@ -17394,7 +17396,8 @@ qexec_mark_delete_xasl_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
  */
 static int
 qexec_free_mark_deleted_xasl_entry (THREAD_ENTRY * thread_p,
-				    XASL_CACHE_ENTRY * ent)
+				    XASL_CACHE_ENTRY * ent,
+				    bool removed_from_hash)
 {
   int i;
   const OID *o;
@@ -17409,47 +17412,53 @@ qexec_free_mark_deleted_xasl_entry (THREAD_ENTRY * thread_p,
   assert_release (ent->num_fixed_tran == 0);
   assert_release (ent->deletion_marker);
 
-  /* We should remove this entry from the xasl_id ht & class oid ht */
-  if (mht_rem2 (xasl_ent_cache.xid_ht, &ent->xasl_id, ent,
-		NULL, NULL) != NO_ERROR)
+  if (removed_from_hash == false)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "qexec_delete_xasl_cache_ent: mht_rem failed for"
-		    " xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n",
-		    ent->xasl_id.first_vpid.pageid,
-		    ent->xasl_id.first_vpid.volid,
-		    ent->xasl_id.temp_vfid.fileid,
-		    ent->xasl_id.temp_vfid.volid);
-    }
-  mnt_pc_xasl_id_hash_entries (thread_p, mht_count (xasl_ent_cache.xid_ht));
-
-  for (i = 0, o = ent->class_oid_list; i < ent->n_oid_list; i++, o++)
-    {
-      if (mht_rem2 (xasl_ent_cache.oid_ht, o, ent, NULL, NULL) != NO_ERROR)
+      /* We should remove this entry from the xasl_id ht & class oid ht */
+      if (mht_rem2 (xasl_ent_cache.xid_ht, &ent->xasl_id, ent,
+		    NULL, NULL) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"qexec_delete_xasl_cache_ent: mht_rem failed for"
-			" class_oid { %d %d %d }\n",
-			ent->class_oid_list[i].pageid,
-			ent->class_oid_list[i].slotid,
-			ent->class_oid_list[i].volid);
+			" xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n",
+			ent->xasl_id.first_vpid.pageid,
+			ent->xasl_id.first_vpid.volid,
+			ent->xasl_id.temp_vfid.fileid,
+			ent->xasl_id.temp_vfid.volid);
 	}
-    }
-  mnt_pc_class_oid_hash_entries (thread_p, mht_count (xasl_ent_cache.oid_ht));
+      mnt_pc_xasl_id_hash_entries (thread_p,
+				   mht_count (xasl_ent_cache.xid_ht));
 
-  /* destroy the temp file of XASL_ID */
-  if (file_destroy (thread_p, &(ent->xasl_id.temp_vfid)) != NO_ERROR)
-    {
-      er_log_debug (ARG_FILE_LINE,
-		    "qexec_delete_xasl_cache_ent: fl_destroy failed for vfid { %d %d }\n",
-		    ent->xasl_id.temp_vfid.fileid,
-		    ent->xasl_id.temp_vfid.volid);
-    }
+      for (i = 0, o = ent->class_oid_list; i < ent->n_oid_list; i++, o++)
+	{
+	  if (mht_rem2 (xasl_ent_cache.oid_ht, o, ent, NULL, NULL) !=
+	      NO_ERROR)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "qexec_delete_xasl_cache_ent: mht_rem failed for"
+			    " class_oid { %d %d %d }\n",
+			    ent->class_oid_list[i].pageid,
+			    ent->class_oid_list[i].slotid,
+			    ent->class_oid_list[i].volid);
+	    }
+	}
+      mnt_pc_class_oid_hash_entries (thread_p,
+				     mht_count (xasl_ent_cache.oid_ht));
 
-  /* clear out list cache */
-  if (ent->list_ht_no >= 0)
-    {
-      (void) qfile_clear_list_cache (thread_p, ent->list_ht_no, true);
+      /* destroy the temp file of XASL_ID */
+      if (file_destroy (thread_p, &(ent->xasl_id.temp_vfid)) != NO_ERROR)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"qexec_delete_xasl_cache_ent: fl_destroy failed for vfid { %d %d }\n",
+			ent->xasl_id.temp_vfid.fileid,
+			ent->xasl_id.temp_vfid.volid);
+	}
+
+      /* clear out list cache */
+      if (ent->list_ht_no >= 0)
+	{
+	  (void) qfile_clear_list_cache (thread_p, ent->list_ht_no, true);
+	}
     }
 
   (void) qexec_free_xasl_cache_ent (thread_p, ent, NULL);
