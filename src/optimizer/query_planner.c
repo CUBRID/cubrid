@@ -6890,6 +6890,7 @@ planner_visit_node (QO_PLANNER * planner,
   QO_INFO *tail_info = (QO_INFO *) NULL;
   QO_INFO *new_info = (QO_INFO *) NULL;
   int i, j;
+  bool check_afj_terms = false;
   BITSET_ITERATOR bi, bj;
   BITSET nl_join_terms;		/* nested-loop join terms */
   BITSET sm_join_terms;		/* sort merge join terms */
@@ -7293,6 +7294,8 @@ planner_visit_node (QO_PLANNER * planner,
 	      }
 	    else if (QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN)
 	      {
+		check_afj_terms = true;
+
 		/* If visited_nodes is the same as partition's nodes,
 		 * then we have successfully generated one of the graph
 		 * permutations(i.e., we have considered every one of the
@@ -7340,6 +7343,49 @@ planner_visit_node (QO_PLANNER * planner,
 	goto wrapup;
       }
   }
+
+#if 1				/* TO NOT DELETE ME - very special case for Object fetch plan */
+  /* re-check for after join term; is depence to Object fetch plan
+   */
+  if (check_afj_terms && bitset_is_empty (&afj_terms))
+    {
+      BITSET path_nodes;
+
+      bitset_init (&path_nodes, planner->env);
+
+      for (i = bitset_iterate (remaining_terms, &bi); i != -1;
+	   i = bitset_next_member (&bi))
+	{
+	  term = QO_ENV_TERM (planner->env, i);
+
+	  if (QO_TERM_CLASS (term) == QO_TC_PATH)
+	    {
+	      bitset_add (&path_nodes, QO_NODE_IDX (QO_TERM_TAIL (term)));
+	    }
+	}
+
+      /* there is only path joined nodes.
+       * So, should apply after join terms at here.
+       */
+      if (bitset_subset (&path_nodes, remaining_nodes))
+	{
+	  for (i = bitset_iterate (remaining_terms, &bi); i != -1;
+	       i = bitset_next_member (&bi))
+	    {
+	      term = QO_ENV_TERM (planner->env, i);
+
+	      if (QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN)
+		{
+		  bitset_add (&afj_terms, i);
+		  bitset_add (&info_terms, i);	/* add to info term */
+		  bitset_add (&sarged_terms, i);	/* add to sarged term */
+		}
+	    }
+	}
+
+      bitset_delset (&path_nodes);
+    }
+#endif
 
   /* extract visited info terms
    */

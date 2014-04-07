@@ -6164,7 +6164,7 @@ qo_discover_edges (QO_ENV * env)
  *   env(in):
  *
  * Note:
- * Term Classify Matric
+ * Term Classify Matrix
  * --+-----+---------------------+----------+---------------+------------------
  * NO|Major|Minor                |nidx_self |dep_set        | Classify
  * --+-----+---------------------+----------+---------------+------------------
