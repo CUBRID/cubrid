@@ -1070,6 +1070,7 @@ static void
 print_summary_info (T_SUMMARY_INFO * summary)
 {
   double avg_diff_time = 0;
+  char msg_buf[64];
 
   if (summary->num_exec_query != 0)
     {
@@ -1078,17 +1079,17 @@ print_summary_info (T_SUMMARY_INFO * summary)
 
   fprintf (stdout,
 	   "------------------- Result Summary --------------------------\n");
-  fprintf (stdout, "* %-35s : %d\n", "Total queries",
+  fprintf (stdout, "* %-40s : %d\n", "Total queries",
 	   summary->num_total_query);
-  fprintf (stdout, "* %-35s : %d\n", "Skipped queries (out : skip.sql)",
+  fprintf (stdout, "* %-40s : %d\n", "Skipped queries (see skip.sql)",
 	   summary->num_skip_query);
-  fprintf (stdout, "* %-35s : %d\n", "Error queries (out : replay.err)",
+  fprintf (stdout, "* %-40s : %d\n", "Failed queries (see replay.err)",
 	   summary->num_err_query);
-  fprintf (stdout, "* %-35s : %d\n", "Longer than difftime lower",
-	   summary->num_diff_time_query);
-  fprintf (stdout, "* %-35s : %.3f\n", "Max different time",
+  snprintf (msg_buf, sizeof (msg_buf), "Slow queries (time diff > %.3f secs)", print_result_diff_time_lower);
+  fprintf (stdout, "* %-40s : %d\n", msg_buf, summary->num_diff_time_query);
+  fprintf (stdout, "* %-40s : %.3f\n", "Max execution time diff",
 	   summary->max_diff_time);
-  fprintf (stdout, "* %-35s : %.3f\n", "Average different time",
+  fprintf (stdout, "* %-40s : %.3f\n", "Avg execution time diff",
 	   avg_diff_time);
 
   return;
