@@ -21,6 +21,7 @@
 #include "dbgw3/Exception.h"
 #include "dbgw3/Logger.h"
 #include "dbgw3/SynchronizedResource.h"
+#include "dbgw3/GlobalOnce.h"
 #include "dbgw3/sql/DatabaseInterface.h"
 #include "dbgw3/sql/Connection.h"
 #include "dbgw3/sql/DriverManager.h"
@@ -71,6 +72,8 @@ namespace dbgw
     trait<Connection>::sp DriverManager::getConnection(const char *szUrl,
         const char *szUser, const char *szPassword, DataBaseType dbType)
     {
+      initializeSqlGlobalOnce();
+
       clearException();
 
       try

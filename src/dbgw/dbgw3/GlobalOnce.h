@@ -24,6 +24,7 @@ namespace dbgw
 {
 
   void initializeGlobalOnce(void);
+  void initializeSqlGlobalOnce(void);
 
 }
 

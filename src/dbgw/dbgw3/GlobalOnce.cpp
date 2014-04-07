@@ -40,6 +40,26 @@ namespace dbgw
 
   system::_Mutex g_mutex;
 
+  void doInitializeSqlGlobalOnce(void)
+  {
+    static bool bInitialized = false;
+
+    if (bInitialized)
+      {
+        return;
+      }
+
+    bInitialized = true;
+
+#ifdef DBGW_MYSQL
+    sql::_MySQLGlobal::getInstance();
+#elif DBGW_NBASE_T
+    sql::_NBaseTGlobal::getInstance();
+#elif DBGW_ALL
+    sql::_MySQLGlobal::getInstance();
+#endif
+  }
+
   void initializeGlobalOnce(void)
   {
     static bool bInitialized = false;
@@ -57,13 +77,14 @@ namespace dbgw
     _NClavisGlobal::getInstance();
 #endif /* defined(USE_NCLAVIS) */
 
-#ifdef DBGW_MYSQL
-    sql::_MySQLGlobal::getInstance();
-#elif DBGW_NBASE_T
-    sql::_NBaseTGlobal::getInstance();
-#elif DBGW_ALL
-    sql::_MySQLGlobal::getInstance();
-#endif
+    doInitializeSqlGlobalOnce();
+  }
+
+  void initializeSqlGlobalOnce(void)
+  {
+    system::_MutexAutoLock lock(&g_mutex);
+
+    doInitializeSqlGlobalOnce();
   }
 
 }
