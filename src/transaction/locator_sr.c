@@ -5658,7 +5658,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  OID real_class_oid;
 	  HFID real_hfid;
 	  int granted;
-	  OID inst_class_oid;
 
 	  HFID_COPY (&real_hfid, hfid);
 	  COPY_OID (&real_class_oid, class_oid);
@@ -5670,15 +5669,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	    {
 	      goto error;
 	    }
-
-	  /* make sure we use the correct class oid - we could be dealing
-	   * with a classoid resulted from a unique btid pruning
-	   */
-	  if (heap_get_class_oid (thread_p, &inst_class_oid, oid) == NULL)
-	    {
-	      goto error;
-	    }
-	  if (!OID_EQ (&inst_class_oid, &real_class_oid))
+	  if (!OID_EQ (class_oid, &real_class_oid))
 	    {
 	      /* If we have to move the record to another partition, we have
 	       * to lock the target partition for insert. The class from which

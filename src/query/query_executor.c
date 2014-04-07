@@ -11161,6 +11161,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
     }
 
   /* set values for object */
+  heap_attrinfo_clear_dbvalues (attr_info);
   for (assign_idx = 0; assign_idx < odku->no_assigns && error == NO_ERROR;
        assign_idx++)
     {
