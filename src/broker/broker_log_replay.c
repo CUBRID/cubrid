@@ -115,9 +115,9 @@ struct t_sql_result
   char *sql_info;
 };
 
-static int log_replay (FILE * infp, FILE * outfp);
+static int log_replay (FILE * infp, FILE * outfp, const off_t last_offset);
 static char *get_next_log_line (FILE * infp, T_STRING * linebuf_tstr,
-				int *lineno);
+				const off_t last_offset, int *lineno);
 
 static char *get_query_stmt_from_plan (int req);
 static int log_prepare (FILE * cci_err, FILE * pass_sql, int con,
@@ -181,9 +181,10 @@ static unsigned int num_faster_queries[STAT_MAX_DIFF_TIME] = { 0 };
  *   return: NO_ERROR or ER_FAILED
  *   infp(in): input file pointer
  *   outfp(in): output file pointer
+ *   last_offset(in): last offset of input file
  */
 static int
-log_replay (FILE * infp, FILE * outfp)
+log_replay (FILE * infp, FILE * outfp, const off_t last_offset)
 {
   char *linebuf;
   int lineno = 0;
@@ -252,7 +253,7 @@ log_replay (FILE * infp, FILE * outfp)
 
   while (1)
     {
-      linebuf = get_next_log_line (infp, linebuf_tstr, &lineno);
+      linebuf = get_next_log_line (infp, linebuf_tstr, last_offset, &lineno);
       if (linebuf == NULL)
 	{
 	  break;
@@ -291,7 +292,8 @@ log_replay (FILE * infp, FILE * outfp)
 
       while (1)
 	{
-	  linebuf = get_next_log_line (infp, linebuf_tstr, &lineno);
+	  linebuf =
+	    get_next_log_line (infp, linebuf_tstr, last_offset, &lineno);
 	  if (linebuf == NULL)
 	    {
 	      break;
@@ -427,14 +429,23 @@ end:
  *   return: address of linebuf
  *   infp(in):
  *   linebuf_tstr(in):
+ *   last_offset(in):
  *   lineno(in/out):
  */
 static char *
-get_next_log_line (FILE * infp, T_STRING * linebuf_tstr, int *lineno)
+get_next_log_line (FILE * infp, T_STRING * linebuf_tstr,
+		   const off_t last_offset, int *lineno)
 {
   char *linebuf;
+  off_t cur_offset;
 
   assert (lineno != NULL);
+
+  cur_offset = ftell (infp);
+  if (cur_offset >= last_offset)
+    {
+      return NULL;
+    }
 
   if (ut_get_line (infp, linebuf_tstr, NULL, NULL) < 0)
     {
@@ -1085,7 +1096,8 @@ print_summary_info (T_SUMMARY_INFO * summary)
 	   summary->num_skip_query);
   fprintf (stdout, "* %-40s : %d\n", "Failed queries (see replay.err)",
 	   summary->num_err_query);
-  snprintf (msg_buf, sizeof (msg_buf), "Slow queries (time diff > %.3f secs)", print_result_diff_time_lower);
+  snprintf (msg_buf, sizeof (msg_buf), "Slow queries (time diff > %.3f secs)",
+	    print_result_diff_time_lower);
   fprintf (stdout, "* %-40s : %d\n", msg_buf, summary->num_diff_time_query);
   fprintf (stdout, "* %-40s : %.3f\n", "Max execution time diff",
 	   summary->max_diff_time);
@@ -1615,8 +1627,8 @@ usage:
 	   "  -r   enable to rewrite update/delete query to select\n"
 	   "  -D   minimum value of time difference make print result; default: %.3f(sec)\n"
 	   "  -F   datetime when start to replay sql_log\n"
-	   "  -T   datetime when end to replay sql_log\n", argv[0], DEFAULT_BREAK_TIME,
-           DEFAULT_DIFF_TIME_LOWER);
+	   "  -T   datetime when end to replay sql_log\n", argv[0],
+	   DEFAULT_BREAK_TIME, DEFAULT_DIFF_TIME_LOWER);
 
   return ER_FAILED;
 date_format_err:
@@ -1706,6 +1718,7 @@ main (int argc, char *argv[])
   char *outfilename = NULL;
   FILE *outfp, *infp;
   int res;
+  off_t last_offset;
 
   if ((start_arg = get_args (argc, argv)) < 0)
     {
@@ -1722,7 +1735,12 @@ main (int argc, char *argv[])
       return ER_FAILED;
     }
 
-  res = log_replay (infp, outfp);
+  assert (infp != NULL);
+  last_offset = lseek (fileno (infp), 0, SEEK_END);
+
+  lseek (fileno (infp), 0, SEEK_SET);
+
+  res = log_replay (infp, outfp, last_offset);
 
   close_file (infp, outfp);
 
