@@ -2081,7 +2081,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
   BITSET lhs_segs, rhs_segs, lhs_nodes, rhs_nodes;
   BITSET_ITERATOR iter;
   PT_OP_TYPE op_type = PT_AND;
-  int i, n;
+  int i, n, t;
 
   QO_ASSERT (env, QO_TERM_LOCATION (term) >= 0);
 
@@ -2584,7 +2584,16 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	{
 	  head_seg =
 	    QO_ENV_SEG (env, bitset_iterate (&(QO_TERM_SEGS (term)), &iter));
-	  tail_seg = QO_ENV_SEG (env, bitset_next_member (&iter));
+	  for (t = bitset_iterate (&(QO_TERM_SEGS (term)), &iter); t != -1;
+	       t = bitset_next_member (&iter))
+	    {
+	      tail_seg = QO_ENV_SEG (env, t);
+	      if (QO_NODE_IDX (QO_SEG_HEAD (tail_seg))
+		  != QO_NODE_IDX (QO_SEG_HEAD (head_seg)))
+		{
+		  break;	/* found tail */
+		}
+	    }
 
 	  /* Now make sure that the head and tail segs correspond to the
 	     proper nodes. */
@@ -2723,7 +2732,6 @@ wrapup:
 
     case PT_PATH_OUTER:
       {
-	int t;
 	QO_TERM *t_term;
 	QO_NODE *t_node;
 
