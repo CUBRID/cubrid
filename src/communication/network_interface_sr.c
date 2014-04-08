@@ -10525,6 +10525,11 @@ slocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
 
   ptr = or_pack_int (reply, error);
 
+  /*
+   * This is for asynchronouse working.
+   * Regardless of whethea or not the processing of the actual work is done, 
+   * we will send the client a response.
+   */
   error = css_send_data_to_client (thread_p->conn_entry, rid,
 				   reply, OR_ALIGNED_BUF_SIZE (a_reply));
   if (error != NO_ERROR)
@@ -10563,6 +10568,11 @@ slocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p,
 
   ptr = or_pack_int (reply, error);
 
+  /*
+   * This is for asynchronouse working.
+   * Regardless of whethea or not the processing of the actual work is done, 
+   * we will send the client a response.
+   */
   error = css_send_data_to_client (thread_p->conn_entry, rid,
 				   reply, OR_ALIGNED_BUF_SIZE (a_reply));
   if (error != NO_ERROR)
