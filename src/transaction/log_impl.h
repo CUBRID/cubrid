@@ -531,7 +531,9 @@ struct logwr_info
     PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
     PTHREAD_MUTEX_INITIALIZER,                                 \
     false, false, false,                                       \
-    {-1, }, 0                                                  \
+    /* last_writer_client_info */                              \
+    { -1, {'0'}, {'0'}, {'0'}, {'0'}, {'0'}, 0 },              \
+    0                                                          \
    }
 
 typedef struct log_append_info LOG_APPEND_INFO;
