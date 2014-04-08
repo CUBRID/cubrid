@@ -745,12 +745,6 @@ hm_req_handle_free_all (T_CON_HANDLE * con_handle)
   int i;
   T_REQ_HANDLE *req_handle = NULL;
 
-  assert (!DOES_CONNECTION_HAVE_STMT_POOL (con_handle));
-  if (DOES_CONNECTION_HAVE_STMT_POOL (con_handle))
-    {
-      return;
-    }
-
   for (i = 0; i < con_handle->max_req_handle; i++)
     {
       req_handle = con_handle->req_handle_table[i];
