@@ -267,6 +267,7 @@ ut_str_to_mtime (char *str, T_CCI_DATE * value)
       return CCI_ER_TYPE_CONVERSION;
     }
   mm = atoi (p);
+  p = q + 1;
 
   q = strchr (p, '.');
   if (q == NULL)
