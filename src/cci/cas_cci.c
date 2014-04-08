@@ -6495,7 +6495,7 @@ cci_datasource_release_internal (T_CCI_DATASOURCE * ds,
     {
       set_error_buffer (&(con_handle->err_buf), CCI_ER_INVALID_DATASOURCE,
 			"The connection does not belong to this data source.");
-      return 0;
+      return CCI_ER_INVALID_DATASOURCE;
     }
 
   if (ds->pool_prepared_statement == true)
@@ -6524,7 +6524,7 @@ cci_datasource_release_internal (T_CCI_DATASOURCE * ds,
       pthread_mutex_unlock ((pthread_mutex_t *) ds->mutex);
 
       set_error_buffer (&(con_handle->err_buf), CCI_ER_CON_HANDLE, NULL);
-      return 0;
+      return CCI_ER_CON_HANDLE;
     }
 
   ds->num_idle++;
@@ -6532,7 +6532,7 @@ cci_datasource_release_internal (T_CCI_DATASOURCE * ds,
   pthread_mutex_unlock ((pthread_mutex_t *) ds->mutex);
   /* critical section end */
 
-  return 0;
+  return CCI_ER_NO_ERROR;
 }
 
 int
@@ -6570,7 +6570,14 @@ cci_datasource_release (T_CCI_DATASOURCE * ds, T_CCI_CONN mapped_conn_id,
 
   get_last_error (con_handle, err_buf);
 
-  return ret;
+  if (ret != CCI_ER_NO_ERROR)
+    {
+      return 0;
+    }
+  else
+    {
+      return 1;
+    }
 }
 
 int
