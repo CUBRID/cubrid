@@ -1494,13 +1494,19 @@ thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason,
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_COND_SIGNAL, 0);
-      thread_unlock_entry (thread_p);
+      if (had_mutex == false)
+	{
+	  thread_unlock_entry (thread_p);
+	}
       return ER_CSS_PTHREAD_COND_SIGNAL;
     }
 
   thread_p->resume_status = resume_reason;
 
-  r = thread_unlock_entry (thread_p);
+  if (had_mutex == false)
+    {
+      r = thread_unlock_entry (thread_p);
+    }
 
   return r;
 }

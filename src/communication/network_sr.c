@@ -1302,10 +1302,7 @@ loop:
 		    thread_wakeup_already_had_mutex (suspended_p,
 						     THREAD_RESUME_DUE_TO_INTERRUPT);
 		}
-	      else
-		{
-		  r = thread_unlock_entry (suspended_p);
-		}
+	      r = thread_unlock_entry (suspended_p);
 
 	      if (r != NO_ERROR)
 		{

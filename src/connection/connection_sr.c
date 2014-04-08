@@ -2015,7 +2015,30 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type,
   while (p != NULL)
     {
       thread_lock_entry (p);
-      p = p->next_wait_thrd;
+
+      assert (p->resume_status == THREAD_CSS_QUEUE_SUSPENDED
+	      || p->resume_status == THREAD_CSECT_WRITER_SUSPENDED);
+      next = p->next_wait_thrd;
+      p->next_wait_thrd = NULL;
+
+      /* When the resume_status is THREAD_CSS_QUEUE_SUSPENDED, it means
+       * the data waiting thread is still waiting on the data queue.
+       * Otherwise, in case of THREAD_CSECT_WRITER_SUSPENDED, it means that
+       * the thread was timed out, is trying to clear its queue buffer
+       * (see clear_wait_queue_entry_and_free_buffer function),
+       * and waiting for its conn->csect.
+       * We don't need to wakeup the thread for this case.
+       * We may send useless signal for it, but it may bring other anomalies:
+       * the thread may sleep on another resources which we don't know
+       * at this moment.
+       */
+      if (p->resume_status == THREAD_CSS_QUEUE_SUSPENDED)
+	{
+	  thread_wakeup_already_had_mutex (p, THREAD_CSS_QUEUE_RESUMED);
+	}
+
+      thread_unlock_entry (p);
+      p = next;
     }
 
 #if defined(SERVER_MODE)
@@ -2024,17 +2047,6 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type,
 #endif
 
   csect_exit_critical_section (NULL, &conn->csect);
-
-  p = wait_thrd;
-  while (p != NULL)
-    {
-      next = p->next_wait_thrd;
-      p->resume_status = THREAD_CSS_QUEUE_RESUMED;
-      pthread_cond_signal (&p->wakeup_cond);
-      p->next_wait_thrd = NULL;
-      thread_unlock_entry (p);
-      p = next;
-    }
 }
 
 /*
