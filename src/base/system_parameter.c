@@ -1738,7 +1738,7 @@ static unsigned int prm_update_use_attribute_references_flag = 0;
 
 float PRM_PB_AIN_RATIO = 0.25f;
 static float prm_pb_ain_ratio_default = 0.25f;
-static float prm_pb_ain_ratio_upper = 1.0f;
+static float prm_pb_ain_ratio_upper = 0.8f;
 static float prm_pb_ain_ratio_lower = 0.0f;
 static unsigned int prm_pb_ain_ratio_flag = 0;
 

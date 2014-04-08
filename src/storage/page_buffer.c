@@ -4037,6 +4037,9 @@ pgbuf_initialize_ain_list (void)
   pgbuf_Pool.num_LRU1_zone_threshold =
     MIN (pgbuf_Pool.num_LRU1_zone_threshold, (int) (PGBUF_LRU_SIZE * 0.95f));
 
+  assert_release (pgbuf_Pool.num_LRU1_zone_threshold
+		  < (PGBUF_LRU_SIZE * (1.0f - ain_ratio)));
+
   return NO_ERROR;
 }
 
