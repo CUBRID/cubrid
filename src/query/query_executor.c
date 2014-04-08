@@ -1248,6 +1248,7 @@ qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY *
 static int
 qexec_clear_regu_variable_list (XASL_NODE * xasl_p, REGU_VARIABLE_LIST list,
 				int final);
+static void qexec_clear_pred_xasl (THREAD_ENTRY * thread_p, PRED_EXPR * pred);
 
 #if defined(SERVER_MODE)
 static void qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p,
@@ -19971,6 +19972,14 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  goto exit_on_error;
 	}
 
+      /* fetch the rest of xasl->connect_by_ptr->val_list from the tuple */
+      if (fetch_val_list (thread_p, connect_by->after_cb_regu_list_rest,
+			  &xasl_state->vd, NULL, NULL, tuple_rec.tpl, PEEK)
+			  != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
       /* evaluate after_connect_by predicate */
       ev_res = V_UNKNOWN;
       if (connect_by->after_connect_by_pred != NULL)
@@ -19981,20 +19990,14 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    {
 	      goto exit_on_error;
 	    }
+	  /* clear correlated subqueries linked within the predicate */
+	  qexec_clear_pred_xasl (thread_p, connect_by->after_connect_by_pred);
 	}
       qualified = (connect_by->after_connect_by_pred == NULL
 		   || ev_res == V_TRUE);
 
       if (qualified)
 	{
-	  /* fetch the rest of xasl->connect_by_ptr->val_list from the tuple */
-	  if (fetch_val_list (thread_p, connect_by->after_cb_regu_list_rest,
-			      &xasl_state->vd,
-			      NULL, NULL, tuple_rec.tpl, PEEK) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
 	  /* evaluate inst_num predicate */
 	  if (xasl->instnum_val)
 	    {
@@ -20019,30 +20022,30 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		{
 		  goto exit_on_error;
 		}
-	      /* clear correlated subquery list files; the list of correlated
-	       * subqueries reside on the last scan proc or fetch proc */
-	      last_xasl = xasl;
-	      while (last_xasl)
-		{
-		  if (last_xasl->scan_ptr)
-		    {
-		      last_xasl = last_xasl->scan_ptr;
-		    }
-		  else if (last_xasl->fptr_list)
-		    {
-		      last_xasl = last_xasl->fptr_list;
-		    }
-		  else
-		    {
-		      break;
-		    }
-		}
-	      for (xptr = last_xasl->dptr_list; xptr != NULL;
-		   xptr = xptr->next)
-		{
-		  qexec_clear_head_lists (thread_p, xptr);
-		}
 	    }
+	}
+
+      /* clear correlated subquery list files; the list of correlated
+       * subqueries reside on the last scan proc or fetch proc */
+      last_xasl = xasl;
+      while (last_xasl)
+	{
+	  if (last_xasl->scan_ptr)
+	    {
+	      last_xasl = last_xasl->scan_ptr;
+	    }
+	  else if (last_xasl->fptr_list)
+	    {
+	      last_xasl = last_xasl->fptr_list;
+	    }
+	  else
+	    {
+	      break;
+	    }
+	}
+      for (xptr = last_xasl->dptr_list; xptr != NULL; xptr = xptr->next)
+	{
+	  qexec_clear_head_lists (thread_p, xptr);
 	}
     }
 
@@ -28916,6 +28919,64 @@ qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
 }
 #endif /* SERVER_MODE */
+
+/*
+ * qexec_clear_pred_xasl () - Clear XASLs linked by regu variables
+ *   return:
+ *   pred(in):
+ */
+static void
+qexec_clear_pred_xasl (THREAD_ENTRY * thread_p, PRED_EXPR * pred)
+{
+  PRED_EXPR *pr;
+
+  if (pred == NULL)
+    {
+      return;
+    }
+
+  switch (pred->type)
+    {
+    case T_PRED:
+      qexec_clear_pred_xasl (thread_p, pred->pe.pred.lhs);
+      for (pr = pred->pe.pred.rhs; pr && pr->type == T_PRED;
+	   pr = pr->pe.pred.rhs)
+	{
+	  qexec_clear_pred_xasl (thread_p, pr->pe.pred.lhs);
+	}
+      qexec_clear_pred_xasl (thread_p, pr);
+      break;
+    case T_EVAL_TERM:
+      /* operands of type TYPE_LIST_ID are the XASLs we need to clear list
+       * files for */
+      if (pred->pe.eval_term.et_type == T_COMP_EVAL_TERM)
+	{
+	  COMP_EVAL_TERM *et_comp = &pred->pe.eval_term.et.et_comp;
+	  if (et_comp->rel_op == R_EXISTS
+	      && et_comp->lhs->type == TYPE_LIST_ID)
+	    {
+	      qexec_clear_head_lists (thread_p,
+				      REGU_VARIABLE_XASL (et_comp->lhs));
+	    }
+	}
+      else if (pred->pe.eval_term.et_type == T_ALSM_EVAL_TERM)
+	{
+	  ALSM_EVAL_TERM *et_alsm = &pred->pe.eval_term.et.et_alsm;
+	  if (et_alsm->elemset->type == TYPE_LIST_ID)
+	    {
+	      qexec_clear_head_lists (thread_p,
+				      REGU_VARIABLE_XASL (et_alsm->elemset));
+	    }
+	}
+      /* no need to check into eval terms of type T_LIKE_EVAL_TERM and
+       * T_RLIKE_EVAL_TERM since they don't have TYPE_LIST_ID operands
+       */
+      break;
+    case T_NOT_TERM:
+      qexec_clear_pred_xasl (thread_p, pred->pe.not_term);
+      break;
+    }
+}
 
 /*
  * qexec_alloc_agg_hash_context () - allocate hash aggregate evaluation related
