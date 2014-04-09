@@ -6155,8 +6155,6 @@ qo_discover_edges (QO_ENV * env)
 	    {
 	      QO_TERM_CLASS (edge) = QO_TC_DUMMY_JOIN;
 
-	      QO_TERM_CAN_USE_INDEX (edge) = 0;
-
 	      /* keep out from m-join edge */
 	      QO_TERM_CLEAR_FLAG (edge, QO_TERM_MERGEABLE_EDGE);
 	    }

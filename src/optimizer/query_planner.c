@@ -7220,6 +7220,11 @@ planner_visit_node (QO_PLANNER * planner,
 	    switch (QO_TERM_CLASS (term))
 	      {
 	      case QO_TC_DUMMY_JOIN:	/* is always true dummy join term */
+		/* check for idx-join */
+		if (QO_TERM_CAN_USE_INDEX (term))
+		  {
+		    idx_join_cnt++;
+		  }
 		break;
 
 	      case QO_TC_PATH:
