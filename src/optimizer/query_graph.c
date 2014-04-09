@@ -2663,10 +2663,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	{
 	  QO_NODE *on_node;
 
-	  QO_ASSERT (env,
-		     QO_NODE_LOCATION (head_node) <
-		     QO_NODE_LOCATION (tail_node));
-	  QO_ASSERT (env, QO_NODE_LOCATION (tail_node) > 0);
+	  QO_ASSERT (env, QO_NODE_IDX (head_node) < QO_NODE_IDX (tail_node));
 
 	  on_node = QO_ENV_NODE (env, QO_TERM_LOCATION (term));
 	  QO_ASSERT (env, on_node != NULL);
@@ -2678,6 +2675,11 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
 	  if (QO_NODE_IDX (tail_node) == QO_NODE_IDX (on_node))
 	    {
+	      QO_ASSERT (env,
+			 QO_NODE_LOCATION (head_node) <
+			 QO_NODE_LOCATION (tail_node));
+	      QO_ASSERT (env, QO_NODE_LOCATION (tail_node) > 0);
+
 	      if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_LEFT_OUTER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
@@ -8379,6 +8381,8 @@ qo_node_dump (QO_NODE * node, FILE * f)
       bitset_print (&(QO_NODE_OUTER_DEP_SET (node)), f);
       fputs (")", f);
     }
+
+  fprintf (f, " (loc %d)", entity->info.spec.location);
 }
 
 /*
