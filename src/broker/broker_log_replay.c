@@ -230,7 +230,7 @@ log_replay (FILE * infp, FILE * outfp, const off_t last_offset)
   cci_errfp = fopen (CCI_ERR_FILE_NAME, "w");
   if (cci_errfp == NULL)
     {
-      fprintf (stderr, "fopen error[%s]\n", CCI_ERR_FILE_NAME);
+      fprintf (stderr, "cannot open output file '%s'\n", CCI_ERR_FILE_NAME);
       result = ER_FAILED;
       goto end;
     }
@@ -238,7 +238,7 @@ log_replay (FILE * infp, FILE * outfp, const off_t last_offset)
   pass_sqlfp = fopen (PASS_SQL_FILE_NAME, "w");
   if (pass_sqlfp == NULL)
     {
-      fprintf (stderr, "fopen error[%s]\n", PASS_SQL_FILE_NAME);
+      fprintf (stderr, "cannot open output file '%s'\n", PASS_SQL_FILE_NAME);
       result = ER_FAILED;
       goto end;
     }
@@ -246,7 +246,7 @@ log_replay (FILE * infp, FILE * outfp, const off_t last_offset)
   linebuf_tstr = t_string_make (1024);
   if (linebuf_tstr == NULL)
     {
-      fprintf (stderr, "malloc error\n");
+      fprintf (stderr, "memory allocation failed\n");
       result = ER_FAILED;
       goto end;
     }
@@ -449,7 +449,7 @@ get_next_log_line (FILE * infp, T_STRING * linebuf_tstr,
 
   if (ut_get_line (infp, linebuf_tstr, NULL, NULL) < 0)
     {
-      fprintf (stderr, "malloc error\n");
+      fprintf (stderr, "memory allocation failed\n");
       return NULL;
     }
   if (t_string_len (linebuf_tstr) <= 0)
@@ -550,7 +550,7 @@ get_query_stmt_from_plan (int req)
     }
   else
     {
-      fprintf (stderr, "malloc error\n");
+      fprintf (stderr, "memory allocation failed\n");
     }
 
   cci_query_info_free (plan);
@@ -628,7 +628,7 @@ log_prepare (FILE * cci_errfp, FILE * pass_sql, int con, char *sql_log,
       if (rewrite_query == NULL)
 	{
 	  summary->num_skip_query++;
-	  fprintf (pass_sql, "pass sql [%s]\n", sql_log);
+	  fprintf (pass_sql, "skip sql [%s]\n", sql_log);
 	  cci_close_req_handle (req);
 	  return ER_FAILED;
 	}
@@ -659,7 +659,7 @@ log_prepare (FILE * cci_errfp, FILE * pass_sql, int con, char *sql_log,
   sql_info->sql = strdup (sql_log);
   if (sql_info->sql == NULL)
     {
-      fprintf (stderr, "malloc error\n");
+      fprintf (stderr, "memory allocation failed\n");
       return ER_FAILED;
     }
 
@@ -1265,14 +1265,14 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower,
   next_tmp_fp = tmpfile ();
   if (next_tmp_fp == NULL)
     {
-      fprintf (stderr, "temp file open error\n");
+      fprintf (stderr, "cannot open temp file\n");
       return ER_FAILED;
     }
 
   read_buf = (char *) malloc (read_buf_max);
   if (read_buf == NULL)
     {
-      fprintf (stderr, "malloc error (%d)\n", read_buf_max);
+      fprintf (stderr, "memory allocation failed\n");
       fclose (next_tmp_fp);
       return ER_FAILED;
     }
@@ -1299,8 +1299,7 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower,
       result.sql_info = (char *) malloc (read_buf_max + SQL_INFO_TITLE_LEN);
       if (result.sql_info == NULL)
 	{
-	  fprintf (stderr, "malloc error (%d)\n",
-		   read_buf_max + SQL_INFO_TITLE_LEN);
+	  fprintf (stderr, "memory allocation failed\n");
 	  fclose (next_tmp_fp);
 	  free_and_init (read_buf);
 	  return ER_FAILED;
@@ -1352,15 +1351,14 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower,
   next_tmp_fp = tmpfile ();
   if (next_tmp_fp == NULL)
     {
-      fprintf (stderr, "temp file open error\n");
+      fprintf (stderr, "cannot open temp file\n");
       return ER_FAILED;
     }
 
   result = (T_SQL_RESULT *) malloc (sizeof (T_SQL_RESULT) * num_query);
   if (result == NULL)
     {
-      fprintf (stderr, "malloc error (%ld)\n",
-	       sizeof (T_SQL_RESULT) * num_query);
+      fprintf (stderr, "memory allocation failed\n");
       fclose (next_tmp_fp);
       return ER_FAILED;
     }
@@ -1369,7 +1367,7 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower,
   read_buf = (char *) malloc (read_buf_max);
   if (read_buf == NULL)
     {
-      fprintf (stderr, "malloc error(%d)\n", read_buf_max);
+      fprintf (stderr, "memory allocation failed\n");
       goto error;
     }
 
@@ -1393,8 +1391,7 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower,
 	    (char *) malloc (read_buf_max + SQL_INFO_TITLE_LEN);
 	  if (result[i].sql_info == NULL)
 	    {
-	      fprintf (stderr, "malloc error(%d)\n",
-		       read_buf_max + SQL_INFO_TITLE_LEN);
+	      fprintf (stderr, "memory allocation failed\n");
 	      goto error;
 	    }
 
@@ -1650,7 +1647,7 @@ open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp)
   *infp = fopen (infilename, "r");
   if (*infp == NULL)
     {
-      fprintf (stderr, "fopen error[%s]\n", infilename);
+      fprintf (stderr, "cannot open input file '%s'\n", infilename);
       return ER_FAILED;
     }
 
@@ -1663,7 +1660,7 @@ open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp)
       *outfp = fopen (outfilename, "w");
       if (*outfp == NULL)
 	{
-	  fprintf (stderr, "fopen error[%s]\n", outfilename);
+	  fprintf (stderr, "cannot open output file '%s'\n", outfilename);
 	  goto error;;
 	}
     }
@@ -1671,7 +1668,7 @@ open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp)
   br_tmpfp = tmpfile ();
   if (br_tmpfp == NULL)
     {
-      fprintf (stderr, "temp file open error\n");
+      fprintf (stderr, "cannot open temp file\n");
       goto error;
     }
 
