@@ -2164,6 +2164,7 @@ fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   return FN_KEEP_CONN;
 }
 #else /* !defined(CAS_FOR_MYSQL) */
+FN_RETURN
 fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		T_REQ_INFO * req_info)
 {
