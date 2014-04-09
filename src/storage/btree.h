@@ -274,9 +274,7 @@ extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid,
 extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
 
 extern bool btree_is_unique_type (BTREE_TYPE type);
-extern int xbtree_test_unique (THREAD_ENTRY * thread_p, BTID * btid);
 extern int xbtree_get_unique (THREAD_ENTRY * thread_p, BTID * btid);
-extern int btree_is_unique (THREAD_ENTRY * thread_p, BTID * btid);
 extern int btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid,
 					int *oid_cnt, int *null_cnt,
 					int *key_cnt);
@@ -349,13 +347,6 @@ extern int btree_get_prefix_separator (const DB_VALUE * key1,
 				       TP_DOMAIN * key_domain);
 /* for migration */
 extern TP_DOMAIN *btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid);
-
-#if 0				/* TODO: currently not used */
-#if defined(SA_MODE)
-extern int xbtree_get_keytype_revlevel (BTID * btid, DB_TYPE * keytype,
-					int *revleve);
-#endif /* SA_MODE */
-#endif
 
 /* Dump routines */
 extern int btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp,

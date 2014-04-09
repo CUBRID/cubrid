@@ -3170,7 +3170,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   VPID Root_vpid;
   PAGE_PTR Root;
   RECDES Rec;
-  BTREE_ROOT_HEADER *root_header;
+  BTREE_ROOT_HEADER *root_header = NULL;
   BTREE_SCAN *BTS;
   int coverage_enabled;
   int func_index_col_id;
@@ -3197,7 +3197,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   (void) pgbuf_check_page_ptype (thread_p, Root, PAGE_BTREE);
 
-  root_header = btree_get_root_header_ptr (Root);
+  root_header = btree_get_root_header (Root);
   if (root_header == NULL)
     {
       pgbuf_unfix_and_init (thread_p, Root);

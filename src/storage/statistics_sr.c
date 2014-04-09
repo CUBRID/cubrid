@@ -553,7 +553,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
 	  /* collect maximum unique keys info */
-	  if (btree_is_unique (thread_p, &btree_stats_p->btid))
+	  if (xbtree_get_unique (thread_p, &btree_stats_p->btid))
 	    {
 	      max_unique_keys = MAX (max_unique_keys, btree_stats_p->keys);
 	    }

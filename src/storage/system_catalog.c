@@ -1533,7 +1533,7 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p,
 {
   VPID root_vpid;
   PAGE_PTR root_page_p;
-  BTREE_ROOT_HEADER *root_header;
+  BTREE_ROOT_HEADER *root_header = NULL;
   int i;
   OR_BUF buf;
 
@@ -1572,7 +1572,7 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p,
 
   (void) pgbuf_check_page_ptype (thread_p, root_page_p, PAGE_BTREE);
 
-  root_header = btree_get_root_header_ptr (root_page_p);
+  root_header = btree_get_root_header (root_page_p);
   if (root_header == NULL)
     {
       pgbuf_unfix_and_init (thread_p, root_page_p);
@@ -5262,8 +5262,9 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
     }
   else
     {
-      error = partition_is_global_index (thread_p, NULL, class_oid, btid, NULL,
-					 &is_global_index);
+      error =
+	partition_is_global_index (thread_p, NULL, class_oid, btid, NULL,
+				   &is_global_index);
       if (error != NO_ERROR)
 	{
 	  goto exit_cleanup;
@@ -5360,8 +5361,9 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
 	      error = ER_UNEXPECTED;
 	      goto exit_cleanup;
 	    }
-	  subcls_stats = stats_find_inherited_index_stats (cls_rep, subcls_rep,
-							   subcls_attr, btid);
+	  subcls_stats =
+	    stats_find_inherited_index_stats (cls_rep, subcls_rep,
+					      subcls_attr, btid);
 	  if (subcls_stats == NULL)
 	    {
 	      error = ER_FAILED;

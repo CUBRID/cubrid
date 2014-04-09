@@ -10066,7 +10066,7 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
 	  break;
 	}
 
-      if (btree_is_unique (thread_p, btid))
+      if (xbtree_get_unique (thread_p, btid))
 	{
 	  rv = locator_check_unique_btree_entries (thread_p, btid, peek,
 						   attrids, btname, repair);
@@ -12236,7 +12236,7 @@ locator_prefetch_index_page (THREAD_ENTRY * thread_p, OID * class_oid,
       goto free_and_return;
     }
 
-  if (btree_is_unique (thread_p, btid))
+  if (xbtree_get_unique (thread_p, btid))
     {
       locator_prefetch_unique_index_page_internal (thread_p, classrec,
 						   recdes,

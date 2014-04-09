@@ -181,7 +181,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
   VPID root_vpid;
   PAGE_PTR root;
   RECDES rec;
-  BTREE_ROOT_HEADER *root_header;
+  BTREE_ROOT_HEADER *root_header = NULL;
   BTID_INT btid_int;
 
   or_rep = or_get_classrep (record, NULL_REPRID);
@@ -342,7 +342,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
 	      (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
 
-	      root_header = btree_get_root_header_ptr (root);
+	      root_header = btree_get_root_header (root);
 	      if (root_header == NULL)
 		{
 		  pgbuf_unfix_and_init (thread_p, root);
