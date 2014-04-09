@@ -2988,7 +2988,8 @@ csql_get_column_width (const char *column_name)
       return 0;
     }
 
-  strncpy (name_without_space, column_name, sizeof (name_without_space));
+  strncpy (name_without_space, column_name, sizeof (name_without_space) - 1);
+  name_without_space[sizeof (name_without_space) - 1] = '\0';
   result = trim (name_without_space);
   if (result == NULL)
     {
