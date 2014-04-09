@@ -4841,6 +4841,15 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   }
 #endif
 
+#if defined(SERVER_MODE)
+  if (thread_p && thread_p->type != TT_DAEMON)
+    {
+      /* set event logging parameter */
+      thread_p->event_stats.trace_log_flush_time =
+	prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
+    }
+#endif /* SERVER_MODE */
+
 #if defined(CUBRID_DEBUG)
   if (log_Gl.append.nxio_lsa.pageid !=
       logpb_get_page_id (flush_info->toflush[0]))
@@ -4934,7 +4943,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	{
 	  flush_start_time = thread_get_log_clock_msec ();
 
-	  memset (&writer_info->last_writer_client_info, 0, sizeof (LOG_CLIENTIDS));
+	  memset (&writer_info->last_writer_client_info, 0,
+		  sizeof (LOG_CLIENTIDS));
 
 	  writer_info->trace_last_writer = true;
 	  writer_info->last_writer_elapsed_time = 0;
@@ -5365,6 +5375,14 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
 #endif /* SERVER_MODE */
 
+#if defined(SERVER_MODE)
+  if (thread_p && thread_p->type != TT_DAEMON)
+    {
+      /* reset event logging parameter */
+      thread_p->event_stats.trace_log_flush_time = 0;
+    }
+#endif /* SERVER_MODE */
+
   return 1;
 
 error:
@@ -5380,6 +5398,14 @@ error:
 
   logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 		     "logpb_flush_all_append_pages");
+
+#if defined(SERVER_MODE)
+  if (thread_p && thread_p->type != TT_DAEMON)
+    {
+      /* reset event logging parameter */
+      thread_p->event_stats.trace_log_flush_time = 0;
+    }
+#endif /* SERVER_MODE */
 
   return error_code;
 }
