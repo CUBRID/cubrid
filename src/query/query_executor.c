@@ -16755,8 +16755,11 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
 	       */
 	      cls_info_p->time_stamp = stats_get_time_stamp ();
 
-	      ret = catalog_add_class_info (thread_p, (OID *) oidp,
-					    cls_info_p);
+	      if (catalog_update_class_info (thread_p, (OID *) oidp,
+					     cls_info_p, true) == NULL)
+		{
+		  ret = ER_FAILED;
+		}
 	    }
 	}
 
@@ -19975,7 +19978,7 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       /* fetch the rest of xasl->connect_by_ptr->val_list from the tuple */
       if (fetch_val_list (thread_p, connect_by->after_cb_regu_list_rest,
 			  &xasl_state->vd, NULL, NULL, tuple_rec.tpl, PEEK)
-			  != NO_ERROR)
+	  != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
