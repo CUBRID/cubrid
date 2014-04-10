@@ -736,8 +736,12 @@ static SCAN_CODE btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p,
 
 #if !defined(NDEBUG)
 static int btree_get_node_level (PAGE_PTR page_ptr);
+#endif
+
 static void random_exit (THREAD_ENTRY * thread_p);
 
+#if !defined(NDEBUG)
+static int btree_get_node_level (PAGE_PTR page_ptr);
 #define RANDOM_EXIT(a)
 #else
 #define RANDOM_EXIT(a)        random_exit(a)
