@@ -21484,7 +21484,8 @@ pt_get_collation_info (PT_NODE * node, PT_COLL_INFER * coll_infer)
 	    }
 	  break;
 	}
-      else if (pt_is_input_parameter (node))
+      else if (pt_is_input_parameter (node)
+	       || node->type_enum == PT_TYPE_MAYBE)
 	{
 	  coll_infer->coerc_level = PT_COLLATION_L5_COERC;
 	  break;
@@ -21744,8 +21745,26 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
     {
     case PT_NAME:
     case PT_DOT_:
-      if (!PT_HAS_COLLATION (node->type_enum)
-	  && !PT_IS_COLLECTION_TYPE (node->type_enum))
+      if (node->type_enum == PT_TYPE_MAYBE)
+	{
+	  /* wrap with cast */
+	  wrap_dt = parser_new_node (parser, PT_DATA_TYPE);
+	  if (wrap_dt == NULL)
+	    {
+	      goto cannot_coerce;
+	    }
+
+	  assert (PT_IS_CHAR_STRING_TYPE (wrap_type_for_maybe));
+
+	  wrap_dt->type_enum = wrap_type_for_maybe;
+	  wrap_dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	  wrap_dt->info.data_type.collation_id = coll_id;
+	  wrap_dt->info.data_type.units = codeset;
+	  wrap_dt->info.data_type.collation_flag = TP_DOMAIN_COLL_ENFORCE;
+	  force_mode = false;
+	}
+      else if (!PT_HAS_COLLATION (node->type_enum)
+	       && !PT_IS_COLLECTION_TYPE (node->type_enum))
 	{
 	  goto cannot_coerce;
 	}
