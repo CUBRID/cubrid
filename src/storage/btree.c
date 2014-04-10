@@ -538,8 +538,10 @@ static int btree_find_oid_from_ovfl (RECDES * rec_p, OID * oid);
 static int btree_leaf_get_vpid_for_overflow_oids (RECDES * rec, VPID * vpid);
 static int btree_leaf_get_first_oid (BTID_INT * btid, RECDES * recp,
 				     OID * oidp, OID * class_oid);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int btree_leaf_put_first_oid (RECDES * recp, OID * oidp,
 				     short record_flag);
+#endif
 static int btree_leaf_get_last_oid (BTID_INT * btid, RECDES * recp,
 				    BTREE_NODE_TYPE node_type,
 				    OID * oidp, OID * class_oid);
@@ -550,11 +552,10 @@ static void btree_leaf_set_flag (RECDES * recp, short record_flag);
 static void btree_leaf_clear_flag (RECDES * recp, short record_flag);
 static short btree_leaf_get_flag (RECDES * recp);
 static bool btree_leaf_is_flaged (RECDES * recp, short record_flag);
-static int btree_leaf_rebuild_record (RECDES * recp, BTID_INT * btid,
-				      OID * oidp, OID * class_oidp);
+static int btree_leaf_change_first_oid (RECDES * recp, BTID_INT * btid,
+					OID * oidp, OID * class_oidp);
 static char *btree_leaf_get_oid_from_oidptr (BTREE_SCAN * bts,
 					     char *rec_oid_ptr,
-					     int offset,
 					     BTREE_NODE_TYPE node_type,
 					     OID * oid, OID * class_oid);
 static char *btree_leaf_advance_oidptr (BTREE_SCAN * bts, char *rec_oid_ptr,
@@ -929,7 +930,8 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
     {
       TP_DOMAIN_STATUS status;
 
-      assert (pr_is_string_type (src_type) && pr_is_string_type (dst_type));
+      assert (pr_is_string_type (src_type));
+      assert (pr_is_string_type (dst_type));
 
       key_ptr = &new_key;
       status = tp_value_cast (key, key_ptr, tp_domain, false);
@@ -1101,12 +1103,12 @@ btree_delete_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid,
     {
       goto exit_on_error;
     }
-  assert (node_type == BTREE_NON_LEAF_NODE
-	  || btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_OVERFLOW_KEY));
 
   /* get first page identifier */
   if (node_type == BTREE_LEAF_NODE)
     {
+      assert (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_OVERFLOW_KEY));
+
       if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_SUBCLASS))
 	{
 	  start_ptr = rec.data + (2 * OR_OID_SIZE);
@@ -1227,6 +1229,8 @@ btree_leaf_new_overflow_oids_vpid (RECDES * rec, VPID * ovfl_vpid)
   rc = or_put_align32 (&buf);
   assert (rc == NO_ERROR);
 
+  assert (CAST_BUFLEN (buf.ptr - buf.buffer) == OR_OID_SIZE);
+
   rec->length += CAST_BUFLEN (buf.ptr - buf.buffer);
 
   return rc;
@@ -1244,12 +1248,14 @@ static int
 btree_leaf_get_first_oid (BTID_INT * btid, RECDES * recp, OID * oidp,
 			  OID * class_oid)
 {
+  assert (btid != NULL);
+
   /* instance OID */
   OR_GET_OID (recp->data, oidp);
   oidp->slotid = oidp->slotid & (~BTREE_LEAF_RECORD_MASK);
 
   /* class OID */
-  if (btid != NULL && BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid))
     {
       if (btree_leaf_is_flaged (recp, BTREE_LEAF_RECORD_SUBCLASS))
 	{
@@ -1298,9 +1304,10 @@ btree_leaf_get_num_oids (RECDES * rec, int offset, BTREE_NODE_TYPE node_type,
 	}
     }
   else
-    {
-      /* BTREE_OVERFLOW_NODE */
+    {				/* BTREE_OVERFLOW_NODE */
       assert (offset == 0);
+      assert (node_type == BTREE_OVERFLOW_NODE);
+      assert (oid_size == OR_OID_SIZE);
 
       rec_oid_cnt = CEIL_PTVDIV (rec->length, oid_size);
     }
@@ -1313,16 +1320,20 @@ btree_leaf_get_num_oids (RECDES * rec, int offset, BTREE_NODE_TYPE node_type,
  *   return: OID pointer
  *   bts(in):
  *   rec_oid_ptr(in):
- *   offset(in):
  *   node_type(in):
  *   oid(out):
  *   class_oid(out):
  */
 static char *
 btree_leaf_get_oid_from_oidptr (BTREE_SCAN * bts, char *rec_oid_ptr,
-				int offset, BTREE_NODE_TYPE node_type,
+				BTREE_NODE_TYPE node_type,
 				OID * oid, OID * class_oid)
 {
+  assert (bts != NULL);
+  assert (rec_oid_ptr != NULL);
+  assert (oid != NULL);
+  assert (class_oid != NULL);
+
   if (node_type == BTREE_LEAF_NODE && bts->oid_pos == 0)
     {
       /* get first oid */
@@ -1376,6 +1387,9 @@ static char *
 btree_leaf_advance_oidptr (BTREE_SCAN * bts, char *rec_oid_ptr, int offset,
 			   BTREE_NODE_TYPE node_type)
 {
+  assert (bts != NULL);
+  assert (rec_oid_ptr != NULL);
+
   if (node_type == BTREE_LEAF_NODE && bts->oid_pos == 0)
     {
       rec_oid_ptr += offset;
@@ -1397,6 +1411,7 @@ btree_leaf_advance_oidptr (BTREE_SCAN * bts, char *rec_oid_ptr, int offset,
   return rec_oid_ptr;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * btree_leaf_put_first_oid () -
  *   return: NO_ERROR
@@ -1423,9 +1438,10 @@ btree_leaf_put_first_oid (RECDES * recp, OID * oidp, short record_flag)
 
   return NO_ERROR;
 }
+#endif
 
 /*
- * btree_leaf_rebuild_record () -
+ * btree_leaf_change_first_oid () -
  *   return: NO_ERROR
  *   recp(in/out):
  *   btid(in):
@@ -1433,39 +1449,58 @@ btree_leaf_put_first_oid (RECDES * recp, OID * oidp, short record_flag)
  *   class_oidp(in):
  */
 static int
-btree_leaf_rebuild_record (RECDES * recp, BTID_INT * btid,
-			   OID * oidp, OID * class_oidp)
+btree_leaf_change_first_oid (RECDES * recp, BTID_INT * btid,
+			     OID * oidp, OID * class_oidp)
 {
   short rec_type;
   char *src, *desc;
   int length;
+
+  assert (recp != NULL);
+  assert (btid != NULL);
+  assert (oidp != NULL);
+  assert (class_oidp != NULL);
+
+  assert (!OID_ISNULL (oidp));
 
   rec_type = btree_leaf_get_flag (recp);
   /* write new first oid */
   OR_PUT_OID (recp->data, oidp);
   btree_leaf_set_flag (recp, rec_type);
 
-  if (BTREE_IS_UNIQUE (btid)
-      && (btree_leaf_is_flaged (recp, BTREE_LEAF_RECORD_SUBCLASS)
-	  || !OID_EQ (&btid->topclass_oid, class_oidp)))
+  if (BTREE_IS_UNIQUE (btid))
     {
-      if (btree_leaf_is_flaged (recp, BTREE_LEAF_RECORD_SUBCLASS)
-	  && !OID_EQ (&btid->topclass_oid, class_oidp))
+      assert (!OID_ISNULL (class_oidp));
+
+      if (OID_EQ (&btid->topclass_oid, class_oidp))
 	{
-	  /* replace old class_oid to new class_oid */
-	  OR_PUT_OID (recp->data + OR_OID_SIZE, class_oidp);
-	}
-      else
-	{
-	  if (OID_EQ (&btid->topclass_oid, class_oidp))
+	  /* TO_BE: { inst_oid | key_val }
+	   */
+	  if (btree_leaf_is_flaged (recp, BTREE_LEAF_RECORD_SUBCLASS))
 	    {
 	      /* delete old class_oid */
 	      src = recp->data + (2 * OR_OID_SIZE);
 	      desc = recp->data + OR_OID_SIZE;
 	      length = recp->length - (2 * OR_OID_SIZE);
+
 	      recp->length = recp->length - OR_OID_SIZE;
 	      memmove (desc, src, length);
-	      btree_leaf_clear_flag (recp, BTREE_LEAF_RECORD_SUBCLASS);
+	    }
+	  else
+	    {
+	      ;			/* OK */
+	    }
+
+	  btree_leaf_clear_flag (recp, BTREE_LEAF_RECORD_SUBCLASS);
+	}
+      else
+	{
+	  /* TO_BE: { inst_oid | class_oid | key_val }
+	   */
+	  if (btree_leaf_is_flaged (recp, BTREE_LEAF_RECORD_SUBCLASS))
+	    {
+	      /* replace old class_oid to new class_oid */
+	      OR_PUT_OID (recp->data + OR_OID_SIZE, class_oidp);
 	    }
 	  else
 	    {
@@ -1473,11 +1508,14 @@ btree_leaf_rebuild_record (RECDES * recp, BTID_INT * btid,
 	      src = recp->data + OR_OID_SIZE;
 	      desc = recp->data + (2 * OR_OID_SIZE);
 	      length = recp->length - OR_OID_SIZE;
+
 	      recp->length = recp->length + OR_OID_SIZE;
 	      memmove (desc, src, length);
+
 	      OR_PUT_OID (recp->data + OR_OID_SIZE, class_oidp);
-	      btree_leaf_set_flag (recp, BTREE_LEAF_RECORD_SUBCLASS);
 	    }
+
+	  btree_leaf_set_flag (recp, BTREE_LEAF_RECORD_SUBCLASS);
 	}
     }
 
@@ -1514,6 +1552,8 @@ btree_leaf_get_last_oid (BTID_INT * btid, RECDES * recp,
 
   if (BTREE_IS_UNIQUE (btid))
     {
+      assert (node_type == BTREE_LEAF_NODE);
+
       OR_GET_OID (offset - (2 * OR_OID_SIZE), oidp);
       OR_GET_OID (offset - OR_OID_SIZE, class_oid);
     }
@@ -1584,6 +1624,7 @@ btree_leaf_is_flaged (RECDES * recp, short record_flag)
   assert ((short) (record_flag & ~BTREE_LEAF_RECORD_MASK) == 0);
 
   ret = OR_GET_SHORT (recp->data + OR_OID_SLOTID) & record_flag;
+
   return ret ? true : false;
 }
 
@@ -7113,6 +7154,7 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   oid_cnt = btree_leaf_get_num_oids (&ovfl_copy_rec, 0,
 				     BTREE_OVERFLOW_NODE, OR_OID_SIZE);
+  assert (oid_cnt >= 1);
 
   btree_leaf_get_last_oid (btid, &ovfl_copy_rec, BTREE_OVERFLOW_NODE,
 			   &last_oid, &last_class_oid);
@@ -7171,7 +7213,6 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  goto exit_on_error;
 	}
 
-
       if (!VPID_ISNULL (&next_ovfl_vpid))
 	{
 	  btree_leaf_update_overflow_oids_vpid (leaf_rec, &next_ovfl_vpid);
@@ -7183,7 +7224,9 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	}
     }
 
-  btree_leaf_rebuild_record (leaf_rec, btid, &last_oid, &last_class_oid);
+  assert (OID_ISNULL (&last_class_oid));
+
+  btree_leaf_change_first_oid (leaf_rec, btid, &last_oid, &last_class_oid);
   assert (leaf_rec->length % 4 == 0);
 
   if (spage_update (thread_p, leaf_page, slot_id, leaf_rec) != SP_SUCCESS)
@@ -7287,8 +7330,8 @@ btree_delete_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
       if (del_oid_offset == 0)
 	{
 	  /* delete first oid */
-	  btree_leaf_rebuild_record (leaf_rec, btid, &last_oid,
-				     &last_class_oid);
+	  btree_leaf_change_first_oid (leaf_rec, btid, &last_oid,
+				       &last_class_oid);
 	}
       else
 	{
@@ -11419,6 +11462,8 @@ btree_check_duplicate_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
   VPID next_ovfl_vpid;
   RECDES orec;
 
+  assert (btid != NULL);
+
   if (btree_find_oid_from_leaf (btid, leaf_rec_p, oid_list_offset,
 				oid) != NOT_FOUND)
     {
@@ -11494,9 +11539,10 @@ btree_find_oid_from_leaf (BTID_INT * btid, RECDES * rec_p,
   OID inst_oid, class_oid;
   int i, num_oids, oid_size;
 
+  assert (btid != NULL);
   assert (oid_list_offset != 0);
 
-  btree_leaf_get_first_oid (NULL, rec_p, &inst_oid, &class_oid);
+  btree_leaf_get_first_oid (btid, rec_p, &inst_oid, &class_oid);
   if (OID_EQ (&inst_oid, oid))
     {
       return 0;
@@ -23308,7 +23354,6 @@ start_locking:
 	  for (i = 0; i < btrs_helper.cp_oid_cnt; i++)
 	    {
 	      btree_leaf_get_oid_from_oidptr (bts, btrs_helper.rec_oid_ptr,
-					      btrs_helper.offset,
 					      btrs_helper.node_type,
 					      &temp_oid,
 					      &btrs_helper.class_oid);
@@ -23343,7 +23388,6 @@ start_locking:
 	    {
 	      /* The class oid comparison must be performed. */
 	      btree_leaf_get_oid_from_oidptr (bts, btrs_helper.rec_oid_ptr,
-					      btrs_helper.offset,
 					      btrs_helper.node_type,
 					      &btrs_helper.inst_oid,
 					      &btrs_helper.class_oid);
@@ -23544,7 +23588,6 @@ start_locking:
       for (j = 0; j < btrs_helper.cp_oid_cnt; j++)
 	{
 	  btree_leaf_get_oid_from_oidptr (bts, btrs_helper.rec_oid_ptr,
-					  btrs_helper.offset,
 					  btrs_helper.node_type,
 					  &temp_oid, &btrs_helper.class_oid);
 	  if (btree_handle_current_oid (thread_p, bts, &btrs_helper,
@@ -23659,7 +23702,6 @@ start_locking:
       for (i = 0; i < btrs_helper.cp_oid_cnt; i++)
 	{
 	  btree_leaf_get_oid_from_oidptr (bts, btrs_helper.rec_oid_ptr,
-					  btrs_helper.offset,
 					  btrs_helper.node_type,
 					  &temp_oid, &btrs_helper.class_oid);
 	  if (btree_handle_current_oid (thread_p, bts, &btrs_helper,
@@ -23698,7 +23740,6 @@ start_locking:
       for (i = 0; i < btrs_helper.cp_oid_cnt; i++)
 	{
 	  btree_leaf_get_oid_from_oidptr (bts, btrs_helper.rec_oid_ptr,
-					  btrs_helper.offset,
 					  btrs_helper.node_type,
 					  &btrs_helper.inst_oid,
 					  &btrs_helper.class_oid);
@@ -24447,6 +24488,7 @@ btree_handle_current_oid (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
       /* Increment OID's count */
       btrs_helper->oids_cnt++;
     }
+
   /* Advance rec_oid_ptr */
   btrs_helper->rec_oid_ptr =
     btree_leaf_advance_oidptr (bts, btrs_helper->rec_oid_ptr,
@@ -24515,7 +24557,7 @@ btree_range_search_handle_previous_locks (THREAD_ENTRY * thread_p,
    * get the current instance OID
    */
   btree_leaf_get_oid_from_oidptr (bts, btrs_helper->rec_oid_ptr,
-				  btrs_helper->offset, btrs_helper->node_type,
+				  btrs_helper->node_type,
 				  &btrs_helper->inst_oid,
 				  &btrs_helper->class_oid);
   if (btrs_helper->curr_key_locked)
@@ -24884,7 +24926,6 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	  for (j = oid_index; j < btrs_helper->cp_oid_cnt; j++)
 	    {
 	      btree_leaf_get_oid_from_oidptr (bts, btrs_helper->rec_oid_ptr,
-					      btrs_helper->offset,
 					      btrs_helper->node_type,
 					      &temp_oid,
 					      &btrs_helper->class_oid);
@@ -24912,7 +24953,6 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
        */
       /* get current class OID and instance OID */
       btree_leaf_get_oid_from_oidptr (bts, btrs_helper->rec_oid_ptr,
-				      btrs_helper->offset,
 				      btrs_helper->node_type,
 				      &btrs_helper->inst_oid,
 				      &btrs_helper->class_oid);
@@ -24929,7 +24969,6 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
        * that having class hierarchy index form.
        */
       btree_leaf_get_oid_from_oidptr (bts, btrs_helper->rec_oid_ptr,
-				      btrs_helper->offset,
 				      btrs_helper->node_type,
 				      &btrs_helper->inst_oid,
 				      &btrs_helper->class_oid);
@@ -25439,7 +25478,6 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	}
 
       btree_leaf_get_oid_from_oidptr (bts, btrs_helper->rec_oid_ptr,
-				      btrs_helper->offset,
 				      btrs_helper->node_type,
 				      &btrs_helper->inst_oid,
 				      &btrs_helper->class_oid);
