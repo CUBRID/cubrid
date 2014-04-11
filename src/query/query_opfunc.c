@@ -12508,13 +12508,16 @@ qdata_save_agg_htable_to_list (THREAD_ENTRY * thread_p,
 	    }
 	}
 
-      /* dump accumulators to partial list */
-      rc =
-	qdata_save_agg_hentry_to_list (thread_p, key, value, temp_dbval_array,
-				       partial_list_id);
-      if (rc != NO_ERROR)
+      if (value->tuple_count > 0)
 	{
-	  return rc;
+	  /* dump accumulators to partial list */
+	  rc =
+	    qdata_save_agg_hentry_to_list (thread_p, key, value,
+					   temp_dbval_array, partial_list_id);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
 	}
 
       /* next */
