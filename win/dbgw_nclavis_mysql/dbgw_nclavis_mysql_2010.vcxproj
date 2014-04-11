@@ -68,6 +68,10 @@
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(Platform)\$(Configuration)\</IntDir>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(Platform)\$(Configuration)\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">DBGWConnector3DNClavisMySQL</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">DBGWConnector3DNClavisMySQL</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">DBGWConnector3NClavisMySQL</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">DBGWConnector3NClavisMySQL</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <BuildLog>
