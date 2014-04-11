@@ -90,7 +90,7 @@
     </ClCompile>
     <Link>
       <AdditionalDependencies>ws2_32.lib;libexpat.lib;libregex38a.lib;libmysql.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <OutputFile>$(OutDir)`DBGWConnector3DMySQL.dll</OutputFile>
+      <OutputFile>$(OutDir)DBGWConnector3DMySQL.dll</OutputFile>
       <AdditionalLibraryDirectories>$(SolutionDir)$(Platform)\$(Configuration);..\..\win\external\lib;..\..\win\external\mysqlclient\6.1\lib32;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <ModuleDefinitionFile>
       </ModuleDefinitionFile>
