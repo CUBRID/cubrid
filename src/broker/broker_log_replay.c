@@ -54,6 +54,8 @@
 #define DEFAULT_DIFF_TIME_LOWER         (0.01)	/* 10 millisecond */
 #define DEFAULT_BREAK_TIME              (0.01)	/* 10 millisecond */
 
+#define INVALID_PORT_NUM                (-1)
+
 #define free_and_init(ptr) \
         do { \
           if ((ptr)) { \
@@ -115,7 +117,7 @@ struct t_sql_result
   char *sql_info;
 };
 
-static int log_replay (FILE * infp, FILE * outfp, const off_t last_offset);
+static int log_replay (char *infilename, char *outfilename);
 static char *get_next_log_line (FILE * infp, T_STRING * linebuf_tstr,
 				const off_t last_offset, int *lineno);
 
@@ -153,11 +155,12 @@ static int print_result_with_sort (FILE * outfp, int print_diff_time_lower,
 static int get_args (int argc, char *argv[]);
 
 static int open_file (char *infilename, char *outfilename, FILE ** infp,
-		      FILE ** outfp);
-static void close_file (FILE * infp, FILE * outfp);
+		      FILE ** outfp, FILE ** cci_errfp, FILE ** skip_sqlfp);
+static void close_file (FILE * infp, FILE * outfp, FILE * cci_errfp,
+			FILE * skip_sqlfp);
 
 static char *host = NULL;
-static int broker_port = 0;
+static int broker_port = INVALID_PORT_NUM;
 static char *dbname = NULL;
 static char *dbuser = NULL;
 static char *dbpasswd = NULL;
@@ -184,7 +187,7 @@ static unsigned int num_faster_queries[STAT_MAX_DIFF_TIME] = { 0 };
  *   last_offset(in): last offset of input file
  */
 static int
-log_replay (FILE * infp, FILE * outfp, const off_t last_offset)
+log_replay (char *infilename, char *outfilename)
 {
   char *linebuf;
   int lineno = 0;
@@ -200,9 +203,12 @@ log_replay (FILE * infp, FILE * outfp, const off_t last_offset)
   int temp_line_len = 0;
   int temp_line_len_max = 0;
   FILE *cci_errfp = NULL;
-  FILE *pass_sqlfp = NULL;
+  FILE *skip_sqlfp = NULL;
+  FILE *outfp = NULL;
+  FILE *infp = NULL;
   struct timeval begin, end;
   double program_run_time;
+  off_t last_offset;
   T_SQL_INFO sql_info;
   T_SUMMARY_INFO summary;
   T_CCI_ERROR err_buf;
@@ -227,21 +233,17 @@ log_replay (FILE * infp, FILE * outfp, const off_t last_offset)
       goto end;
     }
 
-  cci_errfp = fopen (CCI_ERR_FILE_NAME, "w");
-  if (cci_errfp == NULL)
+  if (open_file
+      (infilename, outfilename, &infp, &outfp, &cci_errfp, &skip_sqlfp) < 0)
     {
-      fprintf (stderr, "cannot open output file '%s'\n", CCI_ERR_FILE_NAME);
       result = ER_FAILED;
       goto end;
     }
 
-  pass_sqlfp = fopen (PASS_SQL_FILE_NAME, "w");
-  if (pass_sqlfp == NULL)
-    {
-      fprintf (stderr, "cannot open output file '%s'\n", PASS_SQL_FILE_NAME);
-      result = ER_FAILED;
-      goto end;
-    }
+  assert (infp != NULL);
+  last_offset = lseek (fileno (infp), 0, SEEK_END);
+
+  lseek (fileno (infp), 0, SEEK_SET);
 
   linebuf_tstr = t_string_make (1024);
   if (linebuf_tstr == NULL)
@@ -281,7 +283,7 @@ log_replay (FILE * infp, FILE * outfp, const off_t last_offset)
       memset (&sql_info, '\0', sizeof (T_SQL_INFO));
 
       req =
-	log_prepare (cci_errfp, pass_sqlfp, con_h, msg_p, &sql_info,
+	log_prepare (cci_errfp, skip_sqlfp, con_h, msg_p, &sql_info,
 		     &summary);
       if (req < 0)
 	{
@@ -405,15 +407,7 @@ log_replay (FILE * infp, FILE * outfp, const off_t last_offset)
 end:
   cci_disconnect (con_h, &err_buf);
 
-  if (cci_errfp)
-    {
-      fclose (cci_errfp);
-    }
-
-  if (pass_sqlfp)
-    {
-      fclose (pass_sqlfp);
-    }
+  close_file (infp, outfp, cci_errfp, skip_sqlfp);
 
   if (linebuf_tstr)
     {
@@ -1531,6 +1525,7 @@ static int
 get_args (int argc, char *argv[])
 {
   int c;
+  int num_file_arg;
   double break_time_in_sec = DEFAULT_BREAK_TIME;
   print_result_diff_time_lower = DEFAULT_DIFF_TIME_LOWER;
 
@@ -1547,7 +1542,10 @@ get_args (int argc, char *argv[])
 	  host = optarg;
 	  break;
 	case 'P':
-	  broker_port = atoi (optarg);
+	  if (parse_int (&broker_port, optarg, 10) < 0)
+	    {
+	      goto usage;
+	    }
 	  break;
 	case 'd':
 	  dbname = optarg;
@@ -1588,22 +1586,13 @@ get_args (int argc, char *argv[])
 
   break_time = (int) (break_time_in_sec * 1000);
 
-  if (host == NULL)
+  num_file_arg = argc - optind;
+  if (num_file_arg != 2)
     {
-      host = (char *) "localhost";
+      goto usage;
     }
 
-  if (dbuser == NULL)
-    {
-      dbuser = (char *) "PUBLIC";
-    }
-
-  if (dbpasswd == NULL)
-    {
-      dbpasswd = (char *) "";
-    }
-
-  if (optind + 1 >= argc)
+  if (host == NULL || broker_port == INVALID_PORT_NUM || dbname == NULL)
     {
       goto usage;
     }
@@ -1612,16 +1601,13 @@ get_args (int argc, char *argv[])
 
 usage:
   fprintf (stderr,
-	   "usage : %s infile outfile [OPTION] \n"
+	   "usage : %s -I broker_host -P broker_port -d database_name infile outfile [OPTION] \n"
 	   "\n"
 	   "valid options:\n"
-	   "  -I   broker host\n"
-	   "  -P   broker port\n"
-	   "  -d   database name\n"
 	   "  -u   user name\n"
 	   "  -p   user password\n"
 	   "  -h   break time between query execute; default: %.3f(sec)\n"
-	   "  -r   enable to rewrite update/delete query to select\n"
+	   "  -r   enable to rewrite update/delete query to select query\n"
 	   "  -D   minimum value of time difference make print result; default: %.3f(sec)\n"
 	   "  -F   datetime when start to replay sql_log\n"
 	   "  -T   datetime when end to replay sql_log\n", argv[0],
@@ -1640,9 +1626,12 @@ date_format_err:
  *   outfilename(in):
  *   infp(out):
  *   outfp(out):
+ *   cci_errfp(out):
+ *   skip_sqlfp(out):
  */
 static int
-open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp)
+open_file (char *infilename, char *outfilename, FILE ** infp,
+	   FILE ** outfp, FILE ** cci_errfp, FILE ** skip_sqlfp)
 {
   *infp = fopen (infilename, "r");
   if (*infp == NULL)
@@ -1651,18 +1640,11 @@ open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp)
       return ER_FAILED;
     }
 
-  if (outfilename == NULL)
+  *outfp = fopen (outfilename, "w");
+  if (*outfp == NULL)
     {
-      *outfp = stdout;
-    }
-  else
-    {
-      *outfp = fopen (outfilename, "w");
-      if (*outfp == NULL)
-	{
-	  fprintf (stderr, "cannot open output file '%s'\n", outfilename);
-	  goto error;;
-	}
+      fprintf (stderr, "cannot open output file '%s'\n", outfilename);
+      goto error;;
     }
 
   br_tmpfp = tmpfile ();
@@ -1672,10 +1654,24 @@ open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp)
       goto error;
     }
 
+  *cci_errfp = fopen (CCI_ERR_FILE_NAME, "w");
+  if (*cci_errfp == NULL)
+    {
+      fprintf (stderr, "cannot open output file '%s'\n", CCI_ERR_FILE_NAME);
+      goto error;
+    }
+
+  *skip_sqlfp = fopen (PASS_SQL_FILE_NAME, "w");
+  if (*skip_sqlfp == NULL)
+    {
+      fprintf (stderr, "cannot open output file '%s'\n", PASS_SQL_FILE_NAME);
+      goto error;
+    }
+
   return NO_ERROR;
 
 error:
-  close_file (*infp, *outfp);
+  close_file (*infp, *outfp, *cci_errfp, *skip_sqlfp);
   return ER_FAILED;
 }
 
@@ -1684,17 +1680,18 @@ error:
  *   return: void
  *   infp(in):
  *   outfp(in):
+ *   cci_errfp(in):
+ *   skip_sqlfp(in):
  */
 static void
-close_file (FILE * infp, FILE * outfp)
+close_file (FILE * infp, FILE * outfp, FILE * cci_errfp, FILE * skip_sqlfp)
 {
   if (infp != NULL)
     {
       fclose (infp);
     }
 
-  fflush (outfp);
-  if (outfp != NULL && outfp != stdout)
+  if (outfp != NULL)
     {
       fclose (outfp);
     }
@@ -1702,6 +1699,16 @@ close_file (FILE * infp, FILE * outfp)
   if (br_tmpfp != NULL)
     {
       fclose (br_tmpfp);
+    }
+
+  if (cci_errfp != NULL)
+    {
+      fclose (cci_errfp);
+    }
+
+  if (skip_sqlfp != NULL)
+    {
+      fclose (skip_sqlfp);
     }
 
   return;
@@ -1713,33 +1720,21 @@ main (int argc, char *argv[])
   int start_arg;
   char *infilename = NULL;
   char *outfilename = NULL;
-  FILE *outfp, *infp;
   int res;
-  off_t last_offset;
 
-  if ((start_arg = get_args (argc, argv)) < 0)
+  start_arg = get_args (argc, argv);
+  if (start_arg < 0)
     {
       return ER_FAILED;
     }
+
+  assert (start_arg < argc);
 
   infilename = argv[start_arg];
-  if (start_arg + 1 <= argc)
-    {
-      outfilename = argv[start_arg + 1];
-    }
-  if (open_file (infilename, outfilename, &infp, &outfp) < 0)
-    {
-      return ER_FAILED;
-    }
 
-  assert (infp != NULL);
-  last_offset = lseek (fileno (infp), 0, SEEK_END);
+  outfilename = argv[start_arg + 1];
 
-  lseek (fileno (infp), 0, SEEK_SET);
-
-  res = log_replay (infp, outfp, last_offset);
-
-  close_file (infp, outfp);
+  res = log_replay (infilename, outfilename);
 
   return res;
 }
