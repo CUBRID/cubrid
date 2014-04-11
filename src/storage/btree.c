@@ -1934,7 +1934,7 @@ btree_start_overflow_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   /* log new overflow page changes for redo purposes */
 
-  recins.rec_type = OVERFLOW;
+  recins.rec_type = LEAF_RECORD_OVERFLOW;
   recins.oid_inserted = true;
   recins.oid = *oid;
   OID_SET_NULL (&recins.class_oid);
@@ -11034,7 +11034,7 @@ btree_insert_oid_overflow_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
   assert (ovfl_rec.length % 4 == 0);
 
   /* log the new node record for redo purposes */
-  recins.rec_type = OVERFLOW;
+  recins.rec_type = LEAF_RECORD_OVERFLOW;
   recins.oid_inserted = true;
   recins.oid = *oid;
   OID_SET_NULL (&recins.class_oid);
