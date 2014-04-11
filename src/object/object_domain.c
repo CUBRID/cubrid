@@ -9588,8 +9588,6 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 		  common_coll = DB_GET_STRING_COLLATION (v1);
 		}
 	      else if (TP_IS_CHAR_TYPE (vtype1)
-		       && (DB_GET_STRING_CODESET (v1)
-			   != DB_GET_STRING_CODESET (v2))
 		       && (use_collation_of_v1 || use_collation_of_v2))
 		{
 		  INTL_CODESET codeset;
@@ -9639,10 +9637,8 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
 
 		      v1 = &tmp_char_conv;
 		    }
-		  else
+		  else if (DB_GET_STRING_CODESET (v2) != codeset)
 		    {
-		      assert (DB_GET_STRING_CODESET (v2) != codeset);
-
 		      db_value_domain_init (&tmp_char_conv, vtype2,
 					    DB_VALUE_PRECISION (v2), 0);
 
