@@ -10706,6 +10706,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 		{
 		  goto error_exit;
 		}
+	      COPY_OID (&attr_info->inst_oid, &unique_oid);
 	    }
 
 	  if (pruning_type && BTREE_IS_MULTI_ROW_OP (op_type))
@@ -10952,6 +10953,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 		{
 		  goto error_exit;
 		}
+	      COPY_OID (&attr_info->inst_oid, &unique_oid);
 	    }
 
 	  if (pruning_type != DB_NOT_PARTITIONED_CLASS
@@ -11127,7 +11129,10 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
     {
       /* modify rec_descriptor representation id to that of attr_info */
       assert (OID_EQ (&attr_info->class_oid, &pcontext->root_oid));
-      or_set_rep_id (&rec_descriptor, pcontext->root_repr_id);
+      if (OID_ISNULL (&attr_info->inst_oid))
+	{
+	  or_set_rep_id (&rec_descriptor, pcontext->root_repr_id);
+	}
       local_op_type =
 	BTREE_IS_MULTI_ROW_OP (op_type) ? MULTI_ROW_UPDATE :
 	SINGLE_ROW_UPDATE;
