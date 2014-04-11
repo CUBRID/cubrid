@@ -1246,27 +1246,7 @@ mht_get (MHT_TABLE * ht, const void *key)
     {
       if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
 	{
-	  /* adjust LRU list */
-	  if (ht->build_lru_list && ht->lru_tail != hentry)
-	    {
-	      if (ht->lru_head == hentry)
-		{
-		  ht->lru_head = hentry->lru_next;
-		}
-
-	      /* unlink */
-	      hentry->lru_next->lru_prev = hentry->lru_prev;
-	      if (hentry->lru_prev)
-		{
-		  hentry->lru_prev->lru_next = hentry->lru_next;
-		}
-
-	      /* add at end */
-	      ht->lru_tail->lru_next = hentry;
-	      hentry->lru_prev = ht->lru_tail;
-	      hentry->lru_next = NULL;
-	      ht->lru_tail = hentry;
-	    }
+	  mht_adjust_lru_list (ht, hentry);
 
 	  /* return value */
 	  return hentry->data;
@@ -1276,13 +1256,47 @@ mht_get (MHT_TABLE * ht, const void *key)
 }
 
 /*
+ * mht_adjust_lru_list -
+ *   ht(in): hash table
+ *   hentry(in): hash entry
+ */
+int
+mht_adjust_lru_list (MHT_TABLE * ht, HENTRY_PTR hentry)
+{
+  assert (ht && hentry);
+
+  if (ht && hentry && ht->build_lru_list && ht->lru_tail != hentry)
+    {
+      if (ht->lru_head == hentry)
+	{
+	  ht->lru_head = hentry->lru_next;
+	}
+
+      /* unlink */
+      hentry->lru_next->lru_prev = hentry->lru_prev;
+      if (hentry->lru_prev)
+	{
+	  hentry->lru_prev->lru_next = hentry->lru_next;
+	}
+
+      /* add at end */
+      ht->lru_tail->lru_next = hentry;
+      hentry->lru_prev = ht->lru_tail;
+      hentry->lru_next = NULL;
+      ht->lru_tail = hentry;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * mht_get2 - Find the next data associated with the key; Search the entry next
  *            to the last result
  *   return: the data associated with the key, or NULL if not found
  *   ht(in):
  *   key(in):
  *   last(in/out):
- * 
+ *
  * NOTE: This call does not affect the LRU list.
  */
 void *

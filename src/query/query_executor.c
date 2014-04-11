@@ -16476,6 +16476,20 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
       ent = NULL;
       goto end;
     }
+
+  if (xasl_ent_cache.qstr_ht->build_lru_list)
+    {
+      if (xasl_ent_cache.qstr_ht->lru_tail
+	  && xasl_ent_cache.qstr_ht->lru_tail->data == ent)
+	{
+	  ent->qstr_ht_entry_ptr = xasl_ent_cache.qstr_ht->lru_tail;
+	}
+      else
+	{
+	  assert (0);
+	}
+    }
+
   mnt_pc_query_string_hash_entries (thread_p,
 				    mht_count (xasl_ent_cache.qstr_ht));
 
@@ -16883,22 +16897,22 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 	  assert (ent->tran_fix_count_array[tran_index] > 0);
 	}
 #endif
-      if (ent)
-	{
-	  /* Now we must update lru list of the query string hash table.
-	   * So we will call mht_get to the query string hash table.
-	   */
-	  assert (ent->qstr_ht_key.query_string != NULL);
-	  mht_get (xasl_ent_cache.qstr_ht, (void *) &ent->qstr_ht_key);
 
+      if (ent && xasl_ent_cache.qstr_ht->build_lru_list)
+	{
+	  if (ent->qstr_ht_entry_ptr)
+	    {
+	      mht_adjust_lru_list (xasl_ent_cache.qstr_ht,
+				   ent->qstr_ht_entry_ptr);
 #if !defined (NDEBUG)
-	  if (xasl_ent_cache.qstr_ht->lru_tail == NULL
-	      || ((XASL_CACHE_ENTRY *) xasl_ent_cache.qstr_ht->lru_tail->data
-		  != ent))
+	      assert (mht_get (xasl_ent_cache.qstr_ht,
+			       (void *) &ent->qstr_ht_key) == ent);
+#endif
+	    }
+	  else
 	    {
 	      assert (0);
 	    }
-#endif
 	}
     }
 
@@ -17153,6 +17167,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 			"qexec_delete_xasl_cache_ent: mht_rem2 failed for qstr %s\n",
 			ent->sql_info.sql_hash_text);
 	}
+      ent->qstr_ht_entry_ptr = NULL;
       mnt_pc_query_string_hash_entries (thread_p,
 					mht_count (xasl_ent_cache.qstr_ht));
 
@@ -17230,6 +17245,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 			ent->sql_info.sql_hash_text);
 	  rc = ER_FAILED;
 	}
+      ent->qstr_ht_entry_ptr = NULL;
       mnt_pc_query_string_hash_entries (thread_p,
 					mht_count (xasl_ent_cache.qstr_ht));
 
@@ -25471,6 +25487,19 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
       goto end;
     }
 
+  if (filter_pred_ent_cache.qstr_ht->build_lru_list)
+    {
+      if (filter_pred_ent_cache.qstr_ht->lru_tail
+	  && filter_pred_ent_cache.qstr_ht->lru_tail->data == ent)
+	{
+	  ent->qstr_ht_entry_ptr = filter_pred_ent_cache.qstr_ht->lru_tail;
+	}
+      else
+	{
+	  assert (0);
+	}
+    }
+
   /* insert (or update) the entry into the xasl file id hash table */
   if (mht_put_new (filter_pred_ent_cache.xid_ht, &ent->xasl_id, ent) == NULL)
     {
@@ -25650,22 +25679,21 @@ qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 	  ent = NULL;
 	}
 
-      if (ent)
+      if (ent && filter_pred_ent_cache.qstr_ht->build_lru_list)
 	{
-	  /* Now we must update lru list of the query string hash table.
-	   * So we will call mht_get to the query string hash table.
-	   */
-	  assert (ent->qstr_ht_key.query_string != NULL);
-	  mht_get (filter_pred_ent_cache.qstr_ht, (void *) &ent->qstr_ht_key);
-
+	  if (ent->qstr_ht_entry_ptr)
+	    {
+	      mht_adjust_lru_list (filter_pred_ent_cache.qstr_ht,
+				   ent->qstr_ht_entry_ptr);
 #if !defined (NDEBUG)
-	  if (filter_pred_ent_cache.qstr_ht->lru_tail == NULL
-	      || ((XASL_CACHE_ENTRY *) filter_pred_ent_cache.qstr_ht->
-		  lru_tail->data != ent))
+	      assert (mht_get (filter_pred_ent_cache.qstr_ht,
+			       (void *) &ent->qstr_ht_key) == ent);
+#endif
+	    }
+	  else
 	    {
 	      assert (0);
 	    }
-#endif
 	}
     }
 
@@ -25832,6 +25860,8 @@ qexec_delete_filter_pred_cache_ent (THREAD_ENTRY * thread_p, void *data,
 			"failed for qstr %s\n", ent->sql_info.sql_hash_text);
 	}
     }
+  ent->qstr_ht_entry_ptr = NULL;
+
   /* remove the entry from xasl file id hash table */
   if (mht_rem2 (filter_pred_ent_cache.xid_ht, &ent->xasl_id, ent,
 		NULL, NULL) != NO_ERROR)

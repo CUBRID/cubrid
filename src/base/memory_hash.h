@@ -146,6 +146,7 @@ extern int mht_map_no_key (THREAD_ENTRY * thread_p, const MHT_TABLE * ht,
 			   int (*map_func) (THREAD_ENTRY * thread_p,
 					    void *data, void *args),
 			   void *func_args);
+extern int mht_adjust_lru_list (MHT_TABLE * ht, HENTRY_PTR hentry);
 extern unsigned int mht_count (const MHT_TABLE * ht);
 extern int mht_dump (FILE * out_fp, const MHT_TABLE * ht,
 		     const int print_id_opt,
