@@ -57,6 +57,7 @@ void la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa,
 
 extern int lp_prefetch_log_file (const char *database_name,
 				 const char *log_path);
+extern bool la_force_shutdown (void);
 #endif /* CS_MODE */
 
 #endif /* _LOG_APPLIER_HEADER_ */

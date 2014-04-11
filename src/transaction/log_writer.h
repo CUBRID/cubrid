@@ -108,6 +108,7 @@ extern int logwr_copy_log_header_check (const char *db_name, bool verbose,
 #endif /* !WINDOWS */
 #endif /* CS_MODE */
 
+extern bool logwr_force_shutdown (void);
 extern int logwr_copy_log_file (const char *db_name, const char *log_path,
 				int mode);
 extern LOG_PHY_PAGEID logwr_to_physical_pageid (LOG_PAGEID logical_pageid);

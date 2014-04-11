@@ -3510,12 +3510,6 @@ us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		 PRINT_HA_PROCS_NAME, PRINT_CMD_STOP);
 
-  status = us_hb_server_stop (ha_conf, db_name);
-  if (status != NO_ERROR)
-    {
-      goto ret;
-    }
-
   status = us_hb_copylogdb_stop (ha_conf, db_name, NULL);
   if (status != NO_ERROR)
     {
@@ -3536,6 +3530,8 @@ us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
 	  goto ret;
 	}
     }
+
+  status = us_hb_server_stop (ha_conf, db_name);
 
 ret:
   print_result (PRINT_HA_PROCS_NAME, status, STOP);

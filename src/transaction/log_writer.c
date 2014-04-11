@@ -287,6 +287,12 @@ logwr_shutdown_by_signal ()
   return;
 }
 
+bool
+logwr_force_shutdown (void)
+{
+  return (logwr_need_shutdown) ? true : false;
+}
+
 /*
  * logwr_initialize - Initialize logwr_Gl structure
  *

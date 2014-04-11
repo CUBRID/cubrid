@@ -383,7 +383,7 @@ static char la_peer_host[MAXHOSTNAMELEN + 1];
 static bool la_enable_sql_logging = false;
 static bool la_use_server_side_update_repl = true;
 
-static void la_shutdown_by_signal ();
+static void la_shutdown_by_signal (void);
 static void la_init_ha_apply_info (LA_HA_APPLY_INFO * ha_apply_info);
 
 static LOG_PHY_PAGEID la_log_phypageid (LOG_PAGEID logical_pageid);
@@ -576,12 +576,19 @@ static void *lp_calc_applier_speed_thread_f (void *arg);
  *        process "shutdown"
  */
 static void
-la_shutdown_by_signal ()
+la_shutdown_by_signal (void)
 {
   la_applier_need_shutdown = true;
   la_applier_shutdown_by_signal = true;
 
   return;
+}
+
+bool
+la_force_shutdown (void)
+{
+  return (la_applier_need_shutdown
+	  || la_applier_shutdown_by_signal) ? true : false;
 }
 
 static void
