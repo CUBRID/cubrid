@@ -3651,11 +3651,6 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 	   * Either we timeout and we want to continue in this case, or
 	   * we have another kind of problem.
 	   */
-	  if (best_hint_is_used == false)
-	    {
-	      heap_stats_del_bestspace_by_vpid (thread_p, &best.vpid);
-	    }
-
 	  switch (er_errid ())
 	    {
 	    case NO_ERROR:
@@ -3689,6 +3684,11 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 		{
 		  assert (best_array_index < HEAP_NUM_BEST_SPACESTATS);
 		  bestspace[best_array_index].freespace = 0;
+		}
+	      else
+		{
+		  (void) heap_stats_del_bestspace_by_vpid (thread_p,
+							   &best.vpid);
 		}
 	      found = HEAP_FINDSPACE_ERROR;
 	      break;
@@ -3731,10 +3731,17 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 	    }
 	}
 
-      if (found == HEAP_FINDSPACE_NOTFOUND && best_hint_is_used)
+      if (found == HEAP_FINDSPACE_NOTFOUND)
 	{
-	  /* Increment best_array_index for next search */
-	  best_array_index++;
+	  if (best_hint_is_used)
+	    {
+	      /* Increment best_array_index for next search */
+	      best_array_index++;
+	    }
+	  else
+	    {
+	      notfound_cnt++;
+	    }
 	}
     }
 
@@ -5069,12 +5076,6 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
       return NULL;
     }
   assert (!VPID_ISNULL (&last_vpid));
-
-  last_freespace = spage_max_space_for_new_record (thread_p, last_pgptr);
-  if (last_freespace > needed_space)
-    {
-      return last_pgptr;
-    }
 
   /*
    * Now allocate a new page as close as possible to the last allocated page.
