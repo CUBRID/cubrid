@@ -7214,7 +7214,13 @@ la_shutdown (BOOT_CLIENT_TYPE type)
 	{
 	  free_and_init (la_Info.cache_pb->log_buffer);
 	}
-      mht_destroy (la_Info.cache_pb->hash_table);
+
+      if (la_Info.cache_pb->hash_table != NULL)
+	{
+	  mht_destroy (la_Info.cache_pb->hash_table);
+	  la_Info.cache_pb->hash_table = NULL;
+	}
+
       free_and_init (la_Info.cache_pb);
     }
 
