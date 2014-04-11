@@ -42,6 +42,7 @@
 #include "page_buffer.h"
 #include "heap_file.h"
 #include "class_object.h"
+#include "partition.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -84,7 +85,8 @@ static int or_get_hierarchy_helper (THREAD_ENTRY * thread_p,
 				    OID * source_class, OID * class_,
 				    BTID * btid, OID ** class_oids,
 				    HFID ** hfids, int *num_classes,
-				    int *max_classes);
+				    int *max_classes,
+				    int * partition_local_index);
 static TP_DOMAIN *or_get_domain_internal (char *ptr);
 static TP_DOMAIN *or_get_domain_and_cache (char *ptr);
 static void or_get_att_index (char *ptr, BTID * btid);
@@ -898,6 +900,7 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
  *   hfids(out):
  *   num_classes(out):
  *   max_classes(out):
+ *   partition_local_index(out):
  *
  * Note: This routine gets checks the class to see if it has an attribute named
  *       attr_name, that has a source class equal to source_class.  This would
@@ -908,7 +911,8 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
 static int
 or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
 			 OID * class_, BTID * btid, OID ** class_oids,
-			 HFID ** hfids, int *num_classes, int *max_classes)
+			 HFID ** hfids, int *num_classes, int *max_classes,
+			 int * partition_local_index)
 {
   char *ptr;
   char *subset = NULL;
@@ -944,7 +948,54 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
 
   if (!found)
     {
-      goto success;
+      OID partition_info;
+      REPR_ID repr_id;
+      int is_global_index = 0;
+
+      /* check if we are dealing with a partition class in which the unique
+       * constraint stands as a local index and each partition has it's own btree
+       */
+      if (or_class_get_partition_info (&record, &partition_info, &repr_id)
+	  != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (!OID_ISNULL (&partition_info) && partition_local_index != NULL)
+	{
+	  if (partition_is_global_index (thread_p, NULL, source_class, btid,
+	      NULL, &is_global_index) != NO_ERROR)
+	    {
+	      if (OID_EQ (class_, source_class))
+		{
+		  /* it has been attempted to check the hierarchy for a partition
+		   * class and its local btree. It was not found in the source
+		   * class and is surely not an inherited one.
+		   */
+		  er_clear ();
+		  *partition_local_index = 1;
+		  goto end;
+		}
+	      else
+		{
+		  goto error;
+		}
+	    }
+	  else
+	    {
+	      if (is_global_index == 1)
+		{
+		  /* this should not happen, since the btid has been searched and
+		   * was not found, the index must have been a local one.
+		   */
+		  goto error;
+		}
+	      *partition_local_index = 1;
+	    }
+	}
+      else
+	{
+	  goto success;
+	}
     }
 
   /*
@@ -975,7 +1026,8 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
 	  OR_GET_OID (ptr, &sub_class);
 	  if (or_get_hierarchy_helper (thread_p, source_class, &sub_class,
 				       btid, class_oids, hfids, num_classes,
-				       max_classes) != NO_ERROR)
+				       max_classes, partition_local_index)
+	      != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -983,6 +1035,8 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
 	  ptr += OR_OID_SIZE;
 	}
     }
+
+end:
 
   /* If we have a valid HFID, then add this class to the array */
   or_class_hfid (&record, &hfid);
@@ -1077,6 +1131,7 @@ error:
  *   class_oids(out):
  *   hfids(out): pointer to HFID array
  *   num_classes(out):
+ *   partition_local_index(out):
  *
  * Note: This function uses the attribute represented by the attrid and finds
  *       the source class for that attribute (where it was defined in the class
@@ -1098,7 +1153,7 @@ error:
 int
 or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid,
 			 BTID * btid, OID ** class_oids, HFID ** hfids,
-			 int *num_classes)
+			 int *num_classes, int * partition_local_index)
 {
   int n_attributes, n_fixed, n_variable, i;
   int id, found, max_classes;
@@ -1109,6 +1164,11 @@ or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid,
   max_classes = 0;
   *class_oids = NULL;
   *hfids = NULL;
+
+  if (partition_local_index != NULL)
+    {
+      *partition_local_index = 0;
+    }
 
   /* find the source class of the attribute from the record */
   start = record->data;
@@ -1160,7 +1220,8 @@ or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid,
       ||
       (or_get_hierarchy_helper (thread_p, &source_class, &source_class,
 				btid, class_oids, hfids, num_classes,
-				&max_classes) != NO_ERROR))
+				&max_classes, partition_local_index)
+       != NO_ERROR))
     {
       goto error;
     }

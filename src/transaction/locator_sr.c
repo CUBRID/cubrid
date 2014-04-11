@@ -9391,6 +9391,7 @@ error:
  * return: valid
  *
  *   btid(in): Btree identifier
+ *   class_oid(in):
  *   classrec(in):
  *   attr_ids(in): Array of indexed attributes for the btid
  *   repair(in):
@@ -9402,8 +9403,9 @@ error:
  */
 static DISK_ISVALID
 locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
-				    RECDES * classrec, ATTR_ID * attr_ids,
-				    const char *btname, bool repair)
+				    OID * cls_oid, RECDES * classrec,
+				    ATTR_ID * attr_ids, const char *btname,
+				    bool repair)
 {
   DISK_ISVALID isvalid = DISK_VALID, isallvalid = DISK_VALID;
   OID inst_oid, *p_inst_oid = &inst_oid;
@@ -9428,6 +9430,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   KEY_VAL_RANGE key_val_range;
   OR_INDEX *index;
   DB_LOGICAL ev_res;
+  int partition_local_index = 0;
 #if defined(SERVER_MODE)
   int tran_index;
 #endif /* SERVER_MODE */
@@ -9444,7 +9447,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   /* get all the heap files associated with this unique btree */
   if ((or_get_unique_hierarchy (thread_p, classrec, attr_ids[0], btid,
 				&class_oids, &hfids,
-				&num_classes) != NO_ERROR)
+				&num_classes, &partition_local_index)
+	!= NO_ERROR)
       || class_oids == NULL || hfids == NULL || num_classes < 1)
     {
       if (class_oids != NULL)
@@ -9471,6 +9475,21 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      num_classes * sizeof (HEAP_SCANCACHE));
       goto error;
+    }
+
+  if (partition_local_index == 1)
+    {
+      if (num_classes == 1)
+	{
+	  /* partition class with local index */
+	  COPY_OID (&class_oids[0], cls_oid);
+	  or_class_hfid (classrec, &hfids[0]);
+	}
+      else
+	{
+	  /* a partitioned class and a local index */
+	  goto end;
+	}
     }
 
   for (j = 0; j < num_classes; j++)
@@ -9907,6 +9926,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       isallvalid = DISK_INVALID;
     }
 
+end:
+
   for (j = 0; j < scancache_inited; j++)
     {
       if (heap_scancache_end (thread_p, &scan_cache[j]) != NO_ERROR)
@@ -10068,8 +10089,9 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
 
       if (xbtree_get_unique (thread_p, btid))
 	{
-	  rv = locator_check_unique_btree_entries (thread_p, btid, peek,
-						   attrids, btname, repair);
+	  rv = locator_check_unique_btree_entries (thread_p, btid, class_oid,
+						   peek, attrids, btname,
+						   repair);
 	}
       else
 	{
@@ -12296,7 +12318,7 @@ locator_prefetch_unique_index_page_internal (THREAD_ENTRY * thread_p,
   /* get all the heap files associated with this unique btree */
   if ((or_get_unique_hierarchy (thread_p, classrec, attr_ids[0], btid,
 				&class_oids, &hfids,
-				&num_classes) != NO_ERROR)
+				&num_classes, NULL) != NO_ERROR)
       || class_oids == NULL || hfids == NULL || num_classes < 1)
     {
       if (class_oids != NULL)

@@ -13085,7 +13085,7 @@ btree_split_test (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key,
   int i, j, key_cnt, lcnt, rcnt, sep_key_len, ret;
   PAGE_PTR L_page, R_page;
   VPID L_vpid, R_vpid;
-  BTREE_NODE_HEADER header_info, *header = NULL;;
+  BTREE_NODE_HEADER header_info, *header = NULL;
   DB_VALUE *sep_key;
   bool fence_insert = false;
   bool clear_sep_key = true;
