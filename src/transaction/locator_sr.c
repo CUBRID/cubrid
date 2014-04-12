@@ -310,8 +310,9 @@ static int locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 static TP_DOMAIN *locator_make_midxkey_domain (OR_INDEX * index);
 static DISK_ISVALID
 locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
-				    RECDES * classrec, ATTR_ID * attr_ids,
-				    const char *btname, bool repair);
+				    OID * cls_oid, RECDES * classrec,
+				    ATTR_ID * attr_ids, const char *btname,
+				    bool repair);
 static int locator_eval_filter_predicate (THREAD_ENTRY * thread_p,
 					  BTID * btid,
 					  OR_PREDICATE * or_pred,
@@ -9460,10 +9461,9 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   scan_init_index_scan (&isid, NULL);
 
   /* get all the heap files associated with this unique btree */
-  if ((or_get_unique_hierarchy (thread_p, classrec, attr_ids[0], btid,
-				&class_oids, &hfids,
-				&num_classes, &partition_local_index)
-	!= NO_ERROR)
+  if (or_get_unique_hierarchy (thread_p, classrec, attr_ids[0], btid,
+			       &class_oids, &hfids, &num_classes,
+			       &partition_local_index) != NO_ERROR
       || class_oids == NULL || hfids == NULL || num_classes < 1)
     {
       if (class_oids != NULL)
@@ -11590,8 +11590,8 @@ free_and_return:
 }
 
 int
-xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, BTID * btid,
-					 OID * class_oid,
+xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p,
+					 BTID * btid, OID * class_oid,
 					 DB_VALUE * key_value)
 {
   int error = NO_ERROR;
@@ -12124,7 +12124,8 @@ locator_filter_errid (THREAD_ENTRY * thread_p, int num_ignore_error_count,
  */
 PRUNING_SCAN_CACHE *
 locator_get_partition_scancache (PRUNING_CONTEXT * pcontext,
-				 const OID * class_oid, const HFID * hfid,
+				 const OID * class_oid,
+				 const HFID * hfid,
 				 int op_type, bool has_function_indexes)
 {
   PRUNING_SCAN_CACHE *scan_cache = NULL;
@@ -12214,7 +12215,8 @@ locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op)
 static int
 locator_prefetch_index_page (THREAD_ENTRY * thread_p, OID * class_oid,
 			     RECDES * classrec, RECDES * recdes,
-			     int btid_index, HEAP_CACHE_ATTRINFO * attr_info,
+			     int btid_index,
+			     HEAP_CACHE_ATTRINFO * attr_info,
 			     HEAP_IDX_ELEMENTS_INFO * idx_info)
 {
   int error = NO_ERROR;
@@ -12310,8 +12312,8 @@ locator_prefetch_unique_index_page_internal (THREAD_ENTRY * thread_p,
 					     RECDES * classrec,
 					     RECDES * recdes, BTID * btid,
 					     int btid_index,
-					     HEAP_CACHE_ATTRINFO * attr_info,
-					     ATTR_ID * attr_ids)
+					     HEAP_CACHE_ATTRINFO *
+					     attr_info, ATTR_ID * attr_ids)
 {
   int error = NO_ERROR;
   int i, j;
