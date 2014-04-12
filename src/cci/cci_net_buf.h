@@ -129,6 +129,7 @@ extern void cnet_buf_clear (T_NET_BUF *);
 extern int cnet_buf_cp_str (T_NET_BUF *, const char *, int);
 extern int cnet_buf_cp_int (T_NET_BUF *, int);
 extern int cnet_buf_cp_bigint (T_NET_BUF *, INT64);
+extern int cnet_buf_cp_byte (T_NET_BUF *, char);
 extern int cnet_buf_cp_float (T_NET_BUF *, float);
 extern int cnet_buf_cp_double (T_NET_BUF *, double);
 extern int cnet_buf_cp_short (T_NET_BUF *, short);

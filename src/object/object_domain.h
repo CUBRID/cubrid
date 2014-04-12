@@ -506,8 +506,10 @@ extern int tp_set_compare (const DB_VALUE * value1,
 
 /* printed representations */
 
-extern int tp_domain_name (TP_DOMAIN * domain, char *buffer, int maxlen);
-extern int tp_value_domain_name (DB_VALUE * value, char *buffer, int maxlen);
+extern int tp_domain_name (const TP_DOMAIN * domain, char *buffer,
+			   int maxlen);
+extern int tp_value_domain_name (const DB_VALUE * value, char *buffer,
+				 int maxlen);
 
 /* misc info */
 

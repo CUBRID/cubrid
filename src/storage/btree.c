@@ -5458,7 +5458,7 @@ static DISK_ISVALID
 btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTID * btid,
 				bool repair, char *index_name)
 {
-  PAGE_PTR current_pgptr, child_pgptr, next_pgptr, root_pgptr;
+  PAGE_PTR current_pgptr, next_pgptr, root_pgptr;
   VPID current_vpid, next_vpid;
   int valid = DISK_VALID;
   int request_mode;
@@ -5716,7 +5716,6 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid,
   int i;
   char *index_name;
   VPID vpid;
-  char output[LINE_MAX];
 
   if (oid != NULL && !OID_ISNULL (oid))
     {
@@ -22991,9 +22990,7 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
   BTREE_RANGE_SEARCH_HELPER btrs_helper;
 
 #if defined(SERVER_MODE)
-  bool dummy_clear;
-  int lock_ret;
-  int tran_index, s;
+  int tran_index;
   int new_size;
   char *new_ptr = NULL;
 #endif /* SERVER_MODE */

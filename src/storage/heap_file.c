@@ -5063,7 +5063,6 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
   int best;
   HEAP_CHAIN_TOLAST tolast;
   VPID last_vpid;
-  int last_freespace;
 
   addr.vfid = &hfid->vfid;
   addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;

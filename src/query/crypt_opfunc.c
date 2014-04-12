@@ -74,12 +74,18 @@ static const char *const crypt_lib_fail_info[] = {
   "Unknown error!"
 };
 
+static int init_gcrypt (void);
+static char *str_to_hex (THREAD_ENTRY * thread_p, const char *src,
+			 int src_len, char **dest_p, int *dest_len_p);
+static void aes_default_gen_key (const char *key, int key_len, char *dest_key,
+				 int dest_key_len);
+
 /*
  * init_gcrypt() -- Initialize libgcrypt
  *   return: Success, returns NO_ERROR.
  */
 static int
-init_gcrypt ()
+init_gcrypt (void)
 {
   /* if gcrypt init success, it doesn't return GPG_ERR_NO_ERROR. It's kind of weird! */
 #define GCRYPT_INIT_SUCCESS gcry_error(GPG_ERR_GENERAL)
@@ -130,7 +136,7 @@ init_gcrypt ()
  * Note:
  */
 static char *
-str_to_hex (THREAD_ENTRY * thread_p, const char const *src, int src_len,
+str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len,
 	    char **dest_p, int *dest_len_p)
 {
   static const char hextable[] = "0123456789ABCDEF";
@@ -333,7 +339,7 @@ aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len,
   int dest_len;
   char new_key[AES128_KEY_LEN];
   int pad, pad_len;
-  int i, j;
+  int i;
   int error_status = NO_ERROR;
 
   assert (src != NULL);

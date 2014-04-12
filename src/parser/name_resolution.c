@@ -6486,7 +6486,6 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *value_clauses, *value_list;
   PT_NODE *crt_node;
   PT_NODE *rest_attrs, *rest_values;
-  SM_CLASS *sm_class;
   DB_OBJECT *db_obj;
   SM_ATTRIBUTE *db_attributes, *db_attr;
   int is_values;

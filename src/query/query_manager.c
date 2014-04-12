@@ -1156,8 +1156,7 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
 void
 qmgr_finalize (THREAD_ENTRY * thread_p)
 {
-  QMGR_QUERY_ENTRY *query_p;
-  int i, j;
+  int i;
 
   scan_finalize ();
   qfile_finalize ();

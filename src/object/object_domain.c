@@ -976,7 +976,6 @@ tp_domain_free (TP_DOMAIN * dom)
 static void
 domain_init (TP_DOMAIN * domain, DB_TYPE typeid_)
 {
-  assert (typeid_ >= DB_TYPE_FIRST);
   assert (typeid_ <= DB_TYPE_LAST);
 
   domain->next = NULL;
@@ -3121,7 +3120,7 @@ tp_domain_resolve (DB_TYPE domain_type, DB_OBJECT * class_obj,
 TP_DOMAIN *
 tp_domain_resolve_default (DB_TYPE type)
 {
-  if (type < 0 || type >= sizeof (tp_Domains) / sizeof (tp_Domains[0]))
+  if (type >= sizeof (tp_Domains) / sizeof (tp_Domains[0]))
     {
       assert_release (false);
       return NULL;
@@ -3901,7 +3900,7 @@ tp_domain_filter_list (TP_DOMAIN * dlist)
  *    maxlen(in): maximum length of buffer
  */
 int
-tp_domain_name (TP_DOMAIN * domain, char *buffer, int maxlen)
+tp_domain_name (const TP_DOMAIN * domain, char *buffer, int maxlen)
 {
   /*
    * need to get more sophisticated here, do full name decomposition and
@@ -3921,7 +3920,7 @@ tp_domain_name (TP_DOMAIN * domain, char *buffer, int maxlen)
  *    maxlen(in): maximum length of buffer
  */
 int
-tp_value_domain_name (DB_VALUE * value, char *buffer, int maxlen)
+tp_value_domain_name (const DB_VALUE * value, char *buffer, int maxlen)
 {
   /* need to get more sophisticated here */
 

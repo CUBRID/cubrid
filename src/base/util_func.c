@@ -462,7 +462,6 @@ util_shuffle_string_array (char **array, int count)
 int
 util_log_write_result (int error)
 {
-  const char *result;
   if (error == NO_ERROR)
     {
       return util_log_write_internal ("SUCCESS\n", NULL);

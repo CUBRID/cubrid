@@ -15451,7 +15451,7 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
   ANALYTIC_TYPE *func_p, *save_next;
   PT_NODE *sort_list;
   bool found;
-  int group_id = 0, i, j, k, level = 0;
+  int group_id = 0, i, j, level = 0;
 
   /* sort list index */
   PT_NODE *sc_index[ANALYTIC_OPT_MAX_SORT_LIST_COLUMNS];
@@ -18365,7 +18365,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   hfid = sm_heap (class_);
-
   if (hfid == NULL)
     {
       return NULL;
@@ -18376,8 +18375,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  error =
-    check_for_default_expr (parser, attrs, &default_expr_attrs, class_obj);
+  error = check_for_default_expr (parser, attrs, &default_expr_attrs,
+				  class_obj);
   if (error != NO_ERROR)
     {
       return NULL;
@@ -18388,9 +18387,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       query = value_clauses->info.node_list.list;
       assert (PT_IS_QUERY (query));
-      no_vals =
-	pt_length_of_select_list (pt_get_select_list (parser, query),
-				  EXCLUDE_HIDDEN_COLUMNS);
+      no_vals = pt_length_of_select_list (pt_get_select_list (parser, query),
+					  EXCLUDE_HIDDEN_COLUMNS);
       /* also add columns referenced in assignments */
       if (PT_IS_SELECT (query)
 	  && statement->info.insert.odku_assignments != NULL)
@@ -18486,7 +18484,9 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* count the number of value lists in values clause */
       for (insert->no_val_lists = 0, val_list = value_clauses;
 	   val_list != NULL;
-	   insert->no_val_lists++, val_list = val_list->next);
+	   insert->no_val_lists++, val_list = val_list->next)
+	;
+
       /* alloc valptr_lists for each list of values */
       insert->valptr_lists =
 	regu_outlistptr_array_alloc (insert->no_val_lists);
@@ -18494,6 +18494,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  return NULL;
 	}
+
       for (i = 0, val_list = value_clauses; val_list != NULL;
 	   i++, val_list = val_list->next)
 	{
@@ -19007,7 +19008,8 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
 	    {
 	      XASL_NODE *rhs_xasl = NULL;
 
-	      rhs_xasl = parser_generate_xasl (parser, assignments_helper.rhs);
+	      rhs_xasl =
+		parser_generate_xasl (parser, assignments_helper.rhs);
 	      if (rhs_xasl == NULL)
 		{
 		  error = er_errid ();

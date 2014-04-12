@@ -2945,9 +2945,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
       if (xasl->proc.insert.valptr_lists != NULL
 	  && xasl->proc.insert.no_val_lists > 0)
 	{
-	  int i, j;
+	  int i;
 	  VALPTR_LIST *valptr_list = NULL;
 	  REGU_VARIABLE_LIST regu_list = NULL;
+
 	  for (i = 0; i < xasl->proc.insert.no_val_lists; i++)
 	    {
 	      valptr_list = xasl->proc.insert.valptr_lists[i];
@@ -15500,13 +15501,16 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
 {
   XASL_CACHE_ENTRY *ent = (XASL_CACHE_ENTRY *) data;
   XASL_CACHE_CLONE *clo;
-  int i, num_tran;
+  int i;
+#if defined(SERVER_MODE)
+  int num_tran;
+  int num_fixed_tran;
+#endif
   const OID *o;
   char str[20];
   time_t tmp_time;
   struct tm *c_time_struct, tm_val;
   char *sql_id;
-  int num_fixed_tran;
 
   if (ent == NULL)
     {
@@ -16160,7 +16164,6 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 #endif
 #if defined(SERVER_MODE)
   int tran_index;
-  int num_elements;
 #endif
 
   if (xasl_ent_cache.max_entries <= 0 || qstr == NULL)
@@ -16275,8 +16278,6 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p,
   int current_count, max_victim_count;
 #if defined(SERVER_MODE)
   bool all_entries_are_fixed = false;
-  int tran_index;
-  int num_elements;
 #endif /* SERVER_MODE */
   XASL_NODE_HEADER xasl_header;
   HENTRY_PTR h_entry;
@@ -16833,7 +16834,6 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 				    const XASL_ID * xasl_id, int dbval_cnt,
 				    XASL_CACHE_CLONE ** clop)
 {
-  int num_elements;
   XASL_CACHE_ENTRY *ent;
 #if defined (ENABLE_UNUSED_FUNCTION)
   XASL_CACHE_CLONE *clo;
@@ -25214,7 +25214,6 @@ qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
   XASL_CACHE_ENTRY *ent;
 #if defined(SERVER_MODE)
   int tran_index;
-  int num_elements;
 #endif
   XASL_QSTR_HT_KEY key;
 
@@ -25309,7 +25308,6 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 #if defined(SERVER_MODE)
   int all_entries_are_fixed = false;
   int tran_index;
-  int num_elements;
 #endif /* SERVER_MODE */
   XASL_QSTR_HT_KEY key;
 
@@ -26220,13 +26218,13 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int ls_flag = 0;
   QFILE_LIST_ID *t_list_id = NULL;
   int idx_incache = -1;
-  OR_CLASSREP *rep;
+  OR_CLASSREP *rep = NULL;
   OR_INDEX *index = NULL;
   OR_ATTRIBUTE *index_att = NULL;
   int att_id = 0;
   const char *attr_name = NULL;
   OR_ATTRIBUTE *attrepr = NULL;
-  DB_VALUE **out_values;
+  DB_VALUE **out_values = NULL;
   REGU_VARIABLE_LIST regu_var_p;
   char **attr_names = NULL;
   int *attr_ids = NULL;

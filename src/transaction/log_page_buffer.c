@@ -10169,7 +10169,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   FILEIO_BACKUP_SESSION session_storage;
   FILEIO_BACKUP_SESSION *session = NULL;
   const char *nopath_name;	/* Name without path          */
-  const char *volnameptr;
   char to_volname[PATH_MAX];	/* Name of a volume (TO)      */
   char verbose_to_volname[PATH_MAX];	/* Printable name of a volume (TO) */
   char prev_volname[PATH_MAX];	/* Name of a prev volume (TO) */
@@ -10177,8 +10176,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 					 * (FROM)
 					 */
   VOLID to_volid;
-  int retry;
-  struct stat stbuf;
   FILE *backup_volinfo_fp = NULL;	/* Pointer to backup
 					 * information/directory file
 					 */

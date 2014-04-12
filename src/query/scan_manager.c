@@ -440,8 +440,8 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			 INDX_SCAN_ID * isidp)
 {
   /* we are being called either before any other btree range search, or
-     after somebody finished a real range search and wants to advance to
-     the next value for the first column of the index.
+   * after somebody finished a real range search and wants to advance to
+   * the next value for the first column of the index.
    */
 
   INDEX_SKIP_SCAN *iss = NULL;

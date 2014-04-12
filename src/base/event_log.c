@@ -51,6 +51,8 @@ static char event_log_file_path[PATH_MAX];
 
 static FILE *event_file_open (const char *path);
 static FILE *event_file_backup (FILE * fp, const char *path);
+static void event_log_print_client_ids_info (LOG_CLIENTIDS * client_info,
+					     int indent);
 
 /*
  * event_init - Initialize event log module
@@ -292,7 +294,7 @@ event_log_end (THREAD_ENTRY * thread_p)
  * event_log_print_client_ids_info -
  *   return:
  */
-void
+static void
 event_log_print_client_ids_info (LOG_CLIENTIDS * client_info, int indent)
 {
   if (event_Fp == NULL)

@@ -385,7 +385,6 @@ broker_drop_one_cas_by_time_to_kill (void)
 {
   int cur_appl_server_num, wait_job_cnt;
   int drop_as_index;
-  int pid;
   T_APPL_SERVER_INFO *drop_as_info;
 
   /* DROP UTS */
@@ -457,7 +456,6 @@ int
 main (int argc, char *argv[])
 #endif
 {
-  int i;
   pthread_t receiver_thread;
   pthread_t dispatch_thread;
   pthread_t cas_monitor_thread;
@@ -467,12 +465,11 @@ main (int argc, char *argv[])
 #if !defined(WINDOWS)
   pthread_t proxy_listener_thread;
 #endif /* !WINDOWS */
-  int wait_job_cnt;
-  int cur_appl_server_num;
 
 #if defined(WIN_FW)
   pthread_t service_thread;
   int *thr_index;
+  int i;
 #endif
   int error;
 

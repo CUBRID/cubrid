@@ -119,7 +119,9 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
   CSS_CONN_ENTRY *conn = NULL;
   TRAN_STATE state;
   int tran_index;
+#if defined(SERVER_MODE)
   bool continue_check;
+#endif
 
   /*
    * Execute some few remaining actions before the log manager is notified of

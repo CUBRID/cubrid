@@ -2925,7 +2925,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
   char *class_name = NULL, *index_name = NULL;
   CLS_SPEC_TYPE *cls_node;
   ACCESS_SPEC_TYPE *spec;
-  json_t *trace, *scan = NULL, *scan_array = NULL;
+  json_t *scan = NULL, *scan_array = NULL;
   int num_spec = 0;
   char spec_name[1024];
 
@@ -3151,17 +3151,17 @@ qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
 			   json_integer (TO_MSEC (gstats->groupby_time)));
 
       if (gstats->groupby_hash == HS_ACCEPT_ALL)
-        {
-          json_object_set_new (groupby, "hash", json_true ());
-        }
+	{
+	  json_object_set_new (groupby, "hash", json_true ());
+	}
       else if (gstats->groupby_hash == HS_REJECT_ALL)
-        {
-          json_object_set_new (groupby, "hash", json_string ("partial"));
-        }
+	{
+	  json_object_set_new (groupby, "hash", json_string ("partial"));
+	}
       else
-        {
-          json_object_set_new (groupby, "hash", json_false ());
-        }
+	{
+	  json_object_set_new (groupby, "hash", json_false ());
+	}
 
       if (gstats->groupby_sort)
 	{
@@ -3411,17 +3411,17 @@ qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
       fprintf (fp, "GROUPBY (time: %d", TO_MSEC (gstats->groupby_time));
 
       if (gstats->groupby_hash == HS_ACCEPT_ALL)
-        {
-          fprintf (fp, ", hash: true");
-        }
+	{
+	  fprintf (fp, ", hash: true");
+	}
       else if (gstats->groupby_hash == HS_REJECT_ALL)
-        {
-          fprintf (fp, ", hash: partial");
-        }
+	{
+	  fprintf (fp, ", hash: partial");
+	}
       else
-        {
-          fprintf (fp, ", hash: false");
-        }
+	{
+	  fprintf (fp, ", hash: false");
+	}
 
       if (gstats->groupby_sort)
 	{

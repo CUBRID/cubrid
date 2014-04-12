@@ -114,13 +114,13 @@ extern T_PROXY_EVENT *proxy_event_new_with_error (char *driver_info,
 								   error_ind,
 								   int
 								   error_code,
-								   char
+								   const char
 								   *error_msg,
 								   char
 								   is_in_tran),
 						  int error_ind,
 						  int error_code,
-						  char *error_msg,
+						  const char *error_msg,
 						  char is_in_tran);
 
 extern int proxy_event_alloc_buffer (T_PROXY_EVENT * event_p,

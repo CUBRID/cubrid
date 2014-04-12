@@ -116,7 +116,7 @@ extern const char *logwr_log_ha_filestat_to_string (enum LOG_HA_FILESTAT val);
 
 #if defined(SERVER_MODE)
 int xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
-			  int mode);
+			  LOGWR_MODE mode);
 extern LOG_PAGEID logwr_get_min_copied_fpageid (void);
 
 #endif /* SERVER_MODE */

@@ -10988,8 +10988,7 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type,
 				  void **ptr)
 {
   int error = NO_ERROR;
-  DB_DATETIME time_val;
-  int idx_val = 0, i;
+  int idx_val = 0;
   const char *path;
   int fd = -1;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
@@ -11331,7 +11330,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type,
 				   DB_VALUE ** arg_values, int arg_cnt,
 				   void **ptr)
 {
-  int idx = 0, i, error = NO_ERROR;
+  int idx = 0, error = NO_ERROR;
   const char *path;
   int fd;
   char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];

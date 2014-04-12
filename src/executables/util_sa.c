@@ -388,8 +388,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
     {
       UINT64 v;
 
-      if (util_size_string_to_byte (&v, (const char *) db_page_str) !=
-	  NO_ERROR)
+      if (util_size_string_to_byte (&v, db_page_str) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
 						 MSGCAT_UTIL_SET_CREATEDB,
@@ -411,7 +410,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   else
     {
       if (util_size_string_to_byte (&db_volume_size,
-				    (const char *) db_volume_str) != NO_ERROR)
+				    db_volume_str) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
 						 MSGCAT_UTIL_SET_CREATEDB,
@@ -442,8 +441,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
     {
       UINT64 v;
 
-      if (util_size_string_to_byte (&v, (const char *) log_page_str)
-	  != NO_ERROR)
+      if (util_size_string_to_byte (&v, log_page_str) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
 						 MSGCAT_UTIL_SET_CREATEDB,
@@ -465,8 +463,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   else
     {
       if (util_size_string_to_byte (&log_volume_size,
-				    (const char *) log_volume_str) !=
-	  NO_ERROR)
+				    log_volume_str) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
 						 MSGCAT_UTIL_SET_CREATEDB,

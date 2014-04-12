@@ -9030,7 +9030,7 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type,
   PT_NODE *query = NULL;
   PT_NODE *value, *from_item, *showstmt_info;
   PT_NODE *order_by_item;
-  int i, err;
+  int i;
   DB_VALUE oid_val;
   MOP classop;
 

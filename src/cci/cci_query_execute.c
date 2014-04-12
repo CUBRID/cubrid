@@ -6115,6 +6115,7 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, char u_type, void *value,
 	  default_value.hh = 0;
 	  default_value.mm = 0;
 	  default_value.ss = 0;
+	  default_value.ms = 0;
 	  ADD_ARG_DATETIME (net_buf, &default_value);
 	}
       else

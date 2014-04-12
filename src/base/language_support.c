@@ -38,6 +38,7 @@
 #include "environment_variable.h"
 #include "db.h"
 #include "memory_hash.h"
+#include "util_func.h"
 #if !defined(WINDOWS)
 #include <dlfcn.h>
 #endif

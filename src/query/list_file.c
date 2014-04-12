@@ -6873,14 +6873,14 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
 #else
   size_t num_elements;
 #endif
+#if !defined (NDEBUG)
+  size_t i_idx, num_active_users;
+#endif
 #endif /* SERVER_MODE */
   unsigned int n;
   HL_HEAPID old_pri_heap_id;
   int i, j, k;
   int alloc_size;
-#if !defined (NDEBUG)
-  size_t i_idx, num_active_users;
-#endif
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
     {

@@ -8864,13 +8864,14 @@ slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid,
 {
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  LOG_PAGEID first_pageid;
-  int mode;
   char *ptr;
-  int error, remote_error;
+  LOG_PAGEID first_pageid;
+  LOGWR_MODE mode;
+  int m, error, remote_error;
 
   ptr = or_unpack_int64 (request, &first_pageid);
-  ptr = or_unpack_int (ptr, &mode);
+  ptr = or_unpack_int (ptr, &m);
+  mode = (LOGWR_MODE) m;
   ptr = or_unpack_int (ptr, &remote_error);
 
   error = xlogwr_get_log_pages (thread_p, first_pageid, mode);

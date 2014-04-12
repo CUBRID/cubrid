@@ -8357,7 +8357,6 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
       bitset_remove (&range_terms, t);
     }
 
-end:
   bitset_delset (&seg_other_terms);
   bitset_delset (&range_terms);
 
@@ -8403,7 +8402,6 @@ qo_generate_loose_index_scan (QO_INFO * infop, QO_NODE * nodep,
 
   n = qo_check_plan_on_info (infop, planp);
 
-end:
   bitset_delset (&range_terms);
 
   return n;

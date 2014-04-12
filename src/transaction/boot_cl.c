@@ -716,12 +716,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   char **ha_hosts;
   int num_hosts;
+  int i, optional_cap;
   char *ha_node_list = NULL;
+  bool check_capabilities;
 #endif /* CS_MODE */
   bool is_db_user_alloced = false;
-
-  int i, optional_cap;
-  bool check_capabilities;
   bool skip_preferred_hosts = false;
   bool skip_db_info = false;
 

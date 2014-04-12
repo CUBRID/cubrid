@@ -163,7 +163,7 @@ base64_partition_into_chunk (const unsigned char *src, int src_len,
   int err = NO_ERROR;
   int i, j, chunk_count, chunk_num, dst_len;
   unsigned char d1, d2, d3, d4;
-  bool valid, tail_chunk_flag;
+  bool tail_chunk_flag;
   BASE64_CHUNK *chk = NULL;
   BASE64_CHUNK **ppchunk = NULL;
 
@@ -195,7 +195,7 @@ base64_partition_into_chunk (const unsigned char *src, int src_len,
       goto end;
     }
 
-  memset (ppchunk, NULL, chunk_num * sizeof (BASE64_CHUNK *));
+  memset (ppchunk, 0, chunk_num * sizeof (BASE64_CHUNK *));
 
   tail_chunk_flag = false;
   i = chunk_count = dst_len = 0;
@@ -405,11 +405,10 @@ base64_decode (const unsigned char *src, int src_len, unsigned char **dest,
 	       int *dest_len)
 {
   int error_status = NO_ERROR;
-  int len_no_space, decode_full_len, real_dest_len, chunk_num;
+  int len_no_space, real_dest_len, chunk_num;
   unsigned char *str_no_space = NULL;
   unsigned char *real_dest = NULL;
   BASE64_CHUNK **ppchunk = NULL;
-  int i;
 
   assert (src != NULL && dest != NULL && dest_len != NULL);
 
@@ -579,7 +578,7 @@ static int
 base64_encode_local (const unsigned char *src, int src_len,
 		     unsigned char *dest)
 {
-  unsigned char *p;
+  const unsigned char *p;
   unsigned int d;
   int i, encoded_len, fill, line_break_count;
 
@@ -600,8 +599,9 @@ base64_encode_local (const unsigned char *src, int src_len,
 	}
 
       /* move forward the source string every three bytes and
-         translate it into four 6-bit bytes */
-      d = (p[i++] << 16);	/*the most significant(3rd) bytes */
+       * translate it into four 6-bit bytes 
+       */
+      d = (p[i++] << 16);	/* the most significant(3rd) bytes */
       fill = 2;			/* assuming 2 paddings needed */
 
       if (src_len >= (i + 1))

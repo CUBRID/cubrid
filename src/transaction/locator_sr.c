@@ -6931,7 +6931,6 @@ xlocator_force_repl_update (THREAD_ENTRY * thread_p, BTID * btid,
       goto error;
     }
 
-done:
   if (force_scancache != NULL)
     {
       locator_end_force_scan_cache (thread_p, force_scancache);
@@ -12316,7 +12315,7 @@ locator_prefetch_unique_index_page_internal (THREAD_ENTRY * thread_p,
 					     attr_info, ATTR_ID * attr_ids)
 {
   int error = NO_ERROR;
-  int i, j;
+  int j;
   HEAP_SCANCACHE *scan_cache = NULL;
   BTREE_CHECKSCAN bt_checkscan, *bt_checkscan_p = NULL;
   DB_VALUE *key = NULL;
@@ -12327,7 +12326,6 @@ locator_prefetch_unique_index_page_internal (THREAD_ENTRY * thread_p,
   HFID *hfids = NULL, *hfid = NULL;
   OID *class_oids = NULL, *class_oid = NULL;
   OR_INDEX *index;
-  DB_LOGICAL ev_res;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf = NULL;
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);

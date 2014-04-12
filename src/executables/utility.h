@@ -1434,7 +1434,7 @@ extern int util_get_num_of_ha_nodes (const char *node_list);
 extern void util_redirect_stdout_to_null (void);
 #endif /* !defined(WINDOWS) */
 extern int util_byte_to_size_string (char *buf, size_t len, UINT64 size_num);
-extern int util_size_string_to_byte (UINT64 * size_num, char *size_str);
+extern int util_size_string_to_byte (UINT64 * size_num, const char *size_str);
 extern int util_msec_to_time_string (char *buf, size_t len, INT64 msec_num);
 extern int util_time_string_to_msec (INT64 * msec_num, char *time_str);
 extern void util_print_deprecated (const char *option);
@@ -1508,7 +1508,7 @@ extern int genlocale (UTIL_FUNCTION_ARG * arg_map);
 extern int dumplocale (UTIL_FUNCTION_ARG * arg_map);
 extern int synccolldb (UTIL_FUNCTION_ARG * arg_map);
 extern int synccoll_force (void);
-extern int prefetchlogdb(UTIL_FUNCTION_ARG * arg_map);
+extern int prefetchlogdb (UTIL_FUNCTION_ARG * arg_map);
 
 extern void util_admin_usage (const char *argv0);
 extern void util_admin_version (const char *argv0);

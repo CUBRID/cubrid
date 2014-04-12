@@ -2565,7 +2565,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else			/* double */
 	{
-	  bi2 = DB_GET_DOUBLE (value2);
+	  bi2 = (DB_BIGINT) DB_GET_DOUBLE (value2);
 	}
       ptr = end - s + bi2;
 

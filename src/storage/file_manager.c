@@ -1622,7 +1622,9 @@ file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
   int i;
   VOLID original_hint_volid;
   INT32 original_hint_pageid;
+#if defined(SERVER_MODE)
   bool old_check_interrupt;
+#endif
 
   /*
    * If the file is of type FILE_TMP, it can have allocated pages which are
@@ -3172,7 +3174,7 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
   VFID_COPY (&fhdr->vfid, vfid);
-  fhdr->type = (INT16) * file_type;
+  fhdr->type = (INT16) (*file_type);
   fhdr->creation = time (NULL);
   fhdr->ismark_as_deleted = false;
 
@@ -14642,7 +14644,6 @@ file_construct_space_info (THREAD_ENTRY * thread_p,
 {
 #if defined (SA_MODE)
   DISK_ISVALID valid = DISK_VALID;
-  FILE_FTAB_CHAIN *chain;
   FILE_HEADER *fhdr;
   PAGE_PTR fhdr_pgptr = NULL;
   PAGE_PTR pgptr = NULL;

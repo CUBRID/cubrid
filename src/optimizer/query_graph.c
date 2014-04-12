@@ -6993,7 +6993,6 @@ static int
 qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
 			  QO_INDEX_ENTRY * index_entry)
 {
-  BITSET segments;
   PT_NODE *tree;
   int prefix_len = 0, i;
 

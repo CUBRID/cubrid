@@ -1831,7 +1831,7 @@ logwr_update_last_eof_lsa (LOGWR_ENTRY * entry)
  */
 int
 xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
-		      int mode)
+		      LOGWR_MODE mode)
 {
   LOGWR_ENTRY *entry;
   char *logpg_area;

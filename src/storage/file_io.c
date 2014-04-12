@@ -11819,7 +11819,6 @@ fileio_request_user_response (THREAD_ENTRY * thread_p,
   char new_vol_name[FILEIO_MAX_USER_RESPONSE_SIZE];
   char *user_response_p = new_vol_name;
   const char *display_string_p;
-  char *temp_p;
   char line_buf[PATH_MAX * 2];
   int pr_status, pr_len;
   int x;

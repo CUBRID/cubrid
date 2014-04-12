@@ -3515,7 +3515,6 @@ lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry,
 		     LK_TRAN_LOCK * tran_lock)
 {
   LK_ENTRY *superclass_entry = NULL;
-  int rv;
 
   if (tran_lock->lock_escalation_on == true)
     {

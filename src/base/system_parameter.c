@@ -7587,8 +7587,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	  {
 	    UINT64 dup_val;
-	    if (util_size_string_to_byte (&dup_val, (char *) value) !=
-		NO_ERROR)
+	    if (util_size_string_to_byte (&dup_val, value) != NO_ERROR)
 	      {
 		return PRM_ERR_BAD_VALUE;
 	      }
@@ -7682,7 +7681,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
 	if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	  {
-	    if (util_size_string_to_byte (&val, (char *) value) != NO_ERROR)
+	    if (util_size_string_to_byte (&val, value) != NO_ERROR)
 	      {
 		return PRM_ERR_BAD_VALUE;
 	      }
@@ -7722,8 +7721,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	  {
 	    UINT64 dup_val;
-	    if (util_size_string_to_byte (&dup_val, (char *) value) !=
-		NO_ERROR)
+	    if (util_size_string_to_byte (&dup_val, value) != NO_ERROR)
 	      {
 		return PRM_ERR_BAD_VALUE;
 	      }

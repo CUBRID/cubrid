@@ -1908,9 +1908,11 @@ proxy_event_new_with_error (char *driver_info,
 			    unsigned int type, int from,
 			    int (*err_func) (char *driver_info,
 					     char **buffer, int error_ind,
-					     int error_code, char *error_msg,
+					     int error_code,
+					     const char *error_msg,
 					     char is_in_tran), int error_ind,
-			    int error_code, char *error_msg, char is_in_tran)
+			    int error_code, const char *error_msg,
+			    char is_in_tran)
 {
   T_PROXY_EVENT *event_p;
   char *msg = NULL;

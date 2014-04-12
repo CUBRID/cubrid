@@ -2719,15 +2719,17 @@ thread_check_ha_delay_info_thread (void *arg_p)
   };
 
   int rv;
-  int error_code;
   INT64 tmp_usec;
+#if !defined(WINDOWS)
   int wakeup_interval = 1000;
+  time_t log_record_time = 0;
+  int error_code;
   int delay_limit_in_secs;
   int acceptable_delay_in_secs;
   int curr_delay_in_secs;
   HA_SERVER_STATE server_state;
-  time_t log_record_time = 0;
   char buffer[LINE_MAX];
+#endif
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finishes */

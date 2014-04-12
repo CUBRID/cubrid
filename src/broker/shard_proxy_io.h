@@ -102,7 +102,7 @@ extern int proxy_make_net_buf (T_NET_BUF * net_buf, int size);
 
 extern int proxy_io_make_error_msg (char *driver_info,
 				    char **buffer, int error_ind,
-				    int error_code, char *error_msg,
+				    int error_code, const char *error_msg,
 				    char is_in_tran);
 extern int proxy_io_make_no_error (char *driver_info, char **buffer);
 extern int proxy_io_make_con_close_ok (char *driver_info, char **buffer);

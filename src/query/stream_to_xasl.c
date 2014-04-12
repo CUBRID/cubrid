@@ -6343,8 +6343,6 @@ stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr,
 			      ANALYTIC_EVAL_TYPE * analytic_eval)
 {
   int offset;
-  int type;
-  int tmp_i;
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
 

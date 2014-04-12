@@ -4948,7 +4948,6 @@ spage_slots_start_scan (THREAD_ENTRY * thread_p, int show_type,
 			DB_VALUE ** arg_values, int arg_cnt, void **ptr)
 {
   int error = NO_ERROR;
-  VPID vpid;
   SPAGE_HEADER *header = NULL;
   DB_VALUE *arg_val0, *arg_val1;
   SPAGE_SLOTS_CONTEXT *ctx;

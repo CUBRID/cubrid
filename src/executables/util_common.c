@@ -1009,7 +1009,7 @@ util_byte_to_size_string (char *buf, size_t len, UINT64 size_num)
  *
  */
 int
-util_size_string_to_byte (UINT64 * size_num, char *size_str)
+util_size_string_to_byte (UINT64 * size_num, const char *size_str)
 {
   double val;
   char *default_unit = "B";

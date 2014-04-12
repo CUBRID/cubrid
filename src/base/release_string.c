@@ -516,7 +516,6 @@ rel_get_compatible_internal (const char *base_rel_str,
 			     REL_VERSION versions[])
 {
   REL_VERSION *version, *base_version, *apply_version;
-  REL_COMPATIBILITY compat;
   char *base, *apply, *str_a, *str_b;
   int val;
 

@@ -1181,7 +1181,6 @@ static void
 print_monitor_header (MONITOR_TYPE mnt_type)
 {
   char buf[256];
-  char line_buf[256];
   int buf_offset = 0;
   int i;
   static unsigned int tty_print_header = 0;

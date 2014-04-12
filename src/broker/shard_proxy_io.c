@@ -621,8 +621,8 @@ error_return:
 
 /* error */
 int
-proxy_io_make_error_msg (char *driver_info, char **buffer,
-			 int error_ind, int error_code, char *error_msg,
+proxy_io_make_error_msg (char *driver_info, char **buffer, int error_ind,
+			 int error_code, const char *error_msg,
 			 char is_in_tran)
 {
   int error;
@@ -1775,7 +1775,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 	  if (len > 0 && len < SRV_CON_VER_STR_MAX_SIZE)
 	    {
 	      memcpy (driver_version, url + strlen (url) + 2, (int) len);
-	      driver_version[len] = '\0';
+	      driver_version[(int) len] = '\0';
 	    }
 	  else
 	    {
@@ -2012,7 +2012,6 @@ proxy_process_client_conn_error (T_SOCKET_IO * sock_io_p)
 {
   int error = 0;
   T_PROXY_CONTEXT *ctx_p;
-  T_CLIENT_INFO *client_info_p;
   T_PROXY_EVENT *event_p;
 
   ENTER_FUNC ();
@@ -4898,7 +4897,6 @@ static T_CAS_IO *
 proxy_cas_alloc_by_shard_and_cas_id (int client_id, int shard_id, int cas_id,
 				     int ctx_cid, unsigned int ctx_uid)
 {
-  int error;
   T_SHARD_IO *shard_io_p = NULL;
   T_CAS_IO *cas_io_p = NULL;
 

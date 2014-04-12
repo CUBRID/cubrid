@@ -208,11 +208,11 @@ static char *css_trim_str (char *str);
 
 #if !defined (CS_MODE)
 static int css_make_access_status_exist_user (THREAD_ENTRY * thread_p,
-					       OID * class_oid,
-					       LAST_ACCESS_STATUS **
-					       access_status_array,
-					       int num_user,
-					       SHOWSTMT_ARRAY_CONTEXT * ctx);
+					      OID * class_oid,
+					      LAST_ACCESS_STATUS **
+					      access_status_array,
+					      int num_user,
+					      SHOWSTMT_ARRAY_CONTEXT * ctx);
 
 static LAST_ACCESS_STATUS *css_get_access_status_with_name (LAST_ACCESS_STATUS
 							    **
@@ -2596,18 +2596,17 @@ css_user_access_status_start_scan (THREAD_ENTRY * thread_p, int type,
 				   void **ptr)
 {
   int error = NO_ERROR;
-  int i, num_user = 0;
+  int num_user = 0;
   const int num_cols = 4;	/* user_name, last_access_time, last_access_host, program_name */
   const int default_num_tuple = 10;
-  SCAN_CODE scan;
   OID *class_oid;
   SHOWSTMT_ARRAY_CONTEXT *ctx;
   LAST_ACCESS_STATUS *access_status = NULL;
   LAST_ACCESS_STATUS **access_status_array = NULL;
-
+#if defined(SERVER_MODE)
   DB_VALUE *vals;
-  char *user_name = NULL;
   DB_DATETIME access_time;
+#endif
 
   *ptr = NULL;
 
@@ -2639,7 +2638,7 @@ css_user_access_status_start_scan (THREAD_ENTRY * thread_p, int type,
 
   error =
     css_make_access_status_exist_user (thread_p, class_oid,
-					access_status_array, num_user, ctx);
+				       access_status_array, num_user, ctx);
   if (error != NO_ERROR)
     {
       goto error;
@@ -2708,9 +2707,8 @@ error:
  */
 static int
 css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid,
-				    LAST_ACCESS_STATUS ** access_status_array,
-				    int num_user,
-				    SHOWSTMT_ARRAY_CONTEXT * ctx)
+				   LAST_ACCESS_STATUS ** access_status_array,
+				   int num_user, SHOWSTMT_ARRAY_CONTEXT * ctx)
 {
   int error = NO_ERROR;
   int i, attr_idx;
@@ -2792,8 +2790,8 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid,
       if (scan == S_SUCCESS)
 	{
 	  error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid,
-					   &recdes, &attr_info);
-          if (error != NO_ERROR)
+					       &recdes, &attr_info);
+	  if (error != NO_ERROR)
 	    {
 	      goto end;;
 	    }
@@ -2829,18 +2827,18 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid,
       db_make_string_copy (&vals[0], user_name);
       if (access_status != NULL)
 	{
-          db_localdatetime (&access_status->time, &access_time);
-          db_make_datetime (&vals[1], &access_time);
+	  db_localdatetime (&access_status->time, &access_time);
+	  db_make_datetime (&vals[1], &access_time);
 
-          db_make_string_copy (&vals[2], access_status->host);
+	  db_make_string_copy (&vals[2], access_status->host);
 
-          db_make_string_copy (&vals[3], access_status->program_name);
-        }
+	  db_make_string_copy (&vals[3], access_status->program_name);
+	}
       else
-        {
-          db_make_null (&vals[1]);
-          db_make_null (&vals[2]);
-          db_make_null (&vals[3]);
+	{
+	  db_make_null (&vals[1]);
+	  db_make_null (&vals[2]);
+	  db_make_null (&vals[3]);
 	}
     }
 

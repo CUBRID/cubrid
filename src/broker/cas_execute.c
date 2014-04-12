@@ -3936,7 +3936,7 @@ static const char *
 get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 {
   DB_VALUE *def = NULL;
-  int len, err;
+  int err;
   char *default_value_string = NULL;
 
   *alloc = false;
@@ -4056,7 +4056,6 @@ set_column_info (T_NET_BUF * net_buf, char ut,
   if (client_version >= CAS_MAKE_VER (8, 3, 0))
     {
       DB_VALUE *def = NULL;
-      int len, err;
 
       class_obj = db_find_class (class_name);
       attr = db_get_attribute (class_obj, col_name);
@@ -4072,21 +4071,12 @@ set_column_info (T_NET_BUF * net_buf, char ut,
 	get_column_default_as_string (attr, &alloced_default_value_string);
     }
 
-  prepare_column_info_set (net_buf,
-			   ut,
-			   scale,
-			   prec,
-			   col_name,
-			   default_value_string,
-			   auto_increment,
-			   unique_key,
-			   primary_key,
-			   reverse_index,
-			   reverse_unique,
-			   foreign_key,
-			   shared,
-			   attr_name,
-			   class_name, is_non_null, client_version);
+  prepare_column_info_set (net_buf, ut, scale, prec, col_name,
+			   default_value_string, auto_increment,
+			   unique_key, primary_key, reverse_index,
+			   reverse_unique, foreign_key, shared,
+			   attr_name, class_name, is_non_null,
+			   client_version);
 
   if (alloced_default_value_string)
     {

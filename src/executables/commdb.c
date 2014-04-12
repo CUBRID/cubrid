@@ -824,7 +824,6 @@ process_deactivate_heartbeat (CSS_CONN_ENTRY * conn)
   char *msg_reply_buffer = NULL;
   char *result_reply_buffer = NULL;
   int size = 0;
-  char *message;
 #if !defined(WINDOWS)
   unsigned short rid;
 #endif /* !WINDOWS */

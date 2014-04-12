@@ -492,7 +492,7 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser)
 static void
 db_set_base_server_time (DB_VALUE * db_val)
 {
-  struct tm c_time_struct, tz_check;
+  struct tm c_time_struct;
   DB_TIME time_val;
   DB_DATETIME *dt = db_get_datetime (db_val);
 

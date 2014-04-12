@@ -186,17 +186,17 @@ extern int ux_execute_call (T_SRV_HANDLE * srv_handle, char flag,
 #if !defined(CAS_FOR_MYSQL)
 extern void ux_call_info_cp_param_mode (T_SRV_HANDLE * srv_handle,
 					char *param_mode, int num_param);
+
+extern int ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf,
+			   T_REQ_INFO * req_info);
 #endif /* !CAS_FOR_MYSQL */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-extern int ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf,
-			   T_REQ_INFO * req_info);
 extern int ux_get_generated_keys (T_SRV_HANDLE * srv_handle,
 				  T_NET_BUF * net_buf);
 
 extern SESSION_ID ux_get_session_id (void);
 extern void ux_set_session_id (const SESSION_ID session_id);
-
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)

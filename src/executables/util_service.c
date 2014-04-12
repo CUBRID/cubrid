@@ -1175,7 +1175,6 @@ static int
 process_service (int command_type, bool process_window_service)
 {
   int status = NO_ERROR;
-  int ret;
 
   switch (command_type)
     {
@@ -1827,7 +1826,6 @@ static int
 process_broker (int command_type, int argc, const char **argv,
 		bool process_window_service)
 {
-  const char *msg;
   int status = NO_ERROR;
 
   switch (command_type)

@@ -4537,7 +4537,6 @@ obj_prefetch_repl_update_or_delete_object (MOP classop, DB_VALUE * key_value)
   SM_CLASS *class_;
   SM_CLASS_CONSTRAINT *cons;
   DB_TYPE value_type;
-  MOP mop;
   OID *oid = NULL;
 
   if (classop == NULL || key_value == NULL)
