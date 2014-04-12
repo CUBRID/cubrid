@@ -21589,6 +21589,17 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
 	{
 	  /* charset and collation of system */
 	  has_collation = true;
+
+	  if (node->info.function.function_type == F_SET
+	      || node->info.function.function_type == F_MULTISET
+	      || node->info.function.function_type == F_SEQUENCE)
+	    {
+	      coll_infer->can_force_cs = true;
+	      coll_infer->coerc_level = PT_COLLATION_L5_COERC;
+	      coll_infer->codeset = LANG_COERCIBLE_CODESET;
+	      coll_infer->coll_id = LANG_COERCIBLE_COLL;
+	      return 1;
+	    }
 	}
     }
 
@@ -22741,9 +22752,12 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
       else if (status == 1)
 	{
 	  args_w_coll_maybe++;
-	  args_having_coll++;
-	  common_coll = arg1_coll_inf.coll_id;
-	  common_cs = arg1_coll_inf.codeset;
+	  if (arg1_coll_inf.can_force_cs == false)
+	    {
+	      args_having_coll++;
+	      common_coll = arg1_coll_inf.coll_id;
+	      common_cs = arg1_coll_inf.codeset;
+	    }
 	}
     }
 
@@ -22778,9 +22792,12 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
       else if (status == 1)
 	{
 	  args_w_coll_maybe++;
-	  args_having_coll++;
-	  common_coll = arg2_coll_inf.coll_id;
-	  common_cs = arg2_coll_inf.codeset;
+	  if (arg2_coll_inf.can_force_cs == false)
+	    {
+	      args_having_coll++;
+	      common_coll = arg2_coll_inf.coll_id;
+	      common_cs = arg2_coll_inf.codeset;
+	    }
 	}
     }
 
@@ -22813,9 +22830,12 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	  else if (status == 1)
 	    {
 	      args_w_coll_maybe++;
-	      args_having_coll++;
-	      common_coll = arg3_coll_inf.coll_id;
-	      common_cs = arg3_coll_inf.codeset;
+	      if (arg3_coll_inf.can_force_cs == false)
+		{
+		  args_having_coll++;
+		  common_coll = arg3_coll_inf.coll_id;
+		  common_cs = arg3_coll_inf.codeset;
+		}
 	    }
 	}
     }
