@@ -146,6 +146,9 @@ static COMPARE_BETWEEN_OPERATOR pt_Compare_between_operator_table[] = {
         sizeof(pt_Compare_between_operator_table) / \
         sizeof(COMPARE_BETWEEN_OPERATOR)
 
+#define PT_COLL_WRAP_TYPE_FOR_MAYBE(type) \
+  ((PT_IS_CHAR_STRING_TYPE (type)) ? (type) : PT_TYPE_VARCHAR)
+
 /* maximum number of overloads for an expression */
 #define MAX_OVERLOADS 16
 
@@ -13466,8 +13469,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    new_node = pt_coerce_node_collation (parser, arg_list->next,
 						 coll_infer1.coll_id,
 						 coll_infer1.codeset, false,
-						 false, PT_TYPE_NONE,
-						 PT_TYPE_NONE);
+						 false,
+						 PT_COLL_WRAP_TYPE_FOR_MAYBE
+						 (sep_type), PT_TYPE_NONE);
 
 	    if (new_node == NULL)
 	      {
@@ -13482,7 +13486,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    new_node = pt_coerce_node_collation (parser, node,
 						 coll_infer1.coll_id,
 						 coll_infer1.codeset, true,
-						 false, PT_TYPE_NONE,
+						 false,
+						 PT_COLL_WRAP_TYPE_FOR_MAYBE
+						 (arg_list->type_enum),
 						 PT_TYPE_NONE);
 
 	    if (new_node == NULL)
@@ -13590,8 +13596,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    new_node = pt_coerce_node_collation (parser, arg_array[0],
 						 common_coll, common_cs,
 						 coll_infer1.can_force_cs,
-						 false, PT_TYPE_NONE,
-						 PT_TYPE_NONE);
+						 false,
+						 PT_COLL_WRAP_TYPE_FOR_MAYBE
+						 (arg1_type), PT_TYPE_NONE);
 	    if (new_node == NULL)
 	      {
 		goto error_collation;
@@ -13608,8 +13615,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    new_node = pt_coerce_node_collation (parser, arg_array[3],
 						 common_coll, common_cs,
 						 coll_infer4.can_force_cs,
-						 false, PT_TYPE_NONE,
-						 PT_TYPE_NONE);
+						 false,
+						 PT_COLL_WRAP_TYPE_FOR_MAYBE
+						 (arg4_type), PT_TYPE_NONE);
 	    if (new_node == NULL)
 	      {
 		goto error_collation;
@@ -13685,7 +13693,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	new_node =
 	  pt_coerce_node_collation (parser, node, arg_coll_infer.coll_id,
 				    arg_coll_infer.codeset, true, false,
-				    PT_TYPE_NONE, PT_TYPE_NONE);
+				    PT_COLL_WRAP_TYPE_FOR_MAYBE
+				    (func_res_type), PT_TYPE_NONE);
 	if (new_node == NULL)
 	  {
 	    goto error_collation;
@@ -22969,7 +22978,8 @@ coerce_arg:
 					   common_cs,
 					   arg1_coll_inf.can_force_cs,
 					   use_cast_collate_modifier,
-					   arg1_wrap_type,
+					   PT_COLL_WRAP_TYPE_FOR_MAYBE
+					   (arg1_wrap_type),
 					   arg1_collection_wrap_type);
 
       if (new_node == NULL)
@@ -23000,7 +23010,8 @@ coerce_arg:
 					   common_cs,
 					   arg2_coll_inf.can_force_cs,
 					   use_cast_collate_modifier,
-					   arg2_wrap_type,
+					   PT_COLL_WRAP_TYPE_FOR_MAYBE
+					   (arg2_wrap_type),
 					   arg2_collection_wrap_type);
 
       if (new_node == NULL)
@@ -23037,7 +23048,8 @@ coerce_arg:
 					   common_cs,
 					   arg3_coll_inf.can_force_cs,
 					   use_cast_collate_modifier,
-					   arg3_wrap_type, PT_TYPE_NONE);
+					   PT_COLL_WRAP_TYPE_FOR_MAYBE
+					   (arg3_wrap_type), PT_TYPE_NONE);
 
       if (new_node == NULL)
 	{
@@ -23115,7 +23127,9 @@ coerce_result:
 
 	  new_node = pt_coerce_node_collation (parser, expr, common_coll,
 					       common_cs, true, false,
-					       expr_wrap_type, PT_TYPE_NONE);
+					       PT_COLL_WRAP_TYPE_FOR_MAYBE
+					       (expr_wrap_type),
+					       PT_TYPE_NONE);
 
 	  expr->is_wrapped_res_for_coll = 1;
 	  if (new_node == NULL)
@@ -23187,7 +23201,9 @@ coerce_result:
 
 	  new_node = pt_coerce_node_collation (parser, expr, common_coll,
 					       common_cs, true, false,
-					       expr_wrap_type, PT_TYPE_NONE);
+					       PT_COLL_WRAP_TYPE_FOR_MAYBE
+					       (expr_wrap_type),
+					       PT_TYPE_NONE);
 	  if (new_node == NULL)
 	    {
 	      goto error;
@@ -23321,7 +23337,9 @@ pt_check_recursive_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	  arg1 = pt_coerce_node_collation (parser, arg1, recurs_coll,
 					   recurs_cs,
 					   arg1_coll_infer.can_force_cs,
-					   false, PT_TYPE_NONE, PT_TYPE_NONE);
+					   false,
+					   PT_COLL_WRAP_TYPE_FOR_MAYBE
+					   (arg1->type_enum), PT_TYPE_NONE);
 	  if (arg1 == NULL)
 	    {
 	      goto error;
@@ -23347,7 +23365,8 @@ pt_check_recursive_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 						   recurs_cs,
 						   arg2_coll_infer.
 						   can_force_cs, false,
-						   PT_TYPE_NONE,
+						   PT_COLL_WRAP_TYPE_FOR_MAYBE
+						   (arg2->type_enum),
 						   PT_TYPE_NONE);
 		  if (arg2 == NULL)
 		    {
@@ -23362,7 +23381,9 @@ pt_check_recursive_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	      /* force collation on recursive expression node */
 	      arg2 = pt_coerce_node_collation (parser, arg2, recurs_coll,
 					       recurs_cs, true, false,
-					       PT_TYPE_NONE, PT_TYPE_NONE);
+					       PT_COLL_WRAP_TYPE_FOR_MAYBE
+					       (arg2->type_enum),
+					       PT_TYPE_NONE);
 	      if (arg2 == NULL)
 		{
 		  goto error;
@@ -23379,8 +23400,9 @@ pt_check_recursive_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   if (recurs_coll != -1 && PT_HAS_COLLATION (expr->type_enum))
     {
       *node = pt_coerce_node_collation (parser, expr, recurs_coll, recurs_cs,
-					true, false, PT_TYPE_NONE,
-					PT_TYPE_NONE);
+					true, false,
+					PT_COLL_WRAP_TYPE_FOR_MAYBE
+					(expr->type_enum), PT_TYPE_NONE);
 
       if (*node == NULL)
 	{
