@@ -86,7 +86,7 @@ static int or_get_hierarchy_helper (THREAD_ENTRY * thread_p,
 				    BTID * btid, OID ** class_oids,
 				    HFID ** hfids, int *num_classes,
 				    int *max_classes,
-				    int * partition_local_index);
+				    int *partition_local_index);
 static TP_DOMAIN *or_get_domain_internal (char *ptr);
 static TP_DOMAIN *or_get_domain_and_cache (char *ptr);
 static void or_get_att_index (char *ptr, BTID * btid);
@@ -912,7 +912,7 @@ static int
 or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
 			 OID * class_, BTID * btid, OID ** class_oids,
 			 HFID ** hfids, int *num_classes, int *max_classes,
-			 int * partition_local_index)
+			 int *partition_local_index)
 {
   char *ptr;
   char *subset = NULL;
@@ -963,7 +963,7 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
       if (!OID_ISNULL (&partition_info) && partition_local_index != NULL)
 	{
 	  if (partition_is_global_index (thread_p, NULL, source_class, btid,
-	      NULL, &is_global_index) != NO_ERROR)
+					 NULL, &is_global_index) != NO_ERROR)
 	    {
 	      if (OID_EQ (class_, source_class))
 		{
@@ -1153,7 +1153,7 @@ error:
 int
 or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid,
 			 BTID * btid, OID ** class_oids, HFID ** hfids,
-			 int *num_classes, int * partition_local_index)
+			 int *num_classes, int *partition_local_index)
 {
   int n_attributes, n_fixed, n_variable, i;
   int id, found, max_classes;

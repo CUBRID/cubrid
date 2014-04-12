@@ -199,7 +199,7 @@ extern int or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record,
 				    BTID * btid,
 				    OID ** class_oids,
 				    HFID ** hfids, int *num_heaps,
-				    int * partition_local_index);
+				    int *partition_local_index);
 extern OR_CLASSREP *or_get_classrep (RECDES * record, int repid);
 extern OR_CLASSREP *or_get_classrep_noindex (RECDES * record, int repid);
 extern OR_CLASSREP *or_classrep_load_indexes (OR_CLASSREP * rep,
