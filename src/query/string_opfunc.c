@@ -1717,25 +1717,31 @@ db_string_instr (const DB_VALUE * src_string,
 	  error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	}
-      else if ((DB_GET_STRING_COLLATION (src_string)
-		!= DB_GET_STRING_COLLATION (sub_string)))
-	{
-	  error_status = ER_QSTR_INCOMPATIBLE_COLLATIONS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	}
       else
 	{
 	  int position = 0;
-	  int src_str_len = DB_GET_STRING_LENGTH (src_string);
-	  int sub_str_len = DB_GET_STRING_LENGTH (sub_string);
+	  int src_str_len;
+	  int sub_str_len;
 	  int offset = DB_GET_INT (start_pos);
 	  INTL_CODESET codeset =
 	    (INTL_CODESET) DB_GET_STRING_CODESET (src_string);
 	  char *search_from, *src_buf, *sub_str;
-	  int coll_id = DB_GET_STRING_COLLATION (src_string);
+	  int coll_id;
 	  int sub_str_size = DB_GET_STRING_SIZE (sub_string);
 	  int from_byte_offset;
 	  int src_size = DB_GET_STRING_SIZE (src_string);
+
+	  LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (src_string),
+			       DB_GET_STRING_COLLATION (sub_string), coll_id);
+	  if (coll_id == -1)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+	      return ER_QSTR_INCOMPATIBLE_COLLATIONS;
+	    }
+
+	  src_str_len = DB_GET_STRING_LENGTH (src_string);
+	  sub_str_len = DB_GET_STRING_LENGTH (sub_string);
 
 	  src_buf = DB_PULL_STRING (src_string);
 	  if (src_size < 0)
@@ -1975,12 +1981,6 @@ db_string_position (const DB_VALUE * sub_string,
       error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
     }
-  else if ((DB_GET_STRING_COLLATION (src_string)
-	    != DB_GET_STRING_COLLATION (sub_string)))
-    {
-      error_status = ER_QSTR_INCOMPATIBLE_COLLATIONS;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-    }
   else
     {
       int position;
@@ -1992,6 +1992,16 @@ db_string_position (const DB_VALUE * sub_string,
 	  int src_size = DB_GET_STRING_SIZE (src_string);
 	  char *sub_str = DB_PULL_STRING (sub_string);
 	  int sub_size = DB_GET_STRING_SIZE (sub_string);
+	  int coll_id;
+
+	  LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (src_string),
+			       DB_GET_STRING_COLLATION (sub_string), coll_id);
+	  if (coll_id == -1)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+	      return ER_QSTR_INCOMPATIBLE_COLLATIONS;
+	    }
 
 	  if (src_size < 0)
 	    {
@@ -2008,8 +2018,7 @@ db_string_position (const DB_VALUE * sub_string,
 			   DB_GET_STRING_LENGTH (sub_string),
 			   src_str, src_str + src_size, src_str + src_size,
 			   DB_GET_STRING_LENGTH (src_string),
-			   DB_GET_STRING_COLLATION (src_string), true,
-			   &position);
+			   coll_id, true, &position);
 	}
       else
 	{
@@ -4516,6 +4525,7 @@ db_string_like (const DB_VALUE * src_string,
   char *pattern_char_string_p = NULL;
   char const *esc_char_p = NULL;
   int src_length = 0, pattern_length = 0;
+  int coll_id;
 
   /*
    *  Assert that DB_VALUE structures have been allocated.
@@ -4537,7 +4547,9 @@ db_string_like (const DB_VALUE * src_string,
       return error_status;
     }
 
-  if (src_category != pattern_category)
+  if (src_category != pattern_category
+      || (DB_GET_STRING_CODESET (src_string)
+	  != DB_GET_STRING_CODESET (pattern)))
     {
       error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -4557,8 +4569,9 @@ db_string_like (const DB_VALUE * src_string,
       return error_status;
     }
 
-  if (DB_GET_STRING_COLLATION (src_string)
-      != DB_GET_STRING_COLLATION (pattern))
+  LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (src_string),
+		       DB_GET_STRING_COLLATION (pattern), coll_id);
+  if (coll_id == -1)
     {
       error_status = ER_QSTR_INCOMPATIBLE_COLLATIONS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -4630,8 +4643,7 @@ db_string_like (const DB_VALUE * src_string,
   *result = qstr_eval_like (src_char_string_p, src_length,
 			    pattern_char_string_p, pattern_length,
 			    (esc_char ? esc_char_p : NULL),
-			    DB_GET_STRING_CODESET (src_string),
-			    DB_GET_STRING_COLLATION (src_string));
+			    DB_GET_STRING_CODESET (src_string), coll_id);
 
   if (*result == V_ERROR)
     {
@@ -5442,6 +5454,7 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string,
   unsigned char *result_ptr;
   int result_length = 0, result_size = 0;
   DB_TYPE result_type = DB_TYPE_NULL;
+  int coll_id, coll_id_tmp;
 
   assert (src_string != (DB_VALUE *) NULL);
   assert (replaced_string != (DB_VALUE *) NULL);
@@ -5486,10 +5499,19 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string,
       return error_status;
     }
 
-  if (DB_GET_STRING_COLLATION (src_string)
-      != DB_GET_STRING_COLLATION (srch_string)
-      || DB_GET_STRING_COLLATION (src_string)
-      != DB_GET_STRING_COLLATION (repl_string))
+  LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (src_string),
+		       DB_GET_STRING_COLLATION (srch_string), coll_id_tmp);
+  if (coll_id_tmp == -1)
+    {
+      error_status = ER_QSTR_INCOMPATIBLE_COLLATIONS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+
+  LANG_RT_COMMON_COLL (coll_id_tmp, DB_GET_STRING_COLLATION (repl_string),
+		       coll_id);
+
+  if (coll_id == -1)
     {
       error_status = ER_QSTR_INCOMPATIBLE_COLLATIONS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -5504,7 +5526,7 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string,
 			       DB_GET_STRING_SIZE (src_string),
 			       (INTL_CODESET)
 			       DB_GET_STRING_CODESET (src_string),
-			       DB_GET_STRING_COLLATION (src_string),
+			       coll_id,
 			       (unsigned char *) DB_PULL_STRING (srch_string),
 			       DB_GET_STRING_SIZE (srch_string),
 			       (unsigned char *) DB_PULL_STRING (repl_string),
@@ -5521,7 +5543,7 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string,
 				  1 : DB_GET_STRING_LENGTH (src_string),
 				  (char *) result_ptr, result_size,
 				  DB_GET_STRING_CODESET (src_string),
-				  DB_GET_STRING_COLLATION (src_string));
+				  coll_id);
 	}
       else
 	{
@@ -5530,7 +5552,7 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string,
 				  result_length,
 				  (char *) result_ptr, result_size,
 				  DB_GET_STRING_CODESET (src_string),
-				  DB_GET_STRING_COLLATION (src_string));
+				  coll_id);
 	}
       result_ptr[result_size] = 0;
       replaced_string->need_clear = true;
@@ -6277,9 +6299,9 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack,
       goto error_return;
     }
 
-  coll_id = DB_GET_STRING_COLLATION (stack);
-
-  if (coll_id != DB_GET_STRING_COLLATION (needle))
+  LANG_RT_COMMON_COLL (DB_GET_STRING_COLLATION (stack),
+		       DB_GET_STRING_COLLATION (needle), coll_id);
+  if (coll_id == -1)
     {
       err = ER_QSTR_INCOMPATIBLE_COLLATIONS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
