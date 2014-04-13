@@ -2720,8 +2720,8 @@ thread_check_ha_delay_info_thread (void *arg_p)
 
   int rv;
   INT64 tmp_usec;
-#if !defined(WINDOWS)
   int wakeup_interval = 1000;
+#if !defined(WINDOWS)
   time_t log_record_time = 0;
   int error_code;
   int delay_limit_in_secs;
