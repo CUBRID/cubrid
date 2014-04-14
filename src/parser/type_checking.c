@@ -5042,7 +5042,8 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 	  /* we cannot make a decision during type checking in this case */
 	  return expr;
 	}
-      if (PT_IS_NUMERIC_TYPE (arg1_type) && PT_IS_NUMERIC_TYPE (common_type))
+      if ((PT_IS_NUMERIC_TYPE (arg1_type) && PT_IS_NUMERIC_TYPE (common_type))
+	  || common_type == PT_TYPE_MAYBE)
 	{
 	  /* do not cast between numeric types */
 	  arg1_eq_type = arg1_type;
@@ -5051,7 +5052,8 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 	{
 	  arg1_eq_type = common_type;
 	}
-      if (PT_IS_NUMERIC_TYPE (arg2_type) && PT_IS_NUMERIC_TYPE (common_type))
+      if ((PT_IS_NUMERIC_TYPE (arg2_type) && PT_IS_NUMERIC_TYPE (common_type))
+	  || common_type == PT_TYPE_MAYBE)
 	{
 	  arg2_eq_type = arg2_type;
 	}
