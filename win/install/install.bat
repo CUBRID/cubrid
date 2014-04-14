@@ -74,6 +74,7 @@ rem -------------------------------------------
 rem Binaries
 copy %SRC_DIR%\*.exe %DEST_DIR%\bin
 copy %SRC_DIR%\*.dll %DEST_DIR%\bin
+copy %SRC_DIR%\*.pdb %DEST_DIR%\bin
 copy %SRC_DIR%\..\..\external\dll\*.dll %DEST_DIR%\bin
 copy %SRC_DIR%\..\..\external\dll\%PLATFORM%\*.dll %DEST_DIR%\bin
 
