@@ -6291,7 +6291,8 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack,
       goto error_return;
     }
 
-  if (qstr_get_category (needle) != qstr_get_category (stack))
+  if (qstr_get_category (needle) != qstr_get_category (stack)
+      || DB_GET_STRING_CODESET (needle) != DB_GET_STRING_CODESET (stack))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_QSTR_INCOMPATIBLE_CODE_SETS, 0);
