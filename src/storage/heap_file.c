@@ -2600,8 +2600,9 @@ static int
 heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp,
 		     const OID * class_oid, const OR_CLASSREP * repr)
 {
-  OR_ATTRIBUTE *attrepr;
-  int i, k, j;
+  OR_ATTRIBUTE *volatile attrepr;
+  volatile int i;
+  int k, j;
   char *classname;
   const char *attr_name;
   DB_VALUE def_dbvalue;
@@ -14197,10 +14198,10 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value,
 {
   OR_BUF buf;
   PR_TYPE *pr_type;		/* Primitive type array function structure */
-  OR_ATTRIBUTE *attrepr;
+  OR_ATTRIBUTE *volatile attrepr;
   char *disk_data = NULL;
   int disk_bound = false;
-  int disk_length = -1;
+  volatile int disk_length = -1;
   int ret = NO_ERROR;
 
   /* Initialize disk value information */
@@ -15878,7 +15879,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p,
   int i;
   DB_VALUE *dbvalue = NULL;
   int expected_size;
-  int offset_size;
+  volatile int offset_size;
 
   /* check to make sure the attr_info has been used, it should not be empty. */
   if (attr_info->num_values == -1)
@@ -21058,7 +21059,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
   void *unpack_info = NULL;
   DB_VALUE *res = NULL;
   int nr_atts;
-  ATTR_ID *atts;
+  ATTR_ID *atts = NULL;
   bool atts_free = false, attrinfo_clear = false, attrinfo_end = false;
   HEAP_CACHE_ATTRINFO *cache_attr_info;
 

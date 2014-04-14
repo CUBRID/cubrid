@@ -414,7 +414,7 @@ pt_add_row_classoid_name (PARSER_CONTEXT * parser,
  *   statement(in/out):
  */
 PT_NODE *
-pt_compile (PARSER_CONTEXT * parser, PT_NODE * statement)
+pt_compile (PARSER_CONTEXT * parser, PT_NODE * volatile statement)
 {
   PT_NODE *next;
 

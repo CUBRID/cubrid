@@ -2476,12 +2476,15 @@ session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
 {
   int i, count;
   SESSION_STATE *session_p = NULL;
+
   session_p = session_get_session_state (thread_p);
   if (session_p == NULL)
     {
       return NULL;
     }
+
   assert (id <= PRM_LAST_ID);
+
   count = sysprm_get_session_parameters_count ();
   for (i = 0; i < count; i++)
     {
@@ -2490,6 +2493,7 @@ session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
 	  return &session_p->session_parameters[i];
 	}
     }
+
   return NULL;
 }
 

@@ -2117,7 +2117,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
   int key_size, att_cnt;
   OR_VALUE *attrs, *key_attrs;
   DB_VALUE *attr_val_p;
-  OR_VALUE *subset_p;
+  OR_VALUE *subset_p = NULL;
   int e, i, j, k;
   int has_function_index = 0;
   int error = NO_ERROR;
@@ -4877,7 +4877,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p,
 	      lang_str = DB_GET_STRING (&heap_value->dbvalue);
 	      lang_str_len = (lang_str != NULL) ? strlen (lang_str) : 0;
 	      lang_str_len = MIN (lang_str_len,
-				  sizeof (curr_coll->coll_name));
+				  (int) sizeof (curr_coll->coll_name));
 
 	      strncpy (curr_coll->coll_name, lang_str, lang_str_len);
 	      curr_coll->coll_name[lang_str_len] = '\0';
@@ -4945,7 +4945,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p,
   HEAP_SCANCACHE scan_cache;
   RECDES recdes;
   DB_DATETIME *tmp_datetime;
-  time_t tmp_log_record_time;
+  time_t tmp_log_record_time = 0;
   int log_record_time_att_id = -1;
   int error = NO_ERROR;
   int i;

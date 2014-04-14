@@ -1837,6 +1837,7 @@ btree_insert_oid_with_order (RECDES * rec, OID * oid)
 
   min = 0;
   max = num - 1;
+  mid = 0;
 
   assert (min <= max);
 
@@ -2123,7 +2124,8 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   assert (pgptr != NULL);
   assert (bts == NULL || bts->common_prefix == -1
-	  ||bts->common_prefix == btree_page_common_prefix (thread_p, btid, pgptr));
+	  || bts->common_prefix == btree_page_common_prefix (thread_p, btid,
+							     pgptr));
 
   if (bts != NULL)
     {

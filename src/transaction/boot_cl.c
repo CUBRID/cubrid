@@ -705,7 +705,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   TRAN_ISOLATION tran_isolation;
   int tran_lock_wait_msecs;
   TRAN_STATE transtate;
-  int error_code;
+  int error_code = NO_ERROR;
   DB_INFO *db = NULL;
 #if !defined(WINDOWS)
   bool dl_initialized = false;

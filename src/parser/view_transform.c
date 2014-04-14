@@ -6936,7 +6936,7 @@ pt_for_update_prepare_query (PARSER_CONTEXT * parser, PT_NODE * query)
  *   node(in):
  */
 PT_NODE *
-mq_translate (PARSER_CONTEXT * parser, PT_NODE * node)
+mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 {
   volatile PT_NODE *return_node = NULL;
 
@@ -6957,10 +6957,6 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * node)
 
   return (PT_NODE *) return_node;
 }
-
-
-
-
 
 
 

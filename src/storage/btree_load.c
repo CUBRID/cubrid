@@ -722,7 +722,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
       func_index_info.attr_index_start = func_attr_index_start;
       func_index_info.expr = NULL;
       if (stx_map_stream_to_func_pred (thread_p,
-				       (FUNC_PRED **) & func_index_info.expr,
+				       (FUNC_PRED **) (&func_index_info.expr),
 				       func_pred_stream,
 				       func_pred_stream_size,
 				       &func_unpack_info))

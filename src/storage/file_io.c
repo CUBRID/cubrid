@@ -1966,11 +1966,11 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
   PAGEID page_id;
 #if defined (SERVER_MODE)
   int count_of_page_for_a_sleep = 10;
-  INT64 allowed_millis_for_a_sleep;	/* time which is time for  writing unit of page
+  INT64 allowed_millis_for_a_sleep = 0;	/* time which is time for  writing unit of page
 					 * and sleeping in a sleep
 					 */
-  INT64 previous_elapsed_millis;	/* time which is previous time for writing unit of page\
-					 * and sleep
+  INT64 previous_elapsed_millis;	/* time which is previous time for writing unit of 
+					 * page and sleep
 					 */
   INT64 time_to_sleep;
 
@@ -2464,8 +2464,15 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 #endif /* !WINDOWS */
     }
 
-  max_npages = (is_raw_device) ? VOL_MAX_NPAGES (page_size) :
-    fileio_get_number_of_partition_free_pages (vol_label_p, page_size);
+  if (is_raw_device)
+    {
+      max_npages = (DKNPAGES) VOL_MAX_NPAGES (page_size);
+    }
+  else
+    {
+      max_npages = fileio_get_number_of_partition_free_pages (vol_label_p,
+							      page_size);
+    }
 
   offset = FILEIO_GET_FILE_SIZE (page_size, npages - 1);
 
@@ -3793,7 +3800,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
       if (aio_read (&cb) < 0)
 #else /* USE_AIO */
       nbytes = pread (vol_fd, io_page_p, page_size, offset);
-      if (nbytes != page_size)
+      if (nbytes != (ssize_t) page_size)
 #endif /* USE_AIO */
 #endif /* WINDOWS */
 	{
@@ -3949,7 +3956,8 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 
       if (aio_write (&cb) < 0)
 #else /* USE_AIO */
-      if (pwrite (vol_fd, io_page_p, (size_t) page_size, offset) != page_size)
+      if (pwrite (vol_fd, io_page_p, page_size, offset) !=
+	  (ssize_t) page_size)
 #endif /* USE_AIO */
 #endif /* WINDOWS */
 	{
@@ -4384,7 +4392,6 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 #if defined(USE_AIO)
   struct aiocb cb;
 #endif /* USE_AIO */
-  char *s;
 
   if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) > 0)
     {
@@ -4432,9 +4439,8 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 
   if (ret != 0)
     {
-      s = (vlabel == NULL) ? "Unknown" : vlabel;
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_SYNC,
-			   1, s);
+			   1, (vlabel ? vlabel : "Unknown"));
       return NULL_VOLDES;
     }
   else
@@ -4455,9 +4461,8 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 	;
       if (aio_return (&cb) != 0)
 	{
-	  s = (vlabel == NULL) ? "Unknown" : vlabel;
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_SYNC,
-			       1, s);
+			       1, (vlabel ? vlabel : "Unknown"));
 	  return NULL_VOLDES;
 	}
 #endif
@@ -8229,7 +8234,7 @@ fileio_backup_volume (THREAD_ENTRY * thread_p,
   int check_ratio = 0;
   int check_npages = 0;
   FILEIO_THREAD_INFO *thread_info_p;
-  FILEIO_QUEUE *queue_p;
+  FILEIO_QUEUE *queue_p = NULL;
   FILEIO_BACKUP_PAGE *save_area_p;
   FILEIO_NODE *node_p = NULL;
   FILEIO_BACKUP_HEADER *backup_header_p;
@@ -8586,8 +8591,8 @@ fileio_backup_volume (THREAD_ENTRY * thread_p,
     }
 
   return NO_ERROR;
-error:
 
+error:
   if (is_need_vol_closed == true)
     {
       fileio_close (session_p->dbfile.vdes);
@@ -11510,7 +11515,7 @@ int
 fileio_read_backup_info_entries (FILE * fp, int which_bkvinf)
 {
   FILEIO_BACKUP_LEVEL level;
-  int unit_num;
+  int tmp, unit_num;
   char vol_name[PATH_MAX];
   int n, line = 0;
   char format_string[32];
@@ -11528,13 +11533,12 @@ fileio_read_backup_info_entries (FILE * fp, int which_bkvinf)
     }
 
   sprintf (format_string, "%%d %%d %%%ds", PATH_MAX - 1);
-  while ((n = fscanf (fp, format_string, (int *) &level, &unit_num,
-		      vol_name)) > 0)
+  while ((n = fscanf (fp, format_string, &tmp, &unit_num, vol_name)) > 0)
     {
+      level = (FILEIO_BACKUP_LEVEL) tmp;
       line++;
-      if ((n != 3)
-	  || (level >= FILEIO_BACKUP_UNDEFINED_LEVEL)
-	  || (level < FILEIO_BACKUP_FULL_LEVEL)
+      if ((n != 3) || (level >= FILEIO_BACKUP_UNDEFINED_LEVEL)
+	  /* || (level < FILEIO_BACKUP_FULL_LEVEL) */
 	  || (unit_num < FILEIO_INITIAL_BACKUP_UNITS))
 	{
 	  fprintf (stdout,

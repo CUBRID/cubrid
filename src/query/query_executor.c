@@ -11249,8 +11249,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   HEAP_CACHE_ATTRINFO index_attr_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
   bool attr_info_inited = false;
-  bool index_attr_info_inited = false;
-  bool odku_attr_info_inited = false;
+  volatile bool index_attr_info_inited = false;
+  volatile bool odku_attr_info_inited = false;
   LOG_LSA lsa;
   int savepoint_used = 0;
   int satisfies_constraints;
@@ -11261,9 +11261,9 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   REGU_VARIABLE *rvsave = NULL;
   int no_default_expr = 0;
   LC_COPYAREA_OPERATION operation = LC_FLUSH_INSERT;
-  PRUNING_CONTEXT context, *pcontext = NULL;
+  PRUNING_CONTEXT context, *volatile pcontext = NULL;
   FUNC_PRED_UNPACK_INFO *func_indx_preds = NULL;
-  int n_indexes = 0;
+  volatile int n_indexes = 0;
   int error = 0;
   ODKU_INFO *odku_assignments = insert->odku;
   DB_VALUE oid_val;
@@ -27066,16 +27066,16 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   OR_INDEX *index = NULL;
   OR_ATTRIBUTE *index_att = NULL;
   const char *attr_name = NULL;
-  OR_ATTRIBUTE *attrepr = NULL;
+  OR_ATTRIBUTE *volatile attrepr = NULL;
   DB_VALUE **out_values = NULL;
   REGU_VARIABLE_LIST regu_var_p;
   HEAP_SCANCACHE scan;
   RECDES class_record;
   char *class_name = NULL;
   OID *class_oid = NULL;
-  int i, j, k, idx_all_attr, idx_val, size_values, found_index_type = -1,
-    disk_length;
-  int error = NO_ERROR;
+  volatile int idx_val;
+  volatile int error = NO_ERROR;
+  int i, j, k, idx_all_attr, size_values, found_index_type = -1, disk_length;
   bool search_index_type = true;
   BTID *btid;
   int index_type_priorities[] = { 1, 0, 1, 0, 2, 0 };

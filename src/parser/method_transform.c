@@ -206,22 +206,24 @@ static int meth_refs_to_scope (PARSER_CONTEXT * parser, PT_NODE * scope,
 			       PT_NODE * tree);
 static PT_NODE *meth_have_methods (PARSER_CONTEXT * parser, PT_NODE * node,
 				   void *arg, int *continue_walk);
-static PT_NODE *meth_find_hierarchical_op (PARSER_CONTEXT *parser,
-					   PT_NODE *node, void *arg,
-					   int* continue_walk);
-static void meth_find_hierarchical_in_method_list (PARSER_CONTEXT *parser,
-						   PT_NODE *method_list,
-						   bool *has_hierarchical_expr);
-static void meth_copy_hierarchical_expr_to_list (PARSER_CONTEXT *parser,
-						 PT_NODE *src_list,
-						 PT_NODE **dst_list_p,
+static PT_NODE *meth_find_hierarchical_op (PARSER_CONTEXT * parser,
+					   PT_NODE * node, void *arg,
+					   int *continue_walk);
+static void meth_find_hierarchical_in_method_list (PARSER_CONTEXT * parser,
+						   PT_NODE * method_list,
+						   bool *
+						   has_hierarchical_expr);
+static void meth_copy_hierarchical_expr_to_list (PARSER_CONTEXT * parser,
+						 PT_NODE * src_list,
+						 PT_NODE ** dst_list_p,
 						 int *copy_count);
-static void meth_move_hierarchical_to_derived (PARSER_CONTEXT *parser,
-					       PT_SELECT_INFO *statement_info,
-					       PT_SELECT_INFO *derived_info);
-static void meth_replace_hierarchical_exprs (PARSER_CONTEXT *parser,
-					     PT_NODE **select_list_p,
-					     PT_NODE *ref_attrs,
+static void meth_move_hierarchical_to_derived (PARSER_CONTEXT * parser,
+					       PT_SELECT_INFO *
+					       statement_info,
+					       PT_SELECT_INFO * derived_info);
+static void meth_replace_hierarchical_exprs (PARSER_CONTEXT * parser,
+					     PT_NODE ** select_list_p,
+					     PT_NODE * ref_attrs,
 					     int num_methods);
 
 /*
@@ -278,7 +280,7 @@ pt_statement_have_methods (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   node(in/out): Query to translate
  */
 PT_NODE *
-meth_translate (PARSER_CONTEXT * parser, PT_NODE * node)
+meth_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 {
   int hand_rewritten;
   PT_NODE *next;
@@ -856,8 +858,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 		    {
 		      sub_corr_level = sub_der->info.query.correlation_level;
 		    }
-		  else
-		    if (meth_refs_to_scope (parser, spec_list, sub_der))
+		  else if (meth_refs_to_scope (parser, spec_list, sub_der))
 		    {
 		      sub_corr_level = 1;
 		    }
@@ -923,8 +924,8 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
       meth_copy_hierarchical_expr_to_list (parser,
 					   info->select_statement->info.query.
 					   q.select.list,
-					   &derived1->info.query.q.select.list,
-					   &num_hierarchical_exprs);
+					   &derived1->info.query.q.select.
+					   list, &num_hierarchical_exprs);
     }
   derived1->info.query.q.select.list =
     parser_append_node (parser_copy_tree_list (parser, save_referenced_attrs),
@@ -936,8 +937,8 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
     {
       /* move hierarchical query to derived */
       meth_move_hierarchical_to_derived (parser,
-					 &info->select_statement->info.query.q.
-					 select,
+					 &info->select_statement->info.query.
+					 q.select,
 					 &derived1->info.query.q.select);
     }
 
@@ -2624,9 +2625,9 @@ meth_refs_to_scope (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * tree)
  *   arg(in/out):
  *   continue_walk(in):
  */
-static PT_NODE*
-meth_find_hierarchical_op (PARSER_CONTEXT *parser, PT_NODE *node, void *arg,
-			   int* continue_walk)
+static PT_NODE *
+meth_find_hierarchical_op (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+			   int *continue_walk)
 {
   bool *is_hierarchical_op = (bool *) arg;
 
@@ -2655,9 +2656,9 @@ meth_find_hierarchical_op (PARSER_CONTEXT *parser, PT_NODE *node, void *arg,
  *   has_hierarchical_expr(out):
  */
 static void
-meth_find_hierarchical_in_method_list (PARSER_CONTEXT *parser,
-				       PT_NODE *method_list,
-				       bool *has_hierarchical_expr)
+meth_find_hierarchical_in_method_list (PARSER_CONTEXT * parser,
+				       PT_NODE * method_list,
+				       bool * has_hierarchical_expr)
 {
   PT_NODE *node, *arg, *save_next;
 
@@ -2689,8 +2690,9 @@ meth_find_hierarchical_in_method_list (PARSER_CONTEXT *parser,
  *   copy_count(in/out):
  */
 static void
-meth_copy_hierarchical_expr_to_list (PARSER_CONTEXT *parser, PT_NODE *src_list,
-				     PT_NODE **dst_list_p, int *copy_count)
+meth_copy_hierarchical_expr_to_list (PARSER_CONTEXT * parser,
+				     PT_NODE * src_list,
+				     PT_NODE ** dst_list_p, int *copy_count)
 {
   PT_NODE *node, *temp, *save_next;
   bool found, has_hierarchical_expr;
@@ -2707,7 +2709,7 @@ meth_copy_hierarchical_expr_to_list (PARSER_CONTEXT *parser, PT_NODE *src_list,
 	{
 	  /* don't copy if it's already there */
 	  found = false;
-	  for (temp = *dst_list_p; temp!= NULL && !found; temp = temp->next)
+	  for (temp = *dst_list_p; temp != NULL && !found; temp = temp->next)
 	    {
 	      if (node == temp)
 		{
@@ -2734,9 +2736,9 @@ meth_copy_hierarchical_expr_to_list (PARSER_CONTEXT *parser, PT_NODE *src_list,
  *   derived_info(in):
  */
 static void
-meth_move_hierarchical_to_derived (PARSER_CONTEXT *parser,
-				   PT_SELECT_INFO *statement_info,
-				   PT_SELECT_INFO *derived_info)
+meth_move_hierarchical_to_derived (PARSER_CONTEXT * parser,
+				   PT_SELECT_INFO * statement_info,
+				   PT_SELECT_INFO * derived_info)
 {
   /* copy predicates */
   derived_info->connect_by =
@@ -2772,9 +2774,9 @@ meth_move_hierarchical_to_derived (PARSER_CONTEXT *parser,
  *   derived_info(in):
  */
 static void
-meth_replace_hierarchical_exprs (PARSER_CONTEXT *parser,
-				 PT_NODE **select_list_p, PT_NODE *ref_attrs,
-				 int num_methods)
+meth_replace_hierarchical_exprs (PARSER_CONTEXT * parser,
+				 PT_NODE ** select_list_p,
+				 PT_NODE * ref_attrs, int num_methods)
 {
   PT_NODE *node, *prev_node, *save_next, *new_node;
   bool has_hierarchical_expr;
@@ -2784,7 +2786,7 @@ meth_replace_hierarchical_exprs (PARSER_CONTEXT *parser,
     {
       ref_attrs = ref_attrs->next;
     }
-  
+
   for (node = *select_list_p, prev_node = NULL; node != NULL;
        node = node->next)
     {

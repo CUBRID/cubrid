@@ -776,8 +776,8 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj,
   bool has_index = false;
   unsigned int repid_bits;
   TF_STATUS status;
-  int expected_size;
-  int offset_size;
+  volatile int expected_size;
+  volatile int offset_size;
 
   buf = &orep;
   or_init (buf, record->data, record->area_size);
@@ -4384,7 +4384,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
   OR_BUF orep, *buf;
   /* prevent reg optimization which hoses longmp */
   SM_CLASS *volatile class_;
-  int expected_size;
+  volatile int expected_size;
   SM_CLASS_HEADER *header;
   int chn;
   TF_STATUS status;

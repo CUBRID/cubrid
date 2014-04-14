@@ -2036,7 +2036,6 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
       return ER_FAILED;
     }
 
-  assert_release (TRANDUMP_SUMMARY <= dump_level);
   assert_release (dump_level <= TRANDUMP_FULL_INFO);
 
   if (dump_level == TRANDUMP_FULL_INFO || dump_level == TRANDUMP_QUERY_INFO)
@@ -3902,13 +3901,6 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       goto print_applyinfo_usage;
     }
 
-  /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
-    {
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
-      return EXIT_FAILURE;
-    }
-
   check_applied_info = check_copied_info = false;
   check_replica_info = check_master_info = false;
 
@@ -3917,6 +3909,13 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   if (database_name == NULL)
     {
       goto print_applyinfo_usage;
+    }
+
+  /* initialize system parameters */
+  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
+      return EXIT_FAILURE;
     }
 
   master_node_name = utility_get_option_string_value (arg_map,

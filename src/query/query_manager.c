@@ -1853,6 +1853,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 #if defined (SERVER_MODE)
   use_global_heap = false;
   data = (char *) dbval_p;
+  old_pri_heap_id = 0;
 #endif
 
   assert_release (IS_SYNC_EXEC_MODE (*flag_p));
@@ -2457,6 +2458,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
 #if defined (SERVER_MODE)
   use_global_heap = false;
   data = (char *) dbval_p;
+  old_pri_heap_id = 0;
 #endif
 
   saved_is_stats_on = mnt_server_is_stats_on (thread_p);
@@ -4363,7 +4365,7 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
 
   XASL_NODE *xasl_p;
   void *xasl_buf_info;
-  QMGR_TRAN_ENTRY *tran_entry_p;
+  QMGR_TRAN_ENTRY *tran_entry_p = NULL;
   XASL_STATE xasl_state;
   int rv;
 
@@ -4396,6 +4398,8 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
 
   xasl_p = NULL;
   xasl_buf_info = NULL;
+
+  tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
   /* load the XASL stream from the file of xasl_id */
   if (xqmgr_unpack_xasl_tree (thread_p, xasl_id, xasl_stream,
@@ -4430,8 +4434,6 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
 	  XASL_SET_FLAG (xasl_p, XASL_TO_BE_CACHED);
 	}
     }
-
-  tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
   query_p->tid = thread_p->tid;
   thread_p->query_entry = query_p;	/* save query entry pointer */

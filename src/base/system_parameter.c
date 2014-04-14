@@ -4835,7 +4835,7 @@ static void prm_set_compound (SYSPRM_PARAM * param,
 			      const char **compound_param_values[],
 			      const int values_count, bool set_flag);
 static int prm_get_next_param_value (char **data, char **prm, char **value);
-static int sysprm_get_id (const SYSPRM_PARAM * prm);
+static PARAM_ID sysprm_get_id (const SYSPRM_PARAM * prm);
 static int sysprm_compare_values (void *first_value, void *second_value,
 				  unsigned int val_type);
 static void sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value,
@@ -4873,7 +4873,7 @@ static SYSPRM_ERR sysprm_set_session_parameter_value (SESSION_PARAM *
 						      SYSPRM_VALUE value);
 static SYSPRM_ERR sysprm_set_session_parameter_default (SESSION_PARAM *
 							session_parameter,
-							int prm_id);
+							PARAM_ID prm_id);
 #endif /* SERVER_MODE */
 
 #if defined (CS_MODE)
@@ -6311,7 +6311,8 @@ static int
 prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 	   PRM_PRINT_MODE print_mode, PRM_PRINT_VALUE_MODE print_value_mode)
 {
-  int n = 0, id = -1;
+  int n = 0;
+  PARAM_ID id;
   int error = NO_ERROR;
   char left_side[PRM_DEFAULT_BUFFER_SIZE];
   void *prm_value;
@@ -7415,6 +7416,7 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
       float val;
       float lower, upper;
 
+      lower = upper = 0;	/* to make compilers be silent */
       if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	{
 	  if (PRM_HAS_SIZE_UNIT (prm->static_flag))
@@ -8031,7 +8033,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
 		  bool duplicate)
 {
 #if defined (SERVER_MODE)
-  int id;
+  PARAM_ID id;
   THREAD_ENTRY *thread_p;
 #endif
 
@@ -8085,16 +8087,20 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
   if (PRM_IS_FOR_SESSION (prm->static_flag) && BO_IS_SERVER_RESTARTED ())
     {
       SESSION_PARAM *param;
+
       /* update session parameter */
       id = sysprm_get_id (prm);
       thread_p = thread_get_thread_entry_info ();
+
       param = session_get_session_parameter (thread_p, id);
       if (param == NULL)
 	{
 	  return PRM_ERR_UNKNOWN_PARAM;
 	}
+
       return sysprm_set_session_parameter_value (param, id, value);
     }
+
   /* if prm is not for session or if session_parameters have not been
    * initialized just set the system parameter stored on server
    */
@@ -8223,18 +8229,21 @@ prm_set_default (SYSPRM_PARAM * prm)
 #if defined (SERVER_MODE)
   if (PRM_IS_FOR_SESSION (prm->static_flag) && BO_IS_SERVER_RESTARTED ())
     {
-      int id;
+      PARAM_ID id;
       SESSION_PARAM *sprm = NULL;
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
       id = sysprm_get_id (prm);
       sprm = session_get_session_parameter (thread_p, id);
       if (sprm == NULL)
 	{
 	  return PRM_ERR_UNKNOWN_PARAM;
 	}
+
       return sysprm_set_session_parameter_default (sprm, id);
     }
 #endif /* SERVER_MODE */
+
   if (prm == NULL)
     {
       return ER_FAILED;
@@ -9908,7 +9917,7 @@ sysprm_unpack_session_parameters (char *ptr,
 				  SESSION_PARAM ** session_parameters_ptr)
 {
   SESSION_PARAM *prm, *session_params = NULL;
-  int prm_index;
+  int prm_index, tmp;
 
   assert (session_parameters_ptr != NULL);
   *session_parameters_ptr = NULL;
@@ -9934,11 +9943,14 @@ sysprm_unpack_session_parameters (char *ptr,
 
       prm = &session_params[prm_index];
 
-      ptr = or_unpack_int (ptr, (int *) (&prm->prm_id));
+      ptr = or_unpack_int (ptr, &tmp);
+      prm->prm_id = tmp;
+
       ptr = or_unpack_int (ptr, &flag);
       prm->flag = (unsigned int) flag;
 
       ptr = or_unpack_int (ptr, &prm->datatype);
+
       ptr = sysprm_unpack_sysprm_value (ptr, &prm->value, prm->datatype);
       if (ptr == NULL)
 	{
@@ -10033,7 +10045,7 @@ sysprm_unpack_assign_values (char *ptr,
 {
   SYSPRM_ASSIGN_VALUE *assign_values = NULL, *last_assign_val = NULL;
   SYSPRM_ASSIGN_VALUE *assign_val = NULL;
-  int i = 0, count = 0;
+  int i = 0, count = 0, tmp;
 
   assert (assign_values_ptr != NULL);
   *assign_values_ptr = NULL;
@@ -10061,7 +10073,10 @@ sysprm_unpack_assign_values (char *ptr,
 		  1, sizeof (SYSPRM_ASSIGN_VALUE));
 	  goto error;
 	}
-      ptr = or_unpack_int (ptr, (int *) (&assign_val->prm_id));
+
+      ptr = or_unpack_int (ptr, &tmp);
+      assign_val->prm_id = tmp;
+
       ptr = sysprm_unpack_sysprm_value (ptr, &assign_val->value,
 					GET_PRM_DATATYPE (assign_val->
 							  prm_id));
@@ -10125,14 +10140,14 @@ sysprm_free_assign_values (SYSPRM_ASSIGN_VALUE ** assign_values_ptr)
  * return  : id
  * prm(in) : address for system parameter
  */
-static int
+static PARAM_ID
 sysprm_get_id (const SYSPRM_PARAM * prm)
 {
   int id = (prm - prm_Def);
 
   assert (id >= PRM_FIRST_ID && id <= PRM_LAST_ID);
 
-  return id;
+  return (PARAM_ID) id;
 }
 
 #if defined (SERVER_MODE)
@@ -10267,7 +10282,7 @@ sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, int id,
  */
 static SYSPRM_ERR
 sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter,
-				      int prm_id)
+				      PARAM_ID prm_id)
 {
   SYSPRM_PARAM *prm = &prm_Def[prm_id];
 

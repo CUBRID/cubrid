@@ -2145,7 +2145,9 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 		int result = 0;
 		char *a_ptr;
 
-		ptr = or_unpack_int (ptr, (int *) &prompt_id);
+		ptr = or_unpack_int (ptr, &x);
+		prompt_id = (FILEIO_REMOTE_PROMPT_TYPE) x;
+
 		ptr = or_unpack_int (ptr, &length);
 		COMPARE_AND_FREE_BUFFER (replybuf, reply);
 
