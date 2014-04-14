@@ -22448,6 +22448,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p,
   bool has_interpolation_func = false;
   SUBKEY_INFO *subkey = NULL;
   int i;
+  int interpolation_func_sort_prefix_len = 0;
 
   analytic_state->state = NO_ERROR;
 
@@ -22532,6 +22533,16 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p,
       if (func_p->function == PT_MEDIAN)
 	{
 	  has_interpolation_func = true;
+
+	  if (interpolation_func_sort_prefix_len == 0)
+	    {
+	      interpolation_func_sort_prefix_len = func_p->sort_prefix_size;
+	    }
+	  else
+	    {
+	      assert (interpolation_func_sort_prefix_len
+		      == func_p->sort_prefix_size);
+	    }
 	}
     }
 
@@ -22542,7 +22553,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p,
 	   i < analytic_state->key_info.nkeys && subkey != NULL;
 	   ++i, ++subkey)
 	{
-	  if (i >= a_func_list->sort_prefix_size
+	  if (i >= interpolation_func_sort_prefix_len
 	      && TP_IS_STRING_TYPE (TP_DOMAIN_TYPE (subkey->col_dom)))
 	    {
 	      subkey->use_cmp_dom = true;
