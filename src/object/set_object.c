@@ -1234,7 +1234,11 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 		  compare = tp_value_compare (val,
 					      INDEX (col, insertindex),
 					      do_coerce, 1);
-		  if (compare > 0)
+		  if (compare == DB_UNK)
+		    {
+		      insertindex = ER_GENERIC_ERROR;
+		    }
+		  else if (compare > 0)
 		    {
 		      rightindex =
 			non_null_index (col, insertindex, col->size - 1);
@@ -1779,6 +1783,11 @@ col_drop (COL * col, DB_VALUE * val)
 
   do_coerce = (col->coltype == DB_TYPE_SET);
   i = col_find (col, &found, val, do_coerce);
+  if (i < 0)
+    {
+      error = i;
+      return error;
+    }
   if (found)
     {
       if (col->coltype == DB_TYPE_SEQUENCE)
@@ -5270,7 +5279,7 @@ setobj_ismember (COL * col, DB_VALUE * proposed_value, int check_null)
       (void) setobj_sort (col);
     }
 
-  col_find (col, &found, value, coerce);
+  (void) col_find (col, &found, value, coerce);
 
   if (found > 0)
     {
