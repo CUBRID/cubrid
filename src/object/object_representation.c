@@ -304,13 +304,13 @@ or_class_name (RECDES * record)
 /*
  * or_rep_id - Extracts the representation id from the disk representation of
  * an object.
- *    return: representation of id of object. or -1 for error
+ *    return: representation of id of object. or NULL_REPRID for error
  *    record(in): disk record
  */
 int
 or_rep_id (RECDES * record)
 {
-  int rep = -1;
+  int rep = NULL_REPRID;
 
   if (record->length < OR_HEADER_SIZE)
     {
@@ -379,13 +379,13 @@ or_set_rep_id (RECDES * record, int repid)
 /*
  * or_chn - extracts cache coherency number from the disk representation of an
  * object
- *    return: cache coherency number (chn), or -1 for error
+ *    return: cache coherency number (chn), or NULL_CHN for error
  *    record(in): disk record
  */
 int
 or_chn (RECDES * record)
 {
-  int chn = -1;
+  int chn = NULL_CHN;
 
   if (record->length < OR_HEADER_SIZE)
     {

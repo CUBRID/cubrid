@@ -134,10 +134,11 @@ static void locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object,
 static void locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object,
 				    void *xlockset);
 static LOCK locator_to_prefetched_lock (LOCK class_lock);
-static int lcocator_lock (MOP mop, LOCK lock);
+static int locator_lock (MOP mop, LOCK lock, LC_OBJTYPE isclass);
 static int locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop,
 					   LOCK lock);
-static int locator_lock_and_doesexist (MOP mop, LOCK lock);
+static int locator_lock_and_doesexist (MOP mop, LOCK lock,
+				       LC_OBJTYPE isclass);
 static int locator_lock_set (int num_mops, MOP * vector_mop,
 			     LOCK reqobj_inst_lock, LOCK reqobj_class_lock,
 			     int quit_on_errors);
@@ -609,6 +610,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
  *
  *   mop(in): Mop of the object to lock
  *   lock(in): Lock to acquire
+ *   isclass(in): LC_OBJTYPE of mop to be locked
  *
  * Note: The object associated with the given MOP is locked with the
  *              desired lock. The object locator on the server is not invoked
@@ -619,7 +621,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
  *              may be prefetched.
  */
 static int
-locator_lock (MOP mop, LOCK lock)
+locator_lock (MOP mop, LOCK lock, LC_OBJTYPE isclass)
 {
   LOCATOR_CACHE_LOCK cache_lock;	/* Cache the lock */
   OID *oid;			/* OID of object to lock                  */
@@ -700,6 +702,21 @@ locator_lock (MOP mop, LOCK lock)
 	}
 
       chn = ws_chn (object);
+      if (chn > NULL_CHN && isclass != LC_CLASS
+	  && sm_is_reuse_oid_class (mop))
+	{
+	  /* Since an already cached object of a reuse_oid table may be deleted 
+	   * after it is cached to my workspace and then another object 
+	   * may occupy its slot, unfortunately the cached CHN has no meaning. 
+	   * When the new object occasionally has the same CHN with that of 
+	   * the cached object and we don't fetch the object from server again, 
+	   * we will incorrectly reuse the cached deleted object. 
+	   *
+	   * We need to refetch the cached object if it is an instance of reuse_oid
+	   * table. Server will fetch the object since client passes NULL_CHN.
+	   */
+	  chn = NULL_CHN;
+	}
 
       /*
        * Get the class information for the desired object, just in case we need
@@ -866,7 +883,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
   if (lockset == NULL)
     {
       /* Out of space... Try single object */
-      return locator_lock (vector_mop[0], reqobj_inst_lock);
+      return locator_lock (vector_mop[0], reqobj_inst_lock, LC_INSTANCE);
     }
 
   reqobjs = lockset->objects;
@@ -1041,6 +1058,21 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
 
 	  COPY_OID (&reqobjs->oid, oid);
 	  reqobjs->chn = ws_chn (object);
+
+	  if (reqobjs->chn > NULL_CHN && sm_is_reuse_oid_class (mop))
+	    {
+	      /* Since an already cached object of a reuse_oid table may be deleted 
+	       * after it is cached to my workspace and then another object 
+	       * may occupy its slot, unfortunately the cached CHN has no meaning. 
+	       * When the new object occasionally has the same CHN with that of 
+	       * the cached object and we don't fetch the object from server again, 
+	       * we will incorrectly reuse the cached deleted object. 
+	       *
+	       * We need to refetch the cached object if it is an instance of reuse_oid
+	       * table. Server will fetch the object since client passes NULL_CHN.
+	       */
+	      reqobjs->chn = NULL_CHN;
+	    }
 
 	  /*
 	   * Get the class information for the desired object, just in case we
@@ -1390,7 +1422,7 @@ locator_get_rest_objects_classes (LC_LOCKSET * lockset,
 }
 
 /*
- * locator_lock_nested () - Lock and fetch all nested objects/referenvces of given
+ * locator_lock_nested () - Lock and fetch all nested objects/references of given
  *                     object
  *
  * return: NO_ERROR if all OK, ER status otherwise
@@ -1495,6 +1527,20 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level,
     }
 
   chn = ws_chn (object);
+  if (chn > NULL_CHN && sm_is_reuse_oid_class (mop))
+    {
+      /* Since an already cached object of a reuse_oid table may be deleted 
+       * after it is cached to my workspace and then another object 
+       * may occupy its slot, unfortunately the cached CHN has no meaning. 
+       * When the new object occasionally has the same CHN with that of 
+       * the cached object and we don't fetch the object from server again, 
+       * we will incorrectly reuse the cached deleted object. 
+       *
+       * We need to refetch the cached object if it is an instance of reuse_oid
+       * table. Server will fetch the object since client passes NULL_CHN.
+       */
+      chn = NULL_CHN;
+    }
 
   /*
    * Get the class information for the desired object, just in case we need
@@ -1527,7 +1573,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level,
    * object has a temporary OID or has never been flushed to the server,
    * (and is dirty) then do it now.
    */
-  if (OID_ISTEMP (oid) || (WS_ISDIRTY (mop) && chn < 0))
+  if (OID_ISTEMP (oid) || (WS_ISDIRTY (mop) && chn <= NULL_CHN))
     {
       error_code = locator_flush_instance (mop);
       if (error_code != NO_ERROR)
@@ -1864,6 +1910,7 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
  *
  *   mop(in): Mop of the object to lock
  *   lock(in): Lock to acquire
+ *   isclass(in): LC_OBJTYPE of mop to find
  *
  * Note: The object associated with the given MOP is locked with the
  *              desired lock. The object locator on the server is not invoked
@@ -1878,7 +1925,7 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
  *              that error messages are not set if the object does not exist.
  */
 static int
-locator_lock_and_doesexist (MOP mop, LOCK lock)
+locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
 {
   LOCATOR_CACHE_LOCK cache_lock;	/* Cache the lock                */
   OID *oid;			/* OID of object to lock                 */
@@ -1967,6 +2014,20 @@ locator_lock_and_doesexist (MOP mop, LOCK lock)
     }
 
   chn = ws_chn (object);
+  if (chn > NULL_CHN && isclass != LC_CLASS && sm_is_reuse_oid_class (mop))
+    {
+      /* Since an already cached object of a reuse_oid table may be deleted 
+       * after it is cached to my workspace and then another object 
+       * may occupy its slot, unfortunately the cached CHN has no meaning. 
+       * When the new object occasionally has the same CHN with that of 
+       * the cached object and we don't fetch the object from server again, 
+       * we will incorrectly reuse the cached deleted object. 
+       *
+       * We need to refetch the cached object if it is an instance of reuse_oid
+       * table. Server will fetch the object since client passes NULL_CHN.
+       */
+      chn = NULL_CHN;
+    }
 
   /*
    * Get the class information for the desired object, just in case we need
@@ -2221,7 +2282,7 @@ locator_get_cache_coherency_number (MOP mop)
     }
 
   lock = locator_fetch_mode_to_lock (DB_FETCH_READ, isclass);
-  if (locator_lock (mop, lock) != NO_ERROR)
+  if (locator_lock (mop, lock, isclass) != NO_ERROR)
     {
       return NULL_CHN;
     }
@@ -2281,7 +2342,7 @@ locator_fetch_object (MOP mop, DB_FETCH_MODE purpose)
     }
 
   lock = locator_fetch_mode_to_lock (purpose, isclass);
-  if (locator_lock (mop, lock) != NO_ERROR)
+  if (locator_lock (mop, lock, isclass) != NO_ERROR)
     {
       return NULL;
     }
@@ -2347,7 +2408,7 @@ locator_fetch_class (MOP class_mop, DB_FETCH_MODE purpose)
 #endif /* CUBRID_DEBUG */
 
   lock = locator_fetch_mode_to_lock (purpose, LC_CLASS);
-  if (locator_lock (class_mop, lock) != NO_ERROR)
+  if (locator_lock (class_mop, lock, LC_CLASS) != NO_ERROR)
     {
       return NULL;
     }
@@ -2444,7 +2505,7 @@ locator_fetch_instance (MOP mop, DB_FETCH_MODE purpose)
 
   inst = NULL;
   lock = locator_fetch_mode_to_lock (purpose, LC_INSTANCE);
-  if (locator_lock (mop, lock) != NO_ERROR)
+  if (locator_lock (mop, lock, LC_INSTANCE) != NO_ERROR)
     {
       return NULL;
     }
@@ -3034,7 +3095,7 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname,
 	  return found;
 	}
 
-      error_code = locator_lock (*class_mop, lock);
+      error_code = locator_lock (*class_mop, lock, LC_CLASS);
       if (error_code != NO_ERROR)
 	{
 	  /*
@@ -3142,7 +3203,7 @@ locator_find_class_by_name (const char *classname, LOCK lock, MOP * class_mop)
     }
   else
     {
-      if (locator_lock (*class_mop, lock) != NO_ERROR)
+      if (locator_lock (*class_mop, lock, LC_CLASS) != NO_ERROR)
 	{
 	  *class_mop = NULL;
 	  found = LC_CLASSNAME_ERROR;
@@ -3257,7 +3318,7 @@ locator_does_exist_object (MOP mop, DB_FETCH_MODE purpose)
 
   lock = locator_fetch_mode_to_lock (purpose, isclass);
 
-  return locator_lock_and_doesexist (mop, lock);
+  return locator_lock_and_doesexist (mop, lock, isclass);
 }
 
 /*
@@ -3432,6 +3493,7 @@ locator_cache_object_instance (MOP mop, MOP class_mop,
 	    }
 	  *hint_class_mop_p = class_mop;
 	}
+
       /* Transform the object and cache it */
       *object_p = tf_disk_to_mem (*hint_class_p, recdes_p, &ignore);
       if (*object_p == NULL)
@@ -3449,7 +3511,9 @@ locator_cache_object_instance (MOP mop, MOP class_mop,
        * We have brought the object. Recache it when its cache
        * coherency number has changed.
        */
-      if (*object_p == NULL || WS_CHN (*object_p) != or_chn (recdes_p))
+      if (*object_p == NULL
+	  || WS_CHN (*object_p) != or_chn (recdes_p)
+	  || sm_is_reuse_oid_class (class_mop))
 	{
 	  *object_p = tf_disk_to_mem (*hint_class_p, recdes_p, &ignore);
 	  if (*object_p == NULL)
@@ -3465,6 +3529,7 @@ locator_cache_object_instance (MOP mop, MOP class_mop,
 
 	  ws_cache (*object_p, mop, class_mop);
 	}
+
       ws_set_lock (mop, NULL_LOCK);
       *call_fun = false;
       break;
@@ -3503,9 +3568,7 @@ static int
 locator_cache_not_have_object (MOP * mop_p, MOBJ * object_p, bool * call_fun,
 			       LC_COPYAREA_ONEOBJ * obj)
 {
-  MOP class_mop;		/* The class mop of object described by*
-				 * obj
-				 */
+  MOP class_mop;		/* The class mop of object described by obj */
   int error_code = NO_ERROR;
 
   /*
@@ -3560,7 +3623,7 @@ locator_cache_not_have_object (MOP * mop_p, MOBJ * object_p, bool * call_fun,
 	case LC_FETCH_VERIFY_CHN:
 	  /*
 	   * Make sure that the cached object is current
-	   * NOTE that the server sent the cached coherenchy number in the
+	   * NOTE that the server sent the cached coherency number in the
 	   * length field of the object.
 	   */
 	  if (*object_p == NULL || (WS_CHN (*object_p) != (-obj->length)))
@@ -3696,14 +3759,14 @@ locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * recdes_p,
 
       /*
        * Don't need to transform the object, when the object is cached and
-       * has a valid state (same chn)
+       * has a valid state (same chn and not an object of reuse_oid table)
        */
-
       if (obj->operation == LC_FETCH_DECACHE_LOCK
 	  || (ws_find (*mop_p, object_p) != WS_FIND_MOP_DELETED
 	      && (*object_p == NULL
 		  || (!WS_ISDIRTY (*mop_p)
-		      && WS_CHN (*object_p) != or_chn (recdes_p)))))
+		      && (WS_CHN (*object_p) != or_chn (recdes_p)
+			  || sm_is_reuse_oid_class (class_mop))))))
 	{
 	  error_code = locator_cache_object_instance (*mop_p, class_mop,
 						      hint_class_mop_p,
@@ -5038,7 +5101,7 @@ retry:
 	}
       else
 	{
-	  chn = -2;
+	  chn = CHN_UNKNOWN_ATCLIENT;
 	}
       error_code = locator_mflush_initialize (&mflush, NULL, NULL, NULL,
 					      decache, ONE_MFLUSH,
@@ -5056,7 +5119,8 @@ retry:
 		  if (mflush.mobjs->num_objs != 0)
 		    {
 		      error_code = locator_mflush_force (&mflush);
-		      if (error_code == NO_ERROR && chn != -2
+		      if (error_code == NO_ERROR
+			  && chn != CHN_UNKNOWN_ATCLIENT
 			  && chn == WS_CHN (inst))
 			{
 			  locator_mflush_end (&mflush);
@@ -5575,7 +5639,7 @@ locator_add_class (MOBJ class_obj, const char *classname)
   else
     {
       /* Fetch the rootclass object */
-      if (locator_lock (sm_Root_class_mop, IX_LOCK) != NO_ERROR)
+      if (locator_lock (sm_Root_class_mop, IX_LOCK, LC_CLASS) != NO_ERROR)
 	{
 	  /* Unable to lock the Rootclass. Undo the reserve of classname */
 	  (void) locator_delete_class_name (classname);

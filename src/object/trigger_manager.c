@@ -420,7 +420,7 @@ tr_make_trigger (void)
       trigger->action = NULL;
       trigger->current_refname = NULL;
       trigger->temp_refname = NULL;
-      trigger->chn = -1;
+      trigger->chn = NULL_CHN;
     }
 
   return (trigger);

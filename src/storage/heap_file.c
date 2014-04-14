@@ -10438,13 +10438,13 @@ heap_get_if_diff_chn (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
   /*
    * Don't retrieve the object when the object has the same cache
    * coherency number given by the caller. That is, the caller has the
-   * object cached.
+   * valid cached object.
    */
 
   if (ispeeking == PEEK)
     {
       scan = spage_get_record (pgptr, slotid, recdes, PEEK);
-      if (chn != NULL_CHN && scan == S_SUCCESS && chn == or_chn (recdes))
+      if (scan == S_SUCCESS && chn != NULL_CHN && chn == or_chn (recdes))
 	{
 	  scan = S_SUCCESS_CHN_UPTODATE;
 	}
@@ -10452,7 +10452,7 @@ heap_get_if_diff_chn (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
   else
     {
       scan = spage_get_record (pgptr, slotid, &chn_recdes, PEEK);
-      if (chn != NULL_CHN && scan == S_SUCCESS && chn == or_chn (&chn_recdes))
+      if (scan == S_SUCCESS && chn != NULL_CHN && chn == or_chn (&chn_recdes))
 	{
 	  scan = S_SUCCESS_CHN_UPTODATE;
 	}
@@ -11104,9 +11104,8 @@ heap_get_with_class_oid (THREAD_ENTRY * thread_p, OID * class_oid,
       return S_ERROR;
     }
 
-  scan =
-    heap_get_internal (thread_p, class_oid, oid, recdes, scan_cache,
-		       ispeeking, NULL_CHN);
+  scan = heap_get_internal (thread_p, class_oid, oid, recdes, scan_cache,
+			    ispeeking, NULL_CHN);
   if (scan != S_SUCCESS)
     {
       OID_SET_NULL (class_oid);

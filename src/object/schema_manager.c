@@ -3008,14 +3008,24 @@ sm_is_system_class (MOP op)
 
 /*
  * sm_is_reuse_oid_class() - Tests the reuse OID class flag of a class object.
- *   return: non-zero if class is an OID reusable class
+ *   return: true if class is an OID reusable class. otherwise, false
  *   op(in): class object
  */
 
 bool
 sm_is_reuse_oid_class (MOP op)
 {
-  return sm_get_class_flag (op, SM_CLASSFLAG_REUSE_OID) ? true : false;
+  SM_CLASS *class_;
+
+  if (op != NULL)
+    {
+      if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
+	{
+	  return (class_->flags & SM_CLASSFLAG_REUSE_OID);
+	}
+    }
+
+  return false;
 }
 
 /*

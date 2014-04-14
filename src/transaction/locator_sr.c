@@ -2273,13 +2273,11 @@ locator_return_object (THREAD_ENTRY * thread_p,
       chn = heap_chnguess_get (thread_p, oid, tran_index);
     }
 
-  scan =
-    heap_get (thread_p, oid, &assign->recdes, assign->ptr_scancache, COPY,
-	      chn);
+  scan = heap_get (thread_p, oid, &assign->recdes, assign->ptr_scancache,
+		   COPY, chn);
 
-  scan =
-    locator_return_object_assign (thread_p, assign, class_oid, oid, chn,
-				  guess_chn, scan, tran_index);
+  scan = locator_return_object_assign (thread_p, assign, class_oid, oid, chn,
+				       guess_chn, scan, tran_index);
 
   return scan;
 }
@@ -3421,7 +3419,7 @@ locator_all_reference_lockset (THREAD_ENTRY * thread_p,
 		  continue;
 		}
 	      COPY_OID (&reqclasses->oid, &class_oid);
-	      reqclasses->chn = -1;	/* Note that this is a level */
+	      reqclasses->chn = NULL_CHN;	/* Note that this is a level */
 	      lockset->objects[ref_num].class_index =
 		lockset->num_classes_of_reqobjs;
 	      lockset->num_classes_of_reqobjs++;
