@@ -1486,7 +1486,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 
       btree_read_record (thread_p, load_args->btid, load_args->leaf.pgptr,
 			 &temp_recdes, &first_key, &leaf_pnt, BTREE_LEAF_NODE,
-			 &clear_first_key, &first_key_offset, PEEK_KEY_VALUE);
+			 &clear_first_key, &first_key_offset, PEEK_KEY_VALUE,
+			 NULL);
 
       if (pr_is_prefix_key_type (TP_DOMAIN_TYPE (load_args->btid->key_type)))
 	{
@@ -1546,7 +1547,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	  btree_read_record (thread_p, load_args->btid, load_args->leaf.pgptr,
 			     &temp_recdes, &last_key, &leaf_pnt,
 			     BTREE_LEAF_NODE, &clear_last_key,
-			     &last_key_offset, PEEK_KEY_VALUE);
+			     &last_key_offset, PEEK_KEY_VALUE, NULL);
 	}
       else
 	{
@@ -1666,7 +1667,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	  btree_read_record (thread_p, load_args->btid, cur_nleafpgptr,
 			     &temp_recdes, &first_key, &nleaf_pnt,
 			     BTREE_NON_LEAF_NODE, &clear_first_key,
-			     &first_key_offset, PEEK_KEY_VALUE);
+			     &first_key_offset, PEEK_KEY_VALUE, NULL);
 
 	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE,
 						   max_key_len);

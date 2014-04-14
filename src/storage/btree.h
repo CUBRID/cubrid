@@ -174,6 +174,8 @@ struct btree_scan
   int read_keys;
   int qualified_keys;
 
+  int common_prefix;
+
 #if defined(SERVER_MODE)
   OID cls_oid;			/* class OID */
 
@@ -215,17 +217,20 @@ struct btree_scan
 #endif				/* SERVER_MODE */
 };
 
-#define BTREE_INIT_SCAN(bts)			\
-  do {						\
-    (bts)->P_vpid.pageid = NULL_PAGEID;		\
-    (bts)->C_vpid.pageid = NULL_PAGEID;		\
-    (bts)->O_vpid.pageid = NULL_PAGEID;		\
-    (bts)->P_page = NULL;			\
-    (bts)->C_page = NULL;			\
-    (bts)->O_page = NULL;			\
-    (bts)->slot_id = -1;			\
-    (bts)->oid_pos = 0;				\
-    (bts)->restart_scan = 0;                    \
+#define COMMON_PREFIX_UNKNOWN	-1
+
+#define BTREE_INIT_SCAN(bts)				\
+  do {							\
+    (bts)->P_vpid.pageid = NULL_PAGEID;			\
+    (bts)->C_vpid.pageid = NULL_PAGEID;			\
+    (bts)->O_vpid.pageid = NULL_PAGEID;			\
+    (bts)->P_page = NULL;				\
+    (bts)->C_page = NULL;				\
+    (bts)->O_page = NULL;				\
+    (bts)->slot_id = -1;				\
+    (bts)->oid_pos = 0;					\
+    (bts)->restart_scan = 0;                    	\
+    (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
   } while (0)
 
 #define BTREE_END_OF_SCAN(bts) \

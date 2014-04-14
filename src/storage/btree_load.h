@@ -245,7 +245,8 @@ extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 extern void btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			       PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,
 			       void *rec_header, int node_type,
-			       bool * clear_key, int *offset, int copy);
+			       bool * clear_key, int *offset, int copy,
+			       BTREE_SCAN * bts);
 extern void btree_read_record_helper (THREAD_ENTRY * thread_p,
 				      BTID_INT * btid, RECDES * Rec,
 				      DB_VALUE * key, void *rec_header,

@@ -2113,13 +2113,22 @@ end:
  * index_readval() will do the right thing and simply skip the key in this case.
  */
 void
-btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr,
-		   RECDES * rec, DB_VALUE * key, void *rec_header,
-		   int node_type, bool * clear_key, int *offset, int copy_key)
+btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
+		   PAGE_PTR pgptr, RECDES * rec, DB_VALUE * key,
+		   void *rec_header, int node_type,
+		   bool * clear_key, int *offset, int copy_key,
+		   BTREE_SCAN * bts)
 {
-  int n_prefix;
+  int n_prefix = COMMON_PREFIX_UNKNOWN;
 
   assert (pgptr != NULL);
+  assert (bts == NULL || bts->common_prefix == -1
+	  ||bts->common_prefix == btree_page_common_prefix (thread_p, btid, pgptr));
+
+  if (bts != NULL)
+    {
+      n_prefix = bts->common_prefix;
+    }
 
   btree_read_record_helper (thread_p, btid, rec, key, rec_header, node_type,
 			    clear_key, offset, copy_key);
@@ -2129,7 +2138,14 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr,
       !btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY) &&
       !btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_FENCE))
     {
-      n_prefix = btree_page_common_prefix (thread_p, btid, pgptr);
+      if (n_prefix == COMMON_PREFIX_UNKNOWN)
+	{
+	  /* recallculate n_prefix */
+	  n_prefix = btree_page_common_prefix (thread_p, btid, pgptr);
+	}
+
+      assert (n_prefix >= 0);
+
       if (n_prefix > 0)
 	{
 	  RECDES peek_rec;
@@ -2155,7 +2171,6 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr,
 	  *key = result;
 	  *clear_key = true;
 	}
-
     }
 }
 
@@ -2881,7 +2896,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
       btree_read_record (thread_p, btid, page_ptr, &rec, &temp_key,
 			 &non_leaf_rec, BTREE_NON_LEAF_NODE, &clear_key,
-			 &offset, PEEK_KEY_VALUE);
+			 &offset, PEEK_KEY_VALUE, NULL);
 
       if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
 	{
@@ -4075,7 +4090,7 @@ btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid,
 		  /* read key-value */
 		  btree_read_record (thread_p, page_ptr, btid, &rec, &key,
 				     &leaf_rec, BTREE_LEAF_NODE, &clear_key,
-				     &offset, PEEK_KEY_VALUE);
+				     &offset, PEEK_KEY_VALUE, NULL);
 
 		  /* extract the sequence of the key-value */
 		  midxkey = DB_GET_MIDXKEY (&key);
@@ -4286,7 +4301,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
       (void) btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &rec,
 				&key_value, (void *) &leaf_pnt,
 				BTREE_LEAF_NODE, &clear_key, &offset,
-				PEEK_KEY_VALUE);
+				PEEK_KEY_VALUE, NULL);
       if (DB_IS_NULL (&key_value))
 	{
 	  goto exit_on_error;
@@ -4852,14 +4867,14 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 	{
 	  btree_read_record (thread_p, btid, page_ptr, &peek_rec1, &key1,
 			     (void *) &leaf_pnt, BTREE_LEAF_NODE, &clear_key1,
-			     &offset, PEEK_KEY_VALUE);
+			     &offset, PEEK_KEY_VALUE, NULL);
 	  overflow_key1 = (leaf_pnt.key_len < 0);
 	}
       else
 	{
 	  btree_read_record (thread_p, btid, page_ptr, &peek_rec1, &key1,
 			     (void *) &nleaf_pnt, BTREE_NON_LEAF_NODE,
-			     &clear_key1, &offset, PEEK_KEY_VALUE);
+			     &clear_key1, &offset, PEEK_KEY_VALUE, NULL);
 	  overflow_key1 = (nleaf_pnt.key_len < 0);
 	}
 
@@ -4894,14 +4909,14 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 	{
 	  btree_read_record (thread_p, btid, page_ptr, &peek_rec2, &key2,
 			     (void *) &leaf_pnt, BTREE_LEAF_NODE, &clear_key2,
-			     &offset, PEEK_KEY_VALUE);
+			     &offset, PEEK_KEY_VALUE, NULL);
 	  overflow_key2 = (leaf_pnt.key_len < 0);
 	}
       else
 	{
 	  btree_read_record (thread_p, btid, page_ptr, &peek_rec2, &key2,
 			     (void *) &nleaf_pnt, BTREE_NON_LEAF_NODE,
-			     &clear_key2, &offset, PEEK_KEY_VALUE);
+			     &clear_key2, &offset, PEEK_KEY_VALUE, NULL);
 	  overflow_key2 = (nleaf_pnt.key_len < 0);
 	}
 
@@ -5061,7 +5076,7 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 
 	  btree_read_record (thread_p, btid, pg_ptr, &rec, &curr_key,
 			     &nleaf_ptr, BTREE_NON_LEAF_NODE, &clear_key,
-			     &offset, PEEK_KEY_VALUE);
+			     &offset, PEEK_KEY_VALUE, NULL);
 
 	  page_vpid = nleaf_ptr.pnt;
 
@@ -6345,7 +6360,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  /* read the current record key */
 	  btree_read_record (thread_p, btid, pg_ptr, &rec, &key1, &leaf_pnt,
 			     BTREE_LEAF_NODE, &clear_key, &offset,
-			     PEEK_KEY_VALUE);
+			     PEEK_KEY_VALUE, NULL);
 	  cpc->sum_key_len += btree_get_key_length (&key1);
 	  btree_clear_key_value (&clear_key, &key1);
 
@@ -7772,7 +7787,7 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, bool * key_deleted,
 
   btree_read_record (thread_p, btid, leaf_page, &leaf_copy_rec, NULL,
 		     &leaf_rec, BTREE_LEAF_NODE, &dummy, &oid_list_offset,
-		     PEEK_KEY_VALUE);
+		     PEEK_KEY_VALUE, NULL);
 
   del_oid_offset = btree_find_oid_from_leaf (btid, &leaf_copy_rec,
 					     oid_list_offset, oid);
@@ -7986,7 +8001,7 @@ btree_delete_meta_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
     {
       btree_read_record (thread_p, btid, page_ptr, &rec, NULL, &leaf_pnt,
 			 BTREE_LEAF_NODE, &dummy_clear_key, &dummy_offset,
-			 PEEK_KEY_VALUE);
+			 PEEK_KEY_VALUE, NULL);
 
       /* prepare undo log record */
       btree_rv_write_log_record (recset_data, &recset_data_length, &rec,
@@ -9529,7 +9544,7 @@ start_point:
 
       btree_read_record (thread_p, &btid_int, P, &peek_recdes2, &mid_key,
 			 &nleaf_pnt, BTREE_NON_LEAF_NODE, &clear_key, &offset,
-			 PEEK_KEY_VALUE);
+			 PEEK_KEY_VALUE, NULL);
 
       R_vpid = nleaf_pnt.pnt;
       R = pgbuf_fix (thread_p, &R_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
@@ -9914,7 +9929,7 @@ start_point:
 	    }
 	  btree_read_record (thread_p, &btid_int, P, &peek_recdes1,
 			     NULL, &leaf_pnt, BTREE_LEAF_NODE,
-			     &clear_key, &offset, PEEK_KEY_VALUE);
+			     &clear_key, &offset, PEEK_KEY_VALUE, NULL);
 	  btree_leaf_get_first_oid (&btid_int, &peek_recdes1,
 				    &curr_key_first_oid, &C_class_oid);
 	  if (!BTREE_IS_UNIQUE (&btid_int))
@@ -10007,7 +10022,7 @@ start_point:
 	    {
 	      btree_read_record (thread_p, &btid_int, P, &peek_recdes1,
 				 NULL, &leaf_pnt, BTREE_LEAF_NODE,
-				 &clear_key, &offset, PEEK_KEY_VALUE);
+				 &clear_key, &offset, PEEK_KEY_VALUE, NULL);
 	      curr_key_oids_cnt =
 		btree_leaf_get_num_oids (&peek_recdes1, offset,
 					 BTREE_LEAF_NODE, oid_size);
@@ -10096,7 +10111,7 @@ start_point:
     {
       btree_read_record (thread_p, &btid_int, P, &peek_recdes1, NULL,
 			 &leaf_pnt, BTREE_LEAF_NODE, &clear_key,
-			 &offset, PEEK_KEY_VALUE);
+			 &offset, PEEK_KEY_VALUE, NULL);
 
       btree_leaf_get_first_oid (&btid_int, &peek_recdes1, &N_oid,
 				&N_class_oid);
@@ -10263,7 +10278,7 @@ curr_key_locking:
 
       btree_read_record (thread_p, &btid_int, P, &peek_recdes1, NULL,
 			 &leaf_pnt, BTREE_LEAF_NODE, &clear_key,
-			 &offset, PEEK_KEY_VALUE);
+			 &offset, PEEK_KEY_VALUE, NULL);
     }
 
   btree_leaf_get_first_oid (&btid_int, &peek_recdes1, &curr_key_first_oid,
@@ -10397,7 +10412,7 @@ curr_key_locking:
 
 	  btree_read_record (thread_p, &btid_int, P, &peek_recdes1,
 			     NULL, &leaf_pnt, BTREE_LEAF_NODE,
-			     &clear_key, &offset, PEEK_KEY_VALUE);
+			     &clear_key, &offset, PEEK_KEY_VALUE, NULL);
 	}
     }
   else
@@ -11263,7 +11278,7 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
   assert (rec.length % 4 == 0);
 
   btree_read_record (thread_p, btid, page_ptr, &rec, NULL, &leafrec_pnt,
-		     BTREE_LEAF_NODE, &dummy, &offset, PEEK_KEY_VALUE);
+		     BTREE_LEAF_NODE, &dummy, &offset, PEEK_KEY_VALUE, NULL);
 
   if (BTREE_IS_UNIQUE (btid))
     {
@@ -11991,13 +12006,13 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 	{
 	  btree_read_record (thread_p, btid, page_ptr, &rec, mid_key,
 			     (void *) &leaf_pnt, node_type, &m_clear_key,
-			     &offset, COPY_KEY_VALUE);
+			     &offset, COPY_KEY_VALUE, NULL);
 	}
       else
 	{
 	  btree_read_record (thread_p, btid, page_ptr, &rec, mid_key,
 			     (void *) &nleaf_pnt, node_type, &m_clear_key,
-			     &offset, COPY_KEY_VALUE);
+			     &offset, COPY_KEY_VALUE, NULL);
 	}
     }
 
@@ -12035,13 +12050,13 @@ btree_find_split_point (THREAD_ENTRY * thread_p,
 	{
 	  btree_read_record (thread_p, btid, page_ptr, &rec, next_key,
 			     (void *) &leaf_pnt, node_type, &n_clear_key,
-			     &offset, COPY_KEY_VALUE);
+			     &offset, COPY_KEY_VALUE, NULL);
 	}
       else
 	{
 	  btree_read_record (thread_p, btid, page_ptr, &rec, next_key,
 			     (void *) &nleaf_pnt, node_type, &n_clear_key,
-			     &offset, COPY_KEY_VALUE);
+			     &offset, COPY_KEY_VALUE, NULL);
 	}
     }
 
@@ -12968,13 +12983,13 @@ btree_set_split_point (THREAD_ENTRY * thread_p,
 	{
 	  btree_read_record (thread_p, btid, page_ptr, &rec, mid_key,
 			     (void *) &leaf_pnt, node_type, &m_clear_key,
-			     &offset, COPY_KEY_VALUE);
+			     &offset, COPY_KEY_VALUE, NULL);
 	}
       else
 	{
 	  btree_read_record (thread_p, btid, page_ptr, &rec, mid_key,
 			     (void *) &nleaf_pnt, node_type, &m_clear_key,
-			     &offset, COPY_KEY_VALUE);
+			     &offset, COPY_KEY_VALUE, NULL);
 	}
     }
 
@@ -13010,13 +13025,13 @@ btree_set_split_point (THREAD_ENTRY * thread_p,
 	{
 	  btree_read_record (thread_p, btid, page_ptr, &rec, next_key,
 			     (void *) &leaf_pnt, node_type, &n_clear_key,
-			     &offset, COPY_KEY_VALUE);
+			     &offset, COPY_KEY_VALUE, NULL);
 	}
       else
 	{
 	  btree_read_record (thread_p, btid, page_ptr, &rec, next_key,
 			     (void *) &nleaf_pnt, node_type, &n_clear_key,
-			     &offset, COPY_KEY_VALUE);
+			     &offset, COPY_KEY_VALUE, NULL);
 	}
     }
 
@@ -14912,7 +14927,7 @@ start_point:
     {
       btree_read_record (thread_p, &btid_int, P, &peek_rec, NULL,
 			 &leaf_pnt, BTREE_LEAF_NODE, &dummy, &offset,
-			 PEEK_KEY_VALUE);
+			 PEEK_KEY_VALUE, NULL);
       btree_leaf_get_first_oid (&btid_int, &peek_rec, &N_oid, &N_class_oid);
       btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
 			     btid_int.sys_btid, &N_oid);
@@ -15089,7 +15104,7 @@ curr_key_locking:
 	}
       btree_read_record (thread_p, &btid_int, P, &peek_rec, NULL,
 			 &leaf_pnt, BTREE_LEAF_NODE, &dummy, &offset,
-			 PEEK_KEY_VALUE);
+			 PEEK_KEY_VALUE, NULL);
       btree_leaf_get_first_oid (&btid_int, &peek_rec, &C_oid, &C_class_oid);
       if (!BTREE_IS_UNIQUE (&btid_int))	/* unique index */
 	{
@@ -15309,7 +15324,7 @@ curr_key_lock_promote:
 
 	  btree_read_record (thread_p, &btid_int, P, &peek_rec, NULL,
 			     &leaf_pnt, BTREE_LEAF_NODE, &dummy,
-			     &offset, PEEK_KEY_VALUE);
+			     &offset, PEEK_KEY_VALUE, NULL);
 	}
     }
   else
@@ -17062,7 +17077,13 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   int ret_val =
     btree_find_next_index_record_holding_current (thread_p, bts, NULL);
 
-  /*
+  if (first_page != bts->C_page)
+    {
+      /* reset common_prefix to recalculate */
+      bts->common_prefix = COMMON_PREFIX_UNKNOWN;
+    }
+
+  /* 
    * unfix first page unfix first page if fix next page and move to it
    *
    *  case 1: P_page == NULL, C_page == first_page       x do not fix 1 next page
@@ -19368,7 +19389,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid,
       (void) btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &rec,
 				&key_value, (void *) &leaf_pnt,
 				BTREE_LEAF_NODE, &clear_key, &offset,
-				PEEK_KEY_VALUE);
+				PEEK_KEY_VALUE, NULL);
       if (DB_IS_NULL (&key_value))
 	{
 	  goto exit_on_error;
@@ -20871,7 +20892,8 @@ btree_find_key_from_leaf (THREAD_ENTRY * thread_p,
 	}
 
       btree_read_record (thread_p, btid, pg_ptr, &rec, key, &leaf_pnt,
-			 BTREE_LEAF_NODE, clear_key, &offset, PEEK_KEY_VALUE);
+			 BTREE_LEAF_NODE, clear_key, &offset, PEEK_KEY_VALUE,
+			 NULL);
       ovfl_vpid = leaf_pnt.ovfl;
 
       if (btree_find_oid_from_leaf (btid, &rec, offset, oid) != NOT_FOUND)
@@ -22308,7 +22330,8 @@ btree_fix_ovfl_oid_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
       VPID_SET_NULL (&leaf_pnt.ovfl);
       btree_read_record (thread_p, btid, pg_ptr, &leaf_rec, NULL, &leaf_pnt,
-			 BTREE_LEAF_NODE, &dummy, &offset, PEEK_KEY_VALUE);
+			 BTREE_LEAF_NODE, &dummy, &offset, PEEK_KEY_VALUE,
+			 NULL);
 
       ovfl_vpid = leaf_pnt.ovfl;
 
@@ -24213,12 +24236,15 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
       if (bts->oid_pos > 0)
 	{			/* same key value */
 	  /* The key range and key filter checking is not needed. */
-	  (void) btree_read_record (thread_p, &bts->btid_int, bts->C_page,
+	  (void) btree_read_record (thread_p, &bts->btid_int,
+				    bts->C_page,
 				    &btrs_helper->rec, NULL,
-				    (void *) &btrs_helper->leaf_pnt,
+				    (void *) &btrs_helper->
+				    leaf_pnt,
 				    btrs_helper->node_type,
 				    &dummy_clear,
-				    &btrs_helper->offset, PEEK_KEY_VALUE);
+				    &btrs_helper->offset,
+				    PEEK_KEY_VALUE, bts);
 
 	  /* get 'rec_oid_cnt' and 'rec_oid_ptr' */
 	  btrs_helper->rec_oid_cnt =
@@ -24272,12 +24298,16 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
 	  btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
 
-	  (void) btree_read_record (thread_p, &bts->btid_int, bts->C_page,
-				    &btrs_helper->rec, &bts->cur_key,
-				    (void *) &btrs_helper->leaf_pnt,
+	  (void) btree_read_record (thread_p, &bts->btid_int,
+				    bts->C_page,
+				    &btrs_helper->rec,
+				    &bts->cur_key,
+				    (void *) &btrs_helper->
+				    leaf_pnt,
 				    btrs_helper->node_type,
 				    &bts->clear_cur_key,
-				    &btrs_helper->offset, COPY_KEY_VALUE);
+				    &btrs_helper->offset,
+				    COPY_KEY_VALUE, bts);
 
 	  /* the last argument means that key value must be copied. */
 
@@ -25460,7 +25490,7 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 			     &btrs_helper->rec, NULL,
 			     (void *) &btrs_helper->leaf_pnt,
 			     BTREE_LEAF_NODE, &dummy_clear,
-			     &btrs_helper->offset, PEEK_KEY_VALUE);
+			     &btrs_helper->offset, PEEK_KEY_VALUE, NULL);
 	  if (bts->oid_pos == 0)
 	    {
 	      btrs_helper->rec_oid_ptr = btrs_helper->rec.data;
