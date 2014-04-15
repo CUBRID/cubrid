@@ -2361,7 +2361,7 @@ css_read_ip_info (IP_INFO ** out_ip_info, char *filename)
 
   while (fgets (buf, 32, fd_ip_list))
     {
-      char *token, *p, *save;
+      char *token, *p, *save = NULL;
       int address_index;
 
       p = strchr (buf, '#');
@@ -2711,7 +2711,7 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid,
 				   int num_user, SHOWSTMT_ARRAY_CONTEXT * ctx)
 {
   int error = NO_ERROR;
-  int i, attr_idx;
+  int i, attr_idx = -1;
   bool attr_info_inited;
   bool scan_cache_inited;
   const char *rec_attr_name_p;
@@ -2793,7 +2793,7 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid,
 					       &recdes, &attr_info);
 	  if (error != NO_ERROR)
 	    {
-	      goto end;;
+	      goto end;
 	    }
 
 	  for (i = 0, heap_value = attr_info.values;

@@ -2524,6 +2524,11 @@ ha_is_registered (const char **v, HB_PROC_TYPE type)
       status = snprintf (id, PATH_MAX, "%s %s %s %s %s ", v[0], v[1],
 			 v[2], v[3], v[4]);
     }
+  else
+    {
+      assert (false);
+      status = 0;
+    }
 
   if (status > 0)
     {

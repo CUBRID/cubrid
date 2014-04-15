@@ -821,6 +821,10 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       sess_end_char = *ptr;
       *ptr++ = '\0';		/* put null-termination */
     }
+  else
+    {
+      sess_end_char = '\0';
+    }
   for (; *ptr != '\0' && iswspace ((wint_t) (*ptr)); ptr++)
     {
       ;

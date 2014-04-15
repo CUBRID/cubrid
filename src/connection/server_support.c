@@ -411,7 +411,8 @@ css_add_to_job_queue (CSS_JOB_ENTRY * job_entry_p)
 	  pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
 
 	  /* linear probing */
-	  jobq_index = (++jobq_index) % CSS_NUM_JOB_QUEUE;
+	  jobq_index ++;
+	  jobq_index %= CSS_NUM_JOB_QUEUE;
 	}
 
       thread_sleep (10 * ((i / 10) + 1));	/* sleep 10ms upto 100ms */

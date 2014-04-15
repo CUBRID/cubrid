@@ -2888,14 +2888,14 @@ db_check_limit_need_recompile (PARSER_CONTEXT * parent_parser,
       do_recompile = true;
     }
 
-exit:
-  /* remove host variable info */
+  /* restore host variable info */
   session->parser->host_variables = save_host_variables;
   session->parser->host_var_expected_domains = save_host_var_expected_domains;
   session->parser->auto_param_count = save_auto_param_count;
   session->parser->host_var_count = save_host_var_count;
   session->parser->set_host_var = 0;
 
+exit:
   /* clean up */
   if (session != NULL)
     {
