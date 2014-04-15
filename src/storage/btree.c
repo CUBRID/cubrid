@@ -10048,6 +10048,7 @@ start_point:
 			  OID_SET_NULL (&saved_N_class_oid);
 			}
 
+		      OID_SET_NULL (&N_oid);
 		      goto curr_key_locking;
 		    }
 		}
@@ -14864,6 +14865,7 @@ start_point:
 	    }
 	  /* no need to lock next key during this call */
 	  next_key_granted_mode = NULL_LOCK;
+	  OID_SET_NULL (&N_oid);
 	  goto curr_key_locking;
 	}
 
