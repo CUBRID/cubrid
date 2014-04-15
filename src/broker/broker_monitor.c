@@ -1180,7 +1180,7 @@ appl_monitor (char *br_vector, double elapsed_time)
 static void
 print_monitor_header (MONITOR_TYPE mnt_type)
 {
-  char buf[256];
+  char buf[LINE_MAX];
   int buf_offset = 0;
   int i;
   static unsigned int tty_print_header = 0;
@@ -1722,8 +1722,29 @@ brief_monitor (char *br_vector, MONITOR_TYPE mnt_type, double elapsed_time)
   int br_index;
   int max_num_mnt_items = 0;
   int num_mnt_items;
+  int max_broker_name_size = FIELD_WIDTH_BROKER_NAME;
+  int broker_name_size;
 
   assert (mnt_type <= MONITOR_T_LAST);
+
+  for (br_index = 0; br_index < shm_br->num_broker; br_index++)
+    {
+      if (br_vector[br_index] == 0)
+	{
+	  continue;
+	}
+
+      broker_name_size = strlen (shm_br->br_info[br_index].name);
+      if (broker_name_size > max_broker_name_size)
+	{
+	  max_broker_name_size = broker_name_size;
+	}
+    }
+  if (max_broker_name_size > BROKER_NAME_LEN)
+    {
+      max_broker_name_size = BROKER_NAME_LEN;
+    }
+  fields[FIELD_BROKER_NAME].width = max_broker_name_size;
 
   if (mnt_type == MONITOR_T_BROKER)
     {
@@ -1773,16 +1794,10 @@ brief_monitor (char *br_vector, MONITOR_TYPE mnt_type, double elapsed_time)
 
       if (mnt_type == MONITOR_T_BROKER)
 	{
-	  char broker_name[FIELD_WIDTH_BROKER_NAME + 1];
-	  if (strlen (br_info_p->name) <= FIELD_WIDTH_BROKER_NAME)
-	    {
-	      sprintf (broker_name, "%s", br_info_p->name);
-	    }
-	  else
-	    {
-	      sprintf (broker_name, "%.*s...",
-		       FIELD_WIDTH_BROKER_NAME - 3, br_info_p->name);
-	    }
+	  char broker_name[BROKER_NAME_LEN + 1];
+
+	  snprintf (broker_name, BROKER_NAME_LEN, "%s", br_info_p->name);
+	  broker_name[BROKER_NAME_LEN] = '\0';
 	  str_out ("*%c", FIELD_DELIMITER);
 	  print_value (FIELD_BROKER_NAME, broker_name, FIELD_T_STRING);
 	}
@@ -2726,13 +2741,11 @@ print_value (FIELD_NAME name, const void *value_p, FIELD_TYPE type)
     case FIELD_T_STRING:
       if (field_p->align == FIELD_LEFT_ALIGN)
 	{
-	  str_out ("%-*.*s", field_p->width, field_p->width,
-		   (const char *) value_p);
+	  str_out ("%-*s", field_p->width, (const char *) value_p);
 	}
       else
 	{
-	  str_out ("%*.*s", field_p->width, field_p->width,
-		   (const char *) value_p);
+	  str_out ("%*s", field_p->width, (const char *) value_p);
 	}
       break;
     case FIELD_T_FLOAT:
