@@ -1992,7 +1992,7 @@ file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid,
   const char *file_des = (char *) xfile_des;
   int old_length = 0;
   int rest_length;
-  int copy_length;
+  int copy_length = 0;
   VPID next_vpid;
   VPID tmp_vpid;
   FILE_REST_DES *rest;

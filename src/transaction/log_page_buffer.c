@@ -9351,7 +9351,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
 				 * backup process starts
 				 */
 #if defined(SERVER_MODE)
-  LOG_PAGEID saved_run_nxchkpt_atpageid;
+  LOG_PAGEID saved_run_nxchkpt_atpageid = NULL_PAGEID;
 #endif /* SERVER_MODE */
   FILE *backup_volinfo_fp = NULL;	/* Pointer to backup
 					 * information/directory file
@@ -10038,7 +10038,10 @@ error:
 
 #if defined(SERVER_MODE)
   LOG_CS_ENTER (thread_p);
-  log_Gl.run_nxchkpt_atpageid = saved_run_nxchkpt_atpageid;
+  if (saved_run_nxchkpt_atpageid != NULL_PAGEID)
+    {
+      log_Gl.run_nxchkpt_atpageid = saved_run_nxchkpt_atpageid;
+    }
   log_Gl.backup_in_progress = false;
   LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */

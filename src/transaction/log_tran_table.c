@@ -2166,7 +2166,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
   char *buffer, *ptr;
   LOG_TDES *tdes;		/* Transaction descriptor */
 #if defined(SERVER_MODE)
-  UINT64 current_msec;
+  UINT64 current_msec = 0;
   TRAN_QUERY_EXEC_INFO *query_exec_info = NULL;
   XASL_CACHE_ENTRY *ent;
 #endif

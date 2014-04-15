@@ -5451,7 +5451,7 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string,
 		   const DB_VALUE * repl_string, DB_VALUE * replaced_string)
 {
   int error_status = NO_ERROR;
-  unsigned char *result_ptr;
+  unsigned char *result_ptr = NULL;
   int result_length = 0, result_size = 0;
   DB_TYPE result_type = DB_TYPE_NULL;
   int coll_id, coll_id_tmp;
@@ -5564,15 +5564,10 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string,
 /* qstr_replace () -
  */
 static int
-qstr_replace (unsigned char *src_buf,
-	      int src_len,
-	      int src_size,
-	      INTL_CODESET codeset,
-	      int coll_id,
-	      unsigned char *srch_str_buf,
-	      int srch_str_size,
-	      unsigned char *repl_str_buf,
-	      int repl_str_size,
+qstr_replace (unsigned char *src_buf, int src_len, int src_size,
+	      INTL_CODESET codeset, int coll_id,
+	      unsigned char *srch_str_buf, int srch_str_size,
+	      unsigned char *repl_str_buf, int repl_str_size,
 	      unsigned char **result_buf, int *result_len, int *result_size)
 {
 #define REPL_POS_ARRAY_EXTENT 32
@@ -5585,6 +5580,10 @@ qstr_replace (unsigned char *src_buf,
   int repl_pos_array_cnt;
   unsigned char *src_ptr;
   int repl_str_len;
+
+  assert (result_buf != NULL);
+
+  *result_buf = NULL;
 
   /*
    * if search string is NULL or is longer than source string
@@ -5672,8 +5671,9 @@ qstr_replace (unsigned char *src_buf,
       *result_size = src_size;
     }
 
-  *result_buf = (unsigned char *)
-    db_private_alloc (NULL, (size_t) (*result_size) + 1);
+  *result_buf = (unsigned char *) db_private_alloc (NULL,
+						    (size_t) (*result_size) +
+						    1);
   if (*result_buf == NULL)
     {
       error_status = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -5823,14 +5823,10 @@ db_string_translate (const DB_VALUE * src_string,
  * qstr_translate () -
  */
 static int
-qstr_translate (unsigned char *src_ptr,
-		DB_TYPE src_type,
-		int src_size,
+qstr_translate (unsigned char *src_ptr, DB_TYPE src_type, int src_size,
 		INTL_CODESET codeset,
-		unsigned char *from_str_ptr,
-		int from_str_size,
-		unsigned char *to_str_ptr,
-		int to_str_size,
+		unsigned char *from_str_ptr, int from_str_size,
+		unsigned char *to_str_ptr, int to_str_size,
 		unsigned char **result_ptr,
 		DB_TYPE * result_type, int *result_len, int *result_size)
 {
@@ -11525,10 +11521,11 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
       format_s = DB_PULL_STRING (format);
       format_s_len = DB_GET_STRING_SIZE (format);
       break;
+
     default:
       /* we should not get a nonstring format */
       assert (false);
-      break;
+      return ER_FAILED;
     }
 
   len = 1024;
@@ -19449,10 +19446,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
 {
   int error_status = NO_ERROR;
   int days;
-  DB_DATETIME db_datetime, *dt_p;
+  DB_DATETIME db_datetime, *dt_p = NULL;
   DB_TIME db_time;
   DB_DATE db_date, *d_p;
-  DB_TIMESTAMP db_timestamp, *ts_p;
+  DB_TIMESTAMP db_timestamp, *ts_p = NULL;
   int is_dt = -1, is_d = -1, is_t = -1, is_timest = -1;
   DB_TYPE res_type;
   char *date_s = NULL, res_s[64];
@@ -19641,6 +19638,8 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
     }
   else if (is_dt >= 0)
     {
+      assert (dt_p != NULL);
+
       y = m = d = h = mi = s = ms = 0;
       db_datetime_decode (dt_p, &m, &d, &y, &h, &mi, &s, &ms);
 
@@ -19715,6 +19714,8 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
     }
   else if (is_timest >= 0)
     {
+      assert (ts_p != NULL);
+
       y = m = d = h = mi = s = ms = 0;
       db_timestamp_decode (ts_p, &db_date, &db_time);
       db_date_decode (&db_date, &m, &d, &y);
@@ -19973,10 +19974,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
   int error_status = NO_ERROR;
   DB_BIGINT millisec, seconds, minutes, hours;
   DB_BIGINT days, weeks, months, quarters, years;
-  DB_DATETIME db_datetime, *dt_p;
+  DB_DATETIME db_datetime, *dt_p = NULL;
   DB_TIME db_time;
   DB_DATE db_date, *d_p;
-  DB_TIMESTAMP db_timestamp, *ts_p;
+  DB_TIMESTAMP db_timestamp, *ts_p = NULL;
   int narg, is_dt = -1, is_d = -1, is_t = -1, is_timest = -1;
   char delim;
   DB_VALUE trimed_expr, charset;
@@ -20359,9 +20360,9 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
 	date_s = DB_GET_STRING (date);
 
 	/* try to figure out the string format */
-	if (db_date_parse_datetime_parts
-	    (date_s, str_len, &db_datetime, &has_explicit_time, NULL, NULL,
-	     NULL))
+	if (db_date_parse_datetime_parts (date_s, str_len, &db_datetime,
+					  &has_explicit_time, NULL, NULL,
+					  NULL))
 	  {
 	    is_dt = ER_TIMESTAMP_CONVERSION;
 	    is_timest = ER_TIMESTAMP_CONVERSION;
@@ -20549,6 +20550,8 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
     }
   else if (is_dt >= 0)
     {
+      assert (dt_p != NULL);
+
       y = m = d = h = mi = s = ms = 0;
       db_datetime_decode (dt_p, &m, &d, &y, &h, &mi, &s, &ms);
 
@@ -20610,6 +20613,8 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
     }
   else if (is_timest >= 0)
     {
+      assert (ts_p != NULL);
+
       y = m = d = h = mi = s = ms = 0;
       db_timestamp_decode (ts_p, &db_date, &db_time);
       db_date_decode (&db_date, &m, &d, &y);
@@ -21054,10 +21059,11 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
       format_s = DB_PULL_STRING (format);
       format_s_len = DB_GET_STRING_SIZE (format);
       break;
+
     default:
       /* we should not get a nonstring format */
       assert (false);
-      break;
+      return ER_FAILED;
     }
 
   len = 1024;
@@ -22925,7 +22931,7 @@ db_bit_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
   int error_status = NO_ERROR;
   DB_ELO *elo;
   char *src_str;
-  int src_length;
+  int src_length = 0;
 
   assert (src_value != NULL && result_value != NULL);
 

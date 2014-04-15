@@ -2677,14 +2677,24 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	{
 	  int i;
 	  BINARY_HEAP *heap;
+
 	  heap = xasl->topn_items->heap;
 	  for (i = 0; i < heap->element_count; i++)
 	    {
 	      qexec_clear_topn_tuple (thread_p, heap->members[i],
 				      xasl->topn_items->values_count);
 	    }
-	  bh_destroy (thread_p, heap);
-	  db_private_free_and_init (thread_p, xasl->topn_items->tuples);
+
+	  if (heap != NULL)
+	    {
+	      bh_destroy (thread_p, heap);
+	    }
+
+	  if (xasl->topn_items->tuples != NULL)
+	    {
+	      db_private_free_and_init (thread_p, xasl->topn_items->tuples);
+	    }
+
 	  db_private_free_and_init (thread_p, xasl->topn_items);
 	}
     }
@@ -7627,6 +7637,12 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	      class_oid = &xasl->curr_spec->s_id.s.isid.cls_oid;
 	      class_hfid = &xasl->curr_spec->s_id.s.isid.hfid;
 	    }
+	  else
+	    {
+	      assert (false);
+	      return S_ERROR;
+	    }
+
 	  COPY_OID (class_oid, &ACCESS_SPEC_CLS_OID (xasl->curr_spec));
 	  HFID_COPY (class_hfid, &ACCESS_SPEC_HFID (xasl->curr_spec));
 	}
@@ -13727,11 +13743,10 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			 XASL_STATE * xasl_state)
 {
   int error = NO_ERROR;
-
+  bool on_trace;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-
-  UINT64 old_fetches, old_ioreads;
+  UINT64 old_fetches = 0, old_ioreads = 0;
 
   if (thread_get_recursion_depth (thread_p)
       > prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH))
@@ -13743,7 +13758,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
   thread_inc_recursion_depth (thread_p);
 
-  if (thread_is_on_trace (thread_p))
+  on_trace = thread_is_on_trace (thread_p);
+  if (on_trace)
     {
       tsc_getticks (&start_tick);
 
@@ -13753,7 +13769,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
   error = qexec_execute_mainblock_internal (thread_p, xasl, xasl_state);
 
-  if (thread_is_on_trace (thread_p))
+  if (on_trace)
     {
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
@@ -13919,7 +13935,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
 
       /* setup waiting time */
-      old_wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
+      old_wait_msecs = wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
       if (xasl->proc.merge.update_xasl)
 	{
 	  wait_msecs = xasl->proc.merge.update_xasl->proc.update.wait_msecs;
@@ -13928,16 +13944,20 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  wait_msecs = xasl->proc.merge.insert_xasl->proc.insert.wait_msecs;
 	}
+
       if (wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
 	  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, wait_msecs);
 	}
+
       /* execute merge */
       error = qexec_execute_merge (thread_p, xasl, xasl_state);
+
       if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 	}
+
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -13945,26 +13965,32 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       break;
 
     case BUILD_SCHEMA_PROC:
-
-      if (xasl->spec_list->s.cls_node.schema_type == INDEX_SCHEMA)
+      switch (xasl->spec_list->s.cls_node.schema_type)
 	{
+	case INDEX_SCHEMA:
 	  error = qexec_execute_build_indexes (thread_p, xasl, xasl_state);
-	}
-      else if (xasl->spec_list->s.cls_node.schema_type == COLUMNS_SCHEMA
-	       || xasl->spec_list->s.cls_node.schema_type ==
-	       FULL_COLUMNS_SCHEMA)
-	{
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  break;
+
+	case COLUMNS_SCHEMA:
+	case FULL_COLUMNS_SCHEMA:
 	  error = qexec_execute_build_columns (thread_p, xasl, xasl_state);
-	}
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  break;
 
-      if (error != NO_ERROR)
-	{
-	  return error;
+	default:
+	  assert (false);
+	  return ER_FAILED;
 	}
-
       break;
-    default:
 
+    default:
       /* check for push list query */
       if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.push_list_id)
 	{
@@ -14470,10 +14496,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      TSC_TICKS start_tick, end_tick;
 	      TSCTIMEVAL tv_diff;
 
-	      UINT64 old_fetches, old_ioreads;
+	      UINT64 old_fetches = 0, old_ioreads = 0;
 	      XASL_STATS *xasl_stats;
+	      bool on_trace;
 
-	      if (thread_is_on_trace (thread_p))
+	      on_trace = thread_is_on_trace (thread_p);
+	      if (on_trace)
 		{
 		  tsc_getticks (&start_tick);
 
@@ -14499,7 +14527,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      /* clear CONNECT BY internal lists */
 	      qexec_clear_connect_by_lists (thread_p, xasl->connect_by_ptr);
 
-	      if (thread_is_on_trace (thread_p))
+	      if (on_trace)
 		{
 		  xasl_stats = &xasl->connect_by_ptr->xasl_stats;
 
@@ -23383,18 +23411,18 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  if (func_p->function == PT_LEAD || func_p->function == PT_LAG)
+  /* get target tuple index */
+  switch (func_p->function)
     {
-      dom_status =
-	tp_value_coerce (regulist->value.vfetch_to, &offset_val,
-			 &tp_Integer_domain);
+    case PT_LEAD:
+    case PT_LAG:
+      dom_status = tp_value_coerce (regulist->value.vfetch_to, &offset_val,
+				    &tp_Integer_domain);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  error =
-	    tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
-				     regulist->value.vfetch_to,
-				     &tp_Integer_domain);
-
+	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+					   regulist->value.vfetch_to,
+					   &tp_Integer_domain);
 	  if (error == NO_ERROR)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -23416,17 +23444,16 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p,
 
       /* done with offset dbval */
       pr_clear_value (&offset_val);
-    }
 
-  /* get target tuple index */
-  switch (func_p->function)
-    {
-    case PT_LEAD:
-      target_idx = func_state->group_consumed_tuples + target_idx;
-      break;
-
-    case PT_LAG:
-      target_idx = func_state->group_consumed_tuples - target_idx;
+      if (func_p->function == PT_LEAD)
+	{
+	  target_idx = func_state->group_consumed_tuples + target_idx;
+	}
+      else
+	{
+	  /* PT_LAG */
+	  target_idx = func_state->group_consumed_tuples - target_idx;
+	}
       break;
 
     case PT_NTH_VALUE:
@@ -28561,7 +28588,7 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   BINARY_HEAP *heap = NULL;
   REGU_VARIABLE_LIST varp = NULL;
   TOPN_TUPLE *tuple = NULL;
-  int row, i, value_size, values_count, error = NO_ERROR;
+  int row = 0, i, value_size, values_count, error = NO_ERROR;
   ORDBYNUM_INFO ordby_info;
   DB_LOGICAL res = V_FALSE;
 
@@ -28591,8 +28618,8 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       tpl_descr->f_valp = (DB_VALUE **) malloc (size);
       if (tpl_descr->f_valp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, size);
 	  error = ER_FAILED;
 	  goto cleanup;
 	}
@@ -28681,10 +28708,22 @@ cleanup:
 	  heap->members[row] = NULL;
 	}
     }
-  bh_destroy (thread_p, heap);
-  db_private_free (thread_p, xasl->topn_items->tuples);
-  db_private_free (thread_p, xasl->topn_items);
-  xasl->topn_items = NULL;
+
+  if (heap != NULL)
+    {
+      bh_destroy (thread_p, heap);
+    }
+
+  if (xasl->topn_items != NULL)
+    {
+      if (xasl->topn_items->tuples != NULL)
+	{
+	  db_private_free (thread_p, xasl->topn_items->tuples);
+	}
+      db_private_free (thread_p, xasl->topn_items);
+      xasl->topn_items = NULL;
+    }
+
   if (is_final)
     {
       qfile_close_list (thread_p, list_id);

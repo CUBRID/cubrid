@@ -7771,7 +7771,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
   PRED_EXPR_WITH_CONTEXT *pred_filter = NULL;
   PR_EVAL_FNC filter_eval_func = NULL;
   DB_TYPE single_node_type = DB_TYPE_NULL;
-  HL_HEAPID old_pri_heap_id;
+  HL_HEAPID old_pri_heap_id = HL_NULL_HEAPID;
   int error_code = NO_ERROR;
 
   if (or_pred == NULL || class_oid == NULL || recs == NULL ||
@@ -7878,7 +7878,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
     {
       if (cache_clone_p)
 	{
-	  /*use predicate cloning, allocate in global heap context (0, malloc/free) */
+	  /* use predicate cloning, allocate in global heap context (0, malloc/free) */
 	  old_pri_heap_id = db_change_private_heap (thread_p, 0);
 	}
       error_code =
@@ -7891,7 +7891,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
 	  /* error occurred during unpacking */
 	  if (cache_clone_p)
 	    {
-	      /*free allocated memory */
+	      /* free allocated memory */
 	      if (pred_filter_cache_context)
 		{
 		  stx_free_additional_buff (thread_p,
@@ -7912,7 +7912,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid,
 
       if (cache_clone_p)
 	{
-	  /*restore private heap */
+	  /* restore private heap */
 	  (void) db_change_private_heap (thread_p, old_pri_heap_id);
 	  /* save unpacked XASL tree info */
 	  cache_clone_p->xasl = pred_filter;

@@ -3527,6 +3527,10 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       bi2 = DB_GET_BIGINT (&cast_format);
     }
+  else
+    {
+      bi2 = 0;			/* to make compiler be silent */
+    }
 
   switch (type1)
     {
@@ -4830,13 +4834,24 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_MONETARY:
-      get_number_dbval_as_double (&d1, value1);
-      get_number_dbval_as_double (&d2, value2);
-      get_number_dbval_as_double (&d3, value3);
+      if (get_number_dbval_as_double (&d1, value1) != NO_ERROR)
+	{
+	  RETURN_ERROR (ER_QPROC_INVALID_DATATYPE);
+	}
+      if (get_number_dbval_as_double (&d2, value2) != NO_ERROR)
+	{
+	  RETURN_ERROR (ER_QPROC_INVALID_DATATYPE);
+	}
+      if (get_number_dbval_as_double (&d3, value3) != NO_ERROR)
+	{
+	  RETURN_ERROR (ER_QPROC_INVALID_DATATYPE);
+	}
       break;
 
     case DB_TYPE_BIGINT:
     case DB_TYPE_NUMERIC:
+      d1 = d2 = d3 = 0;		/* to make compiler be silent */
+
       /* gcc fully support long double (80 or 128bits)
        * if long double is not fully supported, do calculation with numeric
        */

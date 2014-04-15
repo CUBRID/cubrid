@@ -15878,7 +15878,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p,
   SCAN_CODE status;
   int i;
   DB_VALUE *dbvalue = NULL;
-  int expected_size;
+  int expected_size, tmp;
   volatile int offset_size;
 
   /* check to make sure the attr_info has been used, it should not be empty. */
@@ -15900,7 +15900,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p,
   OR_BUF_INIT2 (orep, new_recdes->data, new_recdes->area_size);
   buf = &orep;
 
-  expected_size = heap_attrinfo_get_disksize (attr_info, &offset_size);
+  expected_size = heap_attrinfo_get_disksize (attr_info, &tmp);
+  offset_size = tmp;
 
   switch (_setjmp (buf->env))
     {
@@ -21058,19 +21059,19 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
   FUNC_PRED *func_pred = NULL;
   void *unpack_info = NULL;
   DB_VALUE *res = NULL;
-  int nr_atts;
+  int i, nr_atts;
   ATTR_ID *atts = NULL;
   bool atts_free = false, attrinfo_clear = false, attrinfo_end = false;
-  HEAP_CACHE_ATTRINFO *cache_attr_info;
+  HEAP_CACHE_ATTRINFO *cache_attr_info = NULL;
 
   if (func_index_info == NULL && btid_index > -1 && n_atts == -1)
     {
-      int i;
       index = &(attr_info->last_classrepr->indexes[btid_index]);
       if (func_pred_cache)
 	{
 	  func_pred = func_pred_cache->func_pred;
 	  cache_attr_info = func_pred->cache_attrinfo;
+	  nr_atts = index->n_atts;
 	}
       else
 	{
@@ -21110,7 +21111,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
       /* insert case, read the values */
       if (func_pred == NULL)
 	{
-	  if (stx_map_stream_to_func_pred (NULL, (FUNC_PRED **) & func_pred,
+	  if (stx_map_stream_to_func_pred (NULL, (FUNC_PRED **) (&func_pred),
 					   expr_stream, expr_stream_size,
 					   &unpack_info))
 	    {
@@ -21146,15 +21147,15 @@ heap_eval_function_index (THREAD_ENTRY * thread_p,
     }
 
 end:
-  if (attrinfo_clear)
+  if (attrinfo_clear && cache_attr_info)
     {
       heap_attrinfo_clear_dbvalues (cache_attr_info);
     }
-  if (attrinfo_end)
+  if (attrinfo_end && cache_attr_info)
     {
       heap_attrinfo_end (thread_p, cache_attr_info);
     }
-  if (atts_free)
+  if (atts_free && atts)
     {
       free_and_init (atts);
     }

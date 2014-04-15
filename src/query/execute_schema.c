@@ -509,7 +509,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   const char *property_type;
   char *norm_new_name;
   DB_CTMPL *ctemplate = NULL;
-  DB_OBJECT *vclass, *sup_class, *partition_obj;
+  DB_OBJECT *vclass, *sup_class, *partition_obj = NULL;
   int error = NO_ERROR;
   DB_ATTRIBUTE *found_attr, *def_attr;
   DB_METHOD *found_mthd;

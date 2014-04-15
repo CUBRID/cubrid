@@ -11714,7 +11714,7 @@ static json_t *
 qo_plan_sort_print_json (QO_PLAN * plan)
 {
   json_t *sort, *subplan = NULL;
-  const char *type = NULL;
+  const char *type;
 
   switch (plan->plan_un.sort.sort_type)
     {
@@ -11739,6 +11739,8 @@ qo_plan_sort_print_json (QO_PLAN * plan)
       break;
 
     default:
+      assert (false);
+      type = "";
       break;
     }
 
@@ -12039,7 +12041,7 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
 static void
 qo_plan_sort_print_text (FILE * fp, QO_PLAN * plan, int indent)
 {
-  const char *type = NULL;
+  const char *type;
 
   indent += 2;
 
@@ -12066,6 +12068,8 @@ qo_plan_sort_print_text (FILE * fp, QO_PLAN * plan, int indent)
       break;
 
     default:
+      assert (false);
+      type = "";
       break;
     }
 

@@ -5042,78 +5042,80 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser,
 
   spec = pt_make_access_spec (scan_type, access, indexptr,
 			      where_key, where_pred);
-  if (spec)
+  if (spec == NULL)
     {
-      assert (class_ != NULL);
-
-      /* Make sure we have a lock on this class */
-      spec->lock_hint = lock_hint;
-      if (locator_fetch_class (class_, DB_FETCH_READ) == NULL)
-	{
-	  PT_ERRORc (parser, flat, er_msg ());
-	  return NULL;
-	}
-
-      hfid = sm_get_heap (class_);
-      if (hfid == NULL)
-	{
-	  return NULL;
-	}
-
-      cls_oid = WS_OID (class_);
-      if (cls_oid == NULL || OID_ISNULL (cls_oid))
-	{
-	  return NULL;
-	}
-
-      spec->parts = NULL;
-      spec->curent = NULL;
-      if (sm_partitioned_class_type (class_, &spec->pruning_type, NULL, NULL)
-	  != NO_ERROR)
-	{
-	  PT_ERRORc (parser, flat, er_msg ());
-	  return NULL;
-	}
-      spec->pruned = false;
-
-      spec->s.cls_node.cls_regu_list_key = attr_list_key;
-      spec->s.cls_node.cls_regu_list_pred = attr_list_pred;
-      spec->s.cls_node.cls_regu_list_rest = attr_list_rest;
-      spec->s.cls_node.cls_output_val_list = output_val_list;
-      spec->s.cls_node.cls_regu_val_list = regu_val_list;
-      spec->s.cls_node.hfid = *hfid;
-      spec->s.cls_node.cls_oid = *cls_oid;
-
-      spec->s.cls_node.num_attrs_key = pt_cnt_attrs (attr_list_key);
-      spec->s.cls_node.attrids_key =
-	regu_int_array_alloc (spec->s.cls_node.num_attrs_key);
-
-
-      assert_release (spec->s.cls_node.num_attrs_key != 0
-		      || (spec->s.cls_node.num_attrs_key == 0
-			  && attr_list_key == NULL));
-
-      attrnum = 0;
-      /* for multi-column index, need to modify attr_id */
-      pt_fill_in_attrid_array (attr_list_key,
-			       spec->s.cls_node.attrids_key, &attrnum);
-      spec->s.cls_node.cache_key = cache_key;
-      spec->s.cls_node.num_attrs_pred = pt_cnt_attrs (attr_list_pred);
-      spec->s.cls_node.attrids_pred =
-	regu_int_array_alloc (spec->s.cls_node.num_attrs_pred);
-      attrnum = 0;
-      pt_fill_in_attrid_array (attr_list_pred,
-			       spec->s.cls_node.attrids_pred, &attrnum);
-      spec->s.cls_node.cache_pred = cache_pred;
-      spec->s.cls_node.num_attrs_rest = pt_cnt_attrs (attr_list_rest);
-      spec->s.cls_node.attrids_rest =
-	regu_int_array_alloc (spec->s.cls_node.num_attrs_rest);
-      attrnum = 0;
-      pt_fill_in_attrid_array (attr_list_rest,
-			       spec->s.cls_node.attrids_rest, &attrnum);
-      spec->s.cls_node.cache_rest = cache_rest;
-      spec->s.cls_node.schema_type = schema_type;
+      return NULL;
     }
+
+  assert (class_ != NULL);
+
+  /* Make sure we have a lock on this class */
+  spec->lock_hint = lock_hint;
+  if (locator_fetch_class (class_, DB_FETCH_READ) == NULL)
+    {
+      PT_ERRORc (parser, flat, er_msg ());
+      return NULL;
+    }
+
+  hfid = sm_get_heap (class_);
+  if (hfid == NULL)
+    {
+      return NULL;
+    }
+
+  cls_oid = WS_OID (class_);
+  if (cls_oid == NULL || OID_ISNULL (cls_oid))
+    {
+      return NULL;
+    }
+
+  spec->parts = NULL;
+  spec->curent = NULL;
+  if (sm_partitioned_class_type (class_, &spec->pruning_type, NULL, NULL)
+      != NO_ERROR)
+    {
+      PT_ERRORc (parser, flat, er_msg ());
+      return NULL;
+    }
+  spec->pruned = false;
+
+  spec->s.cls_node.cls_regu_list_key = attr_list_key;
+  spec->s.cls_node.cls_regu_list_pred = attr_list_pred;
+  spec->s.cls_node.cls_regu_list_rest = attr_list_rest;
+  spec->s.cls_node.cls_output_val_list = output_val_list;
+  spec->s.cls_node.cls_regu_val_list = regu_val_list;
+  spec->s.cls_node.hfid = *hfid;
+  spec->s.cls_node.cls_oid = *cls_oid;
+
+  spec->s.cls_node.num_attrs_key = pt_cnt_attrs (attr_list_key);
+  spec->s.cls_node.attrids_key =
+    regu_int_array_alloc (spec->s.cls_node.num_attrs_key);
+
+
+  assert_release (spec->s.cls_node.num_attrs_key != 0
+		  || (spec->s.cls_node.num_attrs_key == 0
+		      && attr_list_key == NULL));
+
+  attrnum = 0;
+  /* for multi-column index, need to modify attr_id */
+  pt_fill_in_attrid_array (attr_list_key,
+			   spec->s.cls_node.attrids_key, &attrnum);
+  spec->s.cls_node.cache_key = cache_key;
+  spec->s.cls_node.num_attrs_pred = pt_cnt_attrs (attr_list_pred);
+  spec->s.cls_node.attrids_pred =
+    regu_int_array_alloc (spec->s.cls_node.num_attrs_pred);
+  attrnum = 0;
+  pt_fill_in_attrid_array (attr_list_pred,
+			   spec->s.cls_node.attrids_pred, &attrnum);
+  spec->s.cls_node.cache_pred = cache_pred;
+  spec->s.cls_node.num_attrs_rest = pt_cnt_attrs (attr_list_rest);
+  spec->s.cls_node.attrids_rest =
+    regu_int_array_alloc (spec->s.cls_node.num_attrs_rest);
+  attrnum = 0;
+  pt_fill_in_attrid_array (attr_list_rest,
+			   spec->s.cls_node.attrids_rest, &attrnum);
+  spec->s.cls_node.cache_rest = cache_rest;
+  spec->s.cls_node.schema_type = schema_type;
 
   return spec;
 }
@@ -11349,6 +11351,7 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
     {
       REGU_VARIABLE_LIST requ_list;
 
+      num_index_term = 0;	/* to make compiler be silent */
       for (i = 0; i < n_elem; i++)
 	{
 	  list_count1 = list_count2 = 0;
@@ -11932,10 +11935,10 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
 		  QO_PLAN * plan, QO_XASL_INDEX_INFO * qo_index_infop)
 {
   int nterms;
-  int rangelist_idx;
+  int rangelist_idx = -1;
   PT_NODE **term_exprs;
   PT_NODE *pt_expr;
-  PT_OP_TYPE op_type;
+  PT_OP_TYPE op_type = PT_LAST_OPCODE;
   INDX_INFO *indx_infop;
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_INDEX_ENTRY *index_entryp;

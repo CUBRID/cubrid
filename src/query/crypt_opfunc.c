@@ -236,6 +236,8 @@ aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len,
     }
 
   *dest_p = NULL;
+  *dest_len_p = 0;
+
   if (init_gcrypt () != NO_ERROR)
     {
       return ER_ENCRYPTION_LIB_FAILED;
@@ -336,7 +338,7 @@ aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len,
   gcry_error_t i_gcrypt_err;
   gcry_cipher_hd_t aes_ctx;
   char *dest = NULL;
-  int dest_len;
+  int dest_len = 0;
   char new_key[AES128_KEY_LEN];
   int pad, pad_len;
   int i;
@@ -351,12 +353,11 @@ aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len,
     }
 
   *dest_p = NULL;
+  *dest_len_p = 0;
 
   /* src is not a string encrypted by aes_default_encrypt, return NULL */
   if (src_len % AES128_BLOCK_LEN)
     {
-      *dest_p = NULL;
-      *dest_len_p = 0;
       return NO_ERROR;
     }
 
@@ -435,6 +436,7 @@ aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len,
 	  goto error_and_free;
 	}
     }
+
   *dest_p = dest;
   *dest_len_p = dest_len;
 

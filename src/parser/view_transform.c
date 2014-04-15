@@ -1875,7 +1875,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 				     PT_NODE * order_by, int what_for)
 {
   PT_NODE *tmp_result, *result, *arg1, *arg2, *statement_next;
-  PT_NODE *class_spec, *statement_spec;
+  PT_NODE *class_spec, *statement_spec = NULL;
   PT_NODE *derived_table, *derived_spec, *derived_class;
   bool is_pushable_query, is_outer_joined;
   bool is_only_spec, rewrite_as_derived;
@@ -1928,7 +1928,8 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	default:
 	  /* should not get here */
 	  assert (false);
-	  break;
+	  PT_INTERNAL_ERROR (parser, "unknown node");
+	  goto exit_on_error;
 	}
 
       /* check found spec */

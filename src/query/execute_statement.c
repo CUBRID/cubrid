@@ -6197,8 +6197,8 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJLIST *triggers, *t;
   double priority = TR_LOWEST_PRIORITY;
   DB_TRIGGER_STATUS status;
-  PT_NODE *trigger_owner, *trigger_name;
-  const char *trigger_owner_name;
+  PT_NODE *trigger_owner, *trigger_name = NULL;
+  const char *trigger_owner_name = NULL;
   DB_VALUE returnval, trigger_name_val, user_val;
 
   CHECK_MODIFICATION_ERROR ();
@@ -11462,6 +11462,8 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl,
   DB_VALUE *val = NULL;
   TP_DOMAIN *attr_dom = NULL, *dom = NULL, *setdomain = NULL;
 
+  midxkey.buf = NULL;
+
   /* compute key size */
   for (attr_count = 0, attr = constraint->attributes; *attr != NULL;
        attr_count++, attr++)
@@ -15404,8 +15406,8 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *flat, *values_list = NULL;
   PT_NODE **links = NULL;
   PT_NODE *hint_arg;
-  QUERY_ID ins_query_id;
-  QUERY_ID upd_query_id;
+  QUERY_ID ins_query_id = NULL_QUERY_ID;
+  QUERY_ID upd_query_id = NULL_QUERY_ID;
   QUERY_ID save_query_id;
   int no_vals, no_consts;
   int wait_msecs = -2, old_wait_msecs = -2;
@@ -15605,7 +15607,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* enable authorization checking during methods in queries */
 	  AU_ENABLE (parser->au_save);
 	  save_query_id = parser->query_id;
-	  parser->query_id = -1;
+	  parser->query_id = NULL_QUERY_ID;
 	  err = do_select (parser, ins_select_stmt);
 	  ins_query_id = parser->query_id;
 	  parser->query_id = save_query_id;
@@ -15657,7 +15659,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* enable authorization checking during methods in queries */
 	  AU_ENABLE (parser->au_save);
 	  save_query_id = parser->query_id;
-	  parser->query_id = -1;
+	  parser->query_id = NULL_QUERY_ID;
 	  err = do_select (parser, upd_select_stmt);
 	  upd_query_id = parser->query_id;
 	  parser->query_id = save_query_id;
@@ -15781,7 +15783,10 @@ exit:
   if (list_id != NULL)
     {
       regu_free_listid (list_id);
-      qmgr_end_query (upd_query_id);
+      if (upd_query_id != NULL_QUERY_ID)
+	{
+	  qmgr_end_query (upd_query_id);
+	}
     }
 
   if (ins_select_stmt != NULL)
@@ -15789,7 +15794,10 @@ exit:
       if (ins_select_stmt->etc != NULL)
 	{
 	  regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
-	  qmgr_end_query (ins_query_id);
+	  if (ins_query_id != NULL_QUERY_ID)
+	    {
+	      qmgr_end_query (ins_query_id);
+	    }
 	}
       parser_free_tree (parser, ins_select_stmt);
     }
@@ -16268,7 +16276,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
   PT_NODE *ins_select_stmt = NULL, *hint_arg;
-  QUERY_ID ins_query_id;
+  QUERY_ID ins_query_id = NULL_QUERY_ID;
   QUERY_ID save_query_id;
   bool insert_only =
     (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
@@ -16572,7 +16580,10 @@ exit:
       if (ins_select_stmt->etc != NULL)
 	{
 	  regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
-	  qmgr_end_query (ins_query_id);
+	  if (ins_query_id != NULL_QUERY_ID)
+	    {
+	      qmgr_end_query (ins_query_id);
+	    }
 	}
       parser_free_tree (parser, ins_select_stmt);
     }
