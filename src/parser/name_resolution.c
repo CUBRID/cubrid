@@ -729,7 +729,7 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser,
 
   if (node == NULL)
     {
-      /* If pt_name in group by/ having, maybe it's alias. We will try 
+      /* If pt_name in group by/ having, maybe it's alias. We will try
        * to resolve it later.
        */
       if (is_pt_name_in_group_having (in_node) == false)
@@ -6729,6 +6729,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_HINT_ENUM hint;
   PT_NODE *ordered = NULL, *use_nl = NULL, *use_idx = NULL, *use_merge = NULL;
+  PT_NODE *index_ss = NULL;
   PT_NODE *spec_list = NULL;
 
   switch (node->node_type)
@@ -6738,6 +6739,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       ordered = node->info.query.q.select.ordered;
       use_nl = node->info.query.q.select.use_nl;
       use_idx = node->info.query.q.select.use_idx;
+      index_ss = node->info.query.q.select.index_ss;
       use_merge = node->info.query.q.select.use_merge;
       spec_list = node->info.query.q.select.from;
       break;
@@ -6792,6 +6794,14 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
+  if (hint & PT_HINT_INDEX_SS)
+    {
+      if (pt_resolve_hint_args (parser, index_ss, spec_list) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+
   if (hint & PT_HINT_USE_MERGE)
     {
       if (pt_resolve_hint_args (parser, use_merge, spec_list) != NO_ERROR)
@@ -6823,6 +6833,10 @@ exit_on_error:
     {
       parser_free_tree (parser, use_idx);
     }
+  if (index_ss != NULL)
+    {
+      parser_free_tree (parser, index_ss);
+    }
   if (use_merge != NULL)
     {
       parser_free_tree (parser, use_merge);
@@ -6834,6 +6848,7 @@ exit_on_error:
       node->info.query.q.select.ordered = NULL;
       node->info.query.q.select.use_nl = NULL;
       node->info.query.q.select.use_idx = NULL;
+      node->info.query.q.select.index_ss = NULL;
       node->info.query.q.select.use_merge = NULL;
       break;
     case PT_DELETE:
@@ -7771,7 +7786,7 @@ pt_mark_group_having_pt_name (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
- * pt_resolve_group_having_alias_pt_sort_spec () - 
+ * pt_resolve_group_having_alias_pt_sort_spec () -
  *   return:
  *   parser(in):
  *   node(in/out):
@@ -7791,7 +7806,7 @@ pt_resolve_group_having_alias_pt_sort_spec (PARSER_CONTEXT * parser,
 }
 
 /*
- * pt_resolve_group_having_alias_pt_name () - 
+ * pt_resolve_group_having_alias_pt_name () -
  *   return:
  *   parser(in):
  *   node_p(in/out):
@@ -7848,7 +7863,7 @@ pt_resolve_group_having_alias_pt_name (PARSER_CONTEXT * parser,
 }
 
 /*
- * pt_resolve_group_having_alias_pt_expr () - 
+ * pt_resolve_group_having_alias_pt_expr () -
  *   return:
  *   parser(in):
  *   node(in/out):
@@ -7952,7 +7967,7 @@ pt_resolve_group_having_alias_internal (PARSER_CONTEXT * parser,
 }
 
 /*
- * pt_resolve_group_having_alias () - Resolve alias name in groupby and having clause. We 
+ * pt_resolve_group_having_alias () - Resolve alias name in groupby and having clause. We
  *     resolve groupby/having alias after bind_name, it means when the alias name is same
  *     with table attribute, we choose table attribute firstly.
  *   return:

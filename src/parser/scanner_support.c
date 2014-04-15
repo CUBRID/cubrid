@@ -155,10 +155,17 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		}
 	      break;
 	    case PT_HINT_NO_INDEX_SS:	/* disable index skip scan */
-	    case PT_HINT_INDEX_SS:	/* enable index skip scan */
 	      if (node->node_type == PT_SELECT)
 		{
 		  node->info.query.q.select.hint |= hint_table[i].hint;
+		}
+	      break;
+	    case PT_HINT_INDEX_SS:
+	      if (node->node_type == PT_SELECT)
+		{
+		  node->info.query.q.select.hint |= hint_table[i].hint;
+		  node->info.query.q.select.index_ss = hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
 		}
 	      break;
 #if 0

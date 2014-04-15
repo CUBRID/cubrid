@@ -353,7 +353,7 @@ qo_get_optimization_param (void *retval, QO_PARAM param, ...)
 
 /*
  * qo_need_skip_execution (void) - check execution level and return skip or not
- *				  
+ *
  *   return: bool
  */
 bool
@@ -4445,6 +4445,11 @@ add_hint (QO_ENV * env, PT_NODE * tree)
     {
       add_hint_args (env, tree->info.query.q.select.use_idx, PT_HINT_USE_IDX);
     }
+  if (hint & PT_HINT_INDEX_SS)
+    {
+      add_hint_args (env, tree->info.query.q.select.index_ss,
+		     PT_HINT_INDEX_SS);
+    }
 
   if (hint & PT_HINT_USE_MERGE)
     {
@@ -7025,8 +7030,9 @@ qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
     }
   else if (tree->info.query.q.select.hint & PT_HINT_INDEX_LS)
     {				/* enable loose index scan */
-      if ((tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS)
-	  || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS))
+      if (tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS
+	  || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS)
+	  || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_SS))
 	{			/* skip scan is disabled */
 	  ;			/* go ahead */
 	}
@@ -7149,8 +7155,9 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
     }
 
   /* check hint */
-  if ((tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS)
-      || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS))
+  if (tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS
+      || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS)
+      || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_SS))
     {
       return false;
     }
@@ -8680,7 +8687,7 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
 
   /* Verify that we don't have terms qualified as after join. These terms will
    * be evaluated after the SORT-LIMIT plan and might invalidate tuples the
-   * plan returned. 
+   * plan returned.
    */
   for (i = 0; i < env->nterms; i++)
     {
@@ -8760,7 +8767,7 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       node = QO_ENV_NODE (env, i);
 
       /* For each orderby node, gather nodes which are SORT_LIMIT independent
-       * on this node and remove them from sort_limit_nodes. 
+       * on this node and remove them from sort_limit_nodes.
        */
       qo_discover_sort_limit_join_nodes (env, node, &order_nodes, &dep_nodes);
       bitset_difference (&env->sort_limit_nodes, &dep_nodes);
@@ -8770,7 +8777,7 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
 
   if (bitset_cardinality (&env->sort_limit_nodes) == env->Nnodes)
     {
-      /* There is no subset of nodes on which we can apply SORT_LIMIT so 
+      /* There is no subset of nodes on which we can apply SORT_LIMIT so
        * abandon this optimization
        */
       goto abandon_stop_limit;

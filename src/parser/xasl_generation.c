@@ -1324,7 +1324,7 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser,
 
   if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
     {
-      PT_NODE *ordered, *use_nl, *use_idx, *use_merge;
+      PT_NODE *ordered, *use_nl, *use_idx, *index_ss, *use_merge;
       PT_HINT_ENUM hint;
       const char *alias_print;
 
@@ -1341,6 +1341,9 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser,
       use_idx = select_node->info.query.q.select.use_idx;
       select_node->info.query.q.select.use_idx = NULL;
 
+      index_ss = select_node->info.query.q.select.index_ss;
+      select_node->info.query.q.select.index_ss = NULL;
+
       use_merge = select_node->info.query.q.select.use_merge;
       select_node->info.query.q.select.use_merge = NULL;
 
@@ -1355,6 +1358,7 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser,
       select_node->info.query.q.select.ordered = ordered;
       select_node->info.query.q.select.use_nl = use_nl;
       select_node->info.query.q.select.use_idx = use_idx;
+      select_node->info.query.q.select.index_ss = index_ss;
       select_node->info.query.q.select.use_merge = use_merge;
 
       select_node->alias_print = alias_print;
@@ -17316,6 +17320,12 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  parser_free_tree (parser, select_node->info.query.q.select.use_idx);
 	  select_node->info.query.q.select.use_idx = NULL;
+	}
+      if (select_node->info.query.q.select.index_ss)
+	{
+	  parser_free_tree (parser,
+			    select_node->info.query.q.select.index_ss);
+	  select_node->info.query.q.select.index_ss = NULL;
 	}
       if (select_node->info.query.q.select.use_merge)
 	{

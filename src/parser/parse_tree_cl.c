@@ -2186,9 +2186,9 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no,
 	  str_len = context_len + before_context_len;
 	}
 
-      /* parser_allocate_string_buffer() returns the start pointer of 
-       * the string buffer. It is guaranteed that the length of 
-       * the buffer 's' is equal to 'str_len + 1'. 
+      /* parser_allocate_string_buffer() returns the start pointer of
+       * the string buffer. It is guaranteed that the length of
+       * the buffer 's' is equal to 'str_len + 1'.
        */
       s = parser_allocate_string_buffer (parser, str_len, sizeof (char));
       if (s == NULL)
@@ -14261,6 +14261,8 @@ pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p,
     g (parser, p->info.query.q.select.use_nl, arg);
   p->info.query.q.select.use_idx =
     g (parser, p->info.query.q.select.use_idx, arg);
+  p->info.query.q.select.index_ss =
+    g (parser, p->info.query.q.select.index_ss, arg);
   p->info.query.q.select.use_merge =
     g (parser, p->info.query.q.select.use_merge, arg);
   p->info.query.q.select.waitsecs_hint =
@@ -14302,6 +14304,7 @@ pt_init_select (PT_NODE * p)
   p->info.query.q.select.ordered = NULL;
   p->info.query.q.select.use_nl = NULL;
   p->info.query.q.select.use_idx = NULL;
+  p->info.query.q.select.index_ss = NULL;
   p->info.query.q.select.use_merge = NULL;
   p->info.query.q.select.waitsecs_hint = NULL;
   p->info.query.q.select.jdbc_life_time = NULL;
@@ -14502,7 +14505,19 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	  else if (p->info.query.q.select.hint & PT_HINT_INDEX_SS)
 	    {
-	      q = pt_append_nulstring (parser, q, "INDEX_SS ");
+	      q = pt_append_nulstring (parser, q, "INDEX_SS");
+	      if (p->info.query.q.select.index_ss)
+		{
+		  r1 = pt_print_bytes_l (parser,
+					 p->info.query.q.select.index_ss);
+		  q = pt_append_nulstring (parser, q, "(");
+		  q = pt_append_varchar (parser, q, r1);
+		  q = pt_append_nulstring (parser, q, ") ");
+		}
+	      else
+		{
+		  q = pt_append_nulstring (parser, q, " ");
+		}
 	    }
 
 #if 0
@@ -16309,7 +16324,7 @@ pt_print_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * p)
  *       during view definition translation, see mq_translate ()).
  *       If a type ambiguity does occur, the XASL cache will return query
  *       results with unexpected types to the client.
- *	 
+ *
  *	 Printing charset introducer and COLLATE modifier of values.
  *	 Four flags control the printing of charset and collate for strings:
  *	  - PT_SUPPRESS_CHARSET_PRINT: when printing columns header in results

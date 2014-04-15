@@ -2041,6 +2041,12 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 				 query_spec->info.query.q.select.use_idx),
 				derived_table->info.query.q.select.use_idx);
 
+	  derived_table->info.query.q.select.index_ss =
+	    parser_append_node (parser_copy_tree_list
+				(parser,
+				 query_spec->info.query.q.select.index_ss),
+				derived_table->info.query.q.select.index_ss);
+
 	  derived_table->info.query.q.select.use_merge =
 	    parser_append_node (parser_copy_tree_list
 				(parser,
@@ -2143,6 +2149,13 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 				    (parser,
 				     query_spec->info.query.q.select.use_idx),
 				    tmp_result->info.query.q.select.use_idx);
+
+	      tmp_result->info.query.q.select.index_ss =
+		parser_append_node (parser_copy_tree_list
+				    (parser,
+				     query_spec->info.query.q.select.
+				     index_ss),
+				    tmp_result->info.query.q.select.index_ss);
 
 	      tmp_result->info.query.q.select.use_merge =
 		parser_append_node (parser_copy_tree_list
@@ -3914,6 +3927,10 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
 
   derived->info.query.q.select.use_idx = agg_sel->info.query.q.select.use_idx;
   agg_sel->info.query.q.select.use_idx = NULL;
+
+  derived->info.query.q.select.index_ss =
+    agg_sel->info.query.q.select.index_ss;
+  agg_sel->info.query.q.select.index_ss = NULL;
 
   derived->info.query.q.select.use_merge =
     agg_sel->info.query.q.select.use_merge;
