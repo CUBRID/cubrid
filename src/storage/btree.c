@@ -15146,6 +15146,7 @@ curr_key_locking:
 		  /* compute prev_tot_hold_mode and curr_key_many_locks_needed
 		     again, since the current values could be inconsistent.
 		     keep the old current_lock value */
+		  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 		  prev_tot_hold_mode =
 		    lock_get_all_except_transaction (&C_oid, &C_class_oid,
 						     tran_index);
