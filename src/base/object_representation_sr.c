@@ -3149,7 +3149,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 {
   OR_ATTRIBUTE *att;
   OR_CLASSREP *rep, **rep_arr = NULL;
-  char *repset, *disk_rep, *attset, *repatt, *dptr, *fixed = NULL;
+  char *repset = NULL, *disk_rep, *attset, *repatt, *dptr, *fixed = NULL;
   int old_rep_count = 0, i, j, offset, start, n_variable, n_fixed;
 
   if (count)
@@ -3186,7 +3186,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
     }
 
   disk_rep = NULL;
-  for (i = 0; i < old_rep_count; i++)
+  for (i = 0; i < old_rep_count && repset != NULL; i++)
     {
       rep_arr[i + 1] = (OR_CLASSREP *) malloc (sizeof (OR_CLASSREP));
       if (rep_arr[i + 1] == NULL)

@@ -2405,7 +2405,7 @@ apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
 			    T_LEVEL lvl)
 {
   int i, j;
-  bool collation_finished, overflow;
+  bool collation_finished, overflow = false;
   UCA_W current_weight;
   UCA_COLL_CE_LIST new_ce;
   int err_status = NO_ERROR;
@@ -2807,7 +2807,7 @@ string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
 
       switch (state)
 	{
-	case 0:		/* read a '[' (first char from the standard string representation 
+	case 0:		/* read a '[' (first char from the standard string representation
 				 * of a collation element) */
 	  c = str[0];
 	  if (c != '[')

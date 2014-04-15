@@ -405,7 +405,7 @@ base64_decode (const unsigned char *src, int src_len, unsigned char **dest,
 	       int *dest_len)
 {
   int error_status = NO_ERROR;
-  int len_no_space, real_dest_len, chunk_num;
+  int len_no_space, real_dest_len, chunk_num = 0;
   unsigned char *str_no_space = NULL;
   unsigned char *real_dest = NULL;
   BASE64_CHUNK **ppchunk = NULL;
@@ -599,7 +599,7 @@ base64_encode_local (const unsigned char *src, int src_len,
 	}
 
       /* move forward the source string every three bytes and
-       * translate it into four 6-bit bytes 
+       * translate it into four 6-bit bytes
        */
       d = (p[i++] << 16);	/* the most significant(3rd) bytes */
       fill = 2;			/* assuming 2 paddings needed */
