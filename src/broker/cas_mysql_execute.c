@@ -2800,7 +2800,7 @@ cas_mysql_connect_db (char *alias, char *user, char *passwd)
   int ret;
   char dbname[MAX_DBNAME_LENGTH] = "";
   char host[MAXHOSTNAMELEN] = "";
-  int port;
+  int port = 0;
   unsigned int read_timeout;
 
   _db_conn = mysql_init (NULL);
@@ -2856,7 +2856,7 @@ cas_mysql_prepare (T_SRV_HANDLE ** new_handle, char *sql_stmt, int flag,
 		   char auto_commit_mode, unsigned int query_seq_num)
 {
   int err_code = CAS_NO_ERROR;
-  int srv_h_id;
+  int srv_h_id = -1;
   MYSQL_STMT *stmt = NULL;
 
   if (sql_stmt == NULL)

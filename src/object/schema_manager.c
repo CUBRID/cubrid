@@ -5527,10 +5527,11 @@ sm_att_unique_constrained (MOP classop, const char *name)
 int
 sm_att_in_unique_filter_constraint_predicate (MOP classop, const char *name)
 {
-  SM_CLASS *class_;
+  SM_CLASS *class_ = NULL;
   SM_ATTRIBUTE *att = NULL;
 
-  if (find_attribute_op (classop, name, &class_, &att) == NO_ERROR)
+  if ((find_attribute_op (classop, name, &class_, &att) == NO_ERROR)
+      && class_ != NULL)
     {
       SM_CLASS_CONSTRAINT *constr = NULL;
       int i;

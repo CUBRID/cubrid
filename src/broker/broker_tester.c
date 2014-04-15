@@ -289,7 +289,7 @@ get_master_shm_id (void)
 {
   int master_shm_id = 0;
   struct stat stat_buf;
-  INI_TABLE *ini;
+  INI_TABLE *ini = NULL;
   const char *conf_file;
   char conf_file_path[BROKER_PATH_MAX];
 

@@ -1277,7 +1277,7 @@ pt_bind_names_post (PARSER_CONTEXT * parser,
     case PT_UPDATE:
     case PT_MERGE:
       {
-	PT_NODE *temp, *lhs, *assignments, *spec;
+	PT_NODE *temp, *lhs, *assignments = NULL, *spec = NULL;
 	int error = NO_ERROR;
 
 	if (node->node_type == PT_UPDATE)
@@ -9143,7 +9143,7 @@ pt_bind_names_merge_insert (PARSER_CONTEXT * parser, PT_NODE * node,
 			    PT_BIND_NAMES_ARG * bind_arg, SCOPES * scopestack,
 			    PT_EXTRA_SPECS_FRAME * spec_frame)
 {
-  PT_NODE *temp_node, *node_list, *save_next, *prev_node;
+  PT_NODE *temp_node, *node_list, *save_next, *prev_node = NULL;
   bool is_first_node;
 
   assert (node->node_type == PT_MERGE);

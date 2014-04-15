@@ -3865,7 +3865,7 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	  PT_NODE *escape = NULL;
 	  PT_NODE *arg2 = NULL;
 	  bool perform_generic_rewrite = false;
-	  PT_TYPE_ENUM pattern_type, escape_type;
+	  PT_TYPE_ENUM pattern_type, escape_type = PT_TYPE_NONE;
 
 	  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (crt_expr, PT_LIKE))
 	    {
@@ -4894,10 +4894,10 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 		  && PT_IS_SET_TYPE (dnf_node->info.expr.arg2)
 		  && dnf_node->or_next == NULL)
 		{
-		  /* 
+		  /*
 		   * skip merge in list
 		   * server will eliminate duplicate keys
-		   * this is because merging huge in list takes 
+		   * this is because merging huge in list takes
 		   * too much time.
 		   */
 		  qo_convert_to_range_helper (parser, dnf_node);
@@ -6389,7 +6389,7 @@ qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      if (is_idx_match_nokl)
 		{
-		  /* The same index is used in both hints; examine the 
+		  /* The same index is used in both hints; examine the
 		   * keylimit clauses; if search_node does not have keylimit,
 		   * the IF below will skip, and search_node will be deleted */
 		  if (next_node->info.name.indx_key_limit != NULL)

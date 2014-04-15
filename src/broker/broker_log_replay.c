@@ -195,7 +195,7 @@ log_replay (char *infilename, char *outfilename)
   T_STRING *linebuf_tstr = NULL;
   char date_str[DATE_STR_LEN + 1];
   char bind_str_buf[BIND_STR_BUF_SIZE];
-  int remain_bind_buf;
+  int remain_bind_buf = 0;
   char conn_url[1024];
   int con_h, req;
   int result = 0;
@@ -767,7 +767,7 @@ get_cci_type (char *p)
 }
 
 /*
- * log_bind_value() - 
+ * log_bind_value() -
  *   return: offset of bind string buffer or ER_FAILED
  *   req(in):
  *   linebuf(in):
@@ -784,7 +784,7 @@ log_bind_value (int req, T_STRING * linebuf, char *sql_log,
   char *endp;
   int type, res;
   int bind_idx;
-  int bind_len;
+  int bind_len = 0;
   int result = 0;
   int offset = 0;
 
@@ -887,7 +887,7 @@ log_bind_value (int req, T_STRING * linebuf, char *sql_log,
 }
 
 /*
- * log_execute() - 
+ * log_execute() -
  *   return: NO_ERROR or ER_FAILED
  *   con_h(in):
  *   req(in):
@@ -1044,7 +1044,7 @@ print_temp_result (char *sql_log, T_SQL_INFO * info)
 }
 
 /*
- * update_summary_info() - 
+ * update_summary_info() -
  *   return: void
  *   summary(out):
  *   sql_info(out):
@@ -1199,7 +1199,7 @@ result_sort_func (const void *arg1, const void *arg2)
 
 /*
  * get_temp_file_lien() -
- *   return: READ_RESULT (SUCCESS / CONTINUE / STOP) 
+ *   return: READ_RESULT (SUCCESS / CONTINUE / STOP)
  *   read_buf(in):
  *   read_buf_size(in):
  *   diff_time(out):
@@ -1396,8 +1396,8 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower,
 	}
       else
 	{
-	  /* 
-	   * if sql's diff time is shorter than diff_time_lower, 
+	  /*
+	   * if sql's diff time is shorter than diff_time_lower,
 	   * write in next temp file. it will be read next time.
 	   */
 	  fprintf (next_tmp_fp, "%s\n", read_buf);
@@ -1443,7 +1443,7 @@ error:
   return ER_FAILED;
 }
 
-/* 
+/*
  * print_result() -
  *   outfp(in):
  *   max_diff_time(in):
@@ -1472,9 +1472,9 @@ print_result (FILE * outfp, double max_diff_time, double min_diff_time,
 	    {
 	      return;
 	    }
-	  /* 
-	   * we don't sort last diff time query to avoid ordering size excess SORT_BUF_SIZE 
-	   * in genaral, many sql have same diff time. so, this help decrease needless sorting 
+	  /*
+	   * we don't sort last diff time query to avoid ordering size excess SORT_BUF_SIZE
+	   * in genaral, many sql have same diff time. so, this help decrease needless sorting
 	   */
 	  if (print_result_without_sort (outfp, i, temp_line_len_max) < 0)
 	    {
@@ -1676,7 +1676,7 @@ error:
 }
 
 /*
- * close_file() - 
+ * close_file() -
  *   return: void
  *   infp(in):
  *   outfp(in):

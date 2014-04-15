@@ -116,7 +116,7 @@ typedef enum
   } while (0)
 #endif /* !WINDOWS */
 
-/* borrowed from optimizer.h: OPT_LEVEL, OPTIMIZATION_ENABLED, 
+/* borrowed from optimizer.h: OPT_LEVEL, OPTIMIZATION_ENABLED,
  *                            PLAN_DUMP_ENABLED, SIMPLE_DUMP,
  *                            DETAILED_DUMP
  */
@@ -803,7 +803,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
   int stmt_id;
   T_SRV_HANDLE *srv_handle = NULL;
   DB_SESSION *session = NULL;
-  int srv_h_id;
+  int srv_h_id = -1;
   int err_code;
   int num_markers;
   char stmt_type;
@@ -8694,7 +8694,7 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf,
 				      bool find_cross_ref, char *pktable_name,
 				      char *fktable_name, void **result)
 {
-  DB_OBJECT *pktable_obj, *fktable_obj;
+  DB_OBJECT *pktable_obj, *fktable_obj = NULL;
   DB_ATTRIBUTE **pk_attr = NULL, **fk_attr;
   DB_CONSTRAINT *fk_const = NULL, *pk = NULL;
   SM_FOREIGN_KEY_INFO *fk_info;

@@ -571,7 +571,7 @@ qo_term_string (QO_TERM * term)
   int i;
   QO_ENV *env;
   const char *separator;
-  PT_NODE *conj, *saved_next;
+  PT_NODE *conj, *saved_next = NULL;
 
   env = QO_TERM_ENV (term);
 
@@ -628,6 +628,11 @@ qo_term_string (QO_TERM * term)
 
 	  parser->custom_print = save_custom;
 	  parser->print_db_value = saved_func;
+	}
+      else
+	{
+	  p = buf;
+	  buf[0] = '\0';
 	}
     }
 
@@ -1780,7 +1785,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 		  || qo_is_iscan_from_groupby (plan))
 		{
 		  /* filter index has a pre-defined key-range.
-		   * ordery/groupby scan already checked nullable terms 
+		   * ordery/groupby scan already checked nullable terms
 		   */
 		  ;		/* go ahead */
 		}
@@ -8364,7 +8369,7 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 }
 
 /*
- * qo_generate_loose_index_scan () - 
+ * qo_generate_loose_index_scan () -
  *   return: num of index loosed scan plans
  *   infop(in): pointer to QO_INFO (environment info node which holds plans)
  *   nodep(in): pointer to QO_NODE (node in the join graph)
@@ -11185,7 +11190,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root,
   bool is_const_eq_term;
 
   sort_list = NULL;		/* init */
-
+  col = NULL;
   *is_index_w_prefix = false;
 
   /* find sortable plan */
@@ -11768,7 +11773,7 @@ static json_t *
 qo_plan_join_print_json (QO_PLAN * plan)
 {
   json_t *join, *outer, *inner;
-  const char *type, *method;
+  const char *type, *method = "";
   char buf[32];
 
   switch (plan->plan_un.join.join_method)
@@ -12091,7 +12096,7 @@ qo_plan_sort_print_text (FILE * fp, QO_PLAN * plan, int indent)
 static void
 qo_plan_join_print_text (FILE * fp, QO_PLAN * plan, int indent)
 {
-  const char *type, *method;
+  const char *type, *method = "";
 
   indent += 2;
 

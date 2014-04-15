@@ -660,7 +660,7 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 	    double *ret_prepare_time)
 {
   char *sql_stmt = NULL;
-  int con_h;
+  int con_h = -1;
   T_CCI_ERROR cci_error;
   int num_bind = 0;
   double prepare_time = 0;

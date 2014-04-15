@@ -1612,9 +1612,9 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
 		  T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   OCIStmt *stmt;
-  OCIBind **bind;
+  OCIBind **bind = NULL;
   ub4 bind_count, row_count, iters, mode;
-  int ret, err_code;
+  int ret, err_code = 0;
   ub2 type;
   size_t size;
   char *err_msg;
@@ -2324,7 +2324,7 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	  T_REQ_INFO * req_info)
 {
   OCIStmt *stmt;
-  int ret, tuple, num_tuple_msg_offset;
+  int ret = OCI_SUCCESS, tuple, num_tuple_msg_offset;
   int err_code;
   char fetch_end_flag = 0;
   T_OBJECT tuple_obj;
@@ -2808,7 +2808,7 @@ cas_oracle_prepare (T_SRV_HANDLE ** new_handle, char *sql_stmt, int flag,
 		    char auto_commit_mode, unsigned int query_seq_num)
 {
   int err_code = CAS_NO_ERROR;
-  int srv_h_id;
+  int srv_h_id = -1;
   OCIStmt *stmt = NULL;
 
   if (sql_stmt == NULL)

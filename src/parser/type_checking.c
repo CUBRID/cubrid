@@ -19506,6 +19506,11 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    {
 	      rvalue = opd2->info.value.data_value.bigint;
 	    }
+	  else
+	    {
+	      assert (0);
+	      rvalue = 0;
+	    }
 
 	  if ((op == PT_GT && rvalue <= 0) || (op == PT_GE && rvalue <= 1))
 	    {

@@ -619,7 +619,7 @@ proxy_get_shard_id (T_SHARD_STMT * stmt_p, void **argv,
 		    T_SHARD_KEY_RANGE ** range_p_out)
 {
   int compare_flag = 0;
-  int shard_id = -1, next_shard_id;
+  int shard_id = -1, next_shard_id = -1;
   SP_PARSER_HINT *hint_p;
   T_SHARD_KEY_RANGE *range_p = NULL;
 
@@ -2873,7 +2873,7 @@ fn_proxy_client_prepare_and_execute (T_PROXY_CONTEXT * ctx_p,
   T_CAS_IO *cas_io_p;
   T_SHARD_STMT *stmt_p = NULL;
   int shard_id;
-  SP_HINT_TYPE hint_type;
+  SP_HINT_TYPE hint_type = HT_INVAL;
   T_SHARD_KEY_RANGE *range_p = NULL;
 
   char *driver_info;

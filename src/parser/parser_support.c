@@ -8822,10 +8822,10 @@ check_arg_valid (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_ARG * arg_meta,
 }
 
 /*
- * pt_resolve_showstmt_args_unnamed() - 
+ * pt_resolve_showstmt_args_unnamed() -
  *   do semantic check for unnamed arguments by specified meta data
  *   from SHOWSTMT_NAMED_ARG.
- * 
+ *
  *   return: newly build node (PT_NODE) for arguments
  *   parser(in): Parser context
  *   arg_infos(in): array for meta data of argument
@@ -8905,10 +8905,10 @@ error:
 }
 
 /*
- * pt_resolve_showstmt_args_named() - 
+ * pt_resolve_showstmt_args_named() -
  *   do semantic check for named arguments by specified meta data
  *   from SHOWSTMT_NAMED_ARG.
- * 
+ *
  *   return: newly build node (PT_NODE) for arguments
  *   parser(in): Parser context
  *   arg_infos(in): array for meta data of argument
@@ -8924,7 +8924,7 @@ pt_resolve_showstmt_args_named (PARSER_CONTEXT * parser,
   bool found = false;
   PT_NODE *name_node, *value_node;
   PT_NODE *prev = NULL, *res = NULL;
-  PT_NODE *arg;
+  PT_NODE *arg = NULL;
 
   if (arg_info_count == 0)
     {

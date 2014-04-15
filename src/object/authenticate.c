@@ -2769,7 +2769,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 {
   int error = NO_ERROR;
   DB_VALUE membervalue, member_name_val, groupvalue;
-  DB_SET *group_groups, *member_groups, *member_direct_groups;
+  DB_SET *group_groups = NULL, *member_groups, *member_direct_groups;
   int save;
   char *member_name;
 

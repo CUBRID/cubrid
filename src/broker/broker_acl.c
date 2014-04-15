@@ -128,7 +128,7 @@ int
 access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
 				 char *filename, char *admin_err_msg)
 {
-  char buf[1024], path_buf[BROKER_PATH_MAX], *files, *token, *save;
+  char buf[1024], path_buf[BROKER_PATH_MAX], *files, *token, *save = NULL;
   FILE *fd_access_list;
   int num_access_list = 0, line = 0;
   ACCESS_INFO new_access_info[ACL_MAX_ITEM_COUNT];

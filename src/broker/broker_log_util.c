@@ -257,8 +257,8 @@ ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
 {
   char buf[1024];
   int out_str_len;
-  bool is_first, bind_with_size;
-  int tot_val_size, info_size;
+  bool is_first, bind_with_size = false;
+  int tot_val_size = 0, info_size = 0;
   long position;
 
   t_string_clear (t_str);

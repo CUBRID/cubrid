@@ -9023,7 +9023,7 @@ qo_termset_fprint (QO_ENV * env, BITSET * terms, FILE * f)
 static void
 qo_term_dump (QO_TERM * term, FILE * f)
 {
-  PT_NODE *conj, *saved_next;
+  PT_NODE *conj, *saved_next = NULL;
   QO_TERMCLASS tc;
 
   conj = QO_TERM_PT_EXPR (term);

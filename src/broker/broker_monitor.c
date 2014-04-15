@@ -900,8 +900,8 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
   time_t tran_start_time;
   char ip_str[16];
   int as_id;
-  int proxy_id;
-  int shard_id;
+  int proxy_id = 0;
+  int shard_id = 0;
 #if !defined (WINDOWS)
   int psize;
 #endif
@@ -2819,6 +2819,7 @@ get_num_monitor_items (MONITOR_TYPE mnt_type, T_SHM_PROXY * shm_proxy_p)
     {
       /* invalid MONITOR_TYPE */
       assert (false);
+      num_mnt_items = 0;
     }
 
   return num_mnt_items;

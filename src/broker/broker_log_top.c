@@ -922,7 +922,7 @@ search_offset (FILE * fp, char *string, long *offset, bool start)
   off_t start_ptr = 0;
   off_t end_ptr = 0;
   off_t cur_ptr;
-  off_t old_start_ptr;
+  off_t old_start_ptr = 0;
   bool old_start_saved = false;
   long tmp_offset = -1;
   struct stat stat_buf;
