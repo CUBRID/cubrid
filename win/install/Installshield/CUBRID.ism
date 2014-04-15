@@ -298,6 +298,7 @@
 		<row><td>csql.exe</td><td>CUBRID</td><td>csql.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\csql.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>csql.pdb</td><td>CUBRID</td><td>csql.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\csql.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>ctrlservice.exe</td><td>CUBRID</td><td>ctrlservice.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\ctrlservice.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>ctrlservice.pdb</td><td>CUBRID</td><td>ctrlservice.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\ctrlservice.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_admin.exe</td><td>CUBRID</td><td>cub_admin.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_admin.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_admin.pdb</td><td>CUBRID</td><td>cub_admin.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_admin.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_auto.exe</td><td>CUBRID</td><td>cub_auto.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_auto.exe</td><td>1</td><td>NewSubFolder5</td></row>
@@ -346,6 +347,7 @@
 		<row><td>cubridsa.lib</td><td>CUBRID</td><td>cubridsa.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cubridsa.lib</td><td>1</td><td>NewSubFolder7</td></row>
 		<row><td>cubridsa.pdb</td><td>CUBRID</td><td>cubridsa.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridsa.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubridservice.exe</td><td>CUBRID</td><td>cubridservice.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridservice.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cubridservice.pdb</td><td>CUBRID</td><td>cubridservice.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridservice.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>databaseInterface.h</td><td>DBGW</td><td>DatabaseInterface.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\sql\DatabaseInterface.h</td><td>1</td><td>NewSubFolder18</td></row>
 		<row><td>dbghelp.dll</td><td>CUBRID</td><td>dbghelp.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\dbghelp.dll</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>dbgwclient.h</td><td>DBGW</td><td>DBGWClient.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWClient.h</td><td>1</td><td>NewSubFolder14</td></row>
@@ -392,6 +394,7 @@
 		<row><td>resultSet.h</td><td>DBGW</td><td>ResultSet.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\sql\ResultSet.h</td><td>1</td><td>NewSubFolder18</td></row>
 		<row><td>resultSetMetaData.h</td><td>DBGW</td><td>ResultSetMetaData.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\sql\ResultSetMetaData.h</td><td>1</td><td>NewSubFolder18</td></row>
 		<row><td>setupmanage.exe</td><td>CUBRID</td><td>setupmanage.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\setupmanage.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>setupmanage.pdb</td><td>CUBRID</td><td>setupmanage.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\setupmanage.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>shard_connection.txt_dist</td><td>CUBRID</td><td>shard_connection.txt-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard_connection.txt-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>shard_key.txt_dist</td><td>CUBRID</td><td>shard_key.txt-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard_key.txt-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>statement.h</td><td>DBGW</td><td>Statement.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\sql\Statement.h</td><td>1</td><td>NewSubFolder18</td></row>

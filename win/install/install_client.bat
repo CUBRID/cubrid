@@ -24,12 +24,18 @@ mkdir %DEST_DIR%\msg\vi_VN.utf8
 mkdir %DEST_DIR%\msg\zh_CN.utf8
 
 copy %SRC_DIR%\cubridservice.exe          %DEST_DIR%\bin
+copy %SRC_DIR%\cubridservice.pdb          %DEST_DIR%\bin
 copy %SRC_DIR%\ctrlservice.exe            %DEST_DIR%\bin
+copy %SRC_DIR%\ctrlservice.pdb            %DEST_DIR%\bin
 copy %SRC_DIR%\setupmanage.exe            %DEST_DIR%\bin
+copy %SRC_DIR%\setupmanage.pdb            %DEST_DIR%\bin
 copy %SRC_DIR%\CUBRID_Service_tray.exe    %DEST_DIR%\bin
+copy %SRC_DIR%\CUBRID_Service_tray.pdb    %DEST_DIR%\bin
 copy %SRC_DIR%\cubrid_odbc.dll            %DEST_DIR%\bin
+copy %SRC_DIR%\cubrid_odbc.pdb            %DEST_DIR%\bin
 copy %SRC_DIR%\CUBRIDProvider.dll         %DEST_DIR%\bin
 copy %SRC_DIR%\CUBRIDProvider.tlb         %DEST_DIR%\bin
+copy %SRC_DIR%\CUBRIDProvider.pdb         %DEST_DIR%\bin
 
 REM copy cubridtray msg file
 copy %SRC_DIR%\..\..\..\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %DEST_DIR%\msg\en_US\cubridtray.msg
