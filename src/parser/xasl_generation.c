@@ -103,6 +103,10 @@ struct analytic_key_metadomain
   ANALYTIC_TYPE *source;
 };
 
+/* metadomain initializer */
+static ANALYTIC_KEY_METADOMAIN analitic_key_metadomain_Initializer =
+  { {0}, 0, 0, {NULL}, 0, {NULL}, false, 0, NULL };
+
 typedef enum
 { SORT_LIST_AFTER_ISCAN = 1,
   SORT_LIST_ORDERBY,
@@ -14966,6 +14970,12 @@ pt_metadomains_compatible (ANALYTIC_KEY_METADOMAIN * f1,
 
   assert (f1 != NULL && f2 != NULL);
 
+  if (lost_link_count != NULL)
+    {
+      /* initialize to default value in case of failure */
+      (*lost_link_count) = -1;
+    }
+
   /* determine larger key */
   if (f1->part_size < f2->part_size)
     {
@@ -15035,6 +15045,7 @@ pt_metadomains_compatible (ANALYTIC_KEY_METADOMAIN * f1,
 
   /* build common metadomain */
   out->source = NULL;
+  out->links_count = 0;
   out->level = level;
   out->demoted = false;
   out->children[0] = f1;
@@ -15087,7 +15098,6 @@ pt_metadomains_compatible (ANALYTIC_KEY_METADOMAIN * f1,
     }
 
   /* build links */
-  out->links_count = 0;
   (*lost_link_count) = 0;
 
   for (i = 0; i < f1->links_count; i++)
@@ -15571,8 +15581,9 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info)
   /* compose every compatible metadomains from each possible prefix length */
   while (level > 0)
     {
-      ANALYTIC_KEY_METADOMAIN new, best;
-      int new_destroyed, best_destroyed = -1;
+      ANALYTIC_KEY_METADOMAIN new = analitic_key_metadomain_Initializer;
+      ANALYTIC_KEY_METADOMAIN best = analitic_key_metadomain_Initializer;
+      int new_destroyed = -1, best_destroyed = -1;
 
       /* compose best two compatible metadomains */
       for (i = 0; i < af_count; i++)
