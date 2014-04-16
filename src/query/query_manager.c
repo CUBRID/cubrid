@@ -82,6 +82,14 @@ static int rv;
 #define QMGR_IS_VALID_MEMBUF_TYPE(m)    ((m) == TEMP_FILE_MEMBUF_NORMAL \
     || (m) == TEMP_FILE_MEMBUF_KEY_BUFFER)
 
+typedef enum qmgr_page_type QMGR_PAGE_TYPE;
+enum qmgr_page_type
+{
+  QMGR_UNKNOWN_PAGE,
+  QMGR_MEMBUF_PAGE,
+  QMGR_TEMP_FILE_PAGE
+};
+
 /* For streaming queries */
 typedef struct query_async QMGR_ASYNC_QUERY;
 struct query_async
@@ -154,8 +162,8 @@ static void qmgr_lock_mutex (THREAD_ENTRY * thread_p, QMGR_MUTEX * qm_mutex);
 static void qmgr_unlock_mutex (QMGR_MUTEX * qm_mutex);
 #endif
 
-static bool qmgr_is_page_in_temp_file_buffer (PAGE_PTR page_p,
-					      QMGR_TEMP_FILE * temp_file_p);
+static QMGR_PAGE_TYPE qmgr_get_page_type (PAGE_PTR page_p,
+					  QMGR_TEMP_FILE * temp_file_p);
 static bool qmgr_is_allowed_result_cache (QUERY_FLAG flag);
 static bool qmgr_can_get_result_from_cache (QUERY_FLAG flag);
 static void qmgr_put_page_header (PAGE_PTR page_p,
@@ -252,15 +260,41 @@ static void qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p);
 static int copy_bind_value_to_tdes (THREAD_ENTRY * thread_p,
 				    int num_bind_vals, DB_VALUE * bind_vals);
 
-static bool
-qmgr_is_page_in_temp_file_buffer (PAGE_PTR page_p,
-				  QMGR_TEMP_FILE * temp_file_p)
+/*
+ * qmgr_get_page_type () -
+ *
+ *   return: QMGR_PAGE_TYPE
+ *
+ *   page_p(in):
+ *   temp_file_p(in):
+ */
+static QMGR_PAGE_TYPE
+qmgr_get_page_type (PAGE_PTR page_p, QMGR_TEMP_FILE * temp_file_p)
 {
-  return (temp_file_p != NULL
-	  && temp_file_p->membuf_last >= 0
-	  && temp_file_p->membuf
-	  && page_p >= temp_file_p->membuf[0]
-	  && page_p <= temp_file_p->membuf[temp_file_p->membuf_last]);
+  PAGE_PTR begin_page = NULL, end_page = NULL;
+
+  if (temp_file_p != NULL
+      && temp_file_p->membuf_last >= 0
+      && temp_file_p->membuf
+      && page_p >= temp_file_p->membuf[0]
+      && page_p <= temp_file_p->membuf[temp_file_p->membuf_last])
+    {
+      return QMGR_MEMBUF_PAGE;
+    }
+
+  begin_page = (PAGE_PTR) ((PAGE_PTR) temp_file_p->membuf +
+			   DB_ALIGN (sizeof (PAGE_PTR) *
+				     temp_file_p->membuf_npages,
+				     MAX_ALIGNMENT));
+  end_page = begin_page + temp_file_p->membuf_npages * DB_PAGESIZE;
+  if (begin_page <= page_p && page_p <= end_page)
+    {
+      /* defense code */
+      assert (false);
+      return QMGR_UNKNOWN_PAGE;
+    }
+
+  return QMGR_TEMP_FILE_PAGE;
 }
 
 static bool
@@ -3408,15 +3442,27 @@ qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 #if defined (SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+  QMGR_PAGE_TYPE page_type;
 
   if (page_p == NULL)
     {
       assert (0);
       return;
     }
+  if (tfile_vfid_p == NULL)
+    {
+      pgbuf_unfix (thread_p, page_p);
+      return;
+    }
 
-  if (tfile_vfid_p == NULL
-      || !qmgr_is_page_in_temp_file_buffer (page_p, tfile_vfid_p))
+  page_type = qmgr_get_page_type (page_p, tfile_vfid_p);
+  if (page_type == QMGR_UNKNOWN_PAGE)
+    {
+      assert (false);
+      return;
+    }
+
+  if (page_type == QMGR_TEMP_FILE_PAGE)
     {
       /* The list files came from list file cache have no tfile_vfid_p. */
       pgbuf_unfix (thread_p, page_p);
@@ -3424,6 +3470,8 @@ qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 #if defined (SERVER_MODE)
   else
     {
+      assert (page_type == QMGR_MEMBUF_PAGE);
+
       rv = pthread_mutex_lock (&tfile_vfid_p->membuf_mutex);
       if (tfile_vfid_p->membuf_thread_p)
 	{
@@ -3464,8 +3512,16 @@ qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 #if defined (SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+  QMGR_PAGE_TYPE page_type;
 
-  if (!qmgr_is_page_in_temp_file_buffer (page_p, tfile_vfid_p))
+  page_type = qmgr_get_page_type (page_p, tfile_vfid_p);
+  if (page_type == QMGR_UNKNOWN_PAGE)
+    {
+      assert (false);
+      return;
+    }
+
+  if (page_type == QMGR_TEMP_FILE_PAGE)
     {
       log_skip_logging (thread_p, addr_p);
       pgbuf_set_dirty (thread_p, page_p, free_page);
@@ -3473,6 +3529,8 @@ qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 #if defined (SERVER_MODE)
   else if (free_page == FREE)
     {
+      assert (page_type == QMGR_MEMBUF_PAGE);
+
       rv = pthread_mutex_lock (&tfile_vfid_p->membuf_mutex);
       if (tfile_vfid_p->membuf_thread_p)
 	{
@@ -4278,6 +4336,7 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 	      /* stop; return error */
 	      rc = ER_FAILED;
 	    }
+	  VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
 	}
 
       if (query_p->temp_vfid->next == query_p->temp_vfid)
@@ -5351,6 +5410,8 @@ qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p)
     {
       return;
     }
+
+  temp_file_p->membuf_last = -1;
 
   if (QMGR_IS_VALID_MEMBUF_TYPE (temp_file_p->membuf_type))
     {
