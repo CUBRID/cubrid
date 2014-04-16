@@ -27,9 +27,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#if !defined(WINDOWS)
+#if defined(WINDOWS)
+#include <io.h>
+#else /* WINDOWS */
 #include <unistd.h>
-#endif
+#endif /* !WINDOWS */
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #else
@@ -241,9 +243,9 @@ log_replay (char *infilename, char *outfilename)
     }
 
   assert (infp != NULL);
-  last_offset = lseek (fileno (infp), 0, SEEK_END);
+  last_offset = lseek (fileno (infp), (off_t) 0, SEEK_END);
 
-  lseek (fileno (infp), 0, SEEK_SET);
+  fseek (infp, (off_t) 0, SEEK_SET);
 
   linebuf_tstr = t_string_make (1024);
   if (linebuf_tstr == NULL)
@@ -1271,7 +1273,7 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower,
       return ER_FAILED;
     }
 
-  lseek (fileno (br_tmpfp), 0, SEEK_SET);
+  fseek (br_tmpfp, (off_t) 0, SEEK_SET);
   while (1)
     {
       res = get_temp_file_line (read_buf, read_buf_max, &diff_time, &endp);
@@ -1365,8 +1367,7 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower,
       goto error;
     }
 
-  lseek (fileno (br_tmpfp), 0, SEEK_SET);
-
+  fseek (br_tmpfp, (off_t) 0, SEEK_SET);
   while (1)
     {
       res = get_temp_file_line (read_buf, read_buf_max, &diff_time, &endp);
