@@ -277,6 +277,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
+				GenerateDebugInformation="true"
+				ProgramDatabaseFile="$(TargetDir)$(TargetName).pdb"
 			/>
 			<Tool
 				Name="VCALinkTool"
