@@ -26,1178 +26,1178 @@ $
 $set 1 MSGCAT_SET_GENERAL
 1 \n%1$s\n\n
 2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
-3 Thông tin bản quyền\n
-5 Giá trị đối số `%1$s' không phải số nguyên
-6 Giá trị đối số `%1$s' không phải floating
-7 Thiếu đối số `%1$s'
-8 Đối số `%1$s' trùng lặp
-9 Thiếu giá trị cho đối số `%1$s'
-10 Đối số `%1$s' không biết
-11 Đối số vị trí `%1$s' không mong đợi
-12 Không có định nghĩa đối số nào được đưa ra
-13 Không thể cấp phát kho lưu trữ cho phân tích cú pháp đối số
-14 Chuỗi đối số vượt quá độ dài tối đa: %1$s
-15 Số thông báo không hợp lệ %1$d trong catalog đối với phân tích cú pháp đối số
-16 [tùy chọn]
-17 Tùy chọn:
+3 Copyright Information\n
+5 Non integer argument value `%1$s'
+6 Non floating argument value `%1$s'
+7 Missing argument `%1$s'
+8 Duplicate argument `%1$s'
+9 Missing value for argument `%1$s'
+10 Unknown argument `%1$s'
+11 Unexpected positional argument `%1$s'
+12 No argument definitions given
+13 Couldn't allocate storage for argument parsing
+14 Argument string exceeds maximum length: %1$s
+15 Invalid message number %1$d within catalog for argument parsing
+16 [options]
+17 Options:
 
 $set 4 MSGCAT_SET_PARAMETER
-2 %s không phải là một thư mục.  Đang tạo %s trong ".".
-3 Không thể mở %1$s.  tệp tin cấu hình chưa được tạo.
-4 Không thể ghi dòng %d đến tệp tin cấu hình %s.
-6 Không thể truy cập tệp tin cấu hình hệ thống "%s": %s
-7 HOME chưa được thiết lập
-8 Tham số được yêu cầu "%1$s" không có giá trị.
-9 Không thể mở tệp tin cấu hình "%s": %s
-10 Tham số '%s' tại dòng %d trong tệp tin '%s' : 
-11 Biến số môi trường %1$s: 
-12 Từ khóa không nhận dạng được.
-13 Kiểu giá trị không khớp với kiểu tham số.
-14 Không thể cấp phát bộ nhớ cho giá trị kho lưu trữ.
-15 Giá trị chuỗi chưa kết thúc.
-16 Giá trị nằm ngoài phạm vi.
-17 Lỗi UNIX : %1$s
-18 Không có sẵn thông báo nào.
-19 Giá trị nằm ngoài phạm vi. Thiết lập lại về giá trị mặc định.
-20 Từ khóa = '%s'    Giá trị = %d    Giá trị mặc định = %d\n
-21 Từ khóa = '%s'    Giá trị = %f    Giá trị mặc định = %f\n
-22 Tham số không được chấp thuận
-23 Tham số '%s' và '%s' không thể được dùng cùng nhau.\n
-31 '%1$s' thông số:
+2 %1$s is not a directory.  Creating %2$s in ".".
+3 Cannot open %1$s.  configuration file not created.
+4 Unable to write line %1$d to configuration file %2$s.
+6 Can't access system configuration file "%1$s": %2$s
+7 HOME not set
+8 Required parameter "%1$s" has no value.
+9 Cannot open configuration file "%1$s": %2$s
+10 The '%1$s' parameter at line %2$d in file '%3$s' : 
+11 Environment variable %1$s: 
+12 Unrecognized keyword.
+13 Value type does not match parameter type.
+14 Cannot allocate memory to store value.
+15 Unterminated string value.
+16 Value is out of range.
+17 UNIX error: %1$s
+18 No message available.
+19 Value is out of range. Resetting to the default value.
+20 Keyword = '%1$s'    Value = %2$d    Default Value = %3$d\n
+21 Keyword = '%1$s'    Value = %2$f    Default Value = %3$f\n
+22 Deprecated parameter
+23 The '%1$s' and '%2$s' parameters can not be used together.\n
+31 The '%1$s' parameter:
 
 $set 5 MSGCAT_SET_ERROR
-1 Thiếu thông báo cho mã lỗi %1$d.
-2 Lỗi hệ thống nội tại: không có thêm thông tin cụ thể nào.
-3 Không đủ bộ nhớ ảo: không thể cấp phát %1$lld byte của bộ nhớ.
-4 Đã bị ngắt.
-5 Key = "%1$s" không được tìm thấy trong bảng hash "%2$s".
-6 Một bảng hash bộ nhớ NULL được cung cấp đến hàm bảng hash.
-7 Cố gắng để định dạng dung lượng đĩa "%1$s" với một giá trị %2$d không chính xác cho số trang.
-8 Không thể định dạng dung lượng đĩa "%1$s" với %2$d trang (%3$lld bytes).
-9 Không thể định dạng dung lượng đĩa "%1$s" với %2$d trang (%3$lld Kbytes) bởi vì không đủ không gian. Không gian có thể dùng hiện tại là %4$d trang (%5$lld Kbytes).
-10 Không thể gắn kết dung lượng đĩa "%1$s".
-11 Không thể gắn kết dung lượng đĩa "%1$s". Cơ sở dữ liệu "%2$s", mà dung lượng đĩa thuộc về, đang được sử dụng bởi người dùng %3$s trong tiến trình %4$d của máy chủ %5$s từ %6$s.
-12 Vấn đề khi gỡ gắn kết dung lượng "%1$s".
-13 Một lỗi I/O phát sinh khi đọc trang %1$d của bộ đĩa "%2$s".
-14 Một lỗi I/O phát sinh khi ghi trang %1$d của bộ đĩa "%2$s".
-15 Không thể ghi trang %1$d của bộ đĩa "%2$s" bởi vì không đủ không gian trong device hệ thống thao tác.
-16 Không thể đổi tên ổ đĩa "%1$s" thành "%2$s".
-17 Lỗi nội bộ: lấy pageid %1$d đã thôi cấp phát của ổ "%2$s".
-18 Tất cả các bộ đệm trang đã được cố định (LRU: %1$d).
-19 Lỗi nội bộ: pageptr = %1$p của trang %2$d của bộ đĩa "%3$s" chưa được cố định.
-20 Lỗi nội bộ: pageptr = %1$p không biết.
-21 Lỗi nội bộ: sector %1$d không biết của bộ đĩa "%2$s" không biết.
-22 Lỗi nội bộ: trang %1$d không biết của bộ đĩa "%2$s".
-23 Lỗi nội bộ: cố gắng thôi cấp phát trang hệ thống đĩa %1$d của bộ đĩa "%2$s".
-24 Gần như thiếu không gian trong bộ đĩa "%1$s". Tổng số trang = %2$d, tổng số trang còn trống = %3$d.
-25 Gần như thiếu không gian trong các bộ đĩa với dữ liệu là mục đích lưu trữ chính. Tổng số trang = %1$d, tổng số trang còn trống = %2$d.
-26 Gần như thiếu không gian trong các bộ đĩa với chỉ mục là mục đích lưu trữ chính. Tổng số trang = %1$d, tổng số trang trống = %2$d.
-27 Gần như thiếu không gian trong các bộ đĩa với mục đích lưu trữ generic.Tổng số trang = %1$d, tổng số trang trống = %2$d.
-28 Gần như thiếu không gian trong các bộ đĩa với dữ liệu tạm thời là mục đích lưu trữ chính. Tổng số trang = %1$d, tổng số trang trống = %2$d.
-29 Thông báo thiếu không gian cuối cùng cho bộ đĩa "%1$s". Tổng số trang = %2$d, tổng số trang trống = %3$d.
-30 Thông báo thiếu không gian cuối cùng cho bộ đĩa với dữ liệu là mục đích lưu trữ chính. Tổng số trang = %1$d, tổng số trang trống = %2$d.
-31 Thông báo thiếu không gian cuối cùng cho bộ đĩa với chỉ mục là mục đích lưu trữ chính. Tổng số trang = %1$d, tổng số trang trống = %2$d.
-32 Thông báo thiếu không gian cuối cùng cho bộ đĩa với mục đích lưu trữ generic.Tổng số trang = %1$d, tổng số trang trống = %2$d.
-33 Thông báo thiếu không gian cuối cùng cho bộ đĩa với dữ liệu tạm thời là mục đích lưu trữ chính. Tổng số trang = %1$d, tổng số trang trống = %2$d.
-34 Lỗi nội bộ: %1$d nthpage nằm ngoài phạm vi của tệp tin %2$d trong bộ đĩa "%3$s". Số trang hiện tại là %4$d.
-35 Lỗi nội bộ: mã định danh bộ đĩa %1$d không biết.
-36 Thiếu không gian đĩa trong cơ sở dữ liệu. Số trang đòi hỏi = %1$d.
-37 Thiếu không gian đĩa trong bộ đĩa "%1$s". Số trang đòi hỏi = %2$d.
-38 Lỗi nội bộ: Tệp tin VFID %1$d|%2$d không biết.
-39 Lỗi nội bộ: Trang %1$d|%2$d(bộ đĩa "%3$s") của tệp tin VFID %4$d|%5$d(bộ đĩa "%6$s") là không hợp lệ/ đã thôi cấp phát dựa theo bản đồ phân phát.
-40 Lỗi nội bộ: %1$d trang được đòi hỏi, %2$d trang được tìm thấy cho tệp tin VFID %3$d|%4$d(bộ đĩa "%5$s").
-41 Lỗi nội bộ: Trang %1$d|%2$d(bộ đĩa "%3$s") không phải một phần của tệp tin VFID %4$d|%5$d(bộ đĩa "%6$s").
-42 Không thể sắp xếp lại bản ghi chép đã neo trên trang %1$d của bộ đĩa "%2$s".
-43 Lỗi nội bộ: Trang %1$d của bộ đĩa "%2$s" có thể bị hỏng. %3$d bản ghi chép đã được tìm thấy khi %4$d được đòi hỏi.
-44 Không có không gian nào có sẵn trong trang đã được cắt xẻ %1$d của bộ đĩa "%2$s".
-45 Khe %1$d trên trang %2$d của bộ đĩa "%3$s" được cấp phát đến một bản ghi chép đã được neo. Một bản ghi chép mới không thể được chèn tại đây.
-46 Lỗi nội bộ: khe %1$d trên trang %2$d của bộ đĩa "%3$s" chưa được cấp phát.
-47 Không thể tạo một tệp tin heap trong bộ đĩa "%1$s".
-48 Truy cập đối tượng đã bị xóa %1$d|%2$d|%3$d.
-49 Lỗi nội bộ: lớp của đối tượng %1$d|%2$d|%3$d là không biết.
-50 Lỗi nội bộ: bản ghi chép tái định vị của đối tượng %1$d|%2$d|%3$d có thể bị hỏng.
-51 Lỗi nội bộ: đối tượng %1$d|%2$d|%3$d có thể bị hỏng.
-52 Lỗi nội bộ: địa chỉ đối tượng tràn %1$d|%2$d|%3$d có thể bị hỏng.
-53 Lấy đối tượng %1$d|%2$d|%3$d khi chỉ có OID của nó được gán.
-54 Lỗi nội bộ: cố gắng thao tác một đối tượng của trang %1$d dài. Kích cỡ tối đa cho phép cho một đối tượng là %2$d trang.
-55 Lỗi nội bộ: Một tham chiếu vòng tròn trang nhớ được phát hiện trên trang %1$d|%2$d của tệp tin heap %3$d|%4$d|%5$d.
-56 Lỗi nội bộ: extendible hashing file (Volid: %1$d Fileid: %2$d) page (Volid: %3$d Pageid: %4$d) không rõ đã được chỉ định.
-57 Key không tồn tại trong extendible hashing structure.
-58 Chuỗi "%1$s" quá dài để vừa với một trang đã cắt xẻ.
-59 Lỗi nội bộ: kiểu key được chỉ định %1$d không hợp lệ cho extendible hashing structure.
-60 Lỗi nội bộ: extendible hashing structure đã bị hỏng.
-61 Lỗi nội bộ: trang gốc thư mục của extendible hashing structure (Volid: %1$d Fileid: %2$d Pageid: %3$d) đã bị hỏng.
-62 Lỗi nội bộ: sắp xếp bản ghi chép %1$d (kích cỡ %2$d) không vừa trong một trang; kích cỡ tối đa cho phép là %3$d.
-63 Lỗi nội bộ: một trang tạm thời đã bị hỏng trong quá trình sắp xếp.
-64 Lớp "%1$s" không biết .
-65 Lớp "%1$s" đã tồn tại.
-66 Lỗi nội bộ: thao tác bắt buộc %1$d không biết cho đối tượng %2$d|%3$d|%4$d.
-67 Lỗi nội bộ: một tệp tin heap chưa được cấp phát đến đối tượng kho lưu trữ %1$d|%2$d|%3$d.
-68 Lỗi nội bộ: tên lớp khác cho lớp với oid = %1$d|%2$d|%3$d đã được tìm thấy. Các tên lớp được tìm thấy là "%4$s", "%5$s" đang sử dụng classname hash table và heap, theo thứ tự.
-69 Lỗi nội bộ: Các mã định danh đối tượng lớp khác được tìm thấy cho lớp với tên "%1$s". Các OID được tìm thấy là %2$d|%3$d|%4$d, %5$d|%6$d|%7$d đang sử dụng classname hash table và heap, respectively.
-70 Lỗi nội bộ: Lớp với tên "%1$s" và oid = %2$d|%3$d|%4$d không tồn tại trong classname hash table.
-71 Lỗi nội bộ: Lớp với tên "%1$s" và oid = %2$d|%3$d|%4$d không tồn tại trong heap của nó.
-72 Giao dịch của bạn  (chỉ mục %1$d, %2$s@%3$s|%4$d) đã bị đơn phương bỏ dở bởi hệ thống.
-73 Giao dịch của bạn  (chỉ mục %1$d, %2$s@%3$s|%4$d) tạm ngưng chờ trên khóa %5$s trên đối tượng %6$d|%7$d|%8$d. Bạn đang chờ người dùng %9$s để kết thúc.
-74 Giao dịch của bạn  (chỉ mục %1$d, %2$s@%3$s|%4$d) tạm ngưng chờ trên khóa %5$s trên lớp %6$s. Bạn đang chờ người dùng %7$s để kết thúc.
-75 Giao dịch của bạn  (chỉ mục %1$d, %2$s@%3$s|%4$d) tạm ngưng chờ trên khóa %5$s trên thực thể %6$d|%7$d|%8$d of class %9$s. Bạn đang chờ người dùng %10$s để kết thúc.
-76 Giao dịch của bạn  (chỉ mục %1$d, %2$s@%3$s|%4$d) tạm ngưng chờ trên khóa %5$s trên trang %6$d|%7$d. Bạn đang chờ người dùng %8$s để giải phóng khóa trang.
-77 Lỗi nội bộ: tất cả bộ đệm bị cố định.
-78 Lỗi nội bộ: một lỗi I/O phát sinh khi đọc trang bản ghi logic %1$lld (trang vật lý %2$lld) của "%3$s".
-79 Lỗi nội bộ: một lỗi I/O phát sinh khi ghi trang bản ghi logic %1$lld (trang vật lý %2$lld) của "%3$s".
-80 Không đủ không gian trong thiết bị hệ điều hành khi ghi trang bản ghi logic %1$lld (trang vật lý %2$lld) của "%3$s". Không thể ghi nhiều hơn %4$d bytes.
-81 Lỗi nội bộ: trang bản ghi logic %1$lld có thể bị hỏng.
-82 Không thể lắp đặt dung lượng đĩa bản ghi/tệp tin "%1$s".
-83 Độ dài của đường dẫn "%1$s" cộng với độ dài tên bản ghi prefix "%2$s" là quá dài; chiều dài kết hợp phải nhỏ hơn %3$d.
-84 Độ dài của tên bản ghi prefix "%1$s" là quá dài; chiều dài phải nhỏ hơn %2$d.
-85 Tên prefix "%1$s" không giống với "%2$s" trong đĩa bản ghi. Bản ghi này có thể đã bị đổi tên ở bên ngoài miền cơ sở dữ liệu.
-86 Cơ sở dữ liệu không tương thích với phát hành "%1$s" hiện tại "%2$s".
-87 Có các hành động khôi phục cần phải phục hồi bằng cách sử dụng "%1$s" phát hành "%2$s" thay vì phát hành "%3$s". Sau khi khôi phục, cơ sở dữ liệu có thể được chạy trên phát hành "%4$s".
-88 Lỗi nội bộ: Chuỗi phát hành "%1$s" không thể vượt quá %2$d. Phải thay đổi bản ghi đề mục.
-89 Bản chi "%1$s" không thuộc về cơ sở dữ liệu đã cho.
-90 Redo logging luôn luôn là một thao tác logging cấp độ trang. Một con trỏ trang dữ liệu phải được đưa ra như một phần của địa chỉ.
-91 Postpone logging luôn luôn là một thao tác logging cấp độ trang. Một con trỏ trang dữ liệu phải được đưa ra như một phần của địa chỉ.
-92 Compensate logging luôn luôn là một thao tác logging cấp độ trang.  Một con trỏ trang dữ liệu phải được đưa ra như một phần của địa chỉ.
-93 Cảnh báo: Redo logging bị bỏ qua trong quá trình khôi phục làm lại và quay lui bình thường.
-94 Cảnh báo: Postpone logging bị bỏ qua trong quá trình khôi phục làm lại và quay lui bình thường.
-95 Cảnh báo: undo logging bị bỏ qua trong quá trình khôi phục và quay lui bình thường.
-96 Khôi phục phương tiện có thể cần thiết trong bộ đĩa "%1$s".
-97 Lỗi nội bộ: không thể tìm thấy trang bản ghi %1$lld trong lưu trữ bản ghi.
-98 Không thể tạo bản ghi lưu trữ "%1$s" để lưu trữ các trang từ %2$lld đến  %3$lld.
-99 Không thể tạo tệp tin thông tin thư mục sao lưu "%1$s".
-100 Không thể sao lưu cơ sở dữ liệu "%1$s".
-101 Tệp tin người dùng "%1$s" không biết.
-102 Tệp tin "%1$s" không có đủ các mục:đòi hỏi %2$d mục.
-103 Tệp tin "%1$s" dường như có các mục chưa theo thứ tự. Mục %2$d với giá trị: %3$d %4$s %5$s, được tìm thấy khi mục với giá trị %6$d %7$s được mong đợi.
-104 Tệp tin "%1$s" dường như có một mục không chính xác cho tên cơ sở dữ liệu (bộ đĩa chính). Mục %2$d với giá trị: %3$d %4$s %5$s, được tìm thấy khi mục với giá trị %6$d %7$s %8$s được mong đợi.
-105 Không thể truy cập tệp tin sao lưu "%1$s". Khôi phục hoặc Sao lưu bị hủy.
-106 Không thể chuẩn bị để cam kết giao dịch hiện tại với mã định danh giao dịch toàn cục %1$d bởi vì mã định danh giao dịch đó đang được dùng bởi giao dịch.
-107 Không có giao dịch phân phối toàn cục nào liên kết với mã định danh giao dịch %1$d.
-108 Giao dịch hiện tại %1$d phải được cam kết hoặc bỏ dở trước khi tìm cách tham gia vào giao dịch phân phối có mã định danh toàn cục %2$d.
-109 Giao dịch của bạn  %1$d đã bị đơn phương bỏ dở bởi hệ thống bởi vì một site tham gia (từ xa) đi xuống hoặc đơn phương bỏ dở giao dịch.
-110 Giá trị cấp độ cô lập phải nằm giữa %1$d và %2$d.
-111 Giao dịch của bạn đã bị bỏ dở bởi hệ thống bởi vì server lỗi hoặc chế độ thay đổi.
-112 Máy chủ "%1$s" chưa được cho phép để chạy cơ sở dữ liệu.
-113 Không thể khởi động lại/khởi tạo server cơ sở dữ liệu. %1$s
-114 Không thể diễn giải "%1$s" như một cơ sở dữ liệu. Bộ đĩa/tệp tin cơ sở dữ liệu có thể đã bị đổi tên/sao chép ở bên ngoài miền cơ sở dữ liệu.
-115 Cơ sở dữ liệu "%1$s" đã tồn tại.
-116 Cơ sở dữ liệu "%1$s" là không biết, hoặc tệp tin "databases.txt" không thể được truy cập.
-117 Tên đường dẫn tuyệt đối cho cơ sở dữ liệu là quá dài. Chiều dài kết hợp của đường dẫn "%1$s" cộng với tên "%2$s" là %3$d; chiều dài kết hợp phải nhỏ hơn %4$d.
-118 Thất bại khi xác định vị trí thư mục hiện tại đang làm việc.
-119 Không thể tìm thấy tên máy chủ cục bộ.
-120 Số bộ đĩa đĩa tối đa (%1$d) đã bị vượt quá.
-121 Cố gắng gỡ bỏ "%1$s" một bộ đĩa thường trực từ cơ sở dữ liệu.
-122 Không thể truy cập catalog thông báo hệ thống.
-123 Không thể tạo %1$s cho cơ sở dữ liệu "%2$s". Hãy tham khảo "%3$s" để biết thêm thông tin.
-124 Bộ đĩa "%1$s" đã tồn tại.
-125 Phần mở rộng bộ đĩa tự động "%1$s" của trang %2$d và mục đích lưu trữ generic đã được tạo.
-126 Mục đích "%1$s" không biết được đưa ra trên dòng %2$d.
-127 Giá trị %1$d không chính xác cho số trang được đưa ra trên dòng %2$d.
-128 Số trang chưa được đưa ra trên dòng %1$d.
-129 Mã thông báo "%1$s" không biết được tìm thấy trên dòng %2$d.
-130 Không đủ bộ nhớ ảo.
-131 Lỗi hệ thống cơ sở dữ liệu.
-132 Tính năng không được thực hiện trong phát hành hiện tại: %1$s.
-133 Tập hợp không đổi lồng nhau không được phép.
-134 Không được phép dùng cả thuộc tính lớp và thuộc tính không-lớp trong một UPDATE đơn.
-135 Câu lệnh không hợp lệ cho cột oid: %1$s.
-136 Hàm số chưa thực hiện "%1$s".
-137 Đối tượng ủy quyền bị hỏng.
-138 Không tìm thấy lớp cấp phép "%1$s".
-139 Lỗi truy cập trong thuộc tính cấp phép "%2$s" của lớp "%1$s".
-140 Thao tác "%1$s" chỉ có thể thực thi bởi DBA hoặc một thành viên nhóm DBA.
-141 Không thể thêm "%1$s" như một thành viên của "%2$s".
-142 Thêm thành viên dẫn đến hệ thống phân cấp người dùng trở thành một đồ thị vòng tròn.
-143 Bắt gặp một lớp không có chủ sở hữu.
-144 Không thể truy cập đối tượng người dùng.
-145 Không thể đưa ra lệnh GRANT/REVOKE cho chính bạn.
-146 Không thể đưa ra GRANT/REVOKE cho chủ sở hữu của một lớp.
-147 Không có tùy chọn GRANT.
-148 Không thể có được khóa ghi trên đối tượng cấp phép.
-149 Không thể tạo thực thể của đối tượng cấp phép.
-150 Không thể hủy đặc quyền từ chính nó.
-151 Không thể hủy đặc quyền từ chủ sở hữu của một lớp.
-152 Không tìm thấy GRANT.
-153 Không có đặc quyền cấp phép  nào có hiệu lực cho cơ sở dữ liệu.
-154 Cài đặt cấp phép chưa hoàn thành - không có đặc quyền cấp phép nào có hiệu lực cho cơ sở dữ liệu.
-155 Gốc đã cấp phép.
-156 Cấp phép thất bại.
-157 Cấp phép SELECT thất bại.
-158 Cấp phép ALTER thất bại.
-159 Cấp phép UPDATE thất bại.
-160 Cấp phép INSERT  thất bại.
-161 Cấp phép DELETE thất bại.
-162 Cấp phép INDEX thất bại.
-163 Cấp phép EXECUTE thất bại.
-164 Người dùng  "%1$s" đã tồn tại.
-165 Người dùng User "%1$s" không hợp lệ.
-166 Người dùng không hợp lệ được chỉ định.
-167 DBA, các thành viên của nhóm DBA và chủ sở hữu lớp có thể thực thi thao tác.
-168 Không tìm thấy thành viên.
-169 Không thể gỡ bỏ người dùng %1$s từ cơ sở dữ liệu.
-170 Không có người dùng nào đăng nhập.
-171 Mật mã không chính xác hoặc thiếu.
-172 Chuỗi mật khẩu không được có nhiều hơn 31 byte.
-173 Không thể xác định vị trí tệp tin cơ sở dữ liệu "%1$s".
-174 Không thể có được truy cập ghi đến tệp tin cơ sở dữ liệu "%1$s".
-175 Tệp tin cơ sở dữ liệu bị định dạng tồi "%1$s".
-176 Lỗi chuyển đổi trong định dạng ngày tháng.
-177 Không thể tạo large object cho kho lưu trữ nội tại.
-178 OID tạm thời bị bắt gặp không có MOP.
-179 Miền "%1$s" không tương thích với miền "%2$s".
-180 Miền "%1$s" của giá trị đã cung cấp không tương thích với miền đích đến "%2$s".
-181 Không thể ép buộc giá trị của miền "%1$s" đến miền "%2$s".
-182 Không thể ép buộc giá trị của miền "%1$s" đến miền "%2$s" mà không tràn.
-183 Số lượng dữ liệu nhận được không mong đợi; đòi hỏi %1$d, nhận được  %2$d.
-184 Không thể cấp phát bộ đệm liên lạc.
-185 Lỗi khi nhận dữ liệu từ máy khách.
-186 Lỗi khi nhận dữ liệu từ server.
-187 Bộ đệm liên lạc không được dùng.
-188 Cơ sở dữ liệu "%1$s" không biết.
-189 Tên máy chủ "%1$s" không hợp lệ.
-190 Máy chủ Server chưa được xác định.
-191 Không thể kết nối đến server "%1$s" trên "%2$s".
-192 Không thể tải tệp tin cấu hình mạng.
-193 Server nhận được lệnh tắt máy từ máy khách.
-194 Server không rõ đòi hỏi id %1$d.
-195 Lỗi liên lạc server: %1$s.
-196 Tên Server chưa được xác định.
-197 Không thể liên lạc với server chủ.
-198 Nhận được bộ đệm quá nhỏ, dữ liệu đã bị cắt bỏ.
-199 Server không còn đáp ứng.
-200 Không đúng cách loại bỏ các thiết lập từ đối tượng sau khi miễn phí.
-201 Đã gỡ bỏ mục bảng UNIQUE không chính xác.
-202 Thuộc tính "%1$s" không được tìm thấy.
-203 Giá trị cho thuộc tính "%1$s" phải là kiểu "%2$s", không phải kiểu "%3$s".
-204 Hàm số được gọi có đối số bị thiếu hoặc không hợp lệ.
-205 Thuộc tính "%1$s" không thể là NULL.
-206 Thuộc tính "%1$s" không có ràng buộc UNIQUE.
-207 Lớp "%1$s" có một đối tượng kích cỡ bằng không.
-208 Không tìm thấy phương pháp "%1$s".
-209 Không có thuộc tính hoặc phương pháp nào với tên "%1$s" được tìm thấy.
-210 Lỗi nội bộ: xử lý bản mẫu đối tượng.
-211 Thuộc tính đã bị xóa trong khi xây dựng bản mẫu đối tượng.
-212 Thuộc tính "%1$s" vi phạm ràng buộc UNIQUE.
-213 Bắt gặp mục bảng UNIQUE không hợp lệ.
-214 Một xung đột miền tồn tại trong thuộc tính "%1$s".
-215 Không tìm thấy thuộc tính với id %1$d .
-216 Thẻ quyền sở hữu đối tượng trên giá trị không hợp lệ.
-217 Thao tác chỉ có thể được thực thi trên các đối tượng lớp.
-218 Đối tượng không hợp lệ trong db_get path expression.
-219 db_get path expression không hợp lệ.
-220 Tập hợp không hợp lệ trong db_get path expression.
-221 Chỉ mục tập hợp không hợp lệ trong db_get path expression.
-222 Tìm cách gán giá trị chuỗi lớn hơn %2$d ký tự đến thuộc tính "%1$s".
-223 Giá trị %2$d quá lớn đối với thuộc tính smallint "%1$s".
-224 Một cơ sở dữ liệu chưa được khởi động lại.
-225 Thiếu giá trị cho thuộc tính "%1$s" với ràng buộc NOT NULL.
-226 Danh sách cấu phần rỗng trong lớp.
-227 Tìm cách gán giá trị đến thuộc tính "%1$s" nhiều hơn một lần.
-228 Phương pháp "%1$s" được gọi với đối số %2$d. Hệ thống cho phép tối đa %3$d đối số.
-229 Phương pháp "%1$s" đòi hỏi đối số %2$d nằm trong miền "%3$s". Một giá trị không hợp lệ của miền "%4$s" đã được đưa ra.
-230 Thuộc tính "%1$s" không thể được gán một chuỗi với độ dài %2$d. Độ dài của chuỗi tối đa cho phép %3$d.
-231 Thao tác API không hợp lệ đã cố gắng trên một đối tượng tạm thời.
-232 Không được phép dùng các bản mẫu đối tượng qua nhiều giao dịch.
-233 Không thể tạo lớp với tên kiểu cơ bản "%1$s".
-234 Không tìm thấy tệp tin phương pháp "%1$s".
-235 %1$d hàm số phương pháp chưa được giải quyết sau khi kết nối.
-236 Phương pháp chưa được giải quyết "%1$s".
-237 Một vài vấn đề đã bị bắt gặp trong quá trình kết nối động.
-238 Không thể truy cập tệp tin phương pháp "%1$s".
-239 Không tìm thấy thuộc tính "%1$s" .
-240 Không tìm thấy phương pháp "%1$s" .
-241 Không có thuộc tính hoặc phương pháp nào có tên "%1$s".
-242 Không tìm thấy signature cho %2$s cho phương pháp "%1$s".
-243 Đối số %2$d của phương pháp "%1$s" chưa được định nghĩa.
-244 Tên miền "%1$s" không phải là tên của một lớp hoặc kiểu cơ bản.
-245 Tên "%1$s" đã được sử dụng như một tên thuộc tính.
-246 Tên "%1$s" đã được sử dụng như một tên phương pháp.
-247 Đối số không hợp lệ đến hàm số nội tại bộ quản lý lược đồ.
-248 Miền thuộc tính "%1$s" không phù hợp để sử dụng với ràng buộc %2$s.
-249 Thao tác được đòi hỏi trên lớp "%1$s" chỉ có thể thực thi trước khi các thực thể được tạo.
-250 Không thể tạo chỉ mục trên thuộc tính "%1$s", được định nghĩa với một giá trị dùng chung.
-251 signature %2$s đã tồn tại cho phương pháp "%1$s".
-252 Thuộc tính "%1$s" phải có một tập hợp miền cho thao tác đó.
-253 Thuộc tính "%1$s" không thể được định nghĩa với tập hợp miền lồng nhau.
-254 Không thể gỡ bỏ miền "%2$s" từ thuộc tính "%1$s".
-255 Thuộc tính "%1$s" không phải là một miền có kích thước có thể biến đổi.
-256 Lớp cao cấp đã tồn tại.
-257 Thêm lớp cao cấp sẽ dẫn đến các vòng tròn trong hệ thống phân cấp lớp.
-258 Không tìm thấy lớp cao cấp.
-259 Nhiều chữ ký đã tồn tại cho phương pháp "%1$s".
-260 Đối số %2$d của phương pháp "%1$s" không phải một tập hợp miền.
-261 Không tìm thấy nghị quyết cho "%1$s".
-262 Miền giá trị "%2$s" không phù hợp cho thuộc tính "%1$s".
-263 Hư hỏng của Bộ quản lý lược đồ nội tại đã được phát hiện.
-264 Bí danh "%2$s" cho thuộc tính/phương pháp "%1$s" không phải duy nhất.
-265 Thuộc tính shadowing "%1$s" có miền xung đột "%2$s".
-266 Xung đột tên trên thuộc tính "%1$s" với lớp "%2$s" và "%3$s".
-267 Phương pháp shadowing "%1$s" có chữ ký xung đột.
-268 Xung đột tên trên phương pháp "%1$s" với lớp "%2$s" và "%3$s".
-269 Không thể định nghĩa chỉ mục trên miền "%1$s".
-270 Không thể định nghĩa ràng buộc UNIQUE trên miền "%1$s".
-271 Phát hiện vòng tròn trong hệ thống phân cấp lớp; "%1$s" là một lớp cao cấp của "%2$s".
-272 Chỉ mục "%2$s" đã được định nghĩa cho lớp "%1$s".
-273 Chỉ mục "%1$s" không tồn tại.
-274 Ký tự không hợp lệ trong tên: "%1$s".
-275 Thao tác không hợp lệ trên thuộc tính "%1$s", thừa kế từ lớp "%2$s".
-276 Thao tác không hợp lệ trên phương pháp "%1$s", thừa kế từ lớp "%2$s".
-277 Thao tác không hợp lệ trên "%1$s", thừa kế từ lớp "%2$s".
-278 Lớp "%4$s" có miền không tương thích cho "%1$s", thừa kế từ các lớp "%2$s" và "%3$s".
-279 Trong lớp "%4$s", "%1$s" thừa kế từ lớp "%2$s" không thể được sử dụng như yêu cầu. Định nghĩa từ lớp "%3$s" có thêm miền cụ thể.
-280 Trong lớp "%3$s", "%1$s" không thể được thừa kế từ lớp "%2$s" bởi vì có một định nghĩa cục bộ với miền không tương thích.
-281 Trong lớp"%3$s", "%1$s" thừa kế từ lớp "%2$s" được lập bí danh nhưng không thể thay thế từ một nguồn khác đã được tìm thấy.
-282 Trong lớp "%4$s", "%1$s" thừa kế từ lớp "%3$s" không thể phục vụ như một bí danh thay thế cho lớp "%2$s". Các miền không tương thích.
-283 Trong lớp "%4$s", "%1$s" thừa kế từ lớp "%3$s" không thể phục vụ như một bí danh thay thế cho lớp "%2$s". Nó có ít nhất một miền được chỉ định.
-284 Không thể yêu cầu thừa kế của "%1$s" bởi vì nó được định nghĩa một cách cục bộ trong lớp.
-285 Không thể sử dụng "%1$s" như một bí danh cho cấu phần được thừa kế "%2$s" bởi vì đã có một cấu phần được định nghĩa một cách cục bộ với tên đó.
-286 Không thể sử dụng  "%1$s" như một bí danh cho "%2$s" of "%3$s". Một cấu phần với tên đó đã được thừa kế từ "%4$s".
-287 Trong lớp "%1$s", không thể định nghĩa thuộc tính "%2$s" bởi vì nó sẽ đổ bóng một phương pháp được thừa kế từ "%3$s".
-288 Trong lớp "%1$s", không thể định nghĩa phương pháp "%2$s" bởi vì nó sẽ đổ bóng một thuộc tính được thừa kế từ "%3$s".
-289 Lớp con "%1$s" không thể thừa kế phương pháp "%2$s" từ lớp "%3$s" bởi vì đã có một thuộc tính với tên đó.
-290 Lớp con "%1$s" không thể thừa kế thuộc tính "%2$s" từ lớp "%3$s" bởi vì đã có một phương pháp với tên đó.
-291 "%1$s" được định nghĩa trong lớp "%2$s" như một thuộc tính và trong lớp "%3$s" như một phương pháp.
-292 Không cư trú đặc tả với chỉ mục "%1$s".
-293 Thao tác không được cho phép cho kiểu lớp này.
-294 Biến số môi trường chưa định nghĩa "%1$s" được tham chiếu trong tệp tin phương pháp.
-295 Không thể sửa đổi lớp "%1$s". Catalog hệ thống không đủ không gian. Để lấy lại không gian, nén cơ sở dữ liệu với tiện ích compactdb.
-296 Danh sách thuộc tính không hợp lệ đã bị bắt gặp.
-297 Tên bí danh "%1$s" được sử dụng nhiều hơn một lần.
-298 Trong lớp  "%1$s", một nghị quyết cho "%2$s" of "%3$s"' không được cho phép. Lớp đó không phải là một lớp cao cấp.
-299 "%1$s" là một từ dành riêng và không thể được sử dụng như một thuộc tính, phương pháp, hoặc tên lớp.
-300 Thuộc tính "%1$s" không thể được định nghĩa với ràng buộc DEFAULT và UNIQUE cùng nhau.
-301 Thuộc tính "%1$s" không thể được định nghĩa với ràng buộc độ dài của %2$d. Ràng buộc độ dài tối đa là %3$d.
-302 Không thể thêm phần tử cho một tập hợp.
-303 Giá trị đã tồn tại trong tập hợp.
-304 Chỉ mục set %1$d nằm ngoài giới hạn.
-305 Chỉ mục sequence %1$d nằm ngoài giới hạn.
-306 Thao tác được yêu cầu chỉ có thể được thực thi theo sequence.
-307 Thao tác được yêu cầu chỉ có thể được thực thi theo set.
-308 Giá trị phần tử không nằm trong miền của tập hợp.
-309 Chỉ mục phần tử tập hợp không hợp lệ được đưa ra: %1$d.
-310 Không tìm thấy phần tử trong set.
-311 Không tìm thấy phần tử trong sequence.
-312 "%1$s" không phải là một tập hợp miền.
-313 Bộ đệm đối tượng hụt trong khi đang đọc.
-314 Bộ đệm đối tượng tràn trong khi đang ghi.
-315 Bắt gặp định nghĩa metaclass không hợp lệ.
-316 Kích cỡ bộ chuyển đổi tính toán không khớp, đòi hỏi %1$d tính toán %2$d.
-317 Bắt gặp đại diện đĩa không hợp lệ cho lớp  "%1$s".
-318 Thiếu đồng bộ trong quá trình tải đối tượng. Cơ sở dữ liệu có thể bị hỏng hoặc hết hạn.
-319 Bỏ qua phần mở rộng thuộc tính không biết.
-320 Bắt gặp đại diện đĩa hỏng của đối tượng.
-321 Phát hiện khả năng hỏng hóc trong vùng làm việc.
-322 Không tìm thấy MOP trong vùng làm việc.
-323 Cố gắng nâng cấp MOP không-tạm thời trong vùng làm việc.
-324 Đối tượng được tìm thấy trong vùng làm việc mà không có lớp.
-325 Cố gắng thu thập rác một MOP trong danh sách bẩn.
-326 Thay đổi con trỏ lớp cho đối tượng trong vùng làm việc.
-327 Không thể tạo MOP với NULL OID.
-328 Thực thể bị bắt gặp trong vùng làm việc mà không có lớp.
-329 Kết nối danh sách đối tượng không được cấp phát trong vùng làm việc.
-330 Vi phạm pin vùng làm việc.
-331 Không thể cấp phát khối vùng làm việc từ OS, không đủ bộ nhớ ảo. Đang bỏ dở giao dịch.
-332 Ước tính kích cỡ vùng làm việc ban đầu đã bị vượt quá. Một phần mở rộng tự động đã được tạo ra.
-333 Không đủ bộ nhớ trong quá trình cấp phát lưu trữ vùng làm việc. Bỏ dở giao dịch.
-334 Cố gắng cấp phát của %1$d bytes lớn hơn kích cỡ khối làm việc tối đa. Thử điều chỉnh tham số max_block_size. Giao dịch đã bị bỏ dở.
-335 Bỏ qua cố gắng thả tự do đối tượng chưa được cấp phát trong vùng làm việc.
-336 Bỏ qua cố gắng thả tự do một đối tượng nhiều hơn một lần.
-337 Bỏ qua cố gắng để cấp phát đối tượng với kích cỡ âm.
-338 Mã định danh mục nhập bản đồ vượt quá.
-339 Không thể thoát đoạn mã tới hạn, bởi vì nó không được sở hữu bởi giao dịch %1$d.
-340 Không thể phân nhánh tiến trình con.
-341 Không thể thực thi tiến trình con.
-342 Không thể đổi nhóm tiến trình.
-343 Request_id đã được dùng.
+1 Missing message for error code %1$d.
+2 Internal system failure: no more specific information is available.
+3 Out of virtual memory: unable to allocate %1$lld memory bytes.
+4 Has been interrupted.
+5 Key = "%1$s" was not found in hash table "%2$s".
+6 A NULL memory hash table was supplied to a hash table function.
+7 Trying to format disk volume "%1$s" with an incorrect value %2$d for number of pages.
+8 Unable to format disk volume "%1$s" with %2$d pages (%3$lld bytes).
+9 Unable to format disk volume "%1$s" with %2$d pages (%3$lld Kbytes) due to insufficient space. Current space available is %4$d pages (%5$lld Kbytes).
+10 Unable to mount disk volume "%1$s".
+11 Unable to mount disk volume "%1$s". The database "%2$s", to which the disk volume belongs, is in use by user %3$s on process %4$d of host %5$s since %6$s.
+12 Problems dismounting volume "%1$s".
+13 An I/O error occurred while reading page %1$d of volume "%2$s".
+14 An I/O error occurred while writing page %1$d of volume "%2$s".
+15 Unable to write page %1$d of volume "%2$s" due to insufficient space in operating system device.
+16 Unable to rename disk volume "%1$s" to "%2$s".
+17 Internal error: fetching deallocated pageid %1$d of volume "%2$s".
+18 All page buffers are fixed (LRU: %1$d).
+19 Internal error: pageptr = %1$p of page %2$d of volume "%3$s" is not fixed.
+20 Internal error: unknown pageptr = %1$p.
+21 Internal error: unknown sector %1$d of volume "%2$s".
+22 Internal error: unknown page %1$d of volume "%2$s".
+23 Internal error: trying to deallocate disk system page %1$d of volume "%2$s".
+24 Almost out of space in volume "%1$s". Total number of pages = %2$d, total number of free pages = %3$d.
+25 Almost out of space in volumes with data as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
+26 Almost out of space in volumes with index as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
+27 Almost out of space in volumes with generic storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
+28 Almost out of space in volumes with temporary data as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
+29 Last out of space notification for volume "%1$s". Total number of pages = %2$d, total number of free pages = %3$d.
+30 Last out of space notification for volumes with data as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
+31 Last out of space notification for volumes with index as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
+32 Last out of space notification for volumes with generic storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
+33 Last out of space notification for volumes with temporary data as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
+34 Internal error: %1$d nthpage is out of range for file %2$d in volume "%3$s". Current number of pages are %4$d.
+35 Internal error: Unknown volume identifier %1$d.
+36 Out of disk space in database. Number of requested page(s) = %1$d.
+37 Out of disk space in volume "%1$s". Number of requested page(s) = %2$d.
+38 Internal error: Unknown file VFID %1$d|%2$d.
+39 Internal error: Page %1$d|%2$d(volume "%3$s") of file VFID %4$d|%5$d(volume "%6$s") is invalid/deallocated according to allocation map.
+40 Internal error: %1$d expected pages, %2$d found pages for file VFID %3$d|%4$d(volume "%5$s").
+41 Internal error: Page %1$d|%2$d(volume "%3$s") is not part of file VFID %4$d|%5$d(volume "%6$s").
+42 Cannot reorder anchored records on page %1$d of volume "%2$s".
+43 Internal error: The page %1$d of volume "%2$s" may be corrupted. %3$d records was found when %4$d was expected.
+44 No space available in slotted page %1$d of volume "%2$s".
+45 Slot %1$d on page %2$d of volume "%3$s" is allocated to an anchored record. A new record cannot be inserted here.
+46 Internal error: slot %1$d on page %2$d of volume "%3$s" is not allocated.
+47 Unable to create a heap file in volume "%1$s".
+48 Accessing deleted object %1$d|%2$d|%3$d.
+49 Internal error: class of object %1$d|%2$d|%3$d is unknown.
+50 Internal error: relocation record of object %1$d|%2$d|%3$d may be corrupted.
+51 Internal error: object %1$d|%2$d|%3$d may be corrupted.
+52 Internal error: object overflow address %1$d|%2$d|%3$d may be corrupted.
+53 Fetching object %1$d|%2$d|%3$d when only its OID has been assigned.
+54 Internal error: trying to manipulate an object of %1$d pages long. The maximum size allowed for an object is %2$d pages.
+55 Internal error: A page cycle reference was detected on page %1$d|%2$d of heap file %3$d|%4$d|%5$d.
+56 Internal error: unknown extendible hashing file (Volid: %1$d Fileid: %2$d) page (Volid: %3$d Pageid: %4$d) was specified.
+57 Key does not exist in the extendible hashing structure.
+58 String "%1$s" is too long to fit in a slotted page.
+59 Internal error: the specified key type %1$d is not valid for the extendible hashing structure.
+60 Internal error: the extendible hashing structure has been corrupted.
+61 Internal error: the directory root page of the extendible hashing structure (Volid: %1$d Fileid: %2$d Pageid: %3$d) has been corrupted.
+62 Internal error: sorting record %1$d (size %2$d) does not fit in a page; the maximum allowable size is %3$d.
+63 Internal error: a temporary page was corrupted during sorting.
+64 Unknown class "%1$s".
+65 Class "%1$s" already exists.
+66 Internal error: unknown force operation %1$d for object %2$d|%3$d|%4$d.
+67 Internal error: a heap file has not been allocated to store object %1$d|%2$d|%3$d.
+68 Internal error: different classnames for class with oid = %1$d|%2$d|%3$d were found. Found classnames are "%4$s", "%5$s" using classname hash table and heap, respectively.
+69 Internal error: different class object identifiers were found for class with name "%1$s". Found OIDS are %2$d|%3$d|%4$d, %5$d|%6$d|%7$d using classname hash table and heap, respectively.
+70 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in classname hash table.
+71 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in its heap.
+72 Your transaction (index %1$d, %2$s@%3$s|%4$d) has been unilaterally aborted by the system.
+73 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d. You are waiting for user(s) %9$s to finish.
+74 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s. You are waiting for user(s) %7$s to finish.
+75 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s. You are waiting for user(s) %10$s to finish.
+76 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s on page %6$d|%7$d. You are waiting for user(s) %8$s to release the page lock.
+77 Internal error: all buffers are fixed.
+78 Internal error: an I/O error occurred while reading logical log page %1$lld (physical page %2$lld) of "%3$s".
+79 Internal error: an I/O error occurred while writing logical log page %1$lld (physical page %2$lld) of "%3$s".
+80 Insufficient space in operating system device when writing logical log page %1$lld (physical page %2$lld) of "%3$s". Could not write more than %4$d bytes.
+81 Internal error: logical log page %1$lld may be corrupted.
+82 Unable to mount log disk volume/file "%1$s".
+83 Length of path "%1$s" plus length of prefix logname "%2$s" is too long; the combined length must be less than %3$d.
+84 Length of prefix logname "%1$s" is too long; the length must be less than %2$d.
+85 The prefix name "%1$s" is not the same as "%2$s" on the log disk. The log may have been renamed outside the database domain.
+86 Database is incompatible with current "%1$s" release "%2$s".
+87 There are recovery actions that must recovered using "%1$s" release "%2$s" instead of release "%3$s". After the recovery, the database can be run on release "%4$s".
+88 Internal error: Release string "%1$s" cannot exceed %2$d. Must change header log.
+89 Log "%1$s" does not belong to the given database.
+90 Redo logging is always a page level logging operation. A data page pointer must be given as part of the address.
+91 Postpone logging is always a page level logging operation. A data page pointer must be given as part of the address.
+92 Compensate logging is always a page level logging operation. A data page pointer must be given as part of the address.
+93 Warning: redo logging is ignored during redo recovery and normal rollbacks.
+94 Warning: postpone logging is ignored during redo recovery and normal rollbacks.
+95 Warning: undo logging is ignored during recovery and normal rollback.
+96 Media recovery may be needed on volume "%1$s".
+97 Internal error: unable to find log page %1$lld in log archives.
+98 Unable to create archive log "%1$s" to archive pages from %2$lld to %3$lld.
+99 Unable to create backup directory information file "%1$s".
+100 Unable to backup database "%1$s".
+101 Unknown user file "%1$s".
+102 File "%1$s" does not have enough entries: %2$d entries expected.
+103 File "%1$s" seems to have unordered entries. Entry %2$d with values: %3$d %4$s %5$s, was found when entry with values %6$d %7$s was expected.
+104 File "%1$s" seems to have an incorrect entry for database name (main volume). Entry %2$d with values: %3$d %4$s %5$s, was found when entry with values %6$d %7$s %8$s was expected.
+105 Cannot access backup file "%1$s". Restore or Backup is cancelled.
+106 Cannot prepare to commit the current transaction with global transaction identifier %1$d because that transaction identifier is in use by another transaction.
+107 There is no global distributed transaction associated with transaction identifier %1$d.
+108 Current transaction %1$d must be committed or aborted before attempting to join to the distributed transaction with global identifier %2$d.
+109 Your transaction %1$d has been unilaterally aborted by the system because a participant (remote) site went down or unilaterally aborted the transaction.
+110 Isolation level value must be between %1$d and %2$d.
+111 Your transaction has been aborted by the system due to server failure or mode change.
+112 Host "%1$s" is not authorized to run database.
+113 Unable to restart/initialize the database server. %1$s
+114 Unable to interpret "%1$s" as a database. The database volumes/files may have been renamed/copied outside the database domain.
+115 Database "%1$s" already exists.
+116 Database "%1$s" is unknown, or the file "databases.txt" cannot be accessed.
+117 Absolute pathname for the database is too long. The combined length of the path "%1$s" plus the name "%2$s" is %3$d; the combined length must be less than %4$d.
+118 Failed to locate current working directory.
+119 Unable to find local hostname.
+120 The maximum number of volumes (%1$d) has been exceeded.
+121 Trying to remove "%1$s" a permanent volume from the database.
+122 Unable to access system message catalog.
+123 Unable to create %1$s for database "%2$s". Please refer "%3$s" for additional information.
+124 Volume "%1$s" already exists.
+125 An automatic volume extension "%1$s" of %2$d pages and generic storage purpose was created.
+126 Unknown purpose "%1$s" given on line %2$d.
+127 Incorrect value %1$d for number of pages given on line %2$d.
+128 Number of pages was not given on line %1$d.
+129 Unknown token "%1$s" was found on line %2$d.
+130 Out of virtual memory.
+131 Database system error.
+132 Feature not implemented in the current release: %1$s.
+133 Nested set constant not allowed.
+134 Not allowed to use both class attributes and non-class attributes in a single update.
+135 Invalid statement for oid columns: %1$s.
+136 Unimplemented function "%1$s".
+137 Corrupted authorization objects.
+138 Authorization class "%1$s" not found.
+139 Access error on authorization attribute "%2$s" of class "%1$s".
+140 Operation "%1$s" can only be performed by the DBA or a DBA group member.
+141 Cannot add "%1$s" as a member of "%2$s".
+142 Adding member causes the user hierarchy to become a cyclic graph.
+143 Encountered a class with no owner.
+144 Unable to access user object.
+145 Cannot issue grant/revoke commands to yourself.
+146 Cannot issue GRANT/REVOKE to owner of a class.
+147 No GRANT option.
+148 Cannot obtain write lock on authorization object.
+149 Cannot create instance of authorization object.
+150 Cannot revoke privileges from self.
+151 Cannot revoke privileges from owner of a class.
+152 GRANT not found.
+153 No authorization privileges in effect for the database.
+154 Incomplete authorization installation - no authorization privileges in effect for the database.
+155 Multiple authorization roots.
+156 Authorization failure.
+157 SELECT authorization failure.
+158 ALTER authorization failure.
+159 UPDATE authorization failure.
+160 INSERT authorization failure.
+161 DELETE authorization failure.
+162 INDEX authorization failure.
+163 EXECUTE authorization failure.
+164 User "%1$s" already exists.
+165 User "%1$s" is invalid.
+166 Invalid user specified.
+167 DBA, members of DBA group and class owner can perform the operation.
+168 Member not found.
+169 Cannot remove user %1$s from the database.
+170 No user logged in.
+171 Incorrect or missing password.
+172 Password string cannot have more than 31 bytes.
+173 Could not locate database file "%1$s".
+174 Could not obtain write access to database file "%1$s".
+175 Badly formatted database file "%1$s".
+176 Conversion error in date format.
+177 Cannot create large object for internal storage.
+178 Temporary OID encountered without MOP.
+179 Domain "%1$s" is not compatible with domain "%2$s".
+180 Domain "%1$s" of supplied value is not compatible with destination domain "%2$s".
+181 Cannot coerce value of domain "%1$s" to domain "%2$s".
+182 Cannot coerce value of domain "%1$s" to domain "%2$s" without overflow.
+183 Unexpected amount of received data; %1$d expected, %2$d received.
+184 Cannot allocate communications buffer.
+185 Error receiving data from client.
+186 Error receiving data from server.
+187 Communications buffer not used.
+188 Unknown database "%1$s".
+189 Invalid host name "%1$s".
+190 Server host not identified.
+191 Cannot connect to server "%1$s" on "%2$s".
+192 Could not load network configuration file.
+193 Server received shutdown command from client.
+194 Unknown server request id %1$d.
+195 Server communications error: %1$s.
+196 Server name not identified.
+197 Could not make contact with master server.
+198 Receive buffer too small, data truncated.
+199 Server no longer responding.
+200 Not properly removing set from object after free.
+201 Removed incorrect UNIQUE table entry.
+202 Attribute "%1$s" was not found.
+203 Value for attribute "%1$s" must be of type "%2$s", not type "%3$s".
+204 Function called with missing or invalid arguments.
+205 Attribute "%1$s" cannot be made NULL.
+206 Attribute "%1$s" does not have the UNIQUE constraint.
+207 Class "%1$s" has a zero-size object.
+208 Method "%1$s" not found.
+209 No attribute or method with name "%1$s" was found.
+210 Internal error: processing object template.
+211 Attribute was deleted while building object template.
+212 Attribute "%1$s" violates the UNIQUE constraint.
+213 Invalid UNIQUE table entry encountered.
+214 A domain conflict exists on attribute "%1$s".
+215 Attribute with id %1$d not found.
+216 Invalid object ownership tag on value.
+217 Operation can only be performed on class objects.
+218 Invalid object in db_get path expression.
+219 Invalid db_get path expression.
+220 Invalid set in db_get path expression.
+221 Invalid set index in db_get path expression.
+222 Attempt to assign string value greater than %2$d characters to attribute "%1$s".
+223 Value %2$d is too large for smallint attribute "%1$s".
+224 A database has not been restarted.
+225 Missing value for attribute "%1$s" with the NOT NULL constraint.
+226 Empty component list in class.
+227 Attempt to assign value to attribute "%1$s" more than once.
+228 Method "%1$s" called with %2$d arguments. The system allows a maximum of %3$d arguments.
+229 Method "%1$s" requires argument %2$d to be within the domain "%3$s". An invalid value of domain "%4$s" was given.
+230 Attribute "%1$s" cannot be assigned a string of length %2$d. The maximum allowable string length is %3$d.
+231 Invalid API operation attempted on a temporary object.
+232 Not allowed to use object templates over multiple transactions.
+233 Cannot create class with basic type name "%1$s".
+234 Method file "%1$s" not found.
+235 %1$d unresolved method functions after linking.
+236 Unresolved method "%1$s".
+237 Severe problems were encountered during dynamic linking.
+238 Could not access method file "%1$s".
+239 Attribute "%1$s" was not found.
+240 Method "%1$s" was not found.
+241 There is no attribute or method with name "%1$s".
+242 Signature for %2$s not found for method "%1$s".
+243 Argument %2$d of method "%1$s" is undefined.
+244 Domain name "%1$s" is not the name of a class or basic type.
+245 The name "%1$s" has already been used as an attribute name.
+246 The name "%1$s" has already been used as a method name.
+247 Invalid arguments to schema manager internal function.
+248 The attribute domain "%1$s" is not suitable for use with the %2$s constraint.
+249 The requested operation on class "%1$s" can only be performed before instances are created.
+250 Cannot create index on attribute "%1$s", defined with a shared value.
+251 Signature %2$s already exists for method "%1$s".
+252 Attribute "%1$s" must have a set domain for that operation.
+253 Attribute "%1$s" cannot be defined with a nested set domain.
+254 Unable to remove domain "%2$s" from attribute "%1$s".
+255 Attribute "%1$s" is not of a variable sized domain.
+256 Superclass already exists.
+257 Superclass addition would cause cycles in class hierarchy.
+258 Superclass not found.
+259 Multiple signatures exist for method "%1$s".
+260 Argument %2$d of method "%1$s" is not of a set domain.
+261 Resolution for "%1$s" not found.
+262 Value domain "%2$s" not suitable for attribute "%1$s".
+263 Schema manager internal corruption detected.
+264 Alias "%2$s" for attribute/method "%1$s" is not unique.
+265 Shadowing attribute "%1$s" with conflicting domain "%2$s".
+266 Name conflict on attribute "%1$s" with classes "%2$s" and "%3$s".
+267 Shadowing method "%1$s" with conflicting signature.
+268 Name conflict on method "%1$s" with classes "%2$s" and "%3$s".
+269 Cannot define index on domain "%1$s".
+270 Cannot define UNIQUE constraint on domain "%1$s".
+271 Detected cycle in class hierarchy; "%1$s" is a super class of "%2$s".
+272 Index "%2$s" already defined for class "%1$s".
+273 Index "%1$s" does not exist.
+274 Illegal characters in name: "%1$s".
+275 Illegal operation on attribute "%1$s", inherited from class "%2$s".
+276 Illegal operation on method "%1$s", inherited from class "%2$s".
+277 Illegal operation on "%1$s", inherited from class "%2$s".
+278 Class "%4$s" has incompatible domains for "%1$s", inherited from classes "%2$s" and "%3$s".
+279 In class "%4$s", "%1$s" inherited from class "%2$s" cannot be used as requested. The definition from class "%3$s" has a more specific domain.
+280 In class "%3$s", "%1$s" cannot be inherited from class "%2$s" because there is a local definition with an incompatible domain.
+281 In class "%3$s", "%1$s" inherited from class "%2$s" is aliased but no substitute from another source was found.
+282 In class "%4$s", "%1$s" inherited from class "%3$s" cannot serve as an alias substitute for class "%2$s". The domains are incompatible.
+283 In class "%4$s", "%1$s" inherited from class "%3$s" cannot serve as an alias substitute for class "%2$s". It has a less specific domain.
+284 Cannot request inheritance of "%1$s" because it is defined locally in the class.
+285 Cannot use "%1$s" as an alias for inherited component "%2$s" because there is already a locally defined component with that name.
+286 Cannot use "%1$s" as an alias for "%2$s" of "%3$s". A component with that name is already inherited from "%4$s".
+287 In class "%1$s", cannot define attribute "%2$s" because it would shadow a method inherited from "%3$s".
+288 In class "%1$s", cannot define method "%2$s" because it would shadow an attribute inherited from "%3$s".
+289 Subclass "%1$s" cannot inherit method "%2$s" from class "%3$s" because there is already an attribute with that name.
+290 Subclass "%1$s" cannot inherit attribute "%2$s" from class "%3$s" because there is already a method with that name.
+291 "%1$s" is defined in class "%2$s" as an attribute and in class "%3$s" as a method.
+292 No populate specification with index "%1$s".
+293 Operation not allowed for this class type.
+294 Undefined environment variable "%1$s" referenced in method file.
+295 Unable to alter class "%1$s". The system catalog is out of space. To reclaim space, compact the database with the compactdb utility.
+296 Invalid property list encountered.
+297 Alias name "%1$s" is used more than once.
+298 In class "%1$s", a resolution for "%2$s" of "%3$s"' is not allowed. That class is not a super class.
+299 "%1$s" is a reserved word and cannot be used as an attribute, method, or class name.
+300 Attribute "%1$s" cannot be defined with DEFAULT and UNIQUE constraints together.
+301 Attribute "%1$s" cannot be defined with a length constraint of %2$d. The maximum length constraint is %3$d.
+302 Cannot add element to a set.
+303 Value already exists in set.
+304 Set index %1$d is out of bounds.
+305 Sequence index %1$d is out of bounds.
+306 Requested operation can only be performed on sequences.
+307 Requested operation can only be performed on sets.
+308 Element value is not within the domain of the set.
+309 Illegal set element index given: %1$d.
+310 Element not found in set.
+311 Element not found in sequence.
+312 "%1$s" is not a valid set domain.
+313 Object buffer underflow while reading.
+314 Object buffer overflow while writing.
+315 Illegal metaclass definition encountered.
+316 Transformer size calculation mismatch, expected %1$d calculated %2$d.
+317 Invalid disk representation encountered for class "%1$s".
+318 Out of sync during object loading. Database is likely corrupted or out of date.
+319 Ignoring unknown attribute extension.
+320 Encountered corrupted disk representation of object.
+321 Possible corruption in the workspace detected.
+322 MOP not found in the workspace.
+323 Attempt to upgrade non-temporary MOP in workspace.
+324 Object found in workspace without class.
+325 Attempt to garbage collect a MOP in the dirty list.
+326 Changing class pointer for object in workspace.
+327 Cannot create MOP with NULL OID.
+328 Instance encountered in workspace without class.
+329 Object list link not allocated in workspace.
+330 Workspace pin violation.
+331 Could not allocate workspace block from OS, out of virtual memory. Aborting transaction.
+332 Original workspace size estimate exceeded. An automatic extension has been made.
+333 Out of memory during workspace storage allocation. Aborting transaction.
+334 Attempted allocation of %1$d bytes is larger than maximum workspace block size. Try adjusting max_block_size parameter. Transaction aborted.
+335 Ignoring attempt to free object not allocated within the workspace.
+336 Ignoring attempt to free an object more than once.
+337 Ignoring attempt to allocate object with negative size.
+338 Map entry identifier overrun.
+339 Cannot exit critical section, since it is not owned by transaction %1$d.
+340 Cannot fork child process.
+341 Cannot exec child process.
+342 Cannot change process group.
+343 Request_id is already used.
 344 %1$s.
-345 Lỗi đã phát sinh trong quá trình đọc một thông báo shutdown từ master.
-346 Lỗi đã phát sinh trong quá trình đọc một thông báo stop shutdown từ master.
-347 Không thể thiết lập một pipe đến master server.
-348 Phải chỉ định hoặc dịch vụ hoặc mã định danh cổng.
-349 Dịch vụ không rõ cho TCP: %1$s.
-350 Lỗi khi lấy máy chủ cục bộ theo tên cho máy chủ "%1$s". Không tìm thấy máy chủ.
-351 Không thể tạo TCP socket.
-352 tcp_open: không thể lấy một cổng TCP riêng.
-353 Không thể kết nối tới server chính trên máy chủ "%1$s".
-354 Không thể thết lập chủ sở hữu tiến trình mới cho socket.
-355 Không thể tạo luồng socket.
-356 Tệp tin '%1$s' cho UNIX domain socket tồn tại.
-357 Không thể gắn kết địa chỉ cục bộ... đang bỏ dở.
-358 Accept đã bị thất bại.
-359 Lỗi gắn kết datagram.
-360 Lỗi chấp nhận datagram.
-361 Lỗi kết nối Datagram.
-362 Lỗi socket Datagram.
-363 Thất bại khi Recvmsg từ socket master.
-364 Đang gửi một yêu cầu mới đến server.
-365 Đang gửi một thông báo broadcast đến máy khách.
-366 Lỗi từ server: %1$s
-367 Server %1$s đã tồn tại.
-368 Lỗi liên lạc trong quá trình kết nối cho %1$s.
-369 Mã lỗi chưa được dùng.
-370 Mã lỗi chưa được dùng.
-371 Mã lỗi chưa được dùng.
-372 Mã lỗi chưa được dùng.
-373 EOF sớm trong quá trình đọc: %1$d.
-374 EOF sớm trong quá trình đọc của %1$d hoặc %2$d.
-375 Lỗi chuyển đổi trên (0x%1$c%2$c) %3$d và %4$d được chuyển đổi thành %5$d.
-376 Không tìm thấy lớp public nào.
-377 Lỗi %1$d: thất bại khi thêm thuộc tính "%2$s" cho hệ thống phân cấp đa phương tiện.
-378 Lỗi %1$d: thất bại khi thêm phương pháp "%2$s" được thực hiện như "%3$s" cho hệ thống phân cấp đa phương tiện.
-379 Lỗi %1$d: thất bại khi thêm lớp cao cấp vào hệ thống phân cấp đa phương tiện.
-380 Bộ tải động đã được khởi tạo.
-381 Bộ tải động chưa được khởi tạo.
-382 Bộ tải động được khởi tạo không đúng cách.
-383 "%1$s" không phải là một tệp tin đối tượng hoặc một lưu trữ.
-384 Không thể xác định đường dẫn tuyệt đối cho "%1$s".
-385 Quá trình ld đã thoát với mã %1$d.
-386 Quá trình ld đã thoát vì tín hiệu %1$d.
-387 Quá trình ld đã thoát với waitval 0x%1$x không rõ.
-388 Không thể truy cập hình ảnh ban đầu cho "%1$s".
-389 Lỗi hệ thống: %1$s.
-390 Vấn đề với "%1$s": %2$s.
-391 Xung đột với bộ xử lý SIGPIPE khác.
-392 Không thể sinh ra bộ tải động daemon.
-393 Bộ tải động daemon đã biến mất.
-394 Điểm kết thúc phạm vi không nằm giữa 0 và 256.
-395 Biểu thức con được chỉ định không hợp pháp.
-396 Chữ số hệ cơ số 8 nằm ngoài phạm vi tồn tại trong escape.
-397 Biểu thức chính quy chưa được định ranh chính xác.
-398 Tìm kiếm văn bản được gọi trước khi biểu thức được biên dịch.
-399 Tìm thấy một dấu ngoặc đơn chưa được khớp trong biểu thức chính quy.
-400 Dấu ngoặc đơn được lồng nhau quá sâu trong biểu thức chính quy.
-401 Nhiều hơn hai số được chỉ định trong một phạm vi.
-402 Tìm thấy một dấu ngoặc móc xoăn chưa được khớp trong biểu thức chính quy.
-403 Số đầu tiên trong biểu thức phạm vi lớn hơn số thứ hai.
-404 Tìm thấy một dấu ngoặc vuông chưa được khớp trong biểu thức chính quy.
-405 Biểu thức chính quy quá dài để biên dịch.
-406 Mã định danh chỉ mục B+tree không hợp lệ: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
-407 Key %1$s không rõ được tham chiếu trong chỉ mục B+tree {vfid: (%2$d, %3$d), rt_pgid: %4$d, key_type: %5$s}.
-408 Giá trị không biết (oid) %1$d|%2$d|%3$d được tham chiếu.
-409 Giá trị trùng lặp (oid) %1$d|%2$d|%3$d được tham chiếu.
-410 Null key được tham chiếu.
-411 Kiểu key chỉ mục B+tree không hợp lệ "%1$s".
-412 Đặc tả tìm kiếm phạm vi không hợp lệ.
-413 Mã định danh thuộc tính không biết: %1$d.
-414 Mã định danh lớp không biết: %1$d|%2$d|%3$d.
-415 Mã định danh lớp không hợp lệ: %1$d|%2$d|%3$d.
-416 Mã định danh đại diện không biết: %1$d.
-417 Mã định danh đại diện không hợp lệ: %1$d.
-418 Bộ mô tả bản ghi chép không có đủ không gian: %1$d.
-419 Lớp đã đạt số lượng đại diện tối đa: %1$d.
-420 Lớp %1$d|%2$d|%3$d đã có đại diện.
-421 Thiếu Thư mục Đại diện trong Catalog cho Lớp: %1$d|%2$d|%3$d.
-422 Thiếu Bản ghi chép Thông tin Đại diện trong Catalog cho Lớp - Repr_Id: %1$d|%2$d|%3$d - %4$d.
-423 Phiên không hợp lệ.
-424 Không có câu lệnh nào để thực thi.
-425 Kiểu dữ liệu không tương thích cho thuộc tính "%1$s" của lớp "%2$s".
-426 Kiểu dữ liệu không tương thích trên thuộc tính "%1$s".
-427 Tràn dữ liệu trên kiểu dữ liệu "%1$s".
-428 Câu lệnh không thể cập nhật.
-429 Lệnh không biết.
-430 Biến số không biết "%1$s".
-431 Lỗi trong bộ diễn dịch SQL/X hoặc bộ phân tích cú pháp.
-432 Lớp không biết "%1$s".
-433 Thuộc tính không biết "%1$s" trong lớp "%2$s".
-434 Không thể tìm thấy tên cột chính xác từ một truy vấn.
-435 Nhiều câu lệnh chưa được cho phép.
-436 Câu lệnh không phải là một truy vấn.
-437 Long object ID không hợp lệ (%1$s,%2$d, %3$s, %4$s).
-438 Xung đột tồn tại trong bộ mô tả Long Object.
-439 Độ lệch %1$d lớn hơn độ dài của Long Object %2$d.
-440 Vị trí con chạy không hợp lệ.
-441 Thao tác con chạy không hợp lệ.
-442 Vị trí con chạy không biết.
-443 Chỉ mục giá trị Tuple %1$d nằm ngoài phạm vi.
-444 Tên thuộc tính không hợp lệ: "%1$s".
-445 Chỉ mục danh sách giá trị %1$d nằm ngoài phạm vi.
-446 Có một cấu trúc kết quả truy vấn được đóng lại bởi bộ quản lý giao dịch nhưng chưa được đóng lại bởi ứng dụng.
-447 Tìm cách để thao tác một cấu trúc kết quả truy vấn đã được đóng lại.
-448 Kích cỡ Tuple hiện tại bị giới hạn để không lớn hơn một trang.
-449 Mã định danh truy vấn không rõ: %1$d.
-450 Bộ thao tác tập hợp không hợp lệ: %1$d.
-451 Tệp tin heap không có thực thể nào.
-452 Nội dung nút cây XASL không hợp lệ.
-453 Không có thêm nút đặc tả truy cập.
-454 Kiểu dữ liệu được tham chiếu không hợp lệ.
-455 Không có thêm trang tệp tin truy vấn nào rời đi.
-456 Tham chiếu kiểu dữ liệu không tương thích.
-457 Kiểu kết quả truy vấn không hợp lệ.
-458 Tràn đã xảy ra trong ngữ cảnh thêm vào.
-459 Kết quả truy vấn chứa nhiều hơn một tuple đơn.
-460 Một vài biến máy chủ đầu vào được cung cấp.
-461 Nhiều biến máy chủ được đưa ra hơn các cột kết quả.
-462 Giá trị kết quả là NULL, nhưng không có biến chỉ báo nào.
-463 Câu lệnh Cursor vẫn chưa được chuẩn bị.
-464 Con chạy phải là một câu lệnh SELECT.
-465 Con chạy vẫn chưa được mở.
-466 Con chạy phải được đóng trước khi mở lại.
-467 Kết quả phải trả về một đối tượng đơn.
-468 Không có positional marker nào được cho phép trong câu lệnh EXECUTE IMMEDIATE.
-469 Kiểu dữ liệu không hợp lệ được sử dụng.
-470 Truy vấn chứa quá nhiều mục để tối ưu hóa.
-471 Cạn kiệt bộ nhớ trong dòng %1$d của tệp tin %2$s.
-472 %1$s bộ kết nối cho cơ sở dữ liệu cụ bộ '%2$s' trong máy chủ '%3$s' đã chết.
-473 Báo cáo từ cơ sở dữ liệu cục bộ '%1$s' trong máy chủ '%2$s': %3$s.
-474 Lỗi %1$s được phát hiện trong quá trình %2$s.
-475 Không có đặc tả truy vấn nào có chỉ mục %1$s.
-476 LDB %1$s đã tồn tại.
-477 Không thể kết nối đến master trong máy chủ %2$s để truy cập LDB %1$s.
-478 Cơ sở dữ liệu cục bộ "%1$s" không phải là một LDB đã đăng ký.
-479 Cơ sở dữ liệu cục bộ "%1$s" hiện tại đang được truy cập bởi máy khách khác, sửa đổi hoặc xóa đều không được phép.
-480 Cơ sở dữ liệu cục bộ "%1$s" không rỗng và không thể bị xóa.
-481 "%1$s" không phải một lớp ảo proxy.
-482 "%1$s" không phải là một lớp ảo.
-483 "%1$s" không phải một thuộc tính của lớp "%2$s".
-484 object_id cho lớp ảo proxy "%1$s" đã được thiết lập.
-485 Một hoặc nhiều thuộc tính object_id là NULL cho thực thể của lớp proxy "%1$s".
-486 Đối tượng không phải là một thực thể lớp ảo có thể cập nhật.
-487 Đối tượng không phải là một thực thể.
-488 Một thuộc tính của lớp có thể không phải là một lớp ảo hoặc một lớp ảo proxy.
-489 Một thuộc tính của lớp ảo proxy có thể không phải là một lớp, lớp ảo, hoặc đối tượng.
-490 Lớp cao cấp "%1$s" phải cùng một kiểu của lớp như "%2$s".
-491 Không thể trích xuất tên đặc tính từ đặc tả truy vấn proxy "%1$s".
+345 Error occurred during reading a shutdown message from master.
+346 Error occurred during reading a stop shutdown message from master.
+347 Could not establish a pipe to the master server.
+348 Must specify either service or port identifier.
+349 Unknown service for TCP: %1$s.
+350 Error getting local host by name for host "%1$s". Host not found.
+351 Cannot create TCP socket.
+352 tcp_open: cannot get a reserved TCP port.
+353 Cannot make connection to master server on host "%1$s".
+354 Cannot set new process owner for socket.
+355 Cannot create socket stream.
+356 '%1$s' file for UNIX domain socket exist.
+357 Cannot bind local address... aborting.
+358 Accept failed.
+359 Datagram bind error.
+360 Datagram accept error.
+361 Datagram connect error.
+362 Datagram socket error.
+363 Recvmsg from master socket failed.
+364 Sending a new request to server.
+365 Sending a broadcast message to client.
+366 Error from server: %1$s
+367 Server %1$s already exists.
+368 Communication error during connect for %1$s.
+369 Unused error code.
+370 Unused error code.
+371 Unused error code.
+372 Unused error code.
+373 Premature EOF during read: %1$d.
+374 Premature EOF during read of %1$d or %2$d.
+375 Conversion error on (0x%1$c%2$c) %3$d and %4$d converted to %5$d.
+376 No public class found.
+377 Error %1$d: failed to add attribute "%2$s" to multimedia hierarchy.
+378 Error %1$d: failed to add method "%2$s" implemented as "%3$s" to multimedia hierarchy.
+379 Error %1$d: failed to add a superclass to multimedia hierarchy.
+380 Dynamic loader already initialized.
+381 Dynamic loader not initialized.
+382 Dynamic loader improperly initialized.
+383 "%1$s" is not an object file or an archive.
+384 Cannot determine absolute path for "%1$s".
+385 ld process exited with code %1$d.
+386 ld process exited due to signal %1$d.
+387 ld process exited with unknown waitval 0x%1$x.
+388 Cannot access initial image for "%1$s".
+389 System error: %1$s.
+390 Problem with "%1$s": %2$s.
+391 Conflict with other SIGPIPE handler.
+392 Unable to spawn dynamic loader daemon.
+393 Dynamic loader daemon has disappeared.
+394 Range endpoint not between 0 and 256.
+395 Illegal subexpression specified.
+396 Octal digit out of range exists in escape.
+397 Regular expression not delimited properly.
+398 Text search called before expression compiled.
+399 An unmatched parenthesis is found in the regular expression.
+400 Parentheses too deeply nested in the regular expression.
+401 More than two numbers specified in a range.
+402 An unmatched curly brace is found in the regular expression.
+403 First number in range expression is larger than second.
+404 An unmatched bracket is found in the regular expression.
+405 The regular expression was too long to compile.
+406 Invalid B+tree index identifier: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
+407 Unknown key %1$s referenced in B+tree index {vfid: (%2$d, %3$d), rt_pgid: %4$d, key_type: %5$s}.
+408 Unknown value (oid) %1$d|%2$d|%3$d referenced.
+409 Duplicate value (oid) %1$d|%2$d|%3$d referenced.
+410 Null key referenced.
+411 Invalid B+tree index key type "%1$s".
+412 Invalid range search specification.
+413 Unknown attribute identifier: %1$d.
+414 Unknown class identifier: %1$d|%2$d|%3$d.
+415 Invalid class identifier: %1$d|%2$d|%3$d.
+416 Unknown representation identifier: %1$d.
+417 Invalid representation identifier: %1$d.
+418 Record descriptor does not have enough space: %1$d.
+419 Class has reached maximum representations count: %1$d.
+420 Class %1$d|%2$d|%3$d already had representations.
+421 Representations Directory Missing in Catalog for Class: %1$d|%2$d|%3$d.
+422 Representation Information Record Missing in Catalog for Class - Repr_Id: %1$d|%2$d|%3$d - %4$d.
+423 Invalid session.
+424 No statement to execute.
+425 Incompatible data type for attribute "%1$s" of class "%2$s".
+426 Incompatible data type on attribute "%1$s".
+427 Data overflow on data type "%1$s".
+428 Statement is not updatable.
+429 Unknown command.
+430 Unknown variable "%1$s".
+431 Error in SQL/X interpreter or parser.
+432 Unknown class "%1$s".
+433 Unknown attribute "%1$s" in class "%2$s".
+434 Cannot find correct column names from a query.
+435 Multiple statements not allowed.
+436 Statement is not a query.
+437 Invalid long object ID (%1$s,%2$d, %3$s, %4$s).
+438 Conflict exists in the long object descriptor.
+439 Offset %1$d is larger than length of long object %2$d.
+440 Invalid cursor position.
+441 Invalid cursor operation.
+442 Unknown cursor position.
+443 Tuple value index %1$d is out of range.
+444 Invalid attribute name: "%1$s".
+445 Value list index %1$d is out of range.
+446 There are query result structures closed by transaction manager but not closed by the application. 
+447 Attempted to operate a query result structure already closed.
+448 Tuple sizes are currently restricted to be no larger than a page.
+449 Unknown query identifier: %1$d.
+450 Invalid set operator: %1$d.
+451 Heap file with no instances.
+452 Invalid XASL tree node content.
+453 No more acess specification nodes.
+454 Invalid data type referenced.
+455 No more query file pages left.
+456 Data type references are incompatible.
+457 Invalid query result type.
+458 Overflow occurred in addition context.
+459 Query result contains more than a single tuple. 
+460 Too few input host variables provided.
+461 More host variables are given than result columns.
+462 Result value is NULL, but there is no indicator variable.
+463 Cursor statement has not yet been prepared.
+464 Cursor should be a SELECT statement.
+465 The cursor is not yet opened.
+466 The cursor should be closed before re-opening.
+467 Result should return a single object.
+468 No positional markers are allowed in EXECUTE IMMEDIATE statements.
+469 Invalid data type used.
+470 Query involves too many items for optimizer.
+471 Memory exhausted in line %1$d of file %2$s.
+472 %1$s connector for local database '%2$s' on host '%3$s' has died.
+473 Reported from local database '%1$s' on host '%2$s': %3$s.
+474 Error %1$s detected during %2$s.
+475 No query specification with index %1$s.
+476 LDB %1$s already exists.
+477 Could not connect to master on host %2$s to access LDB %1$s.
+478 The local database "%1$s" is not a registered LDB.
+479 The local database "%1$s" is currently being accessed by other clients, alteration or drop is not allowed.
+480 The local database "%1$s" is not empty and cannot be dropped.
+481 "%1$s" is not a proxy virtual class.
+482 "%1$s" is not a virtual class.
+483 "%1$s" is not an attribute of the class "%2$s".
+484 The object_id for proxy virtual class "%1$s" is already set.
+485 One or more object_id attributes are NULL for instance of proxy class "%1$s".
+486 Object is not an updatable virtual class instance.
+487 Object is not an instance.
+488 An attribute of a class may not be a virtual class or a proxy virtual class.
+489 An attribute of a proxy virtual class may not be a class, virtual class, or object.
+490 The superclass "%1$s" must be of the same type of class as "%2$s".
+491 Cannot extract entity name from proxy query specification "%1$s".
 492 %1$s
-493 Cú pháp: %1$s %2$s
-494 Ngữ nghĩa: %1$s %2$s
-495 Thực thi: %1$s %2$s
-496 Key không rõ được tham chiếu.
-497 Giá trị không biết (oid) %1$d|%2$d|%3$d được tham chiếu.
-498 Giá trị trùng lặp Duplicate value (oid) %1$d|%2$d|%3$d được tham chiếu.
-499 Null key được tham chiếu.
-500 Key trùng lặp được tham chiếu.
-501 Ưu tiên trigger không hợp lệ.
-502 Thiếu lớp mục tiêu trong trigger.
-503 Trigger "%1$s" không được tìm thấy.
-504 Lỗi nội bộ: xử lý trigger "%1$s".
-505 Một trigger có tên "%1$s" đã tồn tại.
-506 Một trigger không thể được định nghĩa trên "%1$s" bởi vì nó là một lớp ảo.
-507 Lớp mục tiêu trigger "%1$s" không thích hợp.
-508 Thuộc tính mục tiêu trigger "%1$s" không thích hợp.
-509 Điều kiện trigger "%1$s" không hợp lệ.
-510 Hành động trigger "%1$s" không hợp lệ.
-511 Không được quyền truy cập trigger "%1$s".
-512 Không được quyền xóa trigger "%1$s".
-513 Không được quyền cập nhật trigger "%1$s".
-514 Không được quyền sửa đổi trigger "%1$s".
-515 Thời gian thực thi hành động của %2$s không thể sớm hơn thời gian thực thi điều kiện của %1$s.
-516 Độ dài tối đa của trigger %1$d đã bị vượt quá tại "%2$s".
-517 Thao tác đã bị từ chối bởi trigger "%1$s".
-518 Lỗi nội bộ: xử lý trigger "%1$s".
-519 Kiểu điều kiện trigger không hợp lệ.
-520 Hành động REJECT không thể được dùng với một thời gian hành động của AFTER hoặc DEFERRED.
-521 Hành động REJECT không thể được dùng với sự kiện ABORT hoặc TIMEOUT.
-522 Biểu thức điều kiện Trigger chưa được đưa ra.
-523 Biểu thức hành động Trigger chưa được đưa ra.
-524 Hoạt động được chỉ định không thể bị gỡ bỏ bởi vì nó được sở hữu bởi một người dùng khác.
-525 Lỗi biên dịch điều kiện cho "%1$s": %2$s
-526 Lỗi biên dịch hành động cho "%1$s", %2$s
-527 Lỗi ước tính điều kiện cho "%1$s": %2$s
-528 Lỗi ước tính hành động cho  "%1$s", %2$s
-529 Giao dịch không thể được cam kết, nó đã bị vô hiệu hóa bởi trigger "%1$s".
-530 Thiếu biểu thức chính quy.
-531 Biểu thức chính quy quá dài hoặc phức tạp.
-532 Dấu ngoặc đơn hoặc dấu ngoặc vuông không cân bằng trong biểu thức chính quy.
-533 Tham chiếu nằm ngoài phạm vi trong biểu thức chính quy.
-534 Ký tự hoặc cú pháp không hợp pháp trong biểu thức chính quy.
-535 Không có văn bản nào được đưa ra cho tìm kiếm biểu thức chính quy.
-536 Tìm thấy opcode (mã thao tác) không hợp pháp trong biểu thức chính quy.
-537 Mã lệnh tìm kiếm không hợp lệ cho bộ biên dịch biểu thức chính quy.
-538 Bộ đệm làm việc biểu thức chính quy cần được khởi tạo.
-539 Tìm cách để chia cho Không.
+493 Syntax: %1$s %2$s
+494 Semantic: %1$s %2$s
+495 Execute: %1$s %2$s
+496 Unknown key referenced.
+497 Unknown value (oid) %1$d|%2$d|%3$d referenced.
+498 Duplicate value (oid) %1$d|%2$d|%3$d referenced.
+499 Null key referenced.
+500 Duplicate key referenced.
+501 Invalid trigger priority.
+502 Missing target class in trigger.
+503 Trigger "%1$s" was not found.
+504 Internal error: processing trigger "%1$s".
+505 A trigger with the name "%1$s" already exists.
+506 A trigger cannot be defined on "%1$s" because it is a virtual class.
+507 Inappropriate trigger target class "%1$s".
+508 Inappropriate trigger target attribute "%1$s".
+509 Invalid trigger condition "%1$s".
+510 Invalid trigger action "%1$s".
+511 Not authorized to access trigger "%1$s".
+512 Not authorized to delete trigger "%1$s".
+513 Not authorized to update trigger "%1$s".
+514 Not authorized to alter trigger "%1$s".
+515 Trigger action execution time of %2$s cannot be earlier than condition execution time of %1$s.
+516 Maximum trigger depth %1$d exceeded at trigger "%2$s".
+517 The operation has been rejected by trigger "%1$s".
+518 Internal error: processing trigger "%1$s".
+519 Illegal trigger condition type.
+520 The REJECT action cannot be used with an action time of AFTER or DEFERRED.
+521 The REJECT action cannot be used with the ABORT or TIMEOUT events.
+522 Trigger condition expression was not given.
+523 Trigger action expression was not given.
+524 The specified activity cannot be removed because it is owned by another user.
+525 Error compiling condition for "%1$s": %2$s
+526 Error compiling action for "%1$s", %2$s
+527 Error evaluating condition for "%1$s": %2$s
+528 Error evaluating action for "%1$s", %2$s
+529 Transaction cannot be committed, it was invalidated by trigger "%1$s".
+530 Missing regular expression.
+531 Regular expression is too long or complex.
+532 Unbalanced parenthesis or brackets in regular expression.
+533 Reference is out of range in regular expression.
+534 Illegal character or syntax in regular expression.
+535 No text given for regular expression search.
+536 Illegal opcode found in regular expression.
+537 Illegal search command code for regular expression compiler.
+538 Regular expression working buffer needs to be initialized.
+539 Attempt to divide by zero.
 540 %1$s.
-541 Số trang trống cho bộ đĩa "%1$s" là không nhất quán. %2$d và %3$d đã được tìm thấy dựa theo đề mục bộ đĩa và bitmap, theo thứ tự.
-542 Số sectors trống cho bộ đĩa "%1$s" là không nhất quán. %2$d và %3$d đã được tìm thấy dựa theo đề mục bộ đĩa và bitmap, theo thứ tự.
-543 Đề mục đĩa cho bộ đĩa "%1$s" không nhất quán.
-544 Lỗi nội bộ: CHỈ MỤC %1$s TRÊN LỚP %2$s (CLASS_OID: %3$d|%4$d|%5$d). Khóa B+tree %6$s mục nhập cho OID đối tượng: %7$d|%8$d|%9$d không được tìm thấy trên B+tree: %10$d|%11$d|%12$d.
-545 Lỗi nội bộ: CHỈ MỤC %1$s TRÊN LỚP %2$s (CLASS_OID: %3$d|%4$d|%5$d). Khóa và OID Key and OID: %6$d|%7$d|%8$d mục nhập trên B+tree: %9$d|%10$d|%11$d không chính xác. Đối tượng không tồn tại.
-546 Lỗi nội bộ: CHỈ MỤC %1$s TRÊN LỚP %2$s (CLASS_OID: %3$d|%4$d|%5$d). Đòi hỏi giá trị mục nhập OID %6$d, nhưng %7$d được tìm thấy trên B+tree: %8$d|%9$d|%10$d.
-547 Server phát hành %1$s khác với máy khách phát hành %2$s.
-548 Không có object_id nào được định nghĩa cho lớp proxy "%1$s".
-549 Thực thể proxy không được tìm thấy.
-550 Tên savepoint %1$s không rõ
-551 Không thể xác định vị trí tệp tin đường dẫn thông tin bộ đĩa "%1$s"... Tiếp tục đọc từ các bảng nội bộ
-552 Số học date hụt.
-553 Số học time hụt.
+541 Number of free pages for volume "%1$s" is inconsistent. %2$d and %3$d were found according to volume header and bitmap, respectively.
+542 Number of free sectors for volume "%1$s" is inconsistent. %2$d and %3$d were found according to volume header and bitmap, respectively.
+543 Disk header for volume "%1$s" is inconsistent.
+544 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). B+tree key %6$s entry for object OID: %7$d|%8$d|%9$d was not found on B+tree: %10$d|%11$d|%12$d.
+545 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Key and OID: %6$d|%7$d|%8$d entry on B+tree: %9$d|%10$d|%11$d is incorrect. The object does not exist.
+546 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Expecting %6$d OID entry values, but %7$d were found on B+tree: %8$d|%9$d|%10$d.
+547 Server release %1$s is different from client release %2$s.
+548 There is no object_id defined for proxy class "%1$s".
+549 The proxy instance was not found.
+550 Unknown savepoint name %1$s
+551 Unable to locate volume information path file "%1$s"... Continue reading from internal tables
+552 Date arithmetic underflow.
+553 Time arithmetic underflow.
 $ LOADDB
-554 Bộ tải đã nhập vào một trạng thái không hợp lệ. Không có thao tác hơn nữa nào là có thể.
-555 Lỗi cấp phát bộ nhớ trong quá trình tải cơ sở dữ liệu.
-556 Giá trị quá nhiều cung cấp. Mong đợi %1$d.
-557 Với thuộc tính %1$s of %2$s, kiểu %3$s không được cho phép trong miền của tập hợp.
-558 Với thuộc tính %1$s of %2$s, kiểu mong đợi %3$s, có một hằng số tập hợp.
-559 Với thuộc tính %1$s of %2$s, kiểu mong đợi %3$s, có  %4$s.
-560 Với thuộc tính %1$s of %2$s, miền không đủ cụ thể để hỗ trợ\n các tham chiếu đối tượng chưa đủ tiêu chuẩn.
-561 Các tập hợp lồng nhau là không được phép.
-562 Lớp hệ thống %1$s không thể được cư trú bằng cách dùng bộ tải cơ sở dữ liệu.
-563 Tham chiếu đến lớp nội bộ %1$s được chuyển đổi thành NULL.
-564 Vi phạm ràng buộc UNIQUE cho thuộc tính %1$s của %2$s.
-565 Phương pháp constructor %1$s chưa được định nghĩa trên lớp %2$s.
-566 Không có lớp quy định hoặc không có thuộc tính trong lớp học.
-567 Có quá nhiều đối số phương pháp constructor được cung cấp. Đã yêu cầu %1$d.
-568 Thiếu tham số phương pháp constructor. Đã yêu cầu %1$d, đã tìm thấy %2$d.
-569 Thiếu giá trị thuộc tính.  Đã yêu cầu %1$d, đã tìm thấy %2$d.
-570 Không thể truy cập tệp tin dữ liệu Glo "%1$s".
-571 Thực thể đã được tạo trước đó qua một tham chiếu phía trước.\nĐiều này là không được phép cho các thực thể được tạo bằng cách sử dụng phương pháp constructor.
-572 Lỗi nội bộ: Không thể xây dựng đại diện ổ đĩa của thực thể.
-573 Lỗi nội bộ: Không thể chèn một thực thể mới trong cơ sở dữ liệu.
-574 Lỗi nội bộ: Không thể cập nhật một thực thể mới trong cơ sở dữ liệu.
-575 Với đối số %1$d của constructor %2$s, kiểu %3$s được mong đợi, có được %4$s.
-576 Tham chiếu đến lớp %3$s không tương thích với miền của %1$s của %2$s.
-577 Với đối số %1$d của bộ xây dựng %2$s, miền không đủ cụ thể để hỗ trợ\n các tham chiếu đối tượng chưa đủ tiêu chuẩn.
-578 Tham chiếu đến lớp %3$s không tương thích với miền của đối số %1$d \n của constructor %2$s.
-579 Miền mục tiêu phải bao gồm kiểu "object" để cho phép các tham chiếu đến các lớp.
-580 Thuộc tính %1$s chưa được định nghĩa cho lớp %2$s.
-581 Cố gắng để cập nhật cơ sở dữ liệu khi các cập nhật bị vô hiệu hóa.
-582 Mục đích lưu trữ %1$d không rõ. Vùng hiệu lực là từ %2$d đến %3$d.
-583 Cố gắng để cấp phát một số trang̣ (%1$d) không hợp lệ.
-584 Lỗi nội bộ: Một vòng lặp được phát hiện trong bảng tệp tin của tệp tin %1$d trong bộ đĩa "%2$s". Vòng lặp có thể bị gây ra bởi trang %3$d|%4$d.
-585 Heap %1$s|%2$d|%3$d không biết
-586 Lỗi nội bộ: Không thể cập nhật tiêu đề chuỗi trong VPID %1$d|%2$d cho heap %3$d trong bộ đĩa "%4$s".
-587 Các mục nhập của các bộ đĩa thường trực chưa được phân loại trong tệp tin volinfo "%1$s" của bạn  volinfo file. Mục nhập %2$d: %3$d %4$s nằm ngoài trình tự.
-588 Lỗi nội bộ: Xác nhận '%1$s' thất bại.
-589 Tên người dùng "%1$s" không hợp lệ.
-590 Miền thuộc tính "%1$s" của một lớp có thể không phải là một \nlớp ảo hoặc một lớp ảo proxy.
-591 Miền thuộc tính "%1$s" của một lớp ảo proxy \nphải là một lớp ảo proxy.
-592 Miền thuộc tính "%1$s" của một lớp ảo proxy \nvà lớp ảo proxy phải trong một cơ sở dữ liệu cục bộ giống nhau.
-593 Một thực thể ảo không thể cập nhật đã được cải tạo và không thể được xây dựng lại.
-594 Một mệnh đề object_id phải được cung cấp mà không sử dụng thuộc tính (%1$s) của các kiểu dữ liệu approximate (float hoặc double).
-595 Tên cơ sở dữ liệu "%1$s" quá dài. Tên cơ sở dữ liệu phải ít hơn %2$d ký tự.
-596 %1$d trang của tổng không gian tạm thời cho phép đã bị vượt quá.
-597 Số trang cho tệp tin heap %1$d|%2$d|%3$d không nhất quán. \n%4$d và %5$d được tìm thấy dựa theo heap chain và bảng tệp tin, theo thứ tự.
-598 Số tệp tin không đồng nhất. %1$d được mong đợi, %2$d được tìm thấy
-599 Một lỗi I/O phát sinh khi đồng bộ hóa trạng thái của bộ đĩa "%1$s".
-600 Hàm số "%1$s" không được thực thi trên máy PC.
+554 The loader has entered an invalid state. No further operations are possible.
+555 Memory allocation error during database loading.
+556 Too many values supplied. Expecting %1$d.
+557 For attribute %1$s of %2$s, type %3$s is not allowed in the domain of the set.
+558 For attribute %1$s of %2$s, expected type %3$s, got a set constant.
+559 For attribute %1$s of %2$s, expected type %3$s, got %4$s.
+560 For attribute %1$s of %2$s, domain is not specific enough to support\n unqualified object references.
+561 Nested sets are not allowed.
+562 System class %1$s cannot be populated using the database loader.
+563 Reference to internal class %1$s converted to NULL.
+564 Violated the UNIQUE constraint for attribute %1$s of %2$s.
+565 Constructor method %1$s is not defined on class %2$s.
+566 No class specified or no attribute in class.
+567 Too many constructor method arguments supplied. Expected %1$d.
+568 Missing constructor method parameters. Expected %1$d, found %2$d.
+569 Missing attribute values.  Expected %1$d, found %2$d.
+570 Could not access Glo data file "%1$s".
+571 Instance was previously created through a forward reference.\nThis is not allowed for instances created using constructor methods.
+572 INTERNAL ERROR: Cannot build disk representation of instance.
+573 INTERNAL ERROR: Cannot insert new instance in database.
+574 INTERNAL ERROR: Cannot update new instance in database.
+575 For argument %1$d of constructor %2$s, expected type %3$s, got %4$s.
+576 Reference to class %3$s is not compatible with the domain of %1$s of %2$s.
+577 For argument %1$d of constructor %2$s, domain is not specific enough to support\n unqualified object references.
+578 Reference to class %3$s is not compatible with the domain of argument %1$d \n of constructor %2$s.
+579 Target domain must include type "object" to allow references to classes.
+580 Attribute %1$s is not defined for class %2$s.
+581 Attempted to update the database when updates are disabled. 
+582 Unknown storage purpose %1$d. Valid range is from %2$d to %3$d.
+583 Trying to allocate an invalid number (%1$d) of pages.
+584 Internal Error: A loop was detected in the file table of file %1$d in volume "%2$s". The loop may be caused by page %3$d|%4$d.
+585 Unknown heap %1$s|%2$d|%3$d
+586 Internal Error: Unable to update chain header in VPID %1$d|%2$d for heap %3$d in volume "%4$s".
+587 Entries of permanent volumes are unsorted in your "%1$s" volinfo file. Entry %2$d: %3$d %4$s is out of sequence.
+588 INTERNAL ERROR: Assertion '%1$s' failed.
+589 Invalid user name "%1$s".
+590 The attribute domain "%1$s" of a class may not be a \nvirtual class or a proxy virtual class.
+591 The attribute domain "%1$s" of a proxy virtual class \nmust be a proxy virtual class.
+592 The attribute domain "%1$s" of a proxy virtual class \nand the proxy virtual class must be on the same local database.
+593 A non-updatable virtual instance has been reclaimed and cannot be rebuilt.
+594 An object_id clause must be supplied without using attributes (%1$s) of approximate data types (float or double).
+595 The database name "%1$s" is too long. Database name should be less than %2$d characters.
+596 The %1$d pages of total temporary space allowed have been exceeded.
+597 Number of pages for heap file %1$d|%2$d|%3$d is inconsistent. \n%4$d and %5$d were found according to heap chain and file table, respectively.
+598 Number of files is inconsistent. %1$d were expected, %2$d were found
+599 An I/O error occurred while synchronizing state of volume "%1$s".
+600 Function "%1$s" not implemented on the PC.
 601 "%1$s".
-602 Lỗi dl: "%1$s" được định nghĩa nhiều hơn một lần.
-603 Lỗi nội bộ: Sector/bảng trang của tệp tin VFID %1$d|%2$d dường như bị hỏng.
-604 Lỗi nội bộ: Một thiết lập cấp phát cho tệp tin VFID %1$d|%2$d(Bộ đĩa"%3$s") dường như không đồng nhất trong %4$d bị xóa hoặc được đánh dấu các trang bị xóa và lỗ thủng trang %5$d trong bảng
-605 Lỗi nội bộ: Số trang được đánh dấu bị xóa không đồng nhất cho tệp tin VFID %1$d|%2$d(Bộ đĩa "%3$s"). %4$d được đòi hỏi, %5$d được tìm thấy.
-606 Không thể xác định vị trí odbc.ini với đường dẫn "%1$s".
-607 Cơ sở dữ liệu "%1$s" không được tìm thấy trong odbc.ini.
-608 Cơ sở dữ liệu "%1$s" không có một đặc tả Máy chủ trong tệp tin odbc.ini.
-609 Giao dịch của bạn không thể được quay lui lại vì bản ghi đã bị bỏ qua. cơ sở dữ liệu của bạn có thể bị hỏng.
-610 Cơ sở dữ liệu của bạn có thể bị hỏng vì bản ghi đã bị tắt khi cơ sở dữ liệu của bạn gặp sự cố.
-611 %1$s không thể được thực thi trong chế độ client/server.
-612 Bản ghi không thể bị tắt tại thời điểm này vì có các hành động đang chờ để khôi phục.
-613 Trong lớp "%3$s", cấu phần cục bộ "%1$s" không thể phục vụ như một thay thế bí danh cho lớp "%2$s". Các miền không tương thích.
-614 Số lưu trữ bản ghi đang hoạt động đã vượt qua số %1$d tối da cần thiết.
-615 Không thể thiết lập liên lạc với giao diện Winsock. Lỗi Winsock: %1$d.
-616 Không thể xác định tên máy sử dụng giao diện Winsock. Lỗi Winsock: %1$d.
-617 Không thể xác định id máy sử dụng giao diện Winsock. Phải có một mục nhập trong bảng tên máy chủ cho máy này. Lỗi Winsock: %1$d.
-618 Thuộc tính không thể cập nhật.
-619 Tập hợp mã nguồn tồi.
-620 Tập hợp mã đích nhận sai.
-621 Kiểu dữ liệu không hợp lệ. Đối số chứa một kiểu dữ liệu không hợp lệ.
-622 Tập hợp mã không tương thích. Các tập hợp mã của các đối số là không tương thích.
-623 Escape sequence không hợp lệ. Escape sequence không hợp lệ bị gây ra bởi một lỗi trong bộ biên dịch biểu thức chính quy.
-624 Ký tự escape không hợp lệ. Một ký tự escape là non-NULL với độ dài lớn hơn 1.
-625 Lỗi nội bộ. Cố gắng để cập nhật đối tượng thực thể sai %1$d|%2$d|%3$d bản mẫu thông tin thuộc tính với đối tượng thực thể %4$d|%5$d|%6$d.
-626 Lỗi nội bộ. %1$d thuộc tính được yêu cầu không tìm thấy.
-627 Toán hạng trim không hợp lệ.  Toán hạng trim có độ dài lớn hơn 1.
-628 Kiểu tiền tệ(currency) không hợp lệ: %1$d.
-629 Kích cỡ trang %1$d không phải là một lũy thừa của 2 hoặc kích cỡ trang quá nhỏ. Kích cỡ trang của %2$d được dùng để thay thế.
-630 Chuyển đổi không được hỗ trợ bởi %1$s.
-631 Câu lệnh SQL vi phạm ràng buộc NOT NULL.
-632 %1$s không phải là một bộ đĩa sao lưu.
-633 %1$s là một sao lưu của cơ sở dữ liệu %2$s được tạo trên %3$s thay vì cơ sở dữ liệu đã cho %4$s được tạo trên %5$s
-634 Một tệp tin/bộ đĩa cơ sở dữ liệu được mong đợi trong bản sao lưu.
-635 CẢNH BÁO: Bể chứa Bộ đệm Bản ghi của bộ đệm %1$d dường như quá nhỏ đối với môi trường hiện tại.\n Có thể một số bộ đệm không được giải phóng bởi hệ thống do một lỗi không rõ \n hoặc có nhiều giao dịch đồng thời bị bỏ dở cùng một lúc. Bể chứa bộ đệm bản ghi được mở rộng với thêm %2$d bộ đệm.
-636 CẢNH BÁO: Num_buffers %1$d quá nhỏ. Giá trị nhỏ nhất của %2$d đã được giả định.
-637 Lỗi hệ thống: giải phóng một bộ đệm bản ghi quá nhiều. Fix Count được thiết lập về Không.
-638 Cảnh báo: Làm sạch một lưu trữ bản ghi không thể cập nhật pageid = %1$d
-639 Lỗi hệ thống: Trang trình tự bản ghi trước đó %1$d không phải trang làm sạch bị trì hoãn %2$d.
-640 Lỗi hệ thống: một savepoint không thể được thêm khi giao dịch không hoạt động (e.g., trong quá trình cam kết hoặc quay lui).
-641 Một tên phải được đưa ra cho một savepoint.
-642 Lỗi hệ thống: không có một thao tác hệ thống hàng đầu đang hoạt động cho giao dịch hiện tại.
-643 Có thể một lỗi hệ thống: Cam kết/bỏ dở giao dịch = %1$d (chỉ mục= %2$d) mà có thao tác thường trực\n đính kèm với nó. Sẽ đính kèm các thao tác hệ thống đó đến giao dịch
-644 LỖI NHẬT KÝ NGHIÊM TRỌNG: %1$s
-645 LỖI HỆ THỐNG: Trạng thái = %1$s của giao dịch = %2$d (chỉ mục = %3$d) \n không phải là một trạng thái đúng để áp dụng các hành động trì hoãn/hoàn tác máy khách... bị bỏ qua
-646 LỖI HỆ THỐNG: It seems that a compensating record is missing for logical logging rcvindex = %1$s\n. Without this compensating record crash recovery will not be done correctly
-647 Sao lưu "%1$s" không thuộc về cơ sở dữ liệu đã cho.
-648 Sao lưu không tương thích với phát hành "%1$s" hiện tại phát hành "%2$s".
-649 precision đã cho của %1$d không hợp lệ; nó phải lớn hơn %2$d và không lớn hơn %3$d.
-650 Không thể tạo đủ tuyến đoạn cho 'max_clients=%1$d'.
-651 Không có bộ nhớ ảo để cấp phát trước bộ đệm phân loại %1$d cho mỗi tuyến đoạn %2$d.
-652 Độ lệch sai %1$d được đưa ra để phân chia bản ghi chép của độ dài %2$d được lưu trữ trên khe %3$d
-653 Độ lệch sai %1$d hoặc độ dài %2$d được đưa ra để gỡ bỏ một phần của dữ liệu của bản ghi chép của độ dài %3$d được lưu trữ trên khe %4$d
-654 Độ lệch sai %1$d hoặc độ dài %2$d được đưa ra để ghi đè lên một phần của dữ liệu của bản ghi chép của độ dài %3$d được lưu trữ trên khe %4$d
-655 Không thể mở tệp tin cấu hình bộ xử lý sự kiện, "%1$s".
-656 Cảnh báo: Id/name null trong tệp tin cấu hình bộ xử lý sự kiện, "%1$s", dòng %2$d
-657 Cảnh báo: Tên sự kiện không hợp lệ, "%1$s", trong tệp tin cấu hình bộ xử lý sự kiện, "%2$s", dòng %3$d
-658 Cảnh báo: id sự kiện %1$d, không trong phạm vi id lỗi %2$d <> %3$d, tệp tin "%4$s", dòng %5$d
-659 Không thể truy cập chương trình bộ xử lý sự kiện, "%1$s".
-660 Không thể mở/kết nối tiến trình bộ xử lý sự kiện, "%1$s".
-661 Thất bại ghi vào tiến trình bộ xử lý sự kiện, "%1$s".
-662 Thất bại khởi tạo cơ chế xử lý sự kiện.
-663 Cảnh báo: Dòng quá dài trong tệp tin cấu hình bộ xử lý sự kiện, "%1$s", dòng %2$d, đang cắt bỏ
-664 Cơ chế xử lý sự kiện đã bắt đầu.
-665 Pipe bộ xử lý sự kiện đã vỡ, "%1$s"
-666 Cơ chế xử lý sự kiện đã dừng.
-667 Không thể khớp lớp '%1$s' với lớp C++ tương ứng.
-668 Lỗi nội bộ: Kiểu miền '%1$d' không rõ.
-669 Server từ chối kết nối máy khách: máy khách tối đa, (%1$d), đã bị vượt quá.
-670 Thao tác có thể đã gây ra một hoặc nhiều vi phạm ràng buộc. INDEX %1$s%2$s Ở CLASS %3$s%4$s. phím: %5$s%6$s.
-671 Một lỗi ghi/đọc mạng đã xảy ra với socket %1$d gắn kết với giao dịch của bạn (chỉ mục %2$d, %3$s@%4$s|%5$d)
-672 Socket %1$d gắn kết với giao dịch của bạn (chỉ mục %2$d, %3$s@%4$s|%5$d) bị đóng.
-673 Kết nối của bạn đến server đã bị đóng từ khi máy chủ lập tức đi xuống.
-674 Không có đủ tuyến trình đang hoạt động để kết nối với thực thi server hiện tại. Số tuyến đoạn đang hoạt động hiện tại là %1$d. Bạn có thể cần đến khoảng %2$d tuyến đoạn để làm sạch thực thi server trong môi trường của bạn. Chỉ mục giao dịch %3$d tạm ngừng để tiếp tục thực thi server.
-675 Không thể đọc tệp tin vị trí cơ sở dữ liệu, '%1$s'.
-676 Cơ sở dữ liệu '%1$s', không thể được tìm thấy trong tệp tin vị trí cơ sở dữ liệu, '%2$s'
-677 Thất bại kết nối đến server cơ sở dữ liệu, '%1$s', trong (các) máy chủ sau đây: %2$s
-678 Lỗi nội bộ: Client restart module received NULL database server name.
-679 Giao dịch C++ này đã được bắt đầu.
-680 Tìm cách vượt quá cấp độ lồng nhau giao dịch C++ tối đa (%1$d).
-681 Giao dịch %1$s đã tìm cách để đạt tới một giao dịch C++ mà vẫn chưa được bắt đầu.
-682 Không thể %1$s giao dịch C++ cho đến khi tất cả các giao dịch cấp dưới được hoàn thành.
-683 Tìm cách để tạo chuỗi ký tự với độ dài không hợp lệ - %1$d
-684 Phương pháp trả về mã lỗi người dùng tự định nghĩa %1$d.
-685 Lớp "%1$s" không hợp lệ.
-686 Thông báo: bộ xử lý sự kiện đã được khởi động lại.
-687 Không cho phép ném (%s *) đến to (%s *).
-688 Chỉ số dưới nằm ngoài phạm vi. Cố gắng truy cập phần tử %lld. Kích cỡ bộ sưu tập = %lld.
-689 Lỗi nội bộ. Iterator chứa trạng thái hỏng.
-690 Cố gắng để bỏ tham chiếu một thực thể chưa được khởi tạo của odb_Ref<>.
-691 Cố gắng để dùng một iterator không hợp lệ.
-692 Cố gắng sử dụng một iterator với một collection không liên quan.
-693 Tràn đã phát sinh trên kiểu dữ liệu Numeric.
-694 LỖI HỆ THỐNG: Không thể tải B+tree.
-695 Giao diện sai đã được dùng để xóa một máy khách.
-696 Giao dịch không biết (chỉ mục %1$d, %2$s@%3$s|%4$d).
-697 Chỉ mục giao dịch đã cho (index %1$d, %2$s@%3$s|%4$d) không khớp với chỉ mục giao dịch hiện tại (chỉ mục %5$d, %6$s@%7$s|%8$d). Có khả năng, giao dịch đã cho đã kết thúc và chỉ mục giao dịch của nó đã được gắn lại đến giao dịch khác.
-698 Lỗi nội bộ: CHỈ MỤC %1$s TRÊN LỚP %2$s (CLASS_OID: %3$d|%4$d|%5$d). số OID trong hệ thống phân cấp duy nhất: %6$d không bằng với số OID: %7$d được tìm thấy trong B+tree duy nhất cộng với số NULL: %8$d được tìm thấy trong hệ thống phân cấp duy nhất cho B+tree: %9$d|%10$d|%11$d.
-699 Lỗi nội bộ: CHỈ MỤC %1$s TRÊN LỚP %2$s (CLASS_OID: %3$d|%4$d|%5$d). số OID trong hệ thống phân cấp duy nhất: %6$d không bằng với số OID: %7$d được tìm thấy trong thống kê gốc B+tree duy nhất cho B+tree: %8$d|%9$d|%10$d.
-700 Lỗi nội bộ: CHỈ MỤC %1$s TRÊN LỚP %2$s (CLASS_OID: %3$d|%4$d|%5$d). số OID  the number of OIDs: %6$d không bằng với số NULL: %7$d cộng với số khóa: %8$d trong B+tree duy nhất: %9$d|%10$d|%11$d.
-701 Không có proxy nào được định nghĩa trên "%1$s" tại ldb "%2$s".
-702 Lỗi nội bộ: CHỈ MỤC %1$s TRÊN LỚP %2$s (CLASS_OID: %3$d|%4$d|%5$d). số NULL trong hệ thống phân cấp duy nhất: %6$d không bằng với số NULL: %7$d được tìm thấy trong thống kê gốc B+tree duy nhất cho B+tree: %8$d|%9$d|%10$d.
-703 Lỗi nội bộ: CHỈ MỤC %1$s TRÊN LỚP %2$s (CLASS_OID: %3$d|%4$d|%5$d). OID: %6$d|%7$d|%8$d được tìm thấy trong B+tree duy nhất: %9$d|%10$d|%11$d không thuộc về một trong các lớp cho ràng buộc duy nhất.
-704 Ước tính hàm số server chung bị thất bại.
-705 Bộ đĩa thường trực %1$d không đồng nhất được tìm thấy khi %2$d được mong đợi.
-706 Không thể mở rộng bộ đĩa thường trực. Bộ đĩa thường trực "%1$s" với mục đích %2$s đã được đưa ra.
-707 Không thể mở rộng bộ đĩa tạm thời "%1$s" với %2$d trang
-708 Không thể mở rộng bộ đĩa đĩa tạm thời "%1$s" với %2$d trang (%3$lld Kbytes) vì không đủ không gian. Số trang hiện tại có thể dùng là %4$d trang (%5$lld Kbytes).
-709 Không tìm thấy ràng buộc "%1$s".
-710 Ràng buộc không hợp lệ.
-711 Một đối tượng với giá trị thuộc tính đã cung cấp không tồn tại.
-712 Ràng buộc " %1$s" đã tồn tại.
-713 Một chỉ mục không tồn tại trong thuộc tính này.
-714 Truy vấn thất bại vì không đủ không gian tệp tin tạm thời.
-715 Thất bại kiểm nghiệm lược đồ: %1$s
-716 Ràng buộc NOT NULL không được cho phép trong các lớp ảo hoặc proxy.
-717 Ràng buộc UNIQUE không được cho phép trong các lớp ảo hoặc proxy.
-718 Gadget không hợp lệ.
-719 Số thuộc tính(%d) và giá trị (%d) không bằng nhau.
-720 Không thể dùng một gadget để chèn vào một lớp ảo hay proxy.
-721 Chèn kết quả truy vấn nhiều hơn một hàng.
-722 Số thuộc tính sai cho ràng buộc NOT NULL.
-723 Không thể sửa đổi miền của một thuộc tính đang tồn tại.
-724 Tham số không hợp lệ cho sự tạo tên ràng buộc mặc định.
-725 Lỗi nội bộ: mong đợi oid tạm thời và gặp phải oid thường trực.
-726 Ràng buộc UNIQUE phải được thêm bằng cách sử dụng một câu lệnh Alter tách biệt\nmột khi các thực thể đã được tạo. Ví dụ, thay vì:\n\talter table1 add attribute a int unique;\nuse:\n\talter table1 add attribute a int;\n\talter table1 add unique(a);
-727 Sự kiện trigger không hợp lệ.
-728 Truy vấn thất bại bởi vì tệp tin tạm thời vfid không hợp lệ cho giao dịch %1$d.
-729 Tràn xảy ra trong ngữ cảnh phép trừ.
-730 Tràn xảy ra trong ngữ cảnh dấu nhân.
-731 Tràn xảy ra trong ngữ cảnh dấu chia.
-732 Tràn xảy ra trong ngữ cảnh dầu trừ.
-733 Tràn xảy ra trong ngữ cảnh ép buộc.
-734 Lỗi nội bộ: Đề mục của tệp tin VFID VFID %1$d|%2$d(Bộ đĩa "%3$s") bị hỏng.
-735 Chỉ mục giao dịch %1$d không biết.
-736 Phải chỉ định hoặc dịch vụ hoặc mã định danh cổng. Lỗi Winsock: %1$d.
-737 Dịch vụ không biết cho TCP: %1$s. Lỗi Winsock: %2$d.
-738 Không thể tạo luồng socket. Lỗi Winsock: %1$d.
-739 Không thể gắn kết địa chỉ cục bộ... đang thử lại. Lỗi Winsock: %1$d.
-740 Không thể gắn kết địa chỉ cục bộ... đang bỏ dở. Lỗi Winsock: %1$d.
-741 Chấp nhận thất bại. Lỗi Winsock: %1$d.
-742 Đang gửi một thông báo broadcast đến máy khách. Lỗi Winsock: %1$d.
-743 Thất bại trên handshake giữa máy khách và server. (peer host %1$s)
-744 Lỗi trong rehashing một proxy/vclass MOP.
-745 Giai đoạn thu gom rác thải không hợp lệ.
-746 Thu gom rác thải không hợp lệ gọi lại.
-747 Gọi lại vé không hợp lệ thu gom rác thải.
-748 Con trỏ đối tượng không hợp lệ bị bắt gặp bởi db_gc_mark_object.
-749 Số các thực thể lấy về không được khớp: %1$d được mong đợi, %2$d được nhận về.
-750 Số các thực thể lấy về không được khớp: %1$d  được mong đợi, %2$d được nhận về.
-751 OID của đối tượng mới không có sẵn trong một trigger BEFORE INSERT.
-752 Lỗi khôi phục lại sao lưu unit_num %1$d.
-753 Lỗi khôi phục lại sao lưu unit_num %d, pageid %d vượt quá tổng số trang %d cho volid %d.
-754 Thực thể proxy OO có non-string-type hoặc null key.
-755 %1$s không được thực thi trong chế độ độc lập.
-756 Bộ đệm chuỗi ký tự được chỉ định quá nhỏ để mã hóa đối tượng này.
-757 Lỗi nội bộ: không thể gán OID thường trực trong quá trình mã hóa đối tượng.
-758 Chuỗi ký tự đã chỉ định không hợp lệ cho giải mã đối tượng.
-759 Đối tượng mục tiêu đã bị xóa.
-760 Lỗi nội bộ: thực thể đối tượng proxy có khóa NULL trong quá trình giải mã đối tượng.
-761 Lỗi nội bộ: thực thể đối tượng ánh xạ đến thực thể thật không hợp lệ.
-762 Lỗi nội bộ trong việc giải quyết thực thể lớp ảo đến một thực thể thật.
-763 Lỗi nội bộ trong việc mã hóa thực thể đối tượng không thể cập nhật.
-764 Lỗi nội bộ trong việc mã hóa đối tượng thánh dạng thức nội tại vobj.
-765 Đối số đối tượng đầu ra có một địa chỉ NULL.
-766 Lỗi nội bộ trong việc giải mã đối tượng.
-767 Không thể tạo một cấp độ sao lưu %d mà không tạo một cấp độ sao lưu %d trước tiên.
-768 Cơ sở dữ liệu cục bộ "%1$s" đã được truy cập trong phiên này, sự thay đổi hoặc xóa đều không được phép.
-769 Thuộc tính "%s", của lớp "%s" không phải một lớp hoặc thuộc tính dùng chung hợp lệ.
-770 Không có hàm số bảng.
-771 Tham số không hợp lệ cho hàm số.
-772 Không tìm thấy lớp db_serial.
-773 Không tìm thấy số sê-ri Serial "%1$s".
-774 Serial "%1$s" đã tồn tại.
-775 next value vượt quá giá trị LỚN NHẤT (NHỎ NHẤT).
-776 Không thể lấy về đối tượng serial.
-777 Không thể cập nhật đối tượng serial.
-778 Không thể tạo một liên kết biểu tượng "%s" đến tệp tin "%s".
-779 Kết quả vượt quá giới hạn. Năm trong trường Ngày tháng năm PHẢI trong khoảng từ 1 tới 9999.
-780 Hệ thống nội bộ thất bại: không thể lấy được thời gian hệ thống.
-781 Chuỗi định dạng quá dài. Nó phải nhỏ hơn 16K.
-782 Chuỗi rỗng(empty string) không được phép tại đây.
-783 Định dạng không hợp lệ.
-784 Hai đối số không khớp.
-785 Chuỗi đối số đầu tiên quá dài. Nó phải nhỏ hơn 16K.
-786 Định dạng bị trùng lặp.
-787 Lỗi chuyển đổi trong định dạng time.
-788 Lỗi chuyển đổi trong định dạng timestamp.
-789 Số sai.
-790 Sự thực thi truy vấn đã bị ngắt bởi người dùng.
-791 Giá trị serial không hợp lệ.
-792 Không thể cấp phát bộ nhớ cho css.
-793 pthread_attr_init() thất bại.
-794 pthread_attr_destroy() thất bại.
-795 pthread_attr_setdetachstate() thất bại.
-796 pthread_attr_setscope() thất bại.
-797 pthread_attr_setstacksize() thất bại.
-798 pthread_create() thất bại.
-799 pthread_join() thất bại.
-800 pthread_mutex_init() thất bại.
-801 pthread_mutex_destroy() thất bại.
-802 pthread_mutex_lock() thất bại.
-803 pthread_mutex_trylock() thất bại.
-804 pthread_mutex_unlock() thất bại.
-805 pthread_mutexattr_init() thất bại.
-806 pthread_mutexattr_destroy() thất bại.
-807 pthread_mutexattr_settype() thất bại.
-808 pthread_mutexattr_gettype() thất bại.
-809 pthread_cond_init() thất bại.
-810 pthread_cond_destroy() thất bại.
-811 pthread_cond_wait() thất bại.
-812 pthread_cond_timedwait() thất bại.
-813 pthread_cond_signal() thất bại.
-814 pthread_cond_broadcast() thất bại.
-815 pthread_key_create() thất bại.
-816 pthread_key_delete() thất bại.
-817 pthread_setspecific() thất bại.
-818 pthread_getspecific() thất bại.
-819 pthread_once() thất bại.
-820 Không thể khởi tạo một kết nối.
-821 Tắt một kết nối.
-822 Thao tác Mutex thất bại trong khi lấy id máy khách tiếp theo.
-823 Thao tác Mutex thất bại trong khi khởi tạo danh sách kết nối.
-824 Không thể hủy mutex trong khi hoàn thành danh sách kết nối.
-825 Gọi pread() thất bại.
-826 Gọi pwrite() thất bại.
-827 Chức năng xem xét danh sách kết nối trả về giá trị không hợp lệ.
-828 Đoạn mã tới hạn của chỉ mục đã được đưa ra không hợp lệ.
-829 Khóa mutex này đã được mở khóa.
-830 Không thể cấp phát thêm mục nhập truy vấn nữa. Mục nhập tối đa có thể cấp phát là %1$d.
-831 Tất cả bộ mô tả giao dịch(%1$d) đang được dùng. Nâng cao tham số max_clients.
-832 Sao lưu đang được chạy. Sao lưu không thể được chạy bởi hai tiến trình.
-833 Tên chỉ mục "%1$s" mơ hồ. Chỉ định tên lớp của chỉ mục.
-834 Có một vài chưa khớp giữa chuỗi source "%1$s" và chuỗi format "%2$s" được đưa ra trong to_number().
-835 Mục thống kê chưa định nghĩa.
-836 CHỐT TRÊN TRANG(%d|%d) TẠM NGƯNG
-837 Không thể xóa người dùng sở hữu các đối tượng cơ sở dữ liệu (lớp/trigger/serial vân vân).
-838 Không thể đồng thời mở nhiều hơn %1$d quét chỉ mục.
-839 "%1$s": Tham số hệ thống chưa biết hoặc giá trị sai.
-840 Không thể thay đổi tham số hệ thống "%1$s".
-841 Thao tác được yêu cầu có thể được thực hiện bởi chỉ một khách hàng (giao dịch) duy nhất.
-842 Không thể lưu ẩn khóa của đối tượng %1$d|%2$d|%3$d.
-843 Đối số sai trong %s, một %s đã được chuyển.
-844 Sự cô lập không rõ (%d) được tìm thấy. Chỉ mục giao dịch là %d.
-845 Kiểu đối tượng không hợp lệ (%d) được tìm thấy. Đối tượng có thể khóa là %d|%d|%d.
-846 %s của giao dịch (%d) không được tìm thấy trong danh sách bộ nắm giữ của một đối tượng(%d|%d|%d).
-847 %s trên một %s(%d|%d|%d) không được tìm thấy trong giao dịch(%d) danh sách nắm giữ(cnt=%d).
-848 %s trên một đối tượng(%d|%d|%d) không được tìm thấy trong giao dịch(%d) danh sách non2pl.
-849 Cố gắng bỏ dở một giao dịch(%1$d) hai lần.
-850 Giao dịch (%d) không phải lock holder hoặc lock waiter của một đối tượng(%d|%d|%d).
-851 Thất bại cấp phát tài nguyên khóa (%1$s).
-852 Tổng chế độ holder (%1$d) của một danh sách lock holder rỗng là không NULL_LOCK.
-853 Đối với một đối tượng(%d|%d|%d), giao dịch(%d) của of Uncommitted Read nắm giữ khóa lỗi(%s).
-854 CẢNH BÁO: Không có lock holder, nhưng tồn tại lock waiter. tham chiếu đến %1$s.
-855 CẢNH BÁO: Một hoặc nhiều tuyến đoạn là lock-waiting cho một giao dịch (%1$d).
-856 CẢNH BÁO: Trạng thái chờ khóa lạ(%d|%d), tuyến đoạn (%d|%d) và giao dịch (%d).
-857 Một lỗi I/O phát sinh khi cắt bỏ trang %1$d của bộ đĩa "%2$s".
-858 Bộ đĩa "%1$s" là không biết tại khởi động lại server.
-859 CHỐT TRÊN TRANG (%d|%d) ĐÃ BỎ DỞ
-860 Không thể thực hiện giao dịch hiện tại như một phần của giao dịch toàn cục bởi vì trạng thái của nó là '%1$s'.
-861 Không thể chuẩn bị cam kết giao dịch hiện tại có mã định danh giao dịch %1$d bởi vì giao dịch đó không được thực hiện như một phần của giao dịch toàn cục.
-862 Không thể thiết lập thông tin người dùng của giao dịch toàn cục với mã định danh %1$d bởi vì trạng thái của nó là '%2$s'.
-863 Không thể có được thông tin người dùng của giao dịch toàn cục với mã định danh %1$d bởi vì nó chưa được thiết lập.
-864 Không thể mở tệp tin chi tiết backupdb/restoredb '%1$s'.
-865 Không thể thực thi câu lệnh vì kiểu input marker không biết.
-866 Mã lỗi chưa được sử dụng.
-867 Mã lỗi chưa được sử dụng.
-868 Mã lỗi chưa được sử dụng.
-869 Mã lỗi chưa được sử dụng.
-870 Mã lỗi chưa được sử dụng.
-871 Mã lỗi chưa được sử dụng.
-872 Mã lỗi chưa được sử dụng.
-873 Lỗi xác thực PKI "%1$s".
-874 Đối số của power () nằm ngoài phạm vi.
-875 Tràn xảy ra trong ngữ cảnh power.
-876 Mã lỗi chưa được sử dụng.
-877 Không có dữ liệu nào để được dỡ tải.
-878 Tệp tin vị trí cơ cở dữ liệu không hợp lệ, '%1$s'.
-879 Không thể có được cho phép: '%1$s'.
-880 Không thể thay đổi cho phép '%1$s'.
-881 Không thể có được tệp tin khóa '%s(ID TỆP TIN:%d)'.
-882 Không thể phát hành tệp tin khóa 'ID TỆP TIN:%1$d'.
-883 Thất bại khi lấy trạng thái tệp tin '%1$s'.
-884 Volext-pathname '%1$s' không được cho phép ghi.
-885 Thất bại để di chuyển từ '%s' đến '%s'. Dùng thiết bị(đĩa) giống nhau.
-886 "%1$s" gây ra vi phạm ràng buộc duy nhất.
-887 Thủ tục lưu trữ '%1$s' đã tồn tại.
-888 Đếm tham số không hợp lệ. mong đợi: %d, thực tế: %d
-889 Lỗi thực thi thủ tục lưu trữ: %1$s
-890 Phân vùng thất bại.
-891 Phân vùng thích hợp không tồn tại.
-892 Khóa chính "%2$s" đã được định nghĩa cho lớp "%1$s".
-893 Thuộc tính '%1$s', một thành viên của khóa chính, không thể bị xóa.
-894 Hàm số/Thủ tục lưu trữ '%1$s' không tồn tại.
-895 Kiểu thủ tục lưu trữ không hợp lệ : '%s' là '%s'.
-896 Nén thất bại. Phương pháp Zip: %d (%s), Cấp độ Zip: %d (%s)
-897 Giải nén thất bại.
-898 Lỗi nhân bản: "%1$s"
-899 Yêu cầu phân vùng không hợp lệ.
-900 Không tìm thấy thư viện Java VM: %1$s.
-901 Java VM không thể được khởi động: %1$s.
-902 Java VM đang không chạy is not running.
-903 Không thể kết nối Can't connect Java VM: %1$s
-904 Tên thủ tục lưu trữ không hợp lệ Invalid stored procedure name.
-905 Nối mạng với JVM thất bại: %1$d
-906 Chữ ký phương pháp java không hợp lệ.
-907 Chủ sở hữu hoặc một thành viện của nhóm DBA có thể xóa thủ tục lưu trữ.
-908 Quá nhiều đối số của thủ tục lưu trữ '%1$s'.
-909 Tìm thấy lớp catalog/lớp ảo thiếu hoặc không hợp lệ.
-910 Không được phép truy cập đến phân vùng.
-911 Gọi không hợp lệ: nó không thể trả về ResultSet.
-912 ResultSet không thể được sử dụng tham số đầu vào.
-913 Quá nhiều thủ tục lưu trữ lồng nhau gọi.
-914 Một đối tượng serial đã tồn tại như một ràng buộc AUTO INCREMENT.
-915 Giá trị tăng của một ràng buộc gia tăng phải lớn hơn 0.
-916 Bộ đĩa bản ghi đang hoạt động không được bao gồm trong bộ đĩa sao lưu này (%1$s).
-917 Bộ đĩa bản ghi đang hoạt động đã tồn tại.
-918 Lớp '%1$s' được tham chiếu bởi khóa ngoại không tồn tại.
-919 Lớp '%1$s' được tham chiếu bởi khóa ngoại không có khóa chính.
-920 Khóa ngoại '%s' không bao gồm thành viên khóa chính '%s'.
-921 Miền của thành viên khóa ngoại '%s' khác với miền của thành viên khóa chính '%s'.
-922 Ràng buộc phím bên ngoài '%s' vô hiệu, do giá trị '%s'.
-923 Khóa chính '%s' tham chiếu bởi một khóa ngoại '%s' không được bị xóa.
-924 Thao tác Update/Delete bị hạn chế bởi khóa ngoại '%1$s'.
-925 Thu khóa cho khóa ngoại '%1$s' đã thất bại.
-926 Thực thể có khóa ngoại '%1$s' không thể bị xóa.
-927 Số khóa của khóa ngoại '%s' khác với số khóa của khóa chính '%s'.
-928 Không phải người sử dụng nhưng hệ thống có thể gán thuộc tính '%1$s' được tạo bởi 'ON CACHE OBJECT' của khóa ngoại.
-929 Một khóa ngoại không thể được định nghĩa trong lớp ảo.
-930 Có thể xóa thuộc tính '%1$s' được tạo bởi 'ON CACHE OBJECT' của khóa ngoại chỉ sau khi gỡ bỏ ràng buộc của khóa ngoại.
-931 Giá trị bắt đầu của một ràng buộc AUTO INCREMENT phải nhỏ hơn giá trị lớn nhất.
-932 Không thể sửa chữa sự không đồng nhất của số trang trống cho bộ đĩa "%1$s". Bởi vì %2$d trang thu được từ đề mục bộ đĩa là không đồng nhất với %3$d trang từ bitmap.
-933 Không thể sửa chữa sự không đồng nhất của số khu vực trống cho bộ đĩa "%1$s". Bởi vì %2$d khu vực thu được từ đề mục bộ đĩa là không đồng nhất với %3$d khu vực từ bitmap.
-934 Miền NUll được tham chiếu.
-935 Đối số của hàm số %1$s nằm ngoài phạm vi.
-936 Tràn đã xảy ra trong ngữ cảnh exp.
-937 Lỗi cơ sở dữ liệu.
-938 Đối số không hợp lệ.
-939 Có quá nhiều kết nối.
-940 Xử lý không hợp lệ.
-941 Thao tác không được hỗ trợ.
-942 Xử lý tạm ngưng chờ cho các khóa.
-943 Lỗi Generic.
-944 Câu lệnh không được chuẩn bị.
-945 Câu lệnh không có tập kết quả.
-946 Câu lệnh không được thực thi.
-947 Không có thêm tập kết quả nào.
-948 Kích cỡ của bộ đệm không đủ.
-949 Không có thông tin có sẵn nào.
-950 Tên không hợp lệ.
-951 Tập kết quả không thể cập nhật.
-952 Hàng bị xóa.
-953 Tham số của câu lệnh đã chuẩn bị chưa được thiết lập.
-954 Câu lệnh không phải là một câu lệnh hàng loạt.
-955 Không thể xóa câu lệnh hàng loạt này.
-956 Không thể thực thi hàng loạt.
-957 Câu lệnh là câu lệnh được chuẩn bị.
-958 Câu lệnh không phải câu lệnh được chuẩn bị.
-959 Câu lệnh là câu lệnh hàng loạt.
-960 Không có thêm lỗi nào.
-961 Không có thêm kết quả nào.
-962 Không đủ bộ nhớ
-963 Lỗi broker.
-964 Xử lý tập kết quả bị đóng.
-965 Không thể sử dụng tên thuộc tính trùng lặp trong danh sách khóa chỉ mục. Tên thuộc tính '%1$s' được liệt kê nhiều hơn một lần.
-966 Giao dịch của bạn  (chỉ mục %1$d, %2$s@%3$s|%4$d) đã tạm ngưng chờ trên %5$s khóa trên đối tượng %6$d|%7$d|%8$d bởi vì khóa chết. Bạn đang chờ người dùng %9$s hoàn thành.
-967 Giao dịch của bạn  (chỉ mục %1$d, %2$s@%3$s|%4$d) đã tạm ngưng chờ trên %5$s khóa trên lớp %6$s bởi vì khóa chết. Bạn đang chờ người dùng %7$s hoàn thành.
-968 Giao dịch của bạn  (chỉ mục %1$d, %2$s@%3$s|%4$d) đã tạm ngưng chờ trên %5$s khóa trên thực thể %6$d|%7$d|%8$d của lớp %9$s bởi vì khóa chết. Bạn đang chờ người dùng %10$s hoàn thành.
-969 Nền tảng bit server (%1$d) khác với nền tảng bit máy khách (%2$d).
-970 Chế độ Server HA được thay đổi từ '%1$s' thành '%2$s'.
-971 Chương trình '%1$s' (pid %2$d) được kết nối đến server cơ sở dữ liệu '%3$s' trên máy chủ '%4$s' (cổng %5$d).
-972 Chương trình '%1$s' (pid %2$d) đã được kết nối từ máy chủ '%3$s'. (chỉ mục giao dịch %4$d)
-973 Trạng thái Server là %1$s.
-974 Bản ghi lưu trữ "%1$s" được tạo đến trang lưu trữ từ %2$lld đến %3$lld.
-975 Phiên bản hiện tại của nhân bản không cho phép thay đổi nhiều hàng với một câu lệnh UPDATE đơn có thể vi phạm ràng buộc UNIQUE.
-976 Lỗi nội bộ: Kích cỡ bảng tràn (kích cỡ được cấp phát: %1$d, kích cỡ được truy cập: %2$d) tại trang bảng tệp tin %3$d|%4$d(bộ đĩa "%5$s")
-977 Điểm mốc bắt đầu (mã trang mốc trước: %lld, mã trang làm lại trước: %lld).
-978 Điểm mốc kết thúc (mã trang điểm mốc: %lld, mã trang làm lại điểm mốc: %lld).
-979 Vòng lặp CONNECT BY trong dữ liệu người dùng.
-980 Tuyến đoạn đang chờ trong %1$s nhiều hơn %2$d msec.
-981 Giao dịch %1$d đã đạt đến ngưỡng của thống kê giám sát %2$s.
-982 Thiết lập ngắt giao dịch %1$d.
-983 Thực thể của một lớp OID có thể dùng lại là không thể tham chiếu. Thao tác này không được cho phép trên thực thể không thể tham chiếu.
-984 Không thể thiết lập %3$s thành "%6$s" trong khu vực "[%5$s]" khi nó được thiết lập thành "%4$s" trong khu vực "[%2$s]" của tệp tin cấu hình "%1$s".
-985 Tên máy chủ trên chuỗi kết nối cơ sở dữ liệu phải được chỉ định khi nhiều máy chủ được thiết lập trong "databases.txt".
-986 Tính năng CUBRID heartbeat đã bắt đầu.
-987 Tính năng CUBRID heartbeat đã dừng.
-988 Sự kiện Node: %1$s.
-989 Sự kiện tiến trình: %1$s. %2$s
-990 Thực thi lệnh: %1$s. %2$s
-991 Flush victim candidates của bộ đệm trang đã bắt đầu.
-992 Flush victim candidates của bộ đệm trang đã hoàn thành (đếm: %1$d).
-993 Tràn đã xảy ra trong ngữ cảnh thao tác bit.
-994 Câu lệnh không thể là một câu lệnh được chuẩn bị.
-995 Câu lệnh được chuẩn bị có tên %1$s không tồn tại.
-996 Số lượng giá trị đã được đưa ra không đúng. %1$d giá trị được đưa ra nhưng %2$d giá trị được yêu cầu.
-997 Không thể thêm ràng buộc khóa ngoại %1$s đến %2$s đã phân vùng. Hành động tham chiếu mà cập nhật các thuộc tính chưa được hỗ trợ trên các lớp đã phân vùng.
-998 Không thể thêm ràng buộc khóa ngoại %1$s trên thuộc tính %2$s. Thuộc tính không thể có một ràng buộc NOT NULL bởi vì nó phải khớp với hành động tham chiếu SET NULL.
-999 Không thể tạo bảng '%1$s' giống bảng '%2$s' bởi vì bảng hiện có có các tính năng mà không được trùng lặp (%3$s).
-1000 '%1$s' là một LỚP hoặc thuộc tính DÙNG CHUNG nhưng chỉ các thuộc tính bình thường được cho phép trong ngữ cảnh này.
-1001 Một tình huống hoặc trạng thái không mong đợi đã được đạt tới. '%1$s'
-1002 Giao dịch hiện tại không thể thu được một khóa cơ sở dữ liệu mà nó yêu cầu để tiếp tục xử lý.
-1003 Ràng buộc '%1$s' tồn tại nhưng có một kiểu khác.
-1004 Xin vui lòng chú ý rằng khi sử dụng ALTER TABLE DROP FOREIGN KEY, CUBRID xóa cả ràng buộc và các chỉ mục liên kết với nó.
-1005 Mã lỗi chưa được sử dụng.
-1006 Mã lỗi chưa được sử dụng.
-1007 Không thể tạo chỉ mục với prefix length trên ràng buộc UNIQUE, FOREIGN KEY, PRIMARY KEY.
-1008 Không thể tạo prefix với prefix length trên lớp đã phân vùng.
-1009 COMPACTDB đã được bắt đầu.
-1010 Không thể định nghĩa chỉ mục với prefix length trên miền "%1$s".
-1011 Không thể thêm ràng buộc khóa ngoại %1$s trên thuộc tính SHARED %2$s.
-1012 Không thể tạo bảng với kiểu cột NULL.
-1013 Thiết lập DEFAULT hoặc SHARED trên %1$s cột đã gõ vào là không được phép.
-1014 Thiết lập NOT NULL trên %1$s cột đã gõ vào là không được phép.
-1015 Thư mục đã chỉ định '%1$s' không tồn tại.
-1016 Lỗi lưu trữ bên ngoài %1$s: %2$s
-1017 Đường dẫn cho lưu trữ bên ngoài '%1$s' là không hợp lệ.
-1018 Không thể sao chép tệp tin bên ngoài đến kiểu khác của kho lưu trữ. (nguồn %1$s đích nhận %2$s)
-1019 Kho lưu trữ bên ngoài không được khởi tạo bởi vì đường dẫn chưa được chỉ định trong "databases.txt".
-1020 Không tìm thấy tệp tin bên ngoài "%1$s".
-1021 Vòng khóa chết được phát hiện. %1$s.
-1022 Giá trị "%1$d" không hợp lệ cho prefix length của chỉ mục.
-1023 Mã lỗi bảo lưu cho HA.
+602 dl error: "%1$s" is defined more than once.
+603 Internal Error: Sector/page table of file VFID %1$d|%2$d seems corrupted.
+604 Internal Error: An allocation set for file VFID %1$d|%2$d(Volume "%3$s") seems inconsistent in %4$d deleted or marked deleted pages and %5$d page holes in table
+605 Internal Error: Inconsistent number of marked deleted pages for file VFID %1$d|%2$d(Volume "%3$s"). Expected %4$d, Found %5$d.
+606 Could not locate odbc.ini with path "%1$s".
+607 Database "%1$s" was not found in odbc.ini.
+608 Database "%1$s" does not have a Host specification in the odbc.ini file.
+609 Your transaction cannot be rolled back since logging was ignored. Your database may be corrupted.
+610 Your database is likely to be corrupted since logging was turned off when your database crashed.
+611 %1$s cannot be executed in client/server mode.
+612 Logging cannot be disabled at this moment since there are pending actions to recover.
+613 In class "%3$s", local component "%1$s" cannot serve as an alias substitute for class "%2$s". The domains are incompatible.
+614 Number of active log archives has been exceeded the max desired number of %1$d.
+615 Cannot establish contact with the Winsock interface. Winsock error: %1$d.
+616 Cannot determine machine name using Winsock interface. Winsock error: %1$d.
+617 Cannot determine machine id using Winsock interface. There must be an entry in the host name table for this machine. Winsock error: %1$d.
+618 Attribute is not updatable.
+619 Bad source codeset.
+620 Bad destination codeset.
+621 Invalid data type. The arguments contain an invalid data type.
+622 Incompatible code sets. The code sets of the arguments are incompatible.
+623 Invalid escape sequence. An invalid escape sequence has caused an error in the regular expression compiler.
+624 Invalid escape character. The escape character is non-NULL with a length greater than 1.
+625 Internal Error. Trying to update the wrong instance object %1$d|%2$d|%3$d attribute information template with instance object %4$d|%5$d|%6$d.
+626 Internal Error. %1$d requested attributes were not found.
+627 Invalid trim operand.  The trim operand has a length greater than 1.
+628 Invalid currency type: %1$d.
+629 Pagesize %1$d is not a power of 2 or pagesize is too small. Pagesize of %2$d is used instead.
+630 Conversion not supported by %1$s.
+631 SQL statement violated NOT NULL constraint.
+632 %1$s is not a backup volume.
+633 %1$s is a backup of database %2$s created on %3$s instead of given database %4$s created on %5$s
+634 A database volume/file was expected in backup.
+635 WARNING: Log Buffer pool of %1$d buffers seems very small for current environment.\n It is possible that some buffers are not freed by the system due to an UNKNOWN ERROR\n or that there are many concurrent transactions being aborted at the same time. The log buffer pool is expanded with %2$d more buffers.
+636 WARNING Num_buffers %1$d is too small. The minimum value of %2$d was assumed.
+637 System error: freeing a log buffer too much. Fix count is set to zero.
+638 Warning: Flushing an unupdatable log archive pageid = %1$d
+639 System error: Previous log sequence page %1$d is not the delayed flush page %2$d.
+640 System Error: a savepoint cannot be added when the transaction is not active (e.g., during commit or rollback).
+641 A name must be given for a savepoint.
+642 System Error: there is not an active top system operation for current transaction.
+643 May be a system error: Committing/Aborting transaction = %1$d (index = %2$d) which has permanent operations\n attached to it. Will attach those system operations to the transaction
+644 LOG FATAL ERROR: %1$s
+645 SYSTEM ERROR: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
+646 SYSTEM ERROR: It seems that a compensating record is missing for logical logging rcvindex = %1$s\n. Without this compensating record crash recovery will not be done correctly
+647 Backup "%1$s" does not belong to the given database.
+648 Backup is incompatible with current "%1$s" release "%2$s".
+649 Given precision of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
+650 Cannot create enough threads for 'max_clients=%1$d'.
+651 There is not virtual memory to preallocate %1$d sort buffers for each of %2$d threads.
+652 Wrong offset %1$d was given to split the record of length %2$d stored on slot %3$d
+653 Wrong offset %1$d or length %2$d was given to remove a portion of the data of the record of length %3$d stored on slot %4$d
+654 Wrong offset %1$d or length %2$d was given to overwrite a portion of the data of the record of length %3$d stored on slot %4$d
+655 Cannot open the event handler configuration file, "%1$s".
+656 Warning: Null id/name in event handler configuration file, "%1$s", line %2$d
+657 Warning: Illegal event name, "%1$s", in event handler configuration file, "%2$s", line %3$d
+658 Warning: event id %1$d, not in error id range %2$d <> %3$d, file "%4$s", line %5$d
+659 Cannot access the event handler program, "%1$s".
+660 Cannot open/connect the event handler process, "%1$s".
+661 Failed to write to the event handler process, "%1$s".
+662 Failed to initialize event handling mechanism.
+663 Warning: Line too long in event handler configuration file, "%1$s", line %2$d, truncating
+664 Event handling mechanism started.
+665 Event handler pipe broken, "%1$s"
+666 Event handling mechanism stopped.
+667 Cannot match class '%1$s' with corresponding C++ class.
+668 Internal error: Unknown domain type '%1$d'.
+669 Server refused client connection: max clients, (%1$d), exceeded.
+670 Operation would have caused one or more unique constraint violations. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+671 A network read/write error occurred for socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d)
+672 Socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d) is closed.
+673 Your connection to the server has been closed since the server is going down immediately.
+674 There is not enough active threads to continue current server execution. Current number of active threads is %1$d. You may need up to %2$d threads for clean server execution in your environment. Transaction index %3$d has been timed out to continue server execution.
+675 Cannot read the database location file, '%1$s'.
+676 Database '%1$s', cannot be found in the database location file, '%2$s'
+677 Failed to connect to database server, '%1$s', on the following host(s): %2$s
+678 Internal error. Client restart module received NULL database server name.
+679 This C++ transaction has already begun.
+680 Attempted to exceed maximum C++ transaction nesting level (%1$d).
+681 %1$s transaction was attempted on a C++ transaction that hasn't begun.
+682 Cannot %1$s C++ transaction until all subordinate transactions are completed.
+683 Attempted to create string with illegal length - %1$d
+684 Method returned user-defined error code %1$d.
+685 Class "%1$s" is invalid.
+686 Notification: the event handler has been restarted.
+687 Not allows to cast (%1$s *) to (%2$s *).
+688 Subscript out of range. Attempt to access element %1$lld. Collection size = %2$lld.
+689 Internal error. Iterator contains corrupt state.
+690 Attempt to dereference an uninitialized instance of odb_Ref<>.
+691 Attempt to use an invalid iterator.
+692 Attempt to use an iterator with an unrelated collection.
+693 Overflow occurred on data type Numeric.
+694 SYSTEM ERROR: Unable to load B+tree.
+695 Wrong interface has been used to kill a client.
+696 Unknown transaction (index %1$d, %2$s@%3$s|%4$d).
+697 Given transaction index (index %1$d, %2$s@%3$s|%4$d) does not match with current transaction index (index %5$d, %6$s@%7$s|%8$d). Likely, the given transaction has finished and its transaction index was re-assigned to another transaction.
+698 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs in the unique hierarchy: %6$d does not equal the number of OIDs: %7$d found in the unique B+tree plus the number of NULLs: %8$d found in the unique hierarchy for B+tree: %9$d|%10$d|%11$d.
+699 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs in the unique hierarchy: %6$d does not equal the number of OIDs: %7$d found in the unique B+tree root statistics for B+tree: %8$d|%9$d|%10$d.
+700 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs: %6$d does not equal the number of NULLs: %7$d plus the number of keys: %8$d in the unique B+tree: %9$d|%10$d|%11$d.
+701 No proxy is defined on "%1$s" at ldb "%2$s".
+702 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of NULLs in the unique hierarchy: %6$d does not equal the number of NULLs: %7$d found in the unique B+tree root statistics for B+tree: %8$d|%9$d|%10$d.
+703 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). OID: %6$d|%7$d|%8$d found in unique B+tree: %9$d|%10$d|%11$d does not belong to one of the classes for the unique constraint.
+704 Evaluation of generic server function failed.
+705 Inconsistent %1$d permanent volumes were found when %2$d were expected.
+706 Cannot expand permanent volumes. Permanent volume "%1$s" with purpose %2$s was given.
+707 Unable to expand temporary volume "%1$s" with %2$d pages
+708 Unable to expand temporary disk volume "%1$s" with %2$d pages (%3$lld Kbytes) due to insufficient space. Current space available is %4$d pages (%5$lld Kbytes).
+709 Constraint "%1$s" not found.
+710 Invalid constraint.
+711 An object with the supplied attribute value doesn't exist.
+712 Constraint" %1$s" already exists.
+713 An index does not exist on this attribute.
+714 Query failed due to insufficient temporary file space.
+715 Failed to verify schema: %1$s
+716 NOT NULL constraints are not allowed in virtual or proxy classes.
+717 UNIQUE constraints are not allowed in virtual or proxy classes.
+718 Invalid gadget.
+719 The number of attributes(%1$d) and values(%2$d) are not equal.
+720 Cannot use a gadget to insert into a virtual or proxy class.
+721 Insert query yields more than one row.
+722 Wrong number of attributes for NOT NULL constraint.
+723 Cannot modify the domain of an existing attribute.
+724 Invalid parameter(s) for default constraint name generation.
+725 Internal error: expected temporary oid and encountered permanent oid.
+726 UNIQUE constraint must be added using a separate alter statement\nonce instances have been created. For example, instead of:\n\talter table1 add attribute a int unique;\nuse:\n\talter table1 add attribute a int;\n\talter table1 add unique(a);
+727 Invalid trigger event.
+728 Query failed because temporary file vfid is invalid for transaction %1$d.
+729 Overflow occurred in subtraction context.
+730 Overflow occurred in multiplication context.
+731 Overflow occurred in division context.
+732 Overflow occurred in unary minus context.
+733 Overflow occurred in coercion context.
+734 Internal Error: Header of file VFID %1$d|%2$d(Volume "%3$s") is corrupted.
+735 Unknown transaction index %1$d.
+736 Must specify either service or port identifier. Winsock error: %1$d.
+737 Unknown service for TCP: %1$s. Winsock error: %2$d.
+738 Cannot create socket stream. Winsock error: %1$d.
+739 Cannot bind local address... retrying. Winsock error: %1$d.
+740 Cannot bind local address... aborting. Winsock error: %1$d.
+741 Accept failed. Winsock error: %1$d.
+742 Sending a broadcast message to client. Winsock error: %1$d.
+743 Failed on handshake between client and server. (peer host %1$s)
+744 Error in rehashing a proxy/vclass MOP.
+745 Invalid garbage collection phase.
+746 Invalid garbage collection callback.
+747 Invalid garbage collection callback ticket.
+748 Invalid object pointer encountered by db_gc_mark_object.
+749 The number of fetched instances are not matched: %1$d expected, %2$d received.
+750 The number of fetched instances are not matched: %1$d expected, %2$d received.
+751 The OID of a new object isn't available in a BEFORE INSERT trigger.
+752 Error restoring backup unit_num %1$d.
+753 Error restoring backup unit_num %1$d, pageid %2$d exceeds total number of pages %3$d for volid %4$d.
+754 OO proxy instance has non-string-type or null key.
+755 %1$s cannot be executed in stand-alone mode.
+756 Specified string buffer is too small to encode this object.
+757 Internal Error: cannot assign permanent OID during object encode.
+758 Specified string is not valid for decoding object.
+759 The target object has been deleted.
+760 Internal error: proxy object instance has NULL key during object encode.
+761 Internal error: vclass object instance maps to invalid real instance.
+762 Internal error in resolving vclass instance to a real instance.
+763 Internal error in encoding nonupdatable object instance.
+764 Internal error in encoding object into internal vobj form.
+765 Output object argument has a NULL address.
+766 Internal error in decoding object.
+767 Cannot create a level %1$d backup without first creating a level %2$d backup.
+768 The local database "%1$s" has been accessed in this session, alteration or drop is not allowed.
+769 Attribute "%1$s", of class "%2$s" is not a valid class or shared attribute.
+770 No table functions.
+771 Invalid parameter for function.
+772 db_serial class not found.
+773 Serial "%1$s" not found.
+774 Serial "%1$s" already exist.
+775 Next value exceeds MAX(MIN) value.
+776 Cannot fetch serial object.
+777 Cannot update serial object.
+778 Cannot create a symbolic link "%1$s" to the file "%2$s".
+779 Result exceeds limit: year of Date MUST be in 1 and 9999.
+780 Internal system failure: unable to get system time.
+781 Format string is too long. It must be less than 16K.
+782 Empty string not allowed here.
+783 Invalid format.
+784 Two arguments are mismatched.
+785 First argument string is too long. It must be less than 16K.
+786 Format is duplicated.
+787 Conversion error in time format.
+788 Conversion error in timestamp format.
+789 Wrong number.
+790 Query execution has been interrupted by user.
+791 Invalid serial value.
+792 Cannot allocate memory for css.
+793 pthread_attr_init() failed.
+794 pthread_attr_destroy() failed.
+795 pthread_attr_setdetachstate() failed.
+796 pthread_attr_setscope() failed.
+797 pthread_attr_setstacksize() failed.
+798 pthread_create() failed.
+799 pthread_join() failed.
+800 pthread_mutex_init() failed.
+801 pthread_mutex_destroy() failed.
+802 pthread_mutex_lock() failed.
+803 pthread_mutex_trylock() failed.
+804 pthread_mutex_unlock() failed.
+805 pthread_mutexattr_init() failed.
+806 pthread_mutexattr_destroy() failed.
+807 pthread_mutexattr_settype() failed.
+808 pthread_mutexattr_gettype() failed.
+809 pthread_cond_init() failed.
+810 pthread_cond_destroy() failed.
+811 pthread_cond_wait() failed.
+812 pthread_cond_timedwait() failed.
+813 pthread_cond_signal() failed.
+814 pthread_cond_broadcast() failed.
+815 pthread_key_create() failed.
+816 pthread_key_delete() failed.
+817 pthread_setspecific() failed.
+818 pthread_getspecific() failed.
+819 pthread_once() failed.
+820 Cannot initialize a connection.
+821 Shutdown a connection.
+822 Mutex operation failed while getting next client id.
+823 Mutex operation failed while initializing connection list.
+824 Cannot destroy mutex while finalizing connection list.
+825 pread() call failed.
+826 pwrite() call failed.
+827 Connection list traverse function returned invalid value.
+828 Invalid critical section of the index was given.
+829 This mutex lock has been unlocked already.
+830 Cannot allocate query entry any more. Maximum allocatable entries are %1$d.
+831 All transaction descriptors(%1$d) are in use. Raise up max_clients parameter.
+832 Backup is already running. Backup cannot be run by two processes.
+833 The index name "%1$s" is ambiguous. Specify the class name of the index.
+834 There are some mismatches between source string "%1$s" and format string "%2$s" given in to_number().
+835 Undefined statistics item.
+836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
+837 Cannot drop the user who owns database objects(class/trigger/serial etc). 
+838 Cannot open more than %1$d index scans simultaneously.
+839 "%1$s": Unknown system parameter or bad value.
+840 Cannot change system parameter "%1$s".
+841 Requested operation can be executed by only sole client(transaction).
+842 Cannot cache lock of object %1$d|%2$d|%3$d.
+843 Wrong arguments in %1$s, a %2$s was passed.
+844 Unknown isolation(%1$d) is found. The transaction index is %2$d.
+845 Invalid object type(%1$d) is found. The lockable object is %2$d|%3$d|%4$d.
+846 %1$s of tran(%2$d) is not found in the holder list of an object(%3$d|%4$d|%5$d).
+847 %1$s on a %2$s(%3$d|%4$d|%5$d) is not found in the transaction(%6$d) hold list(cnt=%7$d).
+848 %1$s on an object(%2$d|%3$d|%4$d) is not found in the transaction(%5$d) non2pl list.
+849 Trying to abort a transaction(%1$d) twice.
+850 Tran(%1$d) is neither lock holder nor lock waiter of an object(%2$d|%3$d|%4$d).
+851 Failed to allocate lock resource (%1$s). 
+852 Total holders mode(%1$d) of an empty lock holder list is not NULL_LOCK.
+853 For an object(%1$d|%2$d|%3$d), tran(%4$d) of Uncommitted Read held fault lock(%5$s).
+854 WARNING: No lock holder, but lock waiters exist. refer to %1$s.
+855 WARNING: Two or more threads are lock-waiting for one transaction(%1$d).
+856 WARNING: Strange lockwait state(%1$d|%2$d), thread(%3$d|%4$d) and transaction(%5$d).
+857 An I/O error occurred while truncating page %1$d of volume "%2$s".
+858 Volume "%1$s" is unknown at server restart.
+859 LATCH ON PAGE(%1$d|%2$d) ABORTED
+860 Cannot make current transaction as a part of a global transaction because its state is '%1$s'.
+861 Cannot prepare to commit the current transaction with transaction identifier %1$d because that transaction is not made as a part of a global transaction.
+862 Cannot set the user information of the global transaction with the identifier %1$d because its state is '%2$s'.
+863 Cannot get the user information of the global transaction with the identifier %1$d because it is not set.
+864 Cannot open backupdb/restoredb verbose file '%1$s'.
+865 Cannot execute statement due to unknown type input markers.
+866 Unused error code.
+867 Unused error code.
+868 Unused error code.
+869 Unused error code.
+870 Unused error code.
+871 Unused error code.
+872 Unused error code.
+873 PKI authentication error "%1$s".
+874 Argument of power() is out of range.
+875 Overflow happened in power context.
+876 Unused error code.
+877 No data to be unloaded.
+878 Invalid database location file, '%1$s'.
+879 Cannot get permission: '%1$s'.
+880 Cannot change permission '%1$s'.
+881 Cannot get lock file '%1$s(FILE ID:%2$d)'.
+882 Cannot release lock file 'FILE ID:%1$d'.
+883 Failed to get '%1$s' file status.
+884 Volext-pathname '%1$s' is not permitted to write.
+885 Failure to move from '%1$s' to '%2$s'. Use the same device(disk).
+886 "%1$s" caused unique constraint violation.
+887 Stored procedure '%1$s' is already exist.
+888 Parameter count is invalid. expected: %1$d, actual: %2$d
+889 Stored procedure execute error: %1$s
+890 Partition failed.
+891 Appropriate partition does not exist.
+892 Primary key "%2$s" already defined for class "%1$s".
+893 Attribute '%1$s', a member of the primary key, could not be dropped.
+894 Stored procedure/function '%1$s' does not exist.
+895 Invalid stored procedure type: '%1$s' is the '%2$s'.
+896 Compression failed. Zip Method: %1$d (%2$s), Zip Level: %3$d (%4$s)
+897 Decompression failed.
+898 Replication error: "%1$s"
+899 Invalid partition requests.
+900 Java VM library is not found: %1$s.
+901 Java VM can not be started: %1$s.
+902 Java VM is not running.
+903 Can't connect Java VM: %1$s
+904 Invalid stored procedure name.
+905 Networking with JVM failed: %1$d
+906 Invalid java method signature.
+907 The owner or a member of DBA group can drop stored procedure.
+908 Too many arguments of stored procedure '%1$s'.
+909 Missing or invalid catalog class/vclass is found.
+910 Not allowed access to partition.
+911 Invalid call: it can not return ResultSet.
+912 ResultSet can not be used input parameter.
+913 Too many nested stored procedure call.
+914 A serial object already exists as an auto increment constraint.
+915 Increase value of an auto increment constraint should be greater than 0.
+916 Active log volume is not included in this backup volume(%1$s).
+917 Active log volume already exists.
+918 The class '%1$s' referred by the foreign key does not exist.
+919 The class '%1$s' referred by the foreign key does not have the primary key.
+920 The foreign key '%1$s' does not include the primary key member '%2$s'.
+921 The domain of the foreign key member '%1$s' is different from that of the primary key member '%2$s'.
+922 The constraint of the foreign key '%1$s' is invalid, due to value '%2$s'.
+923 The primary key '%1$s' referred by a foreign key '%2$s' is not supposed to be dropped.
+924 Update/Delete operations are restricted by the foreign key '%1$s'.
+925 Acquiring lock for the foreign key '%1$s' has failed.
+926 The instance having the foreign key '%1$s' cannot be dropped.
+927 The number of keys of the foreign key '%1$s' is different from that of the primary key '%2$s'.
+928 Not a user but the system can assign the attribute '%1$s' created by 'ON CACHE OBJECT' of foreign key.
+929 A foreign key cannot be defined in virtual class.
+930 It is able to drop the attribute '%1$s' created by 'ON CACHE OBJECT' of foreign key only after removing the constraint of the foreign key.
+931 Start value of an auto increment constraint should be less then max value.
+932 It is not able to repair an inconsistency of the number of free pages for the volume "%1$s". Because %2$d pages obtained from the volume header is inconsistent with %3$d pages from the bitmap.
+933 It is not able to repair an inconsistency of the number of free sectors for the volume "%1$s". Because %2$d sectors obtained from the volume header is inconsistent with %3$d sectors from the bitmap.
+934 Null domain referenced.
+935 Argument of %1$s function is out of range.
+936 Overflow occurred in exp context.
+937 Database error.
+938 Invalid argument.
+939 There are too many connection.
+940 The handle is invalid.
+941 The operation is not supported.
+942 Handle timed out waiting for locks.
+943 Generic error.
+944 The statement is not prepared.
+945 The statement has no result set.
+946 The statement is not executed.
+947 There is no more result set.
+948 The size of buffer is not enough.
+949 There is no available information.
+950 The name not valid.
+951 The resultset is not updatable.
+952 The row is deleted.
+953 Parameters of the prepared statement is not set.
+954 The statement is not batch statement.
+955 Can not clear this batch statement.
+956 Can not batch execute.
+957 The statement is prepared statement.
+958 The statement is not prepared statement.
+959 The statement is batch statement.
+960 There is no more error.
+961 There is no more result.
+962 Out of memory
+963 Broker error.
+964 The result set handle is closed.
+965 Cannot use duplicate attribute names in index key list. Attribute name '%1$s' listed more than once.
+966 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d because of deadlock. You are waiting for user(s) %9$s to finish.
+967 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
+968 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s because of deadlock. You are waiting for user(s) %10$s to finish.
+969 Server bit platform (%1$d) is different from client bit platform (%2$d).
+970 Server HA mode is changed from '%1$s' to '%2$s'.
+971 Program '%1$s' (pid %2$d) connected to database server '%3$s' on the host '%4$s' (port %5$d).
+972 Program '%1$s' (pid %2$d) was connected from the host '%3$s'. (transaction index %4$d)
+973 Server status is %1$s.
+974 Archive log "%1$s" is created to archive pages from %2$lld to %3$lld.
+975 Current version of replication does not allow changing multiple rows with a single UPDATE statement which can violate the UNIQUE constraint.
+976 Internal error: Table size overflow (allocated size: %1$d, accessed size: %2$d) at file table page %3$d|%4$d(volume "%5$s")
+977 Checkpoint started (previous checkpoint page id: %1$lld, previous redo page id: %2$lld).
+978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld).
+979 CONNECT BY loop in user data.
+980 A thread is waiting in %1$s more than %2$d msec.
+981 Transaction %1$d has reached to the threshold of monitoring statistics %2$s.
+982 Set interrupt to the transaction %1$d.
+983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.
+984 Cannot set %3$s to "%6$s" in the "[%5$s]" section when it is set to "%4$s" in the "[%2$s]" section of the configuration file "%1$s".
+985 The hostname on the database connection string should be specified when multihost is set in "databases.txt".
+986 CUBRID heartbeat feature started. 
+987 CUBRID heartbeat feature stopped.
+988 Node event: %1$s.
+989 Process event: %1$s. %2$s
+990 Command execution: %1$s. %2$s
+991 Flush victim candidates of page buffer started.
+992 Flush victim candidates of page buffer finished (count: %1$d).
+993 Overflow happened in bit operation context.
+994 This statement cannot be a prepared statement.
+995 A prepared statement with the name %1$s does not exist.
+996 Incorrect number of values given. %1$d values were given but %2$d values are required.
+997 Cannot add the foreign key constraint %1$s to the partitioned %2$s. Referential actions that update attributes are not yet supported on partitioned classes.
+998 Cannot add the foreign key constraint %1$s on the attribute %2$s. The attribute cannot have a NOT NULL constraint because it has to match the SET NULL referential action.
+999 Cannot create table '%1$s' like table '%2$s' because the existing table has features that will not be duplicated (%3$s).
+1000 '%1$s' is a CLASS or SHARED attribute but only normal attributes are allowed in this context.
+1001 An unexpected condition or state has been reached. '%1$s'
+1002 The current transaction could not acquire a database lock it requires to continue processing.
+1003 The constraint '%1$s' exists but has a different type.
+1004 Please note that when using ALTER TABLE DROP FOREIGN KEY, CUBRID drops both the constraint and its associated index.
+1005 Unused error code.
+1006 Unused error code.
+1007 Cannot create index with prefix length on unique, foreign key or primary key constraints.
+1008 Cannot create index with prefix length on partitioned class.
+1009 COMPACTDB already started.
+1010 Cannot define index with prefix length on domain "%1$s".
+1011 Cannot add the foreign key constraint %1$s on the shared attribute %2$s.
+1012 Cannot create table with NULL column type.
+1013 Set DEFAULT or SHARED on %1$s typed column is not allowed.
+1014 Set NOT NULL on %1$s typed column is not allowed.
+1015 Specified directory '%1$s' does not exist.
+1016 %1$s external storage error: %2$s
+1017 Path for external storage '%1$s' is invalid.
+1018 Cannot copy the external file to the different type of storage. (source %1$s dest %2$s)
+1019 External storage is not initialized because the path is not specified in "databases.txt".
+1020 External file "%1$s" was not found.
+1021 A deadlock cycle is detected. %1$s.
+1022 Invalid value "%1$d" for prefix length of the index.
+1023 Reserved error code for HA.
 1024 log writer: failed to get log page(s) starting from page id %1$lld.
 1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
 1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
-1027 log applier: thất bại khi thay đổi trạng thái áp dụng từ '%1$s' đến '%2$s'.
-1028 log applier: bản ghi EOF không mong đợi từ bản ghi lưu trữ. LSA: %1$lld|%2$d.
-1029 log applier: độ lệch/trang bản ghi nhân bản không hợp lệ. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
-1030 log applier: bản ghi chép nhân bản không hợp lệ. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s.
+1027 log applier: failed to change apply state from '%1$s' to '%2$s'.
+1028 log applier: unexpected EOF record in archive log. LSA: %1$lld|%2$d.
+1029 log applier: invalid replication log page/offset. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
+1030 log applier: invalid replication record. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
+1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s. 
 1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
 1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
-1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d.
-1035 log applier: kích cỡ bộ nhớ(%1$d MB) của log applier lớn hơn kích cỡ bộ nhớ tối đa (%2$d MB) hoặc đã được tăng lên nhiều hơn 2 lần (%3$d MB). LSA được yêu cầu: %4$lld|%5$d. LSA được cam kết lần cuối: %6$lld|%7$d.
-1036 log applier: log applier tự tắt nó bằng tín hiệu.
-1037 log writer: log writer tự tắt nó bằng tín hiệu.
-1038 log applier: ứng dụng nhật ký bắt đầu. LSA yêu cầu: %1$lld|%2$d. LSA ghi vào lần cuối: %3$lld|%4$d. LSA trả lời ghi vào lần cuối: %5$lld|%6$d.
-1039 log writer: log writer đã bắt đầu. chế độ: %1$d.
-1040 HA generic: %1$s.
-1041 Một chuỗi ký tự đã bị cắt bỏ trong ngữ cảnh của "%1$s".
-1042 Cố gắng để tạo một chuỗi ký tự yêu cầu %1$d bytes của bộ nhớ, trong khi tối đa được cho phép là %2$d bytes.
-1043 Không thể thay đổi thuộc tính "%1$s". CUBRID không thể thay đổi đặc tính của thuộc tính được yêu cầu nếu lớp có các lớp con.
-1044 Không thể thay đổi thuộc tính "%1$s". CUBRID không thể thay đổi các thuộc tính mà là các khóa phân vùng.
-1045 Không thể thay đổi thuộc tính "%1$s". CUBRID không thể thay đổi các thuộc tính được sử dụng trong các khóa ngoại (đã được tham chiếu hoặc đang tham chiếu).
-1046 Không thể thay đổi thuộc tính "%1$s". CUBRID không thể thay đổi miền của thuộc tính. Thay đổi này của miền không được hỗ trợ.
-1047 Không thể thay đổi thuộc tính "%1$s". CUBRID không thể thay đổi miền của thuộc tính. Miền mới có thể không đại diện một cách chính xác tất cả các giá trị hiện có của thuộc tính.
-1048 Không thể thay đổi thuộc tính "%1$s". CUBRID hiện tại không thể thay đổi một AUTO_INCREMENT của thuộc tính nếu miền của thuộc tính cũng thay đổi.
-1049 Không thể thay đổi thuộc tính "%1$s". CUBRID hiện tại không thể thay đổi miền của thuộc tính. Việc chuyển đổi tên miền là có thể nhưng tính năng này không được cho phép bởi cấu hình.
-1050 Không thể thay đổi thuộc tính "%1$s". CUBRID hiện tại không thể thay đổi miền của thuộc tính. Thuộc tính có một chỉ mục trên nó.
-1051 Không thể thay đổi thuộc tính "%1$s". CUBRID hiện tại không thể thay đổi thuộc tính để thêm một ràng buộc. Giá trị thuộc tính hiện có có thể không kiểm tra ràng buộc.
-1052 Thuộc tính "%1$s" đã không được thay đổi. CUBRID đã không phát hiện bất kỳ thay đổi có hiệu lực nào trong đại diện của thuộc tính.
-1053 Các thông điệp REPLACE INTO... và INSERT ... ON DUPLICATE KEY UPDATE không được phép đối với các lớp thuộc một chuỗi kế thừa.
-1054 Giá trị mới của một ràng buộc AUTO INCREMENT phải lớn hơn hoặc bằng với giá trị hiện tại.
-1055 Giá trị mới của một ràng buộc AUTO INCREMENT phải nhỏ hơn giá trị tối đa.
-1056 Để tránh sự mơ hồ, tùy chọn bảng AUTO_INCREMENT yêu cầu bảng có chính xác một cột AUTO_INCREMENT và không có đặc tả khởi đầu/gia tăng.
-1057 Không thể thêm một thuộc tính đã gõ '%1$s' NOT NULL mà không có một giá trị DEFAULT.
-1058 ALTER TABLE .. CHANGE : đang thay đổi thành miền mới : đổi kiểu thất bại, cấu hình hiện tại không cho phép cắt bỏ hoặc tràn.
-1059 ALTER TABLE .. CHANGE : đang thay đổi thành miền mới : đổi kiểu thất bại, giá trị mặc định của miền mới đã được thiết lập.
-1060 ALTER TABLE .. CHANGE : đang thay đổi thành miền mới : đổi kiểu thất bại, giá trị nhỏ nhất của miền mới đã được thiết lập.
-1061 ALTER TABLE .. CHANGE : đang thay đổi thành miền mới : đổi kiểu thất bại, giá trị lớn nhất của miền mới đã được thiết lập.
-1062 Không thể thay đổi thuộc tính "%1$s". Thay đổi sẽ dẫn đến nhiều khóa chính được định nghĩa.
-1063 Không thể thêm ràng buộc NOT NULL cho thuộc tính "%1$s": có giá trị NULL đang tồn tại cho thuộc tính này.
-1064 ALTER TABLE .. CHANGE : thêm NOT NULL : tất cả giá trị NULL đang tồn tại đã được thay đổi hard default của miền.
-1065 Không thể thay đổi thuộc tính "%1$s". CUBRID không thể thêm ràng buộc NOT NULL : một giá trị hard default không tồn tại cho miền mới.
-1066 Phiên đã quá hạn.
-1067 Cột '%1$s' không thể có một ràng buộc NOT NULL và một giá trị DEFAULT NULL.
-1068 Độ dài trigger tối đa không thể vượt quá %1$d.
-1069 Quá nhiều câu lệnh được chuẩn bị.
-1070 Biến số phiên '@%1$s' chưa được định nghĩa.
-1071 Quá nhiều biến số phiên.
-1072 Địa chỉ IP(%1$s) chưa được cấp phép.
-1073 Định đạng không hợp lệ trong tệp tin(%1$s).
-1074 Không thể đọc tệp tin danh sách truy cập (%1$s).
-1075 Quét chỉ mục giảm dần bị bỏ dở vì ưu tiên thấp hơn trên B+tree với mã định danh chỉ mục: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
-1076 Không thể tải tham số hệ thống.
-1077 Tham số '%s' tại dòng %d trong tệp tin '%s' : Tham số không biết
-1078 Ký tự ở vị trí chuyển vị %1$d không có giá trị với bộ mã hiện tại.
-1079 Các bộ mã của cơ sở dữ liệu(%1$s) và cài đặt máy chủ(%2$s) không tương thích.
-1080 Chiều dài chuỗi xác nhận lọc tối đa phải bằng %1$d.
-1081 Không thể thay đổi thuộc tính của bộ lọc hoặc chỉ mục chức năng.
-1082 Tất cả các tấm đệm trang đều bẩn (LRU: %1$d).
-1083 Thông tin cụ thể về khóa chết.\n%1$s
-1084 Bỏ qua trang vô hiệu tại điểm mốc. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, LSA làm lại tại điểm redo lsa: %5$lld|%6$d)
-1085 Không thể biên dịch cách diễn đạt thông thường: '%1$s'
-1086 Không thể chạy cách diễn đạt thông thường: '%1$s'
-1087 Nhật ký kích hoạt sao lưu '%1$s' bắt đầu.
-1088 Nhật ký kích hoạt sao lưu '%1$s' kết thúc.
-1089 Phân bổ tài nguyên thất bại. Tăng lên 'max_bestspace_entries=%1$d'.
-1090 Khởi động tại chỗ: %1$s.
-1091 Khởi tạo tại chỗ: %1$s.
-1092 Không thể soạn thảo báo cáo loại '%1$s' với các biến chủ.
-1093 Phần arg '%1$s' cho inet_aton không phải là một địa chỉ ipv4 có định dạng chuỗi hợp lệ.
-1094 Phần arg '%1$lld' cho inet_ntoa không phải là một địa chỉ ipv4 có định dạng số hợp lệ.
-1095 Tên người dùng quá dài.
-1096 Thay đổi kế hoạch phân mảng không được cho phép khi hạng phân mảng được tham chiếu bởi một phím bên ngoài.
-1097 Cột '%1$s' không thể có ràng buộc PRIMARY KEY và giá trị mặc định NULL.
-1098 Thiết lập cục bộ cho ngôn ngữ '%s' không khả dụng với bộ ký tự '%s'.
-1099 Thông điệp DDL không được cho phép bởi cài đặt (block_ddl_statement=yes).\n Đoạn chữ SQL: %1$s
-1100 Tuyên bố không có mệnh đề Ở WHERE không được cho phép bởi cấu hình (block_nowhere_statementiyes).
-1101 Mã lỗi chưa được dùng.
-1102 Không biết hệ thống tham số hoặc giá trị xấu.
-1103 Không thể thay đổi tham số hệ thống.
-1104 Slow query (%d msec)\n%s
-1105 Lỗi nội bộ: thất bại một phần trong việc xóa đối tượng bẩn. 
-1106 Nhiều dòng trong bảng nguồn khớp với cùng một dòng ở bảng đích.
-1107 Mã vùng chứa vô hiệu do lỗi NTILE. Cần lớn hơn 0 và không lớn hơn 2,147,483,647.
-1108 Mã vùng chứa vô hiệu do lỗi WIDTH_BUCKET. Cần lớn hơn 0 và không bé hơn 2,147,483,647.
-1109 Giá trị cho định nghĩa phân vùng vô hiệu.
-1110 Không đủ bộ nhớ trống ở trang lá b-tree. (key len: %d)\n%s
-1111 Giá trị kết quả bị cắt cụt, do độ nét(%1$d) nhỏ hơn chiều dài của nó(%2$d).
-1112 Một chữ số dữ liệu không thể chuyển đổi từ '%1$s' sang '%2$s'.
-1113 Yếu tố chỉ dẫn vượt quá phạm vi.
-1114 Đối số '%1$s' vượt quá phạm vi.
-1115 Bắt đầu cập nhật số liệu thống kê (class "%1$s", oid : %2$d|%3$d|%4$d).
-1116 Kết thúc cập nhập số liệu thống kê (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
-1117 Không thể thay đổi thuộc tính "%1$s". CURBID Không thể thay đổi thuộc tính giống như SHARED và ngược lại.
-1118 Những đối số về "%1$s" không thể bị ép buộc để yêu cầu miền "%2$s".
-1119 Lỗi nội bộ: Page id %1$d được chỉ định theo bản đồ phân bổ dung lượng "%2$s", nhưng nó không thuộc bất kỳ tập tin nào.
-1120 Lỗi nội bộ: Page id %1$d của bộ đĩa "%2$s" đang được sử dụng, nhưng không được chỉ định theo bản đồ phân bổ dung lượng.
-1121 NOT NULL hạn chế không cho phép NULL giá trị.
-1122 Hết thời gian nhận dữ liệu.
-1123 pthread_cond_timedwait() Thời gian đã hết.
-1124 Lỗi thực hiện truy vấn. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
-1125 Tạo tập tin giá trị quan trọng. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1126 Tạo một trang giá trị quan trọng. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1127 Xóa trang giá trị trống. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Bắt đầu phục hồi đăng nhập. Số lần đăng nhập được chấp nhận: %1$lld. Log page: %2$lld ~ %3$lld.
-1129 Kết thúc phục hồi đăng nhập.
-1130 Giao dịch bị hủy bỏ do vượt quá lượng giao dịch %1$d.
-1131 Lỗi nội bộ: Trang %1$d của bộ đĩa "%2$s" có thể bị hỏng.\n%3$s
+1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1035 log applier: mem size(%1$d MB) of log applier is greater than max mem size (%2$d MB) or has been grow more than 2 times (%3$d MB). required LSA: %4$lld|%5$d. last committed LSA: %6$lld|%7$d.
+1036 log applier: log applier shut itself down by signal.
+1037 log writer: log writer shut itself down by signal.
+1038 log applier: log applier started. required LSA: %1$lld|%2$d. last committed LSA: %3$lld|%4$d. last committed repl LSA: %5$lld|%6$d.
+1039 log writer: log writer started. mode: %1$d.
+1040 HA generic: %1$s. 
+1041 A string was truncated in context of "%1$s".
+1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
+1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
+1044 Cannot change attribute "%1$s". CUBRID cannot change attributes that are partitioning keys.
+1045 Cannot change attribute "%1$s". CUBRID cannot change attributes used in foreign keys (either referenced or referencing).
+1046 Cannot change attribute "%1$s". CUBRID cannot change the attribute's domain. This change of domain is not supported.
+1047 Cannot change attribute "%1$s". CUBRID cannot change the attribute's domain. The new domain may not correctly represent all the existing attribute values.
+1048 Cannot change attribute "%1$s". CUBRID cannot currently change an attribute's AUTO_INCREMENT if the attribute's domain also changes.
+1049 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute's domain. The domain conversion is possible but this feature is not allowed by configuration.
+1050 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute's domain. The attribute has an index on it.
+1051 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute to add a constraint. Existing attribute values may not check the constraint.
+1052 Attribute "%1$s" was not changed. CUBRID did not detect any effective changes in the attribute representation.
+1053 The statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for classes that are part of an inheritance chain.
+1054 The new value of an auto increment constraint should be greater than or equal to the current value.
+1055 The new value of an auto increment constraint should be lower than the maximum value.
+1056 To avoid ambiguity, the AUTO_INCREMENT table option requires the table to have exactly one AUTO_INCREMENT column and no seed/increment specification.
+1057 Cannot add a NOT NULL '%1$s' typed attribute without a DEFAULT value.
+1058 ALTER TABLE .. CHANGE : changing to new domain : cast failed, current configuration doesn't allow truncation or overflow.
+1059 ALTER TABLE .. CHANGE : changing to new domain : cast failed, default value of new domain was set.
+1060 ALTER TABLE .. CHANGE : changing to new domain : cast failed, minimum value of new domain was set.
+1061 ALTER TABLE .. CHANGE : changing to new domain : cast failed, maximum value of new domain was set.
+1062 Cannot change attribute "%1$s". The change would result in multiple primary keys being defined.
+1063 Cannot add NOT NULL constraint for attribute "%1$s": there are existing NULL values for this attribute.
+1064 ALTER TABLE .. CHANGE : adding NOT NULL : all existing NULL values were changed to domain's hard default.
+1065 Cannot change attribute "%1$s". CUBRID cannot add NOT NULL constraint : a hard default value doesn't exist for the new domain.
+1066 Session expired.
+1067 Column '%1$s' cannot have a NOT NULL constraint and a NULL default value.
+1068 Maximum trigger depth cannot exceed %1$d.
+1069 Too many prepared statements.
+1070 Session variable '@%1$s' not defined.
+1071 Too many session variables.
+1072 IP address(%1$s) is not authorized.
+1073 Invalid format in file(%1$s).
+1074 Cannot read access list file(%1$s).
+1075 Descending index scan aborted because of lower priority on B+tree with index identifier: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
+1076 Could not load system parameter.
+1077 The '%1$s' parameter at line %2$d in file '%3$s' : Unknown parameter
+1078 Character at offset %1$d is invalid with current codeset.
+1079 Codesets of database(%1$s) and server configuration(%2$s) are incompatible.
+1080 The maximum length of filter predicate string must be %1$d.
+1081 Cannot alter an attribute involved in a filter or function index.
+1082 All page buffers are dirty (LRU: %1$d).
+1083 Specific information about deadlock.\n%1$s
+1084 Skip invalid page in checkpoint. (page id: %1$d, "%2$s", oldest_unflush_lsa: %3$lld|%4$d, previous checkpoint redo lsa: %5$lld|%6$d)
+1085 Cannot compile regular expression: '%1$s'
+1086 Cannot execute regular expression: '%1$s'
+1087 Backup active log '%1$s' started.
+1088 Backup active log '%1$s' finished.
+1089 Resources allocation failed. Raise up 'max_bestspace_entries=%1$d'.
+1090 Locale initialization: %1$s.
+1091 Locale generation: %1$s.
+1092 Cannot prepare statement of type '%1$s' with host variables.
+1093 The arg '%1$s' for inet_aton is not a valid string formatted ipv4 address.
+1094 The arg '%1$lld' for inet_ntoa is not a valid number formatted ipv4 address.
+1095 User name is too long.
+1096 Altering partitioning schema is not allowed when the partitioned class is referenced by a foreign key.
+1097 Column '%1$s' cannot have a PRIMARY KEY constraint and a NULL default value.
+1098 Locales for language '%1$s' are not available with charset '%2$s'.
+1099 DDL statement is not allowed by configuration (block_ddl_statement=yes).\n SQL Text: %1$s
+1100 Statement without WHERE clause is not allowed by configuration (block_nowhere_statement=yes).
+1101 Unused error code.
+1102 Unknown system parameter or bad value.
+1103 Cannot change system parameter.
+1104 Slow query (%1$d msec)\n%2$s
+1105 Internal error: partially failed to flush dirty object. 
+1106 Multiple rows in source table match the same row in destination table.
+1107 Invalid bucket number for NTILE. Should be greater than zero and no more than 2,147,483,647.
+1108 Invalid bucket number for WIDTH_BUCKET. Should be greater than zero and less than 2,147,483,647.
+1109 Invalid value for partition definition.
+1110 Insufficient space in btree leaf page. (key len: %1$d)\n%2$s
+1111 Result value is truncated, because the precision(%1$d) is less than it's length(%2$d).
+1112 A character could not be converted from '%1$s' to '%2$s'.
+1113 Element index out of range.
+1114 Argument '%1$s' is out of range.
+1115 Started to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d).
+1116 Finished to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
+1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
+1118 The argument of "%1$s" can not be coerced to desired domain "%2$s".
+1119 Internal error: Page id %1$d is allocated according to the allocation map of volume "%2$s", but it does not belong to any file. 
+1120 Internal error: Page id %1$d of volume "%2$s" is currently being used, but it is not allocated according to the allocation map of volume.
+1121 NOT NULL constraints do not allow NULL value.
+1122 Time out in receiving data.
+1123 pthread_cond_timedwait() timed out. 
+1124 Query execution error. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
+1125 Create the overflow key file. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1126 Create a new overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1127 Delete an empty overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
+1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
+1129 Log recovery is finished.
+1130 Transaction is aborted because transaction lock counts exceeds %1$d.
+1131 Internal error: The page %1$d of volume "%2$s" may be corrupted.\n%3$s
 1132 Encryption library failure: %1$s
 1133 Copylogdb for %1$s already exists.
 1134 Applylogdb for %1$s already exists.
@@ -1218,436 +1218,436 @@ $ LOADDB
 1149 Cannot find the page %1$d of volume %2$d.
 1150 Context requires compatible collations.
 1151 The page %1$d of volume %2$d is not a slotted page.
-1152 Lỗi sau cùng
+1152 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
-1 Lỗi trong các lỗi hệ thống con (dòng %1$d):
-2 Không có sẵn thông báo lỗi nào.
-3 Không thể cấp phát %1$d bytes.
-4 Không thể tìm catalog thông báo "%1$s".
-5 Thiếu thông báo cho mã lỗi %1$d.
+1 Error in error subsystem (line %1$d):
+2 No error message available.
+3 Can't allocate %1$d bytes.
+4 Can't find message catalog "%1$s".
+5 Missing message for error code %1$d.
 6 ... ABORT/EXIT IMMEDIATELY ...\n
-7 Bạn có muốn thoát không? 1/0
-8 Tệp tin không biết.
-9 Không có sẵn thông báo nào; thông báo này thay thế cho nguyên bản đã bị định dạng nhầm lẫn.
-10 er_init: *** Giá trị exit_ask không đúng = %d; sẽ mặc nhận %s thay thế. ***\n
-11 er_start: *** CẢNH BÁO: Không thể mở bản ghi thông báo "%1$s"; sẽ mặc nhận stderr thay thế. ***\n
-12 er_study_fmt: suspect message cho mã lỗi %1$d.
-13 er_estimate_size: mã chuyển đổi không rõ  (%1$d).
-14 \n\n*** Tự động xuống dòng bản ghi thông báo. Thông báo sẽ tiếp tục tại đầu của tệp tin. ***\n\n
-15 \nTime: %s - %s *** %s MÃ = %d, Tran = %d%s\n%s\n
-16 CUBRID (pid: %d) *** %s *** %s MÃ = %d, Tran = %d %s
-17 \nTime: %s - %s *** file %s, dòng %d %s MÃ = %d Tran = %d%s\n%s\n
-18 CUBRID (pid: %d) *** %s *** tệp tin %s, dòng %d, %s MÃ = %d, Tran = %d. %s
-19 \n*** Thông báo lỗi trước đó là cái cuối cùng. ***\n\n
-20 \nTime: %s - DEBUG *** tệp tin %s, dòng %d\n
-21 Mail -s "Server đã được dừng"
-22 --->>>\n %s đã được dừng theo yêu cầu của bạn khi các lỗi sau đây được thiết lập:\n errid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---\n
-23 %s đã được dừng trên errid = %d. User: %s, pid: %d
-24 er_init: không thể cài đặt event handler "%1$s"\n
+7 Do you want to exit? 1/0
+8 Unknown file.
+9 No message available; this message substituted for erroneously formatted original.
+10 er_init: *** Incorrect exit_ask value = %1$d; will assume %2$s instead. ***\n
+11 er_start: *** WARNING: Unable to open message log "%1$s"; will assume stderr instead. ***\n
+12 er_study_fmt: suspect message for error code %1$d.
+13 er_estimate_size: unknown conversion code (%1$d).
+14 \n\n*** Message log wraparound. Messages will continue at top of the file. ***\n\n
+15 \nTime: %1$s - %2$s *** %3$s CODE = %4$d, Tran = %5$d%6$s\n%7$s\n
+16 CUBRID (pid: %1$d) *** %2$s *** %3$s CODE = %4$d, Tran = %5$d %6$s
+17 \nTime: %1$s - %2$s *** file %3$s, line %4$d %5$s CODE = %6$d Tran = %7$d%8$s\n%9$s\n
+18 CUBRID (pid: %1$d) *** %2$s *** file %3$s, line %4$d, %5$s CODE = %6$d, Tran = %7$d. %8$s
+19 \n*** The previous error message is the last one. ***\n\n
+20 \nTime: %1$s - DEBUG *** file %2$s, line %3$d\n
+21 Mail -s "Server has been stopped"
+22 --->>>\n %1$s has been stopped at your request when the following error was set:\n errid = %2$d, %3$s\nUser: %4$s, pid: %5$d, host: %6$s, time: %7$s<<<---\n
+23 %1$s has been stopped on errid = %2$d. User: %3$s, pid: %4$d
+24 er_init: cannot install event handler "%1$s"\n
 
 $set 7 MSGCAT_SET_PARSER_SYNTAX
-1 xin vui lòng kiểm tra cú pháp tại '%s', mong đợi %s.
-2 xin vui lòng kiểm tra cú pháp tại '%s', mong đợi %s in %s.
-3 xin vui lòng kiểm tra tính chính xác của mã thông báo '%1$s'.
-4 'read uncommitted schema' không thể chấp nhận, dùng \n'read committed schema' để thay thế.
-5 Độ dài chuỗi ký tự char tối đa là 16383.
-6 %s vượt quá giới hạn của %s.
-7 Độ dài chuỗi bit tối đa là %1$d bits.
-8 Không thể dùng truy vấn con trong mệnh đề điều kiện gia nhập.
-9 Không thể chỉ định thuộc tính "(%1$s)" trong mệnh đề đặc quyền update của câu lệnh grant/revoke.
-10 sử dụng từ khóạ '%s' không hợp lê, mong đợi %s.
-11 Độ dài mã thông báo quá dài.
-12 Kiểu dữ liệu không hợp lệ
-13 câu lệnh attach không hợp lệ\n  attach_statement: ATTACH unsigned_integer
-14 câu lệnh prepare không hợp lệ\n  prepare_statement:  PREPARE {to} COMMIT unsigned_integer
-15 câu lệnh execute không hợp lệ\n  execute_statement:  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]
-16 câu lệnh scope không hợp lệ\n  scope_statement: SCOPE trigger_action { FROM table_spec_list }
-17 set system parameter không hợp lệ\n  set_system: SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
-18 set transaction không hợp lệ\n  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n                 | SET TRANSACTION LOCK TIMEOUT timeout_spec
-19 invalid set trigger trace không hợp lệ\n  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
-20 set trigger depth  không hợp lệ\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [unsigned_integer|parameter|host_param]
-21 set optimization level không hợp lệ\n  SET OPTIMIZATION LEVEL {=|to} [ON|OFF|unsigned_integer|parameter|host_param]
-22 set optimization cost không hợp lệ\n  SET OPTIMIZATION COST {of} 'STRING' {=|to} literal_
-23 get optimization level không hợp lệ\n  GET OPTIMIZATION LEVEL {[INTO|TO] [host_param|parameter|identifier]}
-24 get optimization cost không hợp lệ\n  GET OPTIMIZATION COST {of} 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
-25 get transaction isol không hợp lệ\n  GET TRANSACTION ISOL LEVEL {[INTO|TO] [host_param|parameter|identifier]}
-26 get transaction lock không hợp lệ\n  GET TRANSACTION LOCK TIMEOUT {[INTO|TO] [host_param|parameter|identifier]}
-27 get trigger trace không hợp lệ\n  GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}
-28 get trigger depth không hợp lệ\n  GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}
-29 get stat không hợp lệ\n  GET STATISTICS 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
-30 create index không hợp lệ\n  CREATE {REVERSE} {UNIQUE} INDEX identifier ON {only} class_name index_column_name_list {WHERE where_clause}
-31 create user không hợp lệ\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
-32 create trigger không hợp lệ\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
-33 create serial không hợp lệ\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
-34 create procedure không hợp lệ\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
-35 create function không hợp lệ\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
-36 groups không hợp lệ\n  groups spec: GROUPS identifier {, identifier}*
-37 members không hợp lệ\n  member spec: MEMBERS identifier {, identifier}*
-38 password không hợp lệ\n  password spec: PASSWORD 'STRING'
-39 thiếu authorized command list\n  authorized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL
-40 thiếu class spec list
-41 thiếu identifier list
-42 thiếu expression
-43 identifier không hợp lệ
-44 sử dụng substring không hợp lệ\n  SUBSTRING( expression FROM expression FOR expression )\n  SUBSTRING( expression FROM expression )
-45 sử dụng trim không hợp lệ\n  TRIM ( [LEADING|TRAILING|BOTH] expression FROM expression )\n  TRIM ( [LEADING|TRAILING|BOTH] FROM expression )\n  TRIM ( expression FROM expression )\n  TRIM ( expression )
-46 sử dụng cast không hợp lệ\n  CAST ( expression AS data_type )
-47 hàm số add_months cần có hai tham số
-48 octet_length cần có một tham số
-49 bit_length cần có một tham số
-50 lower cần có một tham số
-51 upper cần có một tham số
-52 translate cần có ba tham số
-53 replace cần có hai hoặc ba tham số
-54 sử dụng to_number không hợp lệ\n  TO_NUMBER ( expression , char_string )\n  TO_NUMBER ( expression )
-55 toán tử gắn kết chuỗi không phải là '|' mà là '||'
-56 câu lệnh alter không hợp lệ
-57 câu lệnh drop không hợp lệ
-58 câu lệnh create không hợp lệ
-59 toán tử relational không hợp lệ
-60 toán tử equal không phải là '==' mà là '='
-61 toán tử not equal không phải là '!=' mà là '<>'
-62 giá trị âm không hợp lệ (hoặc giá trị âm trong danh sách)
-63 reference rule bị trùng lặp
-64 SYS_CONNECT_BY_PATH cần có hai tham số và tham số thứ hai phải là một chuỗi ký tự.
-65 unsigned integer %1$s không hợp lệ.
-66 IF cần có ba tham số: tham số đầu tiên phải là một biểu thức logic, tham số thứ hai và thứ ba phải là biểu thức ước tính bằng số hoặc bằng kiểu chuỗi ký tự.
-67 IFNULL cần có hai tham số mà phải là biểu thức ước tính bằng số hoặc bằng kiểu chuỗi ký tự.
-68 sử dụng isnull không hợp lệ\n  ISNULL ( expression )
-69 sử dụng left không hợp lệ\n  LEFT ( str , len )
-70 sử dụng right không hợp lệ\n  RIGHT ( str , len )
-71 sử dụng mod không hợp lệ\n MOD( expression, expression )
-72 sử dụng adddate không hợp lệ\n ADDDATE( expression, expression )
-73 sử dụng date_add không hợp lệ\n DATE_ADD( expression, INTERVAL expression unit)
-74 sử dụng subdate không hợp lệ\n SUBDATE( expression, expression )
-75 sử dụng date_sub không hợp lệ\n DATE_SUB( expression, INTERVAL expression unit)
-76 sử dụng user không hợp lệ / system_user\n USER() / SYSTEM_USER()
-77 sử dụng timestamp không hợp lệ\n TIMESTAMP( expression ), TIMESTAMP( expression, expression )
-78 sử dụng database không hợp lệ\n DATABASE()
-79 sử dụng current_time không hợp lệ\n CURRENT_TIME()
-80 sử dụng current_date không hợp lệ\n CURRENT_DATE()
-81 sử dụng current_timestamp không hợp lệ\n CURRENT_TIMESTAMP()
-82 sử dụng now không hợp lệ\n NOW()
-83 sử dụng default không hợp lệ\n DEFAULT(column_name)
-84 sử dụng date không hợp lệ\n DATE(expression)
-85 sử dụng localtime không hợp lệ\n LOCALTIME()
-86 sử dụng localtimestamp không hợp lệ\n LOCALTIMESTAMP()
-87 sử dụng schema không hợp lệ\n SCHEMA()
-88 sử dụng truncate không hợp lệ\n TRUNCATE( expression, expression )
-89 sử dụng str_to_date không hợp lệ\n STR_TO_DATE( expression, string_literal )
-90 sử dụng current_datetime không hợp lệ\n CURRENT_DATETIME()
-91 sử dụng insert không hợp lệ\n INSERT( expression, expression , expression, expression )
-92 sử dụng elt không hợp lệ\n ELT(expression [, expression]...)
-93 sử dụng year không hợp lệ\n YEAR( expression )
-94 sử dụng month không hợp lệ\n MONTH( expression )
-95 sử dụng day không hợp lệ\n DAY( expression )
-96 sử dụng hour không hợp lệ\n HOUR( expression )
-97 sử dụng minute không hợp lệ\n MINUTE( expression )
-98 sử dụng second không hợp lệ\n SECOND( expression )
-99 sử dụng quarter không hợp lệ\n QUARTER( expression )
-100 sử dụng week không hợp lệ\n WEEK( expression ), WEEK( expression, expression)
-101 sử dụng time không hợp lệ\n TIME(expression)
-102 sử dụng group_concat không hợp lệ\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
-103 sử dụng gợi ý chỉ mục vô hiệu
-104 Chiều dài chuỗi bằng byte tối đa bằng %1$d byte.
-105 Lỗi cú pháp: unexpected
+1 please check syntax at '%1$s', expecting %2$s.
+2 please check syntax at '%1$s', expecting %2$s in %3$s.
+3 please check correctness of token '%1$s'.
+4 'read uncommitted schema' is not acceptable, using \n'read committed schema' instead.
+5 Maximum char string length is 16383.
+6 %1$s exceeds limit of %2$s.
+7 Maximum bit string length is %1$d bits.
+8 Cannot use a subquery in join condition clause.
+9 Cannot specify attribute "(%1$s)" in update privilege clause of grant/revoke statement.
+10 invalid use of keyword '%1$s', expecting %2$s.
+11 Token length is too long.
+12 invalid data type
+13 invalid attach statement\n  attach_statement: ATTACH unsigned_integer
+14 invalid prepare statement\n  prepare_statement:  PREPARE {to} COMMIT unsigned_integer
+15 invalid execute statement\n  execute_statement:  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]
+16 invalid scope statement\n  scope_statement: SCOPE trigger_action { FROM table_spec_list }
+17 invalid set system parameter\n  set_system: SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
+18 invalid set transaction\n  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n                 | SET TRANSACTION LOCK TIMEOUT timeout_spec
+19 invalid set trigger trace\n  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
+20 invalid set trigger depth\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [unsigned_integer|parameter|host_param]
+21 invalid set optimization level\n  SET OPTIMIZATION LEVEL {=|to} [ON|OFF|unsigned_integer|parameter|host_param]
+22 invalid set optimization cost\n  SET OPTIMIZATION COST {of} 'STRING' {=|to} literal_
+23 invalid get optimization level\n  GET OPTIMIZATION LEVEL {[INTO|TO] [host_param|parameter|identifier]}
+24 invalid get optimization cost\n  GET OPTIMIZATION COST {of} 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
+25 invalid get transaction isol\n  GET TRANSACTION ISOL LEVEL {[INTO|TO] [host_param|parameter|identifier]}
+26 invalid get transaction lock\n  GET TRANSACTION LOCK TIMEOUT {[INTO|TO] [host_param|parameter|identifier]}
+27 invalid get trigger trace\n  GET TRIGGER TRACE {[INTO|TO] [host_param|parameter|identifier]}
+28 invalid get trigger depth\n  GET TRIGGER {MAXIMUM} DEPTH {[INTO|TO] [host_param|parameter|identifier]}
+29 invalid get stat\n  GET STATISTICS 'STRING' {[INTO|TO] [host_param|parameter|identifier]}
+30 invalid create index\n  CREATE {REVERSE} {UNIQUE} INDEX identifier ON {only} class_name index_column_name_list {WHERE where_clause}
+31 invalid create user\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
+32 invalid create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
+33 invalid create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
+34 invalid create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
+35 invalid create function\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+36 invalid groups\n  groups spec: GROUPS identifier {, identifier}*
+37 invalid members\n  member spec: MEMBERS identifier {, identifier}*
+38 invalid password\n  password spec: PASSWORD 'STRING'
+39 missing authorized command list\n  authorized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL 
+40 missing class spec list
+41 missing identifier list
+42 missing expression
+43 invalid identifier
+44 invalid use of substring\n  SUBSTRING( expression FROM expression FOR expression )\n  SUBSTRING( expression FROM expression )
+45 invalid use of trim\n  TRIM ( [LEADING|TRAILING|BOTH] expression FROM expression )\n  TRIM ( [LEADING|TRAILING|BOTH] FROM expression )\n  TRIM ( expression FROM expression )\n  TRIM ( expression )
+46 invalid use of cast\n  CAST ( expression AS data_type )
+47 function add_months needs two parameters
+48 octet_length needs one parameter
+49 bit_length needs one parameter
+50 lower needs one parameter
+51 upper needs one parameter
+52 translate needs three parameters
+53 replace needs two or three parameters
+54 invalid use of to_number\n  TO_NUMBER ( expression , char_string )\n  TO_NUMBER ( expression )
+55 string bind operator is not '|' but '||'
+56 invalid alter statement
+57 invalid drop statement
+58 invalid create statement
+59 invalid relational operator
+60 equal operator is not '==' but '='
+61 not equal operator is not '!=' but '<>'
+62 invalid minus value (or minus value in list)
+63 duplicated reference rule
+64 SYS_CONNECT_BY_PATH needs two parameters and the second must be a string literal.
+65 Invalid unsigned integer %1$s.
+66 IF needs three parameters: the first must be a logical expression, the second and third must be expressions evaluating to either a numeric or a string type.
+67 IFNULL needs two parameters which must be expressions evaluating to either a numeric or a string type.
+68 invalid use of isnull\n  ISNULL ( expression )
+69 invalid use of left\n  LEFT ( str , len )
+70 invalid use of right\n  RIGHT ( str , len )
+71 invalid use of mod\n MOD( expression, expression )
+72 invalid use of adddate\n ADDDATE( expression, expression )
+73 invalid use of date_add\n DATE_ADD( expression, INTERVAL expression unit)
+74 invalid use of subdate\n SUBDATE( expression, expression )
+75 invalid use of date_sub\n DATE_SUB( expression, INTERVAL expression unit)
+76 invalid use of user / system_user\n USER() / SYSTEM_USER()
+77 invalid use of timestamp\n TIMESTAMP( expression ), TIMESTAMP( expression, expression )
+78 invalid use of database\n DATABASE()
+79 invalid use of current_time\n CURRENT_TIME()
+80 invalid use of current_date\n CURRENT_DATE()
+81 invalid use of current_timestamp\n CURRENT_TIMESTAMP()
+82 invalid use of now\n NOW()
+83 invalid use of default\n DEFAULT(column_name)
+84 invalid use of date\n DATE(expression)
+85 invalid use of localtime\n LOCALTIME()
+86 invalid use of localtimestamp\n LOCALTIMESTAMP()
+87 invalid use of schema\n SCHEMA()
+88 invalid use of truncate\n TRUNCATE( expression, expression )
+89 invalid use of str_to_date\n STR_TO_DATE( expression, string_literal )
+90 invalid use of current_datetime\n CURRENT_DATETIME()
+91 invalid use of insert\n INSERT( expression, expression , expression, expression )
+92 invalid use of elt\n ELT(expression [, expression]...)
+93 invalid use of year\n YEAR( expression )
+94 invalid use of month\n MONTH( expression )
+95 invalid use of day\n DAY( expression )
+96 invalid use of hour\n HOUR( expression )
+97 invalid use of minute\n MINUTE( expression )
+98 invalid use of second\n SECOND( expression )
+99 invalid use of quarter\n QUARTER( expression )
+100 invalid use of week\n WEEK( expression ), WEEK( expression, expression)
+101 invalid use of time\n TIME(expression)
+102 invalid use of group_concat\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
+103 invalid use of index hint
+104 Maximum byte string length is %1$d bytes.
+105 Syntax error: unexpected
 106 , expecting '{'
 107 , expecting SELECT or '('
 108 , expecting
 109 unexpected
 110 END OF STATEMENT
-111 In line %d, column %d before '%c%s'\n
-112 In line %d, column %d before %s\n
+111 In line %1$d, column %2$d before '%3$c%4$s'\n
+112 In line %1$d, column %2$d before %3$s\n
 113 before ' %1$s'\n
 114 before END OF STATEMENT\n
-115 tên đặt vô hiệu\n  set_names: SET NAMES charset [COLLATE collation]\n
-116 sử dụng ký tự vô hiệu\n  CHR ( number [using charset] )\n
-117 sử dụng bộ chữ vô hiệu\n CHARSET ( expression )\n
-118 sử dụng phân loại vô hiệu\n COLLATION ( expression )\n
-119 sử dụng clob_to_char vô hiệu\n CLOB_TO_CHAR ( expression [using charset] )\n
-120 sử dụng index_prefix vô hiệu\n INDEX_PREFIX ( expression, expression, expression )\n
+115 invalid set names\n  set_names: SET NAMES charset [COLLATE collation]\n
+116 invalid use of chr\n  CHR ( number [using charset] )\n
+117 invalid use of charset\n  CHARSET ( expression )\n
+118 invalid use of collation\n  COLLATION ( expression )\n
+119 invalid use of clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
+120 invalid use of index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
 121 Incorrect usage of UNION and ORDER BY
 122 Expecting ON. Outer Joins require join condition.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
-1 Không đủ bộ nhớ.
-2 Hàm số %1$s chưa được định nghĩa.
-3 Không thể tìm thấy ldb '%1$s' trong cơ sở dữ liệu.
-4 Số lượng cột, %d, trong truy vấn bên trái không khớp với\nsố cột, %d, trong truy vấn bên phải.
-5 '%s' không phải union tương thích với '%s'.
-6 %1$s chưa được định nghĩa.
-7 Miền của %1$s không thể là một lớp ảo.
-8 Miền của %1$s không thể là một lớp ảo proxy.
-9 Miền của %1$s không thể là một lớp.
-10 %s không phải là một thuộc tính của %s.
-11 %s không thể được thay đổi từ lớp này.\nNó đã được thừa kế từ %s.
-12 Lớp %1$s không tồn tại.
-13 %s không phải là một %s.
-14 %s không phải một phương pháp hoặc thuộc tính của %s.
-15 %1$s không có hoặc không được có bất kỳ đặc tả truy vấn nào.
-16 %1$s chưa được định nghĩa trong cơ sở dữ liệu.
-17 %s không phải một lớp cao cấp của %s.
-18 Class %s thừa kế từ  non-class %s.
-19 VClass %s thừa kế từ non-vclass %s.
-20 Lớp ảo Proxy %s thừa kế từ lớp ảo non-proxy %s.
-21 %s đã là một lớp cao cấp của %s.
-22 %1$s có thể không phải là một lớp cao cấp của chính nó.
-23 %s đã là một lớp con của %s.
-24 %1$s không phải giá trị đơn. Các thuộc tính được hiện ra trong\ncác truy vấn Aggregate cũng phải xuất hiện trong mệnh đề Group by.
-25 Số cột(%d) và into_names(%d) không bằng nhau.
-26 Lớp %1$s đã tồn tại.
-27 Lớp cao cấp %s trong '%s' không tồn tại.
-28 Mong đợi một mệnh đề SUBCLASS để khiến cho mệnh đề INHERIT '%1$s' có nghĩa.
-29 Mệnh đề INHERIT '%s' tham chiếu một lớp mà không nằm trong mệnh đề SUBCLASS '%s'.
-30 Lớp không thể có một đặc tả truy vấn.
-31 %1$s không phải một ldb đã đăng ký.
-32 Một thừa kế proxy có thể không có mệnh đề object_id của chính nó. Nó không thể ghi đè lên thuộc tính object_id được thừa kế của nó.
-33 Lớp ảo Proxy có nhiều hơn một đặc tả truy vấn.
-34 Số thuộc tính, %d, không khớp với số cột, \n%d, trong đặc tả truy vấn.
-35 Thiếu một tên thuộc tính được mong đợi cho %1$s.
-36 Thuộc tính '%s' không tương thích với cột '%s' của đặc tả truy vấn.
-37 %1$s không phải một lớp.
-38 Các thư mục có thể không được tạo trên các lớp ảo.
-39 Các thư mục chỉ có thể được tạo trên một thuộc tính đơn.
-40 Sử dụng của nhiều lớp trong mệnh đề FROM không hợp lệ.
-41 Lỗi hệ thống -- Resolution thất bại trên %1$s.
-42 Bạn có thể không xóa từ một derived table.
-43 Người dùng %1$s không ở trong cơ sở dữ liệu.
-44 Update không thể có aggregation.
-45 Tên thuộc tính trong mỗi lớp phải là duy nhất. Tên thuộc tính '%s' trong lớp '%s' được chỉ định nhiều hơn một lần.
-46 Có nhiều phép gán đến %1$s.%2$s.
-47 Số trong sort spec không phải là một số nguyên.
-48 %1$d trong sort spec nằm ngoài phạm vi.
-49 Order by item không phải một số nguyên.
-50 %1$s trong sort spec không khớp với bất kỳ cột truy xuất nào.
-51 Có mâu thuẫn hướng sắp xếp cho cột %1$s.
-52 %1$s trong sort spec không phải là một số, tên hoặc path expression.
-53 Insert expression có thể chỉ xuất hiện trong câu lệnh Insert.
-54 Số thuộc tính(%d) và cột truy xuất(%d) không bằng nhau.
-55 Số thuộc tính(%d) và giá trị(%d) không bằng nhau.
-56 Dữ liệu tràn trong kiểu dữ liệu %1$s.
-57 Kiểu dữ liệu không tương thích trên thuộc tính %1$s.
-58 %1$s\n không phải một SELECT từ lớp đơn.
-59 `*' không phải một danh sách truy xuất hợp lệ trong một đặc tả truy vấn lớp ảo proxy.
-60 %1$s không phải là Lớp ảo hoặc lớp ảo proxy.
-61 Có nhiều hơn một mệnh đề isolation level.
-62 Có nhiều hơn một mệnh đề timeout.
-63 Không có isolation level nào được nhập.
-64 Toán tử BETWEEN không được định nghĩa trên kiểu %s, %s và %s.
-65 Toán tử '%s' không được định nghĩa trên kiểu %s và %s.
-66 Function phải có đối số: %1$s.
-67 Toán hạng không tương thích: %s(%s).
-68 Aggregate function phải có 1 đối số: %1$s.
-69 Tìm cách chia cho Không.
-70 Dữ liệu tràn ép buộc %s đến kiểu %s.
-71 Không thể ép buộc %s đến kiểu %s.
-72 Kiểu của '%1$s' phải là SET, MULTISET, hoặc SEQUENCE.
-73 '%1$s' phải có chính xác một kiểu tập hợp phần tử.
-74 %1$s có nhiều hơn một tên derived column.
-75 %1$s không có tên derived column.
-76 %s không có một số cột (%d) và tên cột (%d) tương ứng.
-77 Không có thuộc tính trong %1$s.
-78 Mong đợi bảng đơn trong %1$s.
-79 Tên hiện ra %1$s là mơ hồ is ambiguous.
-80 Tên Derived column '%1$s' không được phép cho đặc tả lớp đơn giản.
-81 Derived table '%1$s' phải có một tên tương quan.
-82 Cấp phép Select thất bại, lớp %1$s.
-83 Tham chiếu thực thể lớp %1$s đến một tên derived table là không được cho phép.
-84 Path correlation (%1$s) xuất hiện bên ngoài một path term bên trong.
-85 Tham chiếu đến %1$s không rõ ràng.
-86 Lớp của %s không có thuộc tính %s.
-87 Các lớp (%s) không phải tất cả đều có thuộc tính %s.
-88 Lớp (%s) không có thuộc tính %s.
-89 %s là một kiểu %s, không phải một kiểu đối tượng.
-90 Selector {%s} không giải quyết đến một đặc tả lớp đã hiện ra trong\n ngữ cảnh được yêu cầu (%s).
-91 Selector {%s} tham chiếu đến đặc tả non-class (%s).
-92 Selector {%1$s} không thể làm nguồn path expression tự định nghĩa nó.
-93 Selector {%s} được định nghĩa vòng tròn trong các mục của of selector {%s}.
-94 Selector {%s} được định nghĩa lại tại %s.
-95 %s (đối tượng miền) không có thuộc tính %s.
-96 %1$s trong EXCEPT spec không phải một lớp con.
-97 ALL ... EXCEPT danh sách ngoại trừ EVERYTHING trong lớp.
-98 '%s' là không đồng nhất với\nngười dùng khác của path selector '%s' hoặc của path root '%s'.
-99 Đối số chưa định nghĩa.
-100 Đối số không phải là một đối tượng.
-101 %s không phải một phương pháp lớp hay thuộc tính của %s.
-102 Đặc tả truy vấn không được có một mệnh đề Into.
-103 Đặc tả truy vấn Proxy phải không có biểu thức Aggregate,\n mệnh đề group by, và không có mệnh đề having.
-104 Đặc tả truy vấn Proxy phải không có từ khóa DISTINCT hoặc UNIQUE \ntrong danh sách truy xuất.
-105 Đặc tả truy vấn Proxy phải là một câu lệnh SELECT đơn giản.
-106 Đặc tả truy vấn Proxy phải tham chiếu chỉ một bảng hoặc lớp \ntừ cơ sở dữ liệu cục bộ.
-107 Người dùng '%s' không phải là chủ sở hữu của %s.
-108 Proxy '%s' đã được định nghĩa trên lớp '%s' của ldb '%s'.
-109 CUBRID không hỗ trợ proxy's với đối tượng trong các heterogeneous set.
-110 Mệnh đề Where phải là một biểu thức kiểu logic.
-111 Mệnh đề Like Escape phải là một chuỗi ký tự hoặc một biến số máy chủ.
-112 Kết hợp của precision (%d) và scale (%d) không hợp lệ.
-113 Precision đã cho của %1$d không hợp lệ; nó phải lớn hơn %2$d và không lớn hơn %3$d.
-114 Precision (%d) quá lớn. Precision tối đa là  is %d.
-115 Phương pháp %1$s phải có một kiểu trả về.
-116 Số đối số được cung cấp đến phương pháp không bằng với \nsố được định nghĩa cho phương pháp.
-117 Gọi phương pháp phải có một mục tiêu.
-118 Phương pháp %1$s chưa được định nghĩa cho mục tiêu đã cung cấp.
-119 Phương pháp thực thể không thể được gọi trên các đối tượng lớp.
-120 Phương pháp lớp không thể được gọi trên đối tượng thực thể.
-121 Các phương pháp lớp đòi hỏi một đối tượng lớp như mục tiêu của chúng.
-122 Các phương pháp đòi hỏi một đối tượng như mục tiêu của chúng.
-123 Phương pháp %1$s chưa được gõ đầy đủ, kiểm tra định nghĩa phương pháp trong lược đồ lớp.
-124 Số học thời gian hụt.
-125 Số học ngày tháng hụt.
-126 Phía bên tay trái của mệnh đề Assignment không hợp lệ.
-127 Phương pháp gọi trên các set derived table tương quan với một phạm vi bên ngoài \nchưa được hỗ trợ trừ khi set expression bị ngắt trong một truy vấn con.
-128 Cột đặt tả truy vấn tương ứng với \nthuộc tính dùng chung '%1$s' phải là NULL hoặc NA.
-129 Một cột NULL chưa được cho phép trên danh sách truy xuất của khung nhìn đặc tả truy vấn nếu định nghĩa thuộc tính bị bỏ sót.
-130 Đối tượng Vclass trong tập hợp không được hỗ trợ.
-131 Mong đợi một giá trị chuỗi.
-132 Mong đợi một câu lệnh hoặc một giá trị chuỗi.
-133 Thuộc tính Proxy object_id '%1$s' không được ánh xạ đến \n một biểu thức cột đặc tả truy vấn.
-134 Ràng buộc %1$s bị bỏ qua.
-135 Khai báo ràng buộc không được phép trong ngữ cảnh này.
-136 Đổi kiểu %s đến kiểu %s không được hỗ trợ.
-137 %1$s không phải là một chuỗi bit hợp lệ.
-138 Toán tử '%s' được định nghĩa trên kiểu %s.
-139 Toán tử '%s' chưa được định nghĩa trên kiểu %s với %s và %s.
-140 Các toán hạng của toán tử '%1$s' không thể cùng là các biến máy chủ động.
-141 Quá nhiều đối số đến hàm số generic %s.\nChỉ đối số %d được cho phép cho hàm số generic.
-142 Selector lớp {%s} '%s' không phải một lớp con của '%s'.
-143 Không thể giải nén trường '%s' từ kiểu %s.
-144 Đặc tả truy vấn không được có một mệnh đề ORDER BY.
-145 Điều kiện Case phải là một biểu thức kiểu logic.
-146 Biểu thức phải là của kiểu %1$s.
-147 Serial '%1$s' đã tồn tại.
-148 Serial '%1$s' chưa được định nghĩa.
-149 Giá trị tăng dần không được là Không.
-150 Giá trị lớn nhất vượt quá 1.0e37.
-151 Giá trị nhỏ nhất không hợp lệ.
-152 Giá trị tăng dần không hợp lệ.
-153 Giá trị nhỏ nhất vượt quá -1.0e36.
-154 Giá trị lớn nhất không hợp lệ.
-155 Chỉ định tùy chọn sửa đổi serial.
-156 Tham số thứ hai của chức năng serial_next_value nên lớn hơn 0.
-157 Giá trị Serial không thể vượt quá giá trị lớn nhất hoặc nhỏ nhất của nó
-158 Lỗi I/O nội tại cho serial
-159 Không thể tìm thấy chỉ mục '%1$s'.
-160 Tên chỉ mục đủ điều kiện '%1$s' tham chiếu đến một lớp, nhưng nó không được chỉ định trong mệnh đề From.
-161 Một hoặc nhiều lớp có chỉ mục giống nhau '%1$s'. Dùng các tên chỉ mục đủ điều kiện.
-162 Sử dụng %s không hợp lệ.Biểu thức \n%s không thể được dùng với thuộc tính hoặc truy vấn con liên quan.
-163 Phát hành hiện tại hạn chế một biểu thức chứa ORDERBY_NUM() trong danh sách truy xuất.
-164 Path expression '%1$s' trong điều kiện gia nhập.
-165 '%1$s' trong điều kiện gia nhập chưa được định nghĩa.
-166 Phát hành hiện tại hạn chế set derived table cho quyền gia nhập bên ngoài.
-167 Không thể chèn truy vấn trên ldb khác.
-168 Chỉ một cột có thể được chỉ định trong danh sách truy vấn khi truy vấn con không được giới thiệu với EXISTS.
-169 Phía bên tay phải của một mệnh đề Assignment không hợp lệ. Ngữ cảnh đòi hỏi truy vấn là cột đơn.
-170 Không thể dùng một truy vấn con trong mệnh đề điều kiện gia nhập.
-171 Định nghĩa phân vùng không hợp lệ.
-172 Cột phân vùng phải được chỉ định.
-173 Chỉ một cột có thể được chỉ định như cột phân vùng.
-174 Kiểu cột phân vùng không được hỗ trợ.
-175 Định nghĩa phân vùng bị trùng lặp. '%1$s'
-176 Không khớp kiểu hằng số. '%1$s'
-177 Kích cỡ phân vùng không hợp lệ.
-178 '%1$s' không phải là lớp được phân vùng.
-179 '%1$s' đã là lớp được phân vùng.
-180 Yêu cầu phân vùng không hợp lệ.
-181 %1$s không thể được thay đổi từ lớp này (cột khóa phân vùng).
-182 %1$s không thể được quản lý phân vùng dưới trigger đang hoạt động.
-183 Phân vùng Partition %1$s không tồn tại.
-184 Kiểu phân vùng không khớp. '%1$s'
-185 Thông tin phân vùng không hợp lệ.
-186 Thêm phân vùng để được thiết lập với một phạm vi lớn hơn hiện có.
-187 Việc sắp xếp lại của phân vùng không được cho phép bởi vì nó có thể dẫn đến mất dữ liệu.
-188 Phạm vi của phân vùng '%1$s' không hợp lệ.
-189 Một thuộc tính lớp không thể có một ràng buộc AUTO INCREMENT.
-190 Một thuộc tính của lớp ảo không thể có một ràng buộc AUTO INCREMENT.
-191 Miền của thuộc tính '%1$s' có một ràng buộc AUTO INCREMENT không hợp lệ.
-192 Không phải người dùng nhưng hệ thống có thể gán thuộc tính '%1$s' tạo bởi 'ON CACHE OBJECT' của khóa ngoại.
-193 Không thể dùng tên thuộc tính trùng lặp trong danh sách khóa chỉ mục. Tên thuộc tính '%1$s' được liệt kê nhiều hơn một lần.
-194 Hàm số %1$s chưa được định nghĩa hoặc được đưa ra số tham số sai.
-195 '%1$s' chỉ có thể được sử dụng trong các truy vấn phân cấp. Chỉ định một mệnh đề CONNECT BY.
-196 '%1$s' không được phép tại đây.
-197 Dùng CONNECT_BY_ISCYCLE chỉ được cho phép nếu truy vấn có một mệnh đề CONNECT BY NOCYCLE.
-198 Không có bảng nào được dùng.
-199 ORDER BY NULL đòi hỏi GROUP BY.
-200 Số đến CACHE phải nhỏ hơn một vòng (%1$s).
-201 '%1$s' không được cho phép trong một truy vấn có mệnh đề LIMIT.
-202 WITH ROLLUP đòi hỏi GROUP BY.
-203 Một tham số tên cột phải được chuyển đến hàm số DEFAULT. Path expressions chưa được hỗ trợ.
-204 Tùy chọn bảng '%1$s' trùng lặp
-205 Lớp '%1$s' được đánh dấu như REUSE_OID và không thể tham chiếu. Các lớp không thể tham chiếu không thể là miền của một thuộc tính và OID các thực thể của chúng không thể được trả về.
-206 Trùng lặp tùy chọn 'serial %1$s'.
-207 Cột '%1$s' trong mệnh đề sắp xếp thứ tự không rõ ràng.
-208 Thuộc tính '%1$s' không có một giá trị mặc định.
-209 Mục ORDER BY phải xuất hiện trong danh sách truy xuất nếu SELECT DISTINCT được chỉ định.
-210 Biến số máy chủ không được cho phép trên cột trong đặc tả truy vấn.
-211 %1$s không thể là một cột ORDER BY
-212 %1$s không thể là một cột GROUP BY
-213 Không thể định nghĩa '%1$s của %2$s' như một kiểu cột.
-214 Giá trị "%1$s" không hợp lệ cho prefix length của chỉ mục.
-215 Chức năng '%s' chưa được định nghĩa trên kiểu %s, %s, %s và %s.
-216 Chức năng '%s' chưa được định nghĩa trên kiểu %s, %s và %s.
-217 Chức năng '%s' chưa được định nghĩa trên kiểu %s và %s.
-218 Chức năng '%s' chưa được định nghĩa trên kiểu %s.
-219 Chức năng '%s' chưa được định nghĩa cho một đối số chỉ mục của kiểu %s.
-220 ALTER VIEW '%1$s' AS SELECT không được cho phép cho các khung nhìn có các lớp con hoặc lớp cao cấp. Dùng ALTER VIEW CHANGE QUERY để thay thế.
-221 Thuộc tính khung nhìn không thể được thay đổi bằng cách dùng câu lệnh này. 'ALTER VIEW name AS query' có thể có ích để thay thế.
-222 CUBRID yêu cầu mục ORDER BY có biểu thức giống với đối số GROUP_CONCAT hoặc một số nguyên (vị trí đối số).
-223 Vị từ LIKE đòi hỏi một ký tự thoát được chỉ định. Xem tài liệu cho '%1$s' và '%2$s' tham số hệ thống.
-224 KEYLIMIT không thể được dùng trong mệnh đề INDEX NONE.
-225 Biến số phiên không được cho phép trong ngữ cảnh này.
-226 Xung đột gợi ý chỉ mục giữa '%s' và '%s'.
-227 Chức năng '%1$s' không thể được sử dụng trong mệnh đề DEFAULT 
-228 Cập nhật bảng kết quả không được cho phép.
-229 Cập nhật thuộc tính hạng và thuộc tính đối tượng không được cho phép trong cùng tuyên bố.
-230 Cập nhật thứ bậc hạng ảo không được cho phép.
-231 Biến chủ không được cho phép trong tuyên bố DDL.
-232 Biểu diễn bộ lọc vô hiệu (%1$s) cho chỉ mục.
-233 Đa chức năng hoặc chức năng lồng ghép không được cho phép trong định nghĩa chỉ mục chức năng.
-234 Đặc điểm chỉ mục vô hiệu.
-235 SHARED, DEFAULT and AUTO_INCREMENT không được xác định riêng rẽ.
-236 Quá nhiều giá trị liệt kê (%d). Loại liệt kê có thể có tối đa %d giá trị.
-237 Giá trị lặp lại trong loại liệt kê.
-238 Không được MERGE vào một bảng kết quả.
-239 Không thể ảnh hưởng tới bảng nguồn trong tuyên bố MERGE.
-240 MERGE với các bậc hạng khác không được cho phép.
-241 Tên người dùng quá dài.
-242 Biểu diễn hằng số không được dùng làm chỉ mục chức năng.
-243 Tên hoặc bí danh hạng không được duy nhất trong danh sách: '%1$s'
-244 Mệnh đề DEFAULT vô hiệu. '%1$s' không thể được sử dụng trong biểu diễm lồng nhau.
-245 '%1$s' yêu cầu các lý lẽ với đối chiếu tương thích.
-246 Bộ ký tự vô hiệu.
-247 Bộ ký tự yêu cầu và đối chiếu không tương thích.
-248 Đối chiếu chưa biết '%1$s'.
-249 Nội dung yêu cầu đối chiếu với các yếu tố có bộ mã và đối chiếu tương tự.
-250 Chỉ mục tiền tố không được cho phép trên thuộc tính '%1$s' (có đối chiếu với phần mở rộng).
-251 Giá trị ban đầu vô hiệu.
-252 Chỉ mục tiền tố nhiều cột không được cho phép.
-253 Chức năng '%1$s' không được dùng cho chỉ mục dựa trên chức năng.
-254 Định nghĩa cột chỉ mục vô hiệu: %1$s
-255 '%1$s' không được cho phép trong một biểu diễn lọc cho chỉ mục.
-256 Không được sử dụng mệnh đề GROUPBY_NUM() và WITH ROLLUP trong cùng trường.
-257 Không được MERGE UPDATE cột CẬP NHẬT %1$s được tham chiếu ở mệnh đề MỞ.
-258 Số cột, %d, trong ( %s ) không cân đối với số cột, %d, trong ( %s ).
-259 Tiền tố cột không được cho phép trong biểu diễn chỉ mục chức năng.
-260 %1$s không được là cột PARTITION BY hoặc ORDER BY
-261 Trường phải đánh giá so với một giá trị đơn\n(%1$s).
-262 Chức năng phân tích lồng nhau không được cho phép.
-263 Thuộc tính kế thừa không được sử dụng như phím phân mảng.
-264 Tổng kích thước các yếu tố liệt kê quá lớn.
-265 Không thể sử dụng bảng đích trong đặc điểm nguồn.
-266 COLLATE không được cho phép trong trường hợp này.
-267 Bộ điều chỉnh COLLATE không thể thay đổi bộ mã (from '%s' to '%s'). Cố gắng thay bằng sử dụng CAST.
-268 Bộ mã '%1$s' cho giá trị phân vùng vô hiệu. Kỳ vọng '%2$s' bộ mã.
-269 Biến số phiên không thể có phân loại khác với phân loại hệ thống ('%1$s').
-270 Biểu thức chỉ số chức năng vô hiệu.
-271 Thuyết minh câu hỏi %1$s tự tham chiếu tới câu hỏi.
-272 %1$s biểu thức không được cho phép trong điều kiện chung.
-273 ORDER BY không được phép trong hàm MEDIAN.
-274 Các đối số của hàm '%1$s' phải là không đổi.
-275 Hàm '%1$s' phải có mệnh đề ORDER BY.
-276 Đối với hàm '%1$s', số lượng các đối số không phù hợp với số cột ORDER BY.
-277 Đối với hàm '%1$s', mệnh đề ORDER BY không hợp lệ.
+1 Out of memory.
+2 Function %1$s is undefined.
+3 Cannot find ldb '%1$s' in the database.
+4 The number of columns, %1$d, in the left query do not match\nthe number of columns, %2$d, in the right query.
+5 '%1$s' is not union compatible with '%2$s'.
+6 %1$s is not defined.
+7 The domain of %1$s cannot be a vclass.
+8 The domain of %1$s cannot be a proxy vclass.
+9 The domain of %1$s cannot be a class.
+10 %1$s is not an attribute of %2$s.
+11 %1$s cannot be changed from this class.\nIt was inherited from %2$s.
+12 Class %1$s does not exist.
+13 %1$s is not a %2$s.
+14 %1$s is not a method or attribute of %2$s.
+15 %1$s does not have and must not have any query specifications.
+16 %1$s is not defined in the database.
+17 %1$s is not a superclass of %2$s.
+18 Class %1$s inherits from non-class %2$s.
+19 VClass %1$s inherits from non-vclass %2$s.
+20 Proxy vclass %1$s inherits from non-proxy vclass %2$s.
+21 %1$s is already a superclass of %2$s.
+22 %1$s may not be a superclass of itself.
+23 %1$s is already a subclass of %2$s.
+24 %1$s is not single valued. Attributes exposed in\naggregate queries must also appear in the group by clause.
+25 The number of columns(%1$d) and into_names(%2$d) are not equal.
+26 Class %1$s already exists.
+27 Super class %1$s in '%2$s' does not exist.
+28 Expecting a SUBCLASS clause to make INHERIT clause '%1$s' meaningful.
+29 INHERIT clause '%1$s' references a class that is not in the SUBCLASS clause '%2$s'.
+30 Class CANNOT have a query specification.
+31 %1$s is not a registered ldb.
+32 A proxy heir may not have its own object_id clause.  It cannot override its inherited object_id attribute(s).
+33 Proxy vclass has more than one query specification.
+34 The number of attributes, %1$d, does not match the number of columns, \n%2$d, in the query specification.
+35 Missing an expected attribute name for %1$s.
+36 Attribute '%1$s' is not compatible with column '%2$s' of the query specification.
+37 %1$s is not a class.
+38 Indices may not be created on virtual classes.
+39 Indices can only be created on a single attribute.
+40 Illegal use of multiple classes in the from clause.
+41 System error -- Resolution failed on %1$s.
+42 You may not delete from a derived table.
+43 User %1$s is not in the database.
+44 Update cannot have aggregation.
+45 Attribute names in each class must be unique. Attribute name '%1$s' in class '%2$s' is specified more than once.
+46 There are multiple assignments to %1$s.%2$s.
+47 Number in sort spec is not an integer.
+48 %1$d in sort spec is out of range.
+49 Order by item is not an integer.
+50 %1$s in sort spec doesn't match any select column.
+51 There are conflicting sort directions for column %1$s.
+52 %1$s in sort spec is not a number, name or path expression.
+53 Insert expression may only appear in insert statement.
+54 The number of attributes(%1$d) and select columns(%2$d) are not equal.
+55 The number of attributes(%1$d) and values(%2$d) are not equal.
+56 Data overflow on data type %1$s.
+57 Incompatible data type on attribute %1$s.
+58 %1$s\n is not a SELECT from a single class.
+59 `*' is not a valid select list in a proxy vclass query specification.
+60 %1$s is neither a vclass nor a proxy vclass.
+61 There are more than one isolation level clauses.
+62 There are more than one timeout clauses.
+63 No isolation level was entered.
+64 BETWEEN operator is not defined on types %1$s, %2$s and %3$s.
+65 '%1$s' operator is not defined on types %2$s and %3$s.
+66 Function must have arguments: %1$s.
+67 Incompatible operands: %1$s(%2$s).
+68 Aggregate function must have 1 argument: %1$s.
+69 Attempt to divide by zero.
+70 Data overflow coercing %1$s to type %2$s.
+71 Cannot coerce %1$s to type %2$s.
+72 The type of '%1$s' must be SET, MULTISET, or SEQUENCE.
+73 '%1$s' should have exactly one set element type.
+74 %1$s has more than one derived column name.
+75 %1$s has no derived column name.
+76 %1$s does not have a corresponding number of columns (%2$d) and column names (%3$d).
+77 There are no attributes in %1$s.
+78 Expecting single table in %1$s.
+79 Exposed name %1$s is ambiguous.
+80 Derived column names '%1$s' are not allowed for simple class specifications.
+81 Derived table '%1$s' must have a correlation name.
+82 Select authorization failure, class %1$s.
+83 Class instance reference %1$s to a derived table name is not allowed.
+84 Path correlation (%1$s) appears outside an inner path term.
+85 Reference to %1$s is ambiguous.
+86 Class of %1$s does not have attribute %2$s.
+87 Classes (%1$s) do not all have attribute %2$s.
+88 Class (%1$s) does not have attribute %2$s.
+89 %1$s is a %2$s type, not an object type.
+90 Selector {%1$s} does not resolve to an exposed class specification in\n the required context (%2$s).
+91 Selector {%1$s} refers to non-class specification (%2$s).
+92 Selector {%1$s} cannot root the path expression defining itself.
+93 Selector {%1$s} is circularly defined in terms of selector {%2$s}.
+94 Selector {%1$s} is redefined at %2$s.
+95 %1$s (domain object) does not have attribute %2$s.
+96 %1$s in EXCEPT spec is not a subclass.
+97 ALL ... EXCEPT list excludes EVERYTHING in class.
+98 '%1$s' is inconsistent with\nother use of path selector '%2$s' or of path root '%3$s'.
+99 Undefined argument.
+100 Argument is not an object.
+101 %1$s is not a class method or attribute of %2$s.
+102 Query specification must not have an into-clause.
+103 Proxy query specification must have no aggregate expression,\nno group-by-clause, and no having-clause.
+104 Proxy query specification must not have the DISTINCT nor UNIQUE \nkeyword in the select list.
+105 Proxy query specification must be a simple SELECT statement.
+106 Proxy query specification must reference only one table or class \nfrom the local database.
+107 User '%1$s' is not the owner of %2$s.
+108 Proxy '%1$s' is already defined on class '%2$s' of ldb '%3$s'.
+109 CUBRID does not support proxy's with objects in heterogeneous sets.
+110 Where-clause must be a logical type expression.
+111 Like escape clause must be a literal string or a host variable.
+112 Invalid combination of precision (%1$d) and scale (%2$d).
+113 Given precision of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
+114 Precision (%1$d) too large. Maximum precision is %2$d.
+115 Method %1$s must have a return type.
+116 Number of arguments supplied to the method does not equal the \nnumber defined for the method.
+117 Method call must have a target.
+118 Method %1$s is undefined for the supplied target.
+119 Instance methods cannot be called on class objects.
+120 Class methods cannot be called on instance objects.
+121 Class methods require a class object as their target.
+122 Methods require an object as their target.
+123 Method %1$s is not fully typed, check method definition in class schema.
+124 Time arithmetic underflow.
+125 Date arithmetic underflow.
+126 Illegal left hand side of an assignment clause.
+127 Method calls on set derived tables correlated to an outer scope are \nnot supported unless the set expression is wrapped in a subquery.
+128 The query specification column that corresponds to the \nshared attribute '%1$s' must be NULL or NA.
+129 A NULL column is not allowed on the select list of the view query specification if the attribute definition is omitted.
+130 Vclass objects in sets are not supported.
+131 Expecting a string value.
+132 Expecting a statement or a string value.
+133 Proxy object_id attribute '%1$s' must not map to \na query specification column expression.
+134 %1$s constraint ignored.
+135 Constraint declarations not allowed in this context.
+136 Casting %1$s to type %2$s is not supported.
+137 %1$s is not a valid bit string.
+138 '%1$s' operator is not defined on type %2$s.
+139 '%1$s' operator is not defined on types %2$s with %3$s and %4$s.
+140 Operands of operator '%1$s' cannot both be dynamic host variables.
+141 Too many aguments to generic function %1$s.\nOnly %2$d arguments are allowed for generic functions.
+142 Selector {%1$s} class '%2$s' is not a subclass of '%3$s'.
+143 Cannot extract '%1$s' field from type %2$s.
+144 Query specification must not have an ORDER BY clause.
+145 Case condition must be a logical type expression.
+146 Expression should be of type %1$s.
+147 Serial '%1$s' already exist.
+148 Serial '%1$s' not defined.
+149 Increment value must not be zero.
+150 Maximum value exceeds 1.0e37.
+151 Minimum value is invalid.
+152 Increment value is invalid.
+153 Minimum value exceeds -1.0e36.
+154 Maximum value is invalid.
+155 Specify alter serial option.
+156 The second argument of serial_next_value function should be greater than 0.
+157 Serial values cannot exceeds its minimum or maximum
+158 Internal I/O error for serial
+159 Cannot find the index '%1$s'.
+160 The qualified index name '%1$s' refers to a class, but it isn't specified in from clause.
+161 Two or more classes have the same index '%1$s'. Use the qualified index names.
+162 Invalid use of %1$s.\n%2$s expression cannot be used with attribute or correlated subquery.
+163 Current release restricts a expression containing ORDERBY_NUM() in select list.
+164 Path expression '%1$s' in join condition.
+165 '%1$s' in join condition is not defined.
+166 Current release restricts set derived table for right outer join.
+167 Cannot insert with query on other ldb.
+168 Only one column can be specified in the select list when the subquery is not introduced with EXISTS.
+169 Illegal right hand side of an assignment clause. Context requires query to be single column.
+170 Cannot use a subquery in join condition clause.
+171 Invalid partition definition.
+172 Partition column must be specified.
+173 Only one column can be specified as partition column.
+174 Unsupported partition column type.
+175 Partition definition is duplicated. '%1$s'
+176 Constant type mismatch. '%1$s'
+177 Invalid partition size.
+178 '%1$s' is not partitioned class.
+179 '%1$s' is already partitioned class.
+180 Invalid partition requests.
+181 %1$s cannot be changed from this class(partition key column).
+182 %1$s cannot be partition-managed under active triggers.
+183 Partition %1$s does not exist.
+184 Partition type mismatches. '%1$s'
+185 Partition information is invalid.
+186 Partition addition is to set with a bigger range than the existing.
+187 Reorganization of partitions is not permitted because it may cause data loss.
+188 The range of the partition '%1$s' is invalid.
+189 A class attribute cannot have an auto increment constraint.
+190 An attribute of virtual class cannot have an auto increment constraint.
+191 The domain of the attribute '%1$s' having an auto increment constraint is invalid.
+192 Not a user but the system can assign the attribute '%1$s' created by 'ON CACHE OBJECT' of foreign key.
+193 Cannot use duplicate attribute names in index key list. Attribute name '%1$s' listed more than once.
+194 Function %1$s is undefined or given wrong number of parameter.
+195 '%1$s' can only be used in hierarchical queries. Specify a CONNECT BY clause.
+196 '%1$s' is not allowed here.
+197 Using CONNECT_BY_ISCYCLE is only allowed if the query has a CONNECT BY NOCYCLE clause.
+198 No tables used.
+199 ORDER BY NULL requires GROUP BY.
+200 The number to CACHE must be less than one cycle (%1$s).
+201 '%1$s' is not allowed in a query with LIMIT clause.
+202 WITH ROLLUP requires GROUP BY.
+203 A column name parameter should be passed to the DEFAULT function. Path expressions are not yet supported.
+204 Duplicate table option '%1$s'
+205 The class '%1$s' is marked as REUSE_OID and is non-referable. Non-referable classes can't be the domain of an attribute and their instances' OIDs cannot be returned.
+206 Duplicate 'serial %1$s' option.
+207 The column '%1$s' in ordering clause is ambiguous.
+208 Attribute '%1$s' doesn't have a default value.
+209 ORDER BY items must appear in the select list if SELECT DISTINCT is specified.
+210 Host variable is not allowed on columns in the query specification.
+211 %1$s can not be an ORDER BY column
+212 %1$s can not be a GROUP BY column
+213 Can not define '%1$s of %2$s' as a column type.
+214 Invalid value "%1$s" for prefix length of the index.
+215 '%1$s' function is not defined on types %2$s, %3$s, %4$s and %5$s.
+216 '%1$s' function is not defined on types %2$s, %3$s and %4$s.
+217 '%1$s' function is not defined on types %2$s and %3$s.
+218 '%1$s' function is not defined on type %2$s.
+219 '%1$s' function is not defined for an index argument of type %2$s.
+220 ALTER VIEW '%1$s' AS SELECT is not allowed for views that have subclasses or superclasses. Use ALTER VIEW CHANGE QUERY instead.
+221 View attributes cannot be changed using this statement. 'ALTER VIEW name AS query' might help instead.
+222 CUBRID requires ORDER BY item to be the same expression as GROUP_CONCAT argument or an integer (argument position).
+223 The LIKE predicate requires an escape character to be specified. See the documentation for the '%1$s' and '%2$s' configuration parameters.
+224 KEYLIMIT can not be used in INDEX NONE clause.
+225 Session variable not allowed in this context.
+226 Index hint conflict between '%1$s' and '%2$s'.
+227 '%1$s' function can not be used in DEFAULT clause.
+228 Updating derived tables is not allowed.
+229 Updating class attributes and instance attributes not allowed in the same statement.
+230 Updating virtual class hierarchies is not allowed.
+231 Host variables not allowed in DDL statement.
+232 Invalid filter expression (%1$s) for index.
+233 Multiple or nested functions are not allowed in a function index definition.
+234 Invalid index specification.
+235 SHARED, DEFAULT and AUTO_INCREMENT cannot be defined with each other.
+236 Too many enumeration values (%1$d). An enumeration type can have a maximum of %2$d values.
+237 Duplicate values in enum type.
+238 Cannot MERGE into a derived table.
+239 Cannot affect the source table in a MERGE statement.
+240 MERGE with class hierarchies is not allowed.
+241 User name is too long.
+242 Constant expression cannot be used as function index.
+243 Class name or alias is not unique in list: '%1$s'
+244 Invalid DEFAULT clause. '%1$s' cannot be used in a nested expression.
+245 '%1$s' requires arguments with compatible collations.
+246 Invalid character set.
+247 Required character set and collation are not compatible.
+248 Unknown collation '%1$s'.
+249 Context requires collection with elements having identical codesets and collations.
+250 Prefix index is not allowed on attribute '%1$s' (has collation with expansions).
+251 Initial value is invalid.
+252 Multi-column prefix index is not allowed.
+253 '%1$s' function cannot be used for function based index.
+254 Invalid index column definition: %1$s
+255 '%1$s' is not allowed in a filter expression for index.
+256 Cannot use GROUPBY_NUM() and WITH ROLLUP clause in same query.
+257 Cannot MERGE UPDATE column %1$s referenced in ON clause.
+258 The number of columns, %1$d, in ( %2$s ) do not match\nthe number of columns, %3$d, in ( %4$s ).
+259 Prefixes of columns not allowed in function index expression.
+260 %1$s cannot be a PARTITION BY or ORDER BY column
+261 Query must evaluate to a single value\n(%1$s).
+262 Nested analytic functions are not allowed.
+263 An inherited attribute cannot be used as the partitioning key.
+264 The aggregate size of enumeration elements is too large.
+265 Cannot use target table in source spec.
+266 COLLATE is not allowed in this context.
+267 COLLATE modifier cannot change codeset (from '%1$s' to '%2$s'). Try using CAST instead.
+268 Invalid codeset '%1$s' for partition value. Expecting '%2$s' codeset.
+269 Session variable cannot have a different collation than system collation ('%1$s').
+270 Invalid function index expression.
+271 The query specification of %1$s has a cyclic reference to itself.
+272 %1$s expression not allowed in join condition.
+273 ORDER BY is not allowed in function MEDIAN.
+274 The arguments of the function '%1$s' must be constant.
+275 Function '%1$s' must have ORDER BY clause.
+276 For function '%1$s', the number of arguments does not match the number of ORDER BY columns.
+277 For function '%1$s', the ORDER BY clause is invalid.
 278 Only one table within a view can be updated.
 279 Multiple insert targets not allowed.
 280 '%1$s' type is vclass, drop vclass with cascade constraints is not allowed.
@@ -1662,277 +1662,277 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 289 The expression including %1$s is not allowed in this context.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
-1 Không đủ bộ nhớ ảo: không thể cấp phát %1$d bytes.
-2 Cấp độ cô lập giao dịch phải là 1, 2, 3, 4, 5 or 6.
-3 Giá trị Timeout phải là -1, 0, or >0.
-4 Mức độ cô lập thiết lập đến:\n
+1 Out of virtual memory: unable to allocate %1$d bytes.
+2 Transaction isolation level must be 1, 2, 3, 4, 5 or 6.
+3 Timeout value must be -1, 0, or >0.
+4 Isolation level set to:\n
 5          READ COMMITTED SCHEMA, READ UNCOMMITTED INSTANCES.\n
 6          READ COMMITTED SCHEMA, READ COMMITTED INSTANCES.\n
 7          REPEATABLE READ SCHEMA, READ UNCOMMITTED INSTANCES.\n
 8          REPEATABLE READ SCHEMA, READ COMMITTED INSTANCES.\n
 9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
-10 Một truy vấn không thể cập nhật không được cho phép trong một gọi về a db_query_execute_oid.
-11 Giao dịch tạm ngưng chờ cho khóa.
-12 Tìm cách truy cập biến số máy chủ có chỉ mục %d trong khi chỉ %d \ncác biến số máy chủ đầu vào được đưa ra.
-13 Chuyển đổi chưa được thực hiện.
-14 Lỗi nội bộ, chuyển đổi chưa được định nghĩa.
-15 '%1$s' không sinh ra kết quả nào.
-16 '%1$s' sinh ra kết quả nhiều hơn một hàng.
-17 Biến số bộ diễn dịch %1$s chưa được định nghĩa.
-18 Không thể ước tính '%1$s'.
-19 Biến số không biết %1$s.
-20 Biến số dùng chung không biết %1$s.
-21 '%1$s' sinh ra kết quả nhiều hơn một cột.
-22 Sử dụng hàm Aggregate bị lồng nhau hoặc không hợp lệ.
-23 Functions %1$s chưa được định nghĩa.
-24 Ngữ cảnh yêu cầu truy vấn phải là cột đơn\n(%1$s).
-25 Quá nhiều giá trị đã được chỉ định.
-26 Virtual assignment target (%1$s) không thể đảo nghịch.
-27 Có nhiều cột trong đặc tả truy vấn hơn số thuộc tính trong lớp %1$s.
-28 Có nhiều thuộc tính trong lớp %1$s hơn số cột trong đặc tả truy vấn.
-29 Phát hành hiện tại hạn chế Aggregation đến các lớp ảo mà không có \n đặc tả truy vấn aggregation.
-30 Phát hành hiện tại hạn chế Aggregation đến các lớp ảo mà không có \n đặc tả truy vấn union.
-31 Sử dụng của lớp ảo (%s) trong một composition hierarchy yêu cầu nó phải là có thể cập nhật.\nNó không thể được cập nhất đối với lớp thực %s.
-32 không được dùng
-33 Xây dựng không hợp lệ trong path expression '%1$s'.
-34 biểu thức đường dẫn '%s' vượt qua ranh giới db%s, với vclass%s.
-35 biểu thức đường dẫn '%s' vượt qua ranh giới db từ%s, lớp%s.
-36 %s chưa được cấp phép trên %s.
-37 Select chưa được cấp phép trên %1$s.
-38 Lớp ảo %1$s không thể cập nhật.
-39 %1$s không phải một lớp ảo proxy.
-40 đặc tả truy vấn của lớp ảo proxy không được là một join.
-41 %1$s không có tập hợp id đối tượng.
-42 Các lớp (%1$s) với nhiều trường object_id trong một composition \nhierarchy không được hỗ trợ.
-43 Thuộc tính đối tượng %s của %s không phải là một lớp ảo trên ldb %s.
-44 Kiểu đặc tả truy vấn không tương thích với thuộc tính %1$s.
-45 Đặc tả truy vấn của %1$s có một tham chiếu vòng tròn đến chính nó.
-46 Không có biểu thức nào được đưa ra để ước tính.
-47 Không tìm thấy lớp thực nào cho lớp ảo %1$s.
-48 Đang thực thi '%s' trên ldb '%s' \ntrả về: %s.
-49 Đặt giá trị '%s' vào thuộc tính '%s' trả về: %s.
-50 Tên Ldb không được là null trong %1$s.
-51 Tên Ldb tại máy chủ không được là null trong %1$s.
-53 Tên máy chủ không được là null trong %1$s.
-54 Tên người dùng không được là null trong %1$s.
-55 Mật mã người dùng không được là null trong %1$s.
-56 Insert chuyển thành câu lệnh rỗng.
-57 Update chuyển thành câu lệnh rỗng.
-58 Delete chuyển thành câu lệnh rỗng.
-59 INGRES không hỗ trợ những ngày tháng (%1$s) trước 1 tháng một,1582.
-60 Tài nguyên đã hết trong việc tạo truy vấn.
-61 Truy vấn không sinh ra kết quả nào, vì vậy biến số '%1$s' không được thiết lập.
-62 With LOCAL check option không được hỗ trợ.
-63 Check option ngoại lệ trên khung nhìn %1$s.
-64 Ngày tháng không hợp lệ: '%1$s'.
-65 Thời gian không hợp lệ: '%1$s'.
-66 Utime không hợp lệ: '%1$s'.
-67 Các truy vấn con trong đặc tả truy vấn của proxy không được hỗ trợ.
-68 Đối số hàm Ldb không tương thích với ldb trong '%1$s'.
-69 Numeric không hợp lệ: '%1$s'.
-70 Tối ưu hóa truy vấn tham gia bên ngoài thất bại.
+10 A non-updatable query is not allowed in a db_query_execute_oid call.
+11 Transaction timed out waiting for locks.
+12 Attempted to access host variable with index %1$d when only %2$d \ninput host variables were given.
+13 Unimplemented conversion.
+14 Internal error, undefined conversion.
+15 '%1$s' yields no results.
+16 '%1$s' yields more than one row.
+17 Interpreter variable %1$s is not defined.
+18 Cannot evaluate '%1$s'.
+19 Unknown variable %1$s.
+20 Unknown shared attribute %1$s.
+21 '%1$s' yields more than one column.
+22 Nested or invalid use of aggregate function.
+23 Function %1$s is not defined.
+24 Context requires query to be single column\n(%1$s).
+25 Too many values have been specified.
+26 Virtual assignment target (%1$s) is not invertible.
+27 There are more columns in the query specification than attributes in class %1$s.
+28 There are more attributes in class %1$s than columns in the query specification.
+29 Current release restricts aggregation to vclasses WITHOUT \naggregate query specifications.
+30 Current release restricts aggregation to vclasses WITHOUT \nunion query specifications.
+31 Use of vclass (%1$s) in a composition hierarchy requires it to be updatable.\nIt cannot be updated with respect to real class %2$s.
+32 not used
+33 Illegal construct in path expression '%1$s'.
+34 path expression '%1$s' crosses db boundary to %2$s, with vclass %3$s.
+35 path expression '%1$s' crosses db boundary from %2$s, to class %3$s.
+36 %1$s is not authorized on %2$s.
+37 Select is not authorized on %1$s.
+38 Vclass %1$s is not updatable.
+39 %1$s is not a proxy vclass.
+40 query spec of proxy vclass must not be a join.
+41 %1$s has no object id set.
+42 Classes (%1$s) with multiple object_id fields in a composition \nhierarchy are not supported.
+43 Object attribute %1$s of %2$s is not a vclass on ldb %3$s.
+44 Query spec type incompatible with attribute %1$s.
+45 The query specification of %1$s has a cyclic reference to itself.
+46 No expression given to evaluate.
+47 No real class found for vclass %1$s.
+48 Executing '%1$s' on ldb '%2$s' \nreturned: %3$s.
+49 Putting value '%1$s' into attribute '%2$s' returned: %3$s.
+50 Ldb name must not be null in %1$s.
+51 Ldb name at host must not be null in %1$s.
+53 Host name must not be null in %1$s.
+54 User name must not be null in %1$s.
+55 User password must not be null in %1$s.
+56 Insert translates to empty statement.
+57 Update translates to empty statement.
+58 Delete translates to empty statement.
+59 INGRES does not support dates (%1$s) before January 1, 1582.
+60 Resources exhausted in query generation.
+61 Query yields no result, so variable '%1$s' is not set.
+62 With LOCAL check option is not supported.
+63 Check option exception on view %1$s.
+64 Invalid date: '%1$s'.
+65 Invalid time: '%1$s'.
+66 Invalid utime: '%1$s'.
+67 Subqueries in a proxy's query specification are not supported.
+68 Ldb function argument is not compatible with ldb in '%1$s'.
+69 Invalid numeric: '%1$s'.
+70 Outer join query optimization failed.
 71         SERIALIZABLE.\n
-72 Lớp ảo %1$s không thể cập nhật. Chỉ những lớp ảo có thể cập nhật được phép truy xuất VIDs.
-73 Phân vùng thất bại.
-74 Phân vùng không tồn tại.
-75 Không được phép truy cập đến phân vùng: '%1$s'.
-76 Serial '%1$s' chưa được định nghĩa.
-77 Chủ sở hữu hoặc DBA chỉ có thể sửa đổi định nghĩa của serial mục tiêu.
-78 Không cho phép người dùng sửa đổi đối tượng serial được tạo bởi một ràng buộc AUTO INCREMENT.
-79 Cấp độ cô lập không hợp lệ: %s lược đồ, %s thực thể.
+72 Vclass %1$s is not updatable. Only updatable vclasses are allowed to select VIDs.
+73 Partitioning failed.
+74 Partition does not exist.
+75 Not allowed access to partition: '%1$s'.
+76 The serial '%1$s' is not defined yet.
+77 The owner or DBA can only alter the definition of the target serial.
+78 It is not allowed for users to modify the serial object created by an auto increment constraint.
+79 Invalid isolation level: %1$s schema, %2$s instances.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
-1 *** lưu ẩn không hợp lệ ***
-2    lớp %1$s
-3 từ %1$s :
-4 Cấp phép cho người dùng %1$s\n
-5 Cấp phép cho người dùng chưa định nghĩa\n
-6 Người dùng : %1$s\n
+1 *** invalid cache ***
+2    class %1$s
+3 from %1$s :
+4 Authorization for user %1$s\n
+5 Authorization for undefined user\n
+6 User : %1$s\n
 7            id : %1$d\n
-8       thành viên :
-9        nhóm :
-10 Người dùng %1$s\n
-11 Người dùng hiện tại là : %1$s\n
-12 Đối tượng cấp phép gốc :\n
-13   người dùng :
-14 *** Không thể phát hành tất cả ủy quyền cho người dùng "%1$s"*** \n
-15 CẤP PHÉP\n
+8       members :
+9        groups :
+10 User %1$s\n
+11 Current user is : %1$s\n
+12 Root authorization object :\n
+13   users :
+14 *** Couldn't issue all grants for user "%1$s"*** \n
+15 AUTHORIZATIONS\n
 16 direct_groups :
 
 $set 12 MSGCAT_SET_HELP
-1 Lớp gốc
-2 %s %s\n
-3 Lớp cao cấp :\n
-4 Lớp con :\n
-5 Thuộc tính: \n
-6 Phương pháp: \n
-7 Thuộc tính lớp: \n
-8 Phương pháp lớp: \n
-9 Cách giải quyết mâu thuẫn:\n
-10 Tệp tin phương pháp:\n
-11 Đặc tả truy vấn:\n
-12 ĐỐI TƯỢNG của %1$s\n
-13 \nMô tả:\n
-14 \nCấu trúc:\n
-15 \nVí dụ:\n
-16 Tên META CLASS
-17 Tên lớp
-18 Tên lớp ảo
+1 Rootclass
+2 %1$s %2$s\n
+3 Super classes :\n
+4 Sub classes :\n
+5 Attributes: \n
+6 Methods: \n
+7 Class attributes: \n
+8 Class methods: \n
+9 Conflict resolutions:\n
+10 Method files:\n
+11 Query specification:\n
+12 OBJECT of %1$s\n
+13 \nDescription:\n
+14 \nStructure:\n
+15 \nExample:\n
+16 META CLASS Name
+17 Class Name
+18 VClass Name
 $  Don't delete the space at the end of the next message
-19 Lớp ảo trên ldb
+19 VClass on ldb
 20 GENERAL
 
 $set 13 MSGCAT_SET_TRIGGER
-1 TRACE: Kiểm tra điều kiện cho trigger '%1$s'.
-2 TRACE: Kiểm tra hành động cho trigger '%1$s'.
+1 TRACE: Evaluating condition for trigger '%1$s'.
+2 TRACE: Executing action for trigger '%1$s'.
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
-2 Tuyến đoạn (chỉ mục %3d) của giao dịch (chỉ mục %3d, %s, %s@%s|%d) đã bị tạm ngưng.\n
-3 Tuyến đoạn (chỉ mục %3d) của giao dịch (chỉ mục %3d, %s, %s@%s|%d) đã được tiếp tục lại.\n
-4 Chỉ mục giao dịch  %3d THU ĐƯỢC %s khóa trên đối tượng %d|%d|%d.\n
-5 Chỉ mục giao dịch  %3d THU ĐƯỢC %s khóa trên trang %d|%d.\n
-6 Chỉ mục giao dịch  %3d CHUYỂN ĐỔI khóa của nó đến %s khóa trên đối tượng %d|%d|%d.\n
-7 Chỉ mục giao dịch  %3d CHUYỂN ĐỔI khóa của nó đến %s khóa trên trang %d|%d.\n
-8 Chỉ mục giao dịch  %3d CHỜ ĐỢI %s khóa trên đối tượng %d|%d|%d.\n
-9 Chỉ mục giao dịch  %3d CHỜ ĐỢI %s khóa trên trang %d|%d.\n
-10 Chỉ mục giao dịch  %3d PHÁT HÀNH %s khóa trên đối tượng %d|%d|%d.\n
-11 Chỉ mục giao dịch  %3d PHÁT HÀNH %s khóa trên trang %d|%d.\n
-12 Chỉ mục giao dịch  %3d GIÁNG CẤP khóa đến %s trên đối tượng %d|%d|%d.\n
-13 Chỉ mục giao dịch  %3d GIÁNG CẤP khóa đến %s trên trang %d|%d.\n
-14 OID = %2d|%6d|%4d\n
-15 Kiểu đổi tượng: Lớp gốc.\n
-16 Kiểu đổi tượng: Lớp = %1$s.\n
-17 Kiểu đổi tượng: Thực thể của lớp (%2d|%6d|%4d) = %s.\n
-18 Kiểu đổi tượng: Không biết.\n
-19 Total mode of holders = %8s, Total mode of waiters = %8s.\n
-20 Num holders=%3d, Num blocked-holders=%3d, Num waiters=%3d\n
+2 Thread (index %1$3d) of transaction (index %2$3d, %3$s, %4$s@%5$s|%6$d) has been suspended.\n
+3 Thread (index %1$3d) of transaction (index %2$3d, %3$s, %4$s@%5$s|%6$d) has been resumed.\n
+4 Transaction index %1$3d ACQUIRED %2$s lock on object %3$d|%4$d|%5$d.\n
+5 Transaction index %1$3d ACQUIRED %2$s lock on page %3$d|%4$d.\n
+6 Transaction index %1$3d CONVERTED its lock to %2$s lock on object %3$d|%4$d|%5$d.\n
+7 Transaction index %1$3d CONVERTED its lock to %2$s lock on page %3$d|%4$d.\n
+8 Transaction index %1$3d WAIT FOR %2$s lock on object %3$d|%4$d|%5$d.\n
+9 Transaction index %1$3d WAIT FOR %2$s lock on page %3$d|%4$d.\n
+10 Transaction index %1$3d RELEASE %2$s lock on object %3$d|%4$d|%5$d.\n
+11 Transaction index %1$3d RELEASE %2$s lock on page %3$d|%4$d.\n
+12 Transaction index %1$3d DEMOTE lock to %2$s on object %3$d|%4$d|%5$d.\n
+13 Transaction index %1$3d DEMOTE lock to %2$s on page %3$d|%4$d.\n
+14 OID = %1$2d|%2$6d|%3$4d\n
+15 Object type: Root class.\n
+16 Object type: Class = %1$s.\n
+17 Object type: Instance of class (%1$2d|%2$6d|%3$4d) = %4$s.\n
+18 Object type: Unknown.\n
+19 Total mode of holders = %1$8s, Total mode of waiters = %2$8s.\n
+20 Num holders=%1$3d, Num blocked-holders=%2$3d, Num waiters=%3$3d\n
 21 LOCK HOLDERS:\n
 22 BLOCKED LOCK HOLDERS:\n
 23 LOCK WAITERS:\n
 24 NON_2PL_RELEASED:\n
-25 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n
-26 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n
-27 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_secs = %.2f\n
-28 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_secs = %.2f\n
-29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_secs = %.2f\n
-30 %4sTran_index = %3d, Non_2_phase_lock =%8s\n
-31 VPID (volid|pageid) = %3d|%6d.\n
-32 *** Lock Table Dump ***\n Lock Escalation at = %d, Run Deadlock interval = %5.2f\n
-33 Giao dịch (chỉ mục %2d, %s, %s@%s|%d)\n
-34 Cô lập %1$s\n
-35 Trạng thái %1$s\n
+25 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d\n
+26 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d, Nsubgranules = %5$2d\n
+27 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d\n\t%5$13s Blocked_mode = %6$8s\n\t%7$17s Start_waiting_at = %8$-30s\n\t%9$17s Wait_for_secs = %10$.2f\n
+28 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d, Nsubgranules = %5$2d\n\t%6$13s Blocked_mode =%7$8s\n\t%8$13s Start_waiting_at = %9$-30s\n\t%10$13s Wait_for_secs = %11$.2f\n
+29 %1$4sTran_index = %2$3d, Blocked_mode =%3$8s \n\t%4$13s Start_waiting_at = %5$-30s \n\t%6$13s Wait_for_secs = %7$.2f\n
+30 %1$4sTran_index = %2$3d, Non_2_phase_lock =%3$8s\n
+31 VPID (volid|pageid) = %1$3d|%2$6d.\n
+32 *** Lock Table Dump ***\n Lock Escalation at = %1$d, Run Deadlock interval = %2$5.2f\n
+33 Transaction (index %1$2d, %2$s, %3$s@%4$s|%5$d)\n
+34 Isolation %1$s\n
+35 State %1$s\n
 36 Timeout_period %1$s\n
-37 Đơn phương bỏ dở giao dịch với chỉ mục:\n
+37 Unilaterally aborted transactions with indices:\n
 38 %1$d ,
-39 Giao dịch Timed_out với chỉ mục:\n
+39 Timed_out transactions with indices:\n
 40 %1$d ,
-41 Giải quyết khóa chết bằng cách chọn một giao dịch và một hàm số \n để phá vỡ khóa chết: %d %s
-42 , %d %s
-43 Loại đối tượng: Phím chỉ mục thuộc hạng (%2d|%6d|%4d) = %s.\n
-44 Tên chỉ mục: %1$s\n
+41 Solving the deadlock by selecting a transaction and a function \n to break the deadlock: %1$d %2$s
+42 , %1$d %2$s
+43 Object type: Index key of class (%1$2d|%2$6d|%3$4d) = %4$s.\n
+44 Index name: %1$s\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n
-2 Sao lưu = %1$s là cần có. \n Nó phải được gắn kết/tải để tiếp tục.\n Gõ 1 để tiếp tục sau khi sao lưu được gắn kết/tải.\n Gõ 0 để thoát khỏi.\n
+2 Backup = %1$s is needed. \n It must be mounted/loaded to continue.\n Type 1 to continue after the backup is mounted/loaded.\n Type 0 to quit.\n
 3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
 4 Backup magic file identification %1$s,\n
-5          Release: %s\n\
-     Disk Version: %g\n
-6    Database Name: %s\n\
- DB Creation Time: %s\
-         Pagesize: %d\n
-7     Backup Level: %d (%s)\n\
-        Start_lsa: %lld|%d\n\
-         Last_lsa: %lld|%d\n
-8      Backup Time: %s\
-  Backup Unit Num: %d\n
-9  Database Volume name: %s\n\
-   Volume Identifier: %d, Size: %lld bytes (%d pages)\n
-10   Database Name: %s\n\
-     Volume Name: %s\n\
-        Unit Num: %d\n\
-    Backup Level: %d (%s)\n\
-Nhập một trong các tùy chọn sau đây:\n
-11 Gõ\n \
-  -  %d để thoát khỏi.\n \
-  -  %d để tiếp tục sau khi bộ đĩa đã được gắn kết/tải. (thử lại) \n \
-  -  %d để tiếp tục sau khi thay đổi thư mục hoặc device của bộ đĩa.\n
-12 Nhập một thư mục hoặc device mới cho bộ đĩa sao lưu.\n
-13 Lỗi trong đầu vào, chọn một giá trị giữa %d và %d.\n
-14 ** CẢNH BÁO ** Bộ đĩa sao lưu được gắn kết không đúng.\n
-15 Bộ đĩa sao lưu %s từ một cấp độ sao lưu khác\n   (Cấp độ: %d, mong đợi %d).\n\n
-16 Bộ đĩa sao lưu %1$s có identifier magic hoặc page không đúng.\n\n
-17 Bộ đĩa sao lưu %s từ cơ sở dữ liệu khác\n  (Tên: %s, mong đợi %s).\n\n
-18 Bộ đĩa sao lưu %s ngoài trình tự\n  (Unit Num: %d, mong đợi %d).\n\n
-19 Bộ đĩa sao lưu %s timestamp không khớp\n  (Timestamp: %s, mong đợi %s).\n\n
-20 Lỗi tệp tin thông tin bộ đĩa sao lưu, dòng %1$d.\n
-21 Backup Volume Label: Level: %d, Unit: %d, Database %s, Backup Time: %s\n
-22     Previous Backup level: %d Time: %s (start_lsa was %lld|%d)\n
-23 Bộ đĩa sao lưu cơ sở dữ liệu sau đây cần được tiếp tục khôi phục:\n\n
-24 Đích nhận sao lưu đã đầy, một đích nhận mới được đòi hỏi để tiếp tục:\n\n
-25 Tên bộ đĩa sao lưu trước: %1$s\n
-26     Tên bộ đĩa sao lưu tiếp theo: %1$s\n
+5          Release: %1$s\n\
+     Disk Version: %2$g\n
+6    Database Name: %1$s\n\
+ DB Creation Time: %2$s\
+         Pagesize: %3$d\n
+7     Backup Level: %1$d (%2$s)\n\
+        Start_lsa: %3$lld|%4$d\n\
+         Last_lsa: %5$lld|%6$d\n
+8      Backup Time: %1$s\
+  Backup Unit Num: %2$d\n
+9  Database Volume name: %1$s\n\
+   Volume Identifier: %2$d, Size: %3$lld bytes (%4$d pages)\n
+10   Database Name: %1$s\n\
+     Volume Name: %2$s\n\
+        Unit Num: %3$d\n\
+    Backup Level: %4$d (%5$s)\n\
+Enter one of the following options:\n
+11 Type\n \
+  -  %1$d to quit.\n \
+  -  %2$d to continue after the volume is mounted/loaded. (retry) \n \
+  -  %3$d to continue after changing the volume's directory or device.\n
+12 Enter new directory or device for backup volume.\n
+13 Error in input, choose a value between %1$d and %2$d.\n
+14 ** WARNING ** Incorrect backup volume mounted.\n
+15 Backup volume %1$s is from another backup level\n   (Level: %2$d, expecting %3$d).\n\n
+16 Backup volume %1$s has incorrect page or magic identifier.\n\n
+17 Backup volume %1$s is from another database\n  (Name: %2$s, expecting %3$s).\n\n
+18 Backup volume %1$s out of sequence\n  (Unit Num: %2$d, expecting %3$d).\n\n
+19 Backup volume %1$s timestamp mismatch\n  (Timestamp: %2$s, expecting %3$s).\n\n
+20 Backup volume information file error, line %1$d.\n
+21 Backup Volume Label: Level: %1$d, Unit: %2$d, Database %3$s, Backup Time: %4$s\n
+22     Previous Backup level: %1$d Time: %2$s (start_lsa was %3$lld|%4$d)\n
+23 The following database backup volume is needed to continue restoring:\n\n
+24 Backup destination is full, a new destination is required to continue:\n\n
+25 Preceding Backup Volume Name: %1$s\n
+26     Next Backup Volume Name: %1$s\n
 27  Backup Pagesize: %1$d\n
-28       Zip Method: %d (%s)\n\
-        Zip Level: %d (%s)\n
+28       Zip Method: %1$d (%2$s)\n\
+        Zip Level: %3$d (%4$s)\n
 29 Include Active Log: %1$s\n
 
 $set 16 MSGCAT_SET_LOG
 1 \n*************************************************************************\n
-2 Lưu trữ bản ghi %1$s \n cần có để tiếp tục sự thực thi bình thường.   \n \
-  Gõ\n \
-  -  0 để thoát khỏi.\n \
-  -  1 để tiếp tục mà không có lưu trữ hiện tại. (Khôi phục từng phần)\n \
-  -  2 để tiếp tục sau khi lưu trữ được gắn kết/tải.       \n \
-  -  3 để tiếp tục sau khi thay đổi vị trí/tên của lưu trữ.   \n
-3 Tệp tin thông tin sao lưu %1$s \n là cần có để tiếp tục tiến trình khôi phục. \n \
-  Gõ\n \
-  -  0 để thoát khỏi.\n \
-  -  1 để tiếp tục sau khi tệp tin được gắn kết/tải.       \n \
-  -  2 để tiếp tục sau khi thay đổi vị trí/tên của tệp tin.   \n
-4 Nhập vị trí/tên mới.\n
-5 CHÚ THÍCH: %s cho cơ sở dữ liệu for database %s\n
-6 CHÚ THÍCH: Lưu trữ bản ghi %1$s là không cần thiết nữa trừ khi xảy ra một database media crash.\n
-7 CHÚ THÍCH: Lưu trữ bản ghi từ %s đến to %s là không cần thiết nữa trừ khi xảy ra một database media crash.\n
-8 CHÚ THÍCH: từ cơ sở dữ liệu đã được đổi tên = %1$s\n
-9 ARCHIVE: %d %s %lld %lld\n
+2 Log Archive %1$s \n is needed to continue normal execution.   \n \
+  Type\n \
+  -  0 to quit.\n \
+  -  1 to continue without present archive. (Partial recovery)\n \
+  -  2 to continue after the archive is mounted/loaded.       \n \
+  -  3 to continue after changing location/name of archive.   \n
+3 Backup information file %1$s \n is needed to continue the restore process. \n \
+  Type\n \
+  -  0 to quit.\n \
+  -  1 to continue after the file is mounted/loaded.       \n \
+  -  2 to continue after changing location/name of file.   \n
+4 Enter new location/name.\n
+5 COMMENT: %1$s for database %2$s\n
+6 COMMENT: Log archive %1$s is not needed any longer unless a database media crash occurs.\n
+7 COMMENT: Log archives from %1$s to %2$s are not needed any longer unless a database media crash occurs.\n
+8 COMMENT: from renamed database = %1$s\n
+9 ARCHIVE: %1$d %2$s %3$lld %4$lld\n
 10 ARCHIVE:
-11 REMOVE: %d %s to \n \
-       %d %s.\n \
-       REASON: %s\n
-12 ACTIVE: %s %d pages\n
-13  Finish commit of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
-14  Finish abort of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
+11 REMOVE: %1$d %2$s to \n \
+       %3$d %4$s.\n \
+       REASON: %5$s\n
+12 ACTIVE: %1$s %2$d pages\n
+13  Finish commit of tran_index %1$d with tranid = %2$d,\n just before LSA= %3$lld|%4$d and at %5$s
+14  Finish abort of tran_index %1$d with tranid = %2$d,\n just before LSA= %3$lld|%4$d and at %5$s
 15  Incomplete Media Recovery is in effect. The database will be \n \
- recovered up to LSA point address of %lld|%d. Last commit/abort \n \
- point time is approximately at %s \n \
+ recovered up to LSA point address of %1$lld|%2$d. Last commit/abort \n \
+ point time is approximately at %3$s \n \
  The database has lost all information of transactions committed \n \
  after this time.\n
-16 Thiết lập lại của bản ghi vì sự khôi phục không đầy đủ.
-17 Cơ sở dữ liệu đã được sao lưu.
-18 Media crash không quan trọng đối với ứng dụng.
-19 Đang sao lưu đến thư mục %1$s mà dường như đã có một sao lưu trước đó ở trong đó.\n\
-Ổ sao lưu quá cũ của cơ sở dữ liệu trong vị trí này sẽ được gỡ bỏ,\n\
-bao gồm cả những từ cấp độ sao lưu hiện hành và cao hơn.\n
-20 Nhập 'y' để tiếp tục hoặc bất kỳ phím nào để hủy.\n
-21 Sao lưu cơ sở dữ liệu đã bị bỏ dở bởi người dùng.\n
-22 DELETE POSTPONED: Archives %d %s to \n \
-        %d %s \n \
+16 Reset of log due to incomplete recovery.
+17 Database backup was taken.
+18 Media crash is not important for the application.
+19 Backing up to directory %1$s which seems to have an earlier backup in it.\n\
+Obsolete backup volumes of this database in this location will be removed,\n\
+including those from the current backup level and higher.\n
+20 Enter 'y' to continue or any other key to cancel.\n
+21 Database backup was aborted by the user.\n
+22 DELETE POSTPONED: Archives %1$d %2$s to \n \
+        %3$d %4$s \n \
         are no longer needed unless a restore from current backup occurs.\n
-23 Một bản sao lưu mới đã phát hành tài liệu lưu trữ trước đó được đánh dấu DELETE POSTPONED.\n
-24 CHÚ THÍCH: Đăng nhập lưu trữ%1$s không phải là DELETE POSTPONED nữa do để sao lưu\n \
-   gần đây và do đó không cần thiết trừ khi xảy ra một vụ tai nạn cơ sở dữ\n liệu phương tiện truyền thông.\n
-25 CHÚ THÍCH: Đăng nhập lưu trữ từ%s đến%s không DELETE POSTPONED nữa do để sao lưu\n \
-   gần đây và do đó không cần thiết trừ khi xảy ra một vụ tai nạn cơ sở dữ\n \
-   liệu phương tiện truyền thông.\n
-26 Một lỗi đã xảy ra trong quá trình khôi phục cơ sở dữ liệu, trong khi đang xử lý\n\
-     Backup Volume: %s\n\
-          Unit Num: %d\n\
-   Database Volume: %s\n\
-    Database Volid: %d\n\
-** CẢNH BÁO: Không sử dụng cơ sở dữ liệu cho đến khi đạt được một khôi phục không lỗi.\n
-27 Lỗi trong đầu vào, chọn một giá trị giữa %d và %d.\n
-28 Thời gian(%s) được chỉ định phải sau thời gian (%s) của sao lưu được chỉ định.\n
-29 CHÚ THÍCH: Lưu trữ bản ghi %s, chứa các trang bản ghi trước %lld, là không cần thiết nữa với bất kỳ tiện ích HA nào.\n
-30 Số lưu trữ bản ghi đang hoạt động đã vượt quá số lượng tối đa mong muốn.
+23 A newer backup has released archives previously marked DELETE POSTPONED.\n
+24 COMMENT: Log archive %1$s is not DELETE POSTPONED any longer due to more recent\n \
+   backup and therefore is not needed unless a database media crash occurs.\n
+25 COMMENT: Log archives from %1$s to %2$s are not DELETE POSTPONED any longer due to\n \
+   more recent backup and therefore are not needed unless a database media\n \
+   crash occurs.\n
+26 An error occurred during a database restore, while processing\n\
+     Backup Volume: %1$s\n\
+          Unit Num: %2$d\n\
+   Database Volume: %3$s\n\
+    Database Volid: %4$d\n\
+** WARNING: Do not use the database until an error-free restore is achieved.\n
+27 Error in input, choose a value between %1$d and %2$d.\n
+28 The time(%1$s) specified must be after the time(%2$s) of the specified backup.\n
+29 COMMENT: Log archive %1$s, which contains log pages before %2$lld, is not needed any longer by any HA utilities.\n
+30 Number of active log archives has been exceeded the max desired number.

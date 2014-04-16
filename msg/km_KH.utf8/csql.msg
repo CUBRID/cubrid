@@ -25,59 +25,59 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-interactive SQL utility, version %s\n\
-usage: %s [OPTION] database-name[@host]\n\
+interactive SQL utility, version %1$s\n\
+usage: %2$s [OPTION] database-name[@host]\n\
 \n\
 valid options:\n\
-  -S, --SA-mode                ការប្រតិបត្តិតាមទម្រង់ឥតជំនួយ(ផ្ទាល់ខ្លួន)\n\
-  -C, --CS-mode                ការប្រតិបត្តិតាមទម្រង់client-server\n\
-  -u, --user=ARG               ឈ្មោះuserដែលឆ្លាស់គ្នា\n\
-  -p, --password=ARG            កំណត់សម្ងាត់string, ផ្តល់""សម្រាប់ភាពទទេ(none)\n\
-  -e, --error-continue         កុំបិទនៅត្រង់statement error\n\
-  -i, --input-file=ARG         ឈ្មោះinput-file\n\
-  -o, --output-file=ARG        ឈ្មោះoutput-file\n\
-  -s, --single-line            បន្ទាត់ឯក(single​ line)ដែលតម្រង់រកការប្រតិបត្តិ\n\
+  -S, --SA-mode                standalone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n\
+  -u, --user=ARG               alternate user name\n\
+  -p, --password=ARG           password string, give "" for none\n\
+  -e, --error-continue         don't exit on statement error\n\
+  -i, --input-file=ARG         input-file-name\n\
+  -o, --output-file=ARG        output-file-name\n\
+  -s, --single-line            single line oriented execution\n\
   -c, --command=ARG            CSQL-commands\n\
-  -l, --line-output            បង្ហាញតម្លៃនីមួយៗក្នុងបន្ទាត់មួយ\n\
-  -r, --read-only              ទម្រង់read-only\n\
-      --string-width           បង្ហាញនូវជួរនិមួយៗដែលមានប្រវែងទទឹងស្មើនឹងប្រភេទខ្សែអក្សរ\n\
-      --no-auto-commit         មិនអាចស្វ័យធ្វើប្រតិបត្តិការទម្រង់(mode execution)\n\
-      --no-pager               កុំប្រើទំព័រ\n\
-      --no-single-line         បិទបន្ទាត់ឯក(single line)ដែលតម្រង់រកការប្រតិបត្តិ\n\
+  -l, --line-output            display each value in a line\n\
+  -r, --read-only              read-only mode\n\
+      --string-width           display each column which is a string type in this width\n\
+      --no-auto-commit         disable auto commit mode execution\n\
+      --no-pager               do not use pager\n\
+      --no-single-line         turn off single line oriented execution\n\
       --no-trigger-action      disable trigger action\n\
 \n\
-សម្រាប់ពត៌មានបន្ថែម សូមមើលhttp://www.cubrid.org\n
-41 %s: តម្លៃពាក់ព័ន្ធនានានៃ %s_MODE មិនត្រឹមត្រូវទេ។ \nវាគួរតែទាំងជា %s ឬ %s។\n
-42 %s: សេចក្តីប្រទាំងប្រទើសដ៏ច្រើនលើសលប់បានកើតមាន។ អតិបរិមាគឺ %d។\n
-43 %1$s: តម្លៃអថេរពាក់ព័ន្ធនានានៃបញ្ជីរាយប្លង់សំខាន់ៗ ($CUBRID)គួរតែត្រូវបានកំណត់។\n
-44 %s: ការព្យាយាមដើម្បីប្រតិបត្តិ"%s"បានជួបបរាជ័យ។\n
-45 %1$s: មិនអាចប្រើជម្រើស -sa និង -cs ដំណាលគ្នាបានទេ។\n
-46 %1$d command(s)បានដំណើរការដោយជោគជ័យ។
-47 ក្នុងការបញ្ជាពីបន្ទាត់ %1$d,
-48 ក្នុងបន្ទាត់ %d, ជួរឈរ %d,
-49 ប្រភេទ `;help' សម្រាប់សារជំនួយ (help messages)។
+For additional information, see http://www.cubrid.org\n
+41 %1$s: the environment value of %2$s_MODE is incorrect. \nIt should be either %3$s or %4$s.\n
+42 %1$s: too many arguments given. maximum is %2$d.\n
+43 %1$s: The root directory environment variable ($CUBRID) should be set.\n
+44 %1$s: the attempt to execute "%2$s" has failed.\n
+45 %1$s: cannot use -sa and -cs options simultaneously.\n
+46 %1$d command(s) successfully processed.
+47 In the command from line %1$d,
+48 In line %1$d, column %2$d,
+49 Type `;help' for help messages.
 50 ERROR: 
-51 អ្នកបកស្រាយCUBRID SQL
-52 មានទំនើបកម្មជាច្រើន។ តើអ្នកចង់ប្រតិបត្តិទេ? (`Y' or `N') 
-53 វាយបញ្ជូល `Y' ដើម្បីប្រតិបត្តិ, `N' ដើម្បីមិនសម្រចប្រតិបត្តិការ។ 
-54 ការប្តេជ្ញាចិត្ត.
-55 រមៀលត្រលប់មកវិញ.
-56 Command buffer ត្រូវបានរក្សាទុក។
-57 fileនេះ បានធ្វើដំណើរការទៅក្នុង command buffer។
-58 Command buffer បានបញ្ជូនទៅកាន់ម៉ាស៊ីនព្រីន។
-59 បញ្ជីរាយប្លង់ចរន្តត្រូវប្តូរ
-61 វាយបញ្ជូលកំណត់សម្គាល់សម្ងាត់: 
-62 <Result of %s Command in Line %d>
-63 ពុំមានលទ្ធផលសោះ។
-64 កន្លែងត្រួតពិនិត្យត្រូវបានបញ្ជេញមក។
-65 ដែលតាបេសបានដំណើរការឡើងវិញ។
-66 លិបិក្រមTran          ឈ្មោះUser      ឈ្មោះHost      ដំណើរការ id      ឈ្មោះកម្មវិធី\n
-67 %4d%-12s %14s %14s %15d %17s\n
-68 កិច្ចសម្រួលដំណើរការពិសេសត្រូវបានបំផ្លាញ។
-69 ការបំផ្លាញនៃកិច្ចសម្រួលដំណើរការពិសេសបានជួបបរាជ័យ។
-70 %d rows %s.
-71 %d row %s.
-$ ទាំង3នេះ គួរតែមិនទំនេរ
+51 CUBRID SQL Interpreter
+52 There have been updates. Do you want to commit ? (`Y' or `N') 
+53 Enter `Y' to commit, `N' to abort. 
+54 Committed.
+55 Rolled back.
+56 Command buffer has been saved.
+57 The file has been read into the command buffer.
+58 Command buffer has been sent to the printer.
+59 Current directory changed to 
+61 Enter Password : 
+62 <Result of %1$s Command in Line %2$d>
+63 There are no results.
+64 Checkpoint has been issued.
+65 The database has been restarted.
+66 Tran index            User name      Host name      Process id      Program name\n
+67 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
+68 The specified transaction has been killed.
+69 Killing of the specified transaction has failed.
+70 %1$d rows %2$s.
+71 %1$d row %2$s.
+$ These 3 should be blank
 75 Automated API tester
 76 Invalid Automated API tester
 79 csql>
@@ -91,18 +91,18 @@ $ ទាំង3នេះ គួរតែមិនទំនេរ
 150 <Help: Trigger Definition>
 151 <Help: Command Syntax>
 152 <Help: Session Command Summary>
-178 តម្រូវឲ្យមានឈ្មោះfileមួយ។
-179 មិនអាចប្រតិបត្តិអ្នកកំណត់ទំព័រ(pager)។
-180 ពុំមានmemoryដែលត្រូវចែកចាយគ្រប់គ្រាន់ទេ។
-184 បន្ទាត់ដែលត្រូវបញ្ជូលវែងពេក។
-185 បញ្ជូលបន្ទាត់ច្រើនពេក។
-188 បញ្ជូលឈ្មោះfileច្រើនពេក។
-190 ពុំមានsession commandបែបនេះ។ ប្រភេទ `;help' សម្រាប់សារជំនួយ (help messages)។
-191 មានsession commandយ៉ាងតិចមួយ បានដំណើរការ។ សូមកំណត់ឲ្យកាន់តែច្បាស់។
-193 មានcommandយ៉ាងតិចមួយបានដំណើរការ។ សូមកំណត់ឲ្យកាន់តែច្បាស់។
-194 បន្សំពុំមានសុពលភាពនៃ command line arguments (options).
-196 errorមិនបំណត់មួយបានកើតឡើង។ 
-197 ';edit'មិនត្រូវបានអនុញ្ញាតទេ នៅពេលoutputបានប្តូរទិស។
+178 A file name is required.
+179 Cannot execute the pager.
+180 There is not enough memory allocated.
+184 The line being entered is too long.
+185 Too many lines have been entered.
+188 Too many file names have been entered.
+190 No such session command. Type `;help' for help messages.
+191 More than one session command matched. Please specify more.
+193 More than one command matched. Please specify more.
+194 Invalid combination of command line arguments (options).
+196 An undefined error has occurred.
+197 ';edit' is not allowed when output has been redirected.
 
 203 <%1$s> 
 204 <Super Classes> 
@@ -131,65 +131,65 @@ $ ទាំង3នេះ គួរតែមិនទំនេរ
 $ csql help messages
 231 \
 \n\
-   session commandsទាំងអស់គួរត្រូវកំណត់ខាងមុខដោយ`;' និង blanks/tabsប៉ុណ្ណោះ។\n\
-         អាចដាក់ខាងមុខបុព្វបទ។ អក្សធំៗជាតំណាងនៃចំនួនអប្បបរមា\n\
-        ពាក្យសរសេរកាត់ដែលអ្នកត្រូវតែបញ្ជូលដើម្បីប្រតិបត្តិcommandពិសេស។\n\
+   All session commands should be prefixed by `;' and only blanks/tabs\n\
+   can precede the prefix. Capitalized characters represent the minimum\n\
+   abbreviation that you need to enter to execute the specified command.\n\
 \n\
-   ;REAd   [<file-name>]        - ដំណើរការfileមួយទៅក្នុងcommand buffer។\n\
-   ;Write  [<file-name>]        - ដាក់ជំនួសcommand bufferក្នុងfileមួយ។\n\
-   ;APpend [<file-name>]        - បន្ថែមcommand bufferទៅក្នុង fileមួយ។\n\
-   ;PRINT                       - ផ្តិត(print) command buffer។\n\
-   ;SHELL                       - ហៅ shell.\n\
-   ;CD                          - ប្តូរបញ្ជីការងារបច្ចុប្បន្ន\n\
-   ;EXit                        - បិទកម្មវិធី។\n\
+   ;REAd   [<file-name>]        - read a file into command buffer.\n\
+   ;Write  [<file-name>]        - (over)write command buffer into a file.\n\
+   ;APpend [<file-name>]        - append command buffer into a file.\n\
+   ;PRINT                       - print command buffer.\n\
+   ;SHELL                       - invoke shell.\n\
+   ;CD                          - change current working directory.\n\
+   ;EXit                        - exit program.\n\
 \n\
-   ;CLear                       - ជម្រះ command buffer។\n\
-   ;EDIT                        - ហៅអ្នកកែតម្រូវប្រព័ន្ធដែលមានcommand buffer។\n\
-   ;LISt                        - បង្ហាញមាតិការនៃcommand buffer។\n\
+   ;CLear                       - clear command buffer.\n\
+   ;EDIT                        - invoke system editor with command buffer.\n\
+   ;LISt                        - display the content of command buffer.\n\
 \n\
-   ;RUn                         - ប្រតិបត្តិ sql ក្នុង command buffer។\n\
-   ;Xrun                        - ប្រតិបត្តិ sql ក្នុង command buffer,\n\
-                                  និងជម្រះ command buffer។\n\
-   ;COMmit                      - ប្រតិបត្តិកិច្ចសម្រួលដំណើរការបច្ចុប្បន្ន។\n\
-   ;ROllback                    - បន្ថយកិច្ចសម្រួលដំណើរការបច្ចុប្បន្ន។\n\
-   ;AUtocommit [ON|OFF]         - មិនអាចស្វ័យប្រតិបត្តិទម្រង់(mode)។\n\
-   ;REStart                     - ចាប់ផ្តើមដែលតាបេសឡើងវិញ។\n\
+   ;RUn                         - execute sql in command buffer.\n\
+   ;Xrun                        - execute sql in command buffer,\n\
+                                  and clear the command buffer.\n\
+   ;COMmit                      - commit the current transaction.\n\
+   ;ROllback                    - roll back the current transaction.\n\
+   ;AUtocommit [ON|OFF]         - enable/disable auto commit mode.\n\
+   ;REStart                     - restart database.\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - កំណត់ default shell, អ្នកកែត្រូវ(editor), ម៉ាស៊ីនព្រីន(print) និងអ្នកកំណត់ទំព័រ(pager)\n\
-   ;EDITOR_Cmd   [editor-cmd]     បញ្ជាទៅកាន់ឧបករណ៍ថ្មីមួយ(new one), ឬបង្ហាញបច្ចុប្បន្នភាព(the current)\n\
-   ;PRINT_Cmd    [print-cmd]      ឧបករណ៍មួយ, រៀងៗគ្នា។\n\
+   ;SHELL_Cmd    [shell-cmd]    - set default shell, editor, print and pager\n\
+   ;EDITOR_Cmd   [editor-cmd]     command to new one, or display the current\n\
+   ;PRINT_Cmd    [print-cmd]      one, respectively.\n\
    ;PAger_cmd    [pager-cmd]\n\
 \n\
-   ;DATE                        - បង្ហាញម៉ោងក្នុងស្រុក, កាលបរិច្ឆេទ។\n\
-   ;DATAbase                    - បង្ហាញឈ្មោះដែលតាបេសដែលពេញសិទិ្ធ។\n\
-   ;SChema class-name           - បង្ហាញពត៌មានschemaនៃថ្នាក់មួយ(class)។\n\
-   ;TRIgger [`*'|trigger-name]  - បង្ហាញនិយមន័យtrigger។\n\
-   ;Get system_parameter        - ទទួលយកតម្លៃនៃប៉ារ៉ាម៉ែត្រប្រព័ន្ធ។\n\
-   ;SEt system_parameter=value  - កំណត់តម្លៃនៃប៉ារ៉ាម៉ែត្រប្រព័ន្ធ។\n\
-   ;STring-width [width]        - ស៊េរីប្រវែងទទឹងនៃជួរនិមួយៗដែលបានបង្ហាញនូវប្រភេទខ្សែអក្សរ.\n\
-   ;COLumn-width [name]=[width] - ស៊េរីប្រវែងទទឹងនៃជួរពិសេសដែលបានបង្ហាញហើយ.\n\
-   ;PLan [simple/detail/off]    - បង្ហាញផែនការណ៍ប្រតិបត្តិquery។\n\
-   ;Info <command>              - បង្ហាញពត៌មានខាងក្នុង។\n\
-   ;TIme [ON/OFF]               - មិនអាចបង្ហាញ query\n\
-                                  ម៉ោងប្រតិបត្តិ\n\
-   ;LINe-output [ON/OFF]        - អាច/មិនអាចបង្ហាញនូវតម្លៃនិមួយៗក្នុងមួយជួរ\n\
-   ;HISTORYList                 - បង្ហាញតារាងឈ្មោះqueriesដែលបានប្រតិបត្តិ។\n\
-   ;HISTORYRead <history_num>   - ដំណើរការentryនៅលើចំនួន historyទៅក្នុងcommand buffer។\n\
+   ;DATE                        - display the local time, date.\n\
+   ;DATAbase                    - display the name of database being accessed.\n\
+   ;SChema class-name           - display schema information of a class.\n\
+   ;TRIgger [`*'|trigger-name]  - display trigger definition.\n\
+   ;Get system_parameter        - get the value of a system parameter.\n\
+   ;SEt system_parameter=value  - set the value of a system parameter.\n\
+   ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
+   ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
+   ;PLan [simple/detail/off]    - show query execution plan.\n\
+   ;Info <command>              - display internal information.\n\
+   ;TIme [ON/OFF]               - enable/disable to display the query\n\
+                                  execution time.\n\
+   ;LINe-output [ON/OFF]        - enable/disable to display each value in a line\n\
+   ;HISTORYList                 - display list of the executed queries.\n\
+   ;HISTORYRead <history_num>   - read entry on the history number into command buffer.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
-   ;HElp                        - បង្ហាញសារជំនួយនេះ (help message)។\n\n
+   ;HElp                        - display this help message.\n\n
 
 232 <Constraints> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\
-\tschema [class-name]    - ពត៌មានschema\n\
-\ttrigger [trigger-name] - ពត៌មានtrigger\n\
-\tdeferred               - បានពន្យាពត៌មានtrigger\n\
-\tworkspace              - ពត៌មានworkspace\n\
-\tlock                   - lockពត៌មាន(client-server mode)\n\
-\tstats class-name       - ចាត់ថ្នាក់ពត៌មានស្ថិតិ(statistics)\n\
-\ttrantable              - ពត៌មានសម្រួលដំណើរការ\n\
-\tlogstat                - logពត៌មាន\n\
-\tcsstat                 - ពត៌មានតាមផ្នែកសំខាន់ៗ(critical section)\n\
-\tplan                   - ពត៌មានplan cache\n\
-\tqcache                 - ពត៌មានquery cache\n
+\tschema [class-name]    - schema information\n\
+\ttrigger [trigger-name] - trigger information\n\
+\tdeferred               - deferred trigger information\n\
+\tworkspace              - workspace information\n\
+\tlock                   - lock information (client-server mode)\n\
+\tstats class-name       - class statistics information\n\
+\ttrantable              - transaction information\n\
+\tlogstat                - log information\n\
+\tcsstat                 - critical section information\n\
+\tplan                   - plan cache information\n\
+\tqcache                 - query cache information\n
 235 <Partitions>
-236 តម្រូវឲ្យមានឈ្មោះថ្នា់ក់មួយ(A class name)។
+236 A class name is required.

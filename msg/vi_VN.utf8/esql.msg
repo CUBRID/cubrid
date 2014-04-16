@@ -24,50 +24,50 @@ $ esql.msg
 $
 
 $set 1
-1 giá trị của đối số "%1$s" không phải kiểu số nguyên \n
-2 giá trị của đối số "%1$s" không phải kiểu float\n
-3 Thiếu đối số %1$s\n
-4 [tùy chọn]
-5 Tùy chọn: \n
-6 Thiếu giá trị đối số cho khóa %1$s\n
-7 Tùy chọn "%1$s" không biết\n
-8 Ðối số vị trí "%1$s" không mong đợi\n
+1 Non integer argument value "%1$s"\n
+2 Non floating argument value "%1$s"\n
+3 Missing argument %1$s\n
+4 [options] 
+5 Options: \n
+6 Missing argument value for key %1$s\n
+7 Unknown option "%1$s"\n
+8 Unexpected positional argument "%1$s"\n
 
 $set 2
-1 Ðịnh nghĩa lại của con chạy "%1$s"
-2  *\tcho câu lệnh %1$s\n
-3  *\n * Bảng con chạy:\n
+1 Redefinition of cursor "%1$s"
+2  *\tfor statement %1$s\n
+3  *\n * Cursor table:\n
 
 $set 3
-1 (LỖI NỘI TẠI trong set_class_bit): lớp lưu trữ (%1$d) tồi
-2 (LỖI NỘI TẠI trong add_spec_to_decl()): chuỗi không đúng dạng (no specifier)
-3 bộ chỉ định lớp lưu trữ không được phép trong ngữ cảnh này
-4 kết hợp lớp lưu trữ không hợp lệ
-5 kết hợp kiểu không hợp lệ
-6 kết hợp bộ sửa đổi không hợp lệ
-7 (LỖI NỘI TẠI trong pp_add_type_spec): trường hợp không mong đợi (%1$d)
-8 (LỖI NỘI TẠI trong pp_add_type_adj): trường hợp không mong đợi (%1$d)
-9 khai báo %1$s được định dạng không đúng cách
+1 (INTERNAL ERROR in set_class_bit): bad storage class (%1$d)
+2 (INTERNAL ERROR in add_spec_to_decl()): malformed chain (no specifier)
+3 storage class specifier not allowed in this context
+4 illegal storage class combination
+5 illegal type combination
+6 illegal modifier combination
+7 (INTERNAL ERROR in pp_add_type_spec): unexpected case (%1$d)
+8 (INTERNAL ERROR in pp_add_type_adj): unexpected case (%1$d)
+9 improperly formed %1$s declaration
 
 $set 4
 1 %1$s
-2 %1$s: Không phải một thư mục\n
-3 %1$s: Gốc cài đặt tồi?\n
+2 %1$s: Not a directory\n
+3 %1$s: Bad installation root?\n
 
 $set 5
 1 ?
-2 xin vui lòng kiểm tra sự chính xác của mã thông báo
-3 Phần USING không được phép cho con chạy static "%1$s"
-4 con chạy "%1$s" chưa được định nghĩa
-5 con trỏ đến một bộ mô tả
-6 con trỏ đến một DB_OBJECT
-7 chuỗi ký tự
-8 biến số chỉ báo cho "%1$s" không được phép trong ngữ cảnh này
-9 "%1$s" chưa được khai báo trong BEGIN DECLARE section
-52 %s (văn bản là "%s")
-53 Lỗi Lexical
-54 lỗi cú pháp tại "%s": thiếu %s trong %s
-55 lỗi cú pháp tại "%s": thiếu %s
+2 please check correctness of token
+3 USING part not permitted for static cursor "%1$s"
+4 cursor "%1$s" is undefined
+5 pointer to a descriptor
+6 pointer to a DB_OBJECT
+7 character string
+8 indicator variable for "%1$s" not allowed in this context
+9 "%1$s" not declared in BEGIN DECLARE section
+52 %1$s (text was "%2$s")
+53 Lexical error
+54 syntax error at "%1$s": missing %2$s in %3$s
+55 syntax error at "%1$s": missing %2$s
 
 $set 6
 1 suppress-line-directive
@@ -84,52 +84,52 @@ $set 6
 12 input-file
 
 $set 7
-1 không hiện chỉ thị #line trong tệp tin đầu ra, mặc định off
-2 tên tệp tin đầu ra, mặc định <input-file>.c hoặc stdout
-3 tệp tin include chứa uci_ prototypes, mặc định "esqlx.h"
-4 kết xuất thông tin gỡ lỗi scope, mặc định off
-5 kết xuất thông tin gỡ lỗi malloc cuối, mặc định off
-6 in ra thông tin số phiên bản, mặc định off
-7 bật theo dõi chức năng UCI, mặc định off
-8 tắt khởi tạo length của biến máy chủ VARCHAR, mặc định off
-9 dùng kiểu VARCHAR khác, mặc định off
-10 bỏ qua lỗi -462(null indicator needed), mặc định off
-11 dùng chỉ báo NULL nội tại để tránh lỗi -462(null indicator needed), mặc định off
-12 tên tệp tin đầu vào, mặc định stdin
+1 suppress #line directives in output file, default off
+2 output file name, default <input-file>.c or stdout
+3 include file containing uci_ prototypes, default "esqlx.h"
+4 dump scope debugging information, default off
+5 dump final malloc debugging information, default off
+6 print out version number information, default off
+7 enable UCI function trace, default off
+8 disable length initialization of VARCHAR host variable, default off
+9 use different VARCHAR style, default off
+10 ignore -462(null indicator needed) error, default off
+11 use internal NULL indicator to prevent -462(null indicator needed) error, default off
+12 input file name, default stdin
 
 $set 8
-1 tùy chọn REPEATED bị bỏ qua
-2 %s phiên bản %s\n
+1 REPEATED option ignored
+2 %1$s version %2$s\n
 
 $set 9
-1 (yy_pop_mode) lỗi nội tại: chế độ xếp chồng rỗng
-2 "%1$s" không được cho phép trong ngữ cảnh này
+1 (yy_pop_mode) internal error: empty mode stack
+2 "%1$s" is not permitted in this context
 
 $set 10
-1 lỗi nội tại trong %s: %s\n
-2 bảng tràn
+1 internal error in %1$s: %2$s\n
+2 table overflow
 
 $set 11
-1 biến số chỉ báo "%1$s" phải là một short int
-2 không thể dùng biến số chỉ báo có một cấu trúc
-3 "%1$s" có một định nghĩa cấu trúc không đầy đủ
-4 "%s" phải là một %s hợp lệ
-5 %s không phải một kiểu có thể chấp nhận cho "%s"
-6 kiểu biến số máy chủ không mong đợi: %1$s
-7 (pp_addr_expr): cố gắng để tìm địa chỉ của biến số NULL
-8 "%1$s" không phải một con trỏ
-9 "%1$s" không chỉ đến một cấu trúc
-10 "%1$s" không phải một cấu trúc
-11 %s không có trường "%s"
-12 "%s" không thể được bỏ tham chiếu bởi "%s"
+1 indicator variable "%1$s" must be a short int
+2 cannot use an indicator variable with a structure
+3 "%1$s" has incomplete struct definition
+4 "%1$s" must be a valid %2$s
+5 %1$s is not an acceptable type for "%2$s"
+6 unanticipated host variable type: %1$s
+7 (pp_addr_expr): attempt to find address of NULL variable
+8 "%1$s" is not a pointer
+9 "%1$s" does not point to a struct
+10 "%1$s" is not a struct
+11 %1$s has no field "%2$s"
+12 "%1$s" cannot be dereferenced by "%2$s"
 
 $set 12
-1 hết bộ nhớ
+1 out of memory
 
 $set 13
-1 mảng của các chức năng không hợp lệ, giả định các con trỏ chức năng
-2 (pp_the_same_type) lớp liên kết không rõ
-3 (pp_get_sizeof): danh từ sai (%1$d)
+1 array of functions is illegal, assuming function pointers
+2 (pp_the_same_type) unknown link class
+3 (pp_get_sizeof): bad noun (%1$d)
 
 $set 14
-1 (LỖI NỘI TẠI trong %1$s): trường hợp không thể
+1 (INTERNAL ERROR in %1$s): impossible case
