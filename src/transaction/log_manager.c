@@ -11021,7 +11021,7 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type,
       assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
       path = db_get_string (arg_values[0]);
 
-      fd = open (path, O_RDONLY, 0);
+      fd = fileio_open (path, O_RDONLY, 0);
       if (fd == -1)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -11353,7 +11353,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type,
 
   page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
 
-  fd = open (path, O_RDONLY, 0);
+  fd = fileio_open (path, O_RDONLY, 0);
   if (fd == -1)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL,

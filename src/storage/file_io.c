@@ -38,6 +38,7 @@
 
 #if defined(WINDOWS)
 #include <io.h>
+#include <share.h>
 #else /* WINDOWS */
 #include <unistd.h>
 #include <sys/time.h>
@@ -514,12 +515,16 @@ static int fileio_expand_permanent_volume_info (FILEIO_VOLUME_HEADER * header,
 static int fileio_expand_temporary_volume_info (FILEIO_VOLUME_HEADER * header,
 						int volid);
 static bool fileio_is_terminated_process (int pid);
+
+#if !defined(WINDOWS)
 static FILEIO_LOCKF_TYPE fileio_lock (const char *db_fullname,
 				      const char *vlabel, int vdes,
 				      bool dowait);
 static void fileio_unlock (const char *vlabel, int vdes,
 			   FILEIO_LOCKF_TYPE lockf_type);
 static FILEIO_LOCKF_TYPE fileio_get_lockf_type (int vdes);
+#endif /* !WINDOWS */
+
 static int fileio_get_primitive_way_max (const char *path,
 					 long int *filename_max,
 					 long int *pathname_max);
@@ -600,15 +605,12 @@ static void
 fileio_read_backup_end_time_from_last_page (FILEIO_BACKUP_SESSION *
 					    session_p);
 
-#if defined(WINDOWS)
-static int fileio_lockf (int fd, int cmd, long size);
-static int fileio_lock_region (int fd, int cmd, long offset, long size);
-#else /* WINDOWS */
+#if !defined(WINDOWS)
 static int fileio_get_lock (int fd, const char *vlabel);
 static int fileio_release_lock (int fd);
 static int fileio_lock_region (int fd, int cmd, int type, off_t offset,
 			       int whence, off_t len);
-#endif /* WINDOWS */
+#endif /* !WINDOWS */
 
 #if defined(SERVER_MODE)
 static void fileio_read_backup_volume (THREAD_ENTRY * thread_p,
@@ -1225,6 +1227,7 @@ fileio_is_terminated_process (int pid)
 #endif /* WINDOWS */
 }
 
+#if !defined(WINDOWS)
 /*
  * fileio_lock () - LOCKF A DATABASE VOLUME
  *   return:
@@ -1737,11 +1740,7 @@ fileio_lock_la_dbname (int *lockf_vdes, char *db_name, char *log_path)
     }
   else
     {
-#if defined(WINDOWS)
-      error = fileio_unlock_file (fd, 0, SEEK_SET, 0);
-#else /* WINDOWS */
       error = fileio_release_lock (fd);
-#endif /* !WINDOWS */
       assert_release (error == NO_ERROR);
 
       er_log_debug (ARG_FILE_LINE, "unable to open lock_file (%s)",
@@ -1831,11 +1830,7 @@ fileio_unlock_la_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
       fclose (fp);
     }
 
-#if defined(WINDOWS)
-  error = fileio_unlock_file ((*lockf_vdes), 0, SEEK_SET, 0);
-#else /* WINDOWS */
   error = fileio_release_lock ((*lockf_vdes));
-#endif /* !WINDOWS */
   if (error == NO_ERROR)
     {
       result = FILEIO_NOT_LOCKF;
@@ -1948,6 +1943,7 @@ fileio_unlock (const char *vol_label_p, int vol_fd,
 	}
     }
 }
+#endif /* !WINDOWS */
 
 /*
  * fileio_initialize_pages () - Initialize the first npages of the given volume with the
@@ -2215,8 +2211,12 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 {
   int tmp_vol_desc = NULL_VOLDES;
   int vol_fd;
-  int o_sync;
   FILEIO_LOCKF_TYPE lockf_type = FILEIO_NOT_LOCKF;
+#if defined(WINDOWS)
+  int sh_flag;
+#else
+  int o_sync;
+#endif /* WINDOWS */
 
 #if !defined(CS_MODE)
   /* Make sure that the volume is not already mounted.
@@ -2227,6 +2227,20 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p,
       fileio_dismount (thread_p, vol_fd);
     }
 #endif /* !CS_MODE */
+
+#if defined(WINDOWS)
+  sh_flag = is_do_lock ? _SH_DENYWR : _SH_DENYNO;
+
+  vol_fd =
+    _sopen (vol_label_p, FILEIO_DISK_FORMAT_MODE | O_BINARY, sh_flag,
+	    FILEIO_DISK_PROTECTION_MODE);
+  if (vol_fd == NULL_VOLDES)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1);
+    }
+
+#else /* !WINDOWS */
 
   o_sync = (is_do_sync != false) ? O_SYNC : 0;
 
@@ -2259,8 +2273,6 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 			   ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1);
     }
 
-  mnt_file_creates (thread_p);
-
   if (tmp_vol_desc != NULL_VOLDES)
     {
       if (lockf_type != FILEIO_NOT_LOCKF)
@@ -2269,9 +2281,13 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 	}
       fileio_close (tmp_vol_desc);
     }
+#endif /* WINDOWS */
+
+  mnt_file_creates (thread_p);
 
   if (vol_fd != NULL_VOLDES)
     {
+#if !defined(WINDOWS)
       if (is_do_lock == true)
 	{
 	  lockf_type = fileio_lock (db_full_name_p, vol_label_p, vol_fd,
@@ -2288,6 +2304,7 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 	      return vol_fd;
 	    }
 	}
+#endif /* !WINDOWS */
 
 #if !defined(CS_MODE)
       if (fileio_cache (vol_id, vol_label_p, vol_fd, lockf_type) != vol_fd)
@@ -3054,6 +3071,43 @@ fileio_mount (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 	      const char *vol_label_p, VOLID vol_id, int lock_wait,
 	      bool is_do_sync)
 {
+#if defined(WINDOWS)
+  int vol_fd;
+  int sh_flags;
+
+#if !defined(CS_MODE)
+  FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLDES);
+
+  /* Is volume already mounted ? */
+  vol_fd = fileio_find_volume_descriptor_with_label (vol_label_p);
+  if (vol_fd != NULL_VOLDES)
+    {
+      return vol_fd;
+    }
+#endif /* !CS_MODE */
+
+  sh_flags = lock_wait > 0 ? _SH_DENYWR : _SH_DENYNO;
+
+  vol_fd = _sopen (vol_label_p, _O_RDWR | _O_BINARY, sh_flags, 0600);
+  if (vol_fd == NULL_VOLDES)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_IO_MOUNT_FAIL, 1, vol_label_p);
+      return NULL_VOLDES;
+    }
+
+#if !defined(CS_MODE)
+  /* Cache mounting information */
+  if (fileio_cache (vol_id, vol_label_p, vol_fd, FILEIO_NOT_LOCKF) != vol_fd)
+    {
+      fileio_dismount (thread_p, vol_fd);
+      return NULL_VOLDES;
+    }
+#endif /* !CS_MODE */
+
+  return vol_fd;
+
+#else /* WINDOWS */
   int vol_fd;
   int o_sync;
   FILEIO_LOCKF_TYPE lockf_type = FILEIO_NOT_LOCKF;
@@ -3136,14 +3190,13 @@ start:
     }
 #endif /* !CS_MODE */
 
-#if !defined(WINDOWS)
   if (prm_get_bool_value (PRM_ID_DBFILES_PROTECT) == true && vol_fd > 0)
     {
       fileio_set_permission (vol_label_p);
     }
-#endif /* !WINDOWS */
 
   return vol_fd;
+#endif /* WINDOWS */
 }
 
 /*
@@ -3156,8 +3209,9 @@ void
 fileio_dismount (THREAD_ENTRY * thread_p, int vol_fd)
 {
   const char *vlabel;
+#if !defined(WINDOWS)
   FILEIO_LOCKF_TYPE lockf_type;
-
+#endif /* !WINDOWS */
   /*
    * Make sure that all dirty pages of the volume are forced to disk. This
    * is needed since a close of a file and program exist, does not imply
@@ -3168,11 +3222,13 @@ fileio_dismount (THREAD_ENTRY * thread_p, int vol_fd)
 
   (void) fileio_synchronize (thread_p, vol_fd, vlabel);
 
+#if !defined(WINDOWS)
   lockf_type = fileio_get_lockf_type (vol_fd);
   if (lockf_type != FILEIO_NOT_LOCKF)
     {
       fileio_unlock (vlabel, vol_fd, lockf_type);
     }
+#endif /* !WINDOWS */
 
   fileio_close (vol_fd);
 
@@ -3188,6 +3244,7 @@ fileio_dismount (THREAD_ENTRY * thread_p, int vol_fd)
 static void
 fileio_dismount_without_fsync (THREAD_ENTRY * thread_p, int vol_fd)
 {
+#if !defined (WINDOWS)
   FILEIO_LOCKF_TYPE lockf_type;
 
   lockf_type = fileio_get_lockf_type (vol_fd);
@@ -3196,6 +3253,7 @@ fileio_dismount_without_fsync (THREAD_ENTRY * thread_p, int vol_fd)
       fileio_unlock (fileio_get_volume_label_by_fd (vol_fd, PEEK), vol_fd,
 		     lockf_type);
     }
+#endif /* !WINDOWS */
 
   fileio_close (vol_fd);
 
@@ -3329,11 +3387,13 @@ fileio_dismount_volume (THREAD_ENTRY * thread_p,
       (void) fileio_synchronize (thread_p, vol_info_p->vdes,
 				 vol_info_p->vlabel);
 
+#if !defined(WINDOWS)
       if (vol_info_p->lockf_type != FILEIO_NOT_LOCKF)
 	{
 	  fileio_unlock (vol_info_p->vlabel, vol_info_p->vdes,
 			 vol_info_p->lockf_type);
 	}
+#endif /* !WINDOWS */
 
       fileio_close (vol_info_p->vdes);
     }
@@ -3370,11 +3430,13 @@ fileio_dismount_all (THREAD_ENTRY * thread_p)
 	  (void) fileio_synchronize (thread_p, sys_vol_info_p->vdes,
 				     sys_vol_info_p->vlabel);
 
+#if !defined(WINDOWS)
 	  if (sys_vol_info_p->lockf_type != FILEIO_NOT_LOCKF)
 	    {
 	      fileio_unlock (sys_vol_info_p->vlabel, sys_vol_info_p->vdes,
 			     sys_vol_info_p->lockf_type);
 	    }
+#endif /* !WINDOWS */
 
 	  fileio_close (sys_vol_info_p->vdes);
 	}
@@ -11973,59 +12035,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p,
 #endif /* SERVER_MODE */
 }
 
-#if defined(WINDOWS)
-#define LOCKING_SIZE 2000
-
-/*
- * fileio_lockf() - lockf() WINDOWS implementation
- *   return: 0 if success, -1 otherwise
- *   fd(in): file descriptor
- *   cmd(in): locking command to perform
- *   size(in): number of bytes
- */
-static int
-fileio_lockf (int fd, int cmd, long size)
-{
-  switch (cmd)
-    {
-    case F_ULOCK:
-      return (locking (fd, _LK_UNLCK, (size ? size : LOCKING_SIZE)));
-
-    case F_LOCK:
-      return (locking (fd, _LK_LOCK, (size ? size : LOCKING_SIZE)));
-
-    case F_TLOCK:
-      return (locking (fd, _LK_NBLCK, (size ? size : LOCKING_SIZE)));
-
-    case F_TEST:
-      /* not implemented on WINDOWS */
-      return (-1);
-
-    default:
-      errno = EINVAL;
-      return (-1);
-    }
-}
-
-/*
- * fileio_lock_region() - lock/unlock region of a file
- *   return: 0 if success, -1 otherwise
- *   fd(in): file descriptor
- *   cmd(in): locking command to perform
- *   offset(in): start offset
- *   size(in): number of bytes
- */
-static int
-fileio_lock_region (int fd, int cmd, long offset, long size)
-{
-  if (lseek (fd, offset, SEEK_SET) != offset)
-    {
-      return -1;
-    }
-
-  return fileio_lockf (fd, cmd, size);
-}
-#else /* WINDOWS */
+#if !defined(WINDOWS)
 /*
  * fileio_symlink () -
  *   return:
@@ -12073,7 +12083,7 @@ fileio_lock_region (int fd, int cmd, int type, off_t offset,
   lock.l_len = len;		/* #bytes (O means to EOF) */
   return fcntl (fd, cmd, &lock);
 }
-#endif /* WINDOWS */
+#endif /* !WINDOWS */
 
 #if defined(SERVER_MODE)
 /*
