@@ -177,7 +177,8 @@ extern int xlocator_check_fk_validity (THREAD_ENTRY * thread_p,
 				       BTID * pk_btid, int cache_attr_id,
 				       char *fk_name);
 extern int xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
-					  OID * class_oid, RECDES * recdes);
+					  OID * class_oid, RECDES * recdes,
+					  bool update_last_reprid);
 extern int xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p,
 						    BTID * btid,
 						    OID * class_oid,

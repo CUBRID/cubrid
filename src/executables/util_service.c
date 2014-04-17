@@ -3147,7 +3147,8 @@ us_hb_prefetchlogdb_stop (HA_CONF * ha_conf, const char *db_name,
 		  wait_time = 0;
 		  do
 		    {
-		      if (ha_is_registered (args, false) == false)
+		      if (ha_is_registered (args, HB_PTYPE_PREFETCHLOGDB) ==
+			  false)
 			{
 			  break;
 			}

@@ -16823,7 +16823,8 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
       if (DB_VALUE_TYPE (&key_val_range->key1) == DB_TYPE_MIDXKEY)
 	{
 	  midxkey = DB_PULL_MIDXKEY (&key_val_range->key1);
-	  if (midxkey->domain == NULL || LOG_CHECK_LOG_APPLIER (thread_p))
+	  if (midxkey->domain == NULL || LOG_CHECK_LOG_APPLIER (thread_p)
+	      || LOG_CHECK_LOG_PREFETCHER (thread_p))
 	    {
 	      /*
 	       * The asc/desc properties in midxkey from log_applier may be
@@ -16840,7 +16841,8 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
       if (DB_VALUE_TYPE (&key_val_range->key2) == DB_TYPE_MIDXKEY)
 	{
 	  midxkey = DB_PULL_MIDXKEY (&key_val_range->key2);
-	  if (midxkey->domain == NULL || LOG_CHECK_LOG_APPLIER (thread_p))
+	  if (midxkey->domain == NULL || LOG_CHECK_LOG_APPLIER (thread_p)
+	      || LOG_CHECK_LOG_PREFETCHER (thread_p))
 	    {
 	      if (midxkey->domain)
 		{

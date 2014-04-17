@@ -7224,16 +7224,16 @@ la_shutdown (BOOT_CLIENT_TYPE type)
       free_and_init (la_Info.cache_pb);
     }
 
-  for (i = 0; i < la_Info.repl_cnt; i++)
-    {
-      if (la_Info.repl_lists[i] != NULL)
-	{
-	  free_and_init (la_Info.repl_lists[i]);
-	}
-    }
-
   if (la_Info.repl_lists)
     {
+      for (i = 0; i < la_Info.repl_cnt; i++)
+	{
+	  if (la_Info.repl_lists[i] != NULL)
+	    {
+	      free_and_init (la_Info.repl_lists[i]);
+	    }
+	}
+
       free_and_init (la_Info.repl_lists);
     }
 
@@ -7904,7 +7904,7 @@ lp_get_log_record (struct log_header *final_log_hdr,
 	  else
 	    {
 	      *log_buf = tmp_log_buf;
-	      return NO_ERROR;
+	      break;
 	    }
 	}
       else
@@ -7926,6 +7926,8 @@ lp_get_log_record (struct log_header *final_log_hdr,
 	  continue;
 	}
     }
+
+  return NO_ERROR;
 }
 
 static int

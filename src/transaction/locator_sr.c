@@ -335,27 +335,11 @@ static int locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op);
 static int locator_prefetch_index_page (THREAD_ENTRY * thread_p,
 					OID * class_oid, RECDES * classrec,
 					RECDES * recdes, int btid_index,
-					HEAP_CACHE_ATTRINFO * attr_info,
-					HEAP_IDX_ELEMENTS_INFO * idx_info);
-static int locator_prefetch_unique_index_page_internal (THREAD_ENTRY *
-							thread_p,
-							RECDES * classrec,
-							RECDES * recdes,
-							BTID * btid,
-							int btid_index,
-							HEAP_CACHE_ATTRINFO *
-							attr_info,
-							ATTR_ID * attr_ids);
+					HEAP_CACHE_ATTRINFO * attr_info);
 static int locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p,
 						 BTID * btid, OID * class_oid,
 						 RECDES * classrec,
-						 RECDES * recdes,
-						 int n_attr_ids,
-						 int btid_index,
-						 HEAP_CACHE_ATTRINFO *
-						 attr_info,
-						 ATTR_ID * attr_ids,
-						 int *atts_prefix_length);
+						 RECDES * recdes);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -11525,7 +11509,8 @@ end:
 
 int
 xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
-			       OID * class_oid, RECDES * recdes)
+			       OID * class_oid, RECDES * recdes,
+			       bool update_last_reprid)
 {
   int error = NO_ERROR;
   int i = 0;
@@ -11554,16 +11539,23 @@ xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  last_repr_id = heap_get_class_repr_id (thread_p, class_oid);
-  if (last_repr_id == 0)
+  /**
+   * if we prefetch for update or delete,
+   * we don't need to update last representation id
+   */
+  if (update_last_reprid)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_INVALID_REPRID, 1,
-	      last_repr_id);
-      error = ER_CT_INVALID_REPRID;
-      goto free_and_return;
-    }
+      last_repr_id = heap_get_class_repr_id (thread_p, class_oid);
+      if (last_repr_id == 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_INVALID_REPRID, 1,
+		  last_repr_id);
+	  error = ER_CT_INVALID_REPRID;
+	  goto free_and_return;
+	}
 
-  or_set_rep_id (recdes, last_repr_id);
+      or_set_rep_id (recdes, last_repr_id);
+    }
 
   if (idx_info.num_btids <= 0)
     {
@@ -11573,7 +11565,7 @@ xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
   for (i = 0; i < idx_info.num_btids; i++)
     {
       error = locator_prefetch_index_page (thread_p, class_oid, &classrec,
-					   recdes, i, &attr_info, &idx_info);
+					   recdes, i, &attr_info);
       if (error != NO_ERROR)
 	{
 	  goto free_and_return;
@@ -11593,28 +11585,28 @@ xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p,
 {
   int error = NO_ERROR;
   OID unique_oid;
-  LC_COPYAREA *copy_area = NULL;
-  LC_COPYAREA_MANYOBJS *mobjs = NULL;
-  LC_COPYAREA_ONEOBJ *obj = NULL;
   RECDES recdes;
+  HEAP_SCANCACHE scan;
 
   if (xbtree_find_unique (thread_p, btid, true, S_SELECT, key_value,
 			  class_oid, &unique_oid, true) == BTREE_KEY_FOUND)
     {
-      copy_area = NULL;
-      error = xlocator_fetch (thread_p, &unique_oid, NULL_CHN, S_LOCK,
-			      class_oid, NULL_CHN, false, &copy_area);
-
-      mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
-      obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
-      LC_RECDES_TO_GET_ONEOBJ (copy_area, obj, &recdes);
-
-      xlocator_prefetch_repl_insert (thread_p, class_oid, &recdes);
-
-      if (copy_area != NULL)
+      if (heap_scancache_quick_start (&scan) != NO_ERROR)
 	{
-	  locator_free_copy_area (copy_area);
+	  return ER_FAILED;
 	}
+
+      if (heap_get (thread_p, &unique_oid, &recdes, &scan, PEEK, NULL_CHN) !=
+	  S_SUCCESS)
+	{
+	  heap_scancache_end (thread_p, &scan);
+	  return ER_FAILED;
+	}
+
+      error =
+	xlocator_prefetch_repl_insert (thread_p, class_oid, &recdes, false);
+
+      heap_scancache_end (thread_p, &scan);
     }
 
   return error;
@@ -12212,256 +12204,40 @@ locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op)
 static int
 locator_prefetch_index_page (THREAD_ENTRY * thread_p, OID * class_oid,
 			     RECDES * classrec, RECDES * recdes,
-			     int btid_index,
-			     HEAP_CACHE_ATTRINFO * attr_info,
-			     HEAP_IDX_ELEMENTS_INFO * idx_info)
+			     int btid_index, HEAP_CACHE_ATTRINFO * attr_info)
 {
   int error = NO_ERROR;
   BTID *btid = NULL;
-  ATTR_ID *attrids = NULL;
-  int n_attrs;
-  char *btname = NULL;
-  int *attrs_prefix_length = NULL;
 
   btid = heap_indexinfo_get_btid (btid_index, attr_info);
   if (btid == NULL)
     {
-      error = ER_FAILED;
-      goto free_and_return;
+      return ER_FAILED;
     }
 
-  n_attrs = heap_indexinfo_get_num_attrs (btid_index, attr_info);
-  if (n_attrs <= 0)
-    {
-      error = ER_FAILED;
-      goto free_and_return;
-    }
-
-  attrids = (ATTR_ID *) malloc (n_attrs * sizeof (ATTR_ID));
-  if (attrids == NULL)
-    {
-      error = ER_FAILED;
-      goto free_and_return;
-    }
-
-  if (heap_indexinfo_get_attrids (btid_index, attr_info, attrids) != NO_ERROR)
-    {
-      error = ER_FAILED;
-      goto free_and_return;
-    }
-
-  attrs_prefix_length = (int *) malloc (n_attrs * sizeof (int));
-  if (attrs_prefix_length == NULL)
-    {
-      error = ER_FAILED;
-      goto free_and_return;
-    }
-
-  if (heap_indexinfo_get_attrs_prefix_length (btid_index, attr_info,
-					      attrs_prefix_length,
-					      n_attrs) != NO_ERROR)
-    {
-      error = ER_FAILED;
-      goto free_and_return;
-    }
-
-  if (heap_get_indexinfo_of_btid (thread_p, class_oid, btid, NULL, NULL,
-				  NULL, NULL, &btname, NULL) != NO_ERROR)
-    {
-      error = ER_FAILED;
-      goto free_and_return;
-    }
-
-  if (xbtree_get_unique (thread_p, btid))
-    {
-      locator_prefetch_unique_index_page_internal (thread_p, classrec,
-						   recdes,
-						   btid, btid_index,
-						   attr_info, attrids);
-    }
-  else
-    {
-      locator_prefetch_index_page_internal (thread_p, btid, class_oid,
-					    classrec, recdes,
-					    n_attrs, btid_index, attr_info,
-					    attrids, attrs_prefix_length);
-    }
-
-free_and_return:
-  if (attrids)
-    {
-      free_and_init (attrids);
-    }
-  if (attrs_prefix_length)
-    {
-      free_and_init (attrs_prefix_length);
-    }
-  if (btname)
-    {
-      free_and_init (btname);
-    }
-
-  return error;
-}
-
-static int
-locator_prefetch_unique_index_page_internal (THREAD_ENTRY * thread_p,
-					     RECDES * classrec,
-					     RECDES * recdes, BTID * btid,
-					     int btid_index,
-					     HEAP_CACHE_ATTRINFO *
-					     attr_info, ATTR_ID * attr_ids)
-{
-  int error = NO_ERROR;
-  int j;
-  HEAP_SCANCACHE *scan_cache = NULL;
-  BTREE_CHECKSCAN bt_checkscan, *bt_checkscan_p = NULL;
-  DB_VALUE *key = NULL;
-  DB_VALUE dbvalue;
-  INDX_SCAN_ID isid;
-  KEY_VAL_RANGE key_val_range;
-  int num_classes, scancache_inited = 0;
-  HFID *hfids = NULL, *hfid = NULL;
-  OID *class_oids = NULL, *class_oid = NULL;
-  OR_INDEX *index;
-  char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf = NULL;
-
-  aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
-
-  /* get all the heap files associated with this unique btree */
-  if ((or_get_unique_hierarchy (thread_p, classrec, attr_ids[0], btid,
-				&class_oids, &hfids,
-				&num_classes, NULL) != NO_ERROR)
-      || class_oids == NULL || hfids == NULL || num_classes < 1)
-    {
-      if (class_oids != NULL)
-	{
-	  free_and_init (class_oids);
-	}
-
-      if (hfids != NULL)
-	{
-	  free_and_init (hfids);
-	}
-
-      error = ER_FAILED;
-      goto free_and_return;
-    }
-
-  scan_cache =
-    (HEAP_SCANCACHE *) malloc (num_classes * sizeof (HEAP_SCANCACHE));
-  if (scan_cache == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      num_classes * sizeof (HEAP_SCANCACHE));
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto free_and_return;
-    }
-
-  for (j = 0; j < num_classes; j++)
-    {
-      hfid = &hfids[j];
-      class_oid = &class_oids[j];
-
-      /* Start a scan cursor and a class attribute information */
-      if (heap_scancache_start (thread_p, &scan_cache[j], hfid, class_oid,
-				true, false, LOCKHINT_NONE) != NO_ERROR)
-	{
-	  error = ER_FAILED;
-	  goto free_and_return;
-	}
-      scancache_inited++;
-
-      index = &(attr_info->last_classrepr->indexes[btid_index]);
-      assert (index != NULL);
-
-      if (btree_keyoid_checkscan_start (thread_p, btid, &bt_checkscan) !=
-	  NO_ERROR)
-	{
-	  error = ER_FAILED;
-	  goto free_and_return;
-	}
-      bt_checkscan_p = &bt_checkscan;
-
-      BTREE_INIT_SCAN (&bt_checkscan.btree_scan);
-      scan_init_index_scan (&isid, bt_checkscan.oid_ptr);
-
-      if ((heap_attrinfo_read_dbvalues_without_oid (thread_p, recdes,
-						    attr_info) != NO_ERROR) ||
-	  (key =
-	   heap_attrvalue_get_key (thread_p, btid_index, attr_info, recdes,
-				   btid, &dbvalue, aligned_buf,
-				   NULL)) == NULL)
-	{
-	  error = ER_FAILED;
-	  goto free_and_return;
-	}
-
-      PR_SHARE_VALUE (key, &key_val_range.key1);
-      PR_SHARE_VALUE (key, &key_val_range.key2);
-      key_val_range.range = GE_LE;
-      key_val_range.num_index_term = 0;
-
-      btree_keyval_search (thread_p, btid, true, S_SELECT,
-			   &bt_checkscan.btree_scan, &key_val_range,
-			   class_oid, bt_checkscan.oid_ptr,
-			   bt_checkscan.oid_area_size, NULL, &isid, false);
-
-      /* close the index check-scan */
-      btree_scan_clear_key (&bt_checkscan.btree_scan);
-      btree_keyoid_checkscan_end (thread_p, bt_checkscan_p);
-      bt_checkscan_p = NULL;
-    }
-
-free_and_return:
-  if (class_oids)
-    {
-      free_and_init (class_oids);
-    }
-
-  if (hfids)
-    {
-      free_and_init (hfids);
-    }
-
-  if (bt_checkscan_p)
-    {
-      btree_keyoid_checkscan_end (thread_p, bt_checkscan_p);
-    }
-
-  for (j = 0; j < scancache_inited; j++)
-    {
-      (void) heap_scancache_end (thread_p, &scan_cache[j]);
-    }
-
-  if (scan_cache)
-    {
-      free_and_init (scan_cache);
-    }
-
+  error = locator_prefetch_index_page_internal (thread_p, btid, class_oid,
+						classrec, recdes);
   return error;
 }
 
 static int
 locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
 				      OID * class_oid, RECDES * classrec,
-				      RECDES * recdes,
-				      int n_attr_ids, int btid_index,
-				      HEAP_CACHE_ATTRINFO * attr_info,
-				      ATTR_ID * attr_ids,
-				      int *atts_prefix_length)
+				      RECDES * recdes)
 {
-  int i = 0;
   int error = NO_ERROR;
   HEAP_SCANCACHE scan_cache, *scan_cache_p = NULL;
   BTREE_CHECKSCAN bt_checkscan, *bt_checkscan_p = NULL;
+  HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_CACHE_ATTRINFO *attr_info_p = NULL;
   HFID hfid;
+  int index_id = -1;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
-  OR_INDEX *index = NULL;
   DB_VALUE dbvalue;
   DB_VALUE *key = NULL;
   KEY_VAL_RANGE key_val_range;
   INDX_SCAN_ID isid;
+  BTID tmp_btid = *btid;
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -12479,10 +12255,15 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
     }
   scan_cache_p = &scan_cache;
 
-  index = &(attr_info->last_classrepr->indexes[btid_index]);
-  assert (index != NULL);
+  index_id = heap_attrinfo_start_with_btid (thread_p, class_oid, &tmp_btid,
+					    &attr_info);
+  if (index_id < 0)
+    {
+      goto free_and_return;
+    }
+  attr_info_p = &attr_info;
 
-  if (btree_keyoid_checkscan_start (thread_p, btid, &bt_checkscan) !=
+  if (btree_keyoid_checkscan_start (thread_p, &tmp_btid, &bt_checkscan) !=
       NO_ERROR)
     {
       error = ER_FAILED;
@@ -12494,10 +12275,11 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
   scan_init_index_scan (&isid, bt_checkscan_p->oid_ptr);
 
   if ((heap_attrinfo_read_dbvalues_without_oid
-       (thread_p, recdes, attr_info) != NO_ERROR)
+       (thread_p, recdes, attr_info_p) != NO_ERROR)
       || (key =
-	  heap_attrvalue_get_key (thread_p, btid_index, attr_info, recdes,
-				  btid, &dbvalue, aligned_buf, NULL)) == NULL)
+	  heap_attrvalue_get_key (thread_p, index_id, attr_info_p, recdes,
+				  &tmp_btid, &dbvalue, aligned_buf,
+				  NULL)) == NULL)
     {
       error = ER_FAILED;
       goto free_and_return;
@@ -12508,7 +12290,7 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
   key_val_range.range = GE_LE;
   key_val_range.num_index_term = 0;
 
-  btree_keyval_search (thread_p, btid, true, S_SELECT,
+  btree_keyval_search (thread_p, &tmp_btid, true, S_SELECT,
 		       &bt_checkscan_p->btree_scan, &key_val_range,
 		       class_oid, bt_checkscan_p->oid_ptr,
 		       bt_checkscan_p->oid_area_size, NULL, &isid, false);
@@ -12516,9 +12298,19 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
   btree_scan_clear_key (&bt_checkscan.btree_scan);
 
 free_and_return:
+  if (key == &dbvalue)
+    {
+      pr_clear_value (key);
+    }
+
   if (bt_checkscan_p)
     {
       btree_keyoid_checkscan_end (thread_p, bt_checkscan_p);
+    }
+
+  if (attr_info_p)
+    {
+      heap_attrinfo_end (thread_p, attr_info_p);
     }
 
   if (scan_cache_p)

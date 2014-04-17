@@ -1852,9 +1852,9 @@ static unsigned int prm_ha_prefetchlogdb_max_thread_count_default = 4;
 static unsigned int prm_ha_prefetchlogdb_max_thread_count_lower = 1;
 static unsigned int prm_ha_prefetchlogdb_max_thread_count_upper = INT_MAX;
 
-unsigned int PRM_HA_PREFETCHLOGDB_PAGE_DISTANCE = 500;
+unsigned int PRM_HA_PREFETCHLOGDB_PAGE_DISTANCE = 200;
 static unsigned int prm_ha_prefetchlogdb_page_distance_flag = 0;
-static unsigned int prm_ha_prefetchlogdb_page_distance_default = 500;
+static unsigned int prm_ha_prefetchlogdb_page_distance_default = 200;
 static unsigned int prm_ha_prefetchlogdb_page_distance_lower = 50;
 static unsigned int prm_ha_prefetchlogdb_page_distance_upper = INT_MAX;
 

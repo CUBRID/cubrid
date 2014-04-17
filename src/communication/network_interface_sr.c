@@ -10541,7 +10541,7 @@ slocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
   ptr = or_unpack_oid (request, &class_oid);
   ptr = or_unpack_recdes (ptr, &recdes);
 
-  xlocator_prefetch_repl_insert (thread_p, &class_oid, recdes);
+  xlocator_prefetch_repl_insert (thread_p, &class_oid, recdes, true);
 
   if (recdes != NULL)
     {
