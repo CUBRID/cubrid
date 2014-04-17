@@ -83,7 +83,6 @@ public class CUBRIDDriver implements Driver {
 	public static final int default_port = 30000;
 	public static final String default_user = "public";
 	public static final String default_password = "";
-	public static List<String> unreachableHosts;
 
 	private final static String URL_PATTERN =
 	    "jdbc:cubrid(-oracle|-mysql)?:([a-zA-Z_0-9\\.-]*):([0-9]*):([^:]+):([^:]*):([^:]*):(\\?[a-zA-Z_0-9]+=[^&=?]+(&[a-zA-Z_0-9]+=[^&=?]+)*)?";
@@ -107,15 +106,10 @@ public class CUBRIDDriver implements Driver {
 				debugOutput = System.out;
 			}
 		}
-		unreachableHosts = new CopyOnWriteArrayList<String>();
 		Thread brokerHealthCheck = new Thread(new BrokerHealthCheck());
 		brokerHealthCheck.setDaemon(true);
 		brokerHealthCheck.start();
 	}
-
-    public static boolean isUnreachableHost(String host) {
-	return unreachableHosts.contains(host);
-    }
 
 	public static void printDebug(String msg) {
 		Timestamp timestamp = new Timestamp(System.currentTimeMillis());
@@ -123,14 +117,6 @@ public class CUBRIDDriver implements Driver {
 
 		String line = String.format("%s %s", fmt.format(timestamp), msg);
 		debugOutput.println(line);
-	}
-	
-	public static void addToUnreachableHosts(String host) {
-		synchronized (unreachableHosts) {
-			if (!unreachableHosts.contains(host)) {
-				unreachableHosts.add(host);
-			}
-		}
 	}
 	
 	/*

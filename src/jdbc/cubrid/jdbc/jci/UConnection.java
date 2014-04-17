@@ -624,9 +624,11 @@ public class UConnection {
 		boolean keepConnection = true;
 		long currentTime = System.currentTimeMillis() / 1000;
 		int reconnectTime = connectionProperties.getReconnectTime();
+		UUnreachableHostList unreachableHosts = UUnreachableHostList.getInstance();
+		
 		if (connectedHostId > 0 && lastFailureTime != 0 && reconnectTime > 0
 				&& currentTime - lastFailureTime > reconnectTime) {
-			if (!CUBRIDDriver.unreachableHosts.contains(altHosts.get(0))) {
+			if (!unreachableHosts.contains(altHosts.get(0))) {
 				keepConnection = false;
 				lastFailureTime = 0;
 			}
@@ -1906,19 +1908,21 @@ public class UConnection {
 	    reconnectWorker(getLoginEndTimestamp(beginTime));
 	} else {
 	    int retry = 0;
+	    UUnreachableHostList unreachableHosts = UUnreachableHostList.getInstance();
+	    
 	    do {
 		for (int hostId = 0; hostId < altHosts.size(); hostId++) {
 		    /*
 		     * if all hosts turn out to be unreachable, ignore host
 		     * reachability and try one more time
 		     */
-		    if (!CUBRIDDriver.isUnreachableHost(altHosts.get(hostId)) || retry == 1) {
+		    if (!unreachableHosts.contains(altHosts.get(hostId)) || retry == 1) {
 			try {
 			    setActiveHost(hostId);
 			    reconnectWorker(getLoginEndTimestamp(System.currentTimeMillis()));
 			    connectedHostId = hostId;
 			    
-			    CUBRIDDriver.unreachableHosts.remove(altHosts.get(hostId));
+			    unreachableHosts.remove(altHosts.get(hostId));
 			    
 			    return; // success to connect
 			} catch (IOException e) {
@@ -1931,7 +1935,7 @@ public class UConnection {
 				    || errno == UErrorCode.ER_CONNECTION
 				    || errno == UErrorCode.ER_TIMEOUT
 				    || errno == UErrorCode.CAS_ER_FREE_SERVER) {
-				CUBRIDDriver.addToUnreachableHosts(altHosts.get(hostId));
+			    	unreachableHosts.add(altHosts.get(hostId));
 			    } else {
 				throw e;
 			    }

@@ -30,47 +30,23 @@
 
 package cubrid.jdbc.jci;
 
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.net.Socket;
+public class BrokerHealthCheck extends Thread {
 
-import cubrid.jdbc.driver.CUBRIDDriver;
-import cubrid.jdbc.net.BrokerHandler;
-
-public class BrokerHealthCheck extends Thread{
-
-	private static final String HEALTH_CHECK_DUMMY_DB = "___health_check_dummy_db___";
 	private static final int BROKER_HEALTH_CHECK_TIMEOUT = 5000;
-	private static final int CAS_INFO_SIZE = 4;
 	public static final int MONITORING_INTERVAL = 60000;
 
 	public void run() {
-		String ip;
-		int port;
 		long startTime, elapseTime;
-		
+		UUnreachableHostList unreachableHosts = UUnreachableHostList
+				.getInstance();
+
 		while (true) {
 			startTime = System.currentTimeMillis();
+
+			unreachableHosts.checkReachability(BROKER_HEALTH_CHECK_TIMEOUT);
 			
-			if (CUBRIDDriver.unreachableHosts == null) {
-				return;
-			}
-			if (CUBRIDDriver.unreachableHosts.size() > 0) {
-				for (String host : CUBRIDDriver.unreachableHosts) {
-					ip = host.split(":")[0];
-					port = Integer.parseInt(host.split(":")[1]); 
-					try {
-						checkBrokerAlive(ip, port, BROKER_HEALTH_CHECK_TIMEOUT);
-						CUBRIDDriver.unreachableHosts.remove(host);
-					} catch (UJciException e) {
-						// do nothing
-					} catch (IOException e) {
-						// do nothing
-					}
-				}
-			}
 			elapseTime = System.currentTimeMillis() - startTime;
-			
+
 			if (elapseTime < MONITORING_INTERVAL) {
 				try {
 					Thread.sleep(MONITORING_INTERVAL - elapseTime);
@@ -78,48 +54,6 @@ public class BrokerHealthCheck extends Thread{
 					// do nothing
 				}
 			}
-		}
-	}
-	
-	private void checkBrokerAlive(String ip, int port, int timeout) throws IOException, UJciException {
-		Socket toBroker = null;
-		byte[] serverInfo;
-		byte[] casInfo;
-		String dummyUrl = "jdbc:cubrid:" + ip + ":" + port + ":" + HEALTH_CHECK_DUMMY_DB + "::********:";
-		UTimedDataInputStream is = null;
-		DataOutputStream os = null;
-		
-		long startTime = System.currentTimeMillis();
-		
-		try {
-			toBroker = BrokerHandler.connectBroker(ip, port, timeout);
-			if (timeout > 0) {
-				timeout -= (System.currentTimeMillis() - startTime);
-				if (timeout <= 0) {
-					throw new UJciException(UErrorCode.ER_TIMEOUT);
-				}
-			}
-			
-			is = new UTimedDataInputStream(toBroker.getInputStream(), ip, port, timeout);
-			os = new DataOutputStream(toBroker.getOutputStream());
-			serverInfo = UConnection.createDBInfo(HEALTH_CHECK_DUMMY_DB, "", "", dummyUrl);
-			
-			// send db info
-			os.write(serverInfo);
-			os.flush();
-			
-			// receive header
-			int dataLength = is.readInt();
-			casInfo = new byte[CAS_INFO_SIZE];
-			is.readFully(casInfo);
-			if (dataLength < 0) {
-				throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
-			}
-			
-		} finally {
-			if (is != null) is.close();
-			if (os != null) os.close();
-			if (toBroker != null) toBroker.close();
 		}
 	}
 }
