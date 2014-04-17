@@ -8102,9 +8102,11 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   VPID null_vpid;
   char recset_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   LOG_DATA_ADDR addr;
-  int p_level, q_level, r_level;
   BTREE_ROOT_HEADER *root_header = NULL;
   int Q_end, R_start;
+#if !defined(NDEBUG)
+  int p_level, q_level, r_level;
+#endif
 
 #if !defined(NDEBUG)
   if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
@@ -8316,7 +8318,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   VPID_SET_NULL (&root_header->node.prev_vpid);
   VPID_SET_NULL (&root_header->node.next_vpid);
   btree_write_default_split_info (&(root_header->node.split_info));
-  root_header->node.node_level = p_level - 1;
+  root_header->node.node_level--;
 
   btree_node_header_redo_log (thread_p, &btid->sys_btid->vfid, P);
 
