@@ -77,7 +77,7 @@ static char base_log_path[PATH_MAX];
 static char ca_catalog_path[PATH_MAX];
 static char applylogdb_catalog_path[PATH_MAX];
 static char err_file_path[PATH_MAX];
-static char sample_file_path[PATH_MAX];
+static char sample_file_path_base[PATH_MAX];
 
 static struct option cci_applier_options[] = {
   {"host", 1, 0, 'h'},
@@ -741,42 +741,34 @@ static FILE *
 open_sample_file (void)
 {
   FILE *fp;
-  char tmp_sample_file_path[PATH_MAX];
+  char cur_sample_file_path[PATH_MAX];
   char err_msg[LINE_MAX];
 
-  fp = fopen (sample_file_path, "a");
-
-  if (fp == NULL)
+  do
     {
-      snprintf (err_msg, LINE_MAX,
-		"Failed to open or create %s. Now sampling log is disabled",
-		sample_file_path);
-      er_log (ER_CA_FAILED, NULL, err_msg);
+      snprintf (cur_sample_file_path, PATH_MAX, "%s.%03d",
+		sample_file_path_base, ca_Info.sample_file_count);
 
-      ca_Info.sampling_rate = 0;
-    }
-  else
-    {
-      if (ftell (fp) > CA_MAX_SAMPLE_FILE_SIZE)
+      fp = fopen (cur_sample_file_path, "a");
+      if (fp == NULL)
+	{
+	  snprintf (err_msg, LINE_MAX,
+		    "Failed to open or create %s. Log sampling is disabled",
+		    cur_sample_file_path);
+	  er_log (ER_CA_FAILED, NULL, err_msg);
+
+	  ca_Info.sampling_rate = 0;
+	}
+      else if (ftell (fp) > CA_MAX_SAMPLE_FILE_SIZE)
 	{
 	  fclose (fp);
+	  fp = NULL;
 
-	  snprintf (tmp_sample_file_path, PATH_MAX, "%s.%d", sample_file_path,
-		    ca_Info.sample_file_count++);
-
-	  fp = fopen (tmp_sample_file_path, "a");
-	  if (fp == NULL)
-	    {
-	      snprintf (err_msg, LINE_MAX,
-			"Failed to open or create %s. "
-			"Now sampling log is disabled",
-			tmp_sample_file_path);
-	      er_log (ER_CA_FAILED, NULL, err_msg);
-
-	      ca_Info.sampling_rate = 0;
-	    }
+	  ca_Info.sample_file_count++;
 	}
     }
+  while (fp == NULL && ca_Info.sampling_rate != 0);
+
   return fp;
 }
 
@@ -841,16 +833,16 @@ er_log (int error_code, const char *query, const char *err_msg)
 
   if (tmp_err_msg != NULL)
     {
-      for (p = tmp_err_msg; ; p = NULL)
-        {
-          token = strtok (p, "\n");
-          if (token == NULL)
-            {
-              break;
-            }
+      for (p = tmp_err_msg;; p = NULL)
+	{
+	  token = strtok (p, "\n");
+	  if (token == NULL)
+	    {
+	      break;
+	    }
 
-          fprintf (fp, "# %s\n", token);
-        }
+	  fprintf (fp, "# %s\n", token);
+	}
 
       free_and_init (tmp_err_msg);
     }
@@ -1006,7 +998,7 @@ set_file_path (CA_CON_INFO * con_info, char *repl_log_path)
 
   if (ca_Info.sampling_rate > 0)
     {
-      snprintf (sample_file_path, PATH_MAX, "%s@%s_%s.sql.sample",
+      snprintf (sample_file_path_base, PATH_MAX, "%s@%s_%s.sql.sample",
 		con_info->db_name, con_info->hostname, PROG_NAME);
     }
 
