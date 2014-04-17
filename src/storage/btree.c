@@ -20678,6 +20678,7 @@ btree_rv_leafrec_redo_insert_oid (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 	    }
 
 	  /* insert the value in the new overflow page */
+	  rec.type = REC_HOME;
 	  rec.length = 0;
 	  btree_append_oid (&rec, &recins->oid);
 
