@@ -44,7 +44,7 @@
 
 /* Ceiling of positive division */
 #define CEIL_PTVDIV(dividend, divisor) \
-        (((dividend) == 0) ? 0 : ((dividend) - 1) / (divisor) + 1)
+        (((dividend) == 0) ? 0 : (((dividend) - 1) / (divisor)) + 1)
 
 /* Make sure that sizeof returns and integer, so I can use in the operations */
 #define DB_SIZEOF(val)          (sizeof(val))

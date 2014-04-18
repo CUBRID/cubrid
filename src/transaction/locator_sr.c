@@ -7409,6 +7409,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
 
+  key_dbvalue = NULL;
   DB_MAKE_NULL (&dbvalue);
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
@@ -7617,11 +7618,6 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 					REPL_INFO_TYPE_STMT_NORMAL);
 	}
 
-      if (key_dbvalue == &dbvalue)
-	{
-	  pr_clear_value (&dbvalue);
-	}
-
       if (key_ins_del == NULL)
 	{
 	  if (error_code == NO_ERROR)
@@ -7634,11 +7630,57 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 	    }
 	  goto error;
 	}
+
+#if !defined(NDEBUG)
+      if (key_ins_del != NULL
+	  && !DB_IS_NULL (key_dbvalue)
+	  && !btree_multicol_key_is_null (key_dbvalue))
+	{
+	  BTREE_CHECKSCAN bt_checkscan;
+	  DISK_ISVALID isvalid = DISK_VALID;
+
+	  /* start a check-scan on index */
+	  if (btree_keyoid_checkscan_start (thread_p, &btid, &bt_checkscan) !=
+	      NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  isvalid = btree_keyoid_checkscan_check (thread_p,
+						  &bt_checkscan,
+						  class_oid,
+						  key_dbvalue, inst_oid);
+
+	  if (is_insert)
+	    {
+	      assert (isvalid == DISK_VALID);	/* found */
+	    }
+	  else
+	    {
+	      assert (isvalid == DISK_INVALID);	/* not found */
+	    }
+
+	  /* close the index check-scan */
+	  btree_keyoid_checkscan_end (thread_p, &bt_checkscan);
+	}
+#endif
+
+      if (key_dbvalue == &dbvalue)
+	{
+	  pr_clear_value (&dbvalue);
+	  key_dbvalue = NULL;
+	}
     }
 
 error:
 
   heap_attrinfo_end (thread_p, &index_attrinfo);
+
+  if (key_dbvalue == &dbvalue)
+    {
+      pr_clear_value (&dbvalue);
+      key_dbvalue = NULL;
+    }
 
 #if defined(ENABLE_SYSTEMTAP)
   if (classname != NULL)
@@ -8187,14 +8229,14 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	    {
 	      if (ev_results[1] != V_TRUE)
 		{
-		  /*the old rec and the new rec does not satisfied
+		  /* the old rec and the new rec does not satisfied
 		     the filter predicate */
 		  continue;
 		}
 	      else
 		{
-		  /*the old rec does not satisfied the filter predicate */
-		  /*the new rec satisfied the filter predicate */
+		  /* the old rec does not satisfied the filter predicate */
+		  /* the new rec satisfied the filter predicate */
 		  do_insert_only = true;
 		}
 	    }
@@ -8202,20 +8244,20 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 	    {
 	      if (ev_results[1] != V_TRUE)
 		{
-		  /*the old rec satisfied the filter predicate */
-		  /*the new rec does not satisfied the filter predicate */
+		  /* the old rec satisfied the filter predicate */
+		  /* the new rec does not satisfied the filter predicate */
 		  do_delete_only = true;
 		}
 	      else
 		{
 		  if (found_btid == false)
 		    {
-		      /*the old rec satisfied the filter predicate */
-		      /*the new rec satisfied the filter predicate */
-		      /*the index does not contain updated attributes */
+		      /* the old rec satisfied the filter predicate */
+		      /* the new rec satisfied the filter predicate */
+		      /* the index does not contain updated attributes */
 		      continue;
 		    }
-		  /*nothing to do - update operation */
+		  /* nothing to do - update operation */
 		}
 	    }
 	}
@@ -8391,6 +8433,46 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		  goto error;
 		}
 	    }
+
+#if !defined(NDEBUG)
+	  {
+	    BTREE_CHECKSCAN bt_checkscan;
+	    DISK_ISVALID isvalid = DISK_VALID;
+
+	    /* start a check-scan on index */
+	    if (btree_keyoid_checkscan_start
+		(thread_p, &old_btid, &bt_checkscan) != NO_ERROR)
+	      {
+		goto error;
+	      }
+
+	    if (!do_insert_only
+		&& !DB_IS_NULL (old_key)
+		&& !btree_multicol_key_is_null (old_key))
+	      {
+		isvalid = btree_keyoid_checkscan_check (thread_p,
+							&bt_checkscan,
+							class_oid,
+							old_key, inst_oid);
+		assert (isvalid == DISK_INVALID);	/* not found */
+	      }
+
+	    if (!do_delete_only
+		&& !DB_IS_NULL (new_key)
+		&& !btree_multicol_key_is_null (new_key))
+	      {
+		isvalid = btree_keyoid_checkscan_check (thread_p,
+							&bt_checkscan,
+							class_oid,
+							new_key, inst_oid);
+		assert (isvalid == DISK_VALID);	/* found */
+	      }
+
+	    /* close the index check-scan */
+	    btree_keyoid_checkscan_end (thread_p, &bt_checkscan);
+	  }
+#endif
+
 	}
 
       if (pk_btid_index == i && repl_old_key == NULL)
@@ -8402,10 +8484,12 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
       if (new_key == &new_dbvalue)
 	{
 	  pr_clear_value (&new_dbvalue);
+	  new_key = NULL;
 	}
       if (old_key == &old_dbvalue)
 	{
 	  pr_clear_value (&old_dbvalue);
+	  old_key = NULL;
 	}
     }
 
@@ -8482,10 +8566,12 @@ error:
   if (new_key == &new_dbvalue)
     {
       pr_clear_value (&new_dbvalue);
+      new_key = NULL;
     }
   if (old_key == &old_dbvalue)
     {
       pr_clear_value (&old_dbvalue);
+      old_key = NULL;
     }
 
   if (repl_old_key != NULL)

@@ -3058,7 +3058,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	}
 
       value_has_null = 0;	/* init */
-      if (db_value_is_null (dbvalue_ptr)
+      if (DB_IS_NULL (dbvalue_ptr)
 	  || btree_multicol_key_has_null (dbvalue_ptr))
 	{
 	  value_has_null = 1;	/* found null columns */
@@ -3076,7 +3076,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  return SORT_ERROR_OCCURRED;
 	}
 
-      if (db_value_is_null (dbvalue_ptr)
+      if (DB_IS_NULL (dbvalue_ptr)
 	  || btree_multicol_key_is_null (dbvalue_ptr))
 	{
 	  sort_args->n_oids++;	/* Increment the OID counter */

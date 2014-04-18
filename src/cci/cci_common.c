@@ -218,7 +218,7 @@ static const unsigned int cci_mht_Primes[NPRIMES] = {
 
 /* Ceiling of positive division */
 #define CEIL_PTVDIV(dividend, divisor) \
-        (((dividend) == 0) ? 0 : ((dividend) - 1) / (divisor) + 1)
+        (((dividend) == 0) ? 0 : (((dividend) - 1) / (divisor)) + 1)
 
 static unsigned int
 cci_mht_calculate_htsize (unsigned int ht_size)

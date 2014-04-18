@@ -271,6 +271,4 @@ extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid,
 
 extern void btree_dump_key (FILE * fp, DB_VALUE * key);
 
-extern int btree_insert_oid_with_order (RECDES * rec, OID * oid);
-
 #endif /* _BTREE_LOAD_H_ */
