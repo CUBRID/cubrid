@@ -10682,6 +10682,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 	    }
 	}
 
+      OID_SET_NULL (&unique_oid);
+
       r = xbtree_find_unique (thread_p, &btid, false, S_DELETE,
 			      key_dbvalue, &pruned_oid, &unique_oid,
 			      is_global_index);
@@ -10786,6 +10788,13 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 	}
       else if (r == BTREE_ERROR_OCCURRED)
 	{
+	  if (!OID_ISNULL (&unique_oid))
+	    {
+	      /* more than one OID has been found */
+	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key_dbvalue,
+						&unique_oid, &class_oid, &btid,
+						NULL);
+	    }
 	  goto error_exit;
 	}
       else
@@ -10882,6 +10891,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 
   DB_MAKE_NULL (&dbvalue);
   OID_SET_NULL (unique_oid_p);
+  OID_SET_NULL (&unique_oid);
 
   if (BTREE_IS_MULTI_ROW_OP (op_type))
     {
@@ -11029,6 +11039,13 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 	}
       else if (r == BTREE_ERROR_OCCURRED)
 	{
+	  if (!OID_ISNULL (&unique_oid))
+	    {
+	      /* more than one OID has been found */
+	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key_dbvalue,
+						&unique_oid, &class_oid, &btid,
+						NULL);
+	    }
 	  goto error_exit;
 	}
       else
