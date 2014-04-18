@@ -2722,7 +2722,8 @@ us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name,
 		  wait_time = 0;
 		  do
 		    {
-		      if (ha_is_registered (args, true) == false)
+		      if (ha_is_registered (args, HB_PTYPE_COPYLOGDB) ==
+			  false)
 			{
 			  break;
 			}
@@ -2937,7 +2938,8 @@ us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name,
 		  wait_time = 0;
 		  do
 		    {
-		      if (ha_is_registered (args, false) == false)
+		      if (ha_is_registered (args, HB_PTYPE_APPLYLOGDB) ==
+			  false)
 			{
 			  break;
 			}
