@@ -42,14 +42,14 @@ $set 1 MSGCAT_SET_GENERAL
 17 选项:
 
 $set 4 MSGCAT_SET_PARAMETER
-2 %s 不是一个目录.  在 "." 内创建 %s .
+2 %1$s 不是一个目录.  在 "." 内创建 %2$s .
 3 无法打开 %1$s.  配置文件没有被创建.
-4 无法将行 %d 写入配置文件 %s.
-6 无法访问系统配置文件 "%s": %s
+4 无法将行 %1$d 写入配置文件 %2$s.
+6 无法访问系统配置文件 "%1$s": %2$s
 7 HOME 没有被设置
 8 必选参数 "%1$s" 没有值.
-9 无法打开配置文件 "%s": %s
-10 在第 %d 行的'%s' 参数在文件中 '%s' : 
+9 无法打开配置文件 "%1$s": %2$s
+10 在文件 '%3$s' 第 %2$d 行的 '%1$s' 参数 : 
 11 环境变量 %1$s:
 12 未被识别的关键词.
 13 参数值与参数类型不匹配.
@@ -59,10 +59,10 @@ $set 4 MSGCAT_SET_PARAMETER
 17 UNIX 错误: %1$s
 18 没有可用的信息.
 19 数值越界. 重设到默认值.
-20 关键字 = '%s'    值 = %d    默认值 = %d\n
-21 关键字 = '%s'    值 = %f    默认值 = %f\n
+20 关键字 = '%1$s'    值 = %2$d    默认值 = %3$d\n
+21 关键字 = '%1$s'    值 = %2$f    默认值 = %3$f\n
 22 废弃的参数
-23 '%s' 和 '%s' 参数不能一起使用.\n
+23 '%1$s' 和 '%2$s' 参数不能一起使用.\n
 31 参数 '%1$s':
 
 $set 5 MSGCAT_SET_ERROR
@@ -357,7 +357,7 @@ $set 5 MSGCAT_SET_ERROR
 289 子类 "%1$s" 无法从类 "%3$s" 继承方法 "%2$s". 因为已经有一个属性在使用那个名字.
 290 子类 "%1$s" 无法从类 "%3$s" 继承属性 "%2$s". 因为已经有一个方法在使用那个名字.
 291 "%1$s" 在类 "%2$s" 被定义为一个属性, 在类 "%3$s" 中为一个方法.
-292 No populate specification with index "%1$s".
+292 未填充规范索引 "%1$s".
 293 操作在这种类类型上不被允许.
 294 未定义的环境变量 "%1$s" 在方法文件中被引用.
 295 无法修改类 "%1$s". 系统目录空间不足. 要回收空间, 用compactdb工具压缩数据库.
@@ -395,7 +395,7 @@ $set 5 MSGCAT_SET_ERROR
 327 不能创建 NULL OID MOP.
 328 在 workspace 中遇到没有类的实例.
 329 Object list link 没有分配在workspace中.
-330 Workspace pin violation.
+330 违背 Workspace pin 的约束规则.
 331 无法从操作系统申请workspace块, 虚拟内存耗尽. 取消事务.
 332 已超过了原来期望的workspace的大小. 会自动扩展
 333 在 workspace 存储申请时内存耗尽. 取消事务.
@@ -753,8 +753,8 @@ $ LOADDB
 684 方法返回用户定义的错误码 %1$d.
 685 类 "%1$s" 是无效的.
 686 通知: 事件处理程序已经重启.
-687 不允许转换 (%s *) 到 (%s *).
-688 下标超出范围. 尝试访问元素 %lld. Collection 大小 = %lld.
+687 不允许将 (%1$s *) 转换到 (%2$s *).
+688 下标超出范围. 尝试访问下标为 %1$lld 元素. Collection 大小 = %2$lld.
 689 内部错误. 迭代器包含已损坏的状态.
 690 尝试对一个未初始化的odb_Ref<>的实例解除引用.
 691 尝试使用一个无效的迭代器.
@@ -785,7 +785,7 @@ $ LOADDB
 716 非空约束在虚类或代理类上不被允许.
 717 唯一性约束在虚类或代理类上不被允许.
 718 无效的 gadget.
-719 属性的数目(%d) 和值的数目(%d) 不相等.
+719 属性的数目(%1$d) 和值的数目(%2$d) 不相等.
 720 无法用一个gadget插入到一个虚或代理类.
 721 插入的查询结果多于一行.
 722 非空约束属性数目错误.
@@ -818,8 +818,8 @@ $ LOADDB
 749 获取到的实例数目不匹配: 期望 %1$d , 接收到 %2$d.
 750 获取到的实例数目不匹配: 期望 %1$d , 接收到 %2$d.
 751 新实例的OID在 BEFORE INSERT 触发器中不可用.
-752 在恢复备份单元时失败，unit_num %1$d.
-753 在恢复备份单元时失败，unit_num %d, pageid %d 超过了总页个数 %d 对于 volid %d.
+752 从备份中恢复卷的第 %1$d 部分时失败.
+753 从备份中恢复卷的第 %1$d 部分时失败. pageid %2$d 超过了 volid 为 %4$d 的卷的总页数 %3$d.
 754 OO 代理实例有非字符串类型的键或null键.
 755 %1$s 无法在单机模式执行.
 756 指定的字符串缓冲区太小而不能用来编码这个对象.
@@ -833,9 +833,9 @@ $ LOADDB
 764 内部错误在将对象编码到internal vobj形式时.
 765 输出对象参数有一个NULL地址.
 766 解码对象时内部错误.
-767 无法创建一个级别为 %d 的备份，需要先创建一个级别为 %d 的备份.
+767 无法创建一个级别为 %1$d 的备份，需要先创建一个级别为 %2$d 的备份.
 768 本地数据库 "%1$s" 在这个会话中已经被访问, 不允许修改或删除.
-769 属性 "%s" 或类 "%s" 不是一个有效的类或共享属性.
+769 类 "%2$s" 的属性 "%1$s" 不是一个有效的类属性或共享属性.
 770 没有表函数.
 771 无效的参数对于函数.
 772 db_serial 类没有找到.
@@ -844,7 +844,7 @@ $ LOADDB
 775 下一个值超过了最大(最小)值.
 776 无法获取序列对象.
 777 无法更新序列对象.
-778 无法创建符号链接 "%s" 到文件 "%s".
+778 无法创建链接到文件 "%2$s" 的符号链接 "%1$s".
 779 范围超过限制. 年数必须在1和9999之间 .
 780 内部系统失败: 无法获取系统时间.
 781 格式字符串太长. 必须小于16K.
@@ -902,30 +902,30 @@ $ LOADDB
 833 索引名 "%1$s" 有歧义. 指明索引的类名.
 834 在给to_number()的源字符串 "%1$s" 和格式字符串之间 "%2$s" 存在一些匹配不一致.
 835 未定义的统计项目.
-836 LATCH ON PAGE(%d|%d) TIMEDOUT
+836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
 837 无法删除拥有数据库对象(类/触发器/序列 等等)的用户. 
 838 无法同时打开多于 %1$d index scans.
 839 "%1$s": 未知的系统参数或错误的值.
 840 无法改变系统参数 "%1$s".
 841 请求的操作只有sole client(transaction)才能执行.
 842 无法缓存对象 %1$d|%2$d|%3$d 的锁.
-843 错误的参数在 %s, 一个 %s 被传递.
-844 未知的隔离状态(%d) 被发现. 事务的索引是 %d.
-845 无效的对象类型(%d) 被找到. 可锁的对象为 %d|%d|%d.
-846 %s of tran(%d) 在对象(%d|%d|%d) 的持有者列表中没有被找到.
-847 %s 在 %s(%d|%d|%d) 没有被找到， 在事务(%d) hold list(cnt=%d)中.
-848 %s 在对象 (%d|%d|%d) 中没有找到 i你事务(%d) non2pl 列表中.
+843 参数 %1$s 的值错误, 所传入的错误值是 %2$s.
+844 未知的隔离状态(%1$d). 所对应的事务索引号是 %2$d.
+845 无效的对象类型(%1$d). 所对应的可加锁的对象为 %2$d|%3$d|%4$d.
+846 在对象(%3$d|%4$d|%5$d) 的持有者列表中没有找到事务(%2$d) 的 %1$s.
+847 在事务(%6$d) 所持有对象的列表中 (列表中的数量为 %7$d), 没有找到 %2$s(%3$d|%4$d|%5$d) 上的 %1$s.
+848 在非两阶段提交事务(%5$d)的列表中，没有找到对象 (%2$d|%3$d|%4$d) 上的 %1$s.
 849 尝试取消事务(%1$d)两次.
-850 事务(%d) 既不是对象(%d|%d|%d)锁的持有者也不是等待者.
+850 事务(%1$d) 既不是对象(%2$d|%3$d|%4$d)锁的持有者也不是等待者.
 851 分配锁资源 (%1$s) 失败. 
 852 总的 holders 模式(%1$d) 中的一个空锁 holder 列表不是 NULL_LOCK.
-853 对于对象 (%d|%d|%d), 事务(%d) 的非提交读出现故障锁定(%s).
+853 对于对象 (%1$d|%2$d|%3$d), 事务(%4$d) 的非提交读出现故障锁定(%5$s).
 854 警告: 没有锁的持有者, 但存在锁的等待者. 参阅 %1$s.
 855 警告: 两个或更多的线程在为一个事务(%1$d)而等待锁.
-856 警告: Strange lockwait 状态(%d|%d), 线程(%d|%d)和事务(%d).
+856 警告: 异常的锁等待状态(%1$d|%2$d), 线程(%3$d|%4$d)和事务(%5$d).
 857 发生一个I/O错误在截断卷 "%2$s" 的页 %1$d 时 .
 858 卷 "%1$s" 在服务端重启后是未知的.
-859 LATCH ON PAGE(%d|%d) ABORTED
+859 LATCH ON PAGE(%1$d|%2$d) ABORTED
 860 无法使当前事务成为全局事务的一部分因为器状态是 '%1$s'.
 861 无法以事务标识符 %1$d 提交当前事务, 因为事务不是全局事务的组成部分.
 862 无法设置标识符为 %1$d 的全局事务的用户信息, 因为它的状态是 '%2$s'.
@@ -947,22 +947,22 @@ $ LOADDB
 878 无效的数据库位置文件, '%1$s'.
 879 无法获取许可: '%1$s'.
 880 无法改变许可 '%1$s'.
-881 无法获取锁文件 '%s(FILE ID:%d)'.
+881 无法获取锁文件 '%1$s(FILE ID:%2$d)'.
 882 无法释放锁文件 'FILE ID:%1$d'.
 883 获取 '%1$s' 文件状态失败.
 884 Volext-pathname '%1$s' 不允许写.
-885 移动 '%s' 到 '%s' 失败. 使用相同的设备(磁盘).
+885 从 '%1$s' 移动到 '%2$s' 失败. 使用相同的设备(磁盘).
 886 "%1$s" 违背了唯一性约束.
 887 存储过程'%1$s' 已经存在.
-888 参数数目无效. 期望: %d, 实际: %d
+888 参数数目无效. 期望: %1$d, 实际: %2$d
 889 存储过程执行错误: %1$s
 890 Partition失败.
 891 合适的partition不存在.
 892 主键 "%2$s" 对于类 "%1$s" 已经被定义.
 893 属性 '%1$s', 主键的成员, 无法被删除.
 894 存储过程/函数 '%1$s' 不存在.
-895 无效的存储过程类型: '%s' 是 '%s'.
-896 压缩失败. Zip Method: %d (%s), Zip Level: %d (%s)
+895 无效的存储过程类型: '%1$s' 是 '%2$s'.
+896 压缩失败. 压缩方法: %1$d (%2$s), 压缩等级: %3$d (%4$s)
 897 解压失败.
 898 复制错误: "%1$s"
 899 无效的partition请求.
@@ -986,14 +986,14 @@ $ LOADDB
 917 活动日志卷已经存在.
 918 被外键引用的类 '%1$s' 不存在.
 919 被外键引用的类 '%1$s' 没有主键.
-920 外键 '%s' 不包含主键成员 '%s'.
-921 外键成员 '%s' 的domain不同于主键成员 '%s'.
-922 外键 '%s' 的约束是无效的, 基于值 '%s'.
-923 主键 '%s' 被外键 '%s' 所引用, 不支持被删除.
+920 外键 '%1$s' 不包含主键成员 '%2$s'.
+921 外键成员 '%1$s' 的domain不同于主键成员 '%2$s'.
+922 外键 '%1$s' 的约束是无效的, 基于值 '%2$s'.
+923 主键 '%1$s' 被外键 '%2$s' 所引用, 不支持被删除.
 924 Update/Delete 操作被外键 '%1$s' 限制.
 925 对外键 '%1$s' 申请锁失败.
 926 实例有外键 '%1$s' 无法被删除.
-927 外键 '%s' 的键数目不同于主键 '%s'.
+927 外键 '%1$s' 的键数目不同于主键 '%2$s'.
 928 只有系统（用户不可以）指定一个属性 '%1$s' 被外键的 'ON CACHE OBJECT' 创建.
 929 在虚类中外键无法被定义.
 930 只有在移除外键约束后才可以删除由外键的'ON CACHE OBJECT'创建的属性'%1$s'.
@@ -1043,8 +1043,8 @@ $ LOADDB
 974 归档日志"%1$s" 被创建，用来归档从 %2$lld 页到 %3$lld 页.
 975 当前replication的版本不允许用一个单独的可能违背唯一性约束的UPDATE语句来改变多行.
 976 内部错误: 表大小溢出 (分配的大小: %1$d, 访问的大小: %2$d) 在文件表页 %3$d|%4$d(卷 "%5$s")
-977 Checkpoint 开始 (前一个检查点页id: %lld, 前一个redo页id: %lld).
-978 Checkpoint 结束 (检查点页id: %lld, 检查点redo页id: %lld).
+977 Checkpoint 开始 (前一个检查点页id: %1$lld, 前一个redo页id: %2$lld).
+978 Checkpoint 结束 (检查点页id: %1$lld, 检查点redo页id: %2$lld).
 979 CONNECT BY loop 在用户数据中.
 980 一个线程在 %1$s 中等待超过了 %2$d msec.
 981 事务 %1$d 已经达到了监视统计信息的阈值%2$s.
@@ -1090,17 +1090,17 @@ $ LOADDB
 1021 一个死锁环路被检测到. %1$s.
 1022 索引的前缀长度值 "%1$d" 是非法的.
 1023 HA的保留错误代码.
-1024 log writer: failed to get log page(s) starting from page id %1$lld.
-1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
-1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
+1024 log writer: 获取从 id 为 %1$lld 开始的日志页失败.
+1025 HA delay info: 同步操作的延迟等待时间 (%1$d 秒) 已经超过了限制  (%2$d 秒).
+1026 HA delay info: 同步操作的延迟等待时间 (%1$d 秒) 被降低到可接受的水平 (%2$d secs) 之下.
 1027 log applier: 从 '%1$s' 到 '%2$s' 改变apply状态 失败.
 1028 log applier: 在存档日志中遇到意外的EOF记录. LSA: %1$lld|%2$d.
 1029 log applier: 非法复制日志 页/偏移. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
 1030 log applier: 非法复制记录. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s. 
-1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
-1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
-1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d.  
+1031 log applier: 应用 schema 日志失败. class: "%1$s", schema: "%2$s", server error: %3$d, %4$s. 
+1032 log applier: 应用 insert 日志失败. class: "%1$s", key: "%2$s", server error: %3$d.  
+1033 log applier: 应用 update 日志失败. class: "%1$s", key: "%2$s", server error: %3$d.  
+1034 log applier: 应用 delete 日志失败. class: "%1$s", key: "%2$s", server error: %3$d.  
 1035 log applier: log applier 的内存大小(%1$d MB) 大于 最大内存大小(%2$d MB) 或已经增长了2倍以上 (%3$d MB). required LSA: %4$lld|%5$d. last committed LSA: %6$lld|%7$d.
 1036 log applier: log applier 通过信号关闭自己.
 1037 log writer: log writer 通过信号关闭自己.
@@ -1143,7 +1143,7 @@ $ LOADDB
 1074 不能读取访问列表文件(%1$s).
 1075 降序索引扫描被终止 因为低优先级在 B+tree 索引标识符: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
 1076 不能加载系统参数.
-1077 '%s' 参数 在第 %d 行的文件 '%s' 中: 未知参数
+1077 在文件 '%3$s' 的第 %2$d 行中的 '%1$s' 参数 : 未知参数
 1078 偏移量为 %1$d 的字符在当前字符集是非法的.
 1079 数据库(%1$s)的字符集 与 服务器设置(%2$s)不匹配.
 1080 用作过滤的谓词字符串的最大长度是 %1$d.
@@ -1164,19 +1164,19 @@ $ LOADDB
 1095 用户名太长.
 1096 当分区表引用一个外键时 不允许修改分区表结构.
 1097 列 '%1$s' 不能同时制定主键约束和 NULL缺省值.
-1098 区域中的语言 '%s' 在字符集 '%s' 中无效.
+1098 语言 '%1$s' 的区域在字符集 '%2$s' 中不可用.
 1099 配置 DDL 语句是不支持的 (block_ddl_statement=yes).\n SQL 语句: %1$s
 1100 没有where子句的语句在配置中设为不允许 (block_nowhere_statement=yes).
 1101 未使用的错误号.
 1102 未知系统参数或错误的值.
 1103 不能改变系统参数.
-1104 慢查询 (%d 毫秒)\n%s
+1104 慢查询 (%1$d 毫秒)\n%2$s
 1105 内部错误：部分无法刷新脏对象.
 1106 源表中的多行与目标表中的相同行匹配.
 1107 非法的NTILE桶大小. 桶大小应该大于0，小于等于 2,147,483,647.
 1108 非法的WIDTH_BUCKET桶大小. 桶大小应该大于0，小于等于 2,147,483,647.
 1109 分区定义数非法.
-1110 B树叶子节点页空间不足. (key len: %d)\n%s
+1110 B树叶子节点页空间不足. (key len: %1$d)\n%2$s
 1111 结果值被截断, 因为精度(%1$d) 小于它的长度(%2$d).
 1112 字符不能从 '%1$s' 转化为 '%2$s'.
 1113 元素索引越界.
@@ -1198,26 +1198,26 @@ $ LOADDB
 1129 日志恢复结束.
 1130 事务被终止, 因为事务锁数超过 %1$d.
 1131 内部错误: 卷 "%2$s" 的页 %1$d 可能被破坏.\n%3$s
-1132 Encryption library failure: %1$s
-1133 Copylogdb for %1$s already exists.
-1134 Applylogdb for %1$s already exists.
-1135 A previous link of B+tree(%1$s) is corrupted.: vpid = (%2$d, %3$d)
-1136 A previous link of B+tree(%1$s) is repaired.: vpid = (%2$d, %3$d)
-1137 The query has been rejected due to attempt to exceed the maximum allowed nesting level(%1$d).
-1138 Handshake error (peer host %1$s): incompatible interruptibility. (client: %2$s, server: %3$s)
-1139 Handshake error (peer host %1$s): incompatible read/write mode. (client: %2$s, server: %3$s)
-1140 Handshake error (peer host %1$s): HA replication delayed.
-1141 Handshake error (peer host %1$s): replica-only client to non-replica server.
-1142 Handshake error (peer host %1$s): unidentified server version.
-1143 Handshake error (peer host %1$s): remote access to server not allowed.
-1144 Timed out attempting to connect to %1$s. (timeout: %2$d sec(s))
-1145 To change the owner of a system class is not allowed.
-1146 volume identifier %1$d does not exist.
-1147 The size of XASL stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
-1148 The size of filter predicate stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
-1149 Cannot find the page %1$d of volume %2$d.
-1150 Context requires compatible collations.
-1151 The page %1$d of volume %2$d is not a slotted page.
+1132 加密库错误: %1$s
+1133 Copylogdb %1$s 已经存在.
+1134 Applylogdb %1$s 已经存在.
+1135 B+tree(%1$s)的前一个链接已损坏.: vpid = (%2$d, %3$d)
+1136 B+tree(%1$s)的前一个链接已修复.: vpid = (%2$d, %3$d)
+1137 由于超过了最大允许嵌套级别 (%1$d), 该查询被拒绝.
+1138 握手错误 (peer host %1$s): 可中断不兼容. (client: %2$s, server: %3$s)
+1139 握手错误 (peer host %1$s): 读写模式不兼容. (client: %2$s, server: %3$s)
+1140 握手错误 (peer host %1$s): HA replication 延迟.
+1141 握手错误 (peer host %1$s): 从 "replica-only" 的客户端到 "non-replica" 的服务端.
+1142 握手错误 (peer host %1$s): 未识别的服务器版本.
+1143 握手错误 (peer host %1$s): 服务器不允许远程访问.
+1144 尝试链接到 "%1$s" 时超时. (timeout: %2$d sec(s))
+1145 不允许改变系统类的所有者.
+1146 卷标识符 %1$d 不存在.
+1147 XASL 流的缓存大小 (%1$d) 超过了最大值 (%2$d). 因为所有的缓存条目都在使用, 因此尽管没有淘汰掉现有的任何条目，但是新的条目还是添加成功了.
+1148 过滤谓词流缓存的大小 (%1$d) 超过了最大值 (%2$d). 因为所有的缓存条目都在使用, 因此尽管没有淘汰掉现有的任何条目，但是新的条目还是添加成功了.
+1149 无法在卷 %2$d 中找到页 %1$d.
+1150 上下文需要兼容的排序规则.
+1151 卷 %2$d 的页 %1$d 不是一个 slotted 页.
 1152 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1230,33 +1230,33 @@ $set 6 MSGCAT_SET_INTERNAL
 7 你想退出吗? 1/0
 8 未知的文件.
 9 没有可用信息; 这个消息取代原来不正确的消息.
-10 er_init: *** 不正确的 exit_ask 值 = %d; 将采用 %s 代替. ***\n
+10 er_init: *** 不正确的 exit_ask 值 = %1$d; 将采用 %2$s 代替. ***\n
 11 er_start: *** 警告: 无法打开消息日志 "%1$s"; 将采用 stderr 来代替. ***\n
 12 er_study_fmt: 对于错误码 %1$d 可疑的消息.
 13 er_estimate_size: 未知的转换码 (%1$d).
 14 \n\n*** Message日志回绕. 从文件头开始继续记录message. ***\n\n
-15 \nTime: %s - %s *** %s CODE = %d, Tran = %d%s\n%s\n
-16 CUBRID (pid: %d) *** %s *** %s CODE = %d, Tran = %d %s
-17 \nTime: %s - %s *** 文件 %s, 行 %d %s CODE = %d Tran = %d%s\n%s\n
-18 CUBRID (pid: %d) *** %s *** 文件 %s, 行 %d, %s CODE = %d, Tran = %d. %s
+15 \nTime: %1$s - %2$s *** %3$s CODE = %4$d, Tran = %5$d%6$s\n%7$s\n
+16 CUBRID (pid: %1$d) *** %2$s *** %3$s CODE = %4$d, Tran = %5$d %6$s
+17 \nTime: %1$s - %2$s *** 文件 %3$s, 行 %4$d %5$s CODE = %6$d Tran = %7$d%8$s\n%9$s\n
+18 CUBRID (pid: %1$d) *** %2$s *** 文件 %3$s, 行 %4$d, %5$s CODE = %6$d, Tran = %7$d. %8$s
 19 \n*** 前面的错误消息是最后一个 ***\n\n
-20 \nTime: %s - DEBUG *** 文件 %s, 行 %d\n
+20 \nTime: %1$s - DEBUG *** 文件 %2$s, 行 %3$d\n
 21 Mail -s "服务已经被停止"
-22 --->>>\n %s 由于你的请求已经被停止，当以下error被设置时:\n errid = %d, %s\nUser: %s, pid: %d, host: %s, time: %s<<<---\n 
-23 %s 已经以 errid = %d 而停止. 用户: %s, pid: %d
+22 --->>>\n %1$s 由于你的请求已经被停止，以下error被设置:\n errid = %2$d, %3$s\nUser: %4$s, pid: %5$d, host: %6$s, time: %7$s<<<---\n 
+23 %1$s 已经停止. 错误码: %2$d，用户: %3$s, pid: %4$d
 24 er_init: 无法安装事件处理程序 "%1$s"\n
 
 $set 7 MSGCAT_SET_PARSER_SYNTAX
-1 请在 '%s' 检测句法, 期望 %s.
-2 请在 '%s' 检测句法, 期望 %s 在 %s 之中.
+1 请在 '%1$s' 处检测句法, 期望 %2$s.
+2 请在 '%1$s' 处检测句法, 期望 %2$s 在 %3$s 之中.
 3 请检测符号 '%1$s' 的正确性.
 4 'read uncommitted schema' 是不可接受的, 使用 \n'read committed schema' 来代替.
 5 最大字符串长度是 16383.
-6 %s 超过了限制 %s.
+6 %1$s 超过了限制 %2$s.
 7 最大比特字符串长度是 %1$d 比特.
 8 无法在join的条件语句中使用子查询.
 9 无法指定属性 "(%1$s)" 在更新grant/revoke的私有分句.
-10 关键字 '%s' 的使用无效, 期望 %s.
+10 关键字 '%1$s' 的使用无效, 期望 %2$s.
 11 符号长度太长.
 12 无效的数据类型
 13 无效的 attach 语句\n  attach_statement: ATTACH unsigned_integer
@@ -1357,8 +1357,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 108 , expecting
 109 unexpected
 110 END OF STATEMENT
-111 In line %d, column %d before '%c%s'\n
-112 In line %d, column %d before %s\n
+111 In line %1$d, column %2$d before '%3$c%4$s'\n
+112 In line %1$d, column %2$d before %3$s\n
 113 before ' %1$s'\n
 114 before END OF STATEMENT\n
 115 集合名无效\n  set_names: SET NAMES charset [COLLATE collation]\n
@@ -1367,46 +1367,46 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 118 非法使用排序规则\n  COLLATION ( expression )\n
 119 非法使用clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
 120 非法使用index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
-121 Incorrect usage of UNION and ORDER BY
-122 Expecting ON. Outer Joins require join condition.
+121 不正确的使用 UNION 和 ORDER BY
+122 期待 ON. 外连接需要连接条件.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
 2 函数 %1$s 未定义.
 3 无法在数据库中找到ldb '%1$s'.
-4 列的数目, %d, 在左查询不匹配\n列的数目, %d, 在右查询.
-5 '%s'和'%s'不是union相容的.
+4 在左查询中的列数目 %1$d 不匹配\n在右查询中的列数目 %2$d.
+5 '%1$s'和'%2$s'不是union相容的.
 6 %1$s 没有定义.
 7 %1$s 的域不能是一个虚类.
 8 %1$s 的域不能是一个代理虚类.
 9 %1$s 的域不能是一个类.
-10 %s 不是 %s 的一个属性.
-11 %s 不能从这个类改变.\n它继承 %s.
+10 %1$s 不是 %2$s 的一个属性.
+11 %1$s 不能从这个类改变.\n它继承 %2$s.
 12 类 %1$s 不存在.
-13 %s 不是一个 %s.
-14 %s 不是 %s 的方法或属性.
+13 %1$s 不是一个 %2$s.
+14 %1$s 不是 %2$s 的方法或属性.
 15 %1$s 没有并且必须没有任何查询说明.
 16 %1$s 在数据库中没有被定义.
-17 %s 不是 %s 的父类.
-18 类 %s 继承于非类 %s.
-19 虚类 %s 继承于非虚类 %s.
-20 代理虚类 %s 继承于非代理虚类 %s.
-21 %s 已经是 %s 的父类.
+17 %1$s 不是 %2$s 的父类.
+18 类 %1$s 继承于非类 %2$s.
+19 虚类 %1$s 继承于非虚类 %2$s.
+20 代理虚类 %1$s 继承于非代理虚类 %2$s.
+21 %1$s 已经是 %2$s 的父类.
 22 %1$s 可能不是它自己的父类.
-23 %s 已经是 %s 的子类.
+23 %1$s 已经是 %2$s 的子类.
 24 %1$s 不是单独的值. 暴露在集合查询中的属性必须出现在group by子句.
-25 列的数目(%d) 与 into_names(%d) 不相等.
+25 列的数目(%1$d) 与 into_names(%2$d) 不相等.
 26 类 %1$s 已经存在.
-27 父类 %s 在 '%s' 不存在.
+27 父类 %1$s 在 '%2$s' 不存在.
 28 期望一个SUBCLASS子句来使INHERIT子句 '%1$s' 有意义.
-29 INHERIT 子句 '%s' 引用了一个不在SUBCLASS 子句 '%s' 的类.
+29 INHERIT 子句 '%1$s' 引用了一个不在SUBCLASS 子句 '%2$s' 的类.
 30 类不能有查询说明.
 31 %1$s 不是一个已经注册的 ldb.
 32 代理继承者不允许拥有它自己的object_id 子句.  它不能重载它继承的object_id属性.
 33 代理虚类有多于一个的查询描述.
-34 属性的数目, %d, 不匹配列的数目, \n%d, 在查询描述中.
+34 在查询描述中，属性的数目 %1$d 与列的数目 %2$d 不匹配. 
 35 对于 %1$s 缺少期望的属性名.
-36 属性 '%s' 与查询详述的列 '%s' 不一致.
+36 属性 '%1$s' 与查询描述的列 '%2$s' 不兼容.
 37 %1$s 不是一个类.
 38 索引不允许在虚类上创建.
 39 索引只能在一个单独的属性上被创建.
@@ -1415,7 +1415,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 42 你不能从 derived table 中删除.
 43 用户 %1$s 没有在数据库中.
 44 Update语句中不能使用聚合函数.
-45 在每一个类中属性名必须唯一. 属性名 '%s' 在类 '%s' 被多于一次的指定.
+45 在每一个类中属性名必须唯一. 属性名 '%1$s' 在类 '%2$s' 中被多次指定.
 46  %1$s.%2$s 有多个指派.
 47 sort spec 中的数字不是整数.
 48 在sort spec中 %1$d 超出了范围.
@@ -1424,8 +1424,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 51 对于列 %1$s 排序命令之间有冲突.
 52 在sort spec中 %1$s 不是一个数字, 名称或路径表达式.
 53 插入表达式只能出现在插入语句中.
-54 属性的数目(%d) 和 select columns(%d) 不一致.
-55 属性的数目(%d) 和值(%d) 不一致.
+54 属性的数目(%1$d) 和 select columns(%2$d) 不一致.
+55 属性的数目(%1$d) 和值(%2$d) 不一致.
 56 在数据类型 %1$s 数据溢出.
 57 不一致的数据类型在属性 %1$s.
 58 %1$s\n 不是一个从单独类来的SELECT.
@@ -1434,19 +1434,19 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 61 多于一个隔离级别子句.
 62 多于一个超时语句.
 63 隔离级别没有被输入.
-64 BETWEEN 操作符没有被定义在类型 %s, %s 和 %s 上.
-65 '%s' 操作符没有被定义在类型 %s 和 %s 上.
+64 BETWEEN 操作符没有被定义在类型 %1$s, %2$s 和 %3$s 上.
+65 '%1$s' 操作符没有被定义在类型 %2$s 和 %3$s 上.
 66 函数必须有参数: %1$s.
-67 不相容的操作数: %s(%s).
+67 不相容的操作数: %1$s(%2$s).
 68 聚合函数必须有1个参数: %1$s.
 69 尝试除零.
-70 强行转换 %s 到类型 %s 时数据类型溢出.
-71 无法强行转换 %s 到类型 %s.
+70 强行从 %1$s 转换到类型 %2$s 时数据类型溢出.
+71 无法强行从 %1$s 转换到类型 %2$s.
 72 '%1$s' 的类型必须为SET, MULTISET, 或 SEQUENCE.
 73 '%1$s' 应当正好有一个 set 元素类型.
 74 %1$s 有多于一个的派生列名.
 75 %1$s 没有派生出来的列名.
-76 %s 没有一个相对应的列数目(%d) 和列名(%d).
+76 %1$s 没有一个相对应的列数目(%2$d) 和列名(%3$d).
 77 在 %1$s 上没有属性.
 78 期望单独的表在 %1$s.
 79 名字 %1$s 是不明确的.
@@ -1456,35 +1456,35 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 83 Class instance %1$s 引用一个 derived table 名是不允许的.
 84 Path correlation (%1$s) 在 inner path term 之外出现.
 85 引用到的 %1$s 是不明确的.
-86 %s 的类没有属性 %s.
-87 类 (%s) 不是都有属性 %s 的.
-88 类 (%s) 没有属性 %s.
-89 %s 是一个 %s 类型, 不是一个对象类型.
-90 Selector {%s} 没有被解析为一个 exposed class 描述, 在所需的上下文 (%s).
-91 Selector {%s} 引用到了一个 non-class 描述 (%s).
+86 %1$s 的类没有属性 %2$s.
+87 类 (%1$s) 不是都有属性 %2$s 的.
+88 类 (%1$s) 没有属性 %2$s.
+89 %1$s 是一个 %2$s 类型, 不是一个对象类型.
+90 Selector {%1$s} 在所需的上下文 (%2$s)中，没有被解析为一个 exposed class 描述.
+91 Selector {%1$s} 引用到了一个 non-class 描述 (%2$s).
 92 Selector {%1$s} 不能作为定义它的表达式的根.
-93 Selector {%s} 被循环地定义, 就 selector {%s} 而言.
-94 Selector {%s} 在 %s 被重定义.
-95 %s (域对象) 没有属性 %s.
+93 Selector {%1$s} 在 selector {%2$s} 方面，被循环地定义.
+94 Selector {%1$s} 在 %2$s 被重定义.
+95 %1$s (域对象) 没有属性 %2$s.
 96 %1$s 在EXCEPT 说明中不是一个子类.
 97 ALL ... EXCEPT 排除类的EVERYTHING.
-98 '%s' 与其他 path selector '%s' 或 path root '%s' 的使用不一致.
+98 '%1$s' 与其他 path selector '%2$s' 或 path root '%3$s' 的使用不一致.
 99 未定义的参数.
 100 参数不是一个对象.
-101 %s 不是一个 %s 的属性或类方法.
+101 %1$s 不是 %2$s 的属性或类方法.
 102 查询描述必须没有into子句.
 103 代理查询描述必须没有聚集表达式,\n没有 group-by子句, 没有having子句.
 104 代理查询描述必须没有 DISTINCT 或 UNIQUE 关键字在 select 列表.
 105 代理查询描述必须为一个简单的 SELECT 语句.
 106 代理查询描述所引用的只能是本地数据库的一个表或类.
-107 用户 '%s' 不是 %s 的拥有者.
-108 代理 '%s' 已经被定义在 class '%s' of ldb '%s'.
+107 用户 '%1$s' 不是 %2$s 的拥有者.
+108 代理 '%1$s' 已经被定义在 ldb '%3$s' 的类 '%2$s' 中.
 109 CUBRID 不支持代理有在异构集合中的对象.
 110 Where子句必须是一个合乎逻辑的类型表达式.
 111 Like escape 子句必须是一个字符串或host variable.
-112 无效的精度 (%d) 和尺度 (%d) 组合.
+112 无效的精度 (%1$d) 和长度 (%2$d) 组合.
 113 给定的精度 %1$d 无效; 应当大于 %2$d 并且不大于 %3$d.
-114 精度 (%d) 太大. 最大精度是 %d.
+114 精度 (%1$d) 太大. 最大精度是 %2$d.
 115 方法 %1$s 必须有一个返回类型.
 116 提供给方法的参数数目不等于方法定义时的数目.
 117 方法调用必须有一个目标.
@@ -1506,14 +1506,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 133 Proxy object_id 属性 '%1$s' 必须映射到一个查询描述列表达式.
 134 %1$s 约束被忽略.
 135 在这个内容中约束声明不被允许.
-136 不支持转换 %s 到类型 %s .
+136 不支持从 %1$s 转换到类型 %2$s.
 137 %1$s 不是一个有效的比特字符串.
-138 '%s' 操作没有被定义在类型 %s 上.
-139 '%s' 操作没有被定义在类型 %s, %s, 和 %s.
+138 '%1$s' 操作不能被定义在类型 %2$s 上.
+139 '%1$s' 操作不能被定义在带有 %3$s 和 %4$s 的类型 %2$s 上.
 140 操作符 '%1$s' 的操作数不能都是动态host variable.
-141 太多的参数对于通用函数 %s.\n对于通用函数只有 %d 个参数被允许.
-142 Selector {%s} 类 '%s' 不是 '%s'的子类.
-143 无法提取 '%s' domain从类型 %s.
+141 太多的参数用于通用函数 %1$s.\n对于通用函数只有 %2$d 个参数被允许.
+142 Selector {%1$s} 类 '%2$s' 不是 '%3$s'的子类.
+143 不能从类型 %2$s 中提取 '%1$s' 字段.
 144 查询描述不能有一个ORDER BY子句.
 145 Case 条件必须是一个逻辑类型表达式.
 146 表达式应为 %1$s 类型.
@@ -1532,7 +1532,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 159 无法找到索引 '%1$s'.
 160 索引名 '%1$s' 引用到一个类, 但是它没有在from子语句中被指明.
 161 两个或多个子句有同样的索引名 '%1$s'. 使用合格的索引名.
-162 无效的使用 %s.\n%s 表达式无法被用于属性或相关子查询.
+162 无效的使用 %1$s.\n%2$s 表达式无法被用于属性或相关子查询.
 163 当前版本限制在 select 列表中包含 ORDERBY_NUM() 的表达式.
 164 路径表达式 '%1$s' 在 join 条件.
 165 '%1$s' 在join条件没有被定义.
@@ -1585,18 +1585,18 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 212 %1$s 不可以用作GROUP BY列
 213 '%1$s of %2$s' 不能被定义为列类型.
 214 无效的索引前缀长度值"%1$s".
-215 函数'%s'没有定义在类型 %s, %s, %s 和 %s之上.
-216 函数'%s'没有定义在类型 %s, %s 和 %s之上.
-217 函数'%s'没有定义在类型 %s 和 %s之上.
-218 函数'%s'没有定义在类型 %s之上.
-219 函数'%s'不能使用类型为%s的索引参数.
+215 函数'%1$s'没有定义在类型 %2$s, %3$s, %4$s 和 %5$s 之上.
+216 函数'%1$s'没有定义在类型 %2$s, %3$s 和 %4$s 之上.
+217 函数'%1$s'没有定义在类型 %2$s 和 %3$s 之上.
+218 函数'%1$s'没有定义在类型 %2$s 之上.
+219 函数'%1$s'不能使用类型为 %2$s 的索引参数.
 220 ALTER VIEW '%1$s' AS SELECT 语句中的视图不能有子类或者父类,请使用 ALTER VIEW CHANGE QUERY.
 221 此语句不能改变视图属性, 请使用'ALTER VIEW name AS query'.
 222 CUBRID要求ORDER BY子句的参数与GROUP_CONCAT的参数相同,或者是一个整数(位置参数).
 223 LIKE子句需要指派一个转义符, 参考配置参数'%1$s' and '%2$s'的相关文档.
 224 KEYLIMIT不能在INDEX NONE子句里使用.
 225 会话变量不能在该上下文使用.
-226 '%s'和'%s'存在索引hint冲突.
+226 索引hint 在 '%1$s' 和 '%2$s' 之间存在冲突.
 227 函数'%1$s'不能用于DEFAULT子句.
 228 不允许更新derived tables.
 229 一条语句不能同时更新表属性和实例属性.
@@ -1606,7 +1606,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 233 定义函数索引时不能使用多个函数或者嵌套函数.
 234 无效的索引指令.
 235 SHARED, DEFAULT and AUTO_INCREMENT不能相互定义.
-236 太多枚举值(%d).一个枚举类型允许的值数目上限为%d.
+236 太多枚举值(%1$d).一个枚举类型允许的值数目上限为%2$d.
 237 枚举类型包含重复值.
 238 MERGE语句的目的表不能是derived table.
 239 MERGE语句不能更改原表.
@@ -1628,16 +1628,16 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 255 '%1$s'不能用于索引的过滤表达式.
 256 GROUPBY_NUM()和 WITH ROLLUP不能在查询语句里同时使用.
 257 ON子句里引用的列 %1$s 不能被MERGE UPDATE.
-258 (%s)里的列数%d和(%s)里的列数%d不匹配.
+258 (%2$s)里的列数 %1$d 和(%4$s)里的列数 %3$d 不匹配.
 259 列表的前缀子序列不能用于函数索引表达式.
-260 列%1$s不能用于PARTITION BY 或者ORDER BY子句
+260 列%1$s不能用于PARTITION BY 或者ORDER BY子句.
 261 此查询必须用于单值计算\n(%1$s).
 262 不允许使用嵌套的分析函数.
 263 继承属性不能用作分区键.
 264 枚举元素的聚合大小超出上限.
 265 不能在源spec中使用目标表.
 266 在该上下文中不支持COLLATE.
-267 COLLATE 不能能改变字符集 (从 '%s' 到 '%s'). 应该使用 CAST.
+267 COLLATE 不能能改变字符集 (从 '%1$s' 到 '%2$s'). 应该使用 CAST.
 268 给分区值的字符集 '%1$s' 非法. 期待的字符集 '%2$s'.
 269 会话变量使用的排序规则不能与系统排序规则不同 ('%1$s').
 270 非法函数索引表达式.
@@ -1648,18 +1648,18 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 275 函数 '%1$s' 必须有 ORDER BY 字句.
 276 对于函数 '%1$s', 其参数个数与 ORDER BY 列中的参数个数不匹配.
 277 对于函数 '%1$s', the ORDER BY 字句是非法的.
-278 Only one table within a view can be updated.
-279 Multiple insert targets not allowed.
-280 '%1$s' type is vclass, drop vclass with cascade constraints is not allowed.
-281 The FOR UPDATE clause cannot be used in subqueries, unions, with GROUP BY clause, DISTINCT operator, aggregate functions.
-282 Expects %1$s in argument position %2$d.
-283 Too many arguments specified.
-284 Too few arguments, need %1$d arguments.
-285 Expects %1$s for argument %2$s.
-286 Argument %1$s is missing.
-287 Unknown argument %1$s.
-288 Cannot remove all partitions, use DROP TABLE instead.
-289 The expression including %1$s is not allowed in this context.
+278 一个视图中只允许更新一个表.
+279 不允许有多个插入目标.
+280 '%1$s' 是一个 vclass, 删除带有级联约束的 vclass 是不允许的.
+281 在一些语句中不能使用 FOR UPDATE 字句, 这些语句包括: 子查询, 联合查询, 包含 GROUP BY 字句, 包含 DISTINCT 操作, 包含聚集函数.
+282 在参数的位置 %2$d 期待 '%1$s'.
+283 指定了太多的参数.
+284 参数太少, 需要 %1$d 个参数.
+285 参数 '%2$s' 中期待 '%1$s'.
+286 缺失了参数 '%1$s'.
+287 未知参数 '%1$s'.
+288 无法删除所有分区表, 使用 DROP TABLE 代替.
+289 在此上下文的表达式中不允许包含 '%1$s'.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.
@@ -1673,7 +1673,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
 10 一个不可更新的查询不允许在 db_query_execute_oid 中被调用.
 11 事务等待锁超时.
-12 尝试以index %d 访问host variable当只有 %d 输入host variable被给定时.
+12 当只有 %2$d 个 host variable 输入被给定时，尝试以下标 %1$d 访问 host variable.
 13 未实现的转换.
 14 内部错误, 未定义的转换.
 15 '%1$s' 没有生成结果.
@@ -1692,12 +1692,12 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 28 类 %1$s 中的属性多于查询描述中的列.
 29 该版本禁止在不是聚合查询语句生成的视图上使用聚合函数.
 30 该版本禁止在不是联合查询语句生成的视图上使用聚合函数.
-31 使用于composition hierarchy的视图(%s)必须是可更新的.\n考虑到表%s,该视图是不可更新的.
+31 使用于composition hierarchy的视图(%1$s)必须是可更新的.\n考虑到表%2$s,该视图是不可更新的.
 32 没有被使用
 33 非法的构建在路径表达式 '%1$s'.
-34 路径表达式 '%s' 跨越了数据库边界到 %s, with vclass %s.
-35 路径表达式 '%s' 跨越了数据库边界从 %s, 到类 %s.
-36 %s 在 %s 上没有被授权.
+34 路径表达式 '%1$s' 跨越了数据库边界到 %2$s, with vclass %3$s.
+35 路径表达式 '%1$s' 跨越了数据库边界从 %2$s, 到类 %3$s.
+36 %1$s 在 %2$s 上没有被授权.
 37 Select 在 %1$s 上没有被授权.
 38 虚类 %1$s 不可更新
 39 %1$s 不是一个代理虚类.
@@ -1709,8 +1709,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 45 %1$s 的查询描述有一个到自己的循环引用.
 46 没有表达式被给定用以评估.
 47 对于虚类 %1$s 没有真实的类被找到.
-48 执行 '%s' 在 ldb '%s' \n返回: %s.
-49 将值 '%s' 放入属性 '%s' 返回: %s.
+48 在 ldb '%2$s' 执行 '%1$s' \n返回: %3$s.
+49 将值 '%1$s' 放入属性 '%2$s' 返回: %3$s.
 50 Ldb 名称必须不为空在 %1$s.
 51 Ldb 名称在主机必须不为空在 %1$s.
 53 主机名必须不为空在 %1$s.
@@ -1739,12 +1739,12 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 76 序列 '%1$s' 还没有被定义.
 77 只有拥有者或DBA才能修改目标序列的定义.
 78 不允许用户修改由auto increment约束创建的序列对象.
-79 无效的隔离等级: %s 结构(schema), %s 实例.
+79 无效的隔离等级: %1$s 结构(schema), %2$s 实例.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 无效的缓存 ***
 2    类 %1$s
-3 from %1$s :
+3 从 %1$s :
 4 授权对于用户 %1$s\n
 5 授权对于未定义的用户\n
 6 用户 : %1$s\n
@@ -1761,7 +1761,7 @@ $set 11 MSGCAT_SET_AUTHORIZATION
 
 $set 12 MSGCAT_SET_HELP
 1 根类
-2 %s %s\n
+2 %1$s %2$s\n
 3 父类 :\n
 4 子类 :\n
 5 属性: \n
@@ -1788,38 +1788,38 @@ $set 13 MSGCAT_SET_TRIGGER
 
 $set 14 MSGCAT_SET_LOCK
 1  \n
-2 线程 (index %3d) 属于事务 (index %3d, %s, %s@%s|%d) 已被挂起.\n
-3 线程 (index %3d) 属于事务 (index %3d, %s, %s@%s|%d) 已被恢复.\n
-4 事务 index %3d 获得 %s 锁在对象 %d|%d|%d 上.\n
-5 事务 index %3d 获得 %s 锁在页 %d|%d 上.\n
-6 事务 index %3d 转换它的锁为 %s 锁在对象 %d|%d|%d 上.\n
-7 事务 index %3d 转换 它的锁为 %s 锁在页 %d|%d 上.\n
-8 事务 index %3d 等待 %s 锁在对象 %d|%d|%d 上.\n
-9 事务 index %3d 等待 %s 锁在页 %d|%d 上.\n
-10 事务 index %3d 释放 %s 锁在对象 %d|%d|%d 上.\n
-11 事务 index %3d 释放 %s 锁在页 %d|%d 上.\n
-12 事务 index %3d 降级锁到 %s 在对象 %d|%d|%d 上.\n
-13 事务 index %3d 降级锁到 %s 在页 %d|%d 上.\n
-14 OID = %2d|%6d|%4d\n
+2 属于事务 (index %2$3d, %3$s, %4$s@%5$s|%6$d) 的线程 (index %1$3d) 已被挂起.\n
+3 属于事务 (index %2$3d, %3$s, %4$s@%5$s|%6$d) 的线程 (index %1$3d) 已被恢复.\n
+4 事务 index %1$3d 获得在对象 %3$d|%4$d|%5$d 上的 %2$s 锁.\n
+5 事务 index %1$3d 获得在页 %3$d|%4$d 上的 %2$s 锁.\n
+6 事务 index %1$3d 转换它在对象 %3$d|%4$d|%5$d 上的锁为 %2$s 锁.\n
+7 事务 index %1$3d 转换它在页 %3$d|%4$d 上的锁为 %2$s 锁.\n
+8 事务 index %1$3d 等待在对象 %3$d|%4$d|%5$d 上的 %2$s 锁.\n
+9 事务 index %1$3d 等待在页 %3$d|%4$d 上的 %2$s 锁.\n
+10 事务 index %1$3d 释放在对象 %3$d|%4$d|%5$d 上的 %2$s 锁.\n
+11 事务 index %1$3d 释放在页 %3$d|%4$d 上的 %2$s 锁.\n
+12 事务 index %1$3d 降级在对象 %3$d|%4$d|%5$d 上的锁到 %2$s .\n
+13 事务 index %1$3d 降级在页 %3$d|%4$d 上的锁到 %2$s .\n
+14 OID = %1$2d|%2$6d|%3$4d\n
 15 对象类型: 根类.\n
 16 对象类型: 类 = %1$s.\n
-17 对象类型: 类的实例 (%2d|%6d|%4d) = %s.\n
+17 对象类型: 类(%1$2d|%2$6d|%3$4d)的实例 = %4$s.\n
 18 对象类型: 未知.\n
-19 持有者的总模式 = %8s, 等待者的总模式 = %8s.\n
-20 持有者的数目=%3d, 被阻塞的持有者的数目=%3d, 等待者的数目=%3d\n
+19 持有者的总模式 = %1$8s, 等待者的总模式 = %2$8s.\n
+20 持有者的数目=%1$3d, 被阻塞的持有者的数目=%2$3d, 等待者的数目=%3$3d\n
 21 LOCK HOLDERS:\n
 22 BLOCKED LOCK HOLDERS:\n
 23 LOCK WAITERS:\n
 24 NON_2PL_RELEASED:\n
-25 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n
-26 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n
-27 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_secs = %.2f\n
-28 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_secs = %.2f\n
-29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_secs = %.2f\n
-30 %4sTran_index = %3d, Non_2_phase_lock =%8s\n
-31 VPID (volid|pageid) = %3d|%6d.\n
-32 *** Lock Table Dump ***\n Lock Escalation at = %d, Run Deadlock interval = %5.2f\n
-33 事务 (index %2d, %s, %s@%s|%d)\n
+25 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d\n
+26 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d, Nsubgranules = %5$2d\n
+27 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d\n\t%5$13s Blocked_mode = %6$8s\n\t%7$17s Start_waiting_at = %8$-30s\n\t%9$17s Wait_for_secs = %10$.2f\n
+28 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d, Nsubgranules = %5$2d\n\t%6$13s Blocked_mode =%7$8s\n\t%8$13s Start_waiting_at = %9$-30s\n\t%10$13s Wait_for_secs = %11$.2f\n
+29 %1$4sTran_index = %2$3d, Blocked_mode =%3$8s \n\t%4$13s Start_waiting_at = %5$-30s \n\t%6$13s Wait_for_secs = %7$.2f\n
+30 %1$4sTran_index = %2$3d, Non_2_phase_lock =%3$8s\n
+31 VPID (volid|pageid) = %1$3d|%2$6d.\n
+32 *** Lock Table Dump ***\n Lock Escalation at = %1$d, Run Deadlock interval = %2$5.2f\n
+33 事务 (index %1$2d, %2$s, %3$s@%4$s|%5$d)\n
 34 隔离 %1$s\n
 35 状态 %1$s\n
 36 Timeout_period %1$s\n
@@ -1827,55 +1827,55 @@ $set 14 MSGCAT_SET_LOCK
 38 %1$d ,
 39 超时处理事务 事务索引:\n
 40 %1$d ,
-41 解决死锁通过 选择一个事务和一个函数来打破死锁: %d %s
-42 , %d %s
-43 对象类型: 类的索引关键字 (%2d|%6d|%4d) = %s.\n
+41 通过选择一个事务和一个函数来打破死锁: %1$d %2$s
+42 , %1$d %2$s
+43 对象类型: 类(%1$2d|%2$6d|%3$4d)的索引关键字 = %4$s.\n
 44 索引名: %1$s\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n
 2 Backup = %1$s 是需要的. \n 必须被加载/读取来继续.\n 输入 1 在加载/读取之后继续.\n 输入 0 退出.\n
-3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
-4 Backup magic file identification %1$s,\n
-5          Release: %s\n\
-     Disk Version: %g\n
-6    Database Name: %s\n\
- DB Creation Time: %s\
-         Pagesize: %d\n
-7     Backup Level: %d (%s)\n\
-        Start_lsa: %lld|%d\n\
-         Last_lsa: %lld|%d\n
-8      Backup Time: %s\
-  Backup Unit Num: %d\n
-9  Database Volume name: %s\n\
-   Volume Identifier: %d, Size: %lld bytes (%d pages)\n
-10   Database Name: %s\n\
-     Volume Name: %s\n\
-        Unit Num: %d\n\
-    Backup Level: %d (%s)\n\
+3 \n\n*** 备份头信息 ***\n\n
+4 备份魔幻文件标示符 %1$s,\n
+5               发布: %1$s\n\
+           磁盘版本: %2$g\n
+6           数据库名: %1$s\n\
+     数据库创建时间: %2$s\
+             页大小: %3$d\n
+7           备份级别: %1$d (%2$s)\n\
+          Start_lsa: %3$lld|%4$d\n\
+           Last_lsa: %5$lld|%6$d\n
+8           备份时间: %1$s\
+         备份单元数: %2$d\n
+9         数据库卷名: %1$s\n\
+           卷标识符: %2$d, 大小: %3$lld 字节 (%4$d 页)\n
+10           数据库名: %1$s\n\
+         数据库卷名: %2$s\n\
+             单元数: %3$d\n\
+           备份级别: %4$d (%5$s)\n\
 输入下列选项中的一项:\n
 11 输入\n \
-  -  %d 退出.\n \
-  -  %d 在卷被加载/读取后继续. (重试) \n \
-  -  %d 在改变了卷的目录或设备后继续.\n
+  -  %1$d 退出.\n \
+  -  %2$d 在卷被加载/读取后继续. (重试) \n \
+  -  %3$d 在改变了卷的目录或设备后继续.\n
 12 输入一个新路径或设备用来备份卷.\n
-13 输入错误, 选择一个在 %d 和 %d 之间的值.\n
+13 输入错误, 选择一个在 %1$d 和 %2$d 之间的值.\n
 14 ** WARNING ** 加载的备份卷不正确.\n
-15 备份卷 %s 来源于另一个备份等级\n   (等级: %d, 期望 %d).\n\n
+15 备份卷 %1$s 来源于另一个备份等级\n   (等级: %2$d, 期望 %3$d).\n\n
 16 备份卷 %1$s 有不正确的页或 magic identifier.\n\n
-17 备份卷 %s 来源于另一个数据库\n  (名称: %s, 期望 %s).\n\n
-18 备份卷 %s 超出序列范围\n  (Unit Num: %d, 期望 %d).\n\n
-19 备份卷 %s 时间戳不匹配\n  (时间戳: %s, 期望 %s).\n\n
+17 备份卷 %1$s 来源于另一个数据库\n  (名称: %2$s, 期望 %3$s).\n\n
+18 备份卷 %1$s 超出序列范围\n  (Unit Num: %2$d, 期望 %3$d).\n\n
+19 备份卷 %1$s 时间戳不匹配\n  (时间戳: %2$s, 期望 %3$s).\n\n
 20 备份卷信息文件错误, 行 %1$d.\n
-21 备份卷标记: 级别: %d, 单元: %d, 数据库 %s, 备份时间: %s\n
-22      之前的备份级别: %d 时间: %s (start_lsa was %lld|%d)\n
+21 备份卷标记: 级别: %1$d, 单元: %2$d, 数据库 %3$s, 备份时间: %4$s\n
+22      之前的备份级别: %1$d 时间: %2$s (start_lsa 是 %3$lld|%4$d)\n
 23 需要下列数据库备份卷来继续恢复:\n\n
 24 备份目的地已满, 需要一个新的目的地来继续:\n\n
 25 之前的备份卷名: %1$s\n
 26     下一个备份卷名: %1$s\n
 27  备份页大小: %1$d\n
-28       Zip Method: %d (%s)\n\
-        Zip Level: %d (%s)\n
+28       Zip Method: %1$d (%2$s)\n\
+        Zip Level: %3$d (%4$s)\n
 29 Include Active Log: %1$s\n
 
 $set 16 MSGCAT_SET_LOG
@@ -1892,23 +1892,23 @@ $set 16 MSGCAT_SET_LOG
   -  1 在文件被加载/读取后继续.       \n \
   -  2 在改变文件的位置/名称后继续   \n
 4 输入新的位置/名称.\n
-5 COMMENT: %s 对于数据库 %s\n
+5 COMMENT: %1$s 对于数据库 %2$s\n
 6 COMMENT: 日志档案 %1$s 不再需要除非发生数据库介质崩溃.\n
-7 COMMENT: 从 %s 到 %s 的日志档案不再需要除非发生数据库介质崩溃.\n
-8 COMMENT: from renamed database = %1$s\n
-9 ARCHIVE: %d %s %lld %lld\n
+7 COMMENT: 从 %1$s 到 %2$s 的日志档案不再需要除非发生数据库介质崩溃.\n
+8 COMMENT: 从重命名的数据库 %1$s\n
+9 ARCHIVE: %1$d %2$s %3$lld %4$lld\n
 10 ARCHIVE:
-11 REMOVE: %d %s to \n \
-       %d %s.\n \
-       REASON: %s\n
-12 ACTIVE: %s %d pages\n
-13  Finish commit of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
-14  Finish abort of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
-15  造成了未完成介质恢复. 数据库将被 \n \
- 恢复到地址为 %lld|%d 的 LSA point. 上次 提交/取消 \n \
- 点的时间大概是 %s \n \
- 数据库已经丢失了已提交事务的所有信息 \n \
- 在这个时间之后.\n
+11 REMOVE: %1$d %2$s to \n \
+       %3$d %4$s.\n \
+       REASON: %5$s\n
+12 ACTIVE: %1$s %2$d pages\n
+13 只在 LSA= %3$lld|%4$d 和 %5$s 之前完成了 tran_index=%1$d, tranid=%2$d 的事务提交.
+14 只在 LSA= %3$lld|%4$d 和 %5$s 之前完成了 tran_index=%1$d, tranid=%2$d 的事务取消.
+15 造成了未完成介质恢复. 数据库将被 \n \
+ 恢复到地址为 %1$lld|%2$d 的 LSA point. 上次 提交/取消 \n \
+ 点的时间大概是 %3$s \n \
+ 数据库已经丢失了在这个时间之后\n \
+ 已提交事务的所有信息.\n
 16 由于未完成的恢复日志重置.
 17 数据库已经被备份.
 18 对于这项应用介质崩溃不重要.
@@ -1917,22 +1917,22 @@ $set 16 MSGCAT_SET_LOG
 包括与当前等级相同或高于相当等级的备份.\n
 20 输入 'y' 继续或其他键取消.\n
 21 数据库备份被用户取消.\n
-22 DELETE POSTPONED: 档案 %d %s to \n \
-        %d %s \n \
+22 DELETE POSTPONED: 档案从 %1$d %2$s 到 \n \
+        %3$d %4$s \n \
         不再被需要除非从当前备份恢复.\n
 23 新的备份档案已发布, 之前的被标记为DELETE POSTPONED.\n
-24 COMMENT: Log archive %1$s is not DELETE POSTPONED any longer due to more recent\n \
-   backup and therefore is not needed unless a database media crash occurs.\n
-25 COMMENT: Log archives from %s to %s are not DELETE POSTPONED any longer due to\n \
-   more recent backup and therefore are not needed unless a database media\n \
-   crash occurs.\n
+24 COMMENT: 由于有较新的备份, 日志档案不再需要标记为 DELETE POSTPONED , \n \
+   除非一个数据库介质被损坏.\n
+25 COMMENT: 由于有较新的备份, 从 %1$s 到 %2$s 的日志档案\n\
+   不再需要标记为 DELETE POSTPONED,\n \
+   除非一个数据库介质被损坏.\n
 26 在恢复数据库时发生了一个错误\n\
-     Backup Volume: %s\n\
-          Unit Num: %d\n\
-   Database Volume: %s\n\
-    Database Volid: %d\n\
+     Backup Volume: %1$s\n\
+          Unit Num: %2$d\n\
+   Database Volume: %3$s\n\
+    Database Volid: %4$d\n\
 ** 警告: 不要使用数据库直到 error-free 恢复完成.\n
-27 输入错误, 选择一个在 %d 和 %d 之间值.\n
-28 被指定的时间 (%s) 必须在所指定的备份的时间(%s) 之后.\n
-29 COMMENT: 日志档案 %s, 包含在 %lld 之前的日志页, 不再被任何HA工具所需要.\n
+27 输入错误, 选择一个在 %1$d 和 %2$d 之间值.\n
+28 被指定的时间 (%1$s) 必须在所指定的备份的时间(%2$s) 之后.\n
+29 COMMENT: 包含在 %2$lld 之前的日志页的日志档案 %1$s, 不再被任何HA工具所需要.\n
 30 活动日志档案的数目超过了最大期望数目.

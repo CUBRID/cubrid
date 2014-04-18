@@ -25,8 +25,8 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-交互型SQL工具, 版本 %s\n\
-用法 %s [选项] 数据库名[@主机名]\n\
+交互型SQL工具, 版本 %1$s\n\
+用法 %2$s [选项] 数据库名[@主机名]\n\
 \n\
 可用选项:\n\
   -S, --SA-mode                单机模式执行\n\
@@ -44,17 +44,17 @@ $set 1 MSGCAT_CSQL_SET_CSQL
       --no-auto-commit         禁用自动提交执行模式\n\
       --no-pager               不要将查询结果分页\n\
       --no-single-line         关闭单行执行模式\n\
-      --no-trigger-action      disable trigger action\n\
+      --no-trigger-action      禁用触发器动作\n\
 \n\
 额外的信息, 请浏览 http://www.cubrid.org\n
-41 %s: 环境变量 %s_MODE 的值不正确. \n应该是 %s 或 %s.\n
-42 %s: 指定的参数太多. 最大参数个数是 %d.\n
+41 %1$s: 环境变量 %2$s_MODE 的值不正确. \n应该是 %3$s 或 %4$s.\n
+42 %1$s: 指定的参数太多. 最大参数个数是 %2$d.\n
 43 %1$s: 根目录环境变量($CUBRID) 没有设置.\n
-44 %s: 尝试执行 "%s" 失败.\n
+44 %1$s: 尝试执行 "%2$s" 失败.\n
 45 %1$s: 无法同时使用 -sa 和 -cs 选项.\n
 46 %1$d 条指令被成功处理.
 47 在行 %1$d 中的命令,
-48 在行 %d, 列 %d,
+48 在行 %1$d, 列 %2$d,
 49 输入 `;help' 来显示帮助消息.
 50 错误: 
 51 CUBRID SQL 解释器
@@ -67,16 +67,16 @@ $set 1 MSGCAT_CSQL_SET_CSQL
 58 命令缓冲区的内容已被发送到打印机.
 59 当前目录被改变到: 
 61 输入密码: 
-62 <命令 %s 在行 %d 的结果>
+62 <命令 %1$s 在行 %2$d 的结果>
 63 没有结果.
 64 Checkpoint已经被应用.
 65 数据库已被重启.
 66 事务索引              用户名         主机名         进程标识符      程序名\n
-67 %4d%-12s %14s %14s %15d %17s\n
+67 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 68 指定的事务已被kill.
 69 指定的事务kill失败.
-70 %d 行 %s.
-71 %d 行 %s.
+70 %1$d 行 %2$s.
+71 %1$d 行 %2$s.
 $ These 3 should be blank
 75 自动化API测试器
 76 无效的自动化API测试器
@@ -175,7 +175,7 @@ $ csql help messages
    ;LINe-output [ON/OFF]        - 打开/关闭 显示一行中的每一个值\n\
    ;HISTORYList                 - 显示已经执行的查询列表.\n\
    ;HISTORYRead <history_num>   - 将histroy_num所对应的内容读取到命令缓冲区.\n\
-   ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;TRAce [ON/OFF] [text/json]  - 启用/禁用 sql auto trace.\n\
    ;HElp                        - 显示帮助信息.\n\n
 
 232 <系统规定参数> 
