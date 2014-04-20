@@ -64,10 +64,10 @@ $set 5
 7 Chaîne de caractères
 8 variable indicatrice pour "%1$s" est interdite dans ce contexte
 9 "%1$s" n'est pas déclaré dans la section BEGIN DECLARE
-52 %s (texte était "%s")
+52 %1$s (texte était "%2$s")
 53 Erreur lexicale
-54 Erreur de syntaxe à "%s": manquant %s dans %s
-55 Erreur de syntaxe à "%s": manquant %s
+54 Erreur de syntaxe à "%1$s": manquant %2$s dans %3$s
+55 Erreur de syntaxe à "%1$s": manquant %2$s
 
 $set 6
 1 suppress-line-directive
@@ -99,29 +99,29 @@ $set 7
 
 $set 8
 1 option REPEATED ignorée
-2 %s version %s\n
+2 %1$s version %2$s\n
 
 $set 9
 1 (yy_pop_mode) erreur interne: pile des modes vide
 2 "%1$s" est interdit dans ce contexte
 
 $set 10
-1 erreur interne dans %s: %s\n
+1 erreur interne dans %1$s: %2$s\n
 2 dépassement de table
 
 $set 11
 1 variable indicatrice "%1$s" doit être de type short int
 2 ne peut pas utiliser une variable indicatrice avec une structure
 3 "%1$s" a une définition incomplète pour la structure
-4 "%s" doit être un(e) %s valid(e)
-5 %s n'est pas un type acceptable pour "%s"
+4 "%1$s" doit être un(e) %2$s valid(e)
+5 %1$s n'est pas un type acceptable pour "%2$s"
 6 Type de variable d'hôte inattendu: %1$s
 7 (pp_addr_expr): tentative de trouver l'adresse de la variable NULL
 8 "%1$s" n'est pas un pointeur
 9 "%1$s" ne pointe pas vers une struct
 10 "%1$s" n'est pas une struct
-11 %s n'a pas le champ "%s"
-12 "%s" ne peut pas être déréférencé par "%s"
+11 %1$s n'a pas le champ "%2$s"
+12 "%1$s" ne peut pas être déréférencé par "%2$s"
 
 $set 12
 1 mémoire épuisée

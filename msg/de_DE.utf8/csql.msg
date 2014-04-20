@@ -25,8 +25,8 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-interaktives SQL Programm, Version %s\n\
-Verwendung: %s [OPTION] datenbanknamen[@host]\n\
+interaktives SQL Programm, Version %1$s\n\
+Verwendung: %2$s [OPTION] datenbanknamen[@host]\n\
 \n\
 gültigen Optionen:\n\
   -S, --SA-mode                Ausführung in selbstständigem Modus\n\
@@ -44,17 +44,17 @@ gültigen Optionen:\n\
       --no-auto-commit         Auto-Commit-Modus deaktivieren\n\
       --no-pager               Pager nicht verwenden\n\
       --no-single-line         Ausführung ausgerichtet auf einer Zeile deaktivieren\n\
-      --no-trigger-action      disable trigger action\n\
+      --no-trigger-action      deaktivieren Trigger Aktion\n\
 \n\
 Für weitere Informationen, siehe http://www.cubrid.org\n
-41 %s: der Umgebungswert von %s_MODE ist inkorrekt. \nEr sollte entweder %s oder %s sein.\n
-42 %s: zu viele Argumente gegeben. Maximum ist %d.\n
+41 %1$s: der Umgebungswert von %2$s_MODE ist inkorrekt. \nEr sollte entweder %3$s oder %4$s sein.\n
+42 %1$s: zu viele Argumente gegeben. Maximum ist %2$d.\n
 43 %1$s: Das Root-Verzeichnis Umgebungsvariable ($CUBRID) soll gesetzt werden.\n
-44 %s: der Versuch "%s" auszuführen ist fehlgeschlagen.\n
+44 %1$s: der Versuch "%2$s" auszuführen ist fehlgeschlagen.\n
 45 %1$s: -sa und -cs Optionen können nicht gleichzeitig benutzt werden.\n
 46 %1$d Befehl(e) erfolgreich verarbeitet.
 47 In Befehl auf Zeile %1$d,
-48 Auf Zeile %d, Spalte %d,
+48 Auf Zeile %1$d, Spalte %2$d,
 49 Für hilfe, `;help' eingeben.
 50 FEHLER: 
 51 CUBRID SQL Interpreter
@@ -67,16 +67,16 @@ Für weitere Informationen, siehe http://www.cubrid.org\n
 58 Der Befehlspuffer wurde an den Drucker gesendet.
 59 Aktuelles Verzeichnis ersetzt durch
 61 Kennwort eingeben: 
-62 <Ergebnis des %s Befehls in Zeile %d>
+62 <Ergebnis des %1$s Befehls in Zeile %2$d>
 63 Es gibt keine Ergebnisse.
 64 Der Checkpoint wurde ausgestellt.
 65 Die Datenbank wurde neugestartet.
 66 Tran index            Benutzername      Hostname      Prozess-ID      Programmname\n
-67 %4d%-12s %14s %14s %15d %17s\n
+67 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n 
 68 Die angegebene Transaktion wurde beendet.
 69 Beendung der angegebenen Transaktion ist fehlgeschlagen.
-70 %d Reihen %s.
-71 %d Reihe %s.
+70 %1$d Reihen %2$s.
+71 %1$d Reihe %2$s.
 $ Diese 3 sollten leer sein
 75 Automatisierter API-Tester
 76 Ungültiger automatisierten API-Tester 

@@ -64,10 +64,10 @@ $set 5
 7 şir de caractere
 8 variabila indicator pentru "%1$s" nu este permisă în acest context
 9 "%1$s" nu este declarat în secţiunea BEGIN DECLARE
-52 %s (textul a fost "%s")
+52 %1$s (textul a fost "%2$s")
 53 Eroare lexicală
-54 eroare de sintaxă la "%s": %s absent din %s
-55 eroare de sintaxă la "%s": %s absent
+54 eroare de sintaxă la "%1$s": %2$s absent din %3$s
+55 eroare de sintaxă la "%1$s": %2$s absent
 
 $set 6
 1 suppress-line-directive
@@ -99,29 +99,29 @@ $set 7
 
 $set 8
 1 opţiunea REPEATED ignorată
-2 %s versiunea %s\n
+2 %1$s versiunea %2$s\n
 
 $set 9
 1 (yy_pop_mode) eroare internă: stivă vidă de moduri
 2 "%1$s" nu este permis(ă) în acest context
 
 $set 10
-1 eroare internă în %s: %s\n
+1 eroare internă în %1$s: %2$s\n
 2 depăşire de capacitate pentru tabelă
 
 $set 11
 1 variabila indicator "%1$s" trebuie să fie un short int
 2 nu se poate folosi o variabilă indicator cu o structură
 3 "%1$s" are o definiţie de struct incompletă
-4 "%s" trebuie să fie un %s valid
-5 %s nu este un tip acceptat pentru "%s"
+4 "%1$s" trebuie să fie un %2$s valid
+5 %1$s nu este un tip acceptat pentru "%2$s"
 6 tip de variabilă de gazdă neprevăzut: %1$s
 7 (pp_addr_expr): încercare de a găsi adresa unei variabile NULL
 8 "%1$s" nu este un pointer
 9 "%1$s" nu referenţiaza un struct
 10 "%1$s" nu este un struct
-11 %s nu conţine un câmp "%s"
-12 "%s" nu poate fi dereferenţiat de către "%s"
+11 %1$s nu conţine un câmp "%2$s"
+12 "%1$s" nu poate fi dereferenţiat de către "%2$s"
 
 $set 12
 1 memorie epuizată

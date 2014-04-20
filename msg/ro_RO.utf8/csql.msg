@@ -25,8 +25,8 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-utilitar SQL interactiv, versiunea %s\n\
-utilizare: %s [OPTION] database-name[@host]\n\
+utilitar SQL interactiv, versiunea %1$s\n\
+utilizare: %2$s [OPTION] database-name[@host]\n\
 \n\
 optiuni valide:\n\
   -S, --SA-mode                mod de execuţie independent\n\
@@ -42,19 +42,19 @@ optiuni valide:\n\
   -r, --read-only              mod read-only\n\
       --string-width           lăţimea de afişare a fiecărei coloane de tip string\n\
       --no-auto-commit         dezactivarea modului de execuţie auto-commit\n\
-      --no-pager               deyactivarea paginatorilor\n\
+      --no-pager               dezactivarea paginatorilor\n\
       --no-single-line         dezactivarea modului de execuţie linie cu linie\n\
-      --no-trigger-action      disable trigger action\n\
+      --no-trigger-action      dezactivarea acţiunilor declanşatorilor\n\
 \n\
 Pentru informaţii suplimentare accesaţi http://www.cubrid.org\n
-41 %s: valoarea de mediu pentru %s_MODE este incorectă. \nTrebuie să fie %s sau %s.\n
-42 %s: prea multe argumente date. Maximul este %d.\n
+41 %1$s: valoarea de mediu pentru %2$s_MODE este incorectă. \nTrebuie să fie %3$s sau %4$s.\n
+42 %1$s: prea multe argumente date. Maximul este %2$d.\n
 43 %1$s: Variabila de mediu ce indică directorul rădăcină ($CUBRID) trebuie setată.\n
-44 %s: încercarea de a executa "%s" a eşuat.\n
+44 %1$s: încercarea de a executa "%2$s" a eşuat.\n
 45 %1$s: opţiunile -sa şi -cs nu pot fi folosite simultan.\n
 46 %1$d comandă/comenzi a(u) fost procesate cu succes.
 47 În comanda de la linia %1$d,
-48 La linia %d, coloana %d,
+48 La linia %1$d, coloana %2$d,
 49 Tastaţi `;help' pentru mesaje de ajutor.
 50 EROARE: 
 51 CUBRID SQL Interpreter
@@ -67,16 +67,16 @@ Pentru informaţii suplimentare accesaţi http://www.cubrid.org\n
 58 Bufferul de comenzi a fost trimis spre printare.
 59 Directorul curent a fost schimbat în 
 61 Introduceţi parola: 
-62 <Rezultatul comenzii %s de la linia %d>
+62 <Rezultatul comenzii %1$s de la linia %2$d>
 63 Nu există rezultate.
 64 Un punct de salvare (checkpoint) a fost creat.
 65 Baza de date a fost repornită.
 66 Index tran.            Nume utilizator      Nume gazdă      ID proces      Nume program\n
-67 %4d%-12s %14s %14s %15d %17s\n
+67 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 68 Tranzacţia specificată a fost înreruptă.
 69 Întreruperea tranzacţiei specificate a eşuat.
-70 %d rânduri %s.
-71 %d rând %s.
+70 %1$d rânduri %2$s.
+71 %1$d rând %2$s.
 $ These 3 should be blank
 75 Verificator automat de API
 76 Verificator automat de API invalid

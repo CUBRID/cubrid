@@ -25,8 +25,8 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-utilitaire SQL interactive, version %s\n\
-usage: %s [OPTION] database-name[@host]\n\
+utilitaire SQL interactive, version %1$s\n\
+usage: %2$s [OPTION] database-name[@host]\n\
 \n\
 valid options:\n\
   -S, --SA-mode                exécution en mode autonome\n\
@@ -44,17 +44,17 @@ valid options:\n\
       --no-auto-commit         désactiver le mode de validation automatique\n\
       --no-pager               ne pas utiliser pagineur\n\
       --no-single-line         désactiver exécution ligne par ligne\n\
-      --no-trigger-action      disable trigger action\n\
+      --no-trigger-action      désactiver action de déclenchement\n\
 \n\
 Pour plus d'informations, visitez le site http://www.cubrid.org\n
-41 %s: la valeur d'environnement du %s_MODE est incorrecte. \nIl doit être %s ou %s.\n
-42 %s: trop d'arguments donnés. maximum est de %d.\n
+41 %1$s: la valeur d'environnement du %2$s_MODE est incorrecte. \nIl doit être %3$s ou %4$s.\n
+42 %1$s: trop d'arguments donnés. maximum est de %2$d.\n
 43 %1$s: La variable d'environnement pour le répertoire racine ($CUBRID) doit être initialisée.\n
-44 %s: la tentative d'exécuter "%s" a échoué.\n
+44 %1$s: la tentative d'exécuter "%2$s" a échoué.\n
 45 %1$s: ne pouvez pas utiliser les options -sa et -cs simultanément.\n
 46 %1$d commande(s) traitées avec succès.
 47 Dans la commande de la ligne %1$d,
-48 Dans ligne %d, colonne %d,
+48 Dans ligne %1$d, colonne %2$d,
 49 Saisissez `;help' pour les messages d'aide.
 50 ERREUR: 
 51 CUBRID SQL Interpreter
@@ -67,16 +67,16 @@ Pour plus d'informations, visitez le site http://www.cubrid.org\n
 58 Mémoire tampon de commande a été envoyée à l'imprimante.
 59 Répertoire courant a changé à 
 61 Entrez Mot de passe : 
-62 <Résultat de %s commande dans ligne %d>
+62 <Résultat de %1$s commande dans ligne %2$d>
 63 Il n'y a pas de résultats.
 64 Point de vérification a été délivré.
 65 La base de données a été redémarré.
 66 Tran index            Nom d'utilisateur      Nom d'hôte      iD de processus      Nom du programme\n
-67 %4d%-12s %14s %14s %15d %17s\n
+67 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 68 La transaction spécifiée a été arrêté.
 69 Arrêt de l'opération spécifiée a échoué.
-70 %d rangées %s.
-71 %d rangée %s.
+70 %1$d rangées %2$s.
+71 %1$d rangée %2$s.
 $ Ces 3 doit être vide
 75 API Testeur Automatisé
 76 API Testeur Automatisé invalide

@@ -70,20 +70,20 @@ $       49      tranlist
 $       50      prefetchlogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
-1 Lungime sau caracter invalid '%c' în numele bazei de date '%s'\n
+1 Lungime sau caracter invalid '%1$c' în numele bazei de date '%2$s'\n
 2 Fişierul de ieşire '%1$s' nu a putut fi deschis.\n
 3 Nume de utilitar invalid sau absent.\n
 4 Nume de utilitar invalid '%1$s'\n
 5 Lista următoare conţine numele de utilitare recunoscute:\n
-6 Caracter invalid '%c' în numele volumului '%s'\n
+6 Caracter invalid '%1$c' în numele volumului '%2$s'\n
 9 \
-%s (Utilitare CUBRID)\n\
-%s\n\
+%1$s (Utilitare CUBRID)\n\
+%2$s\n\
 Copyright (C) 2008 Search Solution Corporation. Toate drepturile rezervate de către Search Solution.\n
 10 \
-utilitar de administrare CUBRID, versiunea %s\n\
-utilizare: %s <nume-utilitar> [argumente]\n\
-Tastaţi '%s <nume-utilitar>' pentru ajutor pentru un utilitar specific.\n\
+utilitar de administrare CUBRID, versiunea %1$s\n\
+utilizare: %2$s <nume-utilitar> [argumente]\n\
+Tastaţi '%3$s <nume-utilitar>' pentru ajutor pentru un utilitar specific.\n\
 \n\
 Nume de utilitare de administrare disponibile:\n\
     createdb\n\
@@ -118,22 +118,22 @@ Nume de utilitare de administrare disponibile:\n\
     synccolldb\n\
     prefetchlogdb\n\
 \n\
-%s este un utilitar pentru SGDB.\n\
+%4$s este un utilitar pentru SGDB.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
 12 Numele de utilitar '%1$s' este invalid.\nTastaţi 'cubrid --help' pentru informaţii despre utilizare.\n
 13 comanda '%1$s' este invalidă.\nTastaţi 'cubrid --help' pentru informaţii despre utilizare.\n
 14 Una sau mai multe proprietăţi obligatorii din fişierele de configurare nu au putut fi încarcate.\n
-15 @ %s %s: %s\n
-16 @ %s %s\n
-17 ++ %s '%s' nu se află în execuţie.\n
+15 @ %1$s %2$s: %3$s\n
+16 @ %1$s %2$s\n
+17 ++ %1$s '%2$s' nu se află în execuţie.\n
 18 ++ %1$s nu se află în execuţie.\n
-19 ++ %s '%s' se află în execuţie.\n
+19 ++ %1$s '%2$s' se află în execuţie.\n
 20 ++ %1$s se află în execuţie.\n
-21 ++ %s %s: %s\n
+21 ++ %1$s %2$s: %3$s\n
 22 Unul sau mai multe argumente lipsesc.\nTastaţi 'cubrid --help' pentru informaţii despre utilizare.\n
-23 utilitar CUBRID, versiunea %s\n\
-utilizare: %s <nume-utilitar> [argumente]\n\
-Tastaţi '%s <nume-utilitar>' pentru ajutor pentru un utilitar specific.\n\
+23 utilitar CUBRID, versiunea %1$s\n\
+utilizare: %2$s <nume-utilitar> [argumente]\n\
+Tastaţi '%3$s <nume-utilitar>' pentru ajutor pentru un utilitar specific.\n\
 \n\
 Utilitare de serviciu disponibile:\n\
     service\n\
@@ -174,18 +174,18 @@ Utilitare de administrare disponibile:\n\
     synccolldb\n\
     prefetchlogdb\n\
 \n\
-%s este un utilitar pentru SGBD.\n\
+%4$s este un utilitar pentru SGBD.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
-24 utilitar CUBRID, versiunea %s\n\
-utilizare: %s service <comanda>\n\
+24 utilitar CUBRID, versiunea %1$s\n\
+utilizare: %2$s service <comanda>\n\
 \n\
 Comenzi disponibile:\n\
     start\n\
     stop\n\
     restart\n\
     status\n
-25 utilitar CUBRID, versiunea %s\n\
-utilizare: %s server <comanda> [argumente]\n\
+25 utilitar CUBRID, versiunea %1$s\n\
+utilizare: %2$s server <comanda> [argumente]\n\
 \n\
 Comenzi disponibile:\n\
     start       [nume-baza-de-date]\n\
@@ -194,8 +194,8 @@ Comenzi disponibile:\n\
     status\n\
     acl         <status|reload> nume-baza-de-date\n
 37 Serverul a fost configurat pentru HA.\n
-26 utilitar CUBRID, versiunea %s\n\
-utilizare: %s broker <comanda> [argumente]\n\
+26 utilitar CUBRID, versiunea %1$s\n\
+utilizare: %2$s broker <comanda> [argumente]\n\
 \n\
 Comenzi disponibile:\n\
     start\n\
@@ -209,15 +209,15 @@ Comenzi disponibile:\n\
     acl         <status|reload> [nume-broker]\n\
     getid       -b <nume-broker> [-f] cheie-shard\n\
     test        nume-broker [-D <database_name>] [-u <user_name>] [-p <user_password>] [-c <SQL_command>] [-i <input_file>] [-o <output_file>] [-v] [-s]\n
-27 utilitar CUBRID, versiunea %s\n\
-utilizare: %s manager <command>\n\
+27 utilitar CUBRID, versiunea %1$s\n\
+utilizare: %2$s manager <command>\n\
 \n\
 Comenzi disponibile:\n\
     start\n\
     stop\n\
     status\n
-28 utilitar CUBRID, versiunea %s\n\
-utilizare: %s heartbeat <command> [args]\n\
+28 utilitar CUBRID, versiunea %1$s\n\
+utilizare: %2$s heartbeat <command> [args]\n\
 \n\
 Comenzi disponibile:\n\
     start          [database-name]\n\
@@ -231,15 +231,15 @@ Comenzi disponibile:\n\
 31 Argumentul '%1$s' nu este necesar.\n
 32 Un nume de bază de date lipseşte.\n
 33 %1$s: Această optiune este depreciată.\n
-34 Parametru invalid. %s %s\n
+34 Parametru invalid. %1$s %2$s\n
 35 Nu s-a putut aloca memorie.\n
 36 Serverul nu a fost configurat pentru HA.\n
 38 Serverul configurat pentru HA nu se regăseşte în ha_db_list.\n
 39 Serverul configurat pentru HA nu se regăseşte în ha_node_list.\n
-40 Invalid command.\n
-41 cubrid manager server is not installed.\n
-42 Invalid argument.\n
-43 File(%1$s) open error.\n
+40 Comandă invalidă.\n
+41 cubrid manager server nu este instalat.\n
+42 Argument invalid.\n
+43 Eroare la deschiderea fişierului(%1$s).\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTIESMENT: opţiunea -t este ignorată în modul de execuţie independent.\n
@@ -265,7 +265,7 @@ opţiuni valide:\n\
   -z, --compress               compresia volumelor de backup; implicit: decompresie\n\
   -e, --except-active-log      nu se include un volum de log activ; implicit: se include\n\
       --sleep-msecs=N          asteapta N milisecunde la fiecare 1MB citit; implicit: 0\n
-71 Argumente incompatibile, \"%s\", şi \"%s\"\n
+71 Argumente incompatibile, \"%1$s\", şi \"%2$s\"\n
 
 
 $set 3 MSGCAT_UTIL_SET_COPYDB
@@ -300,8 +300,8 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 Se creează o bază de date de dimensiune %1$s si localizare %2$s. Spaţiul total necesar este %3$s.\n
 46 Baza de date nu a putut fi creată.\n
 47 S-a întâmpinat o problemă cu fişierul '%1$s' dat de utilizator\n
-48 S-a furnizat '%s', %s este în afara domeniului. Alegeţi o dimensiune cuprinsă între %s şi %s.\n
-49 Valoarea lui %s '%s' nu este validă.\n
+48 S-a furnizat '%1$s', %2$s este în afara domeniului. Alegeţi o dimensiune cuprinsă între %3$s şi %4$s.\n
+49 Valoarea lui %1$s '%2$s' nu este validă.\n
 60 \
 createdb: Creează o baza de date.\n\
 utilizare: %1$s createdb [OPTIUNE] <nume-bază-de-date> <localizare>\n\
@@ -361,7 +361,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 14 Eroare la căutarea numelui de gazdă (host) local\n
 15 Nu s-a găsit fişierul de parametri\n
 16 Nu s-a putut iniţializa procesul principal\n
-17 Serverul %s se va opri în %d minute
+17 Serverul %1$s se va opri în %2$d minute
 18 Serverul %1$s a primit notificarea de oprire.\nAceastă acţiune poate dura cateva miute. Vă rugăm aşteptaţi.
 19 Serverul %1$s nu a fost găsit.
 20 Procesul principal (master) se va opri în %1$d minute\n
@@ -398,7 +398,7 @@ opţiuni valide:\n\
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
 19 Numele bazei de date lipseşte.\n
-20 Fişierul '%s' nu are %d linii.\n
+20 Fişierul '%1$s' nu are %2$d linii.\n
 21 întrerupere ... \n
 22 Încărcare întreruptă - tranzacţia curentă a fost finalizată\n
 23 Încărcare întreruptă - tranzacţia curentă a fost abandonată\n
@@ -411,34 +411,34 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 30 \n*** Se finalizează tranzactia ***\n
 31 \n*** Se închide baza de date ***\n
 32 Linia %1$d:
-33 Eroare la parsarea lui '%s' ca o valoare '%s' pentru atributul '%s' din '%s'\n
-34 Domeniu lipsă pentru atributul %s din %s\n
-35 Pentru atributul %s din %s, tipul %s nu este permis în domeniul mulţimii\n
-36 Pentru atributul %s din %s, tipul %s aşteptat, s-a recepţionat o constantă mulţime\n
-37 Pentru atributul %s din %s, tipul %s aşteptat, s-a recepţionat %s\n
-38 Nicio clasa cu numele %s referenţiată de atributul %s din %s\n
+33 Eroare la parsarea lui '%1$s' ca o valoare '%2$s' pentru atributul '%3$s' din '%4$s'\n
+34 Domeniu lipsă pentru atributul %1$s din %2$s\n
+35 Pentru atributul %1$s din %2$s, tipul %3$s nu este permis în domeniul mulţimii\n
+36 Pentru atributul %1$s din %2$s, tipul %3$s aşteptat, s-a recepţionat o constantă mulţime\n
+37 Pentru atributul %1$s din %2$s, tipul %3$s aşteptat, s-a recepţionat %4$s\n
+38 Nicio clasa cu numele %1$s referenţiată de atributul %2$s din %3$s\n
 39 Nicio clasa cu numele %1$s, se ignoră tupluri\n
-40 Nicio clasa cu identificatorul %d referenţiată de atributul %s din %s\n
+40 Nicio clasa cu identificatorul %1$d referenţiată de atributul %2$s din %3$s\n
 41 Clasa %1$s nu este permisă în fişierul de intrare al loader-ului\n
 42 Oprit cu eroare.\n
 43 AVERTISMENT: s-a actualizat o instanţă existentă!\n
-44 AVERTISMENT: se redefineşte instanţa %d a clasei %s\n
-45 Instanţa %d a clasei %s a fost deja definită\n
-46 Instanţa %d a clasei %s a fost deja rezervată\n
+44 AVERTISMENT: se redefineşte instanţa %1$d a clasei %2$s\n
+45 Instanţa %1$d a clasei %2$s a fost deja definită\n
+46 Instanţa %1$d a clasei %2$s a fost deja rezervată\n
 47 Încălcare a constrângerii UNIQUE pentru atributul '%1$s', conversie la NULL\n
 48   %1$d instanţe\n
 49 Clasa %1$s\n
 50 Parola:
 51 \n*** Se actualizează statisticile claselor ***\n
-52 %s lânga linia %d (textul a fost '%s')\n
+52 %1$s lânga linia %2$d (textul a fost '%3$s')\n
 53 Eroare lexicală
-54 linia %d: eroare de sintaxă la \"%s\"
+54 linia %1$d: eroare de sintaxă la \"%2$s\"
 55 absent
 56 în %1$s
-57 Argumente incompatibile, \"%s\", şi \"%s\"\n
+57 Argumente incompatibile, \"%1$s\", şi \"%2$s\"\n
 58 %1$d instanţe commise (salvate)\n
 59 \nNu se poate invoca versiunea neoptimizată a lui loaddb.\n
-60 Eroare la parsarea lui \"%s\", ca fiind de tip %s.\n
+60 Eroare la parsarea lui \"%1$s\", ca fiind de tip %2$s.\n
 112   %1$d instanţe\r
 113 Ultima linie salvata (prin commit) : %1$d
 114 error-control-file
@@ -497,9 +497,9 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 43 %1$d obiecte vărsate.\n
 44 Clasa %1$s
 45 , %1$d instanţe.\n
-46 Doar %d din %d obiecte vărsate cu succes.\n
+46 Doar %1$d din %2$d obiecte vărsate cu succes.\n
 47 directorul de ieşire este prea lung.\n
-48 LSA : %d %d \n
+48 LSA : %1$d %2$d \n
 49 Parola:
 60 \
 unloaddb: Exportă obiecte şi scheme din baza de date.\n\
@@ -533,17 +533,17 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 12 %1$d obiecte procesate.\n
 13 \nTrecerea 2\n\n
 14 Clasa %1$s\n
-15 oid:  %d|%d|%d,\n
+15 oid:  %1$d|%2$d|%3$d,\n
 16 %1$d instanţe.\n
 17 Se actualizează obiectul.\n
-18 ref_oid:  %d.%d.%d, ref_class_oid:  %d.%d.%d\n
+18 ref_oid:  %1$d.%2$d.%3$d, ref_class_oid:  %4$d.%5$d.%6$d\n
 19 Nu s-a putut aplica transformarea obiectului\n
 20 Fişier heap absent pentru clasă\n
 21 Nu s-a putut actualiza obiectul\n
-22 Doar %d din %d obiecte au fost procesate cu succes.\n
+22 Doar %1$d din %2$d obiecte au fost procesate cu succes.\n
 23 COMPACTDB deja pornit.\n
-24 Numărul de pagini trebuie să fie cuprins între %d şi %d.\n
-25 Timpul de expirare al blocajelor de instanţă trebuie să fie cuprins între %d şi %d.\n
+24 Numărul de pagini trebuie să fie cuprins între %1$d şi %2$d.\n
+25 Timpul de expirare al blocajelor de instanţă trebuie să fie cuprins între %1$d şi %2$d.\n
 26 Obiecte în total: %1$d\n
 27 Obiecte eşuate: %1$d\n
 28 Obiecte modificate: %1$d\n
@@ -552,7 +552,7 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 31 Reprezentările vechi ale claselor au fost păstrate în catalog.\n
 32 Nivelul de izolare nu poate fi setat.\n
 33 Baza de date nu a putut fi compactată.\n
-34 Timpul de expirare al blocajelor pe clasă trebuie să fie cuprins între %d şi %d.\n
+34 Timpul de expirare al blocajelor pe clasă trebuie să fie cuprins între %1$d şi %2$d.\n
 35 Clasa blocată... Procesare incompletă...\n
 36 Clasa neprocesată...\n
 37 Eroare de procesare... Procesare incompletă...\n
@@ -586,8 +586,8 @@ opţiuni valide:\n\
   -c, --class-lock-timeout          timp de expirare pentru blocajele de clasă\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
-21 Procesul principal CUBRID master, aflat în funcţiune pe maşina gazdă %s \na fost pornit la %s
-22 a servit %d cereri. %d server(e) aflate în funcţiune.\n
+21 Procesul principal CUBRID master, aflat în funcţiune pe maşina gazdă %1$s \na fost pornit la %2$s
+22 a servit %1$d cereri. %2$d server(e) aflate în funcţiune.\n
 23 OPRIREA se va efectua în %1$s minute\n
 24 %1$s
 25 Numele serverului ce va fi oprit :
@@ -616,10 +616,10 @@ opţiuni valide:\n\
 33 Master-ul se va opri în %1$d minute\n
 34 Eroare la recepţionarea datelor de la client
 35 serverul de baze de date %1$s nu se afla în funcţiune
-36 nu se poate executa shell-ul (%s) pentru %s, %s
-37 creare de proces (fork) %s, a întors %d, %s
+36 nu se poate executa shell-ul (%1$s) pentru %2$s, %3$s
+37 creare de proces (fork) %1$s, a întors %2$d, %3$s
 38 nu se poate executa %1$s
-39 -i(--immediately) option must be used with --deact-stop-all option.\n
+39 Opţiunea -i(--immediately) trebuie folosită împreună cu opţiunea --deact-stop-all.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
@@ -670,8 +670,8 @@ opţiuni valide:\n\
                                  implicit: se verifică toate clasele\n\
   -I, --index-name             index name that will be checked only\n\
                                default: check all indices\n\
-      --check-prev-link        check only previous links of indices\n\
-      --repair-prev-link       repair previous links of indices\n\
+      --check-prev-link        verifică doar legăturile predecesor ale indecşilor\n\
+      --repair-prev-link       repararea legăturilor predecesor ale indecşilor\n\
       --check-file-tracker     check all allocated pages of file\n\
       --check-heap             check all pages of heap files\n\
       --check-catalog          check catalog consistency\n\
@@ -681,26 +681,26 @@ opţiuni valide:\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Descrierea spaţiului pentru baza de date '%s' cu pagini de dimensiune %s. (dimensiunea unei pagini de log: %s)\n\n
-16 %5d %9s  %s %s  %s\n
+15 Descrierea spaţiului pentru baza de date '%1$s' cu pagini de dimensiune %2$s. (dimensiunea unei pagini de log: %3$s)\n\n
+16 %1$5d %2$9s  %3$s %4$s  %5$s\n
 17 Nu s-a putut deschide fişierul de ieşire '%1$s'\n
-18 Descrierea spaţiului pentru volumele temporare ale bazei de date '%s' cu pagini de dimensiune %s.\n\n
+18 Descrierea spaţiului pentru volumele temporare ale bazei de date '%1$s' cu pagini de dimensiune %2$s.\n\n
 19 Volid  Purpose   total_pages  free_pages  Vol Name\n\n
 20 Volid  Purpose    total_size   free_size  Vol Name\n\n
 21 Descrierea spaţiului pentru LOB %1$s \n\n
 22 -------------------------------------------------------------------------------\n
-30 Descrierea sumarizată a spaţiului pentru baza de date '%s' cu pagini de dimensiune %s. (dimensiunea unei pagini de log: %s)\n\n
+30 Descrierea sumarizată a spaţiului pentru baza de date '%1$s' cu pagini de dimensiune %2$s. (dimensiunea unei pagini de log: %3$s)\n\n
 31 Purpose    total_pages  used_pages  free_pages  volume_count\n
 32 Purpose     total_size   used_size   free_size  volume_count\n
-33 %10s %s %s %s %10d\n
+33 %1$10s %2$s %3$s %4$s %5$10d\n
 34 -------------------------------------------------------------\n
 40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
 41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
-42 %5d %9s  %s %s %s %s %s  %s\n
+42 %1$5d %2$9s  %3$s %4$s %5$s %6$s %7$s  %8$s\n
 43 ----------------------------------------------------------------------------------------------------\n
 50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
 51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
-52 %10s %s %s %s %s %s %s %10d\n
+52 %1$10s %2$s %3$s %4$s %5$s %6$s %7$s %8$10d\n
 53 -------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Afişează spaţiul utilizat/liber al bazei de date.\n\
@@ -725,7 +725,7 @@ utilizare: %1$s date_estimate nr-instanţe dimensiune-medie-insţantă nr-de-atr
 
 $set 21 MSGCAT_UTIL_SET_ESTIMATEDB_INDEX
 15 Tipul de cheie de index este invalid= %1$s\n
-16 Lungimea medie de cheie este invalida= %d când precizia = %d\n
+16 Lungimea medie de cheie este invalida= %1$d când precizia = %2$d\n
 17 Argumente invalide\n
 20 Numar total estimat de pagini de index = %1$d\n (La crearea indexului, dupa popularea instanţelor.)\n
 21 Număr total estimat de pagini de index = %1$d\n (La crearea indexului, înainte de popularea instanţelor (caz mediu))\n
@@ -843,7 +843,7 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 5 backup-destination
 6 calea către un director sau dispozitiv pentru destinaţia volumelor de rezervă
 20 baza de date '%1$s' nu există.
-21 '%s' nu necesită migrare la %s, deoarce versiunea este prea veche.\n
+21 '%1$s' nu necesită migrare la %2$s, deoarce versiunea este prea veche.\n
 22 '%1$s' nu necesită migrare.\n
 23 '%1$s' necesita migrare.\n
 24 După migrare se recomandă crearea unei copii de rezervă. Doriţi să faceţi acum o copie de rezervă a bazei de date? (y/n):
@@ -902,8 +902,8 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 Valoare greşită \"%1$s\" pentru modul de execuţie HA al serverului.\n
 12 Nu se poate schimba modul de execuţie HA al serverului.\n
 21 Introduceţi parola de administrator (DBA):
-22 Pentru serverul '%s', modul curent de execuţie HA este %s.\n
-23 Pentru serverul '%s', modul de execuţie HA este modificat în \"%s\".\n
+22 Pentru serverul '%1$s', modul curent de execuţie HA este %2$s.\n
+23 Pentru serverul '%1$s', modul de execuţie HA este modificat în \"%2$s\".\n
 24 Serverul nu a fost configurat pentru HA.\n
 58 Funcţionalitatea HA nu este suportată de această platformă.\n
 59 changemode nu poate fi executat în modul independent.\n
@@ -1040,7 +1040,7 @@ Tabelă | Index | Expresia functiei\n
 47 Sincronizarea colaţiilor nu a fost efectuată. Baza de date nu a fost modificată.\n
 48 Conţinutul tabelei de sistem '%1$s' a fost actualizat cu noi colaţii de sistem.\n
 49 Actualizarea colaţiilor de sistem ar putea produce daune bazei de date. Continuaţi (y/n) ?\n
-50 Colaţia '%s' (Id: %d) nu a fost găsită în baza de date sau a fost modificată în noua configuraţie de sistem.\n
+50 Colaţia '%1$s' (Id: %2$d) nu a fost găsită în baza de date sau a fost modificată în noua configuraţie de sistem.\n
 51 Declanşatori ce conţin colaţia '%1$s' în condiţie; trebuie redefiniţi :\nDeclanşator | Condiţie\n
 52 Vederi (view) ce conţin colaţia '%1$s' în interogarea SQL; trebuie redefinite :\nVedere/View | Interogare SQL\n
 53 Atribute având colaţia '%1$s'; trebuie redefinite.\nTabela | Domeniu atribut\n
@@ -1068,15 +1068,15 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 20 Introduceţi parola pentru %1$s: 
 22 Index tranzacţie   Nume utilizator   Nume gazda   ID proces      Nume program\n
 23 -------------------------------------------------------------------------------\n
-24 %4d%-10s %14s %14s %15d %17s\n
+24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
 25 Nu există tranzacţii\n
 26 tranlist poate fi executat doar de către DBA sau un membru al grupului DBA.\n
 27 Numărul coloanei din cheia de sortare(%1$d) este invalid.\n
 32 Index tranzacţie    ID proces    Nume program         Durată interogare    Durată tranzacţie      Aşteaptă deţinătorul de lock      SQL_ID       Text SQL\n
-33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
 42 Index tranzacţie   Nume utilizator   Nume gazdă   ID proces      Nume program      Durată interogare  Durată tranzacţie        Aşteaptă deţinător de lock      SQL_ID       Text SQL\n
-43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
 44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Index tranzacţie : %1$d
 46 SQL_ID: %1$s\n
@@ -1089,17 +1089,17 @@ opţiuni valide:\n\
   -u, --user=ID                ID de utilizator pentru accesul la baza de date; implicit: utilizator DBA\n\
   -p, --password=PAROLA        parola de utilizator; default: nul\n\
   -s, --summary                afişează informaţii sumare despre tranzacţii\n\
-      --sort-key=COLUMN_NUMBER numărul coloanei de sortare\n\
+      --sort-key=NUMAR_COLOANA numărul coloanei de sortare\n\
       --reverse                inversează rezultatul sortării\n
 
 $set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 The server was not configured for HA.\n
-23 Prefetch feature is disabled.\n
-58 HA feature is not supported in this platform.\n
-59 prefetchlogdb cannot run as standalone mode.\n
+22 Serverul nu a fost configurat pentru HA.\n
+23 Funcţionalitatea de prefetch este dezactivată.\n
+58 HA nu este suportat pe această platformă.\n
+59 prefetchlogdb nu poate rula în modul de execuţie independent.\n
 60 \
-prefetchlogdb: Prefetch log pages from the server.\n\
-usage: %1$s prefetchlogdb [OPTION] database-name\n\
+prefetchlogdb: Pre-citirea paginilor de log de la server.\n\
+usage: %1$s prefetchlogdb [OPTION] nume-baza-de-date\n\
 \n\
 valid options:\n\
-  -L, --log-path=PATH         directory PATH for copied log volumes\n
+  -L, --log-path=CALE         calea catre directorul pentru volume de log copiate\n

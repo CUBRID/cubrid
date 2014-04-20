@@ -42,14 +42,14 @@ $set 1 MSGCAT_SET_GENERAL
 17 Optionen:
 
 $set 4 MSGCAT_SET_PARAMETER
-2 %s ist kein Ordner. Erstellung %s in ".".
+2 %1$s ist kein Ordner. Erstellung %2$s in ".".
 3 Kann %1$s nicht öffnen. Konfigurationsdatei nicht erstellt.
-4 Kann die Zeile %d in die Konfigurationsdatei %s nicht schreiben.
-6 Kann die Systemkonfigurationsdatei "%s" nicht zugreifen: %s
+4 Kann die Zeile %1$d in die Konfigurationsdatei %2$s nicht schreiben.
+6 Kann die Systemkonfigurationsdatei "%1$s" nicht zugreifen: %2$s
 7 HOME ist nicht gesetzt
 8 Erforderlicher Parameter "%1$s" hat keinen Wert.
-9 Kann die Konfigurationsdate "%s" nicht öffnen: %s
-10 Der '%s' Parameter in Zeile %d in Datei '%s': 
+9 Kann die Konfigurationsdate "%1$s" nicht öffnen: %2$s
+10 Der '%1$s' Parameter in Zeile %2$d in Datei '%3$s': 
 11 Umgebungsvariable %1$s: 
 12 Unbekannter Schlüsselwort.
 13 Wert-typ entspricht nicht dem Parametertyp.
@@ -59,10 +59,10 @@ $set 4 MSGCAT_SET_PARAMETER
 17 UNIX-Fehler: %1$s
 18 Keine Meldung vorhanden.
 19 Der Wert ist außerhalb des zulässigen Bereichs. Zurücksetzen auf den Standardwert.
-20 Schlüsselwort = '%s'    Wert = %d    Standardwert = %d\n
-21 Schlüsselwort = '%s'    Wert = %f    Standardwert = %f\n
+20 Schlüsselwort = '%1$s'    Wert = %2$d    Standardwert = %3$d\n
+21 Schlüsselwort = '%1$s'    Wert = %2$f    Standardwert = %3$f\n
 22 Veralteter Parameter
-23 Die Parameter '%s' und '%s' dürfen nicht zusammen verwendet werden.\n
+23 Die Parameter '%1$s' und '%2$s' dürfen nicht zusammen verwendet werden.\n
 31 Der Parameter '%1$s':
 
 $set 5 MSGCAT_SET_ERROR
@@ -623,9 +623,9 @@ $ LOADDB
 554 Der Ladeprogramm ist in einen ungültigen Zustand gegangen. Keine weiteren Operationen sind möglich.
 555 Speicherzuteilungsfehler während des Ladens der Datenbank.
 556 Zu viele Werte angegeben. %1$d erwartet.
-557 Typ %3$s ist für Attribut %1$s von %2$s im Domain des Sets nicht erlaubt.
-558 Typ %3$s erwartet für Attribut %1$s von %2$s, eine Set-Konstante wurde angegeben.
-559 Type %3$s erwartet für Attribut %1$s von %2$s, %4$s wurde angegeben.
+557 Typ %1$s ist für Attribut %2$s von %3$s im Domain des Sets nicht erlaubt.
+558 Typ %1$s erwartet für Attribut %2$s von %3$s, eine Set-Konstante wurde angegeben.
+559 Type %1$s erwartet für Attribut %2$s von %3$s, %4$s wurde angegeben.
 560 Domain ist nicht spezifisch genug für Attribut %1$s von %2$s\n um uneingeschränkten Objektreferenzen zu unterstützen.
 561 Verschachtelte Sets sind nicht erlaubt.
 562 Systemklasse %1$s kann nicht mit dem Datenbankladeprogramm aufgefüllt werden.
@@ -753,8 +753,8 @@ $ LOADDB
 684 Die Methode hat eine benutzerdefinierte Fehlerkode %1$d zurückgegeben.
 685 Klasse "%1$s" ist ungültig.
 686 Benachrichtigung: Der Event-Handler wurde neu gestartet.
-687 Es ist nicht erlaubt (%s *) ins (%s *) umzuwandeln.
-688 Subscript außer zulässigem Bereich. Es wurde versucht, das Element %lld zuzugreifen. Kollektionsgröße = %lld.
+687 Es ist nicht erlaubt (%1$s *) ins (%2$s *) umzuwandeln.
+688 Subscript außer zulässigem Bereich. Es wurde versucht, das Element %1$lld zuzugreifen. Kollektionsgröße = %2$lld.
 689 Interner Fehler. Iterator enthält einen fehlerhaften Zustand.
 690 Die Dereferenzierung einer nicht initialisierten Instanz von odb_Ref<> wurde versucht.
 691 Es wurde versucht, einen ungültigen Iterator zu verwenden.
@@ -785,7 +785,7 @@ $ LOADDB
 716 NOT NULL Einschränkungen sind in virtuellen oder Proxy-Klassen nicht erlaubt.
 717 UNIQUE Einschränkungen sind in virtuellen oder Proxy-Klassen nicht erlaubt.
 718 Ungültiges Gadget.
-719 Die Anzahl der Attribute (%d) und die Anzahl der Werte (%d) sind nicht gleich.
+719 Die Anzahl der Attribute (%1$d) und die Anzahl der Werte (%2$d) sind nicht gleich.
 720 Ein Gadget darf nicht zum Einfügen in eine virtuelle oder Proxy-Klasse verwendet werden.
 721 Insert Anfrage liefert mehr als eine Zeile.
 722 Falsche Anzahl von Attributen für die NOT NULL Einschränkung.
@@ -819,7 +819,7 @@ $ LOADDB
 750 Die Anzahl der abgerufenen Instanzen stimmen nicht überein: %1$d erwartet, %2$d bekommen.
 751 Das OID eines neuen Objekts ist in einem BEFORE INSERT Trigger nicht verfügbar.
 752 Fehler beim Wiederherstellung vom Backup unit_num %1$d.
-753 Fehler beim Wiederherstellung vom Backup unit_num %d, pageid %d überschreitet die Gesamtzahl der Seiten %d für volid %d.
+753 Fehler beim Wiederherstellung vom Backup unit_num %1$d, pageid %2$d überschreitet die Gesamtzahl der Seiten %3$d für volid %4$d.
 754 OO Proxy-Instanz hat ein non-string-Typ oder null Schlüssel.
 755 %1$s kann nicht im Stand-Alone-Modus ausgeführt werden.
 756 Angegebene String-Puffer ist zu klein, um dieses Objekt zu kodieren.
@@ -833,9 +833,9 @@ $ LOADDB
 764 Interner Fehler in Kodierung des Objektes in einem internen vobj Form.
 765 Output Objekt Argument hat eine Null-Adresse.
 766 Interner Fehler bei der Dekodierung des Objektes.
-767 Eine Sicherung Level %d kann nicht bevor einer Sicherung Level %d erfolgen.
+767 Eine Sicherung Level %1$d kann nicht bevor einer Sicherung Level %2$d erfolgen.
 768 Die lokale Datenbank "%1$s" wurde in dieser Session zugegriffen, Änderung oder Löschen ist nicht erlaubt.
-769 Das Attribut "%s" der Klasse "%s" ist keine valide Klasse oder geteiltes Attribut.
+769 Das Attribut "%1$s" der Klasse "%2$s" ist keine valide Klasse oder geteiltes Attribut.
 770 Keine Tabellenfunktionen.
 771 Ungültiger Parameter für die Funktion.
 772 db_serial Klasse nicht gefunden.
@@ -844,7 +844,7 @@ $ LOADDB
 775 Folgender Wert überschreitet den MAX(MIN)-Wert.
 776 Das serielle Objekt kann nicht geholt werden.
 777 Das serielle Objekt kann nicht aktualisiert werden.
-778 Symbolischer Link "%s" zur Datei "%s" kann nicht erstellt werden.
+778 Symbolischer Link "%1$s" zur Datei "%2$s" kann nicht erstellt werden.
 779 Das Ergebnis überschreitet den Grenzwert: das Jahr im Datum MUSS zwischen 1 und 9999 sein.
 780 Interner Systemfehler: Systemzeit kann nicht gelesen werden.
 781 Der String ist zu lang. Er muss kleiner als 16K sein.
@@ -902,30 +902,30 @@ $ LOADDB
 833 Der Indexname "%1$s" ist mehrdeutig. Geben Sie den Klassename des Indexes.
 834 Es gibt einige Diskrepanzen zwischen Quell-String "%1$s" und Format-String "%2$s" in to_number() angegeben.
 835 Undefiniertes Statistikelement.
-836 LATCH ON PAGE(%d|%d) TIMEDOUT
+836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
 837 Der Benutzer, der Datenbankobjekte besitzt, kann nicht gelöscht werden (Klasse/Trigger/Serial usw.). 
 838 Es können nicht mehr als %1$d Index Scans gleichzeitig geöffnet werden.
 839 "%1$s": Unbekannter System-Parameter oder falscher Wert.
 840 System-Parameter "%1$s" kann nicht geändert werden.
 841 Der angeforderte Vorgang kann nur von einem Client ausgeführt werden.
 842 Das Objekt-Lock %1$d|%2$d|%3$d kann nicht gecached werden.
-843 Falsche Argumente in %s, ein %s wurde angegeben.
-844 Unbekannte Isolation (%d) gefunden, Transaktionenindex %d.
-845 Ungültiger Objekttyp (%d) gefunden. Das absperrbare Objekt ist %d|%d|%d.
-846 %s der Transaktion (%d) ist in der Halterliste eines Objekts nicht gefunden (%d|%d|%d).
-847 %s auf ein %s(%d|%d|%d) ist in der Transaktion (%d) Halterliste (cnt=%d) nicht gefunden.
-848 %s auf ein Objekt (%d|%d|%d) ist in der Transaktion (%d) non2pl-Liste nicht gefunden.
+843 Falsche Argumente in %1$s, ein %2$s wurde angegeben.
+844 Unbekannte Isolation (%1$d) gefunden, Transaktionenindex %2$d.
+845 Ungültiger Objekttyp (%1$d) gefunden. Das absperrbare Objekt ist %2$d|%3$d|%4$d.
+846 %1$s der Transaktion (%2$d) ist in der Halterliste eines Objekts nicht gefunden (%3$d|%4$d|%5$d).
+847 %1$s auf ein %2$s(%3$d|%4$d|%5$d) ist in der Transaktion (%6$d) Halterliste (cnt=%7$d) nicht gefunden.
+848 %1$s auf ein Objekt (%2$d|%3$d|%4$d) ist in der Transaktion (%5$d) non2pl-Liste nicht gefunden.
 849 Es wird zweimal versucht, die Transaktion (%1$d) abzubrechen.
-850 Transaktion (%d) ist weder Sperrhalter noch Sperrwarter eines Objekts (%d|%d|%d).
+850 Transaktion (%1$d) ist weder Sperrhalter noch Sperrwarter eines Objekts (%2$d|%3$d|%4$d).
 851 Konnte die gesperrte Ressource nicht zuweisen (%1$s). 
 852 Totale Anzahl der Halter (%1$d) einer leeren Speerhalterliste ist nicht NULL_LOCK.
-853 Für ein Objekt (%d|%d|%d), Transaktion (%d) der Uncommitted-Read verursachte die Störabschaltung (%s).
+853 Für ein Objekt (%1$d|%2$d|%3$d), Transaktion (%4$d) der Uncommitted-Read verursachte die Störabschaltung (%5$s).
 854 WARNING: Kein Sperrhalter, jedoch Sperrwarter existieren. Beziehen Sie sich auf %1$s.
 855 WARNING: Zwei oder mehrere Threads sperrwarten für eine Transaktion (%1$d).
-856 WARNING: Seltsamer LOCKWAIT Status (%d|%d), Thread (%d|%d) und Transaktion (%d).
+856 WARNING: Seltsamer LOCKWAIT Status (%1$d|%2$d), Thread (%3$d|%4$d) und Transaktion (%5$d).
 857 Ein I/O-Fehler ist beim Abschneiden der Seite %1$d des Datenträgers "%2$s" aufgetreten.
 858 Datenträger "%1$s" ist unbekannt nach Serverneustart.
-859 LATCH ON PAGE(%d|%d) ABORTED
+859 LATCH ON PAGE(%1$d|%2$d) ABORTED
 860 Aktuelle Transaktion kann nicht Teil einer globalen Transaktion werden, weil ihr Zustand '%1$s' ist.
 861 Die aktuelle Transaktion kann mit dem Transaktion-Identifikator %1$d nicht festgeschrieben werden, weil diese Transaktion nicht teil einer globalen Transaktion sein kann.
 862 Die Benutzerinformationen der globalen Transaktion mit dem Identifikator %1$d können nicht gesetzt werden, weil ihr Zustand '%2$s' ist.
@@ -947,22 +947,22 @@ $ LOADDB
 878 Ungültige Datenbankdatei '%1$s'.
 879 Erlaubnis '%1$s' kann nicht erhalten werden.
 880 Erlaubnis '%1$s' kann nicht geändert werden.
-881 Die Sperrdatei '%s(FILE ID:%d)' kann nicht gelesen werden.
+881 Die Sperrdatei '%1$s(FILE ID:%2$d)' kann nicht gelesen werden.
 882 Die Sperrdatei 'FILE ID:%1$d' kann nicht freigegeben.
 883 Zustand der Datei '%1$s' konnte nicht gelesen werden.
 884 Volext-Pfad '%1$s' darf nicht schreiben.
-885 Umziehen von '%s' zu '%s' gescheitert. Verwenden Sie das gleiche Gerät (Disk).
+885 Umziehen von '%1$s' zu '%2$s' gescheitert. Verwenden Sie das gleiche Gerät (Disk).
 886 "%1$s" verursachte die Verletzung einer eindeutigen Einschränkung.
 887 Gespeicherte Prozedur '%1$s' ist bereits vorhanden.
-888 Parameteranzahl ist ungültig. %d erwartet, %d bekommen.
+888 Parameteranzahl ist ungültig. %1$d erwartet, %2$d bekommen.
 889 Ausführungsfehler gespeicherter Prozedur: %1$s
 890 Partition fehlgeschlagen.
 891 Entsprechende Partition existiert nicht.
 892 Primärer Schlüssel "%2$s" bereits definiert für Klasse "%1$s".
 893 Attribut '%1$s', Mitglied des primären Schlüssels, konnte nicht gelöscht werden.
 894 Gespeicherte Prozedur/Funktion '%1$s' existiert nicht.
-895 Ungültiger Typ gespeicherter Prozedur: '%s' ist '%s'.
-896 Komprimierung fehlgeschlagen. Zip-Methode: %d (%s), Zip Level: %d (%s)
+895 Ungültiger Typ gespeicherter Prozedur: '%1$s' ist '%2$s'.
+896 Komprimierung fehlgeschlagen. Zip-Methode: %1$d (%2$s), Zip Level: %3$d (%4$s)
 897 Dekomprimierung fehlgeschlagen.
 898 Nachbildungsfehler: "%1$s"
 899 Ungültige Partitionabfragen.
@@ -986,14 +986,14 @@ $ LOADDB
 917 Aktiver Protokolldatenträger existiert bereits.
 918 Die Klasse '%1$s', referenziert von einer Fremdschlüssel, existiert nicht.
 919 Die Klasse '%1$s', referenziert von einer Fremdschlüssel, hat keinen Primärschlüssel.
-920 Der Fremdschlüssel '%s' beinhaltet nicht den Primärschlüssel-Mitglied '%s'.
-921 Das Domain der Fremdschlüssel-Mitglied '%s' ist unterschiedlich von dem des Primärschlüssel-Mitglieds '%s'.
-922 The Einschränkung des Fremdschlüssels '%s' ist wegen dem Wert '%s' ungültig.
-923 Der Primärschlüssel '%s', referenziert vom einem Fremdschlüssel '%s' soll nicht gelöscht werden.
+920 Der Fremdschlüssel '%1$s' beinhaltet nicht den Primärschlüssel-Mitglied '%2$s'.
+921 Das Domain der Fremdschlüssel-Mitglied '%1$s' ist unterschiedlich von dem des Primärschlüssel-Mitglieds '%2$s'.
+922 The Einschränkung des Fremdschlüssels '%1$s' ist wegen dem Wert '%2$s' ungültig.
+923 Der Primärschlüssel '%1$s', referenziert vom einem Fremdschlüssel '%2$s' soll nicht gelöscht werden.
 924 Update/Delete Operationen werden durch dem Fremdschlüssel '%1$s' beschränkt.
 925 Sperrprozedur für den Fremdschlüssel '%1$s' gescheitert.
 926 Die Instanz mit einem Fremdschlüssel '%1$s' kann nicht gelöscht werden.
-927 Die Anzahl der Schlüssel des Fremdschlüssels '%s' ist unterschiedlich vom der des Primärschlüssels '%s'.
+927 Die Anzahl der Schlüssel des Fremdschlüssels '%1$s' ist unterschiedlich vom der des Primärschlüssels '%2$s'.
 928 Das Attribut '%1$s', erstellt von 'ON CACHE OBJECT' eines Fremdschlüssels.
 929 Ein Fremdschlüssel kann nicht in einer virtuellen Klasse definiert werden.
 930 Das Attribut '%1$s', erstellt von 'ON CACHE OBJECT' des Fremdschlüssels kann nur nach Entfernung der Fremdschlüsseleinschränkung gelöscht werden.
@@ -1043,8 +1043,8 @@ $ LOADDB
 974 Archivprotokoll "%1$s" dient zur Archivierung der Seiten von %2$lld bis %3$lld.
 975 Aktuelle Version der Nachbildung erlaubt die Änderung mehrerer Zeilen mit einer einzigen UPDATE Anweisung, die die UNIQUE-Einschränkung verletzen kann, nicht.
 976 Interner Fehler: Tabellengröße Überlauf (zugewiesener Speicher: %1$d, abgerufen: %2$d) au Seite %3$d|%4$d(Datenträger "%5$s")
-977 Checkpoint begonnen (voriger Checkpoint Seiten-ID: %lld, vorige Redo-Seiten-ID: %lld).
-978 Checkpoint beendet (Checkpoint Seiten-ID: %lld, Checkpoint Redo-Seiten-ID: %lld).
+977 Checkpoint begonnen (voriger Checkpoint Seiten-ID: %1$lld, vorige Redo-Seiten-ID: %2$lld).
+978 Checkpoint beendet (Checkpoint Seiten-ID: %1$lld, Checkpoint Redo-Seiten-ID: %2$lld).
 979 CONNECT BY-Schleife in Benutzerdaten.
 980 Ein Thread wartet in %1$s seit mehr als %2$d msec.
 981 Transaktion %1$d hat die Schwelle der Statistik-Monitoring erreicht %2$s.
@@ -1143,7 +1143,7 @@ $ LOADDB
 1074 Zugriff-Liste kann nicht gelesen werden (%1$s).
 1075 Der Scan Absteigender Indexen wegen niedrigerer Priorität auf B+tree mit Index-Identifier: (vfid = (%1$d, %2$d), rt_pgid: %3$d) abgebrochen.
 1076 Systemparameter kann nicht geladen werden.
-1077 Der '%s' Parameter auf Zeile %d in Datei '%s' : Unbekannter Parameter
+1077 Der '%1$s' Parameter auf Zeile %2$d in Datei '%3$s' : Unbekannter Parameter
 1078 Zeichen am Offset %1$d ist ungültig in aktueller Codeliste.
 1079 Codelisten der Datenbank (%1$s) und Serverkonfiguration(%2$s) sind nicht kompatibel.
 1080 Die maximale Größe des Filter-Prädikat-Strings muss %1$d sein.
@@ -1164,19 +1164,19 @@ $ LOADDB
 1095 Benutzername ist zu lang.
 1096 Änderung der Partitionsschema ist nicht erlaubt, wenn die partitionierte Klasse von einer Fremdschlüssel referenziert wird.
 1097 Spalte '%1$s' kann keine PRIMARY KEY Einschränkung und zugleich einen NULL Default-Wert haben.
-1098 Sprachumgebungen für Sprache '%s' sind im Zeichenvorrat '%s' nicht verfügbar.
+1098 Sprachumgebungen für Sprache '%1$s' sind im Zeichenvorrat '%2$s' nicht verfügbar.
 1099 DDL Anweisung wird durch die Konfiguration (block_ddl_statement=yes) nicht erlaubt.\n SQL Text: %1$s
 1100 Anweisung ohne WHERE Klausel ist in der Konfiguration nicht erlaubt (block_nowhere_statement=yes).
 1101 Unbenutzter Fehler Code.
 1102 Unbekannter Systemparameter oder falscher Wert.
 1103 Systemparameter kann nicht geändert werden.
-1104 Langsame Abfrage (%d msec)\n%s
+1104 Langsame Abfrage (%1$d msec)\n%2$s
 1105 Interner Fehler: wegspülen eines Objektes teilweise gescheitert.
 1106 Mehrere Zeilen in Quelltabelle entsprechen der gleichen Zeile in der Zieltabelle.
 1107 Ungültige Zahl für NTILE. Sie sollte größer als Null und kleiner als 2.147.483.647 sein.
 1108 Ungültige Bucket-Zahl für WIDTH_BUCKET. Sie sollte größer als Null und kleiner als 2,147,483,647 sein.
 1109 Ungültiger Wert für die Definierung der Partition.
-1110 Ungenügend Speicher in Btree-Seite. (Schlüssellänge: %d)\n%s
+1110 Ungenügend Speicher in Btree-Seite. (Schlüssellänge: %1$d)\n%2$s
 1111 Ergebnis abgeschnitten, da die Genauigkeit (%1$d) kleiner als seine Länge (%2$d) ist.
 1112 Ein Zeichen konnte nicht von '%1$s' auf '%2$s' umgerechnet werden.
 1113 Elementindex außerhalb des Bereichs.
@@ -1199,24 +1199,26 @@ $ LOADDB
 1130 Transaktion wird abgebrochen, weil die Anzahl der Transaktionssperre %1$d überschreitet.
 1131 Interner Fehler: Die Seite %1$d des Volumen "%2$s" könnte beschädigt sein.\n%3$s
 1132 Encryption library failure: %1$s
-1133 Copylogdb for %1$s already exists.
-1134 Applylogdb for %1$s already exists.
-1135 A previous link of B+tree(%1$s) is corrupted.: vpid = (%2$d, %3$d)
-1136 A previous link of B+tree(%1$s) is repaired.: vpid = (%2$d, %3$d)
-1137 The query has been rejected due to attempt to exceed the maximum allowed nesting level(%1$d).
-1138 Handshake error (peer host %1$s): incompatible interruptibility. (client: %2$s, server: %3$s)
-1139 Handshake error (peer host %1$s): incompatible read/write mode. (client: %2$s, server: %3$s)
-1140 Handshake error (peer host %1$s): HA replication delayed.
-1141 Handshake error (peer host %1$s): replica-only client to non-replica server.
-1142 Handshake error (peer host %1$s): unidentified server version.
-1143 Handshake error (peer host %1$s): remote access to server not allowed.
-1144 Timed out attempting to connect to %1$s. (timeout: %2$d sec(s))
-1145 To change the owner of a system class is not allowed.
-1146 volume identifier %1$d does not exist.
-1147 The size of XASL stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
-1148 The size of filter predicate stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
-1149 Cannot find the page %1$d of volume %2$d.
-1150 Context requires compatible collations.
+1133 Copylogdb für %1$s existiert bereits.
+1134 Applylogdb für %1$s existiert bereits.
+1135 Ein vorhergehend Link von B+tree(%1$s) ist beschädigt: vpid = (%2$d, %3$d)
+1136 Ein vorhergehend Link von B+tree(%1$s) ist repariert: vpid = (%2$d, %3$d)
+1137 Die Abfrage wurde aufgrund abgelehnt wurde versucht die maximal
+zulässige Verschachtelungstiefe überschreiten(%1$d).
+1138 Handshake-Fehler (Peer-Host %1$s): Unterbrechbarkeitsklauseln unvereinbar. (client: %2$s, server: %3$s)
+1139 Handshake-Fehler (Peer-Host %1$s): unvereinbar Lese/Schreib-modus. (client: %2$s, server: %3$s)
+1140 Handshake-Fehler (Peer-Host %1$s): HA-Replikation verzögert.
+1141 Handshake-Fehler (Peer-Host %1$s): Nachbildung client um
+nicht-Nachbildung Server verbunden
+1142 Handshake-Fehler (Peer-Host %1$s): nicht identifizierten Server-Version.
+1143 Handshake-Fehler (Peer-Host %1$s): Remote-Zugriff auf Server nicht erlaubt.
+1144 Zeitüberschreitung versuchen um %1$s zu verbinden. (Zeitüberschreitung: %2$d sec(s))
+1145 Ändern der Besitzer einer Systemklasse ist nicht erlaubt.
+1146 Trägerkennung %1$d ist nicht vorhanden.
+1147 Die Größe der XASL Strom-Cache(%1$d) überschreitet das Maximum(%2$d). Neuer Eintrag hinzugefügt wird, obwohl nichts zu Opfern, weil alle Cache-Einträge verwendet werden.
+1148 Die Größe der Filterprädikat Strom-Cache(%1$d) überschreitet das Maximum(%2$d). Neuer Eintrag hinzugefügt wird, obwohl nichts zu Opfern, weil alle Cache-Einträge verwendet werden.
+1149 Kann nicht finden die Seite %1$d von Volumen %2$d.
+1150 Kontext erfordert kompatible Sortierungen.
 1151 The page %1$d of volume %2$d is not a slotted page.
 1152 Letzter Fehler
 
@@ -1230,33 +1232,33 @@ $set 6 MSGCAT_SET_INTERNAL
 7 Wollen Sie beenden? 1/0
 8 Unbekannte Datei.
 9 Keine Meldung vorhanden; diese Meldung ist ein Ersatz für das falsch formatierte Original.
-10 er_init: *** Ungültiger exit_ask Wert = %d; %s wird stattdessen angenommen. ***\n
+10 er_init: *** Ungültiger exit_ask Wert = %1$d; %2$s wird stattdessen angenommen. ***\n
 11 er_start: *** WARNING: Meldungsprotokoll "%1$s" kann nicht geöffnet werden; stderr wird stattdessen angewendet. ***\n
 12 er_study_fmt: zweifelhafte Meldung für Fehlerkode %1$d.
 13 er_estimate_size: unbekannter Konversionskode (%1$d).
 14 \n\n*** Meldungsprotokollzyklus. Meldungen werden am Anfang der Datei fortgesetzt. ***\n\n
-15 \nTime: %s - %s *** %s CODE = %d, Tran = %d%s\n%s\n
-16 CUBRID (pid: %d) *** %s *** %s CODE = %d, Tran = %d %s
-17 \nTime: %s - %s *** Datei %s, Zeile %d %s CODE = %d Tran = %d%s\n%s\n
-18 CUBRID (pid: %d) *** %s *** Datei %s, Zeile %d, %s CODE = %d, Tran = %d. %s
+15 \nTime: %1$s - %2$s *** %3$s CODE = %4$d, Tran = %5$d%6$s\n%7$s\n
+16 CUBRID (pid: %1$d) *** %2$s *** %3$s CODE = %4$d, Tran = %5$d %6$s
+17 \nTime: %1$s - %2$s *** Datei %3$s, Zeile %4$d %5$s CODE = %6$d Tran = %7$d%8$s\n%9$s\n
+18 CUBRID (pid: %1$d) *** %2$s *** Datei %3$s, Zeile %4$d, %5$s CODE = %6$d, Tran = %7$d. %8$s
 19 \n*** Die bisherige Fehlermeldung ist die letzte. ***\n\n
-20 \nTime: %s - DEBUG *** Datei %s, Zeile %d\n
+20 \nTime: %1$s - DEBUG *** Datei %2$s, Zeile %3$d\n
 21 Mail -s "Der Server wurde gestoppt"
-22 --->>>\n %s wurde auf Ihre Anfrage gestoppt, wenn der folgende Fehler eintrat:\n errid = %d, %s\nBenutzer: %s, pid: %d, Host: %s, time: %s<<<---\n
-23 %s wurde auf errid = %d gestoppt. Benutzer: %s, pid: %d
+22 --->>>\n %1$s wurde auf Ihre Anfrage gestoppt, wenn der folgende Fehler eintrat:\n errid = %2$d, %3$s\nBenutzer: %4$s, pid: %5$d, Host: %6$s, time: %7$s<<<---\n
+23 %1$s wurde auf errid = %2$d gestoppt. Benutzer: %3$s, pid: %4$d
 24 er_init: Event-Handler kann nicht installiert werden "%1$s"\n
 
 $set 7 MSGCAT_SET_PARSER_SYNTAX
-1 Bitte Syntax überprüfen am '%s', %s erwartet.
-2 Bitte Syntax überprüfen am '%s', %s in %s erwartet.
+1 Bitte Syntax überprüfen am '%1$s', %2$s erwartet.
+2 Bitte Syntax überprüfen am '%1$s', %2$s in %3$s erwartet.
 3 Überprüfen Sie bitte die Richtigkeit des Tokens '%1$s'.
 4 'read uncommitted schema' ist nicht akzeptabel, \n'read committed schema' wird anstatt benutzt.
 5 Maximale Länge der Zeichenstrings ist 16383.
-6 %s überschreitet den Grenzwert %s.
+6 %1$s überschreitet den Grenzwert %2$lld.
 7 Maximale Länge der Bitstrings ist %1$d Bits.
 8 Eie Subanfrage darf in einem Join-Bedingung-Klausel nicht angewendet werden.
 9 Attribut "(%1$s)" kann in Update-Privileg-Klausel der grant/revoke Anweisung nicht spezifiziert werden.
-10 Ungültiger Anwendung des Schlüsselwortes '%s', %s erwartet.
+10 Ungültiger Anwendung des Schlüsselwortes '%1$s', %2$s erwartet.
 11 Token zu lang.
 12 Ungültiger Datentyp
 13 Ungültige Anhang-Anweisung \n  attach_statement: ATTACH unsigned_integer
@@ -1357,8 +1359,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 108 , expecting
 109 unexpected
 110 END OF STATEMENT
-111 In line %d, column %d before '%c%s'\n
-112 In line %d, column %d before %s\n
+111 In line %1$d, column %2$d before '%3$c%4$s'\n
+112 In line %1$d, column %2$d before %3$s\n
 113 before ' %1$s'\n
 114 before END OF STATEMENT\n
 115 ungültiges set names\n  set_names: SET NAMES charset [COLLATE collation]\n
@@ -1367,46 +1369,46 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 118 Ungültige Nutzung der Kollation\n COLLATION ( expression )\n
 119 Ungültige Nutzung des clob_to_char\n CLOB_TO_CHAR ( expression [using charset] )\n
 120 Ungültige Nutzung des index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
-121 Incorrect usage of UNION and ORDER BY
+121 Die falsche Verwendung von UNION und ORDER BY
 122 Expecting ON. Outer Joins require join condition.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.
 2 Funktion %1$s ist nicht definiert.
 3 Ldb '%1$s' wurde in der Datenbank nicht gefunden.
-4 Die Spaltenanzahl %d, in der linken Anfrage ist nicht gleich\nmit der Spaltenanzahl %d, in der rechten Anfrage.
-5 '%s' ist nicht Vereinigungskompatibel mit '%s'.
+4 Die Spaltenanzahl %1$d, in der linken Anfrage ist nicht gleich\nmit der Spaltenanzahl %2$d, in der rechten Anfrage.
+5 '%1$s' ist nicht Vereinigungskompatibel mit '%2$s'.
 6 %1$s ist nicht definiert.
 7 Die Domain von %1$s darf keine V-Klasse sein.
 8 Die Domain von %1$s darf keine Proxy V-Klasse sein.
 9 Die Domain von %1$s darf keine Klasse sein.
-10 %s ist kein Attribut von %s.
-11 %s dar aus dieser Klasse nicht geändert werden.\nEs wurde von %s geerbt.
+10 %1$s ist kein Attribut von %2$s.
+11 %1$s dar aus dieser Klasse nicht geändert werden.\nEs wurde von %2$s geerbt.
 12 Klasse %1$s existiert nicht.
-13 %s ist kein %s.
-14 %s ist keine Methode oder Attribut von %s.
+13 %1$s ist kein %2$s.
+14 %1$s ist keine Methode oder Attribut von %2$s.
 15 %1$s hat keine, und darf keine Anfragespezifikationen haben.
 16 %1$s ist in der Datenbank nicht definiert.
-17 %s ist keine Superklasse von %s.
-18 Klasse %s erbt von Nicht-Klasse %s.
-19 V-Klasse %s erbt von Nicht-V-Klasse %s.
-20 Proxy V-Klasse %s erbt von Non-Proxy V-Klasse %s.
-21 %s ist bereits eine Superklasse von %s.
+17 %1$s ist keine Superklasse von %2$s.
+18 Klasse %1$s erbt von Nicht-Klasse %2$s.
+19 V-Klasse %1$s erbt von Nicht-V-Klasse %2$s.
+20 Proxy V-Klasse %1$s erbt von Non-Proxy V-Klasse %2$s.
+21 %1$s ist bereits eine Superklasse von %2$s.
 22 %1$s darf keine Superklasse von selbst sein.
-23 %s ist bereits eine Unterklasse von %s.
+23 %1$s ist bereits eine Unterklasse von %2$s.
 24 %1$s hat keinen eindeutigen Wert. Attribute, die in \naggregierten Abfragen ausgesetzt sind, müssen auch in der Gruppe bei dem Klausel erscheinen.
-25 Die Anzahl der Spalten (%d) und into_names (%d) sind nicht gleich.
+25 Die Anzahl der Spalten (%1$d) und into_names (%2$d) sind nicht gleich.
 26 Klasse %1$s existiert bereits.
-27 Superklasse %s in '%s' existiert nicht.
+27 Superklasse %1$s in '%2$s' existiert nicht.
 28 Eine SUBKLASSEN-Klausel erwartet, um die INHERIT Klausel '%1$s' sinnvoll zu machen.
-29 INHERIT Klausel '%s' referenziert eine Klasse, die in der SUBCLASS Klausel '%s' nicht beinhaltet ist.
+29 INHERIT Klausel '%1$s' referenziert eine Klasse, die in der SUBCLASS Klausel '%2$s' nicht beinhaltet ist.
 30 Die Klasse DARF keine Anfragespezifikation haben.
 31 %1$s ist kein registriertes ldb.
 32 Ein Proxy-Erbe darf keine eigene object_id Klausel haben. Es darf sein(e) geerbtes(en) object_id Attribut(e) nicht überschreiben.
 33 Proxy V-Klasse hat mehr als eine Anfragespezifikation.
-34 Die Anzahl der Attribute %d ist nicht gleich mit der Anzahl der Spalten \n%d, in der Anfragespezifikation.
+34 Die Anzahl der Attribute %1$d ist nicht gleich mit der Anzahl der Spalten \n%2$d, in der Anfragespezifikation.
 35 Ein erwarteter Attributname für %1$s fehlt.
-36 Attribut '%s' ist mit Spalte '%s' der Anfragespezifikation nicht kompatibel.
+36 Attribut '%1$s' ist mit Spalte '%2$s' der Anfragespezifikation nicht kompatibel.
 37 %1$s ist keine Klasse.
 38 Indices dürfen auf virtuellen Klassen nicht erstellt werden.
 39 Indices können nur auf einem einzigen Attribut erstellt werden.
@@ -1415,7 +1417,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 42 Sie dürfen von einer abgeleiteten Tabelle nicht löschen.
 43 Benutzer %1$s ist nicht in der Datenbank.
 44 Das Update darf keine Aggregation haben.
-45 Attributnamen in jeder Klasse müssen eindeutig sein. Attributname '%s' in Klasse '%s' ist mehr als einmal angegeben.
+45 Attributnamen in jeder Klasse müssen eindeutig sein. Attributname '%1$s' in Klasse '%2$s' ist mehr als einmal angegeben.
 46 Es gibt mehrere Zuordnungen zu %1$s.%2$s.
 47 Zahl in sort spec ist kein Integer.
 48 %1$d in sort spec ist außer zulässigem Bereich.
@@ -1424,8 +1426,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 51 Es gibt widersprüchliche Sortierungsrichtungen für Spalte %1$s.
 52 %1$s in sort spec ist keine Zahl, Name oder Pfadausdruck.
 53 Insert Ausdruck darf nur in Insert-Statements auftauchen.
-54 Die Anzahl der Attributen(%d) und die der Select-Spalten (%d) sind nicht gleich.
-55 Die Anzahl der Attributen(%d) und die der Werte(%d) sind nicht gleich.
+54 Die Anzahl der Attributen(%1$d) und die der Select-Spalten (%2$d) sind nicht gleich.
+55 Die Anzahl der Attributen(%1$d) und die der Werte(%2$d) sind nicht gleich.
 56 Datenüberlauf auf Datentyp %1$s.
 57 Inkompatibles Datentyp für Attribut %1$s.
 58 %1$s\n ist kein SELECT einer einzigen Klasse.
@@ -1434,19 +1436,19 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 61 Es gibt mehr als eine Isolationsstufe-Klausel.
 62 Es gibt mehr als eine Timeout-Klausel.
 63 Keine Isolationsstufe wurde eingegeben.
-64 BETWEEN-Operator ist nicht definiert für Typen %s, %s und %s.
-65 '%s' Operator ist nicht definiert für Typen %s und %s.
+64 BETWEEN-Operator ist nicht definiert für Typen %1$s, %2$s und %3$s.
+65 '%1$s' Operator ist nicht definiert für Typen %2$s und %3$s.
 66 Die Funktion muss Argumente haben: %1$s.
-67 Inkompatible Operanden: %s(%s).
+67 Inkompatible Operanden: %1$s(%2$s).
 68 Aggregate-Funktion muss 1 Argument haben: %1$s.
 69 Sie versuchen, durch Null zu teilen.
-70 Datenüberlauf bei der Zwangskonvertierung von %s auf dem Typ %s.
-71 %s kann nicht zwangskonvertiert zu Typ %s sein.
+70 Datenüberlauf bei der Zwangskonvertierung von %1$s auf dem Typ %2$s.
+71 %1$s kann nicht zwangskonvertiert zu Typ %2$s sein.
 72 Der Typ von '%1$s' muss SET, MULTISET, oder SEQUENCE sein.
 73 '%1$s' sollge genau ein Set-Element haben.
 74 %1$s hat mehr als einen abgeleiteten Spaltenname.
 75 %1$s hat keinen abgeleiteten Spaltenname.
-76 %s hat keine entsprechende Spaltenanzahl (%d) und Spaltennamen (%d).
+76 %1$s hat keine entsprechende Spaltenanzahl (%2$d) und Spaltennamen (%3$d).
 77 Es gibt keine Attribute in %1$s.
 78 Eine einzige Tabelle wird in %1$s erwartet.
 79 Der Name %1$s ist nicht eindeutig.
@@ -1456,35 +1458,35 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 83 Referenz der Klasseninstanz %1$s auf eine abgeleitete Tabelle ist nicht erlaubt.
 84 Pfad Korrelation (%1$s) scheint außerhalb eines Inner-Pfad-Terms zu sein.
 85 Referenz zu %1$s ist mehrdeutig.
-86 Klasse von %s hat kein Attribut %s.
-87 Nicht alle Klassen (%s) haben ein Attribut %s.
-88 Klasse (%s) hat kein Attribut %s.
-89 %s ist ein %s Typ, kein Objekttyp.
-90 Selektor {%s} übersetzt nicht zu einer exponierten Klassespezifikation in\n dem erforderlichen Kontext (%s).
-91 Selektor {%s} referenziert eine Non-Klassenspezifikation (%s).
+86 Klasse von %1$s hat kein Attribut %2$s.
+87 Nicht alle Klassen (%1$s) haben ein Attribut %2$s.
+88 Klasse (%1$s) hat kein Attribut %2$s.
+89 %1$s ist ein %2$s Typ, kein Objekttyp.
+90 Selektor {%1$s} übersetzt nicht zu einer exponierten Klassespezifikation in\n dem erforderlichen Kontext (%2$s).
+91 Selektor {%1$s} referenziert eine Non-Klassenspezifikation (%2$s).
 92 Selektor {%1$s} kann nicht rooten, der Pfadausdruck definiert sich selbst.
-93 Selektor {%s} ist kreisförmig definiert im Bezug auf Selektor {%s}.
-94 Selektor {%s} wird am %s neudefiniert.
-95 %s (Domainobjekt) hat kein Attribut %s.
+93 Selektor {%1$s} ist kreisförmig definiert im Bezug auf Selektor {%2$s}.
+94 Selektor {%1$s} wird am %2$s neudefiniert.
+95 %1$s (Domainobjekt) hat kein Attribut %2$s.
 96 %1$s in EXCEPT spec ist keine Subklasse.
 97 ALL ... EXCEPT Liste schließt EVERYTHING in Klasse aus.
-98 '%s' ist inkonsistent mit\nanderer Anwendung des Pfad-Selektors '%s' oder des Root-Pfads '%s'.
+98 '%1$s' ist inkonsistent mit\nanderer Anwendung des Pfad-Selektors '%2$s' oder des Root-Pfads '%3$s'.
 99 Nicht definiertes Argument.
 100 Das Argument ist kein Objekt.
-101 %s ist keine Klassenmethode oder Attribut des %s.
+101 %1$s ist keine Klassenmethode oder Attribut des %2$s.
 102 Anfragespezifikation darf keine Into-Klausel haben.
 103 Proxy Anfragespezifikation darf keinen Aggregatausdruck,\nkeine Group-By-Klausel und keine Having-Klausel haben.
 104 Proxy Anfragespezifikation darf weder DISTINCT noch UNIQUE \nSchlüsselwörter in der Abfrageliste haben.
 105 Proxy Anfragespezifikation muss eine simple SELECT Anweisung sein.
 106 Proxy Anfragespezifikation darf nur eine Tabelle oder Klasse \naus der lokalen Datenbank referenzieren.
-107 Benutzer '%s' ist nicht der Eigner von %s.
-108 Proxy '%s' ist bereits in der Klasse '%s' von ldb '%s' definiert.
+107 Benutzer '%1$s' ist nicht der Eigner von %2$s.
+108 Proxy '%1$s' ist bereits in der Klasse '%2$s' von ldb '%3$s' definiert.
 109 CUBRID unterstützt Proxys mit Objekten in heterogenen Sets nicht.
 110 Where-Klausel muss ein logischer Ausdruck sein.
 111 Like Escape-Klausel muss eine Zeichenkette oder eine Hostvariable sein.
-112 Ungültige Kombination von Präzision (%d) und Skala (%d).
+112 Ungültige Kombination von Präzision (%1$d) und Skala (%2$d).
 113 Angegebene Präzision von %1$d ist ungültig; es sollte größer als %2$d und nicht größer als %3$d sein.
-114 Präzision (%d) zu Groß. Maximale Präzision ist %d.
+114 Präzision (%1$d) zu Groß. Maximale Präzision ist %2$d.
 115 Die Methode %1$s muss einen Rückgabetyp haben.
 116 Anzahl der übergebenen Argumente an die Methode entspricht nicht der \nAnzahl definiert für die Methode.
 117 Methodenanruf muss einen Ziel haben.
@@ -1506,14 +1508,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 133 Proxy object_id Attribute '%1$s' darf nicht zur \na Anfragespezifikationspalte-Ausdruck mappen.
 134 %1$s Einschränkung ignoriert.
 135 Einschränkungdeklaration in diesem Kontext nicht erlaubt.
-136 Casting %s zum Tuyp %s ist nicht unterstützt.
+136 Casting %1$s zum Tuyp %2$s ist nicht unterstützt.
 137 %1$s ist kein valider Bit-String.
-138 '%s' Operator ist für Type %s nicht definiert.
-139 '%s' Operator ist für Typen %s mit %s und %s nicht definiert.
+138 '%1$s' Operator ist für Type %2$s nicht definiert.
+139 '%1$s' Operator ist für Typen %2$s mit %3$s und %4$s nicht definiert.
 140 Operand des Operators '%1$s' dürfen nicht beide dynamische Hostvariablen sein.
-141 Zu vielen Argumente für die generische Funktion %s.\nNur %d Argumente sind für generische Funktionen erlaubt.
-142 Selektor {%s} Klasse '%s' ist keine Subklasse von '%s'.
-143 Feld '%s' kann von Typ %s nicht extrahiert werden.
+141 Zu vielen Argumente für die generische Funktion %1$s.\nNur %2$d Argumente sind für generische Funktionen erlaubt.
+142 Selektor {%1$s} Klasse '%2$s' ist keine Subklasse von '%3$s'.
+143 Feld '%1$s' kann von Typ %2$s nicht extrahiert werden.
 144 Anfragespezifikation darf keine ORDER BY Klausel haben.
 145 Case-Bedingung muss ein logischer Ausdruck sein.
 146 Ausdruck sollte Typ %1$s sein.
@@ -1532,7 +1534,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 159 Index '%1$s' kann nicht gefunden werden.
 160 Der qualifizierte Indexname '%1$s' bezieht sich auf eine Klasse, er ist aber in der from-Klausel nicht angegeben.
 161 Zwei oder mehrere Klassen haben denselben Index '%1$s'. Die qualifizierten Indexnamen anwenden.
-162 Ungültige Anwendung von %s. Der \n%s Ausdruck kann mit einem Attribut oder einem korrelierten Subanfrage verwendet werden.
+162 Ungültige Anwendung von %1$s. Der \n%2$s Ausdruck kann mit einem Attribut oder einem korrelierten Subanfrage verwendet werden.
 163 Aktuelle Version erlaubt keinen Ausdruck mit ORDERBY_NUM () in der Auswahlliste.
 164 Pfadausdruck '%1$s' ist in Join-Kondition.
 165 '%1$s' in Join-Kondition ist nicht definiert.
@@ -1585,18 +1587,18 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 212 %1$s darf keine GROUP BY Spalte sein
 213 '%1$s von %2$s' kann nicht als Spaltentyp definiert werden.
 214 Ungültiger Wert "%1$s" für Präfixlenge des Indexes.
-215 '%s' Funktion ist nicht definiert für Typen %s, %s, %s und %s.
-216 '%s' Funktion ist nicht definiert für Typen %s, %s und %s.
-217 '%s' Funktion ist nicht definiert für Typen %s und %s.
-218 '%s' Funktion ist nicht definiert für Typ %s.
-219 '%s' Funktion ist nicht definiert für ein Indexargument von Typ %s.
+215 '%1$s' Funktion ist nicht definiert für Typen %2$s, %3$s, %4$s und %5$s.
+216 '%1$s' Funktion ist nicht definiert für Typen %2$s, %3$s und %4$s.
+217 '%1$s' Funktion ist nicht definiert für Typen %2$s und %3$s.
+218 '%1$s' Funktion ist nicht definiert für Typ %2$s.
+219 '%1$s' Funktion ist nicht definiert für ein Indexargument von Typ %2$s.
 220 ALTER VIEW '%1$s' AS SELECT ist für Views mit Sub- oder Superklassen nicht erlaubt. ALTER VIEW CHANGE ANFRAGE anstatt verwenden.
 221 View-Attribute können mit dieser Anweisung nicht geändert werden. 'ALTER VIEW Name AS Anfrage' könnte anstatt hilfreich sein.
 222 CUBRID erfordert, dass das ORDER BY Item der gleiche Ausdruck wie GROUP_CONCAT Argument oder ein Integer (Argument Position) ist.
 223 Das Prädikat LIKE erfordert ein Escape-Zeichen. Lesen Sie die Dokumentation für die '%1$s' und '%2$s' Konfigurationsparameter.
 224 KEYLIMIT darf in der INDEX NONE Klausel nicht verwendet werden.
 225 Session-Variable in diesem Kontext nicht erlaubt.
-226 Indexhinweis Konflikt zwischen '%s' und '%s'.
+226 Indexhinweis Konflikt zwischen '%1$s' und '%2$s'.
 227 '%1$s' Funktion darf in der DEFAULT Klausel nicht verwendet werden.
 228 Aktualisierung abgeleiteter Tabellen ist nicht erlaubt.
 229 Die Aktualisierung der Klassenattributen und der Instanz-Attributen ist in der gleiche Anweisung nicht erlaubt.
@@ -1606,7 +1608,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 233 Multiple oder verschachtelte Funktionen sind in der Definition eines Funktionsindexes nicht erlaubt.
 234 Ungültige Indexspezifikation.
 235 SHARED, DEFAULT und AUTO_INCREMENT dürfen nicht untereinander definiert werden.
-236 Zu viele Aufzählungswerte (%d). Ein Aufzählungstyp darf maximum %d Werte.
+236 Zu viele Aufzählungswerte (%1$d). Ein Aufzählungstyp darf maximum %2$d Werte.
 237 Doppelte Werte in enum Typ.
 238 MERGE kann nicht ins eine abgeleitete Tabelle angewendet werden.
 239 Eine MERGE-Einweisung kann keinen Einfluss auf eine Quelltabelle haben.
@@ -1628,7 +1630,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 255 '%1$s' ist in einem Filterausdruck für Index nicht erlaubt.
 256 GROUPBY_NUM() und WITH ROLLUP Klausel dürfen in der gleichen Anfrage nicht angewendet werden.
 257 Kann nicht MERGE UPDATE Spalte %1$s die in ON-Klausel referenziert ist.
-258 Die Spaltenanzahl %d, in ( %s ) ist nicht gleich mit \nder Spaltenazahl %d, in ( %s ).
+258 Die Spaltenanzahl %1$d, in ( %2$s ) ist nicht gleich mit \nder Spaltenazahl %3$d, in ( %4$s ).
 259 Spaltenpräfixen in Funktion-Index-Ausdrücke nicht erlaubt.
 260 %1$s darf keine PARTITION BY oder ORDER BY Spalte
 261 Anfrage muss einen einzigen Wert zurückgeben\n(%1$s).
@@ -1637,7 +1639,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 264 Das Gesamtvolumen der Aufzählungselemente ist zu groß.
 265 Zieltabellen können in Quelle-specs nicht verwendet werden.
 266 COLLATE ist in diesem Kontext nicht erlaubt.
-267 COLLATE Modifizierer kann den Codeset nicht ändern (von '%s' auf '%s'). Versuchen Sie es mit CAST.
+267 COLLATE Modifizierer kann den Codeset nicht ändern (von '%1$s' auf '%2$s'). Versuchen Sie es mit CAST.
 268 Ungültiger Codeset '%1$s' für angegebene Partition. '%2$s' Codeset erwartet.
 269 Die Session Variable kann nicht eine andere Kollation als die Systemkollation ('%1$s') haben.
 270 Ungültige Funktion Indexausdruck.
@@ -1658,7 +1660,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 285 Expects %1$s for argument %2$s.
 286 Argument %1$s is missing.
 287 Unknown argument %1$s.
-288 Cannot remove all partitions, use DROP TABLE instead.
+288 Kann nicht alle Partitionen zu entfernen, verwenden Sie stattdessen DROP TABLE.
 289 The expression including %1$s is not allowed in this context.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
@@ -1673,7 +1675,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
 10 Eine nicht aktualisierbare Anfrage ist in einem db_Anfrage_execute_oid Aufruf nicht erlaubt.
 11 Transaktion Timeout beim Warten auf Sperren.
-12 Es wurde versucht, die Hostvariable mit Index %d zuzugreifen, wenn nurr %d \nInput Hostvariablen angegeben worden sind.
+12 Es wurde versucht, die Hostvariable mit Index %1$d zuzugreifen, wenn nurr %2$d \nInput Hostvariablen angegeben worden sind.
 13 Nicht implementierte Umwandlung.
 14 Interner Fehler, undefinierte Umwandlung.
 15 '%1$s' liefert keine Ergebnisse.
@@ -1692,25 +1694,25 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 28 Es gibt mehrere Attribute in der Klasse %1$s als Spalten in der Anfragespezifikation.
 29 Aktueller Version erlaubt die Aggregation auf V-Klassen OHNE \n aggregierte Anfragespezifikationen nicht.
 30 Aktueller Version erlaubt die Aggregation auf V-Klassen OHNE \n Vereinigung der Anfragespezifikationen nicht.
-31 Die Verwendung der V-Klasse (%s) in einer Zusammensetzung Hierarchie erfordert, dass diese aktualisierbar ist.\nSie kann im Bezug auf die reale Klasse %s nicht aktualisiert werden.
+31 Die Verwendung der V-Klasse (%1$s) in einer Zusammensetzung Hierarchie erfordert, dass diese aktualisierbar ist.\nSie kann im Bezug auf die reale Klasse %2$s nicht aktualisiert werden.
 32 nicht verwendet
 33 Ungültiger Konstrukt im Pfadausdruck '%1$s'.
-34 Pfadausdruck '%s' überquert die DB-Grenze zu %s, mit V-Klasse %s.
-35 Pfadausdruck '%s' überquert die DB-Grenze von %s, zu Klasse %s.
-36 %s ist auf %s nicht autorisiert.
+34 Pfadausdruck '%1$s' überquert die DB-Grenze zu %2$s, mit V-Klasse %3$s.
+35 Pfadausdruck '%1$s' überquert die DB-Grenze von %2$s, zu Klasse %3$s.
+36 %1$s ist auf %2$s nicht autorisiert.
 37 Select ist auf %1$s nicht autorisiert.
 38 V-Klasse %1$s ist nicht aktualisierbar.
 39 %1$s ist keine Proxy V-Klasse.
 40 Anfrage spec der Proxy-V-Klasse darf kein join sein.
 41 %1$s hat keinen Objekt-ID.
 42 Klassen (%1$s) mit mehreren object_id Feldern in einer Komposition\n Hierarchie sind nicht unterstützt.
-43 Objektattribut %s von %s ist keine V-Klasse auf ldb %s.
+43 Objektattribut %1$s von %2$s ist keine V-Klasse auf ldb %3$s.
 44 Anfrage spec Typ ist mit Attribut %1$s nicht kompatibel.
 45 Die Anfragespezifikation von %1$s hat einen cyclischen Verweis auf sich selbst.
 46 Kein Ausdruck auszuwerten.
 47 Keine reale Klasse für V-Klasse %1$s gefunden.
-48 Ausführung von '%s' auf ldb '%s' \nhat: %s geliefert.
-49 Verwendung des Wertes '%s' als Attribut '%s' lieferte: %s.
+48 Ausführung von '%1$s' auf ldb '%2$s' \nhat: %3$s geliefert.
+49 Verwendung des Wertes '%1$s' als Attribut '%2$s' lieferte: %3$s.
 50 Ldb-Name darf nicht Null in %1$s sein.
 51 Ldb-Name beim Host darf nicht Null in %1$s sein.
 53 Hostname darf nicht Null in %1$s sein.
@@ -1739,7 +1741,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 76 Das Serial '%1$s' ist noch nicht definiert.
 77 Nur der Eigner oder DBA darf die Definition des Ziel-Serials ändern.
 78 Es ist Benutzers nicht erlaubt, ein von einer auto-inkrement Einschränkung  erstelltes Serial-Objekt zu ändern.
-79 Ungültiges Isolationslevel: %s Schema, %s Instanzen.
+79 Ungültiges Isolationslevel: %1$s Schema, %2$s Instanzen.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** Ungültiges Cache ***
@@ -1761,7 +1763,7 @@ $set 11 MSGCAT_SET_AUTHORIZATION
 
 $set 12 MSGCAT_SET_HELP
 1 Rootkllasse
-2 %s %s\n
+2 %1$s %2$s\n
 3 Superklassen:\n
 4 Subklassen:\n
 5 Attribute: \n
@@ -1788,38 +1790,38 @@ $set 13 MSGCAT_SET_TRIGGER
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
-2 Thread (Index %3d) der Transaktion (Index %3d, %s, %s@%s|%d) wurde ausgesetzt.\n
-3 Thread (Index %3d) der Transaktion (Index %3d, %s, %s@%s|%d) wurde fortgesetzt.\n
-4 Transaktionenindex %3d ERHIELTE %s Lock auf Objekt %d|%d|%d.\n
-5 Transaktionenindex %3d ERHIELTE %s Lock auf Seite %d|%d.\n
-6 Transaktionenindex %3d KONVERTIERTE sein Lock auf %s Lock auf Objekt %d|%d|%d.\n
-7 Transaktionenindex %3d KONVERTIERTE sein Lock auf %s Lock auf Seite %d|%d.\n
-8 Transaktionenindex %3d WARTET AUF %s Lock auf Objekt %d|%d|%d.\n
-9 Transaktionenindex %3d WARTET AUF %s Lock auf Seite %d|%d.\n
-10 Transaktionenindex %3d FREIGIBT %s Lock auf Objekt %d|%d|%d.\n
-11 Transaktionenindex %3d FREIGIBT %s Lock auf Seite %d|%d.\n
-12 Transaktionenindex %3d DEGRADIERT Lock auf %s auf Objekt %d|%d|%d.\n
-13 Transaktionenindex %3d DEGRADIERT Lock auf %s auf Seite %d|%d.\n
-14 OID = %2d|%6d|%4d\n
+2 Thread (Index %1$3d) der Transaktion (Index %2$3d, %3$s, %4$s@%5$s|%6$d) wurde ausgesetzt.\n
+3 Thread (Index %1$3d) der Transaktion (Index %2$3d, %3$s, %4$s@%5$s|%6$d) wurde fortgesetzt.\n
+4 Transaktionenindex %1$3d ERHIELTE %2$s Lock auf Objekt %3$d|%4$d|%5$d.\n
+5 Transaktionenindex %1$3d ERHIELTE %2$s Lock auf Seite %3$d|%4$d.\n
+6 Transaktionenindex %1$3d KONVERTIERTE sein Lock auf %2$s Lock auf Objekt %3$d|%4$d|%5$d.\n
+7 Transaktionenindex %1$3d KONVERTIERTE sein Lock auf %2$s Lock auf Seite %3$d|%4$d.\n
+8 Transaktionenindex %1$3d WARTET AUF %2$s Lock auf Objekt %3$d|%4$d|%5$d.\n
+9 Transaktionenindex %1$3d WARTET AUF %2$s Lock auf Seite %3$d|%4$d.\n
+10 Transaktionenindex %1$3d FREIGIBT %2$s Lock auf Objekt %3$d|%4$d|%5$d.\n
+11 Transaktionenindex %1$3d FREIGIBT %2$s Lock auf Seite %3$d|%4$d.\n
+12 Transaktionenindex %1$3d DEGRADIERT Lock auf %2$s auf Objekt %3$d|%4$d|%5$d.\n
+13 Transaktionenindex %1$3d DEGRADIERT Lock auf %2$s auf Seite %3$d|%4$d.\n
+14 OID = %1$2d|%2$6d|%3$4d\n
 15 Objekttyp: Root class.\n
 16 Objekttyp: Class = %1$s.\n
-17 Objekttyp: Instance of class (%2d|%6d|%4d) = %s.\n
+17 Objekttyp: Instance of class (%1$2d|%2$6d|%3$4d) = %4$s.\n
 18 Objekttyp: Unknown.\n
-19 Total mode of holders = %8s, Total mode of waiters = %8s.\n
-20 Num holders=%3d, Num blocked-holders=%3d, Num waiters=%3d\n
+19 Total mode of holders = %1$8s, Total mode of waiters = %2$8s.\n
+20 Num holders=%1$3d, Num blocked-holders=%2$3d, Num waiters=%3$3d\n
 21 LOCK HOLDERS:\n
 22 BLOCKED LOCK HOLDERS:\n
 23 LOCK WAITERS:\n
 24 NON_2PL_RELEASED:\n
-25 %4sTran_Index = %3d, Granted_mode =%8s, Anzahl = %3d\n
-26 %4sTran_Index = %3d, Granted_mode =%8s, Anzahl = %3d, Nsubgranules = %2d\n
-27 %4sTran_Index = %3d, Granted_mode =%8s, Anzahl = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_secs = %.2f\n
-28 %4sTran_Index = %3d, Granted_mode =%8s, Anzahl = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_secs = %.2f\n
-29 %4sTran_Index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_secs = %.2f\n
-30 %4sTran_Index = %3d, Non_2_phase_lock =%8s\n
-31 VPID (volid|pageid) = %3d|%6d.\n
-32 *** Locktabelle Dump ***\n Lock Eskalation bei = %d, Ausführung Deadlock Interval = %5.2f\n
-33 Transaktion (Index %2d, %s, %s@%s|%d)\n
+25 %1$4sTran_Index = %2$3d, Granted_mode =%3$8s, Anzahl = %4$3d\n
+26 %1$4sTran_Index = %2$3d, Granted_mode =%3$8s, Anzahl = %4$3d, Nsubgranules = %5$2d\n
+27 %1$4sTran_Index = %2$3d, Granted_mode =%3$8s, Anzahl = %4$3d\n\t%5$13s Blocked_mode = %6$8s\n\t%7$17s Start_waiting_at = %8$-30s\n\t%9$17s Wait_for_secs = %10$.2f\n
+28 %1$4sTran_Index = %2$3d, Granted_mode =%3$8s, Anzahl = %4$3d, Nsubgranules = %5$2d\n\t%6$13s Blocked_mode =%7$8s\n\t%8$13s Start_waiting_at = %9$-30s\n\t%10$13s Wait_for_secs = %11$.2f\n
+29 %1$4sTran_Index = %2$3d, Blocked_mode =%3$8s \n\t%4$13s Start_waiting_at = %5$-30s \n\t%6$13s Wait_for_secs = %7$.2f\n
+30 %1$4sTran_Index = %2$3d, Non_2_phase_lock =%3$8s\n
+31 VPID (volid|pageid) = %1$3d|%2$6d.\n
+32 *** Locktabelle Dump ***\n Lock Eskalation bei = %1$d, Ausführung Deadlock Interval = %2$5.2f\n
+33 Transaktion (Index %1$2d, %2$s, %3$s@%4$s|%5$d)\n
 34 Isolation %1$s\n
 35 Zustand %1$s\n
 36 Timeout_period %1$s\n
@@ -1827,9 +1829,9 @@ $set 14 MSGCAT_SET_LOCK
 38 %1$d ,
 39 Timed_out Transaktionen mit Indizes:\n
 40 %1$d ,
-41 Deadlock-Lösung durch Auswählen einer Transaktion und einer Funktion: %d %s
-42 , %d %s
-43 Objekttyp: Index Schlüssel der Klasse (%2d|%6d|%4d) = %s.\n
+41 Deadlock-Lösung durch Auswählen einer Transaktion und einer Funktion: %1$d %2$s
+42 , %1$d %2$s
+43 Objekttyp: Index Schlüssel der Klasse (%1$2d|%2$6d|%3$4d) = %4$s.\n
 44 Indexname: %1$s\n
 
 $set 15 MSGCAT_SET_IO
@@ -1837,45 +1839,45 @@ $set 15 MSGCAT_SET_IO
 2 Sicherungsdatei = %1$s wird gebraucht. \n Sie muss geladen werden, um fortzufahren.\n 1 eingeben, um nach dem Laden der Backupdatei fortzufahren  to continue.\n 0 eingeben um abzubrechen.\n
 3 \n\n*** SICHERUNG HEADER INFORMATION ***\n\n
 4 Sicherung magische Dateiidentifizierung %1$s,\n
-5          Version: %s\n\
-     Disk Version: %g\n
-6    Datenbankname: %s\n\
- DB Erstellungszeit: %s\
-         Seitengröße: %d\n
-7     Sicherungsebene: %d (%s)\n\
-        Start_lsa: %lld|%d\n\
-         Last_lsa: %lld|%d\n
-8      Sicherung Zeit: %s\
-  SicherungsUnit Num: %d\n
-9  Datenbank Datenträgername: %s\n\
-   Datenträger-Identifikator: %d, Größe: %lld Bytes (%d Seiten)\n
-10   Datenbankname: %s\n\
-     Datenträgername: %s\n\
-        Unit Num: %d\n\
-    Sicherungsebene: %d (%s)\n\
+5          Version: %1$s\n\
+     Disk Version: %2$g\n
+6    Datenbankname: %1$s\n\
+ DB Erstellungszeit: %2$s\
+         Seitengröße: %3$d\n
+7     Sicherungsebene: %1$d (%2$s)\n\
+        Start_lsa: %3$lld|%4$d\n\
+         Last_lsa: %5$lld|%6$d\n
+8      Sicherung Zeit: %1$s\
+  SicherungsUnit Num: %2$d\n
+9  Datenbank Datenträgername: %1$s\n\
+   Datenträger-Identifikator: %2$d, Größe: %3$lld Bytes (%4$d Seiten)\n
+10   Datenbankname: %1$s\n\
+     Datenträgername: %2$s\n\
+        Unit Num: %3$d\n\
+    Sicherungsebene: %4$d (%5$s)\n\
 Eine der folgenden Optionen wählen:\n
 11 Geben Sie \n \
-  -  %d ein, um abzubrechen.\n \
-  -  %d ein, um nach dem Laden der Datenträger fortzufahren. (wiederholen) \n \
-  -  %d ein, um nach der Änderung des Datenträgerordner oder -unit fortzufahren.\n
+  -  %1$d ein, um abzubrechen.\n \
+  -  %2$d ein, um nach dem Laden der Datenträger fortzufahren. (wiederholen) \n \
+  -  %3$d ein, um nach der Änderung des Datenträgerordner oder -unit fortzufahren.\n
 12 Geben Sie das neue Verzeichnis oder Unit für den Sicherungsdatenträger.\n
-13 Eingangsfehler, ein Wert zwischen %d und %d wählen.\n
+13 Eingangsfehler, ein Wert zwischen %1$d und %2$d wählen.\n
 14 ** WARNUNG ** Ungültiger Sicherungsdatenträger geladen.\n
-15 Sicherungsdatenträger %s hat eine andere Sicherungsebene \n   (Ebene: %d, %d erwartet).\n\n
+15 Sicherungsdatenträger %1$s hat eine andere Sicherungsebene \n   (Ebene: %2$d, %3$d erwartet).\n\n
 16 Sicherungsdatenträger %1$s hat eine ungültige Seite oder magischen Identifikator.\n\n
-17 Sicherungsdatenträger %s gehört einer anderen Datenbank \n  (Name: %s, %s erwartet).\n\n
-18 Sicherungsdatenträger %s außer Reihe\n  (Unit Num: %d, %d erwartet).\n\n
-19 Sicherungsdatenträger %s Zeitversatz\n  (Zeit: %s, %s erwartet).\n\n
+17 Sicherungsdatenträger %1$s gehört einer anderen Datenbank \n  (Name: %2$s, %3$s erwartet).\n\n
+18 Sicherungsdatenträger %1$s außer Reihe\n  (Unit Num: %2$d, %3$d erwartet).\n\n
+19 Sicherungsdatenträger %1$s Zeitversatz\n  (Zeit: %2$s, %3$s erwartet).\n\n
 20 Sicherungsdatenträger Dateifehler, Zeile %1$d.\n
-21 Sicherungsdatenträger Label: Ebene: %d, Unit: %d, Datenbank %s, Sicherungszeit: %s\n
-22     Voriges Sicherungsebene: %d Zeit: %s (start_lsa war %lld|%d)\n
+21 Sicherungsdatenträger Label: Ebene: %1$d, Unit: %2$d, Datenbank %3$s, Sicherungszeit: %4$s\n
+22     Voriges Sicherungsebene: %1$d Zeit: %2$s (start_lsa war %3$lld|%4$d)\n
 23 Der folgende Datenbank-Sicherungsdatenträger wird gebracht, um wiederherstellen zu können:\n\n
 24 Sicherungsziel voll, ein neues Ziel wird gebraucht, um fortzufahren:\n\n
 25 Voriger Sicherungsdatenträger Name: %1$s\n
 26     Nächster Sicherungsdatenträger Name: %1$s\n
 27  Sicherung Seitengröße: %1$d\n
-28       Zip Methode: %d (%s)\n\
-        Zip Ebene: %d (%s)\n
+28       Zip Methode: %1$d (%2$s)\n\
+        Zip Ebene: %3$d (%4$s)\n
 29 Aktiver Log einfügen: %1$s\n
 
 $set 16 MSGCAT_SET_LOG
@@ -1892,21 +1894,21 @@ $set 16 MSGCAT_SET_LOG
   -  1, ein um nach dem Laden der Datei fortzufahren.       \n \
   -  2, ein um nach der Änderung der Dateistelle/-name fortzufahren.   \n
 4 Geben Sie eine neue Stelle /einen neuen Namen ein.\n
-5 ANMERKUNG: %s für Datenbank %s\n
+5 ANMERKUNG: %1$s für Datenbank %2$s\n
 6 ANMERKUNG: Protokollarchiv %1$s wird nicht mehr gebraucht, wenn die Datenbankmedien nicht abstürzen.\n
-7 ANMERKUNG: Protokollarchive von %s bis %s werden nicht mehr gebraucht, wenn die Datenbankmedien nicht abstürzen.\n
+7 ANMERKUNG: Protokollarchive von %1$s bis %2$s werden nicht mehr gebraucht, wenn die Datenbankmedien nicht abstürzen.\n
 8 ANMERKUNG: von umbenannter Datenbank = %1$s\n
-9 ARCHIV: %d %s %lld %lld\n
+9 ARCHIV: %1$d %2$s %3$lld %4$lld\n
 10 ARCHIV:
-11 LÖSCHEN: %d %s bis \n \
-       %d %s.\n \
-       GRUND: %s\n
-12 AKTIVE: %s %d Seiten\n
-13  tran_Index %d mit tranid = %d festgeschrieben,\n genau vor LSA= %lld|%d und am %s
-14  tran_Index %d mit tranid = %d abgebrochen,\n genau for LSA= %lld|%d und am %s
+11 LÖSCHEN: %1$d %2$s bis \n \
+       %3$d %4$s.\n \
+       GRUND: %5$s\n
+12 AKTIVE: %1$s %2$d Seiten\n
+13  tran_Index %1$d mit tranid = %2$d festgeschrieben,\n genau vor LSA= %3$lld|%4$d und am %5$s
+14  tran_Index %1$d mit tranid = %2$d abgebrochen,\n genau for LSA= %3$lld|%4$d und am %5$s
 15  Unvollständige Mediawiederherstellung wird durchgeführt. Die Datenbank wird \n \
- bis zur LSA Adresse von %lld|%d wiederherstellt. Letzte Festschreibung-/letzter \n \
- Abbruchszeit ist ungefähr %s \n \
+ bis zur LSA Adresse von %1$lld|%2$d wiederherstellt. Letzte Festschreibung-/letzter \n \
+ Abbruchszeit ist ungefähr %3$s \n \
  Die Datenbank hat alle Informationen verloren \n \
  die nach dieser Zeit festgeschrieben worden sind.\n
 16 Protokollzurücksetzung wegen unvollständiger Wiederherstellung.
@@ -1917,22 +1919,22 @@ Veraltete Sicherungsdatenträgers diese Datenbank werden aus dieser Stelle gelö
 einschließlich derjenigen aus aktueller Backupebene und höher.\n
 20 'y' um fortzufahren oder eine beliebige Taste um abzubrechen eingeben.\n
 21 Datenbanksicherung wurde vom Benutzer abgebrochen.\n
-22 LÖSCHEN VERSCHOBEN: Archivs %d %s bis \n \
-        %d %s \n \
+22 LÖSCHEN VERSCHOBEN: Archivs %1$d %2$s bis \n \
+        %3$d %4$s \n \
         werden nicht mehr gebraucht, wenn eine Wiederherstellung aus dieser Sicherung stattfindet.\n
 23 Eine neuere Sicherung hat Archive freigegeben, die vorher DELETE POSTPONED markiert worden sind.\n
 24 KOMMENTAR: Protokollarchiv %1$s ist nicht mehr DELETE POSTPONED wegen einer neueren\n \
    Sicherung und wird deshalb nicht mehr gebraucht, wenn kein Medien-Absturz stattfindet.\n
-25 ANMERKUNG: Protokollarchivs von %s bis %s sind nicht mehr DELETE POSTPONED wegen\n \
+25 ANMERKUNG: Protokollarchivs von %1$s bis %2$s sind nicht mehr DELETE POSTPONED wegen\n \
    einer neueren Sicherung und werden deshalb nicht mehr gebraucht, \n \
    wenn kein Medien-Absturz stattfindet.\n
 26 Ein Fehler ist während der Datenbankwiederherstellung eingetreten: bei der Bearbeitung des Sicherungsdatenträgers:\n\
-           Backup Volume: %s\n\
-                Unit Num: %d\n\
-    Datenbankdatenträger: %s\n\
-   Datenbank Datentr.-Id: %d\n\
+           Backup Volume: %1$s\n\
+                Unit Num: %2$d\n\
+    Datenbankdatenträger: %3$s\n\
+   Datenbank Datentr.-Id: %4$d\n\
 ** WARNUNG: Die Datenbank nicht anwenden, bis eine fehlerfreie Wiederherstellung stattfindet.\n
-27 Eingangsfehler, einen Wert zwischen %d und %d wählen.\n
-28 Die angegebene Zeit (%s) muss später als (%s), die Zeit der angegebenen Sicherung.\n
-29 KOMMENTAR: Protokollarchiv %s, das Seiten vor %lld enthält, wird von HA Utilities nicht mehr benötigt.\n
+27 Eingangsfehler, einen Wert zwischen %1$d und %2$d wählen.\n
+28 Die angegebene Zeit (%1$s) muss später als (%2$s), die Zeit der angegebenen Sicherung.\n
+29 KOMMENTAR: Protokollarchiv %1$s, das Seiten vor %2$lld enthält, wird von HA Utilities nicht mehr benötigt.\n
 30 Anzahl der aktiven Log-Archiven hat die maximal gewünschte Anzahl überschritten.

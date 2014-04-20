@@ -42,14 +42,14 @@ $set 1 MSGCAT_SET_GENERAL
 17 Opţiuni:
 
 $set 4 MSGCAT_SET_PARAMETER
-2 %s nu este un director. Se creeaza %s în ".".
+2 %1$s nu este un director. Se creeaza %2$s în ".".
 3 %1$s nu a putut fi deschis. Fişierul de configurare nu a fost creat.
-4 Nu s-a putut scrie linia %d în fişierul de configurare %s.
-6 Nu se poate accesa fişierul de configurare a sistemului "%s": %s
+4 Nu s-a putut scrie linia %1$d în fişierul de configurare %2$s.
+6 Nu se poate accesa fişierul de configurare a sistemului "%1$s": %2$s
 7 HOME nu este setat
 8 Parametrul obligatoriu "%1$s" nu are o valoare.
-9 Nu s-a putut deschide fişierul de configurare "%s": %s
-10 Parametrul '%s' de la linia %d din fişierul '%s' : 
+9 Nu s-a putut deschide fişierul de configurare "%1$s": %2$s
+10 Parametrul '%1$s' de la linia %2$d din fişierul '%3$s' : 
 11 Variabila de mediu %1$s: 
 12 Cuvânt cheie nerecunoscut.
 13 Tipul valorii nu corespunde tipului parametrului.
@@ -59,10 +59,10 @@ $set 4 MSGCAT_SET_PARAMETER
 17 Eroare UNIX: %1$s
 18 Niciun mesaj disponibil.
 19 Valoarea este în afara domeniului. Revenire la valoarea implicită.
-20 Cuvânt cheie = '%s'    Valoare = %d    Valoare implicită = %d\n
-21 Cuvânt cheie = '%s'    Valoare = %f    Valoare implicită = %f\n
+20 Cuvânt cheie = '%1$s'    Valoare = %2$d    Valoare implicită = %3$d\n
+21 Cuvânt cheie = '%1$s'    Valoare = %2$f    Valoare implicită = %3$f\n
 22 Parametru depreciat
-23 Parametrii '%s' şi '%s' nu pot fi utilizaţi împreună.\n
+23 Parametrii '%1$s' şi '%2$s' nu pot fi utilizaţi împreună.\n
 31 Parametrul '%1$s':
 
 $set 5 MSGCAT_SET_ERROR
@@ -753,8 +753,8 @@ $ LOADDB
 684 Metoda a întors un cod de eroare %1$d definit de utilizator.
 685 Clasa "%1$s" nu este validă.
 686 Notificare: handlerul de evenimente a fost repornit.
-687 Nu se poate face conversie forţată de la (%s *) la (%s *).
-688 Index în afara domeniului. Încercare de a accesa elementul %lld. Dimensiunea colecţiei = %lld.
+687 Nu se poate face conversie forţată de la (%1$s *) la (%2$s *).
+688 Index în afara domeniului. Încercare de a accesa elementul %1$lld. Dimensiunea colecţiei = %2$lld.
 689 Eroare internă. Iteratorul se află într-o stare de corupţie.
 690 Tentativă de a dereferenţia o instanţă neiniţializată de odb_Ref<>.
 691 Tentativă de utilizare a unui iterator invalid.
@@ -774,8 +774,8 @@ $ LOADDB
 705 %1$d volume permanente inconsistente au fost găsite când %2$d erau aşteptate.
 706 Nu se pot extinde volumele permanente. Volumul permanent "%1$s" cu scopul de %2$s a fost furnizat.
 707 Nu se poate extinde volumul temporar "%1$s" cu %2$d pagini
-709 Constrângerea "%1$s" nu a fost găsită.
 708 Nu se poate extinde volumul de disc temporar "%1$s" cu %2$d pagini (%3$lld Kbytes) datorită spaţiului insuficient. Spaţiul actual disponibil este de %4$d pagini (%5$lld Kbytes).
+709 Constrângerea "%1$s" nu a fost găsită.
 710 Constrângere invalidă.
 711 Nu există niciun obiect cu valoarea de atribut furnizată.
 712 Constrângerea "%1$s" deja există.
@@ -785,7 +785,7 @@ $ LOADDB
 716 Constrângerile NOT NULL nu sunt permise în clase virtuale sau proxy.
 717 Constrângerile de unicitate (UNIQUE) nu sunt permise în clase virtuale sau proxy.
 718 Dispozitiv invalid.
-719 Numărul de atribute (%d) si cel de valori(%d) nu sunt egale.
+719 Numărul de atribute (%1$d) si cel de valori(%2$d) nu sunt egale.
 720 Nu se poate folsi un dispozitiv pentru inserarea într-o clasă virtuală sau proxy.
 721 Interogarea de inserare întoarce mai mult de un rând.
 722 Număr greşit de atribute pentru constrângerea NOT NULL.
@@ -819,7 +819,7 @@ $ LOADDB
 750 Numărul de insţante preluate este necorespunzator: %1$d aşteptate, %2$d recepţionate.
 751 OIDul unui obiect nou nu este disponibil într-un declanşator de tip BEFORE INSERT.
 752 Eroare la restaurarea copiei de siguranţă cu unit_num %1$d.
-753 Eroare la restaurarea copiei de siguranţă cu unit_num %d, pageid %d depăşeşte numărul total de pagini %d pentru volumul cu volid %d.
+753 Eroare la restaurarea copiei de siguranţă cu unit_num %1$d, pageid %2$d depăşeşte numărul total de pagini %3$d pentru volumul cu volid %4$d.
 754 Instanţa proxy OO are cheie nulă sau un tip care nu este şir de caractere.
 755 %1$s nu poate fi executat în modul independent.
 756 Bufferul specificat pentru şirul de caractere este prea mic pentru a codifica acest obiect.
@@ -833,9 +833,9 @@ $ LOADDB
 764 Eroare internă la codificarea obiectului sub formă de vobj intern.
 765 Obiectul din argumentul de ieşire are o adresă NULL.
 766 Eroare internă la decodificarea obiectului.
-767 Nu se poate crea o copie de rezervă de nivel %d fără a crea înainte o copie de rezervă de nivel %d.
+767 Nu se poate crea o copie de rezervă de nivel %1$d fără a crea înainte o copie de rezervă de nivel %2$d.
 768 Baza de date locală "%1$s" a fost accesată în timpul acestei sesiuni, modificarea sau ştergerea(ALTER, DROP) nu sunt permise.
-769 Atributul "%s", al clasei "%s" nu este un atribut valid de clasă sau partajat.
+769 Atributul "%1$s", al clasei "%2$s" nu este un atribut valid de clasă sau partajat.
 770 Nu există functii de tabele.
 771 Parametru invalid pentru funcţie.
 772 Clasa db_serial nu a fost găsită.
@@ -844,7 +844,7 @@ $ LOADDB
 775 Urmatoarea valoare depăşeste valoarea MAX(MIN).
 776 Nu s-a putut prelua obiectul serial.
 777 Nu s-a putut actualiza obiectul serial.
-778 Nu s-a putut crea o legatură simbolică "%s" către fişierul "%s".
+778 Nu s-a putut crea o legatură simbolică "%1$s" către fişierul "%2$s".
 779 Rezultatul depăşeste limitele: anul din Date TREBUIE să fie cuprins între 1 si 9999.
 780 Eroare internă de sistem: imposibil de preluat ceasul/ora sistemului.
 781 Stringul de formatare este prea lung. Trebuie să fie mai mic de 16K.
@@ -902,30 +902,30 @@ $ LOADDB
 833 Numele de index "%1$s" este ambiguu. Specificaţi numele clasei indexului.
 834 Există disconcordanţe între şirul de caractere sursă "%1$s" şi şirul de formatare "%2$s" date în to_number().
 835 Element de statistică necunoscut.
-836 Latch-ul pe pagina(%d|%d) a expirat.
+836 Latch-ul pe pagina(%1$d|%2$d) a expirat.
 837 Un utilizator care deţine obiecte în baza de date(clase/declanşatori/seriale etc) nu poate fi şters.
 838 Nu se pot deschide simultan mai mult de %1$d indecşi.
 839 "%1$s": Parametru de sistem necunoscut sau valoare invalidă.
 840 Parametrul de sistem "%1$s" nu poate fi schimbat.
 841 Operaţia solicitată poate fi executată de către un singur client(tranzacţie).
 842 Lock-ul pentru obiectul %1$d|%2$d|%3$d nu poate fi stocat în memoria cache.
-843 Argumente eronate în %s, un %s a fost furnizat.
-844 Nivel de izolare necunoscut(%d). Indexul tranzacţiei este %d.
-845 Tip de obiect invalid (%d). Obiectul blocabil este %d|%d|%d.
-846 %s de tranzacţie(%d) nu se găseşte în lista de deţinători ai obiectului (%d|%d|%d).
-847 %s pe un %s(%d|%d|%d) nu se găseşte în lista deţinătorilor tranzacţiei cu indexul %d (elemente în listă: %d).
-848 %s pe un obiect(%d|%d|%d) nu se găseşte în lista non2pl a tranzacţiei(%d).
+843 Argumente eronate în %1$s, un %2$s a fost furnizat.
+844 Nivel de izolare necunoscut(%1$d). Indexul tranzacţiei este %2$d.
+845 Tip de obiect invalid (%1$d). Obiectul blocabil este %2$d|%3$d|%4$d.
+846 %1$s de tranzacţie(%2$d) nu se găseşte în lista de deţinători ai obiectului (%3$d|%4$d|%5$d).
+847 %1$s pe un %2$s(%3$d|%4$d|%5$d) nu se găseşte în lista deţinătorilor tranzacţiei cu indexul %6$d (elemente în listă: %7$d).
+848 %1$s pe un obiect(%2$d|%3$d|%4$d) nu se găseşte în lista non2pl a tranzacţiei(%5$d).
 849 Încercare multipla de abandon a unei tranzacţii(%1$d).
-850 Tranzacţia(%d) nu este nici lock holder, nici lock waiter al unui obiect(%d|%d|%d).
+850 Tranzacţia(%1$d) nu este nici lock holder, nici lock waiter al unui obiect(%2$d|%3$d|%4$d).
 851 Alocarea de resurse pentru lock (%1$s) a eşuat.
 852 Modul total de holders(%1$d) al unei liste vide de lock holders este NULL_LOCK.
-853 Pentru un obiect(%d|%d|%d), tranzacţia(%d) de tip Uncommitted Read deţine un lock defect(%s).
+853 Pentru un obiect(%1$d|%2$d|%3$d), tranzacţia(%4$d) de tip Uncommitted Read deţine un lock defect(%5$s).
 854 AVERTISMENT: Nu există niciun lock holder, dar există lock waiters. Consultaţi fişierul %1$s.
 855 AVERTISMENT: Unul sau mai multe fire de execuţie se află în starea de lock-waiting pentru o tranzacţie(%1$d).
-856 AVERTISMENT: Stare lockwait(%d|%d), fir de execuţie(%d|%d) şi tranzacţie(%d) neobişnuite.
+856 AVERTISMENT: Stare lockwait(%1$d|%2$d), fir de execuţie(%3$d|%4$d) şi tranzacţie(%5$d) neobişnuite.
 857 O eroare I/O s-a produs la trunchierea paginii %1$d din volumul "%2$s".
 858 Volumul "%1$s" nu este cunoscut la repornirea serverului.
-859 Latch-ul pe pagina(%d|%d) a fost anulat.
+859 Latch-ul pe pagina(%1$d|%2$d) a fost anulat.
 860 Tranzacţia curentă nu poate fi integrată în tranzacţia globală deoarece starea sa este '%1$s'.
 861 Nu se pot efectua pregătirile de finalizare (commit) a tranzacţiei curente cu identificatorul %1$d deoarece nu face parte dintr-o tranzacţie globală.
 862 Nu se pot seta informaţiile de utilizator ale tranzacţiei globale cu identificatorul %1$d deoarece starea sa este '%2$s'.
@@ -947,22 +947,22 @@ $ LOADDB
 878 Fişier invalid de localizare a bazei de date, '%1$s'.
 879 Drepturile nu pot fi citite: '%1$s'.
 880 Drepturile '%1$s' nu pot fi modificate.
-881 Nu se poate obţine un lock pentru fişierul '%s(FILE ID:%d)'.
+881 Nu se poate obţine un lock pentru fişierul '%1$s(FILE ID:%2$d)'.
 882 Nu se poate elibera lock-ul pentru fişierul 'FILE ID:%1$d'.
 883 Eroare la citirea stării fişierului '%1$s'.
 884 Calea Volext-pathname '%1$s' nu poate fi scrisă.
-885 Eşec la mutarea de la '%s' la '%s'. Utilizaţi acelaşi dispozitiv (disc).
+885 Eşec la mutarea de la '%1$s' la '%2$s'. Utilizaţi acelaşi dispozitiv (disc).
 886 "%1$s" a provocat o încălcare a constrângerii de unicitate.
 887 Procedura stocată '%1$s' deja există.
-888 Numărul de parametri este invalid. %d asteptaţi, %d prezenţi.
+888 Numărul de parametri este invalid. %1$d asteptaţi, %2$d prezenţi.
 889 Eroare de execuţie a procedurii stocate: %1$s
 890 Partiţionarea a eşuat.
 891 Nu există o partiţie corespunzătoare.
 892 Cheia primară "%2$s" este deja definită pentru clasa "%1$s".
 893 Atributul '%1$s', membru al cheii primare, nu a putut fi şters.
 894 Procedura/funcţia stocată '%1$s' nu există.
-895 Tip invalid de procedură stocată: '%s' este '%s'.
-896 Compresie eşuată. Metoda Zip: %d (%s), Nivel Zip: %d (%s)
+895 Tip invalid de procedură stocată: '%1$s' este '%2$s'.
+896 Compresie eşuată. Metoda Zip: %1$d (%2$s), Nivel Zip: %3$d (%4$s)
 897 Decompresie eşuată.
 898 Eroare de replicare: "%1$s"
 899 Cerere invalidă către un obiect partiţionat.
@@ -986,14 +986,14 @@ $ LOADDB
 917 Volumul de log activ deja există.
 918 Clasa '%1$s' referenţiată de cheia externă nu există.
 919 Clasa '%1$s' referenţiată de cheia externă nu conţine o cheie primară.
-920 Cheia externă '%s' nu include membrul cheii primare '%s'.
-921 Domeniul membrului cheie straină '%s' este diferit de cel al membrului cheie primară '%s'.
-922 Constrângerea de cheie primară '%s' este invalidă datorită valorii '%s'.
-923 Cheia primară '%s' referenţiată de o cheie externă '%s' nu trebuie ştearsă.
+920 Cheia externă '%1$s' nu include membrul cheii primare '%2$s'.
+921 Domeniul membrului cheie straină '%1$s' este diferit de cel al membrului cheie primară '%2$s'.
+922 Constrângerea de cheie primară '%1$s' este invalidă datorită valorii '%2$s'.
+923 Cheia primară '%1$s' referenţiată de o cheie externă '%2$s' nu trebuie ştearsă.
 924 Operaţiile de actualizare/ştergere (update/delete) sunt restricţionate de cheia externă '%1$s'.
 925 Obţinerea unui lock pentru cheia externă '%1$s' a eşuat.
 926 Instanţa având cheia externă '%1$s' nu poate fi ştearsă.
-927 Numărul de chei ale cheii externe '%s' este diferit de cel al cheii primare '%s'.
+927 Numărul de chei ale cheii externe '%1$s' este diferit de cel al cheii primare '%2$s'.
 928 Nu un utilizator, ci sistemul poate aloca atributul '%1$s' creat de 'ON CACHE OBJECT' al cheii externe.
 929 O cheie externă nu poate fi definită într-o clasă virtuală.
 930 Este posibilă ştergerea atributului '%1$s' creat de 'ON CACHE OBJECT' al cheii externe doar după ştergerea constrângerii de cheie externă.
@@ -1043,8 +1043,8 @@ $ LOADDB
 974 Arhiva de log "%1$s" este creată pentru arhivarea paginilor de la %2$lld până la %3$lld.
 975 Versiunea curentă de replicare nu permite schimbarea de rânduri multiple printr-o singură instrucţiune UPDATE, care ar putea incălca constrângerea de unicitate.
 976 Eroare internă: Depăşire a dimensiunii tabelei (dimensiune alocată: %1$d, dimensiune accesată: %2$d) la pagina %3$d|%4$d(volumul "%5$s")
-977 Punct de control pornit (IDul paginii punctului de control anterior: %lld, IDul de pagină "redo" anterior: %lld).
-978 Punct de control finalizat (ID de pagină al punctului de control: %lld, IDul de pagină "redo": %lld).
+977 Punct de control pornit (IDul paginii punctului de control anterior: %1$lld, IDul de pagină "redo" anterior: %2$lld).
+978 Punct de control finalizat (ID de pagină al punctului de control: %1$lld, IDul de pagină "redo": %2$lld).
 979 Ciclu de CONNECT BY în datele utilizatorului.
 980 Un fir de execuţie aşteaptă în %1$s pentru mai mult de %2$d msec.
 981 Tranzacţia %1$d a atins pragul statisticii de monitorizare %2$s.
@@ -1143,7 +1143,7 @@ $ LOADDB
 1074 Nu se poate citi lista de acces din fişier(%1$s).
 1075 Scanarea descrescătoare a indexului a fost abandonată datorită priorităţii mai mici de pe arborele B+ cu identificatorul de index: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
 1076 Parametrul de sistem nu a putut fi incărcat.
-1077 Parametrul '%s' de la linia %d din fişierul '%s' : parametru necunoscut
+1077 Parametrul '%1$s' de la linia %2$d din fişierul '%3$s' : parametru necunoscut
 1078 Caracterul de la offsetul %1$d este invalid în codeset-ul curent.
 1079 Codeset-urile bazei de date(%1$s) şi configuraţia serverului(%2$s) sunt incompatibile.
 1080 Lungimea maximă a şirului de caractere al predicatului de filtrare trebuie să fie %1$d.
@@ -1164,19 +1164,19 @@ $ LOADDB
 1095 Numele de utilizator este prea lung.
 1096 Modificarea schemei de partiţionare nu este permisă cand clasa partiţionată este referenţiată de către o cheie externă.
 1097 Coloana '%1$s' nu poate avea o constrângere PRIMARY KEY şi o valoare implicită NULL.
-1098 Localizările pentru limba '%s' nu sunt disponibile cu codesetul '%s'.
+1098 Localizările pentru limba '%1$s' nu sunt disponibile cu codesetul '%2$s'.
 1099 Instrucţiunile DDL nu sunt permise de către configuraţia curentă (block_ddl_statement=yes).\n Text SQL: %1$s
 1100 Instrucţiunile fără clauza WHERE nu sunt permise de către configuraţia curentă (block_nowhere_statement=yes).
 1101 Cod de eroare neutilizat.
 1102 Parametru de sistem necunoscut sau valoare invalidă.
 1103 Parametrul de sistem nu poate fi modificat.
-1104 Interogare lentă (%d msec)\n%s
+1104 Interogare lentă (%1$d msec)\n%2$s
 1105 Eroare internă: eşec parţial la salvarea prin "flush" a unui obiect modificat ("dirty"). 
 1106 Rânduri multiple din tabela sursă corespund aceluiaşi rând din tabela destinaţie.
 1107 Număr de bucket invalid pentru NTILE. Trebuie să fie mai mare ca zero şi mai mic ca 2,147,483,647.
 1108 Număr de bucket invalid pentru WIDTH_BUCKET. Trebuie să fie mai mare ca zero şi mai mic ca 2,147,483,647.
 1109 Valoare invalidă pentru definiţia partiţiei.
-1110 Spaţiu insuficient în pagina frunză a arborelui B+. (lungimea cheii: %d)\n%s
+1110 Spaţiu insuficient în pagina frunză a arborelui B+. (lungimea cheii: %1$d)\n%2$s
 1111 Valoarea rezultată este trunchiată deoarece precizia (%1$d) este mai mică decât lungimea sa(%2$d).
 1112 Un caracter nu a putut fi convertit din '%1$s' în '%2$s'.
 1113 Indexul elementului este în afara domeniului.
@@ -1199,24 +1199,24 @@ $ LOADDB
 1130 Tranzacţia a fost abandonată deoarece numărul de lock-uri asociate tranzacţiei depăşeşte %1$d.
 1131 Eroare internă: Pagina %1$d din volumul "%2$s" ar putea fi coruptă.\n%3$s
 1132 Encryption library failure: %1$s
-1133 Copylogdb for %1$s already exists.
-1134 Applylogdb for %1$s already exists.
-1135 A previous link of B+tree(%1$s) is corrupted.: vpid = (%2$d, %3$d)
-1136 A previous link of B+tree(%1$s) is repaired.: vpid = (%2$d, %3$d)
-1137 The query has been rejected due to attempt to exceed the maximum allowed nesting level(%1$d).
-1138 Handshake error (peer host %1$s): incompatible interruptibility. (client: %2$s, server: %3$s)
-1139 Handshake error (peer host %1$s): incompatible read/write mode. (client: %2$s, server: %3$s)
-1140 Handshake error (peer host %1$s): HA replication delayed.
-1141 Handshake error (peer host %1$s): replica-only client to non-replica server.
-1142 Handshake error (peer host %1$s): unidentified server version.
-1143 Handshake error (peer host %1$s): remote access to server not allowed.
-1144 Timed out attempting to connect to %1$s. (timeout: %2$d sec(s))
-1145 To change the owner of a system class is not allowed.
-1146 volume identifier %1$d does not exist.
-1147 The size of XASL stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
-1148 The size of filter predicate stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
-1149 Cannot find the page %1$d of volume %2$d.
-1150 Context requires compatible collations.
+1133 Copylogdb pentru %1$s există deja.
+1134 Applylogdb pentru %1$s există deja.
+1135 O legatură predecesor a arborelui B+(%1$s) este coruptă.: vpid = (%2$d, %3$d)
+1136 O legatură predecesor a arborelui B+(%1$s) este reparată: vpid = (%2$d, %3$d)
+1137 Interogarea a fost respinsă din cauza încercării de a depăşi nivelul maxim permis(%1$d) de imbricare.
+1138 Eroare la stabilirea conexiunii (gazdă omoloagă %1$s): intreruptibilitate incompatibilă. (client: %2$s, server: %3$s)
+1139 Eroare la stabilirea conexiunii (gazdă omoloagă %1$s): mod citire/scriere incompatibil. (client: %2$s, server: %3$s)
+1140 Eroare la stabilirea conexiunii (gazdă omoloagă %1$s): replicare HA întârziată.
+1141 Eroare la stabilirea conexiunii (gazdă omoloagă %1$s): client replica-only către server non-replica.
+1142 Eroare la stabilirea conexiunii (gazdă omoloagă %1$s): versiune de server neidentificată.
+1143 Eroare la stabilirea conexiunii (gazdă omoloagă %1$s): accesul la distanţă către server nu este permis.
+1144 Timpul a expirat în încercarea de conectare la %1$s. (timeout: %2$d sec(s))
+1145 Schimbarea proprietarului unei clase nu este permisă.
+1146 Volumul cu identificatorul %1$d nu există.
+1147 Dimensiunea arborelui XASL serializat(%1$d) depăseşte dimensiunea maximă permisă(%2$d). O intrare nouă este adaugată în cache deşi nu există victime, deoarece toate intrările din cache sunt folosite.
+1148 Dimensiunea predicatului de filtrare serializat(%1$d) depăseşte dimensiunea maximă permisă(%2$d). O intrare nouă este adaugată în cache deşi nu există victime, deoarece toate intrările din cache sunt folosite.
+1149 Pagina %1$d a volumului %2$d nu poate fi găsită.
+1150 Contextul necesită colaţii compatibile.
 1151 The page %1$d of volume %2$d is not a slotted page.
 1152 Ultima eroare
 
@@ -1230,33 +1230,33 @@ $set 6 MSGCAT_SET_INTERNAL
 7 Doriti sa ieşiţi? 1/0
 8 fişier necunoscut.
 9 Niciun mesaj disponibil; acest mesaj înlocuieşte mesajul original, care este formatat eronat.
-10 er_init: *** Valoare incorectă pentru exit_ask = %d; se va presupune valoarea %s în loc. ***\n
+10 er_init: *** Valoare incorectă pentru exit_ask = %1$d; se va presupune valoarea %2$s în loc. ***\n
 11 er_start: *** WARNING: Nu s-a putut deschide logul de mesaje "%1$s"; se va presupune stderr în loc. ***\n
 12 er_study_fmt: mesaj suspect pentru codul de eroare %1$d.
 13 er_estimate_size: cod de conversie necunoscut (%1$d).
 14 \n\n*** Înfăşurarea logului de mesaje. Mesajele se vor continua la începutul fişierului. ***\n\n
-15 \nTimp: %s - %s *** %s COD = %d, Tran = %d%s\n%s\n
-16 CUBRID (pid: %d) *** %s *** %s COD = %d, Tran = %d %s
-17 \nTimp: %s - %s *** fişier %s, linie %d %s COD = %d Tran = %d%s\n%s\n
-18 CUBRID (pid: %d) *** %s *** fişier %s, linie %d, %s COD = %d, Tran = %d. %s
+15 \nTimp: %1$s - %2$s *** %3$s COD = %4$d, Tran = %5$d%6$s\n%7$s\n
+16 CUBRID (pid: %1$d) *** %2$s *** %3$s COD = %4$d, Tran = %5$d %6$s
+17 \nTimp: %1$s - %2$s *** fişier %3$s, linie %4$d %5$s COD = %6$d Tran = %7$d%8$s\n%9$s\n
+18 CUBRID (pid: %1$d) *** %2$s *** fişier %3$s, linie %4$d, %5$s COD = %6$d, Tran = %7$d. %8$s
 19 \n*** Mesajul de eroare anterior este ultimul. ***\n\n
-20 \nTimp: %s - DEBUG *** fişier %s, linie %d\n
+20 \nTimp: %1$s - DEBUG *** fişier %2$s, linie %3$d\n
 21 Mail -s "Serverul a fost oprit"
-22 --->>>\n %s a fost oprit la solicitarea dumneavoastră când următoarea eroare era setată:\n errid = %d, %s\nUtilizator: %s, pid: %d, gazdă: %s, timp: %s<<<---\n
-23 %s a fost oprit cu eroarea errid = %d. Utilizator: %s, pid: %d
+22 --->>>\n %1$s a fost oprit la solicitarea dumneavoastră când următoarea eroare era setată:\n errid = %2$d, %3$s\nUtilizator: %4$s, pid: %5$d, gazdă: %6$s, timp: %7$s<<<---\n
+23 %1$s a fost oprit cu eroarea errid = %2$d. Utilizator: %3$s, pid: %4$d
 24 er_init: nu se poate instala handlerul de evenimente "%1$s"\n
 
 $set 7 MSGCAT_SET_PARSER_SYNTAX
-1 vă rugăm verificaţi sintaxa la '%s', se aşteaptă %s.
-2 vă rugăm verificaţi sintaxa la '%s', se aşteaptă %s în %s.
+1 vă rugăm verificaţi sintaxa la '%1$s', se aşteaptă %2$s.
+2 vă rugăm verificaţi sintaxa la '%1$s', se aşteaptă %2$s în %3$s.
 3 vă rugăm verificaţi corectitudinea tokenului '%1$s'.
 4 'read uncommitted schema' nu este acceptat, se foloseşte \n'read committed schema' în loc.
 5 Lungimea maximă pentru şiruri de caractere este 16383.
-6 %s depăşeste limita de %s.
+6 %1$s depăşeste limita de %2$lld.
 7 Lungimea maximă în biţi pentru un şir de caractere este %1$d bits.
 8 Nu se poate utiliza o subinterogare în clauza condiţie pentru JOIN.
 9 Nu se poate specifica atributul "(%1$s)" în clauza de actualizarea drepturilor din instrucţiunile grant/revoke.
-10 utilizare invalidă a cuvântului cheie '%s', se aşteaptă %s.
+10 utilizare invalidă a cuvântului cheie '%1$s', se aşteaptă %2$s.
 11 Lungimea tokenului este prea mare.
 12 tip de date invalid
 13 instrucţiune invalidă: attach\n  attach_statement: ATTACH unsigned_integer
@@ -1352,61 +1352,61 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 103 utilizare invalidă a unui index hint
 104 Dimensiunea maximă în bytes a unui şir de caractere este %1$d bytes.
 105 Eroare de sintaxă: nu se aşteapta
-106 , se aşteaptă '{'
-107 , se aşteaptă SELECT sau '('
-108 , se aşteaptă
-109 nu se aşteaptă
-110 FINAL DE INSTRUCTIUNE
-111 Pe linia %d, coloana %d înainte de '%c%s'\n
-112 PE linia %d, coloana %d înainte de %s\n
-113 înainte de ' %1$s'\n
-114 înainte de FINAL DE INSTRUCTIUNE\n
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected 
+110 END OF STATEMENT
+111 In line %1$d, column %2$d before '%3$c%4$s'\n
+112 In line %1$d, column %2$d before %3$s\n 
+113 before ' %1$s'\n
+114 before END OF STATEMENT\n
 115 utilizare invalidă a lui set names\n  set_names: SET NAMES charset [COLLATE collation]\n
 116 utilizare invalidă a lui chr\n  CHR ( number [using charset] )\n
 117 utilizare invalidă a lui charset\n  CHARSET ( expression )\n
 118 utilizare invalidă a lui collation\n  COLLATION ( expression )\n
 119 utilizare invalidă a lui clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
 120 utilizare invalidă a lui index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
-121 Incorrect usage of UNION and ORDER BY
+121 Utilizare invalidă a UNION şi ORDER BY.
 122 Expecting ON. Outer Joins require join condition.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.
 2 Funcţia %1$s nu este definită.
 3 Nu se poate localiza fişierul LDB '%1$s' în baza de date.
-4 Numărul de coloane, %d, din interogarea din stânga nu corespunde\nnumărului de coloane, %d, din interogarea din dreapta.
-5 '%s' nu este compatibil la reuniune (UNION) cu '%s'.
+4 Numărul de coloane, %1$d, din interogarea din stânga nu corespunde\nnumărului de coloane, %2$d, din interogarea din dreapta.
+5 '%1$s' nu este compatibil la reuniune (UNION) cu '%2$s'.
 6 %1$s nu este definit.
 7 Domeniul lui %1$s nu poate fi o clasă virtuală (vclass).
 8 Domeniul lui %1$s nu poate fi o clasă virtuală proxy.
 9 Domeniul lui %1$s nu poate fi o clasă.
-10 %s nu este un atribut al lui %s.
-11 %s nu poate fi schimbat din interiorul acestei clase.\nA fost moştenit din %s.
+10 %1$s nu este un atribut al lui %2$s.
+11 %1$s nu poate fi schimbat din interiorul acestei clase.\nA fost moştenit din %2$s.
 12 Clasa %1$s nu există.
-13 %s nu este un %s.
-14 %s nu este o metodă sau un atribut al lui %s.
+13 %1$s nu este un %2$s.
+14 %1$s nu este o metodă sau un atribut al lui %2$s.
 15 %1$s nu are şi nu trebuie sa aibă obiect de interogare.
 16 %1$s nu este definit în baza de date.
-17 %s nu este o superclasă a lui %s.
-18 Clasa %s moşteneşte din non-clasa %s.
-19 Clasa virtuală %s (vclass) moşteneşte din non-vclasa %s.
-20 Clasa virtuală proxy %s moşteneşte din clasa virtuală non-proxy %s.
-21 %s este deja o superclasă a lui %s.
+17 %1$s nu este o superclasă a lui %2$s.
+18 Clasa %1$s moşteneşte din non-clasa %2$s.
+19 Clasa virtuală %1$s (vclass) moşteneşte din non-vclasa %2$s.
+20 Clasa virtuală proxy %1$s moşteneşte din clasa virtuală non-proxy %2$s.
+21 %1$s este deja o superclasă a lui %2$s.
 22 %1$s nu poate fi o superclasă pentru ea însăşi.
-23 %s este deja o subclasă a lui %s.
+23 %1$s este deja o subclasă a lui %2$s.
 24 %1$s nu are o singură valoare. Atributele expuse în\ninterogări agregate trebuie să fie prezente şi în clauza GROUP BY.
-25 Numărul de coloane(%d) si cel de into_names(%d) nu sunt egale.
+25 Numărul de coloane(%1$d) si cel de into_names(%2$d) nu sunt egale.
 26 Clasa %1$s deja există.
-27 Superclasa %s din '%s' nu există.
+27 Superclasa %1$s din '%2$s' nu există.
 28 Se aşteaptă o clauză SUBCLASS pentru a da sens clauzei INHERIT '%1$s'.
-29 Clauza INHERIT '%s' referenţiază o clasă care nu se află în clauza SUBCLASS '%s'.
+29 Clauza INHERIT '%1$s' referenţiază o clasă care nu se află în clauza SUBCLASS '%2$s'.
 30 Clasa nu poate avea un obiect de interogare.
 31 %1$s nu este un ldb înregistrat.
 32 Un moştenitor proxy nu poate avea propria clauză object_id. Nu poate supraîncărca propriul său atribut moştenit object_id.
 33 VClasa proxy are mai mult de o specificaţie de interogare.
-34 Numărul de atribute, %d, nu corespunde numărului de coloane, \n%d, din specificaţia de interogare.
+34 Numărul de atribute, %1$d, nu corespunde numărului de coloane, \n%2$d, din specificaţia de interogare.
 35 Lipseşte un nume de atribut aşteptat pentru %1$s.
-36 Atributul '%s' nu este compatibil cu coloana '%s' din obiectul interogării.
+36 Atributul '%1$s' nu este compatibil cu coloana '%2$s' din obiectul interogării.
 37 %1$s nu este o clasă.
 38 Nu se pot crea indecşi peste clase virtuale.
 39 Indecşii pot fi creaţi numai pe un singur atribut.
@@ -1415,7 +1415,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 42 Nu se poate executa o ştergere dintr-o tabelă derivată.
 43 Utilizatorul %1$s nu se află în baza de date.
 44 UPDATE nu poate conţine agregări.
-45 Numele de atribute din fiecare clasă trebuie să fie unice. Numele atributului '%s' din clasa '%s' este specificat mai mult de o singură dată.
+45 Numele de atribute din fiecare clasă trebuie să fie unice. Numele atributului '%1$s' din clasa '%2$s' este specificat mai mult de o singură dată.
 46 Există asignări multiple pentru %1$s.%2$s.
 47 Numărul din specificaţia de ordonare nu este întreg.
 48 %1$d din specificaţia de ordonare este în afara domeniului.
@@ -1424,8 +1424,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 51 Există instrucţiuni de sortare contradictorii pentru coloana %1$s.
 52 %1$s din specificaţia de sortare nu este un număr, nume sau expresie de tip cale.
 53 Expresia INSERT poate fi prezentă numai în instrucţiuni de tip INSERT.
-54 Numărul de atribute(%d) şi cel de coloane selectate(%d) nu sunt egale.
-55 Numărul de atribute(%d) şi cel de valori(%d) nu sunt egale.
+54 Numărul de atribute(%1$d) şi cel de coloane selectate(%2$d) nu sunt egale.
+55 Numărul de atribute(%1$d) şi cel de valori(%2$d) nu sunt egale.
 56 Depăşire de capacitate pentru tipul de date %1$s.
 57 Tip de date incompatibil pentru atributul %1$s.
 58 %1$s\n nu este un SELECT dintr-o singură clasă.
@@ -1434,19 +1434,19 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 61 Există mai multe clauze ISOLATION LEVEL.
 62 Există mai multe clauze TIMEOUT.
 63 Nu s-a furnizat un nivel de izolare.
-64 Operatorul BETWEEN nu este definit pentru tipurile de date %s, %s şi %s.
-65 Operatorul '%s' nu este definit pentru tipurile de date %s şi %s.
+64 Operatorul BETWEEN nu este definit pentru tipurile de date %1$s, %2$s şi %3$s.
+65 Operatorul '%1$s' nu este definit pentru tipurile de date %2$s şi %3$s.
 66 Funcţia trebuie să aibă argumente: %1$s.
-67 Operanzi incompatibili: %s(%s).
+67 Operanzi incompatibili: %1$s(%2$s).
 68 Funcţia agregată necesită un argument: %1$s.
 69 Tentativă de diviziune prin zero.
-70 Depăşire de capacitate la coerciţia lui %s la tipul de date %s.
-71 Nu se poate face coerciţia lui %s la tipul de date %s.
+70 Depăşire de capacitate la coerciţia lui %1$s la tipul de date %2$s.
+71 Nu se poate face coerciţia lui %1$s la tipul de date %2$s.
 72 Tipul lui '%1$s' trebuie să fie SET, MULTISET, sau SEQUENCE.
 73 '%1$s' trebuie să aibă exact un tip mulţime.
 74 %1$s are mai mult de un nume de coloană derivată.
 75 %1$s nu are niciun nume de coloană derivată.
-76 %s nu are un număr corespunzător de coloane (%d) şi nume de coloane (%d).
+76 %1$s nu are un număr corespunzător de coloane (%2$d) şi nume de coloane (%3$d).
 77 Nu există atribute în %1$s.
 78 Se aşteaptă o singură tabelă în %1$s.
 79 Numele expus %1$s este ambiguu.
@@ -1456,35 +1456,35 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 83 Referinţa instanţei de clasă %1$s la un nume de tabelă derivată nu este permisă.
 84 Calea de corelare (%1$s) apare în afara unui termen cale internă.
 85 Referinţa la %1$s este ambiguă.
-86 Clasa %s nu are atributul %s.
-87 Clasele (%s) nu au toate atributele %s.
-88 Clasa (%s) nu are atributul %s.
-89 %s este un tip %s, nu un tip obiect.
-90 Selectorul {%s} nu se rezolvă la o specificaţie de clasa expusă\n în contextul solicitat (%s).
-91 Selectorul {%s} se referă la specificaţia de non-clasă (%s).
+86 Clasa %1$s nu are atributul %2$s.
+87 Clasele (%1$s) nu au toate atributele %2$s.
+88 Clasa (%1$s) nu are atributul %2$s.
+89 %1$s este un tip %2$s, nu un tip obiect.
+90 Selectorul {%1$s} nu se rezolvă la o specificaţie de clasa expusă\n în contextul solicitat (%2$s).
+91 Selectorul {%1$s} se referă la specificaţia de non-clasă (%2$s).
 92 Selectorul {%1$s} nu poate face referire la rădăcina expresiei cale ce-l defineşte.
-93 Selectorul {%s} este definit circular în termeni de selector {%s}.
-94 Selectorul {%s} este redefinit la %s.
-95 %s (obiect domeniu) nu are atributul %s.
+93 Selectorul {%1$s} este definit circular în termeni de selector {%2$s}.
+94 Selectorul {%1$s} este redefinit la %2$s.
+95 %1$s (obiect domeniu) nu are atributul %2$s.
 96 %1$s din specificaţia EXCEPT nu este o subclasă.
 97 Lista ALL ... EXCEPT exclude TOTUL din clasă.
-98 '%s' este inconsistent cu alte\nutilizări ale selectorului de cale '%s' sau ale rădăcinii '%s'.
+98 '%1$s' este inconsistent cu alte\utilizări ale selectorului de cale '%2$s' sau ale rădăcinii '%3$s'.
 99 Argument nedefinit.
 100 Argumentul nu este un obiect.
-101 %s nu este o metodă sau un atribut al clasei %s.
+101 %1$s nu este o metodă sau un atribut al clasei %2$s.
 102 Specificaţia de interogare trebuie sa nu aiba o clauza INTO.
 103 Specificaţia de interogare proxy trebuie să nu aibă expresii agregate,\nclauză GROUP BY, sau clauză HAVING.
 104 Specificaţia de interogare proxy trebuie să nu aibă cuvintele cheie \nDISTINCT sau UNIQUE în lista de selecţie.
 105 Specificaţia de interogare proxy trebuie să fie o instrucţiune simplă de SELECT.
 106 Specificaţia de interogare proxy trebuie să referenţieze o singură tabelă sau clasă \ndin baza de date locală.
-107 Utilizatorul '%s' nu este proprietar pentru %s.
-108 Proxyul '%s' este deja definit pe clasa '%s' din LDB '%s'.
+107 Utilizatorul '%1$s' nu este proprietar pentru %2$s.
+108 Proxyul '%1$s' este deja definit pe clasa '%2$s' din LDB '%3$s'.
 109 CUBRID nu suportă proxyuri cu obiecte în mulţimi eterogene.
 110 Clauza WHERE trebuie să conţină o expresie de tip logic.
 111 Clauza LIKE-ESCAPE trebuie să conţină un şir de caractere sau o variabilă gazdă (host variable).
-112 Combinaţie invalidă de precizie (%d) si scală (%d).
+112 Combinaţie invalidă de precizie (%1$d) si scală (%2$d).
 113 Precizia furnizată %1$d nu este validă; trebuie să fie mai mare decât %2$d şi mai mică decât %3$d.
-114 Precizia (%d) este prea mare. Precizia maximă este %d.
+114 Precizia (%1$d) este prea mare. Precizia maximă este %2$d.
 115 Metoda %1$s trebuie să întoarcă un tip.
 116 Numărul de argumente furnizat metodei nu este egal cu \nnumărul definit pentru metodă.
 117 Apelul la metodă trebuie să aibă o ţintă.
@@ -1506,14 +1506,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 133 Atributul de tip object_id proxy '%1$s' nu trebuie mapat la \nexpresia coloană a obiectului interogării.
 134 Constrângerea %1$s ignorată.
 135 Declararea constrângerilor nu este permisă în acest context.
-136 Conversia lui %s la tipul %s nu este suportată.
+136 Conversia lui %1$s la tipul %2$s nu este suportată.
 137 %1$s nu este un string de biţi valid.
-138 Operatorul '%s' nu este definit pentru tipul de date %s.
-139 Operatorul '%s' nu este definit pentru tipurile de date %s cu %s şi %s.
+138 Operatorul '%1$s' nu este definit pentru tipul de date %2$s.
+139 Operatorul '%1$s' nu este definit pentru tipurile de date %2$s cu %3$s şi %4$s.
 140 Operanzii operatorului '%1$s' nu pot fi ambii variabile de gazdă dinamice.
-141 Prea multe argumente pentru funcţia generică %s.\nONumai %d argumente sunt permise pentru funcţii generice.
-142 Clasa selector {%s} cu numele '%s' nu este o subclasă pentru '%s'.
-143 Nu se poate extrage câmpul '%s' din tipul %s.
+141 Prea multe argumente pentru funcţia generică %1$s.\nONumai %2$d argumente sunt permise pentru funcţii generice.
+142 Clasa selector {%1$s} cu numele '%2$s' nu este o subclasă pentru '%3$s'.
+143 Nu se poate extrage câmpul '%1$s' din tipul %2$s.
 144 Specificaţia de interogare trebuie să nu aibă o clauză ORDER BY.
 145 Condiţia pentru CASE trebuie să fie o expresie de tip logic.
 146 Expresia trebuie să fie de tip %1$s.
@@ -1532,7 +1532,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 159 Nu se poate găsi indexul '%1$s'.
 160 Numele complet dezambiguizat al indexului '%1$s' face referire la o clasă care nu este specificată în clauza FROM.
 161 Doua sau mai multe clase au acelaşi index '%1$s'. Utilizati nume de indecşi complet dezambiguizate.
-162 Utilizare invalidă a lui %s.\nExpresia %s nu poate fi utilizată împreună cu un atribut sau o subinterogare corelată.
+162 Utilizare invalidă a lui %1$s.\nExpresia %2$s nu poate fi utilizată împreună cu un atribut sau o subinterogare corelată.
 163 Versiunea curentă restricţionează o expresie din lista de selecţie, expresie ce conţine ORDERBY_NUM().
 164 Expresie cale '%1$s' în condiţia de JOIN.
 165 '%1$s' din condiţia de JOIN nu este definit.
@@ -1585,18 +1585,18 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 212 %1$s nu poate fi o coloană de GROUP BY
 213 Nu se poate defini '%1$s of %2$s' ca un tip de coloană.
 214 Valoare invalidă "%1$s" pentru lungimea de prefix a indexului.
-215 Funcţia '%s' nu este definită pentru tipurile %s, %s, %s şi %s.
-216 Funcţia '%s' nu este definită pentru tipurile %s, %s şi %s.
-217 Funcţia '%s' nu este definită pentru tipurile %s şi %s.
-218 Funcţia '%s' nu este definită pentru tipul %s.
-219 Funcţia '%s' nu este definită pentru un argument index de tip %s.
+215 Funcţia '%1$s' nu este definită pentru tipurile %2$s, %3$s, %4$s şi %5$s.
+216 Funcţia '%1$s' nu este definită pentru tipurile %2$s, %3$s şi %4$s.
+217 Funcţia '%1$s' nu este definită pentru tipurile %2$s şi %3$s.
+218 Funcţia '%1$s' nu este definită pentru tipul %2$s.
+219 Funcţia '%1$s' nu este definită pentru un argument index de tip %2$s.
 220 ALTER VIEW '%1$s' AS SELECT nu este permis pentru vizualizări care conţin subclase sau superclase. Utilizaţi ALTER VIEW CHANGE QUERY în loc.
 221 Atributele vizualizării nu pot fi schimbate utilizând această instrucţiune. 'ALTER VIEW nume AS interogare' ar putea fi utilizat în loc.
 222 CUBRID necesită ca elementul ORDER BY să fie aceeaşi expresie ca argumentul lui GROUP_CONCAT sau un întreg (poziţia argumentului).
 223 Predicatul LIKE necesită specificarea unui caracter de escapare. Consultaţi documentaţia pentru parametrii de configurare asociaţi cu '%1$s' şi '%2$s'.
 224 KEYLIMIT nu poate fi utilizat în clauza INDEX NONE.
 225 Variabila de sesiune nu este permisă în acest context.
-226 Conflict între clauzele de utilizare a indecşilor '%s' si '%s'.
+226 Conflict între clauzele de utilizare a indecşilor '%1$s' si '%2$s'.
 227 Funcţia '%1$s' nu poate fi utilizată în clauza DEFAULT.
 228 Actualizarea tabelelor derivate nu este permisă.
 229 Actualizarea atributelor de clasă sau de instanţă nu este permisă în aceeaşi instrucţiune.
@@ -1606,7 +1606,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 233 Nu sunt permise funcţii multiple sau imbricate în definiţia unui index funcţional.
 234 Specificaţie invalidă pentru index.
 235 SHARED, DEFAULT si AUTO_INCREMENT nu pot fi definite împreună.
-236 Prea multe valori pentru enumerare (%d). Un tip de enumerare poate conţine cel mult %d valori.
+236 Prea multe valori pentru enumerare (%1$d). Un tip de enumerare poate conţine cel mult %2$d valori.
 237 Valori duplicate în tipul ENUM.
 238 Nu se poate efectua operaţia de MERGE într-o tabelă derivată.
 239 Nu se poate modifica tabela sursă printr-o instrucţiune de tip MERGE.
@@ -1628,7 +1628,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 255 '%1$s' nu este permis într-o expresie de filtrare pentru un index.
 256 Nu se pot utiliza GROUPBY_NUM() şi clauza WITH ROLLUP în aceeaşi interogare.
 257 Nu se poate efectua instrucţiunea MERGE UPDATE pentru coloana %1$s referenţiată în clauza ON.
-258 Numărul de coloane, %d, din ( %s ) nu corespunde\nnumărului de coloane, %d, din ( %s ).
+258 Numărul de coloane, %1$d, din ( %2$s ) nu corespunde\nnumărului de coloane, %3$d, din ( %4$s ).
 259 Prefixele de coloane nu sunt permise în expresiile indecşilor funcţionali.
 260 %1$s nu poate fi utilizat drept coloană pentru PARTITION BY sau ORDER BY
 261 Interogarea trebuie să evalueze la o singură valoare\n(%1$s).
@@ -1637,7 +1637,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 264 Dimensiunea agregată a elementelor enumerării este prea mare.
 265 Nu se poate utiliza tabela ţintă în specificaţia sursei.
 266 COLLATE nu este permis în acest context.
-267 Modificatorul COLLATE nu poate schimba codesetul (din '%s' în '%s'). Încercaţi să utilizaţi CAST în loc.
+267 Modificatorul COLLATE nu poate schimba codesetul (din '%1$s' în '%2$s'). Încercaţi să utilizaţi CAST în loc.
 268 Codeset invalid '%1$s' pentru valoarea partiţiei. Se aşteaptă codesetul '%2$s'.
 269 Variabila de sesiune nu poate avea altă colaţie decât cea de sistem ('%1$s').
 270 Expresie invalidă pentru indexul funcţional.
@@ -1658,7 +1658,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 285 Expects %1$s for argument %2$s.
 286 Argument %1$s is missing.
 287 Unknown argument %1$s.
-288 Cannot remove all partitions, use DROP TABLE instead.
+288 Nu se pot şterge toate partiţiile, folosiţi DROP TABLE în schimb.
 289 The expression including %1$s is not allowed in this context.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
@@ -1673,7 +1673,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
 10 O interogare neactualizabilă nu este permisă într-un apel de db_query_execute_oid.
 11 Tranzacţia a expirat în aşteptarea lock-urilor.
-12 Tentativă de accesare a unei variabile de gazdă cu indexul %d când numai %d \nvariabile gazdă de intrare au fost date.
+12 Tentativă de accesare a unei variabile de gazdă cu indexul %1$d când numai %2$d \nvariabile gazdă de intrare au fost date.
 13 conversie neimplementată.
 14 Eroare internă, conversie nedefinită.
 15 '%1$s' nu întoarce rezultate.
@@ -1692,25 +1692,25 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 28 Există mai multe atribute în clasa %1$s decât coloane în obiectul interogării.
 29 Versiunea curentă restricţionează utilizarea agregării la clase virtuale FĂRĂ \nspecificaţii de interogare agregate.
 30 Versiunea curentă restricţionează utilizarea agregării la clase virtuale FĂRĂ \nspecificaţii de interogare de tip UNION.
-31 Utilizarea unei clase virtuale (vclass %s) într-o ierarhie de compunere necesită ca clasa să fie actualizabilă.\nNu poate fi actualizată respectând definiţia clasei reale %s.
+31 Utilizarea unei clase virtuale (vclass %1$s) într-o ierarhie de compunere necesită ca clasa să fie actualizabilă.\nNu poate fi actualizată respectând definiţia clasei reale %2$s.
 32 neutilizat
 33 Construcţie nepermisă în expresia de tip cale '%1$s'.
-34 Expresia de tip cale '%s' depăşeşte domeniul bazei de date până la %s, cu clasa virtuală %s.
-35 Expresia de tip cale '%s' depăşeşte domeniul bazei de date de la %s, până la clasa %s.
-36 %s nu are permisiuni pe %s.
+34 Expresia de tip cale '%1$s' depăşeşte domeniul bazei de date până la %2$s, cu clasa virtuală %3$s.
+35 Expresia de tip cale '%1$s' depăşeşte domeniul bazei de date de la %2$s, până la clasa %3$s.
+36 %1$s nu are permisiuni pe %2$s.
 37 Operaţia de SELECT nu are permisiuni pe %1$s.
 38 Clasa virtuală %1$s nu poate fi actualizată.
 39 %1$s nu este o clasă virtuală proxy.
 40 obiectul interogării pentru clasa virtuală proxy trebuie sa nu fie un JOIN.
 41 %1$s nu are un ID de obiect setat.
 42 Clasele (%1$s) cu mai multe câmpuri object_id într-o ierarhie\nde compunere nu sunt suportate.
-43 Atributul de obiect %s din %s nu este o clasă virtuală în LDBul %s.
+43 Atributul de obiect %1$s din %2$s nu este o clasă virtuală în LDBul %3$s.
 44 Tipul obiectului interogării nu este compatibil cu atributul %1$s.
 45 Obiectul interogării lui %1$s conţine o referinţă circulară la el însuşi.
 46 Nicio expresie dată pentru evaluare.
 47 Nicio clasă reală găsită pentru clasa virtuală %1$s.
-48 Execuţia comenzii '%s' pe LDB '%s' \na întors: %s.
-49 Plasarea valorii '%s' în atributul '%s' a întors: %s.
+48 Execuţia comenzii '%1$s' pe LDB '%2$s' \na întors: %3$s.
+49 Plasarea valorii '%1$s' în atributul '%2$s' a întors: %3$s.
 50 Numele de LDB trebuie să nu fie vid în %1$s.
 51 Numele de LDB de pe maşina gazdă trebuie să nu fie vid în %1$s.
 53 Numele de gazdă trebuie să nu fie vid în %1$s.
@@ -1739,7 +1739,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 76 Serialul '%1$s' nu este încă definit.
 77 Numai proprietarul sau un DBA poate schimba definiţia serialului.
 78 Nu este permis utilizatorilor să modifice un obiect serial creat de o constrângere AUTO INCREMENT.
-79 Nivel de izolare invalid; schema: %s, instanţe: %s.
+79 Nivel de izolare invalid; schema: %1$s, instanţe: %2$s.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** cache invalid ***
@@ -1761,7 +1761,7 @@ $set 11 MSGCAT_SET_AUTHORIZATION
 
 $set 12 MSGCAT_SET_HELP
 1 Clasa radacină
-2 %s %s\n
+2 %1$s %2$s\n
 3 Superclase :\n
 4 Subclases :\n
 5 Atribute: \n
@@ -1788,38 +1788,38 @@ $set 13 MSGCAT_SET_TRIGGER
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
-2 Firul de execuţie (index %3d) al tranzacţiei (index %3d, %s, %s@%s|%d) a fost suspendat.\n
-3 Firul de execuţie (index %3d) al tranzacţiei (index %3d, %s, %s@%s|%d) a fost reluat.\n
-4 Indexul de tranzacţie %3d a OBŢINUT lock-ul %s pe obiectul %d|%d|%d.\n
-5 Indexul de tranzacţie %3d a OBŢINUT lock-ul %s pe pagina %d|%d.\n
-6 Indexul de tranzacţie %3d a CONVERTIT lock-ul său în lock-ul %s pe obiectul %d|%d|%d.\n
-7 Indexul de tranzacţie %3d a CONVERTIT lock-ul său în lock-ul %s pe pagina %d|%d.\n
-8 Indexul de tranzacţie %3d AŞTEAPTĂ lock-ul %s pe obiectul %d|%d|%d.\n
-9 Indexul de tranzacţie %3d AŞTEAPTĂ lock-ul %s pe pagina %d|%d.\n
-10 Indexul de tranzacţie %3d a ELIBERAT lock-ul %s pe obiectul %d|%d|%d.\n
-11 Indexul de tranzacţie %3d a ELIBERAT lock-ul %s pe pagina %d|%d.\n
-12 Indexul de tranzacţie %3d a RETROGRADAT lock-ul la %s pe obiectul %d|%d|%d.\n
-13 Indexul de tranzacţie %3d a RETROGRADAT lock-ul la %s pe pagina %d|%d.\n
-14 OID = %2d|%6d|%4d\n
+2 Firul de execuţie (index %1$3d) al tranzacţiei (index %2$3d, %3$s, %4$s@%5$s|%6$d) a fost suspendat.\n
+3 Firul de execuţie (index %1$3d) al tranzacţiei (index %2$3d, %3$s, %4$s@%5$s|%6$d) a fost reluat.\n
+4 Indexul de tranzacţie %1$3d a OBŢINUT lock-ul %2$s pe obiectul %3$d|%4$d|%5$d.\n
+5 Indexul de tranzacţie %1$3d a OBŢINUT lock-ul %2$s pe pagina %3$d|%4$d.\n
+6 Indexul de tranzacţie %1$3d a CONVERTIT lock-ul său în lock-ul %2$s pe obiectul %3$d|%4$d|%5$d.\n
+7 Indexul de tranzacţie %1$3d a CONVERTIT lock-ul său în lock-ul %2$s pe pagina %3$d|%4$d.\n
+8 Indexul de tranzacţie %1$3d AŞTEAPTĂ lock-ul %2$s pe obiectul %3$d|%4$d|%5$d.\n
+9 Indexul de tranzacţie %1$3d AŞTEAPTĂ lock-ul %2$s pe pagina %3$d|%4$d.\n
+10 Indexul de tranzacţie %1$3d a ELIBERAT lock-ul %2$s pe obiectul %3$d|%4$d|%5$d.\n
+11 Indexul de tranzacţie %1$3d a ELIBERAT lock-ul %2$s pe pagina %3$d|%4$d.\n
+12 Indexul de tranzacţie %1$3d a RETROGRADAT lock-ul la %2$s pe obiectul %3$d|%4$d|%5$d.\n
+13 Indexul de tranzacţie %1$3d a RETROGRADAT lock-ul la %2$s pe pagina %3$d|%4$d.\n
+14 OID = %1$2d|%2$6d|%3$4d\n
 15 Tip de obiect: clasă Root.\n
 16 Tip de obiect: Clasă = %1$s.\n
-17 Tip de obiect: Instanţă a clasei (%2d|%6d|%4d) = %s.\n
+17 Tip de obiect: Instanţă a clasei (%1$2d|%2$6d|%3$4d) = %4$s.\n
 18 Tip de obiect: Necunoscut.\n
-19 Modul total de holders = %8s, Modul total de waiters = %8s.\n
-20 Număr de holders=%3d, Număre de blocked-holders=%3d, Număr de waiters=%3d\n
+19 Modul total de holders = %1$8s, Modul total de waiters = %2$8s.\n
+20 Număr de holders=%1$3d, Număre de blocked-holders=%2$3d, Număr de waiters=%3$3d\n
 21 LOCK HOLDERS:\n
 22 LOCK HOLDERS BLOCATI:\n
 23 LOCK WAITERS:\n
 24 NON_2PL_RELEASED:\n
-25 %4sTran_index = %3d, Granted_mode =%8s, Total = %3d\n
-26 %4sTran_index = %3d, Granted_mode =%8s, Total = %3d, Nsubgranules = %2d\n
-27 %4sTran_index = %3d, Granted_mode =%8s, Total = %3d\n\t%13s Blocked_mode = %8s\n\t%17s Start_waiting_at = %-30s\n\t%17s Wait_for_secs = %.2f\n
-28 %4sTran_index = %3d, Granted_mode =%8s, Count = %3d, Nsubgranules = %2d\n\t%13s Blocked_mode =%8s\n\t%13s Start_waiting_at = %-30s\n\t%13s Wait_for_secs = %.2f\n
-29 %4sTran_index = %3d, Blocked_mode =%8s \n\t%13s Start_waiting_at = %-30s \n\t%13s Wait_for_secs = %.2f\n
-30 %4sTran_index = %3d, Non_2_phase_lock =%8s\n
-31 VPID (volid|pageid) = %3d|%6d.\n
-32 *** Vărsarea tabelei de lock-uri ***\n Promovare de lock la = %d, Interval de aşteptare până la căutarea unui deadlock = %5.2f\n
-33 Tranzacţie (index %2d, %s, %s@%s|%d)\n
+25 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Total = %4$3d\n
+26 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Total = %4$3d, Nsubgranules = %5$2d\n
+27 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Total = %4$3d\n\t%5$13s Blocked_mode = %6$8s\n\t%7$17s Start_waiting_at = %8$-30s\n\t%9$17s Wait_for_secs = %10$.2f\n
+28 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d, Nsubgranules = %5$2d\n\t%6$13s Blocked_mode =%7$8s\n\t%8$13s Start_waiting_at = %9$-30s\n\t%10$13s Wait_for_secs = %11$.2f\n
+29 %1$4sTran_index = %2$3d, Blocked_mode =%3$8s \n\t%4$13s Start_waiting_at = %5$-30s \n\t%6$13s Wait_for_secs = %7$.2f\n
+30 %1$4sTran_index = %2$3d, Non_2_phase_lock =%3$8s\n
+31 VPID (volid|pageid) = %1$3d|%2$6d.\n
+32 *** Vărsarea tabelei de lock-uri ***\n Promovare de lock la = %1$d, Interval de aşteptare până la căutarea unui deadlock = %2$5.2f\n
+33 Tranzacţie (index %1$2d, %2$s, %3$s@%4$s|%5$d)\n
 34 Izolare %1$s\n
 35 Stare %1$s\n
 36 Durată de expirare (Timeout_period) %1$s\n
@@ -1827,9 +1827,9 @@ $set 14 MSGCAT_SET_LOCK
 38 %1$d ,
 39 Au expirat (Timed_out) tranzacţiile cu indicii:\n
 40 %1$d ,
-41 Se rezolvă deadlock-ul prin selecţia unei tranzacţii şi a unei funcţii \n care să întrerupă deadlock-ul: %d %s
-42 , %d %s
-43 Tip de obiect: Cheie de index a clasei (%2d|%6d|%4d) = %s.\n
+41 Se rezolvă deadlock-ul prin selecţia unei tranzacţii şi a unei funcţii \n care să întrerupă deadlock-ul: %1$d %2$s
+42 , %1$d %2$s
+43 Tip de obiect: Cheie de index a clasei (%1$2d|%2$6d|%3$4d) = %4$s.\n
 44 Nume de index: %1$s\n
 
 $set 15 MSGCAT_SET_IO
@@ -1837,45 +1837,45 @@ $set 15 MSGCAT_SET_IO
 2 O copie de siguranţă = %1$s este necesară. \n Trebuie să fie montată/încărcată pentru a continua.\n Tastaţi 1 pentru a continua după ce copia de siguranţă este montata/încărcată.\n Tastaţi 0 pentru ieşire.\n
 3 \n\n*** INFORMAŢII DESPRE ANTETUL COPIEI DE SIGURANŢĂ ***\n\n
 4 Identificator magic pentru fişierul de siguranţă %1$s,\n
-5                        Versiune: %s\n\
-                    Versiune disc: %g\n
-6            Numele bazei de date: %s\n\
-       Data creării bazei de date: %s\
-                  Mărimea paginii: %d\n
-7                 Nivel de backup: %d (%s)\n\
-                        Start_lsa: %lld|%d\n\
-                         Last_lsa: %lld|%d\n
-8 Ora creării copiei de siguranţă: %s\
-             Nr. volum de rezervă: %d\n
-9  Numele volumului bazei de date: %s\n\
-           Identificator de volum: %d, Mărime: %lld bytes (%d pages)\n
-10           Numele bazei de date: %s\n\
-                 Numele volumului: %s\n\
-                    Număr unitate: %d\n\
-                  Nivel de Backup: %d (%s)\n\
+5                        Versiune: %1$s\n\
+                    Versiune disc: %2$g\n
+6            Numele bazei de date: %1$s\n\
+       Data creării bazei de date: %2$s\
+                  Mărimea paginii: %3$d\n
+7                 Nivel de backup: %1$d (%2$s)\n\
+                        Start_lsa: %3$lld|%4$d\n\
+                         Last_lsa: %5$lld|%6$d\n
+8 Ora creării copiei de siguranţă: %1$s\
+             Nr. volum de rezervă: %2$d\n
+9  Numele volumului bazei de date: %1$s\n\
+           Identificator de volum: %2$d, Mărime: %3$lld bytes (%4$d pages)\n
+10           Numele bazei de date: %1$s\n\
+                 Numele volumului: %2$s\n\
+                    Număr unitate: %3$d\n\
+                  Nivel de Backup: %4$d (%5$s)\n\
 Introduceţi una din următoarele opţiuni:\n
 11 Tastati\n \
-  -  %d pentru a renunţa.\n \
-  -  %d pentru a continua după ce copia de siguranţă este montată/încăracată. (reîncercare) \n \
-  -  %d pentru a continua după schimbarea directorului sau dispozitivului volumului.\n
+  -  %1$d pentru a renunţa.\n \
+  -  %2$d pentru a continua după ce copia de siguranţă este montată/încăracată. (reîncercare) \n \
+  -  %3$d pentru a continua după schimbarea directorului sau dispozitivului volumului.\n
 12 Introduceţi un director sau dispozitiv nou pentru volumul de rezervă.\n
-13 Eroare la intrare, alegeţi o valoare între %d şi %d.\n
+13 Eroare la intrare, alegeţi o valoare între %1$d şi %2$d.\n
 14 ** AVERTISMENT ** Volum incorect de rezervă montat/încărcat.\n
-15 Volumul de rezervă %s a fost creat cu un alt nivel\n   (Nivel: %d, se aşteaptă %d).\n\n
+15 Volumul de rezervă %1$s a fost creat cu un alt nivel\n   (Nivel: %2$d, se aşteaptă %3$d).\n\n
 16 Volumul de rezervă %1$s are un identificator magic sau de pagină incorect.\n\n
-17 Volumul de rezervă %s face parte din altă bază de date\n  (Nume: %s, se aşteaptă %s).\n\n
-18 Volumul de rezervă %s nu se află în ordinea corectă\n  (Număr unitate: %d, se aşteaptă %d).\n\n
-19 Nepotrivire de oră si dată (timestamp) pentru volumul de rezervă %s\n  (Timestamp: %s, se aşteaptă %s).\n\n
+17 Volumul de rezervă %1$s face parte din altă bază de date\n  (Nume: %2$s, se aşteaptă %3$s).\n\n
+18 Volumul de rezervă %1$s nu se află în ordinea corectă\n  (Număr unitate: %2$d, se aşteaptă %3$d).\n\n
+19 Nepotrivire de oră si dată (timestamp) pentru volumul de rezervă %1$s\n  (Timestamp: %2$s, se aşteaptă %3$s).\n\n
 20 Eroare în fişierul cu informaţii despre volumul de rezervă, linia %1$d.\n
-21 Eticheta volumului de rezervă: Nivel: %d, Unitate: %d, Bază de Date %s, Data si ora creării: %s\n
-22     Nivel anterior al copiei de rezervă: %d Ora: %s (start_lsa a fost %lld|%d)\n
+21 Eticheta volumului de rezervă: Nivel: %1$d, Unitate: %2$d, Bază de Date %3$s, Data si ora creării: %4$s\n
+22     Nivel anterior al copiei de rezervă: %1$d Ora: %2$s (start_lsa a fost %3$lld|%4$d)\n
 23 Următorul volum de rezervă al bazei de date este necesar pentru a putea continua restaurarea:\n\n
 24 Destinaţia de rezervă este plină, o nouă destinaţie este necesară pentru a continua:\n\n
 25         Numele volumului de rezervă anterior: %1$s\n
 26          Numele următorului volum de rezervă: %1$s\n
 27  Dimensiunea paginii pentru copia de rezervă: %1$d\n
-28                                   Metoda Zip: %d (%s)\n\
-                                      Nivel Zip: %d (%s)\n
+28                                   Metoda Zip: %1$d (%2$s)\n\
+                                      Nivel Zip: %3$d (%4$s)\n
 29                            Include log activ: %1$s\n
 
 $set 16 MSGCAT_SET_LOG
@@ -1892,22 +1892,22 @@ $set 16 MSGCAT_SET_LOG
   -  1 pentru a continua după ce fişierul este montat/încărcat.\n \
   -  2 pentru a continua după schimbarea numelui/locaţiei fişierului.   \n
 4 Introduceţi nume/locaţie nouă.\n
-5 COMENTARIU: %s pentru baza de date %s\n
+5 COMENTARIU: %1$s pentru baza de date %2$s\n
 6 COMENTARIU: Arhiva de log %1$s nu mai este necesară decât dacă apare o problemă gravă cu mediul de stocare al bazei de date.\n
-7 COMENTARIU: Arhivele de log de la %s până la %s nu mai sunt necesare decât daăa apare o problemă gravă cu mediul de stocare al bazei de date.\n
+7 COMENTARIU: Arhivele de log de la %1$s până la %2$s nu mai sunt necesare decât dacă apare o problemă gravă cu mediul de stocare al bazei de date.\n
 8 COMENTARIU: din baza de date redenumită = %1$s\n
-9 ARHIVA: %d %s %lld %lld\n
+9 ARHIVA: %1$d %2$s %3$lld %4$lld\n
 10 ARHIVA:
-11 ŞTERGERE: %d %s la \n \
-       %d %s.\n \
-       MOTIV: %s\n
-12 ACTIVE: %s %d pagini\n
-13  Finalizarea salvării (prin COMMIT) a tran_index %d cu tranid = %d,\n înainte de LSA= %lld|%d şi la %s
-14  Finalizarea abandonării lui tran_index %d cu tranid = %d,\n înainte de LSA= %lld|%d şi la %s
+11 ŞTERGERE: %1$d %2$s la \n \
+       %3$d %4$s.\n \
+       MOTIV: %5$s\n
+12 ACTIVE: %1$s %2$d pagini\n
+13  Finalizarea salvării (prin COMMIT) a tran_index %1$d cu tranid = %2$d,\n înainte de LSA= %3$lld|%4$d şi la %5$s
+14  Finalizarea abandonării lui tran_index %1$d cu tranid = %2$d,\n înainte de LSA= %3$lld|%4$d şi la %5$s
 15  O recuperare incompletă de media este în vigoare. Baza de date \n \
- va fi recuperată până la punctul LSA cu adresa %lld|%d. Momentul \n \
+ va fi recuperată până la punctul LSA cu adresa %1$lld|%2$d. Momentul \n \
  ultimei acţiuni de finalizare/abandon (commit/abort) este aproximativ\n \
- la %s \n \
+ la %3$s \n \
  Baza de date a pierdut toate informaţiile despre tranzacţiile finalizate \n \
  după acest moment.\n
 16 Resetare a logului datorită recuperării incomplete.
@@ -1919,24 +1919,24 @@ Volumele de rezervă mai vechi ale acestei baze de date, aflate în acest \n\
 director vor fi şterse, inclusiv cele de acelaşi nivel sau superioare.\n
 20 Tastaţi 'y' pentru a continua sau orice altă tastă pentru anulare.\n
 21 Crearea copiei de rezervă a bazei de date a fost abandonată de utilizator.\n
-22 DELETE POSTPONED: Arhivele %d %s până la \n \
-        %d %s \n \
+22 DELETE POSTPONED: Arhivele %1$d %2$s până la \n \
+        %3$d %4$s \n \
         nu mai sunt necesare decât în cazul unei restaurări din copia de rezervă curentă.\n
 23 O copie de rezervă mai nouă a eliberat arhivele anterior marcate cu DELETE POSTPONED.\n
 24 COMENTARIU: Ahiva de log %1$s nu mai este de tip DELETE POSTPONED datorită unei copii de\n \
    siguranţă mai noi, astfel nemaifiind necesară decât în cazul producerii unei erori grave\n \
    la nivelul mediului de stocare.\n
-25 COMENTARIU: Arhivele de log de la %s până la %s nu mai sunt marcate ca DELETE POSTPONED\n \
+25 COMENTARIU: Arhivele de log de la %1$s până la %2$s nu mai sunt marcate ca DELETE POSTPONED\n \
    datorită unei copii de rezervă mai noi, astfel nemaifiind necesare decât în cazul producerii\n \
    unei erori grave la nivelul mediului de stocare.\n
 26 O eroare s-a produs în timpul unei restaurări a bazei de date, în timpul procesării volumului\n\
-        Volum de rezervă: %s\n\
-           Număr unitate: %d\n\
-      Volum bază de date: %s\n\
-   ID volum bază de date: %d\n\
+        Volum de rezervă: %1$s\n\
+           Număr unitate: %2$d\n\
+      Volum bază de date: %3$s\n\
+   ID volum bază de date: %4$d\n\
 ** AVERTISMENT: Nu utilizaţi baza de date înainte de realizarea unei restaurări fără erori.\n
-27 Eroare la intrare, alegeţi o valoare cuprinsă între %d şi %d.\n
-28 Momentul specificat (%s) trebuie să îl succeadă pe cel al copiei de rezervă specificate(%s).\n
-29 COMENTARIU: Arhiva de log %s, care conţine pagini de log anterioare lui %lld, nu mai \n \
+27 Eroare la intrare, alegeţi o valoare cuprinsă între %1$d şi %2$d.\n
+28 Momentul specificat (%1$s) trebuie să îl succeadă pe cel al copiei de rezervă specificate(%2$s).\n
+29 COMENTARIU: Arhiva de log %1$s, care conţine pagini de log anterioare lui %2$lld, nu mai \n \
  este necesar niciunui utilitar HA.\n
 30 Numărul de arhive de log active a depăşit numărul maxim admis.

@@ -64,10 +64,10 @@ $set 5
 7 Zeichen-String
 8 Indikator-Variable für "%1$s" nicht erlaubt in diesem Kontext
 9 "%1$s" nicht deklariert in der BEGIN DECLARE Sektion
-52 %s (Text war "%s")
+52 %1$s (Text war "%2$s")
 53 lexikalischer Fehler
-54 Syntax-Fehler an "%s": %s fehlt in %s
-55 Syntax-Fehler an "%s": %s fehlt
+54 Syntax-Fehler an "%1$s": %2$s fehlt in %3$s
+55 Syntax-Fehler an "%1$s": %2$s fehlt
 
 $set 6
 1 Suppress-Line-Direktive
@@ -99,29 +99,29 @@ $set 7
 
 $set 8
 1 REPEATED Option wurde ignoriert
-2 %s Version %s\n
+2 %1$s Version %2$s\n
 
 $set 9
 1 (yy_pop_mode) interner Fehler: leerer Modus-Stapel
 2 "%1$s" ist nicht erlaubt in diesem Kontext
 
 $set 10
-1 interner Fehler in %s: %s\n
+1 interner Fehler in %1$s: %2$s\n
 2 Tabellenüberlauf
 
 $set 11
 1 Indicator-Variable "%1$s" soll ein short int sein
 2 Eine Indicator-Variable darf mit einer Struktur nicht verwendet werden 
 3 "%1$s" hat inkomplette struct Definition
-4 "%s" muss ein valides %s sein
-5 %s ist kein erlaubtes Typ für "%s"
+4 "%1$s" muss ein valides %2$s sein
+5 %1$s ist kein erlaubtes Typ für "%2$s"
 6 unerwartets Host-Variablen-Typ: %1$s
 7 (pp_addr_expr): Versuch, die Adresse der NULL-Variable zu finden 
 8 "%1$s" ist kein Zeiger
 9 "%1$s" zeigt an einem struct nicht
 10 "%1$s" ist kein struct
-11 %s hat keinen Feld "%s"
-12 "%s" kann durch "%s" nicht de-referenziert werden
+11 %1$s hat keinen Feld "%2$s"
+12 "%1$s" kann durch "%2$s" nicht de-referenziert werden
 
 $set 12
 1 außer Speicher
