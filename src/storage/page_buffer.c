@@ -2576,17 +2576,30 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       ain_miss_rate = 0;
     }
 
+  cfg_check_cnt = (int) (pgbuf_Pool.num_buffers * flush_ratio);
+  cnt_in_ain = pgbuf_Pool.buf_AIN_list.ain_count;
+
   if (lru_victim_req_cnt > 0 || ain_victim_req_cnt > 0)
     {
-      lru_to_ain_req_ratio = (float) lru_victim_req_cnt
-	/ (float) (lru_victim_req_cnt + ain_victim_req_cnt);
+      lru_to_ain_req_ratio =
+	((float) lru_victim_req_cnt
+	 / (float) (lru_victim_req_cnt + ain_victim_req_cnt));
     }
   else
     {
-      /* this should not happen, can't have flush request without victim
-       * requests */
-      assert (false);
-      lru_to_ain_req_ratio = 1;
+      /* This may happen when a previous run of flush thread occurred between
+       * moment of incrementing LRU or AIN victim request counters and
+       * the call to wakeup the flush thread;
+       * We don't know which list invoked the flush thread, so we flush
+       * according to current AIN count.
+       */
+      lru_to_ain_req_ratio =
+	(float) (cfg_check_cnt - (cnt_in_ain
+				  - pgbuf_Pool.buf_AIN_list.max_count))
+	/ (2 * cfg_check_cnt);
+
+      lru_to_ain_req_ratio = MIN (lru_to_ain_req_ratio, 1.0f);
+      lru_to_ain_req_ratio = MAX (lru_to_ain_req_ratio, 0);
     }
 
   /* Victims will only be flushed, not decached. The page replacement
@@ -2599,9 +2612,6 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
    * During flush phase, we can abort the flushing if detecting a change in
    * victimization pattern (LRU vs AIN).
    */
-
-  cfg_check_cnt = (int) (pgbuf_Pool.num_buffers * flush_ratio);
-  cnt_in_ain = pgbuf_Pool.buf_AIN_list.ain_count;
 
   lru_dynamic_flush_adj = MAX (1.0f,
 			       1 + (PGBUF_FLUSH_VICTIM_BOOST_MULT - 1)
