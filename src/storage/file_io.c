@@ -2236,8 +2236,17 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 	    FILEIO_DISK_PROTECTION_MODE);
   if (vol_fd == NULL_VOLDES)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1);
+      if (sh_flag == _SH_DENYRW && errno != ENOENT)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_IO_MOUNT_LOCKED, 6, vol_label_p,
+			       db_full_name_p, "-", 0, "-", "-");
+	}
+      else
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1);
+	}
     }
 
 #else /* !WINDOWS */
@@ -3091,8 +3100,17 @@ fileio_mount (THREAD_ENTRY * thread_p, const char *db_full_name_p,
   vol_fd = _sopen (vol_label_p, _O_RDWR | _O_BINARY, sh_flags, 0600);
   if (vol_fd == NULL_VOLDES)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_IO_MOUNT_FAIL, 1, vol_label_p);
+      if (sh_flags == _SH_DENYWR && errno != ENOENT)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_IO_MOUNT_LOCKED, 6, vol_label_p,
+			       db_full_name_p, "-", 0, "-", "-");
+	}
+      else
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_IO_MOUNT_FAIL, 1, vol_label_p);
+	}
       return NULL_VOLDES;
     }
 
