@@ -22644,8 +22644,9 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   int expr_coll_modifier = -1;
   INTL_CODESET expr_cs_modifier = INTL_CODESET_NONE;
   bool use_cast_collate_modifier = false;
-  bool arg1_set_need_coerce = false;
-  bool arg2_set_need_coerce = false;
+  bool arg1_need_coerce = false;
+  bool arg2_need_coerce = false;
+  bool arg3_need_coerce = false;
 
   assert (expr != NULL);
   assert (expr->node_type == PT_EXPR);
@@ -22755,6 +22756,10 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	  common_coll = arg1_coll_inf.coll_id;
 	  common_cs = arg1_coll_inf.codeset;
 	}
+      else
+	{
+	  arg1_need_coerce = true;
+	}
     }
   else if (PT_IS_COLLECTION_TYPE (arg1_type)
 	   || (arg1_type == PT_TYPE_MAYBE
@@ -22778,7 +22783,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	    }
 	  else
 	    {
-	      arg1_set_need_coerce = true;
+	      arg1_need_coerce = true;
 	    }
 	}
     }
@@ -22798,6 +22803,10 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	  args_having_coll++;
 	  common_coll = arg2_coll_inf.coll_id;
 	  common_cs = arg2_coll_inf.codeset;
+	}
+      else
+	{
+	  arg2_need_coerce = true;
 	}
     }
   else if (PT_IS_COLLECTION_TYPE (arg2_type)
@@ -22822,7 +22831,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	    }
 	  else
 	    {
-	      arg2_set_need_coerce = true;
+	      arg2_need_coerce = true;
 	    }
 	}
     }
@@ -22841,6 +22850,10 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	      args_having_coll++;
 	      common_coll = arg3_coll_inf.coll_id;
 	      common_cs = arg3_coll_inf.codeset;
+	    }
+	  else
+	    {
+	      arg3_need_coerce = true;
 	    }
 	}
       else if (PT_IS_COLLECTION_TYPE (arg3_type))
@@ -22944,7 +22957,9 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
       if (arg1_coll_inf.coll_id == arg2_coll_inf.coll_id
 	  && arg2_coll_inf.coll_id == arg3_coll_inf.coll_id
 	  && (arg1_type != PT_TYPE_MAYBE && arg2_type != PT_TYPE_MAYBE
-	      && arg2_type != PT_TYPE_MAYBE))
+	      && arg2_type != PT_TYPE_MAYBE)
+	  && (arg1_need_coerce == false && arg2_need_coerce == false
+	      && arg3_need_coerce == false))
 	{
 	  assert (arg1_coll_inf.codeset == arg2_coll_inf.codeset
 		  && arg2_coll_inf.codeset == arg3_coll_inf.codeset);
@@ -22955,7 +22970,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
     {
       if (arg1_coll_inf.coll_id == arg2_coll_inf.coll_id
 	  && (arg1_type != PT_TYPE_MAYBE && arg2_type != PT_TYPE_MAYBE)
-	  && (arg1_set_need_coerce == false && arg2_set_need_coerce == false))
+	  && (arg1_need_coerce == false && arg2_need_coerce == false))
 	{
 	  assert (arg1_coll_inf.codeset == arg2_coll_inf.codeset);
 	  goto coerce_result;
@@ -22966,7 +22981,8 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	  || arg1_coll_inf.coll_id != arg3_coll_inf.coll_id
 	  || arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE
 	  || arg3_type == PT_TYPE_MAYBE
-	  || arg1_set_need_coerce == true || arg2_set_need_coerce == true);
+	  || arg1_need_coerce == true || arg2_need_coerce == true
+	  || arg3_need_coerce == true);
 
   if (pt_common_collation (&arg1_coll_inf, &arg2_coll_inf, &arg3_coll_inf,
 			   args_w_coll_maybe, op_has_3_args, &common_coll,
@@ -22977,7 +22993,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 
 coerce_arg:
   /* step 3 : coerce collation of expression arguments */
-  if (((arg1_type == PT_TYPE_MAYBE || arg1_set_need_coerce)
+  if (((arg1_type == PT_TYPE_MAYBE || arg1_need_coerce)
        && args_having_coll > 0)
       || (common_coll != arg1_coll_inf.coll_id
 	  && (PT_HAS_COLLATION (arg1_type)
@@ -23010,7 +23026,7 @@ coerce_arg:
       expr->info.expr.arg1 = new_node;
     }
 
-  if (((arg2_type == PT_TYPE_MAYBE || arg2_set_need_coerce)
+  if (((arg2_type == PT_TYPE_MAYBE || arg2_need_coerce)
        && args_having_coll > 0)
       || (common_coll != arg2_coll_inf.coll_id
 	  && (PT_HAS_COLLATION (arg2_type)
@@ -23051,7 +23067,8 @@ coerce_arg:
     }
 
   if (op_has_3_args
-      && ((arg3_type == PT_TYPE_MAYBE && args_having_coll > 0)
+      && (((arg3_type == PT_TYPE_MAYBE || arg3_need_coerce)
+	   && args_having_coll > 0)
 	  || (common_coll != arg3_coll_inf.coll_id
 	      && PT_HAS_COLLATION (arg3_type))))
     {
