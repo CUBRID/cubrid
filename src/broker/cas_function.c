@@ -2136,7 +2136,7 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       ERROR_INFO_SET (retcode, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-      return FN_CLOSE_CONN;
+      return FN_KEEP_SESS;
     }
   else
     {
