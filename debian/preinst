@@ -1,6 +1,0 @@
-#!/bin/sh
-
-if [ ! -z "`getent passwd cubrid`" ] && [ -e /opt/cubrid/bin/cubrid ]; then
-	su - cubrid -c "cubrid service stop"
-fi
-

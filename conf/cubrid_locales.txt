@@ -1,6 +1,0 @@
-# This file contains information regarding locales that are not available by
-# default in CUBRID, but need to be compiled into shared libraries using
-# CUBRID's 'make_locale' script. 
-#
-# See cubrid_locales.all.txt for more details.
-# Define any new locales below (a single locale entry per line)
