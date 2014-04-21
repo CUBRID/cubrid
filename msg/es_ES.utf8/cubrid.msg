@@ -910,7 +910,7 @@ $ LOADDB
 841 Operacion solicitada puede ser ejecutada por solo un cliente (transaccion).
 842 No se puede almacenar el bloqueo del objeto %1$d|%2$d|%3$d.
 843 Argumentos equivocados en %s, una %s ha sido adelantada.
-844 Aislacion ($d) desconocida es encontrada. El indice de la transaccion es %1$d.
+844 Aislacion (%1$d) desconocida es encontrada. El indice de la transaccion es %2$d.
 845 Tipo de objeto invalido (%d) es encontrado. El objeto bloqueable es %d|%d|%d.
 846 %s de transaccion (%d) no es encontrado en la lista de titulares de un objeto (%d|%d|%d).
 847 %s en un %s(%d|%d|%d) no es encontrado en la lista de asimiento (cnt=%d) de transaccion (%d).
