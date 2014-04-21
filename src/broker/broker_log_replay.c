@@ -66,20 +66,6 @@
           } \
         } while (0)
 
-#define REMOVE_WHITE_SPACE(ptr)                        \
-        do {                                           \
-          while ((ptr) && *(ptr) == ' ') {             \
-              (ptr)++;                                 \
-          }                                            \
-         } while(0)
-
-#define REMOVE_NEW_LINE(ptr)                           \
-        do {                                           \
-          while ((ptr) && *(ptr) == '\n') {            \
-              (ptr)++;                                 \
-          }                                            \
-         } while(0)
-
 typedef enum temp_read_result READ_RESULT;
 enum temp_read_result
 {
@@ -505,14 +491,8 @@ get_query_stmt_from_plan (int req)
 
   sql_stmt += strlen (query_header_str);
 
-  REMOVE_NEW_LINE (sql_stmt);
-
-  p = strchr (sql_stmt, '\n');
-  if (p)
-    {
-      *p = '\0';
-    }
-  else
+  trim (sql_stmt);
+  if (*sql_stmt == '\0')
     {
       goto error;
     }
