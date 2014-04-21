@@ -1,0 +1,52 @@
+##########################
+# cubrid_locales.all.txt #
+##########################
+#
+# This is a sample locale configuration file, containing all locales
+# supported by CUBRID.
+#
+# This file contains information regarding locales that are not available
+# by default in CUBRID, but need to be compiled into shared libraries
+# using CUBRID's 'make_locale' script.
+#
+#
+# Each row corresponds to a single locale.
+# The structure of each row must be as follows:
+#  locale         LDML-file-path      library-file-path
+# where:
+#  locale = [mandatory] locale name (e.g. de_DE, fr_FR etc.)
+#  LDML-file-path = [optional] file path to the XML LDML file corresponding
+#                   to the locale. If missing or set to "*", the path
+#                   $CUBRID/locales/data/ldml/cubrid_<locale>.xml is assumed.
+#  library-file-path = [optional] path to the library containing the compiled
+#                      version of the current locale. If missing or "*", the
+#                      path $CUBRID/lib/libcubrid_<locale>.[dll|so] is assumed.
+#                      (dll extension for Windows or so extension for Linux).
+#                      If this path is not found, then the path
+#                      $CUBRID/lib/libcubrid_all_locales.[dll|so] is assumed.
+#
+# CUBRID comes with a prepared set of LDML-based locales.
+# The corresponding LDML files can be found in $CUBRID/locales/data/ldml.
+###################
+# Builtin locales #
+###################
+# CUBRID contains some builtin locales which are supported by default, and
+# are not required to be included in cubrid_locales.txt.
+# The built-in locales are: en_US, ko_KR, tr_TR.
+# Some are available with both ISO8859-1 an UTF-8 encodings.
+# Complete list: en_US.iso88591, en_US.utf8, tr_TR.iso88591,
+# tr_TR.utf8, ko_KR.iso88591, ko_KR.utf8, ko_KR.euckr.
+###
+# Define any new locales below (a single locale entry per line, as described above) 
+###
+de_DE
+es_ES
+fr_FR
+it_IT
+ja_JP
+km_KH
+ko_KR
+tr_TR
+vi_VN
+zh_CN
+ro_RO

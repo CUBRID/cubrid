@@ -1,0 +1,38 @@
+This package was debianized by JinChul Kim <shriekout@gmail.com> on
+Wed, 20 Jan 2010 18:52:36 +0900.
+
+It was downloaded from <http://www.cubrid.org/>
+
+Upstream Author(s):
+
+    Sungkyu Kim <xkyukim@gmail.com>
+    Laura Oh <obm@nhn.com>
+
+Copyright:
+
+    Copyright (C) 2008-2010 by Search Solution Co., Ltd. All rights reserved.
+
+License:
+
+    According to the file "COPYING" CUBRID APIs and CUBRID Manager tool of this package
+    are licensed under the terms of the BSD License and CUBRID database server parts
+    are licensed under those of the GNU GPL Version 2 of which a copy is available in
+    /usr/share/common-licenses.
+
+    More information can be found on http://www.cubrid.org/License
+
+    This program is free software; you can redistribute it and/or modify it 
+    under the BSD License and GNU General Public License version 2 or (at your option) any later version
+    as published by the Free Software Foundation, according to which parts are modified.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+    See the GNU General Public License for more details, which can be found in the file '/usr/share/common-licenses/GPL-2'
+    and also the BSD License for more details, which can be found in the file '/usr/share/common-licenses/BSD'
+
+The Debian packaging is:
+
+    Copyright (C) 2010 JinChul Kim <shriekout@gmail.com> and is
+    licensed under the GPL, version 3 or later;
+    GNU General Public License V3 can be found in the file `/usr/share/common-licenses/GPL-3'.

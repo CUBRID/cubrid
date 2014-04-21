@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE beans PUBLIC "-//SPRING//DTD BEAN 2.0//EN" "http://www.springframework.org/dtd/spring-beans-2.0.dtd">
+
+<beans>
+<bean id="CUBRID" class="org.springframework.jdbc.support.SQLErrorCodes">
+		
+		<property name="databaseProductName">
+			<value>CUBRID</value>
+		</property>
+
+		<property name="badSqlGrammarCodes">
+			<value>-493, -494, -495</value>
+		</property>
+		<property name="invalidResultSetAccessCodes">
+			<value>-2115, -2116, -2117</value>
+		</property>
+		<property name="duplicateKeyCodes">
+			<value>-670, -886</value>
+		</property>
+		<property name="dataIntegrityViolationCodes">
+			<value>-631, -919, -920, -921, -922, -923, -924, -1063, -1067</value>
+		</property>
+		<property name="dataAccessResourceFailureCodes">
+			<value>-669, -673, -677, -1069, -1071, -2101</value>
+		</property>
+		<property name="cannotAcquireLockCodes">
+			<value>-73, -74, -75</value>
+		</property>
+		<property name="deadlockLoserCodes">
+			<value>-72, -966, -967, -968, -1075</value>
+		</property>
+				
+  </bean>
+</beans>

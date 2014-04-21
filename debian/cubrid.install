@@ -1,0 +1,2 @@
+debian/local/cubrid.sh /etc/profile.d/
+debian/local/cubrid.conf /etc/ld.so.conf.d/

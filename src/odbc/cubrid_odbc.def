@@ -1,0 +1,87 @@
+LIBRARY CUBRID_ODBC
+HEAPSIZE 10240,4096
+EXPORTS
+
+SQLBindCol @1
+SQLCancel @2
+SQLConnect @3
+SQLDescribeCol @4
+SQLDisconnect @5
+SQLExecDirect @6
+SQLExecute @7
+SQLFetch @8
+SQLFreeStmt @9
+SQLGetCursorName @10
+SQLNumResultCols @11
+SQLNumParams @12
+SQLPrepare @13
+SQLRowCount @14
+SQLSetCursorName @15
+SQLAllocHandle @16
+SQLCloseCursor @17
+SQLColAttribute @18
+SQLCopyDesc @19
+SQLEndTran @20
+SQLFetchScroll @21
+SQLFreeHandle @22
+SQLGetConnectAttr @23
+SQLGetDescField @24
+SQLGetDescRec @25
+SQLGetDiagField @26
+SQLGetDiagRec @27
+SQLGetEnvAttr @28
+SQLGetStmtAttr @29
+SQLSetConnectAttr @30
+SQLColumns @31
+SQLDriverConnect @32
+SQLGetData @33
+SQLGetFunctions @34
+SQLGetInfo @35
+SQLGetTypeInfo @36
+SQLParamData @37
+SQLPutData @38
+SQLSpecialColumns @39
+SQLStatistics @40
+SQLTables @41
+SQLExtendedFetch @42
+SQLNativeSql @43
+SQLSetDescField @44
+SQLSetDescRec @45
+SQLSetEnvAttr @46
+SQLSetStmtAttr @47
+ConfigDSN @48
+ConfigDriver @49
+SQLBindParameter @50
+SQLMoreResults @51
+SQLBulkOperations @52
+SQLSetPos @53
+
+; Level 1,2
+; SQLBrowseConnect @54
+; SQLColumnPrivileges @55
+; SQLDescribeParam @56
+SQLForeignKeys @57
+SQLPrimaryKeys @58
+SQLProcedureColumns @59
+SQLProcedures @60
+SQLTablePrivileges @61
+
+
+; Deprecated API
+;
+; SQLAllocConnect @1
+; SQLAllocEnv @2
+; SQLAllocStmt @3
+; SQLBindParam @25
+; SQLColAttributes @6
+; SQLError @10
+; SQLFreeConnect @14
+; SQLFreeEnv @15
+; SQLGetConnectOption @42
+; SQLGetStmtOption @46
+; SQLSetParam @22
+; SQLSetConnectOption @50
+; SQLSetStmtOption @51
+; SQLParamOptions @64
+; SQLSetScrollOptions @69
+; SQLTransact @23

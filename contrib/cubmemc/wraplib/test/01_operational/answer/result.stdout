@@ -1,0 +1,329 @@
+
+=== <Result of CALL Command in Line 6> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 7> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 8> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 12> ===
+
+  Result              
+======================
+  'd1'                
+
+
+=== <Result of CALL Command in Line 13> ===
+
+  Result              
+======================
+  X'6431'             
+
+
+=== <Result of CALL Command in Line 14> ===
+
+  Result              
+======================
+  '6431'              
+
+
+=== <Result of CALL Command in Line 15> ===
+
+  Result              
+======================
+  X'6431'             
+
+
+=== <Result of CALL Command in Line 16> ===
+
+  Result              
+======================
+  NULL                
+
+
+=== <Result of CALL Command in Line 17> ===
+
+  Result              
+======================
+  NULL                
+
+
+=== <Result of CALL Command in Line 26> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 27> ===
+
+  Result              
+======================
+  '1234567890'        
+
+
+=== <Result of CALL Command in Line 28> ===
+
+  Result              
+======================
+  X'31323334353637383930'
+
+
+=== <Result of CALL Command in Line 29> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 30> ===
+
+  Result              
+======================
+  'cafebabe'          
+
+
+=== <Result of CALL Command in Line 31> ===
+
+  Result              
+======================
+  X'cafebabe'         
+
+
+=== <Result of CALL Command in Line 33> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 34> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 42> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 43> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 44> ===
+
+  Result              
+======================
+  'd1 appended'       
+
+
+=== <Result of CALL Command in Line 45> ===
+
+  Result              
+======================
+  X'643120617070656e646564'
+
+
+=== <Result of CALL Command in Line 46> ===
+
+  Result              
+======================
+  '643120617070656e646564'
+
+
+=== <Result of CALL Command in Line 47> ===
+
+  Result              
+======================
+  X'643120617070656e646564'
+
+
+=== <Result of CALL Command in Line 49> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 50> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 58> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 59> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 60> ===
+
+  Result              
+======================
+  'pended d1'         
+
+
+=== <Result of CALL Command in Line 61> ===
+
+  Result              
+======================
+  X'70656e646564206431'
+
+
+=== <Result of CALL Command in Line 62> ===
+
+  Result              
+======================
+  '70656e646564206431'
+
+
+=== <Result of CALL Command in Line 63> ===
+
+  Result              
+======================
+  X'70656e646564206431'
+
+
+=== <Result of CALL Command in Line 65> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 66> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 71> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 72> ===
+
+  Result              
+======================
+  NULL                
+
+
+=== <Result of CALL Command in Line 74> ===
+
+  Result              
+======================
+  NULL                
+
+
+=== <Result of CALL Command in Line 75> ===
+
+  Result              
+======================
+  NULL                
+
+
+=== <Result of CALL Command in Line 77> ===
+
+       Result
+=============
+            1
+
+
+=== <Result of CALL Command in Line 78> ===
+
+       Result
+=============
+            2
+
+
+=== <Result of CALL Command in Line 79> ===
+
+       Result
+=============
+          102
+
+
+=== <Result of CALL Command in Line 80> ===
+
+       Result
+=============
+          101
+
+
+=== <Result of CALL Command in Line 81> ===
+
+       Result
+=============
+          100
+
+
+=== <Result of CALL Command in Line 82> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 95> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 96> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 97> ===
+
+       Result
+=============
+            0
+
+
+=== <Result of CALL Command in Line 98> ===
+
+       Result
+=============
+            0
+

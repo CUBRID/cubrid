@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ldml>
+	<identity>
+		<version number="$Revision: 5953 $"/>
+		<generation date="$Date: 2011-07-05 02:22:55 +0300 (Ma, 05 iul. 2011) $"/>
+		<language type="zh"/>
+	</identity>
+	<dates>
+		<calendars>
+			<calendar type="gregorian">
+				<dateFormatCUBRID>YYYY-MM-DD</dateFormatCUBRID>
+				<timeFormatCUBRID>HH24:MI:SS</timeFormatCUBRID>
+				<datetimeFormatCUBRID>HH24:MI:SS.FF YYYY-MM-DD</datetimeFormatCUBRID>
+				<timestampFormatCUBRID>HH24:MI:SS YYYY-MM-DD</timestampFormatCUBRID>
+				<months>
+					<monthContext type="format">
+						<monthWidth type="abbreviated">
+							<month type="1">1月</month>
+							<month type="2">2月</month>
+							<month type="3">3月</month>
+							<month type="4">4月</month>
+							<month type="5">5月</month>
+							<month type="6">6月</month>
+							<month type="7">7月</month>
+							<month type="8">8月</month>
+							<month type="9">9月</month>
+							<month type="10">10月</month>
+							<month type="11">11月</month>
+							<month type="12">12月</month>
+						</monthWidth>
+						<monthWidth type="wide">
+							<month type="1">一月</month>
+							<month type="2">二月</month>
+							<month type="3">三月</month>
+							<month type="4">四月</month>
+							<month type="5">五月</month>
+							<month type="6">六月</month>
+							<month type="7">七月</month>
+							<month type="8">八月</month>
+							<month type="9">九月</month>
+							<month type="10">十月</month>
+							<month type="11">十一月</month>
+							<month type="12">十二月</month>
+						</monthWidth>
+					</monthContext>
+				</months>
+				<days>
+					<dayContext type="format">
+						<dayWidth type="abbreviated">
+							<day type="sun">周日</day>
+							<day type="mon">周一</day>
+							<day type="tue">周二</day>
+							<day type="wed">周三</day>
+							<day type="thu">周四</day>
+							<day type="fri">周五</day>
+							<day type="sat">周六</day>
+						</dayWidth>
+						<dayWidth type="wide">
+							<day type="sun">星期日</day>
+							<day type="mon">星期一</day>
+							<day type="tue">星期二</day>
+							<day type="wed">星期三</day>
+							<day type="thu">星期四</day>
+							<day type="fri">星期五</day>
+							<day type="sat">星期六</day>
+						</dayWidth>
+					</dayContext>
+				</days>
+				<dayPeriods>
+					<dayPeriodContext type="format">
+						<dayPeriodWidth type="wide">
+							<dayPeriod type="am">上午</dayPeriod>
+							<dayPeriod type="pm">下午</dayPeriod>
+							<dayPeriod type="Am">上午</dayPeriod>
+							<dayPeriod type="Pm">下午</dayPeriod>
+							<dayPeriod type="AM">上午</dayPeriod>
+							<dayPeriod type="PM">下午</dayPeriod>
+							<dayPeriod type="a.m.">上午</dayPeriod>
+							<dayPeriod type="p.m.">下午</dayPeriod>
+							<dayPeriod type="A.m.">上午</dayPeriod>
+							<dayPeriod type="P.m.">下午</dayPeriod>	
+							<dayPeriod type="A.M.">上午</dayPeriod>
+							<dayPeriod type="P.M.">下午</dayPeriod>
+						</dayPeriodWidth>
+					</dayPeriodContext>
+				</dayPeriods>
+			</calendar>
+		</calendars>
+	</dates>
+	<numbers>
+		<symbols numberSystem="latn">
+			<decimal>.</decimal>
+			<group>,</group>
+		</symbols>
+		<currencies>
+			<currency type="CNY" />
+		</currencies>
+	</numbers>
+	<collations validSubLocales="zh_CN">
+		<include file="common_collations.xml" />		
+	</collations>
+	<alphabets>
+		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">
+		</alphabet>
+	</alphabets>
+	<consoleconversion type="DBCS" windows_codepage="936" linux_charset="euc-cn" file="CP936.TXT" />		
+</ldml>

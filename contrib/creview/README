@@ -1,0 +1,22 @@
+CUBRID Code Review Tool
+=====================================
+
+1. Make Code Review
+modify the code then
+cd [src_root_directory] to change directory to source directory.
+mkcreview -o [issue_number].creview
+to make code review file.
+
+
+2. Show changes as external diff tool (WinMerge or meld)
+install diff tool
+and open a .creview file in code_review (shell or batch file)
+
+If you are using Windows OS, you need to have compression utilities. (gzip and tar)
+http://www.gzip.org/
+http://www.gnu.org/software/tar/
+
+
+3. Download Diff Tools
+http://winmerge.org/
+http://meld.sourceforge.net/

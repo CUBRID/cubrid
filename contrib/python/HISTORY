@@ -1,0 +1,37 @@
+Change from 8.4.1.0001 to 8.4.0.0001
+ 1. APIS-91 - Fetchone get numeric data's type is not correct
+ 2. APIS-93 - The format of Cubrid Date/Time/Timestamp string are different from Python's
+
+Changed from 8.4.0 to 8.4.0.0001
+ 1. Added support for python 2.4 and 2.5
+ 2. Modified cursor.next_result() function
+ 3. Added test case test_next_result() in test_cubrid.py
+
+Changes from 0.5.0 to 8.4.0
+ 1. Modified the architecture of CUBRID Python API, supported two-level interface.
+    The high-level interface was a package, called CUBRIDdb, which respected the
+    standard defined in the DB API 2.0 and was a wrapper around _cubrid. 
+    The low-level interface was a module, called _cubrid, which exposed nearly the
+    entire native client interface of the database engine.
+ 2. Upgraded thread safety to level 2 (according to the Python DB API 2.0) as in
+    internal project required the ability to share the module and the connection
+    between threads.
+ 3. Modified the parameters of module.connect() function.
+ 4. Added functions Date(), Time(), Timestamp(), DateFromTicks(), TimeFromTicks()
+    and TimestampFromTick() (according to the Python DB API 2.0) in CUBRIDdb and
+    _cubrid.
+ 5. Added functions ping(), server_version(), client_version() order in
+    _cubrid.connection to providing information about server and client.
+ 6. Added functions(set_autocommit() and set_islation_level()) and attributes
+    (autocommit, isolation_level, lock_timeout and max_string_len) in
+    _cubrid.connection to get or set the attributes of CUBRID server.
+ 7. Added functions insert_id() and schema_info() in _cubrid.connection.
+ 8. Added global constants in _cubrid, which used in the functions
+    connection.schema_info(), connection.set_isolation_level, cursor.execute(),
+    lob.seek().
+ 9. Added functions in _cubrid.cursor, prepare(), bind_param(), bind_lob(), execute(),
+    affected_rows(), fetch_row(), fetch_lob(), data_seek(), num_fields(), num_rows(),
+    row_tell(), row_seek(), result_info(), next_result().
+ 10.Added simple usage example as requested by many people.
+ 11.Modified README
+ 12.Added HISTORY file to the distribution.

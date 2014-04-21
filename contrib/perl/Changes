@@ -1,0 +1,110 @@
+Revision history for DBD::cubrid
+
+Changes in DBD-cubrid 8.4.1.0001    2012-3-26
+
+[BUG FIXES]
+1. APIS-101 - Data was inserted into demodb DB when url isn't correct
+2. APIS-104 - A lot of error information appear when just calling cubrid_lob_close once after twice calling cubrid_lob_get()
+
+Changes in DBD-cubrid 8.4.0.0002    2011-12-30
+
+After a figorous testing, this release modified many bugs on last version and serveral new featurees have been
+added to this version such as functions about the lob object.
+
+[ENHANCEMENTS]
+- Added cubrid_lob_get: This method can get a column of the lob object from CUBRID database.
+- Added cubrid_lob_export: This method will export a lob object as a file.
+- Added cubrid_lob_import: This method will import a file in CUBRID database.
+- Added cubrid_lob_close: This method will close the lob object that cubrid_lob_get gets.
+- Added type_info_all/type_info: APIS-63
+
+- Implemented foreign_key_info: we just gave an interface not implemented it in last version.
+- Supported BLOB/CLOB in bind_param
+
+[BUG FIXES]
+1. APIS-54 - Fixed the bug that Data only be inserted into fixed database
+2. APIS-55 - Fixed the bug that connection method isn't correct
+3. APIS-60 - Fixed the bug that result of "SELECT 4 + '5.2'" will be round
+4. APIS-61 - Fixed the bug that return value of double type isn't correct
+5. APIS-62 - Fixed the bug that return values of column_info isn't in proper order
+6. APIS-64 - Fixed the bug that return value of DATA_TYPE isn't correct
+7. APIS-70 - Fixed the bug that return values of nullable are not correct
+8. APIS-71 - Fixed the bug that method of tables() can't return values
+9. APIS-73 - Fixed the bug that get_info(18) couldn't return database version
+10. APIS-78 - Fixed the bug that error doesn't appear when bound an error type to cubrid_lob_import method
+11. APIS-84 - Fixed the bug that table_info didn't report an error when the parameter was wrong
+12. APIS-86 - Fixed the bug that get_info can't support passing SQL_IDENTIFIER_QUOTE_CHAR parameter
+13. APIS-86 - Fixed the bug that error will appear when calling cubrid_lob_import method 1019 times
+
+Changes in DBD-cubrid 8.4.0         2011-11-15
+
+  First public release of DBD::cubrid module. We provide the basic use to access CUBRID database.
+
+  Supported functions:
+
+  Driver Handle Methods:
+
+    connect - Establishes a database connection
+
+  Database Handle Methods:
+
+    prepare             - Prepares a statement for later execution and returns a reference to a statement handle object.
+    commit              - Commit the transaction.
+    rollback            - Roll back the transaction.
+    disconnect          - Disconnects the database from the database handle.
+    ping                - Check whether the database server is still running and the connection to it is still working.
+    last_insert_id      - Returns a value identifying the row just inserted.
+    do                  - Prepare and execute a single statement.
+    selectrow_array     - This utility method combines "prepare", "execute" and "fetchrow_array" into a single call.
+    selectrow_arrayref  - This utility method combines "prepare", "execute" and "fetchrow_array" into a single call.
+    selectrow_hashref   - This utility method combines "prepare", "execute" and "fetchrow_array" into a single call.
+    selectall_arrayref  - This utility method combines "prepare", "execute" and "fetchrow_array" into a single call.
+    selectall_hashref   - This utility method combines "prepare", "execute" and "fetchrow_array" into a single call.
+    selectcol_arrayref  - This utility method combines "prepare", "execute", and fetching one column from all the rows, into a single call.
+    table_info          - Returns a list of hash references holding information about one or more variants of datatype.
+    tables              - Simple interface to table_info(), returns a list of matching table names.
+    column_info         - Returns an active statement handle that can be used to fetch information about columns in specified tables.
+    primary_key_info    - Returns an active statement handle that can be used to fetch information about columns that make up the 
+                          primary key for a table.
+    primary_key         - Simple interface to the primary_key_info() method. Returns a list of the column names that comprise the
+                          primary key of the specified table. The list is in primary key column sequence order.
+    foreign_key_info    - Returns an active statement handle that can be used to fetch information about foreign keys in and/or 
+                          referencing the specified table(s).
+    get_info            - Returns information about the implementation, i.e. driver and data source capabilities, restrictions etc.
+
+  Database Handle Attributes:
+
+    AutoCommit          - Boolean. The value may true or false.
+    Statement           - String, read-only. Returns the statement string passed to the most recent "prepare" or "do" method called
+                          in this database handle, even if that method failed.
+
+  Statement Handle Methods:
+
+    bind_param          - Bind a param to a placeholder embedded in the prepared statement.
+    bind_param_array    - Bind an array of values to a placeholder embedded in the prepared statement.
+    execute             - Perform whatever processing is necessary to execute the prepared statement.
+    execute_array       - Execute the prepared statement once for each parameter tuple.
+    fetchrow_arrayref   - Fetches the next row of data and returns a reference to an array holding the field values.
+    fetchrow_array      - An alternative to fetchrow_arrayref. Fetches the next row of data and returns it as a list containing
+                          the field values.
+    fetchrow_hashref    - An alternative to fetchrow_arrayref. Fetches the next row of data and returns it as a reference to a hash 
+                          containing field name and field value pairs.
+    fetchall_arrayref   - Fetches all the data to be returned from a prepared and executed statement handle.It returns a reference
+                          to an array that contains one reference per row.
+    fetchall_hashref    - Fetches all the data to be returned from a prepared and executed statement handle.It returns a hash 
+                          containing a key for each distinct value of the column that was fetched.
+    
+  Statement Handle Attributes
+
+    rows                - Returns the number of rows affected by the last row affecting command, or -1 if the number of rows is not
+                          known or not available.
+    Statement           - String, read-only. Returns the statement string passed to the most recent "prepare" or "do" method called
+                          in this database handle, even if that method failed.
+    NUM_OF_FIELDS       - Integer, read-only. Number of fields (columns) in the data the prepared statement may return.
+    NUM_OF_PARAMS       - Integer, read-only. The number of parameters (placeholders) in the prepared statement.
+    NAME                - Array-ref, read-only. Returns a reference to an array of field names for each column.
+    TYPE                - Array-ref, read-only. Returns a reference to an array of integer values for each column. The value indicates 
+                          the data type of the corresponding column.
+    PRECISION           - Array-ref, read-only. Returns a reference to an array of integer values for each column.
+    SCALE               - Array-ref, read-only. Returns a reference to an array of integer values for each column.
+    NULLABLE            - Array-ref, read-only. Returns a reference to an array indicating the possibility of each column returning a null.

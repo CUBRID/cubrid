@@ -1,0 +1,15 @@
+[%shard_key_column]
+#min	max	shard_id
+0	31	0   
+32	63 	1   
+64	95	2   
+96	127	3   
+128	159	0
+160	191	1
+192	223	2
+224	255	3
+
+#[%another_key_column]
+#min    max	shard_id
+#0	127	0   
+#128	255	1   

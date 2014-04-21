@@ -1,0 +1,35 @@
+LIBRARY	cmstat
+EXPORTS
+;
+; functions
+;
+
+	cm_get_db_proc_stat
+	cm_get_db_proc_stat_all
+	cm_db_proc_stat_all_free
+	cm_get_broker_proc_stat
+	cm_broker_proc_stat_free
+	cm_get_broker_proc_stat_all
+	cm_broker_proc_stat_all_free
+	cm_get_host_stat
+	cm_get_host_disk_partition_stat
+	cm_host_disk_partition_stat_free
+	cm_get_proc_stat
+	cm_get_db_exec_stat
+	cm_get_cas_info
+	cm_cas_info_free
+	cm_get_broker_info
+	cm_broker_info_free
+	cm_broker_env_start
+	cm_broker_env_stop
+	cm_broker_as_restart
+	cm_broker_on
+	cm_broker_off
+	cm_get_broker_conf
+	cm_broker_conf_free
+	cm_br_conf_get_value
+	cm_conf_find_broker
+	cm_get_broker_file
+	cm_del_cas_log
+	cm_cpu_time_str
+

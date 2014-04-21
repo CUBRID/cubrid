@@ -1,0 +1,36 @@
+/*
+ * TAPSET
+ */
+function oid_get_pageid:long(ptr) {
+	return user_int(ptr);
+}
+
+function oid_get_slotid:long(ptr) {
+	return user_short(ptr + 4);
+}
+
+function oid_get_volid:long(ptr) {
+	return user_short(ptr + 6);
+}
+
+function oid_print_oid:string(ptr) {
+return sprintf( "(%d/%d/%d)", oid_get_pageid(ptr), 
+			  oid_get_slotid(ptr),
+			  oid_get_volid(ptr));
+}
+
+function lock_get_type:string(type) {
+	if (type == 0) { return "NA_LOCK"; }
+	if (type == 1) { return "INCON_NON_TWO_PHASE_LOCK"; }
+	if (type == 2) { return "NULL_LOCK";}
+    if (type == 3) { return "SCH_S_LOCK";}
+	if (type == 4) { return "IS_LOCK";}
+	if (type == 5) { return "S_LOCK";}
+	if (type == 6) { return "IX_LOCK";}
+	if (type == 7) { return "SIX_LOCK";}
+	if (type == 8) { return "U_LOCK";}
+	if (type == 9) { return "X_LOCK";}
+	if (type == 10) { return "NS_LOCK";}
+	if (type == 11) { return "NX_LOCK";}
+    if (type == 12) { return "SCH_M_LOCK";}
+}

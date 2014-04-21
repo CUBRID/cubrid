@@ -1,0 +1,64 @@
+/*
+ * CUBRID SystemTap Support
+ *
+ * USAGE: stap -k obj_access.stp
+ *
+ * DESCRIPTION:
+ * This script monitors the number of heap and index operations performed
+ * on the server.
+ *
+ * The script outputs the results every 60 seconds.
+ */
+
+global no_heap_insert = 0;
+global no_heap_delete = 0;
+global no_heap_update = 0;
+global no_idx_insert = 0;
+global no_idx_update = 0;
+global no_idx_delete = 0;
+
+probe process("cub_server").library("*").mark("idx_insert_end")
+{
+	no_idx_insert = no_idx_insert + 1;
+}
+
+probe process("cub_server").library("*").mark("idx_update_end")
+{
+	no_idx_update = no_idx_update + 1;
+}
+
+probe process("cub_server").library("*").mark("idx_delete_end")
+{
+	no_idx_delete = no_idx_delete + 1;
+}
+
+probe process("cub_server").library("*").mark("obj_insert_end")
+{
+	no_heap_insert = no_heap_insert + 1;
+}
+
+probe process("cub_server").library("*").mark("obj_update_end")
+{
+	no_heap_update = no_heap_update + 1;
+}
+
+probe process("cub_server").library("*").mark("obj_delete_end")
+{
+	no_heap_delete = no_heap_delete + 1;
+}
+
+probe timer.s(60)
+{
+	printf("Number of index inserts: %d\n", no_idx_insert);
+	printf("Number of index updates: %d\n", no_idx_update);
+	printf("Number of index deletes: %d\n", no_idx_delete);
+	printf("Number of heap inserts: %d\n", no_heap_insert);
+	printf("Number of heap updates: %d\n", no_heap_update);
+	printf("Number of heap deletes: %d\n", no_heap_delete);
+	printf("Total index operations: %d\n", no_idx_insert +
+										   no_idx_update +
+					                       no_idx_delete);
+	printf ("Total heap operations: %d\n", no_heap_insert +
+					                       no_heap_update +
+					                       no_heap_delete);
+} 

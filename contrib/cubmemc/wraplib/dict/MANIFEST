@@ -1,0 +1,29 @@
+Libdict MANIFEST
+
+INSTALL		Installation instructions.
+LICENSE		License agreement.
+MANIFEST	This file.
+MANUAL		Documentation libdict routines.
+README		Introduction to libdict.
+REFERENCES	References for those wishing to know more about the algorithms and
+			data structures implemented in this library. The algorithms are
+			explained in far greater detail in these references than in the
+			documentation or source code of this library. However to make use
+			of the library, no such knowledge is required. All of these
+			readings are highly recommended, especially [Cormen et al. 1990],
+			[Gonnet 1984], [Knuth 1998], and [Tarjan 1983].
+RESULTS		Contains performance benchmark data for data structures in library,
+			with explanation and conclusion from said data.
+TODO		List of things yet to be done.
+GNUmakefile	Instructions for GNU Make.
+
+dict.[ch]		Library main header, and generic dict implementation.
+dict_private.h	Definitions private to library.
+hashtable.[ch]	Hashtable interface & implementation.
+hb_tree.[ch]	Height-Balanced tree interface & implementation.
+pr_tree.[ch]	Path-Reduction interface & implementation.
+rb_tree.[ch]	Red-Black tree interface & implementation.
+sp_tree.[ch]	Splay tree interface & implementation.
+wb_tree.[ch]	Weight-Balanced tree interface & implementation.
+
+demo.c			An interactive program which demonstrates libdict.

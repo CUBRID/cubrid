@@ -1,0 +1,44 @@
+#!/usr/bin/expect
+
+set timeout 30
+
+set user [lindex $argv 0]
+set passwd [lindex $argv 1]
+set host [lindex $argv 2]
+set command1 [lindex $argv 3]
+set command2 [lindex $argv 4]
+set command3 [lindex $argv 5]
+set command4 [lindex $argv 6]
+set command5 [lindex $argv 7]
+
+spawn ssh -l $user $host
+expect {
+"(yes/no)?" {send "yes\r";exp_continue}
+"password:" {send "$passwd\r"}
+}
+expect "*\$"
+sleep 0.3
+send "$command1\r"
+if {$command2 != ""} {
+	expect "*\$"
+	sleep 0.3
+	send "$command2\r"
+}
+if {$command3 != ""} {
+	expect "*\$"
+	sleep 0.3
+	send "$command3\r"	
+}
+if {$command4 != ""} {
+	expect "*\$"
+	sleep 0.3
+	send "$command4\r"	
+}
+if {$command5 != ""} {
+	expect "*\$"
+	sleep 0.3
+	send "$command5\r"
+}
+expect "*\$"
+send "exit\r"
+expect eof

@@ -1,0 +1,25 @@
+# HACKING                                                       -*- org -*-
+#+TITLE: Various hacking notes
+#+STARTUP: showall
+
+* No more ChangeLog files
+
+  Do not modify any of the ChangeLog files in Libgpg-error.  Starting
+  on December 1st, 2011 we put change information only in the GIT
+  commit log, and generate a top-level ChangeLog file from logs at
+  "make dist" time.  As such, there are strict requirements on the
+  form of the commit log messages.  The old ChangeLog files have all
+  be renamed to ChangeLog-2011
+
+
+* Commit log requirements
+
+  Your commit log should always start with a one-line summary, the
+  second line should be blank, and the remaining lines are usually
+  ChangeLog-style entries for all affected files.  However, it's fine
+  -- even recommended -- to write a few lines of prose describing the
+  change, when the summary and ChangeLog entries don't give enough of
+  the big picture.  Omit the leading TABs that you're used to seeing
+  in a "real" ChangeLog file, but keep the maximum line length at 72
+  or smaller, so that the generated ChangeLog lines, each with its
+  leading TAB, will not exceed 80 columns.

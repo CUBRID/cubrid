@@ -1,0 +1,19 @@
+#!/bin/sh
+
+if [ -z "`getent group cubrid`" ]; then
+	groupadd -r cubrid
+fi
+if [ -z "`getent passwd cubrid`" ]; then
+	useradd -g cubrid -d /opt/cubrid -s /bin/bash -c "CUBRID user" cubrid
+fi
+
+mkdir -p /opt/cubrid/log
+mkdir -p /opt/cubrid/var
+mkdir -p /opt/cubrid/tmp
+mkdir -p /opt/cubrid/databases
+chown -R cubrid:cubrid /opt/cubrid
+
+ldconfig
+
+
+

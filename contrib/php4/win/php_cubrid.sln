@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual C++ Express 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "php_cubrid", "php_cubrid.vcproj", "{8647911B-4728-4C84-8088-E6B663E00D75}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug_5.2|Win32 = Debug_5.2|Win32
+		Debug_5.3|Win32 = Debug_5.3|Win32
+		Release_5.2|Win32 = Release_5.2|Win32
+		Release_5.3|Win32 = Release_5.3|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8647911B-4728-4C84-8088-E6B663E00D75}.Debug_5.2|Win32.ActiveCfg = Debug_5.2|Win32
+		{8647911B-4728-4C84-8088-E6B663E00D75}.Debug_5.2|Win32.Build.0 = Debug_5.2|Win32
+		{8647911B-4728-4C84-8088-E6B663E00D75}.Debug_5.3|Win32.ActiveCfg = Debug_5.3|Win32
+		{8647911B-4728-4C84-8088-E6B663E00D75}.Debug_5.3|Win32.Build.0 = Debug_5.3|Win32
+		{8647911B-4728-4C84-8088-E6B663E00D75}.Release_5.2|Win32.ActiveCfg = Release_5.2|Win32
+		{8647911B-4728-4C84-8088-E6B663E00D75}.Release_5.2|Win32.Build.0 = Release_5.2|Win32
+		{8647911B-4728-4C84-8088-E6B663E00D75}.Release_5.3|Win32.ActiveCfg = Release_5.3|Win32
+		{8647911B-4728-4C84-8088-E6B663E00D75}.Release_5.3|Win32.Build.0 = Release_5.3|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

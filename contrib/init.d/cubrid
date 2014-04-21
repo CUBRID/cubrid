@@ -1,0 +1,196 @@
+#!/bin/bash
+# 
+# cubrid        This shell script takes care of starting and stopping
+#               the CUBRID service
+#
+# chkconfig: 2345 98 05
+# description: cubrid start/stop script  
+#
+# ts:4
+
+### BEGIN INIT INFO
+#
+# Short-Description: CUBRID   
+# Provides: CUBRID      
+# Default-Start: 3 5
+# Default-Stop: 0 6
+### END INIT INFO
+
+
+# Source function library.
+. /etc/init.d/functions
+
+# return code
+CUBRID_SUCCESS=0
+CUBRID_FAILED=1
+
+US=`uname -n`
+WHOAMI=`whoami`
+RETVAL=0
+prog=cubrid
+_old_IFS=" $IFS"
+
+### user specific environment ##################
+CUBRID_USER=cubrid1
+
+if [ $WHOAMI = "root" ]; then
+	CUBRID_DATABASES=`su - $CUBRID_USER -c 'printenv CUBRID_DATABASES'`
+	CUBRID_HOME=`su - $CUBRID_USER -c 'printenv CUBRID'`
+else
+	CUBRID_USER=$WHOAMI
+	CUBRID_HOME=$CUBRID
+	export PATH=$PATH:$CUBRID_HOME/bin
+fi
+
+RFNAME=/tmp/.$prog.$CUBRID_USER
+################################################
+
+sudo_cubrid() {
+	[ "$#" -ne 1 ] && return
+
+	if [ $WHOAMI = "root" ]; then
+		su - $CUBRID_USER -c "$1"  
+	else
+		sh -c "$1"
+	fi
+}
+save_IFS() {
+	_old_IFS=" $IFS" # save $IFS
+}
+
+restore_IFS() {
+	if [ -z "$_old_IFS" ] # restore old $IFS
+	then 
+		unset IFS
+	else 
+		IFS="$_old_IFS"
+	fi
+}
+
+check_config()
+{
+	# CHECK ha-mode
+	cubrid_conf_file=$CUBRID_HOME/conf/cubrid.conf
+	[ -r $cubrid_conf_file ] || exit
+
+	eval "$(sed $cubrid_conf_file -n -e 's/\(.*\)\b.*=[\ ]*\(.*\)/\1="\2"/p')"
+	if [ $ha_mode"x" != "x" ] && [ $ha_mode = "yes" -o $ha_mode = "on" -o $ha_mode = "role-change" ]; then
+		return $CUBRID_FAILED
+	fi
+
+	return $CUBRID_SUCCESS
+}
+
+
+service_start() {
+	sudo_cubrid "cubrid service start 2>&1 >$RFNAME"
+	grep -wqs "fail" $RFNAME
+	RETVAL=$?
+	[ $RETVAL -ne 0 ] || return $CUBRID_FAILED
+	return $CUBRID_SUCCESS
+}
+
+service_stop() {
+	sudo_cubrid "cubrid service stop 2>&1 >$RFNAME"
+	grep -wqs "fail" $RFNAME
+	RETVAL=$?
+	[ $RETVAL -ne 0 ] || return $CUBRID_FAILED
+	return $CUBRID_SUCCESS
+}
+
+service_status()
+{	
+	sudo_cubrid "cubrid service status"
+}
+
+start() {
+	check_config 	
+	RETVAL=$?
+	if [ $RETVAL -eq $CUBRID_SUCCESS ]; then
+		service_start
+		RETVAL=$?
+	fi
+
+	if [ $RETVAL -eq $CUBRID_SUCCESS ]; then
+		echo -n $"Starting $prog: "
+		success
+		echo
+	else
+		service_stop	
+
+		echo -n $"Starting $prog: "
+		failure
+		echo
+	fi	
+
+	[ $WHOAMI = "root" ] && touch /var/lock/subsys/$prog
+}
+
+stop() {
+	check_config 	
+	RETVAL=$?
+	if [ $RETVAL -eq $CUBRID_SUCCESS ]; then
+		service_stop
+		RETVAL=$?
+	fi
+
+	if [ $RETVAL -eq $CUBRID_SUCCESS ]; then
+		echo -n $"Stopping $prog: "
+		success
+		echo
+	else
+		echo -n $"Stopping $prog: "
+		failure
+		echo
+	fi	
+}
+
+restart() {
+	check_config 	
+	RETVAL=$?
+	if [ $RETVAL -eq $CUBRID_SUCCESS ]; then
+		service_stop
+
+		service_start
+		RETVAL=$?
+	fi
+
+	if [ $RETVAL -eq $CUBRID_SUCCESS ]; then
+		echo -n $"Restarting $prog: "
+		success
+		echo
+	else
+		echo -n $"Restarting $prog: "
+		failure
+		echo
+	fi	
+}
+
+status() {
+	check_config 	
+	RETVAL=$?
+	if [ $RETVAL -eq $CUBRID_SUCCESS ]; then
+		service_status
+		RETVAL=$?
+	fi
+}
+
+case "$1" in 
+  start)
+	start	
+	;;
+  stop)
+	stop
+	;;
+  restart)
+  	restart
+	;;
+  status)
+	status
+	;;	
+  *)	
+	echo $"Usage $0 {start|stop|restart|status}"
+	exit 1
+esac
+
+exit 0

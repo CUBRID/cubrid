@@ -1,0 +1,214 @@
+#!/usr/bin/perl
+
+#
+# Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+#
+#   This program is free software; you can redistribute it and/or modify 
+#   it under the terms of the GNU General Public License as published by 
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version. 
+#
+#  This program is distributed in the hope that it will be useful, 
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of 
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+#  GNU General Public License for more details. 
+#
+#  You should have received a copy of the GNU General Public License 
+#  along with this program; if not, write to the Free Software 
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#
+
+# CUBRID SystemTap Support
+#
+# Usage: ./topcallstack [-t top_n] [-a top_n]
+#
+# Description
+# This script accumulates the execution paths of all calls to alloc functions.
+#
+# The -t (top) option can be used to specify printing only the 
+# top N stack traces.
+#
+# The -a (top amount) option can be used to retrieve the top size allocations
+# along with their corresponding callstacks.
+#
+
+use Getopt::Std;
+
+my $alloc_stacks;
+my $amount_stacks;
+my $total_mallocs;
+my $total_callstacks;
+my $sorted_stacks;
+my $sorted_amount_stacks;
+my $top_n = 1000000000;
+my $top_n_amount = 1000000000;
+my $amount_nr = 0;
+
+$SIG{INT} = \&sigint_handler;
+
+getopts('t:a:');
+
+
+if ($opt_t) {
+    $top_n = $opt_t;
+    print "Print only the top $top_n stacks.\n";
+}
+
+if ($opt_a) {
+   $top_n_amount = $opt_a;
+   print "Print only the top $top_n_amount amount stacks.\n";
+}
+
+
+print STDERR "Press Ctrl-C to stop.\n";
+
+$options .= " -g -D MAXSTRINGLEN=1024";
+open STREAM, "stap $options -k topcallstack_helper.stp |" or die "Couldn't get output stream $!";
+
+while (<STREAM>) {
+    if (/<amount>(.*?)<\/amount>/)
+    {
+	if (index ($1, "bytes") != -1)
+           {
+		@tok = split ('=', $1);
+		$nr = $tok[1];
+           }
+         elsif (index ($1, "size") != -1)
+              {
+                @tok = split (' ', $1);
+		@tok_elem = split ('=', $tok[1]);
+		$nr = $tok_elem[1];
+              }
+        update_amount ($nr, $key);
+        $key = "";
+    }
+else
+    {
+    	if (/<count>(.*?)<\/count>/) {
+		update_count($key, $1);
+	    } elsif ($_ !~ (/<callstack>|<\/callstack>/))  {
+		$key .= $_;
+	    }
+    }
+}
+
+$total_callstacks = scalar keys %alloc_stacks;
+$total_mallocs = count_mallocs();
+sort_stacks();
+top_stacks();
+sort_stacks();
+print_count_stacks ();
+
+if ($opt_a)
+{
+    sort_amount_stacks ();
+    top_amount_stacks ();
+    sort_amount_stacks ();
+    print_amount_stacks ();
+}
+exit();
+
+sub update_count
+{
+    my($key, $val) = @_;
+    $alloc_stacks{$key} += $val;
+}
+
+sub update_amount
+{
+   my($nr, $key) = @_;
+   $amount_stacks{$amount_nr} = [$key, $nr];
+   $amount_nr++;
+}
+
+sub print_amount_stacks
+{
+    foreach $elem (keys %amount_stacks) {
+	print $sorted_amount_stacks{$elem}[1];
+    }
+}
+
+sub top_stacks
+{
+    $count=0;
+    foreach $stack(@sorted_stacks) {
+	$count+=1;
+	if ($count > $top_n) {
+	    delete $alloc_stacks{$stack};
+	}
+    }
+}
+
+sub top_amount_stacks
+{
+    $count = 0;
+    foreach $stack (@sorted_amount_stacks) {
+	$count += 1;
+        if ($count > $top_n_amount) {
+		delete $amount_stacks{$stack};
+        }
+    }
+}
+	
+sub sort_stacks
+{
+    @sorted_stacks = sort { $alloc_stacks{$b} <=> $alloc_stacks{$a} } keys %alloc_stacks;
+}
+
+sub sort_amount_stacks
+{
+  @sorted_amount_stacks = sort {$amount_stacks{$b}[1] <=> $amount_stacks{$a}[1] } keys %amount_stacks;
+}
+
+sub count_mallocs {
+    $count = 0;
+    foreach $stack(%alloc_stacks) {
+	$count += $alloc_stacks{$stack};
+    }
+    return $count;
+}
+
+sub print_stack_with_address {
+    my($str) = @_;
+    $out_str = "";
+    @addr_tokens = split (/\n/, $str);
+
+    foreach my $val (@addr_tokens) {
+	@tok = split (':', $val);
+        open (ADDR_OUT, "sh get_file_line.sh basic $tok[0] 2> /dev/null |");
+        while (<ADDR_OUT>) {
+	         $out_str .= $val;
+                 $out_str .= " ";
+                 $out_str .= $_;
+            }
+        close(ADDR_OUT);
+    }
+    return $out_str;
+}
+	
+sub print_amount_stacks {
+    print "Allocation amount stacks\n\n\n";
+    foreach $elem (keys %amount_stacks) {
+        $stack_w_addr = print_stack_with_address ($amount_stacks{$elem}[0]);
+        $size = hex $amount_stacks{$elem}[1];
+        print "This path has alloced $size bytes:\n$stack_w_addr\n";
+    }
+}
+       
+sub print_count_stacks {
+    print "Frequent count stacks\n\n\n";
+    foreach $stack(@sorted_stacks) {
+        $stack_w_addr = print_stack_with_address ($stack);
+	print "This path seen $alloc_stacks{$stack} times:\n$stack_w_addr\n";
+    i}
+
+    print "Total recorded callstacks: $total_callstacks\n";
+    print "Total allocation function calls : $total_mallocs\n";
+
+    close(STREAM);
+}
+
+sub sigint_handler
+{
+    system("pkill malloc-stacks");
+}

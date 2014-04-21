@@ -1,0 +1,60 @@
+CUBRID Database Management System
+==========================
+CUBRID is a DBMS being supported by an active community of open source developers 
+and provides better performance and features necessary for Web services. 
+
+CUBRID is distributed under three licenses according to its component, 
+Database engine is under GPL v2 or later and 
+APIs and Connectors are under BSD license and
+CUBRID Web Manager is under GPL v3 or later.
+
+Copyright and license information can be found in the file COPYING.
+For more information about CUBRID, visit http://www.cubrid.org/about
+
+Below You will see the brief list of sections to guide You to easily get started. 
+
+MAJOR REFERENCES
+================
+- CUBRID Official Site: http://www.cubrid.org ,  http://www.cubrid.com
+- CUBRID Development Site(Global): http://jira.cubrid.org
+- CUBRID Release Note: http://release.cubrid.org/en , http://release.cubrid.org/ko 
+- CUBRID Manuals: http://www.cubrid.org/manual 
+
+DOWNLOADS and FILE REPOSITORIES
+=====================
+- http://www.cubrid.org/downloads
+- http://ftp.cubrid.org
+- http://sourceforge.net/projects/cubrid/files/
+
+HOW TO BUILD/INSTALL CUBRID
+=====================
+- CUBRID Source Build Guide
+    http://www.cubrid.org/download_source_and_build
+- CUBRID Installation Guide for Windows/Linux Users
+	http://www.cubrid.org/wiki_tutorials/entry/cubrid-installation-instructions
+
+GETTING STARTED
+===============
+- Absolute Beginners' Guide to CUBRID
+	http://www.cubrid.org/wiki_tutorials/entry/cubrid-tutorials
+- Tutorial for CUBRID Manager(Client-side GUI Tool)
+	http://www.cubrid.org/wiki_tools/entry/cubrid-manager
+- Tutorial for CUBRID Web Manager(Server-side GUI Tool)
+	http://www.cubrid.org/wiki_tools/entry/cubrid-web-manager
+- Tutorial for CUBRID Other Tools
+	http://www.cubrid.org/wiki_tools
+	
+PROGRAMMING APIs and APPLICATIONs
+================
+- CUBRID APIs and Applications 
+	http://www.cubrid.org/wiki_apis/
+	http://www.cubrid.org/apps_and_tools
+
+GETTING HELP
+============
+If You encounter any difficulties with getting started, or just have some
+questions, or find bugs, or have some suggestions, we kindly ask You to 
+post your thoughts on CUBRID Forum at http://forum.cubrid.org.
+
+Sincerely,
+Your CUBRID Development Team.
