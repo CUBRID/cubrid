@@ -4288,6 +4288,17 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
 	  goto exit_on_error;
 	}
 
+      /* filter out fence_key */
+      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+	{
+	  assert (ret == NO_ERROR);
+
+	  env->stat_info->keys--;
+	  assert (env->stat_info->keys >= 0);
+
+	  goto end;
+	}
+
       /* read key-value */
 
       assert (clear_key == false);
@@ -4302,8 +4313,8 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
 	}
 
       /* get pkeys info */
-      ret =
-	btree_get_stats_midxkey (thread_p, env, DB_GET_MIDXKEY (&key_value));
+      ret = btree_get_stats_midxkey (thread_p, env,
+				     DB_GET_MIDXKEY (&key_value));
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -4390,6 +4401,8 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p,
 
 	  if (key_cnt > 0)
 	    {
+	      env->stat_info->leafs++;
+
 	      BTS->slot_id = 1;
 	      BTS->oid_pos = 0;
 
@@ -4397,12 +4410,6 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p,
 
 	      for (i = 0; i < key_cnt; i++)
 		{
-		  /* is the first slot in page */
-		  if (BTS->slot_id <= 1)
-		    {
-		      env->stat_info->leafs++;
-		    }
-
 		  ret = btree_get_stats_key (thread_p, env);
 		  if (ret != NO_ERROR)
 		    {
@@ -4498,6 +4505,7 @@ static int
 btree_get_stats_with_fullscan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
 {
   BTREE_SCAN *BTS;
+  VPID C_vpid;			/* vpid of current leaf page */
   int ret = NO_ERROR;
 
   assert (env != NULL);
@@ -4512,11 +4520,15 @@ btree_get_stats_with_fullscan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
       goto exit_on_error;
     }
 
+  VPID_SET_NULL (&C_vpid);	/* init */
+
   while (!BTREE_END_OF_SCAN (BTS))
     {
-      /* is the first slot in page */
-      if (BTS->slot_id <= 1)
+      /* move on another leaf page */
+      if (!VPID_EQ (&(BTS->C_vpid), &C_vpid))
 	{
+	  VPID_COPY (&C_vpid, &(BTS->C_vpid));	/* keep current leaf vpid */
+
 	  env->stat_info->leafs++;
 	}
 
@@ -17076,10 +17088,19 @@ exit_on_error:
 static int
 btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
-  PAGE_PTR first_page = bts->C_page;
+  PAGE_PTR first_page;
+  int ret_val = NO_ERROR;
 
-  int ret_val =
+  first_page = bts->C_page;	/* init */
+
+  ret_val =
     btree_find_next_index_record_holding_current (thread_p, bts, NULL);
+#if 0				/* TODO - need to check return value */
+  if (ret_val != NO_ERROR)
+    {
+      goto error;
+    }
+#endif
 
   if (first_page != bts->C_page)
     {
@@ -17088,7 +17109,7 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
 
   /* 
-   * unfix first page unfix first page if fix next page and move to it
+   * unfix first page if fix next page and move to it
    *
    *  case 1: P_page == NULL, C_page == first_page       x do not fix 1 next page
    *  case 2: P_page == first_page, C_page == NULL       x can't fix 1 next page
@@ -17115,9 +17136,8 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
 #endif
 
-
-  if ((bts->C_page == NULL && bts->P_page == NULL) ||	/* case 4 */
-      (bts->C_page != NULL && bts->C_page != first_page))	/* case 3, 5 */
+  if ((bts->C_page == NULL && bts->P_page == NULL)	/* case 4 */
+      || (bts->C_page != NULL && bts->C_page != first_page))	/* case 3, 5 */
     {
       if (first_page == bts->P_page)
 	{
@@ -19038,6 +19058,12 @@ start_point:
   ret_val =
     btree_find_next_index_record_holding_current (thread_p, &tmp_bts,
 						  &peek_rec);
+#if 0				/* TODO - need to check return value */
+  if (ret_val != NO_ERROR)
+    {
+      goto error;
+    }
+#endif
 
   if (tmp_bts.C_page != NULL && tmp_bts.C_page != bts->C_page)
     {
