@@ -217,7 +217,7 @@ struct btree_scan
 #endif				/* SERVER_MODE */
 };
 
-#define COMMON_PREFIX_UNKNOWN	-1
+#define COMMON_PREFIX_UNKNOWN	(-1)
 
 #define BTREE_INIT_SCAN(bts)				\
   do {							\

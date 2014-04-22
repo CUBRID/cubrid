@@ -247,11 +247,6 @@ extern void btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			       void *rec_header, int node_type,
 			       bool * clear_key, int *offset, int copy,
 			       BTREE_SCAN * bts);
-extern void btree_read_record_helper (THREAD_ENTRY * thread_p,
-				      BTID_INT * btid, RECDES * Rec,
-				      DB_VALUE * key, void *rec_header,
-				      int node_type, bool * clear_key,
-				      int *offset, int copy);
 extern TP_DOMAIN *btree_generate_prefix_domain (BTID_INT * btid);
 extern int btree_glean_root_header_info (THREAD_ENTRY * thread_p,
 					 BTREE_ROOT_HEADER * root_header,

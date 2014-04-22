@@ -423,8 +423,8 @@ btree_pack_root_header (RECDES * rec, BTREE_ROOT_HEADER * root_header,
 
   rc = or_put_domain (&buf, key_type, 0, 0);
 
-  rec->type = REC_HOME;
   rec->length = fixed_size + CAST_BUFLEN (buf.ptr - buf.buffer);
+  rec->type = REC_HOME;
 
   if (rc != NO_ERROR && er_errid () == NO_ERROR)
     {
@@ -496,9 +496,9 @@ btree_init_overflow_header (THREAD_ENTRY * thread_p,
 
   rec.area_size = DB_PAGESIZE;
   rec.data = PTR_ALIGN (copy_rec_buf, BTREE_MAX_ALIGN);
-  rec.type = REC_HOME;
-  rec.length = sizeof (BTREE_OVERFLOW_HEADER);
   memcpy (rec.data, ovf_header, sizeof (BTREE_OVERFLOW_HEADER));
+  rec.length = sizeof (BTREE_OVERFLOW_HEADER);
+  rec.type = REC_HOME;
 
   /* insert the root header information into the root page */
   if (spage_insert_at (thread_p, page_ptr, HEADER, &rec) != SP_SUCCESS)
@@ -2082,9 +2082,6 @@ btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
     }
 
   *header = new_leafhdr;	/* update header */
-
-  pgbuf_set_dirty (thread_p, new_leafpgptr, DONT_FREE);
-
 
   /* current leaf update header */
   /* make the current leaf page point to the new one */
