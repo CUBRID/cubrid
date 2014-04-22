@@ -1468,7 +1468,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 95 %1$s (obiect domeniu) nu are atributul %2$s.
 96 %1$s din specificaţia EXCEPT nu este o subclasă.
 97 Lista ALL ... EXCEPT exclude TOTUL din clasă.
-98 '%1$s' este inconsistent cu alte\utilizări ale selectorului de cale '%2$s' sau ale rădăcinii '%3$s'.
+98 '%1$s' este inconsistent cu alte\nutilizări ale selectorului de cale '%2$s' sau ale rădăcinii '%3$s'.
 99 Argument nedefinit.
 100 Argumentul nu este un obiect.
 101 %1$s nu este o metodă sau un atribut al clasei %2$s.

@@ -1203,13 +1203,11 @@ $ LOADDB
 1134 Applylogdb für %1$s existiert bereits.
 1135 Ein vorhergehend Link von B+tree(%1$s) ist beschädigt: vpid = (%2$d, %3$d)
 1136 Ein vorhergehend Link von B+tree(%1$s) ist repariert: vpid = (%2$d, %3$d)
-1137 Die Abfrage wurde aufgrund abgelehnt wurde versucht die maximal
-zulässige Verschachtelungstiefe überschreiten(%1$d).
+1137 Die Abfrage wurde aufgrund abgelehnt wurde versucht die maximal zulässige Verschachtelungstiefe überschreiten(%1$d).
 1138 Handshake-Fehler (Peer-Host %1$s): Unterbrechbarkeitsklauseln unvereinbar. (client: %2$s, server: %3$s)
 1139 Handshake-Fehler (Peer-Host %1$s): unvereinbar Lese/Schreib-modus. (client: %2$s, server: %3$s)
 1140 Handshake-Fehler (Peer-Host %1$s): HA-Replikation verzögert.
-1141 Handshake-Fehler (Peer-Host %1$s): Nachbildung client um
-nicht-Nachbildung Server verbunden
+1141 Handshake-Fehler (Peer-Host %1$s): Nachbildung client um nicht-Nachbildung Server verbunden
 1142 Handshake-Fehler (Peer-Host %1$s): nicht identifizierten Server-Version.
 1143 Handshake-Fehler (Peer-Host %1$s): Remote-Zugriff auf Server nicht erlaubt.
 1144 Zeitüberschreitung versuchen um %1$s zu verbinden. (Zeitüberschreitung: %2$d sec(s))
