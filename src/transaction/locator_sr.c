@@ -12360,12 +12360,16 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
   BTREE_INIT_SCAN (&bt_checkscan_p->btree_scan);
   scan_init_index_scan (&isid, bt_checkscan_p->oid_ptr);
 
-  if ((heap_attrinfo_read_dbvalues_without_oid
-       (thread_p, recdes, attr_info_p) != NO_ERROR)
-      || (key =
-	  heap_attrvalue_get_key (thread_p, index_id, attr_info_p, recdes,
-				  &tmp_btid, &dbvalue, aligned_buf,
-				  NULL)) == NULL)
+  if (heap_attrinfo_read_dbvalues_without_oid (thread_p, recdes, attr_info_p)
+      != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto free_and_return;
+    }
+
+  key = heap_attrvalue_get_key (thread_p, index_id, attr_info_p, recdes,
+				&tmp_btid, &dbvalue, aligned_buf, NULL);
+  if (key == NULL)
     {
       error = ER_FAILED;
       goto free_and_return;
@@ -12380,6 +12384,9 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
 		       &bt_checkscan_p->btree_scan, &key_val_range,
 		       class_oid, bt_checkscan_p->oid_ptr,
 		       bt_checkscan_p->oid_area_size, NULL, &isid, false);
+
+  /* the oid buffer might be realloced during btree_range_search () */
+  bt_checkscan_p->oid_ptr = isid.oid_list.oidp;
 
   btree_scan_clear_key (&bt_checkscan.btree_scan);
 
