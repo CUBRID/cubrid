@@ -25,8 +25,8 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-utilità interattiva SQL, versione %s\n\
-uso: %s [OPZIONE] nome-base-di-dati[@host]\n\
+utilità interattiva SQL, versione %1$s\n\
+uso: %2$s [OPZIONE] nome-base-di-dati[@host]\n\
 \n\
 opzioni valide:\n\
   -S, --SA-mode                modalità di esecuzione autonoma\n\
@@ -44,17 +44,17 @@ opzioni valide:\n\
       --no-auto-commit         disattivare modalità di esecuzione auto-commit\n\
       --no-pager               non utilizzare pager\n\
       --no-single-line         disattivare l'esecuzione orientata singola riga\n\
-      --no-trigger-action      disable trigger action\n\
+      --no-trigger-action      disattivare l'azione del trigger\n\
 \n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
-41 %s: non è corretto il valore di ambiente di %s_MODE. \nDovrebbe essere %s o %s.\n
-42 %s: troppi argomenti trovati. massimo è %d.\n
+41 %1$s: non è corretto il valore di ambiente di %2$s_MODE. \nDovrebbe essere %3$s o %4$s.\n
+42 %1$s: troppi argomenti trovati. massimo è %2$d.\n
 43 %1$s: Deve essere impostata la variabile di ambiente di root directory ($CUBRID).\n
-44 %s: il tentativo di esecuzione "%s" è fallito.\n
+44 %1$s: il tentativo di esecuzione "%2$s" è fallito.\n
 45 %1$s: non è possibile utilizzare opzioni -sa e -cs contemporaneamente.\n
 46 %1$d comando(i) elaborato(i) correttamente.
 47 Nel comando dalla linea %1$d,
-48 In linea %d, colonna %d,
+48 In linea %1$d, colonna %2$d,
 49 Digitare `;help' per i messaggi di aiuto.
 50 ERRORE: 
 51 Interprete CUBRID SQL
@@ -67,16 +67,16 @@ Per ulteriori informazioni, vedere http://www.cubrid.org\n
 58 Buffer di comando è stato inviato alla stampante.
 59 Directory corrente è cambiato in 
 61 Inserire la Password: 
-62 <Risultato di %s Comando in Linea %d>
+62 <Risultato di %1$s Comando in Linea %2$d>
 63 Non ci sono risultati.
 64 Checkpoint è stato emesso.
 65 Il database è stato riavviato.
 66 Tran index            Utente         Nome Host      Processo        Nome programma\n
-67 %4d%-12s %14s %14s %15d %17s\n
+67 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 68 La transazione specificata è stata cancellata.
 69 Annullamento della transazione specificata non riuscita.
-70 %d righe %s.
-71 %d riga %s.
+70 %1$d righe %2$s.
+71 %1$d riga %2$s.
 $ Questi 3 dovrebbe essere vuoto
 75 Automated API tester
 76 Invalid Automated API tester

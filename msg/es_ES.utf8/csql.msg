@@ -25,8 +25,8 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-Utilidad SQL interactiva, version %s\n\
-uso: %s [OPCION] nombre-de-base de datos [@host] \n\
+Utilidad SQL interactiva, version %1$s\n\
+uso: %2$s [OPCION] nombre-de-base de datos [@host] \n\
 \n\
 opciones validas:\n\
   -S, --SA-mode                modo de ejecucion independiente\n\
@@ -44,17 +44,17 @@ opciones validas:\n\
       --no-auto-commit         inhabilitar modo de ejecucion cometer automaticamente\n\
       --no-pager               no utilize pager\n\
       --no-single-line         desactivar modo de ejecucion linea suelta\n\
-      --no-trigger-action      disable trigger action\n\
+      --no-trigger-action      inhabilitar accion del trigger\n\
 \n\
 Para mas informacion, vea http://www.cubrid.org\n
-41 %s: el valor de entorno de %s_MODE es incorrecto. \nDeberia ser sea %s o %s.\n
-42 %s: demasiados argumentos dados. maximo es %d.\n
+41 %1$s: el valor de entorno de %2$s_MODE es incorrecto. \nDeberia ser sea %3$s o %4$s.\n
+42 %1$s: demasiados argumentos dados. maximo es %2$d.\n
 43 %1$s: La variable ($CUBRID) de entorno del directorio de raiz deberia ser ajustada.\n
-44 %s: el intente de ejecutar "%s" ha fracasado.\n
+44 %1$s: el intente de ejecutar "%2$s" ha fracasado.\n
 45 %1$s: no se puede utilizar las opciones -sa y -cs simultaneamente.\n
 46 %1$d comando (s) procesados con éxito.
 47 En el comando de la linea %1$d,
-48 En linea %d, columna %d,
+48 En linea %1$d, columna %2$d,
 49 Escriba `;help' para mensajes de ayuda.
 50 ERROR: 
 51 Interpretador CUBRID SQL
@@ -67,16 +67,16 @@ Para mas informacion, vea http://www.cubrid.org\n
 58 Bufer de comando ha sido mandado a la impresora.
 59 Directorio actual cambiado a
 61 Introduzca contrasena:
-62 <Resultado de %s Comanda en Linea %d>
+62 <Resultado de %1$s Comanda en Linea %2$d>
 63 No hay resultados.
 64 Punto de control se ha emitido.
 65 La base de datos ha sido reinicializada.
 66 Indice de Tran        Nombre de utilizador   Nombre de host   Identificador de Proceso   Nombre de programa\n
-67 %4d%-12s %14s %14s %15d %17s\n
+67 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 68 La transaccion especificada ha sido matada.
 69 Fracaso al matar la transaccion especificada.
-70 %d filas %s.
-71 %d fila %s.
+70 %1$d filas %2$s.
+71 %1$d fila %2$s.
 $ Estos 3 deberian ser vacias.
 75 Tester API automatizado.
 76 Tester API automatizado no valido.

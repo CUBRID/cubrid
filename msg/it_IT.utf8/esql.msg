@@ -64,10 +64,10 @@ $set 5
 7 stringa di caratteri
 8 variabile indicatore per "%1$s" non è consentito in questo contesto
 9 "%1$s" non dichiarata nella sezione BEGIN DECLARE
-52 %s (testo era "%s")
+52 %1$s (testo era "%2$s")
 53 errore lessicale
-54 errore di sintassi in "%s": manca di %s in %s
-55 errore di sintassi in "%s": manca di %s
+54 errore di sintassi in "%1$s": manca di %2$s in %3$s
+55 errore di sintassi in "%1$s": manca di %2$s
 
 $set 6
 1 suppress-line-directive
@@ -99,29 +99,29 @@ $set 7
 
 $set 8
 1 opzione REPEATED ignorato
-2 %s versione %s\n
+2 %1$s versione %2$s\n
 
 $set 9
 1 (yy_pop_mode) errore interno: modalità stack vuoto
 2 "%1$s" non è consentito in questo contesto
 
 $set 10
-1 errore interno nel %s: %s\n
+1 errore interno nel %1$s: %2$s\n
 2 tabella overflow
 
 $set 11
 1 variabile indicatore "%1$s" deve essere un short int
 2 non è possibile utilizzare una variabile indicatore con una struttura
 3 "%1$s" ha incompleta definizione di struttura
-4 "%s" deve essere un valido %s
-5 %s non è un tipo accettabile per "%s"
+4 "%1$s" deve essere un valido %2$s
+5 %1$s non è un tipo accettabile per "%2$s"
 6 tipo di variabile host imprevisto: %1$s
 7 (pp_addr_expr): tentare di trovare l'indirizzo della variabile NULL
 8 "%1$s" non è un pointer
 9 "%1$s" non punta a una struttura
 10 "%1$s" non è una struttura
-11 %s non ha alcun campo "%s"
-12 "%s" non può essere dereferenziato da "%s"
+11 %1$s non ha alcun campo "%2$s"
+12 "%1$s" non può essere dereferenziato da "%2$s"
 
 $set 12
 1 memoria insufficiente

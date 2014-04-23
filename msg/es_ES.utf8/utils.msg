@@ -70,20 +70,20 @@ $       49      tranlist
 $       50      prefetchlogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
-1 Longitud o caracter '%c' en el nombre de la base de datos '%s'\n no valida.
+1 Longitud o caracter '%1$c' en el nombre de la base de datos '%2$s'\n no valida.
 2 No se puede abrir archivo de salida '%1$s'\n
 3 Nombre de utilidad falta o no valido.\n
 4 Nombre de utilidad no valido '%1$s'\n
 5 La siguente lista contiene los nombres de utilidad reconocidos:\n
-6 Caracter no valido '%c' en nombre de volumen '%s'\n
+6 Caracter no valido '%1$c' en nombre de volumen '%2$s'\n
 9 \
-%s (CUBRID utilidades)\n\
-%s\n\
+%1$s (CUBRID utilidades)\n\
+%2$s\n\
 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 10 \
-utilidad de administrador de cubrid, version %s\n\
-uso: %s <nombre-de-utilidad> [args]\n\
-Escriba '%s <nombre-de-utilidad>' para ayuda sobre una utilidad especifica.\n\
+utilidad de administrador de cubrid, version %1$s\n\
+uso: %2$s <nombre-de-utilidad> [args]\n\
+Escriba '%3$s <nombre-de-utilidad>' para ayuda sobre una utilidad especifica.\n\
 \n\
 Nombre de utilidad admin disponible:\n\
     createdb\n\
@@ -118,22 +118,22 @@ Nombre de utilidad admin disponible:\n\
     synccolldb\n\
     prefetchlogdb\n\
 \n\
-%s es una hieramenta para DBMS.\n\
+%4$s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
 12 '%1$s' nombre de utilidad es invalido.\nEscriba 'cubrid --help' para ver uso.\n
 13 '%1$s' comando es invalido.\nEscriba 'cubrid --help' para ver uso.\n
 14 No se pueden cargar una o más propiedades obligatorias en los archivos de configuración.\n
-15 @ %s %s: %s\n
-16 @ %s %s\n
-17 ++ %s '%s' no se esta ejecutando.\n
+15 @ %1$s %2$s: %3$s\n
+16 @ %1$s %2$s\n
+17 ++ %1$s '%2$s' no se esta ejecutando.\n
 18 ++ %1$s no se esta ejecutando.\n
-19 ++ %s '%s' se esta ejecutando.\n
+19 ++ %1$s '%2$s' se esta ejecutando.\n
 20 ++ %1$s se esta ejecutando.\n
-21 ++ %s %s: %s\n
+21 ++ %1$s %2$s: %3$s\n
 22 Uno o mas argumentos faltan.\nEscriba 'cubrid --help' para ver uso.\n
-23 utilidad de cubrid, version %s\n\
-uso: %s <nombre-de-utilidad> [args]\n\
-Escriba '%s <nombre-de-utilidad>' para ayuda sobre una utilidad especifica.\n\
+23 utilidad de cubrid, version %1$s\n\
+uso: %2$s <nombre-de-utilidad> [args]\n\
+Escriba '%3$s <nombre-de-utilidad>' para ayuda sobre una utilidad especifica.\n\
 \n\
 Utilidades de servicio disponible:\n\
     service\n\
@@ -171,18 +171,18 @@ Utilidades de administrador disponible:\n\
     dumplocale\n\
     synccolldb\n\
 \n\
-%s es una hieramenta para DBMS.\n\
+%4$s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
-24 utilidad de cubrid, version %s\n\
-uso: %s service <command>\n\
+24 utilidad de cubrid, version %1$s\n\
+uso: %2$s service <command>\n\
 \n\
 Comando disponible:\n\
     start\n\
     stop\n\
     restart\n\
     status\n
-25 utilidad de cubrid, version %s\n\
-uso: %s server <command> [args]\n\
+25 utilidad de cubrid, version %1$s\n\
+uso: %2$s server <command> [args]\n\
 \n\
 Comando disponible:\n\
     start       [database-name]\n\
@@ -191,8 +191,8 @@ Comando disponible:\n\
     status\n\
     acl         <status|reload> database-name\n
 37 El servidor ha sido configurado para HA.\n
-26 utilidad de cubrid, version %s\n\
-uso: %s broker <command> [args]\n\
+26 utilidad de cubrid, version %1$s\n\
+uso: %2$s broker <command> [args]\n\
 \n\
 Comando disponible:\n\
     start\n\
@@ -206,15 +206,15 @@ Comando disponible:\n\
     acl         <status|reload> [broker-name]\n\
     getid       -b <broker-name> [-f] shard-key\n\
     test        broker-name [-D <database_name>] [-u <user_name>] [-p <user_password>] [-c <SQL_command>] [-i <input_file>] [-o <output_file>] [-v] [-s]\n
-27 utilidad de cubrid, version %s\n\
-uso: %s manager <command>\n\
+27 utilidad de cubrid, version %1$s\n\
+uso: %2$s manager <command>\n\
 \n\
 Comando disponible: \n\
     start\n\
     stop\n\
     status\n
-28 utilidad de cubrid, version %s\n\
-uso: %s heartbeat <command> [args]\n\
+28 utilidad de cubrid, version %1$s\n\
+uso: %2$s heartbeat <command> [args]\n\
 \n\
 Comando disponible: \n\
     start          [database-name]\n\
@@ -228,15 +228,15 @@ Comando disponible: \n\
 31 Argumento '%1$s' no es necesario.\n
 32 Falta de un nombre de base de datos.\n
 33 %1$s: Tal opcion es depreciada.\n
-34 Parametro no valido. %s %s\n
+34 Parametro no valido. %1$s %2$s\n
 35 No se puede asignar memoria.\n
 36 El servidor no ha sido configurado para HA.\n
 38 El servidor configurado para HA no es listado en ha_db_list.\n
 39 El servidor configurado para HA no es listado en ha_node_list.\n
-40 Invalid command.\n
-41 cubrid manager server is not installed.\n
-42 Invalid argument.\n
-43 File(%1$s) open error.\n
+40 Comando invalido.\n
+41 El servidor CUBRID manager no es instalado.\n
+42 Argumento invalido.\n
+43 Error al abrir archivo (%1$s).\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ADVERTENCIA: -t opcion es ignorada en modo de ejecucion independiente.\n
@@ -261,7 +261,7 @@ opciones validas:\n\
   -z, --compress               comprimir volumenes de respaldo; estandar: descomprimir\n\
   -e, --except-active-log      no incluir un volumen de registro activo; estandar: incluir\n\
       --sleep-msecs=N          dormir N milisecondas para cada 1M leido estandar: 0\n
-71 Argumentos incompatibles, \"%s\", y \"%s\"\n
+71 Argumentos incompatibles, \"%1$s\", y \"%2$s\"\n
 
 
 $set 3 MSGCAT_UTIL_SET_COPYDB
@@ -290,11 +290,11 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Comando desconocido '%1$s'\n
 43 No se puede abrir archivo de salida '%1$s'\n
 44 No se puede eliminar base de datos existente.\n
-45 Creando base de datos de tamano %s utilizando la localizacion estandar %s. La cantidad total de espacio en disco necesaria es %s. \n
+45 Creando base de datos de tamano %1$s utilizando la localizacion estandar %2$s. La cantidad total de espacio en disco necesaria es %3$s. \n
 46 No se pudo crear base de datos.\n
 47 Problema con el archivo de utilizador '%1$s'\n
-48 Para el '%s' dado, %s es fuera de rango. Escoger un tamano entre %s y %s.\n
-49 El valor de %s '%s' no es valido.\n
+48 Para el '%1$s' dado, %2$s es fuera de rango. Escoger un tamano entre %3$s y %4$s.\n
+49 El valor de %1$s '%2$s' no es valido.\n
 60 \
 createdb: Crear una base de datos.\n\
 usage: %1$s createdb [OPTION] database-name database-locale\n\
@@ -348,7 +348,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 14 Error al encontrar nombre de host local\n
 15 No se puede encontrar archivo de parametros\n
 16 No se puede inicializar proceso maestro\n
-17 Servidor %s apagando en %d minutos
+17 Servidor %1$s apagando en %2$d minutos
 18 Servidor %1$s notificado del cierre.\nEsto puede durar unos minutos. Por favor espere.
 19 Server %1$s no encontrado.
 20 Maestro apagando en %1$d minutos\n
@@ -383,7 +383,7 @@ opciones validas:\n\
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
 19 El nombre de base de datos falta.\n
-20 Archivo '%s' no tiene %d lineas.\n
+20 Archivo '%1$s' no tiene %2$d lineas.\n
 21 interrumpir ... \n
 22 Carga interrumpida - transaccion actual cometida\n
 23 Carga interrumpida - transaccion actual abortada\n
@@ -396,34 +396,34 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 30 \n*** Cometiendo la transaccion ***\n
 31 \n*** Cerrando la base de datos ***\n
 32 Linea %1$d:
-33 Error al analizar '%s' como un valor '%s' para atributo '%s' de '%s'\n
-34 Falta dominio para atributo %s de %s\n
-35 Para atributo %s de %s, tipo %s no es permitido en el dominio del conjunto\n
-36 Para atributo %s de %s, tipo esperado %s, ha obtenido una constante de conjunto\n
-37 Para atributo %s de %s, tipo esperado %s, ha obtenido %s\n
-38 Ninguna clase con el nombre %s referenciada por el atributo %s de %s\n
+33 Error al analizar '%1$s' como un valor '%2$s' para atributo '%3$s' de '%4$s'\n
+34 Falta dominio para atributo %1$s de %2$s\n
+35 Para atributo %1$s de %2$s, tipo %3$s no es permitido en el dominio del conjunto\n
+36 Para atributo %1$s de %2$s, tipo esperado %3$s, ha obtenido una constante de conjunto\n
+37 Para atributo %1$s de %2$s, tipo esperado %3$s, ha obtenido %4$s\n
+38 Ninguna clase con el nombre %1$s referenciada por el atributo %2$s de %3$s\n
 39 Ninguna clase con el nombre %1$s, ignorando tuplas\n
-40 Ninguna clase con identificador %d referenciada por el atributo %s de %s\n
+40 Ninguna clase con identificador %1$d referenciada por el atributo %2$s de %3$s\n
 41 Clase %1$s no es permitida en el archivo de entrada del cargador\n
 42 Terminado con error.\n
 43 ADVERTENCIA: actualizado instancia existente!\n
-44 ADVERTENCIA: redefiniendo Instancia %d de la clase %s\n
-45 Instancia %d de la clase %s ha sido ya definida\n
-46 Instancia %d de la clase %s ha sido ya reservada\n
+44 ADVERTENCIA: redefiniendo Instancia %1$d de la clase %2$s\n
+45 Instancia %1$d de la clase %2$s ha sido ya definida\n
+46 Instancia %1$d de la clase %2$s ha sido ya reservada\n
 47 Violacion UNIQUE en atributo '%1$s', convertida en NULL\n
 48 %1$d instancias\n
 49 Clase %1$s\n
 50 Contrasena:
 51 \n*** Actualizando estadisticas de clase ***\n
-52 %s cerca de la linea %d (texto era '%s')\n
+52 %1$s cerca de la linea %2$d (texto era '%3$s')\n
 53 Error lexical
-54 linea %d: error de sintaxis en \"%s\"
+54 linea %1$d: error de sintaxis en \"%2$s\"
 55 faltando
 56 en %1$s
-57 Argumentos incompatibles, \"%s\", y \"%s\"\n
+57 Argumentos incompatibles, \"%1$s\", y \"%2$s\"\n
 58 %1$d instancias cometidas\n
 59 No se pueden apelar versiones no-optimizadas de loaddb.\n
-60 Error al analizar \"%s\", como tipo %s.\n
+60 Error al analizar \"%1$s\", como tipo %2$s.\n
 112 %1$d instancias\r
 113 Ultima linea cometida: %1$d
 114 error-control-file
@@ -476,9 +476,9 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 43 %1$d objetos botados.\n
 44 Clase %1$s
 45 , %1$d instancias.\n
-46 Solo %d de %d objetos botados con exito.\n
+46 Solo %1$d de %2$d objetos botados con exito.\n
 47 directorio de salida es demasiado largo.\n
-48 LSA : %d %d \n
+48 LSA : %1$d %2$d \n
 49 Contrasena:
 60 \
 unloaddb: Exportar objetos y esquemas de la base de datos.\n\
@@ -511,17 +511,17 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 12 %1$d objetos procesados.\n
 13 \nPass 2\n\n
 14 Clase %1$s\n
-15 oid:  %d|%d|%d,\n
+15 oid:  %1$d|%2$d|%3$d,\n
 16 %1$d instancias.\n
 17 Actualizando objeto.\n
-18 ref_oid:  %d.%d.%d, ref_class_oid:  %d.%d.%d\n
+18 ref_oid:  %1$d.%2$d.%3$d, ref_class_oid:  %4$d.%5$d.%6$d\n
 19 No se pudo transformar objeto\n
 20 Falta de archivo heap de clase\n
 21 No se pudo actualizar objeto\n
-22 Solo %d de %d objetos procesados con exito.\n
+22 Solo %1$d de %2$d objetos procesados con exito.\n
 23 COMPACTDB ya inicializado.\n
-24 El numero de paginas tiene que ser entre %d y %d.\n
-25 El tiempo de expirar para el bloqueo de instancia tiene que ser entre %d y %d.\n
+24 El numero de paginas tiene que ser entre %1$d y %2$d.\n
+25 El tiempo de expirar para el bloqueo de instancia tiene que ser entre %1$d y %2$d.\n
 26 Total objetos: %1$d\n
 27 Objetos fracasados: %1$d\n
 28 Objetos modificados: %1$d\n
@@ -530,7 +530,7 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 31 Representaciones viejas de clase preservadas en catalogo.\n
 32 No se puede ajustar el nivel de aislamiento.\n
 33 No se puede compactar la base de datos.\n
-34 El tiempo de expirar del bloqueo de clase tiene que ser entre %d y %d.\n
+34 El tiempo de expirar del bloqueo de clase tiene que ser entre %1$d y %2$d.\n
 35 Clase bloqueada... Procesamiento incompleto...\n
 36 Clase no procesada...\n
 37 Error de proceso... Procesamiento incompleto...\n
@@ -564,8 +564,8 @@ opciones validas:\n\
   -c, --class-lock-timeout          tiempo de expirar para bloqueo de clase\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
-21 CUBRID master ejecutado en host %s \nha sido reinicializado a %s
-22 ha servido %d peticiones. %d servidor(es) que ejecutan.\n
+21 CUBRID master ejecutado en host %1$s \nha sido reinicializado a %2$s
+22 ha servido %1$d peticiones. %2$d servidor(es) que ejecutan.\n
 23 APAGANDO en %1$s minutos\n
 24 %1$s
 25 Nombre del servidor para apagar:
@@ -594,10 +594,10 @@ opciones validas:\n\
 33 Maestro se va a apagar en %1$d minutos\n
 34 Error al recibir datos del cliente
 35 el servidor de base de datos %1$s no esta actualmente ejecutando
-36 no se puede ejecutar shell (%s) para %s, %s
-37 proceso fork %s, regreso %d, %s
+36 no se puede ejecutar shell (%1$s) para %2$s, %3$s
+37 proceso fork %1$s, regreso %2$d, %3$s
 38 no se puede ejecutar %1$s
-39 -i(--immediately) option must be used with --deact-stop-all option.\n
+39 -i(--immediately) opcion debe ser utilizada con la opcion --deact-stop-all.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
@@ -647,7 +647,7 @@ opciones validas:\n\
   -I, --index-name             index name that will be checked only\n\
                                default: check all indices\n\
       --check-prev-link        check only previous links of indices\n\
-      --repair-prev-link       repair previous links of indices\n\
+      --repair-prev-link       reparar enlaces de indices anteriores\n\
       --check-file-tracker     check all allocated pages of file\n\
       --check-heap             check all pages of heap files\n\
       --check-catalog          check catalog consistency\n\
@@ -657,26 +657,26 @@ opciones validas:\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Descripcion de espacio para la base de datos '%s' con pagesize %s. (log pagesize: %s)\n\n
-16 %5d %9s  %s %s  %s\n
+15 Descripcion de espacio para la base de datos '%1$s' con pagesize %2$s. (log pagesize: %3$s)\n\n
+16 %1$5d %2$9s  %3$s %4$s  %5$s\n
 17 No se puede abrir archivo de salida '%1$s'\n
-18 Descripcion de espacio para volumenes temporarios para la base de datos '%s' con pagesize %s.\n\n
+18 Descripcion de espacio para volumenes temporarios para la base de datos '%1$s' con pagesize %2$s.\n\n
 19 Volid  Purpose   total_pages  free_pages  Vol Name\n\n
 20 Volid  Purpose    total_size   free_size  Vol Name\n\n
 21 Descripcion de espacio LOB %1$s \n\n
 22 -------------------------------------------------------------------------------\n
-30 Descripcion de espacio resumida para la base de datos '%s' con pagesize %s. (log pagesize: %s)\n\n
+30 Descripcion de espacio resumida para la base de datos '%1$s' con pagesize %2$s. (log pagesize: %3$s)\n\n
 31 Purpose    total_pages  used_pages  free_pages  volume_count\n
 32 Purpose     total_size   used_size   free_size  volume_count\n
-33 %10s %s %s %s %10d\n
+33 %1$10s %2$s %3$s %4$s %5$10d\n
 34 -------------------------------------------------------------\n
 40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
 41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
-42 %5d %9s  %s %s %s %s %s  %s\n
+42 %1$5d %2$9s  %3$s %4$s %5$s %6$s %7$s  %8$s\n
 43 ----------------------------------------------------------------------------------------------------\n
 50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
 51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
-52 %10s %s %s %s %s %s %s %10d\n
+52 %1$10s %2$s %3$s %4$s %5$s %6$s %7$s %8$10d\n
 53 -------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Mostrar espacio usado/libre de la base de datos.\n\
@@ -701,7 +701,7 @@ uso: %1$s estimate_data number-of-instances average-instance-size number-of-attr
 
 $set 21 MSGCAT_UTIL_SET_ESTIMATEDB_INDEX
 15 Tipo malo de clave del indice especificado = %1$s\n
-16 Mala longitud media de clave especificada = %d cuando precision = %d\n
+16 Mala longitud media de clave especificada = %1$d cuando precision = %2$d\n
 17 Argumentos malos especificados\n
 20 Numero estimado del total de paginas de indice = %1$d\n (Cuando indice creado, despues de que las instancias sean pobladas.)\n
 21 Numero estimado del total de paginas de indice = %1$d\n (Cuando indice creado, antes de que las instancias sean pobladas (caso medio))\n
@@ -819,7 +819,7 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 5 destino de respaldo
 6 una ruta de directorio o dispositivo para la destinacion de los volumenes de respaldo
 20 la base de datos '%1$s' no existe.
-21 '%s' no puede ser migrada a %s, porque su version DB es demasiado baja.\n
+21 '%1$s' no puede ser migrada a %2$s, porque su version DB es demasiado baja.\n
 22 '%1$s' no necesitan ser migrados.\n
 23 '%1$s' necesita ser migrado.\n
 24 Respaldar es recomendado despues de migracion. Quiere respaldar su base de datos ahora? (si/no):
@@ -878,8 +878,8 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 Valor equivocado \"%1$s\" para el modo HA de ejecucion del servidor.\n
 12 No se puede cambiar el modo de ejecucion HA del servidor.\n
 21 Introducir contrasena DBA:
-22 El modo HA actual de ejecucion del servidor '%s' es %s.\n
-23 El modo HA de ejecucion del servidor '%s' cambiado a \"%s\".\n
+22 El modo HA actual de ejecucion del servidor '%1$s' es %2$s.\n
+23 El modo HA de ejecucion del servidor '%1$s' cambiado a \"%2$s\".\n
 24 El servidor no ha sido configurado para HA.\n
 58 Caracteristica HA no soportada en esta plataforma.\n
 59 changemode no puede ejecutar como modo independiente.\n
@@ -1014,7 +1014,7 @@ Tabla | Indice | Expresion de funcion\n
 47 Sincronizacion de colaciones no ha sido ejecutada. La base de datos no ha sido cambiada.\n
 48 Contenido de '%1$s' tabla de sistema ha sido actualizado con nuevas colaciones de sistema.\n
 49 Actualizar colaciones de sistema podria causar corrupcion de la base de datos. Desea continuar (y/n)?\n
-50 Colacion '%s' (Id: %d) no encontrada el la base de datos o cambiada en la nueva configuracion de sistema.\n
+50 Colacion '%1$s' (Id: %2$d) no encontrada el la base de datos o cambiada en la nueva configuracion de sistema.\n
 51 Disparadores teniendo condicion que tiene colacion '%1$s'; deberian ser redefinidos:\nTrigger | Condition\n
 52 Vistas de consulta que contienen colacion '%1$s'; deberian ser redefinidas:\nView | Query\n
 53 Atributos teniendo colacion '%1$s'; deberian ser redefinidos.\nTable | Attribute Domain\n
@@ -1040,15 +1040,15 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 20 Introducir %1$s clave: 
 22 Tran index          User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
-24 %4d%-10s %14s %14s %15d %17s\n
+24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
 25 No hay transacciones\n
 26 tranlist puede ser ejecutada solamente por el DBA or por un miembro del grupo DBA.\n
 27 El numero de la columna de la clave de ordenacion (%1$d) no es valido.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
 42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
 44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index: %1$d
 46 SQL_ID: %1$s\n
@@ -1065,13 +1065,13 @@ opciones validas:\n\
       --reverse                invierte el resultado de la clasificacion\n
 
 $set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 The server was not configured for HA.\n
-23 Prefetch feature is disabled.\n
-58 HA feature is not supported in this platform.\n
-59 prefetchlogdb cannot run as standalone mode.\n
+22 El servidor no ha sido configurado para HA.\n
+23 Caracteristica prefetch es inhabilitada.\n
+58 Caracteristica HA no soportada en esta plataforma.\n
+59 prefetchlogdb no se puede ejecutar en modo independiente.\n
 60 \
-prefetchlogdb: Prefetch log pages from the server.\n\
-usage: %1$s prefetchlogdb [OPTION] database-name\n\
+prefetchlogdb: Pre-extraer paginas de registro del servidor.\n\
+uso: %1$s prefetchlogdb [OPTION] database-name\n\
 \n\
-valid options:\n\
-  -L, --log-path=PATH         directory PATH for copied log volumes\n
+opciones validas:\n\
+  -L, --log-path=PATH         directorio PATH para volumenes de registro copiados\n

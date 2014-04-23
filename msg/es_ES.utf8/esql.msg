@@ -64,10 +64,10 @@ $set 5
 7 string de caracteres
 8 variable de indicador para "%1$s" no permitida en este contexto
 9 "%1$s" no declarado en seccion BEGIN DECLARE
-52 %s (texto era "%s")
+52 %1$s (texto era "%2$s")
 53 Error lexical
-54 error de sintaxis a "%s": faltando %s en %s
-55 error de sintaxis a "%s": faltando %s
+54 error de sintaxis a "%1$s": faltando %2$s en %3$s
+55 error de sintaxis a "%1$s": faltando %2$s
 
 $set 6
 1 suprimir-directiva-de-linea
@@ -99,29 +99,29 @@ $set 7
 
 $set 8
 1 Opcion REPEATED ignorada
-2 %s version %s\n
+2 %1$s version %2$s\n
 
 $set 9
 1 error interno (yy_pop_mode): pila de modo vacio
 2 "%1$s" no es permitido en este contexto
 
 $set 10
-1 error interno en %s: %s\n
+1 error interno en %1$s: %2$s\n
 2 sobreflujo de tabla
 
 $set 11
 1 variable de indicador "%1$s" tiene que ser un entero tipo short
 2 no se puede utilizar una variable de indicador con una estructura
 3 "%1$s" tiene definicion de estructura incompleta
-4 "%s" tiene que ser un %s valido
-5 %s no es un tipo acceptable para "%s"
+4 "%1$s" tiene que ser un %2$s valido
+5 %1$s no es un tipo acceptable para "%2$s"
 6 tipo de variable de host no anticipado: %1$s
 7 (pp_addr_expr): intente buscar direccion de variable NULL
 8 "%1$s" no es un puntero
 9 "%1$s" no apunta a una estructura
 10 "%1$s" no es una estructura
-11 %s no tiene campo "%s"
-12 "%s" nu puede ser dereferenciado por "%s"
+11 %1$s no tiene campo "%2$s"
+12 "%1$s" nu puede ser dereferenciado por "%2$s"
 
 $set 12
 1 sin memoria
