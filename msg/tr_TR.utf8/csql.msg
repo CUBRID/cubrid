@@ -25,8 +25,8 @@ $
 
 $set 1 MSGCAT_CSQL_SET_CSQL
 40 \
-Etkileşimli SQL programı, sürüm %s\n\
-kullanım: %s [OPTION] veritabanı-adı[@host]\n\
+Etkileşimli SQL programı, sürüm %1$s\n\
+kullanım: %2$s [SEÇENEK] veritabanı-adı[@host]\n\
 \n\
 geçerli ayarlar:\n\
   -S, --SA-mode                bağımsız modu yürütme\n\
@@ -42,19 +42,19 @@ geçerli ayarlar:\n\
   -r, --read-only              sadece-oku modu\n\
       --string-width           bu genişlikte bir dizin tipi olan her sütunu görüntüler\n\
       --no-auto-commit         Otomatik tamamlama modu yürütme devre dışı\n\
-      --no-pager               do not use pager\n\
+      --no-pager               pager kullanmayın\n\
       --no-single-line         tek satır odaklı yürütmeyi kapatın\n\
-      --no-trigger-action      disable trigger action\n\
+      --no-trigger-action      tetikleyicileri devre dışı bırak\n\
 \n\
 Ek bilgi için, adresine bakın http://www.cubrid.org\n
-41 %s: doğru olmayan %s_MODE ortam değeri. \n%s veya %s olmalıdır.\n
-42 %s: çok fazla argüman verildi.en fazla %d.\n
+41 %1$s: doğru olmayan %2$s_MODE ortam değeri. \n%3$s veya %4$s olmalıdır.\n
+42 %1$s: çok fazla argüman verildi.en fazla %2$d.\n
 43 %1$s: Kök dizin ortam değişkeni ($CUBRID) ayarlanmalıdır.\n
-44 %s: "%s" çalıştırılma denemesi başarısız oldu.\n
+44 %1$s: "%2$s" çalıştırılma denemesi başarısız oldu.\n
 45 %1$s: aynı anda -sa ve -cs seçeneklerini kullanamazsınız.\n
 46 %1$d komut (lar) başarıyla işlendi.
 47 kommand içinde %1$d satırından,
-48 %d satırında , sütun %d,
+48 %1$d satırında , sütun %2$d,
 49 Tür `;help' yardım mesajları için.
 50 HATA: 
 51 CUBRID SQL Yorumlayıcı
@@ -67,16 +67,16 @@ Ek bilgi için, adresine bakın http://www.cubrid.org\n
 58 Komut buffer yazıyıcıya gönderildi.
 59 Geçerli dizin değiştirildi 
 61 Şifre girin : 
-62 <Sonuçlar %s komut satırları içinde %d>
+62 <Sonuçlar %1$s komut satırları içinde %2$d>
 63 Sonuç bulunmamaktadır.
 64 Kontrol noktası yayımlanmıştır
 65 Veritabanı yeniden başlatıldı.
 66 İşlem indeks          Kullanıcı Adı      Host Adı      Süreç id      Program Adı\n
-67 %4d%-12s %14s %14s %15d %17s\n
+67 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 68 Özelleıtirilmiı İşlem iptal edildi.
 69 Özelleıtirilmiı İşlem iptal etme başarısız.
-70 %d Satırlar %s.
-71 %d Satır %s.
+70 %1$d Satırlar %2$s.
+71 %1$d Satır %2$s.
 $  Bu 3 boş bırakılmalı
 75 Otomatik APİ test edici
 76 Geçersiz Otomatik APİ test edici

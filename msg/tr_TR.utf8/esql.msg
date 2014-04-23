@@ -64,10 +64,10 @@ $set 5
 7 Karakterseti dizini
 8 "%1$s" için gösterge değişkeni bu bağlamda izin verilmez
 9 "%1$s" bölümünde BEGIN DECLARE içinde bildirilmemiş
-52 %s ( metin "%s")
+52 %1$s ( metin "%2$s")
 53 Sözcüksel Hata
-54 sözdizimi hatası "%s": %s içinde %s kayıp
-55 sözdizimi hatası "%s": %s kayıp
+54 sözdizimi hatası "%1$s": %3$s içinde %2$s kayıp
+55 sözdizimi hatası "%1$s": %2$s kayıp
 
 $set 6
 1 suppress-line-directive
@@ -99,29 +99,29 @@ $set 7
 
 $set 8
 1 REPEATED seçeneği göz ardı edildi.
-2 %s sürüm %s\n
+2 %1$s sürüm %2$s\n
 
 $set 9
 1 (yy_pop_mode) iç hata: boş mod yığını
 2 "%1$s" bu bağlamda izin verilmez
 
 $set 10
-1 iç hata %s: %s\n
+1 iç hata %1$s: %2$s\n
 2 tablo taşma
 
 $set 11
 1 gösterge değişkeni "%1$s" kısa bir int olmalı
 2 bir yapıya sahip bir gösterge değişken kullanamaz
 3 "%1$s" eksik yapı tanımı vardır
-4 "%s" mutlaka geçerli olamalı %s
-5 %s için kabul edilebilir tür değil "%s"
+4 "%1$s" mutlaka geçerli olamalı %2$s
+5 %1$s için kabul edilebilir tür değil "%2$s"
 6 beklenmeyen ana değişken tipi: %1$s
 7 (pp_addr_expr): NULL değişkenin adresini bulma girişimi
 8 "%1$s" bir işaretçi değildir.
 9 "%1$s" bir yapı işaret değildir.
 10 "%1$s" bir yapı değildir.
-11 %s herhangi bir alan yoktur "%s"
-12 "%s" tarafından başvurusu çözülemiyor "%s"
+11 %1$s herhangi bir alan yoktur "%2$s"
+12 "%2$s" tarafından başvurusu çözülemiyor "%1$s"
 
 $set 12
 1 bellek yetersiz

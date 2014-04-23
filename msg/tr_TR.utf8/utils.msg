@@ -70,20 +70,20 @@ $       49      tranlist
 $       50      prefetchlogdb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
-1 Geçersiz uzunluk veya karakter '%c' veritabanı adı '%s' \n
+1 Geçersiz uzunluk veya karakter '%1$c' veritabanı adı '%2$s' \n
 2 Çıktı dosyası '%1$s' açılamadı \n
 3 Eksik veya geçersiz yardımcı programı adı.\n
 4 Geçersiz yardımcı programı adı  '%1$s'\n
 5 Aşağıdaki liste tanınan yardımcı programı adlarını içerir:\n
-6 Geçersiz karakter '%c'ses adına'%s'\n
+6 Geçersiz karakter '%1$c'ses adına'%2$s'\n
 9 \
-%s (CUBRID yardımcı programları)\n\
-%s\n\
+%1$s (CUBRID yardımcı programları)\n\
+%2$s\n\
 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 10 \
-cubrid yönetici yardımcı programı, sürüm %s\n\
-kullanım: %s <yardımcı programı-adı> [args]\n\
-Tür '%s <yardımcı programı-adı>' belirli bir yardımcı programı hakkında yardım alın.\n\
+cubrid yönetici yardımcı programı, sürüm %1$s\n\
+kullanım: %2$s <yardımcı programı-adı> [args]\n\
+Tür '%3$s <yardımcı programı-adı>' belirli bir yardımcı programı hakkında yardım alın.\n\
 \n\
 Mevcut yönetici yardımcı programı-adı:\n\
     createdb\n\
@@ -118,22 +118,22 @@ Mevcut yönetici yardımcı programı-adı:\n\
     synccolldb\n\
     prefetchlogdb\n\
 \n\
-%s DBMS için bir araçtır.\n\
+%4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz:http://www.cubrid.org\n
 12 '%1$s' yardımcı programı-adı geçersiz.\nTür 'cubrid --help' kullanıma bak.\n
 13 '%1$s' komutu geçersiz.\nTür 'cubrid --help' kullanıma bak.\n
 14 Yapılandırma dosyaları bir veya daha fazla zorunlu özellikleri yüklenemedi.\n
-15 @ %s %s: %s\n
-16 @ %s %s\n
-17 ++ %s '%s'çalışmıyor.\n
+15 @ %1$s %2$s: %3$s\n
+16 @ %1$s %2$s\n
+17 ++ %1$s '%2$s' çalışmıyor.\n
 18 ++ %1$s çalışmıyor.\n
-19 ++ %s '%s' çalışmıyor.\n
-20 ++ %1$s is running.\n
-21 ++ %s %s: %s\n
+19 ++ %1$s '%2$s' çalışıyor.\n
+20 ++ %1$s çalışıyor.\n
+21 ++ %1$s %2$s: %3$s\n
 22 Bir veya daha fazla bağımsız değişkeni eksik.\nTür 'cubrid --help' kullanıma bak.\n
-23 cubrid yardımcı programı, sürüm %s\n\
-kullanım: %s <yardımcı programı-adı> [args]\n\
-Tür '%s <yardımcı programı-adı>' belirli bir yardımcı programı hakkında yardım alın.\n\
+23 cubrid yardımcı programı, sürüm %1$s\n\
+kullanım: %2$s <yardımcı programı-adı> [args]\n\
+Tür '%3$s <yardımcı programı-adı>' belirli bir yardımcı programı hakkında yardım alın.\n\
 \n\
 Mevcut hizmetin programları:\n\
     service\n\
@@ -171,18 +171,18 @@ Mevcut yönetici programları:\n\
     dumplocale\n\
     synccolldb\n\
 \n\
-%s DBMS için bir araçtır.\n\
+%4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz: http://www.cubrid.org\n
-24 cubrid yardımcı programı, sürüm %s\n\
-kullanım: %s service <komut>\n\
+24 cubrid yardımcı programı, sürüm %1$s\n\
+kullanım: %2$s service <komut>\n\
 \n\
 Mevcut komut:\n\
     start\n\
     stop\n\
     restart\n\
     status\n
-25 cubrid yardımcı programı, sürüm %s\n\
-kullanım: %s server <komut> [args]\n\
+25 cubrid yardımcı programı, sürüm %1$s\n\
+kullanım: %2$s server <komut> [args]\n\
 \n\
 Mevcut komut:\n\
     start       [database-name]\n\
@@ -191,8 +191,8 @@ Mevcut komut:\n\
     status\n\
     acl         <status|reload> database-name\n
 37 Sunucu HA için yapılandırıldı.\n
-26 cubrid yardımcı programı, sürüm %s\n\
-kullanım: %s broker <komut> [args]\n\
+26 cubrid yardımcı programı, sürüm %1$s\n\
+kullanım: %2$s broker <komut> [args]\n\
 \n\
 Mevcut komut:\n\
     start\n\
@@ -206,15 +206,15 @@ Mevcut komut:\n\
     acl         <status|reload> [broker-name]\n\
     getid       -b <broker-name> [-f] shard-key\n\
     test        broker-name [-D <database_name>] [-u <user_name>] [-p <user_password>] [-c <SQL_command>] [-i <input_file>] [-o <output_file>] [-v] [-s]\n
-27 cubrid yardımcı programı, sürüm %s\n\
-kullanım: %s manager <komut>\n\
+27 cubrid yardımcı programı, sürüm %1$s\n\
+kullanım: %2$s manager <komut>\n\
 \n\
 Mevcut komut:\n\
     start\n\
     stop\n\
     status\n
-28 cubrid yardımcı programı, sürüm %s\n\
-kullanım: %s heartbeat <komut> [args]\n\
+28 cubrid yardımcı programı, sürüm %1$s\n\
+kullanım: %2$s heartbeat <komut> [args]\n\
 \n\
 Mevcut komut:\n\
     start          [database-name]\n\
@@ -228,15 +228,15 @@ Mevcut komut:\n\
 31 '%1$s' argümanı gerekli değildir.\n
 32 Bir veritabanı-adı eksik.\n
 33 %1$s: Böyle seçeneği önerilmiyor.\n
-34 Geçersiz Parametre. %s %s\n
+34 Geçersiz Parametre. %1$s %2$s\n
 35 Bellek ayrılamadı.\n
 36 Sunucu HA için yapılandırıldı.\n
 38 HA için ayarlanan sunucu ha_db_list.\n görülmedi. \n Listesinde
 39 HA için ayarlanan sunucu in_ ha_node_list.\n görülmedi. \n Listesinde
-40 Invalid command.\n
-41 cubrid manager server is not installed.\n
-42 Invalid argument.\n
-43 File(%1$s) open error.\n
+40 Yanlış kumanda.\n
+41 CUBRID sunucu yöneticisi yüklü değildir.\n
+42 Değişken geçersiz.\n
+43 (%1$s) dosya açma hatası.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 UYARI: -t seçeneği stand-alone modu yürütülmesine göz ardı edilir.\n
@@ -261,7 +261,7 @@ geçerli opsiyonlar:\n\
   -z, --compress               yedekleme birimleri sıkıştırmak; varsayılan: sıkıştırmayı açma\n\
   -e, --except-active-log      şunlardır: varsayılan; aktif bir log yoğunluğu içermez\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
-71 Uyumsuz bağımsız değişkenleri, \"%s\", and \"%s\"\n
+71 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
 
 
 $set 3 MSGCAT_UTIL_SET_COPYDB
@@ -293,11 +293,11 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 Varsayılan yerel %2$s kullanarak %1$s boyutu ile veritabanı oluşturmak. Gerekli disk alanın toplam miktarı ise %3$s.\n
 46 Veritabanı oluşturulamadı.\n
 47 '%1$s' Kullanıcı dosya ile ilgili sorun\n
-48 Verilen '%s', %s kapsam dışı. %s ve %s arasında bir boyut seçin.\n
-49 %s Sayısal değeri '%s' geçersiz. \n
+48 Verilen '%1$s', %2$s kapsam dışı. %3$s ve %4$s arasında bir boyut seçin.\n
+49 %1$s sayısal değeri '%2$s' geçersiz. \n
 60 \
 createdb: Bir veritabanı oluştur.\n\
-usage: %1$s createdb [OPTION] database-name database-locale\n\
+kullanım: %1$s createdb [SEÇENEK] database-name database-locale\n\
 \n\
 Veritabanı-yerel biçimi ise <language>.<charset>; örnekler : en_US.iso88591, ko_KR.utf8\n\
 geçerli seçenekler:\n\
@@ -348,7 +348,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 14 Hata yerel ana bilgisayar adı bulmakta\n
 15 Parametre dosyası bulunamadı\n
 16 Ana işlemi başlatılamadı\n
-17 Sunucu %s %d dakika içinde aşağı gidiyor
+17 Sunucu %1$s %2$d dakika içinde aşağı gidiyor.
 18 Sunucu %1$s kapatma bildirilir. \n Bu işlem birkaç dakika sürebilir. Lütfen bekleyiniz.
 19 Sunucu %1$s bulunamadı.
 20 Master %1$d dakika aşağı gidiyor\n
@@ -383,7 +383,7 @@ geçerli seçenekler:\n\
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
 19 Tha veritabanı adı eksik.\n
-20 '%s' dosyası %d satır yoktur.\n
+20 '%1$s' dosyası %2$d satır yoktur.\n
 21 ara verme ... \n
 22 ara verilen yük - mevcut işlem tamamlanmış\n
 23 ara verilen yük - durduruldu mevcut işlem\n
@@ -396,41 +396,41 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 30 \n*** İşlem İşlemek ***\n
 31 \n*** Veritabanı Kapama ***\n
 32 Satır %1$d:
-33 Hata '%s' özniteliği '%s' için '%s' değer olarak '%s' ayrıştırma\n
-34 %s özniteliği %s için eksik alanı\n
-35 %s özniteliği %s için, tip %s set etki alanında izin verilmez\n
-36 %s özniteliği %s için, tip %s beklenen, bir dizi sabiti var\n
-37 %s özniteliği %s için, tip %s beklenen, %s var\n
-38 %s özniteliği %s %s başvurulan adında bir sınıf\n
+33 Hata '%1$s' özniteliği '%3$s' için '%4$s' değer olarak '%2$s' ayrıştırma\n
+34 %1$s özniteliği %2$s için eksik alanı\n
+35 %1$s özniteliği %2$s için, tip %3$s set etki alanında izin verilmez\n
+36 %1$s özniteliği %2$s için, tip %3$s beklenen, bir dizi sabiti var\n
+37 %1$s özniteliği %2$s için, tip %3$s beklenen, %4$s var\n
+38 %2$s özniteliği %3$s %1$s başvurulan adında bir sınıf\n
 39 Hiçbir sınıf dizilerini görmezden gelerek, %1$s adlı\n
-40 Tanımlayıcısı %d ile hiçbir sınıf %s özniteliği %s tarafından başvurulan\n
+40 Tanımlayıcısı %1$d ile hiçbir sınıf %2$s özniteliği %3$s tarafından başvurulan\n
 41 Class %1$s yükleyici girdi dosyasında izin verilmiyor\n
 42 Hata ile Durduruldu.\n
 43 UYARI: varolan örneği güncellendi!\n
-44 UYARI: Sınıf %s Derece %d yeniden tanımlıyor\n
-45 Sınıf %s Derece %d zaten tanımlanmış\n
-46 Sınıf %s Derece %d zaten ayrılmıştır\n
+44 UYARI: Sınıf %2$s Derece %1$d yeniden tanımlıyor\n
+45 Sınıf %2$s Derece %1$d zaten tanımlanmış\n
+46 Sınıf %2$s Derece %1$d zaten ayrılmıştır\n
 47 Özniteliği '%1$s 'EŞSİZ aykırı, NULL'a dönüştürülür\n
 48   %1$d örnekleri\n
 49 Sınıf %1$s\n
 50 Şifre:
 51 \n*** Sınıf istatistikleri güncelleniyor ***\n
-52 %d hat yakınlarındaki %s (metin '%s' oldu)\n
+52 %2$d hat yakınlarındaki %1$s (metin '%3$s' oldu)\n
 53 Sözcüksel hata
-54 satır %d: \"%s\" içinde syntax hata
+54 satır %1$d: \"%2$s\" içinde syntax hata
 55 eksik
 56 %1$s de
-57 Uyumsuz bağımsız değişkenleri, \"%s\", ve \"%s\"\n
+57 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
 58 %1$d taahhüt örnekleri\n
 59 \nLoaddb olmayan-optimize edilmiş sürümü çağırılamaz.\n
-60 Hata ayrıştırma \"%s\", gibi %s tür.\n
+60 Hata ayrıştırma \"%1$s\", gibi %2$s tür.\n
 112   %1$d örnekleri\r
 113 Son kararlı hattı: %1$d
 114 hata-kontrol-dosyası
 115 yükleme sırasında bir hata(lar) kontrol etmek için giriş dosyası
-116 Total %8d object(s) inserted, %d object(s) failed.\n
-117 Load failed.\n
-118 Maximum length of class name is %1$d bytes.\n
+116 Toplam %1$8d nesne (ler) eklenen, %2$d nesne (ler) başarısız oldu.\n
+117 Başarısız yük.\n
+118 Sınıf adının uzunluğu en fazla %1$d bayttır.\n
 120 \
 loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
 kullanım: %1$s loaddb [SEÇENEK] database-name\n\
@@ -476,9 +476,9 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 43 %1$d nesneler atılıyor.\n
 44 Class %1$s
 45 , %1$d örnekleri.\n
-46 %d nesneleri yalnızca %d tanesinde başarılı atılıyor.\n
+46 %2$d nesneleri yalnızca %1$d tanesinde başarılı atılıyor.\n
 47 çıkış dizin çok uzun.\n
-48 LSA : %d %d \n
+48 LSA : %1$d %2$d \n
 49 Şifre:
 60 \
 unloaddb: Veritabanındaki nesneleri ve şemalar verin.\n\
@@ -511,17 +511,17 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 12 %1$d işlenmiş nesneler.\n
 13 \nPass 2\n\n
 14 Class %1$s\n
-15 oid:  %d|%d|%d,\n
+15 oid:  %1$d|%2$d|%3$d,\n
 16 %1$d örnekleri.\n
 17 nesne güncelleniyor.\n
-18 ref_oid:  %d.%d.%d, ref_class_oid:  %d.%d.%d\n
+18 ref_oid:  %1$d.%2$d.%3$d, ref_class_oid:  %4$d.%5$d.%6$d\n
 19 Nesne dönüşümü bulunamadı\n
 20 Eksik sınıf yığın dosyası\n
 21 Nesneyi güncelleştirme bulunamadı\n
-22 Başarıyla işlenmiş %d nesnelerin sadece %d tanesi.\n
+22 Başarıyla işlenmiş %2$d nesnelerin sadece %1$d tanesi.\n
 23 COMPACTDB Zaten başladı.\n
-24 Sayfa sayısı %d ve %d arasında olmalıdır.\n
-25 Örneğin kilit zaman aşımı %d ile %d arasında olmalıdır.
+24 Sayfa sayısı %1$d ve %2$d arasında olmalıdır.\n
+25 Örneğin kilit zaman aşımı %1$d ile %2$d arasında olmalıdır.
 26 Toplam nesneler: %1$d\n
 27 Başarısız nesneler: %1$d\n
 28 Değiştirilmiş nesneler: %1$d\n
@@ -530,7 +530,7 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 31 Alt sınıf temsilleri katalogda korunmuş.\n
 32 Yalıtım düzeyi ayarlanamıyor.\n
 33 Veritabanını düzenleme bulunamadı.\n
-34 Sınıf kilit zaman aşımı %d ile %d arasında olmalıdır.\n
+34 Sınıf kilit zaman aşımı %1$d ile %2$d arasında olmalıdır.\n
 35 Kilitli sınıf ... Eksik işlem ...\n
 36 İşlenmemiş sınıf ...\n
 37 İşlem hatası ... Eksik işlem ...\n
@@ -564,8 +564,8 @@ geçerli seçenekler:\n\
   -c, --class-lock-timeout          sınıf kilidi için zaman aşımı\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
-21 Host üzerinde çalışan CUBRID Master %s \n başlandı %s
-22 servisli %d  isteklerde bulunur. %d  sunucu (lar) çalışıyor.\n
+21 Host üzerinde çalışan CUBRID Master %1$s \n başlandı %2$s
+22 servisli %1$d  isteklerde bulunur. %2$d  sunucu (lar) çalışıyor.\n
 23 %1$s dakika AŞAĞI KAPATIYOR\n
 24 %1$s
 25 Kapatmak için sunucunun adı:
@@ -594,10 +594,10 @@ geçerli seçenekler:\n\
 33 Master %1$d dakika içinde kapanacaktır\n
 34 İstemciden veri alma hatası
 35 veritabanı sunucusu %1$s şu anda çalışmıyor
-36 %s kabuk çalıştırma (%s), %s yapamam
-37 süreç çatalı %s,%d,%s döndürülen
+36 %2$s kabuk çalıştırma (%1$s), %3$s yapamam
+37 %1$s süreç çatalı, %2$d, %3$s döndürülen
 38 %1$s yürütemez
-39 -i(--immediately) option must be used with --deact-stop-all option.\n
+39 -i(--immediately) opsiyon seçeneği --deact-stop-all ile birlikte kullanılmalıdır.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
@@ -647,7 +647,7 @@ geçerli seçenekler:\n\
   -I, --index-name             index name that will be checked only\n\
                                default: check all indices\n\
       --check-prev-link        check only previous links of indices\n\
-      --repair-prev-link       repair previous links of indices\n\
+      --repair-prev-link       önceki indeks bağlantıları onar\n\
       --check-file-tracker     check all allocated pages of file\n\
       --check-heap             check all pages of heap files\n\
       --check-catalog          check catalog consistency\n\
@@ -657,26 +657,26 @@ geçerli seçenekler:\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Sayfa boyutu %s ile veritabanı '%s' için alan açıklaması. (log sayfa boyutu:%s)\n\n
-16 %5d %9s  %s %s  %s\n
+15 Sayfa boyutu %2$s ile veritabanı '%1$s' için alan açıklaması. (log sayfa boyutu:%3$s)\n\n
+16 %1$5d %2$9s  %3$s %4$s  %5$s\n
 17 Çıktı dosyası '%1$s' açılamadı\n
-18 Veritabanı '%s' sayfa boyutu %s için geçici yoğunlukları için alan açıklaması.\n\n
+18 Veritabanı '%1$s' sayfa boyutu %2$s için geçici yoğunlukları için alan açıklaması.\n\n
 19 Volid Amacı  toplam_sayfa free_pages Vol Name\n\n
 20 Volid Amacı  total_size free_size Vol Name\n\n
 21 LOB alanı açıklaması %1$s\n\n
 22 -------------------------------------------------------------------------------\n
-30 sayfa boyutu %s ile veritabanı '%s' için özet alan açıklama. (sayfa boyutu log:%s)\n\n
+30 sayfa boyutu %2$s ile veritabanı '%1$s' için özet alan açıklama. (sayfa boyutu log:%3$s)\n\n
 31 Amaç toplam_sayfa used_pages free_pages volume_count\n
 32 Amaç total_size used_size free_size volume_count\n
-33 %10s %s %s %s %10d\n
+33 %1$10s %2$s %3$s %4$s %5$10d\n
 34 -------------------------------------------------------------\n
 40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
 41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
-42 %5d %9s  %s %s %s %s %s  %s\n
+42 %1$5d %2$9s  %3$s %4$s %5$s %6$s %7$s  %8$s\n
 43 ----------------------------------------------------------------------------------------------------\n
 50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
 51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
-52 %10s %s %s %s %s %s %s %10d\n
+52 %1$10s %2$s %3$s %4$s %5$s %6$s %7$s %8$10d\n
 53 -------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Kullanım / veritabanı boş alanı gösterir.\n\
@@ -701,7 +701,7 @@ kullanım: %1$s estimate_data sayı-örnekleri ortalama örnekli-boyut numarası
 
 $set 21 MSGCAT_UTIL_SET_ESTIMATEDB_INDEX
 15 Belirtilen Kötü indeks anahtar türü = %1$s\n
-16 Kötü ortalama anahtar uzunluğu belirtilen = %d olduğunda hassasiyet= %d\n
+16 Kötü ortalama anahtar uzunluğu belirtilen = %1$d olduğunda hassasiyet = %2$d\n
 17 Belirtilen Kötü bağımsız değişkenleri\n
 20 Toplam dizin sayfaları Tahmini sayısı = %1$d\n (Endeksi yarattığı zaman, örnekler sonra doldurulacaktır edilmiştir.)\n
 21 Toplam dizin sayfaları Tahmini sayısı = %1$d\n (Endeksi yarattığı zaman, örnekler önce doldurulması edilmiştir (ortalama durumda))\n
@@ -819,7 +819,7 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 5 yedekleme-hedefi
 6 yedekleme yoğunluk hedef için bir dizin veya aygıt
 20 veritabanı '%1$s' yok.
-21 DB sürüm çok düşük olduğundan, '%s',%s geçirilemez.\n
+21 DB sürüm çok düşük olduğundan, '%1$s', %2$s geçirilemez.\n
 22 '%1$s' taşınmasına olanak gerekmez.\n
 23 '%1$s' taşıma gerekir.\n
 24 Yedekleme geçişten sonra önerilir. Şimdi veritabanınızı yedeklemek ister misiniz? (e/ h):
@@ -878,8 +878,8 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 yanlış bir değeri \"%1$s\" sunucunun HA çalışan modu için.\n
 12 Sunucunun HA modunda çalışması değiştirilemez.\n
 21 DBA şifrenizi girin:
-22 Modunda çalışırken sunucu '%s'' şu andaki HA %s dir.\n
-23 Sunucu '%s'' HA modunda çalışırken \"%s\"olarak değiştirildi.\n
+22 Modunda çalışırken sunucu '%1$s' şu andaki HA %2$s dir.\n
+23 Sunucu '%1$s' HA modunda çalışırken \"%2$s\"olarak değiştirildi.\n
 24 Sunucu modunda HA ayarlı değil.\n
 58 HA özelliği bu platformda desteklenmiyor.\n
 59 changemode bağımsız modu olarak çalıştıramazsınız.\n
@@ -1014,7 +1014,7 @@ Table | Index | Function expression\n
 47 Derlemelerin senkronizasyonu gerçekleştirilmedi. Veri tabanı değişmedi.\n
 48 '%1$s' sistem tablosu içerikleri yeni sistem derlemeleri ile güncellendi.\n
 49 Sistem derlemeleri güncellemesi veri tabanı çökmesine neden olabilir. Devam (y/n) ?\n
-50 Derleme '%s' (Id: %d) veri tabanında bulunmadı veya yeni sistem konfigürasyonunda değişti.\n
+50 Derleme '%1$s' (Id: %2$d) veri tabanında bulunmadı veya yeni sistem konfigürasyonunda değişti.\n
 51 Derlee '%1$s' içeren koşula sahip tetikler; tekrardan tanımlanmalıdırlar:\nTrigger | Condition\n
 52 Derleme '%1$s' içeren sorgulama görüntüle; tekrardan tanımlanmalıdırlar:\nView | Query\n
 53 Derleme'%1$s' sahip özellikler; tekrardan tanımlanmalıdırlar.\nTable | Attribute Domain\n
@@ -1028,7 +1028,7 @@ Lütfen dosya '%1$s' kontrol ediniz ve onu derlemeleri veri tabanı içine zorla
 59 Konfigüre edilmemiş veya sistem derlemelerine kıyasla değişmiş olan veri tabanında %1$d derlemeler var.\n
 60 \
 synccolldb: Derlemeleri sistem derlemeleri ile veri tabanından senkronize eder.\n\
-kullanım: %1$s synccolldb [OPTION] database-name\n\
+kullanım: %1$s synccolldb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -c, --check-only    Sistemin derlemesi ile veri tabanından derlemeleri control eder.\n\
@@ -1040,22 +1040,22 @@ $set 49 MSGCAT_UTIL_SET_TRANLIST
 20 %1$s şifre gir: 
 22 Tran index          User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
-24 %4d%-10s %14s %14s %15d %17s\n
+24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
 25 Geçişler yok\n
 26 tranlist sadece DBA veya bir DBA grup üyesi tarafından uygulanabilir.\n
 27 sort-key sütun numarası (%1$d) geçersiz.\n
 32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %4d%-10s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
 34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
 42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-43 %4d%-10s %14s %14s %14d    %-25s %10.2f %12.2f    %28s     %13s   %s\n
+43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
 44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %1$d
 46 SQL_ID: %1$s\n
 59 tranlist standalone mode olarak çalışamaz.\n
 60 \
 tranlist: Aktif geçiş bilgisini boşalt.\n\
-kullanım: %1$s tranlist [OPTION] database-name\n\
+kullanım: %1$s tranlist [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -u, --user=ID                veri tabanı erişimi için kullanıcı kimliği; default: DBA user\n\
@@ -1065,13 +1065,13 @@ geçerli seçenekler:\n\
       --reverse                Sıralama sonucu ters\n
 
 $set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 The server was not configured for HA.\n
-23 Prefetch feature is disabled.\n
-58 HA feature is not supported in this platform.\n
-59 prefetchlogdb cannot run as standalone mode.\n
+22 Sunucu HA için yapılandırılmamıştır.\n
+23 Prefetch özelliği devre dısı bırakılmıştır.\n
+58 HA özellik bu platformda desteklenmiyor.\n
+59 prefetchlogdb bağımsız modunda çalişmamaktadır.\n
 60 \
-prefetchlogdb: Prefetch log pages from the server.\n\
-usage: %1$s prefetchlogdb [OPTION] database-name\n\
+prefetchlogdb: Sunucudan günlük sayfalarını okuyun.\n\
+kullanım: %1$s prefetchlogdb [SEÇENEK] database-name\n\
 \n\
-valid options:\n\
-  -L, --log-path=PATH         directory PATH for copied log volumes\n
+Geçerli seçenekler:\n\
+  -L, --log-path=PATH         kopyalan günlük hacımler için dizin yolu.\n
