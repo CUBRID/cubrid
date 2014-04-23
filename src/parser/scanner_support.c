@@ -163,9 +163,20 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	    case PT_HINT_INDEX_SS:
 	      if (node->node_type == PT_SELECT)
 		{
-		  node->info.query.q.select.hint |= hint_table[i].hint;
-		  node->info.query.q.select.index_ss = hint_table[i].arg_list;
-		  hint_table[i].arg_list = NULL;
+		  if (hint_table[i].arg_list != NULL
+		      && PT_IS_NULL_NODE (hint_table[i].arg_list))
+		    {
+		      /* For INDEX_SS(), just ignore index skip scan hint  */
+		      node->info.query.q.select.hint &= ~PT_HINT_INDEX_SS;
+		      node->info.query.q.select.index_ss = NULL;
+		    }
+		  else
+		    {
+		      node->info.query.q.select.hint |= hint_table[i].hint;
+		      node->info.query.q.select.index_ss =
+			hint_table[i].arg_list;
+		      hint_table[i].arg_list = NULL;
+		    }
 		}
 	      break;
 #if 0
@@ -440,6 +451,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
   char hint_buf[JP_MAXNAME];
   char *hint_p, *arg_start, *arg_end, *temp;
   PT_NODE *arg;
+  bool has_parenthesis;
 
   for (i = 0; hint_table[i].tokens; i++)
     {
@@ -451,6 +463,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 
       while (hint_p)
 	{
+	  has_parenthesis = false;
 	  len = strlen (hint_table[i].tokens);
 	  /* check token before */
 	  if ((count == 0 && (prev_is_white_char ||
@@ -467,6 +480,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 		}
 	      else if (*(hint_p) == '(')
 		{		/* need to check for argument */
+		  has_parenthesis = true;
 		  hint_p++;	/* consume '(' */
 		  arg_start = hint_p;
 		  arg_end = strstr (arg_start, ")");
@@ -509,7 +523,9 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 				  if (arg)
 				    {
 				      temp = strstr (arg_start, ".");
-				      if (temp && temp < &(hint_p[j]))
+				      if (temp && temp < &(hint_p[j])
+					  && hint_table[i].hint !=
+					  PT_HINT_INDEX_SS)
 					{
 					  *temp = '\0';
 					  arg->info.name.resolved =
@@ -574,7 +590,9 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 			      if (arg)
 				{
 				  temp = strstr (arg_start, ".");
-				  if (temp && temp < &(hint_p[j]))
+				  if (temp && temp < &(hint_p[j])
+				      && hint_table[i].hint !=
+				      PT_HINT_INDEX_SS)
 				    {
 				      *temp = '\0';
 				      arg->info.name.resolved =
@@ -605,6 +623,20 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 		  if (hint_table[i].arg_list)
 		    {
 		      hint = hint_table[i].hint;
+		    }
+		  else if (has_parenthesis
+			   && hint_table[i].hint == PT_HINT_INDEX_SS)
+		    {
+		      /*
+		       * INDEX_SS() means do not apply index skip scan,
+		       * use special node to mark this.
+		       */
+		      arg = parser_new_node (this_parser, PT_VALUE);
+		      if (arg)
+			{
+			  arg->type_enum = PT_TYPE_NULL;
+			}
+		      hint_table[i].arg_list = arg;
 		    }
 		}
 	    }

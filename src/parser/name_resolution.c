@@ -88,6 +88,12 @@ struct natural_join_attr_info
   NATURAL_JOIN_ATTR_INFO *next;
 };
 
+enum
+{
+  REQUIRE_ALL_MATCH = false,
+  DISCARD_NO_MATCH = true
+};
+
 static const char *CPTR_PT_NAME_IN_GROUP_HAVING = "name_in_group_having";
 
 static PT_NODE *pt_bind_parameter (PARSER_CONTEXT * parser,
@@ -173,8 +179,8 @@ static PT_NODE *pt_make_flat_name_list (PARSER_CONTEXT * parser,
 static int pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p);
 static PT_NODE *pt_object_to_data_type (PARSER_CONTEXT * parser,
 					PT_NODE * class_list);
-static int pt_resolve_hint_args (PARSER_CONTEXT * parser, PT_NODE * arg_list,
-				 PT_NODE * spec_list);
+static int pt_resolve_hint_args (PARSER_CONTEXT * parser, PT_NODE ** arg_list,
+				 PT_NODE * spec_list, bool discard_no_match);
 static int pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_copy_data_type_entity (PARSER_CONTEXT * parser,
 					  PT_NODE * data_type);
@@ -6669,16 +6675,21 @@ error:
  * pt_resolve_hint_args () -
  *   return: NO_ERROR on success, non-zero for ERROR
  *   parser(in):
- *   arg_list(in):
+ *   arg_list(in/out):
  *   spec_list(in):
+ *   discard_no_match(in): remove unmatched node from arg_list
  */
 static int
-pt_resolve_hint_args (PARSER_CONTEXT * parser,
-		      PT_NODE * arg_list, PT_NODE * spec_list)
+pt_resolve_hint_args (PARSER_CONTEXT * parser, PT_NODE ** arg_list,
+		      PT_NODE * spec_list, bool discard_no_match)
 {
 
-  PT_NODE *arg, *spec, *range;
-  for (arg = arg_list; arg; arg = arg->next)
+  PT_NODE *arg, *spec, *range, *prev, *tmp;
+
+  prev = NULL;
+  arg = *arg_list;
+
+  while (arg != NULL)
     {
       if (arg->node_type != PT_NAME || arg->info.name.original == NULL)
 	{
@@ -6708,7 +6719,31 @@ pt_resolve_hint_args (PARSER_CONTEXT * parser,
       /* not found */
       if (spec == NULL)
 	{
-	  goto exit_on_error;
+	  if (discard_no_match)
+	    {
+	      tmp = arg;
+	      arg = arg->next;
+	      tmp->next = NULL;
+	      parser_free_node (parser, tmp);
+
+	      if (prev == NULL)
+		{
+		  *arg_list = arg;
+		}
+	      else
+		{
+		  prev->next = arg;
+		}
+	    }
+	  else
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      else
+	{
+	  prev = arg;
+	  arg = arg->next;
 	}
     }
 
@@ -6728,35 +6763,35 @@ static int
 pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_HINT_ENUM hint;
-  PT_NODE *ordered = NULL, *use_nl = NULL, *use_idx = NULL, *use_merge = NULL;
-  PT_NODE *index_ss = NULL;
+  PT_NODE **ordered = NULL, **use_nl = NULL, **use_idx = NULL;
+  PT_NODE **use_merge = NULL, **index_ss = NULL;
   PT_NODE *spec_list = NULL;
 
   switch (node->node_type)
     {
     case PT_SELECT:
       hint = node->info.query.q.select.hint;
-      ordered = node->info.query.q.select.ordered;
-      use_nl = node->info.query.q.select.use_nl;
-      use_idx = node->info.query.q.select.use_idx;
-      index_ss = node->info.query.q.select.index_ss;
-      use_merge = node->info.query.q.select.use_merge;
+      ordered = &node->info.query.q.select.ordered;
+      use_nl = &node->info.query.q.select.use_nl;
+      use_idx = &node->info.query.q.select.use_idx;
+      index_ss = &node->info.query.q.select.index_ss;
+      use_merge = &node->info.query.q.select.use_merge;
       spec_list = node->info.query.q.select.from;
       break;
     case PT_DELETE:
       hint = node->info.delete_.hint;
-      ordered = node->info.delete_.ordered_hint;
-      use_nl = node->info.delete_.use_nl_hint;
-      use_idx = node->info.delete_.use_idx_hint;
-      use_merge = node->info.delete_.use_merge_hint;
+      ordered = &node->info.delete_.ordered_hint;
+      use_nl = &node->info.delete_.use_nl_hint;
+      use_idx = &node->info.delete_.use_idx_hint;
+      use_merge = &node->info.delete_.use_merge_hint;
       spec_list = node->info.delete_.spec;
       break;
     case PT_UPDATE:
       hint = node->info.update.hint;
-      ordered = node->info.update.ordered_hint;
-      use_nl = node->info.update.use_nl_hint;
-      use_idx = node->info.update.use_idx_hint;
-      use_merge = node->info.update.use_merge_hint;
+      ordered = &node->info.update.ordered_hint;
+      use_nl = &node->info.update.use_nl_hint;
+      use_idx = &node->info.update.use_idx_hint;
+      use_merge = &node->info.update.use_merge_hint;
       spec_list = node->info.update.spec;
       break;
     default:
@@ -6766,7 +6801,8 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (hint & PT_HINT_ORDERED)
     {
-      if (pt_resolve_hint_args (parser, ordered, spec_list) != NO_ERROR)
+      if (pt_resolve_hint_args (parser, ordered, spec_list,
+				REQUIRE_ALL_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -6780,7 +6816,8 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (hint & PT_HINT_USE_NL)
     {
-      if (pt_resolve_hint_args (parser, use_nl, spec_list) != NO_ERROR)
+      if (pt_resolve_hint_args (parser, use_nl, spec_list,
+				REQUIRE_ALL_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -6788,15 +6825,24 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (hint & PT_HINT_USE_IDX)
     {
-      if (pt_resolve_hint_args (parser, use_idx, spec_list) != NO_ERROR)
+      if (pt_resolve_hint_args (parser, use_idx, spec_list,
+				REQUIRE_ALL_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
     }
 
-  if (hint & PT_HINT_INDEX_SS)
+  /* *index_ss == NULL means apply index skip scan to each table */
+  if ((hint & PT_HINT_INDEX_SS) && *index_ss != NULL)
     {
-      if (pt_resolve_hint_args (parser, index_ss, spec_list) != NO_ERROR)
+      if (pt_resolve_hint_args (parser, index_ss, spec_list,
+				DISCARD_NO_MATCH) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Invalidate index skip scan if not found matched item */
+      if (*index_ss == NULL)
 	{
 	  goto exit_on_error;
 	}
@@ -6804,7 +6850,8 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (hint & PT_HINT_USE_MERGE)
     {
-      if (pt_resolve_hint_args (parser, use_merge, spec_list) != NO_ERROR)
+      if (pt_resolve_hint_args (parser, use_merge, spec_list,
+				REQUIRE_ALL_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -6821,25 +6868,25 @@ exit_on_error:
 
   /* clear hint info */
   node->info.query.q.select.hint = PT_HINT_NONE;
-  if (ordered != NULL)
+  if (*ordered != NULL)
     {
-      parser_free_tree (parser, ordered);
+      parser_free_tree (parser, *ordered);
     }
-  if (use_nl != NULL)
+  if (*use_nl != NULL)
     {
-      parser_free_tree (parser, use_nl);
+      parser_free_tree (parser, *use_nl);
     }
-  if (use_idx != NULL)
+  if (*use_idx != NULL)
     {
-      parser_free_tree (parser, use_idx);
+      parser_free_tree (parser, *use_idx);
     }
-  if (index_ss != NULL)
+  if (*index_ss != NULL)
     {
-      parser_free_tree (parser, index_ss);
+      parser_free_tree (parser, *index_ss);
     }
-  if (use_merge != NULL)
+  if (*use_merge != NULL)
     {
-      parser_free_tree (parser, use_merge);
+      parser_free_tree (parser, *use_merge);
     }
 
   switch (node->node_type)
