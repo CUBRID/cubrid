@@ -166,13 +166,10 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     paramdump\n\
     statdump\n\
     changemode\n\
-    copylogdb\n\
-    applylogdb\n\
     applyinfo\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
-    prefetchlogdb\n\
 \n\
 %4$sはDBMS道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n

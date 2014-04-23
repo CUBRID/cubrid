@@ -166,13 +166,10 @@ cubrid 管理工具，版本 %1$s\n\
     paramdump\n\
     statdump\n\
     changemode\n\
-    copylogdb\n\
-    applylogdb\n\
     applyinfo\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
-    prefetchlogdb\n\
 \n\
 %4$s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n

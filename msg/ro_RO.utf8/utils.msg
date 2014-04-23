@@ -166,13 +166,10 @@ Utilitare de administrare disponibile:\n\
     paramdump\n\
     statdump\n\
     changemode\n\
-    copylogdb\n\
-    applylogdb\n\
     applyinfo\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
-    prefetchlogdb\n\
 \n\
 %4$s este un utilitar pentru SGBD.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n

@@ -166,13 +166,10 @@ Utilidades de administrador disponible:\n\
     paramdump\n\
     statdump\n\
     changemode\n\
-    copylogdb\n\
-    applylogdb\n\
     applyinfo\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
-    prefetchlogdb\n\
 \n\
 %s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n

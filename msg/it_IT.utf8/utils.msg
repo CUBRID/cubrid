@@ -166,13 +166,10 @@ Utilità amministrazione disponibili:\n\
     paramdump\n\
     statdump\n\
     changemode\n\
-    copylogdb\n\
-    applylogdb\n\
     applyinfo\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
-    prefetchlogdb\n\
 \n\
 %s è un tool per DBMS.\n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
