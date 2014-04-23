@@ -4452,6 +4452,41 @@ spage_dump (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_p,
 #endif
 }
 
+#if !defined(NDEBUG)
+/*
+ * spage_check_num_slots () - Check consistency of page. This function is used for
+ *               debugging purposes
+ *   return: true/false
+ *   ppage_p(in): Pointer to slotted page
+ */
+bool
+spage_check_num_slots (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
+{
+  SPAGE_HEADER *page_header_p;
+  SPAGE_SLOT *slot_p;
+  int i, nrecs;
+
+  assert (page_p != NULL);
+
+  page_header_p = (SPAGE_HEADER *) page_p;
+  SPAGE_VERIFY_HEADER (page_header_p);
+
+  slot_p = spage_find_slot (page_p, page_header_p, 0, false);
+
+  nrecs = 0;
+  for (i = 0; i < page_header_p->num_slots; slot_p--, i++)
+    {
+      if (slot_p->offset_to_record != SPAGE_EMPTY_OFFSET)
+	{
+	  nrecs++;
+	}
+    }
+  assert (page_header_p->num_records == nrecs);
+
+  return (page_header_p->num_records == nrecs) ? true : false;
+}
+#endif
+
 #ifdef SPAGE_DEBUG
 /*
  * spage_check () - Check consistency of page. This function is used for

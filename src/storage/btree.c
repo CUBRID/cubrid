@@ -779,9 +779,6 @@ static int btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p,
 #endif /* SERVER_MODE */
 
 #if !defined(NDEBUG)
-
-#define MOD_FACTOR	20000
-
 /*
  * btree_get_node_level () -
  *
@@ -810,6 +807,7 @@ random_exit (THREAD_ENTRY * thread_p)
 {
   static bool init = false;
   int r;
+#define MOD_FACTOR	20000
 
   if (prm_get_bool_value (PRM_ID_QA_BTREE_RANDOM_EXIT) == false)
     {
@@ -9595,6 +9593,10 @@ start_point:
 	      goto error;
 	    }
 
+#if !defined(NDEBUG)
+	  (void) spage_check_num_slots (thread_p, P);
+#endif
+
 	  if (btree_is_new_file (&btid_int))
 	    {
 	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
@@ -9718,6 +9720,11 @@ start_point:
 		  goto error;
 		}
 	      merged = true;
+
+#if !defined(NDEBUG)
+	      (void) spage_check_num_slots (thread_p, P);
+	      (void) spage_check_num_slots (thread_p, Q);
+#endif
 
 	      if (VPID_EQ (&child_vpid, &Q_vpid))
 		{
@@ -9844,6 +9851,11 @@ start_point:
 		  goto error;
 		}
 	      merged = true;
+
+#if !defined(NDEBUG)
+	      (void) spage_check_num_slots (thread_p, P);
+	      (void) spage_check_num_slots (thread_p, Left);
+#endif
 
 	      if (VPID_EQ (&child_vpid, &Left_vpid))
 		{
@@ -10005,7 +10017,7 @@ start_point:
 				 NULL);
 	  pgbuf_set_dirty (thread_p, P, DONT_FREE);
 	  btree_set_unknown_key_error (thread_p, btid, key,
-				       "btree_delete_from_leaf: "
+				       "btree_delete: "
 				       "btree_search_leaf_page fails, "
 				       "current key not found.");
 	  goto error;
@@ -10072,7 +10084,7 @@ start_point:
 			     NULL);
       pgbuf_set_dirty (thread_p, P, DONT_FREE);
       btree_set_unknown_key_error (thread_p, btid, key,
-				   "btree_delete_from_leaf: btree_search_leaf_page fails, next key not found.");
+				   "btree_delete: btree_search_leaf_page fails, next key not found.");
       goto error;
     }
 
@@ -10471,6 +10483,10 @@ key_deletion:
     {
       goto error;
     }
+
+#if !defined(NDEBUG)
+  (void) spage_check_num_slots (thread_p, P);
+#endif
 
   pgbuf_unfix_and_init (thread_p, P);
 
@@ -14542,6 +14558,12 @@ start_point:
 	  goto error;
 	}
 
+#if !defined(NDEBUG)
+      (void) spage_check_num_slots (thread_p, P);
+      (void) spage_check_num_slots (thread_p, Q);
+      (void) spage_check_num_slots (thread_p, R);
+#endif
+
       pgbuf_unfix_and_init (thread_p, P);
 
       if (VPID_EQ (&child_vpid, &Q_vpid))
@@ -14727,6 +14749,12 @@ start_point:
 	    {
 	      goto error;
 	    }
+
+#if !defined(NDEBUG)
+	  (void) spage_check_num_slots (thread_p, P);
+	  (void) spage_check_num_slots (thread_p, Q);
+	  (void) spage_check_num_slots (thread_p, R);
+#endif
 
 	  if (node_type == BTREE_LEAF_NODE)
 	    {
@@ -15439,6 +15467,10 @@ key_insertion:
 
       goto error;
     }
+
+#if !defined(NDEBUG)
+  (void) spage_check_num_slots (thread_p, P);
+#endif
 
   /* if success, update max_key_len in page P */
   header = btree_get_node_header (P);

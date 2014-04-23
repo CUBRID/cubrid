@@ -175,6 +175,9 @@ extern SCAN_CODE spage_get_record (PAGE_PTR pgptr, PGSLOTID slotid,
 extern bool spage_is_slot_exist (PAGE_PTR pgptr, PGSLOTID slotid);
 extern void spage_dump (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR pgptr,
 			int isrecord_printed);
+#if !defined(NDEBUG)
+extern bool spage_check_num_slots (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
+#endif
 extern int spage_get_record_length (PAGE_PTR pgptr, PGSLOTID slotid);
 extern int spage_get_space_for_record (PAGE_PTR page_p, PGSLOTID slot_id);
 extern INT16 spage_get_record_type (PAGE_PTR pgptr, PGSLOTID slotid);
