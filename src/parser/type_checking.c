@@ -16992,7 +16992,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
     case PT_FROM_UNIXTIME:
-      error = db_from_unixtime (arg1, arg2, result);
+      error = db_from_unixtime (arg1, arg2, result, domain);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());

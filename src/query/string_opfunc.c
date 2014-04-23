@@ -11386,7 +11386,17 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
   assert (DB_VALUE_TYPE (date_lang) == DB_TYPE_INTEGER);
   date_lang_id = lang_get_lang_id_from_flag (DB_GET_INT (date_lang), &dummy,
 					     &dummy);
-  codeset = (domain != NULL) ? TP_DOMAIN_CODESET (domain) : INTL_CODESET_NONE;
+  if (domain != NULL && domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
+    {
+      codeset = TP_DOMAIN_CODESET (domain);
+      res_collation = TP_DOMAIN_COLLATION (domain);
+    }
+  else
+    {
+      codeset = DB_GET_STRING_CODESET (format);
+      res_collation = DB_GET_STRING_COLLATION (format);
+    }
+
   lld = lang_get_specific_locale (date_lang_id, codeset);
   if (lld == NULL)
     {
@@ -11396,9 +11406,6 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
 	      lang_charset_name (codeset));
       goto error;
     }
-  codeset = lld->codeset;
-  res_collation = (domain != NULL) ? TP_DOMAIN_COLLATION (domain)
-    : LANG_GET_BINARY_COLLATION (codeset);
 
   res_type = DB_VALUE_DOMAIN_TYPE (time_value);
 
@@ -20787,7 +20794,17 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
   assert (DB_VALUE_TYPE (date_lang) == DB_TYPE_INTEGER);
   date_lang_id = lang_get_lang_id_from_flag (DB_GET_INT (date_lang), &dummy,
 					     &dummy);
-  codeset = (domain != NULL) ? TP_DOMAIN_CODESET (domain) : INTL_CODESET_NONE;
+  if (domain != NULL && domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
+    {
+      codeset = TP_DOMAIN_CODESET (domain);
+      res_collation = TP_DOMAIN_COLLATION (domain);
+    }
+  else
+    {
+      codeset = DB_GET_STRING_CODESET (format);
+      res_collation = DB_GET_STRING_COLLATION (format);
+    }
+
   lld = lang_get_specific_locale (date_lang_id, codeset);
   if (lld == NULL)
     {
@@ -20797,9 +20814,6 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
 	      lang_charset_name (codeset));
       return error_status;
     }
-  codeset = lld->codeset;
-  res_collation = (domain != NULL) ? TP_DOMAIN_COLLATION (domain)
-    : LANG_GET_BINARY_COLLATION (codeset);
 
   res_type = DB_VALUE_DOMAIN_TYPE (date_value);
 
@@ -22538,7 +22552,7 @@ error:
 
 int
 db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format,
-		  DB_VALUE * result)
+		  DB_VALUE * result, const TP_DOMAIN * domain)
 {
   time_t unix_timestamp;
   DB_TYPE format_type;
@@ -22592,7 +22606,7 @@ db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format,
 	/* use date_lang for en_US */
 	DB_MAKE_INTEGER (&date_lang, 0);
 	error_status = db_date_format (&ts_val, format, &date_lang, result,
-				       NULL);
+				       domain);
 	if (error_status != NO_ERROR)
 	  {
 	    goto error;

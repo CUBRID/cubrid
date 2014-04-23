@@ -1502,8 +1502,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_from_unixtime (peek_left, peek_right, arithptr->value)
-	       != NO_ERROR)
+      else if (db_from_unixtime (peek_left, peek_right, arithptr->value,
+				 arithptr->domain) != NO_ERROR)
 	{
 	  goto error;
 	}

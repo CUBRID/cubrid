@@ -374,7 +374,8 @@ extern int count_nonleap_years_up_to (int year);
 extern int db_date_diff (const DB_VALUE * date_value1,
 			 const DB_VALUE * date_value2, DB_VALUE * result);
 extern int db_from_unixtime (const DB_VALUE * src_date,
-			     const DB_VALUE * format, DB_VALUE * result);
+			     const DB_VALUE * format, DB_VALUE * result,
+			     const TP_DOMAIN * domain);
 extern int db_time_diff (const DB_VALUE * datetime_value1,
 			 const DB_VALUE * datetime_value2, DB_VALUE * result);
 extern int db_bit_to_blob (const DB_VALUE * src_value,
