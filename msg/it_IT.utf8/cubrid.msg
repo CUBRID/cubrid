@@ -1351,15 +1351,15 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 103 uso non valido di "index hint"
 104 Lunghezza massima stringa di byte è %1$d byte.
 105 Errore di sintassi: unexpected
-106 , aspettavo '{'
-107 , aspettavo SELECT o '('
-108 , aspettavo
-109 inaspettato
-110 FINE DELL'ISTRUZIONE
-111 Nella riga %1$d, colonna %2$d prima di '%3$c%4$s'\n
-112 Nella riga %1$d, colonna %2$d prima di %3$s\n
-113 prima di ' %1$s'\n
-114 prima della FINE DEL'ISTRUZIONE\n
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
+110 END OF STATEMENT
+111 In line %d, column %d before '%c%s'\n
+112 In line %d, column %d before %s\n
+113 before ' %1$s'\n
+114 before END OF STATEMENT\n
 115 utilizzo non valido del set names\n  set_names: SET NAMES charset [COLLATE collation]\n
 116 utilizzo non valido del chr\n  CHR ( number [using charset] )\n
 117 utilizzo non valido del charset\n CHARSET ( expression )\n
