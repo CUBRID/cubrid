@@ -302,18 +302,23 @@
 		<row><td>cub_admin.exe</td><td>CUBRID</td><td>cub_admin.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_admin.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_admin.pdb</td><td>CUBRID</td><td>cub_admin.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_admin.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_auto.exe</td><td>CUBRID</td><td>cub_auto.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_auto.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_auto.pdb</td><td>CUBRID</td><td>cub_auto.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_auto.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_broker.exe</td><td>CUBRID</td><td>cub_broker.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_broker.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_broker.pdb</td><td>CUBRID</td><td>cub_broker.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_broker.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_cas.exe</td><td>CUBRID</td><td>cub_cas.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_cas.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_cas.pdb</td><td>CUBRID</td><td>cub_cas.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_cas.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_cmserver.exe</td><td>CUBRID</td><td>cub_cmserver.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_cmserver.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_cmserver.pdb</td><td>CUBRID</td><td>cub_cmserver.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_cmserver.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_commdb.exe</td><td>CUBRID</td><td>cub_commdb.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_commdb.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_commdb.pdb</td><td>CUBRID</td><td>cub_commdb.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_commdb.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_job.exe</td><td>CUBRID</td><td>cub_job.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_job.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_job.pdb</td><td>CUBRID</td><td>cub_job.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_job.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_jobfile.exe</td><td>CUBRID</td><td>cub_jobfile.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_jobfile.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_jobfile.pdb</td><td>CUBRID</td><td>cub_jobfile.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_jobfile.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_jobsa.exe</td><td>CUBRID</td><td>cub_jobsa.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_jobsa.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_jobsa.pdb</td><td>CUBRID</td><td>cub_jobsa.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_jobsa.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_js.exe</td><td>CUBRID</td><td>cub_js.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_js.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_js.pdb</td><td>CUBRID</td><td>cub_js.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_js.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_master.exe</td><td>CUBRID</td><td>cub_master.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_master.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_master.pdb</td><td>CUBRID</td><td>cub_master.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_master.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cub_proxy.exe</td><td>CUBRID</td><td>cub_proxy.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_proxy.exe</td><td>1</td><td>NewSubFolder5</td></row>
