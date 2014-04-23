@@ -2354,6 +2354,7 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 {
   int ret_value = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
+  int timeout = 0, remained_timeout = 0;
 
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {
@@ -2363,6 +2364,12 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
   else
     {
       net_timeout_set (DEFAULT_CHECK_INTERVAL);
+
+#if defined(CAS_FOR_MYSQL)
+      timeout = cas_mysql_get_mysql_wait_timeout ();
+      remained_timeout = timeout;
+#endif /* CAS_FOR_MYSQL */
+
       new_req_sock_fd = srv_sock_fd;
     }
 
@@ -2388,6 +2395,12 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 	{
 	  break;
 	}
+#if defined (CAS_FOR_MYSQL)
+      else if (as_info->con_status == CON_STATUS_OUT_TRAN)
+	{
+	  remained_timeout -= DEFAULT_CHECK_INTERVAL;
+	}
+#endif /* CAS_FOR_MYSQL */
 
       if (net_read_header (clt_sock_fd, client_msg_header) < 0)
 	{
@@ -2416,6 +2429,21 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 		  ret_value = -1;
 		  break;
 		}
+
+#if defined (CAS_FOR_MYSQL)
+	      /* this is not real timeout. try again. */
+	      if (remained_timeout > 0)
+		{
+		  continue;
+		}
+
+	      /* execute dummy query to reset wait_timeout of MySQL */
+	      if (cas_mysql_execute_dummy () >= 0)
+		{
+		  remained_timeout = timeout;
+		  continue;
+		}
+#endif /* CAS_FOR_MYSQL */
 	    }
 	}
       else
