@@ -2378,13 +2378,14 @@ hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg)
 		}
 
 	      kill (proc->pid, SIGKILL);
-
-	      hb_Resource->num_procs--;
-	      hb_remove_proc (proc);
-	      proc = NULL;
 	    }
+
+	  hb_Resource->num_procs--;
+	  hb_remove_proc (proc);
+	  proc = NULL;
 	}
 
+      assert (hb_Resource->num_procs == 0);
       goto end_confirm_cleanup;
     }
 
@@ -2399,6 +2400,26 @@ hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg)
 	  hb_remove_proc (proc);
 	  proc = NULL;
 	}
+      else if (proc->type != HB_PTYPE_SERVER &&
+	       resource_job_arg->retries >
+	       HB_DEFAULT_MAX_PROCESS_SHUTDOWN_CONFIRM_EXCEPT_SERVER)
+	{
+	  kill (proc->pid, SIGKILL);
+
+	  snprintf (error_string, LINE_MAX, "(pid: %d, args:%s)",
+		    proc->pid, proc->args);
+
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			 ER_HB_PROCESS_EVENT, 2,
+			 "No response to shutdown request. Process killed",
+			 error_string);
+
+	  hb_Resource->num_procs--;
+	  hb_remove_proc (proc);
+	  proc = NULL;
+	}
+
+      assert (hb_Resource->num_procs >= 0);
     }
 
   if (hb_Resource->num_procs == 0)
