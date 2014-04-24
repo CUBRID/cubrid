@@ -11873,6 +11873,16 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 	}
       break;
 
+    case PT_CONV:
+      if (PT_IS_STRING_TYPE (node->type_enum))
+	{
+	  assert (dt == NULL);
+	  dt = pt_make_prim_data_type (parser, node->type_enum);
+	  dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	}
+      do_detect_collation = false;
+      break;
+
     case PT_CHARSET:
     case PT_COLLATION:
     case PT_FORMAT:
