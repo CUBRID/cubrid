@@ -14263,6 +14263,8 @@ pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p,
     g (parser, p->info.query.q.select.use_idx, arg);
   p->info.query.q.select.index_ss =
     g (parser, p->info.query.q.select.index_ss, arg);
+  p->info.query.q.select.index_ls =
+    g (parser, p->info.query.q.select.index_ls, arg);
   p->info.query.q.select.use_merge =
     g (parser, p->info.query.q.select.use_merge, arg);
   p->info.query.q.select.waitsecs_hint =
@@ -14305,6 +14307,7 @@ pt_init_select (PT_NODE * p)
   p->info.query.q.select.use_nl = NULL;
   p->info.query.q.select.use_idx = NULL;
   p->info.query.q.select.index_ss = NULL;
+  p->info.query.q.select.index_ls = NULL;
   p->info.query.q.select.use_merge = NULL;
   p->info.query.q.select.waitsecs_hint = NULL;
   p->info.query.q.select.jdbc_life_time = NULL;
@@ -14637,7 +14640,19 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      if ((p->info.query.q.select.hint & PT_HINT_NO_INDEX_SS)
 		  || !(p->info.query.q.select.hint & PT_HINT_INDEX_SS))
 		{		/* skip scan is disabled */
-		  q = pt_append_nulstring (parser, q, "INDEX_LS ");
+		  q = pt_append_nulstring (parser, q, "INDEX_LS");
+		  if (p->info.query.q.select.index_ls)
+		    {
+		      r1 = pt_print_bytes_l (parser,
+					     p->info.query.q.select.index_ls);
+		      q = pt_append_nulstring (parser, q, "(");
+		      q = pt_append_varchar (parser, q, r1);
+		      q = pt_append_nulstring (parser, q, ") ");
+		    }
+		  else
+		    {
+		      q = pt_append_nulstring (parser, q, " ");
+		    }
 		}
 	    }
 

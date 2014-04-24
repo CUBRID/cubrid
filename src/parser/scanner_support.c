@@ -45,6 +45,9 @@
                     ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\0')
 
 
+#define IS_HINT_ON_TABLE(h) \
+  		((h) & (PT_HINT_INDEX_SS | PT_HINT_INDEX_LS))
+
 int parser_input_host_index = 0;
 int parser_statement_OK = 0;
 PARSER_CONTEXT *this_parser;
@@ -422,10 +425,28 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		}
 	      break;
 	    case PT_HINT_NO_INDEX_LS:	/* disable loose index scan */
-	    case PT_HINT_INDEX_LS:	/* enable loose index scan */
 	      if (node->node_type == PT_SELECT)
 		{
 		  node->info.query.q.select.hint |= hint_table[i].hint;
+		}
+	      break;
+	    case PT_HINT_INDEX_LS:	/* enable loose index scan */
+	      if (node->node_type == PT_SELECT)
+		{
+		  if (hint_table[i].arg_list != NULL
+		      && PT_IS_NULL_NODE (hint_table[i].arg_list))
+		    {
+		      /* For INDEX_LS(), just ignore loose index scan hint  */
+		      node->info.query.q.select.hint &= ~PT_HINT_INDEX_LS;
+		      node->info.query.q.select.index_ls = NULL;
+		    }
+		  else
+		    {
+		      node->info.query.q.select.hint |= PT_HINT_INDEX_LS;
+		      node->info.query.q.select.index_ls =
+			hint_table[i].arg_list;
+		      hint_table[i].arg_list = NULL;
+		    }
 		}
 	      break;
 	    default:
@@ -524,8 +545,8 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 				    {
 				      temp = strstr (arg_start, ".");
 				      if (temp && temp < &(hint_p[j])
-					  && hint_table[i].hint !=
-					  PT_HINT_INDEX_SS)
+					  && !IS_HINT_ON_TABLE (hint_table[i].
+								hint))
 					{
 					  *temp = '\0';
 					  arg->info.name.resolved =
@@ -591,8 +612,8 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 				{
 				  temp = strstr (arg_start, ".");
 				  if (temp && temp < &(hint_p[j])
-				      && hint_table[i].hint !=
-				      PT_HINT_INDEX_SS)
+				      && !IS_HINT_ON_TABLE (hint_table[i].
+							    hint))
 				    {
 				      *temp = '\0';
 				      arg->info.name.resolved =
@@ -625,11 +646,11 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 		      hint = hint_table[i].hint;
 		    }
 		  else if (has_parenthesis
-			   && hint_table[i].hint == PT_HINT_INDEX_SS)
+			   && IS_HINT_ON_TABLE (hint_table[i].hint))
 		    {
 		      /*
-		       * INDEX_SS() means do not apply index skip scan,
-		       * use special node to mark this.
+		       * INDEX_SS() or INDEX_LS() means do not apply
+		       * hint, use special node to mark this.
 		       */
 		      arg = parser_new_node (this_parser, PT_VALUE);
 		      if (arg)

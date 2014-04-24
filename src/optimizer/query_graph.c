@@ -4450,6 +4450,12 @@ add_hint (QO_ENV * env, PT_NODE * tree)
       add_hint_args (env, tree->info.query.q.select.index_ss,
 		     PT_HINT_INDEX_SS);
     }
+  if (hint & PT_HINT_INDEX_LS)
+    {
+      add_hint_args (env, tree->info.query.q.select.index_ls,
+		     PT_HINT_INDEX_LS);
+    }
+
 
   if (hint & PT_HINT_USE_MERGE)
     {
@@ -7028,7 +7034,8 @@ qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
     {
       return 0;			/* disable loose index scan */
     }
-  else if (tree->info.query.q.select.hint & PT_HINT_INDEX_LS)
+  else if ((tree->info.query.q.select.hint & PT_HINT_INDEX_LS)
+	   && (QO_NODE_HINT (nodep) & PT_HINT_INDEX_LS))
     {				/* enable loose index scan */
       if (tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS
 	  || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS)

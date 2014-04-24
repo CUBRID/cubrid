@@ -2460,6 +2460,7 @@ struct pt_select_info
   PT_NODE *use_nl;		/* PT_NAME (list) */
   PT_NODE *use_idx;		/* PT_NAME (list) */
   PT_NODE *index_ss;		/* PT_NAME (list) */
+  PT_NODE *index_ls;		/* PT_NAME (list) */
   PT_NODE *use_merge;		/* PT_NAME (list) */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_NODE *jdbc_life_time;	/* jdbc cache life time */

@@ -6764,7 +6764,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_HINT_ENUM hint;
   PT_NODE **ordered = NULL, **use_nl = NULL, **use_idx = NULL;
-  PT_NODE **use_merge = NULL, **index_ss = NULL;
+  PT_NODE **use_merge = NULL, **index_ss = NULL, **index_ls = NULL;
   PT_NODE *spec_list = NULL;
 
   switch (node->node_type)
@@ -6775,6 +6775,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       use_nl = &node->info.query.q.select.use_nl;
       use_idx = &node->info.query.q.select.use_idx;
       index_ss = &node->info.query.q.select.index_ss;
+      index_ls = &node->info.query.q.select.index_ls;
       use_merge = &node->info.query.q.select.use_merge;
       spec_list = node->info.query.q.select.from;
       break;
@@ -6841,10 +6842,26 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 	  goto exit_on_error;
 	}
 
-      /* Invalidate index skip scan if not found matched item */
+      /* clear hint if no matched any item */
       if (*index_ss == NULL)
 	{
+	  node->info.query.q.select.hint &= ~PT_HINT_INDEX_SS;
+	}
+    }
+
+  /* *index_ls == NULL means apply loose index scan to each table */
+  if ((hint & PT_HINT_INDEX_LS) && *index_ls != NULL)
+    {
+      if (pt_resolve_hint_args (parser, index_ls, spec_list,
+				DISCARD_NO_MATCH) != NO_ERROR)
+	{
 	  goto exit_on_error;
+	}
+
+      /* clear hint if no matched any item */
+      if (*index_ls == NULL)
+	{
+	  node->info.query.q.select.hint &= ~PT_HINT_INDEX_LS;
 	}
     }
 
@@ -6884,6 +6901,10 @@ exit_on_error:
     {
       parser_free_tree (parser, *index_ss);
     }
+  if (*index_ls != NULL)
+    {
+      parser_free_tree (parser, *index_ls);
+    }
   if (*use_merge != NULL)
     {
       parser_free_tree (parser, *use_merge);
@@ -6896,6 +6917,7 @@ exit_on_error:
       node->info.query.q.select.use_nl = NULL;
       node->info.query.q.select.use_idx = NULL;
       node->info.query.q.select.index_ss = NULL;
+      node->info.query.q.select.index_ls = NULL;
       node->info.query.q.select.use_merge = NULL;
       break;
     case PT_DELETE:
