@@ -6942,12 +6942,12 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
 
       /* by default enable optimizations */
       lang_coll->options.allow_like_rewrite = true;
-      lang_coll->options.allow_index_cov = true;
+      lang_coll->options.allow_index_opt = true;
       lang_coll->options.allow_prefix_index = true;
 
       if (coll->uca_opt.sett_strength < TAILOR_QUATERNARY)
 	{
-	  lang_coll->options.allow_index_cov = false;
+	  lang_coll->options.allow_index_opt = false;
 	  lang_coll->options.allow_like_rewrite = false;
 	}
 

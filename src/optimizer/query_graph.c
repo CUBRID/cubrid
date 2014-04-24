@@ -2365,6 +2365,28 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	    }
 	}
 
+      /* check LHS and RHS for collations that invalidate the term's use in a
+       * key range/filter; if one of the expr sides contains such a collation
+       * then the whole term is not indexable */
+      if (lhs_indexable || rhs_indexable)
+	{
+	  int has_nis_coll = 0;
+
+	  (void) parser_walk_tree (parser, lhs_expr,
+				   pt_has_non_idx_sarg_coll_pre,
+				   &has_nis_coll, NULL, NULL);
+	  (void) parser_walk_tree (parser, rhs_expr,
+				   pt_has_non_idx_sarg_coll_pre,
+				   &has_nis_coll, NULL, NULL);
+
+	  if (has_nis_coll)
+	    {
+	      QO_TERM_SET_FLAG (term, QO_TERM_NON_IDX_SARG_COLL);
+	      lhs_indexable = 0;
+	      rhs_indexable = 0;
+	    }
+	}
+
       if (lhs_indexable)
 	{
 	  n = bitset_first_member (&lhs_segs);
@@ -9430,7 +9452,7 @@ qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt)
 
   assert (collation_opt != NULL);
 
-  collation_opt->allow_index_cov = true;
+  collation_opt->allow_index_opt = true;
 
   if (ent && ent->class_ && ent->class_->smclass)
     {
@@ -9454,9 +9476,9 @@ qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt)
 
 	      assert (lang_coll != NULL);
 
-	      if (!(lang_coll->options.allow_index_cov))
+	      if (!(lang_coll->options.allow_index_opt))
 		{
-		  collation_opt->allow_index_cov = false;
+		  collation_opt->allow_index_opt = false;
 		  return;
 		}
 	    }

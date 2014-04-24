@@ -12120,7 +12120,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
 
       qo_check_coll_optimization (index_entryp, &collation_opt);
 
-      indx_infop->coverage = collation_opt.allow_index_cov;
+      indx_infop->coverage = collation_opt.allow_index_opt;
     }
 
   indx_infop->class_oid = class_->oid_info.oid;

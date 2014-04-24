@@ -1772,6 +1772,13 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 	{
 	  term = QO_ENV_TERM (env, t);
 
+	  if (QO_TERM_IS_FLAGED (term, QO_TERM_NON_IDX_SARG_COLL))
+	    {
+	      /* term contains a collation that prevents us from using this
+	         term as a key range/filter */
+	      continue;
+	    }
+
 	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
 	    {
 	      continue;		/* term contains correlated subquery */

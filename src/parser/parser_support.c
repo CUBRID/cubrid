@@ -1218,6 +1218,41 @@ pt_is_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 }
 
 /*
+ * pt_has_non_idx_sarg_coll_pre () - pre function for determining if a tree has
+ *				     contains a node with a collation that
+ *				     renders it unusable for key range/filter
+ *   returns: input node
+ *   parser(in): parser to use
+ *   tree(in): tree node to analyze
+ *   arg(out): integer, will be set to "1" if node is found unfit
+ *   continue_walk(out): to be set to PT_STOP_WALK where necessary
+ */
+PT_NODE *
+pt_has_non_idx_sarg_coll_pre (PARSER_CONTEXT * parser, PT_NODE * tree,
+			      void *arg, int *continue_walk)
+{
+  int *mark = (int *) arg;
+
+  assert (tree != NULL);
+  assert (arg != NULL);
+  assert (continue_walk != NULL);
+
+  if (PT_HAS_COLLATION (tree->type_enum) && (tree->data_type != NULL))
+    {
+      int collation_id = tree->data_type->info.data_type.collation_id;
+      LANG_COLLATION *lang_coll = lang_get_collation (collation_id);
+
+      if (!lang_coll->options.allow_index_opt)
+	{
+	  *mark = 1;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return tree;
+}
+
+/*
  * pt_is_inst_or_orderby_num_node_post () -
  *   return:
  *   parser(in):

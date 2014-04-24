@@ -151,7 +151,7 @@ struct coll_opt
    * configured with maximum sorting level. But, even in this case there
    * are some acceptatable codepoints which have the same weight. These
    * codepoints ussually represent the same graphic symbol. */
-  bool allow_index_cov;
+  bool allow_index_opt;
 
   /* enabled by default; disabled for collations with expansions */
   bool allow_prefix_index;

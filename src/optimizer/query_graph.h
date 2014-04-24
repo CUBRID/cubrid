@@ -705,6 +705,7 @@ struct qo_term
 #define QO_TERM_SINGLE_PRED          4	/* is single_pred ? */
 #define QO_TERM_COPY_PT_EXPR         8	/* pt_expr is copyed ? */
 #define QO_TERM_MERGEABLE_EDGE      16	/* suitable as a m-join edge ? */
+#define QO_TERM_NON_IDX_SARG_COLL   32	/* not suitable for key range/filter */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)

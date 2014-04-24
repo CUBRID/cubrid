@@ -622,6 +622,10 @@ extern "C"
   extern PT_NODE *pt_is_analytic_node (PARSER_CONTEXT * parser,
 				       PT_NODE * tree, void *arg,
 				       int *continue_walk);
+  extern PT_NODE *pt_has_non_idx_sarg_coll_pre (PARSER_CONTEXT * parser,
+						PT_NODE * tree,
+						void *arg,
+						int *continue_walk);
   extern PT_NODE *pt_is_analytic_node_post (PARSER_CONTEXT * parser,
 					    PT_NODE * tree, void *arg,
 					    int *continue_walk);
