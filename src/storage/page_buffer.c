@@ -165,12 +165,10 @@ static int rv;
 #define PGBUF_IS_AUXILARY_VOLUME(volid)                                 \
   ((volid) < LOG_DBFIRST_VOLID ? true : false)
 
-/* PGBUF_HASH_VALUE (original(old) version and modified version) */
-#define PGBUF_HASH_RATIO  8
-#define PGBUF_HASH_SIZE   ((size_t) pgbuf_Pool.num_buffers * PGBUF_HASH_RATIO)
+#define HASH_SIZE_BITS 20
+#define PGBUF_HASH_SIZE (1 << HASH_SIZE_BITS)
 
-#define PGBUF_HASH_VALUE(vpid)                                          \
-  (((vpid)->pageid | ((unsigned int)(vpid)->volid) << 24) % PGBUF_HASH_SIZE)
+#define PGBUF_HASH_VALUE(vpid) pgbuf_hash_func_mirror(vpid)
 
 /* Maximum overboost flush multiplier : controls the maximum factor to apply
  * to configured flush ratio, when the miss rate (victim_request/fix_request)
@@ -566,6 +564,7 @@ static PGBUF_PS_INFO ps_info;
 #define AOUT_HASH_DIVIDE_RATIO 1000
 #define AOUT_HASH_IDX(vpid, list) ((vpid)->pageid % list->num_hashes)
 
+static unsigned int pgbuf_hash_func_mirror (const VPID * vpid);
 static bool pgbuf_is_temporary_volume (VOLID volid);
 static int pgbuf_initialize_bcb_table (void);
 static int pgbuf_initialize_hash_table (void);
@@ -737,6 +736,44 @@ static void pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p,
 					PGBUF_BCB * bufptr);
 static int pgbuf_compare_victim_list (const void *p1, const void *p2);
 static void pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p);
+
+/*
+ * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
+ *   return: hash value
+ *   key_vpid(in): VPID to hash
+ */
+static unsigned int
+pgbuf_hash_func_mirror (const VPID * vpid)
+{
+#define VOLID_LSB_BITS 8
+  int i;
+  unsigned int hash_val;
+  unsigned int volid_lsb;
+  unsigned int reversed_volid_lsb = 0;
+  unsigned int lsb_mask;
+  unsigned int reverse_mask;
+
+  volid_lsb = vpid->volid;
+
+  lsb_mask = 1;
+  reverse_mask = 1 << (HASH_SIZE_BITS - 1);
+
+  for (i = VOLID_LSB_BITS; i > 0; i--)
+    {
+      if (volid_lsb & lsb_mask)
+	{
+	  reversed_volid_lsb |= reverse_mask;
+	}
+      reverse_mask = reverse_mask >> 1;
+      lsb_mask = lsb_mask << 1;
+    }
+
+  hash_val = vpid->pageid ^ reversed_volid_lsb;
+  hash_val = hash_val & ((1 << HASH_SIZE_BITS) - 1);
+
+  return hash_val;
+#undef VOLID_LSB_BITS
+}
 
 /*
  * pgbuf_hash_vpid () - Hash a volume_page identifier
