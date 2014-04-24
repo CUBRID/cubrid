@@ -151,7 +151,7 @@ struct serial_invariant
 typedef struct eval_insert_value EVAL_INSERT_VALUE;
 struct eval_insert_value
 {
-  int spec_id;			/* insert spec_id */
+  UINTPTR spec_id;		/* insert spec_id */
   PT_NODE *attr_list;		/* list of insert attribute names */
   PT_NODE *value_list;		/* list of insert values values */
   int crt_attr_index;		/* current attribute index */
