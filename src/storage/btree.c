@@ -23490,7 +23490,8 @@ start_locking:
 		}
 
 	      new_size = (btrs_helper.pg_oid_cnt * OR_OID_SIZE) + oids_size;
-	      new_ptr = (char *) realloc (oids_ptr, new_size);
+	      new_ptr =
+		(char *) db_private_realloc (thread_p, oids_ptr, new_size);
 	      if (new_ptr == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
