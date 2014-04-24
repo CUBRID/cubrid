@@ -1382,10 +1382,20 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
     }
   SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
+  if (IS_BROKER_STMT_POOL (con_handle) && req_handle->valid == false)
+    {
+      error = qe_prepare (req_handle, con_handle, req_handle->sql_text,
+			  req_handle->prepare_flag, &(con_handle->err_buf),
+			  1);
+    }
+
   is_first_exec_in_tran = IS_OUT_TRAN (con_handle);
 
-  error = qe_execute (req_handle, con_handle, flag, max_col_size,
-		      &(con_handle->err_buf));
+  if (error >= 0)
+    {
+      error = qe_execute (req_handle, con_handle, flag, max_col_size,
+			  &(con_handle->err_buf));
+    }
   while ((IS_OUT_TRAN (con_handle) || is_first_exec_in_tran)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
@@ -1739,10 +1749,20 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
     }
   SET_START_TIME_FOR_QUERY (con_handle, req_handle);
 
+  if (IS_BROKER_STMT_POOL (con_handle) && req_handle->valid == false)
+    {
+      error = qe_prepare (req_handle, con_handle, req_handle->sql_text,
+			  req_handle->prepare_flag, &(con_handle->err_buf),
+			  1);
+    }
+
   is_first_exec_in_tran = IS_OUT_TRAN (con_handle);
 
-  error = qe_execute_array (req_handle, con_handle, qr,
-			    &(con_handle->err_buf));
+  if (error > 0)
+    {
+      error = qe_execute_array (req_handle, con_handle, qr,
+				&(con_handle->err_buf));
+    }
   while ((IS_OUT_TRAN (con_handle) || is_first_exec_in_tran)
 	 && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
     {
