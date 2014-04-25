@@ -48,6 +48,8 @@
 #define IS_HINT_ON_TABLE(h) \
   		((h) & (PT_HINT_INDEX_SS | PT_HINT_INDEX_LS))
 
+static char *pt_trim_as_identifier (char *name);
+
 int parser_input_host_index = 0;
 int parser_statement_OK = 0;
 PARSER_CONTEXT *this_parser;
@@ -68,6 +70,35 @@ pt_makename (const char *name)
   return pt_append_string (this_parser, NULL, name);
 }
 
+/*
+ * pt_trim_as_identifier () - trim double quotes,
+ *            square brackets, or backtick symbol
+ *   return:
+ *   name(in):
+ */
+static char *
+pt_trim_as_identifier (char *name)
+{
+  char *tmp_name;
+  int len;
+
+  len = strlen (name);
+  if (len >= 2
+      && ((name[0] == '[' && name[len - 1] == ']')
+	  || (name[0] == '`' && name[len - 1] == '`')
+	  || (name[0] == '"' && name[len - 1] == '"')))
+    {
+      tmp_name = pt_makename (name);
+      tmp_name[len - 1] = '\0';
+      tmp_name += 1;
+
+      return tmp_name;
+    }
+  else
+    {
+      return name;
+    }
+}
 
 /*
  * pt_parser_line_col () - set line and column of node allocated to
@@ -550,15 +581,24 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 					{
 					  *temp = '\0';
 					  arg->info.name.resolved =
-					    pt_makename (arg_start);
+					    pt_trim_as_identifier (arg_start);
+					  arg->info.name.resolved =
+					    pt_makename (arg->info.name.
+							 resolved);
 					  *temp++ = '.';
 					  arg->info.name.original =
-					    pt_makename (temp);
+					    pt_trim_as_identifier (temp);
+					  arg->info.name.original =
+					    pt_makename (arg->info.name.
+							 original);
 					}
 				      else
 					{
 					  arg->info.name.original =
-					    pt_makename (arg_start);
+					    pt_trim_as_identifier (arg_start);
+					  arg->info.name.original =
+					    pt_makename (arg->info.name.
+							 original);
 					}
 				      arg->info.name.meta_class =
 					PT_HINT_NAME;
@@ -617,15 +657,21 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 				    {
 				      *temp = '\0';
 				      arg->info.name.resolved =
-					pt_makename (arg_start);
+					pt_trim_as_identifier (arg_start);
+				      arg->info.name.resolved =
+					pt_makename (arg->info.name.resolved);
 				      *temp++ = '.';
 				      arg->info.name.original =
-					pt_makename (temp);
+					pt_trim_as_identifier (temp);
+				      arg->info.name.original =
+					pt_makename (arg->info.name.original);
 				    }
 				  else
 				    {
 				      arg->info.name.original =
-					pt_makename (arg_start);
+					pt_trim_as_identifier (arg_start);
+				      arg->info.name.original =
+					pt_makename (arg->info.name.original);
 				    }
 				  arg->info.name.meta_class = PT_HINT_NAME;
 				  hint_table[i].arg_list =
