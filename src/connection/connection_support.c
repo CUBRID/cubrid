@@ -510,6 +510,14 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	    }
 #else
 	  winsock_error = WSAGetLastError ();
+
+	  /* In Windows 2003, pass large length (such as 120MB) to recv()
+	   * will temporary unavailable by error number WSAENOBUFS (10055) */
+	  if (winsock_error == WSAENOBUFS)
+	    {
+	      goto read_again;
+	    }
+
 	  if (winsock_error == WSAEINTR)
 	    {
 	      goto read_again;
