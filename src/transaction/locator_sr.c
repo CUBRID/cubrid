@@ -11661,6 +11661,7 @@ xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
 free_and_return:
   heap_attrinfo_end (thread_p, &attr_info);
   heap_scancache_end (thread_p, &scan);
+
   return error;
 }
 
@@ -12312,7 +12313,6 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
 				      RECDES * recdes)
 {
   int error = NO_ERROR;
-  HEAP_SCANCACHE scan_cache, *scan_cache_p = NULL;
   BTREE_CHECKSCAN bt_checkscan, *bt_checkscan_p = NULL;
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_CACHE_ATTRINFO *attr_info_p = NULL;
@@ -12324,6 +12324,7 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
   KEY_VAL_RANGE key_val_range;
   INDX_SCAN_ID isid;
   BTID tmp_btid = *btid;
+  BTREE_SCAN bt_scan;
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -12332,14 +12333,6 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid,
     {
       return NO_ERROR;
     }
-
-  /* Start a scan cursor and a class attribute information */
-  if (heap_scancache_start (thread_p, &scan_cache, &hfid, class_oid, true,
-			    false, LOCKHINT_NONE) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  scan_cache_p = &scan_cache;
 
   index_id = heap_attrinfo_start_with_btid (thread_p, class_oid, &tmp_btid,
 					    &attr_info);
@@ -12404,11 +12397,6 @@ free_and_return:
   if (attr_info_p)
     {
       heap_attrinfo_end (thread_p, attr_info_p);
-    }
-
-  if (scan_cache_p)
-    {
-      heap_scancache_end (thread_p, scan_cache_p);
     }
 
   return error;
