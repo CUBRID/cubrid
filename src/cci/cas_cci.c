@@ -1758,7 +1758,7 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
 
   is_first_exec_in_tran = IS_OUT_TRAN (con_handle);
 
-  if (error > 0)
+  if (error >= 0)
     {
       error = qe_execute_array (req_handle, con_handle, qr,
 				&(con_handle->err_buf));
