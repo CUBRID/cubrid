@@ -365,6 +365,8 @@ static PT_TYPE_ENUM pt_wrap_type_for_collation (const PT_NODE * arg1,
 						PT_TYPE_ENUM *
 						wrap_type_collection);
 static void pt_fix_arguments_collation_flag (PT_NODE * expr);
+static PT_NODE *pt_check_function_collation (PARSER_CONTEXT * parser,
+					     PT_NODE * node);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -13638,82 +13640,30 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    arg_array[2]->next = arg_array[3] = new_node;
 	  }
 
-	new_node = pt_coerce_node_collation (parser, node, common_coll,
-					     common_cs, true, false,
-					     PT_TYPE_NONE, PT_TYPE_NONE);
-	if (new_node == NULL)
-	  {
-	    goto error_collation;
-	  }
-
-	node = new_node;
-      }
-      break;
-
-    default:
-      {
-	PT_TYPE_ENUM arg_type = PT_TYPE_NONE, func_res_type = PT_TYPE_NONE;
-	PT_COLL_INFER arg_coll_infer, func_coll_infer;
-	PT_NODE *new_node;
-
-	arg_coll_infer.codeset = LANG_SYS_CODESET;
-	func_coll_infer.codeset = LANG_SYS_CODESET;
-	arg_coll_infer.coll_id = LANG_SYS_COLLATION;
-	func_coll_infer.coll_id = LANG_SYS_COLLATION;
-	arg_coll_infer.coerc_level = PT_COLLATION_NOT_COERC;
-	func_coll_infer.coerc_level = PT_COLLATION_NOT_COERC;
-	arg_coll_infer.can_force_cs = false;
-	func_coll_infer.can_force_cs = false;
-
-	arg_type = (arg_list != NULL) ? arg_list->type_enum : PT_TYPE_NONE;
-	func_res_type = node->type_enum;
-
-	if (PT_HAS_COLLATION (func_res_type) && arg_type == PT_TYPE_MAYBE
-	    && node->data_type != NULL)
+	if (coll_infer4.can_force_cs == true
+	    && coll_infer1.can_force_cs == true && node->data_type != NULL)
 	  {
 	    node->data_type->info.data_type.collation_flag =
 	      TP_DOMAIN_COLL_LEAVE;
 	  }
-
-	if (!PT_HAS_COLLATION (arg_type) && !PT_IS_COLLECTION_TYPE (arg_type))
+	else
 	  {
-	    break;
-	  }
+	    new_node = pt_coerce_node_collation (parser, node, common_coll,
+						 common_cs, true, false,
+						 PT_TYPE_NONE, PT_TYPE_NONE);
+	    if (new_node == NULL)
+	      {
+		goto error_collation;
+	      }
 
-	if (!PT_HAS_COLLATION (func_res_type)
-	    && !PT_IS_COLLECTION_TYPE (func_res_type))
-	  {
-	    break;
+	    node = new_node;
 	  }
-
-	if (!pt_get_collation_info (arg_list, &arg_coll_infer))
-	  {
-	    break;
-	  }
-
-	if (!pt_get_collation_info (node, &func_coll_infer))
-	  {
-	    break;
-	  }
-
-	if (arg_coll_infer.coll_id == func_coll_infer.coll_id)
-	  {
-	    assert (arg_coll_infer.codeset == func_coll_infer.codeset);
-	    break;
-	  }
-
-	new_node =
-	  pt_coerce_node_collation (parser, node, arg_coll_infer.coll_id,
-				    arg_coll_infer.codeset, true, false,
-				    PT_COLL_WRAP_TYPE_FOR_MAYBE
-				    (func_res_type), PT_TYPE_NONE);
-	if (new_node == NULL)
-	  {
-	    goto error_collation;
-	  }
-
-	node = new_node;
       }
+      break;
+
+    default:
+      node = pt_check_function_collation (parser, node);
+      break;
     }
 
   return node;
@@ -24275,4 +24225,164 @@ pt_fix_arguments_collation_flag (PT_NODE * expr)
 	    }
 	}
     }
+}
+
+/*
+ * pt_check_function_collation () - checks the collation of function
+ *				    (PT_FUNCTION)
+ *
+ *   return: error code
+ *   parser(in): parser context
+ *   node(in/out): a parse tree function node
+ *
+ */
+static PT_NODE *
+pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *arg_list, *arg, *prev_arg, *new_node;
+  int common_coll = -1;
+  PT_COLL_INFER res_coll_infer;
+  INTL_CODESET common_cs = INTL_CODESET_NONE;
+  PT_COLL_COERC_LEV common_coerc_level = PT_COLLATION_NOT_APPLICABLE;
+  bool need_arg_coerc = false;
+
+  assert (node != NULL);
+
+  assert (node != NULL);
+  assert (node->node_type == PT_FUNCTION);
+
+  if (node->info.function.arg_list == NULL)
+    {
+      return node;
+    }
+
+  arg_list = node->info.function.arg_list;
+  prev_arg = NULL;
+
+  if (node->info.function.function_type == F_ELT)
+    {
+      if (arg_list->next == NULL)
+	{
+	  return node;
+	}
+      arg_list = arg_list->next;
+      prev_arg = arg_list;
+    }
+
+  arg = arg_list;
+
+  while (arg != NULL)
+    {
+      PT_COLL_INFER arg_coll_infer;
+
+      arg_coll_infer.coll_id = -1;
+
+      if ((PT_HAS_COLLATION (arg->type_enum)
+	   || arg->type_enum == PT_TYPE_MAYBE)
+	  && pt_get_collation_info (arg, &arg_coll_infer))
+	{
+	  if (common_coll != -1 || common_coll != arg_coll_infer.coll_id)
+	    {
+	      need_arg_coerc = true;
+	    }
+
+	  if (common_coerc_level > arg_coll_infer.coerc_level
+	      || common_coll == -1)
+	    {
+	      common_coerc_level = arg_coll_infer.coerc_level;
+	      common_coll = arg_coll_infer.coll_id;
+	      common_cs = arg_coll_infer.codeset;
+	    }
+	}
+
+      arg = arg->next;
+    }
+
+  arg = arg_list;
+  while (need_arg_coerc && arg != NULL)
+    {
+      PT_COLL_INFER arg_coll_infer;
+
+      arg_coll_infer.coll_id = -1;
+
+      if (!(PT_HAS_COLLATION (arg->type_enum)
+	    || arg->type_enum == PT_TYPE_MAYBE))
+	{
+	  prev_arg = arg;
+	  arg = arg->next;
+	  continue;
+	}
+
+      if (!pt_get_collation_info (arg, &arg_coll_infer))
+	{
+	  prev_arg = arg;
+	  arg = arg->next;
+	  continue;
+	}
+
+      if (common_coll != arg_coll_infer.coll_id)
+	{
+	  if (common_coerc_level < arg_coll_infer.coerc_level)
+	    {
+	      PT_NODE *save_next;
+
+	      save_next = arg->next;
+
+	      new_node = pt_coerce_node_collation (parser, arg, common_coll,
+						   common_cs,
+						   arg_coll_infer.
+						   can_force_cs, false,
+						   PT_COLL_WRAP_TYPE_FOR_MAYBE
+						   (arg->type_enum),
+						   PT_TYPE_NONE);
+
+	      if (new_node != NULL)
+		{
+		  arg = new_node;
+		  if (prev_arg == NULL)
+		    {
+		      node->info.function.arg_list = arg;
+		    }
+		  else
+		    {
+		      prev_arg->next = arg;
+		    }
+		  arg->next = save_next;
+		}
+	    }
+	  else
+	    {
+	      assert (common_coerc_level == arg_coll_infer.coerc_level);
+	      goto error_collation;
+	    }
+	}
+
+      prev_arg = arg;
+      arg = arg->next;
+    }
+
+  if ((PT_HAS_COLLATION (node->type_enum)
+       || node->type_enum == PT_TYPE_MAYBE)
+      && pt_get_collation_info (node, &res_coll_infer)
+      && res_coll_infer.coll_id != common_coll)
+    {
+      new_node =
+	pt_coerce_node_collation (parser, node, common_coll, common_cs, true,
+				  false,
+				  PT_COLL_WRAP_TYPE_FOR_MAYBE (node->
+							       type_enum),
+				  PT_TYPE_NONE);
+      if (new_node != NULL)
+	{
+	  node = new_node;
+	}
+    }
+
+  return node;
+
+error_collation:
+  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+	      MSGCAT_SEMANTIC_COLLATION_OP_ERROR,
+	      pt_show_function (node->info.function.function_type));
+  return node;
 }
