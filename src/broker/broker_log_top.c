@@ -181,7 +181,11 @@ get_file_count (int argc, char *argv[], int arg_start)
 	}
       do
 	{
-	  count++;
+	  /* skip directory */
+	  if ((find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+	    {
+	      count++;
+	    }
 	}
       while (FindNextFile (handle, &find_data));
 
@@ -198,6 +202,8 @@ get_file_list (char *list[], int size, int argc, char *argv[], int arg_start)
   int index = 0;
   HANDLE handle;
   WIN32_FIND_DATA find_data;
+  char *slash_pos, *pos1, *pos2;
+  char prefix[MAX_PATH] = { 0 };
 
   assert (list != NULL);
 
@@ -209,14 +215,34 @@ get_file_list (char *list[], int size, int argc, char *argv[], int arg_start)
 	  continue;
 	}
 
+      /* find the prefix of the matched file */
+      pos1 = strrchr (argv[i], '\\');
+      pos2 = strrchr (argv[i], '/');
+      slash_pos = MAX (pos1, pos2);
+      if (slash_pos != NULL)
+	{
+	  strncpy (prefix, argv[i], MAX_PATH);
+	  prefix[slash_pos - argv[i] + 1] = '\0';
+	}
+
       do
 	{
-	  if (index < size)
+	  /* skip directory */
+	  if (index < size
+	      && !(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
 	    {
 	      assert (list[index] != NULL);
-	      strncpy (list[index], find_data.cFileName, MAX_PATH);
+	      if (slash_pos != NULL)
+		{
+		  snprintf (list[index], MAX_PATH, "%s%s", prefix,
+			    find_data.cFileName);
+		}
+	      else
+		{
+		  strncpy (list[index], find_data.cFileName, MAX_PATH);
+		}
+	      index++;
 	    }
-	  index++;
 	}
       while (FindNextFile (handle, &find_data));
 
