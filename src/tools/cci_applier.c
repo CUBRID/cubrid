@@ -36,6 +36,10 @@
 #define ALTER_SERIAL_PREFIX    "ALTER SERIAL"
 #define IS_ALTER_SERIAL(stmt) \
   (strncmp (stmt, ALTER_SERIAL_PREFIX, strlen (ALTER_SERIAL_PREFIX)) == 0)
+#define DOES_TRAN_START(stmt) \
+  (strncmp (stmt, CA_MARK_TRAN_START, strlen (CA_MARK_TRAN_START)) == 0)
+#define DOES_TRAN_END(stmt) \
+  (strncmp (stmt, CA_MARK_TRAN_END, strlen (CA_MARK_TRAN_END)) == 0)
 
 typedef struct con_info CA_CON_INFO;
 struct con_info
@@ -461,6 +465,7 @@ process_sql_log_file (FILE * fp, int conn)
   bool is_committed = false;
   time_t start_time, commit_time;
   int elapsed_time;
+  bool delay_commit = false;
 
   start_time = time (NULL);
   while (!feof (fp))
@@ -470,7 +475,7 @@ process_sql_log_file (FILE * fp, int conn)
 	     && ca_Info.last_applied_sql_id ==
 	     ca_Info.src_last_inserted_sql_id)
 	{
-	  if (is_committed == false)
+	  if (is_committed == false && delay_commit == false)
 	    {
 	      if (commit_sql_logs (conn, &cci_error) != ER_CA_NO_ERROR)
 		{
@@ -585,9 +590,21 @@ process_sql_log_file (FILE * fp, int conn)
 	  count++;
 	}
 
+      /* to execute [set param -> ddl -> restore param] within a transaction */
+      if (DOES_TRAN_START (query) == true)
+	{
+	  assert (delay_commit == false);
+	  delay_commit = true;
+	}
+      else if (DOES_TRAN_END (query) == true)
+	{
+	  assert (delay_commit == true);
+	  delay_commit = false;
+	}
+
       ca_Info.last_applied_sql_id = ca_Info.meta_sql_id;
 
-      if (count == ca_Info.commit_interval)
+      if (count >= ca_Info.commit_interval && delay_commit == false)
 	{
 	  if (commit_sql_logs (conn, &cci_error) != ER_CA_NO_ERROR)
 	    {

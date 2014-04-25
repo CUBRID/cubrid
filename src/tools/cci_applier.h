@@ -22,4 +22,7 @@
 #define ER_CA_FAILED_TO_ALLOC     -3
 #define ER_CA_DISCREPANT_INFO     -4
 
+#define CA_MARK_TRAN_START      "/* TRAN START */"
+#define CA_MARK_TRAN_END        "/* TRAN END */"
+
 #endif /* CCI_APPLIER_H_ */

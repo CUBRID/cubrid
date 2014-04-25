@@ -39,6 +39,7 @@
 #include "class_object.h"
 #include "environment_variable.h"
 #include "set_object.h"
+#include "cci_applier.h"
 
 #define SL_LOG_FILE_MAX_SIZE   \
   (prm_get_integer_value (PRM_ID_HA_SQL_LOG_MAX_SIZE_IN_MB) * 1024 * 1024)
@@ -507,8 +508,11 @@ int
 sl_write_schema_sql (char *class_name, char *db_user, int item_type,
 		     char *ddl, char *ha_sys_prm)
 {
+  int rc, error = NO_ERROR;
   PARSER_CONTEXT *parser;
-  PARSER_VARCHAR *buffer = NULL, *grant = NULL, *buf_ha_sys_prm = NULL;
+  PARSER_VARCHAR *buffer = NULL, *grant = NULL;
+  PARSER_VARCHAR *set_param = NULL, *restore_param = NULL;
+  char default_ha_prm[LINE_MAX];
 
   parser = parser_create_parser ();
 
@@ -517,19 +521,58 @@ sl_write_schema_sql (char *class_name, char *db_user, int item_type,
 
   if (ha_sys_prm != NULL)
     {
-      buf_ha_sys_prm = pt_append_nulstring (parser, buf_ha_sys_prm,
-					    ha_sys_prm);
-      if (sl_write_sql (buf_ha_sys_prm, NULL) != NO_ERROR)
+      set_param = pt_append_nulstring (parser, set_param, CA_MARK_TRAN_START);
+      set_param =
+	pt_append_nulstring (parser, set_param, " SET SYSTEM PARAMETERS '");
+      set_param = pt_append_nulstring (parser, set_param, ha_sys_prm);
+      set_param = pt_append_nulstring (parser, set_param, "';");
+
+      rc =
+	sysprm_make_default_values (ha_sys_prm, default_ha_prm,
+				    sizeof (default_ha_prm));
+      if (rc != PRM_ERR_NO_ERROR)
 	{
-	  parser_free_parser (parser);
-	  return ER_FAILED;
+	  error = sysprm_set_error (rc, ha_sys_prm);
+	  goto end;
+	}
+
+      restore_param =
+	pt_append_nulstring (parser, restore_param, CA_MARK_TRAN_END);
+      restore_param =
+	pt_append_nulstring (parser, restore_param,
+			     " SET SYSTEM PARAMETERS '");
+      restore_param =
+	pt_append_nulstring (parser, restore_param, default_ha_prm);
+      restore_param = pt_append_nulstring (parser, restore_param, "';");
+
+      if (sl_write_sql (set_param, NULL) != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      if (sl_write_sql (buffer, NULL) != NO_ERROR)
+	{
+	  sl_write_sql (restore_param, NULL);
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      if (sl_write_sql (restore_param, NULL) != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto end;
 	}
     }
-  if (sl_write_sql (buffer, NULL) != NO_ERROR)
+  else
     {
-      parser_free_parser (parser);
-      return ER_FAILED;
+      if (sl_write_sql (buffer, NULL) != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
     }
+
   if (item_type == CUBRID_STMT_CREATE_CLASS)
     {
       if (db_user != NULL && strlen (db_user) > 0)
@@ -543,14 +586,14 @@ sl_write_schema_sql (char *class_name, char *db_user, int item_type,
 
 	  if (sl_write_sql (grant, NULL) != NO_ERROR)
 	    {
-	      parser_free_parser (parser);
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto end;
 	    }
 	}
     }
-
+end:
   parser_free_parser (parser);
-  return NO_ERROR;
+  return error;
 }
 
 static int
