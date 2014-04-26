@@ -331,7 +331,8 @@ static PT_NODE *pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser,
 static bool pt_is_op_with_forced_common_type (PT_OP_TYPE op);
 static bool pt_check_const_fold_op_w_args (PT_OP_TYPE op,
 					   DB_VALUE * arg1, DB_VALUE * arg2,
-					   DB_VALUE * arg3);
+					   DB_VALUE * arg3,
+					   TP_DOMAIN * domain);
 static bool pt_is_range_or_comp (PT_OP_TYPE op);
 static bool pt_is_op_w_collation (const PT_OP_TYPE op);
 static int pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser,
@@ -11842,6 +11843,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_SHA_ONE:
       assert (dt != NULL);
       dt->info.data_type.precision = 40;
+      do_detect_collation = false;
       break;
 
     case PT_TO_BASE64:
@@ -19379,7 +19381,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  return expr;
 	}
 
-      if (!pt_check_const_fold_op_w_args (op, arg1, arg2, arg3))
+      if (!pt_check_const_fold_op_w_args (op, arg1, arg2, arg3, domain))
 	{
 	  goto end;
 	}
@@ -21113,6 +21115,7 @@ pt_is_op_with_forced_common_type (PT_OP_TYPE op)
  *   arg1(in): 1st db_value operand
  *   arg2(in): 2nd db_value operand
  *   arg3(in): 3rd db_value operand
+ *   domain(in): node domain
  *
  *  Note : this function is used in context of constant folding to check if
  *	   folding an expression produces a large sized (string) result
@@ -21121,11 +21124,20 @@ pt_is_op_with_forced_common_type (PT_OP_TYPE op)
 static bool
 pt_check_const_fold_op_w_args (PT_OP_TYPE op,
 			       DB_VALUE * arg1,
-			       DB_VALUE * arg2, DB_VALUE * arg3)
+			       DB_VALUE * arg2, DB_VALUE * arg3,
+			       TP_DOMAIN * domain)
 {
   const int MAX_RESULT_SIZE_ON_CONST_FOLDING = 256;
   switch (op)
     {
+    case PT_CAST:
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_CLOB
+	  || TP_DOMAIN_TYPE (domain) == DB_TYPE_BLOB)
+	{
+	  return false;
+	}
+      break;
+
     case PT_SPACE:
       if (DB_VALUE_DOMAIN_TYPE (arg1) == DB_TYPE_INTEGER)
 	{

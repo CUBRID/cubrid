@@ -2698,7 +2698,7 @@ db_string_sha_one (DB_VALUE const *src, DB_VALUE * result)
       if (QSTR_IS_ANY_CHAR (val_type))
 	{
 	  error_status =
-	    sha_one (NULL, DB_PULL_STRING (src), DB_GET_STRING_LENGTH (src),
+	    sha_one (NULL, DB_PULL_STRING (src), DB_GET_STRING_SIZE (src),
 		     &result_strp, &result_len);
 	  if (error_status != NO_ERROR)
 	    {
