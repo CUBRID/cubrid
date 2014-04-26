@@ -21296,6 +21296,7 @@ pt_is_op_w_collation (const PT_OP_TYPE op)
     case PT_PRIOR:
     case PT_QPRIOR:
     case PT_INDEX_PREFIX:
+    case PT_MINUS:
       return true;
     default:
       return false;
@@ -22745,6 +22746,14 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
       && (!(PT_HAS_COLLATION (arg1_type) || arg1_type == PT_TYPE_MAYBE)
 	  || (arg2 && arg2->node_type == PT_EXPR
 	      && pt_is_between_range_op (arg2->info.expr.op))))
+    {
+      return NO_ERROR;
+    }
+
+  if (op == PT_MINUS
+      && (!PT_IS_COLLECTION_TYPE (arg1_type)
+	  && !PT_IS_COLLECTION_TYPE (arg2_type))
+      && (arg1_type != PT_TYPE_MAYBE || arg2_type != PT_TYPE_MAYBE))
     {
       return NO_ERROR;
     }
