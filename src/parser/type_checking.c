@@ -121,6 +121,11 @@ static GENERIC_FUNCTION_RECORD pt_Generic_functions[] = {
     ((node)->info.expr.op == PT_CASE ||					      \
      (node)->info.expr.op == PT_DECODE)
 
+#define PT_IS_CAST_MAYBE(node)						      \
+  ((node)->node_type == PT_EXPR && (node)->info.expr.op == PT_CAST	      \
+   && (node)->info.expr.arg1 != NULL					      \
+   && (node)->info.expr.arg1->type_enum == PT_TYPE_MAYBE)
+
 typedef struct compare_between_operator
 {
   PT_OP_TYPE left;
@@ -13640,8 +13645,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    arg_array[2]->next = arg_array[3] = new_node;
 	  }
 
-	if (coll_infer4.can_force_cs == true
-	    && coll_infer1.can_force_cs == true && node->data_type != NULL)
+	if ((arg_array[3]->type_enum == PT_TYPE_MAYBE
+	     || PT_IS_CAST_MAYBE (arg_array[3]))
+	    && (arg_array[0]->type_enum == PT_TYPE_MAYBE
+		|| PT_IS_CAST_MAYBE (arg_array[0]))
+	    && node->data_type != NULL)
 	  {
 	    node->data_type->info.data_type.collation_flag =
 	      TP_DOMAIN_COLL_LEAVE;
@@ -24296,6 +24304,11 @@ pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       arg = arg->next;
+    }
+
+  if (common_coll == -1)
+    {
+      return node;
     }
 
   arg = arg_list;
