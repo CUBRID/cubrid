@@ -3313,6 +3313,10 @@ qo_find_like_rewrite_bound (PARSER_CONTEXT * const parser,
     }
 
   bound->type_enum = pattern->type_enum;
+  if (pattern->data_type != NULL)
+    {
+      bound->data_type = parser_copy_tree (parser, pattern->data_type);
+    }
   bound->info.value.data_value.str = pt_append_bytes (parser, NULL,
 						      DB_GET_STRING
 						      (&tmp_result),

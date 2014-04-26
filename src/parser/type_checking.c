@@ -372,6 +372,8 @@ static PT_TYPE_ENUM pt_wrap_type_for_collation (const PT_NODE * arg1,
 static void pt_fix_arguments_collation_flag (PT_NODE * expr);
 static PT_NODE *pt_check_function_collation (PARSER_CONTEXT * parser,
 					     PT_NODE * node);
+static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser,
+						    PT_NODE * node);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -8505,6 +8507,7 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
 void
 pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node)
 {
+  pt_hv_consistent_data_type_with_domain (parser, hv_node);
   if (parser->host_var_count <= hv_node->info.host_var.index)
     {
       /* automated parameters are not needed an expected domain */
@@ -24398,4 +24401,77 @@ error_collation:
 	      MSGCAT_SEMANTIC_COLLATION_OP_ERROR,
 	      pt_show_function (node->info.function.function_type));
   return node;
+}
+
+/* pt_hv_consistent_data_type_with_domain - update data type of HOST_VAR node
+ *					    to be the same with expected domain
+ *					    If data_type is not present, no
+ *					    change is made.
+ *  return: void
+ *  node (in/out) :
+ *  domain (in)	  : the expected domain
+ */
+static void
+pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser,
+					PT_NODE * node)
+{
+  PT_NODE *or_next = NULL;
+
+  assert (node != NULL);
+  assert (node->expected_domain != NULL);
+
+  if (node->node_type != PT_HOST_VAR)
+    {
+      return;
+    }
+
+  if (node->data_type != NULL && node->expected_domain != NULL)
+    {
+      if (PT_IS_CHAR_STRING_TYPE (node->data_type->type_enum)
+	  && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (node->expected_domain)))
+	{
+	  node->data_type->info.data_type.collation_id =
+	    node->expected_domain->collation_id;
+	  node->data_type->info.data_type.units =
+	    node->expected_domain->codeset;
+	  node->data_type->info.data_type.collation_flag =
+	    node->expected_domain->collation_flag;
+	}
+      else if (node->data_type->type_enum !=
+	       pt_db_to_type_enum (TP_DOMAIN_TYPE (node->expected_domain)))
+	{
+	  parser_free_node (parser, node->data_type);
+	  node->data_type =
+	    pt_domain_to_data_type (parser, node->expected_domain);
+	}
+    }
+
+  or_next = node->or_next;
+  while (or_next)
+    {
+      if (or_next->node_type == PT_HOST_VAR
+	  && or_next->data_type != NULL && or_next->expected_domain != NULL)
+	{
+	  if (PT_IS_CHAR_STRING_TYPE (or_next->data_type->type_enum)
+	      && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (or_next->expected_domain)))
+	    {
+	      or_next->data_type->info.data_type.collation_id =
+		or_next->expected_domain->collation_id;
+	      or_next->data_type->info.data_type.units =
+		or_next->expected_domain->codeset;
+	      or_next->data_type->info.data_type.collation_flag =
+		or_next->expected_domain->collation_flag;
+	    }
+	  else if (or_next->data_type->type_enum
+		   !=
+		   pt_db_to_type_enum (TP_DOMAIN_TYPE
+				       (node->expected_domain)))
+	    {
+	      parser_free_node (parser, or_next->data_type);
+	      or_next->data_type =
+		pt_domain_to_data_type (parser, node->expected_domain);
+	    }
+	}
+      or_next = or_next->or_next;
+    }
 }

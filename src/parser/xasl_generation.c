@@ -6184,8 +6184,20 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      (void) db_value_domain_init (val, exptyp,
 					   regu->domain->precision,
 					   regu->domain->scale);
+	      if (TP_IS_CHAR_TYPE (exptyp))
+		{
+		  db_string_put_cs_and_collation (val,
+						  TP_DOMAIN_CODESET (regu->
+								     domain),
+						  TP_DOMAIN_COLLATION (regu->
+								       domain));
+		}
 	    }
-	  else if (typ != exptyp)
+	  else if (typ != exptyp
+		   || (TP_TYPE_HAS_COLLATION (typ)
+		       && TP_TYPE_HAS_COLLATION (exptyp)
+		       && (DB_GET_STRING_COLLATION (val)
+			   != TP_DOMAIN_COLLATION (regu->domain))))
 	    {
 	      if (tp_value_cast (val, val,
 				 regu->domain, false) != DOMAIN_COMPATIBLE)
