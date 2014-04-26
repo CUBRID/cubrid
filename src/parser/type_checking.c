@@ -18738,7 +18738,16 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
       if (pt_get_collation_info (expr->info.expr.arg1, &coll_infer))
 	{
-	  DB_MAKE_INT (&dbval_res, (int) (coll_infer.coerc_level));
+	  if (coll_infer.coerc_level >= PT_COLLATION_L2_COERC
+	      && coll_infer.coerc_level <= PT_COLLATION_L2_BIN_COERC
+	      && coll_infer.can_force_cs == true)
+	    {
+	      DB_MAKE_INT (&dbval_res, -1);
+	    }
+	  else
+	    {
+	      DB_MAKE_INT (&dbval_res, (int) (coll_infer.coerc_level));
+	    }
 	}
       else
 	{
