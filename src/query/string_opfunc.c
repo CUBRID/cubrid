@@ -22331,14 +22331,16 @@ db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value,
     {
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_NCHAR:
-      DB_MAKE_VARNCHAR (result, 12, res_s, strlen (res_s),
+      DB_MAKE_VARNCHAR (result, TP_FLOATING_PRECISION_VALUE, res_s,
+			strlen (res_s),
 			DB_GET_STRING_CODESET (datetime_value),
 			DB_GET_STRING_COLLATION (datetime_value));
       break;
 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
-      DB_MAKE_VARCHAR (result, 12, res_s, strlen (res_s),
+      DB_MAKE_VARCHAR (result, TP_FLOATING_PRECISION_VALUE, res_s,
+		       strlen (res_s),
 		       DB_GET_STRING_CODESET (datetime_value),
 		       DB_GET_STRING_COLLATION (datetime_value));
       break;
