@@ -2707,8 +2707,8 @@ db_string_sha_one (DB_VALUE const *src, DB_VALUE * result)
 
 	  qstr_make_typed_string (DB_TYPE_CHAR, result, result_len,
 				  result_strp, result_len,
-				  LANG_COERCIBLE_CODESET,
-				  LANG_COERCIBLE_COLL);
+				  DB_GET_STRING_CODESET (src),
+				  DB_GET_STRING_COLLATION (src));
 	  result->need_clear = true;
 	}
       else
@@ -2799,8 +2799,9 @@ db_string_sha_two (DB_VALUE const *src, DB_VALUE const *hash_len,
 	}
 
       qstr_make_typed_string (DB_TYPE_VARCHAR, result, result_len,
-			      result_strp, result_len, LANG_COERCIBLE_CODESET,
-			      LANG_COERCIBLE_COLL);
+			      result_strp, result_len,
+			      DB_GET_STRING_CODESET (src),
+			      DB_GET_STRING_COLLATION (src));
       result->need_clear = true;
     }
   else
@@ -2870,8 +2871,9 @@ db_string_aes_encrypt (DB_VALUE const *src, DB_VALUE const *key,
 	}
 
       qstr_make_typed_string (DB_TYPE_VARCHAR, result, result_len,
-			      result_strp, result_len, LANG_COERCIBLE_CODESET,
-			      LANG_COERCIBLE_COLL);
+			      result_strp, result_len,
+			      DB_GET_STRING_CODESET (src),
+			      DB_GET_STRING_COLLATION (src));
       result->need_clear = true;
     }
   else
@@ -2948,8 +2950,9 @@ db_string_aes_decrypt (DB_VALUE const *src, DB_VALUE const *key,
 	}
 
       qstr_make_typed_string (DB_TYPE_VARCHAR, result, result_len,
-			      result_strp, result_len, LANG_COERCIBLE_CODESET,
-			      LANG_COERCIBLE_COLL);
+			      result_strp, result_len,
+			      DB_GET_STRING_CODESET (src),
+			      DB_GET_STRING_COLLATION (src));
       result->need_clear = true;
     }
   else
@@ -22333,7 +22336,15 @@ db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value,
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_NCHAR:
       DB_MAKE_VARNCHAR (result, 12, res_s, strlen (res_s),
-			LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+			DB_GET_STRING_CODESET (datetime_value),
+			DB_GET_STRING_COLLATION (datetime_value));
+      break;
+
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_CHAR:
+      DB_MAKE_VARCHAR (result, 12, res_s, strlen (res_s),
+		       DB_GET_STRING_CODESET (datetime_value),
+		       DB_GET_STRING_COLLATION (datetime_value));
       break;
 
     default:
@@ -22406,8 +22417,21 @@ db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value,
 
   sprintf (res_s, "%02d/%02d/%04d", m, d, y);
 
-  codeset = TP_DOMAIN_CODESET (domain);
-  collation_id = TP_DOMAIN_COLLATION (domain);
+  if (domain != NULL)
+    {
+      codeset = TP_DOMAIN_CODESET (domain);
+      collation_id = TP_DOMAIN_COLLATION (domain);
+    }
+  else if (TP_IS_STRING_TYPE (DB_VALUE_TYPE (date_value)))
+    {
+      codeset = DB_GET_STRING_CODESET (date_value);
+      collation_id = DB_GET_STRING_COLLATION (date_value);
+    }
+  else
+    {
+      codeset = LANG_SYS_CODESET;
+      collation_id = LANG_SYS_COLLATION;
+    }
 
   if (QSTR_IS_NATIONAL_CHAR (type))
     {
