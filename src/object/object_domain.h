@@ -485,6 +485,9 @@ extern TP_DOMAIN_STATUS tp_value_cast_no_domain_select (const DB_VALUE * src,
 							desired_domain,
 							bool
 							implicit_coercion);
+TP_DOMAIN_STATUS tp_value_change_coll_and_codeset (DB_VALUE * src,
+						   DB_VALUE * dest,
+						   int coll_id, int codeset);
 
 extern int tp_value_equal (const DB_VALUE * value1,
 			   const DB_VALUE * value2, int allow_coercion);

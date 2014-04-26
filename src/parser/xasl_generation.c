@@ -8860,6 +8860,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  if (node->info.expr.arg2 == NULL)
 		    {
 		      parser_free_tree (parser, empty_str);
+		      REGU_VARIABLE_SET_FLAG (regu,
+					      REGU_VARIABLE_INFER_COLLATION);
 		    }
 		  break;
 
@@ -8884,6 +8886,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  if (node->info.expr.arg2 == NULL)
 		    {
 		      parser_free_tree (parser, empty_str);
+		      REGU_VARIABLE_SET_FLAG (regu,
+					      REGU_VARIABLE_INFER_COLLATION);
 		    }
 		  break;
 
@@ -8916,6 +8920,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  if (node->info.expr.arg3 == NULL)
 		    {
 		      parser_free_tree (parser, empty_str);
+		      REGU_VARIABLE_SET_FLAG (regu,
+					      REGU_VARIABLE_INFER_COLLATION);
 		    }
 		  break;
 
@@ -8933,6 +8939,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  if (node->info.expr.arg3 == NULL)
 		    {
 		      parser_free_tree (parser, empty_str);
+		      REGU_VARIABLE_SET_FLAG (regu,
+					      REGU_VARIABLE_INFER_COLLATION);
 		    }
 		  break;
 
@@ -8950,6 +8958,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  if (node->info.expr.arg3 == NULL)
 		    {
 		      parser_free_tree (parser, empty_str);
+		      REGU_VARIABLE_SET_FLAG (regu,
+					      REGU_VARIABLE_INFER_COLLATION);
 		    }
 		  break;
 
@@ -8967,6 +8977,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  if (node->info.expr.arg3 == NULL)
 		    {
 		      parser_free_tree (parser, empty_str);
+		      REGU_VARIABLE_SET_FLAG (regu,
+					      REGU_VARIABLE_INFER_COLLATION);
 		    }
 		  break;
 
@@ -9320,6 +9332,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  if (node->info.expr.arg2 == NULL)
 		    {
 		      parser_free_tree (parser, empty_str);
+		      REGU_VARIABLE_SET_FLAG (regu,
+					      REGU_VARIABLE_INFER_COLLATION);
 		    }
 		  break;
 

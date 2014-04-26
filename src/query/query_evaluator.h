@@ -183,6 +183,7 @@ struct regu_variable_node
 #define REGU_VARIABLE_APPLY_COLLATION	  0x08	/* Apply collation from domain;
 						   flag used in context of COLLATE modifier */
 #define REGU_VARIABLE_ANALYTIC_WINDOW     0x10	/* for analytic window func */
+#define REGU_VARIABLE_INFER_COLLATION	  0x20	/* infer collation for default parameter */
   int flags;			/* flags */
 #define REGU_VARIABLE_IS_FLAGED(e, f)    ((e)->flags & (short) (f))
 #define REGU_VARIABLE_SET_FLAG(e, f)     (e)->flags |= (short) (f)

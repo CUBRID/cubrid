@@ -8998,6 +8998,50 @@ tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest,
 }
 
 /*
+ * tp_value_change_coll_and_codeset () - change the collation and codeset of a 
+ *                                       value
+ *   returns: cast operation result
+ *   src(in): source DB_VALUE
+ *   dest(in): destination DB_VALUE where src will be copied/adjusted to
+ *   coll_id(in): destination collation id
+ *   codeset(in): destination codeset
+ */
+TP_DOMAIN_STATUS
+tp_value_change_coll_and_codeset (DB_VALUE * src, DB_VALUE * dest,
+				  int coll_id, int codeset)
+{
+  TP_DOMAIN *temp_domain;
+
+  assert (src != NULL && dest != NULL);
+  assert (TP_IS_STRING_TYPE (DB_VALUE_TYPE (src)));
+
+  if (DB_GET_STRING_COLLATION (src) == coll_id
+      && DB_GET_STRING_CODESET (src) == codeset)
+    {
+      /* early exit scenario */
+      return DOMAIN_COMPATIBLE;
+    }
+
+  /* create new domain and adjust collation and codeset */
+  temp_domain = tp_domain_resolve_value (src, NULL);
+  if (temp_domain == NULL)
+    {
+      /* not exactly a relevant error code, but should serve it's purpose */
+      assert (false);
+      return DOMAIN_ERROR;
+    }
+
+  temp_domain->collation_id = coll_id;
+  temp_domain->codeset = codeset;
+
+  /* cache domain */
+  temp_domain = tp_domain_cache (temp_domain);
+
+  /* cast the value */
+  return tp_value_cast (src, dest, temp_domain, true);
+}
+
+/*
  * VALUE COMPARISON
  */
 
