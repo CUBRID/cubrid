@@ -8301,7 +8301,8 @@ pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
 		    /* Set the expected domain of host variable to type
 		       set_data so that at runtime the host variable should
 		       be casted to it if needed */
-		    if (arg_list->type_enum == PT_TYPE_MAYBE)
+		    if (arg_list->type_enum == PT_TYPE_MAYBE
+			&& arg_list->node_type == PT_HOST_VAR)
 		      {
 			if (for_collation == false)
 			  {
@@ -21866,7 +21867,7 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
       if (PT_IS_COLLECTION_TYPE (node->type_enum))
 	{
 	  PT_NODE *dt_node;
-	  PT_NODE *dt = NULL;
+	  PT_NODE *dt = NULL, *arg;
 	  bool apply_wrap_cast = false;
 
 	  if (node->data_type == NULL)
@@ -21897,6 +21898,31 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 		  dt_node = dt_node->next;
 		}
 	      while (dt_node != NULL);
+
+	      if (apply_wrap_cast == false
+		  && node->node_type == PT_FUNCTION
+		  && ((node->info.function.function_type == F_MULTISET)
+		      || (node->info.function.function_type == F_SET)
+		      || (node->info.function.function_type == F_SEQUENCE)))
+		{
+		  arg = node->info.function.arg_list;
+		  do
+		    {
+		      if ((PT_HAS_COLLATION (arg->type_enum)
+			   && arg->data_type != NULL
+			   && (arg->data_type->info.data_type.collation_id
+			       != coll_id))
+			  || (arg->type_enum == PT_TYPE_MAYBE
+			      && arg->node_type != PT_HOST_VAR))
+			{
+			  apply_wrap_cast = true;
+			  break;
+			}
+
+		      arg = arg->next;
+		    }
+		  while (arg != NULL);
+		}
 	    }
 
 	  if (apply_wrap_cast)
