@@ -22647,7 +22647,10 @@ error:
     {
       return NO_ERROR;
     }
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+  if (er_errid () == NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+    }
   return error_status;
 }
 
