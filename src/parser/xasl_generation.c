@@ -6202,7 +6202,10 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      if (tp_value_cast (val, val,
 				 regu->domain, false) != DOMAIN_COMPATIBLE)
 		{
-		  PT_INTERNAL_ERROR (parser, "cannot coerce host var");
+		  PT_ERRORmf2 (parser, node, MSGCAT_SET_ERROR,
+			       -(ER_TP_CANT_COERCE),
+			       pr_type_name (DB_VALUE_DOMAIN_TYPE (val)),
+			       pr_type_name (TP_DOMAIN_TYPE (regu->domain)));
 		  regu = NULL;
 		}
 	    }
