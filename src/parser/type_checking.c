@@ -11843,7 +11843,6 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_SHA_ONE:
       assert (dt != NULL);
       dt->info.data_type.precision = 40;
-      do_detect_collation = false;
       break;
 
     case PT_TO_BASE64:
