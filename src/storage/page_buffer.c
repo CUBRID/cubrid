@@ -6731,7 +6731,7 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
 
   pthread_mutex_unlock (&ain_list->Ain_mutex);
 
-  if (bufptr == NULL || dirty_count > check_count_max / 2)
+  if (bufptr == NULL || dirty_count > max_count / 2)
     {
       /* Flush some pages. We do this either because we have too many dirty
        * pages or we didn't find a victim.
