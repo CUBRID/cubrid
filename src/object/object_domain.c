@@ -9024,6 +9024,10 @@ tp_value_change_coll_and_codeset (DB_VALUE * src, DB_VALUE * dest,
 
   /* create new domain and adjust collation and codeset */
   temp_domain = tp_domain_resolve_value (src, NULL);
+  if (temp_domain != NULL && temp_domain->is_cached)
+    {
+      temp_domain = tp_domain_copy (temp_domain, false);
+    }
   if (temp_domain == NULL)
     {
       /* not exactly a relevant error code, but should serve it's purpose */
