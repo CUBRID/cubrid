@@ -492,6 +492,8 @@ css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer,
   int rc;
   unsigned int rid;
   int type;
+  char *buf = NULL;
+  int buf_size = 0;
 
   if (conn == NULL || conn->status != CONN_OPEN)
     {
@@ -499,6 +501,8 @@ css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer,
 	     conn ? conn->status : 0);
       return CONNECTION_CLOSED;
     }
+
+  assert (buffer && buffer_size);
 
   if (css_return_queued_data (conn, req_id, buffer, buffer_size, &rc))
     {
@@ -518,44 +522,41 @@ begin:
       type = ntohl (header.type);
       if (DATA_TYPE == type)
 	{
-	  *buffer_size = ntohl (header.buffer_size);
+	  buf_size = ntohl (header.buffer_size);
 
 	  if (rid == req_id)
 	    {
-	      *buffer = (char *) css_return_data_buffer (conn,
-							 rid, buffer_size);
+	      buf = (char *) css_return_data_buffer (conn, rid, &buf_size);
 	    }
 	  else
 	    {
-	      *buffer = (char *) css_return_data_buffer (conn,
-							 0, buffer_size);
+	      buf = (char *) css_return_data_buffer (conn, 0, &buf_size);
 	    }
 
-	  if (*buffer != NULL)
+	  if (buf != NULL)
 	    {
-	      rc = css_net_recv (conn->fd, *buffer, buffer_size, timeout);
+	      rc = css_net_recv (conn->fd, buf, &buf_size, timeout);
 	      if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
 		{
 		  if (req_id != rid)
 		    {
 		      /* We have some data for a different request id */
 		      css_queue_unexpected_data_packet (conn, rid,
-							*buffer,
-							*buffer_size, rc);
+							buf, buf_size, rc);
 		      goto begin;
 		    }
 		}
 	    }
 	  else
 	    {
-	      if (*buffer_size > 0)
+	      if (buf_size > 0)
 		{
 		  /*
 		   * allocation error, buffer == NULL
 		   * cleanup received message and set error
 		   */
 		  css_read_remaining_bytes (conn->fd,
-					    sizeof (int) + *buffer_size);
+					    sizeof (int) + buf_size);
 		  rc = CANT_ALLOC_BUFFER;
 		  if (req_id != rid)
 		    {
@@ -565,6 +566,9 @@ begin:
 		    }
 		}
 	    }
+
+	  *buffer = buf;
+	  *buffer_size = buf_size;
 	}
       else
 	{
@@ -609,11 +613,15 @@ css_receive_error (CSS_CONN_ENTRY * conn, unsigned short req_id,
   int rc;
   int rid;
   int type;
+  char *buf = NULL;
+  int buf_size = 0;
 
   if (conn == NULL || conn->status != CONN_OPEN)
     {
       return CONNECTION_CLOSED;
     }
+
+  assert (buffer && buffer_size);
 
   if (css_return_queued_error (conn, req_id, buffer, buffer_size, &rc))
     {
@@ -631,22 +639,20 @@ begin:
       type = ntohl (header.type);
       if (ERROR_TYPE == type)
 	{
-	  *buffer_size = ntohl (header.buffer_size);
-	  if (*buffer_size != 0)
+	  buf_size = ntohl (header.buffer_size);
+	  if (buf_size != 0)
 	    {
-	      *buffer = (char *) css_return_data_buffer (conn, rid,
-							 buffer_size);
-	      if (*buffer != NULL)
+	      buf = (char *) css_return_data_buffer (conn, rid, &buf_size);
+	      if (buf != NULL)
 		{
-		  rc = css_net_recv (conn->fd, *buffer, buffer_size, -1);
+		  rc = css_net_recv (conn->fd, buf, &buf_size, -1);
 		  if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
 		    {
 		      if (req_id != rid)
 			{
 			  /* We have some data for a different request id */
 			  css_queue_unexpected_error_packet (conn, rid,
-							     *buffer,
-							     *buffer_size,
+							     buf, buf_size,
 							     rc);
 			  goto begin;
 			}
@@ -659,7 +665,7 @@ begin:
 		   * cleanup received message and set error
 		   */
 		  css_read_remaining_bytes (conn->fd,
-					    sizeof (int) + *buffer_size);
+					    sizeof (int) + buf_size);
 		  rc = CANT_ALLOC_BUFFER;
 		  if (req_id != rid)
 		    {
@@ -668,6 +674,8 @@ begin:
 		      goto begin;
 		    }
 		}
+	      *buffer = buf;
+	      *buffer_size = buf_size;
 	    }
 	  else
 	    {
@@ -675,7 +683,7 @@ begin:
 	       * This is the case where data length is zero, but if the
 	       * user registered a buffer, we should return the buffer
 	       */
-	      *buffer = css_return_data_buffer (conn, req_id, buffer_size);
+	      *buffer = css_return_data_buffer (conn, req_id, &buf_size);
 	      *buffer_size = 0;
 	    }
 	}
