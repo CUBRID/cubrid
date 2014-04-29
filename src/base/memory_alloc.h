@@ -158,6 +158,7 @@ extern HL_HEAPID private_heap_id;
 
 #define os_malloc(size) (malloc (size))
 #define os_free(ptr) (free (ptr))
+#define os_realloc(ptr, size) (realloc ((ptr), (size)))
 
 #else /* SERVER_MODE */
 
@@ -174,6 +175,7 @@ extern void *os_calloc_debug (size_t n, size_t size, bool rc_track,
         os_free_debug(ptr, true, __FILE__, __LINE__)
 extern void os_free_debug (void *ptr, bool rc_track,
 			   const char *caller_file, int caller_line);
+#define os_realloc(ptr, size) (realloc ((ptr), (size)))
 #else /* NDEBUG */
 #define os_malloc(size) \
         os_malloc_release(size, false)
@@ -184,6 +186,7 @@ extern void *os_calloc_release (size_t n, size_t size, bool rc_track);
 #define os_free(ptr) \
         os_free_release(ptr, false)
 extern void os_free_release (void *ptr, bool rc_track);
+#define os_realloc(ptr, size) (realloc ((ptr), (size)))
 #endif /* NDEBUG */
 
 #endif /* SERVER_MODE */

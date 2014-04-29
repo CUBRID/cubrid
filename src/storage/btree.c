@@ -5912,8 +5912,7 @@ btree_keyoid_checkscan_start (THREAD_ENTRY * thread_p, BTID * btid,
   BTREE_INIT_SCAN (&btscan->btree_scan);
   btscan->oid_area_size = ISCAN_OID_BUFFER_SIZE;
   btscan->oid_cnt = 0;
-  btscan->oid_ptr =
-    (OID *) db_private_alloc (thread_p, btscan->oid_area_size);
+  btscan->oid_ptr = (OID *) os_malloc (btscan->oid_area_size);
   if (btscan->oid_ptr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -6021,7 +6020,7 @@ btree_keyoid_checkscan_end (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan)
   /* Deallocate allocated areas */
   if (btscan->oid_ptr)
     {
-      db_private_free_and_init (thread_p, btscan->oid_ptr);
+      os_free_and_init (btscan->oid_ptr);
       btscan->oid_area_size = 0;
     }
 }
@@ -17213,7 +17212,7 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       bts->common_prefix = COMMON_PREFIX_UNKNOWN;
     }
 
-  /* 
+  /*
    * unfix first page if fix next page and move to it
    *
    *  case 1: P_page == NULL, C_page == first_page       x do not fix 1 next page
@@ -23523,8 +23522,7 @@ start_locking:
 		}
 
 	      new_size = (btrs_helper.pg_oid_cnt * OR_OID_SIZE) + oids_size;
-	      new_ptr =
-		(char *) db_private_realloc (thread_p, oids_ptr, new_size);
+	      new_ptr = (char *) os_realloc (oids_ptr, new_size);
 	      if (new_ptr == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
