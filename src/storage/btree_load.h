@@ -254,8 +254,10 @@ extern int btree_glean_root_header_info (THREAD_ENTRY * thread_p,
 extern DISK_ISVALID btree_verify_tree (THREAD_ENTRY * thread_p,
 				       const OID * class_oid_p,
 				       BTID_INT * btid, const char *btname);
-extern int btree_get_prefix (const DB_VALUE * key1, const DB_VALUE * key2,
-			     DB_VALUE * prefix_key, TP_DOMAIN * key_domain);
+extern int btree_get_prefix_separator (const DB_VALUE * key1,
+				       const DB_VALUE * key2,
+				       DB_VALUE * prefix_key,
+				       TP_DOMAIN * key_domain);
 extern int btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
 			      TP_DOMAIN * key_domain,
 			      int do_coercion, int total_order,

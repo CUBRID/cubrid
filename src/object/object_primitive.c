@@ -7345,6 +7345,7 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value,
 
   if (size <= 0)
     {
+      assert (false);
       return ER_FAILED;
     }
 
@@ -7859,6 +7860,7 @@ mr_index_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain)
 
   bitptr = buf;
   buf += adv_size;
+  assert (CAST_BUFLEN (buf - bitptr) > 0);
 
   for (i = 0, dom = domain->setdomain; i < idx_ncols; i++, dom = dom->next)
     {
