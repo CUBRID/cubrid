@@ -3767,6 +3767,9 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       sig.arg2_type.is_generic = false;
       sig.arg2_type.val.type = PT_TYPE_NONE;
 
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_TIMESTAMP;
       def->overloads[num++] = sig;
@@ -3776,6 +3779,9 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
 
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_VARCHAR;
@@ -16965,7 +16971,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
     case PT_FROM_UNIXTIME:
-      error = db_from_unixtime (arg1, arg2, result, domain);
+      error = db_from_unixtime (arg1, arg2, arg3, result, domain);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());

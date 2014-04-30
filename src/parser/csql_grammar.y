@@ -23489,6 +23489,14 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_RTRIM:
     case PT_LIKE_LOWER_BOUND:
     case PT_LIKE_UPPER_BOUND:
+      if (c < 1 || c > 2)
+	return NULL;
+      a1 = args;
+      if (a1)
+	a2 = a1->next;
+      a1->next = NULL;
+      return parser_make_expression (this_parser, key->op, a1, a2, a3);
+
     case PT_FROM_UNIXTIME:
       if (c < 1 || c > 2)
 	return NULL;
@@ -23496,6 +23504,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       if (a1)
 	a2 = a1->next;
       a1->next = NULL;
+      a3 = parser_make_date_lang (2, NULL);
       return parser_make_expression (this_parser, key->op, a1, a2, a3);
 
       /* arg 1 or 2 */

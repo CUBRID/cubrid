@@ -22574,7 +22574,8 @@ error:
 
 int
 db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format,
-		  DB_VALUE * result, const TP_DOMAIN * domain)
+		  const DB_VALUE * date_lang, DB_VALUE * result,
+		  const TP_DOMAIN * domain)
 {
   time_t unix_timestamp;
   DB_TYPE format_type;
@@ -22622,12 +22623,17 @@ db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format,
     case DB_TYPE_VARNCHAR:
       {
 	DB_VALUE ts_val;
-	DB_VALUE date_lang;
+	DB_VALUE default_date_lang;
 
 	DB_MAKE_TIMESTAMP (&ts_val, unix_timestamp);
-	/* use date_lang for en_US */
-	DB_MAKE_INTEGER (&date_lang, 0);
-	error_status = db_date_format (&ts_val, format, &date_lang, result,
+	if (date_lang == NULL || DB_IS_NULL (date_lang))
+	  {
+	    /* use date_lang for en_US */
+	    DB_MAKE_INTEGER (&default_date_lang, 0);
+	    date_lang = &default_date_lang;
+	  }
+
+	error_status = db_date_format (&ts_val, format, date_lang, result,
 				       domain);
 	if (error_status != NO_ERROR)
 	  {

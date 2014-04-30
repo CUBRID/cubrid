@@ -8897,6 +8897,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_FROM_UNIXTIME:
 		  r1 = pt_to_regu_variable (parser,
 					    node->info.expr.arg1, unbox);
+		  r3 = pt_to_regu_variable (parser, node->info.expr.arg3,
+					    unbox);
 		  r2 = (node->info.expr.arg2)
 		    ? pt_to_regu_variable (parser, node->info.expr.arg2,
 					   unbox) : NULL;
@@ -8905,7 +8907,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      break;
 		    }
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_FROM_UNIXTIME,
+		  regu = pt_make_regu_arith (r1, r2, r3, T_FROM_UNIXTIME,
 					     domain);
 		  break;
 

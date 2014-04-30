@@ -254,6 +254,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      goto error;
 	    }
 	}
+      if (arithptr->thirdptr != NULL)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL,
+				obj_oid, tpl, &peek_third) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
       break;
 
     case T_SUBSTRING_INDEX:
@@ -1559,7 +1567,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_from_unixtime (peek_left, peek_right, arithptr->value,
+      else if (db_from_unixtime (peek_left, peek_right, peek_third,
+				 arithptr->value,
 				 arithptr->domain) != NO_ERROR)
 	{
 	  goto error;
