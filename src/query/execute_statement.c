@@ -7502,7 +7502,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
   const char *savepoint_name = NULL;
   int cursor_status;
   PT_NODE *check_where;
-  bool has_unique;
+  bool has_unique, has_trigger;
   bool has_delete, should_delete = false;
 
   if (list_id == NULL || statement == NULL)
@@ -7517,6 +7517,11 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
   has_unique = statement->node_type == PT_MERGE
     ? (statement->info.merge.flags & PT_MERGE_INFO_HAS_UNIQUE)
     : statement->info.update.has_unique;
+  /* For merge stmt, the savepoint has already been added in do_merge() or
+   * do_execute_merge(). we do not need to check the trigger any more.
+   */
+  has_trigger = (statement->node_type == PT_UPDATE
+		 && statement->info.update.has_trigger);
   has_delete = (statement->node_type == PT_MERGE
 		&& statement->info.merge.update.has_delete);
 
@@ -7532,7 +7537,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
   /* if the list file contains more than 1 object we need to savepoint
    * the statement to guarantee statement atomicity.
    */
-  if (list_id->tuple_cnt > 1 || check_where || has_unique)
+  if (list_id->tuple_cnt > 1 || check_where || has_unique || has_trigger)
     {
       savepoint_name =
 	mq_generate_name (parser, "UusP", &update_savepoint_number);
