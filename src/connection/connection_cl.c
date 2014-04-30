@@ -578,15 +578,16 @@ begin:
 	      /*
 	       * if the user registered a buffer, we should return the buffer
 	       */
+	      *buffer_size = ntohl (header.buffer_size);
 	      *buffer = css_return_data_buffer (conn, req_id, buffer_size);
-	      *buffer_size = 0;
+	      assert (*buffer_size == 0);
 
 	      return SERVER_ABORTED;
 	    }
 #endif /* CS_MODE */
 
 	  css_queue_unexpected_packet (type, conn, rid, &header,
-				       header.buffer_size);
+				       ntohl (header.buffer_size));
 	  goto begin;
 	}
     }
@@ -683,14 +684,15 @@ begin:
 	       * This is the case where data length is zero, but if the
 	       * user registered a buffer, we should return the buffer
 	       */
-	      *buffer = css_return_data_buffer (conn, req_id, &buf_size);
-	      *buffer_size = 0;
+	      *buffer_size = ntohl (header.buffer_size);
+	      *buffer = css_return_data_buffer (conn, req_id, buffer_size);
+	      assert (*buffer_size == 0);
 	    }
 	}
       else
 	{
 	  css_queue_unexpected_packet (type, conn, rid, &header,
-				       header.buffer_size);
+				       ntohl (header.buffer_size));
 	  goto begin;
 	}
     }
