@@ -8049,10 +8049,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    DB_VALUE tmpval;
 
+	    DB_MAKE_NULL (&tmpval);
+
 	    err = db_blob_to_bit (src, NULL, &tmpval);
 	    if (err == NO_ERROR)
 	      {
-		err = tp_value_cast_internal (&tmpval, dest, desired_domain,
+		err = tp_value_cast_internal (&tmpval, target, desired_domain,
 					      coercion_mode,
 					      do_domain_select, false);
 	      }
@@ -8458,17 +8460,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	{
 	case DB_TYPE_ELO:
 	case DB_TYPE_BLOB:
-	  err = db_value_clone ((DB_VALUE *) src, dest);
+	  err = db_value_clone ((DB_VALUE *) src, target);
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  err = db_bit_to_blob (src, dest);
+	  err = db_bit_to_blob (src, target);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  err = db_char_to_blob (src, dest);
+	  err = db_char_to_blob (src, target);
 	  break;
 	case DB_TYPE_ENUMERATION:
 	  {
@@ -8495,11 +8497,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	{
 	case DB_TYPE_ELO:
 	case DB_TYPE_CLOB:
-	  err = db_value_clone ((DB_VALUE *) src, dest);
+	  err = db_value_clone ((DB_VALUE *) src, target);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  err = db_char_to_clob (src, dest);
+	  err = db_char_to_clob (src, target);
 	  break;
 	case DB_TYPE_ENUMERATION:
 	  {
@@ -8526,7 +8528,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_CLOB:
 	case DB_TYPE_BLOB:
 	case DB_TYPE_ELO:
-	  db_value_clone ((DB_VALUE *) src, dest);
+	  db_value_clone ((DB_VALUE *) src, target);
 	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
