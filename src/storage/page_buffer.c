@@ -6652,15 +6652,20 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, const VPID * vpid, int max_count)
       ATOMIC_INC_32 (&pgbuf_Pool.ain_victim_req_cnt, 1);
       victim = pgbuf_get_victim_from_ain_list (thread_p, max_count);
     }
-  else
+
+  if (victim == NULL)
     {
-      /* Note that we do not search for a victim in the LRU list if we don't
-       * find one in the Ain list. Doing so would mean that we are evicting a
-       * hot page. It is better to wait for an available slot in the Ain list.
+      /* if we don't find one in the Ain list, we are going to find one 
+       * in LRU lists. This may lead a hot page is evicted from buffer.
+       * This is intended for response time of workers that want to victimize one.
+       * We may choose a policy to wait for one only in AIN list, however, 
+       * the worker thread must wait for the flush thread flushes the dirty pages
+       * from AIN list while iterating the AIN list multiple times.
        */
       ATOMIC_INC_32 (&pgbuf_Pool.lru_victim_req_cnt, 1);
       victim = pgbuf_get_victim_from_lru_list (thread_p, vpid, max_count);
     }
+
   return victim;
 }
 
@@ -6678,7 +6683,6 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
   bool found = false;
   int check_count, check_count_max;
   int dirty_count;
-
 #if defined(SERVER_MODE)
   int rv;
 #endif
@@ -6737,12 +6741,12 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
        * pages or we didn't find a victim.
        */
       pgbuf_wakeup_flush_thread (thread_p);
-    }
 
-  if (bufptr == NULL)
-    {
-      /* We didn't find any victim. */
-      return NULL;
+      if (bufptr == NULL)
+	{
+	  /* We didn't find any victim. */
+	  return NULL;
+	}
     }
 
   MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
@@ -7306,6 +7310,7 @@ cleanup:
     {
       list->tick = 0;
     }
+
   pthread_mutex_unlock (&list->Ain_mutex);
   return NO_ERROR;
 }
