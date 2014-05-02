@@ -3227,7 +3227,11 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
       root_header->num_oids = num_oids;
       root_header->num_nulls = num_nulls;
       root_header->num_keys = num_keys;
-      root_header->unique = true;
+      root_header->unique = is_unique_btree;
+
+      assert (root_header->unique & BTREE_CONSTRAINT_UNIQUE);
+      assert (root_header->unique == true
+	      || root_header->unique & BTREE_CONSTRAINT_PRIMARY_KEY);
     }
   else
     {
