@@ -4081,7 +4081,8 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
       result->info.data_type.units = db_domain_codeset (domain);
       result->info.data_type.collation_id = db_domain_collation_id (domain);
       result->info.data_type.collation_flag = domain->collation_flag;
-      assert (result->info.data_type.collation_id >= 0);
+      assert (!PT_IS_CHAR_STRING_TYPE (t)
+	      || result->info.data_type.collation_id >= 0);
       break;
 
     case PT_TYPE_OBJECT:

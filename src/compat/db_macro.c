@@ -220,6 +220,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type,
 		  DB_MAX_BIT_PRECISION);
 	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
 	}
+      value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
       break;
 
     case DB_TYPE_VARBIT:
@@ -239,6 +240,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type,
 		  DB_MAX_VARBIT_PRECISION);
 	  value->domain.char_info.length = DB_MAX_VARBIT_PRECISION;
 	}
+      value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
       break;
 
     case DB_TYPE_CHAR:
@@ -5183,7 +5185,7 @@ coerce_binary_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	    || (db_type == DB_TYPE_BIT && precision == buflen))
 	  {
 	    qstr_make_typed_string (db_type, value, precision, buf, buflen,
-				    LANG_SYS_CODESET, LANG_SYS_COLLATION);
+				    INTL_CODESET_RAW_BITS, 0);
 	  }
 	else
 	  {
@@ -5192,8 +5194,7 @@ coerce_binary_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	    int error;
 
 	    qstr_make_typed_string (db_type, &tmp_value, precision, buf,
-				    buflen, LANG_SYS_CODESET,
-				    LANG_SYS_COLLATION);
+				    buflen, INTL_CODESET_RAW_BITS, 0);
 
 	    error = db_bit_string_coerce (&tmp_value, value, &data_status);
 	    if (error != NO_ERROR)

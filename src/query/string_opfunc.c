@@ -6045,7 +6045,8 @@ db_bit_string_coerce (const DB_VALUE * src_string,
 	  qstr_make_typed_string (dest_type,
 				  dest_string,
 				  DB_VALUE_PRECISION (dest_string),
-				  (char *) dest, dest_length, 0, 0);
+				  (char *) dest, dest_length, 
+				  INTL_CODESET_RAW_BITS, 0);
 	  dest_string->need_clear = true;
 	}
     }

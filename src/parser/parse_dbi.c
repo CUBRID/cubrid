@@ -2741,7 +2741,8 @@ pt_bind_helper (PARSER_CONTEXT * parser,
 	  dt->info.data_type.units = (int) db_get_string_codeset (val);
 	  dt->info.data_type.collation_id =
 	    (int) db_get_string_collation (val);
-	  assert (dt->info.data_type.collation_id >= 0);
+	  assert (!TP_IS_CHAR_TYPE (val_type)
+		  || dt->info.data_type.collation_id >= 0);
 	}
       break;
 

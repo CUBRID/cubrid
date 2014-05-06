@@ -13430,6 +13430,7 @@ mr_initmem_bit (void *memptr, TP_DOMAIN * domain)
   int mem_length;
 
   assert (!IS_FLOATING_PRECISION (domain->precision));
+  assert (TP_DOMAIN_CODESET (domain) == INTL_CODESET_RAW_BITS);
 
   mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
   memset (memptr, 0, mem_length);
@@ -13476,6 +13477,7 @@ mr_setmem_bit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
    * really isn't necessary for this operation.
    * Calculate the maximum number of bytes we have available here.
    */
+  assert (TP_DOMAIN_CODESET (domain) == INTL_CODESET_RAW_BITS);
   mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
 
   if (mem_length < src_length)
@@ -13511,6 +13513,7 @@ mr_getmem_bit (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
   int mem_length;
   char *new_;
 
+  assert (TP_DOMAIN_CODESET (domain) == INTL_CODESET_RAW_BITS);
   mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
 
   if (!copy)
@@ -13534,6 +13537,7 @@ static int
 mr_data_lengthmem_bit (void *memptr, TP_DOMAIN * domain, int disk)
 {
   assert (!IS_FLOATING_PRECISION (domain->precision));
+  assert (TP_DOMAIN_CODESET (domain) == INTL_CODESET_RAW_BITS);
 
   /* There is no difference between the disk & memory sizes. */
   return STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
@@ -13544,6 +13548,7 @@ mr_data_writemem_bit (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 {
   int mem_length;
 
+  assert (TP_DOMAIN_CODESET (domain) == INTL_CODESET_RAW_BITS);
   mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
 
   /*
@@ -13569,6 +13574,7 @@ mr_data_readmem_bit (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 	}
       else
 	{
+	  assert (TP_DOMAIN_CODESET (domain) == INTL_CODESET_RAW_BITS);
 	  mem_length = STR_SIZE (domain->precision,
 				 TP_DOMAIN_CODESET (domain));
 	  or_advance (buf, mem_length);
@@ -13576,6 +13582,7 @@ mr_data_readmem_bit (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
     }
   else
     {
+      assert (TP_DOMAIN_CODESET (domain) == INTL_CODESET_RAW_BITS);
       mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
       if (size != -1 && mem_length > size)
 	{
@@ -13663,6 +13670,7 @@ mr_index_lengthmem_bit (void *memptr, TP_DOMAIN * domain)
   int mem_length;
 
   assert (!IS_FLOATING_PRECISION (domain->precision) || memptr != NULL);
+  assert (TP_DOMAIN_CODESET (domain) == INTL_CODESET_RAW_BITS);
 
   if (!IS_FLOATING_PRECISION (domain->precision))
     {
@@ -13700,6 +13708,7 @@ mr_data_lengthval_bit (DB_VALUE * value, int disk)
   src_precision = db_value_precision (value);
   if (!IS_FLOATING_PRECISION (src_precision))
     {
+      assert (db_get_string_codeset (value) == INTL_CODESET_RAW_BITS);
       packed_length = STR_SIZE (src_precision, db_get_string_codeset (value));
     }
   else
@@ -13759,7 +13768,7 @@ mr_writeval_bit_internal (OR_BUF * buf, DB_VALUE * value, int align)
 
   if (!IS_FLOATING_PRECISION (src_precision))
     {
-      /* Would have to check for charset conversion here ! */
+      assert (db_get_string_codeset (value) == INTL_CODESET_RAW_BITS);
       packed_length = STR_SIZE (src_precision, db_get_string_codeset (value));
 
       if (packed_length < src_length)
@@ -13915,6 +13924,7 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value,
     }
   else
     {
+      assert (TP_DOMAIN_CODESET (domain) == INTL_CODESET_RAW_BITS);
       mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
 
       if (disk_size != -1 && mem_length > disk_size)
@@ -14048,6 +14058,7 @@ mr_cmpdisk_bit_internal (void *mem1, void *mem2, TP_DOMAIN * domain,
     }
   else
     {
+      assert (TP_DOMAIN_CODESET (domain) == INTL_CODESET_RAW_BITS);
       mem_length1 = mem_length2 = STR_SIZE (domain->precision,
 					    TP_DOMAIN_CODESET (domain));
     }

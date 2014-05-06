@@ -999,6 +999,11 @@ domain_init (TP_DOMAIN * domain, DB_TYPE typeid_)
 	  domain->enumeration.collation_id = LANG_SYS_COLLATION;
 	}
     }
+  else if (TP_IS_BIT_TYPE (typeid_))
+    {
+      domain->codeset = INTL_CODESET_RAW_BITS;
+      domain->collation_id = 0;
+    }
   else
     {
       domain->codeset = 0;
