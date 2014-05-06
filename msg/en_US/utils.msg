@@ -383,7 +383,7 @@ valid options:\n\
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
-19 Tha database name is missing.\n
+19 The database name is missing.\n
 20 '%1$s' file does not have %2$d lines.\n
 21 interrupt ... \n
 22 Interrupted load - current transaction committed\n
@@ -543,7 +543,7 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 43 Error while processing class, class skipped.\n
 44 \nPass 3\n\n
 45 Heap compact failed...\n
-46 Heap compact succedeed...\n
+46 Heap compact succeeded...\n
 60 \
 compactdb: Free unused space in a database.\n\
 usage: %1$s compactdb [OPTION] database-name [class_name1 class_name2 ...]\n\
@@ -942,7 +942,7 @@ $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Enter DBA password:
 22 The server was not configured for HA.\n
 58 HA feature is not supported in this platform.\n
-59 applyinfo cannot run as standlone mode.\n
+59 applyinfo cannot run as standalone mode.\n
 60 \
 applyinfo: display CUBRID HA Apply information.\n\
 usage: %1$s applyinfo [OPTION] database-name\n\

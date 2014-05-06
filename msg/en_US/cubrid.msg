@@ -518,7 +518,7 @@ $set 5 MSGCAT_SET_ERROR
 450 Invalid set operator: %1$d.
 451 Heap file with no instances.
 452 Invalid XASL tree node content.
-453 No more acess specification nodes.
+453 No more access specification nodes.
 454 Invalid data type referenced.
 455 No more query file pages left.
 456 Data type references are incompatible.
@@ -704,7 +704,7 @@ $ LOADDB
 635 WARNING: Log Buffer pool of %1$d buffers seems very small for current environment.\n It is possible that some buffers are not freed by the system due to an UNKNOWN ERROR\n or that there are many concurrent transactions being aborted at the same time. The log buffer pool is expanded with %2$d more buffers.
 636 WARNING Num_buffers %1$d is too small. The minimum value of %2$d was assumed.
 637 System error: freeing a log buffer too much. Fix count is set to zero.
-638 Warning: Flushing an unupdatable log archive pageid = %1$d
+638 Warning: Flushing a non-updatable log archive pageid = %1$d
 639 System error: Previous log sequence page %1$d is not the delayed flush page %2$d.
 640 System Error: a savepoint cannot be added when the transaction is not active (e.g., during commit or rollback).
 641 A name must be given for a savepoint.
@@ -829,7 +829,7 @@ $ LOADDB
 760 Internal error: proxy object instance has NULL key during object encode.
 761 Internal error: vclass object instance maps to invalid real instance.
 762 Internal error in resolving vclass instance to a real instance.
-763 Internal error in encoding nonupdatable object instance.
+763 Internal error in encoding non-updatable object instance.
 764 Internal error in encoding object into internal vobj form.
 765 Output object argument has a NULL address.
 766 Internal error in decoding object.
@@ -1213,8 +1213,8 @@ $ LOADDB
 1144 Timed out attempting to connect to %1$s. (timeout: %2$d sec(s))
 1145 To change the owner of a system class is not allowed.
 1146 volume identifier %1$d does not exist.
-1147 The size of XASL stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
-1148 The size of filter predicate stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
+1147 The size of XASL stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized because all cache entries are used.
+1148 The size of filter predicate stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized because all cache entries are used.
 1149 Cannot find the page %1$d of volume %2$d.
 1150 Context requires compatible collations.
 1151 The page %1$d of volume %2$d is not a slotted page.
@@ -1511,7 +1511,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 138 '%1$s' operator is not defined on type %2$s.
 139 '%1$s' operator is not defined on types %2$s with %3$s and %4$s.
 140 Operands of operator '%1$s' cannot both be dynamic host variables.
-141 Too many aguments to generic function %1$s.\nOnly %2$d arguments are allowed for generic functions.
+141 Too many arguments to generic function %1$s.\nOnly %2$d arguments are allowed for generic functions.
 142 Selector {%1$s} class '%2$s' is not a subclass of '%3$s'.
 143 Cannot extract '%1$s' field from type %2$s.
 144 Query specification must not have an ORDER BY clause.
