@@ -8102,12 +8102,12 @@ lp_process_log_record (struct log_header *final_log_hdr,
 	  if (error == ER_NET_CANT_CONNECT_SERVER
 	      || error == ER_OBJ_NO_CONNECT)
 	    {
-	      la_shutdown (BOOT_CLIENT_LOG_PREFETCHER);
+	      la_applier_need_shutdown = true;
 	      return ER_NET_CANT_CONNECT_SERVER;
 	    }
 	  else if (error == ER_HA_LA_EXCEED_MAX_MEM_SIZE)
 	    {
-	      la_shutdown (BOOT_CLIENT_LOG_PREFETCHER);
+	      la_applier_need_shutdown = true;
 	      return error;
 	    }
 
