@@ -30,6 +30,8 @@ Changelog
     Support asterisk in -u option. (eg. -u '*.txt')
   2014-02-24 xkyu
     Use PATH env for svn, indent, touch
+  2014-05-02 xkyu
+    Add --download option
 '''
 
 import os
@@ -294,6 +296,26 @@ def attachFiletoJira (config, jira_id, attachfile):
   return True
 
 
+def downloadFilefromJira (config, url):
+  if verbose:
+    print 'Download from "%s"' % (url)
+
+  try:
+    jira_download_cmd = config.get('jira', 'jira_download_cmd', 0, {'jira_attach_url': url})
+  except ConfigParser.Error:
+    print >> sys.stderr, "JIRA config error. check jira_download_cmd parameter in your .mkcreview.conf file"
+  else:
+    p = subprocess.Popen(jira_download_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if p.wait() != 0:
+      print >> sys.stderr, "Cannot download from %s (error = %s)" % (url, p.communicate()[1].strip())
+      return False
+    else:
+      result = p.communicate()[0]
+      print "%s is downloaded" % (url)
+
+  return True
+
+
 def usage ():
   print os.path.basename (sys.argv[0]), 'Usage:'
   print '  %s [options] [files...]' % (os.path.basename (sys.argv[0]))
@@ -306,13 +328,14 @@ def usage ():
   print '    -r , --revision  : revision ignore mode'
   print '    -j , --jira      : related JIRA ID for attachment'
   print '    -u , --upload    : upload additional file to related JIRA ID (This can be given multiple times)'
+  print '         --download  : Download attached file from related JIRA ID with URL (ex: http://jirasite//attachment/123/filename'
   print '         --confurl   : retrieve initial config file from URL and exit'
   print '    files...         : files or paths to review [default: .]'
   
   
 def main ():
   try:
-    opts, args = getopt.getopt (sys.argv[1:], "hd:o:vnyrj:u:",["help", "tempdir=", "output=", "verbose", "nochange", "yes", "revision", "jira=", "upload=", "confurl="])
+    opts, args = getopt.getopt (sys.argv[1:], "hd:o:vnyrj:u:",["help", "tempdir=", "output=", "verbose", "nochange", "yes", "revision", "jira=", "upload=", "download=", "confurl="])
   except getopt.GetoptError:
     print 'get option error.'
     usage ()
@@ -324,6 +347,7 @@ def main ():
   jira_id = None
   jira_project = ''
   jira_attachs = []
+  download_url = ''
   global verbose
   global nochange
   global forceyes
@@ -365,6 +389,9 @@ def main ():
       print a
       for attfilename in glob.glob(a):
         jira_attachs.append(attfilename)
+    if o in ("--download"):
+      downloadFilefromJira(config, a)
+      sys.exit (0)
     if o in ("--confurl"):
       import urllib
       try:
