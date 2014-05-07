@@ -276,12 +276,12 @@ extern int stats_update_statistics (OID * classoid, int with_fullscan);
 extern int stats_update_all_statistics (int with_fullscan);
 
 extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type,
-			    OID * class_oid, int attr_id, int unique_btree);
+			    OID * class_oid, int attr_id, int unique_pk);
 extern int btree_load_index (BTID * btid, const char *bt_name,
 			     TP_DOMAIN * key_type, OID * class_oids,
 			     int n_classes, int n_attrs, int *attr_ids,
 			     int *attrs_prefix_length, HFID * hfids,
-			     int unique_flag, int not_null_flag,
+			     int unique_pk, int not_null_flag,
 			     OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
 			     int cache_attr_id, const char *fk_name,
 			     char *pred_stream, int pred_stream_size,

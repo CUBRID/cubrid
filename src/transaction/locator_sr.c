@@ -7390,7 +7390,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
   BTID btid;
   DB_VALUE *key_dbvalue, *key_ins_del = NULL;
   DB_VALUE dbvalue;
-  int unique;
+  int dummy_unique;
   BTREE_UNIQUE_STATS *unique_stat_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
@@ -7513,7 +7513,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 
 	      key_ins_del = btree_insert (thread_p, &btid, key_dbvalue,
 					  class_oid, inst_oid, op_type,
-					  unique_stat_info, &unique);
+					  unique_stat_info, NULL);
 #if defined(ENABLE_SYSTEMTAP)
 	      if (key_ins_del == NULL)
 		{
@@ -7537,7 +7537,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 
 	      key_ins_del = btree_delete (thread_p, &btid, key_dbvalue,
 					  class_oid, inst_oid, locked_keys,
-					  &unique, op_type, unique_stat_info);
+					  &dummy_unique, op_type,
+					  unique_stat_info);
 #if defined(ENABLE_SYSTEMTAP)
 	      if (key_ins_del == NULL)
 		{
@@ -8067,7 +8068,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
   bool new_isnull, old_isnull;
   PR_TYPE *pr_type;
   OR_INDEX *index = NULL;
-  int i, j, k, num_btids, old_num_btids, unique;
+  int i, j, k, num_btids, old_num_btids, unique, dummy_unique;
   bool found_btid = true;
   BTREE_UNIQUE_STATS *unique_stat_info;
   HEAP_IDX_ELEMENTS_INFO new_idx_info;
@@ -8380,7 +8381,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		{
 		  if (btree_insert (thread_p, &old_btid, new_key,
 				    class_oid, inst_oid, op_type,
-				    unique_stat_info, &unique) == NULL)
+				    unique_stat_info, NULL) == NULL)
 		    {
 #if defined(ENABLE_SYSTEMTAP)
 		      CUBRID_IDX_UPDATE_END (classname, index->btname, 1);
@@ -8398,7 +8399,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		  error_code =
 		    btree_update (thread_p, &old_btid, old_key, new_key,
 				  locked_keys, class_oid, inst_oid, op_type,
-				  unique_stat_info, &unique);
+				  unique_stat_info, &dummy_unique);
 
 		  if (error_code != NO_ERROR)
 		    {
@@ -8621,7 +8622,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
   HEAP_CACHE_ATTRINFO index_attrinfo;
   HEAP_SCANCACHE scan_cache;
   OID inst_oid, *p_inst_oid = &inst_oid;
-  int key_index, i, num_btids, num_found, dummy, key_found;
+  int key_index, i, num_btids, num_found, dummy_unique, key_found;
   RECDES copy_rec, *p_copy_rec = &copy_rec;
   BTID inst_btid;
   DB_VALUE dbvalue;
@@ -8795,7 +8796,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 
       key_del = btree_delete (thread_p, btid, dbvalue_ptr,
 			      class_oid, &inst_oid, BTREE_NO_KEY_LOCKED,
-			      &dummy, MULTI_ROW_DELETE, &unique_info);
+			      &dummy_unique, MULTI_ROW_DELETE, &unique_info);
     }
 
   if (unique_info.num_nulls != 0 || unique_info.num_keys != 0
@@ -9019,7 +9020,7 @@ locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID * class_oid,
 {
   DB_VALUE key;
   bool clear_key = false;
-  int unique;
+  int dummy_unique;
   LOG_LSA lsa;
   DISK_ISVALID isvalid = DISK_INVALID;
 #if defined(SERVER_MODE)
@@ -9040,7 +9041,7 @@ locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID * class_oid,
       if (xtran_server_start_topop (thread_p, &lsa) == NO_ERROR)
 	{
 	  if (btree_delete (thread_p, btid, &key,
-			    class_oid, inst_oid, locked_keys, &unique,
+			    class_oid, inst_oid, locked_keys, &dummy_unique,
 			    SINGLE_ROW_DELETE, NULL) != NULL)
 	    {
 	      isvalid = DISK_VALID;
@@ -10169,7 +10170,7 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid,
 	  break;
 	}
 
-      if (xbtree_get_unique (thread_p, btid))
+      if (xbtree_get_unique_pk (thread_p, btid))
 	{
 	  rv = locator_check_unique_btree_entries (thread_p, btid, class_oid,
 						   peek, attrids, btname,

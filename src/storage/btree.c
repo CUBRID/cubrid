@@ -1260,7 +1260,7 @@ btree_leaf_get_first_oid (BTID_INT * btid, RECDES * recp, OID * oidp,
   oidp->slotid = oidp->slotid & (~BTREE_LEAF_RECORD_MASK);
 
   /* class OID */
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       if (btree_leaf_is_flaged (recp, BTREE_LEAF_RECORD_SUBCLASS))
 	{
@@ -1345,7 +1345,7 @@ btree_leaf_get_oid_from_oidptr (BTREE_SCAN * bts, char *rec_oid_ptr,
       OR_GET_OID (rec_oid_ptr, oid);
       oid->slotid = oid->slotid & (~BTREE_LEAF_RECORD_MASK);
 
-      if (BTREE_IS_UNIQUE (&bts->btid_int))
+      if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
 	{
 	  if ((short) (OR_GET_SHORT (rec_oid_ptr + OR_OID_SLOTID)
 		       & BTREE_LEAF_RECORD_SUBCLASS))
@@ -1365,7 +1365,7 @@ btree_leaf_get_oid_from_oidptr (BTREE_SCAN * bts, char *rec_oid_ptr,
     }
   else
     {
-      if (BTREE_IS_UNIQUE (&bts->btid_int))
+      if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
 	{
 	  OR_GET_OID (rec_oid_ptr, oid);
 	  OR_GET_OID (rec_oid_ptr + OR_OID_SIZE, class_oid);
@@ -1401,7 +1401,7 @@ btree_leaf_advance_oidptr (BTREE_SCAN * bts, char *rec_oid_ptr, int offset,
     }
   else
     {
-      if (BTREE_IS_UNIQUE (&bts->btid_int))
+      if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
 	{
 	  rec_oid_ptr += (2 * OR_OID_SIZE);
 	}
@@ -1473,7 +1473,7 @@ btree_leaf_change_first_oid (RECDES * recp, BTID_INT * btid,
   OR_PUT_OID (recp->data, oidp);
   btree_leaf_set_flag (recp, rec_type);
 
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       assert (!OID_ISNULL (class_oidp));
 
@@ -1560,7 +1560,7 @@ btree_leaf_get_last_oid (BTID_INT * btid, RECDES * recp,
 
   offset = recp->data + recp->length - vpid_size;
 
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       assert (node_type == BTREE_LEAF_NODE);
 
@@ -1909,7 +1909,8 @@ btree_start_overflow_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
   rec.area_size = DB_PAGESIZE;
   rec.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
 
-  assert (!BTREE_IS_UNIQUE (btid));
+  assert (!BTREE_IS_UNIQUE (btid->unique_pk));
+  assert (!BTREE_IS_PRIMARY_KEY (btid->unique_pk));
 
   /* get a new overflow page */
   *new_page_ptr = btree_get_new_page (thread_p, btid, new_vpid, near_vpid);
@@ -2017,7 +2018,7 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
       /* first instance oid */
       or_put_oid (&buf, oid);
       if (rc == NO_ERROR
-	  && BTREE_IS_UNIQUE (btid)
+	  && BTREE_IS_UNIQUE (btid->unique_pk)
 	  && !OID_EQ (&btid->topclass_oid, class_oid))
 	{
 	  /* write the subclass OID */
@@ -2245,7 +2246,7 @@ btree_read_record_helper (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
       or_advance (&buf, OR_OID_SIZE);	/* skip instance oid */
 
-      if (BTREE_IS_UNIQUE (btid))
+      if (BTREE_IS_UNIQUE (btid->unique_pk))
 	{
 	  if (btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_SUBCLASS))
 	    {
@@ -2428,7 +2429,21 @@ btree_dump_root_header (FILE * fp, PAGE_PTR page_ptr)
   fprintf (fp, " Topclass_oid: (%d %d %d)\n",
 	   root_header->topclass_oid.volid, root_header->topclass_oid.pageid,
 	   root_header->topclass_oid.slotid);
-  fprintf (fp, " Unique: %d\n", root_header->unique);
+  fprintf (fp, " Unique: ");
+  if (BTREE_IS_UNIQUE (root_header->unique_pk))
+    {
+      fprintf (fp, "1");
+      if (BTREE_IS_PRIMARY_KEY (root_header->unique_pk))
+	{
+	  fprintf (fp, " (Primary Key)");
+	}
+    }
+  else
+    {
+      assert (!BTREE_IS_PRIMARY_KEY (root_header->unique_pk));
+      fprintf (fp, "0");
+    }
+  fprintf (fp, "\n");
   fprintf (fp, " OVFID: %d|%d\n", root_header->ovfid.fileid,
 	   root_header->ovfid.volid);
   fprintf (fp, " Btree Revision Level: %d\n", root_header->rev_level);
@@ -2519,7 +2534,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid,
   bool clear_key;
   int oid_size;
 
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       oid_size = (2 * OR_OID_SIZE);
     }
@@ -2559,7 +2574,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid,
 
   /* output first oid */
   btree_leaf_get_first_oid (btid, rec, &oid, &class_oid);
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       fprintf (fp, " (%d %d %d : %d, %d, %d) ",
 	       class_oid.volid, class_oid.pageid, class_oid.slotid,
@@ -2572,7 +2587,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid,
 
   /* output remainder OIDs */
   or_init (&buf, rec->data + offset, rec->length - offset);
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       for (k = 1; k < oid_cnt; k++)
 	{
@@ -2643,7 +2658,8 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid,
 	  or_init (&buf, overflow_rec.data, overflow_rec.length);
 	  fprintf (fp, "Oid_Cnt: %d ", oid_cnt);
 
-	  assert (!BTREE_IS_UNIQUE (btid));
+	  assert (!BTREE_IS_UNIQUE (btid->unique_pk));
+	  assert (!BTREE_IS_PRIMARY_KEY (btid->unique_pk));
 	  for (i = 0; i < oid_cnt; i++)
 	    {
 	      if (i % 4 == 0)
@@ -3150,7 +3166,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
  *   class_oid(in): OID of the class for which the index is created
  *   attr_id(in): Identifier of the attribute of the class for which the
  *                index is created.
- *   unique_btree(in):
+ *   unique_pk(in):
  *   num_oids(in):
  *   num_nulls(in):
  *   num_keys(in):
@@ -3163,7 +3179,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
  */
 BTID *
 xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
-		  OID * class_oid, int attr_id, int is_unique_btree,
+		  OID * class_oid, int attr_id, int unique_pk,
 		  int num_oids, int num_nulls, int num_keys)
 {
   BTREE_ROOT_HEADER root_header_info, *root_header = NULL;
@@ -3222,23 +3238,23 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   root_header->node.node_level = 1;
   root_header->node.max_key_len = 0;
 
-  if (is_unique_btree)
+  if (unique_pk)
     {
       root_header->num_oids = num_oids;
       root_header->num_nulls = num_nulls;
       root_header->num_keys = num_keys;
-      root_header->unique = is_unique_btree;
+      root_header->unique_pk = unique_pk;
 
-      assert (root_header->unique & BTREE_CONSTRAINT_UNIQUE);
-      assert (root_header->unique == true
-	      || root_header->unique & BTREE_CONSTRAINT_PRIMARY_KEY);
+      assert (BTREE_IS_UNIQUE (root_header->unique_pk));
+      assert (BTREE_IS_PRIMARY_KEY (root_header->unique_pk)
+	      || !BTREE_IS_PRIMARY_KEY (root_header->unique_pk));
     }
   else
     {
       root_header->num_oids = -1;
       root_header->num_nulls = -1;
       root_header->num_keys = -1;
-      root_header->unique = false;
+      root_header->unique_pk = 0;
     }
 
   COPY_OID (&(root_header->topclass_oid), class_oid);
@@ -3407,7 +3423,7 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p,
 
   rc = NO_ERROR;
 
-  btid->unique = root_header->unique;
+  btid->unique_pk = root_header->unique_pk;
 
   or_init (&buf, root_header->packed_key_domain, -1);
   btid->key_type = or_get_domain (&buf, NULL, NULL);
@@ -3900,17 +3916,17 @@ xbtree_test_unique (THREAD_ENTRY * thread_p, BTID * btid)
 }
 
 /*
- * xbtree_get_unique () -
+ * xbtree_get_unique_pk () -
  *   return:
  *   btid(in):
  */
 int
-xbtree_get_unique (THREAD_ENTRY * thread_p, BTID * btid)
+xbtree_get_unique_pk (THREAD_ENTRY * thread_p, BTID * btid)
 {
   VPID root_vpid;
   PAGE_PTR root = NULL;
   BTREE_ROOT_HEADER *root_header = NULL;
-  int unique;
+  int unique_pk;
 
   root_vpid.pageid = btid->root_pageid;
   root_vpid.volid = btid->vfid.volid;
@@ -3930,11 +3946,11 @@ xbtree_get_unique (THREAD_ENTRY * thread_p, BTID * btid)
       return 0;
     }
 
-  unique = root_header->unique;
+  unique_pk = root_header->unique_pk;
 
   pgbuf_unfix_and_init (thread_p, root);
 
-  return unique;
+  return unique_pk;
 }
 
 /*
@@ -6253,7 +6269,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid,
   leaf_pnt.key_len = 0;
   VPID_SET_NULL (&leaf_pnt.ovfl);
 
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       oid_size = (2 * OR_OID_SIZE);
     }
@@ -7150,7 +7166,8 @@ btree_swap_first_oid_with_ovfl_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
   VPID next_ovfl_vpid;
   int oid_cnt;
 
-  assert (!BTREE_IS_UNIQUE (btid));
+  assert (!BTREE_IS_UNIQUE (btid->unique_pk));
+  assert (!BTREE_IS_PRIMARY_KEY (btid->unique_pk));
 
   ovfl_copy_rec.area_size = DB_PAGESIZE;
   ovfl_copy_rec.data = PTR_ALIGN (ovfl_copy_rec_buf, BTREE_MAX_ALIGN);
@@ -7325,7 +7342,7 @@ btree_delete_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
       return ret;
     }
 
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       oid_size = (2 * OR_OID_SIZE);
     }
@@ -7366,7 +7383,7 @@ btree_delete_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
       else
 	{
 	  OR_PUT_OID ((leaf_rec->data + del_oid_offset), &last_oid);
-	  if (BTREE_IS_UNIQUE (btid))
+	  if (BTREE_IS_UNIQUE (btid->unique_pk))
 	    {
 	      OR_PUT_OID ((leaf_rec->data + del_oid_offset +
 			   OR_OID_SIZE), &last_class_oid);
@@ -7426,7 +7443,8 @@ btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid,
   int rv_data_len, rv_key_len;
   char rv_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
 
-  assert (!BTREE_IS_UNIQUE (btid));
+  assert (!BTREE_IS_UNIQUE (btid->unique_pk));
+  assert (!BTREE_IS_PRIMARY_KEY (btid->unique_pk));
 
   rv_data = PTR_ALIGN (rv_data_buf, BTREE_MAX_ALIGN);
 
@@ -7523,7 +7541,8 @@ btree_modify_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   ovf_header = &ovf_header_info;
 
-  assert (!BTREE_IS_UNIQUE (btid));
+  assert (!BTREE_IS_UNIQUE (btid->unique_pk));
+  assert (!BTREE_IS_PRIMARY_KEY (btid->unique_pk));
 
   rv_data = PTR_ALIGN (rv_data_buf, BTREE_MAX_ALIGN);
 
@@ -7611,7 +7630,8 @@ btree_delete_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid,
   char *del_oid_p;
   int shift_len;
 
-  assert (!BTREE_IS_UNIQUE (btid));
+  assert (!BTREE_IS_UNIQUE (btid->unique_pk));
+  assert (!BTREE_IS_PRIMARY_KEY (btid->unique_pk));
 
   rv_data = PTR_ALIGN (rv_data_buf, BTREE_MAX_ALIGN);
 
@@ -7782,7 +7802,7 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, bool * key_deleted,
 	}
     }
 
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       oid_size = (2 * OR_OID_SIZE);
     }
@@ -8915,7 +8935,7 @@ btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY * thread_p,
   assert_release (search_without_locking != NULL);
   assert_release (*P_page != NULL);
 
-  if (BTREE_IS_UNIQUE (btid_int))
+  if (BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
       oid_size = (2 * OR_OID_SIZE);
     }
@@ -9298,14 +9318,14 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   root_level = root_header->node.node_level;
   node_type = root_level > 1 ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
-  *unique = btid_int.unique;
+  *unique = BTREE_IS_UNIQUE (btid_int.unique_pk) ? 1 : 0;
 
   if (key && DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
     {
       key->data.midxkey.domain = btid_int.key_type;	/* set complete setdomain */
     }
 
-  if (BTREE_IS_UNIQUE (&btid_int))
+  if (BTREE_IS_UNIQUE (btid_int.unique_pk))
     {
       oid_size = 2 * OR_OID_SIZE;
     }
@@ -9323,7 +9343,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
        *
        * unique statitistics for non null keys will be updated after we
        * find out if we have deleted a key or not.  */
-      if (is_active && BTREE_IS_UNIQUE (&btid_int))
+      if (is_active && BTREE_IS_UNIQUE (btid_int.unique_pk))
 	{
 	  if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
 	      || op_type == SINGLE_ROW_MODIFY)
@@ -9382,7 +9402,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
    * Also NOTE that users to see the header statistics may have the transient
    * values.
    */
-  if (is_active && BTREE_IS_UNIQUE (&btid_int))
+  if (is_active && BTREE_IS_UNIQUE (btid_int.unique_pk))
     {
       if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
 	  || op_type == SINGLE_ROW_MODIFY)
@@ -9469,8 +9489,9 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	default:
 	  goto error;
 	}
-      if (!BTREE_IS_UNIQUE (&btid_int))
+      if (!BTREE_IS_UNIQUE (btid_int.unique_pk))
 	{			/* non-unique index */
+	  assert (!BTREE_IS_PRIMARY_KEY (btid_int.unique_pk));
 	  if (IS_WRITE_EXCLUSIVE_LOCK (class_lock))
 	    {
 	      nextkey_lock_request = false;
@@ -9976,8 +9997,9 @@ start_point:
 			     &clear_key, &offset, PEEK_KEY_VALUE, NULL);
 	  btree_leaf_get_first_oid (&btid_int, &peek_recdes1,
 				    &curr_key_first_oid, &C_class_oid);
-	  if (!BTREE_IS_UNIQUE (&btid_int))
+	  if (!BTREE_IS_UNIQUE (btid_int.unique_pk))
 	    {
+	      assert (!BTREE_IS_PRIMARY_KEY (btid_int.unique_pk));
 	      COPY_OID (&C_class_oid, &class_oid);
 	    }
 	  delete_first_key_oid = OID_EQ (&curr_key_first_oid, oid);
@@ -10055,8 +10077,9 @@ start_point:
   /* find next key */
   if (btree_search_leaf_page (thread_p, &btid_int, P, key, &p_slot_id))
     {
-      if (!BTREE_IS_UNIQUE (&btid_int))
+      if (!BTREE_IS_UNIQUE (btid_int.unique_pk))
 	{
+	  assert (!BTREE_IS_PRIMARY_KEY (btid_int.unique_pk));
 	  if (spage_get_record (P, p_slot_id, &peek_recdes1, PEEK) !=
 	      S_SUCCESS)
 	    {
@@ -10139,7 +10162,7 @@ start_point:
       N_oid.pageid = btid->root_pageid;
       N_oid.slotid = 0;
 
-      if (BTREE_IS_UNIQUE (&btid_int))
+      if (BTREE_IS_UNIQUE (btid_int.unique_pk))
 	{
 	  COPY_OID (&N_class_oid, &btid_int.topclass_oid);
 	}
@@ -10159,7 +10182,7 @@ start_point:
       btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
 			     btid_int.sys_btid, &N_oid);
 
-      if (BTREE_IS_UNIQUE (&btid_int))
+      if (BTREE_IS_UNIQUE (btid_int.unique_pk))
 	{
 	  assert (!OID_ISNULL (&N_class_oid));
 
@@ -10330,7 +10353,7 @@ curr_key_locking:
 
   delete_first_key_oid = OID_EQ (&curr_key_first_oid, oid);
 
-  if (BTREE_IS_UNIQUE (&btid_int))	/* unique index */
+  if (BTREE_IS_UNIQUE (btid_int.unique_pk))	/* unique index */
     {
       assert (!OID_ISNULL (&C_class_oid));
 
@@ -10505,7 +10528,7 @@ key_deletion:
 
   pgbuf_unfix_and_init (thread_p, P);
 
-  if (is_active && BTREE_IS_UNIQUE (&btid_int))
+  if (is_active && BTREE_IS_UNIQUE (btid_int.unique_pk))
     {
       if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
 	  || op_type == SINGLE_ROW_MODIFY)
@@ -10841,7 +10864,7 @@ btree_insert_oid_into_leaf_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
   recins.oid_inserted = true;
   COPY_OID (&recins.oid, oid);
 
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       COPY_OID (&recins.class_oid, cls_oid);
     }
@@ -10881,14 +10904,15 @@ btree_insert_oid_into_leaf_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
     {
       btree_append_oid (rec, oid);
 
-      if (BTREE_IS_UNIQUE (btid))
+      if (BTREE_IS_UNIQUE (btid->unique_pk))
 	{
 	  btree_append_oid (rec, cls_oid);
 	}
     }
   else
     {
-      assert (!BTREE_IS_UNIQUE (btid));
+      assert (!BTREE_IS_UNIQUE (btid->unique_pk));
+      assert (!BTREE_IS_PRIMARY_KEY (btid->unique_pk));
       btree_insert_oid_in_front_of_ovfl_vpid (rec, oid, first_ovfl_vpid);
     }
 
@@ -10952,7 +10976,8 @@ btree_append_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
   VPID ovfl_vpid;
   PAGE_PTR ovfl_page = NULL;
 
-  assert (!BTREE_IS_UNIQUE (btid));
+  assert (!BTREE_IS_UNIQUE (btid->unique_pk));
+  assert (!BTREE_IS_PRIMARY_KEY (btid->unique_pk));
 
   rv_data = PTR_ALIGN (rv_data_buf, BTREE_MAX_ALIGN);
 
@@ -11077,7 +11102,8 @@ btree_insert_oid_overflow_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
   char rv_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   RECINS_STRUCT recins;
 
-  assert (!BTREE_IS_UNIQUE (btid));
+  assert (!BTREE_IS_UNIQUE (btid->unique_pk));
+  assert (!BTREE_IS_PRIMARY_KEY (btid->unique_pk));
 
   ovfl_rec.type = REC_HOME;
   ovfl_rec.area_size = DB_PAGESIZE;
@@ -11263,7 +11289,7 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
    * In a non-unique index, each OID information in leaf entry
    * is composed of <instance OID>.
    */
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       /* <inst OID, class OID> */
       oid_size = (2 * OR_OID_SIZE);
@@ -11326,7 +11352,7 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
   btree_read_record (thread_p, btid, page_ptr, &rec, NULL, &leafrec_pnt,
 		     BTREE_LEAF_NODE, &dummy, &offset, PEEK_KEY_VALUE, NULL);
 
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       if (BTREE_NEED_UNIQUE_CHECK (thread_p, op_type)
 	  || btree_leaf_get_num_oids (&rec, offset, BTREE_LEAF_NODE,
@@ -11608,7 +11634,7 @@ btree_find_oid_from_leaf (BTID_INT * btid, RECDES * rec_p,
       return 0;
     }
 
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       oid_size = (2 * OR_OID_SIZE);
     }
@@ -12411,7 +12437,7 @@ btree_compress_records (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  new_key_len = btree_get_key_length (&key);
 
 	  new_offset = OR_OID_SIZE;
-	  if (BTREE_IS_UNIQUE (btid))
+	  if (BTREE_IS_UNIQUE (btid->unique_pk))
 	    {
 	      if (btree_leaf_is_flaged (&rec[i], BTREE_LEAF_RECORD_SUBCLASS))
 		{
@@ -12484,7 +12510,7 @@ btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
       new_key_len = btree_get_key_length (&key);
 
       new_offset = OR_OID_SIZE;
-      if (BTREE_IS_UNIQUE (btid))
+      if (BTREE_IS_UNIQUE (btid->unique_pk))
 	{
 	  if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_SUBCLASS))
 	    {
@@ -13909,7 +13935,7 @@ btree_insert_lock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
   assert_release (first_ovfl_vpid != NULL);
   assert_release (class_oid != NULL);
 
-  if (BTREE_IS_UNIQUE (btid_int))
+  if (BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
       oid_size = (2 * OR_OID_SIZE);
     }
@@ -14084,7 +14110,7 @@ btree_insert_unlock_curr_key_remaining_pseudo_oid (THREAD_ENTRY * thread_p,
   assert_release (first_ovfl_vpid != NULL);
   assert_release (class_oid != NULL);
 
-  if (BTREE_IS_UNIQUE (btid_int))
+  if (BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
       oid_size = (2 * OR_OID_SIZE);
     }
@@ -14288,7 +14314,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   if (unique)
     {
-      *unique = btid_int.unique;
+      *unique = BTREE_IS_UNIQUE (btid_int.unique_pk) ? 1 : 0;
     }
 
   alignment = BTREE_MAX_ALIGN;
@@ -14371,7 +14397,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
        * unique statitistics for non null keys will be updated after
        * we find out if we have a new key or not.
        */
-      if (is_active && BTREE_IS_UNIQUE (&btid_int))
+      if (is_active && BTREE_IS_UNIQUE (btid_int.unique_pk))
 	{
 	  if (op_type == SINGLE_ROW_INSERT || op_type == SINGLE_ROW_UPDATE
 	      || op_type == SINGLE_ROW_MODIFY)
@@ -14428,7 +14454,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
    * Also NOTE that users to see the header statistics may have the transient
    * values.
    */
-  if (is_active && BTREE_IS_UNIQUE (&btid_int))
+  if (is_active && BTREE_IS_UNIQUE (btid_int.unique_pk))
     {
       if (op_type == SINGLE_ROW_INSERT || op_type == SINGLE_ROW_UPDATE
 	  || op_type == SINGLE_ROW_MODIFY)
@@ -14508,8 +14534,9 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	  goto error;
 	}
 
-      if (!BTREE_IS_UNIQUE (&btid_int))
+      if (!BTREE_IS_UNIQUE (btid_int.unique_pk))
 	{
+	  assert (!BTREE_IS_PRIMARY_KEY (btid_int.unique_pk));
 	  if (IS_WRITE_EXCLUSIVE_LOCK (class_lock))
 	    {
 	      nextkey_lock_request = false;
@@ -14958,8 +14985,10 @@ start_point:
     {
       /* key has been found */
       key_found = true;
-      if (!BTREE_IS_UNIQUE (&btid_int))
+      if (!BTREE_IS_UNIQUE (btid_int.unique_pk))
 	{
+	  assert (!BTREE_IS_PRIMARY_KEY (btid_int.unique_pk));
+
 	  /* key already exists, skip next key locking in non-unique
 	     indexes */
 	  if (next_lock_flag == true)
@@ -15025,7 +15054,7 @@ start_point:
       N_oid.volid = btid->vfid.volid;
       N_oid.pageid = btid->root_pageid;
       N_oid.slotid = 0;
-      if (BTREE_IS_UNIQUE (&btid_int))
+      if (BTREE_IS_UNIQUE (btid_int.unique_pk))
 	{
 	  COPY_OID (&N_class_oid, &btid_int.topclass_oid);
 	}
@@ -15043,7 +15072,7 @@ start_point:
       btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
 			     btid_int.sys_btid, &N_oid);
 
-      if (BTREE_IS_UNIQUE (&btid_int))
+      if (BTREE_IS_UNIQUE (btid_int.unique_pk))
 	{
 	  assert (!OID_ISNULL (&N_class_oid));
 
@@ -15218,8 +15247,9 @@ curr_key_locking:
 			 &leaf_pnt, BTREE_LEAF_NODE, &dummy, &offset,
 			 PEEK_KEY_VALUE, NULL);
       btree_leaf_get_first_oid (&btid_int, &peek_rec, &C_oid, &C_class_oid);
-      if (!BTREE_IS_UNIQUE (&btid_int))	/* unique index */
+      if (!BTREE_IS_UNIQUE (btid_int.unique_pk))	/* unique index */
 	{
+	  assert (!BTREE_IS_PRIMARY_KEY (btid_int.unique_pk));
 	  COPY_OID (&C_class_oid, &class_oid);
 	}
     }
@@ -15233,7 +15263,7 @@ curr_key_locking:
   btree_make_pseudo_oid (C_oid.pageid, C_oid.slotid, C_oid.volid,
 			 btid_int.sys_btid, &C_oid);
 
-  if (BTREE_IS_UNIQUE (&btid_int))
+  if (BTREE_IS_UNIQUE (btid_int.unique_pk))
     {
       assert_release (!OID_ISNULL (&C_class_oid));
 
@@ -15249,8 +15279,10 @@ curr_key_locking:
       if (OID_EQ (&saved_C_oid, &C_oid))
 	{
 	  /* current key already locked, key_found = true */
-	  if (!BTREE_IS_UNIQUE (&btid_int) && current_lock == NS_LOCK)
+	  if (!BTREE_IS_UNIQUE (btid_int.unique_pk)
+	      && current_lock == NS_LOCK)
 	    {
+	      assert (!BTREE_IS_PRIMARY_KEY (btid_int.unique_pk));
 	      if (prev_tot_hold_mode == NULL_LOCK)
 		{
 		  /* compute prev_tot_hold_mode and curr_key_many_locks_needed
@@ -15293,7 +15325,7 @@ curr_key_locking:
       OID_SET_NULL (&saved_C_class_oid);
     }
 
-  current_lock = ((!BTREE_IS_UNIQUE (&btid_int) && key_found) ||
+  current_lock = ((!BTREE_IS_UNIQUE (btid_int.unique_pk) && key_found) ||
 		  (next_key_granted_mode != S_LOCK &&
 		   next_key_granted_mode != NX_LOCK)) ? NS_LOCK : NX_LOCK;
 curr_key_lock_promote:
@@ -15320,9 +15352,10 @@ curr_key_lock_promote:
       curr_key_many_locks_needed = false;
       if (curr_key_lock_escalation == NO_KEY_LOCK_ESCALATION)
 	{
-	  if (!BTREE_IS_UNIQUE (&btid_int) && key_found
-	      && prev_tot_hold_mode == NS_LOCK)
+	  if (!BTREE_IS_UNIQUE (btid_int.unique_pk)
+	      && key_found && prev_tot_hold_mode == NS_LOCK)
 	    {
+	      assert (!BTREE_IS_PRIMARY_KEY (btid_int.unique_pk));
 	      curr_key_many_locks_needed = true;
 	    }
 	}
@@ -15383,9 +15416,10 @@ curr_key_lock_promote:
 	  curr_key_many_locks_needed = false;
 	  if (curr_key_lock_escalation == NO_KEY_LOCK_ESCALATION)
 	    {
-	      if (!BTREE_IS_UNIQUE (&btid_int) && key_found
-		  && prev_tot_hold_mode == NS_LOCK)
+	      if (!BTREE_IS_UNIQUE (btid_int.unique_pk)
+		  && key_found && prev_tot_hold_mode == NS_LOCK)
 		{
+		  assert (!BTREE_IS_PRIMARY_KEY (btid_int.unique_pk));
 		  curr_key_many_locks_needed = true;
 		}
 	    }
@@ -15570,7 +15604,7 @@ key_insertion:
 
   pgbuf_unfix_and_init (thread_p, P);
 
-  if (is_active && BTREE_IS_UNIQUE (&btid_int))
+  if (is_active && BTREE_IS_UNIQUE (btid_int.unique_pk))
     {
       if (op_type == SINGLE_ROW_INSERT || op_type == SINGLE_ROW_UPDATE
 	  || op_type == SINGLE_ROW_MODIFY)
@@ -15768,22 +15802,27 @@ btree_reflect_unique_statistics (THREAD_ENTRY * thread_p,
       goto exit_on_error;
     }
 
-  if (logtb_is_current_active (thread_p) && (root_header->num_nulls != -1))
+  if (root_header->num_nulls != -1)
     {
-      /* update header information */
-      ret =
-	btree_change_root_header_delta (thread_p,
-					&unique_stat_info->btid.vfid, root,
-					unique_stat_info->num_nulls,
-					unique_stat_info->num_oids,
-					unique_stat_info->num_keys);
-      if (ret != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+      assert_release (BTREE_IS_UNIQUE (root_header->unique_pk));
 
-      /* set the root page as dirty page */
-      pgbuf_set_dirty (thread_p, root, DONT_FREE);
+      if (logtb_is_current_active (thread_p))
+	{
+	  /* update header information */
+	  ret =
+	    btree_change_root_header_delta (thread_p,
+					    &unique_stat_info->btid.vfid,
+					    root, unique_stat_info->num_nulls,
+					    unique_stat_info->num_oids,
+					    unique_stat_info->num_keys);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  /* set the root page as dirty page */
+	  pgbuf_set_dirty (thread_p, root, DONT_FREE);
+	}
     }
 
   /* free the root page */
@@ -17092,7 +17131,7 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   bts->key_range_max_value_equal = false;
 
   /* cache class OID and memory address to class lock mode */
-  if (BTREE_IS_UNIQUE (&(bts->btid_int)))
+  if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
     {
       OID_SET_NULL (&bts->cls_oid);
       bts->cls_lock_ptr = NULL;
@@ -19195,7 +19234,7 @@ start_point:
       N_oid.pageid = bts->btid_int.sys_btid->root_pageid;
       N_oid.slotid = 0;
 
-      if (BTREE_IS_UNIQUE (&bts->btid_int))
+      if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
 	{
 	  COPY_OID (&N_class_oid, &bts->btid_int.topclass_oid);
 	}
@@ -19208,7 +19247,7 @@ start_point:
     {
       btree_leaf_get_first_oid (&bts->btid_int, &peek_rec, &N_oid,
 				&N_class_oid);
-      if (BTREE_IS_UNIQUE (&bts->btid_int))	/* unique index */
+      if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))	/* unique index */
 	{
 	  assert (!OID_ISNULL (&N_class_oid));
 	}
@@ -19701,7 +19740,7 @@ btree_rv_save_keyval (BTID_INT * btid, DB_VALUE * key,
 
   OR_PUT_OID (datap, oid);
   datap += OR_OID_SIZE;
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       OR_PUT_OID (datap, cls_oid);
       datap += OR_OID_SIZE;
@@ -20416,7 +20455,7 @@ btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p,
 
   OR_GET_OID (datap, oid);
   datap += OR_OID_SIZE;
-  if (BTREE_IS_UNIQUE (btid))
+  if (BTREE_IS_UNIQUE (btid->unique_pk))
     {				/* only in case of an unique index */
       OR_GET_OID (datap, cls_oid);
       datap += OR_OID_SIZE;
@@ -22419,7 +22458,7 @@ btree_fix_ovfl_oid_pages_tree (THREAD_ENTRY * thread_p, BTID * btid,
 
   pgbuf_unfix_and_init (thread_p, pgptr);
 
-  if (BTREE_IS_UNIQUE (&btid_int))
+  if (BTREE_IS_UNIQUE (btid_int.unique_pk))
     {
       return NO_ERROR;
     }
@@ -22760,7 +22799,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   assert_release (btid_int != NULL);
   assert_release (page_ptr != NULL);
 
-  if (BTREE_IS_UNIQUE (btid_int))
+  if (BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
       oid_size = (2 * OR_OID_SIZE);
     }
@@ -22826,7 +22865,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	      assert (false);
 	    }
 
-	  if (BTREE_IS_UNIQUE (btid_int))
+	  if (BTREE_IS_UNIQUE (btid_int->unique_pk))
 	    {
 	      if (class_oid.pageid <= NULL_PAGEID
 		  || class_oid.volid <= NULL_VOLID
@@ -23555,7 +23594,7 @@ start_locking:
 	}
 
       /* copy corresponding OIDs */
-      if (!BTREE_IS_UNIQUE (&(bts->btid_int)) || num_classes == 0)
+      if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk) || num_classes == 0)
 	{
 	  /*
 	   * 1. current index is a non-unique index. or
@@ -23647,8 +23686,10 @@ start_locking:
       goto locking_done;
     }
 
-  if (!BTREE_IS_UNIQUE (&(bts->btid_int)) && OID_ISNULL (&bts->cls_oid))
+  if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk)
+      && OID_ISNULL (&bts->cls_oid))
     {
+      assert (!BTREE_IS_PRIMARY_KEY (bts->btid_int.unique_pk));
       OR_GET_OID (btrs_helper.rec_oid_ptr, &temp_oid);
       if (heap_get_class_oid (thread_p, &bts->cls_oid, &temp_oid) == NULL)
 	{
@@ -23780,7 +23821,7 @@ start_locking:
        * an unique index of single class index form.
        */
 #if defined(BTREE_DEBUG)
-      if (BTREE_IS_UNIQUE (&(bts->btid_int)))
+      if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
 	{
 	  /* In case of unique index */
 	  /* check the consistency of current index entry. */
@@ -23789,7 +23830,7 @@ start_locking:
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "cp_oid_cnt > 1 in an unique index\n"
-			    "index inconsistency..(unique violation)\n");
+			    "index inconsistency(unique violation).\n");
 	      goto error;
 	    }
 	  /* cp_oid_cnt == 1 */
@@ -23903,7 +23944,7 @@ start_locking:
 	     btrs_helper.rec_oid_cnt - bts->oid_pos);
     }
 
-  if (!BTREE_IS_UNIQUE (&(bts->btid_int)) || num_classes == 0)
+  if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk) || num_classes == 0)
     {
       /*
        * 1. current index is a non-unique index. or
@@ -23946,7 +23987,7 @@ start_locking:
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"cp_oid_cnt > 1 in an unique index\n"
-			"index inconsistency..(unique violation)\n");
+			"index inconsistency.(unique violation).\n");
 	}
 
       for (i = 0; i < btrs_helper.cp_oid_cnt; i++)
@@ -24197,7 +24238,7 @@ btree_range_search_init_helper (THREAD_ENTRY * thread_p,
   btrs_helper->oids_cnt = 0;	/* # of copied OIDs */
 
   /* get the size of each OID information in the index */
-  if (BTREE_IS_UNIQUE (&(bts->btid_int)))
+  if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
     {
       btrs_helper->oid_size = 2 * OR_OID_SIZE;
     }
@@ -24846,12 +24887,12 @@ btree_range_search_handle_previous_locks (THREAD_ENTRY * thread_p,
        * If the current index is an unique index,
        * check if the current index is consistent.
        */
-      if (BTREE_IS_UNIQUE (&(bts->btid_int)))
+      if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
 	{
 	  if (bts->oid_pos > 1)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "index inconsistency..(unique violation)\n");
+			    "index inconsistency.(unique violation).\n");
 	      return ER_FAILED;
 	    }
 
@@ -25125,7 +25166,7 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	    }
 
 #if defined(BTREE_DEBUG)
-	  if (BTREE_IS_UNIQUE (&(bts->btid_int)))
+	  if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
 	    {
 	      /* In case of unique index
 	       * check the consistency of current index entry.
@@ -25135,7 +25176,7 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 		{
 		  er_log_debug (ARG_FILE_LINE,
 				"cp_oid_cnt > 1 in an unique index\n"
-				"index inconsistency..(unique violation)\n");
+				"index inconsistency(unique violation).\n");
 		  return ER_FAILED;
 		}
 	      /* 'cp_oid_cnt == 1' is guaranteed. */
@@ -25176,8 +25217,9 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 				      btrs_helper->node_type,
 				      &btrs_helper->inst_oid,
 				      &btrs_helper->class_oid);
-      if (!BTREE_IS_UNIQUE (&(bts->btid_int)))
+      if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
 	{
+	  assert (!BTREE_IS_PRIMARY_KEY (bts->btid_int.unique_pk));
 	  COPY_OID (&btrs_helper->class_oid, &bts->cls_oid);
 	}
     }
@@ -26215,7 +26257,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p,
       goto cleanup;
     }
 
-  db_make_int (out_values[idx], root_header->unique);
+  db_make_int (out_values[idx], root_header->unique_pk);
   idx++;
 
   (void) vfid_to_string (buf, sizeof (buf), &root_header->ovfid);

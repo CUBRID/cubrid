@@ -84,8 +84,8 @@ typedef enum
   BTREE_ALL_KEYS_LOCKED
 } BTREE_LOCKED_KEYS;
 
-#define BTREE_IS_PRIMARY_KEY(unique) ((unique) & BTREE_CONSTRAINT_PRIMARY_KEY)
-#define BTREE_IS_UNIQUE(btid)  ((btid)->unique & BTREE_CONSTRAINT_UNIQUE)
+#define BTREE_IS_PRIMARY_KEY(unique_pk) ((unique_pk) & BTREE_CONSTRAINT_PRIMARY_KEY)
+#define BTREE_IS_UNIQUE(unique_pk)  ((unique_pk) & BTREE_CONSTRAINT_UNIQUE)
 #define BTREE_IS_PART_KEY_DESC(btid) ((btid)->part_key_desc == true)
 
 
@@ -101,7 +101,7 @@ typedef struct btid_int BTID_INT;
 struct btid_int
 {				/* Internal btree block */
   BTID *sys_btid;
-  int unique;			/* if it is an unique index */
+  int unique_pk;		/* if it is an unique index, is PK */
   int part_key_desc;		/* the last partial-key domain is desc */
   TP_DOMAIN *key_type;
   TP_DOMAIN *nonleaf_key_type;	/* With prefix keys, the domain of the
@@ -279,7 +279,7 @@ extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid,
 extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
 
 extern bool btree_is_unique_type (BTREE_TYPE type);
-extern int xbtree_get_unique (THREAD_ENTRY * thread_p, BTID * btid);
+extern int xbtree_get_unique_pk (THREAD_ENTRY * thread_p, BTID * btid);
 extern int btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid,
 					int *oid_cnt, int *null_cnt,
 					int *key_cnt);

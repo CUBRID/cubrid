@@ -410,7 +410,7 @@ static int allocate_index (MOP classop, SM_CLASS * class_,
 			   DB_OBJLIST * subclasses,
 			   SM_ATTRIBUTE ** attrs, const int *asc_desc,
 			   const int *attrs_prefix_length,
-			   int unique, int not_null, int reverse,
+			   int unique_pk, int not_null, int reverse,
 			   const char *constraint_name, BTID * index,
 			   OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
 			   int cache_attr_id, const char *fk_name,
@@ -10278,7 +10278,7 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses,
  *   subclasses(in): List of subclasses
  *   attrs(in): attribute getting the index
  *   asc_desc(in): asc/desc info list
- *   unique(in): True if were allocating a UNIQUE index.  False otherwise.
+ *   unique_pk(in): non-zeor if were allocating a UNIQUE index. zero otherwise.
  *   not_null(in):
  *   reverse(in):
  *   constraint_name(in): Name of constraint.
@@ -10292,7 +10292,7 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses,
 static int
 allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		SM_ATTRIBUTE ** attrs, const int *asc_desc,
-		const int *attrs_prefix_length, int unique, int not_null,
+		const int *attrs_prefix_length, int unique_pk, int not_null,
 		int reverse, const char *constraint_name, BTID * index,
 		OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
 		int cache_attr_id, const char *fk_name,
@@ -10423,7 +10423,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	  /* If we're creating a UNIQUE B-tree or a FOREIGN KEY, we need to
 	     collect information from subclasses which inherit the
 	     constraint */
-	  if (unique
+	  if (unique_pk
 	      || (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid)))
 	    {
 	      error =
@@ -10455,7 +10455,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	  if (!has_instances)
 	    {
 	      error = btree_add_index (index, domain, WS_OID (classop),
-				       attrs[0]->id, unique);
+				       attrs[0]->id, unique_pk);
 	    }
 	  /* If there are instances, load all of them (including applicable
 	     subclasses) into the new B-tree */
@@ -10467,7 +10467,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		    btree_load_index (index, constraint_name, domain, oids,
 				      n_classes, n_attrs, attr_ids,
 				      (int *) attrs_prefix_length, hfids,
-				      unique, not_null, fk_refcls_oid,
+				      unique_pk, not_null, fk_refcls_oid,
 				      fk_refcls_pk_btid, cache_attr_id,
 				      fk_name,
 				      SM_GET_FILTER_PRED_STREAM
@@ -10485,7 +10485,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		    btree_load_index (index, constraint_name, domain, oids,
 				      n_classes, n_attrs, attr_ids,
 				      (int *) attrs_prefix_length, hfids,
-				      unique, not_null, fk_refcls_oid,
+				      unique_pk, not_null, fk_refcls_oid,
 				      fk_refcls_pk_btid, cache_attr_id,
 				      fk_name,
 				      SM_GET_FILTER_PRED_STREAM
@@ -10794,7 +10794,7 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 			    SM_CLASS_CONSTRAINT * con,
 			    DB_OBJLIST * subclasses)
 {
-  int unique, not_null, reverse;
+  int unique_pk, not_null, reverse;
   SM_CLASS *super_class;
   SM_CLASS_CONSTRAINT *super_con, *shared_con;
   const int *asc_desc;
@@ -10829,10 +10829,10 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
     {
       /* its local, allocate our very own index */
       DB_OBJLIST *local_subclasses = NULL;
-      unique = BTREE_CONSTRAINT_UNIQUE;
+      unique_pk = BTREE_CONSTRAINT_UNIQUE;
       if (con->type == SM_CONSTRAINT_PRIMARY_KEY)
 	{
-	  unique |= BTREE_CONSTRAINT_PRIMARY_KEY;
+	  unique_pk |= BTREE_CONSTRAINT_PRIMARY_KEY;
 	}
 
       if (con->attributes[0]->class_mop == classop)
@@ -10875,9 +10875,9 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 
 	  if (allocate_index
 	      (classop, class_, local_subclasses, con->attributes, asc_desc,
-	       con->attrs_prefix_length, unique, not_null, reverse, con->name,
-	       &con->index_btid, NULL, NULL, -1, NULL, con->filter_predicate,
-	       con->func_index_info))
+	       con->attrs_prefix_length, unique_pk, not_null, reverse,
+	       con->name, &con->index_btid, NULL, NULL, -1, NULL,
+	       con->filter_predicate, con->func_index_info))
 	    {
 	      return er_errid ();
 	    }
@@ -10985,7 +10985,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
   else
     {
       if (allocate_index (classop, class_, subclasses, con->attributes, NULL,
-			  con->attrs_prefix_length, false,
+			  con->attrs_prefix_length, 0 /* unique_pk */ ,
 			  false, false, con->name, &con->index_btid,
 			  &(con->fk_info->ref_class_oid),
 			  &(con->fk_info->ref_class_pk_btid),
@@ -11060,7 +11060,8 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
 	  error = allocate_index (classop, class_, NULL, con->attributes,
 				  con->asc_desc,
 				  con->attrs_prefix_length,
-				  false, false, reverse, con->name,
+				  0 /* unique_pk */ ,
+				  false, reverse, con->name,
 				  &con->index_btid, NULL, NULL, -1, NULL,
 				  con->filter_predicate,
 				  con->func_index_info);
@@ -13786,8 +13787,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
          are existing instances */
       BTID_SET_NULL (&index);
       error = allocate_index (classop, class_, NULL, attrs, asc_desc,
-			      attrs_prefix_length, false, false,
-			      reverse_index, constraint_name, &index,
+			      attrs_prefix_length, 0 /* unique_pk */ ,
+			      false, reverse_index, constraint_name, &index,
 			      NULL, NULL, -1, NULL, filter_index,
 			      function_index);
     }

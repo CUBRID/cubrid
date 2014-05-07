@@ -4709,7 +4709,7 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid,
   BTID *return_btid = NULL;
   TP_DOMAIN *key_type;
   OID class_oid;
-  int attr_id, unique_btree;
+  int attr_id, unique_pk;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -4718,10 +4718,10 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_domain (ptr, &key_type, 0);
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &attr_id);
-  ptr = or_unpack_int (ptr, &unique_btree);
+  ptr = or_unpack_int (ptr, &unique_pk);
 
   return_btid = xbtree_add_index (thread_p, &btid, key_type, &class_oid,
-				  attr_id, unique_btree, 0, 0, 0);
+				  attr_id, unique_pk, 0, 0, 0);
   if (return_btid == NULL)
     {
       return_error_to_client (thread_p, rid);
@@ -4755,7 +4755,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
   BTID *return_btid = NULL;
   OID *class_oids = NULL;
   HFID *hfids = NULL;
-  int unique_flag, not_null_flag;
+  int unique_pk, not_null_flag;
   OID fk_refcls_oid;
   BTID fk_refcls_pk_btid;
   int cache_attr_id;
@@ -4811,7 +4811,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
       goto end;
     }
 
-  ptr = or_unpack_int (ptr, &unique_flag);
+  ptr = or_unpack_int (ptr, &unique_pk);
   ptr = or_unpack_int (ptr, &not_null_flag);
 
   ptr = or_unpack_oid (ptr, &fk_refcls_oid);
@@ -4866,7 +4866,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
   return_btid =
     xbtree_load_index (thread_p, &btid, bt_name, key_type, class_oids,
 		       n_classes, n_attrs, attr_ids, attr_prefix_lengths,
-		       hfids, unique_flag, not_null_flag, &fk_refcls_oid,
+		       hfids, unique_pk, not_null_flag, &fk_refcls_oid,
 		       &fk_refcls_pk_btid, cache_attr_id, fk_name,
 		       pred_stream, pred_stream_size, expr_stream,
 		       expr_stream_size, func_col_id, func_attr_index_start);

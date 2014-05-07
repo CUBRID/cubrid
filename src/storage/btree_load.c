@@ -47,7 +47,7 @@
 typedef struct sort_args SORT_ARGS;
 struct sort_args
 {				/* Collection of information required for "sr_index_sort" */
-  int unique_flag;
+  int unique_pk;
   int not_null_flag;
   HFID *hfids;			/* Array of HFIDs for the class(es) */
   OID *class_ids;		/* Array of class OIDs              */
@@ -581,7 +581,7 @@ btree_get_next_overflow_vpid (PAGE_PTR page_ptr, VPID * vpid)
  *                 will be created.
  *   hfids(in): Identifier of the heap file containing the instances of the
  *	        class
- *   unique_flag(in):
+ *   unique_pk(in):
  *   not_null_flag(in):
  *   fk_refcls_oid(in):
  *   fk_refcls_pk_btid(in):
@@ -593,7 +593,7 @@ BTID *
 xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
 		   TP_DOMAIN * key_type, OID * class_oids, int n_classes,
 		   int n_attrs, int *attr_ids, int *attrs_prefix_length,
-		   HFID * hfids, int unique_flag, int not_null_flag,
+		   HFID * hfids, int unique_pk, int not_null_flag,
 		   OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
 		   int cache_attr_id, const char *fk_name, char *pred_stream,
 		   int pred_stream_size, char *func_pred_stream,
@@ -653,7 +653,15 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
 #endif
 
   btid_int.sys_btid = btid;
-  btid_int.unique = unique_flag;
+  btid_int.unique_pk = unique_pk;
+#if !defined(NDEBUG)
+  if (unique_pk)
+    {
+      assert (BTREE_IS_UNIQUE (btid_int.unique_pk));
+      assert (BTREE_IS_PRIMARY_KEY (btid_int.unique_pk)
+	      || !BTREE_IS_PRIMARY_KEY (btid_int.unique_pk));
+    }
+#endif
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
@@ -680,7 +688,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   save_volid = btid->vfid.volid;
 
   /* Initialize the fields of sorting argument structures */
-  sort_args->unique_flag = unique_flag;
+  sort_args->unique_pk = unique_pk;
   sort_args->not_null_flag = not_null_flag;
   sort_args->hfids = hfids;
   sort_args->class_ids = class_oids;
@@ -943,7 +951,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
 
       btid->vfid.volid = save_volid;
       xbtree_add_index (thread_p, btid, key_type, &class_oids[0], attr_ids[0],
-			unique_flag, sort_args->n_oids, sort_args->n_nulls,
+			unique_pk, sort_args->n_oids, sort_args->n_nulls,
 			load_args->n_keys);
     }
 
@@ -1753,19 +1761,23 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
   root_header->node.split_info.pivot = 0.0f;
   root_header->node.split_info.index = 0;
 
-  if (load_args->btid->unique)
+  if (load_args->btid->unique_pk)
     {
       root_header->num_nulls = n_nulls;
       root_header->num_oids = n_oids;
       root_header->num_keys = n_keys;
-      root_header->unique = load_args->btid->unique;
+      root_header->unique_pk = load_args->btid->unique_pk;
+
+      assert (BTREE_IS_UNIQUE (root_header->unique_pk));
+      assert (BTREE_IS_PRIMARY_KEY (root_header->unique_pk)
+	      || !BTREE_IS_PRIMARY_KEY (root_header->unique_pk));
     }
   else
     {
       root_header->num_nulls = -1;
       root_header->num_oids = -1;
       root_header->num_keys = -1;
-      root_header->unique = false;
+      root_header->unique_pk = 0;
     }
 
   COPY_OID (&(root_header->topclass_oid), &load_args->btid->topclass_oid);
@@ -2231,7 +2243,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
       assert (buf.ptr == PTR_ALIGN (buf.ptr, INT_ALIGNMENT));
 
       /* Instance level uniqueness checking */
-      if (BTREE_IS_UNIQUE (load_args->btid))
+      if (BTREE_IS_UNIQUE (load_args->btid->unique_pk))
 	{			/* unique index */
 	  /* extract class OID */
 	  if (or_get_oid (&buf, &this_class_oid) != NO_ERROR)
@@ -2334,7 +2346,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	      /* This key (retrieved key) is the same with the current one. */
 
 	      /* instance level uniqueness checking */
-	      if (BTREE_IS_UNIQUE (load_args->btid))
+	      if (BTREE_IS_UNIQUE (load_args->btid->unique_pk))
 		{		/* unique index */
 		  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, &this_key,
 						    &this_oid,
@@ -2855,7 +2867,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
   sort_args = (SORT_ARGS *) arg;
   prev_oid = sort_args->cur_oid;
 
-  if (sort_args->unique_flag)
+  if (BTREE_IS_UNIQUE (sort_args->unique_pk))
     {
       oid_size = 2 * OR_OID_SIZE;
     }
@@ -3119,7 +3131,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  or_advance (&buf, (OR_INT_SIZE - OR_BYTE_SIZE));
 	  assert (buf.ptr == PTR_ALIGN (buf.ptr, INT_ALIGNMENT));
 
-	  if (sort_args->unique_flag)
+	  if (BTREE_IS_UNIQUE (sort_args->unique_pk))
 	    {
 	      if (or_put_oid (&buf, &sort_args->class_ids[cur_class]) !=
 		  NO_ERROR)
@@ -3209,7 +3221,7 @@ compare_driver (const void *first, const void *second, void *arg)
   assert (PTR_ALIGN (mem2, INT_ALIGNMENT) == mem2);
 
   /* Skip the oids */
-  if (sort_args->unique_flag)
+  if (BTREE_IS_UNIQUE (sort_args->unique_pk))
     {				/* unique index */
       mem1 += (2 * OR_OID_SIZE);
       mem2 += (2 * OR_OID_SIZE);
@@ -3328,9 +3340,11 @@ compare_driver (const void *first, const void *second, void *arg)
 
   /* compare OID for non-unique index 
    */
-  if (c == DB_EQ && sort_args->unique_flag == false)
+  if (c == DB_EQ && !BTREE_IS_UNIQUE (sort_args->unique_pk))
     {
       OID first_oid, second_oid;
+
+      assert (!BTREE_IS_PRIMARY_KEY (sort_args->unique_pk));
 
       mem1 = *(char **) first;
       mem2 = *(char **) second;

@@ -147,7 +147,7 @@ struct btree_root_header
   int num_nulls;		/* Number of NULLs (they aren't stored) */
   int num_keys;			/* Number of unique keys in the Btree */
   OID topclass_oid;		/* topclass oid or NULL OID(non unique index) */
-  int unique;			/* unique or non-unique */
+  int unique_pk;		/* unique or non-unique, is primary key */
   int reverse_reserved;		/* reverse or normal *//* not used */
   int rev_level;		/* Btree revision level */
   VFID ovfid;			/* Overflow file */
