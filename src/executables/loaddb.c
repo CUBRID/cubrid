@@ -391,7 +391,7 @@ ldr_get_token (char *str, char **out_str, char start, char end)
 {
   char *p = NULL;
 
-  if (*out_str)
+  if (out_str)
     {
       *out_str = NULL;
     }
@@ -429,7 +429,7 @@ static int
 ldr_compare_attribute_with_meta (char *table_name, char *meta,
 				 DB_ATTRIBUTE * attribute)
 {
-  int error;
+  int error = NO_ERROR;
   char *p, *name_str, *type_str, *order_str, *storage_order_str, *shared_str;
   int type, order, storage_order, shared;
 
