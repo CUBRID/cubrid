@@ -8895,8 +8895,8 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix,
   assert (DB_VALUE_TYPE (prefix) == DB_TYPE_MIDXKEY);
   assert (DB_VALUE_TYPE (postfix) == DB_TYPE_MIDXKEY);
 
-  midx_prefix = (DB_MIDXKEY *) & (prefix->data.midxkey);
-  midx_postfix = (DB_MIDXKEY *) & (postfix->data.midxkey);
+  midx_prefix = DB_PULL_MIDXKEY (prefix);
+  midx_postfix = DB_PULL_MIDXKEY (postfix);
 
   offset_prefix = pr_midxkey_get_element_offset (midx_prefix, n_prefix);
   offset_postfix = pr_midxkey_get_element_offset (midx_postfix, n_prefix);
@@ -8952,7 +8952,7 @@ pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
   DB_MIDXKEY *midx_key;
   int start, offset, size;
 
-  midx_key = (DB_MIDXKEY *) & (key->data.midxkey);
+  midx_key = DB_PULL_MIDXKEY (key);
 
   start = pr_midxkey_get_element_offset (midx_key, 0);
   offset = pr_midxkey_get_element_offset (midx_key, prefix);
@@ -8988,8 +8988,10 @@ pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2)
   assert (DB_VALUE_TYPE (key1) == DB_TYPE_MIDXKEY);
   assert (DB_VALUE_TYPE (key2) == DB_TYPE_MIDXKEY);
 
-  midx_lf_key = (DB_MIDXKEY *) & (key1->data.midxkey);
-  midx_uf_key = (DB_MIDXKEY *) & (key2->data.midxkey);
+  diff_column = 0;		/* init */
+
+  midx_lf_key = DB_PULL_MIDXKEY (key1);
+  midx_uf_key = DB_PULL_MIDXKEY (key2);
 
   ret = pr_midxkey_compare (midx_lf_key, midx_uf_key,
 			    0, 1, -1,
@@ -9184,8 +9186,8 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
   assert (db_midxkey2 != (DB_VALUE *) NULL);
   assert (db_result != (DB_VALUE *) NULL);
 
-  midxkey1 = (DB_MIDXKEY *) (&(db_midxkey1->data.midxkey));
-  midxkey2 = (DB_MIDXKEY *) (&(db_midxkey2->data.midxkey));
+  midxkey1 = DB_PULL_MIDXKEY (db_midxkey1);
+  midxkey2 = DB_PULL_MIDXKEY (db_midxkey2);
 
   assert (midxkey1->size != -1);
   assert (midxkey2->size != -1);

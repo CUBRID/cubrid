@@ -147,7 +147,7 @@ struct btree_scan
 {
   BTID_INT btid_int;
   TRAN_ISOLATION tran_isolation;	/* transaction isolation level */
-  int read_uncommitted;
+  bool read_uncommitted;
 
   VPID P_vpid;			/* vpid of previous leaf page */
   VPID C_vpid;			/* vpid of current leaf page */

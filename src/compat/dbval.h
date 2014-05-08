@@ -241,14 +241,13 @@
 
 #define DB_PULL_SEQUENCE(v) DB_PULL_LIST(v)
 
+#define DB_PULL_MIDXKEY(v) \
+      (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_MIDXKEY), \
+       (DB_MIDXKEY *) (&(v)->data.midxkey))
+
 #define DB_GET_MIDXKEY(v) \
       ((DB_IS_NULL (v) || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ERROR) ? \
-       NULL : (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_MIDXKEY), \
-	       (DB_MIDXKEY *) (&(v)->data.midxkey)))
-
-#define DB_PULL_MIDXKEY(v) \
-      (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_MIDXKEY),\
-       (DB_MIDXKEY *) (&(v)->data.midxkey))
+       NULL : DB_PULL_MIDXKEY(v))
 
 #define DB_GET_ELO(v) \
       ((DB_IS_NULL (v) || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ERROR || \

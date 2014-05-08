@@ -73,15 +73,15 @@
 
 #define HEADER 0		/* Header (Oth) record of the page  */
 
+#if defined(BTREE_DEBUG)
 #define BTREE_INVALID_INDEX_ID(btid) \
  ((btid)->vfid.fileid == NULL_FILEID || (btid)->vfid.volid == NULL_VOLID ||\
   (btid)->root_pageid == NULL_PAGEID)
+#endif
 
 /*
  * Overflow key related defines
  */
-
-#define SPHEADSIZE 48		/* Assume reserved for slotted page header info */
 
 /* We never want to store keys larger than an eighth of the pagesize
  * directly on the btree page since this will make the btree too deep.
