@@ -2828,9 +2828,12 @@ pt_column_updatable (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 pt_has_error (const PARSER_CONTEXT * parser)
 {
-  if (parser)
+  if (parser && parser->error_msgs != NULL)
     {
-      return (parser->error_msgs != NULL);
+#if 0				/* TODO */
+      assert (er_errid () != NO_ERROR);
+#endif
+      return 1;
     }
 
   return 0;
