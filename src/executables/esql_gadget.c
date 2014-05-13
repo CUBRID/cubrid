@@ -243,6 +243,7 @@ db_gadget_bind (DB_GADGET * gadget,
   gadget->attrs[i].value = (DB_VALUE *) malloc (sizeof (DB_VALUE));
   if (gadget->attrs[i].value == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 

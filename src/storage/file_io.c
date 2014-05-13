@@ -8049,6 +8049,7 @@ exit_on_error:
   /* set error info */
   if (thread_info_p->errid == NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       thread_info_p->errid = er_errid ();
     }
 

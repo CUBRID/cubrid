@@ -302,6 +302,8 @@ jsp_get_return_type (const char *name)
   if (mop_p == NULL)
     {
       AU_ENABLE (save);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -548,27 +550,27 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (jsp_is_exist_stored_procedure (name))
     {
       if (statement->info.sp.or_replace)
-        {
-          /* drop existing stored procedure */
-          err = tran_system_savepoint (SAVEPOINT_CREATE_STORED_PROC);
-          if (err != NO_ERROR)
-            {
-              return err;
-            }
-          has_savepoint = true;
+	{
+	  /* drop existing stored procedure */
+	  err = tran_system_savepoint (SAVEPOINT_CREATE_STORED_PROC);
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+	  has_savepoint = true;
 
-          err = drop_stored_procedure (name, type);
-          if (err != NO_ERROR)
-            {
-              goto error_exit;
-            }
-        }
+	  err = drop_stored_procedure (name, type);
+	  if (err != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
       else
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1,
-              name);
-          return er_errid ();
-        }
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1,
+		  name);
+	  return er_errid ();
+	}
     }
 
   for (p = param_list, param_count = 0; p != NULL; p = p->next, param_count++)
@@ -584,7 +586,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   err = jsp_add_stored_procedure (name, type, ret_type, param_list,
-				   java_method);
+				  java_method);
   if (err != NO_ERROR)
     {
       goto error_exit;
@@ -654,6 +656,7 @@ jsp_alter_stored_procedure_owner (PARSER_CONTEXT * parser,
   sp_mop = jsp_find_stored_procedure (name_str);
   if (sp_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       goto error;
     }
@@ -796,6 +799,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name,
   classobj_p = db_find_class (SP_ARG_CLASS_NAME);
   if (classobj_p == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       goto error;
     }
@@ -803,6 +807,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name,
   obt_p = dbt_create_object_internal (classobj_p);
   if (obt_p == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       goto error;
     }
@@ -847,6 +852,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name,
   object_p = dbt_finish_object (obt_p);
   if (!object_p)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       goto error;
     }
@@ -855,6 +861,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name,
   err = locator_flush_instance (object_p);
   if (err != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       obj_delete (object_p);
       goto error;
@@ -937,6 +944,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
 
   if (classobj_p == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       goto error;
     }
@@ -951,6 +959,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
   obt_p = dbt_create_object_internal (classobj_p);
   if (!obt_p)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       goto error;
     }
@@ -981,6 +990,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
   param = set_create_sequence (0);
   if (param == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       goto error;
     }
@@ -1060,6 +1070,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
   object_p = dbt_finish_object (obt_p);
   if (!object_p)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       goto error;
     }
@@ -1068,6 +1079,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
   err = locator_flush_instance (object_p);
   if (err != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       obj_delete (object_p);
       goto error;
@@ -1124,6 +1136,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
   sp_mop = jsp_find_stored_procedure (name);
   if (sp_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       goto error;
     }
@@ -2718,6 +2731,7 @@ redo:
       ptr = jsp_unpack_value (buffer, sp_args->returnval);
       if (ptr == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  goto error;
 	}
@@ -2734,6 +2748,7 @@ redo:
 	  if (ptr == NULL)
 	    {
 	      db_value_clear (&temp);
+	      assert (er_errid () != NO_ERROR);
 	      error_code = er_errid ();
 	      goto error;
 	    }
@@ -2751,6 +2766,7 @@ redo:
       ptr = jsp_unpack_value (buffer, &error_value);
       if (ptr == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  goto error;
 	}
@@ -2758,6 +2774,7 @@ redo:
       ptr = jsp_unpack_value (ptr, &error_msg);
       if (ptr == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  goto error;
 	}
@@ -2918,6 +2935,7 @@ retry:
       sock_fds[call_cnt] = jsp_connect_server ();
       if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
@@ -2993,6 +3011,7 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval,
   mop_p = jsp_find_stored_procedure (name);
   if (!mop_p)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       goto error;
     }
@@ -3129,6 +3148,7 @@ jsp_call_from_server (DB_VALUE * returnval, DB_VALUE ** argarray,
       *next_val_list = (DB_ARG_LIST *) calloc (1, sizeof (DB_ARG_LIST));
       if (*next_val_list == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       (*next_val_list)->next = (DB_ARG_LIST *) 0;

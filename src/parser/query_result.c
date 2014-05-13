@@ -307,6 +307,9 @@ pt_report_to_ersys (const PARSER_CONTEXT * parser,
   error_node = parser->error_msgs;
   if (error_node && error_node->node_type == PT_ZZ_ERROR_MSG)
     {
+#if 0				/* TODO */
+      assert (er_errid () != NO_ERROR);
+#endif
       err = er_errid ();
       if (!ER_IS_LOCK_TIMEOUT_ERROR (err) && !ER_IS_SERVER_DOWN_ERROR (err))
 	{
@@ -375,6 +378,9 @@ pt_report_to_ersys_with_statement (PARSER_CONTEXT * parser,
 
   if (error_node && error_node->node_type == PT_ZZ_ERROR_MSG)
     {
+#if 0				/* TODO */
+      assert (er_errid () != NO_ERROR);
+#endif
       err = er_errid ();
       if (!ER_IS_LOCK_TIMEOUT_ERROR (err) && !ER_IS_SERVER_DOWN_ERROR (err))
 	{

@@ -189,6 +189,7 @@ db_add_attribute_internal (MOP class_, const char *name, const char *domain,
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -328,6 +329,7 @@ drop_internal (MOP class_, const char *name, SM_NAME_SPACE name_space)
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -466,6 +468,7 @@ db_add_set_attribute_domain (MOP class_,
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -538,6 +541,7 @@ db_drop_set_attribute_domain (MOP class_,
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -609,6 +613,7 @@ db_change_default (MOP class_, const char *name, DB_VALUE * value)
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -681,6 +686,7 @@ db_rename_internal (MOP class_, const char *name,
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -780,6 +786,7 @@ add_method_internal (MOP class_, const char *name, const
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -903,6 +910,7 @@ db_change_method_implementation (MOP class_, const char *name,
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -962,6 +970,7 @@ add_arg_domain (DB_OBJECT * class_, const char *name,
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -1116,6 +1125,7 @@ db_set_loader_commands (MOP class_, const char *commands)
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -1169,6 +1179,7 @@ db_add_method_file (MOP class_, const char *name)
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -1215,6 +1226,7 @@ db_drop_method_file (MOP class_, const char *name)
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -1258,6 +1270,7 @@ db_drop_method_files (MOP class_)
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -1334,6 +1347,7 @@ db_add_super_internal (MOP class_, MOP super)
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -1387,6 +1401,7 @@ db_drop_super (MOP class_, MOP super)
       def = smt_edit_class_mop (class_, AU_ALTER);
       if (def == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -1439,6 +1454,7 @@ db_drop_super_connect (MOP class_, MOP super)
       def = smt_edit_class_mop (class_, AU_ALTER);
       if (def == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -1574,6 +1590,7 @@ db_add_resolution (MOP class_, MOP super, const char *name, const char *alias)
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -1621,6 +1638,7 @@ db_add_class_resolution (MOP class_, MOP super, const char *name,
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -1664,6 +1682,7 @@ db_drop_resolution (MOP class_, MOP super, const char *name)
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -1706,6 +1725,7 @@ db_drop_class_resolution (MOP class_, MOP super, const char *name)
   def = smt_edit_class_mop (class_, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -1820,6 +1840,7 @@ db_add_constraint (MOP classmop,
 					 att_names, NULL, constraint_name);
   if (name == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       retval = er_errid ();
     }
   else
@@ -1872,6 +1893,7 @@ db_drop_constraint (MOP classmop,
 
   if (name == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       retval = er_errid ();
     }
   else

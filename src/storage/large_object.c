@@ -3033,6 +3033,7 @@ largeobjmgr_rv_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 		  0);
 	}
 
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3052,6 +3053,7 @@ largeobjmgr_rv_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   if (spage_delete_for_recovery (thread_p, recv->pgptr, (INT16) recv->offset)
       == NULL_SLOTID)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3124,6 +3126,7 @@ largeobjmgr_rv_split_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 		  0);
 	}
 
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3158,6 +3161,7 @@ largeobjmgr_rv_split_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 		  0);
 	}
 
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3220,6 +3224,7 @@ largeobjmgr_rv_overwrite (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 		  0);
 	}
 
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3282,6 +3287,7 @@ largeobjmgr_rv_putin (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 		  0);
 	}
 
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3314,6 +3320,7 @@ largeobjmgr_rv_takeout (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 		  0);
 	}
 
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3380,6 +3387,7 @@ largeobjmgr_rv_append_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 		  0);
 	}
 
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3413,6 +3421,7 @@ largeobjmgr_rv_append_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 		  0);
 	}
 
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 

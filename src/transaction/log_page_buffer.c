@@ -12830,6 +12830,7 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
 						   num_pages, log_pgptr);
       if (num_pages <= 0)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  goto error;
 	}

@@ -20168,6 +20168,7 @@ pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 	    err = ER_IT_DATA_OVERFLOW;
 	    break;
 	  case DOMAIN_ERROR:
+	    assert (er_errid () != NO_ERROR);
 	    err = er_errid ();
 	    break;
 	  default:

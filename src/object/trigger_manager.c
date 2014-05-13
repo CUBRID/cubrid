@@ -534,6 +534,7 @@ insert_trigger_list (TR_TRIGLIST ** list, TR_TRIGGER * trigger)
   new_ = (TR_TRIGLIST *) db_ws_alloc (sizeof (TR_TRIGLIST));
   if (new_ == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -610,6 +611,7 @@ merge_trigger_list (TR_TRIGLIST ** list, TR_TRIGLIST * more, int destructive)
 	  new_ = (TR_TRIGLIST *) db_ws_alloc (sizeof (TR_TRIGLIST));
 	  if (new_ == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	  new_->trigger = t2->trigger;
@@ -794,7 +796,10 @@ add_deferred_activities (TR_TRIGLIST * triggers, MOP current)
     {
       def = add_deferred_activity_context ();
       if (def == NULL)
-	return er_errid ();
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
     }
 
   /*
@@ -913,7 +918,10 @@ tr_set_savepoint (void *savepoint_id)
 
       /* build a new one on top of this */
       if (add_deferred_activity_context ())
-	return er_errid ();
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
     }
   return NO_ERROR;
 }
@@ -1352,6 +1360,8 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
 error:
   AU_ENABLE (save);
+
+  assert (er_errid () != NO_ERROR);
   return er_errid ();
 }
 
@@ -1556,7 +1566,10 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity,
       /* get a parser for this statement */
       activity->parser = parser_create_parser ();
       if (activity->parser == NULL)
-	return er_errid ();
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
 
       get_reference_names (trigger, activity, &curname, &tempname);
 
@@ -1697,7 +1710,10 @@ validate_trigger (TR_TRIGGER * trigger)
    */
 
   if (au_fetch_instance_force (trigger->object, &obj, AU_FETCH_READ))
-    return er_errid ();
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
   if (trigger->chn != WS_CHN (obj))
     {
@@ -1706,8 +1722,10 @@ validate_trigger (TR_TRIGGER * trigger)
       tr_clear_trigger (trigger);
 
       if (object_to_trigger (object_p, trigger))
-	return er_errid ();
-
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
 
       if (compile_trigger_activity (trigger, trigger->condition, 1))
 	{
@@ -1807,7 +1825,10 @@ tr_unmap_trigger (TR_TRIGGER * trigger)
    */
 
   if (mht_rem (tr_object_map, trigger->object, NULL, NULL) != NO_ERROR)
-    error = er_errid ();
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
 
   return (error);
 }
@@ -2013,6 +2034,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter,
 		      trigger = tr_map_trigger (DB_GET_OBJECT (&value), 1);
 		      if (trigger == NULL)
 			{
+			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			}
 		      else
@@ -2115,6 +2137,7 @@ tr_update_user_cache (void)
 		      trigger = tr_map_trigger (DB_GET_OBJECT (&value), 1);
 		      if (trigger == NULL)
 			{
+			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			}
 		      else
@@ -2420,6 +2443,7 @@ tr_add_cache_trigger (TR_SCHEMA_CACHE * cache, DB_OBJECT * trigger_object)
 	      trigger = tr_map_trigger (trigger_object, 1);
 	      if (trigger == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		}
 	      else
@@ -2463,6 +2487,7 @@ tr_drop_cache_trigger (TR_SCHEMA_CACHE * cache, DB_OBJECT * trigger_object)
 	  trigger = tr_map_trigger (trigger_object, 1);
 	  if (trigger == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  else
@@ -2575,6 +2600,7 @@ tr_validate_schema_cache (TR_SCHEMA_CACHE * cache)
 		  if (insert_trigger_list
 		      (&(cache->triggers[trigger->event]), trigger))
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      return er_errid ();	/* memory error */
 		    }
 		  prev = object_list;
@@ -2585,6 +2611,7 @@ tr_validate_schema_cache (TR_SCHEMA_CACHE * cache)
 		      && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
 		    {
 		      /* we got some kind of severe error, abort */
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		    }
 		  else
@@ -3117,7 +3144,10 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
 
   /* make sure we don't already have one */
   if (trigger_table_find (newname, &exists))
-    return er_errid ();
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
   if (exists != NULL)
     {
@@ -3393,6 +3423,7 @@ find_all_triggers (bool active_filter, bool alter_filter, DB_OBJLIST ** list)
 		      trigger = tr_map_trigger (DB_GET_OBJECT (&value), 1);
 		      if (trigger == NULL)
 			{
+			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			}
 		      else
@@ -3447,12 +3478,16 @@ get_schema_trigger_objects (DB_OBJECT * class_mop,
   *object_list = NULL;
 
   if (sm_get_trigger_cache (class_mop, attribute, 0, (void **) &cache))
-    return er_errid ();
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
   if (cache != NULL)
     {
       if (tr_validate_schema_cache (cache))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -3669,7 +3704,10 @@ check_semantics (TR_TRIGGER * trigger)
 
   /* Check target class, attribute, and authorization. */
   if (!check_target (trigger->event, trigger->class_mop, trigger->attribute))
-    return er_errid ();
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
   /*
    * CONDITION
@@ -4144,6 +4182,7 @@ tr_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_mop,
   /* check for sensible parameters and ALTER authorization for class */
   if (!check_target (event, class_mop, attribute))
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -4187,12 +4226,16 @@ tr_check_authorization (DB_OBJECT * trigger_object, int alter_flag)
 
   if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
     {
       if (!check_authorization (trigger, alter_flag))
-	error = er_errid ();
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	}
     }
 
   AU_ENABLE (save);
@@ -4312,6 +4355,7 @@ tr_drop_trigger (DB_OBJECT * obj, bool call_from_api)
   trigger = tr_map_trigger (obj, false);
   if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -4960,6 +5004,7 @@ tr_execute_activities (TR_STATE * state, DB_TRIGGER_TIME tr_time,
 	}
       else if (status == TR_RETURN_ERROR)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
 
@@ -4998,7 +5043,10 @@ run_user_triggers (DB_TRIGGER_EVENT event, DB_TRIGGER_TIME time)
   if (!tr_User_triggers_valid)
     {
       if (tr_update_user_cache ())
-	return er_errid ();
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
     }
 
   for (t = tr_User_triggers; t != NULL && !error; t = t->next)
@@ -5020,7 +5068,10 @@ run_user_triggers (DB_TRIGGER_EVENT event, DB_TRIGGER_TIME time)
 		}
 	    }
 	  else if (status == TR_RETURN_ERROR)
-	    error = er_errid ();
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
 	}
     }
 
@@ -5184,6 +5235,7 @@ tr_prepare_statement (TR_STATE ** state_p,
 
   if (error != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_return;
     }
@@ -5199,6 +5251,7 @@ tr_prepare_statement (TR_STATE ** state_p,
       state = start_state (state_p, triggers->trigger->name);
       if (state == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto error_return;
 	}
@@ -5213,6 +5266,7 @@ tr_prepare_statement (TR_STATE ** state_p,
 	      error = merge_trigger_list (&state->triggers, triggers, 1);
 	      if (error != NO_ERROR)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		  goto error_return;
 		}
@@ -5230,6 +5284,8 @@ error_return:
     }
 
   AU_ENABLE (save);
+
+  assert (er_errid () != NO_ERROR);
   return er_errid ();
 }
 
@@ -5262,6 +5318,7 @@ tr_prepare (TR_STATE ** state_p, TR_TRIGLIST * triggers)
   state = start_state (state_p, name);
   if (state == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -5313,6 +5370,7 @@ tr_prepare_class (TR_STATE ** state_p, TR_SCHEMA_CACHE * cache,
 
   if (tr_validate_schema_cache (cache) != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else if (event < cache->array_length)
@@ -5324,6 +5382,7 @@ tr_prepare_class (TR_STATE ** state_p, TR_SCHEMA_CACHE * cache,
       state = start_state (state_p, name);
       if (state == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -5530,7 +5589,10 @@ tr_check_commit_triggers (DB_TRIGGER_TIME time)
    */
 
   if (run_user_triggers (TR_EVENT_COMMIT, time))
-    return er_errid ();
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
   /*
    * if this returns an error, we may wish to override it with a more generic
@@ -5540,7 +5602,10 @@ tr_check_commit_triggers (DB_TRIGGER_TIME time)
     {
 
       if (tr_execute_deferred_activities (NULL, NULL))
-	return er_errid ();
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
 
       if (tr_Invalid_transaction)
 	{
@@ -5837,6 +5902,7 @@ tr_execute_deferred_activities (DB_OBJECT * trigger_object,
 		       * if an error happens, should we invalidate
 		       * the transaction ?
 		       */
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		    }
 
@@ -5940,6 +6006,7 @@ tr_trigger_name (DB_OBJECT * trigger_object, char **name)
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -5974,8 +6041,10 @@ tr_trigger_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS * status)
   *status = TR_STATUS_INACTIVE;
   AU_DISABLE (save);
 
-  if ((trigger = tr_map_trigger (trigger_object, 1)) == NULL)
+  trigger = tr_map_trigger (trigger_object, 1);
+  if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -6010,8 +6079,10 @@ tr_trigger_priority (DB_OBJECT * trigger_object, double *priority)
   *priority = TR_LOWEST_PRIORITY;
   AU_DISABLE (save);
 
-  if ((trigger = tr_map_trigger (trigger_object, 1)) == NULL)
+  trigger = tr_map_trigger (trigger_object, 1);
+  if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -6047,8 +6118,10 @@ tr_trigger_event (DB_OBJECT * trigger_object, DB_TRIGGER_EVENT * event)
   *event = TR_EVENT_NULL;
   AU_DISABLE (save);
 
-  if ((trigger = tr_map_trigger (trigger_object, 1)) == NULL)
+  trigger = tr_map_trigger (trigger_object, 1);
+  if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -6085,8 +6158,10 @@ tr_trigger_class (DB_OBJECT * trigger_object, DB_OBJECT ** class_mop_p)
   *class_mop_p = NULL;
   AU_DISABLE (save);
 
-  if ((trigger = tr_map_trigger (trigger_object, 1)) == NULL)
+  trigger = tr_map_trigger (trigger_object, 1);
+  if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -6123,8 +6198,10 @@ tr_trigger_attribute (DB_OBJECT * trigger_object, char **attribute)
   *attribute = NULL;
   AU_DISABLE (save);
 
-  if ((trigger = tr_map_trigger (trigger_object, 1)) == NULL)
+  trigger = tr_map_trigger (trigger_object, 1);
+  if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -6161,8 +6238,10 @@ tr_trigger_condition (DB_OBJECT * trigger_object, char **condition)
   *condition = NULL;
   AU_DISABLE (save);
 
-  if ((trigger = tr_map_trigger (trigger_object, 1)) == NULL)
+  trigger = tr_map_trigger (trigger_object, 1);
+  if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else if (trigger->condition != NULL
@@ -6203,8 +6282,10 @@ tr_trigger_condition_time (DB_OBJECT * trigger_object,
   *tr_time = TR_TIME_NULL;
   AU_DISABLE (save);
 
-  if ((trigger = tr_map_trigger (trigger_object, 1)) == NULL)
+  trigger = tr_map_trigger (trigger_object, 1);
+  if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else if (trigger->condition != NULL)
@@ -6241,8 +6322,10 @@ tr_trigger_action (DB_OBJECT * trigger_object, char **action)
   *action = NULL;
   AU_DISABLE (save);
 
-  if ((trigger = tr_map_trigger (trigger_object, 1)) == NULL)
+  trigger = tr_map_trigger (trigger_object, 1);
+  if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else if (trigger->action != NULL)
@@ -6307,8 +6390,10 @@ tr_trigger_action_time (DB_OBJECT * trigger_object, DB_TRIGGER_TIME * tr_time)
   *tr_time = TR_TIME_NULL;
   AU_DISABLE (save);
 
-  if ((trigger = tr_map_trigger (trigger_object, 1)) == NULL)
+  trigger = tr_map_trigger (trigger_object, 1);
+  if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else if (trigger->action != NULL)
@@ -6341,8 +6426,10 @@ tr_trigger_action_type (DB_OBJECT * trigger_object, DB_TRIGGER_ACTION * type)
   *type = TR_ACT_NULL;
   AU_DISABLE (save);
 
-  if ((trigger = tr_map_trigger (trigger_object, 1)) == NULL)
+  trigger = tr_map_trigger (trigger_object, 1);
+  if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else if (trigger->action != NULL)
@@ -6520,6 +6607,7 @@ tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp)
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -6693,6 +6781,7 @@ tr_dump_all_triggers (FILE * fp, bool quoted_id_flag)
 		      trigger = tr_map_trigger (trigger_object, 1);
 		      if (trigger == NULL)
 			{
+			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			}
 		      else
@@ -6793,6 +6882,7 @@ tr_dump_selective_triggers (FILE * fp, DB_OBJLIST * classes)
 		      trigger = tr_map_trigger (trigger_object, 1);
 		      if (trigger == NULL)
 			{
+			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			}
 		      else
@@ -6856,6 +6946,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name,
   trigger = tr_map_trigger (trigger_object, true);
   if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -6875,6 +6966,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name,
       newname = tr_process_name (name);
       if (newname == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -6889,6 +6981,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name,
 	      newname = NULL;
 	      if (db_put_internal (trigger_object, TR_ATT_NAME, &value))
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		  /*
 		   * hmm, couldn't set the new name, put the old one back,
@@ -6950,6 +7043,7 @@ tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status,
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else if (!check_authorization (trigger, true))
@@ -6964,6 +7058,7 @@ tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status,
       db_make_int (&value, status);
       if (db_put_internal (trigger_object, TR_ATT_STATUS, &value))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  /*
 	   * hmm, couldn't set the new status, put the old one back,
@@ -6994,7 +7089,7 @@ tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status,
 
   AU_ENABLE (save);
 
-  return er_errid ();
+  return error;
 }
 
 /*
@@ -7021,6 +7116,7 @@ tr_set_priority (DB_OBJECT * trigger_object, double priority,
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else if (!check_authorization (trigger, true))
@@ -7035,6 +7131,7 @@ tr_set_priority (DB_OBJECT * trigger_object, double priority,
       db_make_double (&value, priority);
       if (db_put_internal (trigger_object, TR_ATT_PRIORITY, &value))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  /*
 	   * hmm, couldn't set the new status, put the old one back,
@@ -7062,7 +7159,7 @@ tr_set_priority (DB_OBJECT * trigger_object, double priority,
 
   AU_ENABLE (save);
 
-  return (error);
+  return error;
 }
 
 
@@ -7322,7 +7419,11 @@ define_trigger_classes (void)
 
 tmp_error:
   if (tmp != NULL)
-    dbt_abort_class (tmp);
+    {
+      dbt_abort_class (tmp);
+    }
+
+  assert (er_errid () != NO_ERROR);
   return er_errid ();
 }
 

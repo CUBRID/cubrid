@@ -160,6 +160,7 @@ css_client_init (int sockid, const char *server_name, const char *host_name)
     }
   else
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -497,6 +498,8 @@ css_send_error_to_server (char *host, unsigned int eid,
 			  char *buffer, int buffer_size)
 {
   CSS_MAP_ENTRY *entry;
+
+  assert (er_errid () != NO_ERROR);
 
   entry = css_return_open_entry (host, &css_Client_anchor);
   if (entry != NULL)

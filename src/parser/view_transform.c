@@ -11219,6 +11219,8 @@ mq_get_attribute (DB_OBJECT * vclass_object, const char *attr_name,
       if (parser == NULL)
 	{
 	  AU_ENABLE (save);
+
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
@@ -11338,6 +11340,7 @@ mq_update_attribute (DB_OBJECT * vclass_object, const char *attr_name,
       parser = parser_create_parser ();
       if (parser == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
@@ -11514,6 +11517,7 @@ mq_get_expression (DB_OBJECT * object, const char *expr, DB_VALUE * value)
       parser = parser_create_parser ();
       if (parser == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }

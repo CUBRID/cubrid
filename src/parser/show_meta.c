@@ -665,6 +665,7 @@ on_error:
       classobj_free_attribute (att);
     }
 
+  assert (er_errid () != NO_ERROR);
   return er_errid ();
 }
 

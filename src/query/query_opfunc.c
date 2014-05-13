@@ -9519,6 +9519,7 @@ qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
   return NO_ERROR;
 
 error:
+  assert (er_errid () != NO_ERROR);
   return er_errid ();
 }
 

@@ -5685,6 +5685,7 @@ ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
 		  0);
 	}
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -5781,6 +5782,7 @@ ehash_rv_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 
       if (long_str == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  return error;
 	}
@@ -5880,12 +5882,14 @@ ehash_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
       long_str = ehash_compose_overflow (thread_p, &recdes);
       if (long_str == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
       if (ehash_insert_helper (thread_p, &ehid, (void *) long_str, &oid,
 			       S_LOCK, vpid) == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
 
@@ -5897,6 +5901,7 @@ ehash_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
       if (ehash_insert_helper (thread_p, &ehid, (void *) record_p, &oid,
 			       S_LOCK, NULL) == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
     }
@@ -5942,6 +5947,7 @@ ehash_rv_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 						      NULL);
   if (dir_root_page_p == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   dir_header_p = (EHASH_DIR_HEADER *) dir_root_page_p;
@@ -5959,6 +5965,8 @@ ehash_rv_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
       if (bucket_page_p == NULL)
 	{
 	  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 

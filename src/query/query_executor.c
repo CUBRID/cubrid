@@ -1687,6 +1687,7 @@ exit_on_error:
 
   if (ret == NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       ret = er_errid ();
       if (ret == NO_ERROR)
 	{
@@ -3289,6 +3290,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 	  ev_res = qexec_eval_ordbynum_pred (thread_p, ordby_info);
 	  if (ev_res == V_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	  if (ordby_info->ordbynum_flag & XASL_ORDBYNUM_FLAG_SCAN_STOP)
@@ -3333,6 +3335,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 		  page = qmgr_get_old_page (&vpid, list_idp->tfile_vfid);
 		  if (page == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      return er_errid ();
 		    }
 
@@ -3345,6 +3348,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes,
 		qmgr_get_old_page (thread_p, &vpid, list_idp->tfile_vfid);
 	      if (page == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
 		}
 #endif
@@ -4196,6 +4200,7 @@ wrapup:
   return;
 
 exit_on_error:
+  assert (er_errid () != NO_ERROR);
   gbstate->state = er_errid ();
   goto wrapup;
 }
@@ -4259,6 +4264,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       new_key = qdata_copy_agg_hkey (thread_p, key);
       if (new_key == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -4267,6 +4273,8 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       if (new_value == NULL)
 	{
 	  qdata_free_agg_hkey (thread_p, new_key);
+
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       else if (!proc->g_output_first_tuple)
@@ -4931,6 +4939,7 @@ wrapup:
   return info->state;
 
 exit_on_error:
+  assert (er_errid () != NO_ERROR);
   info->state = er_errid ();
   goto wrapup;
 }
@@ -5366,6 +5375,7 @@ wrapup:
 
 exit_on_error:
 
+  assert (er_errid () != NO_ERROR);
   gbstate.state = er_errid ();
   if (gbstate.state == NO_ERROR || gbstate.state == SORT_PUT_STOP)
     {
@@ -8263,6 +8273,7 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
 			       LK_UNCOND_LOCK);
       if (granted != LK_GRANTED)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  return ((error != NO_ERROR) ? error : ER_FAILED);
 	}
@@ -10740,6 +10751,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 						 false);
 	      if (pruning_cache == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error_code = er_errid ();
 		  if (error_code == NO_ERROR)
 		    {
@@ -10792,8 +10804,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 	    {
 	      /* more than one OID has been found */
 	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key_dbvalue,
-						&unique_oid, &class_oid, &btid,
-						NULL);
+						&unique_oid, &class_oid,
+						&btid, NULL);
 	    }
 	  goto error_exit;
 	}
@@ -10996,6 +11008,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 						 false);
 	      if (pruning_cache == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error_code = er_errid ();
 		  if (error_code == NO_ERROR)
 		    {
@@ -11043,8 +11056,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 	    {
 	      /* more than one OID has been found */
 	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key_dbvalue,
-						&unique_oid, &class_oid, &btid,
-						NULL);
+						&unique_oid, &class_oid,
+						&btid, NULL);
 	    }
 	  goto error_exit;
 	}
@@ -11332,6 +11345,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (lock_object (thread_p, &insert->class_oid, oid_Root_class_oid, IX_LOCK,
 		   LK_UNCOND_LOCK) != LK_GRANTED)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error != NO_ERROR)
 	{
@@ -12974,6 +12988,7 @@ exit_on_error:
     }
 
   /* clear some kinds of error code; it's click counter! */
+  assert (er_errid () != NO_ERROR);
   err = er_errid ();
   if (err == ER_LK_UNILATERALLY_ABORTED
       || err == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG
@@ -20188,6 +20203,7 @@ wrapup:
   return;
 
 exit_on_error:
+  assert (er_errid () != NO_ERROR);
   gbstate->state = er_errid ();
   goto wrapup;
 }
@@ -20289,6 +20305,7 @@ wrapup:
   return level;
 
 exit_on_error:
+  assert (er_errid () != NO_ERROR);
   gbstate->state = er_errid ();
   goto wrapup;
 }
@@ -20508,6 +20525,7 @@ wrapup:
   return;
 
 exit_on_error:
+  assert (er_errid () != NO_ERROR);
   gbstate->state = er_errid ();
   goto wrapup;
 }
@@ -20609,6 +20627,7 @@ wrapup:
   return;
 
 exit_on_error:
+  assert (er_errid () != NO_ERROR);
   gbstate->state = er_errid ();
   goto wrapup;
 }
@@ -22338,6 +22357,7 @@ wrapup:
   return (analytic_state.state == NO_ERROR) ? NO_ERROR : ER_FAILED;
 
 exit_on_error:
+  assert (er_errid () != NO_ERROR);
   analytic_state.state = er_errid ();
   if (analytic_state.state == NO_ERROR)
     {
@@ -22870,6 +22890,7 @@ wrapup:
   return analytic_state->state;
 
 exit_on_error:
+  assert (er_errid () != NO_ERROR);
   analytic_state->state = er_errid ();
   goto wrapup;
 }
@@ -23030,6 +23051,7 @@ wrapup:
   return NO_ERROR;
 
 exit_on_error:
+  assert (er_errid () != NO_ERROR);
   return er_errid ();
 }
 
@@ -23183,6 +23205,7 @@ wrapup:
   return;
 
 exit_on_error:
+  assert (er_errid () != NO_ERROR);
   analytic_state->state = er_errid ();
   goto wrapup;
 }
@@ -26092,6 +26115,7 @@ qexec_for_update_set_class_locks (THREAD_ENTRY * thread_p,
 		  (thread_p, class_oid, oid_Root_class_oid, class_lock,
 		   LK_UNCOND_LOCK) != LK_GRANTED)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		  if (error == NO_ERROR)
 		    {
@@ -26180,6 +26204,7 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 				       oid_Root_class_oid, class_lock,
 				       LK_UNCOND_LOCK) != LK_GRANTED)
 			{
+			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			  if (error == NO_ERROR)
 			    {
@@ -26230,6 +26255,7 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 					   oid_Root_class_oid, class_lock,
 					   LK_UNCOND_LOCK) != LK_GRANTED)
 			    {
+			      assert (er_errid () != NO_ERROR);
 			      error = er_errid ();
 			      if (error == NO_ERROR)
 				{

@@ -526,6 +526,7 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
 
       if (!pt_Label_table)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
@@ -546,6 +547,7 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
       /* enter {label, val} as a {key, value} pair into label_table */
       if (mht_put (pt_Label_table, (char *) key, (void *) val) == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
@@ -562,6 +564,7 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
        */
       if (mht_put_data (pt_Label_table, (char *) label, (void *) val) == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -716,14 +719,19 @@ pt_make_label_list (const void *key, void *data, void *args)
 
   assert (key != NULL);
 
-  if ((new_ = (DB_NAMELIST *) db_ws_alloc (sizeof (DB_NAMELIST))) == NULL)
+  new_ = (DB_NAMELIST *) db_ws_alloc (sizeof (DB_NAMELIST));
+  if (new_ == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
-  if ((new_->name = ws_copy_string ((char *) key)) == NULL)
+  new_->name = ws_copy_string ((char *) key);
+  if (new_->name == NULL)
     {
       db_ws_free (new_);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 

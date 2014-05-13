@@ -1756,6 +1756,7 @@ lo_migrate_out (LOID * loid, const char *pathname)
 	  readlen = largeobjmgr_read (loid, offset, chunk, migration_buffer);
 	  if (readlen < 0)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  if (error)
@@ -1823,6 +1824,7 @@ lo_migrate_in (LOID * loid, const char *pathname)
       loid->vfid.volid = 0;
       if (largeobjmgr_create (loid, 0, NULL, -1, NULL) == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  fprintf (stderr, "%s\n", db_error_string (3));
 	}
@@ -1843,6 +1845,7 @@ lo_migrate_in (LOID * loid, const char *pathname)
 					    migration_buffer);
 	      if (writelen < 0)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		}
 

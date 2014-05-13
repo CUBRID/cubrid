@@ -532,25 +532,37 @@ clist_init (void)
   if (class != NULL)
     {
       if (ml_ext_add (&internal_classes, class, NULL))
-	return er_errid ();
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
     }
   class = db_find_class (AU_USER_CLASS_NAME);
   if (class != NULL)
     {
       if (ml_ext_add (&internal_classes, class, NULL))
-	return er_errid ();
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
     }
   class = db_find_class (AU_PASSWORD_CLASS_NAME);
   if (class != NULL)
     {
       if (ml_ext_add (&internal_classes, class, NULL))
-	return er_errid ();
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
     }
   class = db_find_class (AU_AUTH_CLASS_NAME);
   if (class != NULL)
     {
       if (ml_ext_add (&internal_classes, class, NULL))
-	return er_errid ();
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
     }
   return NO_ERROR;
 }
@@ -803,7 +815,10 @@ insert_instance ()
 	{
 	  real_obj = construct_instance ();
 	  if (real_obj == NULL)
-	    error = er_errid ();
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
 	  else
 	    {
 	      if (Loader.inum != -1)
@@ -964,6 +979,7 @@ find_instance (MOP class, OID * oid, int id)
   if (table == NULL)
     {
       OID_SET_NULL (oid);
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -1645,13 +1661,22 @@ ldr_init (bool verbose)
   idmap_init ();
 
   if (otable_init ())
-    return er_errid ();
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
   if (disk_init ())
-    return er_errid ();
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
   if (clist_init ())
-    return er_errid ();
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
   Loader.validation_only = 1;
   Loader.verbose = verbose ? 1 : 0;
@@ -1683,7 +1708,10 @@ ldr_start (int periodic_commit)
 
   /* in case we did any presizing, allocate the tables */
   if (otable_prepare ())
-    return er_errid ();
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
   Loader.validation_only = 0;
 
@@ -1901,6 +1929,7 @@ ldr_add_attribute (const char *attname)
 	  att = db_get_attribute (Loader.class, attname);
 	  if (att == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      if (error == ER_OBJ_INVALID_ATTRIBUTE)
 		{
@@ -1924,6 +1953,7 @@ ldr_add_attribute (const char *attname)
 	{
 	  /* don't overwrite the error here, especially if its an
 	     authorization error. */
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 #if 0
 	  error = ER_LDR_INVALID_ATTRIBUTE;
@@ -2319,6 +2349,7 @@ ldr_start_set (void)
 
       if (Loader.set == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  ldr_internal_error ();
 	}
@@ -2440,6 +2471,7 @@ ldr_add_value (DB_TYPE token_type, DB_VALUE ** retval)
 		  value = set_new_element (Loader.set);
 		  if (value == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      ldr_internal_error ();
 		    }
@@ -2542,6 +2574,8 @@ ldr_add_reference (MOP class, int id)
 	  if (value == NULL)
 	    {
 	      ldr_internal_error ();
+
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 
@@ -2600,6 +2634,8 @@ ldr_add_reference_to_class (MOP class)
 	  if (value == NULL)
 	    {
 	      ldr_internal_error ();
+
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 

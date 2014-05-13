@@ -2133,6 +2133,7 @@ pt_node_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * node,
 	      else
 		{
 		  /* given element domain was not found, raise error */
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		}
 	      dt = dt->next;
@@ -2383,8 +2384,6 @@ pt_auth_to_db_auth (const PT_NODE * auth)
   PT_PRIV_TYPE pt_auth;
   DB_AUTH db_auth;
 
-  int error = NO_ERROR;
-
   pt_auth = auth->info.auth_cmd.auth_cmd;
 
   switch (pt_auth)
@@ -2422,7 +2421,6 @@ pt_auth_to_db_auth (const PT_NODE * auth)
       break;
 
     default:
-      error = er_errid ();
       db_auth = DB_AUTH_NONE;
       break;
     }

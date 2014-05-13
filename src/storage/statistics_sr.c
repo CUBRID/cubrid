@@ -1191,6 +1191,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
   cls_info_p = catalog_get_class_info (thread_p, class_id_p);
   if (cls_info_p == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto cleanup;
     }
@@ -1207,6 +1208,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
   disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id);
   if (disk_repr_p == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto cleanup;
     }
@@ -1347,6 +1349,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
       subcls_info = catalog_get_class_info (thread_p, &partitions[i]);
       if (subcls_info == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto cleanup;
 	}
@@ -1365,6 +1368,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 						    subcls_repr_id);
       if (subcls_disk_rep == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto cleanup;
 	}
@@ -1484,6 +1488,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 						    subcls_repr_id);
       if (subcls_disk_rep == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto cleanup;
 	}

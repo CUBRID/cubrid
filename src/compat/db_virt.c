@@ -159,6 +159,7 @@ db_create_vclass (const char *name)
 	  def = smt_def_typed_class (name, SM_VCLASS_CT);
 	  if (def == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  else
@@ -447,6 +448,7 @@ db_add_query_spec (MOP vclass, const char *query)
       def = smt_edit_class_mop (vclass, AU_ALTER);
       if (def == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -495,6 +497,7 @@ db_drop_query_spec (DB_OBJECT * vclass, const int query_no)
       def = smt_edit_class_mop (vclass, AU_ALTER);
       if (def == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -547,6 +550,7 @@ db_change_query_spec (DB_OBJECT * vclass,
       def = smt_edit_class_mop (vclass, AU_ALTER);
       if (def == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else

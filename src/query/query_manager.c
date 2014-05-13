@@ -5052,6 +5052,7 @@ qmgr_set_query_error (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 	  return;
 	}
 
+      assert (er_errid () != NO_ERROR);
       query_p->errid = er_errid ();
       if (query_p->errid != NO_ERROR)
 	{

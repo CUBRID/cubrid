@@ -1342,6 +1342,7 @@ ws_update_oid_and_class (MOP mop, OID * new_oid, OID * new_class_oid)
   new_class = ws_mop (new_class_oid, sm_Root_class_mop);
   if (new_class == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -1378,6 +1379,7 @@ ws_update_oid_and_class (MOP mop, OID * new_oid, OID * new_class_oid)
   new_mop = ws_mop (new_oid, new_class);
   if (new_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -2759,6 +2761,7 @@ ws_init (void)
   Null_object = ws_make_mop (NULL);
   if (Null_object == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return (er_errid ());
     }
 
@@ -4821,6 +4824,7 @@ nlist_add (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn,
   new_ = (DB_NAMELIST *) db_ws_alloc (sizeof (DB_NAMELIST));
   if (new_ == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4828,6 +4832,8 @@ nlist_add (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn,
   if (new_->name == NULL)
     {
       db_ws_free (new_);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4890,6 +4896,7 @@ nlist_append (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn,
 
   if (new_ == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4898,6 +4905,8 @@ nlist_append (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn,
   if (new_->name == NULL)
     {
       db_ws_free (new_);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4964,6 +4973,7 @@ nlist_find_or_append (DB_NAMELIST ** list, const char *name,
 	  new_ = (DB_NAMELIST *) db_ws_alloc (sizeof (DB_NAMELIST));
 	  if (new_ == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 
@@ -4971,6 +4981,8 @@ nlist_find_or_append (DB_NAMELIST ** list, const char *name,
 	  if (new_->name == NULL)
 	    {
 	      db_ws_free (new_);
+
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 
@@ -5176,6 +5188,7 @@ ml_add (DB_OBJLIST ** list, MOP mop, int *added_ptr)
   new_ = (DB_OBJLIST *) db_ws_alloc (sizeof (DB_OBJLIST));
   if (new_ == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   new_->op = mop;
@@ -5230,6 +5243,7 @@ ml_append (DB_OBJLIST ** list, MOP mop, int *added_ptr)
   new_ = (DB_OBJLIST *) db_ws_alloc (sizeof (DB_OBJLIST));
   if (new_ == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   new_->op = mop;
@@ -5550,6 +5564,7 @@ ml_ext_add (DB_OBJLIST ** list, MOP mop, int *added_ptr)
       new_ = (DB_OBJLIST *) area_alloc (Objlist_area);
       if (new_ == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 

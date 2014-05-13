@@ -410,6 +410,7 @@ dbt_add_constraint (DB_CTMPL * def,
 					      constraint_name);
       if (name == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -468,6 +469,7 @@ dbt_drop_constraint (DB_CTMPL * def,
 
       if (name == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -519,6 +521,7 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
 
   if (name == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else

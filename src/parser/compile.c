@@ -1464,12 +1464,14 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
   tmp_trigger = parser_copy_tree (parser, trigger_stmt);
   if (tmp_trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   /* Due to tree copy, the spec ids are broken. Reset spec ids */
   tmp_trigger = mq_reset_ids_in_statement (parser, tmp_trigger);
   if (tmp_trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 

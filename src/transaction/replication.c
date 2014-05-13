@@ -362,6 +362,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
       class_name = heap_get_class_name (thread_p, class_oid);
       if (class_name == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  if (error == NO_ERROR)
 	    {

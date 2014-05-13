@@ -7876,6 +7876,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 	  trigger = tr_map_trigger (tmp_obj, 1);
 	  if (trigger == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      break;
 	    }
@@ -7886,6 +7887,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 	  name_trigger_target = sm_class_name (obj_trigger_target);
 	  if (name_trigger_target == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      break;
 	    }
@@ -10308,6 +10310,7 @@ set_host_variables (DB_SESSION * session, int num_bind, DB_VALUE * in_values)
 	    }
 	  else if (cls_status == DB_CLASS_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      err_code = er_errid ();
 	      if (err_code == NO_ERROR)
 		{

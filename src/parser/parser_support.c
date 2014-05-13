@@ -6862,8 +6862,16 @@ pt_get_select_query_columns (PARSER_CONTEXT * parser, PT_NODE * create_select,
   temp_copy = pt_compile (parser, temp_copy);
   if (temp_copy == NULL || pt_has_error (parser))
     {
+#if 0
+      assert (er_errid () != NO_ERROR);
+#endif
       error = er_errid ();
       pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, temp_copy);
+      if (error == NO_ERROR)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	}
       goto error_exit;
     }
 
@@ -6874,6 +6882,7 @@ pt_get_select_query_columns (PARSER_CONTEXT * parser, PT_NODE * create_select,
 
   if (qtype == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_exit;
     }
@@ -6882,6 +6891,7 @@ pt_get_select_query_columns (PARSER_CONTEXT * parser, PT_NODE * create_select,
     pt_fillin_type_size (parser, temp_copy, qtype, DB_NO_OIDS, true, true);
   if (qtype == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_exit;
     }
@@ -9439,6 +9449,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
     {
       int error;
 
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       assert (error != NO_ERROR);
       if (error == ER_AU_SELECT_FAILURE)

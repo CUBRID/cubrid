@@ -4265,6 +4265,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 
 	      if (oid_cnt < 0)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error_code = er_errid ();
 		  if (error_code == NO_ERROR)
 		    {
@@ -4573,6 +4574,7 @@ locator_repair_object_cache (THREAD_ENTRY * thread_p, OR_INDEX * index,
 
 	  if (oid_cnt < 0)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error_code = er_errid ();
 	      if (error_code == NO_ERROR)
 		{
@@ -4834,6 +4836,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 
 	      if (oid_cnt < 0)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error_code = er_errid ();
 		  if (error_code == NO_ERROR)
 		    {
@@ -5063,6 +5066,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 			   IX_LOCK, LK_UNCOND_LOCK);
 	  if (granted != LK_GRANTED)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error_code = er_errid ();
 	      if (error_code == NO_ERROR)
 		{
@@ -5087,6 +5091,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 						 has_func_idx);
 	      if (ins_cache == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error_code = er_errid ();
 		  if (error_code == NO_ERROR)
 		    {
@@ -5133,6 +5138,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
        * Problems inserting the object...Maybe, the transaction should be
        * aborted by the caller...Quit..
        */
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       if (error_code == NO_ERROR)
 	{
@@ -5160,6 +5166,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	   *
 	   * Maybe the transaction should be aborted by the caller.
 	   */
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  if (error_code == NO_ERROR)
 	    {
@@ -5178,6 +5185,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	   * information. Maybe, the transaction should be aborted by
 	   * the caller...Quit
 	   */
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  if (error_code == NO_ERROR)
 	    {
@@ -5189,6 +5197,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
       if (catcls_Enable == true
 	  && catcls_insert_catalog_classes (thread_p, recdes) != NO_ERROR)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  if (error_code == NO_ERROR)
 	    {
@@ -5211,6 +5220,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 					  true, true, &real_hfid,
 					  local_func_preds) != NO_ERROR)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  if (error_code == NO_ERROR)
 	    {
@@ -5242,6 +5252,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 			       recdes, &isold_object,
 			       local_scan_cache) == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error_code = er_errid ();
 		  if (error_code == NO_ERROR)
 		    {
@@ -5368,6 +5379,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid,
 						   ins_op_type, false);
       if (ins_cache == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  return (error != NO_ERROR) ? error : ER_FAILED;
 	}
@@ -5507,6 +5519,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		}
 	      else
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error_code = er_errid ();
 		  error_code = ((error_code == NO_ERROR)
 				? ER_FAILED : error_code);
@@ -5680,6 +5693,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 			       IX_LOCK, LK_UNCOND_LOCK);
 	      if (granted != LK_GRANTED)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error_code = er_errid ();
 		  if (error_code == NO_ERROR)
 		    {
@@ -5764,8 +5778,10 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	       * The object may be a new instance, that is only the address
 	       * (no content) is known by the heap manager.
 	       */
-	      int err_id = er_errid ();
+	      int err_id;
 
+	      assert (er_errid () != NO_ERROR);
+	      err_id = er_errid ();
 	      if (err_id == ER_HEAP_NODATA_NEWADDRESS)
 		{
 		  er_clear ();	/* clear the error code */
@@ -6025,6 +6041,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
   if (heap_get_with_class_oid (thread_p, &class_oid, oid, &copy_recdes,
 			       scan_cache, COPY) != S_SUCCESS)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 
       if (error_code == ER_HEAP_NODATA_NEWADDRESS)
@@ -6078,6 +6095,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
 	  er_log_debug (ARG_FILE_LINE,
 			"locator_delete_force: ehash_delete failed for tran %d\n",
 			LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  if (error_code == NO_ERROR)
 	    {
@@ -6219,6 +6237,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid,
       er_log_debug (ARG_FILE_LINE,
 		    "locator_delete_force: hf_delete failed for tran %d\n",
 		    LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       if (error_code == NO_ERROR)
 	{
@@ -6701,6 +6720,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area,
 
       if (error_code != NO_ERROR)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  obj->error_code = er_errid ();
 
 	  if (obj->error_code == NO_ERROR)
@@ -6870,7 +6890,10 @@ xlocator_force_repl_update (THREAD_ENTRY * thread_p, BTID * btid,
 		   NULL_CHN);
   if (scan != S_SUCCESS)
     {
-      int err_id = er_errid ();
+      int err_id;
+
+      assert (er_errid () != NO_ERROR);
+      err_id = er_errid ();
       if (err_id == ER_HEAP_UNKNOWN_OBJECT)
 	{
 	  er_log_debug (ARG_FILE_LINE,
@@ -7116,8 +7139,10 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
       else if (scan == S_DOESNT_EXIST)
 	{
-	  int err_id = er_errid ();
+	  int err_id;
 
+	  assert (er_errid () != NO_ERROR);
+	  err_id = er_errid ();
 	  if (err_id == ER_HEAP_NODATA_NEWADDRESS)
 	    {
 	      /* it is an immature record. go ahead to update */
@@ -7623,6 +7648,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 	{
 	  if (error_code == NO_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error_code = er_errid ();
 	      if (error_code == NO_ERROR)
 		{
@@ -8338,6 +8364,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 
 	      if (c == DB_UNK)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error_code = er_errid ();
 		  goto error;
 		}
@@ -8366,6 +8393,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 				    inst_oid, locked_keys, &unique, op_type,
 				    unique_stat_info) == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error_code = er_errid ();
 		      if (!(unique && error_code == ER_BTREE_UNKNOWN_KEY))
 			{
@@ -8387,6 +8415,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		      CUBRID_IDX_UPDATE_END (classname, index->btname, 1);
 #endif /* ENABLE_SYSTEMTAP */
 
+		      assert (er_errid () != NO_ERROR);
 		      error_code = er_errid ();
 		      goto error;
 		    }
@@ -12176,7 +12205,10 @@ locator_filter_errid (THREAD_ENTRY * thread_p, int num_ignore_error_count,
 		      int *ignore_error_list)
 {
   int i;
-  int error_code = er_errid ();
+  int error_code;
+
+  assert (er_errid () != NO_ERROR);
+  error_code = er_errid ();
 
   for (i = 0; i < num_ignore_error_count; i++)
     {

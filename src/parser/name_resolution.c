@@ -6996,6 +6996,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
 	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT)
 		  != NO_ERROR)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  errid = er_errid ();
 		  if (errid == ER_AU_SELECT_FAILURE
 		      || errid == ER_AU_AUTHORIZATION_FAILURE)
@@ -7058,6 +7059,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
 	      if (au_fetch_class (classop, &class_, AU_FETCH_READ,
 				  AU_SELECT) != NO_ERROR)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  errid = er_errid ();
 		  if (errid == ER_AU_SELECT_FAILURE
 		      || errid == ER_AU_AUTHORIZATION_FAILURE)

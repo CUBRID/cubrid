@@ -4836,6 +4836,7 @@ spage_header_start_scan (THREAD_ENTRY * thread_p, int show_type,
 
   if (ctx == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto exit_on_error;
     }
@@ -4856,6 +4857,7 @@ spage_header_start_scan (THREAD_ENTRY * thread_p, int show_type,
 		     PGBUF_UNCONDITIONAL_LATCH);
   if (pgptr == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto exit_on_error;
     }
@@ -5002,6 +5004,7 @@ spage_slots_start_scan (THREAD_ENTRY * thread_p, int show_type,
 
   if (ctx == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto exit_on_error;
     }
@@ -5023,6 +5026,7 @@ spage_slots_start_scan (THREAD_ENTRY * thread_p, int show_type,
   ctx->pgptr = (PAGE_PTR) db_private_alloc (thread_p, DB_PAGESIZE);
   if (ctx->pgptr == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto exit_on_error;
     }
@@ -5031,6 +5035,7 @@ spage_slots_start_scan (THREAD_ENTRY * thread_p, int show_type,
 		     PGBUF_UNCONDITIONAL_LATCH);
   if (pgptr == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto exit_on_error;
     }

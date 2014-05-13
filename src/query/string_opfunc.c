@@ -860,6 +860,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
       else
 	{
 	  /* will already be set by memory mgr */
+	  assert (er_errid () != NO_ERROR);
 	  error_status = er_errid ();
 	}
     }
@@ -1129,6 +1130,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	  else
 	    {
 	      /* will already be set by memory mgr */
+	      assert (er_errid () != NO_ERROR);
 	      error_status = er_errid ();
 	    }
 	}
@@ -1915,6 +1917,7 @@ db_string_space (DB_VALUE const *count, DB_VALUE * result)
 	}
       else
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
@@ -4047,6 +4050,7 @@ qstr_trim (MISC_OPERAND trim_operand,
     db_private_alloc (NULL, (size_t) trail_trimmed_size + 1);
   if (*result == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_status = er_errid ();
       return error_status;
     }
@@ -4405,6 +4409,7 @@ qstr_pad (MISC_OPERAND pad_operand,
     (unsigned char *) db_private_alloc (NULL, (size_t) alloc_size + 1);
   if (*result == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_status = er_errid ();
       return error_status;
     }
@@ -5019,6 +5024,7 @@ db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result,
   return error_status;
 
 mem_error:
+  assert (er_errid () != NO_ERROR);
   error_status = er_errid ();
   return error_status;
 
@@ -5931,6 +5937,7 @@ loop:
     db_private_alloc (NULL, (size_t) * result_size + 1);
   if (*result_ptr == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_status = er_errid ();
       return error_status;
     }
@@ -6045,7 +6052,7 @@ db_bit_string_coerce (const DB_VALUE * src_string,
 	  qstr_make_typed_string (dest_type,
 				  dest_string,
 				  DB_VALUE_PRECISION (dest_string),
-				  (char *) dest, dest_length, 
+				  (char *) dest, dest_length,
 				  INTL_CODESET_RAW_BITS, 0);
 	  dest_string->need_clear = true;
 	}
@@ -6920,6 +6927,7 @@ db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string)
    *  Error handling
    */
 mem_error:
+  assert (er_errid () != NO_ERROR);
   error_status = er_errid ();
   return error_status;
 }
@@ -8114,6 +8122,7 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
   r = (unsigned char *) db_private_alloc (NULL, (size_t) result_size + 1);
   if (r == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   memset (r, 0, (size_t) result_size + 1);
@@ -8665,6 +8674,7 @@ size_error:
    * Error handler
    */
 mem_error:
+  assert (er_errid () != NO_ERROR);
   error_status = er_errid ();
   return error_status;
 }
@@ -8910,6 +8920,7 @@ size_error:
    *  Error handling
    */
 mem_error:
+  assert (er_errid () != NO_ERROR);
   error_status = er_errid ();
   return error_status;
 }
@@ -9219,6 +9230,7 @@ qstr_bit_coerce (const unsigned char *src,
   *dest = (unsigned char *) db_private_alloc (NULL, dest_size + 1);
   if (*dest == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_status = er_errid ();
     }
   else
@@ -9372,6 +9384,7 @@ qstr_coerce (const unsigned char *src,
   *dest = (unsigned char *) db_private_alloc (NULL, alloc_size + 1);
   if (*dest == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_status = er_errid ();
     }
   else
@@ -9669,6 +9682,7 @@ qstr_bit_position (const unsigned char *sub_string,
 						       (size_t) sub_size + 1);
       if (tmp_string == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_status = er_errid ();
 	}
       else
@@ -9847,6 +9861,7 @@ qstr_substring (const unsigned char *src,
   *r = (unsigned char *) db_private_alloc (NULL, (size_t) ((*r_size) + 1));
   if (*r == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_status = er_errid ();
     }
   else
@@ -9933,6 +9948,7 @@ qstr_bit_substring (const unsigned char *src,
   *r = (unsigned char *) db_private_alloc (NULL, (size_t) sub_size + 1);
   if (*r == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_status = er_errid ();
     }
   else
@@ -16681,6 +16697,7 @@ number_to_char (const DB_VALUE * src_value,
       if (res_string == NULL)
 	{
 	  db_private_free_and_init (NULL, cs);
+	  assert (er_errid () != NO_ERROR);
 	  error_status = er_errid ();
 	  goto exit;
 	}
@@ -24026,6 +24043,7 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern,
   result = db_private_alloc (NULL, alloc_size + 1);
   if (result == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error_exit;
     }
@@ -24199,6 +24217,7 @@ db_compress_like_pattern (const DB_VALUE * const pattern,
   result = db_private_alloc (NULL, alloc_size + 1);
   if (result == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error_exit;
     }

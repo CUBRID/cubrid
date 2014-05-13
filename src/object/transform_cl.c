@@ -261,6 +261,7 @@ tf_find_temporary_oids (LC_OIDSET * oidset, MOBJ classobj, MOBJ obj)
 		      if (locator_add_oidset_object
 			  (oidset, mem->pointer) == NULL)
 			{
+			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			}
 		    }
@@ -421,6 +422,7 @@ tf_add_fixup (OR_FIXUP * fix, DB_OBJECT * obj, void *ref)
       fix->oidset = locator_make_oid_set ();
       if (fix->oidset == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
@@ -428,6 +430,7 @@ tf_add_fixup (OR_FIXUP * fix, DB_OBJECT * obj, void *ref)
   o = locator_add_oidset_object (fix->oidset, obj);
   if (o == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -439,6 +442,7 @@ tf_add_fixup (OR_FIXUP * fix, DB_OBJECT * obj, void *ref)
       t = (OR_TEMPOID *) malloc (sizeof (OR_TEMPOID));
       if (t == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       t->references =
@@ -446,6 +450,8 @@ tf_add_fixup (OR_FIXUP * fix, DB_OBJECT * obj, void *ref)
       if (t->references == NULL)
 	{
 	  free_and_init (t);
+
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       t->refsize = TF_FIXUP_REFERENCE_QUANT;
@@ -464,6 +470,7 @@ tf_add_fixup (OR_FIXUP * fix, DB_OBJECT * obj, void *ref)
 	    realloc (t->references, t->refsize * sizeof (void *));
 	  if (t->references == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	}
@@ -4758,6 +4765,7 @@ tf_pack_set (DB_SET * set, char *buffer, int buffer_size, int *actual_bytes)
       break;
 
     default:
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       break;
     }

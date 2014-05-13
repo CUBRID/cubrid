@@ -484,8 +484,9 @@ col_successive_merge (COL * col, long top)
   nblocks = BLOCK (top) + 1;
   runs = db_private_alloc (NULL, nblocks * sizeof (DB_VALUE *));
 
-  if (!runs)
+  if (runs == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   runsize = 1;
@@ -702,8 +703,9 @@ col_expand_blocks (COL * col, long blockindex, long blockoffset)
       if (col->topblockcount < BLOCKING_LESS1 && col->topblock >= 0)
 	{
 	  block = realloc_block (col->array[col->topblock], BLOCKING_LESS1);
-	  if (!block)
+	  if (block == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	  col->array[col->topblock] = block;
@@ -725,8 +727,9 @@ col_expand_blocks (COL * col, long blockindex, long blockoffset)
 	  topfullblock = blockindex - 1;
 	  col->topblockcount = blockoffset;
 	  block = realloc_block (col->array[blockindex], blockoffset);
-	  if (!block)
+	  if (block == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	  col->array[blockindex] = block;
@@ -734,8 +737,9 @@ col_expand_blocks (COL * col, long blockindex, long blockoffset)
       for (; col->topblock < topfullblock; col->topblock++)
 	{
 	  block = new_block (BLOCKING_LESS1);
-	  if (!block)
+	  if (block == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	  col->array[col->topblock + 1] = block;
@@ -748,14 +752,16 @@ col_expand_blocks (COL * col, long blockindex, long blockoffset)
       topfullblock = blockindex - 1;
       col->topblockcount = blockoffset;
       block = realloc_block (col->array[blockindex], blockoffset);
-      if (!block)
+      if (block == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       col->array[blockindex] = block;
     }
 
   col_null_values (col, col->size, VALUETOP (col));
+
   return NO_ERROR;
 }
 
@@ -1878,6 +1884,7 @@ col_permanent_oids (COL * col)
       oidset = locator_make_oid_set ();
       if (oidset == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -1904,6 +1911,7 @@ col_permanent_oids (COL * col)
 		      oidmap = locator_add_oidset_object (oidset, obj);
 		      if (oidmap == NULL)
 			{
+			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			}
 		    }
@@ -2224,6 +2232,7 @@ set_tform_disk_set (DB_COLLECTION * ref, COL ** setptr)
       ref->set = or_get_set (&buf, ref->disk_domain);
       if (ref->set == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       *setptr = ref->set;
@@ -2276,6 +2285,8 @@ set_get_setobj (DB_COLLECTION * ref, COL ** setptr, int for_write)
 	{
 	  /* an error (like "out of memory") should have already been set */
 	  *setptr = NULL;
+
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 #if !defined(SERVER_MODE)
@@ -3973,8 +3984,9 @@ set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
 
   /* build result in the correct domain */
   *result = set_create_with_domain (domain, 0);
-  if (!*result)
+  if (*result == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_exit;
     }
@@ -3990,6 +4002,7 @@ set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
       col1 = setobj_coerce (col1, domain, IMPLICIT);
       if (!col1)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto error_exit;
 	}
@@ -4008,6 +4021,7 @@ set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
 			    ? &tp_Multiset_domain : domain, IMPLICIT);
       if (!col2)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto error_exit;
 	}
@@ -4685,6 +4699,7 @@ setobj_find_temporary_oids (SETOBJ * col, LC_OIDSET * oidset)
 		  tempoids++;
 		  if (locator_add_oidset_object (oidset, obj) == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		    }
 		}
@@ -5032,6 +5047,7 @@ check_set_object (DB_VALUE * var, int *removed_ptr)
 	    }
 	  else if (status == LC_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	}
@@ -6554,6 +6570,7 @@ setobj_release (COL * set)
 
       if (set->gc_kludge == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
 #endif

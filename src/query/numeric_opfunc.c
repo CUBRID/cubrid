@@ -3768,6 +3768,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	return_string = (char *) db_private_alloc (NULL, size + 1);
 	if (return_string == NULL)
 	  {
+	    assert (er_errid () != NO_ERROR);
 	    return er_errid ();
 	  }
 
@@ -3789,6 +3790,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	return_string = (char *) db_private_alloc (NULL, size + 1);
 	if (return_string == NULL)
 	  {
+	    assert (er_errid () != NO_ERROR);
 	    return er_errid ();
 	  }
 
@@ -3810,6 +3812,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	return_string = (char *) db_private_alloc (NULL, size + 1);
 	if (return_string == NULL)
 	  {
+	    assert (er_errid () != NO_ERROR);
 	    return er_errid ();
 	  }
 
@@ -3831,6 +3834,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
 	return_string = (char *) db_private_alloc (NULL, size + 1);
 	if (return_string == NULL)
 	  {
+	    assert (er_errid () != NO_ERROR);
 	    return er_errid ();
 	  }
 

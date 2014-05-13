@@ -4795,6 +4795,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count,
 	       */
 	      if (session_params == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		  if (error == NO_ERROR)
 		    {
@@ -6674,6 +6675,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid,
 		      0, 0, 0);
   if (btid == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -6867,6 +6869,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
 		       func_col_id, func_attr_index_start);
   if (btid == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -9023,6 +9026,7 @@ logtb_get_pack_tran_table (char **buffer_p, int *size_p,
 				   NULL, 0, buffer_p, size_p);
   if (req_error)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else

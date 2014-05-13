@@ -538,6 +538,7 @@ do_create_serial_internal (MOP * serial_object,
   obj_tmpl = dbt_create_object_internal ((MOP) serial_class);
   if (obj_tmpl == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end;
     }
@@ -642,6 +643,7 @@ do_create_serial_internal (MOP * serial_object,
 
   if (ret_obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else if (serial_object != NULL)
@@ -722,6 +724,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
   obj_tmpl = dbt_edit_object (serial_object);
   if (obj_tmpl == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto update_auto_increment_error;
     }
@@ -757,6 +760,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
 
   if (serial_object == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto update_auto_increment_error;
     }
@@ -810,6 +814,7 @@ do_reset_auto_increment_serial (MOP serial_obj)
   obj_tmpl = dbt_edit_object (serial_object);
   if (obj_tmpl == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error_exit;
     }
@@ -832,6 +837,7 @@ do_reset_auto_increment_serial (MOP serial_obj)
   edit_serial_object = dbt_finish_object (obj_tmpl);
   if (edit_serial_object == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error_exit;
     }
@@ -914,6 +920,7 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser,
   pval = pt_value_to_db (parser, node_new_val);
   if (pval == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error_exit;
     }
@@ -958,6 +965,7 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser,
   obj_tmpl = dbt_edit_object (serial_object);
   if (obj_tmpl == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error_exit;
     }
@@ -984,6 +992,7 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser,
   edit_serial_object = dbt_finish_object (obj_tmpl);
   if (edit_serial_object == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error_exit;
     }
@@ -1229,6 +1238,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       pval = pt_value_to_db (parser, inc_val_node);
       if (pval == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
 	}
@@ -1278,6 +1288,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       pval = pt_value_to_db (parser, start_val_node);
       if (pval == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
 	}
@@ -1312,6 +1323,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       pval = pt_value_to_db (parser, min_val_node);
       if (pval == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
 	}
@@ -1361,6 +1373,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       pval = pt_value_to_db (parser, max_val_node);
       if (pval == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
 	}
@@ -2024,6 +2037,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser,
   obj_tmpl = dbt_edit_object (serial_mop);
   if (obj_tmpl == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end;
     }
@@ -2037,6 +2051,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser,
   serial_mop = dbt_finish_object (obj_tmpl);
   if (serial_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end;
     }
@@ -2253,6 +2268,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       pval = pt_value_to_db (parser, inc_val_node);
       if (pval == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
 	}
@@ -2303,6 +2319,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       pval = pt_value_to_db (parser, start_val_node);
       if (pval == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
 	}
@@ -2329,6 +2346,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       pval = pt_value_to_db (parser, max_val_node);
       if (pval == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
 	}
@@ -2380,6 +2398,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       pval = pt_value_to_db (parser, min_val_node);
       if (pval == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
 	}
@@ -2576,6 +2595,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   obj_tmpl = dbt_edit_object (serial_object);
   if (obj_tmpl == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end;
     }
@@ -2657,6 +2677,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   serial_object = dbt_finish_object (obj_tmpl);
   if (serial_object == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end;
     }
@@ -3139,6 +3160,7 @@ end:
 
   if (error == ER_FAILED)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -3764,6 +3786,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 
@@ -3915,6 +3938,8 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
   if (class_statsp == NULL)
     {
       db_make_null (db_val);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   if (cst_item.att_id >= 0)
@@ -4049,7 +4074,10 @@ do_get_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   ret_val = db_value_create ();
   if (ret_val == NULL)
-    return er_errid ();
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
   pt_evaluate_tree (parser, arg, &db_val, 1);
   if (pt_has_error (parser) || DB_IS_NULL (&db_val))
@@ -4198,8 +4226,9 @@ do_rollback (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      return ER_GENERIC_ERROR;
 	    }
 	  save_name = get_savepoint_name_from_db_value (&val);
-	  if (!save_name)
+	  if (save_name == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	  error = db_abort_to_savepoint_internal (save_name);
@@ -4250,8 +4279,9 @@ do_savepoint (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      return ER_GENERIC_ERROR;
 	    }
 	  save_name = get_savepoint_name_from_db_value (&val);
-	  if (!save_name)
+	  if (save_name == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	  error = db_savepoint_transaction_internal (save_name);
@@ -4290,6 +4320,7 @@ do_get_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
   ins_val = db_value_create ();
   if (ins_val == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4335,6 +4366,7 @@ do_get_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
       ins_val = db_value_create ();
       if (ins_val == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -4479,6 +4511,7 @@ do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
   val = db_value_create ();
   if (val == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -5219,6 +5252,7 @@ convert_speclist_to_objlist (DB_OBJLIST ** triglist, PT_NODE * specnode)
 	      trigger = tr_find_trigger (str);
 	      if (trigger == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		}
 	      else
@@ -5243,6 +5277,7 @@ convert_speclist_to_objlist (DB_OBJLIST ** triglist, PT_NODE * specnode)
 		    db_find_class (target->class_name->info.name.original);
 		  if (class_ == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		    }
 		  else
@@ -5625,6 +5660,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser,
       (num_classes, (const char **) classes_names, locks, need_subclasses,
        1) != LC_CLASSNAME_EXIST)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto cleanup;
     }
@@ -6033,6 +6069,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
       class_ = db_find_class (PT_TR_TARGET_CLASS (target));
       if (class_ == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
@@ -6081,6 +6118,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -6099,7 +6137,10 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
    */
 #if 0
   if ((value = db_value_create ()) == NULL)
-    return er_errid ();
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
   db_make_object (value, trigger);
   statement->etc = (void *) value;
 #endif
@@ -6151,6 +6192,7 @@ do_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   speclist = statement->info.drop_trigger.trigger_spec_list;
   if (convert_speclist_to_objlist (&triggers, speclist))
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -6209,6 +6251,7 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   speclist = statement->info.alter_trigger.trigger_spec_list;
   if (convert_speclist_to_objlist (&triggers, speclist))
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -6379,6 +6422,7 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   trigger = tr_find_trigger (old_name);
   if (trigger == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -6482,6 +6526,7 @@ do_get_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   ins_val = db_value_create ();
   if (ins_val == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -6770,6 +6815,7 @@ update_object_tuple (PARSER_CONTEXT * parser,
       real_object = db_real_instance (object);
       if (real_object == NULL)
 	{			/* real_object's fail */
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  if (error == NO_ERROR)
 	    {
@@ -6807,6 +6853,7 @@ update_object_tuple (PARSER_CONTEXT * parser,
       otemplate = dbt_edit_object (real_object);
       if (otemplate == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -6874,6 +6921,7 @@ update_object_tuple (PARSER_CONTEXT * parser,
 	  object = dbt_finish_object (otemplate);
 	  if (object == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      (void) dbt_abort_object (otemplate);
 	      return error;
@@ -6959,6 +7007,7 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      (node->info.spec.flat_entity_list->info.name.db_object,
 	       DB_FETCH_CLREAD_INSTWRITE))
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	}
@@ -7589,6 +7638,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
       if (cursor_get_tuple_value_list
 	  (&cursor_id, vals_cnt, dbvals) != NO_ERROR)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  cursor_close (&cursor_id);
 	  if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
@@ -7612,6 +7662,11 @@ update_objs_for_list_file (PARSER_CONTEXT * parser,
       /* close cursor and restore to savepoint in case of error */
       if (error < NO_ERROR)
 	{
+#if 0				/* TODO */
+	  /* mq_evaluate_check_option () do not er_set ()
+	   */
+	  assert (er_errid () != NO_ERROR);
+#endif
 	  error = er_errid ();
 	  cursor_close (&cursor_id);
 	  if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
@@ -7779,6 +7834,7 @@ update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  if (error == NO_ERROR && dbt_finish_object (otemplate) == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      (void) dbt_abort_object (otemplate);
 	    }
@@ -7924,6 +7980,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
     }
   else
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -8373,6 +8430,7 @@ exit_on_error:
 
   if (error == NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   if (non_null_attrs != NULL)
@@ -8765,6 +8823,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      if (err != NO_ERROR)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
 		}
 	    }
@@ -8815,6 +8874,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	      else
 		{
+		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
 		  pt_record_error (parser, parser->statement_number,
 				   statement->line_number,
@@ -8830,6 +8890,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 		  if (err != NO_ERROR)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      err = er_errid ();
 		    }
 		}
@@ -8860,6 +8921,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 			  != NO_ERROR)
 			{
 			  stream.xasl_id = NULL;
+			  assert (er_errid () != NO_ERROR);
 			  err = er_errid ();
 			  break;
 			}
@@ -9432,6 +9494,7 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  if (locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE)
 	      == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	}
@@ -9623,6 +9686,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -9754,8 +9818,9 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   * DELETE operation starts
 	   */
 	  class_ = locator_fetch_class (class_obj, DB_FETCH_READ);
-	  if (!class_)
+	  if (class_ == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 
@@ -10071,6 +10136,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      err = prepare_query (contextp, &stream);
 	      if (err != NO_ERROR)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
 		}
 	    }
@@ -10109,6 +10175,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement,
 		}
 	      else
 		{
+		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
 		  pt_record_error (parser, parser->statement_number,
 				   statement->line_number,
@@ -10123,6 +10190,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  err = prepare_query (contextp, &stream);
 		  if (err != NO_ERROR)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      err = er_errid ();
 		    }
 		}
@@ -10739,6 +10807,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = prepare_query (contextp, &stream);
       if (error != NO_ERROR)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
     }
@@ -10773,6 +10842,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
 
@@ -10781,6 +10851,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = prepare_query (contextp, &stream);
 	  if (error != NO_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	}
@@ -10877,6 +10948,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -12078,6 +12150,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
   if (!locator_fetch_class (class_->info.name.db_object,
 			    DB_FETCH_CLREAD_INSTWRITE))
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -12159,6 +12232,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       ins_val = db_value_create ();
       if (ins_val == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto cleanup;
 	}
@@ -12221,6 +12295,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 					 &pruning_type, NULL, NULL);
       if (error != NO_ERROR)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto cleanup;
 	}
@@ -12254,6 +12329,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	    dbt_create_object_internal (class_->info.name.db_object);
 	  if (*otemplate == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto cleanup;
 	    }
@@ -12454,6 +12530,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	      obj = dbt_finish_object (*otemplate);
 	      if (obj == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		  /* On error, the template must be freed. */
 		  dbt_abort_object (*otemplate);
@@ -12493,6 +12570,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 
 	  if (parser->abort)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  if (error < NO_ERROR)
@@ -12518,6 +12596,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       value = db_value_create ();
       if (value == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto cleanup;
 	}
@@ -12542,6 +12621,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	  value = db_value_create ();
 	  if (value == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto cleanup;
 	    }
@@ -12565,6 +12645,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       ins_val = db_value_create ();
       if (ins_val == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -12741,6 +12822,7 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 	      if (statement->info.insert.odku_assignments == NULL
 		  || pt_has_error (parser))
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		  if (error == NO_ERROR)
 		    {
@@ -12864,6 +12946,7 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 			{
 			  dbt_abort_object (otemplate);
 			  cursor_close (&cursor_id);
+			  assert (er_errid () != NO_ERROR);
 			  cnt = er_errid ();
 			  goto cleanup;
 			}
@@ -12972,6 +13055,7 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 			  if (obj == NULL)
 			    {
 			      dbt_abort_object (otemplate);
+			      assert (er_errid () != NO_ERROR);
 			      cnt = er_errid ();
 			    }
 			  else
@@ -12997,6 +13081,7 @@ insert_subquery_results (PARSER_CONTEXT * parser,
       value = db_value_create ();
       if (value == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto cleanup;
 	}
@@ -13493,6 +13578,7 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
       /* request to the driver */
       if (parser->abort)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return (er_errid ());
 	}
       /* This is to allow the row "counting" to be done
@@ -14150,6 +14236,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      if (error == NO_ERROR)
 		{
@@ -14160,6 +14247,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -14251,6 +14339,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = prepare_query (contextp, &stream);
       if (err != NO_ERROR)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  err = er_errid ();
 	}
       else if (stream.xasl_id != NULL)
@@ -14301,6 +14390,9 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
+#if 0				/* TODO */
+	  assert (er_errid () != NO_ERROR);
+#endif
 	  err = er_errid ();
 	  if (err == NO_ERROR)
 	    {
@@ -14316,6 +14408,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  err = prepare_query (contextp, &stream);
 	  if (err != NO_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	    }
 	}
@@ -14442,6 +14535,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (parser->abort)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -14485,6 +14579,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (err < NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   /* if select ... into label ... has some result val
@@ -14632,6 +14727,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (parser->abort)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -14675,6 +14771,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (err < NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -15034,6 +15131,7 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else if (xasl == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end;
     }
@@ -15537,6 +15635,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  AU_DISABLE (parser->au_save);
 	  if (upd_select_stmt == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	      if (err == NO_ERROR)
 		{
@@ -15599,6 +15698,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (ins_select_stmt == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	      if (err == NO_ERROR)
 		{
@@ -15625,6 +15725,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (ins_select_stmt->etc == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	      if (err == NO_ERROR)
 		{
@@ -15642,6 +15743,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* IX lock on the class */
   if (locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       if (err == NO_ERROR)
 	{
@@ -15752,6 +15854,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser->query_id = save_query_id;
       if (parser->abort)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  err = er_errid ();
 	}
       else if (err >= NO_ERROR)
@@ -16065,6 +16168,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  err = prepare_query (contextp, &stream);
 	  if (err != NO_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	    }
 	}
@@ -16130,6 +16234,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
+#if 0				/* TODO */
+	      assert (er_errid () != NO_ERROR);
+#endif
 	      err = er_errid ();
 	      if (err != NO_ERROR)
 		{
@@ -16145,6 +16252,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      err = prepare_query (contextp, &stream);
 	      if (err != NO_ERROR)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
 		}
 	    }
@@ -16234,6 +16342,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	      if (err == NO_ERROR)
 		{
@@ -16413,6 +16522,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* make sure we have a correct lock on the class */
       if (locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE) == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  err = er_errid ();
 	  goto exit;
 	}
@@ -16432,6 +16542,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (ins_select_stmt == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	      if (err == NO_ERROR)
 		{
@@ -16455,6 +16566,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (ins_select_stmt->etc == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	      if (err == NO_ERROR)
 		{
@@ -16551,6 +16663,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  parser->query_id = save_query_id;
 	  if (parser->abort)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	    }
 	  else if (err >= NO_ERROR)

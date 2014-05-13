@@ -4632,6 +4632,7 @@ mr_getmem_object (void *memptr, TP_DOMAIN * domain,
 	    }
 	  else
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      (void) db_make_object (value, NULL);
 	    }
@@ -6551,6 +6552,7 @@ mr_getmem_set (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	}
       else
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  (void) db_make_set (value, NULL);
 	}
@@ -6642,6 +6644,7 @@ mr_setval_set_internal (DB_VALUE * dest, const DB_VALUE * src,
 
 err_set:
   /* couldn't allocate storage for set */
+  assert (er_errid () != NO_ERROR);
   error = er_errid ();
   switch (set_type)
     {
@@ -7114,6 +7117,7 @@ mr_getmem_multiset (void *memptr, TP_DOMAIN * domain,
 	}
       else
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  (void) db_make_multiset (value, NULL);
 	}
@@ -7164,6 +7168,7 @@ mr_getmem_sequence (void *memptr, TP_DOMAIN * domain,
 	}
       else
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  (void) db_make_sequence (value, NULL);
 	}
@@ -7285,6 +7290,8 @@ mr_setval_midxkey (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       if (dst_idx.buf == NULL)
 	{
 	  db_value_domain_init (dest, DB_TYPE_MIDXKEY, src_precision, 0);
+
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -9206,7 +9213,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
   assert (c == DB_LT);
   if (c != DB_LT)
     {
-      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+      return (er_errid () == NO_ERROR) ? ER_FAILED : er_errid ();
     }
 
   if (size1 == midxkey1->size || size2 == midxkey2->size
@@ -9236,6 +9243,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
       if (result_midxkey.buf == NULL)
 	{
 	  /* will already be set by memory mgr */
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -9977,6 +9985,7 @@ mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       new_ = (char *) db_private_alloc (NULL, new_length);
       if (new_ == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -10041,7 +10050,10 @@ mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value,
 	  /* return it with a NULL terminator */
 	  new_ = (char *) db_private_alloc (NULL, mem_length + 1);
 	  if (new_ == NULL)
-	    error = er_errid ();
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
 	  else
 	    {
 	      memcpy (new_, cur, mem_length);
@@ -10285,6 +10297,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  if (new_ == NULL)
 	    {
 	      db_value_domain_init (dest, DB_TYPE_VARCHAR, src_precision, 0);
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  else
@@ -10879,6 +10892,7 @@ mr_getmem_char (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
       new_ = db_private_alloc (NULL, mem_length + 1);
       if (new_ == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       memcpy (new_, (char *) mem, mem_length);
@@ -11052,6 +11066,7 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	      new_ = db_private_alloc (NULL, src_length + 1);
 	      if (new_ == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		}
 	      else
@@ -11719,7 +11734,10 @@ mr_getmem_nchar (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     {
       new_ = db_private_alloc (NULL, mem_length + 1);
       if (new_ == NULL)
-	return er_errid ();
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
       memcpy (new_, (char *) mem, mem_length);
       /* make sure that all outgoing strings are NULL terminated */
       new_[mem_length] = '\0';
@@ -11879,7 +11897,10 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	      /* make sure the copy gets a NULL terminator */
 	      new_ = db_private_alloc (NULL, src_length + 1);
 	      if (new_ == NULL)
-		error = er_errid ();
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
 	      else
 		{
 		  memcpy (new_, src_string, src_length);
@@ -12580,6 +12601,7 @@ mr_setmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       new_ = db_private_alloc (NULL, new_length);
       if (new_ == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -12645,6 +12667,7 @@ mr_getmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value,
 	  new_ = db_private_alloc (NULL, mem_length + 1);
 	  if (new_ == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  else
@@ -12867,6 +12890,7 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  if (new_ == NULL)
 	    {
 	      db_value_domain_init (dest, DB_TYPE_VARNCHAR, src_precision, 0);
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  else
@@ -13524,7 +13548,10 @@ mr_getmem_bit (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     {
       new_ = db_private_alloc (NULL, mem_length + 1);
       if (new_ == NULL)
-	return er_errid ();
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
       memcpy (new_, (char *) mem, mem_length);
     }
 
@@ -13653,7 +13680,10 @@ mr_setval_bit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	      /* make sure the copy gets a NULL terminator */
 	      new_ = db_private_alloc (NULL, src_length + 1);
 	      if (new_ == NULL)
-		error = er_errid ();
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
 	      else
 		{
 		  memcpy (new_, src_string, src_length);
@@ -14200,7 +14230,10 @@ mr_setmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       new_length = src_length + sizeof (int);
       new_ = db_private_alloc (NULL, new_length);
       if (new_ == NULL)
-	error = er_errid ();
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	}
       else
 	{
 	  if (cur != NULL)
@@ -14252,7 +14285,10 @@ mr_getmem_varbit (void *memptr, TP_DOMAIN * domain,
 	  new_ = (char *)
 	    db_private_alloc (NULL, BITS_TO_BYTES (mem_bit_length) + 1);
 	  if (new_ == NULL)
-	    error = er_errid ();
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
 	  else
 	    {
 	      memcpy (new_, cur, BITS_TO_BYTES (mem_bit_length));
@@ -14476,6 +14512,7 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  if (new_ == NULL)
 	    {
 	      db_value_domain_init (dest, DB_TYPE_VARBIT, src_precision, 0);
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  else
@@ -14916,6 +14953,7 @@ mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  str = db_private_alloc (NULL, DB_GET_ENUM_STRING_SIZE (src) + 1);
 	  if (str == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	  memcpy (str, DB_GET_ENUM_STRING (src),

@@ -361,6 +361,7 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 				     X_LOCK, LK_UNCOND_LOCK);
 	      if (granted != LK_GRANTED)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  ret = er_errid ();
 		}
 	      else

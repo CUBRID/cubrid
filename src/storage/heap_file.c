@@ -6274,6 +6274,7 @@ xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid,
 {
   if (heap_create_internal (thread_p, hfid, -1, class_oid, reuse_oid) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   else
@@ -13738,8 +13739,10 @@ end:
 
 exit_on_error:
 
+  assert (ret != NO_ERROR);
   if (ret == NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       ret = er_errid ();
       if (ret == NO_ERROR)
 	{
@@ -17736,6 +17739,7 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 				       NULL);
   if (pgptr == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       ret = er_errid ();
       if (ret == ER_PB_BAD_PAGEID)
 	{
@@ -19681,6 +19685,7 @@ heap_rv_redo_newpage_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 		  0);
 	}
       /* something went wrong. Unable to redo initialization of new heap page */
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -19745,6 +19750,7 @@ heap_rv_undoredo_pagehdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
 		  0);
 	}
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
@@ -19835,6 +19841,7 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
 		  0);
 	}
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -19965,6 +19972,7 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
 		  0);
 	}
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   spage_update_record_type (thread_p, rcv->pgptr, slotid, recdes.type);
@@ -20036,6 +20044,7 @@ heap_rv_redo_reuse_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_GENERIC_ERROR, 0);
 	    }
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -20083,6 +20092,7 @@ heap_rv_redo_reuse_page_reuse_oid (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_GENERIC_ERROR, 0);
 	    }
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -20642,6 +20652,7 @@ heap_get_btid_from_index_name (THREAD_ENTRY * thread_p,
 
   if (classrepr == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto exit;
     }
@@ -21401,6 +21412,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type,
 						 sizeof (HEAP_SHOW_SCAN_CTX));
   if (ctx == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto cleanup;
     }
@@ -21430,6 +21442,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type,
 					      parts_count * sizeof (HFID));
       if (ctx->hfids == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto cleanup;
 	}
@@ -21446,6 +21459,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type,
       ctx->hfids = (HFID *) db_private_alloc (thread_p, sizeof (HFID));
       if (ctx->hfids == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto cleanup;
 	}
@@ -21528,6 +21542,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor,
 				       NULL);
   if (pgptr == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto cleanup;
     }
@@ -21546,6 +21561,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor,
   class_name = heap_get_class_name (thread_p, &(heap_hdr->class_oid));
   if (class_name == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto cleanup;
     }
@@ -21809,6 +21825,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor,
   class_name = heap_get_class_name (thread_p, &hfdes.class_oid);
   if (class_name == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto cleanup;
     }

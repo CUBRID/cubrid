@@ -734,6 +734,7 @@ logwr_flush_all_append_pages (void)
 	      if (logwr_writev_append_pages (&logwr_Gl.toflush[idxflush],
 					     i - idxflush) == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
 		}
 	      else
@@ -777,6 +778,7 @@ logwr_flush_all_append_pages (void)
       if (logwr_writev_append_pages (&logwr_Gl.toflush[idxflush],
 				     page_toflush) == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       else
@@ -795,6 +797,7 @@ logwr_flush_all_append_pages (void)
       && fileio_synchronize (NULL, logwr_Gl.append_vdes,
 			     logwr_Gl.active_name) == NULL_VOLDES)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -805,6 +808,7 @@ logwr_flush_all_append_pages (void)
       if (fileio_synchronize (NULL, logwr_Gl.bg_archive_info.vdes,
 			      logwr_Gl.bg_archive_name) == NULL_VOLDES)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }

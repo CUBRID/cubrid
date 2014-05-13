@@ -1435,6 +1435,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name,
   class_ = (SM_CLASS *) locator_fetch_class (class_mop, DB_FETCH_WRITE);
   if (class_ == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       skipped_error_code = er_errid ();
       goto error_exit;
     }
@@ -1466,6 +1467,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name,
 	    (SM_CLASS *) locator_fetch_class (parent_mop, DB_FETCH_WRITE);
 	  if (parent_class_ == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      skipped_error_code = er_errid ();
 	      goto error_exit;
 	    }
@@ -1690,6 +1692,7 @@ class_referenced_by_class (MOP referenced_mop, MOP parent_mop,
 						      DB_FETCH_READ);
   if (referring_class == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error_exit;
     }

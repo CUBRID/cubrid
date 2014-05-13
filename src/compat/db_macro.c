@@ -2496,6 +2496,8 @@ db_make_error (DB_VALUE * value, const int errcode)
 {
   CHECK_1ARG_ERROR (value);
 
+  assert (errcode != NO_ERROR);
+
   value->domain.general_info.type = DB_TYPE_ERROR;
   value->data.error = errcode;
   value->domain.general_info.is_null = 0;

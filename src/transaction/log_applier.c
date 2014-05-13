@@ -1559,6 +1559,7 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name,
 
   if (db_find_class (CT_HA_APPLY_INFO_NAME) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4129,6 +4130,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec,
 			    is_overflow, rec_type, data, &length);
       if (*data == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
     }
@@ -4423,6 +4425,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec,
 						rec_type, data, &length);
 			  if (*data == NULL)
 			    {
+			      assert (er_errid () != NO_ERROR);
 			      error = er_errid ();
 			    }
 			}
@@ -4787,6 +4790,7 @@ la_apply_delete_log (LA_ITEM * item)
   class_obj = db_find_class (item->class_name);
   if (class_obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -4876,6 +4880,7 @@ la_apply_update_log (LA_ITEM * item)
   pgptr = la_get_page (old_pageid);
   if (pgptr == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4931,6 +4936,7 @@ la_apply_update_log (LA_ITEM * item)
       er_log_debug (ARG_FILE_LINE,
 		    "apply_update : cannot find class %s key %s\n",
 		    item->class_name, buf);
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_rtn;
     }
@@ -4952,6 +4958,8 @@ la_apply_update_log (LA_ITEM * item)
   if (inst_tp == NULL)
     {
       AU_RESTORE (au_save);
+
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_rtn;
     }
@@ -5018,6 +5026,7 @@ error_rtn:
 
   if (error == NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -5099,6 +5108,7 @@ la_apply_update_log_server_side (LA_ITEM * item)
   pgptr = la_get_page (old_pageid);
   if (pgptr == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -5141,6 +5151,7 @@ la_apply_update_log_server_side (LA_ITEM * item)
   class_obj = db_find_class (item->class_name);
   if (class_obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -5299,6 +5310,7 @@ la_apply_insert_log (LA_ITEM * item)
   pgptr = la_get_page (old_pageid);
   if (pgptr == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -5370,6 +5382,8 @@ la_apply_insert_log (LA_ITEM * item)
   if (inst_tp == NULL)
     {
       AU_RESTORE (au_save);
+
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_rtn;
     }
@@ -5437,6 +5451,7 @@ error_rtn:
 
   if (error == NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -5651,6 +5666,7 @@ la_apply_schema_log (LA_ITEM * item)
 		}
 	      else
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		}
 
@@ -5710,6 +5726,7 @@ la_apply_schema_log (LA_ITEM * item)
 
       if (la_update_query_execute (ddl, false) < 0)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  error_msg = er_msg ();
 	  if (error == ER_NET_CANT_CONNECT_SERVER
@@ -5925,6 +5942,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa,
 		  goto end;
 		}
 
+	      assert (er_errid () != NO_ERROR);
 	      errid = er_errid ();
 
 	      help_sprint_value (&item->key, buf, 255);
@@ -6236,6 +6254,8 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
       if (apply == NULL)
 	{
 	  la_applier_need_shutdown = true;
+
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  if (error != NO_ERROR)
 	    {
@@ -6475,7 +6495,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 	    {
 	      return error;
 	    }
-	  (void) la_log_commit(true);
+	  (void) la_log_commit (true);
 	}
       break;
 
@@ -7634,6 +7654,7 @@ lp_prefetch_log_file (const char *database_name, const char *log_path)
     {
       if (la_apply_pre () == false)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  la_applier_need_shutdown = true;
 	  break;
@@ -8256,6 +8277,7 @@ lp_prefetch_update_or_delete (LA_ITEM * item)
   class_obj = db_find_class (item->class_name);
   if (class_obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       return error;
     }
@@ -8281,6 +8303,7 @@ lp_prefetch_insert (LA_ITEM * item)
   pgptr = la_get_page (old_pageid);
   if (pgptr == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -8311,6 +8334,7 @@ lp_prefetch_insert (LA_ITEM * item)
   class_obj = db_find_class (item->class_name);
   if (class_obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       return error;
     }
@@ -8810,6 +8834,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
       /* get next LSA to be processed */
       if (la_apply_pre () == false)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  la_applier_need_shutdown = true;
 	  break;

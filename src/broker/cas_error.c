@@ -186,6 +186,7 @@ error_info_set_with_msg (int err_number, int err_indicator,
 #else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   if ((err_indicator == DBMS_ERROR_INDICATOR) && (err_number == -1))	/* might be connection error */
     {
+      assert (er_errid () != NO_ERROR);
       err_info.err_number = er_errid ();
     }
   else

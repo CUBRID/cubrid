@@ -2422,6 +2422,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
       switch (status)
 	{
 	case SORT_ERROR_OCCURRED:
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  assert (error != NO_ERROR);
 	  goto exit_on_error;
@@ -2594,6 +2595,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		    }
 		  else
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		    }
 
@@ -2617,6 +2619,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 				       NULL) == NULL)
 		    {
 		      /* Disk full; so return */
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      assert (error != NO_ERROR);
 		      goto exit_on_error;
@@ -2631,6 +2634,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 				   (VPID *) item_ptr, &long_recdes,
 				   &sort_param->multipage_npages) == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		  assert (error != NO_ERROR);
 		  goto exit_on_error;
@@ -2830,6 +2834,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	      || (*sort_param->put_fn) (thread_p, &long_recdes,
 					sort_param->put_arg) != NO_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      assert (error != NO_ERROR);
 	      goto exit_on_error;
@@ -3374,6 +3379,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		  if (sort_retrieve_longrec (thread_p, &smallest_elem_ptr[i],
 					     &long_recdes[i]) == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      assert (error != NO_ERROR);
 		      goto bailout;
@@ -3464,6 +3470,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		  if (sort_retrieve_longrec (thread_p, &last_elem_ptr,
 					     &last_long_recdes) == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      assert (error != NO_ERROR);
 		      goto bailout;
@@ -3731,6 +3738,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		      (thread_p, &smallest_elem_ptr[min],
 		       &long_recdes[min]) == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      assert (error != NO_ERROR);
 		      goto bailout;
@@ -3828,6 +3836,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 							 &last_long_recdes) ==
 				  NULL)
 				{
+				  assert (er_errid () != NO_ERROR);
 				  error = er_errid ();
 				  assert (error != NO_ERROR);
 				  goto bailout;
@@ -4269,6 +4278,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		      (thread_p, &smallest_elem_ptr[i],
 		       &long_recdes[i]) == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      assert (error != NO_ERROR);
 		      goto bailout;
@@ -4339,6 +4349,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		  if (sort_retrieve_longrec
 		      (thread_p, &last_elem_ptr, &last_long_recdes) == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      assert (error != NO_ERROR);
 		      goto bailout;
@@ -4594,6 +4605,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 					     &smallest_elem_ptr[min],
 					     &long_recdes[min]) == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      assert (error != NO_ERROR);
 		      goto bailout;
@@ -4675,6 +4687,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 				  (thread_p, &last_elem_ptr,
 				   &last_long_recdes) == NULL)
 				{
+				  assert (er_errid () != NO_ERROR);
 				  error = er_errid ();
 				  assert (error != NO_ERROR);
 				  goto bailout;
@@ -4985,6 +4998,7 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page,
 					     &new_nthpg, alloc_pgcnt, NULL,
 					     NULL, NULL, NULL) == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  ret = er_errid ();
 	  assert (ret != NO_ERROR);
 
@@ -5004,6 +5018,7 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page,
 	  || pgbuf_copy_from_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr,
 				   true) == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  ret = er_errid ();
 	  assert (ret != NO_ERROR);
 
@@ -5051,6 +5066,7 @@ sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page,
 	  || pgbuf_copy_to_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr,
 				 true) == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  ret = er_errid ();
 	  assert (ret != NO_ERROR);
 

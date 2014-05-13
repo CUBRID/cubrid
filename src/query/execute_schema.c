@@ -546,6 +546,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   vclass = db_find_class (entity_name);
   if (vclass == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -673,6 +674,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  vclass = dbt_finish_class (ctemplate);
 	  if (vclass == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      dbt_abort_class (ctemplate);
 	      tran_abort_upto_system_savepoint
@@ -683,6 +685,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  ctemplate = dbt_edit_class (vclass);
 	  if (ctemplate == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      tran_abort_upto_system_savepoint
 		(UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
@@ -987,6 +990,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  sup_class = db_find_class (p->info.name.original);
 	  if (sup_class == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  else
@@ -1052,6 +1056,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	  if (!def_attr || !(def_domain = db_attribute_domain (def_attr)))
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      break;
 	    }
@@ -1355,6 +1360,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   /* the dbt_finish_class() failed, the template was not freed */
   if (vclass == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       dbt_abort_class (ctemplate);
       if (partition_savepoint)
@@ -1554,6 +1560,7 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser,
   obj = db_find_class (alter->info.alter.entity_name->info.name.original);
   if (obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -1616,6 +1623,7 @@ do_alter_change_auto_increment (PARSER_CONTEXT * const parser,
   class_obj = db_find_class (entity_name);
   if (class_obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto change_ai_error;
     }
@@ -1816,6 +1824,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       user_obj = db_find_user (user->info.name.original);
       if (user_obj == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -1834,6 +1843,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  class_mop = db_find_class (entity->info.name.original);
 		  if (class_mop == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      return er_errid ();
 		    }
 
@@ -1880,6 +1890,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       user_obj = db_find_user (user->info.name.original);
       if (user_obj == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -1898,6 +1909,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  class_mop = db_find_class (entity->info.name.original);
 		  if (class_mop == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      return er_errid ();
 		    }
 
@@ -2036,6 +2048,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       user = db_add_user (user_name, &exists);
       if (user == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else if (exists)
@@ -2061,6 +2074,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
 		if (group == NULL)
 		  {
+		    assert (er_errid () != NO_ERROR);
 		    error = er_errid ();
 		  }
 		else
@@ -2084,6 +2098,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
 		  if (member == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		    }
 		  else
@@ -2150,6 +2165,7 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
       if (user == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -2198,6 +2214,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
       if (user == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -2238,6 +2255,7 @@ drop_class_name (const char *name, bool is_cascade_constraints)
   else
     {
       /* if class is null, return the global error. */
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 }
@@ -2338,6 +2356,7 @@ update_locksets_for_multiple_rename (const char *class_name, int *num_mops,
   class_mop = db_find_class (realname);
   if (class_mop == NULL && error_on_misssing_class)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2616,6 +2635,7 @@ do_rename_internal (const char *const old_name, const char *const new_name)
   old_class = db_find_class (old_name);
   if (old_class == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2805,6 +2825,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 				      asc_desc, constraint_name);
   if (cname == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -2866,6 +2887,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 		}
 	      else
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		  goto end;
 		}
@@ -2949,6 +2971,7 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   obj = db_find_class (cls->info.name.original);
   if (obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3014,6 +3037,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   if (obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -3104,12 +3128,14 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   obj = db_find_class (class_name);
   if (obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_exit;
     }
 
   if (au_fetch_class (obj, &smcls, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_exit;
     }
@@ -3465,6 +3491,7 @@ do_alter_index_rename (PARSER_CONTEXT * parser, const PT_NODE * statement)
   ctemplate = smt_edit_class_mop (obj, AU_INDEX);
   if (ctemplate == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       assert (error != NO_ERROR);
       goto error_exit;
@@ -3613,6 +3640,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
   parttemp = parser_new_node (parser, PT_CREATE_ENTITY);
   if (parttemp == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end_create;
     }
@@ -3620,6 +3648,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
   error = au_fetch_class (pinfo->root_op, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end_create;
     }
@@ -3634,6 +3663,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
   if (parttemp->info.create_entity.entity_name == NULL
       || parttemp->info.create_entity.supclass_list == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end_create;
     }
@@ -3651,12 +3681,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
       hash_parts = parser_new_node (parser, PT_PARTS);
       if (hash_parts == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end_create;
 	}
       hash_parts->info.parts.name = parser_new_node (parser, PT_NAME);
       if (hash_parts->info.parts.name == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end_create;
 	}
@@ -3667,6 +3699,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  org_hashsize = do_get_partition_size (pinfo->root_op);
 	  if (org_hashsize < 0)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto end_create;
 	    }
@@ -3687,6 +3720,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  newpci = (PART_CLASS_INFO *) malloc (sizeof (PART_CLASS_INFO));
 	  if (newpci == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto end_create;
 	    }
@@ -3699,6 +3733,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  newpci->pname = (char *) malloc (strlen (class_name) + 5 + 13);
 	  if (newpci->pname == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto end_create;
 	    }
@@ -3714,6 +3749,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  newpci->temp = dbt_create_class (newpci->pname);
 	  if (newpci->temp == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto end_create;
 	    }
@@ -3735,6 +3771,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  if (newpci->obj == NULL)
 	    {
 	      dbt_abort_class (newpci->temp);
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto end_create;
 	    }
@@ -3797,6 +3834,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  newpci = (PART_CLASS_INFO *) malloc (sizeof (PART_CLASS_INFO));
 	  if (newpci == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto end_create;
 	    }
@@ -3812,6 +3850,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  newpci->pname = (char *) malloc (size);
 	  if (newpci->pname == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto end_create;
 	    }
@@ -3842,6 +3881,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  newpci->temp = dbt_create_class (newpci->pname);
 	  if (newpci->temp == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto end_create;
 	    }
@@ -3864,6 +3904,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  if (newpci->obj == NULL)
 	    {
 	      dbt_abort_class (newpci->temp);
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto end_create;
 	    }
@@ -3876,6 +3917,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 					 1);
 	      if (error != NO_ERROR)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		  goto end_create;
 		}
@@ -3883,6 +3925,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter,
 	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL
 	      || locator_flush_class (newpci->obj) != NO_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto end_create;
 	    }
@@ -4313,6 +4356,8 @@ fail_return:
     {
       set_free (dbc);
     }
+
+  assert (er_errid () != NO_ERROR);
   return er_errid ();
 }
 
@@ -5303,6 +5348,7 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list)
       classcata = sm_find_class (subclass_name);
       if (classcata == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -5368,6 +5414,7 @@ do_create_partition_constraints (PARSER_CONTEXT * parser, PT_NODE * alter,
   smclass = sm_get_class_with_statistics (pinfo->root_op);
   if (smclass == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -5496,6 +5543,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
 	    au_fetch_class (subclass_op, &subclass, AU_FETCH_READ, AU_SELECT);
 	  if (error != NO_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto cleanup;
 	    }
@@ -5558,6 +5606,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
 	    au_fetch_class (objs->op, &subclass, AU_FETCH_READ, AU_SELECT);
 	  if (error != NO_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto cleanup;
 	    }
@@ -6087,6 +6136,7 @@ do_remove_partition_post (PARSER_CONTEXT * parser,
       subclass_mop = sm_find_class (pinfo->promoted_names[i]);
       if (subclass_mop == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  return error;
 	}
@@ -6191,6 +6241,7 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter,
       names_count++;
       if (subclass_op == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto error_return;
 	}
@@ -6277,6 +6328,7 @@ do_coalesce_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter,
       subclass_mop = sm_find_class (pinfo->promoted_names[i]);
       if (subclass_mop == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  return error;
 	}
@@ -6477,6 +6529,7 @@ do_reorganize_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter,
       subclass_mop = sm_find_class (pinfo->promoted_names[i]);
       if (subclass_mop == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  return error;
 	}
@@ -6658,6 +6711,7 @@ do_promote_partition_list (PARSER_CONTEXT * parser,
       subclass = sm_find_class (subclass_name);
       if (subclass == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       error =
@@ -6722,6 +6776,7 @@ do_promote_partition_by_name (const char *class_name, const char *part_num,
   subclass = sm_find_class (name);
   if (subclass == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   error = au_fetch_class (subclass, &smsmclass, AU_FETCH_READ, AU_SELECT);
@@ -6776,6 +6831,7 @@ do_promote_partition (SM_CLASS * class_)
   subclass_mop = sm_find_class (class_->header.name);
   if (subclass_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -6879,6 +6935,7 @@ do_promote_partition (SM_CLASS * class_)
   if (dbt_finish_class (ctemplate) == NULL)
     {
       dbt_abort_class (ctemplate);
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -7200,6 +7257,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   attr_db_domain = pt_node_to_db_domain (parser, attribute, ctemplate->name);
   if (attr_db_domain == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_exit;
     }
@@ -7561,6 +7619,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr,
       ref_attrs = (char **) malloc ((n_ref_atts + 1) * sizeof (char *));
       if (ref_attrs == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -7658,6 +7717,7 @@ do_add_foreign_key_objcache_attr (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		  (ctemplate, fk_info->cache_attr->info.name.original,
 		   ref_cls_name, NULL) != NO_ERROR)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
 		}
 	    }
@@ -7714,6 +7774,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 
       if (att_names == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -7794,6 +7855,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 						     constraint_name);
 		  if (constraint_name == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      free_and_init (asc_desc);
 		      goto constraint_error;
@@ -7874,6 +7936,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		  if (constraint_name == NULL)
 		    {
 		      free_and_init (asc_desc);
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      goto constraint_error;
 		    }
@@ -8149,6 +8212,7 @@ do_add_methods (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 						    ctemplate->name);
 	      if (arg_db_domain == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  return (er_errid ());
 		}
 
@@ -8167,6 +8231,7 @@ do_add_methods (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 							     ctemplate->name);
 		  if (arg_db_domain == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      return (er_errid ());
 		    }
 
@@ -8191,6 +8256,7 @@ do_add_methods (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 						    ctemplate->name);
 	      if (arg_db_domain == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  return (er_errid ());
 		}
 
@@ -8218,6 +8284,7 @@ do_add_methods (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 							 ctemplate->name);
 	      if (arg_db_domain == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  return (er_errid ());
 		}
 
@@ -8236,6 +8303,7 @@ do_add_methods (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 							     ctemplate->name);
 		  if (arg_db_domain == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      return (er_errid ());
 		    }
 
@@ -8260,6 +8328,7 @@ do_add_methods (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 						    ctemplate->name);
 	      if (arg_db_domain == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  return (er_errid ());
 		}
 
@@ -8345,6 +8414,7 @@ do_add_supers (const PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       super_class = db_find_class (supers->info.name.original);
       if (super_class == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -8386,6 +8456,7 @@ do_add_resolutions (const PARSER_CONTEXT * parser,
 
       if (resolution_super_mop == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  break;
 	}
@@ -8791,6 +8862,7 @@ execute_create_select_query (PARSER_CONTEXT * parser,
 					      query_columns);
   if (insert_into == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_exit;
     }
@@ -8997,6 +9069,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  error = er_errid ();
 	}
+      assert (error != NO_ERROR);
       goto error_exit;
     }
   do_abort_class_on_error = true;
@@ -9020,6 +9093,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (class_obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_exit;
     }
@@ -9053,6 +9127,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       if (locator_create_heap_if_needed (class_obj, reuse_oid) == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  break;
 	}
@@ -9215,12 +9290,14 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser,
   classmop = db_find_class (class_name);
   if (classmop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
   if (au_fetch_class (classmop, &class_, AU_FETCH_READ, DB_AUTH_SELECT)
       != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -9398,6 +9475,7 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
       att_names = classobj_point_at_att_names (c, NULL);
       if (att_names == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -9504,6 +9582,7 @@ truncate_class_name (const char *name)
   else
     {
       /* if class is null, return the global error. */
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 }
@@ -9613,6 +9692,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
   class_obj = db_find_class (entity_name);
   if (class_obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto exit;
     }
@@ -9751,6 +9831,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
   class_obj = dbt_finish_class (ctemplate);
   if (class_obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto exit;
     }
@@ -9777,6 +9858,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
       class_obj = dbt_finish_class (ctemplate);
       if (class_obj == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto exit;
 	}
@@ -10123,6 +10205,7 @@ do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser,
   class_obj = db_find_class (entity_name);
   if (class_obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto exit;
     }
@@ -10205,6 +10288,7 @@ do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser,
   class_obj = dbt_finish_class (ctemplate);
   if (class_obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto exit;
     }
@@ -10359,6 +10443,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   attr_db_domain = pt_node_to_db_domain (parser, attribute, ctemplate->name);
   if (attr_db_domain == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto exit;
     }
@@ -11024,6 +11109,7 @@ build_attr_change_map (PARSER_CONTEXT * parser,
   attr_db_domain = pt_node_to_db_domain (parser, attr_def, ctemplate->name);
   if (attr_db_domain == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return (er_errid ());
     }
   attr_chg_properties->p[P_TYPE] = 0;
@@ -13625,12 +13711,14 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
   session = db_open_buffer (query);
   if (session == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end;
     }
 
   if (db_get_errors (session) || db_statement_count (session) != 1)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end;
     }
@@ -13638,6 +13726,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
   stmt_id = db_compile_statement (session);
   if (stmt_id != 1)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end;
     }
@@ -13726,12 +13815,14 @@ do_run_update_query_for_class (char *query, MOP class_mop, int *row_count)
   session = db_open_buffer (query);
   if (session == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end;
     }
 
   if (db_get_errors (session) || db_statement_count (session) != 1)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end;
     }
@@ -13739,6 +13830,7 @@ do_run_update_query_for_class (char *query, MOP class_mop, int *row_count)
   stmt_id = db_compile_statement (session);
   if (stmt_id != 1)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end;
     }
@@ -14289,6 +14381,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser,
     }
   else
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error;
     }

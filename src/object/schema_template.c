@@ -180,6 +180,7 @@ smt_find_attribute (SM_TEMPLATE * template_, const char *name,
 
   if (!sm_check_name (name))
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -250,6 +251,7 @@ find_method (SM_TEMPLATE * template_, const char *name,
 
   if (!sm_check_name (name))
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -388,6 +390,7 @@ find_any (SM_TEMPLATE * template_, const char *name, int class_stuff,
 
   if (!sm_check_name (name))
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -533,6 +536,7 @@ find_argument (SM_TEMPLATE * template_, const char *name,
 	  arg = classobj_find_method_arg (&sig->args, index, create);
 	  if (arg == NULL && create)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();	/* memory allocation error */
 	    }
 	  else
@@ -747,6 +751,7 @@ get_domain_internal (SM_TEMPLATE * tmp,
     }
   else
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -1129,6 +1134,7 @@ smt_add_attribute_any (SM_TEMPLATE * template_, const char *name,
 
   if (!sm_check_name (name))
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error_exit;
     }
@@ -1173,6 +1179,7 @@ smt_add_attribute_any (SM_TEMPLATE * template_, const char *name,
   att = classobj_make_attribute (name, domain->type, name_space);
   if (att == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error_exit;
     }
@@ -1350,6 +1357,7 @@ smt_add_set_attribute_domain (SM_TEMPLATE * template_,
 		    }
 		  else
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		    }
 		}
@@ -1465,6 +1473,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
 	  value = pr_make_ext_value ();
 	  if (value == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto end;
 	    }
@@ -1651,6 +1660,7 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_,
 	   NULL, filter_index, fk_info,
 	   shared_cons_name, function_index) == ER_FAILED)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
     }
@@ -2336,6 +2346,7 @@ smt_add_method_any (SM_TEMPLATE * template_, const char *name,
 
   if (!sm_check_name (name))
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();	/* return error set by call */
     }
   else
@@ -2363,6 +2374,7 @@ smt_add_method_any (SM_TEMPLATE * template_, const char *name,
 	  method = classobj_make_method (name, name_space);
 	  if (method == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	  method->class_mop = template_->op;
@@ -2409,6 +2421,7 @@ smt_add_method_any (SM_TEMPLATE * template_, const char *name,
 	  sig = classobj_make_method_signature (iname);
 	  if (sig == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	  WS_LIST_APPEND (&method->signatures, sig);
@@ -2501,6 +2514,7 @@ smt_change_method_implementation (SM_TEMPLATE * template_,
 	      method->signatures->function_name = ws_copy_string (function);
 	      if (method->signatures->function_name == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		}
 	      ws_free_string (current);
@@ -2655,6 +2669,7 @@ smt_rename_any (SM_TEMPLATE * template_, const char *name,
 
   if (!sm_check_name (name) || !sm_check_name (new_name))
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();	/* return error set by call */
     }
   else
@@ -2702,6 +2717,7 @@ smt_rename_any (SM_TEMPLATE * template_, const char *name,
 	      comp->name = ws_copy_string (new_name);
 	      if (comp->name == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		}
 	    }
@@ -2776,6 +2792,7 @@ rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons,
     sm_produce_constraint_name (ctemplate->name, ctype, NULL, NULL, new_name);
   if (norm_new_name == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       assert (error != NO_ERROR);
       goto error_exit;
@@ -2891,6 +2908,7 @@ rename_constraints_partitioned_class (SM_TEMPLATE * ctemplate,
       sub_ctemplate = smt_edit_class_mop (sub_partitions[i], AU_INDEX);
       if (sub_ctemplate == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  assert (error != NO_ERROR);
 	  goto error_exit;
@@ -3403,6 +3421,7 @@ smt_add_method_file (SM_TEMPLATE * template_, const char *filename)
       mfile = classobj_make_method_file (filename);
       if (mfile == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       mfile->class_mop = template_->op;
@@ -3516,6 +3535,7 @@ smt_rename_method_file (SM_TEMPLATE * template_, const char *old_name,
       found->name = ws_copy_string (new_name);
       if (found->name == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
     }
@@ -3658,6 +3678,7 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 
   if (alias != NULL && !sm_check_name (alias))
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -3724,6 +3745,7 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 		      chosen->alias = ws_copy_string (alias);
 		      if (chosen->alias == NULL)
 			{
+			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			}
 		    }
@@ -3735,6 +3757,7 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 		      prev_alias->alias = ws_copy_string (alias);
 		      if (prev_alias->alias == NULL)
 			{
+			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			}
 		    }
@@ -3745,6 +3768,7 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 						      alias, name_space);
 		      if (res == NULL)
 			{
+			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			}
 		      /* we need to add a new entry with the alias */
@@ -3763,6 +3787,7 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 							  alias, name_space);
 			  if (res == NULL)
 			    {
+			      assert (er_errid () != NO_ERROR);
 			      error = er_errid ();
 			    }
 			  /* we need to add a new entry */
@@ -3904,6 +3929,7 @@ smt_add_query_spec (SM_TEMPLATE * template_, const char *specification)
 
   if (query_spec == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -4074,6 +4100,7 @@ smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index)
 	  def->query_spec = classobj_make_query_spec (query);
 	  if (def->query_spec == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	  def->query_spec->next = found->next;
@@ -4083,6 +4110,7 @@ smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index)
 	  prev->next = classobj_make_query_spec (query);
 	  if (prev->next == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	  prev->next->next = found->next;
@@ -4212,6 +4240,7 @@ smt_change_attribute (SM_TEMPLATE * template_, const char *name,
   name = real_name;
   if (!sm_check_name (name))
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error_exit;
     }
@@ -4223,6 +4252,7 @@ smt_change_attribute (SM_TEMPLATE * template_, const char *name,
 
       if (!sm_check_name (new_name))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  goto error_exit;
 	}
@@ -4312,6 +4342,7 @@ smt_change_attribute (SM_TEMPLATE * template_, const char *name,
       att->header.name = ws_copy_string (new_name);
       if (att->header.name == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  goto error_exit;
 	}

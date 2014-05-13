@@ -539,6 +539,7 @@ error:
   jsp_stop_server ();
   jvm = NULL;
 
+  assert (er_errid () != NO_ERROR);
   return er_errid ();
 }
 

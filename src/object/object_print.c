@@ -2535,6 +2535,7 @@ help_trigger_names (char ***names_ptr)
 	  names = (char **) malloc (sizeof (char *) * (count + 1));
 	  if (names == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  else

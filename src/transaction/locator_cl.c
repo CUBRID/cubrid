@@ -6735,6 +6735,7 @@ locator_assign_oidset (LC_OIDSET * oidset, LC_OIDMAP_CALLBACK callback)
       if (status != NO_ERROR)
 	{
 	  /* make sure we faithfully return whatever error the server sent back */
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	}
       else

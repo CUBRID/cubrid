@@ -423,6 +423,7 @@ tran_commit (bool retain_lock)
     case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
     case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
       /* The commit failed */
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
@@ -435,6 +436,7 @@ tran_commit (bool retain_lock)
        * The commit failed and there are loose end undo action to execute in
        * the client
        */
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       state = tran_abort_client_loose_ends (true);
 #if defined(CUBRID_DEBUG)
@@ -446,6 +448,7 @@ tran_commit (bool retain_lock)
     case TRAN_UNACTIVE_UNKNOWN:
       if (!BOOT_IS_CLIENT_RESTARTED ())
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  break;
 	}
@@ -461,6 +464,7 @@ tran_commit (bool retain_lock)
     case TRAN_UNACTIVE_2PC_ABORT_DECISION:
     case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
     default:
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
@@ -551,6 +555,7 @@ tran_abort (void)
     case TRAN_UNACTIVE_UNKNOWN:
       if (!BOOT_IS_CLIENT_RESTARTED ())
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_cod = er_errid ();
 	  break;
 	}
@@ -570,6 +575,7 @@ tran_abort (void)
     case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
     case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
     default:
+      assert (er_errid () != NO_ERROR);
       error_cod = er_errid ();
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE, "tm_abort: Unknown abort state = %s\n",
@@ -731,6 +737,7 @@ tran_set_global_tran_info (int gtrid, void *info, int size)
     }
   else
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 }
@@ -758,6 +765,7 @@ tran_get_global_tran_info (int gtrid, void *buffer, int size)
 
   if (tran_server_get_global_tran_info (gtrid, buffer, size) != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
     }
 
@@ -822,6 +830,7 @@ tran_2pc_prepare (void)
     case TRAN_ACTIVE:
       /* The preparation to commit failed probably due to inproper state;
          Transaction is still active */
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
@@ -837,6 +846,7 @@ tran_2pc_prepare (void)
     case TRAN_UNACTIVE_ABORTED:
     case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
       /* The preparation to commit failed; Transaction has been aborted */
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
@@ -847,6 +857,7 @@ tran_2pc_prepare (void)
     case TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS:
       /* The preparation failed and there are loose end undo action to execute
          in the client */
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       state = tran_abort_client_loose_ends (true);
 #if defined(CUBRID_DEBUG)
@@ -864,6 +875,7 @@ tran_2pc_prepare (void)
     case TRAN_UNACTIVE_UNKNOWN:
       if (!BOOT_IS_CLIENT_RESTARTED ())
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  break;
 	}
@@ -881,6 +893,7 @@ tran_2pc_prepare (void)
     case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
     case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
     default:
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
@@ -945,6 +958,7 @@ tran_2pc_attach_global_tran (int gtrid)
   new_tran_index = tran_server_2pc_attach_global_tran (gtrid);
   if (new_tran_index == NULL_TRAN_INDEX)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -992,6 +1006,7 @@ tran_2pc_prepare_global_tran (int gtrid)
       /* The preperation to commit failed probabely due to the given global
        * transaction identifier; Transaction is still active
        */
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
@@ -1008,6 +1023,7 @@ tran_2pc_prepare_global_tran (int gtrid)
     case TRAN_UNACTIVE_ABORTED:
     case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
       /* The preperation to commit failed; Transaction has been aborted */
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
@@ -1021,6 +1037,7 @@ tran_2pc_prepare_global_tran (int gtrid)
        * The preperation to commit failed and there are loose end undo action
        * to execute in the client
        */
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       state = tran_abort_client_loose_ends (true);
 #if defined(CUBRID_DEBUG)
@@ -1041,6 +1058,7 @@ tran_2pc_prepare_global_tran (int gtrid)
     case TRAN_UNACTIVE_UNKNOWN:
       if (!BOOT_IS_CLIENT_RESTARTED ())
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  break;
 	}
@@ -1058,6 +1076,7 @@ tran_2pc_prepare_global_tran (int gtrid)
     case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
     case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
     default:
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
@@ -1158,6 +1177,7 @@ tran_end_topop_commit (void)
 
   if (state != TRAN_UNACTIVE_COMMITTED)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
@@ -1191,6 +1211,7 @@ tran_end_topop_abort (void)
     }
   if (state != TRAN_UNACTIVE_ABORTED)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
@@ -1237,6 +1258,7 @@ tran_end_topop (LOG_RESULT_TOPOP result)
       state = tran_server_end_topop (result, &topop_lsa);
       if (state != TRAN_ACTIVE)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
 	  er_log_debug (ARG_FILE_LINE,
@@ -1270,6 +1292,7 @@ tran_add_savepoint (const char *savept_name)
   sp = (DB_NAMELIST *) db_ws_alloc (sizeof (DB_NAMELIST));
   if (sp == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -1277,6 +1300,8 @@ tran_add_savepoint (const char *savept_name)
   if (sp->name == NULL)
     {
       db_ws_free (sp);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   sp->next = user_savepoint_list;
@@ -1439,6 +1464,7 @@ tran_savepoint_internal (const char *savept_name,
 
   if (tran_server_savepoint (savept_name, &savept_lsa) != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -1562,6 +1588,7 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name,
     }
   if (state != TRAN_UNACTIVE_ABORTED)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       if (savepoint_type == SYSTEM_SAVEPOINT && state == TRAN_UNACTIVE_UNKNOWN
 	  && error_code != NO_ERROR && !tran_has_updated ())

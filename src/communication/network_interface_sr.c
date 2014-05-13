@@ -131,6 +131,9 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
   conn = thread_p->conn_entry;
   assert (conn != NULL);
 
+#if 0				/* TODO */
+  assert (er_errid () != NO_ERROR);
+#endif
   errid = er_errid ();
   if (errid == ER_LK_UNILATERALLY_ABORTED || errid == ER_DB_NO_MODIFICATIONS)
     {
@@ -5877,6 +5880,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
   if (list_id == NULL)
 #endif
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 
       if (error_code != NO_ERROR)
@@ -6828,6 +6832,7 @@ sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid,
   success = xqmgr_sync_query (thread_p, query_id, wait, &new_list_id, false);
   if (success != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       success = er_errid ();
       list_length = 0;
       list_data = NULL;
@@ -6925,6 +6930,7 @@ sserial_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
 					    cached_num);
   if (error_status != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error_status = er_errid ();
       buffer_length = 0;
       buffer = NULL;

@@ -1264,6 +1264,7 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
   return error;
 
 auto_increment_error:
+  assert (er_errid () != NO_ERROR);
   return er_errid ();
 }
 
@@ -1319,6 +1320,7 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 		       template_ptr->base_classobj, &att->default_value.value,
 		       &base_value, &base_name, DB_AUTH_INSERT))
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      return er_errid ();
 		    }
 
@@ -1326,6 +1328,7 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 		  if (obt_find_attribute
 		      (template_ptr, 1, base_name, &base_att))
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      return er_errid ();
 		    }
 
@@ -1417,6 +1420,7 @@ memory_error:
    * the caller be forced to throw it away and start again since
    * its current state is unknown.
    */
+  assert (er_errid () != NO_ERROR);
   return er_errid ();
 }
 
@@ -1662,6 +1666,7 @@ obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
   return error;
 
 error_exit:
+  assert (er_errid () != NO_ERROR);
   return er_errid ();
 }
 
@@ -1711,12 +1716,14 @@ obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 			       template_ptr->base_classobj, &dummy_value,
 			       &base_value, &base_name, auth))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
       /* find the associated attribute definition in the base class */
       if (obt_find_attribute (template_ptr, 1, base_name, &att))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
@@ -1758,6 +1765,7 @@ obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 	      assign = obt_make_assignment (template_ptr, att);
 	      if (assign == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		}
 	      else
@@ -1799,11 +1807,13 @@ obt_set (OBJ_TEMPLATE * template_ptr, const char *attname, DB_VALUE * value)
     {
       if (validate_template (template_ptr))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
       if (obt_find_attribute (template_ptr, 0, attname, &att))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -1868,6 +1878,7 @@ obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc,
     {
       if (validate_template (template_ptr))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -1878,6 +1889,7 @@ obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc,
       if (sm_get_descriptor_component (template_ptr->classobj, desc, 1,
 				       &class_, (SM_COMPONENT **) & att))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -2023,6 +2035,7 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
     {
       if (create_template_object (template_ptr) == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
@@ -2055,6 +2068,7 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
 
   if (obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   else
@@ -2280,6 +2294,7 @@ obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null,
 
   if (validate_template (template_ptr))
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2303,22 +2318,26 @@ obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null,
 	  if (obt_Enable_autoincrement == true
 	      && populate_auto_increment (template_ptr))
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 
 	  if (populate_defaults (template_ptr))
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 
 	  if (check_non_null && obt_check_missing_assignments (template_ptr))
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	}
 
       if (check_fk_cache_assignments (template_ptr))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -2453,6 +2472,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
   /* make sure we have a good template */
   if (validate_template (template_ptr))
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2466,6 +2486,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
   trigstate = sm_active_triggers (class_, TR_EVENT_ALL);
   if (trigstate < 0)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2489,6 +2510,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
     {
       if (tr_prepare_class (&trstate, class_->triggers, event))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       if (event == TR_EVENT_UPDATE)
@@ -2503,6 +2525,8 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	      if (tr_prepare_class (&trstate, a->att->triggers, event))
 		{
 		  tr_abort (trstate);
+
+		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
 		}
 	    }
@@ -2527,6 +2551,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 			       template_ptr);
       if (temp == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       else
@@ -2607,6 +2632,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	  a->old_value = pr_make_ext_value ();
 	  if (a->old_value == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  else
@@ -2790,6 +2816,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	      || (locator_flush_instance (OBT_BASE_OBJECT (template_ptr))
 		  != NO_ERROR))
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	  /* update template object if this was a partitioned class */
@@ -2992,6 +3019,7 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 			   template_savepoint_count++);
 		  if (tran_system_savepoint (savepoint_name) != NO_ERROR)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      return er_errid ();
 		    }
 		  savepoint_used = 1;
@@ -3150,6 +3178,7 @@ obt_populate_known_arguments (OBJ_TEMPLATE * template_ptr)
 {
   if (validate_template (template_ptr))
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3160,6 +3189,7 @@ obt_populate_known_arguments (OBJ_TEMPLATE * template_ptr)
 
   if (populate_defaults (template_ptr) != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3170,6 +3200,7 @@ obt_populate_known_arguments (OBJ_TEMPLATE * template_ptr)
 
   if (populate_auto_increment (template_ptr) != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 

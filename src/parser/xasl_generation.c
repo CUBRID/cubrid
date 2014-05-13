@@ -18668,6 +18668,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  if ((insert->att_id[a] =
 		       sm_att_id (class_obj, attr->info.name.original)) < 0)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		    }
 		}
@@ -18679,6 +18680,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  if ((insert->att_id[a] =
 		       sm_att_id (class_obj, attr->info.name.original)) < 0)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		    }
 		}
@@ -18689,12 +18691,14 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	}
     }
   else
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -19021,6 +19025,7 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
 			       assignments_helper.lhs->info.name.original);
       if (attr == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto exit_on_error;
 	}
@@ -19082,6 +19087,7 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
 	  odku->assignments[i].constant = regu_dbval_alloc ();
 	  if (odku->assignments[i].constant == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto exit_on_error;
 	    }
@@ -19106,6 +19112,7 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
 		parser_generate_xasl (parser, assignments_helper.rhs);
 	      if (rhs_xasl == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		  goto exit_on_error;
 		}
@@ -19468,6 +19475,7 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node,
 exit_on_error:
   if (pt_has_error (parser))
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
     }
   else
@@ -20314,6 +20322,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   if (aptr_statement == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -20332,6 +20341,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   aptr_statement = mq_translate (parser, aptr_statement);
   if (aptr_statement == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -20344,6 +20354,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   xasl = pt_make_aptr_parent_node (parser, aptr_statement, UPDATE_PROC);
   if (xasl == NULL || xasl->aptr_list == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -20384,6 +20395,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   update->classes = regu_upddel_class_info_array_alloc (no_classes);
   if (update->classes == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto cleanup;
     }
@@ -20391,6 +20403,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   update->assigns = regu_update_assignment_array_alloc (update->no_assigns);
   if (update->assigns == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto cleanup;
     }
@@ -20436,6 +20449,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       upd_cls->class_oid = regu_oid_array_alloc (no_subclasses);
       if (upd_cls->class_oid == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto cleanup;
 	}
@@ -20443,6 +20457,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       upd_cls->class_hfid = regu_hfid_array_alloc (no_subclasses);
       if (upd_cls->class_hfid == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto cleanup;
 	}
@@ -20451,6 +20466,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	regu_int_array_alloc (no_subclasses * upd_cls->no_attrs);
       if (upd_cls->att_id == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto cleanup;
 	}
@@ -20487,6 +20503,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  hfid = sm_get_heap (class_obj);
 	  if (hfid == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto cleanup;
 	    }
@@ -20512,6 +20529,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 		  if (upd_cls->att_id[cl * upd_cls->no_attrs + a] < 0)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      goto cleanup;
 		    }
@@ -24364,6 +24382,7 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   xasl = regu_xasl_node_alloc (MERGE_PROC);
   if (xasl == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -24418,6 +24437,7 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   xasl->tcard_list = regu_int_array_alloc (xptr->n_oid_list);
   if (xasl->class_oid_list == NULL || xasl->tcard_list == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -24524,6 +24544,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   if (aptr_statement == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR && !pt_has_error (parser))
 	{
@@ -24536,6 +24557,9 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   aptr_statement = mq_translate (parser, aptr_statement);
   if (aptr_statement == NULL)
     {
+#if 0				/* TODO */
+      assert (er_errid () != NO_ERROR);
+#endif
       error = er_errid ();
       if (error == NO_ERROR && !pt_has_error (parser))
 	{
@@ -24548,6 +24572,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   xasl = pt_make_aptr_parent_node (parser, aptr_statement, UPDATE_PROC);
   if (xasl == NULL || xasl->aptr_list == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR && !pt_has_error (parser))
 	{
@@ -24582,6 +24607,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   update->classes = regu_upddel_class_info_array_alloc (1);
   if (update->classes == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -24594,6 +24620,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   update->assigns = regu_update_assignment_array_alloc (update->no_assigns);
   if (update->assigns == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -24633,6 +24660,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   upd_cls->class_oid = regu_oid_array_alloc (no_subclasses);
   if (upd_cls->class_oid == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -24645,6 +24673,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   upd_cls->class_hfid = regu_hfid_array_alloc (no_subclasses);
   if (upd_cls->class_hfid == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -24657,6 +24686,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   upd_cls->att_id = regu_int_array_alloc (no_subclasses * upd_cls->no_attrs);
   if (upd_cls->att_id == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -24696,6 +24726,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       hfid = sm_get_heap (class_obj);
       if (hfid == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  if (error == NO_ERROR)
 	    {
@@ -24726,6 +24757,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 	      if (upd_cls->att_id[cl * upd_cls->no_attrs + a] < 0)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		  if (error == NO_ERROR && !pt_has_error (parser))
 		    {
@@ -24832,6 +24864,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       update->assigns[a].constant = regu_dbval_alloc ();
       if (update->assigns[a].constant == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  if (error == NO_ERROR)
 	    {
@@ -24843,6 +24876,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       attr = db_get_attribute (class_obj, att_name_node->info.name.original);
       if (attr == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  if (error == NO_ERROR)
 	    {
@@ -24963,6 +24997,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 			      &statement->info.merge);
   if (aptr_statement == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR && !pt_has_error (parser))
 	{
@@ -24974,6 +25009,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   aptr_statement = mq_translate (parser, aptr_statement);
   if (aptr_statement == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR && !pt_has_error (parser))
 	{
@@ -24992,6 +25028,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 					  sm_is_reuse_oid_class (class_obj));
   if (class_ == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -25004,6 +25041,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   hfid = sm_heap (class_);
   if (hfid == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -25015,6 +25053,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   if (locator_flush_class (class_obj) != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -25032,6 +25071,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   xasl = pt_make_aptr_parent_node (parser, aptr_statement, INSERT_PROC);
   if (xasl == NULL || xasl->aptr_list == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR && !pt_has_error (parser))
 	{
@@ -25089,6 +25129,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      if ((insert->att_id[a] =
 		   sm_att_id (class_obj, attr->info.name.original)) < 0)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		}
 	    }
@@ -25098,6 +25139,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      if ((insert->att_id[a] =
 		   sm_att_id (class_obj, attr->info.name.original)) < 0)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
 		}
 	    }
@@ -25107,6 +25149,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
       else
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	}
       if (error != NO_ERROR)
@@ -25150,6 +25193,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   xasl->tcard_list = regu_int_array_alloc (1 + aptr->n_oid_list);
   if (xasl->class_oid_list == NULL || xasl->tcard_list == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       if (error == NO_ERROR)
 	{

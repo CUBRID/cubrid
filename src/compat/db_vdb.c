@@ -1813,6 +1813,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
       session->stmt_ndx = stmt_ndx;
       if (db_compile_statement_local (session) < 0)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
@@ -1926,6 +1927,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
       else
 	{
 	  assert (cls_status == DB_CLASS_ERROR);
+	  assert (er_errid () != NO_ERROR);
 	  err = er_errid ();
 	}
     }
@@ -1964,6 +1966,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	  else
 	    {
 	      assert (cls_status == DB_CLASS_ERROR);
+	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	    }
 	}
@@ -2008,6 +2011,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		{
 		  parser_free_tree (parser, statement);
 		}
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	}
@@ -2042,6 +2046,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	  qres = pt_make_cache_hit_result_descriptor ();
 	  if (qres == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	    }
 	}
@@ -2066,6 +2071,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		}
 	      else
 		{
+		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
 		}
 	      break;
@@ -2098,6 +2104,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		    }
 		  else
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      err = er_errid ();
 		    }
 		  break;
@@ -2110,6 +2117,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		  val = db_value_create ();
 		  if (val == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      err = er_errid ();
 		      break;
 		    }
@@ -2147,6 +2155,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		    }
 		  else
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      err = er_errid ();
 		    }
 
@@ -2292,6 +2301,7 @@ values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list,
 	  DB_MAKE_NULL (&val);
 	  if (db_get_variable (name, &val) != NO_ERROR)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	      goto error_exit;
 	    }
@@ -2464,6 +2474,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   prepared_session = db_open_buffer_local (statement_literal);
   if (prepared_session == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       err = er_errid ();
       goto cleanup;
     }
@@ -2790,6 +2801,7 @@ do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list)
   if (values_list_to_values_array (session->parser, using_list, &values_array)
       != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2928,6 +2940,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session,
 			  data_value.str->bytes);
   if (new_session == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2963,6 +2976,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session,
   idx = db_compile_statement (new_session);
   if (idx < 0)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 

@@ -2785,6 +2785,7 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
       page_p = qmgr_get_old_page (thread_p, &vpid, tfile_vfid_p);
       if (page_p == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -2960,6 +2961,7 @@ get_page:
       page_p = qmgr_get_old_page (thread_p, &vpid, tfile_vfid_p);
       if (page_p == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -4167,6 +4169,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p,
 		qmgr_get_old_page (thread_p, &vpid, list_id_p->tfile_vfid);
 	      if (page_p == NULL)
 		{
+		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
 		}
 
@@ -4178,6 +4181,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p,
 	  page_p = qmgr_get_old_page (thread_p, &vpid, list_id_p->tfile_vfid);
 	  if (page_p == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 #endif /* not SortCache */

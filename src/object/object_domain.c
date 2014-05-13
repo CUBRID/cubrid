@@ -7870,6 +7870,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 		  if (setref == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
 		      err = er_errid ();
 		    }
 		  else if (desired_type == DB_TYPE_SET)
@@ -10475,6 +10476,9 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name,
    */
   if (status == DOMAIN_ERROR)
     {
+#if 0				/* TODO */
+      assert (er_errid () != NO_ERROR);
+#endif
       error = er_errid ();
 
       if (error == ER_IT_DATA_OVERFLOW)

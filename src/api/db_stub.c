@@ -2160,10 +2160,13 @@ res_fetch_internal (BH_INTERFACE * bh_interface,
   retval = db_query_seek_tuple (query_result, offset, pos);
 
   if (retval == DB_CURSOR_END)
-    return ER_INTERFACE_END_OF_CURSOR;
+    {
+      return ER_INTERFACE_END_OF_CURSOR;
+    }
 
   if (retval != DB_CURSOR_SUCCESS)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2191,6 +2194,7 @@ res_delete_row_internal (BH_INTERFACE * bh_interface,
 
   if (retval != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2322,6 +2326,7 @@ rs_set_db_value (void *impl, int index, DB_VALUE * val)
   retval = cursor_get_current_oid (&(prs->result->res.s.cursor_id), &tpl_oid);
   if (retval != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3097,6 +3102,8 @@ stmt_bind_pmeta_handle (BH_INTERFACE * bh_interface,
   if (ppmeta->marker == NULL)
     {
       free (ppmeta);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 

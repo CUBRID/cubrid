@@ -357,6 +357,7 @@ db_add_volume_ex (DBDEF_VOL_EXT_INFO * ext_info)
   volid = boot_add_volume_extension (ext_info);
   if (volid == NULL_VOLID)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -2259,12 +2260,15 @@ db_fetch_array (DB_OBJECT ** objects, DB_FETCH_MODE purpose,
     }
 
   for (count = 0; objects[count] != NULL; count++)
-    ;
+    {
+      ;
+    }
 
   obj = locator_fetch_set (count, objects, purpose, DB_FETCH_READ,
 			   quit_on_error);
   if (obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
   return (error);
@@ -2351,6 +2355,7 @@ fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error)
       mops = (DB_OBJECT **) malloc ((max + 1) * sizeof (DB_OBJECT *));
       if (mops == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return (er_errid ());
 	}
       cnt = 0;
@@ -2378,6 +2383,7 @@ fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error)
 			       quit_on_error);
 	  if (obj == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	}
@@ -2463,6 +2469,7 @@ db_fetch_composition (DB_OBJECT * object, DB_FETCH_MODE purpose,
     }
   if (obj == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 

@@ -918,6 +918,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 			       gadget) == NULL)
 	{
 	  db_close_session (session);
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  CHECK_DBI (error < 0, return);
 	  return;
@@ -948,6 +949,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 	}
       else
 	{
+	  assert (er_errid () != NO_ERROR);
 	  e = er_errid ();
 	}
     }
@@ -1070,6 +1072,7 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
       session = db_open_buffer (stmt);
       if (!(session))
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  CHECK_DBI (error < 0, return);
 	}
@@ -1156,6 +1159,7 @@ error:
       /* static cursor statement open fail */
       db_close_session (session);
     }
+  assert (er_errid () != NO_ERROR);
   error = er_errid ();
   CHECK_DBI (error < 0, return);
 }
@@ -1333,6 +1337,7 @@ uci_prepare (int stmt_no, const char *stmt, int length)
   session = db_open_buffer (stmt);
   if (session == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       CHECK_DBI (error < 0, return);
     }
@@ -1358,6 +1363,7 @@ uci_prepare (int stmt_no, const char *stmt, int length)
 	  db_query_format_free (col_spec);
 	}
       db_close_session (session);
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       CHECK_DBI (error < 0, return);
       return;
@@ -1518,6 +1524,7 @@ uci_execute_immediate (const char *stmt, int length)
   session = db_open_buffer (stmt);
   if (!session)
     {
+      assert (er_errid () != NO_ERROR);
       e = er_errid ();
       CHECK_DBI (e < 0, return);
     }
@@ -1574,6 +1581,7 @@ uci_execute_immediate (const char *stmt, int length)
 error:
   /* drop the stmt */
   db_close_session (session);
+  assert (er_errid () != NO_ERROR);
   e = er_errid ();
   CHECK_DBI (e < 0, return);
 }
@@ -2743,6 +2751,7 @@ set_sqlca_err (void)
       return;
     }
 
+  assert (er_errid () != NO_ERROR);
   SQLCODE = er_errid ();
   msg = er_msg ();
   strncpy (SQLERRMC, (msg == NULL) ? "" : msg, sizeof (SQLERRMC) - 1);

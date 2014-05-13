@@ -158,8 +158,9 @@ vid_make_vobj (const OID * view_oid,
   DB_SEQ *seq;
 
   seq = set_create_sequence (3);
-  if (!seq)
+  if (seq == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -501,6 +502,7 @@ vid_flush_and_rehash (MOP mop)
   if (return_code == WS_MAP_FAIL)
     {
       /* make sure we return an error */
+      assert (er_errid () != NO_ERROR);
       return_code = er_errid ();
       if (return_code >= NO_ERROR)
 	{
@@ -871,6 +873,7 @@ vid_set_att_obj_id (const char *class_name, SM_ATTRIBUTE * attribute_p,
       attribute_p->properties = classobj_make_prop ();
       if (attribute_p->properties == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
@@ -928,11 +931,13 @@ vid_record_update (MOP mop, SM_CLASS * class_p, SM_ATTRIBUTE * attribute_p)
 
   if (vid_flush_instance (mop, NULL) != WS_MAP_CONTINUE)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
   if (!ws_rehash_vmop (mop, (MOBJ) class_p, NULL))
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -1160,6 +1165,7 @@ vid_build_non_upd_object (MOP mop, DB_VALUE * seq)
   inst = obj_alloc (class_p, 0);
   if (inst == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error = er_errid ();
       return error;
     }
@@ -1502,6 +1508,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	      if (vclass && vclass->object == NULL
 		  && au_fetch_instance_force (vclass, &inst, AU_FETCH_READ))
 		{
+		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
 		}
 	    }
@@ -1524,6 +1531,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	      if (bclass && bclass->object == NULL
 		  && au_fetch_instance_force (bclass, &inst, AU_FETCH_READ))
 		{
+		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
 		}
 	    }

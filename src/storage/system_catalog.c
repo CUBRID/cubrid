@@ -2819,6 +2819,7 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
   page_p = catalog_find_optimal_page (thread_p, size, &vpid);
   if (page_p == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2850,6 +2851,8 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 					 &remembered_slot_id) != NO_ERROR)
     {
       db_private_free_and_init (thread_p, data);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2873,6 +2876,8 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 					&remembered_slot_id) != NO_ERROR)
 	{
 	  db_private_free_and_init (thread_p, data);
+
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -2882,6 +2887,8 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 					 &remembered_slot_id) != NO_ERROR)
 	{
 	  db_private_free_and_init (thread_p, data);
+
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -2896,6 +2903,8 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 	      NO_ERROR)
 	    {
 	      db_private_free_and_init (thread_p, data);
+
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	}
@@ -2908,6 +2917,8 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
 				    &remembered_slot_id) != NO_ERROR)
     {
       db_private_free_and_init (thread_p, data);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2918,6 +2929,8 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p,
       NO_ERROR)
     {
       db_private_free_and_init (thread_p, data);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2957,6 +2970,7 @@ catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
     catalog_find_optimal_page (thread_p, CATALOG_CLS_INFO_SIZE, &page_id);
   if (page_p == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2964,6 +2978,7 @@ catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   if (recdes_allocate_data_area (&record, DB_PAGESIZE) != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2979,6 +2994,8 @@ catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
     {
       pgbuf_unfix_and_init (thread_p, page_p);
       recdes_free_data_area (&record);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2994,6 +3011,8 @@ catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
       NO_ERROR)
     {
       recdes_free_data_area (&record);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3127,6 +3146,7 @@ catalog_drop (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID repr_id)
       || repr_item.page_id.volid == NULL_VOLID
       || repr_item.slot_id == NULL_SLOTID)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3135,6 +3155,7 @@ catalog_drop (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID repr_id)
 						  repr_item.slot_id)
       != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3169,6 +3190,7 @@ catalog_drop_all (THREAD_ENTRY * thread_p, OID * class_id_p)
 
   if (recdes_allocate_data_area (&record, DB_PAGESIZE) != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3179,6 +3201,8 @@ catalog_drop_all (THREAD_ENTRY * thread_p, OID * class_id_p)
   if (page_p == NULL)
     {
       recdes_free_data_area (&record);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3707,6 +3731,7 @@ catalog_fixup_missing_disk_representation (THREAD_ENTRY * thread_p,
       disk_repr_p = orc_diskrep_from_record (thread_p, &record);
       if (disk_repr_p == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -3714,6 +3739,8 @@ catalog_fixup_missing_disk_representation (THREAD_ENTRY * thread_p,
 	  (thread_p, class_oid_p, repr_id, disk_repr_p) < 0)
 	{
 	  orc_free_diskrep (disk_repr_p);
+
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       orc_free_diskrep (disk_repr_p);
@@ -3999,6 +4026,8 @@ catalog_fixup_missing_class_info (THREAD_ENTRY * thread_p, OID * class_oid_p)
       if (catalog_add_class_info (thread_p, class_oid_p, &class_info) < 0)
 	{
 	  heap_scancache_end (thread_p, &scan_cache);
+
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
@@ -4149,6 +4178,7 @@ catalog_get_representation_directory (THREAD_ENTRY * thread_p,
 						    PEEK, &oid, &item_count);
   if (page_p == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4157,6 +4187,8 @@ catalog_get_representation_directory (THREAD_ENTRY * thread_p,
   if (*repr_id_set_p == NULL)
     {
       pgbuf_unfix_and_init (thread_p, page_p);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4208,6 +4240,7 @@ catalog_get_last_representation_id (THREAD_ENTRY * thread_p,
 						    PEEK, &oid, &item_count);
   if (page_p == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4254,6 +4287,7 @@ catalog_insert (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
   disk_repr_p = orc_diskrep_from_record (thread_p, record_p);
   if (disk_repr_p == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4261,6 +4295,8 @@ catalog_insert (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
 				  disk_repr_p) < 0)
     {
       orc_free_diskrep (disk_repr_p);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   orc_free_diskrep (disk_repr_p);
@@ -4268,12 +4304,15 @@ catalog_insert (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
   class_info_p = orc_class_info_from_record (record_p);
   if (class_info_p == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
   if (catalog_add_class_info (thread_p, class_oid_p, class_info_p) < 0)
     {
       orc_free_class_info (class_info_p);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   orc_free_class_info (class_info_p);
@@ -4314,12 +4353,14 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
   disk_repr_p = orc_diskrep_from_record (thread_p, record_p);
   if (disk_repr_p == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
   if (catalog_get_last_representation_id (thread_p, class_oid_p,
 					  &current_repr_id) < 0)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4332,6 +4373,8 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
 	  if (er_errid () != ER_SP_UNKNOWN_SLOTID)
 	    {
 	      orc_free_diskrep (disk_repr_p);
+
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	}
@@ -4357,6 +4400,8 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
 				  disk_repr_p) < 0)
     {
       orc_free_diskrep (disk_repr_p);
+
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4374,6 +4419,8 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
 					     class_info_p, false) == NULL)
 		{
 		  catalog_free_class_info (class_info_p);
+
+		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
 		}
 	    }
@@ -4398,6 +4445,7 @@ catalog_delete (THREAD_ENTRY * thread_p, OID * class_oid_p)
   if (catalog_drop_all_representation_and_class (thread_p, class_oid_p) !=
       NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -4994,6 +5042,7 @@ catalog_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -5031,6 +5080,7 @@ catalog_rv_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -5301,6 +5351,7 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
 	  subcls_info = catalog_get_class_info (thread_p, &partitions[i]);
 	  if (subcls_info == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto exit_cleanup;
 	    }
@@ -5319,6 +5370,7 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
 					subcls_repr_id);
 	  if (subcls_disk_rep == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto exit_cleanup;
 	    }
@@ -5516,6 +5568,7 @@ catalog_rv_update (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 
   if (spage_update (thread_p, recv_p->pgptr, slot_id, &record) != SP_SUCCESS)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 

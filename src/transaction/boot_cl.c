@@ -584,6 +584,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 
   if (tran_index == NULL_TRAN_INDEX)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       if (error_code == NO_ERROR)
 	{
@@ -1166,6 +1167,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   if (tran_index == NULL_TRAN_INDEX)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error;
     }
@@ -1173,11 +1175,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 #if defined(CS_MODE)
   if (lang_set_charset (boot_Server_credential.db_charset) != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error;
     }
   if (lang_set_language (boot_Server_credential.db_lang) != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error;
     }
@@ -1186,6 +1190,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   if (db_set_page_size (boot_Server_credential.page_size,
 			boot_Server_credential.log_page_size) != NO_ERROR)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error;
     }
@@ -1277,6 +1282,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	}
       if (transtate != TRAN_ACTIVE)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  goto error;
 	}
@@ -1937,6 +1943,7 @@ boot_define_class (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2045,6 +2052,7 @@ boot_define_attribute (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2151,6 +2159,7 @@ boot_define_domain (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2235,6 +2244,7 @@ boot_define_method (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2312,6 +2322,7 @@ boot_define_meth_sig (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2383,6 +2394,7 @@ boot_define_meth_argument (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2445,6 +2457,7 @@ boot_define_meth_file (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2501,6 +2514,7 @@ boot_define_query_spec (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2609,6 +2623,7 @@ boot_define_index (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2639,6 +2654,7 @@ boot_define_index_key (MOP class_mop)
   def = smt_edit_class_mop (class_mop, AU_ALTER);
   if (def == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2777,6 +2793,7 @@ boot_define_class_authorization (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2851,6 +2868,7 @@ boot_define_partition (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -2901,6 +2919,7 @@ boot_add_data_type (MOP class_mop)
 	  obj = db_create_internal (class_mop);
 	  if (obj == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 
@@ -2951,6 +2970,7 @@ boot_define_data_type (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3051,6 +3071,7 @@ boot_define_stored_procedure (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3125,6 +3146,7 @@ boot_define_stored_procedure_arguments (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3305,6 +3327,7 @@ boot_define_serial (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3543,6 +3566,7 @@ boot_define_ha_apply_info (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3598,6 +3622,7 @@ boot_add_collations (MOP class_mop)
       obj = db_create_internal (class_mop);
       if (obj == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -3716,6 +3741,7 @@ boot_define_collations (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3767,6 +3793,7 @@ boot_add_charsets (MOP class_mop)
       obj = db_create_internal (class_mop);
       if (obj == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -3844,6 +3871,7 @@ boot_define_charsets (MOP class_mop)
 
   if (locator_has_heap (class_mop) == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -3905,6 +3933,7 @@ catcls_class_install (void)
       class_mop[i] = db_create_class (clist[i].name);
       if (class_mop[i] == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  goto end;
 	}
@@ -3915,6 +3944,7 @@ catcls_class_install (void)
       error_code = ((DEF_CLASS_FUNCTION) (clist[i].function)) (class_mop[i]);
       if (error_code != NO_ERROR)
 	{
+	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  goto end;
 	}
@@ -3953,6 +3983,7 @@ boot_define_view_class (void)
   class_mop = db_create_vclass (CTV_CLASS_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -4039,6 +4070,7 @@ boot_define_view_super_class (void)
   class_mop = db_create_vclass (CTV_SUPER_CLASS_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -4114,6 +4146,7 @@ boot_define_view_vclass (void)
   class_mop = db_create_vclass (CTV_VCLASS_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -4200,6 +4233,7 @@ boot_define_view_attribute (void)
   class_mop = db_create_vclass (CTV_ATTRIBUTE_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -4300,6 +4334,7 @@ boot_define_view_attribute_set_domain (void)
   class_mop = db_create_vclass (CTV_ATTR_SD_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -4385,6 +4420,7 @@ boot_define_view_method (void)
   class_mop = db_create_vclass (CTV_METHOD_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -4471,6 +4507,7 @@ boot_define_view_method_argument (void)
   class_mop = db_create_vclass (CTV_METHARG_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -4563,6 +4600,7 @@ boot_define_view_method_argument_set_domain (void)
   class_mop = db_create_vclass (CTV_METHARG_SD_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -4646,6 +4684,7 @@ boot_define_view_method_file (void)
   class_mop = db_create_vclass (CTV_METHFILE_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -4728,6 +4767,7 @@ boot_define_view_index (void)
   class_mop = db_create_vclass (CTV_INDEX_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -4814,6 +4854,7 @@ boot_define_view_index_key (void)
   class_mop = db_create_vclass (CTV_INDEXKEY_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -4898,6 +4939,7 @@ boot_define_view_authorization (void)
   class_mop = db_create_vclass (CTV_AUTH_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -4979,6 +5021,7 @@ boot_define_view_trigger (void)
   class_mop = db_create_vclass (CTV_TRIGGER_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -5062,6 +5105,7 @@ boot_define_view_partition (void)
   class_mop = db_create_vclass (CTV_PARTITION_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -5149,6 +5193,7 @@ boot_define_view_stored_procedure (void)
   class_mop = db_create_vclass (CTV_STORED_PROC_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -5226,6 +5271,7 @@ boot_define_view_stored_procedure_arguments (void)
   class_mop = db_create_vclass (CTV_STORED_PROC_ARGS_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -5303,6 +5349,7 @@ boot_define_view_db_collation (void)
   class_mop = db_create_vclass (CTV_DB_COLLATION_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }
@@ -5389,6 +5436,7 @@ boot_define_view_db_charset (void)
   class_mop = db_create_vclass (CTV_DB_CHARSET_NAME);
   if (class_mop == NULL)
     {
+      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       return error_code;
     }

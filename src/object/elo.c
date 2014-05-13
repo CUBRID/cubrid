@@ -707,6 +707,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 	  meta_data = db_private_strdup (NULL, elo->meta_data);
 	  if (meta_data == NULL)
 	    {
+	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	}
@@ -747,6 +748,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		locator = db_private_strdup (NULL, out_uri);
 		if (locator == NULL)
 		  {
+		    assert (er_errid () != NO_ERROR);
 		    ret = er_errid ();
 		    goto error_return;
 		  }
@@ -764,6 +766,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		locator = db_private_strdup (NULL, elo->locator);
 		if (locator == NULL)
 		  {
+		    assert (er_errid () != NO_ERROR);
 		    ret = er_errid ();
 		    goto error_return;
 		  }
@@ -798,6 +801,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 	      break;
 
 	    case LOB_UNKNOWN:
+	      assert (er_errid () != NO_ERROR);
 	      ret = er_errid ();
 	      goto error_return;
 
@@ -892,6 +896,7 @@ elo_delete (DB_ELO * elo, bool force_delete)
 	      break;
 
 	    case LOB_UNKNOWN:
+	      assert (er_errid () != NO_ERROR);
 	      ret = er_errid ();
 	      break;
 
