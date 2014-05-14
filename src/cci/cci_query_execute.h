@@ -260,9 +260,9 @@
 #else
 #define ADD_ARG_BIND_STR(BUF, STR, SIZE, CHARSET) \
 	do { \
-	  net_buf_cp_int (net_buf, size); \
-	  net_buf_cp_str (net_buf, (char*) value, size - 1); \
-	  net_buf_cp_byte (net_buf, '\0'); \
+	  net_buf_cp_int (BUF, SIZE); \
+	  net_buf_cp_str (BUF, (char*) STR, SIZE - 1); \
+	  net_buf_cp_byte (BUF, '\0'); \
 	} while (0)
 #endif
 
