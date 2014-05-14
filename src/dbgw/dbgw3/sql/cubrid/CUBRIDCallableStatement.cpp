@@ -498,6 +498,7 @@ namespace dbgw
 
     void CUBRIDCallableStatement::doClose()
     {
+      clearParameters();
       m_baseStatement.close();
     }
 

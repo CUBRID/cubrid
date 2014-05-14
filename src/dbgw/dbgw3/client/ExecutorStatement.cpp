@@ -63,6 +63,14 @@ namespace dbgw
 
   _ExecutorStatement::~_ExecutorStatement()
   {
+    if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+      {
+        m_pCallableStatement->close();
+      }
+    else
+      {
+        m_pStatement->close();
+      }
   }
 
   void _ExecutorStatement::init(const trait<_BoundQuery>::sp pQuery)
