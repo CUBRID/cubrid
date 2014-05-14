@@ -160,7 +160,8 @@ css_client_init (int sockid, const char *server_name, const char *host_name)
     }
   else
     {
-      assert (er_errid () != NO_ERROR);
+      /* At here, er_errid () can be NO_ERROR
+       */
       error = er_errid ();
     }
 
