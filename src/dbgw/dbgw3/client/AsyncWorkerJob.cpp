@@ -143,6 +143,7 @@ namespace dbgw
       if (m_status == DBGW_ASYNC_JOB_STATUS_BUSY)
         {
           m_status = DBGW_ASYNC_JOB_STATUS_DONE;
+          lock.unlock();
 
           notify(pJobResult);
         }
@@ -155,6 +156,7 @@ namespace dbgw
       if (m_status == DBGW_ASYNC_JOB_STATUS_BUSY)
         {
           m_status = DBGW_ASYNC_JOB_STATUS_CANCEL;
+          lock.unlock();
 
           ExecuteTimeoutExecption e(m_pWaiter->getTimeOutMilSec());
           DBGW_LOG_ERROR(e.what());
@@ -240,6 +242,9 @@ namespace dbgw
   private:
     void notify(trait<_AsyncWorkerJobResult>::sp pJobResult)
     {
+      m_pWaiter->bindJobResult(pJobResult);
+      m_pWaiter->notify();
+
       if (m_status == DBGW_ASYNC_JOB_STATUS_DONE)
         {
           if (m_pWorker != NULL)
@@ -269,9 +274,6 @@ namespace dbgw
             }
         }
 
-      m_pWaiter->bindJobResult(pJobResult);
-
-      m_pWaiter->notify();
       m_pExecHandler.reset();
     }
 
