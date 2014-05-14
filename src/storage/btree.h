@@ -64,9 +64,7 @@
 #define BTREE_GOTO_LOCKING_DONE		   -7
 #define BTREE_RESTART_SCAN                 -8
 
-#if defined(SERVER_MODE)
 #define BTREE_CLASS_LOCK_MAP_MAX_COUNT     10
-#endif /* SERVER_MODE */
 
 typedef enum
 {
@@ -132,14 +130,12 @@ struct btree_keyrange
   int num_index_term;
 };
 
-#if defined(SERVER_MODE)
 typedef struct btree_class_lock_map_entry BTREE_CLASS_LOCK_MAP_ENTRY;
 struct btree_class_lock_map_entry
 {
   OID oid;			/* class OID */
   LK_ENTRY *lock_ptr;		/* memory address to class lock */
 };
-#endif /* SERVER_MODE */
 
 /* Btree range search scan structure */
 typedef struct btree_scan BTREE_SCAN;	/* BTS */
@@ -176,7 +172,6 @@ struct btree_scan
 
   int common_prefix;
 
-#if defined(SERVER_MODE)
   OID cls_oid;			/* class OID */
 
   /*
@@ -214,7 +209,6 @@ struct btree_scan
    * cur_leaf_lsa
    */
   LOG_LSA cur_leaf_lsa;		/* page LSA of current leaf page */
-#endif				/* SERVER_MODE */
 };
 
 #define COMMON_PREFIX_UNKNOWN	(-1)

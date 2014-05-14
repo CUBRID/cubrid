@@ -9450,15 +9450,15 @@ loop:
       /* wait until checkpoint process is finished */
 
       /* interrupt check */
-#if defined(SERVER_MODE)
       if (thread_get_check_interrupt (thread_p) == true)
-#endif /* SERVER_MODE */
-	if (logtb_is_interrupted (thread_p, true, &continue_check) == true)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	    error_code = ER_INTERRUPTED;
-	    goto error;
-	  }
+	{
+	  if (logtb_is_interrupted (thread_p, true, &continue_check) == true)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      error_code = ER_INTERRUPTED;
+	      goto error;
+	    }
+	}
 
       thread_sleep (1000);	/* 1000 msec */
       goto loop;

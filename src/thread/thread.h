@@ -46,6 +46,11 @@ extern int thread_Recursion_depth;
 #define thread_num_worker_threads()  (1)
 #define thread_num_total_threads()   (1)
 #define thread_get_current_session_id() (db_Session_id)
+#define thread_set_check_interrupt(thread_p, flag) (true)
+#define thread_get_check_interrupt(thread_p) (true)
+#define thread_set_check_page_validation(thread_p, flag) (true)
+#define thread_get_check_page_validation(thread_p) (true)
+
 #define thread_trace_on(thread_p)
 #define thread_set_trace_format(thread_p, format)
 #define thread_is_on_trace(thread_p) (false)
@@ -70,8 +75,6 @@ typedef void THREAD_ENTRY;
 #define thread_rc_track_amount_qlist(thread_p) (0)
 #define thread_rc_track_dump_all(thread_p, outfp)
 #define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
-#define thread_get_sort_stats_active(thread_p) (false)
-#define thread_set_sort_stats_active(thread_p, flag)
 
 #else /* !SERVER_MODE */
 

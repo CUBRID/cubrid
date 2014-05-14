@@ -1890,9 +1890,9 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
 #define SORT_PARTITION_RUN_SIZE_MIN (ONE_M)
 
   int ret = NO_ERROR;
-#if defined(SERVER_MODE)
   bool old_check_interrupt;
 
+#if defined(SERVER_MODE)
   int parent;
   int child_right = 0;
   int child_height;
@@ -1938,9 +1938,9 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
 
   pthread_mutex_unlock (&(sort_param->px_mtx));
 #endif
+#endif /* SERVER_MODE */
 
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
-#endif /* SERVER_MODE */
 
   buff = px_node->px_buff;
   vector = px_node->px_vector;
@@ -2293,9 +2293,9 @@ exit_on_end:
 
       pthread_mutex_unlock (&(sort_param->px_mtx));
     }
+#endif /* SERVER_MODE */
 
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
-#endif /* SERVER_MODE */
 
   return ret;
 

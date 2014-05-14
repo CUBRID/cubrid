@@ -1127,21 +1127,15 @@ pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p,
 				    const char *caller_file, int caller_line)
 {
   PAGE_PTR pgptr;
-#if defined(SERVER_MODE)
   bool old_check_page_validation;
-#endif
 
-#if defined(SERVER_MODE)
   old_check_page_validation = thread_set_check_page_validation (thread_p,
 								false);
-#endif /* SERVER_MODE */
 
   pgptr = pgbuf_fix_debug (thread_p, vpid, newpg, request_mode, condition,
 			   caller_file, caller_line);
 
-#if defined(SERVER_MODE)
   thread_set_check_page_validation (thread_p, old_check_page_validation);
-#endif /* SERVER_MODE */
 
   return pgptr;
 }
@@ -1155,16 +1149,12 @@ pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p,
   PAGE_PTR pgptr;
   bool old_check_page_validation;
 
-#if defined(SERVER_MODE)
-  old_check_page_validation = thread_set_check_page_validation (thread_p,
-								false);
-#endif /* SERVER_MODE */
+  old_check_page_validation =
+    thread_set_check_page_validation (thread_p, false);
 
   pgptr = pgbuf_fix_release (thread_p, vpid, newpg, request_mode, condition);
 
-#if defined(SERVER_MODE)
   thread_set_check_page_validation (thread_p, old_check_page_validation);
-#endif /* SERVER_MODE */
 
   return pgptr;
 }
@@ -1243,9 +1233,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, int newpg,
 try_again:
 
   /* interrupt check */
-#if defined(SERVER_MODE)
   if (thread_get_check_interrupt (thread_p) == true)
-#endif /* SERVER_MODE */
     {
       if (logtb_is_interrupted (thread_p, true,
 				&pgbuf_Pool.check_for_interrupts) == true)
@@ -6177,9 +6165,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	}
 
       /* interrupt check */
-#if defined(SERVER_MODE)
       if (thread_get_check_interrupt (thread_p) == true)
-#endif /* SERVER_MODE */
 	{
 	  if (logtb_is_interrupted (thread_p, true,
 				    &pgbuf_Pool.check_for_interrupts) == true)
@@ -7815,9 +7801,7 @@ pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p,
   if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >=
       page_validation_level)
     {
-#if defined(SERVER_MODE)
       if (thread_get_check_page_validation (thread_p) == true)
-#endif /* SERVER_MODE */
 	{
 	  return true;
 	}
@@ -8321,9 +8305,8 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
   else
     {
       if (bufptr->fcnt <= 0
-	  &&
-	  (pgbuf_get_check_page_validation
-	   (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL)))
+	  && pgbuf_get_check_page_validation (NULL,
+					      PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	{
 	  int i;
 	  /* The page should be scrambled, otherwise some one step on it */

@@ -3743,11 +3743,17 @@ static QO_PLAN *
 qo_plan_order_by (QO_PLAN * plan, QO_EQCLASS * order)
 {
   if (plan == NULL || order == QO_UNORDERED || plan->order == order)
-    return plan;
+    {
+      return plan;
+    }
   else if (BITSET_MEMBER ((plan->info)->eqclasses, QO_EQCLASS_IDX (order)))
-    return qo_sort_new (plan, order, SORT_TEMP);
+    {
+      return qo_sort_new (plan, order, SORT_TEMP);
+    }
   else
-    return (QO_PLAN *) NULL;
+    {
+      return (QO_PLAN *) NULL;
+    }
 }
 
 /*

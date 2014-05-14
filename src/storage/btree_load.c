@@ -1123,6 +1123,8 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
 	  goto exit_on_error;
 	}
 
+      assert (slotid > 0);
+
       /* Save the current overflow page */
       btree_log_page (thread_p, &load_args->btid->sys_btid->vfid,
 		      load_args->ovf.pgptr);
@@ -1171,6 +1173,8 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
 	{
 	  goto exit_on_error;
 	}
+
+      assert (slotid > 0);
 
       /* Update the node header information for this record */
       if (load_args->cur_key_len >= BTREE_MAX_KEYLEN_INPAGE)
@@ -1339,6 +1343,8 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
       return NULL;
     }
 
+  assert (slotid > 0);
+
   /* Update the node header information for this record */
   if (load_args->nleaf.hdr.max_key_len < max_key_len)
     {
@@ -1469,6 +1475,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 				     PAGE_BTREE);
 
       key_cnt = btree_node_number_of_keys (load_args->leaf.pgptr);
+      assert (key_cnt > 0);
 
       /* obtain the header information for the leaf page */
       header = btree_get_node_header (load_args->leaf.pgptr);
@@ -1546,6 +1553,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	  btree_clear_key_value (&clear_last_key, &last_key);
 
 	  /* Learn the last key of the leaf page */
+	  assert (key_cnt > 0);
 	  if (spage_get_record (load_args->leaf.pgptr, key_cnt,
 				&temp_recdes, PEEK) != S_SUCCESS)
 	    {
@@ -2200,6 +2208,7 @@ static int
 btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		       void *arg)
 {
+  int ret = NO_ERROR;
   LOAD_ARGS *load_args;
   DB_VALUE this_key;		/* Key value in this sorted item
 				   (specified with in_recdes) */
@@ -2375,6 +2384,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 			  goto error;
 			}
 
+		      assert (slotid > 0);
+
 		      /* Allocate the new overflow page */
 		      new_ovfpgptr =
 			btree_get_page (thread_p, load_args->btid->sys_btid,
@@ -2456,6 +2467,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 			  goto error;
 			}
 
+		      assert (slotid > 0);
+
 		      /* Update the node header information for this record */
 		      if (load_args->cur_key_len >= BTREE_MAX_KEYLEN_INPAGE)
 			{
@@ -2530,6 +2543,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		      goto error;
 		    }
 
+		  assert (slotid > 0);
+
 		  /* Update the node header information for this record */
 		  if (load_args->cur_key_len >= BTREE_MAX_KEYLEN_INPAGE)
 		    {
@@ -2561,6 +2576,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		    {
 		      goto error;
 		    }
+
+		  assert (slotid > 0);
 
 		  /* Save the current overflow page */
 		  btree_log_page (thread_p, &load_args->btid->sys_btid->vfid,
@@ -2602,7 +2619,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 
     }
 
-  return NO_ERROR;
+  assert (ret == NO_ERROR);
+  return ret;
 
 error:
   if (load_args->leaf.pgptr)
@@ -2619,7 +2637,9 @@ error:
     }
   btree_clear_key_value (&copy, &this_key);
 
-  return er_errid ();
+  assert (er_errid () != NO_ERROR);
+  return (ret == NO_ERROR
+	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 #if defined(CUBRID_DEBUG)

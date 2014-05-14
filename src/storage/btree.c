@@ -203,7 +203,6 @@ struct btree_range_search_helper
   BTREE_NODE_TYPE node_type;	/* Current node type: leaf or overflow */
   bool iss_get_first_result_only;	/* Index skip scan special case */
   bool restart_on_first;	/* restart after first OID */
-#if defined(SERVER_MODE)
   int CLS_satisfied;		/* All conditions are satisfied */
   OID saved_class_oid;		/* Saved class identifier */
   OID saved_inst_oid;		/* Saved object identifier */
@@ -222,13 +221,12 @@ struct btree_range_search_helper
   OID nk_pseudo_oid;		/* Next key pseudo identifier */
   OID saved_nk_pseudo_oid;	/* Saved next key pseudo identifier */
   OID saved_nk_class_oid;	/* Saved class oid for next key */
-  LOCK lock_mode;		/* Lock mode */
+
   bool end_of_leaf_level;	/* True if end of leaf level was reached */
   bool curr_key_locked;		/* Is current key locked */
   bool next_key_locked;		/* Is next key locked */
   bool current_lock_request;	/* Current key needs locking */
   bool read_prev_key;		/* Previous key is read */
-#endif				/* SERVER_MODE */
 };
 
 typedef struct show_index_scan_ctx SHOW_INDEX_SCAN_CTX;
@@ -426,7 +424,6 @@ static int btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p,
 static int btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 				FILTER_INFO * filter, OID * oid,
 				INDX_SCAN_ID * iscan_id);
-#if defined(SERVER_MODE)
 #if 0				/* TODO: currently, unused */
 static int btree_get_prev_keyvalue (BTREE_SCAN * bts,
 				    DB_VALUE * prev_key, int *prev_clr_key);
@@ -459,7 +456,6 @@ static int btree_lock_next_key (THREAD_ENTRY * thread_p,
 				DB_VALUE * prev_key,
 				OID * nk_pseudo_oid,
 				OID * saved_nk_class_oid, int *which_action);
-#endif /* SERVER_MODE */
 static void btree_make_pseudo_oid (int p, short s, short v, BTID * btid,
 				   OID * oid);
 static int btree_rv_save_keyval (BTID_INT * btid, DB_VALUE * key,
@@ -740,6 +736,8 @@ static SCAN_CODE btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p,
 						     const char *class_name,
 						     const char *index_name,
 						     BTID * btid_p);
+static bool btree_leaf_lsa_eq (THREAD_ENTRY * thread_p, LOG_LSA * a,
+			       LOG_LSA * b);
 
 #if !defined(NDEBUG)
 static int btree_get_node_level (PAGE_PTR page_ptr);
@@ -750,7 +748,6 @@ static void random_exit (THREAD_ENTRY * thread_p);
 #define RANDOM_EXIT(a)
 #endif
 
-#if defined(SERVER_MODE)
 static int btree_range_search_handle_previous_locks (THREAD_ENTRY * thread_p,
 						     BTREE_SCAN * bts,
 						     BTREE_RANGE_SEARCH_HELPER
@@ -776,7 +773,6 @@ static int btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p,
 					       int scan_op_type,
 					       int oid_index,
 					       int *which_action);
-#endif /* SERVER_MODE */
 
 #if !defined(NDEBUG)
 /*
@@ -9051,7 +9047,8 @@ btree_delete_lock_curr_key_next_pseudo_oid (THREAD_ENTRY * thread_p,
 	  goto end;
 	}
 
-      if (!LSA_EQ (&cur_leaf_lsa, pgbuf_get_lsa (*P_page)))
+      if (!btree_leaf_lsa_eq (thread_p,
+			      &cur_leaf_lsa, pgbuf_get_lsa (*P_page)))
 	{
 	  /* current page changed during unconditional lock request
 	   * the page where the key reside must be searched again
@@ -9273,9 +9270,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   int ret_val, oid_size, curr_key_oids_cnt;
   LOG_LSA saved_plsa, saved_nlsa;
   LOG_LSA *temp_lsa;
-#if defined(SERVER_MODE)
   bool old_check_interrupt;
-#endif /* SERVER_MODE */
 
   /* for locking */
   bool is_active;
@@ -9306,9 +9301,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   bool merged, is_q_empty, is_r_empty, is_l_empty, key_deleted;
   BTREE_MERGE_STATUS merge_status;
 
-#if defined(SERVER_MODE)
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
-#endif /* SERVER_MODE */
 
   is_active = logtb_is_current_active (thread_p);
   tran_isolation = logtb_find_current_isolation (thread_p);
@@ -9408,9 +9401,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
       mnt_bt_deletes (thread_p);
 
-#if defined(SERVER_MODE)
       (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
-#endif /* SERVER_MODE */
 
 #if !defined(NDEBUG)
       if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) &
@@ -9852,10 +9843,8 @@ start_point:
 		  pgbuf_unfix_and_init (thread_p, Q);
 		  pgbuf_unfix_and_init (thread_p, Right);
 
-#if defined(SERVER_MODE)
 		  (void) thread_set_check_interrupt (thread_p,
 						     old_check_interrupt);
-#endif /* SERVER_MODE */
 
 		  return NULL;
 		}
@@ -9989,10 +9978,8 @@ start_point:
 		  pgbuf_unfix_and_init (thread_p, Q);
 		  pgbuf_unfix_and_init (thread_p, Left);
 
-#if defined(SERVER_MODE)
 		  (void) thread_set_check_interrupt (thread_p,
 						     old_check_interrupt);
-#endif /* SERVER_MODE */
 
 		  return NULL;
 		}
@@ -10324,7 +10311,7 @@ start_point:
 	}
 
       temp_lsa = pgbuf_get_lsa (P);
-      if (!LSA_EQ (&saved_plsa, temp_lsa))
+      if (!btree_leaf_lsa_eq (thread_p, &saved_plsa, temp_lsa))
 	{
 	  pgbuf_unfix_and_init (thread_p, P);
 	  next_page_flag = false;
@@ -10345,7 +10332,7 @@ start_point:
 	    }
 
 	  temp_lsa = pgbuf_get_lsa (N);
-	  if (!LSA_EQ (&saved_nlsa, temp_lsa))
+	  if (!btree_leaf_lsa_eq (thread_p, &saved_nlsa, temp_lsa))
 	    {
 	      pgbuf_unfix_and_init (thread_p, P);
 	      pgbuf_unfix_and_init (thread_p, N);
@@ -10494,7 +10481,7 @@ curr_key_locking:
 	}
 
       temp_lsa = pgbuf_get_lsa (P);
-      if (!LSA_EQ (&saved_plsa, temp_lsa))
+      if (!btree_leaf_lsa_eq (thread_p, &saved_plsa, temp_lsa))
 	{
 	  pgbuf_unfix_and_init (thread_p, P);
 	  goto start_point;
@@ -10597,9 +10584,7 @@ key_deletion:
 
   mnt_bt_deletes (thread_p);
 
-#if defined(SERVER_MODE)
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
-#endif /* SERVER_MODE */
 
 #if !defined(NDEBUG)
   if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_FULL)
@@ -10660,9 +10645,7 @@ error:
       pgbuf_unfix_and_init (thread_p, Right);
     }
 
-#if defined(SERVER_MODE)
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
-#endif /* SERVER_MODE */
 
   return NULL;
 }
@@ -14309,14 +14292,10 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   KEY_LOCK_ESCALATION curr_key_lock_escalation = NO_KEY_LOCK_ESCALATION;
   BTREE_SCAN tmp_bts;
   bool is_last_key;
-#if defined(SERVER_MODE)
   bool old_check_interrupt;
-#endif /* SERVER_MODE */
   int retry_btree_no_space = 0;
 
-#if defined(SERVER_MODE)
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
-#endif /* SERVER_MODE */
 
   copy_rec.data = NULL;
   copy_rec1.data = NULL;
@@ -14472,9 +14451,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
       mnt_bt_inserts (thread_p);
 
-#if defined(SERVER_MODE)
       (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
-#endif /* SERVER_MODE */
 
 #if !defined(NDEBUG)
       if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) &
@@ -15222,7 +15199,7 @@ start_point:
 	}
 
       temp_lsa = pgbuf_get_lsa (P);
-      if (!LSA_EQ (&saved_plsa, temp_lsa))
+      if (!btree_leaf_lsa_eq (thread_p, &saved_plsa, temp_lsa))
 	{
 	  pgbuf_unfix_and_init (thread_p, P);
 	  next_page_flag = false;
@@ -15246,7 +15223,7 @@ start_point:
 	    }
 
 	  temp_lsa = pgbuf_get_lsa (N);
-	  if (!LSA_EQ (&saved_nlsa, temp_lsa))
+	  if (!btree_leaf_lsa_eq (thread_p, &saved_nlsa, temp_lsa))
 	    {
 	      pgbuf_unfix_and_init (thread_p, P);
 	      pgbuf_unfix_and_init (thread_p, N);
@@ -15367,7 +15344,9 @@ curr_key_locking:
   current_lock = ((!BTREE_IS_UNIQUE (btid_int.unique_pk) && key_found) ||
 		  (next_key_granted_mode != S_LOCK &&
 		   next_key_granted_mode != NX_LOCK)) ? NS_LOCK : NX_LOCK;
+
 curr_key_lock_promote:
+
   if (current_lock == NX_LOCK)
     {
       /* lock state replication via next key locking */
@@ -15489,7 +15468,7 @@ curr_key_lock_promote:
 	}
 
       temp_lsa = pgbuf_get_lsa (P);
-      if (!LSA_EQ (&saved_plsa, temp_lsa))
+      if (!btree_leaf_lsa_eq (thread_p, &saved_plsa, temp_lsa))
 	{
 	  pgbuf_unfix_and_init (thread_p, P);
 
@@ -15674,9 +15653,7 @@ key_insertion:
 
   mnt_bt_inserts (thread_p);
 
-#if defined(SERVER_MODE)
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
-#endif /* SERVER_MODE */
 
 #if !defined(NDEBUG)
   if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_FULL)
@@ -15724,9 +15701,7 @@ error:
       lock_remove_object_lock (thread_p, &C_oid, &C_class_oid, current_lock);
     }
 
-#if defined(SERVER_MODE)
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
-#endif /* SERVER_MODE */
 
   return NULL;
 }
@@ -17184,14 +17159,12 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   /* initialize key fileter */
   bts->key_filter = filter;	/* valid pointer or NULL */
 
-#if defined(SERVER_MODE)
   bts->key_range_max_value_equal = false;
 
   /* cache class OID and memory address to class lock mode */
   if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
     {
       OID_SET_NULL (&bts->cls_oid);
-      bts->cls_lock_ptr = NULL;
     }
   else
     {				/* non-unique index */
@@ -17208,33 +17181,9 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	{
 	  COPY_OID (&bts->cls_oid, class_oid);
 	}
-
-      if (OID_ISNULL (&bts->cls_oid))
-	{
-	  bts->cls_lock_ptr = NULL;
-	}
-      else
-	{
-	  int tran_index;
-
-	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-	  bts->cls_lock_ptr = lock_get_class_lock (&bts->cls_oid, tran_index);
-	  if (bts->cls_lock_ptr == NULL)
-	    {
-	      /*
-	       * The corresponding class lock must be acquired
-	       * before an index scan is requested.
-	       */
-	      er_log_debug (ARG_FILE_LINE,
-			    "bts->cls_lock_ptr == NULL in btree_initialize_bts()\n"
-			    "bts->cls_oid = <%d,%d,%d>\n",
-			    bts->cls_oid.volid, bts->cls_oid.pageid,
-			    bts->cls_oid.slotid);
-	      goto exit_on_error;
-	    }
-	}
     }
+
+  bts->cls_lock_ptr = NULL;
 
   /* initialize bts->class_lock_map_count */
   bts->class_lock_map_count = 0;
@@ -17260,7 +17209,6 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
   VPID_SET_NULL (&(bts->prev_ovfl_vpid));
   bts->prev_KF_satisfied = false;
-#endif /* SERVER_MODE */
 
   bts->read_keys = 0;
   bts->qualified_keys = 0;
@@ -17871,11 +17819,9 @@ exit_on_error:
 static int
 btree_prepare_next_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
-#if defined(SERVER_MODE)
   bool found;
   int key_cnt;
   RECDES rec;
-#endif /* SERVER_MODE */
   int ret = NO_ERROR;
 #if !defined(NDEBUG)
   BTREE_NODE_HEADER *header = NULL;
@@ -17899,9 +17845,9 @@ btree_prepare_next_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       goto exit_on_error;
     }
 
-#if defined(SERVER_MODE)
   /* check if the current leaf page has been changed */
-  if (!LSA_EQ (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page)))
+  if (!btree_leaf_lsa_eq (thread_p,
+			  &bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page)))
     {
       /*
        * The current leaf page has been changed.
@@ -17999,7 +17945,6 @@ btree_prepare_next_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	}
       /* if found, everything is OK. */
     }
-#endif /* SERVER_MODE */
 
   assert (bts->slot_id > 0);
   assert (bts->C_page != NULL);
@@ -18070,9 +18015,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   int ret = NO_ERROR;
 
   *is_key_range_satisfied = *is_key_filter_satisfied = false;
-#if defined(SERVER_MODE)
   bts->key_range_max_value_equal = false;	/* init as false */
-#endif /* SERVER_MODE */
 
   /* Key Range Checking */
   if (bts->key_range.upper_key == NULL)
@@ -18108,9 +18051,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	  || bts->key_range.range == GE_LE || bts->key_range.range == INF_LE)
 	{
 	  *is_key_range_satisfied = true;
-#if defined(SERVER_MODE)
 	  bts->key_range_max_value_equal = true;
-#endif /* SERVER_MODE */
 	}
       else
 	{
@@ -18413,7 +18354,6 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   return NO_ERROR;
 }
 
-#if defined(SERVER_MODE)
 /*
  * btree_handle_prev_leaf_after_locking () -
  *      The handling after unconditional instance locking
@@ -18447,23 +18387,24 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
   BTREE_NODE_HEADER *header = NULL;
 #endif
 
+#if !defined (SERVER_MODE)
+  assert_release (false);
+#endif
+
   /*
    * Following conditions are satisfied.
    * 1. The second argument, oid_idx, is always 0(zero).
    * 2. VPID_ISNULL (&(bts->O_vpid))
    */
 
-#if defined(SERVER_MODE)
-  old_check_page_validation = thread_set_check_page_validation (thread_p,
-								false);
-#endif /* SERVER_MODE */
+  old_check_page_validation =
+    thread_set_check_page_validation (thread_p, false);
 
   /* fix the previous leaf page */
   bts->P_page = pgbuf_fix (thread_p, &bts->P_vpid, OLD_PAGE,
 			   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-#if defined(SERVER_MODE)
+
   thread_set_check_page_validation (thread_p, old_check_page_validation);
-#endif /* SERVER_MODE */
 
   if (bts->P_page == NULL)
     {
@@ -18471,7 +18412,8 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
     }
 
   /* check if the previous leaf page has been changed */
-  if (LSA_EQ (prev_leaf_lsa, pgbuf_get_lsa (bts->P_page)))
+  if (btree_leaf_lsa_eq (thread_p,
+			 prev_leaf_lsa, pgbuf_get_lsa (bts->P_page)))
     {
       /*
        * The previous leaf page has not been changed
@@ -18565,7 +18507,8 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
 	  goto exit_on_error;
 	}
 
-      if (LSA_EQ (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page)))
+      if (btree_leaf_lsa_eq (thread_p,
+			     &bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page)))
 	{
 	  /*
 	   * The last instance locking is performed correctly.
@@ -18709,28 +18652,32 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
   int ret = NO_ERROR;
   bool old_check_page_validation;
 
+#if !defined (SERVER_MODE)
+  assert_release (false);
+#endif
+
   /*
    * Following conditions are satisfied.
    * 1. VPID_ISNULL (&(bts->P_vpid))
    */
 
-#if defined(SERVER_MODE)
-  old_check_page_validation = thread_set_check_page_validation (thread_p,
-								false);
-#endif /* SERVER_MODE */
+  old_check_page_validation =
+    thread_set_check_page_validation (thread_p, false);
+
   /* fix the current leaf page again */
   bts->C_page = pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE,
 			   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-#if defined(SERVER_MODE)
+
   thread_set_check_page_validation (thread_p, old_check_page_validation);
-#endif /* SERVER_MODE */
+
   if (bts->C_page == NULL)
     {
       goto exit_on_error;
     }
 
   /* check if the current leaf page has been changed */
-  if (LSA_EQ (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page)))
+  if (btree_leaf_lsa_eq (thread_p,
+			 &bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page)))
     {
       /* The current leaf page has not been changed. */
 
@@ -18935,7 +18882,8 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
     }
 
   /* check if the overflow page has been changed */
-  if (LSA_EQ (ovfl_page_lsa, pgbuf_get_lsa (bts->O_page)))
+  if (btree_leaf_lsa_eq (thread_p,
+			 ovfl_page_lsa, pgbuf_get_lsa (bts->O_page)))
     {
       /*
        * The current overflow page has not been changed
@@ -19018,7 +18966,7 @@ exit_on_error:
 
 /*
  * btree_class_lock_escalated () - Check if the class lock has been escalated
- *   return: true if the class has been escalated
+ *   return: true if the class has been escalated, or if this is not SERVER_MODE
  *   thread_p(in):
  *   bts(in): the btree scan
  *   class_oid(in): the class OID
@@ -19028,25 +18976,46 @@ static bool
 btree_class_lock_escalated (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 			    OID * class_oid)
 {
-  int s;
   if (bts == NULL || class_oid == NULL)
     {
       return false;
     }
 
-  if (bts->cls_lock_ptr != NULL)
+  assert (!OID_ISNULL (class_oid));
+
+  if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
     {
+      assert (OID_EQ (class_oid, &bts->cls_oid));
+
+#if defined (SERVER_MODE)
+      assert (bts->cls_lock_ptr != NULL);
+
       if (lock_is_class_lock_escalated (bts->cls_lock_ptr->granted_mode,
-					bts->escalated_mode) == false)
+					bts->escalated_mode))
 	{
-	  return false;
+	  return true;
 	}
+#else /* !SERVER_MODE */
+      assert (bts->cls_lock_ptr == NULL);
+#endif /* !SERVER_MODE */
     }
   else
     {
+#if defined (SERVER_MODE)
+      int s;
+      BTREE_CLASS_LOCK_MAP_ENTRY *lock_map;
+      int tran_index;
+
+      assert (bts->cls_lock_ptr == NULL);
+
       for (s = 0; s < bts->class_lock_map_count; s++)
 	{
-	  if (OID_EQ (class_oid, &bts->class_lock_map[s].oid))
+	  lock_map = &(bts->class_lock_map[s]);
+	  assert (lock_map != NULL);
+
+	  assert (!OID_ISNULL (&(lock_map->oid)));
+	  assert (lock_map->lock_ptr != NULL);
+	  if (OID_EQ (class_oid, &(lock_map->oid)))
 	    {
 	      break;
 	    }
@@ -19055,19 +19024,54 @@ btree_class_lock_escalated (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
       if (s < bts->class_lock_map_count)
 	{
 	  if (lock_is_class_lock_escalated
-	      (bts->class_lock_map[s].lock_ptr->granted_mode,
-	       bts->escalated_mode) == false)
+	      (lock_map->lock_ptr->granted_mode, bts->escalated_mode))
 	    {
-	      return false;
+	      return true;
 	    }
 	}
       else
-	{
-	  return false;
+	{			/* not found */
+	  assert (s == bts->class_lock_map_count);
+
+	  if (s < BTREE_CLASS_LOCK_MAP_MAX_COUNT)
+	    {
+	      lock_map = &(bts->class_lock_map[s]);
+	      assert (lock_map != NULL);
+
+	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+	      lock_map->lock_ptr =
+		lock_get_class_lock (class_oid, tran_index);
+	      if (lock_map->lock_ptr != NULL)
+		{
+		  COPY_OID (&(lock_map->oid), class_oid);
+		  bts->class_lock_map_count++;
+		}
+
+	      if (s < bts->class_lock_map_count)
+		{
+		  assert (OID_EQ (&(lock_map->oid), class_oid));
+		  assert (lock_map->lock_ptr != NULL);
+		  if (lock_is_class_lock_escalated
+		      (lock_map->lock_ptr->granted_mode, bts->escalated_mode))
+		    {
+		      return true;
+		    }
+		}
+	    }
 	}
+#else /* !SERVER_MODE */
+      assert (bts->cls_lock_ptr == NULL);
+#endif /* !SERVER_MODE */
     }
 
-  return true;
+/* At here, class lock has not been escalated */
+
+#if defined (SERVER_MODE)
+  return false;
+#else /* !SERVER_MODE */
+  return true;			/* Always OK */
+#endif /* !SERVER_MODE */
 }
 
 /*
@@ -19106,6 +19110,10 @@ btree_lock_current_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   int ret_val = NO_ERROR, lock_ret;
   OID oid;
   LOG_LSA prev_leaf_lsa, ovfl_page_lsa;
+
+#if !defined (SERVER_MODE)
+  assert_release (false);
+#endif
 
   if (first_key_oid == NULL || OID_ISNULL (first_key_oid)
       || prev_oid_locked_ptr == NULL || prev_key == NULL
@@ -19284,6 +19292,10 @@ btree_lock_next_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   int ret_val = NO_ERROR, lock_ret;
   BTREE_SCAN tmp_bts;
   bool is_last_key;
+
+#if !defined (SERVER_MODE)
+  assert_release (false);
+#endif
 
   /*
    * Assumptions : last accessed leaf page is fixed.
@@ -19516,7 +19528,7 @@ start_locking:
 	}
 
       temp_lsa = pgbuf_get_lsa (next_page);
-      if (!LSA_EQ (&saved_nlsa, temp_lsa))
+      if (!btree_leaf_lsa_eq (thread_p, &saved_nlsa, temp_lsa))
 	{
 	  pgbuf_unfix_and_init (thread_p, next_page);
 	  next_page_flag = false;
@@ -19549,7 +19561,6 @@ error:
 
   goto end;
 }
-#endif /* SERVER_MODE */
 
 /*
  * btree_make_pseudo_oid () - generates a pseudo-OID
@@ -21938,9 +21949,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
   DB_MIDXKEY *new_mkey = NULL;
   DB_VALUE *new_key_value = NULL;
   int error = NO_ERROR, i = 0;
-#if defined(SERVER_MODE)
-  bool use_unlocking;
-#endif
+  bool use_unlocking = false;
 
   assert (multi_range_opt->use == true);
 
@@ -21982,13 +21991,13 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 	}
     }
 
-#if defined(SERVER_MODE)
-  use_unlocking = (bts->read_uncommitted == false
-		   || ((bts->cls_lock_ptr != NULL)
-		       && (lock_is_class_lock_escalated
-			   (bts->cls_lock_ptr->granted_mode,
-			    bts->escalated_mode) == false)));
-#endif
+  use_unlocking = false;
+  if (bts->read_uncommitted == false
+      || (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk)
+	  && !btree_class_lock_escalated (thread_p, bts, &bts->cls_oid)))
+    {
+      use_unlocking = true;
+    }
 
   if (multi_range_opt->cnt == multi_range_opt->size)
     {
@@ -22037,7 +22046,6 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 	  /* do not add */
 	  *key_added = false;
 
-#if defined(SERVER_MODE)
 	  if (use_unlocking && class_oid != NULL && !OID_ISNULL (class_oid))
 	    {
 	      /* this instance OID is rejected : unlock it */
@@ -22058,7 +22066,6 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 					   class_oid, bts->key_lock_mode);
 		}
 	    }
-#endif
 
 	  if (new_key_value != NULL)
 	    {
@@ -22068,7 +22075,6 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 	  return NO_ERROR;
 	}
 
-#if defined(SERVER_MODE)
       if (use_unlocking && !OID_ISNULL (&(last_item->class_oid)))
 	{
 	  /* unlock the instance OID which is overwritten */
@@ -22093,7 +22099,6 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 				       bts->key_lock_mode);
 	    }
 	}
-#endif
 
       /* overwrite the last item with the new key and OIDs */
       db_value_clear (&(last_item->index_value));
@@ -22104,7 +22109,6 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
       OID_SET_NULL (&(last_item->nk_ps_oid));
       OID_SET_NULL (&(last_item->class_oid));
 
-#if defined(SERVER_MODE)
       /* save current & next key pseudo-OID */
       if (use_unlocking)
 	{
@@ -22121,7 +22125,6 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 	      COPY_OID (&(last_item->class_oid), class_oid);
 	    }
 	}
-#endif
     }
   else
     {
@@ -22144,7 +22147,6 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
       OID_SET_NULL (&(curr_item->nk_ps_oid));
       OID_SET_NULL (&(curr_item->class_oid));
 
-#if defined(SERVER_MODE)
       /* save current & next key pseudo-OID */
       if (use_unlocking)
 	{
@@ -22161,7 +22163,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 	      COPY_OID (&(curr_item->class_oid), class_oid);
 	    }
 	}
-#endif
+
       multi_range_opt->cnt++;
 
       if (multi_range_opt->sort_col_dom == NULL)
@@ -23390,11 +23392,8 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
   int which_action = BTREE_CONTINUE;
   BTREE_RANGE_SEARCH_HELPER btrs_helper;
 
-#if defined(SERVER_MODE)
-  int tran_index;
   int new_size;
   char *new_ptr = NULL;
-#endif /* SERVER_MODE */
 
 #if defined(BTREE_DEBUG)
   if (BTREE_INVALID_INDEX_ID (btid))
@@ -23492,6 +23491,7 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
       if (btrs_helper.swap_key_range)
 	{
 	  DB_VALUE *tmp_key;
+
 	  tmp_key = bts->key_range.lower_key;
 	  bts->key_range.lower_key = bts->key_range.upper_key;
 	  bts->key_range.upper_key = tmp_key;
@@ -23542,9 +23542,7 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
 				  index_scan_id_p, oids_size, oids_ptr,
 				  ils_prefix_len);
 
-#if defined(SERVER_MODE)
 search_again:
-#endif /* SERVER_MODE */
 
   if (btree_prepare_range_search (thread_p, bts) != NO_ERROR)
     {
@@ -23579,7 +23577,52 @@ get_oidcnt_and_oidptr:
       goto error;
     }
 
+  if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
+    {
+      assert (!BTREE_IS_PRIMARY_KEY (bts->btid_int.unique_pk));
+
+      if (OID_ISNULL (&bts->cls_oid))
+	{
+	  OR_GET_OID (btrs_helper.rec_oid_ptr, &temp_oid);
+	  if (heap_get_class_oid (thread_p, &bts->cls_oid, &temp_oid) == NULL)
+	    {
+	      goto error;
+	    }
+	}
+      assert (!OID_ISNULL (&bts->cls_oid));
+
+#if defined(SERVER_MODE)
+      if (bts->cls_lock_ptr == NULL)
+	{
+	  int tran_index;
+
+	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+	  bts->cls_lock_ptr = lock_get_class_lock (&bts->cls_oid, tran_index);
+	  if (bts->cls_lock_ptr == NULL)
+	    {
+	      /*
+	       * CLASS LOCK MUST BE ACQUIRED
+	       *
+	       * The corresponding class lock has not been acquired
+	       * currently.
+	       * The class lock must be acquired before an index scan
+	       * based on the class is requested.
+	       */
+	      er_log_debug (ARG_FILE_LINE,
+			    "bts->cls_lock_ptr == NULL in "
+			    "btree_range_search ()\n"
+			    "bts->cls_oid = <%d,%d,%d>\n",
+			    bts->cls_oid.volid, bts->cls_oid.pageid,
+			    bts->cls_oid.slotid);
+	      goto error;
+	    }
+	}
+#endif /* SERVER_MODE */
+    }
+
 start_locking:
+
   /* This steps handles OID and key locking and copying of OID's */
   /* If read uncommitted is true, or if it is not server mode, OID's are
    * copied directly with no locking.
@@ -23607,7 +23650,6 @@ start_locking:
       goto locking_done;
     }
 
-#if defined(SERVER_MODE)
   btrs_helper.read_prev_key = true;
   if (bts->read_uncommitted)
     {
@@ -23782,6 +23824,15 @@ start_locking:
 	   * current query is based on some classes
 	   * contained in the class hierarchy.
 	   */
+	  if (btrs_helper.cp_oid_cnt > 1)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "cp_oid_cnt > 1 in an unique index\n"
+			    "index inconsistency.(unique violation).\n");
+	      assert (false);
+	      goto error;
+	    }
+
 	  for (i = 0; i < btrs_helper.cp_oid_cnt; i++)
 	    {
 	      /* The class oid comparison must be performed. */
@@ -23832,358 +23883,184 @@ start_locking:
 
       goto locking_done;
     }
-
-  if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk)
-      && OID_ISNULL (&bts->cls_oid))
-    {
-      assert (!BTREE_IS_PRIMARY_KEY (bts->btid_int.unique_pk));
-      OR_GET_OID (btrs_helper.rec_oid_ptr, &temp_oid);
-      if (heap_get_class_oid (thread_p, &bts->cls_oid, &temp_oid) == NULL)
-	{
-	  goto error;
-	}
-
-      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-      bts->cls_lock_ptr = lock_get_class_lock (&bts->cls_oid, tran_index);
-      if (bts->cls_lock_ptr == NULL)
-	{
-	  /*
-	   * CLASS LOCK MUST BE ACQUIRED
-	   *
-	   * The corresponding class lock has not been acquired currently.
-	   * The class lock must be acquired before an index scan based on
-	   * the class is requested.
-	   */
-	  er_log_debug (ARG_FILE_LINE,
-			"bts->cls_lock_ptr == NULL in btree_initialize_bts()\n"
-			"bts->cls_oid = <%d,%d,%d>\n",
-			bts->cls_oid.volid, bts->cls_oid.pageid,
-			bts->cls_oid.slotid);
-	  goto error;
-	}
-    }
-
-  /*
-   * bts->tran_isolation :
-   * TRAN_REP_CLASS_COMMIT_INSTANCE, TRAN_COMMIT_CLASS_COMMIT_INSTANCE
-   * TRAN_REP_CLASS_REP_INSTANCE
-   * TRAN_SERIALIZABLE
-   */
-
-  if (btrs_helper.saved_inst_oid.pageid != NULL_PAGEID
-      || (bts->prev_oid_pos == -1 && btrs_helper.curr_key_locked))
-    {
-      if (btree_range_search_handle_previous_locks (thread_p, bts,
-						    &btrs_helper,
-						    key_limit_lower,
-						    key_limit_upper,
-						    index_scan_id_p,
-						    need_count_only,
-						    &which_action)
-	  != NO_ERROR)
-	{
-	  goto error;
-	}
-      switch (which_action)
-	{
-	case BTREE_CONTINUE:
-	  /* Fall through */
-	  break;
-
-	case BTREE_GOTO_END_OF_SCAN:
-	  goto end_of_scan;
-
-	case BTREE_GOTO_LOCKING_DONE:
-	  goto locking_done;
-
-	default:
-	  /* Unexpected case */
-	  assert (0);
-	  goto error;
-	}
-    }
-
-  /* compute 'cp_oid_cnt' */
-  if (btrs_helper.is_condition_satisfied == false)
-    {
-      if (((bts->tran_isolation == TRAN_SERIALIZABLE
-	    || scan_op_type != S_SELECT)
-	   && (bts->prev_KF_satisfied == false || bts->prev_oid_pos > 0
-	       || btrs_helper.is_key_range_satisfied))
-	  || bts->prev_oid_pos == -1)
-	{
-	  btrs_helper.cp_oid_cnt = 1;
-	}
-      else
-	{
-	  /* no need to lock the object which is next to the scan range
-	   * under NON-Serializable isolation.
-	   */
-	  goto locking_done;
-	}
-    }
   else
-    {
-      if (need_count_only == true)
-	{			/* do not concern buffer size */
-	  btrs_helper.cp_oid_cnt = btrs_helper.rec_oid_cnt - bts->oid_pos;
-	}
-      else if (ils_prefix_len > 0)
+    {				/* bts->read_uncommitted == false */
+      /*
+       * bts->tran_isolation :
+       * TRAN_REP_CLASS_COMMIT_INSTANCE, TRAN_COMMIT_CLASS_COMMIT_INSTANCE
+       * TRAN_REP_CLASS_REP_INSTANCE
+       * TRAN_SERIALIZABLE
+       */
+
+      if (btrs_helper.saved_inst_oid.pageid != NULL_PAGEID
+	  || (bts->prev_oid_pos == -1 && btrs_helper.curr_key_locked))
 	{
-	  btrs_helper.cp_oid_cnt = 1;
-	}
-      else
-	{
-	  /* Covering index has also a limitation on the size of list file. */
-	  btrs_helper.cp_oid_cnt =
-	    MIN (btrs_helper.pg_oid_cnt - btrs_helper.oids_cnt,
-		 btrs_helper.rec_oid_cnt - bts->oid_pos);
+	  if (btree_range_search_handle_previous_locks (thread_p, bts,
+							&btrs_helper,
+							key_limit_lower,
+							key_limit_upper,
+							index_scan_id_p,
+							need_count_only,
+							&which_action)
+	      != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  switch (which_action)
+	    {
+	    case BTREE_CONTINUE:
+	      /* Fall through */
+	      break;
+
+	    case BTREE_GOTO_END_OF_SCAN:
+	      goto end_of_scan;
+
+	    case BTREE_GOTO_LOCKING_DONE:
+	      goto locking_done;
+
+	    default:
+	      /* Unexpected case */
+	      assert (0);
+	      goto error;
+	    }
 	}
 
-      if (btrs_helper.cp_oid_cnt <= 0)
-	{			/* for uncommitted read */
-	  goto locking_done;
-	}
-    }
-
-  /*
-   * If S_LOCK or more strong lock(SIX_LOCK or X_LOCK) has been held
-   * on the class, the instance level locking is not needed.
-   */
-  if (bts->cls_lock_ptr != NULL
-      && lock_is_class_lock_escalated (bts->cls_lock_ptr->granted_mode,
-				       bts->escalated_mode) == true)
-    {
-      /* single class index */
-
-      /* In TRAN_SERIALIZABLE, is_condition_satisfied can be false. */
+      /* compute 'cp_oid_cnt' */
       if (btrs_helper.is_condition_satisfied == false)
 	{
-	  goto locking_done;
-	}
-
-      /*
-       * Current index is either a non-unique index or
-       * an unique index of single class index form.
-       */
-#if defined(BTREE_DEBUG)
-      if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
-	{
-	  /* In case of unique index */
-	  /* check the consistency of current index entry. */
-	  /* NOT IMPLEMENTED */
-	  if (btrs_helper.cp_oid_cnt > 1)
+	  if (((bts->tran_isolation == TRAN_SERIALIZABLE
+		|| scan_op_type != S_SELECT)
+	       && (bts->prev_KF_satisfied == false || bts->prev_oid_pos > 0
+		   || btrs_helper.is_key_range_satisfied))
+	      || bts->prev_oid_pos == -1)
 	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "cp_oid_cnt > 1 in an unique index\n"
-			    "index inconsistency(unique violation).\n");
-	      goto error;
-	    }
-	  /* cp_oid_cnt == 1 */
-	}
-#endif /* BTREE_DEBUG */
-
-      /* copy all the OIDs */
-      for (j = 0; j < btrs_helper.cp_oid_cnt; j++)
-	{
-	  btree_leaf_get_oid_from_oidptr (bts, btrs_helper.rec_oid_ptr,
-					  btrs_helper.node_type,
-					  &temp_oid, &btrs_helper.class_oid);
-	  if (btree_handle_current_oid (thread_p, bts, &btrs_helper,
-					key_limit_lower, key_limit_upper,
-					index_scan_id_p, need_count_only,
-					&temp_oid, &which_action) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  if (which_action == BTREE_GOTO_END_OF_SCAN)
-	    {
-	      goto end_of_scan;
-	    }
-	  else if (which_action == BTREE_RESTART_SCAN)
-	    {
-	      bts->restart_scan = 1;
-	      goto end_of_scan;
-	    }
-	  assert (which_action == BTREE_CONTINUE);
-	}
-
-      goto locking_done;
-    }
-
-  /*
-   * If bts->key_range_max_value_equal is true,
-   * lock on the next key is not required
-   */
-  if (btrs_helper.is_key_range_satisfied == false
-      && bts->key_range_max_value_equal)
-    {
-      goto end_of_scan;
-    }
-
-  /*
-   * locking and copying corresponding OIDs
-   */
-
-  for (i = 0; i < btrs_helper.cp_oid_cnt; i++)
-    {
-      if (btree_handle_current_oid_and_locks (thread_p, bts, &btrs_helper,
-					      btid, key_limit_lower,
-					      key_limit_upper,
-					      index_scan_id_p,
-					      need_count_only, num_classes,
-					      class_oids_ptr, scan_op_type,
-					      i, &which_action) != NO_ERROR)
-	{
-	  goto error;
-	}
-      switch (which_action)
-	{
-	case BTREE_CONTINUE:
-	  break;
-	case BTREE_GOTO_LOCKING_DONE:
-	  goto locking_done;
-	case BTREE_GOTO_END_OF_SCAN:
-	  goto end_of_scan;
-	case BTREE_GETOID_AGAIN_WITH_CHECK:
-	  goto get_oidcnt_and_oidptr;
-	case BTREE_SEARCH_AGAIN_WITH_CHECK:
-	  goto search_again;
-	default:
-	  assert (0);
-	  goto error;
-	}
-    }				/* for (i = 0; i < cp_oid_cnt; i++) */
-
-#else /* SERVER_MODE */
-  if (btrs_helper.is_condition_satisfied == false)
-    {
-      goto locking_done;
-    }
-
-  if (need_count_only == true)
-    {
-      /* do not consider size of list file or oid buffer */
-      btrs_helper.cp_oid_cnt = btrs_helper.rec_oid_cnt - bts->oid_pos;
-    }
-  else if (ils_prefix_len > 0)
-    {
-      /* one oid necessary before restart of scan */
-      btrs_helper.cp_oid_cnt = 1;
-    }
-  else if (SCAN_IS_INDEX_COVERED (index_scan_id_p))
-    {
-      if ((btrs_helper.rec_oid_cnt - bts->oid_pos)
-	  > (btrs_helper.pg_oid_cnt - btrs_helper.oids_cnt))
-	{
-	  /* recalculate the maximum size of list file */
-	  btrs_helper.pg_oid_cnt =
-	    btrs_helper.oids_cnt + (btrs_helper.rec_oid_cnt - bts->oid_pos);
-	}
-
-      btrs_helper.cp_oid_cnt = btrs_helper.rec_oid_cnt - bts->oid_pos;
-    }
-  else
-    {
-      btrs_helper.cp_oid_cnt =
-	MIN (btrs_helper.pg_oid_cnt - btrs_helper.oids_cnt,
-	     btrs_helper.rec_oid_cnt - bts->oid_pos);
-    }
-
-  if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk) || num_classes == 0)
-    {
-      /*
-       * 1. current index is a non-unique index. or
-       * 2. current index is an unique index. &&
-       *    current query is based on all classes
-       *    contained in the class hierarchy.
-       */
-      for (i = 0; i < btrs_helper.cp_oid_cnt; i++)
-	{
-	  btree_leaf_get_oid_from_oidptr (bts, btrs_helper.rec_oid_ptr,
-					  btrs_helper.node_type,
-					  &temp_oid, &btrs_helper.class_oid);
-	  if (btree_handle_current_oid (thread_p, bts, &btrs_helper,
-					key_limit_lower, key_limit_upper,
-					index_scan_id_p, need_count_only,
-					&temp_oid, &which_action) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  if (which_action == BTREE_GOTO_END_OF_SCAN)
-	    {
-	      goto end_of_scan;
-	    }
-	  else if (which_action == BTREE_RESTART_SCAN)
-	    {
-	      bts->restart_scan = 1;
-	      goto end_of_scan;
-	    }
-	  assert (which_action == BTREE_CONTINUE);
-	}
-    }
-  else
-    {
-      /*
-       * current index is an unique index. &&
-       * current query is based on some classes
-       * contained in the class hierarchy.
-       */
-      if (btrs_helper.cp_oid_cnt > 1)
-	{
-	  er_log_debug (ARG_FILE_LINE,
-			"cp_oid_cnt > 1 in an unique index\n"
-			"index inconsistency.(unique violation).\n");
-	}
-
-      for (i = 0; i < btrs_helper.cp_oid_cnt; i++)
-	{
-	  btree_leaf_get_oid_from_oidptr (bts, btrs_helper.rec_oid_ptr,
-					  btrs_helper.node_type,
-					  &btrs_helper.inst_oid,
-					  &btrs_helper.class_oid);
-	  /* The class oid comparison must be performed. */
-	  for (j = 0; j < num_classes; j++)
-	    {
-	      if (OID_EQ (&btrs_helper.class_oid, &class_oids_ptr[j]))
-		{
-		  break;
-		}
-	    }
-
-	  if (j < num_classes)
-	    {			/* satisfying OID */
-	      if (btree_handle_current_oid (thread_p, bts, &btrs_helper,
-					    key_limit_lower, key_limit_upper,
-					    index_scan_id_p, need_count_only,
-					    &btrs_helper.inst_oid,
-					    &which_action) != NO_ERROR)
-		{
-		  goto error;
-		}
-	      if (which_action == BTREE_GOTO_END_OF_SCAN)
-		{
-		  goto end_of_scan;
-		}
-	      else if (which_action == BTREE_RESTART_SCAN)
-		{
-		  bts->restart_scan = 1;
-		  goto end_of_scan;
-		}
-	      assert (which_action == BTREE_CONTINUE);
+	      btrs_helper.cp_oid_cnt = 1;
 	    }
 	  else
 	    {
-	      btrs_helper.rec_oid_ptr =
-		btree_leaf_advance_oidptr (bts, btrs_helper.rec_oid_ptr,
-					   btrs_helper.offset,
-					   btrs_helper.node_type);
+	      /* no need to lock the object which is next to the scan range
+	       * under NON-Serializable isolation.
+	       */
+	      goto locking_done;
 	    }
 	}
-    }
+      else
+	{
+	  if (need_count_only == true)
+	    {			/* do not concern buffer size */
+	      btrs_helper.cp_oid_cnt = btrs_helper.rec_oid_cnt - bts->oid_pos;
+	    }
+	  else if (ils_prefix_len > 0)
+	    {
+	      btrs_helper.cp_oid_cnt = 1;
+	    }
+	  else
+	    {
+	      /* Covering index has also a limitation on the size of list file. */
+	      btrs_helper.cp_oid_cnt =
+		MIN (btrs_helper.pg_oid_cnt - btrs_helper.oids_cnt,
+		     btrs_helper.rec_oid_cnt - bts->oid_pos);
+	    }
 
-#endif /* SERVER_MODE */
+	  if (btrs_helper.cp_oid_cnt <= 0)
+	    {			/* for uncommitted read */
+	      goto locking_done;
+	    }
+	}
+
+      /*
+       * If S_LOCK or more strong lock(SIX_LOCK or X_LOCK) has been held
+       * on the class, the instance level locking is not needed.
+       */
+      if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
+	{
+	  /* non-unique index */
+	  if (btree_class_lock_escalated (thread_p, bts, &bts->cls_oid))
+	    {
+	      /* In TRAN_SERIALIZABLE, is_condition_satisfied can be false. */
+	      if (btrs_helper.is_condition_satisfied == false)
+		{
+		  goto locking_done;
+		}
+
+	      /* copy all the OIDs */
+	      for (j = 0; j < btrs_helper.cp_oid_cnt; j++)
+		{
+		  btree_leaf_get_oid_from_oidptr (bts,
+						  btrs_helper.rec_oid_ptr,
+						  btrs_helper.node_type,
+						  &temp_oid,
+						  &btrs_helper.class_oid);
+		  if (btree_handle_current_oid
+		      (thread_p, bts, &btrs_helper, key_limit_lower,
+		       key_limit_upper, index_scan_id_p, need_count_only,
+		       &temp_oid, &which_action) != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		  if (which_action == BTREE_GOTO_END_OF_SCAN)
+		    {
+		      goto end_of_scan;
+		    }
+		  else if (which_action == BTREE_RESTART_SCAN)
+		    {
+		      bts->restart_scan = 1;
+		      goto end_of_scan;
+		    }
+		  assert (which_action == BTREE_CONTINUE);
+		}
+
+	      goto locking_done;
+	    }
+	}
+
+      /*
+       * If bts->key_range_max_value_equal is true,
+       * lock on the next key is not required
+       */
+      if (btrs_helper.is_key_range_satisfied == false
+	  && bts->key_range_max_value_equal)
+	{
+	  goto end_of_scan;
+	}
+
+      /*
+       * locking and copying corresponding OIDs
+       */
+      for (i = 0; i < btrs_helper.cp_oid_cnt; i++)
+	{
+	  if (btree_handle_current_oid_and_locks (thread_p, bts, &btrs_helper,
+						  btid, key_limit_lower,
+						  key_limit_upper,
+						  index_scan_id_p,
+						  need_count_only,
+						  num_classes, class_oids_ptr,
+						  scan_op_type, i,
+						  &which_action) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  switch (which_action)
+	    {
+	    case BTREE_CONTINUE:
+	      break;
+	    case BTREE_GOTO_LOCKING_DONE:
+	      goto locking_done;
+	    case BTREE_GOTO_END_OF_SCAN:
+	      goto end_of_scan;
+	    case BTREE_GETOID_AGAIN_WITH_CHECK:
+	      goto get_oidcnt_and_oidptr;
+	    case BTREE_SEARCH_AGAIN_WITH_CHECK:
+#if !defined (SERVER_MODE)
+	      assert_release (false);
+#endif
+	      goto search_again;
+	    default:
+	      assert (0);
+	      goto error;
+	    }
+	}			/* for (i = 0; i < cp_oid_cnt; i++) */
+    }
 
 locking_done:
 
@@ -24198,11 +24075,9 @@ locking_done:
       /* if key filter condition is not satisfied */
       if (btrs_helper.is_key_filter_satisfied == false)
 	{
-#if defined(SERVER_MODE)
 	  /* clear 'prev_oid_pos' and 'prev_ovfl_vpid' */
 	  bts->prev_oid_pos = 0;
 	  VPID_SET_NULL (&(bts->prev_ovfl_vpid));
-#endif /* SERVER_MODE */
 	  if (btree_find_next_index_record (thread_p, bts) != NO_ERROR)
 	    {
 	      goto error;
@@ -24216,12 +24091,9 @@ locking_done:
       && btrs_helper.oids_cnt == btrs_helper.pg_oid_cnt)
     {
       /* We have no more room. */
-
-#if defined(SERVER_MODE)
       LSA_COPY (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page));
       btree_clear_key_value (&btrs_helper.clear_prev_key,
 			     &btrs_helper.prev_key);
-#endif /* SERVER_MODE */
 
       /* do not clear bts->cur_key for btree_prepare_next_search */
 
@@ -24244,10 +24116,8 @@ locking_done:
     }
   else
     {
-#if defined(SERVER_MODE)
       bts->prev_oid_pos = btrs_helper.rec_oid_cnt - 1;
       bts->prev_ovfl_vpid = bts->O_vpid;
-#endif /* SERVER_MODE */
 
       /* bts->oid_pos >= rec_oid_cnt */
       /* leaf_pnt is still having valid values. */
@@ -24273,9 +24143,7 @@ error:
 
 end_of_scan:
 
-#if defined(SERVER_MODE)
   btree_clear_key_value (&btrs_helper.clear_prev_key, &btrs_helper.prev_key);
-#endif /* SERVER_MODE */
 
   if (!bts->restart_scan)
     {
@@ -24397,7 +24265,6 @@ btree_range_search_init_helper (THREAD_ENTRY * thread_p,
   /* restart after first OID iff doing index loose scan */
   btrs_helper->restart_on_first = (ils_prefix_len > 0);
 
-#if defined(SERVER_MODE)
   btrs_helper->CLS_satisfied = true;
 
   btrs_helper->keep_on_copying = false;
@@ -24410,8 +24277,6 @@ btree_range_search_init_helper (THREAD_ENTRY * thread_p,
   OID_SET_NULL (&btrs_helper->saved_class_oid);
   OID_SET_NULL (&btrs_helper->saved_inst_oid);
 
-  btrs_helper->lock_mode = NULL_LOCK;
-
   btrs_helper->end_of_leaf_level = false;
   btrs_helper->curr_key_locked = false;
   btrs_helper->next_key_locked = false;
@@ -24420,7 +24285,6 @@ btree_range_search_init_helper (THREAD_ENTRY * thread_p,
   btrs_helper->read_prev_key = true;
   btrs_helper->clear_prev_key = false;
   DB_MAKE_NULL (&btrs_helper->prev_key);
-#endif /* SERVER_MODE */
 }
 
 /*
@@ -24443,7 +24307,7 @@ btree_range_search_init_helper (THREAD_ENTRY * thread_p,
  * NOTE: There are a few outcomes for this function:
  *	 1. If end of leaf level is reached
  *	    - End scan if read_uncommitted is true, or if key range max value
- *	    was reached, or if this is not SERVER_MODE.
+ *	    was reached.
  *	    - Otherwise lock the "end" of index (unique pseudo-oid).
  *	 2. Current page is an overflow OID node:
  *	    - Get the remaining OID's if oid_pos is not at the end of OID set.
@@ -24488,7 +24352,6 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   if (VPID_ISNULL (&(bts->C_vpid)))
     {
       /* It reached at the end of leaf level */
-#if defined(SERVER_MODE)
       OID N_oid;
 
       btrs_helper->end_of_leaf_level = true;
@@ -24547,11 +24410,6 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
       /* Continue to start locking */
       return NO_ERROR;
-#else /* SERVER_MODE */
-      /* No locks are required */
-      *which_action = BTREE_GOTO_END_OF_SCAN;
-      return NO_ERROR;
-#endif /* SERVER_MODE */
     }
 
   /* Find the position of OID list to be searched in the index entry */
@@ -24590,10 +24448,8 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
       else
 	{
 	  /* Go to next set of OID's */
-#if defined(SERVER_MODE)
 	  bts->prev_oid_pos = btrs_helper->rec_oid_cnt - 1;
 	  bts->prev_ovfl_vpid = bts->O_vpid;
-#endif /* SERVER_MODE */
 
 	  /* the 2nd argument, first_ovfl_vpid, is NULL */
 	  if (btree_get_next_oidset_pos (thread_p, bts, (VPID *) NULL) !=
@@ -24644,10 +24500,8 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	    }
 	  else
 	    {
-#if defined(SERVER_MODE)
 	      bts->prev_oid_pos = btrs_helper->rec_oid_cnt - 1;
 	      VPID_SET_NULL (&(bts->prev_ovfl_vpid));
-#endif /* SERVER_MODE */
 
 	      /*
 	       * check if next OID set is in overflow page
@@ -24666,7 +24520,6 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	}
       else
 	{			/* new key value */
-#if defined(SERVER_MODE)
 	  if (bts->read_uncommitted == false && bts->read_cur_key
 	      && btrs_helper->read_prev_key)
 	    {
@@ -24679,7 +24532,6 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
 	      bts->read_cur_key = false;	/* reset read_cur_key */
 	    }
-#endif /* SERVER_MODE */
 
 	  btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
 
@@ -24696,9 +24548,7 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
 	  /* the last argument means that key value must be copied. */
 
-#if defined(SERVER_MODE)
 	  bts->read_cur_key = true;
-#endif /* SERVER_MODE */
 
 	  /* get 'rec_oid_cnt' and 'rec_oid_ptr' */
 	  btrs_helper->rec_oid_cnt =
@@ -24707,14 +24557,12 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 				     btrs_helper->oid_size);
 	  btrs_helper->rec_oid_ptr = btrs_helper->rec.data;
 
-#if defined(SERVER_MODE)
 	  /* save the result of key filtering on the previous key value */
 	  if (btrs_helper->saved_inst_oid.pageid == NULL_PAGEID)
 	    {
 	      bts->prev_KF_satisfied =
 		(int) btrs_helper->is_key_filter_satisfied;
 	    }
-#endif /* SERVER_MODE */
 
 	  /* apply key range and key filter to the new key value */
 	  if (btree_apply_key_range_and_filter (thread_p, bts,
@@ -24746,11 +24594,10 @@ btree_get_oid_count_and_pointer (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 		  btrs_helper->is_condition_satisfied = false;
 		  if (bts->read_uncommitted)
 		    {
-#if defined(SERVER_MODE)
 		      /* clear 'prev_oid_pos' and 'prev_ovfl_vpid' */
 		      bts->prev_oid_pos = 0;
 		      VPID_SET_NULL (&(bts->prev_ovfl_vpid));
-#endif /* SERVER_MODE */
+
 		      if (btree_find_next_index_record (thread_p, bts)
 			  != NO_ERROR)
 			{
@@ -24841,7 +24688,6 @@ btree_handle_current_oid (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	      /* Pass current key and next pseudo OID's to handle lock release
 	       * when a candidate is thrown out of TOP N structure.
 	       */
-#if defined(SERVER_MODE)
 	      if (btree_range_opt_check_add_index_key (thread_p, bts,
 						       &index_scan_id_p->
 						       multi_range_opt,
@@ -24854,15 +24700,6 @@ btree_handle_current_oid (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 						       class_oid,
 						       &mro_continue)
 		  != NO_ERROR)
-#else /* !SERVER_MODE */
-	      if (btree_range_opt_check_add_index_key (thread_p, bts,
-						       &index_scan_id_p->
-						       multi_range_opt,
-						       inst_oid, NULL,
-						       NULL, NULL,
-						       &mro_continue)
-		  != NO_ERROR)
-#endif /* !SERVER_MODE */
 		{
 		  return ER_FAILED;
 		}
@@ -24911,7 +24748,6 @@ btree_handle_current_oid (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   return NO_ERROR;
 }
 
-#if defined(SERVER_MODE)
 /*
  * btree_range_search_handle_previous_locks () - Used in the context of
  *					 btree_range_search function.
@@ -24944,6 +24780,10 @@ btree_range_search_handle_previous_locks (THREAD_ENTRY * thread_p,
 {
   OID temp_oid;
   int s;
+
+#if !defined (SERVER_MODE)
+  assert_release (false);
+#endif
 
   assert (bts != NULL && btrs_helper != NULL && which_action != NULL);
   assert (btrs_helper->saved_inst_oid.pageid != NULL_PAGEID
@@ -25071,150 +24911,55 @@ btree_range_search_handle_previous_locks (THREAD_ENTRY * thread_p,
   if (!OID_EQ (&btrs_helper->saved_inst_oid, &btrs_helper->inst_oid))
     {
       /* unlock the instance lock and key locks */
-      if (bts->cls_lock_ptr != NULL)
+      if (btree_class_lock_escalated (thread_p, bts,
+				      &btrs_helper->saved_class_oid))
 	{
 	  /*
-	   * single class index
-	   * In case of non-unique index (CURRENT VERSION)
+	   * If class lock has been escalated,
+	   * the release of corresponding instance lock is not needed.
 	   */
-	  if (lock_is_class_lock_escalated (bts->cls_lock_ptr->granted_mode,
-					    bts->escalated_mode))
-	    {
-	      /*
-	       * If class lock has been escalated,
-	       * the release of corresponding instance lock is not needed.
-	       */
-	      /* clear saved OID information */
-	      btrs_helper->saved_inst_oid.pageid = NULL_PAGEID;
-	      OID_SET_NULL (&btrs_helper->saved_nk_pseudo_oid);
-	      OID_SET_NULL (&btrs_helper->saved_ck_pseudo_oid);
-	      OID_SET_NULL (&btrs_helper->saved_nk_class_oid);
-	      return NO_ERROR;
-	    }
-
-	  if (!OID_ISNULL (&btrs_helper->saved_inst_oid))
-	    {
-	      lock_unlock_object (thread_p, &btrs_helper->saved_inst_oid,
-				  &btrs_helper->saved_class_oid,
-				  bts->lock_mode, true);
-	    }
-	  /* release key locks if they have been previously locked */
-	  if (btrs_helper->next_key_locked)
-	    {
-	      lock_remove_object_lock (thread_p,
-				       OID_ISNULL (&btrs_helper->
-						   nk_pseudo_oid) ?
-				       &btrs_helper->
-				       saved_nk_pseudo_oid : &btrs_helper->
-				       nk_pseudo_oid,
-				       &btrs_helper->saved_nk_class_oid,
-				       bts->key_lock_mode);
-	    }
-
-	  if (btrs_helper->curr_key_locked)
-	    {
-	      lock_remove_object_lock (thread_p,
-				       &btrs_helper->saved_ck_pseudo_oid,
-				       &btrs_helper->saved_class_oid,
-				       bts->key_lock_mode);
-	    }
+	  /* clear saved OID information */
+	  btrs_helper->saved_inst_oid.pageid = NULL_PAGEID;
+	  OID_SET_NULL (&btrs_helper->saved_nk_pseudo_oid);
+	  OID_SET_NULL (&btrs_helper->saved_ck_pseudo_oid);
+	  OID_SET_NULL (&btrs_helper->saved_nk_class_oid);
+	  return NO_ERROR;
 	}
-      else
+
+      if (!OID_ISNULL (&btrs_helper->saved_inst_oid))
 	{
-	  /* class hierarchy index */
-	  /* In case of unique index of class hierarchy form */
-	  for (s = 0; s < bts->class_lock_map_count; s++)
-	    {
-	      if (OID_EQ (&btrs_helper->saved_class_oid,
-			  &bts->class_lock_map[s].oid))
-		{
-		  break;
-		}
-	    }
-
-	  if (s < bts->class_lock_map_count)
-	    {
-	      if (lock_is_class_lock_escalated
-		  (bts->class_lock_map[s].lock_ptr->granted_mode,
-		   bts->escalated_mode))
-		{
-		  /*
-		   * If class lock has been escalated,
-		   * the release of corresponding instance lock is not needed.
-		   */
-		  /* clear saved OID information */
-		  btrs_helper->saved_inst_oid.pageid = NULL_PAGEID;
-		  OID_SET_NULL (&btrs_helper->saved_nk_pseudo_oid);
-		  OID_SET_NULL (&btrs_helper->saved_ck_pseudo_oid);
-		  OID_SET_NULL (&btrs_helper->saved_nk_class_oid);
-		  return NO_ERROR;
-		}
-
-	      if (!OID_ISNULL (&btrs_helper->saved_inst_oid))
-		{
-		  lock_unlock_object (thread_p, &btrs_helper->saved_inst_oid,
-				      &btrs_helper->saved_class_oid,
-				      bts->lock_mode, true);
-		}
-
-	      /* release key locks if they have been previously locked */
-	      if (btrs_helper->next_key_locked)
-		{
-		  /* TO DO saved_clas_oid */
-		  lock_remove_object_lock (thread_p,
-					   OID_ISNULL (&btrs_helper->
-						       nk_pseudo_oid)
-					   ? &btrs_helper->saved_nk_pseudo_oid
-					   : &btrs_helper->nk_pseudo_oid,
-					   &btrs_helper->saved_nk_class_oid,
-					   bts->key_lock_mode);
-		}
-
-	      if (btrs_helper->curr_key_locked)
-		{
-		  lock_remove_object_lock (thread_p,
-					   &btrs_helper->saved_ck_pseudo_oid,
-					   &btrs_helper->saved_class_oid,
-					   bts->key_lock_mode);
-		}
-	    }
-	  else
-	    {
-	      if (!OID_ISNULL (&btrs_helper->saved_inst_oid))
-		{
-		  lock_unlock_object (thread_p, &btrs_helper->saved_inst_oid,
-				      &btrs_helper->saved_class_oid,
-				      bts->lock_mode, true);
-		}
-
-	      if (btrs_helper->next_key_locked)
-		{
-		  /* TO DO saved_clas_oid */
-		  lock_remove_object_lock (thread_p,
-					   OID_ISNULL (&btrs_helper->
-						       nk_pseudo_oid)
-					   ? &btrs_helper->saved_nk_pseudo_oid
-					   : &btrs_helper->nk_pseudo_oid,
-					   &btrs_helper->saved_nk_class_oid,
-					   bts->key_lock_mode);
-		}
-
-	      if (btrs_helper->curr_key_locked)
-		{
-		  lock_remove_object_lock (thread_p,
-					   &btrs_helper->saved_ck_pseudo_oid,
-					   &btrs_helper->saved_class_oid,
-					   bts->key_lock_mode);
-		}
-
-	      /*
-	       * Note the implementation of lock_unlock_object().
-	       * Even though certain class lock has been escalated,
-	       * the request for releasing instance lock of the class
-	       * must be processed correctly.
-	       */
-	    }
+	  lock_unlock_object (thread_p, &btrs_helper->saved_inst_oid,
+			      &btrs_helper->saved_class_oid,
+			      bts->lock_mode, true);
 	}
+
+      /* release key locks if they have been previously locked */
+      if (btrs_helper->next_key_locked)
+	{
+	  /* TO DO saved_clas_oid */
+	  lock_remove_object_lock (thread_p,
+				   OID_ISNULL (&btrs_helper->
+					       nk_pseudo_oid)
+				   ? &btrs_helper->saved_nk_pseudo_oid
+				   : &btrs_helper->nk_pseudo_oid,
+				   &btrs_helper->saved_nk_class_oid,
+				   bts->key_lock_mode);
+	}
+
+      if (btrs_helper->curr_key_locked)
+	{
+	  lock_remove_object_lock (thread_p,
+				   &btrs_helper->saved_ck_pseudo_oid,
+				   &btrs_helper->saved_class_oid,
+				   bts->key_lock_mode);
+	}
+
+      /*
+       * Note the implementation of lock_unlock_object().
+       * Even though certain class lock has been escalated,
+       * the request for releasing instance lock of the class
+       * must be processed correctly.
+       */
 
       /* clear saved OID information */
       btrs_helper->saved_inst_oid.pageid = NULL_PAGEID;
@@ -25281,7 +25026,9 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   int tran_index;
   bool dummy_clear;
 
-  assert (bts != NULL && btrs_helper != NULL && which_action != NULL);
+  assert (bts != NULL);
+  assert (btrs_helper != NULL);
+  assert (which_action != NULL);
   assert (bts->read_uncommitted == false);
 
   *which_action = BTREE_CONTINUE;
@@ -25291,8 +25038,9 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   btrs_helper->CLS_satisfied = true;
 
   /* checking phase */
-  if (bts->cls_lock_ptr != NULL)
+  if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
     {
+      assert (!BTREE_IS_PRIMARY_KEY (bts->btid_int.unique_pk));
       /*
        * Single class index
        * Current index is one of the following two indexes.
@@ -25302,8 +25050,7 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
        * only non-unique index can be in this situation.
        */
       /* check if instance level locking is needed. */
-      if (lock_is_class_lock_escalated (bts->cls_lock_ptr->granted_mode,
-					bts->escalated_mode) == true)
+      if (btree_class_lock_escalated (thread_p, bts, &bts->cls_oid))
 	{
 	  /*
 	   * The class lock has been escalated to S_LOCK, SIX_LOCK,
@@ -25317,24 +25064,6 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	      *which_action = BTREE_GOTO_LOCKING_DONE;
 	      return NO_ERROR;
 	    }
-
-#if defined(BTREE_DEBUG)
-	  if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
-	    {
-	      /* In case of unique index
-	       * check the consistency of current index entry.
-	       * NOT IMPLEMENTED
-	       */
-	      if (btrs_helper->cp_oid_cnt > 1)
-		{
-		  er_log_debug (ARG_FILE_LINE,
-				"cp_oid_cnt > 1 in an unique index\n"
-				"index inconsistency(unique violation).\n");
-		  return ER_FAILED;
-		}
-	      /* 'cp_oid_cnt == 1' is guaranteed. */
-	    }
-#endif
 
 	  /* copy the remaining OIDs */
 	  for (j = oid_index; j < btrs_helper->cp_oid_cnt; j++)
@@ -25357,12 +25086,14 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 		}
 	      assert (*which_action == BTREE_CONTINUE);
 	    }
+
 	  *which_action = BTREE_GOTO_LOCKING_DONE;
+
 	  return NO_ERROR;
 	}
 
       /*
-       * bts->cls_lock_ptr) < bts->escalated_mode :
+       * bts->cls_lock_ptr < bts->escalated_mode :
        * instance level locking must be performed.
        */
       /* get current class OID and instance OID */
@@ -25370,11 +25101,8 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 				      btrs_helper->node_type,
 				      &btrs_helper->inst_oid,
 				      &btrs_helper->class_oid);
-      if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
-	{
-	  assert (!BTREE_IS_PRIMARY_KEY (bts->btid_int.unique_pk));
-	  COPY_OID (&btrs_helper->class_oid, &bts->cls_oid);
-	}
+
+      COPY_OID (&btrs_helper->class_oid, &bts->cls_oid);
     }
   else
     {
@@ -25414,68 +25142,41 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
        * check the class lock mode to find out
        * if the instance level locking should be performed.
        */
-      for (s = 0; s < bts->class_lock_map_count; s++)
+      if (btree_class_lock_escalated (thread_p, bts, &btrs_helper->class_oid))
 	{
-	  if (OID_EQ (&btrs_helper->class_oid, &bts->class_lock_map[s].oid))
+	  if (scan_op_type != S_SELECT)
 	    {
-	      break;
+	      /* current objects already locked
+	       * next key lock request still needed
+	       */
+	      btrs_helper->current_lock_request = false;
 	    }
-	}
-
-      if (s == bts->class_lock_map_count)
-	{			/* not found */
-	  if (s < BTREE_CLASS_LOCK_MAP_MAX_COUNT)
+	  /* the instance level locking is not needed. */
+	  else if (btrs_helper->is_condition_satisfied
+		   && btrs_helper->CLS_satisfied)
 	    {
-	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-	      bts->class_lock_map[s].lock_ptr =
-		lock_get_class_lock (&btrs_helper->class_oid, tran_index);
-	      if (bts->class_lock_map[s].lock_ptr != NULL)
+	      if (btree_handle_current_oid (thread_p, bts, btrs_helper,
+					    key_limit_lower,
+					    key_limit_upper,
+					    index_scan_id_p,
+					    need_count_only,
+					    &btrs_helper->inst_oid,
+					    which_action) != NO_ERROR)
 		{
-		  COPY_OID (&bts->class_lock_map[s].oid,
-			    &btrs_helper->class_oid);
-		  bts->class_lock_map_count++;
+		  return ER_FAILED;
 		}
-	    }
-	}
 
-      if (s < bts->class_lock_map_count)
-	{
-	  if (lock_is_class_lock_escalated
-	      (bts->class_lock_map[s].lock_ptr->granted_mode,
-	       bts->escalated_mode) == true)
-	    {
-	      if (scan_op_type != S_SELECT)
+	      if (*which_action == BTREE_GOTO_END_OF_SCAN)
 		{
-		  /* current objects already locked
-		   * next key lock request still needed
-		   */
-		  btrs_helper->current_lock_request = false;
-		}
-	      /* the instance level locking is not needed. */
-	      else if (btrs_helper->is_condition_satisfied
-		       && btrs_helper->CLS_satisfied)
-		{
-		  if (btree_handle_current_oid (thread_p, bts, btrs_helper,
-						key_limit_lower,
-						key_limit_upper,
-						index_scan_id_p,
-						need_count_only,
-						&btrs_helper->inst_oid,
-						which_action) != NO_ERROR)
-		    {
-		      return ER_FAILED;
-		    }
-		  if (*which_action == BTREE_GOTO_END_OF_SCAN)
-		    {
-		      return NO_ERROR;
-		    }
-		  assert (*which_action == BTREE_CONTINUE);
 		  return NO_ERROR;
 		}
+	      assert (*which_action == BTREE_CONTINUE);
+
+	      return NO_ERROR;
 	    }
-	  /* instance level locking must be performed */
 	}
+
+      /* instance level locking must be performed */
     }				/* else */
 
   btrs_helper->curr_key_locked = false;
@@ -25944,7 +25645,6 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 
   return NO_ERROR;
 }
-#endif /* SERVER_MODE */
 
 /*
  * btree_prepare_range_search () - Prepares range search on first call or
@@ -25959,11 +25659,9 @@ btree_prepare_range_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
   if (VPID_ISNULL (&(bts->C_vpid)))
     {
-#if defined(SERVER_MODE)
       /* initialize 'prev_oid_pos' and 'prev_ovfl_vpid' */
       bts->prev_oid_pos = -1;
       VPID_SET_NULL (&(bts->prev_ovfl_vpid));
-#endif /* SERVER_MODE */
 
       /* the first request */
       if (btree_prepare_first_search (thread_p, bts) != NO_ERROR)
@@ -26590,4 +26288,17 @@ cleanup:
     }
 
   return (error == NO_ERROR) ? S_SUCCESS : S_ERROR;
+}
+
+static bool
+btree_leaf_lsa_eq (THREAD_ENTRY * thread_p, LOG_LSA * a, LOG_LSA * b)
+{
+  assert (a != NULL);
+  assert (b != NULL);
+
+#if !defined(SERVER_MODE)
+  assert_release (LSA_EQ (a, b));
+#endif
+
+  return LSA_EQ (a, b) ? true : false;
 }

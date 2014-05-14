@@ -1622,9 +1622,7 @@ file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
   int i;
   VOLID original_hint_volid;
   INT32 original_hint_pageid;
-#if defined(SERVER_MODE)
   bool old_check_interrupt;
-#endif
 
   /*
    * If the file is of type FILE_TMP, it can have allocated pages which are
@@ -1680,9 +1678,7 @@ file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
 
 	  search_wrap_around = (create_or_expand_file_table
 				== FILE_CREATE_FILE_TABLE);
-#if defined(SERVER_MODE)
 	  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
-#endif /* SERVER_MODE */
 	  pageid = disk_alloc_page (thread_p, hint_volid,
 				    DISK_SECTOR_WITH_ALL_PAGES,
 				    num_ftb_pages, hint_pageid,
@@ -1698,17 +1694,13 @@ file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
 		  ftb_vpids++;
 		}
 
-#if defined(SERVER_MODE)
 	      (void) thread_set_check_interrupt (thread_p,
 						 old_check_interrupt);
-#endif /* SERVER_MODE */
 
 	      return NO_ERROR;
 	    }
 
-#if defined(SERVER_MODE)
 	  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
-#endif /* SERVER_MODE */
 	}
 
       hint_volid = file_find_goodvol (thread_p, NULL_VOLID, hint_volid,
@@ -2737,9 +2729,7 @@ file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
 			  const void *file_des)
 {
   LOG_DATA_ADDR addr;		/* address of logging data */
-#if defined(SERVER_MODE)
   bool old_val;
-#endif /* SERVER_MODE */
 
   /* Start a TOP SYSTEM OPERATION.
      This top system operation will be either ABORTED (case of failure) or
@@ -2750,9 +2740,7 @@ file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
       return NULL;
     }
 
-#if defined(SERVER_MODE)
   old_val = thread_set_check_interrupt (thread_p, false);
-#endif /* SERVER_MODE */
 
   if (file_xcreate (thread_p, vfid, exp_numpages, file_type, file_des,
 		    NULL, 0) != NULL)
@@ -2781,9 +2769,7 @@ file_create_tmp_internal (THREAD_ENTRY * thread_p, VFID * vfid,
       vfid = NULL;
     }
 
-#if defined(SERVER_MODE)
   thread_set_check_interrupt (thread_p, old_val);
-#endif /* SERVER_MODE */
 
   return vfid;
 }
@@ -3473,9 +3459,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
   INT32 batch_firstid;		/* First sectid in batch */
   INT32 batch_ndealloc;		/* # of sectors to deallocate in the batch */
   FILE_TYPE file_type;
-#if defined(SERVER_MODE)
   bool old_val;
-#endif /* SERVER_MODE */
   bool pb_invalid_temp_called = false;
   bool out_of_range = false;
   int cached_volid_bound = -1;
@@ -3689,9 +3673,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
       return ER_FAILED;
     }
 
-#if defined(SERVER_MODE)
   old_val = thread_set_check_interrupt (thread_p, false);
-#endif /* SERVER_MODE */
 
   ret = file_type_cache_entry_remove (vfid);
   if (ret != NO_ERROR)
@@ -4245,9 +4227,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 
 end:
 
-#if defined(SERVER_MODE)
   thread_set_check_interrupt (thread_p, old_val);
-#endif /* SERVER_MODE */
 
   return ret;
 
@@ -6968,10 +6948,8 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
   int allocstate;
   FILE_TYPE file_type;
   FILE_IS_NEW_FILE isfile_new;
-#if defined(SERVER_MODE)
   bool old_val = false;
   bool restore_check_interrupt = false;
-#endif /* SERVER_MODE */
 
   /*
    * Start a TOP SYSTEM OPERATION.
@@ -7011,13 +6989,11 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   file_type = fhdr->type;
 
-#if defined(SERVER_MODE)
   if (fhdr->type == FILE_TMP || fhdr->type == FILE_TMP_TMP)
     {
       old_val = thread_set_check_interrupt (thread_p, false);
       restore_check_interrupt = true;
     }
-#endif /* SERVER_MODE */
 
 #ifdef FILE_DEBUG
   /* FOR EASY DEBUGGING OF MULTI VOLUME IN DEBUGGING MODE
@@ -7109,12 +7085,10 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
     }
 
-#if defined(SERVER_MODE)
   if (restore_check_interrupt == true)
     {
       thread_set_check_interrupt (thread_p, old_val);
     }
-#endif /* SERVER_MODE */
 
   return first_alloc_vpid;
 
@@ -7128,12 +7102,10 @@ exit_on_error:
   (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
   VPID_SET_NULL (first_alloc_vpid);
 
-#if defined(SERVER_MODE)
   if (restore_check_interrupt == true)
     {
       thread_set_check_interrupt (thread_p, old_val);
     }
-#endif /* SERVER_MODE */
 
   return NULL;
 }
@@ -7198,10 +7170,8 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p,
   INT32 ftb_npages = 1;
   FILE_TYPE file_type;
   FILE_IS_NEW_FILE isfile_new;
-#if defined(SERVER_MODE)
   bool old_val = false;
   bool restore_check_interrupt = false;
-#endif /* SERVER_MODE */
   bool is_tmp_file;
 
   /*
@@ -7242,13 +7212,11 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p,
 
   file_type = fhdr->type;
 
-#if defined(SERVER_MODE)
   if (file_type == FILE_TMP || file_type == FILE_TMP_TMP)
     {
       old_val = thread_set_check_interrupt (thread_p, false);
       restore_check_interrupt = true;
     }
-#endif /* SERVER_MODE */
 
   /*
    * Find last allocation set to allocate the new pages. The pages are
@@ -7410,12 +7378,10 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p,
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
     }
 
-#if defined(SERVER_MODE)
   if (restore_check_interrupt == true)
     {
       thread_set_check_interrupt (thread_p, old_val);
     }
-#endif /* SERVER_MODE */
 
   return first_alloc_vpid;
 
@@ -7431,12 +7397,10 @@ exit_on_error:
   *first_alloc_nthpage = -1;
   VPID_SET_NULL (first_alloc_vpid);
 
-#if defined(SERVER_MODE)
   if (restore_check_interrupt == true)
     {
       thread_set_check_interrupt (thread_p, old_val);
     }
-#endif /* SERVER_MODE */
 
   return NULL;
 }
@@ -7492,10 +7456,8 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
   FILE_TYPE file_type;
   FILE_IS_NEW_FILE isfile_new;
   int allocstate;
-#if defined(SERVER_MODE)
   bool old_val = false;
   bool restore_check_interrupt = false;
-#endif /* SERVER_MODE */
 
   if (npages <= 0 || desired_volid == NULL_VOLID ||
       fileio_get_volume_descriptor (desired_volid) == NULL_VOLDES)
@@ -7544,13 +7506,11 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   file_type = fhdr->type;
 
-#if defined(SERVER_MODE)
   if (file_type == FILE_TMP || file_type == FILE_TMP_TMP)
     {
       old_val = thread_set_check_interrupt (thread_p, false);
       restore_check_interrupt = true;
     }
-#endif /* SERVER_MODE */
 
   /* Must allocate from the desired volume
      make sure that the last allocation set contains the desired volume */
@@ -7632,12 +7592,10 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
     }
 
-#if defined(SERVER_MODE)
   if (restore_check_interrupt == true)
     {
       thread_set_check_interrupt (thread_p, old_val);
     }
-#endif /* SERVER_MODE */
 
   return first_alloc_vpid;
 
@@ -7657,12 +7615,10 @@ exit_on_error:
 
   VPID_SET_NULL (first_alloc_vpid);
 
-#if defined(SERVER_MODE)
   if (restore_check_interrupt == true)
     {
       thread_set_check_interrupt (thread_p, old_val);
     }
-#endif /* SERVER_MODE */
 
   return NULL;
 }
@@ -7873,9 +7829,7 @@ file_allocset_dealloc_contiguous_pages (THREAD_ENTRY * thread_p,
 					INT32 * first_aid_ptr,
 					INT32 ncont_page_entries)
 {
-#if defined(SERVER_MODE)
   bool old_val;
-#endif /* SERVER_MODE */
   int ret = NO_ERROR;
   DISK_PAGE_TYPE page_type;
 
@@ -7884,9 +7838,7 @@ file_allocset_dealloc_contiguous_pages (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-#if defined(SERVER_MODE)
   old_val = thread_set_check_interrupt (thread_p, false);
-#endif /* SERVER_MODE */
 
   /* In the case of temporary file on permanent volumes
      (i.e., FILE_TMP), set all the pages as permanent */
@@ -7924,9 +7876,7 @@ file_allocset_dealloc_contiguous_pages (THREAD_ENTRY * thread_p,
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
     }
 
-#if defined(SERVER_MODE)
   thread_set_check_interrupt (thread_p, old_val);
-#endif /* SERVER_MODE */
 
   mnt_file_page_deallocs (thread_p, ncont_page_entries);
 
@@ -8232,10 +8182,8 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
   DISK_ISVALID isfound = DISK_INVALID;
   int ret;
   FILE_TYPE file_type;
-#if defined(SERVER_MODE)
   bool old_val = false;
   bool restore_check_interrupt = false;
-#endif /* SERVER_MODE */
 
   isfile_new = file_isnew_with_type (thread_p, vfid, &file_type);
   if (isfile_new == FILE_ERROR)
@@ -8282,13 +8230,11 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
       return ER_FAILED;
     }
 
-#if defined(SERVER_MODE)
   if (file_type == FILE_TMP || file_type == FILE_TMP_TMP)
     {
       old_val = thread_set_check_interrupt (thread_p, false);
       restore_check_interrupt = true;
     }
-#endif /* SERVER_MODE */
 
   ret = ER_FAILED;
 
@@ -8399,12 +8345,10 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
     }
 
-#if defined(SERVER_MODE)
   if (restore_check_interrupt == true)
     {
       thread_set_check_interrupt (thread_p, old_val);
     }
-#endif /* SERVER_MODE */
 
   return ret;
 
@@ -8422,12 +8366,10 @@ exit_on_error:
 
   (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
-#if defined(SERVER_MODE)
   if (restore_check_interrupt == true)
     {
       thread_set_check_interrupt (thread_p, old_val);
     }
-#endif /* SERVER_MODE */
 
   if (ret == NO_ERROR)
     {

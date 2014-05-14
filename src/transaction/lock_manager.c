@@ -9867,6 +9867,8 @@ LK_ENTRY *
 lock_get_class_lock (const OID * class_oid, int tran_index)
 {
 #if !defined (SERVER_MODE)
+  assert (false);
+
   return NULL;
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock;

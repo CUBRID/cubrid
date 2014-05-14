@@ -1150,9 +1150,7 @@ retry:
 
   if (volid == NULL_VOLID)
     {
-#if defined (SERVER_MODE)
       if (thread_get_check_interrupt (thread_p) == true)
-#endif
 	{
 	  if (logtb_is_interrupted (thread_p, false, &continue_check) == true)
 	    {
@@ -1177,9 +1175,7 @@ retry:
 
   if (volid == NULL_VOLID)
     {
-#if defined (SERVER_MODE)
       if (thread_get_check_interrupt (thread_p) == true)
-#endif
 	{
 	  if (logtb_is_interrupted (thread_p, false, &continue_check) == true)
 	    {
