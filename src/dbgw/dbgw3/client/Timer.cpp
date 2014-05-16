@@ -115,11 +115,10 @@ namespace dbgw
             }
           else if (pEvent->needWakeUp(ulCurrTimeMilSec))
             {
+              pEvent->wakeup();
               std::pop_heap(m_eventList.begin(), m_eventList.end());
               m_eventList.pop_back();
               m_mutex.unlock();
-
-              pEvent->wakeup();
               delete pEvent;
             }
           else
