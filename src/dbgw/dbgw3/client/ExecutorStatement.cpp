@@ -63,11 +63,11 @@ namespace dbgw
 
   _ExecutorStatement::~_ExecutorStatement()
   {
-    if (m_pQuery->getType() == sql::DBGW_STMT_TYPE_PROCEDURE)
+    if (m_pCallableStatement)
       {
         m_pCallableStatement->close();
       }
-    else
+    else if (m_pStatement)
       {
         m_pStatement->close();
       }
