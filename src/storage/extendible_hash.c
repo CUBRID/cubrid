@@ -1083,7 +1083,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
       alignment = sizeof (int);
     }
 
-  /* Create the first bucket and initilize its header */
+  /* Create the first bucket and initialize its header */
 
   /*
    * If the file type is TMP, we must call file_create_tmp, otherwise, if
@@ -1134,7 +1134,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type,
       ehash_dir_locate (&exp_dir_pages, &exp_bucket_pages);
     }
 
-  /* Create the directory (allocate the first page) and initilize its header */
+  /* Create the directory (allocate the first page) and initialize its header */
 
   /*
    * If the file type is TMP, we must call file_create_tmp, otherwise, if

@@ -1120,8 +1120,8 @@ boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
 				DISK_SETPAGE_TYPE setpage_type,
 				DISK_VOLPURPOSE vol_purpose, bool wait)
 {
-  bool old_check_interrupt;
 #if defined (SERVER_MODE)
+  bool old_check_interrupt;
   int new_vol_npages;
 #endif
   VOLID volid;

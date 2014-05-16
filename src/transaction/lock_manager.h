@@ -272,8 +272,6 @@ extern int lock_add_composite_lock (THREAD_ENTRY * thread_p,
 extern int lock_finalize_composite_lock (THREAD_ENTRY * thread_p,
 					 LK_COMPOSITE_LOCK * comp_lock);
 extern void lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock);
-extern bool lock_is_class_lock_escalated (LOCK class_lock,
-					  LOCK lock_escalation);
 extern int lock_hold_object_instant_get_granted_mode (THREAD_ENTRY * thread_p,
 						      const OID * oid,
 						      const OID * class_oid,

@@ -520,6 +520,8 @@ static void lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl);
 static int lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl);
 static LK_ENTRY *lock_find_tran_hold_entry (int tran_index, const OID * oid,
 					    bool is_class);
+static bool lock_is_class_lock_escalated (LOCK class_lock,
+					  LOCK lock_escalation);
 static LK_ENTRY *lock_add_non2pl_lock (LK_RES * res_ptr, int tran_index,
 				       LOCK lock);
 static void lock_position_holder_entry (LK_RES * res_ptr,
@@ -11714,7 +11716,7 @@ lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock)
  *   class_lock(in): class lock
  *   lock_escalation(in): lock escalation
  */
-bool
+static bool
 lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation)
 {
 #if !defined (SERVER_MODE)

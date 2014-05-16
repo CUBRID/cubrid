@@ -1263,7 +1263,7 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
 
   nleaf_rec.pnt = *pageid;
   key_len = btree_get_key_length (key);
-  if (key_len < BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)
+  if (key_len < BTREE_MAX_KEYLEN_INPAGE)
     {
       nleaf_rec.key_len = key_len;
       key_type = BTREE_NORMAL_KEY;
@@ -1534,7 +1534,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	   * in pathological cases like char(4)
 	   */
 	  new_max = btree_get_key_length (&prefix_key);
-	  new_max = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE, new_max);
+	  new_max = BTREE_GET_KEY_LEN_IN_PAGE (new_max);
 	  max_key_len = MAX (new_max, max_key_len);
 
 	  assert (node_level == 2);
@@ -1567,8 +1567,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	}
       else
 	{
-	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE,
-						   max_key_len);
+	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (max_key_len);
 
 	  /* Insert this key to the parent level */
 	  assert (node_level == 2);
@@ -1685,8 +1684,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 			     BTREE_NON_LEAF_NODE, &clear_first_key,
 			     &first_key_offset, PEEK_KEY_VALUE, NULL);
 
-	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_NON_LEAF_NODE,
-						   max_key_len);
+	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (max_key_len);
 
 	  /* set level to non-leaf page
 	   * nleaf page could be changed in btree_connect_page */
@@ -2255,13 +2253,15 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
       if (BTREE_IS_UNIQUE (load_args->btid->unique_pk))
 	{			/* unique index */
 	  /* extract class OID */
-	  if (or_get_oid (&buf, &this_class_oid) != NO_ERROR)
+	  ret = or_get_oid (&buf, &this_class_oid);
+	  if (ret != NO_ERROR)
 	    {
 	      goto error;
 	    }
 	}
 
-      if (or_get_oid (&buf, &this_oid) != NO_ERROR)
+      ret = or_get_oid (&buf, &this_oid);
+      if (ret != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2276,12 +2276,13 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	  key_size = CAST_STRLEN (buf.endptr - buf.ptr);
 	}
 
-      if ((*(load_args->btid->key_type->type->data_readval)) (&buf, &this_key,
-							      load_args->
-							      btid->key_type,
-							      key_size, copy,
-							      NULL,
-							      0) != NO_ERROR)
+      ret =
+	(*(load_args->btid->key_type->type->data_readval)) (&buf, &this_key,
+							    load_args->btid->
+							    key_type,
+							    key_size, copy,
+							    NULL, 0);
+      if (ret != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2289,7 +2290,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
       /* Find out if this is the first call to this function */
       if (VPID_ISNULL (&(load_args->leaf.vpid)))
 	{
-	  /* This is the first call to this function; so, initilize some fields
+	  /* This is the first call to this function; so, initialize some fields
 	     in the LOAD_ARGS structure */
 
 	  (load_args->n_keys)++;	/* Increment the key counter */
@@ -2313,17 +2314,15 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	  assert (load_args->ovf.pgptr == NULL);
 
 	  /* Create the first record of the current page in main memory */
-	  if (btree_first_oid (thread_p, &this_key, &this_class_oid,
-			       &this_oid, load_args) != NO_ERROR)
+	  ret = btree_first_oid (thread_p, &this_key, &this_class_oid,
+				 &this_oid, load_args);
+	  if (ret != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  max_key_len =
-	    BTREE_GET_KEY_LEN_IN_PAGE (BTREE_LEAF_NODE,
-				       load_args->cur_key_len);
-
-	  load_args->max_recsize = BTREE_MAX_OIDLEN_INPAGE + max_key_len;
+	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (load_args->cur_key_len);
+	  load_args->max_recsize = max_key_len + BTREE_MAX_OIDLEN_INPAGE;
 	}
       else
 	{			/* This is not the first call to this function */
@@ -2363,6 +2362,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 						    load_args->btid->
 						    sys_btid,
 						    load_args->bt_name);
+		  ret = ER_BTREE_UNIQUE_FAILED;
 		  goto error;
 		}
 
@@ -2589,16 +2589,16 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 		}		/* Current page is an overflow page */
 
 	      /* Create the first part of the next record in main memory */
-	      if (btree_first_oid (thread_p, &this_key, &this_class_oid,
-				   &this_oid, load_args) != NO_ERROR)
+	      ret = btree_first_oid (thread_p, &this_key, &this_class_oid,
+				     &this_oid, load_args);
+	      if (ret != NO_ERROR)
 		{
 		  goto error;
 		}
 
-	      max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (BTREE_LEAF_NODE,
-						       load_args->
-						       cur_key_len);
-	      load_args->max_recsize = BTREE_MAX_OIDLEN_INPAGE + max_key_len;
+	      max_key_len =
+		BTREE_GET_KEY_LEN_IN_PAGE (load_args->cur_key_len);
+	      load_args->max_recsize = max_key_len + BTREE_MAX_OIDLEN_INPAGE;
 	    }			/* different key */
 	}
 

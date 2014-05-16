@@ -64,7 +64,6 @@
 #define BTREE_GOTO_LOCKING_DONE		   -7
 #define BTREE_RESTART_SCAN                 -8
 
-#define BTREE_CLASS_LOCK_MAP_MAX_COUNT     10
 
 typedef enum
 {
@@ -130,12 +129,6 @@ struct btree_keyrange
   int num_index_term;
 };
 
-typedef struct btree_class_lock_map_entry BTREE_CLASS_LOCK_MAP_ENTRY;
-struct btree_class_lock_map_entry
-{
-  OID oid;			/* class OID */
-  LK_ENTRY *lock_ptr;		/* memory address to class lock */
-};
 
 /* Btree range search scan structure */
 typedef struct btree_scan BTREE_SCAN;	/* BTS */
@@ -174,20 +167,6 @@ struct btree_scan
 
   OID cls_oid;			/* class OID */
 
-  /*
-   * 'cls_lock_ptr' has the memory address where the lock mode
-   * acquired on the class oid has been kept. Since the lock mode
-   * is kept in the lock acquired entry of the corresponding class,
-   * the class lock mode cannot be moved to another memory space
-   * during the index scan operation.
-   */
-  LK_ENTRY *cls_lock_ptr;
-
-  /*
-   * class lock map
-   */
-  int class_lock_map_count;
-  BTREE_CLASS_LOCK_MAP_ENTRY class_lock_map[BTREE_CLASS_LOCK_MAP_MAX_COUNT];
 
   /*
    * lock_mode, escalated_mode

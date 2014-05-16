@@ -90,7 +90,6 @@
  * turned back on).
  */
 #define BTREE_MAX_KEYLEN_INPAGE ((int)(DB_PAGESIZE / 8))
-#define BTREE_MAX_SEPARATOR_KEYLEN_INPAGE ((int)(DB_PAGESIZE / 8))
 #define BTREE_MAX_OIDLEN_INPAGE ((int)(DB_PAGESIZE / 8))
 
 /* B+tree node types */
@@ -104,11 +103,8 @@ typedef enum
 extern int btree_node_number_of_keys (PAGE_PTR page_ptr);
 extern int btree_get_next_overflow_vpid (PAGE_PTR page_ptr, VPID * vpid);
 
-#define BTREE_GET_KEY_LEN_IN_PAGE(node_type, key_len) \
-  ((((node_type) == BTREE_LEAF_NODE && (key_len) >= BTREE_MAX_KEYLEN_INPAGE) \
-    ||((node_type) == BTREE_NON_LEAF_NODE  \
-      && (key_len) >= BTREE_MAX_SEPARATOR_KEYLEN_INPAGE)) \
-    ? DISK_VPID_SIZE : (key_len))
+#define BTREE_GET_KEY_LEN_IN_PAGE(key_len) \
+  (((key_len) >= BTREE_MAX_KEYLEN_INPAGE) ? DISK_VPID_SIZE : (key_len))
 
 /* for notification log messages */
 #define BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID,BTNM) \
