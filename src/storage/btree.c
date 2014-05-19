@@ -15049,6 +15049,8 @@ start_point:
 	}
     }
 
+  tmp_bts.C_page = NULL;	/* this page is pointed by P (or N) */
+
   if (is_last_key)
     {
       assert (next_page_flag == false);
