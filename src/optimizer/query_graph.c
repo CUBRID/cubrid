@@ -2677,6 +2677,8 @@ qo_analyze_term (QO_TERM * term, int term_type)
   /* classify TC_JOIN term for outer join and determine its join type */
   if (QO_TERM_CLASS (term) == QO_TC_JOIN)
     {
+      QO_ASSERT (env, QO_NODE_IDX (head_node) < QO_NODE_IDX (tail_node));
+
       /* inner join until proven otherwise */
       QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
 
@@ -2684,8 +2686,6 @@ qo_analyze_term (QO_TERM * term, int term_type)
       if (QO_ON_COND_TERM (term))
 	{
 	  QO_NODE *on_node;
-
-	  QO_ASSERT (env, QO_NODE_IDX (head_node) < QO_NODE_IDX (tail_node));
 
 	  on_node = QO_ENV_NODE (env, QO_TERM_LOCATION (term));
 	  QO_ASSERT (env, on_node != NULL);
@@ -2732,6 +2732,30 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      QO_TERM_CLEAR_FLAG (term, QO_TERM_MERGEABLE_EDGE);
 	    }
 	}
+      else
+	{
+	  QO_NODE *node;
+
+	  for (i = 0; i < env->nnodes; i++)
+	    {
+	      node = QO_ENV_NODE (env, i);
+
+	      if (QO_NODE_IDX (node) >= QO_NODE_IDX (head_node)
+		  && QO_NODE_IDX (node) < QO_NODE_IDX (tail_node))
+		{
+		  if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_LEFT_OUTER
+		      || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER
+		      || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER)
+		    {
+		      /* record explicit join dependecy */
+		      bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)),
+				    &(QO_NODE_OUTER_DEP_SET (node)));
+		      bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)),
+				  QO_NODE_IDX (node));
+		    }
+		}
+	    }
+	}			/* else */
     }
 
 wrapup:
