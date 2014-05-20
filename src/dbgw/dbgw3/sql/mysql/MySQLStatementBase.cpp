@@ -199,7 +199,6 @@ namespace dbgw
           MySQLException e = MySQLExceptionFactory::create(-1,
               m_pMySQLStmt, "Failed to close statement");
           DBGW_LOG_ERROR(e.what());
-          throw e;
         }
 
       DBGW_LOG_DEBUG("close statement.");

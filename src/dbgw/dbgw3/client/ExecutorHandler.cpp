@@ -287,14 +287,18 @@ namespace dbgw
       return m_lastException;
     }
 
-    trait<ClientResultSet>::sp getReusltSet() const
+    trait<ClientResultSet>::sp getReusltSet()
     {
-      return m_pExternalResultSet;
+      trait<ClientResultSet>::sp pResultSet = m_pExternalResultSet;
+      m_pExternalResultSet.reset();
+      return pResultSet;
     }
 
-    trait<ClientResultSet>::spvector getReusltSetList() const
+    trait<ClientResultSet>::spvector getReusltSetList()
     {
-      return m_externalResultSetList;
+      trait<ClientResultSet>::spvector resultSetList(m_externalResultSetList);
+      m_externalResultSetList.clear();
+      return resultSetList;
     }
 
     void init()

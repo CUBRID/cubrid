@@ -141,7 +141,6 @@ namespace dbgw
               CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
                   cciError, "Failed to close connection.");
               DBGW_LOG_ERROR(e.what());
-              throw e;
             }
 
           DBGW_LOGF_DEBUG(

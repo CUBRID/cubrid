@@ -22,6 +22,7 @@
 #include "dbgw3/Logger.h"
 #include "dbgw3/Value.h"
 #include "dbgw3/SynchronizedResource.h"
+#include "dbgw3/system/Mutex.h"
 #include "dbgw3/sql/DatabaseInterface.h"
 #include "dbgw3/sql/Statement.h"
 #include "dbgw3/sql/ResultSet.h"
@@ -39,12 +40,18 @@ namespace dbgw
 
     void ResultSet::close()
     {
+      system::_MutexAutoLock lock(&m_mutex);
+
       if (m_bClosed)
         {
           return;
         }
 
       m_bClosed = true;
+
+      lock.unlock();
+
+      doClose();
 
       closeResource();
     }
@@ -56,7 +63,7 @@ namespace dbgw
 
     void ResultSet::doUnlinkResource()
     {
-      doClose();
+      close();
     }
 
   }

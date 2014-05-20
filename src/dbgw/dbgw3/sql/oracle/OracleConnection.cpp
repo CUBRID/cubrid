@@ -125,7 +125,6 @@ namespace dbgw
                 Exception e = OracleExceptionFactory::create(nResult,
                     m_context.pOCIErr, "Failed to close database.");
                 DBGW_LOG_ERROR(e.what());
-                throw e;
               }
           }
 

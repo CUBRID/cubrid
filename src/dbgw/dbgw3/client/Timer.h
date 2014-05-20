@@ -53,7 +53,7 @@ namespace dbgw
     _Timer();
     virtual ~_Timer();
 
-    void addEvent(_TimerEvent *pJob);
+    void addEvent(_TimerEvent *pEvent);
 
   private:
     class Impl;

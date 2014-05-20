@@ -78,6 +78,7 @@ namespace dbgw
     void execute();
     void cancel();
     bool isDone();
+    bool isCancel();
     void bindWaiter(trait<_AsyncWaiter>::sp pWaiter);
     void bindWorker(trait<_AsyncWorker>::sp pWorker);
     void makeExecutorHandler();

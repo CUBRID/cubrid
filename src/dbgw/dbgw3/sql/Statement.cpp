@@ -47,9 +47,9 @@ namespace dbgw
 
       m_bClosed = true;
 
-      closeResource();
-
       unregisterResourceAll();
+
+      closeResource();
 
       doClose();
     }

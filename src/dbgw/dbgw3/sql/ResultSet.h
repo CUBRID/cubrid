@@ -68,6 +68,7 @@ namespace dbgw
     private:
       bool m_bClosed;
       trait<Statement>::sp m_pStatement;
+      system::_Mutex m_mutex;
     };
 
   }

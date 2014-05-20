@@ -23,6 +23,7 @@
 #include "dbgw3/Value.h"
 #include "dbgw3/ValueSet.h"
 #include "dbgw3/SynchronizedResource.h"
+#include "dbgw3/system/Mutex.h"
 
 namespace dbgw
 {

@@ -422,7 +422,6 @@ namespace dbgw
               CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
                   "Failed to close statement.");
               DBGW_LOG_ERROR(e.what());
-              throw e;
             }
 
           DBGW_LOGF_DEBUG("%s (REQ_ID:%d)", "close statement.", m_hCCIRequest);

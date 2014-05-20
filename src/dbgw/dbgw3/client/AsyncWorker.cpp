@@ -53,7 +53,7 @@ namespace dbgw
     Impl(_AsyncWorker *pSelf,
         trait<_StatisticsMonitor>::sp pMonitor, int nWorkerId) :
       m_pSelf(pSelf), m_pMonitor(pMonitor),
-      m_state(DBGW_WORKER_STATE_IDLE), m_nWorkerId(nWorkerId), m_nReqId(-1),
+      m_state(DBGW_WORKER_STATE_IDLE), m_nWorkerId(nWorkerId),
       m_pStatItem(new _StatisticsItem("WS"))
     {
       m_pStatItem->addColumn(
@@ -138,6 +138,10 @@ namespace dbgw
         {
           m_pSelf->detach();
         }
+      else
+        {
+          changeWorkerStateWithOutLock(DBGW_WORKER_STATE_IDLE);
+        }
     }
 
     static void run(const system::_ThreadEx *pThread)
@@ -154,7 +158,6 @@ namespace dbgw
       while ((pJob = pWorkerImpl->waitAndGetJob()) != NULL)
         {
           pJob->execute();
-
           pJob.reset();
         }
     }
@@ -182,9 +185,7 @@ namespace dbgw
     void changeWorkerStateWithOutLock(_AsyncWorkerState state,
         trait<_AsyncWorkerJob>::sp pJob = trait<_AsyncWorkerJob>::sp())
     {
-      m_state = state;
-
-      if (m_state == DBGW_WORKER_STATE_IDLE)
+      if (state == DBGW_WORKER_STATE_IDLE)
         {
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_STATE) = "IDLE";
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_NAME) = "-";
@@ -192,50 +193,82 @@ namespace dbgw
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_START_TIME) = "-";
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_TIMEOUT) = "-";
         }
-      else if (m_state == DBGW_WORKER_STATE_BUSY)
+      else if (state == DBGW_WORKER_STATE_READY)
+        {
+          m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_STATE) = "READY";
+          m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_NAME) = "-";
+          m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_SQL_NAME) = "-";
+          m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_START_TIME) = "-";
+          m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_TIMEOUT) = "-";
+        }
+      else if (state == DBGW_WORKER_STATE_BUSY)
         {
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_STATE) = "BUSY";
-          m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_NAME) =
-              pJob->getJobName();
-          m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_SQL_NAME) =
-              pJob->getSqlName();
-          m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_START_TIME) =
-              system::getTimeStrFromMilSec(system::getCurrTimeMilSec()).c_str();
-
-          unsigned long long int ulTimeOutMilSec = pJob->getAbsTimeOutMilSec();
-          if (ulTimeOutMilSec == 0)
+          if (pJob)
             {
-              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_TIMEOUT) = "-";
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_NAME) =
+                  pJob->getJobName();
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_SQL_NAME) =
+                  pJob->getSqlName();
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_START_TIME) =
+                  system::getTimeStrFromMilSec(system::getCurrTimeMilSec()).c_str();
+
+              unsigned long long int ulTimeOutMilSec = pJob->getAbsTimeOutMilSec();
+              if (ulTimeOutMilSec == 0)
+                {
+                  m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_TIMEOUT) = "-";
+                }
+              else
+                {
+                  m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_TIMEOUT) =
+                      system::getTimeStrFromMilSec(ulTimeOutMilSec).c_str();
+                }
             }
           else
             {
-              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_TIMEOUT) =
-                  system::getTimeStrFromMilSec(ulTimeOutMilSec).c_str();
+              // assert condition
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_NAME) = "-";
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_SQL_NAME) = "-";
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_START_TIME) = "-";
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_TIMEOUT) = "-";
             }
         }
-      else if (m_state == DBGW_WORKER_STATE_TIMEOUT)
+      else if (state == DBGW_WORKER_STATE_TIMEOUT)
         {
           m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_STATE) = "TIMEOUT";
-          m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_NAME) =
-              pJob->getJobName();
-          m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_SQL_NAME) =
-              pJob->getSqlName();
-          m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_START_TIME) =
-              system::getTimeStrFromMilSec(system::getCurrTimeMilSec()).c_str();
-
-          unsigned long long int ulTimeOutMilSec = pJob->getAbsTimeOutMilSec();
-          if (ulTimeOutMilSec == 0)
+          if (pJob)
             {
-              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_TIMEOUT) = "-";
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_NAME) =
+                  pJob->getJobName();
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_SQL_NAME) =
+                  pJob->getSqlName();
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_START_TIME) =
+                  system::getTimeStrFromMilSec(system::getCurrTimeMilSec()).c_str();
+
+              unsigned long long int ulTimeOutMilSec = pJob->getAbsTimeOutMilSec();
+              if (ulTimeOutMilSec == 0)
+                {
+                  m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_TIMEOUT) = "-";
+                }
+              else
+                {
+                  m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_TIMEOUT) =
+                      system::getTimeStrFromMilSec(ulTimeOutMilSec).c_str();
+                }
+
+              m_pStatItem->removeAfterWriteItem();
             }
           else
             {
-              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_TIMEOUT) =
-                  system::getTimeStrFromMilSec(ulTimeOutMilSec).c_str();
+              // assert condition
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_NAME) = "-";
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_SQL_NAME) = "-";
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_START_TIME) = "-";
+              m_pStatItem->getColumn(DBGW_WORKER_STAT_COL_JOB_TIMEOUT) = "-";
             }
-
-          m_pStatItem->removeAfterWriteItem();
         }
+
+      m_state = state;
     }
 
   private:
@@ -248,8 +281,6 @@ namespace dbgw
         {
           m_cond.timedWait(&m_mutex, 100);
         }
-
-      lock.unlock();
 
       if (bIsRunning)
         {
@@ -271,7 +302,6 @@ namespace dbgw
     trait<_AsyncWorkerJob>::sp m_pJob;
     _AsyncWorkerState m_state;
     int m_nWorkerId;
-    int m_nReqId;
 
     trait<_StatisticsItem>::sp m_pStatItem;
   };
@@ -339,18 +369,17 @@ namespace dbgw
 
     trait<_AsyncWorker>::sp getAsyncWorker()
     {
+      system::_MutexAutoLock lock(&m_mutex);
+
       trait<_AsyncWorker>::sp pWorker;
       do
         {
-          m_mutex.lock();
-
           if (m_idleWorkerList.empty())
             {
               rearrangeWorkerList();
 
               if (m_idleWorkerList.empty())
                 {
-                  m_mutex.unlock();
                   break;
                 }
             }
@@ -358,18 +387,15 @@ namespace dbgw
           pWorker = m_idleWorkerList.front();
           m_idleWorkerList.pop_front();
           m_busyWorkerList.push_back(pWorker);
-          m_mutex.unlock();
         }
       while (pWorker == NULL);
 
       if (pWorker == NULL)
         {
-          m_mutex.lock();
           if (++m_nWorkerId > WORKER_ID_MAX)
             {
               m_nWorkerId = 0;
             }
-          m_mutex.unlock();
 
           pWorker = trait<_AsyncWorker>::sp(
               new _AsyncWorker(m_pConfiguration, m_nWorkerId));
@@ -379,6 +405,8 @@ namespace dbgw
               pWorker->start();
             }
         }
+
+      pWorker->changeWorkerState(DBGW_WORKER_STATE_READY);
 
       return pWorker;
     }
@@ -440,6 +468,10 @@ namespace dbgw
           if ((*it)->getState() == DBGW_WORKER_STATE_IDLE)
             {
               m_idleWorkerList.push_back(*it);
+              m_busyWorkerList.erase(it++);
+            }
+          else if ((*it)->getState() == DBGW_WORKER_STATE_TIMEOUT)
+            {
               m_busyWorkerList.erase(it++);
             }
           else

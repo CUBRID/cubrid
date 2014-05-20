@@ -276,6 +276,8 @@ namespace dbgw
     {
       clearException();
 
+      trait<ClientResultSet>::sp pResultSet;
+
       try
         {
           checkClientIsValid();
@@ -288,11 +290,15 @@ namespace dbgw
                   new _ExecuteQueryJob(m_pExecHandler, ulWaitTimeMilSec,
                       szSqlName, pParameter));
 
-              delegateJob(pJob);
+              trait<_AsyncWorkerJobResult>::sp pJobResult = delegateJob(pJob);
+
+              pResultSet = pJobResult->getResultSet();
             }
           else
             {
               m_pExecHandler->execute(szSqlName, pParameter);
+
+              pResultSet = m_pExecHandler->getResultSet();
             }
 
           processError(m_pExecHandler->getLastException());
@@ -303,7 +309,7 @@ namespace dbgw
           return trait<ClientResultSet>::sp();
         }
 
-      return m_pExecHandler->getResultSet();
+      return pResultSet;
     }
 
     int execAsync(const char *szSqlName, ExecAsyncCallBack pCallBack,
@@ -358,6 +364,8 @@ namespace dbgw
     {
       clearException();
 
+      trait<ClientResultSet>::spvector resultSetList;
+
       try
         {
           checkClientIsValid();
@@ -370,11 +378,15 @@ namespace dbgw
                   new _ExecuteQueryBatchJob(m_pExecHandler, ulWaitTimeMilSec,
                       szSqlName, parameterList));
 
-              delegateJob(pJob);
+              trait<_AsyncWorkerJobResult>::sp pJobResult = delegateJob(pJob);
+
+              resultSetList = pJobResult->getResultSetList();
             }
           else
             {
               m_pExecHandler->executeBatch(szSqlName, parameterList);
+
+              resultSetList = m_pExecHandler->getResultSetList();
             }
 
           processError(m_pExecHandler->getLastException());
@@ -388,7 +400,7 @@ namespace dbgw
             }
         }
 
-      return m_pExecHandler->getResultSetList();
+      return resultSetList;
     }
 
     int execBatchAsync(const char *szSqlName,

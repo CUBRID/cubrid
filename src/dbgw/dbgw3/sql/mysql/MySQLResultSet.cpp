@@ -336,7 +336,6 @@ namespace dbgw
           MySQLException e = MySQLExceptionFactory::create(-1,
               m_pMySQLStmt, "Failed to close result");
           DBGW_LOG_ERROR(e.what());
-          throw e;
         }
 
       while (mysql_more_results(m_pMySQL))

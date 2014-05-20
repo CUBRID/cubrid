@@ -419,10 +419,10 @@ namespace dbgw
               CUBRIDException e = CUBRIDExceptionFactory::create(nResult,
                   cciError, "Failed to close result set.");
               DBGW_LOGF_ERROR("%s (REQ_ID:%d)", e.what(), m_hCCIRequest);
-              throw e;
             }
 
           DBGW_LOGF_DEBUG("%s (REQ_ID:%d)", "close resultset.", m_hCCIRequest);
+          m_hCCIRequest = -1;
         }
     }
 

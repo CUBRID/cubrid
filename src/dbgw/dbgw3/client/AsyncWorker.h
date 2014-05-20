@@ -26,6 +26,7 @@ namespace dbgw
   enum _AsyncWorkerState
   {
     DBGW_WORKER_STATE_IDLE = 0,
+    DBGW_WORKER_STATE_READY,
     DBGW_WORKER_STATE_BUSY,
     DBGW_WORKER_STATE_TIMEOUT
   };
