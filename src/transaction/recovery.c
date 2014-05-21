@@ -736,7 +736,7 @@ struct rvfun RV_fun[] = {
    btree_rv_nodehdr_undoredo_update,
    btree_rv_keyval_dump,
    btree_rv_noderec_dump},
-  {RVBT_KEYVAL_DEL_OID_TRUNCATE,
+  {RVBT_KEYVAL_DEL_OID_TRUNCATE,	/* unused */
    "RVBT_KEYVAL_DEL_OID_TRUNCATE",
    btree_rv_keyval_undo_delete,
    btree_rv_redo_truncate_oid,

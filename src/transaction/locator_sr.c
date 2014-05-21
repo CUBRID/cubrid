@@ -8798,7 +8798,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid,
 	}
 
       /* Delete the instance from the B-tree */
-      if (key_found == false)
+      if (key_found == false || dbvalue_ptr == NULL)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -9244,6 +9244,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	}
       else
 	{
+	  assert (key != NULL);
+
 	  if (db_value_is_null (key) || btree_multicol_key_is_null (key))
 	    {
 	      /* Do not check the btree since unbound values are not recorded */
@@ -9675,6 +9677,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	    }
 	  else
 	    {
+	      assert (key != NULL);
+
 	      if (db_value_is_null (key) || btree_multicol_key_is_null (key))
 		{
 		  num_nulls++;

@@ -176,7 +176,7 @@ static void print_list (const BTREE_NODE * this_list);
 #endif /* defined(CUBRID_DEBUG) */
 static int btree_pack_root_header (RECDES * Rec, BTREE_ROOT_HEADER * header,
 				   TP_DOMAIN * key_type);
-static void btree_rv_save_root_head (int max_key_len, int null_delta,
+static void btree_rv_save_root_head (int null_delta,
 				     int oid_delta, int key_delta,
 				     RECDES * recdes);
 
@@ -191,6 +191,7 @@ BTREE_NODE_HEADER *
 btree_get_node_header (PAGE_PTR page_ptr)
 {
   RECDES header_record;
+  BTREE_NODE_HEADER *header = NULL;
 
   assert (page_ptr != NULL);
 
@@ -204,7 +205,14 @@ btree_get_node_header (PAGE_PTR page_ptr)
       return NULL;
     }
 
-  return (BTREE_NODE_HEADER *) header_record.data;
+  header = (BTREE_NODE_HEADER *) header_record.data;
+  if (header != NULL)
+    {
+      assert (header->node_level > 0);
+      assert (header->max_key_len >= 0);
+    }
+
+  return header;
 }
 
 /*
@@ -218,6 +226,7 @@ BTREE_ROOT_HEADER *
 btree_get_root_header (PAGE_PTR page_ptr)
 {
   RECDES header_record;
+  BTREE_ROOT_HEADER *root_header = NULL;
 
   assert (page_ptr != NULL);
 
@@ -231,7 +240,14 @@ btree_get_root_header (PAGE_PTR page_ptr)
       return NULL;
     }
 
-  return (BTREE_ROOT_HEADER *) header_record.data;
+  root_header = (BTREE_ROOT_HEADER *) header_record.data;
+  if (root_header != NULL)
+    {
+      assert (root_header->node.node_level > 0);
+      assert (root_header->node.max_key_len >= 0);
+    }
+
+  return root_header;
 }
 
 /*
@@ -278,6 +294,10 @@ btree_init_node_header (THREAD_ENTRY * thread_p, VFID * vfid,
   RECDES rec;
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   BTREE_NODE_TYPE node_type;
+
+  assert (header != NULL);
+  assert (header->node_level > 0);
+  assert (header->max_key_len >= 0);
 
   /* create header record */
   rec.area_size = DB_PAGESIZE;
@@ -367,11 +387,11 @@ btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid,
 				int oid_delta, int key_delta)
 {
   RECDES rec, delta_rec;
-  char delta_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  char delta_rec_buf[(3 * OR_INT_SIZE) + BTREE_MAX_ALIGN];
   BTREE_ROOT_HEADER *root_header = NULL;
 
   delta_rec.data = NULL;
-  delta_rec.area_size = DB_PAGESIZE;
+  delta_rec.area_size = 3 * OR_INT_SIZE;
   delta_rec.data = PTR_ALIGN (delta_rec_buf, BTREE_MAX_ALIGN);
 
   if (spage_get_record (page_ptr, HEADER, &rec, PEEK) != S_SUCCESS)
@@ -385,8 +405,7 @@ btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid,
   root_header->num_keys += key_delta;
 
   /* save root head for undo purposes */
-  btree_rv_save_root_head (root_header->node.max_key_len,
-			   -null_delta, -oid_delta, -key_delta, &delta_rec);
+  btree_rv_save_root_head (-null_delta, -oid_delta, -key_delta, &delta_rec);
 
   log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD,
 			     vfid, page_ptr, HEADER,
@@ -457,6 +476,10 @@ btree_init_root_header (THREAD_ENTRY * thread_p, VFID * vfid,
   RECDES rec;
   char copy_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
 
+  assert (root_header != NULL);
+  assert (root_header->node.node_level > 0);
+  assert (root_header->node.max_key_len >= 0);
+
   rec.area_size = DB_PAGESIZE;
   rec.data = PTR_ALIGN (copy_rec_buf, BTREE_MAX_ALIGN);
 
@@ -512,26 +535,25 @@ btree_init_overflow_header (THREAD_ENTRY * thread_p,
 /*
  * btree_rv_save_root_head () - Save root head stats FOR LOGICAL LOG PURPOSES
  *   return:
- *   max_key_len(in):
  *   null_delta(in):
  *   oid_delta(in):
  *   key_delta(in):
- *   recdes(in):
+ *   recdes(out):
  *
  * Note: Copy the root header statistics to the data area provided.
  *
  * Note: This is a UTILITY routine, but not an actual recovery routine.
  */
 static void
-btree_rv_save_root_head (int max_key_len, int null_delta,
-			 int oid_delta, int key_delta, RECDES * recdes)
+btree_rv_save_root_head (int null_delta, int oid_delta, int key_delta,
+			 RECDES * recdes)
 {
   char *datap;
 
+  assert (recdes->area_size >= 3 * OR_INT_SIZE);
+
   recdes->length = 0;
   datap = (char *) recdes->data;
-  OR_PUT_INT (datap, max_key_len);
-  datap += OR_INT_SIZE;
   OR_PUT_INT (datap, null_delta);
   datap += OR_INT_SIZE;
   OR_PUT_INT (datap, oid_delta);
@@ -895,7 +917,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   /* Just to make sure that there were entries to put into the tree */
   if (load_args->leaf.pgptr != NULL)
     {
-
       /* Save the last leaf record */
 
       if (btree_save_last_leafrec (thread_p, load_args) != NO_ERROR)
@@ -932,9 +953,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
 	  goto error;
 	}
 
-#if defined(BTREE_DEBUG)
-      (void) btree_verify_tree (thread_p, &btid_int, NULL, NULL);
-#endif /* BTREE_DEBUG */
+#if !defined(NDEBUG)
+      (void) btree_verify_tree (thread_p, &btdes.class_oid, &btid_int,
+				bt_name);
+#endif
 
     }
   else

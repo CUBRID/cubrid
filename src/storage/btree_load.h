@@ -73,7 +73,7 @@
 
 #define HEADER 0		/* Header (Oth) record of the page  */
 
-#if defined(BTREE_DEBUG)
+#if !defined(NDEBUG)
 #define BTREE_INVALID_INDEX_ID(btid) \
  ((btid)->vfid.fileid == NULL_FILEID || (btid)->vfid.volid == NULL_VOLID ||\
   (btid)->root_pageid == NULL_PAGEID)
