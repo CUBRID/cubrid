@@ -27,7 +27,7 @@ namespace dbgw
   typedef boost::shared_ptr<_AsyncWorkerJob> _AsyncWorkerJobSharedPtr;
 
   class _TimerEvent;
-  typedef std::vector<_TimerEvent *> _TimerEventList;
+  typedef trait<_TimerEvent>::spvector _TimerEventList;
 
   class _TimerEvent
   {
@@ -53,7 +53,7 @@ namespace dbgw
     _Timer();
     virtual ~_Timer();
 
-    void addEvent(_TimerEvent *pEvent);
+    void addEvent(trait<_TimerEvent>::sp pEvent);
 
   private:
     class Impl;

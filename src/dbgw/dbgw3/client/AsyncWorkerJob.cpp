@@ -136,6 +136,11 @@ namespace dbgw
     {
       system::_MutexAutoLock lock(&m_mutex);
 
+      if (m_status == DBGW_ASYNC_JOB_STATUS_CANCEL)
+        {
+          return;
+        }
+
       m_status = DBGW_ASYNC_JOB_STATUS_BUSY;
 
       lock.unlock();
@@ -152,7 +157,7 @@ namespace dbgw
           pJobResult.reset();
           lock.unlock();
 
-          notify(pJobResult);
+          notify();
         }
     }
 
@@ -165,17 +170,20 @@ namespace dbgw
         {
           m_status = DBGW_ASYNC_JOB_STATUS_CANCEL;
 
-          ExecuteTimeoutExecption e(m_pWaiter->getTimeOutMilSec());
-          DBGW_LOG_ERROR(e.what());
+          if (m_pWaiter)
+            {
+              ExecuteTimeoutExecption e(m_pWaiter->getTimeOutMilSec());
+              DBGW_LOG_ERROR(e.what());
 
-          trait<_AsyncWorkerJobResult>::sp pJobResult(
-              new _AsyncWorkerJobResult(e));
+              trait<_AsyncWorkerJobResult>::sp pJobResult(
+                  new _AsyncWorkerJobResult(e));
 
-          m_pWaiter->bindJobResult(pJobResult);
-          pJobResult.reset();
-          lock.unlock();
+              m_pWaiter->bindJobResult(pJobResult);
+              pJobResult.reset();
+              lock.unlock();
 
-          notify(pJobResult);
+              notify();
+            }
         }
     }
 
@@ -258,7 +266,7 @@ namespace dbgw
     }
 
   private:
-    void notify(trait<_AsyncWorkerJobResult>::sp pJobResult)
+    void notify()
     {
       m_pWaiter->notify();
 

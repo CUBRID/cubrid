@@ -641,7 +641,7 @@ namespace dbgw
     {
       if (pJob->getTimeOutMilSec() > system::INFINITE_TIMEOUT)
         {
-          _TimerEvent *pEvent = new _TimerEvent(pJob);
+          trait<_TimerEvent>::sp pEvent(new _TimerEvent(pJob));
           m_pTimer->addEvent(pEvent);
         }
 
@@ -665,7 +665,7 @@ namespace dbgw
     {
       if (pJob->getTimeOutMilSec() > system::INFINITE_TIMEOUT)
         {
-          _TimerEvent *pEvent = new _TimerEvent(pJob);
+          trait<_TimerEvent>::sp pEvent(new _TimerEvent(pJob));
           m_pTimer->addEvent(pEvent);
         }
 
@@ -677,7 +677,7 @@ namespace dbgw
     {
       if (pJob->getTimeOutMilSec() > system::INFINITE_TIMEOUT)
         {
-          _TimerEvent *pEvent = new _TimerEvent(pJob);
+          trait<_TimerEvent>::sp pEvent(new _TimerEvent(pJob));
           m_pTimer->addEvent(pEvent);
         }
 

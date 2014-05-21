@@ -65,14 +65,6 @@ namespace dbgw
 
     ~Impl()
     {
-      _TimerEventList::iterator it = m_eventList.begin();
-      for (; it != m_eventList.end(); it++)
-        {
-          if (*it != NULL)
-            {
-              delete(*it);
-            }
-        }
     }
 
     bool waitEvent()
@@ -91,8 +83,9 @@ namespace dbgw
     void wakeupEvent()
     {
       unsigned long long int ulCurrTimeMilSec = 0;
-      _TimerEvent *pEvent = NULL;
+      trait<_TimerEvent>::sp pEvent;
 
+      static int n = 0;
       while (true)
         {
           m_mutex.lock();
@@ -111,7 +104,6 @@ namespace dbgw
               std::pop_heap(m_eventList.begin(), m_eventList.end());
               m_eventList.pop_back();
               m_mutex.unlock();
-              delete pEvent;
             }
           else if (pEvent->needWakeUp(ulCurrTimeMilSec))
             {
@@ -120,21 +112,23 @@ namespace dbgw
               m_mutex.unlock();
 
               pEvent->wakeup();
-              delete pEvent;
             }
           else
             {
               m_mutex.unlock();
 
-              if (m_pSelf->sleep(100) == false)
+              if ((n++ % 100) == 0)
                 {
-                  break;
+                  if (m_pSelf->sleep(10) == false)
+                    {
+                      break;
+                    }
                 }
             }
         }
     }
 
-    void addEvent(_TimerEvent *pEvent)
+    void addEvent(trait<_TimerEvent>::sp pEvent)
     {
       system::_MutexAutoLock lock(&m_mutex);
 
@@ -181,9 +175,9 @@ namespace dbgw
       }
   }
 
-  void _Timer::addEvent(_TimerEvent *pJob)
+  void _Timer::addEvent(trait<_TimerEvent>::sp pEvent)
   {
-    m_pImpl->addEvent(pJob);
+    m_pImpl->addEvent(pEvent);
   }
 
 }
