@@ -5865,28 +5865,6 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	}
 
-      if (p->info.alter.create_index)
-	{
-	  save_custom = parser->custom_print;
-	  parser->custom_print |= PT_SUPPRESS_INDEX;
-	  r1 = pt_print_bytes_l (parser, p->info.alter.create_index);
-	  parser->custom_print = save_custom;
-
-	  if (r1)
-	    {
-	      if (close_parenthesis)
-		{
-		  q = pt_append_nulstring (parser, q, ", ");
-		}
-	      else
-		{
-		  q = pt_append_nulstring (parser, q, "(");
-		  close_parenthesis = true;
-		}
-	      q = pt_append_varchar (parser, q, r1);
-	    }
-	}
-
       if (close_parenthesis)
 	{
 	  q = pt_append_nulstring (parser, q, ")");
@@ -6366,6 +6344,20 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 			   start_value);
       q = pt_append_nulstring (parser, q, " auto_increment = ");
       q = pt_append_varchar (parser, q, r1);
+      break;
+    case PT_ADD_INDEX_CLAUSE:
+      q = pt_append_nulstring (parser, q, " add ");
+      save_custom = parser->custom_print;
+      parser->custom_print |= PT_SUPPRESS_INDEX;
+      r1 = pt_print_bytes_l (parser, p->info.alter.create_index);
+      parser->custom_print = save_custom;
+
+      if (r1)
+	{
+	  q = pt_append_nulstring (parser, q, "(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
       break;
     }
   if (p->info.alter.super.resolution_list &&

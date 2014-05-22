@@ -778,7 +778,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   if (heap_scancache_start (thread_p, &sort_args->hfscan_cache,
 			    &sort_args->hfids[cur_class],
 			    &sort_args->class_ids[cur_class],
-			    true, false, LOCKHINT_NONE) != NO_ERROR)
+			    true, false, LOCKHINT_BUILD_INDEX) != NO_ERROR)
     {
       goto error;
     }

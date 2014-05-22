@@ -6178,6 +6178,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   int client_pid;
   int next_node;
   int *tran_index_in_cycle = NULL;
+  int victim_tran_index;
 
   /* simple notation */
   TWFG_node = lk_Gl.TWFG_node;
@@ -6396,6 +6397,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
       if (TWFG_node[v].candidate == true)
 	{
 	  tranid = logtb_find_tranid (v);
+	  victim_tran_index = victims[victim_count].tran_index;
 	  if (logtb_is_active (thread_p, tranid) == false)
 	    {
 	      inact_trans_found = true;
@@ -6409,15 +6411,23 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	      WFG_nidx += 1;
 #endif /* CUBRID_DEBUG */
 	    }
+	  else if (victim_tran_index != NULL_TRAN_INDEX
+		   && logtb_has_deadlock_priority (v) == true)
+	    {
+	      /* victim was alread seleted. this(v) transaction avoid victim selection */
+	      ;
+	    }
 	  else
 	    {
 	      lock_holder_found = true;
 	      can_timeout = LK_CAN_TIMEOUT (logtb_find_wait_msecs (v));
-	      if (victims[victim_count].tran_index == NULL_TRAN_INDEX
+	      if (victim_tran_index == NULL_TRAN_INDEX
 		  || (victims[victim_count].can_timeout == false
 		      && can_timeout == true)
 		  || (victims[victim_count].can_timeout == can_timeout
-		      && LK_ISYOUNGER (tranid, victims[victim_count].tranid)))
+		      && (LK_ISYOUNGER (tranid, victims[victim_count].tranid)
+			  || logtb_has_deadlock_priority (victim_tran_index)
+			  == true)))
 		{
 		  victims[victim_count].tran_index = v;
 		  victims[victim_count].tranid = tranid;
@@ -8494,6 +8504,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
   int granted;
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
+  LOG_TDES *tdes;
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL elapsed_time;
@@ -8527,6 +8538,10 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
       if (is_indexscan == true)
 	{
 	  class_lock = IS_LOCK;
+	}
+      else if (lock_hint & LOCKHINT_BUILD_INDEX)
+	{
+	  class_lock = S_LOCK;
 	}
       else
 	{
@@ -8566,6 +8581,16 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
   if (granted == LK_GRANTED)
     {
       *current_lock = class_lock;
+
+      if (lock_hint & LOCKHINT_BUILD_INDEX)
+	{
+	  /* After building index aquire lock at class, this transaction has deadlock priority */
+	  tdes = LOG_FIND_TDES (tran_index);
+	  if (tdes)
+	    {
+	      tdes->has_deadlock_priority = true;
+	    }
+	}
     }
   else
     {

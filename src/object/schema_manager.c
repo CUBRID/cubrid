@@ -13629,7 +13629,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
       return error;
     }
 
-  error = au_fetch_class (classop, &class_, AU_FETCH_UPDATE, AU_INDEX);
+  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_INDEX);
   if (error != NO_ERROR)
     {
       return error;
@@ -14026,6 +14026,8 @@ severe_error:
   assert (er_errid () != NO_ERROR);
   error = er_errid ();
   (void) tran_unilaterally_abort ();
+
+  classobj_decache_class_constraints (class_);
 
   return error;
 }

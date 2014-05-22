@@ -1988,8 +1988,9 @@ typedef enum
 enum LOCKHINT
 {
   LOCKHINT_NONE = 0,
-  LOCKHINT_READ_UNCOMMITTED = 1
-    /* other lock hint, having value of 2, 4, 8 ..., may be added here */
+  LOCKHINT_READ_UNCOMMITTED = 1,
+  LOCKHINT_BUILD_INDEX = 2
+    /* other lock hint, having value of 4, 8 ..., may be added here */
 };
 
 /* session state id */

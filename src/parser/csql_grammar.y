@@ -3109,7 +3109,10 @@ alter_stmt
 				if (node->info.alter.code == PT_ADD_ATTR_MTHD)
 				  {
 				    PT_NODE *p = node->info.alter.create_index;
-
+				    if (p)
+				      {
+					node->info.alter.code = PT_ADD_INDEX_CLAUSE;
+				      }
 				    /* add the table spec to each ALTER TABLE ADD INDEX
 				     * clause in the ALTER statement */
 				    while (p)

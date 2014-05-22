@@ -220,6 +220,8 @@ static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser,
 					      PT_NODE * alter);
 static int do_alter_clause_rename_entity (PARSER_CONTEXT * const parser,
 					  PT_NODE * const alter);
+static int do_alter_clause_add_index (PARSER_CONTEXT * const parser,
+				      PT_NODE * const alter);
 static int do_alter_clause_drop_index (PARSER_CONTEXT * const parser,
 				       PT_NODE * const alter);
 static int do_alter_change_auto_increment (PARSER_CONTEXT * const parser,
@@ -522,7 +524,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *data_type, *data_default, *path;
   PT_NODE *slist;
   PT_NODE *tmp_node = NULL;
-  PT_NODE *create_index = NULL;
   PT_TYPE_ENUM pt_desired_type;
 #if 0
   HFID *hfid;
@@ -743,7 +744,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      return error;
 	    }
 
-	  create_index = alter->info.alter.create_index;
+	  assert (alter->info.alter.create_index == NULL);
 	}
       break;
 
@@ -1370,15 +1371,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       return error;
     }
 
-  for (; create_index != NULL; create_index = create_index->next)
-    {
-      error = do_create_index (parser, create_index);
-      if (error != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
-
   /* If we have an ADD COLUMN x NOT NULL without a default value, the existing
    * rows will be filled with NULL for the new column by default.
    * For compatibility with MySQL, we can auto-fill some column types with
@@ -1526,7 +1518,46 @@ error_exit:
 }
 
 /*
- * do_alter_clause_rename_entity() - Executes an ALTER TABLE DROP INDEX clause
+ * do_alter_clause_add_index() - Executes an ALTER TABLE ADD INDEX clause
+ *   return: Error code
+ *   parser(in): Parser context
+ *   alter(in/out): Parse tree of a PT_ADD_INDEX_CLAUSE clause potentially
+ *                  followed by the rest of the clauses in the ALTER
+ *                  statement.
+ * Note: The clauses following the PT_ADD_INDEX_CLAUSE clause are not
+ *       affected in any way.
+ */
+static int
+do_alter_clause_add_index (PARSER_CONTEXT * const parser,
+			   PT_NODE * const alter)
+{
+
+  int error = NO_ERROR;
+  PT_NODE *create_index = NULL;
+
+  assert (alter->info.alter.create_index != NULL);
+  assert (alter->info.alter.constraint_list == NULL);
+  assert (alter->info.alter.alter_clause.attr_mthd.attr_def_list == NULL);
+  assert (alter->info.alter.alter_clause.attr_mthd.mthd_def_list == NULL);
+  assert (alter->info.alter.alter_clause.attr_mthd.mthd_file_list == NULL);
+
+  create_index = alter->info.alter.create_index;
+
+  for (; create_index != NULL; create_index = create_index->next)
+    {
+      error = do_create_index (parser, create_index);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+    }
+
+  return error;
+}
+
+
+/*
+ * do_alter_clause_drop_index() - Executes an ALTER TABLE DROP INDEX clause
  *   return: Error code
  *   parser(in): Parser context
  *   alter(in/out): Parse tree of a PT_DROP_INDEX_CLAUSE clause potentially
@@ -1723,6 +1754,9 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	case PT_RENAME_ENTITY:
 	  error_code = do_alter_clause_rename_entity (parser, crt_clause);
+	  break;
+	case PT_ADD_INDEX_CLAUSE:
+	  error_code = do_alter_clause_add_index (parser, crt_clause);
 	  break;
 	case PT_DROP_INDEX_CLAUSE:
 	  error_code = do_alter_clause_drop_index (parser, crt_clause);
