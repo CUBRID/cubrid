@@ -48,4 +48,8 @@ EXPORTS
 	uReadDBtxtFile
 	get_db_server_pid
 	run_child
+	cm_util_log_write_result
+	cm_util_log_write_errid
+	cm_util_log_write_errstr
+	cm_util_log_write_command
 	

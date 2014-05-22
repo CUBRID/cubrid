@@ -36,7 +36,9 @@ extern "C"
 #include <sys/types.h>
 #include <sys/param.h>
 #else
+#ifndef int64_t
   typedef __int64 int64_t;
+#endif
 #endif
 
 #define EMGR_CUR_VERSION    EMGR_MAKE_VER(3, 0)
@@ -149,6 +151,18 @@ extern "C"
 #define ERR_TEMPLATE_ALREADY_EXIST 1340
 #define ERR_WARNING     1350
 
+/* Used for cm_util_log_write_result*/
+#ifdef CM_NO_ERROR
+#undef CM_NO_ERROR
+#endif
+
+#define CM_NO_ERROR         0
+
+#define CM_PRINT_AND_LOG_ERR_MSG(...) \
+  do {\
+    fprintf(stderr, __VA_ARGS__);\
+    cm_util_log_write_errstr(__VA_ARGS__);\
+  }while (0)
 
   typedef enum
   {
@@ -156,8 +170,6 @@ extern "C"
     DB_SERVICE_MODE_SA = 1,
     DB_SERVICE_MODE_CS = 2
   } T_DB_SERVICE_MODE;
-
-
 
   typedef struct
   {
@@ -195,6 +207,43 @@ extern "C"
     int64_t lock_request;
   } T_CM_DIAG_MONITOR_DB_VALUE;
 
+/* Message id in the set CM_MSGCAT_UTIL_SET_GENERIC */
+/* Same value as utility.h - MSGCAT_UTIL_SET_GENERIC */
+/* Used for cm_util_log_write_errid*/
+  typedef enum
+  {
+    CM_MSGCAT_UTIL_GENERIC_BAD_DATABASE_NAME = 1,
+    CM_MSGCAT_UTIL_GENERIC_BAD_OUTPUT_FILE = 2,
+    CM_MSGCAT_UTIL_GENERIC_BAD_VOLUME_NAME = 6,
+    CM_MSGCAT_UTIL_GENERIC_VERSION = 9,
+    CM_MSGCAT_UTIL_GENERIC_ADMIN_USAGE = 10,
+    CM_MSGCAT_UTIL_GENERIC_SERVICE_INVALID_NAME = 12,
+    CM_MSGCAT_UTIL_GENERIC_SERVICE_INVALID_CMD = 13,
+    CM_MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL = 14,
+    CM_MSGCAT_UTIL_GENERIC_START_STOP_3S = 15,
+    CM_MSGCAT_UTIL_GENERIC_START_STOP_2S = 16,
+    CM_MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S = 17,
+    CM_MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S = 18,
+    CM_MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S = 19,
+    CM_MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S = 20,
+    CM_MSGCAT_UTIL_GENERIC_RESULT = 21,
+    CM_MSGCAT_UTIL_GENERIC_MISS_ARGUMENT = 22,
+    CM_MSGCAT_UTIL_GENERIC_CUBRID_USAGE = 23,
+    CM_MSGCAT_UTIL_GENERIC_ARGS_OVER = 31,
+    CM_MSGCAT_UTIL_GENERIC_MISS_DBNAME = 32,
+    CM_MSGCAT_UTIL_GENERIC_DEPRECATED = 33,
+    CM_MSGCAT_UTIL_GENERIC_INVALID_PARAMETER = 34,
+    CM_MSGCAT_UTIL_GENERIC_NO_MEM = 35,
+    CM_MSGCAT_UTIL_GENERIC_NOT_HA_MODE = 36,
+    CM_MSGCAT_UTIL_GENERIC_HA_MODE = 37,
+    CM_MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB = 38,
+    CM_MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_NODE = 39,
+    CM_MSGCAT_UTIL_GENERIC_INVALID_CMD = 40,
+    CM_MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED = 41,
+    CM_MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT = 42,
+    CM_MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR = 43
+  } CM_MSGCAT_UTIL_GENERIC_MSG;
+
   int cm_get_diag_data (T_CM_DIAG_MONITOR_DB_VALUE * ret_result,
 			char *db_name, char *mon_db);
 
@@ -219,6 +268,10 @@ extern "C"
   int run_child (const char *const argv[], int wait_flag,
 		 const char *stdin_file, char *stdout_file, char *stderr_file,
 		 int *exit_status);
+  int cm_util_log_write_result (int error);
+  int cm_util_log_write_errid (int message_id, ...);
+  int cm_util_log_write_errstr (const char *format, ...);
+  int cm_util_log_write_command (int argc, char *argv[]);
 
 #ifdef __cplusplus
 }
