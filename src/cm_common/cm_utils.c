@@ -26,11 +26,9 @@
 #include "cm_defines.h"
 #include "utility.h"
 #include "environment_variable.h"
-#include "system_parameter.h"
 
 #include <stdio.h>
 #include <signal.h>
-#include <stdarg.h>
 #include <stdlib.h>
 #include <errno.h>
 
@@ -39,8 +37,10 @@
 #include <io.h>
 #include <tlhelp32.h>
 #else
+#include "system_parameter.h"
 #include <unistd.h>
 #include <sys/wait.h>
+#include <stdarg.h>
 #endif
 
 static T_CMD_RESULT *new_cmd_result (void);
