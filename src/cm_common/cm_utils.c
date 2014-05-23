@@ -26,10 +26,11 @@
 #include "cm_defines.h"
 #include "utility.h"
 #include "environment_variable.h"
+#include "system_parameter.h"
 
 #include <stdio.h>
 #include <signal.h>
-#include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <errno.h>
 
