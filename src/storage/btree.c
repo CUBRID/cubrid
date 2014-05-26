@@ -18491,10 +18491,6 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
   BTREE_NODE_HEADER *header = NULL;
 #endif
 
-#if !defined (SERVER_MODE)
-  assert_release (false);
-#endif
-
   /*
    * Following conditions are satisfied.
    * 1. The second argument, oid_idx, is always 0(zero).
@@ -18641,6 +18637,10 @@ btree_handle_prev_leaf_after_locking (THREAD_ENTRY * thread_p,
    * by the merge operation of other transactions.
    */
 
+#if !defined (SERVER_MODE)
+  assert_release (false);
+#endif
+
   /* unfix the previous leaf page */
   pgbuf_unfix_and_init (thread_p, bts->P_page);
   VPID_SET_NULL (&(bts->P_vpid));
@@ -18756,10 +18756,6 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
   int ret = NO_ERROR;
   bool old_check_page_validation;
 
-#if !defined (SERVER_MODE)
-  assert_release (false);
-#endif
-
   /*
    * Following conditions are satisfied.
    * 1. VPID_ISNULL (&(bts->P_vpid))
@@ -18838,6 +18834,10 @@ btree_handle_curr_leaf_after_locking (THREAD_ENTRY * thread_p,
        * find the current locked <key, oid> pair
        * Be careful that the locked OID can be deleted.
        */
+
+#if !defined (SERVER_MODE)
+      assert_release (false);
+#endif
 
       /* unfix the current leaf page */
       pgbuf_unfix_and_init (thread_p, bts->C_page);
@@ -19106,10 +19106,6 @@ btree_lock_current_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   OID oid;
   LOG_LSA prev_leaf_lsa, ovfl_page_lsa;
 
-#if !defined (SERVER_MODE)
-  assert_release (false);
-#endif
-
   if (first_key_oid == NULL || OID_ISNULL (first_key_oid)
       || prev_oid_locked_ptr == NULL || prev_key == NULL
       || ck_pseudo_oid == NULL || which_action == NULL)
@@ -19288,10 +19284,6 @@ btree_lock_next_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
   int ret_val = NO_ERROR, lock_ret;
   BTREE_SCAN tmp_bts;
   bool is_last_key;
-
-#if !defined (SERVER_MODE)
-  assert_release (false);
-#endif
 
   /*
    * Assumptions : last accessed leaf page is fixed.
@@ -24710,10 +24702,6 @@ btree_range_search_handle_previous_locks (THREAD_ENTRY * thread_p,
   OID temp_oid;
   int s;
 
-#if !defined (SERVER_MODE)
-  assert_release (false);
-#endif
-
   assert (bts != NULL && btrs_helper != NULL && which_action != NULL);
   assert (btrs_helper->saved_inst_oid.pageid != NULL_PAGEID
 	  || (bts->prev_oid_pos == -1 && btrs_helper->curr_key_locked));
@@ -24841,6 +24829,11 @@ btree_range_search_handle_previous_locks (THREAD_ENTRY * thread_p,
    *  || (btrs_helper->curr_key_locked
    *      && OID_EQ (&btrs_helper->saved_ck_pseudo_oid, &temp_oid))
    */
+
+#if !defined (SERVER_MODE)
+  assert_release (false);
+#endif
+
   if (!OID_EQ (&btrs_helper->saved_inst_oid, &btrs_helper->inst_oid))
     {
 
@@ -25115,6 +25108,7 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	    {
 	      /* current key lock needed */
 	    curr_key_locking:
+
 	      if (btree_lock_current_key (thread_p, bts,
 					  &btrs_helper->saved_inst_oid,
 					  &btrs_helper->inst_oid,
