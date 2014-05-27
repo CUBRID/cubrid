@@ -2840,7 +2840,8 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 	{
 	  if (LSA_LT (&bufptr->oldest_unflush_lsa, prev_chkpt_redo_lsa))
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      er_stack_push ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_LOG_CHECKPOINT_SKIP_INVALID_PAGE, 6,
 		      bufptr->vpid.pageid,
 		      fileio_get_volume_label (bufptr->vpid.volid, PEEK),
@@ -2848,6 +2849,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 		      bufptr->oldest_unflush_lsa.offset,
 		      prev_chkpt_redo_lsa->pageid,
 		      prev_chkpt_redo_lsa->offset);
+	      er_stack_pop ();
 
 	      assert (false);
 	    }
@@ -3329,6 +3331,31 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
    */
   if (LSA_ISNULL (&bufptr->oldest_unflush_lsa))
     {
+      if (LSA_LT (lsa_ptr, &log_Gl.chkpt_redo_lsa))
+	{
+	  LOG_LSA chkpt_redo_lsa;
+	  int rc;
+
+	  rc = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
+	  LSA_COPY (&chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
+	  pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
+
+	  if (LSA_LT (lsa_ptr, &chkpt_redo_lsa))
+	    {
+	      er_stack_push ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_LOG_CHECKPOINT_SKIP_INVALID_PAGE, 6,
+		      bufptr->vpid.pageid,
+		      fileio_get_volume_label (bufptr->vpid.volid, PEEK),
+		      lsa_ptr->pageid, lsa_ptr->offset,
+		      log_Gl.chkpt_redo_lsa.pageid,
+		      log_Gl.chkpt_redo_lsa.offset);
+	      er_stack_pop ();
+
+	      assert (false);
+	    }
+
+	}
       LSA_COPY (&bufptr->oldest_unflush_lsa, lsa_ptr);
     }
 

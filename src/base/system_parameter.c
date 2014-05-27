@@ -4786,7 +4786,8 @@ static const int call_stack_dump_error_codes[] = {
   ER_FILE_TABLE_OVERFLOW,
   ER_HA_GENERIC_ERROR,
   ER_DESC_ISCAN_ABORTED,
-  ER_SP_INVALID_HEADER
+  ER_SP_INVALID_HEADER,
+  ER_LOG_CHECKPOINT_SKIP_INVALID_PAGE
 };
 
 typedef enum
