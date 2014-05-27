@@ -6179,6 +6179,8 @@ ldr_process_constants (LDR_CONSTANT * cons)
 {
   LDR_CONSTANT *c, *save;
 
+  CHECK_SKIP ();
+
   if (cons != NULL && ldr_Current_context->num_attrs == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
