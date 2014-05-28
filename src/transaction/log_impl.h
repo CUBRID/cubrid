@@ -1090,6 +1090,22 @@ struct log_arv_header
   { /* magic */ {'0'},                          \
     0, 0, 0, 0, 0, 0, 0}
 
+typedef struct log_bgarv_header LOG_BGARV_HEADER;
+struct log_bgarv_header
+{				/* Background log archive header information */
+  char magic[CUBRID_MAGIC_MAX_LENGTH];
+
+  INT32 dummy;
+  INT64 db_creation;
+
+  LOG_PAGEID start_page_id;
+  LOG_PAGEID current_page_id;
+  LOG_PAGEID last_sync_pageid;
+};
+#define LOG_BGARV_HEADER_INITIALIZER		\
+  { /* magic */ {'0'}, 				\
+    0, 0, NULL_PAGEID, NULL_PAGEID, NULL_PAGEID}
+
 typedef enum log_rectype LOG_RECTYPE;
 enum log_rectype
 {

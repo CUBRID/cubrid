@@ -119,8 +119,9 @@ LOGWR_GLOBAL logwr_Gl = {
 };
 
 
-static int logwr_fetch_header_page (LOG_PAGE * log_pgptr);
+static int logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd);
 static int logwr_read_log_header (void);
+static int logwr_read_bgarv_log_header (void);
 static int logwr_initialize (const char *db_name, const char *log_path,
 			     int mode);
 static void logwr_finalize (void);
@@ -129,6 +130,7 @@ static LOG_PAGE **logwr_writev_append_pages (LOG_PAGE ** to_flush,
 static int logwr_flush_all_append_pages (void);
 static int logwr_archive_active_log (void);
 static int logwr_background_archiving (void);
+static int logwr_flush_bgarv_header_page (void);
 static void logwr_send_end_msg (LOGWR_CONTEXT * ctx_ptr, int error);
 
 /*
@@ -180,10 +182,11 @@ logwr_to_physical_pageid (LOG_PAGEID logical_pageid)
  *
  * return:
  *   log_pgptr(out):
+ *   vol_fd(in):
  * Note:
  */
 static int
-logwr_fetch_header_page (LOG_PAGE * log_pgptr)
+logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd)
 {
   LOG_PAGEID pageid;
   LOG_PHY_PAGEID phy_pageid;
@@ -197,8 +200,7 @@ logwr_fetch_header_page (LOG_PAGE * log_pgptr)
   pageid = LOGPB_HEADER_PAGE_ID;
   phy_pageid = logwr_to_physical_pageid (pageid);
 
-  if (fileio_read (NULL, logwr_Gl.append_vdes, log_pgptr, phy_pageid,
-		   LOG_PAGESIZE) == NULL)
+  if (fileio_read (NULL, vol_fd, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_LOG_READ, 3, pageid, phy_pageid, logwr_Gl.active_name);
@@ -254,7 +256,7 @@ logwr_read_log_header (void)
 	}
       else
 	{
-	  error = logwr_fetch_header_page (log_pgptr);
+	  error = logwr_fetch_header_page (log_pgptr, logwr_Gl.append_vdes);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -266,6 +268,55 @@ logwr_read_log_header (void)
 	  assert (log_pgptr->hdr.offset == NULL_OFFSET);
 	}
     }
+
+  return NO_ERROR;
+}
+
+/*
+ * logwr_read_bgarv_log_header -
+ *
+ * return:
+ * Note:
+ */
+static int
+logwr_read_bgarv_log_header (void)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *aligned_log_pgbuf;
+  LOG_PAGE *log_pgptr;
+  LOG_BGARV_HEADER *bgarv_header;
+  BACKGROUND_ARCHIVING_INFO *bg_arv_info;
+  int error = NO_ERROR;
+
+  bg_arv_info = &logwr_Gl.bg_archive_info;
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  assert (bg_arv_info->vdes != NULL_VOLDES);
+
+  error = logwr_fetch_header_page (log_pgptr, bg_arv_info->vdes);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  assert (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID);
+  assert (log_pgptr->hdr.offset = NULL_OFFSET);
+
+  bgarv_header = (LOG_BGARV_HEADER *) log_pgptr->area;
+
+  if (strncmp
+      (bgarv_header->magic, CUBRID_MAGIC_LOG_ARCHIVE,
+       CUBRID_MAGIC_MAX_LENGTH) != 0)
+    {
+      /* magic is different */
+      return ER_LOG_INCOMPATIBLE_DATABASE;
+    }
+
+  bg_arv_info->start_page_id = bgarv_header->start_page_id;
+  bg_arv_info->current_page_id = bgarv_header->current_page_id;
+  bg_arv_info->last_sync_pageid = bgarv_header->last_sync_pageid;
 
   return NO_ERROR;
 }
@@ -399,17 +450,41 @@ logwr_initialize (const char *db_name, const char *log_path, int mode)
       BACKGROUND_ARCHIVING_INFO *bg_arv_info;
       bg_arv_info = &logwr_Gl.bg_archive_info;
 
-      bg_arv_info->start_page_id = NULL_PAGEID;
-      bg_arv_info->current_page_id = NULL_PAGEID;
-      bg_arv_info->last_sync_pageid = NULL_PAGEID;
       if (fileio_is_volume_exist (logwr_Gl.bg_archive_name) == true)
 	{
 	  bg_arv_info->vdes =
 	    fileio_mount (NULL, logwr_Gl.bg_archive_name,
 			  logwr_Gl.bg_archive_name, LOG_DBLOG_ARCHIVE_VOLID,
 			  true, false);
+	  if (bg_arv_info->vdes == NULL_VOLDES)
+	    {
+	      return ER_IO_MOUNT_FAIL;
+	    }
+
+	  error = logwr_read_bgarv_log_header ();
+	  if (error != NO_ERROR)
+	    {
+	      if (error == ER_LOG_INCOMPATIBLE_DATABASE)
+		{
+		  /* Considering the case of upgrading,
+		   * if it read magic from bg archive file 
+		   * which is not include magic, make new bg archive file.
+		   */
+		  fileio_dismount (NULL, bg_arv_info->vdes);
+		  fileio_unformat (NULL, logwr_Gl.bg_archive_name);
+
+		  bg_arv_info->vdes = NULL_VOLDES;
+		}
+	      else
+		{
+		  return error;
+		}
+	    }
 	}
-      else
+
+      /* if bg archive file does not exist or magic is diff, */
+      /* create new bg archive file */
+      if (bg_arv_info->vdes == NULL_VOLDES)
 	{
 	  bg_arv_info->vdes = fileio_format (NULL, logwr_Gl.db_name,
 					     logwr_Gl.bg_archive_name,
@@ -417,16 +492,23 @@ logwr_initialize (const char *db_name, const char *log_path, int mode)
 					     logwr_Gl.hdr.npages + 1,
 					     false, false, false,
 					     LOG_PAGESIZE, 0, false);
+	  if (bg_arv_info->vdes == NULL_VOLDES)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+		      1, "Unable to create temporary archive log");
+	      return ER_HA_GENERIC_ERROR;
+	    }
+
+	  bg_arv_info->start_page_id = logwr_Gl.hdr.nxarv_pageid;
+	  bg_arv_info->current_page_id = NULL_PAGEID;
+	  bg_arv_info->last_sync_pageid = logwr_Gl.hdr.nxarv_pageid;
+
+	  error = logwr_flush_bgarv_header_page ();
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
 	}
-      if (bg_arv_info->vdes == NULL_VOLDES)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
-		  "Unable to create temporary archive log");
-	  return ER_HA_GENERIC_ERROR;
-	}
-      bg_arv_info->start_page_id = logwr_Gl.hdr.nxarv_pageid;
-      bg_arv_info->current_page_id = logwr_Gl.hdr.nxarv_pageid;
-      bg_arv_info->last_sync_pageid = logwr_Gl.hdr.nxarv_pageid;
     }
 
   return NO_ERROR;
@@ -601,6 +683,85 @@ logwr_set_hdr_and_flush_info (void)
   return NO_ERROR;
 }
 
+
+/*
+ * logwr_copy_necessary_log - 
+
+ * return: 
+ *   to_pageid(in): page id
+ *
+ * Note: copy active log to background archive file.
+ *       (from bg_arv_info.current to to_pageid)
+ */
+
+static int
+logwr_copy_necessary_log (LOG_PAGEID to_pageid)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + MAX_ALIGNMENT];
+  char *aligned_log_pgbuf = NULL;
+  LOG_PAGEID pageid = NULL_PAGEID;
+  LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;
+  LOG_PHY_PAGEID ar_phy_pageid = NULL_PAGEID;
+  LOG_PAGE *log_pgptr = NULL;
+  int num_pages = 0;
+  BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
+
+  bg_arv_info = &logwr_Gl.bg_archive_info;
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+  pageid = bg_arv_info->current_page_id;
+  if (pageid == NULL_PAGEID)
+    {
+      pageid = bg_arv_info->start_page_id;
+    }
+
+  ar_phy_pageid = (LOG_PHY_PAGEID) (pageid - bg_arv_info->start_page_id + 1);
+
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  assert (logwr_Gl.last_arv_fpageid <= pageid
+	  && pageid <= logwr_Gl.hdr.append_lsa.pageid);
+  assert (logwr_Gl.last_arv_fpageid <= to_pageid
+	  && to_pageid <= logwr_Gl.hdr.append_lsa.pageid);
+
+  for (; pageid < to_pageid; pageid += num_pages, ar_phy_pageid += num_pages)
+    {
+      num_pages = MIN (LOGPB_IO_NPAGES, to_pageid - pageid);
+      phy_pageid = logwr_to_physical_pageid (pageid);
+      num_pages = MIN (num_pages, logwr_Gl.hdr.npages - phy_pageid + 1);
+
+      if (fileio_read_pages (NULL, logwr_Gl.append_vdes,
+			     (char *) log_pgptr, phy_pageid, num_pages,
+			     LOG_PAGESIZE) == NULL)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_LOG_READ, 3, pageid, phy_pageid, logwr_Gl.active_name);
+	  return ER_LOG_READ;
+	}
+      else
+	{
+	  if (log_pgptr->hdr.logical_pageid != pageid)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_LOG_PAGE_CORRUPTED, 1, pageid);
+	      return ER_LOG_PAGE_CORRUPTED;
+	    }
+	}
+
+      if (fileio_write_pages
+	  (NULL, bg_arv_info->vdes, (char *) log_pgptr, ar_phy_pageid,
+	   num_pages, LOG_PAGESIZE) == NULL)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_LOG_WRITE, 3,
+		  pageid, ar_phy_pageid, logwr_Gl.bg_archive_name);
+	  return ER_LOG_WRITE;
+	}
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * logwr_fetch_append_pages -
  *
@@ -614,6 +775,8 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 {
   LOG_PAGEID fpageid;
   LOG_PHY_PAGEID phy_pageid;
+  BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
+  int error = NO_ERROR;
 
   if (npages > 0)
     {
@@ -622,8 +785,9 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
       /* 1. archive temp write */
       if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
 	{
+	  bg_arv_info = &logwr_Gl.bg_archive_info;
 	  /* check archive temp descriptor */
-	  if (logwr_Gl.bg_archive_info.vdes == NULL_VOLDES)
+	  if (bg_arv_info->vdes == NULL_VOLDES)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
 		      1, "invalid temporary archive log file");
@@ -631,11 +795,23 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	      return to_flush;
 	    }
 
+	  /* If there exist empty page between current_page_id and (fpageid-1) 
+	   * copy missing logs to background archive log file 
+	   */
+	  if (bg_arv_info->current_page_id < fpageid - 1
+	      || bg_arv_info->current_page_id == NULL_PAGEID)
+	    {
+	      if (logwr_copy_necessary_log (fpageid) != NO_ERROR)
+		{
+		  to_flush = NULL;
+		  return to_flush;
+		}
+	    }
+
 	  phy_pageid =
-	    (LOG_PHY_PAGEID) (fpageid -
-			      logwr_Gl.bg_archive_info.start_page_id + 1);
+	    (LOG_PHY_PAGEID) (fpageid - bg_arv_info->start_page_id + 1);
 	  if (fileio_writev
-	      (NULL, logwr_Gl.bg_archive_info.vdes, (void **) to_flush,
+	      (NULL, bg_arv_info->vdes, (void **) to_flush,
 	       phy_pageid, npages, LOG_PAGESIZE) == NULL)
 	    {
 	      if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
@@ -655,11 +831,17 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	      to_flush = NULL;
 	      return to_flush;
 	    }
-	  logwr_Gl.bg_archive_info.current_page_id = fpageid + (npages - 1);
+	  bg_arv_info->current_page_id = fpageid + (npages - 1);
 	  er_log_debug (ARG_FILE_LINE,
 			"background archiving  current_page_id[%lld], fpageid[%lld], npages[%d]",
-			logwr_Gl.bg_archive_info.current_page_id, fpageid,
-			npages);
+			bg_arv_info->current_page_id, fpageid, npages);
+
+	  error = logwr_flush_bgarv_header_page ();
+	  if (error != NO_ERROR)
+	    {
+	      to_flush = NULL;
+	      return to_flush;
+	    }
 	}
 
       /* 2. active write */
@@ -823,6 +1005,72 @@ logwr_flush_all_append_pages (void)
   er_log_debug (ARG_FILE_LINE,
 		"logwr_write_log_pages, flush_page_count(%d)\n",
 		flush_page_count);
+
+  return NO_ERROR;
+}
+
+/*
+ * logwr_flush_bgarv_header_page -
+ *
+ * return:
+ * Note:
+ */
+int
+logwr_flush_bgarv_header_page (void)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *aligned_log_pgbuf;
+  LOG_PAGE *log_pgptr;
+  BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
+  LOG_BGARV_HEADER *bgarvhdr = NULL;
+  LOG_PAGEID logical_pageid;
+  LOG_PHY_PAGEID phy_pageid;
+  int error_code = NO_ERROR;
+
+  bg_arv_info = &logwr_Gl.bg_archive_info;
+
+  assert (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING));
+  assert (bg_arv_info->vdes != NULL_VOLDES);
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  log_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
+  log_pgptr->hdr.offset = NULL_OFFSET;
+  logical_pageid = LOGPB_HEADER_PAGE_ID;
+
+  /* Construct the bg archive log header */
+  bgarvhdr = (LOG_BGARV_HEADER *) log_pgptr->area;
+  strncpy (bgarvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE,
+	   CUBRID_MAGIC_MAX_LENGTH);
+  bgarvhdr->db_creation = logwr_Gl.hdr.db_creation;
+  bgarvhdr->start_page_id = bg_arv_info->start_page_id;
+  bgarvhdr->current_page_id = bg_arv_info->current_page_id;
+  bgarvhdr->last_sync_pageid = bg_arv_info->last_sync_pageid;
+
+  phy_pageid = logwr_to_physical_pageid (log_pgptr->hdr.logical_pageid);
+
+  if (fileio_write (NULL, bg_arv_info->vdes, log_pgptr,
+		    phy_pageid, LOG_PAGESIZE) == NULL
+      || fileio_synchronize (NULL, bg_arv_info->vdes,
+			     logwr_Gl.bg_archive_name) == NULL_VOLDES)
+    {
+      if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
+	{
+	  error_code = ER_LOG_WRITE_OUT_OF_SPACE;
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_LOG_WRITE_OUT_OF_SPACE, 4, logical_pageid, phy_pageid,
+		  logwr_Gl.bg_archive_name, LOG_PAGESIZE);
+	}
+      else
+	{
+	  error_code = ER_LOG_WRITE;
+	  er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_LOG_WRITE, 3, logical_pageid, phy_pageid,
+			       logwr_Gl.bg_archive_name);
+	}
+      return error_code;
+    }
 
   return NO_ERROR;
 }
@@ -1102,13 +1350,18 @@ logwr_archive_active_log (void)
       if (bg_arv_info->vdes != NULL_VOLDES)
 	{
 	  bg_arv_info->start_page_id = logwr_Gl.last_arv_lpageid + 1;
-	  bg_arv_info->current_page_id = logwr_Gl.last_arv_lpageid + 1;
+	  bg_arv_info->current_page_id = NULL_PAGEID;
 	}
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
 		  "Unable to create temporary archive log");
 	  return ER_HA_GENERIC_ERROR;
+	}
+      error_code = logwr_flush_bgarv_header_page ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
 	}
     }
 
