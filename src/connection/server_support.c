@@ -166,6 +166,7 @@ static void css_process_shutdown_request (SOCKET master_fd);
 static void css_process_new_client (SOCKET master_fd);
 static void css_process_get_server_ha_mode_request (SOCKET master_fd);
 static void css_process_change_server_ha_mode_request (SOCKET master_fd);
+static void css_process_get_eof_request (SOCKET master_fd);
 
 static void css_close_connection_to_master (void);
 static int css_reestablish_connection_to_master (void);
@@ -411,7 +412,7 @@ css_add_to_job_queue (CSS_JOB_ENTRY * job_entry_p)
 	  pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
 
 	  /* linear probing */
-	  jobq_index ++;
+	  jobq_index++;
 	  jobq_index %= CSS_NUM_JOB_QUEUE;
 	}
 
@@ -805,6 +806,9 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_CHANGE_HA_MODE:
       css_process_change_server_ha_mode_request (master_fd);
       break;
+    case SERVER_GET_EOF:
+      css_process_get_eof_request (master_fd);
+      break;
 #endif
     default:
       /* master do not respond */
@@ -978,6 +982,37 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 
   css_send_heartbeat_request (css_Master_conn, SERVER_CHANGE_HA_MODE);
   css_send_heartbeat_data (css_Master_conn, (char *) &state, sizeof (state));
+#endif
+}
+
+/*
+ * css_process_get_eof_request() -
+ *   return:
+ */
+static void
+css_process_get_eof_request (SOCKET master_fd)
+{
+#if !defined(WINDOWS)
+  LOG_LSA *eof_lsa;
+  OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
+  char *reply;
+  THREAD_ENTRY *thread_p;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  LOG_CS_ENTER_READ_MODE (thread_p);
+
+  eof_lsa = log_get_eof_lsa ();
+  (void) or_pack_log_lsa (reply, eof_lsa);
+
+  LOG_CS_EXIT (thread_p);
+
+  css_send_heartbeat_request (css_Master_conn, SERVER_GET_EOF);
+  css_send_heartbeat_data (css_Master_conn, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 #endif
 }
 

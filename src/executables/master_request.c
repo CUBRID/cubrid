@@ -101,6 +101,7 @@ static void css_process_shutdown (char *time_buffer);
 static void css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn,
 					    unsigned short request_id,
 					    char *server_name);
+static void css_process_get_eof (CSS_CONN_ENTRY * conn);
 static void css_process_ha_node_list_info (CSS_CONN_ENTRY * conn,
 					   unsigned short request_id,
 					   bool verbose_yn);
@@ -1079,6 +1080,19 @@ error_return:
 }
 
 /*
+ * css_process_get_eof()
+ *   return: none
+ *   conn(in):
+ */
+static void
+css_process_get_eof (CSS_CONN_ENTRY * conn)
+{
+#if !defined(WINDOWS)
+  hb_resource_receive_get_eof (conn);
+#endif
+}
+
+/*
  * css_process_ha_node_list_info()
  *   return: none
  *   conn(in):
@@ -1917,6 +1931,9 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 	  break;
 	case SERVER_CHANGE_HA_MODE:
 	  css_process_change_ha_mode (conn);
+	  break;
+	case SERVER_GET_EOF:
+	  css_process_get_eof (conn);
 	  break;
 	default:
 	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,

@@ -662,6 +662,20 @@ log_get_append_lsa (void)
   return (&log_Gl.hdr.append_lsa);
 }
 
+
+/*
+ * log_get_eof_lsa -
+ *
+ * return:
+ *
+ * NOTE:
+ */
+LOG_LSA *
+log_get_eof_lsa (void)
+{
+  return (&log_Gl.hdr.eof_lsa);
+}
+
 /*
  * log_is_logged_since_restart - is log sequence address made after restart ?
  *

@@ -139,7 +139,8 @@ enum css_server_request
   SERVER_GET_HA_MODE = 9,
   SERVER_REGISTER_HA_PROCESS = 10,
   SERVER_CHANGE_HA_MODE = 11,
-  SERVER_DEREGISTER_HA_PROCESS = 12
+  SERVER_DEREGISTER_HA_PROCESS = 12,
+  SERVER_GET_EOF = 13
 };
 
 /*
@@ -447,8 +448,8 @@ struct css_conn_entry
 
   char *version_string;		/* client version string */
 
-  int prefetcher_thread_count;          /* number of active thread */
-  int prefetchlogdb_max_thread_count;      /* max number of active thread */
+  int prefetcher_thread_count;	/* number of active thread */
+  int prefetchlogdb_max_thread_count;	/* max number of active thread */
   CSS_QUEUE_ENTRY *free_queue_list;
   struct css_wait_queue_entry *free_wait_queue_list;
   char *free_net_header_list;

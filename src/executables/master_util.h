@@ -47,23 +47,29 @@
 
 #define MASTER_ER_SET(...) \
   do { \
+      if (css_Master_er_log_enabled == true) { \
       pthread_mutex_lock (&css_Master_er_log_lock); \
       er_set (__VA_ARGS__); \
       pthread_mutex_unlock (&css_Master_er_log_lock); \
+      } \
   } while (0)
 
 #define MASTER_ER_SET_WITH_OSERROR(...) \
   do { \
+      if (css_Master_er_log_enabled == true) { \
       pthread_mutex_lock (&css_Master_er_log_lock); \
       er_set_with_oserror (__VA_ARGS__); \
       pthread_mutex_unlock (&css_Master_er_log_lock); \
+      } \
   } while (0)
 
 #define MASTER_ER_LOG_DEBUG(...) \
   do { \
+      if (css_Master_er_log_enabled == true) { \
       pthread_mutex_lock (&css_Master_er_log_lock); \
       er_log_debug (__VA_ARGS__); \
       pthread_mutex_unlock (&css_Master_er_log_lock); \
+      } \
   } while (0)
 
 typedef struct socket_queue_entry SOCKET_QUEUE_ENTRY;
@@ -89,6 +95,7 @@ extern bool master_util_config_startup (const char *db_name, int *port_id);
 extern void master_util_wait_proc_terminate (int pid);
 
 extern pthread_mutex_t css_Master_er_log_lock;
+extern bool css_Master_er_log_enabled;
 
 #define GET_REAL_MASTER_CONN_NAME(name)         (((char *) name) + 1)
 #define IS_MASTER_CONN_NAME_DRIVER(name)        (*((char *)name) == '-')

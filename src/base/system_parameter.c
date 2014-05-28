@@ -397,6 +397,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL "ha_applylogdb_max_commit_interval"
 
+#define PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS "ha_check_disk_failure_interval"
+
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
@@ -1446,6 +1448,12 @@ static int prm_ha_applylogdb_max_commit_interval_in_msecs_default = 500;
 static int prm_ha_applylogdb_max_commit_interval_in_msecs_upper = INT_MAX;
 static int prm_ha_applylogdb_max_commit_interval_in_msecs_lower = 0;
 static unsigned int prm_ha_applylogdb_max_commit_interval_in_msecs_flag = 0;
+
+int PRM_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS = 30;
+static int prm_ha_check_disk_failure_interval_in_secs_default = 30;
+static int prm_ha_check_disk_failure_interval_in_secs_upper = INT_MAX;
+static int prm_ha_check_disk_failure_interval_in_secs_lower = 0;
+static unsigned int prm_ha_check_disk_failure_interval_in_secs_flag = 0;
 
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
@@ -3391,7 +3399,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_HA_COPY_LOG_TIMEOUT,
-   (PRM_FOR_SERVER | PRM_FOR_HA | PRM_USER_CHANGE),
+   (PRM_FOR_SERVER | PRM_FOR_HA | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_ha_copy_log_timeout_flag,
    (void *) &prm_ha_copy_log_timeout_default,
@@ -3468,6 +3476,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS,
+   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT | PRM_DIFFER_UNIT |
+    PRM_RELOADABLE),
+   PRM_INTEGER,
+   (void *) &prm_ha_check_disk_failure_interval_in_secs_flag,
+   (void *) &prm_ha_check_disk_failure_interval_in_secs_default,
+   (void *) &PRM_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS,
+   (void *) &prm_ha_check_disk_failure_interval_in_secs_upper,
+   (void *) &prm_ha_check_disk_failure_interval_in_secs_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) prm_msec_to_sec,
+   (DUP_PRM_FUNC) prm_sec_to_msec},
   {PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),
    PRM_BOOLEAN,
@@ -8863,6 +8883,8 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *ha_process_dereg_confirm_interval_in_msecs_prm;
   SYSPRM_PARAM *ha_max_process_dereg_confirm_prm;
   SYSPRM_PARAM *shutdown_wait_time_in_secs_prm;
+  SYSPRM_PARAM *ha_copy_log_timeout_prm;
+  SYSPRM_PARAM *ha_check_disk_failure_interval_prm;
 
   char newval[LINE_MAX];
   char host_name[MAXHOSTNAMELEN];
@@ -8879,6 +8901,9 @@ prm_tune_parameters (void)
     prm_find (PRM_NAME_HA_MAX_PROCESS_DEREG_CONFIRM, NULL);
   shutdown_wait_time_in_secs_prm =
     prm_find (PRM_NAME_SHUTDOWN_WAIT_TIME_IN_SECS, NULL);
+  ha_copy_log_timeout_prm = prm_find (PRM_NAME_HA_COPY_LOG_TIMEOUT, NULL);
+  ha_check_disk_failure_interval_prm =
+    prm_find (PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS, NULL);
 
   assert (max_plan_cache_entries_prm != NULL);
   if (max_plan_cache_entries_prm == NULL)
@@ -8897,6 +8922,31 @@ prm_tune_parameters (void)
   /* reset to default 'active mode' */
   (void) prm_set_default (ha_mode_prm);
 #endif
+
+  if (PRM_GET_INT (ha_mode_prm->value) != HA_MODE_OFF)
+    {
+      int ha_check_disk_failure_interval_value;
+      int ha_copy_log_timeout_value;
+
+      ha_check_disk_failure_interval_value =
+	PRM_GET_INT (ha_check_disk_failure_interval_prm->value);
+      ha_copy_log_timeout_value =
+	PRM_GET_INT (ha_copy_log_timeout_prm->value);
+      if (ha_copy_log_timeout_value == -1)
+	{
+	  prm_set (ha_check_disk_failure_interval_prm, "0", false);
+	}
+      else if (ha_check_disk_failure_interval_value -
+	       ha_copy_log_timeout_value <
+	       HB_MIN_DIFF_CHECK_DISK_FAILURE_INTERVAL_IN_SECS)
+	{
+	  ha_check_disk_failure_interval_value =
+	    ha_copy_log_timeout_value +
+	    HB_MIN_DIFF_CHECK_DISK_FAILURE_INTERVAL_IN_SECS;
+	  sprintf (newval, "%ds", ha_check_disk_failure_interval_value);
+	  prm_set (ha_check_disk_failure_interval_prm, newval, false);
+	}
+    }
 
   if (ha_node_list_prm == NULL
       || PRM_DEFAULT_VAL_USED (*ha_node_list_prm->dynamic_flag))

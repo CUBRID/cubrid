@@ -248,6 +248,9 @@ struct hb_proc_entry
   unsigned short changemode_rid;
   unsigned short changemode_gap;
 
+  LOG_LSA prev_eof;
+  LOG_LSA curr_eof;
+
   CSS_CONN_ENTRY *conn;
 
   bool being_shutdown;		/* whether the proc is being shut down */
@@ -360,6 +363,7 @@ extern int hb_activate_heartbeat (void);
 extern bool hb_is_registered_process (CSS_CONN_ENTRY * conn, char *args);
 extern void hb_register_new_process (CSS_CONN_ENTRY * conn);
 extern void hb_resource_receive_changemode (CSS_CONN_ENTRY * conn);
+extern void hb_resource_receive_get_eof (CSS_CONN_ENTRY * conn);
 
 extern void hb_start_deactivate_server_info (void);
 extern int hb_get_deactivating_server_count (void);

@@ -185,16 +185,20 @@ static void hb_deregister_nodes (char *node_to_dereg);
 
 /* resource process connection */
 static int hb_resource_send_changemode (HB_PROC_ENTRY * proc);
+static void hb_resource_send_get_eof (void);
+static bool hb_resource_check_server_log_grow (void);
 
 /* cluster/resource threads */
 #if defined(WINDOW)
 static unsigned __stdcall hb_thread_cluster_worker (void *arg);
 static unsigned __stdcall hb_thread_cluster_reader (void *arg);
 static unsigned __stdcall hb_thread_resource_worker (void *arg);
+static unsigned __stdcall hb_thread_check_disk_failure (void *arg);
 #else
 static void *hb_thread_cluster_worker (void *arg);
 static void *hb_thread_cluster_reader (void *arg);
 static void *hb_thread_resource_worker (void *arg);
+static void *hb_thread_check_disk_failure (void *arg);
 #endif
 
 
@@ -3448,6 +3452,9 @@ hb_alloc_new_proc (void)
       p->next = NULL;
       p->prev = NULL;
       p->being_shutdown = false;
+      LSA_SET_NULL (&p->prev_eof);
+      LSA_SET_NULL (&p->curr_eof);
+
       first_pp = &hb_Resource->procs;
       hb_list_add ((HB_LIST **) first_pp, (HB_LIST *) p);
     }
@@ -3698,6 +3705,8 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
 
   proc->state = HB_PSTATE_DEAD;
   proc->sfd = INVALID_SOCKET;
+  LSA_SET_NULL (&proc->prev_eof);
+  LSA_SET_NULL (&proc->curr_eof);
 
   pthread_mutex_unlock (&hb_Resource->lock);
 
@@ -4047,6 +4056,117 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
 }
 
 /*
+ * hb_resource_check_server_log_grow() -
+ *      check if active server is alive
+ *   return: none
+ *
+ */
+static bool
+hb_resource_check_server_log_grow (void)
+{
+  HB_PROC_ENTRY *proc;
+
+  for (proc = hb_Resource->procs; proc; proc = proc->next)
+    {
+      if (proc->type != HB_PTYPE_SERVER
+	  || proc->state != HB_PSTATE_REGISTERED_AND_ACTIVE)
+	{
+	  continue;
+	}
+
+      if (LSA_ISNULL (&proc->curr_eof) == true)
+	{
+	  continue;
+	}
+
+      if (LSA_GT (&proc->curr_eof, &proc->prev_eof) == true)
+	{
+	  LSA_COPY (&proc->prev_eof, &proc->curr_eof);
+	}
+      else
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
+ * hb_resource_send_get_eof -
+ *   return: none
+ *
+ *   proc(in):
+ */
+static void
+hb_resource_send_get_eof (void)
+{
+  HB_PROC_ENTRY *proc;
+
+  if (hb_Resource->state != HB_NSTATE_MASTER)
+    {
+      return;
+    }
+
+  for (proc = hb_Resource->procs; proc; proc = proc->next)
+    {
+      if (proc->state == HB_PSTATE_REGISTERED_AND_ACTIVE)
+	{
+	  css_send_heartbeat_request (proc->conn, SERVER_GET_EOF);
+	}
+    }
+
+  return;
+}
+
+/*
+ * hb_resource_receive_get_eof -
+ *   return: none
+ *
+ *   conn(in):
+ */
+void
+hb_resource_receive_get_eof (CSS_CONN_ENTRY * conn)
+{
+  int rv;
+  HB_PROC_ENTRY *proc;
+  OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  rv =
+    css_receive_heartbeat_data (conn, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  if (rv != NO_ERRORS)
+    {
+      return;
+    }
+
+  rv = pthread_mutex_lock (&hb_Resource->lock);
+
+  proc = hb_return_proc_by_fd (conn->fd);
+  if (proc == NULL)
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "cannot find process. (fd:%d). \n",
+			   conn->fd);
+      pthread_mutex_unlock (&hb_Resource->lock);
+      return;
+    }
+
+  if (proc->state == HB_PSTATE_REGISTERED_AND_ACTIVE)
+    {
+      or_unpack_log_lsa (reply, &proc->curr_eof);
+    }
+
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "received eof [%lld|%lld]\n",
+		       proc->curr_eof.pageid, proc->curr_eof.offset);
+
+  pthread_mutex_unlock (&hb_Resource->lock);
+
+  return;
+}
+
+
+/*
  * heartbeat worker threads
  */
 
@@ -4204,6 +4324,87 @@ hb_thread_resource_worker (void *arg)
 #endif /* WINDOWS */
 }
 
+/*
+ * hb_thread_resource_worker -
+ *   return: none
+ *
+ *   arg(in):
+ */
+#if defined(WINDOWS)
+static unsigned __stdcall
+hb_thread_check_disk_failure (void *arg)
+#else
+static void *
+hb_thread_check_disk_failure (void *arg)
+#endif
+{
+  int rv, error;
+  int interval;
+  char error_string[LINE_MAX];
+#if defined (HB_VERBOSE_DEBUG)
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+		       "thread started. (thread:{%s}, tid:%d).\n", __func__,
+		       THREAD_ID ());
+#endif
+
+  while (hb_Resource->shutdown == false)
+    {
+      rv = pthread_mutex_lock (&hb_Cluster->lock);
+      rv = pthread_mutex_lock (&hb_Resource->lock);
+
+      interval =
+	prm_get_integer_value (PRM_ID_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS);
+      if (interval > 0)
+	{
+	  if (hb_Cluster->is_isolated == false
+	      && hb_Resource->state == HB_NSTATE_MASTER)
+	    {
+	      if (hb_resource_check_server_log_grow () == false)
+		{
+		  /* be silent to avoid blocking write operation on disk */
+		  css_Master_er_log_enabled = false;
+		  hb_Resource->state = HB_NSTATE_SLAVE;
+
+		  pthread_mutex_unlock (&hb_Resource->lock);
+		  pthread_mutex_unlock (&hb_Cluster->lock);
+
+		  error =
+		    hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN,
+					   NULL, HB_JOB_TIMER_IMMEDIATELY);
+		  assert (error == NO_ERROR);
+
+		  continue;
+		}
+	    }
+
+	  if (hb_Resource->state == HB_NSTATE_MASTER)
+	    {
+	      hb_resource_send_get_eof ();
+	    }
+	  pthread_mutex_unlock (&hb_Resource->lock);
+	  pthread_mutex_unlock (&hb_Cluster->lock);
+
+	  SLEEP_SEC (interval);
+	}
+      else
+	{
+	  pthread_mutex_unlock (&hb_Resource->lock);
+	  pthread_mutex_unlock (&hb_Cluster->lock);
+
+	  SLEEP_SEC (30);
+	}
+    }
+
+#if defined (HB_VERBOSE_DEBUG)
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "thread exit.\n");
+#endif
+
+#if defined(WINDOWS)
+  return 0;
+#else /* WINDOWS */
+  return NULL;
+#endif /* WINDOWS */
+}
 
 /*
  * master heartbeat initializer
@@ -4465,6 +4666,7 @@ hb_thread_initialize (void)
   pthread_t cluster_worker_th;
   pthread_t cluster_reader_th;
   pthread_t resource_worker_th;
+  pthread_t check_disk_failure_th;
 
   rv = pthread_attr_init (&thread_attr);
   if (rv != 0)
@@ -4549,6 +4751,15 @@ hb_thread_initialize (void)
       return ER_CSS_PTHREAD_CREATE;
     }
 
+  rv = pthread_create (&check_disk_failure_th, &thread_attr,
+		       hb_thread_check_disk_failure, NULL);
+  if (rv != 0)
+    {
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				  ER_CSS_PTHREAD_CREATE, 0);
+      return ER_CSS_PTHREAD_CREATE;
+    }
+
   /* destroy thread_attribute */
   rv = pthread_attr_destroy (&thread_attr);
   if (rv != 0)
@@ -4570,6 +4781,8 @@ int
 hb_master_init (void)
 {
   int error;
+
+  css_Master_er_log_enabled = true;
 
   MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STARTED, 0);
 #if defined (HB_VERBOSE_DEBUG)
