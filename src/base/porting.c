@@ -2505,6 +2505,105 @@ str_to_uint64 (UINT64 * ret_p, char **end_p, const char *str_p, int base)
   return 0;
 }
 
+int
+str_to_double (double *ret_p, char **end_p, const char *str_p)
+{
+  double val = 0;
+
+  assert (ret_p != NULL);
+  assert (end_p != NULL);
+  assert (str_p != NULL);
+
+  *ret_p = 0;
+  *end_p = NULL;
+
+  errno = 0;
+  val = strtod (str_p, end_p);
+
+  if (errno == ERANGE || errno != 0)
+    {
+      return -1;
+    }
+
+  if (*end_p == str_p)
+    {
+      return -1;
+    }
+
+  *ret_p = val;
+
+  return 0;
+}
+
+int
+str_to_float (float *ret_p, char **end_p, const char *str_p)
+{
+  float val = 0;
+
+  assert (ret_p != NULL);
+  assert (end_p != NULL);
+  assert (str_p != NULL);
+
+  *ret_p = 0;
+  *end_p = NULL;
+
+  errno = 0;
+  val = strtof (str_p, end_p);
+
+  if (errno == ERANGE || errno != 0)
+    {
+      return -1;
+    }
+
+  if (*end_p == str_p)
+    {
+      return -1;
+    }
+
+  *ret_p = val;
+
+  return 0;
+}
+
+#if defined(WINDOWS)
+float
+strtof_win (const char *nptr, char **endptr)
+{
+  double d_val = 0;
+  float f_val = 0;
+
+  errno = 0;
+
+  d_val = strtod (nptr, endptr);
+  if (errno == ERANGE)
+    {
+      return 0.0f;
+    }
+
+  if (d_val > FLT_MAX)		/* overflow */
+    {
+      errno = ERANGE;
+      *endptr = nptr;
+      return (HUGE_VAL);
+    }
+  else if (d_val < (-FLT_MAX))	/* overflow */
+    {
+      errno = ERANGE;
+      *endptr = nptr;
+      return (-HUGE_VAL);
+    }
+  else if (((d_val > 0) && (d_val < FLT_MIN)) || ((d_val < 0) && (d_val > (-FLT_MIN))))	/* underflow */
+    {
+      errno = ERANGE;
+      *endptr = nptr;
+      return 0.0f;
+    }
+
+  f_val = (float) d_val;
+  return f_val;
+}
+#endif
+
 #ifndef HAVE_STRLCPY
 /*
  * Copy src to string dst of size siz.  At most siz-1 characters
@@ -2544,7 +2643,6 @@ strlcpy (char *dst, const char *src, size_t siz)
   return (s - src - 1);		/* count does not include NUL */
 }
 #endif /* !HAVE_STRLCPY */
-
 
 #if (defined(WINDOWS) && defined(_WIN32))
 time_t

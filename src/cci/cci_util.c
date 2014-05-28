@@ -64,9 +64,6 @@
 /************************************************************************
  * PRIVATE DEFINITIONS							*
  ************************************************************************/
-#if defined(WINDOWS)
-#define strtoll	_strtoi64
-#endif
 
 /************************************************************************
  * PRIVATE TYPE DEFINITIONS						*
@@ -104,11 +101,21 @@ static void cci_reg_free (void *dummy, void *p);
 int
 ut_str_to_bigint (char *str, INT64 * value)
 {
-  char *end_p;
-  INT64 bi_val;
+  int error = 0;
+  INT64 bi_val = 0;
+  char *end_p = NULL;
 
-  bi_val = strtoll (str, &end_p, 10);
-  if (*end_p == 0 || *end_p == '.' || isspace ((int) *end_p))
+  assert (value != NULL);
+
+  *value = 0;
+
+  error = str_to_int64 (&bi_val, &end_p, str, 10);
+  if (error < 0)
+    {
+      return (CCI_ER_TYPE_CONVERSION);
+    }
+
+  if (*end_p == NULL || *end_p == '.' || isspace ((int) *end_p))
     {
       *value = bi_val;
       return 0;
@@ -120,11 +127,21 @@ ut_str_to_bigint (char *str, INT64 * value)
 int
 ut_str_to_int (char *str, int *value)
 {
-  char *end_p;
-  int i_val;
+  int error = 0;
+  int i_val = 0;
+  char *end_p = NULL;
 
-  i_val = strtol (str, &end_p, 10);
-  if (*end_p == 0 || *end_p == '.' || isspace ((int) *end_p))
+  assert (value != NULL);
+
+  *value = 0;
+
+  error = str_to_int32 (&i_val, &end_p, str, 10);
+  if (error < 0)
+    {
+      return (CCI_ER_TYPE_CONVERSION);
+    }
+
+  if (*end_p == NULL || *end_p == '.' || isspace ((int) *end_p))
     {
       *value = i_val;
       return 0;
@@ -136,9 +153,28 @@ ut_str_to_int (char *str, int *value)
 int
 ut_str_to_float (char *str, float *value)
 {
-  if (is_float_str (str))
+  int error = 0;
+  float f_val = 0;
+  char *end_p = NULL;
+
+  assert (value != NULL);
+
+  *value = 0;
+
+  if (!is_float_str (str))
     {
-      sscanf (str, "%f", value);
+      return (CCI_ER_TYPE_CONVERSION);
+    }
+
+  error = str_to_float (&f_val, &end_p, str);
+  if (error < 0)
+    {
+      return (CCI_ER_TYPE_CONVERSION);
+    }
+
+  if (*end_p == NULL || isspace ((int) *end_p))
+    {
+      *value = f_val;
       return 0;
     }
 
@@ -148,9 +184,28 @@ ut_str_to_float (char *str, float *value)
 int
 ut_str_to_double (char *str, double *value)
 {
-  if (is_float_str (str))
+  int error = 0;
+  double d_val = 0;
+  char *end_p = NULL;
+
+  assert (value != NULL);
+
+  *value = 0;
+
+  if (!is_float_str (str))
     {
-      sscanf (str, "%lf", value);
+      return (CCI_ER_TYPE_CONVERSION);
+    }
+
+  error = str_to_double (&d_val, &end_p, str);
+  if (error < 0)
+    {
+      return (CCI_ER_TYPE_CONVERSION);
+    }
+
+  if (*end_p == NULL || isspace ((int) *end_p))
+    {
+      *value = d_val;
       return 0;
     }
 
@@ -160,41 +215,58 @@ ut_str_to_double (char *str, double *value)
 int
 ut_str_to_date (char *str, T_CCI_DATE * value)
 {
-  char *p, *q;
-  int yr, mon, day;
+  int error = 0;
+  int yr = 0, mon = 0, day = 0;
+  char *p = NULL;
+  char *end_p = NULL;
+  char delimiter = '\0';
+
+  assert (value != NULL);
+
+  if (str == NULL)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
 
   p = str;
-  q = strchr (p, '/');
-  if (q == NULL)
+
+  error = str_to_int32 (&yr, &end_p, p, 10);
+  if (error < 0)
     {
-      q = strchr (p, '-');
-      if (q == NULL)
-	{
-	  return CCI_ER_TYPE_CONVERSION;
-	}
-      yr = atoi (p);
-      p = q + 1;
-
-      q = strchr (p, '-');
-      if (q == NULL)
-	{
-	  return CCI_ER_TYPE_CONVERSION;
-	}
+      return CCI_ER_TYPE_CONVERSION;
     }
-  else
+
+  delimiter = *end_p;
+  if (delimiter != '-' && delimiter != '/')
     {
-      yr = atoi (p);
-      p = q + 1;
-
-      q = strchr (p, '/');
-      if (q == NULL)
-	{
-	  return CCI_ER_TYPE_CONVERSION;
-	}
+      return CCI_ER_TYPE_CONVERSION;
     }
-  mon = atoi (p);
 
-  day = atoi (q + 1);
+  p = end_p + 1;
+
+  error = str_to_int32 (&mon, &end_p, p, 10);
+  if (error < 0)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  if (*end_p != delimiter)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  p = end_p + 1;
+
+  error = str_to_int32 (&day, &end_p, p, 10);
+  if (error < 0)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  if (*end_p != NULL && !isspace ((int) *end_p))
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
 
   memset (value, 0, sizeof (T_CCI_DATE));
   value->yr = yr;
@@ -206,8 +278,12 @@ ut_str_to_date (char *str, T_CCI_DATE * value)
 int
 ut_str_to_time (char *str, T_CCI_DATE * value)
 {
-  char *p, *q;
-  int hh, mm, ss;
+  int error = 0;
+  int hh = 0, mm = 0, ss = 0;
+  char *p = NULL;
+  char *end_p = NULL;
+
+  assert (value != NULL);
 
   if (str == NULL)
     {
@@ -215,23 +291,43 @@ ut_str_to_time (char *str, T_CCI_DATE * value)
     }
 
   p = str;
-  q = strchr (p, ':');
-  if (q == NULL)
+
+  error = str_to_int32 (&hh, &end_p, p, 10);
+  if (error < 0)
     {
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  hh = atoi (p);
-  p = q + 1;
-
-  q = strchr (p, ':');
-  if (q == NULL)
+  if (*end_p != ':')
     {
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  mm = atoi (p);
-  ss = atoi (q + 1);
+  p = end_p + 1;
+
+  error = str_to_int32 (&mm, &end_p, p, 10);
+  if (error < 0)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  if (*end_p != ':')
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  p = end_p + 1;
+
+  error = str_to_int32 (&ss, &end_p, p, 10);
+  if (error < 0)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  if (*end_p != NULL && !isspace ((int) *end_p))
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
 
   memset (value, 0, sizeof (T_CCI_DATE));
   value->hh = hh;
@@ -243,8 +339,13 @@ ut_str_to_time (char *str, T_CCI_DATE * value)
 int
 ut_str_to_mtime (char *str, T_CCI_DATE * value)
 {
-  char *p, *q;
-  int hh, mm, ss, ms;
+  int error = 0;
+  int hh = 0, mm = 0, ss = 0, ms = 0;
+  char *p = NULL;
+  char *end_p = NULL;
+  double ms_tmp = 0;
+
+  assert (value != NULL);
 
   if (str == NULL)
     {
@@ -252,37 +353,59 @@ ut_str_to_mtime (char *str, T_CCI_DATE * value)
     }
 
   p = str;
-  q = strchr (p, ':');
-  if (q == NULL)
+
+  error = str_to_int32 (&hh, &end_p, p, 10);
+  if (error < 0)
     {
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  hh = atoi (p);
-  p = q + 1;
-
-  q = strchr (p, ':');
-  if (q == NULL)
+  if (*end_p != ':')
     {
       return CCI_ER_TYPE_CONVERSION;
     }
-  mm = atoi (p);
-  p = q + 1;
 
-  q = strchr (p, '.');
-  if (q == NULL)
+  p = end_p + 1;
+
+  error = str_to_int32 (&mm, &end_p, p, 10);
+  if (error < 0)
     {
-      ss = atoi (p);
-      ms = 0;
+      return CCI_ER_TYPE_CONVERSION;
     }
-  else
+
+  if (*end_p != ':')
     {
-      ss = atoi (p);
-      ms = (int) (strtod (q, &p) * 1000 + 0.5);
-      if (q == p)
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  p = end_p + 1;
+
+  error = str_to_int32 (&ss, &end_p, p, 10);
+  if (error < 0)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  if (*end_p == '.')
+    {
+      p = end_p;
+      ms_tmp = 0;
+
+      error = str_to_double (&ms_tmp, &end_p, p);
+      if (error < 0)
 	{
 	  return CCI_ER_TYPE_CONVERSION;
 	}
+      ms = (int) (ms_tmp * 1000 + 0.5);
+    }
+  else
+    {
+      ms = 0;
+    }
+
+  if (*end_p != NULL && !isspace ((int) *end_p))
+    {
+      return CCI_ER_TYPE_CONVERSION;
     }
 
   memset (value, 0, sizeof (T_CCI_DATE));
@@ -299,8 +422,8 @@ ut_str_to_timestamp (char *str, T_CCI_DATE * value)
 {
   T_CCI_DATE date;
   T_CCI_DATE time;
-  char *p;
-  int err_code;
+  char *p = NULL;
+  int err_code = 0;
 
   p = strchr (str, ' ');
 
@@ -313,6 +436,7 @@ ut_str_to_timestamp (char *str, T_CCI_DATE * value)
       return err_code;
     }
 
+  memset (value, 0, sizeof (T_CCI_DATE));
   value->yr = date.yr;
   value->mon = date.mon;
   value->day = date.day;
@@ -328,8 +452,8 @@ ut_str_to_datetime (char *str, T_CCI_DATE * value)
 {
   T_CCI_DATE date;
   T_CCI_DATE mtime;
-  char *p;
-  int err_code;
+  char *p = NULL;
+  int err_code = 0;
 
   p = strchr (str, ' ');
 
@@ -342,6 +466,7 @@ ut_str_to_datetime (char *str, T_CCI_DATE * value)
       return err_code;
     }
 
+  memset (value, 0, sizeof (T_CCI_DATE));
   value->yr = date.yr;
   value->mon = date.mon;
   value->day = date.day;
@@ -356,9 +481,12 @@ ut_str_to_datetime (char *str, T_CCI_DATE * value)
 int
 ut_str_to_oid (char *str, T_OBJECT * value)
 {
+  int error = 0;
+  int id = 0;
   char *p = str;
-  char *end_p;
-  int id;
+  char *end_p = NULL;
+
+  memset (value, 0, sizeof (T_OBJECT));
 
   if (p == NULL)
     {
@@ -371,7 +499,11 @@ ut_str_to_oid (char *str, T_OBJECT * value)
     }
 
   p++;
-  id = strtol (p, &end_p, 10);	/* page id */
+  error = str_to_int32 (&id, &end_p, p, 10);	/* page id */
+  if (error < 0)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
   if (*end_p != '|')
     {
       return CCI_ER_TYPE_CONVERSION;
@@ -379,14 +511,24 @@ ut_str_to_oid (char *str, T_OBJECT * value)
   value->pageid = id;
 
   p = end_p + 1;
-  id = strtol (p, &end_p, 10);	/* slot id */
+  error = str_to_int32 (&id, &end_p, p, 10);	/* slot id */
+  if (error < 0)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
   if (*end_p != '|')
-    return CCI_ER_TYPE_CONVERSION;
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
   value->slotid = id;
 
   p = end_p + 1;
-  id = strtol (p, &end_p, 10);	/* vol id */
-  if (*end_p != '\0')
+  error = str_to_int32 (&id, &end_p, p, 10);	/* vol id */
+  if (error < 0)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+  if (*end_p != NULL)
     {
       return CCI_ER_TYPE_CONVERSION;
     }
