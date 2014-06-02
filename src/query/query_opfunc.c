@@ -9560,6 +9560,11 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
+  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true)
+    {
+      agg_p->accumulator.value->domain.general_info.is_null = 0;
+    }
+
   /* concat the first value */
   result_domain = ((TP_DOMAIN_TYPE (agg_p->domain) == agg_type) ?
 		   agg_p->domain : NULL);
@@ -9610,6 +9615,19 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p,
 		   agg_p->domain : NULL);
 
   max_allowed_size = (int) prm_get_bigint_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
+
+  if (DB_IS_NULL (agg_p->accumulator.value2)
+      && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true)
+    {
+      if (db_string_make_empty_typed_string
+	  (thread_p, agg_p->accumulator.value2, agg_type,
+	   DB_DEFAULT_PRECISION, TP_DOMAIN_CODESET (agg_p->domain),
+	   TP_DOMAIN_COLLATION (agg_p->domain)) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      agg_p->accumulator.value2->domain.general_info.is_null = 0;
+    }
 
   /* add separator if specified (it may be the case for bit string) */
   if (!DB_IS_NULL (agg_p->accumulator.value2))
