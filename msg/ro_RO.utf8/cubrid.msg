@@ -1219,6 +1219,7 @@ $ LOADDB
 1150 Contextul necesită colaţii compatibile.
 1151 The page %1$d of volume %2$d is not a slotted page.
 1152 Ultima eroare
+1153 The transaction %1$d cannot be killed because it is owned by another user.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1660,6 +1661,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 287 Unknown argument %1$s.
 288 Nu se pot şterge toate partiţiile, folosiţi DROP TABLE în schimb.
 289 The expression including %1$s is not allowed in this context.
+290 Transaction id is not an integer.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.

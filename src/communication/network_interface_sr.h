@@ -359,6 +359,9 @@ extern void tm_restart_event_handler (unsigned int, char *, int);
 extern void sthread_kill_tran_index (THREAD_ENTRY * thread_p,
 				     unsigned int rid, char *request,
 				     int reqlen);
+extern void sthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p,
+					    unsigned int rid, char *request,
+					    int reqlen);
 extern void sthread_dump_cs_stat (THREAD_ENTRY * thread_p,
 				  unsigned int rid, char *request,
 				  int reqlen);

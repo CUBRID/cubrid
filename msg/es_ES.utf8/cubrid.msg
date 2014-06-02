@@ -1219,6 +1219,7 @@ $ LOADDB
 1150 Contexto requiere colaciones compatibles.
 1151 The page %1$d of volume %2$d is not a slotted page.
 1152 Ultimo error
+1153 The transaction %1$d cannot be killed because it is owned by another user.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
@@ -1660,6 +1661,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 287 Unknown argument %1$s.
 288 Cannot remove all partitions, use DROP TABLE instead.
 289 The expression including %1$s is not allowed in this context.
+290 Transaction id is not an integer.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.

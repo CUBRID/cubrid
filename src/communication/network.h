@@ -258,6 +258,8 @@ enum net_server_request
   NET_SERVER_LC_FORCE_REPL_UPDATE,
   NET_SERVER_LC_PREFETCH_REPL_INSERT,
   NET_SERVER_LC_PREFETCH_REPL_UPDATE_OR_DELETE,
+
+  NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION,
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.

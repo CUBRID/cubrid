@@ -219,6 +219,9 @@ static void thread_rc_track_meter_dump (THREAD_ENTRY * thread_p, FILE * outfp,
 					THREAD_RC_METER * meter);
 static void thread_rc_track_dump (THREAD_ENTRY * thread_p, FILE * outfp,
 				  THREAD_RC_TRACK * track, int depth);
+static int thread_check_kill_tran_auth (THREAD_ENTRY * thread_p,
+					int tran_id, bool * has_authoriation);
+
 #if !defined(NDEBUG)
 static void
 thread_rc_track_meter_at (THREAD_RC_METER * meter,
@@ -3665,6 +3668,63 @@ xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index,
 }
 
 /*
+ * xthread_kill_or_interrupt_tran() - 
+ *   return:
+ *   thread_p(in):
+ *   tran_index(in):
+ *   kill_query_only(in):
+ */
+int
+xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index,
+				bool interrupt_only)
+{
+  int i, error;
+  bool interrupt, has_authorization;
+  KILLSTMT_TYPE kill_type;
+
+  error =
+    thread_check_kill_tran_auth (thread_p, tran_index, &has_authorization);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (has_authorization == false)
+    {
+      return ER_KILL_TR_NOT_OWNED;
+    }
+
+  kill_type = interrupt_only ? KILLSTMT_QUERY : KILLSTMT_TRAN;
+
+  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+  if (kill_type == KILLSTMT_TRAN)
+    {
+      css_shutdown_conn_by_tran_index (tran_index);
+    }
+
+  for (i = 0; i < THREAD_RETRY_MAX_SLAM_TIMES; i++)
+    {
+      thread_sleep (1000);	/* 1000 msec */
+
+      if (logtb_find_interrupt (tran_index, &interrupt) != NO_ERROR)
+	{
+	  break;
+	}
+      if (interrupt == false)
+	{
+	  break;
+	}
+    }
+
+  if (i == THREAD_RETRY_MAX_SLAM_TIMES)
+    {
+      return ER_FAILED;		/* timeout */
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * thread_find_first_lockwait_entry() -
  *   return:
  *   thread_index_p(in):
@@ -4764,6 +4824,46 @@ thread_rc_track_dump (THREAD_ENTRY * thread_p, FILE * outfp,
 
       fflush (outfp);
     }
+}
+
+/*
+ * thread_check_kill_tran_auth () - User who is not DBA can kill only own transaction
+ *   return: NO_ERROR or error code
+ *   thread_p(in):
+ *   tran_id(in):
+ *   has_authorization(out):
+ */
+static int
+thread_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id,
+			     bool * has_authorization)
+{
+  char *tran_client_name;
+  char *current_client_name;
+
+  assert (has_authorization);
+
+  *has_authorization = false;
+
+  if (logtb_am_i_dba_client (thread_p) == true)
+    {
+      *has_authorization = true;
+      return NO_ERROR;
+    }
+
+  tran_client_name = logtb_find_client_name (tran_id);
+  current_client_name = logtb_find_current_client_name (thread_p);
+
+  if (tran_client_name == NULL || current_client_name == NULL)
+    {
+      return ER_CSS_KILL_UNKNOWN_TRANSACTION;
+    }
+
+  if (strcasecmp (tran_client_name, current_client_name) == 0)
+    {
+      *has_authorization = true;
+    }
+
+  return NO_ERROR;
 }
 
 /*

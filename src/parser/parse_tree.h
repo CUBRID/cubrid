@@ -849,6 +849,7 @@ enum pt_node_type
   PT_INSERT_VALUE,
   PT_NAMED_ARG,
   PT_SHOWSTMT,
+  PT_KILL,
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
@@ -1536,6 +1537,7 @@ typedef struct pt_set_sys_params_info PT_SET_SYS_PARAMS_INFO;
 typedef struct pt_set_xaction_info PT_SET_XACTION_INFO;
 typedef struct pt_set_trigger_info PT_SET_TRIGGER_INFO;
 typedef struct pt_showstmt_info PT_SHOWSTMT_INFO;
+typedef struct pt_killstmt_info PT_KILLSTMT_INFO;
 typedef struct pt_sort_spec_info PT_SORT_SPEC_INFO;
 typedef struct pt_timeout_info PT_TIMEOUT_INFO;
 typedef struct pt_trigger_action_info PT_TRIGGER_ACTION_INFO;
@@ -2580,6 +2582,12 @@ struct pt_showstmt_info
   PT_NODE *show_args;		/* show statement args */
 };
 
+struct pt_killstmt_info
+{
+  KILLSTMT_TYPE kill_type;
+  PT_NODE *tran_id_list;
+};
+
 /* Info for OrderBy/GroupBy */
 struct pt_sort_spec_info
 {
@@ -3088,6 +3096,7 @@ union pt_statement_info
   PT_VALUE_INFO value;
   PT_POINTER_INFO pointer;
   PT_TRACE_INFO trace;
+  PT_KILLSTMT_INFO killstmt;
 };
 
 

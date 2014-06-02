@@ -1219,6 +1219,7 @@ $ LOADDB
 1150 İçerik uyumlu karşılaştırma gerektirmektedir.
 1151 %2$d hacımın %1$d sayfa yuva donanımlı değildir.
 1152 Son Hata
+1153 The transaction %1$d cannot be killed because it is owned by another user.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1660,6 +1661,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 287 Bilinmeyen argüman %1$s.
 288 Tüm bölümleri kaldırmaktan yerine DROP TABLE kullanmaktadır.
 289 Ifadesine dahil %1$s bu bağlamda yasaktır.
+290 Transaction id is not an integer.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

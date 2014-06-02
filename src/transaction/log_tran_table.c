@@ -2062,6 +2062,41 @@ logtb_find_client_name (int tran_index)
 }
 
 /*
+ * logtb_set_user_name - set client name of transaction index
+ *
+ * return: 
+ *
+ *   tran_index(in): Index of transaction
+ *   user_name(in):
+ */
+void
+logtb_set_user_name (int tran_index, const char *user_name)
+{
+  LOG_TDES *tdes;
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL && tdes->trid != NULL_TRANID)
+    {
+      strncpy (tdes->client.db_user,
+	       (user_name) ? user_name : log_Client_id_unknown_string,
+	       sizeof (tdes->client.db_user) - 1);
+    }
+  return;
+}
+
+/*
+ * logtb_set_current_user_name - set client name of current transaction
+ *
+ * return:
+ */
+void
+logtb_set_current_user_name (THREAD_ENTRY * thread_p,
+			       const char *user_name)
+{
+  logtb_set_user_name (LOG_FIND_THREAD_TRAN_INDEX (thread_p), user_name);
+}
+
+/*
  * logtb_find_client_hostname - find client hostname of transaction index
  *
  * return: client hostname
@@ -2528,6 +2563,35 @@ logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
     {
       return 0;
     }
+}
+
+/*
+ * logtb_find_interrupt - 
+ *
+ * return :
+ *
+ *  tran_index(in):
+ *  interrupt(out):
+ *
+ */
+int
+logtb_find_interrupt (int tran_index, bool * interrupt)
+{
+  LOG_TDES *tdes;
+
+  assert (interrupt);
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL || tdes->trid == NULL_TRANID)
+    {
+      return ER_FAILED;
+    }
+  else
+    {
+      *interrupt = tdes->interrupt ? true : false;
+    }
+
+  return NO_ERROR;
 }
 
 /*

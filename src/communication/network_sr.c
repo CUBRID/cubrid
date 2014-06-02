@@ -938,6 +938,10 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_LC_PREFETCH_REPL_UPDATE_OR_DELETE];
   req_p->processing_function = slocator_prefetch_repl_update_or_delete;
   req_p->name = "NET_SERVER_LC_PREFETCH_PAGE_REPL_UPDATE_OR_DELETE";
+
+  req_p = &net_Requests[NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION];
+  req_p->processing_function = sthread_kill_or_interrupt_tran;
+  req_p->name = "NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION";
 }
 
 #if defined(CUBRID_DEBUG)

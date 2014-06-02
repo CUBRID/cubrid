@@ -3486,6 +3486,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_QUERY_TRACE:
       err = do_set_query_trace (parser, statement);
       break;
+    case PT_KILL:
+      err = do_kill (parser, statement);
+      break;
     default:
       er_set (ER_ERROR_SEVERITY, __FILE__, statement->line_number,
 	      ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
@@ -17534,6 +17537,66 @@ do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   return NO_ERROR;
 #endif /* SA_MODE */
+}
+
+/*
+ * do_kill() - Kill transaction or query
+ *   return: Error code or number of killed transaction
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a set statement
+ *
+ */
+int
+do_kill (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+#if defined(SA_MODE)
+  return NO_ERROR;
+#else
+  int error;
+  PT_NODE *id_list;
+  bool interrupt_only;
+  int i = 0;
+  int num_killed;
+  int *tran_index_array;
+  int array_size;
+
+  id_list = statement->info.killstmt.tran_id_list;;
+  array_size = pt_length_of_list (id_list);
+
+  assert (array_size >= 1);	/* verified in syntax check */
+
+  tran_index_array = (int *) malloc (sizeof (int) * array_size);
+  if (tran_index_array == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      sizeof (int) * array_size);
+      return error;
+    }
+
+  for (i = 0; id_list != NULL; id_list = id_list->next, i++)
+    {
+      assert (i < array_size);
+      assert (id_list->type_enum == PT_TYPE_INTEGER);
+
+      tran_index_array[i] = id_list->info.value.data_value.i;
+    }
+
+  interrupt_only =
+    statement->info.killstmt.kill_type == KILLSTMT_QUERY ? true : false;
+
+  error =
+    thread_kill_or_interrupt_tran (tran_index_array, array_size,
+				   interrupt_only, &num_killed);
+  if (error == NO_ERROR)
+    {
+      error = num_killed;
+    }
+
+  free_and_init (tran_index_array);
+
+  return error;
+#endif
 }
 
 /*

@@ -1219,6 +1219,7 @@ $ LOADDB
 1150 Context requires compatible collations.
 1151 The page %1$d of volume %2$d is not a slotted page.
 1152 마지막 에러
+1153 The transaction %1$d cannot be killed because it is owned by another user.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1660,6 +1661,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 287 %1$s은(는) 알 수 없는 인자입니다.
 288 분할 테이블 내의 모든 분할을 제거하는 것은 허용되지 않습니다. 'DROP TABLE' 구문을 사용하십시오.
 289 The expression including %1$s is not allowed in this context.
+290 Transaction id is not an integer.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

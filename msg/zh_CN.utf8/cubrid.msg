@@ -1219,6 +1219,7 @@ $ LOADDB
 1150 上下文需要兼容的排序规则.
 1151 卷 %2$d 的页 %1$d 不是一个 slotted 页.
 1152 Last Error
+1153 The transaction %1$d cannot be killed because it is owned by another user.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1660,6 +1661,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 287 未知参数 '%1$s'.
 288 无法删除所有分区表, 使用 DROP TABLE 代替.
 289 在此上下文的表达式中不允许包含 '%1$s'.
+290 Transaction id is not an integer.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

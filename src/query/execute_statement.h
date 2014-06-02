@@ -199,6 +199,7 @@ extern int do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_set_names (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_kill (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int check_for_default_expr (PARSER_CONTEXT * parser,
 				   PT_NODE * specified_attrs,

@@ -406,6 +406,8 @@ extern bool thread_get_check_page_validation (THREAD_ENTRY * thread_p);
 extern int xthread_kill_tran_index (THREAD_ENTRY * thread_p,
 				    int kill_tran_index, char *kill_user,
 				    char *kill_host, int kill_pid);
+extern int xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p,
+					   int tran_id, bool interrupt_only);
 
 extern HL_HEAPID css_get_private_heap (THREAD_ENTRY * thread_p);
 extern HL_HEAPID css_set_private_heap (THREAD_ENTRY * thread_p,

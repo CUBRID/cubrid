@@ -254,6 +254,7 @@ static KEYWORD_RECORD keywords[] = {
   {JSON, "JSON", 1},
   {KEY, "KEY", 0},
   {KEYS, "KEYS", 1},
+  {KILL, "KILL", 1},
   {LANGUAGE, "LANGUAGE", 0},
   {LAST, "LAST", 0},
   {LAST_VALUE, "LAST_VALUE", 1},

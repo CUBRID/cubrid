@@ -8965,6 +8965,74 @@ thread_kill_tran_index (int kill_tran_index, char *kill_user,
 }
 
 /*
+ * thread_kill_or_interrupt_tran - 
+ *
+ * return:
+ *
+ *   tran_index_list(in):
+ *   num_tran_index(in):
+ *   interrupt_only(in):
+ *   num_killed(out):
+ *
+ * NOTE:
+ */
+int
+thread_kill_or_interrupt_tran (int *tran_index_list, int num_tran_index,
+			       bool interrupt_only, int *num_killed)
+{
+#if defined(CS_MODE)
+  int success = ER_FAILED;
+  int request_size;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply, *ptr;
+  int req_error;
+  int i;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = OR_INT_SIZE * (2 + num_tran_index);	/* num_tran_index + tran_index_list + interrupt_only */
+
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      ptr = or_pack_int (request, num_tran_index);
+
+      for (i = 0; i < num_tran_index; i++)
+	{
+	  ptr = or_pack_int (ptr, tran_index_list[i]);
+	}
+
+      ptr = or_pack_int (ptr, (interrupt_only) ? 1 : 0);
+
+      req_error =
+	net_client_request (NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION,
+			    request, request_size, reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+      if (!req_error)
+	{
+	  ptr = or_unpack_int (reply, &success);
+	  ptr = or_unpack_int (ptr, num_killed);
+	}
+
+      free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      request_size);
+    }
+
+  return success;
+#else /* CS_MODE */
+  er_log_debug (ARG_FILE_LINE,
+		"thread_kill_or_interrupt_tran: THIS IS ONLY a C/S function");
+  return ER_FAILED;
+#endif /* !CS_MODE */
+}
+
+/*
  * thread_dump_cs_stat -
  *
  * return:

@@ -7799,6 +7799,68 @@ sthread_kill_tran_index (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
+ * sthread_kill_or_interrupt_tran - 
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, unsigned int rid,
+				char *request, int reqlen)
+{
+  int success = NO_ERROR;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int i = 0;
+  int *tran_index_list;
+  int num_tran_index, interrupt_only;
+  int num_killed_tran = 0;
+
+  ptr = or_unpack_int (request, &num_tran_index);
+  ptr = or_unpack_int_array (ptr, num_tran_index, &tran_index_list);
+  ptr = or_unpack_int (ptr, &interrupt_only);
+
+  for (i = 0; i < num_tran_index; i++)
+    {
+      success =
+	xthread_kill_or_interrupt_tran (thread_p, tran_index_list[i],
+					(bool) interrupt_only);
+      if (success == NO_ERROR)
+	{
+	  num_killed_tran++;
+	}
+      else if (success == ER_KILL_TR_NOT_OWNED)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_OWNED, 1,
+		  tran_index_list[i]);
+	  return_error_to_client (thread_p, rid);
+	  break;
+	}
+      else
+	{
+	  /* error not related with authorization is ignored and keep running */
+	  success = NO_ERROR;
+	}
+    }
+
+  ptr = or_pack_int (reply, success);
+  ptr = or_pack_int (ptr, num_killed_tran);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+
+  if (tran_index_list)
+    {
+      db_private_free (NULL, tran_index_list);
+    }
+}
+
+/*
  * sthread_dump_cs_stat -
  *
  * return:
@@ -9657,6 +9719,8 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid,
 
       intl_identifier_upper (db_user, db_user_upper);
       css_set_user_access_status (db_user_upper, host, program_name);
+
+      logtb_set_current_user_name (thread_p, db_user_upper);
     }
 
   free_and_init (db_user);

@@ -125,6 +125,12 @@ typedef enum
   SHOWSTMT_END
 } SHOWSTMT_TYPE;
 
+typedef enum
+{
+  KILLSTMT_TRAN = 0,
+  KILLSTMT_QUERY = 1,
+} KILLSTMT_TYPE;
+
 #define QPROC_ANALYTIC_IS_OFFSET_FUNCTION(func_p) \
     (((func_p) != NULL) \
     && (((func_p)->function == PT_LEAD) \

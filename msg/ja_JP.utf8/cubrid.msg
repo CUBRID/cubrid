@@ -1219,6 +1219,7 @@ $ LOADDB
 1150 コンテキストは、互換性のある照合順序を必要とします。
 1151 ボリューム%2$dのページ%1$dは、slotted pageではありません。
 1152 ラストエラー
+1153 The transaction %1$d cannot be killed because it is owned by another user.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1660,6 +1661,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 287 「%1$s」パラメーターは正しくありません。
 288 すべてのパーティションを削除することはできません、代わりにDROP TABLEを使用してください。
 289 %1$sの式はこのコンテキストでは許可されません。
+290 Transaction id is not an integer.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

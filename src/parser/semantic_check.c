@@ -287,6 +287,7 @@ static void pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser,
 					     PT_NODE * node, void *arg,
 					     int *continue_walk);
@@ -9709,6 +9710,28 @@ pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 }
 
+/*
+ * pt_check_kill () - do semantic checks on the kill statement
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static void
+pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *tran_id;
+
+  for (tran_id = node->info.killstmt.tran_id_list; tran_id != NULL;
+       tran_id = tran_id->next)
+    {
+      if (tran_id->type_enum != PT_TYPE_INTEGER)
+	{
+	  PT_ERRORm (parser, tran_id, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_TRANSACTION_ID_WANT_INTEGER);
+	  break;
+	}
+    }
+}
 
 /*
  * pt_check_single_valued_node () - looks for names outside an aggregate
@@ -10953,7 +10976,6 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	  pt_coerce_insert_values (parser, node);
 	}
       break;
-
     default:			/* other node types */
       break;
     }
@@ -11747,6 +11769,10 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 
     case PT_TRUNCATE:
       pt_check_truncate (parser, node);
+      break;
+
+    case PT_KILL:
+      pt_check_kill (parser, node);
       break;
 
     case PT_ALTER:

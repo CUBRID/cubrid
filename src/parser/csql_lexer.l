@@ -415,6 +415,7 @@ extern int str_identifier = '\0';
 [kK][eE][yY][sS]							{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return KEYS; }
+[kK][iI][lL][lL]							{ begin_token(yytext);   return KILL; }
 [lL][aA][nN][gG][uU][aA][gG][eE]					{ begin_token(yytext);   return LANGUAGE; }
 [kK][eE][yY][lL][iI][mM][iI][tT]					{ begin_token(yytext);	 return KEYLIMIT; }
 [lL][aA][gG]								{ begin_token(yytext);   

@@ -2087,6 +2087,9 @@ extern int
 logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p);
 extern int logtb_find_client_type (int tran_index);
 extern char *logtb_find_client_name (int tran_index);
+extern void logtb_set_user_name (int tran_index, const char *client_name);
+extern void logtb_set_current_user_name (THREAD_ENTRY * thread_p,
+					   const char *client_name);
 extern char *logtb_find_client_hostname (int tran_index);
 extern int logtb_find_client_name_host_pid (int tran_index,
 					    char **client_prog_name,
@@ -2102,6 +2105,7 @@ extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);
 extern int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p);
+extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
 extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p,

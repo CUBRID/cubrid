@@ -352,6 +352,10 @@ extern int catalog_is_acceptable_new_representation (OID * class_id,
 						     int *can_accept);
 extern int thread_kill_tran_index (int kill_tran_index, char *kill_user,
 				   char *kill_host, int kill_pid);
+extern int thread_kill_or_interrupt_tran (int *tran_index_list,
+					  int num_tran_index,
+					  bool interrupt_only,
+					  int *num_killed);
 extern void thread_dump_cs_stat (FILE * outfp);
 
 extern int logtb_get_pack_tran_table (char **buffer_p, int *size_p,
