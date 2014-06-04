@@ -273,6 +273,8 @@
 		<row><td>clientResultSet.h</td><td>DBGW</td><td>ClientResultSet.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\client\ClientResultSet.h</td><td>1</td><td>NewSubFolder20</td></row>
 		<row><td>cm.conf_dist</td><td>CUBRID</td><td>cm.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cm.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cm.pass_dist</td><td>CUBRID</td><td>cm.pass-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cm.pass-dist</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cm_admin.exe</td><td>CUBRID</td><td>cm_admin.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cm_admin.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cm_admin.pdb</td><td>CUBRID</td><td>cm_admin.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cm_admin.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cm_dep.h</td><td>CCI</td><td>cm_dep.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cm_dep.h</td><td>1</td><td>NewSubFolder1</td></row>
 		<row><td>cm_dep.h1</td><td>CUBRID</td><td>cm_dep.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cm_dep.h</td><td>1</td><td>NewSubFolder6</td></row>
 		<row><td>cm_ssl_cert.crt</td><td>CUBRID</td><td>cm_ssl_cert.crt</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cm_ssl_cert.crt</td><td>1</td><td>NewSubFolder4</td></row>
