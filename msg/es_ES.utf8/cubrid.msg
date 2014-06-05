@@ -1218,8 +1218,8 @@ $ LOADDB
 1149 No se puede encontrar la pagina %1$d de volumen %2$d.
 1150 Contexto requiere colaciones compatibles.
 1151 The page %1$d of volume %2$d is not a slotted page.
-1152 Ultimo error
-1153 The transaction %1$d cannot be killed because it is owned by another user.
+1152 The transaction %1$d cannot be killed because it is owned by another user.
+1153 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

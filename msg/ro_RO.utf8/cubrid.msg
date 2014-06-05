@@ -1218,8 +1218,8 @@ $ LOADDB
 1149 Pagina %1$d a volumului %2$d nu poate fi găsită.
 1150 Contextul necesită colaţii compatibile.
 1151 The page %1$d of volume %2$d is not a slotted page.
-1152 Ultima eroare
-1153 The transaction %1$d cannot be killed because it is owned by another user.
+1152 The transaction %1$d cannot be killed because it is owned by another user.
+1153 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

@@ -1218,8 +1218,8 @@ $ LOADDB
 1149 Kann nicht finden die Seite %1$d von Volumen %2$d.
 1150 Kontext erfordert kompatible Sortierungen.
 1151 The page %1$d of volume %2$d is not a slotted page.
-1152 Letzter Fehler
-1153 The transaction %1$d cannot be killed because it is owned by another user.
+1152 The transaction %1$d cannot be killed because it is owned by another user.
+1153 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):

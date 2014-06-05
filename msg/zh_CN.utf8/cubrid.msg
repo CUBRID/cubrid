@@ -1218,8 +1218,8 @@ $ LOADDB
 1149 无法在卷 %2$d 中找到页 %1$d.
 1150 上下文需要兼容的排序规则.
 1151 卷 %2$d 的页 %1$d 不是一个 slotted 页.
-1152 Last Error
-1153 The transaction %1$d cannot be killed because it is owned by another user.
+1152 The transaction %1$d cannot be killed because it is owned by another user.
+1153 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

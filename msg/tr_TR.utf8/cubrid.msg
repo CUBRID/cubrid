@@ -1218,8 +1218,8 @@ $ LOADDB
 1149 %2$d hacımın %1$d sayfa bulunmaktadır.
 1150 İçerik uyumlu karşılaştırma gerektirmektedir.
 1151 %2$d hacımın %1$d sayfa yuva donanımlı değildir.
-1152 Son Hata
-1153 The transaction %1$d cannot be killed because it is owned by another user.
+1152 The transaction %1$d cannot be killed because it is owned by another user.
+1153 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
