@@ -65,7 +65,7 @@ schema_attr_meta (T_NET_BUF * net_buf)
   net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, "NON_NULL");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, "SHARED");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, "UNIQUE");
-  net_buf_column_info_set (net_buf, CCI_U_TYPE_NULL, 0, 0, "DEFAULT");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, 0, "DEFAULT");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_INT, 0, 0, "ATTR_ORDER");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
 			   "CLASS_NAME");

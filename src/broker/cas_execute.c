@@ -5615,6 +5615,8 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   char *class_name, *attr_name, *p;
   T_ATTR_TABLE attr_info;
   T_BROKER_VERSION client_version = req_info->client_version;
+  char *default_value_string = NULL;
+  bool alloced_default_value_string = false;
 
   q_result = (T_QUERY_RESULT *) (srv_handle->cur_result);
   if (q_result == NULL)
@@ -5720,7 +5722,15 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       add_res_data_short (net_buf, (short) attr_info.unique, 0, NULL);
 
       /* 9. default */
-      dbval_to_net_buf ((DB_VALUE *) attr_info.default_val, net_buf, 0, 0, 1);
+      default_value_string =
+	get_column_default_as_string (db_attr, &alloced_default_value_string);
+      add_res_data_string (net_buf, default_value_string,
+			   strlen (default_value_string), 0, NULL);
+
+      if (alloced_default_value_string)
+	{
+	  FREE_MEM (default_value_string);
+	}
 
       /* 10. order */
       add_res_data_int (net_buf, (int) attr_info.attr_order, 0, NULL);
