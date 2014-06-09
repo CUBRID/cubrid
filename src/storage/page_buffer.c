@@ -258,10 +258,9 @@ struct pgbuf_holder
   int tran_index;		/* the tran index of the holder */
   int fix_count;		/* the count of fix by the holder */
   PGBUF_BCB *bufptr;		/* pointer to BCB */
-  PGBUF_HOLDER *next_holder;	/* the next BCB holder entry in the holder list
-				   of BCB or free BCB holder list of tran. */
   PGBUF_HOLDER *tran_link;	/* the next BCB holder entry in the BCB holder
-				   list of tran. */
+				   list of tran */
+  PGBUF_HOLDER *next_holder;	/* free BCB holder list of tran */
 #if !defined(NDEBUG)
   char fixed_at[64 * 1024];
   int fixed_at_size;
@@ -298,7 +297,6 @@ struct pgbuf_bcb
   int fcnt;			/* Fix count */
   int latch_mode;		/* page latch mode */
   int zone;			/* BCB zone */
-  PGBUF_HOLDER *holder_list;	/* BCB holder list */
 #if defined(SERVER_MODE)
   THREAD_ENTRY *next_wait_thrd;	/* BCB waiting queue */
 #endif				/* SERVER_MODE */
@@ -678,8 +676,6 @@ static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid,
 #endif /* NDEBUG */
 
 #if defined(SERVER_MODE)
-static char *pgbuf_get_waiting_tran_users_as_string (PGBUF_HOLDER *
-						     holder_list);
 static THREAD_ENTRY *pgbuf_kickoff_blocked_victim_request (PGBUF_BCB *
 							   bufptr);
 #if !defined(NDEBUG)
@@ -3909,7 +3905,6 @@ pgbuf_initialize_bcb_table (void)
       VPID_SET_NULL (&bufptr->vpid);
       bufptr->fcnt = 0;
       bufptr->latch_mode = PGBUF_LATCH_INVALID;
-      bufptr->holder_list = NULL;
 
 #if defined(SERVER_MODE)
       bufptr->next_wait_thrd = NULL;
@@ -4385,6 +4380,9 @@ pgbuf_allocate_tran_holder_entry (THREAD_ENTRY * thread_p, int tidx)
       holder->tran_link = NULL;
     }
 
+  assert (holder->tran_index == tran_index);
+  holder->next_holder = NULL;	/* disconnect from free BCB holder list */
+
   /* connect the BCB holder entry at the head of transaction's holder list */
   holder->tran_link = pgbuf_Pool.tran_holder_info[tran_index].tran_hold_list;
   pgbuf_Pool.tran_holder_info[tran_index].tran_hold_list = holder;
@@ -4406,21 +4404,35 @@ pgbuf_find_current_tran_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
   int tran_index;
   PGBUF_HOLDER *holder;
+  int rv;
+
+  assert (bufptr != NULL);
 
   /* the caller is holding bufptr->BCB_mutex */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  holder = bufptr->holder_list;
+
+  rv =
+    pthread_mutex_lock (&pgbuf_Pool.tran_holder_info[tran_index].list_mutex);
+
+  /* For each BCB holder entry of transaction's holder list */
+  holder = pgbuf_Pool.tran_holder_info[tran_index].tran_hold_list;
 
   while (holder != NULL)
     {
-      if (tran_index == holder->tran_index)
+      assert (holder->tran_index == tran_index);
+      assert (holder->next_holder == NULL);
+
+      if (holder->bufptr == bufptr)
 	{
-	  return holder;
+	  break;		/* found */
 	}
-      holder = holder->next_holder;
+
+      holder = holder->tran_link;
     }
 
-  return NULL;
+  pthread_mutex_unlock (&pgbuf_Pool.tran_holder_info[tran_index].list_mutex);
+
+  return holder;
 }
 
 /*
@@ -4448,35 +4460,6 @@ pgbuf_remove_tran_holder (PGBUF_BCB * bufptr, PGBUF_HOLDER * holder)
 
   /* the caller is holding bufptr->BCB_mutex */
 
-  /* remove given BCB holder entry from the BCB holder list */
-  if (bufptr->holder_list == (PGBUF_HOLDER *) holder)
-    {
-      /* first entry */
-      bufptr->holder_list = holder->next_holder;
-    }
-  else
-    {
-      found = false;
-      prev = bufptr->holder_list;
-
-      while (prev->next_holder != NULL)
-	{
-	  if (prev->next_holder == (PGBUF_HOLDER *) holder)
-	    {
-	      prev->next_holder = holder->next_holder;
-	      holder->next_holder = NULL;
-	      found = true;
-	      break;
-	    }
-	  prev = prev->next_holder;
-	}
-
-      if (found == false)
-	{
-	  return ER_FAILED;
-	}
-    }
-
   /* initialize the fix_count */
   /* holder->fix_count is always set to some meaningful value
      when the holder entry is allocated for use.
@@ -4495,6 +4478,7 @@ pgbuf_remove_tran_holder (PGBUF_BCB * bufptr, PGBUF_HOLDER * holder)
    */
   rv =
     pthread_mutex_lock (&pgbuf_Pool.tran_holder_info[tran_index].list_mutex);
+
   holder->next_holder =
     pgbuf_Pool.tran_holder_info[tran_index].tran_free_list;
   pgbuf_Pool.tran_holder_info[tran_index].tran_free_list = holder;
@@ -4522,8 +4506,13 @@ pgbuf_remove_tran_holder (PGBUF_BCB * bufptr, PGBUF_HOLDER * holder)
 
       while (prev->tran_link != NULL)
 	{
+	  assert (prev->tran_index == tran_index);
+	  assert (prev->next_holder == NULL);
 	  if (prev->tran_link == (PGBUF_HOLDER *) holder)
 	    {
+	      assert (holder->tran_index == tran_index);
+	      assert (holder->fix_count == 0);
+	      assert (holder->next_holder != NULL);
 	      prev->tran_link = holder->tran_link;
 	      holder->tran_link = NULL;
 	      found = true;
@@ -4541,62 +4530,11 @@ pgbuf_remove_tran_holder (PGBUF_BCB * bufptr, PGBUF_HOLDER * holder)
     }
 
   pgbuf_Pool.tran_holder_info[tran_index].num_hold_cnt -= 1;
+
   pthread_mutex_unlock (&pgbuf_Pool.tran_holder_info[tran_index].list_mutex);
 
   return NO_ERROR;
 }
-
-#if defined(SERVER_MODE)
-/*
- * pgbuf_get_waiting_tran_users_as_string () -
- *   return:
- *   holder_list(in):
- */
-static char *
-pgbuf_get_waiting_tran_users_as_string (PGBUF_HOLDER * holder_list)
-{
-  char *client_prog_name;	/* Client program name for transaction */
-  char *client_user_name;	/* Client user name for transaction */
-  char *client_host_name;	/* Client host for transaction */
-  int client_pid;		/* Client process identifier for transaction */
-  char *trans_users = NULL;	/* A string of a set of user@host|pid. */
-  char *ptr;
-  const char *fmt;
-  int holder_cnt = 0, buf_size = 0;
-  PGBUF_HOLDER *cur_holder = holder_list;
-
-  while (cur_holder != NULL)
-    {
-      holder_cnt++;
-      cur_holder = cur_holder->next_holder;
-    }
-
-  if (holder_cnt > 0)
-    {
-      buf_size = holder_cnt * (LOG_USERNAME_MAX + MAXHOSTNAMELEN + 20 + 4);
-      trans_users = (char *) malloc (buf_size);
-      if (trans_users == NULL)
-	{
-	  return NULL;
-	}
-
-      for (cur_holder = holder_list, ptr = trans_users, fmt = "%s@%s|%d";
-	   cur_holder != NULL;
-	   cur_holder = cur_holder->next_holder, fmt = ", %s@%s|%d")
-	{
-	  (void) logtb_find_client_name_host_pid (cur_holder->tran_index,
-						  &client_prog_name,
-						  &client_user_name,
-						  &client_host_name,
-						  &client_pid);
-	  sprintf (ptr, fmt, client_user_name, client_host_name, client_pid);
-	  ptr += strlen (ptr);
-	}
-    }
-
-  return trans_users;
-}
-#endif /* SERVER_MODE */
 
 /*
  * pgbuf_latch_bcb_upon_fix () -
@@ -4650,9 +4588,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 	  return ER_FAILED;
 	}
-      /* connect it into the holder list of BCB and initialize it */
-      holder->next_holder = bufptr->holder_list;
-      bufptr->holder_list = holder;
+
       holder->fix_count = 1;
       holder->bufptr = bufptr;
 #if !defined(NDEBUG)
@@ -4714,9 +4650,6 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 		  return ER_FAILED;
 		}
 
-	      /* connect it into the holder list of BCB and initialize it */
-	      holder->next_holder = bufptr->holder_list;
-	      bufptr->holder_list = holder;
 	      holder->fix_count = 1;
 	      holder->bufptr = bufptr;
 #if !defined(NDEBUG)
@@ -4810,19 +4743,13 @@ do_block:
 
       if (wait_msec == LK_ZERO_WAIT)
 	{
-	  char *waitfor_client_users;	/* Waitfor users */
-	  char *client_prog_name;	/* Client program name for transaction */
-	  char *client_user_name;	/* Client user name for transaction */
-	  char *client_host_name;	/* Client host for transaction */
-	  int client_pid;	/* Client process identifier for transaction */
+	  char *client_prog_name;	/* Client program name for tran */
+	  char *client_user_name;	/* Client user name for tran */
+	  char *client_host_name;	/* Client host for tran */
+	  int client_pid;	/* Client process identifier for tran */
 
 	  /* setup timeout error, if wait_msec == LK_ZERO_WAIT */
-#if defined(SERVER_MODE)
-	  waitfor_client_users =
-	    pgbuf_get_waiting_tran_users_as_string (bufptr->holder_list);
-#else /* SERVER_MODE */
-	  waitfor_client_users = NULL;
-#endif /* SERVER_MODE */
+
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 
 	  (void) logtb_find_client_name_host_pid (tran_index,
@@ -4835,13 +4762,7 @@ do_block:
 		  tran_index, client_user_name, client_host_name,
 		  client_pid,
 		  (request_mode == PGBUF_LATCH_READ ? "READ" : "WRITE"),
-		  bufptr->vpid.volid, bufptr->vpid.pageid,
-		  waitfor_client_users);
-
-	  if (waitfor_client_users)
-	    {
-	      free_and_init (waitfor_client_users);
-	    }
+		  bufptr->vpid.volid, bufptr->vpid.pageid, NULL);
 	}
       else
 	{
@@ -5315,8 +5236,6 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p,
 		}
 	      bufptr->fcnt += curr_thrd_entry->request_fix_count;
 
-	      holder->next_holder = bufptr->holder_list;
-	      bufptr->holder_list = holder;
 	      holder->fix_count = curr_thrd_entry->request_fix_count;
 	      holder->bufptr = bufptr;
 #if !defined(NDEBUG)
@@ -5365,11 +5284,10 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
   int wait_secs;
   int old_wait_msecs;
   int save_request_latch_mode;
-  char *waitfor_client_users;	/* Waitfor users */
-  char *client_prog_name;	/* Client program name for transaction */
-  char *client_user_name;	/* Client user name for transaction */
-  char *client_host_name;	/* Client host for transaction */
-  int client_pid;		/* Client process identifier for transaction */
+  char *client_prog_name;	/* Client program name for trans */
+  char *client_user_name;	/* Client user name for tran */
+  char *client_host_name;	/* Client host for tran */
+  int client_pid;		/* Client process identifier for tran */
 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
@@ -5531,9 +5449,6 @@ er_set_return:
     }
   else if (old_wait_msecs > 0)
     {
-      waitfor_client_users =
-	pgbuf_get_waiting_tran_users_as_string (bufptr->holder_list);
-
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_PAGE_LATCH_TIMEDOUT, 2, bufptr->vpid.volid,
 	      bufptr->vpid.pageid);
@@ -5550,12 +5465,7 @@ er_set_return:
 	      client_pid,
 	      (save_request_latch_mode ==
 	       PGBUF_LATCH_READ ? "READ" : "WRITE"), bufptr->vpid.volid,
-	      bufptr->vpid.pageid, waitfor_client_users);
-
-      if (waitfor_client_users)
-	{
-	  free_and_init (waitfor_client_users);
-	}
+	      bufptr->vpid.pageid, NULL);
     }
   else
     {
@@ -5643,8 +5553,6 @@ pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 		      return ER_FAILED;
 		    }
 
-		  holder->next_holder = bufptr->holder_list;
-		  bufptr->holder_list = holder;
 		  holder->fix_count = thrd_entry->request_fix_count;
 		  holder->bufptr = bufptr;
 #if !defined(NDEBUG)
@@ -5690,10 +5598,13 @@ static PGBUF_BCB *
 pgbuf_search_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid)
 {
   PGBUF_BCB *bufptr;
+  int mbw_cnt;
 #if defined(SERVER_MODE)
   int rv;
   int loop_cnt;
 #endif
+
+  mbw_cnt = prm_get_integer_value (PRM_ID_MUTEX_BUSY_WAITING_CNT);
 
 /* one_phase: no hash-chain mutex */
 one_phase:
@@ -5721,8 +5632,7 @@ one_phase:
 		  goto two_phase;
 		}
 
-	      if (loop_cnt++ <
-		  prm_get_integer_value (PRM_ID_MUTEX_BUSY_WAITING_CNT))
+	      if (loop_cnt++ < mbw_cnt)
 		{
 		  goto mutex_lock;
 		}
@@ -5784,8 +5694,7 @@ try_again:
 		  return NULL;
 		}
 
-	      if (loop_cnt++ <
-		  prm_get_integer_value (PRM_ID_MUTEX_BUSY_WAITING_CNT))
+	      if (loop_cnt++ < mbw_cnt)
 		{
 		  goto mutex_lock2;
 		}
