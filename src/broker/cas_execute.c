@@ -8411,7 +8411,8 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name,
 		 "SELECT a.class_name, b.key_attr_name, b.key_order+1, a.index_name");
   STRING_APPEND (sql_p, avail_size,
 		 " FROM db_index a, db_index_key b WHERE ");
-  STRING_APPEND (sql_p, avail_size, " a.index_name = b.index_name ");
+  STRING_APPEND (sql_p, avail_size, " a.class_name = b.class_name ");
+  STRING_APPEND (sql_p, avail_size, " AND a.index_name = b.index_name ");
   STRING_APPEND (sql_p, avail_size, " AND a.is_primary_key = 'YES' ");
   STRING_APPEND (sql_p, avail_size, " AND a.class_name = '%s'", class_name);
   STRING_APPEND (sql_p, avail_size, " ORDER BY b.key_attr_name");
