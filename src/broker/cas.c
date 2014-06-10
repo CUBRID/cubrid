@@ -170,6 +170,7 @@ char cas_client_type;
 
 #ifndef LIBCAS_FOR_JSP
 int con_status_before_check_cas;
+bool is_first_request;
 SOCKET new_req_sock_fd = INVALID_SOCKET;
 #endif /* !LIBCAS_FOR_JSP */
 int cas_default_isolation_level = 0;
@@ -1301,7 +1302,8 @@ cas_main (void)
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #ifndef LIBCAS_FOR_JSP
 	    con_status_before_check_cas = -1;
-#endif
+	    is_first_request = true;
+#endif /* !LIBCAS_FOR_JSP */
 	    fn_ret = FN_KEEP_CONN;
 	    while (fn_ret == FN_KEEP_CONN)
 	      {
@@ -1310,6 +1312,9 @@ cas_main (void)
 #endif /* !WINDOWS */
 		fn_ret = process_request (client_sock_fd, &net_buf,
 					  &req_info);
+#ifndef LIBCAS_FOR_JSP
+		is_first_request = false;
+#endif /* !LIBCAS_FOR_JSP */
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 		cas_log_error_handler_clear ();
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
@@ -1893,8 +1898,21 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code))
     {
-      con_status_to_restore = (con_status_before_check_cas != -1) ?
-	con_status_before_check_cas : old_con_status;
+      if (is_first_request == true)
+	{
+	  /* If this request is the first request after connection established,
+	   * con_status should be CON_STATUS_OUT_TRAN.  
+	   */
+	  con_status_to_restore = CON_STATUS_OUT_TRAN;
+	}
+      else if (con_status_before_check_cas != -1)
+	{
+	  con_status_to_restore = con_status_before_check_cas;
+	}
+      else
+	{
+	  con_status_to_restore = old_con_status;
+	}
 
       con_status_before_check_cas = -1;
     }
