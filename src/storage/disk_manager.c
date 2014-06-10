@@ -5478,7 +5478,13 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 
   vhdr = (DISK_VAR_HEADER *) pgptr;
 
-  assert_release (vhdr->purpose != DISK_TEMPVOL_TEMP_PURPOSE);
+  if (vhdr->purpose == DISK_TEMPVOL_TEMP_PURPOSE)
+    {
+      assert_release (vhdr->purpose != DISK_TEMPVOL_TEMP_PURPOSE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+
+      goto error;
+    }
 
   nfree = disk_id_get_max_frees (thread_p, volid, vhdr->page_alloctb_page1,
 				 vhdr->sys_lastpage + 1,
@@ -5590,11 +5596,13 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 	      fileio_get_volume_label (volid, PEEK));
       valid = DISK_INVALID;
     }
-  else if (vhdr->purpose != DISK_TEMPVOL_TEMP_PURPOSE)
+  else
     {
-      if (vhdr->sect_alloctb_npages != CEIL_PTVDIV (vhdr->total_sects,
-						    DISK_PAGE_BIT)
-	  || vhdr->page_alloctb_npages != CEIL_PTVDIV (vhdr->total_pages,
+      if (vhdr->sect_alloctb_npages < CEIL_PTVDIV (vhdr->total_sects,
+						   DISK_PAGE_BIT)
+	  || vhdr->page_alloctb_npages < CEIL_PTVDIV (vhdr->total_pages,
+						      DISK_PAGE_BIT)
+	  || vhdr->page_alloctb_npages != CEIL_PTVDIV (vhdr->max_npages,
 						       DISK_PAGE_BIT))
 	{
 	  (void) disk_verify_volume_header (thread_p, pgptr);
