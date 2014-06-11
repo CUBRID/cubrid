@@ -1469,7 +1469,7 @@
 
 #define ER_DIAG_NOT_SPAGE                           -1151
 
-#define ER_KILL_TR_NOT_OWNED                        -1152
+#define ER_KILL_TR_NOT_ALLOWED                      -1152
 
 #define ER_LAST_ERROR                               -1153
 

@@ -1217,7 +1217,7 @@ $ LOADDB
 1148 Le dimensioni del filter predicate stream cache(%1$d) supera il max(%2$d). È stata aggiunta una nuova voce anche se nulla è vittimizzato perché tutte le voci della cache sono già utilizzate.
 1149 Impossibile trovare la pagina %1$d del volume %2$d.
 1150 Contesto richiede collations compatibili.
-1151 The transaction %1$d cannot be killed because it is owned by another user.
+1151 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
 1152 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL

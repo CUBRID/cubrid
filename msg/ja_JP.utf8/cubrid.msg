@@ -1218,7 +1218,7 @@ $ LOADDB
 1149 ボリューム%2$dのページ%1$dを見つかりませんん。
 1150 コンテキストは、互換性のある照合順序を必要とします。
 1151 ボリューム%2$dのページ%1$dは、slotted pageではありません。
-1152 The transaction %1$d cannot be killed because it is owned by another user.
+1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
 1153 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL

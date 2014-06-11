@@ -7835,10 +7835,8 @@ sthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, unsigned int rid,
 	{
 	  num_killed_tran++;
 	}
-      else if (success == ER_KILL_TR_NOT_OWNED)
+      else if (success == ER_KILL_TR_NOT_ALLOWED)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_OWNED, 1,
-		  tran_index_list[i]);
 	  return_error_to_client (thread_p, rid);
 	  break;
 	}

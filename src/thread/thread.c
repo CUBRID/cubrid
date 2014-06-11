@@ -3691,7 +3691,9 @@ xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index,
 
   if (has_authorization == false)
     {
-      return ER_KILL_TR_NOT_OWNED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1,
+		  tran_index);
+      return ER_KILL_TR_NOT_ALLOWED;
     }
 
   kill_type = interrupt_only ? KILLSTMT_QUERY : KILLSTMT_TRAN;
