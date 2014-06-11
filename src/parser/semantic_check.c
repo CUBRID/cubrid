@@ -11843,7 +11843,8 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 			}
 		    }
 
-		  if (p->info.index.function_expr
+		  if (p != NULL && !pt_has_error (parser)
+		      && p->info.index.function_expr != NULL
 		      && !pt_is_function_index_expr (parser,
 						     p->info.index.
 						     function_expr->info.
