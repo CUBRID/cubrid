@@ -2546,7 +2546,27 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 			  is_do_lock, is_do_sync);
   if (vol_fd != NULL_VOLDES)
     {
-      /* initialize the pages of the volume */
+      /* initialize the pages of the volume. */
+ 
+      /* initialize at least two pages, the header page and the last page. 
+       * in case of is_sweep_clean == true, every page of the volume will be written.
+       */
+      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, 0,
+			page_size) == NULL)
+	{
+	  fileio_dismount (thread_p, vol_fd);
+	  fileio_unformat (thread_p, vol_label_p);
+	  free_and_init (malloc_io_page_p);
+
+	  if (er_errid () != ER_INTERRUPTED)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_IO_WRITE, 2, 0, vol_id);
+	    }
+
+	  vol_fd = NULL_VOLDES;
+	  return vol_fd;
+	}
 
 #if defined(HPUX)
       if ((is_sweep_clean == true
