@@ -22422,7 +22422,7 @@ pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list,
 	}
 
       /* check for domain info */
-      if (node->info.sort_spec.pos_descr.dom == NULL)
+      if (TP_DOMAIN_TYPE (node->info.sort_spec.pos_descr.dom) == DB_TYPE_NULL)
 	{
 	  /* get domain from corresponding column node */
 	  for (arg = agg_args_list, k = 1; arg; arg = arg->next, k++)
