@@ -14965,7 +14965,10 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_schema.statement_type = CUBRID_STMT_TRUNCATE;
       break;
 
-    case PT_UPDATE_STATS:	/* UPDATE STATISTICS statements are not replicated intentionally. */
+    case PT_UPDATE_STATS:
+      repl_schema.statement_type = CUBRID_STMT_UPDATE_STATS;
+      break;
+
     case PT_DROP_VARIABLE:	/* DROP VARIABLE statements are not replicated intentionally. */
     default:
       return NO_ERROR;

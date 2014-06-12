@@ -5644,6 +5644,8 @@ la_apply_schema_log (LA_ITEM * item)
     case CUBRID_STMT_REMOVE_TRIGGER:
     case CUBRID_STMT_SET_TRIGGER:
 
+    case CUBRID_STMT_UPDATE_STATS:
+
       /*
        * When we create the schema objects, the object's owner must be changed
        * to the appropriate owner.
