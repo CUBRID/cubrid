@@ -7908,7 +7908,7 @@ pt_resolve_group_having_alias_pt_name (PARSER_CONTEXT * parser,
       return;
     }
 
-  n_str = parser_print_tree (parser, *node_p);
+  n_str = node->info.name.original;
 
   for (col = select_list; col != NULL; col = col->next)
     {
