@@ -668,7 +668,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      read_whole_line = true;
 	    }
 
-	  if (*ptr == '\n' || *ptr == '\r')
+	  if (*ptr == '\n' || *ptr == '\r' || *ptr == ' ')
 	    {
 	      *ptr = '\0';
 	      line_length--;
