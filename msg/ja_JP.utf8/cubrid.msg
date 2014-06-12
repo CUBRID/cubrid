@@ -1662,6 +1662,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 288 すべてのパーティションを削除することはできません、代わりにDROP TABLEを使用してください。
 289 %1$sの式はこのコンテキストでは許可されません。
 290 Transaction id is not an integer.
+291 Subquery is not allowed in ORDER BY FOR clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

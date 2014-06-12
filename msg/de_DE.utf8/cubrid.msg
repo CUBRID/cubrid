@@ -1662,6 +1662,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 288 Kann nicht alle Partitionen zu entfernen, verwenden Sie stattdessen DROP TABLE.
 289 The expression including %1$s is not allowed in this context.
 290 Transaction id is not an integer.
+291 Subquery is not allowed in ORDER BY FOR clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.

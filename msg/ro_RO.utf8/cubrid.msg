@@ -1662,6 +1662,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 288 Nu se pot şterge toate partiţiile, folosiţi DROP TABLE în schimb.
 289 The expression including %1$s is not allowed in this context.
 290 Transaction id is not an integer.
+291 Subquery is not allowed in ORDER BY FOR clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.

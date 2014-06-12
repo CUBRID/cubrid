@@ -1662,6 +1662,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 288 无法删除所有分区表, 使用 DROP TABLE 代替.
 289 在此上下文的表达式中不允许包含 '%1$s'.
 290 Transaction id is not an integer.
+291 Subquery is not allowed in ORDER BY FOR clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

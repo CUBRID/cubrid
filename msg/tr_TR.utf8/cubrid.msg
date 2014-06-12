@@ -1662,6 +1662,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 288 Tüm bölümleri kaldırmaktan yerine DROP TABLE kullanmaktadır.
 289 Ifadesine dahil %1$s bu bağlamda yasaktır.
 290 Transaction id is not an integer.
+291 Subquery is not allowed in ORDER BY FOR clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

@@ -675,6 +675,12 @@ extern "C"
 					   int *continue_walk);
   extern void pt_check_level_expr (PARSER_CONTEXT * parser, PT_NODE * expr,
 				   bool * has_greater, bool * has_lesser);
+  extern PT_NODE *pt_check_subquery_pre (PARSER_CONTEXT * parser,
+					 PT_NODE * node,
+					 void *arg, int *continue_walk);
+  extern PT_NODE *pt_check_subquery_post (PARSER_CONTEXT * parser,
+					  PT_NODE * node, void *arg,
+					  int *continue_walk);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern PT_NODE *pt_assignments_part (const PT_NODE * update_statement);

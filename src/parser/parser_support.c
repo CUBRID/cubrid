@@ -1789,6 +1789,55 @@ pt_check_orderbynum_post (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
+ * pt_check_subquery_pre () - Identify if the expression has sub query
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node,
+		       void *arg, int *continue_walk)
+{
+  if (node->node_type == PT_SELECT)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * pt_check_subquery_post () -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_check_subquery_post (PARSER_CONTEXT * parser, PT_NODE * node,
+			void *arg, int *continue_walk)
+{
+  bool *has_subquery = (bool *) arg;
+
+  if (node->node_type == PT_SELECT)
+    {
+      if (node->info.query.is_subquery == PT_IS_SUBQUERY)
+	{
+	  *has_subquery = true;
+	}
+      else
+	{
+	  *continue_walk = PT_CONTINUE_WALK;
+	}
+    }
+
+  return node;
+}
+
+/*
  * pt_expr_disallow_op_pre () - looks if the expression op is in the list
  *				  given as argument and throws an error if
  *				  found

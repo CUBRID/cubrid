@@ -13571,7 +13571,24 @@ opt_for_search_condition
 	: /* empty */
 		{ $$ = NULL; }
 	| For search_condition
-		{ $$ = $2; }
+		{{
+			PT_NODE *node = $2;
+			bool subquery_flag = false;
+			if (node)
+			  {
+			    (void) parser_walk_tree (this_parser, node,
+						     pt_check_subquery_pre, NULL,
+						     pt_check_subquery_post,
+						     &subquery_flag);
+			    if (subquery_flag)
+			      {
+				PT_ERRORm(this_parser, node,
+					  MSGCAT_SET_PARSER_SEMANTIC,
+					  MSGCAT_SEMANTIC_SUBQUERY_NOT_ALLOWED_IN_ORDERBY_FOR_CLAUSE);
+			     }
+			  }
+			$$ = $2;
+		DBG_PRINT}}
 	;
 
 sort_spec_list
