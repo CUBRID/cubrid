@@ -23563,6 +23563,9 @@ get_oidcnt_and_oidptr:
     case BTREE_GETOID_AGAIN_WITH_CHECK:
       goto get_oidcnt_and_oidptr;
 
+    case BTREE_RESTART_SCAN:
+      bts->restart_scan = 1;
+      /* fall through */
     case BTREE_GOTO_END_OF_SCAN:
       goto end_of_scan;
 
@@ -23878,6 +23881,9 @@ start_locking:
 	      /* Fall through */
 	      break;
 
+	    case BTREE_RESTART_SCAN:
+	      bts->restart_scan = 1;
+	      /* fall through */
 	    case BTREE_GOTO_END_OF_SCAN:
 	      goto end_of_scan;
 
@@ -23967,6 +23973,9 @@ start_locking:
 	      break;
 	    case BTREE_GOTO_LOCKING_DONE:
 	      goto locking_done;
+	    case BTREE_RESTART_SCAN:
+	      bts->restart_scan = 1;
+	      /* fall trough */
 	    case BTREE_GOTO_END_OF_SCAN:
 	      goto end_of_scan;
 	    case BTREE_GETOID_AGAIN_WITH_CHECK:
@@ -25162,7 +25171,8 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	    {
 	      return ER_FAILED;
 	    }
-	  if (*which_action == BTREE_GOTO_END_OF_SCAN)
+	  if (*which_action == BTREE_GOTO_END_OF_SCAN
+	      || *which_action == BTREE_RESTART_SCAN)
 	    {
 	      return NO_ERROR;
 	    }
@@ -25446,7 +25456,8 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	    {
 	      return ER_FAILED;
 	    }
-	  if (*which_action == BTREE_GOTO_END_OF_SCAN)
+	  if (*which_action == BTREE_GOTO_END_OF_SCAN
+	      || *which_action == BTREE_RESTART_SCAN)
 	    {
 	      return NO_ERROR;
 	    }
