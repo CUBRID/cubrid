@@ -130,8 +130,7 @@ static PT_UNION_COMPATIBLE pt_union_compatible (PARSER_CONTEXT * parser,
 						PT_NODE * item1,
 						PT_NODE * item2,
 						bool view_definition_context,
-						bool * is_object_type,
-						bool has_nested_union_node);
+						bool * is_object_type);
 static bool pt_is_compatible_without_cast (PARSER_CONTEXT * parser,
 					   SEMAN_COMPATIBLE_INFO * dest_sci,
 					   PT_NODE * src,
@@ -675,16 +674,14 @@ pt_get_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *att1, *att2, *p, *q;
   PT_UNION_COMPATIBLE compatible;
   SEMAN_COMPATIBLE_INFO *cinfo = NULL, *result = NULL;
-  bool is_object_type, is_value_query;
+  bool is_object_type;
   int i, k;
   int cnt1, cnt2;
   bool need_cast_tmp = false;
-  bool has_nested_union_node = false;
 
   assert (parser != NULL && node != NULL && select_list1 != NULL
 	  && select_list2 != NULL && need_cast != NULL);
 
-  is_value_query = node->is_value_query;
   *need_cast = false;
 
   p = select_list1;
@@ -718,27 +715,12 @@ pt_get_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node,
       goto end;
     }
 
-  if (!is_value_query)
-    {
-      has_nested_union_node = false;	/* init */
-
-      if ((node->node_type == PT_UNION
-	   || node->node_type == PT_INTERSECTION
-	   || node->node_type == PT_DIFFERENCE)
-	  && ((node->info.query.q.union_.arg1)->node_type != PT_SELECT
-	      || (node->info.query.q.union_.arg2)->node_type != PT_SELECT))
-	{
-	  has_nested_union_node = true;
-	}
-    }
-
   /* compare the columns */
   for (i = 0, att1 = select_list1, att2 = select_list2; i < cnt1;
        ++i, att1 = att1->next, att2 = att2->next)
     {
       compatible =
-	pt_union_compatible (parser, att1, att2, false, &is_object_type,
-			     has_nested_union_node);
+	pt_union_compatible (parser, att1, att2, false, &is_object_type);
       if (compatible == PT_UNION_INCOMP)
 	{
 	  /* alloc compatible info array */
@@ -2419,7 +2401,6 @@ pt_collection_compatible (PARSER_CONTEXT * parser, const PT_NODE * col1,
  *   item2(in): an element of a select_list or attribute_list
  *   view_definition_context(in):
  *   is_object_type(in):
- *   has_nested_union_node(in):
  *
  * Note :
  *   return 1 if:
@@ -2432,8 +2413,7 @@ pt_collection_compatible (PARSER_CONTEXT * parser, const PT_NODE * col1,
 static PT_UNION_COMPATIBLE
 pt_union_compatible (PARSER_CONTEXT * parser,
 		     PT_NODE * item1, PT_NODE * item2,
-		     bool view_definition_context,
-		     bool * is_object_type, bool has_nested_union_node)
+		     bool view_definition_context, bool * is_object_type)
 {
   PT_TYPE_ENUM typ1, typ2, common_type;
   PT_NODE *dt1, *dt2, *data_type;
@@ -2550,9 +2530,7 @@ pt_union_compatible (PARSER_CONTEXT * parser,
 	    }
 	}
 
-      if (!has_nested_union_node
-	  && item1->type_enum == common_type
-	  && item2->type_enum == common_type)
+      if (item1->type_enum == common_type && item2->type_enum == common_type)
 	{
 	  return PT_UNION_COMP;
 	}
@@ -7627,7 +7605,7 @@ pt_check_vclass_attr_qspec_compatible (PARSER_CONTEXT * parser,
 {
   bool is_object_type;
   PT_UNION_COMPATIBLE c =
-    pt_union_compatible (parser, attr, col, true, &is_object_type, false);
+    pt_union_compatible (parser, attr, col, true, &is_object_type);
 
   if (c == PT_UNION_INCOMP
       && pt_is_compatible_type (attr->type_enum, col->type_enum))
@@ -8029,7 +8007,7 @@ pt_type_cast_vclass_query_spec_column (PARSER_CONTEXT * parser,
       return col;
     }
 
-  c = pt_union_compatible (parser, attr, col, true, &is_object_type, false);
+  c = pt_union_compatible (parser, attr, col, true, &is_object_type);
   if (((c == PT_UNION_COMP)
        && (attr->type_enum == col->type_enum
 	   && PT_IS_PARAMETERIZED_TYPE (attr->type_enum)
