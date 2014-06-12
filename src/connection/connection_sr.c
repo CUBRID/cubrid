@@ -357,8 +357,13 @@ void
 css_shutdown_conn (CSS_CONN_ENTRY * conn)
 {
 #if defined(SERVER_MODE)
-  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  /* conn->csect.cs_index may equal to -1
+   * and conn->csect.name may be NULL
+   * when initializing temp_conn in css_process_new_client
+   */
+  assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx
+            && conn->csect.name == css_Csect_name_conn)
+          || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
 #endif
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
 
@@ -431,8 +436,9 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
 #if defined(SERVER_MODE)
   conn->session_p = NULL;
 
-  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx
+            && conn->csect.name == css_Csect_name_conn)
+          || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
 #endif
   csect_exit_critical_section (NULL, &conn->csect);
 }
@@ -2868,8 +2874,13 @@ void
 css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 {
 #if defined(SERVER_MODE)
-  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  /* conn->csect.cs_index may equal to -1
+   * and conn->csect.name may be NULL
+   * when initializing temp_conn in css_process_new_client
+   */
+  assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx
+            && conn->csect.name == css_Csect_name_conn)
+          || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
 #endif
 
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
@@ -2890,8 +2901,9 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 		     conn);
 
 #if defined(SERVER_MODE)
-  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx
+            && conn->csect.name == css_Csect_name_conn)
+          || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
 #endif
 
   csect_exit_critical_section (NULL, &conn->csect);
