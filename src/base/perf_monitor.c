@@ -1238,7 +1238,7 @@ diag_val_set_query_open_page (int value,
 
   CHECK_SHM ();
   CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = thread_get_current_entry_index ();
+  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
 
   if (settype == DIAG_VAL_SETTYPE_INC)
     {
@@ -1272,7 +1272,7 @@ diag_val_set_query_opened_page (int value,
 
   CHECK_SHM ();
   CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = thread_get_current_entry_index ();
+  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
 
   g_ShmServer->thread[thread_index].query_opened_page += value;
 
@@ -1295,7 +1295,7 @@ diag_val_set_buffer_page_read (int value,
 
   CHECK_SHM ();
   CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = thread_get_current_entry_index ();
+  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
 
   g_ShmServer->thread[thread_index].buffer_page_read += value;
 
@@ -1318,7 +1318,7 @@ diag_val_set_buffer_page_write (int value,
 
   CHECK_SHM ();
   CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = thread_get_current_entry_index ();
+  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
 
   g_ShmServer->thread[thread_index].buffer_page_write += value;
 
@@ -1341,7 +1341,7 @@ diag_val_set_conn_aborted_clients (int value, T_DIAG_VALUE_SETTYPE settype,
   int thread_index;
   CHECK_SHM ();
   CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = thread_get_current_entry_index ();
+  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
 
   g_ShmServer->thread[thread_index].conn_aborted_clients += value;
 
@@ -1363,7 +1363,7 @@ diag_val_set_conn_cli_request (int value, T_DIAG_VALUE_SETTYPE settype,
   int thread_index;
   CHECK_SHM ();
   CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = thread_get_current_entry_index ();
+  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
 
   g_ShmServer->thread[thread_index].conn_cli_request += value;
 
@@ -1385,7 +1385,7 @@ diag_val_set_query_slow_query (int value, T_DIAG_VALUE_SETTYPE settype,
   int thread_index;
   CHECK_SHM ();
   CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = thread_get_current_entry_index ();
+  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
 
   g_ShmServer->thread[thread_index].query_slow_query += value;
 
@@ -1407,7 +1407,7 @@ diag_val_set_lock_deadlock (int value, T_DIAG_VALUE_SETTYPE settype,
   int thread_index;
   CHECK_SHM ();
   CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = thread_get_current_entry_index ();
+  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
 
   g_ShmServer->thread[thread_index].lock_deadlock += value;
 
@@ -1428,7 +1428,7 @@ diag_val_set_lock_request (int value, T_DIAG_VALUE_SETTYPE settype,
   int thread_index;
   CHECK_SHM ();
   CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = thread_get_current_entry_index ();
+  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
 
   g_ShmServer->thread[thread_index].lock_request += value;
 
@@ -1449,7 +1449,7 @@ diag_val_set_query_full_scan (int value, T_DIAG_VALUE_SETTYPE settype,
   int thread_index;
   CHECK_SHM ();
   CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = thread_get_current_entry_index ();
+  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
 
   g_ShmServer->thread[thread_index].query_full_scan += value;
 
@@ -1470,7 +1470,7 @@ diag_val_set_conn_conn_req (int value, T_DIAG_VALUE_SETTYPE settype,
   int thread_index;
   CHECK_SHM ();
   CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = thread_get_current_entry_index ();
+  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
 
   g_ShmServer->thread[thread_index].conn_conn_req += value;
 
@@ -1491,7 +1491,7 @@ diag_val_set_conn_conn_reject (int value, T_DIAG_VALUE_SETTYPE settype,
   int thread_index;
   CHECK_SHM ();
   CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = thread_get_current_entry_index ();
+  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
 
   g_ShmServer->thread[thread_index].conn_conn_reject += value;
 

@@ -40,11 +40,14 @@
 #endif /* SERVER_MODE */
 
 #if !defined(SERVER_MODE)
+#define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) thread_get_current_entry_index()
+
 extern int thread_Recursion_depth;
 
 #define thread_get_thread_entry_info()  (NULL)
 #define thread_num_worker_threads()  (1)
 #define thread_num_total_threads()   (1)
+#define thread_get_current_entry_index() (0)
 #define thread_get_current_session_id() (db_Session_id)
 #define thread_set_check_interrupt(thread_p, flag) (true)
 #define thread_get_check_interrupt(thread_p) (true)
@@ -77,6 +80,9 @@ typedef void THREAD_ENTRY;
 #define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
 
 #else /* !SERVER_MODE */
+
+#define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) \
+  ((thrd) ? (thrd)->index : thread_get_current_entry_index())
 
 #if defined(HPUX)
 #define thread_set_thread_entry_info(entry)

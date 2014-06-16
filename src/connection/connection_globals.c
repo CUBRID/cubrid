@@ -231,8 +231,7 @@ css_init_conn_rules (void)
 
 /*
  * css_get_max_conn() -
- *   return: max_clients + a total num of
- *   reserved connections
+ *   return: max_clients + a total num of reserved connections
  */
 int
 css_get_max_conn (void)
