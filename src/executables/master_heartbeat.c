@@ -2814,7 +2814,7 @@ hb_resource_demote_start_shutdown_server_proc (void)
       sock_entq = css_return_entry_by_conn (proc->conn,
 					    &css_Master_socket_anchor);
 
-      if (sock_entq != NULL)
+      if (sock_entq != NULL && sock_entq->name != NULL)
 	{
 	  memset (buffer, 0, sizeof (buffer));
 	  snprintf (buffer, sizeof (buffer) - 1,
@@ -4911,7 +4911,7 @@ hb_resource_shutdown_all_ha_procs (void)
 		css_return_entry_by_conn (proc->conn,
 					  &css_Master_socket_anchor);
 
-	      if (sock_ent)
+	      if (sock_ent != NULL && sock_ent->name != NULL)
 		{
 		  memset (buffer, 0, sizeof (buffer));
 		  snprintf (buffer, sizeof (buffer) - 1,
