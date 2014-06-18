@@ -2941,10 +2941,10 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 		  || pgbuf_flush_with_wal (thread_p, pgptr) == NULL)
 		{
 #if !defined(NDEBUG)
-		  PGBUF_BCB *pgptr_bufptr;
-
 		  if (pgptr != NULL)
 		    {
+		      PGBUF_BCB *pgptr_bufptr;
+
 		      CAST_PGPTR_TO_BFPTR (pgptr_bufptr, pgptr);
 		      assert (pgptr_bufptr == bufptr);
 		    }

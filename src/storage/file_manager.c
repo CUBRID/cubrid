@@ -6536,9 +6536,12 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 		  || file_ftabvpid_next (fhdr, pgptr, &vpid) != NO_ERROR
 		  || VPID_ISNULL (&vpid))
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_FILE_TABLE_CORRUPTED, 2, fhdr->vfid.volid,
-			  fhdr->vfid.fileid);
+		  if (er_errid () == NO_ERROR)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_FILE_TABLE_CORRUPTED, 2, fhdr->vfid.volid,
+			      fhdr->vfid.fileid);
+		    }
 
 		  pgbuf_unfix_and_init (thread_p, pgptr);
 		  return NULL_PAGEID;
