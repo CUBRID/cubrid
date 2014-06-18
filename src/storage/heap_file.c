@@ -4964,24 +4964,6 @@ heap_vpid_prealloc_set (THREAD_ENTRY * thread_p, const HFID * hfid,
   pgbuf_unfix_and_init (thread_p, last_pgptr);
 
   /*
-   * Note: we fetch the page as old since it was initialized during the
-   * allocation by heap_vpid_init_newset, therefore, we care about the current
-   * content of the page.
-   */
-
-  new_pgptr = heap_scan_pb_lock_and_fetch (thread_p, &first_alloc_vpid,
-					   OLD_PAGE, X_LOCK, scan_cache);
-  if (new_pgptr == NULL)
-    {
-      /* something went wrong, deallocate the above page and return */
-      ret = file_truncate_to_numpages (thread_p, &hfid->vfid,
-				       first_alloc_nthpage);
-      return NULL;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, new_pgptr, PAGE_HEAP);
-
-  /*
    * Now update header statistics for best1 space page
    * The changes to the statistics are not logged. They are fixed
    * automatically sooner or later
@@ -5023,8 +5005,8 @@ heap_vpid_prealloc_set (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 
   /* Set last vpid */
-  if (file_find_last_page
-      (thread_p, &hfid->vfid, &heap_hdr->estimates.last_vpid) == NULL)
+  if (file_find_last_page (thread_p, &hfid->vfid,
+			   &heap_hdr->estimates.last_vpid) == NULL)
     {
       return NULL;
     }
@@ -5033,6 +5015,28 @@ heap_vpid_prealloc_set (THREAD_ENTRY * thread_p, const HFID * hfid,
   addr.pgptr = hdr_pgptr;
   log_skip_logging_set_lsa (thread_p, &addr);
   pgbuf_set_dirty (thread_p, hdr_pgptr, DONT_FREE);
+
+  /*
+   * Note: we fetch the page as old since it was initialized during the
+   * allocation by heap_vpid_init_newset, therefore, we care about the current
+   * content of the page.
+   */
+
+  new_pgptr = heap_scan_pb_lock_and_fetch (thread_p, &first_alloc_vpid,
+					   OLD_PAGE, X_LOCK, scan_cache);
+
+  if (new_pgptr != NULL)
+    {
+      (void) pgbuf_check_page_ptype (thread_p, new_pgptr, PAGE_HEAP);
+    }
+
+  /*
+   * Even though an error is returned from heap_scan_pb_lock_and_fetch,
+   * we will just return new_pgptr (maybe NULL)
+   * and do not deallocate newly added pages.
+   * Because file_alloc_pages_as_noncontiguous was committed with top operation.
+   * Added pages will be used later by other insert operation.
+   */
 
   return new_pgptr;		/* new_pgptr is lock and fetch */
 }
@@ -5109,23 +5113,6 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 
   /*
-   * Note: we fetch the page as old since it was initialized during the
-   * allocation by heap_vpid_init_new, therefore, we care about the current
-   * content of the page.
-   */
-
-  new_pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK,
-					   scan_cache);
-  if (new_pgptr == NULL)
-    {
-      /* something went wrong, deallocate the above page and return */
-      (void) file_dealloc_page (thread_p, &hfid->vfid, &vpid);
-      return NULL;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, new_pgptr, PAGE_HEAP);
-
-  /*
    * Now update header statistics for best1 space page.
    * The changes to the statistics are not logged.
    * They are fixed automatically sooner or later.
@@ -5153,8 +5140,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 
   heap_hdr->estimates.best[best].vpid = vpid;
-  heap_hdr->estimates.best[best].freespace =
-    spage_max_space_for_new_record (thread_p, new_pgptr);
+  heap_hdr->estimates.best[best].freespace = DB_PAGESIZE;
 
   if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
     {
@@ -5165,6 +5151,26 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   addr.pgptr = hdr_pgptr;
   log_skip_logging_set_lsa (thread_p, &addr);
+
+  /*
+   * Note: we fetch the page as old since it was initialized during the
+   * allocation by heap_vpid_init_new, therefore, we care about the current
+   * content of the page.
+   */
+  new_pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK,
+					   scan_cache);
+  if (new_pgptr != NULL)
+    {
+      (void) pgbuf_check_page_ptype (thread_p, new_pgptr, PAGE_HEAP);
+    }
+
+  /*
+   * Even though an error is returned from heap_scan_pb_lock_and_fetch,
+   * we will just return new_pgptr (maybe NULL)
+   * and do not deallocate the newly added page.
+   * Because file_alloc_page was committed with top operation.
+   * The added page will be used later by other insert operation.
+   */
 
   return new_pgptr;		/* new_pgptr is lock and fetch */
 }
