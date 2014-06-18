@@ -3658,11 +3658,11 @@ describe_double (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 
   assert (parser != NULL);
 
-  sprintf (tbuf, "%g", value);
+  OBJ_SPRINT_DB_DOUBLE (tbuf, value);
 
   if (strstr (tbuf, "Inf"))
     {
-      sprintf (tbuf, "%.17g", (value > 0 ? DBL_MAX : -DBL_MAX));
+      OBJ_SPRINT_DB_DOUBLE (tbuf, (value > 0 ? DBL_MAX : -DBL_MAX));
     }
 
   buffer = pt_append_nulstring (parser, buffer, tbuf);
@@ -3686,11 +3686,11 @@ describe_float (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 
   assert (parser != NULL);
 
-  sprintf (tbuf, "%g", value);
+  OBJ_SPRINT_DB_FLOAT (tbuf, value);
 
   if (strstr (tbuf, "Inf"))
     {
-      sprintf (tbuf, "%.17g", (value > 0 ? FLT_MAX : -FLT_MAX));
+      OBJ_SPRINT_DB_FLOAT (tbuf, (value > 0 ? FLT_MAX : -FLT_MAX));
     }
 
   buffer = pt_append_nulstring (parser, buffer, tbuf);

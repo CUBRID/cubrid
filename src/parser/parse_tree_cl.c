@@ -16476,10 +16476,10 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  switch (p->type_enum)
 	    {
 	    case PT_TYPE_FLOAT:
-	      sprintf (s, "%#0.*g", FLT_DIG, p->info.value.data_value.f);
+	      OBJ_SPRINT_DB_FLOAT (s, p->info.value.data_value.f);
 	      break;
 	    case PT_TYPE_DOUBLE:
-	      sprintf (s, "%#0.*g", DBL_DIG, p->info.value.data_value.d);
+	      OBJ_SPRINT_DB_DOUBLE (s, p->info.value.data_value.d);
 	      break;
 	    case PT_TYPE_NUMERIC:
 	      strcpy (s, p->info.value.data_value.str->bytes);

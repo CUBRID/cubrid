@@ -29,6 +29,11 @@
 
 #include "parser.h"
 
+#define OBJ_SPRINT_DB_FLOAT(buf, value)       \
+  sprintf(buf, "%#.*g", DB_FLOAT_DECIMAL_PRECISION, value)
+#define OBJ_SPRINT_DB_DOUBLE(buf, value)      \
+  sprintf(buf, "%#.*g", DB_DOUBLE_DECIMAL_PRECISION, value)
+
 #if !defined (SERVER_MODE)
 /* HELP STRUCTURES */
 /*
