@@ -233,12 +233,14 @@
 
 /* Copy the first part of user declarations.  */
 #line 26 "../../src/executables/esql_grammar.y"
-
-
-#ifndef ESQL_GRAMMAR
-#define ESQL_GRAMMAR
+/*%CODE_REQUIRES_START%*/
+#include "esql_host_variable.h"
+/*%CODE_END%*/#line 30 "../../src/executables/esql_grammar.y"
+/*%CODE_PROVIDES_START%*/
+#include "esql_scanner_support.h"
 
 #define START 		0
+#define ECHO_mode START
 #define CSQL_mode	1
 #define C_mode		2
 #define EXPR_mode	3
@@ -247,8 +249,228 @@
 #define BUFFER_mode	6
 #define COMMENT_mode	7
 
-/* #define PARSER_DEBUG */
+static KEYWORD_REC c_keywords[] = {
+  {"auto", AUTO_, 0},
+  {"BIT", BIT_, 1},
+  {"bit", BIT_, 1},
+  {"break", GENERIC_TOKEN, 0},
+  {"case", GENERIC_TOKEN, 0},
+  {"char", CHAR_, 0},
+  {"const", CONST_, 0},
+  {"continue", GENERIC_TOKEN, 0},
+  {"default", GENERIC_TOKEN, 0},
+  {"do", GENERIC_TOKEN, 0},
+  {"double", DOUBLE_, 0},
+  {"else", GENERIC_TOKEN, 0},
+  {"enum", ENUM, 0},
+  {"extern", EXTERN_, 0},
+  {"float", FLOAT_, 0},
+  {"for", GENERIC_TOKEN, 0},
+  {"go", GENERIC_TOKEN, 0},
+  {"goto", GENERIC_TOKEN, 0},
+  {"if", GENERIC_TOKEN, 0},
+  {"int", INT_, 0},
+  {"long", LONG_, 0},
+  {"register", REGISTER_, 0},
+  {"return", GENERIC_TOKEN, 0},
+  {"short", SHORT_, 0},
+  {"signed", SIGNED_, 0},
+  {"sizeof", GENERIC_TOKEN, 0},
+  {"static", STATIC_, 0},
+  {"struct", STRUCT_, 0},
+  {"switch", GENERIC_TOKEN, 0},
+  {"typedef", TYPEDEF_, 0},
+  {"union", UNION_, 0},
+  {"unsigned", UNSIGNED_, 0},
+  {"VARCHAR", VARCHAR_, 1},
+  {"varchar", VARCHAR_, 1},
+  {"VARYING", VARYING, 0},
+  {"varying", VARYING, 0},
+  {"void", VOID_, 0},
+  {"volatile", VOLATILE_, 0},
+  {"while", GENERIC_TOKEN, 0},
+};
 
+static KEYWORD_REC csql_keywords[] = {
+  /* Make sure that they are in alphabetical order */
+  {"ADD", ADD, 0},
+  {"ALL", ALL, 0},
+  {"ALTER", ALTER, 0},
+  {"AND", AND, 0},
+  {"AS", AS, 0},
+  {"ASC", ASC, 0},
+  {"ATTACH", ATTACH, 0},
+  {"ATTRIBUTE", ATTRIBUTE, 0},
+  {"AVG", AVG, 0},
+  {"BEGIN", BEGIN_, 1},
+  {"BETWEEN", BETWEEN, 0},
+  {"BY", BY, 0},
+  {"CALL", CALL_, 0},
+  {"CHANGE", CHANGE, 0},
+  {"CHAR", CHAR_, 0},
+  {"CHARACTER", CHARACTER, 0},
+  {"CHECK", CHECK_, 0},
+  {"CLASS", CLASS, 0},
+  {"CLOSE", CLOSE, 0},
+  {"COMMIT", COMMIT, 0},
+  {"CONNECT", CONNECT, 1},
+  {"CONTINUE", CONTINUE_, 1},
+  {"COUNT", COUNT, 0},
+  {"CREATE", CREATE, 0},
+  {"CURRENT", CURRENT, 1},
+  {"CURSOR", CURSOR_, 1},
+  {"DATE", DATE_, 0},
+  {"DEC", NUMERIC, 0},
+  {"DECIMAL", NUMERIC, 0},
+  {"DECLARE", DECLARE, 1},
+  {"DEFAULT", DEFAULT, 0},
+  {"DELETE", DELETE_, 0},
+  {"DESC", DESC, 0},
+  {"DESCRIBE", DESCRIBE, 1},
+  {"DESCRIPTOR", DESCRIPTOR, 1},
+  {"DIFFERENCE", DIFFERENCE_, 0},
+  {"DISCONNECT", DISCONNECT, 1},
+  {"DISTINCT", DISTINCT, 0},
+  {"DOUBLE", DOUBLE_, 0},
+  {"DROP", DROP, 0},
+  {"END", END, 1},
+  {"ESCAPE", ESCAPE, 0},
+  {"EVALUATE", EVALUATE, 0},
+  {"EXCEPT", EXCEPT, 0},
+  {"EXCLUDE", EXCLUDE, 0},
+  {"EXECUTE", EXECUTE, 1},
+  {"EXISTS", EXISTS, 0},
+  {"FETCH", FETCH, 1},
+  {"FILE", FILE_, 0},
+  {"FLOAT", FLOAT_, 0},
+  {"FOR", FOR, 0},
+  {"FOUND", FOUND, 0},
+  {"FROM", FROM, 0},
+  {"FUNCTION", FUNCTION_, 0},
+  {"GET", GET, 0},
+  {"GO", GO, 1},
+  {"GOTO", GOTO_, 1},
+  {"GRANT", GRANT, 0},
+  {"GROUP", GROUP_, 0},
+  {"HAVING", HAVING, 0},
+  {"IDENTIFIED", IDENTIFIED, 1},
+  {"IMMEDIATE", IMMEDIATE, 1},
+  {"IN", IN_, 0},
+  {"INCLUDE", INCLUDE, 1},
+  {"INDEX", INDEX, 0},
+  {"INDICATOR", INDICATOR, 1},
+  {"INHERIT", INHERIT, 0},
+  {"INSERT", INSERT, 0},
+  {"INT", INT_, 0},
+  {"INTEGER", INTEGER, 0},
+  {"INTERSECTION", INTERSECTION, 0},
+  {"INTO", INTO, 0},
+  {"IS", IS, 0},
+  {"LIKE", LIKE, 0},
+  {"MAX", MAX_, 0},
+  {"METHOD", METHOD, 0},
+  {"MIN", MIN_, 0},
+  {"MULTISET_OF", MULTISET_OF, 0},
+  {"NOT", NOT, 0},
+  {"NULL", NULL_, 0},
+  {"NUMBER", NUMERIC, 0},
+  {"NUMERIC", NUMERIC, 0},
+  {"OBJECT", OBJECT, 0},
+  {"OF", OF, 0},
+  {"OID", OID_, 0},
+  {"ON", ON_, 0},
+  {"ONLY", ONLY, 0},
+  {"OPEN", OPEN, 0},
+  {"OPTION", OPTION, 0},
+  {"OR", OR, 0},
+  {"ORDER", ORDER, 0},
+  {"PRECISION", PRECISION, 0},
+  {"PREPARE", PREPARE, 1},
+  {"PRIVILEGES", PRIVILEGES, 0},
+  {"PUBLIC", PUBLIC_, 0},
+  {"READ", READ, 0},
+  {"REAL", REAL, 0},
+  {"REGISTER", REGISTER_, 0},
+  {"RENAME", RENAME, 0},
+  {"REPEATED", REPEATED, 1},
+  {"REVOKE", REVOKE, 0},
+  {"ROLLBACK", ROLLBACK, 0},
+  {"SECTION", SECTION, 1},
+  {"SELECT", SELECT, 0},
+  {"SEQUENCE_OF", SEQUENCE_OF, 0},
+  {"SET", SET, 0},
+  {"SETEQ", SETEQ, 0},
+  {"SETNEQ", SETNEQ, 0},
+  {"SET_OF", SET_OF, 0},
+  {"SHARED", SHARED, 0},
+  {"SMALLINT", SMALLINT, 0},
+  {"SOME", SOME, 0},
+  {"SQLCA", SQLCA, 1},
+  {"SQLDA", SQLDA, 1},
+  {"SQLERROR", SQLERROR_, 1},
+  {"SQLM", SQLX, 1},
+  {"SQLWARNING", SQLWARNING_, 1},
+  {"STATISTICS", STATISTICS, 0},
+  {"STOP", STOP_, 1},
+  {"STRING", STRING, 0},
+  {"SUBCLASS", SUBCLASS, 0},
+  {"SUBSET", SUBSET, 0},
+  {"SUBSETEQ", SUBSETEQ, 0},
+  {"SUM", SUM, 0},
+  {"SUPERCLASS", SUPERCLASS, 0},
+  {"SUPERSET", SUPERSET, 0},
+  {"SUPERSETEQ", SUPERSETEQ, 0},
+  {"TABLE", TABLE, 0},
+  {"TIME", TIME, 0},
+  {"TIMESTAMP", TIMESTAMP, 0},
+  {"TO", TO, 0},
+  {"TRIGGER", TRIGGER, 0},
+  {"UNION", UNION_, 0},
+  {"UNIQUE", UNIQUE, 0},
+  {"UPDATE", UPDATE, 0},
+  {"USE", USE, 0},
+  {"USER", USER, 0},
+  {"USING", USING, 0},
+  {"UTIME", UTIME, 0},
+  {"VALUES", VALUES, 0},
+  {"VIEW", VIEW, 0},
+  {"WHENEVER", WHENEVER, 1},
+  {"WHERE", WHERE, 0},
+  {"WITH", WITH, 0},
+  {"WORK", WORK, 0},
+};
+
+static KEYWORD_REC preprocessor_keywords[] = {
+  /* Make sure that they are in alphabetical order */
+  {"FROM", FROM, 0},
+  {"IDENTIFIED", IDENTIFIED, 0},
+  {"INDICATOR", INDICATOR, 1},
+  {"INTO", INTO, 0},
+  {"ON", ON_, 0},
+  {"SELECT", SELECT, 0},
+  {"TO", TO, 0},
+  {"VALUES", VALUES, 0},
+  {"WITH", WITH, 0},
+};
+
+static KEYWORD_TABLE csql_table = { csql_keywords, DIM (csql_keywords) };
+static KEYWORD_TABLE preprocessor_table = { preprocessor_keywords,
+  DIM (preprocessor_keywords) };
+
+extern char g_delay[];
+extern bool g_indicator;
+extern bool need_line_directive;
+
+enum scanner_mode esql_yy_mode (void);
+char *mm_malloc (int size);
+char *mm_strdup (char *str);
+void mm_free (void);
+/*%CODE_END%*/#line 262 "../../src/executables/esql_grammar.y"
+
+#ifndef ESQL_GRAMMAR
+#define ESQL_GRAMMAR
+
+/* #define PARSER_DEBUG */
 
 #ifdef PARSER_DEBUG
 
@@ -278,7 +500,6 @@ extern int esql_yylineno;
 #endif
 
 #include "config.h"
-#define ECHO_mode START
 #include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -312,38 +533,6 @@ extern int esql_yylineno;
 #define CURSOR_DELETE      1
 #define CURSOR_UPDATE      2
 
-#ifndef __DEF_ESQL__
-#define __DEF_ESQL__
-enum
-{
-  MSG_DONT_KNOW = 1,
-  MSG_CHECK_CORRECTNESS,
-  MSG_USING_NOT_PERMITTED,
-  MSG_CURSOR_UNDEFINED,
-  MSG_PTR_TO_DESCR,
-  MSG_PTR_TO_DB_OBJECT,
-  MSG_CHAR_STRING,
-  MSG_INDICATOR_NOT_ALLOWED,
-  MSG_NOT_DECLARED,
-  MSG_MUST_BE_SHORT,
-  MSG_INCOMPLETE_DEF,
-  MSG_NOT_VALID,
-  MSG_TYPE_NOT_ACCEPTABLE,
-  MSG_UNKNOWN_HV_TYPE,
-  MSG_BAD_ADDRESS,
-  MSG_DEREF_NOT_ALLOWED,
-  MSG_NOT_POINTER,
-  MSG_NOT_POINTER_TO_STRUCT,
-  MSG_NOT_STRUCT,
-  MSG_NO_FIELD,
-
-  ESQL_MSG_STD_ERR = 52,
-  ESQL_MSG_LEX_ERROR = 53,
-  ESQL_MSG_SYNTAX_ERR1 = 54,
-  ESQL_MSG_SYNTAX_ERR2 = 55
-};
-#endif
-
 static SYMBOL *g_identifier_symbol;
 static STRUCTDEF *g_sdef2;
 static int g_su;
@@ -369,11 +558,6 @@ static char *ofile_name (char *fname);
 static int validate_input_file (void *fname, FILE * outfp);
 #endif
 void pt_print_errors (PARSER_CONTEXT * parser_in);
-enum scanner_mode esql_yy_mode (void);
-
-char *mm_malloc (int size);
-char *mm_strdup (char *str);
-void mm_free (void);
 
 extern PARSER_CONTEXT *parser;
 
@@ -382,26 +566,22 @@ void esql_yy_set_buf (varstring * vstr);
 int esql_yylex(void);
 
 
-extern char g_delay[];
-extern bool g_indicator;
 extern varstring *g_varstring;
 extern varstring *g_subscript;
-extern bool need_line_directive;
-
 #endif
 
 
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 188 "../../src/executables/esql_grammar.y"
+#line 371 "../../src/executables/esql_grammar.y"
 {
   SYMBOL *p_sym;
   void *ptr;
   int number;
 }
-/* Line 2604 of glr.c.  */
-#line 405 "../../src/executables/esql_grammar.h"
+/* Line 2616 of glr.c.  */
+#line 585 "../../src/executables/esql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1

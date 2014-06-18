@@ -28,7 +28,9 @@
 
 %{
 #include "csql_grammar.h"
+#include "csql_grammar_scan.h"
 #include "parse_tree.h"
+#include "parser_message.h"
 #include "system_parameter.h"
 #include "message_catalog.h"
 
@@ -63,7 +65,10 @@ extern int str_identifier = '\0';
 #define IS_BLANK_CHAR(c) \
                     ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
 
+int g_msg[1024];
+int msg_ptr;
 
+int yybuffer_pos;
 %}
 
 %x QUOTED_NCHAR_STRING

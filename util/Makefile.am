@@ -50,8 +50,16 @@ AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ \
 LIBS += @SYS_LIBS@
 
 
-$(EXECUTABLE_DIR)/esql_grammar.c : $(EXECUTABLE_DIR)/esql_grammar.y
-	$(BISON) --name-prefix=esql_yy -d -r all -o $@ $< 
+$(EXECUTABLE_DIR)/esql_grammar.c $(EXECUTABLE_DIR)/esql_grammar.h : $(EXECUTABLE_DIR)/esql_grammar.y
+if USE_BISON_NEWDIRECTIVE
+	$(SED) \
+	  -e 's|%{/\*%CODE_REQUIRES_START%\*/|%code requires{|' \
+	  -e 's|%{/\*%CODE_PROVIDES_START%\*/|%code provides{|' \
+	  -e 's|/\*%CODE_END%\*/%}|}|' $< > esql_grammar.yy
+	$(BISON) --name-prefix=esql_yy -d -r all -o $@ esql_grammar.yy
+else
+	$(BISON) --name-prefix=esql_yy -d -r all -o $@ $<
+endif
 
 $(EXECUTABLE_DIR)/esql_lexer.c : $(EXECUTABLE_DIR)/esql_lexer.l
 	$(FLEX) --never-interactive --prefix=esql_yy -o $@ $<

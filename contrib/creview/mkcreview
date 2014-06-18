@@ -52,7 +52,7 @@ forceyes = False
 
 exclude_list = ['configure', 'Makefile.in', 'makefile']
 donottouch_dirs = ['heaplayers', 'contrib']
-donottouch_files = ['loader_grammar.c', 'loader_grammar.h', 'loader_old_grammar.c', 'loader_old_grammar.h', 'esql_grammar.c', 'esql_grammar.h', 'esql_lexer.c', 'loader_lexer.c', 'loader_old_lexer.c', 'csql_lexer.c', 'cnvlex.c']
+donottouch_files = ['loader_grammar.c', 'loader_grammar.h', 'loader_old_grammar.c', 'loader_old_grammar.h', 'esql_grammar.c', 'esql_grammar.h', 'esql_lexer.c', 'loader_lexer.c', 'loader_old_lexer.c', 'csql_lexer.c', 'cnvlex.c', 'csql_grammar.c', 'csql_grammar.h']
 
 
 def which (prog):

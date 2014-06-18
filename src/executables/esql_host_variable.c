@@ -32,6 +32,7 @@
 #include <stdlib.h>
 
 #include "esql_grammar.h"
+#include "esql_scanner_support.h"
 #include "util_func.h"
 #include "misc_string.h"
 #include "esql_misc.h"

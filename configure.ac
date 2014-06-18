@@ -102,6 +102,8 @@ AC_PROG_RANLIB
 AC_PROG_INSTALL
 AC_PROG_YACC
 AC_PROG_LEX
+AC_PROG_EGREP
+AC_PROG_AWK
 CFLAGS="$remember_CFLAGS"
 CXXFLAGS="$remember_CXXFLAGS"
 LDFLAGS="$remember_LDFLAGS"
@@ -220,7 +222,7 @@ AC_C_BIGENDIAN
 AS_IF([test "$GCC" = "yes"],
 	[AC_MSG_CHECKING([for --hash-style=both linker support])
 	remember_LDFLAGS="$LDFLAGS"
-	hashstyle=`gcc -dumpspecs | grep hash-style=gnu`
+	hashstyle=`$CC -dumpspecs | $EGREP 'hash-style=gnu'`
 	if test "x$hashstyle" != "x"
 	then
 		LDFLAGS="$LDFLAGS -Wl,--hash-style=both"
@@ -428,9 +430,9 @@ AC_MSG_CHECKING(for java home)
 AS_IF([test "$with_cci_only" = "no"],
       	[AS_IF([test "x$JAVA_HOME" != "x"],
 	[JAVA_BIN=$JAVA_HOME/bin
-	JAVAC=$JAVA_HOME/bin/javac
-	AC_MSG_RESULT($JAVA_HOME)],
+	JAVAC=$JAVA_HOME/bin/javac],
 	[AC_MSG_ERROR(set your JAVA_HOME environment variable.)])])
+AC_MSG_RESULT($JAVA_HOME)
 
 AC_ARG_WITH(jdbc,
 	AS_HELP_STRING([--without-jdbc],
@@ -440,7 +442,7 @@ AC_ARG_WITH(jdbc,
 AS_IF([test "$with_cci_only" = "yes"], [with_jdbc=no])
 AS_IF([test "x$with_jdbc" = "xyes"],
 	[AC_MSG_CHECKING([for javac version])
-		JAVAC_VERSION=`$JAVAC -version 2>&1 | head -1 | awk '{ print $2 }' | awk -F\. '{ print $1 "." $2 }'`
+		JAVAC_VERSION=`$JAVAC -version 2>&1 | head -1 | $AWK '{ print $2 }' | $AWK -F\. '{ print $1 "." $2 }'`
 		AC_MSG_RESULT($JAVAC_VERSION)
 		if test -n "$JAVAC_VERSION"; then
 			if expr 1.5 \> $JAVAC_VERSION > /dev/null; then
@@ -481,29 +483,21 @@ AS_IF([test "x$with_jdbc" = "xyes"],
 	AC_SUBST(JAVA_INC)
 	AC_SUBST(JAVA_HOME)])
 
-AC_MSG_CHECKING([for bison library])
+AC_MSG_CHECKING([for bison])
 AC_ARG_WITH([bison],
 	AS_HELP_STRING([--with-bison=PATH],
-		[prefix for installed bison @<:@default=builtin@:>@]),
+		[prefix for installed bison @<:@default=check@:>@]),
 	[with_bison=$withval],
-	[with_bison=builtin])
+	[with_bison=check])
 AS_IF([test "$with_cci_only" = "yes"], [with_bison=no],
-	[AS_IF([test "$with_bison" = "builtin"],
-		[AC_CONFIG_SUBDIRS([external/bison-2.3])
-		BISON="\$(top_builddir)/external/bin/bison"
-		EXTERNAL_PKGS="$EXTERNAL_PKGS bison-2.3"],
-		[BISON="$with_bison/bin/bison"
-		if test ! -x $BISON
-		then
-			AC_MSG_ERROR([Invalid bison path($BISON) or permission denied.])
-		fi
-		BISON_EXPECTED_VERSION="2.3"
-		BISON_VERSION=`$BISON --version 2> /dev/null | grep 'GNU Bison' | cut -d ' ' -f 4 | tr -d a-z`
-		if [[ -z "$BISON_VERSION" ]] || [[ "$BISON_VERSION" != "$BISON_EXPECTED_VERSION" ]]
-		then
-			AC_MSG_ERROR([Unsupported bison version($BISON_VERSION). It should be $BISON_EXPECTED_VERSION.])
-		fi
-		EXTERNAL_DIST="$EXTERNAL_DIST bison-2.3"])])
+	[AS_IF([test "$with_bison" = "check"],[BISON="${YACC% -y}"],[BISON="$with_bison/bin/bison"])
+	AS_IF([$BISON --version 2>/dev/null | $EGREP -qw '^bison'],
+	      [BISON_VERSION=`$BISON --version 2> /dev/null | $EGREP '^bison' | cut -d ' ' -f 4 | tr -d a-z`],
+	      [AC_MSG_ERROR([Cannot find GNU Bison.])])
+	with_bison="$BISON ($BISON_VERSION)"
+	AX_COMPARE_VERSION([$BISON_VERSION], [gt], [2.3],
+			   [USE_BISON_NEWDIRECTIVE="yes"])])
+AM_CONDITIONAL([USE_BISON_NEWDIRECTIVE], [test "x$USE_BISON_NEWDIRECTIVE" = "xyes"])
 AC_MSG_RESULT([$with_bison])
 
 AC_MSG_CHECKING([for libedit library])
@@ -543,7 +537,6 @@ if test "x$ENABLE_SYSTEMTAP" = xyes; then
 	AC_DEFINE([ENABLE_SYSTEMTAP], [1], [Enable dynamic tracing support using systemtap])
 	AC_CONFIG_SUBDIRS([contrib/systemtap])
 fi
-AC_MSG_RESULT(${ENABLE_SYSTEMTAP})
 
 AC_MSG_CHECKING([for lzo2 library])
 AC_ARG_WITH([lzo2],
@@ -594,14 +587,13 @@ AS_IF([test "$with_cci_only" = "yes"], [with_libgcrypt=no],
 		[GCRYPT_LIBS="-L$with_libgcrypt/lib -lgcrypt"
 		GCRYPT_INC="-I$with_libgcrypt/include/"
 		EXTERNAL_DIST="$EXTERNAL_DIST libgcrypt-1.5.2"])])
-
+AC_MSG_RESULT([$with_libgcrypt])
 if test "$with_libgcrypt" = "no"
 then	
   AC_CHECK_LIB([gcrypt], [main])
 else  
   AC_DEFINE([HAVE_LIBGCRYPT], [1], [There is libgcyprt])
 fi
-AC_MSG_RESULT([$with_libgcrypt])
 
 AC_MSG_CHECKING([for libgpg-error library])
 AC_ARG_WITH([libgpg_error],
@@ -618,13 +610,13 @@ AS_IF([test "$with_cci_only" = "yes"], [with_libgpg_error=no],
 		[GPG_ERROR_LIBS="-L$with_libgpg_error/lib -lgpg-error"
 		GPG_ERROR_INC="-I$with_libgpg_error/include/"
 		EXTERNAL_DIST="$EXTERNAL_DIST libgpg-error-1.11"])])
+AC_MSG_RESULT([$with_libgpg_error])
 if test "$with_libgpg_error" = "no"
 then	
   AC_CHECK_LIB([gpg-error], [main])
 else  
   AC_DEFINE([HAVE_LIBGPG_ERROR], [1], [There is libgpg-error])
 fi
-AC_MSG_RESULT([$with_libgpg-error])
 
 AC_MSG_CHECKING([for aio library])
 AC_ARG_WITH([aio],
@@ -850,7 +842,7 @@ AC_ARG_WITH([jansson],
                 [prefix for installed jansson @<:@default=builtin@:>@]),
         [with_jansson=$withval],
         [with_jansson=builtin])
-AS_IF([test "$with_cci_only" = "yes"], [with-jansson=no],
+AS_IF([test "$with_cci_only" = "yes"], [with_jansson=no],
 	[AS_IF([test "$with_expat" = "builtin"],
 		[AC_CONFIG_SUBDIRS([external/jansson-2.4])
         	JANSSON_LIBS="\$(top_builddir)/external/lib/libjansson.la"
@@ -878,7 +870,7 @@ VERSION_DEFS="-DMAJOR_VERSION=MAJOR_VERSION -DMINOR_VERSION=MINOR_VERSION \
 -DBUILD_OS='$BUILD_OS'"
 
 SRC_INC="-I\$(top_srcdir)/include"
-DIR_LIST=`ls -l $srcdir/src | grep ^d | awk '{ print $9}'`
+DIR_LIST=`ls -l $srcdir/src | $EGREP '^d' | $AWK '{ print $9}'`
 for D in $DIR_LIST
 do
 	SRC_INC="$SRC_INC -I\$(top_srcdir)/src/$D"

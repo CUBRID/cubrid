@@ -51,7 +51,14 @@ endif
 #CLEANFILES = cnvlex.c
 
 $(PARSER_DIR)/csql_grammar.c $(PARSER_DIR)/csql_grammar.h : $(PARSER_DIR)/csql_grammar.y
+if USE_BISON_NEWDIRECTIVE
+	$(SED) \
+	  -e 's|%{/\*%CODE_REQUIRES_START%\*/|%code requires{|' \
+	  -e 's|/\*%CODE_END%\*/%}|}|' $< > csql_grammar.yy
+	$(BISON) --name-prefix=csql_yy -d -r all -o $@ csql_grammar.yy
+else
 	$(BISON) --name-prefix=csql_yy -d -r all -o $@ $<
+endif
 
 $(PARSER_DIR)/csql_lexer.c : $(PARSER_DIR)/csql_lexer.l
 	$(FLEX) --never-interactive --prefix=csql_yy -o $@ $<

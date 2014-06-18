@@ -2,7 +2,7 @@ Source: cubrid
 Section: database
 Priority: optional
 Maintainer: CUBRID Developers <cubrid@nhn.com>
-Build-Depends: debhelper (>= 7.0.50), build-essential, openjdk-6-jdk, ant, libncurses5-dev, libelf-dev, libtool, automake, autoconf, flex (>= 2.5.35)
+Build-Depends: debhelper (>= 7.0.50), build-essential, openjdk-6-jdk, ant, libncurses5-dev, libelf-dev, libtool, automake, autoconf, flex (>= 2.5.35), bison (>= 2.3)
 Standards-Version: 3.8.3
 Homepage: http://www.cubrid.org/
 
