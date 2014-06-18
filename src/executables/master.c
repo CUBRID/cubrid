@@ -144,6 +144,7 @@ SOCKET_QUEUE_ENTRY *css_Master_socket_anchor = NULL;
 pthread_mutex_t css_Master_socket_anchor_lock;
 #endif
 pthread_mutex_t css_Master_er_log_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t css_Master_er_log_enable_lock = PTHREAD_MUTEX_INITIALIZER;
 bool css_Master_er_log_enabled = true;
 
 /*

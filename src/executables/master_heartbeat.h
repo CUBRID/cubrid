@@ -149,6 +149,21 @@ enum HB_PROC_STATE
 #define HB_CMD_DEREGISTER_STR                   "deregister"
 #define HB_CMD_RELOAD_STR                       "reload"
 
+enum HB_HOST_CHECK_RESULT
+{
+  HB_HC_ELIGIBLE_LOCAL,
+  HB_HC_ELIGIBLE_REMOTE,
+  HB_HC_UNAUTHORIZED,
+  HB_HC_FAILED
+};
+
+enum HB_NOLOG_REASON
+{
+  HB_NOLOG_DEMOTE_ON_DISK_FAIL,
+  HB_NOLOG_REMOTE_STOP,
+  HB_NOLOG_MAX = HB_NOLOG_REMOTE_STOP
+};
+
 /* time related macro */
 #define HB_GET_ELAPSED_TIME(end_time, start_time) \
             ((double)(end_time.tv_sec - start_time.tv_sec) * 1000 + \
@@ -350,6 +365,7 @@ extern void hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn,
 extern void hb_get_node_info_string (char **str, bool verbose_yn);
 extern void hb_get_process_info_string (char **str, bool verbose_yn);
 extern void hb_get_ping_host_info_string (char **str);
+extern void hb_get_admin_info_string (char **str);
 extern void hb_kill_all_heartbeat_process (char **str);
 
 extern void hb_deregister_by_pid (pid_t pid);
@@ -365,10 +381,13 @@ extern void hb_register_new_process (CSS_CONN_ENTRY * conn);
 extern void hb_resource_receive_changemode (CSS_CONN_ENTRY * conn);
 extern void hb_resource_receive_get_eof (CSS_CONN_ENTRY * conn);
 
+extern int hb_check_request_eligibility (SOCKET sd);
 extern void hb_start_deactivate_server_info (void);
 extern int hb_get_deactivating_server_count (void);
 extern bool hb_is_deactivation_started (void);
 extern bool hb_is_deactivation_ready (void);
 extern void hb_finish_deactivate_server_info (void);
 
+extern void hb_enable_er_log (void);
+extern void hb_disable_er_log (int reason, const char *msg_fmt, ...);
 #endif /* _MASTER_HEARTBEAT_H_ */

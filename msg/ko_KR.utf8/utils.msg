@@ -217,13 +217,13 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
 사용법: %2$s heartbeat <명령어> [인자]\n\
 \n\
 가용한 명령어:\n\
-    start         [데이터베이스 이름]\n\
-    stop          [-i|데이터베이스 이름]\n\
+    start         [데이터베이스 이름]\n\    
+    stop          [-h <호스트 이름>] [-i] [데이터베이스 이름]\n\
     copylogdb     <start|stop> <데이터베이스 이름> <노드 이름>\n\
     applylogdb    <start|stop> <데이터베이스 이름> <노드 이름>\n\
     prfetchlogdb  <start|stop> <데이터베이스 이름> <노드 이름>\n\
     replication   <start|stop> <노드 이름>\n\
-    status\n\
+    status         [-v]\n\
     reload\n
 31 '%1$s' 인자가 필요 없습니다.\n
 32 데이터베이스 이름이 누락됐습니다.\n

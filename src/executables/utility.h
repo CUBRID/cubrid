@@ -814,6 +814,10 @@ typedef struct _ha_config
 #define COMMDB_HA_DEACT_CONFIRM_NO_SERVER "--deact-confirm-no-server"
 #define COMMDB_HA_DEACTIVATE              "--deactivate-heartbeat"
 #define COMMDB_HA_ACTIVATE                "--activate-heartbeat"
+#define COMMDB_HOST                       "-h"
+#define COMMDB_HB_DEACT_IMMEDIATELY       "-i"
+#define COMMDB_HA_ADMIN_INFO              "--admin-info"
+#define COMMDB_VERBOSE_OUTPUT             "--verbose"
 
 #define ACLDB_RELOAD            "-r"
 
@@ -1283,6 +1287,8 @@ typedef struct _ha_config
 #define COMMDB_VERBOSE_OUTPUT_L	                "verbose"
 #define COMMDB_HB_DEACT_IMMEDIATELY_S           'i'
 #define COMMDB_HB_DEACT_IMMEDIATELY_L           "immediately"
+#define COMMDB_HA_ADMIN_INFO_S                  12115
+#define COMMDB_HA_ADMIN_INFO_L                  "admin-info"
 
 /* paramdump option list */
 #define PARAMDUMP_OUTPUT_FILE_S                 'o'

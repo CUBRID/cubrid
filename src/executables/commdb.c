@@ -61,6 +61,12 @@
 #include "util_support.h"
 #include "porting.h"
 
+#define COMMDB_CMD_ALLOWED_ON_REMOTE() \
+  ((commdb_Arg_deact_stop_all == true) \
+  || (commdb_Arg_deact_confirm_stop_all == true) \
+  || (commdb_Arg_deact_confirm_no_server == true) \
+  || (commdb_Arg_deactivate_heartbeat == true))
+
 typedef enum
 {
   COMM_SERVER,
@@ -109,6 +115,7 @@ static char *commdb_Arg_ha_mode_server_name = NULL;
 static bool commdb_Arg_print_ha_node_info = false;
 static bool commdb_Arg_print_ha_process_info = false;
 static bool commdb_Arg_print_ha_ping_hosts_info = false;
+static bool commdb_Arg_print_ha_admin_info = false;
 static bool commdb_Arg_ha_deregister_by_pid = false;
 static char *commdb_Arg_ha_deregister_pid = NULL;
 static bool commdb_Arg_ha_deregister_by_args = false;
@@ -124,6 +131,7 @@ static bool commdb_Arg_verbose_output = false;
 static bool commdb_Arg_deact_stop_all = false;
 static bool commdb_Arg_deact_confirm_stop_all = false;
 static bool commdb_Arg_deact_confirm_no_server = false;
+static char *commdb_Arg_host_name = NULL;
 
 /*
  * send_request_no_args() - send request without argument
@@ -631,6 +639,36 @@ process_ha_ping_host_info_query (CSS_CONN_ENTRY * conn)
 }
 
 /*
+ * process_ha_admin_info_query() - request administrative info
+ *   return:  none
+ *   conn(in): connection info
+ */
+static void
+process_ha_admin_info_query (CSS_CONN_ENTRY * conn)
+{
+  char *reply_buffer = NULL;
+  int size = 0;
+#if !defined(WINDOWS)
+  unsigned short rid;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  rid = send_request_no_args (conn, GET_HA_ADMIN_INFO);
+  return_string (conn, rid, &reply_buffer, &size);
+#endif
+
+  if (size > 0 && reply_buffer[0] != '\0')
+    {
+      printf ("\n%s\n", reply_buffer);
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+}
+
+/*
  * process_kill_all_ha_utils() - kill all copylogdb and applylogdb process
  *   return:  none
  *   conn(in): connection info
@@ -1056,6 +1094,11 @@ process_batch_command (CSS_CONN_ENTRY * conn)
       process_ha_ping_host_info_query (conn);
     }
 
+  if (commdb_Arg_print_ha_admin_info)
+    {
+      process_ha_admin_info_query (conn);
+    }
+
   if (commdb_Arg_kill_all_ha_utils)
     {
       process_kill_all_ha_utils (conn);
@@ -1147,6 +1190,8 @@ main (int argc, char **argv)
      COMMDB_DEACT_CONFIRM_STOP_ALL_S},
     {COMMDB_DEACT_CONFIRM_NO_SERVER_L, 0, 0,
      COMMDB_DEACT_CONFIRM_NO_SERVER_S},
+    {COMMDB_HOST_L, 1, 0, COMMDB_HOST_S},
+    {COMMDB_HA_ADMIN_INFO_L, 0, 0, COMMDB_HA_ADMIN_INFO_S},
     {0, 0, 0, 0}
   };
 
@@ -1276,6 +1321,16 @@ main (int argc, char **argv)
 	case COMMDB_DEACT_CONFIRM_NO_SERVER_S:
 	  commdb_Arg_deact_confirm_no_server = true;
 	  break;
+	case COMMDB_HOST_S:
+	  if (commdb_Arg_host_name != NULL)
+	    {
+	      free (commdb_Arg_host_name);
+	    }
+	  commdb_Arg_host_name = strdup (optarg);
+	  break;
+	case COMMDB_HA_ADMIN_INFO_S:
+	  commdb_Arg_print_ha_admin_info = true;
+	  break;
 	default:
 	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 	  goto usage;
@@ -1284,13 +1339,10 @@ main (int argc, char **argv)
 
   er_init (NULL, ER_NEVER_EXIT);
 
-  if (commdb_Arg_deact_immediately && !commdb_Arg_deact_stop_all)
+  /* only deactivation and demote allow to specify hostname */
+  if (COMMDB_CMD_ALLOWED_ON_REMOTE () == true && commdb_Arg_host_name != NULL)
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
-					     MSGCAT_UTIL_SET_COMMDB,
-					     COMMDB_INVALID_IMMEDIATELY_OPTION));
-      status = EXIT_FAILURE;
-      goto error;
+      hostname = commdb_Arg_host_name;
     }
 
   if (master_util_config_startup ((argc > 1) ? argv[1] : NULL,
@@ -1349,6 +1401,10 @@ end:
   if (commdb_Arg_is_registered_id != NULL)
     {
       free_and_init (commdb_Arg_is_registered_id);
+    }
+  if (commdb_Arg_host_name != NULL)
+    {
+      free_and_init (commdb_Arg_host_name);
     }
 
   return status;

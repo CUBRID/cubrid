@@ -95,6 +95,7 @@ extern bool master_util_config_startup (const char *db_name, int *port_id);
 extern void master_util_wait_proc_terminate (int pid);
 
 extern pthread_mutex_t css_Master_er_log_lock;
+extern pthread_mutex_t css_Master_er_log_enable_lock;
 extern bool css_Master_er_log_enabled;
 
 #define GET_REAL_MASTER_CONN_NAME(name)         (((char *) name) + 1)

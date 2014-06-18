@@ -139,6 +139,8 @@ static void css_process_deregister_ha_process (CSS_CONN_ENTRY * conn);
 static void css_process_change_ha_mode (CSS_CONN_ENTRY * conn);
 static void css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn,
 					   unsigned short request_id);
+static void css_process_ha_admin_info (CSS_CONN_ENTRY * conn,
+				       unsigned short request_id);
 
 /*
  * css_send_command_to_server()
@@ -1080,6 +1082,70 @@ error_return:
 }
 
 /*
+ * css_process_ha_admin_info()
+ *   return: none
+ *   conn(in):
+ *   request_id(in):
+ */
+static void
+css_process_ha_admin_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
+{
+#if !defined(WINDOWS)
+  char *buffer = NULL;
+
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+    {
+      goto error_return;
+    }
+
+  hb_get_admin_info_string (&buffer);
+
+  if (buffer == NULL)
+    {
+      goto error_return;
+    }
+
+  if (css_send_data (conn, request_id,
+		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+
+  if (buffer != NULL)
+    {
+      free_and_init (buffer);
+    }
+  return;
+
+error_return:
+  if (css_send_data (conn, request_id, "\0", 1) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+
+  if (buffer != NULL)
+    {
+      free_and_init (buffer);
+    }
+  return;
+#else
+  char buffer[MASTER_TO_SRV_MSG_SIZE];
+
+  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
+	    msgcat_message (MSGCAT_CATALOG_UTILS,
+			    MSGCAT_UTIL_SET_MASTER,
+			    MASTER_MSG_PROCESS_ERROR));
+
+  if (css_send_data (conn, request_id,
+		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+#endif
+}
+
+
+/*
  * css_process_get_eof()
  *   return: none
  *   conn(in):
@@ -1486,15 +1552,53 @@ css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn,
 {
 #if !defined(WINDOWS)
   int error = NO_ERROR;
+  int result;
   char *message;
+  char error_string[LINE_MAX];
+  char request_from[MAXHOSTNAMELEN] = "";
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       goto error_return;
     }
 
-  error = hb_deactivate_heartbeat ();
+  result = hb_check_request_eligibility (conn->fd);
+  if (result != HB_HC_ELIGIBLE_LOCAL)
+    {
+      if (css_get_peer_name (conn->fd, request_from, sizeof (request_from)) !=
+	  0)
+	{
+	  snprintf (request_from, sizeof (request_from), "UNKNOWN");
+	}
+    }
 
+  if (result == HB_HC_FAILED)
+    {
+      snprintf (error_string, LINE_MAX,
+		"%s.(failed to check eligibility of request)",
+		HB_RESULT_FAILURE_STR);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR,
+		     error_string);
+      goto error_return;
+    }
+  else if (result == HB_HC_UNAUTHORIZED)
+    {
+      snprintf (error_string, LINE_MAX,
+		"%s.(request from unauthorized host %s)",
+		HB_RESULT_FAILURE_STR, request_from);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR,
+		     error_string);
+      goto error_return;
+    }
+  else if (result == HB_HC_ELIGIBLE_REMOTE)
+    {
+      hb_disable_er_log (HB_NOLOG_REMOTE_STOP, "deactivation request from %s",
+			 request_from);
+    }
+
+  error = hb_deactivate_heartbeat ();
   if (error != NO_ERROR)
     {
       goto error_return;
@@ -1647,10 +1751,49 @@ css_process_deact_stop_all (CSS_CONN_ENTRY * conn,
 {
 #if !defined(WINDOWS)
   int result;
+  char error_string[LINE_MAX];
+  char request_from[MAXHOSTNAMELEN] = "";
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
     {
       goto error_return;
+    }
+
+  result = hb_check_request_eligibility (conn->fd);
+
+  if (result != HB_HC_ELIGIBLE_LOCAL)
+    {
+      if (css_get_peer_name (conn->fd, request_from, sizeof (request_from)) !=
+	  0)
+	{
+	  snprintf (request_from, sizeof (request_from), "UNKNOWN");
+	}
+    }
+
+  if (result == HB_HC_FAILED)
+    {
+      snprintf (error_string, LINE_MAX,
+		"%s.(failed to check eligibility of request)",
+		HB_RESULT_FAILURE_STR);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR,
+		     error_string);
+      goto error_return;
+    }
+  else if (result == HB_HC_UNAUTHORIZED)
+    {
+      snprintf (error_string, LINE_MAX,
+		"%s.(request from unauthorized host %s)",
+		HB_RESULT_FAILURE_STR, request_from);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR,
+		     error_string);
+      goto error_return;
+    }
+  else if (result == HB_HC_ELIGIBLE_REMOTE)
+    {
+      hb_disable_er_log (HB_NOLOG_REMOTE_STOP, "deactivation request from %s",
+			 request_from);
     }
 
   if (hb_is_deactivation_started () == false)
@@ -1855,6 +1998,9 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	  break;
 	case GET_HA_PROCESS_LIST_VERBOSE:
 	  css_process_ha_process_list_info (conn, request_id, true);
+	  break;
+	case GET_HA_ADMIN_INFO:
+	  css_process_ha_admin_info (conn, request_id);
 	  break;
 	case KILL_ALL_HA_PROCESS:
 	  css_process_kill_all_ha_process (conn, request_id);

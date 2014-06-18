@@ -218,12 +218,12 @@ kullanım: %2$s heartbeat <komut> [args]\n\
 \n\
 Mevcut komut:\n\
     start          [database-name]\n\
-    stop           [-i|database-name]\n\
+    stop           [-h <hostname>] [-i] [database-name]\n\
     copylogdb      <start|stop> database-name node-name\n\
     applylogdb     <start|stop> database-name node-name\n\
     prefetchlogdb  <start|stop> database-name node-name\n\
     replication    <start|stop> node-name\n\
-    status\n\
+    status         [-v]\n\
     reload\n
 31 '%1$s' argümanı gerekli değildir.\n
 32 Bir veritabanı-adı eksik.\n

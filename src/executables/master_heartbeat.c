@@ -234,6 +234,8 @@ HB_JOB *cluster_Jobs = NULL;
 HB_JOB *resource_Jobs = NULL;
 bool hb_Deactivate_immediately = false;
 
+static char hb_Nolog_event_msg[LINE_MAX] = "";
+
 static HB_DEACTIVATE_INFO hb_Deactivate_info = { NULL, 0, false };
 
 static bool hb_Is_activated = true;
@@ -272,7 +274,7 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
 #define HA_NODE_SCORE_FORMAT_STRING      \
         "    - score %d\n"
 #define HA_NODE_HEARTBEAT_GAP_FORMAT_STRING      \
-        "    - heartbeat-gap %d\n"
+        "    - missed heartbeat %d\n"
 
 #define HA_PROCESS_INFO_FORMAT_STRING    \
 	" HA-Process Info (master %d, state %s)\n"
@@ -301,6 +303,13 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
         " HA-Ping Host Info (PING check %s)\n"
 #define HA_PING_HOSTS_FORMAT_STRING        \
           "   %-20s %s\n"
+
+#define HA_ADMIN_INFO_FORMAT_STRING                \
+        " HA-Admin Info\n"
+#define HA_ADMIN_INFO_NOLOG_FORMAT_STRING        \
+        "  Error Logging: disabled\n"
+#define HA_ADMIN_INFO_NOLOG_EVENT_FORMAT_STRING  \
+        "    %s\n"
 /*
  * linked list
  */
@@ -1796,27 +1805,16 @@ hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req,
 }
 
 /*
- * hb_sockaddr() -
- *   return: NO_ERROR
+ * hb_sockaddr_get_ip() -
+ *   return:
  *
  *   host(in):
- *   port(in):
- *   saddr(out):
- *   slen(out):
+ *   addr(out):
  */
 static int
-hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
-	     socklen_t * slen)
+hb_sockaddr_get_ip (const char *host, struct in_addr *addr)
 {
-  struct sockaddr_in udp_saddr;
   in_addr_t in_addr;
-
-  /*
-   * Construct address for UDP socket
-   */
-  memset ((void *) &udp_saddr, 0, sizeof (udp_saddr));
-  udp_saddr.sin_family = AF_INET;
-  udp_saddr.sin_port = htons (port);
 
   /*
    * First try to convert to the host name as a dotten-decimal number.
@@ -1825,8 +1823,7 @@ hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
   in_addr = inet_addr (host);
   if (in_addr != INADDR_NONE)
     {
-      memcpy ((void *) &udp_saddr.sin_addr, (void *) &in_addr,
-	      sizeof (in_addr));
+      memcpy ((void *) addr, (void *) &in_addr, sizeof (in_addr));
     }
   else
     {
@@ -1841,10 +1838,9 @@ hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
 	{
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				      ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
-	  return INVALID_SOCKET;
+	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
-      memcpy ((void *) &udp_saddr.sin_addr, (void *) hent.h_addr,
-	      hent.h_length);
+      memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
 # elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
       struct hostent hent;
       int herr;
@@ -1854,10 +1850,9 @@ hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
 	{
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				      ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
-	  return INVALID_SOCKET;
+	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
-      memcpy ((void *) &udp_saddr.sin_addr, (void *) hent.h_addr,
-	      hent.h_length);
+      memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
 # elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       struct hostent hent;
       struct hostent_data ht_data;
@@ -1866,10 +1861,9 @@ hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
 	{
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				      ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
-	  return INVALID_SOCKET;
+	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
-      memcpy ((void *) &udp_saddr.sin_addr, (void *) hent.h_addr,
-	      hent.h_length);
+      memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
 # else
 #   error "HAVE_GETHOSTBYNAME_R"
 # endif
@@ -1884,12 +1878,45 @@ hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
 	  pthread_mutex_unlock (&gethostbyname_lock);
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				      ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
-	  return INVALID_SOCKET;
+	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
-      memcpy ((void *) &udp_saddr.sin_addr, (void *) hp->h_addr,
-	      hp->h_length);
+      memcpy ((void *) addr, (void *) hp->h_addr, hp->h_length);
       pthread_mutex_unlock (&gethostbyname_lock);
 #endif /* !HAVE_GETHOSTBYNAME_R */
+    }
+
+  return NO_ERROR;
+}
+
+
+/*
+ * hb_sockaddr() -
+ *   return: NO_ERROR
+ *
+ *   host(in):
+ *   port(in):
+ *   saddr(out):
+ *   slen(out):
+ */
+static int
+hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
+	     socklen_t * slen)
+{
+  struct sockaddr_in udp_saddr;
+  in_addr_t in_addr;
+  int error = NO_ERROR;
+
+  /*
+   * Construct address for UDP socket
+   */
+  memset ((void *) &udp_saddr, 0, sizeof (udp_saddr));
+  udp_saddr.sin_family = AF_INET;
+  udp_saddr.sin_port = htons (port);
+
+  error = hb_sockaddr_get_ip (host, &udp_saddr.sin_addr);
+  if (error != NO_ERROR)
+    {
+      return INVALID_SOCKET;
     }
 
   *slen = sizeof (udp_saddr);
@@ -4362,7 +4389,7 @@ hb_thread_check_disk_failure (void *arg)
 	      if (hb_resource_check_server_log_grow () == false)
 		{
 		  /* be silent to avoid blocking write operation on disk */
-		  css_Master_er_log_enabled = false;
+		  hb_disable_er_log (HB_NOLOG_DEMOTE_ON_DISK_FAIL, NULL);
 		  hb_Resource->state = HB_NSTATE_SLAVE;
 
 		  pthread_mutex_unlock (&hb_Resource->lock);
@@ -4782,7 +4809,7 @@ hb_master_init (void)
 {
   int error;
 
-  css_Master_er_log_enabled = true;
+  hb_enable_er_log ();
 
   MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STARTED, 0);
 #if defined (HB_VERBOSE_DEBUG)
@@ -5484,6 +5511,61 @@ hb_deregister_nodes (char *node_to_dereg)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
+ * hb_get_admin_info_string -
+ *   return: none
+ *
+ *   str(out):
+ */
+void
+hb_get_admin_info_string (char **str)
+{
+  int rv, buf_size = 0;
+  char *p, *last;
+
+  if (*str)
+    {
+      **str = 0;
+      return;
+    }
+
+  rv = pthread_mutex_lock (&css_Master_er_log_enable_lock);
+
+  if (css_Master_er_log_enabled == true || hb_Nolog_event_msg[0] == '\0')
+    {
+      pthread_mutex_unlock (&css_Master_er_log_enable_lock);
+      return;
+    }
+
+  buf_size = strlen (HA_ADMIN_INFO_FORMAT_STRING);
+  buf_size += strlen (HA_ADMIN_INFO_NOLOG_FORMAT_STRING);
+  buf_size += strlen (HA_ADMIN_INFO_NOLOG_EVENT_FORMAT_STRING);
+  buf_size += strlen (hb_Nolog_event_msg);
+
+  *str = (char *) malloc (sizeof (char) * buf_size);
+  if (*str == NULL)
+    {
+      pthread_mutex_unlock (&css_Master_er_log_enable_lock);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char) * buf_size);
+      return;
+    }
+  **str = '\0';
+
+  p = (char *) (*str);
+  last = p + buf_size;
+
+  p += snprintf (p, MAX ((last - p), 0), HA_ADMIN_INFO_FORMAT_STRING);
+  p += snprintf (p, MAX ((last - p), 0), HA_ADMIN_INFO_NOLOG_FORMAT_STRING);
+  p +=
+    snprintf (p, MAX ((last - p), 0), HA_ADMIN_INFO_NOLOG_EVENT_FORMAT_STRING,
+	      hb_Nolog_event_msg);
+
+  pthread_mutex_unlock (&css_Master_er_log_enable_lock);
+
+  return;
+}
+
+/*
  * hb_get_ping_host_info_string -
  *   return: none
  *
@@ -5613,7 +5695,7 @@ hb_get_node_info_string (char **str, bool verbose_yn)
       required_size += strlen (HA_NODE_SCORE_FORMAT_STRING);
       required_size += 6;	/* length of score      */
       required_size += strlen (HA_NODE_HEARTBEAT_GAP_FORMAT_STRING);
-      required_size += 6;	/* length of heartbeat-gap */
+      required_size += 6;	/* length of missed heartbeat */
     }
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
@@ -6290,12 +6372,79 @@ hb_activate_heartbeat (void)
  * common
  */
 
+void
+hb_enable_er_log (void)
+{
+  int rv;
+
+  rv = pthread_mutex_lock (&css_Master_er_log_enable_lock);
+
+  css_Master_er_log_enabled = true;
+  hb_Nolog_event_msg[0] = '\0';
+
+  pthread_mutex_unlock (&css_Master_er_log_enable_lock);
+  return;
+}
+
+void
+hb_disable_er_log (int reason, const char *msg_fmt, ...)
+{
+  va_list args;
+  char *p, *last;
+  const char *event_name;
+  char time_str[64];
+  struct timeval curr_time;
+  int rv;
+
+  rv = pthread_mutex_lock (&css_Master_er_log_enable_lock);
+
+  if (css_Master_er_log_enabled == false)
+    {
+      pthread_mutex_unlock (&css_Master_er_log_enable_lock);
+      return;
+    }
+
+  if (reason == HB_NOLOG_DEMOTE_ON_DISK_FAIL)
+    {
+      event_name = "DEMOTE ON DISK FAILURE";
+    }
+  else if (reason == HB_NOLOG_REMOTE_STOP)
+    {
+      event_name = "REMOTE STOP";
+    }
+  else
+    {
+      pthread_mutex_unlock (&css_Master_er_log_enable_lock);
+      return;
+    }
+
+  css_Master_er_log_enabled = false;
+
+  p = hb_Nolog_event_msg;
+  last = hb_Nolog_event_msg + sizeof (hb_Nolog_event_msg);
+
+  gettimeofday (&curr_time, NULL);
+
+  p += snprintf (p, MAX ((last - p), 0), "[%s][%s]",
+		 hb_strtime (time_str, sizeof (time_str), &curr_time),
+		 event_name);
+
+  if (msg_fmt != NULL)
+    {
+      va_start (args, msg_fmt);
+      vsnprintf (p, MAX ((last - p), 0), msg_fmt, args);
+      va_end (args);
+    }
+
+  pthread_mutex_unlock (&css_Master_er_log_enable_lock);
+  return;
+}
+
 /*
  * hb_check_ping -
  *   return : int
  *
  */
-
 static int
 hb_check_ping (const char *host)
 {
@@ -6552,6 +6701,55 @@ hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length)
   p += snprintf (p, MAX ((last - p), 0), "\n");
 
   return p - buffer;
+}
+
+int
+hb_check_request_eligibility (SOCKET sd)
+{
+  int rv, error, result;
+  struct sockaddr_in req_addr;
+  struct in_addr node_addr;
+  socklen_t req_addr_len;
+  HB_NODE_ENTRY *node;
+
+  req_addr_len = sizeof (req_addr);
+
+  if (getpeername (sd, (struct sockaddr *) &req_addr, &req_addr_len) < 0)
+    {
+      return HB_HC_FAILED;
+    }
+
+  /* from localhost */
+  if (req_addr.sin_family == AF_UNIX)
+    {
+      return HB_HC_ELIGIBLE_LOCAL;
+    }
+
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
+
+  result = HB_HC_UNAUTHORIZED;
+  for (node = hb_Cluster->nodes; node; node = node->next)
+    {
+      error = hb_sockaddr_get_ip (node->host_name, &node_addr);
+      if (error != NO_ERROR)
+	{
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			       "Failed to resolve IP address of %s",
+			       node->host_name);
+	  result = HB_HC_FAILED;
+	  continue;
+	}
+
+      if (memcmp (&req_addr.sin_addr, &node_addr, sizeof (struct in_addr)) ==
+	  0)
+	{
+	  pthread_mutex_unlock (&hb_Cluster->lock);
+	  return HB_HC_ELIGIBLE_REMOTE;
+	}
+    }
+  pthread_mutex_unlock (&hb_Cluster->lock);
+
+  return result;
 }
 
 /*
