@@ -506,10 +506,6 @@ extern int esql_yylineno;
 #include <fcntl.h>
 #include <errno.h>
 
-#if defined(WINDOWS)
-#include <io.h>
-#endif
-
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #else
@@ -574,14 +570,14 @@ extern varstring *g_subscript;
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 371 "../../src/executables/esql_grammar.y"
+#line 367 "../../src/executables/esql_grammar.y"
 {
   SYMBOL *p_sym;
   void *ptr;
   int number;
 }
 /* Line 2616 of glr.c.  */
-#line 585 "../../src/executables/esql_grammar.h"
+#line 581 "../../src/executables/esql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1
