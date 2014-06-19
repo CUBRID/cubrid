@@ -2931,6 +2931,8 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   /* binary search the node to find the child page pointer to be followed */
   c = 0;
+
+  /* for non-compressed midxkey; separator is not compressed */
   left_start_col = right_start_col = 0;
 
   left = 2;			/* Ignore dummy key (neg-inf or 1st key) */
@@ -2946,9 +2948,9 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  return ER_FAILED;
 	}
 
-      btree_read_record (thread_p, btid, page_ptr, &rec, &temp_key,
-			 &non_leaf_rec, BTREE_NON_LEAF_NODE, &clear_key,
-			 &offset, PEEK_KEY_VALUE, NULL);
+      btree_read_record_helper (thread_p, btid, &rec, &temp_key,
+				&non_leaf_rec, BTREE_NON_LEAF_NODE,
+				&clear_key, &offset, PEEK_KEY_VALUE);
 
       if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
 	{
