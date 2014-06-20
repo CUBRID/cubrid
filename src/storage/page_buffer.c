@@ -4870,8 +4870,6 @@ do_block:
       int tran_index;
       int wait_msec;
 
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
-
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       wait_msec = logtb_find_wait_msecs (tran_index);
 
@@ -4897,6 +4895,10 @@ do_block:
 		  client_pid,
 		  (request_mode == PGBUF_LATCH_READ ? "READ" : "WRITE"),
 		  bufptr->vpid.volid, bufptr->vpid.pageid, NULL);
+	}
+      else
+	{
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 	}
 
       return ER_FAILED;
