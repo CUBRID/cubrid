@@ -14650,6 +14650,7 @@ get_index_type_qualifiers (MOP obj, bool * is_reverse, bool * is_unique,
   if (!SM_IS_INDEX_FAMILY (sm_constraint->type))
     {
       error_code = ER_SM_CONSTRAINT_HAS_DIFFERENT_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, index_name);
       return error_code;
     }
 
