@@ -15881,7 +15881,16 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key,
 	isvalid = btree_keyoid_checkscan_check (thread_p,
 						&bt_checkscan,
 						cls_oid, old_key, oid);
-	assert (isvalid == DISK_INVALID);	/* not found */
+
+	if (er_errid () == ER_INTERRUPTED)
+	  {
+	    /* in case of user interrupt */
+	    ;			/* do not check isvalid */
+	  }
+	else
+	  {
+	    assert (isvalid == DISK_INVALID);	/* not found */
+	  }
       }
 
     if (!DB_IS_NULL (new_key) && !btree_multicol_key_is_null (new_key))
@@ -15889,7 +15898,16 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key,
 	isvalid = btree_keyoid_checkscan_check (thread_p,
 						&bt_checkscan,
 						cls_oid, new_key, oid);
-	assert (isvalid == DISK_VALID);	/* found */
+
+	if (er_errid () == ER_INTERRUPTED)
+	  {
+	    /* in case of user interrupt */
+	    ;			/* do not check isvalid */
+	  }
+	else
+	  {
+	    assert (isvalid == DISK_VALID);	/* found */
+	  }
       }
 
     /* close the index check-scan */

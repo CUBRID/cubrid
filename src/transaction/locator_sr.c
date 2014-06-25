@@ -7678,13 +7678,21 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 						  class_oid,
 						  key_dbvalue, inst_oid);
 
-	  if (is_insert)
+	  if (er_errid () == ER_INTERRUPTED)
 	    {
-	      assert (isvalid == DISK_VALID);	/* found */
+	      /* in case of user interrupt */
+	      ;			/* do not check isvalid */
 	    }
 	  else
 	    {
-	      assert (isvalid == DISK_INVALID);	/* not found */
+	      if (is_insert)
+		{
+		  assert (isvalid == DISK_VALID);	/* found */
+		}
+	      else
+		{
+		  assert (isvalid == DISK_INVALID);	/* not found */
+		}
 	    }
 
 	  /* close the index check-scan */
@@ -8484,18 +8492,36 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 							&bt_checkscan,
 							class_oid,
 							old_key, inst_oid);
-		assert (isvalid == DISK_INVALID);	/* not found */
+
+		if (er_errid () == ER_INTERRUPTED)
+		  {
+		    /* in case of user interrupt */
+		    ;		/* do not check isvalid */
+		  }
+		else
+		  {
+		    assert (isvalid == DISK_INVALID);	/* not found */
+		  }
 	      }
 
 	    if (!do_delete_only
 		&& !DB_IS_NULL (new_key)
 		&& !btree_multicol_key_is_null (new_key))
 	      {
+
 		isvalid = btree_keyoid_checkscan_check (thread_p,
 							&bt_checkscan,
 							class_oid,
 							new_key, inst_oid);
-		assert (isvalid == DISK_VALID);	/* found */
+		if (er_errid () == ER_INTERRUPTED)
+		  {
+		    /* in case of user interrupt */
+		    ;		/* do not check isvalid */
+		  }
+		else
+		  {
+		    assert (isvalid == DISK_VALID);	/* found */
+		  }
 	      }
 
 	    /* close the index check-scan */
