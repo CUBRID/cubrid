@@ -348,18 +348,21 @@ class UOutputBuffer {
 				return addFloat(UGetTypeConvertedValue.getFloat(value));
 			}
 		case UUType.U_TYPE_SHORT:
+		case UUType.U_TYPE_USHORT:
 			if (value == null) {
 				return addShort(UGetTypeConvertedValue.getShort(0));
 			} else {
 				return addShort(UGetTypeConvertedValue.getShort(value));
 			}
 		case UUType.U_TYPE_INT:
+		case UUType.U_TYPE_UINT:
 			if (value == null) {
 				return addInt(UGetTypeConvertedValue.getInt(0));
 			} else {
 				return addInt(UGetTypeConvertedValue.getInt(value));
 			}
 		case UUType.U_TYPE_BIGINT:
+		case UUType.U_TYPE_UBIGINT:
 			if (value == null) {
 				return addLong(UGetTypeConvertedValue.getLong(0));
 			} else {
@@ -410,9 +413,9 @@ class UOutputBuffer {
 			}
 		case UUType.U_TYPE_RESULTSET:
 			return addNull();
+		default:
+			throw u_con.createJciException(UErrorCode.ER_TYPE_CONVERSION);
 		}
-
-		return 0;
 	}
 
 	private int writeCollection(CUBRIDArray data,
@@ -468,8 +471,11 @@ class UOutputBuffer {
 			}
 			break;
 		case UUType.U_TYPE_SHORT:
+		case UUType.U_TYPE_USHORT:
 		case UUType.U_TYPE_INT:
+		case UUType.U_TYPE_UINT:
 		case UUType.U_TYPE_BIGINT:
+		case UUType.U_TYPE_UBIGINT:
 		case UUType.U_TYPE_FLOAT:
 		case UUType.U_TYPE_DOUBLE:
 		case UUType.U_TYPE_MONETARY:

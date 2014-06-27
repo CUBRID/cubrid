@@ -220,10 +220,13 @@ public class UColumnInfo {
 		case UUType.U_TYPE_NUMERIC:
 			return "java.math.BigDecimal";
 		case UUType.U_TYPE_SHORT:
+		case UUType.U_TYPE_USHORT:
 			return "java.lang.Short";
 		case UUType.U_TYPE_INT:
+		case UUType.U_TYPE_UINT:
 			return "java.lang.Integer";
 		case UUType.U_TYPE_BIGINT:
+		case UUType.U_TYPE_UBIGINT:
 			return "java.lang.Long";
 		case UUType.U_TYPE_FLOAT:
 			return "java.lang.Float";
@@ -266,10 +269,13 @@ public class UColumnInfo {
 		case UUType.U_TYPE_NUMERIC:
 			return "java.lang.Double[]";
 		case UUType.U_TYPE_SHORT:
+		case UUType.U_TYPE_USHORT:
 			return "java.lang.Short[]";
 		case UUType.U_TYPE_INT:
+		case UUType.U_TYPE_UINT:
 			return "java.lang.Integer[]";
 		case UUType.U_TYPE_BIGINT:
+		case UUType.U_TYPE_UBIGINT:
 			return "java.lang.Long[]";
 		case UUType.U_TYPE_FLOAT:
 			return "java.lang.Float[]";

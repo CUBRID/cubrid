@@ -140,7 +140,10 @@ static const char *type_str_tbl[] = {
   "DATETIME",			/* CCI_U_TYPE_DATETIME */
   "BLOB",			/* CCI_U_TYPE_BLOB */
   "CLOB",			/* CCI_U_TYPE_CLOB */
-  "ENUM"			/* CCI_U_TYPE_ENUM */
+  "ENUM",			/* CCI_U_TYPE_ENUM */
+  "USHORT",			/* CCI_U_TYPE_USHORT */
+  "UINT",			/* CCI_U_TYPE_UINT */
+  "UBIGINT"			/* CCI_U_TYPE_UBIGINT */
 };
 
 FN_RETURN
@@ -2342,9 +2345,16 @@ bind_value_print (char type, void *net_value, bool slow_log)
       break;
     case CCI_U_TYPE_BIGINT:
       {
-	DB_BIGINT bi_val;
+	INT64 bi_val;
 	net_arg_get_bigint (&bi_val, net_value);
 	write2_func ("%lld", (long long) bi_val);
+      }
+      break;
+    case CCI_U_TYPE_UBIGINT:
+      {
+	UINT64 ubi_val;
+	net_arg_get_bigint ((INT64 *) & ubi_val, net_value);
+	write2_func ("%llu", (unsigned long long) ubi_val);
       }
       break;
     case CCI_U_TYPE_INT:
@@ -2354,11 +2364,25 @@ bind_value_print (char type, void *net_value, bool slow_log)
 	write2_func ("%d", i_val);
       }
       break;
+    case CCI_U_TYPE_UINT:
+      {
+	unsigned int ui_val;
+	net_arg_get_int ((int *) &ui_val, net_value);
+	write2_func ("%u", ui_val);
+      }
+      break;
     case CCI_U_TYPE_SHORT:
       {
 	short s_val;
 	net_arg_get_short (&s_val, net_value);
 	write2_func ("%d", s_val);
+      }
+      break;
+    case CCI_U_TYPE_USHORT:
+      {
+	unsigned short us_val;
+	net_arg_get_short ((short *) &us_val, net_value);
+	write2_func ("%u", us_val);
       }
       break;
     case CCI_U_TYPE_MONETARY:

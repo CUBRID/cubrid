@@ -125,6 +125,32 @@ ut_str_to_bigint (char *str, INT64 * value)
 }
 
 int
+ut_str_to_ubigint (char *str, UINT64 * value)
+{
+  int error = 0;
+  UINT64 ubi_val = 0;
+  char *end_p = NULL;
+
+  assert (value != NULL);
+
+  *value = 0;
+
+  error = str_to_uint64 (&ubi_val, &end_p, str, 10);
+  if (error < 0)
+    {
+      return (CCI_ER_TYPE_CONVERSION);
+    }
+
+  if (*end_p == NULL || *end_p == '.' || isspace ((int) *end_p))
+    {
+      *value = ubi_val;
+      return 0;
+    }
+
+  return (CCI_ER_TYPE_CONVERSION);
+}
+
+int
 ut_str_to_int (char *str, int *value)
 {
   int error = 0;
@@ -144,6 +170,32 @@ ut_str_to_int (char *str, int *value)
   if (*end_p == NULL || *end_p == '.' || isspace ((int) *end_p))
     {
       *value = i_val;
+      return 0;
+    }
+
+  return (CCI_ER_TYPE_CONVERSION);
+}
+
+int
+ut_str_to_uint (char *str, unsigned int *value)
+{
+  int error = 0;
+  unsigned int ui_val = 0;
+  char *end_p = NULL;
+
+  assert (value != NULL);
+
+  *value = 0;
+
+  error = str_to_uint32 (&ui_val, &end_p, str, 10);
+  if (error < 0)
+    {
+      return (CCI_ER_TYPE_CONVERSION);
+    }
+
+  if (*end_p == NULL || *end_p == '.' || isspace ((int) *end_p))
+    {
+      *value = ui_val;
       return 0;
     }
 
@@ -541,6 +593,12 @@ void
 ut_int_to_str (INT64 value, char *str, int size)
 {
   snprintf (str, size, "%lld", (long long) value);
+}
+
+void
+ut_uint_to_str (UINT64 value, char *str, int size)
+{
+  snprintf (str, size, "%llu", (unsigned long long) value);
 }
 
 void

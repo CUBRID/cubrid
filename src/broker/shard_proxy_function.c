@@ -786,6 +786,7 @@ proxy_get_range_by_param (SP_PARSER_HINT * hint_p, void **argv)
       switch (type)
 	{
 	case CCI_U_TYPE_INT:
+	case CCI_U_TYPE_UINT:
 	  {
 	    int i_val;
 	    net_arg_get_size (&data_size, net_value);
@@ -799,11 +800,11 @@ proxy_get_range_by_param (SP_PARSER_HINT * hint_p, void **argv)
 
 	    net_arg_get_int (&i_val, net_value);
 	    shard_key_id =
-	      (*fn_get_shard_key) (key_column, SHARD_U_TYPE_INT, &i_val,
-				   sizeof (int));
+	      (*fn_get_shard_key) (key_column, type, &i_val, sizeof (int));
 	  }
 	  break;
 	case CCI_U_TYPE_SHORT:
+	case CCI_U_TYPE_USHORT:
 	  {
 	    short s_val;
 	    net_arg_get_size (&data_size, net_value);
@@ -817,12 +818,12 @@ proxy_get_range_by_param (SP_PARSER_HINT * hint_p, void **argv)
 
 	    net_arg_get_short (&s_val, net_value);
 	    shard_key_id =
-	      (*fn_get_shard_key) (key_column, SHARD_U_TYPE_SHORT, &s_val,
-				   sizeof (short));
+	      (*fn_get_shard_key) (key_column, type, &s_val, sizeof (short));
 
 	  }
 	  break;
 	case CCI_U_TYPE_BIGINT:
+	case CCI_U_TYPE_UBIGINT:
 	  {
 	    INT64 l_val;
 	    net_arg_get_size (&data_size, net_value);
@@ -836,8 +837,7 @@ proxy_get_range_by_param (SP_PARSER_HINT * hint_p, void **argv)
 
 	    net_arg_get_bigint (&l_val, net_value);
 	    shard_key_id =
-	      (*fn_get_shard_key) (key_column, SHARD_U_TYPE_BIGINT, &l_val,
-				   sizeof (INT64));
+	      (*fn_get_shard_key) (key_column, type, &l_val, sizeof (INT64));
 
 	  }
 	  break;

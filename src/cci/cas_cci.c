@@ -5291,6 +5291,16 @@ dbg_a_type_str (T_CCI_A_TYPE atype)
       return "CCI_A_TYPE_DATE";
     case CCI_A_TYPE_SET:
       return "CCI_A_TYPE_SET";
+    case CCI_A_TYPE_BLOB:
+      return "CCI_A_TYPE_BLOB";
+    case CCI_A_TYPE_CLOB:
+      return "CCI_A_TYPE_CLOB";
+    case CCI_A_TYPE_REQ_HANDLE:
+      return "CCI_A_TYPE_REQ_HANDLE";
+    case CCI_A_TYPE_UINT:
+      return "CCI_A_TYPE_UINT";
+    case CCI_A_TYPE_UBIGINT:
+      return "CCI_A_TYPE_UBIGINT";
     default:
       return "***";
     }
@@ -5347,6 +5357,18 @@ dbg_u_type_str (T_CCI_U_TYPE utype)
       return "CCI_U_TYPE_SEQUENCE";
     case CCI_U_TYPE_OBJECT:
       return "CCI_U_TYPE_OBJECT";
+    case CCI_U_TYPE_RESULTSET:
+      return "CCI_U_TYPE_RESULTSET";
+    case CCI_U_TYPE_BLOB:
+      return "CCI_U_TYPE_BLOB";
+    case CCI_U_TYPE_CLOB:
+      return "CCI_U_TYPE_CLOB";
+    case CCI_U_TYPE_USHORT:
+      return "CCI_U_TYPE_USHORT";
+    case CCI_U_TYPE_UINT:
+      return "CCI_U_TYPE_UINT";
+    case CCI_U_TYPE_UBIGINT:
+      return "CCI_U_TYPE_UBIGINT";
     default:
       return "***";
     }

@@ -144,8 +144,10 @@ static int get_attr_name_from_argv (int argc, void **argv,
 				    char ***ret_attr_name);
 #endif /* 0 */
 static int prepare_column_list_info_set (T_SRV_HANDLE * srv_handle,
-					 T_NET_BUF * net_buf);
-static int send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
+					 T_NET_BUF * net_buf,
+					 T_BROKER_VERSION client_version);
+static int send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
+			      T_BROKER_VERSION client_version);
 static int set_metadata_info (T_SRV_HANDLE * srv_handle);
 static void prepare_column_info_set (T_NET_BUF * net_buf, char ut,
 				     short scale, int prec,
@@ -372,6 +374,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
   int err_code = CAS_NO_ERROR;
   int stmt_type;
   int srv_h_id;
+  T_BROKER_VERSION client_version = req_info->client_version;
 
   srv_h_id = cas_mysql_prepare (&srv_handle, sql_stmt, flag,
 				auto_commit_mode, query_seq_num);
@@ -411,7 +414,8 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
       goto prepare_error;
     }
 
-  err_code = prepare_column_list_info_set (srv_handle, net_buf);
+  err_code =
+    prepare_column_list_info_set (srv_handle, net_buf, client_version);
   if (err_code < 0)
     {
       goto prepare_error;
@@ -646,7 +650,7 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       net_buf_cp_int (net_buf, 0, NULL);	/* result_cache_lifetime */
       net_buf_cp_byte (net_buf, srv_handle->stmt_type);
       net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
-      err_code = send_prepare_info (srv_handle, net_buf);
+      err_code = send_prepare_info (srv_handle, net_buf, client_version);
       if (err_code != CAS_NO_ERROR)
 	{
 	  goto execute_all_error;
@@ -1026,7 +1030,8 @@ ux_free_result (void *res)
 }
 
 char
-ux_db_type_to_cas_type (int db_type)
+ux_db_type_to_cas_type (int db_type, unsigned int flags,
+			T_BROKER_VERSION client_version)
 {
   char cas_type;
   switch (db_type)
@@ -1039,12 +1044,28 @@ ux_db_type_to_cas_type (int db_type)
       /* DB_TYPE_INTEGER */
     case MYSQL_TYPE_INT24:
     case MYSQL_TYPE_LONG:
-      cas_type = CCI_U_TYPE_INT;
+      if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V6)
+	  && (flags & UNSIGNED_FLAG))
+	{
+	  cas_type = CCI_U_TYPE_UINT;
+	}
+      else
+	{
+	  cas_type = CCI_U_TYPE_INT;
+	}
       break;
       /* DB_TYPE_SHORT */
     case MYSQL_TYPE_SHORT:
     case MYSQL_TYPE_TINY:
-      cas_type = CCI_U_TYPE_SHORT;
+      if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V6)
+	  && (flags & UNSIGNED_FLAG))
+	{
+	  cas_type = CCI_U_TYPE_USHORT;
+	}
+      else
+	{
+	  cas_type = CCI_U_TYPE_SHORT;
+	}
       break;
       /* DB_TYPE_FLOAT */
     case MYSQL_TYPE_FLOAT:
@@ -1060,7 +1081,15 @@ ux_db_type_to_cas_type (int db_type)
       break;
       /* DB_TYPE_BIGINT */
     case MYSQL_TYPE_LONGLONG:
-      cas_type = CCI_U_TYPE_BIGINT;
+      if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V6)
+	  && (flags & UNSIGNED_FLAG))
+	{
+	  cas_type = CCI_U_TYPE_UBIGINT;
+	}
+      else
+	{
+	  cas_type = CCI_U_TYPE_BIGINT;
+	}
       break;
       /* DB_TYPE_DATE */
     case MYSQL_TYPE_DATE:
@@ -1114,6 +1143,7 @@ ux_db_type_to_cas_type (int db_type)
     }
   return cas_type;
 }
+
 static void
 prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
 			 const char *col_name, const char *default_value,
@@ -1204,10 +1234,13 @@ cubval_to_mysqlval (int cub_type)
     case CCI_U_TYPE_VARBIT:
       return MYSQL_TYPE_BLOB;
     case CCI_U_TYPE_INT:
+    case CCI_U_TYPE_UINT:
       return MYSQL_TYPE_LONG;
     case CCI_U_TYPE_BIGINT:
+    case CCI_U_TYPE_UBIGINT:
       return MYSQL_TYPE_LONGLONG;
     case CCI_U_TYPE_SHORT:
+    case CCI_U_TYPE_USHORT:
       return MYSQL_TYPE_SHORT;
     case CCI_U_TYPE_FLOAT:
       return MYSQL_TYPE_FLOAT;
@@ -1332,6 +1365,11 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
 
 	out_val->buffer = (void *) &(db_val->data.i);
 	out_val->buffer_length = db_val->size;
+
+	if (cub_type == CCI_U_TYPE_UINT)
+	  {
+	    out_val->is_unsigned = TRUE;
+	  }
       }
       break;
     case MYSQL_TYPE_LONGLONG:
@@ -1343,6 +1381,11 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
 
 	out_val->buffer = (void *) &(db_val->data.bi);
 	out_val->buffer_length = db_val->size;
+
+	if (cub_type == CCI_U_TYPE_UBIGINT)
+	  {
+	    out_val->is_unsigned = TRUE;
+	  }
       }
       break;
     case MYSQL_TYPE_SHORT:
@@ -1354,6 +1397,11 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
 
 	out_val->buffer = (void *) &(db_val->data.sh);
 	out_val->buffer_length = db_val->size;
+
+	if (cub_type == CCI_U_TYPE_USHORT)
+	  {
+	    out_val->is_unsigned = TRUE;
+	  }
       }
       break;
     case MYSQL_TYPE_FLOAT:
@@ -2182,11 +2230,12 @@ ignore_sql_comment (const char *stmt)
 }
 
 static int
-prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
+prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
+			      T_BROKER_VERSION client_version)
 {
   int err_code = CAS_NO_ERROR;
 
-  err_code = send_prepare_info (srv_handle, net_buf);
+  err_code = send_prepare_info (srv_handle, net_buf, client_version);
   if (err_code != CAS_NO_ERROR)
     {
       return err_code;
@@ -2208,7 +2257,8 @@ prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 
 
 static int
-send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
+send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
+		   T_BROKER_VERSION client_version)
 {
   int err_code = CAS_NO_ERROR;
   MYSQL_STMT *stmt = NULL;
@@ -2245,8 +2295,9 @@ send_prepare_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
       for (i = 0; i < num_cols; i++)
 	{
 	  col = cas_mysql_fetch_field (result);
-	  char set_type, cas_type;
-	  cas_type = ux_db_type_to_cas_type (col->type);
+	  char cas_type;
+	  cas_type =
+	    ux_db_type_to_cas_type (col->type, col->flags, client_version);
 	  size = col->length;
 	  type = col->type;
 	  scale = col->decimals;
@@ -2291,7 +2342,6 @@ set_metadata_info (T_SRV_HANDLE * srv_handle)
   char *data;
   MYSQL_FIELD *col;
   int i, type, size, scale, precision;
-  char set_type, cas_type;
 
   stmt = (MYSQL_STMT *) srv_handle->session;
 
@@ -2356,7 +2406,6 @@ set_metadata_info (T_SRV_HANDLE * srv_handle)
       for (i = 0; i < num_cols; i++)
 	{
 	  col = cas_mysql_fetch_field (result);
-	  cas_type = ux_db_type_to_cas_type (col->type);
 	  size = col->length;
 	  type = col->type;
 	  scale = col->decimals;

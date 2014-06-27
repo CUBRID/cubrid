@@ -176,6 +176,8 @@ t_set_get (T_SET * set, int index, T_CCI_A_TYPE a_type, void *value,
     case CCI_A_TYPE_DATE:
       err_code = qe_get_data_date ((T_CCI_U_TYPE) u_type, ele_value_p, value);
       break;
+    case CCI_A_TYPE_UINT:
+    case CCI_A_TYPE_UBIGINT:
     default:
       return CCI_ER_TYPE_CONVERSION;
     }
@@ -216,7 +218,9 @@ t_set_make (T_SET * set, char ele_type, int size, void *value, int *indicator)
     }
 
   if (ele_type == CCI_U_TYPE_SHORT)
-    ele_type = CCI_U_TYPE_INT;
+    {
+      ele_type = CCI_U_TYPE_INT;
+    }
 
   for (i = 0; i < size; i++)
     {
@@ -304,9 +308,12 @@ t_set_make (T_SET * set, char ele_type, int size, void *value, int *indicator)
 	    ADD_ARG_OBJECT (&net_buf, &ele_value);
 	  }
 	  break;
+	case CCI_U_TYPE_USHORT:
+	case CCI_U_TYPE_UINT:
+	case CCI_U_TYPE_UBIGINT:
 	default:
-	  ADD_ARG_BYTES (&net_buf, NULL, 0);
-	  break;
+	  err_code = CCI_ER_TYPE_CONVERSION;
+	  goto set_make_error;
 	}
     }
 

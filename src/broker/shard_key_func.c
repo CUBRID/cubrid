@@ -104,19 +104,19 @@ fn_get_shard_key_default (const char *shard_key, T_SHARD_U_TYPE type,
       return ERROR_ON_MAKE_SHARD_KEY;
     }
 
-  if (type == SHARD_U_TYPE_INT)
+  if (type == SHARD_U_TYPE_INT || type == SHARD_U_TYPE_UINT)
     {
       unsigned int ival;
       ival = (unsigned int) (*(unsigned int *) value);
       return ival % modular_key;
     }
-  else if (type == SHARD_U_TYPE_SHORT)
+  else if (type == SHARD_U_TYPE_SHORT || type == SHARD_U_TYPE_USHORT)
     {
       unsigned short sval;
       sval = (unsigned short) (*(unsigned short *) value);
       return sval % modular_key;
     }
-  else if (type == SHARD_U_TYPE_BIGINT)
+  else if (type == SHARD_U_TYPE_BIGINT || type == SHARD_U_TYPE_UBIGINT)
     {
       UINT64 lval;
       lval = (UINT64) (*(UINT64 *) value);

@@ -92,9 +92,10 @@ public class UConnection {
 	public static final int PROTOCOL_V3 = 3;
 	public static final int PROTOCOL_V4 = 4;
 	public static final int PROTOCOL_V5 = 5;
+	public static final int PROTOCOL_V6 = 6;
 
 	/* Current protocol version */
-	private final static byte CAS_PROTOCOL_VERSION = PROTOCOL_V5;
+	private final static byte CAS_PROTOCOL_VERSION = PROTOCOL_V6;
 	private final static byte CAS_PROTO_INDICATOR = 0x40;
 	private final static byte CAS_PROTO_VER_MASK = 0x3F;
 	private final static byte CAS_RENEWED_ERROR_CODE = (byte) 0x80;

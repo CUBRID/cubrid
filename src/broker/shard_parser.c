@@ -331,7 +331,7 @@ sp_make_int_sp_value_from_string (SP_VALUE * value_p, char *pos, int length)
   char tmp = pos[length];
 
   pos[length] = '\0';
-  result = parse_int (&value_p->integer, pos, 10);
+  result = parse_bigint (&value_p->integer, pos, 10);
   if (result != 0)
     {
       return ER_SP_INVALID_HINT;

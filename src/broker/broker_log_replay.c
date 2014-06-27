@@ -684,13 +684,25 @@ get_cci_type (char *p)
     {
       type = CCI_U_TYPE_NUMERIC;
     }
+  else if (strcmp (p, "UBIGINT") == 0)
+    {
+      type = CCI_U_TYPE_UBIGINT;
+    }
   else if (strcmp (p, "BIGINT") == 0)
     {
       type = CCI_U_TYPE_BIGINT;
     }
+  else if (strcmp (p, "UINT") == 0)
+    {
+      type = CCI_U_TYPE_UINT;
+    }
   else if (strcmp (p, "INT") == 0)
     {
       type = CCI_U_TYPE_INT;
+    }
+  else if (strcmp (p, "USHORT") == 0)
+    {
+      type = CCI_U_TYPE_USHORT;
     }
   else if (strcmp (p, "SHORT") == 0)
     {

@@ -2044,10 +2044,13 @@ public class UStatement {
 			return new BigDecimal(inBuffer.readString(dataSize,
 			        UJCIManager.sysCharsetName));
 		case UUType.U_TYPE_BIGINT:
+		case UUType.U_TYPE_UBIGINT:
 			return new Long(inBuffer.readLong());
 		case UUType.U_TYPE_INT:
+		case UUType.U_TYPE_UINT:
 			return new Integer(inBuffer.readInt());
 		case UUType.U_TYPE_SHORT:
+		case UUType.U_TYPE_USHORT:
 			return new Short(inBuffer.readShort());
 		case UUType.U_TYPE_DATE:
 			return inBuffer.readDate();

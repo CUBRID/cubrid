@@ -64,7 +64,7 @@
 #define NET_STR_TO_INT64(INT64_VALUE, PTR)                              \
         do {                                                            \
           INT64           macro_var_tmp_value;                          \
-          memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_INT64);        \
+          memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_INT64);    \
           macro_var_tmp_value = ntohi64(macro_var_tmp_value);           \
           INT64_VALUE = macro_var_tmp_value;                            \
         } while (0)
@@ -72,20 +72,47 @@
 #define NET_STR_TO_BIGINT(BIGINT_VALUE, PTR)  \
            NET_STR_TO_INT64(BIGINT_VALUE, PTR)
 
+#define NET_STR_TO_UINT64(UINT64_VALUE, PTR)                            \
+        do {                                                            \
+          UINT64           macro_var_tmp_value;                         \
+          memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_INT64);    \
+          macro_var_tmp_value = ntohi64(macro_var_tmp_value);           \
+          UINT64_VALUE = macro_var_tmp_value;                           \
+        } while (0)
+
+#define NET_STR_TO_UBIGINT(UBIGINT_VALUE, PTR)  \
+           NET_STR_TO_UINT64(UBIGINT_VALUE, PTR)
+
 #define NET_STR_TO_INT(INT_VALUE, PTR)		                        \
 	do {					                        \
 	  int		macro_var_tmp_value;		                \
-	  memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_INT);	        \
+	  memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_INT);      \
 	  macro_var_tmp_value = ntohl(macro_var_tmp_value);		\
 	  INT_VALUE = macro_var_tmp_value;		                \
+	} while (0)
+
+#define NET_STR_TO_UINT(UINT_VALUE, PTR)		                \
+	do {					                        \
+	  unsigned int	macro_var_tmp_value;		                \
+	  memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_INT);      \
+	  macro_var_tmp_value = ntohl(macro_var_tmp_value);		\
+	  UINT_VALUE = macro_var_tmp_value;		                \
 	} while (0)
 
 #define NET_STR_TO_SHORT(SHORT_VALUE, PTR)	                        \
 	do {					                        \
 	  short		macro_var_tmp_value;		                \
-	  memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_SHORT);        \
+	  memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_SHORT);    \
 	  macro_var_tmp_value = ntohs(macro_var_tmp_value);		\
 	  SHORT_VALUE = macro_var_tmp_value;		                \
+	} while (0)
+
+#define NET_STR_TO_USHORT(USHORT_VALUE, PTR)	                        \
+	do {					                        \
+	  unsigned short	macro_var_tmp_value;		        \
+	  memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_SHORT);    \
+	  macro_var_tmp_value = ntohs(macro_var_tmp_value);		\
+	  USHORT_VALUE = macro_var_tmp_value;		                \
 	} while (0)
 
 #define NET_STR_TO_BYTE(BYTE_VALUE, PTR)                                \
@@ -444,8 +471,12 @@ extern int qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
 			    int *indicator);
 extern int qe_get_data_bigint (T_CCI_U_TYPE u_type, char *col_value_p,
 			       void *value);
+extern int qe_get_data_ubigint (T_CCI_U_TYPE u_type, char *col_value_p,
+				void *value);
 extern int qe_get_data_int (T_CCI_U_TYPE u_type,
 			    char *col_value_p, void *value);
+extern int qe_get_data_uint (T_CCI_U_TYPE u_type,
+			     char *col_value_p, void *value);
 extern int qe_get_data_float (T_CCI_U_TYPE u_type,
 			      char *col_value_p, void *value);
 extern int qe_get_data_double (T_CCI_U_TYPE u_type,

@@ -168,7 +168,12 @@ extern void ux_set_default_setting (void);
 extern int ux_check_object (DB_OBJECT * obj, T_NET_BUF * net_buf);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 extern void ux_free_result (void *res);
+#if defined(CAS_FOR_MYSQL)
+extern char ux_db_type_to_cas_type (int db_type, unsigned int flags,
+				    T_BROKER_VERSION client_version);
+#else /* CAS_FOR_MYSQL */
 extern char ux_db_type_to_cas_type (int db_type);
+#endif /* !CAS_FOR_MYSQL */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern void ux_set_utype_for_enum (char u_type);

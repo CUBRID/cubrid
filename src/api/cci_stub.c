@@ -689,10 +689,13 @@ cci_u_type_to_type (T_CCI_U_TYPE utype)
     case CCI_U_TYPE_NUMERIC:
       return CI_TYPE_NUMERIC;
     case CCI_U_TYPE_BIGINT:
+    case CCI_U_TYPE_UBIGINT:
       return CI_TYPE_BIGINT;
     case CCI_U_TYPE_INT:
+    case CCI_U_TYPE_UINT:
       return CI_TYPE_INT;
     case CCI_U_TYPE_SHORT:
+    case CCI_U_TYPE_USHORT:
       return CI_TYPE_SHORT;
     case CCI_U_TYPE_MONETARY:
       return CI_TYPE_MONETARY;

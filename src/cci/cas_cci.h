@@ -324,8 +324,11 @@ extern "C"
     CCI_U_TYPE_BLOB = 23,
     CCI_U_TYPE_CLOB = 24,
     CCI_U_TYPE_ENUM = 25,
+    CCI_U_TYPE_USHORT = 26,
+    CCI_U_TYPE_UINT = 27,
+    CCI_U_TYPE_UBIGINT = 28,
 
-    CCI_U_TYPE_LAST = CCI_U_TYPE_ENUM
+    CCI_U_TYPE_LAST = CCI_U_TYPE_UBIGINT
   } T_CCI_U_TYPE;
 
   typedef void *T_CCI_SET;
@@ -344,7 +347,10 @@ extern "C"
     CCI_A_TYPE_BLOB,
     CCI_A_TYPE_CLOB,
     CCI_A_TYPE_REQ_HANDLE,
-    CCI_A_TYPE_LAST = CCI_A_TYPE_REQ_HANDLE,
+    CCI_A_TYPE_UINT,
+    CCI_A_TYPE_UBIGINT,
+
+    CCI_A_TYPE_LAST = CCI_A_TYPE_UBIGINT,
 
     CCI_A_TYTP_LAST = CCI_A_TYPE_LAST	/* typo but backward compatibility */
   } T_CCI_A_TYPE;

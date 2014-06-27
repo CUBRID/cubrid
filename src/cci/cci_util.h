@@ -71,7 +71,9 @@
  ************************************************************************/
 
 extern int ut_str_to_bigint (char *str, INT64 * value);
+extern int ut_str_to_ubigint (char *str, UINT64 * value);
 extern int ut_str_to_int (char *str, int *value);
+extern int ut_str_to_uint (char *str, unsigned int *value);
 extern int ut_str_to_float (char *str, float *value);
 extern int ut_str_to_double (char *str, double *value);
 extern int ut_str_to_date (char *str, T_CCI_DATE * value);
@@ -81,6 +83,7 @@ extern int ut_str_to_timestamp (char *str, T_CCI_DATE * value);
 extern int ut_str_to_datetime (char *str, T_CCI_DATE * value);
 extern int ut_str_to_oid (char *str, T_OBJECT * value);
 extern void ut_int_to_str (INT64 value, char *str, int size);
+extern void ut_uint_to_str (UINT64 value, char *str, int size);
 extern void ut_float_to_str (float value, char *str, int size);
 extern void ut_double_to_str (double value, char *str, int size);
 extern void ut_date_to_str (T_CCI_DATE * value, T_CCI_U_TYPE u_type,

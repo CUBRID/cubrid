@@ -218,7 +218,8 @@ extern "C"
     PROTOCOL_V3 = 3,		/* session information extend with server session key */
     PROTOCOL_V4 = 4,		/* send as_index to driver */
     PROTOCOL_V5 = 5,		/* shard feature, fetch end flag */
-    CURRENT_PROTOCOL = PROTOCOL_V5
+    PROTOCOL_V6 = 6,		/* cci/cas4m support unsigned integer type */
+    CURRENT_PROTOCOL = PROTOCOL_V6
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 

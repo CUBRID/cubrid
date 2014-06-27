@@ -62,12 +62,15 @@ class CUBRIDArray {
 			internalArray = (Object[]) (new byte[length][]);
 			break;
 		case UUType.U_TYPE_SHORT:
+		case UUType.U_TYPE_USHORT:
 			internalArray = (Object[]) (new Short[length]);
 			break;
 		case UUType.U_TYPE_INT:
+		case UUType.U_TYPE_UINT:
 			internalArray = (Object[]) (new Integer[length]);
 			break;
 		case UUType.U_TYPE_BIGINT:
+		case UUType.U_TYPE_UBIGINT:
 			internalArray = (Object[]) (new Long[length]);
 			break;
 		case UUType.U_TYPE_FLOAT:
