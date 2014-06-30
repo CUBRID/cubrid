@@ -23872,21 +23872,6 @@ start_locking:
        * TRAN_REP_CLASS_REP_INSTANCE
        * TRAN_SERIALIZABLE
        */
-      if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk) || num_classes == 0)
-	{
-	  ;
-	}
-      else
-	{
-	  if (btrs_helper.cp_oid_cnt > 1)
-	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "cp_oid_cnt > 1 in an unique index\n"
-			    "index inconsistency.(unique violation).\n");
-	      assert (false);
-	      goto error;
-	    }
-	}
 
       if (btrs_helper.saved_inst_oid.pageid != NULL_PAGEID
 	  || (bts->prev_oid_pos == -1 && btrs_helper.curr_key_locked))
