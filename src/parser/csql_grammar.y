@@ -4076,6 +4076,16 @@ extended_table_spec_list
 			$$ = ctn;
 
 		DBG_PRINT}}
+	| '(' extended_table_spec_list join_table_spec ')'
+		{{
+
+			container_2 ctn;
+			PT_NODE *n1 = CONTAINER_AT_0 ($2);
+			PT_NODE *n2 = $3;
+			SET_CONTAINER_2 (ctn, parser_make_link (n1, n2), FROM_NUMBER (1));
+			$$ = ctn;
+
+		DBG_PRINT}}
 	| table_spec
 		{{
 
