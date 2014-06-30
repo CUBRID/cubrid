@@ -668,7 +668,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      read_whole_line = true;
 	    }
 
-	  if (*ptr == '\n' || *ptr == '\r' || *ptr == ' ')
+	  if (*ptr == '\n' || *ptr == '\r')
 	    {
 	      *ptr = '\0';
 	      line_length--;
@@ -794,6 +794,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
   char *sess_cmd;		/* session command pointer */
   char *argument;		/* argument str */
   int cmd_no;			/* session command number */
+  char *argument_end = NULL;
+  int argument_len = 0;
 #if !defined(WINDOWS)
   HIST_ENTRY *hist_entry;
 #endif /* !WINDOWS */
@@ -830,6 +832,18 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       ;
     }
   argument = (char *) ptr;
+
+  /* remove the end wide-space of argument */
+  argument_len = strlen (argument);
+  if (argument_len > 0)
+    {
+      argument_end = argument + argument_len - 1;
+      for (; argument_end != argument
+	   && iswspace ((wint_t) (*argument_end)); --argument_end)
+	{
+	  *argument_end = '\0';
+	}
+    }
 
   /* Now, `sess_cmd' points to null-terminated session command name and
    * `argument' points to remaining argument (it may be '\0' if not given).
