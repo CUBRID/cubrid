@@ -4581,7 +4581,6 @@ pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
 	  assert (prev->next_holder == NULL);
 	  if (prev->thrd_link == (PGBUF_HOLDER *) holder)
 	    {
-	      assert (holder->next_holder != NULL);
 	      prev->thrd_link = holder->thrd_link;
 	      holder->thrd_link = NULL;
 	      found = true;
