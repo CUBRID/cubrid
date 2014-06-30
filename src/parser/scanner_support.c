@@ -372,6 +372,18 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		}
 	      hint_table[i].arg_list = NULL;
 	      break;
+	    case PT_HINT_QUERY_NO_CACHE:
+	      if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+		{
+		  node->info.query.hint |= hint_table[i].hint;
+		  node->info.query.qcache_hint = hint_table[i].arg_list;
+		  /* force not use the query cache */
+		  node->info.query.reexecute = 1;
+		  node->info.query.do_cache = 0;
+		  node->info.query.do_not_cache = 1;
+		}
+	      hint_table[i].arg_list = NULL;
+	      break;
 	    case PT_HINT_REEXECUTE:	/* reexecute */
 	      if (PT_IS_QUERY_NODE_TYPE (node->node_type))
 		{

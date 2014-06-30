@@ -1141,7 +1141,8 @@ typedef enum
   /* no hash aggregate evaluation */
   PT_HINT_SKIP_UPDATE_NULL = 0x2000000,	/* 0010 0000 0000 0000 0000 0000 0000 */
   PT_HINT_NO_INDEX_LS = 0x4000000,	/* 0100 0000 0000 0000 0000 0000 0000 *//* enable loose index scan */
-  PT_HINT_INDEX_LS = 0x8000000	/* 1000 0000 0000 0000 0000 0000 0000 *//* disable loose index scan */
+  PT_HINT_INDEX_LS = 0x8000000,	/* 1000 0000 0000 0000 0000 0000 0000 *//* disable loose index scan */
+  PT_HINT_QUERY_NO_CACHE = 0x10000000	/* 0001 0000 0000 0000 0000 0000 0000 0000 *//* don't use the query cache */
 } PT_HINT_ENUM;
 
 
