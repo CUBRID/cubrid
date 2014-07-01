@@ -553,11 +553,15 @@ vid_flush_and_rehash_lbl (DB_VALUE * value)
       return value;
     }
 
+  if (DB_VALUE_TYPE (value) != DB_TYPE_OBJECT)
+    {
+      return value;
+    }
+
   mop = DB_GET_OBJECT (value);
 
   /* if val has anything other than a new dirty proxy object then do nothing */
-  if (DB_VALUE_TYPE (value) != DB_TYPE_OBJECT ||
-      mop == NULL || !vid_is_new_pobj (mop))
+  if (mop == NULL || !vid_is_new_pobj (mop))
     {
       return value;
     }
