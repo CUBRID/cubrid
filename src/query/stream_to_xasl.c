@@ -596,7 +596,6 @@ stx_free_xasl_unpack_info (void *xasl_unpack_info)
 void
 stx_free_additional_buff (THREAD_ENTRY * thread_p, void *xasl_unpack_info)
 {
-#if defined (SERVER_MODE)
   if (xasl_unpack_info)
     {
       UNPACK_EXTRA_BUF *add_buff =
@@ -610,7 +609,6 @@ stx_free_additional_buff (THREAD_ENTRY * thread_p, void *xasl_unpack_info)
 	  add_buff = temp;
 	}
     }
-#endif /* SERVER_MODE */
 }
 
 /*
