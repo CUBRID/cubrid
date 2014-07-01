@@ -200,6 +200,9 @@ poll (struct pollfd *fds, nfds_t nfds, int timeout)
   return r;
 }
 
+/* Number of 100 nanosecond units from 1/1/1601 to 1/1/1970 */
+#define EPOCH_BIAS_IN_100NANOSECS 116444736000000000LL
+
 /*
  * gettimeofday - Windows port of Unix gettimeofday()
  *   return: none
@@ -209,32 +212,39 @@ poll (struct pollfd *fds, nfds_t nfds, int timeout)
 int
 gettimeofday (struct timeval *tp, void *tzp)
 {
-#if 1				/* _ftime() version */
-  struct _timeb tm;
-  _ftime (&tm);
-  tp->tv_sec = (long) tm.time;
-  tp->tv_usec = (long) tm.millitm * 1000;
+/*
+ * Rapid calculation divisor for 10,000,000
+ * x/10000000 == x/128/78125 == (x>>7)/78125
+ */
+#define RAPID_CALC_DIVISOR 78125
+
+  union
+  {
+    unsigned __int64 nsec100;	/* in 100 nanosecond units */
+    FILETIME ft;
+  } now;
+
+  GetSystemTimeAsFileTime (&now.ft);
+
+  /*
+   * Optimization for sec = (long) (x / 10000000);
+   * where "x" is number of 100 nanoseconds since 1/1/1970.
+   */
+  tp->tv_sec = (long) (((now.nsec100 - EPOCH_BIAS_IN_100NANOSECS) >> 7)
+		       / RAPID_CALC_DIVISOR);
+
+  /*
+   * Optimization for usec = (long) (x % 10000000) / 10;
+   * Let c = x / b,
+   * An alternative for MOD operation (x % b) is: (x - c * b),
+   *   which consumes less time, specially, for a 64 bit "x".
+   */
+  tp->tv_usec = ((long) (now.nsec100 - EPOCH_BIAS_IN_100NANOSECS -
+			 (((unsigned __int64) (tp->tv_sec *
+					       RAPID_CALC_DIVISOR)) << 7))) /
+    10;
+
   return 0;
-#else /* GetSystemTimeAsFileTime version */
-  FILETIME ft;
-  unsigned __int64 tmpres = 0;
-  static int tzflag;
-
-  GetSystemTimeAsFileTime (&ft);
-
-  tmpres |= ft.dwHighDateTime;
-  tmpres <<= 32;
-  tmpres |= ft.dwLowDateTime;
-
-  tmpres -= DELTA_EPOCH_IN_MICROSECS;
-
-  tmpres /= 10;
-
-  tv->tv_sec = (tmpres / 1000000UL);
-  tv->tv_usec = (tmpres % 1000000UL);
-
-  return 0;
-#endif
 }
 
 #define LOCKING_SIZE 2000
