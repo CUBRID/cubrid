@@ -234,6 +234,11 @@ t_set_make (T_SET * set, char ele_type, int size, void *value, int *indicator)
 
       switch (u_type)
 	{
+	case CCI_U_TYPE_NULL:
+	  {
+	    ADD_ARG_BYTES (&net_buf, NULL, 0);
+	  }
+	  break;
 	case CCI_U_TYPE_CHAR:
 	case CCI_U_TYPE_STRING:
 	case CCI_U_TYPE_NCHAR:
@@ -311,6 +316,8 @@ t_set_make (T_SET * set, char ele_type, int size, void *value, int *indicator)
 	case CCI_U_TYPE_USHORT:
 	case CCI_U_TYPE_UINT:
 	case CCI_U_TYPE_UBIGINT:
+	case CCI_U_TYPE_BLOB:
+	case CCI_U_TYPE_CLOB:
 	default:
 	  err_code = CCI_ER_TYPE_CONVERSION;
 	  goto set_make_error;
