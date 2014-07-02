@@ -7076,7 +7076,7 @@ tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status,
 	   */
 	  if (trigger->class_mop != NULL)
 	    {
-	      sm_invalidate_trigger_cache (trigger->class_mop);
+	      error = sm_invalidate_trigger_cache (trigger->class_mop);
 	    }
 
 	  /*
