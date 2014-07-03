@@ -2193,23 +2193,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
      and the parameters (host variables - DB_VALUES). */
   if (qmgr_is_allowed_result_cache (*flag_p))
     {
-      /* check once more to ensure that the related XASL entry exists */
-      xasl_cache_entry_p = qexec_check_xasl_cache_ent_by_xasl (thread_p,
-							       xasl_id_p,
-							       -1, NULL);
-      if (xasl_cache_entry_p == NULL)
-	{
-	  /* it could be happen if the XASL entry was (to be) deleted */
-	  er_log_debug (ARG_FILE_LINE,
-			"xqmgr_execute_query: "
-			"qexec_check_xasl_cache_ent_by_xasl failed "
-			"xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n",
-			xasl_id_p->first_vpid.pageid,
-			xasl_id_p->first_vpid.volid,
-			xasl_id_p->temp_vfid.fileid,
-			xasl_id_p->temp_vfid.volid);
-	}
-      else
+      /* check once more to ensure that the related XASL entry is still valid */
+      if (!xasl_cache_entry_p->deletion_marker)
 	{
 	  if (list_id_p == NULL)
 	    {
