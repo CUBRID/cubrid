@@ -5156,7 +5156,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_TUPLE_VALUE] = pt_apply_tuple_value;
   pt_apply_func_array[PT_QUERY_TRACE] = pt_apply_query_trace;
   pt_apply_func_array[PT_INSERT_VALUE] = pt_apply_insert_value;
-  pt_apply_func_array[PT_KILL] = pt_apply_kill;
+  pt_apply_func_array[PT_KILL_STMT] = pt_apply_kill;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -5271,7 +5271,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_TUPLE_VALUE] = pt_init_tuple_value;
   pt_init_func_array[PT_QUERY_TRACE] = pt_init_query_trace;
   pt_init_func_array[PT_INSERT_VALUE] = pt_init_insert_value;
-  pt_init_func_array[PT_KILL] = pt_init_kill;
+  pt_init_func_array[PT_KILL_STMT] = pt_init_kill;
 
   pt_init_f = pt_init_func_array;
 }

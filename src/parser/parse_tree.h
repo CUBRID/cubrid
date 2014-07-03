@@ -849,7 +849,7 @@ enum pt_node_type
   PT_INSERT_VALUE,
   PT_NAMED_ARG,
   PT_SHOWSTMT,
-  PT_KILL,
+  PT_KILL_STMT,
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };

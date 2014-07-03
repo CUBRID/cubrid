@@ -6616,7 +6616,7 @@ show_stmt
 kill_stmt
 	: KILL arg_value_list
 		{{
-			PT_NODE *node = parser_new_node (this_parser, PT_KILL);
+			PT_NODE *node = parser_new_node (this_parser, PT_KILL_STMT);
 
 			if (node)
 			  {
@@ -6630,7 +6630,7 @@ kill_stmt
 	| KILL kill_type arg_value_list
 		{{
 			int type = $2;
-			PT_NODE *node = parser_new_node (this_parser, PT_KILL);
+			PT_NODE *node = parser_new_node (this_parser, PT_KILL_STMT);
 
 			if (node)
 			  {

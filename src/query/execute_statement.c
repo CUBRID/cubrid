@@ -3486,7 +3486,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_QUERY_TRACE:
       err = do_set_query_trace (parser, statement);
       break;
-    case PT_KILL:
+    case PT_KILL_STMT:
       err = do_kill (parser, statement);
       break;
     default:

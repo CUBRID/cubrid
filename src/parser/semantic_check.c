@@ -11749,7 +11749,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
       pt_check_truncate (parser, node);
       break;
 
-    case PT_KILL:
+    case PT_KILL_STMT:
       pt_check_kill (parser, node);
       break;
 
