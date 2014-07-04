@@ -717,13 +717,23 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 
   if (res_count < 0)
     {
-      err_code = res_count;
-      goto execute_error;
+      return res_count;
     }
 
   err_code = execute_array_info_decode (result_msg + 4, result_msg_size - 4,
 					EXECUTE_EXEC, &qr, &remain_msg_size);
-  if (err_code < 0 || qr == NULL)
+  if (err_code < 0 || remain_msg_size < 0)
+    {
+      FREE_MEM (result_msg);
+      if (err_code == CCI_ER_NO_ERROR)
+	{
+	  return CCI_ER_COMMUNICATION;
+	}
+
+      return err_code;
+    }
+
+  if (qr == NULL)
     {
       req_handle->num_query_res = 0;
       req_handle->qr = NULL;
@@ -1003,8 +1013,18 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   err_code = execute_array_info_decode (result_msg, result_msg_size,
 					EXECUTE_EXEC, &qr, &remain_msg_size);
+  if (err_code < 0 || remain_msg_size < 0)
+    {
+      FREE_MEM (result_msg_org);
+      if (err_code == CCI_ER_NO_ERROR)
+	{
+	  return CCI_ER_COMMUNICATION;
+	}
 
-  if (err_code < 0 || qr == NULL)
+      return err_code;
+    }
+
+  if (qr == NULL)
     {
       req_handle->num_query_res = 0;
       req_handle->qr = NULL;
@@ -1055,7 +1075,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 	  err_code = prepare_info_decode (msg, &remain_msg_size, req_handle);
 	  if (err_code < 0)
 	    {
-	      FREE_MEM (result_msg);
+	      FREE_MEM (result_msg_org);
 	      return err_code;
 	    }
 	}
@@ -2274,7 +2294,11 @@ qe_get_db_version (T_CON_HANDLE * con_handle, char *out_buf, int buf_size)
 
   result_msg_size -= 4;
 
-  if (err_code >= 0)
+  if (result_msg_size <= 0)
+    {
+      err_code = CCI_ER_COMMUNICATION;
+    }
+  else if (err_code >= 0)
     {
       if (out_buf)
 	{
