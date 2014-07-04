@@ -808,6 +808,12 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 	  return err_code;
 	}
     }
+  else
+    {
+      assert (*(recv_msg_header.msg_body_size_ptr) > 0);
+      result_code = CCI_ER_COMMUNICATION;
+      goto error_return;
+    }
 
   if (msg)
     {
@@ -1200,7 +1206,8 @@ net_recv_msg_header (SOCKET sock_fd, int port, MSG_HEADER * header,
     }
   *(header->msg_body_size_ptr) = ntohl (*(header->msg_body_size_ptr));
 
-  if ((*header->msg_body_size_ptr) < 0)
+  assert (*(header->msg_body_size_ptr) > 0);
+  if (*(header->msg_body_size_ptr) <= 0)
     {
       return CCI_ER_COMMUNICATION;
     }
