@@ -29,6 +29,7 @@
 #include "config.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <string.h>
 #include <errno.h>
 #include <math.h>
@@ -405,6 +406,7 @@ static int db_check_or_create_null_term_string (const DB_VALUE * str_val,
 						bool ignore_trail_spaces,
 						char **str_out,
 						bool * do_alloc);
+static bool is_str_valid_number (char *num_p, int base);
 static bool is_valid_ip_slice (const char *ipslice);
 
 /* reads cnt digits until non-digit char reached,
@@ -25259,6 +25261,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
   unsigned char num_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
   unsigned char res_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
   char *num_p_str = (char *) num_str, *res_p_str = NULL;
+  char *num_end_ptr = NULL;
   unsigned char swap = 0;
   int num_size = 0, res_size = 0;
 
@@ -25329,6 +25332,17 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
 
 	case DB_TYPE_NUMERIC:
 	  num_p_str = numeric_db_value_print ((DB_VALUE *) num);
+	  /* set the decimal point to '\0' to bypass end_ptr check, make it looks
+	   * like we already trucated out the fractional part, as we do to float.
+	   */
+	  for (i = 0; num_p_str[i] != '\0'; ++i)
+	    {
+	      if (num_p_str[i] == '.')
+		{
+		  num_p_str[i] = '\0';
+		  break;
+		}
+	    }
 	  break;
 
 	case DB_TYPE_FLOAT:
@@ -25367,6 +25381,11 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
       strncpy (num_str, DB_PULL_STRING (num), str_size);
       num_str[str_size] = '\0';
       num_p_str = num_str;
+      if (!is_str_valid_number (num_p_str, from_base_int))
+	{
+	  error_code = ER_OBJ_INVALID_ARGUMENTS;
+	  goto error;
+	}
     }
   else if (TP_IS_BIT_TYPE (num_type))
     {
@@ -25398,11 +25417,24 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
   errno = 0;
   if (num_is_signed)
     {
-      base10 = (UINT64) strtoll (num_p_str, NULL, from_base_int);
+      base10 = (UINT64) strtoll (num_p_str, &num_end_ptr, from_base_int);
     }
   else
     {
-      base10 = (UINT64) strtoull (num_p_str, NULL, from_base_int);
+      base10 = (UINT64) strtoull (num_p_str, &num_end_ptr, from_base_int);
+    }
+
+  if (errno != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE_OVERFLOW,
+	      2, pr_type_name (num_type), pr_type_name (DB_TYPE_BIGINT));
+      error_code = ER_TP_CANT_COERCE_OVERFLOW;
+      goto error;
+    }
+  if (num_end_ptr != NULL && *num_end_ptr != '\0')
+    {
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      goto error;
     }
 
   /* compute signed part of number */
@@ -25466,6 +25498,10 @@ error:
     }
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
+      if (er_errid () != NO_ERROR)
+	{
+	  er_clear ();
+	}
       return NO_ERROR;
     }
 
@@ -25474,6 +25510,90 @@ error:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
     }
   return error_code;
+}
+
+/*
+ * is_str_valid_number() - check whether the given string is a valid number.
+ *
+ *   return: true if it's valid, false otherwise
+ *   num_p(in): the number in string pointer
+ *   base(in): from 2 to 36 inclusive
+ *
+ */
+bool
+is_str_valid_number (char *num_p, int base)
+{
+  char digit_max = (char) ('0' + base);
+  char lower_char_max = (char) ('a' - 10 + base);
+  char upper_char_max = (char) ('A' - 10 + base);
+  bool has_decimal_point = false;
+
+  /* skip leading space */
+  for (; *num_p != '\0'; ++num_p)
+    {
+      if (!isspace (*num_p))
+	{
+	  break;
+	}
+    }
+
+  /* just space, no digit */
+  if (*num_p == '\0')
+    {
+      return false;
+    }
+
+  /* check number sign */
+  if (*num_p == '-' || *num_p == '+')
+    {
+      ++num_p;
+    }
+
+  /* check base16 prefix '0x' */
+  if (base == 16 && *num_p == '0'
+      && (*(num_p + 1) == 'x' || *(num_p + 1) == 'X'))
+    {
+      num_p += 2;
+
+      /* just space, no digit */
+      if (*num_p == '\0')
+	{
+	  return false;
+	}
+    }
+
+  /* check the digits */
+  for (; *num_p != '\0'; ++num_p)
+    {
+      if (base < 10 && *num_p >= '0' && *num_p < digit_max)
+	{
+	  continue;
+	}
+      if (base >= 10 && *num_p >= '0' && *num_p <= '9')
+	{
+	  continue;
+	}
+
+      if (base > 10 && *num_p >= 'a' && *num_p < lower_char_max)
+	{
+	  continue;
+	}
+      if (base > 10 && *num_p >= 'A' && *num_p < upper_char_max)
+	{
+	  continue;
+	}
+
+      if (*num_p == '.' && !has_decimal_point)
+	{
+	  /* truncate out the fractional part */
+	  *num_p = '\0';
+	  has_decimal_point = true;
+	  continue;
+	}
+
+      return false;
+    }
+  return true;
 }
 
 /*

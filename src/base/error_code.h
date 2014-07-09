@@ -244,7 +244,7 @@
 #define ER_TP_INCOMPATIBLE_DOMAINS                  -179	/* not used */
 #define ER_TP_INCOMPATIBLE_VALUE                    -180
 #define ER_TP_CANT_COERCE                           -181
-#define ER_TP_CANT_COERCE_OVERFLOW                  -182	/* not used */
+#define ER_TP_CANT_COERCE_OVERFLOW                  -182
 
 #define ER_NET_DATASIZE_MISMATCH                    -183
 #define ER_NET_CANT_ALLOC_BUFFER                    -184

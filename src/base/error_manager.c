@@ -1626,7 +1626,6 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 
   /* check iff not used error code */
   assert (err_id != ER_TP_INCOMPATIBLE_DOMAINS);
-  assert (err_id != ER_TP_CANT_COERCE_OVERFLOW);
   assert (err_id != ER_NUM_OVERFLOW);
   assert (err_id != ER_QPROC_OVERFLOW_COERCION);
 
