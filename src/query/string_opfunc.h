@@ -449,6 +449,7 @@ extern int db_like_bound (const DB_VALUE * const src_pattern,
 			  DB_VALUE * const result_bound,
 			  const bool compute_lower_bound);
 extern int db_hex (const DB_VALUE * param, DB_VALUE * result);
+extern int db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result);
 extern int db_ascii (const DB_VALUE * param, DB_VALUE * result);
 extern int db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
 		    const DB_VALUE * to_base, DB_VALUE * result);

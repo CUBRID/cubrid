@@ -1420,6 +1420,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_VERSION:
     case PT_CURRENT_USER:
     case PT_LIST_DBS:
+    case PT_SYS_GUID:
     case PT_USER:
       num = 0;
 
@@ -6330,6 +6331,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_USER:
     case PT_STR_TO_DATE:
     case PT_LIST_DBS:
+    case PT_SYS_GUID:
     case PT_IF:
     case PT_POWER:
     case PT_BIT_TO_BLOB:
@@ -10080,8 +10082,9 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	if (arg2->node_type == PT_VALUE)
 	  {
-	    type = db_check_time_date_format (arg2->info.value.data_value.
-					      str->bytes);
+	    type =
+	      db_check_time_date_format (arg2->info.value.data_value.
+					 str->bytes);
 	  }
 	else
 	  {
@@ -11819,6 +11822,13 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
       /* Set a large enough precision so that CUBRID is able to handle
          versions like 'xxx.xxx.xxx.xxxx'. */
       dt->info.data_type.precision = 16;
+      break;
+    case PT_SYS_GUID:
+      assert (dt == NULL);
+      dt = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
+      /* Set a large enough precision so that CUBRID is able to handle
+         GUID like 'B5B2D2FA9633460F820589FFDBD8C309'. */
+      dt->info.data_type.precision = 32;
       break;
     case PT_CHR:
       assert (dt != NULL);
@@ -18445,6 +18455,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
        * is always resolved on server*/
       return 0;
     case PT_LIST_DBS:
+    case PT_SYS_GUID:
     case PT_ASSIGN:
     case PT_LIKE_ESCAPE:
     case PT_BETWEEN_AND:
@@ -20320,10 +20331,10 @@ static int
 generic_func_casecmp (const void *a, const void *b)
 {
   return
-    intl_identifier_casecmp (((const GENERIC_FUNCTION_RECORD *) a)->
-			     function_name,
-			     ((const GENERIC_FUNCTION_RECORD *) b)->
-			     function_name);
+    intl_identifier_casecmp (((const GENERIC_FUNCTION_RECORD *)
+			      a)->function_name,
+			     ((const GENERIC_FUNCTION_RECORD *)
+			      b)->function_name);
 }
 
 /*
@@ -22087,8 +22098,8 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node,
 							wrap_dt->info.
 							data_type.
 							dec_precision,
-							wrap_dt, true)
-		      != NO_ERROR)
+							wrap_dt,
+							true) != NO_ERROR)
 		    {
 		      goto cannot_coerce;
 		    }
@@ -24439,8 +24450,8 @@ pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * node)
 	  new_node = pt_coerce_node_collation (parser, arg,
 					       common_coll_infer.coll_id,
 					       common_coll_infer.codeset,
-					       arg_coll_infer.
-					       can_force_cs, false,
+					       arg_coll_infer.can_force_cs,
+					       false,
 					       PT_COLL_WRAP_TYPE_FOR_MAYBE
 					       (arg->type_enum),
 					       PT_TYPE_NONE);
@@ -24478,9 +24489,8 @@ pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * node)
       new_node =
 	pt_coerce_node_collation (parser, node, common_coll_infer.coll_id,
 				  common_coll_infer.codeset, true, false,
-				  PT_COLL_WRAP_TYPE_FOR_MAYBE (node->
-							       type_enum),
-				  PT_TYPE_NONE);
+				  PT_COLL_WRAP_TYPE_FOR_MAYBE
+				  (node->type_enum), PT_TYPE_NONE);
       if (new_node != NULL)
 	{
 	  node = new_node;

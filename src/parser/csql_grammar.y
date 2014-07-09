@@ -292,7 +292,8 @@ static FUNCTION_MAP functions[] = {
   {"trace_stats", PT_TRACE_STATS},
   {"str_to_date", PT_STR_TO_DATE},
   {"to_base64", PT_TO_BASE64},
-  {"from_base64", PT_FROM_BASE64}
+  {"from_base64", PT_FROM_BASE64},
+  {"sys_guid", PT_SYS_GUID}
 };
 
 
@@ -23224,6 +23225,21 @@ parser_keyword_func (const char *name, PT_NODE * args)
       parser_cannot_cache = true;
       parser_cannot_prepare = true;
       return parser_make_expression (this_parser, key->op, NULL, NULL, NULL);
+
+    case PT_SYS_GUID:
+      {
+        PT_NODE *expr;
+        if (c != 0)
+          {
+            return NULL;
+          }
+        parser_cannot_cache = true;
+
+        expr = parser_make_expression (this_parser, key->op, NULL, NULL, NULL);
+        expr->do_not_fold = 1;
+
+        return expr;
+      }
 
       /* arg 0 or 1 */
     case PT_RAND:
