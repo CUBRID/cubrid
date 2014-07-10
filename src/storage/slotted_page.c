@@ -213,10 +213,6 @@ static void spage_dump_slots (FILE * fp, const SPAGE_SLOT * sptr,
 static void spage_dump_record (FILE * Fp, PAGE_PTR page_p, PGSLOTID slot_id,
 			       SPAGE_SLOT * slot_p);
 
-#ifdef SPAGE_DEBUG
-static void spage_check (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
-#endif
-
 static bool spage_is_unknown_slot (PGSLOTID slotid, SPAGE_HEADER * sphdr,
 				   SPAGE_SLOT * sptr);
 static SPAGE_SLOT *spage_find_slot (PAGE_PTR pgptr, SPAGE_HEADER * sphdr,
@@ -4487,18 +4483,18 @@ spage_check_num_slots (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 }
 #endif
 
-#ifdef SPAGE_DEBUG
 /*
  * spage_check () - Check consistency of page. This function is used for
  *               debugging purposes
  *   return: void
  *   pgptr(in): Pointer to slotted page
  */
-static void
+int
 spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 {
   SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *slot_p;
+  char err_msg[1024];
   int used_length = 0;
   int i, nrecs;
 
@@ -4525,44 +4521,61 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 
   if (used_length + page_header_p->total_free > DB_PAGESIZE)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "spage_check: Inconsistent page = %d of volume = %s.\n"
-		    "(Used_space + tfree > DB_PAGESIZE\n (%d + %d) > %d \n "
-		    " %d > %d\n",
-		    pgbuf_get_page_id (page_p),
-		    pgbuf_get_volume_label (page_p), used_length,
-		    page_header_p->total_free, DB_PAGESIZE,
-		    used_length + page_header_p->total_free, DB_PAGESIZE);
+      snprintf (err_msg, sizeof (err_msg),
+		"spage_check: Inconsistent page = %d of volume = %s.\n"
+		"(Used_space + tfree > DB_PAGESIZE\n (%d + %d) > %d \n "
+		" %d > %d\n",
+		pgbuf_get_page_id (page_p),
+		pgbuf_get_volume_label (page_p), used_length,
+		page_header_p->total_free, DB_PAGESIZE,
+		used_length + page_header_p->total_free, DB_PAGESIZE);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER,
+	      3, pgbuf_get_page_id (page_p),
+	      pgbuf_get_volume_label (page_p), err_msg);
+
       assert (false);
+      return ER_SP_INVALID_HEADER;
     }
 
   if ((page_header_p->cont_free + page_header_p->offset_to_free_area +
        SSIZEOF (SPAGE_SLOT) * page_header_p->num_slots) > DB_PAGESIZE)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "spage_check: Inconsistent page = %d of volume = %s.\n"
-		    " (cfree + foffset + SIZEOF(SPAGE_SLOT) * nslots) > "
-		    " DB_PAGESIZE\n (%d + %d + (%d * %d)) > %d\n %d > %d\n",
-		    pgbuf_get_page_id (page_p),
-		    pgbuf_get_volume_label (page_p), page_header_p->cont_free,
-		    page_header_p->offset_to_free_area, sizeof (SPAGE_SLOT),
-		    page_header_p->num_slots, DB_PAGESIZE,
-		    (page_header_p->cont_free +
-		     page_header_p->offset_to_free_area +
-		     sizeof (SPAGE_SLOT) * page_header_p->num_slots),
-		    DB_PAGESIZE);
+      snprintf (err_msg, sizeof (err_msg),
+		"spage_check: Inconsistent page = %d of volume = %s.\n"
+		" (cfree + foffset + SIZEOF(SPAGE_SLOT) * nslots) > "
+		" DB_PAGESIZE\n (%d + %d + (%d * %d)) > %d\n %d > %d\n",
+		pgbuf_get_page_id (page_p),
+		pgbuf_get_volume_label (page_p), page_header_p->cont_free,
+		page_header_p->offset_to_free_area, sizeof (SPAGE_SLOT),
+		page_header_p->num_slots, DB_PAGESIZE,
+		(page_header_p->cont_free +
+		 page_header_p->offset_to_free_area +
+		 sizeof (SPAGE_SLOT) * page_header_p->num_slots),
+		DB_PAGESIZE);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER,
+	      3, pgbuf_get_page_id (page_p),
+	      pgbuf_get_volume_label (page_p), err_msg);
+
       assert (false);
+      return ER_SP_INVALID_HEADER;
     }
 
   if (page_header_p->cont_free <= (int) -(page_header_p->alignment - 1))
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "spage_check: Cfree %d is inconsistent in page = %d"
-		    " of volume = %s. Cannot be < -%d\n",
-		    page_header_p->cont_free, pgbuf_get_page_id (page_p),
-		    pgbuf_get_volume_label (page_p),
-		    page_header_p->alignment);
+      snprintf (err_msg, sizeof (err_msg),
+		"spage_check: Cfree %d is inconsistent in page = %d"
+		" of volume = %s. Cannot be < -%d\n",
+		page_header_p->cont_free, pgbuf_get_page_id (page_p),
+		pgbuf_get_volume_label (page_p), page_header_p->alignment);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER,
+	      3, pgbuf_get_page_id (page_p),
+	      pgbuf_get_volume_label (page_p), err_msg);
+
       assert (false);
+      return ER_SP_INVALID_HEADER;
     }
 
   /* Update any savings, before we check for any incosistencies */
@@ -4579,28 +4592,41 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 #endif
 
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"spage_check: Other savings of %d is inconsistent in page = %d"
-			" of volume = %s.\n",
-			other_saved_spaces,
-			pgbuf_get_page_id (page_p),
-			pgbuf_get_volume_label (page_p));
+	  snprintf (err_msg, sizeof (err_msg),
+		    "spage_check: Other savings of %d is inconsistent in page = %d"
+		    " of volume = %s.\n",
+		    other_saved_spaces,
+		    pgbuf_get_page_id (page_p),
+		    pgbuf_get_volume_label (page_p));
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER,
+		  3, pgbuf_get_page_id (page_p),
+		  pgbuf_get_volume_label (page_p), err_msg);
+
 	  assert (false);
+	  return ER_SP_INVALID_HEADER;
 	}
 
       if (total_saved < 0)
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"spage_check: Total savings of %d is inconsistent in page = %d"
-			" of volume = %s. Cannot be < 0\n",
-			total_saved,
-			pgbuf_get_page_id (page_p),
-			pgbuf_get_volume_label (page_p));
+	  snprintf (err_msg, sizeof (err_msg),
+		    "spage_check: Total savings of %d is inconsistent in page = %d"
+		    " of volume = %s. Cannot be < 0\n",
+		    total_saved,
+		    pgbuf_get_page_id (page_p),
+		    pgbuf_get_volume_label (page_p));
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER,
+		  3, pgbuf_get_page_id (page_p),
+		  pgbuf_get_volume_label (page_p), err_msg);
+
 	  assert (false);
+	  return ER_SP_INVALID_HEADER;
 	}
     }
+
+  return NO_ERROR;
 }
-#endif
 
 /*
  * spage_check_slot_owner () -

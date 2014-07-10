@@ -749,6 +749,18 @@ static int heap_eval_function_index (THREAD_ENTRY * thread_p,
 				     DB_VALUE * result,
 				     FUNC_PRED_UNPACK_INFO * func_pred);
 
+static DISK_ISVALID heap_check_all_pages_by_heapchain (THREAD_ENTRY *
+						       thread_p, HFID * hfid,
+						       HEAP_CHKALL_RELOCOIDS *
+						       chk_objs,
+						       INT32 * num_checked);
+
+static DISK_ISVALID heap_check_all_pages_by_allocset (THREAD_ENTRY * thread_p,
+						      HFID * hfid,
+						      HEAP_CHKALL_RELOCOIDS *
+						      chk_objs,
+						      INT32 * num_checked);
+
 static DISK_ISVALID heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk);
 static DISK_ISVALID heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk);
 static int heap_chkreloc_print_notfound (const void *ignore_reloc_oid,
@@ -17847,36 +17859,17 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
   return ret;
 }
 
-/*
- * heap_check_all_pages () - Validate all pages known by given heap vs file manger
- *   return: DISK_INVALID, DISK_VALID, DISK_ERROR
- *   hfid(in): : Heap identifier
- *
- * Note: Verify that all pages known by the given heap are valid. That
- * is, that they are valid from the point of view of the file manager.
- */
-DISK_ISVALID
-heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
+static DISK_ISVALID
+heap_check_all_pages_by_heapchain (THREAD_ENTRY * thread_p, HFID * hfid,
+				   HEAP_CHKALL_RELOCOIDS * chk_objs,
+				   INT32 * num_checked)
 {
-  VPID vpid;			/* Page-volume identifier            */
+  VPID vpid;
   VPID *vpidptr_ofpgptr;
-  PAGE_PTR pgptr = NULL;	/* Page pointer                      */
-  HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure          */
-  RECDES hdr_recdes;		/* Header record descriptor          */
-  DISK_ISVALID valid_pg = DISK_VALID;
+  PAGE_PTR pgptr = NULL;
   INT32 npages = 0;
-  int i;
-  HEAP_CHKALL_RELOCOIDS chk;
-  HEAP_CHKALL_RELOCOIDS *chk_objs = &chk;
-
-
-  valid_pg = heap_chkreloc_start (chk_objs);
-  if (valid_pg != DISK_VALID)
-    {
-      chk_objs = NULL;
-    }
-
-  /* Scan every page of the heap to find out if they are valid */
+  DISK_ISVALID valid_pg = DISK_VALID;
+  bool spg_error = false;
 
   vpid.volid = hfid->vfid.volid;
   vpid.pageid = hfid->hpgid;
@@ -17898,6 +17891,14 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
 	  /* something went wrong, return */
 	  valid_pg = DISK_ERROR;
 	  break;
+	}
+
+      if (spage_check (thread_p, pgptr) != NO_ERROR)
+	{
+	  /* if spage has an error, try to go on.
+	   * but, this page is corrupted.
+	   */
+	  spg_error = true;
 	}
 
       (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
@@ -17928,25 +17929,167 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
       pgbuf_unfix_and_init (thread_p, pgptr);
     }
 
-  if (chk_objs != NULL)
+  *num_checked = npages;
+  return (spg_error == true) ? DISK_ERROR : valid_pg;
+}
+
+static DISK_ISVALID
+heap_check_all_pages_by_allocset (THREAD_ENTRY * thread_p, HFID * hfid,
+				  HEAP_CHKALL_RELOCOIDS * chk_objs,
+				  int *num_checked)
+{
+#define HEAP_SET_NUMVPIDS 10
+
+  INT32 checked = 0;
+  INT32 npages = 0;
+  PAGE_PTR pgptr;
+  VPID set_vpids[HEAP_SET_NUMVPIDS];
+  int num_found;
+  int i, j;
+  DISK_ISVALID valid_pg = DISK_VALID;
+
+  npages = file_get_numpages (thread_p, &hfid->vfid);
+
+  for (i = 0; i < npages; i += num_found)
     {
-      if (valid_pg == DISK_VALID)
+      num_found = file_find_nthpages (thread_p, &hfid->vfid, &set_vpids[0], i,
+				      ((npages - i <
+					HEAP_SET_NUMVPIDS) ? npages -
+				       i : HEAP_SET_NUMVPIDS));
+
+      if (num_found == -1)
 	{
-	  valid_pg = heap_chkreloc_end (chk_objs);
+	  /* error */
+	  valid_pg = DISK_ERROR;
+	  break;
 	}
-      else
+
+      for (j = 0; j < num_found; j++)
+	{
+	  checked++;
+
+	  if (file_isvalid_page_partof (thread_p, &set_vpids[j], &hfid->vfid)
+	      != DISK_VALID)
+	    {
+	      valid_pg = DISK_ERROR;
+	      continue;
+	    }
+
+	  pgptr =
+	    heap_scan_pb_lock_and_fetch (thread_p, &set_vpids[j], OLD_PAGE,
+					 S_LOCK, NULL);
+	  if (pgptr == NULL)
+	    {
+	      valid_pg = DISK_ERROR;
+	      continue;
+	    }
+
+	  if (spage_check (thread_p, pgptr) != NO_ERROR)
+	    {
+	      valid_pg = DISK_ERROR;
+	    }
+
+	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
+
+	  if (chk_objs != NULL)
+	    {
+	      if (heap_chkreloc_next (thread_p, chk_objs, pgptr) !=
+		  DISK_VALID)
+		{
+		  valid_pg = DISK_ERROR;
+		}
+	    }
+
+	  pgbuf_unfix_and_init (thread_p, pgptr);
+	}
+    }
+
+  *num_checked = checked;
+
+  return valid_pg;
+}
+
+/*
+ * heap_check_all_pages () - Validate all pages known by given heap vs file manger
+ *   return: DISK_INVALID, DISK_VALID, DISK_ERROR
+ *   hfid(in): : Heap identifier
+ *
+ * Note: Verify that all pages known by the given heap are valid. That
+ * is, that they are valid from the point of view of the file manager.
+ */
+DISK_ISVALID
+heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
+{
+  VPID vpid;			/* Page-volume identifier            */
+  VPID *vpidptr_ofpgptr;
+  PAGE_PTR pgptr = NULL;	/* Page pointer                      */
+  HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure          */
+  RECDES hdr_recdes;		/* Header record descriptor          */
+  DISK_ISVALID valid_pg = DISK_VALID;
+  DISK_ISVALID tmp_valid_pg = DISK_VALID;
+  INT32 npages = 0, tmp_npages;
+  int i;
+  int file_numpages;
+  HEAP_CHKALL_RELOCOIDS chk;
+  HEAP_CHKALL_RELOCOIDS *chk_objs = &chk;
+
+
+  valid_pg = heap_chkreloc_start (chk_objs);
+  if (valid_pg != DISK_VALID)
+    {
+      chk_objs = NULL;
+    }
+
+  /* Scan every page of the heap to find out if they are valid */
+  valid_pg =
+    heap_check_all_pages_by_heapchain (thread_p, hfid, chk_objs, &npages);
+
+  file_numpages = file_get_numpages (thread_p, &hfid->vfid);
+
+  if (file_numpages != -1 && file_numpages != npages)
+    {
+      if (chk_objs != NULL)
 	{
 	  chk_objs->verify = false;
 	  (void) heap_chkreloc_end (chk_objs);
+
+	  tmp_valid_pg = heap_chkreloc_start (chk_objs);
+	}
+
+      /* 
+       * Scan every page of the heap using allocset.
+       * This is for getting more information of the corrupted pages.
+       */
+      tmp_valid_pg =
+	heap_check_all_pages_by_allocset (thread_p, hfid, chk_objs,
+					  &tmp_npages);
+
+      if (chk_objs != NULL)
+	{
+	  if (tmp_valid_pg == DISK_VALID)
+	    {
+	      tmp_valid_pg = heap_chkreloc_end (chk_objs);
+	    }
+	  else
+	    {
+	      chk_objs->verify = false;
+	      (void) heap_chkreloc_end (chk_objs);
+	    }
+	}
+    }
+  else
+    {
+      if (chk_objs != NULL)
+	{
+	  valid_pg = heap_chkreloc_end (chk_objs);
 	}
     }
 
   if (valid_pg == DISK_VALID)
     {
-      i = file_get_numpages (thread_p, &hfid->vfid);
-      if (npages != i)
+      if (npages != file_numpages)
 	{
-	  if (i == -1)
+	  if (file_numpages == -1)
 	    {
 	      valid_pg = DISK_ERROR;
 	    }
@@ -17954,7 +18097,7 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_HEAP_MISMATCH_NPAGES, 5, hfid->vfid.volid,
-		      hfid->vfid.fileid, hfid->hpgid, npages, i);
+		      hfid->vfid.fileid, hfid->hpgid, npages, file_numpages);
 	      valid_pg = DISK_INVALID;
 	    }
 	}

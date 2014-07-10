@@ -218,4 +218,6 @@ extern SCAN_CODE spage_slots_next_scan (THREAD_ENTRY * thread_p, int cursor,
 					void *ctx);
 extern int spage_slots_end_scan (THREAD_ENTRY * thread_p, void **ctx);
 
+extern int spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
+
 #endif /* _SLOTTED_PAGE_H_ */
