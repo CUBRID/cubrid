@@ -119,6 +119,7 @@ typedef enum
   SHOWSTMT_INDEX_CAPACITY,
   SHOWSTMT_ALL_INDEXES_HEADER,
   SHOWSTMT_ALL_INDEXES_CAPACITY,
+  SHOWSTMT_GLOBAL_CRITICAL_SECTIONS,
 
   /* append the new show statement types in here */
 

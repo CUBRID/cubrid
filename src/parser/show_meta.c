@@ -82,6 +82,7 @@ static SHOWSTMT_METADATA *metadata_of_heap_header (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_heap_capacity (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_index_header (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_index_capacity (SHOW_ONLY_ALL flag);
+static SHOWSTMT_METADATA *metadata_of_global_critical_sections (void);
 
 static SHOWSTMT_METADATA *
 metadata_of_volume_header (void)
@@ -487,6 +488,38 @@ metadata_of_index_capacity (SHOW_ONLY_ALL flag)
   return (flag == SHOW_ALL) ? &md_all : &md_only;
 }
 
+/* for show critical sections */
+static SHOWSTMT_METADATA *
+metadata_of_global_critical_sections (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Index", "int"},
+    {"Name", "varchar(32)"},
+    {"Num_holders", "varchar(16)"},
+    {"Num_waiting_readers", "int"},
+    {"Num_waiting_writers", "int"},
+    {"Owner_thread_index", "int"},
+    {"Owner_tran_index", "int"},
+    {"Total_enter_count", "bigint"},
+    {"Total_waiter_count", "bigint"},
+    {"Waiting_promoter_thread_index", "int"},
+    {"Max_waiting_msecs", "numeric(10,3)"},
+    {"Total_waiting_msecs", "numeric(10,3)"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_GLOBAL_CRITICAL_SECTIONS, "show critical sections",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0,
+    NULL, NULL
+  };
+
+  return &md;
+}
+
 /*
  * showstmt_get_metadata() -  return show statment column infos
  *   return:-
@@ -731,6 +764,8 @@ showstmt_metadata_init (void)
     metadata_of_index_header (SHOW_ALL);
   show_Metas[SHOWSTMT_ALL_INDEXES_CAPACITY] =
     metadata_of_index_capacity (SHOW_ALL);
+  show_Metas[SHOWSTMT_GLOBAL_CRITICAL_SECTIONS] =
+    metadata_of_global_critical_sections ();
 
   for (i = 0; i < DIM (show_Metas); i++)
     {

@@ -3794,6 +3794,29 @@ thread_find_entry_by_index (int thread_index)
 }
 
 /*
+ * thread_find_entry_by_tid() -
+ *   return: 
+ *   tid(in)
+ */
+THREAD_ENTRY *
+thread_find_entry_by_tid (pthread_t tid)
+{
+  THREAD_ENTRY *thread_p;
+  int i;
+
+  for (i = 1; i <= thread_Manager.num_workers; i++)
+    {
+      thread_p = &thread_Manager.thread_array[i];
+      if (thread_p->tid == tid)
+	{
+	  return thread_p;
+	}
+    }
+
+  return NULL;
+}
+
+/*
  * thread_get_lockwait_entry() -
  *   return:
  *   tran_index(in):

@@ -39,6 +39,8 @@
 #include "perf_monitor.h"
 #include "system_parameter.h"
 #include "tsc_timer.h"
+#include "show_scan.h"
+#include "numeric_opfunc.h"
 
 #undef csect_initialize_critical_section
 #undef csect_finalize_critical_section
@@ -178,6 +180,7 @@ csect_initialize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
   cs_ptr->rwlock = 0;
   cs_ptr->owner = ((pthread_t) 0);
   cs_ptr->tran_index = -1;
+  cs_ptr->waiting_readers = 0;
   cs_ptr->waiting_writers = 0;
   cs_ptr->waiting_writers_queue = NULL;
   cs_ptr->waiting_promoters_queue = NULL;
@@ -258,6 +261,7 @@ csect_finalize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
   cs_ptr->rwlock = 0;
   cs_ptr->owner = ((pthread_t) 0);
   cs_ptr->tran_index = -1;
+  cs_ptr->waiting_readers = 0;
   cs_ptr->waiting_writers = 0;
   cs_ptr->waiting_writers_queue = NULL;
   cs_ptr->waiting_promoters_queue = NULL;
@@ -871,6 +875,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 	  /* reader should wait writer(s). */
 	  if (wait_secs == INF_WAIT)
 	    {
+	      cs_ptr->waiting_readers++;
 	      cs_ptr->total_nwaits++;
 	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;
 
@@ -889,6 +894,8 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 		  TSC_ADD_TIMEVAL (thread_p->event_stats.cs_waits,
 				   wait_tv_diff);
 		}
+
+	      cs_ptr->waiting_readers--;
 
 	      if (error_code != NO_ERROR)
 		{
@@ -924,6 +931,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 	      to.tv_sec = time (NULL) + wait_secs;
 	      to.tv_nsec = 0;
 
+	      cs_ptr->waiting_readers++;
 	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;
 
 	      if (thread_p->event_stats.trace_slow_query == true)
@@ -941,6 +949,8 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 		  TSC_ADD_TIMEVAL (thread_p->event_stats.cs_waits,
 				   wait_tv_diff);
 		}
+
+	      cs_ptr->waiting_readers--;
 
 	      if (error_code != 0)
 		{
@@ -1145,6 +1155,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 	  /* reader should wait writer(s). */
 	  if (wait_secs == INF_WAIT)
 	    {
+	      cs_ptr->waiting_readers++;
 	      cs_ptr->total_nwaits++;
 	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;
 
@@ -1163,6 +1174,8 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 		  TSC_ADD_TIMEVAL (thread_p->event_stats.cs_waits,
 				   wait_tv_diff);
 		}
+
+	      cs_ptr->waiting_readers--;
 
 	      if (error_code != NO_ERROR)
 		{
@@ -1198,6 +1211,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 	      to.tv_sec = time (NULL) + wait_secs;
 	      to.tv_nsec = 0;
 
+	      cs_ptr->waiting_readers++;
 	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;
 
 	      if (thread_p->event_stats.trace_slow_query == true)
@@ -1215,6 +1229,8 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 		  TSC_ADD_TIMEVAL (thread_p->event_stats.cs_waits,
 				   wait_tv_diff);
 		}
+
+	      cs_ptr->waiting_readers--;
 
 	      if (error_code != 0)
 		{
@@ -1855,4 +1871,186 @@ csect_check_own_critical_section (THREAD_ENTRY * thread_p,
     }
 
   return return_code;
+}
+
+/*
+ * csect_start_scan () -  start scan function for
+ *                        show global critical sections
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in):
+ *   show_type(in):
+ *   arg_values(in):
+ *   arg_cnt(in):
+ *   ptr(in/out): 
+ */
+int
+csect_start_scan (THREAD_ENTRY * thread_p, int show_type,
+		  DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+{
+  SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
+  int i, idx, error = NO_ERROR;
+  DB_VALUE *vals = NULL;
+  CSS_CRITICAL_SECTION *cs_ptr;
+  char buf[256] = { 0 };
+  double msec;
+  DB_VALUE db_val;
+  DB_DATA_STATUS data_status;
+  pthread_t owner_tid;
+  int ival;
+  THREAD_ENTRY *thread_entry = NULL;
+  int num_cols = 12;
+
+  *ptr = NULL;
+  ctx =
+    showstmt_alloc_array_context (thread_p, CRITICAL_SECTION_COUNT, num_cols);
+  if (ctx == NULL)
+    {
+      error = er_errid ();
+      goto exit_on_error;
+    }
+
+  for (i = 0; i < CRITICAL_SECTION_COUNT; i++)
+    {
+      idx = 0;
+      vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
+      if (vals == NULL)
+	{
+	  error = er_errid ();
+	  goto exit_on_error;
+	}
+
+      cs_ptr = &css_Csect_array[i];
+
+      /* The index of the critical section */
+      db_make_int (&vals[idx], cs_ptr->cs_index);
+      idx++;
+
+      /* The name of the critical section */
+      db_make_string (&vals[idx], cs_ptr->name);
+      idx++;
+
+      /* 'N readers', '1 writer', 'none' */
+      ival = cs_ptr->rwlock;
+      if (ival > 0)
+	{
+	  snprintf (buf, sizeof (buf), "%d readers", ival);
+	}
+      else if (ival < 0)
+	{
+	  snprintf (buf, sizeof (buf), "1 writer");
+	}
+      else
+	{
+	  snprintf (buf, sizeof (buf), "none");
+	}
+
+      error = db_make_string_copy (&vals[idx], buf);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* The number of waiting readers */
+      db_make_int (&vals[idx], cs_ptr->waiting_readers);
+      idx++;
+
+      /* The number of waiting writers */
+      db_make_int (&vals[idx], cs_ptr->waiting_writers);
+      idx++;
+
+      /* The thread index of CS owner writer, NULL if no owner */
+      owner_tid = cs_ptr->owner;
+      if (owner_tid == 0)
+	{
+	  db_make_null (&vals[idx]);
+	}
+      else
+	{
+	  thread_entry = thread_find_entry_by_tid (owner_tid);
+	  if (thread_entry != NULL)
+	    {
+	      db_make_bigint (&vals[idx], thread_entry->index);
+	    }
+	  else
+	    {
+	      db_make_null (&vals[idx]);
+	    }
+	}
+      idx++;
+
+      /* Transaction id of CS owner writer, NULL if no owner */
+      ival = cs_ptr->tran_index;
+      if (ival == -1)
+	{
+	  db_make_null (&vals[idx]);
+	}
+      else
+	{
+	  db_make_int (&vals[idx], ival);
+	}
+      idx++;
+
+      /* Total count of enters */
+      db_make_bigint (&vals[idx], cs_ptr->total_enter);
+      idx++;
+
+      /* Total count of waiters */
+      db_make_bigint (&vals[idx], cs_ptr->total_nwaits);
+      idx++;
+
+      /* The thread index of waiting promoter, NULL if no waiting promoter */
+      thread_entry = cs_ptr->waiting_promoters_queue;
+      if (thread_entry != NULL)
+	{
+	  db_make_int (&vals[idx], thread_entry->index);
+	}
+      else
+	{
+	  db_make_null (&vals[idx]);
+	}
+      idx++;
+
+      /* Maximum waiting time (millisecond) */
+      msec =
+	cs_ptr->max_wait.tv_sec * 1000 + cs_ptr->max_wait.tv_usec / 1000.0;
+      db_make_double (&db_val, msec);
+      db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 10, 3);
+      error =
+	numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* Total waiting time (millisecond) */
+      msec =
+	cs_ptr->total_wait.tv_sec * 1000 +
+	cs_ptr->total_wait.tv_usec / 1000.0;
+      db_make_double (&db_val, msec);
+      db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 10, 3);
+      error =
+	numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
+      idx++;
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      assert (idx == num_cols);
+    }
+
+  *ptr = ctx;
+  return NO_ERROR;
+
+exit_on_error:
+
+  if (ctx != NULL)
+    {
+      showstmt_free_array_context (thread_p, ctx);
+    }
+
+  return error;
 }

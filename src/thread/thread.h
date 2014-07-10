@@ -397,6 +397,7 @@ extern bool thread_auto_volume_expansion_thread_is_running (void);
 extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
 extern THREAD_ENTRY *thread_find_next_lockwait_entry (int *thrd_index);
 extern THREAD_ENTRY *thread_find_entry_by_index (int thrd_index);
+extern THREAD_ENTRY *thread_find_entry_by_tid (pthread_t thrd_id);
 extern int thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** array);
 
 

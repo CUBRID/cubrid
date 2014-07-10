@@ -45,6 +45,7 @@
 #include "heap_file.h"
 #include "btree.h"
 #include "connection_support.h"
+#include "critical_section.h"
 
 #if defined(SERVER_MODE)
 #include "thread.h"
@@ -182,6 +183,12 @@ showstmt_scan_init (void)
   req->next_func = btree_index_next_scan;
   req->end_func = btree_index_end_scan;
 
+  req = &show_Requests[SHOWSTMT_GLOBAL_CRITICAL_SECTIONS];
+  req->show_type = SHOWSTMT_GLOBAL_CRITICAL_SECTIONS;
+  req->start_func = csect_start_scan;
+  req->next_func = showstmt_array_next_scan;
+  req->end_func = showstmt_array_end_scan;
+
   /* append to init other show statement scan function here */
 
 
@@ -203,9 +210,12 @@ showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
   SCAN_CODE code;
   int i;
 
+  assert (show_type == show_Requests[show_type].show_type);
   next_func = show_Requests[show_type].next_func;
-  assert (next_func != NULL
-	  && show_type == show_Requests[show_type].show_type);
+  if (next_func == NULL)
+    {
+      return S_END;
+    }
 
   /* free values which need be cleared */
   for (i = 0; i < stsidp->out_cnt; i++)
@@ -402,7 +412,7 @@ showstmt_array_next_scan (THREAD_ENTRY * thread_p, int cursor,
   DB_VALUE *vals = NULL;
   int i;
 
-  if (cursor < 0 || cursor >= ctx->num_used)
+  if (ctx == NULL || cursor < 0 || cursor >= ctx->num_used)
     {
       return S_END;
     }

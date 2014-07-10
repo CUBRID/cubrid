@@ -213,6 +213,9 @@ int yybuffer_pos;
 [cC][oO][uU][nN][tT]							{ begin_token(yytext);   return COUNT; }
 [cC][rR][eE][aA][tT][eE]						{ begin_token(yytext);   return CREATE; }
 [cC][rR][oO][sS][sS]							{ begin_token(yytext);   return CROSS; }
+[cC][rR][iI][tT][iI][cC][aA][lL]					{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return CRITICAL; }
 [cC][uU][mM][eE][_][dD][iI][sS][tT]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return CUME_DIST; }
@@ -652,6 +655,9 @@ int yybuffer_pos;
 [sS][eE][cC][oO][nN][dD]						{ begin_token(yytext);   return SECOND_; }
 [sS][eE][cC][oO][nN][dD]_[mM][iI][lL][lL][iI][sS][eE][cC][oO][nN][dD]	{ begin_token(yytext);   return SECOND_MILLISECOND; }
 [sS][eE][cC][tT][iI][oO][nN]						{ begin_token(yytext);   return SECTION; }
+[sS][eE][cC][tT][iI][oO][nN][sS]					{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return SECTIONS; }
 [sS][eE][lL][eE][cC][tT]						{ begin_token(yytext);   return SELECT; }
 [sS][eE][nN][sS][iI][tT][iI][vV][eE]					{ begin_token(yytext);   return SENSITIVE; }
 [sS][eE][pP][aA][rR][aA][tT][oO][rR]					{ begin_token(yytext);

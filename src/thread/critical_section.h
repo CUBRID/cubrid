@@ -32,6 +32,7 @@
 #endif /* !WINDOWS */
 
 #include "thread.h"
+#include "dbtype.h"
 
 enum
 { INF_WAIT = -1,		/* INFINITE WAIT */
@@ -90,6 +91,7 @@ typedef struct css_critical_section
   const char *name;
   pthread_mutex_t lock;		/* read/write monitor lock */
   int rwlock;			/* >0 = # readers, <0 = writer, 0 = none */
+  unsigned int waiting_readers;	/* # of waiting readers */
   unsigned int waiting_writers;	/* # of waiting writers */
   pthread_cond_t readers_ok;	/* start waiting readers */
   THREAD_ENTRY *waiting_writers_queue;	/* queue of waiting writers */
@@ -129,6 +131,9 @@ extern int csect_check_own (THREAD_ENTRY * thread_p, int cs_index);
 
 extern void csect_dump_statistics (FILE * fp);
 
+extern int csect_start_scan (THREAD_ENTRY * thread_p, int show_type,
+			     DB_VALUE ** arg_values, int arg_cnt, void **ctx);
+
 #if !defined(SERVER_MODE)
 #define csect_initialize_critical_section(a)
 #define csect_finalize_critical_section(a)
@@ -139,6 +144,7 @@ extern void csect_dump_statistics (FILE * fp);
 #define csect_enter_critical_section_as_reader(a, b, c)
 #define csect_exit_critical_section(a, b)
 #define csect_check_own(a, b) 1
+#define csect_start_scan NULL
 #endif /* !SERVER_MODE */
 
 #endif /* _CRITICAL_SECTION_H_ */
