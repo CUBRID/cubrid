@@ -5259,7 +5259,7 @@ btree_check_pages (THREAD_ENTRY * thread_p, BTID_INT * btid,
       goto error;
     }
 
-  if (spage_check (thread_p, page) != NO_ERROR)
+  if (spage_check (thread_p, pg_ptr) != NO_ERROR)
     {
       vld = DISK_ERROR;
       goto error;
