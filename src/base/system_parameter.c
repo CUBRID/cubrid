@@ -611,6 +611,14 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_FOR_HA_CONTEXT  0x00008000	/* should be replicated into HA log
 					 * applier */
 
+#define PRM_GET_SERVER      0x00010000	/* return the value of server parameter 
+					 * from client/server parameter.  
+					 * Note that this flag only can be set 
+					 * if the parameter has PRM_FOR_CLIENT, 
+					 * PRM_FOR_SERVER, and PRM_USER_CHANGE 
+					 * flags.
+					 */
+
 #define PRM_DEPRECATED      0x40000000	/* is deprecated */
 #define PRM_OBSOLETED       0x80000000	/* is obsoleted */
 
@@ -657,6 +665,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_HAS_TIME_UNIT(x)      (x & PRM_TIME_UNIT)
 #define PRM_DIFFERENT_UNIT(x)     (x & PRM_DIFFER_UNIT)
 #define PRM_IS_FOR_HA_CONTEXT(x)  (x & PRM_FOR_HA_CONTEXT)
+#define PRM_IS_GET_SERVER(x)      (x & PRM_GET_SERVER)
 #define PRM_IS_DEPRECATED(x)      (x & PRM_DEPRECATED)
 #define PRM_IS_OBSOLETED(x)       (x & PRM_OBSOLETED)
 
@@ -1936,8 +1945,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_ER_LOG_LEVEL,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION |
-    PRM_CLIENT_SESSION),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_KEYWORD,
    (void *) &prm_er_log_level_flag,
    (void *) &prm_er_log_level_default,
@@ -1947,8 +1955,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_ER_LOG_WARNING,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION |
-    PRM_CLIENT_SESSION),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_er_log_warning_flag,
    (void *) &prm_er_log_warning_default,
@@ -1968,8 +1975,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_ER_LOG_SIZE,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION |
-    PRM_CLIENT_SESSION),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_INTEGER,
    (void *) &prm_er_log_size_flag,
    (void *) &prm_er_log_size_default,
@@ -2934,8 +2940,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_CALL_STACK_DUMP_ON_ERROR,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION |
-    PRM_CLIENT_SESSION),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_call_stack_dump_on_error_flag,
    (void *) &prm_call_stack_dump_on_error_default,
@@ -2945,8 +2950,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_CALL_STACK_DUMP_ACTIVATION,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION |
-    PRM_CLIENT_SESSION),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_INTEGER_LIST,
    (void *) &prm_call_stack_dump_activation_flag,
    (void *) &prm_call_stack_dump_activation_default,
@@ -2956,8 +2960,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_CALL_STACK_DUMP_DEACTIVATION,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION |
-    PRM_CLIENT_SESSION),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_INTEGER_LIST,
    (void *) &prm_call_stack_dump_deactivation_flag,
    (void *) &prm_call_stack_dump_deactivation_default,
@@ -3645,8 +3648,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_ER_PRODUCTION_MODE,
-   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION |
-    PRM_CLIENT_SESSION),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_er_production_mode_flag,
    (void *) &prm_er_production_mode_default,
@@ -5290,6 +5292,24 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 	  /* do not set both parameters:
 	   * USER_CHANGE: the user can change parameter value on-line
 	   * TEST_CHANGE: for QA only
+	   */
+	  assert (0);
+	}
+      if (PRM_IS_GET_SERVER (flag)
+	  && (PRM_IS_FOR_SESSION (flag) || PRM_IS_HIDDEN (flag)))
+	{
+	  /* session and hidden parameters are not allowed 
+	   * to use PRM_GET_SERVER flag 
+	   */
+	  assert (0);
+	}
+      if (PRM_IS_GET_SERVER (flag)
+	  && (!PRM_IS_FOR_CLIENT (flag) || !PRM_IS_FOR_SERVER (flag)
+	      || !PRM_USER_CAN_CHANGE (flag)))
+	{
+	  /* Note that PRM_GET_SERVER flag only can be set if the 
+	   * parameter has PRM_FOR_CLIENT, PRM_FOR_SERVER, and 
+	   * PRM_USER_CHANGE flags.                              
 	   */
 	  assert (0);
 	}
@@ -7054,8 +7074,9 @@ sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 	  break;
 	}
 
-      if (PRM_IS_FOR_SERVER (prm->static_flag)
-	  && !PRM_IS_FOR_CLIENT (prm->static_flag))
+      if ((PRM_IS_FOR_SERVER (prm->static_flag)
+	   && !PRM_IS_FOR_CLIENT (prm->static_flag))
+	  || PRM_IS_GET_SERVER (prm->static_flag))
 	{
 	  /* have to read the value on server */
 	  scope_error = PRM_ERR_NOT_FOR_CLIENT;
@@ -7137,7 +7158,8 @@ xsysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments)
  * prm_values (in) : list of parameters
  *
  * NOTE: Obtains value for parameters that are for server only. For parameters
- *	 that are client/server, values should be obtained from client.
+ *       that are client/server, values should be obtained from client UNLESS
+ *       it has PRM_GET_SERVER flag. 
  */
 void
 xsysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE * prm_values)
@@ -7148,8 +7170,9 @@ xsysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE * prm_values)
     {
       prm = GET_PRM (prm_values->prm_id);
 
-      if (PRM_IS_FOR_SERVER (prm->static_flag)
-	  && !PRM_IS_FOR_CLIENT (prm->static_flag))
+      if ((PRM_IS_FOR_SERVER (prm->static_flag)
+	   && !PRM_IS_FOR_CLIENT (prm->static_flag))
+	  || PRM_IS_GET_SERVER (prm->static_flag))
 	{
 	  /* set value */
 	  sysprm_set_sysprm_value_from_parameter (&prm_values->value, prm);
