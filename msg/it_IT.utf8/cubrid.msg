@@ -1044,7 +1044,7 @@ $ LOADDB
 975 La versione attuale di replicazione non permette modificare righe multiple con una singola istruzione UPDATE che può violare il vincolo UNIQUE.
 976 Errore interno: tabella troppo piena (dimensione allocata: %1$d, dimensione accessibile: %2$d) a pagina della tabella di file %3$d|%4$d (volume "%5$s")
 977 Checkpoint ha iniziato (id della pagina precedente di checkpoint: %1$lld, id della pagina REDO precedente: %2$lld).
-978 Checkpoint finito (id della pagina di checkpoint: %1$lld, id della pagina REDO di checkpoint: %2$lld).
+978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 Ciclo CONNECT BY nelle dati dell'utente.
 980 Un thread è in attesa nel %1$s più di %2$d msec.
 981 Transazione %1$d ha raggiunto alla soglia di statistiche di monitoraggio %2$s.

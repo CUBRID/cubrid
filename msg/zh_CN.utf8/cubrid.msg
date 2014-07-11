@@ -1044,7 +1044,7 @@ $ LOADDB
 975 当前replication的版本不允许用一个单独的可能违背唯一性约束的UPDATE语句来改变多行.
 976 内部错误: 表大小溢出 (分配的大小: %1$d, 访问的大小: %2$d) 在文件表页 %3$d|%4$d(卷 "%5$s")
 977 Checkpoint 开始 (前一个检查点页id: %1$lld, 前一个redo页id: %2$lld).
-978 Checkpoint 结束 (检查点页id: %1$lld, 检查点redo页id: %2$lld).
+978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 CONNECT BY loop 在用户数据中.
 980 一个线程在 %1$s 中等待超过了 %2$d msec.
 981 事务 %1$d 已经达到了监视统计信息的阈值%2$s.

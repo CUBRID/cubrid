@@ -1044,7 +1044,7 @@ $ LOADDB
 975 Current version of replication does not allow changing multiple rows with a single UPDATE statement which can violate the UNIQUE constraint.
 976 Internal error: Table size overflow (allocated size: %1$d, accessed size: %2$d) at file table page %3$d|%4$d(volume "%5$s")
 977 Checkpoint started (previous checkpoint page id: %1$lld, previous redo page id: %2$lld).
-978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld).
+978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 CONNECT BY loop in user data.
 980 A thread is waiting in %1$s more than %2$d msec.
 981 Transaction %1$d has reached to the threshold of monitoring statistics %2$s.

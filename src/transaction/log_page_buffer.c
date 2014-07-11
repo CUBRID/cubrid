@@ -7868,7 +7868,7 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   flush_upto_lsa.offset = NULL_OFFSET;
 
   pgbuf_flush_checkpoint (thread_p, &flush_upto_lsa, NULL,
-			  &newflush_upto_lsa);
+			  &newflush_upto_lsa, NULL);
 
   if ((!LSA_ISNULL (&newflush_upto_lsa)
        && LSA_LT (&newflush_upto_lsa, &flush_upto_lsa))
@@ -8572,6 +8572,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int last_arv_num_not_needed;
   LOG_PRIOR_NODE *node;
   void *ptr;
+  int flushed_page_cnt = 0;
 
   LOG_CS_ENTER (thread_p);
 
@@ -8645,8 +8646,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
-  if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa,
-			      &tmp_chkpt.redo_lsa) != NO_ERROR)
+  if (pgbuf_flush_checkpoint
+      (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa,
+       &flushed_page_cnt) != NO_ERROR)
     {
       LOG_CS_ENTER (thread_p);
       goto error_cannot_chkpt;
@@ -9094,7 +9096,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   mnt_log_end_checkpoints (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_FINISHED,
-	  2, log_Gl.hdr.chkpt_lsa.pageid, log_Gl.chkpt_redo_lsa.pageid);
+	  3, log_Gl.hdr.chkpt_lsa.pageid, log_Gl.chkpt_redo_lsa.pageid,
+	  flushed_page_cnt);
   er_log_debug (ARG_FILE_LINE, "end checkpoint\n");
   return tmp_chkpt.redo_lsa.pageid;
 
@@ -12409,7 +12412,7 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit,
 	   * record.
 	   */
 	  (void) pgbuf_flush_checkpoint (thread_p, &tmp_lsa1, NULL,
-					 &tmp_lsa2);
+					 &tmp_lsa2, NULL);
 	  in_fatal = false;
 	}
     }

@@ -1044,7 +1044,7 @@ $ LOADDB
 975 Versiunea curentă de replicare nu permite schimbarea de rânduri multiple printr-o singură instrucţiune UPDATE, care ar putea incălca constrângerea de unicitate.
 976 Eroare internă: Depăşire a dimensiunii tabelei (dimensiune alocată: %1$d, dimensiune accesată: %2$d) la pagina %3$d|%4$d(volumul "%5$s")
 977 Punct de control pornit (IDul paginii punctului de control anterior: %1$lld, IDul de pagină "redo" anterior: %2$lld).
-978 Punct de control finalizat (ID de pagină al punctului de control: %1$lld, IDul de pagină "redo": %2$lld).
+978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 Ciclu de CONNECT BY în datele utilizatorului.
 980 Un fir de execuţie aşteaptă în %1$s pentru mai mult de %2$d msec.
 981 Tranzacţia %1$d a atins pragul statisticii de monitorizare %2$s.

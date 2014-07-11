@@ -1044,7 +1044,7 @@ $ LOADDB
 975 Version actual de replicacion no permite cambiar filas multiples con una sola declaracion UPDATE que puede violar la restriccion UNIQUE.
 976 Error interno: Sobreflujo del tamano de tabla (tamano asignado: %1$d, tamano accesado: %2$d) a la pagina %3$d|%4$d(volumen "%5$s") de la tabla de archivos. 
 977 Punto de control iniciado (id de pagina del punto de control anterior: %1$lld, id de pagina de rehacer anterior : %2$lld).
-978 Punto de control terminado (id de pagina del punto de control: %1$lld, id de pagina de rehacer: %2$lld).
+978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 Bucle CONNECT BY en los datos de usuario.
 980 Un hilo esta esperando en %1$s mas que %2$d msec.
 981 Transacción %1$d ha llegado al umbral de estadísticas de supervisión %2$s.

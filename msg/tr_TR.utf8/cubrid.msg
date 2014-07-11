@@ -1044,7 +1044,7 @@ $ LOADDB
 975 Çoğaltması şu anki sürümü BENZERSİZ sınırlamasına ihlal tek bir GÜNCELLEŞTİRME deyimi ile çoklu satır ayarlanmasına olanak sağlamaz.
 976 İç hata: Dosya tablosu sayfa %3$d|%4$d(yoğunluk "%5$s") Tablo boyutu taşması (ayrılan boyutu:%1$d, erişilen boyutu:%2$d).
 977 Kontrol noktası çalıştırma (önceki kontrol noktası page id: %1$lld, daha önce yeniden yapılan pageid: %2$lld).
-978 Tamamlandıktan sonraki kontrol noktası(kontrol noktası page id: %1$lld, kontrol noktası yeniden yapalan pageid: %2$lld).
+978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 Kullanıcı verileri döngüsü ile Bağlanın.
 980 Bir iş parçacığı %2$d msn %1$s den daha fazla bekleniliyor.
 981 İşlem %1$d izleme istatistiklerine %2$s eşiğine ulaşmıştır.

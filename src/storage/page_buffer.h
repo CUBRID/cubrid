@@ -199,14 +199,15 @@ extern int pgbuf_flush_victim_candidate_debug (THREAD_ENTRY * thread_p,
 					       const char *caller_file,
 					       int caller_line);
 
-#define pgbuf_flush_checkpoint(thread_p, flush_upto_lsa, prev_chkpt_redo_lsa, smallest_lsa) \
+#define pgbuf_flush_checkpoint(thread_p, flush_upto_lsa, prev_chkpt_redo_lsa, smallest_lsa, flushed_page_cnt) \
 	pgbuf_flush_checkpoint_debug(thread_p, flush_upto_lsa, prev_chkpt_redo_lsa, smallest_lsa, \
-				      __FILE__, __LINE__)
+				     flushed_page_cnt, __FILE__, __LINE__)
 extern int pgbuf_flush_checkpoint_debug (THREAD_ENTRY * thread_p,
 					 const LOG_LSA * flush_upto_lsa,
 					 const LOG_LSA *
 					 prev_chkpt_redo_lsa,
 					 LOG_LSA * smallest_lsa,
+					 int *flushed_page_cnt,
 					 const char *caller_file,
 					 int caller_line);
 #else /* NDEBUG */
@@ -220,7 +221,8 @@ extern int pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p,
 extern int pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
 				   const LOG_LSA * flush_upto_lsa,
 				   const LOG_LSA * prev_chkpt_redo_lsa,
-				   LOG_LSA * smallest_lsa);
+				   LOG_LSA * smallest_lsa,
+				   int *flushed_page_cnt);
 #endif /* NDEBUG */
 extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 				 int start_offset, int length, void *area,

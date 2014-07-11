@@ -1044,7 +1044,7 @@ $ LOADDB
 975 La version actuelle de la réplication ne permet pas de modifier plusieurs lignes avec une seule instruction UPDATE qui peuvent violer la contrainte UNIQUE.
 976 Erreur interne: dépassement de la taille du tableau (taille allouée: %1$d, taille consultée: %2$d) à la page de fichier de table de %3$d|%4$d(volume "%5$s")
 977 Point de contrôle commencé (id de la page précédente du point de contrôle: %1$lld, id de la page REDO précédente: %2$lld).
-978 Point de contrôle fini (id de la page du point de contrôle: %1$lld, id de la page du point de contrôle REDO: %2$lld).
+978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 Boucle CONNECT BY dans les données d'utilisateur.
 980 Fil d'exécution est en attente en %1$s depuis plus de %2$d msec.
 981 Transaction %1$d a atteint le seuil des statistiques de surveillance %2$s.

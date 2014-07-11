@@ -1044,7 +1044,7 @@ $ LOADDB
 975 Aktuelle Version der Nachbildung erlaubt die Änderung mehrerer Zeilen mit einer einzigen UPDATE Anweisung, die die UNIQUE-Einschränkung verletzen kann, nicht.
 976 Interner Fehler: Tabellengröße Überlauf (zugewiesener Speicher: %1$d, abgerufen: %2$d) au Seite %3$d|%4$d(Datenträger "%5$s")
 977 Checkpoint begonnen (voriger Checkpoint Seiten-ID: %1$lld, vorige Redo-Seiten-ID: %2$lld).
-978 Checkpoint beendet (Checkpoint Seiten-ID: %1$lld, Checkpoint Redo-Seiten-ID: %2$lld).
+978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 CONNECT BY-Schleife in Benutzerdaten.
 980 Ein Thread wartet in %1$s seit mehr als %2$d msec.
 981 Transaktion %1$d hat die Schwelle der Statistik-Monitoring erreicht %2$s.
