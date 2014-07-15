@@ -305,7 +305,7 @@ cci_shuffle_althosts (T_CON_HANDLE * handle)
 {
   struct timeval t;
   int i, j;
-  long int r;
+  double r;
   struct drand48_data buf;
   T_ALTER_HOST temp_host;
 
@@ -326,8 +326,8 @@ cci_shuffle_althosts (T_CON_HANDLE * handle)
   /* Fisher-Yates shuffle */
   for (i = handle->alter_host_count - 1; i > 0; i--)
     {
-      lrand48_r (&buf, &r);
-      j = (int) (r % (i + 1));
+      drand48_r (&buf, &r);
+      j = (int) ((i + 1) * r);
 
       temp_host = handle->alter_hosts[j];
       handle->alter_hosts[j] = handle->alter_hosts[i];
