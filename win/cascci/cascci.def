@@ -106,6 +106,7 @@ EXPORTS
 	cci_escape_string
 	cci_set_holdability
 	cci_get_holdability
+	cci_get_cas_info
 	
 	cci_log_get
 	cci_log_finalize
