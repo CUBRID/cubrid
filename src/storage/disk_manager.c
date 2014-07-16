@@ -269,6 +269,7 @@ static int disk_map_init (THREAD_ENTRY * thread_p, INT16 volid,
 static int disk_map_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * vpid,
 			  const char *at_name, INT32 at_fpageid,
 			  INT32 at_lpageid, INT32 all_fid, INT32 all_lid);
+static const char *disk_page_type_to_string (DISK_PAGE_TYPE page_type);
 
 #if defined(CUBRID_DEBUG)
 static void disk_scramble_newpages (INT16 volid, INT32 first_pageid,
@@ -5755,8 +5756,8 @@ disk_dump_goodvol_system (THREAD_ENTRY * thread_p, FILE * fp, INT16 volid,
  * disk_check_volume_exist () - check whether volume existed
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
- *   volid(in): 
+ *   thread_p(in):
+ *   volid(in):
  *   arg(in/out):CHECK_VOL_INFO structure
  */
 static bool
@@ -5775,7 +5776,7 @@ disk_check_volume_exist (THREAD_ENTRY * thread_p, VOLID volid, void *arg)
  * disk_volume_header_start_scan () -  start scan function for show volume header
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   type (in):
  *   arg_values(in):
  *   arg_cnt(in):
@@ -5836,7 +5837,7 @@ exit_on_error:
  * disk_volume_header_next_scan () -  next scan function for show volume header
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   ptr(in/out): volume header context
  */
 SCAN_CODE
@@ -5993,7 +5994,7 @@ exit_on_error:
  * disk_volume_header_end_scan() -- end scan function of show volume header
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   ptr(in):  volume header context
  */
 int
@@ -6417,6 +6418,29 @@ disk_vhdr_rv_undoredo_free_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * file_type_to_string () - Get a string of the given file type
+ *   return: string of the file type
+ *   fstruct_type(in): The type of the structure
+ */
+static const char *
+disk_page_type_to_string (DISK_PAGE_TYPE page_type)
+{
+  switch (page_type)
+    {
+    case DISK_PAGE_DATA_TYPE:
+      return "DISK_PAGE_TEMP_TYPE";
+    case DISK_PAGE_INDEX_TYPE:
+      return "DISK_PAGE_TEMP_TYPE";
+    case DISK_PAGE_TEMP_TYPE:
+      return "DISK_PAGE_TEMP_TYPE";
+    case DISK_PAGE_UNKNOWN_TYPE:
+      return "DISK_PAGE_UNKNOWN_TYPE";
+    }
+
+  return "UNKNOWN";
+}
+
+/*
  * disk_vhdr_rv_dump_free_pages () - Dump either redo/undo volume header for page
  *                                allocation or deallocation
  *   return: void
@@ -6426,7 +6450,12 @@ disk_vhdr_rv_undoredo_free_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 void
 disk_vhdr_rv_dump_free_pages (FILE * fp, int length_ignore, void *data)
 {
-  fprintf (fp, "Nalloc_pages = %d\n", abs (*(INT32 *) data));
+  DISK_RECV_MTAB_BITS_WITH *mtb;
+
+  mtb = (DISK_RECV_MTAB_BITS_WITH *) data;
+
+  fprintf (fp, "num_pages = %d, page_type = %s\n", mtb->num,
+	   disk_page_type_to_string (mtb->page_type));
 }
 
 /*
@@ -7183,7 +7212,7 @@ disk_set_page_to_zeros (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 }
 
 /*
- * disk_verify_volume_header () - 
+ * disk_verify_volume_header () -
  *   return: void
  *   pgphtr(in): Pointer to volume header page
  */

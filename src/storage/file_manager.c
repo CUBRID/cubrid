@@ -10306,7 +10306,8 @@ file_compress (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
-  if (fhdr->num_user_pages_mrkdelete > 0)
+  if (fhdr->num_user_pages_mrkdelete > 0
+      || file_tracker_is_registered_vfid (thread_p, vfid) == false)
     {
       goto exit_on_error;
     }
@@ -12215,6 +12216,70 @@ file_verify_idsmap_image (THREAD_ENTRY * thread_p, INT16 volid,
   pgbuf_unfix_and_init (thread_p, vhdr_pgptr);
 
   return return_code;
+}
+
+/*
+ * file_tracker_is_registered_vfid () -
+ *   return:
+ *
+ *   vfid(in):
+ */
+bool
+file_tracker_is_registered_vfid (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  PAGE_PTR trk_fhdr_pgptr = NULL;
+  int num_files;
+  VPID set_vpids[FILE_SET_NUMVPIDS];
+  int num_found;
+  VFID tmp_vfid;
+  bool found = false;
+  int i, j;
+
+  if (file_Tracker->vfid == NULL)
+    {
+      return false;
+    }
+
+  set_vpids[0].volid = file_Tracker->vfid->volid;
+  set_vpids[0].pageid = file_Tracker->vfid->fileid;
+
+  trk_fhdr_pgptr = pgbuf_fix (thread_p, &set_vpids[0], OLD_PAGE,
+			      PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (trk_fhdr_pgptr == NULL)
+    {
+      return false;
+    }
+
+  (void) pgbuf_check_page_ptype (thread_p, trk_fhdr_pgptr, PAGE_FTAB);
+
+  found = false;
+  num_files = file_get_numpages (thread_p, file_Tracker->vfid);
+  for (i = 0; i < num_files && found == false; i += num_found)
+    {
+      num_found = file_find_nthpages (thread_p, file_Tracker->vfid,
+				      &set_vpids[0], i,
+				      ((num_files - i < FILE_SET_NUMVPIDS)
+				       ? num_files - i : FILE_SET_NUMVPIDS));
+      if (num_found < 0)
+	{
+	  break;
+	}
+
+      for (j = 0; j < num_found; j++)
+	{
+	  tmp_vfid.volid = set_vpids[j].volid;
+	  tmp_vfid.fileid = set_vpids[j].pageid;
+	  if (VFID_EQ (&tmp_vfid, vfid))
+	    {
+	      found = true;
+	      break;
+	    }
+	}
+    }
+
+  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+
+  return found;
 }
 
 /*
