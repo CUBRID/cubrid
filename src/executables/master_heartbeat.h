@@ -80,7 +80,8 @@ enum HB_NODE_STATE
 #define HB_NSTATE_TO_BE_SLAVE_STR "to-be-slave"
 #define HB_NSTATE_MASTER_STR    "master"
 #define HB_NSTATE_REPLICA_STR   "replica"
-#define HB_NSTATE_STR_SZ        (8)
+
+#define HB_NSTATE_STR_SZ        (32)
 
 /* heartbeat resource jobs */
 enum HB_RESOURCE_JOB
@@ -164,6 +165,21 @@ enum HB_NOLOG_REASON
   HB_NOLOG_MAX = HB_NOLOG_REMOTE_STOP
 };
 
+/* heartbeat validation result */
+enum HB_VALID_RESULT
+{
+  HB_VALID_NO_ERROR = 0,
+  HB_VALID_UNIDENTIFIED_NODE = 1,
+  HB_VALID_GROUP_NAME_MISMATCH = 2,
+  HB_VALID_IP_ADDR_MISMATCH = 3,
+  HB_VALID_CANNOT_RESOLVE_HOST = 4
+};
+#define HB_VALID_NO_ERROR_STR			"no_error"
+#define HB_VALID_UNIDENTIFIED_NODE_STR		"unidentified_node"
+#define HB_VALID_GROUP_NAME_MISMATCH_STR	"group_name_mismatch"
+#define HB_VALID_IP_ADDR_MISMATCH_STR		"ip_addr_mismatch"
+#define HB_VALID_CANNOT_RESOLVE_HOST_STR	"cannot_resolve_host_name"
+
 /* time related macro */
 #define HB_GET_ELAPSED_TIME(end_time, start_time) \
             ((double)(end_time.tv_sec - start_time.tv_sec) * 1000 + \
@@ -173,6 +189,10 @@ enum HB_NOLOG_REASON
             ((arg_time.tv_sec == 0 && arg_time.tv_usec == 0) ? 1 : 0)
 
 #define HB_PROC_RECOVERY_DELAY_TIME		(30* 1000)	/* milli-second */
+
+#define HB_UI_NODE_CLEANUP_TIME_IN_MSECS	(3600 * 1000)
+#define HB_UI_NODE_CACHE_TIME_IN_MSECS		(60 * 1000)
+#define HB_IPV4_STR_LEN				(16)
 
 /* heartbeat list */
 typedef struct hb_list HB_LIST;
@@ -210,6 +230,20 @@ struct hb_ping_host_entry
   int ping_result;
 };
 
+/* heartbeat unidentifed host entries */
+typedef struct hb_ui_node_entry HB_UI_NODE_ENTRY;
+struct hb_ui_node_entry
+{
+  HB_UI_NODE_ENTRY *next;
+  HB_UI_NODE_ENTRY **prev;
+
+  char host_name[MAXHOSTNAMELEN];
+  char group_id[HB_MAX_GROUP_ID_LEN];
+  struct sockaddr_in saddr;
+  struct timeval last_recv_time;
+  int v_result;
+};
+
 /* herartbeat cluster */
 typedef struct hb_cluster HB_CLUSTER;
 struct hb_cluster
@@ -235,6 +269,9 @@ struct hb_cluster
 
   HB_PING_HOST_ENTRY *ping_hosts;
   int num_ping_hosts;
+
+  HB_UI_NODE_ENTRY *ui_nodes;
+  int num_ui_nodes;
 };
 
 /* heartbeat processs entries */
