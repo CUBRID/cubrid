@@ -1535,7 +1535,14 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	  if (DB_IS_NULL (&last_key))
 	    {
 	      /* is the first leaf */
-	      pr_clone_value (&first_key, &prefix_key);
+	      ret =
+		(*(load_args->btid->nonleaf_key_type->type->setval))
+		(&prefix_key, &first_key, true);
+	      if (ret != NO_ERROR)
+		{
+		  assert (!"setval error");
+		  goto exit_on_error;
+		}
 	    }
 	  else
 	    {
