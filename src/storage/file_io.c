@@ -1695,7 +1695,7 @@ fileio_lock_la_dbname (int *lockf_vdes, char *db_name, char *log_path)
 	  if (strcmp (db_name, tmp_db_name)
 	      || strcmp (log_path, tmp_log_path))
 	    {
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_IO_MOUNT_LOCKED, 6, lock_path, db_name, "-", pid,
 		      "-", "-");
 
@@ -1721,7 +1721,7 @@ fileio_lock_la_dbname (int *lockf_vdes, char *db_name, char *log_path)
 
   if (fileio_lock_file_write (fd, 0, SEEK_SET, 0) < 0)
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_LOCKED, 6,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_LOCKED, 6,
 	      lock_path, db_name, "-", 0, "-", "-");
 
       result = FILEIO_NOT_LOCKF;

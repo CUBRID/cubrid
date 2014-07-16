@@ -7071,7 +7071,7 @@ la_lock_dbname (int *lockf_vdes, char *db_name, char *log_path)
 	  break;
 	}
 
-      LA_SLEEP (1, 0);
+      LA_SLEEP (3, 0);
     }
 
   assert_release ((*lockf_vdes) != NULL_VOLDES);
