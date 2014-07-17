@@ -78,7 +78,7 @@ for /f "tokens=* delims= " %%a IN ("%BUILD_LIST%") DO set BUILD_LIST=%%a
 echo Build list is [%BUILD_LIST%].
 set BUILD_LIST=%BUILD_LIST:ALL=BUILD DIST%
 set BUILD_LIST=%BUILD_LIST:BUILD=CUBRID JDBC MANAGER%
-set BUILD_LIST=%BUILD_LIST:DIST=EXE_PACKAGE ZIP_PACKAGE CCI_PACKAGE JDBC_PACKAGE%
+set BUILD_LIST=%BUILD_LIST:DIST=EXE_PACKAGE ZIP_PACKAGE CCI_PACKAGE DBGWCI_PACKAGE DBGWCI_NCLAVIS_PACKAGE JDBC_PACKAGE%
 
 call :BUILD_PREPARE
 if ERRORLEVEL 1 echo *** [%DATE% %TIME%] Preparing failed. & GOTO :EOF
@@ -147,6 +147,12 @@ if NOT DEFINED ProgramFiles(x86) (
     if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
   )
 )
+
+"%DEVENV_PATH%" /rebuild "%BUILD_MODE%|%BUILD_TARGET%" "cubrid_dbgw.sln"
+if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
+
+"%DEVENV_PATH%" /rebuild "%BUILD_MODE%|%BUILD_TARGET%" "cubrid_ndbgw.sln"
+if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
 
 "%DEVENV_PATH%" /rebuild "%BUILD_MODE%|%BUILD_TARGET%" "cubrid.sln"
 if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
@@ -301,6 +307,137 @@ echo Package created. [%DIST_DIR%\%CUBRID_CCI_PACKAGE_NAME%.zip]
 set DIST_PKGS=%DIST_PKGS% %CUBRID_CCI_PACKAGE_NAME%.zip
 GOTO :EOF
 
+:BUILD_DBGWCI_PACKAGE
+echo Buiding DBGWCI package in %BUILD_DIR% ...
+if NOT EXIST %BUILD_PREFIX% echo Cannot found built directory. & GOTO :EOF
+cd /d %BUILD_PREFIX%
+
+SET DBGWCI_TARGET=cubrid-dbgwci-%BUILD_NUMBER%
+
+if EXIST %DBGWCI_TARGET% rd /s /q %DBGWCI_TARGET%
+md %DBGWCI_TARGET%\include
+md %DBGWCI_TARGET%\include\dbgw3
+md %DBGWCI_TARGET%\include\dbgw3\system
+md %DBGWCI_TARGET%\include\dbgw3\sql
+md %DBGWCI_TARGET%\include\dbgw3\client
+md %DBGWCI_TARGET%\include\dbgw3\adapter
+md %DBGWCI_TARGET%\lib
+md %DBGWCI_TARGET%\bin
+
+copy %BUILD_PREFIX%\include\cas_cci.h %DBGWCI_TARGET%\include
+copy %BUILD_PREFIX%\include\cas_error.h %DBGWCI_TARGET%\include
+copy %BUILD_PREFIX%\include\cci_log.h %DBGWCI_TARGET%\include
+copy %BUILD_PREFIX%\include\DBGWClient.h %DBGWCI_TARGET%\include
+copy %BUILD_PREFIX%\include\DBGWConnector3.h %DBGWCI_TARGET%\include
+copy %BUILD_PREFIX%\include\dbgw3\Common.h %DBGWCI_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\Exception.h %DBGWCI_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\Lob.h %DBGWCI_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\Logger.h %DBGWCI_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\Value.h %DBGWCI_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\ValueSet.h %DBGWCI_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\SynchronizedResource.h %DBGWCI_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\system\ThreadEx.h %DBGWCI_TARGET%\include\dbgw3\system
+copy %BUILD_PREFIX%\include\dbgw3\system\DBGWPorting.h %DBGWCI_TARGET%\include\dbgw3\system
+copy %BUILD_PREFIX%\include\dbgw3\sql\CallableStatement.h %DBGWCI_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\Connection.h %DBGWCI_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\DatabaseInterface.h %DBGWCI_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\DriverManager.h %DBGWCI_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\PreparedStatement.h %DBGWCI_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\ResultSet.h %DBGWCI_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\ResultSetMetaData.h %DBGWCI_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\Statement.h %DBGWCI_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\client\Interface.h %DBGWCI_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\Mock.h %DBGWCI_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\ConfigurationObject.h %DBGWCI_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\Configuration.h %DBGWCI_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\ClientResultSet.h %DBGWCI_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\Resource.h %DBGWCI_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\QueryMapper.h %DBGWCI_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\Client.h %DBGWCI_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\adapter\Adapter.h %DBGWCI_TARGET%\include\dbgw3\adapter
+copy %BUILD_PREFIX%\bin\DBGWConnector3.dll %DBGWCI_TARGET%\bin
+copy %BUILD_PREFIX%\bin\DBGWConnector3.pdb %DBGWCI_TARGET%\bin
+copy %BUILD_PREFIX%\bin\DBGWConnector3MySQL.dll %DBGWCI_TARGET%\bin
+copy %BUILD_PREFIX%\bin\DBGWConnector3MySQL.pdb %DBGWCI_TARGET%\bin
+copy %BUILD_PREFIX%\lib\DBGWConnector3.lib %DBGWCI_TARGET%\lib
+copy %BUILD_PREFIX%\lib\DBGWConnector3MySQL.lib %DBGWCI_TARGET%\lib
+if "%BUILD_TARGET%" == "Win32" (
+  set CUBRID_DBGWCI_PACKAGE_NAME=CUBRID-DBGWCI-Windows-x86-%BUILD_NUMBER%
+) ELSE (
+  set CUBRID_DBGWCI_PACKAGE_NAME=CUBRID-DBGWCI-Windows-x64-%BUILD_NUMBER%
+)
+echo drop %CUBRID_DBGWCI_PACKAGE_NAME%.zip into %DIST_DIR%
+zip -r %DIST_DIR%\%CUBRID_DBGWCI_PACKAGE_NAME%.zip %DBGWCI_TARGET%
+if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
+echo Package created. [%DIST_DIR%\%CUBRID_DBGWCI_PACKAGE_NAME%.zip]
+set DIST_PKGS=%DIST_PKGS% %CUBRID_DBGWCI_PACKAGE_NAME%.zip
+GOTO :EOF
+
+:BUILD_DBGWCI_NCLAVIS_PACKAGE
+echo Buiding DBGWCI_NCLAVIS package in %BUILD_DIR% ...
+if NOT EXIST %BUILD_PREFIX% echo Cannot found built directory. & GOTO :EOF
+cd /d %BUILD_PREFIX%
+
+SET DBGWCI_NCLAVIS_TARGET=cubrid-dbgwci-nclavis-%BUILD_NUMBER%
+
+if EXIST %DBGWCI_NCLAVIS_TARGET% rd /s /q %DBGWCI_NCLAVIS_TARGET%
+md %DBGWCI_NCLAVIS_TARGET%\include
+md %DBGWCI_NCLAVIS_TARGET%\include\dbgw3
+md %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\system
+md %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\sql
+md %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\client
+md %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\adapter
+md %DBGWCI_NCLAVIS_TARGET%\lib
+md %DBGWCI_NCLAVIS_TARGET%\bin
+
+copy %BUILD_PREFIX%\include\cas_cci.h %DBGWCI_NCLAVIS_TARGET%\include
+copy %BUILD_PREFIX%\include\cas_error.h %DBGWCI_NCLAVIS_TARGET%\include
+copy %BUILD_PREFIX%\include\cci_log.h %DBGWCI_NCLAVIS_TARGET%\include
+copy %BUILD_PREFIX%\include\DBGWClient.h %DBGWCI_NCLAVIS_TARGET%\include
+copy %BUILD_PREFIX%\include\DBGWConnector3.h %DBGWCI_NCLAVIS_TARGET%\include
+copy %BUILD_PREFIX%\include\dbgw3\Common.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\Exception.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\Lob.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\Logger.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\Value.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\ValueSet.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\SynchronizedResource.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3
+copy %BUILD_PREFIX%\include\dbgw3\system\ThreadEx.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\system
+copy %BUILD_PREFIX%\include\dbgw3\system\DBGWPorting.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\system
+copy %BUILD_PREFIX%\include\dbgw3\sql\CallableStatement.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\Connection.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\DatabaseInterface.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\DriverManager.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\PreparedStatement.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\ResultSet.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\ResultSetMetaData.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\sql\Statement.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\sql
+copy %BUILD_PREFIX%\include\dbgw3\client\Interface.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\Mock.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\ConfigurationObject.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\Configuration.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\ClientResultSet.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\Resource.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\QueryMapper.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\client\Client.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\client
+copy %BUILD_PREFIX%\include\dbgw3\adapter\Adapter.h %DBGWCI_NCLAVIS_TARGET%\include\dbgw3\adapter
+copy %BUILD_PREFIX%\bin\DBGWConnector3NClavis.dll %DBGWCI_NCLAVIS_TARGET%\bin
+copy %BUILD_PREFIX%\bin\DBGWConnector3NClavis.pdb %DBGWCI_NCLAVIS_TARGET%\bin
+copy %BUILD_PREFIX%\bin\DBGWConnector3NClavisMySQL.dll %DBGWCI_NCLAVIS_TARGET%\bin
+copy %BUILD_PREFIX%\bin\DBGWConnector3NClavisMySQL.pdb %DBGWCI_NCLAVIS_TARGET%\bin
+copy %BUILD_PREFIX%\lib\DBGWConnector3NClavis.lib %DBGWCI_NCLAVIS_TARGET%\lib
+copy %BUILD_PREFIX%\lib\DBGWConnector3NClavisMySQL.lib %DBGWCI_NCLAVIS_TARGET%\lib
+if "%BUILD_TARGET%" == "Win32" (
+  set CUBRID_DBGWCI_NCLAVIS_PACKAGE_NAME=CUBRID-DBGWCI-NCLAVIS-Windows-x86-%BUILD_NUMBER%
+) ELSE (
+  set CUBRID_DBGWCI_NCLAVIS_PACKAGE_NAME=CUBRID-DBGWCI-NCLAVIS-Windows-x64-%BUILD_NUMBER%
+)
+echo drop %CUBRID_DBGWCI_NCLAVIS_PACKAGE_NAME%.zip into %DIST_DIR%
+zip -r %DIST_DIR%\%CUBRID_DBGWCI_NCLAVIS_PACKAGE_NAME%.zip %DBGWCI_NCLAVIS_TARGET%
+if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
+echo Package created. [%DIST_DIR%\%CUBRID_DBGWCI_NCLAVIS_PACKAGE_NAME%.zip]
+set DIST_PKGS=%DIST_PKGS% %CUBRID_DBGWCI_NCLAVIS_PACKAGE_NAME%.zip
+GOTO :EOF
 
 :BUILD_JDBC_PACKAGE
 echo Buiding JDBC package in %BUILD_DIR%...
