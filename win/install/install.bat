@@ -35,6 +35,11 @@ mkdir %DEST_DIR%\lib
 mkdir %DEST_DIR%\java
 mkdir %DEST_DIR%\conf
 mkdir %DEST_DIR%\include
+mkdir %DEST_DIR%\include\dbgw3
+mkdir %DEST_DIR%\include\dbgw3\sql
+mkdir %DEST_DIR%\include\dbgw3\system
+mkdir %DEST_DIR%\include\dbgw3\client
+mkdir %DEST_DIR%\include\dbgw3\adapter
 mkdir %DEST_DIR%\log
 mkdir %DEST_DIR%\msg
 mkdir %MSG_EN_US_DIR%
@@ -63,6 +68,8 @@ copy %SRC_DIR%\libesql.lib %DEST_DIR%\lib
 copy %SRC_DIR%\cmstat.lib %DEST_DIR%\lib
 copy %SRC_DIR%\cmdep.lib %DEST_DIR%\lib
 
+copy %SRC_DIR%\DBGWConnector3*.lib %DEST_DIR%\lib
+
 rem -------------------------------------------
 rem Binaries
 copy %SRC_DIR%\*.exe %DEST_DIR%\bin
@@ -70,6 +77,9 @@ copy %SRC_DIR%\*.dll %DEST_DIR%\bin
 copy %SRC_DIR%\*.pdb %DEST_DIR%\bin
 copy %SRC_DIR%\..\..\external\dll\*.dll %DEST_DIR%\bin
 copy %SRC_DIR%\..\..\external\dll\%PLATFORM%\*.dll %DEST_DIR%\bin
+
+copy %SRC_DIR%\DBGWConnector3*.dll %DEST_DIR%\bin
+copy %SRC_DIR%\DBGWConnector3*.pdb %DEST_DIR%\bin
 
 rem -------------------------------------------
 rem Conf
@@ -87,6 +97,35 @@ copy %SRC_DIR%\..\..\..\src\compat\dbi_compat.h %DEST_DIR%\include\dbi.h
 copy %SRC_DIR%\..\..\..\src\cm_common\cm_stat.h %DEST_DIR%\include\cm_stat.h
 copy %SRC_DIR%\..\..\..\src\cm_common\cm_dep.h %DEST_DIR%\include\cm_dep.h
 
+copy %SRC_DIR%\..\..\..\src\cci\cci_log.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWClient.h  %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\DBGWConnector3.h  %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\Common.h  %DEST_DIR%\include\dbgw3
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\Exception.h  %DEST_DIR%\include\dbgw3
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\Lob.h  %DEST_DIR%\include\dbgw3
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\Logger.h  %DEST_DIR%\include\dbgw3
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\Value.h  %DEST_DIR%\include\dbgw3
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\ValueSet.h  %DEST_DIR%\include\dbgw3
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\SynchronizedResource.h  %DEST_DIR%\include\dbgw3
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\system\ThreadEx.h  %DEST_DIR%\include\dbgw3\system
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\system\DBGWPorting.h  %DEST_DIR%\include\dbgw3\system
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\sql\CallableStatement.h  %DEST_DIR%\include\dbgw3\sql
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\sql\Connection.h  %DEST_DIR%\include\dbgw3\sql
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\sql\DatabaseInterface.h  %DEST_DIR%\include\dbgw3\sql
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\sql\DriverManager.h  %DEST_DIR%\include\dbgw3\sql
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\sql\PreparedStatement.h  %DEST_DIR%\include\dbgw3\sql
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\sql\ResultSet.h  %DEST_DIR%\include\dbgw3\sql
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\sql\ResultSetMetaData.h  %DEST_DIR%\include\dbgw3\sql
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\sql\Statement.h  %DEST_DIR%\include\dbgw3\sql
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\client\Interface.h  %DEST_DIR%\include\dbgw3\client
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\client\Mock.h  %DEST_DIR%\include\dbgw3\client
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\client\ConfigurationObject.h  %DEST_DIR%\include\dbgw3\client
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\client\Configuration.h  %DEST_DIR%\include\dbgw3\client
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\client\ClientResultSet.h  %DEST_DIR%\include\dbgw3\client
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\client\Resource.h  %DEST_DIR%\include\dbgw3\client
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\client\QueryMapper.h  %DEST_DIR%\include\dbgw3\client
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\client\Client.h  %DEST_DIR%\include\dbgw3\client
+copy %SRC_DIR%\..\..\..\src\dbgw\dbgw3\adapter\Adapter.h  %DEST_DIR%\include\dbgw3\adapter
 
 rem -------------------------------------------
 rem Messages
