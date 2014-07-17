@@ -6418,9 +6418,9 @@ disk_vhdr_rv_undoredo_free_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * file_type_to_string () - Get a string of the given file type
- *   return: string of the file type
- *   fstruct_type(in): The type of the structure
+ * disk_page_type_to_string () - Get a string of the given disk page type
+ *   return: string of the disk page type
+ *   page_type(in): The type of the structure
  */
 static const char *
 disk_page_type_to_string (DISK_PAGE_TYPE page_type)

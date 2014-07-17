@@ -3709,6 +3709,10 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
   /* Deallocate all user pages */
   if (fhdr->num_user_pages > 0)
     {
+      FILE_RECV_DELETE_PAGES postpone_data;
+      int num_user_pages;
+      INT32 undo_data, redo_data;
+
       /* We need to deallocate all the pages and sectors of every allocated
          set */
       allocset_offset = offsetof (FILE_HEADER, allocset);
@@ -4024,6 +4028,26 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 	    }
 	  pgbuf_unfix_and_init (thread_p, allocset_pgptr);
 	}
+
+      num_user_pages = fhdr->num_user_pages;
+      fhdr->num_user_pages = 0;
+      fhdr->num_user_pages_mrkdelete += num_user_pages;
+
+      addr.pgptr = fhdr_pgptr;
+      addr.offset = FILE_HEADER_OFFSET;
+      undo_data = num_user_pages;
+      redo_data = -num_user_pages;
+      log_append_undoredo_data (thread_p, RVFL_FHDR_MARK_DELETED_PAGES, &addr,
+				sizeof (undo_data), sizeof (redo_data),
+				&undo_data, &redo_data);
+
+      postpone_data.deleted_npages = num_user_pages;
+      postpone_data.need_compaction = 0;
+
+      log_append_postpone (thread_p, RVFL_FHDR_DELETE_PAGES, &addr,
+			   sizeof (postpone_data), &postpone_data);
+
+      pgbuf_set_dirty (thread_p, fhdr_pgptr, DONT_FREE);
     }
 
   /*
@@ -10306,9 +10330,14 @@ file_compress (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
 
-  if (fhdr->num_user_pages_mrkdelete > 0
-      || file_tracker_is_registered_vfid (thread_p, vfid) == false)
+  if (fhdr->num_user_pages_mrkdelete > 0)
     {
+      goto exit_on_error;
+    }
+  if (file_tracker_is_registered_vfid (thread_p, vfid) == false)
+    {
+      assert (false);
+
       goto exit_on_error;
     }
 
