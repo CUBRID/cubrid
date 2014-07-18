@@ -5011,3 +5011,48 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 #undef RETURN_ERROR
 #undef RETURN_ERROR_WITH_ARG
 }
+
+/*
+ * db_sleep() - sleep milli-secs
+ *   return:
+ *   result(out):
+ *   value(in) : input db_value
+ */
+int
+db_sleep (DB_VALUE * result, DB_VALUE * value)
+{
+  int error = NO_ERROR;
+  long million_sec = 0;
+
+  assert (result != NULL && value != NULL);
+  assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NULL
+	  || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_DOUBLE);
+
+  DB_MAKE_NULL (result);
+
+  if (DB_IS_NULL (value) || DB_GET_DOUBLE (value) < 0.0)
+    {
+      error = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+
+      goto end;
+    }
+
+  million_sec = DB_GET_DOUBLE (value) * 1000L;
+
+  error = msleep (million_sec);
+  if (error == NO_ERROR)
+    {
+      DB_MAKE_INT (result, 0);
+    }
+  else
+    {
+      DB_MAKE_INT (result, 1);
+
+      error = NO_ERROR;
+    }
+
+end:
+
+  return error;
+}

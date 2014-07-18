@@ -293,7 +293,8 @@ static FUNCTION_MAP functions[] = {
   {"str_to_date", PT_STR_TO_DATE},
   {"to_base64", PT_TO_BASE64},
   {"from_base64", PT_FROM_BASE64},
-  {"sys_guid", PT_SYS_GUID}
+  {"sys_guid", PT_SYS_GUID},
+  {"sleep", PT_SLEEP}
 };
 
 
@@ -1521,6 +1522,7 @@ int g_original_buffer_len;
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
 %token <cptr> SHOW
+%token <cptr> SLEEP
 %token <cptr> SLOTS
 %token <cptr> SLOTTED
 %token <cptr> STABILITY
@@ -24284,6 +24286,21 @@ parser_keyword_func (const char *name, PT_NODE * args)
       if (c != 0)
 	return NULL;
       node = parser_make_expression (this_parser, key->op, NULL, NULL, NULL);
+      return node;
+      
+    case PT_SLEEP:
+      if (c != 1)
+        {
+      	  return NULL;
+        }
+      
+      a1 = args;
+      node = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
+      if (node != NULL)
+        {
+          node->do_not_fold = 1;
+        }
+      
       return node;
 
     default:

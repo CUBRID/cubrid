@@ -800,4 +800,6 @@ extern time_t mktime_for_win32 (struct tm *tm);
 #define PRId64 "lld"
 #endif
 
+extern int msleep (const long msec);
+
 #endif /* _PORTING_H_ */

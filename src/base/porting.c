@@ -2687,3 +2687,34 @@ mktime_for_win32 (struct tm * tm)
   return (time_t) (-1);
 }
 #endif
+
+/* msleep (...)  million second sleep
+ *
+ * return errno
+ * msec(in):
+ */
+int
+msleep (const long msec)
+{
+  int error = 0;
+
+  assert (msec >= 0);
+
+#if defined (WINDOWS)
+  Sleep (msec);
+#else
+  struct timeval tv;
+
+  tv.tv_sec = msec / 1000L;
+  tv.tv_usec = msec % 1000L * 1000L;
+
+  errno = 0;
+  select (0, NULL, NULL, NULL, &tv);
+  error = errno;
+
+  /* can only be 0 or EINTR here */
+  assert (error == 0 || error == EINTR);
+#endif
+
+  return error;
+}

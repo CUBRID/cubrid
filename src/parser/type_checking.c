@@ -4234,6 +4234,21 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       def->overloads_count = num;
       break;
 
+    case PT_SLEEP:
+      num = 0;
+
+      /* one overload */
+
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DOUBLE;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     default:
       return false;
     }
@@ -6388,6 +6403,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_AES_ENCRYPT:
     case PT_AES_DECRYPT:
     case PT_INDEX_PREFIX:
+    case PT_SLEEP:
       return false;
 
     default:
@@ -8679,6 +8695,7 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_AES_DECRYPT:
     case PT_SHA_ONE:
     case PT_SHA_TWO:
+    case PT_SLEEP:
       return true;
 
     default:
@@ -18586,10 +18603,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  PT_ERRORc (parser, o1, er_msg ());
 	  return 0;
 	}
-      else
+
+      break;
+
+    case PT_SLEEP:
+      error = db_sleep (result, arg1);
+      if (error < 0)
 	{
-	  return 1;
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
+
+      break;
 
     default:
       break;

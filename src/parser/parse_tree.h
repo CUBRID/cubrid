@@ -1398,6 +1398,7 @@ typedef enum
   PT_SHA_TWO,
   PT_TO_BASE64,
   PT_FROM_BASE64,
+  PT_SLEEP,
 
   PT_SYS_GUID,
 

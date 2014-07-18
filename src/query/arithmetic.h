@@ -68,4 +68,8 @@ extern int db_typeof_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 			    const DB_VALUE * value2, const DB_VALUE * value3,
 			    const DB_VALUE * value4);
+/* temporarily put db_sleep here. A better choice is introduce a new file system_opfunc.c
+ * But currently, there is just one such functions.
+ */
+extern int db_sleep (DB_VALUE * result, DB_VALUE * value);
 #endif /* _ARITHMETIC_H_ */

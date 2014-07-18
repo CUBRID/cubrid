@@ -4013,6 +4013,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "trace_stats";
     case PT_INDEX_PREFIX:
       return "index_prefix ";
+    case PT_SLEEP:
+      return "sleep ";
     default:
       return "unknown opcode";
     }
@@ -12198,6 +12200,13 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
       q = pt_append_nulstring (parser, q, ", ");
       r1 = pt_print_bytes (parser, p->info.expr.arg3);
+      q = pt_append_varchar (parser, q, r1);
+
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_SLEEP:
+      q = pt_append_nulstring (parser, q, " sleep(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_varchar (parser, q, r1);
 
       q = pt_append_nulstring (parser, q, ")");
