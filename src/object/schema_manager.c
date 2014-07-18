@@ -11526,7 +11526,7 @@ static int
 transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 {
   int error = NO_ERROR;
-  SM_CLASS_CONSTRAINT *flat_constraints, *con, *new_con, *prev, *next;
+  SM_CLASS_CONSTRAINT *flat_constraints = NULL, *con, *new_con, *prev, *next;
   SM_ATTRIBUTE *attr = NULL;
   int num_pk;
   bool is_partitioned;
@@ -11537,11 +11537,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
    * Sigh, convert the template property list to a transient constraint
    * cache so we have a prayer of dealing with it.
    */
-  if (flat == NULL)
-    {
-      flat_constraints = NULL;
-    }
-  else
+  if (flat != NULL)
     {
       error = classobj_make_class_constraints (flat->properties,
 					       flat->instance_attributes,
@@ -11816,7 +11812,10 @@ end:
   /* This was used only for convenience here, be sure to free it.
    * Eventually, we'll just maintain these directly on the template.
    */
-  classobj_free_class_constraints (flat_constraints);
+  if (flat_constraints != NULL)
+    {
+      classobj_free_class_constraints (flat_constraints);
+    }
   return error;
 }
 

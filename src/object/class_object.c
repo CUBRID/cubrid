@@ -3288,6 +3288,11 @@ classobj_make_class_constraints (DB_SET * class_props,
   int *asc_desc;
   int num_constraint_types = NUM_CONSTRAINT_TYPES;
 
+  if (con_ptr != NULL)
+    {
+      *con_ptr = NULL;
+    }
+
   /* make sure these are initialized for the error cleanup code */
   db_make_null (&pvalue);
   db_make_null (&uvalue);
