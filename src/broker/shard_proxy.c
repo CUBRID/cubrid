@@ -94,7 +94,7 @@ proxy_shm_initialize (void)
   p = getenv (PROXY_ID_ENV_STR);
   if (p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to getenv(PROXY_ID_ENV_STR).");
+      SHARD_ERR ("Failed to getenv(PROXY_ID_ENV_STR).");
       goto return_error;
     }
   parse_int (&proxy_id, p, 10);
@@ -102,8 +102,7 @@ proxy_shm_initialize (void)
   p = getenv (PROXY_SHM_KEY_STR);
   if (p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to getenv(PROXY_SHM_KEY_STR).");
+      SHARD_ERR ("Failed to getenv(PROXY_SHM_KEY_STR).");
       goto return_error;
     }
   parse_int (&proxy_shm_id, p, 10);
@@ -112,14 +111,14 @@ proxy_shm_initialize (void)
     (T_SHM_PROXY *) uw_shm_open (proxy_shm_id, SHM_PROXY, SHM_MODE_ADMIN);
   if (shm_proxy_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to get shm proxy.");
+      SHARD_ERR ("Failed to get shm proxy.");
       goto return_error;
     }
 
   proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_id);
   if (proxy_info_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to get proxy info.");
+      SHARD_ERR ("Failed to get proxy info.");
       goto return_error;
     }
 
@@ -128,7 +127,7 @@ proxy_shm_initialize (void)
 				       SHM_APPL_SERVER, SHM_MODE_ADMIN);
   if (shm_as_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to open shared memory. "
+      SHARD_ERR ("Failed to open shared memory. "
 		 "(SHM_APPL_SERVER, shm_key:%d).", appl_server_shm_id);
       goto return_error;
     }
@@ -136,32 +135,28 @@ proxy_shm_initialize (void)
   shm_user_p = shard_metadata_get_user (shm_proxy_p);
   if (shm_user_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to get shm metadata user info.");
+      SHARD_ERR ("Failed to get shm metadata user info.");
       goto return_error;
     }
 
   shm_key_p = shard_metadata_get_key (shm_proxy_p);
   if (shm_key_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to get shm metadata shard key info.");
+      SHARD_ERR ("Failed to get shm metadata shard key info.");
       goto return_error;
     }
 
   shm_conn_p = shard_metadata_get_conn (shm_proxy_p);
   if (shm_conn_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to get shm metadata connection info.");
+      SHARD_ERR ("Failed to get shm metadata connection info.");
       goto return_error;
     }
 
   return 0;
 
 return_error:
-  PROXY_LOG (PROXY_LOG_MODE_ERROR,
-	     "Failed to initialize shard shared memory.");
+  SHARD_ERR ("Failed to initialize shard shared memory.");
 
   return -1;
 }
