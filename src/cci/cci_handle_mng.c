@@ -485,6 +485,12 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id,
   char *key;
   int *data;
 
+  if (sql == NULL)
+    {
+      assert (sql != NULL);
+      return CCI_ER_REQ_HANDLE;
+    }
+
   data = cci_mht_get (con->stmt_pool, sql);
   if (data != NULL)
     {

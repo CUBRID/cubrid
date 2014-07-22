@@ -2278,7 +2278,8 @@ cci_close_req_handle (int mapped_stmt_id)
 
   API_SLOG (con_handle);
 
-  if (DOES_CONNECTION_HAVE_STMT_POOL (con_handle))
+  if (DOES_CONNECTION_HAVE_STMT_POOL (con_handle)
+      && req_handle->sql_text != NULL)
     {
       qe_close_query_result (req_handle, con_handle);
 
