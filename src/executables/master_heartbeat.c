@@ -4657,13 +4657,16 @@ hb_thread_check_disk_failure (void *arg)
 
   while (hb_Resource->shutdown == false)
     {
-      rv = pthread_mutex_lock (&hb_Cluster->lock);
-      rv = pthread_mutex_lock (&hb_Resource->lock);
-
       interval =
 	prm_get_integer_value (PRM_ID_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS);
       if (interval > 0)
 	{
+#if !defined(WINDOWS)
+	  rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
+#endif /* !WINDOWS */
+	  rv = pthread_mutex_lock (&hb_Cluster->lock);
+	  rv = pthread_mutex_lock (&hb_Resource->lock);
+
 	  if (hb_Cluster->is_isolated == false
 	      && hb_Resource->state == HB_NSTATE_MASTER)
 	    {
@@ -4675,6 +4678,9 @@ hb_thread_check_disk_failure (void *arg)
 
 		  pthread_mutex_unlock (&hb_Resource->lock);
 		  pthread_mutex_unlock (&hb_Cluster->lock);
+#if !defined(WINDOWS)
+		  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
+#endif /* !WINDOWS */
 
 		  error =
 		    hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN,
@@ -4691,14 +4697,14 @@ hb_thread_check_disk_failure (void *arg)
 	    }
 	  pthread_mutex_unlock (&hb_Resource->lock);
 	  pthread_mutex_unlock (&hb_Cluster->lock);
+#if !defined(WINDOWS)
+	  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
+#endif /* !WINDOWS */
 
 	  SLEEP_SEC (interval);
 	}
       else
 	{
-	  pthread_mutex_unlock (&hb_Resource->lock);
-	  pthread_mutex_unlock (&hb_Cluster->lock);
-
 	  SLEEP_SEC (30);
 	}
     }
