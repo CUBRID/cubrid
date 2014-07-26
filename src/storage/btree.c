@@ -9099,30 +9099,27 @@ static int
 btree_node_size_uncompressed (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			      PAGE_PTR page_ptr)
 {
-  int used_size, key_cnt, prefix, prefix_len, offset;
+  int used_size, key_cnt = 0, prefix, prefix_len, offset;
   RECDES rec;
   DB_VALUE key;
   bool clear_key = false;
   DB_MIDXKEY *midx_key = NULL;
   LEAF_REC leaf_pnt;
-#if !defined(NDEBUG)
-  BTREE_NODE_HEADER *header = NULL;
-#endif
-
-  key_cnt = btree_node_number_of_keys (page_ptr);
-
-#if !defined(NDEBUG)
-  header = btree_get_node_header (page_ptr);
-
-  assert (header != NULL);
-  assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
-#endif
 
   used_size = DB_PAGESIZE - spage_get_free_space (thread_p, page_ptr);
 
   prefix = btree_node_common_prefix (thread_p, btid, page_ptr);
   if (prefix > 0)
     {
+#if !defined(NDEBUG)
+      BTREE_NODE_HEADER *header = NULL;
+
+      header = btree_get_node_header (page_ptr);
+
+      assert (header != NULL);
+      assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
+#endif
+
       if (spage_get_record (page_ptr, 1, &rec, PEEK) != S_SUCCESS)
 	{
 	  assert (false);
@@ -9146,6 +9143,7 @@ btree_node_size_uncompressed (THREAD_ENTRY * thread_p, BTID_INT * btid,
       /* at here, we can not calculate aligned size of uncompressed rec.
        * alignment is already included in FIXED_EMPTY
        */
+      key_cnt = btree_node_number_of_keys (page_ptr);
       used_size += (key_cnt - 2) * prefix_len;
     }
 
