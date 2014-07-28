@@ -160,6 +160,8 @@ static int rv;
     DIFF_METHOD (RES, NEW, OLD, bt_num_merges);                         \
     DIFF_METHOD (RES, NEW, OLD, bt_num_get_stats);                      \
                                                                         \
+    DIFF_METHOD (RES, NEW, OLD, heap_num_stats_sync_bestspace);		\
+	  								\
     DIFF_METHOD (RES, NEW, OLD, qm_num_selects);                        \
     DIFF_METHOD (RES, NEW, OLD, qm_num_inserts);                        \
     DIFF_METHOD (RES, NEW, OLD, qm_num_deletes);                        \
@@ -203,7 +205,7 @@ static int rv;
     PUT_STAT (RES, NEW, pc_num_query_string_hash_entries);              \
     PUT_STAT (RES, NEW, pc_num_xasl_id_hash_entries);                   \
     PUT_STAT (RES, NEW, pc_num_class_oid_hash_entries);                 \
-  } while (0)
+} while (0)
 
 
 static void mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats);
@@ -1601,6 +1603,7 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
   "Num_btree_splits",
   "Num_btree_merges",
   "Num_btree_get_stats",
+  "Num_heap_stats_sync_bestspace",
   "Num_query_selects",
   "Num_query_inserts",
   "Num_query_deletes",
@@ -3365,6 +3368,25 @@ mnt_x_pc_class_oid_hash_entries (THREAD_ENTRY * thread_p,
     }
 }
 
+/*
+ *   mnt_x_heap_stats_sync_bestspace - Increase heap_num_stats_sync_bestspace 
+ *				       counter when synchronized 
+ *				       the statistics of best space of heap.
+ *   return: none
+ */
+
+void
+mnt_x_heap_stats_sync_bestspace (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, heap_num_stats_sync_bestspace, 1);
+    }
+}
+
 #endif /* SERVER_MODE || SA_MODE */
 
 
@@ -3456,9 +3478,11 @@ mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats,
 	}
     }
 
+
   snprintf (p, remained_size, "\n *** OTHER STATISTICS *** \n"
 	    "Data_page_buffer_hit_ratio    = %10.2f\n",
 	    (float) stats->pb_hit_ratio / 100);
+
   buffer[buf_size - 1] = '\0';
 }
 

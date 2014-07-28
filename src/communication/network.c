@@ -135,6 +135,8 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->bt_num_get_stats));
   ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->heap_num_stats_sync_bestspace));
+  ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->qm_num_selects));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->qm_num_inserts));
@@ -319,6 +321,8 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_GET_INT64 (ptr, &(stats->bt_num_merges));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->bt_num_get_stats));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->heap_num_stats_sync_bestspace));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->qm_num_selects));
   ptr += OR_INT64_SIZE;

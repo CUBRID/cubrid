@@ -760,10 +760,10 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
 
   stat->cpu_user =
     (uint64_t) ((proc_stat.pr_utime.tv_sec +
-          proc_stat.pr_utime.tv_nsec * 10e-9) * ticks_per_sec);
+		 proc_stat.pr_utime.tv_nsec * 10e-9) * ticks_per_sec);
   stat->cpu_kernel =
     (uint64_t) ((proc_stat.pr_stime.tv_sec +
-          proc_stat.pr_stime.tv_nsec * 10e-9) * ticks_per_sec);
+		 proc_stat.pr_stime.tv_nsec * 10e-9) * ticks_per_sec);
 
   snprintf (file_name, PATH_MAX, "/proc/%d/psinfo", pid);
 
@@ -1163,6 +1163,8 @@ static STATDUMP_PROP statdump_offset[] = {
   {"Num_btree_splits", offsetof (T_CM_DB_EXEC_STAT, bt_num_splits)},
   {"Num_btree_merges", offsetof (T_CM_DB_EXEC_STAT, bt_num_merges)},
   {"Num_btree_get_stats", offsetof (T_CM_DB_EXEC_STAT, bt_num_get_stats)},
+  {"Num_heap_stats_sync_bestspace",
+   offsetof (T_CM_DB_EXEC_STAT, heap_num_stats_sync_bestspace)},
   {"Num_query_selects", offsetof (T_CM_DB_EXEC_STAT, qm_num_selects)},
   {"Num_query_inserts", offsetof (T_CM_DB_EXEC_STAT, qm_num_inserts)},
   {"Num_query_deletes", offsetof (T_CM_DB_EXEC_STAT, qm_num_deletes)},
@@ -1209,7 +1211,7 @@ static STATDUMP_PROP statdump_offset[] = {
    offsetof (T_CM_DB_EXEC_STAT, pc_num_xasl_id_hash_entries)},
   {"Num_plan_cache_class_oid_hash_entries",
    offsetof (T_CM_DB_EXEC_STAT, pc_num_class_oid_hash_entries)},
-  {"Data_page_buffer_hit_ratio", offsetof (T_CM_DB_EXEC_STAT, pb_hit_ratio)},
+  {"Data_page_buffer_hit_ratio", offsetof (T_CM_DB_EXEC_STAT, pb_hit_ratio)}
 };
 
 static unsigned int *

@@ -4104,6 +4104,8 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
   tsc_getticks (&start_tick);
 #endif /* CUBRID_DEBUG */
 
+  mnt_heap_stats_sync_bestspace (thread_p);
+
   min_freespace = heap_stats_get_min_freespace (heap_hdr);
 
   best = 0;

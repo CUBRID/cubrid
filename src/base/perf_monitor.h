@@ -200,6 +200,9 @@ struct mnt_server_exec_stats
   UINT64 bt_num_merges;
   UINT64 bt_num_get_stats;
 
+  /* Execution statistics for the heap manager */
+  UINT64 heap_num_stats_sync_bestspace;
+
   /* Execution statistics for the query manager */
   UINT64 qm_num_selects;
   UINT64 qm_num_inserts;
@@ -261,7 +264,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of field of MNT_SERVER_EXEC_STATS structure */
-#define MNT_SIZE_OF_SERVER_EXEC_STATS 80
+#define MNT_SIZE_OF_SERVER_EXEC_STATS 81
 
 /* The exact size of mnt_server_exec_stats structure */
 #define MNT_SERVER_EXEC_STATS_SIZEOF \
@@ -631,6 +634,11 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_pc_class_oid_hash_entries(thread_p, num_entries) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_class_oid_hash_entries(thread_p, num_entries)
 
+
+/* Execution statistics for the heap manager */
+#define mnt_heap_stats_sync_bestspace(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_stats_sync_bestspace(thread_p)
+
 extern MNT_SERVER_EXEC_STATS *mnt_server_get_stats (THREAD_ENTRY * thread_p);
 extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
 
@@ -735,6 +743,8 @@ extern void mnt_x_pc_xasl_id_hash_entries (THREAD_ENTRY * thread_p,
 extern void mnt_x_pc_class_oid_hash_entries (THREAD_ENTRY * thread_p,
 					     unsigned int num_entries);
 
+extern void mnt_x_heap_stats_sync_bestspace (THREAD_ENTRY * thread_p);
+
 #else /* SERVER_MODE || SA_MODE */
 
 #define mnt_file_creates(thread_p)
@@ -822,6 +832,9 @@ extern void mnt_x_pc_class_oid_hash_entries (THREAD_ENTRY * thread_p,
 #define mnt_pc_query_string_hash_entries(thread_p, num_entries)
 #define mnt_pc_xasl_id_hash_entries(thread_p, num_entries)
 #define mnt_pc_class_oid_hash_entries(thread_p, num_entries)
+
+#define mnt_heap_stats_sync_bestspace(thread_p)
+
 
 #endif /* CS_MODE */
 

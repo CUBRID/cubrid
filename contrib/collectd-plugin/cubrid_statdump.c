@@ -124,6 +124,9 @@ cubrid_statdump_read ()
   value_t bt_num_noncovered[1];
   value_t bt_num_resumes[1];
 
+  /* Execution statistics for the heap manager */
+  value_t heap_num_stats_sync_bestspace[1];
+
   /* Execution statistics for the query manger */
   value_t qm_num_selects[1];
   value_t qm_num_inserts[1];
@@ -159,7 +162,7 @@ cubrid_statdump_read ()
   value_t pc_num_class_oid_hash_entries[1];
 
   value_t pb_hit_ratio[1];
-
+  
   MNT_SERVER_EXEC_STATS mystat;
   
   if (is_restarted == false)
@@ -230,6 +233,8 @@ cubrid_statdump_read ()
   bt_num_noncovered[0].gauge = mystat.bt_num_noncovered;
   bt_num_resumes[0].gauge = mystat.bt_num_resumes;
 
+  heap_num_stats_sync_bestspace[0].gauge = mystat.heap_num_stats_sync_bestspace;
+  
   qm_num_selects[0].gauge = mystat.qm_num_selects;
   qm_num_inserts[0].gauge = mystat.qm_num_inserts;
   qm_num_deletes[0].gauge = mystat.qm_num_deletes;
@@ -315,6 +320,8 @@ cubrid_statdump_read ()
   submit ("bt_num_noncovered", submit_name, bt_num_noncovered, 1);
   submit ("bt_num_resumes", submit_name, bt_num_resumes, 1);
 
+  submit ("heap_num_stats_sync_bestspace", submit_name, heap_num_stats_sync_bestspace, 1);
+  
   submit ("qm_num_selects", submit_name, qm_num_selects, 1);
   submit ("qm_num_inserts", submit_name, qm_num_inserts, 1);
   submit ("qm_num_deletes", submit_name, qm_num_deletes, 1);

@@ -312,6 +312,9 @@ extern "C"
     unsigned int bt_num_merges;
     unsigned int bt_num_get_stats;
 
+    /* Execution statistics for the heap manager */
+    unsigned int heap_num_stats_sync_bestspace;
+
     /* Execution statistics for the query manager */
     unsigned int qm_num_selects;
     unsigned int qm_num_inserts;
@@ -366,6 +369,7 @@ extern "C"
     /* Other statistics */
     unsigned int pb_hit_ratio;
     /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
+
   } T_CM_DB_EXEC_STAT;
 
   int cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat,
