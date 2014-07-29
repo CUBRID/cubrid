@@ -3407,6 +3407,7 @@ exit_on_error:
 
   /* ABORT THE TOP SYSTEM OPERATION. That is, the creation of the file is
      aborted, all pages that were allocated are deallocated at this point */
+  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
   if (fhdr_pgptr != NULL)
     {
@@ -3419,7 +3420,6 @@ exit_on_error:
     }
 
   VFID_SET_NULL (vfid);
-  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
   if (ret == NO_ERROR)
     {
@@ -4262,14 +4262,14 @@ exit_on_error:
       pgbuf_unfix_and_init (thread_p, allocset_pgptr);
     }
 
+  /* ABORT THE TOP SYSTEM OPERATION. That is, the deletion of the file is
+     aborted, all pages that were deallocated are undone.. */
+  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+
   if (fhdr_pgptr)
     {
       pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
     }
-
-  /* ABORT THE TOP SYSTEM OPERATION. That is, the deletion of the file is
-     aborted, all pages that were deallocated are undone.. */
-  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
   if (ret == NO_ERROR)
     {
@@ -7121,12 +7121,13 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
 
 exit_on_error:
 
+  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+
   if (fhdr_pgptr)
     {
       pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
     }
 
-  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
   VPID_SET_NULL (first_alloc_vpid);
 
   if (restore_check_interrupt == true)
@@ -7414,12 +7415,12 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p,
 
 exit_on_error:
 
+  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+
   if (fhdr_pgptr)
     {
       pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
     }
-
-  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
   *first_alloc_nthpage = -1;
   VPID_SET_NULL (first_alloc_vpid);
@@ -7628,6 +7629,8 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
 
 exit_on_error:
 
+  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+
   if (fhdr_pgptr)
     {
       pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
@@ -7637,8 +7640,6 @@ exit_on_error:
     {
       pgbuf_unfix_and_init (thread_p, allocset_pgptr);
     }
-
-  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
   VPID_SET_NULL (first_alloc_vpid);
 
@@ -8381,6 +8382,8 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
 
 exit_on_error:
 
+  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+
   if (fhdr_pgptr)
     {
       pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
@@ -8390,8 +8393,6 @@ exit_on_error:
     {
       pgbuf_unfix_and_init (thread_p, allocset_pgptr);
     }
-
-  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
   if (restore_check_interrupt == true)
     {
@@ -8702,14 +8703,14 @@ exit_on_error:
       pgbuf_unfix_and_init (thread_p, allocset_pgptr);
     }
 
+  /* ABORT THE TOP SYSTEM OPERATION. That is, the deletion of the file is
+     aborted, all pages that were deallocated are undone..  */
+  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+
   if (fhdr_pgptr)
     {
       pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
     }
-
-  /* ABORT THE TOP SYSTEM OPERATION. That is, the deletion of the file is
-     aborted, all pages that were deallocated are undone..  */
-  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
   if (ret == NO_ERROR)
     {
@@ -10464,6 +10465,8 @@ exit_on_error:
       pgbuf_unfix_and_init (thread_p, allocset_pgptr);
     }
 
+  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+
   if (fhdr_pgptr)
     {
       pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
@@ -10473,8 +10476,6 @@ exit_on_error:
     {
       ret = ER_FAILED;
     }
-
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
   return ret;
 }
 
@@ -11460,8 +11461,9 @@ file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid)
   vpid.volid = file_Tracker->vfid->volid;
   vpid.pageid = file_Tracker->vfid->fileid;
 
-  fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-			  PGBUF_UNCONDITIONAL_LATCH);
+  fhdr_pgptr =
+    pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+	       PGBUF_UNCONDITIONAL_LATCH);
   if (fhdr_pgptr == NULL)
     {
       return NULL;
@@ -11541,12 +11543,12 @@ exit_on_error:
       pgbuf_unfix_and_init (thread_p, allocset_pgptr);
     }
 
+  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+
   if (fhdr_pgptr != NULL)
     {
       pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
     }
-
-  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
   return NULL;
 }
