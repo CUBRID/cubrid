@@ -2547,7 +2547,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
   if (vol_fd != NULL_VOLDES)
     {
       /* initialize the pages of the volume. */
- 
+
       /* initialize at least two pages, the header page and the last page. 
        * in case of is_sweep_clean == true, every page of the volume will be written.
        */
@@ -8987,7 +8987,7 @@ fileio_read_backup (THREAD_ENTRY * thread_p,
 
       if (session_p->sleep_msecs > 0)	/* priority 1 */
 	{
-	  sleep_msecs = session_p->sleep_msecs * 1000;
+	  sleep_msecs = session_p->sleep_msecs;
 	}
       else if (prm_get_integer_value (PRM_ID_IO_BACKUP_SLEEP_MSECS) > 0)	/* priority 2 */
 	{
