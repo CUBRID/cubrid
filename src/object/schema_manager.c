@@ -14024,9 +14024,10 @@ severe_error:
 
   assert (er_errid () != NO_ERROR);
   error = er_errid ();
-  (void) tran_unilaterally_abort ();
 
   classobj_decache_class_constraints (class_);
+
+  (void) tran_unilaterally_abort ();
 
   return error;
 }
