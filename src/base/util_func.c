@@ -424,7 +424,7 @@ util_shuffle_string_array (char **array, int count)
 {
   struct timeval t;
   int i, j;
-  long int r;
+  double r;
   struct drand48_data buf;
   char *temp;
 
@@ -445,8 +445,8 @@ util_shuffle_string_array (char **array, int count)
   /* Fisher-Yates shuffle */
   for (i = count - 1; i > 0; i--)
     {
-      lrand48_r (&buf, &r);
-      j = (int) (r % (i + 1));
+      drand48_r (&buf, &r);
+      j = (int) ((i + 1) * r);
 
       temp = array[j];
       array[j] = array[i];
