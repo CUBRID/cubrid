@@ -7658,7 +7658,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 	  goto error;
 	}
 
-#if !defined(NDEBUG)
+#if 0
       if (key_ins_del != NULL
 	  && !DB_IS_NULL (key_dbvalue)
 	  && !btree_multicol_key_is_null (key_dbvalue))
@@ -8472,7 +8472,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		}
 	    }
 
-#if !defined(NDEBUG)
+#if 0
 	  {
 	    BTREE_CHECKSCAN bt_checkscan;
 	    DISK_ISVALID isvalid = DISK_VALID;
