@@ -2657,15 +2657,33 @@ log_set_interrupt (int set)
  *
  * NOTE:
  */
-void
+int
 log_checkpoint (void)
 {
 #if defined(CS_MODE)
-  (void) net_client_request_no_reply (NET_SERVER_LOG_CHECKPOINT, NULL, 0);
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error = net_client_request (NET_SERVER_LOG_CHECKPOINT,
+				  NULL, 0, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				  NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_errcode (reply, &error);
+    }
+
+  return error;
 #else /* CS_MODE */
   /* Cannot run in standalone mode */
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1,
 	  "checkpoint");
+
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 

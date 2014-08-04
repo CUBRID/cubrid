@@ -1486,11 +1486,11 @@ db_set_suppress_repl_on_transaction (int set)
  * set(in): Set or clear an interruption
  *
  */
-void
+int
 db_checkpoint (void)
 {
-  CHECK_CONNECT_VOID ();
-  log_checkpoint ();
+  CHECK_CONNECT_ERROR ();
+  return log_checkpoint ();
 }
 
 /*

@@ -796,6 +796,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
   int cmd_no;			/* session command number */
   char *argument_end = NULL;
   int argument_len = 0;
+  int error_code;
 #if !defined(WINDOWS)
   HIST_ENTRY *hist_entry;
 #endif /* !WINDOWS */
@@ -974,8 +975,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_CHECKPOINT:
       if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	{
-	  db_checkpoint ();
-	  if (db_error_code () != NO_ERROR)
+	  error_code = db_checkpoint ();
+	  if (error_code != NO_ERROR)
 	    {
 	      csql_display_csql_err (0, 0);
 	    }

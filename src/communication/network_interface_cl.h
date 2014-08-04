@@ -164,7 +164,7 @@ extern int log_reset_wait_msecs (int wait_msecs);
 extern int log_reset_isolation (TRAN_ISOLATION isolation,
 				bool unlock_by_isolation);
 extern void log_set_interrupt (int set);
-extern void log_checkpoint (void);
+extern int log_checkpoint (void);
 extern void log_dump_stat (FILE * outfp);
 extern int log_set_suppress_repl_on_transaction (int set);
 extern LOB_LOCATOR_STATE log_find_lob_locator (const char *locator,
