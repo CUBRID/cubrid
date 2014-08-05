@@ -6330,20 +6330,8 @@ int
 xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid)
 {
   VFID vfid;
-  FILE_IS_NEW_FILE is_new_file;
   FILE_TYPE file_type;
   int ret;
-
-  is_new_file = file_is_new_file (thread_p, &(hfid->vfid));
-  if (is_new_file == FILE_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (is_new_file == FILE_NEW_FILE)
-    {
-      return xheap_destroy (thread_p, hfid);
-    }
 
   file_type = file_get_type (thread_p, &(hfid->vfid));
   if (file_type == FILE_HEAP_REUSE_SLOTS)
