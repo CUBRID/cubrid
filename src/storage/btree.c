@@ -4839,6 +4839,7 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
   NON_LEAF_REC nleaf_pnt;
   DISK_ISVALID valid = DISK_ERROR;
   int c;
+  char err_buf[LINE_MAX];
 
   /* initialize */
   leaf_pnt.key_len = 0;
@@ -4854,8 +4855,10 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
   header = btree_get_node_header (page_ptr);
   if (header == NULL)
     {
-      er_log_debug (ARG_FILE_LINE, "btree_check_page_key: "
-		    "get node header failure: %d\n", key_cnt);
+      snprintf (err_buf, LINE_MAX, "btree_check_page_key: "
+		"get node header failure: %d\n", key_cnt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1,
+	      err_buf);
       valid = DISK_INVALID;
       goto error;
     }
@@ -4866,8 +4869,10 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
   if ((node_type == BTREE_NON_LEAF_NODE && key_cnt <= 0)
       || (node_type == BTREE_LEAF_NODE && key_cnt < 0))
     {
-      er_log_debug (ARG_FILE_LINE, "btree_check_page_key: "
-		    "node key count underflow: %d\n", key_cnt);
+      snprintf (err_buf, LINE_MAX, "btree_check_page_key: "
+		"node key count underflow: %d\n", key_cnt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1,
+	      err_buf);
       valid = DISK_INVALID;
       goto error;
     }
@@ -4922,12 +4927,15 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 	   && (btree_get_key_length (&key1) > header->max_key_len))
 	  || (overflow_key1 && (DISK_VPID_SIZE > header->max_key_len)))
 	{
-	  er_log_debug (ARG_FILE_LINE, "btree_check_page_key: "
-			"--- max key length test failed for page "
-			"{%d , %d}. Check key_rec = %d\n",
-			page_vpid->volid, page_vpid->pageid, k);
 	  btree_dump_page (thread_p, stdout, class_oid_p, btid, btname,
 			   page_ptr, page_vpid, 2, 2);
+
+	  snprintf (err_buf, LINE_MAX, "btree_check_page_key: "
+		    "--- max key length test failed for page "
+		    "{%d , %d}. Check key_rec = %d\n",
+		    page_vpid->volid, page_vpid->pageid, k);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1,
+		  err_buf);
 	  valid = DISK_INVALID;
 	  goto error;
 	}
@@ -4964,12 +4972,15 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 	   && (btree_get_key_length (&key2) > header->max_key_len))
 	  || (overflow_key2 && (DISK_VPID_SIZE > header->max_key_len)))
 	{
-	  er_log_debug (ARG_FILE_LINE, "btree_check_page_key: "
-			"--- max key length test failed for page "
-			"{%d , %d}. Check key_rec = %d\n",
-			page_vpid->volid, page_vpid->pageid, k + 1);
 	  btree_dump_page (thread_p, stdout, class_oid_p, btid, btname,
 			   page_ptr, page_vpid, 2, 2);
+
+	  snprintf (err_buf, LINE_MAX, "btree_check_page_key: "
+		    "--- max key length test failed for page "
+		    "{%d , %d}. Check key_rec = %d\n",
+		    page_vpid->volid, page_vpid->pageid, k + 1);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1,
+		  err_buf);
 	  valid = DISK_INVALID;
 	  goto error;
 	}
@@ -4986,12 +4997,15 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 
       if (c != DB_LT)
 	{
-	  er_log_debug (ARG_FILE_LINE, "btree_check_page_key:"
-			"--- key order test failed for page"
-			" {%d , %d}. Check key_recs = %d and %d\n",
-			page_vpid->volid, page_vpid->pageid, k, k + 1);
 	  btree_dump_page (thread_p, stdout, class_oid_p, btid, btname,
 			   page_ptr, page_vpid, 2, 2);
+
+	  snprintf (err_buf, LINE_MAX, "btree_check_page_key:"
+		    "--- key order test failed for page"
+		    " {%d , %d}. Check key_recs = %d and %d\n",
+		    page_vpid->volid, page_vpid->pageid, k, k + 1);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1,
+		  err_buf);
 	  valid = DISK_INVALID;
 	  goto error;
 	}
@@ -5040,6 +5054,7 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
   BTREE_NODE_INFO INFO2;
   BTREE_NODE_HEADER *header = NULL;
   BTREE_NODE_TYPE node_type;
+  char err_buf[LINE_MAX];
 
   db_make_null (&INFO2.max_key);
 
@@ -5068,10 +5083,12 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
   if ((node_type == BTREE_NON_LEAF_NODE && key_cnt <= 0)
       || (node_type == BTREE_LEAF_NODE && key_cnt < 0))
     {
-      er_log_debug (ARG_FILE_LINE, "btree_verify_subtree: "
-		    "node key count underflow: %d\n", key_cnt);
       btree_dump_page (thread_p, stdout, class_oid_p, btid, btname,
 		       pg_ptr, pg_vpid, 2, 2);
+      snprintf (err_buf, LINE_MAX, "btree_verify_subtree: "
+		"node key count underflow: %d\n", key_cnt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1,
+	      err_buf);
       valid = DISK_INVALID;
       goto error;
     }
@@ -5089,10 +5106,13 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
     {				/* a non-leaf page */
       if (key_cnt < 0)
 	{
-	  er_log_debug (ARG_FILE_LINE, "btree_verify_subtree: "
-			"node key count underflow: %d\n", key_cnt);
 	  btree_dump_page (thread_p, stdout, class_oid_p, btid, btname,
 			   pg_ptr, pg_vpid, 2, 2);
+
+	  snprintf (err_buf, LINE_MAX, "btree_verify_subtree: "
+		    "node key count underflow: %d\n", key_cnt);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1,
+		  err_buf);
 	  valid = DISK_INVALID;
 	  goto error;
 	}
@@ -5146,7 +5166,6 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p,
 	}
       INFO->page_cnt += 1;
       INFO->nleafpg_cnt += 1;
-
     }
   else
     {				/* a leaf page */

@@ -71,8 +71,9 @@ extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path,
 			 FILEIO_ZIP_METHOD zip_method,
 			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
 			 int sleep_msecs);
-extern int xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag,
-				OID * oid, BTID * index_btid);
+extern DISK_ISVALID xboot_checkdb_table (THREAD_ENTRY * thread_p,
+					 int check_flag,
+					 OID * oid, BTID * index_btid);
 extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p,
 				       int check_flag, OID * oids,
 				       int num_oids, BTID * index_btid);

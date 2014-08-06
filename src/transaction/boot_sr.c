@@ -4321,60 +4321,87 @@ enum
  * xboot_checkdb_table () - check consistency of table
  *                              as much as possible
  *
- * return : NO_ERROR if all OK, ER_ status otherwise
+ * return :
  *
  */
-int
+DISK_ISVALID
 xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid,
 		     BTID * index_btid)
 {
   HFID hfid;
   bool repair = check_flag & CHECKDB_REPAIR;
+  DISK_ISVALID allvalid, valid;
+
+  allvalid = DISK_VALID;
 
   if (check_flag & CHECKDB_CHECK_PREV_LINK)
     {
-      if (btree_repair_prev_link (thread_p, oid, index_btid, CHECK_ONLY) !=
-	  DISK_VALID)
+      valid = btree_repair_prev_link (thread_p, oid, index_btid, CHECK_ONLY);
+      if (valid == DISK_ERROR)
 	{
-	  return ER_FAILED;
+	  return DISK_ERROR;
+	}
+      if (valid != DISK_VALID)
+	{
+	  allvalid = valid;
 	}
     }
 
   if (check_flag & CHECKDB_REPAIR_PREV_LINK)
     {
-      if (btree_repair_prev_link (thread_p, oid, index_btid, REPAIR_ALL) !=
-	  DISK_VALID)
+      valid = btree_repair_prev_link (thread_p, oid, index_btid, REPAIR_ALL);
+      if (valid == DISK_ERROR)
 	{
-	  return ER_FAILED;
+	  return DISK_ERROR;
+	}
+      if (valid != DISK_VALID)
+	{
+	  allvalid = valid;
 	}
     }
 
   if (heap_get_hfid_from_class_oid (thread_p, oid, &hfid) != NO_ERROR
       || HFID_IS_NULL (&hfid))
     {
-      return ER_FAILED;
+      return DISK_ERROR;
     }
 
   if (index_btid == NULL)
     {
       /* if index name was specified, skip checking heap file */
-      if (heap_check_heap_file (thread_p, &hfid) != DISK_VALID)
+      valid = heap_check_heap_file (thread_p, &hfid);
+      if (valid == DISK_ERROR)
 	{
-	  return ER_FAILED;
+	  return DISK_ERROR;
+	}
+      if (valid != DISK_VALID)
+	{
+	  allvalid = valid;
 	}
     }
 
-  if (btree_check_by_class_oid (thread_p, oid, index_btid) != DISK_VALID)
+  valid = btree_check_by_class_oid (thread_p, oid, index_btid);
+  if (valid == DISK_ERROR)
     {
-      return ER_FAILED;
+      return DISK_ERROR;
+    }
+  if (valid != DISK_VALID)
+    {
+      allvalid = valid;
     }
 
-  if (locator_check_by_class_oid (thread_p, oid, &hfid, index_btid, repair) !=
-      DISK_VALID)
+  valid = locator_check_by_class_oid (thread_p, oid, &hfid,
+				      index_btid, repair);
+  if (valid == DISK_ERROR)
     {
-      return ER_FAILED;
+      return DISK_ERROR;
     }
-  return NO_ERROR;
+  if (valid != DISK_VALID)
+    {
+      allvalid = valid;
+    }
+
+  return allvalid;
 }
 
 /*
@@ -4436,8 +4463,10 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag,
 	    {
 	      continue;
 	    }
-	  if (xboot_checkdb_table (thread_p, check_flag, &oids[i], index_btid)
-	      != NO_ERROR)
+	  isvalid =
+	    xboot_checkdb_table (thread_p, check_flag, &oids[i], index_btid);
+
+	  if (isvalid != DISK_VALID)
 	    {
 	      error_code = ER_FAILED;
 	    }
