@@ -10295,7 +10295,17 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_pack_int64 (request, first_pageid_torecv);
+  if (first_pageid_torecv == NULL_PAGEID
+      && logwr_Gl.start_pageid >= NULL_PAGEID)
+    {
+      ptr = or_pack_int64 (request, logwr_Gl.start_pageid);
+      mode |= LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK;
+    }
+  else
+    {
+      ptr = or_pack_int64 (request, first_pageid_torecv);
+    }
+
   ptr = or_pack_int (ptr, mode);
   ptr = or_pack_int (ptr, ctx_ptr->last_error);
 
@@ -10340,6 +10350,14 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 
 	  ctx_ptr->shutdown = true;
 	}
+    }
+
+  if (logwr_Gl.start_pageid >= NULL_PAGEID
+      && logwr_Gl.hdr.eof_lsa.pageid == logwr_Gl.hdr.append_lsa.pageid
+      && logwr_Gl.hdr.ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
+    {
+      ctx_ptr->shutdown = true;
+      error = NO_ERROR;
     }
 
   return error;

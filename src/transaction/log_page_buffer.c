@@ -13317,3 +13317,118 @@ logpb_perm_status_to_string (enum LOG_PSTATUS val)
     }
   return "UNKNOWN_LOG_PSTATUS";
 }
+
+/*
+ * logpb_find_oldest_available_page_id() - return the oldest log pageid 
+ *
+ *   return: log pageid 
+ */
+LOG_PAGEID
+logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
+{
+  LOG_PAGEID page_id = NULL_PAGEID;
+  int vdes = NULL_VOLDES;
+  int arv_num;
+  struct log_arv_header *arv_hdr;
+  char arv_hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT],
+    *aligned_arv_hdr_pgbuf;
+  LOG_PAGE *arv_hdr_pgptr;
+  char arv_name[PATH_MAX];
+
+  assert (LOG_CS_OWN (NULL));
+
+  LOG_ARCHIVE_CS_ENTER (thread_p);
+  arv_num = logpb_find_oldest_available_arv_num (thread_p);
+  if (arv_num < 0)
+    {
+      LOG_ARCHIVE_CS_EXIT (thread_p);
+
+      /* return first logical page of active log */
+      return log_Gl.hdr.nxarv_pageid;
+    }
+
+  aligned_arv_hdr_pgbuf = PTR_ALIGN (arv_hdr_pgbuf, MAX_ALIGNMENT);
+  arv_hdr_pgptr = (LOG_PAGE *) aligned_arv_hdr_pgbuf;
+
+  fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix,
+				arv_num);
+
+  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name,
+		       LOG_DBLOG_ARCHIVE_VOLID, false, false);
+  if (vdes != NULL_VOLDES)
+    {
+      if (fileio_read (thread_p, vdes, arv_hdr_pgptr, 0, LOG_PAGESIZE) ==
+	  NULL)
+	{
+	  fileio_dismount (thread_p, vdes);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ,
+		  3, 0, 0, arv_name);
+
+	  LOG_ARCHIVE_CS_EXIT (thread_p);
+	  return NULL_PAGEID;
+	}
+
+      arv_hdr = (struct log_arv_header *) arv_hdr_pgptr->area;
+      if (log_Gl.append.vdes != NULL_VOLDES)
+	{
+	  if (difftime64 ((time_t) arv_hdr->db_creation,
+			  (time_t) log_Gl.hdr.db_creation) != 0)
+	    {
+	      fileio_dismount (thread_p, vdes);
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_LOG_DOESNT_CORRESPOND_TO_DATABASE, 1, arv_name);
+
+	      LOG_ARCHIVE_CS_EXIT (thread_p);
+	      return NULL_PAGEID;
+	    }
+	}
+      page_id = arv_hdr->fpageid;
+
+      fileio_dismount (thread_p, vdes);
+    }
+
+  LOG_ARCHIVE_CS_EXIT (thread_p);
+  return page_id;
+}
+
+/*
+ * logpb_find_oldest_available_arv_num() - return oldest archive log number
+ *
+ *   return: archive log number
+ */
+int
+logpb_find_oldest_available_arv_num (THREAD_ENTRY * thread_p)
+{
+  char arv_name[PATH_MAX];
+  int arv_num;
+  int ret_arv_num = -1;
+
+  assert (LOG_CS_OWN (NULL));
+
+  arv_num = log_Gl.hdr.nxarv_num - 1;
+
+  while (arv_num >= 0)
+    {
+      fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix,
+				    arv_num);
+
+      if (fileio_is_volume_exist (arv_name) == true)
+	{
+	  ret_arv_num = arv_num;
+
+	  if (arv_num == 0)
+	    {
+	      break;
+	    }
+
+	  arv_num--;
+	}
+      else
+	{
+	  break;
+	}
+    }
+
+  return ret_arv_num;
+}

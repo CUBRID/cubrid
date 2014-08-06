@@ -620,12 +620,18 @@ static UTIL_ARG_MAP ua_Copylog_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {COPYLOG_LOG_PATH_S, {ARG_STRING}, {0}},
   {COPYLOG_MODE_S, {ARG_STRING}, {0}},
+#if defined(LINUX) || defined(AIX)
+  {COPYLOG_START_PAGEID_S, {ARG_BIGINT}, {.l = (-2L)}},
+#else
+  {COPYLOG_START_PAGEID_S, {ARG_BIGINT}, {(INT64) (-2L)}},
+#endif
   {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Copylog_Option[] = {
   {COPYLOG_LOG_PATH_L, 1, 0, COPYLOG_LOG_PATH_S},
   {COPYLOG_MODE_L, 1, 0, COPYLOG_MODE_S},
+  {COPYLOG_START_PAGEID_L, 1, 0, COPYLOG_START_PAGEID_S},
   {0, 0, 0, 0}
 };
 
@@ -645,7 +651,11 @@ static GETOPT_LONG ua_Applylog_Option[] = {
 static UTIL_ARG_MAP ua_ApplyInfo_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {APPLYINFO_COPIED_LOG_PATH_S, {ARG_STRING}, {0}},
-  {APPLYINFO_PAGE_S, {ARG_BIGINT}, {-1}},
+#if defined(LINUX) || defined(AIX)
+  {APPLYINFO_PAGE_S, {ARG_BIGINT}, {.l = (-1L)}},
+#else
+  {APPLYINFO_PAGE_S, {ARG_BIGINT}, {(INT64) (-1L)}},
+#endif
   {APPLYINFO_REMOTE_NAME_S, {ARG_STRING}, {0}},
   {APPLYINFO_APPLIED_INFO_S, {ARG_BOOLEAN}, {0}},
   {APPLYINFO_VERBOSE_S, {ARG_BOOLEAN}, {0}},

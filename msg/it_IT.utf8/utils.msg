@@ -907,7 +907,8 @@ uso: %1$s copylogdb [OPZIONE] nome-database\n\
 opzioni valide:\n\
   -L, --log-path=PATH         directory PATH per volumi di log copiati\n\
   -m, --mode=MODE             modalità di funzionamento; predefinito: sync\n\
-                              MODE: sync o semisync o async\n
+                              MODE: sync o semisync o async\n\
+  -S, --start-page-id=ID      first log page to copy\n 
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Inserire la password di DBA:

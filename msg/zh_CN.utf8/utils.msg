@@ -907,7 +907,8 @@ copylogdb: 从服务端拷贝日志页.\n\
 可用选项:\n\
   -L, --log-path=PATH         指定目录PATH用于拷贝日志卷\n\
   -m, --mode=MODE             操作模式; 默认: 同步\n\
-                              模式: 同步 或 半同步 或 异步\n
+                              模式: 同步 或 半同步 或 异步\n\
+  -S, --start-page-id=ID      first log page to copy\n 
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 输入DBA密码:

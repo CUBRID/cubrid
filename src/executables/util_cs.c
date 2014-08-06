@@ -3342,6 +3342,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   char *binary_name;
   char executable_path[PATH_MAX];
 #endif
+  INT64 start_pageid;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -3404,6 +3405,9 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       mode = LOGWR_MODE_SYNC;
     }
 
+  start_pageid =
+    utility_get_option_bigint_value (arg_map, COPYLOG_START_PAGEID_S);
+
 #if defined(NDEBUG)
   util_redirect_stdout_to_null ();
 #endif
@@ -3435,7 +3439,8 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (start_pageid < NULL_PAGEID
+      && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       error = hb_process_init (database_name, log_path, HB_PTYPE_COPYLOGDB);
       if (error != NO_ERROR)
@@ -3492,7 +3497,7 @@ retry:
       goto error_exit;
     }
 
-  error = logwr_copy_log_file (database_name, log_path, mode);
+  error = logwr_copy_log_file (database_name, log_path, mode, start_pageid);
   if (error != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));

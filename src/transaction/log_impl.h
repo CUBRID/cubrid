@@ -489,6 +489,7 @@ enum logwr_mode
   LOGWR_MODE_SEMISYNC,
   LOGWR_MODE_SYNC
 };
+#define LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK	(0x80000000)
 
 typedef enum logwr_status LOGWR_STATUS;
 enum logwr_status
@@ -510,6 +511,7 @@ struct logwr_entry
   LOG_LSA last_eof_lsa;
   LOG_LSA tmp_last_eof_lsa;
   INT64 start_copy_time;
+  bool copy_from_first_phy_page;
   LOGWR_ENTRY *next;
 };
 
@@ -2089,7 +2091,7 @@ extern int logtb_find_client_type (int tran_index);
 extern char *logtb_find_client_name (int tran_index);
 extern void logtb_set_user_name (int tran_index, const char *client_name);
 extern void logtb_set_current_user_name (THREAD_ENTRY * thread_p,
-					   const char *client_name);
+					 const char *client_name);
 extern char *logtb_find_client_hostname (int tran_index);
 extern int logtb_find_client_name_host_pid (int tran_index,
 					    char **client_prog_name,
@@ -2148,4 +2150,7 @@ extern char *logpb_backup_level_info_to_string (char *buf, int buf_size,
 extern void logpb_get_nxio_lsa (LOG_LSA * lsa_p);
 extern const char *logpb_perm_status_to_string (enum LOG_PSTATUS val);
 
+extern LOG_PAGEID logpb_find_oldest_available_page_id (THREAD_ENTRY *
+						       thread_p);
+extern int logpb_find_oldest_available_arv_num (THREAD_ENTRY * thread_p);
 #endif /* _LOG_IMPL_H_ */

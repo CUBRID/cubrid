@@ -86,6 +86,9 @@ struct logwr_global
 
   /* original next logical page to archive             */
   LOG_PAGEID ori_nxarv_pageid;
+
+  /* start pageid */
+  LOG_PAGEID start_pageid;
 };
 
 #define LOGWR_AT_NEXT_ARCHIVE_PAGE_ID(pageid) \
@@ -110,7 +113,7 @@ extern int logwr_copy_log_header_check (const char *db_name, bool verbose,
 
 extern bool logwr_force_shutdown (void);
 extern int logwr_copy_log_file (const char *db_name, const char *log_path,
-				int mode);
+				int mode, INT64 start_page_id);
 extern LOG_PHY_PAGEID logwr_to_physical_pageid (LOG_PAGEID logical_pageid);
 extern const char *logwr_log_ha_filestat_to_string (enum LOG_HA_FILESTAT val);
 

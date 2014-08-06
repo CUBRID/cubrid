@@ -910,7 +910,8 @@ usage: %1$s copylogdb [OPTION] database-name\n\
 options valids:\n\
   -L, --log-path=CHEMIN     CHEMIN vers un répertoire pour les volumes de journaux copiés\n\
   -m, --mode=MODE           mode de fonctionnement; par défaut: sync\n\
-                            MODE: sync ou semisync ou async\n
+                            MODE: sync ou semisync ou async\n\
+  -S, --start-page-id=ID    first log page to copy\n 
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Entrez mot de passe DBA:

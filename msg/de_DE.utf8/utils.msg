@@ -907,7 +907,8 @@ Anwendung: %1$s copylogdb [OPTION] Datenbanknamen\n\
 gültige Optionen:\n\
   -L, --log-path=PFAD         Verzeichnispfad für kopierten Logdatenträger\n\
   -m, --mode=MODE             Operationsmodus; Standard: sync\n\
-                              MODUS: sync oder semisync oder async\n
+                              MODUS: sync oder semisync oder async\n\
+  -S, --start-page-id=ID      first log page to copy\n 
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 DBA-Passwort eingeben:

@@ -907,7 +907,8 @@ kullanım: %1$s copylogdb [SEÇENEK] database-name\n\
 geçerli seçenekler:\n\
   -L, --log-path=PATH         Kopyalanan log yoğunlukları için dizin PATH\n\
   -m, --mode=MODE             çalışma modu, varsayılan: sync\n\
-                              MODE: sync veya semisync veya async\n
+                              MODE: sync veya semisync veya async\n\
+  -S, --start-page-id=ID      first log page to copy\n 
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 DBA şifrenizi girin:

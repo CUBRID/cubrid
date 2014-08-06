@@ -115,7 +115,9 @@ LOGWR_GLOBAL logwr_Gl = {
   /* bg_archive_name */
   {'0'},
   /* ori_nxarv_pageid */
-  NULL_PAGEID
+  NULL_PAGEID,
+  /* start_pageid */
+  -2
 };
 
 
@@ -123,7 +125,7 @@ static int logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd);
 static int logwr_read_log_header (void);
 static int logwr_read_bgarv_log_header (void);
 static int logwr_initialize (const char *db_name, const char *log_path,
-			     int mode);
+			     int mode, LOG_PAGEID start_pageid);
 static void logwr_finalize (void);
 static LOG_PAGE **logwr_writev_append_pages (LOG_PAGE ** to_flush,
 					     DKNPAGES npages);
@@ -356,7 +358,8 @@ logwr_force_shutdown (void)
  * Note:
  */
 static int
-logwr_initialize (const char *db_name, const char *log_path, int mode)
+logwr_initialize (const char *db_name, const char *log_path, int mode,
+		  LOG_PAGEID start_pageid)
 {
   int log_nbuffers;
   int error;
@@ -432,6 +435,15 @@ logwr_initialize (const char *db_name, const char *log_path, int mode)
   if (error != NO_ERROR)
     {
       return error;
+    }
+
+  logwr_Gl.start_pageid = start_pageid;
+  if (logwr_Gl.start_pageid >= NULL_PAGEID
+      && logwr_Gl.hdr.nxarv_pageid != NULL_PAGEID)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+	      1, "Replication transaction log already exist");
+      return ER_HA_GENERIC_ERROR;
     }
 
   logwr_Gl.action = LOGWR_ACTION_NONE;
@@ -550,6 +562,7 @@ logwr_finalize (void)
   logwr_Gl.last_flush_time.tv_usec = 0;
 
   logwr_Gl.ori_nxarv_pageid = NULL_PAGEID;
+  logwr_Gl.start_pageid = -2;
 
   if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
@@ -1584,12 +1597,14 @@ logwr_copy_log_header_check (const char *db_name, bool verbose,
  * Note:
  */
 int
-logwr_copy_log_file (const char *db_name, const char *log_path, int mode)
+logwr_copy_log_file (const char *db_name, const char *log_path, int mode,
+		     INT64 start_page_id)
 {
   LOGWR_CONTEXT ctx = { -1, 0, false };
   int error = NO_ERROR;
 
-  if ((error = logwr_initialize (db_name, log_path, mode)) != NO_ERROR)
+  if ((error =
+       logwr_initialize (db_name, log_path, mode, start_page_id)) != NO_ERROR)
     {
       logwr_finalize ();
       return error;
@@ -1653,7 +1668,15 @@ logwr_copy_log_file (const char *db_name, const char *log_path, int mode)
 
   if (ctx.rc > 0)
     {
-      net_client_logwr_send_end_msg (ctx.rc, error);
+      if (logwr_Gl.start_pageid >= NULL_PAGEID && error == NO_ERROR)
+	{
+	  /* to shutdown log writer thread of cub_server */
+	  net_client_logwr_send_end_msg (ctx.rc, ER_FAILED);
+	}
+      else
+	{
+	  net_client_logwr_send_end_msg (ctx.rc, error);
+	}
     }
 
   logwr_finalize ();
@@ -1661,7 +1684,8 @@ logwr_copy_log_file (const char *db_name, const char *log_path, int mode)
 }
 #else /* CS_MODE */
 int
-logwr_copy_log_file (const char *db_name, const char *log_path, int mode)
+logwr_copy_log_file (const char *db_name, const char *log_path, int mode,
+		     INT64 start_page_id)
 {
   return ER_FAILED;
 }
@@ -1693,7 +1717,8 @@ logwr_log_ha_filestat_to_string (enum LOG_HA_FILESTAT val)
 #if defined(SERVER_MODE)
 static int logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p,
 					THREAD_ENTRY * thread_p,
-					LOG_PAGEID fpageid, int mode);
+					LOG_PAGEID fpageid, int mode,
+					bool copy_from_first_phy_page);
 static bool logwr_unregister_writer_entry (LOGWR_ENTRY * wr_entry,
 					   int status);
 static int logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area,
@@ -1721,7 +1746,8 @@ static void logwr_update_last_eof_lsa (LOGWR_ENTRY * entry);
 static int
 logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p,
 			     THREAD_ENTRY * thread_p,
-			     LOG_PAGEID fpageid, int mode)
+			     LOG_PAGEID fpageid, int mode,
+			     bool copy_from_first_phy_page)
 {
   LOGWR_ENTRY *entry;
   int rv;
@@ -1755,6 +1781,7 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p,
       entry->fpageid = fpageid;
       entry->mode = mode;
       entry->start_copy_time = 0;
+      entry->copy_from_first_phy_page = copy_from_first_phy_page;
 
       entry->status = LOGWR_STATUS_DELAY;
       LSA_SET_NULL (&entry->tmp_last_eof_lsa);
@@ -1767,6 +1794,7 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p,
     {
       entry->fpageid = fpageid;
       entry->mode = mode;
+      entry->copy_from_first_phy_page = copy_from_first_phy_page;
       if (entry->status != LOGWR_STATUS_DELAY)
 	{
 	  entry->status = LOGWR_STATUS_WAIT;
@@ -1870,13 +1898,61 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
   int ha_file_status;
   int error_code;
 
+  struct log_arv_header arvhdr;
+  struct log_header *hdr_ptr;
+  int nxarv_num;
+  LOG_PAGEID nxarv_pageid, nxarv_phy_pageid;
+
   fpageid = NULL_PAGEID;
   lpageid = NULL_PAGEID;
   ha_file_status = LOG_HA_FILESTAT_CLEAR;
 
   is_hdr_page_only = (entry->fpageid == LOGPB_HEADER_PAGE_ID);
 
-  if (!is_hdr_page_only)
+  if (is_hdr_page_only == true && entry->copy_from_first_phy_page == true)
+    {
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto error;
+    }
+
+  if (entry->copy_from_first_phy_page == true)
+    {
+      fpageid = entry->fpageid;
+      if (fpageid == NULL_PAGEID)
+	{
+	  fpageid = logpb_find_oldest_available_page_id (thread_p);
+	  if (fpageid == NULL_PAGEID)
+	    {
+	      error_code = ER_FAILED;
+	      goto error;
+	    }
+	}
+
+      if (logpb_is_page_in_archive (fpageid) == true)
+	{
+	  if (logpb_fetch_from_archive
+	      (thread_p, fpageid, NULL, NULL, &arvhdr, false) == NULL)
+	    {
+	      error_code = ER_FAILED;
+	      goto error;
+	    }
+
+	  nxarv_phy_pageid = 1;	/* first physical page id */
+	  nxarv_pageid = arvhdr.fpageid;
+	  nxarv_num = arvhdr.arv_num;
+	}
+      else
+	{
+	  nxarv_phy_pageid = log_Gl.hdr.nxarv_phy_pageid;
+	  nxarv_pageid = log_Gl.hdr.nxarv_pageid;
+	  nxarv_num = log_Gl.hdr.nxarv_num;
+	}
+
+      lpageid = nxarv_pageid;
+      fpageid = nxarv_pageid;
+    }
+  else if (!is_hdr_page_only)
     {
       /* Find the first pageid to be packed */
       fpageid = entry->fpageid;
@@ -1946,6 +2022,15 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
   log_pgptr = (LOG_PAGE *) p;
   log_pgptr->hdr = log_Gl.loghdr_pgptr->hdr;
   memcpy (log_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr));
+
+  if (entry->copy_from_first_phy_page == true)
+    {
+      hdr_ptr = (struct log_header *) (log_pgptr->area);
+      hdr_ptr->nxarv_phy_pageid = nxarv_phy_pageid;
+      hdr_ptr->nxarv_pageid = nxarv_pageid;
+      hdr_ptr->nxarv_num = nxarv_num;
+    }
+
   p += LOG_PAGESIZE;
 
   /* Fill the page array with the pages to send */
@@ -2106,6 +2191,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
   bool need_cs_exit_after_send = true;
   struct timespec to;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  bool copy_from_first_phy_page = false;
 
   logpg_used_size = 0;
   logpg_area =
@@ -2123,6 +2209,16 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 
   while (true)
     {
+      if (mode & LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK)
+	{
+	  copy_from_first_phy_page = true;
+	}
+      else
+	{
+	  copy_from_first_phy_page = false;
+	}
+      mode &= ~LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK;
+
       /* In case that a non-ASYNC mode client internally uses ASYNC mode */
       orig_mode = MAX (mode, orig_mode);
 
@@ -2135,7 +2231,8 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
       /* Register the writer at the list and wait until LFT start to work */
       rv = pthread_mutex_lock (&writer_info->flush_start_mutex);
       error_code = logwr_register_writer_entry (&entry, thread_p,
-						first_pageid, mode);
+						first_pageid, mode,
+						copy_from_first_phy_page);
       if (error_code != NO_ERROR)
 	{
 	  pthread_mutex_unlock (&writer_info->flush_start_mutex);
@@ -2318,6 +2415,18 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
       first_pageid = next_fpageid;
       mode = next_mode;
       need_cs_exit_after_send = true;
+
+      if (mode & LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK)
+	{
+	  assert_release (false);
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR,
+		  1, "Unexpected copy mode from copylogdb");
+	  error_code = ER_HA_GENERIC_ERROR;
+
+	  status = LOGWR_STATUS_ERROR;
+	  goto error;
+	}
     }
 
   db_private_free_and_init (thread_p, logpg_area);

@@ -907,7 +907,8 @@ uso: %1$s copylogdb [OPTION] database-name\n\
 opciones validas: \n\
   -L, --log-path=PATH         RUTA de directorio para los volumenes de registro copiadas\n\
   -m, --mode=MODE             modo de operacion; estandar: sync\n\
-                              MODO: sync o semisync o async\n
+                              MODO: sync o semisync o async\n\
+  -S, --start-page-id=ID      first log page to copy\n 
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Introducir contrasena DBA:

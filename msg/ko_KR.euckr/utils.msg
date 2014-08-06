@@ -908,7 +908,8 @@ copylogdb: 서버에서 로그 페이지 복사\n\
 valid options:\n\
   -L, --log-path=PATH         복사된 로그 볼륨에 대한 디렉터리 PATH\n\
   -m, --mode=MODE             동작 모드; 기본값: sync\n\
-                              MODE: sync or semisync or async\n
+                              MODE: sync or semisync or async\n\
+  -S, --start-page-id=ID      복사 시작 로그 페이지\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 DBA 암호 입력:

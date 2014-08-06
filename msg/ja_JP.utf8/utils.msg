@@ -907,7 +907,8 @@ copylogdb: サーバーからログページをコピー\n\
 オプション:\n\
   -L, --log-path=PATH         コピーしたログボリュームのディレクトリーパス\n\
   -m, --mode=MODE             運営モード; デフォルト: sync\n\
-                              MODE: sync or semisync or async\n
+                              MODE: sync or semisync or async\n\
+  -S, --start-page-id=ID      first log page to copy\n 
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 DBAパスワードを入力してください。:

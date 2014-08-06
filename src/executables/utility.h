@@ -1327,6 +1327,8 @@ typedef struct _ha_config
 #define COPYLOG_LOG_PATH_L                      "log-path"
 #define COPYLOG_MODE_S                          'm'
 #define COPYLOG_MODE_L                          "mode"
+#define COPYLOG_START_PAGEID_S			'S'
+#define COPYLOG_START_PAGEID_L			"start-page-id"
 
 /* applylogdb option list */
 #define APPLYLOG_LOG_PATH_S                     'L'
