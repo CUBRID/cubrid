@@ -15106,8 +15106,10 @@ start_point:
 	    {
 	      assert (!OID_ISNULL (&saved_N_oid));
 	      assert (!OID_ISNULL (&saved_N_class_oid));
-	      lock_remove_object_lock (thread_p, &saved_N_oid,
-				       &saved_N_class_oid, NS_LOCK);
+	      lock_unlock_object_donot_move_to_non2pl (thread_p,
+						       &saved_N_oid,
+						       &saved_N_class_oid,
+						       NS_LOCK);
 	      next_lock_flag = false;
 	      OID_SET_NULL (&saved_N_oid);
 	      OID_SET_NULL (&saved_N_class_oid);
@@ -15200,8 +15202,10 @@ start_point:
 		{
 		  assert (!OID_ISNULL (&saved_N_oid));
 		  assert (!OID_ISNULL (&saved_N_class_oid));
-		  lock_remove_object_lock (thread_p, &saved_N_oid,
-					   &saved_N_class_oid, NS_LOCK);
+		  lock_unlock_object_donot_move_to_non2pl (thread_p,
+							   &saved_N_oid,
+							   &saved_N_class_oid,
+							   NS_LOCK);
 		  next_lock_flag = false;
 		  OID_SET_NULL (&saved_N_oid);
 		  OID_SET_NULL (&saved_N_class_oid);
@@ -15237,8 +15241,8 @@ start_point:
 
       assert (!OID_ISNULL (&saved_N_oid));
       assert (!OID_ISNULL (&saved_N_class_oid));
-      lock_remove_object_lock (thread_p, &saved_N_oid, &saved_N_class_oid,
-			       NS_LOCK);
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &saved_N_oid,
+					       &saved_N_class_oid, NS_LOCK);
       next_lock_flag = false;
       OID_SET_NULL (&saved_N_oid);
       OID_SET_NULL (&saved_N_class_oid);
@@ -15773,7 +15777,8 @@ key_insertion:
     {
       assert (!OID_ISNULL (&N_oid));
       assert (!OID_ISNULL (&N_class_oid));
-      lock_remove_object_lock (thread_p, &N_oid, &N_class_oid, NS_LOCK);
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &N_oid,
+					       &N_class_oid, NS_LOCK);
     }
 
   mnt_bt_inserts (thread_p);
@@ -15821,13 +15826,15 @@ error:
     {
       assert (!OID_ISNULL (&N_oid));
       assert (!OID_ISNULL (&N_class_oid));
-      lock_remove_object_lock (thread_p, &N_oid, &N_class_oid, NS_LOCK);
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &N_oid,
+					       &N_class_oid, NS_LOCK);
     }
   if (curr_lock_flag)
     {
       assert (!OID_ISNULL (&C_oid));
       assert (!OID_ISNULL (&C_class_oid));
-      lock_remove_object_lock (thread_p, &C_oid, &C_class_oid, current_lock);
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &C_oid,
+					       &C_class_oid, current_lock);
     }
 
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
@@ -19187,8 +19194,8 @@ btree_lock_current_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
     {
       assert (!OID_ISNULL (ck_pseudo_oid));
       assert (!OID_ISNULL (class_oid));
-      lock_remove_object_lock (thread_p, ck_pseudo_oid, class_oid,
-			       bts->key_lock_mode);
+      lock_unlock_object_donot_move_to_non2pl (thread_p, ck_pseudo_oid,
+					       class_oid, bts->key_lock_mode);
       OID_SET_NULL (ck_pseudo_oid);
     }
 
@@ -19426,8 +19433,9 @@ start_locking:
     {
       assert (!OID_ISNULL (nk_pseudo_oid));
       assert (!OID_ISNULL (nk_class_oid));
-      lock_remove_object_lock (thread_p, nk_pseudo_oid, nk_class_oid,
-			       bts->key_lock_mode);
+      lock_unlock_object_donot_move_to_non2pl (thread_p, nk_pseudo_oid,
+					       nk_class_oid,
+					       bts->key_lock_mode);
       OID_SET_NULL (nk_pseudo_oid);
       OID_SET_NULL (nk_class_oid);
     }
@@ -22088,16 +22096,22 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 		{
 		  assert (!OID_ISNULL (ck_pseudo_oid));
 		  assert (!OID_ISNULL (class_oid));
-		  lock_remove_object_lock (thread_p, ck_pseudo_oid,
-					   class_oid, bts->key_lock_mode);
+		  lock_unlock_object_donot_move_to_non2pl (thread_p,
+							   ck_pseudo_oid,
+							   class_oid,
+							   bts->
+							   key_lock_mode);
 		}
 
 	      if (nk_pseudo_oid != NULL && !OID_ISNULL (nk_pseudo_oid))
 		{
 		  assert (!OID_ISNULL (nk_pseudo_oid));
 		  assert (!OID_ISNULL (class_oid));
-		  lock_remove_object_lock (thread_p, nk_pseudo_oid,
-					   class_oid, bts->key_lock_mode);
+		  lock_unlock_object_donot_move_to_non2pl (thread_p,
+							   nk_pseudo_oid,
+							   class_oid,
+							   bts->
+							   key_lock_mode);
 		}
 	    }
 
@@ -22121,20 +22135,24 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 	    {
 	      assert (!OID_ISNULL (&(last_item->ck_ps_oid)));
 	      assert (!OID_ISNULL (&(last_item->class_oid)));
-	      lock_remove_object_lock (thread_p,
-				       &(last_item->ck_ps_oid),
-				       &(last_item->class_oid),
-				       bts->key_lock_mode);
+	      lock_unlock_object_donot_move_to_non2pl (thread_p,
+						       &(last_item->
+							 ck_ps_oid),
+						       &(last_item->
+							 class_oid),
+						       bts->key_lock_mode);
 	    }
 
 	  if (!OID_ISNULL (&(last_item->nk_ps_oid)))
 	    {
 	      assert (!OID_ISNULL (&(last_item->nk_ps_oid)));
 	      assert (!OID_ISNULL (&(last_item->class_oid)));
-	      lock_remove_object_lock (thread_p,
-				       &(last_item->nk_ps_oid),
-				       &(last_item->class_oid),
-				       bts->key_lock_mode);
+	      lock_unlock_object_donot_move_to_non2pl (thread_p,
+						       &(last_item->
+							 nk_ps_oid),
+						       &(last_item->
+							 class_oid),
+						       bts->key_lock_mode);
 	    }
 	}
 
@@ -24760,12 +24778,15 @@ btree_range_search_handle_previous_locks (THREAD_ENTRY * thread_p,
 			   ? &btrs_helper->saved_nk_pseudo_oid
 			   : &btrs_helper->nk_pseudo_oid));
       assert (!OID_ISNULL (&btrs_helper->saved_nk_class_oid));
-      lock_remove_object_lock (thread_p,
-			       OID_ISNULL (&btrs_helper->nk_pseudo_oid)
-			       ? &btrs_helper->saved_nk_pseudo_oid
-			       : &btrs_helper->nk_pseudo_oid,
-			       &btrs_helper->saved_nk_class_oid,
-			       bts->key_lock_mode);
+      lock_unlock_object_donot_move_to_non2pl (thread_p,
+					       OID_ISNULL (&btrs_helper->
+							   nk_pseudo_oid) ?
+					       &btrs_helper->
+					       saved_nk_pseudo_oid :
+					       &btrs_helper->nk_pseudo_oid,
+					       &btrs_helper->
+					       saved_nk_class_oid,
+					       bts->key_lock_mode);
       OID_SET_NULL (&btrs_helper->saved_nk_pseudo_oid);
       OID_SET_NULL (&btrs_helper->saved_nk_class_oid);
       btrs_helper->next_key_locked = false;
@@ -24898,23 +24919,28 @@ btree_range_search_handle_previous_locks (THREAD_ENTRY * thread_p,
 			       ? &btrs_helper->saved_nk_pseudo_oid
 			       : &btrs_helper->nk_pseudo_oid));
 	  assert (!OID_ISNULL (&btrs_helper->saved_nk_class_oid));
-	  lock_remove_object_lock (thread_p,
-				   OID_ISNULL (&btrs_helper->
-					       nk_pseudo_oid)
-				   ? &btrs_helper->saved_nk_pseudo_oid
-				   : &btrs_helper->nk_pseudo_oid,
-				   &btrs_helper->saved_nk_class_oid,
-				   bts->key_lock_mode);
+	  lock_unlock_object_donot_move_to_non2pl (thread_p,
+						   OID_ISNULL (&btrs_helper->
+							       nk_pseudo_oid)
+						   ? &btrs_helper->
+						   saved_nk_pseudo_oid :
+						   &btrs_helper->
+						   nk_pseudo_oid,
+						   &btrs_helper->
+						   saved_nk_class_oid,
+						   bts->key_lock_mode);
 	}
 
       if (btrs_helper->curr_key_locked)
 	{
 	  assert (!OID_ISNULL (&btrs_helper->saved_ck_pseudo_oid));
 	  assert (!OID_ISNULL (&btrs_helper->saved_class_oid));
-	  lock_remove_object_lock (thread_p,
-				   &btrs_helper->saved_ck_pseudo_oid,
-				   &btrs_helper->saved_class_oid,
-				   bts->key_lock_mode);
+	  lock_unlock_object_donot_move_to_non2pl (thread_p,
+						   &btrs_helper->
+						   saved_ck_pseudo_oid,
+						   &btrs_helper->
+						   saved_class_oid,
+						   bts->key_lock_mode);
 	}
 
       /*

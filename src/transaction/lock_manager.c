@@ -642,6 +642,12 @@ static void lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp,
 static void lock_event_set_tran_wait_entry (int tran_index, LK_ENTRY * entry);
 static void lock_event_set_xasl_id_to_entry (int tran_index,
 					     LK_ENTRY * entry);
+static void lock_unlock_object_lock_internal (THREAD_ENTRY * thread_p,
+					      const OID * oid,
+					      const OID * class_oid,
+					      LOCK lock, int release_flag,
+					      int move_to_non2pl);
+
 #endif /* SERVER_MODE */
 
 
@@ -8888,18 +8894,10 @@ error:
 #endif /* !SERVER_MODE */
 }
 
-/*
- * lock_remove_object_lock - Removes a lock on the specified object
- *   return:
- *   thread_p(in):
- *   oid(in):  Identifier of instance to remove lock from
- *   class_oid(in): Identifier of the class of the instance
- *   lock(in): Lock to remove
- *
- */
-void
-lock_remove_object_lock (THREAD_ENTRY * thread_p, const OID * oid,
-			 const OID * class_oid, LOCK lock)
+static void
+lock_unlock_object_lock_internal (THREAD_ENTRY * thread_p, const OID * oid,
+				  const OID * class_oid, LOCK lock,
+				  int release_flag, int move_to_non2pl)
 {
 #if !defined (SERVER_MODE)
   return;
@@ -8917,9 +8915,45 @@ lock_remove_object_lock (THREAD_ENTRY * thread_p, const OID * oid,
 
   if (entry_ptr != NULL)
     {
-      lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
+      lock_internal_perform_unlock_object (thread_p, entry_ptr, release_flag,
+					   move_to_non2pl);
     }
 #endif
+}
+
+/*
+ * lock_unlock_object_donot_move_to_non2pl - Unlock an object lock on the specified object
+ *   return:
+ *   thread_p(in):
+ *   oid(in):  Identifier of instance to unlock from
+ *   class_oid(in): Identifier of the class of the instance
+ *   lock(in): Lock to release
+ *
+ */
+void
+lock_unlock_object_donot_move_to_non2pl (THREAD_ENTRY * thread_p,
+					 const OID * oid,
+					 const OID * class_oid, LOCK lock)
+{
+  lock_unlock_object_lock_internal (thread_p, oid, class_oid, lock, false,
+				    false);
+}
+
+/*
+ * lock_remove_object_lock - Removes a lock on the specified object
+ *   return:
+ *   thread_p(in):
+ *   oid(in):  Identifier of instance to remove lock from
+ *   class_oid(in): Identifier of the class of the instance
+ *   lock(in): Lock to remove
+ *
+ */
+void
+lock_remove_object_lock (THREAD_ENTRY * thread_p, const OID * oid,
+			 const OID * class_oid, LOCK lock)
+{
+  lock_unlock_object_lock_internal (thread_p, oid, class_oid, lock, true,
+				    false);
 }
 
 /*
