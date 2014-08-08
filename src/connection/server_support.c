@@ -2416,13 +2416,54 @@ css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index)
 
   /* sleep on the thrd's condition variable with the mutex of the job queue */
   pthread_cond_wait (&thrd->wakeup_cond, &css_Job_queue[jobq_index].job_lock);
+
+  if (thrd->shutdown == false
+      && thrd->resume_status != THREAD_JOB_QUEUE_RESUMED)
+    {
+      char notimsg[LINE_MAX];
+      THREAD_ENTRY *current, *prev = NULL;
+
+      /* something is wrong!!! My entry in the job queue must be removed. */
+      assert (thrd->resume_status == THREAD_JOB_QUEUE_RESUMED);
+
+      snprintf (notimsg, LINE_MAX, "Thread %p's resume status is"
+		" not JOB QUEUE RESUMED but %d (job Q index : %d)",
+		thrd, thrd->resume_status, jobq_index);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_EMERGENCY_ERROR, 1, notimsg);
+
+      current = css_Job_queue[jobq_index].worker_thrd_list;
+      while (current)
+	{
+	  if (current == thrd)
+	    {
+	      if (prev == NULL)
+		{
+		  css_Job_queue[jobq_index].worker_thrd_list =
+		    thrd->worker_thrd_list;
+		}
+	      else
+		{
+		  prev->worker_thrd_list = thrd->worker_thrd_list;
+		}
+	      thrd->worker_thrd_list = NULL;
+	      break;
+	    }
+	  else
+	    {
+	      prev = current;
+	    }
+
+	  current = current->worker_thrd_list;
+	}
+    }
+
   if (thrd->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN
       || thrd->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
     {
+      assert_release (thrd->shutdown == true);
       return ER_FAILED;
     }
-
-  assert (thrd->resume_status == THREAD_JOB_QUEUE_RESUMED);
 
   return NO_ERROR;
 }
@@ -2437,6 +2478,7 @@ css_wakeup_worker_thread_on_jobq (int jobq_index)
 {
   THREAD_ENTRY *wait_thrd = NULL, *prev_thrd = NULL;
   int r = NO_ERROR;
+  THREAD_ENTRY *worker = NULL;
 
   for (wait_thrd = css_Job_queue[jobq_index].worker_thrd_list;
        wait_thrd; wait_thrd = wait_thrd->worker_thrd_list)
@@ -2458,11 +2500,59 @@ css_wakeup_worker_thread_on_jobq (int jobq_index)
 		}
 
 	      wait_thrd->worker_thrd_list = NULL;
+	      worker = wait_thrd;
+
 	      break;
 	    }
 	}
 
       prev_thrd = wait_thrd;
+    }
+
+  if (worker == NULL)
+    {
+      int thread_index, num_workers;
+
+      /* Defence code of a bug.
+       * Find an available worker thread
+       * that is not in the list of job queue,
+       * but is waiting for a job.
+       */
+      thread_index = jobq_index;
+      if (thread_index == 0)
+	{
+	  thread_index += CSS_NUM_JOB_QUEUE;
+	}
+
+      num_workers = thread_num_worker_threads ();
+
+      for (; thread_index <= num_workers; thread_index += CSS_NUM_JOB_QUEUE)
+	{
+	  THREAD_ENTRY *thread_p;
+
+	  thread_p = thread_find_entry_by_index (thread_index);
+	  assert_release (thread_p->index % CSS_NUM_JOB_QUEUE == jobq_index);
+
+	  if (thread_p->resume_status == THREAD_JOB_QUEUE_SUSPENDED
+	      && thread_p->status == TS_FREE)
+	    {
+	      r = thread_wakeup (thread_p, THREAD_JOB_QUEUE_RESUMED);
+	      if (r == NO_ERROR)
+		{
+		  char notimsg[LINE_MAX];
+
+		  snprintf (notimsg, LINE_MAX, "Wakes up thread %p. "
+			    "It was suspended in the job queue (index : %d), "
+			    "but was not in the joq Q's worker thread list",
+			    thread_p, jobq_index);
+
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+			  ER_EMERGENCY_ERROR, 1, notimsg);
+		  thread_p->worker_thrd_list = NULL;
+		  break;
+		}
+	    }
+	}
     }
 
   return r;

@@ -845,6 +845,15 @@ loop:
       thread_p = &thread_Manager.thread_array[i];
       if (thread_p->status != TS_DEAD)
 	{
+	  if (thread_p->status == TS_FREE
+	      && thread_p->resume_status == THREAD_JOB_QUEUE_SUSPENDED)
+	    {
+	      /* Defence code of a bug.
+	       * wake up a thread which is not in the list of Job queue,
+	       * but is waiting for a job.
+	       */
+	      thread_wakeup (thread_p, THREAD_RESUME_DUE_TO_SHUTDOWN);
+	    }
 	  repeat_loop = true;
 	}
     }
@@ -3692,7 +3701,7 @@ xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index,
   if (has_authorization == false)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1,
-		  tran_index);
+	      tran_index);
       return ER_KILL_TR_NOT_ALLOWED;
     }
 
