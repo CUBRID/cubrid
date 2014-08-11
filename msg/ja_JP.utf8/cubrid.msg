@@ -1219,7 +1219,8 @@ $ LOADDB
 1150 コンテキストは、互換性のある照合順序を必要とします。
 1151 ボリューム%2$dのページ%1$dは、slotted pageではありません。
 1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
-1153 ラストエラー
+1153 Attempt to use 'zero date'.
+1154 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):

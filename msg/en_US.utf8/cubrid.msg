@@ -1219,7 +1219,8 @@ $ LOADDB
 1150 Context requires compatible collations.
 1151 The page %1$d of volume %2$d is not a slotted page.
 1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
-1153 Last Error
+1153 Attempt to use 'zero date'.
+1154 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

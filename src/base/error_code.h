@@ -1471,7 +1471,9 @@
 
 #define ER_KILL_TR_NOT_ALLOWED                      -1152
 
-#define ER_LAST_ERROR                               -1153
+#define ER_ATTEMPT_TO_USE_ZERODATE                  -1153
+
+#define ER_LAST_ERROR                               -1154
 
 /*
  * CAUTION!

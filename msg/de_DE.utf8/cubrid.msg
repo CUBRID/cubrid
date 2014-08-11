@@ -1219,7 +1219,8 @@ $ LOADDB
 1150 Kontext erfordert kompatible Sortierungen.
 1151 The page %1$d of volume %2$d is not a slotted page.
 1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
-1153 Letzter Fehler
+1153 Attempt to use 'zero date'.
+1154 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):

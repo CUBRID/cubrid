@@ -1219,7 +1219,8 @@ $ LOADDB
 1150 İçerik uyumlu karşılaştırma gerektirmektedir.
 1151 %2$d hacımın %1$d sayfa yuva donanımlı değildir.
 1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
-1153 Son Hata
+1153 Attempt to use 'zero date'.
+1154 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

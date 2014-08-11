@@ -2290,8 +2290,9 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
       DB_MAKE_NULL (result_p);
       if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
-	  return ER_DATE_CONVERSION;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_ATTEMPT_TO_USE_ZERODATE, 0);
+	  return ER_ATTEMPT_TO_USE_ZERODATE;
 	}
       return NO_ERROR;
     }
@@ -4003,8 +4004,9 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
       DB_MAKE_NULL (result_p);
       if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
-	  return ER_DATE_CONVERSION;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_ATTEMPT_TO_USE_ZERODATE, 0);
+	  return ER_ATTEMPT_TO_USE_ZERODATE;
 	}
       return NO_ERROR;
     }

@@ -1219,7 +1219,8 @@ $ LOADDB
 1150 Context requires compatible collations.
 1151 The page %1$d of volume %2$d is not a slotted page.
 1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
-1153 마지막 에러
+1153 'zero date'를 사용할 수 없습니다.
+1154 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

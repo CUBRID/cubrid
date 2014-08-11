@@ -15427,8 +15427,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				ER_DATE_CONVERSION, 0);
-			goto error_date_conversion;
+				ER_ATTEMPT_TO_USE_ZERODATE, 0);
+			goto error_zerodate;
 		      }
 		    break;
 		  }
@@ -15508,8 +15508,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				ER_DATE_CONVERSION, 0);
-			goto error_date_conversion;
+				ER_ATTEMPT_TO_USE_ZERODATE, 0);
+			goto error_zerodate;
 		      }
 		    break;
 		  }
@@ -15590,8 +15590,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				ER_DATE_CONVERSION, 0);
-			goto error_date_conversion;
+				ER_ATTEMPT_TO_USE_ZERODATE, 0);
+			goto error_zerodate;
 		      }
 		    break;
 		  }
@@ -15750,8 +15750,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				ER_DATE_CONVERSION, 0);
-			goto error_date_conversion;
+				ER_ATTEMPT_TO_USE_ZERODATE, 0);
+			goto error_zerodate;
 		      }
 		    break;
 		  }
@@ -15898,8 +15898,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				ER_DATE_CONVERSION, 0);
-			goto error_date_conversion;
+				ER_ATTEMPT_TO_USE_ZERODATE, 0);
+			goto error_zerodate;
 		      }
 		    break;
 		  }
@@ -15959,8 +15959,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				ER_DATE_CONVERSION, 0);
-			goto error_date_conversion;
+				ER_ATTEMPT_TO_USE_ZERODATE, 0);
+			goto error_zerodate;
 		      }
 		    break;
 		  }
@@ -16008,8 +16008,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 			(PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				ER_DATE_CONVERSION, 0);
-			goto error_date_conversion;
+				ER_ATTEMPT_TO_USE_ZERODATE, 0);
+			goto error_zerodate;
 		      }
 		    break;
 		  }
@@ -18627,7 +18627,7 @@ overflow:
 	      MSGCAT_SEMANTIC_DATA_OVERFLOW_ON, pt_show_type_enum (rTyp));
   return 0;
 
-error_date_conversion:
+error_zerodate:
   PT_ERRORc (parser, o1, er_msg ());
   return 0;
 }

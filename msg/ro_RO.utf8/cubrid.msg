@@ -1219,7 +1219,8 @@ $ LOADDB
 1150 Contextul necesită colaţii compatibile.
 1151 The page %1$d of volume %2$d is not a slotted page.
 1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
-1153 Ultima eroare
+1153 Attempt to use 'zero date'.
+1154 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
