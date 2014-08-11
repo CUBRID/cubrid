@@ -2587,6 +2587,8 @@ pt_node_to_cmd_type (PT_NODE * node)
     case PT_UNION:
     case PT_SELECT:
       return CUBRID_STMT_SELECT;
+    case PT_KILL_STMT:
+      return CUBRID_STMT_KILL;
     }
 
   return -1;

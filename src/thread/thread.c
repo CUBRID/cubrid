@@ -3689,6 +3689,7 @@ xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index,
 {
   int i, error;
   bool interrupt, has_authorization;
+  bool is_trx_exists;
   KILLSTMT_TYPE kill_type;
 
   error =
@@ -3705,9 +3706,9 @@ xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index,
       return ER_KILL_TR_NOT_ALLOWED;
     }
 
-  kill_type = interrupt_only ? KILLSTMT_QUERY : KILLSTMT_TRAN;
+  is_trx_exists = logtb_set_tran_index_interrupt (thread_p, tran_index, true);
 
-  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+  kill_type = interrupt_only ? KILLSTMT_QUERY : KILLSTMT_TRAN;
   if (kill_type == KILLSTMT_TRAN)
     {
       css_shutdown_conn_by_tran_index (tran_index);
@@ -3730,6 +3731,15 @@ xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index,
   if (i == THREAD_RETRY_MAX_SLAM_TIMES)
     {
       return ER_FAILED;		/* timeout */
+    }
+
+  if (is_trx_exists == false)
+    {
+      /* 
+       * Note that the following error will be ignored by 
+       * sthread_kill_or_interrupt_tran().
+       */
+      return ER_FAILED;
     }
 
   return NO_ERROR;

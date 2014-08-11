@@ -83,6 +83,8 @@ $ These 3 should be blank
 79 csql>
 80 csql
 81 sysadm>
+82 %1$d transactions %2$s.
+83 %1$d transaction %2$s.
 
 145 <Help: Schema of a Class>
 146 none

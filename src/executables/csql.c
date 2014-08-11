@@ -2005,8 +2005,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	    msg_p = ((csql_Row_count > 1)
 		     ? csql_get_message (CSQL_ROWS)
 		     : csql_get_message (CSQL_ROW));
-	    snprintf (stmt_msg, LINE_BUFFER_SIZE,
-		      csql_get_message (CSQL_ROWS), csql_Row_count,
+	    snprintf (stmt_msg, LINE_BUFFER_SIZE, msg_p, csql_Row_count,
 		      "selected");
 	    break;
 	  }
@@ -2044,6 +2043,17 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 		     : csql_get_message (CSQL_ROW));
 	    snprintf (stmt_msg, LINE_BUFFER_SIZE, msg_p, db_error,
 		      "affected");
+	    break;
+	  }
+
+	case CUBRID_STMT_KILL:
+	  {
+	    const char *msg_p;
+
+	    msg_p = ((db_error > 1)
+		     ? csql_get_message (CSQL_TRANSACTIONS)
+		     : csql_get_message (CSQL_TRANSACTION));
+	    snprintf (stmt_msg, LINE_BUFFER_SIZE, msg_p, db_error, "killed");
 	    break;
 	  }
 

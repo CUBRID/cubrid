@@ -83,6 +83,8 @@ $ These 3 should be blank
 79 csql>
 80 csql
 81 sysadm>
+82 %1$d 개의 트랜잭션이 %2$s.
+83 %1$d 개의 트랜잭션이 %2$s.
 
 145 <도움말: 클래스 스키마>
 146 없음
