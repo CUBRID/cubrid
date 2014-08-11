@@ -980,7 +980,19 @@ cas_main (void)
 		       false);
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 	cas_error_log_open (broker_name);
+#else
+	if (as_info->cas_err_log_reset == CAS_LOG_RESET_REOPEN)
+	  {
+	    set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->err_log_dir);
+
+	    as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id,
+			       shm_shard_cas_id, shm_as_index,
+			       cas_shard_flag);
+	    er_final ();
+	    as_info->cas_err_log_reset = 0;
+	  }
 #endif
+
 	ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str),
 			    (unsigned char *) (&client_ip_addr));
 	cas_log_write_and_end (0, false, "CLIENT IP %s", client_ip_str);

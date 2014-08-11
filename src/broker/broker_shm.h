@@ -293,6 +293,7 @@ struct t_appl_server_info
   time_t psize_time;
   int cas_log_reset;
   int cas_slow_log_reset;
+  int cas_err_log_reset;
   char service_flag;
   char reset_flag;
   char uts_status;		/* flag whether the uts is busy or idle */

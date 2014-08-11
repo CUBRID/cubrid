@@ -149,7 +149,7 @@ envvar_root (void)
  *   return: prefixed name
  *   buf(out): string buffer to store the prefixed name
  *   size(out): size of the buffer
- *   name(in): an environment vraible name
+ *   name(in): an environment variable name
  */
 const char *
 envvar_name (char *buf, size_t size, const char *name)

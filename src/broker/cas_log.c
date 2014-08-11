@@ -179,6 +179,11 @@ cas_log_open (char *br_name)
     {
       if (br_name != NULL)
 	{
+	  if (as_info->cas_log_reset == CAS_LOG_RESET_REOPEN)
+	    {
+	      set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
+	    }
+
 	  make_sql_log_filename (FID_SQL_LOG_DIR, log_filepath,
 				 BROKER_PATH_MAX, br_name);
 	}
@@ -1004,6 +1009,11 @@ cas_slow_log_open (char *br_name)
     {
       if (br_name != NULL)
 	{
+	  if (as_info->cas_slow_log_reset == CAS_LOG_RESET_REOPEN)
+	    {
+	      set_cubrid_file (FID_SLOW_LOG_DIR, shm_appl->slow_log_dir);
+	    }
+
 	  make_sql_log_filename (FID_SLOW_LOG_DIR, slow_log_filepath,
 				 BROKER_PATH_MAX, br_name);
 	}

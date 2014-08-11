@@ -1675,7 +1675,8 @@ admin_conf_change (int master_shm_id, const char *br_name,
   T_SHM_PROXY *shm_proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
   T_SHARD_USER *user_p = NULL;
-
+  char path_org[BROKER_PATH_MAX] = { 0, };
+  char path_new[BROKER_PATH_MAX] = { 0, };
 
   shm_br =
     (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
@@ -2349,6 +2350,234 @@ admin_conf_change (int master_shm_id, const char *br_name,
 	    {
 	      shm_as_p->as_info[i].reset_flag = TRUE;
 	    }
+	}
+    }
+  else if (strcasecmp (conf_name, "PREFERRED_HOSTS") == 0)
+    {
+      char *host_name = (char *) conf_value;
+      int host_name_len = 0;
+
+      host_name_len = strlen (host_name);
+
+      if (host_name_len >= BROKER_INFO_NAME_MAX
+	  || host_name_len >= SHM_APPL_SERVER_NAME_MAX)
+	{
+	  sprintf (admin_err_msg, "The length of the host name is too long.");
+	  goto set_conf_error;
+	}
+
+      if (strncasecmp (br_info_p->preferred_hosts, host_name, host_name_len)
+	  == 0)
+	{
+	  sprintf (admin_err_msg, "same as previous value : %s", host_name);
+	  goto set_conf_error;
+	}
+
+      strncpy (br_info_p->preferred_hosts, host_name, host_name_len);
+      strncpy (shm_as_p->preferred_hosts, host_name, host_name_len);
+    }
+  else if (strcasecmp (conf_name, "MAX_PREPARED_STMT_COUNT") == 0)
+    {
+      int err_code = 0;
+      int stmt_cnt = 0;
+
+      err_code = parse_int (&stmt_cnt, conf_value, 10);
+      if (err_code < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_conf_error;
+	}
+
+      if (stmt_cnt < 1)
+	{
+	  sprintf (admin_err_msg, "value is out of range : %s", conf_value);
+	  goto set_conf_error;
+	}
+
+      if (br_info_p->max_prepared_stmt_count == stmt_cnt)
+	{
+	  sprintf (admin_err_msg, "same as previous value : %s", conf_value);
+	  goto set_conf_error;
+	}
+
+      if (br_info_p->max_prepared_stmt_count > stmt_cnt)
+	{
+	  sprintf (admin_err_msg,
+		   "cannot be decreased below the previous value '%d' : %s",
+		   br_info_p->max_prepared_stmt_count, conf_value);
+	  goto set_conf_error;
+	}
+
+      br_info_p->max_prepared_stmt_count = stmt_cnt;
+      shm_as_p->max_prepared_stmt_count = stmt_cnt;
+    }
+  else if (strcasecmp (conf_name, "SESSION_TIMEOUT") == 0)
+    {
+      int session_timeout = 0;
+
+      session_timeout =
+	(int) ut_time_string_to_sec ((char *) conf_value, "sec");
+      if (session_timeout < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_conf_error;
+	}
+
+      if (br_info_p->session_timeout == session_timeout)
+	{
+	  sprintf (admin_err_msg, "same as previous value : %s", conf_value);
+	  goto set_conf_error;
+	}
+
+      br_info_p->session_timeout = session_timeout;
+      shm_as_p->session_timeout = session_timeout;
+    }
+  else if (strcasecmp (conf_name, "ERROR_LOG_DIR") == 0)
+    {
+      char *err_log_dir = (char *) conf_value;
+      int err_log_dir_len = 0;
+
+      err_log_dir_len = strlen (err_log_dir);
+
+      if (err_log_dir_len >= CONF_LOG_FILE_LEN)
+	{
+	  sprintf (admin_err_msg, "The length of ERROR_LOG_DIR is too long.");
+	  goto set_conf_error;
+	}
+
+      ut_cd_root_dir ();	/* change the working directory to $CUBRID */
+
+      memset (path_org, 0x00, BROKER_PATH_MAX);
+      memset (path_new, 0x00, BROKER_PATH_MAX);
+
+      MAKE_FILEPATH (path_org, br_info_p->err_log_dir, BROKER_PATH_MAX);
+      MAKE_FILEPATH (path_new, err_log_dir, BROKER_PATH_MAX);
+
+#if defined(WINDOWS)
+      if (strcasecmp (path_org, path_new) == 0)
+#else
+      if (strcmp (path_org, path_new) == 0)
+#endif
+	{
+	  sprintf (admin_err_msg, "same as previous value : %s", err_log_dir);
+	  goto set_conf_error;
+	}
+
+      broker_create_dir (path_new);
+      if (access (path_new, F_OK) < 0)
+	{
+	  sprintf (admin_err_msg, "cannot access the path : %s", path_new);
+	  goto set_conf_error;
+	}
+
+      ut_cd_work_dir ();	/* change the working directory to $CUBRID/bin */
+
+      strcpy (br_info_p->err_log_dir, path_new);
+      strcpy (shm_as_p->err_log_dir, path_new);
+
+      for (i = 0; i < shm_as_p->num_appl_server && i < APPL_SERVER_NUM_LIMIT;
+	   i++)
+	{
+	  shm_as_p->as_info[i].cas_err_log_reset = CAS_LOG_RESET_REOPEN;
+	}
+    }
+  else if (strcasecmp (conf_name, "LOG_DIR") == 0)
+    {
+      char *log_dir = (char *) conf_value;
+      int log_dir_len = 0;
+
+      log_dir_len = strlen (log_dir);
+
+      if (log_dir_len >= CONF_LOG_FILE_LEN)
+	{
+	  sprintf (admin_err_msg, "The length of LOG_DIR is too long.");
+	  goto set_conf_error;
+	}
+
+      ut_cd_root_dir ();	/* change the working directory to $CUBRID */
+
+      memset (path_org, 0x00, BROKER_PATH_MAX);
+      memset (path_new, 0x00, BROKER_PATH_MAX);
+
+      MAKE_FILEPATH (path_org, br_info_p->log_dir, BROKER_PATH_MAX);
+      MAKE_FILEPATH (path_new, log_dir, BROKER_PATH_MAX);
+
+#if defined(WINDOWS)
+      if (strcasecmp (path_org, path_new) == 0)
+#else
+      if (strcmp (path_org, path_new) == 0)
+#endif
+	{
+	  sprintf (admin_err_msg, "same as previous value : %s", log_dir);
+	  goto set_conf_error;
+	}
+
+      broker_create_dir (path_new);
+      if (access (path_new, F_OK) < 0)
+	{
+	  sprintf (admin_err_msg, "cannot access the path : %s", path_new);
+	  goto set_conf_error;
+	}
+
+      ut_cd_work_dir ();	/* change the working directory to $CUBRID/bin */
+
+      strcpy (br_info_p->log_dir, path_new);
+      strcpy (shm_as_p->log_dir, path_new);
+
+      for (i = 0; i < shm_as_p->num_appl_server && i < APPL_SERVER_NUM_LIMIT;
+	   i++)
+	{
+	  shm_as_p->as_info[i].cas_log_reset = CAS_LOG_RESET_REOPEN;
+	}
+    }
+  else if (strcasecmp (conf_name, "SLOW_LOG_DIR") == 0)
+    {
+      char *slow_log_dir = (char *) conf_value;
+      int slow_log_dir_len = 0;
+
+      slow_log_dir_len = strlen (slow_log_dir);
+
+      if (slow_log_dir_len >= CONF_LOG_FILE_LEN)
+	{
+	  sprintf (admin_err_msg, "The length of SLOW_LOG_DIR is too long.");
+	  goto set_conf_error;
+	}
+
+      ut_cd_root_dir ();	/* change the working directory to $CUBRID */
+
+      memset (path_org, 0x00, BROKER_PATH_MAX);
+      memset (path_new, 0x00, BROKER_PATH_MAX);
+
+      MAKE_FILEPATH (path_org, br_info_p->slow_log_dir, BROKER_PATH_MAX);
+      MAKE_FILEPATH (path_new, slow_log_dir, BROKER_PATH_MAX);
+
+#if defined(WINDOWS)
+      if (strcasecmp (path_org, path_new) == 0)
+#else
+      if (strcmp (path_org, path_new) == 0)
+#endif
+	{
+	  sprintf (admin_err_msg, "same as previous value : %s",
+		   slow_log_dir);
+	  goto set_conf_error;
+	}
+
+      broker_create_dir (path_new);
+      if (access (path_new, F_OK) < 0)
+	{
+	  sprintf (admin_err_msg, "cannot access the path : %s", path_new);
+	  goto set_conf_error;
+	}
+
+      ut_cd_work_dir ();	/* change the working directory to $CUBRID/bin */
+
+      strcpy (br_info_p->slow_log_dir, path_new);
+      strcpy (shm_as_p->slow_log_dir, path_new);
+
+      for (i = 0; i < shm_as_p->num_appl_server && i < APPL_SERVER_NUM_LIMIT;
+	   i++)
+	{
+	  shm_as_p->as_info[i].cas_slow_log_reset = CAS_LOG_RESET_REOPEN;
 	}
     }
   else
