@@ -848,6 +848,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
       return -1;
     }
 
+  fseek (fp, 0, SEEK_END);
   if ((ftell (fp) / ONE_K) > shm_appl->access_log_max_size)
     {
       time_t cur_time = time (NULL);
