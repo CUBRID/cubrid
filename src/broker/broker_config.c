@@ -1284,26 +1284,6 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
 					 acl_flag, acl_file, admin_err_msg);
     }
 
-  if (conf_file == NULL)
-    {
-      /* $PWD/cubrid_broker.conf if exist */
-#if defined (WINDOWS)
-      sprintf (file_being_dealt_with, ".\\%s", file_name);
-#else /* WINDOWS */
-      snprintf (file_being_dealt_with, (BROKER_PATH_MAX - 1), "./%s",
-		file_name);
-#endif /* WINDOWS */
-      if (stat (file_being_dealt_with, &stat_buf) == 0)
-	{
-	  is_conf_found = true;
-	  err = broker_config_read_internal (file_being_dealt_with, br_info,
-					     num_broker, br_shm_id,
-					     admin_log_file, admin_flag,
-					     acl_flag, acl_file,
-					     admin_err_msg);
-	}
-    }
-
   if (!is_conf_found)
     {
       err = -1;
