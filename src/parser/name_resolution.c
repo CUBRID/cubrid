@@ -9053,6 +9053,11 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node)
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
   serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
 				     serial_name);
+  if (serial_mop == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND,
+	      1, serial_name);
+    }
 
   return serial_mop;
 }
