@@ -6164,6 +6164,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   LK_WFG_NODE *TWFG_node;
   LK_WFG_EDGE *TWFG_edge;
   TRANID tranid;
+  TRANID victim_tranid;
   int can_timeout;
   int i, u, v, w, n;
   bool false_dd_cycle = false;
@@ -6287,8 +6288,9 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
      Victim Selection Strategy
      1) Must be lock holder.
      2) Must be active transaction.
-     3) Prefer a transaction with a closer timeout.
-     4) Prefer the youngest transaction.
+     3) Prefer a transaction does not have victim priority.
+     4) Prefer a transaction with a closer timeout.
+     5) Prefer the youngest transaction.
    */
 #if defined(CUBRID_DEBUG)
   num_WFG_nodes = tot_WFG_nodes;
@@ -6404,7 +6406,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	{
 	  tranid = logtb_find_tranid (v);
 	  victim_tran_index = victims[victim_count].tran_index;
-	  if (logtb_is_active (thread_p, tranid) == false)
+	  if (logtb_is_active (thread_p, tranid) == false)	/* Must be active transaction. */
 	    {
 	      inact_trans_found = true;
 #if defined(CUBRID_DEBUG)
@@ -6417,26 +6419,44 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	      WFG_nidx += 1;
 #endif /* CUBRID_DEBUG */
 	    }
-	  else if (victim_tran_index != NULL_TRAN_INDEX
-		   && logtb_has_deadlock_priority (v) == true)
-	    {
-	      /* victim was alread seleted. this(v) transaction avoid victim selection */
-	      ;
-	    }
 	  else
 	    {
+	      victim_tranid = NULL_TRANID;
 	      lock_holder_found = true;
 	      can_timeout = LK_CAN_TIMEOUT (logtb_find_wait_msecs (v));
-	      if (victim_tran_index == NULL_TRAN_INDEX
-		  || (victims[victim_count].can_timeout == false
-		      && can_timeout == true)
-		  || (victims[victim_count].can_timeout == can_timeout
-		      && (LK_ISYOUNGER (tranid, victims[victim_count].tranid)
-			  || logtb_has_deadlock_priority (victim_tran_index)
-			  == true)))
+	      if (victim_tran_index == NULL_TRAN_INDEX)
+		{
+		  victim_tranid = tranid;
+		}
+	      else if (logtb_has_deadlock_priority (victim_tran_index)
+		       != logtb_has_deadlock_priority (v))
+		{
+		  /* Prefer a transaction does not have victim priority. */
+		  if (logtb_has_deadlock_priority (v) == false)
+		    {
+		      victim_tranid = tranid;
+		    }
+		}
+	      else
+		{
+		  /*
+		   *  Prefer a transaction with a closer timeout.
+		   *  Prefer the youngest transaction.
+		   */
+		  if ((victims[victim_count].can_timeout == false
+		       && can_timeout == true)
+		      || (victims[victim_count].can_timeout == can_timeout
+			  && (LK_ISYOUNGER
+			      (tranid, victims[victim_count].tranid))))
+		    {
+		      victim_tranid = tranid;
+		    }
+		}
+
+	      if (victim_tranid != NULL_TRANID)
 		{
 		  victims[victim_count].tran_index = v;
-		  victims[victim_count].tranid = tranid;
+		  victims[victim_count].tranid = victim_tranid;
 		  victims[victim_count].can_timeout = can_timeout;
 		}
 	    }
