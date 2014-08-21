@@ -8351,6 +8351,7 @@ static int
 lp_get_ha_applied_info (bool is_first)
 {
   int error = NO_ERROR;
+  int res;
   LA_ACT_LOG *act_log;
   LA_HA_APPLY_INFO apply_info;
   act_log = &la_Info.act_log;
@@ -8370,10 +8371,10 @@ lp_get_ha_applied_info (bool is_first)
       return NO_ERROR;
     }
 
-  error =
+  res =
     la_get_ha_apply_info (la_Info.log_path, act_log->log_hdr->prefix_name,
 			  &apply_info);
-  if (error != NO_ERROR)
+  if (res <= 0)
     {
       er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
