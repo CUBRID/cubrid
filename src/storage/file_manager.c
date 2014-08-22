@@ -5764,15 +5764,6 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
       allocset->end_pages_vpid = to_vpid;
       allocset->end_pages_offset = (INT16) ((nsects * sizeof (to_vpid.pageid))
 					    + sizeof (*chain));
-
-      assert ((allocset->end_pages_vpid.volid !=
-	       allocset->start_pages_vpid.volid)
-	      || (allocset->end_pages_vpid.pageid >
-		  allocset->start_pages_vpid.pageid)
-	      || ((allocset->end_pages_vpid.pageid ==
-		   allocset->start_pages_vpid.pageid)
-		  && (allocset->end_pages_offset >=
-		      allocset->start_pages_offset)));
     }
 
   /*
@@ -6632,15 +6623,6 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   allocset->end_pages_vpid = vpid;
   allocset->end_pages_offset = (INT16) ((char *) aid_ptr - (char *) pgptr);
   allocset->num_pages += npages;
-
-  assert ((allocset->end_pages_vpid.volid !=
-	   allocset->start_pages_vpid.volid)
-	  || (allocset->end_pages_vpid.pageid >
-	      allocset->start_pages_vpid.pageid)
-	  || ((allocset->end_pages_vpid.pageid ==
-	       allocset->start_pages_vpid.pageid)
-	      && (allocset->end_pages_offset >=
-		  allocset->start_pages_offset)));
 
   /* Free the page table */
   pgbuf_set_dirty (thread_p, pgptr, FREE);
@@ -9711,15 +9693,6 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
   allocset->end_pages_offset =
     (INT16) ((char *) to_aid_ptr - (char *) to_pgptr);
   allocset->num_holes = 0;
-
-  assert ((allocset->end_pages_vpid.volid !=
-	   allocset->start_pages_vpid.volid)
-	  || (allocset->end_pages_vpid.pageid >
-	      allocset->start_pages_vpid.pageid)
-	  || ((allocset->end_pages_vpid.pageid ==
-	       allocset->start_pages_vpid.pageid)
-	      && (allocset->end_pages_offset >=
-		  allocset->start_pages_offset)));
 
   /* save changes for redo purposes */
   recv_redo.start_pages_vpid = allocset->start_pages_vpid;
@@ -13415,15 +13388,6 @@ file_rv_allocset_undoredo_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   allocset->end_pages_offset = rvstb->end_pages_offset;
   allocset->num_holes = rvstb->num_holes;
 
-  assert ((allocset->end_pages_vpid.volid !=
-	   allocset->start_pages_vpid.volid)
-	  || (allocset->end_pages_vpid.pageid >
-	      allocset->start_pages_vpid.pageid)
-	  || ((allocset->end_pages_vpid.pageid ==
-	       allocset->start_pages_vpid.pageid)
-	      && (allocset->end_pages_offset >=
-		  allocset->start_pages_offset)));
-
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;		/* do not permit error */
@@ -13674,15 +13638,6 @@ file_rv_allocset_undoredo_add_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   allocset->end_pages_offset = rvpgs->end_pages_offset;
   allocset->num_pages = rvpgs->num_pages;
   allocset->num_holes = rvpgs->num_holes;
-
-  assert ((allocset->end_pages_vpid.volid !=
-	   allocset->start_pages_vpid.volid)
-	  || (allocset->end_pages_vpid.pageid >
-	      allocset->start_pages_vpid.pageid)
-	  || ((allocset->end_pages_vpid.pageid ==
-	       allocset->start_pages_vpid.pageid)
-	      && (allocset->end_pages_offset >=
-		  allocset->start_pages_offset)));
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
