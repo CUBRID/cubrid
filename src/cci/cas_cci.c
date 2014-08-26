@@ -6220,6 +6220,7 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
     }
 
   ds->is_init = 1;
+  ds->num_waiter = 0;
 
   return ds;
 
@@ -6453,7 +6454,7 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 
   /* critical section begin */
   pthread_mutex_lock ((pthread_mutex_t *) ds->mutex);
-  if (ds->num_idle <= 0)
+  if (ds->num_idle <= 0 || ds->num_waiter > 0)
     {
       /* wait max_wait msecs */
       struct timespec ts;
@@ -6469,10 +6470,12 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 	  ts.tv_nsec -= 1000000000;
 	}
 
-      while (ds->num_idle <= 0)
+      do
 	{
+	  ds->num_waiter++;
 	  r = pthread_cond_timedwait ((pthread_cond_t *) ds->cond,
 				      (pthread_mutex_t *) ds->mutex, &ts);
+	  ds->num_waiter--;
 	  if (r == ETIMEDOUT)
 	    {
 	      set_error_buffer (err_buf, CCI_ER_DATASOURCE_TIMEOUT, NULL);
@@ -6487,6 +6490,7 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 	      return CCI_ER_DATASOURCE_TIMEDWAIT;
 	    }
 	}
+      while (ds->num_idle <= 0);
     }
 
   assert (ds->num_idle > 0);

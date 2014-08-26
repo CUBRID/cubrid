@@ -275,6 +275,7 @@ extern "C"
     int login_timeout;
 
     int num_idle;
+    int num_waiter;
     int *con_handles;		/* realloc by pool_size */
   };
 
