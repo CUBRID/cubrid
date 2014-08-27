@@ -2959,7 +2959,6 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
       c = btree_compare_key (key, &temp_key, btid->key_type,
 			     1, 1, &start_col);
-      assert (c == DB_LT || c == DB_EQ || c == DB_GT);
 
       btree_clear_key_value (&clear_key, &temp_key);
 
@@ -3101,7 +3100,6 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
       c = btree_compare_key (key, &temp_key, btid->key_type,
 			     1, 1, &start_col);
-      assert (c == DB_LT || c == DB_EQ || c == DB_GT);
 
       btree_clear_key_value (&clear_key, &temp_key);
 
@@ -18181,7 +18179,6 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
     {
       c = btree_compare_key (bts->key_range.upper_key, &bts->cur_key,
 			     bts->btid_int.key_type, 1, 1, NULL);
-      assert (c == DB_LT || c == DB_EQ || c == DB_GT);
 
       if (c == DB_UNK)
 	{
