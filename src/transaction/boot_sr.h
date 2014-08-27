@@ -151,4 +151,5 @@ extern int boot_compact_start (THREAD_ENTRY * thread_p);
 extern int boot_compact_stop (THREAD_ENTRY * thread_p);
 extern bool boot_can_compact (THREAD_ENTRY * thread_p);
 extern bool boot_set_skip_check_ct_classes (bool val);
+
 #endif /* _BOOT_SR_H_ */

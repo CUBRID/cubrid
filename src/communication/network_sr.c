@@ -595,6 +595,11 @@ net_server_init (void)
   req_p->processing_function = sbtree_get_statistics;
   req_p->name = "NET_SERVER_BTREE_GET_STATISTICS";
 
+  req_p = &net_Requests[NET_SERVER_BTREE_GET_KEY_TYPE];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sbtree_get_key_type;
+  req_p->name = "NET_SERVER_BTREE_GET_KEY_TYPE";
+
   /* disk */
   req_p = &net_Requests[NET_SERVER_DISK_TOTALPGS];
   req_p->processing_function = sdk_totalpgs;
@@ -942,6 +947,14 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION];
   req_p->processing_function = sthread_kill_or_interrupt_tran;
   req_p->name = "NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION";
+
+  req_p = &net_Requests[NET_SERVER_VACUUM];
+  req_p->processing_function = svacuum;
+  req_p->name = "NET_SERVER_VACUUM";
+
+  req_p = &net_Requests[NET_SERVER_INVALIDATE_MVCC_SNAPSHOT];
+  req_p->processing_function = slogtb_invalidate_mvcc_snapshot;
+  req_p->name = "NET_SERVER_INVALIDATE_MVCC_SNAPSHOT";
 }
 
 #if defined(CUBRID_DEBUG)
@@ -1376,6 +1389,7 @@ net_server_start (const char *server_name)
     }
   sysprm_load_and_init (NULL, NULL);
   sysprm_set_er_log_file (server_name);
+  mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
   if (thread_initialize_manager () != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize thread manager\n");

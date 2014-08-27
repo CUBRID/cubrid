@@ -1220,7 +1220,12 @@ $ LOADDB
 1151 The page %1$d of volume %2$d is not a slotted page.
 1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
 1153 'zero date'를 사용할 수 없습니다.
-1154 마지막 에러
+1154 MVCC row %1$d|%2$d|%3$d does not satisfies reevaluation.
+1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
+1156 MVCC can't get snapshot
+1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
+1158 Serializable conflict due to concurent updates
+1159 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1670,11 +1675,11 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 2 트랜잭션 isolation 레벨은 1, 2, 3, 4, 5, 6 중에서 지정되어야 합니다.
 3 타임아웃 값은 -1, 0 또는 >0 이어야 합니다.
 4 Isolation 레벨은 다음과 같습니다\n
-5          READ COMMITTED SCHEMA, READ UNCOMMITTED INSTANCES.\n
-6          READ COMMITTED SCHEMA, READ COMMITTED INSTANCES.\n
-7          REPEATABLE READ SCHEMA, READ UNCOMMITTED INSTANCES.\n
-8          REPEATABLE READ SCHEMA, READ COMMITTED INSTANCES.\n
-9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
+5          Unknown isolation.\n
+6          Unknown isolation.\n
+7          Unknown isolation.\n
+8          READ COMMITTED\n
+9          REPEATABLE READ\n
 10 db_query_execute_oid 를 이용하여 non-updatable 질의를 수행할 수 없습니다.
 11 트랜잭션이 락 대기 중에 타임아웃되었습니다.
 12 %1$d 번째 호스트 변수를 액세스하려고 하지만, 단지 %2$d 개의 호스트 변수만이 주어져 있습니다. 
@@ -1744,6 +1749,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 소유자나 DBA만이 대상 시리얼의 정의를 변경(Alter)할 수 있습니다. 
 78 Auto increment 제약 조건으로 생성된 시리얼 객체는 임의로 변경할 수 없습니다. 
 79 유효하지 않은 Isolation 수준: %1$s 스키마, %2$s 객체.
+80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 잘못된 캐시 ***

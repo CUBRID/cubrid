@@ -67,9 +67,6 @@ public class CUBRIDConnection implements Connection {
 	// Transaction Isolation Level Contants
 	public static final int TRAN_REP_CLASS_REP_INSTANCE = TRANSACTION_REPEATABLE_READ; // 4
 	public static final int TRAN_REP_CLASS_COMMIT_INSTANCE = 16;
-	public static final int TRAN_REP_CLASS_UNCOMMIT_INSTANCE = 32;
-	public static final int TRAN_COMMIT_CLASS_COMMIT_INSTANCE = TRANSACTION_READ_COMMITTED; // 2
-	public static final int TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE = TRANSACTION_READ_UNCOMMITTED; // 1
 	public static final int TRAN_SERIALIZABLE = TRANSACTION_SERIALIZABLE;
 
 	public static final int CAS_CHANGE_MODE_AUTO = 1;
@@ -327,35 +324,27 @@ public class CUBRIDConnection implements Connection {
 
 		commit();
 
-		int uni_level;
+		int cubrid_level;
 		switch (level) {
 		case TRANSACTION_READ_COMMITTED:
-			uni_level = CUBRIDIsolationLevel.TRAN_REP_CLASS_COMMIT_INSTANCE;
-			break;
-		case TRANSACTION_READ_UNCOMMITTED:
-			uni_level = CUBRIDIsolationLevel.TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
-			break;
-		case TRANSACTION_REPEATABLE_READ:
-			uni_level = CUBRIDIsolationLevel.TRAN_REP_CLASS_REP_INSTANCE;
-			break;
-		case TRANSACTION_SERIALIZABLE:
-			// uni_level = CUBRIDIsolationLevel.TRAN_REP_CLASS_REP_INSTANCE;
-			// cubrid
-			// 5.x
-			uni_level = CUBRIDIsolationLevel.TRAN_SERIALIZABLE;
-			break;
 		case TRAN_REP_CLASS_COMMIT_INSTANCE:
-			uni_level = CUBRIDIsolationLevel.TRAN_REP_CLASS_COMMIT_INSTANCE;
+			cubrid_level = CUBRIDIsolationLevel.TRAN_READ_COMMITTED;
 			break;
-		case TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
-			uni_level = CUBRIDIsolationLevel.TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
+
+		case TRANSACTION_REPEATABLE_READ:
+			cubrid_level = CUBRIDIsolationLevel.TRAN_REPEATABLE_READ;
 			break;
+
+		case TRANSACTION_SERIALIZABLE:
+			cubrid_level = CUBRIDIsolationLevel.TRAN_SERIALIZABLE;
+			break;
+
 		default:
 			throw createCUBRIDException(CUBRIDJDBCErrorCode.invalid_trans_iso_level, null);
 		}
 
 		synchronized (u_con) {
-			u_con.setIsolationLevel(uni_level);
+			u_con.setIsolationLevel(cubrid_level);
 			error = u_con.getRecentError();
 		}
 
@@ -370,9 +359,9 @@ public class CUBRIDConnection implements Connection {
 	public synchronized int getTransactionIsolation() throws SQLException {
 		checkIsOpen();
 
-		int uni_level = 0;
+		int cubrid_level = 0;
 		synchronized (u_con) {
-			uni_level = u_con.getIsolationLevel();
+			cubrid_level = u_con.getIsolationLevel();
 			error = u_con.getRecentError();
 		}
 
@@ -383,19 +372,16 @@ public class CUBRIDConnection implements Connection {
 			throw createCUBRIDException(error);
 		}
 
-		switch (uni_level) {
-		case CUBRIDIsolationLevel.TRAN_COMMIT_CLASS_COMMIT_INSTANCE:
+		switch (cubrid_level) {
+		case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
 			return TRANSACTION_READ_COMMITTED;
-		case CUBRIDIsolationLevel.TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE:
-			return TRANSACTION_READ_UNCOMMITTED;
-		case CUBRIDIsolationLevel.TRAN_REP_CLASS_REP_INSTANCE:
+
+		case CUBRIDIsolationLevel.TRAN_REPEATABLE_READ:
 			return TRANSACTION_REPEATABLE_READ;
-		case CUBRIDIsolationLevel.TRAN_REP_CLASS_COMMIT_INSTANCE:
-			return TRANSACTION_READ_COMMITTED;
-		case CUBRIDIsolationLevel.TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
-			return TRANSACTION_READ_UNCOMMITTED;
+
 		case CUBRIDIsolationLevel.TRAN_SERIALIZABLE:
 			return TRANSACTION_SERIALIZABLE;
+
 		default:
 			return TRANSACTION_NONE;
 		}

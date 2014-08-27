@@ -185,8 +185,8 @@ compactdb_start (bool verbose_flag)
   disk_init ();
   for (i = 0; i < class_table->num; i++)
     {
-      if (!WS_MARKED_DELETED (class_table->mops[i]) &&
-	  class_table->mops[i] != sm_Root_class_mop)
+      if (!WS_IS_DELETED (class_table->mops[i])
+	  && class_table->mops[i] != sm_Root_class_mop)
 	{
 	  process_class (class_table->mops[i], verbose_flag);
 	}
@@ -485,7 +485,8 @@ process_value (DB_VALUE * value)
 	    break;
 	  }
 
-	if (heap_get_class_oid (NULL, &ref_class_oid, ref_oid) == NULL)
+	if (heap_get_class_oid (NULL, &ref_class_oid, ref_oid, NEED_SNAPSHOT)
+	    == NULL)
 	  {
 	    OID_SET_NULL (ref_oid);
 	    return_value = 1;
@@ -635,8 +636,8 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
       update_indexes (WS_OID (classop), oid, Diskrec);
     }
 
-  if (heap_update (NULL, hfid, WS_OID (classop), oid, Diskrec, &oldflag, NULL)
-      != oid)
+  if (heap_update (NULL, hfid, WS_OID (classop), oid, Diskrec, NULL, &oldflag,
+		   NULL, HEAP_UPDATE_IN_PLACE) != oid)
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_COMPACTDB,
@@ -723,9 +724,9 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
        * 9rd arg -> data or schema, 10th arg -> max repl. log or not
        */
       success = locator_update_index (NULL, rec, &oldrec, NULL, 0,
-				      obj_oid, class_oid, NULL, false,
-				      SINGLE_ROW_UPDATE,
-				      (HEAP_SCANCACHE *) NULL, false, false,
+				      obj_oid, obj_oid, class_oid, NULL,
+				      false, SINGLE_ROW_UPDATE,
+				      (HEAP_SCANCACHE *) NULL, false,
 				      REPL_INFO_TYPE_STMT_NORMAL);
     }
   else

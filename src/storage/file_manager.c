@@ -1353,6 +1353,10 @@ file_type_to_string (FILE_TYPE fstruct_type)
       return "LONGDATA";
     case FILE_CATALOG:
       return "CATALOG";
+    case FILE_DROPPED_FILES:
+      return "DROPPED FILES";
+    case FILE_VACUUM_DATA:
+      return "VACUUM DATA";
     case FILE_QUERY_AREA:
       return "QUERY_AREA";
     case FILE_TMP:
@@ -1388,6 +1392,8 @@ file_get_primary_vol_purpose (FILE_TYPE ftype)
     case FILE_EXTENDIBLE_HASH:
     case FILE_EXTENDIBLE_HASH_DIRECTORY:
     case FILE_LONGDATA:
+    case FILE_DROPPED_FILES:
+    case FILE_VACUUM_DATA:
       purpose = DISK_PERMVOL_DATA_PURPOSE;
       break;
 
@@ -1436,6 +1442,8 @@ file_get_disk_page_type (FILE_TYPE ftype)
     case FILE_EXTENDIBLE_HASH:
     case FILE_EXTENDIBLE_HASH_DIRECTORY:
     case FILE_LONGDATA:
+    case FILE_DROPPED_FILES:
+    case FILE_VACUUM_DATA:
       page_type = DISK_PAGE_DATA_TYPE;
       break;
 
@@ -1514,6 +1522,8 @@ file_find_good_maxpages (THREAD_ENTRY * thread_p, FILE_TYPE file_type)
     case FILE_EXTENDIBLE_HASH:
     case FILE_EXTENDIBLE_HASH_DIRECTORY:
     case FILE_LONGDATA:
+    case FILE_DROPPED_FILES:
+    case FILE_VACUUM_DATA:
       return disk_get_max_numpages (thread_p, DISK_PERMVOL_DATA_PURPOSE);
 
     case FILE_BTREE:
@@ -1607,7 +1617,7 @@ file_find_limits (PAGE_PTR ftb_pgptr, const FILE_ALLOCSET * allocset,
  * file_ftabvpid_alloc () - Allocate a set of file table pages
  *   return:
  *   hint_volid(in): Use this volume identifier as a hint for the allocation
- *   hint_pageid(in): Une this page in the hinted volume for allocation as
+ *   hint_pageid(in): Use this page in the hinted volume for allocation as
  *                    close as this page
  *   ftb_vpids(in): An array of num_ftb_pages VPID elements
  *   num_ftb_pages(in): Number of table pages to allocate
@@ -2524,6 +2534,8 @@ file_descriptor_dump_internal (THREAD_ENTRY * thread_p, FILE * fp,
 	  break;
 
 	case FILE_CATALOG:
+	case FILE_DROPPED_FILES:
+	case FILE_VACUUM_DATA:
 	case FILE_QUERY_AREA:
 	case FILE_TMP:
 	case FILE_TMP_TMP:
@@ -14190,6 +14202,8 @@ file_descriptor_get_length (const FILE_TYPE file_type)
       return sizeof (FILE_EHASH_DES);
     case FILE_LONGDATA:
       return sizeof (FILE_LO_DES);
+    case FILE_DROPPED_FILES:
+    case FILE_VACUUM_DATA:
     case FILE_TRACKER:
     case FILE_CATALOG:
     case FILE_QUERY_AREA:
@@ -14280,6 +14294,8 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, FILE * fp,
     case FILE_TMP_TMP:
     case FILE_EITHER_TMP:
     case FILE_UNKNOWN_TYPE:
+    case FILE_DROPPED_FILES:
+    case FILE_VACUUM_DATA:
     default:
       fprintf (fp, "....Don't know how to dump desc..\n");
       break;

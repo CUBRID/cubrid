@@ -39,6 +39,7 @@
 #include "page_buffer.h"
 #include "log_manager.h"
 #include "critical_section.h"
+#include "mvcc.h"
 #if defined(SERVER_MODE)
 #include "thread.h"
 #include "connection_error.h"
@@ -62,36 +63,6 @@
 enum
 {
   SPAGE_EMPTY_OFFSET = 0	/* uninitialized offset */
-};
-
-typedef struct spage_header SPAGE_HEADER;
-struct spage_header
-{
-  PGNSLOTS num_slots;		/* Number of allocated slots for the page */
-  PGNSLOTS num_records;		/* Number of records on page */
-  INT16 anchor_type;		/* Valid ANCHORED, ANCHORED_DONT_REUSE_SLOTS
-				   UNANCHORED_ANY_SEQUENCE,
-				   UNANCHORED_KEEP_SEQUENCE */
-  unsigned short alignment;	/* Alignment for records: Valid values sizeof
-				   char, short, int, double */
-  int total_free;		/* Total free space on page */
-  int cont_free;		/* Contiguous free space on page */
-  int offset_to_free_area;	/* Byte offset from the beginning of the page
-				   to the first free byte area on the page. */
-  int reserved3;
-  int reserved4;
-  unsigned int is_saving:1;	/* True if saving is need for recovery (undo) */
-  unsigned int need_update_best_hint:1;	/* True if we should update best pages hint
-					 * for this page. See heap_stats_update. */
-
-  /* The followings are reserved for future use. */
-  /* SPAGE_HEADER should be 8 bytes aligned. Packing of bit fields depends on
-   * compiler's behavior. It's better to use 4-bytes type in order not to be
-   * affected by the compiler.
-   */
-  unsigned int reserved_bits:30;
-  int reserved1;
-  int reserved2;
 };
 
 typedef struct spage_save_entry SPAGE_SAVE_ENTRY;
@@ -183,9 +154,13 @@ static void spage_reduce_a_slot (PAGE_PTR page_p);
 
 static int spage_check_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 				  PGSLOTID slot_id,
-				  const RECDES * record_descriptor_p,
+				  int record_descriptor_length,
 				  SPAGE_SLOT ** out_slot_p, int *out_space_p,
 				  int *out_old_waste_p, int *out_new_waste_p);
+static int spage_check_mvcc_updatable (THREAD_ENTRY * thread_p,
+				       PAGE_PTR page_p, PGSLOTID slot_id,
+				       int mvcc_delete_record_length,
+				       int mvcc_insert_record_length);
 static int spage_update_record_in_place (PAGE_PTR page_p,
 					 SPAGE_HEADER * page_header_p,
 					 SPAGE_SLOT * slot_p,
@@ -201,7 +176,8 @@ static int spage_update_record_after_compact (PAGE_PTR page_p,
 static SCAN_CODE spage_search_record (PAGE_PTR page_p,
 				      PGSLOTID * out_slot_id_p,
 				      RECDES * record_descriptor_p,
-				      int is_peeking, int direction);
+				      int is_peeking, int direction,
+				      bool skip_empty);
 
 static const char *spage_record_type_string (INT16 record_type);
 
@@ -220,6 +196,10 @@ static SPAGE_SLOT *spage_find_slot (PAGE_PTR pgptr, SPAGE_HEADER * sphdr,
 				    bool is_unknown_slot_check);
 static SCAN_CODE spage_get_record_data (PAGE_PTR pgptr, SPAGE_SLOT * sptr,
 					RECDES * recdes, int ispeeking);
+static SCAN_CODE spage_get_record_mvcc_data (PAGE_PTR page_p,
+					     SPAGE_SLOT * slot_p,
+					     RECDES * record_descriptor_p,
+					     int is_peeking);
 static bool spage_has_enough_total_space (THREAD_ENTRY * thread_p,
 					  PAGE_PTR pgptr,
 					  SPAGE_HEADER * sphdr, int space);
@@ -350,7 +330,8 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
 
 	  /* Total saved space should be 0 or positive */
 	  if (head->total_saved < 0)
-	    {			/* defense code */
+	    {
+	      /* defense code */
 	      head->total_saved = 0;
 	    }
 	}
@@ -1115,12 +1096,10 @@ spage_initialize (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT16 slot_type,
   page_header_p->num_slots = 0;
   page_header_p->num_records = 0;
   page_header_p->is_saving = is_saving;
-  page_header_p->reserved3 = 0;
-  page_header_p->reserved4 = 0;
+  page_header_p->flags = SPAGE_HEADER_FLAG_NONE;
   page_header_p->need_update_best_hint = 0;
   page_header_p->reserved_bits = 0;
   page_header_p->reserved1 = 0;
-  page_header_p->reserved2 = 0;
 
   page_header_p->anchor_type = slot_type;
   page_header_p->total_free = DB_ALIGN (DB_PAGESIZE - sizeof (SPAGE_HEADER),
@@ -1271,7 +1250,8 @@ spage_compact (PAGE_PTR page_p)
 	  else
 	    {
 	      /* Move the record */
-	      if (to_offset + slot_array[i]->record_length > DB_PAGESIZE)
+	      if ((unsigned int) to_offset + slot_array[i]->record_length >
+		  (unsigned int) DB_PAGESIZE)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
 			  0);
@@ -1919,8 +1899,8 @@ spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   tmp_slot_p = (SPAGE_SLOT *) slot_p;
   if (record_descriptor_p->type != REC_ASSIGN_ADDRESS)
     {
-      if (tmp_slot_p->offset_to_record + record_descriptor_p->length
-	  > DB_PAGESIZE)
+      if ((unsigned int) tmp_slot_p->offset_to_record +
+	  record_descriptor_p->length > (unsigned int) DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -1932,7 +1912,8 @@ spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
     }
   else
     {
-      if (tmp_slot_p->offset_to_record + SSIZEOF (TRANID) > DB_PAGESIZE)
+      if (tmp_slot_p->offset_to_record + SSIZEOF (TRANID) >
+	  (unsigned int) DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -2081,7 +2062,7 @@ spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
       if (record_descriptor_p->type != REC_ASSIGN_ADDRESS)
 	{
 	  if (slot_p->offset_to_record + record_descriptor_p->length
-	      > DB_PAGESIZE)
+	      > (unsigned int) DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -2090,6 +2071,8 @@ spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 	  memcpy (((char *) page_p + slot_p->offset_to_record),
 		  record_descriptor_p->data, record_descriptor_p->length);
 	}
+
+      SPAGE_VERIFY_HEADER (page_header_p);
 
       pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
     }
@@ -2187,7 +2170,7 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
   page_header_p->total_free += free_space;
 
   /* If it is the last slot in the page, the contiguous free space can be
-     adjusted. Avoid future compactions as much as possible */
+     adjusted. Avoid future compaction as much as possible */
   if (spage_is_record_located_at_end (page_header_p, slot_p))
     {
       page_header_p->cont_free += free_space;
@@ -2302,7 +2285,7 @@ spage_delete_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  */
 static int
 spage_check_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
-		       PGSLOTID slot_id, const RECDES * record_descriptor_p,
+		       PGSLOTID slot_id, int record_descriptor_length,
 		       SPAGE_SLOT ** out_slot_p, int *out_space_p,
 		       int *out_old_waste_p, int *out_new_waste_p)
 {
@@ -2312,16 +2295,15 @@ spage_check_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   int space;
 
   assert (page_p != NULL);
-  assert (record_descriptor_p != NULL);
 
-  if (record_descriptor_p->length < 0)
+  if (record_descriptor_length < 0)
     {
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return SP_ERROR;
     }
 
-  if (record_descriptor_p->length > spage_max_record_size ())
+  if (record_descriptor_length > spage_max_record_size ())
     {
       return SP_DOESNT_FIT;
     }
@@ -2340,9 +2322,9 @@ spage_check_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 
   old_waste = DB_WASTED_ALIGN (slot_p->record_length,
 			       page_header_p->alignment);
-  new_waste = DB_WASTED_ALIGN (record_descriptor_p->length,
+  new_waste = DB_WASTED_ALIGN (record_descriptor_length,
 			       page_header_p->alignment);
-  space = record_descriptor_p->length + new_waste - slot_p->record_length -
+  space = record_descriptor_length + new_waste - slot_p->record_length -
     old_waste;
 
   if (spage_has_enough_total_space (thread_p, page_p, page_header_p,
@@ -2369,6 +2351,127 @@ spage_check_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   if (out_new_waste_p)
     {
       *out_new_waste_p = new_waste;
+    }
+
+  return SP_SUCCESS;
+}
+
+/*
+* spage_check_mvcc_updatable () - check whether is enough free area to update
+*                   a record in MVCC
+ *   return:
+ *
+ *   page_p(in): Pointer to slotted page
+ *   slot_id(in): Slot identifier of record to logical delete
+ *   mvcc_delete_record_length(in): the length of delete record
+ *   mvcc_insert_record_length(in): the length of insert record 
+ */
+static int
+spage_check_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
+			    PGSLOTID slot_id, int mvcc_delete_record_length,
+			    int mvcc_insert_record_length)
+{
+  SPAGE_HEADER *page_header_p;
+  SPAGE_SLOT *slot_p;
+  int new_waste, old_waste;
+  int space;
+  int insert_record_space;
+  int max_record_size;
+
+  assert (mvcc_Enabled == true && page_p != NULL);
+
+  if (mvcc_delete_record_length < 0 || mvcc_insert_record_length < 0)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return SP_ERROR;
+    }
+
+  max_record_size = spage_max_record_size ();
+  if (mvcc_delete_record_length > max_record_size
+      || mvcc_insert_record_length > max_record_size)
+    {
+      return SP_DOESNT_FIT;
+    }
+
+  page_header_p = (SPAGE_HEADER *) page_p;
+  SPAGE_VERIFY_HEADER (page_header_p);
+
+  slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
+  if (slot_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3,
+	      slot_id, pgbuf_get_page_id (page_p),
+	      pgbuf_get_volume_label (page_p));
+      return SP_ERROR;
+    }
+
+  old_waste = DB_WASTED_ALIGN (slot_p->record_length,
+			       page_header_p->alignment);
+  new_waste = DB_WASTED_ALIGN (mvcc_delete_record_length,
+			       page_header_p->alignment);
+  space = mvcc_delete_record_length + new_waste - slot_p->record_length -
+    old_waste;
+
+  if (spage_has_enough_total_space (thread_p, page_p, page_header_p,
+				    space) == false)
+    {
+      return SP_DOESNT_FIT;
+    }
+
+  /* delete record fit into page_p
+   * check whether both delete and insert record fit into page_p
+   */
+  new_waste = DB_WASTED_ALIGN (mvcc_insert_record_length,
+			       page_header_p->alignment);
+  insert_record_space = (mvcc_insert_record_length + new_waste);
+  space += insert_record_space;
+
+  if (spage_has_enough_total_space (thread_p, page_p, page_header_p,
+				    space) == false)
+    {
+      return SP_DOESNT_FIT;
+    }
+
+  /* Find a free slot. Try to reuse an unused slotid, instead of allocating a
+     new one */
+  slot_id = spage_find_free_slot (page_p, &slot_p, 0);
+
+  /* Make sure that there is enough space for the record and the slot */
+  if (slot_id > page_header_p->num_slots)
+    {				/* defense code */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return SP_ERROR;
+    }
+
+  if (slot_id == page_header_p->num_slots)
+    {
+      /* check whether is enough space for old record, new record and the slot */
+      insert_record_space += sizeof (SPAGE_SLOT);
+      space += sizeof (SPAGE_SLOT);
+
+      if (spage_has_enough_total_space (thread_p, page_p, page_header_p,
+					space) == false)
+	{
+	  return SP_DOESNT_FIT;
+	}
+      else if (spage_has_enough_contiguous_space (page_p, page_header_p,
+						  insert_record_space) ==
+	       false)
+	{
+	  return SP_ERROR;
+	}
+    }
+  else
+    {
+      /* We already know that there is total space available since the slot is
+         reused and the space was checked above */
+      if (spage_has_enough_contiguous_space (page_p, page_header_p,
+					     insert_record_space) == false)
+	{
+	  return SP_ERROR;
+	}
     }
 
   return SP_SUCCESS;
@@ -2404,7 +2507,8 @@ spage_update_record_in_place (PAGE_PTR page_p, SPAGE_HEADER * page_header_p,
   is_located_end = spage_is_record_located_at_end (page_header_p, slot_p);
 
   slot_p->record_length = record_descriptor_p->length;
-  if (slot_p->offset_to_record + record_descriptor_p->length > DB_PAGESIZE)
+  if (slot_p->offset_to_record + record_descriptor_p->length >
+      (unsigned int) DB_PAGESIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       assert_release (false);
@@ -2560,8 +2664,8 @@ spage_update (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
   total_free_save = page_header_p->total_free;
 
   status = spage_check_updatable (thread_p, page_p, slot_id,
-				  record_descriptor_p, &slot_p, &space,
-				  &old_waste, &new_waste);
+				  record_descriptor_p->length, &slot_p,
+				  &space, &old_waste, &new_waste);
   if (status != SP_SUCCESS)
     {
       return status;
@@ -2616,14 +2720,40 @@ spage_update (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
  *
  *   page_p(in): Pointer to slotted page
  *   slot_id(in): Slot identifier of record to update
- *   record_descriptor_p(in): Pointer to a record descriptor
+ *   record_descriptor_length(in): record descriptor length
  */
 bool
 spage_is_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
-		    PGSLOTID slot_id, const RECDES * record_descriptor_p)
+		    PGSLOTID slot_id, int record_descriptor_length)
 {
-  if (spage_check_updatable (thread_p, page_p, slot_id, record_descriptor_p,
-			     NULL, NULL, NULL, NULL) != SP_SUCCESS)
+  if (spage_check_updatable (thread_p, page_p, slot_id,
+			     record_descriptor_length, NULL, NULL, NULL, NULL)
+      != SP_SUCCESS)
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+* spage_is_mvcc_updatable () - check whether is enough free area to update
+ *                   a record in MVCC
+ *   return: true if there is enough area to update in MVCC, or false
+ *
+ *   page_p(in): Pointer to slotted page
+ *   slot_id(in): Slot identifier of record to logical delete
+ *   mvcc_delete_record_length(in): the length of delete record
+ *   mvcc_insert_record_length(in): the length of insert record 
+ */
+bool
+spage_is_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
+			 PGSLOTID slot_id, int delete_record_length,
+			 int insert_record_length)
+{
+  if (spage_check_mvcc_updatable (thread_p, page_p, slot_id,
+				  delete_record_length, insert_record_length)
+      != SP_SUCCESS)
     {
       return false;
     }
@@ -2861,7 +2991,8 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	      return SP_ERROR;
 	    }
 
-	  if (slot_p->offset_to_record + offset + remain_length > DB_PAGESIZE)
+	  if (slot_p->offset_to_record + offset + remain_length >
+	      (unsigned int) DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -2901,7 +3032,8 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	  new_slot_p->offset_to_record = page_header_p->offset_to_free_area;
 	  new_slot_p->record_length = remain_length;
 
-	  if (new_slot_p->offset_to_record + remain_length > DB_PAGESIZE)
+	  if (new_slot_p->offset_to_record + remain_length >
+	      (unsigned int) DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -2917,7 +3049,8 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       else
 	{
 	  /* We can just move the second part to the end of the page */
-	  if (new_slot_p->offset_to_record + remain_length > DB_PAGESIZE)
+	  if (new_slot_p->offset_to_record + remain_length >
+	      (unsigned int) DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3033,7 +3166,7 @@ spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       else
 	{
 	  if (slot_p->offset_to_record + takeout_length +
-	      takeout_offset > DB_PAGESIZE)
+	      takeout_offset > (unsigned int) DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3054,7 +3187,7 @@ spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	     remove a portion of the record and glue the remaining two pieces */
 	  if (slot_p->offset_to_record + takeout_offset +
 	      (slot_p->record_length - takeout_offset - takeout_length)
-	      > DB_PAGESIZE)
+	      > (unsigned int) DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3223,7 +3356,8 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	  /* Move anything after offset, so we can insert the desired data */
 	  if (slot_p->offset_to_record + offset +
 	      record_descriptor_p->length + (slot_p->record_length -
-					     offset) > DB_PAGESIZE)
+					     offset) >
+	      (unsigned int) DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3243,7 +3377,7 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       if (is_append)
 	{
 	  if (page_header_p->offset_to_free_area + slot_p->record_length
-	      > DB_PAGESIZE)
+	      > (unsigned int) DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3265,7 +3399,8 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 		  (char *) page_p + slot_p->offset_to_record, offset);
 	  if (page_header_p->offset_to_free_area + offset +
 	      record_descriptor_p->length + (slot_p->record_length -
-					     offset) > DB_PAGESIZE)
+					     offset) >
+	      (unsigned int) DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3309,7 +3444,8 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 	  return SP_ERROR;
 	}
 
-      if (slot_p->offset_to_record + slot_p->record_length > DB_PAGESIZE)
+      if (slot_p->offset_to_record + slot_p->record_length >
+	  (unsigned int) DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3338,7 +3474,7 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       if (is_append)
 	{
 	  if (page_header_p->offset_to_free_area +
-	      slot_p->record_length > DB_PAGESIZE)
+	      slot_p->record_length > (unsigned int) DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3359,7 +3495,8 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 		  copyarea, offset);
 	  if (page_header_p->offset_to_free_area + offset +
 	      record_descriptor_p->length + (slot_p->record_length -
-					     offset) > DB_PAGESIZE)
+					     offset) >
+	      (unsigned int) DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3390,7 +3527,7 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
   else
     {
       if (slot_p->offset_to_record + offset +
-	  record_descriptor_p->length > DB_PAGESIZE)
+	  record_descriptor_p->length > (unsigned int) DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3482,7 +3619,7 @@ spage_overwrite (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
     }
 
   if (slot_p->offset_to_record + overwrite_offset +
-      record_descriptor_p->length > DB_PAGESIZE)
+      record_descriptor_p->length > (unsigned int) DB_PAGESIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       assert_release (false);
@@ -3577,7 +3714,7 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
       /* Move the first data to the end and remove wasted space from the first
          record, so we can append at the right place. */
       if (page_header_p->offset_to_free_area +
-	  first_slot_p->record_length > DB_PAGESIZE)
+	  first_slot_p->record_length > (unsigned int) DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3615,7 +3752,7 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
 	}
 
       if (first_slot_p->offset_to_record + first_slot_p->record_length
-	  > DB_PAGESIZE)
+	  > (unsigned int) DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3624,7 +3761,7 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
       memcpy (copyarea, (char *) page_p + first_slot_p->offset_to_record,
 	      first_slot_p->record_length);
       if (second_slot_p->offset_to_record +
-	  second_slot_p->record_length > DB_PAGESIZE)
+	  second_slot_p->record_length > (unsigned int) DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3662,7 +3799,7 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
       /* Move the old data to the end */
       if (page_header_p->offset_to_free_area +
 	  (first_slot_p->record_length + second_slot_p->record_length)
-	  > DB_PAGESIZE)
+	  > (unsigned int) DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3687,7 +3824,7 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
   if (second_slot_p->record_length != 0)
     {
       if (page_header_p->offset_to_free_area +
-	  second_slot_p->record_length > DB_PAGESIZE)
+	  second_slot_p->record_length > (unsigned int) DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3743,7 +3880,7 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id,
 static SCAN_CODE
 spage_search_record (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
 		     RECDES * record_descriptor_p, int is_peeking,
-		     int direction)
+		     int direction, bool skip_empty)
 {
   SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *slot_p;
@@ -3777,8 +3914,17 @@ spage_search_record (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
   while (slot_id >= 0 && slot_id < page_header_p->num_slots
 	 && slot_p->offset_to_record == SPAGE_EMPTY_OFFSET)
     {
-      slot_id += direction;
-      slot_p -= direction;
+      if (skip_empty)
+	{
+	  slot_id += direction;
+	  slot_p -= direction;
+	}
+      else
+	{
+	  record_descriptor_p->data = NULL;
+	  *out_slot_id_p = slot_id;
+	  return S_SUCCESS;
+	}
     }
 
   SPAGE_VERIFY_HEADER (page_header_p);
@@ -3831,7 +3977,7 @@ spage_next_record (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
 		   RECDES * record_descriptor_p, int is_peeking)
 {
   return spage_search_record (page_p, out_slot_id_p, record_descriptor_p,
-			      is_peeking, SPAGE_SEARCH_NEXT);
+			      is_peeking, SPAGE_SEARCH_NEXT, true);
 }
 
 /*
@@ -3867,7 +4013,7 @@ spage_previous_record (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
 		       RECDES * record_descriptor_p, int is_peeking)
 {
   return spage_search_record (page_p, out_slot_id_p, record_descriptor_p,
-			      is_peeking, SPAGE_SEARCH_PREV);
+			      is_peeking, SPAGE_SEARCH_PREV, true);
 }
 
 /*
@@ -3967,7 +4113,8 @@ spage_get_record_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p,
 	  return S_DOESNT_FIT;
 	}
 
-      if (slot_p->offset_to_record + slot_p->record_length > DB_PAGESIZE)
+      if (slot_p->offset_to_record + slot_p->record_length >
+	  (unsigned int) DB_PAGESIZE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
@@ -3979,6 +4126,104 @@ spage_get_record_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p,
     }
 
   record_descriptor_p->length = slot_p->record_length;
+  record_descriptor_p->type = slot_p->record_type;
+
+  return S_SUCCESS;
+}
+
+/*
+ * spage_get_record_mvcc () - Get only mvcc of specified record
+ *   return: Either of S_SUCCESS, S_DOESNT_FIT, S_END
+ *   page_p(in): Pointer to slotted page
+ *   slotid(in): Slot identifier of current record
+ *   recdes(out): Pointer to a record descriptor
+ *   ispeeking(in): Indicates whether the record is going to be copied
+ *                  (like a copy) or peeked (read at the buffer)
+ */
+SCAN_CODE
+spage_get_record_mvcc (PAGE_PTR page_p, PGSLOTID slot_id,
+		       RECDES * record_descriptor_p, int is_peeking)
+{
+  SPAGE_HEADER *page_header_p;
+  SPAGE_SLOT *sptr;
+
+  assert (page_p != NULL);
+
+  page_header_p = (SPAGE_HEADER *) page_p;
+  SPAGE_VERIFY_HEADER (page_header_p);
+
+  assert (record_descriptor_p != NULL);
+
+  sptr = spage_find_slot (page_p, page_header_p, slot_id, true);
+  if (sptr == NULL)
+    {
+      record_descriptor_p->length = 0;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3,
+	      slot_id, pgbuf_get_page_id (page_p),
+	      pgbuf_get_volume_label (page_p));
+      return S_DOESNT_EXIST;
+    }
+
+  return spage_get_record_mvcc_data (page_p, sptr, record_descriptor_p,
+				     is_peeking);
+}
+
+/*
+ * spage_get_record_mvcc_data () - Find the mvcc data of the record associated with
+ *                              the given slot on the given page
+ *   return: scan code
+ *   page_p(in): Pointer to slotted page
+ *   slot_p(in): Pointer to page slot
+ *   record_descriptor(out): Pointer to a record descriptor
+ *  
+ */
+static SCAN_CODE
+spage_get_record_mvcc_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p,
+			    RECDES * record_descriptor_p, int is_peeking)
+{
+  int header_size;
+  assert (page_p != NULL);
+  assert (slot_p != NULL);
+  assert (record_descriptor_p != NULL);
+
+  header_size = OR_HEADER_SIZE ((char *) page_p + slot_p->offset_to_record);
+
+  /*
+   * If peeking, the address of the data in the descriptor is set to the
+   * address of the record in the buffer. Otherwise, the record is copied
+   * onto the area specified by the descriptor
+   */
+  if (is_peeking == PEEK)
+    {
+      record_descriptor_p->area_size = -1;
+      record_descriptor_p->data = (char *) page_p + slot_p->offset_to_record;
+    }
+  else
+    {
+      if (record_descriptor_p->area_size < 0
+	  || record_descriptor_p->area_size < header_size)
+	{
+	  /*
+	   * DOES NOT FIT
+	   * Give a hint to the user of the needed length. Hint is given as a
+	   * negative value
+	   */
+	  /* do not use unary minus because slot_p->record_length is unsigned */
+	  record_descriptor_p->length = -header_size;
+	  return S_DOESNT_FIT;
+	}
+
+      if (slot_p->offset_to_record + header_size > (unsigned int) DB_PAGESIZE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  assert_release (false);
+	  return SP_ERROR;
+	}
+      memcpy (record_descriptor_p->data,
+	      (char *) page_p + slot_p->offset_to_record, header_size);
+    }
+
+  record_descriptor_p->length = header_size;
   record_descriptor_p->type = slot_p->record_type;
 
   return S_SUCCESS;
@@ -4196,6 +4441,8 @@ spage_record_type_string (INT16 record_type)
       return "DELETED_WILL_REUSE";
     case REC_ASSIGN_ADDRESS:
       return "ASSIGN_ADDRESS";
+    case REC_MVCC_NEXT_VERSION:
+      return "REC_MVCC_NEXT_VERSION";
     default:
       assert (false);
       return "UNKNOWN";
@@ -4368,6 +4615,7 @@ spage_dump_record (FILE * fp, PAGE_PTR page_p, PGSLOTID slot_id,
 	  break;
 
 	case REC_RELOCATION:
+	case REC_MVCC_NEXT_VERSION:
 	  oid = (OID *) (page_p + slot_p->offset_to_record);
 	  fprintf (fp, "OID = %d|%d|%d\n",
 		   oid->volid, oid->pageid, oid->slotid);
@@ -4804,6 +5052,235 @@ spage_add_contiguous_free_space (PAGE_PTR page_p, int space)
   page_header_p->offset_to_free_area -= space;
 
   spage_verify_header (page_p);
+}
+
+/*
+ * spage_next_record_dont_skip_empty () - Get next slot without skipping
+ *					  empty records.
+ *
+ * return		    : 
+ * page_p (in)		    :
+ * out_slot_id_p (in)	    :
+ * record_descriptor_p (in) :
+ * is_peeking (in)	    :
+ */
+SCAN_CODE
+spage_next_record_dont_skip_empty (PAGE_PTR page_p, PGSLOTID * out_slot_id_p,
+				   RECDES * record_descriptor_p,
+				   int is_peeking)
+{
+  return spage_search_record (page_p, out_slot_id_p, record_descriptor_p,
+			      is_peeking, SPAGE_SEARCH_NEXT, false);
+}
+
+/*
+ * spage_previous_record_dont_skip_empty () - Get previous slot without
+ *					      skipping empty records.
+ *
+ * return		    :
+ * page_p (in)		    :
+ * out_slot_id_p (in)	    :
+ * record_descriptor_p (in) :
+ * is_peeking (in)	    :
+ */
+SCAN_CODE
+spage_previous_record_dont_skip_empty (PAGE_PTR page_p,
+				       PGSLOTID * out_slot_id_p,
+				       RECDES * record_descriptor_p,
+				       int is_peeking)
+{
+  return spage_search_record (page_p, out_slot_id_p, record_descriptor_p,
+			      is_peeking, SPAGE_SEARCH_PREV, false);
+}
+
+/*
+ * spage_get_page_header_info () - Obtain page information for spage_header.
+ *
+ * return		 : 
+ * page_p (in)		 :
+ * page_header_info (in) :
+ */
+SCAN_CODE
+spage_get_page_header_info (PAGE_PTR page_p, DB_VALUE ** page_header_info)
+{
+  SPAGE_HEADER *page_header_p;
+
+  if (page_p == NULL || page_header_info == NULL)
+    {
+      return S_SUCCESS;
+    }
+
+  page_header_p = (SPAGE_HEADER *) page_p;
+  SPAGE_VERIFY_HEADER (page_header_p);
+
+  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_NUM_SLOTS],
+	       page_header_p->num_slots);
+  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_NUM_RECORDS],
+	       page_header_p->num_records);
+  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_ANCHOR_TYPE],
+	       page_header_p->anchor_type);
+  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_ALIGNMENT],
+	       page_header_p->alignment);
+  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_TOTAL_FREE],
+	       page_header_p->total_free);
+  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_CONT_FREE],
+	       page_header_p->cont_free);
+  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_OFFSET_TO_FREE_AREA],
+	       page_header_p->offset_to_free_area);
+  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_IS_SAVING],
+	       page_header_p->is_saving);
+  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_UPDATE_BEST],
+	       page_header_p->need_update_best_hint);
+
+  return S_SUCCESS;
+}
+
+/*
+ * spage_get_record_offset () - Find the offset of the record associated with
+ *                              the given slot on the given page
+ *
+ * return     : Record offset.
+ * page_p (in): Pointer to slotted page.
+ * slotid (in): Slot identifier of record.
+ */
+int
+spage_get_record_offset (PAGE_PTR page_p, PGSLOTID slot_id)
+{
+  SPAGE_HEADER *page_header_p;
+  SPAGE_SLOT *slot_p;
+
+  assert (page_p != NULL);
+
+  page_header_p = (SPAGE_HEADER *) page_p;
+  SPAGE_VERIFY_HEADER (page_header_p);
+
+  slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
+  if (slot_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3,
+	      slot_id, pgbuf_get_page_id (page_p),
+	      pgbuf_get_volume_label (page_p));
+      return -1;
+    }
+
+  return slot_p->offset_to_record;
+}
+
+/*
+ * spage_get_slot () - Looks for the slot with slot_id identifier in page_p
+ *		       and returns a SPAGE_SLOT. Does not check for unknown
+ *		       slots.
+ *
+ * return	: SPAGE_SLOT.
+ * page_p (in)  : Pointer to slotted page.
+ * slot_id (in) : Slot identifier.
+ */
+SPAGE_SLOT *
+spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id)
+{
+  SPAGE_HEADER *page_header_p = NULL;
+
+  assert (page_p != NULL);
+
+  page_header_p = (SPAGE_HEADER *) page_p;
+  SPAGE_VERIFY_HEADER (page_header_p);
+
+  if (slot_id < 0 || slot_id >= page_header_p->num_slots)
+    {
+      return NULL;
+    }
+
+  return spage_find_slot (page_p, page_header_p, slot_id, false);
+}
+
+/*
+ * spage_vacuum_slot () - Used by vacuum to mark records as
+ *					deleted after they have been
+ *					completely removed from indexes.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * page_p (in)	 : Page pointer.
+ * slotid (in)	 : Record slot id.
+ */
+int
+spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
+		   OID * next_version, bool reusable)
+{
+  SPAGE_HEADER *page_header_p = (SPAGE_HEADER *) page_p;
+  SPAGE_SLOT *slot_p = NULL;
+  RECDES forward_recdes;
+  int space_left;
+  int waste;
+  int free_space;
+
+  SPAGE_VERIFY_HEADER (page_header_p);
+
+  assert (spage_is_valid_anchor_type (page_header_p->anchor_type));
+
+  slot_p = spage_find_slot (page_p, page_header_p, slotid, false);
+  if (slot_p->record_type == REC_MVCC_NEXT_VERSION
+      || slot_p->record_type == REC_MARKDELETED
+      || slot_p->record_type == REC_DELETED_WILL_REUSE)
+    {
+      /* Vacuum error log */
+      vacuum_er_log (VACUUM_ER_LOG_ERROR,
+		     "VACUUM: Object (%d, %d, %d) was already vacuumed",
+		     pgbuf_get_vpid_ptr (page_p)->volid,
+		     pgbuf_get_vpid_ptr (page_p)->pageid, slotid);
+      return NO_ERROR;
+    }
+  if (next_version != NULL && !OID_ISNULL (next_version))
+    {
+      /* Replace current record with an REC_MVCC_NEXT_VERSION which will
+       * point to next_version.
+       */
+      assert (slot_p->record_type == REC_HOME
+	      || slot_p->record_type == REC_BIGONE
+	      || slot_p->record_type == REC_NEWHOME
+	      || slot_p->record_type == REC_MVCC_NEXT_VERSION
+	      || slot_p->record_type == REC_RELOCATION);
+      forward_recdes.length = OR_OID_SIZE;
+      forward_recdes.data = (char *) next_version;
+      space_left = slot_p->record_length - OR_OID_SIZE;
+      assert (space_left >= 0);
+
+      if (spage_update_record_in_place (page_p, page_header_p, slot_p,
+					&forward_recdes, -space_left)
+	  != SP_SUCCESS)
+	{
+	  assert (0);
+	  return ER_FAILED;
+	}
+      spage_set_slot (slot_p, slot_p->offset_to_record, OR_OID_SIZE,
+		      REC_MVCC_NEXT_VERSION);
+
+      SPAGE_VERIFY_HEADER (page_header_p);
+      return NO_ERROR;
+    }
+
+  /* Slot is deleted */
+  page_header_p->num_records--;
+  waste = DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment);
+  free_space = slot_p->record_length + waste;
+  page_header_p->total_free += free_space;
+
+  slot_p->offset_to_record = SPAGE_EMPTY_OFFSET;
+  if (reusable)
+    {
+      slot_p->record_type = REC_DELETED_WILL_REUSE;
+    }
+  else
+    {
+      slot_p->record_type = REC_MARKDELETED;
+    }
+  SPAGE_VERIFY_HEADER (page_header_p);
+
+#ifdef SPAGE_DEBUG
+  spage_check (thread_p, page_p);
+#endif
+
+  return NO_ERROR;
 }
 
 /*

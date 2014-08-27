@@ -2338,12 +2338,12 @@ sm_get_class (MOP obj)
 	}
       else
 	{
-	  if (obj->class_mop == NULL)
+	  if (ws_class_mop (obj) == NULL)
 	    {
 	      /* force class load through object load */
 	      (void) au_fetch_class (obj, NULL, AU_FETCH_READ, AU_SELECT);
 	    }
-	  op = obj->class_mop;
+	  op = ws_class_mop (obj);
 	}
     }
 
@@ -2382,7 +2382,7 @@ sm_fetch_all_classes (int external_list, DB_FETCH_MODE purpose)
 	  for (i = 0; i < lmops->num; i++)
 	    {
 	      /* is it necessary to have this check ? */
-	      if (!WS_MARKED_DELETED (lmops->mops[i])
+	      if (!WS_IS_DELETED (lmops->mops[i])
 		  && lmops->mops[i] != sm_Root_class_mop)
 		{
 		  if (!external_list)
@@ -2467,7 +2467,7 @@ sm_fetch_all_base_classes (int external_list, DB_FETCH_MODE purpose)
 	  for (i = 0; i < lmops->num; i++)
 	    {
 	      /* is it necessary to have this check ? */
-	      if (!WS_MARKED_DELETED (lmops->mops[i])
+	      if (!WS_IS_DELETED (lmops->mops[i])
 		  && lmops->mops[i] != sm_Root_class_mop)
 		{
 		  error = au_fetch_class_force (lmops->mops[i], &class_,
@@ -2606,12 +2606,12 @@ sm_fetch_all_objects (DB_OBJECT * op, DB_FETCH_MODE purpose)
 	}
       else
 	{
-	  if (op->class_mop == NULL)
+	  if (ws_class_mop (op) == NULL)
 	    {
 	      /* force load */
 	      (void) au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT);
 	    }
-	  classmop = op->class_mop;
+	  classmop = ws_class_mop (op);
 	}
       if (classmop != NULL)
 	{
@@ -2635,7 +2635,7 @@ sm_fetch_all_objects (DB_OBJECT * op, DB_FETCH_MODE purpose)
 		  for (i = 0; i < lmops->num; i++)
 		    {
 		      /* is it necessary to have this check ? */
-		      if (!WS_MARKED_DELETED (lmops->mops[i]))
+		      if (!WS_IS_DELETED (lmops->mops[i]))
 			{
 			  new_ = ml_ext_alloc_link ();
 			  if (new_ == NULL)
@@ -2847,7 +2847,7 @@ sm_mark_system_classes (void)
 	{
 	  for (i = 0; i < lmops->num; i++)
 	    {
-	      if (!WS_MARKED_DELETED (lmops->mops[i]) && lmops->mops[i]
+	      if (!WS_IS_DELETED (lmops->mops[i]) && lmops->mops[i]
 		  != sm_Root_class_mop)
 		{
 		  if (au_fetch_class_force (lmops->mops[i], &class_,
@@ -3454,15 +3454,15 @@ sm_check_object_domain (TP_DOMAIN * domain, MOP object)
 	  /* fetch the class if it hasn't been cached, should this be a write
 	     lock ?  don't need to pin, only forcing the class fetch
 	   */
-	  if (object->class_mop == NULL)
+	  if (ws_class_mop (object) == NULL)
 	    {
 	      au_fetch_instance (object, NULL, AU_FETCH_READ, AU_SELECT);
 	    }
 
 	  /* if its still NULL, assume an authorization error and go on */
-	  if (object->class_mop != NULL)
+	  if (ws_class_mop (object) != NULL)
 	    {
-	      ok = domain_search (domain->class_mop, object->class_mop);
+	      ok = domain_search (domain->class_mop, ws_class_mop (object));
 	    }
 	}
     }
@@ -3488,6 +3488,7 @@ int
 sm_coerce_object_domain (TP_DOMAIN * domain, MOP object, MOP * dest_object)
 {
   int ok;
+  MOP object_class_mop;
   SM_CLASS *class_;
 
   ok = 0;
@@ -3514,42 +3515,44 @@ sm_coerce_object_domain (TP_DOMAIN * domain, MOP object, MOP * dest_object)
 	  /* fetch the class if it hasn't been cached, should this be a write lock ?
 	     don't need to pin, only forcing the class fetch
 	   */
-	  if (object->class_mop == NULL)
+	  if (ws_class_mop (object) == NULL)
 	    {
 	      au_fetch_instance (object, NULL, AU_FETCH_READ, AU_SELECT);
 	    }
 
 	  /* if its still NULL, assume an authorization error and go on */
-	  if (object->class_mop != NULL)
+	  object_class_mop = ws_class_mop (object);
+	  if (object_class_mop != NULL)
 	    {
-	      if (domain->class_mop == object->class_mop)
+	      if (domain->class_mop == object_class_mop)
 		{
 		  ok = 1;
 		}
 	      else
 		{
-		  if (au_fetch_class_force (object->class_mop, &class_,
+		  if (au_fetch_class_force (object_class_mop, &class_,
 					    AU_FETCH_READ) == NO_ERROR)
 		    {
 		      /* Coerce a view to a real class. */
 		      if (class_->class_type == SM_VCLASS_CT)
 			{
 			  object = vid_get_referenced_mop (object);
+			  object_class_mop = ws_class_mop (object);
 			  if (object
-			      && (au_fetch_class_force (object->class_mop,
+			      && (au_fetch_class_force (object_class_mop,
 							&class_,
 							AU_FETCH_READ) ==
 				  NO_ERROR)
 			      && (class_->class_type == SM_CLASS_CT))
 			    {
 			      ok = domain_search (domain->class_mop,
-						  object->class_mop);
+						  object_class_mop);
 			    }
 			}
 		      else
 			{
 			  ok = domain_search (domain->class_mop,
-					      object->class_mop);
+					      object_class_mop);
 			}
 		    }
 		}
@@ -3960,7 +3963,7 @@ sm_update_all_statistics (bool with_fullscan)
       /* Need to reset the statistics cache for all resident classes */
       for (cl = ws_Resident_classes; cl != NULL; cl = cl->next)
 	{
-	  if (!WS_ISMARK_DELETED (cl->op))
+	  if (!WS_IS_DELETED (cl->op))
 	    {
 	      /* uncache statistics only if object is cached - MOP trickery */
 	      if (cl->op->object != NULL)
@@ -4396,7 +4399,7 @@ alter_trigger_hierarchy (DB_OBJECT * classop,
   error = au_fetch_class_force (classop, &class_, mode);
   if (error != NO_ERROR)
     {
-      if (WS_ISMARK_DELETED (classop))
+      if (WS_IS_DELETED (classop))
 	{
 	  error = NO_ERROR;	/* in this case, just ignore the error */
 	}
@@ -5521,12 +5524,41 @@ sm_att_fk_constrained (MOP classop, const char *name)
 }
 
 /*
+ * sm_class_has_unique_constraint() - Returns whether the class has UNIQUE
+ *				      constraint.
+ *   return: true if has unique constraint, false otherwise.
+ *   classop(in): class object
+ *   check_subclasses(in): true if need to check all hierarchy
+ */
+bool
+sm_class_has_unique_constraint (MOP classop, bool check_subclasses)
+{
+  SM_CLASS *class_ = NULL;
+  DB_OBJLIST *subclass = NULL;
+  bool rc;
+
+  if (au_fetch_class_by_classmop (classop, &class_, AU_FETCH_READ, AU_SELECT)
+      != NO_ERROR)
+    {
+      return false;
+    }
+
+  rc = classobj_has_class_unique_constraint (class_->constraints);
+  for (subclass = class_->users; !rc && subclass != NULL;
+       subclass = subclass->next)
+    {
+      rc = sm_class_has_unique_constraint (subclass->op, check_subclasses);
+    }
+
+  return rc;
+}
+
+/*
  * sm_att_unique_constrained() - Returns whether the attribute is UNIQUE constained.
  *   return: whether the attribute is UNIQUE constrained.
  *   classop(in): class object
  *   name(in): attribute
  */
-
 int
 sm_att_unique_constrained (MOP classop, const char *name)
 {
@@ -5896,6 +5928,7 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 {
   int error = NO_ERROR;
   MOBJ mem;
+  MOP object_class_mop;
   SM_CLASS *class_;
 
   if (obj != NULL)
@@ -5957,9 +5990,10 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 	}
       else
 	{
-	  if (obj->class_mop != NULL)
+	  object_class_mop = ws_class_mop (obj);
+	  if (object_class_mop != NULL)
 	    {
-	      if (locator_flush_class (obj->class_mop) != NO_ERROR)
+	      if (locator_flush_class (object_class_mop) != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
@@ -5972,10 +6006,11 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 		}
 	      else
 		{
+		  object_class_mop = ws_class_mop (obj);
 		  switch (class_->class_type)
 		    {
 		    case SM_CLASS_CT:
-		      if (locator_flush_all_instances (obj->class_mop,
+		      if (locator_flush_all_instances (object_class_mop,
 						       decache,
 						       LC_STOP_ON_ERROR) !=
 			  NO_ERROR)
@@ -6005,9 +6040,10 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 	      if (error == NO_ERROR)
 		{
 		  /* don't need to pin here, we only wanted to check authorization */
-		  if (obj->class_mop != NULL)
+		  object_class_mop = ws_class_mop (obj);
+		  if (object_class_mop != NULL)
 		    {
-		      if (locator_flush_class (obj->class_mop) != NO_ERROR)
+		      if (locator_flush_class (object_class_mop) != NO_ERROR)
 			{
 			  assert (er_errid () != NO_ERROR);
 			  return er_errid ();
@@ -6024,10 +6060,9 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 			  switch (class_->class_type)
 			    {
 			    case SM_CLASS_CT:
-			      if (locator_flush_all_instances (obj->class_mop,
-							       decache,
-							       LC_STOP_ON_ERROR)
-				  != NO_ERROR)
+			      if (locator_flush_all_instances
+				  (object_class_mop, decache,
+				   LC_STOP_ON_ERROR) != NO_ERROR)
 				{
 				  assert (er_errid () != NO_ERROR);
 				  error = er_errid ();
@@ -6542,7 +6577,8 @@ sm_get_attribute_descriptor (DB_OBJECT * op, const char *name,
 		       ? DB_FETCH_CLREAD_INSTWRITE
 		       : DB_FETCH_CLREAD_INSTREAD);
 
-      classmop = (locator_is_class (op, class_purpose)) ? op : op->class_mop;
+      classmop =
+	(locator_is_class (op, class_purpose)) ? op : ws_class_mop (op);
 
       desc = classobj_make_descriptor (classmop, class_, (SM_COMPONENT *) att,
 				       for_update);
@@ -6598,7 +6634,8 @@ sm_get_method_descriptor (DB_OBJECT * op, const char *name,
   if (!error && method != NULL)
     {
       /* class must have been fetched at this point */
-      classmop = (locator_is_class (op, DB_FETCH_READ)) ? op : op->class_mop;
+      classmop =
+	(locator_is_class (op, DB_FETCH_READ)) ? op : ws_class_mop (op);
 
       desc = classobj_make_descriptor (classmop, class_,
 				       (SM_COMPONENT *) method, 0);
@@ -6776,7 +6813,8 @@ sm_get_descriptor_component (MOP op, SM_DESCRIPTOR * desc,
   /* handle common case quickly, allow either an instance MOP or
      class MOP to be used here */
   if (desc->map != NULL
-      && (desc->map->classobj == op || desc->map->classobj == op->class_mop)
+      && (desc->map->classobj == op
+	  || desc->map->classobj == ws_class_mop (op))
       && (!for_update || desc->map->write_access))
     {
       *comp_ptr = desc->map->comp;
@@ -6788,7 +6826,7 @@ sm_get_descriptor_component (MOP op, SM_DESCRIPTOR * desc,
       class_ = NULL;
 
       /* get the class MOP for this thing, avoid fetching if possible */
-      if (op->class_mop == NULL)
+      if (ws_class_mop (op) == NULL)
 	{
 	  if (fetch_descriptor_class (op, desc, for_update, &class_))
 	    {
@@ -6796,7 +6834,7 @@ sm_get_descriptor_component (MOP op, SM_DESCRIPTOR * desc,
 	      return er_errid ();
 	    }
 	}
-      classmop = (IS_CLASS_MOP (op)) ? op : op->class_mop;
+      classmop = (IS_CLASS_MOP (op)) ? op : ws_class_mop (op);
 
       /* search the descriptor map for this class */
       for (d = desc->map, prev = NULL; d != NULL && d->classobj != classmop;
@@ -8857,8 +8895,8 @@ retain_former_ids (SM_TEMPLATE * flat)
       bool is_partition = false;
       int error = NO_ERROR;
 
-      if (flat->current->partition_of != NULL &&
-	  !(flat->current->partition_of->deleted))
+      if (flat->current->partition_of != NULL
+	  && !db_is_deleted (flat->current->partition_of))
 	{
 	  int save;
 
@@ -10498,7 +10536,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	  for (i = 0; i < n_classes; i++)
 	    {
 	      if (!HFID_IS_NULL (&hfids[i])
-		  && heap_has_instance (&hfids[i], &oids[i]))
+		  && heap_has_instance (&hfids[i], &oids[i], false))
 		{
 		  /* in case of error and instances exist */
 		  has_instances = 1;
@@ -10662,7 +10700,7 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs,
   cls_oid = ws_oid (classop);
   hfid = &class_->header.heap;
 
-  if (!HFID_IS_NULL (hfid) && heap_has_instance (hfid, cls_oid))
+  if (!HFID_IS_NULL (hfid) && heap_has_instance (hfid, cls_oid, 0))
     {
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
 
@@ -12374,9 +12412,11 @@ lock_subclasses_internal (SM_TEMPLATE * def, MOP op,
       error = au_fetch_class_force (op, &class_, AU_FETCH_WRITE);
       if (error != NO_ERROR)
 	{
-	  if (WS_ISMARK_DELETED (op))
-	    /* in this case, just ignore the error */
-	    error = NO_ERROR;
+	  if (WS_IS_DELETED (op))
+	    {
+	      /* in this case, just ignore the error */
+	      error = NO_ERROR;
+	    }
 	}
       else
 	{
@@ -12700,13 +12740,15 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
   const char *names[1];
   LOCK locks[1];
   int subs[1];
+  LC_PREFETCH_FLAGS flags[1];
 
   if (class_ != NULL)
     {
       names[0] = class_->header.name;
       locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS);
       subs[0] = 1;
-      if (locator_lockhint_classes (1, names, locks, subs, 1) ==
+      flags[0] = LC_PREF_FLAG_LOCK;
+      if (locator_lockhint_classes (1, names, locks, subs, flags, 1) ==
 	  LC_CLASSNAME_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -12718,7 +12760,8 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
       names[0] = temp->name;
       locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS);
       subs[0] = 1;
-      if (locator_lockhint_classes (1, names, locks, subs, 1) ==
+      flags[0] = LC_PREF_FLAG_LOCK;
+      if (locator_lockhint_classes (1, names, locks, subs, flags, 1) ==
 	  LC_CLASSNAME_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -13619,16 +13662,20 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
   assert (db_constraint_type == DB_CONSTRAINT_INDEX
 	  || db_constraint_type == DB_CONSTRAINT_REVERSE_INDEX);
 
-  error = sm_check_index_exist (classop, &out_shared_cons_name,
-				db_constraint_type, constraint_name,
-				attnames, asc_desc, filter_index,
-				function_index);
+  /* AU_FETCH_EXCLUSIVE_SCAN will set SIX-lock on the table.
+   * It will allow other reads but neither a write nor another index builder.
+   */
+  error = au_fetch_class_by_classmop (classop, &class_,
+				      AU_FETCH_EXCLUSIVE_SCAN, AU_INDEX);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_INDEX);
+  error = sm_check_index_exist (classop, &out_shared_cons_name,
+				db_constraint_type, constraint_name,
+				attnames, asc_desc, filter_index,
+				function_index);
   if (error != NO_ERROR)
     {
       return error;
@@ -13884,8 +13931,15 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 			      NULL, NULL, -1, NULL, filter_index,
 			      function_index);
     }
+
   if (error == NO_ERROR)
     {
+      /* promote the class lock as SCH_M lock and mark class as dirty */
+      if (locator_update_class (classop) == NULL)
+	{
+	  goto severe_error;
+	}
+
       /* modify the class to point at the new index */
       if (classobj_put_index_id (&(class_->properties), constraint_type,
 				 constraint_name, attrs, asc_desc,
@@ -13895,38 +13949,25 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  goto general_error;
+	  goto severe_error;
 	}
 
       error = classobj_cache_class_constraints (class_);
       if (error != NO_ERROR)
 	{
-	  goto general_error;
+	  goto severe_error;
 	}
 
       if (!classobj_cache_constraints (class_))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  goto general_error;
-	}
-
-      /* now that the index is physically attached to the class, we must
-       * mark it as dirty and flush it again to make sure the catalog
-       * is updated correctly.  This is necessary because the allocation
-       * and loading of the instance are done at the same time.  We need
-       * to be able to allocate the index and flush the class BEFORE
-       * the loading to avoid this extra step.
-       */
-
-      /* If either of these operations fail, the transaction should
-       * be aborted
-       */
-      if (locator_update_class (classop) == NULL)
-	{
 	  goto severe_error;
 	}
 
+      /* now that the index is physically attached to the class, we must
+       * flush it again to make sure the catalog is updated correctly.  
+       */
       if (locator_flush_class (classop) != NO_ERROR)
 	{
 	  goto severe_error;
@@ -15506,7 +15547,7 @@ sm_truncate_using_delete (MOP class_mop)
       goto end;
     }
 
-  error = db_execute_statement (session, stmt_id, NULL);
+  error = db_execute_statement_local (session, stmt_id, NULL);
   if (error < 0)
     {
       goto end;
@@ -16147,4 +16188,175 @@ sm_is_global_only_constraint (SM_CLASS_CONSTRAINT * constraint)
     }
 
   return true;
+}
+
+/*
+ * sm_adjust_partitions_parent() - Adjusts class_of attribute from _db_partition
+ *				    catalog class
+ *   return: Error code
+ *   class_mop(in): MOP of the parent class (partitioned class) of the
+ *		    partitions to be adjusted
+ *   flush(in): true if after adjust we must flush changes
+ */
+int
+sm_adjust_partitions_parent (MOP class_mop, bool flush)
+{
+  int error_code = NO_ERROR;
+  int au_save;
+  MOP class_cat = NULL, class_entry = NULL;
+  DB_VALUE val;
+  char *name = NULL;
+  DB_OBJLIST *obj = NULL;
+  SM_CLASS *smclass = NULL, *subclass = NULL;
+  bool has_changes = false;
+
+  AU_DISABLE (au_save);
+
+  DB_MAKE_NULL (&val);
+
+  if (class_mop == NULL)
+    {
+      error_code = ER_FAILED;
+      goto error;
+    }
+
+  if (WS_IS_DELETED (class_mop)
+      || !OID_IS_ROOTOID (ws_oid (class_mop->class_mop)))
+    {
+      goto end;
+    }
+
+  error_code = au_fetch_class (class_mop, &smclass, AU_FETCH_READ, AU_SELECT);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (smclass->partition_of == NULL || smclass->users == NULL)
+    {
+      goto end;
+    }
+
+  /* get classes list table from catalog */
+  class_cat = sm_find_class (CT_CLASS_NAME);
+  if (class_cat == NULL)
+    {
+      goto error;
+    }
+
+  /* search entry in catalog for our partitioned class using its name */
+  name = (char *) smclass->header.name;
+  db_make_varchar (&val, PARTITION_VARCHAR_LEN, name, strlen (name),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  class_entry = db_find_unique (class_cat, CLASS_ATT_NAME, &val);
+  if (class_entry == NULL)
+    {
+      goto error;
+    }
+  pr_clear_value (&val);
+
+  /* iterate through partitions and update parent link */
+  for (obj = smclass->users; obj != NULL; obj = obj->next)
+    {
+      /* fetch partition */
+      error_code =
+	au_fetch_class (obj->op, &subclass, AU_FETCH_READ, AU_SELECT);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      /* if we don't have partition info then skip */
+      if (subclass->partition_of == NULL)
+	{
+	  continue;
+	}
+
+      error_code =
+	db_get (subclass->partition_of, PARTITION_ATT_CLASSOF, &val);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (!OID_EQ (ws_oid (DB_GET_OBJECT (&val)), ws_oid (class_entry)))
+	{
+	  /* update parent link of partition info entry */
+	  pr_clear_value (&val);
+	  db_make_object (&val, class_entry);
+	  error_code =
+	    db_put_internal (subclass->partition_of, PARTITION_ATT_CLASSOF,
+			     &val);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  has_changes = true;
+	}
+      pr_clear_value (&val);
+    }
+
+  error_code = db_get (smclass->partition_of, PARTITION_ATT_CLASSOF, &val);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (!OID_EQ (ws_oid (DB_GET_OBJECT (&val)), ws_oid (class_entry)))
+    {
+      /* update parent link of partitioned table info entry */
+      pr_clear_value (&val);
+      db_make_object (&val, class_entry);
+      error_code =
+	db_put_internal (smclass->partition_of, PARTITION_ATT_CLASSOF, &val);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      has_changes = true;
+    }
+  pr_clear_value (&val);
+
+  if (flush && has_changes)
+    {
+      MOP db_part_cat = smclass->partition_of->class_mop;
+
+      /* load _db_partition catalog class */
+      if (db_part_cat == NULL)
+	{
+	  db_part_cat = sm_get_class (smclass->partition_of);
+	}
+
+      /* flush all instances of _db_partition */
+      error_code =
+	locator_flush_all_instances (db_part_cat, DONT_DECACHE,
+				     LC_STOP_ON_ERROR);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
+end:
+
+  AU_ENABLE (au_save);
+
+  return NO_ERROR;
+
+error:
+
+  AU_ENABLE (au_save);
+
+  pr_clear_value (&val);
+
+  if (error_code == NO_ERROR)
+    {
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_FAILED;
+	}
+    }
+
+  return error_code;
 }

@@ -1220,7 +1220,12 @@ $ LOADDB
 1151 The page %1$d of volume %2$d is not a slotted page.
 1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
 1153 Attempt to use 'zero date'.
-1154 Ultimo error
+1154 MVCC row %1$d|%2$d|%3$d does not satisfies reevaluation.
+1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
+1156 MVCC can't get snapshot
+1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
+1158 Serializable conflict due to concurent updates
+1159 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
@@ -1670,11 +1675,11 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 2 Nivel de aislacion de transaccion debe ser 1, 2, 3, 4, 5 o 6.
 3 Valor del tiempo de expiracion debe ser -1, 0, o >0.
 4 Nivel de aislacion ajustado a:\n
-5          READ COMMITTED SCHEMA, READ UNCOMMITTED INSTANCES.\n
-6          READ COMMITTED SCHEMA, READ COMMITTED INSTANCES.\n
-7          REPEATABLE READ SCHEMA, READ UNCOMMITTED INSTANCES.\n
-8          REPEATABLE READ SCHEMA, READ COMMITTED INSTANCES.\n
-9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
+5          Unknown isolation.\n
+6          Unknown isolation.\n
+7          Unknown isolation.\n
+8          READ COMMITTED\n
+9          REPEATABLE READ\n
 10 Una consulta no actualizable no es permitida en una llamada db_query_execute_oid.
 11 Transaccion ha expiro esperando bloqueos.
 12 Intentado accesar variable de host con indice %1$d cuando solamente %2$d \nvariables de host de entrada fueron dadas.
@@ -1744,6 +1749,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 El patrocinador o DBA puede solamente alterar la definicion de un serial de destino.
 78 Los utilizadores no son permitidos modificar el objeto serial creado por una restriccion de incremento automatico.
 79 Nivel de aislamiento no valido: %1$s esquema, %2$s instancias.
+80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
+
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** Cache no valida. ***

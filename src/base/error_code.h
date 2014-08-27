@@ -1473,7 +1473,13 @@
 
 #define ER_ATTEMPT_TO_USE_ZERODATE                  -1153
 
-#define ER_LAST_ERROR                               -1154
+#define ER_MVCC_NOT_SATISFIED_REEVALUATION	    -1154
+#define ER_MVCC_ROW_INVALID_FOR_DELETE		    -1155
+#define ER_MVCC_CANT_GET_SNAPSHOT		    -1156
+#define ER_MVCC_LOG_INVALID_ISOLATION_LEVEL         -1157
+#define ER_MVCC_SERIALIZABLE_CONFLICT		    -1158
+
+#define ER_LAST_ERROR                               -1159
 
 /*
  * CAUTION!

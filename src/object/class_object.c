@@ -2310,6 +2310,28 @@ classobj_get_cached_constraint (SM_CONSTRAINT * constraints,
  *   constraints(in): constraint list
  */
 bool
+classobj_has_class_unique_constraint (SM_CLASS_CONSTRAINT * constraints)
+{
+  SM_CLASS_CONSTRAINT *c;
+
+  for (c = constraints; c != NULL; c = c->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * classobj_has_unique_constraint ()
+ *   return: true if an unique constraint is contained in the constraint list,
+ *           otherwise false.
+ *   constraints(in): constraint list
+ */
+bool
 classobj_has_unique_constraint (SM_CONSTRAINT * constraints)
 {
   SM_CONSTRAINT *c;
@@ -4526,6 +4548,52 @@ classobj_filter_attribute_props (DB_SEQ * props)
 
   classobj_drop_prop (props, SM_PROPERTY_INDEX);
   classobj_drop_prop (props, SM_PROPERTY_REVERSE_INDEX);
+}
+
+/*
+ * classobj_initialize_attributes() - Initializes attribute
+ *
+ *   return: nothing
+ *   attributes(in): attributes
+ */
+void
+classobj_initialize_attributes (SM_ATTRIBUTE * attributes)
+{
+  SM_ATTRIBUTE *attr;
+
+  for (attr = attributes; attr != NULL;
+       attr = (SM_ATTRIBUTE *) (attr->header.next))
+    {
+      attr->constraints = NULL;
+      attr->order_link = NULL;
+      attr->properties = NULL;
+      attr->triggers = NULL;
+      attr->header.name = NULL;
+      attr->domain = NULL;
+      db_value_put_null (&attr->default_value.value);
+      db_value_put_null (&attr->default_value.original_value);
+    }
+}
+
+/*
+ * classobj_initialize_methods() - Initializes methods
+ *
+ *   return: nothing
+ *   attributes(in): attributes
+ */
+void
+classobj_initialize_methods (SM_METHOD * methods)
+{
+  SM_METHOD *method;
+
+  for (method = methods; method != NULL;
+       method = (SM_METHOD *) (method->header.next))
+    {
+      method->properties = NULL;
+      method->function = NULL;
+      method->signatures = NULL;
+      method->header.name = NULL;
+    }
 }
 
 /*

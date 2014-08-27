@@ -335,6 +335,8 @@ static PT_NODE *pt_apply_insert_value (PARSER_CONTEXT * parser, PT_NODE * p,
 				       PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_kill (PARSER_CONTEXT * parser, PT_NODE * P,
 			       PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_vacuum (PARSER_CONTEXT * parser, PT_NODE * p,
+				 PT_NODE_FUNCTION g, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -432,6 +434,7 @@ static PT_NODE *pt_init_tuple_value (PT_NODE * p);
 static PT_NODE *pt_init_query_trace (PT_NODE * p);
 static PT_NODE *pt_init_insert_value (PT_NODE * p);
 static PT_NODE *pt_init_kill (PT_NODE * p);
+static PT_NODE *pt_init_vacuum (PT_NODE * p);
 
 static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_NODE_NUMBER];
 
@@ -612,6 +615,8 @@ static PARSER_VARCHAR *pt_print_query_trace (PARSER_CONTEXT * parser,
 					     PT_NODE * p);
 static PARSER_VARCHAR *pt_print_insert_value (PARSER_CONTEXT * parser,
 					      PT_NODE * p);
+
+static PARSER_VARCHAR *pt_print_vacuum (PARSER_CONTEXT * parser, PT_NODE * p);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p,
 			      PT_NODE_FUNCTION g, void *arg);
@@ -623,7 +628,6 @@ static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
 extern char *g_query_string;
 extern int g_query_string_len;
-
 
 /*
  * strcat_with_realloc () -
@@ -1333,38 +1337,35 @@ parser_copy_tree_list (PARSER_CONTEXT * parser, PT_NODE * tree)
 }
 
 /*
- * parser_copy_tree_diff  () - copy the difference tree1 minus tree2
- *			      (make a copy of the nodes that are only in
- *			       tree1 and not in tree2)
- *   return:
- *   tree1(in): the first tree list
- *   tree2(in): the second tree list
+ * parser_get_tree_list_diff  () - get the difference list1 minus list2
+ *   return: a PT_POINTER list to the nodes in difference
+ *   list1(in): the first tree list
+ *   list2(in): the second tree list
  */
-
 PT_NODE *
-parser_copy_tree_diff (PARSER_CONTEXT * parser, PT_NODE * tree1,
-		       PT_NODE * tree2)
+parser_get_tree_list_diff (PARSER_CONTEXT * parser, PT_NODE * list1,
+			   PT_NODE * list2)
 {
   PT_NODE *res_list, *save_node1, *save_node2, *node1, *node2;
 
-  if (tree1 == NULL)
+  if (list1 == NULL)
     {
       return NULL;
     }
 
-  if (tree2 == NULL)
+  if (list2 == NULL)
     {
-      return parser_copy_tree_list (parser, tree1);
+      return pt_point (parser, list1);
     }
 
   res_list = NULL;
-  for (node1 = tree1; node1; node1 = node1->next)
+  for (node1 = list1; node1; node1 = node1->next)
     {
       save_node1 = node1;
 
       CAST_POINTER_TO_NODE (node1);
 
-      for (node2 = tree2; node2; node2 = node2->next)
+      for (node2 = list2; node2; node2 = node2->next)
 	{
 	  save_node2 = node2;
 
@@ -1381,12 +1382,7 @@ parser_copy_tree_diff (PARSER_CONTEXT * parser, PT_NODE * tree1,
 
       if (node2 == NULL)
 	{
-	  save_node2 = node1->next;
-	  node1->next = NULL;
-	  res_list =
-	    parser_append_node (parser_copy_tree (parser, save_node1),
-				res_list);
-	  node1->next = save_node2;
+	  res_list = parser_append_node (pt_point (parser, node1), res_list);
 	}
 
       node1 = save_node1;
@@ -3200,6 +3196,8 @@ pt_show_node_type (PT_NODE * node)
       return "PARTS";
     case PT_NODE_LIST:
       return "NODE_LIST";
+    case PT_VACUUM:
+      return "VACUUM";
     default:
       return "NODE: type unknown";
     }
@@ -3409,8 +3407,6 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "repeatable read";
     case PT_READ_COMMITTED:
       return "read committed";
-    case PT_READ_UNCOMMITTED:
-      return "read uncommitted";
     case PT_ISOLATION_LEVEL:
       return "isolation level";
     case PT_LOCK_TIMEOUT:
@@ -5391,6 +5387,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_TUPLE_VALUE] = pt_print_tuple_value;
   pt_print_func_array[PT_QUERY_TRACE] = pt_print_query_trace;
   pt_print_func_array[PT_INSERT_VALUE] = pt_print_insert_value;
+  pt_print_func_array[PT_VACUUM] = pt_print_vacuum;
 
   pt_print_f = pt_print_func_array;
 }
@@ -9045,6 +9042,7 @@ pt_init_difference (PT_NODE * p)
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
   p->info.query.is_order_dependent = false;
+  p->info.query.scan_op_type = S_SELECT;
   return p;
 }
 
@@ -9505,7 +9503,6 @@ pt_init_spec (PT_NODE * p)
   p->info.spec.join_type = PT_JOIN_NONE;
   p->info.spec.on_cond = NULL;
   p->info.spec.using_cond = NULL;
-  p->info.spec.lock_hint = LOCKHINT_NONE;
   p->info.spec.auth_bypass_mask = DB_AUTH_NONE;
   p->info.spec.partition = NULL;
   return p;
@@ -9657,17 +9654,6 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       parser->custom_print = save_custom;
-    }
-
-  if (p->info.spec.lock_hint)
-    {
-      q = pt_append_nulstring (parser, q, " WITH (");
-      if (p->info.spec.lock_hint & LOCKHINT_READ_UNCOMMITTED)
-	{
-	  q = pt_append_nulstring (parser, q, "READ UNCOMMITTED");
-	}
-      /* other lock hint may be added here */
-      q = pt_append_nulstring (parser, q, ")");
     }
 
   if (p->info.spec.on_cond)
@@ -13132,6 +13118,7 @@ pt_init_intersection (PT_NODE * p)
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
   p->info.query.is_order_dependent = false;
+  p->info.query.scan_op_type = S_SELECT;
   return p;
 }
 
@@ -14345,8 +14332,10 @@ pt_init_select (PT_NODE * p)
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.upd_del_class_cnt = 0;
+  p->info.query.mvcc_reev_extra_cls_cnt = 0;
   p->info.query.is_order_dependent = false;
   p->info.query.q.select.for_update = NULL;
+  p->info.query.scan_op_type = S_SELECT;
   return p;
 }
 
@@ -14664,6 +14653,50 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 		    {
 		      q = pt_append_nulstring (parser, q, " ");
 		    }
+		}
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_SELECT_RECORD_INFO)
+	    {
+	      q = pt_append_nulstring (parser, q, "SELECT_RECORD_INFO ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_SELECT_PAGE_INFO)
+	    {
+	      q = pt_append_nulstring (parser, q, "SELECT_PAGE_INFO ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_SELECT_KEY_INFO)
+	    {
+	      q = pt_append_nulstring (parser, q, "SELECT_KEY_INFO");
+	      if (p->info.query.q.select.using_index)
+		{
+		  q = pt_append_nulstring (parser, q, "(");
+		  q =
+		    pt_append_nulstring (parser, q, p->info.query.q.select.
+					 using_index->info.name.original);
+		  q = pt_append_nulstring (parser, q, ") ");
+		}
+	      else
+		{
+		  assert (0);
+		}
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_SELECT_BTREE_NODE_INFO)
+	    {
+	      q = pt_append_nulstring (parser, q, "SELECT_BTREE_NODE_INFO");
+	      if (p->info.query.q.select.using_index)
+		{
+		  q = pt_append_nulstring (parser, q, "(");
+		  q =
+		    pt_append_nulstring (parser, q, p->info.query.q.select.
+					 using_index->info.name.original);
+		  q = pt_append_nulstring (parser, q, ") ");
+		}
+	      else
+		{
+		  assert (0);
 		}
 	    }
 
@@ -15620,6 +15653,7 @@ pt_init_union_stmt (PT_NODE * p)
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
   p->info.query.is_order_dependent = false;
+  p->info.query.scan_op_type = S_SELECT;
   return p;
 }
 
@@ -18813,6 +18847,71 @@ pt_sort_spec_list_to_name_node_list (PARSER_CONTEXT * parser,
     }
 
   return name_list;
+}
+
+/*
+ * PT_VACUUM section
+ */
+
+/*
+ * pt_apply_vacuum () - Apply function "q" on all the children of a VACUUM
+ *			parse tree node.
+ *
+ * return      : Updated VACUUM parse tree node. 
+ * parser (in) : Parse context.
+ * p (in)      : VACUUM parse tree node.
+ * g (in)      : Function to apply on all node's children.
+ * arg (in)    : Argument for function g.
+ */
+static PT_NODE *
+pt_apply_vacuum (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
+		 void *arg)
+{
+  p->info.vacuum.spec = g (parser, p->info.vacuum.spec, arg);
+
+  return p;
+}
+
+/*
+ * pt_init_vacuum () - Initialize a VACUUM parse tree node.
+ *
+ * return : Initialized parse tree node.
+ * p (in) : VACUUM parse tree node.
+ */
+static PT_NODE *
+pt_init_vacuum (PT_NODE * p)
+{
+  assert (PT_IS_VACUUM_NODE (p));
+
+  p->info.vacuum.spec = NULL;
+  return p;
+}
+
+/*
+ * pt_print_vacuum () - Print a VACUUM parse tree node.
+ *
+ * return      : Return printed version of parse tree node.
+ * parser (in) : Parser context.
+ * p (in)      : 
+ */
+static PARSER_VARCHAR *
+pt_print_vacuum (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1 = NULL;
+
+  assert (PT_IS_VACUUM_NODE (p));
+
+  if (p->info.vacuum.spec == NULL)
+    {
+      q = pt_append_nulstring (parser, q, "VACUUM");
+    }
+  else
+    {
+      r1 = pt_print_bytes_l (parser, p->info.vacuum.spec);
+      q = pt_append_nulstring (parser, q, "VACUUM ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+  return q;
 }
 
 /*

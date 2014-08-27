@@ -77,6 +77,8 @@ struct log_topop_range
   LOG_LSA end_lsa;
 };
 
+extern bool mvcc_Enabled;
+
 extern const char *log_to_string (LOG_RECTYPE type);
 extern bool log_is_in_crash_recovery (void);
 extern LOG_LSA *log_get_restart_lsa (void);

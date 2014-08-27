@@ -135,6 +135,11 @@ MOP au_get_dba_user (void);
 typedef enum au_fetchmode
 {
   AU_FETCH_READ,
+  AU_FETCH_SCAN,		/* scan that does not allow write */
+  AU_FETCH_EXCLUSIVE_SCAN,	/* scan that does allow neither write 
+				 * nor other exclusive scan, 
+				 * i.e, scan for load index. 
+				 */
   AU_FETCH_WRITE,
   AU_FETCH_UPDATE
 } AU_FETCHMODE;
@@ -186,6 +191,11 @@ extern int au_revoke (MOP user, MOP class_mop, DB_AUTH type);
 /* class & instance accessors */
 extern int au_fetch_class (MOP op, SM_CLASS ** class_ptr,
 			   AU_FETCHMODE fetchmode, DB_AUTH type);
+extern int au_fetch_class_by_classmop (MOP op, SM_CLASS ** class_ptr,
+				       AU_FETCHMODE fetchmode, DB_AUTH type);
+extern int au_fetch_class_by_instancemop (MOP op, SM_CLASS ** class_ptr,
+					  AU_FETCHMODE fetchmode,
+					  DB_AUTH type);
 extern int au_fetch_class_force (MOP op, SM_CLASS ** class_,
 				 AU_FETCHMODE fetchmode);
 

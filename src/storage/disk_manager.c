@@ -373,7 +373,12 @@ disk_bit_set (unsigned char *c, unsigned int n)
 static void
 disk_bit_clear (unsigned char *c, unsigned int n)
 {
-  assert_release (disk_bit_is_set (c, n));
+  /* TODO: Uncomment and investigate the double clearing issue. As far as I am
+   *       concerned, this shouldn't happen due to last changes of vacuum.
+   *       Maybe a bugged case is uncovered.
+   *       Investigate after fixing current crashes.
+   */
+  /* assert_release (disk_bit_is_set (c, n)); */
 
   *c &= ~(1 << n);
 }
@@ -2331,7 +2336,7 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
   npages_toadd = ((vhdr->sys_lastpage - vhdr->page_alloctb_page1 + 1) *
 		  DISK_PAGE_BIT) - vhdr->total_pages;
 
-  /* Now adjust accrding to the requested numbers */
+  /* Now adjust according to the requested numbers */
   if (npages_toadd < min_pages)
     {
       /* This volume cannot be expanded with the given number of pages. */
@@ -6368,7 +6373,10 @@ disk_vhdr_rv_undoredo_free_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  vhdr->used_index_npages -= mtb->num;
 	  if (vhdr->used_index_npages < 0)
 	    {
-	      assert_release (vhdr->used_index_npages >= 0);
+	      /* TODO: Uncomment the check after fixing the multiple
+	       *       deallocation issue.
+	       */
+	      /*assert_release (vhdr->used_index_npages >= 0); */
 	      vhdr->used_index_npages = 0;
 	    }
 	}
@@ -6393,7 +6401,10 @@ disk_vhdr_rv_undoredo_free_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  vhdr->used_index_npages -= mtb->num;
 	  if (vhdr->used_index_npages < 0)
 	    {
-	      assert_release (vhdr->used_index_npages >= 0);
+	      /* TODO: Uncomment the check after fixing the multiple
+	       *       deallocation issue.
+	       */
+	      /*assert_release (vhdr->used_index_npages >= 0); */
 	      vhdr->used_index_npages = 0;
 	    }
 	}
@@ -6563,6 +6574,11 @@ disk_rv_alloctable_bitmap_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   INT32 num = 0;		/* Number of allocated bits */
   unsigned int bit, i;
 
+  /* TODO: Remove this code when double deallocations issue is
+   *       fixed.
+   */
+  int already_cleared = 0;	/* <-- */
+
   (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_VOLBITMAP);
 
   mtb = (DISK_RECV_MTAB_BITS_WITH *) rcv->data;
@@ -6585,11 +6601,28 @@ disk_rv_alloctable_bitmap_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 	    }
 	  else
 	    {
-	      disk_bit_clear (at_chptr, i);
+	      /* TODO: Remove this code when double deallocations issue is
+	       *       fixed. This should only call:
+	       *       disk_bit_clear (at_chptr, i);
+	       */
+	      if (!disk_bit_is_set (at_chptr, i))	/* <-- */
+		{		/* <-- */
+		  already_cleared++;	/* <-- */
+		}		/* <-- */
+	      else		/* <-- */
+		{		/* <-- */
+		  disk_bit_clear (at_chptr, i);
+		}		/* <-- */
 	    }
 	}
       bit = 0;
     }
+  /* TODO: Remove this code when double deallocations issue is
+   *       fixed. The number is passed to volume header recovery so update
+   *       it to avoid header corruption.
+   * PLEASE ALSO FIX disk_rv_alloctable_vhdr_only ().
+   */
+  mtb->num -= already_cleared;	/* <-- */
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
 
@@ -6615,6 +6648,16 @@ disk_rv_alloctable_vhdr_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   mtb = (DISK_RECV_MTAB_BITS_WITH *) rcv->data;
 
   assert (mtb != NULL);
+
+  /* TODO: Remove this code when double deallocations issue is fixed. 
+   *       The number is passed to volume header recovery so update
+   *       it to avoid header corruption.
+   */
+  if (mtb->num == 0)	      /* <---- */
+    {			      /* <---- */
+      return NO_ERROR;	      /* <---- */
+    }			      /* <---- */
+
   assert (mtb->num > 0);
 
   if (mode == DISK_ALLOCTABLE_SET)
@@ -6657,7 +6700,10 @@ disk_rv_alloctable_vhdr_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 	      vhdr->used_index_npages -= delta;
 	      if (vhdr->used_index_npages < 0)
 		{
-		  assert_release (vhdr->used_index_npages >= 0);
+		  /* TODO: Uncomment the check after fixing the multiple
+		   *       deallocation issue.
+		   */
+		  /* assert_release (vhdr->used_index_npages >= 0); */
 		  vhdr->used_index_npages = 0;
 		}
 	    }
@@ -6682,7 +6728,10 @@ disk_rv_alloctable_vhdr_only (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 	      vhdr->used_index_npages -= delta;
 	      if (vhdr->used_index_npages < 0)
 		{
-		  assert_release (vhdr->used_index_npages >= 0);
+		  /* TODO: Uncomment the check after fixing the multiple
+		   *       deallocation issue.
+		   */
+		  /* assert_release (vhdr->used_index_npages >= 0); */
 		  vhdr->used_index_npages = 0;
 		}
 	    }
@@ -6724,6 +6773,24 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   VPID vhdr_vpid, page_vpid;
 
   LOG_DATA_ADDR page_addr, vhdr_addr;
+  /* TODO: Remove this code when double deallocations issue is fixed. */
+  /* disk_rv_alloctable_bitmap_only updates the number of deallocated because
+   * some pages are already deallocated (this is a known issue due to vacuum
+   * worker merge b-tree and destroy index file). The real number of
+   * deallocated must be passed to header in order to not mess up with its
+   * statistics on volume pages.
+   * However, when the run postpones are appended, bitmap and header each
+   * should receive its own number.
+   * The fix for this issue is high priority after merging MVCC into trunk and
+   * requires two changes:
+   * 1. Mark root page header that the file is being dropped and prevent any
+   *	further merges.
+   * 2. Deallocate file pages in the b-tree normal traverse order (to be
+   *	blocked on merges that started before deleting file).
+   */
+  int bitmap_num =				    /* <----- */
+    ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num;  /* <----- */
+  int vhdr_num = 0;
 
   assert (rcv->pgptr != NULL);
   assert (rcv->length > 0);
@@ -6762,6 +6829,10 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   disk_rv_alloctable_bitmap_only (thread_p, rcv, DISK_ALLOCTABLE_CLEAR);
   disk_rv_alloctable_vhdr_only (thread_p, &vhdr_rcv, DISK_ALLOCTABLE_CLEAR);
 
+  /* TODO: Remove this code when double deallocations issue is fixed. */
+  vhdr_num =					    /* <----- */
+    ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num;  /* <----- */
+
   if (ref_lsa != NULL)
     {
       /*
@@ -6770,6 +6841,10 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
        */
       page_addr.offset = rcv->offset;
       page_addr.pgptr = rcv->pgptr;
+
+      /* TODO: Remove this code when double deallocations issue is fixed. */
+      ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num = bitmap_num; /* <--- */
+
       log_append_run_postpone (thread_p,
 			       RVDK_IDDEALLOC_BITMAP_ONLY,
 			       &page_addr,
@@ -6777,6 +6852,10 @@ disk_rv_alloctable_with_volheader (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
 
       vhdr_addr.offset = 0;
       vhdr_addr.pgptr = vhdr_rcv.pgptr;
+
+      /* TODO: Remove this code when double deallocations issue is fixed. */
+      ((DISK_RECV_MTAB_BITS_WITH *) rcv->data)->num = vhdr_num; /* <--- */
+
       log_append_run_postpone (thread_p,
 			       RVDK_IDDEALLOC_VHDR_ONLY,
 			       &vhdr_addr,

@@ -4938,16 +4938,22 @@ regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
   ptr->indexptr = NULL;
   ptr->where_key = NULL;
   ptr->where_pred = NULL;
+  ptr->where_range = NULL;
 
   if ((type == TARGET_CLASS) || (type == TARGET_CLASS_ATTR))
     {
       ptr->s.cls_node.cls_regu_list_key = NULL;
       ptr->s.cls_node.cls_regu_list_pred = NULL;
       ptr->s.cls_node.cls_regu_list_rest = NULL;
+      ptr->s.cls_node.cls_regu_list_range = NULL;
+      ptr->s.cls_node.cls_regu_list_last_version = NULL;
       ACCESS_SPEC_HFID (ptr).vfid.fileid = NULL_FILEID;
       ACCESS_SPEC_HFID (ptr).vfid.volid = NULL_VOLID;
       ACCESS_SPEC_HFID (ptr).hpgid = NULL_PAGEID;
       regu_init_oid (&ACCESS_SPEC_CLS_OID (ptr));
+      ptr->s.cls_node.attrids_range = NULL;
+      ptr->s.cls_node.cache_range = NULL;
+      ptr->s.cls_node.num_attrs_range = 0;
     }
   else if (type == TARGET_LIST)
     {
@@ -5687,6 +5693,8 @@ regu_upddel_class_info_init (UPDDEL_CLASS_INFO * ptr)
   ptr->needs_pruning = DB_NOT_PARTITIONED_CLASS;
   ptr->no_lob_attrs = NULL;
   ptr->lob_attr_ids = NULL;
+  ptr->no_extra_assign_reev = 0;
+  ptr->mvcc_extra_assign_reev = NULL;
 }
 
 /*

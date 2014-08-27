@@ -53,7 +53,17 @@ typedef enum
   S_SET_SCAN,
   S_METHOD_SCAN,
   S_VALUES_SCAN,		/* regu_values_list scan */
-  S_SHOWSTMT_SCAN
+  S_SHOWSTMT_SCAN,
+  S_HEAP_SCAN_RECORD_INFO,	/* similar to heap scan but saving record info
+				 * (and maybe tuple data too). iterates
+				 * through all slots even if they do not
+				 * contain data.
+				 */
+  S_HEAP_PAGE_SCAN,		/* scans heap pages and queries for page
+				 * information
+				 */
+  S_INDX_KEY_INFO_SCAN,		/* scans b-tree and queries for key info */
+  S_INDX_NODE_INFO_SCAN		/* scans b-tree nodes for info */
 } SCAN_TYPE;
 
 typedef struct heap_scan_id HEAP_SCAN_ID;
@@ -67,12 +77,28 @@ struct heap_scan_id
   SCAN_PRED scan_pred;		/* scan predicates(filters) */
   SCAN_ATTRS pred_attrs;	/* attr info from predicates */
   REGU_VARIABLE_LIST rest_regu_list;	/* regulator variable list */
+  REGU_VARIABLE_LIST regu_list_last_version;	/* regulator variable list */
   SCAN_ATTRS rest_attrs;	/* attr info from other than preds */
+  bool cls_regu_inited;		/* is cls_regu_list_last_version inited */
   bool caches_inited;		/* are the caches initialized?? */
   bool scancache_inited;
   bool scanrange_inited;
-  int lock_hint;		/* lock hint */
+  DB_VALUE **cache_recordinfo;	/* cache for record information */
+  REGU_VARIABLE_LIST recordinfo_regu_list;	/* regulator variable list for record info */
 };				/* Regular Heap File Scan Identifier */
+
+typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;
+struct heap_page_scan_id
+{
+  OID cls_oid;			/* class object identifier */
+  HFID hfid;			/* heap file identifier */
+  VPID curr_vpid;		/* current heap page identifier */
+  SCAN_PRED scan_pred;		/* scan predicates(filters) */
+  DB_VALUE **cache_page_info;	/* values for page headers */
+  REGU_VARIABLE_LIST page_info_regu_list;	/* regulator variable for page info */
+};				/* Heap File Scan Identifier used to scan
+				 * pages only (e.g. headers)
+				 */
 
 typedef struct key_val_range KEY_VAL_RANGE;
 struct key_val_range
@@ -181,11 +207,14 @@ struct indx_scan_id
   SCAN_ATTRS key_attrs;		/* attr info from key filter */
   SCAN_PRED scan_pred;		/* scan predicates(filters) */
   SCAN_ATTRS pred_attrs;	/* attr info from predicates */
+  SCAN_PRED range_pred;		/* range predicates */
+  SCAN_ATTRS range_attrs;	/* attr info from range predicates */
   REGU_VARIABLE_LIST rest_regu_list;	/* regulator variable list */
+  REGU_VARIABLE_LIST regu_list_last_version;	/* regulator variable list */
+  bool cls_regu_inited;		/* is cls_regu_list_last_version inited */
   SCAN_ATTRS rest_attrs;	/* attr info from other than preds */
   KEY_VAL_RANGE *key_vals;	/* for eliminating duplicate ranges */
   int key_cnt;			/* number of valid ranges */
-  int lock_hint;		/* lock hint */
   bool iscan_oid_order;		/* index_scan_oid_order flag */
   bool need_count_only;		/* get count only, no OIDs are copied */
   bool caches_inited;		/* are the caches initialized?? */
@@ -194,10 +223,27 @@ struct indx_scan_id
   DB_BIGINT key_limit_upper;	/* upper key limit */
   INDX_COV indx_cov;		/* index covering information */
   MULTI_RANGE_OPT multi_range_opt;	/* optimization for multiple range
-					 * search*/
+					 * search
+					 */
   INDEX_SKIP_SCAN iss;		/* index skip scan structure */
   bool duplicate_key_locked;	/* true if duplicate key have been scanned */
   bool for_update;		/* true if FOR UPDATE clause is active */
+  DB_VALUE **key_info_values;	/* Used for index key info scan */
+  REGU_VARIABLE_LIST key_info_regu_list;	/* regulator variable list */
+  bool mvcc_need_locks;		/* true, if need locking in MVCC during
+				 * index scan
+				 */
+};
+
+typedef struct index_node_scan_id INDEX_NODE_SCAN_ID;
+struct index_node_scan_id
+{
+  INDX_INFO *indx_info;		/* index information */
+  SCAN_PRED scan_pred;		/* scan predicates */
+  BTREE_NODE_SCAN btns;
+  bool caches_inited;		/* are the caches initialized?? */
+  DB_VALUE **node_info_values;	/* Used to store information about b-tree node */
+  REGU_VARIABLE_LIST node_info_regu_list;	/* regulator variable list */
 };
 
 typedef struct llist_scan_id LLIST_SCAN_ID;
@@ -286,7 +332,7 @@ struct scan_id_struct
   SCAN_STATUS status;		/* Scan Status */
   SCAN_POSITION position;	/* Scan Position */
   SCAN_DIRECTION direction;	/* Forward/Backward Direction */
-  int readonly_scan;
+  bool mvcc_select_lock_needed;	/* true if lock at scanning needed in mvcc */
   SCAN_OPERATION_TYPE scan_op_type;	/* SELECT, DELETE, UPDATE */
 
   int fixed;			/* if true, pages containing scan
@@ -316,7 +362,10 @@ struct scan_id_struct
   {
     LLIST_SCAN_ID llsid;	/* List File Scan Identifier */
     HEAP_SCAN_ID hsid;		/* Regular Heap File Scan Identifier */
+    HEAP_PAGE_SCAN_ID hpsid;	/* Scan heap pages without going through
+				 * records */
     INDX_SCAN_ID isid;		/* Indexed Heap File Scan Identifier */
+    INDEX_NODE_SCAN_ID insid;	/* Scan b-tree nodes */
     SET_SCAN_ID ssid;		/* Set Scan Identifier */
     VA_SCAN_ID vaid;		/* Value Array Identifier */
     REGU_VALUES_SCAN_ID rvsid;	/* regu_variable list identifier */
@@ -329,10 +378,9 @@ struct scan_id_struct
 
 extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
-				int readonly_scan,
+				bool mvcc_select_lock_needed,
 				SCAN_OPERATION_TYPE scan_op_type,
 				int fixed,
-				int lock_hint,
 				int grouped,
 				QPROC_SINGLE_FETCH single_fetch,
 				DB_VALUE * join_dbval,
@@ -343,12 +391,26 @@ extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				REGU_VARIABLE_LIST regu_list_pred,
 				PRED_EXPR * pr,
 				REGU_VARIABLE_LIST regu_list_rest,
+				REGU_VARIABLE_LIST regu_list_last_version,
 				int num_attrs_pred,
 				ATTR_ID * attrids_pred,
 				HEAP_CACHE_ATTRINFO * cache_pred,
 				int num_attrs_rest,
 				ATTR_ID * attrids_rest,
-				HEAP_CACHE_ATTRINFO * cache_rest);
+				HEAP_CACHE_ATTRINFO * cache_rest,
+				SCAN_TYPE scan_type,
+				DB_VALUE ** cache_recordinfo,
+				REGU_VARIABLE_LIST regu_list_recordinfo);
+extern int scan_open_heap_page_scan (THREAD_ENTRY * thread_p,
+				     SCAN_ID * scan_id,
+				     VAL_LIST * val_list,
+				     VAL_DESCR * vd,
+				     OID * cls_oid,
+				     HFID * hfid,
+				     PRED_EXPR * pr,
+				     SCAN_TYPE scan_type,
+				     DB_VALUE ** cache_page_info,
+				     REGU_VARIABLE_LIST regu_list_page_info);
 extern int scan_open_class_attr_scan (THREAD_ENTRY * thread_p,
 				      SCAN_ID * scan_id,
 				      /* fields of SCAN_ID */
@@ -370,10 +432,9 @@ extern int scan_open_class_attr_scan (THREAD_ENTRY * thread_p,
 				      HEAP_CACHE_ATTRINFO * cache_rest);
 extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 /* fields of SCAN_ID */
-				 int readonly_scan,
+				 bool mvcc_select_lock_needed,
 				 SCAN_OPERATION_TYPE scan_op_type,
 				 int fixed,
-				 int lock_hint,
 				 int grouped,
 				 QPROC_SINGLE_FETCH single_fetch,
 				 DB_VALUE * join_dbval,
@@ -387,6 +448,9 @@ extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 REGU_VARIABLE_LIST regu_list_pred,
 				 PRED_EXPR * pr,
 				 REGU_VARIABLE_LIST regu_list_rest,
+				 PRED_EXPR * pr_range,
+				 REGU_VARIABLE_LIST regu_list_range,
+				 REGU_VARIABLE_LIST regu_list_last_version,
 				 OUTPTR_LIST * output_val_list,
 				 REGU_VARIABLE_LIST regu_val_list,
 				 int num_attrs_key,
@@ -398,8 +462,37 @@ extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 int num_attrs_rest,
 				 ATTR_ID * attrids_rest,
 				 HEAP_CACHE_ATTRINFO * cache_rest,
+				 int num_attrs_range,
+				 ATTR_ID * attrids_range,
+				 HEAP_CACHE_ATTRINFO * cache_range,
 				 bool iscan_oid_order, QUERY_ID query_id,
 				 bool for_update);
+extern int scan_open_index_key_info_scan (THREAD_ENTRY * thread_p,
+					  SCAN_ID * scan_id,
+					  /* fields of SCAN_ID */
+					  VAL_LIST * val_list, VAL_DESCR * vd,
+					  /* fields of INDX_SCAN_ID */
+					  INDX_INFO * indx_info,
+					  OID * cls_oid,
+					  HFID * hfid,
+					  PRED_EXPR * pr,
+					  OUTPTR_LIST * output_val_list,
+					  bool iscan_oid_order,
+					  QUERY_ID query_id,
+					  DB_VALUE ** key_info_values,
+					  REGU_VARIABLE_LIST
+					  key_info_regu_list);
+extern int scan_open_index_node_info_scan (THREAD_ENTRY * thread_p,
+					   SCAN_ID * scan_id,
+					   /* fields of SCAN_ID */
+					   VAL_LIST * val_list,
+					   VAL_DESCR * vd,
+					   /* fields of INDX_SCAN_ID */
+					   INDX_INFO * indx_info,
+					   PRED_EXPR * pr,
+					   DB_VALUE ** node_info_values,
+					   REGU_VARIABLE_LIST
+					   node_info_regu_list);
 extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				int grouped,
@@ -462,9 +555,17 @@ extern void scan_save_scan_pos (SCAN_ID * s_id, SCAN_POS * scan_pos);
 extern SCAN_CODE scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id,
 				     SCAN_POS * scan_pos);
 extern int scan_init_iss (INDX_SCAN_ID * isidp);
-extern void scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf);
+extern void scan_init_index_scan (INDX_SCAN_ID * isidp, OID * oid_buf,
+				  MVCC_SNAPSHOT * mvcc_snapshot);
 extern void scan_initialize (void);
 extern void scan_finalize (void);
+extern void scan_init_filter_info (FILTER_INFO * filter_info_p,
+				   SCAN_PRED * scan_pred,
+				   SCAN_ATTRS * scan_attrs,
+				   VAL_LIST * val_list, VAL_DESCR * val_descr,
+				   OID * class_oid, int btree_num_attrs,
+				   ATTR_ID * btree_attr_ids,
+				   int *num_vstr_ptr, ATTR_ID * vstr_ids);
 
 extern void showstmt_scan_init (void);
 extern SCAN_CODE showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);

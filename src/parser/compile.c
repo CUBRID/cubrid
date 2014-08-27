@@ -67,6 +67,7 @@ struct pt_class_locks
   char **classes;
   int *only_all;
   LOCK *locks;
+  LC_PREFETCH_FLAGS *flags;
 };
 
 enum pt_order_by_adjustment
@@ -83,13 +84,14 @@ static PT_NODE *pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node,
 static PT_NODE *pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node,
 				void *arg, int *continue_walk);
 static int pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
-			      PT_NODE * spec);
+			      PT_NODE * spec, LC_PREFETCH_FLAGS flags);
 static PT_NODE *pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 				     void *arg, int *continue_walk);
 static PT_NODE *pt_find_lck_class_from_partition (PARSER_CONTEXT * parser,
 						  PT_NODE * node,
 						  PT_CLASS_LOCKS * locks);
-static int pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str);
+static int pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str,
+			    LC_PREFETCH_FLAGS flags);
 
 static void remove_appended_trigger_info (char *msg, int with_evaluate);
 
@@ -469,9 +471,11 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_CLASS_LOCKS lcks;
   int error = NO_ERROR;
+
   lcks.classes = NULL;
   lcks.only_all = NULL;
   lcks.locks = NULL;
+  lcks.flags = NULL;
 
   /* we don't pre fetch for non query statements */
   if (statement == NULL)
@@ -534,8 +538,19 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  lcks.num_classes * sizeof (DB_FETCH_MODE));
       goto cleanup;
     }
-
   memset (lcks.classes, 0, (lcks.num_classes + 1) * sizeof (char *));
+
+  lcks.flags =
+    (LC_PREFETCH_FLAGS *) malloc (lcks.num_classes *
+				  sizeof (LC_PREFETCH_FLAGS));
+  if (lcks.flags == NULL)
+    {
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		  MSGCAT_RUNTIME_OUT_OF_MEMORY,
+		  lcks.num_classes * sizeof (DB_FETCH_MODE));
+      goto cleanup;
+    }
+  memset (lcks.flags, 0, lcks.num_classes * sizeof (LC_PREFETCH_FLAGS));
 
   /* reset so parser_walk_tree can step through arrays */
   lcks.num_classes = 0;
@@ -546,7 +561,8 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (!pt_has_error (parser)
       && locator_lockhint_classes (lcks.num_classes,
 				   (const char **) lcks.classes, lcks.locks,
-				   lcks.only_all, true) != LC_CLASSNAME_EXIST)
+				   lcks.only_all, lcks.flags,
+				   true) != LC_CLASSNAME_EXIST)
     {
       PT_ERRORc (parser, statement, db_error_string (3));
     }
@@ -576,6 +592,10 @@ cleanup:
   if (lcks.locks)
     {
       free_and_init (lcks.locks);
+    }
+  if (lcks.flags)
+    {
+      free_and_init (lcks.flags);
     }
   return statement;
 }
@@ -673,10 +693,12 @@ pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node,
  *   parser (in)    : parser context
  *   lcks (in/out)  : pointer to PT_CLASS_LOCKS structure
  *   spec (in)	    : spec to add in locks list.
+ *   flags(in)	    : the scope for which this class is added (either for
+ *		      locking or for count optimization)
  */
 int
 pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
-		   PT_NODE * spec)
+		   PT_NODE * spec, LC_PREFETCH_FLAGS flags)
 {
   int len = 0;
 
@@ -719,6 +741,17 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
 	}
       lcks->locks = (LOCK *) ptr;
 
+      /* flags */
+      ptr = realloc (lcks->flags, new_size * sizeof (LC_PREFETCH_FLAGS));
+      if (ptr == NULL)
+	{
+	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_OUT_OF_MEMORY,
+		      new_size * sizeof (LC_PREFETCH_FLAGS));
+	  return ER_FAILED;
+	}
+      lcks->flags = (LOCK *) ptr;
+
       lcks->allocated_count++;
     }
 
@@ -746,8 +779,16 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
       lcks->only_all[lcks->num_classes] = 1;
     }
 
-  lcks->locks[lcks->num_classes] =
-    locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS);
+  if (flags & LC_PREF_FLAG_LOCK)
+    {
+      lcks->locks[lcks->num_classes] =
+	locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS);
+    }
+  else
+    {
+      lcks->locks[lcks->num_classes] = NA_LOCK;
+    }
+  lcks->flags[lcks->num_classes] = flags;
 
   lcks->num_classes++;
 
@@ -769,6 +810,37 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   PT_CLASS_LOCKS *lcks = (PT_CLASS_LOCKS *) arg;
 
+  lcks->lock_type = DB_FETCH_READ;
+
+  if (node->node_type == PT_SELECT)
+    {
+      /* count optimization */
+      PT_NODE *list = node->info.query.q.select.list;
+      PT_NODE *from = node->info.query.q.select.from;
+
+      /* Check if query is of form 'SELECT count(*) from t' */
+      if (list != NULL && list->next == NULL && list->node_type == PT_FUNCTION
+	  && list->info.function.function_type == PT_COUNT_STAR
+	  && from != NULL && from->next == NULL
+	  && from->info.spec.entity_name != NULL
+	  && from->info.spec.entity_name->node_type == PT_NAME
+	  && node->info.query.q.select.where == NULL)
+	{
+	  /* only add to the array, if not there already in this lock mode. */
+	  if (!pt_in_lck_array (lcks,
+				from->info.spec.entity_name->info.name.
+				original, LC_PREF_FLAG_COUNT_OPTIM))
+	    {
+	      if (pt_add_lock_class (parser, lcks, from,
+				     LC_PREF_FLAG_COUNT_OPTIM) != NO_ERROR)
+		{
+		  *continue_walk = PT_STOP_WALK;
+		  return node;
+		}
+	    }
+	}
+    }
+
   /* if its not an entity, there's nothing left to do */
   if (node->node_type != PT_SPEC)
     {
@@ -783,8 +855,6 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
       return node;
     }
 
-  lcks->lock_type = DB_FETCH_READ;
-
   if (node->info.spec.partition != NULL)
     {
       /* add specified lock on specified partition */
@@ -796,10 +866,11 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
     }
   /* only add to the array, if not there already in this lock mode. */
-  if (!pt_in_lck_array (lcks,
-			node->info.spec.entity_name->info.name.original))
+  if (!pt_in_lck_array (lcks, node->info.spec.entity_name->info.name.original,
+			LC_PREF_FLAG_LOCK))
     {
-      if (pt_add_lock_class (parser, lcks, node) != NO_ERROR)
+      if (pt_add_lock_class (parser, lcks, node, LC_PREF_FLAG_LOCK)
+	  != NO_ERROR)
 	{
 	  *continue_walk = PT_STOP_WALK;
 	  return node;
@@ -843,12 +914,12 @@ pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
     }
 
-  if (!pt_in_lck_array (locks, partition_name))
+  if (!pt_in_lck_array (locks, partition_name, LC_PREF_FLAG_LOCK))
     {
       /* Set lock on specified partition. Only add to the array if not there
        * already in this lock mode. */
       node->info.spec.entity_name->info.name.original = partition_name;
-      error = pt_add_lock_class (parser, locks, node);
+      error = pt_add_lock_class (parser, locks, node, LC_PREF_FLAG_LOCK);
 
       /* restore spec name */
       node->info.spec.entity_name->info.name.original = entity_name;
@@ -868,19 +939,43 @@ pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node,
  *   str(in):
  */
 static int
-pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str)
+pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str,
+		 LC_PREFETCH_FLAGS flags)
 {
-  int i;
+  int i, no_lock_idx = -1;
   LOCK chk_lock;
 
   chk_lock = locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS);
   for (i = 0; i < lcks->num_classes; i++)
     {
-      if (intl_identifier_casecmp (str, lcks->classes[i]) == 0
-	  && lcks->locks[i] == chk_lock)
+      if (intl_identifier_casecmp (str, lcks->classes[i]) == 0)
 	{
-	  return true;
+	  if (flags & LC_PREF_FLAG_LOCK)
+	    {
+	      if (lcks->flags[i] & LC_PREF_FLAG_LOCK)
+		{
+		  if (lcks->locks[i] == chk_lock)
+		    {
+		      return true;
+		    }
+		}
+	      else
+		{
+		  no_lock_idx = i;
+		}
+	    }
+	  else if (flags & LC_PREF_FLAG_COUNT_OPTIM)
+	    {
+	      lcks->flags[i] |= LC_PREF_FLAG_COUNT_OPTIM;
+	      return true;
+	    }
 	}
+    }
+  if (no_lock_idx >= 0)
+    {
+      lcks->locks[no_lock_idx] = chk_lock;
+      lcks->flags[no_lock_idx] |= LC_PREF_FLAG_LOCK;
+      return true;
     }
 
   return false;			/* not found */

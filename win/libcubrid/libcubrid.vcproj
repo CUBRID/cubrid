@@ -415,6 +415,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\lock_free.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\md5.c"
 					>
 				</File>
@@ -710,6 +714,10 @@
 					RelativePath="..\..\src\query\string_opfunc.c"
 					>
 				</File>
+				<File
+					RelativePath="..\..\src\query\vacuum.c"
+					>
+				</File>
 			</Filter>
 			<Filter
 				Name="storage"
@@ -860,6 +868,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\transaction\log_writer.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\transaction\mvcc.c"
 					>
 				</File>
 				<File

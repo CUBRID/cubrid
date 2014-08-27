@@ -1148,7 +1148,8 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
     }
   owner = DB_GET_OBJECT (&owner_val);
 
-  if (owner != Au_user && !au_is_dba_group_member (Au_user))
+  if (!ws_is_same_object (owner, Au_user)
+      && !au_is_dba_group_member (Au_user))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED, 0);
       err = er_errid ();

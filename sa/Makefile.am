@@ -162,7 +162,8 @@ BASE_SOURCES = \
 	$(BASE_DIR)/getopt_long.c \
 	$(BASE_DIR)/binaryheap.c \
 	$(BASE_DIR)/tsc_timer.c \
-	$(BASE_DIR)/perf.c
+	$(BASE_DIR)/perf.c \
+	$(BASE_DIR)/lock_free.c
 
 HEAPLAYER_SOURCES = \
 	$(HEAPLAYER_DIR)/customheaps.cpp \
@@ -232,7 +233,8 @@ QUERY_SOURCES = \
 	$(QUERY_DIR)/query_opfunc.c \
 	$(QUERY_DIR)/xasl_to_stream.c \
 	$(QUERY_DIR)/stream_to_xasl.c \
-	$(QUERY_DIR)/crypt_opfunc.c
+	$(QUERY_DIR)/crypt_opfunc.c \
+	$(QUERY_DIR)/vacuum.c
 
 OBJECT_SOURCES = \
 	$(OBJECT_DIR)/elo.c \
@@ -280,7 +282,8 @@ TRANSACTION_SOURCES = \
 	$(TRANSACTION_DIR)/transaction_cl.c \
 	$(TRANSACTION_DIR)/transaction_sr.c \
 	$(TRANSACTION_DIR)/wait_for_graph.c \
-	$(TRANSACTION_DIR)/log_writer.c
+	$(TRANSACTION_DIR)/log_writer.c \
+	$(TRANSACTION_DIR)/mvcc.c
 
 STORAGE_SOURCES = \
 	$(STORAGE_DIR)/btree.c \

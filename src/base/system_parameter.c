@@ -81,6 +81,7 @@
 #if !defined (CS_MODE)
 #include "session.h"
 #endif
+#include "vacuum.h"
 
 
 #define ER_LOG_FILE_DIR	"server"
@@ -569,6 +570,22 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_HA_PREFETCHLOGDB_PAGE_DISTANCE "ha_prefetchlogdb_page_distance"
 #define PRM_NAME_HA_PREFETCHLOGDB_MAX_PAGE_COUNT "ha_prefetchlogdb_max_page_count"
 
+#define PRM_NAME_MVCC_ENABLED "mvcc_enabled"
+
+#define PRM_NAME_VACUUM_MASTER_WAKEUP_INTERVAL "vacuum_master_interval_in_secs"
+
+#define PRM_NAME_VACUUM_DATA_PAGES "vacuum_data_pages"
+#define PRM_NAME_VACUUM_LOG_BLOCK_PAGES "vacuum_log_block_pages"
+#define PRM_NAME_VACUUM_WORKER_COUNT "vacuum_worker_count"
+
+#define PRM_NAME_DISABLE_VACUUM "vacuum_disable"
+
+#define PRM_NAME_ER_LOG_VACUUM "er_log_vacuum"
+
+#define PRM_NAME_LOG_BTREE_OPS "log_btree_operations"
+
+#define PRM_NAME_OBJECT_PRINT_FORMAT_OID "print_object_as_oid"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -929,12 +946,15 @@ bool PRM_LOG_BACKGROUND_ARCHIVING = true;
 static bool prm_log_background_archiving_default = true;
 static unsigned int prm_log_background_archiving_flag = 0;
 
-int PRM_LOG_ISOLATION_LEVEL = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
-static int prm_log_isolation_level_default = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
-static int prm_log_isolation_level_lower =
-  TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE;
+int PRM_LOG_ISOLATION_LEVEL = TRAN_READ_COMMITTED;
+static int prm_log_isolation_level_default = TRAN_READ_COMMITTED;
+static int prm_log_isolation_level_lower = TRAN_READ_COMMITTED;
 static int prm_log_isolation_level_upper = TRAN_SERIALIZABLE;
 static unsigned int prm_log_isolation_level_flag = 0;
+
+int PRM_MVCC_LOG_ISOLATION_LEVEL = TRAN_READ_COMMITTED;
+static int prm_mvcc_log_isolation_level_default = TRAN_READ_COMMITTED;
+static int prm_mvcc_log_isolation_level_lower = TRAN_READ_COMMITTED;
 
 static unsigned int prm_log_media_failure_support_flag = 0;
 
@@ -1880,6 +1900,49 @@ static unsigned int prm_ha_prefetchlogdb_max_page_count_flag = 0;
 static unsigned int prm_ha_prefetchlogdb_max_page_count_default = 1000;
 static unsigned int prm_ha_prefetchlogdb_max_page_count_lower = 0;
 static unsigned int prm_ha_prefetchlogdb_max_page_count_upper = INT_MAX;
+
+bool PRM_MVCC_ENABLED = true;
+static bool prm_mvcc_enabled_default = true;
+static unsigned int prm_mvcc_enabled_flag = 0;
+
+int PRM_VACUUM_MASTER_WAKEUP_INTERVAL = 1;
+static int prm_vacuum_master_wakeup_interval_default = 1;
+static int prm_vacuum_master_wakeup_interval_lower = 1;
+static unsigned int prm_vacuum_master_wakeup_interval_flag = 0;
+
+int PRM_VACUUM_DATA_PAGES = 40;
+static int prm_vacuum_data_pages_default = 40;
+static int prm_vacuum_data_pages_lower = 10;
+static int prm_vacuum_data_pages_upper = 10000;
+static unsigned int prm_vacuum_data_pages_flag = 0;
+
+int PRM_VACUUM_LOG_BLOCK_PAGES = 32;
+static int prm_vacuum_log_block_pages_default = 32;
+static int prm_vacuum_log_block_pages_lower = 4;
+static int prm_vacuum_log_block_pages_upper = 1024;
+static unsigned int prm_vacuum_log_block_pages_flag = 0;
+
+int PRM_VACUUM_WORKER_COUNT = 10;
+static int prm_vacuum_worker_count_default = 10;
+static int prm_vacuum_worker_count_lower = 1;
+static int prm_vacuum_worker_count_upper = VACUUM_MAX_WORKER_COUNT;
+static unsigned int prm_vacuum_worker_count_flag = 0;
+
+int PRM_ER_LOG_VACUUM = 1;
+static int prm_er_log_vacuum_default = 1;
+static unsigned int prm_er_log_vacuum_flag = 0;
+
+bool PRM_DISABLE_VACUUM = false;
+static bool prm_disable_vacuum_default = false;
+static unsigned int prm_disable_vacuum_flag = 0;
+
+bool PRM_LOG_BTREE_OPS = false;
+static bool prm_log_btree_ops_default = false;
+static unsigned int prm_log_btree_ops_flag = 0;
+
+bool PRM_OBJECT_PRINT_FORMAT_OID = false;
+static bool prm_object_print_format_oid_default = false;
+static unsigned int prm_object_print_format_oid_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
@@ -4499,6 +4562,105 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ha_prefetchlogdb_max_page_count_lower,
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_MVCC_ENABLED,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FORCE_SERVER),
+   PRM_BOOLEAN,
+   (void *) &prm_mvcc_enabled_flag,
+   (void *) &prm_mvcc_enabled_default,
+   (void *) &PRM_MVCC_ENABLED,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_VACUUM_MASTER_WAKEUP_INTERVAL,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   (void *) &prm_vacuum_master_wakeup_interval_flag,
+   (void *) &prm_vacuum_master_wakeup_interval_default,
+   (void *) &PRM_VACUUM_MASTER_WAKEUP_INTERVAL,
+   (void *) NULL,
+   (void *) &prm_vacuum_master_wakeup_interval_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_VACUUM_DATA_PAGES,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   (void *) &prm_vacuum_data_pages_flag,
+   (void *) &prm_vacuum_data_pages_default,
+   (void *) &PRM_VACUUM_DATA_PAGES,
+   (void *) &prm_vacuum_data_pages_upper,
+   (void *) &prm_vacuum_data_pages_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_VACUUM_LOG_BLOCK_PAGES,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   (void *) &prm_vacuum_log_block_pages_flag,
+   (void *) &prm_vacuum_log_block_pages_default,
+   (void *) &PRM_VACUUM_LOG_BLOCK_PAGES,
+   (void *) &prm_vacuum_log_block_pages_upper,
+   (void *) &prm_vacuum_log_block_pages_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_VACUUM_WORKER_COUNT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   (void *) &prm_vacuum_worker_count_flag,
+   (void *) &prm_vacuum_worker_count_default,
+   (void *) &PRM_VACUUM_WORKER_COUNT,
+   (void *) &prm_vacuum_worker_count_upper,
+   (void *) &prm_vacuum_worker_count_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_ER_LOG_VACUUM,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   (void *) &prm_er_log_vacuum_flag,
+   (void *) &prm_er_log_vacuum_default,
+   (void *) &PRM_ER_LOG_VACUUM,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_DISABLE_VACUUM,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_disable_vacuum_flag,
+   (void *) &prm_disable_vacuum_default,
+   (void *) &PRM_DISABLE_VACUUM,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_LOG_BTREE_OPS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_log_btree_ops_flag,
+   (void *) &prm_log_btree_ops_default,
+   (void *) &PRM_LOG_BTREE_OPS,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_OBJECT_PRINT_FORMAT_OID,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_object_print_format_oid_flag,
+   (void *) &prm_object_print_format_oid_default,
+   (void *) &PRM_OBJECT_PRINT_FORMAT_OID,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };
 
@@ -4571,38 +4733,20 @@ static KEYVAL isolation_level_words[] = {
   {"tran_serializable", TRAN_SERIALIZABLE},
   {"tran_no_phantom_read", TRAN_SERIALIZABLE},
 
-  {"tran_rep_class_rep_instance", TRAN_REP_CLASS_REP_INSTANCE},
-  {"tran_rep_read", TRAN_REP_CLASS_REP_INSTANCE},
-  {"tran_rep_class_commit_instance", TRAN_REP_CLASS_COMMIT_INSTANCE},
-  {"tran_read_committed", TRAN_REP_CLASS_COMMIT_INSTANCE},
-  {"tran_cursor_stability", TRAN_REP_CLASS_COMMIT_INSTANCE},
-  {"tran_rep_class_uncommit_instance", TRAN_REP_CLASS_UNCOMMIT_INSTANCE},
-  /*
-   * This silly spelling has to hang around because it was in there
-   * once upon a time and users may have come to depend on it.
-   */
-  {"tran_read_uncommited", TRAN_REP_CLASS_UNCOMMIT_INSTANCE},
-  {"tran_read_uncommitted", TRAN_REP_CLASS_UNCOMMIT_INSTANCE},
-  {"tran_commit_class_commit_instance", TRAN_COMMIT_CLASS_COMMIT_INSTANCE},
-  {"tran_commit_class_uncommit_instance",
-   TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE},
+  {"tran_rep_class_rep_instance", TRAN_REPEATABLE_READ},
+  {"tran_rep_read", TRAN_REPEATABLE_READ},
+  {"tran_rep_class_commit_instance", TRAN_READ_COMMITTED},
+  {"tran_read_committed", TRAN_READ_COMMITTED},
+  {"tran_cursor_stability", TRAN_READ_COMMITTED},
 
-  /*
-   * Why be so fascict about the "tran_" prefix?  Are we afraid someone
-   * is going to use these gonzo words?
-   */
   {"serializable", TRAN_SERIALIZABLE},
   {"no_phantom_read", TRAN_SERIALIZABLE},
 
-  {"rep_class_rep_instance", TRAN_REP_CLASS_REP_INSTANCE},
-  {"rep_read", TRAN_REP_CLASS_REP_INSTANCE},
-  {"rep_class_commit_instance", TRAN_REP_CLASS_COMMIT_INSTANCE},
-  {"read_committed", TRAN_REP_CLASS_COMMIT_INSTANCE},
-  {"cursor_stability", TRAN_REP_CLASS_COMMIT_INSTANCE},
-  {"rep_class_uncommit_instance", TRAN_REP_CLASS_UNCOMMIT_INSTANCE},
-  {"read_uncommited", TRAN_REP_CLASS_UNCOMMIT_INSTANCE},
-  {"commit_class_commit_instance", TRAN_COMMIT_CLASS_COMMIT_INSTANCE},
-  {"commit_class_uncommit_instance", TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE}
+  {"rep_class_rep_instance", TRAN_REPEATABLE_READ},
+  {"rep_read", TRAN_REPEATABLE_READ},
+  {"rep_class_commit_instance", TRAN_READ_COMMITTED},
+  {"read_committed", TRAN_READ_COMMITTED},
+  {"cursor_stability", TRAN_READ_COMMITTED},
 };
 
 static KEYVAL pgbuf_debug_page_validation_level_words[] = {
@@ -5474,6 +5618,15 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 		  return error;
 		}
 	    }
+	}
+
+      if (strcasecmp (PRM_NAME_MVCC_ENABLED, prm->name) == 0)
+	{
+	  PRM_LOG_ISOLATION_LEVEL = PRM_MVCC_LOG_ISOLATION_LEVEL;
+
+	  prm_log_isolation_level_default =
+	    prm_mvcc_log_isolation_level_default;
+	  prm_log_isolation_level_lower = prm_mvcc_log_isolation_level_lower;
 	}
 
       error = prm_set (prm, value, true);

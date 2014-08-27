@@ -348,6 +348,7 @@ static LDR_CONTEXT ldr_Context;
  * ldr_Hint_locks
  * ldr_Hint_classnames
  * ldr_Hint_subclasses
+ * ldr_Hint_flags
  *    Global array used to hold the class read, instance write lock
  *    set up at initialization.  This will be used by ldr_find_class()
  *    This is a temporary solution to fix the client/server deadlock problem.
@@ -357,6 +358,7 @@ static LDR_CONTEXT ldr_Context;
 static LOCK ldr_Hint_locks[LDR_LOCKHINT_COUNT];
 static const char *ldr_Hint_classnames[LDR_LOCKHINT_COUNT];
 static int ldr_Hint_subclasses[LDR_LOCKHINT_COUNT];
+static LC_PREFETCH_FLAGS ldr_Hint_flags[LDR_LOCKHINT_COUNT];
 
 /*
  * elem_converter
@@ -1094,7 +1096,7 @@ ldr_find_class (const char *classname)
   ldr_Hint_classnames[0] = realname;
 
   find = locator_lockhint_classes (1, ldr_Hint_classnames, ldr_Hint_locks,
-				   ldr_Hint_subclasses, 1);
+				   ldr_Hint_subclasses, ldr_Hint_flags, 1);
 
   if (find == LC_CLASSNAME_EXIST)
     {
@@ -5835,6 +5837,7 @@ ldr_init_loader (LDR_CONTEXT * context)
 						  LC_CLASS);
   ldr_Hint_classnames[0] = NULL;
   ldr_Hint_subclasses[0] = 0;
+  ldr_Hint_flags[0] = LC_PREF_FLAG_LOCK;
 
   Total_objects = 0;
   Total_fails = 0;

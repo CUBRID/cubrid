@@ -167,9 +167,6 @@ namespace dbgw
           case DBGW_TRAN_READ_COMMITED:
             szQuery = "SET TRANSACTION ISOLATION LEVEL READ COMMITTED";
             break;
-          case DBGW_TRAN_READ_UNCOMMITED:
-            szQuery = "SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED";
-            break;
           }
 
         int nRetCode = mysql_real_query(m_pMySQL, szQuery, strlen(szQuery));

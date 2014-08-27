@@ -116,9 +116,10 @@ vid_is_new_oobj (MOP mop)
   SM_CLASS *class_p;
   int return_code = 0;
 
-  return_code = mop && mop->is_vid
-    && ws_find (mop->class_mop, (MOBJ *) & class_p) != WS_FIND_MOP_DELETED
-    && (mop->oid_info.vid_info->flags & VID_NEW);
+  return_code = (mop && mop->is_vid
+		 && ws_find (ws_class_mop (mop),
+			     (MOBJ *) (&class_p)) != WS_FIND_MOP_DELETED
+		 && (mop->oid_info.vid_info->flags & VID_NEW));
 
   return return_code;
 }
@@ -135,8 +136,8 @@ int
 vid_is_new_pobj (MOP mop)
 {
   int return_code = 0;
-  return_code = mop && mop->is_vid
-    && (mop->oid_info.vid_info->flags & VID_NEW);
+  return_code = (mop && mop->is_vid
+		 && (mop->oid_info.vid_info->flags & VID_NEW));
 
   return return_code;
 }
@@ -1045,11 +1046,11 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
 	  attobj2 = DB_GET_OBJECT (&val2);
 	  db_value_put_null (&val1);
 	  db_value_put_null (&val2);
-	  if (attobj1 != NULL && WS_ISMARK_DELETED (attobj1))
+	  if (attobj1 != NULL && WS_IS_DELETED (attobj1))
 	    {
 	      attobj1 = NULL;
 	    }
-	  if (attobj2 != NULL && WS_ISMARK_DELETED (attobj2))
+	  if (attobj2 != NULL && WS_IS_DELETED (attobj2))
 	    {
 	      attobj2 = NULL;
 	    }
@@ -1192,7 +1193,7 @@ vid_build_non_upd_object (MOP mop, DB_VALUE * seq)
 #endif /* CUBRID_DEBUG */
       if (!mop->pinned)
 	{
-	  obj_free_memory ((SM_CLASS *) mop->class_mop->object,
+	  obj_free_memory ((SM_CLASS *) ws_class_mop (mop)->object,
 			   (MOBJ) mop->object);
 	}
     }
@@ -1372,7 +1373,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
 	    class_name, class_name);
 
   /* run the query */
-  error = db_query_execute (query, &qres, &query_error);
+  error = db_compile_and_execute_local (query, &qres, &query_error);
   if (error != NO_ERROR)
     {
       return NULL;

@@ -806,14 +806,14 @@ odbc_connect_new (ODBC_CONNECTION * conn,
 
   // CCI auto-commit mode has little problem in async mode, 
   // ODBC has own auto-commit mechanism, we should turn off CCI auto-commit mode
-  rc = cci_set_autocommit(connhd, CCI_AUTOCOMMIT_FALSE);
+  rc = cci_set_autocommit (connhd, CCI_AUTOCOMMIT_FALSE);
   ERROR_GOTO (rc, error);
 
   conn->connhd = connhd;
 
   if (conn->charset[0] != '\0')
     {
-      cci_set_charset(connhd, conn->charset);
+      cci_set_charset (connhd, conn->charset);
     }
 
   rc = get_db_version (conn);
@@ -2472,7 +2472,7 @@ odbc_get_info (ODBC_CONNECTION * conn,
 
     case SQL_TXN_ISOLATION_OPTION:
       if (info_value_ptr != NULL)
-	*(unsigned long *) info_value_ptr = SQL_TXN_READ_UNCOMMITTED |
+	*(unsigned long *) info_value_ptr =
 	  SQL_TXN_READ_COMMITTED | SQL_TXN_REPEATABLE_READ |
 	  SQL_TXN_SERIALIZABLE;
 
@@ -2614,7 +2614,6 @@ get_dsn_info (const char *dsn,
 	      char *pwd, int pwd_len,
 	      char *server, int server_len, int *port, int *fetch_size,
 	      char *charset, int charset_len)
-
 {
   char buf[1024];
   int rcn;			// return char number
@@ -2702,7 +2701,7 @@ get_dsn_info (const char *dsn,
       if (rcn == 0)
 	buf[0] = '\0';
       else
-        str_value_assign (buf, charset, server_len, NULL);
+	str_value_assign (buf, charset, server_len, NULL);
     }
 
   return 0;
@@ -2789,16 +2788,11 @@ set_isolation_level (ODBC_CONNECTION * conn)
       isolation_level = TRAN_SERIALIZABLE;
       break;
     case SQL_TXN_REPEATABLE_READ:
-      isolation_level = TRAN_REP_CLASS_REP_INSTANCE;
+      isolation_level = TRAN_REPEATABLE_READ;
       break;
     case SQL_TXN_READ_COMMITTED:
-      isolation_level = TRAN_COMMIT_CLASS_COMMIT_INSTANCE;
-      break;
-    case SQL_TXN_READ_UNCOMMITTED:
-      isolation_level = TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE;
-      break;
-    default:			// serializable
-      isolation_level = TRAN_REP_CLASS_REP_INSTANCE;
+    default:
+      isolation_level = TRAN_READ_COMMITTED;
       break;
     }
 

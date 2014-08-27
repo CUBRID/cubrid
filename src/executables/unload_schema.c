@@ -656,7 +656,7 @@ export_serial (FILE * outfp)
     "[cached_num] "
     "from [db_serial] where [class_name] is null and [att_name] is null";
 
-  error = db_execute (query, &query_result, &query_error);
+  error = db_compile_and_execute_local (query, &query_result, &query_error);
   if (error < 0)
     {
       goto err;

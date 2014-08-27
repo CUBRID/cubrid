@@ -73,6 +73,13 @@ struct ws_flush_err
   int error_code;
 };
 
+typedef struct ws_value_list WS_VALUE_LIST;
+struct ws_value_list
+{
+  struct ws_value_list *next;
+  DB_VALUE *val;
+};
+
 /*
  * DB_OBJECT
  *    This is the primary workspace structure used as a reference to a
@@ -89,20 +96,37 @@ struct db_object
 {
 
   VID_OID oid_info;		/* local copy of the OID or VID pointer */
-  struct db_object *class_mop;	/* pointer to class */
+  struct db_object *class_mop;	/* pointer to class mop */
+  /* Do not ever set this to NULL without
+   * removing object from class link.
+   */
   void *object;			/* pointer to attribute values */
 
   struct db_object *class_link;	/* link for class instances list */
+  /* Careful whenever looping through object
+   * using class_link to save it and
+   * advance using this saved class link if
+   * the current mop can be removed from class.
+   */
   struct db_object *dirty_link;	/* link for dirty list */
   struct db_object *hash_link;	/* link for workspace hash table */
+  /* Careful whenever looping through objects
+   * using hash_link to save it and advance
+   * using this saved hash link if the current
+   * mop can be removed or relocated in hash
+   * table.
+   */
   struct db_object *commit_link;	/* link for obj to be reset at commit/abort */
-  struct db_object *updated_obj;	/* link to the updated object after a flush
-					 * operation. In the case of partitioned
-					 * classes, this member points to the newly
-					 * inserted object in the case of a
-					 * partition change */
+  struct db_object *mvcc_link;	/* Used by MVCC to link mops for different
+				 * object versions.
+				 */
+  WS_VALUE_LIST *label_value_list;	/* label value list */
   void *version;		/* versioning information */
   LOCK lock;			/* object lock */
+  int mvcc_snapshot_version;	/* The snapshot version at the time mop object
+				 * is fetched and cached. Used only when MVCC
+				 * is enabled.
+				 */
 
   unsigned char pruning_type;	/* no pruning, prune as partitioned class,
 				 * prune as partition */
@@ -121,6 +145,13 @@ struct db_object
   unsigned is_temp:1;		/* set if template MOP (for triggers) */
   unsigned released:1;		/* set by code that knows that an instance can be released, used currently by the loader only */
   unsigned decached:1;		/* set if mop is decached by calling ws_decache function */
+  unsigned permanent_mvcc_link:1;	/* is set to true when new MVCC version is
+					 * committed. Updates done by current
+					 * transaction may be reverted, therefore
+					 * the mvcc link is not permanent. On
+					 * rollback, mvcc link is removed. On
+					 * commit mvcc link is made permanent.
+					 */
 };
 
 
@@ -318,7 +349,7 @@ typedef struct mop_iterator
      }                                                              \
   } while (0)
 
-#define WS_ISDIRTY(mop) ((mop)->dirty)
+#define WS_ISDIRTY(mop) (ws_is_dirty (mop))
 
 #define WS_SET_DIRTY(mop)            \
   do {                               \
@@ -337,14 +368,9 @@ typedef struct mop_iterator
     }                                \
   } while (0)
 
-#define WS_ISMARK_DELETED(mop) ((mop)->deleted)
-#define WS_MARKED_DELETED(mop) ((mop)->deleted)
+#define WS_IS_DELETED(mop) (ws_is_deleted(mop))
 
-#define WS_SET_DELETED(mop)          \
-  do {                               \
-    (mop)->deleted = 1;              \
-    WS_PUT_COMMIT_MOP(mop);          \
-  } while (0)
+#define WS_SET_DELETED(mop) (ws_set_deleted(mop))
 
 #define WS_ISVID(mop) ((mop)->is_vid)
 /*
@@ -382,7 +408,7 @@ typedef struct mop_iterator
  */
 
 #define WS_MOP_IS_NULL(mop)                                          \
-  (((mop == NULL) || WS_ISMARK_DELETED(mop) ||                       \
+  (((mop == NULL) || WS_IS_DELETED(mop) ||			     \
     (OID_ISNULL(&(mop)->oid_info.oid) && !(mop)->is_vid)) ? 1 : 0)
 
 /*
@@ -487,15 +513,16 @@ extern void ws_area_init (void);
 
 /* MOP allocation functions */
 extern MOP ws_mop (OID * oid, MOP class_mop);
+extern MOP ws_mvcc_updated_mop (OID * oid, OID * new_oid, MOP class_mop,
+				bool updated_by_me);
 extern MOP ws_vmop (MOP class_mop, int flags, DB_VALUE * keys);
 extern bool ws_rehash_vmop (MOP mop, MOBJ class_obj, DB_VALUE * newkey);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern MOP ws_new_mop (OID * oid, MOP class_mop);
 #endif
-extern void ws_perm_oid (MOP mop, OID * newoid);
-extern int ws_perm_oid_and_class (MOP mop, OID * new_oid,
-				  OID * new_class_oid);
-extern int ws_update_oid_and_class (MOP mop, OID * new_oid, OID * new_class);
+extern void ws_update_oid (MOP mop, OID * newoid);
+extern int ws_update_oid_and_class (MOP mop, OID * new_oid,
+				    OID * new_class_oid);
 extern DB_VALUE *ws_keys (MOP vid, unsigned int *flags);
 
 /* Reference mops */
@@ -523,6 +550,9 @@ extern void ws_gc_disable (void);
 
 /* Dirty list maintenance */
 extern void ws_dirty (MOP op);
+extern int ws_is_dirty (MOP mop);
+extern int ws_is_deleted (MOP mop);
+extern void ws_set_deleted (MOP mop);
 extern void ws_clean (MOP op);
 extern int ws_map_dirty (MAPFUNC function, void *args,
 			 bool reverse_dirty_link);
@@ -734,4 +764,16 @@ extern void ws_set_error_into_error_link (LC_COPYAREA_ONEOBJ * obj);
 extern WS_FLUSH_ERR *ws_get_error_from_error_link (void);
 extern void ws_clear_all_errors_of_error_link (void);
 extern void ws_free_flush_error (WS_FLUSH_ERR * flush_err);
+
+extern int ws_get_mvcc_snapshot_version (void);
+extern void ws_increment_mvcc_snapshot_version (void);
+extern bool ws_is_mop_fetched_with_current_snapshot (MOP mop);
+extern MOP ws_mvcc_latest_version (MOP mop);
+
+extern bool ws_is_same_object (MOP mop1, MOP mop2);
+extern void ws_move_label_value_list (MOP dest_mop, MOP src_mop);
+extern void ws_remove_label_value_from_mop (MOP mop, DB_VALUE * val);
+extern int ws_add_label_value_to_mop (MOP mop, DB_VALUE * val);
+extern void ws_clean_label_value_list (MOP mop);
+
 #endif /* _WORK_SPACE_H_ */

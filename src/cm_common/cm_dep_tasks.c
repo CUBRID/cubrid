@@ -46,6 +46,7 @@
 #include "cm_stat.h"
 #include "intl_support.h"
 #include "language_support.h"
+#include "system_parameter.h"
 
 extern int set_size (DB_COLLECTION * set);
 extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
@@ -260,7 +261,8 @@ _op_db_login (nvplist * out, nvplist * in, int ha_mode, char *_dbmt_error)
       return -1;
     }
 
-  db_set_isolation (TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE);
+  db_set_isolation (TRAN_READ_COMMITTED);
+
   db_set_lock_timeout (1);
 
   return 0;

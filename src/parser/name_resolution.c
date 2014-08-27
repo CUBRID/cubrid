@@ -45,6 +45,7 @@
 #include "transform.h"
 #include "execute_statement.h"
 #include "show_meta.h"
+#include "network_interface_cl.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -95,6 +96,13 @@ enum
 };
 
 static const char *CPTR_PT_NAME_IN_GROUP_HAVING = "name_in_group_having";
+
+typedef struct pt_bind_names_data_type PT_BIND_NAMES_DATA_TYPE;
+struct pt_bind_names_data_type
+{
+  PT_TYPE_ENUM type_enum;
+  PT_NODE *data_type;
+};
 
 static PT_NODE *pt_bind_parameter (PARSER_CONTEXT * parser,
 				   PT_NODE * parameter);
@@ -297,6 +305,14 @@ static void pt_resolve_group_having_alias_internal (PARSER_CONTEXT * parser,
 static PT_NODE *pt_resolve_group_having_alias (PARSER_CONTEXT * parser,
 					       PT_NODE * node,
 					       void *chk_parent,
+					       int *continue_walk);
+
+static PT_NODE *pt_resolve_star_reserved_names (PARSER_CONTEXT * parser,
+						PT_NODE * from);
+static PT_NODE *pt_bind_reserved_name (PARSER_CONTEXT * parser,
+				       PT_NODE * in_node, PT_NODE * spec);
+static PT_NODE *pt_set_reserved_name_key_type (PARSER_CONTEXT * parser,
+					       PT_NODE * node, void *arg,
 					       int *continue_walk);
 
 /*
@@ -615,6 +631,105 @@ pt_bind_parameter_path (PARSER_CONTEXT * parser, PT_NODE * path)
 
   return NULL;
 }				/* pt_bind_parameter_path */
+
+/*
+ * pt_bind_reserved_name () - Try to resolve name to one of the reserved names
+ *
+ * return	       : Resolved reserved name or NULL.
+ * parser (in)	       : Parser context.
+ * in_node (in)	       : Original name node.
+ * spec (in)	       : The spec to which the reserved name will belong.
+ *
+ * NOTE: Reserved names are allowed only if used in the context of a SELECT
+ *	 statement on a single table and having certain hints that unlock
+ *	 reserved names.
+ */
+static PT_NODE *
+pt_bind_reserved_name (PARSER_CONTEXT * parser, PT_NODE * in_node,
+		       PT_NODE * spec)
+{
+  int i = 0;
+  const char *name = NULL;
+  PT_NODE *reserved_name = NULL;
+
+  assert (in_node != NULL && spec != NULL);
+
+  /* get attribute name */
+  if (in_node->node_type == PT_NAME)
+    {
+      name = in_node->info.name.original;
+    }
+  else if (in_node->node_type == PT_DOT_)
+    {
+      /* we can only allow X.reserved_name where X is the name of spec */
+      if (in_node->info.dot.arg1->node_type != PT_NAME
+	  || pt_str_compare (in_node->info.dot.arg1->info.name.original,
+			     spec->info.spec.range_var->info.name.original,
+			     CASE_INSENSITIVE))
+	{
+	  return NULL;
+	}
+      if (in_node->info.dot.arg2->node_type != PT_NAME)
+	{
+	  return NULL;
+	}
+      name = in_node->info.dot.arg2->info.name.original;
+    }
+  else
+    {
+      /* not the scope of this function */
+      return NULL;
+    }
+
+  /* look for the name in reserved name table */
+  for (i = 0; i < RESERVED_ATTR_COUNT; i++)
+    {
+      if (!pt_str_compare
+	  (name, pt_Reserved_name_table[i].name, CASE_INSENSITIVE))
+	{
+	  /* the found reserved name should match the type of scan to which
+	   * the spec is flagged... otherwise it is a wrong name
+	   */
+	  if (!PT_CHECK_RESERVED_NAME_BIND (spec, i))
+	    {
+	      /* Unknown reserved name in current context */
+	      return NULL;
+	    }
+
+	  /* bind the reserved name */
+	  if (in_node->node_type == PT_NAME)
+	    {
+	      reserved_name = in_node;
+	    }
+	  else			/* PT_DOT_ */
+	    {
+	      reserved_name = in_node->info.dot.arg2;
+	      in_node->info.dot.arg2 = NULL;
+	      PT_NODE_MOVE_NUMBER_OUTERLINK (reserved_name, in_node);
+	      parser_free_tree (parser, in_node);
+	    }
+	  reserved_name->info.name.spec_id = spec->info.spec.id;
+	  reserved_name->info.name.resolved =
+	    spec->info.spec.range_var->info.name.original;
+	  reserved_name->info.name.meta_class = PT_RESERVED;
+	  reserved_name->info.name.reserved_id = i;
+	  reserved_name->type_enum =
+	    pt_db_to_type_enum (pt_Reserved_name_table[i].type);
+	  if (reserved_name->type_enum == PT_TYPE_OBJECT)
+	    {
+	      reserved_name->data_type =
+		pt_domain_to_data_type
+		(parser,
+		 tp_domain_resolve (pt_Reserved_name_table[i].type,
+				    spec->info.spec.entity_name->info.name.
+				    db_object, 0, 0, NULL, 0));
+	    }
+	  return reserved_name;
+	}
+    }
+  /* this is not a reserved name */
+  return NULL;
+}
 
 /*
  * pt_bind_name_or_path_in_scope() - tries to resolve in_node using all the
@@ -1423,6 +1538,78 @@ pt_bind_names_post (PARSER_CONTEXT * parser,
       pt_mark_function_index_expression (parser, node, bind_arg);
       break;
 
+    case PT_SELECT:
+      if (node->info.query.q.select.from != NULL
+	  && PT_SPEC_SPECIAL_INDEX_SCAN (node->info.query.q.select.from))
+	{
+	  /* This is a hack to determine type for index key attributes which
+	   * may be different index. Obtain index info and update type_enum
+	   * and data type for all references to index keys.
+	   */
+	  PT_NODE *spec = node->info.query.q.select.from;
+	  DB_OBJECT *obj = spec->info.spec.entity_name->info.name.db_object;
+	  PT_NODE *index = node->info.query.q.select.using_index;
+	  SM_CLASS *class_ = NULL;
+	  SM_CLASS_CONSTRAINT *cons = NULL;
+	  TP_DOMAIN *key_domain;
+	  PT_BIND_NAMES_DATA_TYPE key_type;
+
+	  /* Get class object */
+	  if (au_fetch_class_force (obj, &class_, AU_FETCH_READ) != NO_ERROR)
+	    {
+	      PT_INTERNAL_ERROR (parser, "Error obtaining SM_CLASS");
+	      parser_free_tree (parser, node);
+	      return NULL;
+	    }
+	  /* Get index */
+	  cons =
+	    classobj_find_class_index (class_, index->info.name.original);
+	  if (cons == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser,
+				 "Hint argument should be the name of a"
+				 "valid index");
+	      parser_free_tree (parser, node);
+	      return NULL;
+	    }
+	  /* Get key type for index */
+	  if (btree_get_index_key_type (cons->index_btid, &key_domain)
+	      != NO_ERROR)
+	    {
+	      PT_INTERNAL_ERROR (parser, "Error obtaining index key type");
+	      parser_free_tree (parser, node);
+	      return NULL;
+	    }
+
+	  if (key_domain == NULL)
+	    {
+	      /* do nothing */
+	      return node;
+	    }
+
+	  /* Generate one data_type sample */
+	  key_type.type_enum =
+	    pt_db_to_type_enum (TP_DOMAIN_TYPE (key_domain));
+	  key_type.data_type = pt_domain_to_data_type (parser, key_domain);
+	  if (key_type.data_type == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      parser_free_tree (parser, node);
+	      return NULL;
+	    }
+
+	  /* Walk parse tree and change type enum for all RESERVED_KEY_KEY
+	   * name nodes.
+	   */
+	  node =
+	    parser_walk_tree (parser, node, pt_set_reserved_name_key_type,
+			      &key_type, NULL, NULL);
+
+	  parser_free_tree (parser, key_type.data_type);
+	}
+      break;
+
     default:
       break;
     }
@@ -1780,6 +1967,72 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  goto select_end;
 	}
 
+      /* 0-step: check for hints that can affect name resolving. some hints
+       * are supposed to change the result type by obtaining record
+       * information or page header information and so on. In these cases,
+       * names will be resolved to a set of reserved names for each type
+       * of results. The query spec must be marked accordingly.
+       * NOTE: These hints can be applied on single-spec queries. If this is a
+       * joined-spec query, just ignore the hints.
+       */
+      if (node->info.query.q.select.from != NULL
+	  && node->info.query.q.select.from->next == NULL)
+	{
+	  if (node->info.query.q.select.hint & PT_HINT_SELECT_RECORD_INFO)
+	    {
+	      /* mark spec to scan for record info */
+	      node->info.query.q.select.from->info.spec.flag |=
+		PT_SPEC_FLAG_RECORD_INFO_SCAN;
+	    }
+	  else if (node->info.query.q.select.hint & PT_HINT_SELECT_PAGE_INFO)
+	    {
+	      /* mark spec to scan for heap page headers */
+	      node->info.query.q.select.from->info.spec.flag |=
+		PT_SPEC_FLAG_PAGE_INFO_SCAN;
+	    }
+	  else if (node->info.query.q.select.hint & PT_HINT_SELECT_KEY_INFO)
+	    {
+	      PT_NODE *using_index = node->info.query.q.select.using_index;
+	      if (using_index == NULL || !PT_IS_NAME_NODE (using_index))
+		{
+		  assert (0);
+		  PT_INTERNAL_ERROR (parser,
+				     "Invalid usage of SELECT_KEY_INFO hint");
+		  parser_free_tree (parser, node);
+		  node = NULL;
+		  goto select_end;
+		}
+	      /* using_index is just a name, mark as index name */
+	      using_index->info.name.meta_class = PT_INDEX_NAME;
+	      using_index->etc = (void *) PT_IDX_HINT_FORCE;
+
+	      /* mark spec to scan for index key info */
+	      node->info.query.q.select.from->info.spec.flag |=
+		PT_SPEC_FLAG_KEY_INFO_SCAN;
+	    }
+	  else if (node->info.query.q.select.hint
+		   & PT_HINT_SELECT_BTREE_NODE_INFO)
+	    {
+	      PT_NODE *using_index = node->info.query.q.select.using_index;
+	      if (using_index == NULL || !PT_IS_NAME_NODE (using_index))
+		{
+		  assert (0);
+		  PT_INTERNAL_ERROR (parser,
+				     "Invalid usage of SELECT_KEY_INFO hint");
+		  parser_free_tree (parser, node);
+		  node = NULL;
+		  goto select_end;
+		}
+	      /* using_index is just a name, mark as index name */
+	      using_index->info.name.meta_class = PT_INDEX_NAME;
+	      using_index->etc = (void *) PT_IDX_HINT_FORCE;
+
+	      /* mark spec to scan for index key info */
+	      node->info.query.q.select.from->info.spec.flag |=
+		PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN;
+	    }
+	}
+
       /* resolve '*' for rewritten multicolumn subquery during parsing
        * STEP 1: remove sequence from select_list
        * STEP 2: resolve '*', if exists
@@ -1811,8 +2064,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      parser_free_node (parser, node->info.query.q.select.list);
 
 	      node->info.query.q.select.list =
-		pt_resolve_star (parser,
-				 node->info.query.q.select.from, NULL);
+		pt_resolve_star (parser, node->info.query.q.select.from,
+				 NULL);
+
 	      if (next != NULL)
 		{
 		  parser_append_node (next, node->info.query.q.select.list);
@@ -4113,6 +4367,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
     case PT_TYPE_SET:
     case PT_TYPE_SEQUENCE:
     case PT_TYPE_MULTISET:
+    case PT_TYPE_MIDXKEY:
       /* set of what? */
       dom = (DB_DOMAIN *) db_domain_set (domain);
       /* make list of types in set */
@@ -4769,10 +5024,28 @@ pt_get_resolution (PARSER_CONTEXT * parser,
   PT_NODE *exposed_spec, *spec, *savespec, *arg1, *arg2, *arg1_name;
   PT_NODE *unique_entity, *path_correlation;
   PT_NODE *temp, *chk_parent = NULL;
+  PT_NODE *reserved_name = NULL;
 
   if (!in_node)
     {
       return NULL;
+    }
+
+  if (PT_SHOULD_BIND_RESERVED_NAME (scope))
+    {
+      /* Attempt to bind to reserved name */
+      /* If scope should bind for record information, binding to table
+       * attribute is also allowed, so shouldn't stop if binding to reserved
+       * names fails.
+       */
+      reserved_name = pt_bind_reserved_name (parser, in_node, scope);
+      if (!PT_IS_SPEC_FLAG_SET (scope, PT_SPEC_FLAG_RECORD_INFO_SCAN)
+	  || reserved_name != NULL)
+	{
+	  return reserved_name;
+	}
+      /* Couldn't bind to record info, attempt to bind to table attributes */
+      /* Fall through */
     }
 
   if (in_node->node_type == PT_NAME)
@@ -6333,6 +6606,77 @@ pt_object_to_data_type (PARSER_CONTEXT * parser, PT_NODE * class_list)
 }
 
 /*
+ * pt_resolve_star_reserved_names () - Resolves '*' value in select list
+ *				       when a hint that activates reserved
+ *				       names is used.
+ *
+ * return      : List of reserved names.
+ * parser (in) : Parser context.
+ * from (in)   : Query spec.
+ *
+ * NOTE: The reserved names depend on the scan type flag on from node.
+ */
+static PT_NODE *
+pt_resolve_star_reserved_names (PARSER_CONTEXT * parser, PT_NODE * from)
+{
+  PT_NODE *reserved_names = NULL;
+  PT_NODE *new_name = NULL;
+  int i, start, end;
+  PT_RESERVED_NAME_TYPE reserved_name_type;
+
+  if (parser == NULL && from == NULL || from->node_type != PT_SPEC)
+    {
+      assert (0);
+      return NULL;
+    }
+
+  reserved_name_type = PT_SPEC_GET_RESERVED_NAME_TYPE (from);
+  if (reserved_name_type == RESERVED_NAME_INVALID)
+    {
+      assert (0);
+      return NULL;
+    }
+
+  PT_GET_RESERVED_NAME_FIRST_AND_LAST (reserved_name_type, start, end);
+
+  for (i = start; i <= end; i++)
+    {
+      /* create a new node for each reserved name */
+      new_name = pt_name (parser, pt_Reserved_name_table[i].name);
+      if (new_name == NULL)
+	{
+	  PT_ERRORm (parser, from, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  parser_free_tree (parser, reserved_names);
+	  return NULL;
+	}
+      /* mark the node as reserved */
+      new_name->info.name.meta_class = PT_RESERVED;
+      new_name->info.name.reserved_id = pt_Reserved_name_table[i].id;
+      /* resolve name */
+      new_name->info.name.spec_id = from->info.spec.id;
+      new_name->info.name.resolved =
+	from->info.spec.range_var->info.name.original;
+      /* set type enum to the expected type */
+      new_name->type_enum =
+	pt_db_to_type_enum (pt_Reserved_name_table[i].type);
+      if (new_name->type_enum == DB_TYPE_OBJECT)
+	{
+	  new_name->data_type =
+	    pt_domain_to_data_type
+	    (parser,
+	     tp_domain_resolve (pt_Reserved_name_table[i].type,
+				from->info.spec.entity_name->info.name.
+				db_object, 0, 0, NULL, 0));
+	}
+      /* append to name list */
+      reserved_names = parser_append_node (new_name, reserved_names);
+    }
+  /* return reserved name list */
+  return reserved_names;
+}
+
+/*
  * pt_resolve_star () - resolve the '*' as in a query
  *      Replace the star with an equivalent list x.a, x.b, y.a, y.d ...
  *   return:
@@ -6351,6 +6695,12 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
   PT_NODE *flat_list, *derived_table;
   PT_NODE *flat, *spec_att, *class_att, *attr_name, *range, *result = NULL;
   PT_NODE *spec = from;
+
+  if (PT_SHOULD_BIND_RESERVED_NAME (from))
+    {
+      return pt_resolve_star_reserved_names (parser, from);
+    }
+
   while (spec)
     {
       if (attr)
@@ -9465,4 +9815,41 @@ pt_resolve_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec,
     }
 
   return spec;
+}
+
+/*
+ * pt_set_reserved_name_key_type () - When scanning for index key and node
+ *				      info, keys are selected from index.
+ *				      This function is supposed to resolve
+ *				      data type for such attributes.
+ *
+ * return	      : Original node with updated type_enum. 
+ * parser (in)	      : Parser context.
+ * node (in)	      : Parse tree node.
+ * arg (in)	      : Index key data type.
+ * continue_walk (in) : Continue walk.
+ */
+static PT_NODE *
+pt_set_reserved_name_key_type (PARSER_CONTEXT * parser, PT_NODE * node,
+			       void *arg, int *continue_walk)
+{
+  PT_BIND_NAMES_DATA_TYPE *key_type = (PT_BIND_NAMES_DATA_TYPE *) arg;
+
+  if (node != NULL && node->node_type == PT_NAME
+      && node->info.name.meta_class == PT_RESERVED
+      && (node->info.name.reserved_id == RESERVED_KEY_KEY
+	  || node->info.name.reserved_id == RESERVED_BT_NODE_FIRST_KEY
+	  || node->info.name.reserved_id == RESERVED_BT_NODE_LAST_KEY))
+    {
+      /* Set key type */
+      node->data_type = parser_copy_tree_list (parser, key_type->data_type);
+      if (node->data_type == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  *continue_walk = PT_STOP_WALK;
+	}
+      node->type_enum = key_type->type_enum;
+    }
+  return node;
 }

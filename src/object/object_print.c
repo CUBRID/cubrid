@@ -2703,7 +2703,7 @@ help_obj (MOP op)
       if (error == NO_ERROR)
 	{
 	  pin = ws_pin (op, 1);
-	  error = au_fetch_class (op->class_mop, &class_, AU_FETCH_READ,
+	  error = au_fetch_class (ws_class_mop (op), &class_, AU_FETCH_READ,
 				  AU_SELECT);
 	  if (error == NO_ERROR)
 	    {
@@ -3072,7 +3072,8 @@ help_class_names (const char *qualifier)
 	  for (i = 0, m = mops; i < count; i++, m = m->next)
 	    {
 	      owner = db_get_owner (m->op);
-	      if (!requested_owner || requested_owner == owner)
+	      if (!requested_owner
+		  || ws_is_same_object (requested_owner, owner))
 		{
 		  cname = db_get_class_name (m->op);
 		  buffer[0] = '\0';
@@ -3308,7 +3309,7 @@ help_fprint_all_classes (FILE * fp)
 	{
 	  for (i = 0; i < lmops->num; i++)
 	    {
-	      if (!WS_MARKED_DELETED (lmops->mops[i]))
+	      if (!WS_IS_DELETED (lmops->mops[i]))
 		{
 		  help_fprint_obj (fp, lmops->mops[i]);
 		}
@@ -3341,8 +3342,10 @@ help_fprint_resident_instances (FILE * fp, MOP op)
 
   if (locator_is_class (op, DB_FETCH_QUERY_READ))
     {
-      if (!WS_MARKED_DELETED (op))
-	classmop = op;
+      if (!WS_IS_DELETED (op))
+	{
+	  classmop = op;
+	}
     }
   else
     {
@@ -3360,7 +3363,7 @@ help_fprint_resident_instances (FILE * fp, MOP op)
 	{
 	  for (i = 0; i < lmops->num; i++)
 	    {
-	      if (!WS_MARKED_DELETED (lmops->mops[i]))
+	      if (!WS_IS_DELETED (lmops->mops[i]))
 		{
 		  help_fprint_obj (fp, lmops->mops[i]);
 		}

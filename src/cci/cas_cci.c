@@ -5476,16 +5476,10 @@ dbg_isolation_str (T_CCI_TRAN_ISOLATION isol_level)
 {
   switch (isol_level)
     {
-    case TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE:
-      return "TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE";
-    case TRAN_COMMIT_CLASS_COMMIT_INSTANCE:
-      return "TRAN_COMMIT_CLASS_COMMIT_INSTANCE";
-    case TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
-      return "TRAN_REP_CLASS_UNCOMMIT_INSTANCE";
-    case TRAN_REP_CLASS_COMMIT_INSTANCE:
-      return "TRAN_REP_CLASS_COMMIT_INSTANCE";
-    case TRAN_REP_CLASS_REP_INSTANCE:
-      return "TRAN_REP_CLASS_REP_INSTANCE";
+    case TRAN_READ_COMMITTED:
+      return "TRAN_READ_COMMITTED";
+    case TRAN_REPEATABLE_READ:
+      return "TRAN_REPEATABLE_READ";
     case TRAN_SERIALIZABLE:
       return "TRAN_SERIALIZABLE";
     default:
@@ -5793,31 +5787,24 @@ cci_property_get_bool (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
 static T_CCI_TRAN_ISOLATION
 cci_property_conv_isolation (const char *isolation)
 {
-  if (strcasecmp (isolation, "TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE") == 0)
+  if (strcasecmp (isolation, "TRAN_READ_COMMITTED") == 0
+      || strcasecmp (isolation, "TRAN_REP_CLASS_COMMIT_INSTANCE") == 0)
     {
-      return TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE;
+      return TRAN_READ_COMMITTED;
     }
-  else if (strcasecmp (isolation, "TRAN_COMMIT_CLASS_COMMIT_INSTANCE") == 0)
+  else if (strcasecmp (isolation, "TRAN_REPEATABLE_READ") == 0
+	   || strcasecmp (isolation, "TRAN_REP_CLASS_REP_INSTANCE") == 0)
     {
-      return TRAN_COMMIT_CLASS_COMMIT_INSTANCE;
-    }
-  else if (strcasecmp (isolation, "TRAN_REP_CLASS_UNCOMMIT_INSTANCE") == 0)
-    {
-      return TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
-    }
-  else if (strcasecmp (isolation, "TRAN_REP_CLASS_COMMIT_INSTANCE") == 0)
-    {
-      return TRAN_REP_CLASS_COMMIT_INSTANCE;
-    }
-  else if (strcasecmp (isolation, "TRAN_REP_CLASS_REP_INSTANCE") == 0)
-    {
-      return TRAN_REP_CLASS_REP_INSTANCE;
+      return TRAN_REPEATABLE_READ;
     }
   else if (strcasecmp (isolation, "TRAN_SERIALIZABLE") == 0)
     {
       return TRAN_SERIALIZABLE;
     }
-  return TRAN_ISOLATION_MAX + 1;
+  else
+    {
+      return TRAN_UNKNOWN_ISOLATION;
+    }
 }
 
 static bool
@@ -5841,7 +5828,7 @@ cci_property_get_isolation (T_CCI_PROPERTIES * prop,
   else
     {
       T_CCI_TRAN_ISOLATION i = cci_property_conv_isolation (tmp);
-      if (i > TRAN_ISOLATION_MAX)
+      if (i == TRAN_UNKNOWN_ISOLATION)
 	{
 	  set_error_buffer (err_buf, CCI_ER_INVALID_PROPERTY_VALUE,
 			    "isolation parsing : %s", tmp);

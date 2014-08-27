@@ -50,6 +50,7 @@
 #include "query_manager.h"
 #include "api_compat.h"
 #include "network_interface_cl.h"
+#include "transaction_cl.h"
 
 #define BUF_SIZE 1024
 
@@ -1378,7 +1379,6 @@ db_is_output_marker (DB_MARKER * marker)
 
   return result;
 }
-
 
 /*
  * db_get_query_type_list() - This function returns a type list that describes
@@ -3116,6 +3116,8 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx,
 
   err = db_execute_and_keep_statement_local (session, stmt_ndx, result);
 
+  db_invalidate_mvcc_snapshot_after_statement ();
+
   return err;
 }
 
@@ -3174,6 +3176,9 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx,
  * session(in) : contains the SQL query that has been compiled
  * stmt(in) : int returned by a successful compilation
  * result(out): query results descriptor
+ *
+ * NOTE: db_execute_statement should be used only as entry point for statement
+ *	 execution. Otherwise, db_execute_statement_local should be used.
  */
 int
 db_execute_statement (DB_SESSION * session, int stmt_ndx,
@@ -3184,7 +3189,204 @@ db_execute_statement (DB_SESSION * session, int stmt_ndx,
   CHECK_CONNECT_MINUSONE ();
 
   err = db_execute_statement_local (session, stmt_ndx, result);
+
+  db_invalidate_mvcc_snapshot_after_statement ();
+
   return err;
+}
+
+/*
+ * db_open_buffer_and_compile_first_statement () - The function will open
+ *						   buffer for SQL query string
+ *						   and will compile the first
+ *						   statement in the list.
+ *
+ * return		 : Error code.
+ * CSQL_query (in)	 : SQL query string.
+ * query_error (in)	 : Saved query error for output.
+ * include_oid (in)	 : Include OID mode.
+ * session (out)	 : Generated session.
+ * stmt_no (out)	 : Compiled statement number.
+ */
+int
+db_open_buffer_and_compile_first_statement (const char *CSQL_query,
+					    DB_QUERY_ERROR * query_error,
+					    int include_oid,
+					    DB_SESSION ** session,
+					    int *stmt_no)
+{
+  int error = NO_ERROR;
+  DB_SESSION_ERROR *errs;
+
+  CHECK_CONNECT_ERROR ();
+
+  /* Open buffer and generate session */
+  *session = db_open_buffer_local (CSQL_query);
+  if (*session == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return (er_errid ());
+    }
+
+  /* Compile the statement */
+  db_include_oid (*session, include_oid);
+  *stmt_no = db_compile_statement_local (*session);
+
+  errs = db_get_errors (*session);
+  if (errs != NULL)
+    {
+      int line, col;
+
+      (void) db_get_next_error (errs, &line, &col);
+
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (query_error)
+	{
+	  query_error->err_lineno = line;
+	  query_error->err_posno = col;
+	}
+    }
+
+  if (*stmt_no < 0 || error < 0)
+    {
+      db_close_session_local (*session);
+      *session = NULL;
+      assert (er_errid () != NO_ERROR);
+      return (er_errid ());
+    }
+
+  return error;
+}
+
+/*
+ * db_compile_and_execute_local () - Default compile and execute for local
+ *				     calls. See description for
+ *				     db_compile_and_execute_queries_internal.
+ *
+ * return	     : Error code.
+ * CSQL_query (in)   : SQL query string.
+ * result (out)	     : Statements results.
+ * query_error (out) : Saved query error for output.
+ *
+ * NOTE: Do not call this function as statement execution entry point. It is
+ *	 targeted for internal execution calls only!.
+ */
+int
+db_compile_and_execute_local (const char *CSQL_query, void *result,
+			      DB_QUERY_ERROR * query_error)
+{
+  /* Default local compile & execute statements will use:
+   * - No oids for include OID mode.
+   * - True for execution, not compile only.
+   * - Synchronous execution.
+   * - This is called during other statement execution, so false for new
+   *   statements.
+   */
+  return db_compile_and_execute_queries_internal (CSQL_query, result,
+						  query_error, DB_NO_OIDS, 1,
+						  SYNC_EXEC, false);
+}
+
+/*
+ * db_compile_and_execute_queries_internal () - Compiles CSQL_query, executes
+ *						all statements and returns
+ *						results.
+ *
+ * return		 : Error code.
+ * CSQL_query (in)	 : SQL query string.
+ * result (out)		 : Statements results.
+ * query_error (out)	 : Saved query error for output.
+ * include_oid (in)	 : Include OID mode.
+ * execute (in)		 : True if query should also be executed. If argument
+ *			   is false, it will only be compiled.
+ * exec_mode (in)	 : Synchronous/Asynchronous execution mode.
+ * is_new_statement (in) : True these are new statements. If false they are
+ *			   considered as sub-execution for another statement.
+ *
+ * NOTE: If executed statements are not part of another statement execution,
+ *	 before compiling each statement, the snapshot for current transaction
+ *	 must be invalidated.
+ */
+int
+db_compile_and_execute_queries_internal (const char *CSQL_query,
+					 void *result,
+					 DB_QUERY_ERROR * query_error,
+					 int include_oid, int execute,
+					 QUERY_EXEC_MODE exec_mode,
+					 bool is_new_statement)
+{
+  int error;			/* return code from funcs */
+  int stmt_no;			/* compiled stmt number */
+  DB_SESSION *session = NULL;
+
+  if (result)
+    {
+      /* Initialize result */
+      *(char **) result = NULL;
+    }
+
+  /* Open buffer and compile first statement */
+  error =
+    db_open_buffer_and_compile_first_statement (CSQL_query, query_error,
+						include_oid, &session,
+						&stmt_no);
+  if (session == NULL)
+    {
+      /* In case of error, the session is freed */
+      return error;
+    }
+
+#if defined(CS_MODE)
+  /* Pass exec_mode (used for Streaming (asynchronous) queries */
+  db_set_sync_flag (session, exec_mode);
+#else
+  /*
+   * In standalone mode, only synchronous queries are supported because there
+   * is no thread support in the standalone case.
+   */
+  db_set_sync_flag (session, SYNC_EXEC);
+#endif /* CS_MODE */
+
+  if (execute)
+    {
+      /* Execute query and compile next one as long as there are statements
+       * left.
+       */
+      while (stmt_no > 0)
+	{
+	  /* Execute current query */
+	  error =
+	    db_execute_statement_local (session, stmt_no,
+					(DB_QUERY_RESULT **) result);
+	  if (error < 0)
+	    {
+	      break;
+	    }
+	  /* Need to compile and execute next query. Make sure that current
+	   * MVCC Snapshot is invalidated for READ COMMITTED isolation.
+	   */
+	  if (is_new_statement)
+	    {
+	      db_invalidate_mvcc_snapshot_after_statement ();
+	    }
+	  /* Compile a new statement */
+	  stmt_no = db_compile_statement_local (session);
+	}
+    }
+  else if (result)
+    {
+      /* Save query types as result */
+      *(DB_QUERY_TYPE **) result = db_get_query_type_list (session, stmt_no);
+      if (is_new_statement)
+	{
+	  db_invalidate_mvcc_snapshot_after_statement ();
+	}
+    }
+
+  db_close_session_local (session);
+
+  return error;
 }
 
 /*
@@ -3364,8 +3566,8 @@ db_get_all_chosen_classes (int (*p) (MOBJ o))
 	  for (i = 0; i < lmops->num; i++)
 	    {
 	      /* is it necessary to have this check ? */
-	      if (!WS_MARKED_DELETED (lmops->mops[i]) &&
-		  lmops->mops[i] != sm_Root_class_mop)
+	      if (!WS_IS_DELETED (lmops->mops[i])
+		  && lmops->mops[i] != sm_Root_class_mop)
 		{
 		  /* should have a ext_ append function */
 		  new_ = ml_ext_alloc_link ();
@@ -3657,7 +3859,7 @@ db_validate (DB_OBJECT * vc)
 	  attributes = db_attribute_next (attributes);
 	}
 
-      retval = db_query_execute (bufp, &result, NULL);
+      retval = db_compile_and_execute_local (bufp, &result, NULL);
       if (result)
 	{
 	  db_query_end (result);
@@ -3919,4 +4121,46 @@ db_is_query_async_executable (DB_SESSION * session, int stmt_ndx)
 
   return !sync;
 #endif
+}
+
+/*
+ * db_invalidate_mvcc_snapshot_after_statement () - When MVCC is enabled,
+ *						    server uses a snapshot to
+ *						    filter data. Snapshot is
+ *						    obtained with the first
+ *						    fetch or execution on
+ *						    server and should be
+ *						    invalidated before
+ *						    executing a new statement.
+ *
+ * return : Void.
+ *
+ * NOTE: When Repeatable Reads and Serializable Isolation are implemented for
+ *	 MVCC, snapshot must be invalidated only on commit/rollback.
+ */
+void
+db_invalidate_mvcc_snapshot_after_statement (void)
+{
+  if (!prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+    {
+      /* Snapshot is used only if MVCC is enabled */
+      return;
+    }
+
+  if (TM_TRAN_ISOLATION () >= TRAN_REPEATABLE_READ)
+    {
+      /* Do not invalidate snapshot after each statement */
+      return;
+    }
+
+  /* TODO: Avoid doing a new request on server now. Find an alternative
+   *       way by saving invalidated snapshot on client and use first request
+   *       in next statement execution to invalidate on server.
+   */
+
+  /* Invalidate snapshot on server */
+  log_invalidate_mvcc_snapshot ();
+
+  /* Increment snapshot version in work space */
+  ws_increment_mvcc_snapshot_version ();
 }

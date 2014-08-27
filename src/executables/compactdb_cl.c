@@ -1232,7 +1232,8 @@ compactdb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      status = db_set_isolation (TRAN_REP_CLASS_UNCOMMIT_INSTANCE);
+      status = db_set_isolation (TRAN_DEFAULT_ISOLATION_LEVEL ());
+
       if (status == NO_ERROR)
 	{
 	  if (class_lock_timeout > 0)
@@ -1248,7 +1249,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 				    maximum_processed_space,
 				    instance_lock_timeout,
 				    class_lock_timeout,
-				    TRAN_REP_CLASS_UNCOMMIT_INSTANCE);
+				    TRAN_DEFAULT_ISOLATION_LEVEL ());
 
 	  if (status == ER_FAILED)
 	    {

@@ -81,6 +81,14 @@ typedef enum
   BTREE_ALL_KEYS_LOCKED
 } BTREE_LOCKED_KEYS;
 
+/* B+tree node types */
+typedef enum
+{
+  BTREE_LEAF_NODE = 0,
+  BTREE_NON_LEAF_NODE,
+  BTREE_OVERFLOW_NODE
+} BTREE_NODE_TYPE;
+
 #define BTREE_IS_PRIMARY_KEY(unique_pk) ((unique_pk) & BTREE_CONSTRAINT_PRIMARY_KEY)
 #define BTREE_IS_UNIQUE(unique_pk)  ((unique_pk) & BTREE_CONSTRAINT_UNIQUE)
 #define BTREE_IS_PART_KEY_DESC(btid) ((btid)->part_key_desc == true)
@@ -204,6 +212,7 @@ struct btree_scan
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
     (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
+    (bts)->clear_cur_key = false;			\
   } while (0)
 
 #define BTREE_END_OF_SCAN(bts) \
@@ -244,7 +253,139 @@ struct btree_capacity
   float avg_pg_free_sp;		/* Average page free space */
 };
 
+/*
+ * B-tree node scan section
+ */
+
+/* Structure used to queue b-tree nodes on index node info scan */
+typedef struct btree_node_scan_queue_item BTREE_NODE_SCAN_QUEUE_ITEM;
+struct btree_node_scan_queue_item
+{
+  VPID crt_vpid;		/* VPID for current node */
+  BTREE_NODE_SCAN_QUEUE_ITEM *next;	/* Next node */
+};
+
+/* Structure used for index node info scan */
+typedef struct btree_node_scan BTREE_NODE_SCAN;
+struct btree_node_scan
+{
+  BTID_INT btid_int;		/* index btid_int structure */
+  VPID crt_vpid;		/* VPID for current node */
+  PAGE_PTR crt_page;		/* Current node PAGE_PTR */
+  bool first_call;		/* First call for node info scan */
+
+  BTREE_NODE_SCAN_QUEUE_ITEM *queue_head;	/* B-tree node queue head */
+  BTREE_NODE_SCAN_QUEUE_ITEM *queue_tail;	/* B-tree node queue tail */
+};
+
+/* Initialize BTREE_NODE_SCAN stucture for node info scan */
+#define BTREE_NODE_SCAN_INIT(bns) \
+  do \
+    { \
+      VPID_SET_NULL (&(bns)->crt_vpid); \
+      (bns)->crt_page = NULL; \
+      (bns)->queue_head = (bns)->queue_tail = NULL; \
+      (bns)->first_call = true; \
+    } \
+  while (0)
+
+/* Add new item to b-tree node queue */
+#define BTREE_NODE_SCAN_ADD_PAGE_TO_QUEUE(bns, node)	\
+  if ((bns)->queue_tail == NULL)			\
+    {							\
+      (bns)->queue_head = (bns)->queue_tail = node;	\
+    }							\
+  else							\
+    {							\
+      (bns)->queue_tail->next = node;			\
+      (bns)->queue_tail = node;				\
+    }
+
+/* Pop first item from b-tree node queue */
+#define BTREE_NODE_SCAN_POP_PAGE_FROM_QUEUE(bns, node)	\
+  if ((bns)->queue_head == NULL)			\
+    {							\
+      node = NULL;					\
+    }							\
+  else							\
+    {							\
+      if ((bns)->queue_head == (bns)->queue_tail)	\
+	{						\
+	  /* Only one item in queue */			\
+	  node = (bns)->queue_head;			\
+	  (bns)->queue_tail = NULL;			\
+	  (bns)->queue_head = NULL;			\
+	}						\
+      else						\
+	{						\
+	  node = (bns)->queue_head;			\
+	  (bns)->queue_head = node->next;		\
+	  node->next = NULL;				\
+	}						\
+    }
+
+/* Check if b-tree node queue is empty */
+#define BTREE_NODE_SCAN_IS_QUEUE_EMPTY(bns) ((bns)->queue_head == NULL)
+
 #define DBVAL_BUFSIZE   4096
+
+#define BTREE_INIT_MVCC_HEADER(p_mvcc_rec_header) \
+  do \
+    { \
+      MVCC_SET_FLAG (p_mvcc_rec_header, 0); \
+      MVCC_SET_INSID (p_mvcc_rec_header, MVCCID_NULL); \
+      MVCC_SET_DELID (p_mvcc_rec_header, MVCCID_NULL); \
+      MVCC_SET_REPID (p_mvcc_rec_header, 0); \
+      MVCC_SET_NEXT_VERSION (p_mvcc_rec_header, &oid_Null_oid); \
+    } \
+  while (0)
+
+/* When MVCC is enabled, btree_delete/btree_insert functionality are extended
+ * to do additional types of action. Depending on the context, an object can
+ * be added or removed, delete MVCCID can be added/removed or insert MVCCID
+ * can be removed.
+ */
+typedef enum mvcc_btree_op_purpose MVCC_BTREE_OP_PURPOSE;
+enum mvcc_btree_op_purpose
+{
+  MVCC_BTREE_NON_MVCC_OP,	/* Not an MVCC operation */
+  MVCC_BTREE_VACUUM_OBJECT,	/* All object info is removed from b-tree.
+				 * It is called by vacuum when the object
+				 * becomes completely invisible.
+				 */
+  MVCC_BTREE_VACUUM_INSID,	/* Remove only insert MVCCID for an object in
+				 * b-tree. It is called by vacuum when the
+				 * object becomes visible to all running
+				 * transactions.
+				 */
+  MVCC_BTREE_DELETE_DELID,	/* Remove only delete MVCCID for an object in
+				 * b-tree. It is called when object deletion
+				 * is roll-backed.
+				 */
+  MVCC_BTREE_DELETE_OBJECT,	/* Physically delete an object from b-tree
+				 * when MVCC is enabled.
+				 */
+  MVCC_BTREE_INSERT_OBJECT,	/* Insert a new object into b-tree along with
+				 * its insert MVCCID.
+				 */
+  MVCC_BTREE_INSERT_DELID,	/* Insert delete MVCCID for object when
+				 * deleted.
+				 */
+  MVCC_BTREE_RELOCATE_OBJ_AND_MVCC_INFO	/* Relocate the object and its
+					 * MVCC info.
+					 */
+};
+
+/* MVCC_BTREE_OP_ARGUMENTS - Structure used to pass arguments relevant for
+ *				 MVCC to btree_delete function.
+ */
+typedef struct mvcc_btree_op_arguments MVCC_BTREE_OP_ARGUMENTS;
+struct mvcc_btree_op_arguments
+{
+  MVCC_BTREE_OP_PURPOSE purpose;	/* The purpose of b-tree op call */
+  MVCCID insert_mvccid;
+  MVCCID delete_mvccid;
+};
 
 extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid,
 				   DB_VALUE * key, OID * class_oid);
@@ -256,6 +397,10 @@ extern int xbtree_get_unique_pk (THREAD_ENTRY * thread_p, BTID * btid);
 extern int btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid,
 					int *oid_cnt, int *null_cnt,
 					int *key_cnt);
+extern int btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p,
+						  BTID * btid, int *oid_cnt,
+						  int *null_cnt,
+						  int *key_cnt);
 
 extern int btree_get_stats (THREAD_ENTRY * thread_p,
 			    BTREE_STATS * stat_info_p, bool with_fullscan);
@@ -289,29 +434,18 @@ extern DB_VALUE *btree_delete (THREAD_ENTRY * thread_p, BTID * btid,
 			       DB_VALUE * key, OID * cls_oid, OID * oid,
 			       BTREE_LOCKED_KEYS locked_keys, int *unique,
 			       int op_type,
-			       BTREE_UNIQUE_STATS * unique_stat_info);
-extern DB_VALUE *btree_insert (THREAD_ENTRY * thread_p, BTID * btid,
-			       DB_VALUE * key, OID * cls_oid, OID * oid,
-			       int op_type,
 			       BTREE_UNIQUE_STATS * unique_stat_info,
-			       int *pkyn);
-			      /* ejin: for replication,
-			       *    Replication log is created only when
-			       *    the target index is a primary key..
-			       *    btree_insert knows that the index is pk
-			       *    or not, but it doesn't return the result.
-			       *    So, we add the return value pkyn in order
-			       *    to decide to make a repl. log or not.
-			       */
+			       MVCC_BTREE_OP_ARGUMENTS * mvcc_args);
 extern int btree_update (THREAD_ENTRY * thread_p, BTID * btid,
 			 DB_VALUE * old_key, DB_VALUE * new_key,
 			 BTREE_LOCKED_KEYS locked_keys,
-			 OID * cls_oid, OID * oid,
+			 OID * cls_oid, OID * oid, OID * new_oid,
 			 int op_type, BTREE_UNIQUE_STATS * unique_stat_info,
-			 int *unique);
+			 int *unique, MVCC_REC_HEADER * p_mvcc_rec_header);
 extern int btree_reflect_unique_statistics (THREAD_ENTRY * thread_p,
 					    BTREE_UNIQUE_STATS *
-					    unique_stat_info);
+					    unique_stat_info,
+					    bool only_active_tran);
 extern int btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid,
 				      DB_VALUE * key, int flag_minkey);
 extern bool btree_multicol_key_is_null (DB_VALUE * key);
@@ -342,6 +476,8 @@ extern void btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp,
 #endif
 extern int btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p,
 					 LOG_RCV * recv);
+extern int btree_rv_mvcc_undo_redo_increments_update (THREAD_ENTRY * thread_p,
+						      LOG_RCV * recv);
 extern void btree_rv_roothdr_dump (FILE * fp, int length, void *data);
 extern int btree_rv_ovfid_undoredo_update (THREAD_ENTRY * thread_p,
 					   LOG_RCV * recv);
@@ -370,8 +506,18 @@ extern int btree_rv_newpage_undo_alloc (THREAD_ENTRY * thread_p,
 					LOG_RCV * recv);
 extern void btree_rv_newpage_dump_undo_alloc (FILE * fp, int length,
 					      void *data);
-extern int btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p,
-					LOG_RCV * recv);
+extern int btree_rv_save_keyval (BTID_INT * btid, DB_VALUE * key,
+				 OID * cls_oid, OID * oid,
+				 MVCC_BTREE_OP_ARGUMENTS * mvcc_args,
+				 char **data, int *length);
+extern int btree_rv_keyval_non_mvcc_undo_insert (THREAD_ENTRY * thread_p,
+						 LOG_RCV * recv);
+extern int btree_rv_keyval_mvcc_undo_insert (THREAD_ENTRY * thread_p,
+					     LOG_RCV * recv);
+extern int btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p,
+						   LOG_RCV * recv);
+extern int btree_rv_keyval_undo_delete_mvccid (THREAD_ENTRY * thread_p,
+					       LOG_RCV * recv);
 extern int btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p,
 					LOG_RCV * recv);
 extern void btree_rv_keyval_dump (FILE * fp, int length, void *data);
@@ -381,6 +527,8 @@ extern int btree_rv_leafrec_redo_delete (THREAD_ENTRY * thread_p,
 					 LOG_RCV * recv);
 extern int btree_rv_leafrec_redo_insert_key (THREAD_ENTRY * thread_p,
 					     LOG_RCV * recv);
+extern int btree_rv_redo_insert_mvcc_delid (THREAD_ENTRY * thread_p,
+					    LOG_RCV * recv);
 extern int btree_rv_leafrec_undo_insert_key (THREAD_ENTRY * thread_p,
 					     LOG_RCV * recv);
 extern int btree_rv_leafrec_redo_insert_oid (THREAD_ENTRY * thread_p,
@@ -389,10 +537,12 @@ extern void btree_rv_leafrec_dump_insert_oid (FILE * fp, int length,
 					      void *data);
 extern int btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
+extern void btree_rv_dump_redo_insert_mvcc_delid (FILE * fp, int length,
+						  void *data);
+
 #include "scan_manager.h"
 
 extern int btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid,
-				int readonly_purpose,
 				SCAN_OPERATION_TYPE scan_op_type,
 				BTREE_SCAN * BTS,
 				KEY_VAL_RANGE * key_val_range,
@@ -401,9 +551,7 @@ extern int btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid,
 				FILTER_INFO * filter, INDX_SCAN_ID * isidp,
 				bool is_all_class_srch);
 extern int btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
-			       int readonly_purpose,
 			       SCAN_OPERATION_TYPE scan_op_type,
-			       int lock_hint,
 			       BTREE_SCAN * BTS,
 			       KEY_VAL_RANGE * key_val_range, int num_classes,
 			       OID * class_oids_ptr, OID * oids_ptr,
@@ -444,4 +592,60 @@ extern SCAN_CODE btree_index_next_scan (THREAD_ENTRY * thread_p,
 					int cursor,
 					DB_VALUE ** out_values,
 					int out_cnt, void *ctx);
+
+extern SCAN_CODE btree_get_next_key_info (THREAD_ENTRY * thread_p,
+					  BTID * btid, BTREE_SCAN * bts,
+					  int num_classes,
+					  OID * class_oids_ptr,
+					  INDX_SCAN_ID * index_scan_id_p,
+					  DB_VALUE ** key_info);
+extern SCAN_CODE btree_get_next_node_info (THREAD_ENTRY * thread_p,
+					   BTID * btid,
+					   BTREE_NODE_SCAN * btns,
+					   DB_VALUE ** node_info);
+
+extern int xbtree_get_key_type (THREAD_ENTRY * thread_p, BTID btid,
+				TP_DOMAIN ** key_type);
+extern int btree_leaf_get_first_oid (BTID_INT * btid, RECDES * recp,
+				     OID * oidp, OID * class_oid,
+				     MVCC_REC_HEADER * p_mvcc_header);
+extern void btree_leaf_change_first_oid (RECDES * recp, BTID_INT * btid,
+					 OID * oidp, OID * class_oidp,
+					 MVCC_REC_HEADER * p_mvcc_rec_header,
+					 int *key_offset);
+extern DB_VALUE *btree_perform_insert (THREAD_ENTRY * thread_p, BTID * btid,
+				       DB_VALUE * key,
+				       OID * cls_oid, OID * oid, int op_type,
+				       BTREE_UNIQUE_STATS * unique_stat_info,
+				       int *unique,
+				       MVCC_REC_HEADER * p_mvcc_rec_header);
+
+extern void btree_set_mvcc_header_ids_for_update (THREAD_ENTRY * thread_p,
+						  bool do_delete_only,
+						  bool do_insert_only,
+						  MVCCID * mvccid,
+						  MVCC_REC_HEADER *
+						  mvcc_rec_header);
+
+extern int btree_compare_btids (const void *mem_btid1, const void *mem_btid2);
+
+extern char *btree_unpack_mvccinfo (char *ptr,
+				    MVCC_REC_HEADER * p_mvcc_header,
+				    short btree_mvcc_flags);
+extern char *btree_pack_mvccinfo (char *ptr, MVCC_REC_HEADER * p_mvcc_header);
+extern int btree_packed_mvccinfo_size (MVCC_REC_HEADER * p_mvcc_header);
+
+extern void btree_set_mvcc_flags_into_oid (MVCC_REC_HEADER * p_mvcc_header,
+					   OID * oid);
+extern void btree_clear_mvcc_flags_from_oid (OID * oid);
+
+extern void btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p,
+					      char *datap, int data_size,
+					      BTID_INT * btid,
+					      OID * cls_oid, OID * oid,
+					      MVCC_REC_HEADER * p_mvcc_header,
+					      DB_VALUE * key);
+extern int btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
+				     RECDES * recp, BTREE_NODE_TYPE node_type,
+				     DB_VALUE * key);
 #endif /* _BTREE_H_ */

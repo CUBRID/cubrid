@@ -543,6 +543,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\query\vacuum.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\query\xasl_to_stream.c"
 					>
 				</File>
@@ -620,6 +624,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\base\locale_support.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\base\lock_free.c"
 					>
 				</File>
 				<File
@@ -821,6 +829,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\transaction\log_writer.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\transaction\mvcc.c"
 					>
 				</File>
 				<File

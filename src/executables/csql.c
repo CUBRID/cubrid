@@ -2678,6 +2678,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   char *env;
   int client_type;
   int avail_size;
+  char *p = NULL;
 
   /* Establish a globaly accessible longjmp environment so we can terminate
    * on severe errors without calling exit(). */
@@ -2794,10 +2795,15 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	}
 
       /* get password interactively if interactive mode */
-      csql_arg->passwd =
-	getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
-      if (csql_arg->passwd[0] == '\0')
-	csql_arg->passwd = (char *) NULL;	/* to fit into db_login protocol */
+      p = getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
+      if (p[0] == '\0')
+	{
+	  csql_arg->passwd = (char *) NULL;  /* to fit into db_login protocol */
+	}
+      else
+	{
+	  csql_arg->passwd = strdup (p);
+	}
 
       /* try again */
       if (db_restart_ex (argv0, csql_arg->db_name,

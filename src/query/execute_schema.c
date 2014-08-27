@@ -481,7 +481,7 @@ static int do_check_fk_constraints_internal (DB_CTMPL * ctemplate,
 static int get_index_type_qualifiers (MOP obj, bool * is_reverse,
 				      bool * is_unique,
 				      const char *index_name);
-
+static int pt_has_fk_with_cache_attr_constraint (PT_NODE * constraints);
 
 /*
  * Function Group :
@@ -509,7 +509,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   const char *attr_name, *mthd_name, *mthd_file, *attr_mthd_name;
   const char *new_name, *old_name, *domain;
   const char *property_type;
-  char *norm_new_name;
   DB_CTMPL *ctemplate = NULL;
   DB_OBJECT *vclass, *sup_class, *partition_obj = NULL;
   int error = NO_ERROR;
@@ -530,7 +529,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 #endif
   SM_PARTITION_ALTER_INFO pinfo;
   SM_CLASS_CONSTRAINT *sm_constraint = NULL;
-  DB_CONSTRAINT_TYPE ctype;
   bool partition_savepoint = false;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
   SM_CONSTRAINT_FAMILY constraint_family;
@@ -1291,7 +1289,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
       partition_savepoint = true;
 
-
       error = do_alter_partitioning_pre (parser, alter, &pinfo);
       if (ctemplate->partition_of == NULL
 	  && ctemplate->current->partition_of != NULL)
@@ -1445,7 +1442,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
     default:
       break;
     }
-
   return error;
 
 alter_partition_fail:
@@ -3101,6 +3097,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 				 statement->info.index.func_no_args,
 				 statement->info.index.function_expr,
 				 obj, DO_INDEX_DROP);
+
   return error_code;
 }
 
@@ -3595,8 +3592,9 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
   else
     {
-      error = ER_FAILED;
+      return ER_FAILED;
     }
+
   return error;
 }
 
@@ -4807,7 +4805,8 @@ do_redistribute_partitions_data (const char *classname, const char *keyname,
       sprintf (query_buf, "UPDATE [%s] SET [%s]=[%s];", classname, keyname,
 	       keyname);
 
-      error = db_execute (query_buf, &query_result, &query_error);
+      error =
+	db_compile_and_execute_local (query_buf, &query_result, &query_error);
       if (error >= 0)
 	{
 	  error = NO_ERROR;
@@ -4856,7 +4855,8 @@ do_redistribute_partitions_data (const char *classname, const char *keyname,
       strcat (query_buf, promoted[promoted_count - 1]);
       strcat (query_buf, "];");
 
-      error = db_execute (query_buf, &query_result, &query_error);
+      error =
+	db_compile_and_execute_local (query_buf, &query_result, &query_error);
       if (error >= 0)
 	{
 	  error = NO_ERROR;
@@ -9178,6 +9178,11 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
+      if (pt_has_fk_with_cache_attr_constraint (node->info.create_entity.
+						constraint_list))
+	{
+	  do_flush_class_mop = true;
+	}
       error = sm_set_class_collation (class_obj, collation_id);
       break;
 
@@ -9293,6 +9298,7 @@ error_exit:
     {
       tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CREATE_ENTITY);
     }
+
   return error;
 }
 
@@ -13765,7 +13771,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
       goto end;
     }
 
-  error = db_execute_statement (session, stmt_id, &result);
+  error = db_execute_statement_local (session, stmt_id, &result);
   if (error < 0)
     {
       goto end;
@@ -13878,7 +13884,7 @@ do_run_update_query_for_class (char *query, MOP class_mop, int *row_count)
   check_tr_state = tr_set_execution_state (false);
   assert (check_tr_state == save_tr_state);
 
-  error = db_execute_statement (session, stmt_id, NULL);
+  error = db_execute_statement_local (session, stmt_id, NULL);
   if (error < 0)
     {
       goto end;
@@ -14677,4 +14683,36 @@ get_index_type_qualifiers (MOP obj, bool * is_reverse, bool * is_unique,
     }
 
   return error_code;
+}
+
+/*
+ * pt_has_fk_with_cache_attr_constraint() - Check if class has foreign key with
+ *				  cache attribute constraint
+ *   return: 1 if the class has foreign key with cache attribute, otherwise 0
+ *   mop(in): Class object
+ */
+static int
+pt_has_fk_with_cache_attr_constraint (PT_NODE * constraints)
+{
+  PT_NODE *c = NULL;
+  PT_FOREIGN_KEY_INFO *fk_info = NULL;
+
+  if (constraints == NULL)
+    {
+      return 0;
+    }
+
+  for (c = constraints; c != NULL; c = c->next)
+    {
+      if (c->info.constraint.type == PT_CONSTRAIN_FOREIGN_KEY)
+	{
+	  fk_info = &(c->info.constraint.un.foreign_key);
+	  if (fk_info->cache_attr >= 0)
+	    {
+	      return 1;
+	    }
+	}
+    }
+
+  return 0;
 }

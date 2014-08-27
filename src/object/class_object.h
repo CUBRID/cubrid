@@ -1100,6 +1100,8 @@ extern int classobj_rename_constraint (DB_SEQ * properties,
 extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints,
 					   SM_CONSTRAINT_TYPE type,
 					   BTID * id);
+extern bool classobj_has_class_unique_constraint (SM_CLASS_CONSTRAINT *
+						  constraints);
 extern bool classobj_has_unique_constraint (SM_CONSTRAINT * constraints);
 extern bool classobj_has_function_constraint (SM_CONSTRAINT * constraints);
 extern int classobj_decompose_property_oid (const char *buffer, int *volid,
@@ -1312,4 +1314,6 @@ extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
 				       const int *asc_desc,
 				       SM_PREDICATE_INFO * filter_index,
 				       SM_FUNCTION_INFO * func_index_info);
+extern void classobj_initialize_attributes (SM_ATTRIBUTE * attributes);
+extern void classobj_initialize_methods (SM_METHOD * methods);
 #endif /* _CLASS_OBJECT_H_ */

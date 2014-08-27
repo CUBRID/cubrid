@@ -215,6 +215,7 @@ extern void or_free_class (OR_CLASS * class_);
 /* OLD STYLE INTERFACE */
 extern int orc_class_repid (RECDES * record);
 extern void orc_class_hfid_from_record (RECDES * record, HFID * hfid);
+extern bool orc_class_is_system_class (RECDES * record);
 extern DISK_REPR *orc_diskrep_from_record (THREAD_ENTRY * thread_p,
 					   RECDES * record);
 extern void orc_free_diskrep (DISK_REPR * rep);
@@ -226,4 +227,8 @@ extern int orc_superclasses_from_record (RECDES * record, int *array_size,
 					 OID ** array_ptr);
 extern OR_CLASSREP **or_get_all_representation (RECDES * record,
 						bool do_indexes, int *count);
+
+extern int class_is_system_class (THREAD_ENTRY * thread_p,
+				  const OID * class_oid,
+				  bool * is_system_class_p);
 #endif /* _OBJECT_REPRESENTATION_SR_H_ */

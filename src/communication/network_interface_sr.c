@@ -72,6 +72,7 @@
 #include "es_posix.h"
 #include "event_log.h"
 #include "tsc_timer.h"
+#include "vacuum.h"
 
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
@@ -445,6 +446,8 @@ slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   OID oid;
   int chn;
   LOCK lock;
+  int tmp;
+  bool retain_lock;
   OID class_oid;
   int class_chn;
   int prefetch;
@@ -462,13 +465,16 @@ slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_unpack_oid (request, &oid);
   ptr = or_unpack_int (ptr, &chn);
   ptr = or_unpack_lock (ptr, &lock);
+  ptr = or_unpack_int (ptr, &tmp);
+  retain_lock = (bool) tmp;
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &class_chn);
   ptr = or_unpack_int (ptr, &prefetch);
 
   copy_area = NULL;
-  success = xlocator_fetch (thread_p, &oid, chn, lock, &class_oid, class_chn,
-			    prefetch, &copy_area);
+  success =
+    xlocator_fetch (thread_p, &oid, chn, lock, retain_lock, &class_oid,
+		    class_chn, prefetch, &copy_area);
 
   if (success != NO_ERROR)
     {
@@ -1601,7 +1607,6 @@ slog_client_get_first_postpone (THREAD_ENTRY * thread_p, unsigned int rid,
   int num_records = 0;
 
   log_area = xlog_client_get_first_postpone (thread_p, &lsa);
-
   if (log_area == NULL)
     {
       return_error_to_client (thread_p, rid);
@@ -1609,12 +1614,14 @@ slog_client_get_first_postpone (THREAD_ENTRY * thread_p, unsigned int rid,
       desc_size = 0;
       content_ptr = NULL;
       content_size = 0;
+      LSA_SET_NULL (&lsa);
     }
   else
     {
       num_records = log_copy_area_send (log_area, &content_ptr, &content_size,
 					&desc_ptr, &desc_size);
     }
+
   ptr = or_pack_int (reply, num_records);
   ptr = or_pack_int (ptr, desc_size);
   ptr = or_pack_int (ptr, content_size);
@@ -1666,7 +1673,6 @@ slog_client_get_next_postpone (THREAD_ENTRY * thread_p, unsigned int rid,
   int num_records = 0;
 
   log_area = xlog_client_get_next_postpone (thread_p, &lsa);
-
   if (log_area == NULL)
     {
       return_error_to_client (thread_p, rid);
@@ -1674,12 +1680,14 @@ slog_client_get_next_postpone (THREAD_ENTRY * thread_p, unsigned int rid,
       desc_size = 0;
       content_ptr = NULL;
       content_size = 0;
+      LSA_SET_NULL (&lsa);
     }
   else
     {
       num_records = log_copy_area_send (log_area, &content_ptr, &content_size,
 					&desc_ptr, &desc_size);
     }
+
   ptr = or_pack_int (reply, num_records);
   ptr = or_pack_int (ptr, desc_size);
   ptr = or_pack_int (ptr, content_size);
@@ -1731,7 +1739,6 @@ slog_client_get_first_undo (THREAD_ENTRY * thread_p, unsigned int rid,
   int num_records = 0;
 
   log_area = xlog_client_get_first_undo (thread_p, &lsa);
-
   if (log_area == NULL)
     {
       return_error_to_client (thread_p, rid);
@@ -1739,12 +1746,14 @@ slog_client_get_first_undo (THREAD_ENTRY * thread_p, unsigned int rid,
       desc_size = 0;
       content_ptr = NULL;
       content_size = 0;
+      LSA_SET_NULL (&lsa);
     }
   else
     {
       num_records = log_copy_area_send (log_area, &content_ptr, &content_size,
 					&desc_ptr, &desc_size);
     }
+
   ptr = or_pack_int (reply, num_records);
   ptr = or_pack_int (ptr, desc_size);
   ptr = or_pack_int (ptr, content_size);
@@ -1804,6 +1813,7 @@ slog_client_get_next_undo (THREAD_ENTRY * thread_p, unsigned int rid,
       desc_size = 0;
       content_ptr = NULL;
       content_size = 0;
+      LSA_SET_NULL (&lsa);
     }
   else
     {
@@ -1862,7 +1872,6 @@ slog_client_unknown_state_abort_get_first_undo (THREAD_ENTRY * thread_p,
   int num_records = 0;
 
   log_area = xlog_client_unknown_state_abort_get_first_undo (thread_p, &lsa);
-
   if (log_area == NULL)
     {
       return_error_to_client (thread_p, rid);
@@ -1870,12 +1879,14 @@ slog_client_unknown_state_abort_get_first_undo (THREAD_ENTRY * thread_p,
       desc_size = 0;
       content_ptr = NULL;
       content_size = 0;
+      LSA_SET_NULL (&lsa);
     }
   else
     {
       num_records = log_copy_area_send (log_area, &content_ptr, &content_size,
 					&desc_ptr, &desc_size);
     }
+
   ptr = or_pack_int (reply, num_records);
   ptr = or_pack_int (ptr, desc_size);
   ptr = or_pack_int (ptr, content_size);
@@ -5103,7 +5114,7 @@ sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_btid (ptr, &btid);
 
   OID_SET_NULL (&oid);
-  success = xbtree_find_unique (thread_p, &btid, true, S_SELECT, &key,
+  success = xbtree_find_unique (thread_p, &btid, S_SELECT, &key,
 				&class_oid, &oid, false);
   if (success == BTREE_ERROR_OCCURRED)
     {
@@ -7482,6 +7493,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p,
   int *many_need_subclasses = NULL;
   OID *guessed_class_oids = NULL;
   int *guessed_class_chns = NULL;
+  LC_PREFETCH_FLAGS *many_flags = NULL;
   int quit_on_errors;
   LC_FIND_CLASSNAME allfind = LC_CLASSNAME_ERROR;
   LC_LOCKHINT *found_lockhint;
@@ -7509,7 +7521,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p,
   ptr = or_unpack_int (ptr, &quit_on_errors);
 
   malloc_size = ((sizeof (char *) + sizeof (LOCK) + sizeof (int) +
-		  sizeof (OID) + sizeof (int)) * num_classes);
+		  sizeof (int) + sizeof (OID) + sizeof (int)) * num_classes);
 
   malloc_area = (char *) db_private_alloc (thread_p, malloc_size);
   if (malloc_area != NULL)
@@ -7519,16 +7531,20 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p,
 			     (sizeof (char *) * num_classes));
       many_need_subclasses = (int *) ((char *) many_locks +
 				      (sizeof (LOCK) * num_classes));
-      guessed_class_oids = (OID *) ((char *) many_need_subclasses +
-				    (sizeof (int) * num_classes));
-      guessed_class_chns = (int *) ((char *) guessed_class_oids +
-				    (sizeof (OID) * num_classes));
+      many_flags =
+	(LC_PREFETCH_FLAGS *) ((char *) many_need_subclasses +
+			       (sizeof (int) * num_classes));
+      guessed_class_oids =
+	(OID *) ((char *) many_flags + (sizeof (int) * num_classes));
+      guessed_class_chns =
+	(int *) ((char *) guessed_class_oids + (sizeof (OID) * num_classes));
 
       for (i = 0; i < num_classes; i++)
 	{
 	  ptr = or_unpack_string_nocopy (ptr, &many_classnames[i]);
 	  ptr = or_unpack_lock (ptr, &many_locks[i]);
 	  ptr = or_unpack_int (ptr, &many_need_subclasses[i]);
+	  ptr = or_unpack_int (ptr, (int *) &many_flags[i]);
 	  ptr = or_unpack_oid (ptr, &guessed_class_oids[i]);
 	  ptr = or_unpack_int (ptr, &guessed_class_chns[i]);
 	}
@@ -7538,6 +7554,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p,
 						   many_classnames,
 						   many_locks,
 						   many_need_subclasses,
+						   many_flags,
 						   guessed_class_oids,
 						   guessed_class_chns,
 						   quit_on_errors,
@@ -8369,6 +8386,76 @@ sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
+ * sbtree_get_key_type () - Obtains key type from index b-tree.
+ *
+ * return : 
+ * thread_p (in) :
+ * rid (in) :
+ * request (in) :
+ * int reqlen (in) :
+ */
+void
+sbtree_get_key_type (THREAD_ENTRY * thread_p, unsigned int rid,
+		     char *request, int reqlen)
+{
+  BTID btid;
+  int error;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *reply_data = NULL;
+  char *ptr;
+  int reply_data_size;
+  TP_DOMAIN *key_type = NULL;
+
+  /* Unpack BTID */
+  ptr = or_unpack_btid (request, &btid);
+  assert_release (!BTID_IS_NULL (&btid));
+
+  /* Get key type */
+  error = xbtree_get_key_type (thread_p, btid, &key_type);
+  if (error != NO_ERROR && er_errid () != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  if (key_type != NULL)
+    {
+      /* Send key type to client */
+      reply_data_size = or_packed_domain_size (key_type, 0);
+      reply_data = (char *) malloc (reply_data_size);
+      if (reply_data == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  reply_data_size);
+	  reply_data_size = 0;
+	}
+      else
+	{
+	  (void) or_pack_domain (reply_data, key_type, 0, 0);
+	}
+    }
+  else
+    {
+      reply_data_size = 0;
+      reply_data = NULL;
+      error = (error == NO_ERROR) ? ER_FAILED : error;
+    }
+
+  ptr = or_pack_int (reply, reply_data_size);
+  ptr = or_pack_int (ptr, error);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply,
+				     OR_ALIGNED_BUF_SIZE (a_reply),
+				     reply_data, reply_data_size);
+
+  if (reply_data != NULL)
+    {
+      free_and_init (reply_data);
+    }
+}
+
+/*
  * sqp_get_server_info -
  *
  * return:
@@ -8698,11 +8785,13 @@ shf_has_instance (THREAD_ENTRY * thread_p, unsigned int rid,
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
+  int has_visible_instance;
 
   ptr = or_unpack_hfid (request, &hfid);
   ptr = or_unpack_oid (ptr, &class_oid);
+  ptr = or_unpack_int (ptr, &has_visible_instance);
 
-  r = xheap_has_instance (thread_p, &hfid, &class_oid);
+  r = xheap_has_instance (thread_p, &hfid, &class_oid, has_visible_instance);
 
   if (r == -1)
     {
@@ -10360,6 +10449,102 @@ ssession_get_session_variable (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       free_and_init (data_reply);
     }
+}
+
+/*
+ * svacuum () - Calls vacuum function.
+ *
+ * return	 :
+ * thread_p (in) :
+ * rid (in)	 :
+ * request (in)	 :
+ * reqlen (in)	 :
+ */
+void
+svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int err = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = NULL, *ptr = NULL;
+  int num_classes;
+  OID *class_oids = NULL;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  assert (request != NULL && reqlen > 0);
+
+  /* Unpack request data */
+
+  /* Unpack num_classes */
+  ptr = or_unpack_int (request, &num_classes);
+  /* Unpack class_oids */
+  if (num_classes > 0)
+    {
+      class_oids = (OID *) malloc (num_classes * OR_OID_SIZE);
+
+      ptr = or_unpack_oid_array (ptr, num_classes, &class_oids);
+      if (ptr == NULL)
+	{
+	  err = er_errid ();
+	  err = (err != NO_ERROR) ? err : ER_FAILED;
+	  goto cleanup;
+	}
+
+      /* Call vacuum */
+      err = xvacuum (thread_p, num_classes, class_oids);
+    }
+
+cleanup:
+  if (class_oids != NULL)
+    {
+      db_private_free_and_init (NULL, class_oids);
+    }
+
+  if (err != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  /* Send error code as reply */
+  (void) or_pack_int (reply, err);
+
+  /* For now no results are required, just fail/success */
+  css_send_data_to_client (thread_p->conn_entry, rid,
+			   OR_ALIGNED_BUF_START (a_reply),
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * slogtb_invalidate_mvcc_snapshot () - Invalidates MVCC Snapshot.
+ *
+ * return	 :
+ * thread_p (in) :
+ * rid (in)	 :
+ * request (in)  :
+ * reqlen (in)	 :
+ */
+void
+slogtb_invalidate_mvcc_snapshot (THREAD_ENTRY * thread_p, unsigned int rid,
+				 char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = NULL;
+  int err;
+
+  err = xlogtb_invalidate_snapshot_data (thread_p);
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_pack_int (reply, err);
+
+  if (err != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  css_send_data_to_client (thread_p->conn_entry, rid,
+			   OR_ALIGNED_BUF_START (a_reply),
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*

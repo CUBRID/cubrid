@@ -213,6 +213,7 @@ extern CT_CLASS *ct_Classes[];
 
 /* This fills in misc information missing from the static definitions */
 extern void tf_compile_meta_classes (void);
+extern bool tf_is_catalog_class (OID * class_oid);
 
 /* This is available only on the server for catalog initialization */
 

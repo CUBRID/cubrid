@@ -28,12 +28,18 @@
 #include "oid.h"
 
 static OID oid_Root_class = { 0, 0, 0 };
+static OID oid_Serial_class = { 0, 0, 0 };
+static OID oid_Partition_class = { 0, 0, 0 };
 
 const OID oid_Null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
 PAGEID oid_Next_tempid = NULL_PAGEID;
 
 /* ROOT_CLASS OID values. Set during restart/initialization.*/
 OID *oid_Root_class_oid = &oid_Root_class;
+
+
+OID *oid_Serial_class_oid = &oid_Serial_class;
+OID *oid_Parttion_class_oid = &oid_Partition_class;
 
 /*
  * oid_set_root() -  Set the value of the root oid to the given value
@@ -63,6 +69,78 @@ bool
 oid_is_root (const OID * oid)
 {
   return OID_EQ (oid, oid_Root_class_oid);
+}
+
+/*
+ * oid_set_serial () - Store serial class OID
+ *
+ * return   : 
+ * oid (in) :
+ */
+void
+oid_set_serial (const OID * oid)
+{
+  COPY_OID (oid_Serial_class_oid, oid);
+}
+
+/*
+ * ois_is_serial () - Compare OID with serial class OID.
+ *
+ * return : 
+ * const OID * oid (in) :
+ */
+bool
+oid_is_serial (const OID * oid)
+{
+  return OID_EQ (oid, oid_Serial_class_oid);
+}
+
+/*
+ * oid_get_serial_oid () - Get serial class OID
+ *
+ * return    : Void.
+ * oid (out) : Serial class OID.
+ */
+void
+oid_get_serial_oid (OID * oid)
+{
+  COPY_OID (oid, oid_Serial_class_oid);
+}
+
+/*
+ * oid_set_partition () - Store _db_partition class OID
+ *
+ * return   : 
+ * oid (in) :
+ */
+void
+oid_set_partition (const OID * oid)
+{
+  COPY_OID (oid_Parttion_class_oid, oid);
+}
+
+/*
+ * ois_is_partition () - Compare OID with partition class OID.
+ *
+ * return : 
+ * const OID * oid (in) :
+ */
+bool
+oid_is_partition (const OID * oid)
+{
+  return OID_EQ (oid, oid_Parttion_class_oid);
+}
+
+/*
+ * oid_get_partition_oid () - Get partition class OID
+ *
+ * return    : Void.
+ * oid (out) : Serial class OID.
+ */
+void
+oid_get_partition_oid (OID * oid)
+{
+  COPY_OID (oid, oid_Parttion_class_oid);
 }
 
 /*

@@ -77,6 +77,9 @@ struct symbol_info
   UNBOX listfile_unbox;
   int listfile_attr_offset;
   PT_NODE *query_node;		/* the query node that is being translated */
+  DB_VALUE **reserved_values;	/* db_values array used for reserved
+				 * attributes
+				 */
 };
 
 
@@ -123,9 +126,12 @@ extern FILE *query_Plan_dump_fp;
 
 extern REGU_VARIABLE *pt_to_regu_variable (PARSER_CONTEXT * p, PT_NODE * node,
 					   UNBOX unbox);
-extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * p, PT_NODE * node);
+extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * p, PT_NODE * node,
+				   REGU_VARIABLE_LIST * regu_list_last_version);
 extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * p,
-					    PT_NODE * node, int *argp);
+					    PT_NODE * node, int *argp,
+					    REGU_VARIABLE_LIST *
+					    regu_list_last_version);
 extern XASL_NODE *parser_generate_xasl (PARSER_CONTEXT * p, PT_NODE * node);
 extern REGU_VARIABLE *pt_make_regu_arith (const REGU_VARIABLE * arg1,
 					  const REGU_VARIABLE * arg2,
@@ -142,7 +148,7 @@ extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser,
 				     PT_NODE * using_index,
 				     PT_NODE * order_by,
 				     PT_NODE * orderby_for, int server_op,
-				     PT_COMPOSITE_LOCKING composite_locking);
+				     SCAN_OPERATION_TYPE scan_op_type);
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PRED_EXPR_WITH_CONTEXT *pt_to_pred_with_context (PARSER_CONTEXT *
 							parser,

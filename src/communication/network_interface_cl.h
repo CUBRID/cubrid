@@ -66,8 +66,8 @@ struct trans_info
 };
 
 extern void db_free_execution_plan (void);
-extern int locator_fetch (OID * oidp, int chn, LOCK lock, OID * class_oid,
-			  int class_chn, int prefetch,
+extern int locator_fetch (OID * oidp, int chn, LOCK lock, bool retain_lock,
+			  OID * class_oid, int class_chn, int prefetch,
 			  LC_COPYAREA ** fetch_copyarea);
 extern int locator_get_class (OID * class_oid, int class_chn, const OID * oid,
 			      LOCK lock, int prefetching,
@@ -115,6 +115,7 @@ locator_find_lockhint_class_oids (int num_classes,
 				  const char **many_classnames,
 				  LOCK * many_locks,
 				  int *many_need_subclasses,
+				  LC_PREFETCH_FLAGS * many_flags,
 				  OID * guessed_class_oids,
 				  int *guessed_class_chns,
 				  int quit_on_errors,
@@ -368,9 +369,11 @@ extern int heap_get_class_num_objects_pages (HFID * hfid, int approximation,
 					     int *nobjs, int *npages);
 
 extern int btree_get_statistics (BTID * btid, BTREE_STATS * stat_info);
+extern int btree_get_index_key_type (BTID btid, TP_DOMAIN ** key_type_p);
 extern int db_local_transaction_id (DB_VALUE * trid);
 extern int qp_get_server_info (PARSER_CONTEXT * parser, int server_info_bits);
-extern int heap_has_instance (HFID * hfid, OID * class_oid);
+extern int heap_has_instance (HFID * hfid, OID * class_oid,
+			      int has_visible_instance);
 
 extern int jsp_get_server_port (void);
 extern int repl_log_get_append_lsa (LOG_LSA * lsa);
@@ -588,4 +591,7 @@ extern int csession_set_session_variables (DB_VALUE * variables,
 extern int csession_get_variable (DB_VALUE * name, DB_VALUE * value);
 extern int csession_drop_session_variables (DB_VALUE * variables,
 					    const int count);
+
+extern int cvacuum (int num_classes, OID * class_oids);
+extern int log_invalidate_mvcc_snapshot (void);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

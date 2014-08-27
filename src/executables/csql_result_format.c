@@ -205,27 +205,12 @@ static DB_TYPE_DATE_PROFILE default_date_profile = {
   DATE_FORMAT_MMDDYYYY
 };
 
-
-/*
- * object type conversion profile
- */
-
-typedef struct
-{
-  int format;			/* Use the following enumeration value */
-} DB_TYPE_OBJECT_PROFILE;
-
 /* object conversion 'format' enumeration */
 enum
 {
   OBJECT_FORMAT_OID,
   OBJECT_FORMAT_CLASSNAME
 };
-
-static DB_TYPE_OBJECT_PROFILE default_object_profile = {
-  OBJECT_FORMAT_CLASSNAME
-};
-
 
 /*
  * set type conversion profile
@@ -308,6 +293,7 @@ static char *string_to_string (const char *string_value,
 			       char string_delimiter,
 			       char string_introducer, int length,
 			       int *result_length);
+static int get_object_print_format (void);
 
 /*
  * add_commas() - counts the digits in this string and adds the commas
@@ -1449,7 +1435,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
       break;
     case DB_TYPE_OBJECT:
       result = object_to_string (DB_GET_OBJECT (value),
-				 default_object_profile.format);
+				 get_object_print_format ());
       if (result == NULL)
 	{
 	  result = duplicate_string ("NULL");
@@ -1461,7 +1447,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
       break;
     case DB_TYPE_VOBJ:
       result = object_to_string (DB_GET_OBJECT (value),
-				 OBJECT_FORMAT_CLASSNAME);
+				 get_object_print_format ());
       if (result == NULL)
 	{
 	  result = duplicate_string ("NULL");
@@ -1663,4 +1649,11 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
       *length = len;
     }
   return result;
+}
+
+static int
+get_object_print_format (void)
+{
+  return prm_get_bool_value (PRM_ID_OBJECT_PRINT_FORMAT_OID) ?
+    OBJECT_FORMAT_OID : OBJECT_FORMAT_CLASSNAME;
 }

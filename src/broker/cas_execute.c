@@ -695,8 +695,8 @@ ux_get_default_setting ()
 {
   ux_get_tran_setting (&cas_default_lock_timeout,
 		       &cas_default_isolation_level);
-  if (cas_default_isolation_level < TRAN_MINVALUE_ISOLATION
-      || cas_default_isolation_level > TRAN_MAXVALUE_ISOLATION)
+
+  if (!IS_VALID_ISOLATION_LEVEL (cas_default_isolation_level))
     {
       cas_default_isolation_level = 0;
     }
@@ -9604,7 +9604,7 @@ get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id)
 
   if (shm_appl->jdbc_cache == 0
       || db_get_statement_type (session, stmt_id) != CUBRID_STMT_SELECT
-      || cas_default_isolation_level == TRAN_REP_CLASS_REP_INSTANCE
+      || cas_default_isolation_level == TRAN_REPEATABLE_READ
       || cas_default_isolation_level == TRAN_SERIALIZABLE)
     {
       return -1;

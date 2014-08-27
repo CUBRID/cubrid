@@ -328,8 +328,20 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
   OID class_id;
   CLASS_ID_LIST *class_id_list_p = NULL, *class_id_item_p;
 
-  ehash_map (thread_p, &catalog_Id.xhid, stats_get_class_list,
-	     (void *) &class_id_list_p);
+  error =
+    ehash_map (thread_p, &catalog_Id.xhid, stats_get_class_list,
+	       (void *) &class_id_list_p);
+  if (error != NO_ERROR)
+    {
+      stats_free_class_list (class_id_list_p);
+      return error;
+    }
+
+  if (class_id_list_p == NULL)
+    {
+      /* No classes */
+      return NO_ERROR;
+    }
 
   for (class_id_item_p = class_id_list_p;
        class_id_item_p->next != NULL; class_id_item_p = class_id_item_p->next)

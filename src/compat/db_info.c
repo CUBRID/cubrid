@@ -495,7 +495,9 @@ db_is_deleted (DB_OBJECT * obj)
 
   CHECK_1ARG_ERROR (obj);
 
-  if (obj->deleted)
+  obj = ws_mvcc_latest_version (obj);
+
+  if (WS_IS_DELETED (obj))
     {
       return 1;
     }
@@ -525,7 +527,7 @@ db_is_deleted (DB_OBJECT * obj)
   /* if this is the deleted object error, then its deleted, the test
    * for the MOP deleted flag should be unnecessary but be safe.
    */
-  if (error == ER_HEAP_UNKNOWN_OBJECT || obj->deleted)
+  if (error == ER_HEAP_UNKNOWN_OBJECT || WS_IS_DELETED (obj))
     {
       return 1;
     }
@@ -674,7 +676,7 @@ db_class_has_instance (DB_OBJECT * classobj)
     }
   else
     {
-      return heap_has_instance (sm_get_heap (classobj), WS_OID (classobj));
+      return heap_has_instance (sm_get_heap (classobj), WS_OID (classobj), 0);
     }
 
   return 0;

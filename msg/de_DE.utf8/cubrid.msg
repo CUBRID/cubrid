@@ -1220,7 +1220,12 @@ $ LOADDB
 1151 The page %1$d of volume %2$d is not a slotted page.
 1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
 1153 Attempt to use 'zero date'.
-1154 Letzter Fehler
+1154 MVCC row %1$d|%2$d|%3$d does not satisfies reevaluation.
+1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
+1156 MVCC can't get snapshot
+1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
+1158 Serializable conflict due to concurent updates
+1159 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
@@ -1670,11 +1675,11 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 2 Transaktion Isolationslevel muss 1, 2, 3, 4, 5 oder 6 sein.
 3 Timeout Wert muss -1, 0, oder >0 sein.
 4 Isolationslevel ist:\n
-5          READ COMMITTED SCHEMA, READ UNCOMMITTED INSTANCES.\n
-6          READ COMMITTED SCHEMA, READ COMMITTED INSTANCES.\n
-7          REPEATABLE READ SCHEMA, READ UNCOMMITTED INSTANCES.\n
-8          REPEATABLE READ SCHEMA, READ COMMITTED INSTANCES.\n
-9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
+5          Unknown isolation.\n
+6          Unknown isolation.\n
+7          Unknown isolation.\n
+8          READ COMMITTED\n
+9          REPEATABLE READ\n
 10 Eine nicht aktualisierbare Anfrage ist in einem db_Anfrage_execute_oid Aufruf nicht erlaubt.
 11 Transaktion Timeout beim Warten auf Sperren.
 12 Es wurde versucht, die Hostvariable mit Index %1$d zuzugreifen, wenn nurr %2$d \nInput Hostvariablen angegeben worden sind.
@@ -1744,6 +1749,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 Nur der Eigner oder DBA darf die Definition des Ziel-Serials ändern.
 78 Es ist Benutzers nicht erlaubt, ein von einer auto-inkrement Einschränkung  erstelltes Serial-Objekt zu ändern.
 79 Ungültiges Isolationslevel: %1$s Schema, %2$s Instanzen.
+80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** Ungültiges Cache ***

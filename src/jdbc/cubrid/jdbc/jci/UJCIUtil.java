@@ -37,7 +37,6 @@ abstract public class UJCIUtil {
 
 	private static boolean bServerSide;
 	private static boolean bConsoleDebug;
-	private static boolean bMMDB;
 	private static boolean bSendAppInfo;
 	private static boolean bJDBC4;
 	private static Boolean bMysqlMode = null;
@@ -49,13 +48,6 @@ abstract public class UJCIUtil {
 			bConsoleDebug = true;
 		} else {
 			bConsoleDebug = false;
-		}
-
-		value = System.getProperty("MMDB");
-		if (value != null && value.equals("true")) {
-			bMMDB = true;
-		} else {
-			bMMDB = false;
 		}
 
 		value = System.getProperty("SendAppInfo");
@@ -151,10 +143,6 @@ abstract public class UJCIUtil {
 
 	public static boolean isConsoleDebug() {
 		return bConsoleDebug;
-	}
-
-	public static boolean isMMDB() {
-		return bMMDB;
 	}
 
 	public static boolean isSendAppInfo() {

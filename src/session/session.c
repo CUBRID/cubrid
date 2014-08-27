@@ -1348,9 +1348,12 @@ session_set_row_count (THREAD_ENTRY * thread_p, const int row_count)
       return ER_FAILED;
     }
 
+#if 0
   er_log_debug (ARG_FILE_LINE,
 		"setting row_count for session %u to %d\n",
 		state_p->session_id, state_p->row_count);
+#endif
+
   state_p->row_count = row_count;
 
   return NO_ERROR;

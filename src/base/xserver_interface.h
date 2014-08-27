@@ -101,8 +101,8 @@ extern int xlocator_assign_oid (THREAD_ENTRY * thread_p, const HFID * hfid,
 				OID * perm_oid, int expected_length,
 				OID * class_oid, const char *classname);
 extern int xlocator_fetch (THREAD_ENTRY * thrd, OID * oid, int chn, LOCK lock,
-			   OID * class_oid, int class_chn, int prefetching,
-			   LC_COPYAREA ** fetch_area);
+			   bool retain_lock, OID * class_oid, int class_chn,
+			   int prefetching, LC_COPYAREA ** fetch_area);
 extern int xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid,
 			       int class_chn, const OID * oid, LOCK lock,
 			       int prefetching, LC_COPYAREA ** fetch_area);
@@ -138,6 +138,8 @@ extern LC_FIND_CLASSNAME xlocator_find_lockhint_class_oids (THREAD_ENTRY *
 							    LOCK * many_locks,
 							    int
 							    *many_need_subclasses,
+							    LC_PREFETCH_FLAGS
+							    * many_flags,
 							    OID *
 							    guessed_class_oids,
 							    int
@@ -298,7 +300,6 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid,
 				int func_col_id, int func_attr_index_start);
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
-					int readonly_purpose,
 					SCAN_OPERATION_TYPE scan_op_type,
 					DB_VALUE * key,
 					OID * class_oid, OID * oid,

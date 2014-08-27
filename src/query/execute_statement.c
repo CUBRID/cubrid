@@ -119,6 +119,7 @@
 
 static void do_set_trace_to_query_flag (QUERY_FLAG * query_flag);
 static void do_send_plan_trace_to_session (PARSER_CONTEXT * parser);
+static int do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 #define MAX_SERIAL_INVARIANT	8
 
@@ -715,7 +716,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
   assert (WS_ISDIRTY (serial_object) == false);
 
   ws_decache (serial_object);
-  error = au_fetch_instance_force (serial_object, NULL, DB_FETCH_WRITE);
+  error = au_fetch_instance_force (serial_object, NULL, AU_FETCH_WRITE);
   if (error != NO_ERROR)
     {
       goto update_auto_increment_error;
@@ -1968,7 +1969,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser,
 
   ws_decache (serial_mop);
 
-  error = au_fetch_instance_force (serial_mop, NULL, DB_FETCH_WRITE);
+  error = au_fetch_instance_force (serial_mop, NULL, AU_FETCH_WRITE);
   if (error != NO_ERROR)
     {
       goto end;
@@ -2189,7 +2190,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   ws_decache (serial_object);
 
-  error = au_fetch_instance_force (serial_object, NULL, DB_FETCH_WRITE);
+  error = au_fetch_instance_force (serial_object, NULL, AU_FETCH_WRITE);
   if (error != NO_ERROR)
     {
       goto end;
@@ -2866,7 +2867,8 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
        */
 
       /* disable data replication log for schema replication log types in HA mode */
-      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
+      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED) == false
+	  && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
 	  && is_schema_repl_log_statment (statement))
 	{
 	  need_schema_replication = true;
@@ -3281,7 +3283,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
      process them; for any other node, return an error */
 
   /* disable data replication log for schema replication log types in HA mode */
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
+  if (prm_get_bool_value (PRM_ID_MVCC_ENABLED) == false
+      && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF
       && is_schema_repl_log_statment (statement))
     {
       need_schema_replication = true;
@@ -3483,6 +3486,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_SET_NAMES:
       err = do_set_names (parser, statement);
       break;
+    case PT_VACUUM:
+      err = do_vacuum (parser, statement);
+      break;
     case PT_QUERY_TRACE:
       err = do_set_query_trace (parser, statement);
       break;
@@ -3671,8 +3677,8 @@ do_internal_statements (PARSER_CONTEXT * parser, PT_NODE * internal_stmt_list,
 	  save_parser = parent_parser;
 	  parent_parser = parser;
 	  error =
-	    db_execute (stmt_str->info.value.text, &query_result,
-			&query_error);
+	    db_compile_and_execute_local (stmt_str->info.value.text,
+					  &query_result, &query_error);
 	  /* restore the parent parser */
 	  parent_parser = save_parser;
 	  if (error < NO_ERROR)
@@ -4740,17 +4746,13 @@ map_iso_levels (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
       break;
     case PT_REPEATABLE_READ:
-      if (instances == PT_READ_UNCOMMITTED)
+      if (instances == PT_READ_COMMITTED)
 	{
-	  *tran_isolation = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
-	}
-      else if (instances == PT_READ_COMMITTED)
-	{
-	  *tran_isolation = TRAN_REP_CLASS_COMMIT_INSTANCE;
+	  *tran_isolation = TRAN_READ_COMMITTED;
 	}
       else if (instances == PT_REPEATABLE_READ)
 	{
-	  *tran_isolation = TRAN_REP_CLASS_REP_INSTANCE;
+	  *tran_isolation = TRAN_REPEATABLE_READ;
 	}
       else
 	{
@@ -4762,13 +4764,9 @@ map_iso_levels (PARSER_CONTEXT * parser, PT_NODE * statement,
 	}
       break;
     case PT_READ_COMMITTED:
-      if (instances == PT_READ_UNCOMMITTED)
+      if (instances == PT_READ_COMMITTED)
 	{
-	  *tran_isolation = TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE;
-	}
-      else if (instances == PT_READ_COMMITTED)
-	{
-	  *tran_isolation = TRAN_COMMIT_CLASS_COMMIT_INSTANCE;
+	  *tran_isolation = TRAN_READ_COMMITTED;
 	}
       else
 	{
@@ -4779,11 +4777,6 @@ map_iso_levels (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  return ER_GENERIC_ERROR;
 	}
       break;
-    case PT_READ_UNCOMMITTED:
-      PT_ERRORmf2 (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-		   MSGCAT_RUNTIME_XACT_INVALID_ISO_LVL_MSG,
-		   pt_show_misc_type (schema), pt_show_misc_type (instances));
-      return ER_GENERIC_ERROR;
     default:
       return ER_GENERIC_ERROR;
     }
@@ -4815,35 +4808,8 @@ set_iso_level (PARSER_CONTEXT * parser,
   /* translate to the enumerated type */
   switch (isolvl)
     {
-    case 1:
-      *tran_isolation = TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE;
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_PARSER_RUNTIME,
-				       MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_PARSER_RUNTIME,
-				       MSGCAT_RUNTIME_READCOM_S_READUNC_I));
-      break;
-    case 2:
-      *tran_isolation = TRAN_COMMIT_CLASS_COMMIT_INSTANCE;
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_PARSER_RUNTIME,
-				       MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_PARSER_RUNTIME,
-				       MSGCAT_RUNTIME_READCOM_S_READCOM_I));
-      break;
-    case 3:
-      *tran_isolation = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_PARSER_RUNTIME,
-				       MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_PARSER_RUNTIME,
-				       MSGCAT_RUNTIME_REPREAD_S_READUNC_I));
-      break;
-    case 4:
-      *tran_isolation = TRAN_REP_CLASS_COMMIT_INSTANCE;
+    case TRAN_READ_COMMITTED:
+      *tran_isolation = TRAN_READ_COMMITTED;
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				       MSGCAT_SET_PARSER_RUNTIME,
 				       MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
@@ -4851,8 +4817,8 @@ set_iso_level (PARSER_CONTEXT * parser,
 				       MSGCAT_SET_PARSER_RUNTIME,
 				       MSGCAT_RUNTIME_REPREAD_S_READCOM_I));
       break;
-    case 5:
-      *tran_isolation = TRAN_REP_CLASS_REP_INSTANCE;
+    case TRAN_REPEATABLE_READ:
+      *tran_isolation = TRAN_REPEATABLE_READ;
       fprintf (stdout,
 	       msgcat_message (MSGCAT_CATALOG_CUBRID,
 			       MSGCAT_SET_PARSER_RUNTIME,
@@ -4862,7 +4828,7 @@ set_iso_level (PARSER_CONTEXT * parser,
 			       MSGCAT_SET_PARSER_RUNTIME,
 			       MSGCAT_RUNTIME_REPREAD_S_REPREAD_I));
       break;
-    case 6:
+    case TRAN_SERIALIZABLE:
       *tran_isolation = TRAN_SERIALIZABLE;
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				       MSGCAT_SET_PARSER_RUNTIME,
@@ -4881,9 +4847,20 @@ set_iso_level (PARSER_CONTEXT * parser,
 	  break;
 	}
       /* fall through */
+    case 1:			/* unsupported ones */
+    case 2:
+    case 3:
     default:
-      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-		 MSGCAT_RUNTIME_XACT_ISO_LVL_MSG);
+      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		     MSGCAT_MVCC_RUNTIME_XACT_ISO_LVL_MSG);
+	}
+      else
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+		     MSGCAT_RUNTIME_XACT_ISO_LVL_MSG);
+	}
       error = ER_GENERIC_ERROR;
     }
 
@@ -5600,6 +5577,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser,
   MOP *partitions = NULL;
   HFID *hfid = NULL;
   bool has_rows = false;
+  LC_PREFETCH_FLAGS *flags = NULL;
 
   /* count the number of new DELETE statements */
   while (node != NULL)
@@ -5632,6 +5610,13 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser,
       goto cleanup;
     }
 
+  flags = db_private_alloc (NULL, num_classes * sizeof (LC_PREFETCH_FLAGS));
+  if (flags == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+
   /* prepare information for locking */
   node = statement->info.delete_.del_stmt_list;
   for (idx = 0; idx < num_classes && node != NULL; idx++, node = node->next)
@@ -5656,12 +5641,13 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser,
 	{
 	  need_subclasses[idx] = false;
 	}
+      flags[idx] = LC_PREF_FLAG_LOCK;
     }
 
   /* lock splitted classes with X_LOCK */
   if (locator_lockhint_classes
       (num_classes, (const char **) classes_names, locks, need_subclasses,
-       1) != LC_CLASSNAME_EXIST)
+       flags, 1) != LC_CLASSNAME_EXIST)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -5709,7 +5695,8 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser,
 		      free_and_init (partitions);
 		      goto cleanup;
 		    }
-		  error = heap_has_instance (hfid, ws_oid (partitions[idx]));
+		  error = heap_has_instance (hfid, ws_oid (partitions[idx]),
+					     1);
 		  if (error < NO_ERROR)
 		    {
 		      free_and_init (partitions);
@@ -5729,7 +5716,8 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser,
 		  goto cleanup;
 		}
 	      error =
-		heap_has_instance (hfid, ws_oid (flat->info.name.db_object));
+		heap_has_instance (hfid, ws_oid (flat->info.name.db_object),
+				   1);
 	      if (error < NO_ERROR)
 		{
 		  goto cleanup;
@@ -5775,6 +5763,11 @@ cleanup:
   if (need_subclasses != NULL)
     {
       db_private_free (NULL, need_subclasses);
+    }
+
+  if (flags != NULL)
+    {
+      db_private_free (NULL, flags);
     }
 
   return error;
@@ -6216,6 +6209,11 @@ do_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  for (t = triggers; t != NULL && error == NO_ERROR; t = t->next)
 	    {
 	      error = tr_drop_trigger (t->op, false);
+	      if (error == ER_TR_TRIGGER_NOT_FOUND)
+		{
+		  /* another transaction has drop the trigger before me */
+		  break;
+		}
 	    }
 	}
 
@@ -6697,7 +6695,7 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from,
 	pt_to_upd_del_query (parser, column_names, column_values, from,
 			     class_specs, where, using_index, order_by,
 			     orderby_for, 0 /* not server update */ ,
-			     PT_COMPOSITE_LOCKING_UPDATE)) != NULL))
+			     S_UPDATE)) != NULL))
     {
       err = pt_copy_upddel_hints_to_select (parser, update_stmt, statement);
       if (err != NO_ERROR)
@@ -6799,6 +6797,7 @@ update_object_tuple (PARSER_CONTEXT * parser,
   CLIENT_UPDATE_INFO *assign = NULL;
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL;
   bool flush_del = false;
+  MOP object_class_mop;
 
   for (idx = 0; idx < classes_cnt && error == NO_ERROR; idx++)
     {
@@ -6829,16 +6828,16 @@ update_object_tuple (PARSER_CONTEXT * parser,
 
       /* if this is the first tuple or the class has changed to a new subclass
        * then fetch new class */
+      object_class_mop = ws_class_mop (object);
       if (cls_info->class_mop == NULL
-	  || (object->class_mop != NULL
-	      && ws_mop_compare (object->class_mop,
-				 cls_info->class_mop) != 0))
+	  || (object_class_mop != NULL
+	      && ws_mop_compare (object_class_mop, cls_info->class_mop) != 0))
 	{
-	  cls_info->class_mop = object->class_mop;
+	  cls_info->class_mop = object_class_mop;
 
-	  if (object->class_mop != NULL)
+	  if (object_class_mop != NULL)
 	    {
-	      error = au_fetch_class (object->class_mop, &smclass,
+	      error = au_fetch_class (object_class_mop, &smclass,
 				      AU_FETCH_READ, AU_SELECT);
 	      if (error != NO_ERROR)
 		{
@@ -6945,6 +6944,7 @@ update_object_tuple (PARSER_CONTEXT * parser,
       /* handle delete only after update to give a chance to triggers */
       if (should_delete && error == NO_ERROR)
 	{
+	  object = ws_mvcc_latest_version (object);
 	  error = locator_flush_instance (object);
 	  if (error != NO_ERROR)
 	    {
@@ -8068,8 +8068,9 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
 {
   int error = NO_ERROR;
   PT_NODE *lhs = NULL, *att = NULL, *pointer = NULL, *spec = NULL;
-  PT_NODE *assignment;
+  PT_NODE *assignment = NULL;
   DB_OBJECT *class_obj = NULL;
+  bool mvcc_enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);
 
   assignment = statement->node_type == PT_MERGE
     ? statement->info.merge.update.assignment
@@ -8123,20 +8124,35 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique,
 	      goto exit_on_error;
 	    }
 
-	  if (*has_unique == 0 && sm_att_unique_constrained (class_obj,
-							     att->info.
-							     name.original))
+	  if (mvcc_enabled)
 	    {
-	      *has_unique = 1;
-	      spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
+	      if (!*has_unique
+		  && sm_class_has_unique_constraint (class_obj,
+						     spec->info.spec.
+						     only_all == PT_ALL))
+		{
+		  *has_unique = 1;
+		  spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
+		}
 	    }
-	  if (*has_unique == 0 &&
-	      sm_att_in_unique_filter_constraint_predicate (class_obj,
-							    att->info.name.
-							    original))
+	  else
 	    {
-	      *has_unique = 1;
-	      spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
+	      if (*has_unique == 0
+		  && sm_att_unique_constrained (class_obj,
+						att->info.name.original))
+		{
+		  *has_unique = 1;
+		  spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
+		}
+	      if (*has_unique == 0
+		  && sm_att_in_unique_filter_constraint_predicate (class_obj,
+								   att->info.
+								   name.
+								   original))
+		{
+		  *has_unique = 1;
+		  spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
+		}
 	    }
 	  if (sm_att_constrained (class_obj, att->info.name.original,
 				  SM_ATTFLAG_NON_NULL))
@@ -8976,7 +8992,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 				 statement->info.update.using_index,
 				 statement->info.update.order_by,
 				 statement->info.update.orderby_for, 0,
-				 PT_COMPOSITE_LOCKING_UPDATE);
+				 S_UPDATE);
 
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.update.assignment,
@@ -9335,7 +9351,7 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p,
 			 delete_stmt->info.delete_.search_cond,
 			 delete_stmt->info.delete_.using_index, NULL, NULL,
 			 0 /* not server update */ ,
-			 PT_COMPOSITE_LOCKING_DELETE);
+			 S_DELETE);
   if (statement != NULL)
     {
       ret = pt_copy_upddel_hints_to_select (parser, delete_stmt, statement);
@@ -10238,8 +10254,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement,
 						  delete_info->class_specs,
 						  delete_info->search_cond,
 						  delete_info->using_index,
-						  NULL, NULL, 0,
-						  PT_COMPOSITE_LOCKING_DELETE);
+						  NULL, NULL, 0, S_DELETE);
 	  err = pt_copy_upddel_hints_to_select (parser, statement,
 						select_statement);
 	  if (err != NO_ERROR)
@@ -17505,6 +17520,67 @@ do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser,
     }
 
   return node;
+}
+
+/*
+ * do_vacuum () - Executes a VACUUM statement.
+ *
+ * return	  : Error code.
+ * parser (in)	  : Parser context.
+ * statement (in) : VACUUM parse tree node.
+ */
+static int
+do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int num_classes, error = NO_ERROR, i;
+  PT_NODE *crt_spec = NULL;
+  OID *class_oids = NULL;
+  OID *oid = NULL;
+
+  assert (parser != NULL && statement != NULL
+	  && PT_IS_VACUUM_NODE (statement));
+
+  num_classes = pt_length_of_list (statement->info.vacuum.spec);
+  if (num_classes <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  /* Allocate memory for class oid array */
+  class_oids = (OID *) malloc (num_classes * OR_OID_SIZE);
+  if (class_oids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      num_classes * OR_OID_SIZE);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  /* Get class OID's */
+  for (i = 0, crt_spec = statement->info.vacuum.spec; i < num_classes;
+       i++, crt_spec = crt_spec->next)
+    {
+      assert (crt_spec->info.spec.entity_name != NULL
+	      && (crt_spec->info.spec.entity_name->info.name.db_object
+		  != NULL));
+      oid = ws_oid (crt_spec->info.spec.entity_name->info.name.db_object);
+      if (oid == NULL)
+	{
+	  error = ER_FAILED;
+	  break;
+	}
+      COPY_OID (&class_oids[i], oid);
+    }
+
+  /* Call vacuum */
+  if (error == NO_ERROR)
+    {
+      error = cvacuum (num_classes, class_oids);
+    }
+
+  /* Clean up */
+  free_and_init (class_oids);
+
+  return error;
 }
 
 /*

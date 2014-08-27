@@ -79,7 +79,15 @@ typedef void THREAD_ENTRY;
 #define thread_rc_track_dump_all(thread_p, outfp)
 #define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
 
+#define thread_is_process_log_for_vacuum(thread_p) false
+#define thread_is_vacuum_worker(thread_p) false
+#define thread_set_vacuum_worker_state(thread_p, state)
+#define thread_set_vacuum_worker_drop_file_version(thread_p, version)
+#define thread_get_vacuum_worker_count() (0)
+
 #else /* !SERVER_MODE */
+
+#define THREAD_VACUUM_WORKERS_COUNT 10
 
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) \
   ((thrd) ? (thrd)->index : thread_get_current_entry_index())
@@ -150,6 +158,23 @@ enum
 enum
 { MGR_DEF = 0, MGR_LAST };
 
+#if !defined (NDEBUG)
+#define THREAD_TRACKED_RES_CALLER_FILE_MAX_SIZE	    20
+/* THREAD_TRACKED_RESOURCE - Used to track allocated resources.
+ * When a resource is used first time, a structure like this one is generated
+ * and file name and line are saved. Any other usages will update the amount.
+ * When the amount becomes 0, the resource is considered "freed".
+ */
+typedef struct thread_tracked_resource THREAD_TRACKED_RESOURCE;
+struct thread_tracked_resource
+{
+  void *res_ptr;
+  int caller_line;
+  INT32 amount;
+  char caller_file[THREAD_TRACKED_RES_CALLER_FILE_MAX_SIZE];
+};
+#endif /* !NDEBUG */
+
 typedef struct thread_resource_meter THREAD_RC_METER;
 struct thread_resource_meter
 {
@@ -160,13 +185,13 @@ struct thread_resource_meter
   const char *m_sub_file_name;	/* last sub file name, line number */
   INT32 m_sub_line_no;
 #if !defined(NDEBUG)
-  char m_add_buf[ONE_K];	/* total add file name, line number */
-  INT32 m_add_buf_size;
-  char m_sub_buf[ONE_K];	/* total sub file name, line number */
-  INT32 m_sub_buf_size;
   char m_hold_buf[ONE_K];	/* used specially for each meter */
   INT32 m_hold_buf_size;
-#endif
+
+  THREAD_TRACKED_RESOURCE *m_tracked_res;
+  INT32 m_tracked_res_capacity;
+  INT32 m_tracked_res_count;
+#endif				/* !NDEBUG */
 };
 
 typedef struct thread_resource_track THREAD_RC_TRACK;
@@ -175,6 +200,10 @@ struct thread_resource_track
   HL_HEAPID private_heap_id;	/* id of thread private memory allocator */
   THREAD_RC_METER meter[RC_LAST][MGR_LAST];
   THREAD_RC_TRACK *prev;
+
+#if !defined (NDEBUG)
+  THREAD_TRACKED_RESOURCE *tracked_resources;
+#endif
 };
 
 typedef struct thread_entry THREAD_ENTRY;
@@ -303,6 +332,16 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
 extern DAEMON_THREAD_MONITOR thread_Log_flush_thread;
 
+typedef enum vacuum_worker_state VACUUM_WORKER_STATE;
+enum vacuum_worker_state
+{
+  VACUUM_WORKER_STATE_INACTIVE,	/* Vacuum worker is inactive */
+  VACUUM_WORKER_STATE_PROCESS_LOG,	/* Vacuum worker processes log data */
+  VACUUM_WORKER_STATE_EXECUTE	/* Vacuum worker executes cleanup based
+				 * on processed data
+				 */
+};
+
 #if !defined(HPUX)
 extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
 #endif /* not HPUX */
@@ -389,8 +428,20 @@ extern void thread_wakeup_checkpoint_thread (void);
 extern void thread_wakeup_purge_archive_logs_thread (void);
 extern void thread_wakeup_oob_handler_thread (void);
 extern void thread_wakeup_auto_volume_expansion_thread (void);
+extern void thread_wakeup_vacuum_master_thread (void);
+extern bool thread_wakeup_vacuum_worker_thread (void *arg);
 
 extern bool thread_is_page_flush_thread_available (void);
+
+extern bool thread_is_process_log_for_vacuum (THREAD_ENTRY * thread_p);
+extern bool thread_is_vacuum_worker (THREAD_ENTRY * thread_p);
+extern void thread_set_vacuum_worker_state (THREAD_ENTRY * thread_p,
+					    VACUUM_WORKER_STATE new_state);
+extern void thread_set_vacuum_worker_drop_file_version (THREAD_ENTRY *
+							thread_p,
+							INT32 version);
+extern INT32 thread_get_min_dropped_files_version (void);
+extern int thread_get_vacuum_worker_count (void);
 
 extern bool thread_auto_volume_expansion_thread_is_running (void);
 

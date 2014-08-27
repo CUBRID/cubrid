@@ -83,6 +83,95 @@ struct parser_string_block
   } u;
 };
 
+/* Global reserved name table including info for each reserved name */
+PT_RESERVED_NAME pt_Reserved_name_table[] = {
+
+  /* record info attributes */
+  {"t_pageid", RESERVED_T_PAGEID, DB_TYPE_INTEGER}
+  ,
+  {"t_slotid", RESERVED_T_SLOTID, DB_TYPE_INTEGER}
+  ,
+  {"t_volumeid", RESERVED_T_VOLUMEID, DB_TYPE_INTEGER}
+  ,
+  {"t_offset", RESERVED_T_OFFSET, DB_TYPE_INTEGER}
+  ,
+  {"t_length", RESERVED_T_LENGTH, DB_TYPE_INTEGER}
+  ,
+  {"t_rectype", RESERVED_T_REC_TYPE, DB_TYPE_INTEGER}
+  ,
+  {"t_reprid", RESERVED_T_REPRID, DB_TYPE_INTEGER}
+  ,
+  {"t_chn", RESERVED_T_CHN, DB_TYPE_INTEGER}
+  ,
+  {"t_insid", RESERVED_T_MVCC_INSID, DB_TYPE_BIGINT}
+  ,
+  {"t_delid", RESERVED_T_MVCC_DELID, DB_TYPE_BIGINT}
+  ,
+  {"t_flags", RESERVED_T_MVCC_FLAGS, DB_TYPE_INTEGER}
+  ,
+  {"t_next_version", RESERVED_T_MVCC_NEXT_VERSION, DB_TYPE_OBJECT}
+
+  /* page header info attributes */
+  ,
+  {"p_class_oid", RESERVED_P_CLASS_OID, DB_TYPE_OBJECT}
+  ,
+  {"p_prev_pageid", RESERVED_P_PREV_PAGEID, DB_TYPE_INTEGER}
+  ,
+  {"p_next_pageid", RESERVED_P_NEXT_PAGEID, DB_TYPE_INTEGER}
+  ,
+  {"p_num_slots", RESERVED_P_NUM_SLOTS, DB_TYPE_INTEGER}
+  ,
+  {"p_num_records", RESERVED_P_NUM_RECORDS, DB_TYPE_INTEGER}
+  ,
+  {"p_anchor_type", RESERVED_P_ANCHOR_TYPE, DB_TYPE_INTEGER}
+  ,
+  {"p_alignment", RESERVED_P_ALIGNMENT, DB_TYPE_INTEGER}
+  ,
+  {"p_total_free", RESERVED_P_TOTAL_FREE, DB_TYPE_INTEGER}
+  ,
+  {"p_cont_free", RESERVED_P_CONT_FREE, DB_TYPE_INTEGER}
+  ,
+  {"p_offset_to_free_area", RESERVED_P_OFFSET_TO_FREE_AREA, DB_TYPE_INTEGER}
+  ,
+  {"p_is_saving", RESERVED_P_IS_SAVING, DB_TYPE_INTEGER}
+  ,
+  {"p_update_best", RESERVED_P_UPDATE_BEST, DB_TYPE_INTEGER}
+
+  /* key info attributes */
+  ,
+  {"key_volumeid", RESERVED_KEY_VOLUMEID, DB_TYPE_INTEGER}
+  ,
+  {"key_pageid", RESERVED_KEY_PAGEID, DB_TYPE_INTEGER}
+  ,
+  {"key_slotid", RESERVED_KEY_SLOTID, DB_TYPE_INTEGER}
+  ,
+  {"key_key", RESERVED_KEY_KEY, DB_TYPE_NULL}	/* Types should be determined at
+						 * compilation
+						 */
+  ,
+  {"key_oid_count", RESERVED_KEY_OID_COUNT, DB_TYPE_INTEGER}
+  ,
+  {"key_first_oid", RESERVED_KEY_FIRST_OID, DB_TYPE_OBJECT}
+  ,
+  {"key_overflow_key", RESERVED_KEY_OVERFLOW_KEY, DB_TYPE_STRING}
+  ,
+  {"key_overflow_oids", RESERVED_KEY_OVERFLOW_OIDS, DB_TYPE_STRING}
+
+  /* B-tree node info */
+  ,
+  {"bt_node_volumeid", RESERVED_BT_NODE_VOLUMEID, DB_TYPE_INTEGER}
+  ,
+  {"bt_node_pageid", RESERVED_BT_NODE_PAGEID, DB_TYPE_INTEGER}
+  ,
+  {"bt_node_type", RESERVED_BT_NODE_TYPE, DB_TYPE_STRING}
+  ,
+  {"bt_node_key_count", RESERVED_BT_NODE_KEY_COUNT, DB_TYPE_INTEGER}
+  ,
+  {"bt_node_first_key", RESERVED_BT_NODE_FIRST_KEY, DB_TYPE_NULL}
+  ,
+  {"bt_node_last_key", RESERVED_BT_NODE_LAST_KEY, DB_TYPE_NULL}
+};
+
 #if defined(SERVER_MODE)
 /* this is a kludge because many platforms do not handle extern
  * linking per ANSI. This should be deleted when nodes get used in server.

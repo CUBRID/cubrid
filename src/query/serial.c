@@ -256,7 +256,7 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p,
   attr_info_p = &attr_info;
 
   ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc,
-				     attr_info_p);
+				     NULL, attr_info_p);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -540,7 +540,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p,
     }
 
   ret = heap_attrinfo_read_dbvalues (thread_p, &entry->oid, &recdesc,
-				     &attr_info);
+				     NULL, &attr_info);
   if (ret != NO_ERROR)
     {
       heap_attrinfo_end (thread_p, &attr_info);
@@ -656,7 +656,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p,
     }
 
   ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc,
-				     &attr_info);
+				     NULL, &attr_info);
 
   attr_info_p = &attr_info;
 
@@ -794,8 +794,8 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p,
       entry = serial_alloc_cache_entry ();
       if (entry != NULL)
 	{
-	  assert (mht_get (serial_Cache_pool.ht, &entry->oid) == NULL);
 	  COPY_OID (&entry->oid, serial_oidp);
+	  assert (mht_get (serial_Cache_pool.ht, &entry->oid) == NULL);
 	  if (mht_put (serial_Cache_pool.ht, &entry->oid, entry) == NULL)
 	    {
 	      OID_SET_NULL (&entry->oid);
@@ -870,7 +870,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
    * by this top operation log record.
    *
    * If lock_mode is X_LOCK
-   * means we created or altered the serial obj in an uncommited trans
+   * means we created or altered the serial obj in an uncommitted trans
    * For this case, topop and flush mark are not used,
    * since these may cause problem with replication log.
    */
@@ -909,7 +909,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 
 #if defined (DEBUG)
   if (spage_is_updatable (thread_p, addr.pgptr, serial_oidp->slotid,
-			  &new_recdesc) == false)
+			  new_recdesc.length) == false)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_QPROC_CANNOT_UPDATE_SERIAL, 0);
@@ -1179,17 +1179,10 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
   HEAP_CACHE_ATTRINFO attr_info;
   int i, error = NO_ERROR;
   const char *attr_name_p;
-  LC_FIND_CLASSNAME status;
 
   serial_Num_attrs = -1;
 
-  status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME,
-				    &serial_Cache_pool.db_serial_class_oid,
-				    NULL_LOCK);
-  if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
-    {
-      return ER_FAILED;
-    }
+  oid_get_serial_oid (&serial_Cache_pool.db_serial_class_oid);
 
   if (heap_scancache_quick_start (&scan) != NO_ERROR)
     {

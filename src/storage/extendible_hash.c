@@ -631,7 +631,7 @@ ehash_compare_overflow (THREAD_ENTRY * thread_p, const VPID * ovf_vpid_p,
 
   er_code = NO_ERROR;
 
-  if (overflow_get (thread_p, ovf_vpid_p, &ovf_recdes) != S_SUCCESS)
+  if (overflow_get (thread_p, ovf_vpid_p, &ovf_recdes, NULL) != S_SUCCESS)
     {
       goto exit_on_error;
     }
@@ -695,7 +695,7 @@ ehash_compose_overflow (THREAD_ENTRY * thread_p, RECDES * recdes_p)
   ovf_recdes.area_size -= EHASH_LONG_STRING_PREFIX_SIZE;
 
   /* Copy to the overflow portion of the key */
-  if (overflow_get (thread_p, ovf_vpid_p, &ovf_recdes) != S_SUCCESS)
+  if (overflow_get (thread_p, ovf_vpid_p, &ovf_recdes, NULL) != S_SUCCESS)
     {
       ehash_free_recdes (&ovf_recdes);
       return NULL;
@@ -2069,7 +2069,7 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
 	      /* Create the overflow pages */
 	      if (overflow_insert
 		  (thread_p, ovf_file_p, &ovf_vpid, &ovf_recdes,
-		   NULL) == NULL)
+		   NULL, NULL) == NULL)
 		{
 		  /*
 		   * overflow pages creation failed; do not insert the prefix

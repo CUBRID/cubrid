@@ -3286,11 +3286,12 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 
 	case DB_TYPE_OBJECT:
 	  {
+#if !defined (SERVER_MODE)
 	    DB_OBJECT *mop;
 
 	    domain = &tp_Object_domain;
 	    mop = db_get_object (val);
-	    if ((mop == NULL) || (mop->deleted))
+	    if ((mop == NULL) || (WS_IS_DELETED (mop)))
 	      {
 		/* just let the oid thing stand?, this is a NULL anyway */
 	      }
@@ -3302,6 +3303,10 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 		    domain = &tp_Vobj_domain;
 		  }
 	      }
+#else
+	    /* We don't have mops on server */
+	    assert (false);
+#endif
 	  }
 	  break;
 

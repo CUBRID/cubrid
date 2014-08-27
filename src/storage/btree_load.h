@@ -59,24 +59,35 @@
 
 /* each page is supposed to have around 30% blank area during merge
    considerations of a delete operation */
-#define BTREE_MAX_ALIGN INT_ALIGNMENT	/* Maximum Alignment            */
-					     /* Maximum Leaf Node Entry Size */
-#define LEAFENTSZ(n)  ( LEAF_RECORD_SIZE + BTREE_MAX_ALIGN \
-                            + OR_OID_SIZE + BTREE_MAX_ALIGN + n )
-					     /* Maximum Non_Leaf Entry Size  */
-#define NLEAFENTSZ(n) ( NON_LEAF_RECORD_SIZE + BTREE_MAX_ALIGN + n )
 
-#define OIDCMP( n1, n2 )  \
-  ( (n1).volid == (n2).volid && \
-    (n1).pageid == (n2).pageid && \
-    (n1).slotid == (n2).slotid )	/* compare two object identifiers */
+/* Maximum Alignment */
+#define BTREE_MAX_ALIGN INT_ALIGNMENT
 
-#define HEADER 0		/* Header (Oth) record of the page  */
+/* Maximum Leaf Node Entry Size */
+#define LEAFENTSZ(n)  (LEAF_RECORD_SIZE + BTREE_MAX_ALIGN \
+                       + OR_OID_SIZE + BTREE_MAX_ALIGN + n)
+
+/* MVCC Maximum Leaf Entry Size  */
+#define MVCC_LEAFENTSZ(n)  (LEAF_RECORD_SIZE + BTREE_MAX_ALIGN \
+			    + OR_MVCCID_SIZE \
+			    + OR_OID_SIZE + BTREE_MAX_ALIGN + n)
+
+/* Maximum Non_Leaf Entry Size */
+#define NLEAFENTSZ(n) (NON_LEAF_RECORD_SIZE + BTREE_MAX_ALIGN + n)
+
+/* compare two object identifiers */
+#define OIDCMP(n1, n2) \
+  ((n1).volid == (n2).volid \
+   && (n1).pageid == (n2).pageid \
+   && (n1).slotid == (n2).slotid)
+
+/* Header (Oth) record of the page */
+#define HEADER 0
 
 #if !defined(NDEBUG)
 #define BTREE_INVALID_INDEX_ID(btid) \
- ((btid)->vfid.fileid == NULL_FILEID || (btid)->vfid.volid == NULL_VOLID ||\
-  (btid)->root_pageid == NULL_PAGEID)
+ ((btid)->vfid.fileid == NULL_FILEID || (btid)->vfid.volid == NULL_VOLID \
+  || (btid)->root_pageid == NULL_PAGEID)
 #endif
 
 /*
@@ -90,15 +101,8 @@
  * turned back on).
  */
 #define BTREE_MAX_KEYLEN_INPAGE ((int)(DB_PAGESIZE / 8))
+/* in MVCC BTREE_MAX_OIDLEN_INPAGE include MVCC fields too */
 #define BTREE_MAX_OIDLEN_INPAGE ((int)(DB_PAGESIZE / 8))
-
-/* B+tree node types */
-typedef enum
-{
-  BTREE_LEAF_NODE = 0,
-  BTREE_NON_LEAF_NODE,
-  BTREE_OVERFLOW_NODE
-} BTREE_NODE_TYPE;
 
 extern int btree_node_number_of_keys (PAGE_PTR page_ptr);
 extern int btree_get_next_overflow_vpid (PAGE_PTR page_ptr, VPID * vpid);
@@ -108,36 +112,54 @@ extern int btree_get_next_overflow_vpid (PAGE_PTR page_ptr, VPID * vpid);
 
 /* for notification log messages */
 #define BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID,BTNM) \
-		btree_set_error(THREAD, KEY, OID, C_OID, BTID, BTNM, \
-		ER_NOTIFICATION_SEVERITY, ER_BTREE_CREATED_OVERFLOW_KEY, \
-		__FILE__, __LINE__)
+  btree_set_error(THREAD, KEY, OID, C_OID, BTID, BTNM, ER_NOTIFICATION_SEVERITY, \
+		  ER_BTREE_CREATED_OVERFLOW_KEY, __FILE__, __LINE__)
 
 #define BTREE_SET_CREATED_OVERFLOW_PAGE_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
-		btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, \
-		ER_NOTIFICATION_SEVERITY, ER_BTREE_CREATED_OVERFLOW_PAGE, \
-		__FILE__, __LINE__)
+  btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, ER_NOTIFICATION_SEVERITY, \
+		  ER_BTREE_CREATED_OVERFLOW_PAGE, __FILE__, __LINE__)
 
 #define BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION(THREAD,KEY,OID,C_OID,BTID) \
-		btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, \
-		ER_NOTIFICATION_SEVERITY, ER_BTREE_DELETED_OVERFLOW_PAGE, \
-		__FILE__, __LINE__)
+  btree_set_error(THREAD, KEY, OID, C_OID, BTID, NULL, ER_NOTIFICATION_SEVERITY, \
+		  ER_BTREE_DELETED_OVERFLOW_PAGE, __FILE__, __LINE__)
+
+/* set fixed size for MVCC record header */
+#define BTREE_MVCC_SET_HEADER_FIXED_SIZE(p_mvcc_rec_header) \
+  do \
+    { \
+      assert (p_mvcc_rec_header != NULL); \
+      if (!((p_mvcc_rec_header)->mvcc_flag & OR_MVCC_FLAG_VALID_INSID)) \
+        { \
+          (p_mvcc_rec_header)->mvcc_flag |= OR_MVCC_FLAG_VALID_INSID; \
+          (p_mvcc_rec_header)->mvcc_ins_id = MVCCID_ALL_VISIBLE; \
+        } \
+      if (!((p_mvcc_rec_header)->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)) \
+        { \
+          (p_mvcc_rec_header)->mvcc_flag |= OR_MVCC_FLAG_VALID_DELID; \
+          (p_mvcc_rec_header)->delid_chn.mvcc_del_id = MVCCID_NULL; \
+        } \
+    } \
+  while (0)
 
 /*
  * Type definitions related to b+tree structure and operations
  */
+
+/* Node header information */
 typedef struct btree_node_header BTREE_NODE_HEADER;
 struct btree_node_header
-{				/*  Node header information  */
+{
   BTREE_NODE_SPLIT_INFO split_info;	/* split point info. of the node */
-  VPID prev_vpid;		/* Leaf Page Previous Node Pointer     */
-  VPID next_vpid;		/* Leaf Page Next Node Pointer         */
+  VPID prev_vpid;		/* Leaf Page Previous Node Pointer */
+  VPID next_vpid;		/* Leaf Page Next Node Pointer */
   short node_level;		/* btree depth; Leaf(= 1), Non_leaf(> 1) */
-  short max_key_len;		/* Maximum key length for the subtree  */
+  short max_key_len;		/* Maximum key length for the subtree */
 };
 
+/* Root header information */
 typedef struct btree_root_header BTREE_ROOT_HEADER;
 struct btree_root_header
-{				/*  Root header information  */
+{
   BTREE_NODE_HEADER node;
   int num_oids;			/* Number of OIDs stored in the Btree */
   int num_nulls;		/* Number of NULLs (they aren't stored) */
@@ -147,40 +169,43 @@ struct btree_root_header
   int reverse_reserved;		/* reverse or normal *//* not used */
   int rev_level;		/* Btree revision level */
   VFID ovfid;			/* Overflow file */
-  char packed_key_domain[1];	/* The key type for the index        */
+  char packed_key_domain[1];	/* The key type for the index */
 };
 
+/* overflow header information */
 typedef struct btree_overflow_header BTREE_OVERFLOW_HEADER;
 struct btree_overflow_header
-{				/*  overflow header information  */
+{
   VPID next_vpid;
 };
 
+/* Fixed part of a non_leaf record */
 typedef struct non_leaf_rec NON_LEAF_REC;
 struct non_leaf_rec
-{				/*  Fixed part of a non_leaf record  */
-  VPID pnt;			/* The Child Page Pointer  */
+{
+  VPID pnt;			/* The Child Page Pointer */
   short key_len;
 };
 
+/* Fixed part of a leaf record */
 typedef struct leaf_rec LEAF_REC;
 struct leaf_rec
-{				/*  Fixed part of a leaf record  */
-  VPID ovfl;			/* Overflow page pointer, for overflow OIDs  */
+{
+  VPID ovfl;			/* Overflow page pointer, for overflow OIDs */
   short key_len;
 };
 
 typedef struct btree_node_info BTREE_NODE_INFO;
 struct btree_node_info
-{				/*  STATISTICAL TEST INFORMATION  */
-  short max_key_len;		/* Maximum key length for the subtree   */
-  int height;			/* The height of the subtree            */
-  INT32 tot_key_cnt;		/* Total key count in the subtree       */
-  int page_cnt;			/* Total page count in the subtree      */
+{
+  short max_key_len;		/* Maximum key length for the subtree */
+  int height;			/* The height of the subtree */
+  INT32 tot_key_cnt;		/* Total key count in the subtree */
+  int page_cnt;			/* Total page count in the subtree */
   int leafpg_cnt;		/* Total leaf page count in the subtree */
-  int nleafpg_cnt;		/* Total non_leaf page count            */
+  int nleafpg_cnt;		/* Total non_leaf page count */
   int key_area_len;		/* Current max_key area length malloced */
-  DB_VALUE max_key;		/* Largest key in the subtreee          */
+  DB_VALUE max_key;		/* Largest key in the subtreee */
 };				/* contains statistical data for testing purposes */
 
 /*
@@ -189,7 +214,7 @@ struct btree_node_info
 
 typedef struct btree_node BTREE_NODE;
 struct btree_node
-{				/* node of the file_contents linked list */
+{
   BTREE_NODE *next;		/* Pointer to next node */
   VPID pageid;			/* Identifier of the page */
 };
@@ -206,6 +231,9 @@ extern int btree_rv_undo_create_index (THREAD_ENTRY * thread_p,
 extern void btree_rv_dump_create_index (FILE * fp, int length_ignore,
 					void *data);
 extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
+extern void btree_rv_mvcc_save_increments (OID * class_oid, BTID * btid,
+					   int key_delta, int oid_delta,
+					   int null_delta, RECDES * recdes);
 
 extern bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value);
 extern int btree_create_overflow_key_file (THREAD_ENTRY * thread_p,
@@ -237,7 +265,9 @@ extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			       void *node_rec, DB_VALUE * key,
 			       int node_type, int key_type,
 			       int key_len, bool during_loading,
-			       OID * class_oid, OID * oid, RECDES * rec);
+			       OID * class_oid, OID * oid,
+			       MVCC_REC_HEADER * p_mvcc_rec_header,
+			       RECDES * rec);
 extern void btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			       PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,
 			       void *rec_header, int node_type,
@@ -258,7 +288,9 @@ extern int btree_compare_key (DB_VALUE * key1, DB_VALUE * key2,
 			      TP_DOMAIN * key_domain,
 			      int do_coercion, int total_order,
 			      int *start_colp);
-extern int btree_leaf_new_overflow_oids_vpid (RECDES * rec, VPID * ovfl_vpid);
+extern int btree_leaf_new_overflow_oids_vpid (RECDES * rec, VPID * ovfl_vpid,
+					      bool is_unique,
+					      OID * class_oid);
 extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid,
 			       int col_idx, int *asc_desc);
 

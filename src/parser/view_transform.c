@@ -6142,7 +6142,7 @@ mq_virtual_queries (DB_OBJECT * class_object)
       return NULL;
     }
 
-  if (owner != me)
+  if (!ws_is_same_object (owner, me))
     {
       symbols->authorization = mq_compute_authorization (class_object);
     }
@@ -6178,7 +6178,7 @@ mq_virtual_queries (DB_OBJECT * class_object)
 	  statements[0]->info.query.q.select.list = NULL;
 	  parser_free_tree (parser, statements[0]);
 
-	  if (owner != me)
+	  if (!ws_is_same_object (owner, me))
 	    {
 	      /* set user to owner to translate query specification. */
 	      AU_SET_USER (owner);
@@ -6262,7 +6262,7 @@ mq_virtual_queries (DB_OBJECT * class_object)
 	}
     }
 
-  if (owner != me)
+  if (!ws_is_same_object (owner, me))
     {
       /* set user to me */
       AU_SET_USER (me);
@@ -12215,7 +12215,7 @@ mq_rewrite_order_dependent_query (PARSER_CONTEXT * parser, PT_NODE * select,
   /* new SELECT will query a derived table */
   parent->info.query.q.select.from = dt;
   parent->info.query.correlation_level = select->info.query.correlation_level;
-  parent->info.query.composite_locking = select->info.query.composite_locking;
+  parent->info.query.scan_op_type = select->info.query.scan_op_type;
   parent->info.query.oids_included = select->info.query.oids_included;
 
   /*

@@ -190,6 +190,8 @@ typedef enum
     / OR_OID_SIZE) \
    * OR_OID_SIZE)
 
+typedef UINT64 MVCCID;		/* MVCC ID */
+
 /* TYPE DEFINITIONS RELATED TO KEY AND VALUES */
 
 typedef enum			/* range search option */
@@ -250,6 +252,28 @@ struct recdes
   char *data;			/* The data */
 };
 
+/* MVCC RECORD HEADER */
+typedef struct mvcc_rec_header MVCC_REC_HEADER;
+struct mvcc_rec_header
+{
+  INT32 mvcc_flag:8;		/* MVCC flags */
+  INT32 repid:24;		/* representation id */
+  MVCCID mvcc_ins_id;		/* MVCC insert id */
+  union DELID_CHN
+  {
+    MVCCID mvcc_del_id;		/* MVCC delete id */
+    int chn;			/* cache coherency number */
+  } delid_chn;
+  OID next_version;		/* next row version */
+};
+
+typedef struct mvcc_relocate_delete_info MVCC_RELOCATE_DELETE_INFO;
+struct mvcc_relocate_delete_info
+{
+  OID *mvcc_delete_oid;		/* MVCC delete oid */
+  OID *next_version;		/* MVCC next version */
+};
+
 typedef struct lorecdes LORECDES;	/* Work area descriptor */
 struct lorecdes
 {
@@ -293,12 +317,45 @@ struct lorecdes
 
 #define DISK_VOLPURPOSE DB_VOLPURPOSE
 
-/* Types ans defines of transaction managment */
+/* Types and defines of transaction management */
 
 typedef int TRANID;		/* Transaction identifier      */
 
 #define NULL_TRANID     (-1)
 #define NULL_TRAN_INDEX (-1)
+#define MVCCID_NULL (0)
+
+#define MVCCID_ALL_VISIBLE    ((MVCCID) 3)	/* visible for all transactions */
+#define MVCCID_FIRST	      ((MVCCID) 4)
+
+/* is MVCC ID valid? */
+#define MVCCID_IS_VALID(id)	  ((id) != MVCCID_NULL)
+/* is MVCC ID normal? */
+#define MVCCID_IS_NORMAL(id)	  ((id) >= MVCCID_FIRST)
+/* are MVCC IDs equal? */
+#define MVCCID_IS_EQUAL(id1,id2)	  ((id1) == (id2))
+
+/* advance MVCC ID */
+#define MVCCID_FORWARD(id) \
+  do \
+    { \
+      (id)++; \
+      if ((id) < MVCCID_FIRST) \
+        (id) = MVCCID_FIRST; \
+    } \
+  while (0)
+
+/* back up MVCC ID */
+#define MVCCID_BACKWARD(id) \
+  do \
+    { \
+      (id)--; \
+    } \
+  while ((id) < MVCCID_FIRST)
+
+
+#define COMPOSITE_LOCK(scan_op_type)	(scan_op_type != S_SELECT)
+#define READONLY_SCAN(scan_op_type)	(scan_op_type == S_SELECT)
 
 typedef enum
 {
@@ -362,9 +419,10 @@ typedef enum
 
 typedef enum
 {
-  BTREE_KEY_FOUND,
+  BTREE_KEY_FOUND,		/* in MVCC inserted and committed or deleted and aborted */
   BTREE_KEY_NOTFOUND,
-  BTREE_ERROR_OCCURRED
+  BTREE_ERROR_OCCURRED,
+  BTREE_ACTIVE_KEY_FOUND	/* used only in MVCC - inserted/deleted but not committed/aborted */
 } BTREE_SEARCH;
 
 /* TYPEDEFS FOR BACKUP/RESTORE */
@@ -440,7 +498,8 @@ typedef enum
   S_SUCCESS = 1,
   S_SUCCESS_CHN_UPTODATE,	/* only for slotted page */
   S_DOESNT_FIT,			/* only for slotted page */
-  S_DOESNT_EXIST		/* only for slotted page */
+  S_DOESNT_EXIST,		/* only for slotted page */
+  S_SNAPSHOT_NOT_SATISFIED
 } SCAN_CODE;
 
 typedef enum
@@ -451,6 +510,81 @@ typedef enum
 } SCAN_OPERATION_TYPE;
 
 #define IS_WRITE_EXCLUSIVE_LOCK(lock) ((lock) == X_LOCK || (lock) == SCH_M_LOCK)
+
+
+typedef enum
+{
+  HEAP_RECORD_INFO_INVALID = -1,
+  HEAP_RECORD_INFO_T_PAGEID = 0,
+  HEAP_RECORD_INFO_T_SLOTID,
+  HEAP_RECORD_INFO_T_VOLUMEID,
+  HEAP_RECORD_INFO_T_OFFSET,
+  HEAP_RECORD_INFO_T_LENGTH,
+  HEAP_RECORD_INFO_T_REC_TYPE,
+  HEAP_RECORD_INFO_T_REPRID,
+  HEAP_RECORD_INFO_T_CHN,
+  HEAP_RECORD_INFO_T_MVCC_INSID,
+  HEAP_RECORD_INFO_T_MVCC_DELID,
+  HEAP_RECORD_INFO_T_MVCC_FLAGS,
+  HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION,
+
+  /* leave this last */
+  HEAP_RECORD_INFO_COUNT,
+
+  HEAP_RECORD_INFO_FIRST = HEAP_RECORD_INFO_T_PAGEID
+} HEAP_RECORD_INFO_ID;
+
+typedef enum
+{
+  HEAP_PAGE_INFO_INVALID = -1,
+  HEAP_PAGE_INFO_CLASS_OID = 0,
+  HEAP_PAGE_INFO_PREV_PAGE,
+  HEAP_PAGE_INFO_NEXT_PAGE,
+  HEAP_PAGE_INFO_NUM_SLOTS,
+  HEAP_PAGE_INFO_NUM_RECORDS,
+  HEAP_PAGE_INFO_ANCHOR_TYPE,
+  HEAP_PAGE_INFO_ALIGNMENT,
+  HEAP_PAGE_INFO_TOTAL_FREE,
+  HEAP_PAGE_INFO_CONT_FREE,
+  HEAP_PAGE_INFO_OFFSET_TO_FREE_AREA,
+  HEAP_PAGE_INFO_IS_SAVING,
+  HEAP_PAGE_INFO_UPDATE_BEST,
+
+  /* leave this last */
+  HEAP_PAGE_INFO_COUNT,
+
+  HEAP_PAGE_INFO_FIRST = HEAP_PAGE_INFO_CLASS_OID
+} HEAP_PAGE_INFO_ID;
+
+typedef enum
+{
+  BTREE_KEY_INFO_INVALID = -1,
+  BTREE_KEY_INFO_VOLUMEID = 0,
+  BTREE_KEY_INFO_PAGEID,
+  BTREE_KEY_INFO_SLOTID,
+  BTREE_KEY_INFO_KEY,
+  BTREE_KEY_INFO_OID_COUNT,
+  BTREE_KEY_INFO_FIRST_OID,
+  BTREE_KEY_INFO_OVERFLOW_KEY,
+  BTREE_KEY_INFO_OVERFLOW_OIDS,
+
+  /* leave this last */
+  BTREE_KEY_INFO_COUNT
+} BTREE_KEY_INFO_ID;
+
+typedef enum
+{
+  BTREE_NODE_INFO_INVALID = -1,
+  BTREE_NODE_INFO_VOLUMEID = 0,
+  BTREE_NODE_INFO_PAGEID,
+  BTREE_NODE_INFO_NODE_TYPE,
+  BTREE_NODE_INFO_KEY_COUNT,
+  BTREE_NODE_INFO_FIRST_KEY,
+  BTREE_NODE_INFO_LAST_KEY,
+
+  /* leave this last */
+  BTREE_NODE_INFO_COUNT
+} BTREE_NODE_INFO_ID;
 
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);

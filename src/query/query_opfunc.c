@@ -6718,8 +6718,9 @@ qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p,
 	  return ER_FAILED;
 	}
 
-      if (btree_get_unique_statistics (thread_p, &agg_p->btid, &oid_count,
-				       &null_count, &key_count) != NO_ERROR)
+      if (btree_get_unique_statistics_for_count (thread_p, &agg_p->btid,
+						 &oid_count, &null_count,
+						 &key_count) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -8099,7 +8100,8 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p,
     }
 
   instance_oid_p = DB_PULL_OID (val_p);
-  if (heap_get_class_oid (thread_p, &class_oid, instance_oid_p) == NULL)
+  if (heap_get_class_oid (thread_p, &class_oid, instance_oid_p,
+			  DONT_NEED_SNAPSHOT) == NULL)
     {
       return ER_FAILED;
     }

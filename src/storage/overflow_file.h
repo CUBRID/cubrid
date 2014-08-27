@@ -36,7 +36,9 @@
 
 extern VPID *overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 			      VPID * ovf_vpid, RECDES * recdes,
-			      int *ovf_first_page);
+			      int *ovf_first_page,
+			      MVCC_RELOCATE_DELETE_INFO *
+			      mvcc_relocate_delete);
 extern VPID *overflow_insert_without_undo_logging (THREAD_ENTRY * thread_p,
 						   const VFID * ovf_vfid,
 						   VPID * ovf_vpid,
@@ -52,11 +54,13 @@ extern void overflow_flush (THREAD_ENTRY * thread_p, const VPID * ovf_vpid);
 extern int overflow_get_length (THREAD_ENTRY * thread_p,
 				const VPID * ovf_vpid);
 extern SCAN_CODE overflow_get (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
-			       RECDES * recdes);
+			       RECDES * recdes,
+			       MVCC_SNAPSHOT * mvcc_snapshot);
 extern SCAN_CODE overflow_get_nbytes (THREAD_ENTRY * thread_p,
 				      const VPID * ovf_vpid, RECDES * recdes,
 				      int start_offset, int max_nbytes,
-				      int *remaining_length);
+				      int *remaining_length,
+				      MVCC_SNAPSHOT * mvcc_snapshot);
 extern int overflow_get_capacity (THREAD_ENTRY * thread_p,
 				  const VPID * ovf_vpid, int *ovf_length,
 				  int *ovf_num_pages, int *ovf_overhead,
@@ -82,5 +86,7 @@ extern void overflow_rv_link_dump (FILE * fp, int length_ignore, void *data);
 extern int overflow_rv_page_update_redo (THREAD_ENTRY * thread_p,
 					 LOG_RCV * rcv);
 extern void overflow_rv_page_dump (FILE * fp, int length, void *data);
-
+extern char *overflow_get_first_page_data (char *page_ptr);
+extern int overflow_rv_newpage_delete_relocated_redo (THREAD_ENTRY * thread_p,
+						      LOG_RCV * rcv);
 #endif /* _OVERFLOW_FILE_H_ */

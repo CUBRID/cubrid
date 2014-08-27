@@ -455,6 +455,10 @@ qdump_access_method_string (ACCESS_METHOD access)
       return "sequential";
     case INDEX:
       return "index";
+    case SEQUENTIAL_RECORD_INFO:
+      return "sequential record info";
+    case SEQUENTIAL_PAGE_SCAN:
+      return "sequential page scan";
     default:
       return "undefined";
     }
@@ -480,7 +484,7 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
 
   fprintf (foutput, ",%s", qdump_access_method_string (spec_list_p->access));
 
-  if (spec_list_p->access == INDEX)
+  if (IS_ANY_INDEX_ACCESS (spec_list_p->access))
     {
       if (qdump_print_index (spec_list_p->indexptr) == false)
 	{
@@ -518,6 +522,12 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
     {
       fprintf (foutput, "\n      access pred:");
       qdump_print_predicate (spec_list_p->where_pred);
+    }
+
+  if (spec_list_p->where_range)
+    {
+      fprintf (foutput, "\n      access range:");
+      qdump_print_predicate (spec_list_p->where_range);
     }
 
   fprintf (foutput, "\n  grouped scan=%d", spec_list_p->grouped_scan);
@@ -717,6 +727,8 @@ qdump_print_class (CLS_SPEC_TYPE * class_p)
   qdump_print_regu_variable_list (class_p->cls_regu_list_pred);
   fprintf (foutput, "\n	regu_list_rest:");
   qdump_print_regu_variable_list (class_p->cls_regu_list_rest);
+  fprintf (foutput, "\n	regu_list_ct:");
+  qdump_print_regu_variable_list (class_p->cls_regu_list_last_version);
   return true;
 }
 

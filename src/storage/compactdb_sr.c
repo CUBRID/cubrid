@@ -106,7 +106,8 @@ process_value (DB_VALUE * value)
 	    break;
 	  }
 
-	if (heap_get_class_oid (NULL, &ref_class_oid, ref_oid) == NULL)
+	if (heap_get_class_oid (NULL, &ref_class_oid, ref_oid, NEED_SNAPSHOT)
+	    == NULL)
 	  {
 	    OID_SET_NULL (ref_oid);
 	    return_value = 1;
@@ -193,10 +194,35 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
   HEAP_ATTRVALUE *value = NULL;
   int force_count = 0, updated_n_attrs_id = 0;
   int *atts_id = NULL;
+  int error_code;
 
   if (upd_scancache == NULL || attr_info == NULL || oid == NULL)
     {
       return -1;
+    }
+
+  if (mvcc_Enabled)
+    {
+      SCAN_CODE scan_code;
+      RECDES copy_recdes;
+
+      copy_recdes.data = NULL;
+
+      scan_code =
+	heap_mvcc_get_version_for_delete (thread_p, oid,
+					  &upd_scancache->class_oid,
+					  &copy_recdes, upd_scancache,
+					  COPY, NULL);
+      if (scan_code != S_SUCCESS)
+	{
+	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      er_clear ();
+	      return 0;
+	    }
+
+	  return -1;
+	}
     }
 
   atts_id = (int *) db_private_alloc (thread_p,
@@ -221,20 +247,31 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
       (attr_info->read_classrepr != NULL && attr_info->last_classrepr != NULL
        && attr_info->read_classrepr->id != attr_info->last_classrepr->id))
     {
-      if (locator_attribute_info_force (thread_p, &upd_scancache->hfid, oid,
-					NULL, false, attr_info,
-					atts_id, updated_n_attrs_id,
-					LC_FLUSH_UPDATE,
-					SINGLE_ROW_UPDATE, upd_scancache,
-					&force_count, false,
-					REPL_INFO_TYPE_STMT_NORMAL,
-					DB_NOT_PARTITIONED_CLASS, NULL,
-					NULL) != NO_ERROR)
+      error_code =
+	locator_attribute_info_force (thread_p, &upd_scancache->hfid, oid,
+				      NULL, false, attr_info,
+				      atts_id, updated_n_attrs_id,
+				      LC_FLUSH_UPDATE,
+				      SINGLE_ROW_UPDATE, upd_scancache,
+				      &force_count, false,
+				      REPL_INFO_TYPE_STMT_NORMAL,
+				      DB_NOT_PARTITIONED_CLASS, NULL,
+				      NULL, NULL, false);
+      if (error_code != NO_ERROR)
 	{
-	  result = -1;
+	  if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
+	    {
+	      result = 0;
+	    }
+	  else
+	    {
+	      result = -1;
+	    }
 	}
-
-      result = 1;
+      else
+	{
+	  result = 1;
+	}
     }
 
   if (atts_id)
@@ -268,7 +305,7 @@ desc_disk_to_attr_info (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes,
       return ER_FAILED;
     }
 
-  if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, attr_info) !=
+  if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, attr_info) !=
       NO_ERROR)
     {
       return ER_FAILED;
@@ -327,7 +364,7 @@ process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
 
   ret =
     heap_scancache_start_modify (thread_p, &upd_scancache, hfid, class_oid,
-				 SINGLE_ROW_UPDATE);
+				 SINGLE_ROW_UPDATE, NULL);
   if (ret != NO_ERROR)
     {
       return ER_FAILED;

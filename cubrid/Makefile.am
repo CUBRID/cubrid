@@ -106,7 +106,8 @@ BASE_SOURCES = \
 	$(BASE_DIR)/binaryheap.c \
 	$(BASE_DIR)/event_log.c \
 	$(BASE_DIR)/tsc_timer.c \
-	$(BASE_DIR)/perf.c
+	$(BASE_DIR)/perf.c \
+	$(BASE_DIR)/lock_free.c
 
 EXECUTABLE_SOURCES = \
 	$(EXECUTABLE_DIR)/util_common.c
@@ -150,7 +151,8 @@ QUERY_SOURCES = \
 	$(QUERY_DIR)/partition.c \
 	$(QUERY_DIR)/query_opfunc.c \
 	$(QUERY_DIR)/stream_to_xasl.c \
-	$(QUERY_DIR)/crypt_opfunc.c
+	$(QUERY_DIR)/crypt_opfunc.c \
+	$(QUERY_DIR)/vacuum.c
 
 OBJECT_SOURCES = \
 	$(OBJECT_DIR)/elo.c \
@@ -182,7 +184,8 @@ TRANSACTION_SOURCES = \
 	$(TRANSACTION_DIR)/recovery.c \
 	$(TRANSACTION_DIR)/transaction_sr.c \
 	$(TRANSACTION_DIR)/wait_for_graph.c \
-	$(TRANSACTION_DIR)/log_writer.c
+	$(TRANSACTION_DIR)/log_writer.c \
+	$(TRANSACTION_DIR)/mvcc.c
 
 STORAGE_SOURCES = \
 	$(STORAGE_DIR)/btree.c \

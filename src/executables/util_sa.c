@@ -645,6 +645,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   sm_mark_system_classes ();
 
   (void) lang_db_put_charset ();
+
   if (verbose)
     {
       au_dump_to_file (output_file);
@@ -2981,7 +2982,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		   " = C.class_name AND P.pname IS NOT NULL))",
 		   db_coll->coll_id);
 
-	  db_status = db_execute (query, &query_result, &query_error);
+	  db_status =
+	    db_compile_and_execute_local (query, &query_result, &query_error);
 
 	  if (db_status < 0)
 	    {
@@ -3053,7 +3055,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		   "AND I.is_foreign_key = 1 AND I.class_of = A.class_of",
 		   db_coll->coll_id);
 
-	  db_status = db_execute (query, &query_result, &query_error);
+	  db_status =
+	    db_compile_and_execute_local (query, &query_result, &query_error);
 
 	  if (db_status < 0)
 	    {
@@ -3134,7 +3137,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		   " = A.class_of.class_name AND P.pname IS NOT NULL)) "
 		   "ORDER BY A.class_of.class_name", db_coll->coll_id);
 
-	  db_status = db_execute (query, &query_result, &query_error);
+	  db_status =
+	    db_compile_and_execute_local (query, &query_result, &query_error);
 
 	  if (db_status < 0)
 	    {
@@ -3310,7 +3314,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		   "WHERE LOCATE ('collate %s', spec) > 0",
 		   db_coll->coll_name);
 
-	  db_status = db_execute (query, &query_result, &query_error);
+	  db_status =
+	    db_compile_and_execute_local (query, &query_result, &query_error);
 
 	  if (db_status < 0)
 	    {
@@ -3395,7 +3400,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		   "WHERE LOCATE ('collate %s', condition) > 0",
 		   db_coll->coll_name);
 
-	  db_status = db_execute (query, &query_result, &query_error);
+	  db_status =
+	    db_compile_and_execute_local (query, &query_result, &query_error);
 
 	  if (db_status < 0)
 	    {
@@ -3461,7 +3467,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt,
 		   " = index_of.class_of.class_name "
 		   "AND P.pname IS NOT NULL)) ", db_coll->coll_name);
 
-	  db_status = db_execute (query, &query_result, &query_error);
+	  db_status =
+	    db_compile_and_execute_local (query, &query_result, &query_error);
 
 	  if (db_status < 0)
 	    {

@@ -513,6 +513,9 @@
         ( (n) && (n)->node_type == PT_POINTER && \
           (n)->info.pointer.type == PT_POINTER_REF )
 
+#define PT_IS_VACUUM_NODE(n) \
+	( (n) && (n)->node_type == PT_VACUUM )
+
 #define PT_SET_ORDER_DEPENDENT_FLAG(n, f) \
         do { \
           if ((n)) \
@@ -665,6 +668,43 @@
 	  (p)->info.dot.coll_modifier = (coll) + 1;	    \
 	}						    \
     } while (0)
+
+/* Check if spec is flagged with any of flags_ */
+#define PT_IS_SPEC_FLAG_SET(spec_, flags_)		    \
+  (((spec_)->info.spec.flag & (flags_)) != 0)
+
+#define PT_SPEC_SPECIAL_INDEX_SCAN(spec_)			    \
+  (((spec_)->info.spec.flag &				    \
+    (PT_SPEC_FLAG_KEY_INFO_SCAN | PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN)) != 0)
+
+/* Obtain reserved name type from spec flag */
+#define PT_SPEC_GET_RESERVED_NAME_TYPE(spec_)				\
+  (((spec_) == NULL || (spec_)->node_type != PT_SPEC			\
+    || (spec_)->info.spec.flag == 0) ?					\
+   /* is spec is NULL or not a PT_SPEC or flag is 0, return invalid */	\
+   RESERVED_NAME_INVALID :						\
+   /* else */								\
+   ((PT_IS_SPEC_FLAG_SET (spec_, PT_SPEC_FLAG_RECORD_INFO_SCAN)) ?	\
+    /* if spec is flagged for record info */				\
+    RESERVED_NAME_RECORD_INFO :						\
+    /* else */								\
+    ((PT_IS_SPEC_FLAG_SET (spec_, PT_SPEC_FLAG_PAGE_INFO_SCAN)) ?	\
+     /* if spec is flagged for page info */				\
+     RESERVED_NAME_PAGE_INFO :						\
+     /* else */								\
+     ((PT_IS_SPEC_FLAG_SET (spec_, PT_SPEC_FLAG_KEY_INFO_SCAN)) ?	\
+      /* if spec is flagged for key info */				\
+      RESERVED_NAME_KEY_INFO :						\
+      /* else */							\
+      ((PT_IS_SPEC_FLAG_SET(spec_, PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN) ?	\
+	/* if spec is flagged for b-tree node info */			\
+	RESERVED_NAME_BTREE_NODE_INFO :					\
+	/* spec is not flagged for any type of reserved names */	\
+	RESERVED_NAME_INVALID))))))
+
+/* Check if according to spec flag should bind names as reserved */
+#define PT_SHOULD_BIND_RESERVED_NAME(spec_)				\
+  (PT_SPEC_GET_RESERVED_NAME_TYPE (spec_) != RESERVED_NAME_INVALID)
 
 /*
  Enumerated types of parse tree statements
@@ -850,6 +890,7 @@ enum pt_node_type
   PT_NAMED_ARG,
   PT_SHOWSTMT,
   PT_KILL_STMT,
+  PT_VACUUM,
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
@@ -952,8 +993,8 @@ typedef enum
   PT_TRIGGER_OID,
   PT_NORMAL,
   /* PT_META_CLASS is used to embody the concept of a class OID reference
-   * that is constant at compile time.  (ie. it does not vary as instance
-   * OIDs vary across an inheritence hierarchy).  Contrast this with
+   * that is constant at compile time.  (i.e. it does not vary as instance
+   * OIDs vary across an inheritance hierarchy).  Contrast this with
    * the F_CLASS_OF function which returns the class OID for any
    * instance valued expression.  F_CLASS_OF is a server side function.
    */
@@ -962,8 +1003,9 @@ typedef enum
   PT_PARAMETER,
   PT_HINT_NAME,			/* hint argument name */
   PT_INDEX_NAME,
+  PT_RESERVED,			/* reserved names for special attributes */
   PT_IS_SUBQUERY,		/* query is sub-query, not directly producing result */
-  PT_IS_UNION_SUBQUERY,		/* in a union subquery */
+  PT_IS_UNION_SUBQUERY,		/* in a union sub-query */
   PT_IS_UNION_QUERY,		/* query directly producing result in top level union */
   PT_IS_SET_EXPR,
   PT_IS_CSELECT,		/* query is CSELECT, not directly producing result */
@@ -979,7 +1021,6 @@ typedef enum
   PT_SERIALIZABLE,
   PT_REPEATABLE_READ,
   PT_READ_COMMITTED,
-  PT_READ_UNCOMMITTED,
   PT_ISOLATION_LEVEL,		/* get transaction option */
   PT_LOCK_TIMEOUT,
   PT_HOST_IN,			/* kind of host variable */
@@ -1142,7 +1183,15 @@ typedef enum
   PT_HINT_SKIP_UPDATE_NULL = 0x2000000,	/* 0010 0000 0000 0000 0000 0000 0000 */
   PT_HINT_NO_INDEX_LS = 0x4000000,	/* 0100 0000 0000 0000 0000 0000 0000 *//* enable loose index scan */
   PT_HINT_INDEX_LS = 0x8000000,	/* 1000 0000 0000 0000 0000 0000 0000 *//* disable loose index scan */
-  PT_HINT_QUERY_NO_CACHE = 0x10000000	/* 0001 0000 0000 0000 0000 0000 0000 0000 *//* don't use the query cache */
+  PT_HINT_QUERY_NO_CACHE = 0x10000000,	/* 0001 0000 0000 0000 0000 0000 0000 0000 *//* don't use the query cache */
+  PT_HINT_SELECT_RECORD_INFO = 0x20000000,	/* 0010 0000 0000 0000 0000 0000 0000 0000 */
+  /* SELECT record info from tuple header instead of data */
+  PT_HINT_SELECT_PAGE_INFO = 0x40000000,	/* 0100 0000 0000 0000 0000 0000 0000 0000 */
+  /* SELECT page header information from heap file instead of record data */
+  PT_HINT_SELECT_KEY_INFO = 0x80000000,	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
+  /* SELECT key information from index b-tree instead of table record data */
+  PT_HINT_SELECT_BTREE_NODE_INFO = 0x08	/* temporarily use the unused hint PT_HINT_Y */
+    /* SELECT b-tree node information */
 } PT_HINT_ENUM;
 
 
@@ -1448,7 +1497,24 @@ typedef enum
 					   one as a rewritten view */
   PT_SPEC_FLAG_CONTAINS_OID = 0x10,	/* classoid and oid were added in the
 					   derived table's select list */
-  PT_SPEC_FLAG_FOR_UPDATE_CLAUSE = 0x20	/* Used with FOR UPDATE clause */
+  PT_SPEC_FLAG_FOR_UPDATE_CLAUSE = 0x20,	/* Used with FOR UPDATE clause */
+  PT_SPEC_FLAG_RECORD_INFO_SCAN = 0x40,	/* spec will be scanned for record
+					 * information instead of record data
+					 */
+  PT_SPEC_FLAG_PAGE_INFO_SCAN = 0x80,	/* spec's heap file will scanned page
+					 * by page for page information.
+					 * records will not be scanned.
+					 */
+  PT_SPEC_FLAG_KEY_INFO_SCAN = 0x100,	/* one of the spec's indexes will be
+					 * scanned for key information.
+					 */
+  PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN = 0x200,	/* one of the spec's indexes will
+						 * be scanned for b-tree node info
+						 */
+  PT_SPEC_FLAG_MVCC_COND_REEV = 0x400,	/* the spec is used in mvcc condition
+					 * reevaluation */
+  PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800	/* the spec is used in UPDATE
+					 * assignment reevaluation */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -1590,6 +1656,8 @@ typedef struct pt_trace_info PT_TRACE_INFO;
 typedef struct pt_tuple_value_info PT_TUPLE_VALUE_INFO;
 
 typedef struct pt_insert_value_info PT_INSERT_VALUE_INFO;
+
+typedef struct pt_vacuum_info PT_VACUUM_INFO;
 
 typedef PT_NODE *(*PT_NODE_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree,
 				      void *arg);
@@ -2049,7 +2117,6 @@ struct pt_spec_info
   PT_NODE *on_cond;
   PT_NODE *using_cond;		/* -- does not support named columns join */
   PT_JOIN_TYPE join_type;
-  int lock_hint;
   short location;		/* n-th position in FROM (start from 0); init val = -1 */
   bool natural;			/* -- does not support natural join */
   DB_AUTH auth_bypass_mask;	/* flag to bypass normal authorization :
@@ -2291,6 +2358,165 @@ struct pt_method_def_info
 };
 
 
+/*
+ * Reserved names section
+ */
+
+/* Enumeration of reserved names categories */
+typedef enum
+{
+  RESERVED_NAME_INVALID = -1,
+  RESERVED_NAME_RECORD_INFO = 0,
+  RESERVED_NAME_PAGE_INFO,
+  RESERVED_NAME_KEY_INFO,
+  RESERVED_NAME_BTREE_NODE_INFO
+} PT_RESERVED_NAME_TYPE;
+
+/* Enumeration of reserved name ids */
+typedef enum
+{
+  /* Reserved record info names */
+  RESERVED_T_PAGEID = 0,
+  RESERVED_T_SLOTID,
+  RESERVED_T_VOLUMEID,
+  RESERVED_T_OFFSET,
+  RESERVED_T_LENGTH,
+  RESERVED_T_REC_TYPE,
+  RESERVED_T_REPRID,
+  RESERVED_T_CHN,
+  /* leave MVCC attributes at the end of record information */
+  RESERVED_T_MVCC_INSID,
+  RESERVED_T_MVCC_DELID,
+  RESERVED_T_MVCC_FLAGS,
+  RESERVED_T_MVCC_NEXT_VERSION,
+
+  /* Reserved page info names */
+  RESERVED_P_CLASS_OID,
+  RESERVED_P_PREV_PAGEID,
+  RESERVED_P_NEXT_PAGEID,
+  RESERVED_P_NUM_SLOTS,
+  RESERVED_P_NUM_RECORDS,
+  RESERVED_P_ANCHOR_TYPE,
+  RESERVED_P_ALIGNMENT,
+  RESERVED_P_TOTAL_FREE,
+  RESERVED_P_CONT_FREE,
+  RESERVED_P_OFFSET_TO_FREE_AREA,
+  RESERVED_P_IS_SAVING,
+  RESERVED_P_UPDATE_BEST,
+
+  /* Reserved key info names */
+  RESERVED_KEY_VOLUMEID,
+  RESERVED_KEY_PAGEID,
+  RESERVED_KEY_SLOTID,
+  RESERVED_KEY_KEY,
+  RESERVED_KEY_OID_COUNT,
+  RESERVED_KEY_FIRST_OID,
+  RESERVED_KEY_OVERFLOW_KEY,
+  RESERVED_KEY_OVERFLOW_OIDS,
+
+  /* Reserved b-tree node info names */
+  RESERVED_BT_NODE_VOLUMEID,
+  RESERVED_BT_NODE_PAGEID,
+  RESERVED_BT_NODE_TYPE,
+  RESERVED_BT_NODE_KEY_COUNT,
+  RESERVED_BT_NODE_FIRST_KEY,
+  RESERVED_BT_NODE_LAST_KEY,
+
+  /* leave this last to know how many reserved names are in
+   * pt_Reserved_name_table
+   */
+  RESERVED_ATTR_COUNT,
+
+  /* make sure you update these values when adding or removing items */
+  RESERVED_FIRST_RECORD_INFO = RESERVED_T_PAGEID,
+  RESERVED_FIRST_MVCC_INFO = RESERVED_T_MVCC_INSID,
+  RESERVED_LAST_RECORD_INFO = RESERVED_T_MVCC_NEXT_VERSION,
+
+  RESERVED_FIRST_PAGE_INFO = RESERVED_P_CLASS_OID,
+  RESERVED_LAST_PAGE_INFO = RESERVED_P_UPDATE_BEST,
+
+  RESERVED_FIRST_KEY_INFO = RESERVED_KEY_VOLUMEID,
+  RESERVED_LAST_KEY_INFO = RESERVED_KEY_OVERFLOW_OIDS,
+
+  RESERVED_FIRST_BT_NODE_INFO = RESERVED_BT_NODE_VOLUMEID,
+  RESERVED_LAST_BT_NODE_INFO = RESERVED_BT_NODE_LAST_KEY
+} PT_RESERVED_NAME_ID;
+
+/* Reserved name info */
+typedef struct pt_reserved_name PT_RESERVED_NAME;
+struct pt_reserved_name
+{
+  char *name;
+  PT_RESERVED_NAME_ID id;
+  DB_TYPE type;
+};
+
+/* Global reserved name table which stores info for each name */
+extern PT_RESERVED_NAME pt_Reserved_name_table[];
+
+/* Obtain reserved name type from id */
+#define PT_GET_RESERVED_NAME_TYPE(reserved_id)		      \
+  (((reserved_id) >= RESERVED_FIRST_RECORD_INFO		      \
+    && (reserved_id) <= RESERVED_LAST_RECORD_INFO) ?	      \
+   /* If reserved_id belongs to record info */		      \
+   RESERVED_NAME_RECORD_INFO :				      \
+   /* else */						      \
+   (((reserved_id) >= RESERVED_FIRST_PAGE_INFO		      \
+     && (reserved_id) <= RESERVED_LAST_PAGE_INFO) ?	      \
+    /* If reserved_id belongs to page_info */		      \
+    RESERVED_NAME_PAGE_INFO :				      \
+    /* else */						      \
+    (((reserved_id) >= RESERVED_FIRST_KEY_INFO		      \
+      && (reserved_id) <= RESERVED_LAST_KEY_INFO) ?	      \
+     /* If reserved_id belongs to key info */		      \
+     RESERVED_NAME_KEY_INFO :				      \
+     /* else */						      \
+     (((reserved_id) >= RESERVED_FIRST_BT_NODE_INFO	      \
+      && (reserved_id) <= RESERVED_LAST_BT_NODE_INFO) ?	      \
+      /* If reserved_id belongs to b-tree node info */	      \
+      RESERVED_NAME_BTREE_NODE_INFO :			      \
+      /* else must be invalid */			      \
+      RESERVED_NAME_INVALID))))
+
+/* Get first and last id for reserved name type */
+#define PT_GET_RESERVED_NAME_FIRST_AND_LAST(type, first, last)   \
+  switch (type)						      \
+    {							      \
+    case RESERVED_NAME_RECORD_INFO:			      \
+      (first) = RESERVED_FIRST_RECORD_INFO;		      \
+      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))	      \
+	{						      \
+	  (last) = RESERVED_LAST_RECORD_INFO;		      \
+	}						      \
+      else						      \
+	{						      \
+	  (last) = RESERVED_FIRST_MVCC_INFO - 1;	      \
+	}						      \
+      break;						      \
+    case RESERVED_NAME_PAGE_INFO:			      \
+      (first) = RESERVED_FIRST_PAGE_INFO;		      \
+      (last) = RESERVED_LAST_PAGE_INFO;			      \
+      break;						      \
+    case RESERVED_NAME_KEY_INFO:			      \
+      (first) = RESERVED_FIRST_KEY_INFO;		      \
+      (last) = RESERVED_LAST_KEY_INFO;			      \
+      break;						      \
+    case RESERVED_NAME_BTREE_NODE_INFO:			      \
+      (first) = RESERVED_FIRST_BT_NODE_INFO;		      \
+      (last) = RESERVED_LAST_BT_NODE_INFO;		      \
+      break;						      \
+    default:						      \
+      assert (0);					      \
+      break;						      \
+    }
+
+/* After resolving to a reserved name, check the binding is correct according
+ * to spec flag
+ */
+#define PT_CHECK_RESERVED_NAME_BIND(spec_, reserved_id)			\
+  (PT_SPEC_GET_RESERVED_NAME_TYPE (spec_)				\
+   == PT_GET_RESERVED_NAME_TYPE (reserved_id))
+
 /* Info for Names
   This includes identifiers
   */
@@ -2350,6 +2576,7 @@ struct pt_name_info
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
   PT_NODE *indx_key_limit;	/* key limits for index name */
   int coll_modifier;		/* collation modifier = collation + 1 */
+  PT_RESERVED_NAME_ID reserved_id;	/* used to identify reserved name */
 };
 
 /*
@@ -2507,6 +2734,7 @@ struct pt_select_info
 #define PT_SELECT_INFO_FOR_UPDATE	8192	/* FOR UPDATE clause is active */
 #define PT_SELECT_INFO_DISABLE_LOOSE_SCAN   16384	/* loose scan not possible
 							   on query */
+#define PT_SELECT_INFO_MVCC_LOCK_NEEDED	    32768	/* lock returned rows */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (short) (f))
@@ -2523,9 +2751,12 @@ struct pt_query_info
   PT_MISC_TYPE is_subquery;	/* PT_IS_SUB_QUERY, PT_IS_UNION_QUERY, or 0 */
   char is_view_spec;		/* 0 - normal, 1 - view query spec */
   char oids_included;		/* DB_NO_OIDS/0 DB_ROW_OIDS/1 */
-  char composite_locking;	/* 0 - off, 1 - on delete, 2 - on update */
+  SCAN_OPERATION_TYPE scan_op_type;	/* scan operation type */
   int upd_del_class_cnt;	/* number of classes affected by update or
 				 * delete in the generated SELECT statement */
+  int mvcc_reev_extra_cls_cnt;	/* number of extra OID - CLASS_OID pairs added
+				 * to the select list for condition and
+				 * assignment reevaluation in MVCC */
   unsigned has_outer_spec:1;	/* has outer join spec ? */
   unsigned is_sort_spec:1;	/* query is a sort spec expression */
   unsigned is_insert_select:1;	/* query is a sub-select for insert statement */
@@ -3003,6 +3234,12 @@ struct pt_insert_value_info
 				 */
 };
 
+/* info structure used for VACUUM statement nodes */
+struct pt_vacuum_info
+{
+  PT_NODE *spec;		/* classes */
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3097,6 +3334,7 @@ union pt_statement_info
 #if defined (ENABLE_UNUSED_FUNCTION)
   PT_USE_INFO use;
 #endif
+  PT_VACUUM_INFO vacuum;
   PT_VALUE_INFO value;
   PT_POINTER_INFO pointer;
   PT_TRACE_INFO trace;
@@ -3391,13 +3629,6 @@ struct pt_assignments_helper
   bool is_rhs_const;		/* true if the right side is a constant */
   bool is_n_column;		/* true if the assignment is a multi-column
 				 * assignment */
-};
-
-typedef enum pt_composite_locking PT_COMPOSITE_LOCKING;
-enum pt_composite_locking
-{
-  PT_COMPOSITE_LOCKING_DELETE = 1,
-  PT_COMPOSITE_LOCKING_UPDATE
 };
 
 /* Collation coercibility levels associated with parse tree nodes */

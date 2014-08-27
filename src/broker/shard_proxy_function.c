@@ -38,6 +38,7 @@
 #include "shard_statement.h"
 #include "shard_parser.h"
 #include "shard_key_func.h"
+#include "system_parameter.h"
 
 extern T_SHM_SHARD_KEY *shm_key_p;
 extern T_PROXY_INFO *proxy_info_p;
@@ -1859,8 +1860,7 @@ fn_proxy_client_set_db_parameter (T_PROXY_CONTEXT * ctx_p,
       int isolation_level = 0;
 
       net_arg_get_int (&isolation_level, argv[1]);
-      if (isolation_level < TRAN_MINVALUE_ISOLATION
-	  || isolation_level > TRAN_MAXVALUE_ISOLATION)
+      if (!IS_VALID_ISOLATION_LEVEL (isolation_level))
 	{
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
 		     "Invalid isolation level. (isolation:%d). "

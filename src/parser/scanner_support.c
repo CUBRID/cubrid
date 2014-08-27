@@ -492,6 +492,31 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		    }
 		}
 	      break;
+	    case PT_HINT_SELECT_RECORD_INFO:
+	    case PT_HINT_SELECT_PAGE_INFO:
+	      if (node->node_type == PT_SELECT)
+		{
+		  node->info.query.q.select.hint |= hint_table[i].hint;
+		}
+	      break;
+	    case PT_HINT_SELECT_KEY_INFO:
+	    case PT_HINT_SELECT_BTREE_NODE_INFO:
+	      if (node->node_type == PT_SELECT)
+		{
+		  /* SELECT_KEY_INFO hint can work if it has one and only one
+		   * index name as argument. Same for SELECT_BTREE_NODE_INFO.
+		   * Ignore hint if this condition is not met.
+		   */
+		  if (hint_table[i].arg_list == NULL
+		      || hint_table[i].arg_list->next != NULL)
+		    {
+		      break;
+		    }
+		  node->info.query.q.select.hint |= hint_table[i].hint;
+		  node->info.query.q.select.using_index =
+		    hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
+		}
 	    default:
 	      break;
 	    }

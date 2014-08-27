@@ -51,26 +51,26 @@ namespace dbgw
     enum TransactionIsolation
     {
       DBGW_TRAN_UNKNOWN = 0,
-      DBGW_TRAN_READ_UNCOMMITED,
-      DBGW_TRAN_READ_COMMITED,
-      DBGW_TRAN_REPEATABLE_READ,
-      DBGW_TRAN_SERIALIZABLE
+      DBGW_TRAN_READ_UNCOMMITED = 1,	/* leave for backward compatibility */
+      DBGW_TRAN_READ_COMMITED = 2,
+      DBGW_TRAN_REPEATABLE_READ = 3,
+      DBGW_TRAN_SERIALIZABLE = 4
     };
 
     class Connection;
-    typedef trait<Connection>::sp ConnectionSharedPtr;
+    typedef trait < Connection >::sp ConnectionSharedPtr;
 
     class PreparedStatement;
-    typedef trait<PreparedStatement>::sp PreparedStatementSharedPtr;
+    typedef trait < PreparedStatement >::sp PreparedStatementSharedPtr;
 
     class CallableStatement;
-    typedef trait<CallableStatement>::sp CallableStatementSharedPtr;
+    typedef trait < CallableStatement >::sp CallableStatementSharedPtr;
 
     class ResultSet;
-    typedef trait<ResultSet>::sp ResultSetSharedPtr;
+    typedef trait < ResultSet >::sp ResultSetSharedPtr;
 
     class ResultSetMetaData;
-    typedef trait<ResultSetMetaData>::sp ResultSetMetaDataSharedPtr;
+    typedef trait < ResultSetMetaData >::sp ResultSetMetaDataSharedPtr;
 
     class DriverManger;
 

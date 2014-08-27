@@ -28,34 +28,33 @@
 #include <stdlib.h>
 #include "error_code.h"
 
+#define IS_VALID_ISOLATION_LEVEL(isolation_level) \
+    (TRAN_MINVALUE_ISOLATION <= (isolation_level) \
+     && (isolation_level) <= TRAN_MAXVALUE_ISOLATION)
+
+#define TRAN_DEFAULT_ISOLATION_LEVEL()	(TRAN_DEFAULT_ISOLATION)
+
 typedef enum
 {
   TRAN_UNKNOWN_ISOLATION = 0x00,	/*        0  0000 */
 
-  TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE = 0x01,	/*        0  0001 */
-  TRAN_DEGREE_1_CONSISTENCY = 0x01,	/* Alias of above */
-
-  TRAN_COMMIT_CLASS_COMMIT_INSTANCE = 0x02,	/*        0  0010 */
-  TRAN_DEGREE_2_CONSISTENCY = 0x02,	/* Alias of above */
-
-  TRAN_REP_CLASS_UNCOMMIT_INSTANCE = 0x03,	/*        0  0011 */
-  TRAN_READ_UNCOMMITTED = 0x03,	/* Alias of above */
-
-  TRAN_REP_CLASS_COMMIT_INSTANCE = 0x04,	/*        0  0100 */
-  TRAN_READ_COMMITTED = 0x04,	/* Alias of above */
+  TRAN_READ_COMMITTED = 0x04,	/*        0  0100 */
+  TRAN_REP_CLASS_COMMIT_INSTANCE = 0x04,	/* Alias of above */
   TRAN_CURSOR_STABILITY = 0x04,	/* Alias of above */
 
-  TRAN_REP_CLASS_REP_INSTANCE = 0x05,	/*        0  0101 */
+  TRAN_REPEATABLE_READ = 0x05,	/*        0  0101 */
   TRAN_REP_READ = 0x05,		/* Alias of above */
+  TRAN_REP_CLASS_REP_INSTANCE = 0x05,	/* Alias of above */
   TRAN_DEGREE_2_9999_CONSISTENCY = 0x05,	/* Alias of above */
 
   TRAN_SERIALIZABLE = 0x06,	/*        0  0110 */
   TRAN_DEGREE_3_CONSISTENCY = 0x06,	/* Alias of above */
   TRAN_NO_PHANTOM_READ = 0x06,	/* Alias of above */
 
-  TRAN_DEFAULT_ISOLATION = TRAN_REP_CLASS_UNCOMMIT_INSTANCE,
+  TRAN_DEFAULT_ISOLATION = TRAN_READ_COMMITTED,
+  MVCC_TRAN_DEFAULT_ISOLATION = TRAN_READ_COMMITTED,
 
-  TRAN_MINVALUE_ISOLATION = 0x01,	/* internal use only */
+  TRAN_MINVALUE_ISOLATION = 0x04,	/* internal use only */
   TRAN_MAXVALUE_ISOLATION = 0x06	/* internal use only */
 } DB_TRAN_ISOLATION;
 
@@ -123,6 +122,7 @@ typedef enum
   CUBRID_STMT_SET_NAMES,
   CUBRID_STMT_ALTER_STORED_PROCEDURE_OWNER,
   CUBRID_STMT_KILL,
+  CUBRID_STMT_VACUUM,
 
   CUBRID_MAX_STMT_TYPE
 } CUBRID_STMT_TYPE;

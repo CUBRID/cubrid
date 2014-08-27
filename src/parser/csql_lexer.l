@@ -800,6 +800,7 @@ int yybuffer_pos;
 [uU][sS][iI][nN][gG]							{ begin_token(yytext);   return USING; }
 [uU][nN][iI][oO][nN]							{ begin_token(yytext);   return Union; }
 [uU][tT][iI][mM][eE]							{ begin_token(yytext);   return Utime; }
+[vV][aA][cC][uU][uU][mM]						{ begin_token(yytext);   return VACUUM; }
 [vV][aA][lL][uU][eE]							{ begin_token(yytext);   return VALUE; }
 [vV][aA][lL][uU][eE][sS]						{ begin_token(yytext);   return VALUES; }
 [vV][aA][rR][_][pP][oO][pP]						{ begin_token(yytext);

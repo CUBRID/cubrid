@@ -2691,6 +2691,142 @@ eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
 }
 
 /*
+ * update_logical_result () - checks DB_LOGICAL value and qualification 
+ *   return: new DB_LOGICAL value and qualification (if needed)
+ *   thread_p(in):
+ *   ev_res(in): logical value to be checked
+ *   qualification(in/out): a pointer to the qualification to be used in logical
+ *			    value check. This member can be modified.
+ *   key_filter(in): key filter info that will be used if ORACLE EMPTY STRING
+ *		     STYLE is activated
+ *   recdes(in): the record descriptor from wich values will be loaded into the
+ *		 key_filter attributes cache
+ *   oid(in): the OID of the current descriptor
+ */
+DB_LOGICAL
+update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res,
+		       int *qualification, FILTER_INFO * key_filter,
+		       RECDES * recdes, OID * oid)
+{
+  int q;
+
+  if (ev_res == V_ERROR)
+    {
+      return ev_res;
+    }
+
+  if (qualification != NULL)
+    {
+      q = *qualification;
+      if (q == QPROC_QUALIFIED)
+	{
+	  if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+	    {
+	      return V_FALSE;	/* not qualified, continue to the next tuple */
+	    }
+	}
+      else if (q == QPROC_NOT_QUALIFIED)
+	{
+	  if (ev_res != V_FALSE)	/* V_TRUE || V_UNKNOWN */
+	    {
+	      return V_FALSE;	/* qualified, continue to the next tuple */
+	    }
+	}
+      else if (q == QPROC_QUALIFIED_OR_NOT)
+	{
+	  if (ev_res == V_TRUE)
+	    {
+	      *qualification = QPROC_QUALIFIED;
+	    }
+	  else if (ev_res == V_FALSE)
+	    {
+	      *qualification = QPROC_NOT_QUALIFIED;
+	    }
+	  else			/* V_UNKNOWN */
+	    {
+	      /* nop */
+	      ;
+	    }
+	}
+      else
+	{			/* invalid value; the same as QPROC_QUALIFIED */
+	  if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+	    {
+	      return V_FALSE;	/* not qualified, continue to the next tuple */
+	    }
+	}
+    }
+
+  if (key_filter != NULL
+      && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+    {
+      if (key_filter->num_vstr_ptr != NULL && *key_filter->num_vstr_ptr)
+	{
+	  int i;
+	  REGU_VARIABLE_LIST regup;
+	  DB_VALUE *dbvalp;
+
+	  /* read the key range the values from the heap into
+	   * the attribute cache */
+	  if (heap_attrinfo_read_dbvalues (thread_p,
+					   oid,
+					   recdes,
+					   NULL,
+					   key_filter->scan_attrs->
+					   attr_cache) != NO_ERROR)
+	    {
+	      return V_ERROR;
+	    }
+
+	  /* for all attributes specified in the key range,
+	   * apply special data filter; 'key range attr IS NOT NULL'
+	   */
+	  regup = key_filter->scan_pred->regu_list;
+	  for (i = 0; i < *key_filter->num_vstr_ptr && regup; i++)
+	    {
+	      if (key_filter->vstr_ids[i] == -1)
+		{
+		  continue;	/* skip and go ahead */
+		}
+
+	      if (fetch_peek_dbval (thread_p, &regup->value,
+				    key_filter->val_descr, NULL, NULL,
+				    NULL, &dbvalp) != NO_ERROR)
+		{
+		  return V_ERROR;	/* error */
+		}
+	      else if (DB_IS_NULL (dbvalp))
+		{
+		  return V_FALSE;	/* found Empty-string */
+		}
+
+	      regup = regup->next;
+	    }
+
+	  if (ev_res == V_TRUE && i < *key_filter->num_vstr_ptr)
+	    {
+	      /* must be impossible. unknown error */
+	      return V_ERROR;
+	    }
+	}
+    }
+
+  if (ev_res == V_ERROR)
+    {
+      return V_ERROR;
+    }
+  else
+    {
+      if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+	{
+	  return V_FALSE;	/* not qualified, continue to the next tuple */
+	}
+    }
+
+  return V_TRUE;
+}
+
+/*
  * eval_data_filter () -
  *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  * 	 oid(in): pointer to OID
@@ -2701,7 +2837,7 @@ eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
  */
 DB_LOGICAL
 eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp,
-		  FILTER_INFO * filterp)
+		  HEAP_SCANCACHE * scan_cache, FILTER_INFO * filterp)
 {
   SCAN_PRED *scan_predp;
   SCAN_ATTRS *scan_attrsp;
@@ -2714,15 +2850,16 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp,
 
   scan_predp = filterp->scan_pred;
   scan_attrsp = filterp->scan_attrs;
-  if (!scan_predp || !scan_attrsp)
+  if (!scan_predp)
     {
       return V_ERROR;
     }
 
-  if (scan_attrsp->attr_cache && scan_predp->regu_list)
+  if (scan_attrsp != NULL && scan_attrsp->attr_cache != NULL
+      && scan_predp->regu_list != NULL)
     {
       /* read the predicate values from the heap into the attribute cache */
-      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdesp,
+      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdesp, scan_cache,
 				       scan_attrsp->attr_cache) != NO_ERROR)
 	{
 	  return V_ERROR;
@@ -2773,6 +2910,74 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp,
     }
 
   return ev_res;
+}
+
+/*
+ * eval_set_last_version () - set last versions
+ *   return: error code
+ * 	 class_oid(in): class OID
+ *	 scan_cache(in): scan cache
+ *	 regu_list_last_version(in) : constant regu variable list, used to fetch
+ *				    object last version
+ *
+ * Note: This function replace OID contained in each DB_VALUE with the latest
+ *	  version. The DB_VALUE is pointed by constant regu variables.
+ */
+int
+eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
+		       HEAP_SCANCACHE * scan_cache,
+		       REGU_VARIABLE_LIST regu_list_last_version)
+{
+  /* TO DO - add into a function */
+  REGU_VARIABLE_LIST regup;
+  RECDES mvcc_last_record;
+  DB_VALUE *peek_dbval;
+  OID mvcc_updated_oid;
+
+  for (regup = regu_list_last_version; regup != NULL;
+       regup = regu_list_last_version->next)
+    {
+      if (regup->value.type != TYPE_CONSTANT)
+	{
+	  return ER_FAILED;
+	}
+
+      assert (regup->value.type == TYPE_CONSTANT);
+      peek_dbval = regup->value.value.dbvalptr;
+
+      if (DB_IS_NULL (peek_dbval))
+	{
+	  continue;
+	}
+
+      if (DB_VALUE_DOMAIN_TYPE (peek_dbval) != DB_TYPE_OID)
+	{
+	  return ER_FAILED;
+	}
+
+      mvcc_last_record.data = NULL;
+      if (heap_get_last (thread_p,
+			 DB_GET_OID (peek_dbval), &mvcc_last_record,
+			 scan_cache, true, NULL_CHN,
+			 &mvcc_updated_oid) != S_SUCCESS)
+	{
+	  if (er_errid () == ER_HEAP_NODATA_NEWADDRESS
+	      || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
+	      continue;
+	    }
+	  return er_errid ();
+	}
+
+      if (!OID_ISNULL (&mvcc_updated_oid)
+	  && !OID_EQ (&mvcc_updated_oid, DB_GET_OID (peek_dbval)))
+	{
+	  DB_MAKE_OID (peek_dbval, &mvcc_updated_oid);
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*

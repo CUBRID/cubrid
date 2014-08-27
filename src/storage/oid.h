@@ -45,15 +45,31 @@
 				  (oidp)->slotid = - tm_Tran_index)
 #endif /* !SERVER_MODE */
 
-#define COPY_OID(dest_oid_ptr, src_oid_ptr) do { \
-					     *(dest_oid_ptr)=*(src_oid_ptr);\
-					    } while (0)
+#define SET_OID(dest_oid_ptr, vol_id, page_id, slot_id)  \
+  do \
+    { \
+      (dest_oid_ptr)->volid = vol_id; \
+      (dest_oid_ptr)->pageid = page_id; \
+      (dest_oid_ptr)->slotid = slot_id; \
+    } \
+  while (0)
+
+#define COPY_OID(dest_oid_ptr, src_oid_ptr) \
+  do \
+    { \
+      *(dest_oid_ptr) = *(src_oid_ptr); \
+    } \
+  while (0)
 
 #define SAFE_COPY_OID(dest_oid_ptr, src_oid_ptr) \
   if (src_oid_ptr) \
-    {*(dest_oid_ptr) = *(src_oid_ptr);} \
+    { \
+      *(dest_oid_ptr) = *(src_oid_ptr); \
+    } \
   else \
-    { OID_SET_NULL(dest_oid_ptr); }
+    { \
+      OID_SET_NULL (dest_oid_ptr); \
+    }
 
 #define OID_ISTEMP(oidp)        ((oidp)->pageid < NULL_PAGEID)
 #define OID_ISNULL(oidp)        ((oidp)->pageid == NULL_PAGEID)
@@ -113,10 +129,20 @@
 
 extern const OID oid_Null_oid;
 extern OID *oid_Root_class_oid;
+extern OID *oid_Serial_class_oid;
 extern PAGEID oid_Next_tempid;
 
 extern void oid_set_root (const OID * oid);
 extern bool oid_is_root (const OID * oid);
+
+extern void oid_set_serial (const OID * oid);
+extern bool oid_is_serial (const OID * oid);
+extern void oid_get_serial_oid (OID * oid);
+
+extern void oid_set_partition (const OID * oid);
+extern bool oid_is_partition (const OID * oid);
+extern void oid_get_partition_oid (OID * oid);
+
 extern int oid_compare (const void *oid1, const void *oid2);
 extern unsigned int oid_hash (const void *key_oid, unsigned int htsize);
 extern int oid_compare_equals (const void *key_oid1, const void *key_oid2);

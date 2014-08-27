@@ -96,8 +96,18 @@ typedef enum
 {
   SEQUENTIAL,			/* sequential scan access */
   INDEX,			/* indexed access */
-  SCHEMA			/* shema access */
+  SCHEMA,			/* schema access */
+  SEQUENTIAL_RECORD_INFO,	/* sequential scan that will read record info */
+  SEQUENTIAL_PAGE_SCAN,		/* sequential scan access that only scans
+				 * pages without accessing record data
+				 */
+  INDEX_KEY_INFO,		/* indexed access to obtain key information */
+  INDEX_NODE_INFO		/* indexed access to obtain b-tree node info */
 } ACCESS_METHOD;
+
+#define IS_ANY_INDEX_ACCESS(access_)  \
+  ((access_) == INDEX || (access_) == INDEX_KEY_INFO \
+   || (access_) == INDEX_NODE_INFO)
 
 typedef enum
 {

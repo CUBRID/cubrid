@@ -7133,7 +7133,8 @@ static PT_NODE *
 pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * node, bool arg1_is_false)
 {
   PT_MISC_TYPE distinct, subq;
-  char oids_incl, comp_lock;
+  char oids_incl;
+  SCAN_OPERATION_TYPE scan_op_type;
   PT_NODE *order_by, *orderby_for;
   PT_NODE *into_list;
   PT_NODE_TYPE type;
@@ -7145,7 +7146,7 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * node, bool arg1_is_false)
   distinct = node->info.query.all_distinct;
   subq = node->info.query.is_subquery;
   oids_incl = node->info.query.oids_included;
-  comp_lock = node->info.query.composite_locking;
+  scan_op_type = node->info.query.scan_op_type;
   order_by = node->info.query.order_by;
   orderby_for = node->info.query.orderby_for;
   into_list = node->info.query.into_list;
@@ -7217,7 +7218,7 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * node, bool arg1_is_false)
 	}
       node->info.query.is_subquery = subq;
       node->info.query.oids_included = oids_incl;
-      node->info.query.composite_locking = comp_lock;
+      node->info.query.scan_op_type = scan_op_type;
       if (order_by)
 	{
 	  node->info.query.order_by = order_by;

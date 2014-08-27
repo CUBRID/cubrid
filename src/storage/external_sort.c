@@ -1726,7 +1726,7 @@ sort_validate (char **vector, long size,
 #endif
 
 /*
- * px_sort_assign() - 
+ * px_sort_assign() -
  *   return:
  *   thread_p(in):
  *   sort_param(in): sort parameters
@@ -2632,7 +2632,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	       */
 	      if (overflow_insert (thread_p, &sort_param->multipage_file,
 				   (VPID *) item_ptr, &long_recdes,
-				   &sort_param->multipage_npages) == NULL)
+				   &sort_param->multipage_npages,
+				   NULL) == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
@@ -3026,7 +3027,8 @@ sort_retrieve_longrec (THREAD_ENTRY * thread_p, RECDES * address,
     }
 
   /* Retrieve the long record */
-  if (overflow_get (thread_p, (VPID *) address->data, memory) != S_SUCCESS)
+  if (overflow_get (thread_p, (VPID *) address->data, memory, NULL) !=
+      S_SUCCESS)
     {
       return NULL;
     }

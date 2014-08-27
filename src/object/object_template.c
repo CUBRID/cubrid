@@ -2073,6 +2073,7 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
     }
   else
     {
+      mop = ws_mvcc_latest_version (mop);
       mop->pruning_type = template_ptr->pruning_type;
       *object = mop;
       *objptr = obj;
@@ -2590,7 +2591,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 		    au_fetch_instance_force (object, &mobj, AU_FETCH_UPDATE);
 		  if (error != NO_ERROR)
 		    {
-		      if (WS_ISMARK_DELETED (object))
+		      if (WS_IS_DELETED (object))
 			{
 			  if (trstate != NULL)
 			    {
@@ -2821,19 +2822,6 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	    }
 	  /* update template object if this was a partitioned class */
 	  object = OBT_BASE_OBJECT (template_ptr);
-	  if (object->updated_obj != NULL)
-	    {
-	      assert (WS_ISMARK_DELETED (object));
-	      if (template_ptr->base_object != NULL)
-		{
-		  template_ptr->base_object = object->updated_obj;
-		}
-	      else
-		{
-		  template_ptr->object = object->updated_obj;
-		}
-	      object->updated_obj = NULL;
-	    }
 	}
     }
 

@@ -1893,6 +1893,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
   assert_release (IS_SYNC_EXEC_MODE (*flag_p));
   assert (thread_get_recursion_depth (thread_p) == 0);
 
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
   saved_is_stats_on = mnt_server_is_stats_on (thread_p);
 
   xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);
@@ -2055,7 +2057,6 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 
   /* Make an query entry */
   /* mark that this transaction is running a query */
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -2705,8 +2706,9 @@ end:
   return list_id_p;
 
 exit_on_error:
+
   /*
-   * free the query entry when error occurrs. note that the query_id should be
+   * free the query entry when error occurs. note that the query_id should be
    * set to 0 so as to upper levels can detect the error.
    */
   if (query_p)
@@ -3404,7 +3406,10 @@ qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpid_p,
       page_p = pgbuf_fix (thread_p, vpid_p, OLD_PAGE,
 			  PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 
-      (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_QRESULT);
+      if (page_p != NULL)
+	{
+	  (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_QRESULT);
+	}
     }
 
   return page_p;

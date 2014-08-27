@@ -391,6 +391,8 @@ extern void shf_get_class_num_objs_and_pages (THREAD_ENTRY * thread_p,
 					      int reqlen);
 extern void sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid,
 				   char *request, int reqlen);
+extern void sbtree_get_key_type (THREAD_ENTRY * thread_p, unsigned int rid,
+				 char *request, int reqlen);
 extern void sqp_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid,
 				 char *request, int reqlen);
 extern void sprm_server_change_parameters (THREAD_ENTRY * thread_p,
@@ -499,4 +501,9 @@ extern void slocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p,
 						     unsigned int rid,
 						     char *request,
 						     int reqlen);
+extern void svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
+		     int reqlen);
+extern void slogtb_invalidate_mvcc_snapshot (THREAD_ENTRY * thread_p,
+					     unsigned int rid, char *request,
+					     int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

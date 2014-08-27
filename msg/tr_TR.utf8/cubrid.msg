@@ -1220,7 +1220,12 @@ $ LOADDB
 1151 %2$d hacımın %1$d sayfa yuva donanımlı değildir.
 1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
 1153 Attempt to use 'zero date'.
-1154 Son Hata
+1154 MVCC row %1$d|%2$d|%3$d does not satisfies reevaluation.
+1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
+1156 MVCC can't get snapshot
+1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
+1158 Serializable conflict due to concurent updates
+1159 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1670,11 +1675,11 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 2 İşlemin yalıtım düzeyi 1, 2, 3, 4, 5 veya 6 olması gerekir.
 3 Zaman aşımı değeri -1, 0, veya >0 olması gerekir .
 4 Yalıtım düzeyi olarak ayarlandığında:\n
-5          READ COMMITTED SCHEMA, READ UNCOMMITTED INSTANCES.\n
-6          READ COMMITTED SCHEMA, READ COMMITTED INSTANCES.\n
-7          REPEATABLE READ SCHEMA, READ UNCOMMITTED INSTANCES.\n
-8          REPEATABLE READ SCHEMA, READ COMMITTED INSTANCES.\n
-9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
+5          Unknown isolation.\n
+6          Unknown isolation.\n
+7          Unknown isolation.\n
+8          READ COMMITTED\n
+9          REPEATABLE READ\n
 10 Güncellenebilir-olmayan sorgusu db_query_execute_oid çağrısı izin verilmemektedir.
 11 İşlem kilitleri beklerken zaman aşımına uğradı.
 12 Sadece %2$d giriş ana bilgisayar değişkenleri verildiğinde indeks %1$d sahip ana bilgisayar değişkenine erişilmeye çalışıldı.
@@ -1744,6 +1749,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 Sahibi veya DBA yalnızca hedef seri tanımını değiştirebilir.
 78 Kullanıcılar otomatik artış kısıtlaması tarafından oluşturulan seri nesneyi değiştirmek için izin verilmez.
 79 Geçersiz yalıtım düzeyi: %1$s şema, %2$s örnekleri.
+80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** geçersiz önbellek ***

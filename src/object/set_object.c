@@ -2432,8 +2432,9 @@ set_change_owner (DB_COLLECTION * ref, MOP owner, int attid,
     {
       pin = ws_pin (ref->owner, 1);
 
-      if (ref->owner == NULL ||
-	  (ref->owner == owner && ref->attribute == attid))
+      if (ref->owner == NULL
+	  || (ws_is_same_object (ref->owner, owner)
+	      && ref->attribute == attid))
 	{
 	  new_ = ref;
 	}
@@ -5027,8 +5028,9 @@ check_set_object (DB_VALUE * var, int *removed_ptr)
     {
       goto end;
     }
+  mop = ws_mvcc_latest_version (mop);
 
-  if (!mop->deleted)
+  if (!WS_IS_DELETED (mop))
     {
       if (mop->is_vid)
 	{

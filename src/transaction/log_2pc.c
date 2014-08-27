@@ -2533,6 +2533,10 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p,
     case LOG_DIFF_UNDOREDO_DATA:
     case LOG_UNDO_DATA:
     case LOG_REDO_DATA:
+    case LOG_MVCC_UNDOREDO_DATA:
+    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+    case LOG_MVCC_UNDO_DATA:
+    case LOG_MVCC_REDO_DATA:
     case LOG_DBEXTERN_REDO_DATA:
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_POSTPONE:

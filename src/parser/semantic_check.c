@@ -401,6 +401,7 @@ static PT_NODE *pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser,
 					  PT_NODE * node, void *arg,
 					  int *continue_walk);
 
+static void pt_check_vacuum (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /* pt_combine_compatible_info () - combine two cinfo into cinfo1
  *   return: true if compatible, else false
@@ -1551,7 +1552,7 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
     }
 
   owner = db_get_owner (cls);
-  result = (owner == result ? result : NULL);
+  result = (ws_is_same_object (owner, result) ? result : NULL);
   if (!result)
     {
       PT_ERRORmf2 (parser, cls_ref, MSGCAT_SET_PARSER_SEMANTIC,
@@ -11740,6 +11741,10 @@ pt_check_with_info (PARSER_CONTEXT * parser,
       pt_check_drop (parser, node);
       break;
 
+    case PT_VACUUM:
+      pt_check_vacuum (parser, node);
+      break;
+
     case PT_GRANT:
     case PT_REVOKE:
       pt_check_grant_revoke (parser, node);
@@ -14518,14 +14523,8 @@ pt_check_isolation_lvl (PARSER_CONTEXT * parser,
 		node->info.isolation_lvl.instances;
 	      break;
 
-	    case TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE:
-	    case TRAN_COMMIT_CLASS_COMMIT_INSTANCE:
-	      node->info.isolation_lvl.schema = PT_READ_COMMITTED;
-	      break;
-
-	    case TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
-	    case TRAN_REP_CLASS_COMMIT_INSTANCE:
-	    case TRAN_REP_CLASS_REP_INSTANCE:
+	    case TRAN_READ_COMMITTED:
+	    case TRAN_REPEATABLE_READ:
 	      node->info.isolation_lvl.schema = PT_REPEATABLE_READ;
 	      break;
 
@@ -14549,17 +14548,11 @@ pt_check_isolation_lvl (PARSER_CONTEXT * parser,
 		node->info.isolation_lvl.schema;
 	      break;
 
-	    case TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE:
-	    case TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
-	      node->info.isolation_lvl.instances = PT_READ_UNCOMMITTED;
-	      break;
-
-	    case TRAN_REP_CLASS_COMMIT_INSTANCE:
-	    case TRAN_COMMIT_CLASS_COMMIT_INSTANCE:
+	    case TRAN_READ_COMMITTED:
 	      node->info.isolation_lvl.instances = PT_READ_COMMITTED;
 	      break;
 
-	    case TRAN_REP_CLASS_REP_INSTANCE:
+	    case TRAN_REPEATABLE_READ:
 	      node->info.isolation_lvl.instances = PT_REPEATABLE_READ;
 	      break;
 
@@ -16575,6 +16568,30 @@ pt_check_odku_assignments (PARSER_CONTEXT * parser, PT_NODE * insert)
 	}
     }
   return insert;
+}
+
+/*
+ * pt_check_vacuum () - Check VACUUM statement.
+ *
+ * return      : Void.
+ * parser (in) : Parser context.
+ * node (in)   : VACUUM parse tree node.
+ */
+static void
+pt_check_vacuum (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *chk_parent = NULL;
+
+  assert (parser != NULL);
+  if (!PT_IS_VACUUM_NODE (node))
+    {
+      /* Not the scope of this function */
+      return;
+    }
+
+  /* Replace each Entity Spec with an Equivalent flat list */
+  parser_walk_tree (parser, node,
+		    pt_flat_spec_pre, &chk_parent, pt_continue_walk, NULL);
 }
 
 /*

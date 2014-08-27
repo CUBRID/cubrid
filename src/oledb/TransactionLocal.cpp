@@ -117,12 +117,10 @@ HRESULT CCUBRIDSession::SetCASCCIIsoLevel(ISOLEVEL isoLevel, bool bCheckOnly)
 	int cci_isolevel;
 	switch(isoLevel)
 	{
-	case ISOLATIONLEVEL_READUNCOMMITTED:
-		cci_isolevel = TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE; break;
 	case ISOLATIONLEVEL_READCOMMITTED:
-		cci_isolevel = TRAN_COMMIT_CLASS_COMMIT_INSTANCE; break;
+		cci_isolevel = TRAN_READ_COMMITTED; break;
 	case ISOLATIONLEVEL_REPEATABLEREAD:
-		cci_isolevel = TRAN_REP_CLASS_REP_INSTANCE; break;
+		cci_isolevel = TRAN_REPEATABLE_READ; break;
 	case ISOLATIONLEVEL_SERIALIZABLE:
 		cci_isolevel = TRAN_SERIALIZABLE; break;
 	default:

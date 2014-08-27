@@ -5814,7 +5814,9 @@ db_domain_set (const DB_DOMAIN * domain)
 {
   DB_DOMAIN *setdomain = NULL;
 
-  if ((domain != NULL) && pr_is_set_type (TP_DOMAIN_TYPE (domain)))
+  if ((domain != NULL)
+      && (pr_is_set_type (TP_DOMAIN_TYPE (domain))
+	  || TP_DOMAIN_TYPE (domain) == DB_TYPE_MIDXKEY))
     {
       setdomain = domain->setdomain;
     }
@@ -6303,7 +6305,6 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p,
 	      buffer_p = valcnv_append_string (buffer_p, "");
 	      return buffer_p;
 	    }
-
 
 	  end_p = src_p + DB_GET_STRING_SIZE (value_p);
 	  while (src_p < end_p)

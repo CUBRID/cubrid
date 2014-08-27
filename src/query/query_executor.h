@@ -194,6 +194,28 @@
 
 #define QEXEC_NULL_COMMAND_ID   -1	/* Invalid command identifier */
 
+#define SET_MVCC_SELECT_REEV_DATA(p_mvcc_reev_data, p_mvcc_sel_reev_data, \
+				  reev_filter_result, p_primary_key) \
+  do \
+    { \
+      assert ((p_mvcc_reev_data) != NULL); \
+      (p_mvcc_reev_data)->type = REEV_DATA_SCAN; \
+      (p_mvcc_reev_data)->select_reev_data = (p_mvcc_sel_reev_data); \
+      (p_mvcc_reev_data)->filter_result = (reev_filter_result); \
+      (p_mvcc_reev_data)->primary_key = (p_primary_key); \
+    } \
+  while (0)
+
+#define SET_MVCC_UPDATE_REEV_DATA(p_mvcc_reev_data, p_mvcc_upddel_reev_data, \
+				  reev_filter_result, p_primary_key) \
+  do \
+    { \
+      (p_mvcc_reev_data)->type = REEV_DATA_UPDDEL; \
+      (p_mvcc_reev_data)->upddel_reev_data = (p_mvcc_upddel_reev_data); \
+      (p_mvcc_reev_data)->filter_result = (reev_filter_result); \
+      (p_mvcc_reev_data)->primary_key = (p_primary_key); \
+    } \
+  while (0)
 
 /*
  * Access specification information
@@ -223,6 +245,10 @@ struct cls_spec_node
   REGU_VARIABLE_LIST cls_regu_list_key;	/* regu list for the key filter */
   REGU_VARIABLE_LIST cls_regu_list_pred;	/* regu list for the predicate */
   REGU_VARIABLE_LIST cls_regu_list_rest;	/* regu list for rest of attrs */
+  REGU_VARIABLE_LIST cls_regu_list_range;	/* regu list for range part of a
+						 * condition. Used only in
+						 * reevaluation at index scan */
+  REGU_VARIABLE_LIST cls_regu_list_last_version;
   OUTPTR_LIST *cls_output_val_list;	/*regu list writer for val list */
   REGU_VARIABLE_LIST cls_regu_val_list;	/*regu list reader for val list */
   HFID hfid;			/* heap file identifier */
@@ -237,6 +263,15 @@ struct cls_spec_node
   HEAP_CACHE_ATTRINFO *cache_rest;	/* cache for the non-pred attrs */
   int num_attrs_rest;		/* number of atts other than pred */
   ACCESS_SCHEMA_TYPE schema_type;	/* schema type */
+  DB_VALUE **cache_reserved;	/* cache for record information */
+  int num_attrs_reserved;
+  REGU_VARIABLE_LIST cls_regu_list_reserved;	/* regu list for record info */
+  ATTR_ID *attrids_range;	/* array of attr ids from the range filter. Used
+				 * only in reevaluation at index scan */
+  HEAP_CACHE_ATTRINFO *cache_range;	/* cache for the range attributes. Used
+					 * only in reevaluation at index scan */
+  int num_attrs_range;		/* number of atts for the range filter. Used
+				 * only in reevaluation at index scan */
 };
 
 typedef struct list_spec_node LIST_SPEC_TYPE;
@@ -308,6 +343,7 @@ struct access_spec_node
   INDX_ID indx_id;
   PRED_EXPR *where_key;		/* key filter expression */
   PRED_EXPR *where_pred;	/* predicate expression */
+  PRED_EXPR *where_range;	/* used in mvcc UPDATE/DELETE reevaluation */
   HYBRID_NODE s;		/* class/list access specification */
   SCAN_ID s_id;			/* scan identifier */
   int grouped_scan;		/* grouped or regular scan? */
@@ -316,7 +352,6 @@ struct access_spec_node
   QPROC_SINGLE_FETCH single_fetch;	/* open scan in single fetch mode */
   DB_VALUE *s_dbval;		/* single fetch mode db_value */
   ACCESS_SPEC_TYPE *next;	/* next access specification */
-  int lock_hint;		/* lock hint */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   bool pruned;			/* true if partition pruning has been
@@ -466,6 +501,52 @@ struct mergelist_proc_node
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
 };
 
+/* describes an assignment used in MVCC reevaluation */
+typedef struct update_mvcc_reev_assignment UPDATE_MVCC_REEV_ASSIGNMENT;
+struct update_mvcc_reev_assignment
+{
+  int att_id;			/* index in the class attributes array */
+  DB_VALUE *constant;		/* constant to be assigned to an attribute or
+				 * NULL */
+  REGU_VARIABLE *regu_right;	/* regu variable for right side of an
+				 * assignment */
+  UPDATE_MVCC_REEV_ASSIGNMENT *next;	/* link to the next assignment */
+};
+
+/* Structure used in condition reevaluation at SELECT */
+typedef struct mvcc_scan_reev_data MVCC_SCAN_REEV_DATA;
+struct mvcc_scan_reev_data
+{
+  FILTER_INFO *range_filter;	/* filter for range predicate. Used only at
+				 * index scan */
+  FILTER_INFO *key_filter;	/* key filter */
+  FILTER_INFO *data_filter;	/* data filter */
+
+  QPROC_QUALIFICATION *qualification;	/* address of a variable that contains
+					 * qualification value */
+};
+
+/* class info for UPDATE/DELETE MVCC condition reevaluation */
+typedef struct upddel_mvcc_cond_reeval UPDDEL_MVCC_COND_REEVAL;
+struct upddel_mvcc_cond_reeval
+{
+  int class_index;		/* index of class in select list */
+  OID cls_oid;			/* OID of class */
+  OID *inst_oid;		/* OID of instance involved in condition */
+  FILTER_INFO data_filter;	/* data filter */
+  FILTER_INFO key_filter;	/* key_filter */
+  FILTER_INFO range_filter;	/* range filter */
+  QPROC_QUALIFICATION qualification;	/* see QPROC_QUALIFICATION;
+					   used for both input and output
+					   parameter */
+  REGU_VARIABLE_LIST rest_regu_list;	/* regulator variable list */
+  SCAN_ATTRS *rest_attrs;	/* attribute info for attribute that is not
+				 * involved in current filter */
+  UPDDEL_MVCC_COND_REEVAL *next;	/* next upddel_mvcc_cond_reeval
+					 * structure that will be processed on
+					 * reevaluation */
+};
+
 /* assignment details structure for server update execution */
 typedef struct update_assignment UPDATE_ASSIGNMENT;
 struct update_assignment
@@ -476,6 +557,68 @@ struct update_assignment
   DB_VALUE *constant;		/* constant to be assigned to an attribute or
 				 * NULL */
   REGU_VARIABLE *regu_var;	/* regu variable for rhs in assignment */
+};
+
+/* type of reevaluation */
+typedef enum mvcc_reev_data_type MVCC_REEV_DATA_TYPE;
+enum mvcc_reev_data_type
+{
+  REEV_DATA_UPDDEL = 0,
+  REEV_DATA_SCAN
+};
+
+/* data for MVCC condition reevaluation */
+typedef struct mvcc_update_reev_data MVCC_UPDDEL_REEV_DATA;
+struct mvcc_update_reev_data
+{
+  UPDDEL_MVCC_COND_REEVAL *mvcc_cond_reev_list;	/* list of classes that are
+						 * referenced in condition
+						 */
+
+  /* information for class that is currently updated/deleted */
+  UPDDEL_MVCC_COND_REEVAL *curr_upddel;	/* pointer to the reevaluation data
+					 * for class that is currently updated/
+					 * deleted or NULL if it is not involved
+					 * in reevaluation
+					 */
+  int curr_extra_assign_cnt;	/* length of curr_extra_assign_reev array */
+  UPDDEL_MVCC_COND_REEVAL **curr_extra_assign_reev;	/* classes involved in the
+							 * right side of assignments
+							 * and are not part of
+							 * conditions to be
+							 * reevaluated
+							 */
+  UPDATE_MVCC_REEV_ASSIGNMENT *curr_assigns;	/* list of assignments to the
+						 * attributes of this class
+						 */
+  HEAP_CACHE_ATTRINFO *curr_attrinfo;	/* attribute info for performing
+					 * assignments
+					 */
+
+  PRED_EXPR *cons_pred;
+  LC_COPYAREA *copyarea;	/* used to build the tuple to be stored to disk after
+				 * reevaluation
+				 */
+  VAL_DESCR *vd;		/* values descriptor */
+  RECDES *new_recdes;		/* record descriptor after assignment
+				 * reevaluation */
+};
+
+/* Used in condition reevaluation for UPDATE/DELETE */
+typedef struct mvcc_reev_data MVCC_REEV_DATA;
+struct mvcc_reev_data
+{
+  MVCC_REEV_DATA_TYPE type;
+  union
+  {
+    MVCC_UPDDEL_REEV_DATA *upddel_reev_data;	/* data for reevaluation at
+						 * UPDATE/DELETE */
+    MVCC_SCAN_REEV_DATA *select_reev_data;	/* data for reevaluation at
+						 * SELECT */
+  };
+  DB_LOGICAL filter_result;	/* the result of reevaluation if successful */
+  DB_VALUE *primary_key;	/* primary key value used in foreign key cascade
+				 * UPDATE/DELETE reevaluation */
 };
 
 /*update/delete class info structure */
@@ -492,6 +635,12 @@ struct upddel_class_info
 
   int *no_lob_attrs;		/* number of lob attributes for each subclass */
   int **lob_attr_ids;		/* list of log attribute ids for each subclass */
+
+  int no_extra_assign_reev;	/* no of integers in mvcc_extra_assign_reev */
+  int *mvcc_extra_assign_reev;	/* indexes of classes in the select list that are
+				 * referenced in assignments to the attributes of
+				 * current class and are not referenced in
+				 * conditions */
 };
 
 typedef struct update_proc_node UPDATE_PROC_NODE;
@@ -507,6 +656,12 @@ struct update_proc_node
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
   int no_orderby_keys;		/* no of keys for ORDER_BY */
+  int no_assign_reev_classes;
+  int no_reev_classes;		/* no of classes involved in mvcc condition
+				 * and assignment reevaluation */
+  int *mvcc_reev_classes;	/* array of indexes into the SELECT list that
+				 * references pairs of OID - CLASS OID used in
+				 * conditions and assignment reevaluation */
 };
 
 /*on duplicate key update info structure */
@@ -552,6 +707,10 @@ struct delete_proc_node
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
+  int no_reev_classes;		/* no of classes involved in mvcc condition */
+  int *mvcc_reev_classes;	/* array of indexes into the SELECT list that
+				 * references pairs of OID - CLASS OID used in
+				 * conditions */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;
@@ -747,11 +906,14 @@ struct xasl_node
 				 * much of the xasl tree to clean up.
 				 */
 
-  int composite_locking;
+  SCAN_OPERATION_TYPE scan_op_type;	/* scan type */
   int upd_del_class_cnt;	/* number of classes affected by update or
 				 * delete (used only in case of UPDATE or
 				 * DELETE in the generated SELECT statement)
 				 */
+  int mvcc_reev_extra_cls_cnt;	/* number of extra OID - CLASS_OID pairs added
+				 * to the select list in case of UPDATE/DELETE
+				 * in MVCC */
   LK_COMPOSITE_LOCK composite_lock;	/* flag and lock block for composite
 					 * locking for queries which obtain
 					 * candidate rows for updates/deletes.
@@ -817,7 +979,7 @@ struct func_pred
 #if 0				/* not used anymore */
 #define XASL_QEXEC_MODE_ASYNC    128	/* query exec mode (async) */
 #endif
-#define XASL_MULTI_UPDATE_AGG    256	/* is for multi-update with aggregate */
+#define XASL_MULTI_UPDATE_AGG	 256	/* is for multi-update with aggregate */
 #define XASL_IGNORE_CYCLES	 512	/* is for LEVEL usage in connect by
 					 * clause... sometimes cycles may be
 					 * ignored
@@ -827,6 +989,7 @@ struct func_pred
 #define XASL_USES_MRO	      4096	/* query uses multi range optimization */
 #define XASL_KEEP_DBVAL	      8192	/* do not clear db_value */
 #define XASL_RETURN_GENERATED_KEYS	     16384	/* return generated keys */
+#define XASL_SELECT_MVCC_LOCK_NEEDED      32768	/* lock returned rows */
 
 #define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)

@@ -516,6 +516,7 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
 {
   const char *key;
   DB_VALUE *oldval;
+  MOP mop;
 
   /* create label table if non-existent */
   if (!pt_Label_table)
@@ -550,6 +551,12 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
+
+      if (DB_VALUE_TYPE ((DB_VALUE *) val) == DB_TYPE_OBJECT)
+	{
+	  mop = db_get_object (val);
+	  ws_add_label_value_to_mop (mop, val);
+	}
     }
   else
     {
@@ -566,6 +573,22 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
+	}
+
+      if (DB_VALUE_TYPE ((DB_VALUE *) val) == DB_TYPE_OBJECT)
+	{
+	  mop = db_get_object (val);
+	  if (ws_add_label_value_to_mop (mop, val) != NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      return er_errid ();
+	    }
+	}
+
+      if (DB_VALUE_TYPE (oldval) == DB_TYPE_OBJECT)
+	{
+	  mop = db_get_object (oldval);
+	  ws_remove_label_value_from_mop (mop, oldval);
 	}
 
       /* if the insertion went well, free the old value */
@@ -688,14 +711,20 @@ pt_is_reference_to_reusable_oid (DB_VALUE * val)
 DB_VALUE *
 pt_find_value_of_label (const char *label)
 {
+  DB_VALUE *db_valp;
+
   if (!pt_Label_table || !label)
     {
       return NULL;
     }
   else
     {
-      return vid_flush_and_rehash_lbl ((DB_VALUE *)
-				       mht_get (pt_Label_table, label));
+      db_valp = (DB_VALUE *) mht_get (pt_Label_table, label);
+      if (db_valp != NULL && DB_VALUE_TYPE (db_valp) == DB_TYPE_OBJECT)
+	{
+	  db_valp = vid_flush_and_rehash_lbl (db_valp);
+	}
+      return db_valp;
     }
 }
 
@@ -740,7 +769,6 @@ pt_make_label_list (const void *key, void *data, void *args)
 
   return (NO_ERROR);
 }
-
 
 /*
  * pt_find_labels () - Sets a pointer to a list of all session interpreter
@@ -817,7 +845,6 @@ do_drop_variable (PARSER_CONTEXT * parser, PT_NODE * stmt)
   return NO_ERROR;
 }
 
-
 /*
  * pt_free_label () - release all memory occupied by an interpreter variable
  *   return:  NO_ERROR
@@ -829,15 +856,22 @@ do_drop_variable (PARSER_CONTEXT * parser, PT_NODE * stmt)
 static int
 pt_free_label (const void *key, void *data, void *args)
 {
+  DB_VALUE *val = (DB_VALUE *) data;
+  MOP mop;
+
   if (key != NULL)
     {
       ws_free_string ((char *) key);
+      if (DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
+	{
+	  mop = db_get_object (val);
+	  ws_remove_label_value_from_mop (mop, val);
+	}
       db_value_free ((DB_VALUE *) data);
     }
 
   return NO_ERROR;
 }
-
 
 /*
  * pt_free_label_table () - release all memory occupied by the label_table

@@ -57,6 +57,7 @@
 #include "jsp_sr.h"
 #include "replication.h"
 #include "es.h"
+#include "vacuum.h"
 
 
 /*
@@ -200,20 +201,22 @@ length_string_with_null_padding (int len)
  *   oidp(in):
  *   chn(in):
  *   lock(in):
+ *   retain_lock(in):
  *   class_oid(in):
  *   class_chn(in):
  *   prefetch(in):
  *   fetch_copyarea(in):
  */
 int
-locator_fetch (OID * oidp, int chn, LOCK lock, OID * class_oid,
-	       int class_chn, int prefetch, LC_COPYAREA ** fetch_copyarea)
+locator_fetch (OID * oidp, int chn, LOCK lock, bool retain_lock,
+	       OID * class_oid, int class_chn, int prefetch,
+	       LC_COPYAREA ** fetch_copyarea)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
   int req_error;
   char *ptr;
-  OR_ALIGNED_BUF ((OR_OID_SIZE * 2) + (OR_INT_SIZE * 4)) a_request;
+  OR_ALIGNED_BUF ((OR_OID_SIZE * 2) + (OR_INT_SIZE * 5)) a_request;
   char *request;
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + OR_INT_SIZE) a_reply;
   char *reply;
@@ -224,6 +227,7 @@ locator_fetch (OID * oidp, int chn, LOCK lock, OID * class_oid,
   ptr = or_pack_oid (request, oidp);
   ptr = or_pack_int (ptr, chn);
   ptr = or_pack_lock (ptr, lock);
+  ptr = or_pack_int (ptr, retain_lock);
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, class_chn);
   ptr = or_pack_int (ptr, prefetch);
@@ -251,8 +255,8 @@ locator_fetch (OID * oidp, int chn, LOCK lock, OID * class_oid,
 
   ENTER_SERVER ();
 
-  success = xlocator_fetch (NULL, oidp, chn, lock, class_oid, class_chn,
-			    prefetch, fetch_copyarea);
+  success = xlocator_fetch (NULL, oidp, chn, lock, retain_lock, class_oid,
+			    class_chn, prefetch, fetch_copyarea);
 
   EXIT_SERVER ();
 
@@ -1350,6 +1354,7 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
  *   many_classnames(in):
  *   many_locks(in):
  *   many_need_subclasses(in):
+ *   many_flags(in):
  *   guessed_class_oids(in):
  *   guessed_class_chns(in):
  *   quit_on_errors(in):
@@ -1363,6 +1368,7 @@ locator_find_lockhint_class_oids (int num_classes,
 				  const char **many_classnames,
 				  LOCK * many_locks,
 				  int *many_need_subclasses,
+				  LC_PREFETCH_FLAGS * many_flags,
 				  OID * guessed_class_oids,
 				  int *guessed_class_chns, int quit_on_errors,
 				  LC_LOCKHINT ** lockhint,
@@ -1389,8 +1395,9 @@ locator_find_lockhint_class_oids (int num_classes,
   request_size = OR_INT_SIZE + OR_INT_SIZE;
   for (i = 0; i < num_classes; i++)
     {
-      request_size += (length_const_string (many_classnames[i], NULL) +
-		       OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_INT_SIZE);
+      request_size +=
+	(length_const_string (many_classnames[i], NULL) + OR_INT_SIZE +
+	 OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_INT_SIZE);
     }
 
   request = (char *) malloc (request_size);
@@ -1408,6 +1415,7 @@ locator_find_lockhint_class_oids (int num_classes,
       ptr = pack_const_string (ptr, many_classnames[i]);
       ptr = or_pack_lock (ptr, many_locks[i]);
       ptr = or_pack_int (ptr, many_need_subclasses[i]);
+      ptr = or_pack_int (ptr, (int) many_flags[i]);
       ptr = or_pack_oid (ptr, &guessed_class_oids[i]);
       ptr = or_pack_int (ptr, guessed_class_chns[i]);
     }
@@ -1460,9 +1468,9 @@ locator_find_lockhint_class_oids (int num_classes,
   allfind =
     xlocator_find_lockhint_class_oids (NULL, num_classes, many_classnames,
 				       many_locks, many_need_subclasses,
-				       guessed_class_oids, guessed_class_chns,
-				       quit_on_errors, lockhint,
-				       fetch_copyarea);
+				       many_flags, guessed_class_oids,
+				       guessed_class_chns, quit_on_errors,
+				       lockhint, fetch_copyarea);
 
   EXIT_SERVER ();
 
@@ -4477,7 +4485,7 @@ boot_check_db_consistency (int check_flag, OID * oids, int num_oids,
   request_size = OR_INT_SIZE;	/* check_flag */
   request_size += OR_INT_SIZE;	/* num_oid */
   request_size += (OR_OID_SIZE * num_oids);
-  request_size += OR_BTID_SIZE;
+  request_size += OR_BTID_ALIGNED_SIZE;
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -7127,7 +7135,7 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
 #else /* CS_MODE */
 
       ENTER_SERVER ();
-      status = xbtree_find_unique (NULL, btid, true, S_SELECT, key, class_oid,
+      status = xbtree_find_unique (NULL, btid, S_SELECT, key, class_oid,
 				   oid, false);
       EXIT_SERVER ();
 
@@ -9453,6 +9461,71 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
 }
 
 /*
+ * btree_get_index_key_type () - Get index key type.
+ *
+ * return	    : Error code.
+ * btid (in)	    : Index b-tree identifier.
+ * key_type_p (out) : Index key type.
+ */
+int
+btree_get_index_key_type (BTID btid, TP_DOMAIN ** key_type_p)
+{
+#if defined(CS_MODE)
+  int error;
+  OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = NULL;
+  char *ptr = NULL;
+  char *reply_data = NULL;
+  int reply_data_size = 0;
+  int dummy;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  /* Send BTID to server */
+  ptr = or_pack_btid (request, &btid);
+
+  error = net_client_request2 (NET_SERVER_BTREE_GET_KEY_TYPE,
+			       request, OR_ALIGNED_BUF_SIZE (a_request),
+			       reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			       NULL, 0, &reply_data, &reply_data_size);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  ptr = or_unpack_int (reply, &reply_data_size);
+  ptr = or_unpack_int (ptr, &error);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (reply_data != NULL)
+    {
+      /* Obtain key type from server */
+      (void) or_unpack_domain (reply_data, key_type_p, &dummy);
+    }
+  free_and_init (reply_data);
+
+  return error;
+#else /* CS_MODE */
+  int error = NO_ERROR;
+
+  ENTER_SERVER ();
+
+  assert_release (!BTID_IS_NULL (&btid));
+  assert_release (key_type_p != NULL);
+
+  error = xbtree_get_key_type (NULL, btid, key_type_p);
+
+  EXIT_SERVER ();
+
+  return error;
+#endif /* !CS_MODE */
+}
+
+/*
  * db_local_transaction_id -
  *
  * return:
@@ -9814,15 +9887,16 @@ sysprm_dump_server_parameters (FILE * outfp)
  *
  *   hfid(in):
  *   class_oid(in):
+ *   has_visible_instance(in): true if we need to check for a visible record 
  *
  * NOTE:
  */
 int
-heap_has_instance (HFID * hfid, OID * class_oid)
+heap_has_instance (HFID * hfid, OID * class_oid, int has_visible_instance)
 {
 #if defined(CS_MODE)
   int req_error, status = ER_FAILED;
-  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_OID_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_OID_SIZE + OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
@@ -9833,6 +9907,7 @@ heap_has_instance (HFID * hfid, OID * class_oid)
 
   ptr = or_pack_hfid (request, hfid);
   ptr = or_pack_oid (ptr, class_oid);
+  ptr = or_pack_int (ptr, has_visible_instance);
 
   req_error = net_client_request (NET_SERVER_HEAP_HAS_INSTANCE,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
@@ -9848,7 +9923,7 @@ heap_has_instance (HFID * hfid, OID * class_oid)
   int r = ER_FAILED;
 
   ENTER_SERVER ();
-  r = xheap_has_instance (NULL, hfid, class_oid);
+  r = xheap_has_instance (NULL, hfid, class_oid, has_visible_instance);
   EXIT_SERVER ();
 
   return r;
@@ -11027,6 +11102,110 @@ es_posix_get_file_size (const char *path)
 #else /* CS_MODE */
   return -1;
 #endif
+}
+
+/*
+ * cvacuum () - Client side function for vacuuming classes.
+ *
+ * return	    : Error code.
+ * num_classes (in) : Number of classes in class_oids array.
+ * class_oids (in)  : Class OID's array.
+ */
+int
+cvacuum (int num_classes, OID * class_oids)
+{
+#if defined(CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = NULL, *ptr = NULL, *reply = NULL;
+  int err = NO_ERROR, request_size = 0;
+
+  /* Reply should include error code */
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  /* Request data size */
+  request_size += OR_INT_SIZE +	/* num_classes */
+    num_classes * OR_OID_SIZE;	/* class_oids */
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, request_size);
+      return err;
+    }
+
+  /* Pack num_classes */
+  ptr = or_pack_int (request, num_classes);
+  /* Pack class_oids */
+  ptr = or_pack_oid_array (ptr, num_classes, class_oids);
+
+  /* Send request to server */
+  err =
+    net_client_request (NET_SERVER_VACUUM, request, request_size,
+			reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			NULL, 0, NULL, 0);
+
+  /* Clean up */
+  if (request != NULL)
+    {
+      free_and_init (request);
+    }
+
+  if (err == NO_ERROR)
+    {
+      (void) or_unpack_int (reply, &err);
+    }
+
+  return err;
+#else /* !CS_MODE */
+  int err;
+
+  ENTER_SERVER ();
+
+  /* Call server function for vacuuming classes */
+  err = xvacuum (NULL, num_classes, class_oids);
+
+  EXIT_SERVER ();
+
+  return err;
+#endif /* CS_MODE */
+}
+
+/*
+ * log_invalidate_mvcc_snapshot () - Invalidate MVCC Snapshot to avoid further
+ *				     usage.
+ *
+ * return : Error code.
+ */
+int
+log_invalidate_mvcc_snapshot (void)
+{
+#if defined(CS_MODE)
+  char *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  int err = NO_ERROR;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  err = net_client_request (NET_SERVER_INVALIDATE_MVCC_SNAPSHOT, NULL, 0,
+			    reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			    NULL, 0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      or_unpack_int (reply, &err);
+    }
+
+  return err;
+#else /* !CS_MODE */
+  int err;
+
+  ENTER_SERVER ();
+
+  err = xlogtb_invalidate_snapshot_data (NULL);
+
+  EXIT_SERVER ();
+
+  return err;
+#endif /* CS_MODE */
 }
 
 /*

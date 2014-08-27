@@ -1630,7 +1630,8 @@ lockdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  (void) db_set_isolation (TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE);
+  (void) db_set_isolation (TRAN_READ_COMMITTED);
+
   lock_dump (outfp);
   db_shutdown ();
 

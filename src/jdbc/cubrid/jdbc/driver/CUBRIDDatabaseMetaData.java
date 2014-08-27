@@ -737,11 +737,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		checkIsOpen();
 		switch (level) {
 		case Connection.TRANSACTION_READ_COMMITTED:
-		case Connection.TRANSACTION_READ_UNCOMMITTED:
 		case Connection.TRANSACTION_REPEATABLE_READ:
 		case Connection.TRANSACTION_SERIALIZABLE:
 		case CUBRIDConnection.TRAN_REP_CLASS_COMMIT_INSTANCE:
-		case CUBRIDConnection.TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
 			return true;
 		default:
 			return false;

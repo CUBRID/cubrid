@@ -35,6 +35,7 @@
 #include <values.h>
 #endif /* !WINDOWS */
 
+#include "parser.h"
 #include "error_code.h"
 #include "error_manager.h"
 #include "object_representation.h"
@@ -44,19 +45,15 @@
 #include "schema_manager.h"
 #include "statistics.h"
 #include "system_parameter.h"
-#include "parser.h"
 #include "environment_variable.h"
 #include "xasl_generation.h"
-#include "parser.h"
 #include "query_list.h"
 #include "db.h"
 #include "system_parameter.h"
 #include "memory_alloc.h"
 #include "environment_variable.h"
 #include "util_func.h"
-#include "parser.h"
 
-#include "parser.h"
 #include "locator_cl.h"
 #include "object_domain.h"
 #include "network_interface_cl.h"
@@ -5213,6 +5210,12 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   int n_func_indexes;
   SM_CLASS_CONSTRAINT *consp;
   CLASS_STATS *stats;
+  bool is_reserved_name = false;
+
+  if ((QO_SEG_PT_NODE (seg))->info.name.meta_class == PT_RESERVED)
+    {
+      is_reserved_name = true;
+    }
 
   /* actual attribute name of the given segment */
   name = QO_SEG_NAME (seg);
@@ -5244,6 +5247,23 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
   /* initialize QO_ATTR_CUM_STATS structure of QO_ATTR_INFO */
   cum_statsp = &attr_infop->cum_stats;
+  if (is_reserved_name)
+    {
+      cum_statsp->type =
+	pt_Reserved_name_table[(QO_SEG_PT_NODE (seg))->info.name.reserved_id].
+	type;
+      cum_statsp->valid_limits = false;
+      cum_statsp->is_indexed = true;
+      cum_statsp->leafs = cum_statsp->pages = cum_statsp->height = 0;
+      cum_statsp->keys = 0;
+      cum_statsp->key_type = NULL;
+      cum_statsp->pkeys_size = 0;
+      cum_statsp->pkeys = NULL;
+
+      return attr_infop;
+    }
+
+  /* not a reserved name */
   cum_statsp->type = sm_att_type_id (class_info_entryp->mop, name);
   cum_statsp->valid_limits = false;
   cum_statsp->is_indexed = true;
@@ -6745,7 +6765,7 @@ qo_find_matching_index (QO_INDEX_ENTRY * index_entry,
  *
  * Note:
  *     This is a recursive function which is used to verify that a
- *     given index entry is compatible accross the class hierarchy.
+ *     given index entry is compatible across the class hierarchy.
  *     An index entry is compatible if there exists an index definition
  *     on the same sequence of attributes at each level in the class
  *     hierarchy.  If the index entry is compatible, the entry will be
@@ -7322,6 +7342,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
   int *seg_idx, seg_idx_arr[NELEMENTS], nseg_idx;
   bool found, is_hint_use, is_hint_ignore, is_hint_force, is_hint_all_except;
   BITSET index_segs, index_terms;
+  bool special_index_scan = false;
 
   /* information of classes underlying this node */
   class_infop = QO_NODE_INFO (nodep);
@@ -7331,8 +7352,17 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
       return;			/* no classes, nothing to do process */
     }
 
+  if (PT_SPEC_SPECIAL_INDEX_SCAN (QO_NODE_ENTITY_SPEC (nodep)))
+    {
+      if (QO_NODE_USING_INDEX (nodep) == NULL)
+	{
+	  assert (0);
+	  return;
+	}
+      special_index_scan = true;
+    }
 
-  /* for each class in the hierarachy, search the class constraint cache
+  /* for each class in the hierarchy, search the class constraint cache
      looking for applicable indexes(UNIQUE and INDEX constraint) */
   for (i = 0; i < class_infop->n; i++)
     {
@@ -7342,7 +7372,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
       /* get constraints of the class */
       constraints = sm_class_constraints (class_entryp->mop);
 
-      /* count the number of INDEX and UNIQUE constraints contatined in this
+      /* count the number of INDEX and UNIQUE constraints contained in this
          class */
       n = 0;
       for (consp = constraints; consp; consp = consp->next)
@@ -7510,13 +7540,17 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 				      seg_idx, col_num, &nseg_idx,
 				      &index_segs);
 	  /* 'seg_idx[nseg_idx]' array contains index no.(idx) of the segments
-	     which are found and applicable to this index(constraint) as
-	     search key in the order of the index key attribute. For example,
-	     if the index consists of attributes 'b' and 'a', and the given
-	     segments of the node are 'a(1)', 'b(2)' and 'c(3)', then the
-	     result of 'seg_idx[]' will be '{ 2, 1, -1 }'. The value -1 in
-	     'seg_idx[] array means that no segment is specified. */
-	  if (found == true)
+	   * which are found and applicable to this index(constraint) as
+	   * search key in the order of the index key attribute. For example,
+	   * if the index consists of attributes 'b' and 'a', and the given
+	   * segments of the node are 'a(1)', 'b(2)' and 'c(3)', then the
+	   * result of 'seg_idx[]' will be '{ 2, 1, -1 }'. The value -1 in
+	   * 'seg_idx[] array means that no segment is specified.
+	   */
+	  /* If key information is required, no index segments will be found,
+	   * but index scan has to be forced.
+	   */
+	  if (found == true || special_index_scan == true)
 	    {
 	      /* if applicable index was found, add it to the node */
 
@@ -7747,15 +7781,28 @@ qo_discover_indexes (QO_ENV * env)
       if (nodep->info)
 	{
 	  /* find indexed segments that belong to this node and get indexes
-	     that apply to indexed segments */
-	  qo_find_node_indexes (env, nodep);
-	  /* collect statistic infomation on discovered indexes */
-	  qo_get_index_info (env, nodep);
+	   * that apply to indexed segments.
+	   * Note that a scan for record information or page informations
+	   * should follow, there is no need to check for index (a sequential
+	   * scan is needed).
+	   */
+	  if (!PT_IS_SPEC_FLAG_SET (QO_NODE_ENTITY_SPEC (nodep),
+				    (PT_SPEC_FLAG_RECORD_INFO_SCAN
+				     | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
+	    {
+	      qo_find_node_indexes (env, nodep);
+	      /* collect statistic information on discovered indexes */
+	      qo_get_index_info (env, nodep);
+	    }
+	  else
+	    {
+	      QO_NODE_INDEXES (nodep) = NULL;
+	    }
 	}
       else
 	{
 	  /* If the 'info' of node is NULL, then this is probably a derived
-	     table. Without the info, we don't have class informatino to
+	     table. Without the info, we don't have class information to
 	     work with so we really can't do much so just skip the node. */
 	  QO_NODE_INDEXES (nodep) = NULL;	/* this node will not use a index */
 	}

@@ -250,7 +250,7 @@ tf_find_temporary_oids (LC_OIDSET * oidset, MOBJ classobj, MOBJ obj)
 	      oid = &mem->oid;
 
 	      if (OID_ISTEMP (oid) && mem->pointer != NULL
-		  && !mem->pointer->deleted)
+		  && !WS_IS_DELETED (mem->pointer))
 		{
 
 		  /* Make sure the ws_memoid mop is temporary. */
@@ -612,9 +612,10 @@ put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size)
 
   if (class_->variable_count)
     {
-
-      /* calculate offset to first variable value */
-      offset = OR_HEADER_SIZE +
+      /* compute the variable offsets relative to the end of the header (beginning
+       * of variable table)
+       */
+      offset =
 	OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count, offset_size) +
 	class_->fixed_size + OR_BOUND_BIT_BYTES (class_->fixed_count);
 
@@ -660,8 +661,10 @@ object_size (SM_CLASS * class_, MOBJ obj, int *offset_size_ptr)
   *offset_size_ptr = OR_BYTE_SIZE;
 
 re_check:
-  size = OR_HEADER_SIZE +
-    class_->fixed_size + OR_BOUND_BIT_BYTES (class_->fixed_count);
+
+  size = (prm_get_bool_value (PRM_ID_MVCC_ENABLED)
+	  ? OR_MVCC_INSERT_HEADER_SIZE : OR_NON_MVCC_HEADER_SIZE)
+    + class_->fixed_size + OR_BOUND_BIT_BYTES (class_->fixed_count);
 
   if (class_->variable_count)
     {
@@ -811,6 +814,23 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj,
     }
 
   expected_size = object_size (class_, obj, &offset_size);
+  if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+    {
+      if ((expected_size + OR_MVCC_MAX_HEADER_SIZE -
+	   OR_MVCC_INSERT_HEADER_SIZE) > record->area_size)
+	{
+	  record->length = -expected_size;
+
+	  /* make sure we free this */
+	  if (tf_Allow_fixups)
+	    {
+	      tf_free_fixup (buf->fixups);
+	    }
+
+	  *index_flag = false;
+	  return (TF_OUT_OF_SPACE);
+	}
+    }
 
   switch (_setjmp (buf->env))
     {
@@ -839,10 +859,26 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj,
       /* offset size */
       OR_SET_VAR_OFFSET_SIZE (repid_bits, offset_size);
 
-      or_put_int (buf, repid_bits);
-
       chn = WS_CHN (obj) + 1;
-      or_put_int (buf, chn);
+
+      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+	{
+	  /* in most of the cases, we expect the MVCC header of a new object
+	   * to have OR_MVCC_FLAG_VALID_INSID flag, repid_bits, MVCC insert id
+	   * and chn. This header may be changed later, at insert/update. So,
+	   * we must be sure that the record has enough free space.
+	   */
+
+	  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
+	  or_put_int (buf, repid_bits);
+	  or_put_bigint (buf, MVCCID_NULL);	/* MVCC insert id */
+	  or_put_int (buf, chn);	/* CHN, short size */
+	}
+      else
+	{
+	  or_put_int (buf, repid_bits);
+	  or_put_int (buf, chn);
+	}
 
       /* variable info block */
       put_varinfo (buf, obj, class_, offset_size);
@@ -929,6 +965,9 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
 	}
       else
 	{
+	  /* get the offsets relative to the end of the header (beginning
+	   * of variable table)
+	   */
 	  offset = or_get_offset_internal (buf, &rc, offset_size);
 	  for (i = 0; i < class_->variable_count; i++)
 	    {
@@ -1143,6 +1182,9 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
 		}
 	      else
 		{
+		  /* get the offsets relative to the end of the header
+		   * (beginning of variable table)
+		   */
 		  offset = or_get_offset_internal (buf, &rc, offset_size);
 		  for (i = 0; i < oldrep->variable_count; i++)
 		    {
@@ -1353,11 +1395,54 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
       /* offset size */
       offset_size = OR_GET_OFFSET_SIZE (buf->ptr);
 
-      repid_bits = or_get_int (buf, &rc);
-      chn = or_get_int (buf, &rc);
+      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+	{
+	  char mvcc_flags;
 
-      /* mask out the repid & bound bit flag  & offset size flag */
-      repid = repid_bits & ~OR_BOUND_BIT_FLAG & ~OR_OFFSET_SIZE_FLAG;
+	  /* in case of MVCC, repid_bits contains MVCC flags */
+	  repid_bits = or_mvcc_get_repid_and_flags (buf, &rc);
+	  repid = repid_bits & OR_MVCC_REPID_MASK;
+
+	  mvcc_flags =
+	    (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS)
+		    & OR_MVCC_FLAG_MASK);
+
+	  if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
+	    {
+	      /* skip insert id */
+	      or_advance (buf, OR_INT64_SIZE);
+	    }
+
+	  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
+	    {
+	      /* skip delete id */
+	      chn = NULL_CHN;
+	      or_advance (buf, OR_INT64_SIZE);
+	    }
+	  else
+	    {
+	      chn = or_get_int (buf, &rc);
+	      if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
+		{
+		  /* skip 4 bytes - fixed MVCC header size */
+		  or_advance (buf, OR_INT_SIZE);
+		}
+	    }
+
+	  if (mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION)
+	    {
+	      /* skip next version */
+	      or_advance (buf, OR_OID_SIZE);
+	    }
+	}
+      else
+	{
+	  repid_bits = or_get_int (buf, &rc);
+	  chn = or_get_int (buf, &rc);
+
+	  /* mask out the repid & bound bit flag  & offset size flag */
+	  repid = repid_bits & ~OR_BOUND_BIT_FLAG & ~OR_OFFSET_SIZE_FLAG;
+	}
       bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
 
       if (repid == class_->repid)
@@ -2128,6 +2213,7 @@ disk_to_domain2 (OR_BUF * buf)
       domain->class_mop = ws_mop (&domain->class_oid, NULL);
       if (domain->class_mop == NULL)
 	{
+	  free_var_table (vars);
 	  or_abort (buf);
 	}
     }
@@ -2985,8 +3071,11 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
        * initialized in classobj_make_attribute and here as well
        */
       att->header.name_space = ID_NULL;	/* must set this later ! */
+      att->header.name = NULL;
+      att->domain = NULL;
       att->constraints = NULL;
       att->properties = NULL;
+      att->order_link = NULL;
       att->triggers = NULL;
       att->auto_increment = NULL;
       att->is_fk_cache_attr = false;
@@ -3473,7 +3562,7 @@ check_class_structure (SM_CLASS * class_)
  *    buf(in/out): translation buffer
  *    class(in): class structure
  * Note:
- *    This is the only meta object that includes OR_HEADER_SIZE
+ *    This is the only meta object that includes OR_MVCC_HEADER_SIZE
  *    as part of the offset calculations.  This is because the other
  *    substructures are all stored in sets inside the class object.
  *    Returns the offset within the buffer after the offset table
@@ -3485,9 +3574,12 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
   DB_OBJLIST *triggers;
   int offset;
 
-  /* name */
-  offset = OR_HEADER_SIZE + tf_Metaclass_class.fixed_size +
+  /* compute the variable offsets relative to the end of the header (beginning
+   * of variable table)
+   */
+  offset = tf_Metaclass_class.fixed_size +
     OR_VAR_TABLE_SIZE (tf_Metaclass_class.n_variable);
+  /* name */
   or_put_offset (buf, offset);
 
   offset += string_disk_size (class_->header.name);
@@ -3700,11 +3792,12 @@ class_to_disk (OR_BUF * buf, SM_CLASS * class_)
     }
   else
     {
-      start = buf->ptr - OR_HEADER_SIZE;	/* header already written */
+      start = buf->ptr - OR_NON_MVCC_HEADER_SIZE;
+      /* header already written */
       offset = put_class_varinfo (buf, class_);
       put_class_attributes (buf, class_);
 
-      if (start + offset != buf->ptr)
+      if (start + offset + OR_NON_MVCC_HEADER_SIZE != buf->ptr)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_OUT_OF_SYNC, 0);
 	  or_abort (buf);
@@ -3733,7 +3826,8 @@ tf_class_size (MOBJ classobj)
       return (-1);
     }
 
-  size = OR_HEADER_SIZE;	/* ? */
+  size = OR_NON_MVCC_HEADER_SIZE;
+
   size += tf_Metaclass_class.fixed_size +
     OR_VAR_TABLE_SIZE (tf_Metaclass_class.n_variable);
 
@@ -3800,7 +3894,7 @@ tf_dump_class_size (MOBJ classobj)
       return;
     }
 
-  size = OR_HEADER_SIZE;	/* ? */
+  size = OR_NON_MVCC_HEADER_SIZE;	/* ? */
   size += tf_Metaclass_class.fixed_size +
     OR_VAR_TABLE_SIZE (tf_Metaclass_class.n_variable);
   fprintf (stdout, "Fixed size %d\n", size);
@@ -3929,6 +4023,9 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   DB_IDENTIFIER serial_obj_id;
 
   class_ = NULL;
+  /* get the variable length and offsets. The offsets are relative to the
+   * end of the header (beginning of variable table).
+   */
   vars = read_var_table (buf, tf_Metaclass_class.n_variable);
   if (vars == NULL)
     {
@@ -3999,6 +4096,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
       or_abort (buf);
       return NULL;
     }
+  classobj_initialize_attributes (class_->attributes);
 
   class_->shared = (SM_ATTRIBUTE *)
     classobj_alloc_threaded_array (sizeof (SM_ATTRIBUTE),
@@ -4010,6 +4108,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
       or_abort (buf);
       return NULL;
     }
+  classobj_initialize_attributes (class_->shared);
 
   class_->class_attributes = (SM_ATTRIBUTE *)
     classobj_alloc_threaded_array (sizeof (SM_ATTRIBUTE),
@@ -4021,6 +4120,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
       or_abort (buf);
       return NULL;
     }
+  classobj_initialize_attributes (class_->class_attributes);
 
   class_->methods = (SM_METHOD *)
     classobj_alloc_threaded_array (sizeof (SM_METHOD), class_->method_count);
@@ -4031,6 +4131,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
       or_abort (buf);
       return NULL;
     }
+  classobj_initialize_methods (class_->methods);
 
   class_->class_methods = (SM_METHOD *)
     classobj_alloc_threaded_array (sizeof (SM_METHOD),
@@ -4042,6 +4143,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
       or_abort (buf);
       return NULL;
     }
+  classobj_initialize_methods (class_->class_methods);
 
   /* variable 5 */
   install_substructure_set (buf, (DB_LIST *) class_->attributes,
@@ -4169,6 +4271,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
  *    return: void
  *    buf(in/out): translation buffer
  *    root(in): root class object
+ *    header_size(in): the size of header - variable in MVCC
  * Note:
  *    Caller must have a setup a jmpbuf (called setjmp) to handle any
  *    errors
@@ -4179,9 +4282,12 @@ root_to_disk (OR_BUF * buf, ROOT_CLASS * root)
   char *start;
   int offset;
 
-  start = buf->ptr - OR_HEADER_SIZE;	/* header already written */
-  /* variable table */
-  offset = OR_HEADER_SIZE + tf_Metaclass_root.fixed_size +
+  start = buf->ptr - OR_NON_MVCC_HEADER_SIZE;	/* header already written */
+
+  /* compute the variable offsets relative to the end of the header (beginning
+   * of variable table)
+   */
+  offset = tf_Metaclass_root.fixed_size +
     OR_VAR_TABLE_SIZE (tf_Metaclass_root.n_variable);
 
   /* name */
@@ -4206,7 +4312,7 @@ root_to_disk (OR_BUF * buf, ROOT_CLASS * root)
   /* subclass set - obsolete */
   put_object_set (buf, NULL);
 
-  if (start + offset != buf->ptr)
+  if (start + offset + OR_NON_MVCC_HEADER_SIZE != buf->ptr)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_OUT_OF_SYNC, 0);
     }
@@ -4226,7 +4332,7 @@ root_size (MOBJ rootobj)
 
   root = (ROOT_CLASS *) rootobj;
 
-  size = OR_HEADER_SIZE;	/* ? */
+  size = OR_NON_MVCC_HEADER_SIZE;
   size += tf_Metaclass_root.fixed_size +
     OR_VAR_TABLE_SIZE (tf_Metaclass_root.n_variable);
 
@@ -4254,6 +4360,9 @@ disk_to_root (OR_BUF * buf)
   DB_OBJLIST *sublist;
   int rc = NO_ERROR;
 
+  /* get the variable length and offsets. The offsets are relative to the
+   * end of the header (beginning of variable table).
+   */
   vars = read_var_table (buf, tf_Metaclass_root.n_variable);
   if (vars == NULL)
     {
@@ -4335,7 +4444,8 @@ tf_disk_to_class (OID * oid, RECDES * record)
 
       repid = or_get_int (buf, &rc);
       repid = repid & ~OR_OFFSET_SIZE_FLAG;
-
+      assert (((char) (repid >> OR_MVCC_FLAG_SHIFT_BITS)
+	       & OR_MVCC_FLAG_MASK) == 0);
       chn = or_get_int (buf, &rc);
 
       if (oid_is_root (oid))
@@ -4467,12 +4577,13 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
       /* representation id, offset size */
       repid = 0;
       OR_SET_VAR_OFFSET_SIZE (repid, BIG_VAR_OFFSET_SIZE);	/* 4byte */
-      or_put_int (buf, repid);
 
-      /* chn - need to handle overflow */
       chn = class_->header.obj_header.chn + 1;
-      or_put_int (buf, chn);
       class_->header.obj_header.chn = chn;
+
+      /* The header size of a class record in the same like non-MVCC case. */
+      or_put_int (buf, repid);
+      or_put_int (buf, chn);
 
       if (header->type == Meta_root)
 	{

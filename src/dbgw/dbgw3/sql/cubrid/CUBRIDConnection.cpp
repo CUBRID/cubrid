@@ -155,7 +155,7 @@ namespace dbgw
     {
       T_CCI_ERROR cciError;
       int nResult;
-      int nIsolation = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
+      int nIsolation = TRAN_READ_COMMITTED;
 
       switch (isolation)
         {
@@ -165,13 +165,10 @@ namespace dbgw
           nIsolation = TRAN_SERIALIZABLE;
           break;
         case DBGW_TRAN_REPEATABLE_READ:
-          nIsolation = TRAN_REP_CLASS_REP_INSTANCE;
+          nIsolation = TRAN_REPEATABLE_READ;
           break;
         case DBGW_TRAN_READ_COMMITED:
-          nIsolation = TRAN_REP_CLASS_COMMIT_INSTANCE;
-          break;
-        case DBGW_TRAN_READ_UNCOMMITED:
-          nIsolation = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
+          nIsolation = TRAN_READ_COMMITTED;
           break;
         }
 

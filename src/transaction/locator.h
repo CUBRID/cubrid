@@ -33,38 +33,44 @@
 #include "object_representation.h"
 #include "thread.h"
 
-#define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 5 + 			\
-                                    OR_HFID_SIZE + 			\
-                                    OR_OID_SIZE * 2)
+#define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 5 + \
+                                    OR_HFID_SIZE + \
+                                    OR_OID_SIZE * 3)
 
-#define LC_MANYOBJS_PTR_IN_COPYAREA(copy_areaptr)                             \
-  ((LC_COPYAREA_MANYOBJS *) ((char *)(copy_areaptr)->mem +             \
-                                    (copy_areaptr)->length -                  \
+#define LC_MANYOBJS_PTR_IN_COPYAREA(copy_areaptr) \
+  ((LC_COPYAREA_MANYOBJS *) ((char *)(copy_areaptr)->mem + \
+                                    (copy_areaptr)->length - \
                                     DB_SIZEOF(LC_COPYAREA_MANYOBJS)))
 
 #define LC_START_ONEOBJ_PTR_IN_COPYAREA(manyobjs_ptr) (&(manyobjs_ptr)->objs)
-#define LC_LAST_ONEOBJ_PTR_IN_COPYAREA(manyobjs_ptr)    \
+#define LC_LAST_ONEOBJ_PTR_IN_COPYAREA(manyobjs_ptr) \
   (&(manyobjs_ptr)->objs - ((manyobjs_ptr)->num_objs - 1))
 
 #define LC_NEXT_ONEOBJ_PTR_IN_COPYAREA(oneobj_ptr)    ((oneobj_ptr) - 1)
 #define LC_PRIOR_ONEOBJ_PTR_IN_COPYAREA(oneobj_ptr)   ((oneobj_ptr) + 1)
 
-#define LC_FIND_ONEOBJ_PTR_IN_COPYAREA(manyobjs_ptr, obj_num)                 \
+#define LC_FIND_ONEOBJ_PTR_IN_COPYAREA(manyobjs_ptr, obj_num) \
   (&(manyobjs_ptr)->objs - (obj_num))
 
-#define LC_RECDES_TO_GET_ONEOBJ(copy_area_ptr, oneobj_ptr, recdes_ptr)        \
-  do {                                                                        \
-    (recdes_ptr)->data   = (char *)((copy_area_ptr)->mem +                    \
-                                    (oneobj_ptr)->offset);                    \
-    (recdes_ptr)->length = (recdes_ptr)->area_size = (oneobj_ptr)->length;    \
-  } while(0)
+#define LC_RECDES_TO_GET_ONEOBJ(copy_area_ptr, oneobj_ptr, recdes_ptr) \
+  do { \
+    (recdes_ptr)->data = (char *) ((copy_area_ptr)->mem + \
+                                   (oneobj_ptr)->offset); \
+    (recdes_ptr)->length = (recdes_ptr)->area_size = (oneobj_ptr)->length; \
+    if (prm_get_bool_value (PRM_ID_MVCC_ENABLED) \
+	&& !OID_IS_ROOTOID (&((oneobj_ptr)->class_oid))) \
+      {	\
+	(recdes_ptr)->area_size += \
+	(OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE); \
+      }	\
+  } while (0)
 
-#define LC_RECDES_IN_COPYAREA(copy_area_ptr, recdes_ptr)                      \
-  do {                                                                        \
-    (recdes_ptr)->data   = (copy_area_ptr)->mem;                              \
-    (recdes_ptr)->area_size =                                                 \
-      (copy_area_ptr)->length - DB_SIZEOF(LC_COPYAREA_MANYOBJS);       \
-  } while(0)
+#define LC_RECDES_IN_COPYAREA(copy_area_ptr, recdes_ptr) \
+  do { \
+    (recdes_ptr)->data = (copy_area_ptr)->mem; \
+    (recdes_ptr)->area_size = \
+      (copy_area_ptr)->length - DB_SIZEOF(LC_COPYAREA_MANYOBJS); \
+  } while (0)
 
 #define LC_REQOBJ_PACKED_SIZE (OR_OID_SIZE + OR_INT_SIZE * 2)
 #define LC_CLASS_OF_REQOBJ_PACKED_SIZE (OR_OID_SIZE + OR_INT_SIZE)
@@ -104,15 +110,46 @@ typedef enum
   (operation == LC_FLUSH_UPDATE || operation == LC_FLUSH_UPDATE_PRUNE \
    || operation == LC_FLUSH_UPDATE_PRUNE_VERIFY)
 
+#define LC_FLAG_HAS_INDEX_MASK  0x05
+#define LC_ONEOBJ_GET_INDEX_FLAG(obj)  \
+  ((obj)->flag & LC_FLAG_HAS_INDEX_MASK)
+
+#define LC_FLAG_HAS_INDEX	0x01	/* Used for flushing, set if
+					 * object has index
+					 */
+#define LC_FLAG_UPDATED_BY_ME	0x02	/* Used by MVCC to identify
+					 * that an object was updated
+					 * by current transaction.
+					 */
+#define LC_FLAG_HAS_UNIQUE_INDEX 0x04	/* Used for flushing, set if
+					 * object has unique index
+					 */
+
+#define LC_ONEOBJ_SET_HAS_INDEX(obj) \
+  (obj)->flag |= LC_FLAG_HAS_INDEX
+
+#define LC_ONEOBJ_SET_HAS_UNIQUE_INDEX(obj) \
+  (obj)->flag |= LC_FLAG_HAS_UNIQUE_INDEX
+
+#define LC_ONEOBJ_IS_UPDATED_BY_ME(obj) \
+  (((obj)->flag & LC_FLAG_UPDATED_BY_ME) != 0)
+
+#define LC_ONEOBJ_SET_UPDATED_BY_ME(obj) \
+  (obj)->flag |= LC_FLAG_UPDATED_BY_ME
+
+
 typedef struct lc_copyarea_oneobj LC_COPYAREA_ONEOBJ;
 struct lc_copyarea_oneobj
 {
-  LC_COPYAREA_OPERATION operation;	/* Insert, delete, update  */
-  int has_index;		/* Valid only for flushing */
+  LC_COPYAREA_OPERATION operation;	/* Insert, delete, update */
+  int flag;			/* Info flag for the object */
   HFID hfid;			/* Valid only for flushing */
   OID class_oid;		/* Oid of the Class of the object */
-  OID oid;			/* Oid of the object       */
-  int length;			/* Lenght of the object    */
+  OID oid;			/* Oid of the object */
+  OID updated_oid;		/* Stores new object OID in case it has
+				 * changed.
+				 */
+  int length;			/* Length of the object */
   int offset;			/* location in the copy area where the
 				 * content of the object is stored
 				 */
@@ -128,18 +165,19 @@ struct lc_copyarea_manyobjs
   int num_objs;			/* How many objects */
 };
 
+/* Copy area for flushing and fetching */
 typedef struct lc_copy_area LC_COPYAREA;
 struct lc_copy_area
-{				/* Copy area for flushing and fetching */
+{
   char *mem;			/* Pointer to location of chunk of area */
-  int length;			/* The size of the area                 */
+  int length;			/* The size of the area */
 };
 
 typedef struct lc_copyarea_desc LC_COPYAREA_DESC;
 struct lc_copyarea_desc
 {
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
-  LC_COPYAREA_ONEOBJ **obj;	/* Describe on object in area        */
+  LC_COPYAREA_ONEOBJ **obj;	/* Describe on object in area */
   int *offset;			/* Place to store next object in area */
   RECDES *recdes;
 };
@@ -150,7 +188,7 @@ struct lc_copyarea_desc
 typedef struct lc_lockset_reqobj LC_LOCKSET_REQOBJ;
 struct lc_lockset_reqobj
 {
-  OID oid;			/* Oid of the object                    */
+  OID oid;			/* Oid of the object */
   int chn;			/* Cache coherence number of the object */
   int class_index;		/* Where is the desired class. A value of -1 means that
 				 * the class_oid is unknown.
@@ -160,7 +198,7 @@ struct lc_lockset_reqobj
 typedef struct lc_lockset_classof LC_LOCKSET_CLASSOF;
 struct lc_lockset_classof
 {
-  OID oid;			/* Class_oid                */
+  OID oid;			/* Class_oid */
   int chn;			/* Cache coherence of class */
 };
 
@@ -256,6 +294,13 @@ struct lc_lock_hint
   bool first_fetch_lockhint_call;	/* First client call to
 					 * fetch_lockhint
 					 */
+};
+
+typedef enum lc_prefetch_flags LC_PREFETCH_FLAGS;
+enum lc_prefetch_flags
+{
+  LC_PREF_FLAG_LOCK = 0x00000001,
+  LC_PREF_FLAG_COUNT_OPTIM = 0x00000002
 };
 
 

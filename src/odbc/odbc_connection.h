@@ -49,11 +49,10 @@
 #define			KEYWORD_DRIVER		"DRIVER"
 #define			KEYWORD_CHARSET		"CHARSET"
 
-#define		TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE		1
-#define		TRAN_COMMIT_CLASS_COMMIT_INSTANCE		2
-#define		TRAN_REP_CLASS_UNCOMMIT_INSTANCE		3
-#define		TRAN_REP_CLASS_COMMIT_INSTANCE			4
-#define		TRAN_REP_CLASS_REP_INSTANCE				5
+#define		TRAN_REP_CLASS_COMMIT_INSTANCE		TRAN_READ_COMMITTED
+#define		TRAN_READ_COMMITTED			4
+#define		TRAN_REP_CLASS_REP_INSTANCE		TRAN_REPEATABLE_READ
+#define		TRAN_REPEATABLE_READ			5
 
 typedef struct stCUBRIDDSNItem
 {
@@ -163,7 +162,6 @@ PUBLIC RETCODE odbc_get_info (ODBC_CONNECTION * conn, SQLUSMALLINT info_type,
 PUBLIC int get_dsn_info (const char *dsn, char *db_name, int db_name_len,
 			 char *user, int user_len, char *pwd, int pwd_len,
 			 char *server, int server_len, int *port,
-			 int *fetch_size,
-			 char *charset, int *charset_len);
+			 int *fetch_size, char *charset, int *charset_len);
 
 #endif /* ! __ODBC_CONN_HEADER */

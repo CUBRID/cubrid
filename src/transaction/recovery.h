@@ -178,6 +178,34 @@ typedef enum
 
   RVFL_FILEDESC_INS = 115,
 
+  RVHF_MVCC_INSERT = 116,
+  RVHF_MVCC_DELETE = 117,
+  RVHF_MVCC_DELETE_RELOCATED = 118,
+  RVHF_MVCC_DELETE_RELOCATION = 119,
+  RVHF_MVCC_MODIFY_RELOCATION_LINK = 120,
+  RVOVF_NEWPAGE_DELETE_RELOCATED = 121,
+
+  RVBT_KEYVAL_INS_LFRECORD_MVCC_DELID = 122,
+
+  RVBT_KEYVAL_DEL_RECORD_MVCC_DELID = 123,
+
+  RVBT_KEYVAL_MVCC_INS = 124,
+  RVBT_KEYVAL_MVCC_INS_LFRECORD_KEYINS = 125,
+  RVBT_KEYVAL_MVCC_INS_LFRECORD_OIDINS = 126,
+
+  RVVAC_REMOVE_HEAP_OIDS = 127,
+  RVVAC_REMOVE_OVF_INSID = 128,
+  RVVAC_LOG_BLOCK_REMOVE = 129,
+  RVVAC_LOG_BLOCK_APPEND = 130,
+  RVVAC_LOG_BLOCK_MODIFY = 131,
+  RVVAC_DROPPED_FILE_CLEANUP = 132,
+  RVVAC_DROPPED_FILE_NEXT_PAGE = 133,
+  RVVAC_DROPPED_FILE_ADD = 134,
+
+  RVBT_MVCC_INCREMENTS_UPD = 135,
+
+  RVBT_MVCC_NOTIFY_VACUUM = 136,
+
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
 
@@ -187,6 +215,7 @@ typedef enum
 typedef struct log_rcv LOG_RCV;
 struct log_rcv
 {				/* Recovery information */
+  MVCCID mvcc_id;		/* mvcc id */
   PAGE_PTR pgptr;		/* Page to recover. Page should not be free by recovery
 				   functions, however it should be set dirty whenever is
 				   needed
@@ -204,7 +233,7 @@ struct log_rcv
 
 struct rvfun
 {
-  LOG_RCVINDEX recv_index;	/* For verification   */
+  LOG_RCVINDEX recv_index;	/* For verification */
   const char *recv_string;
   int (*undofun) (THREAD_ENTRY * thread_p, LOG_RCV * logrcv);
   int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV * logrcv);
@@ -219,16 +248,23 @@ extern const char *rv_rcvindex_string (LOG_RCVINDEX rcvindex);
 extern void rv_check_rvfuns (void);
 #endif /* CUBRID_DEBUG */
 
-#define RCV_IS_LOGICAL_LOG(vpid, idx)                       \
-          ( (((vpid)->volid == NULL_VOLID)                  \
-             || ((vpid)->pageid == NULL_PAGEID)            \
-             || ((idx) == RVBT_KEYVAL_INS_LFRECORD_KEYINS) \
-             || ((idx) == RVBT_KEYVAL_INS_LFRECORD_OIDINS) \
-             || ((idx) == RVBT_KEYVAL_INS)                 \
-             || ((idx) == RVBT_KEYVAL_DEL)                 \
-             || ((idx) == RVBT_KEYVAL_DEL_LFRECORD_DEL)    \
-             || ((idx) == RVBT_KEYVAL_DEL_NDRECORD_UPD)    \
-             || ((idx) == RVBT_KEYVAL_DEL_NDHEADER_UPD)    \
-             || ((idx) == RVBT_KEYVAL_DEL_OID_TRUNCATE) ) ? true : false )
+#define RCV_IS_LOGICAL_LOG(vpid, idx) \
+  ((((vpid)->volid == NULL_VOLID) \
+    || ((vpid)->pageid == NULL_PAGEID) \
+    || ((idx) == RVBT_KEYVAL_INS_LFRECORD_KEYINS) \
+    || ((idx) == RVBT_KEYVAL_INS_LFRECORD_OIDINS) \
+    || ((idx) == RVBT_KEYVAL_INS) \
+    || ((idx) == RVBT_KEYVAL_DEL) \
+    || ((idx) == RVBT_KEYVAL_DEL_LFRECORD_DEL) \
+    || ((idx) == RVBT_KEYVAL_DEL_NDRECORD_UPD) \
+    || ((idx) == RVBT_KEYVAL_DEL_NDHEADER_UPD) \
+    || ((idx) == RVBT_KEYVAL_DEL_OID_TRUNCATE) \
+    || ((idx) == RVBT_KEYVAL_INS_LFRECORD_MVCC_DELID) \
+    || ((idx) == RVBT_KEYVAL_DEL_RECORD_MVCC_DELID) \
+    || ((idx) == RVBT_KEYVAL_MVCC_INS) \
+    || ((idx) == RVBT_KEYVAL_MVCC_INS_LFRECORD_KEYINS) \
+    || ((idx) == RVBT_KEYVAL_MVCC_INS_LFRECORD_OIDINS) \
+    || ((idx) == RVBT_MVCC_INCREMENTS_UPD) \
+    || ((idx) == RVBT_MVCC_NOTIFY_VACUUM)) ? true : false)
 
 #endif /* _RECOVERY_H_ */

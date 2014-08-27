@@ -299,7 +299,7 @@ static int catalog_drop_disk_representation_from_page (THREAD_ENTRY *
 static int catalog_drop_representation_class_from_page (THREAD_ENTRY *
 							thread_p,
 							VPID * dir_pgid,
-							PAGE_PTR dir_pgptr,
+							PAGE_PTR * dir_pgptr,
 							VPID * page_id,
 							PGSLOTID slot_id);
 static PAGE_PTR catalog_get_representation_record (THREAD_ENTRY * thread_p,
@@ -1757,7 +1757,7 @@ catalog_drop_disk_representation_from_page (THREAD_ENTRY * thread_p,
  * catalog_drop_representation_class_from_page () -
  *   return: NO_ERROR or ER_FAILED
  *   dir_pgid(in): Directory page identifier
- *   dir_pgptr(in): Directory page pointer
+ *   dir_pgptr(in/out): Directory page pointer
  *   page_id(in): Catalog unit page identifier
  *   slot_id(in): Catalog unit slot identifier
  *
@@ -1768,27 +1768,74 @@ catalog_drop_disk_representation_from_page (THREAD_ENTRY * thread_p,
 static int
 catalog_drop_representation_class_from_page (THREAD_ENTRY * thread_p,
 					     VPID * dir_page_id_p,
-					     PAGE_PTR dir_page_p,
+					     PAGE_PTR * dir_page_p,
 					     VPID * page_id_p,
 					     PGSLOTID slot_id)
 {
-  PAGE_PTR page_p;
+  PAGE_PTR page_p = NULL;
   bool same_page;
 
+  assert (dir_page_p != NULL && (*dir_page_p) != NULL);
   /* directory and repr. to be deleted are on the same page? */
   same_page = VPID_EQ (page_id_p, dir_page_id_p) ? true : false;
 
   if (same_page)
     {
-      page_p = dir_page_p;
+      page_p = *dir_page_p;
     }
   else
     {
+      int again_count = 0;
+      int again_max = 20;
+
+    try_again:
+      /* avoid page deadlock */
       page_p = pgbuf_fix (thread_p, page_id_p, OLD_PAGE, PGBUF_LATCH_WRITE,
-			  PGBUF_UNCONDITIONAL_LATCH);
+			  PGBUF_CONDITIONAL_LATCH);
       if (page_p == NULL)
 	{
-	  return ER_FAILED;
+	  /* try reverse order */
+	  pgbuf_unfix_and_init (thread_p, *dir_page_p);
+
+	  page_p =
+	    pgbuf_fix (thread_p, page_id_p, OLD_PAGE, PGBUF_LATCH_WRITE,
+		       PGBUF_UNCONDITIONAL_LATCH);
+	  if (page_p == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  *dir_page_p = pgbuf_fix (thread_p, dir_page_id_p, OLD_PAGE,
+				   PGBUF_LATCH_WRITE,
+				   PGBUF_CONDITIONAL_LATCH);
+	  if ((*dir_page_p) == NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, page_p);
+
+	      *dir_page_p = pgbuf_fix (thread_p, dir_page_id_p, OLD_PAGE,
+				       PGBUF_LATCH_WRITE,
+				       PGBUF_UNCONDITIONAL_LATCH);
+	      if ((*dir_page_p) == NULL)
+		{
+		  return ER_FAILED;
+		}
+
+	      if (again_count++ >= again_max)
+		{
+		  if (er_errid () == NO_ERROR)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_PAGE_LATCH_ABORTED, 2, page_id_p->volid,
+			      page_id_p->pageid);
+		    }
+
+		  return ER_FAILED;
+		}
+	      else
+		{
+		  goto try_again;
+		}
+	    }
 	}
 
       (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
@@ -3299,12 +3346,16 @@ catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p,
       catalog_delete_key (class_id_p, repr_id);
 
       if (catalog_drop_representation_class_from_page
-	  (thread_p, &vpid, page_p, &page_id, slot_id) != NO_ERROR)
+	  (thread_p, &vpid, &page_p, &page_id, slot_id) != NO_ERROR)
 	{
-	  pgbuf_unfix_and_init (thread_p, page_p);
+	  if (page_p != NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, page_p);
+	    }
 	  recdes_free_data_area (&record);
 	  return ER_FAILED;
 	}
+      assert (page_p != NULL);
     }
 
   if (catalog_drop_directory (thread_p, page_p, &record, &oid, class_id_p) !=
@@ -3405,12 +3456,16 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
 	  catalog_delete_key (class_id_p, repr_id);
 
 	  if (catalog_drop_representation_class_from_page
-	      (thread_p, &vpid, page_p, &page_id, slot_id) != NO_ERROR)
+	      (thread_p, &vpid, &page_p, &page_id, slot_id) != NO_ERROR)
 	    {
-	      pgbuf_unfix_and_init (thread_p, page_p);
+	      if (page_p != NULL)
+		{
+		  pgbuf_unfix_and_init (thread_p, page_p);
+		}
 	      recdes_free_data_area (&record);
 	      return ER_FAILED;
 	    }
+	  assert (page_p != NULL);
 
 	  is_any_dropped = true;
 	}
@@ -3511,6 +3566,7 @@ xcatalog_is_acceptable_new_representation (THREAD_ENTRY * thread_p,
   VPID page_id;
   PGSLOTID slot_id;
   PGLENGTH new_space;
+  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
   *can_accept_p = false;
   record.area_size = -1;
@@ -3548,8 +3604,18 @@ xcatalog_is_acceptable_new_representation (THREAD_ENTRY * thread_p,
       return NO_ERROR;
     }
 
+  if (mvcc_Enabled && class_id_p != NULL && !OID_IS_ROOTOID (class_id_p))
+    {
+      /* be conservative */
+      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+      if (mvcc_snapshot == NULL)
+	{
+	  int error = er_errid ();
+	  return (error == NO_ERROR ? ER_FAILED : error);
+	}
+    }
   if (heap_scancache_start (thread_p, &scan_cache, hfid_p, class_id_p, true,
-			    false, LOCKHINT_NONE) != NO_ERROR)
+			    false, mvcc_snapshot) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, page_p);
       return ER_FAILED;
@@ -3662,15 +3728,20 @@ xcatalog_is_acceptable_new_representation (THREAD_ENTRY * thread_p,
 	  catalog_delete_key (class_id_p, repr_id);
 
 	  if (catalog_drop_representation_class_from_page (thread_p, &vpid,
-							   page_p, &page_id,
+							   &page_p, &page_id,
 							   slot_id)
 	      != NO_ERROR)
 	    {
-	      pgbuf_unfix_and_init (thread_p, page_p);
+	      if (page_p != NULL)
+		{
+		  pgbuf_unfix_and_init (thread_p, page_p);
+		}
+
 	      recdes_free_data_area (&record);
 	      recdes_free_data_area (&new_dir_record);
 	      return ER_FAILED;
 	    }
+	  assert (page_p != NULL);
 	}
       else
 	{

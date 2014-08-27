@@ -1540,8 +1540,8 @@ db_set_lock_timeout (int seconds)
  *     transaction will see the given isolation level from this point on.
  *     However, we should not call the transaction as one of that isolation
  *     level.
- *     For example, if a transaction with TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE
- *     is change to TRAN_REP_CLASS_REP_INSTANCE, we cannot say that the
+ *     For example, if a transaction with TRAN_READ_COMMITTED
+ *     is change to TRAN_REPEATABLE_READ, we cannot say that the
  *     transaction has run with the last level of isolation...just that a part
  *     of the transaction was run with that.
  *
@@ -1590,7 +1590,7 @@ db_get_tran_settings (int *lock_wait, DB_TRAN_ISOLATION * tran_isolation)
 /*
  * db_synchronize_cache() - Decache any obsolete objects that were accessed by
  *         the current transaction. This can happen when the client transaction
- *         is not running with TRAN_REP_CLASS_REP_INSTANCE isolation level.
+ *         is not running with TRAN_REPEATABLE_READ isolation level.
  *         That is some of the locks for accessed objects were relesed. CUBRID
  *         tries to synchronize the client cache by decaching accessed objects
  *         that have been updated by other transactions. This is done when
@@ -1958,7 +1958,7 @@ db_get_user_and_host_name (void)
 DB_OBJECT *
 db_get_user (void)
 {
-  return Au_user;
+  return ws_mvcc_latest_version (Au_user);
 }
 
 /*
@@ -2383,7 +2383,6 @@ fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error)
 			       quit_on_error);
 	  if (obj == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	    }
 	}

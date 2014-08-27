@@ -731,35 +731,31 @@ public class UConnection {
 	synchronized public int getIsolationLevel() {
 		errorHandler = new UError(this);
 
-		if (UJCIUtil.isMMDB()) {
-			return CUBRIDIsolationLevel.TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE;
-		} else {
-			if (isClosed == true) {
-				errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
-				return CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
-			}
-			try {
-			    	setBeginTime();
-				checkReconnect();
-				if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
-					return CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
-
-				outBuffer.newRequest(output, UFunctionCode.GET_DB_PARAMETER);
-				outBuffer.addInt(DB_PARAM_ISOLATION_LEVEL);
-
-				UInputBuffer inBuffer;
-				inBuffer = send_recv_msg();
-
-				return inBuffer.readInt();
-			} catch (UJciException e) {
-			    	logException(e);
-				e.toUError(errorHandler);
-			} catch (IOException e) {
-			    	logException(e);
-				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-			}
+		if (isClosed == true) {
+			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
 		}
+		try {
+			setBeginTime();
+			checkReconnect();
+			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
+				return CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
+
+			outBuffer.newRequest(output, UFunctionCode.GET_DB_PARAMETER);
+			outBuffer.addInt(DB_PARAM_ISOLATION_LEVEL);
+
+			UInputBuffer inBuffer;
+			inBuffer = send_recv_msg();
+
+			return inBuffer.readInt();
+		} catch (UJciException e) {
+			logException(e);
+			e.toUError(errorHandler);
+		} catch (IOException e) {
+			logException(e);
+			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+		}
+		return CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
 	}
 
 	public UError getRecentError() {
@@ -1132,36 +1128,34 @@ public class UConnection {
 	synchronized public void setIsolationLevel(int level) {
 		errorHandler = new UError(this);
 
-		if (!UJCIUtil.isMMDB()) {
-			if (isClosed == true) {
-				errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
+		if (isClosed == true) {
+			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
+			return;
+		}
+		if (level < CUBRIDIsolationLevel.TRAN_MIN
+				|| level > CUBRIDIsolationLevel.TRAN_MAX) {
+			errorHandler.setErrorCode(UErrorCode.ER_ISO_TYPE);
+			return;
+		}
+		try {
+			setBeginTime();
+			checkReconnect();
+			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
-			}
-			if (level < CUBRIDIsolationLevel.TRAN_MIN
-					|| level > CUBRIDIsolationLevel.TRAN_MAX) {
-				errorHandler.setErrorCode(UErrorCode.ER_ISO_TYPE);
-				return;
-			}
-			try {
-			    	setBeginTime();
-				checkReconnect();
-				if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
-					return;
 
-				outBuffer.newRequest(output, UFunctionCode.SET_DB_PARAMETER);
-				outBuffer.addInt(DB_PARAM_ISOLATION_LEVEL);
-				outBuffer.addInt(level);
+			outBuffer.newRequest(output, UFunctionCode.SET_DB_PARAMETER);
+			outBuffer.addInt(DB_PARAM_ISOLATION_LEVEL);
+			outBuffer.addInt(level);
 
-				send_recv_msg();
+			send_recv_msg();
 
-				lastIsolationLevel = level;
-			} catch (UJciException e) {
-			    	logException(e);
-				e.toUError(errorHandler);
-			} catch (IOException e) {
-			    	logException(e);
-				errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-			}
+			lastIsolationLevel = level;
+		} catch (UJciException e) {
+			logException(e);
+			e.toUError(errorHandler);
+		} catch (IOException e) {
+			logException(e);
+			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		}
 	}
 

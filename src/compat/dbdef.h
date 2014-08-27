@@ -137,12 +137,24 @@ typedef enum
 				 * This is for SQL select
 				 * INTERNAL USE ONLY
 				 */
-  DB_FETCH_QUERY_WRITE = 6	/* Read the class and query (read) all
+  DB_FETCH_QUERY_WRITE = 6,	/* Read the class and query (read) all
 				 * instances of the class and update some
 				 * of those instances.
 				 * Note class must be given
 				 * This is for Query update (SQL update)
 				 * or Query delete (SQL delete)
+				 * INTERNAL USE ONLY
+				 */
+  DB_FETCH_SCAN = 7,		/* Read the class for scan purpose
+				 * The lock of the lock should be kept
+				 * since the actual access happens later.
+				 * This is for loading an index.
+				 * INTERNAL USE ONLY
+				 */
+  DB_FETCH_EXCLUSIVE_SCAN = 8	/* Read the class for exclusive scan purpose
+				 * The lock of the lock should be kept
+				 * since the actual access happens later.
+				 * This is for loading an index.
 				 * INTERNAL USE ONLY
 				 */
 } DB_FETCH_MODE;
@@ -414,14 +426,6 @@ typedef enum
   DB_INSTANCE_OF_A_VCLASS_OF_A_PROXY = 'd',
   DB_INSTANCE_OF_NONUPDATABLE_OBJECT = 'e'
 } DB_OBJECT_TYPE;
-
-enum LOCKHINT
-{
-  LOCKHINT_NONE = 0,
-  LOCKHINT_READ_UNCOMMITTED = 1,
-  LOCKHINT_BUILD_INDEX = 2
-    /* other lock hint, having value of 4, 8 ..., may be added here */
-};
 
 /* session state id */
 typedef unsigned int SESSION_ID;

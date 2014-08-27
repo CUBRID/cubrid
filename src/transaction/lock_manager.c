@@ -66,110 +66,98 @@ extern int lock_Comp[13][13];
 
 #if defined (SERVER_MODE)
 /* object lock hash function */
-#define LK_OBJ_LOCK_HASH(oid)    \
-  ((OID_ISTEMP(oid)) ? (unsigned int)(-((oid)->pageid) % lk_Gl.obj_hash_size) :\
-                       lock_get_hash_value(oid))
-
-/* uncommitted read isolation level ? */
-#define LK_UNCOMMITTED_READ_ISOLATION(isolation)                \
-        ((isolation) == TRAN_REP_CLASS_UNCOMMIT_INSTANCE        \
-         || (isolation) == TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE)
-
-/* non-2pl lock request ? */
-#define LK_NON2PL_LOCK_REQUEST(res_ptr, iso, lock)              \
-        (res_ptr->type == LOCK_RESOURCE_INSTANCE                \
-         && LK_UNCOMMITTED_READ_ISOLATION(iso)                  \
-         && ((lock) == S_LOCK))
+#define LK_OBJ_LOCK_HASH(oid) \
+  ((OID_ISTEMP (oid)) \
+   ? (unsigned int) (-((oid)->pageid) % lk_Gl.obj_hash_size) \
+   : lock_get_hash_value (oid))
 
 /* thread is lock-waiting ? */
-#define LK_IS_LOCKWAIT_THREAD(thrd)                             \
-        ((thrd)->lockwait != NULL                               \
-         && (thrd)->lockwait_state == (int)LOCK_SUSPENDED)
+#define LK_IS_LOCKWAIT_THREAD(thrd) \
+  ((thrd)->lockwait != NULL \
+   && (thrd)->lockwait_state == (int) LOCK_SUSPENDED)
 
 /* transaction wait for only some msecs ? */
-#define LK_CAN_TIMEOUT(msecs)    ((msecs) != LK_INFINITE_WAIT)
+#define LK_CAN_TIMEOUT(msecs) ((msecs) != LK_INFINITE_WAIT)
 
 /* is younger transaction ? */
 #define LK_ISYOUNGER(young_tranid, old_tranid) (young_tranid > old_tranid)
 
 /* Defines for printing lock activity messages */
-#define LK_MSG_LOCK_HELPER(entry, msgnum)                               \
+#define LK_MSG_LOCK_HELPER(entry, msgnum) \
   fprintf(stdout, \
       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, msgnum)), \
-      (entry)->tran_index, LOCK_TO_LOCKMODE_STRING((entry)->granted_mode),\
-      (entry)->res_head->oid->volid, (entry)->res_head->oid->pageid,    \
-      (entry)->oid->slotid);
+      (entry)->tran_index, LOCK_TO_LOCKMODE_STRING((entry)->granted_mode), \
+      (entry)->res_head->oid->volid, (entry)->res_head->oid->pageid, \
+      (entry)->oid->slotid)
 
-#define LK_MSG_LOCK_ACQUIRED(entry)                                     \
+#define LK_MSG_LOCK_ACQUIRED(entry) \
   LK_MSG_LOCK_HELPER(entry, MSGCAT_LK_OID_LOCK_ACQUIRED)
 
-#define LK_MSG_LOCK_CONVERTED(entry)                                    \
+#define LK_MSG_LOCK_CONVERTED(entry) \
   LK_MSG_LOCK_HELPER(entry, MSGCAT_LK_OID_LOCK_CONVERTED)
 
-#define LK_MSG_LOCK_WAITFOR(entry)                                      \
+#define LK_MSG_LOCK_WAITFOR(entry) \
   LK_MSG_LOCK_HELPER(entry, MSGCAT_LK_OID_LOCK_WAITFOR)
 
-#define LK_MSG_LOCK_RELEASE(entry)                                      \
+#define LK_MSG_LOCK_RELEASE(entry) \
   LK_MSG_LOCK_HELPER(entry, MSGCAT_LK_OID_LOCK_RELEASE)
 
-#define LK_MSG_LOCK_DEMOTE(entry)                                       \
+#define LK_MSG_LOCK_DEMOTE(entry) \
   LK_MSG_LOCK_HELPER(entry, MSGCAT_LK_OID_LOCK_DEMOTE)
 
-#define RECORD_LOCK_ACQUISITION_HISTORY(entry_ptr, history, lock)       \
-  do                                                                    \
-  {                                                                     \
-    (history)->req_mode = (lock); \
-    (history)->next = NULL; \
-    (history)->prev = (entry_ptr)->recent; \
-    /* append it to end of list */ \
-    if ((entry_ptr)->recent == NULL)                                    \
-      {                                                                 \
-      (entry_ptr)->history = (history); \
-      (entry_ptr)->recent = (history); \
+#define RECORD_LOCK_ACQUISITION_HISTORY(entry_ptr, history, lock) \
+  do \
+    { \
+      (history)->req_mode = (lock); \
+      (history)->next = NULL; \
+      (history)->prev = (entry_ptr)->recent; \
+      /* append it to end of list */ \
+      if ((entry_ptr)->recent == NULL) \
+        { \
+          (entry_ptr)->history = (history); \
+          (entry_ptr)->recent = (history); \
+        } \
+      else \
+        { \
+          (entry_ptr)->recent->next = (history); \
+          (entry_ptr)->recent = (history); \
+        } \
     } \
-    else                                                                \
-      {                                                                 \
-      (entry_ptr)->recent->next = (history); \
-      (entry_ptr)->recent = (history); \
-    } \
-  }                                                                     \
   while (0)
 
 #define NEED_LOCK_ACQUISITION_HISTORY(isolation, entry_ptr) \
-  ((isolation) == TRAN_REP_CLASS_COMMIT_INSTANCE \
-   || (isolation) == TRAN_COMMIT_CLASS_COMMIT_INSTANCE \
-   || ((isolation) == TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE \
-       && (entry_ptr)->res_head->type == LOCK_RESOURCE_CLASS))
+  ((isolation) == TRAN_READ_COMMITTED)
 
-#define EXPAND_WAIT_FOR_ARRAY_IF_NEEDED()                               \
-  do                                                                    \
-  {                                                                     \
-    if (nwaits == max_waits)                                            \
-      {                                                                 \
-	if (wait_for == wait_for_buf)                                   \
-	  {                                                             \
-	    t = (int *) malloc (sizeof (int) * max_waits * 2);          \
-	    if (t != NULL)                                              \
-	      {                                                         \
-		memcpy (t, wait_for, sizeof (int) * max_waits);    \
-              }                                                         \
-          }                                                             \
-	else                                                            \
-	  {                                                             \
-	    t = (int *) realloc (wait_for, sizeof (int) * max_waits * 2);\
-          }                                                             \
-	if (t != NULL)                                                  \
-	  {                                                             \
-            wait_for = t;                                               \
-            max_waits *= 2;                                             \
-          }                                                             \
-	else                                                            \
-	  {                                                             \
-            goto set_error;                                             \
-          }                                                             \
-      }                                                                 \
-  }                                                                     \
+#define EXPAND_WAIT_FOR_ARRAY_IF_NEEDED() \
+  do \
+    { \
+      if (nwaits == max_waits) \
+        { \
+          if (wait_for == wait_for_buf) \
+            { \
+              t = (int *) malloc (sizeof (int) * max_waits * 2); \
+              if (t != NULL) \
+                { \
+                  memcpy (t, wait_for, sizeof (int) * max_waits); \
+                } \
+            } \
+          else \
+            { \
+              t = (int *) realloc (wait_for, sizeof (int) * max_waits * 2); \
+            } \
+          if (t != NULL) \
+            { \
+              wait_for = t; \
+              max_waits *= 2; \
+            } \
+          else \
+            { \
+              goto set_error; \
+            } \
+        } \
+    } \
   while (0)
+
 #endif /* SERVER_MODE */
 
 #define SET_SCANID_BIT(s, i)    (s[i/8] |= (1 << (i%8)))
@@ -569,9 +557,6 @@ static void lock_demote_shared_class_lock (THREAD_ENTRY * thread_p,
 					   const OID * class_oid);
 static void lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p,
 						int tran_index);
-static void lock_unlock_shared_class_lock (THREAD_ENTRY * thread_p,
-					   int tran_index,
-					   const OID * class_oid);
 static void lock_unlock_shared_inst_lock (THREAD_ENTRY * thread_p,
 					  int tran_index,
 					  const OID * inst_oid);
@@ -2184,9 +2169,6 @@ lock_find_class_entry (int tran_index, const OID * class_oid)
  * Note:Cache a release lock (which has never been acquired) onto the list
  *     of non two phase lock to detect future serializable inconsistencies
  *
- *     Note: This function is used for
- *           TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE
- *           TRAN_REP_CLASS_UNCOMMIT_INSTANCE
  */
 static LK_ENTRY *
 lock_add_non2pl_lock (LK_RES * res_ptr, int tran_index, LOCK lock)
@@ -2675,6 +2657,9 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   int client_id;
   LOG_TDES *tdes;
 
+  /* The threads must not hold a page latch to be blocked on a lock request. */
+  assert (!pgbuf_has_perm_pages_fixed (thread_p));
+
   /* The caller is holding the thread entry mutex */
 
   if (lk_Gl.verbose_mode == true)
@@ -2715,10 +2700,8 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
-#if !defined (NDEBUG) && defined (SERVER_MODE)
-  /* assert - I'm not a deadlock-victim thread */
+  /* I must not be a deadlock-victim thread */
   assert (tdes->tran_abort_reason == TRAN_NORMAL);
-#endif
 
   if (tdes)
     {
@@ -4065,85 +4048,65 @@ start:
       rv = pthread_mutex_lock (&res_ptr->res_mutex);
 
       /* Note: I am holding hash_mutex and res_mutex. */
-      if (LK_NON2PL_LOCK_REQUEST (res_ptr, isolation, lock))
+
+      /* allocate a lock entry */
+      entry_ptr = lock_alloc_entry ();
+      if (entry_ptr == (LK_ENTRY *) NULL)
 	{
-	  /* It might be requested by clients */
-	  entry_ptr = lock_add_non2pl_lock (res_ptr, tran_index, lock);
-	  if (entry_ptr == (LK_ENTRY *) NULL)
-	    {
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
-	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
-	      lock_free_resource (res_ptr);
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	  lock_free_resource (res_ptr);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
+		  1, "lock heap entry");
 #if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				       LK_NOTGRANTED_DUE_ERROR);
+	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
+				   LK_NOTGRANTED_DUE_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
-	      return LK_NOTGRANTED_DUE_ERROR;
-	    }
+	  return LK_NOTGRANTED_DUE_ERROR;
 	}
-      else
+      /* initialize the lock entry as granted state */
+      lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr, lock);
+      if (is_instant_duration)
 	{
-	  /* allocate a lock entry */
-	  entry_ptr = lock_alloc_entry ();
-	  if (entry_ptr == (LK_ENTRY *) NULL)
-	    {
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
-	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
-	      lock_free_resource (res_ptr);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
-		      1, "lock heap entry");
-#if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				       LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
+	  entry_ptr->instant_lock_count++;
+	}
 
-	      return LK_NOTGRANTED_DUE_ERROR;
-	    }
-	  /* initialize the lock entry as granted state */
-	  lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr,
-					    lock);
-	  if (is_instant_duration)
-	    {
-	      entry_ptr->instant_lock_count++;
-	    }
+      /* add the lock entry into the holder list */
+      res_ptr->holder = entry_ptr;
 
-	  /* add the lock entry into the holder list */
-	  res_ptr->holder = entry_ptr;
+      /* to manage granules */
+      entry_ptr->class_entry = class_entry;
+      lock_increment_class_granules (class_entry);
 
-	  /* to manage granules */
-	  entry_ptr->class_entry = class_entry;
-	  lock_increment_class_granules (class_entry);
+      /* add the lock entry into the transaction hold list */
+      lock_insert_into_tran_hold_list (entry_ptr);
 
-	  /* add the lock entry into the transaction hold list */
-	  lock_insert_into_tran_hold_list (entry_ptr);
+      res_ptr->total_holders_mode = lock;
 
-	  res_ptr->total_holders_mode = lock;
-
-	  /* Record number of acquired locks */
-	  mnt_lk_acquired_on_objects (thread_p);
+      /* Record number of acquired locks */
+      mnt_lk_acquired_on_objects (thread_p);
 #if defined(LK_TRACE_OBJECT)
-	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
+      LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
 
-	  if (NEED_LOCK_ACQUISITION_HISTORY (isolation, entry_ptr))
+      if (NEED_LOCK_ACQUISITION_HISTORY (isolation, entry_ptr))
+	{
+	  history = (LK_ACQUISITION_HISTORY *)
+	    malloc (sizeof (LK_ACQUISITION_HISTORY));
+	  if (history == NULL)
 	    {
-	      history = (LK_ACQUISITION_HISTORY *)
-		malloc (sizeof (LK_ACQUISITION_HISTORY));
-	      if (history == NULL)
-		{
-		  pthread_mutex_unlock (&res_ptr->res_mutex);
-		  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
 #if defined(ENABLE_SYSTEMTAP)
-		  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-					   LK_NOTGRANTED_DUE_ERROR);
+	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
+				       LK_NOTGRANTED_DUE_ERROR);
 #endif /* ENABLE_SYSTEMTAP */
 
-		  return LK_NOTGRANTED_DUE_ERROR;
-		}
-
-	      RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
+	      return LK_NOTGRANTED_DUE_ERROR;
 	    }
+
+	  RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
 	}
 
       /* connect the lock resource entry into the hash chain */
@@ -4199,26 +4162,6 @@ start:
 
       if (compat1 == true && compat2 == true)
 	{
-	  if (LK_NON2PL_LOCK_REQUEST (res_ptr, isolation, lock))
-	    {
-	      entry_ptr = lock_add_non2pl_lock (res_ptr, tran_index, lock);
-	      if (entry_ptr == (LK_ENTRY *) NULL)
-		{
-		  pthread_mutex_unlock (&res_ptr->res_mutex);
-#if defined(ENABLE_SYSTEMTAP)
-		  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-					   LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
-		  return LK_NOTGRANTED_DUE_ERROR;
-		}
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
-	      *entry_addr_ptr = entry_ptr;
-#if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock, LK_GRANTED);
-#endif /* ENABLE_SYSTEMTAP */
-
-	      return LK_GRANTED;
-	    }
 
 	  /* allocate a lock entry */
 	  entry_ptr = lock_alloc_entry ();
@@ -4294,32 +4237,6 @@ start:
 	}
 
       /* 2. I am not a holder & my request cannot be granted. */
-      if (LK_NON2PL_LOCK_REQUEST (res_ptr, isolation, lock))
-	{
-	  entry_ptr = lock_add_non2pl_lock (res_ptr, tran_index,
-					    INCON_NON_TWO_PHASE_LOCK);
-	  if (entry_ptr == (LK_ENTRY *) NULL)
-	    {
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
-#if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock,
-				       LK_NOTGRANTED_DUE_ERROR);
-#endif /* ENABLE_SYSTEMTAP */
-
-	      return LK_NOTGRANTED_DUE_ERROR;
-	    }
-	  else
-	    {
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
-	      *entry_addr_ptr = entry_ptr;
-#if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock, LK_GRANTED);
-#endif /* ENABLE_SYSTEMTAP */
-
-	      return LK_GRANTED;
-	    }
-	}
-
       if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
 	{
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -4474,39 +4391,7 @@ start:
       assert (res_ptr->total_waiters_mode != NA_LOCK);
 
       goto blocked;
-
     }				/* end of a new lock request */
-
-  if (LK_NON2PL_LOCK_REQUEST (res_ptr, isolation, lock))
-    {
-      if (entry_ptr->granted_mode == NX_LOCK
-	  || entry_ptr->granted_mode == X_LOCK)
-	{
-	  /* The converted mode might be the same with the current mode.
-	   * The only exception case is the following:
-	   * When the current mode is NX_LOCK and the request mode is U_LOCK,
-	   * the converted mode will be X_LOCK. In this case, however,
-	   * the intention of U_LOCK of Uncommitted Read isolation is only
-	   * having the intent of READ. Therefore, the U_LOCK request of this
-	   * case can be granted without acquiring it.
-	   */
-	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
-	  *entry_addr_ptr = entry_ptr;
-#if defined(ENABLE_SYSTEMTAP)
-	  CUBRID_LOCK_ACQUIRE_END (oid, class_oid, lock, LK_GRANTED);
-#endif /* ENABLE_SYSTEMTAP */
-
-	  return LK_GRANTED;
-	}
-      /* entry_ptr->granted_mode != NX_LOCK &&
-         entry_ptr->granted_mode != X_LOCK
-       */
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_FAULT_GRANTED_MODE, 5,
-	      res_ptr->oid.volid, res_ptr->oid.pageid, res_ptr->oid.slotid,
-	      entry_ptr->tran_index,
-	      LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode));
-    }
 
   /* The object exists in the hash chain &
    * I am a lock holder of the lockable object.
@@ -4801,17 +4686,14 @@ lock_conversion_treatement:
 	case IS_LOCK:
 	  if (IS_WRITE_EXCLUSIVE_LOCK (new_mode)
 	      || ((new_mode == S_LOCK || new_mode == SIX_LOCK)
-		  && (isolation == TRAN_REP_CLASS_COMMIT_INSTANCE
-		      || isolation == TRAN_COMMIT_CLASS_COMMIT_INSTANCE)))
+		  && isolation == TRAN_READ_COMMITTED))
 	    {
 	      lock_remove_all_inst_locks (thread_p, tran_index, oid, S_LOCK);
 	    }
 	  break;
 
 	case IX_LOCK:
-	  if (new_mode == SIX_LOCK
-	      && (isolation == TRAN_REP_CLASS_COMMIT_INSTANCE
-		  || isolation == TRAN_COMMIT_CLASS_COMMIT_INSTANCE))
+	  if (new_mode == SIX_LOCK && isolation == TRAN_READ_COMMITTED)
 	    {
 	      lock_remove_all_inst_locks (thread_p, tran_index, oid, S_LOCK);
 	    }
@@ -5092,7 +4974,6 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p,
  *   - lock_internal_demote_shared_class_lock()
  *   - lock_demote_shared_class_lock()
  *   - lock_demote_all_shared_class_locks()
- *   - lock_unlock_shared_class_lock()
  *   - lock_unlock_shared_inst_lock()
  *   - lock_remove_all_class_locks()
  *   - lock_remove_all_inst_locks()
@@ -5265,8 +5146,11 @@ lock_demote_shared_class_lock (THREAD_ENTRY * thread_p, int tran_index,
 		  demote = DEMOTE;
 		}
 	    }
-	  else if (entry_ptr->granted_mode == IS_LOCK
-		   && last->req_mode == IS_LOCK && entry_ptr->history != last)
+	  else if ((entry_ptr->granted_mode == IS_LOCK
+		    || entry_ptr->granted_mode == SCH_S_LOCK)
+		   && ((last->req_mode == IS_LOCK
+			|| last->req_mode == SCH_S_LOCK)
+		       && entry_ptr->history != last))
 	    {
 	      /* has > 1 IS_LOCK */
 	      demote = DECREMENT_COUNT;
@@ -5351,116 +5235,6 @@ lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index)
       if (curr->granted_mode == S_LOCK || curr->granted_mode == SIX_LOCK)
 	{
 	  (void) lock_internal_demote_shared_class_lock (thread_p, curr);
-	}
-    }
-}
-#endif /* SERVER_MODE */
-
-/*
- * lk_unlock_shared_class_lock: Unlock one shared class lock
- *
- * return :
- *
- *   tran_index(in):
- *   class_oid(in):
- *
- * Note:
- *     This function finds the lock entry whose lock object id is same
- *     with the given class_oid in the transaction lock hold list. And then,
- *     unlock the class lock if the class lock is shared mode.
- *     If the class lock mode is IS_LOCK or S_LOCK, unlock it,
- *     If the class lock mode is SIX_LOCK, demote it to IX_LOCK.
- */
-#if defined(SERVER_MODE)
-static void
-lock_unlock_shared_class_lock (THREAD_ENTRY * thread_p, int tran_index,
-			       const OID * class_oid)
-{
-  LK_ENTRY *entry_ptr;
-  enum
-  { SKIP, UNLOCK, DEMOTE };
-  int demote_unlock = SKIP;
-  LK_ACQUISITION_HISTORY *prev, *last, *p;
-
-  entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid, true);
-
-  if (entry_ptr != NULL)
-    {
-      /* I think there's no need to acquire the mutex here. */
-      if (entry_ptr->history)
-	{
-	  last = entry_ptr->recent;
-	  prev = last->prev;
-
-	  if ((last->req_mode == IS_LOCK
-	       || last->req_mode == S_LOCK
-	       || last->req_mode == SIX_LOCK)
-	      && (entry_ptr->granted_mode == IS_LOCK
-		  || entry_ptr->granted_mode == S_LOCK
-		  || entry_ptr->granted_mode == SIX_LOCK))
-	    {
-	      p = entry_ptr->history;
-	      while (p != last)
-		{
-		  if (p->req_mode == IS_LOCK || p->req_mode == S_LOCK
-		      || p->req_mode == SIX_LOCK)
-		    {
-		      break;
-		    }
-		  p = p->next;
-		}
-
-	      if (p != last)
-		{
-		  /* do not demote or unlock shared class lock */
-		}
-	      else
-		{
-		  demote_unlock =
-		    (entry_ptr->granted_mode == SIX_LOCK) ? DEMOTE : UNLOCK;
-		}
-	    }
-
-	  /* free the last node */
-	  if (prev == NULL)
-	    {
-	      entry_ptr->history = NULL;
-	      entry_ptr->recent = NULL;
-	    }
-	  else
-	    {
-	      prev->next = NULL;
-	      entry_ptr->recent = prev;
-	    }
-	  free_and_init (last);
-	}
-      else
-	{
-	  if (entry_ptr->granted_mode == IS_LOCK
-	      || entry_ptr->granted_mode == S_LOCK)
-	    {
-	      demote_unlock = UNLOCK;
-	    }
-	  else if (entry_ptr->granted_mode == SIX_LOCK)
-	    {
-	      demote_unlock = DEMOTE;
-	    }
-	}
-
-      if (demote_unlock == UNLOCK)
-	{
-	  lock_internal_perform_unlock_object (thread_p, entry_ptr, false,
-					       true);
-	}
-      else if (demote_unlock == DEMOTE)
-	{
-	  (void) lock_internal_demote_shared_class_lock (thread_p, entry_ptr);
-	}
-      else if (entry_ptr->granted_mode == IS_LOCK
-	       || entry_ptr->granted_mode == S_LOCK
-	       || entry_ptr->granted_mode == SIX_LOCK)
-	{
-	  entry_ptr->count--;
 	}
     }
 }
@@ -7572,19 +7346,6 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
        * NOTE that in case of acquiring a lock on a class object,
        * the higher lock granule of the class object must not be given.
        */
-      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	{
-	  /* demote S_LOCK of a class to IS_LOCK */
-	  if (lock == SIX_LOCK)
-	    {
-	      lock = IX_LOCK;
-	    }
-	  else if (lock == S_LOCK)
-	    {
-	      lock = IS_LOCK;
-	    }
-	}
-
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
 					   (OID *) NULL, btid, lock,
@@ -7627,18 +7388,7 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
 	}
       /* case 2 : resource type is LOCK_RESOURCE_CLASS */
       /* acquire a lock on the given class object */
-      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	{
-	  /* demote S_LOCK of a class to IS_LOCK */
-	  if (lock == SIX_LOCK)
-	    {
-	      lock = IX_LOCK;
-	    }
-	  else if (lock == S_LOCK)
-	    {
-	      lock = IS_LOCK;
-	    }
-	}
+
       /* NOTE that in case of acquiring a lock on a class object,
        * the higher lock granule of the class object must not be given.
        */
@@ -7687,15 +7437,7 @@ lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid,
 	  goto end;
 	}
       /* acquire a lock on the given instance oid */
-      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	{
-	  /* do not hold shared locks */
-	  if (lock <= S_LOCK)
-	    {
-	      granted = LK_GRANTED;
-	      goto end;
-	    }
-	}
+
       /* NOTE that in case of acquiring a lock on an instance object,
        * the class oid of the instance object must be given.
        */
@@ -7855,18 +7597,6 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid,
     }
   /* case 2 : resource type is LOCK_RESOURCE_CLASS */
   /* acquire a lock on the given class object */
-  if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-    {
-      /* demote S_LOCK of a class to IS_LOCK */
-      if (lock == SIX_LOCK)
-	{
-	  lock = IX_LOCK;
-	}
-      else if (lock == S_LOCK)
-	{
-	  lock = IS_LOCK;
-	}
-    }
 
   /* NOTE that in case of acquiring a lock on a class object,
    * the higher lock granule of the class object must not be given.
@@ -8016,18 +7746,6 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
        * NOTE that in case of acquiring a lock on a class object,
        * the higher lock granule of the class object must not be given.
        */
-      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	{
-	  /* demote S_LOCK of a class to IS_LOCK */
-	  if (lock == SIX_LOCK)
-	    {
-	      lock = IX_LOCK;
-	    }
-	  else if (lock == S_LOCK)
-	    {
-	      lock = IS_LOCK;
-	    }
-	}
 
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
@@ -8070,18 +7788,7 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 	}
       /* case 2 : resource type is LOCK_RESOURCE_CLASS */
       /* acquire a lock on the given class object */
-      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	{
-	  /* demote S_LOCK of a class to IS_LOCK */
-	  if (lock == SIX_LOCK)
-	    {
-	      lock = IX_LOCK;
-	    }
-	  else if (lock == S_LOCK)
-	    {
-	      lock = IS_LOCK;
-	    }
-	}
+
       /* NOTE that in case of acquiring a lock on a class object,
        * the higher lock granule of the class object must not be given.
        */
@@ -8120,15 +7827,7 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 	  goto end;
 	}
       /* acquire a lock on the given instance oid */
-      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	{
-	  /* do not hold shared locks */
-	  if (lock <= S_LOCK)
-	    {
-	      granted = LK_GRANTED;
-	      goto end;
-	    }
-	}
+
       /* NOTE that in case of acquiring a lock on an instance object,
        * the class oid of the intance object must be given.
        */
@@ -8271,28 +7970,7 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
   reqclasses = lockset->classes;
 
   /* get reqobj_class_lock and reqobj_inst_lock considering isolation */
-  if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-    {
-      /* When the desired object is a class...
-       * demote S_LOCK of a class to IS_LOCK
-       */
-      if (lockset->reqobj_class_lock == SIX_LOCK)
-	{
-	  reqobj_class_lock = IX_LOCK;
-	}
-      else if (lockset->reqobj_class_lock == S_LOCK)
-	{
-	  reqobj_class_lock = IS_LOCK;
-	}
-      else
-	{
-	  reqobj_class_lock = lockset->reqobj_class_lock;
-	}
-    }
-  else
-    {
-      reqobj_class_lock = lockset->reqobj_class_lock;
-    }
+  reqobj_class_lock = lockset->reqobj_class_lock;
   reqobj_inst_lock = lockset->reqobj_inst_lock;
 
   /* build cls_lockinfo and ins_lockinfo array */
@@ -8503,14 +8181,13 @@ error:
  *   is_indexscan(in): scan type
  *                      - true  => index scan
  *                      - false => sequential scan
- *   lock_hint(in): lock hint
  *   current_lock(in/out): currently acquired lock
  *   scanid_bit(in): scanid bit for an index scan
  *
  */
 int
 lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
-	   int lock_hint, LOCK * current_lock, int *scanid_bit)
+	   LOCK * current_lock, int *scanid_bit)
 {
 #if !defined (SERVER_MODE)
   if (lk_Standalone_has_xlock == true)
@@ -8565,14 +8242,9 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
 	{
 	  class_lock = IS_LOCK;
 	}
-      else if (lock_hint & LOCKHINT_BUILD_INDEX)
-	{
-	  class_lock = S_LOCK;
-	}
       else
 	{
-	  if (LK_UNCOMMITTED_READ_ISOLATION (isolation)
-	      || (lock_hint & LOCKHINT_READ_UNCOMMITTED))
+	  if (mvcc_Enabled)
 	    {
 	      class_lock = IS_LOCK;
 	    }
@@ -8583,12 +8255,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
 	}
     }
 
-  /* acquire the lock on the class */
-  /* NOTE that in case of acquiring a lock on a class object,
-   * the higher lock granule of the class object is not given.
-   */
-  if (is_indexscan && !LK_UNCOMMITTED_READ_ISOLATION (isolation)
-      && !(lock_hint & LOCKHINT_READ_UNCOMMITTED))
+  if (is_indexscan)
     {
       *scanid_bit = lock_alloc_scanid_bit (thread_p);
       if (*scanid_bit < 0)
@@ -8598,6 +8265,11 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
 	  return LK_NOTGRANTED_DUE_ERROR;
 	}
     }
+
+  /* acquire the lock on the class */
+  /* NOTE that in case of acquiring a lock on a class object,
+   * the higher lock granule of the class object is not given.
+   */
   root_class_entry = lock_get_class_lock (oid_Root_class_oid, tran_index);
   granted = lock_internal_perform_lock_object (thread_p, tran_index,
 					       class_oid, (OID *) NULL,
@@ -8607,16 +8279,6 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
   if (granted == LK_GRANTED)
     {
       *current_lock = class_lock;
-
-      if (lock_hint & LOCKHINT_BUILD_INDEX)
-	{
-	  /* After building index aquire lock at class, this transaction has deadlock priority */
-	  tdes = LOG_FIND_TDES (tran_index);
-	  if (tdes)
-	    {
-	      tdes->has_deadlock_priority = true;
-	    }
-	}
     }
   else
     {
@@ -8761,18 +8423,6 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 	  /* When the given class is the root class */
 	  root_oidp = &lockhint->classes[i].oid;
 	  root_lock = lockhint->classes[i].lock;
-	  if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	    {
-	      /* demote S_LOCK to IS_LOCK */
-	      if (root_lock == SIX_LOCK)
-		{
-		  root_lock = IX_LOCK;
-		}
-	      else if (root_lock == S_LOCK)
-		{
-		  root_lock = IS_LOCK;
-		}
-	    }
 
 	  /* hold an explicit lock on the root class */
 	  granted =
@@ -8799,18 +8449,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 	  COPY_OID (&cls_lockinfo[cls_count].oid, &lockhint->classes[i].oid);
 	  cls_lockinfo[cls_count].org_oidp = &lockhint->classes[i].oid;
 	  cls_lockinfo[cls_count].lock = lockhint->classes[i].lock;
-	  if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	    {
-	      /* demote S_LOCK to IS_LOCK */
-	      if (lockhint->classes[i].lock == SIX_LOCK)
-		{
-		  cls_lockinfo[cls_count].lock = IX_LOCK;
-		}
-	      else if (lockhint->classes[i].lock == S_LOCK)
-		{
-		  cls_lockinfo[cls_count].lock = IS_LOCK;
-		}
-	    }
+
 	  /* increment cls_count */
 	  cls_count++;
 	}
@@ -9044,40 +8683,20 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid,
   switch (isolation)
     {
     case TRAN_SERIALIZABLE:
-    case TRAN_REP_CLASS_REP_INSTANCE:
+    case TRAN_REPEATABLE_READ:
       break;			/* nothing to do */
 
-    case TRAN_REP_CLASS_COMMIT_INSTANCE:
+    case TRAN_READ_COMMITTED:
       /* demote shared class lock or unlock shared instance lock */
       /* The intentional lock on the higher lock granule must be kept */
       if (OID_IS_ROOTOID (oid) || OID_IS_ROOTOID (class_oid))
-	lock_demote_shared_class_lock (thread_p, tran_index, oid);
+	{
+	  lock_demote_shared_class_lock (thread_p, tran_index, oid);
+	}
       else			/* instance object */
-	lock_unlock_shared_inst_lock (thread_p, tran_index, oid);
-      break;
-
-    case TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
-      /* shared lock on an instance was never acquired */
-      /* only intentional lock was held on class oid */
-      break;			/* nothing to do */
-
-    case TRAN_COMMIT_CLASS_COMMIT_INSTANCE:
-      /* remove shared class lock or remove shared instance lock */
-      if (OID_IS_ROOTOID (oid) || OID_IS_ROOTOID (class_oid))
-	lock_unlock_shared_class_lock (thread_p, tran_index, oid);
-      else			/* instance lock */
-	lock_unlock_shared_inst_lock (thread_p, tran_index, oid);
-      if (!OID_IS_ROOTOID (oid))	/* intentional lock */
-	lock_unlock_shared_class_lock (thread_p, tran_index, class_oid);
-      break;
-
-    case TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE:
-      /* Share lock on instance was never acquired */
-      /* remove shared class lock */
-      if (OID_IS_ROOTOID (oid) || OID_IS_ROOTOID (class_oid))
-	lock_unlock_shared_class_lock (thread_p, tran_index, oid);
-      if (!OID_IS_ROOTOID (oid))	/* intentional lock */
-	lock_unlock_shared_class_lock (thread_p, tran_index, class_oid);
+	{
+	  lock_unlock_shared_inst_lock (thread_p, tran_index, oid);
+	}
       break;
 
     default:			/* TRAN_UNKNOWN_ISOLATION */
@@ -9124,8 +8743,7 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   isolation = logtb_find_isolation (tran_index);
 
-  if (isolation == TRAN_SERIALIZABLE
-      || isolation == TRAN_REP_CLASS_REP_INSTANCE)
+  if (isolation == TRAN_SERIALIZABLE || isolation == TRAN_REPEATABLE_READ)
     {
       return;			/* Nothing to release */
     }
@@ -9169,7 +8787,7 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 
       switch (isolation)
 	{
-	case TRAN_REP_CLASS_COMMIT_INSTANCE:
+	case TRAN_READ_COMMITTED:
 	  /* demote shared class lock or unlock shared instance lock */
 	  /* The intentional lock on the higher lock granule must be kept */
 	  if (OID_IS_ROOTOID (class_oid))
@@ -9180,36 +8798,6 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 	    {
 	      lock_unlock_shared_inst_lock (thread_p, tran_index, oid);
 	    }
-	  break;
-
-	case TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
-	  /* shared lock on an instance was never acquired */
-	  /* Intentional mode was held on the class oid */
-	  break;
-
-	case TRAN_COMMIT_CLASS_COMMIT_INSTANCE:
-	  /* unlock shared class lock or unlock shared instance lock */
-	  /* unlock the intentional lock if it is a shared lock */
-	  if (OID_IS_ROOTOID (class_oid))
-	    {
-	      lock_unlock_shared_class_lock (thread_p, tran_index, oid);
-	    }
-	  else
-	    {
-	      lock_unlock_shared_inst_lock (thread_p, tran_index, oid);
-	    }
-	  lock_unlock_shared_class_lock (thread_p, tran_index, class_oid);
-	  break;
-
-	case TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE:
-	  /* Shared lock on an instance was never acquired */
-	  /* remove shared class lock */
-	  /* unlock the intentional lock if it is a shared lock */
-	  if (OID_IS_ROOTOID (class_oid))
-	    {
-	      lock_unlock_shared_class_lock (thread_p, tran_index, oid);
-	    }
-	  lock_unlock_shared_class_lock (thread_p, tran_index, class_oid);
 	  break;
 
 	default:		/* TRAN_UNKNOWN_ISOLATION */
@@ -9262,7 +8850,7 @@ lock_unlock_scan (THREAD_ENTRY * thread_p, const OID * class_oid,
 	  lock_free_scanid_bit (thread_p, scanid_bit);
 	}
       break;			/* nothing to do */
-    case TRAN_REP_CLASS_REP_INSTANCE:
+    case TRAN_REPEATABLE_READ:
       if (scanid_bit >= 0)
 	{
 	  lock_remove_all_key_locks_with_scanid (thread_p, tran_index,
@@ -9271,7 +8859,7 @@ lock_unlock_scan (THREAD_ENTRY * thread_p, const OID * class_oid,
 	}
       break;			/* nothing to do */
 
-    case TRAN_REP_CLASS_COMMIT_INSTANCE:
+    case TRAN_READ_COMMITTED:
       if (scanid_bit >= 0)
 	{
 	  lock_remove_all_inst_locks_with_scanid (thread_p, tran_index,
@@ -9281,29 +8869,6 @@ lock_unlock_scan (THREAD_ENTRY * thread_p, const OID * class_oid,
       if (scan_state == END_SCAN)
 	{
 	  lock_demote_shared_class_lock (thread_p, tran_index, class_oid);
-	}
-      break;
-
-    case TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
-      break;			/* nothing to do */
-
-    case TRAN_COMMIT_CLASS_COMMIT_INSTANCE:
-      if (scanid_bit >= 0)
-	{
-	  lock_remove_all_inst_locks_with_scanid (thread_p, tran_index,
-						  scanid_bit, S_LOCK);
-	  lock_free_scanid_bit (thread_p, scanid_bit);
-	}
-      if (scan_state == END_SCAN)
-	{
-	  lock_unlock_shared_class_lock (thread_p, tran_index, class_oid);
-	}
-      break;
-
-    case TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE:
-      if (scan_state == END_SCAN)
-	{
-	  lock_unlock_shared_class_lock (thread_p, tran_index, class_oid);
 	}
       break;
 
@@ -9355,10 +8920,10 @@ lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p,
   switch (isolation)
     {
     case TRAN_SERIALIZABLE:
-    case TRAN_REP_CLASS_REP_INSTANCE:
+    case TRAN_REPEATABLE_READ:
       return;			/* nothing to do */
 
-    case TRAN_REP_CLASS_COMMIT_INSTANCE:
+    case TRAN_READ_COMMITTED:
       /* class: demote shared class locks */
       for (i = 0; i < lockhint->num_classes; i++)
 	{
@@ -9371,26 +8936,6 @@ lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p,
 					 &lockhint->classes[i].oid);
 	}
       return;
-
-    case TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
-      return;			/* nothing to do */
-
-    case TRAN_COMMIT_CLASS_COMMIT_INSTANCE:
-    case TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE:
-      /* class: remove shared class locks */
-      for (i = 0; i < lockhint->num_classes; i++)
-	{
-	  if (OID_ISNULL (&lockhint->classes[i].oid)
-	      || lockhint->classes[i].lock == NULL_LOCK)
-	    {
-	      continue;
-	    }
-	  lock_unlock_shared_class_lock (thread_p, tran_index,
-					 &lockhint->classes[i].oid);
-	}
-      lock_unlock_shared_class_lock (thread_p, tran_index,
-				     oid_Root_class_oid);
-      break;
 
     default:			/* TRAN_UNKNOWN_ISOLATION */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNKNOWN_ISOLATION, 2,
@@ -9492,21 +9037,13 @@ lock_unlock_by_isolation_level (THREAD_ENTRY * thread_p)
   switch (isolation)
     {
     case TRAN_SERIALIZABLE:
-    case TRAN_REP_CLASS_REP_INSTANCE:
+    case TRAN_REPEATABLE_READ:
       return;			/* Nothing to release */
 
-    case TRAN_REP_CLASS_COMMIT_INSTANCE:
-    case TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
+    case TRAN_READ_COMMITTED:
       /* remove all shared instance locks, demote all shared class locks */
       lock_remove_all_inst_locks (thread_p, tran_index, (OID *) NULL, S_LOCK);
       lock_demote_all_shared_class_locks (thread_p, tran_index);
-      return;
-
-    case TRAN_COMMIT_CLASS_COMMIT_INSTANCE:
-    case TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE:
-      /* remove all shared instance locks, remove all shared class locks */
-      lock_remove_all_inst_locks (thread_p, tran_index, (OID *) NULL, S_LOCK);
-      lock_remove_all_class_locks (thread_p, tran_index, S_LOCK);
       return;
 
     default:			/* TRAN_UNKNOWN_ISOLATION */
@@ -10198,8 +9735,7 @@ lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   isolation = logtb_find_isolation (tran_index);
-  if (isolation == TRAN_REP_CLASS_REP_INSTANCE
-      || isolation == TRAN_SERIALIZABLE)
+  if (isolation == TRAN_REPEATABLE_READ || isolation == TRAN_SERIALIZABLE)
     {
       return;			/* Nothing was released */
     }
@@ -12357,71 +11893,56 @@ start:
       rv = pthread_mutex_lock (&res_ptr->res_mutex);
 
       /* Note: I am holding hash_mutex and res_mutex. */
-      if (LK_NON2PL_LOCK_REQUEST (res_ptr, isolation, lock))
+
+      /* allocate a lock entry */
+      entry_ptr = lock_alloc_entry ();
+      if (entry_ptr == (LK_ENTRY *) NULL)
 	{
-	  /* It might be requested by clients */
-	  entry_ptr = lock_add_non2pl_lock (res_ptr, tran_index, lock);
-	  if (entry_ptr == (LK_ENTRY *) NULL)
-	    {
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
-	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
-	      lock_free_resource (res_ptr);
-	      return LK_NOTGRANTED_DUE_ERROR;
-	    }
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	  lock_free_resource (res_ptr);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
+		  1, "lock heap entry");
+	  return LK_NOTGRANTED_DUE_ERROR;
 	}
-      else
+      /* initialize the lock entry as granted state */
+      lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr, lock);
+      if (is_instant_duration)
 	{
-	  /* allocate a lock entry */
-	  entry_ptr = lock_alloc_entry ();
-	  if (entry_ptr == (LK_ENTRY *) NULL)
-	    {
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
-	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
-	      lock_free_resource (res_ptr);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE,
-		      1, "lock heap entry");
-	      return LK_NOTGRANTED_DUE_ERROR;
-	    }
-	  /* initialize the lock entry as granted state */
-	  lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr,
-					    lock);
-	  if (is_instant_duration)
-	    {
-	      entry_ptr->instant_lock_count++;
-	    }
+	  entry_ptr->instant_lock_count++;
+	}
 
-	  /* add the lock entry into the holder list */
-	  res_ptr->holder = entry_ptr;
+      /* add the lock entry into the holder list */
+      res_ptr->holder = entry_ptr;
 
-	  /* to manage granules */
-	  entry_ptr->class_entry = class_entry;
-	  lock_increment_class_granules (class_entry);
+      /* to manage granules */
+      entry_ptr->class_entry = class_entry;
+      lock_increment_class_granules (class_entry);
 
-	  /* add the lock entry into the transaction hold list */
-	  lock_insert_into_tran_hold_list (entry_ptr);
+      /* add the lock entry into the transaction hold list */
+      lock_insert_into_tran_hold_list (entry_ptr);
 
-	  /* prv_tot_hold_mode is NULL_LOCK */
-	  res_ptr->total_holders_mode = lock;
+      /* prv_tot_hold_mode is NULL_LOCK */
+      res_ptr->total_holders_mode = lock;
 
-	  /* Record number of acquired locks */
-	  mnt_lk_acquired_on_objects (thread_p);
+      /* Record number of acquired locks */
+      mnt_lk_acquired_on_objects (thread_p);
 #if defined(LK_TRACE_OBJECT)
-	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
+      LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
 
-	  if (NEED_LOCK_ACQUISITION_HISTORY (isolation, entry_ptr))
+      if (NEED_LOCK_ACQUISITION_HISTORY (isolation, entry_ptr))
+	{
+	  history = (LK_ACQUISITION_HISTORY *)
+	    malloc (sizeof (LK_ACQUISITION_HISTORY));
+	  if (history == NULL)
 	    {
-	      history = (LK_ACQUISITION_HISTORY *)
-		malloc (sizeof (LK_ACQUISITION_HISTORY));
-	      if (history == NULL)
-		{
-		  pthread_mutex_unlock (&res_ptr->res_mutex);
-		  pthread_mutex_unlock (&hash_anchor->hash_mutex);
-		  return LK_NOTGRANTED_DUE_ERROR;
-		}
-
-	      RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	      return LK_NOTGRANTED_DUE_ERROR;
 	    }
+
+	  RECORD_LOCK_ACQUISITION_HISTORY (entry_ptr, history, lock);
 	}
 
       /* connect the lock resource entry into the hash chain */
@@ -12473,19 +11994,6 @@ start:
 
       if (compat1 == true && compat2 == true)
 	{
-	  if (LK_NON2PL_LOCK_REQUEST (res_ptr, isolation, lock))
-	    {
-	      entry_ptr = lock_add_non2pl_lock (res_ptr, tran_index, lock);
-	      if (entry_ptr == (LK_ENTRY *) NULL)
-		{
-		  pthread_mutex_unlock (&res_ptr->res_mutex);
-		  return LK_NOTGRANTED_DUE_ERROR;
-		}
-	      *prv_tot_hold_mode = res_ptr->total_holders_mode;
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
-	      *entry_addr_ptr = entry_ptr;
-	      return LK_GRANTED;
-	    }
 
 	  /* allocate a lock entry */
 	  entry_ptr = lock_alloc_entry ();
@@ -12549,24 +12057,6 @@ start:
 	}
 
       /* 2. I am not a holder & my request cannot be granted. */
-      if (LK_NON2PL_LOCK_REQUEST (res_ptr, isolation, lock))
-	{
-	  entry_ptr = lock_add_non2pl_lock (res_ptr, tran_index,
-					    INCON_NON_TWO_PHASE_LOCK);
-	  if (entry_ptr == (LK_ENTRY *) NULL)
-	    {
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
-	      return LK_NOTGRANTED_DUE_ERROR;
-	    }
-	  else
-	    {
-	      *prv_tot_hold_mode = res_ptr->total_holders_mode;
-	      pthread_mutex_unlock (&res_ptr->res_mutex);
-	      *entry_addr_ptr = entry_ptr;
-	      return LK_GRANTED;
-	    }
-	}
-
       if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
 	{
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -12701,40 +12191,7 @@ start:
       assert (res_ptr->total_waiters_mode != NA_LOCK);
 
       goto blocked;
-
     }				/* end of a new lock request */
-
-  if (LK_NON2PL_LOCK_REQUEST (res_ptr, isolation, lock))
-    {
-      if (entry_ptr->granted_mode == NX_LOCK
-	  || entry_ptr->granted_mode == X_LOCK)
-	{
-	  /* The converted mode might be the same with the current mode.
-	   * The only exception case is the following:
-	   * When the current mode is NX_LOCK and the request mode is U_LOCK,
-	   * the converted mode will be X_LOCK. In this case, however, the
-	   * intention of U_LOCK of Uncommitted Read isolation is only having
-	   * the intent of READ. Therefore, the U_LOCK request of this case
-	   * can be granted without acquiring it. */
-
-	  /* since the current transaction already acquired the
-	   * exclusive lock, the others transactions do not hold any lock,
-	   * res_ptr->total_holders_mode = entry_ptr->granted_mode in this
-	   * case */
-	  *prv_tot_hold_mode = res_ptr->total_holders_mode;
-	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
-	  *entry_addr_ptr = entry_ptr;
-	  return LK_GRANTED;
-	}
-      /* entry_ptr->granted_mode != NX_LOCK &&
-         entry_ptr->granted_mode != X_LOCK
-       */
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_FAULT_GRANTED_MODE, 5,
-	      res_ptr->oid.volid, res_ptr->oid.pageid, res_ptr->oid.slotid,
-	      entry_ptr->tran_index,
-	      LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode));
-    }
 
   /* The object exists in the hash chain &
    * I am a lock holder of the lockable object.
@@ -13031,17 +12488,14 @@ lock_conversion_treatement:
 	case IS_LOCK:
 	  if (IS_WRITE_EXCLUSIVE_LOCK (new_mode)
 	      || ((new_mode == S_LOCK || new_mode == SIX_LOCK)
-		  && (isolation == TRAN_REP_CLASS_COMMIT_INSTANCE
-		      || isolation == TRAN_COMMIT_CLASS_COMMIT_INSTANCE)))
+		  && isolation == TRAN_READ_COMMITTED))
 	    {
 	      lock_remove_all_inst_locks (thread_p, tran_index, oid, S_LOCK);
 	    }
 	  break;
 
 	case IX_LOCK:
-	  if (new_mode == SIX_LOCK
-	      && (isolation == TRAN_REP_CLASS_COMMIT_INSTANCE
-		  || isolation == TRAN_COMMIT_CLASS_COMMIT_INSTANCE))
+	  if (new_mode == SIX_LOCK && isolation == TRAN_READ_COMMITTED)
 	    {
 	      lock_remove_all_inst_locks (thread_p, tran_index, oid, S_LOCK);
 	    }
@@ -13275,18 +12729,6 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
        * NOTE that in case of acquiring a lock on a class object,
        * the higher lock granule of the class object must not be given.
        */
-      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	{
-	  /* demote S_LOCK of a class to IS_LOCK */
-	  if (lock == SIX_LOCK)
-	    {
-	      lock = IX_LOCK;
-	    }
-	  else if (lock == S_LOCK)
-	    {
-	      lock = IS_LOCK;
-	    }
-	}
 
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
@@ -13334,18 +12776,7 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
 	}
       /* case 2 : resource type is LOCK_RESOURCE_CLASS */
       /* acquire a lock on the given class object */
-      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	{
-	  /* demote S_LOCK of a class to IS_LOCK */
-	  if (lock == SIX_LOCK)
-	    {
-	      lock = IX_LOCK;
-	    }
-	  else if (lock == S_LOCK)
-	    {
-	      lock = IS_LOCK;
-	    }
-	}
+
       /* NOTE that in case of acquiring a lock on a class object,
        * the higher lock granule of the class object must not be given.
        */
@@ -13391,17 +12822,7 @@ lock_object_with_btid_get_granted_mode (THREAD_ENTRY * thread_p,
 	  goto end;
 	}
       /* acquire a lock on the given instance oid */
-      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	{
-	  /* do not hold shared locks */
-	  if (lock <= S_LOCK)
-	    {
-	      *granted_mode = lock_get_object_lock (oid, class_oid,
-						    tran_index);
-	      granted = LK_GRANTED;
-	      goto end;
-	    }
-	}
+
       /* NOTE that in case of acquiring a lock on an instance object,
        * the class oid of the intance object must be given.
        */
@@ -13543,18 +12964,6 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
        * NOTE that in case of acquiring a lock on a class object,
        * the higher lock granule of the class object must not be given.
        */
-      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	{
-	  /* demote S_LOCK of a class to IS_LOCK */
-	  if (lock == SIX_LOCK)
-	    {
-	      lock = IX_LOCK;
-	    }
-	  else if (lock == S_LOCK)
-	    {
-	      lock = IS_LOCK;
-	    }
-	}
 
       granted = lock_internal_lock_object_get_prev_total_hold_mode
 	(thread_p, tran_index, oid, (OID *) NULL, btid, lock,
@@ -13596,18 +13005,7 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 	}
       /* case 2 : resource type is LOCK_RESOURCE_CLASS */
       /* acquire a lock on the given class object */
-      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	{
-	  /* demote S_LOCK of a class to IS_LOCK */
-	  if (lock == SIX_LOCK)
-	    {
-	      lock = IX_LOCK;
-	    }
-	  else if (lock == S_LOCK)
-	    {
-	      lock = IS_LOCK;
-	    }
-	}
+
       /* NOTE that in case of acquiring a lock on a class object,
        * the higher lock granule of the class object must not be given.
        */
@@ -13651,18 +13049,7 @@ lock_btid_object_get_prev_total_hold_mode (THREAD_ENTRY * thread_p,
 	  goto end;
 	}
       /* acquire a lock on the given instance oid */
-      if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
-	{
-	  /* do not hold shared locks */
-	  if (lock <= S_LOCK)
-	    {
-	      *prv_total_hold_mode = lock_get_total_holders_mode (oid,
-								  class_oid);
-	      granted = LK_GRANTED;
-	      /* granted_mode is NULL_LOCK */
-	      goto end;
-	    }
-	}
+
       /* NOTE that in case of acquiring a lock on an instance object,
        * the class oid of the intance object must be given.
        */

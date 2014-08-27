@@ -590,7 +590,7 @@ make_mergelist_proc (QO_ENV * env,
 			       is_always_true);
       if (other_pred)
 	{
-	  merge->after_join_pred = pt_to_pred_expr (parser, other_pred);
+	  merge->after_join_pred = pt_to_pred_expr (parser, other_pred, NULL);
 
 	  /* free pointer node list */
 	  parser_free_tree (parser, other_pred);
@@ -1081,7 +1081,7 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan,
       upper_bound->next = NULL;
       ordbynum_flag = 0;
       xasl->ordbynum_pred = pt_to_pred_expr_with_arg (parser, upper_bound,
-						      &ordbynum_flag);
+						      &ordbynum_flag, NULL);
       upper_bound->next = save_next;
       if (free_upper_bound)
 	{
@@ -1120,7 +1120,7 @@ add_if_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
   if (xasl && pred)
     {
       parser = QO_ENV_PARSER (env);
-      xasl->if_pred = pt_to_pred_expr (parser, pred);
+      xasl->if_pred = pt_to_pred_expr (parser, pred, NULL);
     }
 
   return xasl;
@@ -1141,7 +1141,7 @@ add_after_join_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
   if (xasl && pred)
     {
       parser = QO_ENV_PARSER (env);
-      xasl->after_join_pred = pt_to_pred_expr (parser, pred);
+      xasl->after_join_pred = pt_to_pred_expr (parser, pred, NULL);
     }
 
   return xasl;
@@ -1158,7 +1158,8 @@ add_instnum_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
       parser = QO_ENV_PARSER (env);
 
       flag = 0;
-      xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, pred, &flag);
+      xasl->instnum_pred =
+	pt_to_pred_expr_with_arg (parser, pred, &flag, NULL);
       if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
 	{
 	  xasl->instnum_flag = XASL_INSTNUM_FLAG_SCAN_CONTINUE;
@@ -2845,7 +2846,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
   /* pointer to QO_NODE_INDEX_ENTRY structure in QO_PLAN */
   ni_entryp = plan->plan_un.scan.index;
   /* pointer to linked list of index node, 'head' field(QO_INDEX_ENTRY
-     strucutre) of QO_NODE_INDEX_ENTRY */
+     structure) of QO_NODE_INDEX_ENTRY */
   index_entryp = (ni_entryp)->head;
   /* number of indexed segments */
   nsegs = index_entryp->nsegs;	/* nsegs == nterms ? */
@@ -2857,9 +2858,17 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       if (qo_is_filter_index (index_entryp)
 	  || qo_is_index_loose_scan (plan)
 	  || qo_is_iscan_from_groupby (plan)
-	  || qo_is_iscan_from_orderby (plan))
+	  || qo_is_iscan_from_orderby (plan)
+	  || PT_SPEC_SPECIAL_INDEX_SCAN (QO_NODE_ENTITY_SPEC
+					 (plan->plan_un.scan.node)))
 	{
-	  ;			/* if loose scan do not return */
+	  /* Do not return if:
+	   * 1. filtered index.
+	   * 2. skip group by or skip order by
+	   * 3. loose scan.
+	   * 4. scan for b-tree node info or key info.
+	   */
+	  ;
 	}
       else
 	{			/* is invalid case */
@@ -3077,7 +3086,7 @@ qo_add_hq_iterations_access_spec (QO_PLAN * plan, XASL_NODE * xasl)
   if_pred = make_if_pred_from_plan (env, plan);
   if (if_pred)
     {
-      xasl->if_pred = pt_to_pred_expr (parser, if_pred);
+      xasl->if_pred = pt_to_pred_expr (parser, if_pred, NULL);
     }
 
   /* free pointer node list */

@@ -81,14 +81,6 @@ static const float QP_QRES_LIST_INC_RATE = 1.25f;
 
 static DB_QUERY_RESULT *allocate_query_result (void);
 static void free_query_result (DB_QUERY_RESULT * q_res);
-static int query_compile_local (const char *CSQL_query,
-				DB_QUERY_ERROR * query_error,
-				int include_oid,
-				DB_SESSION ** session, int *stmt_no);
-static int query_execute_local (const char *CSQL_query, void *result,
-				DB_QUERY_ERROR * query_error,
-				int include_oid, int execute,
-				QUERY_EXEC_MODE exec_mode);
 static DB_QUERY_TYPE *db_cp_query_type_helper (DB_QUERY_TYPE * src,
 					       DB_QUERY_TYPE * dest);
 static int or_packed_query_format_size (const DB_QUERY_TYPE * q, int *count);
@@ -1598,70 +1590,6 @@ db_get_query_type (DB_TYPE * type_list, int *size_list,
 #endif
 
 /*
- * query_compile_local() - This function handles the query compilation part of
- *              query_execute_local.
- * return : error code.
- * CSQL_query (in) : query string to be executed
- * query_error(out): set to the error information, if any.
- * include_oid(in) : whether to include oid columns
- * session    (out): query session handle
- * stmt_no    (out): statement number
- */
-static int
-query_compile_local (const char *CSQL_query, DB_QUERY_ERROR * query_error,
-		     int include_oid, DB_SESSION ** session, int *stmt_no)
-{
-  int error = NO_ERROR;		/* return code from funcs */
-  DB_SESSION_ERROR *errs;
-
-  CHECK_CONNECT_ERROR ();
-  *session = db_open_buffer_local (CSQL_query);
-  if (!(*session))
-    {
-      assert (er_errid () != NO_ERROR);
-      return (er_errid ());
-    }
-
-  /* compile the statement */
-  db_include_oid (*session, include_oid);
-  *stmt_no = db_compile_statement_local (*session);
-
-  errs = db_get_errors (*session);
-  if (errs != NULL)
-    {
-      int line, col;
-
-      (void) db_get_next_error (errs, &line, &col);
-
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      if (query_error)
-	{
-	  query_error->err_lineno = line;
-	  query_error->err_posno = col;
-	}
-    }
-
-  if (*stmt_no < 0 || error < 0)
-    {
-      db_close_session_local (*session);
-      *session = NULL;
-      assert (er_errid () != NO_ERROR);
-      return (er_errid ());
-    }
-
-  if (error < 0)
-    {
-      db_close_session_local (*session);
-      *session = NULL;
-      assert (er_errid () != NO_ERROR);
-      return (er_errid ());
-    }
-
-  return (error);
-}
-
-/*
  * db_execute_with_values() - This function executes a dynamic sql select query
  *    with input values
  * return : error code
@@ -1680,8 +1608,10 @@ db_execute_with_values (const char *CSQL_query, DB_QUERY_RESULT ** result,
   int stmt_no;
   DB_SESSION *session = NULL;
 
-  error = query_compile_local (CSQL_query, query_error, DB_NO_OIDS,
-			       &session, &stmt_no);
+  error =
+    db_open_buffer_and_compile_first_statement (CSQL_query, query_error,
+						DB_NO_OIDS, &session,
+						&stmt_no);
   if (session == NULL)
     {
       return error;
@@ -1695,73 +1625,6 @@ db_execute_with_values (const char *CSQL_query, DB_QUERY_RESULT ** result,
   if (stmt_no > 0)
     {
       error = db_execute_statement_local (session, stmt_no, result);
-    }
-
-  db_close_session_local (session);
-
-  return (error);
-}
-
-/*
- * query_execute_local() -
- * return : error code
- * CSQL_query(in): query string to be executed
- * result(out): Pointer to the query result structure
- * query_error(out): Set to the error information, if any.
- * include_oid(in):
- * execute(in):
- * exec_mode(in):
- */
-static int
-query_execute_local (const char *CSQL_query, void *result,
-		     DB_QUERY_ERROR * query_error,
-		     int include_oid, int execute, QUERY_EXEC_MODE exec_mode)
-{
-  int error;			/* return code from funcs */
-  int stmt_no;			/* compiled stmt number */
-  DB_SESSION *session = NULL;
-
-  if (result)
-    {
-      *(char **) result = NULL;
-    }
-
-  /* compile the query */
-  error = query_compile_local (CSQL_query, query_error, include_oid,
-			       &session, &stmt_no);
-  if (session == NULL)
-    {
-      return error;
-    }
-
-#if defined(CS_MODE)
-  /* Pass exec_mode (used for Streaming (asynchronous) queries */
-  db_set_sync_flag (session, exec_mode);
-#else
-  /*
-   * In standalone mode, only synchronous queries are supported because there
-   * is no thread support in the standalone case.
-   */
-  db_set_sync_flag (session, SYNC_EXEC);
-#endif /* CS_MODE */
-
-  if (execute)
-    {
-      while (stmt_no > 0)
-	{
-	  error =
-	    db_execute_statement_local (session, stmt_no,
-					(DB_QUERY_RESULT **) result);
-	  if (error < 0)
-	    {
-	      break;
-	    }
-	  stmt_no = db_compile_statement_local (session);
-	}
-    }
-  else if (result)
-    {
-      *(DB_QUERY_TYPE **) result = db_get_query_type_list (session, stmt_no);
     }
 
   db_close_session_local (session);
@@ -1793,8 +1656,10 @@ db_get_query_format (const char *CSQL_query, DB_QUERY_TYPE ** result,
 {
   int error;
 
-  error = query_execute_local (CSQL_query, result, query_error,
-			       DB_NO_OIDS, 0, SYNC_EXEC);
+  error =
+    db_compile_and_execute_queries_internal (CSQL_query, result, query_error,
+					     DB_NO_OIDS, 0, SYNC_EXEC, true);
+
   return (error < 0 ? error : NO_ERROR);
 }				/* db_get_query_format */
 
@@ -2044,8 +1909,9 @@ db_query_execute (const char *CSQL_query, DB_QUERY_RESULT ** result,
 {
   int error;
 
-  error = query_execute_local (CSQL_query, result, query_error,
-			       DB_NO_OIDS, 1, SYNC_EXEC);
+  error =
+    db_compile_and_execute_queries_internal (CSQL_query, result, query_error,
+					     DB_NO_OIDS, 1, SYNC_EXEC, true);
 
   return (error < 0 ? error : NO_ERROR);
 }
@@ -2063,8 +1929,10 @@ db_execute_async (const char *CSQL_query, DB_QUERY_RESULT ** result,
 {
   int retval;
 
-  retval = query_execute_local (CSQL_query, result, query_error,
-				DB_NO_OIDS, 1, ASYNC_EXEC);
+  retval =
+    db_compile_and_execute_queries_internal (CSQL_query, result, query_error,
+					     DB_NO_OIDS, 1, ASYNC_EXEC, true);
+
   return (retval);
 }
 
@@ -2092,8 +1960,9 @@ db_execute (const char *CSQL_query, DB_QUERY_RESULT ** result,
 {
   int retval;
 
-  retval = query_execute_local (CSQL_query, result, query_error,
-				DB_NO_OIDS, 1, SYNC_EXEC);
+  retval =
+    db_compile_and_execute_queries_internal (CSQL_query, result, query_error,
+					     DB_NO_OIDS, 1, SYNC_EXEC, true);
   return (retval);
 }
 
@@ -2110,8 +1979,10 @@ db_execute_oid (const char *CSQL_query, DB_QUERY_RESULT ** result,
 {
   int retval;
 
-  retval = query_execute_local (CSQL_query, result, query_error,
-				DB_ROW_OIDS, 1, SYNC_EXEC);
+  retval =
+    db_compile_and_execute_queries_internal (CSQL_query, result, query_error,
+					     DB_ROW_OIDS, 1, SYNC_EXEC, true);
+
   return (retval);
 }
 
@@ -2131,11 +2002,13 @@ db_query_execute_immediate (const char *CSQL_query, DB_QUERY_RESULT ** result,
 
 #if defined(CUBRID_DEBUG)
   fprintf (stdout, "db_query_execute_immediate is a deprecated function.\n");
-  fprintf (stdout, "use teh equivilant function db_execute.\n");
+  fprintf (stdout, "use the equivalent function db_execute.\n");
 #endif
 
-  r = query_execute_local (CSQL_query, result, query_error,
-			   DB_NO_OIDS, 1, SYNC_EXEC);
+  r =
+    db_compile_and_execute_queries_internal (CSQL_query, result, query_error,
+					     DB_NO_OIDS, 1, SYNC_EXEC, true);
+
   return r;
 }
 

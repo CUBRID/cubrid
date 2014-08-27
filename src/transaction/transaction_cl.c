@@ -64,7 +64,7 @@
 #endif /* WINDOWS */
 
 int tm_Tran_index = NULL_TRAN_INDEX;
-TRAN_ISOLATION tm_Tran_isolation = TRAN_DEFAULT_ISOLATION;
+TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
 bool tm_Tran_async_ws = false;
 int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 int tm_Tran_ID = -1;
@@ -177,11 +177,9 @@ tran_reset_wait_times (int wait_in_msecs)
  * return:  NO_ERROR if all OK, ER_ status otherwise
  *
  *   isolation(in): New Isolation level. One of the following:
- *                         TRAN_REP_CLASS_REP_INSTANCE
- *                         TRAN_REP_CLASS_COMMIT_INSTANCE
- *                         TRAN_REP_CLASS_UNCOMMIT_INSTANCE
- *                         TRAN_COMMIT_CLASS_COMMIT_INSTANCE
- *                         TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE
+ *                         TRAN_SERIALIZABLE
+ *                         TRAN_REPEATABLE_READ
+ *                         TRAN_READ_COMMITTED
  *   async_ws(in): New async_workspace
  *
  * NOTE: Reset the default isolation level for the current transaction
@@ -196,13 +194,21 @@ tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws)
 {
   int error_code = NO_ERROR;
 
-  if (isolation < TRAN_MINVALUE_ISOLATION
-      || isolation > TRAN_MAXVALUE_ISOLATION)
+  if (!IS_VALID_ISOLATION_LEVEL (isolation))
     {
-      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_INVALID_ISOLATION_LEVEL, 2, TRAN_MINVALUE_ISOLATION,
-	      TRAN_MAXVALUE_ISOLATION);
-      return ER_LOG_INVALID_ISOLATION_LEVEL;
+      if (prm_get_bool_value (PRM_ID_MVCC_ENABLED))
+	{
+	  er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_MVCC_LOG_INVALID_ISOLATION_LEVEL, 0);
+	  return ER_MVCC_LOG_INVALID_ISOLATION_LEVEL;
+	}
+      else
+	{
+	  er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_LOG_INVALID_ISOLATION_LEVEL, 2,
+		  TRAN_MINVALUE_ISOLATION, TRAN_MAXVALUE_ISOLATION);
+	  return ER_LOG_INVALID_ISOLATION_LEVEL;
+	}
     }
 
   if (tm_Tran_isolation != isolation)

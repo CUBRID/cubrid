@@ -909,7 +909,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo,
       goto cleanup;
     }
 
-  if (pinfo->spec->access == INDEX)
+  if (pinfo->spec->access == INDEX || pinfo->spec->access == INDEX_KEY_INFO)
     {
       /* we have to load information about the index used so we can duplicate
          it for each partition */
@@ -2987,7 +2987,8 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd,
   pinfo.spec = spec;
   pinfo.vd = vd;
 
-  if (spec->access == SEQUENTIAL)
+  if (spec->access == SEQUENTIAL || spec->access == SEQUENTIAL_RECORD_INFO
+      || spec->access == SEQUENTIAL_PAGE_SCAN)
     {
       error = partition_prune_heap_scan (&pinfo);
     }
@@ -3083,7 +3084,7 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo,
 
   error = heap_attrinfo_read_dbvalues (pinfo->thread_p,
 				       &pinfo->attr_info.inst_oid, recdes,
-				       &pinfo->attr_info);
+				       NULL, &pinfo->attr_info);
 
   or_set_rep_id (recdes, repr_id);
   if (error != NO_ERROR)
@@ -4017,8 +4018,8 @@ cleanup:
  * partition_key(out)	   : value holding the extracted partition key
  */
 static int
-partition_attrinfo_get_key (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext,
-			    DB_VALUE * curr_key,
+partition_attrinfo_get_key (THREAD_ENTRY * thread_p,
+			    PRUNING_CONTEXT * pcontext, DB_VALUE * curr_key,
 			    OID * class_oid, BTID * btid,
 			    DB_VALUE * partition_key)
 {
@@ -4109,4 +4110,3 @@ cleanup:
 
   return error;
 }
-

@@ -1220,7 +1220,12 @@ $ LOADDB
 1151 The page %1$d of volume %2$d is not a slotted page.
 1152 The owner or a member of DBA group is only allowed to kill the transaction (%1$d).
 1153 Attempt to use 'zero date'.
-1154 Ultima eroare
+1154 MVCC row %1$d|%2$d|%3$d does not satisfies reevaluation.
+1155 MVCC invalid row for delete: %1$d|%2$d|%3$d.
+1156 MVCC can't get snapshot
+1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
+1158 Serializable conflict due to concurent updates
+1159 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1670,11 +1675,11 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 2 Nivelul de izolare al tranzacţiilor trebuie să fie 1, 2, 3, 4, 5 or 6.
 3 Valoarea pentru durata de expirare trebuie să fie -1, 0, or >0.
 4 Nivel de izolare setat la:\n
-5          READ COMMITTED SCHEMA, READ UNCOMMITTED INSTANCES.\n
-6          READ COMMITTED SCHEMA, READ COMMITTED INSTANCES.\n
-7          REPEATABLE READ SCHEMA, READ UNCOMMITTED INSTANCES.\n
-8          REPEATABLE READ SCHEMA, READ COMMITTED INSTANCES.\n
-9          REPEATABLE READ SCHEMA, REPEATABLE READ INSTANCES.\n
+5          Unknown isolation.\n
+6          Unknown isolation.\n
+7          Unknown isolation.\n
+8          READ COMMITTED\n
+9          REPEATABLE READ\n
 10 O interogare neactualizabilă nu este permisă într-un apel de db_query_execute_oid.
 11 Tranzacţia a expirat în aşteptarea lock-urilor.
 12 Tentativă de accesare a unei variabile de gazdă cu indexul %1$d când numai %2$d \nvariabile gazdă de intrare au fost date.
@@ -1744,6 +1749,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 Numai proprietarul sau un DBA poate schimba definiţia serialului.
 78 Nu este permis utilizatorilor să modifice un obiect serial creat de o constrângere AUTO INCREMENT.
 79 Nivel de izolare invalid; schema: %1$s, instanţe: %2$s.
+80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** cache invalid ***

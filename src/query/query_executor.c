@@ -102,7 +102,8 @@
 #define QPROC_SINGLE_CLASS_GROUPED_SCAN  (0)
 
 /* if 1, multi class query scans are done in a grouped manner. */
-#define QPROC_MULTI_CLASS_GROUPED_SCAN   (1)
+/* Disable grouped scan for MVCC */
+#define QPROC_MULTI_CLASS_GROUPED_SCAN   (!mvcc_Enabled)
 
 /* used for tuple string id */
 #define CONNECTBY_TUPLE_INDEX_STRING_MEM  64
@@ -471,6 +472,15 @@ struct upddel_class_info_internal
   bool **btids_dup_key_locked;	/* true, if corresponding btid contain
 				   duplicate keys locked when searching  */
   BTREE_UNIQUE_STATS_UPDATE_INFO unique_stats;	/* unique indexes statistics */
+  int extra_assign_reev_cnt;	/* size of mvcc_extra_assign_reev in elements */
+  UPDDEL_MVCC_COND_REEVAL **mvcc_extra_assign_reev;	/* classes in the select list
+							 * that are referenced in
+							 * assignments to the
+							 * attributes of current
+							 * class and are not
+							 * referenced in
+							 * conditions */
+  UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns;
 };
 
 typedef enum analytic_stage ANALYTIC_STAGE;
@@ -901,10 +911,10 @@ static int qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				  XASL_STATE * xasl_state);
 static int qexec_open_scan (THREAD_ENTRY * thread_p,
 			    ACCESS_SPEC_TYPE * curr_spec, VAL_LIST * val_list,
-			    VAL_DESCR * vd, int readonly_scan, int fixed,
-			    int grouped, bool iscan_oid_order,
+			    VAL_DESCR * vd, bool mvcc_select_lock_needed,
+			    int fixed, int grouped, bool iscan_oid_order,
 			    SCAN_ID * s_id, QUERY_ID query_id,
-			    int composite_locking);
+			    SCAN_OPERATION_TYPE scan_op_type);
 static void qexec_close_scan (THREAD_ENTRY * thread_p,
 			      ACCESS_SPEC_TYPE * curr_spec);
 static void qexec_end_scan (THREAD_ENTRY * thread_p,
@@ -1005,7 +1015,8 @@ static int qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p,
 						 BTREE_UNIQUE_STATS_UPDATE_INFO
 						 * info);
 static int qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
-			     VAL_DESCR * vd, int composite_locking);
+			     VAL_DESCR * vd,
+			     SCAN_OPERATION_TYPE scan_op_type);
 static int qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p,
 						 PRUNING_CONTEXT * pcontext);
 static int qexec_process_unique_stats (THREAD_ENTRY * thread_p,
@@ -1191,6 +1202,43 @@ static int qexec_create_internal_classes (THREAD_ENTRY * thread_p,
 					  int count,
 					  UPDDEL_CLASS_INFO_INTERNAL **
 					  classes);
+static int qexec_create_mvcc_reev_assignments (THREAD_ENTRY * thread_p,
+					       XASL_NODE * aptr,
+					       bool should_delete,
+					       UPDDEL_CLASS_INFO_INTERNAL *
+					       classes, int no_classes,
+					       int no_assignments,
+					       UPDATE_ASSIGNMENT *
+					       assignments,
+					       UPDATE_MVCC_REEV_ASSIGNMENT **
+					       mvcc_reev_assigns);
+static int prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr,
+				   XASL_STATE * xasl_state,
+				   int no_reev_classes,
+				   int *cond_reev_indexes,
+				   MVCC_UPDDEL_REEV_DATA * reev_data,
+				   int no_classes,
+				   UPDDEL_CLASS_INFO * classes,
+				   UPDDEL_CLASS_INFO_INTERNAL *
+				   internal_classes, int no_assigns,
+				   UPDATE_ASSIGNMENT * assigns,
+				   PRED_EXPR * cons_pred,
+				   UPDDEL_MVCC_COND_REEVAL **
+				   mvcc_reev_classes,
+				   UPDATE_MVCC_REEV_ASSIGNMENT **
+				   mvcc_reev_assigns, bool has_delete);
+static UPDDEL_MVCC_COND_REEVAL *qexec_mvcc_cond_reev_set_scan_order (XASL_NODE
+								     * aptr,
+								     UPDDEL_MVCC_COND_REEVAL
+								     *
+								     reev_classes,
+								     int
+								     no_reev_classes,
+								     UPDDEL_CLASS_INFO
+								     *
+								     classes,
+								     int
+								     no_classes);
 static void qexec_clear_internal_classes (THREAD_ENTRY * thread_p,
 					  UPDDEL_CLASS_INFO_INTERNAL *
 					  classes, int count);
@@ -1199,6 +1247,10 @@ static int qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p,
 					     UPDDEL_CLASS_INFO_INTERNAL *
 					     class_info, int op_type,
 					     OID * current_oid);
+static int qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p,
+					  XASL_NODE * aptr_list,
+					  UPDDEL_MVCC_COND_REEVAL *
+					  mvcc_reev_class, OID * class_oid);
 static HEAP_SCANCACHE *qexec_reset_caches (THREAD_ENTRY * thread_p,
 					   PRUNING_CONTEXT * pcontext,
 					   UPDDEL_CLASS_INFO_INTERNAL *
@@ -1207,7 +1259,7 @@ static int qexec_init_agg_hierarchy_helpers (THREAD_ENTRY * thread_p,
 					     ACCESS_SPEC_TYPE * spec,
 					     AGGREGATE_TYPE * aggregate_list,
 					     HIERARCHY_AGGREGATE_HELPER **
-					     helpers);
+					     helpers, int *helpers_countp);
 static int qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
 					       AGGREGATE_TYPE * agg_list,
 					       ACCESS_SPEC_TYPE * spec,
@@ -1717,7 +1769,8 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int ret = NO_ERROR;
   bool output_tuple = true, update_agg_domains = false;
 
-  if ((xasl->composite_locking || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
+  if ((COMPOSITE_LOCK (xasl->scan_op_type)
+       || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
       && !XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
     {
       /* Remove OIDs already processed */
@@ -1730,19 +1783,26 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  return NO_ERROR;
 	}
+      ret = NO_ERROR;
 
-      if (xasl->aptr_list && xasl->aptr_list->type == BUILDLIST_PROC
-	  && xasl->aptr_list->proc.buildlist.push_list_id)
+      /* add composite locks if MVCC is disabled */
+      if (mvcc_Enabled == false)
 	{
-	  class_oid = &ACCESS_SPEC_CLS_OID (xasl->aptr_list->spec_list);
-	}
-      ret = qexec_add_composite_lock (thread_p, xasl->outptr_list->valptrp,
+	  if (xasl->aptr_list && xasl->aptr_list->type == BUILDLIST_PROC
+	      && xasl->aptr_list->proc.buildlist.push_list_id)
+	    {
+	      class_oid = &ACCESS_SPEC_CLS_OID (xasl->aptr_list->spec_list);
+	    }
+
+	  ret =
+	    qexec_add_composite_lock (thread_p, xasl->outptr_list->valptrp,
 				      xasl_state,
 				      &xasl->composite_lock,
 				      xasl->upd_del_class_cnt, class_oid);
-      if (ret != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
+	  if (ret != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
 	}
     }
 
@@ -2307,9 +2367,11 @@ static int
 qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 			      ACCESS_SPEC_TYPE * list, int final)
 {
-  ACCESS_SPEC_TYPE *p;
-  HEAP_SCAN_ID *hsidp;
-  INDX_SCAN_ID *isidp;
+  ACCESS_SPEC_TYPE *p = NULL;
+  HEAP_SCAN_ID *hsidp = NULL;
+  HEAP_PAGE_SCAN_ID *hpsidp = NULL;
+  INDX_SCAN_ID *isidp = NULL;
+  INDEX_NODE_SCAN_ID *insidp = NULL;
   int pg_cnt;
 
   /* I'm not sure this access structure could be anymore complicated
@@ -2329,10 +2391,12 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
       pr_clear_value (p->s_dbval);
       pg_cnt += qexec_clear_pred (xasl_p, p->where_pred, final);
       pg_cnt += qexec_clear_pred (xasl_p, p->where_key, final);
+      pg_cnt += qexec_clear_pred (xasl_p, p->where_range, final);
       pr_clear_value (p->s_id.join_dbval);
       switch (p->s_id.type)
 	{
 	case S_HEAP_SCAN:
+	case S_HEAP_SCAN_RECORD_INFO:
 	case S_CLASS_ATTR_SCAN:
 	  pg_cnt +=
 	    qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.scan_pred.regu_list,
@@ -2340,14 +2404,39 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 	  pg_cnt +=
 	    qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.rest_regu_list,
 				   final);
+
+	  pg_cnt +=
+	    qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.
+				   regu_list_last_version, final);
+
 	  hsidp = &p->s_id.s.hsid;
 	  if (hsidp->caches_inited)
 	    {
+	      int i;
 	      heap_attrinfo_end (thread_p, hsidp->pred_attrs.attr_cache);
 	      heap_attrinfo_end (thread_p, hsidp->rest_attrs.attr_cache);
+	      if (hsidp->cache_recordinfo != NULL)
+		{
+		  for (i = 0; i < HEAP_RECORD_INFO_COUNT; i++)
+		    {
+		      db_value_clear (hsidp->cache_recordinfo[i]);
+		    }
+		}
 	      hsidp->caches_inited = false;
 	    }
 	  break;
+	case S_HEAP_PAGE_SCAN:
+	  hpsidp = &p->s_id.s.hpsid;
+	  if (hpsidp->cache_page_info != NULL)
+	    {
+	      int i;
+	      for (i = 0; i < HEAP_PAGE_INFO_COUNT; i++)
+		{
+		  db_value_clear (hpsidp->cache_page_info[i]);
+		}
+	    }
+	  break;
+
 	case S_INDX_SCAN:
 	  pg_cnt +=
 	    qexec_clear_regu_list (xasl_p, p->s_id.s.isid.key_pred.regu_list,
@@ -2366,6 +2455,10 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 				       final);
 	    }
 
+	  pg_cnt +=
+	    qexec_clear_regu_list (xasl_p, p->s_id.s.isid.
+				   regu_list_last_version, final);
+
 	  if (p->s_id.s.isid.indx_cov.output_val_list != NULL)
 	    {
 	      pg_cnt +=
@@ -2378,6 +2471,10 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 	  isidp = &p->s_id.s.isid;
 	  if (isidp->caches_inited)
 	    {
+	      if (isidp->range_pred.regu_list != NULL)
+		{
+		  heap_attrinfo_end (thread_p, isidp->range_attrs.attr_cache);
+		}
 	      if (isidp->key_pred.regu_list)
 		{
 		  heap_attrinfo_end (thread_p, isidp->key_attrs.attr_cache);
@@ -2385,6 +2482,35 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 	      heap_attrinfo_end (thread_p, isidp->pred_attrs.attr_cache);
 	      heap_attrinfo_end (thread_p, isidp->rest_attrs.attr_cache);
 	      isidp->caches_inited = false;
+	    }
+	  break;
+	case S_INDX_KEY_INFO_SCAN:
+	  isidp = &p->s_id.s.isid;
+	  pg_cnt +=
+	    qexec_clear_regu_list (xasl_p, isidp->key_info_regu_list, final);
+	  if (isidp->caches_inited)
+	    {
+	      int i;
+	      for (i = 0; i < BTREE_KEY_INFO_COUNT; i++)
+		{
+		  db_value_clear (isidp->key_info_values[i]);
+		}
+	      isidp->caches_inited = false;
+	    }
+	  break;
+	case S_INDX_NODE_INFO_SCAN:
+	  insidp = &p->s_id.s.insid;
+	  pg_cnt +=
+	    qexec_clear_regu_list (xasl_p, insidp->node_info_regu_list,
+				   final);
+	  if (insidp->caches_inited)
+	    {
+	      int i;
+	      for (i = 0; i < BTREE_NODE_INFO_COUNT; i++)
+		{
+		  db_value_clear (insidp->node_info_values[i]);
+		}
+	      insidp->caches_inited = false;
 	    }
 	  break;
 	case S_LIST_SCAN:
@@ -2424,6 +2550,10 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 				   final);
 	  pg_cnt +=
 	    qexec_clear_regu_list (xasl_p, p->s.cls_node.cls_regu_list_rest,
+				   final);
+	  pg_cnt +=
+	    qexec_clear_regu_list (xasl_p,
+				   p->s.cls_node.cls_regu_list_last_version,
 				   final);
 	  if (p->access == INDEX)
 	    {
@@ -7140,14 +7270,15 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       outer_spec = xasl->proc.mergelist.outer_spec_list;
       inner_spec = xasl->proc.mergelist.inner_spec_list;
 
+      assert (xasl->scan_op_type == S_SELECT);
       if (qexec_open_scan (thread_p, outer_spec,
 			   xasl->proc.mergelist.outer_val_list,
 			   &xasl_state->vd,
-			   true,
+			   false,
 			   outer_spec->fixed_scan,
 			   outer_spec->grouped_scan,
 			   true, &outer_spec->s_id, xasl_state->query_id,
-			   xasl->composite_locking) != NO_ERROR)
+			   S_SELECT) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -7155,11 +7286,11 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       if (qexec_open_scan (thread_p, inner_spec,
 			   xasl->proc.mergelist.inner_val_list,
 			   &xasl_state->vd,
-			   true,
+			   false,
 			   inner_spec->fixed_scan,
 			   inner_spec->grouped_scan,
 			   true, &inner_spec->s_id, xasl_state->query_id,
-			   xasl->composite_locking) != NO_ERROR)
+			   S_SELECT) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -7213,7 +7344,7 @@ exit_on_error:
  *   curr_spec(in)      : Access Specification Node
  *   val_list(in)       : Value list pointer
  *   vd(in)     : Value descriptor
- *   readonly_scan(in)  :
+ *   mvcc_select_lock_needed(in)  :
  *   fixed(in)  : Fixed scan flag
  *   grouped(in)        : Grouped scan flag
  *   iscan_oid_order(in)       :
@@ -7224,16 +7355,17 @@ exit_on_error:
  */
 static int
 qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
-		 VAL_LIST * val_list, VAL_DESCR * vd, int readonly_scan,
-		 int fixed, int grouped, bool iscan_oid_order, SCAN_ID * s_id,
-		 QUERY_ID query_id, int composite_locking)
+		 VAL_LIST * val_list, VAL_DESCR * vd,
+		 bool mvcc_select_lock_needed, int fixed, int grouped,
+		 bool iscan_oid_order, SCAN_ID * s_id, QUERY_ID query_id,
+		 SCAN_OPERATION_TYPE scan_op_type)
 {
   SCAN_TYPE scan_type;
   INDX_INFO *indx_info;
 
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && !curr_spec->pruned)
     {
-      if (qexec_prune_spec (thread_p, curr_spec, vd, composite_locking) !=
+      if (qexec_prune_spec (thread_p, curr_spec, vd, scan_op_type) !=
 	  NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -7249,10 +7381,32 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 	  scan_type = S_HEAP_SCAN;
 	  indx_info = NULL;
 	}
+      else if (curr_spec->access == SEQUENTIAL_RECORD_INFO)
+	{
+	  /* open a sequential heap file scan that reads record info */
+	  scan_type = S_HEAP_SCAN_RECORD_INFO;
+	  indx_info = NULL;
+	}
+      else if (curr_spec->access == SEQUENTIAL_PAGE_SCAN)
+	{
+	  /* open a sequential heap file scan that reads page info */
+	  scan_type = S_HEAP_PAGE_SCAN;
+	  indx_info = NULL;
+	}
       else if (curr_spec->access == INDEX)
 	{
 	  /* open an indexed heap file scan */
 	  scan_type = S_INDX_SCAN;
+	  indx_info = curr_spec->indexptr;
+	}
+      else if (curr_spec->access == INDEX_KEY_INFO)
+	{
+	  scan_type = S_INDX_KEY_INFO_SCAN;
+	  indx_info = curr_spec->indexptr;
+	}
+      else if (curr_spec->access == INDEX_NODE_INFO)
+	{
+	  scan_type = S_INDX_NODE_INFO_SCAN;
 	  indx_info = curr_spec->indexptr;
 	}
       else
@@ -7261,14 +7415,12 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 		  0);
 	  return ER_FAILED;
 	}			/* if */
-      if (scan_type == S_HEAP_SCAN)
+      if (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO)
 	{
-	  assert (composite_locking >= 0 && composite_locking <= 2);
 	  if (scan_open_heap_scan (thread_p, s_id,
-				   readonly_scan,
-				   (SCAN_OPERATION_TYPE) composite_locking,
+				   mvcc_select_lock_needed,
+				   scan_op_type,
 				   fixed,
-				   curr_spec->lock_hint,
 				   grouped,
 				   curr_spec->single_fetch,
 				   curr_spec->s_dbval,
@@ -7279,25 +7431,78 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 				   curr_spec->s.cls_node.cls_regu_list_pred,
 				   curr_spec->where_pred,
 				   curr_spec->s.cls_node.cls_regu_list_rest,
+				   curr_spec->s.cls_node.
+				   cls_regu_list_last_version,
 				   curr_spec->s.cls_node.num_attrs_pred,
 				   curr_spec->s.cls_node.attrids_pred,
 				   curr_spec->s.cls_node.cache_pred,
 				   curr_spec->s.cls_node.num_attrs_rest,
 				   curr_spec->s.cls_node.attrids_rest,
-				   curr_spec->s.cls_node.cache_rest) !=
-	      NO_ERROR)
+				   curr_spec->s.cls_node.cache_rest,
+				   scan_type,
+				   curr_spec->s.cls_node.cache_reserved,
+				   curr_spec->s.cls_node.
+				   cls_regu_list_reserved) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
 	}
-      else
+      else if (scan_type == S_HEAP_PAGE_SCAN)
 	{
-	  assert (composite_locking >= 0 && composite_locking <= 2);
+	  if (scan_open_heap_page_scan (thread_p, s_id, val_list, vd,
+					&ACCESS_SPEC_CLS_OID (curr_spec),
+					&ACCESS_SPEC_HFID (curr_spec),
+					curr_spec->where_pred, scan_type,
+					curr_spec->s.cls_node.cache_reserved,
+					curr_spec->s.cls_node.
+					cls_regu_list_reserved) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      else if (scan_type == S_INDX_KEY_INFO_SCAN)
+	{
+	  if (scan_open_index_key_info_scan (thread_p, s_id, val_list, vd,
+					     indx_info,
+					     &ACCESS_SPEC_CLS_OID (curr_spec),
+					     &ACCESS_SPEC_HFID (curr_spec),
+					     curr_spec->where_pred,
+					     curr_spec->s.cls_node.
+					     cls_output_val_list,
+					     iscan_oid_order, query_id,
+					     curr_spec->s.cls_node.
+					     cache_reserved,
+					     curr_spec->s.cls_node.
+					     cls_regu_list_reserved)
+	      != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  /* monitor */
+	  mnt_qm_iscans (thread_p);
+	}
+      else if (scan_type == S_INDX_NODE_INFO_SCAN)
+	{
+	  if (scan_open_index_node_info_scan (thread_p, s_id, val_list, vd,
+					      indx_info,
+					      curr_spec->where_pred,
+					      curr_spec->s.cls_node.
+					      cache_reserved,
+					      curr_spec->s.cls_node.
+					      cls_regu_list_reserved)
+	      != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  /* monitor */
+	  mnt_qm_iscans (thread_p);
+	}
+      else			/* S_INDX_SCAN */
+	{
 	  if (scan_open_index_scan (thread_p, s_id,
-				    readonly_scan,
-				    (SCAN_OPERATION_TYPE) composite_locking,
+				    mvcc_select_lock_needed,
+				    scan_op_type,
 				    fixed,
-				    curr_spec->lock_hint,
 				    grouped,
 				    curr_spec->single_fetch,
 				    curr_spec->s_dbval,
@@ -7311,6 +7516,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 				    curr_spec->s.cls_node.cls_regu_list_pred,
 				    curr_spec->where_pred,
 				    curr_spec->s.cls_node.cls_regu_list_rest,
+				    curr_spec->where_range,
+				    curr_spec->s.cls_node.cls_regu_list_range,
+				    curr_spec->s.cls_node.
+				    cls_regu_list_last_version,
 				    curr_spec->s.cls_node.cls_output_val_list,
 				    curr_spec->s.cls_node.cls_regu_val_list,
 				    curr_spec->s.cls_node.num_attrs_key,
@@ -7322,6 +7531,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec,
 				    curr_spec->s.cls_node.num_attrs_rest,
 				    curr_spec->s.cls_node.attrids_rest,
 				    curr_spec->s.cls_node.cache_rest,
+				    curr_spec->s.cls_node.num_attrs_range,
+				    curr_spec->s.cls_node.attrids_range,
+				    curr_spec->s.cls_node.cache_range,
 				    iscan_oid_order, query_id,
 				    (curr_spec->
 				     flags & ACCESS_SPEC_FLAG_FOR_UPDATE ?
@@ -7478,11 +7690,13 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
       switch (curr_spec->type)
 	{
 	case TARGET_CLASS:
-	  if (curr_spec->access == SEQUENTIAL)
+	  if (curr_spec->access == SEQUENTIAL
+	      || curr_spec->access == SEQUENTIAL_RECORD_INFO
+	      || curr_spec->access == SEQUENTIAL_PAGE_SCAN)
 	    {
 	      mnt_qm_sscans (thread_p);
 	    }
-	  else if (curr_spec->access == INDEX)
+	  else if (IS_ANY_INDEX_ACCESS (curr_spec->access))
 	    {
 	      mnt_qm_iscans (thread_p);
 	    }
@@ -7634,15 +7848,23 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       if ((xasl->curr_spec->type == TARGET_CLASS
 	   || xasl->curr_spec->type == TARGET_CLASS_ATTR)
 	  && xasl->curr_spec->parts != NULL
-	  && xasl->curr_spec->curent == NULL)
+	  && xasl->curr_spec->curent == NULL
+	  && xasl->curr_spec->access != INDEX_NODE_INFO)
 	{
 	  /* initialize the scan_id for partitioned classes */
-	  if (xasl->curr_spec->access == SEQUENTIAL)
+	  if (xasl->curr_spec->access == SEQUENTIAL
+	      || xasl->curr_spec->access == SEQUENTIAL_RECORD_INFO)
 	    {
 	      class_oid = &xasl->curr_spec->s_id.s.hsid.cls_oid;
 	      class_hfid = &xasl->curr_spec->s_id.s.hsid.hfid;
 	    }
-	  else if (xasl->curr_spec->access == INDEX)
+	  else if (xasl->curr_spec->access == SEQUENTIAL_PAGE_SCAN)
+	    {
+	      class_oid = &xasl->curr_spec->s_id.s.hpsid.cls_oid;
+	      class_hfid = &xasl->curr_spec->s_id.s.hpsid.hfid;
+	    }
+	  else if (xasl->curr_spec->access == INDEX
+		   || xasl->curr_spec->access == INDEX_KEY_INFO)
 	    {
 	      class_oid = &xasl->curr_spec->s_id.s.isid.cls_oid;
 	      class_hfid = &xasl->curr_spec->s_id.s.isid.hfid;
@@ -8221,11 +8443,11 @@ qexec_reset_regu_variable (REGU_VARIABLE * var)
  * thread_p (in) :
  * spec (in) :
  * vd (in) :
- * composite_locking (in) :
+ * scan_op_type (in) :
  */
 static int
 qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
-		  VAL_DESCR * vd, int composite_locking)
+		  VAL_DESCR * vd, SCAN_OPERATION_TYPE scan_op_type)
 {
   PARTITION_SPEC_TYPE *partition_spec = NULL;
   LOCK lock = NULL_LOCK;
@@ -8248,20 +8470,27 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
       return error;
     }
 
-  if (composite_locking == 0 && !(spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE))
+  if (!COMPOSITE_LOCK (scan_op_type)
+      && !(spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE))
     {
       lock = IS_LOCK;
     }
   else
     {
-      if (spec->access == SEQUENTIAL)
+      if ((spec->access == SEQUENTIAL
+	   || spec->access == S_HEAP_SCAN_RECORD_INFO
+	   || spec->access == S_HEAP_PAGE_SCAN)
+	  && (!mvcc_Enabled || spec->where_pred == NULL))
 	{
 	  lock = X_LOCK;
 	}
+      else if (mvcc_Enabled || IS_ANY_INDEX_ACCESS (spec->access))
+	{
+	  lock = IX_LOCK;
+	}
       else
 	{
-	  assert (spec->access == INDEX);
-	  lock = IX_LOCK;
+	  assert (0);
 	}
     }
 
@@ -8295,7 +8524,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
   SCAN_CODE scode = S_END;
   int error = NO_ERROR;
   SCAN_OPERATION_TYPE scan_op_type = spec->s_id.scan_op_type;
-  int readonly_scan = spec->s_id.readonly_scan;
+  int mvcc_select_lock_needed = spec->s_id.mvcc_select_lock_needed;
   int fixed = spec->s_id.fixed;
   int grouped = spec->s_id.grouped;
   QPROC_SINGLE_FETCH single_fetch = spec->s_id.single_fetch;
@@ -8342,6 +8571,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_pred);
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_rest);
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_key);
+  qexec_reset_regu_variable_list (spec->s.cls_node.
+				  cls_regu_list_last_version);
   qexec_reset_pred_expr (spec->where_pred);
   qexec_reset_pred_expr (spec->where_key);
 
@@ -8350,7 +8581,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
       /* reset back to root class */
       COPY_OID (&class_oid, &ACCESS_SPEC_CLS_OID (spec));
       HFID_COPY (&class_hfid, &ACCESS_SPEC_HFID (spec));
-      if (spec->access == INDEX)
+      if (IS_ANY_INDEX_ACCESS (spec->access))
 	{
 	  index_id = spec->indx_id;
 	}
@@ -8359,42 +8590,81 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
     {
       COPY_OID (&class_oid, &spec->curent->oid);
       HFID_COPY (&class_hfid, &spec->curent->hfid);
-      if (spec->access == INDEX)
+      if (IS_ANY_INDEX_ACCESS (spec->access))
 	{
 	  index_id = spec->curent->indx_id;
 	}
     }
-  if (spec->type == TARGET_CLASS && spec->access == SEQUENTIAL)
+  if (spec->type == TARGET_CLASS
+      && (spec->access == SEQUENTIAL
+	  || spec->access == SEQUENTIAL_RECORD_INFO))
     {
       HEAP_SCAN_ID *hsidp = &spec->s_id.s.hsid;
+      SCAN_TYPE scan_type =
+	(spec->access == SEQUENTIAL) ? S_HEAP_SCAN : S_HEAP_SCAN_RECORD_INFO;
+      int i = 0;
       if (hsidp->caches_inited)
 	{
 	  heap_attrinfo_end (thread_p, hsidp->pred_attrs.attr_cache);
 	  heap_attrinfo_end (thread_p, hsidp->rest_attrs.attr_cache);
+	  if (hsidp->cache_recordinfo != NULL)
+	    {
+	      for (i = 0; i < HEAP_RECORD_INFO_COUNT; i++)
+		{
+		  db_value_clear (hsidp->cache_recordinfo[i]);
+		}
+	    }
 	  hsidp->caches_inited = false;
 	}
       hsidp->scancache_inited = false;
 
       error =
-	scan_open_heap_scan (thread_p, &spec->s_id, readonly_scan,
-			     scan_op_type, fixed, spec->lock_hint, grouped,
-			     single_fetch, spec->s_dbval, val_list, vd,
+	scan_open_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed,
+			     scan_op_type, fixed, grouped, single_fetch,
+			     spec->s_dbval, val_list, vd,
 			     &class_oid, &class_hfid,
 			     spec->s.cls_node.cls_regu_list_pred,
 			     spec->where_pred,
 			     spec->s.cls_node.cls_regu_list_rest,
+			     spec->s.cls_node.cls_regu_list_last_version,
 			     spec->s.cls_node.num_attrs_pred,
 			     spec->s.cls_node.attrids_pred,
 			     spec->s.cls_node.cache_pred,
 			     spec->s.cls_node.num_attrs_rest,
 			     spec->s.cls_node.attrids_rest,
-			     spec->s.cls_node.cache_rest);
+			     spec->s.cls_node.cache_rest, scan_type,
+			     spec->s.cls_node.cache_reserved,
+			     spec->s.cls_node.cls_regu_list_reserved);
+    }
+  else if (spec->type == TARGET_CLASS && spec->access == SEQUENTIAL_PAGE_SCAN)
+    {
+      HEAP_PAGE_SCAN_ID *hpsidp = &spec->s_id.s.hpsid;
+      SCAN_TYPE scan_type = S_HEAP_PAGE_SCAN;
+      int i = 0;
+
+      if (hpsidp->cache_page_info != NULL)
+	{
+	  for (i = 0; i < HEAP_PAGE_INFO_COUNT; i++)
+	    {
+	      db_value_clear (hpsidp->cache_page_info[i]);
+	    }
+	}
+      error =
+	scan_open_heap_page_scan (thread_p, &spec->s_id, val_list, vd,
+				  &class_oid, &class_hfid,
+				  spec->where_pred, scan_type,
+				  spec->s.cls_node.cache_reserved,
+				  spec->s.cls_node.cls_regu_list_reserved);
     }
   else if (spec->type == TARGET_CLASS && spec->access == INDEX)
     {
       INDX_SCAN_ID *isidp = &spec->s_id.s.isid;
       if (isidp->caches_inited)
 	{
+	  if (isidp->range_pred.regu_list)
+	    {
+	      heap_attrinfo_end (thread_p, isidp->range_attrs.attr_cache);
+	    }
 	  if (isidp->key_pred.regu_list)
 	    {
 	      heap_attrinfo_end (thread_p, isidp->key_attrs.attr_cache);
@@ -8409,8 +8679,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
       spec->s_id.s.isid.caches_inited = false;
 
       error =
-	scan_open_index_scan (thread_p, &spec->s_id, readonly_scan,
-			      scan_op_type, fixed, spec->lock_hint, grouped,
+	scan_open_index_scan (thread_p, &spec->s_id, mvcc_select_lock_needed,
+			      scan_op_type, fixed, grouped,
 			      single_fetch, spec->s_dbval, val_list, vd,
 			      idxptr, &class_oid, &class_hfid,
 			      spec->s.cls_node.cls_regu_list_key,
@@ -8418,6 +8688,9 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 			      spec->s.cls_node.cls_regu_list_pred,
 			      spec->where_pred,
 			      spec->s.cls_node.cls_regu_list_rest,
+			      spec->where_range,
+			      spec->s.cls_node.cls_regu_list_range,
+			      spec->s.cls_node.cls_regu_list_last_version,
 			      spec->s.cls_node.cls_output_val_list,
 			      spec->s.cls_node.cls_regu_val_list,
 			      spec->s.cls_node.num_attrs_key,
@@ -8429,6 +8702,9 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 			      spec->s.cls_node.num_attrs_rest,
 			      spec->s.cls_node.attrids_rest,
 			      spec->s.cls_node.cache_rest,
+			      spec->s.cls_node.num_attrs_range,
+			      spec->s.cls_node.attrids_range,
+			      spec->s.cls_node.cache_range,
 			      iscan_oid_order, query_id,
 			      (spec->
 			       flags & ACCESS_SPEC_FLAG_FOR_UPDATE ? true :
@@ -8530,7 +8806,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 
 	  agg_ptr = buildvalue->agg_list;
-	  if (!xasl->scan_ptr	/* no scan procedure */
+	  if (mvcc_Enabled == false	/* non-MVCC */
+	      && !xasl->scan_ptr	/* no scan procedure */
 	      && !xasl->fptr_list	/* no path expressions */
 	      && !xasl->if_pred	/* no if predicates */
 	      && !xasl->instnum_pred	/* no instnum predicate */
@@ -9198,6 +9475,239 @@ qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p,
 }
 
 /*
+ * qexec_mvcc_cond_reev_set_scan_order () - link classes for condition
+ *					    reevaluation in scan order (from
+ *					    outer to inner)
+ *   return: list head
+ *   aptr(in): XASL for generated SELECT statement for UPDATE
+ *   buildlist(in): BUILDLIST_PROC XASL
+ *   reev_classes(in): array of classes for reevaluation
+ *   no_reev_classes(in): no of classes for reevaluation
+ *   classes(in): classes to be updated
+ *   no_classes(in): no of classes to be updated
+ */
+static UPDDEL_MVCC_COND_REEVAL *
+qexec_mvcc_cond_reev_set_scan_order (XASL_NODE * aptr,
+				     UPDDEL_MVCC_COND_REEVAL * reev_classes,
+				     int no_reev_classes,
+				     UPDDEL_CLASS_INFO * classes,
+				     int no_classes)
+{
+  int idx, idx2, idx3;
+  ACCESS_SPEC_TYPE *access_spec = NULL;
+  UPDDEL_MVCC_COND_REEVAL *scan_elem = NULL, *scan_start = NULL;
+  int *mvcc_extra_assign_reev = NULL;
+
+  if (reev_classes == NULL || no_reev_classes <= 0)
+    {
+      return NULL;
+    }
+  for (; aptr != NULL; aptr = aptr->scan_ptr)
+    {
+      for (access_spec = aptr->spec_list; access_spec != NULL;
+	   access_spec = access_spec->next)
+	{
+	  for (idx = no_reev_classes - 1; idx >= 0; idx--)
+	    {
+	      if (OID_EQ
+		  (&access_spec->s.cls_node.cls_oid,
+		   &reev_classes[idx].cls_oid))
+		{
+		  /* check that this class is not an assignment reevaluation
+		   * class */
+		  for (idx2 = 0; idx2 < no_classes; idx2++)
+		    {
+		      mvcc_extra_assign_reev =
+			classes[idx2].mvcc_extra_assign_reev;
+		      for (idx3 = classes[idx2].no_extra_assign_reev - 1;
+			   idx3 >= 0; idx3--)
+			{
+			  if (mvcc_extra_assign_reev[idx3] ==
+			      reev_classes[idx].class_index)
+			    {
+			      break;
+			    }
+			}
+		      if (idx3 >= 0)
+			{
+			  break;
+			}
+		    }
+		  if (idx2 < no_classes)
+		    {
+		      continue;
+		    }
+
+		  /* if this class is not an assignment reevaluation class then
+		   * add to the list */
+		  if (scan_elem == NULL)
+		    {
+		      scan_elem = scan_start = &reev_classes[idx];
+		    }
+		  else
+		    {
+		      scan_elem->next = &reev_classes[idx];
+		      scan_elem = scan_elem->next;
+		    }
+		  break;
+		}
+	    }
+	  if (idx >= 0)
+	    {
+	      break;
+	    }
+	}
+    }
+
+  return scan_start;
+}
+
+/*
+ * prepare_mvcc_reev_data () - create and initialize structures for MVCC
+ *			       condition and assignments reevaluation
+ * return : error code or NO_ERROR
+ * thread_p (in) :
+ * aptr (in): XASL for generated SELECT statement for UPDATE
+ * no_reev_classes (in): no of indexes for classes used in reevaluation
+ * mvcc_reev_indexes (in) : array of indexes for classes used in reevaluation
+ * reev_data (in) : MVCC reevaluation data for a specific class
+ * no_classes (in) : no. of assignments 'classes' elements
+ * classes(in): array of classes to be updated
+ * internal_classes (in) : array of information for each class that will be
+ *			   updated
+ * cons_pred(in): NOT NULL contraints predicate
+ * mvcc_reev_classes(in/out): array of classes information used in MVCC
+ *			      reevaluation
+ * mvcc_reev_assigns(in/out): array of assignments information used in
+ *			      reevaluation
+ * has_delete (in):
+ */
+static int
+prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr,
+			XASL_STATE * xasl_state, int no_reev_classes,
+			int *mvcc_reev_indexes,
+			MVCC_UPDDEL_REEV_DATA * reev_data, int no_classes,
+			UPDDEL_CLASS_INFO * classes,
+			UPDDEL_CLASS_INFO_INTERNAL * internal_classes,
+			int no_assigns, UPDATE_ASSIGNMENT * assigns,
+			PRED_EXPR * cons_pred,
+			UPDDEL_MVCC_COND_REEVAL ** mvcc_reev_classes,
+			UPDATE_MVCC_REEV_ASSIGNMENT ** mvcc_reev_assigns,
+			bool has_delete)
+{
+  UPDDEL_MVCC_COND_REEVAL *cond_reev_classes = NULL, *cond_reev_class = NULL;
+  UPDDEL_CLASS_INFO *cls = NULL;
+  UPDDEL_CLASS_INFO_INTERNAL *int_cls = NULL;
+  int idx, idx2, idx3;
+
+  if (reev_data == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+
+  /* Make sure reev data is initialized, or else it will crash later */
+  memset (reev_data, 0, sizeof (MVCC_UPDDEL_REEV_DATA));
+
+  if (no_reev_classes == 0)
+    {
+      return NO_ERROR;
+    }
+
+  if (mvcc_reev_classes == NULL)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  /* allocate and initialize classes for reevaluation */
+  cond_reev_classes =
+    db_private_alloc (thread_p,
+		      sizeof (UPDDEL_MVCC_COND_REEVAL) * no_reev_classes);
+  if (cond_reev_classes == NULL)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
+  /* init information for reevaluation */
+  for (idx = 0; idx < no_reev_classes; idx++)
+    {
+      cond_reev_class = &cond_reev_classes[idx];
+      cond_reev_class->class_index = mvcc_reev_indexes[idx];
+      OID_SET_NULL (&cond_reev_class->cls_oid);
+      cond_reev_class->inst_oid = NULL;
+      cond_reev_class->rest_attrs = NULL;
+      cond_reev_class->rest_regu_list = NULL;
+      cond_reev_class->next = NULL;
+    }
+  for (idx = 0; idx < no_classes; idx++)
+    {
+      cls = &classes[idx];
+      int_cls = &internal_classes[idx];
+      if (cls->no_extra_assign_reev > 0)
+	{
+	  int_cls->mvcc_extra_assign_reev =
+	    db_private_alloc (thread_p,
+			      cls->no_extra_assign_reev *
+			      sizeof (UPDDEL_MVCC_COND_REEVAL *));
+	  if (int_cls->mvcc_extra_assign_reev == NULL)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  for (idx2 = cls->no_extra_assign_reev - 1; idx2 >= 0; idx2--)
+	    {
+	      for (idx3 = 0; idx3 < no_reev_classes; idx3++)
+		{
+		  if (cond_reev_classes[idx3].class_index ==
+		      cls->mvcc_extra_assign_reev[idx2])
+		    {
+		      int_cls->mvcc_extra_assign_reev[idx2] =
+			&cond_reev_classes[idx3];
+		      break;
+		    }
+		}
+	    }
+	  int_cls->extra_assign_reev_cnt = cls->no_extra_assign_reev;
+	}
+    }
+  reev_data->mvcc_cond_reev_list = NULL;
+  reev_data->curr_extra_assign_cnt = 0;
+  reev_data->curr_extra_assign_reev = NULL;
+  reev_data->curr_assigns = NULL;
+  reev_data->curr_attrinfo = NULL;
+  reev_data->copyarea = NULL;
+  reev_data->cons_pred = cons_pred;
+  reev_data->vd = &xasl_state->vd;
+
+  if (qexec_create_mvcc_reev_assignments
+      (thread_p, aptr, has_delete, internal_classes, no_classes, no_assigns,
+       assigns, mvcc_reev_assigns) != NO_ERROR)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  *mvcc_reev_classes = cond_reev_classes;
+  return NO_ERROR;
+
+exit_on_error:
+
+  if (cond_reev_classes != NULL)
+    {
+      db_private_free (thread_p, cond_reev_classes);
+    }
+  for (idx = 0; idx < no_classes; idx++)
+    {
+      int_cls = &internal_classes[idx];
+      if (int_cls->mvcc_extra_assign_reev != NULL)
+	{
+	  db_private_free_and_init (thread_p,
+				    int_cls->mvcc_extra_assign_reev);
+	}
+    }
+  *mvcc_reev_classes = NULL;
+
+  return ER_FAILED;
+}
+
+/*
  * qexec_execute_update () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in): XASL Tree block
@@ -9213,8 +9723,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   UPDATE_ASSIGNMENT *assign = NULL;
   SCAN_CODE xb_scan;
   SCAN_CODE ls_scan;
-  XASL_NODE *aptr;
-  DB_VALUE *valp;
+  XASL_NODE *aptr = NULL, *scan_ptr = NULL;
+  DB_VALUE *valp = NULL;
   QPROC_DB_VALUE_LIST vallist;
   int assign_idx = 0;
   int rc;
@@ -9223,7 +9733,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   OID *class_oid = NULL;
   UPDDEL_CLASS_INFO_INTERNAL *internal_classes = NULL, *internal_class = NULL;
   ACCESS_SPEC_TYPE *specp = NULL;
-  SCAN_ID *s_id;
+  SCAN_ID *s_id = NULL;
   LOG_LSA lsa;
   int savepoint_used = 0;
   int satisfies_constraints;
@@ -9237,6 +9747,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int tuple_cnt, error = NO_ERROR;
   REPL_INFO_TYPE repl_info;
   int class_oid_cnt = 0, class_oid_idx = 0;
+  int mvcc_reev_class_cnt = 0, mvcc_reev_class_idx = 0;
   bool scan_open = false;
   bool should_delete = false;
   int actual_op_type = SINGLE_ROW_UPDATE, current_op_type = SINGLE_ROW_UPDATE;
@@ -9244,8 +9755,21 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   PRUNING_CONTEXT *pcontext = NULL;
   DEL_LOB_INFO *del_lob_info_list = NULL;
   RECDES recdes;
+  MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
+  MVCC_REEV_DATA mvcc_reev_data;
+  UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
+  UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
 
+  /* get the snapshot, before acquiring locks, since the transaction may
+   * be blocked and we need the snapshot when update starts, not later
+   */
+  (void) logtb_get_mvcc_snapshot (thread_p);
+
+  mvcc_upddel_reev_data.copyarea = NULL;
+  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE,
+			     NULL);
   class_oid_cnt = update->no_classes;
+  mvcc_reev_class_cnt = update->no_reev_classes;
 
   /* Allocate memory for oids, hfids and attributes cache info of all classes
    * used in update */
@@ -9257,15 +9781,28 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-
   /* lock classes which this query will update */
-  error = qexec_set_class_locks (thread_p, xasl->aptr_list, update->classes,
-				 update->no_classes, internal_classes);
+  aptr = xasl->aptr_list;
+  error =
+    qexec_set_class_locks (thread_p, aptr, update->classes,
+			   update->no_classes, internal_classes);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
-  aptr = xasl->aptr_list;
+
+  error =
+    prepare_mvcc_reev_data (thread_p, aptr, xasl_state, mvcc_reev_class_cnt,
+			    update->mvcc_reev_classes, &mvcc_upddel_reev_data,
+			    update->no_classes, update->classes,
+			    internal_classes, update->no_assigns,
+			    update->assigns, update->cons_pred,
+			    &mvcc_reev_classes, &mvcc_reev_assigns,
+			    has_delete);
+  if (error != NO_ERROR)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
 
   if (qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
     {
@@ -9311,11 +9848,12 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   savepoint_used = 1;
 
   specp = xasl->spec_list;
-  /* readonly_scan = true */
-  if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, true,
-		       specp->fixed_scan, specp->grouped_scan, true,
-		       &specp->s_id, xasl_state->query_id,
-		       xasl->composite_locking) != NO_ERROR)
+  /* mvcc_select_lock_needed = false */
+  assert (xasl->scan_op_type == S_SELECT);
+  if (qexec_open_scan
+      (thread_p, specp, xasl->val_list, &xasl_state->vd, false,
+       specp->fixed_scan, specp->grouped_scan, true, &specp->s_id,
+       xasl_state->query_id, S_SELECT) != NO_ERROR)
     {
       if (savepoint_used)
 	{
@@ -9400,11 +9938,23 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  /* for each class calc. OID, HFID, attributes cache info and
 	   * statistical information only if class has changed */
 	  vallist = s_id->val_list->valp;
-	  for (class_oid_idx = 0; class_oid_idx < class_oid_cnt;
+	  for (class_oid_idx = 0, mvcc_reev_class_idx = 0;
+	       class_oid_idx < class_oid_cnt;
 	       vallist = vallist->next->next, class_oid_idx++)
 	    {
 	      upd_cls = &update->classes[class_oid_idx];
 	      internal_class = &internal_classes[class_oid_idx];
+
+	      if (mvcc_reev_class_cnt
+		  && mvcc_reev_classes[mvcc_reev_class_idx].class_index ==
+		  class_oid_idx)
+		{
+		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
+		}
+	      else
+		{
+		  mvcc_reev_class = NULL;
+		}
 
 	      /* instance OID */
 	      valp = vallist->val;
@@ -9418,6 +9968,10 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  continue;
 		}
 	      internal_class->oid = DB_GET_OID (valp);
+	      if (mvcc_reev_class != NULL)
+		{
+		  mvcc_reev_class->inst_oid = internal_class->oid;
+		}
 
 	      /* class OID */
 	      valp = vallist->next->val;
@@ -9433,7 +9987,12 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 	      /* class has changed to a new subclass */
 	      if (class_oid
-		  && !OID_EQ (&internal_class->prev_class_oid, class_oid))
+		  && (!OID_EQ (&internal_class->prev_class_oid, class_oid)
+		      || (!should_delete && BTREE_IS_MULTI_ROW_OP (op_type)
+			  && upd_cls->has_uniques
+			  && internal_class->scan_cache != NULL
+			  && internal_class->scan_cache->index_stat_info ==
+			  NULL)))
 		{
 		  /* Load internal_class object with information for class_oid
 		   */
@@ -9450,6 +10009,20 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 				    " not correct\n");
 		      GOTO_EXIT_ON_ERROR;
 		    }
+
+		  /* temporary disable set filters when needs prunning */
+		  if (mvcc_reev_class != NULL)
+		    {
+		      error =
+			qexec_upddel_mvcc_set_filters (thread_p, aptr,
+						       mvcc_reev_class,
+						       class_oid);
+		      if (error != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
+
 		  /* clear attribute cache information if valid old subclass */
 		  if (!OID_ISNULL (&internal_class->prev_class_oid)
 		      && internal_class->is_attr_info_inited)
@@ -9514,6 +10087,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			  error =
 			    heap_attrinfo_read_dbvalues (thread_p, oid,
 							 &recdes,
+							 NULL,
 							 &crt_del_lob_info->
 							 attr_info);
 			  if (error != NO_ERROR)
@@ -9558,19 +10132,25 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		    {
 		      btid_dup_key_locked = false;
 		    }
-		  if (locator_attribute_info_force
-		      (thread_p, internal_class->class_hfid,
-		       internal_class->oid, internal_class->btid,
-		       btid_dup_key_locked, NULL, NULL, 0,
-		       LC_FLUSH_DELETE, current_op_type,
-		       internal_class->scan_cache, &force_count, false,
-		       REPL_INFO_TYPE_STMT_NORMAL,
-		       DB_NOT_PARTITIONED_CLASS, NULL, NULL) != NO_ERROR)
+		  error = locator_attribute_info_force
+		    (thread_p, internal_class->class_hfid,
+		     internal_class->oid, internal_class->btid,
+		     btid_dup_key_locked, NULL, NULL, 0,
+		     LC_FLUSH_DELETE, current_op_type,
+		     internal_class->scan_cache, &force_count, false,
+		     REPL_INFO_TYPE_STMT_NORMAL,
+		     DB_NOT_PARTITIONED_CLASS, NULL, NULL,
+		     &mvcc_reev_data, false);
+
+		  if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
+		    {
+		      error = NO_ERROR;
+		    }
+		  else if (error != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
-
-		  if (force_count)
+		  else if (force_count)
 		    {
 		      xasl->list_id->tuple_cnt++;
 		    }
@@ -9588,10 +10168,62 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 	    }
 
+	  /* Get info for MVCC condition reevaluation */
+	  for (; mvcc_reev_class_idx < mvcc_reev_class_cnt;
+	       mvcc_reev_class_idx++)
+	    {
+	      mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx];
+
+	      /* instance OID */
+	      valp = vallist->val;
+	      if (valp == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      mvcc_reev_class->inst_oid = DB_GET_OID (valp);
+
+	      /* class OID */
+	      valp = vallist->next->val;
+	      if (valp == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      class_oid = DB_GET_OID (valp);
+
+	      /* class has changed to a new subclass */
+	      if (class_oid && !OID_EQ (&mvcc_reev_class->cls_oid, class_oid))
+		{
+		  error =
+		    qexec_upddel_mvcc_set_filters (thread_p, aptr,
+						   mvcc_reev_class,
+						   class_oid);
+		  if (error != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		}
+	      vallist = vallist->next->next;
+	    }
+
+	  if (mvcc_upddel_reev_data.mvcc_cond_reev_list == NULL
+	      && mvcc_reev_class_cnt > 0)
+	    {
+	      /* If scan order was not set then do it. This operation must be
+	       * run only once. We do it here and not at the beginning of this
+	       * function because the class OIDs must be set for classes
+	       * involved in reevaluation (in mvcc_reev_classes) prior to this
+	       * operation */
+	      mvcc_upddel_reev_data.mvcc_cond_reev_list =
+		qexec_mvcc_cond_reev_set_scan_order (aptr, mvcc_reev_classes,
+						     mvcc_reev_class_cnt,
+						     update->classes,
+						     update->no_classes);
+	    }
 	  if (has_delete)
 	    {
 	      vallist = vallist->next;	/* skip should_delete */
 	    }
+
 	  /* perform assignments */
 	  for (assign_idx = 0; assign_idx < update->no_assigns; assign_idx++)
 	    {
@@ -9615,7 +10247,10 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      attr_id =
 		upd_cls->att_id[internal_class->subclass_idx *
 				upd_cls->no_attrs + assign->att_idx];
-
+	      if (mvcc_reev_assigns != NULL)
+		{
+		  mvcc_reev_assigns[assign_idx].att_id = attr_id;
+		}
 
 	      if (assign->constant != NULL)
 		{
@@ -9640,11 +10275,24 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	   * right to left as well; this makes a difference only when we
 	   * update the same attribute of the same class more than once.
 	   */
-	  for (class_oid_idx = class_oid_cnt - 1; class_oid_idx >= 0;
-	       class_oid_idx--)
+	  for (class_oid_idx = class_oid_cnt - 1, mvcc_reev_class_idx =
+	       mvcc_reev_class_cnt - 1; class_oid_idx >= 0; class_oid_idx--)
 	    {
 	      internal_class = &internal_classes[class_oid_idx];
 	      upd_cls = &update->classes[class_oid_idx];
+
+	      if (mvcc_reev_class_cnt
+		  && mvcc_reev_classes[mvcc_reev_class_idx].class_index ==
+		  class_oid_idx)
+		{
+		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
+		}
+	      else
+		{
+		  mvcc_reev_class = NULL;
+		}
+	      mvcc_upddel_reev_data.curr_upddel = mvcc_reev_class;
+
 	      force_count = 0;
 	      oid = internal_class->oid;
 	      if (oid == NULL)
@@ -9671,28 +10319,46 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  btid_dup_key_locked = false;
 		}
 
+	      mvcc_upddel_reev_data.curr_extra_assign_reev =
+		internal_class->mvcc_extra_assign_reev;
+	      mvcc_upddel_reev_data.curr_extra_assign_cnt =
+		internal_class->extra_assign_reev_cnt;
+	      mvcc_upddel_reev_data.curr_assigns =
+		internal_class->mvcc_reev_assigns;
+	      mvcc_upddel_reev_data.curr_attrinfo =
+		&internal_class->attr_info;
 	      error =
 		locator_attribute_info_force (thread_p,
-					      internal_class->class_hfid,
-					      oid, internal_class->btid,
+					      internal_class->class_hfid, oid,
+					      internal_class->btid,
 					      btid_dup_key_locked,
 					      &internal_class->attr_info,
-					      &upd_cls->att_id
-					      [internal_class->subclass_idx *
-					       upd_cls->no_attrs],
+					      &upd_cls->
+					      att_id[internal_class->
+						     subclass_idx *
+						     upd_cls->no_attrs],
 					      upd_cls->no_attrs,
 					      LC_FLUSH_UPDATE, op_type,
 					      internal_class->scan_cache,
 					      &force_count, false, repl_info,
 					      internal_class->needs_pruning,
-					      pcontext, NULL);
-	      if (error != NO_ERROR && error != ER_HEAP_UNKNOWN_OBJECT)
+					      pcontext, NULL,
+					      &mvcc_reev_data, false);
+	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
+		{
+		  error = NO_ERROR;
+		}
+	      else if (error != NO_ERROR && error != ER_HEAP_UNKNOWN_OBJECT)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 	      else
 		{
 		  /* either NO_ERROR or unknown object */
+		  if (error == ER_HEAP_UNKNOWN_OBJECT)
+		    {
+		      er_clear ();
+		    }
 		  force_count = 1;
 		  error = NO_ERROR;
 		}
@@ -9718,7 +10384,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   /* check uniques */
-  if (op_type == MULTI_ROW_UPDATE)
+  if (mvcc_Enabled || op_type == MULTI_ROW_UPDATE)
     {
       for (s = 0; s < class_oid_cnt; s++)
 	{
@@ -9760,6 +10426,22 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       qexec_clear_internal_classes (thread_p, internal_classes,
 				    class_oid_cnt);
       db_private_free_and_init (thread_p, internal_classes);
+    }
+
+  if (mvcc_reev_classes != NULL)
+    {
+      db_private_free (thread_p, mvcc_reev_classes);
+      mvcc_reev_classes = NULL;
+    }
+  if (mvcc_reev_assigns != NULL)
+    {
+      db_private_free (thread_p, mvcc_reev_assigns);
+      mvcc_reev_assigns = NULL;
+    }
+  if (mvcc_upddel_reev_data.copyarea != NULL)
+    {
+      locator_free_copy_area (mvcc_upddel_reev_data.copyarea);
+      mvcc_upddel_reev_data.copyarea = NULL;
     }
 
   if (savepoint_used)
@@ -9805,6 +10487,22 @@ exit_on_error:
     {
       qexec_end_scan (thread_p, specp);
       qexec_close_scan (thread_p, specp);
+    }
+
+  if (mvcc_reev_classes != NULL)
+    {
+      db_private_free (thread_p, mvcc_reev_classes);
+      mvcc_reev_classes = NULL;
+    }
+  if (mvcc_reev_assigns != NULL)
+    {
+      db_private_free (thread_p, mvcc_reev_assigns);
+      mvcc_reev_assigns = NULL;
+    }
+  if (mvcc_upddel_reev_data.copyarea != NULL)
+    {
+      locator_free_copy_area (mvcc_upddel_reev_data.copyarea);
+      mvcc_upddel_reev_data.copyarea = NULL;
     }
 
   if (savepoint_used)
@@ -9911,8 +10609,9 @@ static int
 qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid,
 			    UPDDEL_CLASS_INFO_INTERNAL * internal_class)
 {
-  BTREE_UNIQUE_STATS *unique_stat_info;
+  BTREE_UNIQUE_STATS *unique_stat_info, *unique_stat1 = NULL;
   int error = NO_ERROR, i;
+  LOG_MVCC_CLASS_UPDATE_STATS *class_stats = NULL;
 
   if (internal_class->unique_stats.scan_cache_inited)
     {
@@ -9926,6 +10625,16 @@ qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid,
 	}
     }
 
+  if (mvcc_Enabled && !heap_is_mvcc_disabled_for_class (class_oid))
+    {
+      /* find statistics for current class */
+      class_stats = logtb_mvcc_find_class_stats (thread_p, class_oid, true);
+      if (class_stats == NULL)
+	{
+	  return ER_FAILED;
+	}
+    }
+
   unique_stat_info = internal_class->unique_stats.unique_stat_info;
 
   /* When uniqueness checking based on each local statistical information
@@ -9935,30 +10644,44 @@ qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid,
    */
   for (i = 0; i < internal_class->unique_stats.num_unique_btrees; i++)
     {
+      unique_stat1 = &unique_stat_info[i];
       /* If local statistical information is not valid, skip it. */
-      if (unique_stat_info[i].num_nulls == 0
-	  && unique_stat_info[i].num_keys == 0
-	  && unique_stat_info[i].num_oids == 0)
+      if (unique_stat1->num_nulls == 0
+	  && unique_stat1->num_keys == 0 && unique_stat1->num_oids == 0)
 	{
 	  /* no modification : non-unique index */
 	  continue;
 	}
       /* uniqueness checking based on local statistical information */
-      if ((unique_stat_info[i].num_nulls + unique_stat_info[i].num_keys) !=
-	  unique_stat_info[i].num_oids)
+      if ((unique_stat1->num_nulls + unique_stat1->num_keys) !=
+	  unique_stat1->num_oids)
 	{
 	  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, class_oid,
-					    &unique_stat_info[i].btid, NULL);
+					    &unique_stat1->btid, NULL);
 	  return ER_FAILED;
 	}
 
-      /* (num_nulls + num_keys) == num_oids */
-      /* reflect the local information into the global information. */
-      error = btree_reflect_unique_statistics (thread_p,
-					       &unique_stat_info[i]);
-      if (error != NO_ERROR)
+      if (class_stats != NULL)
 	{
-	  return error;
+	  /* In MVCC, at this point, we will update only in-memory statistics */
+	  error = logtb_mvcc_update_class_unique_stats
+	    (thread_p, class_oid, &unique_stat1->btid, unique_stat1->num_keys,
+	     unique_stat1->num_oids, unique_stat1->num_nulls, true);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+      else
+	{
+	  /* (num_nulls + num_keys) == num_oids */
+	  /* reflect the local information into the global information. */
+	  error =
+	    btree_reflect_unique_statistics (thread_p, unique_stat1, true);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
 	}
     }
   return NO_ERROR;
@@ -9982,8 +10705,10 @@ qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p,
 {
   PRUNING_SCAN_CACHE *scan_cache = NULL;
   SCANCACHE_LIST *node = NULL;
-  BTREE_UNIQUE_STATS *unique_stat_info;
+  BTREE_UNIQUE_STATS *unique_stat_info, *unique_stat = NULL;
   int error = NO_ERROR, i;
+  LOG_MVCC_CLASS_UPDATE_STATS *class_stats = NULL;
+
   for (node = pcontext->scan_cache_list; node != NULL; node = node->next)
     {
       scan_cache = &node->scan_cache;
@@ -9994,30 +10719,69 @@ qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p,
       unique_stat_info = scan_cache->scan_cache.index_stat_info;
       if (unique_stat_info != NULL)
 	{
+	  if (mvcc_Enabled && !OID_ISNULL (&scan_cache->scan_cache.class_oid)
+	      && !heap_is_mvcc_disabled_for_class (&scan_cache->scan_cache.
+						   class_oid))
+	    {
+	      class_stats =
+		logtb_mvcc_find_class_stats (thread_p,
+					     &scan_cache->scan_cache.
+					     class_oid, true);
+	      if (class_stats == NULL)
+		{
+		  return ER_FAILED;
+		}
+	    }
+	  else
+	    {
+	      class_stats = NULL;
+	    }
 	  for (i = 0; i < scan_cache->scan_cache.num_btids; i++)
 	    {
-	      if (unique_stat_info[i].num_keys == 0
-		  && unique_stat_info[i].num_nulls == 0
-		  && unique_stat_info[i].num_oids == 0)
+	      unique_stat = &unique_stat_info[i];
+	      if (unique_stat->num_keys == 0
+		  && unique_stat->num_nulls == 0
+		  && unique_stat->num_oids == 0)
 		{
 		  continue;
 		}
-	      if ((unique_stat_info[i].num_nulls +
-		   unique_stat_info[i].num_keys) !=
-		  unique_stat_info[i].num_oids)
+	      if ((unique_stat->num_nulls +
+		   unique_stat->num_keys) != unique_stat->num_oids)
 		{
 		  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL,
 						    &pcontext->root_oid,
-						    &unique_stat_info[i].
-						    btid, NULL);
+						    &unique_stat->btid, NULL);
 		  return ER_FAILED;
 		}
 
-	      error = btree_reflect_unique_statistics (thread_p,
-						       &unique_stat_info[i]);
-	      if (error != NO_ERROR)
+	      if (class_stats != NULL)
 		{
-		  return error;
+		  error =
+		    logtb_mvcc_update_class_unique_stats (thread_p,
+							  &scan_cache->
+							  scan_cache.
+							  class_oid,
+							  &unique_stat->btid,
+							  unique_stat->
+							  num_keys,
+							  unique_stat->
+							  num_oids,
+							  unique_stat->
+							  num_nulls, true);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		}
+	      else
+		{
+		  error =
+		    btree_reflect_unique_statistics (thread_p, unique_stat,
+						     true);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
 		}
 	    }
 	}
@@ -10054,6 +10818,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int op_type = SINGLE_ROW_DELETE;
   int s = 0, t = 0, error = NO_ERROR;
   int malloc_size = 0;
+  int mvcc_reev_class_cnt = 0, mvcc_reev_class_idx = 0;
   QPROC_DB_VALUE_LIST val_list = NULL;
   bool scan_open = false;
   UPDDEL_CLASS_INFO *query_class = NULL;
@@ -10061,14 +10826,27 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   DEL_LOB_INFO *del_lob_info_list = NULL;
   RECDES recdes;
   bool btid_dup_key_locked = false;
+  MVCC_REEV_DATA mvcc_reev_data;
+  MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
+  UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
+
+  /* get the snapshot, before acquiring locks, since the transaction may
+   * be blocked and we need the snapshot when delete starts, not later
+   */
+  (void) logtb_get_mvcc_snapshot (thread_p);
 
   class_oid_cnt = delete_->no_classes;
+  mvcc_reev_class_cnt = delete_->no_reev_classes;
+  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE,
+			     NULL);
+
+  mvcc_upddel_reev_data.copyarea = NULL;
 
   /* Allocate memory for oids, hfids and attributes cache info of all classes
    * used in update */
   error =
-    qexec_create_internal_classes (thread_p, delete_->classes,
-				   class_oid_cnt, &internal_classes);
+    qexec_create_internal_classes (thread_p, delete_->classes, class_oid_cnt,
+				   &internal_classes);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -10083,6 +10861,17 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   aptr = xasl->aptr_list;
+
+  error =
+    prepare_mvcc_reev_data (thread_p, aptr, xasl_state, mvcc_reev_class_cnt,
+			    delete_->mvcc_reev_classes,
+			    &mvcc_upddel_reev_data, delete_->no_classes,
+			    delete_->classes, internal_classes, 0, NULL, NULL,
+			    &mvcc_reev_classes, NULL, 0);
+  if (error != NO_ERROR)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
 
   if (qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
     {
@@ -10127,13 +10916,13 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   savepoint_used = 1;
 
   specp = xasl->spec_list;
-  /* readonly_scan = true */
+  assert (xasl->scan_op_type == S_SELECT);
+  /* mvcc_select_lock_needed = false */
   if (qexec_open_scan (thread_p, specp, xasl->val_list,
-		       &xasl_state->vd, true,
+		       &xasl_state->vd, false,
 		       specp->fixed_scan,
 		       specp->grouped_scan, true, &specp->s_id,
-		       xasl_state->query_id,
-		       xasl->composite_locking) != NO_ERROR)
+		       xasl_state->query_id, S_SELECT) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -10149,12 +10938,22 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  val_list = s_id->val_list->valp;
 
-	  class_oid_idx = 0;
-	  for (class_oid_idx = 0; class_oid_idx < class_oid_cnt;
+	  /* Get info for MVCC condition reevaluation */
+	  for (class_oid_idx = 0, mvcc_reev_class_idx = 0;
+	       class_oid_idx < class_oid_cnt
+	       || mvcc_reev_class_idx < mvcc_reev_class_cnt;
 	       val_list = val_list->next->next, class_oid_idx++)
 	    {
-	      query_class = &delete_->classes[class_oid_idx];
-	      internal_class = &internal_classes[class_oid_idx];
+	      if (mvcc_reev_class_idx < mvcc_reev_class_cnt
+		  && mvcc_reev_classes[mvcc_reev_class_idx].class_index ==
+		  class_oid_idx)
+		{
+		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
+		}
+	      else
+		{
+		  mvcc_reev_class = NULL;
+		}
 
 	      valp = val_list->val;
 	      if (valp == NULL)
@@ -10163,9 +10962,17 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 	      if (DB_IS_NULL (valp))
 		{
+		  if (class_oid_idx < class_oid_cnt)
+		    {
+		      internal_class = &internal_classes[class_oid_idx];
+		      internal_class->class_oid = NULL;
+		      internal_class->oid = NULL;
+		    }
 		  continue;
 		}
 	      oid = DB_GET_OID (valp);
+
+	      /* class OID */
 	      valp = val_list->next->val;
 	      if (valp == NULL)
 		{
@@ -10173,43 +10980,114 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 	      if (DB_IS_NULL (valp))
 		{
+		  if (class_oid_idx < class_oid_cnt)
+		    {
+		      internal_classes[class_oid_idx].class_oid = NULL;
+		    }
 		  continue;
 		}
 	      class_oid = DB_GET_OID (valp);
 
-	      if (class_oid
-		  && (internal_class->class_oid == NULL
-		      || !OID_EQ (internal_class->class_oid, class_oid)))
+	      if (class_oid_idx < class_oid_cnt)
 		{
-		  /* find class HFID */
-		  error =
-		    qexec_upddel_setup_current_class (thread_p, query_class,
-						      internal_class, op_type,
-						      class_oid);
-		  if (error != NO_ERROR)
-		    {
-		      /* matching class oid does not exist... error */
-		      er_log_debug (ARG_FILE_LINE,
-				    "qexec_execute_delete: class OID is not"
-				    " correct\n");
-		      GOTO_EXIT_ON_ERROR;
-		    }
+		  internal_class = &internal_classes[class_oid_idx];
 
-		  if (internal_class->no_lob_attrs)
+		  internal_class->oid = oid;
+
+		  if (class_oid
+		      && (internal_class->class_oid == NULL
+			  || !OID_EQ (internal_class->class_oid, class_oid)))
 		    {
-		      internal_class->crt_del_lob_info =
-			qexec_change_delete_lob_info (thread_p, xasl_state,
-						      internal_class,
-						      &del_lob_info_list);
-		      if (internal_class->crt_del_lob_info == NULL)
+		      query_class = &delete_->classes[class_oid_idx];
+
+		      /* find class HFID */
+		      error =
+			qexec_upddel_setup_current_class (thread_p,
+							  query_class,
+							  internal_class,
+							  op_type, class_oid);
+		      if (error != NO_ERROR)
+			{
+			  /* matching class oid does not exist... error */
+			  er_log_debug (ARG_FILE_LINE,
+					"qexec_execute_delete: class OID is not"
+					" correct\n");
+			  GOTO_EXIT_ON_ERROR;
+			}
+
+		      if (internal_class->no_lob_attrs)
+			{
+			  internal_class->crt_del_lob_info =
+			    qexec_change_delete_lob_info (thread_p,
+							  xasl_state,
+							  internal_class,
+							  &del_lob_info_list);
+			  if (internal_class->crt_del_lob_info == NULL)
+			    {
+			      GOTO_EXIT_ON_ERROR;
+			    }
+			}
+		      else
+			{
+			  internal_class->crt_del_lob_info = NULL;
+			}
+		    }
+		}
+
+	      if (mvcc_reev_class != NULL)
+		{
+		  /* class has changed to a new subclass */
+		  if (class_oid
+		      && !OID_EQ (&mvcc_reev_class->cls_oid, class_oid))
+		    {
+		      error =
+			qexec_upddel_mvcc_set_filters (thread_p, aptr,
+						       mvcc_reev_class,
+						       class_oid);
+		      if (error != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
 		    }
-		  else
-		    {
-		      internal_class->crt_del_lob_info = NULL;
-		    }
+		}
+	    }
+
+	  if (mvcc_upddel_reev_data.mvcc_cond_reev_list == NULL)
+	    {
+	      /* If scan order was not set then do it. This operation must be
+	       * run only once. We do it here and not at the beginning of this
+	       * function because the class OIDs must be set for classes
+	       * involved in reevaluation (in mvcc_reev_classes) prior to this
+	       * operation */
+	      mvcc_upddel_reev_data.mvcc_cond_reev_list =
+		qexec_mvcc_cond_reev_set_scan_order (aptr, mvcc_reev_classes,
+						     mvcc_reev_class_cnt,
+						     delete_->classes,
+						     class_oid_cnt);
+	    }
+
+	  for (class_oid_idx = 0, mvcc_reev_class_idx = 0;
+	       class_oid_idx < class_oid_cnt; class_oid_idx++)
+	    {
+	      internal_class = &internal_classes[class_oid_idx];
+	      oid = internal_class->oid;
+	      class_oid = internal_class->class_oid;
+
+	      if (mvcc_reev_class_cnt
+		  && mvcc_reev_classes[mvcc_reev_class_idx].class_index ==
+		  class_oid_idx)
+		{
+		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
+		}
+	      else
+		{
+		  mvcc_reev_class = NULL;
+		}
+	      mvcc_upddel_reev_data.curr_upddel = mvcc_reev_class;
+
+	      if (oid == NULL)
+		{
+		  continue;
 		}
 
 	      if (internal_class->crt_del_lob_info)
@@ -10233,6 +11111,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		    {
 		      error =
 			heap_attrinfo_read_dbvalues (thread_p, oid, &recdes,
+						     NULL,
 						     &crt_del_lob_info->
 						     attr_info);
 		      if (error != NO_ERROR)
@@ -10276,18 +11155,27 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		{
 		  btid_dup_key_locked = false;
 		}
-	      if (locator_attribute_info_force
-		  (thread_p, internal_class->class_hfid, oid,
-		   internal_class->btid, btid_dup_key_locked,
-		   NULL, NULL, 0,
-		   LC_FLUSH_DELETE, op_type, internal_class->scan_cache,
-		   &force_count, false, REPL_INFO_TYPE_STMT_NORMAL,
-		   DB_NOT_PARTITIONED_CLASS, NULL, NULL) != NO_ERROR)
+
+	      error =
+		locator_attribute_info_force (thread_p,
+					      internal_class->class_hfid, oid,
+					      internal_class->btid,
+					      btid_dup_key_locked, NULL, NULL,
+					      0, LC_FLUSH_DELETE, op_type,
+					      internal_class->scan_cache,
+					      &force_count, false,
+					      REPL_INFO_TYPE_STMT_NORMAL,
+					      DB_NOT_PARTITIONED_CLASS, NULL,
+					      NULL, &mvcc_reev_data, false);
+	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
+		{
+		  error = NO_ERROR;
+		}
+	      else if (error != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-
-	      if (force_count)
+	      else if (force_count)
 		{
 		  xasl->list_id->tuple_cnt++;
 		}
@@ -10329,7 +11217,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   /* reflect local statistical information into the root page */
-  if (op_type == MULTI_ROW_DELETE)
+  if (mvcc_Enabled || op_type == MULTI_ROW_DELETE)
     {
       for (s = 0; s < class_oid_cnt; s++)
 	{
@@ -10366,6 +11254,16 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       db_private_free_and_init (thread_p, internal_classes);
     }
 
+  if (mvcc_reev_classes != NULL)
+    {
+      db_private_free (thread_p, mvcc_reev_classes);
+      mvcc_reev_classes = NULL;
+    }
+  if (mvcc_upddel_reev_data.copyarea != NULL)
+    {
+      locator_free_copy_area (mvcc_upddel_reev_data.copyarea);
+      mvcc_upddel_reev_data.copyarea = NULL;
+    }
 
   if (savepoint_used)
     {
@@ -10417,6 +11315,17 @@ exit_on_error:
       qexec_clear_internal_classes (thread_p, internal_classes,
 				    class_oid_cnt);
       db_private_free_and_init (thread_p, internal_classes);
+    }
+
+  if (mvcc_reev_classes != NULL)
+    {
+      db_private_free (thread_p, mvcc_reev_classes);
+      mvcc_reev_classes = NULL;
+    }
+  if (mvcc_upddel_reev_data.copyarea != NULL)
+    {
+      locator_free_copy_area (mvcc_upddel_reev_data.copyarea);
+      mvcc_upddel_reev_data.copyarea = NULL;
     }
 
   if (savepoint_used)
@@ -10641,7 +11550,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
   if (idx_info->has_single_col)
     {
       error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid,
-						&new_recdes, index_attr_info);
+						&new_recdes, NULL,
+						index_attr_info);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -10695,7 +11605,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 
       OID_SET_NULL (&unique_oid);
 
-      r = xbtree_find_unique (thread_p, &btid, false, S_DELETE,
+      r = xbtree_find_unique (thread_p, &btid, S_DELETE,
 			      key_dbvalue, &pruned_oid, &unique_oid,
 			      is_global_index);
 
@@ -10712,8 +11622,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 	      bool found_partition = false;
 
 	      /* get actual class oid */
-	      if (heap_get_class_oid (thread_p, &pruned_oid, &unique_oid)
-		  == NULL)
+	      if (heap_get_class_oid (thread_p, &pruned_oid, &unique_oid,
+				      DONT_NEED_SNAPSHOT) == NULL)
 		{
 		  goto error_exit;
 		}
@@ -10765,10 +11675,43 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 	  /* xbtree_find_unique () has set an U_LOCK on the instance. We need
 	   * to get an X_LOCK in order to perform the delete.
 	   */
-	  if (lock_object (thread_p, &unique_oid, &pruned_oid, X_LOCK,
-			   LK_UNCOND_LOCK) != LK_GRANTED)
+	  if (mvcc_Enabled)
 	    {
-	      goto error_exit;
+	      SCAN_CODE scan_code;
+	      RECDES copy_recdes;
+
+	      copy_recdes.data = NULL;
+
+	      /* TO DO - need to handle reevaluation */
+	      scan_code =
+		heap_mvcc_get_version_for_delete (thread_p, &unique_oid,
+						  &class_oid, &copy_recdes,
+						  local_scan_cache, COPY,
+						  NULL);
+
+	      if (scan_code != S_SUCCESS)
+		{
+		  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+		    {
+		      er_clear ();
+		      if (key_dbvalue == &dbvalue)
+			{
+			  pr_clear_value (&dbvalue);
+			  key_dbvalue = NULL;
+			}
+		      continue;
+		    }
+
+		  goto error_exit;
+		}
+	    }
+	  else
+	    {
+	      if (lock_object (thread_p, &unique_oid, &pruned_oid, X_LOCK,
+			       LK_UNCOND_LOCK) != LK_GRANTED)
+		{
+		  goto error_exit;
+		}
 	    }
 
 	  error_code = locator_delete_lob_force (thread_p, &pruned_oid,
@@ -10786,12 +11729,17 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 					  local_scan_cache, &force_count,
 					  false, REPL_INFO_TYPE_STMT_NORMAL,
 					  DB_NOT_PARTITIONED_CLASS, NULL,
-					  NULL);
-	  if (error_code != NO_ERROR)
+					  NULL, NULL, false);
+
+	  if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
+	    {
+	      error_code = NO_ERROR;
+	    }
+	  else if (error_code != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
-	  if (force_count != 0)
+	  else if (force_count != 0)
 	    {
 	      assert (force_count == 1);
 	      *removed_count += force_count;
@@ -10927,7 +11875,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
   if (idx_info->has_single_col)
     {
       error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid,
-						&recdes, index_attr_info);
+						&recdes, NULL,
+						index_attr_info);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -10970,7 +11919,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 	    }
 	}
 
-      r = xbtree_find_unique (thread_p, &btid, false, S_UPDATE,
+      r = xbtree_find_unique (thread_p, &btid, S_UPDATE,
 			      key_dbvalue, &class_oid, &unique_oid,
 			      is_global_index);
 
@@ -10979,8 +11928,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 	  if (pruning_type != DB_NOT_PARTITIONED_CLASS && is_global_index)
 	    {
 	      /* get actual class oid */
-	      if (heap_get_class_oid (thread_p, &class_oid, &unique_oid)
-		  == NULL)
+	      if (heap_get_class_oid (thread_p, &class_oid, &unique_oid,
+				      DONT_NEED_SNAPSHOT) == NULL)
 		{
 		  goto error_exit;
 		}
@@ -11029,7 +11978,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 		{
 		  /* find the class to which unique_oid belongs to */
 		  if (heap_get_class_oid (thread_p, &pruned_class,
-					  &unique_oid) == NULL)
+					  &unique_oid,
+					  DONT_NEED_SNAPSHOT) == NULL)
 		    {
 		      goto error_exit;
 		    }
@@ -11186,7 +12136,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
     }
 
   error = heap_attrinfo_read_dbvalues (thread_p, &unique_oid, &rec_descriptor,
-				       odku->attr_info);
+				       NULL, odku->attr_info);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -11249,8 +12199,13 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku,
 					odku->no_assigns, LC_FLUSH_UPDATE,
 					local_op_type, local_scan_cache,
 					force_count, false, repl_info,
-					pruning_type, pcontext, NULL);
-  if (error != NO_ERROR)
+					pruning_type, pcontext, NULL, NULL,
+					false);
+  if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
+    {
+      error = NO_ERROR;
+    }
+  else if (error != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -11599,13 +12554,14 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
       scan_cache_inited = true;
 
-      /* readonly_scan = true */
+      assert (xasl->scan_op_type == S_SELECT);
+      /* mvcc_select_lock_needed = false */
       if (qexec_open_scan (thread_p, specp, xasl->val_list,
-			   &xasl_state->vd, true,
+			   &xasl_state->vd, false,
 			   specp->fixed_scan,
 			   specp->grouped_scan, true,
 			   &specp->s_id, xasl_state->query_id,
-			   xasl->composite_locking) != NO_ERROR)
+			   S_SELECT) != NO_ERROR)
 	{
 	  if (savepoint_used)
 	    {
@@ -11752,8 +12708,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 						false,
 						REPL_INFO_TYPE_STMT_NORMAL,
 						insert->pruning_type,
-						pcontext, func_indx_preds) !=
-		  NO_ERROR)
+						pcontext, func_indx_preds,
+						NULL, false) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -11953,7 +12909,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 						false,
 						REPL_INFO_TYPE_STMT_NORMAL,
 						insert->pruning_type,
-						pcontext, NULL) != NO_ERROR)
+						pcontext, NULL, NULL, false)
+		  != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -11999,7 +12956,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   /* check uniques */
-  if (BTREE_IS_MULTI_ROW_OP (scan_cache_op_type))
+  if (mvcc_Enabled || BTREE_IS_MULTI_ROW_OP (scan_cache_op_type))
     {
       /* In this case, consider only single class.
        * Therefore, uniqueness checking is performed based on
@@ -12012,28 +12969,56 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
       else
 	{
+	  BTREE_UNIQUE_STATS *unique_stats = NULL;
+	  LOG_MVCC_CLASS_UPDATE_STATS *class_stats =
+	    logtb_mvcc_find_class_stats (thread_p, &class_oid, true);
+
+	  if (class_stats == NULL)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
 	  for (k = 0; k < scan_cache.num_btids; k++)
 	    {
-	      if (scan_cache.index_stat_info[k].num_nulls == 0
-		  && scan_cache.index_stat_info[k].num_keys == 0
-		  && scan_cache.index_stat_info[k].num_oids == 0)
+	      unique_stats = &scan_cache.index_stat_info[k];
+	      if (unique_stats->num_nulls == 0
+		  && unique_stats->num_keys == 0
+		  && unique_stats->num_oids == 0)
 		{
 		  /* No modification to be done. Either a non-unique index or
 		     the delete/insert operations canceled each other out. */
 		  continue;
 		}
-	      else
-		{
-		  assert (scan_cache.index_stat_info[k].num_nulls +
-			  scan_cache.index_stat_info[k].num_keys ==
-			  scan_cache.index_stat_info[k].num_oids);
 
-		  if (btree_reflect_unique_statistics
-		      (thread_p,
-		       &(scan_cache.index_stat_info[k])) != NO_ERROR)
+	      if (unique_stats->num_nulls +
+		  unique_stats->num_keys != unique_stats->num_oids)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      if (mvcc_Enabled)
+		{
+		  error =
+		    logtb_mvcc_update_class_unique_stats (thread_p,
+							  &class_oid,
+							  &unique_stats->btid,
+							  unique_stats->
+							  num_keys,
+							  unique_stats->
+							  num_oids,
+							  unique_stats->
+							  num_nulls, true);
+		  if (error != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
+		  continue;
+		}
+
+	      if (btree_reflect_unique_statistics
+		  (thread_p, unique_stats, true) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
 		}
 	    }
 	}
@@ -12284,11 +13269,22 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       int cache_rest_end_needed = false;
       int scan_cache_end_needed = false;
       int status = NO_ERROR;
+      MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
       /* Start heap file scan operation */
       /* A new argument(is_indexscan = false) is appended */
+
+      if (mvcc_Enabled)
+	{
+	  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+	  if (mvcc_snapshot == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+
       (void) heap_scancache_start (thread_p, &scan_cache, NULL, NULL,
-				   true, false, LOCKHINT_NONE);
+				   true, false, mvcc_snapshot);
       scan_cache_end_needed = true;
 
       /* fetch the object and the class oid */
@@ -12419,6 +13415,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  /* read the predicate values from the heap into the scancache */
 	  status =
 	    heap_attrinfo_read_dbvalues (thread_p, dbvaloid, &oRec,
+					 &scan_cache,
 					 specp->s.cls_node.cache_pred);
 	  if (status != NO_ERROR)
 	    {
@@ -12462,7 +13459,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      fetch->fetch_res = true;
 	      /* read the rest of the values from the heap */
 	      status = heap_attrinfo_read_dbvalues (thread_p, dbvaloid,
-						    &oRec,
+						    &oRec, &scan_cache,
 						    specp->s.
 						    cls_node.cache_rest);
 	      if (status != NO_ERROR)
@@ -12683,12 +13680,20 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
       value->do_increment = n_increment;
 
       force_count = 0;
-      if (locator_attribute_info_force (thread_p, class_hfid, oid, NULL,
-					false, &attr_info, &attrid, 1,
-					area_op, op_type, &scan_cache,
-					&force_count, false,
-					REPL_INFO_TYPE_STMT_NORMAL,
-					pruning_type, NULL, NULL) != NO_ERROR)
+      error = locator_attribute_info_force (thread_p, class_hfid, oid, NULL,
+					    false, &attr_info, &attrid, 1,
+					    area_op, op_type, &scan_cache,
+					    &force_count, false,
+					    REPL_INFO_TYPE_STMT_NORMAL,
+					    pruning_type, NULL, NULL,
+					    NULL, false);
+      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
+	{
+	  assert (force_count == 0);
+	  error = NO_ERROR;
+	}
+      else if (error != NO_ERROR)
+
 	{
 	  error = ER_FAILED;
 	  goto wrapup;
@@ -12745,13 +13750,24 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   CL_ATTR_ID attrid;
   int n_increment;
   int savepoint_used = 0;
-  OID *oid, *class_oid, class_oid_buf;
+  OID *oid = NULL, *class_oid = NULL, class_oid_buf, last_cached_class_oid;
   HFID *class_hfid;
   int lock_ret;
   int tran_index;
   int err = NO_ERROR;
   int needs_pruning = DB_NOT_PARTITIONED_CLASS;
+  HEAP_SCANCACHE scan_cache;
+  RECDES copy_recdes;
+  bool scan_cache_inited = false;
+  SCAN_CODE scan_code;
+  MVCC_INFO *curr_mvcc_info = NULL;
+  LOG_TDES *tdes = NULL;
+  MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
 
+  if (mvcc_Enabled == true)
+    {
+      OID_SET_NULL (&last_cached_class_oid);
+    }
   list = xasl->selected_upd_list;
 
   /* in this function,
@@ -12771,6 +13787,16 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       repl_start_flush_mark (thread_p);
     }
+
+  tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  curr_mvcc_info = tdes->mvcc_info;
+
+  if (logtb_get_new_subtransaction_mvccid (thread_p, curr_mvcc_info)
+      != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   /* do increment operation */
   for (selupd = list; selupd; selupd = selupd->next)
     {
@@ -12834,7 +13860,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    {
 	      ACCESS_SPEC_TYPE *specp;
 
-	      if (heap_get_class_oid (thread_p, &class_oid_buf, oid) == NULL)
+	      if (heap_get_class_oid (thread_p, &class_oid_buf, oid,
+				      DONT_NEED_SNAPSHOT) == NULL)
 		{
 		  goto exit_on_error;
 		}
@@ -12858,7 +13885,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			  /* perform pruning */
 			  err = qexec_prune_spec (thread_p, specp,
 						  &xasl_state->vd,
-						  xasl->composite_locking);
+						  xasl->scan_op_type);
 			  if (err != NO_ERROR)
 			    {
 			      goto exit_on_error;
@@ -12889,39 +13916,106 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 	    }
 
-	  lock_ret = lock_object (thread_p, oid, class_oid, X_LOCK,
-				  LK_UNCOND_LOCK);
-	  switch (lock_ret)
+	  if (mvcc_Enabled == true)
 	    {
-	    case LK_GRANTED:
-	      /* normal case */
-	      break;
+	      if (!OID_EQ (&last_cached_class_oid, class_oid)
+		  && scan_cache_inited == true)
+		{
+		  (void) heap_scancache_end (thread_p, &scan_cache);
+		  scan_cache_inited = false;
+		}
 
-	    case LK_NOTGRANTED_DUE_ABORTED:
-	      /* error, deadlock or something */
-	      goto exit_on_error;
+	      if (scan_cache_inited == false)
+		{
+		  (void) heap_scancache_start (thread_p, &scan_cache,
+					       class_hfid, class_oid, false,
+					       false, NULL);
+		  scan_cache_inited = true;
+		  COPY_OID (&last_cached_class_oid, class_oid);
+		}
+	      /* need to handle reevaluation */
+	      copy_recdes.data = NULL;
+	      scan_code =
+		heap_mvcc_get_version_for_delete (thread_p, oid, class_oid,
+						  &copy_recdes,
+						  &scan_cache, COPY, NULL);
+	      if (scan_code != S_SUCCESS)
+		{
+		  int er_id = er_errid ();
+		  if (er_id == ER_LK_UNILATERALLY_ABORTED)
+		    {
+		      /* error, deadlock or something */
+		      goto exit_on_error;
+		    }
+		  else if (er_id == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG
+			   || er_id == ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG
+			   || er_id == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG)
+		    {
+		      /* ignore lock timeout for click counter,
+		         and skip this increment operation */
+		      er_log_debug (ARG_FILE_LINE,
+				    "qexec_execute_selupd_list: lock(X_LOCK) timed out "
+				    "for OID { %d %d %d } class OID { %d %d %d }\n",
+				    oid->pageid, oid->slotid, oid->volid,
+				    class_oid->pageid, class_oid->slotid,
+				    class_oid->volid);
+		      er_clear ();
+		      continue;
+		    }
+		  else
+		    {
+		      if (er_id != NO_ERROR)
+			{
+			  er_clear ();
+			}
+		      /* simply, skip this increment operation */
+		      er_log_debug (ARG_FILE_LINE,
+				    "qexec_execute_selupd_list: skip for OID "
+				    "{ %d %d %d } class OID { %d %d %d } error_id %d\n",
+				    oid->pageid, oid->slotid, oid->volid,
+				    class_oid->pageid, class_oid->slotid,
+				    class_oid->volid, er_id);
 
-	    case LK_NOTGRANTED_DUE_TIMEOUT:
-	      /* ignore lock timeout for click counter,
-	         and skip this increment operation */
-	      er_log_debug (ARG_FILE_LINE,
-			    "qexec_execute_selupd_list: lock(X_LOCK) timed out "
-			    "for OID { %d %d %d } class OID { %d %d %d }\n",
-			    oid->pageid, oid->slotid, oid->volid,
-			    class_oid->pageid, class_oid->slotid,
-			    class_oid->volid);
-	      er_clear ();
-	      continue;
+		      continue;
+		    }
+		}
+	    }
+	  else
+	    {
+	      lock_ret = lock_object (thread_p, oid, class_oid, X_LOCK,
+				      LK_UNCOND_LOCK);
+	      switch (lock_ret)
+		{
+		case LK_GRANTED:
+		  /* normal case */
+		  break;
 
-	    default:
-	      /* simply, skip this increment operation */
-	      er_log_debug (ARG_FILE_LINE,
-			    "qexec_execute_selupd_list: skip for OID "
-			    "{ %d %d %d } class OID { %d %d %d } lock_ret %d\n",
-			    oid->pageid, oid->slotid, oid->volid,
-			    class_oid->pageid, class_oid->slotid,
-			    class_oid->volid, lock_ret);
-	      continue;
+		case LK_NOTGRANTED_DUE_ABORTED:
+		  /* error, deadlock or something */
+		  goto exit_on_error;
+
+		case LK_NOTGRANTED_DUE_TIMEOUT:
+		  /* ignore lock timeout for click counter,
+		     and skip this increment operation */
+		  er_log_debug (ARG_FILE_LINE,
+				"qexec_execute_selupd_list: lock(X_LOCK) timed out "
+				"for OID { %d %d %d } class OID { %d %d %d }\n",
+				oid->pageid, oid->slotid, oid->volid,
+				class_oid->pageid, class_oid->slotid,
+				class_oid->volid);
+		  er_clear ();
+		  continue;
+
+		default:
+		  /* simply, skip this increment operation */
+		  er_log_debug (ARG_FILE_LINE,
+				"qexec_execute_selupd_list: skip for OID "
+				"{ %d %d %d } class OID { %d %d %d } lock_ret %d\n",
+				oid->pageid, oid->slotid, oid->volid,
+				class_oid->pageid, class_oid->slotid,
+				class_oid->volid, lock_ret);
+		  continue;
+		}
 	    }
 
 	  if (qexec_execute_increment (thread_p, oid, class_oid, class_hfid,
@@ -12931,6 +14025,12 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      goto exit_on_error;
 	    }
 	}
+    }
+
+  if (mvcc_Enabled == true && scan_cache_inited == true)
+    {
+      (void) heap_scancache_end (thread_p, &scan_cache);
+      scan_cache_inited = false;
     }
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p)
@@ -12961,6 +14061,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 exit:
   lock_stop_instant_lock_mode (thread_p, tran_index, true);
+  logtb_complete_sub_mvcc (thread_p, tdes);
 
   if (err != NO_ERROR)
     {
@@ -12973,6 +14074,13 @@ exit:
     }
 
 exit_on_error:
+
+  logtb_complete_sub_mvcc (thread_p, tdes);
+  if (mvcc_Enabled == true && scan_cache_inited == true)
+    {
+      (void) heap_scancache_end (thread_p, &scan_cache);
+      scan_cache_inited = false;
+    }
 
   err = ER_FAILED;
 
@@ -13175,7 +14283,6 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	   multi UPDATE/DELETE */
 	if (QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl)
 	    && !XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
-
 	  {
 	    if (qexec_init_upddel_ehash_files (thread_p, xasl) != NO_ERROR)
 	      {
@@ -13587,7 +14694,8 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   distinct_needed = (xasl->option == Q_DISTINCT) ? true : false;
 
   /* Acquire the lockset if composite locking is enabled. */
-  if ((xasl->composite_locking || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
+  if ((COMPOSITE_LOCK (xasl->scan_op_type)
+       || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
       && (!XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG)))
     {
       if (lock_finalize_composite_lock (thread_p, &xasl->composite_lock) !=
@@ -13835,11 +14943,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   ACCESS_SPEC_TYPE *spec_ptr[2];
   ACCESS_SPEC_TYPE *specp;
   XASL_SCAN_FNC_PTR func_vector = (XASL_SCAN_FNC_PTR) NULL;
-  int readonly_scan = true, readonly_scan2, multi_readonly_scan = false;
+  int multi_upddel = false;
   int fixed_scan_flag;
   QFILE_LIST_MERGE_INFO *merge_infop;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
-  bool iscan_oid_order;
+  XASL_NODE *fixed_scan_xasl = NULL;
+  bool iscan_oid_order, mvcc_select_lock_needed = false;
+  bool has_index_scan = false;
   int old_wait_msecs, wait_msecs;
   int error;
 
@@ -13849,6 +14959,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
    * Pre_processing
    */
 
+  if (mvcc_Enabled && XASL_IS_FLAGED (xasl, XASL_SELECT_MVCC_LOCK_NEEDED))
+    {
+      mvcc_select_lock_needed = true;
+    }
   if (xasl->limit_row_count)
     {
       DB_LOGICAL l;
@@ -14095,10 +15209,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  xasl->proc.buildvalue.agg_domains_resolved = 0;
 	}
 
-      multi_readonly_scan = QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl);
-      if (xasl->composite_locking || multi_readonly_scan)
+      multi_upddel = QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl);
+      if (COMPOSITE_LOCK (xasl->scan_op_type) || multi_upddel)
 	{
-	  readonly_scan = false;
 	  if (lock_initialize_composite_lock (thread_p, &xasl->composite_lock)
 	      != NO_ERROR)
 	    {
@@ -14217,41 +15330,65 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
        */
       if (xasl->spec_list)
 	{
-	  /* do locking on each instance instead of composite locking */
-	  if (xasl->composite_locking)
+	  /* Decide which scan will use fixed flags and which won't.
+	   * There are several cases here:
+	   * 1. Do not use fixed scans if locks on objects are required.
+	   * 2. Disable all fixed scans if any index scan is used (this is
+	   *    legacy and should be reconsidered).
+	   * 3. Disable fixed scan for outer scans. Fixed cannot be allowed
+	   *    while new scans start which also need to fix pages. This may
+	   *    lead to page deadlocks.
+	   *
+	   * NOTE: Only the innermost scans are allowed fixed scans.
+	   */
+	  if (COMPOSITE_LOCK (xasl->scan_op_type))
 	    {
-	      fixed_scan_flag = false;
+	      /* Do locking on each instance instead of composite locking */
+	      /* Fall through */
 	    }
 	  else
 	    {
-	      fixed_scan_flag = true;
 	      for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
 		{
 		  specp = xptr->spec_list;
 		  for (; specp; specp = specp->next)
 		    {
-		      if (specp->type == TARGET_CLASS
-			  && specp->access == INDEX)
+		      if (specp->type == TARGET_CLASS)
 			{
-			  fixed_scan_flag = false;
-			  break;
+			  /* Update fixed scan XASL */
+			  fixed_scan_xasl = xptr;
+			  if (IS_ANY_INDEX_ACCESS (specp->access))
+			    {
+			      has_index_scan = true;
+			      break;
+			    }
 			}
 		    }
-		  if (fixed_scan_flag == false)
+		  if (has_index_scan)
 		    {
+		      /* Stop search */
 		      break;
 		    }
 		  specp = xptr->merge_spec;
 		  if (specp)
 		    {
-		      if (specp->type == TARGET_CLASS
-			  && specp->access == INDEX)
+		      if (specp->type == TARGET_CLASS)
 			{
-			  fixed_scan_flag = false;
-			  break;
+			  /* Update fixed scan XASL */
+			  fixed_scan_xasl = xptr;
+			  if (IS_ANY_INDEX_ACCESS (specp->access))
+			    {
+			      has_index_scan = true;
+			      break;
+			    }
 			}
 		    }
 		}
+	    }
+	  if (has_index_scan)
+	    {
+	      /* Index found, no fixed is allowed */
+	      fixed_scan_xasl = NULL;
 	    }
 
 	  /* open all the scans that are involved within the query,
@@ -14259,6 +15396,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	   */
 	  for (xptr = xasl, level = 0; xptr; xptr = xptr->scan_ptr, level++)
 	    {
+	      /* Check if fixed scan is allowed in this XASL node */
+	      fixed_scan_flag = (xptr == fixed_scan_xasl);
+
 	      /* consider all the access specification nodes */
 	      spec_ptr[0] = xptr->spec_list;
 	      spec_ptr[1] = xptr->merge_spec;
@@ -14267,10 +15407,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		  for (specp = spec_ptr[spec_level]; specp;
 		       specp = specp->next)
 		    {
-		      /* we must make scans fixed because non-fixed scans
-		       * have never been tested.  There is also some
-		       * discussion as to the utility of non fixed scans.
-		       */
 		      specp->fixed_scan = fixed_scan_flag;
 
 		      /* set if the scan will be done in a grouped manner */
@@ -14305,7 +15441,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		       */
 		      if (specp->grouped_scan
 			  && specp->type == TARGET_CLASS
-			  && specp->access == INDEX
+			  && IS_ANY_INDEX_ACCESS (specp->access)
 			  && specp->indexptr->key_info.is_constant == false)
 			{
 			  specp->grouped_scan = false;
@@ -14340,13 +15476,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 #endif
 			  if (qexec_open_scan (thread_p, specp,
 					       xptr->merge_val_list,
-					       &xasl_state->vd, readonly_scan,
+					       &xasl_state->vd,
+					       mvcc_select_lock_needed,
 					       specp->fixed_scan,
 					       specp->grouped_scan,
 					       iscan_oid_order,
 					       &specp->s_id,
 					       xasl_state->query_id,
-					       xasl->composite_locking) !=
+					       xasl->scan_op_type) !=
 			      NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p,
@@ -14357,11 +15494,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      else
 			{
 			  if (specp->type == TARGET_CLASS
-			      && specp->access == INDEX
-			      &&
-			      (qfile_is_sort_list_covered
-			       (xptr->after_iscan_list,
-				xptr->orderby_list) == true))
+			      && IS_ANY_INDEX_ACCESS (specp->access)
+			      && qfile_is_sort_list_covered
+			      (xptr->after_iscan_list, xptr->orderby_list))
 			    {
 			      specp->grouped_scan = false;
 			      iscan_oid_order = false;
@@ -14376,32 +15511,17 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 					     xasl->sql_hash_text, "", 0);
 #endif
 #endif
-			  if (multi_readonly_scan)
-			    {
-			      if (xptr->composite_locking)
-				{
-				  readonly_scan2 = false;
-				}
-			      else
-				{
-				  readonly_scan2 = true;
-				}
-			    }
-			  else
-			    {
-			      readonly_scan2 = readonly_scan;
-			    }
 
 			  if (qexec_open_scan (thread_p, specp,
 					       xptr->val_list,
 					       &xasl_state->vd,
-					       readonly_scan2,
+					       mvcc_select_lock_needed,
 					       specp->fixed_scan,
 					       specp->grouped_scan,
 					       iscan_oid_order,
 					       &specp->s_id,
 					       xasl_state->query_id,
-					       xptr->composite_locking) !=
+					       xptr->scan_op_type) !=
 			      NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p,
@@ -14666,7 +15786,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    }
 	}
 
-      if ((xasl->composite_locking
+      if ((COMPOSITE_LOCK (xasl->scan_op_type)
 	   || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
 	  && XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
 	{
@@ -17980,12 +19100,13 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  /* start the scanner on "input" */
 	  if (connect_by->single_table_opt)
 	    {
+	      assert (xasl->scan_op_type == S_SELECT);
 	      /* heap/index scan for single table query optimization */
 	      if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list,
-				   &xasl_state->vd, true, true, false, false,
+				   &xasl_state->vd, false, true, false, false,
 				   &xasl->spec_list->s_id,
 				   xasl_state->query_id,
-				   xasl->composite_locking) != NO_ERROR)
+				   S_SELECT) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -20198,14 +21319,6 @@ qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p,
 	  gby_vallist = gby_vallist->next;
 	}
     }
-
-wrapup:
-  return;
-
-exit_on_error:
-  assert (er_errid () != NO_ERROR);
-  gbstate->state = er_errid ();
-  goto wrapup;
 }
 
 /*
@@ -20304,10 +21417,6 @@ qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p,
 wrapup:
   return level;
 
-exit_on_error:
-  assert (er_errid () != NO_ERROR);
-  gbstate->state = er_errid ();
-  goto wrapup;
 }
 
 /*
@@ -20451,12 +21560,15 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p,
     {
       if (gbstate->composite_lock != NULL)
 	{
-	  if (qexec_add_composite_lock
-	      (thread_p, gbstate->g_outptr_list->valptrp,
-	       xasl_state, gbstate->composite_lock,
-	       gbstate->upd_del_class_cnt, NULL) != NO_ERROR)
+	  if (mvcc_Enabled == false)
 	    {
-	      GOTO_EXIT_ON_ERROR;
+	      if (qexec_add_composite_lock
+		  (thread_p, gbstate->g_outptr_list->valptrp,
+		   xasl_state, gbstate->composite_lock,
+		   gbstate->upd_del_class_cnt, NULL) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
 	    }
 	}
     }
@@ -23047,7 +24159,6 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p,
       func_state->curr_sort_key_tuple_count = 0;
     }
 
-wrapup:
   return NO_ERROR;
 
 exit_on_error:
@@ -26233,8 +27344,11 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 		    {
 		      if (OID_EQ (&query_class->class_oid[j], class_oid))
 			{
-			  if (specp->access == SEQUENTIAL
-			      && specp->pruning_type != DB_PARTITIONED_CLASS)
+			  if ((specp->access == SEQUENTIAL
+			       || specp->access == SEQUENTIAL_RECORD_INFO
+			       || specp->access == SEQUENTIAL_PAGE_SCAN)
+			      && specp->pruning_type != DB_PARTITIONED_CLASS
+			      && (!mvcc_Enabled || specp->where_pred == NULL))
 			    {
 			      /* X_LOCK classes which are accessed
 			       * sequentially. If this is a partitioned class,
@@ -27545,6 +28659,16 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
       class_->btids = NULL;
       class_->btids_dup_key_locked = NULL;
 
+      class_->btid = NULL;
+      class_->btid_dup_key_locked = NULL;
+
+      class_->no_lob_attrs = 0;
+      class_->lob_attr_ids = NULL;
+      class_->crt_del_lob_info = NULL;
+      class_->extra_assign_reev_cnt = 0;
+      class_->mvcc_extra_assign_reev = NULL;
+      class_->mvcc_reev_assigns = NULL;
+
       partition_init_pruning_context (&class_->context);
 
       class_->unique_stats.scan_cache_inited = false;
@@ -27589,7 +28713,6 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
 	(bool **) db_private_alloc (thread_p,
 				    query_class->no_subclasses *
 				    sizeof (bool *));
-
       if (class_->btids_dup_key_locked == NULL)
 	{
 	  goto exit_on_error;
@@ -27600,12 +28723,6 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p,
 	  BTID_SET_NULL (&class_->btids[cl_index]);
 	  class_->btids_dup_key_locked[cl_index] = NULL;
 	}
-      class_->btid = NULL;
-      class_->btid_dup_key_locked = NULL;
-
-      class_->no_lob_attrs = 0;
-      class_->lob_attr_ids = NULL;
-      class_->crt_del_lob_info = NULL;
     }
 
   *internal_classes = classes;
@@ -27624,6 +28741,101 @@ exit_on_error:
 }
 
 /*
+ * qexec_create_internal_assignments () - create and initialize structures for
+ *					  MVCC assignments reevaluation
+ * return : error code or NO_ERROR
+ * thread_p (in) :
+ * aptr (in): XASL for generated SELECT statement for UPDATE
+ * should_delete (in): 
+ * classes (in) : internal classes array
+ * no_classes (in) : count internal classes array elements
+ * no_assignments (in) : no of assignments
+ * assignments(in): array of assignments received from client
+ * mvcc_reev_assigns (in/out) : allocated array of assignments used in
+ *				reevaluation
+ */
+static int
+qexec_create_mvcc_reev_assignments (THREAD_ENTRY * thread_p, XASL_NODE * aptr,
+				    bool should_delete,
+				    UPDDEL_CLASS_INFO_INTERNAL * classes,
+				    int no_classes,
+				    int no_assignments,
+				    UPDATE_ASSIGNMENT * assignments,
+				    UPDATE_MVCC_REEV_ASSIGNMENT **
+				    mvcc_reev_assigns)
+{
+  int idx, new_assign_idx, count;
+  UPDDEL_CLASS_INFO_INTERNAL *class = NULL;
+  UPDDEL_MVCC_COND_REEVAL *mvcc_reev_class = NULL;
+  UPDATE_ASSIGNMENT *assign = NULL;
+  UPDATE_MVCC_REEV_ASSIGNMENT *new_assigns = NULL, *new_assign =
+    NULL, *prev_new_assign = NULL;
+  UPDDEL_MVCC_COND_REEVAL *mvcc_crvd_elem = NULL;
+  REGU_VARIABLE_LIST regu_var = NULL;
+  OUTPTR_LIST *outptr_list = NULL;
+
+  if (mvcc_reev_assigns == NULL || !no_assignments)
+    {
+      return NO_ERROR;
+    }
+
+  outptr_list = aptr->outptr_list;
+
+  count = aptr->upd_del_class_cnt + aptr->mvcc_reev_extra_cls_cnt;
+  /* skip OID - CLASS OID pairs and should_delete */
+  for (idx = 0, regu_var = outptr_list->valptrp; idx < count;
+       idx++, regu_var = regu_var->next->next);
+  if (should_delete)
+    {
+      regu_var = regu_var->next;
+    }
+
+  new_assigns =
+    db_private_alloc (thread_p,
+		      sizeof (UPDATE_MVCC_REEV_ASSIGNMENT) * no_assignments);
+  if (new_assigns == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  for (idx = 0, new_assign_idx = 0; idx < no_assignments; idx++)
+    {
+      assign = &assignments[idx];
+      class = &classes[assign->cls_idx];
+
+      new_assign = &new_assigns[new_assign_idx++];
+      new_assign->constant = assign->constant;
+      if (new_assign->constant == NULL)
+	{
+	  new_assign->regu_right = &regu_var->value;
+	  regu_var = regu_var->next;
+	}
+      else
+	{
+	  new_assign->regu_right = NULL;
+	}
+      new_assign->next = NULL;
+      if (class->mvcc_reev_assigns == NULL)
+	{
+	  class->mvcc_reev_assigns = new_assign;
+	}
+      else
+	{
+	  prev_new_assign = class->mvcc_reev_assigns;
+	  while (prev_new_assign->next != NULL)
+	    {
+	      prev_new_assign = prev_new_assign->next;
+	    }
+	  prev_new_assign->next = new_assign;
+	}
+    }
+
+  *mvcc_reev_assigns = new_assigns;
+
+  return NO_ERROR;
+}
+
+/*
  * qexec_clear_internal_classes () - clear memory allocated for classes
  * return : void
  * thread_p (in) :
@@ -27635,35 +28847,134 @@ qexec_clear_internal_classes (THREAD_ENTRY * thread_p,
 			      UPDDEL_CLASS_INFO_INTERNAL * classes, int count)
 {
   int i;
+  UPDDEL_CLASS_INFO_INTERNAL *cls_int = NULL;
+
   for (i = 0; i < count; i++)
     {
-      if (classes[i].btids != NULL)
+      cls_int = &classes[i];
+      if (cls_int->btids != NULL)
 	{
-	  db_private_free (thread_p, classes[i].btids);
+	  db_private_free_and_init (thread_p, cls_int->btids);
 	}
-      if (classes[i].btids_dup_key_locked)
+      if (cls_int->btids_dup_key_locked)
 	{
-	  db_private_free (thread_p, classes[i].btids_dup_key_locked);
+	  db_private_free_and_init (thread_p, cls_int->btids_dup_key_locked);
 	}
-      if (classes[i].unique_stats.scan_cache_inited)
+      if (cls_int->unique_stats.scan_cache_inited)
 	{
 	  locator_end_force_scan_cache (thread_p,
-					&classes[i].unique_stats.scan_cache);
+					&cls_int->unique_stats.scan_cache);
 	}
-      if (classes[i].unique_stats.unique_stat_info != NULL)
+      if (cls_int->unique_stats.unique_stat_info != NULL)
 	{
-	  db_private_free (thread_p,
-			   classes[i].unique_stats.unique_stat_info);
+	  db_private_free_and_init (thread_p,
+				    cls_int->unique_stats.unique_stat_info);
 	}
-      if (classes[i].is_attr_info_inited)
+      if (cls_int->is_attr_info_inited)
 	{
-	  heap_attrinfo_end (thread_p, &classes[i].attr_info);
+	  heap_attrinfo_end (thread_p, &cls_int->attr_info);
 	}
-      if (classes[i].needs_pruning)
+      if (cls_int->needs_pruning)
 	{
-	  partition_clear_pruning_context (&classes[i].context);
+	  partition_clear_pruning_context (&cls_int->context);
+	}
+      if (cls_int->mvcc_extra_assign_reev != NULL)
+	{
+	  db_private_free_and_init (thread_p,
+				    cls_int->mvcc_extra_assign_reev);
 	}
     }
+}
+
+/*
+ * qexec_upddel_mvcc_set_filters () - setup current class filters
+ *				      in a class hierarchy
+ * return : error code or NO_ERROR
+ * thread_p (in) :
+ * aptr_list (in) : 
+ * mvcc_data_filter (in) : filter info
+ * class_oid (in) : class oid
+ *
+ * Note: this function is used only in MVCC
+ */
+static int
+qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p,
+			       XASL_NODE * aptr_list,
+			       UPDDEL_MVCC_COND_REEVAL * mvcc_reev_class,
+			       OID * class_oid)
+{
+  SCAN_ID *scan_id = NULL;
+  HEAP_SCAN_ID *hsidp = NULL;
+  INDX_SCAN_ID *isidp = NULL;
+  ACCESS_SPEC_TYPE *curr_spec = NULL;
+
+  assert (mvcc_Enabled == true);
+  while (aptr_list != NULL && curr_spec == NULL)
+    {
+      curr_spec = aptr_list->spec_list;
+      while (curr_spec != NULL
+	     && !OID_EQ (&(curr_spec->s.cls_node.cls_oid), class_oid))
+	{
+	  curr_spec = curr_spec->next;
+	}
+      aptr_list = aptr_list->scan_ptr;
+    }
+
+  if (curr_spec == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  mvcc_reev_class->cls_oid = *class_oid;
+
+  scan_id = &curr_spec->s_id;
+  switch (scan_id->type)
+    {
+    case S_HEAP_SCAN:
+      {
+	hsidp = &scan_id->s.hsid;
+	scan_init_filter_info (&mvcc_reev_class->range_filter, NULL, NULL,
+			       NULL, NULL, NULL, 0, NULL, NULL, NULL);
+	scan_init_filter_info (&mvcc_reev_class->key_filter, NULL, NULL, NULL,
+			       NULL, NULL, 0, NULL, NULL, NULL);
+	scan_init_filter_info (&mvcc_reev_class->data_filter,
+			       &hsidp->scan_pred, &hsidp->pred_attrs,
+			       scan_id->val_list, scan_id->vd,
+			       &hsidp->cls_oid, 0, NULL, NULL, NULL);
+	mvcc_reev_class->rest_attrs = &hsidp->rest_attrs;
+	mvcc_reev_class->rest_regu_list = hsidp->rest_regu_list;
+	mvcc_reev_class->qualification = scan_id->qualification;
+      }
+      break;
+
+    case S_INDX_SCAN:
+      {
+	isidp = &scan_id->s.isid;
+	scan_init_filter_info (&mvcc_reev_class->range_filter,
+			       &isidp->range_pred, &isidp->range_attrs,
+			       scan_id->val_list, scan_id->vd,
+			       &isidp->cls_oid, 0, NULL, &isidp->num_vstr,
+			       isidp->vstr_ids);
+	scan_init_filter_info (&mvcc_reev_class->key_filter, &isidp->key_pred,
+			       &isidp->key_attrs, scan_id->val_list,
+			       scan_id->vd, &isidp->cls_oid,
+			       isidp->bt_num_attrs, isidp->bt_attr_ids,
+			       &isidp->num_vstr, isidp->vstr_ids);
+	scan_init_filter_info (&mvcc_reev_class->data_filter,
+			       &isidp->scan_pred, &isidp->pred_attrs,
+			       scan_id->val_list, scan_id->vd,
+			       &isidp->cls_oid, 0, NULL, NULL, NULL);
+	mvcc_reev_class->rest_attrs = &isidp->rest_attrs;
+	mvcc_reev_class->rest_regu_list = isidp->rest_regu_list;
+	mvcc_reev_class->qualification = scan_id->qualification;
+      }
+      break;
+
+    default:
+      break;
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -27785,7 +29096,7 @@ qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p,
     {
       if (internal_class->unique_stats.scan_cache_inited)
 	{
-	  if (query_class->has_uniques && op_type == MULTI_ROW_UPDATE)
+	  if (query_class->has_uniques && BTREE_IS_MULTI_ROW_OP (op_type))
 	    {
 	      /* In this case, consider class hierarchy as well as single
 	       * class. Therefore, construct the local statistical information
@@ -27935,7 +29246,8 @@ static int
 qexec_init_agg_hierarchy_helpers (THREAD_ENTRY * thread_p,
 				  ACCESS_SPEC_TYPE * spec,
 				  AGGREGATE_TYPE * aggregate_list,
-				  HIERARCHY_AGGREGATE_HELPER ** helpersp)
+				  HIERARCHY_AGGREGATE_HELPER ** helpersp,
+				  int *helpers_countp)
 {
   int agg_count = 0, part_count = 0, i;
   AGGREGATE_TYPE *agg = NULL;
@@ -27961,6 +29273,7 @@ qexec_init_agg_hierarchy_helpers (THREAD_ENTRY * thread_p,
   if (agg_count == 0)
     {
       *helpersp = NULL;
+      *helpers_countp = 0;
       return NO_ERROR;
     }
 
@@ -28024,6 +29337,7 @@ qexec_init_agg_hierarchy_helpers (THREAD_ENTRY * thread_p,
 
   partition_clear_pruning_context (&context);
   *helpersp = helpers;
+  *helpers_countp = agg_count;
   return NO_ERROR;
 
 error_return:
@@ -28046,6 +29360,7 @@ error_return:
   partition_clear_pruning_context (&context);
 
   *helpersp = NULL;
+  *helpers_countp = 0;
   return error;
 }
 
@@ -28066,16 +29381,16 @@ qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p,
 				     bool * is_scan_needed)
 {
   int error = NO_ERROR;
-  int i = 0;
+  int i = 0, helpers_count = 0;
   HIERARCHY_AGGREGATE_HELPER *helpers = NULL;
   AGGREGATE_TYPE *agg_ptr = NULL;
   BTID root_btid;
   error = qexec_init_agg_hierarchy_helpers (thread_p, spec, agg_list,
-					    &helpers);
+					    &helpers, &helpers_count);
   if (error != NO_ERROR)
     {
       *is_scan_needed = true;
-      return error;
+      goto cleanup;
     }
   i = 0;
   for (agg_ptr = agg_list; agg_ptr; agg_ptr = agg_ptr->next)
@@ -28087,6 +29402,7 @@ qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p,
 
       if (agg_ptr->function == PT_COUNT_STAR && *is_scan_needed)
 	{
+	  agg_ptr->flag_agg_optimize = false;
 	  i++;
 	  continue;
 	}
@@ -28106,15 +29422,8 @@ qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p,
 cleanup:
   if (helpers != NULL)
     {
-      agg_ptr = agg_list;
-      i = 0;
-      while (agg_ptr != NULL)
+      for (i = 0; i < helpers_count; i++)
 	{
-	  if (!agg_ptr->flag_agg_optimize)
-	    {
-	      agg_ptr = agg_ptr->next;
-	      continue;
-	    }
 	  if (helpers[i].btids != NULL)
 	    {
 	      db_private_free (thread_p, helpers[i].btids);
@@ -28123,8 +29432,6 @@ cleanup:
 	    {
 	      db_private_free (thread_p, helpers[i].hfids);
 	    }
-	  agg_ptr = agg_ptr->next;
-	  i++;
 	}
       db_private_free (thread_p, helpers);
     }
@@ -28158,6 +29465,50 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p,
 	  /* scan is needed for this aggregate */
 	  *is_scan_needed = true;
 	  break;
+	}
+
+      /* If MVCC, we deal with a count optimization and the snapshot wasn't already
+       * taken then prepare current class for optimization and force a snapshot */
+      if (!*is_scan_needed && mvcc_Enabled
+	  && agg_ptr->function == PT_COUNT_STAR)
+	{
+	  LOG_TDES *tdes =
+	    LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+	  LOG_MVCC_CLASS_UPDATE_STATS *class_stats =
+	    logtb_mvcc_find_class_stats (thread_p,
+					 &ACCESS_SPEC_CLS_OID (spec), true);
+	  if (class_stats == NULL)
+	    {
+	      agg_ptr->flag_agg_optimize = false;
+	      *is_scan_needed = true;
+	      break;
+	    }
+	  if (tdes->mvcc_info->mvcc_snapshot.valid)
+	    {
+	      if (class_stats->count_state != COS_LOADED)
+		{
+		  agg_ptr->flag_agg_optimize = false;
+		  *is_scan_needed = true;
+		  break;
+		}
+	    }
+	  else
+	    {
+	      if (logtb_mvcc_find_btid_stats
+		  (thread_p, class_stats, &agg_ptr->btid, true) == NULL)
+		{
+		  agg_ptr->flag_agg_optimize = false;
+		  *is_scan_needed = true;
+		  break;
+		}
+	      class_stats->count_state = COS_TO_LOAD;
+
+	      if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+		{
+		  error = er_errid ();
+		  return (error == NO_ERROR ? ER_FAILED : error);
+		}
+	    }
 	}
     }
 

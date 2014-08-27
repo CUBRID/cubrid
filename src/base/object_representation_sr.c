@@ -65,11 +65,11 @@
 
 /* ATTRIBUTE LOCATION */
 
-#define OR_FIXED_ATTRIBUTES_OFFSET(nvars) \
-   (OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL(nvars, BIG_VAR_OFFSET_SIZE))
+#define OR_FIXED_ATTRIBUTES_OFFSET(ptr, nvars) \
+   (OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL(ptr, nvars, BIG_VAR_OFFSET_SIZE))
 
-#define OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL(nvars, offset_size) \
-   (OR_HEADER_SIZE + OR_VAR_TABLE_SIZE_INTERNAL (nvars, offset_size))
+#define OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL(ptr, nvars, offset_size) \
+   (OR_HEADER_SIZE (ptr) + OR_VAR_TABLE_SIZE_INTERNAL (nvars, offset_size))
 
 
 typedef struct or_btree_property OR_BTREE_PROPERTY;
@@ -132,7 +132,8 @@ orc_class_repid (RECDES * record)
   int id;
 
   ptr = (char *) record->data +
-    OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT) + ORC_REPID_OFFSET;
+    OR_FIXED_ATTRIBUTES_OFFSET (record->data,
+				ORC_CLASS_VAR_ATT_COUNT) + ORC_REPID_OFFSET;
 
   id = OR_GET_INT (ptr);
 
@@ -156,10 +157,63 @@ orc_class_hfid_from_record (RECDES * record, HFID * hfid)
 {
   char *ptr;
 
-  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT);
+  ptr = record->data +
+    OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
   hfid->vfid.fileid = OR_GET_INT (ptr + ORC_HFID_FILEID_OFFSET);
   hfid->vfid.volid = OR_GET_INT (ptr + ORC_HFID_VOLID_OFFSET);
   hfid->hpgid = OR_GET_INT (ptr + ORC_HFID_PAGEID_OFFSET);
+}
+
+/*
+ * orc_class_is_system_class () - Get from record the class flag and check
+ *				  if SM_CLASSFLAG_SYSTEM is set.
+ *
+ * return      : True if SM_CLASSFLAG_SYSTEM is set.
+ * record (in) : Record descriptor containing class data.
+ */
+bool
+orc_class_is_system_class (RECDES * record)
+{
+  char *ptr = NULL;
+  int flags;
+  assert (record != NULL && record->data != NULL);
+
+  ptr = record->data + ORC_CLASS_FLAGS;
+  flags = OR_GET_INT (ptr);
+
+  return ((flags & SM_CLASSFLAG_SYSTEM) != 0);
+}
+
+/*
+ * class_is_system_class () - Check if class identified with class_oid is
+ *			      system class.
+ *
+ * return		   : Error code.
+ * thread_p (in)	   : Thread entry.
+ * class_oid (in)	   : Class object identifier.
+ * is_system_class_p (out) : True is class is a system class.
+ */
+int
+class_is_system_class (THREAD_ENTRY * thread_p, const OID * class_oid,
+		       bool * is_system_class_p)
+{
+  RECDES recdes;
+  HEAP_SCANCACHE scan_cache;
+
+  assert (is_system_class_p != NULL && class_oid != NULL
+	  && !OID_ISNULL (class_oid));
+
+  (void) heap_scancache_quick_start (&scan_cache);
+  if (heap_get (thread_p, class_oid, &recdes, &scan_cache, PEEK, NULL_CHN)
+      != S_SUCCESS)
+    {
+      assert (0);
+      heap_scancache_end (thread_p, &scan_cache);
+      return ER_FAILED;
+    }
+  *is_system_class_p = orc_class_is_system_class (&recdes);
+  heap_scancache_end (thread_p, &scan_cache);
+  return NO_ERROR;
 }
 
 /*
@@ -730,7 +784,8 @@ or_class_repid (RECDES * record)
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
   ptr = (char *) record->data +
-    OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT) + ORC_REPID_OFFSET;
+    OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) +
+    ORC_REPID_OFFSET;
 
   id = OR_GET_INT (ptr);
 
@@ -756,7 +811,8 @@ or_class_hfid (RECDES * record, HFID * hfid)
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT);
+  ptr = record->data +
+    OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
   hfid->vfid.fileid = OR_GET_INT (ptr + ORC_HFID_FILEID_OFFSET);
   hfid->vfid.volid = OR_GET_INT (ptr + ORC_HFID_VOLID_OFFSET);
   hfid->hpgid = OR_GET_INT (ptr + ORC_HFID_PAGEID_OFFSET);
@@ -777,7 +833,8 @@ or_class_statistics (RECDES * record, OID * oid)
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT);
+  ptr = record->data +
+    OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
 
   /* this doesn't exist yet, return NULL */
   OID_SET_NULL (oid);
@@ -1177,7 +1234,8 @@ or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid,
 
   assert (OR_GET_OFFSET_SIZE (start) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT);
+  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data,
+					    ORC_CLASS_VAR_ATT_COUNT);
 
   n_fixed = OR_GET_INT (ptr + ORC_FIXED_COUNT_OFFSET);
   n_variable = OR_GET_INT (ptr + ORC_VARIABLE_COUNT_OFFSET);
@@ -2490,7 +2548,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
   assert (OR_GET_OFFSET_SIZE (start) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT);
+  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data,
+					    ORC_CLASS_VAR_ATT_COUNT);
 
   rep->id = OR_GET_INT (ptr + ORC_REPID_OFFSET);
   rep->fixed_length = OR_GET_INT (ptr + ORC_FIXED_LENGTH_OFFSET);
@@ -3386,7 +3445,8 @@ or_get_classrep (RECDES * record, int repid)
     {
       /* find out what the most recent representation is */
       fixed =
-	record->data + OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT);
+	record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data,
+						   ORC_CLASS_VAR_ATT_COUNT);
       current = OR_GET_INT (fixed + ORC_REPID_OFFSET);
 
       if (current == repid)
@@ -3425,7 +3485,8 @@ or_get_classrep_noindex (RECDES * record, int repid)
     {
       /* find out what the most recent representation is */
       fixed =
-	record->data + OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT);
+	record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data,
+						   ORC_CLASS_VAR_ATT_COUNT);
       current = OR_GET_INT (fixed + ORC_REPID_OFFSET);
 
       if (current == repid)
@@ -3761,7 +3822,8 @@ or_get_attrname (RECDES * record, int attrid)
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT);
+  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data,
+					    ORC_CLASS_VAR_ATT_COUNT);
   attr_name = NULL;
 
   n_fixed = OR_GET_INT (ptr + ORC_FIXED_COUNT_OFFSET);

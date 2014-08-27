@@ -154,6 +154,7 @@ enum net_server_request
   NET_SERVER_BTREE_FIND_UNIQUE,
   NET_SERVER_BTREE_CLASS_UNIQUE_TEST,
   NET_SERVER_BTREE_GET_STATISTICS,
+  NET_SERVER_BTREE_GET_KEY_TYPE,
 
   NET_SERVER_DISK_TOTALPGS,
   NET_SERVER_DISK_FREEPGS,
@@ -260,6 +261,9 @@ enum net_server_request
   NET_SERVER_LC_PREFETCH_REPL_UPDATE_OR_DELETE,
 
   NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION,
+
+  NET_SERVER_VACUUM,
+  NET_SERVER_INVALIDATE_MVCC_SNAPSHOT,
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
