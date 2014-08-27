@@ -1191,6 +1191,10 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 		      type2 = PT_TYPE_VARCHAR;
 		    }
 		  break;
+		case PT_FROM_UNIXTIME:
+		  db_make_null (&opd2);
+		  opd2_set_null = true;
+		  break;
 		default:
 		  db_make_null (&opd2);
 		  break;
