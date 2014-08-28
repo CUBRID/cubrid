@@ -8284,7 +8284,8 @@ qo_is_iscan (QO_PLAN * plan)
   if (plan
       && plan->plan_type == QO_PLANTYPE_SCAN
       && (plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN
-	  || plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN_INSPECT))
+	  || plan->plan_un.scan.scan_method ==
+	  QO_SCANMETHOD_INDEX_SCAN_INSPECT))
     {
       return true;
     }
@@ -9071,6 +9072,7 @@ qo_search_partition_join (QO_PLANNER * planner,
 			  QO_PARTITION * partition,
 			  BITSET * remaining_subqueries)
 {
+  QO_ENV *env;
   int i, nodes_cnt, node_idx;
   PT_NODE *tree;
   PT_HINT_ENUM hint;
@@ -9086,13 +9088,14 @@ qo_search_partition_join (QO_PLANNER * planner,
   BITSET remaining_nodes;
   BITSET remaining_terms;
 
-  bitset_init (&visited_nodes, planner->env);
-  bitset_init (&visited_rel_nodes, planner->env);
-  bitset_init (&visited_terms, planner->env);
-  bitset_init (&first_nodes, planner->env);
-  bitset_init (&nested_path_nodes, planner->env);
-  bitset_init (&remaining_nodes, planner->env);
-  bitset_init (&remaining_terms, planner->env);
+  env = planner->env;
+  bitset_init (&visited_nodes, env);
+  bitset_init (&visited_rel_nodes, env);
+  bitset_init (&visited_terms, env);
+  bitset_init (&first_nodes, env);
+  bitset_init (&nested_path_nodes, env);
+  bitset_init (&remaining_nodes, env);
+  bitset_init (&remaining_terms, env);
 
   /* include useful nodes */
   bitset_assign (&remaining_nodes, &(QO_PARTITION_NODES (partition)));
@@ -9121,7 +9124,7 @@ qo_search_partition_join (QO_PLANNER * planner,
     }				/* for (i = ...) */
 
   /* set hint info */
-  tree = QO_ENV_PT_TREE (planner->env);
+  tree = QO_ENV_PT_TREE (env);
   hint = tree->info.query.q.select.hint;
 
   /* set #tables consider at a time */
@@ -9144,68 +9147,71 @@ qo_search_partition_join (QO_PLANNER * planner,
     }
   else
     {
-      int j, t;
-      QO_ENV *env;
-      QO_INFO *i_info, *j_info;
-      QO_PLAN *i_plan, *j_plan;
-      QO_NODE *i_node, *j_node;
+      int r, f, t;
+      QO_NODE *r_node, *f_node;
+      QO_INFO *r_info, *f_info;
+      QO_PLAN *r_plan, *f_plan;
       PT_NODE *entity;
-      bool found_i_edge, found_other_edge;
+      bool found_f_edge, found_other_edge;
       BITSET_ITERATOR bi, bj, bt;
       QO_PLAN_COMPARE_RESULT cmp;
       BITSET derived_nodes;
-      env = planner->env;
-      bitset_init (&derived_nodes, env);
+      BITSET idx_inner_nodes;
 
-      for (i = bitset_iterate (&remaining_nodes, &bi); i != -1;
-	   i = bitset_next_member (&bi))
+      bitset_init (&derived_nodes, env);
+      bitset_init (&idx_inner_nodes, env);
+
+      for (r = bitset_iterate (&remaining_nodes, &bi); r != -1;
+	   r = bitset_next_member (&bi))
 	{
-	  i_node = QO_ENV_NODE (planner->env, i);
+	  r_node = QO_ENV_NODE (env, r);
 	  /* node dependency check; emptyness check
 	   */
-	  if (!bitset_is_empty (&(QO_NODE_DEP_SET (i_node))))
+	  if (!bitset_is_empty (&(QO_NODE_DEP_SET (r_node))))
 	    {
 	      continue;
 	    }
-	  if (!bitset_is_empty (&(QO_NODE_OUTER_DEP_SET (i_node))))
+	  if (!bitset_is_empty (&(QO_NODE_OUTER_DEP_SET (r_node))))
 	    {
 	      continue;
 	    }
 
-	  entity = QO_NODE_ENTITY_SPEC (i_node);
-	  /* do not check plan for inline view */
+	  entity = QO_NODE_ENTITY_SPEC (r_node);
+	  /* do not check node for inline view */
 	  if (entity->info.spec.derived_table)
 	    {			/* inline view */
-	      bitset_add (&derived_nodes, i);
+	      bitset_add (&derived_nodes, r);
 	      continue;		/* OK */
 	    }
 
 	  if (bitset_is_empty (&first_nodes))
 	    {			/* the first time */
-	      bitset_add (&first_nodes, i);
+	      bitset_add (&first_nodes, r);
 	      continue;		/* OK */
 	    }
 
 	  /* current prefix has only one node */
-	  i_info = planner->node_info[QO_NODE_IDX (i_node)];
+	  r_info = planner->node_info[QO_NODE_IDX (r_node)];
 
-	  i_plan = qo_find_best_plan_on_info (i_info, QO_UNORDERED, 1.0);
+	  r_plan = qo_find_best_plan_on_info (r_info, QO_UNORDERED, 1.0);
 
-	  if (qo_plan_multi_range_opt (i_plan))
+	  if (qo_plan_multi_range_opt (r_plan))
 	    {
 	      /* skip removing the other edge from first plan */
-	      bitset_add (&first_nodes, i);
+	      bitset_add (&first_nodes, r);
 	      continue;
 	    }
 
-	  for (j = bitset_iterate (&first_nodes, &bj); j != -1;
-	       j = bitset_next_member (&bj))
+	  BITSET_CLEAR (idx_inner_nodes);
+
+	  for (f = bitset_iterate (&first_nodes, &bj); f != -1;
+	       f = bitset_next_member (&bj))
 	    {
-	      j_node = QO_ENV_NODE (planner->env, j);
-	      if ((QO_IS_LIMIT_NODE (env, i_node)
-		   && !QO_IS_LIMIT_NODE (env, j_node))
-		  || (!QO_IS_LIMIT_NODE (env, i_node)
-		      && QO_IS_LIMIT_NODE (env, j_node)))
+	      f_node = QO_ENV_NODE (env, f);
+	      if ((QO_IS_LIMIT_NODE (env, r_node)
+		   && !QO_IS_LIMIT_NODE (env, f_node))
+		  || (!QO_IS_LIMIT_NODE (env, r_node)
+		      && QO_IS_LIMIT_NODE (env, f_node)))
 		{
 		  /* Also keep the best plan from limit nodes, otherwise we
 		   * might not get a chance to create a SORT-LIMIT plan */
@@ -9213,67 +9219,70 @@ qo_search_partition_join (QO_PLANNER * planner,
 		}
 
 	      /* current prefix has only one node */
-	      j_info = planner->node_info[QO_NODE_IDX (j_node)];
+	      f_info = planner->node_info[QO_NODE_IDX (f_node)];
 
-	      j_plan = qo_find_best_plan_on_info (j_info, QO_UNORDERED, 1.0);
+	      f_plan = qo_find_best_plan_on_info (f_info, QO_UNORDERED, 1.0);
 
-	      if (qo_plan_multi_range_opt (j_plan))
+	      if (qo_plan_multi_range_opt (f_plan))
 		{
-		  /* allow adding the other edge to first plan */
+		  /* allow adding the other edge to the first_nodes */
 		  continue;
 		}
 
-	      cmp = qo_plan_cmp (j_plan, i_plan);
+	      cmp = qo_plan_cmp (f_plan, r_plan);
 
 	      if (cmp == PLAN_COMP_LT)
-		{		/* plan is worse */
-		  if (QO_NODE_TCARD (j_node) <= 1)
+		{		/* r_plan is worse */
+		  if (QO_NODE_TCARD (f_node) <= 1)
 		    {		/* one page heap file */
-		      ;		/* j_plan is always winner */
+		      ;		/* f_node is always winner */
 		    }
 		  else
 		    {
 		      /* check for info cardinality */
-		      if (i_info->cardinality < j_info->cardinality + 1.0)
+		      if (r_info->cardinality < f_info->cardinality + 1.0)
 			{
 			  continue;	/* do not skip out smaller card */
 			}
 
-		      if (qo_is_iscan (i_plan))
+		      if (qo_is_iscan (r_plan))
 			{
 			  continue;	/* do not skip out index scan plan */
 			}
 		    }
-		  break;	/* do not add i_plan to the first_nodes */
+
+		  /* do not add r_node to the first_nodes
+		   */
+		  break;
 		}
 	      else if (cmp == PLAN_COMP_GT)
 		{		/* found new first */
-		  if (QO_NODE_TCARD (i_node) <= 1)
+		  if (QO_NODE_TCARD (r_node) <= 1)
 		    {		/* one page heap file */
-		      ;		/* i_plan is always winner */
+		      ;		/* r_node is always winner */
 		    }
 		  else
 		    {
 		      /* check for info cardinality */
-		      if (j_info->cardinality < i_info->cardinality + 1.0)
+		      if (f_info->cardinality < r_info->cardinality + 1.0)
 			{
 			  continue;	/* do not skip out smaller card */
 			}
 
-		      if (qo_is_iscan (j_plan))
+		      if (qo_is_iscan (f_plan))
 			{
 			  continue;	/* do not skip out index scan plan */
 			}
 		    }
 
-		  /* check for join-connectivity of i_node to j_node
+		  /* check for join-connectivity of f_node to r_node
 		   */
-		  found_i_edge = found_other_edge = false;	/* init */
+		  found_f_edge = found_other_edge = false;	/* init */
 		  for (t = bitset_iterate (&remaining_terms, &bt);
 		       t != -1 && !found_other_edge;
 		       t = bitset_next_member (&bt))
 		    {
-		      term = QO_ENV_TERM (planner->env, t);
+		      term = QO_ENV_TERM (env, t);
 
 		      if (!QO_IS_EDGE_TERM (term))
 			{
@@ -9281,43 +9290,56 @@ qo_search_partition_join (QO_PLANNER * planner,
 			}
 
 		      if (!BITSET_MEMBER (QO_TERM_NODES (term),
-					  QO_NODE_IDX (j_node)))
+					  QO_NODE_IDX (f_node)))
 			{
 			  continue;
 			}
 
-		      /* check for j_node's edges */
-
+		      /* check for f_node's edges */
 		      if (BITSET_MEMBER (QO_TERM_NODES (term),
-					 QO_NODE_IDX (i_node)))
+					 QO_NODE_IDX (r_node)))
 			{
-			  /* edge between j_node and i_node */
-			  found_i_edge = true;
+			  /* edge between f_node and r_node */
+
+			  for (i = 0;
+			       i < QO_TERM_CAN_USE_INDEX (term)
+			       && !found_f_edge; i++)
+			    {
+			      if (QO_NODE_IDX
+				  (QO_SEG_HEAD (QO_TERM_INDEX_SEG (term, i)))
+				  == QO_NODE_IDX (f_node))
+				{
+				  found_f_edge = true;	/* indexable edge */
+				}
+			    }
 			}
 		      else
 			{
-			  /* edge between j_node and other_node */
+			  /* edge between f_node and other_node */
 			  found_other_edge = true;
 			}
 		    }
 
-		  if (found_i_edge && !found_other_edge)
+		  if (found_f_edge && !found_other_edge)
 		    {
-		      /* delete j_plan from first_node */
-		      bitset_remove (&first_nodes, j);
+		      bitset_add (&idx_inner_nodes, f);
 		    }
 		}
-	    }
+	    }			/* for (f = ...) */
 
-	  if (j == -1)
+	  /* exclude idx-join's inner nodes from the first_nodes */
+	  bitset_difference (&first_nodes, &idx_inner_nodes);
+
+	  if (f == -1)
 	    {			/* add new plan */
-	      bitset_add (&first_nodes, i);
+	      bitset_add (&first_nodes, r);
 	    }
-	}
+	}			/* for (r = ...) */
 
       /* finally, add derived nodes to the first nodes */
       bitset_union (&first_nodes, &derived_nodes);
 
+      bitset_delset (&idx_inner_nodes);
       bitset_delset (&derived_nodes);
     }
 
@@ -9375,7 +9397,7 @@ qo_search_partition_join (QO_PLANNER * planner,
        */
 
       /* extract the outermost nodes at this join level */
-      node = QO_ENV_NODE (planner->env, node_idx);
+      node = QO_ENV_NODE (env, node_idx);
       bitset_add (&visited_nodes, node_idx);
       bitset_add (&visited_rel_nodes, QO_NODE_REL_IDX (node));
       bitset_remove (&remaining_nodes, node_idx);
