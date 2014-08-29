@@ -10299,6 +10299,9 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 #if defined(SERVER_MODE)
   int tran_index;
 #endif /* SERVER_MODE */
+  bool is_scancache_started = false;
+  bool is_attrinfo_started = false;
+  bool is_bt_checkscan_started = false;
 
   if (mvcc_Enabled)
     {
@@ -10324,19 +10327,19 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
     {
       return DISK_ERROR;
     }
+  is_scancache_started = true;
 
   if (heap_attrinfo_start (thread_p, class_oid, n_attr_ids, attr_ids,
 			   &attr_info) != NO_ERROR)
     {
-      (void) heap_scancache_end (thread_p, &scan_cache);
-      return DISK_ERROR;
+      goto error;
     }
+  is_attrinfo_started = true;
 
   classrepr = attr_info.last_classrepr;
   if (classrepr == NULL)
     {
-      (void) heap_scancache_end (thread_p, &scan_cache);
-      return DISK_ERROR;
+      goto error;
     }
   index_id = -1;
   for (i = 0; i < classrepr->n_indexes; i++)
@@ -10360,9 +10363,9 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   if (btree_keyoid_checkscan_start (thread_p, btid, &bt_checkscan) !=
       NO_ERROR)
     {
-      (void) heap_scancache_end (thread_p, &scan_cache);
-      return DISK_ERROR;
+      goto error;
     }
+  is_bt_checkscan_started = true;
 
   inst_oid.volid = hfid->vfid.volid;
   inst_oid.pageid = NULL_PAGEID;
@@ -10490,9 +10493,11 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 
   /* close the index check-scan */
   btree_keyoid_checkscan_end (thread_p, &bt_checkscan);
+  is_bt_checkscan_started = false;
 
   /* Finish scan cursor and class attribute cache information */
   heap_attrinfo_end (thread_p, &attr_info);
+  is_attrinfo_started = false;
 
   /*
    * Step 2) From B+tree to Heap
@@ -10633,7 +10638,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
       isallvalid = DISK_INVALID;
     }
 
-error:
+end:
 
   if (key == &dbvalue)
     {
@@ -10651,12 +10656,27 @@ error:
       db_private_free_and_init (thread_p, isid.copy_buf);
     }
 
-  if (heap_scancache_end (thread_p, &scan_cache) != NO_ERROR)
+  if (is_scancache_started
+      && heap_scancache_end (thread_p, &scan_cache) != NO_ERROR)
     {
       isallvalid = DISK_INVALID;
     }
 
+  if (is_bt_checkscan_started)
+    {
+      btree_keyoid_checkscan_end (thread_p, &bt_checkscan);
+    }
+
+  if (is_attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+
   return isallvalid;
+
+error:
+  isallvalid = DISK_ERROR;
+  goto end;
 }
 
 /*
@@ -10710,6 +10730,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 #if defined(SERVER_MODE)
   int tran_index;
 #endif /* SERVER_MODE */
+  bool bt_checkscan_inited = false;
 
   DB_MAKE_NULL (&dbvalue);
 
@@ -10808,6 +10829,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	{
 	  goto error;
 	}
+      bt_checkscan_inited = true;
 
       inst_oid.volid = hfid->vfid.volid;
       inst_oid.pageid = NULL_PAGEID;
@@ -10933,6 +10955,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 
       /* close the index check-scan */
       btree_keyoid_checkscan_end (thread_p, &bt_checkscan);
+      bt_checkscan_inited = false;
 
       /* Finish scan cursor and class attribute cache information */
       heap_attrinfo_end (thread_p, &attr_info);
@@ -11270,6 +11293,11 @@ error:
   if (scan_cache)
     {
       free_and_init (scan_cache);
+    }
+
+  if (bt_checkscan_inited)
+    {
+      btree_keyoid_checkscan_end (thread_p, &bt_checkscan);
     }
 
   return DISK_ERROR;
