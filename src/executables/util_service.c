@@ -958,6 +958,9 @@ process_master (int command_type)
 			  ("Master does not exist. Try to start it again.\n");
 		      }
 
+#if !defined(WINDOWS)
+		    envvar_set ("NO_DAEMON", "true");
+#endif
 		    status = proc_execute (UTIL_MASTER_NAME, args, false,
 					   false, false, &pid);
 		    if (status != NO_ERROR)
