@@ -53,13 +53,15 @@ CLASS_STATS *
 stats_get_statistics (OID * class_oid_p, unsigned int time_stamp)
 {
   CLASS_STATS *stats_p = NULL;
-  char *buffer_p;
-  int length;
+  char *buffer_p = NULL;
+  int length = -1;
 
   buffer_p = stats_get_statistics_from_server (class_oid_p,
 					       time_stamp, &length);
   if (buffer_p)
     {
+      assert (length > 0);
+
       stats_p = stats_client_unpack_statistics (buffer_p);
       free_and_init (buffer_p);
     }
@@ -227,6 +229,26 @@ stats_client_unpack_statistics (char *buf_p)
   if (max_unique_keys > 0)
     {
       class_stats_p->heap_num_objects = max_unique_keys;
+    }
+
+  /* validate key stats info */
+  assert (class_stats_p->heap_num_objects >= 0);
+  for (i = 0, attr_stats_p = class_stats_p->attr_stats;
+       i < class_stats_p->n_attrs; i++, attr_stats_p++)
+    {
+      for (j = 0, btree_stats_p = attr_stats_p->bt_stats;
+	   j < attr_stats_p->n_btstats; j++, btree_stats_p++)
+	{
+	  assert (btree_stats_p->keys >= 0);
+	  btree_stats_p->keys = MIN (btree_stats_p->keys,
+				     class_stats_p->heap_num_objects);
+	  for (k = 0; k < btree_stats_p->pkeys_size; k++)
+	    {
+	      assert (btree_stats_p->pkeys[k] >= 0);
+	      btree_stats_p->pkeys[k] = MIN (btree_stats_p->pkeys[k],
+					     btree_stats_p->keys);
+	    }
+	}
     }
 
   return class_stats_p;

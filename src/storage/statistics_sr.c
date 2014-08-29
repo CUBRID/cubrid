@@ -487,7 +487,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   OR_PUT_INT (buf_p, cls_info_p->time_stamp);
   buf_p += OR_INT_SIZE;
 
-  npages = estimated_nobjs = max_unique_keys = 0;
+  npages = estimated_nobjs = max_unique_keys = -1;
 
   assert (cls_info_p->tot_objects >= 0);
   assert (cls_info_p->tot_pages >= 0);
@@ -510,7 +510,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
        */
       estimated_nobjs = heap_estimate_num_objects (thread_p,
 						   &(cls_info_p->hfid));
-      if (estimated_nobjs == -1)
+      if (estimated_nobjs < 0)
 	{
 	  /* cannot get estimates from the heap, use ones from the catalog */
 	  estimated_nobjs = cls_info_p->tot_objects;
@@ -532,6 +532,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  /* cannot get #pages from the heap, use ones from the catalog */
 	  npages = cls_info_p->tot_pages;
 	}
+      assert (npages >= 0);
 
       OR_PUT_INT (buf_p, npages);	/* #pages */
       buf_p += OR_INT_SIZE;

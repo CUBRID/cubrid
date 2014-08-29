@@ -14487,9 +14487,9 @@ heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages,
 int
 heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid)
 {
-  int ignore_npages;
-  int ignore_avg_reclen;
-  int nobjs;
+  int ignore_npages = -1;
+  int ignore_avg_reclen = -1;
+  int nobjs = -1;
 
   if (heap_estimate (thread_p, hfid, &ignore_npages, &nobjs,
 		     &ignore_avg_reclen) == -1)
