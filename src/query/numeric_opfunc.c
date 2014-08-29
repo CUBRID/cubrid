@@ -113,7 +113,7 @@ static void numeric_increase (DB_C_NUMERIC answer);
 static void numeric_increase_long (DB_C_NUMERIC answer, bool is_long_num);
 static void numeric_decrease (DB_C_NUMERIC answer);
 static void numeric_zero (DB_C_NUMERIC answer, int size);
-static void numeric_zero_dec_str (DEC_STRING * answer);
+static void numeric_init_dec_str (DEC_STRING * answer);
 static void numeric_add_dec_str (DEC_STRING * arg1,
 				 DEC_STRING * arg2, DEC_STRING * answer);
 static void numeric_init_pow_of_2_helper (void);
@@ -341,17 +341,23 @@ numeric_negative_one (DB_C_NUMERIC answer, int size)
 }
 
 /*
- * numeric_zero_dec_str () -
+ * numeric_init_dec_str () -
  *   return:
  *   answer(in/out) : (IN/OUT) ptr to a DEC_STRING
  *
- * Note: This routine zeroes out a DEC_STRING returns the result
+ * Note: Fills a DEC_STRING with -1 constant bytes and zero rightmost byte
+ *
+ *       digits:[00][01][02]......[73][74][75]
+ *       values: -1  -1  -1 ...... -1  -1   0
  */
 static void
-numeric_zero_dec_str (DEC_STRING * answer)
+numeric_init_dec_str (DEC_STRING * answer)
 {
   /* sizeof(answer->digits[0]) == 1 */
-  memset (answer->digits, 0, TWICE_NUM_MAX_PREC);
+  memset (answer->digits, -1, TWICE_NUM_MAX_PREC);
+
+  /* Set first element to 0 */
+  answer->digits[TWICE_NUM_MAX_PREC - 1] = 0;
 }
 
 /*
@@ -370,12 +376,36 @@ numeric_add_dec_str (DEC_STRING * arg1, DEC_STRING * arg2,
 {
   unsigned int answer_bit = 0;
   int digit;
+  char arg1_dec, arg2_dec;
 
   /*  Loop through the characters setting answer  */
   for (digit = TWICE_NUM_MAX_PREC - 1; digit >= 0; digit--)
     {
-      answer_bit = (arg1->digits[digit] + arg2->digits[digit]) +
-	(answer_bit >= 10);
+      arg1_dec = arg1->digits[digit];
+      arg2_dec = arg2->digits[digit];
+
+      if (arg1_dec == -1)
+	{
+	  arg1_dec = 0;
+
+	  if (answer_bit < 10)
+	    {
+	      break;		/* pass through the leftmost digits */
+	    }
+	}
+
+      if (arg2_dec == -1)
+	{
+	  /* is not first element */
+	  assert (digit < TWICE_NUM_MAX_PREC - 1);
+
+	  arg2_dec = 0;
+	}
+
+      assert (arg1_dec >= 0);
+      assert (arg2_dec >= 0);
+
+      answer_bit = (arg1_dec + arg2_dec) + (answer_bit >= 10);
       answer->digits[digit] = fast_mod[answer_bit];
     }
 }
@@ -389,7 +419,7 @@ numeric_init_pow_of_2_helper (void)
 {
   unsigned int i;
 
-  numeric_zero_dec_str (&(powers_of_2[0]));
+  numeric_init_dec_str (&(powers_of_2[0]));
 
   /* Set first element to 1 */
   powers_of_2[0].digits[TWICE_NUM_MAX_PREC - 1] = 1;
@@ -397,6 +427,7 @@ numeric_init_pow_of_2_helper (void)
   /* Loop through array elements setting each one to twice the prior */
   for (i = 1; i < DB_NUMERIC_BUF_SIZE * 16; i++)
     {
+      numeric_init_dec_str (&(powers_of_2[i]));
       numeric_add_dec_str (&(powers_of_2[i - 1]), &(powers_of_2[i - 1]),
 			   &(powers_of_2[i]));
     }
@@ -425,6 +456,8 @@ numeric_init_pow_of_2 (void)
 static DEC_STRING *
 numeric_get_pow_of_2 (int exp)
 {
+  assert (exp < DB_NUMERIC_BUF_SIZE * 16 - 3);	/* exp < 253 */
+
 #if !defined(SERVER_MODE)
   /*  If this is the first time to call this routine, initialize  */
   if (!initialized_2)
@@ -1513,7 +1546,7 @@ numeric_coerce_big_num_to_dec_str (unsigned char *num, char *dec_str)
   unsigned int i;
 
   /*  Loop through the bits of the numeric building up string */
-  numeric_zero_dec_str (&result);
+  numeric_init_dec_str (&result);
   for (i = 0; i < DB_NUMERIC_BUF_SIZE * 16; i++)
     {
       if (numeric_is_bit_set (num, i))
@@ -1527,6 +1560,12 @@ numeric_coerce_big_num_to_dec_str (unsigned char *num, char *dec_str)
   /*  Convert result into ASCII array */
   for (i = 0; i < TWICE_NUM_MAX_PREC; i++)
     {
+      if (result.digits[i] == -1)
+	{
+	  result.digits[i] = 0;
+	}
+      assert (result.digits[i] >= 0);
+
       *dec_str = result.digits[i] + '0';
       dec_str++;
     }
@@ -2588,7 +2627,7 @@ numeric_coerce_num_to_dec_str (DB_C_NUMERIC num, char *dec_str)
     }
 
   /*  Loop through the bits of the numeric building up string */
-  numeric_zero_dec_str (&result);
+  numeric_init_dec_str (&result);
   for (i = 0; i < DB_NUMERIC_BUF_SIZE * 8; i += 8)
     {
       if (local_num[i / 8] == 0)
@@ -2610,6 +2649,12 @@ numeric_coerce_num_to_dec_str (DB_C_NUMERIC num, char *dec_str)
   /*  Convert result into ASCII array */
   for (i = 0; i < TWICE_NUM_MAX_PREC; i++)
     {
+      if (result.digits[i] == -1)
+	{
+	  result.digits[i] = 0;
+	}
+      assert (result.digits[i] >= 0);
+
       *dec_str = result.digits[i] + '0';
       dec_str++;
     }
@@ -2630,7 +2675,7 @@ numeric_coerce_num_to_dec_str (DB_C_NUMERIC num, char *dec_str)
 void
 numeric_coerce_num_to_double (DB_C_NUMERIC num, int scale, double *adouble)
 {
-  char num_string[TWICE_NUM_MAX_PREC + 2];
+  char num_string[TWICE_NUM_MAX_PREC + 2];	/* 2: Sign, Null terminate */
 
   /* Convert the numeric to a decimal string */
   numeric_coerce_num_to_dec_str (num, num_string);
