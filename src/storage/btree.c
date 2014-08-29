@@ -24734,14 +24734,6 @@ btree_rv_noderec_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   rec.area_size = rec.length = recv->length - OFFS3;
   rec.data = (char *) (recv->data) + OFFS3;
 
-  _er_log_debug (ARG_FILE_LINE,
-		 "BTREE_RECOVERY: btree_rv_noderec_undoredo_update - "
-		 "page %d|%d, offset=%d, mvccid=%d, rec_type=%d, "
-		 "rec_length=%d",
-		 pgbuf_get_volume_id (recv->pgptr),
-		 pgbuf_get_page_id (recv->pgptr), recv->offset, recv->mvcc_id,
-		 rec.type, rec.length);
-
   assert (slotid > 0);
   sp_success = spage_update (thread_p, recv->pgptr, slotid, &rec);
   if (sp_success != SP_SUCCESS)
@@ -24781,14 +24773,6 @@ btree_rv_noderec_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   rec.area_size = rec.length = recv->length - OFFS3;
   rec.data = (char *) (recv->data) + OFFS3;
 
-  _er_log_debug (ARG_FILE_LINE,
-		 "BTREE_RECOVERY: btree_rv_noderec_redo_insert - "
-		 "page %d|%d, offset=%d, mvccid=%d, rec_type=%d, "
-		 "rec_length=%d",
-		 pgbuf_get_volume_id (recv->pgptr),
-		 pgbuf_get_page_id (recv->pgptr), recv->offset, recv->mvcc_id,
-		 rec.type, rec.length);
-
   assert (slotid > 0);
   sp_success = spage_insert_at (thread_p, recv->pgptr, slotid, &rec);
   if (sp_success != SP_SUCCESS)
@@ -24821,13 +24805,6 @@ btree_rv_noderec_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   INT16 slotid;
   PGSLOTID pg_slotid;
-
-  _er_log_debug (ARG_FILE_LINE,
-		 "BTREE_RECOVERY: btree_rv_noderec_undo_insert - "
-		 "page %d|%d, offset=%d, mvccid=%d",
-		 pgbuf_get_volume_id (recv->pgptr),
-		 pgbuf_get_page_id (recv->pgptr), recv->offset,
-		 recv->mvcc_id);
 
   slotid = recv->offset;
   assert (slotid > 0);
@@ -25616,13 +25593,6 @@ btree_rv_leafrec_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   rec.area_size = recv->length;
   rec.data = (char *) recv->data;
 
-  _er_log_debug (ARG_FILE_LINE,
-		 "BTREE_RECOVERY: btree_rv_leafrec_redo_delete - "
-		 "page %d|%d, offset=%d, mvccid=%d, rec_length=%d",
-		 pgbuf_get_volume_id (recv->pgptr),
-		 pgbuf_get_page_id (recv->pgptr), recv->offset, recv->mvcc_id,
-		 rec.length);
-
   header = btree_get_node_header (recv->pgptr);
   if (header == NULL)
     {
@@ -25678,14 +25648,6 @@ btree_rv_leafrec_redo_insert_key (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   rec.type = *(INT16 *) ((char *) recv->data + LOFFS3);
   rec.area_size = rec.length = recv->length - LOFFS4;
   rec.data = (char *) (recv->data) + LOFFS4;
-
-  _er_log_debug (ARG_FILE_LINE,
-		 "BTREE_RECOVERY: btree_rv_leafrec_redo_insert_key - "
-		 "page %d|%d, offset=%d, mvccid=%d, rec_length=%d, "
-		 "rec_type=%d",
-		 pgbuf_get_volume_id (recv->pgptr),
-		 pgbuf_get_page_id (recv->pgptr), recv->offset, recv->mvcc_id,
-		 rec.length, rec.type);
 
   /* insert the new record */
   assert (slotid > 0);
@@ -25816,17 +25778,6 @@ btree_rv_leafrec_redo_insert_oid (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       check_valid = true;
     }
 #endif
-
-  _er_log_debug (ARG_FILE_LINE,
-		 "BTREE_RECOVERY: btree_rv_leafrec_redo_insert_oid - "
-		 "page %d|%d, offset=%d, mvccid=%d, "
-		 "recins: oid=%d|%d|%d, flags=%d, "
-		 "ovfl_vpid=%d|%d.",
-		 pgbuf_get_volume_id (recv->pgptr),
-		 pgbuf_get_page_id (recv->pgptr), recv->offset, recv->mvcc_id,
-		 recins->oid.volid, recins->oid.pageid, recins->oid.slotid,
-		 recins->flags, recins->ovfl_vpid.volid,
-		 recins->ovfl_vpid.pageid);
 
   if (mvcc_Enabled)
     {
@@ -26167,14 +26118,6 @@ btree_rv_redo_insert_mvcc_delid (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 	}
     }
 #endif
-
-  _er_log_debug (ARG_FILE_LINE,
-		 "BTREE_RECOVERY: btree_rv_redo_insert_mvcc_delid - "
-		 "page %d|%d, offset=%d, mvccid=%d, "
-		 "rec_mvcc_delid_ins: is_ovf=%d, unique=%d, oid_offset=%d, ",
-		 pgbuf_get_volume_id (recv->pgptr),
-		 pgbuf_get_page_id (recv->pgptr), recv->offset, recv->mvcc_id,
-		 is_overflow, is_unique, oid_offset);
 
   rec.area_size = DB_PAGESIZE;
   rec.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);

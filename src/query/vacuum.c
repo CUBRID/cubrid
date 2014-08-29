@@ -1663,8 +1663,17 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
        *       do not lose vacuum data so there has to be enough space to
        *       keep it.
        */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return;
+#if defined (SA_MODE)
+      vacuum_consume_buffer_log_blocks (thread_p, false);
+      if (lock_free_circular_queue_push
+	  (vacuum_Block_data_buffer, &block_data))
+	{
+	  return;
+	}
+#endif
+      vacuum_er_log (VACUUM_ER_LOG_ERROR,
+		     "VACUUM_ERROR: Cannot produce new log block data! "
+		     "The buffer is already full.");
     }
 }
 
