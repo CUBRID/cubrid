@@ -27454,8 +27454,8 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  rep = heap_classrepr_get (thread_p, class_oid, &class_record, 0,
-			    &idx_incache, true);
+  rep = heap_classrepr_get (thread_p, class_oid, &class_record,
+			    NULL_REPRID, &idx_incache);
   if (rep == NULL)
     {
       GOTO_EXIT_ON_ERROR;
@@ -28305,8 +28305,8 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  rep = heap_classrepr_get (thread_p, class_oid, &class_record, 0,
-			    &idx_incache, true);
+  rep = heap_classrepr_get (thread_p, class_oid, &class_record,
+			    NULL_REPRID, &idx_incache);
   if (rep == NULL)
     {
       GOTO_EXIT_ON_ERROR;

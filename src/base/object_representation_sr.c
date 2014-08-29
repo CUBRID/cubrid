@@ -2541,7 +2541,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
   rep = (OR_CLASSREP *) malloc (sizeof (OR_CLASSREP));
   if (rep == NULL)
     {
-      return (NULL);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (OR_CLASSREP));
+      return NULL;
     }
 
   start = record->data;
@@ -2574,6 +2576,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
 						 rep->n_attributes);
       if (rep->attributes == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 	  goto error_cleanup;
 	}
     }
@@ -2584,6 +2588,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
 						   rep->n_shared_attrs);
       if (rep->shared_attrs == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
 	  goto error_cleanup;
 	}
     }
@@ -2594,6 +2600,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
 						  rep->n_class_attrs);
       if (rep->class_attrs == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
 	  goto error_cleanup;
 	}
     }
@@ -2685,9 +2693,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	}
       else
 	{
-	  dptr =
-	    diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
-						   ORC_ATT_DOMAIN_INDEX);
+	  dptr = (diskatt
+		  + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
+						 ORC_ATT_DOMAIN_INDEX));
 	  att->domain = or_get_domain_and_cache (dptr);
 	}
 

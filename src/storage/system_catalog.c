@@ -5274,8 +5274,8 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
       free_disk_rep = true;
     }
 
-  cls_rep =
-    heap_classrepr_get (thread_p, class_oid, NULL, 0, &idx_cache, true);
+  cls_rep = heap_classrepr_get (thread_p, class_oid, NULL,
+				NULL_REPRID, &idx_cache);
   if (cls_rep == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
@@ -5446,8 +5446,8 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
 	      goto exit_cleanup;
 	    }
 
-	  subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL, 0,
-					   &subcls_idx_cache, true);
+	  subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL,
+					   NULL_REPRID, &subcls_idx_cache);
 	  if (subcls_rep == NULL)
 	    {
 	      error = ER_FAILED;

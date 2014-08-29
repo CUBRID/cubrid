@@ -7530,8 +7530,8 @@ btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid,
   int cache_idx = -1;
   DISK_ISVALID rv = DISK_VALID;
 
-  cls_repr =
-    heap_classrepr_get (thread_p, cls_oid, NULL, 0, &cache_idx, true);
+  cls_repr = heap_classrepr_get (thread_p, cls_oid, NULL,
+				 NULL_REPRID, &cache_idx);
   if (cls_repr == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -7786,7 +7786,8 @@ btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid,
   DISK_ISVALID valid = DISK_VALID;
   char *index_name;
 
-  cls_repr = heap_classrepr_get (thread_p, oid, NULL, 0, &cache_idx, true);
+  cls_repr = heap_classrepr_get (thread_p, oid, NULL,
+				 NULL_REPRID, &cache_idx);
 
   if (cls_repr == NULL)
     {
@@ -13588,8 +13589,8 @@ btree_insert_oid_into_leaf_rec (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	{
 	  /* We need to also log MVCCID for undo/redo purpose */
 	  /* TODO: We have an exception for undo operation in case of
-	   *	   new files which we need to fix in the future (in order to
-	   *	   allow vacuum find our object).
+	   *       new files which we need to fix in the future (in order to
+	   *       allow vacuum find our object).
 	   */
 	  mvcc_args_p = &mvcc_args;
 	  mvcc_args_p->purpose = MVCC_BTREE_INSERT_OBJECT;
@@ -19729,14 +19730,14 @@ key_insertion:
 	}
       else
 	{
-	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: %s non-mvcc insert object "
+	  _er_log_debug (ARG_FILE_LINE,
+			 "DEBUG_BTREE: %s non-mvcc insert object "
 			 "oid(%d, %d, %d) "
 			 "class_oid(%d, %d, %d) and btid(%d, (%d, %d))",
 			 ret_val == NO_ERROR ? "Successful" : "Failed",
-			 oid->volid, oid->pageid, oid->slotid,
-			 cls_oid->volid, cls_oid->pageid, cls_oid->slotid,
-			 btid->root_pageid, btid->vfid.volid,
-			 btid->vfid.fileid);
+			 oid->volid, oid->pageid, oid->slotid, cls_oid->volid,
+			 cls_oid->pageid, cls_oid->slotid, btid->root_pageid,
+			 btid->vfid.volid, btid->vfid.fileid);
 	}
     }
 
@@ -31209,8 +31210,8 @@ btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type,
       goto cleanup;
     }
 
-  classrep =
-    heap_classrepr_get (thread_p, &oid, NULL, 0, &idx_in_cache, true);
+  classrep = heap_classrepr_get (thread_p, &oid, NULL,
+				 NULL_REPRID, &idx_in_cache);
   if (classrep == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -31361,8 +31362,8 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor,
       goto cleanup;
     }
 
-  classrep =
-    heap_classrepr_get (thread_p, oid_p, NULL, 0, &idx_in_cache, true);
+  classrep = heap_classrepr_get (thread_p, oid_p, NULL,
+				 NULL_REPRID, &idx_in_cache);
   if (classrep == NULL)
     {
       ret = S_ERROR;

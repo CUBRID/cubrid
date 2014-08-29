@@ -1135,7 +1135,7 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
  *
  * return: error code
  *
- *   thread_p(in): thread entry 
+ *   thread_p(in): thread entry
  */
 static int
 logtb_initialize_mvcctable (THREAD_ENTRY * thread_p)
@@ -2258,7 +2258,7 @@ logtb_find_client_name (int tran_index)
 /*
  * logtb_set_user_name - set client name of transaction index
  *
- * return: 
+ * return:
  *
  *   tran_index(in): Index of transaction
  *   user_name(in):
@@ -2759,7 +2759,7 @@ logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_find_interrupt - 
+ * logtb_find_interrupt -
  *
  * return :
  *
@@ -3451,7 +3451,7 @@ logtb_mvcc_clear_update_stats (LOG_MVCC_UPDATE_STATS * log_upd_stats)
  *
  * return	    : Pointer to allocated entry.
  * thread_p (in)    : Thread entry.
- * log_upd_stats (in) : 
+ * log_upd_stats (in) :
  */
 static LOG_MVCC_CLASS_UPDATE_STATS *
 logtb_mvcc_alloc_class_stats (LOG_MVCC_UPDATE_STATS * log_upd_stats)
@@ -3711,7 +3711,7 @@ logtb_mvcc_find_class_oid_btid_stats (THREAD_ENTRY * thread_p,
  * return	    : address of found statistics or null otherwise
  * thread_p(in)	    :
  * btid (in)	    : B-tree id to be searched
- * create(in)	    : 
+ * create(in)	    :
  */
 LOG_MVCC_BTID_UNIQUE_STATS *
 logtb_mvcc_search_btid_stats_all_classes (THREAD_ENTRY * thread_p,
@@ -3896,7 +3896,7 @@ logtb_mvcc_update_class_unique_stats (THREAD_ENTRY * thread_p,
 
 /*
  * logtb_mvcc_reflect_unique_statistics () - reflects in B-tree the statistics
- *					     accumulated during transaction 
+ *					     accumulated during transaction
  *
  * return	    : error code or NO_ERROR
  * thread_p(in)	    :
@@ -4259,7 +4259,7 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
   /* The below code resided initially after the critical section but was moved
    * here because we need the snapshot in logtb_mvcc_load_global_statistics in
    * order to check that the class is partitioned or not not and if it is then
-   * also load unique statistics for partitions. 
+   * also load unique statistics for partitions.
    */
 
   /* update lowest active mvccid computed for the most recent snapshot */
@@ -4389,13 +4389,13 @@ logtb_get_lowest_active_mvccid (THREAD_ENTRY * thread_p)
  *	    either present in the transaction table or not running anymore.
  *	    If the current transaction will set its MVCCID after releasing
  *	    CSECT_MVCC_ACTIVE_TRANS, other transaction can generate and commit
- *	    a later MVCCID (causing highest_completed_mvccid > current mvccid) 
+ *	    a later MVCCID (causing highest_completed_mvccid > current mvccid)
  *	    before current transaction MVCCID to be stored in tran table.
  *	    This would break logtb_get_lowest_active_mvccid() that may
  *	    return a bigger value than the real one. Thus, this function
  *	    can consider that there is no active transaction and return
  *	    highest_completed_mvccid + 1, when, in fact, the only active
- *	    transaction MVCCID has not been stored yet in transaction table. 
+ *	    transaction MVCCID has not been stored yet in transaction table.
  */
 int
 logtb_get_new_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
@@ -4716,7 +4716,7 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
  * logtb_complete_mvcc () - Called at commit or rollback, completes MVCC info
  *			    for current transaction.
  *
- * return	  : Void. 
+ * return	  : Void.
  * thread_p (in)  : Thread entry.
  * tdes (in)	  : Transaction descriptor.
  * committed (in) : True if transaction was committed false if it was aborted.
@@ -5104,7 +5104,7 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
  *
  * return: error code
  *
- *   thread_p(in): thread entry 
+ *   thread_p(in): thread entry
  */
 int
 logtb_allocate_mvcc_info (THREAD_ENTRY * thread_p)
@@ -5213,7 +5213,7 @@ logtb_allocate_mvcc_info (THREAD_ENTRY * thread_p)
  *
  * return: error code
  *
- *   thread_p(in): thread entry 
+ *   thread_p(in): thread entry
  *
  * Note: If transaction MVCC info is valid then it's mvcc_id must be null.
  *  This means that transaction has complete before this call
@@ -5307,7 +5307,7 @@ logtb_release_mvcc_info (THREAD_ENTRY * thread_p)
  *
  * return: error code
  *
- *   thread_p(in): thread entry 
+ *   thread_p(in): thread entry
  */
 int
 logtb_alloc_mvcc_info_block (THREAD_ENTRY * thread_p)
@@ -5439,7 +5439,7 @@ logtb_mvcc_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
 		}
 
 	      /* Mark class for unique statistics loading. The statistics will
-	       * be loaded when snapshot will be taken 
+	       * be loaded when snapshot will be taken
 	       */
 	      if (class_stats->count_state != COS_LOADED)
 		{
@@ -5486,7 +5486,7 @@ logtb_mvcc_reset_count_optim_state (THREAD_ENTRY * thread_p)
  *
  * return: error code
  *
- * thread_p(in)	  : thread entry 
+ * thread_p(in)	  : thread entry
  * class_stats(in): class statistics instance for which count optimization
  *		    unique statistics will be created.
  */
@@ -5499,9 +5499,8 @@ logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p,
   int error_code = NO_ERROR, idx, classrepr_cacheindex = -1;
 
   /* get class representation to find the total number of indexes */
-  classrepr =
-    heap_classrepr_get (thread_p, &class_stats->class_oid, NULL, 0,
-			&classrepr_cacheindex, true);
+  classrepr = heap_classrepr_get (thread_p, &class_stats->class_oid, NULL,
+				  NULL_REPRID, &classrepr_cacheindex);
   if (classrepr == NULL)
     {
       goto exit_on_error;
@@ -5628,7 +5627,7 @@ logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p,
 }
 
 /*
- * logtb_has_deadlock_priority -  
+ * logtb_has_deadlock_priority -
  *
  * return: whether this transaction has deadlock priority
  */
@@ -5708,7 +5707,7 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
   if (!MVCCID_IS_VALID (curr_mvcc_info->mvcc_id))
     {
       /* if don't have MVCCID - assign an transaction MVCCID first and
-       * then sub-transaction MVCCID       
+       * then sub-transaction MVCCID
        */
 
       head_null_mvccids = mvcc_table->head_null_mvccids;
@@ -5809,9 +5808,9 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
 }
 
 /*
- * logtb_complete_sub_mvcc () - Called at end of sub-transaction 
+ * logtb_complete_sub_mvcc () - Called at end of sub-transaction
  *
- * return	  : Void. 
+ * return	  : Void.
  * thread_p (in)  : Thread entry.
  * tdes (in)	  : Transaction descriptor.
  */

@@ -1330,8 +1330,8 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
    * inherited indexes from partitions to the indexes in the partitioned class
    * class.
    */
-  cls_rep = heap_classrepr_get (thread_p, class_id_p, NULL, 0, &cls_idx_cache,
-				true);
+  cls_rep = heap_classrepr_get (thread_p, class_id_p, NULL,
+				NULL_REPRID, &cls_idx_cache);
   if (cls_rep == NULL)
     {
       error = ER_FAILED;
@@ -1385,8 +1385,9 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	  goto cleanup;
 	}
 
-      subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL, 0,
-				       &subcls_idx_cache, true);
+      subcls_rep =
+	heap_classrepr_get (thread_p, &partitions[i], NULL,
+			    NULL_REPRID, &subcls_idx_cache);
       if (subcls_rep == NULL)
 	{
 	  error = ER_FAILED;
@@ -1505,8 +1506,8 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	  goto cleanup;
 	}
 
-      subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL, 0,
-				       &subcls_idx_cache, true);
+      subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL,
+				       NULL_REPRID, &subcls_idx_cache);
       if (subcls_rep == NULL)
 	{
 	  error = ER_FAILED;

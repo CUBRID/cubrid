@@ -6227,7 +6227,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  if (is_update_inplace == false)
 	    {
 	      LOG_TDES *tdes;
-	      
+
 	      tdes = LOG_FIND_CURRENT_TDES (thread_p);
 	      if (!(has_index & LC_FLAG_HAS_UNIQUE_INDEX))
 		{
@@ -7677,7 +7677,7 @@ xlocator_force_repl_update (THREAD_ENTRY * thread_p, BTID * btid,
     }
 
   error_code = locator_start_force_scan_cache (thread_p, &scan_cache,
-					       &hfid, NULL,
+					       &hfid, class_oid,
 					       SINGLE_ROW_UPDATE);
   if (error_code != NO_ERROR)
     {

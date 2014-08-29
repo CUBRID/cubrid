@@ -591,8 +591,7 @@ extern void heap_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
 extern OR_CLASSREP *heap_classrepr_get (THREAD_ENTRY * thread_p,
 					OID * class_oid,
 					RECDES * class_recdes, REPR_ID reprid,
-					int *idx_incache,
-					bool use_last_reprid);
+					int *idx_incache);
 extern int heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache);
 extern REPR_ID heap_get_class_repr_id (THREAD_ENTRY * thread_p,
 				       OID * class_oid);
