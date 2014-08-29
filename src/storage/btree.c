@@ -16265,8 +16265,10 @@ btree_compress_records (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  pr_midxkey_remove_prefix (&key, diff_column);
 	  new_key_len = btree_get_key_length (&key);
 
+	  new_key_len = DB_ALIGN (new_key_len, INT_ALIGNMENT);
+	  key_len = DB_ALIGN (key_len, INT_ALIGNMENT);
+
 	  new_offset = offset + (new_key_len - key_len);
-	  new_offset = DB_ALIGN (new_offset, INT_ALIGNMENT);
 
 	  /* move remaining part of oids */
 	  memmove (rec[i].data + new_offset, rec[i].data + offset,
@@ -16337,8 +16339,10 @@ btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid,
       pr_midxkey_remove_prefix (&key, diff_column);
       new_key_len = btree_get_key_length (&key);
 
+      new_key_len = DB_ALIGN (new_key_len, INT_ALIGNMENT);
+      key_len = DB_ALIGN (key_len, INT_ALIGNMENT);
+
       new_offset = offset + new_key_len - key_len;
-      new_offset = DB_ALIGN (new_offset, INT_ALIGNMENT);
 
       if (new_offset != offset)
 	{
