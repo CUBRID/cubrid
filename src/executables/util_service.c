@@ -932,6 +932,9 @@ static int
 process_master (int command_type)
 {
   int status = NO_ERROR;
+  int pid = 0;
+  int waited_seconds = 0;
+
   int master_port = prm_get_master_port_id ();
 
   switch (command_type)
@@ -943,12 +946,47 @@ process_master (int command_type)
 	if (!css_does_master_exist (master_port))
 	  {
 	    const char *args[] = { UTIL_MASTER_NAME, NULL };
-	    status = proc_execute (UTIL_MASTER_NAME, args, false, false,
-				   false, NULL);
-	    /* The master process needs a few seconds to bind port */
-	    sleep (3);
-	    status = css_does_master_exist (master_port) ?
-	      NO_ERROR : ER_GENERIC_ERROR;
+
+	    status = ER_GENERIC_ERROR;
+	    while (status != NO_ERROR && waited_seconds < 180)
+	      {
+		if (pid == 0 || (pid != 0 && is_terminated_process (pid)))
+		  {
+		    if (pid != 0)
+		      {
+			util_log_write_errstr
+			  ("Master does not exist. Try to start it again.\n");
+		      }
+
+		    status = proc_execute (UTIL_MASTER_NAME, args, false,
+					   false, false, &pid);
+		    if (status != NO_ERROR)
+		      {
+			util_log_write_errstr
+			  ("Could not start master process.\n");
+			break;
+		      }
+		  }
+
+		/* The master process needs a few seconds to bind port */
+		sleep (1);
+		waited_seconds++;
+
+		status = css_does_master_exist (master_port) ?
+		  NO_ERROR : ER_GENERIC_ERROR;
+	      }
+
+	    if (status != NO_ERROR)
+	      {
+		/* The master process failed to start or could not connected 
+		 * within 3 minutes
+		 */
+		util_log_write_errid (MSGCAT_UTIL_GENERIC_RESULT,
+				      PRINT_MASTER_NAME,
+				      command_string (command_type),
+				      PRINT_RESULT_FAIL);
+	      }
+
 	    print_result (PRINT_MASTER_NAME, status, command_type);
 	  }
 	else
