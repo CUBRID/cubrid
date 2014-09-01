@@ -1176,20 +1176,6 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
       buffer = pt_append_nulstring (parser, buffer,
 				    classobj_describe_foreign_key_action
 				    (constraint_p->fk_info->update_action));
-
-      if (constraint_p->fk_info->cache_attr)
-	{
-	  if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
-	    {
-	      buffer = pt_append_nulstring (parser, buffer, ",");
-	    }
-	  buffer = pt_append_nulstring (parser, buffer, " ON CACHE OBJECT ");
-
-	  buffer =
-	    obj_print_identifier (parser, buffer,
-				  constraint_p->fk_info->cache_attr,
-				  prt_type);
-	}
     }
 
   return ((char *) pt_get_varchar_bytes (buffer));

@@ -111,8 +111,6 @@ extern int do_add_resolutions (const PARSER_CONTEXT * parser,
 			       const PT_NODE * resolution);
 extern int do_add_supers (const PARSER_CONTEXT * parser,
 			  DB_CTMPL * ctemplate, const PT_NODE * supers);
-extern int do_add_foreign_key_objcache_attr (DB_CTMPL * ctemplate,
-					     PT_NODE * constraints);
 extern int do_set_object_id (const PARSER_CONTEXT * parser,
 			     DB_CTMPL * ctemplate, PT_NODE * object_id_list);
 extern int do_create_local (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,

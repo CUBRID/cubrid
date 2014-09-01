@@ -1650,63 +1650,53 @@ or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq,
   int pageid, slotid, volid, fileid;
 
   index->fk = (OR_FOREIGN_KEY *) malloc (sizeof (OR_FOREIGN_KEY));
-  if (index->fk != NULL)
+  if (index->fk == NULL)
     {
-      if (set_get_element_nocopy (fk_seq, 0, &val) != NO_ERROR)
-	{
-	  return;
-	}
-
-      index->fk->next = NULL;
-      index->fk->fkname = strdup (fkname);
-
-      args = classobj_decompose_property_oid (DB_PULL_STRING (&val),
-					      &pageid, &slotid, &volid);
-      if (args != 3)
-	{
-	  return;
-	}
-
-      index->fk->ref_class_oid.pageid = (PAGEID) pageid;
-      index->fk->ref_class_oid.slotid = (PGSLOTID) slotid;
-      index->fk->ref_class_oid.volid = (VOLID) volid;
-
-      if (set_get_element_nocopy (fk_seq, 1, &val) != NO_ERROR)
-	{
-	  return;
-	}
-
-      args = classobj_decompose_property_oid (DB_GET_STRING (&val),
-					      &volid, &fileid, &pageid);
-
-      if (args != 3)
-	{
-	  return;
-	}
-
-      index->fk->ref_class_pk_btid.vfid.volid = (VOLID) volid;
-      index->fk->ref_class_pk_btid.root_pageid = (PAGEID) pageid;
-      index->fk->ref_class_pk_btid.vfid.fileid = (FILEID) fileid;
-
-      set_get_element_nocopy (fk_seq, 2, &val);
-      index->fk->del_action = DB_GET_INT (&val);
-
-      set_get_element_nocopy (fk_seq, 3, &val);
-      index->fk->upd_action = DB_GET_INT (&val);
-
-      set_get_element_nocopy (fk_seq, 4, &val);
-      if (DB_IS_NULL (&val))
-	{
-	  index->fk->is_cache_obj = false;
-	}
-      else
-	{
-	  index->fk->is_cache_obj = true;
-	}
-
-      set_get_element_nocopy (fk_seq, 5, &val);
-      index->fk->cache_attr_id = DB_GET_INT (&val);
+      assert (false);		/* TODO */
+      return;
     }
+
+  if (set_get_element_nocopy (fk_seq, 0, &val) != NO_ERROR)
+    {
+      return;
+    }
+
+  index->fk->next = NULL;
+  index->fk->fkname = strdup (fkname);
+
+  args = classobj_decompose_property_oid (DB_PULL_STRING (&val),
+					  &pageid, &slotid, &volid);
+  if (args != 3)
+    {
+      return;
+    }
+
+  index->fk->ref_class_oid.pageid = (PAGEID) pageid;
+  index->fk->ref_class_oid.slotid = (PGSLOTID) slotid;
+  index->fk->ref_class_oid.volid = (VOLID) volid;
+
+  if (set_get_element_nocopy (fk_seq, 1, &val) != NO_ERROR)
+    {
+      return;
+    }
+
+  args = classobj_decompose_property_oid (DB_GET_STRING (&val),
+					  &volid, &fileid, &pageid);
+
+  if (args != 3)
+    {
+      return;
+    }
+
+  index->fk->ref_class_pk_btid.vfid.volid = (VOLID) volid;
+  index->fk->ref_class_pk_btid.root_pageid = (PAGEID) pageid;
+  index->fk->ref_class_pk_btid.vfid.fileid = (FILEID) fileid;
+
+  set_get_element_nocopy (fk_seq, 2, &val);
+  index->fk->del_action = DB_GET_INT (&val);
+
+  set_get_element_nocopy (fk_seq, 3, &val);
+  index->fk->upd_action = DB_GET_INT (&val);
 }
 
 /*
@@ -1737,95 +1727,90 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
       fk_seq = DB_PULL_SEQUENCE (&fkval);
 
       fk = (OR_FOREIGN_KEY *) malloc (sizeof (OR_FOREIGN_KEY));
-      if (fk != NULL)
+      if (fk == NULL)
 	{
-	  fk->next = NULL;
+	  assert (false);	/* TODO */
+	  return;
+	}
 
-	  if (set_get_element_nocopy (fk_seq, 0, &val) != NO_ERROR)
+      fk->next = NULL;
+
+      if (set_get_element_nocopy (fk_seq, 0, &val) != NO_ERROR)
+	{
+	  free_and_init (fk);
+	  return;
+	}
+
+      args = classobj_decompose_property_oid (DB_PULL_STRING (&val),
+					      &pageid, &slotid, &volid);
+
+      if (args != 3)
+	{
+	  free_and_init (fk);
+	  return;
+	}
+
+      fk->self_oid.pageid = (PAGEID) pageid;
+      fk->self_oid.slotid = (PGSLOTID) slotid;
+      fk->self_oid.volid = (VOLID) volid;
+
+      if (set_get_element_nocopy (fk_seq, 1, &val) != NO_ERROR)
+	{
+	  free_and_init (fk);
+	  return;
+	}
+
+      args = classobj_decompose_property_oid (DB_PULL_STRING (&val),
+					      &volid, &fileid, &pageid);
+
+      if (args != 3)
+	{
+	  free_and_init (fk);
+	  return;
+	}
+
+      fk->self_btid.vfid.volid = (VOLID) volid;
+      fk->self_btid.root_pageid = (PAGEID) pageid;
+      fk->self_btid.vfid.fileid = (FILEID) fileid;
+
+      if (set_get_element_nocopy (fk_seq, 2, &val) != NO_ERROR)
+	{
+	  free_and_init (fk);
+	  return;
+	}
+      fk->del_action = DB_GET_INT (&val);
+
+      if (set_get_element_nocopy (fk_seq, 3, &val) != NO_ERROR)
+	{
+	  free_and_init (fk);
+	  return;
+	}
+      fk->upd_action = DB_GET_INT (&val);
+
+      if (set_get_element_nocopy (fk_seq, 4, &val) != NO_ERROR)
+	{
+	  free_and_init (fk);
+	  return;
+	}
+      fkname = DB_PULL_STRING (&val);
+      fk->fkname = strdup (fkname);
+
+      if (i == 0)
+	{
+	  index->fk = fk;
+	  p = index->fk;
+	}
+      else
+	{
+	  if (p != NULL)
 	    {
-	      free_and_init (fk);
-	      return;
-	    }
-
-	  args = classobj_decompose_property_oid (DB_PULL_STRING (&val),
-						  &pageid, &slotid, &volid);
-
-	  if (args != 3)
-	    {
-	      free_and_init (fk);
-	      return;
-	    }
-
-	  fk->self_oid.pageid = (PAGEID) pageid;
-	  fk->self_oid.slotid = (PGSLOTID) slotid;
-	  fk->self_oid.volid = (VOLID) volid;
-
-	  if (set_get_element_nocopy (fk_seq, 1, &val) != NO_ERROR)
-	    {
-	      free_and_init (fk);
-	      return;
-	    }
-
-	  args = classobj_decompose_property_oid (DB_PULL_STRING (&val),
-						  &volid, &fileid, &pageid);
-
-	  if (args != 3)
-	    {
-	      free_and_init (fk);
-	      return;
-	    }
-
-	  fk->self_btid.vfid.volid = (VOLID) volid;
-	  fk->self_btid.root_pageid = (PAGEID) pageid;
-	  fk->self_btid.vfid.fileid = (FILEID) fileid;
-
-	  if (set_get_element_nocopy (fk_seq, 2, &val) != NO_ERROR)
-	    {
-	      free_and_init (fk);
-	      return;
-	    }
-	  fk->del_action = DB_GET_INT (&val);
-
-	  if (set_get_element_nocopy (fk_seq, 3, &val) != NO_ERROR)
-	    {
-	      free_and_init (fk);
-	      return;
-	    }
-	  fk->upd_action = DB_GET_INT (&val);
-
-	  if (set_get_element_nocopy (fk_seq, 4, &val) != NO_ERROR)
-	    {
-	      free_and_init (fk);
-	      return;
-	    }
-	  fkname = DB_PULL_STRING (&val);
-	  fk->fkname = strdup (fkname);
-
-	  if (set_get_element_nocopy (fk_seq, 5, &val) != NO_ERROR)
-	    {
-	      free_and_init (fk->fkname);
-	      free_and_init (fk);
-	      return;
-	    }
-	  fk->cache_attr_id = DB_GET_INT (&val);
-
-	  if (i == 0)
-	    {
-	      index->fk = fk;
-	      p = index->fk;
+	      p->next = fk;
+	      p = p->next;
 	    }
 	  else
 	    {
-	      if (p != NULL)
-		{
-		  p->next = fk;
-		  p = p->next;
-		}
-	      else
-		{
-		  free_and_init (fk->fkname);
-		  free_and_init (fk);
-		}
+	      free_and_init (fk->fkname);
+	      free_and_init (fk);
 	    }
 	}
     }

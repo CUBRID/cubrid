@@ -222,8 +222,7 @@ struct btree_node
 extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid,
 				    HFID * hfid, OID * oid, DB_VALUE * keyval,
 				    int n_attrs, OID * pk_cls_oid,
-				    BTID * pk_btid, int cache_attr_id,
-				    const char *fk_name);
+				    BTID * pk_btid, const char *fk_name);
 
 /* Recovery routines */
 extern int btree_rv_undo_create_index (THREAD_ENTRY * thread_p,

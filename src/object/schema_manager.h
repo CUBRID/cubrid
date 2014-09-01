@@ -70,7 +70,6 @@ struct sm_constraint_info
   SM_PREDICATE_INFO *filter_predicate;
   char *ref_cls_name;
   char **ref_attrs;
-  char *fk_cache_attr;
   SM_FUNCTION_INFO *func_index_info;
   SM_FOREIGN_KEY_ACTION fk_delete_action;
   SM_FOREIGN_KEY_ACTION fk_update_action;
@@ -327,7 +326,6 @@ extern bool sm_class_has_unique_constraint (MOP classop,
 extern int sm_att_unique_constrained (MOP classop, const char *name);
 extern int sm_att_in_unique_filter_constraint_predicate (MOP classop,
 							 const char *name);
-extern int sm_is_att_fk_cache (MOP classop, const char *name);
 extern int sm_att_fk_constrained (MOP classop, const char *name);
 
 extern bool classobj_is_exist_foreign_key_ref (MOP refop,

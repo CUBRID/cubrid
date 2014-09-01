@@ -495,13 +495,11 @@ dbt_drop_constraint (DB_CTMPL * def,
  * ref_attrs(in) :
  * del_action(in) :
  * upd_action(in) :
- * cache_attr(in) :
  */
 int
 dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
 		     const char **attnames, const char *ref_class,
-		     const char **ref_attrs, int del_action,
-		     int upd_action, const char *cache_attr)
+		     const char **ref_attrs, int del_action, int upd_action)
 {
   int error = NO_ERROR;
   char *name;
@@ -515,8 +513,6 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
   fk_info.ref_attrs = ref_attrs;
   fk_info.delete_action = (SM_FOREIGN_KEY_ACTION) del_action;
   fk_info.update_action = (SM_FOREIGN_KEY_ACTION) upd_action;
-  fk_info.cache_attr = cache_attr;
-  fk_info.cache_attr_id = -1;
   fk_info.is_dropped = false;
 
   if (name == NULL)

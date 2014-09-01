@@ -101,8 +101,6 @@ struct or_foreign_key
   BTID self_btid;
   int del_action;
   int upd_action;
-  int cache_attr_id;
-  bool is_cache_obj;
 };
 
 typedef struct or_predicate OR_PREDICATE;

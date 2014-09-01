@@ -75,7 +75,6 @@ struct sort_args
 
   OID *fk_refcls_oid;
   BTID *fk_refcls_pk_btid;
-  int cache_attr_id;
   const char *fk_name;
   PRED_EXPR_WITH_CONTEXT *filter;
   PR_EVAL_FNC filter_eval_func;
@@ -666,7 +665,6 @@ btree_get_next_overflow_vpid (PAGE_PTR page_ptr, VPID * vpid)
  *   not_null_flag(in):
  *   fk_refcls_oid(in):
  *   fk_refcls_pk_btid(in):
- *   cache_attr_id(in):
  *   fk_name(in):
  *
  */
@@ -676,7 +674,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
 		   int n_attrs, int *attr_ids, int *attrs_prefix_length,
 		   HFID * hfids, int unique_pk, int not_null_flag,
 		   OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-		   int cache_attr_id, const char *fk_name, char *pred_stream,
+		   const char *fk_name, char *pred_stream,
 		   int pred_stream_size, char *func_pred_stream,
 		   int func_pred_stream_size, int func_col_id,
 		   int func_attr_index_start)
@@ -788,7 +786,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
   sort_args->btid = &btid_int;
   sort_args->fk_refcls_oid = fk_refcls_oid;
   sort_args->fk_refcls_pk_btid = fk_refcls_pk_btid;
-  sort_args->cache_attr_id = cache_attr_id;
   sort_args->fk_name = fk_name;
   if (pred_stream && pred_stream_size > 0)
     {
@@ -1138,27 +1135,20 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name,
     }
 #endif
 
-  if (sort_args->cache_attr_id < 0)
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
-      addr.vfid = NULL;
-      addr.pgptr = NULL;
-      addr.offset = 0;
-      log_append_undo_data (thread_p, RVBT_CREATE_INDEX, &addr, sizeof (VFID),
-			    &(btid->vfid));
+  addr.vfid = NULL;
+  addr.pgptr = NULL;
+  addr.offset = 0;
+  log_append_undo_data (thread_p, RVBT_CREATE_INDEX, &addr, sizeof (VFID),
+			&(btid->vfid));
 
-      /* Already append a vacuum undo logging when file was created, but
-       * since that was included in the system operation which just got
-       * committed, we need to do it again in case of rollback.
-       */
-      vacuum_log_add_dropped_file (thread_p, &btid->vfid,
-				   VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
-    }
-  else
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-    }
+  /* Already append a vacuum undo logging when file was created, but
+   * since that was included in the system operation which just got
+   * committed, we need to do it again in case of rollback.
+   */
+  vacuum_log_add_dropped_file (thread_p, &btid->vfid,
+			       VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
@@ -3024,21 +3014,21 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	    }			/* different key */
 	}
 
-	if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
-	  {
-	    _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load added "
-			   "object(%d, %d, %d) "
-			   "class(%d, %d, %d) and btid(%d, (%d, %d)) with "
-			   "mvccinfo=%lld | %lld",
-			   this_oid.volid, this_oid.pageid, this_oid.slotid,
-			   this_class_oid.volid, this_class_oid.pageid,
-			   this_class_oid.slotid,
-			   load_args->btid->sys_btid->root_pageid,
-			   load_args->btid->sys_btid->vfid.volid,
-			   load_args->btid->sys_btid->vfid.fileid,
-			   MVCC_GET_INSID (&mvcc_header),
-			   MVCC_GET_DELID (&mvcc_header));
-	  }
+      if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load added "
+			 "object(%d, %d, %d) "
+			 "class(%d, %d, %d) and btid(%d, (%d, %d)) with "
+			 "mvccinfo=%lld | %lld",
+			 this_oid.volid, this_oid.pageid, this_oid.slotid,
+			 this_class_oid.volid, this_class_oid.pageid,
+			 this_class_oid.slotid,
+			 load_args->btid->sys_btid->root_pageid,
+			 load_args->btid->sys_btid->vfid.volid,
+			 load_args->btid->sys_btid->vfid.fileid,
+			 MVCC_GET_INSID (&mvcc_header),
+			 MVCC_GET_DELID (&mvcc_header));
+	}
 
       /* Some objects have been recently deleted and couldn't be filtered
        * (because there may be running transaction that can still see them.
@@ -3248,13 +3238,12 @@ btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args,
  *   n_attrs(in):
  *   pk_cls_oid(in):
  *   pk_btid(in):
- *   cache_attr_id(in):
  *   fk_name(in):
  */
 int
 btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 			 OID * oid, DB_VALUE * keyval, int n_attrs,
-			 OID * pk_cls_oid, BTID * pk_btid, int cache_attr_id,
+			 OID * pk_cls_oid, BTID * pk_btid,
 			 const char *fk_name)
 {
   OID unique_oid;
@@ -3294,65 +3283,6 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 	}
       ret = ER_FK_INVALID;
       goto exit_on_error;
-    }
-
-  if (cache_attr_id >= 0)
-    {
-      ret =
-	heap_scancache_start_modify (thread_p, &upd_scancache, hfid, cls_oid,
-				     SINGLE_ROW_UPDATE, NULL);
-      if (ret != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-      ret = heap_attrinfo_start (thread_p, cls_oid, -1, NULL, &attr_info);
-      if (ret != NO_ERROR)
-	{
-	  heap_scancache_end_modify (thread_p, &upd_scancache);
-	  goto exit_on_error;
-	}
-
-      db_make_oid (&val, &unique_oid);
-      ret = heap_attrinfo_clear_dbvalues (&attr_info);
-      if (ret != NO_ERROR)
-	{
-	  heap_scancache_end_modify (thread_p, &upd_scancache);
-	  goto exit_on_error;
-	}
-      ret = heap_attrinfo_set (oid, cache_attr_id, &val, &attr_info);
-      if (ret != NO_ERROR)
-	{
-	  heap_attrinfo_end (thread_p, &attr_info);
-	  heap_scancache_end_modify (thread_p, &upd_scancache);
-	  goto exit_on_error;
-	}
-
-      /* since this function is called when the class is altered 
-       * (SCH_M_LOCK on class) update in place is forced.
-       */
-      ret = locator_attribute_info_force (thread_p, hfid, oid, NULL, false,
-					  &attr_info, &cache_attr_id, 1,
-					  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE,
-					  &upd_scancache, &force_count, true,
-					  REPL_INFO_TYPE_STMT_NORMAL,
-					  DB_NOT_PARTITIONED_CLASS, NULL,
-					  NULL, NULL, true);
-      if (ret != NO_ERROR)
-	{
-	  if (ret == ER_MVCC_NOT_SATISFIED_REEVALUATION)
-	    {
-	      ret = NO_ERROR;
-	    }
-	  else
-	    {
-	      heap_attrinfo_end (thread_p, &attr_info);
-	      heap_scancache_end_modify (thread_p, &upd_scancache);
-	      goto exit_on_error;
-	    }
-	}
-
-      heap_attrinfo_end (thread_p, &attr_info);
-      heap_scancache_end_modify (thread_p, &upd_scancache);
     }
 
   return ret;
@@ -3617,7 +3547,6 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 				       sort_args->n_attrs,
 				       sort_args->fk_refcls_oid,
 				       sort_args->fk_refcls_pk_btid,
-				       sort_args->cache_attr_id,
 				       sort_args->fk_name) != NO_ERROR)
 	    {
 	      if (dbvalue_ptr == &dbvalue)

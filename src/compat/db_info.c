@@ -2140,23 +2140,6 @@ db_get_foreign_key_action (DB_CONSTRAINT * constraint, DB_FK_ACTION_TYPE type)
   return act;
 }
 
-/*
- * db_get_foreign_key_cache_object_attr() - This function returns the attribute
- *    name for object cache.
- * return: C string of attribute name for object cache
- * constraint(in): constraint descriptor
- */
-const char *
-db_get_foreign_key_cache_object_attr (DB_CONSTRAINT * constraint)
-{
-  const char *cache_attr = NULL;
-
-  if (constraint != NULL && constraint->type == SM_CONSTRAINT_FOREIGN_KEY)
-    {
-      cache_attr = constraint->fk_info->cache_attr;
-    }
-  return cache_attr;
-}
 
 /*
  * METHOD FILE & LOADER COMMAND ACCESSORS

@@ -617,7 +617,6 @@ struct sm_attribute
 
   MOP auto_increment;		/* instance of db_serial */
   int storage_order;		/* storage order number */
-  bool is_fk_cache_attr;
 };
 
 typedef struct sm_foreign_key_info SM_FOREIGN_KEY_INFO;
@@ -633,9 +632,7 @@ struct sm_foreign_key_info
   BTID self_btid;
   SM_FOREIGN_KEY_ACTION delete_action;
   SM_FOREIGN_KEY_ACTION update_action;
-  const char *cache_attr;
   char *name;
-  int cache_attr_id;
   bool is_dropped;
 };
 

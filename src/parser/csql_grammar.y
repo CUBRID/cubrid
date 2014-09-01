@@ -8588,7 +8588,6 @@ foreign_key_constraint
 			    node->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
 			    node->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($10));	/* delete_action */
 			    node->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($10));	/* update_action */
-			    node->info.constraint.un.foreign_key.cache_attr = CONTAINER_AT_2 ($10);	/* cache_attr */
 			    node->info.constraint.un.foreign_key.referenced_class = $8;
 			  }
 
@@ -8788,20 +8787,6 @@ ref_rule_list
 			$$ = ctn;
 
 		DBG_PRINT}}
-	| ref_rule_list ON_ CACHE OBJECT identifier
-		{{
-
-			container_3 ctn = $1;
-			if (ctn.c3 != NULL)
-			  {
-			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
-			    csql_yyerror_explicit (@2.first_line, @2.first_column);
-			  }
-
-			ctn.c3 = $5;
-			$$ = ctn;
-
-		DBG_PRINT}}
 	| ON_ DELETE_ CASCADE
 		{{
 
@@ -8855,14 +8840,6 @@ ref_rule_list
 
 			container_3 ctn;
 			SET_CONTAINER_3 (ctn, NULL, FROM_NUMBER (PT_RULE_SET_NULL), NULL);
-			$$ = ctn;
-
-		DBG_PRINT}}
-	| ON_ CACHE OBJECT identifier
-		{{
-
-			container_3 ctn;
-			SET_CONTAINER_3 (ctn, NULL, NULL, $4);
 			$$ = ctn;
 
 		DBG_PRINT}}
@@ -9775,7 +9752,6 @@ column_other_constraint_def
 			    constraint->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
 			    constraint->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($6));	/* delete_action */
 			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($6));	/* update_action */
-			    constraint->info.constraint.un.foreign_key.cache_attr = CONTAINER_AT_2 ($6);	/* cache_attr */
 			    constraint->info.constraint.un.foreign_key.referenced_class = $4;
 			  }
 

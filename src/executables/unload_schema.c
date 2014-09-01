@@ -3443,11 +3443,6 @@ emit_foreign_key (DB_OBJLIST * classes)
 	  fprintf (output_file, "ON UPDATE %s ",
 		   classobj_describe_foreign_key_action (constraint->fk_info->
 							 update_action));
-	  if (constraint->fk_info->cache_attr)
-	    {
-	      fprintf (output_file, "ON CACHE OBJECT %s%s%s",
-		       PRINT_IDENTIFIER (constraint->fk_info->cache_attr));
-	    }
 
 	  (void) fprintf (output_file, ";\n\n");
 	}

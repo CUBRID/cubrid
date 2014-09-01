@@ -177,8 +177,7 @@ extern int xlocator_check_fk_validity (THREAD_ENTRY * thread_p,
 				       OID * cls_oid, HFID * hfid,
 				       TP_DOMAIN * key_type, int n_attrs,
 				       int *attr_ids, OID * pk_cls_oid,
-				       BTID * pk_btid, int cache_attr_id,
-				       char *fk_name);
+				       BTID * pk_btid, char *fk_name);
 extern int xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p,
 					  OID * class_oid, RECDES * recdes,
 					  bool update_last_reprid);
@@ -294,7 +293,7 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid,
 				HFID * hfids, int unique_pk,
 				int not_null_flag,
 				OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-				int cache_attr_id, const char *fk_name,
+				const char *fk_name,
 				char *pred_stream, int pred_stream_size,
 				char *expr_stream, int expr_steram_size,
 				int func_col_id, int func_attr_index_start);

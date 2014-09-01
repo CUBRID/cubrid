@@ -413,7 +413,7 @@ static int allocate_index (MOP classop, SM_CLASS * class_,
 			   int unique_pk, int not_null, int reverse,
 			   const char *constraint_name, BTID * index,
 			   OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-			   int cache_attr_id, const char *fk_name,
+			   const char *fk_name,
 			   SM_PREDICATE_INFO * filter_index,
 			   SM_FUNCTION_INFO * function_index);
 static int deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index);
@@ -421,8 +421,7 @@ static int rem_class_from_index (OID * oid, BTID * index, HFID * heap);
 static int check_fk_validity (MOP classop, SM_CLASS * class_,
 			      SM_ATTRIBUTE ** key_attrs,
 			      const int *asc_desc, OID * pk_cls_oid,
-			      BTID * pk_btid, int cache_attr_id,
-			      char *fk_name);
+			      BTID * pk_btid, char *fk_name);
 static int update_foreign_key_ref (MOP ref_clsop,
 				   SM_FOREIGN_KEY_INFO * fk_info);
 static int allocate_unique_constraint (MOP classop, SM_CLASS * class_,
@@ -5482,27 +5481,6 @@ sm_att_constrained (MOP classop, const char *name, SM_ATTRIBUTE_FLAG cons)
 }
 
 /*
- * sm_is_att_fk_cache()
- *   return:
- *   classop(in): class object
- *   name(in):
- */
-
-int
-sm_is_att_fk_cache (MOP classop, const char *name)
-{
-  SM_CLASS *class_;
-  SM_ATTRIBUTE *att = NULL;
-
-  if (find_attribute_op (classop, name, &class_, &att) == NO_ERROR)
-    {
-      return att->is_fk_cache_attr;
-    }
-
-  return false;
-}
-
-/*
  * sm_att_fk_constrained() - Returns whether the attribute is foreign key
  *			     constrained.
  *   return: whether the attribute is foreign key constrained.
@@ -10379,7 +10357,6 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses,
  *   index(out): The BTID of the returned index.
  *   fk_refcls_oid(in):
  *   fk_refcls_pk_btid(in):
- *   cache_attr_id(in):
  *   fk_name(in):
  */
 
@@ -10389,7 +10366,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 		const int *attrs_prefix_length, int unique_pk, int not_null,
 		int reverse, const char *constraint_name, BTID * index,
 		OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-		int cache_attr_id, const char *fk_name,
+		const char *fk_name,
 		SM_PREDICATE_INFO * filter_index,
 		SM_FUNCTION_INFO * function_index)
 {
@@ -10563,8 +10540,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 				      n_classes, n_attrs, attr_ids,
 				      (int *) attrs_prefix_length, hfids,
 				      unique_pk, not_null, fk_refcls_oid,
-				      fk_refcls_pk_btid, cache_attr_id,
-				      fk_name,
+				      fk_refcls_pk_btid, fk_name,
 				      SM_GET_FILTER_PRED_STREAM
 				      (filter_index),
 				      SM_GET_FILTER_PRED_STREAM_SIZE
@@ -10581,8 +10557,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 				      n_classes, n_attrs, attr_ids,
 				      (int *) attrs_prefix_length, hfids,
 				      unique_pk, not_null, fk_refcls_oid,
-				      fk_refcls_pk_btid, cache_attr_id,
-				      fk_name,
+				      fk_refcls_pk_btid, fk_name,
 				      SM_GET_FILTER_PRED_STREAM
 				      (filter_index),
 				      SM_GET_FILTER_PRED_STREAM_SIZE
@@ -10681,14 +10656,13 @@ rem_class_from_index (OID * oid, BTID * index, HFID * heap)
  *   asc_desc(in): asc/desc info list
  *   pk_cls_oid(in):
  *   pk_btid(in):
- *   cache_attr_id(in):
  *   fk_name(in):
  */
 
 static int
 check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs,
 		   const int *asc_desc, OID * pk_cls_oid, BTID * pk_btid,
-		   int cache_attr_id, char *fk_name)
+		   char *fk_name)
 {
   int error = NO_ERROR;
   int i, n_attrs;
@@ -10728,7 +10702,7 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs,
 
       error = locator_check_fk_validity (cls_oid, hfid, domain, n_attrs,
 					 attr_ids, pk_cls_oid, pk_btid,
-					 cache_attr_id, fk_name);
+					 fk_name);
 
       free_and_init (attr_ids);
     }
@@ -10977,7 +10951,7 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 	  if (allocate_index
 	      (classop, class_, local_subclasses, con->attributes, asc_desc,
 	       con->attrs_prefix_length, unique_pk, not_null, reverse,
-	       con->name, &con->index_btid, NULL, NULL, -1, NULL,
+	       con->name, &con->index_btid, NULL, NULL, NULL,
 	       con->filter_predicate, con->func_index_info))
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -11029,7 +11003,6 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
 {
   SM_CLASS_CONSTRAINT *pk, *existing_con;
   MOP ref_clsop;
-  SM_ATTRIBUTE *cache_attr;
 
   if (OID_ISNULL (&con->fk_info->ref_class_oid))
     {
@@ -11045,21 +11018,6 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
       con->fk_info->ref_class_pk_btid = pk->index_btid;
     }
 
-  if (con->fk_info->cache_attr && con->fk_info->cache_attr_id < 0)
-    {
-      cache_attr = classobj_find_attribute (class_, con->fk_info->cache_attr,
-					    0);
-      if (cache_attr == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_FK_CANT_ASSIGN_CACHE_ATTR, 1, con->fk_info->cache_attr);
-	  return ER_FK_CANT_ASSIGN_CACHE_ATTR;
-	}
-
-      con->fk_info->cache_attr_id = cache_attr->id;
-      cache_attr->is_fk_cache_attr = true;
-    }
-
   if (con->shared_cons_name != NULL)
     {
       existing_con = classobj_find_constraint_by_name (class_->constraints,
@@ -11070,15 +11028,12 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
 	      || existing_con->type == SM_CONSTRAINT_UNIQUE
 	      || existing_con->type == SM_CONSTRAINT_PRIMARY_KEY
 	      || existing_con->type == SM_CONSTRAINT_INDEX);
-      if ((con->fk_info->cache_attr_id < 0
-	   && existing_con->type != SM_CONSTRAINT_FOREIGN_KEY)
-	  || con->fk_info->cache_attr_id >= 0)
+      if (existing_con->type != SM_CONSTRAINT_FOREIGN_KEY)
 	{
 	  if (check_fk_validity (classop, class_, con->attributes,
 				 con->asc_desc,
 				 &(con->fk_info->ref_class_oid),
 				 &(con->fk_info->ref_class_pk_btid),
-				 con->fk_info->cache_attr_id,
 				 (char *) con->fk_info->name) != NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -11093,7 +11048,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
 			  false, false, con->name, &con->index_btid,
 			  &(con->fk_info->ref_class_oid),
 			  &(con->fk_info->ref_class_pk_btid),
-			  con->fk_info->cache_attr_id, con->fk_info->name,
+			  con->fk_info->name,
 			  con->filter_predicate, con->func_index_info))
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -11169,7 +11124,7 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
 				  con->attrs_prefix_length,
 				  0 /* unique_pk */ ,
 				  false, reverse, con->name,
-				  &con->index_btid, NULL, NULL, -1, NULL,
+				  &con->index_btid, NULL, NULL, NULL,
 				  con->filter_predicate,
 				  con->func_index_info);
 	}
@@ -13928,8 +13883,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
       error = allocate_index (classop, class_, NULL, attrs, asc_desc,
 			      attrs_prefix_length, 0 /* unique_pk */ ,
 			      false, reverse_index, constraint_name, &index,
-			      NULL, NULL, -1, NULL, filter_index,
-			      function_index);
+			      NULL, NULL, NULL, filter_index, function_index);
     }
 
   if (error == NO_ERROR)
@@ -15047,7 +15001,6 @@ sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
 	  free_and_init (info->filter_predicate);
 	}
       free_and_init (info->ref_cls_name);
-      free_and_init (info->fk_cache_attr);
 
       free_and_init (info);
       info = next;
@@ -15290,18 +15243,6 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
 		      strlen (attr_name) + 1);
-	      goto error_exit;
-	    }
-	}
-
-      if (c->fk_info->cache_attr != NULL)
-	{
-	  new_constraint->fk_cache_attr = strdup (c->fk_info->cache_attr);
-	  if (new_constraint->fk_cache_attr == NULL)
-	    {
-	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
-		      strlen (c->fk_info->cache_attr) + 1);
 	      goto error_exit;
 	    }
 	}
@@ -15854,8 +15795,7 @@ sm_truncate_class (MOP class_mop)
 				   saved->ref_cls_name,
 				   (const char **) saved->ref_attrs,
 				   saved->fk_delete_action,
-				   saved->fk_update_action,
-				   saved->fk_cache_attr);
+				   saved->fk_update_action);
 
       if (error != NO_ERROR)
 	{

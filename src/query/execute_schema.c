@@ -481,7 +481,6 @@ static int do_check_fk_constraints_internal (DB_CTMPL * ctemplate,
 static int get_index_type_qualifiers (MOP obj, bool * is_reverse,
 				      bool * is_unique,
 				      const char *index_name);
-static int pt_has_fk_with_cache_attr_constraint (PT_NODE * constraints);
 
 /*
  * Function Group :
@@ -659,16 +658,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      return error;
 	    }
 
-	  error = do_add_foreign_key_objcache_attr (ctemplate,
-						    alter->info.
-						    alter.constraint_list);
-	  if (error != NO_ERROR)
-	    {
-	      dbt_abort_class (ctemplate);
-	      tran_abort_upto_system_savepoint
-		(UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-	      return error;
-	    }
 
 	  vclass = dbt_finish_class (ctemplate);
 	  if (vclass == NULL)
@@ -7634,7 +7623,6 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr,
   int i, n_atts, n_ref_atts;
   PT_NODE *p;
   int error = NO_ERROR;
-  const char *cache_attr = NULL;
 
   fk_info = (PT_FOREIGN_KEY_INFO *) & (cnstr->info.constraint.un.foreign_key);
 
@@ -7671,95 +7659,16 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr,
       constraint_name = cnstr->info.constraint.name->info.name.original;
     }
 
-  if (fk_info->cache_attr)
-    {
-      cache_attr = fk_info->cache_attr->info.name.original;
-    }
 
   error = dbt_add_foreign_key (ctemplate, constraint_name, att_names,
 			       fk_info->referenced_class->info.name.original,
 			       (const char **) ref_attrs,
 			       map_pt_to_sm_action (fk_info->delete_action),
-			       map_pt_to_sm_action (fk_info->update_action),
-			       cache_attr);
+			       map_pt_to_sm_action (fk_info->update_action));
   free_and_init (ref_attrs);
   return error;
 }
 
-/*
- * add_foreign_key_objcache_attr() -
- *   return: Error code
- *   ctemplate(in/out): Class template
- *   constraint(in): Constraints in the class
- *
- * Note:
- */
-int
-do_add_foreign_key_objcache_attr (DB_CTMPL * ctemplate, PT_NODE * constraints)
-{
-  PT_NODE *cnstr;
-  PT_FOREIGN_KEY_INFO *fk_info;
-  SM_ATTRIBUTE *cache_attr;
-  int error;
-  MOP ref_clsop;
-  char *ref_cls_name;
-
-  for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
-    {
-      if (cnstr->info.constraint.type != PT_CONSTRAIN_FOREIGN_KEY)
-	{
-	  continue;
-	}
-
-      fk_info = &(cnstr->info.constraint.un.foreign_key);
-      ref_cls_name = (char *) fk_info->referenced_class->info.name.original;
-
-      if (fk_info->cache_attr)
-	{
-	  error = smt_find_attribute (ctemplate,
-				      fk_info->cache_attr->info.name.original,
-				      false, &cache_attr);
-
-	  if (error == NO_ERROR)
-	    {
-	      ref_clsop = sm_find_class (ref_cls_name);
-
-	      if (ref_clsop == NULL)
-		{
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-			  ER_FK_UNKNOWN_REF_CLASSNAME, 1, ref_cls_name);
-		  return er_errid ();
-		}
-
-	      if (cache_attr->type->id != DB_TYPE_OBJECT
-		  || !OID_EQ (&cache_attr->domain->class_oid,
-			      ws_oid (ref_clsop)))
-		{
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-			  ER_SM_INVALID_NAME, 1, ref_cls_name);
-		}
-	    }
-	  else if (error == ER_SM_INVALID_NAME)
-	    {
-	      return error;
-	    }
-	  else
-	    {
-	      er_clear ();
-
-	      if (smt_add_attribute
-		  (ctemplate, fk_info->cache_attr->info.name.original,
-		   ref_cls_name, NULL) != NO_ERROR)
-		{
-		  assert (er_errid () != NO_ERROR);
-		  return er_errid ();
-		}
-	    }
-	}
-    }
-
-  return NO_ERROR;
-}
 
 /*
  * do_add_constraints() - This extern routine adds constraints
@@ -9177,11 +9086,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	       */
 	      do_flush_class_mop = true;
 	    }
-	}
-      if (pt_has_fk_with_cache_attr_constraint (node->info.create_entity.
-						constraint_list))
-	{
-	  do_flush_class_mop = true;
 	}
       error = sm_set_class_collation (class_obj, collation_id);
       break;
@@ -14683,36 +14587,4 @@ get_index_type_qualifiers (MOP obj, bool * is_reverse, bool * is_unique,
     }
 
   return error_code;
-}
-
-/*
- * pt_has_fk_with_cache_attr_constraint() - Check if class has foreign key with
- *				  cache attribute constraint
- *   return: 1 if the class has foreign key with cache attribute, otherwise 0
- *   mop(in): Class object
- */
-static int
-pt_has_fk_with_cache_attr_constraint (PT_NODE * constraints)
-{
-  PT_NODE *c = NULL;
-  PT_FOREIGN_KEY_INFO *fk_info = NULL;
-
-  if (constraints == NULL)
-    {
-      return 0;
-    }
-
-  for (c = constraints; c != NULL; c = c->next)
-    {
-      if (c->info.constraint.type == PT_CONSTRAIN_FOREIGN_KEY)
-	{
-	  fk_info = &(c->info.constraint.un.foreign_key);
-	  if (fk_info->cache_attr >= 0)
-	    {
-	      return 1;
-	    }
-	}
-    }
-
-  return 0;
 }

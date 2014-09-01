@@ -3628,12 +3628,6 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class,
 					NULL, 0);
 	}
 
-      /* skip cache object attribute for foreign key */
-      if (att->is_fk_cache_attr)
-	{
-	  continue;
-	}
-
       /* update the column */
       error = dbt_put_internal (def, att->header.name, &value);
       pr_clear_value (&value);

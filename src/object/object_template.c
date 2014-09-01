@@ -144,7 +144,6 @@ static int access_object (OBJ_TEMPLATE * template_ptr, MOP * object,
 static int obt_convert_set_templates (SETREF * setref, int check_uniques);
 static int obt_final_check_set (SETREF * setref, int *has_uniques);
 
-static int check_fk_cache_assignments (OBJ_TEMPLATE * template_ptr);
 static int obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null,
 			    int *has_uniques);
 static int obt_apply_assignment (MOP op, SM_ATTRIBUTE * att, char *mem,
@@ -2237,39 +2236,6 @@ obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr)
 }
 
 /*
- * check_fk_cache_assignments
- *    return: error code
- *    template(in):
- *
- */
-static int
-check_fk_cache_assignments (OBJ_TEMPLATE * template_ptr)
-{
-  int error = NO_ERROR;
-  SM_CLASS *class_;
-  SM_ATTRIBUTE *att;
-  OBJ_TEMPASSIGN *ass;
-
-  class_ = OBT_BASE_CLASS (template_ptr);
-
-  for (att = class_->ordered_attributes; att != NULL && error == NO_ERROR;
-       att = att->order_link)
-    {
-
-      if (att->is_fk_cache_attr)
-	{
-	  ass = template_ptr->assignments[att->order];
-	  if (ass != NULL)
-	    {
-	      /* TODO */
-	      ERROR1 (error, ER_FK_CANT_ASSIGN_CACHE_ATTR, att->header.name);
-	    }
-	}
-    }
-  return (error);
-}
-
-/*
  * obt_final_check
  *    return: error code
  *    template(in): object template
@@ -2334,12 +2300,6 @@ obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null,
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
-	}
-
-      if (check_fk_cache_assignments (template_ptr))
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
 	}
 
       /* does this template have uniques? */

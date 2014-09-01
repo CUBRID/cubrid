@@ -3086,7 +3086,6 @@ struct pt_foreign_key_info
   PT_NODE *attrs;		/* List of attribute names */
   PT_NODE *referenced_class;	/* Class name              */
   PT_NODE *referenced_attrs;	/* List of attribute names */
-  PT_NODE *cache_attr;
   PT_MISC_TYPE match_type;	/* full or partial         */
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;

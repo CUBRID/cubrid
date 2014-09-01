@@ -6727,7 +6727,6 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid,
  *   unique_pk(in):
  *   fk_refcls_oid(in):
  *   fk_refcls_pk_btid(in):
- *   cache_attr_id(in):
  *   fk_name(in):
  *
  * NOTE:
@@ -6737,7 +6736,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
 		  OID * class_oids, int n_classes, int n_attrs, int *attr_ids,
 		  int *attrs_prefix_length, HFID * hfids, int unique_pk,
 		  int not_null_flag, OID * fk_refcls_oid,
-		  BTID * fk_refcls_pk_btid, int cache_attr_id,
+		  BTID * fk_refcls_pk_btid,
 		  const char *fk_name, char *pred_stream,
 		  int pred_stream_size, char *expr_stream,
 		  int expr_stream_size, int func_col_id,
@@ -6778,7 +6777,6 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
     + OR_INT_SIZE		/* not_null_flag */
     + OR_OID_SIZE		/* fk_refcls_oid */
     + OR_BTID_ALIGNED_SIZE	/* fk_refcls_pk_btid */
-    + OR_INT_SIZE		/* cache_attr_id */
     + or_packed_string_length (fk_name, &fk_strlen)	/* fk_name */
     + index_info_size;		/* filter predicate or function
 				   index stream size */
@@ -6829,7 +6827,6 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
 
       ptr = or_pack_oid (ptr, fk_refcls_oid);
       ptr = or_pack_btid (ptr, fk_refcls_pk_btid);
-      ptr = or_pack_int (ptr, cache_attr_id);
       ptr = or_pack_string_with_length (ptr, fk_name, fk_strlen);
 
       if (pred_stream)
@@ -6890,7 +6887,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
     xbtree_load_index (NULL, btid, bt_name, key_type, class_oids, n_classes,
 		       n_attrs, attr_ids, attrs_prefix_length, hfids,
 		       unique_pk, not_null_flag, fk_refcls_oid,
-		       fk_refcls_pk_btid, cache_attr_id, fk_name, pred_stream,
+		       fk_refcls_pk_btid, fk_name, pred_stream,
 		       pred_stream_size, expr_stream, expr_stream_size,
 		       func_col_id, func_attr_index_start);
   if (btid == NULL)
@@ -10110,7 +10107,6 @@ repl_set_info (REPL_INFO * repl_info)
  *   attr_ids(in):
  *   pk_cls_oid(in):
  *   pk_btid(in):
- *   cache_attr_id(in):
  *   fk_name(in):
  *
  * NOTE:
@@ -10118,7 +10114,7 @@ repl_set_info (REPL_INFO * repl_info)
 int
 locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
 			   int n_attrs, int *attr_ids, OID * pk_cls_oid,
-			   BTID * pk_btid, int cache_attr_id, char *fk_name)
+			   BTID * pk_btid, char *fk_name)
 {
 #if defined(CS_MODE)
   int error, req_error, request_size, domain_size;
@@ -10134,8 +10130,7 @@ locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
   domain_size = or_packed_domain_size (key_type, 0);
   request_size = OR_OID_SIZE + OR_HFID_SIZE + domain_size + OR_INT_SIZE
     + (n_attrs * OR_INT_SIZE) + OR_OID_SIZE
-    + OR_BTID_ALIGNED_SIZE + OR_INT_SIZE
-    + or_packed_string_length (fk_name, &strlen);
+    + OR_BTID_ALIGNED_SIZE + or_packed_string_length (fk_name, &strlen);
 
   request = (char *) malloc (request_size);
   if (request)
@@ -10150,7 +10145,6 @@ locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
 	}
       ptr = or_pack_oid (ptr, pk_cls_oid);
       ptr = or_pack_btid (ptr, pk_btid);
-      ptr = or_pack_int (ptr, cache_attr_id);
       ptr = or_pack_string_with_length (ptr, fk_name, strlen);
 
       req_error = net_client_request (NET_SERVER_LC_CHECK_FK_VALIDITY,
@@ -10178,7 +10172,7 @@ locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
 
   error = xlocator_check_fk_validity (NULL, cls_oid, hfid, key_type,
 				      n_attrs, attr_ids, pk_cls_oid,
-				      pk_btid, cache_attr_id, fk_name);
+				      pk_btid, fk_name);
 
   EXIT_SERVER ();
   return error;

@@ -17026,13 +17026,6 @@ pt_print_col_def_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_nulstring (parser, b, " ");
 	}
 
-      if (p->info.constraint.un.foreign_key.cache_attr)
-	{
-	  r3 = pt_print_bytes (parser,
-			       p->info.constraint.un.foreign_key.cache_attr);
-	  b = pt_append_nulstring (parser, b, "on cache object ");
-	  b = pt_append_varchar (parser, b, r3);
-	}
       break;
 
     case PT_CONSTRAIN_NULL:
@@ -17157,13 +17150,6 @@ pt_print_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_nulstring (parser, b, " ");
 	}
 
-      if (p->info.constraint.un.foreign_key.cache_attr)
-	{
-	  r3 = pt_print_bytes (parser,
-			       p->info.constraint.un.foreign_key.cache_attr);
-	  b = pt_append_nulstring (parser, b, "on cache object ");
-	  b = pt_append_varchar (parser, b, r3);
-	}
       break;
 
     case PT_CONSTRAIN_NULL:

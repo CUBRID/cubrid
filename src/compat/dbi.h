@@ -547,8 +547,6 @@ extern DB_ATTRIBUTE **db_constraint_attributes (DB_CONSTRAINT * constraint);
 extern const int *db_constraint_asc_desc (DB_CONSTRAINT * constraint);
 extern const int *db_constraint_prefix_length (DB_CONSTRAINT * constraint);
 
-extern const char *db_get_foreign_key_cache_object_attr (DB_CONSTRAINT *
-							 constraint);
 extern const char *db_get_foreign_key_action (DB_CONSTRAINT * constraint,
 					      DB_FK_ACTION_TYPE type);
 extern DB_OBJECT *db_get_foreign_key_ref_class (DB_CONSTRAINT * constraint);
@@ -702,7 +700,7 @@ extern int dbt_set_object_id (DB_CTMPL * def, DB_NAMELIST * id_list);
 extern int dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
 				const char **attnames, const char *ref_class,
 				const char **ref_attrs, int del_action,
-				int upd_action, const char *cache_attr);
+				int upd_action);
 
 /* Object template functions */
 extern DB_OTMPL *dbt_create_object (DB_OBJECT * classobj);

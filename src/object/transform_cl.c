@@ -3078,7 +3078,6 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
       att->order_link = NULL;
       att->triggers = NULL;
       att->auto_increment = NULL;
-      att->is_fk_cache_attr = false;
 
       att->id = or_get_int (buf, &rc);
       dbval_type = (DB_TYPE) or_get_int (buf, &rc);

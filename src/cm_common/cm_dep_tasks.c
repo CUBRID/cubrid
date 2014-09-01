@@ -1999,7 +1999,6 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
     {
       char buf[256];
       DB_OBJECT *ref_cls;
-      const char *cache_attr;
 
       ref_cls = db_get_foreign_key_ref_class (con);
       snprintf (buf, sizeof (buf) - 1, "REFERENCES %s",
@@ -2013,14 +2012,6 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
       snprintf (buf, sizeof (buf) - 1, "ON UPDATE %s",
 		db_get_foreign_key_action (con, DB_FK_UPDATE));
       nv_add_nvp (out, "rule", buf);
-
-      cache_attr = db_get_foreign_key_cache_object_attr (con);
-
-      if (cache_attr != NULL)
-	{
-	  snprintf (buf, sizeof (buf) - 1, "ON CACHE OBJECT %s", cache_attr);
-	  nv_add_nvp (out, "rule", buf);
-	}
     }
 
   nv_add_nvp (out, "close", "constraint");

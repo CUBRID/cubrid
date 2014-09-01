@@ -126,8 +126,7 @@ extern int locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint,
 extern int locator_check_fk_validity (OID * cls_oid, HFID * hfid,
 				      TP_DOMAIN * key_type, int n_attrs,
 				      int *attr_ids, OID * pk_cls_oid,
-				      BTID * pk_btid, int cache_attr_id,
-				      char *fk_name);
+				      BTID * pk_btid, char *fk_name);
 extern int locator_prefetch_repl_insert (OID * class_oid, RECDES * recdes);
 extern int locator_prefetch_repl_update_or_delete (OID * class_oid,
 						   BTID * btid,
@@ -284,7 +283,7 @@ extern int btree_load_index (BTID * btid, const char *bt_name,
 			     int *attrs_prefix_length, HFID * hfids,
 			     int unique_pk, int not_null_flag,
 			     OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
-			     int cache_attr_id, const char *fk_name,
+			     const char *fk_name,
 			     char *pred_stream, int pred_stream_size,
 			     char *expr_stream, int expr_stream_size,
 			     int func_col_id, int func_attr_index_start);

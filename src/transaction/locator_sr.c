@@ -294,13 +294,6 @@ static int locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 						 func_preds,
 						 LOCATOR_INDEX_ACTION_FLAG
 						 idx_action_flag);
-static int locator_set_foreign_key_object_cache (THREAD_ENTRY * thread_p,
-						 OID * class_oid,
-						 OID * inst_oid, OID * pk_oid,
-						 RECDES * old_recdes,
-						 RECDES * new_recdes,
-						 int cache_attr_id,
-						 LC_COPYAREA ** cparea);
 static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 				      OID * class_oid, OID * inst_oid,
 				      RECDES * recdes, RECDES * new_recdes,
@@ -309,9 +302,6 @@ static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 					     OR_INDEX * index,
 					     DB_VALUE * key);
-static int locator_repair_object_cache (THREAD_ENTRY * thread_p,
-					OR_INDEX * index, DB_VALUE * key,
-					OID * pk_oid);
 static int locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 					     OR_INDEX * index,
 					     DB_VALUE * key);
@@ -4028,115 +4018,6 @@ locator_end_force_scan_cache (THREAD_ENTRY * thread_p,
   heap_scancache_end_modify (thread_p, scan_cache);
 }
 
-/*
- * locator_set_foreign_key_object_cache () -
- *
- * return: NO_ERROR if all OK, ER_ status otherwise
- *
- *   class_oid(in):
- *   inst_oid(in):
- *   pk_oid(in):
- *   old_recdes(in):
- *   new_recdes(in):
- *   cache_attr_id(in):
- *   cparea(in):
- */
-static int
-locator_set_foreign_key_object_cache (THREAD_ENTRY * thread_p,
-				      OID * class_oid, OID * inst_oid,
-				      OID * pk_oid, RECDES * old_recdes,
-				      RECDES * new_recdes,
-				      int cache_attr_id,
-				      LC_COPYAREA ** cparea)
-{
-  HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
-  DB_VALUE val;
-  LC_COPYAREA *copyarea;
-  int copyarea_length;
-  SCAN_CODE scan;
-  int error_code = NO_ERROR;
-
-  error_code = heap_attrinfo_start (thread_p, class_oid, -1, NULL,
-				    &attr_info);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  attr_info_p = &attr_info;
-
-  db_make_oid (&val, pk_oid);
-  error_code = heap_attrinfo_clear_dbvalues (attr_info_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = heap_attrinfo_set (inst_oid, cache_attr_id, &val, attr_info_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  scan = S_DOESNT_FIT;
-
-  /* Assume that the object can fit in one page */
-  copyarea_length = DB_PAGESIZE;
-
-  while (scan == S_DOESNT_FIT)
-    {
-      copyarea = locator_allocate_copy_area_by_length (copyarea_length);
-      if (copyarea == NULL)
-	{
-	  break;
-	}
-
-      new_recdes->data = copyarea->mem;
-      new_recdes->area_size = copyarea->length;
-
-      scan = heap_attrinfo_transform_to_disk (thread_p, attr_info_p,
-					      old_recdes, new_recdes);
-      if (scan == S_SUCCESS)
-	{
-	  break;
-	}
-
-      /* Get the real length used in the copy area */
-      copyarea_length = copyarea->length;
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-
-      /* Is more space needed ? */
-      if (scan == S_DOESNT_FIT)
-	{
-	  /*
-	   * The object does not fit into copy area, increase the area to
-	   * estimated size included in length of record descriptor.
-	   */
-	  if (copyarea_length < (-new_recdes->length))
-	    {
-	      copyarea_length = DB_ALIGN (-new_recdes->length, MAX_ALIGNMENT);
-	    }
-	  else
-	    {
-	      /*
-	       * This is done only for security purposes, since the
-	       * transformation may not be given us the correct length,
-	       * somehow.
-	       */
-	      copyarea_length += DB_PAGESIZE;
-	    }
-	}
-    }
-
-  *cparea = copyarea;
-
-error:
-  if (attr_info_p)
-    {
-      heap_attrinfo_end (thread_p, attr_info_p);
-    }
-
-  return error_code;
-}
 
 /*
  * locator_check_primary_key_upddel () -
@@ -4362,30 +4243,6 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 	      goto error;
 	    }
 
-	  if (index->fk->is_cache_obj && index->fk->cache_attr_id >= 0)
-	    {
-	      error_code = locator_set_foreign_key_object_cache (thread_p,
-								 class_oid,
-								 inst_oid,
-								 &unique_oid,
-								 recdes,
-								 new_recdes,
-								 index->
-								 fk->
-								 cache_attr_id,
-								 copyarea);
-	      if (error_code != NO_ERROR)
-		{
-		  if (key_dbvalue == &dbvalue)
-		    {
-		      pr_clear_value (&dbvalue);
-		    }
-
-		  goto error;
-		}
-
-	      *is_cached = true;
-	    }
 	}
 
       if (key_dbvalue == &dbvalue)
@@ -4818,280 +4675,6 @@ error3:
   heap_attrinfo_end (thread_p, &attr_info);
 
   goto end;
-}
-
-/*
- * locator_repair_object_cache () -
- *
- * return: NO_ERROR if all OK, ER_ status otherwise
- *
- *   index(in):
- *   key(in):
- *   pk_oid(in):
- */
-static int
-locator_repair_object_cache (THREAD_ENTRY * thread_p, OR_INDEX * index,
-			     DB_VALUE * key, OID * pk_oid)
-{
-  OR_FOREIGN_KEY *fkref;
-  RECDES recdes;
-  HEAP_SCANCACHE scan_cache, upd_scancache;
-  HFID hfid;
-  OID *oid_buf = NULL;
-  int oid_buf_size = ISCAN_OID_BUFFER_SIZE;
-  int oid_cnt, i, force_count;
-  HEAP_CACHE_ATTRINFO attr_info;
-  DB_VALUE val;
-  BTREE_SCAN bt_scan;
-  INDX_SCAN_ID isid;
-  bool is_upd_scan_init;
-  KEY_VAL_RANGE key_val_range;
-  int error_code = NO_ERROR;
-  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
-
-  if (mvcc_Enabled)
-    {
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (mvcc_snapshot == NULL)
-	{
-	  error_code = er_errid ();
-	  return (error_code == NO_ERROR ? ER_FAILED : error_code);
-	}
-    }
-
-  db_make_null (&key_val_range.key1);
-  db_make_null (&key_val_range.key2);
-
-  for (fkref = index->fk; fkref != NULL; fkref = fkref->next)
-    {
-      if (fkref->cache_attr_id < 0)
-	{
-	  continue;
-	}
-
-      error_code = heap_scancache_quick_start (&scan_cache);
-      if (error_code != NO_ERROR)
-	{
-	  goto error3;
-	}
-      if (heap_get (thread_p, &fkref->self_oid, &recdes, &scan_cache,
-		    PEEK, NULL_CHN) == S_SUCCESS)
-	{
-	  orc_class_hfid_from_record (&recdes, &hfid);
-	}
-      error_code = heap_scancache_end (thread_p, &scan_cache);
-      if (error_code != NO_ERROR)
-	{
-	  goto error3;
-	}
-
-      if (oid_buf == NULL)
-	{
-	  oid_buf = (OID *) db_private_alloc (thread_p, oid_buf_size);
-	  if (oid_buf == NULL)
-	    {
-	      error_code = ER_FAILED;
-	      goto error3;
-	    }
-	}
-
-      error_code = heap_scancache_start (thread_p, &isid.scan_cache, &hfid,
-					 &fkref->self_oid, true, true, NULL);
-      if (error_code != NO_ERROR)
-	{
-	  db_private_free_and_init (thread_p, oid_buf);
-	  goto error3;
-	}
-
-      BTREE_INIT_SCAN (&bt_scan);
-
-      scan_init_index_scan (&isid, oid_buf, mvcc_snapshot);
-
-      is_upd_scan_init = false;
-      pr_clone_value (key, &key_val_range.key1);
-      pr_clone_value (key, &key_val_range.key2);
-      key_val_range.range = GE_LE;
-      key_val_range.num_index_term = 0;
-
-      do
-	{
-	  oid_cnt = btree_range_search (thread_p, &fkref->self_btid,
-					S_UPDATE, &bt_scan,
-					&key_val_range,
-					1,
-					&fkref->self_oid, isid.oid_list.oidp,
-					oid_buf_size, NULL, &isid, true,
-					false, NULL, NULL, false, 0);
-
-	  if (oid_cnt < 0)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error_code = er_errid ();
-	      if (error_code == NO_ERROR)
-		{
-		  error_code = ER_FAILED;
-		}
-
-	      goto error2;
-	    }
-	  else if (oid_cnt == 0)
-	    {
-	      break;
-	    }
-
-	  if (is_upd_scan_init == false)
-	    {
-	      error_code = heap_scancache_start_modify (thread_p,
-							&upd_scancache,
-							&hfid,
-							&fkref->self_oid,
-							SINGLE_ROW_UPDATE,
-							NULL);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error2;
-		}
-
-	      error_code = heap_attrinfo_start (thread_p, &fkref->self_oid,
-						-1, NULL, &attr_info);
-	      if (error_code != NO_ERROR)
-		{
-		  heap_scancache_end_modify (thread_p, &upd_scancache);
-		  goto error2;
-		}
-
-	      is_upd_scan_init = true;
-	    }
-
-	  for (i = 0; i < oid_cnt; i++)
-	    {
-
-	      if (mvcc_Enabled)
-		{
-		  SCAN_CODE scan_code = S_SUCCESS;
-		  recdes.data = NULL;
-		  /* TO DO - handle reevaluation */
-
-		  scan_code =
-		    heap_mvcc_get_version_for_delete (thread_p, &oid_buf[i],
-						      &fkref->self_oid,
-						      &recdes, &upd_scancache,
-						      false, NULL);
-		  if (scan_code != S_SUCCESS)
-		    {
-		      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-			{
-			  er_log_debug (ARG_FILE_LINE,
-					"locator_update_force: "
-					"unknown oid ( %d|%d|%d )\n",
-					oid_buf[i].pageid, oid_buf[i].slotid,
-					oid_buf[i].volid);
-			  continue;
-			}
-
-		      error_code = er_errid ();
-		      error_code =
-			(error_code == NO_ERROR ? ER_FAILED : error_code);
-		      goto error1;
-		    }
-		}
-	      else
-		{
-		  if (lock_object (thread_p, &(oid_buf[i]), &fkref->self_oid,
-				   X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_FK_NOT_GRANTED_LOCK, 1, fkref->fkname);
-		      error_code = ER_FK_NOT_GRANTED_LOCK;
-		      goto error1;
-		    }
-		}
-
-	      db_make_oid (&val, pk_oid);
-	      error_code = heap_attrinfo_clear_dbvalues (&attr_info);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error1;
-		}
-
-	      error_code = heap_attrinfo_set (&(oid_buf[i]),
-					      fkref->cache_attr_id, &val,
-					      &attr_info);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error1;
-		}
-
-	      error_code = locator_attribute_info_force (thread_p, &hfid,
-							 &(oid_buf[i]),
-							 &fkref->self_btid,
-							 isid.
-							 duplicate_key_locked,
-							 &attr_info,
-							 &fkref->
-							 cache_attr_id, 1,
-							 LC_FLUSH_UPDATE,
-							 SINGLE_ROW_UPDATE,
-							 &upd_scancache,
-							 &force_count, true,
-							 REPL_INFO_TYPE_STMT_NORMAL,
-							 DB_NOT_PARTITIONED_CLASS,
-							 NULL, NULL, NULL,
-							 false);
-	      if (error_code != NO_ERROR
-		  && error_code != ER_MVCC_NOT_SATISFIED_REEVALUATION)
-		{
-		  goto error1;
-		}
-	    }
-	}
-      while (!BTREE_END_OF_SCAN (&bt_scan));
-
-      if (is_upd_scan_init)
-	{
-	  heap_attrinfo_end (thread_p, &attr_info);
-	  heap_scancache_end_modify (thread_p, &upd_scancache);
-	}
-
-      btree_scan_clear_key (&bt_scan);
-      pr_clear_value (&key_val_range.key1);
-      pr_clear_value (&key_val_range.key2);
-      error_code = heap_scancache_end (thread_p, &isid.scan_cache);
-      if (error_code != NO_ERROR)
-	{
-	  if (oid_buf)
-	    {
-	      db_private_free_and_init (thread_p, oid_buf);
-	    }
-
-	  goto error3;
-	}
-    }
-
-  if (oid_buf)
-    {
-      db_private_free_and_init (thread_p, oid_buf);
-    }
-
-  return error_code;
-
-error1:
-  heap_attrinfo_end (thread_p, &attr_info);
-  heap_scancache_end_modify (thread_p, &upd_scancache);
-
-error2:
-  btree_scan_clear_key (&bt_scan);
-  pr_clear_value (&key_val_range.key1);
-  pr_clear_value (&key_val_range.key2);
-  (void) heap_scancache_end (thread_p, &isid.scan_cache);
-
-  if (oid_buf)
-    {
-      db_private_free_and_init (thread_p, oid_buf);
-    }
-
-error3:
-  return error_code;
 }
 
 /*
@@ -8542,13 +8125,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p,
 	   */
 	  if (is_insert)
 	    {
-	      error_code = locator_repair_object_cache (thread_p, index,
-							key_dbvalue,
-							inst_oid);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error;
-		}
+	      ;			/* nop */
 	    }
 	  else
 	    {
@@ -9531,12 +9108,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 		  goto error;
 		}
 
-	      error_code = locator_repair_object_cache (thread_p, index,
-							new_key, new_oid);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error;
-		}
 	    }
 
 #if 0
@@ -12764,15 +12335,13 @@ xrepl_log_get_append_lsa (void)
  *   attr_ids(in):
  *   pk_cls_oid(in):
  *   pk_btid(in):
- *   cache_attr_id(in):
  *   fk_name(in):
  */
 int
 xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid,
 			    HFID * hfid, TP_DOMAIN * key_type,
 			    int n_attrs, int *attr_ids,
-			    OID * pk_cls_oid, BTID * pk_btid,
-			    int cache_attr_id, char *fk_name)
+			    OID * pk_cls_oid, BTID * pk_btid, char *fk_name)
 {
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
@@ -12840,7 +12409,7 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid,
 
       error_code = btree_check_foreign_key (thread_p, cls_oid, hfid, &oid,
 					    key_val, n_attrs, pk_cls_oid,
-					    pk_btid, cache_attr_id, fk_name);
+					    pk_btid, fk_name);
 
       if (key_val == &tmpval)
 	{

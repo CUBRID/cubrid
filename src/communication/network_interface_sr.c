@@ -4777,7 +4777,6 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
   int unique_pk, not_null_flag;
   OID fk_refcls_oid;
   BTID fk_refcls_pk_btid;
-  int cache_attr_id;
   char *bt_name, *fk_name;
   int n_classes, n_attrs, *attr_ids = NULL;
   int *attr_prefix_lengths = NULL;
@@ -4835,7 +4834,6 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
 
   ptr = or_unpack_oid (ptr, &fk_refcls_oid);
   ptr = or_unpack_btid (ptr, &fk_refcls_pk_btid);
-  ptr = or_unpack_int (ptr, &cache_attr_id);
   ptr = or_unpack_string_nocopy (ptr, &fk_name);
   ptr = or_unpack_int (ptr, &index_info_type);
   switch (index_info_type)
@@ -4886,7 +4884,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
     xbtree_load_index (thread_p, &btid, bt_name, key_type, class_oids,
 		       n_classes, n_attrs, attr_ids, attr_prefix_lengths,
 		       hfids, unique_pk, not_null_flag, &fk_refcls_oid,
-		       &fk_refcls_pk_btid, cache_attr_id, fk_name,
+		       &fk_refcls_pk_btid, fk_name,
 		       pred_stream, pred_stream_size, expr_stream,
 		       expr_stream_size, func_col_id, func_attr_index_start);
   if (return_btid == NULL)
@@ -8957,7 +8955,6 @@ slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid,
   HFID hfid;
   OID pk_cls_oid;
   BTID pk_btid;
-  int cache_attr_id;
   int n_attrs, *attr_ids = NULL;
   TP_DOMAIN *key_type;
   char *fk_name = NULL;
@@ -8978,13 +8975,11 @@ slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid,
 
   ptr = or_unpack_oid (ptr, &pk_cls_oid);
   ptr = or_unpack_btid (ptr, &pk_btid);
-  ptr = or_unpack_int (ptr, &cache_attr_id);
   ptr = or_unpack_string (ptr, &fk_name);
 
   if (xlocator_check_fk_validity (thread_p, &class_oid, &hfid, key_type,
 				  n_attrs, attr_ids, &pk_cls_oid,
-				  &pk_btid, cache_attr_id,
-				  fk_name) != NO_ERROR)
+				  &pk_btid, fk_name) != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
     }

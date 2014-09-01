@@ -1152,9 +1152,9 @@
 #define ER_FK_NOT_GRANTED_LOCK                      -925
 #define ER_FK_CANT_DELETE_INSTANCE                  -926
 #define ER_FK_NOT_MATCH_KEY_COUNT                   -927
-#define ER_FK_CANT_ASSIGN_CACHE_ATTR                -928
+#define ER_FK_CANT_ASSIGN_CACHE_ATTR                -928	/* not used */
 #define ER_FK_CANT_ON_VCLASS                        -929
-#define ER_FK_CANT_DROP_CACHE_ATTR                  -930
+#define ER_FK_CANT_DROP_CACHE_ATTR                  -930	/* not used */
 
 #define ER_AUTO_INCREMENT_STARTVAL_MUST_LT_MAXVAL   -931
 

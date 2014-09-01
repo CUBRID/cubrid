@@ -6628,8 +6628,6 @@ static int update_check_for_constraints (PARSER_CONTEXT * parser,
 					 int *has_unique,
 					 PT_NODE ** not_nulls,
 					 const PT_NODE * statement);
-static int update_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
-					   const PT_NODE * statement);
 static bool update_check_having_meta_attr (PARSER_CONTEXT * parser,
 					   PT_NODE * assignment);
 static int update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -8182,70 +8180,6 @@ exit_on_error:
 }
 
 /*
- * update_check_for_fk_cache_attr() -
- *   return: Error code if update fails
- *   parser(in): Parser context
- *   statement(in): Parse tree of an UPDATE or MERGE statement
- *
- */
-static int
-update_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
-				const PT_NODE * statement)
-{
-  PT_NODE *lhs = NULL, *att = NULL, *spec = NULL;
-  PT_NODE *assignment;
-  DB_OBJECT *class_obj = NULL;
-
-  assignment = statement->node_type == PT_MERGE
-    ? statement->info.merge.update.assignment
-    : statement->info.update.assignment;
-
-  for (; assignment; assignment = assignment->next)
-    {
-      lhs = assignment->info.expr.arg1;
-      if (lhs->node_type == PT_NAME)
-	{
-	  att = lhs;
-	}
-      else if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
-	{
-	  att = lhs->info.expr.arg1;
-	}
-      else
-	{
-	  return ER_GENERIC_ERROR;
-	}
-
-      for (; att; att = att->next)
-	{
-	  if (att->node_type != PT_NAME)
-	    {
-	      return ER_GENERIC_ERROR;
-	    }
-
-	  spec = pt_find_spec_in_statement (parser, statement, att);
-	  if (spec == NULL
-	      || (class_obj =
-		  spec->info.spec.flat_entity_list->info.name.db_object) ==
-	      NULL)
-	    {
-	      return ER_GENERIC_ERROR;
-	    }
-
-	  if (sm_is_att_fk_cache (class_obj, att->info.name.original))
-	    {
-	      PT_ERRORmf (parser, att, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_CANT_ASSIGN_FK_CACHE_ATTR,
-			  att->info.name.original);
-	      return ER_PT_SEMANTIC;
-	    }
-	}
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * update_check_for_meta_attr () -
  *   return: true if update assignment clause has class or shared attribute
  *   parser(in): Parser context
@@ -8536,12 +8470,6 @@ is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs,
       goto error_exit;
     }
 
-  error = update_check_for_fk_cache_attr (parser, statement);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
   /* Check to see if the update can be done on the server */
   *server_allowed = ((!trigger_involved && !is_virt)
 		     && !update_check_having_meta_attr (parser,
@@ -8764,13 +8692,6 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       /* sm_class_has_triggers() checked if the class has active triggers */
       statement->info.update.has_trigger = (bool) has_trigger;
-
-      err = update_check_for_fk_cache_attr (parser, statement);
-      if (err != NO_ERROR)
-	{
-	  PT_INTERNAL_ERROR (parser, "update");
-	  break;		/* stop while loop if error */
-	}
 
       /* check if the target class has UNIQUE constraint and
          get attributes that has NOT NULL constraint */
@@ -10646,9 +10567,6 @@ static int check_for_cons (PARSER_CONTEXT * parser,
 			   int *has_unique,
 			   PT_NODE ** non_null_attrs,
 			   const PT_NODE * attr_list, DB_OBJECT * class_obj);
-static int insert_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
-					   const PT_NODE * attr_list,
-					   DB_OBJECT * class_obj);
 static int is_server_insert_allowed (PARSER_CONTEXT * parser,
 				     PT_NODE * statement);
 static int do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -11221,38 +11139,6 @@ check_for_cons (PARSER_CONTEXT * parser, int *has_unique,
 }
 
 /*
- * insert_check_for_fk_cache_attr() - Brief description of this function
- *   return: Error code
- *   parser(in): Parser context
- *   attr_list(in):
- *   class_obj(in):
- */
-static int
-insert_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
-				const PT_NODE * attr_list,
-				DB_OBJECT * class_obj)
-{
-  while (attr_list)
-    {
-      if (attr_list->node_type != PT_NAME)
-	{
-	  return ER_GENERIC_ERROR;
-	}
-
-      if (sm_is_att_fk_cache (class_obj, attr_list->info.name.original))
-	{
-	  PT_ERRORmf (parser, attr_list, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_CANT_ASSIGN_FK_CACHE_ATTR,
-		      attr_list->info.name.original);
-	  return ER_PT_SEMANTIC;
-	}
-      attr_list = attr_list->next;
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * is_server_insert_allowed () - Checks to see if a server-side insert is
  *                               allowed
  *
@@ -11308,13 +11194,6 @@ is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
       attr = attr->next;
-    }
-
-  error = insert_check_for_fk_cache_attr (parser, attrs,
-					  class_->info.name.db_object);
-  if (error != NO_ERROR)
-    {
-      goto end;
     }
 
   error =
@@ -15579,12 +15458,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* check update part */
   if (statement->info.merge.update.assignment && !insert_only)
     {
-      err = update_check_for_fk_cache_attr (parser, statement);
-      if (err != NO_ERROR)
-	{
-	  goto exit;
-	}
-
       /* check if the target class has UNIQUE constraint */
       err = update_check_for_constraints (parser, &has_unique, &not_nulls,
 					  statement);
@@ -15673,13 +15546,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->info.merge.insert.value_clauses)
     {
       PT_NODE *attrs = statement->info.merge.insert.attr_list;
-
-      err = insert_check_for_fk_cache_attr (parser, attrs,
-					    flat->info.name.db_object);
-      if (err != NO_ERROR)
-	{
-	  goto exit;
-	}
 
       err = check_for_cons (parser, &has_unique, &not_nulls, attrs,
 			    flat->info.name.db_object);
@@ -16065,12 +15931,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* check update part */
   if (statement->info.merge.update.assignment && !insert_only)
     {
-      err = update_check_for_fk_cache_attr (parser, statement);
-      if (err != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
       /* check if the target class has UNIQUE constraint */
       err = update_check_for_constraints (parser, &has_unique, &non_nulls_upd,
 					  statement);
@@ -16131,13 +15991,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       else
 	{
 	  server_insert = false;
-	}
-
-      err = insert_check_for_fk_cache_attr (parser, attrs,
-					    flat->info.name.db_object);
-      if (err != NO_ERROR)
-	{
-	  goto cleanup;
 	}
 
       err = check_for_cons (parser, &has_unique, &non_nulls_ins, attrs,

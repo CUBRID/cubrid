@@ -681,7 +681,7 @@ classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO * fk_info)
   DB_SEQ *fk_seq;
   char pbuf[128];
 
-  fk_seq = set_create_sequence (6);
+  fk_seq = set_create_sequence (4);
 
   if (fk_seq == NULL)
     {
@@ -707,19 +707,6 @@ classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO * fk_info)
   db_make_int (&value, fk_info->update_action);
   set_put_element (fk_seq, 3, &value);
 
-  if (fk_info->cache_attr)
-    {
-      db_make_string (&value, fk_info->cache_attr);
-      set_put_element (fk_seq, 4, &value);
-    }
-  else
-    {
-      db_make_null (&value);
-      set_put_element (fk_seq, 4, &value);
-    }
-
-  db_make_int (&value, fk_info->cache_attr_id);
-  set_put_element (fk_seq, 5, &value);
 
   return fk_seq;
 
@@ -738,7 +725,7 @@ classobj_make_foreign_key_ref_seq (SM_FOREIGN_KEY_INFO * fk_info)
   DB_SEQ *fk_seq;
   char pbuf[128];
 
-  fk_seq = set_create_sequence (6);
+  fk_seq = set_create_sequence (5);
 
   if (fk_seq == NULL)
     {
@@ -769,8 +756,6 @@ classobj_make_foreign_key_ref_seq (SM_FOREIGN_KEY_INFO * fk_info)
   db_make_string (&value, fk_info->name);
   set_put_element (fk_seq, 4, &value);
 
-  db_make_int (&value, fk_info->cache_attr_id);
-  set_put_element (fk_seq, 5, &value);
 
   return fk_seq;
 }
@@ -2871,7 +2856,6 @@ classobj_make_foreign_key_info (DB_SEQ * fk_seq,
 {
   DB_VALUE fvalue;
   SM_FOREIGN_KEY_INFO *fk_info;
-  SM_ATTRIBUTE *cache_attr;
 
   fk_info =
     (SM_FOREIGN_KEY_INFO *) db_ws_alloc (sizeof (SM_FOREIGN_KEY_INFO));
@@ -2914,30 +2898,6 @@ classobj_make_foreign_key_info (DB_SEQ * fk_seq,
     }
   fk_info->update_action = (SM_FOREIGN_KEY_ACTION) DB_GET_INT (&fvalue);
 
-  if (set_get_element (fk_seq, 4, &fvalue))
-    {
-      goto error;
-    }
-  if (DB_IS_NULL (&fvalue))
-    {
-      fk_info->cache_attr = NULL;
-    }
-  else
-    {
-      fk_info->cache_attr = DB_GET_STRING (&fvalue);
-    }
-
-  if (set_get_element (fk_seq, 5, &fvalue))
-    {
-      goto error;
-    }
-  fk_info->cache_attr_id = DB_GET_INT (&fvalue);
-  cache_attr = classobj_find_attribute_list (attributes, NULL,
-					     fk_info->cache_attr_id);
-  if (cache_attr)
-    {
-      cache_attr->is_fk_cache_attr = true;
-    }
 
   fk_info->name = (char *) cons_name;
   fk_info->is_dropped = false;
@@ -3022,11 +2982,6 @@ classobj_make_foreign_key_ref (DB_SEQ * fk_seq)
   fk_info->name = strdup (val_str);
   pr_clear_value (&fvalue);
 
-  if (set_get_element (fk_seq, 5, &fvalue))
-    {
-      goto error;
-    }
-  fk_info->cache_attr_id = DB_GET_INT (&fvalue);
   fk_info->is_dropped = false;
 
   return fk_info;
@@ -3323,11 +3278,6 @@ classobj_make_class_constraints (DB_SET * class_props,
   db_make_null (&fvalue);
 
   constraints = last = NULL;
-
-  for (att = attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
-    {
-      att->is_fk_cache_attr = false;
-    }
 
   /*
    *  Process Index and Unique constraints
@@ -4526,7 +4476,6 @@ classobj_make_attribute (const char *name, PR_TYPE * type,
 	  return NULL;
 	}
     }
-  att->is_fk_cache_attr = false;
 
   return (att);
 }
@@ -4632,7 +4581,6 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
   dest->domain = NULL;
   dest->properties = NULL;
   dest->auto_increment = src->auto_increment;
-  dest->is_fk_cache_attr = src->is_fk_cache_attr;
   dest->default_value.default_expr = src->default_value.default_expr;
 
   if (copy)
@@ -6758,8 +6706,7 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate,
       error = dbt_add_foreign_key (ctemplate, new_cons_name, att_names,
 				   ref_cls->header.name, ref_attrs,
 				   constraint->fk_info->delete_action,
-				   constraint->fk_info->update_action,
-				   constraint->fk_info->cache_attr);
+				   constraint->fk_info->update_action);
       free_and_init (ref_attrs);
     }
 

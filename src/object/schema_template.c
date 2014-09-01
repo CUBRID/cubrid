@@ -1191,7 +1191,6 @@ smt_add_attribute_any (SM_TEMPLATE * template_, const char *name,
   att->class_mop = template_->op;
   att->domain = domain;
   att->auto_increment = NULL;
-  att->is_fk_cache_attr = false;
 
   error_code = smt_add_attribute_to_list (att_list, att, add_first,
 					  add_after_attribute);
@@ -1689,7 +1688,7 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
   MOP ref_clsop = NULL;
   SM_CLASS *ref_cls;
   SM_CLASS_CONSTRAINT *pk, *temp_cons = NULL;
-  SM_ATTRIBUTE *tmp_attr, *ref_attr, *cache_attr;
+  SM_ATTRIBUTE *tmp_attr, *ref_attr;
   int n_ref_atts, i, j;
   bool found;
   const char *tmp, *ref_cls_name = NULL;
@@ -1851,34 +1850,6 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
 		      atts[i]->header.name, pk->attributes[i]->header.name);
 	      goto err;
 	    }
-	}
-    }
-
-  if (template_->op == NULL && fk_info->cache_attr)
-    {
-      error =
-	smt_find_attribute (template_, fk_info->cache_attr, false,
-			    &cache_attr);
-
-      if (error == NO_ERROR)
-	{
-	  if (cache_attr->type->id != DB_TYPE_OBJECT ||
-	      !OID_EQ (&cache_attr->domain->class_oid, ws_oid (ref_clsop)))
-	    {
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		      ER_SM_INVALID_NAME, 1, ref_cls_name);
-	    }
-	}
-      else if (error == ER_SM_INVALID_NAME)
-	{
-	  goto err;
-	}
-      else
-	{
-	  er_clear ();
-	  error =
-	    smt_add_attribute (template_, fk_info->cache_attr, ref_cls_name,
-			       NULL);
 	}
     }
 
@@ -3132,10 +3103,6 @@ smt_delete_any (SM_TEMPLATE * template_, const char *name,
 	      if (att->flags & SM_ATTFLAG_PRIMARY_KEY)
 		{
 		  ERROR1 (error, ER_SM_ATTRIBUTE_PRIMARY_KEY_MEMBER, name);
-		}
-	      else if (att->is_fk_cache_attr)
-		{
-		  ERROR1 (error, ER_FK_CANT_DROP_CACHE_ATTR, name);	/* TODO */
 		}
 	      else
 		{
