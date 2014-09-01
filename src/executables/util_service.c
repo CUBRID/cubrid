@@ -109,6 +109,7 @@ typedef enum
   MANAGER_STOPPED = 0,
   MANAGER_RUNNING,
   MANAGER_ALL_RUNNING,
+  MANAGER_STATUS_ERROR,
 } UTIL_MANAGER_SERVER_STATUS_E;
 
 typedef struct
@@ -272,7 +273,9 @@ static bool is_server_running (const char *type, const char *server_name,
 			       int pid);
 static int is_broker_running (void);
 static UTIL_MANAGER_SERVER_STATUS_E get_manager_running_status (unsigned int
-								sleep_time);
+								sleep_time,
+								bool
+								show_log);
 #if defined(WINDOWS)
 static bool is_windows_service_running (unsigned int sleep_time);
 #endif
@@ -1193,7 +1196,7 @@ check_all_services_status (unsigned int sleep_time,
   if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0)
     {
       UTIL_MANAGER_SERVER_STATUS_E manager_status;
-      manager_status = get_manager_running_status (0);
+      manager_status = get_manager_running_status (0, false);
 
       if ((expected_status == ALL_SERVICES_RUNNING
 	   && manager_status != MANAGER_ALL_RUNNING)
@@ -2256,13 +2259,14 @@ process_broker (int command_type, int argc, const char **argv,
  *
  */
 static UTIL_MANAGER_SERVER_STATUS_E
-get_manager_running_status (unsigned int sleep_time)
+get_manager_running_status (unsigned int sleep_time, bool show_log)
 {
   FILE *input;
-  char buf[16], cmd[PATH_MAX];
+  char buf[100], cmd[PATH_MAX];
   struct stat stbuf;
 
   int manager_proc_running_counts = 0;
+  bool have_error = false;
   UTIL_MANAGER_SERVER_STATUS_E ret_value = MANAGER_STOPPED;
 
   buf[0] = '\0';
@@ -2279,9 +2283,20 @@ get_manager_running_status (unsigned int sleep_time)
       if (input != NULL)
 	{
 	  memset (buf, '\0', sizeof (buf));
-	  if ((fgets (buf, 16, input) != NULL) && atoi (buf) > 0)
+	  if (fgets (buf, 100, input) != NULL)
 	    {
-	      manager_proc_running_counts++;
+	      if (atoi (buf) > 0)
+		{
+		  manager_proc_running_counts++;
+		}
+	      else
+		{
+		  have_error = true;
+		  if (show_log == true)
+		    {
+		      fprintf (stderr, "%s\n", buf);
+		    }
+		}
 	    }
 	  pclose (input);
 	}
@@ -2296,12 +2311,29 @@ get_manager_running_status (unsigned int sleep_time)
       if (input != NULL)
 	{
 	  memset (buf, '\0', sizeof (buf));
-	  if ((fgets (buf, 16, input) != NULL) && atoi (buf) > 0)
+	  if (fgets (buf, 100, input) != NULL)
 	    {
-	      manager_proc_running_counts++;
+	      if (atoi (buf) > 0)
+		{
+		  manager_proc_running_counts++;
+		}
+	      else
+		{
+		  have_error = true;
+		  if (show_log == true)
+		    {
+		      fprintf (stderr, "%s\n", buf);
+		    }
+		}
 	    }
 	  pclose (input);
 	}
+    }
+
+  if (have_error == true)
+    {
+      ret_value = MANAGER_STATUS_ERROR;
+      goto ret;
     }
 
   /* convert return value into enum: UTIL_MANAGER_SERVER_STATUS_E */
@@ -2314,10 +2346,14 @@ get_manager_running_status (unsigned int sleep_time)
       ret_value = MANAGER_RUNNING;
       break;
     case 2:
-    default:
       ret_value = MANAGER_ALL_RUNNING;
       break;
+    default:
+      ret_value = MANAGER_STATUS_ERROR;
+      break;
     }
+
+ret:
   return ret_value;
 }
 
@@ -2351,10 +2387,18 @@ process_manager (int command_type, bool process_window_service)
     }
 
   status = NO_ERROR;
+
+  if (get_manager_running_status (0, true) == MANAGER_STATUS_ERROR)
+    {
+      status = ER_GENERIC_ERROR;
+      print_result (PRINT_MANAGER_NAME, status, command_type);
+      return status;
+    }
+
   switch (command_type)
     {
     case START:
-      if (get_manager_running_status (0) != MANAGER_ALL_RUNNING)
+      if (get_manager_running_status (0, false) != MANAGER_ALL_RUNNING)
 	{
 	  if (process_window_service)
 	    {
@@ -2389,19 +2433,9 @@ process_manager (int command_type, bool process_window_service)
 	    }
 
 	  status =
-	    get_manager_running_status (3) ==
+	    get_manager_running_status (3, false) ==
 	    MANAGER_ALL_RUNNING ? NO_ERROR : ER_GENERIC_ERROR;
-	  if (status == NO_ERROR)
-	    {
-	      print_result (PRINT_MANAGER_NAME, status, command_type);
-	    }
-	  else
-	    {
-	      print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			     PRINT_MANAGER_NAME);
-	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-				    PRINT_MANAGER_NAME);
-	    }
+	  print_result (PRINT_MANAGER_NAME, status, command_type);
 	}
       else
 	{
@@ -2413,7 +2447,7 @@ process_manager (int command_type, bool process_window_service)
 	}
       break;
     case STOP:
-      if (get_manager_running_status (0) != MANAGER_STOPPED)
+      if (get_manager_running_status (0, false) != MANAGER_STOPPED)
 	{
 	  if (process_window_service)
 	    {
@@ -2446,19 +2480,9 @@ process_manager (int command_type, bool process_window_service)
 	      }
 	    }
 	  status =
-	    get_manager_running_status (2) ==
+	    get_manager_running_status (2, false) ==
 	    MANAGER_STOPPED ? NO_ERROR : ER_GENERIC_ERROR;
-	  if (status == NO_ERROR)
-	    {
-	      print_result (PRINT_MANAGER_NAME, status, command_type);
-	    }
-	  else
-	    {
-	      print_message (stderr, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-			     PRINT_MANAGER_NAME);
-	      util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-				    PRINT_MANAGER_NAME);
-	    }
+	  print_result (PRINT_MANAGER_NAME, status, command_type);
 	}
       else
 	{
@@ -2471,7 +2495,7 @@ process_manager (int command_type, bool process_window_service)
       break;
     case STATUS:
       {
-	switch (get_manager_running_status (0))
+	switch (get_manager_running_status (0, false))
 	  {
 	  case MANAGER_ALL_RUNNING:
 	    print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
