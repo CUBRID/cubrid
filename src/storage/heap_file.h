@@ -89,11 +89,6 @@ struct heap_scancache
 				 */
   HFID hfid;			/* Heap file of scan                   */
   OID class_oid;		/* Class oid of scanned instances       */
-  int unfill_space;		/* Stop inserting when page has run
-				 * below this value. Remaining space
-				 * is left for updates. This is used only
-				 * for insertions.
-				 */
   LOCK page_latch;		/* Indicates the latch/lock to be acquired
 				 * on heap pages. Its value may be
 				 * NULL_LOCK when it is secure to skip
@@ -109,27 +104,6 @@ struct heap_scancache
 				 * allocated
 				 */
   int area_size;		/* Size of allocated area               */
-  int known_nrecs;		/* Cached number of records (known)     */
-  int known_nbest;		/* Cached number of best pages (Known)  */
-  int known_nother_best;	/* Cached number of other best pages    */
-  VPID collect_nxvpid;		/* Next page where statistics are used  */
-  int collect_npages;		/* Total number of pages that were
-				 * scanned
-				 */
-  int collect_nrecs;		/* Total num of rec on scanned pages    */
-  float collect_recs_sumlen;	/* Total len of recs on scanned pages   */
-  int collect_nother_best;	/* Total num of best pages not collected
-				 * in collect_best array
-				 */
-  int collect_nbest;		/* Total of best pages that were found
-				 * by scanning the heap. This is a hint
-				 */
-  int collect_maxbest;		/* Maximum num of elements in collect_best
-				 * array
-				 */
-  HEAP_BESTSPACE *collect_best;	/* Best pages that were found during the
-				 * scan
-				 */
   int num_btids;		/* Total number of indexes defined
 				 * on the scanning class
 				 */
@@ -322,9 +296,6 @@ extern int heap_scancache_end_when_scan_will_resume (THREAD_ENTRY * thread_p,
 extern void heap_scancache_end_modify (THREAD_ENTRY * thread_p,
 				       HEAP_SCANCACHE * scan_cache);
 #if defined(ENABLE_UNUSED_FUNCTION)
-extern int heap_hint_expected_num_objects (THREAD_ENTRY * thread_p,
-					   HEAP_SCANCACHE * scan_cache,
-					   int nobjs, int avg_objsize);
 extern int heap_get_chn (THREAD_ENTRY * thread_p, const OID * oid);
 #endif
 extern SCAN_CODE heap_get (THREAD_ENTRY * thread_p, const OID * oid,

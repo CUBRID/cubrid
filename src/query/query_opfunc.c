@@ -6698,19 +6698,6 @@ qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p,
 	}
     }
 
-  if (agg_p->function == PT_COUNT_STAR)
-    {
-      if (BTID_IS_NULL (&agg_p->btid))
-	{
-	  if (heap_get_num_objects (thread_p, hfid_p, &null_count, &oid_count,
-				    &key_count) < 0)
-	    {
-	      return ER_FAILED;
-	    }
-	  flag_btree_stat_needed = false;
-	}
-    }
-
   if (flag_btree_stat_needed)
     {
       if (BTID_IS_NULL (&agg_p->btid))
