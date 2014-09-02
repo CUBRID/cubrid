@@ -169,7 +169,6 @@ EXPORTS
     db_get_enum_collation
     db_get_float
     db_get_foreign_key_action
-    db_get_foreign_key_cache_object_attr
     db_get_foreign_key_ref_class
     db_get_global_transaction_info
     db_get_hostvars
