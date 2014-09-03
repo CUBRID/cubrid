@@ -4830,6 +4830,25 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 
   /* in case that the caller is holder */
 
+  if (bufptr->latch_mode != PGBUF_LATCH_WRITE)
+    {
+      /* check iff nested write mode fix
+       */
+      assert_release (request_mode != PGBUF_LATCH_WRITE);
+
+#if !defined(NDEBUG)
+      if (request_mode == PGBUF_LATCH_WRITE)
+	{
+	  /* This situation must not be occurred. */
+	  assert (false);
+
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+
+	  return ER_FAILED;
+	}
+#endif
+    }
+
   if (bufptr->latch_mode == PGBUF_LATCH_WRITE)
     {				/* only the holder */
       assert (bufptr->fcnt == holder->fix_count);
