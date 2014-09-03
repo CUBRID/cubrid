@@ -581,13 +581,6 @@ log_to_string (LOG_RECTYPE type)
     case LOG_DUMMY_CRASH_RECOVERY:
       return "LOG_DUMMY_CRASH_RECOVERY";
 
-      /*
-       * This record is not generated no more.
-       * It's kept for backward compatibility.
-       */
-    case LOG_DUMMY_FILLPAGE_FORARCHIVE:
-      return "LOG_DUMMY_FILLPAGE_FORARCHIVE";
-
     case LOG_END_OF_LOG:
       return "LOG_END_OF_LOG";
 
@@ -9034,7 +9027,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp,
     case LOG_2PC_ABORT_INFORM_PARTICPS:
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
-    case LOG_DUMMY_FILLPAGE_FORARCHIVE:	/* for backward compatibility */
     case LOG_DUMMY_OVF_RECORD:
     case LOG_UNLOCK_COMMIT:
     case LOG_UNLOCK_ABORT:
@@ -9294,18 +9286,10 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
 
 	  if (LSA_ISNULL (&log_rec->forw_lsa) && type != LOG_END_OF_LOG)
 	    {
-	      /*
-	       * This record is not generated no more.
-	       * It's kept for backward compatibility.
-	       */
-	      if (type != LOG_DUMMY_FILLPAGE_FORARCHIVE)
-		{
-		  /* Incomplete log record... quit */
-		  fprintf (out_fp, "\n****\n");
-		  fprintf (out_fp,
-			   "log_dump: Incomplete log_record.. Quit\n");
-		  fprintf (out_fp, "\n****\n");
-		}
+	      /* Incomplete log record... quit */
+	      fprintf (out_fp, "\n****\n");
+	      fprintf (out_fp, "log_dump: Incomplete log_record.. Quit\n");
+	      fprintf (out_fp, "\n****\n");
 	      continue;
 	    }
 
@@ -10011,7 +9995,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	    case LOG_2PC_COMMIT_INFORM_PARTICPS:
 	    case LOG_2PC_RECV_ACK:
 	    case LOG_DUMMY_CRASH_RECOVERY:
-	    case LOG_DUMMY_FILLPAGE_FORARCHIVE:	/* for backward compatibility */
 	    case LOG_END_OF_LOG:
 	    case LOG_SMALLER_LOGREC_TYPE:
 	    case LOG_LARGER_LOGREC_TYPE:
@@ -10447,7 +10430,6 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		    case LOG_2PC_COMMIT_INFORM_PARTICPS:
 		    case LOG_2PC_RECV_ACK:
 		    case LOG_DUMMY_CRASH_RECOVERY:
-		    case LOG_DUMMY_FILLPAGE_FORARCHIVE:	/* for backward compatibility */
 		    case LOG_SMALLER_LOGREC_TYPE:
 		    case LOG_LARGER_LOGREC_TYPE:
 		    default:

@@ -2969,7 +2969,6 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
       break;
 
     case LOG_DUMMY_CRASH_RECOVERY:
-    case LOG_DUMMY_FILLPAGE_FORARCHIVE:	/* for backward compatibility */
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_SCHEMA:
     case LOG_UNLOCK_COMMIT:
@@ -4559,7 +4558,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	    case LOG_2PC_COMMIT_INFORM_PARTICPS:
 	    case LOG_2PC_ABORT_INFORM_PARTICPS:
 	    case LOG_DUMMY_CRASH_RECOVERY:
-	    case LOG_DUMMY_FILLPAGE_FORARCHIVE:	/* for backward compatibility */
 	    case LOG_REPLICATION_DATA:
 	    case LOG_REPLICATION_SCHEMA:
 	    case LOG_UNLOCK_COMMIT:
@@ -5305,7 +5303,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_2PC_COMMIT_INFORM_PARTICPS:
 		case LOG_2PC_RECV_ACK:
 		case LOG_DUMMY_CRASH_RECOVERY:
-		case LOG_DUMMY_FILLPAGE_FORARCHIVE:	/* for backward compatibility */
 		case LOG_END_OF_LOG:
 		  /* This looks like a system error in the analysis phase */
 #if defined(CUBRID_DEBUG)
@@ -6334,12 +6331,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
 					&log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_ha_server_state),
 			  &log_lsa, log_pgptr);
-      break;
-
-    case LOG_DUMMY_FILLPAGE_FORARCHIVE:	/* for backward compatibility */
-      /* Get to start of next page */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, LOG_PAGESIZE, &log_lsa,
-					log_pgptr);
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:

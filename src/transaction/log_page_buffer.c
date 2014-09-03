@@ -3827,13 +3827,6 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
   switch (rec_type)
     {
     case LOG_DUMMY_HEAD_POSTPONE:
-#if 0
-      /*
-       * This isn't generated no more
-       * (It was changed in logpb_archive_active_log)
-       */
-    case LOG_DUMMY_FILLPAGE_FORARCHIVE:
-#endif
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_2PC_COMMIT_DECISION:
@@ -4041,14 +4034,6 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p,
     case LOG_SAVEPOINT:
 
     case LOG_DUMMY_HEAD_POSTPONE:
-
-#if 0
-      /*
-       * This isn't generated no more
-       * (It was changed in logpb_archive_active_log)
-       */
-    case LOG_DUMMY_FILLPAGE_FORARCHIVE:
-#endif
 
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_HA_SERVER_STATE:
@@ -5526,26 +5511,6 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
        */
       LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER));
     }
-#if 0
-  /*
-   * LOG_DUMMY_FILLPAGE_FORARCHIVE isn't generated no more
-   * (It was changed in logpb_archive_active_log)
-   * so, this check is not required.
-   */
-
-  log_rec = (LOG_RECORD_HEADER *) LOG_PREV_APPEND_PTR ();
-  if (log_rec->type == LOG_DUMMY_FILLPAGE_FORARCHIVE)
-    {
-      /*
-       * Get to start of next page if not already advanced ... Note
-       * this record type is only safe during backups.
-       */
-      if (initial_pageid == log_Gl.hdr.append_lsa.pageid)
-	{
-	  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, LOG_PAGESIZE);
-	}
-    }
-#endif
 }
 
 /*
@@ -5593,26 +5558,6 @@ prior_lsa_start_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
    * Set the page dirty, increase and align the append offset
    */
   LOG_PRIOR_LSA_APPEND_ADD_ALIGN (sizeof (LOG_RECORD_HEADER));
-
-#if 0
-  /*
-   * LOG_DUMMY_FILLPAGE_FORARCHIVE isn't generated no more
-   * (It was changed in logpb_archive_active_log)
-   * so, this check is not required.
-   */
-
-  if (node->log_header.type == LOG_DUMMY_FILLPAGE_FORARCHIVE)
-    {
-      /*
-       * Get to start of next page if not already advanced ... Note
-       * this record type is only safe during backups.
-       */
-      if (node->start_lsa.pageid == log_Gl.prior_info.prev_lsa.pageid)
-	{
-	  LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT (LOG_PAGESIZE);
-	}
-    }
-#endif
 
 }
 
@@ -12430,37 +12375,6 @@ end:
 
   return r;
 }
-
-#if 0
-/*
- * LOG_DUMMY_FILLPAGE_FORARCHIVE isn't generated no more
- * (It was changed in logpb_archive_active_log)
- * so, this check is not required.
- */
-
-/*
- * logpb_must_archive_last_log_page - Log special record to arv current page
- *
- * return: NO_ERROR if all OK, ER_ status otherwise
- *
- * NOTE: When archiving the last log page, as is necessary during backups, must
- *   first append a new record on the last page that has no forward pointer.
- *   This insures that recovery will have to search explicitly for the next
- *   record forward when it is needed, otherwise we might find a "false" end
- *   and do an incomplete recovery by mistake.
- */
-static int
-logpb_must_archive_last_log_page (THREAD_ENTRY * thread_p)
-{
-  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-
-  log_append_empty_record (thread_p, LOG_DUMMY_FILLPAGE_FORARCHIVE, NULL);
-
-  logpb_flush_pages_direct (thread_p);
-
-  return NO_ERROR;
-}
-#endif
 
 /*
  * logpb_check_and_reset_temp_lsa -

@@ -1354,12 +1354,14 @@ enum log_rectype
 					   No-op
 					 */
 
+#if 0				/* not used */
   LOG_DUMMY_FILLPAGE_FORARCHIVE = 38,	/* Indicates logical end of current
 					   page so it could be archived
 					   safely. No-op
 					   This record is not generated no more.
 					   It's kept for backward compatibility.
 					 */
+#endif
   LOG_REPLICATION_DATA = 39,	/* Replication log for insert, delete or update */
   LOG_REPLICATION_SCHEMA = 40,	/* Replication log for schema, index, trigger or system catalog updates */
   LOG_UNLOCK_COMMIT = 41,	/* for repl_agent to guarantee the order of */

@@ -6225,7 +6225,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
   if (lrec->trid == NULL_TRANID ||
       LSA_GT (&lrec->prev_tranlsa, final) || LSA_GT (&lrec->back_lsa, final))
     {
-      if (lrec->type != LOG_END_OF_LOG && lrec->type != LOG_DUMMY_FILLPAGE_FORARCHIVE)	/* for backward compatibility */
+      if (lrec->type != LOG_END_OF_LOG)
 	{
 	  la_applier_need_shutdown = true;
 
@@ -6271,23 +6271,6 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
   la_Info.is_end_of_record = false;
   switch (lrec->type)
     {
-      /*
-       * This record is not generated no more.
-       * It's kept for backward compatibility.
-       */
-    case LOG_DUMMY_FILLPAGE_FORARCHIVE:
-      snprintf (buffer, sizeof (buffer),
-		"process log record (type:%d). "
-		"skip this log page. LSA: %lld|%d",
-		lrec->type, (long long int) final->pageid,
-		(int) final->offset);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
-	      buffer);
-
-      final->pageid++;
-      final->offset = 0;
-      return ER_INTERRUPTED;
-
     case LOG_END_OF_LOG:
       if (la_does_page_exist (final->pageid + 1)
 	  && la_does_page_exist (final->pageid) ==
@@ -8171,7 +8154,7 @@ lp_prefetch_log_record (LOG_RECORD_HEADER * lrec, LOG_LSA * final,
   if (lrec->trid == NULL_TRANID ||
       LSA_GT (&lrec->prev_tranlsa, final) || LSA_GT (&lrec->back_lsa, final))
     {
-      if (lrec->type != LOG_END_OF_LOG && lrec->type != LOG_DUMMY_FILLPAGE_FORARCHIVE)	/* for backward compatibility */
+      if (lrec->type != LOG_END_OF_LOG)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_HA_LA_INVALID_REPL_LOG_RECORD,
