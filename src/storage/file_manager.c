@@ -7721,7 +7721,8 @@ file_allocset_find_page (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   vpid = allocset->start_pages_vpid;
   while (isfound == DISK_INVALID && !VPID_ISNULL (&vpid))
     {
-      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE,
+			 fun ? PGBUF_LATCH_WRITE : PGBUF_LATCH_READ,
 			 PGBUF_UNCONDITIONAL_LATCH);
       if (pgptr == NULL)
 	{
