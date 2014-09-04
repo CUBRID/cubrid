@@ -58,6 +58,7 @@ abstract public class UJCIManager {
 		try {
 			CACHE_Manager = new JdbcCacheWorker();
 			CACHE_Manager.setDaemon(true);
+			CACHE_Manager.setContextClassLoader(null);
 			CACHE_Manager.start();
 		} catch (Exception e) {
 			e.printStackTrace();

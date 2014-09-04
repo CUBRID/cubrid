@@ -108,6 +108,7 @@ public class CUBRIDDriver implements Driver {
 		}
 		Thread brokerHealthCheck = new Thread(new BrokerHealthCheck());
 		brokerHealthCheck.setDaemon(true);
+		brokerHealthCheck.setContextClassLoader(null);
 		brokerHealthCheck.start();
 	}
 
