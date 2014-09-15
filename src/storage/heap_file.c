@@ -762,7 +762,7 @@ static HEAP_CLASSREPR_CACHE heap_Classrepr_cache = {
 #define CLASSREPR_HASH_SIZE  (heap_Classrepr_cache.num_entries * 2)
 #define REPR_HASH(class_oid) (OID_PSEUDO_KEY(class_oid)%CLASSREPR_HASH_SIZE)
 
-#define HEAP_MAYNEED_DECACHE_GUESSED_LASTREPRS(class_oid, hfid, recdes) \
+#define HEAP_MAYNEED_DECACHE_GUESSED_LASTREPRS(class_oid, hfid) \
   do {                                                        \
     if (heap_Classrepr != NULL && (hfid) != NULL) {             \
       if (heap_Classrepr->rootclass_hfid == NULL)               \
@@ -6938,7 +6938,7 @@ heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
       OID_SET_NULL (new_oid);
     }
 
-  HEAP_MAYNEED_DECACHE_GUESSED_LASTREPRS (oid, hfid, recdes);
+  HEAP_MAYNEED_DECACHE_GUESSED_LASTREPRS (oid, hfid);
 
   if (hfid == NULL)
     {
@@ -7819,6 +7819,14 @@ try_again:
 		goto try_again;
 	      }
 
+	    /* the page may have been unfixed (and changed by another worker),
+	     * so we need to re-peek the record again */
+	    if (spage_get_record (addr.pgptr, oid->slotid, &home_recdes,
+				  PEEK) != S_SUCCESS)
+	      {
+		goto error;
+	      }
+
 	    (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
 	    (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
 	  }
@@ -8642,6 +8650,14 @@ try_again:
 		  assert (hdr_pgptr == NULL);
 		  assert (forward_addr.pgptr == NULL);
 		  goto try_again;
+		}
+
+	      /* re-peek fwd record descriptor (fwd page may have been unfixed)
+	       * since previous peek */
+	      if (spage_get_record (forward_addr.pgptr, forward_oid.slotid,
+				    &new_home_recdes, PEEK) != S_SUCCESS)
+		{
+		  goto error;
 		}
 
 	      (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
@@ -25187,6 +25203,14 @@ try_again:
 	    {
 	      assert (hdr_pgptr == NULL);
 	      goto try_again;
+	    }
+
+	  /* re-peek home record (home page may have been unfixed) */
+	  if (spage_get_record (addr.pgptr, oid->slotid, &home_recdes,
+				PEEK) != S_SUCCESS)
+	    {
+	      /* Unable to peek before image for logging purposes */
+	      goto error;
 	    }
 	}
 
