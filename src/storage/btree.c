@@ -19257,8 +19257,11 @@ curr_key_locking:
 		       *  transaction
 		       *  2. the current inserted OID
 		       */
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_MVCC_SERIALIZABLE_CONFLICT, 0);
+
+		      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key, oid,
+							cls_oid,
+							btid_int.sys_btid,
+							NULL);
 
 		      goto error;
 		    }
@@ -19287,9 +19290,9 @@ curr_key_locking:
 		  (thread_p, &btid_int, &peek_rec, offset, BTREE_LEAF_NODE,
 		   &max_visible_oids, mvcc_snapshot) > 0)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_MVCC_SERIALIZABLE_CONFLICT, 0);
-
+		  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key, oid,
+						    cls_oid,
+						    btid_int.sys_btid, NULL);
 		  goto error;
 		}
 	      else if (!VPID_ISNULL (&leaf_pnt.ovfl))
@@ -19306,8 +19309,10 @@ curr_key_locking:
 
 		  if (num_visible_oids > 0)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_MVCC_SERIALIZABLE_CONFLICT, 0);
+		      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key, oid,
+							cls_oid,
+							btid_int.sys_btid,
+							NULL);
 		      goto error;
 		    }
 		}
