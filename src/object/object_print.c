@@ -115,6 +115,8 @@ typedef struct strlist
   const char *string;
 } STRLIST;
 
+extern unsigned int db_on_server;
+
 /* Constant for routines that have static file buffers */
 /* this allows some overhead plus max string length of ESCAPED characters! */
 const int MAX_LINE = 4096;
@@ -4066,6 +4068,7 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 		const DB_VALUE * value)
 {
   INTL_CODESET codeset = INTL_CODESET_NONE;
+  char str_int[30];
 
   assert (parser != NULL);
 
@@ -4096,11 +4099,34 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  if (DB_GET_ENUM_STRING (value) == NULL
 	      && DB_GET_ENUM_SHORT (value) != 0)
 	    {
+#if defined(SERVER_MODE)
+	      /* to print enum index as int */
+	      sprintf (str_int, "%d", (int) DB_GET_ENUM_SHORT (value));
+	      buffer = pt_append_nulstring (parser, buffer, str_int);
+	      break;
+#elif defined(SA_MODE)
+	      if (db_on_server)
+		{
+		  /* to print enum index as int */
+		  sprintf (str_int, "%d", (int) DB_GET_ENUM_SHORT (value));
+		  buffer = pt_append_nulstring (parser, buffer, str_int);
+		  break;
+		}
+	      else
+		{
+		  /* describe value should not be called on an enumeration
+		   * which is not fully constructed
+		   */
+		  assert (false);
+		  buffer = pt_append_nulstring (parser, buffer, "''");
+		}
+#else /* CS_MODE */
 	      /* describe value should not be called on an enumeration
 	       * which is not fully constructed
 	       */
 	      assert (false);
 	      buffer = pt_append_nulstring (parser, buffer, "''");
+#endif
 	    }
 	  else
 	    {
