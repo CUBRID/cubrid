@@ -11876,6 +11876,12 @@ pt_check_with_info (PARSER_CONTEXT * parser,
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
+    {
+      PT_ERRORc (parser, node, db_error_string (3));
+    }
+
   if (pt_has_error (parser))
     {
       pt_register_orphan (parser, node);
