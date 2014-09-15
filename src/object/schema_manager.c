@@ -13383,6 +13383,9 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
       goto end;
     }
 
+  /* mark all instance MOPs as deleted, should the locator be doing this ? */
+  ws_mark_instances_deleted (op);
+
   /* flush all instances of this class */
   switch (class_->class_type)
     {
@@ -13471,10 +13474,6 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
     {
       goto end;
     }
-
-  /* mark all instance MOPs as deleted, should the locator be doing this ? */
-
-  ws_mark_instances_deleted (op);
 
   /* make sure this is removed from the resident class list, this will also
    * make the class mop subject to garbage collection. This function will
