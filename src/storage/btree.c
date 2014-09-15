@@ -30716,7 +30716,6 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	      if (btrs_helper->rec_oid_cnt > 1)
 		{
 		  index_scan_id_p->duplicate_key_locked = true;
-		  assert (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk));
 		}
 	    }
 	}
@@ -30965,7 +30964,6 @@ btree_handle_current_oid_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 	      if (btrs_helper->rec_oid_cnt > 1)
 		{
 		  index_scan_id_p->duplicate_key_locked = true;
-		  assert (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk));
 		}
 	    }
 	}
