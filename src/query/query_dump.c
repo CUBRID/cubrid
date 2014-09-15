@@ -2918,6 +2918,8 @@ qdump_xasl_type_string (XASL_NODE * xasl_p)
       return "OBJFETCH";
     case BUILD_SCHEMA_PROC:
       return "SCHEMA";
+    case DO_PROC:
+      return "DO";
     default:
       assert (false);
       return "";
