@@ -408,7 +408,8 @@ static int db_check_or_create_null_term_string (const DB_VALUE * str_val,
 						bool ignore_trail_spaces,
 						char **str_out,
 						bool * do_alloc);
-static bool is_str_valid_number (char *num_p, int base);
+static bool is_str_valid_number (char *num_p, char *str_end,
+				 int base, INTL_CODESET codeset);
 static bool is_valid_ip_slice (const char *ipslice);
 
 /* reads cnt digits until non-digit char reached,
@@ -25498,19 +25499,48 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base,
     {
       /* copy into a null-terminated string */
       int str_size = DB_GET_STRING_SIZE (num);
+      INTL_CODESET codeset = DB_GET_STRING_CODESET (num);
+      int prev_char_length = 0;
+      char *str_start = NULL, *str_end = NULL;
+      char *prev_char = NULL;
 
       if (str_size >= 0)
 	{
 	  str_size = MIN (str_size, sizeof (num_str) - 1);
+	  strncpy (num_str, DB_PULL_STRING (num), str_size);
+	  str_start = num_str;
+	  str_end = num_str + str_size;
+
+	  /* trim the tailing white spaces */
+	  do
+	    {
+	      prev_char = intl_prev_char (str_end, str_start,
+					  codeset, &prev_char_length);
+	      assert (prev_char >= str_start);
+
+	      if (intl_is_space (prev_char, str_end, codeset, NULL))
+		{
+		  str_size -= prev_char_length;
+		  assert (str_size >= 0);
+
+		  str_end = prev_char;
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	  while (str_end > str_start);
 	}
       else
 	{
-	  str_size = sizeof (num_str) - 1;
+	  str_size = 0;
 	}
-      strncpy (num_str, DB_PULL_STRING (num), str_size);
+
       num_str[str_size] = '\0';
       num_p_str = num_str;
-      if (!is_str_valid_number (num_p_str, from_base_int))
+
+      if (!is_str_valid_number (num_p_str, str_end, from_base_int, codeset))
 	{
 	  error_code = ER_OBJ_INVALID_ARGUMENTS;
 	  goto error;
@@ -25646,28 +25676,35 @@ error:
  *
  *   return: true if it's valid, false otherwise
  *   num_p(in): the number in string pointer
+ *   str_end(in): end of string (pointer to first character after last
+ *                character of string) or NULL if str is null terminated
  *   base(in): from 2 to 36 inclusive
  *
  */
 bool
-is_str_valid_number (char *num_p, int base)
+is_str_valid_number (char *num_p, char *str_end,
+		     int base, INTL_CODESET codeset)
 {
   char digit_max = (char) ('0' + base);
   char lower_char_max = (char) ('a' - 10 + base);
   char upper_char_max = (char) ('A' - 10 + base);
   bool has_decimal_point = false;
+  int space_length = 0;
 
   /* skip leading space */
-  for (; *num_p != '\0'; ++num_p)
+  while (num_p < str_end)
     {
-      if (!isspace (*num_p))
+      if (!intl_is_space (num_p, str_end, codeset, &space_length))
 	{
 	  break;
 	}
+
+      num_p += space_length;
+      assert (num_p <= str_end);
     }
 
   /* just space, no digit */
-  if (*num_p == '\0')
+  if (num_p == str_end)
     {
       return false;
     }
@@ -25685,14 +25722,14 @@ is_str_valid_number (char *num_p, int base)
       num_p += 2;
 
       /* just space, no digit */
-      if (*num_p == '\0')
+      if (num_p == str_end)
 	{
 	  return false;
 	}
     }
 
   /* check the digits */
-  for (; *num_p != '\0'; ++num_p)
+  for (; num_p != str_end; ++num_p)
     {
       if (base < 10 && *num_p >= '0' && *num_p < digit_max)
 	{
