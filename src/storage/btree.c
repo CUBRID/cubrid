@@ -31923,15 +31923,8 @@ xbtree_mvcc_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
 	    }
 	  else if (oid_cnt >= 1)
 	    {
-	      char *key_print = pr_valstring (key);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_UNIQUE_VIOLATION_WITHKEY, 1,
-		      key_print == NULL ? "(null)" : key_print);
+	      COPY_OID (oid, index_scan_id.oid_list.oidp);
 	      status = BTREE_ERROR_OCCURRED;
-	      if (key_print != NULL)
-		{
-		  free_and_init (key_print);
-		}
 	      break;
 	    }
 	}
