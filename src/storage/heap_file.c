@@ -13447,14 +13447,6 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p,
   OID root_oid;
 
   heap_scancache_quick_start (&scan_cache);
-  if (mvcc_Enabled)
-    {
-      scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (scan_cache.mvcc_snapshot == NULL)
-	{
-	  return NULL;
-	}
-    }
 
   if (heap_get_with_class_oid (thread_p, &root_oid, class_oid, &recdes,
 			       &scan_cache, PEEK) == S_SUCCESS)
