@@ -14664,13 +14664,15 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added_deleted,
 		}
 	      else
 		{
+		  int num_ovf_oids;
+
 		  if (btree_mvcc_get_num_visible_oids_from_all_ovf
-		      (thread_p, btid, &(leafrec_pnt.ovfl), &num_oids,
+		      (thread_p, btid, &(leafrec_pnt.ovfl), &num_ovf_oids,
 		       NULL, &mvcc_snapshot_dirty) != NO_ERROR)
 		    {
 		      goto error;
 		    }
-		  if (!num_oids)
+		  if ((num_ovf_oids + num_oids) == 1)
 		    {
 		      *key_added_deleted = 1;
 		    }
