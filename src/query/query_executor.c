@@ -15390,6 +15390,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      /* Index found, no fixed is allowed */
 	      fixed_scan_xasl = NULL;
 	    }
+	  if (xasl->dptr_list != NULL)
+	    {
+	      /* correlated subquery found, no fixed is allowed */
+	      fixed_scan_xasl = NULL;
+	    }
 
 	  /* open all the scans that are involved within the query,
 	   * for SCAN blocks
