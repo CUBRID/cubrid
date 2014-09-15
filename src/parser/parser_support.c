@@ -9189,6 +9189,11 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type,
   if (type == SHOWSTMT_ACCESS_STATUS)
     {
       classop = sm_find_class ("db_user");
+      if (classop == NULL)
+	{
+	  goto error;
+	}
+
       db_make_oid (&oid_val, &classop->oid_info.oid);
       showstmt_info->info.showstmt.show_args =
 	pt_dbval_to_value (parser, &oid_val);

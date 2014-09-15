@@ -1839,7 +1839,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
    * you run the risk of getting stuck in an infinite loop in the
    * following section (especially if the '-e' switch is on).
    */
-  if (db_get_errors (session))
+  if (db_get_errors (session) || er_errid () != NO_ERROR)
     {
       csql_Error_code = CSQL_ERR_SQL_ERROR;
 #if !defined(WINDOWS)
