@@ -992,8 +992,8 @@ static DISK_ISVALID heap_hfid_isvalid (HFID * hfid);
 static DISK_ISVALID heap_scanrange_isvalid (HEAP_SCANRANGE * scan_range);
 #endif /* CUBRID_DEBUG */
 static int heap_insert_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
-				 OID * oid, RECDES * recdes,
-				 HEAP_SCANCACHE * scan_cache,
+				 OID * oid, const OID * class_oid,
+				 RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 				 bool ishome_insert, int guess_sumlen,
 				 MVCC_RELOCATE_DELETE_INFO *
 				 mvcc_relocate_delete);
@@ -6158,8 +6158,8 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * oid,
   recdes.data = NULL;
   recdes.type = REC_ASSIGN_ADDRESS;
 
-  return heap_insert_internal (thread_p, hfid, oid, &recdes, NULL, false,
-			       recdes.length, NULL);
+  return heap_insert_internal (thread_p, hfid, oid, NULL, &recdes, NULL,
+			       false, recdes.length, NULL);
 }
 
 /*
@@ -6214,6 +6214,7 @@ heap_assign_address_with_class_oid (THREAD_ENTRY * thread_p,
  *   return: NO_ERROR / ER_FAILED
  *   hfid(in): Object heap file identifier
  *   oid(out): Object identifier.
+ *   class_oid(in): Class OID.
  *   recdes(in): Record descriptor
  *   scan_cache(in/out): Scan cache used to estimate the best space pages
  *                       between heap changes.
@@ -6236,9 +6237,10 @@ heap_assign_address_with_class_oid (THREAD_ENTRY * thread_p,
  * Note: This function does not store objects in overflow.
  */
 static int
-heap_insert_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * oid,
-		      RECDES * recdes, HEAP_SCANCACHE * scan_cache,
-		      bool ishome_insert, int guess_sumlen,
+heap_insert_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
+		      OID * oid, const OID * class_oid, RECDES * recdes,
+		      HEAP_SCANCACHE * scan_cache, bool ishome_insert,
+		      int guess_sumlen,
 		      MVCC_RELOCATE_DELETE_INFO * mvcc_relocate_delete)
 {
   LOG_DATA_ADDR addr;		/* Address of logging data */
@@ -6324,6 +6326,13 @@ heap_insert_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * oid,
 	      /* non MVCC insert logging */
 	      log_append_undoredo_recdes (thread_p, RVHF_INSERT, &addr, NULL,
 					  &tmp_recdes);
+	    }
+	  else if (class_oid == NULL
+		   || heap_is_mvcc_disabled_for_class (class_oid))
+	    {
+	      /* non MVCC insert logging */
+	      log_append_undoredo_recdes (thread_p, RVHF_INSERT, &addr, NULL,
+					  recdes);
 	    }
 	  else
 	    {
@@ -7269,8 +7278,8 @@ try_again:
 		   */
 		  recdes->type = REC_NEWHOME;
 		  if (heap_insert_internal
-		      (thread_p, hfid, &new_forward_oid, recdes, scan_cache,
-		       false,
+		      (thread_p, hfid, &new_forward_oid, class_oid, recdes,
+		       scan_cache, false,
 		       (recdes->length -
 			spage_get_record_length (forward_addr.pgptr,
 						 forward_oid.slotid)),
@@ -7558,9 +7567,9 @@ try_again:
 	    /* need to insert recdes or new_forward_recdes into another page */
 	    assert (hdr_pgptr != NULL);
 	    assert (new_recdes != NULL);
-	    if (heap_insert_internal (thread_p, hfid, &mvcc_next_oid,
-				      new_recdes, scan_cache, false,
-				      new_recdes->length, NULL) != NO_ERROR)
+	    if (heap_insert_internal
+		(thread_p, hfid, &mvcc_next_oid, class_oid, new_recdes,
+		 scan_cache, false, new_recdes->length, NULL) != NO_ERROR)
 	      {
 		if (heap_is_big_length (recdes->length))
 		  {
@@ -7653,7 +7662,7 @@ try_again:
 	       */
 	      recdes->type = REC_NEWHOME;
 	      if (heap_insert_internal (thread_p, hfid, &new_forward_oid,
-					recdes, scan_cache, false,
+					class_oid, recdes, scan_cache, false,
 					(heap_ovf_get_length
 					 (thread_p,
 					  &forward_oid) - recdes->length),
@@ -7914,8 +7923,8 @@ try_again:
 	    pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
 	  }
 	else if (heap_insert_internal
-		 (thread_p, hfid, &mvcc_next_oid, new_recdes, scan_cache,
-		  false, new_recdes->length, NULL) != NO_ERROR)
+		 (thread_p, hfid, &mvcc_next_oid, class_oid, new_recdes,
+		  scan_cache, false, new_recdes->length, NULL) != NO_ERROR)
 	  {
 	    if (is_big_length)
 	      {
@@ -8011,7 +8020,7 @@ try_again:
 							      oid->slotid);
 	      recdes->type = REC_NEWHOME;
 	      if (heap_insert_internal (thread_p, hfid, &new_forward_oid,
-					recdes, scan_cache, false,
+					class_oid, recdes, scan_cache, false,
 					len, NULL) != NO_ERROR)
 		{
 		  /* Problems finding a new home. Return without any updates */
@@ -27138,7 +27147,7 @@ heap_mvcc_get_version_for_delete (THREAD_ENTRY * thread_p, OID * oid,
 
 /*
  * heap_is_mvcc_disabled_for_class () - MVCC is disabled for root class and
- *					db_serial.
+ *					db_serial, db_partition.
  *
  * return	  : True if MVCC is disabled for class.
  * thread_p (in)  : Thread entry.
@@ -27378,7 +27387,8 @@ heap_mvcc_delete_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 								 fwd_oid->
 								 slotid);
 		  if (heap_insert_internal (thread_p, hfid, &new_forward_oid,
-					    &recdes, scan_cache, false, len,
+					    cls_oid, &recdes, scan_cache,
+					    false, len,
 					    &mvcc_relocate_delete) !=
 		      NO_ERROR)
 		    {
@@ -27688,7 +27698,8 @@ heap_mvcc_delete_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 							     slotid);
 
 	      if (heap_insert_internal (thread_p, hfid, &new_forward_oid,
-					&recdes, scan_cache, false, len,
+					cls_oid, &recdes, scan_cache, false,
+					len,
 					&mvcc_relocate_delete) != NO_ERROR)
 		{
 		  /*
@@ -28316,7 +28327,7 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
 			   sizeof (new_version_ovfl_oid), REC_BIGONE,
 			   &new_version_ovfl_oid);
 	  error_code =
-	    heap_insert_internal (thread_p, hfid, &new_version_oid,
+	    heap_insert_internal (thread_p, hfid, &new_version_oid, class_oid,
 				  &new_version_ovfl_recdes, scan_cache, false,
 				  new_version_ovfl_recdes.length, NULL);
 	}
@@ -28324,7 +28335,7 @@ heap_mvcc_update_relocated_record (THREAD_ENTRY * thread_p,
 	{
 	  /* regular insert */
 	  error_code =
-	    heap_insert_internal (thread_p, hfid, &new_version_oid,
+	    heap_insert_internal (thread_p, hfid, &new_version_oid, class_oid,
 				  new_version_recdes, scan_cache, false,
 				  new_version_recdes->length, NULL);
 	}
