@@ -619,6 +619,26 @@ static TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain);
 
 static int tp_enumeration_match (const DB_ENUMERATION * db_enum1,
 				 const DB_ENUMERATION * db_enum2);
+static int tp_digit_number_str_to_bi (char *start, char *end,
+				      INTL_CODESET codeset,
+				      bool is_negative,
+				      DB_BIGINT * num_value,
+				      DB_DATA_STATUS * data_stat);
+static int tp_hex_str_to_bi (char *start, char *end,
+			     INTL_CODESET codeset,
+			     bool is_negative,
+			     DB_BIGINT * num_value,
+			     DB_DATA_STATUS * data_stat);
+static int tp_scientific_str_to_bi (char *start, char *end,
+				    INTL_CODESET codeset,
+				    bool is_negative,
+				    DB_BIGINT * num_value,
+				    DB_DATA_STATUS * data_stat);
+static DB_BIGINT tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative,
+					 bool truncated, bool round,
+					 DB_DATA_STATUS * data_stat);
+
+static UINT64 tp_ubi_times_ten (UINT64 ubi, bool * truncated);
 
 /*
  * tp_init - Global initialization for this module.
@@ -4927,15 +4947,14 @@ static int
 tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value,
 	  DB_DATA_STATUS * data_stat)
 {
-  char str[64];
   char *strp = DB_GET_STRING (src);
-  char *stre;
-  size_t n_digits;
-  DB_BIGINT bigint;
-  char *p;
+  char *stre = NULL;
+  char *p = NULL, *old_p = NULL;
   int status = NO_ERROR;
-  bool round = false, is_negative, truncated = false;
+  bool is_negative = false;
   INTL_CODESET codeset = DB_GET_STRING_CODESET (src);
+  bool is_hex = false, is_scientific = false;
+  bool has_leading_zero = false;
 
   if (strp == NULL)
     {
@@ -4961,132 +4980,109 @@ tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value,
       is_negative = false;
     }
 
+  /* 0x or 0X */
+  if (strp != stre && *strp == '0'
+      && (strp + 1) != stre && (*(strp + 1) == 'x' || *(strp + 1) == 'X'))
+    {
+      is_hex = true;
+      strp += 2;
+    }
+
   /* skip leading zeros */
   while (strp != stre && *strp == '0')
     {
       strp++;
-    }
 
-  /* count number of significant digits */
-  p = strp;
-
-  while (p != stre && char_isdigit (*p))
-    {
-      p++;
-    }
-
-  n_digits = p - strp;
-  if (n_digits > sizeof (str) / sizeof (str[0]) - 2)
-    {
-      /* more than 62 significant digits in the input number
-         (63 chars with sign) */
-      truncated = true;
-    }
-
-  /* skip decimal point and the digits after, keep the round flag */
-  if (p != stre && *p == '.')
-    {
-      p++;
-
-      if (p != stre)
+      if (!has_leading_zero)
 	{
-	  if (char_isdigit (*p))
-	    {
-	      if (*p >= '5')
-		{
-		  round = true;
-		}
+	  has_leading_zero = true;
+	}
+    }
 
-	      /* skip all digits after decimal point */
-	      do
-		{
-		  p++;
-		}
-	      while (p != stre && char_isdigit (*p));
+  if (!is_hex)
+    {
+      /* check whether is scientific format */
+      p = strp;
+
+      /* check first part */
+      while (p != stre && char_isdigit (*p))
+	{
+	  ++p;
+	}
+
+      if (p != stre && *p == '.')
+	{
+	  ++p;
+
+	  while (p != stre && char_isdigit (*p))
+	    {
+	      ++p;
 	    }
 	}
-    }
 
-  /* skip trailing whitespace characters */
-  p = (char *) intl_skip_spaces (p, stre, codeset);
-
-  if (p != stre)
-    {
-      /* trailing characters in string */
-      return ER_FAILED;
-    }
-
-  if (truncated)
-    {
-      *data_stat = DATA_STATUS_TRUNCATED;
-      if (is_negative)
+      /* no first part */
+      if (!has_leading_zero && p == strp)
 	{
-	  bigint = DB_BIGINT_MIN;
-	}
-      else
-	{
-	  bigint = DB_BIGINT_MAX;
-	}
-    }
-  else
-    {
-      /* Copy the number to str, excluding leading spaces and '0's and
-         trailing spaces. Anything other than leading and trailing spaces
-         already resulted in an error. */
-      if (is_negative)
-	{
-	  str[0] = '-';
-	  strncpy (str + 1, strp, n_digits);
-	  str[n_digits + 1] = '\0';
-	  strp = str;
-	}
-      else
-	{
-	  strp = strncpy (str, strp, n_digits);
-	  str[n_digits] = '\0';
+	  return ER_FAILED;
 	}
 
-      errno = 0;
-      bigint = strtoll (strp, &p, 10);
+      /* skip trailing white spaces of first part */
+      p = (char *) intl_skip_spaces (p, stre, codeset);
 
-      if (errno == ERANGE)
+      /* check exponent part */
+      if (p != stre)
 	{
-	  *data_stat = DATA_STATUS_TRUNCATED;
-	}
-      else
-	{
-	  *data_stat = DATA_STATUS_OK;
-	}
-
-      /* round number if a '5' or greater digit was found after the decimal point */
-      if (round)
-	{
-	  if (is_negative)
+	  if (*p == 'e' || *p == 'E')
 	    {
-	      if (bigint > DB_BIGINT_MIN)
+	      ++p;
+
+	      /* check second part */
+	      if (p != stre && (*p == '+' || *p == '-'))
 		{
-		  bigint--;
+		  ++p;
 		}
-	      else
+
+	      old_p = p;
+	      while (p != stre && char_isdigit (*p))
 		{
-		  *data_stat = DATA_STATUS_TRUNCATED;
+		  ++p;
+		}
+
+	      if (p == old_p)
+		{
+		  return ER_FAILED;
+		}
+
+	      /* skip trailing white spaces of second part */
+	      p = (char *) intl_skip_spaces (p, stre, codeset);
+	      if (p == stre)
+		{
+		  is_scientific = true;
 		}
 	    }
 	  else
 	    {
-	      if (bigint < DB_BIGINT_MAX)
-		{
-		  bigint++;
-		}
-	      else
-		{
-		  *data_stat = DATA_STATUS_TRUNCATED;
-		}
+	      return ER_FAILED;
 	    }
 	}
     }
 
-  *num_value = bigint;
+  /* convert to bigint */
+  if (is_hex)
+    {
+      status = tp_hex_str_to_bi (strp, stre, codeset,
+				 is_negative, num_value, data_stat);
+    }
+  else if (is_scientific)
+    {
+      status = tp_scientific_str_to_bi (strp, stre, codeset,
+					is_negative, num_value, data_stat);
+    }
+  else
+    {
+      status = tp_digit_number_str_to_bi (strp, stre, codeset,
+				          is_negative, num_value, data_stat);
+    }
 
   return status;
 }
@@ -10523,4 +10519,667 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name,
     }
 
   return error;
+}
+
+/*
+ * tp_digit_number_str_to_bi - Coerce a digit number string to a bigint.
+ *    return: NO_ERROR or error code
+ *    start(in): string start pos
+ *    end(in): string end pos
+ *    codeset(in):
+ *    is_negative(in):
+ *    num_value(out): bigint container
+ *    data_stat(out): if overflow is detected, this is set to
+ *                    DATA_STATUS_TRUNCATED
+ */
+int
+tp_digit_number_str_to_bi (char *start, char *end,
+		           INTL_CODESET codeset, bool is_negative,
+		           DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
+{
+  char str[64] = { 0 };
+  char *p = NULL;
+  char *strp = NULL, *stre = NULL;
+  size_t n_digits = 0;
+  DB_BIGINT bigint = 0;
+  bool round = false;
+  bool truncated = false;
+
+  assert (start != NULL && end != NULL
+	  && num_value != NULL && data_stat != NULL);
+
+  strp = start;
+  stre = end;
+
+  /* count number of significant digits */
+  p = strp;
+
+  while (p != stre && char_isdigit (*p))
+    {
+      p++;
+    }
+
+  n_digits = p - strp;
+  if (n_digits > 62)
+    {
+      /* more than 62 significant digits in the input number
+         (63 chars with sign) */
+      truncated = true;
+    }
+
+  /* skip decimal point and the digits after, keep the round flag */
+  if (p != stre && *p == '.')
+    {
+      p++;
+
+      if (p != stre)
+	{
+	  if (char_isdigit (*p))
+	    {
+	      if (*p >= '5')
+		{
+		  round = true;
+		}
+
+	      /* skip all digits after decimal point */
+	      do
+		{
+		  p++;
+		}
+	      while (p != stre && char_isdigit (*p));
+	    }
+	}
+    }
+
+  /* skip trailing whitespace characters */
+  p = (char *) intl_skip_spaces (p, stre, codeset);
+
+  if (p != stre)
+    {
+      /* trailing characters in string */
+      return ER_FAILED;
+    }
+
+  if (truncated)
+    {
+      *data_stat = DATA_STATUS_TRUNCATED;
+      if (is_negative)
+	{
+	  bigint = DB_BIGINT_MIN;
+	}
+      else
+	{
+	  bigint = DB_BIGINT_MAX;
+	}
+    }
+  else
+    {
+      /* Copy the number to str, excluding leading spaces and '0's and
+         trailing spaces. Anything other than leading and trailing spaces
+         already resulted in an error. */
+      if (is_negative)
+	{
+	  str[0] = '-';
+	  strncpy (str + 1, strp, n_digits);
+	  str[n_digits + 1] = '\0';
+	  strp = str;
+	}
+      else
+	{
+	  strp = strncpy (str, strp, n_digits);
+	  str[n_digits] = '\0';
+	}
+
+      errno = 0;
+      bigint = strtoll (strp, &p, 10);
+
+      if (errno == ERANGE)
+	{
+	  *data_stat = DATA_STATUS_TRUNCATED;
+	}
+      else
+	{
+	  *data_stat = DATA_STATUS_OK;
+	}
+
+      /* round number if a '5' or greater digit was found after the decimal point */
+      if (round)
+	{
+	  if (is_negative)
+	    {
+	      if (bigint > DB_BIGINT_MIN)
+		{
+		  bigint--;
+		}
+	      else
+		{
+		  *data_stat = DATA_STATUS_TRUNCATED;
+		}
+	    }
+	  else
+	    {
+	      if (bigint < DB_BIGINT_MAX)
+		{
+		  bigint++;
+		}
+	      else
+		{
+		  *data_stat = DATA_STATUS_TRUNCATED;
+		}
+	    }
+	}
+    }
+
+  *num_value = bigint;
+
+  return NO_ERROR;
+}
+
+/*
+ * tp_hex_str_to_bi - Coerce a hex string to a bigint.
+ *    return: NO_ERROR or error code
+ *    start(in): string start pos
+ *    end(in): string end pos
+ *    codeset(in):
+ *    is_negative(in):
+ *    num_value(out): bigint container
+ *    data_stat(out): if overflow is detected, this is set to
+ *                    DATA_STATUS_TRUNCATED
+ */
+int
+tp_hex_str_to_bi (char *start, char *end,
+		  INTL_CODESET codeset, bool is_negative,
+		  DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
+{
+#define HIGHEST_4BITS_OF_UBI 0xF000000000000000
+
+  int error = NO_ERROR;
+  char *p = NULL;
+  size_t n_digits = 0;
+  DB_BIGINT bigint = 0;
+  UINT64 ubi = 0;
+  unsigned int tmp_ui = 0;
+  bool round = false;
+  bool truncated = false;
+
+  assert (start != NULL && end != NULL
+	  && num_value != NULL && data_stat != NULL);
+
+  *data_stat = DATA_STATUS_OK;
+
+  /* convert */
+  p = start;
+  while (p != end)
+    {
+      /* convert chars one by one */
+      if (char_isdigit (*p))
+	{
+	  tmp_ui = *p - '0';
+	}
+      else if (*p >= 'a' && *p <= 'f')
+	{
+	  tmp_ui = *p - 'a' + 10;
+	}
+      else if (*p >= 'A' && *p <= 'F')
+	{
+	  tmp_ui = *p - 'A' + 10;
+	}
+      else if (*p == '.')
+	{
+	  if (++p != end)
+	    {
+	      if (char_isxdigit (*p))
+		{
+		  if (*p >= '0' && *p < '8')
+		    {
+		      round = false;
+		    }
+		  else
+		    {
+		      round = true;
+		    }
+
+		  /* check the rest chars */
+		  while (++p != end && char_isxdigit (*p))
+		    ;
+
+		  /* skip trailing whitespace characters */
+		  p = (char *) intl_skip_spaces (p, end, codeset);
+		  if (p != end)
+		    {
+		      error = ER_FAILED;
+		      goto end;
+		    }
+		}
+	      else
+		{
+		  /* skip trailing whitespace characters */
+		  p = (char *) intl_skip_spaces (p, end, codeset);
+		  if (p != end)
+		    {
+		      error = ER_FAILED;
+		      goto end;
+		    }
+		}
+	    }
+
+	  break;
+	}
+      else
+	{
+	  /* skip trailing whitespace characters */
+	  p = (char *) intl_skip_spaces (p, end, codeset);
+	  if (p != end)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+
+	  break;
+	}
+
+      if (ubi & HIGHEST_4BITS_OF_UBI)
+	{
+	  truncated = true;
+	  break;
+	}
+
+      ubi = ubi << 4;
+
+      /* never overflow */
+      ubi += tmp_ui;
+
+      ++p;
+    }
+
+  *num_value = tp_ubi_to_bi_with_args (ubi, is_negative,
+				       truncated, round, data_stat);
+
+end:
+
+  return error;
+
+#undef HIGHEST_4BITS_OF_UBI
+}
+
+/*
+ * tp_scientific_str_to_bi - Coerce a scientific string to a bigint.
+ *    return: NO_ERROR or error code
+ *    start(in): string start pos
+ *    end(in): string end pos
+ *    codeset(in):
+ *    is_negative(in):
+ *    num_value(out): bigint container
+ *    data_stat(out): if overflow is detected, this is set to
+ *                    DATA_STATUS_TRUNCATED
+ *
+ *    NOTE: format check has been done by caller already
+ *          see tp_atobi
+ */
+int
+tp_scientific_str_to_bi (char *start, char *end,
+			 INTL_CODESET codeset, bool is_negative,
+			 DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
+{
+  int error = NO_ERROR;
+  double d = 0.0;
+  DB_BIGINT bigint = 0;
+  UINT64 ubi = 0;
+  bool truncated = false;
+  bool round = false;
+  char *p = NULL;
+  char *base_int_start = NULL, *base_int_end = NULL;
+  char *base_float_start = NULL, *base_float_end = NULL;
+  char *exp_start = NULL, *exp_end = NULL;
+  bool is_exp_negative = false;
+  int exp = 0;			/* at most 308 */
+
+  assert (start != NULL && end != NULL
+	  && num_value != NULL && data_stat != NULL);
+
+  *data_stat = DATA_STATUS_OK;
+
+  base_int_start = start;
+  p = base_int_start;
+  while (p != end && char_isdigit (*p))
+    {
+      ++p;
+    }
+
+  base_int_end = p;
+
+  /* no int part */
+  if (base_int_start == base_int_end)
+    {
+      base_int_start = NULL;
+      base_int_end = NULL;
+    }
+
+  if (p != end && *p == '.')
+    {
+      ++p;
+      if (p != end)
+	{
+	  base_float_start = p;
+	  while (p != end && char_isdigit (*p))
+	    {
+	      ++p;
+	    }
+
+	  base_float_end = p;
+
+	  /* no float part */
+	  if (base_float_start == base_float_end)
+	    {
+	      base_float_start = NULL;
+	      base_float_end = NULL;
+	    }
+	}
+    }
+
+  /* this is an error */
+  if (base_int_start == NULL && base_float_start == NULL)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  if (p != end && (*p == 'e' || *p == 'E'))
+    {
+      ++p;
+      if (p != end)
+	{
+	  if (*p == '-')
+	    {
+	      is_exp_negative = true;
+	      ++p;
+	    }
+	  else if (*p == '+')
+	    {
+	      ++p;
+	    }
+
+	  exp_start = p;
+	  while (p != end && char_isdigit (*p))
+	    {
+	      ++p;
+	    }
+
+	  exp_end = p;
+
+	  /* no exp part */
+	  if (exp_start == exp_end)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+	}
+    }
+
+  if (exp_start == NULL)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  /* start to calculate */
+
+  /* exponent */
+  p = exp_start;
+  while (p != exp_end)
+    {
+      exp = exp * 10 + (*p - '0');
+      if (exp > 308)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      ++p;
+    }
+
+  if (is_exp_negative)
+    {
+      exp = -exp;
+    }
+
+  /* calculate int part  */
+  if (base_int_start != NULL)
+    {
+      assert (base_int_end != NULL);
+
+      if (exp < 0)
+	{
+	  if (base_int_end - base_int_start >= -exp)
+	    {
+	      base_int_end += exp;
+	    }
+	  else
+	    {
+	      base_int_end = base_int_start - 1;
+	    }
+	}
+
+      p = base_int_start;
+      while (p < base_int_end)
+	{
+	  ubi = tp_ubi_times_ten (ubi, &truncated);
+	  if (truncated)
+	    {
+	      break;
+	    }
+
+	  /* never overflow */
+	  ubi = ubi + *p - '0';
+
+	  ++p;
+	}
+
+      /* need round ? */
+      if (exp < 0 && base_int_end >= base_int_start && *base_int_end >= '5')
+	{
+	  round = true;
+	}
+    }
+
+  /* calculate float part */
+  if (!truncated)
+    {
+      if (exp > 0)
+	{
+	  if (base_float_start != NULL)
+	    {
+	      assert (base_float_end != NULL);
+
+	      p = base_float_start;
+	      while (p != base_float_end && exp > 0)
+		{
+		  ubi = tp_ubi_times_ten (ubi, &truncated);
+		  if (truncated)
+		    {
+		      break;
+		    }
+
+		  /* never overflow */
+		  ubi = ubi + *p - '0';
+
+		  ++p;
+		  --exp;
+		}
+
+	      /* need round ? */
+	      if (p != base_float_end && *p >= '5')
+		{
+		  round = true;
+		}
+	    }
+
+	  /* exp */
+	  if (!truncated)
+	    {
+	      while (exp > 0)
+		{
+		  ubi = tp_ubi_times_ten (ubi, &truncated);
+		  if (truncated)
+		    {
+		      break;
+		    }
+
+		  --exp;
+		}
+	    }
+	}
+      else if (exp == 0
+	       && base_float_start != NULL && *base_float_start >= '5')
+	{
+	  round = true;
+	}
+    }
+
+
+  *num_value = tp_ubi_to_bi_with_args (ubi, is_negative,
+				       truncated, round, data_stat);
+
+end:
+
+  return error;
+}
+
+/*
+ * tp_ubi_to_bi_with_args -
+ *    return: bigint
+ *    ubi(in): unsigned bigint
+ *    is_negative(in):
+ *    truncated(in):
+ *    round(in):
+ *    data_stat(out): if overflow is detected, this is set to
+ *                    DATA_STATUS_TRUNCATED
+ *
+ *    NOTE: This is an internal function for convert string to bigint
+ */
+DB_BIGINT
+tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative,
+			bool truncated, bool round,
+			DB_DATA_STATUS * data_stat)
+{
+#define HIGHEST_BIT_OF_UINT64 0x8000000000000000
+
+  DB_BIGINT bigint = 0;
+
+  assert (data_stat != NULL);
+
+  if (!truncated)
+    {
+      if (is_negative)
+	{
+	  if (ubi == HIGHEST_BIT_OF_UINT64)
+	    {
+	      bigint = DB_BIGINT_MIN;
+	    }
+	  else if (ubi & HIGHEST_BIT_OF_UINT64)
+	    {
+	      truncated = true;
+	    }
+	  else
+	    {
+	      bigint = (DB_BIGINT) ubi;
+	      bigint = -bigint;
+	    }
+	}
+      else
+	{
+	  if (ubi & HIGHEST_BIT_OF_UINT64)
+	    {
+	      truncated = true;
+	    }
+	  else
+	    {
+	      bigint = (DB_BIGINT) ubi;
+	    }
+	}
+    }
+
+  if (truncated)
+    {
+      *data_stat = DATA_STATUS_TRUNCATED;
+      if (is_negative)
+	{
+	  bigint = DB_BIGINT_MIN;
+	}
+      else
+	{
+	  bigint = DB_BIGINT_MAX;
+	}
+    }
+  else if (round)
+    {
+      if (is_negative)
+	{
+	  if (bigint > DB_BIGINT_MIN)
+	    {
+	      --bigint;
+	    }
+	  else
+	    {
+	      *data_stat = DATA_STATUS_TRUNCATED;
+	      bigint = DB_BIGINT_MIN;
+	    }
+	}
+      else
+	{
+	  if (bigint < DB_BIGINT_MAX)
+	    {
+	      ++bigint;
+	    }
+	  else
+	    {
+	      *data_stat = DATA_STATUS_TRUNCATED;
+	      bigint = DB_BIGINT_MAX;
+	    }
+	}
+    }
+
+  return bigint;
+
+#undef HIGHEST_BIT_OF_UINT64
+}
+
+/*
+ * tp_ubi_times_ten -
+ *    return: bigint
+ *    ubi(in): unsigned bigint
+ *    truncated(in/out): set to true if truncated
+ *
+ */
+UINT64
+tp_ubi_times_ten (UINT64 ubi, bool * truncated)
+{
+#define HIGHEST_3BITS_OF_UBI 0xE000000000000000
+
+  UINT64 tmp_ubi = 0;
+
+  assert (truncated != NULL);
+
+  if (ubi & HIGHEST_3BITS_OF_UBI)
+    {
+      *truncated = true;
+
+      goto end;
+    }
+
+  /* ubi*10 = ubi*8 + ubi*2 = ubi<<3 + ubi<<1 */
+  tmp_ubi = ubi << 3;
+  ubi = (ubi << 1) + tmp_ubi;
+  if (ubi < tmp_ubi)
+    {
+      *truncated = true;
+
+      goto end;
+    }
+
+end:
+
+  return ubi;
+
+#undef HIGHEST_3BITS_OF_UBI
 }
