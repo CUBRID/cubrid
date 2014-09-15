@@ -105,11 +105,11 @@
 
 /* MVCC Record Macros */
 
-/* Check if record is inserted by current transaction */
+/* Check if record is inserted by current transaction or its children */
 #define MVCC_IS_REC_INSERTED_BY_ME(thread_p, rec_header_p)	\
   (logtb_is_current_mvccid (thread_p, (rec_header_p)->mvcc_ins_id))
 
-/* Check if record is deleted by current transaction */
+/* Check if record is deleted by current transaction or its children */
 #define MVCC_IS_REC_DELETED_BY_ME(thread_p, rec_header_p)	\
   (logtb_is_current_mvccid (thread_p, (rec_header_p)->delid_chn.mvcc_del_id))
 

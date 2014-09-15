@@ -4572,7 +4572,7 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
  *
  * return: bool
  *
- *   thread_p(in): thred entry
+ *   thread_p(in): thread entry
  *   mvccid(in): MVCC id
  */
 bool

@@ -5816,7 +5816,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 		{
 		  MVCC_REC_HEADER old_rec_header;
 		  or_mvcc_get_header (oldrecdes, &old_rec_header);
-		  if (MVCC_IS_REC_INSERTED_BY_ME (thread_p, &old_rec_header))
+		  if (logtb_find_current_mvccid (thread_p)
+		      == old_rec_header.mvcc_ins_id)
 		    {
 		      /* When the row was inserted by me then just overwrite.
 		       * Note that this optimization is disabled for classes
