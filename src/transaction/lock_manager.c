@@ -959,6 +959,7 @@ lock_initialize_object_lock_res_list (void)
       free_and_init (res_block);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  memset (res_block->block, 0, SIZEOF_LK_RES * res_block->count);
 
   /* initialize the object lock resource in the block */
   for (i = 0; i < res_block->count; i++)
@@ -1401,6 +1402,7 @@ lock_alloc_resource_block (void)
       free_and_init (res_block);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  memset (res_block->block, 0, SIZEOF_LK_RES * res_block->count);
 
   /* initialize the object lock resource in the block */
   for (i = 0; i < res_block->count; i++)
