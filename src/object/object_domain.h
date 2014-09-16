@@ -367,6 +367,7 @@ typedef enum tp_match
     ((dom) ? (dom)->collation_id : LANG_SYS_COLLATION)
 #define TP_DOMAIN_COLLATION_FLAG(dom) \
   ((dom) ? (dom)->collation_flag: TP_DOMAIN_COLL_NORMAL)
+
 /*
  * FUNCTIONS
  */

@@ -48,7 +48,8 @@
 static DB_LOGICAL eval_negative (DB_LOGICAL res);
 static DB_LOGICAL eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2);
 static DB_LOGICAL eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2,
-				      REL_OP rel_operator);
+				      REL_OP rel_operator,
+				      COMP_EVAL_TERM * et_comp);
 static DB_LOGICAL eval_some_eval (DB_VALUE * item, DB_SET * set,
 				  REL_OP rel_operator);
 static DB_LOGICAL eval_all_eval (DB_VALUE * item, DB_SET * set,
@@ -179,12 +180,16 @@ eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2)
  *   dbval1(in): first db_value
  *   dbval2(in): second db_value
  *   rel_operator(in): Relational operator
+ *   et_comp(in): compound evaluation term
  */
 static DB_LOGICAL
-eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator)
+eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator,
+		    COMP_EVAL_TERM * et_comp)
 {
   int result;
   bool comparable = true;
+  DB_TYPE vtype1, vtype2;
+  TP_DOMAIN *dom;
 
   /*
    * we get here for either an ordinal comparison or a set comparison.
@@ -192,7 +197,7 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator)
    * All others are ordinal comparisons.
    */
 
-  /* tp_value_compare does coercion */
+  /* tp_value_compare_with_error () does coercion */
   switch (rel_operator)
     {
     case R_SUBSET:
@@ -202,15 +207,108 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator)
       /* do set comparison */
       result = tp_set_compare (dbval1, dbval2, 1, 0);
       break;
-    case R_EQ_TORDER:
-      /* do total order comparison */
-      result =
-	tp_value_compare_with_error (dbval1, dbval2, 1, 1, &comparable);
-      break;
+
     default:
-      /* do ordinal comparison, but NULL's still yield UNKNOWN */
-      result =
-	tp_value_compare_with_error (dbval1, dbval2, 1, 0, &comparable);
+      /* check for host values to coerce 1-time,
+       * then reduce many-times coerce at tp_value_compare_with_error ()
+       */
+      if (et_comp != NULL)
+	{
+	  assert (et_comp->lhs != NULL);
+	  assert (et_comp->rhs != NULL);
+
+#if 0				/* TODO - do not delete me for future */
+	  /* check iff value_1 is host_var to coerce
+	   */
+	  if (et_comp->lhs->type == TYPE_POS_VALUE)
+	    {
+	      vtype1 = DB_VALUE_DOMAIN_TYPE (dbval1);
+	      vtype2 = DB_VALUE_DOMAIN_TYPE (dbval2);
+	      if (vtype1 != vtype2)
+		{
+		  if (vtype1 == DB_TYPE_OBJECT)
+		    {
+		      ;		/* do nothing */
+		    }
+		  else if (TP_IS_CHAR_TYPE (vtype1)
+			   && TP_IS_NUMERIC_TYPE (vtype2))
+		    {
+		      /* try to coerce value_1 to double */
+		      dom = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+		      (void) tp_value_coerce (dbval1, dbval1, dom);
+		    }
+		  else if (TP_IS_CHAR_TYPE (vtype1)
+			   && TP_IS_DATE_OR_TIME_TYPE (vtype2))
+		    {
+		      /* vtype2 is the date or time type,
+		       * try to coerce value_1 */
+		      dom = tp_domain_resolve_default (vtype2);
+		      (void) tp_value_coerce (dbval1, dbval1, dom);
+		    }
+		  else if (TP_IS_NUMERIC_TYPE (vtype1)
+			   && TP_IS_NUMERIC_TYPE (vtype2)
+			   && tp_more_general_type (vtype1, vtype2) < 0)
+		    {
+		      /* vtype2 is more general, try to coerce value_1 */
+		      dom = tp_domain_resolve_default (vtype2);
+		      (void) tp_value_coerce (dbval1, dbval1, dom);
+		    }
+		}
+	    }
+#endif
+
+	  /* check iff value_2 is host_var to coerce
+	   */
+	  if (et_comp->rhs->type == TYPE_POS_VALUE)
+	    {
+	      vtype1 = DB_VALUE_DOMAIN_TYPE (dbval1);
+	      vtype2 = DB_VALUE_DOMAIN_TYPE (dbval2);
+	      if (vtype1 != vtype2)
+		{
+		  if (vtype2 == DB_TYPE_OBJECT)
+		    {
+		      ;		/* do nothing */
+		    }
+		  else if (TP_IS_NUMERIC_TYPE (vtype1)
+			   && TP_IS_CHAR_TYPE (vtype2))
+		    {
+		      /* try to coerce value_2 to double */
+		      dom = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+		      (void) tp_value_coerce (dbval2, dbval2, dom);
+		    }
+		  else if (TP_IS_DATE_OR_TIME_TYPE (vtype1)
+			   && TP_IS_CHAR_TYPE (vtype2))
+		    {
+		      /* vtype1 is the date or time type,
+		       * try to coerce value_2 */
+		      dom = tp_domain_resolve_default (vtype1);
+		      (void) tp_value_coerce (dbval2, dbval2, dom);
+		    }
+		  else if (TP_IS_NUMERIC_TYPE (vtype1)
+			   && TP_IS_NUMERIC_TYPE (vtype2)
+			   && tp_more_general_type (vtype1, vtype2) > 0)
+		    {
+		      /* vtype1 is more general, try to coerce value_2 */
+		      dom = tp_domain_resolve_default (vtype1);
+		      (void) tp_value_coerce (dbval2, dbval2, dom);
+		    }
+		}
+	    }
+
+	}
+
+      if (rel_operator == R_EQ_TORDER)
+	{
+	  /* do total order comparison */
+	  result = tp_value_compare_with_error (dbval1, dbval2, 1,
+						1, &comparable);
+	}
+      else
+	{
+	  /* do ordinal comparison, but NULL's still yield UNKNOWN */
+	  result = tp_value_compare_with_error (dbval1, dbval2, 1,
+						0, &comparable);
+	}
       break;
     }
 
@@ -305,7 +403,7 @@ eval_some_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
 	  return V_ERROR;
 	}
 
-      t_res = eval_value_rel_cmp (item, &elem_val, rel_operator);
+      t_res = eval_value_rel_cmp (item, &elem_val, rel_operator, NULL);
       pr_clear_value (&elem_val);
       if (t_res == V_TRUE)
 	{
@@ -436,7 +534,7 @@ eval_item_card_set (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
 	  return UNKNOWN_CARD;
 	}
 
-      res = eval_value_rel_cmp (item, &elem_val, rel_operator);
+      res = eval_value_rel_cmp (item, &elem_val, rel_operator, NULL);
       pr_clear_value (&elem_val);
 
       if (res == V_ERROR)
@@ -541,7 +639,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item,
 	      return V_ERROR;
 	    }
 
-	  t_res = eval_value_rel_cmp (item, &list_val, rel_operator);
+	  t_res = eval_value_rel_cmp (item, &list_val, rel_operator, NULL);
 	  if (t_res == V_TRUE || t_res == V_ERROR)
 	    {
 	      pr_clear_value (&list_val);
@@ -685,7 +783,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item,
 				  list_id->type_list.domp[0], -1, true, NULL,
 				  0);
 
-      rc = eval_value_rel_cmp (item, &list_val, R_LT);
+      rc = eval_value_rel_cmp (item, &list_val, R_LT, NULL);
       if (rc == V_ERROR)
 	{
 	  pr_clear_value (&list_val);
@@ -697,7 +795,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item,
 	  continue;
 	}
 
-      rc = eval_value_rel_cmp (item, &list_val, R_EQ);
+      rc = eval_value_rel_cmp (item, &list_val, R_EQ, NULL);
       pr_clear_value (&list_val);
 
       if (rc == V_ERROR)
@@ -779,7 +877,7 @@ eval_sub_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set1,
 	      continue;
 	    }
 
-	  rc = eval_value_rel_cmp (&elem_val, &elem_val2, R_EQ);
+	  rc = eval_value_rel_cmp (&elem_val, &elem_val2, R_EQ, NULL);
 	  if (rc == V_ERROR)
 	    {
 	      pr_clear_value (&elem_val);
@@ -928,7 +1026,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p,
 				      list_id->type_list.domp[0], -1, true,
 				      NULL, 0);
 
-	  rc = eval_value_rel_cmp (&list_val, &list_val2, R_EQ);
+	  rc = eval_value_rel_cmp (&list_val, &list_val2, R_EQ, NULL);
 	  if (rc == V_ERROR)
 	    {
 	      pr_clear_value (&list_val);
@@ -1130,7 +1228,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
 				      list_id1->type_list.domp[0], -1, true,
 				      NULL, 0);
 
-	  rc = eval_value_rel_cmp (&list_val, &list_val2, R_EQ);
+	  rc = eval_value_rel_cmp (&list_val, &list_val2, R_EQ, NULL);
 
 	  if (rc == V_ERROR)
 	    {
@@ -1693,7 +1791,7 @@ eval_limit_count_is_0 (THREAD_ENTRY * thread_p, REGU_VARIABLE * rv,
     }
 
   db_make_int (&zero_val, 0);
-  return eval_value_rel_cmp (limit_row_count_valp, &zero_val, R_EQ);
+  return eval_value_rel_cmp (limit_row_count_valp, &zero_val, R_EQ, NULL);
 }
 
 /*
@@ -1976,7 +2074,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	       * take care of any coercion necessary.
 	       */
 	      result = eval_value_rel_cmp (peek_val1, peek_val2,
-					   et_comp->rel_op);
+					   et_comp->rel_op, et_comp);
 	    }
 	  break;
 
@@ -2081,7 +2179,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	      {
 		/* other cases, use general evaluation routines */
 		result = eval_value_rel_cmp (peek_val1, peek_val2,
-					     et_alsm->rel_op);
+					     et_alsm->rel_op, NULL);
 	      }
 	  }
 	  break;
@@ -2199,7 +2297,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
    * general case: compare values, db_value_compare will
    * take care of any coercion necessary.
    */
-  return eval_value_rel_cmp (peek_val1, peek_val2, et_comp->rel_op);
+  return eval_value_rel_cmp (peek_val1, peek_val2, et_comp->rel_op, et_comp);
 }
 
 /*
