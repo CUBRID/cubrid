@@ -1140,7 +1140,8 @@ session_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value,
     {
       return ER_FAILED;
     }
-  if (update_last_insert_id && !DB_IS_NULL (&state_p->cur_insert_id))
+  if (update_last_insert_id && !state_p->is_trigger_involved
+      && !DB_IS_NULL (&state_p->cur_insert_id))
     {
       pr_clone_value (&state_p->cur_insert_id, &state_p->last_insert_id);
       pr_clear_value (&state_p->cur_insert_id);
