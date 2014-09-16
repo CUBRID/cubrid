@@ -1459,7 +1459,7 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (ptr == rcv->data + rcv->length);
 
   /* Initialize rebuild_record for deleting INSERT MVCCID's */
-  rebuild_record.area_size = IO_MAX_PAGE_SIZE + MAX_ALIGNMENT;
+  rebuild_record.area_size = IO_MAX_PAGE_SIZE;
   rebuild_record.data = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
 
   /* Vacuum slots */
