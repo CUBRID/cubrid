@@ -5244,10 +5244,9 @@ proxy_add_epoll_event (int fd, unsigned int events)
   int error;
   struct epoll_event ep_ev;
 
-  memset (&ep_ev, 0, sizeof (ep_ev));
-
   assert (ep_Fd != INVALID_SOCKET);
 
+  memset (&ep_ev, 0, sizeof (struct epoll_event));
   ep_ev.data.fd = fd;
   ep_ev.events = events;
   error = epoll_ctl (ep_Fd, EPOLL_CTL_ADD, fd, &ep_ev);
@@ -5269,10 +5268,9 @@ proxy_mod_epoll_event (int fd, unsigned int events)
   int error;
   struct epoll_event ep_ev;
 
-  memset (&ep_ev, 0, sizeof (ep_ev));
-
   assert (ep_Fd != INVALID_SOCKET);
 
+  memset (&ep_ev, 0, sizeof (struct epoll_event));
   ep_ev.data.fd = fd;
   ep_ev.events = events;
   error = epoll_ctl (ep_Fd, EPOLL_CTL_MOD, fd, &ep_ev);
@@ -5294,10 +5292,9 @@ proxy_del_epoll_event (int fd)
   int error;
   struct epoll_event ep_ev;
 
-  memset (&ep_ev, 0, sizeof (ep_ev));
-
   assert (ep_Fd != INVALID_SOCKET);
 
+  memset (&ep_ev, 0, sizeof (struct epoll_event));
   ep_ev.data.fd = INVALID_SOCKET;
   /* events will be ignored, and it is only for portability */
   ep_ev.events = 0;

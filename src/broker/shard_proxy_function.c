@@ -1070,8 +1070,8 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
       proxy_event_free (event_p);
       event_p = NULL;
 
-      EXIT_FUNC ();
-      return -1;
+      error = -1;
+      goto end;
     }
   PROXY_DEBUG_LOG ("Rewrite sql statement. "
 		   "(organized_sql_stmt:[%s]). context(%s).",
@@ -1322,8 +1322,8 @@ relay_prepare_request:
 	      proxy_event_free (event_p);
 	      event_p = NULL;
 
-	      EXIT_FUNC ();
-	      return -1;
+	      error = -1;
+	      goto end;
 	    }
 	  ctx_p->shard_id = shard_id;
 	}
@@ -1355,8 +1355,8 @@ relay_prepare_request:
 	}
       else
 	{
-	  EXIT_FUNC ();
-	  return -1;
+	  error = -1;
+	  goto end;
 	}
     }
   else if (cas_io_p == (T_CAS_IO *) SHARD_TEMPORARY_UNAVAILABLE)
@@ -1367,8 +1367,8 @@ relay_prepare_request:
 
       ctx_p->waiting_dummy_prepare = true;
 
-      EXIT_FUNC ();
-      return 0;
+      error = 0;
+      goto end;
     }
 
   /* we should bind context and shard/cas after complete to allocate */

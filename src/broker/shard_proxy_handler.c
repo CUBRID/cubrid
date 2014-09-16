@@ -230,10 +230,15 @@ proxy_waiter_timeout (T_SHARD_QUEUE * waitq, INT64 * counter, int now)
       if (ctx_p == NULL)
 	{
 	  /* context was freed already */
+	  proxy_waiter_free (waiter_p);
+	  waiter_p = NULL;
 	  continue;
 	}
 
       proxy_context_timeout (ctx_p);
+
+      proxy_waiter_free (waiter_p);
+      waiter_p = NULL;
     }
 
   return;
