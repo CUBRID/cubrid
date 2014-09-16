@@ -136,8 +136,7 @@ extern int catcls_get_db_collation (THREAD_ENTRY * thread_p,
 				    int *coll_cnt);
 extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p,
 						  time_t * log_record_time);
-extern int catcls_find_and_set_serial_class_oid (THREAD_ENTRY * thread_p);
-extern int catcls_find_and_set_partition_class_oid (THREAD_ENTRY * thread_p);
+extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 
 static int catcls_initialize_class_oid_to_oid_hash_table (int num_entry);
 static int catcls_get_or_value_from_class (THREAD_ENTRY * thread_p,
@@ -5737,10 +5736,13 @@ exit:
   return error;
 }
 
+
+
 /*
- * catcls_find_and_set_serial_class_oid () - Used to find OID for serial class
- *					  and set the global variable for
- *					  serial class OID.
+ * catcls_find_and_set_cached_class_oid () - Used to find OID for collation
+ *					     class and set the global
+ *					     variable for collation class
+ *					     OID.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -5750,50 +5752,25 @@ exit:
  *	 time they're needed.
  */
 int
-catcls_find_and_set_serial_class_oid (THREAD_ENTRY * thread_p)
+catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p)
 {
-  OID serial_class_oid;
+  OID class_oid;
   LC_FIND_CLASSNAME status;
+  int i;
 
-  status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME,
-				    &serial_class_oid, NULL_LOCK);
-  if (status == LC_CLASSNAME_ERROR)
+  /* skip OID for root class, is already set with 'boot_get_db_parm' */
+  for (i = OID_CACHE_SERIAL_CLASS_ID; i < OID_CACHE_SIZE; i++)
     {
-      return ER_FAILED;
+      status =
+	xlocator_find_class_oid (thread_p, oid_get_cached_class_name (i),
+				 &class_oid, NULL_LOCK);
+      if (status == LC_CLASSNAME_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      oid_set_cached_class_oid (i, &class_oid);
     }
-
-  oid_set_serial (&serial_class_oid);
-
-  return NO_ERROR;
-}
-
-/*
- * catcls_find_and_set_partition_class_oid () - Used to find OID for partition
- *						class and set the global
- *						variable for partition class
- *						OID.
- *
- * return	 : Error code.
- * thread_p (in) : Thread entry.
- *
- * NOTE: This was required for MVCC. It is probably a good idea to extend
- *	 cached OID's for all system classes, to avoid looking for them every
- *	 time they're needed.
- */
-int
-catcls_find_and_set_partition_class_oid (THREAD_ENTRY * thread_p)
-{
-  OID partition_class_oid;
-  LC_FIND_CLASSNAME status;
-
-  status = xlocator_find_class_oid (thread_p, CT_PARTITION_NAME,
-				    &partition_class_oid, NULL_LOCK);
-  if (status == LC_CLASSNAME_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  oid_set_partition (&partition_class_oid);
 
   return NO_ERROR;
 }

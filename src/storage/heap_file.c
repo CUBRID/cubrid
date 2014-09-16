@@ -27195,6 +27195,10 @@ heap_is_mvcc_disabled_for_class (const OID * class_oid)
       return true;
     }
 
+  if (oid_check_cached_class_oid (OID_CACHE_COLLATION_CLASS_ID, class_oid))
+    {
+      return true;
+    }
   return false;
 }
 

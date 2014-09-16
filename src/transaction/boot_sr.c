@@ -146,8 +146,7 @@ extern int catcls_get_server_lang_charset (THREAD_ENTRY * thread_p,
 extern int catcls_get_db_collation (THREAD_ENTRY * thread_p,
 				    LANG_COLL_COMPAT ** db_collations,
 				    int *coll_cnt);
-extern int catcls_find_and_set_serial_class_oid (THREAD_ENTRY * thread_p);
-extern int catcls_find_and_set_partition_class_oid (THREAD_ENTRY * thread_p);
+extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 
 #if defined(SA_MODE)
 int thread_Recursion_depth = 0;
@@ -3448,14 +3447,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
 
-  error_code = catcls_find_and_set_serial_class_oid (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      fileio_dismount_all (thread_p);
-      goto error;
-    }
-
-  error_code = catcls_find_and_set_partition_class_oid (thread_p);
+  error_code = catcls_find_and_set_cached_class_oid (thread_p);
   if (error_code != NO_ERROR)
     {
       fileio_dismount_all (thread_p);

@@ -26,10 +26,19 @@
 #include "config.h"
 
 #include "oid.h"
+#include "transform.h"
+
+typedef struct oid_cache_entry OID_CACHE_ENTRY;
+struct oid_cache_entry
+{
+  OID *oid;
+  const char *class_name;
+};
 
 static OID oid_Root_class = { 0, 0, 0 };
 static OID oid_Serial_class = { 0, 0, 0 };
 static OID oid_Partition_class = { 0, 0, 0 };
+static OID oid_Collation_class = { 0, 0, 0 };
 
 const OID oid_Null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
 PAGEID oid_Next_tempid = NULL_PAGEID;
@@ -39,7 +48,15 @@ OID *oid_Root_class_oid = &oid_Root_class;
 
 
 OID *oid_Serial_class_oid = &oid_Serial_class;
-OID *oid_Parttion_class_oid = &oid_Partition_class;
+OID *oid_Partition_class_oid = &oid_Partition_class;
+
+
+OID_CACHE_ENTRY oid_cache[OID_CACHE_SIZE] = {
+  {&oid_Root_class, NULL},	/* Root class is not identifiable by a name */
+  {&oid_Serial_class, CT_SERIAL_NAME},
+  {&oid_Partition_class, CT_PARTITION_NAME},
+  {&oid_Collation_class, CT_COLLATION_NAME}
+};
 
 /*
  * oid_set_root() -  Set the value of the root oid to the given value
@@ -116,7 +133,7 @@ oid_get_serial_oid (OID * oid)
 void
 oid_set_partition (const OID * oid)
 {
-  COPY_OID (oid_Parttion_class_oid, oid);
+  COPY_OID (oid_Partition_class_oid, oid);
 }
 
 /*
@@ -128,7 +145,7 @@ oid_set_partition (const OID * oid)
 bool
 oid_is_partition (const OID * oid)
 {
-  return OID_EQ (oid, oid_Parttion_class_oid);
+  return OID_EQ (oid, oid_Partition_class_oid);
 }
 
 /*
@@ -140,7 +157,7 @@ oid_is_partition (const OID * oid)
 void
 oid_get_partition_oid (OID * oid)
 {
-  COPY_OID (oid, oid_Parttion_class_oid);
+  COPY_OID (oid, oid_Partition_class_oid);
 }
 
 /*
@@ -223,4 +240,42 @@ oid_compare_equals (const void *key_oid1, const void *key_oid2)
   const OID *oid2 = (OID *) key_oid2;
 
   return OID_EQ (oid1, oid2);
+}
+
+/*
+ * oid_is_cached_class_oid () - Compare OID with the cached OID identified by
+ *				cache_id
+ *
+ * return : 
+ * cache_id (in) :
+ * oid (in) :
+ */
+bool
+oid_check_cached_class_oid (const int cache_id, const OID * oid)
+{
+  return OID_EQ (oid, oid_cache[cache_id].oid);
+}
+
+/*
+ * oid_set_cached_class_oid () - Sets the cached value of OID
+ *
+ * cache_id (in) :
+ * oid (in) :
+ */
+void
+oid_set_cached_class_oid (const int cache_id, const OID * oid)
+{
+  COPY_OID (oid_cache[cache_id].oid, oid);
+}
+
+/*
+ * oid_get_cached_class_name () - get the name of cached class
+ *
+ * return   : 
+ * cache_id (in) :
+ */
+const char *
+oid_get_cached_class_name (const int cache_id)
+{
+  return oid_cache[cache_id].class_name;
 }

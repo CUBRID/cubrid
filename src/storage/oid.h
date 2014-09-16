@@ -127,6 +127,16 @@
    ((((unsigned int)(oidp)->pageid) >> 8) | \
     (((unsigned int)(oidp)->volid) << 24)))
 
+enum
+{
+  OID_CACHE_ROOT_CLASS_ID = 0,
+  OID_CACHE_SERIAL_CLASS_ID,
+  OID_CACHE_PARTITION_CLASS_ID,
+  OID_CACHE_COLLATION_CLASS_ID,
+
+  OID_CACHE_SIZE
+};
+
 extern const OID oid_Null_oid;
 extern OID *oid_Root_class_oid;
 extern OID *oid_Serial_class_oid;
@@ -146,5 +156,8 @@ extern void oid_get_partition_oid (OID * oid);
 extern int oid_compare (const void *oid1, const void *oid2);
 extern unsigned int oid_hash (const void *key_oid, unsigned int htsize);
 extern int oid_compare_equals (const void *key_oid1, const void *key_oid2);
+extern bool oid_check_cached_class_oid (const int cache_id, const OID * oid);
+extern void oid_set_cached_class_oid (const int cache_id, const OID * oid);
+extern const char *oid_get_cached_class_name (const int cache_id);
 
 #endif /* _OID_H_ */
