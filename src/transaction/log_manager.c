@@ -5507,6 +5507,7 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 {
   LOB_LOCATOR_ENTRY *entry, *next;
   bool need_to_delete;
+  bool is_system_op_started = false;
 
   if (tdes == NULL)
     {
@@ -5595,7 +5596,39 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       /* remove from the locator tree */
       if (need_to_delete)
 	{
+#if defined (SERVER_MODE)
+	  if (at_commit && entry->top->state == LOB_PERMANENT_DELETED)
+	    {
+	      /* Since this lob file may be still be visible to active
+	       * transactions, just notify vacuum about deleting file and it
+	       * will delete it when the file becomes invisible.
+	       */
+	      if (!is_system_op_started)
+		{
+		  /* Start system operations so logging is allowed even if
+		   * the transaction is currently committing.
+		   */
+		  if (log_start_system_op (thread_p) == NULL)
+		    {
+		      /* Error starting system operation */
+		      assert_release (false);
+		      return;
+		    }
+		  is_system_op_started = true;
+		}
+	      es_notify_vacuum_for_delete (thread_p, entry->top->locator);
+	    }
+	  else
+	    {
+	      /* The file is created and rolled-back and it is not visible to
+	       * anyone. Delete it directly without notifying vacuum.
+	       */
+	      (void) es_delete_file (entry->top->locator);
+	    }
+#else /* !SERVER_MODE */
+	  /* SA_MODE */
 	  (void) es_delete_file (entry->top->locator);
+#endif /* !SERVER_MODE */
 	  RB_REMOVE (lob_rb_root, &tdes->lob_locator_root, entry);
 	  log_free_lob_locator (entry);
 	}
@@ -5613,6 +5646,13 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	}
       assert (RB_EMPTY (&tdes->lob_locator_root));
     }
+
+#if defined (SERVER_MODE)
+  if (is_system_op_started)
+    {
+      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+    }
+#endif /* SERVER_MODE */
 }
 
 /*
@@ -5687,6 +5727,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
       (void) file_new_destroy_all_tmp (thread_p, FILE_EITHER_TMP);
     }
   assert (tdes->num_new_tmp_files == 0 && tdes->num_new_tmp_tmp_files == 0);
+
+  log_clear_lob_locator_list (thread_p, tdes, true, NULL);
 
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
@@ -5791,8 +5833,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
       tdes->state = TRAN_UNACTIVE_COMMITTED;
       /* There is no need to create a new transaction identifier */
     }
-
-  log_clear_lob_locator_list (thread_p, tdes, true, NULL);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
   /*

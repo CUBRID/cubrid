@@ -3529,10 +3529,17 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  /* We require VFID for vacuum */
-	  assert_release (false);
-	  error_code = ER_FAILED;
-	  goto error;
+	  if (rcvindex == RVES_NOTIFY_VACUUM)
+	    {
+	      VFID_SET_NULL (&vacuum_info_p->vfid);
+	    }
+	  else
+	    {
+	      /* We require VFID for vacuum */
+	      assert_release (false);
+	      error_code = ER_FAILED;
+	      goto error;
+	    }
 	}
 
       /* Initialize previous MVCC op log lsa - will be completed later */

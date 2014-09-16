@@ -28,6 +28,7 @@
 
 #include "porting.h"
 #include "es_common.h"
+#include "recovery.h"
 
 #define ES_URI_PREFIX_MAX	8
 #define ES_MAX_URI_LEN		(PATH_MAX + ES_URI_PREFIX_MAX)
@@ -49,4 +50,10 @@ extern int es_rename_file (const char *in_uri, const char *metaname,
 			   char *out_uri);
 extern off_t es_get_file_size (const char *uri);
 
+extern int es_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+
+#if defined (SERVER_MODE)
+extern void es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p,
+					 const char *uri);
+#endif /* SERVER_MODE */
 #endif /* _ES_H_ */

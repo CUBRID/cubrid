@@ -1799,6 +1799,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data)
   struct log_data log_record_data;
   char *undo_data_buffer = NULL, *undo_data = NULL;
   int undo_data_buffer_size, undo_data_size;
+  char *es_uri = NULL;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_page_p = NULL;
   BTID_INT btid_int;
@@ -2066,6 +2067,15 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data)
 
 	  /* Clear key value */
 	  db_value_clear (&key_value);
+	}
+      else if (log_record_data.rcvindex == RVES_NOTIFY_VACUUM)
+	{
+	  /* A lob file must be deleted */
+	  (void) or_unpack_string (undo_data, &es_uri);
+	  vacuum_er_log (VACUUM_ER_LOG_WORKER,
+			 "VACUUM: Delete lob %s.", es_uri);
+	  (void) es_delete_file (es_uri);
+	  db_private_free_and_init (thread_p, es_uri);
 	}
       else
 	{
@@ -2401,31 +2411,35 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  if (*prev_dropped_files_version != vacuum_Dropped_files_version)
+  if (!VFID_ISNULL (&vacuum_info->vfid))
     {
-      *prev_dropped_files_version = vacuum_Dropped_files_version;
-      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_WORKER,
-		     "VACUUM: Worker(%d) update min version to %d",
-		     thread_get_current_tran_index (),
-		     *prev_dropped_files_version);
-      thread_set_vacuum_worker_drop_file_version (thread_p,
-						  *prev_dropped_files_version);
-    }
+      if (*prev_dropped_files_version != vacuum_Dropped_files_version)
+	{
+	  *prev_dropped_files_version = vacuum_Dropped_files_version;
+	  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_WORKER,
+			 "VACUUM: Worker(%d) update min version to %d",
+			 thread_get_current_tran_index (),
+			 *prev_dropped_files_version);
+	  thread_set_vacuum_worker_drop_file_version (thread_p,
+						      *prev_dropped_files_version);
+	}
 
-  *is_file_dropped = vacuum_is_file_dropped (thread_p, &vacuum_info->vfid,
-					     *mvccid);
-  if (*is_file_dropped)
-    {
-      /* Nothing to do */
-      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_WORKER,
-		     "VACUUM: Worker(%d) skips vacuuming file (%d, %d)",
-		     thread_get_current_tran_index (),
-		     vacuum_info->vfid.volid, vacuum_info->vfid.fileid);
-      return NO_ERROR;
+      *is_file_dropped = vacuum_is_file_dropped (thread_p, &vacuum_info->vfid,
+						 *mvccid);
+      if (*is_file_dropped)
+	{
+	  /* Nothing to do */
+	  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_WORKER,
+			 "VACUUM: Worker(%d) skips vacuuming file (%d, %d)",
+			 thread_get_current_tran_index (),
+			 vacuum_info->vfid.volid, vacuum_info->vfid.fileid);
+	  return NO_ERROR;
+	}
     }
 
   if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex)
-      && log_record_data->rcvindex != RVHF_MVCC_DELETE)
+      && log_record_data->rcvindex != RVHF_MVCC_DELETE
+      && log_record_data->rcvindex != RVES_NOTIFY_VACUUM)
     {
       /* No need to unpack undo data */
       return NO_ERROR;

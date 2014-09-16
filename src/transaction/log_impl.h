@@ -1438,7 +1438,8 @@ enum log_repl_flush
 /* Is log record for a MVCC operation */
 #define LOG_IS_MVCC_OPERATION(rcvindex) \
   (LOG_IS_MVCC_HEAP_OPERATION (rcvindex) \
-   || LOG_IS_MVCC_BTREE_OPERATION (rcvindex))
+   || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
+   || ((rcvindex) == RVES_NOTIFY_VACUUM))
 
 /* Is log record for a change on vacuum data */
 #define LOG_IS_VACUUM_DATA_RECOVERY(rcvindex) \

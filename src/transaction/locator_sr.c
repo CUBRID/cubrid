@@ -4510,30 +4510,26 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 		  if (fkref->del_action == SM_FOREIGN_KEY_CASCADE)
 		    {
 		      MVCC_REEV_DATA mvcc_reev_data, *p_mvcc_reev_data = NULL;
-		      if (!mvcc_Enabled)
+		      if (lob_exist)
 			{
-			  /* In MVCC lobs should be deleted by vacuum */
-			  if (lob_exist)
-			    {
-			      error_code = locator_delete_lob_force (thread_p,
-								     &fkref->
-								     self_oid,
-								     oid_ptr,
-								     NULL);
-			    }
-			  if (error_code != NO_ERROR)
-			    {
-			      goto error1;
-			    }
+			  error_code =
+			    locator_delete_lob_force (thread_p,
+						      &fkref->self_oid,
+						      oid_ptr, NULL);
 			}
-		      else
+		      if (error_code != NO_ERROR)
+			{
+			  goto error1;
+			}
+		      if (mvcc_Enabled)
 			{
 			  /* The relationship between primary key and foreign
 			   * key must be reevaluated so we provide to
 			   * reevaluation the primary key. That's because
 			   * between fetch of foreign keys and the deletion the
 			   * foreign keys can be modified by other
-			   * transactions */
+			   * transactions.
+			   */
 			  p_mvcc_reev_data = &mvcc_reev_data;
 			  SET_MVCC_UPDATE_REEV_DATA (p_mvcc_reev_data, NULL,
 						     V_TRUE, key);

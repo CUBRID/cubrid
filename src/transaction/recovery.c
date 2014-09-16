@@ -890,6 +890,12 @@ struct rvfun RV_fun[] = {
    "RVBT_MVCC_NOTIFY_VACUUM",
    btree_rv_nop,
    btree_rv_nop,
+   NULL, NULL},
+
+  {RVES_NOTIFY_VACUUM,
+   "RVES_NOTIFY_VACUUM",
+   es_rv_nop,
+   es_rv_nop,
    NULL, NULL}
 };
 
