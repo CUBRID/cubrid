@@ -83,6 +83,7 @@ static SHOWSTMT_METADATA *metadata_of_heap_capacity (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_index_header (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_index_capacity (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_global_critical_sections (void);
+static SHOWSTMT_METADATA *metadata_of_job_queues (void);
 
 static SHOWSTMT_METADATA *
 metadata_of_volume_header (void)
@@ -520,6 +521,28 @@ metadata_of_global_critical_sections (void)
   return &md;
 }
 
+static SHOWSTMT_METADATA *
+metadata_of_job_queues (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Jobq_index", "int"},
+    {"Num_total_workers", "int"},
+    {"Num_busy_workers", "int"},
+    {"Num_connection_workers", "int"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_JOB_QUEUES, "show job queue",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
+  };
+
+  return &md;
+}
+
 /*
  * showstmt_get_metadata() -  return show statment column infos
  *   return:-
@@ -766,6 +789,7 @@ showstmt_metadata_init (void)
     metadata_of_index_capacity (SHOW_ALL);
   show_Metas[SHOWSTMT_GLOBAL_CRITICAL_SECTIONS] =
     metadata_of_global_critical_sections ();
+  show_Metas[SHOWSTMT_JOB_QUEUES] = metadata_of_job_queues ();
 
   for (i = 0; i < DIM (show_Metas); i++)
     {

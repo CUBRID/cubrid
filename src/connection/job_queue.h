@@ -48,5 +48,16 @@ extern void css_init_job_queue (void);
 extern void css_final_job_queue (void);
 extern void css_add_to_job_queue (CSS_JOB_ENTRY * job);
 extern CSS_JOB_ENTRY *css_get_new_job (void);
+extern void css_incr_job_queue_counter (int jobq_index, CSS_THREAD_FN func);
+extern void css_decr_job_queue_counter (int jobq_index, CSS_THREAD_FN func);
+
+extern int css_job_queues_start_scan (THREAD_ENTRY * thread_p,
+				      int show_type,
+				      DB_VALUE ** arg_values,
+				      int arg_cnt, void **ptr);
+
+#if !defined(SERVER_MODE)
+#define css_job_queues_start_scan NULL
+#endif /* !SERVER_MODE */
 
 #endif /* _JOB_QUEUE_H_ */

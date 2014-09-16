@@ -69,6 +69,10 @@ extern int thread_Recursion_depth;
 
 typedef void THREAD_ENTRY;
 
+typedef void *CSS_THREAD_ARG;
+
+typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
+
 #define thread_rc_track_is_on(thread_p) (false)
 #define thread_rc_track_is_off(thread_p) (true)
 #define thread_rc_track_enter(thread_p) (-1)

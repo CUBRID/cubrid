@@ -60,6 +60,7 @@
 #include "log_manager.h"
 #include "network.h"
 #include "jsp_sr.h"
+#include "show_scan.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -72,6 +73,7 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
+#include "dbval.h"		/* this must be the last header file included */
 
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_NUM_JOB_QUEUE 10	/* # of job queues */
@@ -112,29 +114,75 @@ struct job_queue
   THREAD_ENTRY *worker_thrd_list;
   pthread_mutex_t free_lock;
   CSS_JOB_ENTRY *free_list;
+#if !defined(HAVE_ATOMIC_BUILTINS)
+  pthread_mutex_t counter_lock;	/* protect job queue counter */
+#endif				/* !HAVE_ATOMIC_BUILTINS */
+  int num_total_workers;	/* Num of total workers in this job queue */
+  int num_busy_workers;		/* Num of busy threads in this job queue */
+  int num_conn_workers;		/* Num of connection threads in this job queue */
 };
 
 static JOB_QUEUE css_Job_queue[CSS_NUM_JOB_QUEUE] = {
   {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
+#if !defined(HAVE_ATOMIC_BUILTINS)
+   PTHREAD_MUTEX_INITIALIZER,
+#endif /* !HAVE_ATOMIC_BUILTINS */
+   0, 0, 0},
   {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
+#if !defined(HAVE_ATOMIC_BUILTINS)
+   PTHREAD_MUTEX_INITIALIZER,
+#endif /* !HAVE_ATOMIC_BUILTINS */
+   0, 0, 0},
   {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
+#if !defined(HAVE_ATOMIC_BUILTINS)
+   PTHREAD_MUTEX_INITIALIZER,
+#endif /* !HAVE_ATOMIC_BUILTINS */
+   0, 0, 0},
   {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
+#if !defined(HAVE_ATOMIC_BUILTINS)
+   PTHREAD_MUTEX_INITIALIZER,
+#endif /* !HAVE_ATOMIC_BUILTINS */
+   0, 0, 0},
   {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
+#if !defined(HAVE_ATOMIC_BUILTINS)
+   PTHREAD_MUTEX_INITIALIZER,
+#endif /* !HAVE_ATOMIC_BUILTINS */
+   0, 0, 0},
   {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
+#if !defined(HAVE_ATOMIC_BUILTINS)
+   PTHREAD_MUTEX_INITIALIZER,
+#endif /* !HAVE_ATOMIC_BUILTINS */
+   0, 0, 0},
   {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
+#if !defined(HAVE_ATOMIC_BUILTINS)
+   PTHREAD_MUTEX_INITIALIZER,
+#endif /* !HAVE_ATOMIC_BUILTINS */
+   0, 0, 0},
   {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
+#if !defined(HAVE_ATOMIC_BUILTINS)
+   PTHREAD_MUTEX_INITIALIZER,
+#endif /* !HAVE_ATOMIC_BUILTINS */
+   0, 0, 0},
   {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
+#if !defined(HAVE_ATOMIC_BUILTINS)
+   PTHREAD_MUTEX_INITIALIZER,
+#endif /* !HAVE_ATOMIC_BUILTINS */
+   0, 0, 0},
   {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL}
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
+#if !defined(HAVE_ATOMIC_BUILTINS)
+   PTHREAD_MUTEX_INITIALIZER,
+#endif /* !HAVE_ATOMIC_BUILTINS */
+   0, 0, 0}
 };
 
 #define HA_LOG_APPLIER_STATE_TABLE_MAX  5
@@ -303,11 +351,13 @@ void
 css_init_job_queue (void)
 {
   int i, j;
-#if defined(WINDOWS)
+#if defined(WINDOWS) || !defined(HAVE_ATOMIC_BUILTINS)
   int r;
 #endif /* WINDOWS */
   CSS_JOB_ENTRY *job_entry_p;
   int num_job_list;
+  int total_workers;
+  int thrd_idx, jobq_idx;
 
   num_job_list = NUM_NON_SYSTEM_TRANS;
   for (i = 0; i < CSS_NUM_JOB_QUEUE; i++)
@@ -318,6 +368,11 @@ css_init_job_queue (void)
       r = pthread_mutex_init (&css_Job_queue[i].free_lock, NULL);
       CSS_CHECK_RETURN (r, ER_CSS_PTHREAD_MUTEX_INIT);
 #endif /* WINDOWS */
+
+#if !defined(HAVE_ATOMIC_BUILTINS)
+      r = pthread_mutex_init (&css_Job_queue[i].counter_lock, NULL);
+      CSS_CHECK_RETURN (r, ER_CSS_PTHREAD_MUTEX_INIT);
+#endif /* !HAVE_ATOMIC_BUILTINS */
 
       css_initialize_list (&css_Job_queue[i].job_list, num_job_list);
       css_Job_queue[i].free_list = NULL;
@@ -336,6 +391,15 @@ css_init_job_queue (void)
 	  job_entry_p->next = css_Job_queue[i].free_list;
 	  css_Job_queue[i].free_list = job_entry_p;
 	}
+    }
+
+  total_workers = thread_num_worker_threads ();
+
+  for (thrd_idx = 1; thrd_idx <= total_workers; thrd_idx++)
+    {
+      jobq_idx = thrd_idx % CSS_NUM_JOB_QUEUE;
+
+      css_Job_queue[jobq_idx].num_total_workers++;
     }
 }
 
@@ -421,6 +485,93 @@ css_add_to_job_queue (CSS_JOB_ENTRY * job_entry_p)
 }
 
 /*
+ * css_job_queues_start_scan() - start scan function for 'SHOW JOB QUEUES'
+ *   return: NO_ERROR, or ER_code
+ *   thread_p(in): thread entry
+ *   show_type(in):
+ *   arg_values(in):
+ *   arg_cnt(in):
+ *   ptr(in/out): 'show job queues' context
+ */
+int
+css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type,
+			   DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+{
+  int error = NO_ERROR;
+  SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
+  DB_VALUE *vals = NULL;
+  JOB_QUEUE *jobq = NULL;
+  int idx, jobq_idx;
+  int num_busy_workers, num_conn_workers;
+  const int col_num = 4;
+
+  *ptr = NULL;
+
+  ctx = showstmt_alloc_array_context (thread_p, CSS_NUM_JOB_QUEUE, col_num);
+  if (ctx == NULL)
+    {
+      error = er_errid ();
+      return error;
+    }
+
+  for (jobq_idx = 0; jobq_idx < CSS_NUM_JOB_QUEUE; jobq_idx++)
+    {
+      vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
+      if (vals == NULL)
+	{
+	  error = er_errid ();
+	  goto exit_on_error;
+	}
+
+      idx = 0;
+      jobq = &css_Job_queue[jobq_idx];
+
+      /* job queue index */
+      db_make_int (&vals[idx], jobq_idx);
+      idx++;
+
+      /* num of total workers in this queue */
+      db_make_int (&vals[idx], jobq->num_total_workers);
+      idx++;
+
+#if defined(HAVE_ATOMIC_BUILTINS)
+      num_busy_workers = jobq->num_busy_workers;
+      num_conn_workers = jobq->num_conn_workers;
+#else /* HAVE_ATOMIC_BUILTINS */
+      (void) pthread_mutex_lock (&jobq->counter_lock);
+
+      num_busy_workers = jobq->num_busy_workers;
+      num_conn_workers = jobq->num_conn_workers;
+
+      (void) pthread_mutex_unlock (&jobq->counter_lock);
+#endif /* HAVE_ATOMIC_BUILTINS */
+
+      /* num of busy workers in this queue */
+      db_make_int (&vals[idx], num_busy_workers);
+      idx++;
+
+      /* num of connection workers in this queue */
+      db_make_int (&vals[idx], num_conn_workers);
+      idx++;
+
+      assert (idx == col_num);
+    }
+
+  *ptr = ctx;
+
+  return NO_ERROR;
+
+exit_on_error:
+
+  if (ctx != NULL)
+    {
+      showstmt_free_array_context (thread_p, ctx);
+    }
+
+  return error;
+}
+
+/*
  * css_get_new_job() - fetch a job from the queue
  *   return:
  */
@@ -455,6 +606,70 @@ css_get_new_job (void)
 
   /* if job_entry_p == NULL, system will be shutdown soon. */
   return job_entry_p;
+}
+
+/*
+ * css_incr_job_queue_counter() - Increase the counter of job queue.
+ *   return: void
+ *   jobq_index(in): the index of job queue
+ *   job_func(in): job func
+ */
+void
+css_incr_job_queue_counter (int jobq_index, CSS_THREAD_FN job_func)
+{
+  JOB_QUEUE *jobq = &css_Job_queue[jobq_index];
+
+#if defined(HAVE_ATOMIC_BUILTINS)
+  ATOMIC_INC_32 (&jobq->num_busy_workers, 1);
+
+  if (job_func == (CSS_THREAD_FN) css_connection_handler_thread)
+    {
+      ATOMIC_INC_32 (&jobq->num_conn_workers, 1);
+    }
+#else /* HAVE_ATOMIC_BUILTINS */
+  (void) pthread_mutex_lock (&jobq->counter_lock);
+
+  jobq->num_busy_workers++;
+
+  if (job_func == (CSS_THREAD_FN) css_connection_handler_thread)
+    {
+      jobq->num_conn_workers++;
+    }
+
+  (void) pthread_mutex_unlock (&jobq->counter_lock);
+#endif /* HAVE_ATOMIC_BUILTINS */
+}
+
+/*
+ * css_decr_job_queue_counter() - Decrease the counter of job queue.
+ *   return: void
+ *   jobq_index(in): the index of job queue
+ *   job_func(in): job func
+ */
+void
+css_decr_job_queue_counter (int jobq_index, CSS_THREAD_FN job_func)
+{
+  JOB_QUEUE *jobq = &css_Job_queue[jobq_index];
+
+#if defined(HAVE_ATOMIC_BUILTINS)
+  ATOMIC_INC_32 (&jobq->num_busy_workers, -1);
+
+  if (job_func == (CSS_THREAD_FN) css_connection_handler_thread)
+    {
+      ATOMIC_INC_32 (&jobq->num_conn_workers, -1);
+    }
+#else /* HAVE_ATOMIC_BUILTINS */
+  (void) pthread_mutex_lock (&jobq->counter_lock);
+
+  jobq->num_busy_workers--;
+
+  if (job_func == (CSS_THREAD_FN) css_connection_handler_thread)
+    {
+      jobq->num_conn_workers--;
+    }
+
+  (void) pthread_mutex_unlock (&jobq->counter_lock);
+#endif /* HAVE_ATOMIC_BUILTINS */
 }
 
 /*
@@ -1777,10 +1992,10 @@ shutdown:
       while (node != NULL)
 	{
 	  /* TODO: This is temporary disabled, because vacuum workers are
-	   *	   still active and they are currently considered active
-	   *	   transaction.
-	   *	   Add assert back after changing vacuum workers to system
-	   *	   transactions.
+	   *       still active and they are currently considered active
+	   *       transaction.
+	   *       Add assert back after changing vacuum workers to system
+	   *       transactions.
 	   */
 #if 0
 	  assert (node->log_header.trid == LOG_SYSTEM_TRANID);

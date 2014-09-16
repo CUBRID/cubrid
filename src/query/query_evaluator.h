@@ -120,6 +120,7 @@ typedef enum
   SHOWSTMT_ALL_INDEXES_HEADER,
   SHOWSTMT_ALL_INDEXES_CAPACITY,
   SHOWSTMT_GLOBAL_CRITICAL_SECTIONS,
+  SHOWSTMT_JOB_QUEUES,
 
   /* append the new show statement types in here */
 

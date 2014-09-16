@@ -2499,6 +2499,7 @@ thread_worker (void *arg_p)
   CSS_JOB_ENTRY *job_entry_p;
   CSS_THREAD_FN handler_func;
   CSS_THREAD_ARG handler_func_arg;
+  int jobq_index;
   int rv;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
@@ -2538,6 +2539,9 @@ thread_worker (void *arg_p)
 
       handler_func = job_entry_p->func;
       handler_func_arg = job_entry_p->arg;
+      jobq_index = job_entry_p->jobq_index;
+
+      css_incr_job_queue_counter (jobq_index, handler_func);
 
       css_free_job_entry (job_entry_p);
 
@@ -2546,6 +2550,9 @@ thread_worker (void *arg_p)
       /* reset tsd_ptr information */
       tsd_ptr->conn_entry = NULL;
       tsd_ptr->status = TS_FREE;
+
+      css_decr_job_queue_counter (jobq_index, handler_func);
+
       rv = pthread_mutex_lock (&tsd_ptr->tran_index_lock);
       tsd_ptr->tran_index = -1;
       pthread_mutex_unlock (&tsd_ptr->tran_index_lock);
@@ -3445,7 +3452,7 @@ thread_check_ha_delay_info_thread (void *arg_p)
 	  wakeup_time.tv_sec += 1;
 	  tmp_usec -= 1000000;
 	}
-      wakeup_time.tv_nsec = (int) tmp_usec * 1000;
+      wakeup_time.tv_nsec = ((int) tmp_usec) * 1000;
 
       rv = pthread_mutex_lock (&thread_Check_ha_delay_info_thread.lock);
       thread_Check_ha_delay_info_thread.is_running = false;
@@ -3757,7 +3764,7 @@ thread_flush_control_thread (void *arg_p)
 	  wakeup_time.tv_sec += 1;
 	  tmp_usec -= 1000000;
 	}
-      wakeup_time.tv_nsec = (int) tmp_usec * 1000;
+      wakeup_time.tv_nsec = ((int) tmp_usec) * 1000;
 
       rv = pthread_mutex_lock (&thread_Flush_control_thread.lock);
       thread_Flush_control_thread.is_running = false;

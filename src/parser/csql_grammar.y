@@ -1477,6 +1477,7 @@ int g_original_buffer_len;
 %token <cptr> KEYS
 %token <cptr> KILL
 %token <cptr> JAVA
+%token <cptr> JOB
 %token <cptr> JSON
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
@@ -1508,6 +1509,7 @@ int g_original_buffer_len;
 %token <cptr> PRINT
 %token <cptr> PRIORITY
 %token <cptr> QUARTER
+%token <cptr> QUEUES
 %token <cptr> RANGE_
 %token <cptr> RANK
 %token <cptr> REJECT_
@@ -6642,6 +6644,10 @@ show_type
 	| CRITICAL SECTIONS
 		{{
 			$$ = SHOWSTMT_GLOBAL_CRITICAL_SECTIONS;
+		}}
+	| JOB QUEUES
+		{{
+			$$ = SHOWSTMT_JOB_QUEUES;
 		}}
 	;
 
@@ -19821,6 +19827,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| JOB
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| JSON
 		{{
 
@@ -20043,6 +20059,16 @@ identifier
 
 		DBG_PRINT}}
 	| PRIORITY
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| QUEUES
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

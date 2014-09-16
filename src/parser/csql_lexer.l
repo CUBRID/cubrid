@@ -416,6 +416,9 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return JAVA; }
 [jJ][oO][iI][nN]							{ begin_token(yytext);   return JOIN; }
+[jJ][oO][bB]								{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return JOB; }
 [jJ][sS][oO][nN]							{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return JSON; }
@@ -585,10 +588,13 @@ int yybuffer_pos;
 [pP][rR][iI][vV][iI][lL][eE][gG][eE][sS]				{ begin_token(yytext);   return PRIVILEGES; }
 [pP][rR][oO][cC][eE][dD][uU][rR][eE]					{ begin_token(yytext);   return PROCEDURE; }
 [pP][rR][oO][mM][oO][tT][eE]							{ begin_token(yytext);   return PROMOTE; }
-[qQ][uU][eE][rR][yY]							{ begin_token(yytext);   return QUERY; }
 [qQ][uU][aA][rR][tT][eE][rR]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return QUARTER; }
+[qQ][uU][eE][rR][yY]							{ begin_token(yytext);   return QUERY; }
+[qQ][uU][eE][uU][eE][sS]						{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return QUEUES; }
 [rR][aA][nN][kK]							{ begin_token(yytext);
 									  csql_yylval.cptr = pt_makename(yytext);
 									  return RANK; }
