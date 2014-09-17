@@ -5910,8 +5910,10 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	    }
 
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-		  ER_QUERY_EXECUTION_ERROR, 3, error_code, sql_id,
-		  info.sql_user_text);
+		  ER_QUERY_EXECUTION_ERROR, 3, error_code,
+		  sql_id ? sql_id : "(UNKNOWN SQL_ID)",
+		  info.sql_user_text ? info.
+		  sql_user_text : "(UNKNOWN USER_TEXT)");
 	}
 
       return_error_to_client (thread_p, rid);
@@ -6088,12 +6090,14 @@ er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
     }
   else
     {
-      info->sql_plan_text = (char *) "";
+      info->sql_plan_text = NULL;
       stat_buf[0] = '\0';
     }
 
-  if (qmgr_get_sql_id (thread_p, &sql_id, info->sql_hash_text,
-		       strlen (info->sql_hash_text)) != NO_ERROR)
+
+  if (info->sql_hash_text == NULL
+      || qmgr_get_sql_id (thread_p, &sql_id, info->sql_hash_text,
+			  strlen (info->sql_hash_text)) != NO_ERROR)
     {
       sql_id = NULL;
     }
@@ -6102,9 +6106,12 @@ er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
     snprintf (queryinfo_string, QUERY_INFO_BUF_SIZE,
 	      "%s\n%s\n%s\n %s\n\n /* SQL_ID: %s */ %s%s \n\n%s\n%s\n",
 	      line, title, line,
-	      info->sql_user_text,
-	      sql_id ? sql_id : "(null)",
-	      info->sql_hash_text, info->sql_plan_text, stat_buf, line);
+	      info->sql_user_text ? info->
+	      sql_user_text : "(UNKNOWN USER_TEXT)",
+	      sql_id ? sql_id : "(UNKNOWN SQL_ID)",
+	      info->sql_hash_text ? info->
+	      sql_hash_text : "(UNKNOWN HASH_TEXT)",
+	      info->sql_plan_text ? info->sql_plan_text : "", stat_buf, line);
 
   if (sql_id != NULL)
     {
@@ -6153,7 +6160,8 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
     }
 
   event_log_print_client_info (tran_index, indent);
-  fprintf (log_fp, "%*csql: %s\n", indent, ' ', info->sql_hash_text);
+  fprintf (log_fp, "%*csql: %s\n", indent, ' ',
+	   info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
@@ -6202,7 +6210,8 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info,
     }
 
   event_log_print_client_info (tran_index, indent);
-  fprintf (log_fp, "%*csql: %s\n", indent, ' ', info->sql_hash_text);
+  fprintf (log_fp, "%*csql: %s\n", indent, ' ',
+	   info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
@@ -6242,7 +6251,8 @@ event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
     }
 
   event_log_print_client_info (tran_index, indent);
-  fprintf (log_fp, "%*csql: %s\n", indent, ' ', info->sql_hash_text);
+  fprintf (log_fp, "%*csql: %s\n", indent, ' ',
+	   info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
