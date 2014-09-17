@@ -1463,6 +1463,9 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
   char *ptr;
   DB_TYPE type;
   int len;
+  DB_TIMETZ *time_tz;
+  DB_DATETIMETZ *dt_tz;
+  DB_TIMESTAMPTZ *ts_tz;
 
   type = DB_VALUE_TYPE (value);
   switch (type)
@@ -1537,52 +1540,54 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "time '%s'", buf));
       break;
 
+    case DB_TYPE_TIMELTZ:
+      db_timeltz_to_string (buf, MAX_DISPLAY_COLUMN, DB_GET_TIME (value));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timeltz '%s'", buf));
+      break;
+
+    case DB_TYPE_TIMETZ:
+      time_tz = DB_GET_TIMETZ (value);
+      db_timetz_to_string (buf, MAX_DISPLAY_COLUMN, &time_tz->time,
+			   &time_tz->tz_id);
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timetz '%s'", buf));
+      break;
+
     case DB_TYPE_TIMESTAMP:
-      {
-	struct tm *temp, tm_val;
-	bool pm;
-	time_t tmp_time;
+      db_timestamp_to_string (buf, MAX_DISPLAY_COLUMN, DB_GET_UTIME (value));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestamp '%s'", buf));
+      break;
 
-	if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
-	  {
-	    /* flush remaining buffer */
-	    CHECK_PRINT_ERROR (text_print_flush (tout));
-	  }
+    case DB_TYPE_TIMESTAMPLTZ:
+      db_timestampltz_to_string (buf, MAX_DISPLAY_COLUMN,
+				 DB_GET_UTIME (value));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestampltz '%s'",
+				     buf));
+      break;
 
-	tmp_time = *(DB_GET_TIMESTAMP (value));
-	temp = localtime_r (&tmp_time, &tm_val);
-	if (temp)
-	  {
-	    pm = (temp->tm_hour >= 12) ? true : false;
-	    if (temp->tm_hour == 0)
-	      {
-		temp->tm_hour = 12;
-	      }
-	    else if (temp->tm_hour > 12)
-	      {
-		temp->tm_hour -= 12;
-	      }
-
-	    CHECK_PRINT_ERROR (text_print (tout, NULL, 0,
-					   "timestamp '%02d:%02d:%02d %s %02d/%02d/%04d'",
-					   temp->tm_hour, temp->tm_min,
-					   temp->tm_sec, (pm) ? "PM" : "AM",
-					   temp->tm_mon + 1, temp->tm_mday,
-					   temp->tm_year + 1900));
-	  }
-	else
-	  {			/* error condition */
-	    CHECK_PRINT_ERROR (text_print (tout, NULL, 0,
-					   "timestamp '%02d:%02d:%02d %s %02d/%02d/%04d'",
-					   12, 0, 0, "AM", 1, 1, 1900));
-	  }
-      }
+    case DB_TYPE_TIMESTAMPTZ:
+      ts_tz = DB_GET_TIMESTAMPTZ (value);
+      db_timestamptz_to_string (buf, MAX_DISPLAY_COLUMN, &ts_tz->timestamp,
+				&ts_tz->tz_id);
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestamptz '%s'", buf));
       break;
 
     case DB_TYPE_DATETIME:
       db_datetime_to_string (buf, MAX_DISPLAY_COLUMN,
 			     DB_GET_DATETIME (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetime '%s'", buf));
+      break;
+
+    case DB_TYPE_DATETIMELTZ:
+      db_datetimeltz_to_string (buf, MAX_DISPLAY_COLUMN,
+				DB_GET_DATETIME (value));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetimeltz '%s'", buf));
+      break;
+
+    case DB_TYPE_DATETIMETZ:
+      dt_tz = DB_GET_DATETIMETZ (value);
+      db_datetimetz_to_string (buf, MAX_DISPLAY_COLUMN, &dt_tz->datetime,
+			       &dt_tz->tz_id);
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetimetz '%s'", buf));
       break;
 
     case DB_TYPE_MONETARY:

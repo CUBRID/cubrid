@@ -251,7 +251,8 @@ value_to_db_value (CI_TYPE type, void *addr, size_t len,
 	    (void) db_value_clear (&d);
 	    break;
 	  }
-	res = db_timestamp_encode (&ts, db_get_date (&d), db_get_time (&t));
+	res = db_timestamp_encode_ses (db_get_date (&d), db_get_time (&t),
+				       &ts, NULL);
 	if (res == NO_ERROR)
 	  res = db_value_put (val, DB_TYPE_C_TIMESTAMP, &ts, sizeof (ts));
 	(void) db_value_clear (&d);
@@ -508,7 +509,7 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	if (res != NO_ERROR)
 	  return ER_INTERFACE_GENERIC;
 
-	db_timestamp_decode ((DB_TIMESTAMP *) & ts, &date, &time);
+	db_timestamp_decode_ses ((DB_TIMESTAMP *) & ts, &date, &time);
 	db_date_decode (&date, &M, &D, &Y);
 	db_time_decode (&time, &h, &m, &s);
 

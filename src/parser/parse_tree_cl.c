@@ -297,6 +297,8 @@ static PT_NODE *pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p,
 				 PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_set_names (PARSER_CONTEXT * parser, PT_NODE * p,
 				    PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_set_timezone (PARSER_CONTEXT * parser, PT_NODE * p,
+				       PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_set_session_variables (PARSER_CONTEXT * parser,
 						PT_NODE * p,
 						PT_NODE_FUNCTION g,
@@ -417,6 +419,7 @@ static PT_NODE *pt_init_revoke (PT_NODE * p);
 static PT_NODE *pt_init_rollback_work (PT_NODE * p);
 static PT_NODE *pt_init_select (PT_NODE * p);
 static PT_NODE *pt_init_set_names (PT_NODE * p);
+static PT_NODE *pt_init_set_timezone (PT_NODE * p);
 static PT_NODE *pt_init_set_session_variables (PT_NODE * p);
 static PT_NODE *pt_init_drop_session_variables (PT_NODE * p);
 static PT_NODE *pt_init_showstmt (PT_NODE * p);
@@ -565,6 +568,8 @@ static PARSER_VARCHAR *pt_print_scope (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_set_names (PARSER_CONTEXT * parser,
 					   PT_NODE * p);
+static PARSER_VARCHAR *pt_print_set_timezone (PARSER_CONTEXT * parser,
+					      PT_NODE * p);
 static PARSER_VARCHAR *pt_print_set_session_variables (PARSER_CONTEXT *
 						       parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_drop_session_variables (PARSER_CONTEXT *
@@ -2772,17 +2777,23 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
       break;
 
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMETZ:
+    case DB_TYPE_TIMELTZ:
       /* csql & everyone else get time 'hh:mi:ss' */
       result = describe_value (parser, NULL, val);
       break;
 
     case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_TIMESTAMPLTZ:
       /* everyone else gets csql's utime format */
       result = describe_value (parser, NULL, val);
 
       break;
 
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
       /* everyone else gets csql's utime format */
       result = describe_value (parser, NULL, val);
       break;
@@ -3152,6 +3163,8 @@ pt_show_node_type (PT_NODE * node)
       return "SELECT";
     case PT_SET_NAMES:
       return "SET NAMES";
+    case PT_SET_TIMEZONE:
+      return "SET TIMEZONE";
     case PT_SET_OPT_LVL:
       return "SET OPT LVL";
     case PT_SET_SYS_PARAMS:
@@ -4011,11 +4024,28 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "index_prefix ";
     case PT_SLEEP:
       return "sleep ";
+    case PT_DBTIMEZONE:
+      return "dbtimezone";
+    case PT_SESSIONTIMEZONE:
+      return "sessiontimezone";
+    case PT_TZ_OFFSET:
+      return "tz_offset";
+    case PT_NEW_TIME:
+      return "new_time ";
+    case PT_FROM_TZ:
+      return "from_tz ";
+    case PT_TO_DATETIME_TZ:
+      return "to_datetime_tz ";
+    case PT_TO_TIMESTAMP_TZ:
+      return "to_timestamp_tz ";
+    case PT_TO_TIME_TZ:
+      return "to_time_tz ";
+    case PT_UTC_TIMESTAMP:
+      return "utc_timestamp ";
     default:
       return "unknown opcode";
     }
 }
-
 
 /*
  * pt_show_function() -
@@ -4187,10 +4217,22 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "date";
     case PT_TYPE_TIME:
       return "time";
+    case PT_TYPE_TIMETZ:
+      return "timetz";
+    case PT_TYPE_TIMELTZ:
+      return "timeltz";
     case PT_TYPE_TIMESTAMP:
       return "timestamp";
+    case PT_TYPE_TIMESTAMPTZ:
+      return "timestamptz";
+    case PT_TYPE_TIMESTAMPLTZ:
+      return "timestampltz";
     case PT_TYPE_DATETIME:
       return "datetime";
+    case PT_TYPE_DATETIMETZ:
+      return "datetimetz";
+    case PT_TYPE_DATETIMELTZ:
+      return "datetimeltz";
     case PT_TYPE_CHAR:
       return "char";
     case PT_TYPE_VARCHAR:
@@ -5114,6 +5156,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_SCOPE] = pt_apply_scope;
   pt_apply_func_array[PT_SELECT] = pt_apply_select;
   pt_apply_func_array[PT_SET_NAMES] = pt_apply_set_names;
+  pt_apply_func_array[PT_SET_TIMEZONE] = pt_apply_set_timezone;
   pt_apply_func_array[PT_SET_OPT_LVL] = pt_apply_set_opt_lvl;
   pt_apply_func_array[PT_SET_SYS_PARAMS] = pt_apply_set_sys_params;
   pt_apply_func_array[PT_SET_TRIGGER] = pt_apply_set_trigger;
@@ -5228,6 +5271,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_SCOPE] = pt_init_scope;
   pt_init_func_array[PT_SELECT] = pt_init_select;
   pt_init_func_array[PT_SET_NAMES] = pt_init_set_names;
+  pt_init_func_array[PT_SET_TIMEZONE] = pt_init_set_timezone;
   pt_init_func_array[PT_SET_OPT_LVL] = pt_init_set_opt_lvl;
   pt_init_func_array[PT_SET_SYS_PARAMS] = pt_init_set_sys_params;
   pt_init_func_array[PT_SET_TRIGGER] = pt_init_set_trigger;
@@ -5343,6 +5387,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_SCOPE] = pt_print_scope;
   pt_print_func_array[PT_SELECT] = pt_print_select;
   pt_print_func_array[PT_SET_NAMES] = pt_print_set_names;
+  pt_print_func_array[PT_SET_TIMEZONE] = pt_print_set_timezone;
   pt_print_func_array[PT_SET_OPT_LVL] = pt_print_set_opt_lvl;
   pt_print_func_array[PT_SET_SYS_PARAMS] = pt_print_set_sys_params;
   pt_print_func_array[PT_SET_TRIGGER] = pt_print_set_trigger;
@@ -6827,8 +6872,14 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_MONETARY:
     case PT_TYPE_DATE:
     case PT_TYPE_TIME:
+    case PT_TYPE_TIMETZ:
+    case PT_TYPE_TIMELTZ:
     case PT_TYPE_TIMESTAMP:
+    case PT_TYPE_TIMESTAMPTZ:
+    case PT_TYPE_TIMESTAMPLTZ:
     case PT_TYPE_DATETIME:
+    case PT_TYPE_DATETIMETZ:
+    case PT_TYPE_DATETIMELTZ:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       break;
     case PT_TYPE_NONE:
@@ -10535,6 +10586,9 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TO_TIMESTAMP:
     case PT_TO_DATETIME:
     case PT_TO_CHAR:
+    case PT_TO_DATETIME_TZ:
+    case PT_TO_TIMESTAMP_TZ:
+    case PT_TO_TIME_TZ:
       {
 	int flags;
 	bool has_user_format = false;
@@ -10560,6 +10614,18 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	else if (p->info.expr.op == PT_TO_CHAR)
 	  {
 	    q = pt_append_nulstring (parser, q, " to_char(");
+	  }
+	else if (p->info.expr.op == PT_TO_DATETIME_TZ)
+	  {
+	    q = pt_append_nulstring (parser, q, " to_datetime_tz(");
+	  }
+	else if (p->info.expr.op == PT_TO_TIMESTAMP_TZ)
+	  {
+	    q = pt_append_nulstring (parser, q, " to_timestamp_tz(");
+	  }
+	else if (p->info.expr.op == PT_TO_TIME_TZ)
+	  {
+	    q = pt_append_nulstring (parser, q, " to_time_tz(");
 	  }
 	else
 	  {
@@ -12163,6 +12229,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ")");
 
       break;
+
     case PT_TRACE_STATS:
       q = pt_append_nulstring (parser, q, " trace_stats()");
       break;
@@ -12190,12 +12257,54 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
       q = pt_append_nulstring (parser, q, ")");
       break;
+
     case PT_SLEEP:
       q = pt_append_nulstring (parser, q, " sleep(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_varchar (parser, q, r1);
 
       q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_DBTIMEZONE:
+      q = pt_append_nulstring (parser, q, "dbtimezone");
+      break;
+
+    case PT_SESSIONTIMEZONE:
+      q = pt_append_nulstring (parser, q, "sessiontimezone");
+      break;
+
+    case PT_NEW_TIME:
+      q = pt_append_nulstring (parser, q, " newtime(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ", ");
+      r3 = pt_print_bytes (parser, p->info.expr.arg3);
+      q = pt_append_varchar (parser, q, r3);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_FROM_TZ:
+      q = pt_append_nulstring (parser, q, " from_tz(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_TZ_OFFSET:
+      q = pt_append_nulstring (parser, q, " tz_offset(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_UTC_TIMESTAMP:
+      q = pt_append_nulstring (parser, q, " utc_timestamp() ");
       break;
     }
 
@@ -15053,6 +15162,25 @@ pt_apply_set_names (PARSER_CONTEXT * parser, PT_NODE * p,
   return p;
 }
 
+/* SET_TIMEZONE */
+/*
+ * pt_apply_set_timezone () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ *   g(in):
+ *   arg(in):
+ */
+static PT_NODE *
+pt_apply_set_timezone (PARSER_CONTEXT * parser, PT_NODE * p,
+		       PT_NODE_FUNCTION g, void *arg)
+{
+  p->info.set_timezone.timezone_node =
+    g (parser, p->info.set_timezone.timezone_node, arg);
+
+  return p;
+}
+
 /*
  * pt_init_set_names () -
  *   return:
@@ -15060,6 +15188,17 @@ pt_apply_set_names (PARSER_CONTEXT * parser, PT_NODE * p,
  */
 static PT_NODE *
 pt_init_set_names (PT_NODE * p)
+{
+  return (p);
+}
+
+/*
+ * pt_init_set_timezone () -
+ *   return:
+ *   p(in):
+ */
+static PT_NODE *
+pt_init_set_timezone (PT_NODE * p)
 {
   return (p);
 }
@@ -15089,6 +15228,26 @@ pt_print_set_names (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.set_names.collation_node);
       b = pt_append_varchar (parser, b, r1);
     }
+
+  return b;
+}
+
+/*
+ * pt_print_set_timezone () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ */
+static PARSER_VARCHAR *
+pt_print_set_timezone (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *b = NULL, *r1;
+
+  b = pt_append_nulstring (parser, b, "set timezone ");
+
+  assert (p->info.set_timezone.timezone_node != NULL);
+  r1 = pt_print_bytes (parser, p->info.set_timezone.timezone_node);
+  b = pt_append_varchar (parser, b, r1);
 
   return b;
 }
@@ -16563,49 +16722,62 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_TYPE_DATE:
-      if (p->info.value.text)
-	{
-	  q = pt_append_nulstring (parser, q, p->info.value.text);
-	  break;
-	}
-      r = (char *) p->info.value.data_value.str->bytes;
-      q = pt_append_nulstring (parser, q, "date ");
-      q = pt_append_string_prefix (parser, q, p);
-      q = pt_append_quoted_string (parser, q, r, ((r) ? strlen (r) : 0));
-      break;
     case PT_TYPE_TIME:
-      if (p->info.value.text)
-	{
-	  q = pt_append_nulstring (parser, q, p->info.value.text);
-	  break;
-	}
-      r = (char *) p->info.value.data_value.str->bytes;
-      q = pt_append_nulstring (parser, q, "time ");
-      q = pt_append_string_prefix (parser, q, p);
-      q = pt_append_quoted_string (parser, q, r, ((r) ? strlen (r) : 0));
-      break;
+    case PT_TYPE_TIMETZ:
+    case PT_TYPE_TIMELTZ:
     case PT_TYPE_TIMESTAMP:
-      if (p->info.value.text)
-	{
-	  q = pt_append_nulstring (parser, q, p->info.value.text);
-	  break;
-	}
-      r = (char *) p->info.value.data_value.str->bytes;
-      q = pt_append_nulstring (parser, q, "timestamp ");
-      q = pt_append_string_prefix (parser, q, p);
-      q = pt_append_quoted_string (parser, q, r, ((r) ? strlen (r) : 0));
-      break;
+    case PT_TYPE_TIMESTAMPTZ:
+    case PT_TYPE_TIMESTAMPLTZ:
     case PT_TYPE_DATETIME:
+    case PT_TYPE_DATETIMETZ:
+    case PT_TYPE_DATETIMELTZ:
       if (p->info.value.text)
 	{
 	  q = pt_append_nulstring (parser, q, p->info.value.text);
 	  break;
 	}
       r = (char *) p->info.value.data_value.str->bytes;
-      q = pt_append_nulstring (parser, q, "datetime ");
+
+      switch (p->type_enum)
+	{
+	case PT_TYPE_DATE:
+	  q = pt_append_nulstring (parser, q, "date ");
+	  break;
+	case PT_TYPE_TIME:
+	  q = pt_append_nulstring (parser, q, "time ");
+	  break;
+	case PT_TYPE_TIMETZ:
+	  q = pt_append_nulstring (parser, q, "timetz ");
+	  break;
+	case PT_TYPE_TIMELTZ:
+	  q = pt_append_nulstring (parser, q, "timeltz ");
+	  break;
+	case PT_TYPE_TIMESTAMP:
+	  q = pt_append_nulstring (parser, q, "timestamp ");
+	  break;
+	case PT_TYPE_TIMESTAMPTZ:
+	  q = pt_append_nulstring (parser, q, "timestamptz ");
+	  break;
+	case PT_TYPE_TIMESTAMPLTZ:
+	  q = pt_append_nulstring (parser, q, "timestampltz ");
+	  break;
+	case PT_TYPE_DATETIME:
+	  q = pt_append_nulstring (parser, q, "datetime ");
+	  break;
+	case PT_TYPE_DATETIMETZ:
+	  q = pt_append_nulstring (parser, q, "datetimetz ");
+	  break;
+	case PT_TYPE_DATETIMELTZ:
+	  q = pt_append_nulstring (parser, q, "datetimeltz ");
+	  break;
+	default:
+	  break;
+	}
+
       q = pt_append_string_prefix (parser, q, p);
       q = pt_append_quoted_string (parser, q, r, ((r) ? strlen (r) : 0));
       break;
+
     case PT_TYPE_CHAR:
     case PT_TYPE_NCHAR:
     case PT_TYPE_BIT:
@@ -17902,6 +18074,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_REVERSE:
 	case PT_TO_BASE64:
 	case PT_FROM_BASE64:
+	case PT_TZ_OFFSET:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_TRIM:
 	case PT_LTRIM:
@@ -17992,6 +18165,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_AES_ENCRYPT:
 	case PT_AES_DECRYPT:
 	case PT_SHA_TWO:
+	case PT_FROM_TZ:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.
 					    expr.arg2)) ? true : false;
@@ -18005,6 +18179,9 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_CURRENT_USER:
 	case PT_USER:
 	case PT_LIST_DBS:
+	case PT_DBTIMEZONE:
+	case PT_SESSIONTIMEZONE:
+	case PT_UTC_TIMESTAMP:
 	  return true;
 	case PT_TO_CHAR:
 	case PT_TO_DATE:
@@ -18012,6 +18189,9 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_TO_TIMESTAMP:
 	case PT_TO_DATETIME:
 	case PT_TO_NUMBER:
+	case PT_TO_DATETIME_TZ:
+	case PT_TO_TIMESTAMP_TZ:
+	case PT_TO_TIME_TZ:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && (node->info.expr.arg2 ?
 		      pt_is_const_expr_node (node->info.
@@ -18059,6 +18239,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_NVL2:
 	case PT_MID:
 	case PT_MAKETIME:
+	case PT_NEW_TIME:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.expr.arg2)
 		  && pt_is_const_expr_node (node->info.
@@ -18541,7 +18722,11 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_TRIM:
     case PT_INET_ATON:
     case PT_INET_NTOA:
+    case PT_TO_DATETIME_TZ:
+    case PT_TO_TIMESTAMP_TZ:
+    case PT_TO_TIME_TZ:
       return true;
+    case PT_TZ_OFFSET:
     default:
       return false;
     }

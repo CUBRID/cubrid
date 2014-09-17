@@ -389,6 +389,55 @@ ut_str_to_time (char *str, T_CCI_DATE * value)
 }
 
 int
+ut_str_to_timetz (char *str, T_CCI_DATE_TZ * value)
+{
+  char *p, *q;
+  int hh, mm, ss;
+
+  if (str == NULL)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  p = str;
+  q = strchr (p, ':');
+  if (q == NULL)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  hh = atoi (p);
+  p = q + 1;
+
+  q = strchr (p, ':');
+  if (q == NULL)
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  mm = atoi (p);
+  p = q + 1;
+  ss = atoi (p);
+  q = strchr (p, ' ');
+
+  if (q != NULL)
+    {
+      strncpy (value->tz, q + 1, sizeof (value->tz) - 1);
+    }
+  else
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  memset (value, 0, sizeof (T_CCI_DATE));
+  value->hh = hh;
+  value->mm = mm;
+  value->ss = ss;
+
+  return 0;
+}
+
+int
 ut_str_to_mtime (char *str, T_CCI_DATE * value)
 {
   int error = 0;
@@ -500,6 +549,46 @@ ut_str_to_timestamp (char *str, T_CCI_DATE * value)
 }
 
 int
+ut_str_to_timestamptz (char *str, T_CCI_DATE_TZ * value)
+{
+  T_CCI_DATE date;
+  T_CCI_DATE time;
+  char *p;
+  int err_code;
+
+  p = strchr (str, ' ');
+
+  if ((err_code = ut_str_to_date (str, &date)) < 0)
+    {
+      return err_code;
+    }
+  if ((err_code = ut_str_to_time (p, &time)) < 0)
+    {
+      return err_code;
+    }
+
+  p = p + 1;
+  p = strchr (p, ' ');
+  if (p != NULL)
+    {
+      strncpy (value->tz, p + 1, sizeof (value->tz) - 1);
+    }
+  else
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  value->yr = date.yr;
+  value->mon = date.mon;
+  value->day = date.day;
+  value->hh = time.hh;
+  value->mm = time.mm;
+  value->ss = time.ss;
+
+  return 0;
+}
+
+int
 ut_str_to_datetime (char *str, T_CCI_DATE * value)
 {
   T_CCI_DATE date;
@@ -519,6 +608,47 @@ ut_str_to_datetime (char *str, T_CCI_DATE * value)
     }
 
   memset (value, 0, sizeof (T_CCI_DATE));
+  value->yr = date.yr;
+  value->mon = date.mon;
+  value->day = date.day;
+  value->hh = mtime.hh;
+  value->mm = mtime.mm;
+  value->ss = mtime.ss;
+  value->ms = mtime.ms;
+
+  return 0;
+}
+
+int
+ut_str_to_datetimetz (char *str, T_CCI_DATE_TZ * value)
+{
+  T_CCI_DATE date;
+  T_CCI_DATE mtime;
+  char *p;
+  int err_code;
+
+  p = strchr (str, ' ');
+
+  if ((err_code = ut_str_to_date (str, &date)) < 0)
+    {
+      return err_code;
+    }
+  if ((err_code = ut_str_to_mtime (p, &mtime)) < 0)
+    {
+      return err_code;
+    }
+
+  p = p + 1;
+  p = strchr (str, ' ');
+  if (p != NULL)
+    {
+      strncpy (value->tz, p + 1, sizeof (value->tz) - 1);
+    }
+  else
+    {
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
   value->yr = date.yr;
   value->mon = date.mon;
   value->day = date.day;
@@ -636,6 +766,25 @@ ut_date_to_str (T_CCI_DATE * value, T_CCI_U_TYPE u_type, char *str, int size)
       snprintf (str, size, "%04d-%02d-%02d %02d:%02d:%02d.%03d",
 		value->yr, value->mon, value->day,
 		value->hh, value->mm, value->ss, value->ms);
+    }
+}
+
+void
+ut_date_tz_to_str (T_CCI_DATE_TZ * value, T_CCI_U_TYPE u_type, char *str,
+		   int size)
+{
+  if (u_type == CCI_U_TYPE_DATETIMETZ || u_type == CCI_U_TYPE_TIMETZ
+      || u_type == CCI_U_TYPE_TIMESTAMPTZ)
+    {
+      int rem_size;
+      ut_date_to_str ((T_CCI_DATE *) value, u_type, str, size);
+
+      rem_size = size - strlen (str);
+      if (rem_size > 1)
+	{
+	  *str++ = ' ';
+	  strncat (str, value->tz, rem_size - 1);
+	}
     }
 }
 

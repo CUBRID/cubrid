@@ -3592,14 +3592,25 @@ partition_decrement_value (DB_VALUE * val)
       return true;
 
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
       val->data.time--;
       return true;
 
+    case DB_TYPE_TIMETZ:
+      val->data.timetz.time--;
+      return true;
+
     case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
       val->data.utime--;
       return true;
 
+    case DB_TYPE_TIMESTAMPTZ:
+      val->data.timestamptz.timestamp--;
+      return true;
+
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
       if (val->data.datetime.time == 0)
 	{
 	  val->data.datetime.date--;
@@ -3608,6 +3619,18 @@ partition_decrement_value (DB_VALUE * val)
       else
 	{
 	  val->data.datetime.time--;
+	}
+      return true;
+
+    case DB_TYPE_DATETIMETZ:
+      if (val->data.datetimetz.datetime.time == 0)
+	{
+	  val->data.datetimetz.datetime.date--;
+	  val->data.datetimetz.datetime.time = MILLISECONDS_OF_ONE_DAY - 1;
+	}
+      else
+	{
+	  val->data.datetimetz.datetime.time--;
 	}
       return true;
 

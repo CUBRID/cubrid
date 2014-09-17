@@ -615,3 +615,39 @@ envvar_loclib_dir_file (char *path, size_t size, const char *filename)
   path[size - 1] = '\0';
   return path;
 }
+
+char *
+envvar_cubrid_dir (char *path, size_t size)
+{
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s", envvar_Root);
+#else
+  snprintf (path, size, "%s", CUBRID_CONFDIR);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
+}
+
+extern char *
+envvar_tzdata_dir_file (char *path, size_t size, const char *filename)
+{
+  assert (filename != NULL);
+
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/timezones/tzdata/%s", envvar_Root, filename);
+#else
+  snprintf (path, size, "%s/%s", CUBRID_CONFDIR, filename);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
+}

@@ -107,7 +107,9 @@ BASE_SOURCES = \
 	$(BASE_DIR)/event_log.c \
 	$(BASE_DIR)/tsc_timer.c \
 	$(BASE_DIR)/perf.c \
-	$(BASE_DIR)/lock_free.c
+	$(BASE_DIR)/lock_free.c \
+	$(BASE_DIR)/tz_compile.c \
+	$(BASE_DIR)/tz_support.c	
 
 EXECUTABLE_SOURCES = \
 	$(EXECUTABLE_DIR)/util_common.c

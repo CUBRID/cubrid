@@ -328,7 +328,6 @@ enum param_id
   PRM_ID_AGG_HASH_RESPECT_ORDER,
   PRM_ID_USE_BTREE_FENCE_KEY,
   PRM_ID_QA_BTREE_RANDOM_EXIT,
-
   PRM_ID_OPTIMIZER_ENABLE_MERGE_JOIN,
   PRM_ID_OPTIMIZER_RESERVE_01,
   PRM_ID_OPTIMIZER_RESERVE_02,
@@ -350,7 +349,6 @@ enum param_id
   PRM_ID_OPTIMIZER_RESERVE_18,
   PRM_ID_OPTIMIZER_RESERVE_19,
   PRM_ID_OPTIMIZER_RESERVE_20,
-
   PRM_ID_HA_REPL_ENABLE_SERVER_SIDE_UPDATE,
   PRM_ID_PB_LRU_HOT_RATIO,
   PRM_ID_HA_PREFETCHLOGDB_ENABLE,
@@ -370,8 +368,12 @@ enum param_id
   PRM_ID_LOG_BTREE_OPS,
 
   PRM_ID_OBJECT_PRINT_FORMAT_OID,
+
+  PRM_ID_TIMEZONE,
+  PRM_ID_SERVER_TIMEZONE,
+  PRM_ID_TZ_LEAP_SECOND_SUPPORT,
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_OBJECT_PRINT_FORMAT_OID
+  PRM_LAST_ID = PRM_ID_TZ_LEAP_SECOND_SUPPORT
 };
 
 /*
@@ -527,7 +529,7 @@ extern SYSPRM_ERR sysprm_validate_change_parameters (const char *data,
 extern SYSPRM_ERR
 sysprm_make_default_values (const char *data, char *default_val_buf,
 			    const int buf_size);
-extern void sysprm_init_intl_param (void);
+extern int sysprm_init_intl_param (void);
 #endif /* !SERVER_MODE */
 
 extern int sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values,

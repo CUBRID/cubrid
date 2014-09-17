@@ -90,6 +90,7 @@
 #define NET_SIZE_TIMESTAMP	(NET_SIZE_SHORT * 6)
 #define NET_SIZE_DATETIME       (NET_SIZE_SHORT * 7)
 
+#define NET_SIZE_TZ(val)	(strlen (((T_CCI_DATE_TZ *)(val))->tz))
 /*
  *  change function names to avoid naming conflict with cas server.
   */

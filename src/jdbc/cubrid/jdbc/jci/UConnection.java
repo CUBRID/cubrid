@@ -158,6 +158,9 @@ public class UConnection {
 	public static final String ZERO_DATETIME_BEHAVIOR_EXCEPTION = "exception";
 	public static final String ZERO_DATETIME_BEHAVIOR_ROUND = "round";
 	
+	public static final String RESULT_WITH_CUBRID_TYPES_YES = "yes";
+	public static final String RESULT_WITH_CUBRID_TYPES_NO = "no";
+	
 	public final static int SESSION_ID_SIZE = 20;
 	
 	public final static int MAX_QUERY_TIMEOUT = 2000000;
@@ -388,8 +391,20 @@ public class UConnection {
 		}
 	}
 
+	public void setResultWithCUBRIDTypes(String support) throws CUBRIDException {
+		if (UJCIUtil.isServerSide() && isServerSideJdbc) {
+			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
+					"setResultWithCUBRIDTypes", new Class[] { String.class },
+					this.curThread, new Object[] { support });
+		}
+	}
+	
 	public String getZeroDateTimeBehavior() {
 		return connectionProperties.getZeroDateTimeBehavior();
+	}
+	
+	public String getResultWithCUBRIDTypes() {
+		return connectionProperties.getResultWithCUBRIDTypes();
 	}
 
 	public boolean getLogSlowQuery() {

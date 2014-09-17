@@ -118,6 +118,7 @@ typedef struct session_state
   char *trace_stats;
   char *plan_string;
   int trace_format;
+  TZ_REGION session_tz_region;
 } SESSION_STATE;
 
 /* the active sessions storage */
@@ -358,6 +359,8 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_KEY * key)
   session_p->trace_stats = NULL;
   session_p->plan_string = NULL;
   session_p->trace_format = QUERY_TRACE_TEXT;
+  session_p->session_tz_region.type = TZ_REGION_OFFSET;
+  session_p->session_tz_region.offset = 0;
 
   /* initialize the timeout */
   if (gettimeofday (&(session_p->session_timeout), NULL) != 0)
@@ -2713,4 +2716,24 @@ session_clear_trace_stats (THREAD_ENTRY * thread_p)
   thread_set_clear_trace (thread_p, false);
 
   return NO_ERROR;
+}
+
+/*
+ * session_get_session_tz_region () - get a reference to the session timezone
+ *	                              region
+ * return : reference to session TZ_REGION object
+ * thread_p (in) : thread entry
+ */
+TZ_REGION *
+session_get_session_tz_region (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *session_p = NULL;
+
+  session_p = session_get_session_state (thread_p);
+  if (session_p == NULL)
+    {
+      return NULL;
+    }
+
+  return &session_p->session_tz_region;
 }

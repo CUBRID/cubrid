@@ -99,6 +99,9 @@ static int end_dateFormatCUBRID (void *data, const char *el_name);
 static int end_timeFormatCUBRID (void *data, const char *el_name);
 static int end_datetimeFormatCUBRID (void *data, const char *el_name);
 static int end_timestampFormatCUBRID (void *data, const char *el_name);
+static int end_timetzFormatCUBRID (void *data, const char *el_name);
+static int end_datetimetzFormatCUBRID (void *data, const char *el_name);
+static int end_timestamptzFormatCUBRID (void *data, const char *el_name);
 static int start_calendar_name_context (void *data, const char **attr);
 static int start_month_day_Width (void *data, const char **attr);
 static int end_month_day_Width (void *data, const char *el_name);
@@ -394,7 +397,24 @@ XML_ELEMENT_DEF ldml_timestampFormatCUBRID =
   (ELEM_END_FUNC) & end_timestampFormatCUBRID,
   (ELEM_DATA_FUNC) & handle_data
 };
-
+XML_ELEMENT_DEF ldml_timetzFormatCUBRID =
+  { "ldml dates calendars calendar timetzFormatCUBRID", 5,
+  (ELEM_START_FUNC) & start_element_ok,
+  (ELEM_END_FUNC) & end_timetzFormatCUBRID,
+  (ELEM_DATA_FUNC) & handle_data
+};
+XML_ELEMENT_DEF ldml_datetimetzFormatCUBRID =
+  { "ldml dates calendars calendar datetimetzFormatCUBRID", 5,
+  (ELEM_START_FUNC) & start_element_ok,
+  (ELEM_END_FUNC) & end_datetimetzFormatCUBRID,
+  (ELEM_DATA_FUNC) & handle_data
+};
+XML_ELEMENT_DEF ldml_timestamptzFormatCUBRID =
+  { "ldml dates calendars calendar timestamptzFormatCUBRID", 5,
+  (ELEM_START_FUNC) & start_element_ok,
+  (ELEM_END_FUNC) & end_timestamptzFormatCUBRID,
+  (ELEM_DATA_FUNC) & handle_data
+};
 XML_ELEMENT_DEF ldml_elem_months =
   { "ldml dates calendars calendar months", 5,
   (ELEM_START_FUNC) & start_element_ok, (ELEM_END_FUNC) & end_element_ok, NULL
@@ -853,7 +873,11 @@ XML_ELEMENT_DEF *ldml_elements[] = {
 
   &ldml_elem_unicodefile,
 
-  &ldml_elem_consoleconversion
+  &ldml_elem_consoleconversion,
+
+  &ldml_timetzFormatCUBRID,
+  &ldml_datetimetzFormatCUBRID,
+  &ldml_timestamptzFormatCUBRID,
 };
 
 /*
@@ -1055,6 +1079,120 @@ end_timestampFormatCUBRID (void *data, const char *el_name)
   if (ld->data_buf_count < (int) sizeof (ld->timestampFormat))
     {
       strcpy (ld->timestampFormat, ld->data_buffer);
+    }
+  else
+    {
+      PRINT_DEBUG_END (data, "Too much data", -1);
+      return -1;
+    }
+
+  clear_data_buffer (data);
+
+  PRINT_DEBUG_END (data, "", 0);
+
+  return 0;
+}
+
+/*
+ * end_timetzFormatCUBRID() - XML element end function
+ * "ldml dates calendars calendar timetzFormatCUBRID"
+ *
+ * return: 0 parser OK, non-zero value if parser NOK and stop parsing
+ * data: user data
+ * el_name: element name
+ */
+static int
+end_timetzFormatCUBRID (void *data, const char *el_name)
+{
+  XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
+  LOCALE_DATA *ld = NULL;
+
+  assert (data != NULL);
+
+  ld = XML_USER_DATA (pd);
+
+  /* copy data buffer to locale */
+  assert (ld->data_buf_count < (int) sizeof (ld->timetzFormat));
+
+  if (ld->data_buf_count < (int) sizeof (ld->timetzFormat))
+    {
+      strcpy (ld->timetzFormat, ld->data_buffer);
+    }
+  else
+    {
+      PRINT_DEBUG_END (data, "Too much data", -1);
+      return -1;
+    }
+
+  clear_data_buffer (data);
+
+  PRINT_DEBUG_END (data, "", 0);
+
+  return 0;
+}
+
+/*
+ * end_datetimetzFormatCUBRID() - XML element end function
+ * "ldml dates calendars calendar datetimetzFormatCUBRID"
+ *
+ * return: 0 parser OK, non-zero value if parser NOK and stop parsing
+ * data: user data
+ * el_name: element name
+ */
+static int
+end_datetimetzFormatCUBRID (void *data, const char *el_name)
+{
+  XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
+  LOCALE_DATA *ld = NULL;
+
+  assert (data != NULL);
+
+  ld = XML_USER_DATA (pd);
+
+  /* copy data buffer to locale */
+  assert (ld->data_buf_count < (int) sizeof (ld->datetimetzFormat));
+
+  if (ld->data_buf_count < (int) sizeof (ld->datetimetzFormat))
+    {
+      strcpy (ld->datetimetzFormat, ld->data_buffer);
+    }
+  else
+    {
+      PRINT_DEBUG_END (data, "Too much data", -1);
+      return -1;
+    }
+
+  clear_data_buffer (data);
+
+  PRINT_DEBUG_END (data, "", 0);
+
+  return 0;
+}
+
+/*
+ * end_timestamptzFormatCUBRID() - XML element end function
+ * "ldml dates calendars calendar timestamptzFormatCUBRID"
+ *
+ * return: 0 parser OK, non-zero value if parser NOK and stop parsing
+ * data: user data
+ * el_name: element name
+ */
+static int
+end_timestamptzFormatCUBRID (void *data, const char *el_name)
+{
+  XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
+  LOCALE_DATA *ld = NULL;
+
+  assert (data != NULL);
+
+  ld = XML_USER_DATA (pd);
+
+  /* copy data buffer to locale */
+  assert (ld->data_buf_count < (int) sizeof (ld->timestamptzFormat));
+
+  if (ld->data_buf_count < (int) sizeof (ld->timestamptzFormat))
+    {
+      strcpy (ld->timestamptzFormat, ld->data_buffer);
     }
   else
     {
@@ -4525,6 +4663,9 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 	  printf ("Time format: %s\n", ld->timeFormat);
 	  printf ("Datetime format: %s\n", ld->datetimeFormat);
 	  printf ("Timestamp format: %s\n", ld->timestampFormat);
+	  printf ("Timetz format: %s\n", ld->timetzFormat);
+	  printf ("Datetimetz format: %s\n", ld->datetimetzFormat);
+	  printf ("Timestamptz format: %s\n", ld->timestamptzFormat);
 	}
     }
   else
@@ -5610,6 +5751,12 @@ locale_save_calendar_to_C_file (FILE * fp, LOCALE_DATA * ld)
 			      ld->locale_name);
   PRINT_STRING_VAR_TO_C_FILE (fp, "timestamp_format", ld->timestampFormat,
 			      ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "timetz_format", ld->timetzFormat,
+			      ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "datetimetz_format", ld->datetimetzFormat,
+			      ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "timestamptz_format", ld->timestamptzFormat,
+			      ld->locale_name);
 
   /* calendar data arrays */
   PRINT_STRING_ARRAY_TO_C_FILE (fp, "month_names_abbreviated",
@@ -6467,6 +6614,9 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
       printf ("Time format: %s\n", lld->time_format);
       printf ("Datetime format: %s\n", lld->datetime_format);
       printf ("Timestamp format: %s\n", lld->timestamp_format);
+      printf ("Time_tz format : %s\n", lld->timetz_format);
+      printf ("Datetime_tz format : %s\n", lld->datetimetz_format);
+      printf ("Timestamp_tz format : %s\n", lld->timestamptz_format);
 
       printf ("\nAbbreviated month names:\n");
       for (i = 0; i < CAL_MONTH_COUNT; i++)
@@ -7883,6 +8033,9 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
   input_size += sizeof (ld->timeFormat);
   input_size += sizeof (ld->datetimeFormat);
   input_size += sizeof (ld->timestampFormat);
+  input_size += sizeof (ld->timetzFormat);
+  input_size += sizeof (ld->datetimetzFormat);
+  input_size += sizeof (ld->timestamptzFormat);
 
   input_size += sizeof (ld->month_names_abbreviated);
   input_size += sizeof (ld->month_names_wide);
@@ -7957,6 +8110,15 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
 
   memcpy (buf_pos, ld->timestampFormat, sizeof (ld->timestampFormat));
   buf_pos += sizeof (ld->timestampFormat);
+
+  memcpy (buf_pos, ld->timetzFormat, sizeof (ld->timetzFormat));
+  buf_pos += sizeof (ld->timetzFormat);
+
+  memcpy (buf_pos, ld->datetimetzFormat, sizeof (ld->datetimetzFormat));
+  buf_pos += sizeof (ld->datetimetzFormat);
+
+  memcpy (buf_pos, ld->timestamptzFormat, sizeof (ld->timestamptzFormat));
+  buf_pos += sizeof (ld->timestamptzFormat);
 
   /* calendar names */
   memcpy (buf_pos, ld->month_names_abbreviated,

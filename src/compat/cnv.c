@@ -955,7 +955,8 @@ us_timestamp_string (const DB_TIMESTAMP * the_timestamp)
   int day;
   int year;
 
-  db_timestamp_decode ((DB_TIMESTAMP *) the_timestamp, &the_date, &the_time);
+  db_timestamp_decode_ses ((DB_TIMESTAMP *) the_timestamp, &the_date,
+			   &the_time);
   db_date_decode (&the_date, &month, &day, &year);
 
   sprintf (timestamp_string, "%s %s",
@@ -1642,7 +1643,8 @@ ko_timestamp_string (const DB_TIMESTAMP * the_timestamp)
   int day;
   int year;
 
-  db_timestamp_decode ((DB_TIMESTAMP *) the_timestamp, &the_date, &the_time);
+  db_timestamp_decode_ses ((DB_TIMESTAMP *) the_timestamp, &the_date,
+			   &the_time);
   db_date_decode (&the_date, &month, &day, &year);
 
   sprintf (timestamp_string, "%s %s",
@@ -2678,8 +2680,8 @@ cnv_valid_timestamp (DB_DATE * the_date, DB_TIME * the_time)
   if (!max_date)
     {
       /* Initialize timestamp range constants. */
-      db_timestamp_decode (&min_timestamp, &min_date, &min_time);
-      db_timestamp_decode (&max_timestamp, &max_date, &max_time);
+      db_timestamp_decode_ses (&min_timestamp, &min_date, &min_time);
+      db_timestamp_decode_ses (&max_timestamp, &max_date, &max_time);
     }
 
   if (*the_date < min_date || (*the_date == min_date && *the_time < min_time))
@@ -4514,7 +4516,8 @@ fmt_timestamp_string (const DB_TIMESTAMP * the_timestamp,
 
   assert (mbs_eql (descriptor, "c") || mbs_eql (descriptor, "C"));
 
-  db_timestamp_decode ((DB_TIMESTAMP *) the_timestamp, &the_date, &the_time);
+  (void) db_timestamp_decode_ses ((DB_TIMESTAMP *) the_timestamp, &the_date,
+				  &the_time);
 
   if (mbs_eql (descriptor, "c"))
     {
@@ -8433,7 +8436,7 @@ db_string_timestamp (const char *timestamp_string,
   assert (timestamp_string != NULL);
 
   /* Initialize to given timestamp. */
-  db_timestamp_decode (the_timestamp, &the_date, &the_time);
+  (void) db_timestamp_decode_ses (the_timestamp, &the_date, &the_time);
   db_date_decode (&the_date, &month, &day, &year);
   db_time_decode (&the_time, &hour, &min, &sec);
 
@@ -8584,7 +8587,8 @@ db_string_timestamp (const char *timestamp_string,
 	}
       else
 	{
-	  db_timestamp_encode (the_timestamp, &the_date, &the_time);
+	  (void) db_timestamp_encode_ses (&the_date, &the_time, the_timestamp,
+					  NULL);
 	}
     }
 
@@ -8633,7 +8637,8 @@ db_timestamp_string (const DB_TIMESTAMP * the_timestamp,
     }
 
   /* Reject timestamp encoding errors. */
-  db_timestamp_decode ((DB_TIMESTAMP *) the_timestamp, &the_date, &the_time);
+  (void) db_timestamp_decode_ses ((DB_TIMESTAMP *) the_timestamp, &the_date,
+				  &the_time);
   db_date_decode (&the_date, &month, &day, &year);
   db_time_decode (&the_time, &hour, &minute, &second);
 
@@ -8951,7 +8956,8 @@ db_datetime_string (const DB_DATETIME * the_datetime,
 	case FT_TIMESTAMP:
 	  db_date_encode (&the_date, month, day, year);
 	  db_time_encode (&the_time, hour, minute, second);
-	  db_timestamp_encode (&the_timestamp, &the_date, &the_time);
+	  (void) db_timestamp_encode_ses (&the_date, &the_time,
+					  &the_timestamp, NULL);
 
 	  value_string = fmt_timestamp_string (&the_timestamp, token.text);
 	  break;

@@ -92,9 +92,15 @@ int loader_yyline = 1;
 %token DEFAULT
 %token DATE_
 %token TIME
+%token TIMELTZ
+%token TIMETZ
 %token UTIME
 %token TIMESTAMP
+%token TIMESTAMPLTZ
+%token TIMESTAMPTZ
 %token DATETIME
+%token DATETIMELTZ
+%token DATETIMETZ
 %token CMD_ID
 %token CMD_CLASS
 %token CMD_CONSTRUCTOR
@@ -172,8 +178,14 @@ int loader_yyline = 1;
 %type <constant> bit_string
 %type <constant> sql2_date
 %type <constant> sql2_time
+%type <constant> sql2_timeltz
+%type <constant> sql2_timetz
 %type <constant> sql2_timestamp
+%type <constant> sql2_timestampltz
+%type <constant> sql2_timestamptz
 %type <constant> sql2_datetime
+%type <constant> sql2_datetimeltz
+%type <constant> sql2_datetimetz
 %type <constant> utime
 %type <constant> monetary
 %type <constant> object_reference
@@ -520,9 +532,15 @@ constant :
   | bit_string 		{ $$ = $1; }
   | sql2_date 		{ $$ = $1; }
   | sql2_time 		{ $$ = $1; }
+  | sql2_timeltz 	{ $$ = $1; }    
+  | sql2_timetz 	{ $$ = $1; }  
   | sql2_timestamp 	{ $$ = $1; }
+  | sql2_timestampltz 	{ $$ = $1; }  
+  | sql2_timestamptz 	{ $$ = $1; }
   | utime 		{ $$ = $1; }
   | sql2_datetime 	{ $$ = $1; }
+  | sql2_datetimeltz 	{ $$ = $1; }  
+  | sql2_datetimetz 	{ $$ = $1; }
   | NULL_         	{ $$ = loader_make_constant(LDR_NULL, NULL); }
   | TIME_LIT4     	{ $$ = loader_make_constant(LDR_TIME, $1); }
   | TIME_LIT42    	{ $$ = loader_make_constant(LDR_TIME, $1); }
@@ -588,10 +606,38 @@ sql2_time :
   }
   ;
 
+sql2_timeltz :
+  TIMELTZ Quote SQS_String_Body
+  {
+    $$ = loader_make_constant (LDR_TIMELTZ, $3);
+  }
+  ;
+
+sql2_timetz :
+  TIMETZ Quote SQS_String_Body
+  {
+    $$ = loader_make_constant (LDR_TIMETZ, $3);
+  }
+  ;
+
 sql2_timestamp :
   TIMESTAMP Quote SQS_String_Body
   {
     $$ = loader_make_constant (LDR_TIMESTAMP, $3);
+  }
+  ;
+
+sql2_timestampltz :
+  TIMESTAMPLTZ Quote SQS_String_Body
+  {
+    $$ = loader_make_constant (LDR_TIMESTAMPLTZ, $3);
+  }
+  ;
+  
+sql2_timestamptz :
+  TIMESTAMPTZ Quote SQS_String_Body
+  {
+    $$ = loader_make_constant (LDR_TIMESTAMPTZ, $3);
   }
   ;
 
@@ -608,6 +654,21 @@ sql2_datetime :
     $$ = loader_make_constant (LDR_DATETIME, $3);
   }
   ;
+
+sql2_datetimeltz :
+  DATETIMELTZ Quote SQS_String_Body
+  {
+    $$ = loader_make_constant (LDR_DATETIMELTZ, $3);
+  }
+  ;
+  
+sql2_datetimetz :
+  DATETIMETZ Quote SQS_String_Body
+  {
+    $$ = loader_make_constant (LDR_DATETIMETZ, $3);
+  }
+  ;
+
 
 bit_string :
   BQuote SQS_String_Body

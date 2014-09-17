@@ -941,16 +941,34 @@ stats_compare_data (DB_DATA * data1_p, DB_DATA * data2_p, DB_TYPE type)
       break;
 
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
       status = stats_compare_time (&data1_p->time, &data2_p->time);
       break;
 
+    case DB_TYPE_TIMETZ:
+      status = stats_compare_time (&data1_p->timetz.time,
+				   &data2_p->timetz.time);
+      break;
+
     case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPLTZ:
       status = stats_compare_utime (&data1_p->utime, &data2_p->utime);
       break;
 
+    case DB_TYPE_TIMESTAMPTZ:
+      status = stats_compare_utime (&data1_p->timestamptz.timestamp,
+				    &data2_p->timestamptz.timestamp);
+      break;
+
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
       status = stats_compare_datetime (&data1_p->datetime,
 				       &data2_p->datetime);
+      break;
+
+    case DB_TYPE_DATETIMETZ:
+      status = stats_compare_datetime (&data1_p->datetimetz.datetime,
+				       &data2_p->datetimetz.datetime);
       break;
 
     case DB_TYPE_MONETARY:
@@ -1044,12 +1062,36 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	  fprintf (fpp, "DB_TYPE_TIME \n");
 	  break;
 
+	case DB_TYPE_TIMELTZ:
+	  fprintf (fpp, "DB_TYPE_TIMELTZ \n");
+	  break;
+
+	case DB_TYPE_TIMETZ:
+	  fprintf (fpp, "DB_TYPE_TIMETZ \n");
+	  break;
+
 	case DB_TYPE_UTIME:
 	  fprintf (fpp, "DB_TYPE_UTIME \n");
 	  break;
 
+	case DB_TYPE_TIMESTAMPLTZ:
+	  fprintf (fpp, "DB_TYPE_TIMESTAMPLTZ \n");
+	  break;
+
+	case DB_TYPE_TIMESTAMPTZ:
+	  fprintf (fpp, "DB_TYPE_TIMESTAMPTZ \n");
+	  break;
+
 	case DB_TYPE_DATETIME:
 	  fprintf (fpp, "DB_TYPE_DATETIME \n");
+	  break;
+
+	case DB_TYPE_DATETIMELTZ:
+	  fprintf (fpp, "DB_TYPE_DATETIMELTZ \n");
+	  break;
+
+	case DB_TYPE_DATETIMETZ:
+	  fprintf (fpp, "DB_TYPE_DATETIMETZ \n");
 	  break;
 
 	case DB_TYPE_MONETARY:

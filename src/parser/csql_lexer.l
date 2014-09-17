@@ -238,11 +238,14 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return DATE_SUB; }
 [dD][aA][tT][eE][tT][iI][mM][eE]					{ begin_token(yytext);   return DATETIME; }
+[dD][aA][tT][eE][tT][iI][mM][eE][tT][zZ]				{ begin_token(yytext);   return DATETIMETZ; }
+[dD][aA][tT][eE][tT][iI][mM][eE][lL][tT][zZ]				{ begin_token(yytext);   return DATETIMELTZ; }
 [dD][aA][yY]								{ begin_token(yytext);   return DAY_; }
 [dD][aA][yY]_[mM][iI][lL][lL][iI][sS][eE][cC][oO][nN][dD]		{ begin_token(yytext);   return DAY_MILLISECOND; }
 [dD][aA][yY]_[sS][eE][cC][oO][nN][dD]     				{ begin_token(yytext);   return DAY_SECOND; }
 [dD][aA][yY]_[mM][iI][nN][uU][tT][eE]     				{ begin_token(yytext);   return DAY_MINUTE; }
 [dD][aA][yY]_[hH][oO][uU][rR]	       					{ begin_token(yytext);   return DAY_HOUR; }
+[dD][bB][tT][iI][mM][eE][zZ][oO][nN][eE]                                { begin_token(yytext);   return DB_TIMEZONE; }
 [dD][eE][aA][lL][lL][oO][cC][aA][tT][eE]				{ begin_token(yytext);   return DEALLOCATE; }
 [dD][eE][cC]								{ begin_token(yytext);   return NUMERIC; }
 [dD][eE][cC][iI][mM][aA][lL]						{ begin_token(yytext);   return NUMERIC; }
@@ -676,6 +679,7 @@ int yybuffer_pos;
 										return SERIAL; }
 [sS][eE][rR][iI][aA][lL][iI][zZ][aA][bB][lL][eE]			{ begin_token(yytext);   return SERIALIZABLE; }
 [sS][eE][sS][sS][iI][oO][nN]						{ begin_token(yytext);   return SESSION; }
+[sS][eE][sS][sS][iI][oO][nN][tT][iI][mM][eE][zZ][oO][nN][eE]            { begin_token(yytext);	 return SESSION_TIMEZONE; } 
 [sS][eE][sS][sS][iI][oO][nN]_[uU][sS][eE][rR]				{ begin_token(yytext);   return SESSION_USER; }
 [sS][eE][tT]								{ begin_token(yytext);   return SET; }
 [sS][eE][tT][eE][qQ]							{ begin_token(yytext);   return SETEQ; }
@@ -766,7 +770,13 @@ int yybuffer_pos;
 [tT][iI][mM][eE][oO][uU][tT]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return TIMEOUT; }
+[tT][iI][mM][eE][tT][zZ]						{ begin_token(yytext);   return TIMETZ; }
+[tT][iI][mM][eE][lL][tT][zZ]						{ begin_token(yytext);   return TIMELTZ; }
 [tT][iI][mM][eE][sS][tT][aA][mM][pP]					{ begin_token(yytext);   return TIMESTAMP; }
+[tT][iI][mM][eE][sS][tT][aA][mM][pP][tT][zZ]				{ begin_token(yytext);   return TIMESTAMPTZ; }
+[tT][iI][mM][eE][sS][tT][aA][mM][pP][lL][tT][zZ]			{ begin_token(yytext);   return TIMESTAMPLTZ; }
+[tT][iI][mM][eE][zZ][oO][nN][eE]							{ begin_token(yytext);   return TIMEZONE; }
+[tT][iI][mM][eE][zZ][oO][nN][eE][sS]						{ begin_token(yytext);   return TIMEZONES; }
 [tT][iI][mM][eE][zZ][oO][nN][eE]_[hH][oO][uU][rR]			{ begin_token(yytext);   return TIMEZONE_HOUR; }
 [tT][iI][mM][eE][zZ][oO][nN][eE]_[mM][iI][nN][uU][tT][eE]		{ begin_token(yytext);   return TIMEZONE_MINUTE; }
 [tT][oO]								{ begin_token(yytext);   return TO; }

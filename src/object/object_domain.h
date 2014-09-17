@@ -267,16 +267,26 @@ typedef enum tp_match
 #define TP_IS_DOUBLE_ALIGN_TYPE(typeid) \
   ((typeid) == DB_TYPE_DOUBLE || (typeid) == DB_TYPE_BIGINT)
 
+#define TP_IS_DATE_WITH_TZ_TYPE(typeid) \
+  (((typeid) == DB_TYPE_DATETIMELTZ) || ((typeid) == DB_TYPE_DATETIMETZ) \
+   || ((typeid) == DB_TYPE_TIMESTAMPLTZ) \
+   || ((typeid) == DB_TYPE_TIMESTAMPTZ))
+
 #define TP_IS_DATE_TYPE(typeid) \
   (((typeid) == DB_TYPE_DATE) || ((typeid) == DB_TYPE_DATETIME) \
-   || ((typeid) == DB_TYPE_TIMESTAMP))
+   || ((typeid) == DB_TYPE_TIMESTAMP) || TP_IS_DATE_WITH_TZ_TYPE (typeid))
 
 #define TP_IS_DATE_OR_TIME_TYPE(typeid) \
-  (((typeid) == DB_TYPE_TIME) || TP_IS_DATE_TYPE(typeid))
+  (((typeid) == DB_TYPE_TIME) || ((typeid) == DB_TYPE_TIMETZ) \
+   || ((typeid) == DB_TYPE_TIMELTZ) || TP_IS_DATE_TYPE(typeid))
 
 #define TP_IS_FLOATING_NUMBER_TYPE(typeid) \
   (((typeid) == DB_TYPE_FLOAT) || ((typeid) == DB_TYPE_DOUBLE) \
    || ((typeid) == DB_TYPE_NUMERIC) || ((typeid) == DB_TYPE_MONETARY))
+
+#define TP_IS_DATE_OR_TIME_TYPE_WITH_TZ(typeid) \
+  ( TP_IS_DATE_WITH_TZ_TYPE (typeid) || ((typeid) == DB_TYPE_TIMETZ) \
+    || ((typeid) == DB_TYPE_TIMELTZ ))
 
 /*
  * Precision for non-parameterized predefined types
@@ -329,15 +339,18 @@ typedef enum tp_match
 
 #define TP_TIME_PRECISION	      6
 #define TP_TIME_AS_CHAR_LENGTH	      11
+#define TP_TIMETZ_AS_CHAR_LENGTH      14
 
 #define TP_DATE_PRECISION	      8
 #define TP_DATE_AS_CHAR_LENGTH	      10
 
 #define TP_TIMESTAMP_PRECISION	      14
 #define TP_TIMESTAMP_AS_CHAR_LENGTH   22
+#define TP_TIMESTAMPTZ_AS_CHAR_LENGTH   25
 
 #define TP_DATETIME_PRECISION	      17
 #define TP_DATETIME_AS_CHAR_LENGTH    26
+#define TP_DATETIMETZ_AS_CHAR_LENGTH    29
 
 /* CHAR type and VARCHAR type are compatible with each other */
 /* NCHAR type and VARNCHAR type are compatible with each other */

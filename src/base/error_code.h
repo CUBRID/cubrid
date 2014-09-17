@@ -1479,7 +1479,17 @@
 #define ER_MVCC_LOG_INVALID_ISOLATION_LEVEL         -1157
 #define ER_MVCC_SERIALIZABLE_CONFLICT		    -1158
 
-#define ER_LAST_ERROR                               -1159
+#define ER_TZ_COMPILE_ERROR                         -1159
+#define ER_TZ_LOAD_ERROR                            -1160
+#define ER_TZ_INTERNAL_ERROR			    -1161
+#define ER_TZ_INVALID_TIMEZONE			    -1162
+#define ER_TZ_INVALID_DST			    -1163
+#define ER_TZ_DST_NOT_SUPPORTED			    -1164
+#define ER_TZ_INVALID_COMBINATION		    -1165
+#define ER_TZ_DURING_DS_LEAP                        -1166
+
+#define ER_LAST_ERROR                               -1167
+
 
 /*
  * CAUTION!

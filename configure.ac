@@ -1095,6 +1095,25 @@ AC_ARG_WITH([tmpdir],
 AC_MSG_RESULT($CUBRID_TMPDIR)
 DIR_DEFS="$DIR_DEFS -DCUBRID_TMPDIR=\\\"$CUBRID_TMPDIR\\\""
 
+AC_MSG_CHECKING([for tzlibdir])
+AC_ARG_WITH([shtzdir],
+	AS_HELP_STRING([--with-tzlibdir=PATH],
+		       [Directory containing timezone files @<:@default=PREFIX/timezones@:>@]),
+	[case "$withval" in
+	   no)
+	    AC_MSG_ERROR(Need TZDIR.)
+	    ;;
+	  yes)
+	    CUBRID_TZ_DIR="\$(prefix)/timezones"
+	    ;;
+	  *)
+	    CUBRID_TZ_DIR="$withval"
+	    ;;
+	  esac],
+	[CUBRID_TZ_DIR="\$(prefix)/timezones"])
+AC_MSG_RESULT($CUBRID_TZ_DIR)
+DIR_DEFS="$DIR_DEFS -DCUBRID_TZ_DIR=\\\"$CUBRID_TZ_DIR\\\""
+
 # change PACKAGE_STRING to official version string
 PACKAGE_STRING="CUBRID VERSION_STRING"
 sed < confdefs.h > confdefs.h-2 "s/^#define PACKAGE_STRING .*$"/"#define PACKAGE_STRING \"$PACKAGE_STRING\"/"
@@ -1106,7 +1125,7 @@ AS_IF([test "$with_cci_only" = "yes"],
 	EXTRA_DIST_SUBDIRS=""
 	CUBRID_LOGDIR=""
 	CUBRID_TMPDIR=""],
-	[BUILD_SUBDIRS="contrib/systemtap external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales dbgw tools $OPTIONAL_DIR"
+	[BUILD_SUBDIRS="contrib/systemtap external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales dbgw tools timezones $OPTIONAL_DIR"
 	EXTRA_DIST_SUBDIRS="debian win src"])
 
 AC_SUBST([BUILD_NUMBER])
@@ -1142,6 +1161,7 @@ AC_SUBST([CUBRID_SHLOCALESDIR])
 AC_SUBST([CUBRID_COMPATDIR])
 AC_SUBST([CUBRID_LOGDIR])
 AC_SUBST([CUBRID_TMPDIR])
+AC_SUBST([CUBRID_TZ_DIR])
 AC_SUBST([NBASE_T_LIB_PATH])
 AC_SUBST([NBASE_T_INC_PATH])
 AC_SUBST([MYSQL51_LIB_PATH])
@@ -1208,6 +1228,9 @@ AS_IF([test "$with_cci_only" = "no"],
 	locales/data/Makefile
 	locales/data/codepages/Makefile
 	locales/data/ldml/Makefile
+	timezones/Makefile
+	timezones/tzdata/Makefile
+	timezones/tzlib/Makefile
 	dbgw/Makefile
 	tools/Makefile
 	])])

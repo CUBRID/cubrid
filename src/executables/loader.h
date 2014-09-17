@@ -56,7 +56,11 @@ typedef enum
   LDR_CLASS_OID,		/* Class object reference */
   LDR_DATE,
   LDR_TIME,
+  LDR_TIMELTZ,
+  LDR_TIMETZ,
   LDR_TIMESTAMP,
+  LDR_TIMESTAMPLTZ,
+  LDR_TIMESTAMPTZ,
   LDR_COLLECTION,
   LDR_ELO_INT,			/* Internal ELO's */
   LDR_ELO_EXT,			/* External ELO's */
@@ -67,8 +71,10 @@ typedef enum
   LDR_XSTR,			/* Hexidecimal bit strings */
   LDR_BIGINT,
   LDR_DATETIME,
+  LDR_DATETIMELTZ,
+  LDR_DATETIMETZ,
 
-  LDR_TYPE_MAX = LDR_DATETIME
+  LDR_TYPE_MAX = LDR_DATETIMETZ
 } LDR_TYPE;
 
 #define NUM_LDR_TYPES   (LDR_TYPE_MAX + 1)

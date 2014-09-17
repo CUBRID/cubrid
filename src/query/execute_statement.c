@@ -3111,6 +3111,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = do_set_query_trace (parser, statement);
 	  break;
 
+	case PT_SET_TIMEZONE:
+	  error = do_set_timezone (parser, statement);
+	  break;
+
 	default:
 	  er_set (ER_ERROR_SEVERITY, __FILE__, statement->line_number,
 		  ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
@@ -3215,6 +3219,9 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_EXECUTE_PREPARE:
       err = do_prepare_session_statement (parser, statement);
+      break;
+    case PT_SET_TIMEZONE:
+      err = do_set_timezone (parser, statement);
       break;
     default:
       /* there are no actions for other types of statements */
@@ -4585,7 +4592,7 @@ do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 /*
  * do_set_optimization_param() - Set the optimization level to the indicated
  *				 value and return the old value through the
- *				 statement paramter.
+ *				 statement parameter.
  *   return: Error code if it fails
  *   parser(in): Parser context
  *   statement(in): Parse tree of a set transaction statement
@@ -16635,6 +16642,35 @@ do_set_names (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = db_set_system_parameters (sys_prm_chg);
     }
 
+  return (error != NO_ERROR) ? ER_OBJ_INVALID_ARGUMENTS : NO_ERROR;
+}
+
+/*
+ * do_set_timezone() - Set the client timezone.
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a set transaction statement
+ *
+ * Note:
+ */
+int
+do_set_timezone (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+#define MAX_LEN  100
+  int error = NO_ERROR;
+  PT_NODE *tz_node;
+  char *timezone;
+  char sys_prm_chg[MAX_LEN];
+
+  tz_node = statement->info.set_timezone.timezone_node;
+  assert (statement != NULL && tz_node != NULL
+	  && tz_node->info.value.data_value.str != NULL);
+
+  timezone = (char *) tz_node->info.value.data_value.str->bytes;
+  snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1, "timezone=%s", timezone);
+  error = db_set_system_parameters (sys_prm_chg);
+
+#undef MAX_LEN
   return (error != NO_ERROR) ? ER_OBJ_INVALID_ARGUMENTS : NO_ERROR;
 }
 

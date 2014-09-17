@@ -38,8 +38,6 @@
 #include "db_query.h"
 #include "databases_file.h"
 
-#define db_utime_encode db_timestamp_encode
-#define db_utime_decode db_timestamp_decode
 #define db_utime_to_string db_timestamp_to_string
 #define db_string_to_utime db_string_to_timestamp
 

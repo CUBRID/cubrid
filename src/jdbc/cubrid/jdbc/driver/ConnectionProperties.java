@@ -282,7 +282,25 @@ public class ConnectionProperties {
 	    return false;
 	}
     }
+	
+    class ResultWithCUBRIDTypesConnectionProperty extends StringConnectionProperty {
+	ResultWithCUBRIDTypesConnectionProperty (String propertyName, Object defaultValue) {
+	    super(propertyName, defaultValue);
+	}
 
+	@Override
+	boolean validateValue(Object o) {
+	    if (o instanceof String) {
+		String support = (String) o;
+		if (support.equals(UConnection.RESULT_WITH_CUBRID_TYPES_YES)
+			|| support.equals(UConnection.RESULT_WITH_CUBRID_TYPES_NO)) {
+		    return true;
+		}
+	    }
+	    return false;
+	}
+    }
+	
     BooleanConnectionProperty logOnException = new BooleanConnectionProperty(
 	    "logOnException", false);
 
@@ -320,7 +338,10 @@ public class ConnectionProperties {
 
     ZeroDateTimeBehaviorConnectionProperty zeroDateTimeBehavior = new ZeroDateTimeBehaviorConnectionProperty(
 	    "zeroDateTimeBehavior", UConnection.ZERO_DATETIME_BEHAVIOR_EXCEPTION);
-
+	
+    ResultWithCUBRIDTypesConnectionProperty  resultWithCUBRIDTypes = new ResultWithCUBRIDTypesConnectionProperty(
+	    "resultWithCUBRIDTypes", UConnection.RESULT_WITH_CUBRID_TYPES_YES);
+    
     BooleanConnectionProperty useLazyConnection = new BooleanConnectionProperty(
 	    "useLazyConnection", false);
 
@@ -366,6 +387,10 @@ public class ConnectionProperties {
     public String getZeroDateTimeBehavior() {
 	return zeroDateTimeBehavior.getValueAsString();
     }
+	
+    public String getResultWithCUBRIDTypes() {
+	return resultWithCUBRIDTypes.getValueAsString();
+    }	
 
     public boolean getUseLazyConnection() {
 	return useLazyConnection.getValueAsBoolean();

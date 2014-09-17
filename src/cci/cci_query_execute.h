@@ -164,6 +164,16 @@
 	  (TIME_VAL).ss = macro_var_ss;			                \
 	} while (0)
 
+#define NET_STR_TO_TIMETZ(TIME_VAL, PTR)		                \
+	do {					                        \
+          unsigned char net_tz_size = 0;                                \
+	  int tz_size;							\
+	  NET_STR_TO_TIME ((TIME_VAL), (PTR));				\
+	  NET_STR_TO_BYTE (net_tz_size, (PTR) + NET_SIZE_TIME);		\
+	  tz_size = MIN (net_tz_size, CCI_TZ_SIZE);			\
+	  strncpy ((TIME_VAL).tz, (PTR) + NET_SIZE_TIME + 1, tz_size);	\
+	} while (0)
+
 #define NET_STR_TO_MTIME(TIME_VAL, PTR)                                 \
         do {                                                            \
           short macro_var_hh, macro_var_mm, macro_var_ss, macro_var_ms; \
@@ -187,11 +197,31 @@
 	  NET_STR_TO_TIME((TS_VAL), (PTR) + NET_SIZE_DATE);	\
 	} while (0)
 
+#define NET_STR_TO_TIMESTAMPTZ(TS_VAL, PTR)		                \
+	do {					                        \
+          unsigned char net_tz_size = 0;                                \
+	  int tz_size;							\
+	  NET_STR_TO_TIMESTAMP ((TS_VAL), (PTR));			\
+	  NET_STR_TO_BYTE (net_tz_size, (PTR) + NET_SIZE_TIMESTAMP);	\
+	  tz_size = MIN (net_tz_size, CCI_TZ_SIZE);			\
+	  strncpy ((TS_VAL).tz, (PTR) + NET_SIZE_TIMESTAMP + 1, tz_size); \
+	} while (0)
+
 #define NET_STR_TO_DATETIME(TS_VAL, PTR)                \
         do {                                            \
           NET_STR_TO_DATE((TS_VAL), (PTR));             \
           NET_STR_TO_MTIME((TS_VAL), (PTR) + NET_SIZE_DATE);\
         } while (0)
+
+#define NET_STR_TO_DATETIMETZ(DT_VAL, PTR)		                \
+	do {					                        \
+          unsigned char net_tz_size = 0;                                \
+	  int tz_size;							\
+	  NET_STR_TO_DATETIME ((DT_VAL), (PTR));			\
+	  NET_STR_TO_BYTE (net_tz_size, (PTR) + NET_SIZE_DATETIME);	\
+	  tz_size = MIN (net_tz_size, CCI_TZ_SIZE);			\
+	  strncpy ((DT_VAL).tz, (PTR) + NET_SIZE_DATETIME + 1, tz_size); \
+	} while (0)
 
 #define NET_STR_TO_OBJECT(OBJ_VAL, PTR)		                \
 	do {					                \
@@ -322,6 +352,21 @@
 	  net_buf_cp_short(BUF, macro_var_date_p->mm);	\
 	  net_buf_cp_short(BUF, macro_var_date_p->ss);	\
           net_buf_cp_short(BUF, macro_var_date_p->ms);  \
+	} while (0)
+
+#define ADD_ARG_DATETIMETZ(BUF, VALUE_P)		\
+	do {						\
+	  int tz_size = NET_SIZE_TZ (VALUE_P);		\
+	  T_CCI_DATE_TZ	*macro_var_date_tz_p = (T_CCI_DATE_TZ*) (VALUE_P);  \
+	  net_buf_cp_int(BUF, NET_SIZE_DATETIME + tz_size);   \
+	  net_buf_cp_short(BUF, macro_var_date_tz_p->yr);	\
+	  net_buf_cp_short(BUF, macro_var_date_tz_p->mon);	\
+	  net_buf_cp_short(BUF, macro_var_date_tz_p->day);	\
+	  net_buf_cp_short(BUF, macro_var_date_tz_p->hh);	\
+	  net_buf_cp_short(BUF, macro_var_date_tz_p->mm);	\
+	  net_buf_cp_short(BUF, macro_var_date_tz_p->ss);	\
+          net_buf_cp_short(BUF, macro_var_date_tz_p->ms);  \
+	  net_buf_cp_str(BUF, macro_var_date_tz_p->tz, tz_size); \
 	} while (0)
 
 #define ADD_ARG_OBJECT(BUF, OID_P)			\
@@ -483,6 +528,8 @@ extern int qe_get_data_double (T_CCI_U_TYPE u_type,
 			       char *col_value_p, void *value);
 extern int qe_get_data_date (T_CCI_U_TYPE u_type,
 			     char *col_value_p, void *value);
+extern int qe_get_data_date_tz (T_CCI_U_TYPE u_type,
+				char *col_value_p, void *value);
 extern int qe_get_data_bit (T_CCI_U_TYPE u_type,
 			    char *col_value_p, int col_val_size, void *value);
 extern int qe_get_data_lob (T_CCI_U_TYPE u_type,

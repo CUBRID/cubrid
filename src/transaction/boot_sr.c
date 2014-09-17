@@ -93,6 +93,7 @@
 #include "session.h"
 #include "partition.h"
 #include "event_log.h"
+#include "tz_support.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -2556,6 +2557,17 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
       return NULL_TRAN_INDEX;
     }
 
+  /* initialize time zone data, optional module */
+  if (tz_load (true) != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+		  "Failed to initialize timezone module");
+	}
+      return ER_TZ_LOAD_ERROR;
+    }
+
   /* open the system message catalog, before prm_ ?  */
   if (msgcat_init () != NO_ERROR)
     {
@@ -3128,6 +3140,17 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 		  "Failed to initialize language module");
 	}
       return ER_LOC_INIT;
+    }
+
+  /* initialize time zone data, optional module */
+  if (tz_load (true) != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+		  "Failed to initialize timezone module");
+	}
+      return ER_TZ_LOAD_ERROR;
     }
 
   if (msgcat_init () != NO_ERROR)
@@ -3825,6 +3848,17 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
 		  "Failed to initialize language module");
 	}
       return NULL_TRAN_INDEX;
+    }
+
+  /* initialize time zone data, optional module */
+  if (tz_load (true) != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+		  "Failed to initialize timezone module");
+	}
+      return ER_TZ_LOAD_ERROR;
     }
 
   /* open the system message catalog, before prm_ ?  */
@@ -4672,6 +4706,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, bool is_er_final)
       er_final (1);
     }
   lang_final ();
+  tz_unload ();
   css_free_accessible_ip_info ();
   event_log_final ();
 #endif /* SERVER_MODE */

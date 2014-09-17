@@ -457,7 +457,13 @@ unsigned char qo_type_qualifiers[] = {
   _INT + _NUM,			/* DB_TYPE_BIGINT       */
   _INT + _NUM,			/* DB_TYPE_DATETIME     */
   0,				/* DB_TYPE_BLOB         */
-  0				/* DB_TYPE_CLOB         */
+  0,				/* DB_TYPE_CLOB         */
+  _INT + _NUM,			/* DB_TYPE_TIMESTAMPTZ  */
+  _INT + _NUM,			/* DB_TYPE_TIMESTAMPLTZ */
+  _INT + _NUM,			/* DB_TYPE_DATETIMETZ   */
+  _INT + _NUM,			/* DB_TYPE_DATETIMELTZ  */
+  _INT + _NUM,			/* DB_TYPE_TIMETZ       */
+  _INT + _NUM			/* DB_TYPE_TIMELTZ      */
 };
 
 /* Structural equivalence classes for expressions */

@@ -116,9 +116,18 @@
 #define OR_UTIME_SIZE           4
 #define OR_DATE_SIZE            4
 
+#define OR_TIMETZ_SIZE		(OR_TIME_SIZE + sizeof (TZ_ID))
+#define OR_TIMETZ_TZID		4
+
 #define OR_DATETIME_SIZE        8
 #define OR_DATETIME_DATE        0
 #define OR_DATETIME_TIME        4
+
+#define OR_TIMESTAMPTZ_SIZE	(OR_UTIME_SIZE + sizeof (TZ_ID))
+#define OR_TIMESTAMPTZ_TZID	4
+
+#define OR_DATETIMETZ_SIZE	(OR_DATETIME_SIZE + sizeof (TZ_ID))
+#define OR_DATETIMETZ_TZID	8
 
 #define OR_MONETARY_SIZE        12
 #define OR_MONETARY_TYPE        0
@@ -280,11 +289,36 @@
 #define OR_PUT_TIME(ptr, value) \
   OR_PUT_INT(ptr, *((DB_TIME *)(value)))
 
+#define OR_GET_TIMETZ(ptr, time_tz) \
+   do { \
+     (time_tz)->time = OR_GET_INT((char *)(ptr)); \
+     (time_tz)->tz_id = OR_GET_INT(((char *)(ptr)) + OR_TIMETZ_TZID); \
+   } while (0)
+
+#define OR_PUT_TIMETZ(ptr, time_tz) \
+   do { \
+     OR_PUT_INT(((char *)ptr), (time_tz)->time); \
+     OR_PUT_INT(((char *)ptr) + OR_TIMETZ_TZID, (time_tz)->tz_id); \
+   } while (0)
+
 #define OR_GET_UTIME(ptr, value) \
    *((DB_UTIME *)(value)) = OR_GET_INT(ptr)
 
 #define OR_PUT_UTIME(ptr, value) \
    OR_PUT_INT(ptr,   *((DB_UTIME *)(value)))
+
+#define OR_GET_TIMESTAMPTZ(ptr, ts_tz) \
+   do { \
+     (ts_tz)->timestamp = OR_GET_INT((char *)(ptr)); \
+     (ts_tz)->tz_id = OR_GET_INT(((char *)(ptr)) \
+	+ OR_TIMESTAMPTZ_TZID); \
+   } while (0)
+
+#define OR_PUT_TIMESTAMPTZ(ptr, ts_tz) \
+   do { \
+     OR_PUT_INT(((char *)ptr), (ts_tz)->timestamp); \
+     OR_PUT_INT(((char *)ptr) + OR_TIMESTAMPTZ_TZID, (ts_tz)->tz_id); \
+   } while (0)
 
 #define OR_GET_DATE(ptr, value) \
    *((DB_DATE *)(value)) = OR_GET_INT(ptr)
@@ -302,6 +336,22 @@
    do { \
      OR_PUT_INT(((char *)ptr) + OR_DATETIME_DATE, (datetime)->date); \
      OR_PUT_INT(((char *)ptr) + OR_DATETIME_TIME, (datetime)->time); \
+   } while (0)
+
+#define OR_GET_DATETIMETZ(ptr, datetimetz) \
+   do { \
+     OR_GET_DATETIME ((char *)ptr, \
+		      &((DB_DATETIMETZ *)datetimetz)->datetime); \
+     (datetimetz)->tz_id = OR_GET_INT(((char *)(ptr))  \
+	+ OR_DATETIMETZ_TZID); \
+   } while (0)
+
+#define OR_PUT_DATETIMETZ(ptr, datetimetz) \
+   do { \
+     OR_PUT_DATETIME(((char *)ptr), \
+		     &((DB_DATETIMETZ *)datetimetz)->datetime); \
+     OR_PUT_INT(((char *)ptr) + OR_DATETIMETZ_TZID, \
+		(datetimetz)->tz_id); \
    } while (0)
 
 #define OR_GET_MONETARY(ptr, value) \
@@ -1336,8 +1386,12 @@ extern int or_put_bigint (OR_BUF * buf, DB_BIGINT num);
 extern int or_put_float (OR_BUF * buf, float num);
 extern int or_put_double (OR_BUF * buf, double num);
 extern int or_put_time (OR_BUF * buf, DB_TIME * timeval);
+extern int or_put_timetz (OR_BUF * buf, DB_TIMETZ * time_tz);
 extern int or_put_utime (OR_BUF * buf, DB_UTIME * timeval);
+extern int or_put_timestamptz (OR_BUF * buf, DB_TIMESTAMPTZ * ts_tz);
 extern int or_put_date (OR_BUF * buf, DB_DATE * date);
+extern int or_put_datetime (OR_BUF * buf, DB_DATETIME * datetimeval);
+extern int or_put_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz);
 extern int or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary);
 extern int or_put_string (OR_BUF * buf, char *string);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -1363,10 +1417,12 @@ extern DB_BIGINT or_get_bigint (OR_BUF * buf, int *error);
 extern float or_get_float (OR_BUF * buf, int *error);
 extern double or_get_double (OR_BUF * buf, int *error);
 extern int or_get_time (OR_BUF * buf, DB_TIME * timeval);
+extern int or_get_timetz (OR_BUF * buf, DB_TIMETZ * time_tz);
 extern int or_get_utime (OR_BUF * buf, DB_UTIME * timeval);
+extern int or_get_timestamptz (OR_BUF * buf, DB_TIMESTAMPTZ * ts_tz);
 extern int or_get_date (OR_BUF * buf, DB_DATE * date);
-extern int or_put_datetime (OR_BUF * buf, DB_DATETIME * datetimeval);
 extern int or_get_datetime (OR_BUF * buf, DB_DATETIME * datetime);
+extern int or_get_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz);
 extern int or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary);
 extern int or_get_data (OR_BUF * buf, char *data, int length);
 extern int or_get_oid (OR_BUF * buf, OID * oid);

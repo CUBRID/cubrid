@@ -151,14 +151,23 @@
 /* This constant defines the default precision of DB_TYPE_TIME. */
 #define DB_TIME_PRECISION      8
 
+/* This constant defines the default precision of DB_TIMETZ_PRECISION. */
+#define DB_TIMETZ_PRECISION   DB_TIME_PRECISION
+
 /* This constant defines the default precision of DB_TYPE_DATE. */
 #define DB_DATE_PRECISION      10
 
 /* This constant defines the default precision of DB_TYPE_TIMESTAMP. */
 #define DB_TIMESTAMP_PRECISION      19
 
+/* This constant defines the default precision of DB_TYPE_TIMESTAMPTZ. */
+#define DB_TIMESTAMPTZ_PRECISION   DB_TIMESTAMP_PRECISION
+
 /* This constant defines the default precision of DB_TYPE_DATETIME. */
 #define DB_DATETIME_PRECISION      23
+
+/* This constant defines the default precision of DB_TYPE_DATETIMETZ. */
+#define DB_DATETIMETZ_PRECISION    DB_DATETIME_PRECISION
 
 /* This constant defines the default scale of DB_TYPE_DATETIME. */
 #define DB_DATETIME_DECIMAL_SCALE      3
@@ -221,6 +230,12 @@
 #define DB_MAKE_TIME(value, hour, minute, second) \
     db_make_time(value, hour, minute, second)
 
+#define DB_MAKE_TIMETZ(value, timetz_value) \
+    db_make_timetz(value, timetz_value)
+
+#define DB_MAKE_TIMELTZ(value, time_value) \
+    db_make_timeltz(value, time_value)
+
 #define DB_MAKE_ENCODED_TIME(value, time_value) \
     db_value_put_encoded_time(value, time_value)
 
@@ -234,11 +249,24 @@
     db_make_timestamp(value, timeval)
 
 #define DB_MAKE_UTIME DB_MAKE_TIMESTAMP
+
+#define DB_MAKE_TIMESTAMPTZ(value, ts_tz) \
+    db_make_timestamptz(value, ts_tz)
+
+#define DB_MAKE_TIMESTAMPLTZ(value, timeval) \
+    db_make_timestampltz(value, timeval)
+
 #define DB_MAKE_MONETARY_AMOUNT(value, amount) \
     db_make_monetary(value, DB_CURRENCY_DEFAULT, amount)
 
 #define DB_MAKE_DATETIME(value, datetime_value) \
     db_make_datetime(value, datetime_value)
+
+#define DB_MAKE_DATETIMETZ(value, datetimetz_value) \
+    db_make_datetimetz(value, datetimetz_value)
+
+#define DB_MAKE_DATETIMELTZ(value, datetime_value) \
+    db_make_datetimeltz(value, datetime_value)
 
 #define DB_MAKE_MONETARY DB_MAKE_MONETARY_AMOUNT
 
@@ -346,12 +374,18 @@
 
 #define DB_GET_TIME(value)              db_get_time(value)
 
+#define DB_GET_TIMETZ(value)		db_get_timetz(value)
+
 #define DB_GET_DATE(value)              db_get_date(value)
 
 #define DB_GET_TIMESTAMP(value)         db_get_timestamp(value)
 #define DB_GET_UTIME DB_GET_TIMESTAMP
 
+#define DB_GET_TIMESTAMPTZ(value)	db_get_timestamptz(value)
+
 #define DB_GET_DATETIME(value)          db_get_datetime(value)
+
+#define DB_GET_DATETIMETZ(value)	db_get_datetimetz(value)
 
 #define DB_GET_MONETARY(value)          db_get_monetary(value)
 
@@ -465,12 +499,18 @@ typedef enum
   DB_TYPE_BLOB = 33,
   DB_TYPE_CLOB = 34,
   DB_TYPE_ENUMERATION = 35,
+  DB_TYPE_TIMESTAMPTZ = 36,
+  DB_TYPE_TIMESTAMPLTZ = 37,
+  DB_TYPE_DATETIMETZ = 38,
+  DB_TYPE_DATETIMELTZ = 39,
+  DB_TYPE_TIMETZ = 40,
+  DB_TYPE_TIMELTZ = 41,
   DB_TYPE_LIST = DB_TYPE_SEQUENCE,
   DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT           */
   DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values   */
   DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP  */
 
-  DB_TYPE_LAST = DB_TYPE_ENUMERATION
+  DB_TYPE_LAST = DB_TYPE_TIMELTZ
 } DB_TYPE;
 
 /* Domain information stored in DB_VALUE structures. */
@@ -504,11 +544,26 @@ typedef INT64 DB_BIGINT;
 /* Structure used for the representation of time values. */
 typedef unsigned int DB_TIME;
 
+typedef unsigned int TZ_ID;
+typedef struct db_timetz DB_TIMETZ;
+struct db_timetz
+{
+  DB_TIME time;
+  TZ_ID tz_id;			/* zone id */
+};
+
 /* Structure used for the representation of universal times.
    These are compatible with the Unix time_t definition. */
 typedef unsigned int DB_TIMESTAMP;
 
 typedef DB_TIMESTAMP DB_UTIME;
+
+typedef struct db_timestamptz DB_TIMESTAMPTZ;
+struct db_timestamptz
+{
+  DB_TIMESTAMP timestamp;	/* Unix timestamp */
+  TZ_ID tz_id;			/* zone id */
+};
 
 /* Structure used for the representation of date values. */
 typedef unsigned int DB_DATE;
@@ -518,6 +573,13 @@ struct db_datetime
 {
   unsigned int date;		/* date */
   unsigned int time;		/* time */
+};
+
+typedef struct db_datetimetz DB_DATETIMETZ;
+struct db_datetimetz
+{
+  DB_DATETIME datetime;
+  TZ_ID tz_id;			/* zone id */
 };
 
 /* Structure used for the representation of numeric values. */
@@ -738,9 +800,12 @@ union db_data
   void *p;
   DB_OBJECT *op;
   DB_TIME time;
+  DB_TIMETZ timetz;
   DB_DATE date;
   DB_TIMESTAMP utime;
+  DB_TIMESTAMPTZ timestamptz;
   DB_DATETIME datetime;
+  DB_DATETIMETZ datetimetz;
   DB_MONETARY money;
   DB_COLLECTION *set;
   DB_COLLECTION *collect;
@@ -873,7 +938,9 @@ typedef enum
 } DB_DEFAULT_EXPR_TYPE;
 
 typedef DB_DATETIME DB_C_DATETIME;
+typedef DB_DATETIMETZ DB_C_DATETIMETZ;
 typedef DB_TIMESTAMP DB_C_TIMESTAMP;
+typedef DB_TIMESTAMPTZ DB_C_TIMESTAMPTZ;
 typedef DB_MONETARY DB_C_MONETARY;
 typedef unsigned char *DB_C_NUMERIC;
 typedef void *DB_C_POINTER;
@@ -957,6 +1024,8 @@ extern int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey);
 extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
 extern int db_make_time (DB_VALUE * value,
 			 const int hour, const int minute, const int second);
+extern int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value);
+extern int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value);
 extern int db_value_put_encoded_time (DB_VALUE * value,
 				      const DB_TIME * time_value);
 extern int db_make_date (DB_VALUE * value,
@@ -964,7 +1033,15 @@ extern int db_make_date (DB_VALUE * value,
 extern int db_value_put_encoded_date (DB_VALUE * value,
 				      const DB_DATE * date_value);
 extern int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval);
+extern int db_make_timestampltz (DB_VALUE * value,
+				 const DB_C_TIMESTAMP ts_val);
+extern int db_make_timestamptz (DB_VALUE * value,
+				const DB_C_TIMESTAMPTZ * ts_tz_val);
 extern int db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime);
+extern int db_make_datetimeltz (DB_VALUE * value,
+				const DB_DATETIME * datetime);
+extern int db_make_datetimetz (DB_VALUE * value,
+			       const DB_DATETIMETZ * datetimetz);
 extern int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type,
 			     const double amount);
 extern int db_make_pointer (DB_VALUE * value, DB_C_POINTER ptr);
@@ -1032,8 +1109,11 @@ extern DB_COLLECTION *db_get_set (const DB_VALUE * value);
 extern DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value);
 extern DB_C_POINTER db_get_pointer (const DB_VALUE * value);
 extern DB_TIME *db_get_time (const DB_VALUE * value);
+extern DB_TIMETZ *db_get_timetz (const DB_VALUE * value);
 extern DB_TIMESTAMP *db_get_timestamp (const DB_VALUE * value);
+extern DB_TIMESTAMPTZ *db_get_timestamptz (const DB_VALUE * value);
 extern DB_DATETIME *db_get_datetime (const DB_VALUE * value);
+extern DB_DATETIMETZ *db_get_datetimetz (const DB_VALUE * value);
 extern DB_DATE *db_get_date (const DB_VALUE * value);
 extern DB_MONETARY *db_get_monetary (const DB_VALUE * value);
 extern int db_get_error (const DB_VALUE * value);

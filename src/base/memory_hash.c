@@ -638,16 +638,39 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  hash = mht_1str_pseudo_key (db_pull_bit (val, &t_n), -1);
 	  break;
 	case DB_TYPE_TIME:
+	case DB_TYPE_TIMELTZ:
 	  hash = (unsigned int) *(db_get_time (val));
 	  break;
+	case DB_TYPE_TIMETZ:
+	  {
+	    DB_TIMETZ *time_tz = db_get_timetz (val);
+	    hash = (unsigned int) (time_tz->time);
+	  }
+	  break;
 	case DB_TYPE_TIMESTAMP:
+	case DB_TYPE_TIMESTAMPLTZ:
 	  hash = (unsigned int) *(db_get_timestamp (val));
 	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	  {
+	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (val);
+	    hash = (unsigned int) (ts_tz->timestamp);
+	  }
+	  break;
 	case DB_TYPE_DATETIME:
+	case DB_TYPE_DATETIMELTZ:
 	  {
 	    DB_DATETIME *datetime;
 	    datetime = db_get_datetime (val);
 	    hash = (unsigned int) (datetime->date ^ datetime->time);
+	  }
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  {
+	    DB_DATETIMETZ *dt_tz;
+	    dt_tz = db_get_datetimetz (val);
+	    hash =
+	      (unsigned int) (dt_tz->datetime.date ^ dt_tz->datetime.time);
 	  }
 	  break;
 	case DB_TYPE_DATE:
@@ -2075,14 +2098,29 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	  hashcode = mht_get_shiftmult32 (val->data.date, ht_size);
 	  break;
 	case DB_TYPE_TIME:
+	case DB_TYPE_TIMELTZ:
 	  hashcode = mht_get_shiftmult32 (val->data.time, ht_size);
 	  break;
+	case DB_TYPE_TIMETZ:
+	  hashcode = mht_get_shiftmult32 (val->data.timetz.time, ht_size);
+	  break;
 	case DB_TYPE_TIMESTAMP:
+	case DB_TYPE_TIMESTAMPLTZ:
 	  hashcode = mht_get_shiftmult32 (val->data.utime, ht_size);
 	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	  hashcode =
+	    mht_get_shiftmult32 (val->data.timestamptz.timestamp, ht_size);
+	  break;
 	case DB_TYPE_DATETIME:
+	case DB_TYPE_DATETIMELTZ:
 	  hashcode = mht_get_shiftmult32 (val->data.datetime.date ^
 					  val->data.datetime.time, ht_size);
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  hashcode =
+	    mht_get_shiftmult32 (val->data.datetimetz.datetime.date ^
+				 val->data.datetimetz.datetime.time, ht_size);
 	  break;
 	case DB_TYPE_OID:
 	  {

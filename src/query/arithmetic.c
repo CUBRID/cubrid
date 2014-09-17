@@ -2143,8 +2143,10 @@ move_n_days (int *monthp, int *dayp, int *yearp, const int interval)
 static int
 round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
-  DB_DATETIME *pdatetime;
+  DB_DATETIME *pdatetime, local_dt;
+  DB_DATETIMETZ *pdatetimetz;
   DB_TIMESTAMP *pstamp;
+  DB_TIMESTAMPTZ *pstamptz;
   DB_DATE *pdate;
   DB_DATE date;
   DB_TIME time;
@@ -2165,10 +2167,22 @@ round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   /* get all values in the date */
   type = DB_VALUE_DOMAIN_TYPE (value1);
 
-  if (type == DB_TYPE_TIMESTAMP)
+  if (type == DB_TYPE_TIMESTAMP || type == DB_TYPE_TIMESTAMPLTZ)
     {
       pstamp = db_get_timestamp (value1);
-      db_timestamp_decode (pstamp, &date, &time);
+      (void) db_timestamp_decode_ses (pstamp, &date, &time);
+      db_date_decode (&date, &month, &day, &year);
+      db_time_decode (&time, &hour, &minute, &second);
+    }
+  else if (type == DB_TYPE_TIMESTAMPTZ)
+    {
+      pstamptz = db_get_timestamptz (value1);
+      error = db_timestamp_decode_w_tz_id (&pstamptz->timestamp,
+					   &pstamptz->tz_id, &date, &time);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
       db_date_decode (&date, &month, &day, &year);
       db_time_decode (&time, &hour, &minute, &second);
     }
@@ -2176,6 +2190,34 @@ round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     {
       pdatetime = db_get_datetime (value1);
       db_datetime_decode (pdatetime, &month, &day, &year,
+			  &hour, &minute, &second, &millisecond);
+    }
+  else if (type == DB_TYPE_DATETIMELTZ)
+    {
+      pdatetime = db_get_datetime (value1);
+
+      error = tz_datetimeltz_to_local (pdatetime, &local_dt);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      db_datetime_decode (&local_dt, &month, &day, &year,
+			  &hour, &minute, &second, &millisecond);
+    }
+  else if (type == DB_TYPE_DATETIMETZ)
+    {
+      pdatetimetz = db_get_datetimetz (value1);
+
+      error = tz_utc_datetimetz_to_local (&pdatetimetz->datetime,
+					  &pdatetimetz->tz_id, &local_dt);
+
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      db_datetime_decode (&local_dt, &month, &day, &year,
 			  &hour, &minute, &second, &millisecond);
     }
   else if (type == DB_TYPE_DATE)
@@ -2402,8 +2444,10 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
 
   /* first check if round a date: */
-  if (type1 == DB_TYPE_DATETIME
-      || type1 == DB_TYPE_DATE || type1 == DB_TYPE_TIMESTAMP)
+  if (type1 == DB_TYPE_DATETIME || type1 == DB_TYPE_DATETIMELTZ
+      || type1 == DB_TYPE_DATETIMETZ
+      || type1 == DB_TYPE_TIMESTAMP || type1 == DB_TYPE_TIMESTAMPLTZ
+      || type1 == DB_TYPE_TIMESTAMPTZ || type1 == DB_TYPE_DATE)
     {				/* round date */
       if (QSTR_IS_ANY_CHAR (type2)
 	  && strcasecmp (DB_GET_STRING_SAFE (value2), "default") == 0)
@@ -3439,7 +3483,11 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_MONETARY:
     case DB_TYPE_DATE:
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
     case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
       break;
     default:			/* convert to double */
       type1 = DB_TYPE_UNKNOWN;
@@ -3504,7 +3552,9 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       bi2 = DB_GET_SHORT (value2);
     }
   else if (type1 != DB_TYPE_DATE
-	   && type1 != DB_TYPE_DATETIME && type1 != DB_TYPE_TIMESTAMP)
+	   && type1 != DB_TYPE_DATETIME && type1 != DB_TYPE_DATETIMELTZ
+	   && type1 != DB_TYPE_DATETIMETZ && type1 != DB_TYPE_TIMESTAMP
+	   && type1 != DB_TYPE_TIMESTAMPLTZ && type1 != DB_TYPE_TIMESTAMPTZ)
     {
       domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
       cast_status = tp_value_coerce (value2, &cast_format, domain);
@@ -3629,7 +3679,11 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
     case DB_TYPE_DATE:
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
     case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
       if (type1 == DB_TYPE_DATE)
 	{
 	  date = *(DB_GET_DATE (value1));
@@ -3638,9 +3692,77 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  date = DB_GET_DATETIME (value1)->date;
 	}
-      else			/* DB_TYPE_TIMESTAMP */
+      else if (type1 == DB_TYPE_DATETIMELTZ)
 	{
-	  db_timestamp_decode (DB_GET_TIMESTAMP (value1), &date, NULL);
+	  DB_DATETIME local_dt, *p_dt;
+
+	  p_dt = DB_GET_DATETIME (value1);
+
+	  er_status = tz_datetimeltz_to_local (p_dt, &local_dt);
+	  if (er_status != NO_ERROR)
+	    {
+	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS)
+		  == true)
+		{
+		  er_clear ();
+		  DB_MAKE_NULL (result);
+		  er_status = NO_ERROR;
+		}
+	      goto end;
+	    }
+
+	  date = local_dt.date;
+	}
+      else if (type1 == DB_TYPE_DATETIMETZ)
+	{
+	  DB_DATETIME local_dt;
+	  DB_DATETIMETZ *p_dt_tz;
+
+	  p_dt_tz = DB_GET_DATETIMETZ (value1);
+
+	  er_status = tz_utc_datetimetz_to_local (&p_dt_tz->datetime,
+						  &p_dt_tz->tz_id, &local_dt);
+
+	  if (er_status != NO_ERROR)
+	    {
+	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS)
+		  == true)
+		{
+		  er_clear ();
+		  DB_MAKE_NULL (result);
+		  er_status = NO_ERROR;
+		}
+	      goto end;
+	    }
+
+	  date = local_dt.date;
+	}
+      else if (type1 == DB_TYPE_TIMESTAMPTZ)
+	{
+	  DB_TIMESTAMPTZ *p_ts_tz;
+
+	  p_ts_tz = db_get_timestamptz (value1);
+	  er_status = db_timestamp_decode_w_tz_id (&p_ts_tz->timestamp,
+						   &p_ts_tz->tz_id, &date,
+						   NULL);
+	  if (er_status != NO_ERROR)
+	    {
+	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS)
+		  == true)
+		{
+		  er_clear ();
+		  DB_MAKE_NULL (result);
+		  er_status = NO_ERROR;
+		}
+	      goto end;
+	    }
+	}
+      else
+	{
+	  assert (type1 == DB_TYPE_TIMESTAMP
+		  || type1 == DB_TYPE_TIMESTAMPLTZ);
+	  (void) db_timestamp_decode_ses (DB_GET_TIMESTAMP (value1), &date,
+					  NULL);
 	}
 
       er_status = truncate_date (&date, value2);
@@ -4808,6 +4930,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
       break;
 
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
       /* double can hold datetime type */
       d1 = ((double) DB_GET_DATETIME (value1)->date)
 	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value1)->time;
@@ -4817,16 +4940,41 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value3)->time;
       break;
 
+    case DB_TYPE_DATETIMETZ:
+      /* double can hold datetime type */
+      d1 = ((double) DB_GET_DATETIMETZ (value1)->datetime.date)
+	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIMETZ (value1)->datetime.time;
+      d2 = ((double) DB_GET_DATETIMETZ (value2)->datetime.date)
+	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIMETZ (value2)->datetime.time;
+      d3 = ((double) DB_GET_DATETIMETZ (value3)->datetime.date)
+	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIMETZ (value3)->datetime.time;
+      break;
+
     case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
       d1 = (double) *DB_GET_TIMESTAMP (value1);
       d2 = (double) *DB_GET_TIMESTAMP (value2);
       d3 = (double) *DB_GET_TIMESTAMP (value3);
       break;
 
+    case DB_TYPE_TIMESTAMPTZ:
+      d1 = (double) (DB_GET_TIMESTAMPTZ (value1)->timestamp);
+      d2 = (double) (DB_GET_TIMESTAMPTZ (value2)->timestamp);
+      d3 = (double) (DB_GET_TIMESTAMPTZ (value3)->timestamp);
+      break;
+
+
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
       d1 = (double) *DB_GET_TIME (value1);
       d2 = (double) *DB_GET_TIME (value2);
       d3 = (double) *DB_GET_TIME (value3);
+      break;
+
+    case DB_TYPE_TIMETZ:
+      d1 = (double) (DB_GET_TIMETZ (value1)->time);
+      d2 = (double) (DB_GET_TIMETZ (value2)->time);
+      d3 = (double) (DB_GET_TIMETZ (value3)->time);
       break;
 
     case DB_TYPE_SHORT:

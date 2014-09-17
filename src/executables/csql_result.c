@@ -45,8 +45,15 @@
 #define	MAX_FLOAT_DISPLAY_LENGTH	  (FLT_DIG + 7)
 #define	MAX_DOUBLE_DISPLAY_LENGTH	  (DBL_DIG + 9)
 #define	MAX_TIME_DISPLAY_LENGTH		  11
+#define MAX_TIMEZONE_DISPLAY_LENGTH	  18
+#define	MAX_TIMETZ_DISPLAY_LENGTH  \
+  (MAX_TIME_DISPLAY_LENGTH + MAX_TIMEZONE_DISPLAY_LENGTH)
 #define	MAX_UTIME_DISPLAY_LENGTH	  25
+#define	MAX_TIMESTAMPTZ_DISPLAY_LENGTH  \
+  (MAX_UTIME_DISPLAY_LENGTH + MAX_TIMEZONE_DISPLAY_LENGTH)
 #define MAX_DATETIME_DISPLAY_LENGTH       29
+#define MAX_DATETIMETZ_DISPLAY_LENGTH  \
+  (MAX_DATETIME_DISPLAY_LENGTH + MAX_TIMEZONE_DISPLAY_LENGTH)
 #define	MAX_DATE_DISPLAY_LENGTH		  10
 #define	MAX_MONETARY_DISPLAY_LENGTH	  20
 #define	MAX_DEFAULT_DISPLAY_LENGTH	  20
@@ -130,6 +137,7 @@ static CSQL_CMD_STRING_TABLE csql_Cmd_string_table[] = {
   {CUBRID_STMT_DO, "DO"},
   {CUBRID_STMT_SET_NAMES, "SET NAMES"},
   {CUBRID_STMT_VACUUM, "VACUUM"},
+  {CUBRID_STMT_SET_TIMEZONE, "SET TIMEZONE"}
 };
 
 static const char *csql_Isolation_level_string[] = {
@@ -313,13 +321,28 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
 	  attr_lengths[i] =
 	    -MAX (MAX_TIME_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
+	case DB_TYPE_TIMETZ:
+	case DB_TYPE_TIMELTZ:
+	  attr_lengths[i] =
+	    -MAX (MAX_TIMETZ_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  break;
 	case DB_TYPE_UTIME:
 	  attr_lengths[i] =
 	    -MAX (MAX_UTIME_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	case DB_TYPE_TIMESTAMPLTZ:
+	  attr_lengths[i] =
+	    -MAX (MAX_TIMESTAMPTZ_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  break;
 	case DB_TYPE_DATETIME:
 	  attr_lengths[i] =
 	    -MAX (MAX_DATETIME_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	case DB_TYPE_DATETIMELTZ:
+	  attr_lengths[i] =
+	    -MAX (MAX_DATETIMETZ_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_DATE:
 	  attr_lengths[i] =

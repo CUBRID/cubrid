@@ -331,7 +331,8 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
   net_buf_cp_str (net_buf, msg_buf, strlen (msg_buf));
 #endif
 
-  err_msg_len = net_error_append_shard_info (err_msg, err_str, ERR_MSG_LENGTH);
+  err_msg_len =
+    net_error_append_shard_info (err_msg, err_str, ERR_MSG_LENGTH);
   if (err_msg_len == 0)
     {
       net_buf_cp_byte (net_buf, '\0');
@@ -591,6 +592,22 @@ net_arg_get_time (short *hh, short *mm, short *ss, void *arg)
 }
 
 void
+net_arg_get_timetz (short *hh, short *mm, short *ss, char **tz, int *tz_size,
+		    void *arg)
+{
+  int tmp_i;
+  char *cur_p = (char *) arg;
+
+  net_arg_get_time (hh, mm, ss, arg);
+
+  memcpy (&tmp_i, cur_p, NET_SIZE_INT);
+  *tz_size = ntohl (tmp_i) - NET_SIZE_TIME;
+  cur_p += NET_SIZE_INT + NET_SIZE_TIME;
+
+  *tz = cur_p;
+}
+
+void
 net_arg_get_timestamp (short *yr, short *mon, short *day, short *hh,
 		       short *mm, short *ss, void *arg)
 {
@@ -615,6 +632,23 @@ net_arg_get_timestamp (short *yr, short *mon, short *day, short *hh,
   memcpy (&tmp_s, cur_p, NET_SIZE_SHORT);
   *ss = ntohs (tmp_s);
   cur_p += NET_SIZE_SHORT;
+}
+
+void
+net_arg_get_timestamptz (short *yr, short *mon, short *day, short *hh,
+			 short *mm, short *ss, char **tz, int *tz_size,
+			 void *arg)
+{
+  int tmp_i;
+  char *cur_p = (char *) arg;
+
+  net_arg_get_timestamp (yr, mon, day, hh, mm, ss, arg);
+
+  memcpy (&tmp_i, cur_p, NET_SIZE_INT);
+  *tz_size = ntohl (tmp_i) - NET_SIZE_TIMESTAMP;
+  cur_p += NET_SIZE_INT + NET_SIZE_TIMESTAMP;
+
+  *tz = cur_p;
 }
 
 void
@@ -645,6 +679,23 @@ net_arg_get_datetime (short *yr, short *mon, short *day, short *hh, short *mm,
   memcpy (&tmp_s, cur_p, NET_SIZE_SHORT);
   *ms = ntohs (tmp_s);
   cur_p += NET_SIZE_SHORT;
+}
+
+void
+net_arg_get_datetimetz (short *yr, short *mon, short *day, short *hh,
+			short *mm, short *ss, short *ms, char **tz,
+			int *tz_size, void *arg)
+{
+  int tmp_i;
+  char *cur_p = (char *) arg;
+
+  net_arg_get_datetime (yr, mon, day, hh, mm, ss, ms, arg);
+
+  memcpy (&tmp_i, cur_p, NET_SIZE_INT);
+  *tz_size = ntohl (tmp_i) - NET_SIZE_DATETIME;
+  cur_p += NET_SIZE_INT + NET_SIZE_DATETIME;
+
+  *tz = cur_p;
 }
 
 void
@@ -781,32 +832,32 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
   if (cas_shard_flag == ON)
     {
       if (err_msg == NULL)
-        {
-          snprintf (err_buf, buf_size, "[SHARD/CAS ID-%d,%d]",
-                    shm_shard_id, shm_shard_cas_id + 1);
-        }
+	{
+	  snprintf (err_buf, buf_size, "[SHARD/CAS ID-%d,%d]",
+		    shm_shard_id, shm_shard_cas_id + 1);
+	}
       else if (strlen (err_msg) + MAX_SHARD_INFO_LENGTH >= buf_size)
-        {
-          snprintf (err_buf, buf_size, "%s", err_msg);
-        }
+	{
+	  snprintf (err_buf, buf_size, "%s", err_msg);
+	}
       else
-        {
-          snprintf (err_buf, buf_size, "%s [SHARD/CAS ID-%d,%d]",
-                    err_msg, shm_shard_id, shm_shard_cas_id + 1);
-        }
+	{
+	  snprintf (err_buf, buf_size, "%s [SHARD/CAS ID-%d,%d]",
+		    err_msg, shm_shard_id, shm_shard_cas_id + 1);
+	}
     }
   else
 #endif /* !LIBCAS_FOR_JSP && !CUB_PROXY */
     {
       if (err_msg == NULL)
-        {
-          err_buf[0] = '\0';
-          return 0;
-        }
+	{
+	  err_buf[0] = '\0';
+	  return 0;
+	}
       else
-        {
-          strncpy (err_buf, err_msg, buf_size - 1);
-        }
+	{
+	  strncpy (err_buf, err_msg, buf_size - 1);
+	}
     }
 
   return strlen (err_buf);

@@ -7403,8 +7403,14 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
     case PT_TYPE_DOUBLE:
     case PT_TYPE_DATE:
     case PT_TYPE_TIME:
+    case PT_TYPE_TIMETZ:
+    case PT_TYPE_TIMELTZ:
     case PT_TYPE_TIMESTAMP:
+    case PT_TYPE_TIMESTAMPTZ:
+    case PT_TYPE_TIMESTAMPLTZ:
     case PT_TYPE_DATETIME:
+    case PT_TYPE_DATETIMETZ:
+    case PT_TYPE_DATETIMELTZ:
     case PT_TYPE_MONETARY:
     case PT_TYPE_BLOB:
     case PT_TYPE_CLOB:
@@ -7936,7 +7942,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_DEFINE_VARIABLE
 		  || node->info.expr.op == PT_CHR
 		  || node->info.expr.op == PT_CLOB_TO_CHAR
-		  || node->info.expr.op == PT_INDEX_PREFIX)
+		  || node->info.expr.op == PT_INDEX_PREFIX
+		  || node->info.expr.op == PT_FROM_TZ)
 		{
 		  r1 = pt_to_regu_variable (parser,
 					    node->info.expr.arg1, unbox);
@@ -8104,7 +8111,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_COLLATION
 		       || node->info.expr.op == PT_TO_BASE64
 		       || node->info.expr.op == PT_FROM_BASE64
-		       || node->info.expr.op == PT_SLEEP)
+		       || node->info.expr.op == PT_FROM_BASE64
+		       || node->info.expr.op == PT_SLEEP
+		       || node->info.expr.op == PT_TZ_OFFSET)
 		{
 		  r1 = NULL;
 
@@ -8249,7 +8258,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_MID
 		       || node->info.expr.op == PT_SUBSTRING_INDEX
 		       || node->info.expr.op == PT_MAKETIME
-		       || node->info.expr.op == PT_INDEX_CARDINALITY)
+		       || node->info.expr.op == PT_INDEX_CARDINALITY
+		       || node->info.expr.op == PT_NEW_TIME)
 		{
 		  r1 = pt_to_regu_variable (parser,
 					    node->info.expr.arg1, unbox);
@@ -8313,7 +8323,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_TO_DATE
 		       || node->info.expr.op == PT_TO_TIME
 		       || node->info.expr.op == PT_TO_TIMESTAMP
-		       || node->info.expr.op == PT_TO_DATETIME)
+		       || node->info.expr.op == PT_TO_DATETIME
+		       || node->info.expr.op == PT_TO_DATETIME_TZ
+		       || node->info.expr.op == PT_TO_TIMESTAMP_TZ
+		       || node->info.expr.op == PT_TO_TIME_TZ)
 		{
 		  r1 = pt_to_regu_variable (parser,
 					    node->info.expr.arg1, unbox);
@@ -8333,7 +8346,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_ROW_COUNT
 		       || node->info.expr.op == PT_LIST_DBS
 		       || node->info.expr.op == PT_SYS_GUID
-		       || node->info.expr.op == PT_LAST_INSERT_ID)
+		       || node->info.expr.op == PT_LAST_INSERT_ID
+		       || node->info.expr.op == PT_DBTIMEZONE
+		       || node->info.expr.op == PT_SESSIONTIMEZONE
+		       || node->info.expr.op == PT_UTC_TIMESTAMP)
 		{
 		  domain = pt_xasl_node_to_domain (parser, node);
 		  if (domain == NULL)
@@ -8673,8 +8689,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, r3, T_MAKETIME, domain);
 		  break;
 
+		case PT_NEW_TIME:
+		  regu = pt_make_regu_arith (r1, r2, r3, T_NEW_TIME, domain);
+		  break;
+
 		case PT_ADDTIME:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_ADDTIME, domain);
+		  break;
+
+		case PT_FROM_TZ:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_FROM_TZ, domain);
 		  break;
 
 		case PT_WEEKF:
@@ -9258,6 +9282,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 					     T_UTC_DATE, domain);
 		  break;
 
+		case PT_DBTIMEZONE:
+		  regu = pt_make_regu_arith (NULL, NULL, NULL,
+					     T_DBTIMEZONE, domain);
+		  break;
+
+		case PT_SESSIONTIMEZONE:
+		  regu = pt_make_regu_arith (NULL, NULL, NULL,
+					     T_SESSIONTIMEZONE, domain);
+		  break;
+
 		case PT_LOCAL_TRANSACTION_ID:
 		  regu = pt_make_regu_arith (NULL, NULL, NULL,
 					     T_LOCAL_TRANSACTION_ID, domain);
@@ -9807,6 +9841,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    pt_make_regu_arith (r1, r2, r3, T_WIDTH_BUCKET, domain);
 		  break;
 
+		case PT_TZ_OFFSET:
+		  regu =
+		    pt_make_regu_arith (r1, r2, NULL, T_TZ_OFFSET, domain);
+		  break;
+
 		case PT_TRACE_STATS:
 		  regu =
 		    pt_make_regu_arith (r1, r2, r3, T_TRACE_STATS, domain);
@@ -9819,6 +9858,39 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_SLEEP:
 		  regu = pt_make_regu_arith (r1, r2, r3, T_SLEEP, domain);
+		  break;
+
+		case PT_TO_DATETIME_TZ:
+		  data_type =
+		    pt_make_prim_data_type (parser, PT_TYPE_DATETIMETZ);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		  regu = pt_make_regu_arith (r1, r2, r3, T_TO_DATETIME_TZ,
+					     domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_TO_TIMESTAMP_TZ:
+		  data_type =
+		    pt_make_prim_data_type (parser, PT_TYPE_TIMESTAMPTZ);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		  regu = pt_make_regu_arith (r1, r2, r3, T_TO_TIMESTAMP_TZ,
+					     domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_TO_TIME_TZ:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_TIMETZ);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		  regu =
+		    pt_make_regu_arith (r1, r2, r3, T_TO_TIME_TZ, domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+		case PT_UTC_TIMESTAMP:
+		  regu = pt_make_regu_arith (NULL, NULL, NULL,
+					     T_UTC_TIMESTAMP, domain);
 		  break;
 
 		default:
@@ -25352,6 +25424,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_INET_NTOA:
 	case T_TO_BASE64:
 	case T_FROM_BASE64:
+	case T_TZ_OFFSET:
 	  break;
 	default:
 	  return true;

@@ -398,12 +398,36 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	  fprintf (file_p, "DB_TYPE_TIME\n");
 	  break;
 
+	case DB_TYPE_TIMELTZ:
+	  fprintf (file_p, "DB_TYPE_TIMELTZ\n");
+	  break;
+
+	case DB_TYPE_TIMETZ:
+	  fprintf (file_p, "DB_TYPE_TIMETZ\n");
+	  break;
+
 	case DB_TYPE_UTIME:
 	  fprintf (file_p, "DB_TYPE_UTIME\n");
 	  break;
 
+	case DB_TYPE_TIMESTAMPLTZ:
+	  fprintf (file_p, "DB_TYPE_TIMESTAMPLTZ\n");
+	  break;
+
+	case DB_TYPE_TIMESTAMPTZ:
+	  fprintf (file_p, "DB_TYPE_TIMESTAMPTZ\n");
+	  break;
+
 	case DB_TYPE_DATETIME:
 	  fprintf (file_p, "DB_TYPE_DATETIME\n");
+	  break;
+
+	case DB_TYPE_DATETIMELTZ:
+	  fprintf (file_p, "DB_TYPE_DATETIMELTZ\n");
+	  break;
+
+	case DB_TYPE_DATETIMETZ:
+	  fprintf (file_p, "DB_TYPE_DATETIMETZ\n");
 	  break;
 
 	case DB_TYPE_MONETARY:

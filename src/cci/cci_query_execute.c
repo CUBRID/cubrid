@@ -128,6 +128,14 @@
 	  }					\
 	} while (0)
 
+#define ALLOC_COPY_DATE_TZ(PTR, VALUE)		\
+	do {					\
+	  PTR = MALLOC(sizeof(T_CCI_DATE_TZ));	\
+	  if (PTR != NULL) {			\
+	    *((T_CCI_DATE_TZ*) (PTR)) = VALUE;	\
+	  }					\
+	} while (0)
+
 #define ALLOC_COPY_OBJECT(PTR, VALUE)		\
 	do {					\
 	  PTR = MALLOC(sizeof(T_OBJECT));	\
@@ -2198,6 +2206,11 @@ qe_oid_put2 (T_CON_HANDLE * con_handle, char *oid_str, char **attr_name,
 	      u_type = CCI_U_TYPE_DATETIME;
 	      value = new_val[i];
 	      break;
+	    case CCI_A_TYPE_DATE_TZ:
+	      u_type = CCI_U_TYPE_DATETIMETZ;
+	      value = new_val[i];
+	      data_size = NET_SIZE_DATETIME + NET_SIZE_TZ (value);
+	      break;
 	    case CCI_A_TYPE_SET:
 	      err_code = bind_value_conversion (CCI_A_TYPE_SET,
 						CCI_U_TYPE_SEQUENCE,
@@ -3478,6 +3491,22 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
 	ut_date_to_str (&data, u_type, (char *) conv_val_buf->data, 128);
       }
       break;
+    case CCI_U_TYPE_TIMETZ:
+    case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_DATETIMETZ:
+      {
+	T_CCI_DATE_TZ data_tz;
+
+	qe_get_data_date_tz (u_type, col_value_p, &data_tz);
+
+	if (hm_conv_value_buf_alloc (conv_val_buf, 128) < 0)
+	  {
+	    return CCI_ER_NO_MORE_MEMORY;
+	  }
+	ut_date_tz_to_str (&data_tz, u_type, (char *) conv_val_buf->data,
+			   128);
+      }
+      break;
     case CCI_U_TYPE_SET:
     case CCI_U_TYPE_MULTISET:
     case CCI_U_TYPE_SEQUENCE:
@@ -4016,6 +4045,32 @@ qe_get_data_date (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
     }
 
   *((T_CCI_DATE *) value) = data;
+  return 0;
+}
+
+int
+qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
+{
+  T_CCI_DATE_TZ data;
+
+  memset ((char *) &data, 0, sizeof (data));
+
+  switch (u_type)
+    {
+    case CCI_U_TYPE_TIMETZ:
+      NET_STR_TO_TIMETZ (data, col_value_p);
+      break;
+    case CCI_U_TYPE_TIMESTAMPTZ:
+      NET_STR_TO_TIMESTAMPTZ (data, col_value_p);
+      break;
+    case CCI_U_TYPE_DATETIMETZ:
+      NET_STR_TO_DATETIMETZ (data, col_value_p);
+      break;
+    default:
+      return CCI_ER_TYPE_CONVERSION;
+    }
+
+  *((T_CCI_DATE_TZ *) value) = data;
   return 0;
 }
 
@@ -5966,6 +6021,25 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	    bind_value->flag = BIND_PTR_DYNAMIC;
 	  }
 	  break;
+	case CCI_U_TYPE_TIMETZ:
+	  {
+	    T_CCI_DATE_TZ date_tz = { 0, 0, 0, 0, 0, 0, 0, "" };
+	    err_code = ut_str_to_timetz ((char *) value,
+					 (T_CCI_DATE *) & date_tz);
+	    if (err_code < 0)
+	      {
+		return err_code;
+	      }
+
+	    ALLOC_COPY_DATE_TZ (bind_value->value, date_tz);
+	    if (bind_value->value == NULL)
+	      {
+		return CCI_ER_NO_MORE_MEMORY;
+	      }
+	    bind_value->size = sizeof (T_CCI_DATE) + strlen (date_tz.tz);
+	    bind_value->flag = BIND_PTR_DYNAMIC;
+	  }
+	  break;
 	case CCI_U_TYPE_TIMESTAMP:
 	  {
 	    T_CCI_DATE date = { 0, 0, 0, 0, 0, 0, 0 };
@@ -5979,6 +6053,26 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	    bind_value->flag = BIND_PTR_DYNAMIC;
 	  }
 	  break;
+	case CCI_U_TYPE_TIMESTAMPTZ:
+	  {
+	    const char *p_tz = NULL;
+	    T_CCI_DATE_TZ date_tz = { 0, 0, 0, 0, 0, 0, 0, "" };
+	    err_code = ut_str_to_timestamp ((char *) value,
+					    (T_CCI_DATE *) & date_tz);
+	    if (err_code < 0)
+	      {
+		return err_code;
+	      }
+
+	    ALLOC_COPY_DATE_TZ (bind_value->value, date_tz);
+	    if (bind_value->value == NULL)
+	      {
+		return CCI_ER_NO_MORE_MEMORY;
+	      }
+	    bind_value->size = sizeof (T_CCI_DATE) + strlen (date_tz.tz);
+	    bind_value->flag = BIND_PTR_DYNAMIC;
+	  }
+	  break;
 	case CCI_U_TYPE_DATETIME:
 	  {
 	    T_CCI_DATE date = { 0, 0, 0, 0, 0, 0, 0 };
@@ -5989,6 +6083,24 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	    if (bind_value->value == NULL)
 	      return CCI_ER_NO_MORE_MEMORY;
 	    bind_value->size = sizeof (T_CCI_DATE);
+	    bind_value->flag = BIND_PTR_DYNAMIC;
+	  }
+	  break;
+	case CCI_U_TYPE_DATETIMETZ:
+	  {
+	    T_CCI_DATE_TZ date_tz = { 0, 0, 0, 0, 0, 0, 0, "" };
+	    err_code = ut_str_to_datetimetz ((char *) value, &date_tz);
+	    if (err_code < 0)
+	      {
+		return err_code;
+	      }
+
+	    ALLOC_COPY_DATE_TZ (bind_value->value, date_tz);
+	    if (bind_value->value == NULL)
+	      {
+		return CCI_ER_NO_MORE_MEMORY;
+	      }
+	    bind_value->size = sizeof (T_CCI_DATE) + strlen (date_tz.tz);
 	    bind_value->flag = BIND_PTR_DYNAMIC;
 	  }
 	  break;
@@ -6523,6 +6635,28 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	  return CCI_ER_TYPE_CONVERSION;
 	}
     }
+  else if (a_type == CCI_A_TYPE_DATE_TZ)
+    {
+      switch (u_type)
+	{
+	case CCI_U_TYPE_TIMETZ:
+	case CCI_U_TYPE_TIMESTAMPTZ:
+	case CCI_U_TYPE_DATETIMETZ:
+	  {
+	    ALLOC_COPY_DATE_TZ (bind_value->value,
+				*((T_CCI_DATE_TZ *) value));
+	    if (bind_value->value == NULL)
+	      {
+		return CCI_ER_NO_MORE_MEMORY;
+	      }
+	    bind_value->size = sizeof (T_CCI_DATE) + NET_SIZE_TZ (value);
+	    bind_value->flag = BIND_PTR_DYNAMIC;
+	  }
+	  break;
+	default:
+	  return CCI_ER_TYPE_CONVERSION;
+	}
+    }
   else if (a_type == CCI_A_TYPE_BLOB || a_type == CCI_A_TYPE_CLOB)
     {
       switch (u_type)
@@ -6588,6 +6722,15 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
       break;
     case CCI_U_TYPE_OBJECT:
       bind_value->size = NET_SIZE_OBJECT;
+      break;
+    case CCI_U_TYPE_TIMETZ:
+      bind_value->size = NET_SIZE_TIME + NET_SIZE_TZ (bind_value->value);
+      break;
+    case CCI_U_TYPE_TIMESTAMPTZ:
+      bind_value->size = NET_SIZE_TIMESTAMP + NET_SIZE_TZ (bind_value->value);
+      break;
+    case CCI_U_TYPE_DATETIMETZ:
+      bind_value->size = NET_SIZE_DATETIME + NET_SIZE_TZ (bind_value->value);
       break;
     default:
       break;
@@ -6733,6 +6876,26 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, char u_type, void *value,
 	  ADD_ARG_DATETIME (net_buf, value);
 	}
       break;
+      break;
+    case CCI_U_TYPE_TIMETZ:
+    case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_DATETIMETZ:
+      if (value == NULL)
+	{
+	  T_CCI_DATE_TZ default_value;
+	  default_value.yr = 1970;
+	  default_value.mon = 1;
+	  default_value.day = 1;
+	  default_value.hh = 0;
+	  default_value.mm = 0;
+	  default_value.ss = 0;
+	  default_value.tz[0] = '\0';
+	  ADD_ARG_DATETIMETZ (net_buf, &default_value);
+	}
+      else
+	{
+	  ADD_ARG_DATETIMETZ (net_buf, value);
+	}
     case CCI_U_TYPE_OBJECT:
       if (value == NULL)
 	{

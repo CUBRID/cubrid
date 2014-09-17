@@ -82,6 +82,7 @@
 #include "session.h"
 #endif
 #include "vacuum.h"
+#include "tz_support.h"
 
 
 #define ER_LOG_FILE_DIR	"server"
@@ -585,6 +586,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_LOG_BTREE_OPS "log_btree_operations"
 
 #define PRM_NAME_OBJECT_PRINT_FORMAT_OID "print_object_as_oid"
+
+#define PRM_NAME_TIMEZONE "timezone"
+#define PRM_NAME_SERVER_TIMEZONE "server_timezone"
+#define PRM_NAME_TZ_LEAP_SECOND_SUPPORT "tz_leap_second_support"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1944,6 +1949,18 @@ bool PRM_OBJECT_PRINT_FORMAT_OID = false;
 static bool prm_object_print_format_oid_default = false;
 static unsigned int prm_object_print_format_oid_flag = 0;
 
+char *PRM_TIMEZONE = NULL;
+static char *prm_timezone_default = NULL;
+static unsigned int prm_timezone_flag = 0;
+
+char *PRM_SERVER_TIMEZONE = NULL;
+static char *prm_server_timezone_default = NULL;
+static unsigned int prm_server_timezone_flag = 0;
+
+bool prm_tz_leap_second_support_default = false;
+bool PRM_TZ_LEAP_SECOND_SUPPORT = false;
+static unsigned int prm_leap_second_support_flag = 0;
+
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
 			     SYSPRM_DATATYPE);
 
@@ -1969,6 +1986,11 @@ static int prm_min_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
 
 static int prm_equal_to_ori (void *out_val, SYSPRM_DATATYPE out_type,
 			     void *in_val, SYSPRM_DATATYPE in_type);
+#if defined(SERVER_MODE)
+static void update_session_state_from_sys_params (THREAD_ENTRY * thread_p,
+						  SESSION_PARAM *
+						  session_params);
+#endif
 
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
@@ -4661,6 +4683,37 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_TIMEZONE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE
+    | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
+   PRM_STRING,
+   (void *) &prm_timezone_flag,
+   (void *) &prm_timezone_default,
+   (void *) &PRM_TIMEZONE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_SERVER_TIMEZONE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   PRM_STRING,
+   (void *) &prm_server_timezone_flag,
+   (void *) &prm_server_timezone_default,
+   (void *) &PRM_SERVER_TIMEZONE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_TZ_LEAP_SECOND_SUPPORT,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   PRM_BOOLEAN,
+   (void *) &prm_leap_second_support_flag,
+   (void *) &prm_tz_leap_second_support_default,
+   (void *) &PRM_TZ_LEAP_SECOND_SUPPORT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };
 
@@ -4690,7 +4743,7 @@ static int num_session_parameters = 0;
 /*
  * Session parameters should be cached with the default values or the values
  * loaded from cubrid.conf file. When a new client connects to CAS, it should
- * reload these paremeters (because some may be changed by previous clients)
+ * reload these parameters (because some may be changed by previous clients)
  */
 SESSION_PARAM *cached_session_parameters = NULL;
 #endif /* CS_MODE */
@@ -5047,6 +5100,10 @@ static SYSPRM_ERR sysprm_set_session_parameter_default (SESSION_PARAM *
 static void sysprm_update_cached_session_param_val (const PARAM_ID prm_id);
 #endif
 
+#if defined (SA_MODE) || defined (SERVER_MODE)
+static void init_server_timezone_parameter (void);
+#endif
+
 /* conf files that have been loaded */
 #define MAX_NUM_OF_PRM_FILES_LOADED	10
 static struct
@@ -5337,6 +5394,10 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 	}
     }
 
+#if defined (SA_MODE) || defined (SERVER_MODE)
+  init_server_timezone_parameter ();
+#endif
+
   /*
    * Perform system parameter check and tuning.
    */
@@ -5524,6 +5585,16 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
   const char *sec_p;
   const char *key, *value;
   SYSPRM_PARAM *prm;
+  bool on_server = false;
+  bool on_client = false;
+
+#if defined(SERVER_MODE)
+  on_server = true;
+#endif
+
+#if defined(CS_MODE)
+  on_client = true;
+#endif
 
   sec_p = (ignore_section) ? NULL : section;
 
@@ -5627,6 +5698,43 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 	  prm_log_isolation_level_default =
 	    prm_mvcc_log_isolation_level_default;
 	  prm_log_isolation_level_lower = prm_mvcc_log_isolation_level_lower;
+	}
+
+      if ((strcmp (prm->name, PRM_NAME_SERVER_TIMEZONE) == 0 && on_client) ||
+	  (strcmp (prm->name, PRM_NAME_TIMEZONE) == 0 && on_server))
+	{
+	  continue;
+	}
+
+      if ((on_server || on_client)
+	  && (strcmp (prm->name, PRM_NAME_SERVER_TIMEZONE) == 0
+	      || strcmp (prm->name, PRM_NAME_TIMEZONE) == 0))
+	{
+	  int er_status = NO_ERROR;
+
+	  if (value != NULL)
+	    {
+	      /* TZ module should already be initialized, call this just to
+	       * make sure */
+	      if (tz_load (false) != NO_ERROR)
+		{
+		  return PRM_ERR_BAD_VALUE;
+		}
+#if !defined(SERVER_MODE)
+	      er_status =
+		tz_str_to_region (value, strlen (value),
+				  tz_get_client_tz_region_session ());
+#else
+	      er_status = tz_str_to_region (value, strlen (value), NULL);
+#endif
+	      if (er_status != NO_ERROR)
+		{
+		  error = PRM_ERR_BAD_VALUE;
+		  prm_report_bad_entry (key + sec_len, ini->lineno[i],
+					error, file);
+		  return error;
+		}
+	    }
 	}
 
       error = prm_set (prm, value, true);
@@ -6290,6 +6398,20 @@ sysprm_validate_change_parameters (const char *data, bool check,
 		  break;
 		}
 	    }
+	  if (strcmp (prm->name, PRM_NAME_TIMEZONE) == 0)
+	    {
+	      int er_status = NO_ERROR;
+
+	      if (value != NULL)
+		{
+		  er_status = tz_str_to_region (value, strlen (value), NULL);
+		  if (er_status != NO_ERROR)
+		    {
+		      err = PRM_ERR_BAD_VALUE;
+		      break;
+		    }
+		}
+	    }
 	}
 
       /* create a SYSPRM_CHANGE_VAL object */
@@ -6362,7 +6484,7 @@ sysprm_validate_change_parameters (const char *data, bool check,
  * return		 : SYSPRM_ERR
  * data (in)		 : string containing "parameter = value" assignments
  * default_val_buf(out)	 : string containing "parameter = def_value"
- *			   assignements created from data argument
+ *			   assignments created from data argument
  * buf_size(in)		 : size available in default_val_buf
  *
  */
@@ -8284,6 +8406,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
   if (PRM_IS_FOR_SESSION (prm->static_flag) && BO_IS_SERVER_RESTARTED ())
     {
       SESSION_PARAM *param;
+      TZ_REGION *session_tz_region;
 
       /* update session parameter */
       id = sysprm_get_id (prm);
@@ -8295,6 +8418,16 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
 	  return PRM_ERR_UNKNOWN_PARAM;
 	}
 
+      if (id == PRM_ID_TIMEZONE)
+	{
+	  session_tz_region = session_get_session_tz_region (thread_p);
+	  if (session_tz_region != NULL)
+	    {
+	      tz_str_to_region (value.str, strlen (value.str),
+				session_tz_region);
+	    }
+	}
+
       return sysprm_set_session_parameter_value (param, id, value);
     }
 
@@ -8304,6 +8437,14 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
 #endif /* SERVER_MODE */
 
   sysprm_set_system_parameter_value (prm, value);
+  /* Set the cached parsed session timezone region on the client */
+#if !defined(SERVER_MODE)
+  if (sysprm_get_id (prm) == PRM_ID_TIMEZONE)
+    {
+      tz_str_to_region (value.str, strlen (value.str),
+			tz_get_client_tz_region_session ());
+    }
+#endif
 
   if (PRM_IS_COMPOUND (prm->static_flag))
     {
@@ -8763,6 +8904,43 @@ sysprm_final (void)
     }
 }
 
+#if defined (SA_MODE) || defined (SERVER_MODE)
+static void
+init_server_timezone_parameter (void)
+{
+  SYSPRM_PARAM *prm_server_timezone;
+
+  prm_server_timezone = prm_find (PRM_NAME_SERVER_TIMEZONE, NULL);
+
+  if (prm_server_timezone != NULL
+      && !PRM_IS_SET (*prm_server_timezone->dynamic_flag))
+    {
+      char timezone_name[TZ_GENERIC_NAME_SIZE + 1];
+      int ret;
+
+      if (PRM_GET_STRING (prm_server_timezone->value))
+	{
+	  free_and_init (PRM_GET_STRING (prm_server_timezone->value));
+	}
+      PRM_CLEAR_BIT (PRM_ALLOCATED, *prm_server_timezone->dynamic_flag);
+
+      ret = tz_resolve_os_timezone (timezone_name, TZ_GENERIC_NAME_SIZE);
+      if (ret < 0)
+	{
+	  if (tz_get_data () != NULL)
+	    {
+	      strcpy (timezone_name, "Asia/Seoul");
+	    }
+	  else
+	    {
+	      /* IANA timezone data not available, just use offset timezone */
+	      strcpy (timezone_name, "+09:00");
+	    }
+	}
+      prm_set (prm_server_timezone, timezone_name, true);
+    }
+}
+#endif
 
 /*
  * prm_tune_parameters - Sets the values of various system parameters
@@ -10379,6 +10557,38 @@ sysprm_get_id (const SYSPRM_PARAM * prm)
 
 #if defined (SERVER_MODE)
 /*
+ * update_session_state_from_sys_params () - Updates the session state members
+ *                                           from session system parameters
+ *
+ * return		   : void
+ * thread_p (in)	   : thread entry
+ * session_params (in)     : pointer to session parameters vector
+ *			     
+ */
+static void
+update_session_state_from_sys_params (THREAD_ENTRY * thread_p,
+				      SESSION_PARAM * session_params)
+{
+  TZ_REGION *session_tz_region;
+  int i;
+
+  session_tz_region = session_get_session_tz_region (thread_p);
+  if (session_tz_region != NULL)
+    {
+      for (i = 0; i < NUM_SESSION_PRM; i++)
+	{
+	  if (session_params[i].prm_id == PRM_ID_TIMEZONE)
+	    {
+	      tz_str_to_region (session_params[i].value.str,
+				strlen (session_params[i].value.str),
+				session_tz_region);
+	      break;
+	    }
+	}
+    }
+}
+
+/*
  * sysprm_session_init_session_parameters () - adds array of session
  *					       parameters to session state and
  *					       connection entry.
@@ -10422,6 +10632,7 @@ sysprm_session_init_session_parameters (SESSION_PARAM **
 	{
 	  return error_code;
 	}
+      update_session_state_from_sys_params (thread_p, session_params);
     }
   else
     {
@@ -10935,16 +11146,20 @@ sysprm_print_parameters_for_ha_repl (void)
  *
  * return:
  */
-void
+int
 sysprm_init_intl_param (void)
 {
   SYSPRM_PARAM *prm_date_lang;
   SYSPRM_PARAM *prm_number_lang;
   SYSPRM_PARAM *prm_intl_collation;
+  SYSPRM_PARAM *prm_timezone;
+  char sys_prm_chg[LINE_MAX];
+  int error = NO_ERROR;
 
   prm_date_lang = prm_find (PRM_NAME_INTL_DATE_LANG, NULL);
   prm_number_lang = prm_find (PRM_NAME_INTL_NUMBER_LANG, NULL);
   prm_intl_collation = prm_find (PRM_NAME_INTL_COLLATION, NULL);
+  prm_timezone = prm_find (PRM_NAME_TIMEZONE, NULL);
 
   /* intl system parameters are session based and depend on system language;
    * The language is read from DB (and client from server), after the system
@@ -10985,6 +11200,20 @@ sysprm_init_intl_param (void)
       sysprm_update_cached_session_param_val (PRM_ID_INTL_COLLATION);
 #endif
     }
+
+  if (prm_timezone != NULL && !PRM_IS_SET (*prm_timezone->dynamic_flag))
+    {
+      prm_set (prm_timezone,
+	       prm_get_string_value (PRM_ID_SERVER_TIMEZONE), true);
+#if defined (CS_MODE)
+      sysprm_update_cached_session_param_val (PRM_ID_TIMEZONE);
+#endif
+      snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1, "timezone=%s",
+		prm_get_string_value (PRM_ID_SERVER_TIMEZONE));
+      error = db_set_system_parameters (sys_prm_chg);
+    }
+
+  return error;
 }
 #endif /* !SERVER_MODE */
 

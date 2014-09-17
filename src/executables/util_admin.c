@@ -731,6 +731,34 @@ static GETOPT_LONG ua_SyncCollDB_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_GenTz_Map[] = {
+  {GEN_TZ_INPUT_FOLDER_S, {ARG_STRING}, {0}},
+  {GEN_TZ_MODE_S, {ARG_STRING}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_GenTz_Option[] = {
+  {GEN_TZ_INPUT_FOLDER_L, 1, 0, GEN_TZ_INPUT_FOLDER_S},
+  {GEN_TZ_MODE_L, 1, 0, GEN_TZ_MODE_S},
+  {0, 0, 0, 0}
+};
+
+static UTIL_ARG_MAP ua_DumpTz_Map[] = {
+  {DUMP_TZ_COUNTRIES_S, {ARG_BOOLEAN}, {0}},
+  {DUMP_TZ_ZONES_S, {ARG_BOOLEAN}, {0}},
+  {DUMP_TZ_ZONE_ID_S, {ARG_STRING}, {0}},
+  {DUMP_TZ_LEAP_SEC_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_DumpTz_Option[] = {
+  {DUMP_TZ_COUNTRIES_L, 0, 0, DUMP_TZ_COUNTRIES_S},
+  {DUMP_TZ_ZONES_L, 0, 0, DUMP_TZ_ZONES_S},
+  {DUMP_TZ_ZONE_ID_L, 1, 0, DUMP_TZ_ZONE_ID_S},
+  {DUMP_TZ_LEAP_SEC_L, 0, 0, DUMP_TZ_LEAP_SEC_S},
+  {0, 0, 0, 0}
+};
+
 static UTIL_MAP ua_Utility_Map[] = {
   {CREATEDB, SA_ONLY, 2, UTIL_OPTION_CREATEDB, "createdb",
    ua_Create_Option, ua_Create_Option_Map},
@@ -800,6 +828,10 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_Tranlist_Option, ua_Tranlist_Option_Map},
   {PREFETCHLOGDB, CS_ONLY, 1, UTIL_OPTION_PREFETCHLOGDB, "prefetchlogdb",
    ua_Prefetchlogdb_Option, ua_Prefetchlogdb_Option_Map},
+  {GEN_TZ, SA_ONLY, 1, UTIL_OPTION_GEN_TZ, "gen_tz",
+   ua_GenTz_Option, ua_GenTz_Map},
+  {DUMP_TZ, SA_ONLY, 1, UTIL_OPTION_DUMP_TZ, "dump_tz",
+   ua_DumpTz_Option, ua_DumpTz_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 

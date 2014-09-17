@@ -101,6 +101,8 @@ EXPORTS
     db_datetime_decode
     db_datetime_encode
     db_datetime_to_string
+    db_datetimeltz_to_string
+    db_datetimetz_to_string
     db_disable_modification
     db_disable_trigger
     db_does_connected_host_have_status
@@ -161,6 +163,7 @@ EXPORTS
     db_get_database_name
     db_get_date
     db_get_datetime
+    db_get_datetimetz
     db_get_double
     db_get_enum_short
     db_get_enum_string
@@ -196,7 +199,9 @@ EXPORTS
     db_get_superclasses
     db_get_system_parameters
     db_get_time
+    db_get_timetz
     db_get_timestamp
+    db_get_timestamptz
     db_get_tran_settings
     db_get_type_name
     db_get_host_connected
@@ -218,6 +223,8 @@ EXPORTS
     db_make_bit
     db_make_date
     db_make_datetime
+    db_make_datetimeltz
+    db_make_datetimetz
     db_make_double
     db_make_float
     db_make_int
@@ -230,7 +237,11 @@ EXPORTS
     db_make_short
     db_make_string
     db_make_time
+    db_make_timeltz
+    db_make_timetz
     db_make_timestamp
+    db_make_timestampltz
+    db_make_timestamptz
     db_make_varchar
     db_marker_domain
     db_marker_next
@@ -335,9 +346,15 @@ EXPORTS
     db_time_decode
     db_time_encode
     db_time_to_string
-    db_timestamp_decode
+    db_timeltz_to_string
+    db_timetz_to_string
+    db_timestamp_decode_ses
+    db_timestamp_decode_w_tz_id
     db_timestamp_encode
+    db_timestamp_encode_ses
     db_timestamp_to_string
+    db_timestampltz_to_string
+    db_timestamptz_to_string
     db_trigger_action
     db_trigger_action_time
     db_trigger_action_type
@@ -441,6 +458,16 @@ EXPORTS
     ml_size
     sm_class_name
     tr_map_trigger
+    tz_get_session_tz_region
+    tz_id_to_str
+    tz_create_datetimetz
+    tz_create_session_tzid_for_datetime
+    tz_create_session_tzid_for_time
+    tz_create_session_tzid_for_timestamp
+    tz_create_timestamptz
+    tz_create_timetz
+    tz_utc_datetimetz_to_local
+    tz_utc_timetz_to_local
 ;
 ; utility functions
 ;

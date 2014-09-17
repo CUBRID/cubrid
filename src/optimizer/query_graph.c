@@ -3300,6 +3300,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_MAKEDATE:
     case PT_MAKETIME:
     case PT_ADDTIME:
+    case PT_NEW_TIME:
     case PT_WEEKF:
 
     case PT_SCHEMA:
@@ -3317,6 +3318,10 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_BIN:
     case PT_INET_ATON:
     case PT_INET_NTOA:
+    case PT_FROM_TZ:
+    case PT_DBTIMEZONE:
+    case PT_SESSIONTIMEZONE:
+    case PT_UTC_TIMESTAMP:
       return RANK_EXPR_LIGHT;
 
       /* Group 2 -- medium */
@@ -3407,7 +3412,11 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_DATEDIFF:
     case PT_TIMEDIFF:
     case PT_TO_ENUMERATION_VALUE:
+    case PT_TZ_OFFSET:
     case PT_INDEX_PREFIX:
+    case PT_TO_DATETIME_TZ:
+    case PT_TO_TIMESTAMP_TZ:
+    case PT_TO_TIME_TZ:
       return RANK_EXPR_MEDIUM;
 
       /* Group 3 -- heavy */
@@ -3896,6 +3905,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_TO_BASE64:
 	case PT_FROM_BASE64:
 	case PT_BIN:
+	case PT_TZ_OFFSET:
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_TRIM:
 	case PT_LTRIM:
@@ -3971,6 +3981,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_MAKEDATE:
 	case PT_ADDTIME:
 	case PT_WEEKF:
+	case PT_FROM_TZ:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && pt_is_pseudo_const (expr->info.
 					 expr.arg2)) ? true : false;
@@ -3983,6 +3994,8 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_LOCAL_TRANSACTION_ID:
 	case PT_CURRENT_USER:
 	case PT_EVALUATE_VARIABLE:
+	case PT_DBTIMEZONE:
+	case PT_UTC_TIMESTAMP:
 	  return true;
 	case PT_TO_CHAR:
 	case PT_TO_DATE:
@@ -3990,6 +4003,9 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_TO_TIMESTAMP:
 	case PT_TO_DATETIME:
 	case PT_TO_NUMBER:
+	case PT_TO_DATETIME_TZ:
+	case PT_TO_TIMESTAMP_TZ:
+	case PT_TO_TIME_TZ:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && (expr->info.expr.arg2 ?
 		      pt_is_pseudo_const (expr->info.
@@ -4036,6 +4052,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_MID:
 	case PT_NVL2:
 	case PT_MAKETIME:
+	case PT_NEW_TIME:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && pt_is_pseudo_const (expr->info.expr.arg2)
 		  && pt_is_pseudo_const (expr->info.
@@ -5794,13 +5811,27 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
 		-1 : ((data1->date > data2->date) ? 1 : 0));
       break;
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
       result = ((data1->time < data2->time) ?
 		-1 : ((data1->time > data2->time) ? 1 : 0));
       break;
+    case DB_TYPE_TIMETZ:
+      result = ((data1->timetz.time < data2->timetz.time) ?
+		-1 : ((data1->timetz.time > data2->timetz.time) ? 1 : 0));
+      break;
+
+    case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_UTIME:
       result = ((data1->utime < data2->utime) ?
 		-1 : ((data1->utime > data2->utime) ? 1 : 0));
       break;
+    case DB_TYPE_TIMESTAMPTZ:
+      result =
+	((data1->timestamptz.timestamp < data2->timestamptz.timestamp) ?
+	 -1 : ((data1->timestamptz.timestamp > data2->timestamptz.timestamp)
+	       ? 1 : 0));
+      break;
+    case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_DATETIME:
       if (data1->datetime.date < data2->datetime.date)
 	{
@@ -5815,6 +5846,31 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
 	  result = -1;
 	}
       else if (data1->datetime.time > data2->datetime.time)
+	{
+	  result = 1;
+	}
+      else
+	{
+	  result = 0;
+	}
+      break;
+    case DB_TYPE_DATETIMETZ:
+      if (data1->datetimetz.datetime.date < data2->datetimetz.datetime.date)
+	{
+	  result = -1;
+	}
+      else if (data1->datetimetz.datetime.date
+	       > data2->datetimetz.datetime.date)
+	{
+	  result = 1;
+	}
+      else if (data1->datetimetz.datetime.time
+	       < data2->datetimetz.datetime.time)
+	{
+	  result = -1;
+	}
+      else if (data1->datetimetz.datetime.time
+	       > data2->datetimetz.datetime.time)
 	{
 	  result = 1;
 	}

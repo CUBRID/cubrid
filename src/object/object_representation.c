@@ -2205,6 +2205,52 @@ or_get_time (OR_BUF * buf, DB_TIME * timeval)
 }
 
 /*
+ * or_put_timetz - write a DB_TIMETZ to or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    time_tz(in): time value to write
+ */
+int
+or_put_timetz (OR_BUF * buf, DB_TIMETZ * time_tz)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if ((buf->ptr + OR_TIMETZ_SIZE) > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+  else
+    {
+      OR_PUT_TIMETZ (buf->ptr, time_tz);
+      buf->ptr += OR_TIMETZ_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * or_get_timetz - read a DB_TIMETZ from or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    time_tz(out): pointer to DB_TIME value
+ */
+int
+or_get_timetz (OR_BUF * buf, DB_TIMETZ * time_tz)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if ((buf->ptr + OR_TIMETZ_SIZE) > buf->endptr)
+    {
+      return or_underflow (buf);
+    }
+  else
+    {
+      OR_GET_TIMETZ (buf->ptr, time_tz);
+      buf->ptr += OR_TIMETZ_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
  * or_put_utime - write a timestamp value to or buffer
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
@@ -2246,6 +2292,52 @@ or_get_utime (OR_BUF * buf, DB_UTIME * timeval)
     {
       OR_GET_UTIME (buf->ptr, timeval);
       buf->ptr += OR_UTIME_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * or_put_timestamptz - write a timestamp with tz value to or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    ts_tz(in): pointer to DB_TIMESTAMPTZ value
+ */
+int
+or_put_timestamptz (OR_BUF * buf, DB_TIMESTAMPTZ * ts_tz)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if ((buf->ptr + OR_TIMESTAMPTZ_SIZE) > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+  else
+    {
+      OR_PUT_TIMESTAMPTZ (buf->ptr, ts_tz);
+      buf->ptr += OR_TIMESTAMPTZ_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * or_get_timestamptz - read a timestamp with tz value from or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    ts_tz(out): pointer to DB_TIMESTAMPTZ value
+ */
+int
+or_get_timestamptz (OR_BUF * buf, DB_TIMESTAMPTZ * ts_tz)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if ((buf->ptr + OR_TIMESTAMPTZ_SIZE) > buf->endptr)
+    {
+      return or_underflow (buf);
+    }
+  else
+    {
+      OR_GET_TIMESTAMPTZ (buf->ptr, ts_tz);
+      buf->ptr += OR_TIMESTAMPTZ_SIZE;
     }
   return NO_ERROR;
 }
@@ -2338,6 +2430,52 @@ or_get_datetime (OR_BUF * buf, DB_DATETIME * datetime)
     {
       OR_GET_DATETIME (buf->ptr, datetime);
       buf->ptr += OR_DATETIME_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * or_put_datetimetz - write a datetime with tz value to or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    datetimetz(in): pointer to DB_DATETIMETZ value
+ */
+int
+or_put_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if ((buf->ptr + OR_DATETIMETZ_SIZE) > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+  else
+    {
+      OR_PUT_DATETIMETZ (buf->ptr, datetimetz);
+      buf->ptr += OR_DATETIMETZ_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * or_get_datetimetz - read a datetime with tz value from or_buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    datetimetz(out): pointer to DB_DATETIMETZ value
+ */
+int
+or_get_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if ((buf->ptr + OR_DATETIMETZ_SIZE) > buf->endptr)
+    {
+      return or_underflow (buf);
+    }
+  else
+    {
+      OR_GET_DATETIMETZ (buf->ptr, datetimetz);
+      buf->ptr += OR_DATETIMETZ_SIZE;
     }
   return NO_ERROR;
 }
@@ -4822,8 +4960,14 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_DOUBLE:
 	    case DB_TYPE_DATE:
 	    case DB_TYPE_TIME:
+	    case DB_TYPE_TIMETZ:
+	    case DB_TYPE_TIMELTZ:
 	    case DB_TYPE_TIMESTAMP:
+	    case DB_TYPE_TIMESTAMPTZ:
+	    case DB_TYPE_TIMESTAMPLTZ:
 	    case DB_TYPE_DATETIME:
+	    case DB_TYPE_DATETIMETZ:
+	    case DB_TYPE_DATETIMELTZ:
 	    case DB_TYPE_MONETARY:
 	      precision = tp_get_fixed_precision (type);
 	      break;
@@ -5149,8 +5293,14 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_DOUBLE:
 	    case DB_TYPE_DATE:
 	    case DB_TYPE_TIME:
+	    case DB_TYPE_TIMETZ:
+	    case DB_TYPE_TIMELTZ:
 	    case DB_TYPE_TIMESTAMP:
+	    case DB_TYPE_TIMESTAMPTZ:
+	    case DB_TYPE_TIMESTAMPLTZ:
 	    case DB_TYPE_DATETIME:
+	    case DB_TYPE_DATETIMETZ:
+	    case DB_TYPE_DATETIMELTZ:
 	    case DB_TYPE_MONETARY:
 	      precision = tp_get_fixed_precision (type);
 

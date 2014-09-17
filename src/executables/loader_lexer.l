@@ -132,6 +132,16 @@ extern int loader_yyline;
     return TIME;
 }
 
+[Tt][Ii][Mm][Ee][tT][zZ] {
+    PRINT ("TIMETZ %s\n", yytext);
+    return TIMETZ;
+}
+
+[Tt][Ii][Mm][Ee][lL][tT][zZ] {
+    PRINT ("TIMELTZ %s\n", yytext);
+    return TIMELTZ;
+}
+
 [Uu][Tt][Ii][Mm][Ee] {
     PRINT ("UTIME %s\n", yytext);
     return UTIME;
@@ -142,9 +152,29 @@ extern int loader_yyline;
     return TIMESTAMP;
 }
 
+[Tt][Ii][Mm][Ee][Ss][Tt][Aa][Mm][Pp][lL][tT][zZ] {
+    PRINT ("TIMESTAMPLTZ %s\n", yytext);
+    return TIMESTAMPLTZ;
+}
+
+[Tt][Ii][Mm][Ee][Ss][Tt][Aa][Mm][Pp][tT][zZ] {
+    PRINT ("TIMESTAMPTZ %s\n", yytext);
+    return TIMESTAMPTZ;
+}
+
 [Dd][Aa][Tt][Ee][Tt][Ii][Mm][Ee] {
     PRINT ("DATETIME %s\n", yytext);
     return DATETIME;
+}
+
+[Dd][Aa][Tt][Ee][Tt][Ii][Mm][Ee][lL][tT][zZ] {
+    PRINT ("DATETIMELTZ %s\n", yytext);
+    return DATETIMELTZ;
+}
+
+[Dd][Aa][Tt][Ee][Tt][Ii][Mm][Ee][tT][zZ] {
+    PRINT ("DATETIMETZ %s\n", yytext);
+    return DATETIMETZ;
 }
 
 \%[Ii][Dd] {

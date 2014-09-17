@@ -369,6 +369,18 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
     {
       type = CCI_U_TYPE_DATETIME;
     }
+  else if (strcmp (p, "TIMETZ") == 0)
+    {
+      type = CCI_U_TYPE_TIMETZ;
+    }
+  else if (strcmp (p, "TIMESTAMPTZ") == 0)
+    {
+      type = CCI_U_TYPE_TIMESTAMPTZ;
+    }
+  else if (strcmp (p, "DATETIMETZ") == 0)
+    {
+      type = CCI_U_TYPE_DATETIMETZ;
+    }
   else if (strcmp (p, "OBJECT") == 0)
     {
       type = CCI_U_TYPE_OBJECT;

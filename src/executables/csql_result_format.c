@@ -278,7 +278,9 @@ static char *double_to_string (double double_value, int field_width,
 			       const char *trailing_str,
 			       bool leading_zeros, bool trailing_zeros,
 			       bool commas, char conversion);
+#if defined (ENABLED_UNUSED_FUNCTIONS)
 static char *time_as_string (DB_TIME * time_value, const char *conversion);
+#endif
 static char *date_as_string (DB_DATE * date_value, int format);
 static char *bigint_to_string (DB_BIGINT int_value, int field_width,
 			       bool leading_zeros, bool leading_symbol,
@@ -640,6 +642,7 @@ double_to_string (double double_value, int field_width,
     }
 }
 
+#if defined (ENABLED_UNUSED_FUNCTIONS)
 /*
  * time_as_string() - convert time value to string
  *   return: formatted string
@@ -664,6 +667,7 @@ time_as_string (DB_TIME * time_value, const char *conversion)
   return (duplicate_string (temp_string));
 
 }
+#endif
 
 /*
  * date_as_string() - convert date value to string
@@ -1469,12 +1473,48 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
 	}
       break;
     case DB_TYPE_TIME:
-      result = time_as_string (DB_GET_TIME (value),
-			       default_time_profile.format);
-      if (result)
-	{
-	  len = strlen (result);
-	}
+      {
+	char buf[TIME_BUF_SIZE];
+	if (db_time_to_string (buf, sizeof (buf), DB_GET_TIME (value)))
+	  {
+	    result = duplicate_string (buf);
+	  }
+	if (result)
+	  {
+	    len = strlen (result);
+	  }
+	break;
+      }
+    case DB_TYPE_TIMETZ:
+      {
+	char buf[TIMETZ_BUF_SIZE];
+	DB_TIMETZ *time_tz = DB_GET_TIMETZ (value);
+	if (db_timetz_to_string (buf, sizeof (buf), &(time_tz->time),
+				 &time_tz->tz_id))
+	  {
+	    result = duplicate_string (buf);
+	  }
+
+	if (result)
+	  {
+	    len = strlen (result);
+	  }
+      }
+      break;
+    case DB_TYPE_TIMELTZ:
+      {
+	char buf[TIMETZ_BUF_SIZE];
+
+	if (db_timeltz_to_string (buf, sizeof (buf), DB_GET_TIME (value)))
+	  {
+	    result = duplicate_string (buf);
+	  }
+
+	if (result)
+	  {
+	    len = strlen (result);
+	  }
+      }
       break;
     case DB_TYPE_MONETARY:
       {
@@ -1534,11 +1574,75 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
 	  }
       }
       break;
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	char buf[TIMESTAMPTZ_BUF_SIZE];
+	DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (value);
+	if (db_timestamptz_to_string (buf, sizeof (buf), &(ts_tz->timestamp),
+				      &(ts_tz->tz_id)))
+	  {
+	    result = duplicate_string (buf);
+	  }
+
+	if (result)
+	  {
+	    len = strlen (result);
+	  }
+      }
+      break;
+    case DB_TYPE_TIMESTAMPLTZ:
+      {
+	char buf[TIMESTAMPTZ_BUF_SIZE];
+
+	if (db_timestampltz_to_string (buf, sizeof (buf),
+				       DB_GET_UTIME (value)))
+	  {
+	    result = duplicate_string (buf);
+	  }
+
+	if (result)
+	  {
+	    len = strlen (result);
+	  }
+      }
+      break;
     case DB_TYPE_DATETIME:
       {
 	char buf[DATETIME_BUF_SIZE];
 	if (db_datetime_to_string (buf, sizeof (buf),
 				   DB_GET_DATETIME (value)))
+	  {
+	    result = duplicate_string (buf);
+	  }
+
+	if (result)
+	  {
+	    len = strlen (result);
+	  }
+      }
+      break;
+    case DB_TYPE_DATETIMETZ:
+      {
+	char buf[DATETIMETZ_BUF_SIZE];
+	DB_DATETIMETZ *dt_tz = DB_GET_DATETIMETZ (value);
+	if (db_datetimetz_to_string (buf, sizeof (buf), &(dt_tz->datetime),
+				     &(dt_tz->tz_id)))
+	  {
+	    result = duplicate_string (buf);
+	  }
+
+	if (result)
+	  {
+	    len = strlen (result);
+	  }
+      }
+      break;
+    case DB_TYPE_DATETIMELTZ:
+      {
+	char buf[DATETIMETZ_BUF_SIZE];
+
+	if (db_datetimeltz_to_string (buf, sizeof (buf),
+				      DB_GET_DATETIME (value)))
 	  {
 	    result = duplicate_string (buf);
 	  }

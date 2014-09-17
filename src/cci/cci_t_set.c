@@ -299,6 +299,15 @@ t_set_make (T_SET * set, char ele_type, int size, void *value, int *indicator)
 	    ADD_ARG_DATETIME (&net_buf, &ele_value);
 	  }
 	  break;
+	case CCI_U_TYPE_TIMETZ:
+	case CCI_U_TYPE_TIMESTAMPTZ:
+	case CCI_U_TYPE_DATETIMETZ:
+	  {
+	    T_CCI_DATE_TZ ele_value;
+	    ele_value = ((T_CCI_DATE_TZ *) value)[i];
+	    ADD_ARG_DATETIMETZ (&net_buf, &ele_value);
+	  }
+	  break;
 	case CCI_U_TYPE_OBJECT:
 	  {
 	    char *tmp_str;

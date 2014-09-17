@@ -557,6 +557,8 @@ struct unicode_normalization
 
 #define CAL_SIMPLE_DATE_FORMAT_SIZE  30
 #define CAL_COMP_DATE_FORMAT_SIZE  48
+#define CAL_SIMPLE_DATE_TZ_FORMAT_SIZE  52
+#define CAL_COMP_DATE_TZ_FORMAT_SIZE 70
 
 /* user defined LOCALE DATA */
 typedef struct locale_collation LOCALE_COLLATION;
@@ -583,6 +585,10 @@ struct locale_data
 
   char datetimeFormat[CAL_COMP_DATE_FORMAT_SIZE];	/* datetime format */
   char timestampFormat[CAL_COMP_DATE_FORMAT_SIZE];	/* datetime format */
+
+  char timetzFormat[CAL_SIMPLE_DATE_TZ_FORMAT_SIZE];	/* timetz format */
+  char datetimetzFormat[CAL_COMP_DATE_TZ_FORMAT_SIZE];	/* datetimetz format */
+  char timestamptzFormat[CAL_COMP_DATE_TZ_FORMAT_SIZE];	/* timestamptz format */
 
   /* name of months , week days, day periods */
   char month_names_abbreviated[CAL_MONTH_COUNT][LOC_DATA_MONTH_ABBR_SIZE];

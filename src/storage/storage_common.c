@@ -231,19 +231,41 @@ db_print_data (DB_TYPE type, DB_DATA * data, FILE * fd)
       break;
 
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
       db_time_decode (&data->time, &hour, &minute, &second);
-      fprintf (fd, "%d:%d:%d with zone: %d", hour, minute, second, 0);
+      fprintf (fd, "%d:%d:%d", hour, minute, second);
+      break;
+
+    case DB_TYPE_TIMETZ:
+      db_time_decode (&data->timetz.time, &hour, &minute, &second);
+      fprintf (fd, "%d:%d:%d Z:%X", hour, minute, second,
+	       &data->timetz.tz_id);
       break;
 
     case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPLTZ:
       fprintf (fd, "%d", data->utime);
       break;
 
+    case DB_TYPE_TIMESTAMPTZ:
+      fprintf (fd, "%d Z:%X", data->timestamptz.timestamp,
+	       data->timestamptz.tz_id);
+      break;
+
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
       db_datetime_decode (&data->datetime, &month, &day, &year,
 			  &hour, &minute, &second, &millisecond);
-      fprintf (fd, "%d/%d/%d %d:%d:%d.%d with zone: %d",
-	       month, day, year, hour, minute, second, millisecond, 0);
+      fprintf (fd, "%d/%d/%d %d:%d:%d.%d",
+	       month, day, year, hour, minute, second, millisecond);
+      break;
+
+    case DB_TYPE_DATETIMETZ:
+      db_datetime_decode (&(data->datetimetz.datetime), &month, &day, &year,
+			  &hour, &minute, &second, &millisecond);
+      fprintf (fd, "%d/%d/%d %d:%d:%d.%d Z:%X",
+	       month, day, year, hour, minute, second, millisecond,
+	       data->datetimetz.tz_id);
       break;
 
     case DB_TYPE_MONETARY:

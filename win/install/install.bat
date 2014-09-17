@@ -156,6 +156,15 @@ xcopy %SRC_DIR%\..\..\..\locales\loclib_win_%3 %DEST_DIR%\locales\loclib /e /c /
 copy %SRC_DIR%\..\..\..\src\base\locale_lib_common.h %DEST_DIR%\locales\loclib\locale_lib_common.h /y
 copy %SRC_DIR%\..\..\..\locales\make_locale_%3.bat %DEST_DIR%\bin\make_locale.bat /y
 
+mkdir %DEST_DIR%\timezones
+mkdir %DEST_DIR%\timezones\tzdata
+mkdir %DEST_DIR%\timezones\tzlib
+copy %SRC_DIR%\..\..\..\timezones\tzdata\*.* %DEST_DIR%\timezones\tzdata
+del %DEST_DIR%\timezones\tzdata\Makefile.am
+xcopy %SRC_DIR%\..\..\..\timezones\tzlib_win_%3 %DEST_DIR%\timezones\tzlib /e /c /i /f /r /y
+copy %SRC_DIR%\..\..\..\src\base\timezone_lib_common.h %DEST_DIR%\timezones\tzlib\timezone_lib_common.h /y
+copy %SRC_DIR%\..\..\..\timezones\make_tz_%3.bat %DEST_DIR%\bin\make_tz.bat /y
+
 echo on
 for %%f in (%MSG_EN_US_DIR%,%MSG_EN_US_UTF8_DIR%,%MSG_EUCKR_DIR%,%MSG_UTFKR_DIR%,%MSG_TR_UTF8_DIR%) do %GENCAT% %%f\csql.cat %%f\csql.msg
 for %%f in (%MSG_EN_US_DIR%,%MSG_EN_US_UTF8_DIR%,%MSG_EUCKR_DIR%,%MSG_UTFKR_DIR%,%MSG_TR_UTF8_DIR%) do %GENCAT% %%f\cubrid.cat %%f\cubrid.msg

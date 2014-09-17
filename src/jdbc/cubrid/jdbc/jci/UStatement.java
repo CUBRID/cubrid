@@ -1372,7 +1372,7 @@ public class UStatement {
 
 		return ((long) 0);
 	}
-
+	
 	synchronized public Object getObject(int index) {
 		errorHandler = new UError(relatedConnection);
 
@@ -1395,7 +1395,13 @@ public class UStatement {
 			else if (obj instanceof Time)
 				retValue = ((Time) obj).clone();
 			else if (obj instanceof Timestamp)
-				retValue = new Timestamp(((Timestamp) obj).getTime());
+			{
+				if (relatedConnection.getResultWithCUBRIDTypes().equals(
+					UConnection.RESULT_WITH_CUBRID_TYPES_NO))
+						retValue = new Timestamp(((Timestamp) obj).getTime());
+				else
+						retValue = ((Timestamp) obj).clone();
+			}
 			else if (obj instanceof CUBRIDOutResultSet) {
 				try {
 					((CUBRIDOutResultSet) obj).createInstance();
@@ -2056,10 +2062,16 @@ public class UStatement {
 			return inBuffer.readDate();
 		case UUType.U_TYPE_TIME:
 			return inBuffer.readTime();
+		case UUType.U_TYPE_TIMETZ:
+			return inBuffer.readTimetz(dataSize);			
 		case UUType.U_TYPE_TIMESTAMP:
 			return inBuffer.readTimestamp();
+		case UUType.U_TYPE_TIMESTAMPTZ:
+			return inBuffer.readTimestamptz(dataSize);			
 		case UUType.U_TYPE_DATETIME:
 			return inBuffer.readDatetime();
+		case UUType.U_TYPE_DATETIMETZ:
+			return inBuffer.readDatetimetz(dataSize);			
 		case UUType.U_TYPE_OBJECT:
 			return inBuffer.readOID(relatedConnection.cubridcon);
 		case UUType.U_TYPE_SET:

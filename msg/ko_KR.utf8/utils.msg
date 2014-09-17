@@ -68,6 +68,8 @@ $       47      dumplocale
 $       48      synccolldb
 $       49      tranlist
 $       50      prefetchlogdb
+$       51      gen_tz
+$       52      dump_tz
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 '%1$c'이(가) 데이터베이스 이름 '%2$s'에 포함되어 있습니다\n
@@ -117,6 +119,8 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     dumplocale\n\
     synccolldb\n\
     prefetchlogdb\n\
+    gen_tz\n\
+    dump_tz\n\
 \n\
 %4$s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -170,6 +174,8 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     genlocale\n\
     dumplocale\n\
     synccolldb\n\
+    gen_tz\n\
+    dump_tz\n\
 \n\
 %4$s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -1073,3 +1079,57 @@ prefetchlogdb: 복사된 로그를 서버에 반영하기 위해 필요한 데�
 \n\
 valid options:\n\
   -L, --log-path=PATH         복사된 로그 볼륨의 디렉터리 PATH\n
+
+$set 51 MSGCAT_UTIL_SET_GEN_TZ
+59 Invalid generation mode supplied.\n
+60 Invalid or corrupt input folder.\n
+61 \
+gen_tz: Generate source files containing timezone data to be compiled into\n\
+        a shared library.\n\
+usage: %s gen_tz [OPTION]\n\
+\n\
+valid options:\n\
+  -i, --input-folder    path to an input folder containing a version of\n\
+                        IANA's timezone database files.\n\
+                        Default: $CUBRID/timezones/tzdata\n\
+  -g, --gen-mode=TYPE   controls the output of gen_tz, based on the TYPE:\n\
+                        TYPE:\n\
+                        1. NEW (default) : generate timezone source file(s) for\n\
+                        the shared library with no regard to previous versions;\n\
+                        also generate a source file containing all countries\n\
+                        and timezone names (intended for developer use, to\n\
+                        be integrated into future CUBRID versions).\n\
+                        2. UPDATE : generate timezone source file(s) for\n\
+                        the shared library only for the timezones supported\n\
+                        by the current version of CUBRID, containing updated\n\
+                        GMT offset information and daylight saving rules from\n\
+                        the files in the input folder; no additional source\n\
+                        files are generated.\n\
+                        3. EXTEND : generate timezone source file(s) using the\n\
+                        data from the input folder; timezone IDs encoded into\n\
+                        CUBRID are preserved; new timezones found in the input\n\
+                        files are added to the secondary source file that is\n\
+                        also generated; GMT offsets and daylight saving\n\
+                        information is updated (or added, for new timezones);\n\
+                        timezones are never removeds if a timezone encoded into\n\
+                        CUBRID is missing from the input files, the associated\n\
+                        data is retrieved from the existing timezone library.\n\
+                        A new C file containing all timezone names is generated,\n\
+                        and it must be included in CUBRID source file folder\n\
+                        before the new timezone library can be used.\n
+
+$set 52 MSGCAT_UTIL_SET_DUMP_TZ
+59 The supplied zone ID is out of range. Use -z to see all\n\
+ timezones and their IDs.\n
+60 \
+dump_tz: Display timezone related information. By default, it only shows\n\
+ a short summary describing existing information.\n\
+usage: %s gen_tz [OPTION]\n\
+\n\
+valid options:\n\
+  -c, --list-countries      shows the list of countries currently supported\n\
+  -z, --list-zones          shows the list of timezones currently supported\n\
+  -d, --zone-id=ZONE_ID|ALL display available time zone information related\n\
+                            to a timezone having the supplied ZONE_ID or for\n\
+                            ALL timzones. The ID of a timezone can be obtained\n\
+                            from the list displayed using the -z option.\n

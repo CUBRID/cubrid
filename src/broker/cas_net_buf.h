@@ -149,12 +149,21 @@ extern void net_arg_get_double (double *value, void *arg);
 extern void net_arg_get_str (char **value, int *size, void *arg);
 extern void net_arg_get_date (short *year, short *mon, short *day, void *arg);
 extern void net_arg_get_time (short *hh, short *mm, short *ss, void *arg);
+extern void net_arg_get_timetz (short *hh, short *mm, short *ss, char **tz,
+				int *tz_size, void *arg);
 extern void net_arg_get_timestamp (short *yr, short *mon, short *day,
 				   short *hh, short *mm, short *ss,
 				   void *arg);
+extern void net_arg_get_timestamptz (short *yr, short *mon, short *day,
+				     short *hh, short *mm, short *ss,
+				     char **tz, int *tz_size, void *arg);
 extern void net_arg_get_datetime (short *yr, short *mon, short *day,
 				  short *hh, short *mm, short *ss, short *ms,
 				  void *arg);
+extern void net_arg_get_datetimetz (short *yr, short *mon, short *day,
+				    short *hh, short *mm, short *ss,
+				    short *ms, char **tz, int *tz_size,
+				    void *arg);
 extern void net_arg_get_object (T_OBJECT * obj, void *arg);
 extern void net_arg_get_cache_time (void *ct, void *arg);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -167,6 +176,6 @@ extern void net_arg_get_lob_value (DB_VALUE * db_lob, void *arg);
 
 extern void net_arg_put_int (void *arg, int *value);
 extern size_t net_error_append_shard_info (char *err_buf, const char *err_msg,
-                                       int buf_size);
+					   int buf_size);
 
 #endif /* _CAS_NET_BUF_H_ */

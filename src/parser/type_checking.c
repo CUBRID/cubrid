@@ -1122,7 +1122,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_ADDTIME:
       num = 0;
 
-      /* 3 overloads */
+      /* 11 overloads */
 
       /* arg1 */
       sig.arg1_type.is_generic = true;
@@ -1146,6 +1146,26 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       sig.return_type.val.type = PT_TYPE_DATETIME;
       def->overloads[num++] = sig;
 
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIMELTZ;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIMELTZ;
+      def->overloads[num++] = sig;
+
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIMETZ;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIMETZ;
+      def->overloads[num++] = sig;
+
       /* arg1 */
       sig.arg1_type.is_generic = false;
       sig.arg1_type.val.type = PT_TYPE_TIMESTAMP;
@@ -1155,6 +1175,28 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_DATETIME;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMESTAMPLTZ;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIMELTZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMESTAMPTZ;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIMETZ;
       def->overloads[num++] = sig;
 
       /* arg1 */
@@ -1177,6 +1219,28 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_TIME;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMELTZ;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIMELTZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMETZ;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIMETZ;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -1507,7 +1571,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       /* arg1 */
       sig.arg1_type.is_generic = true;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_DATE;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_DATETIME;
       /* arg2 */
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
@@ -1650,7 +1714,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_MINUS:
       num = 0;
 
-      /* four overloads */
+      /* six overloads */
 
       sig.arg1_type.is_generic = true;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
@@ -1684,6 +1748,22 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       sig.return_type.val.generic_type = PT_GENERIC_TYPE_SEQUENCE;
       def->overloads[num++] = sig;
 
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMELTZ;
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIMELTZ;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_BIGINT;
+      def->overloads[num++] = sig;
+
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMETZ;
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIMETZ;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_BIGINT;
+      def->overloads[num++] = sig;
+
       def->overloads_count = num;
       break;
 
@@ -1693,7 +1773,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_TIMETOSEC:
       num = 0;
 
-      /* two overloads */
+      /* four overloads */
 
       sig.arg1_type.is_generic = true;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING_VARYING;
@@ -1703,6 +1783,18 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       sig.arg1_type.is_generic = false;
       sig.arg1_type.val.type = PT_TYPE_TIME;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMELTZ;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMETZ;
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_INTEGER;
       def->overloads[num++] = sig;
@@ -2295,6 +2387,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       break;
 
     case PT_SYS_TIMESTAMP:
+    case PT_UTC_TIMESTAMP:
       num = 0;
 
       /* one overload */
@@ -2327,8 +2420,8 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       def->overloads[num++] = sig;
 
       /* arg1 */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_TIME;
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.type = PT_GENERIC_TYPE_DATETIME;
       /* arg2 */
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
@@ -2796,7 +2889,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_TIMEDIFF:
       num = 0;
 
-      /* three overloads */
+      /* 5 overloads */
 
       /* arg1 */
       sig.arg1_type.is_generic = true;
@@ -2826,6 +2919,29 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       /* arg2 */
       sig.arg2_type.is_generic = false;
       sig.arg2_type.val.type = PT_TYPE_TIME;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIME;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMELTZ;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIMELTZ;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIME;
+      def->overloads[num++] = sig;
+
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMETZ;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIMETZ;
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_TIME;
@@ -2885,7 +3001,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
     case PT_ROUND:
       num = 0;
-      /* five overloads */
+      /* nine overloads */
       /* first overload for number: */
       sig.arg1_type.is_generic = true;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
@@ -2951,13 +3067,65 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       def->overloads[num++] = sig;
 
+      /* overload for round(timestamptz, 'year|month|day') */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMESTAMPTZ;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /*return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATE;
+
+      def->overloads[num++] = sig;
+
+      /* overload for round(timestampltz, 'year|month|day') */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMESTAMPLTZ;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /*return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATE;
+
+      def->overloads[num++] = sig;
+
+      /* overload for round(datetimetz, 'year|month|day') */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIMETZ;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /*return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATE;
+
+      def->overloads[num++] = sig;
+
+      /* overload for round(datetimeltz, 'year|month|day') */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIMELTZ;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /*return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATE;
+
+      def->overloads[num++] = sig;
+
       def->overloads_count = num;
       break;
 
     case PT_TRUNC:
       num = 0;
 
-      /* five overloads */
+      /* nine overloads */
 
       /* number types */
       sig.arg1_type.is_generic = true;
@@ -3010,6 +3178,54 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       /* timestamp */
       sig.arg1_type.is_generic = false;
       sig.arg1_type.val.generic_type = PT_TYPE_TIMESTAMP;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.generic_type = PT_TYPE_DATE;
+      def->overloads[num++] = sig;
+
+      /* datetimeltz */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.generic_type = PT_TYPE_DATETIMELTZ;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.generic_type = PT_TYPE_DATE;
+      def->overloads[num++] = sig;
+
+      /* datetimetz */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.generic_type = PT_TYPE_DATETIMETZ;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.generic_type = PT_TYPE_DATE;
+      def->overloads[num++] = sig;
+
+      /* timestampltz */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.generic_type = PT_TYPE_TIMESTAMPLTZ;
+
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.generic_type = PT_TYPE_DATE;
+      def->overloads[num++] = sig;
+
+      /* timestamptz */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.generic_type = PT_TYPE_TIMESTAMPTZ;
 
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.type = PT_GENERIC_TYPE_STRING;
@@ -3590,7 +3806,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_ADDDATE:
       num = 0;
 
-      /* four overloads */
+      /* 8 overloads */
 
       sig.arg1_type.is_generic = true;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
@@ -3630,6 +3846,46 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_DATETIME;
+      def->overloads[num++] = sig;
+
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIMELTZ;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_INTEGER;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIMELTZ;
+      def->overloads[num++] = sig;
+
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIMETZ;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_INTEGER;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIMETZ;
+      def->overloads[num++] = sig;
+
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMESTAMPLTZ;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_INTEGER;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIMELTZ;
+      def->overloads[num++] = sig;
+
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMESTAMPTZ;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_INTEGER;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIMETZ;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -4077,7 +4333,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_WIDTH_BUCKET:
       num = 0;
 
-      /* six overloads */
+      /* 11 overloads */
 
       /* generic number */
       sig.arg1_type.is_generic = true;
@@ -4169,6 +4425,81 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       def->overloads[num++] = sig;
 
+      /* datetime with timezone */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIMETZ;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_DATETIMETZ;	/* between */
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      /* timestamp with local tz */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMESTAMPLTZ;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIMESTAMPLTZ;	/* between */
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      /* timestamp with tz */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMESTAMPTZ;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIMESTAMPTZ;	/* between */
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      /* time with local tz */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMELTZ;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIMELTZ;	/* between */
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      /* time with tz */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMETZ;
+
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIMETZ;	/* between */
+
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_DOUBLE;
+
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
       def->overloads_count = num;
       break;
 
@@ -4244,6 +4575,225 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_DBTIMEZONE:
+    case PT_SESSIONTIMEZONE:
+      num = 0;
+
+      /* one overload */
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_TZ_OFFSET:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.generic_type = PT_TYPE_VARCHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.generic_type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_NEW_TIME:
+      num = 0;
+      /* two overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIME;
+
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_VARCHAR;
+
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_VARCHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIME;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIME;
+
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_VARCHAR;
+
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_VARCHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIME;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_FROM_TZ:
+      num = 0;
+      /* two overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIME;
+
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_VARCHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIMETZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIME;
+
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_VARCHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIMETZ;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_TO_DATETIME_TZ:
+      num = 0;
+
+      /* two overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIMETZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIMETZ;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_TO_TIME_TZ:
+      num = 0;
+
+      /* two overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIMETZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIMETZ;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_TO_TIMESTAMP_TZ:
+      num = 0;
+
+      /* two overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIMESTAMPTZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIMESTAMPTZ;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -6404,6 +6954,15 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_AES_DECRYPT:
     case PT_INDEX_PREFIX:
     case PT_SLEEP:
+    case PT_DBTIMEZONE:
+    case PT_SESSIONTIMEZONE:
+    case PT_TZ_OFFSET:
+    case PT_NEW_TIME:
+    case PT_FROM_TZ:
+    case PT_TO_DATETIME_TZ:
+    case PT_TO_TIMESTAMP_TZ:
+    case PT_TO_TIME_TZ:
+    case PT_UTC_TIMESTAMP:
       return false;
 
     default:
@@ -8697,6 +9256,9 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_SHA_ONE:
     case PT_SHA_TWO:
     case PT_SLEEP:
+    case PT_TO_DATETIME_TZ:
+    case PT_TO_TIMESTAMP_TZ:
+    case PT_TO_TIME_TZ:
       return true;
 
     default:
@@ -9192,6 +9754,17 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
       break;
 
+    case PT_FROM_TZ:
+    case PT_NEW_TIME:
+      {
+	if (arg1_type != PT_TYPE_DATETIME && arg1_type != PT_TYPE_TIME)
+	  {
+	    node->type_enum = PT_TYPE_NULL;
+	    goto error;
+	  }
+      }
+      break;
+
     default:
       break;
     }
@@ -9367,13 +9940,13 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 			}
 		    }
 
-		  if (arg1_type == PT_TYPE_DATE
-		      || arg1_type == PT_TYPE_TIMESTAMP
-		      || arg1_type == PT_TYPE_DATETIME)
+		  if (PT_HAS_DATE_PART (arg1_type))
 		    {
 		      node->type_enum = PT_TYPE_INTEGER;
 		    }
-		  else if (arg1_type == PT_TYPE_TIME)
+		  else if (arg1_type == PT_TYPE_TIME
+			   || arg1_type == PT_TYPE_TIMELTZ
+			   || arg1_type == PT_TYPE_TIMETZ)
 		    {
 		      incompatible_extract_type = true;
 		    }
@@ -9418,9 +9991,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 			}
 		    }
 
-		  if (arg1_type == PT_TYPE_TIME
-		      || arg1_type == PT_TYPE_TIMESTAMP
-		      || arg1_type == PT_TYPE_DATETIME)
+		  if (PT_HAS_TIME_PART (arg1_type))
 		    {
 		      node->type_enum = PT_TYPE_INTEGER;
 		    }
@@ -9443,13 +10014,19 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 			}
 		    }
 
-		  if (arg1_type == PT_TYPE_DATETIME)
+		  if (arg1_type == PT_TYPE_DATETIME
+		      || arg1_type == PT_TYPE_DATETIMELTZ
+		      || arg1_type == PT_TYPE_DATETIMETZ)
 		    {
 		      node->type_enum = PT_TYPE_INTEGER;
 		    }
 		  else if (arg1_type == PT_TYPE_DATE
 			   || arg1_type == PT_TYPE_TIME
-			   || arg1_type == PT_TYPE_TIMESTAMP)
+			   || arg1_type == PT_TYPE_TIMELTZ
+			   || arg1_type == PT_TYPE_TIMETZ
+			   || arg1_type == PT_TYPE_TIMESTAMP
+			   || arg1_type == PT_TYPE_TIMESTAMPLTZ
+			   || arg1_type == PT_TYPE_TIMESTAMPTZ)
 		    {
 		      incompatible_extract_type = true;
 		    }
@@ -9495,7 +10072,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (PT_IS_DATE_TIME_TYPE (arg1_type)
 	      && PT_IS_DATE_TIME_TYPE (arg2_type))
 	    {
-	      if (arg1_type == PT_TYPE_TIME || arg1_type == PT_TYPE_DATE)
+	      if (arg1_type == PT_TYPE_TIME || arg1_type == PT_TYPE_TIMELTZ
+		  || arg1_type == PT_TYPE_TIMETZ || arg1_type == PT_TYPE_DATE)
 		{
 		  if (arg2_type != arg1_type)
 		    {
@@ -9505,13 +10083,17 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      else
 		{
 		  /* arg1_type is PT_TYPE_DATETIME or PT_TYPE_TIMESTAMP. */
-		  if (arg2_type == PT_TYPE_TIME || arg2_type == PT_TYPE_DATE)
+		  if (arg2_type == PT_TYPE_TIME
+		      || arg2_type == PT_TYPE_TIMELTZ
+		      || arg2_type == PT_TYPE_TIMETZ
+		      || arg2_type == PT_TYPE_DATE)
 		    {
 		      node->type_enum = PT_TYPE_NONE;
 		    }
 		}
 	    }
 	  break;
+
 	default:
 	  break;
 	}
@@ -10050,7 +10632,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case PT_STR_TO_DATE:
       {
-	int type = 0;
+	int type_specifier = 0;
 
 	assert (arg3_type == PT_TYPE_INTEGER);
 
@@ -10100,28 +10682,36 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	if (arg2->node_type == PT_VALUE)
 	  {
-	    type =
-	      db_check_time_date_format (arg2->info.value.data_value.
-					 str->bytes);
+	    type_specifier =
+	      db_check_time_date_format (arg2->info.value.data_value.str->
+					 bytes);
 	  }
 	else
 	  {
-	    type = 3;
+	    type_specifier = DATETIME_SPECIFIER;
 	  }
 
 	/* default is date (i.e.: -> when no format supplied) */
 	node->type_enum = PT_TYPE_DATE;
-	if (type == 1)
+	if (type_specifier == TIME_SPECIFIER)
 	  {
 	    node->type_enum = PT_TYPE_TIME;
 	  }
-	else if (type == 2)
+	else if (type_specifier == DATE_SPECIFIER)
 	  {
 	    node->type_enum = PT_TYPE_DATE;
 	  }
-	else if (type == 3)
+	else if (type_specifier == DATETIME_SPECIFIER)
 	  {
 	    node->type_enum = PT_TYPE_DATETIME;
+	  }
+	else if (type_specifier == TIMETZ_SPECIFIER)
+	  {
+	    node->type_enum = PT_TYPE_TIMETZ;
+	  }
+	else if (type_specifier == DATETIMETZ_SPECIFIER)
+	  {
+	    node->type_enum = PT_TYPE_DATETIMETZ;
 	  }
 	else if (arg1_type == PT_TYPE_NULL || arg2_type == PT_TYPE_NULL)
 	  {
@@ -10176,8 +10766,18 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 				  || arg3->info.expr.qualifier == PT_QUARTER
 				  || arg3->info.expr.qualifier == PT_YEAR));
 
-	    if (arg1_type == PT_TYPE_DATETIME
-		|| arg1_type == PT_TYPE_TIMESTAMP)
+	    if (arg1_type == PT_TYPE_DATETIMETZ
+		|| arg1_type == PT_TYPE_TIMESTAMPTZ)
+	      {
+		node->type_enum = PT_TYPE_DATETIMETZ;
+	      }
+	    else if (arg1_type == PT_TYPE_DATETIMELTZ
+		     || arg1_type == PT_TYPE_TIMESTAMPLTZ)
+	      {
+		node->type_enum = PT_TYPE_DATETIMELTZ;
+	      }
+	    else if (arg1_type == PT_TYPE_DATETIME
+		     || arg1_type == PT_TYPE_TIMESTAMP)
 	      {
 		node->type_enum = PT_TYPE_DATETIME;
 	      }
@@ -10716,31 +11316,21 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	      common_type = PT_TYPE_INTEGER;
 	      break;
 	    case PT_TYPE_BIGINT:
-	      common_type = PT_TYPE_BIGINT;
-	      break;
 	    case PT_TYPE_FLOAT:
-	      common_type = PT_TYPE_FLOAT;
-	      break;
 	    case PT_TYPE_DOUBLE:
-	      common_type = PT_TYPE_DOUBLE;
-	      break;
 	    case PT_TYPE_DATE:
-	      common_type = PT_TYPE_DATE;
-	      break;
 	    case PT_TYPE_MONETARY:
-	      common_type = PT_TYPE_MONETARY;
-	      break;
 	    case PT_TYPE_TIMESTAMP:
-	      common_type = PT_TYPE_TIMESTAMP;
-	      break;
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_TIMESTAMPTZ:
 	    case PT_TYPE_DATETIME:
-	      common_type = PT_TYPE_DATETIME;
-	      break;
+	    case PT_TYPE_DATETIMELTZ:
+	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_TIME:
-	      common_type = PT_TYPE_TIME;
-	      break;
+	    case PT_TYPE_TIMELTZ:
+	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_NUMERIC:
-	      common_type = PT_TYPE_NUMERIC;
+	      common_type = arg2_type;
 	      break;
 	    default:
 	      common_type = PT_TYPE_NONE;
@@ -10757,34 +11347,22 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	      common_type = PT_TYPE_SMALLINT;
 	      break;
 	    case PT_TYPE_INTEGER:
-	      common_type = PT_TYPE_INTEGER;
-	      break;
 	    case PT_TYPE_BIGINT:
-	      common_type = PT_TYPE_BIGINT;
-	      break;
 	    case PT_TYPE_FLOAT:
-	      common_type = PT_TYPE_FLOAT;
-	      break;
 	    case PT_TYPE_DOUBLE:
-	      common_type = PT_TYPE_DOUBLE;
-	      break;
 	    case PT_TYPE_DATE:
-	      common_type = PT_TYPE_DATE;
-	      break;
 	    case PT_TYPE_MONETARY:
-	      common_type = PT_TYPE_MONETARY;
-	      break;
 	    case PT_TYPE_TIMESTAMP:
-	      common_type = PT_TYPE_TIMESTAMP;
-	      break;
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_TIMESTAMPTZ:
 	    case PT_TYPE_DATETIME:
-	      common_type = PT_TYPE_DATETIME;
-	      break;
+	    case PT_TYPE_DATETIMELTZ:
+	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_TIME:
-	      common_type = PT_TYPE_TIME;
-	      break;
+	    case PT_TYPE_TIMELTZ:
+	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_NUMERIC:
-	      common_type = PT_TYPE_NUMERIC;
+	      common_type = arg2_type;
 	      break;
 	    default:
 	      common_type = PT_TYPE_NONE;
@@ -10809,22 +11387,18 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	      common_type = PT_TYPE_DOUBLE;
 	      break;
 	    case PT_TYPE_DATE:
-	      common_type = PT_TYPE_DATE;
-	      break;
 	    case PT_TYPE_MONETARY:
-	      common_type = PT_TYPE_MONETARY;
-	      break;
 	    case PT_TYPE_TIMESTAMP:
-	      common_type = PT_TYPE_TIMESTAMP;
-	      break;
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_TIMESTAMPTZ:
 	    case PT_TYPE_DATETIME:
-	      common_type = PT_TYPE_DATETIME;
-	      break;
+	    case PT_TYPE_DATETIMELTZ:
+	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_TIME:
-	      common_type = PT_TYPE_TIME;
-	      break;
+	    case PT_TYPE_TIMELTZ:
+	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_NUMERIC:
-	      common_type = PT_TYPE_NUMERIC;
+	      common_type = arg2_type;
 	      break;
 	    default:
 	      common_type = PT_TYPE_NONE;
@@ -10851,6 +11425,7 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	      break;
 	    }
 	  break;
+
 	case PT_TYPE_DATETIME:
 	  switch (arg2_type)
 	    {
@@ -10866,6 +11441,67 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_TIMESTAMP:
 	    case PT_TYPE_DATE:
 	      common_type = PT_TYPE_DATETIME;
+	      break;
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_DATETIMELTZ:
+	      common_type = PT_TYPE_DATETIMELTZ;
+	      break;
+	    case PT_TYPE_TIMESTAMPTZ:
+	    case PT_TYPE_DATETIMETZ:
+	      common_type = PT_TYPE_DATETIMETZ;
+	      break;
+	    default:
+	      common_type = PT_TYPE_NONE;
+	      break;
+	    }
+	  break;
+
+	case PT_TYPE_DATETIMELTZ:
+	  switch (arg2_type)
+	    {
+	    case PT_TYPE_SMALLINT:
+	    case PT_TYPE_INTEGER:
+	    case PT_TYPE_BIGINT:
+	    case PT_TYPE_CHAR:
+	    case PT_TYPE_VARCHAR:
+	    case PT_TYPE_ENUMERATION:
+	    case PT_TYPE_NCHAR:
+	    case PT_TYPE_VARNCHAR:
+	    case PT_TYPE_DATETIME:
+	    case PT_TYPE_TIMESTAMP:
+	    case PT_TYPE_DATE:
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_DATETIMELTZ:
+	      common_type = PT_TYPE_DATETIMELTZ;
+	      break;
+	    case PT_TYPE_TIMESTAMPTZ:
+	    case PT_TYPE_DATETIMETZ:
+	      common_type = PT_TYPE_DATETIMETZ;
+	      break;
+	    default:
+	      common_type = PT_TYPE_NONE;
+	      break;
+	    }
+	  break;
+
+	case PT_TYPE_DATETIMETZ:
+	  switch (arg2_type)
+	    {
+	    case PT_TYPE_SMALLINT:
+	    case PT_TYPE_INTEGER:
+	    case PT_TYPE_BIGINT:
+	    case PT_TYPE_CHAR:
+	    case PT_TYPE_VARCHAR:
+	    case PT_TYPE_ENUMERATION:
+	    case PT_TYPE_NCHAR:
+	    case PT_TYPE_VARNCHAR:
+	    case PT_TYPE_DATETIME:
+	    case PT_TYPE_DATETIMELTZ:
+	    case PT_TYPE_TIMESTAMP:
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_TIMESTAMPTZ:
+	    case PT_TYPE_DATE:
+	      common_type = PT_TYPE_DATETIMETZ;
 	      break;
 
 	    default:
@@ -10899,11 +11535,91 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_DATE:
 	      common_type = PT_TYPE_TIMESTAMP;
 	      break;
-
 	    case PT_TYPE_DATETIME:
-	      common_type = PT_TYPE_DATETIME;
+	    case PT_TYPE_DATETIMELTZ:
+	    case PT_TYPE_DATETIMETZ:
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_TIMESTAMPTZ:
+	      common_type = arg2_type;
+	      break;
+	    default:
+	      common_type = PT_TYPE_NONE;
+	      break;
+	    }
+	  break;
+
+	case PT_TYPE_TIMESTAMPLTZ:
+	  switch (arg2_type)
+	    {
+	    case PT_TYPE_SMALLINT:
+	    case PT_TYPE_INTEGER:
+	    case PT_TYPE_BIGINT:
+	      if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
+		{
+		  common_type = PT_TYPE_TIMESTAMPLTZ;
+		}
+	      else
+		{
+		  common_type = PT_TYPE_BIGINT;
+		}
 	      break;
 
+	    case PT_TYPE_CHAR:
+	    case PT_TYPE_VARCHAR:
+	    case PT_TYPE_NCHAR:
+	    case PT_TYPE_VARNCHAR:
+	    case PT_TYPE_ENUMERATION:
+	    case PT_TYPE_TIMESTAMP:
+	    case PT_TYPE_DATE:
+	      common_type = PT_TYPE_TIMESTAMPLTZ;
+	      break;
+	    case PT_TYPE_DATETIME:
+	    case PT_TYPE_DATETIMELTZ:
+	      common_type = PT_TYPE_DATETIMELTZ;
+	      break;
+	    case PT_TYPE_DATETIMETZ:
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_TIMESTAMPTZ:
+	      common_type = arg2_type;
+	      break;
+	    default:
+	      common_type = PT_TYPE_NONE;
+	      break;
+	    }
+	  break;
+
+	case PT_TYPE_TIMESTAMPTZ:
+	  switch (arg2_type)
+	    {
+	    case PT_TYPE_SMALLINT:
+	    case PT_TYPE_INTEGER:
+	    case PT_TYPE_BIGINT:
+	      if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
+		{
+		  common_type = PT_TYPE_TIMESTAMPTZ;
+		}
+	      else
+		{
+		  common_type = PT_TYPE_BIGINT;
+		}
+	      break;
+
+	    case PT_TYPE_CHAR:
+	    case PT_TYPE_VARCHAR:
+	    case PT_TYPE_NCHAR:
+	    case PT_TYPE_VARNCHAR:
+	    case PT_TYPE_ENUMERATION:
+	    case PT_TYPE_TIMESTAMP:
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_TIMESTAMPTZ:
+	    case PT_TYPE_DATE:
+	      common_type = PT_TYPE_TIMESTAMPTZ;
+	      break;
+	    case PT_TYPE_DATETIME:
+	    case PT_TYPE_DATETIMELTZ:
+	    case PT_TYPE_DATETIMETZ:
+	      common_type = PT_TYPE_DATETIMETZ;
+	      break;
 	    default:
 	      common_type = PT_TYPE_NONE;
 	      break;
@@ -10932,6 +11648,74 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_ENUMERATION:
 	    case PT_TYPE_TIME:
 	      common_type = PT_TYPE_TIME;
+	      break;
+	    case PT_TYPE_TIMELTZ:
+	    case PT_TYPE_TIMETZ:
+	      common_type = arg2_type;
+	      break;
+	    default:
+	      common_type = PT_TYPE_NONE;
+	      break;
+	    }
+	  break;
+
+	case PT_TYPE_TIMELTZ:
+	  switch (arg2_type)
+	    {
+	    case PT_TYPE_SMALLINT:
+	    case PT_TYPE_INTEGER:
+	    case PT_TYPE_BIGINT:
+	      if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
+		{
+		  common_type = PT_TYPE_TIMELTZ;
+		}
+	      else
+		{
+		  common_type = arg2_type;
+		}
+	      break;
+	    case PT_TYPE_CHAR:
+	    case PT_TYPE_VARCHAR:
+	    case PT_TYPE_NCHAR:
+	    case PT_TYPE_VARNCHAR:
+	    case PT_TYPE_ENUMERATION:
+	    case PT_TYPE_TIME:
+	      common_type = PT_TYPE_TIMELTZ;
+	      break;
+	    case PT_TYPE_TIMELTZ:
+	    case PT_TYPE_TIMETZ:
+	      common_type = PT_TYPE_TIMETZ;
+	      break;
+	    default:
+	      common_type = PT_TYPE_NONE;
+	      break;
+	    }
+	  break;
+
+	case PT_TYPE_TIMETZ:
+	  switch (arg2_type)
+	    {
+	    case PT_TYPE_SMALLINT:
+	    case PT_TYPE_INTEGER:
+	    case PT_TYPE_BIGINT:
+	      if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
+		{
+		  common_type = PT_TYPE_TIMETZ;
+		}
+	      else
+		{
+		  common_type = arg2_type;
+		}
+	      break;
+	    case PT_TYPE_CHAR:
+	    case PT_TYPE_VARCHAR:
+	    case PT_TYPE_NCHAR:
+	    case PT_TYPE_VARNCHAR:
+	    case PT_TYPE_ENUMERATION:
+	    case PT_TYPE_TIME:
+	    case PT_TYPE_TIMELTZ:
+	    case PT_TYPE_TIMETZ:
+	      common_type = PT_TYPE_TIMETZ;
 	      break;
 	    default:
 	      common_type = PT_TYPE_NONE;
@@ -10963,13 +11747,13 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_DATE:
 	      common_type = PT_TYPE_DATE;
 	      break;
-
 	    case PT_TYPE_TIMESTAMP:
-	      common_type = PT_TYPE_TIMESTAMP;
-	      break;
-
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_TIMESTAMPTZ:
 	    case PT_TYPE_DATETIME:
-	      common_type = PT_TYPE_DATETIME;
+	    case PT_TYPE_DATETIMELTZ:
+	    case PT_TYPE_DATETIMETZ:
+	      common_type = arg2_type;
 	      break;
 
 	    default:
@@ -10982,8 +11766,14 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    {
 	    case PT_TYPE_DATE:
 	    case PT_TYPE_TIME:
+	    case PT_TYPE_TIMELTZ:
+	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_TIMESTAMP:
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_TIMESTAMPTZ:
 	    case PT_TYPE_DATETIME:
+	    case PT_TYPE_DATETIMELTZ:
+	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_VARCHAR:
 	    case PT_TYPE_CHAR:
 	      common_type = arg2_type;
@@ -11002,8 +11792,14 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    {
 	    case PT_TYPE_DATE:
 	    case PT_TYPE_TIME:
+	    case PT_TYPE_TIMELTZ:
+	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_TIMESTAMP:
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_TIMESTAMPTZ:
 	    case PT_TYPE_DATETIME:
+	    case PT_TYPE_DATETIMELTZ:
+	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_VARCHAR:
 	      common_type = arg2_type;
 	      break;
@@ -11022,8 +11818,14 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    {
 	    case PT_TYPE_DATE:
 	    case PT_TYPE_TIME:
+	    case PT_TYPE_TIMELTZ:
+	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_TIMESTAMP:
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_TIMESTAMPTZ:
 	    case PT_TYPE_DATETIME:
+	    case PT_TYPE_DATETIMELTZ:
+	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_NCHAR:
 	    case PT_TYPE_VARNCHAR:
 	      common_type = arg2_type;
@@ -11039,8 +11841,14 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    {
 	    case PT_TYPE_DATE:
 	    case PT_TYPE_TIME:
+	    case PT_TYPE_TIMELTZ:
+	    case PT_TYPE_TIMETZ:
 	    case PT_TYPE_TIMESTAMP:
+	    case PT_TYPE_TIMESTAMPLTZ:
+	    case PT_TYPE_TIMESTAMPTZ:
 	    case PT_TYPE_DATETIME:
+	    case PT_TYPE_DATETIMELTZ:
+	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_VARNCHAR:
 	      common_type = arg2_type;
 	      break;
@@ -12011,6 +12819,14 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
       dt = pt_make_prim_data_type (parser, PT_TYPE_BIGINT);
       break;
 
+    case PT_TZ_OFFSET:
+      assert (dt == NULL);
+      dt = pt_make_prim_data_type (parser, node->type_enum);
+      dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+      dt->info.data_type.units = (int) LANG_SYS_CODESET;
+      dt->info.data_type.collation_id = LANG_SYS_COLLATION;
+      break;
+
     case PT_TRACE_STATS:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
@@ -12403,14 +13219,26 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
     case PT_TYPE_TIME:
       precision = TP_TIME_AS_CHAR_LENGTH;
       break;
+    case PT_TYPE_TIMELTZ:
+    case PT_TYPE_TIMETZ:
+      precision = TP_TIMETZ_AS_CHAR_LENGTH;
+      break;
     case PT_TYPE_DATE:
       precision = TP_DATE_AS_CHAR_LENGTH;
       break;
     case PT_TYPE_TIMESTAMP:
       precision = TP_TIMESTAMP_AS_CHAR_LENGTH;
       break;
+    case PT_TYPE_TIMESTAMPLTZ:
+    case PT_TYPE_TIMESTAMPTZ:
+      precision = TP_TIMESTAMPTZ_AS_CHAR_LENGTH;
+      break;
     case PT_TYPE_DATETIME:
       precision = TP_DATETIME_AS_CHAR_LENGTH;
+      break;
+    case PT_TYPE_DATETIMETZ:
+    case PT_TYPE_DATETIMELTZ:
+      precision = TP_DATETIMETZ_AS_CHAR_LENGTH;
       break;
     case PT_TYPE_NUMERIC:
       precision = node->data_type->info.data_type.precision;
@@ -15173,15 +16001,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
       /* don't coerce dates and times */
-      if (typ != DB_TYPE_DATE
-	  && typ != DB_TYPE_UTIME
-	  && typ != DB_TYPE_TIME
-	  && typ != DB_TYPE_DATETIME
+      if (!TP_IS_DATE_OR_TIME_TYPE (typ)
 	  && !((typ == DB_TYPE_INTEGER || typ == DB_TYPE_BIGINT)
-	       && ((typ1 == DB_TYPE_DATE && typ2 == DB_TYPE_DATE)
-		   || (typ1 == DB_TYPE_UTIME && typ2 == DB_TYPE_UTIME)
-		   || (typ1 == DB_TYPE_DATETIME && typ2 == DB_TYPE_DATETIME)
-		   || (typ1 == DB_TYPE_TIME && typ2 == DB_TYPE_TIME))))
+	       && (TP_IS_DATE_OR_TIME_TYPE (typ1) && typ1 == typ2)))
 	{
 	  /* coerce operands to data type of result */
 	  if (typ1 != typ)
@@ -15354,20 +16176,22 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	      }
 
 	    case DB_TYPE_TIME:
+	    case DB_TYPE_TIMELTZ:
 	      {
-		DB_TIME *time, result_time;
+		DB_TIME time, result_time;
 		int hour, minute, second;
 		DB_BIGINT itmp;
 		DB_VALUE *other;
 
-		if (DB_VALUE_TYPE (arg1) == DB_TYPE_TIME)
+		if (DB_VALUE_TYPE (arg1) == DB_TYPE_TIME
+		    || DB_VALUE_TYPE (arg1) == DB_TYPE_TIMELTZ)
 		  {
-		    time = DB_GET_TIME (arg1);
+		    time = *DB_GET_TIME (arg1);
 		    other = arg2;
 		  }
 		else
 		  {
-		    time = DB_GET_TIME (arg2);
+		    time = *DB_GET_TIME (arg2);
 		    other = arg1;
 		  }
 
@@ -15388,28 +16212,95 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		if (itmp < 0)
 		  {
 		    DB_TIME uother = (DB_TIME) ((-itmp) % 86400);
-		    if (*time < uother)
+		    if (time < uother)
 		      {
-			*time += 86400;
+			time += 86400;
 		      }
-		    result_time = (*time) - uother;
+		    result_time = time - uother;
 		  }
 		else
 		  {
-		    result_time = (itmp + *time) % 86400;
+		    result_time = (itmp + time) % 86400;
 		  }
 		db_time_decode (&result_time, &hour, &minute, &second);
-		db_make_time (result, hour, minute, second);
+		if (typ == DB_TYPE_TIME)
+		  {
+		    db_make_time (result, hour, minute, second);
+		  }
+		else
+		  {
+		    db_make_timeltz (result, &result_time);
+		  }
+	      }
+	      break;
+
+	    case DB_TYPE_TIMETZ:
+	      {
+		DB_TIMETZ *time_tz_p, time_tz_res, time_tz_fixed;
+		DB_TIME time, result_time;
+		DB_BIGINT itmp;
+		DB_VALUE *other;
+
+		if (DB_VALUE_TYPE (arg1) == DB_TYPE_TIMETZ)
+		  {
+		    time_tz_p = DB_GET_TIMETZ (arg1);
+		    other = arg2;
+		  }
+		else
+		  {
+		    time_tz_p = DB_GET_TIMETZ (arg2);
+		    other = arg1;
+		  }
+
+		switch (DB_VALUE_TYPE (other))
+		  {
+		  case DB_TYPE_INTEGER:
+		    itmp = DB_GET_INTEGER (other);	/* SECONDS_OF_ONE_DAY */
+		    break;
+		  case DB_TYPE_SMALLINT:
+		    itmp = DB_GET_SHORT (other);	/* SECONDS_OF_ONE_DAY */
+		    break;
+		  case DB_TYPE_BIGINT:
+		    itmp = DB_GET_BIGINT (other);	/* SECONDS_OF_ONE_DAY */
+		    break;
+		  default:
+		    return 0;
+		  }
+
+		time = time_tz_p->time;
+		if (itmp < 0)
+		  {
+		    DB_TIME uother = (DB_TIME) ((-itmp) % 86400);
+		    if (time < uother)
+		      {
+			time += 86400;
+		      }
+		    result_time = time - uother;
+		  }
+		else
+		  {
+		    result_time = (itmp + time) % 86400;
+		  }
+		time_tz_res.time = result_time;
+		time_tz_res.tz_id = time_tz_p->tz_id;
+		if (tz_timetz_fix_zone (&time_tz_res, &time_tz_fixed)
+		    != NO_ERROR)
+		  {
+		    return 0;
+		  }
+		db_make_timetz (result, &time_tz_fixed);
 	      }
 	      break;
 
 	    case DB_TYPE_UTIME:
+	    case DB_TYPE_TIMESTAMPLTZ:
 	      {
 		DB_UTIME *utime, result_utime;
 		DB_VALUE *other;
 		DB_BIGINT bi;
 
-		if (DB_VALUE_TYPE (arg1) == DB_TYPE_UTIME)
+		if (DB_VALUE_TYPE (arg1) == DB_TYPE_UTIME
+		    || DB_VALUE_TYPE (arg1) == DB_TYPE_TIMESTAMPLTZ)
 		  {
 		    utime = DB_GET_UTIME (arg1);
 		    other = arg2;
@@ -15480,17 +16371,110 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		      }
 		  }
 
-		db_make_timestamp (result, result_utime);
+		if (typ == DB_TYPE_TIMESTAMPLTZ)
+		  {
+		    db_make_timestampltz (result, result_utime);
+		  }
+		else
+		  {
+		    db_make_timestamp (result, result_utime);
+		  }
+	      }
+	      break;
+
+	    case DB_TYPE_TIMESTAMPTZ:
+	      {
+		DB_TIMESTAMPTZ *ts_tz_p, ts_tz_res, ts_tz_fixed;
+		DB_UTIME utime, result_utime;
+		DB_VALUE *other;
+		DB_BIGINT bi;
+
+		if (DB_VALUE_TYPE (arg1) == DB_TYPE_TIMESTAMPTZ)
+		  {
+		    ts_tz_p = DB_GET_TIMESTAMPTZ (arg1);
+		    other = arg2;
+		  }
+		else
+		  {
+		    ts_tz_p = DB_GET_TIMESTAMPTZ (arg2);
+		    other = arg1;
+		  }
+
+		utime = ts_tz_p->timestamp;
+		if (utime == 0)
+		  {
+		    /* operation with zero date returns null */
+		    DB_MAKE_NULL (result);
+		    break;
+		  }
+
+		switch (DB_VALUE_TYPE (other))
+		  {
+		  case DB_TYPE_INTEGER:
+		    bi = DB_GET_INTEGER (other);
+		    break;
+		  case DB_TYPE_SMALLINT:
+		    bi = DB_GET_SHORT (other);
+		    break;
+		  case DB_TYPE_BIGINT:
+		    bi = DB_GET_BIGINT (other);
+		    break;
+		  default:
+		    return 0;
+		  }
+
+		if (bi < 0)
+		  {
+		    if (bi == DB_BIGINT_MIN)
+		      {
+			if (utime == 0)
+			  {
+			    goto overflow;
+			  }
+			else
+			  {
+			    bi++;
+			    utime--;
+			  }
+		      }
+		    if (OR_CHECK_UNS_SUB_UNDERFLOW (utime, -bi, utime + bi))
+		      {
+			goto overflow;
+		      }
+		    result_utime = (DB_UTIME) (utime + bi);
+		  }
+		else
+		  {
+		    result_utime = (DB_UTIME) (utime + bi);
+		    if (OR_CHECK_UNS_ADD_OVERFLOW (utime, bi, result_utime)
+			|| INT_MAX < result_utime)
+		      {
+			goto overflow;
+		      }
+		  }
+
+		ts_tz_res.timestamp = result_utime;
+		ts_tz_res.tz_id = ts_tz_p->tz_id;
+
+		if (tz_timestamptz_fix_zone (&ts_tz_res, &ts_tz_fixed)
+		    != NO_ERROR)
+		  {
+		    return 0;
+		  }
+
+		db_make_timestamptz (result, &ts_tz_fixed);
 	      }
 	      break;
 
 	    case DB_TYPE_DATETIME:
+	    case DB_TYPE_DATETIMELTZ:
 	      {
 		DB_DATETIME *datetime, result_datetime;
 		DB_BIGINT bi1, bi2, result_bi, tmp_bi;
 		DB_VALUE *other;
 
-		if (DB_VALUE_TYPE (arg1) == DB_TYPE_DATETIME)
+		if (DB_VALUE_TYPE (arg1) == DB_TYPE_DATETIME
+		    || DB_VALUE_TYPE (arg1) == DB_TYPE_DATETIMELTZ)
 		  {
 		    datetime = DB_GET_DATETIME (arg1);
 		    other = arg2;
@@ -15562,7 +16546,99 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		result_datetime.time =
 		  (int) (result_bi % MILLISECONDS_OF_ONE_DAY);
 
-		db_make_datetime (result, &result_datetime);
+		if (typ == DB_TYPE_DATETIME)
+		  {
+		    db_make_datetime (result, &result_datetime);
+		  }
+		else
+		  {
+		    db_make_datetimeltz (result, &result_datetime);
+		  }
+	      }
+	      break;
+
+	    case DB_TYPE_DATETIMETZ:
+	      {
+		DB_DATETIMETZ *dt_tz_p, dt_tz_res, dt_tz_fixed;
+		DB_DATETIME datetime;
+		DB_BIGINT bi1, bi2, result_bi, tmp_bi;
+		DB_VALUE *other;
+
+		if (DB_VALUE_TYPE (arg1) == DB_TYPE_DATETIMETZ)
+		  {
+		    dt_tz_p = DB_GET_DATETIMETZ (arg1);
+		    other = arg2;
+		  }
+		else
+		  {
+		    dt_tz_p = DB_GET_DATETIMETZ (arg2);
+		    other = arg1;
+		  }
+
+		datetime = dt_tz_p->datetime;
+
+		if (datetime.date == 0 && datetime.time == 0)
+		  {
+		    /* operation with zero date returns null */
+		    DB_MAKE_NULL (result);
+		    break;
+		  }
+
+		switch (DB_VALUE_TYPE (other))
+		  {
+		  case DB_TYPE_SMALLINT:
+		    bi2 = (DB_BIGINT) DB_GET_SHORT (other);
+		    break;
+		  case DB_TYPE_INTEGER:
+		    bi2 = (DB_BIGINT) DB_GET_INTEGER (other);
+		    break;
+		  default:
+		    bi2 = (DB_BIGINT) DB_GET_BIGINT (other);
+		    break;
+		  }
+
+		bi1 = ((DB_BIGINT) datetime.date) * MILLISECONDS_OF_ONE_DAY
+		  + datetime.time;
+
+		if (bi2 < 0)
+		  {
+		    if (bi2 == DB_BIGINT_MIN)
+		      {
+			goto overflow;
+		      }
+		    result_bi = bi1 + bi2;
+		    if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, result_bi))
+		      {
+			goto overflow;
+		      }
+		  }
+		else
+		  {
+		    result_bi = bi1 + bi2;
+		    if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result_bi))
+		      {
+			goto overflow;
+		      }
+		  }
+
+		tmp_bi = (DB_BIGINT) (result_bi / MILLISECONDS_OF_ONE_DAY);
+		if (OR_CHECK_INT_OVERFLOW (tmp_bi) || tmp_bi > DB_DATE_MAX
+		    || tmp_bi < DB_DATE_MIN)
+		  {
+		    goto overflow;
+		  }
+		dt_tz_res.datetime.date = (int) tmp_bi;
+		dt_tz_res.datetime.time =
+		  (int) (result_bi % MILLISECONDS_OF_ONE_DAY);
+		dt_tz_res.tz_id = dt_tz_p->tz_id;
+
+		if (tz_datetimetz_fix_zone (&dt_tz_res, &dt_tz_fixed)
+		    != NO_ERROR)
+		  {
+		    return 0;
+		  }
+
+		db_make_datetimetz (result, &dt_tz_fixed);
 	      }
 	      break;
 
@@ -15686,7 +16762,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		    break;
 		  }
 
-		if (typ1 == DB_TYPE_DATETIME)
+		if (typ1 == DB_TYPE_DATETIME || typ1 == DB_TYPE_DATETIMELTZ)
 		  {
 		    DB_DATETIME *dt1, *dt2;
 
@@ -15698,6 +16774,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		    bi2 = (((DB_BIGINT) dt2->date) * MILLISECONDS_OF_ONE_DAY
 			   + dt2->time);
 		  }
+		else if (typ1 == DB_TYPE_DATETIMETZ)
+		  {
+		    DB_DATETIMETZ *dt_tz1, *dt_tz2;
+
+		    dt_tz1 = DB_GET_DATETIMETZ (arg1);
+		    dt_tz2 = DB_GET_DATETIMETZ (arg2);
+
+		    bi1 = (((DB_BIGINT) dt_tz1->datetime.date)
+			   * MILLISECONDS_OF_ONE_DAY + dt_tz1->datetime.time);
+		    bi2 = (((DB_BIGINT) dt_tz2->datetime.date)
+			   * MILLISECONDS_OF_ONE_DAY + dt_tz2->datetime.time);
+		  }
 		else if (typ1 == DB_TYPE_DATE)
 		  {
 		    DB_DATE *d1, *d2;
@@ -15708,7 +16796,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		    bi1 = (DB_BIGINT) (*d1);
 		    bi2 = (DB_BIGINT) (*d2);
 		  }
-		else if (typ1 == DB_TYPE_TIME)
+		else if (typ1 == DB_TYPE_TIME || typ1 == DB_TYPE_TIMELTZ)
 		  {
 		    DB_TIME *t1, *t2;
 
@@ -15718,7 +16806,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		    bi1 = (DB_BIGINT) (*t1);
 		    bi2 = (DB_BIGINT) (*t2);
 		  }
-		else if (typ1 == DB_TYPE_TIMESTAMP)
+		else if (typ1 == DB_TYPE_TIMETZ)
+		  {
+		    DB_TIMETZ *t_tz1, *t_tz2;
+
+		    t_tz1 = DB_GET_TIMETZ (arg1);
+		    t_tz2 = DB_GET_TIMETZ (arg2);
+
+		    bi1 = (DB_BIGINT) (t_tz1->time);
+		    bi2 = (DB_BIGINT) (t_tz2->time);
+		  }
+		else if (typ1 == DB_TYPE_TIMESTAMP
+			 || typ1 == DB_TYPE_TIMESTAMPLTZ)
 		  {
 		    DB_TIMESTAMP *ts1, *ts2;
 
@@ -15727,6 +16826,16 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 
 		    bi1 = (DB_BIGINT) (*ts1);
 		    bi2 = (DB_BIGINT) (*ts2);
+		  }
+		else if (typ1 == DB_TYPE_TIMESTAMPTZ)
+		  {
+		    DB_TIMESTAMPTZ *ts_tz1, *ts_tz2;
+
+		    ts_tz1 = DB_GET_TIMESTAMPTZ (arg1);
+		    ts_tz2 = DB_GET_TIMESTAMPTZ (arg2);
+
+		    bi1 = (DB_BIGINT) (ts_tz1->timestamp);
+		    bi2 = (DB_BIGINT) (ts_tz2->timestamp);
 		  }
 		else if (typ1 == DB_TYPE_BIGINT)
 		  {
@@ -15740,7 +16849,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		    DB_MAKE_NULL (result);
 		    break;
 		  }
-
 
 		if ((TP_IS_DATE_TYPE (typ1) && bi1 == 0)
 		    || (TP_IS_DATE_TYPE (typ2) && bi2 == 0))
@@ -15835,10 +16943,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		break;
 	      }
 
-
 	    case DB_TYPE_TIME:
+	    case DB_TYPE_TIMELTZ:
+	    case DB_TYPE_TIMETZ:
 	      {
-		DB_TIME *time, result_time;
+		DB_TIME time, result_time;
+		DB_TIMETZ time_tz, time_tz_fixed;
 		int hour, minute, second;
 		DB_BIGINT bi = 0, ubi = 0;
 
@@ -15858,20 +16968,56 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		    break;
 		  }
 		ubi = (bi < 0) ? -bi : bi;
-		time = DB_GET_TIME (arg1);
-		if (*time < (DB_TIME) (ubi % 86400))
+
+		assert (typ == DB_VALUE_TYPE (arg1));
+
+		if (typ == DB_TYPE_TIMETZ)
 		  {
-		    *time += 86400;
+		    time_tz = *DB_GET_TIMETZ (arg1);
+		    time = time_tz.time;
 		  }
-		result_time = *time - (bi % 86400);
+		else
+		  {
+		    time = *DB_GET_TIME (arg1);
+		  }
+
+		if (time < (DB_TIME) (ubi % 86400))
+		  {
+		    time += 86400;
+		  }
+		result_time = time - (bi % 86400);
+
 		db_time_decode (&result_time, &hour, &minute, &second);
-		db_make_time (result, hour, minute, second);
+		if (typ == DB_TYPE_TIMETZ)
+		  {
+		    db_time_encode (&result_time, hour, minute, second);
+		    time_tz.time = result_time;
+		    time_tz.tz_id;
+		    if (tz_timetz_fix_zone (&time_tz, &time_tz_fixed)
+			!= NO_ERROR)
+		      {
+			return 0;
+		      }
+		    db_make_timetz (result, &time_tz_fixed);
+		  }
+		else if (typ == DB_TYPE_TIMELTZ)
+		  {
+		    db_time_encode (&result_time, hour, minute, second);
+		    db_make_timeltz (result, &result_time);
+		  }
+		else
+		  {
+		    db_make_time (result, hour, minute, second);
+		  }
 	      }
 	      break;
 
 	    case DB_TYPE_UTIME:
+	    case DB_TYPE_TIMESTAMPLTZ:
+	    case DB_TYPE_TIMESTAMPTZ:
 	      {
-		DB_UTIME *utime, result_utime;
+		DB_UTIME utime, result_utime;
+		DB_TIMESTAMPTZ ts_tz, ts_tz_fixed;
 		DB_BIGINT bi = 0;
 
 		switch (DB_VALUE_TYPE (arg2))
@@ -15889,9 +17035,19 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		    assert (false);
 		    break;
 		  }
-		utime = DB_GET_UTIME (arg1);
 
-		if (*utime == 0)
+		assert (typ == DB_VALUE_TYPE (arg1));
+		if (typ == DB_TYPE_TIMESTAMPTZ)
+		  {
+		    ts_tz = *DB_GET_TIMESTAMPTZ (arg1);
+		    utime = ts_tz.timestamp;
+		  }
+		else
+		  {
+		    utime = *DB_GET_UTIME (arg1);
+		  }
+
+		if (utime == 0)
 		  {
 		    /* operation with zero date returns null */
 		    DB_MAKE_NULL (result);
@@ -15908,8 +17064,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		if (bi < 0)
 		  {
 		    /* we're adding */
-		    result_utime = (DB_UTIME) (*utime - bi);
-		    if (OR_CHECK_UNS_ADD_OVERFLOW (*utime, -bi, result_utime)
+		    result_utime = (DB_UTIME) (utime - bi);
+		    if (OR_CHECK_UNS_ADD_OVERFLOW (utime, -bi, result_utime)
 			|| INT_MAX < result_utime)
 		      {
 			goto overflow;
@@ -15917,22 +17073,41 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  }
 		else
 		  {
-		    result_utime = (DB_UTIME) (*utime - bi);
-		    if (OR_CHECK_UNS_SUB_UNDERFLOW (*utime, bi, result_utime))
+		    result_utime = (DB_UTIME) (utime - bi);
+		    if (OR_CHECK_UNS_SUB_UNDERFLOW (utime, bi, result_utime))
 		      {
 			PT_ERRORm (parser, o2, MSGCAT_SET_PARSER_SEMANTIC,
 				   MSGCAT_SEMANTIC_TIME_UNDERFLOW);
 			return 0;
 		      }
 		  }
-		db_make_timestamp (result, result_utime);
+		if (typ == DB_TYPE_TIMESTAMPTZ)
+		  {
+		    ts_tz.timestamp = result_utime;
+		    if (tz_timestamptz_fix_zone (&ts_tz, &ts_tz_fixed)
+			!= NO_ERROR)
+		      {
+			return 0;
+		      }
+		    db_make_timestamptz (result, &ts_tz_fixed);
+		  }
+		else if (typ == DB_TYPE_TIMESTAMPLTZ)
+		  {
+		    db_make_timestampltz (result, result_utime);
+		  }
+		else
+		  {
+		    db_make_timestamp (result, result_utime);
+		  }
 	      }
 	      break;
 
 	    case DB_TYPE_DATETIME:
+	    case DB_TYPE_DATETIMELTZ:
+	    case DB_TYPE_DATETIMETZ:
 	      {
-		DB_DATETIME result_datetime;
-		DB_DATETIME *datetime;
+		DB_DATETIME datetime, result_datetime;
+		DB_DATETIMETZ dt_tz, dt_tz_fixed;
 		DB_BIGINT bi = 0;
 
 		switch (DB_VALUE_TYPE (arg2))
@@ -15950,9 +17125,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		    assert (false);
 		    break;
 		  }
-		datetime = DB_GET_DATETIME (arg1);
 
-		if (datetime->date == 0 && datetime->time == 0)
+		if (typ == DB_TYPE_DATETIMETZ)
+		  {
+		    dt_tz = *DB_GET_DATETIMETZ (arg1);
+		    datetime = dt_tz.datetime;
+		  }
+		else
+		  {
+		    datetime = *DB_GET_DATETIME (arg1);
+		  }
+
+		if (datetime.date == 0 && datetime.time == 0)
 		  {
 		    /* operation with zero date returns null */
 		    DB_MAKE_NULL (result);
@@ -15966,7 +17150,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		    break;
 		  }
 
-		error = db_subtract_int_from_datetime (datetime, bi,
+		error = db_subtract_int_from_datetime (&datetime, bi,
 						       &result_datetime);
 		if (error != NO_ERROR)
 		  {
@@ -15974,7 +17158,25 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 			       MSGCAT_SEMANTIC_DATE_UNDERFLOW);
 		    return 0;
 		  }
-		db_make_datetime (result, &result_datetime);
+
+		if (typ == DB_TYPE_DATETIMETZ)
+		  {
+		    dt_tz.datetime = result_datetime;
+		    if (tz_datetimetz_fix_zone (&dt_tz, &dt_tz_fixed)
+			!= NO_ERROR)
+		      {
+			return 0;
+		      }
+		    db_make_datetimetz (result, &dt_tz_fixed);
+		  }
+		else if (typ == DB_TYPE_DATETIMELTZ)
+		  {
+		    db_make_datetimeltz (result, &result_datetime);
+		  }
+		else
+		  {
+		    db_make_datetime (result, &result_datetime);
+		  }
 	      }
 	      break;
 
@@ -17654,7 +18856,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	tmp_date = tmp_datetime->date;
 	tmp_time = tmp_datetime->time / 1000;
 
-	db_timestamp_encode (&tmp_timestamp, &tmp_date, &tmp_time);
+	(void) db_timestamp_encode_ses (&tmp_date, &tmp_time, &tmp_timestamp,
+					NULL);
 	db_make_timestamp (result, tmp_timestamp);
 
 	return 1;
@@ -17884,7 +19087,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
     case PT_TO_TIME:
-      error = db_to_time (arg1, arg2, arg3, result);
+      error = db_to_time (arg1, arg2, arg3, DB_TYPE_TIME, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17896,7 +19099,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
     case PT_TO_TIMESTAMP:
-      error = db_to_timestamp (arg1, arg2, arg3, result);
+      error = db_to_timestamp (arg1, arg2, arg3, DB_TYPE_TIMESTAMP, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17908,7 +19111,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
 
     case PT_TO_DATETIME:
-      error = db_to_datetime (arg1, arg2, arg3, result);
+      error = db_to_datetime (arg1, arg2, arg3, DB_TYPE_DATETIME, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -18014,75 +19217,20 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	}
       else
 	{
-	  DB_DATE date;
-	  DB_TIME time;
-	  DB_UTIME *utime;
-	  DB_DATETIME *datetime;
-	  int year, month, day, hour, minute, second, millisecond;
+	  MISC_OPERAND q_qualifier;
+	  TP_DOMAIN *domain_p;
 
-	  switch (typ1)
+	  q_qualifier = pt_misc_to_qp_misc_operand (qualifier);
+	  domain_p = tp_domain_resolve_default (DB_TYPE_INTEGER);
+
+	  if (q_qualifier == (MISC_OPERAND) 0)
 	    {
-	    case DB_TYPE_TIME:
-	      time = *DB_GET_TIME (arg1);
-	      db_time_decode (&time, &hour, &minute, &second);
-	      break;
-
-	    case DB_TYPE_DATE:
-	      date = *DB_GET_DATE (arg1);
-	      db_date_decode (&date, &month, &day, &year);
-	      break;
-
-	    case DB_TYPE_UTIME:
-	      utime = DB_GET_UTIME (arg1);
-	      db_timestamp_decode (utime, &date, &time);
-	      if (qualifier == PT_YEAR
-		  || qualifier == PT_MONTH || qualifier == PT_DAY)
-		db_date_decode (&date, &month, &day, &year);
-	      else
-		db_time_decode (&time, &hour, &minute, &second);
-	      break;
-
-	    case DB_TYPE_DATETIME:
-	      datetime = DB_GET_DATETIME (arg1);
-	      db_datetime_decode (datetime, &month, &day, &year,
-				  &hour, &minute, &second, &millisecond);
-	      break;
-
-	    default:
 	      return 0;
 	    }
 
-	  switch (qualifier)
+	  if (db_string_extract_dbval (q_qualifier, arg1, result, domain_p)
+	      != NO_ERROR)
 	    {
-	    case PT_YEAR:
-	      db_make_int (result, year);
-	      break;
-
-	    case PT_MONTH:
-	      db_make_int (result, month);
-	      break;
-
-	    case PT_DAY:
-	      db_make_int (result, day);
-	      break;
-
-	    case PT_HOUR:
-	      db_make_int (result, hour);
-	      break;
-
-	    case PT_MINUTE:
-	      db_make_int (result, minute);
-	      break;
-
-	    case PT_SECOND:
-	      db_make_int (result, second);
-	      break;
-
-	    case PT_MILLISECOND:
-	      db_make_int (result, millisecond);
-	      break;
-
-	    default:
 	      return 0;
 	    }
 	}			/* else */
@@ -18615,7 +19763,115 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  return 0;
 	}
 
+    case PT_NEW_TIME:
+      {
+	error = db_new_time (arg1, arg2, arg3, result);
+	if (error < 0)
+	  {
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+	else
+	  {
+	    return 1;
+	  }
+      }
+
+    case PT_FROM_TZ:
+      {
+	error = db_from_tz (arg1, arg2, result);
+	if (error < 0)
+	  {
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+	else
+	  {
+	    return 1;
+	  }
+      }
+
+    case PT_TZ_OFFSET:
+      {
+	DB_VALUE timezone;
+	int timezone_milis;
+	DB_DATETIME *tmp_datetime, utc_datetime;
+
+	tmp_datetime = db_get_datetime (&parser->sys_datetime);
+	db_sys_timezone (&timezone);
+	timezone_milis = DB_GET_INT (&timezone) * 60000;
+	db_add_int_to_datetime (tmp_datetime, timezone_milis, &utc_datetime);
+
+	if (DB_IS_NULL (arg1))
+	  {
+	    db_make_null (result);
+	  }
+	else
+	  {
+	    if (db_tz_offset (arg1, result, &utc_datetime) != NO_ERROR)
+	      {
+		PT_ERRORc (parser, o1, er_msg ());
+		return 0;
+	      }
+	  }
+      }
       break;
+
+    case PT_TO_DATETIME_TZ:
+      error = db_to_datetime (arg1, arg2, arg3, DB_TYPE_DATETIMETZ, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+      break;
+
+    case PT_TO_TIMESTAMP_TZ:
+      error = db_to_timestamp (arg1, arg2, arg3, DB_TYPE_TIMESTAMPTZ, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+      break;
+
+    case PT_TO_TIME_TZ:
+      error = db_to_time (arg1, arg2, arg3, DB_TYPE_TIMETZ, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+      break;
+
+    case PT_UTC_TIMESTAMP:
+      {
+	DB_TIME time;
+	DB_DATE date;
+	DB_TIMESTAMP *tmp_timestamp, timestamp;
+	int year, month, day, hour, minute, second;
+
+	tmp_timestamp = db_get_timestamp (&parser->sys_epochtime);
+	tz_timestamp_decode_no_leap_sec (*tmp_timestamp, &year, &month,
+					 &day, &hour, &minute, &second);
+	date = julian_encode (month + 1, day, year);
+	db_time_encode (&time, hour, minute, second);
+	db_timestamp_encode_ses (&date, &time, &timestamp, NULL);
+	DB_MAKE_TIMESTAMP (result, timestamp);
+	return 1;
+      }
 
     default:
       break;
@@ -18759,7 +20015,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	   || op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH
 	   || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR
 	   || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS
-	   || op == PT_TRACE_STATS)
+	   || op == PT_TRACE_STATS || op == PT_TZ_OFFSET)
     {
       goto end;
     }
@@ -19384,7 +20640,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		   && op != PT_TO_DATETIME
 		   && op != PT_NULLIF && op != PT_COALESCE
 		   && op != PT_NVL && op != PT_NVL2 && op != PT_DECODE
-		   && op != PT_IFNULL)
+		   && op != PT_IFNULL && op != PT_TO_DATETIME_TZ &&
+		   op != PT_TO_TIMESTAMP_TZ && op != PT_TO_TIME_TZ)
 	       || (opd2 && (opd2->type_enum == PT_TYPE_NA
 			    || opd2->type_enum == PT_TYPE_NULL)
 		   && op != PT_CASE && op != PT_TO_CHAR
@@ -19395,7 +20652,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		   && op != PT_NULLIF && op != PT_COALESCE
 		   && op != PT_NVL && op != PT_NVL2 && op != PT_DECODE
 		   && op != PT_IFNULL && op != PT_IF
-		   && (op != PT_RANGE || !opd2->or_next))
+		   && (op != PT_RANGE || !opd2->or_next)
+		   && op != PT_TO_DATETIME_TZ && op != PT_TO_TIMESTAMP_TZ
+		   && op != PT_TO_TIME_TZ)
 	       || (opd3 && (opd3->type_enum == PT_TYPE_NA
 			    || opd3->type_enum == PT_TYPE_NULL)
 		   && op != PT_BETWEEN && op != PT_NOT_BETWEEN

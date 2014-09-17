@@ -121,7 +121,8 @@ typedef enum
   SHOWSTMT_ALL_INDEXES_CAPACITY,
   SHOWSTMT_GLOBAL_CRITICAL_SECTIONS,
   SHOWSTMT_JOB_QUEUES,
-
+  SHOWSTMT_TIMEZONES,
+  SHOWSTMT_FULL_TIMEZONES,
   /* append the new show statement types in here */
 
   SHOWSTMT_END
@@ -446,7 +447,16 @@ typedef enum
   T_TO_BASE64,
   T_FROM_BASE64,
   T_SYS_GUID,
-  T_SLEEP
+  T_SLEEP,
+  T_DBTIMEZONE,
+  T_SESSIONTIMEZONE,
+  T_TZ_OFFSET,
+  T_NEW_TIME,
+  T_FROM_TZ,
+  T_TO_DATETIME_TZ,
+  T_TO_TIMESTAMP_TZ,
+  T_TO_TIME_TZ,
+  T_UTC_TIMESTAMP
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;

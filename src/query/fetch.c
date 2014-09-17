@@ -127,6 +127,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_DATE_SUB:
     case T_NEXT_VALUE:
     case T_INDEX_PREFIX:
+    case T_TO_DATETIME_TZ:
+    case T_TO_TIMESTAMP_TZ:
+    case T_TO_TIME_TZ:
 
       /* fetch lhs, rhs, and third value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
@@ -387,6 +390,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_ADDTIME:
     case T_WEEK:
     case T_DEFINE_VARIABLE:
+    case T_FROM_TZ:
       /* fetch both lhs and rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
 			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
@@ -413,6 +417,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_MAKETIME:
+    case T_NEW_TIME:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
 			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	{
@@ -515,6 +520,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_INET_NTOA:
     case T_CHARSET:
     case T_COLLATION:
+    case T_TZ_OFFSET:
     case T_SLEEP:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr,
@@ -613,7 +619,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_LAST_INSERT_ID:
     case T_LIST_DBS:
     case T_TRACE_STATS:
+    case T_DBTIMEZONE:
+    case T_SESSIONTIMEZONE:
     case T_SYS_GUID:
+    case T_UTC_TIMESTAMP:
       /* nothing to fetch */
       break;
 
@@ -2203,7 +2212,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
 	db_time = vd->sys_datetime.time / 1000;
 
-	db_timestamp_encode (&db_timestamp, &vd->sys_datetime.date, &db_time);
+	db_timestamp_encode_ses (&vd->sys_datetime.date, &db_time,
+				 &db_timestamp, NULL);
 	db_make_timestamp (arithptr->value, db_timestamp);
       }
       break;
@@ -2243,6 +2253,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	DB_MAKE_ENCODED_DATE (arithptr->value, &db_date);
 	break;
       }
+
     case T_LOCAL_TRANSACTION_ID:
       db_make_int (arithptr->value, logtb_find_current_tranid (thread_p));
       break;
@@ -2361,7 +2372,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_to_time (peek_left, peek_right, peek_third,
+      else if (db_to_time (peek_left, peek_right, peek_third, DB_TYPE_TIME,
 			   arithptr->value) != NO_ERROR)
 	{
 	  goto error;
@@ -2373,8 +2384,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_to_timestamp (peek_left, peek_right, peek_third,
-				arithptr->value) != NO_ERROR)
+      else
+	if (db_to_timestamp
+	    (peek_left, peek_right, peek_third, DB_TYPE_TIMESTAMP,
+	     arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2385,8 +2398,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_to_datetime (peek_left, peek_right, peek_third,
-			       arithptr->value) != NO_ERROR)
+      else
+	if (db_to_datetime
+	    (peek_left, peek_right, peek_third, DB_TYPE_DATETIME,
+	     arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3816,6 +3831,139 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_DBTIMEZONE:
+    case T_SESSIONTIMEZONE:
+      {
+	char *source_str;
+
+	if (arithptr->opcode == T_DBTIMEZONE)
+	  {
+	    source_str = (char *) tz_get_system_timezone ();
+	  }
+	else
+	  {
+	    source_str = (char *) tz_get_session_local_timezone ();
+	  }
+	db_make_string (arithptr->value, source_str);
+	arithptr->value->need_clear = false;
+	break;
+      }
+
+    case T_TZ_OFFSET:
+      {
+	DB_DATETIME tmp_datetime, utc_datetime;
+	DB_VALUE timezone;
+	int timezone_milis;
+
+	/* extract the timezone part */
+	if (db_sys_timezone (&timezone) != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	timezone_milis = DB_GET_INT (&timezone) * 60000;
+	tmp_datetime = vd->sys_datetime;
+	db_add_int_to_datetime (&tmp_datetime, timezone_milis, &utc_datetime);
+
+	if (DB_IS_NULL (peek_right))
+	  {
+	    PRIM_SET_NULL (arithptr->value);
+	  }
+	else
+	  {
+	    if (db_tz_offset (peek_right, arithptr->value, &utc_datetime) !=
+		NO_ERROR)
+	      {
+		goto error;
+	      }
+	  }
+      }
+      break;
+
+    case T_NEW_TIME:
+      if (DB_IS_NULL (peek_left)
+	  || DB_IS_NULL (peek_right) || DB_IS_NULL (peek_third))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (db_new_time (peek_left, peek_right, peek_third,
+			   arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_FROM_TZ:
+      if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (db_from_tz (peek_left, peek_right, arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_TO_DATETIME_TZ:
+      if (DB_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	if (db_to_datetime
+	    (peek_left, peek_right, peek_third, DB_TYPE_DATETIMETZ,
+	     arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_TO_TIMESTAMP_TZ:
+      if (DB_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	if (db_to_timestamp
+	    (peek_left, peek_right, peek_third, DB_TYPE_TIMESTAMPTZ,
+	     arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_TO_TIME_TZ:
+      if (DB_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_to_time (peek_left, peek_right, peek_third,
+			   DB_TYPE_TIMETZ, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_UTC_TIMESTAMP:
+      {
+	DB_DATE date;
+	DB_TIME time;
+	int year, month, day, hour, minute, second;
+	DB_TIMESTAMP timestamp;
+
+	tz_timestamp_decode_no_leap_sec (vd->sys_epochtime, &year, &month,
+					 &day, &hour, &minute, &second);
+	date = julian_encode (month + 1, day, year);
+	db_time_encode (&time, hour, minute, second);
+	db_timestamp_encode_ses (&date, &time, &timestamp, NULL);
+	DB_MAKE_TIMESTAMP (arithptr->value, timestamp);
+	break;
+      }
 
     default:
       break;

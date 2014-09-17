@@ -30,10 +30,20 @@
 #include <time.h>
 
 #include "dbtype.h"
+#include "tz_support.h"
 
 #define db_utime_to_string db_timestamp_to_string
 #define db_string_to_utime db_string_to_timestamp
 #define db_date_parse_utime db_date_parse_timestamp
+
+enum
+{
+  TIME_SPECIFIER = 1,
+  DATE_SPECIFIER = 2,
+  DATETIME_SPECIFIER = 3,
+  TIMETZ_SPECIFIER = 4,
+  DATETIMETZ_SPECIFIER = 5
+};
 
 extern void db_date_locale_init (void);
 
@@ -49,9 +59,6 @@ extern int db_string_to_date_ex (const char *buf, int str_len,
 				 DB_DATE * date);
 extern int db_date_parse_date (char const *str, int str_len, DB_DATE * date);
 
-extern int db_timestamp_to_datetime (DB_TIMESTAMP * utime,
-				     DB_DATETIME * datetime);
-
 /* DB_DATETIME functions */
 extern int db_datetime_encode (DB_DATETIME * datetime, int month, int day,
 			       int year, int hour, int minute, int second,
@@ -61,11 +68,23 @@ extern int db_datetime_decode (const DB_DATETIME * datetime, int *month,
 			       int *second, int *millisecond);
 extern int db_datetime_to_string (char *buf, int bufsize,
 				  DB_DATETIME * datetime);
+extern int db_datetimetz_to_string (char *buf, int bufsize, DB_DATETIME * dt,
+				    const TZ_ID * tz_id);
+extern int db_datetimeltz_to_string (char *buf, int bufsize,
+				     DB_DATETIME * dt);
 extern int db_datetime_to_string2 (char *buf, int bufsize,
 				   DB_DATETIME * datetime);
 extern int db_string_to_datetime (const char *str, DB_DATETIME * datetime);
 extern int db_string_to_datetime_ex (const char *str, int str_len,
 				     DB_DATETIME * datetime);
+extern int db_string_to_datetimetz (const char *str, DB_DATETIMETZ * dt_tz,
+				    bool * has_zone);
+extern int db_string_to_datetimetz_ex (const char *str, int str_len,
+				       DB_DATETIMETZ * dt_tz,
+				       bool * has_zone);
+extern int db_string_to_datetimeltz (const char *str, DB_DATETIME * datetime);
+extern int db_string_to_datetimeltz_ex (const char *str, int str_len,
+					DB_DATETIME * datetime);
 extern int db_date_parse_datetime_parts (char const *str, int str_len,
 					 DB_DATETIME * date,
 					 bool * is_explicit_time,
@@ -79,17 +98,44 @@ extern int db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT i2,
 extern int db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT i2,
 				   DB_DATETIME * result_datetime);
 /* DB_TIMESTAMP functions */
-extern int db_timestamp_encode (DB_TIMESTAMP * utime,
-				DB_DATE * date, DB_TIME * timeval);
-extern void db_timestamp_decode (const DB_TIMESTAMP * utime,
-				 DB_DATE * date, DB_TIME * timeval);
+extern int db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date,
+				DB_TIME * timeval);
+extern int db_timestamp_encode_ses (const DB_DATE * date,
+				    const DB_TIME * timeval,
+				    DB_TIMESTAMP * utime, TZ_ID * dest_tz_id);
+extern int db_timestamp_encode_utc (const DB_DATE * date,
+				    const DB_TIME * timeval,
+				    DB_TIMESTAMP * utime);
+extern int db_timestamp_decode_ses (const DB_TIMESTAMP * utime,
+				    DB_DATE * date, DB_TIME * timeval);
+extern void db_timestamp_decode_utc (const DB_TIMESTAMP * utime,
+				     DB_DATE * date, DB_TIME * timeval);
+extern int db_timestamp_decode_w_reg (const DB_TIMESTAMP * utime,
+				      const TZ_REGION * tz_region,
+				      DB_DATE * date, DB_TIME * timeval);
+extern int db_timestamp_decode_w_tz_id (const DB_TIMESTAMP * utime,
+					const TZ_ID * tz_id,
+					DB_DATE * date, DB_TIME * timeval);
 extern int db_timestamp_to_string (char *buf, int bufsize,
 				   DB_TIMESTAMP * utime);
+extern int db_timestamptz_to_string (char *buf, int bufsize,
+				     DB_TIMESTAMP * utime,
+				     const TZ_ID * tz_id);
+extern int db_timestampltz_to_string (char *buf, int bufsize,
+				      DB_TIMESTAMP * utime);
 extern int db_string_to_timestamp (const char *buf, DB_TIMESTAMP * utime);
 extern int db_string_to_timestamp_ex (const char *buf, int buf_len,
 				      DB_TIMESTAMP * utime);
 extern int db_date_parse_timestamp (char const *str, int str_len,
 				    DB_TIMESTAMP * utime);
+extern int db_string_to_timestamptz (const char *str, DB_TIMESTAMPTZ * ts_tz,
+				     bool * has_zone);
+extern int db_string_to_timestamptz_ex (const char *str, int str_len,
+					DB_TIMESTAMPTZ * ts_tz,
+					bool * has_zone);
+extern int db_string_to_timestampltz (const char *str, DB_TIMESTAMP * ts);
+extern int db_string_to_timestampltz_ex (const char *str, int str_len,
+					 DB_TIMESTAMP * ts);
 
 /* DB_TIME functions */
 extern int db_time_encode (DB_TIME * timeval,
@@ -97,10 +143,20 @@ extern int db_time_encode (DB_TIME * timeval,
 extern void db_time_decode (DB_TIME * timeval, int *hourp,
 			    int *minutep, int *secondp);
 extern int db_time_to_string (char *buf, int bufsize, DB_TIME * dbtime);
+extern int db_timetz_to_string (char *buf, int bufsize, DB_TIME * dbtime,
+				const TZ_ID * tz_id);
+extern int db_timeltz_to_string (char *buf, int bufsize, DB_TIME * time);
 extern bool db_string_check_explicit_time (const char *str, int str_len);
 extern int db_string_to_time (const char *buf, DB_TIME * dbtime);
 extern int db_string_to_time_ex (const char *buf, int buf_len,
 				 DB_TIME * dbtime);
+extern int db_string_to_timetz (const char *buf, DB_TIMETZ * time_tz,
+				bool * has_zone);
+extern int db_string_to_timetz_ex (const char *buf, int buf_len,
+				   DB_TIMETZ * time_tz, bool * has_zone);
+extern int db_string_to_timeltz (const char *buf, DB_TIME * time);
+extern int db_string_to_timeltz_ex (const char *buf, int buf_len,
+				    DB_TIME * time);
 extern int db_date_parse_time (char const *str, int str_len, DB_TIME * time,
 			       int *milisec);
 
@@ -119,9 +175,6 @@ extern void julian_decode (int jul, int *monthp, int *dayp,
 			   int *yearp, int *weekp);
 extern int day_of_week (int jul_day);
 extern bool is_leap_year (int year);
-extern int time_encode (int hour, int minute, int second);
-extern void time_decode (int timeval, int *hourp, int *minutep, int *secondp);
-
 extern int db_tm_encode (struct tm *c_time_struct,
 			 DB_DATE * date, DB_TIME * timeval);
 extern int db_get_day_of_year (int year, int month, int day);

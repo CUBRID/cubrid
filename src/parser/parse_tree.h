@@ -226,21 +226,43 @@
 	   ((t) == PT_TYPE_SEQUENCE)  || \
 	   ((t) == PT_TYPE_ENUMERATION)) ? true : false )
 
+#define PT_IS_DATE_TIME_WITH_TZ_TYPE(t) \
+        ( (((t) == PT_TYPE_TIMESTAMPTZ)       || \
+	   ((t) == PT_TYPE_TIMESTAMPLTZ       || \
+	   ((t) == PT_TYPE_DATETIMETZ)  || \
+	   ((t) == PT_TYPE_DATETIMELTZ)) ? true : false )
+
 #define PT_IS_DATE_TIME_TYPE(t) \
         ( (((t) == PT_TYPE_DATE)       || \
 	   ((t) == PT_TYPE_TIME)       || \
 	   ((t) == PT_TYPE_TIMESTAMP)  || \
-	   ((t) == PT_TYPE_DATETIME)) ? true : false )
+	   ((t) == PT_TYPE_DATETIME)   || \
+	   ((t) == PT_TYPE_TIMETZ)     || \
+	   ((t) == PT_TYPE_TIMELTZ)    || \
+	   ((t) == PT_TYPE_DATETIMETZ)   || \
+	   ((t) == PT_TYPE_DATETIMELTZ)  || \
+	   ((t) == PT_TYPE_TIMESTAMPTZ)  || \
+	   ((t) == PT_TYPE_TIMESTAMPLTZ)) ? true : false )
 
 #define PT_HAS_DATE_PART(t) \
         ( (((t) == PT_TYPE_DATE)       || \
 	   ((t) == PT_TYPE_TIMESTAMP)  || \
-	   ((t) == PT_TYPE_DATETIME)) ? true : false )
+	   ((t) == PT_TYPE_DATETIME)   || \
+	   ((t) == PT_TYPE_DATETIMETZ)   || \
+	   ((t) == PT_TYPE_DATETIMELTZ)  || \
+	   ((t) == PT_TYPE_TIMESTAMPTZ)  || \
+	   ((t) == PT_TYPE_TIMESTAMPLTZ)) ? true : false )
 
 #define PT_HAS_TIME_PART(t) \
         ( (((t) == PT_TYPE_TIME)       || \
+	   ((t) == PT_TYPE_TIMETZ)     || \
+	   ((t) == PT_TYPE_TIMELTZ)    || \
 	   ((t) == PT_TYPE_TIMESTAMP)  || \
-	   ((t) == PT_TYPE_DATETIME)) ? true : false )
+	   ((t) == PT_TYPE_TIMESTAMPTZ)  || \
+	   ((t) == PT_TYPE_TIMESTAMPLTZ)  || \
+	   ((t) == PT_TYPE_DATETIME)	  || \
+	   ((t) == PT_TYPE_DATETIMETZ)	  || \
+	   ((t) == PT_TYPE_DATETIMELTZ)) ? true : false )
 
 #define PT_IS_PRIMITIVE_TYPE(t) \
         ( (((t) == PT_TYPE_OBJECT) || \
@@ -841,6 +863,7 @@ enum pt_node_type
   PT_DROP_SESSION_VARIABLES = CUBRID_STMT_DROP_SESSION_VARIABLES,
   PT_MERGE = CUBRID_STMT_MERGE,
   PT_SET_NAMES = CUBRID_STMT_SET_NAMES,
+  PT_SET_TIMEZONE = CUBRID_STMT_SET_TIMEZONE,
 
   PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be
 					   distinct from statements */
@@ -945,6 +968,12 @@ enum pt_type_enum
   PT_TYPE_ELO,
 
   PT_TYPE_ENUMERATION,
+  PT_TYPE_TIMESTAMPLTZ,
+  PT_TYPE_TIMESTAMPTZ,
+  PT_TYPE_DATETIMETZ,
+  PT_TYPE_DATETIMELTZ,
+  PT_TYPE_TIMETZ,
+  PT_TYPE_TIMELTZ,
 
   PT_TYPE_MAX
 };
@@ -1438,7 +1467,6 @@ typedef enum
 
   /* width_bucket */
   PT_WIDTH_BUCKET,
-
   PT_TRACE_STATS,
   PT_INDEX_PREFIX,
   PT_AES_ENCRYPT,
@@ -1450,6 +1478,16 @@ typedef enum
   PT_SLEEP,
 
   PT_SYS_GUID,
+
+  PT_DBTIMEZONE,
+  PT_SESSIONTIMEZONE,
+  PT_TZ_OFFSET,
+  PT_NEW_TIME,
+  PT_FROM_TZ,
+  PT_TO_DATETIME_TZ,
+  PT_TO_TIMESTAMP_TZ,
+  PT_TO_TIME_TZ,
+  PT_UTC_TIMESTAMP,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -1658,6 +1696,8 @@ typedef struct pt_tuple_value_info PT_TUPLE_VALUE_INFO;
 typedef struct pt_insert_value_info PT_INSERT_VALUE_INFO;
 
 typedef struct pt_vacuum_info PT_VACUUM_INFO;
+
+typedef struct pt_set_timezone_info PT_SET_TIMEZONE_INFO;
 
 typedef PT_NODE *(*PT_NODE_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree,
 				      void *arg);
@@ -2959,6 +2999,11 @@ struct pt_set_names_info
   PT_NODE *collation_node;	/* PT_VALUE */
 };
 
+struct pt_set_timezone_info
+{
+  PT_NODE *timezone_node;	/* PT_VALUE */
+};
+
 /* Info for VALUE nodes
   these are intended to parallel the definitions in dbi.h and be
   identical whenever possible
@@ -2975,9 +3020,12 @@ typedef enum pt_time_zones
 
 /* typedefs for TIME and DATE */
 typedef long PT_TIME;
+typedef DB_TIMETZ PT_TIMETZ;
 typedef long PT_UTIME;
+typedef DB_TIMESTAMPTZ PT_TIMESTAMPTZ;
 typedef long PT_DATE;
 typedef DB_DATETIME PT_DATETIME;
+typedef DB_DATETIMETZ PT_DATETIMETZ;
 
 /* enum currency types */
 typedef enum pt_currency_types
@@ -3037,9 +3085,12 @@ union pt_data_value
   void *p;			/* what is this */
   DB_OBJECT *op;
   PT_TIME time;
+  PT_TIMETZ timetz;
   PT_DATE date;
-  PT_UTIME utime;
-  PT_DATETIME datetime;
+  PT_UTIME utime;		/* used for TIMESTAMP and TIMESTAMPLTZ */
+  PT_TIMESTAMPTZ timestamptz;
+  PT_DATETIME datetime;		/* used for DATETIME and DATETIMELTZ */
+  PT_DATETIMETZ datetimetz;
   PT_MONETARY money;
   PT_NODE *set;			/* constant sets */
   DB_ELO elo;			/* ??? */
@@ -3312,6 +3363,7 @@ union pt_statement_info
   PT_SCOPE_INFO scope;
   PT_SERIAL_INFO serial;
   PT_SET_NAMES_INFO set_names;
+  PT_SET_TIMEZONE_INFO set_timezone;
   PT_SET_OPT_LVL_INFO set_opt_lvl;
   PT_SET_SYS_PARAMS_INFO set_sys_params;
   PT_SET_TRIGGER_INFO set_trigger;

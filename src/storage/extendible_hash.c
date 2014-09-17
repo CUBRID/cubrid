@@ -844,17 +844,36 @@ eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr)
       break;
 
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
       db_time_decode ((DB_TIME *) key, &hour, &minute, &second);
       fprintf (stdout, "key:%3d:%3d:%3d", hour, minute, second);
       break;
 
+    case DB_TYPE_TIMETZ:
+      fprintf (stdout, "key:%d", ((DB_TIMETZ *) key)->time,
+	       ((DB_TIMETZ *) key)->tz_id);
+      break;
+
     case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPLTZ:
       fprintf (stdout, "key:%d", *(DB_UTIME *) key);
       break;
 
+    case DB_TYPE_TIMESTAMPTZ:
+      fprintf (stdout, "key:%d", ((DB_TIMESTAMPTZ *) key)->timestamp,
+	       ((DB_TIMESTAMPTZ *) key)->tz_id);
+      break;
+
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
       fprintf (stdout, "key:%d,%d", ((DB_DATETIME *) key)->date,
 	       ((DB_DATETIME *) key)->time);
+      break;
+
+    case DB_TYPE_DATETIMETZ:
+      fprintf (stdout, "key:%d,%d", ((DB_DATETIMETZ *) key)->datetime.date,
+	       ((DB_DATETIMETZ *) key)->datetime.time,
+	       ((DB_DATETIMETZ *) key)->tz_id);
       break;
 
     case DB_TYPE_MONETARY:
@@ -5559,8 +5578,8 @@ ehash_dump_bucket (PAGE_PTR bucket_page_p, DB_TYPE key_type)
 	    DB_DATE tmp_date;
 	    DB_TIME tmp_time;
 
-	    db_timestamp_decode ((DB_UTIME *) bucket_record_p,
-				 &tmp_date, &tmp_time);
+	    db_timestamp_decode_ses ((DB_UTIME *) bucket_record_p,
+				     &tmp_date, &tmp_time);
 	    db_date_decode (&tmp_date, &month, &day, &year);
 	    db_time_decode (&tmp_time, &hour, &minute, &second);
 	    printf ("    %2d:%2d:%2d %2d/%2d/%4d             ",

@@ -229,6 +229,8 @@ extern "C"
 /* default lock timeout in sec for connections created by pool*/
 #define CCI_DS_PROPERTY_DEFAULT_LOCK_TIMEOUT		"default_lock_timeout"
 
+#define CCI_TZ_SIZE 63
+
 /* for cci auto_comit mode support */
   typedef enum
   {
@@ -286,6 +288,18 @@ extern "C"
 
   typedef struct
   {
+    short yr;
+    short mon;
+    short day;
+    short hh;
+    short mm;
+    short ss;
+    short ms;
+    char tz[CCI_TZ_SIZE + 1];
+  } T_CCI_DATE_TZ;
+
+  typedef struct
+  {
     int result_count;
     int stmt_type;
     int err_no;
@@ -327,8 +341,10 @@ extern "C"
     CCI_U_TYPE_USHORT = 26,
     CCI_U_TYPE_UINT = 27,
     CCI_U_TYPE_UBIGINT = 28,
-
-    CCI_U_TYPE_LAST = CCI_U_TYPE_UBIGINT
+    CCI_U_TYPE_TIMESTAMPTZ = 29,
+    CCI_U_TYPE_DATETIMETZ = 30,
+    CCI_U_TYPE_TIMETZ = 31,
+    CCI_U_TYPE_LAST = CCI_U_TYPE_TIMETZ
   } T_CCI_U_TYPE;
 
   typedef void *T_CCI_SET;
@@ -349,8 +365,8 @@ extern "C"
     CCI_A_TYPE_REQ_HANDLE,
     CCI_A_TYPE_UINT,
     CCI_A_TYPE_UBIGINT,
-
-    CCI_A_TYPE_LAST = CCI_A_TYPE_UBIGINT,
+    CCI_A_TYPE_DATE_TZ,
+    CCI_A_TYPE_LAST = CCI_A_TYPE_DATE_TZ,
 
     CCI_A_TYTP_LAST = CCI_A_TYPE_LAST	/* typo but backward compatibility */
   } T_CCI_A_TYPE;

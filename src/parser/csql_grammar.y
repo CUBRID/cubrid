@@ -223,6 +223,7 @@ static FUNCTION_MAP functions[] = {
   {"maketime", PT_MAKETIME},
   {"mid", PT_MID},
   {"months_between", PT_MONTHS_BETWEEN},
+  {"new_time", PT_NEW_TIME},
   {"format", PT_FORMAT},
   {"now", PT_SYS_DATETIME},
   {"nvl", PT_NVL},
@@ -274,9 +275,11 @@ static FUNCTION_MAP functions[] = {
   {"to_time", PT_TO_TIME},
   {"to_timestamp", PT_TO_TIMESTAMP},
   {"trunc", PT_TRUNC},
+  {"tz_offset", PT_TZ_OFFSET},
   {"unix_timestamp", PT_UNIX_TIMESTAMP},
   {"typeof", PT_TYPEOF},
   {"from_unixtime", PT_FROM_UNIXTIME},
+  {"from_tz", PT_FROM_TZ},
   {"weekday", PT_WEEKDAY},
   {"dayofweek", PT_DAYOFWEEK},
   {"version", PT_VERSION},
@@ -294,7 +297,11 @@ static FUNCTION_MAP functions[] = {
   {"to_base64", PT_TO_BASE64},
   {"from_base64", PT_FROM_BASE64},
   {"sys_guid", PT_SYS_GUID},
-  {"sleep", PT_SLEEP}
+  {"sleep", PT_SLEEP},
+  {"to_datetime_tz", PT_TO_DATETIME_TZ},
+  {"to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
+  {"to_time_tz", PT_TO_TIME_TZ},
+  {"utc_timestamp", PT_UTC_TIMESTAMP}
 };
 
 
@@ -1104,11 +1111,14 @@ int g_original_buffer_len;
 %token DATA_TYPE_
 %token Date
 %token DATETIME
+%token DATETIMETZ
+%token DATETIMELTZ
 %token DAY_
 %token DAY_MILLISECOND
 %token DAY_SECOND
 %token DAY_MINUTE
 %token DAY_HOUR
+%token DB_TIMEZONE
 %token DEALLOCATE
 %token DECLARE
 %token DEFAULT
@@ -1303,6 +1313,7 @@ int g_original_buffer_len;
 %token SEQUENCE_OF
 %token SERIALIZABLE
 %token SESSION
+%token SESSION_TIMEZONE
 %token SESSION_USER
 %token SET
 %token SET_OF
@@ -1341,7 +1352,12 @@ int g_original_buffer_len;
 %token TEMPORARY
 %token THEN
 %token Time
+%token TIMETZ
+%token TIMELTZ
 %token TIMESTAMP
+%token TIMESTAMPTZ
+%token TIMESTAMPLTZ
+%token TIMEZONE
 %token TIMEZONE_HOUR
 %token TIMEZONE_MINUTE
 %token TO
@@ -1552,6 +1568,7 @@ int g_original_buffer_len;
 %token <cptr> VOLUME
 %token <cptr> WEEK
 %token <cptr> WORKSPACE
+%token <cptr> TIMEZONES
 
 
 %token <cptr> IdName
@@ -1936,6 +1953,37 @@ stmt_
 		DBG_PRINT}}
 	| vacuum_stmt
 		{ $$ = $1; }
+
+	| SET
+		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_TIMEZONE); }
+	  TIMEZONE char_string_literal
+		{ pop_msg(); }
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_SET_TIMEZONE);
+			if (node)
+			  {
+			    node->info.set_timezone.timezone_node = $4;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| SET
+		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_TIMEZONE); }
+	  Time ZONE char_string_literal
+		{ pop_msg(); }
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_SET_TIMEZONE);
+			if (node)
+			  {
+			    node->info.set_timezone.timezone_node = $5;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 
@@ -6649,6 +6697,14 @@ show_type
 		{{
 			$$ = SHOWSTMT_JOB_QUEUES;
 		}}
+	| TIMEZONES
+		{{
+			$$ = SHOWSTMT_TIMEZONES;
+		}}
+	| FULL TIMEZONES
+		{{
+			$$ = SHOWSTMT_FULL_TIMEZONES;
+		}}		
 	;
 
 show_type_of_like
@@ -15003,6 +15059,22 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| of_db_timezone_
+		{{
+
+			PT_NODE *expr = parser_make_expression (this_parser, PT_DBTIMEZONE, NULL, NULL, NULL);
+			$$ = expr;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| of_session_timezone_
+		{{
+
+			PT_NODE *expr = parser_make_expression (this_parser, PT_SESSIONTIMEZONE, NULL, NULL, NULL);
+			$$ = expr;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| of_timestamps
 		{{
 
@@ -15412,6 +15484,22 @@ of_times
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIME); }
 	  '(' ')'
 		{ pop_msg(); }
+	;
+
+of_db_timezone_
+	: DB_TIMEZONE
+	| DB_TIMEZONE
+	      { push_msg(MSGCAT_SYNTAX_INVALID_DB_TIMEZONE); }
+	  '(' ')'
+	      { pop_msg(); }
+	;
+
+of_session_timezone_
+	: SESSION_TIMEZONE 
+	| SESSION_TIMEZONE
+	      { push_msg(MSGCAT_SYNTAX_INVALID_SESSION_TIMEZONE); }
+	  '('')'
+	      { pop_msg(); }
 	;
 
 of_timestamps
@@ -18127,6 +18215,38 @@ primitive_type
 			$$ = ctn;
 
 		DBG_PRINT}}
+	| Time WITH Time ZONE
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMETZ), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| TIMETZ
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMETZ), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| Time WITH LOCAL Time ZONE
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMELTZ), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| TIMELTZ
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMELTZ), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
 	| Utime
 		{{
 
@@ -18143,11 +18263,75 @@ primitive_type
 			$$ = ctn;
 
 		DBG_PRINT}}
+	| TIMESTAMP WITH Time ZONE
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMPTZ), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| TIMESTAMPTZ
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMPTZ), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}		
+	| TIMESTAMP WITH LOCAL Time ZONE
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMPLTZ), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| TIMESTAMPLTZ
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMPLTZ), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}		
 	| DATETIME
 		{{
 
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIME), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| DATETIME WITH Time ZONE
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIMETZ), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| DATETIMETZ
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIMETZ), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}		
+	| DATETIME WITH LOCAL Time ZONE
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIMELTZ), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| DATETIMELTZ
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIMELTZ), NULL);
 			$$ = ctn;
 
 		DBG_PRINT}}
@@ -21521,39 +21705,147 @@ of_integer_real_literal
 date_or_time_literal
 	: Date CHAR_STRING
 		{{
+
 			PT_NODE *val;
-
 			val = pt_create_date_value (this_parser, PT_TYPE_DATE, $2);
-
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
 		DBG_PRINT}}
 	| Time CHAR_STRING
 		{{
+
 			PT_NODE *val;
-
 			val = pt_create_date_value (this_parser, PT_TYPE_TIME, $2);
-
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| Time WITH Time ZONE CHAR_STRING
+		{{
+
+			PT_NODE *val;
+			val = pt_create_date_value (this_parser, PT_TYPE_TIMETZ, $5);
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| TIMETZ CHAR_STRING
+		{{
+
+			PT_NODE *val;
+			val = pt_create_date_value (this_parser, PT_TYPE_TIMETZ, $2);
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| TIMELTZ CHAR_STRING
+		{{
+
+			PT_NODE *val;
+			val = pt_create_date_value (this_parser, PT_TYPE_TIMELTZ, $2);
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| Time WITH LOCAL Time ZONE CHAR_STRING
+		{{
+
+			PT_NODE *val;
+			val = pt_create_date_value (this_parser, PT_TYPE_TIMELTZ, $6);
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
 		DBG_PRINT}}
 	| TIMESTAMP CHAR_STRING
 		{{
+
 			PT_NODE *val;
-
 			val = pt_create_date_value (this_parser, PT_TYPE_TIMESTAMP, $2);
-
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| TIMESTAMP WITH Time ZONE CHAR_STRING
+		{{
+
+			PT_NODE *val;
+			val = pt_create_date_value (this_parser, PT_TYPE_TIMESTAMPTZ, $5);
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| TIMESTAMPTZ CHAR_STRING
+		{{
+
+			PT_NODE *val;
+			val = pt_create_date_value (this_parser, PT_TYPE_TIMESTAMPTZ, $2);
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| TIMESTAMPLTZ CHAR_STRING
+		{{
+
+			PT_NODE *val;
+			val = pt_create_date_value (this_parser, PT_TYPE_TIMESTAMPLTZ, $2);
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| TIMESTAMP WITH LOCAL Time ZONE CHAR_STRING
+		{{
+
+			PT_NODE *val;
+			val = pt_create_date_value (this_parser, PT_TYPE_TIMESTAMPLTZ, $6);
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
 		DBG_PRINT}}
 	| DATETIME CHAR_STRING
 		{{
+
 			PT_NODE *val;
-
 			val = pt_create_date_value (this_parser, PT_TYPE_DATETIME, $2);			
-
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| DATETIME WITH Time ZONE CHAR_STRING
+		{{
+
+			PT_NODE *val;
+			val = pt_create_date_value (this_parser, PT_TYPE_DATETIMETZ, $5);			
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| DATETIMETZ CHAR_STRING
+		{{
+
+			PT_NODE *val;
+			val = pt_create_date_value (this_parser, PT_TYPE_DATETIMETZ, $2);			
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| DATETIMELTZ CHAR_STRING
+		{{
+
+			PT_NODE *val;
+			val = pt_create_date_value (this_parser, PT_TYPE_DATETIMELTZ, $2);
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| DATETIME WITH LOCAL Time ZONE CHAR_STRING
+		{{
+
+			PT_NODE *val;
+			val = pt_create_date_value (this_parser, PT_TYPE_DATETIMELTZ, $6);
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
 		DBG_PRINT}}
 	;
 
@@ -21945,7 +22237,8 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
 
       if (OP == PT_SYS_TIME || OP == PT_SYS_DATE
 	  || OP == PT_SYS_DATETIME || OP == PT_SYS_TIMESTAMP 
-	  || OP == PT_UTC_TIME || OP == PT_UTC_DATE || OP == PT_UNIX_TIMESTAMP)
+	  || OP == PT_UTC_TIME || OP == PT_UTC_DATE || OP == PT_UNIX_TIMESTAMP
+	  || OP == PT_TZ_OFFSET || OP == PT_UTC_TIMESTAMP)
 	{
 	  parser_si_datetime = true;
 	  parser_cannot_cache = true;
@@ -23237,6 +23530,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_UTC_TIME:
     case PT_UTC_DATE:
     case PT_VERSION:
+    case PT_UTC_TIMESTAMP:
       if (c != 0)
 	{
 	  return NULL;
@@ -23387,6 +23681,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_AES_ENCRYPT:
     case PT_AES_DECRYPT:
     case PT_SHA_TWO:
+    case PT_FROM_TZ:
       if (c != 2)
 	return NULL;
       a1 = args;
@@ -23446,6 +23741,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_MAKETIME:
     case PT_INDEX_CARDINALITY:
     case PT_CONV:
+    case PT_NEW_TIME:
       if (c != 3)
 	return NULL;
       a1 = args;
@@ -23799,6 +24095,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_TO_TIME:
     case PT_TO_TIMESTAMP:
     case PT_TO_DATETIME:
+    case PT_TO_DATETIME_TZ:
+    case PT_TO_TIMESTAMP_TZ:
+    case PT_TO_TIME_TZ:
       if (c < 1 || c > 3)
 	return NULL;
       a1 = args;
@@ -24233,6 +24532,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       return node;
 
     case PT_REVERSE:
+    case PT_TZ_OFFSET:
       if (c != 1)
 	return NULL;
 

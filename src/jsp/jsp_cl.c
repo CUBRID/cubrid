@@ -1785,7 +1785,7 @@ jsp_pack_timestamp_argument (char *buffer, DB_VALUE * value)
 
   ptr = buffer;
   timestamp = DB_GET_TIMESTAMP (value);
-  db_timestamp_decode (timestamp, &date, &time);
+  (void) db_timestamp_decode_ses (timestamp, &date, &time);
   db_date_decode (&date, &mon, &day, &year);
   db_time_decode (&time, &hour, &min, &sec);
 

@@ -88,7 +88,10 @@
 #define DATE_BUF_SIZE           64
 #define TIMESTAMP_BUF_SIZE      (TIME_BUF_SIZE + DATE_BUF_SIZE)
 #define DATETIME_BUF_SIZE       (TIMESTAMP_BUF_SIZE + 4)
-
+#define TIMEZONE_BUF_SIZE	64
+#define TIMESTAMPTZ_BUF_SIZE	TIMESTAMP_BUF_SIZE + TIMEZONE_BUF_SIZE
+#define DATETIMETZ_BUF_SIZE	DATETIME_BUF_SIZE + TIMEZONE_BUF_SIZE
+#define TIMETZ_BUF_SIZE		TIME_BUF_SIZE + TIMEZONE_BUF_SIZE
 /*
  *  For the trim operation, db_string_trim(), this operand specifies
  *  that the trim character should be removed from the front, back
@@ -145,7 +148,11 @@ typedef enum
   DT_MS,			/*  So far, TIME format */
   DT_TEXT,
   DT_PUNCTUATION,
-  DT_D
+  DT_D,
+  DT_TZR,
+  DT_TZD,
+  DT_TZH,
+  DT_TZM
 } TIMESTAMP_FORMAT;
 
 #define  LIKE_WILDCARD_MATCH_MANY '%'
@@ -274,6 +281,14 @@ extern int db_bigint_to_binary_string (const DB_VALUE * src_bigint,
 				       DB_VALUE * result);
 extern int db_add_time (const DB_VALUE * left, const DB_VALUE * right,
 			DB_VALUE * result, const TP_DOMAIN * domain);
+extern int db_tz_offset (const DB_VALUE * src_str,
+			 DB_VALUE * result_str, DB_DATETIME * date_time);
+extern int db_from_tz (DB_VALUE * time_val,
+		       DB_VALUE * tz, DB_VALUE * time_val_with_tz);
+extern int db_new_time (DB_VALUE * time_val,
+			DB_VALUE * tz_source,
+			DB_VALUE * tz_dest, DB_VALUE * result_time);
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int db_string_convert (const DB_VALUE * src_string,
 			      DB_VALUE * dest_string);
@@ -330,16 +345,18 @@ extern int db_to_char (const DB_VALUE * src_value,
 extern int db_to_date (const DB_VALUE * src_str,
 		       const DB_VALUE * format_str,
 		       const DB_VALUE * date_lang, DB_VALUE * result_date);
-extern int db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str,
-		       const DB_VALUE * date_lang, DB_VALUE * result_time);
+extern int db_to_time (const DB_VALUE * src_str,
+		       const DB_VALUE * format_str,
+		       const DB_VALUE * date_lang,
+		       const DB_TYPE type, DB_VALUE * result_time);
 extern int db_to_timestamp (const DB_VALUE * src_str,
 			    const DB_VALUE * format_str,
 			    const DB_VALUE * date_lang,
-			    DB_VALUE * result_timestamp);
+			    const DB_TYPE type, DB_VALUE * result_timestamp);
 extern int db_to_datetime (const DB_VALUE * src_str,
 			   const DB_VALUE * format_str,
 			   const DB_VALUE * date_lang,
-			   DB_VALUE * result_datetime);
+			   const DB_TYPE type, DB_VALUE * result_datetime);
 extern int db_to_number (const DB_VALUE * src_str,
 			 const DB_VALUE * format_str,
 			 const DB_VALUE * number_lang, DB_VALUE * result_num);
@@ -481,4 +498,7 @@ extern int db_string_index_prefix (const DB_VALUE * string1,
 				   DB_VALUE * prefix_index);
 extern int db_string_to_base64 (DB_VALUE const *val, DB_VALUE * result);
 extern int db_string_from_base64 (DB_VALUE const *val, DB_VALUE * result);
+extern int db_string_extract_dbval (const MISC_OPERAND extr_operand,
+				    DB_VALUE * dbval_p, DB_VALUE * result_p,
+				    TP_DOMAIN * domain_p);
 #endif /* _STRING_OPFUNC_H_ */

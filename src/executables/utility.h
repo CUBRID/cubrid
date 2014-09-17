@@ -80,7 +80,9 @@ typedef enum
   MSGCAT_UTIL_SET_DUMPLOCALE = 47,
   MSGCAT_UTIL_SET_SYNCCOLLDB = 48,
   MSGCAT_UTIL_SET_TRANLIST = 49,
-  MSGCAT_UTIL_SET_PREFETCHLOGDB = 50
+  MSGCAT_UTIL_SET_PREFETCHLOGDB = 50,
+  MSGCAT_UTIL_SET_GEN_TZ = 51,
+  MSGCAT_UTIL_SET_DUMP_TZ = 52
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -630,6 +632,21 @@ typedef enum
   PREFETCHLOGDB_MSG_USAGE = 60
 } MSGCAT_PREFETCHLOGDB_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_GEN_TZ */
+typedef enum
+{
+  GEN_TZ_MSG_INVALID_MODE = 59,
+  GEN_TZ_MSG_INVALID_INPUT_FOLDER = 60,
+  GEN_TZ_MSG_USAGE = 61
+} MSGCAT_GEN_TZ_MSG;
+
+/* Message id in the set MSGCAT_UTIL_SET_DUMP_TZ */
+typedef enum
+{
+  DUMP_TZ_MSG_ID_OUT_OF_RANGE = 59,
+  DUMP_TZ_MSG_USAGE = 60
+} MSGCAT_DUMP_TZ_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -668,6 +685,8 @@ typedef enum
   SYNCCOLLDB,
   TRANLIST,
   PREFETCHLOGDB,
+  GEN_TZ,
+  DUMP_TZ,
   LOGFILEDUMP
 } UTIL_INDEX;
 
@@ -865,6 +884,8 @@ typedef struct _ha_config
 #define UTIL_OPTION_DUMP_LOCALE			"dumplocale"
 #define UTIL_OPTION_SYNCCOLLDB			"synccolldb"
 #define UTIL_OPTION_PREFETCHLOGDB		"prefetchlogdb"
+#define UTIL_OPTION_GEN_TZ			"gen_tz"
+#define UTIL_OPTION_DUMP_TZ			"dump_tz"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -1391,6 +1412,22 @@ typedef struct _ha_config
 #define SYNCCOLL_FORCESYNC_S			'f'
 #define SYNCCOLL_FORCESYNC_L                    "force-only"
 
+/* gen_tz option list */
+#define GEN_TZ_INPUT_FOLDER_S			'i'
+#define GEN_TZ_INPUT_FOLDER_L			"input-folder"
+#define GEN_TZ_MODE_S				'g'
+#define GEN_TZ_MODE_L				"gen-mode"
+
+/* dump_tz option list */
+#define DUMP_TZ_COUNTRIES_S			'c'
+#define DUMP_TZ_COUNTRIES_L			"list-countries"
+#define DUMP_TZ_ZONES_S				'z'
+#define DUMP_TZ_ZONES_L				"list-zones"
+#define DUMP_TZ_ZONE_ID_S			'd'
+#define DUMP_TZ_ZONE_ID_L			"zone-id"
+#define DUMP_TZ_LEAP_SEC_S			's'
+#define DUMP_TZ_LEAP_SEC_L			"leap-seconds"
+
 #define VERSION_S                               20000
 #define VERSION_L                               "version"
 
@@ -1515,6 +1552,8 @@ extern int acldb (UTIL_FUNCTION_ARG * arg_map);
 extern int genlocale (UTIL_FUNCTION_ARG * arg_map);
 extern int dumplocale (UTIL_FUNCTION_ARG * arg_map);
 extern int synccolldb (UTIL_FUNCTION_ARG * arg_map);
+extern int gen_tz (UTIL_FUNCTION_ARG * arg_map);
+extern int dump_tz (UTIL_FUNCTION_ARG * arg_map);
 extern int synccoll_force (void);
 extern int prefetchlogdb (UTIL_FUNCTION_ARG * arg_map);
 

@@ -4479,14 +4479,36 @@ value_as_boolean (DB_VALUE * value)
       status = (DB_GET_DOUBLE (value) == 0) ? false : true;
       break;
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
       status = (*DB_GET_TIME (value) == 0) ? false : true;
       break;
+    case DB_TYPE_TIMETZ:
+      {
+	DB_TIMETZ *time_tz = DB_GET_TIMETZ (value);
+	status = (time_tz->time == 0) ? false : true;
+      }
+      break;
     case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPLTZ:
       status = (*DB_GET_UTIME (value) == 0) ? false : true;
       break;
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (value);
+	status = (ts_tz->timestamp == 0) ? false : true;
+      }
+      break;
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
       status = (DB_GET_DATETIME (value)->date == 0
 		&& DB_GET_DATETIME (value)->time == 0) ? false : true;
+      break;
+    case DB_TYPE_DATETIMETZ:
+      {
+	DB_DATETIMETZ *dt_tz = DB_GET_DATETIMETZ (value);
+	status = (dt_tz->datetime.date == 0
+		  && dt_tz->datetime.time == 0) ? false : true;
+      }
       break;
     case DB_TYPE_DATE:
       status = (*DB_GET_DATE (value) == 0) ? false : true;

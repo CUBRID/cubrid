@@ -143,7 +143,10 @@ static const char *type_str_tbl[] = {
   "ENUM",			/* CCI_U_TYPE_ENUM */
   "USHORT",			/* CCI_U_TYPE_USHORT */
   "UINT",			/* CCI_U_TYPE_UINT */
-  "UBIGINT"			/* CCI_U_TYPE_UBIGINT */
+  "UBIGINT",			/* CCI_U_TYPE_UBIGINT */
+  "TIMESTAMPTZ",		/* CCI_U_TYPE_TIMESTAMPTZ */
+  "DATETIMETZ",			/* CCI_U_TYPE_DATETIMETZ */
+  "TIMETZ"			/* CCI_U_TYPE_TIMETZ */
 };
 
 FN_RETURN
@@ -2416,6 +2419,37 @@ bind_value_print (char type, void *net_value, bool slow_log)
 	else
 	  write2_func ("%d-%d-%d %d:%d:%d.%03d",
 		       yr, mon, day, hh, mm, ss, ms);
+      }
+      break;
+    case CCI_U_TYPE_TIMETZ:
+    case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_DATETIMETZ:
+      {
+	short yr, mon, day, hh, mm, ss, ms;
+	char *tz_str_p;
+	int tz_size;
+	char tz_str[CCI_TZ_SIZE + 1];
+
+	net_arg_get_datetimetz (&yr, &mon, &day, &hh, &mm, &ss, &ms,
+				&tz_str_p, &tz_size, net_value);
+	tz_size = MIN (CCI_TZ_SIZE, tz_size);
+	strncpy (tz_str, tz_str_p, tz_size);
+	tz_str[tz_size] = '\0';
+
+	if (type == CCI_U_TYPE_TIMETZ)
+	  {
+	    write2_func ("%d:%d:%d %s", hh, mm, ss, tz_str);
+	  }
+	else if (type == CCI_U_TYPE_TIMESTAMPTZ)
+	  {
+	    write2_func ("%d-%d-%d %d:%d:%d %s",
+			 yr, mon, day, hh, mm, ss, tz_str);
+	  }
+	else
+	  {
+	    write2_func ("%d-%d-%d %d:%d:%d.%03d %s",
+			 yr, mon, day, hh, mm, ss, ms, tz_str);
+	  }
       }
       break;
     case CCI_U_TYPE_SET:

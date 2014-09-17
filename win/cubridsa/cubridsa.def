@@ -161,6 +161,8 @@ EXPORTS
 	acldb
 	genlocale
 	dumplocale
+	gen_tz
+	dump_tz
 	synccolldb
 	synccoll_force
 
@@ -403,6 +405,7 @@ EXPORTS
     db_get_database_name
     db_get_date
     db_get_datetime
+    db_get_datetimetz
     db_get_db_value_query_result
     db_get_double
     db_get_elo
@@ -468,6 +471,7 @@ EXPORTS
     db_get_system_parameters
     db_get_time
     db_get_timestamp
+    db_get_timestamptz
     db_get_tran_settings
     db_get_type_name
     db_get_user
@@ -506,6 +510,8 @@ EXPORTS
     db_make_collection
     db_make_date
     db_make_datetime
+    db_make_datetimeltz
+    db_make_datetimetz
     db_make_double
     db_make_elo
     db_make_enumeration    
@@ -527,7 +533,11 @@ EXPORTS
     db_make_short
     db_make_string
     db_make_time
+    db_make_timeltz
+    db_make_timetz
     db_make_timestamp
+    db_make_timestampltz
+    db_make_timestamptz
     db_make_varbit
     db_make_varchar
     db_make_varnchar
@@ -687,8 +697,8 @@ EXPORTS
     db_time_decode
     db_time_encode
     db_time_to_string
-    db_timestamp_decode
-    db_timestamp_encode
+    db_timestamp_decode_ses
+    db_timestamp_encode_ses
     db_timestamp_to_string
     db_tm_encode
     db_totalpgs

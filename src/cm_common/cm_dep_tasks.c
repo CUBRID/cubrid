@@ -2310,6 +2310,13 @@ _op_get_value_string (DB_VALUE * value)
   DB_BIGINT bigint;
   short sv;
   extern char *numeric_db_value_print (DB_VALUE *);
+  extern int db_get_string_length (const DB_VALUE * value);
+  extern int db_bit_string (const DB_VALUE * the_db_bit,
+			    const char *bit_format, char *string,
+			    int max_size);
+  DB_TIMESTAMPTZ *ts_tz;
+  DB_DATETIMETZ *dt_tz;
+  DB_TIMETZ *timetz_v;
 
   result = (char *) malloc (result_size + 1);
   if (result == NULL)
@@ -2421,13 +2428,39 @@ _op_get_value_string (DB_VALUE * value)
       time_v = db_get_time (value);
       db_time_to_string (result, 256, time_v);
       break;
+    case DB_TYPE_TIMELTZ:
+      time_v = db_get_time (value);
+      db_timeltz_to_string (result, 256, time_v);
+      break;
+    case DB_TYPE_TIMETZ:
+      timetz_v = db_get_timetz (value);
+      db_timetz_to_string (result, 256, &timetz_v->time, &timetz_v->tz_id);
+      break;
     case DB_TYPE_TIMESTAMP:
       timestamp_v = db_get_timestamp (value);
       db_timestamp_to_string (result, 256, timestamp_v);
       break;
+    case DB_TYPE_TIMESTAMPTZ:
+      ts_tz = db_get_timestamptz (value);
+      timestamp_v = &(ts_tz->timestamp);
+      db_timestamptz_to_string (result, 256, timestamp_v, &ts_tz->tz_id);
+      break;
+    case DB_TYPE_TIMESTAMPLTZ:
+      timestamp_v = db_get_timestamp (value);
+      db_timestampltz_to_string (result, 256, timestamp_v);
+      break;
     case DB_TYPE_DATETIME:
       datetime_v = db_get_datetime (value);
       db_datetime_to_string (result, 256, datetime_v);
+      break;
+    case DB_TYPE_DATETIMETZ:
+      dt_tz = db_get_datetimetz (value);
+      datetime_v = &(dt_tz->datetime);
+      db_datetimetz_to_string (result, 256, datetime_v, &(dt_tz->tz_id));
+      break;
+    case DB_TYPE_DATETIMELTZ:
+      datetime_v = db_get_datetime (value);
+      db_datetimeltz_to_string (result, 256, datetime_v);
       break;
     default:
       result[0] = '\0';
@@ -2485,6 +2518,31 @@ _op_get_set_value (DB_VALUE * val)
 
     case DB_TYPE_UTIME:
       snprintf (result, result_size, "%s%s%s", "timestamp '", return_result,
+		"'");
+      break;
+
+    case DB_TYPE_TIMESTAMPTZ:
+      snprintf (result, result_size, "%s%s%s", "timestamptz '", return_result,
+		"'");
+      break;
+
+    case DB_TYPE_TIMESTAMPLTZ:
+      snprintf (result, result_size, "%s%s%s", "timestampltz '",
+		return_result, "'");
+      break;
+
+    case DB_TYPE_DATETIME:
+      snprintf (result, result_size, "%s%s%s", "datetime '", return_result,
+		"'");
+      break;
+
+    case DB_TYPE_DATETIMETZ:
+      snprintf (result, result_size, "%s%s%s", "datetimetz '", return_result,
+		"'");
+      break;
+
+    case DB_TYPE_DATETIMELTZ:
+      snprintf (result, result_size, "%s%s%s", "datetimeltz '", return_result,
 		"'");
       break;
 

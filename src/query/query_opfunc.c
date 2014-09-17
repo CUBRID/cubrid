@@ -49,6 +49,8 @@
 #include "query_executor.h"
 #include "databases_file.h"
 #include "partition.h"
+#include "tz_support.h"
+
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -79,6 +81,9 @@ static int qdata_add_monetary (double d1, double d2, DB_CURRENCY type,
 			       DB_VALUE * result_p);
 static int qdata_add_bigint_to_time (DB_VALUE * time_val_p,
 				     DB_BIGINT add_time, DB_VALUE * result_p);
+static int qdata_add_bigint_to_timetz (DB_VALUE * time_tz_val_p,
+				       DB_BIGINT add_time,
+				       DB_VALUE * result_p);
 static int qdata_add_short_to_utime_asymmetry (DB_VALUE * utime_val_p,
 					       short s, unsigned int *utime,
 					       DB_VALUE * result_p,
@@ -95,6 +100,15 @@ static int qdata_add_int_to_utime (DB_VALUE * utime_val_p, int i,
 static int qdata_add_bigint_to_utime (DB_VALUE * utime_val_p, DB_BIGINT bi,
 				      DB_VALUE * result_p,
 				      TP_DOMAIN * domain_p);
+static int qdata_add_short_to_timestamptz (DB_VALUE * ts_tz_val_p, short s,
+					   DB_VALUE * result_p,
+					   TP_DOMAIN * domain_p);
+static int qdata_add_int_to_timestamptz (DB_VALUE * ts_tz_val_p, int i,
+					 DB_VALUE * result_p,
+					 TP_DOMAIN * domain_p);
+static int qdata_add_bigint_to_timestamptz (DB_VALUE * ts_tz_val_p,
+					    DB_BIGINT bi, DB_VALUE * result_p,
+					    TP_DOMAIN * domain_p);
 static int qdata_add_int_to_datetime_asymmetry (DB_VALUE * datetime_val_p,
 						int i, DB_DATETIME * datetime,
 						DB_VALUE * result_p,
@@ -147,14 +161,23 @@ static int qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p,
 					TP_DOMAIN * domain_p);
 static int qdata_add_time_to_dbval (DB_VALUE * time_val_p,
 				    DB_VALUE * dbval_p, DB_VALUE * result_p);
+static int qdata_add_timetz_to_dbval (DB_VALUE * time_tz_val_p,
+				      DB_VALUE * dbval_p,
+				      DB_VALUE * result_p);
 static int qdata_add_utime_to_dbval (DB_VALUE * utime_val_p,
 				     DB_VALUE * dbval_p,
 				     DB_VALUE * result_p,
 				     TP_DOMAIN * domain_p);
+static int qdata_add_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p,
+					   DB_VALUE * dbval_p,
+					   DB_VALUE * result_p);
 static int qdata_add_datetime_to_dbval (DB_VALUE * datetime_val_p,
 					DB_VALUE * dbval_p,
 					DB_VALUE * result_p,
 					TP_DOMAIN * domain_p);
+static int qdata_add_datetimetz_to_dbval (DB_VALUE * datetimetz_val_p,
+					  DB_VALUE * dbval_p,
+					  DB_VALUE * result_p);
 static int qdata_add_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p,
 				    DB_VALUE * result_p,
 				    TP_DOMAIN * domain_p);
@@ -187,6 +210,9 @@ static int qdata_subtract_utime_to_int_asymmetry (DB_VALUE * utime_val_p,
 						  TP_DOMAIN * domain_p);
 static int qdata_subtract_datetime_to_int (DB_DATETIME * dt1, DB_BIGINT i2,
 					   DB_VALUE * result_p);
+static int qdata_subtract_datetimetz_to_int (DB_DATETIMETZ * dt_tz1,
+					     DB_BIGINT i2,
+					     DB_VALUE * result_p);
 static int qdata_subtract_datetime (DB_DATETIME * dt1, DB_DATETIME * dt2,
 				    DB_VALUE * result_p);
 static int qdata_subtract_datetime_to_int_asymmetry (DB_VALUE *
@@ -223,14 +249,32 @@ static int qdata_subtract_sequence_to_dbval (DB_VALUE * seq_val_p,
 static int qdata_subtract_time_to_dbval (DB_VALUE * time_val_p,
 					 DB_VALUE * dbval_p,
 					 DB_VALUE * result_p);
+static int qdata_subtract_timetz_to_dbval (DB_VALUE * timetz_val_p,
+					   DB_VALUE * dbval_p,
+					   DB_VALUE * result_p);
+static int qdata_subtract_timeltz_to_dbval (DB_VALUE * timetz_val_p,
+					    DB_VALUE * dbval_p,
+					    DB_VALUE * result_p);
 static int qdata_subtract_utime_to_dbval (DB_VALUE * utime_val_p,
 					  DB_VALUE * dbval_p,
 					  DB_VALUE * result_p,
 					  TP_DOMAIN * domain_p);
+static int qdata_subtract_timestampltz_to_dbval (DB_VALUE * ts_ltz_val_p,
+						 DB_VALUE * dbval_p,
+						 DB_VALUE * result_p,
+						 TP_DOMAIN * domain_p);
+static int qdata_subtract_timestamptz_to_dbval (DB_VALUE * utime_val_p,
+						DB_VALUE * dbval_p,
+						DB_VALUE * result_p,
+						TP_DOMAIN * domain_p);
 static int qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p,
 					     DB_VALUE * dbval_p,
 					     DB_VALUE * result_p,
 					     TP_DOMAIN * domain_p);
+static int qdata_subtract_datetimetz_to_dbval (DB_VALUE * dt_tz_val_p,
+					       DB_VALUE * dbval_p,
+					       DB_VALUE * result_p,
+					       TP_DOMAIN * domain_p);
 static int qdata_subtract_date_to_dbval (DB_VALUE * date_val_p,
 					 DB_VALUE * dbval_p,
 					 DB_VALUE * result_p,
@@ -400,6 +444,8 @@ qdata_is_zero_value_date (DB_VALUE * dbval_p)
   DB_UTIME *utime;
   DB_DATE *date;
   DB_DATETIME *datetime;
+  DB_TIMESTAMPTZ *ts_tz;
+  DB_DATETIMETZ *dt_tz;
 
   if (DB_IS_NULL (dbval_p))	/* NULL is not zero value */
     {
@@ -412,11 +458,19 @@ qdata_is_zero_value_date (DB_VALUE * dbval_p)
       switch (type)
 	{
 	case DB_TYPE_UTIME:
+	case DB_TYPE_TIMESTAMPLTZ:
 	  utime = DB_GET_UTIME (dbval_p);
 	  return (*utime == 0);
+	case DB_TYPE_TIMESTAMPTZ:
+	  ts_tz = DB_GET_TIMESTAMPTZ (dbval_p);
+	  return (ts_tz->timestamp == 0);
 	case DB_TYPE_DATETIME:
+	case DB_TYPE_DATETIMELTZ:
 	  datetime = DB_GET_DATETIME (dbval_p);
 	  return (datetime->date == 0 && datetime->time == 0);
+	case DB_TYPE_DATETIMETZ:
+	  dt_tz = DB_GET_DATETIMETZ (dbval_p);
+	  return (dt_tz->datetime.date == 0 && dt_tz->datetime.time == 0);
 	case DB_TYPE_DATE:
 	  date = DB_GET_DATE (dbval_p);
 	  return (*date == 0);
@@ -960,6 +1014,7 @@ qdata_add_monetary (double d1, double d2, DB_CURRENCY type,
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int
 qdata_add_int_to_time (DB_VALUE * time_val_p, unsigned int add_time,
 		       DB_VALUE * result_p)
@@ -1001,6 +1056,7 @@ qdata_add_int_to_time (DB_VALUE * time_val_p, unsigned int add_time,
 
   return NO_ERROR;
 }
+#endif
 
 static int
 qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time,
@@ -1046,6 +1102,91 @@ qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time,
 	}
     }
 
+  return error;
+}
+
+static int
+qdata_add_bigint_to_timetz (DB_VALUE * time_tz_val_p, DB_BIGINT add_time,
+			    DB_VALUE * result_p)
+{
+  DB_TIME utime, time_res;
+  DB_TIMETZ *time_tz_p, time_tz_res, time_tz_fixed;
+  int hour, minute, second;
+  int error = NO_ERROR;
+  DB_VALUE time_val_res;
+
+  time_tz_p = DB_GET_TIMETZ (time_tz_val_p);
+  utime = (time_tz_p->time) % SECONDS_OF_ONE_DAY;
+  add_time = add_time % SECONDS_OF_ONE_DAY;
+  if (add_time < 0)
+    {
+      error = qdata_subtract_time (utime, (DB_TIME) (-add_time),
+				   &time_val_res);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+      assert (DB_VALUE_TYPE (&time_val_res) == DB_TYPE_TIME);
+      time_res = *DB_GET_TIME (&time_val_res);
+      goto return_time_tz;
+    }
+
+  time_res = (utime + add_time) % SECONDS_OF_ONE_DAY;
+
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
+    {
+      goto return_time_tz;
+    }
+  else
+    {
+      DB_TYPE type = DB_VALUE_DOMAIN_TYPE (result_p);
+
+      switch (type)
+	{
+	case DB_TYPE_BIGINT:
+	case DB_TYPE_INTEGER:
+	  time_tz_res.time = time_res;
+	  time_tz_res.tz_id = time_tz_p->tz_id;
+	  error = tz_timetz_fix_zone (&time_tz_res, &time_tz_fixed);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+
+	  db_time_decode (&time_tz_fixed.time, &hour, &minute, &second);
+
+	  if (type == DB_TYPE_BIGINT)
+	    {
+	      error =
+		DB_MAKE_BIGINT (result_p, (hour * 100 + minute) * 100
+				+ second);
+	    }
+	  else
+	    {
+	      error =
+		DB_MAKE_INTEGER (result_p, (hour * 100 + minute) * 100
+				 + second);
+	    }
+	  break;
+
+	default:
+	  break;
+	}
+      /* return timetz */
+    }
+
+return_time_tz:
+  /* adjust TZ_ID to new time value */
+  time_tz_res.time = time_res;
+  time_tz_res.tz_id = time_tz_p->tz_id;
+  error = tz_timetz_fix_zone (&time_tz_res, &time_tz_fixed);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  DB_MAKE_TIMETZ (result_p, &time_tz_fixed);
+
+exit:
   return error;
 }
 
@@ -1163,7 +1304,7 @@ qdata_add_short_to_utime (DB_VALUE * utime_val_p, short s,
       switch (type)
 	{
 	case DB_TYPE_BIGINT:
-	  db_timestamp_decode (&utmp, &date, &time);
+	  (void) db_timestamp_decode_ses (&utmp, &date, &time);
 	  db_date_decode (&date, &m, &d, &y);
 	  db_time_decode (&time, &h, &mi, &sec);
 	  bigint = (y * 100 + m) * 100 + d;
@@ -1222,7 +1363,7 @@ qdata_add_int_to_utime (DB_VALUE * utime_val_p, int i, DB_VALUE * result_p,
       switch (type)
 	{
 	case DB_TYPE_BIGINT:
-	  db_timestamp_decode (&utmp, &date, &time);
+	  (void) db_timestamp_decode_ses (&utmp, &date, &time);
 	  db_date_decode (&date, &m, &d, &y);
 	  db_time_decode (&time, &h, &mi, &s);
 	  bigint = (y * 100 + m) * 100 + d;
@@ -1282,7 +1423,7 @@ qdata_add_bigint_to_utime (DB_VALUE * utime_val_p, DB_BIGINT bi,
 	case DB_TYPE_BIGINT:
 	  {
 	    DB_TIMESTAMP timestamp = (DB_TIMESTAMP) utmp;
-	    db_timestamp_decode (&timestamp, &date, &time);
+	    (void) db_timestamp_decode_ses (&timestamp, &date, &time);
 	    db_date_decode (&date, &m, &d, &y);
 	    db_time_decode (&time, &h, &mi, &s);
 	    bigint = (y * 100 + m) * 100 + d;
@@ -1298,6 +1439,307 @@ qdata_add_bigint_to_utime (DB_VALUE * utime_val_p, DB_BIGINT bi,
     }
 
   return NO_ERROR;
+}
+
+static int
+qdata_add_short_to_timestamptz (DB_VALUE * ts_tz_val_p, short s,
+				DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  int err = NO_ERROR;
+  DB_TIMESTAMPTZ *ts_tz_p;
+  DB_TIMESTAMPTZ ts_tz_res, ts_tz_fixed;
+  DB_UTIME utime;
+  DB_UTIME utmp, u1, u2;
+  DB_DATE date;
+  DB_TIME time;
+  DB_TYPE type;
+  DB_BIGINT bigint = 0;
+  int d, m, y, h, mi, sec;
+  DB_VALUE tmp_utime_val, tmp_utime_val_res;
+
+  ts_tz_p = DB_GET_TIMESTAMPTZ (ts_tz_val_p);
+  utime = ts_tz_p->timestamp;
+
+  if (s < 0)
+    {
+      DB_MAKE_UTIME (&tmp_utime_val, utime);
+      err = qdata_add_short_to_utime_asymmetry (&tmp_utime_val, s, &utime,
+						&tmp_utime_val_res,
+						tp_domain_resolve_default
+						(DB_TYPE_UTIME));
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      assert (DB_VALUE_TYPE (&tmp_utime_val_res) == DB_TYPE_UTIME);
+      utmp = *DB_GET_UTIME (&tmp_utime_val_res);
+
+      goto return_timestamp_tz;
+    }
+
+  u1 = s;
+  u2 = utime;
+  utmp = u1 + u2;
+
+  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || INT_MAX < utmp)
+    {
+      err = ER_QPROC_OVERFLOW_ADDITION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto exit;
+    }
+
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
+    {
+      goto return_timestamp_tz;
+    }
+  else
+    {
+      type = DB_VALUE_DOMAIN_TYPE (result_p);
+
+      switch (type)
+	{
+	case DB_TYPE_BIGINT:
+	  ts_tz_res.timestamp = utmp;
+	  ts_tz_res.tz_id = ts_tz_p->tz_id;
+	  err = tz_timestamptz_fix_zone (&ts_tz_res, &ts_tz_fixed);
+	  if (err != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  err = db_timestamp_decode_w_tz_id (&ts_tz_fixed.timestamp,
+					     &ts_tz_fixed.tz_id, &date,
+					     &time);
+	  if (err != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  db_date_decode (&date, &m, &d, &y);
+	  db_time_decode (&time, &h, &mi, &sec);
+	  bigint = (y * 100 + m) * 100 + d;
+	  bigint = ((bigint * 100 + h) * 100 + mi) * 100 + sec;
+	  DB_MAKE_BIGINT (result_p, bigint);
+	  break;
+
+	default:
+	  break;
+	}
+    }
+
+return_timestamp_tz:
+  ts_tz_res.timestamp = utmp;
+  ts_tz_res.tz_id = ts_tz_p->tz_id;
+
+  err = tz_timestamptz_fix_zone (&ts_tz_res, &ts_tz_fixed);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  DB_MAKE_TIMESTAMPTZ (result_p, &ts_tz_fixed);
+
+exit:
+  return err;
+}
+
+static int
+qdata_add_int_to_timestamptz (DB_VALUE * ts_tz_val_p, int i,
+			      DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  int err = NO_ERROR;
+  DB_TIMESTAMPTZ *ts_tz_p;
+  DB_TIMESTAMPTZ ts_tz_res, ts_tz_fixed;
+  DB_UTIME utime;
+  DB_UTIME utmp, u1, u2;
+  DB_DATE date;
+  DB_TIME time;
+  DB_TYPE type;
+  DB_BIGINT bigint = 0;
+  int d, m, y, h, mi, sec;
+  DB_VALUE tmp_utime_val, tmp_utime_val_res;
+
+  ts_tz_p = DB_GET_TIMESTAMPTZ (ts_tz_val_p);
+  utime = ts_tz_p->timestamp;
+
+  if (i < 0)
+    {
+      DB_MAKE_UTIME (&tmp_utime_val, utime);
+      err = qdata_add_int_to_utime_asymmetry (&tmp_utime_val, i, &utime,
+					      &tmp_utime_val_res,
+					      tp_domain_resolve_default
+					      (DB_TYPE_UTIME));
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      assert (DB_VALUE_TYPE (&tmp_utime_val_res) == DB_TYPE_UTIME);
+      utmp = *DB_GET_UTIME (&tmp_utime_val_res);
+
+      goto return_timestamp_tz;
+    }
+
+  u1 = i;
+  u2 = utime;
+  utmp = u1 + u2;
+
+  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || INT_MAX < utmp)
+    {
+      err = ER_QPROC_OVERFLOW_ADDITION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto exit;
+    }
+
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
+    {
+      goto return_timestamp_tz;
+    }
+  else
+    {
+      type = DB_VALUE_DOMAIN_TYPE (result_p);
+
+      switch (type)
+	{
+	case DB_TYPE_BIGINT:
+	  ts_tz_res.timestamp = utmp;
+	  ts_tz_res.tz_id = ts_tz_p->tz_id;
+	  err = tz_timestamptz_fix_zone (&ts_tz_res, &ts_tz_fixed);
+	  if (err != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  err = db_timestamp_decode_w_tz_id (&ts_tz_fixed.timestamp,
+					     &ts_tz_fixed.tz_id, &date,
+					     &time);
+	  if (err != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  db_date_decode (&date, &m, &d, &y);
+	  db_time_decode (&time, &h, &mi, &sec);
+	  bigint = (y * 100 + m) * 100 + d;
+	  bigint = ((bigint * 100 + h) * 100 + mi) * 100 + sec;
+	  DB_MAKE_BIGINT (result_p, bigint);
+	  break;
+
+	default:
+	  break;
+	}
+    }
+
+return_timestamp_tz:
+  ts_tz_res.timestamp = utmp;
+  ts_tz_res.tz_id = ts_tz_p->tz_id;
+
+  err = tz_timestamptz_fix_zone (&ts_tz_res, &ts_tz_fixed);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  DB_MAKE_TIMESTAMPTZ (result_p, &ts_tz_fixed);
+
+exit:
+  return err;
+}
+
+static int
+qdata_add_bigint_to_timestamptz (DB_VALUE * ts_tz_val_p, DB_BIGINT bi,
+				 DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  int err = NO_ERROR;
+  DB_TIMESTAMPTZ *ts_tz_p;
+  DB_TIMESTAMPTZ ts_tz_res, ts_tz_fixed;
+  DB_UTIME utime;
+  DB_DATE date;
+  DB_TIME time;
+  DB_TYPE type;
+  DB_BIGINT u1, u2, utmp, bigint = 0;
+  int d, m, y, h, mi, sec;
+  DB_VALUE tmp_utime_val, tmp_utime_val_res;
+
+  ts_tz_p = DB_GET_TIMESTAMPTZ (ts_tz_val_p);
+  utime = ts_tz_p->timestamp;
+
+  if (bi < 0)
+    {
+      DB_MAKE_UTIME (&tmp_utime_val, utime);
+      err = qdata_add_bigint_to_utime_asymmetry (&tmp_utime_val, bi, &utime,
+						 &tmp_utime_val_res,
+						 tp_domain_resolve_default
+						 (DB_TYPE_UTIME));
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      assert (DB_VALUE_TYPE (&tmp_utime_val_res) == DB_TYPE_UTIME);
+      utmp = *DB_GET_UTIME (&tmp_utime_val_res);
+
+      goto return_timestamp_tz;
+    }
+
+  u1 = bi;
+  u2 = utime;
+  utmp = u1 + u2;
+
+  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || INT_MAX < utmp)
+    {
+      err = ER_QPROC_OVERFLOW_ADDITION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto exit;
+    }
+
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
+    {
+      goto return_timestamp_tz;
+    }
+  else
+    {
+      type = DB_VALUE_DOMAIN_TYPE (result_p);
+
+      switch (type)
+	{
+	case DB_TYPE_BIGINT:
+	  utime = (DB_UTIME) utmp;
+	  ts_tz_res.timestamp = utime;
+	  ts_tz_res.tz_id = ts_tz_p->tz_id;
+	  err = tz_timestamptz_fix_zone (&ts_tz_res, &ts_tz_fixed);
+	  if (err != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  err = db_timestamp_decode_w_tz_id (&ts_tz_fixed.timestamp,
+					     &ts_tz_fixed.tz_id, &date,
+					     &time);
+	  if (err != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  db_date_decode (&date, &m, &d, &y);
+	  db_time_decode (&time, &h, &mi, &sec);
+	  bigint = (y * 100 + m) * 100 + d;
+	  bigint = ((bigint * 100 + h) * 100 + mi) * 100 + sec;
+	  DB_MAKE_BIGINT (result_p, bigint);
+	  break;
+
+	default:
+	  break;
+	}
+    }
+
+return_timestamp_tz:
+  utime = (DB_UTIME) utmp;
+  ts_tz_res.timestamp = utime;
+  ts_tz_res.tz_id = ts_tz_p->tz_id;
+
+  err = tz_timestamptz_fix_zone (&ts_tz_res, &ts_tz_fixed);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  DB_MAKE_TIMESTAMPTZ (result_p, &ts_tz_fixed);
+
+exit:
+  return err;
 }
 
 static int
@@ -1513,6 +1955,8 @@ static int
 qdata_add_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p,
 			  DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
+  int err = NO_ERROR;
+  DB_VALUE tmp_val;
   short s;
   DB_TYPE type;
 
@@ -1546,11 +1990,80 @@ qdata_add_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p,
     case DB_TYPE_TIME:
       return qdata_add_bigint_to_time (dbval_p, (DB_BIGINT) s, result_p);
 
+    case DB_TYPE_TIMELTZ:
+      {
+	DB_TIMETZ time_tz;
+	time_tz.time = *DB_GET_TIME (dbval_p);
+
+	err = tz_create_session_tzid_for_time (&time_tz.time, true,
+					       &time_tz.tz_id);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	DB_MAKE_TIMETZ (&tmp_val, &time_tz);
+
+	err = qdata_add_bigint_to_timetz (&tmp_val, (DB_BIGINT) s, result_p);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMETZ)
+	  {
+	    time_tz = *DB_GET_TIMETZ (result_p);
+	    DB_MAKE_TIMELTZ (result_p, &time_tz.time);
+	  }
+	break;
+      }
+
+    case DB_TYPE_TIMETZ:
+      return qdata_add_bigint_to_timetz (dbval_p, (DB_BIGINT) s, result_p);
+
     case DB_TYPE_UTIME:
       return qdata_add_short_to_utime (dbval_p, s, result_p, domain_p);
 
+    case DB_TYPE_TIMESTAMPLTZ:
+      {
+	DB_TIMESTAMPTZ ts_tz;
+	ts_tz.timestamp = *DB_GET_UTIME (dbval_p);
+
+	err = tz_create_session_tzid_for_timestamp (&ts_tz.timestamp,
+						    &ts_tz.tz_id);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	DB_MAKE_TIMESTAMPTZ (&tmp_val, &ts_tz);
+
+	err = qdata_add_short_to_timestamptz (&tmp_val, (DB_BIGINT) s,
+					      result_p, domain_p);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMESTAMPTZ)
+	  {
+	    ts_tz = *DB_GET_TIMESTAMPTZ (result_p);
+	    DB_MAKE_TIMESTAMPLTZ (result_p, ts_tz.timestamp);
+	  }
+	break;
+      }
+
+    case DB_TYPE_TIMESTAMPTZ:
+      return qdata_add_short_to_timestamptz (dbval_p, s, result_p, domain_p);
+
     case DB_TYPE_DATETIME:
-      return qdata_add_short_to_datetime (dbval_p, s, result_p, domain_p);
+    case DB_TYPE_DATETIMELTZ:
+      err = qdata_add_short_to_datetime (dbval_p, s, &tmp_val, domain_p);
+      if (err == NO_ERROR && type == DB_TYPE_DATETIMELTZ)
+	{
+	  DB_MAKE_DATETIMELTZ (result_p, DB_GET_DATETIME (&tmp_val));
+	}
+      return err;
+
+    case DB_TYPE_DATETIMETZ:
+      DB_MAKE_SHORT (&tmp_val, s);
+      return qdata_add_datetimetz_to_dbval (dbval_p, &tmp_val, result_p);
 
     case DB_TYPE_DATE:
       return qdata_add_short_to_date (dbval_p, s, result_p, domain_p);
@@ -1559,7 +2072,7 @@ qdata_add_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p,
       break;
     }
 
-  return NO_ERROR;
+  return err;
 }
 
 static int
@@ -1567,7 +2080,9 @@ qdata_add_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p,
 			DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
   int i;
+  int err = NO_ERROR;
   DB_TYPE type;
+  DB_VALUE tmp_val;
 
   i = DB_GET_INT (int_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
@@ -1600,11 +2115,80 @@ qdata_add_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p,
     case DB_TYPE_TIME:
       return qdata_add_bigint_to_time (dbval_p, (DB_BIGINT) i, result_p);
 
+    case DB_TYPE_TIMELTZ:
+      {
+	DB_TIMETZ time_tz;
+	time_tz.time = *DB_GET_TIME (dbval_p);
+
+	err = tz_create_session_tzid_for_time (&time_tz.time, true,
+					       &time_tz.tz_id);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	DB_MAKE_TIMETZ (&tmp_val, &time_tz);
+
+	err = qdata_add_bigint_to_timetz (&tmp_val, (DB_BIGINT) i, result_p);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMETZ)
+	  {
+	    time_tz = *DB_GET_TIMETZ (result_p);
+	    DB_MAKE_TIMELTZ (result_p, &time_tz.time);
+	  }
+	break;
+      }
+
+    case DB_TYPE_TIMETZ:
+      return qdata_add_bigint_to_timetz (dbval_p, (DB_BIGINT) i, result_p);
+
     case DB_TYPE_UTIME:
       return qdata_add_int_to_utime (dbval_p, i, result_p, domain_p);
 
+    case DB_TYPE_TIMESTAMPLTZ:
+      {
+	DB_TIMESTAMPTZ ts_tz;
+	ts_tz.timestamp = *DB_GET_UTIME (dbval_p);
+
+	err = tz_create_session_tzid_for_timestamp (&ts_tz.timestamp,
+						    &ts_tz.tz_id);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	DB_MAKE_TIMESTAMPTZ (&tmp_val, &ts_tz);
+
+	err = qdata_add_int_to_timestamptz (&tmp_val, (DB_BIGINT) i,
+					    result_p, domain_p);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMESTAMPTZ)
+	  {
+	    ts_tz = *DB_GET_TIMESTAMPTZ (result_p);
+	    DB_MAKE_TIMESTAMPLTZ (result_p, ts_tz.timestamp);
+	  }
+	break;
+      }
+
+    case DB_TYPE_TIMESTAMPTZ:
+      return qdata_add_int_to_timestamptz (dbval_p, i, result_p, domain_p);
+
     case DB_TYPE_DATETIME:
-      return qdata_add_int_to_datetime (dbval_p, i, result_p, domain_p);
+    case DB_TYPE_DATETIMELTZ:
+      err = qdata_add_int_to_datetime (dbval_p, i, &tmp_val, domain_p);
+      if (err == NO_ERROR && type == DB_TYPE_DATETIMELTZ)
+	{
+	  DB_MAKE_DATETIMELTZ (result_p, DB_GET_DATETIME (&tmp_val));
+	}
+      return err;
+
+    case DB_TYPE_DATETIMETZ:
+      DB_MAKE_INT (&tmp_val, i);
+      return qdata_add_datetimetz_to_dbval (dbval_p, &tmp_val, result_p);
 
     case DB_TYPE_DATE:
       return qdata_add_int_to_date (dbval_p, i, result_p, domain_p);
@@ -1613,15 +2197,17 @@ qdata_add_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p,
       break;
     }
 
-  return NO_ERROR;
+  return err;
 }
 
 static int
 qdata_add_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p,
 			   DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
+  int err = NO_ERROR;
   DB_BIGINT bi;
   DB_TYPE type;
+  DB_VALUE tmp_val;
 
   bi = DB_GET_BIGINT (bigint_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
@@ -1656,8 +2242,68 @@ qdata_add_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p,
     case DB_TYPE_TIME:
       return qdata_add_bigint_to_time (dbval_p, bi, result_p);
 
+    case DB_TYPE_TIMELTZ:
+      {
+	DB_TIMETZ time_tz;
+	time_tz.time = *DB_GET_TIME (dbval_p);
+
+	err = tz_create_session_tzid_for_time (&time_tz.time, true,
+					       &time_tz.tz_id);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	DB_MAKE_TIMETZ (&tmp_val, &time_tz);
+
+	err = qdata_add_bigint_to_timetz (&tmp_val, bi, result_p);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMETZ)
+	  {
+	    time_tz = *DB_GET_TIMETZ (result_p);
+	    DB_MAKE_TIMELTZ (result_p, &time_tz.time);
+	  }
+	break;
+      }
+
+    case DB_TYPE_TIMETZ:
+      return qdata_add_bigint_to_timetz (dbval_p, bi, result_p);
+
     case DB_TYPE_UTIME:
       return qdata_add_bigint_to_utime (dbval_p, bi, result_p, domain_p);
+
+    case DB_TYPE_TIMESTAMPLTZ:
+      {
+	DB_TIMESTAMPTZ ts_tz;
+	ts_tz.timestamp = *DB_GET_UTIME (dbval_p);
+
+	err = tz_create_session_tzid_for_timestamp (&ts_tz.timestamp,
+						    &ts_tz.tz_id);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	DB_MAKE_TIMESTAMPTZ (&tmp_val, &ts_tz);
+
+	err = qdata_add_bigint_to_timestamptz (&tmp_val, bi, result_p,
+					       domain_p);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMESTAMPTZ)
+	  {
+	    ts_tz = *DB_GET_TIMESTAMPTZ (result_p);
+	    DB_MAKE_TIMESTAMPLTZ (result_p, ts_tz.timestamp);
+	  }
+	break;
+      }
+
+    case DB_TYPE_TIMESTAMPTZ:
+      return qdata_add_bigint_to_timestamptz (dbval_p, bi, result_p,
+					      domain_p);
 
     case DB_TYPE_DATE:
       return qdata_add_bigint_to_date (dbval_p, bi, result_p, domain_p);
@@ -1665,11 +2311,23 @@ qdata_add_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p,
     case DB_TYPE_DATETIME:
       return qdata_add_bigint_to_datetime (dbval_p, bi, result_p, domain_p);
 
+    case DB_TYPE_DATETIMELTZ:
+      err = qdata_add_bigint_to_datetime (dbval_p, bi, &tmp_val, domain_p);
+      if (err == NO_ERROR && type == DB_TYPE_DATETIMELTZ)
+	{
+	  DB_MAKE_DATETIMELTZ (result_p, DB_GET_DATETIME (&tmp_val));
+	}
+      return err;
+
+    case DB_TYPE_DATETIMETZ:
+      DB_MAKE_BIGINT (&tmp_val, bi);
+      return qdata_add_datetimetz_to_dbval (dbval_p, &tmp_val, result_p);
+
     default:
       break;
     }
 
-  return NO_ERROR;
+  return err;
 }
 
 static int
@@ -1973,6 +2631,37 @@ qdata_add_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p,
 }
 
 static int
+qdata_add_timetz_to_dbval (DB_VALUE * time_tz_val_p, DB_VALUE * dbval_p,
+			   DB_VALUE * result_p)
+{
+  DB_TYPE type;
+
+  type = DB_VALUE_DOMAIN_TYPE (dbval_p);
+
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+      return qdata_add_bigint_to_timetz (time_tz_val_p,
+					 (DB_BIGINT) DB_GET_SHORT (dbval_p),
+					 result_p);
+
+    case DB_TYPE_INTEGER:
+      return qdata_add_bigint_to_timetz (time_tz_val_p,
+					 (DB_BIGINT) DB_GET_INT (dbval_p),
+					 result_p);
+
+    case DB_TYPE_BIGINT:
+      return qdata_add_bigint_to_timetz (time_tz_val_p,
+					 DB_GET_BIGINT (dbval_p), result_p);
+
+    default:
+      break;
+    }
+
+  return NO_ERROR;
+}
+
+static int
 qdata_add_utime_to_dbval (DB_VALUE * utime_val_p, DB_VALUE * dbval_p,
 			  DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
@@ -1993,6 +2682,41 @@ qdata_add_utime_to_dbval (DB_VALUE * utime_val_p, DB_VALUE * dbval_p,
     case DB_TYPE_BIGINT:
       return qdata_add_bigint_to_utime (utime_val_p, DB_GET_BIGINT (dbval_p),
 					result_p, domain_p);
+
+    default:
+      break;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+qdata_add_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
+				DB_VALUE * result_p)
+{
+  DB_TYPE type;
+  TP_DOMAIN *domain_p;
+
+  type = DB_VALUE_DOMAIN_TYPE (dbval_p);
+
+  domain_p = tp_domain_resolve_default (DB_TYPE_TIMESTAMPTZ);
+
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+      return qdata_add_short_to_timestamptz (ts_tz_val_p,
+					     DB_GET_SHORT (dbval_p),
+					     result_p, domain_p);
+
+    case DB_TYPE_INTEGER:
+      return qdata_add_int_to_timestamptz (ts_tz_val_p,
+					   DB_GET_INT (dbval_p),
+					   result_p, domain_p);
+
+    case DB_TYPE_BIGINT:
+      return qdata_add_bigint_to_timestamptz (ts_tz_val_p,
+					      DB_GET_BIGINT (dbval_p),
+					      result_p, domain_p);
 
     default:
       break;
@@ -2029,6 +2753,37 @@ qdata_add_datetime_to_dbval (DB_VALUE * datetime_val_p, DB_VALUE * dbval_p,
       break;
     }
 
+  return NO_ERROR;
+}
+
+static int
+qdata_add_datetimetz_to_dbval (DB_VALUE * datetimetz_val_p,
+			       DB_VALUE * dbval_p, DB_VALUE * result_p)
+{
+  int error = NO_ERROR;
+  DB_VALUE dt_val, dt_val_res;
+  DB_DATETIMETZ *dt_tz_p = DB_GET_DATETIMETZ (datetimetz_val_p);
+  DB_DATETIMETZ dt_tz_res, dt_tz_fixed;
+
+  DB_MAKE_DATETIME (&dt_val, &dt_tz_p->datetime);
+  error = qdata_add_datetime_to_dbval (&dt_val, dbval_p, &dt_val_res,
+				       tp_domain_resolve_default
+				       (DB_TYPE_DATETIME));
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  dt_tz_res.datetime = *DB_GET_DATETIME (&dt_val_res);
+  dt_tz_res.tz_id = dt_tz_p->tz_id;
+
+  error = tz_datetimetz_fix_zone (&dt_tz_res, &dt_tz_fixed);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  DB_MAKE_DATETIMETZ (result_p, &dt_tz_fixed);
   return NO_ERROR;
 }
 
@@ -2365,7 +3120,17 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
       break;
 
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
+      /* we are adding only numbers, is safe to handle TIMELTZ as TIME */
       error = qdata_add_time_to_dbval (dbval1_p, dbval2_p, result_p);
+      if (error == NO_ERROR && type1 == DB_TYPE_TIMELTZ)
+	{
+	  DB_MAKE_TIMELTZ (result_p, DB_GET_TIME (result_p));
+	}
+      break;
+
+    case DB_TYPE_TIMETZ:
+      error = qdata_add_timetz_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
     case DB_TYPE_UTIME:
@@ -2373,9 +3138,58 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 					domain_p);
       break;
 
+    case DB_TYPE_TIMESTAMPLTZ:
+      {
+	DB_TIMESTAMPTZ ts_tz, *ts_tz_p;
+	DB_VALUE ts_tz_val, tmp_val_res;
+
+	ts_tz.timestamp = *DB_GET_UTIME (dbval1_p);
+
+	error = tz_create_session_tzid_for_timestamp (&ts_tz.timestamp,
+						      &ts_tz.tz_id);
+	if (error != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	DB_MAKE_TIMESTAMPTZ (&ts_tz_val, &ts_tz);
+
+	error = qdata_add_timestamptz_to_dbval (&ts_tz_val, dbval2_p,
+						&tmp_val_res);
+	if (error != NO_ERROR)
+	  {
+	    break;
+	  }
+	if (DB_VALUE_TYPE (&tmp_val_res) == DB_TYPE_TIMESTAMPTZ)
+	  {
+	    ts_tz_p = DB_GET_TIMESTAMPTZ (&tmp_val_res);
+	    DB_MAKE_TIMESTAMPLTZ (result_p, ts_tz_p->timestamp);
+	  }
+	else
+	  {
+	    assert (DB_VALUE_TYPE (&tmp_val_res) == DB_TYPE_BIGINT);
+	    pr_clone_value (&tmp_val_res, result_p);
+	  }
+	break;
+      }
+
+    case DB_TYPE_TIMESTAMPTZ:
+      error = qdata_add_timestamptz_to_dbval (dbval1_p, dbval2_p, result_p);
+      break;
+
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+      /* we are adding only numbers, safe to handle DATETIMELTZ as DATETIME */
       error = qdata_add_datetime_to_dbval (dbval1_p, dbval2_p, result_p,
 					   domain_p);
+      if (error == NO_ERROR && type1 == DB_TYPE_DATETIMELTZ)
+	{
+	  DB_MAKE_DATETIMELTZ (result_p, DB_GET_DATETIME (result_p));
+	}
+      break;
+
+    case DB_TYPE_DATETIMETZ:
+      error = qdata_add_datetimetz_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
     case DB_TYPE_DATE:
@@ -2509,9 +3323,15 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p,
     case DB_TYPE_NUMERIC:
     case DB_TYPE_MONETARY:
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
+    case DB_TYPE_TIMETZ:
     case DB_TYPE_DATE:
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
     case DB_TYPE_TIMESTAMP:	/* == DB_TYPE_UTIME */
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_ENUMERATION:
       {
 	TP_DOMAIN_STATUS err_dom;
@@ -2955,10 +3775,9 @@ qdata_subtract_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p,
   DB_TIME *timeval, timetmp;
   DB_DATE *date;
   unsigned int u1, u2, utmp;
-  DB_UTIME *utime;
-  DB_DATETIME *datetime;
-  DB_DATETIME datetime_tmp;
   int hour, minute, second;
+  int err = NO_ERROR;
+  DB_VALUE tmp_val;
 
   s = DB_GET_SHORT (short_val_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
@@ -2997,6 +3816,8 @@ qdata_subtract_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p,
 				      result_p);
 
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
+    case DB_TYPE_TIMETZ:
       if (s < 0)
 	{
 	  timetmp = s + SECONDS_OF_ONE_DAY;
@@ -3005,22 +3826,52 @@ qdata_subtract_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p,
 	{
 	  timetmp = s;
 	}
-      timeval = DB_GET_TIME (dbval_p);
-      return qdata_subtract_time (timetmp,
-				  (DB_TIME) (*timeval % SECONDS_OF_ONE_DAY),
-				  result_p);
+
+      if (type2 == DB_TYPE_TIMETZ)
+	{
+	  DB_TIMETZ *timetz_p;
+
+	  timetz_p = DB_GET_TIMETZ (dbval_p);
+	  timeval = &timetz_p->time;
+	}
+      else
+	{
+	  timeval = DB_GET_TIME (dbval_p);
+	}
+
+      err = qdata_subtract_time (timetmp,
+				 (DB_TIME) (*timeval % SECONDS_OF_ONE_DAY),
+				 result_p);
+      if (err == NO_ERROR && type2 == DB_TYPE_TIMELTZ)
+	{
+	  DB_MAKE_TIMELTZ (result_p, DB_GET_TIME (result_p));
+	}
+      else if (err == NO_ERROR && type2 == DB_TYPE_TIMETZ)
+	{
+	  DB_TIMETZ time_tz, time_tz_fixed;
+
+	  time_tz = *DB_GET_TIMETZ (dbval_p);
+	  time_tz.time = *DB_GET_TIME (result_p);
+	  err = tz_timetz_fix_zone (&time_tz, &time_tz_fixed);
+	  if (err != NO_ERROR)
+	    {
+	      break;
+	    }
+	  DB_MAKE_TIMETZ (result_p, &time_tz_fixed);
+	}
+      return err;
 
     case DB_TYPE_UTIME:
-      utime = DB_GET_UTIME (dbval_p);
-      return qdata_subtract_utime ((DB_UTIME) s, *utime, result_p);
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
+      DB_MAKE_BIGINT (&tmp_val, (DB_BIGINT) s);
+      return qdata_subtract_bigint_to_dbval (&tmp_val, dbval_p, result_p);
 
     case DB_TYPE_DATETIME:
-      datetime = DB_GET_DATETIME (dbval_p);
-
-      datetime_tmp.date = s / MILLISECONDS_OF_ONE_DAY;
-      datetime_tmp.time = s % MILLISECONDS_OF_ONE_DAY;
-
-      return qdata_subtract_datetime (&datetime_tmp, datetime, result_p);
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
+      DB_MAKE_INT (&tmp_val, (int) s);
+      return qdata_subtract_int_to_dbval (&tmp_val, dbval_p, result_p);
 
     case DB_TYPE_DATE:
       date = DB_GET_DATE (dbval_p);
@@ -3044,7 +3895,7 @@ qdata_subtract_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p,
       break;
     }
 
-  return NO_ERROR;
+  return err;
 }
 
 static int
@@ -3054,12 +3905,12 @@ qdata_subtract_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p,
   int i;
   DB_TYPE type;
   DB_VALUE dbval_tmp;
-  DB_TIME *timeval;
   DB_DATE *date;
   DB_DATETIME *datetime, datetime_tmp;
   unsigned int u1, u2, utmp;
-  DB_UTIME *utime;
   int day, month, year;
+  DB_VALUE tmp_val;
+  int err = NO_ERROR;
 
   i = DB_GET_INT (int_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
@@ -3099,22 +3950,13 @@ qdata_subtract_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p,
 				      result_p);
 
     case DB_TYPE_TIME:
-      if (i < 0)
-	{
-	  i = (i % SECONDS_OF_ONE_DAY) + SECONDS_OF_ONE_DAY;
-	}
-      else
-	{
-	  i %= SECONDS_OF_ONE_DAY;
-	}
-      timeval = DB_GET_TIME (dbval_p);
-      return qdata_subtract_time ((DB_TIME) i,
-				  (DB_TIME) (*timeval % SECONDS_OF_ONE_DAY),
-				  result_p);
-
+    case DB_TYPE_TIMELTZ:
+    case DB_TYPE_TIMETZ:
     case DB_TYPE_UTIME:
-      utime = DB_GET_UTIME (dbval_p);
-      return qdata_subtract_utime ((DB_UTIME) i, *utime, result_p);
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
+      DB_MAKE_BIGINT (&tmp_val, (DB_BIGINT) i);
+      return qdata_subtract_bigint_to_dbval (&tmp_val, dbval_p, result_p);
 
     case DB_TYPE_DATETIME:
       datetime = DB_GET_DATETIME (dbval_p);
@@ -3123,6 +3965,43 @@ qdata_subtract_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p,
       datetime_tmp.time = i % MILLISECONDS_OF_ONE_DAY;
 
       return qdata_subtract_datetime (&datetime_tmp, datetime, result_p);
+
+    case DB_TYPE_DATETIMELTZ:
+      {
+	DB_DATETIME dt_local;
+
+	datetime = DB_GET_DATETIME (dbval_p);
+	err = tz_datetimeltz_to_local (datetime, &dt_local);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	datetime_tmp.date = i / MILLISECONDS_OF_ONE_DAY;
+	datetime_tmp.time = i % MILLISECONDS_OF_ONE_DAY;
+
+	return qdata_subtract_datetime (&datetime_tmp, &dt_local, result_p);
+      }
+
+    case DB_TYPE_DATETIMETZ:
+      {
+	DB_DATETIMETZ dt_tz;
+	DB_DATETIME dt_local;
+
+	dt_tz = *DB_GET_DATETIMETZ (dbval_p);
+
+	err = tz_utc_datetimetz_to_local (&dt_tz.datetime, &dt_tz.tz_id,
+					  &dt_local);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	datetime_tmp.date = i / MILLISECONDS_OF_ONE_DAY;
+	datetime_tmp.time = i % MILLISECONDS_OF_ONE_DAY;
+
+	return qdata_subtract_datetime (&datetime_tmp, &dt_local, result_p);
+      }
 
     case DB_TYPE_DATE:
       date = DB_GET_DATE (dbval_p);
@@ -3161,6 +4040,7 @@ qdata_subtract_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p,
   unsigned int u1, u2, utmp;
   DB_UTIME *utime;
   int day, month, year;
+  int err = NO_ERROR;
 
   bi = DB_GET_BIGINT (bigint_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
@@ -3210,14 +4090,74 @@ qdata_subtract_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p,
 	{
 	  bi %= SECONDS_OF_ONE_DAY;
 	}
-      timeval = DB_GET_TIME (dbval_p);
-      return qdata_subtract_time ((DB_TIME) bi,
-				  (DB_TIME) (*timeval % SECONDS_OF_ONE_DAY),
-				  result_p);
 
+      if (type == DB_TYPE_TIMETZ)
+	{
+	  DB_TIMETZ *timetz_p;
+
+	  timetz_p = DB_GET_TIMETZ (dbval_p);
+	  timeval = &timetz_p->time;
+	}
+      else
+	{
+	  timeval = DB_GET_TIME (dbval_p);
+	}
+      err = qdata_subtract_time ((DB_TIME) bi,
+				 (DB_TIME) (*timeval % SECONDS_OF_ONE_DAY),
+				 result_p);
+      if (err == NO_ERROR && type == DB_TYPE_TIMELTZ)
+	{
+	  DB_MAKE_TIMELTZ (result_p, DB_GET_TIME (result_p));
+	}
+      else if (err == NO_ERROR && type == DB_TYPE_TIMETZ)
+	{
+	  DB_TIMETZ time_tz, time_tz_fixed;
+
+	  time_tz = *DB_GET_TIMETZ (dbval_p);
+	  time_tz.time = *DB_GET_TIME (result_p);
+	  err = tz_timetz_fix_zone (&time_tz, &time_tz_fixed);
+	  if (err != NO_ERROR)
+	    {
+	      break;
+	    }
+	  DB_MAKE_TIMETZ (result_p, &time_tz_fixed);
+	}
+      return err;
     case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPLTZ:
       utime = DB_GET_UTIME (dbval_p);
-      return qdata_subtract_utime ((DB_UTIME) bi, *utime, result_p);
+      err = qdata_subtract_utime ((DB_UTIME) bi, *utime, result_p);
+      if (err != NO_ERROR)
+	{
+	  break;
+	}
+      if (err == NO_ERROR && type == DB_TYPE_TIMESTAMPLTZ)
+	{
+	  DB_MAKE_TIMESTAMPLTZ (result_p, *DB_GET_UTIME (result_p));
+	}
+      return err;
+
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	DB_TIMESTAMPTZ ts_tz_res, ts_tz_fixed, *ts_tz_p;
+
+	ts_tz_p = DB_GET_TIMESTAMPTZ (dbval_p);
+	utime = &ts_tz_p->timestamp;
+	err = qdata_subtract_utime ((DB_UTIME) bi, *utime, result_p);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	ts_tz_res.timestamp = *DB_GET_UTIME (result_p);
+	ts_tz_res.tz_id = ts_tz_p->tz_id;
+	err = tz_timestamptz_fix_zone (&ts_tz_res, &ts_tz_fixed);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	DB_MAKE_TIMESTAMPTZ (result_p, &ts_tz_fixed);
+	return err;
+      }
 
     case DB_TYPE_DATE:
       date = DB_GET_DATE (dbval_p);
@@ -3241,7 +4181,7 @@ qdata_subtract_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p,
       break;
     }
 
-  return NO_ERROR;
+  return err;
 }
 
 static int
@@ -3486,6 +4426,7 @@ qdata_subtract_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p,
   DB_TYPE type;
   DB_TIME *timeval, *timeval1;
   int subval;
+  int err = NO_ERROR;
 
   timeval = DB_GET_TIME (time_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
@@ -3527,11 +4468,172 @@ qdata_subtract_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p,
       DB_MAKE_INT (result_p, ((int) *timeval - (int) *timeval1));
       break;
 
+    case DB_TYPE_TIMELTZ:
+      err = qdata_subtract_timeltz_to_dbval (dbval_p, time_val_p, result_p);
+      if (err != NO_ERROR)
+	{
+	  break;
+	}
+      assert (DB_VALUE_TYPE (result_p) == DB_TYPE_INTEGER);
+      DB_MAKE_INT (result_p, -(DB_GET_INTEGER (result_p)));
+      break;
+    case DB_TYPE_TIMETZ:
+      err = qdata_subtract_timetz_to_dbval (dbval_p, time_val_p, result_p);
+      if (err != NO_ERROR)
+	{
+	  break;
+	}
+      assert (DB_VALUE_TYPE (result_p) == DB_TYPE_INTEGER);
+      DB_MAKE_INT (result_p, -(DB_GET_INTEGER (result_p)));
+      break;
+
     default:
       break;
     }
 
-  return NO_ERROR;
+  return err;
+}
+
+static int
+qdata_subtract_timetz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p,
+				DB_VALUE * result_p)
+{
+  int err = NO_ERROR;
+  DB_TYPE type;
+  DB_TIMETZ *time_tz_p;
+
+  time_tz_p = DB_GET_TIMETZ (timetz_val_p);
+  type = DB_VALUE_DOMAIN_TYPE (dbval_p);
+
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+      {
+	DB_VALUE time_val, time_val_res;
+	DB_TIMETZ time_tz_res, time_tz_fixed;
+
+	DB_MAKE_ENCODED_TIME (&time_val, &time_tz_p->time);
+
+	err = qdata_subtract_time_to_dbval (&time_val, dbval_p,
+					    &time_val_res);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	time_tz_res.time = *DB_GET_TIME (&time_val_res);
+	time_tz_res.tz_id = time_tz_p->tz_id;
+
+	err = tz_timetz_fix_zone (&time_tz_res, &time_tz_fixed);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	DB_MAKE_TIMETZ (result_p, &time_tz_fixed);
+	break;
+      }
+
+    case DB_TYPE_TIME:
+      {
+	DB_TIME *time_2_p;
+	DB_TIMETZ timetz_2;
+
+	time_2_p = DB_GET_TIME (dbval_p);
+
+	err = tz_create_timetz_from_ses (time_2_p, &timetz_2);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	DB_MAKE_INT (result_p, ((int) time_tz_p->time - (int) timetz_2.time));
+	break;
+      }
+
+    case DB_TYPE_TIMELTZ:
+      {
+	DB_TIME *time_2_p;
+
+	time_2_p = DB_GET_TIME (dbval_p);
+	DB_MAKE_INT (result_p, ((int) time_tz_p->time - (int) *time_2_p));
+	break;
+      }
+    case DB_TYPE_TIMETZ:
+      {
+	DB_TIMETZ *time_tz_2_p;
+
+	time_tz_2_p = DB_GET_TIMETZ (dbval_p);
+	DB_MAKE_INT (result_p,
+		     ((int) time_tz_p->time - (int) time_tz_2_p->time));
+	break;
+      }
+
+    default:
+      break;
+    }
+
+  return err;
+}
+
+static int
+qdata_subtract_timeltz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p,
+				 DB_VALUE * result_p)
+{
+  int err = NO_ERROR;
+  DB_TYPE type;
+  DB_TIME *time_p;
+
+  time_p = DB_GET_TIME (timetz_val_p);
+  type = DB_VALUE_DOMAIN_TYPE (dbval_p);
+
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+      {
+	DB_VALUE time_val, time_val_res;
+
+	/* create a simple TIME value and perform the operation with it */
+	DB_MAKE_ENCODED_TIME (&time_val, time_p);
+	err = qdata_subtract_time_to_dbval (&time_val, dbval_p,
+					    &time_val_res);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	DB_MAKE_TIMELTZ (result_p, DB_GET_TIME (&time_val_res));
+	break;
+      }
+
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
+    case DB_TYPE_TIMETZ:
+      {
+	DB_VALUE timetz_val, val_res;
+	DB_TIMETZ timetz;
+
+	/* perform the operation as TIMETZ operand (keep session timezone when
+	 * mixing with other data types having timezone) */
+	timetz.time = *time_p;
+	err = tz_create_session_tzid_for_time (time_p, true, &timetz.tz_id);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+	DB_MAKE_TIMETZ (&timetz_val, &timetz);
+
+	err = qdata_subtract_timetz_to_dbval (&timetz_val, dbval_p, &val_res);
+	break;
+      }
+
+    default:
+      break;
+    }
+
+  return err;
 }
 
 static int
@@ -3540,8 +4642,10 @@ qdata_subtract_utime_to_dbval (DB_VALUE * utime_val_p, DB_VALUE * dbval_p,
 {
   DB_TYPE type;
   DB_UTIME *utime, *utime1;
+  DB_TIMESTAMPTZ *ts_tz1;
   DB_DATETIME *datetime;
   DB_DATETIME tmp_datetime;
+  DB_DATETIMETZ datetime_tz_1;
   unsigned int u1;
   short s2;
   int i2;
@@ -3592,21 +4696,230 @@ qdata_subtract_utime_to_dbval (DB_VALUE * utime_val_p, DB_VALUE * dbval_p,
       return qdata_subtract_utime (*utime, (DB_UTIME) bi2, result_p);
 
     case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPLTZ:
       utime1 = DB_GET_UTIME (dbval_p);
       DB_MAKE_INT (result_p, ((int) *utime - (int) *utime1));
       break;
 
+    case DB_TYPE_TIMESTAMPTZ:
+      ts_tz1 = DB_GET_TIMESTAMPTZ (dbval_p);
+      DB_MAKE_INT (result_p, ((int) *utime - (int) ts_tz1->timestamp));
+      break;
+
     case DB_TYPE_DATETIME:
       datetime = DB_GET_DATETIME (dbval_p);
-      db_timestamp_to_datetime (utime, &tmp_datetime);
+
+      (void) db_timestamp_decode_ses (utime, &tmp_datetime.date,
+				      &tmp_datetime.time);
 
       return qdata_subtract_datetime (&tmp_datetime, datetime, result_p);
+
+    case DB_TYPE_DATETIMELTZ:
+      datetime = DB_GET_DATETIME (dbval_p);
+      (void) db_timestamp_decode_utc (utime, &tmp_datetime.date,
+				      &tmp_datetime.time);
+
+      return qdata_subtract_datetime (&tmp_datetime, datetime, result_p);
+
+    case DB_TYPE_DATETIMETZ:
+      datetime_tz_1 = *DB_GET_DATETIMETZ (dbval_p);
+      (void) db_timestamp_decode_utc (utime, &tmp_datetime.date,
+				      &tmp_datetime.time);
+
+      return qdata_subtract_datetime (&tmp_datetime,
+				      &datetime_tz_1.datetime, result_p);
 
     default:
       break;
     }
 
   return NO_ERROR;
+}
+
+static int
+qdata_subtract_timestampltz_to_dbval (DB_VALUE * ts_ltz_val_p,
+				      DB_VALUE * dbval_p, DB_VALUE * result_p,
+				      TP_DOMAIN * domain_p)
+{
+  DB_TYPE type;
+  DB_UTIME *utime_p;
+  DB_VALUE utime_val, tmp_val_res;
+  int err = NO_ERROR;
+
+  utime_p = DB_GET_UTIME (ts_ltz_val_p);
+  type = DB_VALUE_DOMAIN_TYPE (dbval_p);
+
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
+      /* perform operation as simple UTIME */
+      DB_MAKE_UTIME (&utime_val, *utime_p);
+      err = qdata_subtract_utime_to_dbval (&utime_val, dbval_p,
+					   &tmp_val_res,
+					   tp_domain_resolve_default
+					   (DB_TYPE_UTIME));
+      if (err != NO_ERROR)
+	{
+	  break;
+	}
+
+      if (DB_VALUE_TYPE (&tmp_val_res) == DB_TYPE_UTIME)
+	{
+	  DB_MAKE_TIMESTAMPLTZ (result_p, *DB_GET_UTIME (&tmp_val_res));
+	}
+      break;
+    default:
+      break;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p,
+				     DB_VALUE * dbval_p, DB_VALUE * result_p,
+				     TP_DOMAIN * domain_p)
+{
+  int err = NO_ERROR;
+  DB_TYPE type;
+  DB_UTIME *utime1, *utime2;
+  DB_TIMESTAMPTZ *ts_tz1_p, *ts_tz2_p, ts_tz_res, ts_tz_res_fixed;
+  DB_DATETIME *datetime;
+  DB_DATETIME tmp_datetime;
+  DB_DATETIMETZ datetime_tz_1;
+  DB_DATE date;
+  DB_TIME time;
+  unsigned int u1;
+  short s2;
+  int i2;
+  DB_BIGINT bi2;
+  DB_VALUE tmp_val_res;
+
+  ts_tz1_p = DB_GET_TIMESTAMPTZ (ts_tz_val_p);
+  utime1 = &ts_tz1_p->timestamp;
+  type = DB_VALUE_DOMAIN_TYPE (dbval_p);
+
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+      u1 = (unsigned int) *utime1;
+      s2 = DB_GET_SHORT (dbval_p);
+      if (s2 < 0)
+	{
+	  /* We're really adding.  */
+	  return qdata_subtract_utime_to_short_asymmetry (ts_tz_val_p, s2,
+							  utime1, result_p,
+							  domain_p);
+	}
+
+      err = qdata_subtract_utime (*utime1, (DB_UTIME) s2, &tmp_val_res);
+      break;
+
+    case DB_TYPE_INTEGER:
+      u1 = (unsigned int) *utime1;
+      i2 = DB_GET_INT (dbval_p);
+      if (i2 < 0)
+	{
+	  /* We're really adding.  */
+	  return qdata_subtract_utime_to_int_asymmetry (ts_tz_val_p, i2,
+							utime1, result_p,
+							domain_p);
+	}
+
+      err = qdata_subtract_utime (*utime1, (DB_UTIME) i2, &tmp_val_res);
+      break;
+
+    case DB_TYPE_BIGINT:
+      u1 = (unsigned int) *utime1;
+      bi2 = DB_GET_BIGINT (dbval_p);
+      if (bi2 < 0)
+	{
+	  /* We're really adding. */
+	  return qdata_subtract_utime_to_bigint_asymmetry (ts_tz_val_p, bi2,
+							   utime1, result_p,
+							   domain_p);
+	}
+
+      err = qdata_subtract_utime (*utime1, (DB_UTIME) bi2, &tmp_val_res);
+      break;
+
+    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPLTZ:
+      utime2 = DB_GET_UTIME (dbval_p);
+      DB_MAKE_INT (result_p, ((int) *utime1 - (int) *utime2));
+      return err;
+
+    case DB_TYPE_TIMESTAMPTZ:
+      ts_tz2_p = DB_GET_TIMESTAMPTZ (dbval_p);
+      DB_MAKE_INT (result_p, ((int) *utime1 - (int) ts_tz2_p->timestamp));
+      return err;
+
+    case DB_TYPE_DATETIME:
+      datetime = DB_GET_DATETIME (dbval_p);
+
+      err = db_timestamp_decode_w_tz_id (utime1, &ts_tz1_p->tz_id, &date,
+					 &time);
+      if (err != NO_ERROR)
+	{
+	  break;
+	}
+
+      tmp_datetime.date = date;
+      tmp_datetime.time = time * 1000;
+
+      return qdata_subtract_datetime (&tmp_datetime, datetime, result_p);
+
+    case DB_TYPE_DATETIMELTZ:
+      datetime = DB_GET_DATETIME (dbval_p);
+      db_timestamp_decode_utc (utime1, &date, &time);
+
+      tmp_datetime.date = date;
+      tmp_datetime.time = time * 1000;
+
+      return qdata_subtract_datetime (&tmp_datetime, datetime, result_p);
+
+    case DB_TYPE_DATETIMETZ:
+      datetime_tz_1 = *DB_GET_DATETIMETZ (dbval_p);
+      db_timestamp_decode_utc (utime1, &date, &time);
+
+      if (err != NO_ERROR)
+	{
+	  break;
+	}
+
+      tmp_datetime.date = date;
+      tmp_datetime.time = time * 1000;
+
+      return qdata_subtract_datetime (&tmp_datetime,
+				      &datetime_tz_1.datetime, result_p);
+
+    default:
+      break;
+    }
+
+  if (err == NO_ERROR)
+    {
+      assert (DB_VALUE_TYPE (&tmp_val_res) == DB_TYPE_UTIME);
+      /* create TIMESTAMPTZ from result UTIME by adjusting TZ_ID */
+      ts_tz_res.timestamp = *DB_GET_UTIME (&tmp_val_res);
+      ts_tz_res.tz_id = ts_tz1_p->tz_id;
+      err = tz_timestamptz_fix_zone (&ts_tz_res, &ts_tz_res_fixed);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+
+      DB_MAKE_TIMESTAMPTZ (result_p, &ts_tz_res_fixed);
+    }
+  return err;
 }
 
 static int
@@ -3676,7 +4989,43 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p,
 	DB_BIGINT u1, u2;
 	DB_DATETIME datetime2;
 
-	db_timestamp_to_datetime (DB_GET_UTIME (dbval_p), &datetime2);
+	(void) db_timestamp_decode_ses (DB_GET_UTIME (dbval_p),
+					&datetime2.date, &datetime2.time);
+
+	u1 = ((DB_BIGINT) datetime1_p->date) * MILLISECONDS_OF_ONE_DAY
+	  + datetime1_p->time;
+	u2 = ((DB_BIGINT) datetime2.date) * MILLISECONDS_OF_ONE_DAY
+	  + datetime2.time;
+
+	return db_make_bigint (result_p, u1 - u2);
+      }
+
+    case DB_TYPE_TIMESTAMPLTZ:
+      {
+	DB_BIGINT u1, u2;
+	DB_DATETIME datetime2;
+
+	(void) db_timestamp_decode_ses (DB_GET_UTIME (dbval_p),
+					&datetime2.date, &datetime2.time);
+
+	u1 = ((DB_BIGINT) datetime1_p->date) * MILLISECONDS_OF_ONE_DAY
+	  + datetime1_p->time;
+	u2 = ((DB_BIGINT) datetime2.date) * MILLISECONDS_OF_ONE_DAY
+	  + datetime2.time;
+
+	return db_make_bigint (result_p, u1 - u2);
+      }
+
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	DB_BIGINT u1, u2;
+	DB_DATETIME datetime2;
+	DB_TIMESTAMPTZ ts_tz2;
+
+	ts_tz2 = *DB_GET_TIMESTAMPTZ (dbval_p);
+
+	(void) db_timestamp_decode_ses (&ts_tz2.timestamp, &datetime2.date,
+					&datetime2.time);
 
 	u1 = ((DB_BIGINT) datetime1_p->date) * MILLISECONDS_OF_ONE_DAY
 	  + datetime1_p->time;
@@ -3701,6 +5050,53 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p,
 	return db_make_bigint (result_p, u1 - u2);
       }
 
+    case DB_TYPE_DATETIMELTZ:
+      {
+	DB_BIGINT u1, u2;
+	DB_DATETIMETZ dt_tz1;
+	DB_DATETIME *dt_utc2_p;
+	int err;
+
+	err = tz_create_datetimetz_from_ses (datetime1_p, &dt_tz1);
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+
+	dt_utc2_p = DB_GET_DATETIME (dbval_p);
+
+	u1 = ((DB_BIGINT) dt_tz1.datetime.date) * MILLISECONDS_OF_ONE_DAY
+	  + dt_tz1.datetime.time;
+	u2 = ((DB_BIGINT) dt_utc2_p->date) * MILLISECONDS_OF_ONE_DAY
+	  + dt_utc2_p->time;
+
+	return db_make_bigint (result_p, u1 - u2);
+      }
+
+    case DB_TYPE_DATETIMETZ:
+      {
+	DB_BIGINT u1, u2;
+	DB_DATETIMETZ *datetimetz2_p;
+	DB_DATETIME datetime2;
+	int err;
+
+	datetimetz2_p = DB_GET_DATETIMETZ (dbval_p);
+	err = tz_utc_datetimetz_to_local (&datetimetz2_p->datetime,
+					  &datetimetz2_p->tz_id, &datetime2);
+
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+
+	u1 = ((DB_BIGINT) datetime1_p->date) * MILLISECONDS_OF_ONE_DAY
+	  + datetime1_p->time;
+	u2 = ((DB_BIGINT) datetime2.date) * MILLISECONDS_OF_ONE_DAY
+	  + datetime2.time;
+
+	return db_make_bigint (result_p, u1 - u2);
+      }
+
     case DB_TYPE_DATE:
       {
 	DB_BIGINT u1, u2;
@@ -3717,6 +5113,163 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p,
     }
 
   return NO_ERROR;
+}
+
+static int
+qdata_subtract_datetimetz_to_dbval (DB_VALUE * dt_tz_val_p,
+				    DB_VALUE * dbval_p, DB_VALUE * result_p,
+				    TP_DOMAIN * domain_p)
+{
+  int err = NO_ERROR;
+  DB_TYPE type;
+  DB_DATETIMETZ *dt_tz1_p;
+  DB_DATETIME *datetime1_p;
+
+  dt_tz1_p = DB_GET_DATETIMETZ (dt_tz_val_p);
+  datetime1_p = &(dt_tz1_p->datetime);
+  type = DB_VALUE_DOMAIN_TYPE (dbval_p);
+
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+      {
+	DB_VALUE dt_val, dt_val_res;
+	DB_DATETIMETZ dt_tz, dt_tz_fixed;
+
+	DB_MAKE_DATETIME (&dt_val, datetime1_p);
+
+	err = qdata_subtract_datetime_to_dbval (&dt_val, dbval_p, &dt_val_res,
+						tp_domain_resolve_default
+						(DB_TYPE_DATETIME));
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	dt_tz.datetime = *DB_GET_DATETIME (&dt_val_res);
+	dt_tz.tz_id = dt_tz1_p->tz_id;
+
+	err = tz_datetimetz_fix_zone (&dt_tz, &dt_tz_fixed);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	DB_MAKE_DATETIMETZ (result_p, &dt_tz_fixed);
+	break;
+      }
+
+    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	DB_BIGINT u1, u2;
+	DB_DATETIME datetime2;
+	DB_UTIME *utime2_p;
+
+	/* create a DATETIME in UTC reference */
+	if (type == DB_TYPE_TIMESTAMPTZ)
+	  {
+	    DB_TIMESTAMPTZ *ts_tz2_p;
+
+	    ts_tz2_p = DB_GET_TIMESTAMPTZ (dbval_p);
+	    utime2_p = &(ts_tz2_p->timestamp);
+	  }
+	else
+	  {
+	    utime2_p = DB_GET_UTIME (dbval_p);
+	  }
+	(void) db_timestamp_decode_utc (utime2_p, &datetime2.date,
+					&datetime2.time);
+
+	u1 = ((DB_BIGINT) dt_tz1_p->datetime.date) * MILLISECONDS_OF_ONE_DAY
+	  + dt_tz1_p->datetime.time;
+	u2 = ((DB_BIGINT) datetime2.date) * MILLISECONDS_OF_ONE_DAY
+	  + datetime2.time;
+
+	return db_make_bigint (result_p, u1 - u2);
+      }
+
+    case DB_TYPE_DATETIME:
+      {
+	DB_BIGINT u1, u2;
+	DB_DATETIME *datetime2_p;
+	DB_DATETIME datetime1;
+
+	/* from DT with TZ to local */
+	datetime2_p = DB_GET_DATETIME (dbval_p);
+
+	err = tz_utc_datetimetz_to_local (&dt_tz1_p->datetime,
+					  &dt_tz1_p->tz_id, &datetime1);
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+
+	u1 = ((DB_BIGINT) datetime1.date) * MILLISECONDS_OF_ONE_DAY
+	  + datetime1.time;
+	u2 = ((DB_BIGINT) datetime2_p->date) * MILLISECONDS_OF_ONE_DAY
+	  + datetime2_p->time;
+
+	return db_make_bigint (result_p, u1 - u2);
+      }
+
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
+      {
+	DB_BIGINT u1, u2;
+	DB_DATETIMETZ *dt_tz2_p;
+	DB_DATETIME *datetime2_p;
+
+	/* both datetimes are in UTC, no need to consider timezones */
+	if (type == DB_TYPE_DATETIMETZ)
+	  {
+	    dt_tz2_p = DB_GET_DATETIMETZ (dbval_p);
+	    datetime2_p = &(dt_tz2_p->datetime);
+	  }
+	else
+	  {
+	    datetime2_p = DB_GET_DATETIME (dbval_p);
+	  }
+
+	u1 = ((DB_BIGINT) datetime1_p->date) * MILLISECONDS_OF_ONE_DAY
+	  + datetime1_p->time;
+	u2 = ((DB_BIGINT) datetime2_p->date) * MILLISECONDS_OF_ONE_DAY
+	  + datetime2_p->time;
+
+	return db_make_bigint (result_p, u1 - u2);
+      }
+
+    case DB_TYPE_DATE:
+      {
+	DB_BIGINT u1, u2;
+	DB_DATETIME *datetime2_p;
+	DB_DATETIME datetime1;
+
+	/* from DT with TZ to local */
+	datetime2_p = DB_GET_DATETIME (dbval_p);
+
+	err = tz_utc_datetimetz_to_local (&dt_tz1_p->datetime,
+					  &dt_tz1_p->tz_id, &datetime1);
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+
+	u1 = ((DB_BIGINT) datetime1.date) * MILLISECONDS_OF_ONE_DAY
+	  + datetime1.time;
+	u2 = ((DB_BIGINT) * DB_GET_DATE (dbval_p)) * MILLISECONDS_OF_ONE_DAY;
+
+	return db_make_bigint (result_p, u1 - u2);
+      }
+
+    default:
+      break;
+    }
+
+  return err;
 }
 
 static int
@@ -4071,14 +5624,58 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
       error = qdata_subtract_time_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
+    case DB_TYPE_TIMELTZ:
+      error = qdata_subtract_timeltz_to_dbval (dbval1_p, dbval2_p, result_p);
+      break;
+
+    case DB_TYPE_TIMETZ:
+      error = qdata_subtract_timetz_to_dbval (dbval1_p, dbval2_p, result_p);
+      break;
+
     case DB_TYPE_UTIME:
       error = qdata_subtract_utime_to_dbval (dbval1_p, dbval2_p, result_p,
 					     domain_p);
       break;
 
+    case DB_TYPE_TIMESTAMPLTZ:
+      error = qdata_subtract_timestampltz_to_dbval (dbval1_p, dbval2_p,
+						    result_p, domain_p);
+      break;
+
+    case DB_TYPE_TIMESTAMPTZ:
+      error = qdata_subtract_timestamptz_to_dbval (dbval1_p, dbval2_p,
+						   result_p, domain_p);
+      break;
+
     case DB_TYPE_DATETIME:
       error = qdata_subtract_datetime_to_dbval (dbval1_p, dbval2_p, result_p,
 						domain_p);
+      break;
+
+    case DB_TYPE_DATETIMELTZ:
+      {
+	/* create a datetime with TZ using session timezone */
+	DB_VALUE tmp_val;
+	DB_DATETIMETZ dt_tz1;
+
+	dt_tz1.datetime = *DB_GET_DATETIME (dbval1_p);
+	error = tz_create_session_tzid_for_datetime (&dt_tz1.datetime, true,
+						     &dt_tz1.tz_id);
+	if (error != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	DB_MAKE_DATETIMETZ (&tmp_val, &dt_tz1);
+
+	error = qdata_subtract_datetimetz_to_dbval (&tmp_val, dbval2_p,
+						    result_p, domain_p);
+      }
+      break;
+
+    case DB_TYPE_DATETIMETZ:
+      error = qdata_subtract_datetimetz_to_dbval (dbval1_p, dbval2_p,
+						  result_p, domain_p);
       break;
 
     case DB_TYPE_DATE:
@@ -4727,9 +6324,15 @@ qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
       break;
 
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
+    case DB_TYPE_TIMETZ:
     case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_DATE:
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
     case DB_TYPE_STRING:
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
@@ -5362,8 +6965,14 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
+    case DB_TYPE_TIMETZ:
     case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
     case DB_TYPE_DATE:
     case DB_TYPE_STRING:
     default:
@@ -5514,146 +7123,11 @@ qdata_extract_dbval (const MISC_OPERAND extr_operand,
 		     DB_VALUE * dbval_p, DB_VALUE * result_p,
 		     TP_DOMAIN * domain_p)
 {
-  DB_TYPE dbval_type;
-  DB_DATE date;
-  DB_TIME time;
-  DB_UTIME *utime;
-  DB_DATETIME *datetime;
-  int extvar[NUM_MISC_OPERANDS];
-
-  dbval_type = DB_VALUE_DOMAIN_TYPE (dbval_p);
-  if (TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL || DB_IS_NULL (dbval_p))
+  if (db_string_extract_dbval (extr_operand, dbval_p, result_p, domain_p)
+      != NO_ERROR)
     {
-      return NO_ERROR;
-    }
-
-  switch (dbval_type)
-    {
-    case DB_TYPE_TIME:
-      time = *DB_GET_TIME (dbval_p);
-      db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE], &extvar[SECOND]);
-      break;
-
-    case DB_TYPE_DATE:
-      date = *DB_GET_DATE (dbval_p);
-      db_date_decode (&date, &extvar[MONTH], &extvar[DAY], &extvar[YEAR]);
-      break;
-
-    case DB_TYPE_UTIME:
-      utime = DB_GET_UTIME (dbval_p);
-      db_timestamp_decode (utime, &date, &time);
-
-      if (extr_operand == YEAR || extr_operand == MONTH
-	  || extr_operand == DAY)
-	{
-	  db_date_decode (&date, &extvar[MONTH], &extvar[DAY], &extvar[YEAR]);
-	}
-      else
-	{
-	  db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE],
-			  &extvar[SECOND]);
-	}
-      break;
-
-    case DB_TYPE_DATETIME:
-      datetime = DB_GET_DATETIME (dbval_p);
-      db_datetime_decode (datetime, &extvar[MONTH], &extvar[DAY],
-			  &extvar[YEAR], &extvar[HOUR], &extvar[MINUTE],
-			  &extvar[SECOND], &extvar[MILLISECOND]);
-      break;
-
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      {
-	DB_UTIME utime_s;
-	DB_DATETIME datetime_s;
-	char *str_date = DB_PULL_STRING (dbval_p);
-	int str_date_len = DB_GET_STRING_SIZE (dbval_p);
-
-	switch (extr_operand)
-	  {
-	  case YEAR:
-	  case MONTH:
-	  case DAY:
-	    if (db_string_to_date_ex (str_date, str_date_len, &date)
-		== NO_ERROR)
-	      {
-		db_date_decode (&date, &extvar[MONTH], &extvar[DAY],
-				&extvar[YEAR]);
-		break;
-	      }
-	    if (db_string_to_timestamp_ex (str_date, str_date_len, &utime_s)
-		== NO_ERROR)
-	      {
-		db_timestamp_decode (&utime_s, &date, &time);
-		db_date_decode (&date, &extvar[MONTH], &extvar[DAY],
-				&extvar[YEAR]);
-		break;
-	      }
-	    if (db_string_to_datetime_ex (str_date, str_date_len, &datetime_s)
-		== NO_ERROR)
-	      {
-		db_datetime_decode (&datetime_s, &extvar[MONTH],
-				    &extvar[DAY], &extvar[YEAR],
-				    &extvar[HOUR], &extvar[MINUTE],
-				    &extvar[SECOND], &extvar[MILLISECOND]);
-		break;
-	      }
-	    /* no date/time can be extracted from string, error */
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		    ER_QPROC_INVALID_DATATYPE, 0);
-	    return ER_FAILED;
-
-	  case HOUR:
-	  case MINUTE:
-	  case SECOND:
-	    if (db_string_to_time_ex (str_date, str_date_len, &time)
-		== NO_ERROR)
-	      {
-		db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE],
-				&extvar[SECOND]);
-		break;
-	      }
-	    if (db_string_to_timestamp_ex (str_date, str_date_len, &utime_s)
-		== NO_ERROR)
-	      {
-		db_timestamp_decode (&utime_s, &date, &time);
-		db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE],
-				&extvar[SECOND]);
-		break;
-	      }
-	    /* fall through */
-	  case MILLISECOND:
-	    if (db_string_to_datetime_ex (str_date, str_date_len, &datetime_s)
-		== NO_ERROR)
-	      {
-		db_datetime_decode (&datetime_s, &extvar[MONTH], &extvar[DAY],
-				    &extvar[YEAR], &extvar[HOUR],
-				    &extvar[MINUTE],
-				    &extvar[SECOND], &extvar[MILLISECOND]);
-		break;
-	      }
-	    /* no date/time can be extracted from string, error */
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		    ER_QPROC_INVALID_DATATYPE, 0);
-	    return ER_FAILED;
-
-	  default:
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		    ER_QPROC_INVALID_DATATYPE, 0);
-	    return ER_FAILED;
-	  }
-      }
-      break;
-
-    default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
       return ER_FAILED;
     }
-
-  DB_MAKE_INT (result_p, extvar[extr_operand]);
   return NO_ERROR;
 }
 
@@ -5818,17 +7292,44 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
       break;
 
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
       error = qdata_add_time_to_dbval (dbval1_p, dbval2_p, result_p);
+      if (error != NO_ERROR && type1 == DB_TYPE_TIMELTZ)
+	{
+	  DB_MAKE_TIMELTZ (result_p, DB_GET_TIME (result_p));
+	}
+      break;
+
+    case DB_TYPE_TIMETZ:
+      error = qdata_add_timetz_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
     case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPLTZ:
       error = qdata_add_utime_to_dbval (dbval1_p, dbval2_p, result_p,
 					domain_p);
+      if (error == NO_ERROR && type1 == DB_TYPE_TIMESTAMPLTZ)
+	{
+	  DB_MAKE_TIMESTAMPLTZ (result_p, *DB_GET_UTIME (result_p));
+	}
+      break;
+
+    case DB_TYPE_TIMESTAMPTZ:
+      error = qdata_add_timestamptz_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
       error = qdata_add_datetime_to_dbval (dbval1_p, dbval2_p, result_p,
 					   domain_p);
+      if (error != NO_ERROR && type1 == DB_TYPE_DATETIMELTZ)
+	{
+	  DB_MAKE_DATETIMELTZ (result_p, DB_GET_DATETIME (result_p));
+	}
+      break;
+
+    case DB_TYPE_DATETIMETZ:
+      error = qdata_add_datetimetz_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
     case DB_TYPE_DATE:
@@ -6531,8 +8032,14 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 		    case DB_TYPE_NUMERIC:
 		    case DB_TYPE_DATE:
 		    case DB_TYPE_DATETIME:
+		    case DB_TYPE_DATETIMELTZ:
+		    case DB_TYPE_DATETIMETZ:
 		    case DB_TYPE_TIMESTAMP:
+		    case DB_TYPE_TIMESTAMPLTZ:
+		    case DB_TYPE_TIMESTAMPTZ:
 		    case DB_TYPE_TIME:
+		    case DB_TYPE_TIMELTZ:
+		    case DB_TYPE_TIMETZ:
 		      break;
 		    default:
 		      assert (agg_p->operand.type == TYPE_CONSTANT
@@ -11138,8 +12645,14 @@ qdata_apply_median_function_coercion (DB_VALUE * f_value,
 
     case DB_TYPE_DATE:
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
     case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
+    case DB_TYPE_TIMETZ:
       pr_clone_value (f_value, result);
       break;
 
@@ -11377,37 +12890,21 @@ qdata_interpolate_median_function_values (DB_VALUE * f_value,
       break;
 
     case DB_TYPE_TIMESTAMP:
-      error = db_timestamp_to_datetime (DB_GET_TIMESTAMP (f_value),
-					&datetime);
-      if (error != NO_ERROR)
-	{
-	  error = ER_FAILED;
-	  goto end;
-	}
+      db_timestamp_decode_utc (DB_GET_TIMESTAMP (f_value), &date, &time);
+      d1 = ((double) date) * MILLISECONDS_OF_ONE_DAY + time * 1000;
 
-      d1 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
-
-      error = db_timestamp_to_datetime (DB_GET_TIMESTAMP (c_value),
-					&datetime);
-      if (error != NO_ERROR)
-	{
-	  error = ER_FAILED;
-	  goto end;
-	}
-
-      d2 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
+      db_timestamp_decode_utc (DB_GET_TIMESTAMP (c_value), &date, &time);
+      d2 = ((double) date) * MILLISECONDS_OF_ONE_DAY + time * 1000;
 
       *d_result = floor ((c_row_num_d - row_num_d) * d1
 			 + (row_num_d - f_row_num_d) * d2);
 
-      datetime.date = (unsigned int) (*d_result / MILLISECONDS_OF_ONE_DAY);
-      datetime.time = (unsigned int) (((DB_BIGINT) * d_result)
-				      % MILLISECONDS_OF_ONE_DAY);
+      date = (unsigned int) (*d_result / MILLISECONDS_OF_ONE_DAY);
+      time = (unsigned int) (((DB_BIGINT) * d_result)
+			     % MILLISECONDS_OF_ONE_DAY);
+      time /= 1000;
 
-      /* to DB_TIME */
-      datetime.time /= 1000;
-
-      error = db_timestamp_encode (&utime, &datetime.date, &datetime.time);
+      error = db_timestamp_encode_utc (&date, &time, &utime);
       if (error != NO_ERROR)
 	{
 	  error = ER_FAILED;

@@ -454,9 +454,15 @@ static KEYWORD_RECORD keywords[] = {
   {THAN, "THAN", 1},
   {THEN, "THEN", 0},
   {Time, "TIME", 0},
+  {TIMETZ, "TIMETZ", 1},
+  {TIMELTZ, "TIMELTZ", 1},
   {TIMEOUT, "TIMEOUT", 1},
   {TIMESTAMP, "TIMESTAMP", 0},
+  {TIMESTAMPTZ, "TIMESTAMPTZ", 0},
+  {TIMESTAMPLTZ, "TIMESTAMPLTZ", 0},
   {DATETIME, "DATETIME", 0},
+  {DATETIMETZ, "DATETIMETZ", 0},
+  {DATETIMELTZ, "DATETIMELTZ", 0},
   {TIMEZONE_HOUR, "TIMEZONE_HOUR", 0},
   {TIMEZONE_MINUTE, "TIMEZONE_MINUTE", 0},
   {TO, "TO", 0},
@@ -508,6 +514,7 @@ static KEYWORD_RECORD keywords[] = {
   {YEAR_, "YEAR", 0},
   {YEAR_MONTH, "YEAR_MONTH", 0},
   {ZONE, "ZONE", 0},
+  {TIMEZONES, "TIMEZONES", 1}
 };
 
 static KEYWORD_RECORD *pt_find_keyword (const char *text);

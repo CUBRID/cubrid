@@ -148,6 +148,12 @@ extern PR_TYPE tp_VarNChar;
 extern PR_TYPE tp_ResultSet;
 extern PR_TYPE tp_Bigint;
 extern PR_TYPE tp_Enumeration;
+extern PR_TYPE tp_Timestamptz;
+extern PR_TYPE tp_Timestampltz;
+extern PR_TYPE tp_Datetimetz;
+extern PR_TYPE tp_Datetimeltz;
+extern PR_TYPE tp_Timetz;
+extern PR_TYPE tp_Timeltz;
 
 extern PR_TYPE *tp_Type_null;
 extern PR_TYPE *tp_Type_integer;

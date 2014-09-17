@@ -2998,11 +2998,11 @@ extern int db_string_to_date (const char *buf, DB_DATE * date);
 
 /* DB_TIMESTAMP functions */
 #define db_utime_encode db_timestamp_encode
-extern int db_timestamp_encode (DB_TIMESTAMP * utime,
-				DB_DATE * date, DB_TIME * timeval);
-#define db_utime_decode db_timestamp_decode
-extern void db_timestamp_decode (DB_TIMESTAMP * utime,
-				 DB_DATE * date, DB_TIME * timeval);
+extern int db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date,
+				DB_TIME * timeval);
+#define db_utime_decode db_timestamp_decode_ses
+extern void db_timestamp_decode_ses (DB_TIMESTAMP * utime,
+				     DB_DATE * date, DB_TIME * timeval);
 #define db_utime_to_string db_timestamp_to_string
 extern int db_timestamp_to_string (char *buf, int bufsize,
 				   DB_TIMESTAMP * utime);

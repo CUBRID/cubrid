@@ -608,20 +608,31 @@ static void mr_initmem_time (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_time (void *mem, TP_DOMAIN * domain,
 			   DB_VALUE * value, bool copy);
+static int mr_getmem_timeltz (void *mem, TP_DOMAIN * domain, DB_VALUE * value,
+			      bool copy);
 static void mr_data_writemem_time (OR_BUF * buf, void *mem,
 				   TP_DOMAIN * domain);
 static void mr_data_readmem_time (OR_BUF * buf, void *mem, TP_DOMAIN * domain,
 				  int size);
 static void mr_initval_time (DB_VALUE * value, int precision, int scale);
+static void mr_initval_timeltz (DB_VALUE * value, int precision, int scale);
 static int mr_setval_time (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_setval_timeltz (DB_VALUE * dest, const DB_VALUE * src,
+			      bool copy);
 static int mr_data_writeval_time (OR_BUF * buf, DB_VALUE * value);
 static int mr_data_readval_time (OR_BUF * buf, DB_VALUE * value,
 				 TP_DOMAIN * domain, int size, bool copy,
 				 char *copy_buf, int copy_buf_len);
+static int mr_data_readval_timeltz (OR_BUF * buf, DB_VALUE * value,
+				    TP_DOMAIN * domain, int size, bool copy,
+				    char *copy_buf, int copy_buf_len);
 static int mr_index_writeval_time (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_time (OR_BUF * buf, DB_VALUE * value,
 				  TP_DOMAIN * domain, int size, bool copy,
 				  char *copy_buf, int copy_buf_len);
+static int mr_index_readval_timeltz (OR_BUF * buf, DB_VALUE * value,
+				     TP_DOMAIN * domain, int size, bool copy,
+				     char *copy_buf, int copy_buf_len);
 static int mr_index_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain,
 				  int do_coercion,
 				  int total_order, int *start_colp);
@@ -631,24 +642,68 @@ static int mr_data_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain,
 static int mr_cmpval_time (DB_VALUE * value1, DB_VALUE * value2,
 			   int do_coercion, int total_order, int *start_colp,
 			   int collation);
+
+static void mr_initmem_timetz (void *mem, TP_DOMAIN * domain);
+static int mr_setmem_timetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
+static int mr_getmem_timetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value,
+			     bool copy);
+static void mr_data_writemem_timetz (OR_BUF * buf, void *mem,
+				     TP_DOMAIN * domain);
+static void mr_data_readmem_timetz (OR_BUF * buf, void *mem,
+				    TP_DOMAIN * domain, int size);
+static void mr_initval_timetz (DB_VALUE * value, int precision, int scale);
+static int mr_setval_timetz (DB_VALUE * dest, const DB_VALUE * src,
+			     bool copy);
+static int mr_data_writeval_timetz (OR_BUF * buf, DB_VALUE * value);
+static int mr_data_readval_timetz (OR_BUF * buf, DB_VALUE * value,
+				   TP_DOMAIN * domain, int size, bool copy,
+				   char *copy_buf, int copy_buf_len);
+static int mr_index_writeval_timetz (OR_BUF * buf, DB_VALUE * value);
+static int mr_index_readval_timetz (OR_BUF * buf, DB_VALUE * value,
+				    TP_DOMAIN * domain, int size, bool copy,
+				    char *copy_buf, int copy_buf_len);
+static int mr_index_cmpdisk_timetz (void *mem1, void *mem2,
+				    TP_DOMAIN * domain, int do_coercion,
+				    int total_order, int *start_colp);
+static int mr_data_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain,
+				   int do_coercion, int total_order,
+				   int *start_colp);
+static int mr_cmpval_timetz (DB_VALUE * value1, DB_VALUE * value2,
+			     int do_coercion, int total_order,
+			     int *start_colp, int collation);
+
 static void mr_initmem_utime (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_utime (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_utime (void *mem, TP_DOMAIN * domain,
 			    DB_VALUE * value, bool copy);
+static int mr_getmem_timestampltz (void *mem, TP_DOMAIN * domain,
+				   DB_VALUE * value, bool copy);
 static void mr_data_writemem_utime (OR_BUF * buf, void *mem,
 				    TP_DOMAIN * domain);
 static void mr_data_readmem_utime (OR_BUF * buf, void *mem,
 				   TP_DOMAIN * domain, int size);
 static void mr_initval_utime (DB_VALUE * value, int precision, int scale);
+static void mr_initval_timestampltz (DB_VALUE * value, int precision,
+				     int scale);
 static int mr_setval_utime (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_setval_timestampltz (DB_VALUE * dest, const DB_VALUE * src,
+				   bool copy);
 static int mr_data_writeval_utime (OR_BUF * buf, DB_VALUE * value);
 static int mr_data_readval_utime (OR_BUF * buf, DB_VALUE * value,
 				  TP_DOMAIN * domain, int size, bool copy,
 				  char *copy_buf, int copy_buf_len);
+static int mr_data_readval_timestampltz (OR_BUF * buf, DB_VALUE * value,
+					 TP_DOMAIN * domain, int size,
+					 bool copy, char *copy_buf,
+					 int copy_buf_len);
 static int mr_index_writeval_utime (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_utime (OR_BUF * buf, DB_VALUE * value,
 				   TP_DOMAIN * domain, int size, bool copy,
 				   char *copy_buf, int copy_buf_len);
+static int mr_index_readval_timestampltz (OR_BUF * buf, DB_VALUE * value,
+					  TP_DOMAIN * domain, int size,
+					  bool copy, char *copy_buf,
+					  int copy_buf_len);
 static int mr_index_cmpdisk_utime (void *mem1, void *mem2, TP_DOMAIN * domain,
 				   int do_coercion,
 				   int total_order, int *start_colp);
@@ -659,14 +714,53 @@ static int mr_cmpval_utime (DB_VALUE * value1, DB_VALUE * value2,
 			    int do_coercion, int total_order,
 			    int *start_colp, int collation);
 
-static void mr_initmem_datetime (void *mem, TP_DOMAIN * domain);
+static void mr_initmem_timestamptz (void *mem, TP_DOMAIN * domain);
+static int mr_setmem_timestamptz (void *mem, TP_DOMAIN * domain,
+				  DB_VALUE * value);
+static int mr_getmem_timestamptz (void *mem, TP_DOMAIN * domain,
+				  DB_VALUE * value, bool copy);
+static void mr_data_writemem_timestamptz (OR_BUF * buf, void *mem,
+					  TP_DOMAIN * domain);
+static void mr_data_readmem_timestamptz (OR_BUF * buf, void *mem,
+					 TP_DOMAIN * domain, int size);
+static void mr_initval_timestamptz (DB_VALUE * value, int precision,
+				    int scale);
+static int mr_setval_timestamptz (DB_VALUE * dest, const DB_VALUE * src,
+				  bool copy);
+static int mr_data_writeval_timestamptz (OR_BUF * buf, DB_VALUE * value);
+static int mr_data_readval_timestamptz (OR_BUF * buf, DB_VALUE * value,
+					TP_DOMAIN * domain, int size,
+					bool copy, char *copy_buf,
+					int copy_buf_len);
+static int mr_index_writeval_timestamptz (OR_BUF * buf, DB_VALUE * value);
+static int mr_index_readval_timestamptz (OR_BUF * buf, DB_VALUE * value,
+					 TP_DOMAIN * domain, int size,
+					 bool copy, char *copy_buf,
+					 int copy_buf_len);
+static int mr_index_cmpdisk_timestamptz (void *mem1, void *mem2,
+					 TP_DOMAIN * domain, int do_coercion,
+					 int total_order, int *start_colp);
+static int mr_data_cmpdisk_timestamptz (void *mem1, void *mem2,
+					TP_DOMAIN * domain, int do_coercion,
+					int total_order, int *start_colp);
+static int mr_cmpval_timestamptz (DB_VALUE * value1, DB_VALUE * value2,
+				  int do_coercion, int total_order,
+				  int *start_colp, int collation);
+
+static void mr_initmem_datetime (void *memptr, TP_DOMAIN * domain);
 static void mr_initval_datetime (DB_VALUE * value, int precision, int scale);
+static void mr_initval_datetimeltz (DB_VALUE * value, int precision,
+				    int scale);
 static int mr_setmem_datetime (void *mem, TP_DOMAIN * domain,
 			       DB_VALUE * value);
 static int mr_getmem_datetime (void *mem, TP_DOMAIN * domain,
 			       DB_VALUE * value, bool copy);
+static int mr_getmem_datetimeltz (void *mem, TP_DOMAIN * domain,
+				  DB_VALUE * value, bool copy);
 static int mr_setval_datetime (DB_VALUE * dest, const DB_VALUE * src,
 			       bool copy);
+static int mr_setval_datetimeltz (DB_VALUE * dest, const DB_VALUE * src,
+				  bool copy);
 static void mr_data_writemem_datetime (OR_BUF * buf, void *mem,
 				       TP_DOMAIN * domain);
 static void mr_data_readmem_datetime (OR_BUF * buf, void *mem,
@@ -675,10 +769,18 @@ static int mr_data_writeval_datetime (OR_BUF * buf, DB_VALUE * value);
 static int mr_data_readval_datetime (OR_BUF * buf, DB_VALUE * value,
 				     TP_DOMAIN * domain, int size, bool copy,
 				     char *copy_buf, int copy_buf_len);
+static int mr_data_readval_datetimeltz (OR_BUF * buf, DB_VALUE * value,
+					TP_DOMAIN * domain, int size,
+					bool copy, char *copy_buf,
+					int copy_buf_len);
 static int mr_index_writeval_datetime (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_datetime (OR_BUF * buf, DB_VALUE * value,
 				      TP_DOMAIN * domain, int size, bool copy,
 				      char *copy_buf, int copy_buf_len);
+static int mr_index_readval_datetimeltz (OR_BUF * buf, DB_VALUE * value,
+					 TP_DOMAIN * domain, int size,
+					 bool copy, char *copy_buf,
+					 int copy_buf_len);
 static int mr_index_cmpdisk_datetime (void *mem1, void *mem2,
 				      TP_DOMAIN * domain,
 				      int do_coercion, int total_order,
@@ -691,7 +793,40 @@ static int mr_cmpval_datetime (DB_VALUE * value1, DB_VALUE * value2,
 			       int do_coercion, int total_order,
 			       int *start_colp, int collation);
 
-static void mr_initmem_money (void *mem, TP_DOMAIN * domain);
+static void mr_initmem_datetimetz (void *memptr, TP_DOMAIN * domain);
+static void mr_initval_datetimetz (DB_VALUE * value, int precision,
+				   int scale);
+static int mr_setmem_datetimetz (void *mem, TP_DOMAIN * domain,
+				 DB_VALUE * value);
+static int mr_getmem_datetimetz (void *mem, TP_DOMAIN * domain,
+				 DB_VALUE * value, bool copy);
+static int mr_setval_datetimetz (DB_VALUE * dest, const DB_VALUE * src,
+				 bool copy);
+static void mr_data_writemem_datetimetz (OR_BUF * buf, void *mem,
+					 TP_DOMAIN * domain);
+static void mr_data_readmem_datetimetz (OR_BUF * buf, void *mem,
+					TP_DOMAIN * domain, int size);
+static int mr_data_writeval_datetimetz (OR_BUF * buf, DB_VALUE * value);
+static int mr_data_readval_datetimetz (OR_BUF * buf, DB_VALUE * value,
+				       TP_DOMAIN * domain, int size,
+				       bool copy, char *copy_buf,
+				       int copy_buf_len);
+static int mr_index_writeval_datetimetz (OR_BUF * buf, DB_VALUE * value);
+static int mr_index_readval_datetimetz (OR_BUF * buf, DB_VALUE * value,
+					TP_DOMAIN * domain, int size,
+					bool copy, char *copy_buf,
+					int copy_buf_len);
+static int mr_index_cmpdisk_datetimetz (void *mem1, void *mem2,
+					TP_DOMAIN * domain, int do_coercion,
+					int total_order, int *start_colp);
+static int mr_data_cmpdisk_datetimetz (void *mem1, void *mem2,
+				       TP_DOMAIN * domain, int do_coercion,
+				       int total_order, int *start_colp);
+static int mr_cmpval_datetimetz (DB_VALUE * value1, DB_VALUE * value2,
+				 int do_coercion, int total_order,
+				 int *start_colp, int collation);
+
+static void mr_initmem_money (void *memptr, TP_DOMAIN * domain);
 static int mr_setmem_money (void *memptr, TP_DOMAIN * domain,
 			    DB_VALUE * value);
 static int mr_getmem_money (void *memptr, TP_DOMAIN * domain,
@@ -1326,6 +1461,60 @@ PR_TYPE tp_Time = {
 
 PR_TYPE *tp_Type_time = &tp_Time;
 
+PR_TYPE tp_Timetz = {
+  "timetz", DB_TYPE_TIMETZ, 0, sizeof (DB_TIMETZ), OR_TIMETZ_SIZE, 4,
+  help_fprint_value,
+  help_sprint_value,
+  mr_initmem_timetz,
+  mr_initval_timetz,
+  mr_setmem_timetz,
+  mr_getmem_timetz,
+  mr_setval_timetz,
+  NULL,				/* data_lengthmem */
+  NULL,				/* data_lengthval */
+  mr_data_writemem_timetz,
+  mr_data_readmem_timetz,
+  mr_data_writeval_timetz,
+  mr_data_readval_timetz,
+  NULL,				/* index_lenghmem */
+  NULL,				/* index_lenghval */
+  mr_index_writeval_timetz,
+  mr_index_readval_timetz,
+  mr_index_cmpdisk_timetz,
+  NULL,				/* freemem */
+  mr_data_cmpdisk_timetz,
+  mr_cmpval_timetz
+};
+
+PR_TYPE *tp_Type_timetz = &tp_Timetz;
+
+PR_TYPE tp_Timeltz = {
+  "timeltz", DB_TYPE_TIMELTZ, 0, sizeof (DB_TIME), OR_TIME_SIZE, 4,
+  help_fprint_value,
+  help_sprint_value,
+  mr_initmem_time,
+  mr_initval_timeltz,
+  mr_setmem_time,
+  mr_getmem_timeltz,
+  mr_setval_timeltz,
+  NULL,				/* data_lengthmem */
+  NULL,				/* data_lengthval */
+  mr_data_writemem_time,
+  mr_data_readmem_time,
+  mr_data_writeval_time,
+  mr_data_readval_timeltz,
+  NULL,				/* index_lenghmem */
+  NULL,				/* index_lenghval */
+  mr_index_writeval_time,
+  mr_index_readval_timeltz,
+  mr_index_cmpdisk_time,
+  NULL,				/* freemem */
+  mr_data_cmpdisk_time,
+  mr_cmpval_time
+};
+
+PR_TYPE *tp_Type_timeltz = &tp_Timeltz;
+
 PR_TYPE tp_Utime = {
   "timestamp", DB_TYPE_UTIME, 0, sizeof (DB_UTIME), OR_UTIME_SIZE, 4,
   help_fprint_value,
@@ -1353,6 +1542,62 @@ PR_TYPE tp_Utime = {
 
 PR_TYPE *tp_Type_utime = &tp_Utime;
 
+PR_TYPE tp_Timestamptz = {
+  "timestamptz", DB_TYPE_TIMESTAMPTZ, 0, sizeof (DB_TIMESTAMPTZ),
+  OR_TIMESTAMPTZ_SIZE, 4,
+  help_fprint_value,
+  help_sprint_value,
+  mr_initmem_timestamptz,
+  mr_initval_timestamptz,
+  mr_setmem_timestamptz,
+  mr_getmem_timestamptz,
+  mr_setval_timestamptz,
+  NULL,				/* data_lengthmem */
+  NULL,				/* data_lengthval */
+  mr_data_writemem_timestamptz,
+  mr_data_readmem_timestamptz,
+  mr_data_writeval_timestamptz,
+  mr_data_readval_timestamptz,
+  NULL,				/* index_lenghmem */
+  NULL,				/* index_lenghval */
+  mr_index_writeval_timestamptz,
+  mr_index_readval_timestamptz,
+  mr_index_cmpdisk_timestamptz,
+  NULL,				/* freemem */
+  mr_data_cmpdisk_timestamptz,
+  mr_cmpval_timestamptz
+};
+
+PR_TYPE *tp_Type_Timestamptz = &tp_Timestamptz;
+
+/* timestamp with locale time zone has the same storage and primitives as
+ * (simple) timestamp */
+PR_TYPE tp_Timestampltz = {
+  "timestampltz", DB_TYPE_TIMESTAMPLTZ, 0, sizeof (DB_UTIME), OR_UTIME_SIZE,
+  4,
+  help_fprint_value,
+  help_sprint_value,
+  mr_initmem_utime,
+  mr_initval_timestampltz,
+  mr_setmem_utime,
+  mr_getmem_timestampltz,
+  mr_setval_timestampltz,
+  NULL,				/* data_lengthmem */
+  NULL,				/* data_lengthval */
+  mr_data_writemem_utime,
+  mr_data_readmem_utime,
+  mr_data_writeval_utime,
+  mr_data_readval_timestampltz,
+  NULL,				/* index_lenghmem */
+  NULL,				/* index_lenghval */
+  mr_index_writeval_utime,
+  mr_index_readval_timestampltz,
+  mr_index_cmpdisk_utime,
+  NULL,				/* freemem */
+  mr_data_cmpdisk_utime,
+  mr_cmpval_utime
+};
+
 PR_TYPE tp_Datetime = {
   "datetime", DB_TYPE_DATETIME, 0, sizeof (DB_DATETIME), OR_DATETIME_SIZE, 4,
   help_fprint_value,
@@ -1379,6 +1624,64 @@ PR_TYPE tp_Datetime = {
 };
 
 PR_TYPE *tp_Type_datetime = &tp_Datetime;
+
+PR_TYPE tp_Datetimetz = {
+  "datetimetz", DB_TYPE_DATETIMETZ, 0, sizeof (DB_DATETIMETZ),
+  OR_DATETIMETZ_SIZE, 4,
+  help_fprint_value,
+  help_sprint_value,
+  mr_initmem_datetimetz,
+  mr_initval_datetimetz,
+  mr_setmem_datetimetz,
+  mr_getmem_datetimetz,
+  mr_setval_datetimetz,
+  NULL,				/* data_lengthmem */
+  NULL,				/* data_lengthval */
+  mr_data_writemem_datetimetz,
+  mr_data_readmem_datetimetz,
+  mr_data_writeval_datetimetz,
+  mr_data_readval_datetimetz,
+  NULL,				/* index_lenghmem */
+  NULL,				/* index_lenghval */
+  mr_index_writeval_datetimetz,
+  mr_index_readval_datetimetz,
+  mr_index_cmpdisk_datetimetz,
+  NULL,				/* freemem */
+  mr_data_cmpdisk_datetimetz,
+  mr_cmpval_datetimetz
+};
+
+PR_TYPE *tp_Type_Datetimetz = &tp_Datetimetz;
+
+/* datetime with locale time zone has the same storage and primitives as
+ * (simple) datetime */
+PR_TYPE tp_Datetimeltz = {
+  "datetimeltz", DB_TYPE_DATETIMELTZ, 0, sizeof (DB_DATETIME),
+  OR_DATETIME_SIZE, 4,
+  help_fprint_value,
+  help_sprint_value,
+  mr_initmem_datetime,
+  mr_initval_datetimeltz,
+  mr_setmem_datetime,
+  mr_getmem_datetimeltz,
+  mr_setval_datetimeltz,
+  NULL,				/* data_lengthmem */
+  NULL,				/* data_lengthval */
+  mr_data_writemem_datetime,
+  mr_data_readmem_datetime,
+  mr_data_writeval_datetime,
+  mr_data_readval_datetimeltz,
+  NULL,				/* index_lenghmem */
+  NULL,				/* index_lenghval */
+  mr_index_writeval_datetime,
+  mr_index_readval_datetimeltz,
+  mr_index_cmpdisk_datetime,
+  NULL,				/* freemem */
+  mr_data_cmpdisk_datetime,
+  mr_cmpval_datetime
+};
+
+PR_TYPE *tp_Type_datetimeltz = &tp_Datetimeltz;
 
 PR_TYPE tp_Monetary = {
   "monetary", DB_TYPE_MONETARY, 0, sizeof (DB_MONETARY), OR_MONETARY_SIZE, 4,
@@ -1926,7 +2229,13 @@ PR_TYPE *tp_Type_id_map[] = {
   &tp_Datetime,
   &tp_Blob,
   &tp_Clob,
-  &tp_Enumeration
+  &tp_Enumeration,
+  &tp_Timestamptz,
+  &tp_Timestampltz,
+  &tp_Datetimetz,
+  &tp_Datetimeltz,
+  &tp_Timetz,
+  &tp_Timeltz
 };
 
 PR_TYPE tp_ResultSet = {
@@ -3468,6 +3777,14 @@ mr_getmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
   return NO_ERROR;
 }
 
+static int
+mr_getmem_timeltz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+{
+  (void) db_make_timeltz (value, (DB_TIME *) mem);
+  value->need_clear = false;
+  return NO_ERROR;
+}
+
 static void
 mr_data_writemem_time (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 {
@@ -3496,6 +3813,15 @@ mr_initval_time (DB_VALUE * value, int precision, int scale)
   value->need_clear = false;
 }
 
+static void
+mr_initval_timeltz (DB_VALUE * value, int precision, int scale)
+{
+  DB_TIME tm = 0;
+
+  db_make_timeltz (value, &tm);
+  value->need_clear = false;
+}
+
 static int
 mr_setval_time (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
@@ -3509,6 +3835,23 @@ mr_setval_time (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   else
     {
       error = db_value_put_encoded_time (dest, db_get_time (src));
+    }
+  return error;
+}
+
+static int
+mr_setval_timeltz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  int error;
+
+  if (DB_IS_NULL (src))
+    {
+      error = db_value_domain_init (dest, DB_TYPE_TIMELTZ,
+				    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+    }
+  else
+    {
+      error = db_make_timeltz (dest, db_get_time (src));
     }
   return error;
 }
@@ -3544,6 +3887,27 @@ mr_data_readval_time (OR_BUF * buf, DB_VALUE * value,
 }
 
 static int
+mr_data_readval_timeltz (OR_BUF * buf, DB_VALUE * value,
+			 TP_DOMAIN * domain, int size, bool copy,
+			 char *copy_buf, int copy_buf_len)
+{
+  DB_TIME tm;
+  int rc = NO_ERROR;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Timeltz.disksize);
+    }
+  else
+    {
+      rc = or_get_time (buf, &tm);
+      db_make_timeltz (value, &tm);
+      value->need_clear = false;
+    }
+  return rc;
+}
+
+static int
 mr_index_writeval_time (OR_BUF * buf, DB_VALUE * value)
 {
   DB_TIME *tm;
@@ -3571,6 +3935,31 @@ mr_index_readval_time (OR_BUF * buf, DB_VALUE * value,
       if (rc == NO_ERROR)
 	{
 	  db_value_put_encoded_time (value, &tm);
+	}
+      value->need_clear = false;
+    }
+
+  return rc;
+}
+
+static int
+mr_index_readval_timeltz (OR_BUF * buf, DB_VALUE * value,
+			  TP_DOMAIN * domain, int size, bool copy,
+			  char *copy_buf, int copy_buf_len)
+{
+  DB_TIME tm;
+  int rc = NO_ERROR;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Timeltz.disksize);
+    }
+  else
+    {
+      rc = or_get_data (buf, (char *) (&tm), tp_Timeltz.disksize);
+      if (rc == NO_ERROR)
+	{
+	  db_make_timeltz (value, &tm);
 	}
       value->need_clear = false;
     }
@@ -3620,12 +4009,201 @@ mr_cmpval_time (DB_VALUE * value1, DB_VALUE * value2,
 }
 
 /*
+ * TYPE TIMETZ
+ *
+ * TIME type with Timezone
+ *
+ */
+
+static void
+mr_initmem_timetz (void *mem, TP_DOMAIN * domain)
+{
+  DB_TIMETZ *time_tz = (DB_TIMETZ *) mem;
+
+  time_tz->time = 0;
+  time_tz->tz_id = 0;
+}
+
+static int
+mr_setmem_timetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  if (value == NULL)
+    {
+      mr_initmem_time (mem, domain);
+    }
+  else
+    {
+      *(DB_TIMETZ *) mem = *db_get_timetz (value);
+    }
+
+  return NO_ERROR;
+}
+
+static int
+mr_getmem_timetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+{
+  (void) db_make_timetz (value, (DB_TIMETZ *) mem);
+  value->need_clear = false;
+  return NO_ERROR;
+}
+
+static void
+mr_data_writemem_timetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+{
+  or_put_timetz (buf, (DB_TIMETZ *) mem);
+}
+
+static void
+mr_data_readmem_timetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+{
+  if (mem == NULL)
+    {
+      or_advance (buf, tp_Timetz.disksize);
+    }
+  else
+    {
+      or_get_timetz (buf, (DB_TIMETZ *) mem);
+    }
+}
+
+static void
+mr_initval_timetz (DB_VALUE * value, int precision, int scale)
+{
+  DB_TIMETZ time_tz;
+
+  mr_initmem_timetz (&time_tz, NULL);
+  db_make_timetz (value, &time_tz);
+  value->need_clear = false;
+}
+
+static int
+mr_setval_timetz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  int error;
+
+  if (DB_IS_NULL (src))
+    {
+      error = db_value_domain_init (dest, DB_TYPE_TIMETZ,
+				    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+    }
+  else
+    {
+      error = db_make_timetz (dest, db_get_timetz (src));
+    }
+  return error;
+}
+
+static int
+mr_data_writeval_timetz (OR_BUF * buf, DB_VALUE * value)
+{
+  return or_put_timetz (buf, db_get_timetz (value));
+}
+
+static int
+mr_data_readval_timetz (OR_BUF * buf, DB_VALUE * value,
+			TP_DOMAIN * domain, int size, bool copy,
+			char *copy_buf, int copy_buf_len)
+{
+  DB_TIMETZ time_tz;
+  int rc = NO_ERROR;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Timetz.disksize);
+    }
+  else
+    {
+      rc = or_get_timetz (buf, &time_tz);
+      db_make_timetz (value, &time_tz);
+    }
+  return rc;
+}
+
+static int
+mr_index_writeval_timetz (OR_BUF * buf, DB_VALUE * value)
+{
+  DB_TIMETZ *time_tz;
+
+  time_tz = db_get_timetz (value);
+
+  return or_put_data (buf, (char *) time_tz, tp_Timetz.disksize);
+}
+
+static int
+mr_index_readval_timetz (OR_BUF * buf, DB_VALUE * value,
+			 TP_DOMAIN * domain, int size, bool copy,
+			 char *copy_buf, int copy_buf_len)
+{
+  DB_TIMETZ time_tz;
+  int rc = NO_ERROR;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Timetz.disksize);
+    }
+  else
+    {
+      rc = or_get_data (buf, (char *) (&time_tz), tp_Timetz.disksize);
+      if (rc == NO_ERROR)
+	{
+	  db_make_timetz (value, &time_tz);
+	}
+    }
+
+  return rc;
+}
+
+static int
+mr_index_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain,
+			 int do_coercion, int total_order, int *start_colp)
+{
+  DB_TIME t1, t2;
+
+  assert (domain != NULL);
+
+  /* TIME with TZ compares the same as TIME - zone is ignored */
+  COPYMEM (DB_TIME, &t1, mem1);
+  COPYMEM (DB_TIME, &t2, mem2);
+
+  return MR_CMP (t1, t2);
+}
+
+static int
+mr_data_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain,
+			int do_coercion, int total_order, int *start_colp)
+{
+  DB_TIME t1, t2;
+
+  assert (domain != NULL);
+
+  /* TIME with TZ compares the same as TIME - zone is ignored */
+  OR_GET_TIME (mem1, &t1);
+  OR_GET_TIME (mem2, &t2);
+
+  return MR_CMP (t1, t2);
+}
+
+static int
+mr_cmpval_timetz (DB_VALUE * value1, DB_VALUE * value2,
+		  int do_coercion, int total_order, int *start_colp,
+		  int collation)
+{
+  const DB_TIMETZ *t1, *t2;
+
+  /* TIME with TZ compares the same as TIME - zone is ignored */
+  t1 = DB_GET_TIMETZ (value1);
+  t2 = DB_GET_TIMETZ (value2);
+
+  return MR_CMP (t1->time, t2->time);
+}
+
+/*
  * TYPE UTIME
  *
  * "Universal" time, more recently known as a "timestamp".
  * These are 32 bit encoded values that contain both a date and time
  * identification.
- * The encoding is the standard Unix "time_t" foramt.
+ * The encoding is the standard Unix "time_t" format.
  */
 
 static void
@@ -3651,6 +4229,17 @@ mr_getmem_utime (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
   int error;
 
   error = db_make_utime (value, *(DB_UTIME *) mem);
+  value->need_clear = false;
+  return error;
+}
+
+static int
+mr_getmem_timestampltz (void *mem, TP_DOMAIN * domain, DB_VALUE * value,
+			bool copy)
+{
+  int error;
+
+  error = db_make_timestampltz (value, *(DB_UTIME *) mem);
   value->need_clear = false;
   return error;
 }
@@ -3681,6 +4270,13 @@ mr_initval_utime (DB_VALUE * value, int precision, int scale)
   value->need_clear = false;
 }
 
+static void
+mr_initval_timestampltz (DB_VALUE * value, int precision, int scale)
+{
+  db_make_timestampltz (value, 0);
+  value->need_clear = false;
+}
+
 static int
 mr_setval_utime (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
@@ -3694,6 +4290,23 @@ mr_setval_utime (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   else
     {
       error = db_make_utime (dest, *db_get_utime (src));
+    }
+  return error;
+}
+
+static int
+mr_setval_timestampltz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  int error;
+
+  if (DB_IS_NULL (src))
+    {
+      error = db_value_domain_init (dest, DB_TYPE_TIMESTAMPLTZ,
+				    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+    }
+  else
+    {
+      error = db_make_timestampltz (dest, *db_get_utime (src));
     }
   return error;
 }
@@ -3729,6 +4342,27 @@ mr_data_readval_utime (OR_BUF * buf, DB_VALUE * value,
 }
 
 static int
+mr_data_readval_timestampltz (OR_BUF * buf, DB_VALUE * value,
+			      TP_DOMAIN * domain, int size, bool copy,
+			      char *copy_buf, int copy_buf_len)
+{
+  DB_UTIME utm;
+  int rc = NO_ERROR;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Timestampltz.disksize);
+    }
+  else
+    {
+      rc = or_get_utime (buf, &utm);
+      db_make_timestampltz (value, utm);
+      value->need_clear = false;
+    }
+  return rc;
+}
+
+static int
 mr_index_writeval_utime (OR_BUF * buf, DB_VALUE * value)
 {
   DB_UTIME *utm;
@@ -3756,6 +4390,31 @@ mr_index_readval_utime (OR_BUF * buf, DB_VALUE * value,
       if (rc == NO_ERROR)
 	{
 	  db_make_utime (value, utm);
+	}
+      value->need_clear = false;
+    }
+
+  return rc;
+}
+
+static int
+mr_index_readval_timestampltz (OR_BUF * buf, DB_VALUE * value,
+			       TP_DOMAIN * domain, int size, bool copy,
+			       char *copy_buf, int copy_buf_len)
+{
+  DB_UTIME utm;
+  int rc = NO_ERROR;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Timestampltz.disksize);
+    }
+  else
+    {
+      rc = or_get_data (buf, (char *) (&utm), tp_Timestampltz.disksize);
+      if (rc == NO_ERROR)
+	{
+	  db_make_timestampltz (value, utm);
 	}
       value->need_clear = false;
     }
@@ -3805,6 +4464,214 @@ mr_cmpval_utime (DB_VALUE * value1, DB_VALUE * value2,
 }
 
 /*
+ * TYPE TIMESTAMPTZ
+ *
+ * This stores a TIMESTAMP and a zone identifier
+ * The requirement is 4 (TIMESTAMP) + 2 bytes (zone id)
+ * The encoding of TIMESTAMP is the standard Unix "time_t" format.
+ */
+
+static void
+mr_initmem_timestamptz (void *mem, TP_DOMAIN * domain)
+{
+  DB_TIMESTAMPTZ *ts_tz = (DB_TIMESTAMPTZ *) mem;
+
+  ts_tz->timestamp = 0;
+  ts_tz->tz_id = 0;
+}
+
+static int
+mr_setmem_timestamptz (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  if (value == NULL)
+    {
+      mr_initmem_timestamptz (mem, domain);
+    }
+  else
+    {
+      *(DB_TIMESTAMPTZ *) mem = *db_get_timestamptz (value);
+    }
+
+  return NO_ERROR;
+}
+
+static int
+mr_getmem_timestamptz (void *mem, TP_DOMAIN * domain, DB_VALUE * value,
+		       bool copy)
+{
+  int error;
+
+  error = db_make_timestamptz (value, (DB_TIMESTAMPTZ *) mem);
+  return error;
+}
+
+static void
+mr_data_writemem_timestamptz (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+{
+  or_put_timestamptz (buf, (DB_TIMESTAMPTZ *) mem);
+}
+
+static void
+mr_data_readmem_timestamptz (OR_BUF * buf, void *mem, TP_DOMAIN * domain,
+			     int size)
+{
+  if (mem == NULL)
+    {
+      or_advance (buf, tp_Timestamptz.disksize);
+    }
+  else
+    {
+      or_get_timestamptz (buf, (DB_TIMESTAMPTZ *) mem);
+    }
+}
+
+static void
+mr_initval_timestamptz (DB_VALUE * value, int precision, int scale)
+{
+  DB_TIMESTAMPTZ ts_tz;
+
+  mr_initmem_timestamptz (&ts_tz, NULL);
+  db_make_timestamptz (value, &ts_tz);
+}
+
+static int
+mr_setval_timestamptz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  int error;
+
+  if (DB_IS_NULL (src))
+    {
+      error = db_value_domain_init (dest, DB_TYPE_TIMESTAMPTZ,
+				    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+    }
+  else
+    {
+      error = db_make_timestamptz (dest, db_get_timestamptz (src));
+    }
+  return error;
+}
+
+static int
+mr_data_writeval_timestamptz (OR_BUF * buf, DB_VALUE * value)
+{
+  return or_put_timestamptz (buf, db_get_timestamptz (value));
+}
+
+static int
+mr_data_readval_timestamptz (OR_BUF * buf, DB_VALUE * value,
+			     TP_DOMAIN * domain, int size, bool copy,
+			     char *copy_buf, int copy_buf_len)
+{
+  DB_TIMESTAMPTZ ts_tz;
+  int rc = NO_ERROR;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Timestamptz.disksize);
+    }
+  else
+    {
+      rc = or_get_timestamptz (buf, &ts_tz);
+      db_make_timestamptz (value, &ts_tz);
+    }
+  return rc;
+}
+
+static int
+mr_index_writeval_timestamptz (OR_BUF * buf, DB_VALUE * value)
+{
+  DB_TIMESTAMPTZ *ts_tz;
+  int rc = NO_ERROR;
+
+  ts_tz = db_get_timestamptz (value);
+  assert (tp_Timestamptz.disksize
+	  == (tp_Utime.disksize + tp_Integer.disksize));
+  rc = or_put_data (buf, (char *) (&ts_tz->timestamp), tp_Utime.disksize);
+  if (rc == NO_ERROR)
+    {
+      rc = or_put_data (buf, (char *) (&ts_tz->tz_id), tp_Integer.disksize);
+    }
+
+  return rc;
+}
+
+static int
+mr_index_readval_timestamptz (OR_BUF * buf, DB_VALUE * value,
+			      TP_DOMAIN * domain, int size, bool copy,
+			      char *copy_buf, int copy_buf_len)
+{
+  DB_TIMESTAMPTZ ts_tz;
+  int rc = NO_ERROR;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Timestamptz.disksize);
+    }
+  else
+    {
+      rc = or_get_data (buf, (char *) (&ts_tz), tp_Timestamptz.disksize);
+      if (rc == NO_ERROR)
+	{
+	  db_make_timestamptz (value, &ts_tz);
+	}
+      value->need_clear = false;
+    }
+
+  return rc;
+}
+
+static int
+mr_index_cmpdisk_timestamptz (void *mem1, void *mem2, TP_DOMAIN * domain,
+			      int do_coercion, int total_order,
+			      int *start_colp)
+{
+  DB_UTIME utm1, utm2;
+
+  assert (domain != NULL);
+
+  /* TIMESTAMP with TZ compares the same as TIMESTAMP (zone is not taken into
+   * account) */
+  COPYMEM (DB_UTIME, &utm1, mem1);
+  COPYMEM (DB_UTIME, &utm2, mem2);
+
+  return MR_CMP (utm1, utm2);
+}
+
+static int
+mr_data_cmpdisk_timestamptz (void *mem1, void *mem2, TP_DOMAIN * domain,
+			     int do_coercion, int total_order,
+			     int *start_colp)
+{
+  DB_TIMESTAMP ts1, ts2;
+
+  assert (domain != NULL);
+
+  /* TIMESTAMP with TZ compares the same as TIMESTAMP (zone is not taken into
+   * account) */
+  OR_GET_UTIME (mem1, &ts1);
+  OR_GET_UTIME (mem2, &ts2);
+
+  return MR_CMP (ts1, ts2);
+}
+
+static int
+mr_cmpval_timestamptz (DB_VALUE * value1, DB_VALUE * value2,
+		       int do_coercion, int total_order, int *start_colp,
+		       int collation)
+{
+  const DB_TIMESTAMPTZ *ts_tz1, *ts_tz2;
+
+  /* TIMESTAMP with TZ compares the same as TIMESTAMP (zone is not taken into
+   * account);
+   * the first component of TIMESTAMPTZ is a TIMESTAMP, it is safe to use
+   * the TIMESTAMP part of DB_DATA union to read it */
+  ts_tz1 = DB_GET_TIMESTAMPTZ (value1);
+  ts_tz2 = DB_GET_TIMESTAMPTZ (value2);
+
+  return MR_CMP (ts_tz1->timestamp, ts_tz2->timestamp);
+}
+
+/*
  * TYPE DATETIME
  *
  */
@@ -3825,6 +4692,16 @@ mr_initval_datetime (DB_VALUE * value, int precision, int scale)
 
   mr_initmem_datetime (&dt, NULL);
   db_make_datetime (value, &dt);
+  value->need_clear = false;
+}
+
+static void
+mr_initval_datetimeltz (DB_VALUE * value, int precision, int scale)
+{
+  DB_DATETIME dt;
+
+  mr_initmem_datetime (&dt, NULL);
+  db_make_datetimeltz (value, &dt);
   value->need_clear = false;
 }
 
@@ -3851,6 +4728,13 @@ mr_getmem_datetime (void *mem, TP_DOMAIN * domain, DB_VALUE * value,
 }
 
 static int
+mr_getmem_datetimeltz (void *mem, TP_DOMAIN * domain, DB_VALUE * value,
+		       bool copy)
+{
+  return db_make_datetimeltz (value, (DB_DATETIME *) mem);
+}
+
+static int
 mr_setval_datetime (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error;
@@ -3863,6 +4747,23 @@ mr_setval_datetime (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   else
     {
       error = db_make_datetime (dest, db_get_datetime (src));
+    }
+  return error;
+}
+
+static int
+mr_setval_datetimeltz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  int error;
+
+  if (DB_IS_NULL (src))
+    {
+      error = db_value_domain_init (dest, DB_TYPE_DATETIMELTZ,
+				    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+    }
+  else
+    {
+      error = db_make_datetimeltz (dest, db_get_datetime (src));
     }
   return error;
 }
@@ -3918,6 +4819,26 @@ mr_data_readval_datetime (OR_BUF * buf, DB_VALUE * value,
 }
 
 static int
+mr_data_readval_datetimeltz (OR_BUF * buf, DB_VALUE * value,
+			     TP_DOMAIN * domain, int size, bool copy,
+			     char *copy_buf, int copy_buf_len)
+{
+  DB_DATETIME datetime;
+  int rc = NO_ERROR;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Datetimeltz.disksize);
+    }
+  else
+    {
+      rc = or_get_datetime (buf, &datetime);
+      db_make_datetimeltz (value, &datetime);
+    }
+  return rc;
+}
+
+static int
 mr_index_writeval_datetime (OR_BUF * buf, DB_VALUE * value)
 {
   DB_DATETIME *datetime;
@@ -3961,6 +4882,38 @@ mr_index_readval_datetime (OR_BUF * buf, DB_VALUE * value,
       if (rc == NO_ERROR)
 	{
 	  db_make_datetime (value, &datetime);
+	}
+      value->need_clear = false;
+    }
+
+  return rc;
+}
+
+static int
+mr_index_readval_datetimeltz (OR_BUF * buf, DB_VALUE * value,
+			      TP_DOMAIN * domain, int size, bool copy,
+			      char *copy_buf, int copy_buf_len)
+{
+  DB_DATETIME datetime;
+  int rc = NO_ERROR;
+
+  assert (tp_Datetimeltz.disksize == (tp_Date.disksize + tp_Time.disksize));
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Datetimeltz.disksize);
+    }
+  else
+    {
+      rc = or_get_data (buf, (char *) (&datetime.date), tp_Date.disksize);
+      if (rc == NO_ERROR)
+	{
+	  rc = or_get_data (buf, (char *) (&datetime.time), tp_Time.disksize);
+	}
+
+      if (rc == NO_ERROR)
+	{
+	  db_make_datetimeltz (value, &datetime);
 	}
       value->need_clear = false;
     }
@@ -4096,7 +5049,242 @@ mr_cmpval_datetime (DB_VALUE * value1, DB_VALUE * value2,
   return c;
 }
 
+/*
+ * TYPE DATETIMETZ
+ *
+ */
 
+static void
+mr_initmem_datetimetz (void *memptr, TP_DOMAIN * domain)
+{
+  DB_DATETIMETZ *mem = (DB_DATETIMETZ *) memptr;
+
+  mem->datetime.date = 0;
+  mem->datetime.time = 0;
+  mem->tz_id = 0;
+}
+
+static void
+mr_initval_datetimetz (DB_VALUE * value, int precision, int scale)
+{
+  DB_DATETIMETZ dt_tz;
+
+  mr_initmem_datetimetz (&dt_tz, NULL);
+  db_make_datetimetz (value, &dt_tz);
+}
+
+static int
+mr_setmem_datetimetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  if (value == NULL)
+    {
+      mr_initmem_datetimetz (mem, NULL);
+    }
+  else
+    {
+      *(DB_DATETIMETZ *) mem = *db_get_datetimetz (value);
+    }
+
+  return NO_ERROR;
+}
+
+static int
+mr_getmem_datetimetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value,
+		      bool copy)
+{
+  return db_make_datetimetz (value, (DB_DATETIMETZ *) mem);
+}
+
+static int
+mr_setval_datetimetz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  int error;
+
+  if (DB_IS_NULL (src))
+    {
+      error = db_value_domain_init (dest, DB_TYPE_DATETIMETZ,
+				    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+    }
+  else
+    {
+      error = db_make_datetimetz (dest, db_get_datetimetz (src));
+    }
+  return error;
+}
+
+static void
+mr_data_writemem_datetimetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+{
+  or_put_datetimetz (buf, (DB_DATETIMETZ *) mem);
+}
+
+static void
+mr_data_readmem_datetimetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain,
+			    int size)
+{
+  if (mem == NULL)
+    {
+      or_advance (buf, tp_Datetimetz.disksize);
+    }
+  else
+    {
+      or_get_datetimetz (buf, (DB_DATETIMETZ *) mem);
+    }
+}
+
+static int
+mr_data_writeval_datetimetz (OR_BUF * buf, DB_VALUE * value)
+{
+  return or_put_datetimetz (buf, db_get_datetimetz (value));
+}
+
+static int
+mr_data_readval_datetimetz (OR_BUF * buf, DB_VALUE * value,
+			    TP_DOMAIN * domain, int size, bool copy,
+			    char *copy_buf, int copy_buf_len)
+{
+  DB_DATETIMETZ datetimetz;
+  int rc = NO_ERROR;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Datetimetz.disksize);
+    }
+  else
+    {
+      rc = or_get_datetimetz (buf, &datetimetz);
+      db_make_datetimetz (value, &datetimetz);
+    }
+  return rc;
+}
+
+static int
+mr_index_writeval_datetimetz (OR_BUF * buf, DB_VALUE * value)
+{
+  DB_DATETIMETZ *datetimetz;
+  int rc = NO_ERROR;
+
+  datetimetz = db_get_datetimetz (value);
+
+  assert (tp_Datetimetz.disksize == (tp_Date.disksize + tp_Time.disksize
+				     + tp_Integer.disksize));
+
+  rc = or_put_data (buf, (char *) (&datetimetz->datetime.date),
+		    tp_Date.disksize);
+  if (rc == NO_ERROR)
+    {
+      rc = or_put_data (buf, (char *) (&datetimetz->datetime.time),
+			tp_Time.disksize);
+      if (rc == NO_ERROR)
+	{
+	  rc = or_put_data (buf, (char *) (&datetimetz->tz_id),
+			    tp_Integer.disksize);
+	}
+    }
+
+  return rc;
+}
+
+static int
+mr_index_readval_datetimetz (OR_BUF * buf, DB_VALUE * value,
+			     TP_DOMAIN * domain, int size, bool copy,
+			     char *copy_buf, int copy_buf_len)
+{
+  DB_DATETIMETZ datetimetz;
+  int rc = NO_ERROR;
+
+  assert (tp_Datetimetz.disksize == (tp_Date.disksize + tp_Time.disksize
+				     + tp_Integer.disksize));
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Datetimetz.disksize);
+    }
+  else
+    {
+      rc = or_get_data (buf, (char *) (&datetimetz.datetime.date),
+			tp_Date.disksize);
+      if (rc == NO_ERROR)
+	{
+	  rc = or_get_data (buf, (char *) (&datetimetz.datetime.time),
+			    tp_Time.disksize);
+	  if (rc == NO_ERROR)
+	    {
+	      rc = or_get_data (buf, (char *) (&datetimetz.tz_id),
+				tp_Integer.disksize);
+	    }
+	}
+
+      if (rc == NO_ERROR)
+	{
+	  db_make_datetimetz (value, &datetimetz);
+	}
+      value->need_clear = false;
+    }
+
+  return rc;
+}
+
+static int
+mr_index_cmpdisk_datetimetz (void *mem1, void *mem2, TP_DOMAIN * domain,
+			     int do_coercion, int total_order,
+			     int *start_colp)
+{
+  /* DATETIMETZ compares the same as DATETIME (tz_id is ignored) */
+  return mr_index_cmpdisk_datetime (mem1, mem2, domain, do_coercion,
+				    total_order, start_colp);
+}
+
+static int
+mr_data_cmpdisk_datetimetz (void *mem1, void *mem2, TP_DOMAIN * domain,
+			    int do_coercion, int total_order, int *start_colp)
+{
+  /* DATETIMETZ compares the same as DATETIME (tz_id is ignored) */
+  return mr_data_cmpdisk_datetime (mem1, mem2, domain, do_coercion,
+				   total_order, start_colp);
+}
+
+static int
+mr_cmpval_datetimetz (DB_VALUE * value1, DB_VALUE * value2,
+		      int do_coercion, int total_order, int *start_colp,
+		      int collation)
+{
+  const DB_DATETIMETZ *dt_tz1, *dt_tz2;
+  const DB_DATETIME *dt1, *dt2;
+  int c;
+
+  dt_tz1 = DB_GET_DATETIMETZ (value1);
+  dt_tz2 = DB_GET_DATETIMETZ (value2);
+
+  dt1 = &(dt_tz1->datetime);
+  dt2 = &(dt_tz2->datetime);
+
+  if (dt1->date < dt2->date)
+    {
+      c = DB_LT;
+    }
+  else if (dt1->date > dt2->date)
+    {
+      c = DB_GT;
+    }
+  else
+    {
+      if (dt1->time < dt2->time)
+	{
+	  c = DB_LT;
+	}
+      else if (dt1->time > dt2->time)
+	{
+	  c = DB_GT;
+	}
+      else
+	{
+	  c = DB_EQ;
+	}
+    }
+
+  return c;
+}
 
 /*
  * TYPE MONETARY

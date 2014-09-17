@@ -213,18 +213,36 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 				col_type[i] = java.sql.Types.TIME;
 				ele_type[i] = -1;
 				break;
+				
+			case UUType.U_TYPE_TIMETZ:
+				col_type_name[i] = "TIMETZ";
+				col_type[i] = java.sql.Types.TIME;
+				ele_type[i] = -1;
+				break;				
 
 			case UUType.U_TYPE_TIMESTAMP:
 				col_type_name[i] = "TIMESTAMP";
 				col_type[i] = java.sql.Types.TIMESTAMP;
 				ele_type[i] = -1;
 				break;
+				
+			case UUType.U_TYPE_TIMESTAMPTZ:
+				col_type_name[i] = "TIMESTAMPTZ";
+				col_type[i] = java.sql.Types.TIMESTAMP;
+				ele_type[i] = -1;
+				break;				
 
 			case UUType.U_TYPE_DATETIME:
 				col_type_name[i] = "DATETIME";
 				col_type[i] = java.sql.Types.TIMESTAMP;
 				ele_type[i] = -1;
 				break;
+				
+			case UUType.U_TYPE_DATETIMETZ:
+				col_type_name[i] = "DATETIMETZ";
+				col_type[i] = java.sql.Types.TIMESTAMP;
+				ele_type[i] = -1;
+				break;				
 
 			case UUType.U_TYPE_NULL:
 				col_type_name[i] = "";
@@ -315,14 +333,26 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 					ele_type[i] = java.sql.Types.TIME;
 					ele_type_name[i] = "TIME";
 					break;
+				case UUType.U_TYPE_TIMETZ:
+					ele_type[i] = java.sql.Types.TIME;
+					ele_type_name[i] = "TIMETZ";
+					break;					
 				case UUType.U_TYPE_TIMESTAMP:
 					ele_type[i] = java.sql.Types.TIMESTAMP;
 					ele_type_name[i] = "TIMESTAMP";
 					break;
+				case UUType.U_TYPE_TIMESTAMPTZ:
+					ele_type[i] = java.sql.Types.TIMESTAMP;
+					ele_type_name[i] = "TIMESTAMPTZ";
+					break;					
 				case UUType.U_TYPE_DATETIME:
 					ele_type[i] = java.sql.Types.TIMESTAMP;
 					ele_type_name[i] = "DATETIME";
 					break;
+				case UUType.U_TYPE_DATETIMETZ:
+					ele_type[i] = java.sql.Types.TIMESTAMP;
+					ele_type_name[i] = "DATETIMETZ";
+					break;					
 				case UUType.U_TYPE_NULL:
 					ele_type[i] = java.sql.Types.NULL;
 					ele_type_name[i] = "";
@@ -507,13 +537,22 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 		case UUType.U_TYPE_TIME:
 			ret_size = 8;
 			break;
+		case UUType.U_TYPE_TIMETZ:
+			ret_size = 8 + 63;
+			break;			
 		case UUType.U_TYPE_TIMESTAMP:
 			ret_size = 19;
 			break;
+		case UUType.U_TYPE_TIMESTAMPTZ:
+			ret_size = 19 + 63;
+			break;			
 		case UUType.U_TYPE_DATETIME:
 			/* FIXME: as is 2010-11-11 20:10:10,to be 2010-11-11 20:20:20.123 */
 			ret_size = 19;
 			break;
+		case UUType.U_TYPE_DATETIMETZ:
+			ret_size = 19 + 63;
+			break;			
 		case UUType.U_TYPE_NULL:
 			ret_size = 4;
 			break;

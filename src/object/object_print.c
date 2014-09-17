@@ -449,8 +449,14 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
 	case DB_TYPE_TIME:
+	case DB_TYPE_TIMETZ:
+	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_UTIME:
+	case DB_TYPE_TIMESTAMPTZ:
+	case DB_TYPE_TIMESTAMPLTZ:
 	case DB_TYPE_DATETIME:
+	case DB_TYPE_DATETIMETZ:
+	case DB_TYPE_DATETIMELTZ:
 	case DB_TYPE_DATE:
 	case DB_TYPE_MONETARY:
 	case DB_TYPE_SUB:
@@ -4005,17 +4011,64 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 				    db_get_time (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
+	case DB_TYPE_TIMELTZ:
+	  (void) db_timeltz_to_string (line, TOO_BIG_TO_MATTER,
+				       db_get_time (value));
+	  buffer = pt_append_nulstring (parser, buffer, line);
+	  break;
+
+	case DB_TYPE_TIMETZ:
+	  {
+	    DB_TIMETZ *time_tz;
+	    time_tz = DB_GET_TIMETZ (value);
+	    (void) db_timetz_to_string (line, TOO_BIG_TO_MATTER,
+					&time_tz->time, &time_tz->tz_id);
+	    buffer = pt_append_nulstring (parser, buffer, line);
+	  }
+	  break;
 
 	case DB_TYPE_UTIME:
 	  (void) db_utime_to_string (line, TOO_BIG_TO_MATTER,
 				     DB_GET_UTIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
+	case DB_TYPE_TIMESTAMPLTZ:
+	  (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER,
+					    DB_GET_UTIME (value));
+	  buffer = pt_append_nulstring (parser, buffer, line);
+	  break;
+
+	case DB_TYPE_TIMESTAMPTZ:
+	  {
+	    DB_TIMESTAMPTZ *ts_tz;
+	    ts_tz = DB_GET_TIMESTAMPTZ (value);
+	    (void) db_timestamptz_to_string (line, TOO_BIG_TO_MATTER,
+					     &(ts_tz->timestamp),
+					     &(ts_tz->tz_id));
+	    buffer = pt_append_nulstring (parser, buffer, line);
+	  }
+	  break;
 
 	case DB_TYPE_DATETIME:
 	  (void) db_datetime_to_string (line, TOO_BIG_TO_MATTER,
 					DB_GET_DATETIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  (void) db_datetimeltz_to_string (line, TOO_BIG_TO_MATTER,
+					   DB_GET_DATETIME (value));
+	  buffer = pt_append_nulstring (parser, buffer, line);
+	  break;
+
+	case DB_TYPE_DATETIMETZ:
+	  {
+	    DB_DATETIMETZ *dt_tz;
+	    dt_tz = DB_GET_DATETIMETZ (value);
+	    (void) db_datetimetz_to_string (line, TOO_BIG_TO_MATTER,
+					    &(dt_tz->datetime),
+					    &(dt_tz->tz_id));
+	    buffer = pt_append_nulstring (parser, buffer, line);
+	  }
 	  break;
 
 	case DB_TYPE_DATE:
@@ -4166,8 +4219,32 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  break;
 
+	case DB_TYPE_TIMETZ:
+	  buffer = pt_append_nulstring (parser, buffer, "timetz '");
+	  buffer = describe_data (parser, buffer, value);
+	  buffer = pt_append_nulstring (parser, buffer, "'");
+	  break;
+
+	case DB_TYPE_TIMELTZ:
+	  buffer = pt_append_nulstring (parser, buffer, "timeltz '");
+	  buffer = describe_data (parser, buffer, value);
+	  buffer = pt_append_nulstring (parser, buffer, "'");
+	  break;
+
 	case DB_TYPE_UTIME:
 	  buffer = pt_append_nulstring (parser, buffer, "timestamp '");
+	  buffer = describe_data (parser, buffer, value);
+	  buffer = pt_append_nulstring (parser, buffer, "'");
+	  break;
+
+	case DB_TYPE_TIMESTAMPTZ:
+	  buffer = pt_append_nulstring (parser, buffer, "timestamptz '");
+	  buffer = describe_data (parser, buffer, value);
+	  buffer = pt_append_nulstring (parser, buffer, "'");
+	  break;
+
+	case DB_TYPE_TIMESTAMPLTZ:
+	  buffer = pt_append_nulstring (parser, buffer, "timestampltz '");
 	  buffer = describe_data (parser, buffer, value);
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  break;
@@ -4177,6 +4254,19 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  buffer = describe_data (parser, buffer, value);
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  break;
+
+	case DB_TYPE_DATETIMETZ:
+	  buffer = pt_append_nulstring (parser, buffer, "datetimetz '");
+	  buffer = describe_data (parser, buffer, value);
+	  buffer = pt_append_nulstring (parser, buffer, "'");
+	  break;
+
+	case DB_TYPE_DATETIMELTZ:
+	  buffer = pt_append_nulstring (parser, buffer, "datetimeltz '");
+	  buffer = describe_data (parser, buffer, value);
+	  buffer = pt_append_nulstring (parser, buffer, "'");
+	  break;
+
 
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:

@@ -3741,15 +3741,30 @@ get_reasonable_predicate (DB_ATTRIBUTE * att)
       break;
 
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
       cond = " = '09:30' ";
       break;
 
+    case DB_TYPE_TIMETZ:
+      cond = " = '09:30 +00:00' ";
+      break;
+
     case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
       cond = " = '10/15/1986 5:45 am' ";
       break;
 
+    case DB_TYPE_TIMESTAMPTZ:
+      cond = " = '10/15/1986 5:45 am +00:00' ";
+      break;
+
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
       cond = " = '10/15/1986 5:45:15.135 am' ";
+      break;
+
+    case DB_TYPE_DATETIMETZ:
+      cond = " = '10/15/1986 5:45:15.135 am +00:00' ";
       break;
 
     case DB_TYPE_DATE:

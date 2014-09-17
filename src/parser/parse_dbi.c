@@ -736,6 +736,32 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	    pt_append_bytes (parser, NULL, buf, strlen (buf));
 	}
       break;
+    case DB_TYPE_TIMELTZ:
+      if (db_timeltz_to_string (buf, sizeof (buf), DB_GET_TIME (val)) == 0)
+	{
+	  result->type_enum = PT_TYPE_NONE;
+	}
+      else
+	{
+	  result->info.value.data_value.str =
+	    pt_append_bytes (parser, NULL, buf, strlen (buf));
+	}
+      break;
+    case DB_TYPE_TIMETZ:
+      {
+	DB_TIMETZ *time_tz = DB_GET_TIMETZ (val);
+	if (db_timetz_to_string (buf, sizeof (buf), &time_tz->time,
+				 &time_tz->tz_id) == 0)
+	  {
+	    result->type_enum = PT_TYPE_NONE;
+	  }
+	else
+	  {
+	    result->info.value.data_value.str =
+	      pt_append_bytes (parser, NULL, buf, strlen (buf));
+	  }
+      }
+      break;
     case DB_TYPE_UTIME:
       if (db_utime_to_string (buf, sizeof (buf), DB_GET_UTIME (val)) == 0)
 	{
@@ -746,6 +772,33 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	  result->info.value.data_value.str =
 	    pt_append_bytes (parser, NULL, buf, strlen (buf));
 	}
+      break;
+    case DB_TYPE_TIMESTAMPLTZ:
+      if (db_timestampltz_to_string (buf, sizeof (buf), DB_GET_UTIME (val))
+	  == 0)
+	{
+	  result->type_enum = PT_TYPE_NONE;
+	}
+      else
+	{
+	  result->info.value.data_value.str =
+	    pt_append_bytes (parser, NULL, buf, strlen (buf));
+	}
+      break;
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (val);
+	if (db_timestamptz_to_string (buf, sizeof (buf), &ts_tz->timestamp,
+				      &ts_tz->tz_id) == 0)
+	  {
+	    result->type_enum = PT_TYPE_NONE;
+	  }
+	else
+	  {
+	    result->info.value.data_value.str =
+	      pt_append_bytes (parser, NULL, buf, strlen (buf));
+	  }
+      }
       break;
     case DB_TYPE_DATETIME:
       if (db_datetime_to_string (buf, sizeof (buf),
@@ -758,6 +811,33 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	  result->info.value.data_value.str =
 	    pt_append_bytes (parser, NULL, buf, strlen (buf));
 	}
+      break;
+    case DB_TYPE_DATETIMELTZ:
+      if (db_datetimeltz_to_string (buf, sizeof (buf),
+				    DB_GET_DATETIME (val)) == 0)
+	{
+	  result->type_enum = PT_TYPE_NONE;
+	}
+      else
+	{
+	  result->info.value.data_value.str =
+	    pt_append_bytes (parser, NULL, buf, strlen (buf));
+	}
+      break;
+    case DB_TYPE_DATETIMETZ:
+      {
+	DB_DATETIMETZ *dt_tz = DB_GET_DATETIMETZ (val);
+	if (db_datetimetz_to_string (buf, sizeof (buf), &dt_tz->datetime,
+				     &(dt_tz->tz_id)) == 0)
+	  {
+	    result->type_enum = PT_TYPE_NONE;
+	  }
+	else
+	  {
+	    result->info.value.data_value.str =
+	      pt_append_bytes (parser, NULL, buf, strlen (buf));
+	  }
+      }
       break;
     case DB_TYPE_DATE:
       if (db_date_to_string (buf, sizeof (buf), DB_GET_DATE (val)) == 0)
@@ -1376,14 +1456,34 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
     case PT_TYPE_DATE:
       name = "date";
       break;
+
     case PT_TYPE_TIME:
       return "time";
+    case PT_TYPE_TIMETZ:
+      return "timetz";
+    case PT_TYPE_TIMELTZ:
+      return "timeltz";
+
     case PT_TYPE_TIMESTAMP:
       name = "timestamp";
       break;
+    case PT_TYPE_TIMESTAMPLTZ:
+      name = "timestampltz";
+      break;
+    case PT_TYPE_TIMESTAMPTZ:
+      name = "timestamptz";
+      break;
+
     case PT_TYPE_DATETIME:
       name = "datetime";
       break;
+    case PT_TYPE_DATETIMETZ:
+      name = "datetimetz";
+      break;
+    case PT_TYPE_DATETIMELTZ:
+      name = "datetimeltz";
+      break;
+
     case PT_TYPE_MONETARY:
       name = "monetary";
       break;
@@ -1476,19 +1576,35 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
 				    DB_MONETARY_DECIMAL_PRECISION, 0, NULL);
       break;
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMELTZ:
       retval = tp_domain_construct (domain_type, NULL, DB_TIME_PRECISION,
+				    0, NULL);
+      break;
+    case DB_TYPE_TIMETZ:
+      retval = tp_domain_construct (domain_type, NULL, DB_TIMETZ_PRECISION,
 				    0, NULL);
       break;
     case DB_TYPE_DATE:
       retval = tp_domain_construct (domain_type, NULL, DB_DATE_PRECISION,
 				    0, NULL);
       break;
+    case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_UTIME:
       retval = tp_domain_construct (domain_type, NULL, DB_TIMESTAMP_PRECISION,
 				    0, NULL);
       break;
+    case DB_TYPE_TIMESTAMPTZ:
+      retval = tp_domain_construct (domain_type, NULL,
+				    DB_TIMESTAMPTZ_PRECISION, 0, NULL);
+      break;
+    case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_DATETIME:
       retval = tp_domain_construct (domain_type, NULL, DB_DATETIME_PRECISION,
+				    DB_DATETIME_DECIMAL_SCALE, NULL);
+      break;
+    case DB_TYPE_DATETIMETZ:
+      retval = tp_domain_construct (domain_type, NULL,
+				    DB_DATETIMETZ_PRECISION,
 				    DB_DATETIME_DECIMAL_SCALE, NULL);
       break;
     case DB_TYPE_ELO:
@@ -1739,8 +1855,14 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMETZ:
+    case DB_TYPE_TIMELTZ:
     case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_DATE:
     case DB_TYPE_MONETARY:
     case DB_TYPE_SUB:
@@ -1941,8 +2063,14 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMETZ:
+    case DB_TYPE_TIMELTZ:
     case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_DATE:
     case DB_TYPE_MONETARY:
     case DB_TYPE_SUB:
@@ -2201,11 +2329,30 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
     case PT_TYPE_TIME:
       db_type = DB_TYPE_TIME;
       break;
+    case PT_TYPE_TIMETZ:
+      db_type = DB_TYPE_TIMETZ;
+      break;
+    case PT_TYPE_TIMELTZ:
+      db_type = DB_TYPE_TIMELTZ;
+      break;
     case PT_TYPE_TIMESTAMP:
       db_type = DB_TYPE_UTIME;
       break;
+    case PT_TYPE_TIMESTAMPTZ:
+      db_type = DB_TYPE_TIMESTAMPTZ;
+      break;
+    case PT_TYPE_TIMESTAMPLTZ:
+      db_type = DB_TYPE_TIMESTAMPLTZ;
+      break;
+
     case PT_TYPE_DATETIME:
       db_type = DB_TYPE_DATETIME;
+      break;
+    case PT_TYPE_DATETIMETZ:
+      db_type = DB_TYPE_DATETIMETZ;
+      break;
+    case PT_TYPE_DATETIMELTZ:
+      db_type = DB_TYPE_DATETIMELTZ;
       break;
     case PT_TYPE_MONETARY:
       db_type = DB_TYPE_MONETARY;
@@ -2475,12 +2622,32 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_TIME:
       pt_type = PT_TYPE_TIME;
       break;
+    case DB_TYPE_TIMETZ:
+      pt_type = PT_TYPE_TIMETZ;
+      break;
+    case DB_TYPE_TIMELTZ:
+      pt_type = PT_TYPE_TIMELTZ;
+      break;
     case DB_TYPE_UTIME:
       pt_type = PT_TYPE_TIMESTAMP;
       break;
+    case DB_TYPE_TIMESTAMPTZ:
+      pt_type = PT_TYPE_TIMESTAMPTZ;
+      break;
+    case DB_TYPE_TIMESTAMPLTZ:
+      pt_type = PT_TYPE_TIMESTAMPLTZ;
+      break;
+
     case DB_TYPE_DATETIME:
       pt_type = PT_TYPE_DATETIME;
       break;
+    case DB_TYPE_DATETIMETZ:
+      pt_type = PT_TYPE_DATETIMETZ;
+      break;
+    case DB_TYPE_DATETIMELTZ:
+      pt_type = PT_TYPE_DATETIMELTZ;
+      break;
+
     case DB_TYPE_MONETARY:
       pt_type = PT_TYPE_MONETARY;
       break;
@@ -2671,9 +2838,15 @@ pt_bind_helper (PARSER_CONTEXT * parser,
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_TIME:
+    case DB_TYPE_TIMETZ:
+    case DB_TYPE_TIMELTZ:
     case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_DATE:
     case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
       /*
@@ -2989,14 +3162,18 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
   DB_SEQ *seq;
   DB_DATE date;
   DB_TIME time;
+  DB_TIMETZ time_tz;
   DB_UTIME utime;
+  DB_TIMESTAMPTZ ts_tz;
   DB_DATETIME datetime;
+  DB_DATETIMETZ dt_tz;
   int src_length;
   int dst_length;
   int bits_converted;
   char *bstring;
   int collation_id = LANG_COERCIBLE_COLL;
   INTL_CODESET codeset = LANG_COERCIBLE_CODESET;
+  bool has_zone;
 
   assert (value->node_type == PT_VALUE);
   if (PT_HAS_COLLATION (value->type_enum) && value->data_type != NULL)
@@ -3148,6 +3325,34 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       db_value_put_encoded_time (db_value, &time);
       break;
 
+    case PT_TYPE_TIMETZ:
+      if (db_string_to_timetz (value->info.value.data_value.str->bytes,
+			       &time_tz, &has_zone) != NO_ERROR)
+	{
+	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_BAD_TIME,
+		      value->info.value.data_value.str->bytes);
+	  return (DB_VALUE *) NULL;
+	}
+      db_value_domain_init (db_value, DB_TYPE_TIMETZ, DB_DEFAULT_PRECISION,
+			    DB_DEFAULT_SCALE);
+      db_make_timetz (db_value, &time_tz);
+      break;
+
+    case PT_TYPE_TIMELTZ:
+      if (db_string_to_timeltz (value->info.value.data_value.str->bytes,
+				&time) != NO_ERROR)
+	{
+	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_BAD_TIME,
+		      value->info.value.data_value.str->bytes);
+	  return (DB_VALUE *) NULL;
+	}
+      db_value_domain_init (db_value, DB_TYPE_TIMELTZ, DB_DEFAULT_PRECISION,
+			    DB_DEFAULT_SCALE);
+      db_make_timeltz (db_value, &time);
+      break;
+
     case PT_TYPE_TIMESTAMP:
       if (db_string_to_utime (value->info.value.data_value.str->bytes, &utime)
 	  != NO_ERROR)
@@ -3160,6 +3365,34 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       db_make_timestamp (db_value, utime);
       break;
 
+    case PT_TYPE_TIMESTAMPTZ:
+      {
+	bool has_zone = false;
+
+	if (db_string_to_timestamptz (value->info.value.data_value.str->bytes,
+				      &ts_tz, &has_zone) != NO_ERROR)
+	  {
+	    PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
+			MSGCAT_RUNTIME_BAD_UTIME,
+			value->info.value.data_value.str->bytes);
+	    return (DB_VALUE *) NULL;
+	  }
+	db_make_timestamptz (db_value, &ts_tz);
+      }
+      break;
+
+    case PT_TYPE_TIMESTAMPLTZ:
+      if (db_string_to_timestampltz (value->info.value.data_value.str->bytes,
+				     &utime) != NO_ERROR)
+	{
+	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_BAD_UTIME,
+		      value->info.value.data_value.str->bytes);
+	  return (DB_VALUE *) NULL;
+	}
+      db_make_timestampltz (db_value, utime);
+      break;
+
     case PT_TYPE_DATETIME:
       if (db_string_to_datetime (value->info.value.data_value.str->bytes,
 				 &datetime) != NO_ERROR)
@@ -3170,6 +3403,30 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 	  return (DB_VALUE *) NULL;
 	}
       db_make_datetime (db_value, &datetime);
+      break;
+
+    case PT_TYPE_DATETIMETZ:
+      if (db_string_to_datetimetz (value->info.value.data_value.str->bytes,
+				   &dt_tz, &has_zone) != NO_ERROR)
+	{
+	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_BAD_UTIME,
+		      value->info.value.data_value.str->bytes);
+	  return (DB_VALUE *) NULL;
+	}
+      db_make_datetimetz (db_value, &dt_tz);
+      break;
+
+    case PT_TYPE_DATETIMELTZ:
+      if (db_string_to_datetimeltz (value->info.value.data_value.str->bytes,
+				    &datetime) != NO_ERROR)
+	{
+	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_BAD_UTIME,
+		      value->info.value.data_value.str->bytes);
+	  return (DB_VALUE *) NULL;
+	}
+      db_make_datetimeltz (db_value, &datetime);
       break;
 
     case PT_TYPE_MONETARY:

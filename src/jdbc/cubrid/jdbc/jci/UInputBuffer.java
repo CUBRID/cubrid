@@ -47,6 +47,8 @@ import cubrid.jdbc.driver.CUBRIDConnection;
 import cubrid.jdbc.driver.CUBRIDXid;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
+import cubrid.sql.CUBRIDTimestamptz;
+import cubrid.sql.CUBRIDTimetz;
 
 class UInputBuffer {
 	private UTimedDataInputStream input;
@@ -270,6 +272,33 @@ class UInputBuffer {
 		return new Time(cal.getTimeInMillis());
 	}
 
+	CUBRIDTimetz readTimetz(int size) throws UJciException {
+		Time time;
+		String timezone;
+		int tmp_position;
+		int ts_size;
+		
+		if (position + size > capacity) {
+		    	throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+		}
+				
+		tmp_position = position;
+		time = readTime ();
+		
+		ts_size = position - tmp_position;
+				
+		if (ts_size > 0){
+			timezone = new String (buffer, position, size - ts_size - 1);
+			position += size - ts_size;
+		}
+		else{
+			timezone = "";
+			position++;
+		}
+
+		return CUBRIDTimetz.valueOf(time, timezone);
+	}
+	
 	CUBRIDTimestamp readTimestamp() throws UJciException {
 		int year, month, day, hour, minute, second;
 		year = readShort();
@@ -300,6 +329,33 @@ class UInputBuffer {
 		return new CUBRIDTimestamp(cal.getTimeInMillis(),
 				CUBRIDTimestamp.TIMESTAMP);
 	}
+	
+	CUBRIDTimestamptz readTimestamptz(int size) throws UJciException {
+		CUBRIDTimestamp cubrid_ts;
+		String timezone;
+		int tmp_position;
+		int ts_size;
+		
+		if (position + size > capacity) {
+		    	throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+		}
+				
+		tmp_position = position;
+		cubrid_ts = readTimestamp ();
+		
+		ts_size = position - tmp_position;
+				
+		if (ts_size > 0){
+			timezone = new String (buffer, position, size - ts_size - 1);
+			position += size - ts_size;
+		}
+		else{
+			timezone = "";
+			position++;
+		}
+
+		return CUBRIDTimestamptz.valueOf(cubrid_ts, timezone);
+	}	
 
 	CUBRIDTimestamp readDatetime() throws UJciException {
 		int year, month, day, hour, minute, second, millisecond;
@@ -332,6 +388,33 @@ class UInputBuffer {
 		return new CUBRIDTimestamp(cal.getTimeInMillis(),
 				CUBRIDTimestamp.DATETIME);
 	}
+	
+	CUBRIDTimestamptz readDatetimetz(int size) throws UJciException {
+		CUBRIDTimestamp cubrid_ts;
+		String timezone;
+		int tmp_position;
+		int ts_size;
+		
+		if (position + size > capacity) {
+		    	throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+		}
+				
+		tmp_position = position;
+		cubrid_ts = readDatetime ();
+		
+		ts_size = position - tmp_position;
+				
+		if (ts_size > 0){
+			timezone = new String (buffer, position, size - ts_size - 1);
+			position += size - ts_size;
+		}
+		else{
+			timezone = "";
+			position++;
+		}
+
+		return CUBRIDTimestamptz.valueOf(cubrid_ts, timezone);
+	}
 
 	CUBRIDOID readOID(CUBRIDConnection con) throws UJciException {
 		byte[] oid = readBytes(UConnection.OID_BYTE_SIZE);
@@ -342,7 +425,7 @@ class UInputBuffer {
 		}
 		return null;
 	}
-
+	
 	CUBRIDBlob readBlob(int packedLobHandleSize, CUBRIDConnection conn)
 			throws UJciException {
 		try {

@@ -57,6 +57,8 @@
 #include "locator_cl.h"
 #include "network_interface_cl.h"
 #include "locale_support.h"
+#include "tz_support.h"
+#include "tz_compile.h"
 #include "boot_cl.h"
 #include "tsc_timer.h"
 #if defined(WINDOWS)
@@ -3675,4 +3677,208 @@ synccoll_force (void)
 
   AU_ENABLE (au_save);
   return status;
+}
+
+/*
+ * gen_tz() - generate time zone data as a C source file, to be compiled into
+ *	      a shared library (DLL/so) using included makefile/build script
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+gen_tz (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = NULL;
+  char *input_path = NULL;
+  char *tz_gen_mode = NULL;
+  TZ_GEN_TYPE tz_gen_type = TZ_GEN_TYPE_NEW;
+  int exit_status = EXIT_SUCCESS;
+
+  assert (arg != NULL);
+  arg_map = arg->arg_map;
+
+  tz_gen_mode = utility_get_option_string_value (arg_map, GEN_TZ_MODE_S, 0);
+
+  if (tz_gen_mode == NULL || *tz_gen_mode == '\0'
+      || strcasecmp (tz_gen_mode, "new") == 0)
+    {
+      tz_gen_type = TZ_GEN_TYPE_NEW;
+    }
+  else if (strcasecmp (tz_gen_mode, "extend") == 0)
+    {
+      tz_gen_type = TZ_GEN_TYPE_EXTEND;
+    }
+  else if (strcasecmp (tz_gen_mode, "update") == 0)
+    {
+      tz_gen_type = TZ_GEN_TYPE_UPDATE;
+    }
+  else
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_GEN_TZ,
+				       GEN_TZ_MSG_INVALID_MODE));
+      goto print_gen_tz_usage;
+    }
+
+  input_path =
+    utility_get_option_string_value (arg_map, GEN_TZ_INPUT_FOLDER_S, 0);
+
+  if (input_path == NULL || strlen (input_path) == 0)
+    {
+      char inputpath_local[PATH_MAX] = { 0 };
+
+      envvar_tzdata_dir_file (inputpath_local, sizeof (inputpath_local), "");
+      input_path = inputpath_local;
+    }
+
+  if (timezone_compile_data (input_path, tz_gen_type) != NO_ERROR)
+    {
+      exit_status = EXIT_FAILURE;
+      goto exit;
+    }
+
+exit:
+  if (exit_status != EXIT_SUCCESS)
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));
+    }
+
+  return exit_status;
+
+print_gen_tz_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_GEN_TZ,
+				   GEN_TZ_MSG_USAGE), basename (arg->argv0));
+  return EXIT_FAILURE;
+}
+
+/*
+ * dump_tz() - display time zone data from CUBRID's timezone shared library
+ *	       or from the generated and embedded timezone_list.c file
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+dump_tz (UTIL_FUNCTION_ARG * arg)
+{
+  long int zone_id = -1;
+  UTIL_ARG_MAP *arg_map = NULL;
+  int tz_gen_type = TZ_GEN_TYPE_NEW;
+  int err_status = EXIT_SUCCESS;
+  char *zone = NULL;
+  char *str_next = NULL;
+  bool is_dump_countries = false;
+  bool is_dump_zone_list = false;
+  bool is_dump_zone = false;
+  bool is_dump_leap_sec = false;
+  const TZ_DATA *tzd;
+
+  assert (arg != NULL);
+  arg_map = arg->arg_map;
+
+  /* read and check arguments */
+  is_dump_countries =
+    utility_get_option_bool_value (arg_map, DUMP_TZ_COUNTRIES_S);
+  is_dump_zone_list =
+    utility_get_option_bool_value (arg_map, DUMP_TZ_ZONES_S);
+  is_dump_leap_sec =
+    utility_get_option_bool_value (arg_map, DUMP_TZ_LEAP_SEC_S);
+  zone = utility_get_option_string_value (arg_map, DUMP_TZ_ZONE_ID_S, 0);
+
+  if (zone != NULL && *zone != '\0')
+    {
+      /* check if either a single zone or all zones should be dumped */
+      if (strcasecmp (zone, "all") == 0)
+	{
+	  zone_id = -1;
+	}
+      else
+	{
+	  zone_id = strtol (zone, &str_next, 10);
+	  /* check zone_id, str_next, and errno */
+	  if (zone_id == 0 && *str_next != '\0')
+	    {
+	      goto print_dump_tz_usage;
+	    }
+	  if (errno == ERANGE)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_OUT_OF_RANGE,
+		      1, zone);
+	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					       MSGCAT_UTIL_SET_DUMP_TZ,
+					       DUMP_TZ_MSG_ID_OUT_OF_RANGE));
+	      err_status = EXIT_FAILURE;
+	      goto exit;
+	    }
+	}
+      is_dump_zone = true;
+    }
+
+  if (tz_load (false) != NO_ERROR)
+    {
+      err_status = EXIT_FAILURE;
+      goto exit;
+    }
+  tzd = tz_get_data ();
+  assert (tzd != NULL);
+  /* check if zone_id is valid for the loaded timezone library */
+  if (is_dump_zone && zone_id < -1 && zone_id >= tzd->timezone_count)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_OUT_OF_RANGE, 1, zone);
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_DUMP_TZ,
+				       DUMP_TZ_MSG_ID_OUT_OF_RANGE));
+      err_status = EXIT_FAILURE;
+      goto exit;
+    }
+
+  printf ("\nDump timezone data");
+
+  if (!is_dump_countries && !is_dump_zone && !is_dump_zone_list
+      && !is_dump_leap_sec)
+    {
+      tzc_dump_summary (tzd);
+      goto exit;
+    }
+
+  if (is_dump_countries)
+    {
+      printf ("\n\nDumping countries...\n");
+      tzc_dump_countries (tzd);
+    }
+  if (is_dump_zone_list)
+    {
+      printf ("\n\nDumping timezones...\n");
+      tzc_dump_timezones (tzd);
+    }
+  if (is_dump_zone)
+    {
+      if (zone_id != -1)
+	{
+	  tzc_dump_one_timezone (tzd, zone_id);
+	}
+      else
+	{
+	  for (zone_id = 0; zone_id < tzd->timezone_count; zone_id++)
+	    {
+	      printf ("\n\n");
+	      tzc_dump_one_timezone (tzd, zone_id);
+	    }
+	}
+    }
+
+  if (is_dump_leap_sec)
+    {
+      printf ("\n\nDumping leap seconds...\n");
+      tzc_dump_leap_sec (tzd);
+    }
+
+exit:
+  tz_unload ();
+
+  return err_status;
+
+print_dump_tz_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_DUMP_TZ,
+				   DUMP_TZ_MSG_USAGE), basename (arg->argv0));
+  return err_status;
 }

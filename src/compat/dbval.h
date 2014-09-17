@@ -57,9 +57,12 @@
 #undef DB_GET_MIDXKEY
 #undef DB_GET_ELO
 #undef DB_GET_TIME
+#undef DB_GET_TIMETZ
 #undef DB_GET_DATE
 #undef DB_GET_TIMESTAMP
+#undef DB_GET_TIMESTAMPTZ
 #undef DB_GET_DATETIME
+#undef DB_GET_DATETIMETZ
 #undef DB_GET_MONETARY
 #undef DB_GET_POINTER
 #undef DB_GET_ERROR
@@ -264,20 +267,35 @@
        (DB_ELO *) (&((v)->data.elo)))
 
 #define DB_GET_TIME(v) \
-      (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIME), \
+      (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIME		\
+	       || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIMELTZ), \
        (DB_TIME *) (&(v)->data.time))
+
+#define DB_GET_TIMETZ(v) \
+    (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIMETZ), \
+     (DB_TIMETZ *)(&(v)->data.timetz))
 
 #define DB_GET_DATE(v) \
       (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_DATE), \
        (DB_DATE *) (&(v)->data.date))
 
 #define DB_GET_TIMESTAMP(v) \
-      (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIMESTAMP), \
+      (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIMESTAMP	     \
+	       || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIMESTAMPLTZ), \
        (DB_TIMESTAMP *) (&(v)->data.utime))
 
+#define DB_GET_TIMESTAMPTZ(v) \
+    (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIMESTAMPTZ),	    \
+     (DB_TIMESTAMPTZ *)(&(v)->data.timestamptz))
+
 #define DB_GET_DATETIME(v) \
-      (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_DATETIME), \
+      (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_DATETIME	    \
+	       || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_DATETIMELTZ), \
        (DB_DATETIME *) (&(v)->data.datetime))
+
+#define DB_GET_DATETIMETZ(v) \
+    (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_DATETIMETZ),  \
+     (DB_DATETIMETZ *)(&(v)->data.datetimetz))
 
 #define DB_GET_MONETARY(v) \
       (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_MONETARY), \
@@ -392,9 +410,12 @@
 #define db_get_elo(v) DB_GET_ELO(v)
 #define db_pull_elo(v) DB_PULL_ELO(v)
 #define db_get_time(v) DB_GET_TIME(v)
+#define db_get_timetz(v) DB_GET_TIMETZ(v)
 #define db_get_date(v) DB_GET_DATE(v)
 #define db_get_timestamp(v) DB_GET_TIMESTAMP(v)
+#define db_get_timestamptz(v) DB_GET_TIMESTAMPTZ(v)
 #define db_get_datetime(v) DB_GET_DATETIME(v)
+#define db_get_datetimetz(v) DB_GET_DATETIMETZ(v)
 #define db_get_monetary(v) DB_GET_MONETARY(v)
 #define db_get_pointer(v) DB_GET_POINTER(v)
 #define db_pull_pointer(v) DB_PULL_POINTER(v)

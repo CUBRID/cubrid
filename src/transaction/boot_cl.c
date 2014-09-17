@@ -82,6 +82,8 @@
 #include "es.h"
 #include "tsc_timer.h"
 #include "show_meta.h"
+#include "tz_support.h"
+
 
 #if defined(CS_MODE)
 #include "network.h"
@@ -754,6 +756,17 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       return ER_LOC_INIT;
     }
 
+  /* initialize time zone data - optional module */
+  if (tz_load (true) != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1,
+		  "Failed to initialize timezone module");
+	}
+      return ER_TZ_LOAD_ERROR;
+    }
+
   /* database name must be specified */
   if (client_credential->db_name == NULL)
     {
@@ -1202,7 +1215,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       rel_set_disk_compatible (boot_Server_credential.disk_compatibility);
     }
 #endif /* CS_MODE */
-  sysprm_init_intl_param ();
+  if (sysprm_init_intl_param () != NO_ERROR)
+    {
+      error_code = er_errid ();
+      goto error;
+    }
 
   /* Initialize client modules for execution */
   boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
@@ -1360,6 +1377,7 @@ error:
 #endif /* !WINDOWS */
       /*msgcat_final (); */
       lang_final ();
+      tz_unload ();
       sysprm_final ();
       area_final ();
 #if defined(WINDOWS)
@@ -1560,6 +1578,7 @@ boot_client_all_finalize (bool is_er_final)
 	  er_final ();
 	}
       lang_final ();
+      tz_unload ();
 
       /* adj_arrays & lex buffers in the cnv formatting library. */
       cnv_cleanup ();
@@ -2910,7 +2929,8 @@ boot_add_data_type (MOP class_mop)
     "NCHAR", "VARNCHAR", NULL /* RESULTSET */ , NULL /* MIDXKEY */ ,
     NULL /* TABLE */ ,
     "BIGINT", "DATETIME",
-    "BLOB", "CLOB", "ENUM"
+    "BLOB", "CLOB", "ENUM",
+    "TIMESTAMPTZ", "TIMESTAMPLTZ", "DATETIMETZ", "DATETIMELTZ"
   };
 
   for (i = 0; i < DB_TYPE_LAST; i++)
@@ -2928,7 +2948,7 @@ boot_add_data_type (MOP class_mop)
 	  DB_MAKE_INTEGER (&val, i + 1);
 	  db_put_internal (obj, "type_id", &val);
 
-	  DB_MAKE_VARCHAR (&val, 9, (char *) names[i], strlen (names[i]),
+	  DB_MAKE_VARCHAR (&val, 16, (char *) names[i], strlen (names[i]),
 			   LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	  db_put_internal (obj, "type_name", &val);
 	}
@@ -2958,7 +2978,8 @@ boot_define_data_type (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "type_name", "varchar(9)", NULL);
+  /* TODO : DB migration tool */
+  error_code = smt_add_attribute (def, "type_name", "varchar(16)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;

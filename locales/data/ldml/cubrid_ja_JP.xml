@@ -12,6 +12,9 @@
 				<timeFormatCUBRID>HH24:MI:SS</timeFormatCUBRID>
 				<datetimeFormatCUBRID>HH24:MI:SS.FF YYYY/MM/DD</datetimeFormatCUBRID>
 				<timestampFormatCUBRID>HH24:MI:SS YYYY/MM/DD</timestampFormatCUBRID>
+				<timetzFormatCUBRID>HH24:MI:SS TZR</timetzFormatCUBRID>
+				<datetimetzFormatCUBRID>HH24:MI:SS.FF YYYY/MM/DD TZR</datetimetzFormatCUBRID>
+				<timestamptzFormatCUBRID>HH24:MI:SS YYYY/MM/DD TZR</timestamptzFormatCUBRID>
 				<months>
 					<monthContext type="format">
 						<monthWidth type="abbreviated">

@@ -1225,7 +1225,15 @@ $ LOADDB
 1156 MVCC can't get snapshot
 1157 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
 1158 Serializable conflict due to concurent updates
-1159 Last Error
+1159 Timezone compile error: %s
+1160 Timezone library loader error: %s
+1161 Timezone conversion error.
+1162 Invalid or missing timezone.
+1163 Invalid or missing daylight saving time.
+1164 Daylight saving time is not supported with this timezone.
+1165 Invalid combination of date, time, timezone and daylight specifier.
+1166 The specified combination of date and time do not exist (during daylight saving interval).
+1167 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1376,6 +1384,9 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 120 invalid use of index_prefix\n  INDEX_PREFIX ( expression, expression, expression )\n
 121 Incorrect usage of UNION and ORDER BY
 122 Expecting ON. Outer Joins require join condition.
+123 invalid use of timezone\n set timezone 'timezone_val' or set time zone 'timezone_val'
+124 invalid use of dbtimezone\n dbtimezone
+125 invalid use of sessiontimezone\n sessiontimezone
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.

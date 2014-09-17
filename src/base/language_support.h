@@ -199,15 +199,15 @@ struct lang_collation
 /* Language locale data */
 struct lang_locale_data
 {
-  /* next locale with same lang id, but diferrent codeset */
+  /* next locale with same lang id, but different codeset */
   LANG_LOCALE_DATA *next_lld;
 
   const char *lang_name;
   INTL_LANG lang_id;
   INTL_CODESET codeset;
 
-  ALPHABET_DATA alphabet;	/* data for lower / uppper */
-  ALPHABET_DATA ident_alphabet;	/* data for lower / uppper for identifiers */
+  ALPHABET_DATA alphabet;	/* data for lower / upper */
+  ALPHABET_DATA ident_alphabet;	/* data for lower / upper for identifiers */
 
   LANG_COLLATION *default_lang_coll;	/* default collation for this locale */
 
@@ -219,6 +219,9 @@ struct lang_locale_data
   const char *date_format;	/* default date format */
   const char *datetime_format;	/* default datetime format */
   const char *timestamp_format;	/* default timestamp format */
+  const char *timetz_format;	/* default time_tz format */
+  const char *datetimetz_format;	/* default datetime_tz format */
+  const char *timestamptz_format;	/* default timestamp_tz format */
 
   const char *day_short_name[CAL_DAY_COUNT];
   const char *day_name[CAL_DAY_COUNT];

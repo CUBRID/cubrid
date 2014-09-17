@@ -27841,11 +27841,29 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
     case DB_TYPE_TIME:
       return "TIME";
 
+    case DB_TYPE_TIMETZ:
+      return "TIMETZ";
+
+    case DB_TYPE_TIMELTZ:
+      return "TIMELTZ";
+
     case DB_TYPE_TIMESTAMP:
       return "TIMESTAMP";
 
+    case DB_TYPE_TIMESTAMPTZ:
+      return "TIMESTAMPTZ";
+
+    case DB_TYPE_TIMESTAMPLTZ:
+      return "TIMESTAMPLTZ";
+
     case DB_TYPE_DATETIME:
       return "DATETIME";
+
+    case DB_TYPE_DATETIMETZ:
+      return "DATETIMETZ";
+
+    case DB_TYPE_DATETIMELTZ:
+      return "DATETIMELTZ";
 
     case DB_TYPE_MONETARY:
       return "MONETARY";

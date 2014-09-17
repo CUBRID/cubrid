@@ -255,11 +255,22 @@ static void add_res_data_double (T_NET_BUF * net_buf, double value, char type,
 static void add_res_data_timestamp (T_NET_BUF * net_buf, short yr, short mon,
 				    short day, short hh, short mm, short ss,
 				    char type, int *net_size);
+static void add_res_data_timestamptz (T_NET_BUF * net_buf, short yr,
+				      short mon, short day, short hh,
+				      short mm, short ss, char *tz_str,
+				      char type, int *net_size);
 static void add_res_data_datetime (T_NET_BUF * net_buf, short yr, short mon,
 				   short day, short hh, short mm, short ss,
 				   short ms, char type, int *net_size);
+static void add_res_data_datetimetz (T_NET_BUF * net_buf, short yr, short mon,
+				     short day, short hh, short mm, short ss,
+				     short ms, char *tz_str, char type,
+				     int *net_size);
 static void add_res_data_time (T_NET_BUF * net_buf, short hh, short mm,
 			       short ss, char type, int *net_size);
+static void add_res_data_timetz (T_NET_BUF * net_buf, short hh, short mm,
+				 short ss, char *tz_str, char type,
+				 int *net_size);
 static void add_res_data_date (T_NET_BUF * net_buf, short yr, short mon,
 			       short day, char type, int *net_size);
 static void add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj,
@@ -403,7 +414,13 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_DATETIME,		/* 32 */
   CCI_U_TYPE_BLOB,		/* 33 */
   CCI_U_TYPE_CLOB,		/* 34 */
-  CCI_U_TYPE_ENUM		/* 35 */
+  CCI_U_TYPE_ENUM,		/* 35 */
+  CCI_U_TYPE_TIMESTAMPTZ,	/* 36 */
+  CCI_U_TYPE_TIMESTAMPTZ,	/* 37 */
+  CCI_U_TYPE_DATETIMETZ,	/* 38 */
+  CCI_U_TYPE_DATETIMETZ,	/* 39 */
+  CCI_U_TYPE_TIMETZ,		/* 40 */
+  CCI_U_TYPE_TIMETZ		/* 41 */
 };
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -4125,6 +4142,19 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	  type = CCI_U_TYPE_TIME;
 	}
     }
+  else if (type == CCI_U_TYPE_DATETIMETZ)
+    {
+      if (desired_type == DB_TYPE_TIMESTAMPTZ
+	  || desired_type == DB_TYPE_TIMESTAMPLTZ)
+	{
+	  type = CCI_U_TYPE_TIMESTAMPTZ;
+	}
+      else if (desired_type == DB_TYPE_TIMETZ
+	       || desired_type == DB_TYPE_TIMELTZ)
+	{
+	  type = CCI_U_TYPE_TIMETZ;
+	}
+    }
 
   net_arg_get_size (&data_size, net_value);
   if (data_size <= 0)
@@ -4389,6 +4419,43 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	err_code = db_make_time (&db_val, hh, mm, ss);
       }
       break;
+    case CCI_U_TYPE_TIMETZ:
+      {
+	short hh, mm, ss;
+	DB_TIME time;
+	DB_TIMETZ time_tz;
+	TZ_REGION ses_tz_region;
+	char *tz_str_p;
+	int tz_size;
+	char tz_str[CCI_TZ_SIZE + 1];
+
+	net_arg_get_timetz (&hh, &mm, &ss, &tz_str_p, &tz_size, net_value);
+	if (tz_size > CCI_TZ_SIZE)
+	  {
+	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION,
+				   CAS_ERROR_INDICATOR);
+	  }
+
+	strncpy (tz_str, tz_str_p, tz_size);
+	tz_str[tz_size] = '\0';
+
+	err_code = db_time_encode (&time, hh, mm, ss);
+	if (err_code != NO_ERROR)
+	  {
+	    break;
+	  }
+
+	tz_get_session_tz_region (&ses_tz_region);
+
+	err_code = tz_create_timetz (&time, tz_str, &ses_tz_region, &time_tz,
+				     NULL);
+	if (err_code != NO_ERROR)
+	  {
+	    break;
+	  }
+	err_code = db_make_timetz (&db_val, &time_tz);
+      }
+      break;
     case CCI_U_TYPE_TIMESTAMP:
       {
 	short yr, mon, day, hh, mm, ss;
@@ -4407,12 +4474,55 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	  {
 	    break;
 	  }
-	err_code = db_timestamp_encode (&ts, &date, &time);
+	err_code = db_timestamp_encode_ses (&date, &time, &ts, NULL);
 	if (err_code != NO_ERROR)
 	  {
 	    break;
 	  }
 	err_code = db_make_timestamp (&db_val, ts);
+      }
+      break;
+    case CCI_U_TYPE_TIMESTAMPTZ:
+      {
+	short yr, mon, day, hh, mm, ss;
+	DB_DATE date;
+	DB_TIME time;
+	DB_TIMESTAMPTZ ts_tz;
+	TZ_REGION ses_tz_region;
+	char *tz_str_p;
+	int tz_size;
+	char tz_str[CCI_TZ_SIZE + 1];
+
+	net_arg_get_timestamptz (&yr, &mon, &day, &hh, &mm, &ss, &tz_str_p,
+				 &tz_size, net_value);
+	if (tz_size > CCI_TZ_SIZE)
+	  {
+	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION,
+				   CAS_ERROR_INDICATOR);
+	  }
+
+	strncpy (tz_str, tz_str_p, tz_size);
+	tz_str[tz_size] = '\0';
+
+	err_code = db_date_encode (&date, mon, day, yr);
+	if (err_code != NO_ERROR)
+	  {
+	    break;
+	  }
+	err_code = db_time_encode (&time, hh, mm, ss);
+	if (err_code != NO_ERROR)
+	  {
+	    break;
+	  }
+	tz_get_session_tz_region (&ses_tz_region);
+
+	err_code = tz_create_timestamptz (&date, &time, tz_str,
+					  &ses_tz_region, &ts_tz, NULL);
+	if (err_code != NO_ERROR)
+	  {
+	    break;
+	  }
+	err_code = db_make_timestamptz (&db_val, &ts_tz);
       }
       break;
     case CCI_U_TYPE_DATETIME:
@@ -4427,6 +4537,43 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val,
 	    break;
 	  }
 	err_code = db_make_datetime (&db_val, &dt);
+      }
+      break;
+    case CCI_U_TYPE_DATETIMETZ:
+      {
+	short yr, mon, day, hh, mm, ss, ms;
+	DB_DATETIME dt;
+	DB_DATETIMETZ dt_tz;
+	TZ_REGION ses_tz_region;
+	char *tz_str_p;
+	int tz_size;
+	char tz_str[CCI_TZ_SIZE + 1];
+
+	net_arg_get_datetimetz (&yr, &mon, &day, &hh, &mm, &ss, &ms,
+				&tz_str_p, &tz_size, net_value);
+	if (tz_size > CCI_TZ_SIZE)
+	  {
+	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION,
+				   CAS_ERROR_INDICATOR);
+	  }
+
+	strncpy (tz_str, tz_str_p, tz_size);
+	tz_str[tz_size] = '\0';
+
+	err_code = db_datetime_encode (&dt, mon, day, yr, hh, mm, ss, ms);
+	if (err_code != NO_ERROR)
+	  {
+	    break;
+	  }
+	tz_get_session_tz_region (&ses_tz_region);
+
+	err_code = tz_create_datetimetz (&dt, tz_str, &ses_tz_region, &dt_tz,
+					 NULL);
+	if (err_code != NO_ERROR)
+	  {
+	    break;
+	  }
+	err_code = db_make_datetimetz (&db_val, &dt_tz);
       }
       break;
     case CCI_U_TYPE_SET:
@@ -4881,12 +5028,60 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
       break;
     case DB_TYPE_TIME:
       {
-	DB_DATE *time;
+	DB_TIME *time;
 	int hour, minute, second;
 	time = db_get_time (val);
 	db_time_decode (time, &hour, &minute, &second);
 	add_res_data_time (net_buf, (short) hour, (short) minute,
 			   (short) second, col_type, &data_size);
+      }
+      break;
+    case DB_TYPE_TIMELTZ:
+    case DB_TYPE_TIMETZ:
+      {
+	DB_TIME time_local, time_utc;
+	TZ_ID tz_id;
+	DB_TIMETZ *time_tz;
+	int err;
+	int hour, minute, second;
+	char tz_str[CCI_TZ_SIZE + 1];
+
+	if (db_value_type (val) == DB_TYPE_TIMELTZ)
+	  {
+	    time_utc = *db_get_time (val);
+	    err = tz_create_session_tzid_for_time (&time_utc, true, &tz_id);
+	    if (err != NO_ERROR)
+	      {
+		net_buf_cp_int (net_buf, -1, NULL);
+		data_size = NET_SIZE_INT;
+		break;
+	      }
+	  }
+	else
+	  {
+	    time_tz = db_get_timetz (val);
+	    time_utc = time_tz->time;
+	    tz_id = time_tz->tz_id;
+	  }
+
+	err = tz_utc_timetz_to_local (&time_utc, &tz_id, &time_local);
+	if (err != NO_ERROR)
+	  {
+	    net_buf_cp_int (net_buf, -1, NULL);
+	    data_size = NET_SIZE_INT;
+	    break;
+	  }
+
+	if (tz_id_to_str (&tz_id, tz_str, CCI_TZ_SIZE) < 0)
+	  {
+	    net_buf_cp_int (net_buf, -1, NULL);
+	    data_size = NET_SIZE_INT;
+	    break;
+	  }
+
+	db_time_decode (&time_local, &hour, &minute, &second);
+	add_res_data_timetz (net_buf, (short) hour, (short) minute,
+			     (short) second, tz_str, col_type, &data_size);
       }
       break;
     case DB_TYPE_TIMESTAMP:
@@ -4896,12 +5091,64 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	DB_TIME time;
 	int yr, mon, day, hh, mm, ss;
 	ts = db_get_timestamp (val);
-	db_timestamp_decode (ts, &date, &time);
+	(void) db_timestamp_decode_ses (ts, &date, &time);
 	db_date_decode (&date, &mon, &day, &yr);
 	db_time_decode (&time, &hh, &mm, &ss);
 	add_res_data_timestamp (net_buf, (short) yr, (short) mon, (short) day,
 				(short) hh, (short) mm, (short) ss, col_type,
 				&data_size);
+      }
+      break;
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	DB_TIMESTAMP ts;
+	DB_TIMESTAMPTZ *ts_tz;
+	DB_DATE date;
+	DB_TIME time;
+	int err;
+	int yr, mon, day, hh, mm, ss;
+	TZ_ID tz_id;
+	char tz_str[CCI_TZ_SIZE + 1];
+
+	if (db_value_type (val) == DB_TYPE_TIMESTAMPLTZ)
+	  {
+	    ts = *db_get_timestamp (val);
+	    err = tz_create_session_tzid_for_timestamp (&ts, &tz_id);
+	    if (err != NO_ERROR)
+	      {
+		net_buf_cp_int (net_buf, -1, NULL);
+		data_size = NET_SIZE_INT;
+		break;
+	      }
+	  }
+	else
+	  {
+	    ts_tz = db_get_timestamptz (val);
+	    ts = ts_tz->timestamp;
+	    tz_id = ts_tz->tz_id;
+	  }
+
+	err = db_timestamp_decode_w_tz_id (&ts, &tz_id, &date, &time);
+	if (err != NO_ERROR)
+	  {
+	    net_buf_cp_int (net_buf, -1, NULL);
+	    data_size = NET_SIZE_INT;
+	    break;
+	  }
+
+	if (tz_id_to_str (&tz_id, tz_str, CCI_TZ_SIZE) < 0)
+	  {
+	    net_buf_cp_int (net_buf, -1, NULL);
+	    data_size = NET_SIZE_INT;
+	    break;
+	  }
+
+	db_date_decode (&date, &mon, &day, &yr);
+	db_time_decode (&time, &hh, &mm, &ss);
+	add_res_data_timestamptz (net_buf, (short) yr, (short) mon,
+				  (short) day, (short) hh, (short) mm,
+				  (short) ss, tz_str, col_type, &data_size);
       }
       break;
     case DB_TYPE_DATETIME:
@@ -4913,6 +5160,56 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag,
 	add_res_data_datetime (net_buf, (short) yr, (short) mon, (short) day,
 			       (short) hh, (short) mm, (short) ss, (short) ms,
 			       col_type, &data_size);
+      }
+      break;
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
+      {
+	DB_DATETIME dt_local, dt_utc;
+	TZ_ID tz_id;
+	DB_DATETIMETZ *dt_tz;
+	int err;
+	int yr, mon, day, hh, mm, ss, ms;
+	char tz_str[CCI_TZ_SIZE + 1];
+
+	if (db_value_type (val) == DB_TYPE_DATETIMELTZ)
+	  {
+	    dt_utc = *db_get_datetime (val);
+	    err = tz_create_session_tzid_for_datetime (&dt_utc, true, &tz_id);
+	    if (err != NO_ERROR)
+	      {
+		net_buf_cp_int (net_buf, -1, NULL);
+		data_size = NET_SIZE_INT;
+		break;
+	      }
+	  }
+	else
+	  {
+	    dt_tz = db_get_datetimetz (val);
+	    dt_utc = dt_tz->datetime;
+	    tz_id = dt_tz->tz_id;
+	  }
+
+	err = tz_utc_datetimetz_to_local (&dt_utc, &tz_id, &dt_local);
+	if (err != NO_ERROR)
+	  {
+	    net_buf_cp_int (net_buf, -1, NULL);
+	    data_size = NET_SIZE_INT;
+	    break;
+	  }
+
+	if (tz_id_to_str (&tz_id, tz_str, CCI_TZ_SIZE) < 0)
+	  {
+	    net_buf_cp_int (net_buf, -1, NULL);
+	    data_size = NET_SIZE_INT;
+	    break;
+	  }
+
+	db_datetime_decode (&dt_local, &mon, &day, &yr, &hh, &mm, &ss, &ms);
+	add_res_data_datetimetz (net_buf, (short) yr, (short) mon,
+				 (short) day, (short) hh, (short) mm,
+				 (short) ss, (short) ms, tz_str, col_type,
+				 &data_size);
       }
       break;
     case DB_TYPE_NUMERIC:
@@ -6621,6 +6918,44 @@ add_res_data_timestamp (T_NET_BUF * net_buf, short yr, short mon, short day,
 }
 
 static void
+add_res_data_timestamptz (T_NET_BUF * net_buf, short yr, short mon, short day,
+			  short hh, short mm, short ss, char *tz_str,
+			  char type, int *net_size)
+{
+  int tz_size;
+
+  tz_size = strlen (tz_str);
+
+  if (type)
+    {
+      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_TIMESTAMP + tz_size
+		      + 1, NULL);
+      net_buf_cp_byte (net_buf, type);
+    }
+  else
+    {
+      net_buf_cp_int (net_buf, NET_SIZE_TIMESTAMP + tz_size + 1, NULL);
+    }
+
+  net_buf_cp_short (net_buf, yr);
+  net_buf_cp_short (net_buf, mon);
+  net_buf_cp_short (net_buf, day);
+  net_buf_cp_short (net_buf, hh);
+  net_buf_cp_short (net_buf, mm);
+  net_buf_cp_short (net_buf, ss);
+
+  net_buf_cp_str (net_buf, tz_str, tz_size);
+  net_buf_cp_byte (net_buf, '\0');
+
+  if (net_size)
+    {
+      *net_size =
+	NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_TIMESTAMP
+	+ tz_size + 1;
+    }
+}
+
+static void
 add_res_data_datetime (T_NET_BUF * net_buf, short yr, short mon, short day,
 		       short hh, short mm, short ss, short ms, char type,
 		       int *net_size)
@@ -6651,6 +6986,45 @@ add_res_data_datetime (T_NET_BUF * net_buf, short yr, short mon, short day,
 }
 
 static void
+add_res_data_datetimetz (T_NET_BUF * net_buf, short yr, short mon, short day,
+			 short hh, short mm, short ss, short ms, char *tz_str,
+			 char type, int *net_size)
+{
+  int tz_size;
+
+  tz_size = strlen (tz_str);
+
+  if (type)
+    {
+      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_DATETIME + tz_size
+		      + 1, NULL);
+      net_buf_cp_byte (net_buf, type);
+    }
+  else
+    {
+      net_buf_cp_int (net_buf, NET_SIZE_DATETIME + tz_size + 1, NULL);
+    }
+
+  net_buf_cp_short (net_buf, yr);
+  net_buf_cp_short (net_buf, mon);
+  net_buf_cp_short (net_buf, day);
+  net_buf_cp_short (net_buf, hh);
+  net_buf_cp_short (net_buf, mm);
+  net_buf_cp_short (net_buf, ss);
+  net_buf_cp_short (net_buf, ms);
+
+  net_buf_cp_str (net_buf, tz_str, tz_size);
+  net_buf_cp_byte (net_buf, '\0');
+
+  if (net_size)
+    {
+      *net_size =
+	NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_DATETIME
+	+ tz_size + 1;
+    }
+}
+
+static void
 add_res_data_time (T_NET_BUF * net_buf, short hh, short mm, short ss,
 		   char type, int *net_size)
 {
@@ -6671,6 +7045,39 @@ add_res_data_time (T_NET_BUF * net_buf, short hh, short mm, short ss,
   if (net_size)
     {
       *net_size = NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_TIME;
+    }
+}
+
+static void
+add_res_data_timetz (T_NET_BUF * net_buf, short hh, short mm, short ss,
+		     char *tz_str, char type, int *net_size)
+{
+  int tz_size;
+
+  tz_size = strlen (tz_str);
+
+  if (type)
+    {
+      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_TIME + tz_size + 1,
+		      NULL);
+      net_buf_cp_byte (net_buf, type);
+    }
+  else
+    {
+      net_buf_cp_int (net_buf, NET_SIZE_TIME + tz_size + 1, NULL);
+    }
+
+  net_buf_cp_short (net_buf, hh);
+  net_buf_cp_short (net_buf, mm);
+  net_buf_cp_short (net_buf, ss);
+
+  net_buf_cp_str (net_buf, tz_str, tz_size);
+  net_buf_cp_byte (net_buf, '\0');
+
+  if (net_size)
+    {
+      *net_size = NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_TIME
+	+ tz_size + 1;
     }
 }
 

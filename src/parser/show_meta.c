@@ -84,6 +84,8 @@ static SHOWSTMT_METADATA *metadata_of_index_header (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_index_capacity (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_global_critical_sections (void);
 static SHOWSTMT_METADATA *metadata_of_job_queues (void);
+static SHOWSTMT_METADATA *metadata_of_timezones (void);
+static SHOWSTMT_METADATA *metadata_of_full_timezones (void);
 
 static SHOWSTMT_METADATA *
 metadata_of_volume_header (void)
@@ -543,8 +545,53 @@ metadata_of_job_queues (void)
   return &md;
 }
 
+/* for show timezones */
+static SHOWSTMT_METADATA *
+metadata_of_timezones (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"timezone_region", "varchar(32)"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_TIMEZONES, "show timezones",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0,
+    NULL, NULL
+  };
+
+  return &md;
+}
+
+/* for show full timezones */
+static SHOWSTMT_METADATA *
+metadata_of_full_timezones (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"timezone_region", "varchar(32)"},
+    {"region_offset", "varchar(32)"},
+    {"dst_offset", "varchar(32)"},
+    {"dst_abbreviation", "varchar(32)"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_FULL_TIMEZONES, "show full timezones",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0,
+    NULL, NULL
+  };
+
+  return &md;
+}
+
 /*
- * showstmt_get_metadata() -  return show statment column infos
+ * showstmt_get_metadata() -  return show statement column infos
  *   return:-
  *   show_type(in): SHOW statement type
  */
@@ -790,6 +837,8 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_GLOBAL_CRITICAL_SECTIONS] =
     metadata_of_global_critical_sections ();
   show_Metas[SHOWSTMT_JOB_QUEUES] = metadata_of_job_queues ();
+  show_Metas[SHOWSTMT_TIMEZONES] = metadata_of_timezones ();
+  show_Metas[SHOWSTMT_FULL_TIMEZONES] = metadata_of_full_timezones ();
 
   for (i = 0; i < DIM (show_Metas); i++)
     {

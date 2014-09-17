@@ -1387,6 +1387,14 @@ net_server_start (const char *server_name)
       status = -1;
       goto end;
     }
+
+  /* initialize time zone data, optional module */
+  if (tz_load (true) != NO_ERROR)
+    {
+      status = -1;
+      goto end;
+    }
+
   sysprm_load_and_init (NULL, NULL);
   sysprm_set_er_log_file (server_name);
   mvcc_Enabled = prm_get_bool_value (PRM_ID_MVCC_ENABLED);

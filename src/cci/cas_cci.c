@@ -5346,10 +5346,16 @@ dbg_u_type_str (T_CCI_U_TYPE utype)
       return "CCI_U_TYPE_DATE";
     case CCI_U_TYPE_TIME:
       return "CCI_U_TYPE_TIME";
+    case CCI_U_TYPE_TIMETZ:
+      return "CCI_U_TYPE_TIMETZ";
     case CCI_U_TYPE_TIMESTAMP:
       return "CCI_U_TYPE_TIMESTAMP";
+    case CCI_U_TYPE_TIMESTAMPTZ:
+      return "CCI_U_TYPE_TIMESTAMPTZ";
     case CCI_U_TYPE_DATETIME:
       return "CCI_U_TYPE_DATETIME";
+    case CCI_U_TYPE_DATETIMETZ:
+      return "CCI_U_TYPE_DATETIMETZ";
     case CCI_U_TYPE_SET:
       return "CCI_U_TYPE_SET";
     case CCI_U_TYPE_MULTISET:

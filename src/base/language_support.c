@@ -2161,6 +2161,15 @@ lang_date_format_parse (const INTL_LANG lang_id, const INTL_CODESET codeset,
 	case DB_TYPE_TIMESTAMP:
 	  format = lld->timestamp_format;
 	  break;
+	case DB_TYPE_TIMETZ:
+	  format = lld->timetz_format;
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  format = lld->datetimetz_format;
+	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	  format = lld->timestamptz_format;
+	  break;
 	default:
 	  break;
 	}
@@ -5649,7 +5658,10 @@ static LANG_LOCALE_DATA lc_English_iso88591 = {
   &coll_iso88591_en_cs,
   NULL,				/* console text conversion */
   false,
-  NULL,				/* time, date, date-time, timestamp format */
+  NULL,				/* time, date, date-time, timestamp */
+  NULL,				/* timetz, datetimetz, timestamptz format */
+  NULL,
+  NULL,
   NULL,
   NULL,
   NULL,
@@ -5686,7 +5698,10 @@ static LANG_LOCALE_DATA lc_English_utf8 = {
   &coll_utf8_en_cs,
   &con_iso_8859_1_conv,		/* text conversion */
   false,
-  NULL,				/* time, date, date-time, timestamp format */
+  NULL,				/* time, date, date-time, timestamp */
+  NULL,				/* timetz, datetimetz, timestamptz format */
+  NULL,
+  NULL,
   NULL,
   NULL,
   NULL,
@@ -5724,6 +5739,9 @@ static char lang_time_format_TR[] = "HH24:MI:SS";
 static char lang_date_format_TR[] = "DD.MM.YYYY";
 static char lang_datetime_format_TR[] = "HH24:MI:SS.FF DD.MM.YYYY";
 static char lang_timestamp_format_TR[] = "HH24:MI:SS DD.MM.YYYY";
+static char lang_timetz_format_TR[] = "HH24:MI:SS TZR";
+static char lang_datetimetz_format_TR[] = "HH24:MI:SS.FF DD.MM.YYYY TZR";
+static char lang_timestamptz_format_TR[] = "HH24:MI:SS DD.MM.YYYY TZR";
 
 /*
  * lang_init_coll_utf8_tr_cs () - init collation data for Turkish
@@ -5966,6 +5984,9 @@ static LANG_LOCALE_DATA lc_Turkish_iso88591 = {
   lang_date_format_TR,
   lang_datetime_format_TR,
   lang_timestamp_format_TR,
+  lang_timetz_format_TR,
+  lang_datetimetz_format_TR,
+  lang_timestamptz_format_TR,
   {NULL},
   {NULL},
   {NULL},
@@ -6001,6 +6022,9 @@ static LANG_LOCALE_DATA lc_Turkish_utf8 = {
   lang_date_format_TR,
   lang_datetime_format_TR,
   lang_timestamp_format_TR,
+  lang_timetz_format_TR,
+  lang_datetimetz_format_TR,
+  lang_timestamptz_format_TR,
   {NULL},
   {NULL},
   {NULL},
@@ -6491,7 +6515,10 @@ static LANG_LOCALE_DATA lc_Korean_iso88591 = {
   &coll_iso88591_en_cs,		/* collation : same as English ISO */
   NULL,				/* console text conversion */
   false,
-  NULL,				/* time, date, date-time, timestamp format */
+  NULL,				/* time, date, date-time, timestamp */
+  NULL,				/* timetz, datetimetz, timestamptz format */
+  NULL,
+  NULL,
   NULL,
   NULL,
   NULL,
@@ -6529,7 +6556,10 @@ static LANG_LOCALE_DATA lc_Korean_utf8 = {
   &coll_utf8_ko_cs,		/* collation */
   NULL,				/* console text conversion */
   false,
-  NULL,				/* time, date, date-time, timestamp format */
+  NULL,				/* time, date, date-time, timestamp */
+  NULL,				/* timetz, datetimetz, timestamptz format */
+  NULL,
+  NULL,
   NULL,
   NULL,
   NULL,
@@ -6566,7 +6596,10 @@ static LANG_LOCALE_DATA lc_Korean_euckr = {
   &coll_euckr_bin,		/* collation */
   NULL,				/* console text conversion */
   false,
-  NULL,				/* time, date, date-time, timestamp format */
+  NULL,				/* time, date, date-time, timestamp */
+  NULL,				/* timetz, datetimetz, timestamptz */
+  NULL,
+  NULL,
   NULL,
   NULL,
   NULL,
@@ -6683,6 +6716,12 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
   SHLIB_GET_ADDR (lld->datetime_format, "datetime_format", char *,
 		  lib_handle, lld->lang_name);
   SHLIB_GET_ADDR (lld->timestamp_format, "timestamp_format", char *,
+		  lib_handle, lld->lang_name);
+  SHLIB_GET_ADDR (lld->timetz_format, "timetz_format", char *,
+		  lib_handle, lld->lang_name);
+  SHLIB_GET_ADDR (lld->datetimetz_format, "datetimetz_format", char *,
+		  lib_handle, lld->lang_name);
+  SHLIB_GET_ADDR (lld->timestamptz_format, "timestamptz_format", char *,
 		  lib_handle, lld->lang_name);
 
   SHLIB_GET_ADDR (temp_array_sym, "month_names_abbreviated", char **,
