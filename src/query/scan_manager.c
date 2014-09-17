@@ -5261,6 +5261,9 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   SCAN_CODE sp_scan;
   DB_LOGICAL ev_res;
   OID current_oid, *p_current_oid = NULL;
+  MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
+  MVCC_REEV_DATA mvcc_reev_data;
+  FILTER_INFO *p_range_filter = NULL, *p_key_filter = NULL;
 
   hsidp = &scan_id->s.hsid;
   if (mvcc_Enabled == true && scan_id->mvcc_select_lock_needed)
@@ -5289,16 +5292,16 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (mvcc_Enabled == true && scan_id->mvcc_select_lock_needed
 	      && sp_scan == S_SUCCESS)
 	    {
-	      MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
-	      MVCC_REEV_DATA mvcc_reev_data;
-
+	      /* data filter already initialized, don't have key or range
+	       * init scan reevaluation structure
+	       */
+	      INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, p_range_filter,
+				   p_key_filter, &data_filter,
+				   &scan_id->qualification);
+	      /* set reevaluation data */
 	      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data,
 					 V_TRUE, NULL);
 
-	      mvcc_sel_reev_data.data_filter = &data_filter;
-	      mvcc_sel_reev_data.key_filter = NULL;
-	      mvcc_sel_reev_data.range_filter = NULL;
-	      mvcc_sel_reev_data.qualification = &scan_id->qualification;
 	      COPY_OID (&current_oid, &hsidp->curr_oid);
 	      sp_scan =
 		heap_mvcc_get_version_for_delete (thread_p, &current_oid,
@@ -5334,18 +5337,16 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  if (mvcc_Enabled == true && scan_id->mvcc_select_lock_needed
 		      && sp_scan == S_SUCCESS)
 		    {
-		      MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
-		      MVCC_REEV_DATA mvcc_reev_data;
-
+		      /* data filter already initialized, don't have key or range
+		       * init scan reevaluation structure
+		       */
+		      INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data,
+					   p_range_filter, p_key_filter,
+					   &data_filter,
+					   &scan_id->qualification);
 		      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data,
-						 &mvcc_sel_reev_data,
-						 V_TRUE, NULL);
-
-		      mvcc_sel_reev_data.data_filter = &data_filter;
-		      mvcc_sel_reev_data.key_filter = NULL;
-		      mvcc_sel_reev_data.range_filter = NULL;
-		      mvcc_sel_reev_data.qualification =
-			&scan_id->qualification;
+						 &mvcc_sel_reev_data, V_TRUE,
+						 NULL);
 		      COPY_OID (&current_oid, &hsidp->curr_oid);
 		      sp_scan =
 			heap_mvcc_get_version_for_delete (thread_p,
@@ -5390,19 +5391,17 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  if (mvcc_Enabled == true && scan_id->mvcc_select_lock_needed
 		      && sp_scan == S_SUCCESS)
 		    {
-		      MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
-		      MVCC_REEV_DATA mvcc_reev_data;
+		      /* data filter already initialized, don't have key or range
+		       * init scan reevaluation structure
+		       */
 
+		      INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data,
+					   p_range_filter, p_key_filter,
+					   &data_filter,
+					   &scan_id->qualification);
 		      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data,
-						 &mvcc_sel_reev_data,
-						 V_TRUE, NULL);
-
-
-		      mvcc_sel_reev_data.data_filter = &data_filter;
-		      mvcc_sel_reev_data.key_filter = NULL;
-		      mvcc_sel_reev_data.range_filter = NULL;
-		      mvcc_sel_reev_data.qualification =
-			&scan_id->qualification;
+						 &mvcc_sel_reev_data, V_TRUE,
+						 NULL);
 		      COPY_OID (&current_oid, &hsidp->curr_oid);
 		      sp_scan =
 			heap_mvcc_get_version_for_delete (thread_p,
@@ -6154,48 +6153,16 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
       MVCC_REEV_DATA mvcc_reev_data;
 
+      /* initialize range and key filter, data filter already initialized */
+      INIT_FILTER_INFO_FOR_SCAN_REEV (scan_id, &range_filter, &key_filter,
+				      NULL);
+      /* init scan reevaluation structure */
+      INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, &range_filter,
+			   &key_filter, data_filter, &scan_id->qualification);
+      /* set reevaluation data */
       SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data,
 				 V_TRUE, NULL);
 
-      if (isidp->range_pred.regu_list != NULL)
-	{
-	  scan_init_filter_info (&range_filter, &isidp->range_pred,
-				 &isidp->range_attrs,
-				 scan_id->val_list, scan_id->vd,
-				 &isidp->cls_oid, 0, NULL,
-				 &isidp->num_vstr, isidp->vstr_ids);
-	  mvcc_sel_reev_data.range_filter = &range_filter;
-	}
-      else
-	{
-	  mvcc_sel_reev_data.range_filter = NULL;
-	}
-
-      if (isidp->key_pred.regu_list != NULL)
-	{
-	  scan_init_filter_info (&key_filter, &isidp->key_pred,
-				 &isidp->key_attrs, scan_id->val_list,
-				 scan_id->vd, &isidp->cls_oid,
-				 isidp->bt_num_attrs,
-				 isidp->bt_attr_ids, &isidp->num_vstr,
-				 isidp->vstr_ids);
-	  mvcc_sel_reev_data.key_filter = &key_filter;
-	}
-      else
-	{
-	  mvcc_sel_reev_data.key_filter = NULL;
-	}
-
-      if (data_filter->scan_pred->regu_list != NULL)
-	{
-	  mvcc_sel_reev_data.data_filter = data_filter;
-	}
-      else
-	{
-	  mvcc_sel_reev_data.data_filter = NULL;
-	}
-
-      mvcc_sel_reev_data.qualification = &scan_id->qualification;
       sp_scan = heap_mvcc_get_version_for_delete (thread_p,
 						  isidp->curr_oidp,
 						  NULL,

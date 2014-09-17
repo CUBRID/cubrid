@@ -141,6 +141,11 @@
     (xasl->upd_del_class_cnt > 1					      \
      || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr != NULL))
 
+#define QEXEC_SEL_UPD_USE_REEVALUATION(xasl) \
+  ((xasl) && ((xasl)->spec_list) && ((xasl)->spec_list->next == NULL) \
+   && ((xasl)->spec_list->pruning_type == DB_NOT_PARTITIONED_CLASS)  \
+   && ((xasl)->aptr_list == NULL) && ((xasl)->scan_ptr == NULL))
+
 #if 0
 /* Note: the following macro is used just for replacement of a repetitive
  * text in order to improve the readability.
@@ -13763,11 +13768,34 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   MVCC_INFO *curr_mvcc_info = NULL;
   LOG_TDES *tdes = NULL;
   MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
+  SCAN_ID *scan_id;
+  FILTER_INFO range_filter, key_filter, data_filter;
+  MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
+  MVCC_REEV_DATA mvcc_reev_data, *p_mvcc_reev_data = NULL;
 
   if (mvcc_Enabled == true)
     {
       OID_SET_NULL (&last_cached_class_oid);
     }
+
+  if (QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
+    {
+      /* need reevaluation in this function */
+      scan_id = &xasl->spec_list->s_id;
+
+      /* initialize range and key filter, data filter already initialized */
+      INIT_FILTER_INFO_FOR_SCAN_REEV (scan_id, &range_filter, &key_filter,
+				      &data_filter);
+      /* init scan reevaluation structure */
+      INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, &range_filter,
+			   &key_filter, &data_filter,
+			   &scan_id->qualification);
+      /* set reevaluation data */
+      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data,
+				 V_TRUE, NULL);
+      p_mvcc_reev_data = &mvcc_reev_data;
+    }
+
   list = xasl->selected_upd_list;
 
   /* in this function,
@@ -13780,7 +13808,15 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   savepoint_used = 1;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_start_instant_lock_mode (tran_index);
+  if (p_mvcc_reev_data)
+    {
+      /* need lock & reevaluation */
+      lock_start_instant_lock_mode (tran_index);
+    }
+  else
+    {
+      assert (lock_is_instant_lock_mode (tran_index));
+    }
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p)
       && log_does_allow_replication () == true)
@@ -13916,8 +13952,9 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 	    }
 
-	  if (mvcc_Enabled == true)
+	  if (p_mvcc_reev_data != NULL)
 	    {
+	      /* need locking and reevaluation */
 	      if (!OID_EQ (&last_cached_class_oid, class_oid)
 		  && scan_cache_inited == true)
 		{
@@ -13938,11 +13975,13 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      scan_code =
 		heap_mvcc_get_version_for_delete (thread_p, oid, class_oid,
 						  &copy_recdes,
-						  &scan_cache, COPY, NULL);
+						  &scan_cache, COPY,
+						  p_mvcc_reev_data);
 	      if (scan_code != S_SUCCESS)
 		{
 		  int er_id = er_errid ();
-		  if (er_id == ER_LK_UNILATERALLY_ABORTED)
+		  if (er_id == ER_LK_UNILATERALLY_ABORTED
+		      || er_id == ER_MVCC_SERIALIZABLE_CONFLICT)
 		    {
 		      /* error, deadlock or something */
 		      goto exit_on_error;
@@ -13979,43 +14018,25 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      continue;
 		    }
 		}
-	    }
-	  else
-	    {
-	      lock_ret = lock_object (thread_p, oid, class_oid, X_LOCK,
-				      LK_UNCOND_LOCK);
-	      switch (lock_ret)
+	      else if (p_mvcc_reev_data != NULL
+		       && p_mvcc_reev_data->filter_result != V_TRUE)
 		{
-		case LK_GRANTED:
-		  /* normal case */
-		  break;
-
-		case LK_NOTGRANTED_DUE_ABORTED:
-		  /* error, deadlock or something */
-		  goto exit_on_error;
-
-		case LK_NOTGRANTED_DUE_TIMEOUT:
-		  /* ignore lock timeout for click counter,
-		     and skip this increment operation */
-		  er_log_debug (ARG_FILE_LINE,
-				"qexec_execute_selupd_list: lock(X_LOCK) timed out "
-				"for OID { %d %d %d } class OID { %d %d %d }\n",
-				oid->pageid, oid->slotid, oid->volid,
-				class_oid->pageid, class_oid->slotid,
-				class_oid->volid);
-		  er_clear ();
-		  continue;
-
-		default:
 		  /* simply, skip this increment operation */
 		  er_log_debug (ARG_FILE_LINE,
 				"qexec_execute_selupd_list: skip for OID "
-				"{ %d %d %d } class OID { %d %d %d } lock_ret %d\n",
+				"{ %d %d %d } class OID { %d %d %d } error_id %d\n",
 				oid->pageid, oid->slotid, oid->volid,
 				class_oid->pageid, class_oid->slotid,
-				class_oid->volid, lock_ret);
+				class_oid->volid, NO_ERROR);
+
 		  continue;
 		}
+	    }
+	  else
+	    {
+	      /* already locked during scan phase */
+	      assert (lock_get_object_lock (oid, class_oid, tran_index)
+		      == X_LOCK);
 	    }
 
 	  if (qexec_execute_increment (thread_p, oid, class_oid, class_hfid,
@@ -14959,10 +14980,18 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
    * Pre_processing
    */
 
-  if (mvcc_Enabled && XASL_IS_FLAGED (xasl, XASL_SELECT_MVCC_LOCK_NEEDED))
+  if (XASL_IS_FLAGED (xasl, XASL_SELECT_MVCC_LOCK_NEEDED))
     {
       mvcc_select_lock_needed = true;
     }
+  else if (xasl->selected_upd_list != NULL
+	   && !QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
+    {
+      /* reevaluate at select since can't reevaluate in execute_selupd_list */
+      lock_start_instant_lock_mode (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      mvcc_select_lock_needed = true;
+    }
+
   if (xasl->limit_row_count)
     {
       DB_LOGICAL l;

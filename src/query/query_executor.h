@@ -194,6 +194,106 @@
 
 #define QEXEC_NULL_COMMAND_ID   -1	/* Invalid command identifier */
 
+#define INIT_FILTER_INFO_FOR_SCAN_REEV(p_scan_id, p_range_filter, \
+					p_key_filter, p_data_filter)  \
+  do \
+    { \
+      assert ((p_scan_id) != NULL); \
+      if ((p_scan_id)->type == S_INDX_SCAN) \
+	{ \
+	  INDX_SCAN_ID * p_idx_scan_id = &(p_scan_id)->s.isid; \
+	  if (p_range_filter)  \
+	    { \
+	      scan_init_filter_info ((p_range_filter), \
+				     &(p_idx_scan_id)->range_pred,  \
+				     &(p_idx_scan_id)->range_attrs, \
+				     (p_scan_id)->val_list, (p_scan_id)->vd, \
+				     &(p_idx_scan_id)->cls_oid, 0, NULL, \
+				     &(p_idx_scan_id)->num_vstr, \
+				     (p_idx_scan_id)->vstr_ids); \
+	    } \
+	  if (p_key_filter) \
+	    { \
+	      scan_init_filter_info ((p_key_filter), &(p_idx_scan_id)->key_pred, \
+				     &(p_idx_scan_id)->key_attrs, \
+				     (p_scan_id)->val_list, (p_scan_id)->vd, \
+				     &(p_idx_scan_id)->cls_oid, \
+				     (p_idx_scan_id)->bt_num_attrs, \
+				     (p_idx_scan_id)->bt_attr_ids, \
+				     &(p_idx_scan_id)->num_vstr, \
+				     (p_idx_scan_id)->vstr_ids); \
+	    } \
+	  if (p_data_filter) \
+	    { \
+	      scan_init_filter_info ((p_data_filter), \
+				     &(p_idx_scan_id)->scan_pred,  \
+				     &(p_idx_scan_id)->pred_attrs, \
+				     (p_scan_id)->val_list, \
+				     (p_scan_id)->vd, &(p_idx_scan_id)->cls_oid, \
+				      0, NULL, NULL, NULL);	\
+	    } \
+	} \
+      else if ((p_scan_id)->type == S_HEAP_SCAN) \
+	{ \
+	  HEAP_SCAN_ID * p_heap_scan_id = &(p_scan_id)->s.hsid; \
+	  if (p_data_filter)  \
+	    { \
+	      scan_init_filter_info ((p_data_filter), \
+				     &(p_heap_scan_id)->scan_pred,  \
+				     &(p_heap_scan_id)->pred_attrs, \
+				     (p_scan_id)->val_list, \
+				     (p_scan_id)->vd, \
+				     &(p_heap_scan_id)->cls_oid, \
+				     0, NULL, NULL, NULL); \
+	    } \
+	  if (p_range_filter)  \
+	    { \
+	      memset (p_range_filter, 0, sizeof (FILTER_INFO)); \
+	    } \
+	  if (p_key_filter) \
+	   { \
+	      memset (p_key_filter, 0, sizeof (FILTER_INFO)); \
+	   } \
+	} \
+    } \
+    while (0)
+
+#define INIT_SCAN_REEV_DATA(p_mvcc_sel_reev_data, p_range_filter, \
+			    p_key_filter, p_data_filter, p_qualification) \
+  do \
+    { \
+      assert ((p_mvcc_sel_reev_data) != NULL); \
+      if ((p_range_filter) && ((p_range_filter)->scan_pred != NULL) \
+          && ((p_range_filter)->scan_pred->regu_list != NULL)) \
+	{ \
+	  (p_mvcc_sel_reev_data)->range_filter = (p_range_filter); \
+	} \
+      else \
+	{ \
+	  (p_mvcc_sel_reev_data)->range_filter = NULL; \
+	} \
+      if ((p_key_filter) && ((p_key_filter)->scan_pred != NULL) \
+          && ((p_key_filter)->scan_pred->regu_list != NULL)) \
+	{ \
+	  (p_mvcc_sel_reev_data)->key_filter = (p_key_filter); \
+	} \
+      else  \
+	{ \
+	  (p_mvcc_sel_reev_data)->key_filter = NULL; \
+	} \
+      if ((p_data_filter) && ((p_data_filter)->scan_pred != NULL) \
+	  && ((p_data_filter)->scan_pred->regu_list != NULL)) \
+	{ \
+	  (p_mvcc_sel_reev_data)->data_filter = (p_data_filter); \
+	} \
+      else  \
+	{ \
+	  (p_mvcc_sel_reev_data)->data_filter = NULL; \
+	} \
+      (p_mvcc_sel_reev_data)->qualification = (p_qualification); \
+    } \
+    while (0)
+
 #define SET_MVCC_SELECT_REEV_DATA(p_mvcc_reev_data, p_mvcc_sel_reev_data, \
 				  reev_filter_result, p_primary_key) \
   do \
@@ -511,19 +611,6 @@ struct update_mvcc_reev_assignment
   REGU_VARIABLE *regu_right;	/* regu variable for right side of an
 				 * assignment */
   UPDATE_MVCC_REEV_ASSIGNMENT *next;	/* link to the next assignment */
-};
-
-/* Structure used in condition reevaluation at SELECT */
-typedef struct mvcc_scan_reev_data MVCC_SCAN_REEV_DATA;
-struct mvcc_scan_reev_data
-{
-  FILTER_INFO *range_filter;	/* filter for range predicate. Used only at
-				 * index scan */
-  FILTER_INFO *key_filter;	/* key filter */
-  FILTER_INFO *data_filter;	/* data filter */
-
-  QPROC_QUALIFICATION *qualification;	/* address of a variable that contains
-					 * qualification value */
 };
 
 /* class info for UPDATE/DELETE MVCC condition reevaluation */

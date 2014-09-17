@@ -11426,7 +11426,6 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
       next_ptr = entry_ptr->tran_next;
       count = entry_ptr->instant_lock_count;
       assert_release (count >= 0);
-      entry_ptr->instant_lock_count = 0;
       if (need_unlock)
 	{
 	  assert_release (count >= 0);
@@ -11437,6 +11436,7 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
 	      count--;
 	    }
 	}
+      entry_ptr->instant_lock_count = 0;
       entry_ptr = next_ptr;
     }
 
@@ -11447,7 +11447,6 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
       next_ptr = entry_ptr->tran_next;
       count = entry_ptr->instant_lock_count;
       assert_release (count >= 0);
-      entry_ptr->instant_lock_count = 0;
       if (need_unlock)
 	{
 	  assert_release (count >= 0);
@@ -11458,6 +11457,7 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
 	      count--;
 	    }
 	}
+      entry_ptr->instant_lock_count = 0;
       entry_ptr = next_ptr;
     }
 
@@ -11466,7 +11466,6 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
   if (entry_ptr != NULL)
     {
       count = entry_ptr->instant_lock_count;
-      entry_ptr->instant_lock_count = 0;
       assert_release (count >= 0);
       if (need_unlock)
 	{
@@ -11478,6 +11477,7 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index,
 	      count--;
 	    }
 	}
+      entry_ptr->instant_lock_count = 0;
     }
 
   /* change locking phase as normal */

@@ -374,6 +374,19 @@ struct scan_id_struct
   SCAN_STATS stats;
 };				/* Scan Identifier */
 
+/* Structure used in condition reevaluation at SELECT */
+typedef struct mvcc_scan_reev_data MVCC_SCAN_REEV_DATA;
+struct mvcc_scan_reev_data
+{
+  FILTER_INFO *range_filter;	/* filter for range predicate. Used only at
+				 * index scan */
+  FILTER_INFO *key_filter;	/* key filter */
+  FILTER_INFO *data_filter;	/* data filter */
+
+  QPROC_QUALIFICATION *qualification;	/* address of a variable that contains
+					 * qualification value */
+};
+
 #define SCAN_IS_INDEX_COVERED(iscan_id_p)   ((iscan_id_p)->indx_cov.list_id != NULL)
 
 extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
