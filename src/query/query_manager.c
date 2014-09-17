@@ -61,6 +61,8 @@
 #define pthread_mutex_lock(a)	0
 #define pthread_mutex_unlock(a)
 static int rv;
+extern int method_Num_method_jsp_calls;
+#define IS_IN_METHOD_OR_JSP_CALL() (method_Num_method_jsp_calls > 0)
 
 #define qmgr_initialize_mutex(a)
 #define qmgr_destroy_mutex(a)
@@ -1891,7 +1893,13 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p,
 #endif
 
   assert_release (IS_SYNC_EXEC_MODE (*flag_p));
+
+#if defined (SERVER_MODE)
   assert (thread_get_recursion_depth (thread_p) == 0);
+#elif defined (SA_MODE)
+  assert (thread_get_recursion_depth (thread_p) == 0
+	  || IS_IN_METHOD_OR_JSP_CALL ());
+#endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 

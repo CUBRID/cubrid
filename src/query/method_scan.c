@@ -47,6 +47,8 @@
 extern unsigned int db_on_server;
 #endif
 
+int method_Num_method_jsp_calls = 0;
+
 #define ENTER_SERVER_IN_METHOD_CALL(save_pri_heap_id_) \
   do { \
     db_on_server = 1; \
@@ -521,10 +523,12 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 		  turn_on_auth = 0;
 		  AU_ENABLE (turn_on_auth);
 		  db_disable_modification ();
+		  ++method_Num_method_jsp_calls;
 		  error =
 		    obj_send_array (DB_GET_OBJECT (scan_buffer_p->valptrs[0]),
 				    meth_sig->method_name, &val,
 				    &scan_buffer_p->valptrs[1]);
+		  --method_Num_method_jsp_calls;
 		  db_enable_modification ();
 		  AU_DISABLE (turn_on_auth);
 		}
@@ -535,9 +539,11 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	      turn_on_auth = 0;
 	      AU_ENABLE (turn_on_auth);
 	      db_disable_modification ();
+	      ++method_Num_method_jsp_calls;
 	      error = jsp_call_from_server (&val, scan_buffer_p->valptrs,
 					    meth_sig->method_name,
 					    meth_sig->no_method_args);
+	      --method_Num_method_jsp_calls;
 	      db_enable_modification ();
 	      AU_DISABLE (turn_on_auth);
 	    }
