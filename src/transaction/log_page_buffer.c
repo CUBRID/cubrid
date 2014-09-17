@@ -1771,7 +1771,6 @@ logpb_initialize_backup_info ()
 
   for (i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
     {
-      log_Gl.hdr.bkinfo[i].bkup_attime = 0;
       log_Gl.hdr.bkinfo[i].ndirty_pages_post_bkup = 0;
       log_Gl.hdr.bkinfo[i].io_baseln_time = 0;
       log_Gl.hdr.bkinfo[i].io_numpages = 0;
@@ -1808,6 +1807,8 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr,
 			 const char *prefix_logname, DKNPAGES npages,
 			 INT64 * db_creation)
 {
+  int i;
+
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (loghdr != NULL);
 
@@ -1867,6 +1868,10 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr,
   loghdr->reserved_int_2 = -1;
   loghdr->perm_status = LOG_PSTAT_CLEAR;
 
+  for (i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
+    {
+      log_Gl.hdr.bkinfo[i].bkup_attime = 0;
+    }
   logpb_initialize_backup_info ();
 
   loghdr->ha_server_state = HA_SERVER_STATE_IDLE;
@@ -9730,11 +9735,14 @@ loop:
       LSA_COPY (&log_Gl.hdr.bkup_level0_lsa, &chkpt_lsa);
       LSA_SET_NULL (&log_Gl.hdr.bkup_level1_lsa);
       LSA_SET_NULL (&log_Gl.hdr.bkup_level2_lsa);
+      log_Gl.hdr.bkinfo[FILEIO_BACKUP_BIG_INCREMENT_LEVEL].bkup_attime = 0;
+      log_Gl.hdr.bkinfo[FILEIO_BACKUP_SMALL_INCREMENT_LEVEL].bkup_attime = 0;
       break;
 
     case FILEIO_BACKUP_BIG_INCREMENT_LEVEL:
       LSA_COPY (&log_Gl.hdr.bkup_level1_lsa, &chkpt_lsa);
       LSA_SET_NULL (&log_Gl.hdr.bkup_level2_lsa);
+      log_Gl.hdr.bkinfo[FILEIO_BACKUP_SMALL_INCREMENT_LEVEL].bkup_attime = 0;
       break;
 
     case FILEIO_BACKUP_SMALL_INCREMENT_LEVEL:
