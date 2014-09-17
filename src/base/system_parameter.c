@@ -5714,12 +5714,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 
 	  if (value != NULL)
 	    {
-	      /* TZ module should already be initialized, call this just to
-	       * make sure */
-	      if (tz_load (false) != NO_ERROR)
-		{
-		  return PRM_ERR_BAD_VALUE;
-		}
+	      /* offset timezone can work without timezone lib */
 #if !defined(SERVER_MODE)
 	      er_status =
 		tz_str_to_region (value, strlen (value),
@@ -5727,6 +5722,22 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 #else
 	      er_status = tz_str_to_region (value, strlen (value), NULL);
 #endif
+	      if (er_status != NO_ERROR)
+		{
+		  /* we may have geographic region name, make sure timezone lib
+		   * is loaded */
+		  if (tz_load (false) != NO_ERROR)
+		    {
+		      return PRM_ERR_BAD_VALUE;
+		    }
+#if !defined(SERVER_MODE)
+		  er_status =
+		    tz_str_to_region (value, strlen (value),
+				      tz_get_client_tz_region_session ());
+#else
+		  er_status = tz_str_to_region (value, strlen (value), NULL);
+#endif
+		}
 	      if (er_status != NO_ERROR)
 		{
 		  error = PRM_ERR_BAD_VALUE;

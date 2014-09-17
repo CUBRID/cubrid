@@ -81,7 +81,8 @@ typedef DB_BIGINT full_date_t;
 
 static int tz_initialized = 0;
 
-static int tz_load_library (const char *lib_file, void **handle);
+static int tz_load_library (const char *lib_file, void **handle,
+			    bool is_optional);
 static int tz_load_data_from_lib (TZ_DATA * tzd, void *lib_handle);
 static bool tz_get_leapsec_support (void);
 static void tz_get_session_tz_info (TZ_DECODE_INFO * tz_info);
@@ -189,7 +190,7 @@ static const int days_up_to_month[] =
  * handle(out)   : handle to the loaded library
  */
 static int
-tz_load_library (const char *lib_file, void **handle)
+tz_load_library (const char *lib_file, void **handle, bool is_optional)
 {
   int err_status = NO_ERROR;
   char err_msg[512];
@@ -216,6 +217,10 @@ tz_load_library (const char *lib_file, void **handle)
   if (*handle == NULL)
     {
       err_status = ER_TZ_LOAD_ERROR;
+    }
+
+  if (err_status == ER_TZ_LOAD_ERROR && is_optional == false)
+    {
 #if defined(WINDOWS)
       FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER
 		     | FORMAT_MESSAGE_FROM_SYSTEM
@@ -234,7 +239,7 @@ tz_load_library (const char *lib_file, void **handle)
 		"Library file is invalid or not accessible.\n"
 		" Unable to load %s !\n %s", lib_file, error);
 #endif
-      printf ("%s", err_msg);
+      printf ("%s\n", err_msg);
     }
 
   return err_status;
@@ -326,7 +331,7 @@ tz_load (bool is_optional)
 
   envvar_libdir_file (lib_file, PATH_MAX, lib_short_file);
 
-  err_status = tz_load_library (lib_file, &tz_lib_handle);
+  err_status = tz_load_library (lib_file, &tz_lib_handle, is_optional);
   if (err_status != NO_ERROR)
     {
       if (is_optional)
@@ -4260,7 +4265,7 @@ tz_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type,
   tzd = tz_get_data ();
   if (tzd == NULL)
     {
-      error = ER_TZ_LOAD_ERROR;
+      /* no timezones, just return */
       return error;
     }
 
@@ -4333,7 +4338,7 @@ tz_full_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type,
   tzd = tz_get_data ();
   if (tzd == NULL)
     {
-      error = ER_TZ_LOAD_ERROR;
+      /* no timezones, just return */
       return error;
     }
 
