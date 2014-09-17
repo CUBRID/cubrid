@@ -124,8 +124,6 @@ static int db_timestamp_encode_w_reg (const DB_DATE * date,
 				      const TZ_REGION * tz_region,
 				      DB_TIMESTAMP * utime,
 				      TZ_ID * dest_tz_id);
-static bool get_leap_sec ();
-
 
 /*
  * julian_encode() - Generic routine for calculating a julian date given
@@ -685,9 +683,10 @@ db_timestamp_encode_utc (const DB_DATE * date, const DB_TIME * timeval,
    * 2001.
    * The fourth item adds a day back every 400 years starting with 2001
    */
-  t = (year - 70) * secs_in_a_year
-    + ((year - 69) / 4) * secs_per_day
-    - ((year - 1) / 100) * secs_per_day + ((year + 299) / 400) * secs_per_day;
+  t = ((year - 70) * secs_in_a_year
+       + ((year - 69) / 4) * secs_per_day
+       - ((year - 1) / 100) * secs_per_day
+       + ((year + 299) / 400) * secs_per_day);
 
   if (mon > TZ_MON_JAN)
     {
@@ -1446,8 +1445,8 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime,
 
   for (c = *p; p < strend && char_isspace (c); c = *++p)
     ;
-  if (is_local_am_str (p, strend) && ((*(p + local_am_strlen) == ' ')
-				      || p + local_am_strlen == strend))
+  if (is_local_am_str (p, strend)
+      && ((*(p + local_am_strlen) == ' ') || p + local_am_strlen == strend))
     {
       p += local_am_strlen;
       if (part[0] == 12)
@@ -1459,8 +1458,9 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime,
 	  part[0] = -1;
 	}
     }
-  else if (is_local_pm_str (p, strend) && ((*(p + local_pm_strlen) == ' ')
-					   || p + local_pm_strlen == strend))
+  else if (is_local_pm_str (p, strend)
+	   && ((*(p + local_pm_strlen) == ' ')
+	       || p + local_pm_strlen == strend))
     {
       p += local_pm_strlen;
       if (part[0] < 12)
@@ -3289,10 +3289,9 @@ db_date_parse_datetime_parts (char const *str, int str_len,
 	  DB_TIMESTAMP timestamp;
 	  DB_TIME time = mtime / 1000;
 
-	  if (!
-	      (*fits_as_timestamp =
-	       db_timestamp_encode_utc (&date, &time, &timestamp)
-	       == NO_ERROR))
+	  *fits_as_timestamp = db_timestamp_encode_utc (&date, &time,
+							&timestamp);
+	  if (*fits_as_timestamp != NO_ERROR)
 	    {
 	      er_clear ();
 	    }
@@ -3349,10 +3348,10 @@ db_date_parse_datetime_parts (char const *str, int str_len,
 	      DB_TIMESTAMP timestamp;
 	      DB_TIME time = datetime->time / 1000;
 
-	      if (!
-		  (*fits_as_timestamp =
-		   db_timestamp_encode_utc (&datetime->date, &time,
-					    &timestamp) == NO_ERROR))
+	      *fits_as_timestamp = db_timestamp_encode_utc (&datetime->date,
+							    &time,
+							    &timestamp);
+	      if (*fits_as_timestamp != NO_ERROR)
 		{
 		  er_clear ();
 		}
@@ -3387,10 +3386,10 @@ db_date_parse_datetime_parts (char const *str, int str_len,
 		  DB_TIMESTAMP timestamp;
 		  DB_TIME time = 0;
 
-		  if (!
-		      (*fits_as_timestamp =
-		       db_timestamp_encode_utc (&datetime->date, &time,
-						&timestamp) == NO_ERROR))
+		  *fits_as_timestamp =
+		    db_timestamp_encode_utc (&datetime->date, &time,
+					     &timestamp);
+		  if (*fits_as_timestamp != NO_ERROR)
 		    {
 		      er_clear ();
 		    }
@@ -3416,10 +3415,9 @@ db_date_parse_datetime_parts (char const *str, int str_len,
 	      str++;
 	    }
 
-	  r =
-	    parse_timestamp_compact (str, strend, &cdatetime.date,
-				     &cdatetime.time, has_explicit_time,
-				     has_explicit_msec);
+	  r = parse_timestamp_compact (str, strend, &cdatetime.date,
+				       &cdatetime.time, has_explicit_time,
+				       has_explicit_msec);
 
 	  /* mysql prefers a large value here like 14, and returns NULL
 	   * otherwise */
@@ -3431,10 +3429,10 @@ db_date_parse_datetime_parts (char const *str, int str_len,
 		  DB_TIMESTAMP timestamp;
 		  DB_TIME time = cdatetime.time / 1000;
 
-		  if (!
-		      (*fits_as_timestamp =
-		       db_timestamp_encode_utc (&cdatetime.date, &time,
-						&timestamp) == NO_ERROR))
+		  *fits_as_timestamp =
+		    db_timestamp_encode_utc (&cdatetime.date, &time,
+					     &timestamp);
+		  if (*fits_as_timestamp != NO_ERROR)
 		    {
 		      er_clear ();
 		    }
@@ -3471,10 +3469,10 @@ db_date_parse_datetime_parts (char const *str, int str_len,
 		  DB_TIMESTAMP timestamp;
 		  DB_TIME time = datetime->time / 1000;
 
-		  if (!
-		      (*fits_as_timestamp =
-		       db_timestamp_encode_utc (&datetime->date, &time,
-						&timestamp) == NO_ERROR))
+		  *fits_as_timestamp =
+		    db_timestamp_encode_utc (&datetime->date, &time,
+					     &timestamp);
+		  if (*fits_as_timestamp != NO_ERROR)
 		    {
 		      er_clear ();
 		    }

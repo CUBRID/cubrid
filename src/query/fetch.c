@@ -2384,10 +2384,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else
-	if (db_to_timestamp
-	    (peek_left, peek_right, peek_third, DB_TYPE_TIMESTAMP,
-	     arithptr->value) != NO_ERROR)
+      else if (db_to_timestamp (peek_left, peek_right, peek_third,
+				DB_TYPE_TIMESTAMP,
+				arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2399,9 +2398,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  PRIM_SET_NULL (arithptr->value);
 	}
       else
-	if (db_to_datetime
-	    (peek_left, peek_right, peek_third, DB_TYPE_DATETIME,
-	     arithptr->value) != NO_ERROR)
+	if (db_to_datetime (peek_left, peek_right, peek_third,
+			    DB_TYPE_DATETIME, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3915,9 +3913,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  PRIM_SET_NULL (arithptr->value);
 	}
       else
-	if (db_to_datetime
-	    (peek_left, peek_right, peek_third, DB_TYPE_DATETIMETZ,
-	     arithptr->value) != NO_ERROR)
+	if (db_to_datetime (peek_left, peek_right, peek_third,
+			    DB_TYPE_DATETIMETZ, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3929,9 +3926,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  PRIM_SET_NULL (arithptr->value);
 	}
       else
-	if (db_to_timestamp
-	    (peek_left, peek_right, peek_third, DB_TYPE_TIMESTAMPTZ,
-	     arithptr->value) != NO_ERROR)
+	if (db_to_timestamp (peek_left, peek_right, peek_third,
+			     DB_TYPE_TIMESTAMPTZ,
+			     arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}

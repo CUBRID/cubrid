@@ -4584,8 +4584,10 @@ mr_index_writeval_timestamptz (OR_BUF * buf, DB_VALUE * value)
   int rc = NO_ERROR;
 
   ts_tz = db_get_timestamptz (value);
+
   assert (tp_Timestamptz.disksize
 	  == (tp_Utime.disksize + tp_Integer.disksize));
+
   rc = or_put_data (buf, (char *) (&ts_tz->timestamp), tp_Utime.disksize);
   if (rc == NO_ERROR)
     {
@@ -4630,7 +4632,8 @@ mr_index_cmpdisk_timestamptz (void *mem1, void *mem2, TP_DOMAIN * domain,
   assert (domain != NULL);
 
   /* TIMESTAMP with TZ compares the same as TIMESTAMP (zone is not taken into
-   * account) */
+   * account) 
+   */
   COPYMEM (DB_UTIME, &utm1, mem1);
   COPYMEM (DB_UTIME, &utm2, mem2);
 
@@ -4647,7 +4650,8 @@ mr_data_cmpdisk_timestamptz (void *mem1, void *mem2, TP_DOMAIN * domain,
   assert (domain != NULL);
 
   /* TIMESTAMP with TZ compares the same as TIMESTAMP (zone is not taken into
-   * account) */
+   * account) 
+   */
   OR_GET_UTIME (mem1, &ts1);
   OR_GET_UTIME (mem2, &ts2);
 
@@ -4664,7 +4668,8 @@ mr_cmpval_timestamptz (DB_VALUE * value1, DB_VALUE * value2,
   /* TIMESTAMP with TZ compares the same as TIMESTAMP (zone is not taken into
    * account);
    * the first component of TIMESTAMPTZ is a TIMESTAMP, it is safe to use
-   * the TIMESTAMP part of DB_DATA union to read it */
+   * the TIMESTAMP part of DB_DATA union to read it 
+   */
   ts_tz1 = DB_GET_TIMESTAMPTZ (value1);
   ts_tz2 = DB_GET_TIMESTAMPTZ (value2);
 

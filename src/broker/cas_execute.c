@@ -6912,8 +6912,8 @@ add_res_data_timestamp (T_NET_BUF * net_buf, short yr, short mon, short day,
 
   if (net_size)
     {
-      *net_size =
-	NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_TIMESTAMP;
+      *net_size = (NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0)
+		   + NET_SIZE_TIMESTAMP);
     }
 }
 
@@ -6928,8 +6928,8 @@ add_res_data_timestamptz (T_NET_BUF * net_buf, short yr, short mon, short day,
 
   if (type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_TIMESTAMP + tz_size
-		      + 1, NULL);
+      net_buf_cp_int (net_buf, (NET_SIZE_BYTE + NET_SIZE_TIMESTAMP + tz_size
+				+ 1), NULL);
       net_buf_cp_byte (net_buf, type);
     }
   else
@@ -6949,9 +6949,8 @@ add_res_data_timestamptz (T_NET_BUF * net_buf, short yr, short mon, short day,
 
   if (net_size)
     {
-      *net_size =
-	NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_TIMESTAMP
-	+ tz_size + 1;
+      *net_size = (NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0)
+		   + NET_SIZE_TIMESTAMP + tz_size + 1);
     }
 }
 
@@ -6980,8 +6979,8 @@ add_res_data_datetime (T_NET_BUF * net_buf, short yr, short mon, short day,
 
   if (net_size)
     {
-      *net_size =
-	NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_DATETIME;
+      *net_size = (NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0)
+		   + NET_SIZE_DATETIME);
     }
 }
 
@@ -6996,8 +6995,9 @@ add_res_data_datetimetz (T_NET_BUF * net_buf, short yr, short mon, short day,
 
   if (type)
     {
-      net_buf_cp_int (net_buf, NET_SIZE_BYTE + NET_SIZE_DATETIME + tz_size
-		      + 1, NULL);
+      net_buf_cp_int (net_buf,
+		      (NET_SIZE_BYTE + NET_SIZE_DATETIME + tz_size + 1),
+		      NULL);
       net_buf_cp_byte (net_buf, type);
     }
   else
@@ -7018,9 +7018,8 @@ add_res_data_datetimetz (T_NET_BUF * net_buf, short yr, short mon, short day,
 
   if (net_size)
     {
-      *net_size =
-	NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_DATETIME
-	+ tz_size + 1;
+      *net_size = (NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0)
+		   + NET_SIZE_DATETIME + tz_size + 1);
     }
 }
 
@@ -7076,8 +7075,8 @@ add_res_data_timetz (T_NET_BUF * net_buf, short hh, short mm, short ss,
 
   if (net_size)
     {
-      *net_size = NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_TIME
-	+ tz_size + 1;
+      *net_size = (NET_SIZE_INT + (type ? NET_SIZE_BYTE : 0) + NET_SIZE_TIME
+		   + tz_size + 1);
     }
 }
 
@@ -7131,8 +7130,9 @@ static void
 add_res_data_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob,
 			 char type, int *net_size)
 {
-  int lob_handle_size =
-    NET_SIZE_INT + NET_SIZE_INT64 + NET_SIZE_INT + lob->locator_size;
+  int lob_handle_size = (NET_SIZE_INT + NET_SIZE_INT64 + NET_SIZE_INT
+			 + lob->locator_size);
+
   /* db_type + lob_size + locator_size + locator including null character */
   if (type)
     {

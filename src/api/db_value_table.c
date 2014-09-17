@@ -509,7 +509,7 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	if (res != NO_ERROR)
 	  return ER_INTERFACE_GENERIC;
 
-	db_timestamp_decode_ses ((DB_TIMESTAMP *) & ts, &date, &time);
+	db_timestamp_decode_ses ((DB_TIMESTAMP *) (&ts), &date, &time);
 	db_date_decode (&date, &M, &D, &Y);
 	db_time_decode (&time, &h, &m, &s);
 

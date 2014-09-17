@@ -2309,14 +2309,15 @@ _op_get_value_string (DB_VALUE * value)
   int iv;
   DB_BIGINT bigint;
   short sv;
+  DB_TIMESTAMPTZ *ts_tz;
+  DB_DATETIMETZ *dt_tz;
+  DB_TIMETZ *timetz_v;
+
   extern char *numeric_db_value_print (DB_VALUE *);
   extern int db_get_string_length (const DB_VALUE * value);
   extern int db_bit_string (const DB_VALUE * the_db_bit,
 			    const char *bit_format, char *string,
 			    int max_size);
-  DB_TIMESTAMPTZ *ts_tz;
-  DB_DATETIMETZ *dt_tz;
-  DB_TIMETZ *timetz_v;
 
   result = (char *) malloc (result_size + 1);
   if (result == NULL)

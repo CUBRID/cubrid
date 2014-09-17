@@ -633,7 +633,7 @@ envvar_cubrid_dir (char *path, size_t size)
   return path;
 }
 
-extern char *
+char *
 envvar_tzdata_dir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);

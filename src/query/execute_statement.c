@@ -17528,7 +17528,7 @@ do_kill (PARSER_CONTEXT * parser, PT_NODE * statement)
   int *tran_index_array;
   int array_size;
 
-  id_list = statement->info.killstmt.tran_id_list;;
+  id_list = statement->info.killstmt.tran_id_list;
   array_size = pt_length_of_list (id_list);
 
   assert (array_size >= 1);	/* verified in syntax check */

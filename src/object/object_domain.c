@@ -108,6 +108,8 @@ static int rv;
 
 #define TP_NUM_MIDXKEY_DOMAIN_LIST      (10)
 
+#define DB_DATETIMETZ_INITIALIZER { {0, 0}, 0 }
+
 typedef enum tp_coersion_mode
 {
   TP_EXPLICIT_COERCION = 0,
@@ -6562,6 +6564,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_VARNCHAR:
 	  {
 	    DB_TIMETZ time_tz = { 0, 0 };
+
 	    if (tp_atotimetz (src, &time_tz) != NO_ERROR)
 	      {
 		err = ER_FAILED;
@@ -6603,6 +6606,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_VARNCHAR:
 	  {
 	    DB_TIMETZ time_tz = { 0, 0 };
+
 	    if (tp_atotimetz (src, &time_tz) != NO_ERROR)
 	      {
 		err = ER_FAILED;
@@ -6615,6 +6619,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_TIMETZ:
 	  {
 	    DB_TIMETZ *time_tz = DB_GET_TIMETZ (src);
+
 	    /* copy time value (UTC) */
 	    db_make_timeltz (target, &time_tz->time);
 	    break;
@@ -6649,6 +6654,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    DB_DATE date = 0;
 	    int year = 0, month = 0, day = 0;
+
 	    if (tp_atodate (src, &date) != NO_ERROR)
 	      {
 		err = ER_FAILED;
@@ -6661,6 +6667,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	  {
 	    DB_DATE v_date = 0;
 	    DB_DATETIME *src_dt = NULL;
+
 	    src_dt = DB_GET_DATETIME (src);
 	    if (src_dt->time != 0)
 	      {
@@ -6711,7 +6718,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 		break;
 	      }
 
-	    db_value_put_encoded_date (target, (DB_DATE *) & local_dt.date);
+	    db_value_put_encoded_date (target, (DB_DATE *) (&local_dt.date));
 	    break;
 	  }
 	case DB_TYPE_TIMESTAMP:
@@ -6720,6 +6727,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    DB_DATE date = 0;
 	    DB_TIME time = 0;
 	    DB_TIMESTAMP *ts = NULL;
+
 	    ts = DB_GET_TIMESTAMP (src);
 	    (void) db_timestamp_decode_ses (ts, &date, &time);
 	    if (time != 0)
@@ -6736,6 +6744,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    DB_DATE date = 0;
 	    DB_TIME time = 0;
 	    DB_TIMESTAMPTZ *ts_tz = NULL;
+
 	    ts_tz = DB_GET_TIMESTAMPTZ (src);
 	    err = db_timestamp_decode_w_tz_id (&ts_tz->timestamp,
 					       &ts_tz->tz_id, &date, &time);
@@ -6840,9 +6849,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_DATE:
 	case DB_TYPE_DATETIME:
 	  {
-	    DB_DATETIMETZ dt_tz = { {0, 0}
-	    , 0
-	    };
+	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
 
 	    if (original_type == DB_TYPE_DATE)
 	      {
@@ -6864,10 +6871,9 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 
 	case DB_TYPE_DATETIMELTZ:
 	  {
-	    DB_DATETIMETZ dt_tz = { {0, 0}
-	    , 0
-	    };
+	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
 	    DB_DATETIME *dt = DB_GET_DATETIME (src);
+
 	    dt_tz.datetime = *dt;
 	    err = tz_create_session_tzid_for_datetime (dt, false,
 						       &dt_tz.tz_id);
@@ -6882,9 +6888,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  {
-	    DB_DATETIMETZ dt_tz = { {0, 0}
-	    , 0
-	    };
+	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
 
 	    if (tp_atodatetimetz (src, &dt_tz) != NO_ERROR)
 	      {
@@ -6898,9 +6902,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPLTZ:
 	  {
-	    DB_DATETIMETZ dt_tz = { {0, 0}
-	    , 0
-	    };
+	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
 	    DB_TIMESTAMP *utime = DB_GET_TIMESTAMP (src);
 	    DB_DATE date;
 	    DB_TIME time;
@@ -6919,12 +6921,11 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	  }
 	case DB_TYPE_TIMESTAMPTZ:
 	  {
-	    DB_DATETIMETZ dt_tz = { {0, 0}
-	    , 0
-	    };
+	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
 	    DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (src);
 	    DB_DATE date;
 	    DB_TIME time;
+
 	    (void) db_timestamp_decode_utc (&ts_tz->timestamp, &date, &time);
 	    dt_tz.datetime.time = time * 1000;
 	    dt_tz.datetime.date = date;
@@ -6970,6 +6971,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_DATETIMETZ:
 	  {
 	    DB_DATETIMETZ *dt_tz = DB_GET_DATETIMETZ (src);
+
 	    /* copy datetime (UTC) */
 	    db_make_datetimeltz (target, &dt_tz->datetime);
 	    break;
@@ -6979,9 +6981,8 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  {
-	    DB_DATETIMETZ dt_tz = { {0, 0}
-	    , 0
-	    };
+	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
+
 	    if (tp_atodatetimetz (src, &dt_tz) != NO_ERROR)
 	      {
 		err = ER_FAILED;
@@ -7032,6 +7033,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_VARNCHAR:
 	  {
 	    DB_TIMESTAMP ts = 0;
+
 	    if (tp_atoutime (src, &ts) != NO_ERROR)
 	      {
 		err = ER_FAILED;
@@ -7092,6 +7094,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    DB_TIME tm = 0;
 	    DB_DATE date = *DB_GET_DATE (src);
 	    DB_TIMESTAMP ts = 0;
+
 	    db_time_encode (&tm, 0, 0, 0);
 	    if (db_timestamp_encode_ses (&date, &tm, &ts, NULL) != NO_ERROR)
 	      {
@@ -7105,6 +7108,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_TIMESTAMPTZ:
 	  {
 	    DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (src);
+
 	    /* copy timestamp value (UTC) */
 	    db_make_timestamp (target, ts_tz->timestamp);
 	    break;
@@ -7113,6 +7117,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_TIMESTAMPLTZ:
 	  {
 	    DB_TIMESTAMP *ts = DB_GET_TIMESTAMP (src);
+
 	    /* copy timestamp value (UTC) */
 	    db_make_timestamp (target, *ts);
 	    break;
@@ -7133,6 +7138,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_VARNCHAR:
 	  {
 	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
+
 	    if (tp_atotimestamptz (src, &ts_tz) != NO_ERROR)
 	      {
 		err = ER_FAILED;
@@ -7193,6 +7199,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	    DB_TIME tm = 0;
 	    DB_DATE date = *DB_GET_DATE (src);
 	    DB_TIMESTAMP ts = 0;
+
 	    db_time_encode (&tm, 0, 0, 0);
 	    if (db_timestamp_encode_ses (&date, &tm, &ts, NULL) != NO_ERROR)
 	      {
@@ -7206,6 +7213,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_TIMESTAMP:
 	  {
 	    DB_TIMESTAMP *ts = DB_GET_TIMESTAMP (src);
+
 	    /* copy val timestamp value (UTC) */
 	    db_make_timestampltz (target, *ts);
 	    break;
@@ -7214,6 +7222,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_TIMESTAMPTZ:
 	  {
 	    DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (src);
+
 	    /* copy val timestamp value (UTC) */
 	    db_make_timestampltz (target, ts_tz->timestamp);
 	    break;
@@ -7234,6 +7243,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
 	case DB_TYPE_VARNCHAR:
 	  {
 	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
+
 	    if (tp_atotimestamptz (src, &ts_tz) != NO_ERROR)
 	      {
 		err = ER_FAILED;
@@ -7547,7 +7557,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	      TP_DOMAIN *save_elem_dom_next;
 
 	      /* source value already exists, we expect that a collection
-	       * domain already exists and is cached */
+	       * domain already exists and is cached 
+	       */
 	      curr_set_dom = tp_domain_resolve_value ((DB_VALUE *) src, NULL);
 	      elem_dom = curr_set_dom->setdomain;
 	      curr_set_dom->setdomain = NULL;

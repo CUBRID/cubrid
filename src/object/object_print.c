@@ -4020,6 +4020,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	case DB_TYPE_TIMETZ:
 	  {
 	    DB_TIMETZ *time_tz;
+
 	    time_tz = DB_GET_TIMETZ (value);
 	    (void) db_timetz_to_string (line, TOO_BIG_TO_MATTER,
 					&time_tz->time, &time_tz->tz_id);
@@ -4041,6 +4042,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	case DB_TYPE_TIMESTAMPTZ:
 	  {
 	    DB_TIMESTAMPTZ *ts_tz;
+
 	    ts_tz = DB_GET_TIMESTAMPTZ (value);
 	    (void) db_timestamptz_to_string (line, TOO_BIG_TO_MATTER,
 					     &(ts_tz->timestamp),
@@ -4063,6 +4065,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	case DB_TYPE_DATETIMETZ:
 	  {
 	    DB_DATETIMETZ *dt_tz;
+
 	    dt_tz = DB_GET_DATETIMETZ (value);
 	    (void) db_datetimetz_to_string (line, TOO_BIG_TO_MATTER,
 					    &(dt_tz->datetime),

@@ -4459,7 +4459,6 @@ value_as_boolean (DB_VALUE * value)
 
   switch (DB_VALUE_TYPE (value))
     {
-
     case DB_TYPE_NULL:
       status = false;
       break;
@@ -4485,6 +4484,7 @@ value_as_boolean (DB_VALUE * value)
     case DB_TYPE_TIMETZ:
       {
 	DB_TIMETZ *time_tz = DB_GET_TIMETZ (value);
+
 	status = (time_tz->time == 0) ? false : true;
       }
       break;
@@ -4495,6 +4495,7 @@ value_as_boolean (DB_VALUE * value)
     case DB_TYPE_TIMESTAMPTZ:
       {
 	DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (value);
+
 	status = (ts_tz->timestamp == 0) ? false : true;
       }
       break;
@@ -4506,6 +4507,7 @@ value_as_boolean (DB_VALUE * value)
     case DB_TYPE_DATETIMETZ:
       {
 	DB_DATETIMETZ *dt_tz = DB_GET_DATETIMETZ (value);
+
 	status = (dt_tz->datetime.date == 0
 		  && dt_tz->datetime.time == 0) ? false : true;
       }

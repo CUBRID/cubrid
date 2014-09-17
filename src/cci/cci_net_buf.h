@@ -38,6 +38,8 @@
 
 #ident "$Id$"
 
+#include <string.h>
+
 #ifdef CAS
 #error include error
 #endif

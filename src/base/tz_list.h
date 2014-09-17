@@ -37,7 +37,7 @@
 #include "timezone_lib_common.h"
 
 /* WARNING: Generated data! Do not edit! */
-const static char *tz_timezone_names[] = {
+static const char *tz_timezone_names[] = {
   "Africa/Abidjan",
   "Africa/Accra",
   "Africa/Addis_Ababa",
@@ -498,7 +498,7 @@ const static char *tz_timezone_names[] = {
   "WET"
 };
 
-const static TZ_COUNTRY tz_countries[] = {
+static const TZ_COUNTRY tz_countries[] = {
   {"AX", "Aaland Islands"},
   {"AF", "Afghanistan"},
   {"AL", "Albania"},

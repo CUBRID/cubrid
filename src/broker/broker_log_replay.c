@@ -299,7 +299,7 @@ log_replay (char *infilename, char *outfilename)
 	      if (sql_info.bind_str == NULL)
 		{
 		  memset (bind_str_buf, '\0', sizeof (bind_str_buf));
-		  sql_info.bind_str = bind_str_buf;;
+		  sql_info.bind_str = bind_str_buf;
 		  remain_bind_buf = sizeof (bind_str_buf);
 		}
 
@@ -348,7 +348,7 @@ log_replay (char *infilename, char *outfilename)
 	      if (sql_info.bind_str != NULL)
 		{
 		  /* restore bind_str with first address of bind string buffer */
-		  sql_info.bind_str = bind_str_buf;;
+		  sql_info.bind_str = bind_str_buf;
 		}
 
 	      get_sql_time_info (msg_p + 5, &sql_info);
@@ -1637,7 +1637,7 @@ open_file (char *infilename, char *outfilename, FILE ** infp,
   if (*outfp == NULL)
     {
       fprintf (stderr, "cannot open output file '%s'\n", outfilename);
-      goto error;;
+      goto error;
     }
 
   br_tmpfp = tmpfile ();

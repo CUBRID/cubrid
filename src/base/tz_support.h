@@ -37,7 +37,7 @@
 #define SHLIB_FILE_EXT "so"
 #endif
 
-#define IS_LEAP_YEAR(y)	((y & 3) == 0) && (((y % 25) != 0)  || ( (y & 15) == 0) )
+#define IS_LEAP_YEAR(y)	((((y) & 3) == 0) && ((((y) % 25) != 0) || (((y) & 15) == 0)))
 
 /* WARNING: the define below yields 30 days in February; use with care! */
 #define DAYS_IN_MONTH(m) (31 - ((m) > 6 ? (m) - 7 : (m)) % 2)

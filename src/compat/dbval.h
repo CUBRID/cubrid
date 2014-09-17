@@ -273,7 +273,7 @@
 
 #define DB_GET_TIMETZ(v) \
     (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIMETZ), \
-     (DB_TIMETZ *)(&(v)->data.timetz))
+     (DB_TIMETZ *) (&(v)->data.timetz))
 
 #define DB_GET_DATE(v) \
       (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_DATE), \
@@ -286,7 +286,7 @@
 
 #define DB_GET_TIMESTAMPTZ(v) \
     (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_TIMESTAMPTZ),	    \
-     (DB_TIMESTAMPTZ *)(&(v)->data.timestamptz))
+     (DB_TIMESTAMPTZ *) (&(v)->data.timestamptz))
 
 #define DB_GET_DATETIME(v) \
       (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_DATETIME	    \
@@ -295,7 +295,7 @@
 
 #define DB_GET_DATETIMETZ(v) \
     (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_DATETIMETZ),  \
-     (DB_DATETIMETZ *)(&(v)->data.datetimetz))
+     (DB_DATETIMETZ *) (&(v)->data.datetimetz))
 
 #define DB_GET_MONETARY(v) \
       (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_MONETARY), \

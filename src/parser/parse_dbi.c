@@ -788,6 +788,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
     case DB_TYPE_TIMESTAMPTZ:
       {
 	DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (val);
+
 	if (db_timestamptz_to_string (buf, sizeof (buf), &ts_tz->timestamp,
 				      &ts_tz->tz_id) == 0)
 	  {
@@ -827,6 +828,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
     case DB_TYPE_DATETIMETZ:
       {
 	DB_DATETIMETZ *dt_tz = DB_GET_DATETIMETZ (val);
+
 	if (db_datetimetz_to_string (buf, sizeof (buf), &dt_tz->datetime,
 				     &(dt_tz->tz_id)) == 0)
 	  {

@@ -149,10 +149,11 @@ static TZ_REGION tz_region_session;
 static void *tz_lib_handle = NULL;
 #if defined(WINDOWS)
 static TZ_DATA timezone_data =
-  { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL };
+  { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0,
+NULL };
 #else
 static TZ_DATA timezone_data =
-  { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL };
+  { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL };
 #endif
 
 static const int days_of_month[] =
@@ -789,7 +790,7 @@ tz_get_utc_tz_id (void)
 const TZ_REGION *
 tz_get_utc_tz_region (void)
 {
-  static const TZ_REGION utc_region = { 0, 0 };
+  static const TZ_REGION utc_region = { 0, {0} };
   return &utc_region;
 }
 

@@ -6025,7 +6025,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	  {
 	    T_CCI_DATE_TZ date_tz = { 0, 0, 0, 0, 0, 0, 0, "" };
 	    err_code = ut_str_to_timetz ((char *) value,
-					 (T_CCI_DATE *) & date_tz);
+					 (T_CCI_DATE *) (&date_tz));
 	    if (err_code < 0)
 	      {
 		return err_code;
@@ -6058,7 +6058,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	    const char *p_tz = NULL;
 	    T_CCI_DATE_TZ date_tz = { 0, 0, 0, 0, 0, 0, 0, "" };
 	    err_code = ut_str_to_timestamp ((char *) value,
-					    (T_CCI_DATE *) & date_tz);
+					    (T_CCI_DATE *) (&date_tz));
 	    if (err_code < 0)
 	      {
 		return err_code;

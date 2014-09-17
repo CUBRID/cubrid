@@ -285,8 +285,8 @@ typedef enum tp_match
    || ((typeid) == DB_TYPE_NUMERIC) || ((typeid) == DB_TYPE_MONETARY))
 
 #define TP_IS_DATE_OR_TIME_TYPE_WITH_TZ(typeid) \
-  ( TP_IS_DATE_WITH_TZ_TYPE (typeid) || ((typeid) == DB_TYPE_TIMETZ) \
-    || ((typeid) == DB_TYPE_TIMELTZ ))
+  (TP_IS_DATE_WITH_TZ_TYPE (typeid) || ((typeid) == DB_TYPE_TIMETZ) \
+   || ((typeid) == DB_TYPE_TIMELTZ ))
 
 /*
  * Precision for non-parameterized predefined types
