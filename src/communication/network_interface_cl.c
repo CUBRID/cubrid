@@ -8994,6 +8994,7 @@ thread_kill_tran_index (int kill_tran_index, char *kill_user,
  *
  *   tran_index_list(in):
  *   num_tran_index(in):
+ *   is_dba_group_member(in):
  *   interrupt_only(in):
  *   num_killed(out):
  *
@@ -9001,7 +9002,8 @@ thread_kill_tran_index (int kill_tran_index, char *kill_user,
  */
 int
 thread_kill_or_interrupt_tran (int *tran_index_list, int num_tran_index,
-			       bool interrupt_only, int *num_killed)
+			       bool is_dba_group_member, bool interrupt_only,
+			       int *num_killed)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
@@ -9015,11 +9017,13 @@ thread_kill_or_interrupt_tran (int *tran_index_list, int num_tran_index,
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   request_size = OR_INT_SIZE * (2 + num_tran_index);	/* num_tran_index + tran_index_list + interrupt_only */
+  request_size += OR_INT_SIZE;	/* is_dba_group_member */
 
   request = (char *) malloc (request_size);
   if (request)
     {
-      ptr = or_pack_int (request, num_tran_index);
+      ptr = or_pack_int (request, (int) is_dba_group_member);
+      ptr = or_pack_int (ptr, num_tran_index);
 
       for (i = 0; i < num_tran_index; i++)
 	{

@@ -17527,11 +17527,14 @@ do_kill (PARSER_CONTEXT * parser, PT_NODE * statement)
   int num_killed;
   int *tran_index_array;
   int array_size;
+  bool is_dba_group_member;
 
   id_list = statement->info.killstmt.tran_id_list;
   array_size = pt_length_of_list (id_list);
 
   assert (array_size >= 1);	/* verified in syntax check */
+
+  is_dba_group_member = au_is_dba_group_member (Au_user);
 
   tran_index_array = (int *) malloc (sizeof (int) * array_size);
   if (tran_index_array == NULL)
@@ -17555,6 +17558,7 @@ do_kill (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   error =
     thread_kill_or_interrupt_tran (tran_index_array, array_size,
+				   is_dba_group_member,
 				   interrupt_only, &num_killed);
   if (error == NO_ERROR)
     {

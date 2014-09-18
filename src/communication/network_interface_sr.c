@@ -7851,8 +7851,10 @@ sthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, unsigned int rid,
   int *tran_index_list;
   int num_tran_index, interrupt_only;
   int num_killed_tran = 0;
+  int is_dba_group_member = 0;
 
-  ptr = or_unpack_int (request, &num_tran_index);
+  ptr = or_unpack_int (request, &is_dba_group_member);
+  ptr = or_unpack_int (ptr, &num_tran_index);
   ptr = or_unpack_int_array (ptr, num_tran_index, &tran_index_list);
   ptr = or_unpack_int (ptr, &interrupt_only);
 
@@ -7860,6 +7862,7 @@ sthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, unsigned int rid,
     {
       success =
 	xthread_kill_or_interrupt_tran (thread_p, tran_index_list[i],
+					(bool) is_dba_group_member,
 					(bool) interrupt_only);
       if (success == NO_ERROR)
 	{

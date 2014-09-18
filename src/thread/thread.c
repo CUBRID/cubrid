@@ -4363,29 +4363,34 @@ xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index,
  *   return:
  *   thread_p(in):
  *   tran_index(in):
+ *   is_dba_group_member(in):
  *   kill_query_only(in):
  */
 int
 xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index,
-				bool interrupt_only)
+				bool is_dba_group_member, bool interrupt_only)
 {
   int i, error;
   bool interrupt, has_authorization;
   bool is_trx_exists;
   KILLSTMT_TYPE kill_type;
 
-  error =
-    thread_check_kill_tran_auth (thread_p, tran_index, &has_authorization);
-  if (error != NO_ERROR)
+  if (!is_dba_group_member)
     {
-      return error;
-    }
+      error =
+	thread_check_kill_tran_auth (thread_p, tran_index,
+				     &has_authorization);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
 
-  if (has_authorization == false)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1,
-	      tran_index);
-      return ER_KILL_TR_NOT_ALLOWED;
+      if (has_authorization == false)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1,
+		  tran_index);
+	  return ER_KILL_TR_NOT_ALLOWED;
+	}
     }
 
   is_trx_exists = logtb_set_tran_index_interrupt (thread_p, tran_index, true);
