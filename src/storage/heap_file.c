@@ -20253,9 +20253,9 @@ heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes,
 {
 #define HEAP_LOG_MVCC_INSERT_MAX_REDO_CRUMBS	    4
 
-  int n_redo_crumbs = 0, data_copy_offset = 0;
+  int n_redo_crumbs = 0, data_copy_offset = 0, chn_offset;
   LOG_CRUMB redo_crumbs[HEAP_LOG_MVCC_INSERT_MAX_REDO_CRUMBS];
-  INT32 repid_and_flags, mvcc_flags, chn;
+  INT32 mvcc_flags;
 
   assert (p_recdes != NULL);
   assert (p_addr != NULL);
@@ -20267,17 +20267,18 @@ heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes,
 
   if (p_recdes->type != REC_BIGONE)
     {
-      repid_and_flags = (INT32) OR_GET_INT (p_recdes->data);
       mvcc_flags = (INT32) OR_GET_MVCC_FLAG (p_recdes->data);
-      chn = (INT32) OR_GET_MVCC_CHN (p_recdes->data, mvcc_flags);
+      chn_offset = OR_GET_MVCC_CHN_OFFSET (mvcc_flags);
+
+      assert (chn_offset > 0);
 
       /* Add representation ID and flags field */
-      redo_crumbs[n_redo_crumbs].length = sizeof (repid_and_flags);
-      redo_crumbs[n_redo_crumbs++].data = &repid_and_flags;
+      redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
+      redo_crumbs[n_redo_crumbs++].data = p_recdes->data;
 
       /* Add CHN */
-      redo_crumbs[n_redo_crumbs].length = sizeof (chn);
-      redo_crumbs[n_redo_crumbs++].data = &chn;
+      redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
+      redo_crumbs[n_redo_crumbs++].data = p_recdes->data + chn_offset;
 
       /* Set data copy offset after the record header */
       data_copy_offset = OR_HEADER_SIZE (p_recdes->data);
@@ -20327,10 +20328,10 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       offset = sizeof (record_type);
 
-      repid_and_flags = *(int *) (rcv->data + offset);
+      repid_and_flags = OR_GET_INT (rcv->data + offset);
       offset += OR_INT_SIZE;
 
-      chn = *(int *) (rcv->data + offset);
+      chn = OR_GET_INT (rcv->data + offset);
       offset += OR_INT_SIZE;
 
       mvcc_flag = (char) ((repid_and_flags >> OR_MVCC_FLAG_SHIFT_BITS) &
@@ -20452,24 +20453,45 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, INT32 undo_chn,
 #define HEAP_LOG_MVCC_DELETE_MAX_REDO_CRUMBS 2
 
   int n_undo_crumbs = 0, n_redo_crumbs = 0;
+  char buf[OR_INT_SIZE * 2 + OR_OID_SIZE * 2 + MAX_ALIGNMENT];
+  char *chn_p, *is_bigone_p, *rec_bigone_addr_p, *redo_next_ver_p;
   LOG_CRUMB undo_crumbs[HEAP_LOG_MVCC_DELETE_MAX_UNDO_CRUMBS];
   LOG_CRUMB redo_crumbs[HEAP_LOG_MVCC_DELETE_MAX_REDO_CRUMBS];
+
+  chn_p = PTR_ALIGN (buf, MAX_ALIGNMENT);
+  OR_PUT_INT (chn_p, undo_chn);
+
+  is_bigone_p = chn_p + OR_INT_SIZE;
+  OR_PUT_INT (is_bigone_p, is_bigone);
+
+  rec_bigone_addr_p = is_bigone_p + OR_INT_SIZE;
+  if (rec_bigone_adress != NULL)
+    {
+      OR_PUT_OID (rec_bigone_addr_p, rec_bigone_adress);
+    }
+
+  redo_next_ver_p = rec_bigone_addr_p + OR_OID_SIZE;
+  if (p_redo_next_version != NULL)
+    {
+      OR_PUT_OID (redo_next_ver_p, p_redo_next_version);
+    }
 
   /* Build undo crumbs */
 
   /* Append CHN before delete */
-  undo_crumbs[n_undo_crumbs].length = sizeof (undo_chn);
-  undo_crumbs[n_undo_crumbs++].data = &undo_chn;
+  undo_crumbs[n_undo_crumbs].length = OR_INT_SIZE;
+  undo_crumbs[n_undo_crumbs++].data = chn_p;
 
   /* Append is_bigone */
-  undo_crumbs[n_undo_crumbs].length = sizeof (is_bigone);
-  undo_crumbs[n_undo_crumbs++].data = &is_bigone;
+  undo_crumbs[n_undo_crumbs].length = OR_INT_SIZE;
+  undo_crumbs[n_undo_crumbs++].data = is_bigone_p;
 
   if (is_bigone)
     {
       assert (rec_bigone_adress != NULL);
-      undo_crumbs[n_undo_crumbs].length = sizeof (*rec_bigone_adress);
-      undo_crumbs[n_undo_crumbs++].data = rec_bigone_adress;
+
+      undo_crumbs[n_undo_crumbs].length = OR_OID_SIZE;
+      undo_crumbs[n_undo_crumbs++].data = rec_bigone_addr_p;
     }
 
   /* Safe guard */
@@ -20477,14 +20499,14 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, INT32 undo_chn,
 
   /* Build redo crumbs */
   /* Add is_bigone */
-  redo_crumbs[n_redo_crumbs].length = sizeof (is_bigone);
-  redo_crumbs[n_redo_crumbs++].data = &is_bigone;
+  redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
+  redo_crumbs[n_redo_crumbs++].data = is_bigone_p;
 
   if (p_redo_next_version != NULL)
     {
       /* Update case, must also add OID of next version */
-      redo_crumbs[n_redo_crumbs].length = sizeof (*p_redo_next_version);
-      redo_crumbs[n_redo_crumbs++].data = p_redo_next_version;
+      redo_crumbs[n_redo_crumbs].length = OR_OID_SIZE;
+      redo_crumbs[n_redo_crumbs++].data = redo_next_ver_p;
     }
 
   /* Safe guard */
@@ -20518,17 +20540,17 @@ heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   INT32 chn;
 
   /* Read chn */
-  chn = *((INT32 *) (rcv->data + offset));
-  offset += sizeof (chn);
+  chn = OR_GET_INT (rcv->data + offset);
+  offset += OR_INT_SIZE;
 
   /* Read is_bigone */
-  is_bigone = *((bool *) (rcv->data + offset));
-  offset += sizeof (is_bigone);
+  is_bigone = (bool) OR_GET_INT (rcv->data + offset);
+  offset += OR_INT_SIZE;
 
   if (is_bigone)
     {
       /* Vacuum needs OID of REC_BIGONE record... Here, we just skip it */
-      offset += sizeof (OID);
+      offset += OR_OID_SIZE;
     }
 
   assert (offset == rcv->length);
@@ -20640,19 +20662,23 @@ heap_rv_mvcc_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   bool is_bigone = false;
   char *data = NULL;
   MVCC_REC_HEADER mvcc_rec_header;
-  OID *next_version = NULL;
+  OID next_version;
   int old_mvcc_header_size;
   int offset = 0;
 
   /* Read is_bigone */
-  is_bigone = *((bool *) (rcv->data + offset));
-  offset += sizeof (is_bigone);
+  is_bigone = (bool) OR_GET_INT (rcv->data + offset);
+  offset += OR_INT_SIZE;
 
   if (offset < rcv->length)
     {
       /* Read next version OID */
-      next_version = (OID *) (rcv->data + offset);
-      offset += sizeof (*next_version);
+      OR_GET_OID (rcv->data + offset, &next_version);
+      offset += OR_OID_SIZE;
+    }
+  else
+    {
+      OID_SET_NULL (&next_version);
     }
 
   /* Check recovery data was entirely processed */
@@ -20687,10 +20713,10 @@ heap_rv_mvcc_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   MVCC_SET_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID);
   MVCC_SET_DELID (&mvcc_rec_header, rcv->mvcc_id);
 
-  if (next_version != NULL)
+  if (OID_ISNULL (&next_version) == false)
     {
       MVCC_SET_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_NEXT_VERSION);
-      MVCC_SET_NEXT_VERSION (&mvcc_rec_header, next_version);
+      MVCC_SET_NEXT_VERSION (&mvcc_rec_header, &next_version);
     }
 
   if (is_bigone == true)

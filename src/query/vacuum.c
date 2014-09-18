@@ -2134,6 +2134,7 @@ vacuum_get_mvcc_delete_undo_vpid (THREAD_ENTRY * thread_p,
 				  char *undo_data, VPID * vpid)
 {
   bool is_bigone;
+  OID rec_bigone_addr;
 
   assert (log_datap != NULL);
   assert (vpid != NULL);
@@ -2143,14 +2144,15 @@ vacuum_get_mvcc_delete_undo_vpid (THREAD_ENTRY * thread_p,
       assert (undo_data != 0);
 
       /* Skip chn */
-      undo_data += sizeof (INT32);
+      undo_data += OR_INT_SIZE;
 
-      is_bigone = *((bool *) undo_data);
-      undo_data += sizeof (is_bigone);
+      is_bigone = (bool) OR_GET_INT (undo_data);
+      undo_data += OR_INT_SIZE;
 
       if (is_bigone)
 	{
-	  VPID_GET_FROM_OID (vpid, (OID *) undo_data);
+	  OR_GET_OID (undo_data, &rec_bigone_addr);
+	  VPID_GET_FROM_OID (vpid, &rec_bigone_addr);
 	  assert (!VPID_ISNULL (vpid));
 	  return;
 	}
