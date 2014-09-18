@@ -107,6 +107,7 @@
 		<row><td>DBGW</td><td>{8A2357CC-421C-49E8-A036-6592A6B920F0}</td><td>TARGETDIR</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>JDBC</td><td>{88159C1F-B1FA-459D-B8CD-2C6995EFDB82}</td><td>JDBC</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>locales</td><td>{EE6B422E-6E00-4FCE-8E3A-00C836068280}</td><td>LOCALES</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>timezones</td><td>{EE6B422E-6E00-4FCE-8E3A-00C836068281}</td><td>TIMEZONES</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>msg</td><td>{E98137A1-F67B-4C6E-BF83-60059F362216}</td><td>MSG</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>share</td><td>{C2B088DB-66F7-4A83-B45C-18245970EDB7}</td><td>SHARE</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 	</table>
@@ -181,6 +182,7 @@
 		<row><td>ISRUNTIMETEXTSUBS</td><td/><td>Script-defined Folders</td><td/><td>0</td><td/></row>
 		<row><td>JDBC</td><td>TARGETDIR</td><td>jdbc</td><td/><td>0</td><td/></row>
 		<row><td>LOCALES</td><td>TARGETDIR</td><td>locales</td><td/><td>0</td><td/></row>
+		<row><td>TIMEZONES</td><td>TARGETDIR</td><td>timezones</td><td/><td>0</td><td/></row>
 		<row><td>MSG</td><td>TARGETDIR</td><td>msg</td><td/><td>0</td><td/></row>
 		<row><td>PLUGINS</td><td>CUBRIDMANAGER</td><td>plugins</td><td/><td>0</td><td/></row>
 		<row><td>PROGRAMFILES</td><td/><td>Program Files</td><td/><td>0</td><td/></row>
@@ -209,23 +211,24 @@
 		<col def="S255">ISComments</col>
 		<col def="S255">ISFeatureCabName</col>
 		<col def="S255">ISProFeatureName</col>
-		<row><td>{253707A6-A23C-451F-A8FC-7DD8FA3E0882}</td><td/><td>##ID_STRING1##</td><td/><td>16</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>DBGW</td></row>
 		<row><td>{573BEA45-481E-4C78-8987-A2FBA41A02EA}</td><td/><td>##ID_STRING12##</td><td>##ID_STRING13##</td><td>8</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>JDBC</td></row>
+		<row><td>{F4AB573B-1400-437F-A570-D216A4E0FEC9}</td><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>New Merge Module Holder Object 1</td><td/><td>16</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>CRT</td></row>
 		<row><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td><td/><td>##ID_STRING14##</td><td>##ID_STRING15##</td><td>14</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>CCI</td></row>
 		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td/><td>##ID_STRING6##</td><td>##ID_STRING20##</td><td>2</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>CUBRID</td></row>
-		<row><td>{F4AB573B-1400-437F-A570-D216A4E0FEC9}</td><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>New Merge Module Holder Object 1</td><td/><td>16</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>CRT</td></row>
+		<row><td>{253707A6-A23C-451F-A8FC-7DD8FA3E0882}</td><td/><td>##ID_STRING1##</td><td/><td>16</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>DBGW</td></row>
 	</table>
 
 	<table name="FeatureComponents">
 		<col key="yes" def="s38">Feature_</col>
 		<col key="yes" def="s72">Component_</col>
-		<row><td>{253707A6-A23C-451F-A8FC-7DD8FA3E0882}</td><td>DBGW</td></row>
 		<row><td>{573BEA45-481E-4C78-8987-A2FBA41A02EA}</td><td>JDBC</td></row>
 		<row><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td><td>CCI</td></row>
 		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>CUBRID</td></row>
 		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>locales</td></row>
+		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>timezones</td></row>
 		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>msg</td></row>
 		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>share</td></row>
+		<row><td>{253707A6-A23C-451F-A8FC-7DD8FA3E0882}</td><td>DBGW</td></row>
 	</table>
 
 	<table name="File">
@@ -448,6 +451,7 @@
 		<row><td>DBGW</td><td/><td/><td>_1AD376ED_FE08_4670_AD53_17F4F65E50FB_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>JDBC</td><td/><td/><td>_7AA7B79B_2B45_4714_A5B4_B933918E7AEE_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>locales</td><td/><td/><td>_4E464296_39B2_492F_883A_54122B58A112_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>timezones</td><td/><td/><td>_4E464296_39B2_492F_883A_54122B58A113_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>msg</td><td/><td/><td>_D3051DC3_008A_4972_BD79_5572BA0DF955_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>share</td><td/><td/><td>_B4D92530_9B54_4B64_8026_6731412DEE45_FILTER</td><td/><td/><td/><td/></row>
 	</table>
@@ -524,6 +528,7 @@
 		<col def="S0">ExcludeFiles</col>
 		<col def="I4">ISAttributes</col>
 		<row><td>locales</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\locales</td><td>1</td><td>*.*</td><td/><td>2</td></row>
+		<row><td>timezones</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\timezones</td><td>1</td><td>*.*</td><td/><td>2</td></row>
 		<row><td>msg</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\msg</td><td>1</td><td>*.*</td><td/><td>2</td></row>
 		<row><td>share</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\share</td><td>1</td><td>*.*</td><td/><td>2</td></row>
 	</table>
@@ -542,11 +547,11 @@
 		<col def="S255">Password</col>
 		<col def="S50">CDRomFolder</col>
 		<col def="S50">Moniker</col>
-		<row><td>{253707A6-A23C-451F-A8FC-7DD8FA3E0882}</td><td/><td/><td/><td/><td/><td/><td/><td/><td>36</td><td/><td/><td/></row>
 		<row><td>{573BEA45-481E-4C78-8987-A2FBA41A02EA}</td><td/><td/><td/><td/><td/><td/><td/><td>##ID_STRING9##</td><td>36</td><td/><td/><td/></row>
+		<row><td>{F4AB573B-1400-437F-A570-D216A4E0FEC9}</td><td/><td/><td/><td/><td/><td/><td/><td/><td>20</td><td/><td/><td>@ismk16:ED4FF843-0DE2-4F5F-936C-29845A706E45</td></row>
 		<row><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td><td/><td/><td/><td/><td/><td/><td/><td>##ID_STRING9##</td><td>36</td><td/><td/><td/></row>
 		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>CUBRID_Installing</td><td>CUBRID_Installed</td><td>CUBRID_UnInstalling</td><td/><td/><td/><td/><td>##ID_STRING9##</td><td>36</td><td/><td/><td/></row>
-		<row><td>{F4AB573B-1400-437F-A570-D216A4E0FEC9}</td><td/><td/><td/><td/><td/><td/><td/><td/><td>20</td><td/><td/><td>@ismk16:ED4FF843-0DE2-4F5F-936C-29845A706E45</td></row>
+		<row><td>{253707A6-A23C-451F-A8FC-7DD8FA3E0882}</td><td/><td/><td/><td/><td/><td/><td/><td/><td>36</td><td/><td/><td/></row>
 	</table>
 
 	<table name="ISFeatureMergeModuleExcludes">

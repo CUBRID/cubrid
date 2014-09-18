@@ -18,4 +18,4 @@
 
 tzdatadir = @CUBRID_TZ_DIR@/tzdata
 
-dist_tzdata_DATA = africa antarctica asia australasia backward etcetera europe iso3166.tab northamerica southamerica zone.tab leapseconds
+dist_tzdata_DATA = africa antarctica asia australasia backward etcetera europe iso3166.tab northamerica southamerica zone.tab leapseconds windowsZones.xml

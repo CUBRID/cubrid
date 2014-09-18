@@ -163,6 +163,7 @@ copy %SRC_DIR%\..\..\..\timezones\tzdata\*.* %DEST_DIR%\timezones\tzdata
 del %DEST_DIR%\timezones\tzdata\Makefile.am
 xcopy %SRC_DIR%\..\..\..\timezones\tzlib_win_%3 %DEST_DIR%\timezones\tzlib /e /c /i /f /r /y
 copy %SRC_DIR%\..\..\..\src\base\timezone_lib_common.h %DEST_DIR%\timezones\tzlib\timezone_lib_common.h /y
+copy %SRC_DIR%\..\..\..\src\base\tz_list.h %DEST_DIR%\timezones\tz_list.h /y
 copy %SRC_DIR%\..\..\..\timezones\make_tz_%3.bat %DEST_DIR%\bin\make_tz.bat /y
 
 echo on

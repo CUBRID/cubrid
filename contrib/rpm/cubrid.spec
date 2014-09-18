@@ -116,6 +116,7 @@ rm -rf %{buildroot}
 /opt/cubrid/lib
 %exclude /opt/cubrid/lib/*.la
 /opt/cubrid/locales
+/opt/cubrid/timezones
 /opt/cubrid/log
 /opt/cubrid/msg
 /opt/cubrid/share
