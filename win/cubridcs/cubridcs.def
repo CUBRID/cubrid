@@ -60,6 +60,7 @@ EXPORTS
     db_add_super
     db_add_user
     db_attribute_class
+    db_attribute_comment
     db_attribute_default
     db_attribute_domain
     db_attribute_id
@@ -360,6 +361,7 @@ EXPORTS
     db_trigger_action_type
     db_trigger_attribute
     db_trigger_class
+    db_trigger_comment
     db_trigger_condition
     db_trigger_condition_time
     db_trigger_event
