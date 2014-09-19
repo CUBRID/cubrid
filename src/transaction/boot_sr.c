@@ -3559,7 +3559,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       goto error;
     }
 
-  if (mvcc_Enabled)
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
       /* We need to load vacuum data and initialize vacuum routine before
        * recovery.
@@ -3587,7 +3587,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix,
 		  from_backup, (r_args) ? &r_args->stopat : NULL);
 
-  if (mvcc_Enabled)
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
       /* Make sure dropped files are loaded from disk after recovery */
       error_code = vacuum_load_dropped_files_from_disk (thread_p);
@@ -3936,7 +3936,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final)
       (void) qexec_finalize_filter_pred_cache (thread_p);
       session_states_finalize (thread_p);
 
-      if (mvcc_Enabled)
+      if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
 	{
 	  vacuum_finalize (thread_p);
 	}

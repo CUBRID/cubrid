@@ -5189,6 +5189,11 @@ lock_demote_shared_class_lock (THREAD_ENTRY * thread_p, int tran_index,
 	       || entry_ptr->granted_mode == SIX_LOCK)
 	{
 	  entry_ptr->count--;
+
+	  if (lock_is_instant_lock_mode (tran_index))
+	    {
+	      entry_ptr->instant_lock_count--;
+	    }
 	}
     }
 }
@@ -5491,6 +5496,11 @@ lock_remove_all_inst_locks_with_scanid (THREAD_ENTRY * thread_p,
 	  else if (curr->granted_mode == S_LOCK)
 	    {
 	      curr->count--;
+
+	      if (lock_is_instant_lock_mode (tran_index))
+		{
+		  curr->instant_lock_count--;
+		}
 	    }
 
 	}
@@ -5603,6 +5613,11 @@ lock_remove_all_key_locks_with_scanid (THREAD_ENTRY * thread_p,
 	  else if (curr->granted_mode == S_LOCK)
 	    {
 	      curr->count--;
+
+	      if (lock_is_instant_lock_mode (tran_index))
+		{
+		  curr->instant_lock_count--;
+		}
 	    }
 
 	}

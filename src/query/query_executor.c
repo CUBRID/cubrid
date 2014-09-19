@@ -13813,10 +13813,6 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       /* need lock & reevaluation */
       lock_start_instant_lock_mode (tran_index);
     }
-  else
-    {
-      assert (lock_is_instant_lock_mode (tran_index));
-    }
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p)
       && log_does_allow_replication () == true)
