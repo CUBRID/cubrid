@@ -112,9 +112,11 @@ static int pruningset_to_spec_list (PRUNING_CONTEXT * pinfo,
 				    const PRUNING_BITSET * pruned);
 
 /* pruning operations */
-static int partition_free_cache_entry (const void *key, void *data,
-				       void *args);
-static int partition_cache_pruning_context (PRUNING_CONTEXT * pinfo);
+static int partition_free_cache_entry_kv (const void *key, void *data,
+					  void *args);
+static int partition_free_cache_entry (PARTITION_CACHE_ENTRY * entry);
+static int partition_cache_pruning_context (PRUNING_CONTEXT * pinfo,
+					    bool * already_exists);
 static bool partition_load_context_from_cache (PRUNING_CONTEXT * pinfo,
 					       bool * is_modified);
 static int partition_cache_entry_to_pruning_context (PRUNING_CONTEXT * pinfo,
@@ -414,11 +416,24 @@ pruningset_iterator_next (PRUNING_BITSET_ITERATOR * it)
 }
 
 /*
- * partition_free_cache_entry () - free memory allocated for a cache entry
+ * partition_free_cache_entry_kv () - A callback function to free memory
+ *                                    allocated for a cache entry key and value.
  * return : error code or NO_ERROR
  * key (in)   :
  * data (in)  :
  * args (in)  :
+ *
+ */
+static int
+partition_free_cache_entry_kv (const void *key, void *data, void *args)
+{
+  return partition_free_cache_entry ((PARTITION_CACHE_ENTRY *) data);
+}
+
+/*
+ * partition_free_cache_entry () - free memory allocated for a cache entry
+ * return : error code or NO_ERROR
+ * entry (in)  :
  *
  * Note: Since cache entries are not allocated in the private heaps used
  *  by threads, this function changes the private heap of the calling thread
@@ -426,9 +441,8 @@ pruningset_iterator_next (PRUNING_BITSET_ITERATOR * it)
  *  and sets it back after it finishes
  */
 static int
-partition_free_cache_entry (const void *key, void *data, void *args)
+partition_free_cache_entry (PARTITION_CACHE_ENTRY * entry)
 {
-  PARTITION_CACHE_ENTRY *entry = (PARTITION_CACHE_ENTRY *) data;
   HL_HEAPID old_heap;
 
   /* change private heap */
@@ -604,12 +618,16 @@ error_return:
  * partition_cache_pruning_context () - cache a pruning context
  * return : error code or NO_ERROR
  * pinfo (in) : pruning context
+ * exists (out) : return true if put into cache success,
+ *                return false if the key already exists in hash map.
  */
 static int
-partition_cache_pruning_context (PRUNING_CONTEXT * pinfo)
+partition_cache_pruning_context (PRUNING_CONTEXT * pinfo,
+				 bool * already_exists)
 {
   PARTITION_CACHE_ENTRY *entry_p = NULL;
   OID *oid_key = NULL;
+  void *val;
 
   if (!PARTITION_IS_CACHE_INITIALIZED ())
     {
@@ -640,7 +658,22 @@ partition_cache_pruning_context (PRUNING_CONTEXT * pinfo)
       return ER_FAILED;
     }
 
-  (void) mht_put (db_Partition_Ht, oid_key, entry_p);
+  val = mht_put_if_not_exists (db_Partition_Ht, oid_key, entry_p);
+  if (val == NULL)
+    {
+      csect_exit (pinfo->thread_p, CSECT_PARTITION_CACHE);
+      return ER_FAILED;
+    }
+
+  if (val != entry_p)
+    {
+      partition_free_cache_entry (entry_p);
+      *already_exists = true;
+    }
+  else
+    {
+      *already_exists = false;
+    }
 
   csect_exit (pinfo->thread_p, CSECT_PARTITION_CACHE);
 
@@ -782,7 +815,7 @@ partition_cache_finalize (THREAD_ENTRY * thread_p)
 
   if (PARTITION_IS_CACHE_INITIALIZED ())
     {
-      (void) mht_map (db_Partition_Ht, partition_free_cache_entry, NULL);
+      (void) mht_map (db_Partition_Ht, partition_free_cache_entry_kv, NULL);
       mht_destroy (db_Partition_Ht);
       db_Partition_Ht = NULL;
     }
@@ -812,7 +845,7 @@ partition_decache_class (THREAD_ENTRY * thread_p, const OID * class_oid)
       return;
     }
 
-  (void) mht_rem (db_Partition_Ht, class_oid, partition_free_cache_entry,
+  (void) mht_rem (db_Partition_Ht, class_oid, partition_free_cache_entry_kv,
 		  NULL);
 
   csect_exit (thread_p, CSECT_PARTITION_CACHE);
@@ -2360,6 +2393,7 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p,
   OR_PARTITION *master = NULL;
   MATCH_STATUS status = MATCH_NOT_FOUND;
   bool is_modified = false;
+  bool already_exists = false;
 
   if (pinfo == NULL)
     {
@@ -2387,16 +2421,10 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p,
 	}
     }
 
+reload_from_cache:
+
   /* try to get info from the cache first */
-  if (!partition_load_context_from_cache (pinfo, &is_modified))
-    {
-      if (pinfo->error_code != NO_ERROR)
-	{
-	  error = pinfo->error_code;
-	  goto error_return;
-	}
-    }
-  else
+  if (partition_load_context_from_cache (pinfo, &is_modified))
     {
       master = &pinfo->partitions[0];
       pinfo->root_repr_id = master->rep_id;
@@ -2413,6 +2441,12 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p,
 	  partition_set_specified_partition (pinfo, class_oid);
 	}
       return NO_ERROR;
+    }
+
+  if (pinfo->error_code != NO_ERROR)
+    {
+      error = pinfo->error_code;
+      goto error_return;
     }
 
   error = heap_get_class_partitions (pinfo->thread_p, &pinfo->root_oid,
@@ -2447,8 +2481,22 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p,
       /* Cache the loaded info. If the call below is successful, pinfo
        * will be returned holding the cached information
        */
-      partition_cache_pruning_context (pinfo);
+      partition_cache_pruning_context (pinfo, &already_exists);
+
+      /* Multiple thread can reach here synchronously.
+       * In this case redo the action of load from cache.
+       */
+      if (already_exists)
+	{
+	  heap_clear_partition_info (pinfo->thread_p, pinfo->partitions,
+				     pinfo->count);
+	  pinfo->partitions = NULL;
+	  pinfo->count = 0;
+
+	  goto reload_from_cache;
+	}
     }
+
   if (pruning_type == DB_PARTITION_CLASS)
     {
       partition_set_specified_partition (pinfo, class_oid);

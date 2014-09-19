@@ -72,9 +72,10 @@ static const float MHT_REHASH_FACTOR = 1.3f;
 typedef enum mht_put_opt MHT_PUT_OPT;
 enum mht_put_opt
 {
-  MHT_OPT_DEFAULT,
-  MHT_OPT_KEEP_KEY,
-  MHT_OPT_INSERT_ONLY
+  MHT_OPT_DEFAULT = 0,
+  MHT_OPT_KEEP_KEY = 1,
+  MHT_OPT_INSERT_ONLY = 2,
+  MHT_OPT_INSERT_IF_NOT_EXISTS = 4
 };
 
 /*
@@ -1370,7 +1371,12 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
  * mht_put_internal - internal function for mht_put(), mht_put_new(), and
  *                    mht_put_data();
  *                    insert an entry associating key with data
- *   return: Returns key if insertion was OK, otherwise, it returns NULL
+ *   return: 
+ *       For option MHT_OPT_DEFAULT, MHT_OPT_KEEP_KEY, MHT_OPT_INSERT_ONLY, 
+ *           returns key if insertion was OK, otherwise, it returns NULL.
+ *       For option MHT_OPT_INSERT_IF_NOT_EXISTS,
+ *           returns existing data if duplicated key was found, or return
+ *           inserted data if insertion was OK, otherwise, it returns NULL.
  *   ht(in/out): hash table (set as a side effect)
  *   key(in): hashing key
  *   data(in): data associated with hashing key
@@ -1381,6 +1387,8 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
  *            MHT_OPT_KEEP_KEY - change data but the key of the hash entry
  *            MHT_OPT_INSERT_ONLY - do not replace the existing hash entry
  *                                  even if there is an etnry with the same key
+ *            MHT_OPT_INSERT_IF_NOT_EXISTS - only insert if the key not exists,
+ *                                           do nothing if the same key exists.
  */
 static const void *
 mht_put_internal (MHT_TABLE * ht, const void *key, void *data,
@@ -1408,6 +1416,12 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data,
 	{
 	  if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
 	    {
+	      if (opt & MHT_OPT_INSERT_IF_NOT_EXISTS)
+	        {
+	          /* Return data for this option */
+	      	  return hentry->data;
+	        }
+
 	      /* Replace the old data with the new one */
 	      if (!(opt & MHT_OPT_KEEP_KEY))
 		{
@@ -1493,7 +1507,7 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data,
 	}
     }
 
-  return key;
+  return (opt & MHT_OPT_INSERT_IF_NOT_EXISTS) ? data : key;
 }
 
 const void *
@@ -1501,6 +1515,25 @@ mht_put_new (MHT_TABLE * ht, const void *key, void *data)
 {
   assert (ht != NULL && key != NULL);
   return mht_put_internal (ht, key, data, MHT_OPT_INSERT_ONLY);
+}
+
+/*
+ * mht_put_if_not_exists - insert only if the same key not exists.
+ *   return: Return existing data if duplicated key found,
+ *           or return new insertion data if insertion successful,
+ *           otherwise return NULL.
+ *   ht(in/out): hash table
+ *   key(in): hashing key
+ *   data(in): data associated with hashing key
+ *
+ *   Insert an entry into a hash table only same key not exists.
+ *   Note that this function different with other put functions, do not return key.
+ */
+const void *
+mht_put_if_not_exists (MHT_TABLE * ht, const void *key, void *data)
+{
+  assert (ht != NULL && key != NULL);
+  return mht_put_internal (ht, key, data, MHT_OPT_INSERT_IF_NOT_EXISTS);
 }
 
 const void *
