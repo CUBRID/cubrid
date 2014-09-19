@@ -132,18 +132,13 @@ static DAEMON_THREAD_MONITOR
   thread_Vacuum_master_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 
 static DAEMON_THREAD_MONITOR *thread_Vacuum_worker_threads = NULL;
-static int thread_Vacuum_worker_first_thread_index;
-static int thread_Vacuum_worker_last_thread_index;
+static INT32 thread_Available_vacuum_workers_count = 0;
 
 typedef struct vacuum_thread_entry VACUUM_WORKER_THREAD_ENTRY;
 struct vacuum_thread_entry
 {
   THREAD_ENTRY *thread_p;
   DAEMON_THREAD_MONITOR *monitor;
-  VACUUM_LOG_BLOCKID blockid;	/* blockid for the log data block that is
-				 * assigned as job. is VACUUM_NULL_LOG_BLOCKID
-				 * if no job is assigned.
-				 */
   INT32 drop_files_version;	/* last dropped file version seen by this
 				 * worker.
 				 */
@@ -458,14 +453,14 @@ thread_initialize_manager (void)
 	    {
 	      thread_initialize_daemon_monitor
 		(&thread_Vacuum_worker_threads[i]);
-	      thread_Vacuum_worker_thread_entries[i].blockid =
-		VACUUM_NULL_LOG_BLOCKID;
 	      thread_Vacuum_worker_thread_entries[i].monitor =
 		&thread_Vacuum_worker_threads[i];
 	      thread_Vacuum_worker_thread_entries[i].thread_p = NULL;
 	      thread_Vacuum_worker_thread_entries[i].state =
 		VACUUM_WORKER_STATE_INACTIVE;
 	      thread_Vacuum_worker_thread_entries[i].drop_files_version = -1;
+	      /* Increment the number of available vacuum workers */
+	      thread_Available_vacuum_workers_count++;
 	    }
 	}
       else
@@ -2754,7 +2749,7 @@ thread_vacuum_master_thread (void *arg_p)
   pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
+  tsd_ptr->type = TT_VACUUM_MASTER;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
   thread_Vacuum_master_thread.is_available = true;
 
@@ -2842,7 +2837,7 @@ thread_vacuum_worker_thread (void *arg_p)
   pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
+  tsd_ptr->type = TT_VACUUM_WORKER;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
   thread_monitor->is_available = true;
 
@@ -2854,6 +2849,8 @@ thread_vacuum_worker_thread (void *arg_p)
 
       rv = pthread_mutex_lock (&thread_monitor->lock);
       thread_monitor->is_running = false;
+      vacuum_thread_p->state = VACUUM_WORKER_STATE_INACTIVE;
+      ATOMIC_INC_32 (&thread_Available_vacuum_workers_count, 1);
       pthread_cond_wait (&thread_monitor->cond, &thread_monitor->lock);
 
       if (tsd_ptr->shutdown)
@@ -2865,8 +2862,7 @@ thread_vacuum_worker_thread (void *arg_p)
       thread_monitor->is_running = true;
       pthread_mutex_unlock (&thread_monitor->lock);
 
-      vacuum_start_new_job (tsd_ptr, vacuum_thread_p->blockid);
-      vacuum_thread_p->blockid = VACUUM_NULL_LOG_BLOCKID;
+      vacuum_start_new_job (tsd_ptr);
     }
 
   rv = pthread_mutex_lock (&thread_monitor->lock);
@@ -2880,40 +2876,55 @@ thread_vacuum_worker_thread (void *arg_p)
 }
 
 /*
- * thread_wakeup_vacuum_worker_thread () - Wakeup one of the vacuum workers
- *					   to process log data block
- *					   identified by blockid.
+ * thread_wakeup_vacuum_worker_threads () - Wakeup vacuum workers to start
+ *					    execution jobs.
  *
- * return   : True if an available worker was found, false otherwise.
- * arg (in) : Log data block identifier.
- *
- * NOTE: Block id is saved in vacuum_thread_entry data which is passed to
- *	 the vacuum worker. This field cannot be changed/read simultaneously.
- *	 Writes are synchronized using lock. Reads can only happen if
- *	 the vacuum worker thread is running, while write only if the thread
- *	 is not running.
+ * return	  : True if an available worker was found, false otherwise.
+ * n_workers (in) : Number of required workers.
  */
-bool
-thread_wakeup_vacuum_worker_thread (void *arg)
+void
+thread_wakeup_vacuum_worker_threads (int n_workers)
 {
   int rv, i;
-  VACUUM_LOG_BLOCKID *blockid = (VACUUM_LOG_BLOCKID *) arg;
+
+  if (thread_Available_vacuum_workers_count == 0 || n_workers <= 0)
+    {
+      /* No available worker or no workers required */
+      return;
+    }
 
   for (i = 0; i < thread_get_vacuum_worker_count (); i++)
     {
       rv = pthread_mutex_lock (&thread_Vacuum_worker_threads[i].lock);
       if (!thread_Vacuum_worker_threads[i].is_running
-	  && (thread_Vacuum_worker_thread_entries[i].blockid
-	      == VACUUM_NULL_LOG_BLOCKID))
+	  && (thread_Vacuum_worker_thread_entries[i].state
+	      == VACUUM_WORKER_STATE_INACTIVE))
 	{
-	  thread_Vacuum_worker_thread_entries[i].blockid = *blockid;
+	  /* Decrement available vacuum workers count */
+	  ATOMIC_INC_32 (&thread_Available_vacuum_workers_count, -1);
+	  /* Change state of worker from inactive to waking to avoid
+	   * signaling it again on next call.
+	   */
+	  thread_Vacuum_worker_thread_entries[i].state =
+	    VACUUM_WORKER_STATE_WAKING;
 	  pthread_cond_signal (&thread_Vacuum_worker_threads[i].cond);
 	  pthread_mutex_unlock (&thread_Vacuum_worker_threads[i].lock);
-	  return true;
+
+	  /* Decrement the required number of workers */
+	  n_workers--;
+
+	  if (thread_Available_vacuum_workers_count == 0 || n_workers == 0)
+	    {
+	      /* Stop */
+	      return;
+	    }
 	}
-      pthread_mutex_unlock (&thread_Vacuum_worker_threads[i].lock);
+      else
+	{
+	  /* Unlock thread lock */
+	  pthread_mutex_unlock (&thread_Vacuum_worker_threads[i].lock);
+	}
     }
-  return false;
 }
 
 /*
@@ -2986,13 +2997,40 @@ thread_get_vacuum_thread_entry (THREAD_ENTRY * thread_p)
 bool
 thread_is_process_log_for_vacuum (THREAD_ENTRY * thread_p)
 {
-  VACUUM_WORKER_THREAD_ENTRY *vacuum_thread_p =
-    thread_get_vacuum_thread_entry (thread_p);
-  if (vacuum_thread_p == NULL)
+  VACUUM_WORKER_THREAD_ENTRY *vacuum_thread_p = NULL;
+
+  if (thread_p == NULL)
     {
-      return false;
+      thread_p = thread_get_thread_entry_info ();
+      if (thread_p == NULL)
+	{
+	  return false;
+	}
     }
-  return (vacuum_thread_p->state == VACUUM_WORKER_STATE_PROCESS_LOG);
+
+  if (thread_p->type == TT_VACUUM_WORKER)
+    {
+      /* Check vacuum worker state */
+      vacuum_thread_p = thread_get_vacuum_thread_entry (thread_p);
+      if (vacuum_thread_p == NULL)
+	{
+	  /* Should not happen */
+	  assert_release (false);
+	  return false;
+	}
+      return (vacuum_thread_p->state == VACUUM_WORKER_STATE_PROCESS_LOG);
+    }
+
+  if (thread_p->type == TT_VACUUM_MASTER)
+    {
+      /* Check vacuum master state */
+      return vacuum_is_master_in_process_log_phase ();
+    }
+
+  /* Only vacuum master/workers process log pages for other reason than adding
+   * new log entries.
+   */
+  return false;
 }
 
 /*

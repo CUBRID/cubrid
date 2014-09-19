@@ -129,8 +129,17 @@ enum
   THREAD_LOGWR_SUSPENDED = 23,
   THREAD_LOGWR_RESUMED = 24
 };
+
 enum
-{ TT_MASTER, TT_SERVER, TT_WORKER, TT_DAEMON, TT_NONE };
+{
+  TT_MASTER,
+  TT_SERVER,
+  TT_WORKER,
+  TT_DAEMON,
+  TT_VACUUM_MASTER,
+  TT_VACUUM_WORKER,
+  TT_NONE
+};
 
 enum
 { THREAD_STOP_WORKERS_EXCEPT_LOGWR, THREAD_STOP_LOGWR };
@@ -340,6 +349,8 @@ typedef enum vacuum_worker_state VACUUM_WORKER_STATE;
 enum vacuum_worker_state
 {
   VACUUM_WORKER_STATE_INACTIVE,	/* Vacuum worker is inactive */
+  VACUUM_WORKER_STATE_WAKING,	/* Vacuum worker was sent a signal to wake up
+				 */
   VACUUM_WORKER_STATE_PROCESS_LOG,	/* Vacuum worker processes log data */
   VACUUM_WORKER_STATE_EXECUTE	/* Vacuum worker executes cleanup based
 				 * on processed data
@@ -433,7 +444,7 @@ extern void thread_wakeup_purge_archive_logs_thread (void);
 extern void thread_wakeup_oob_handler_thread (void);
 extern void thread_wakeup_auto_volume_expansion_thread (void);
 extern void thread_wakeup_vacuum_master_thread (void);
-extern bool thread_wakeup_vacuum_worker_thread (void *arg);
+extern void thread_wakeup_vacuum_worker_threads (int n_workers);
 
 extern bool thread_is_page_flush_thread_available (void);
 

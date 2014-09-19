@@ -32,9 +32,9 @@
 
 /* Lock-free Circular Queue is actually an array of entries, where the last
  * entry in the array is considered as preceding the first entry in the array.
- * The two ends of the queue are stored (head and tail). New entries are
- * "produced" at the end of the queue, while "consumers" will pop entries from
- * the head of the queue.
+ * The two ends of the queue are stored (consume_cursor and produce_cursor).
+ * New entries are "produced" at the end of the queue, while "consumers" will
+ * pop entries from the consume_cursor of the queue.
  *
  * The queue has a fixed maximum capacity. When there is no more room for new
  * entries, the push function will return false.
@@ -45,24 +45,40 @@ typedef struct lock_free_circular_queue LOCK_FREE_CIRCULAR_QUEUE;
 struct lock_free_circular_queue
 {
   char *data;
-  INT32 head;
-  INT32 read_tail;
-  INT32 tail;
-  INT32 capacity;
+  INT32 *entry_state;
   int data_size;
+  INT32 consume_cursor;
+  INT32 produce_cursor;
+  INT32 capacity;
 };
 
+/* Macro's to inspect queue status and size. Note that their results is not
+ * guaranteed to be precise.
+ */
 /* Check if queue is empty */
+/* Macro can sometimes return true even if the queue is not empty (if
+ * concurrent transactions consume entries at the same time). However it will
+ * always return true if the queue is empty.
+ */
 #define LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY(queue) \
-  (queue->head == queue->read_tail)
+  (queue->produce_cursor <= queue->consume_cursor)
 /* Check if queue is full */
+/* Macro can return true even if the queue is not full. However it will never
+ * return false if the queue is really full.
+ */
 #define LOCK_FREE_CIRCULAR_QUEUE_IS_FULL(queue) \
-  (((queue->tail + 1) % queue->capacity) == queue->head)
+  (queue->consume_cursor <= queue->produce_cursor - queue->capacity + 1)
+/* Get queue size */
+/* The functions will return the exact size if there are no concurrent
+ * consumers/producers. Concurrent consumers/producers may alter the result.
+ */
+#define LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE(queue) \
+  (queue->produce_cursor - queue->consume_cursor)
 
-extern bool lock_free_circular_queue_push (LOCK_FREE_CIRCULAR_QUEUE * queue,
-					   void *data);
-extern bool lock_free_circular_queue_pop (LOCK_FREE_CIRCULAR_QUEUE * queue,
-					  void *data);
+extern bool lock_free_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE *
+					      queue, void *data);
+extern bool lock_free_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE *
+					      queue, void *data);
 extern LOCK_FREE_CIRCULAR_QUEUE *lock_free_circular_queue_create (INT32
 								  capacity,
 								  int

@@ -114,9 +114,12 @@ extern int vacuum_rv_redo_append_block_data (THREAD_ENTRY * thread_p,
 					     LOG_RCV * rcv);
 extern int vacuum_rv_redo_update_block_data (THREAD_ENTRY * thread_p,
 					     LOG_RCV * rcv);
+extern int vacuum_rv_redo_save_blocks (THREAD_ENTRY * thread_p,
+				       LOG_RCV * rcv);
 
 extern void vacuum_set_vacuum_data_lsa (THREAD_ENTRY * thread_p,
-					LOG_LSA * vacuum_data_lsa);
+					LOG_LSA * vacuum_data_lsa,
+					LOG_RCVINDEX rcvindex);
 extern void vacuum_get_vacuum_data_lsa (THREAD_ENTRY * thread_p,
 					LOG_LSA * vacuum_data_lsa);
 
@@ -140,10 +143,11 @@ extern int xvacuum (THREAD_ENTRY * thread_p, int num_classes,
 extern int vacuum_compare_dropped_files_version (INT32 version_a,
 						 INT32 version_b);
 
+extern bool vacuum_is_master_in_process_log_phase (void);
+
 #if defined (SERVER_MODE)
 extern void vacuum_master_start (void);
-extern void vacuum_start_new_job (THREAD_ENTRY * thread_p,
-				  VACUUM_LOG_BLOCKID blockid);
+extern void vacuum_start_new_job (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */
 
 #endif /* _VACUUM_H_ */

@@ -2045,7 +2045,6 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   if ((pageid >= log_Gl.hdr.append_lsa.pageid)	/* for case 1 */
       || (pageid >= log_Gl.append.prev_lsa.pageid))	/* for case 2 */
     {
-      assert (!thread_is_process_log_for_vacuum (thread_p));
       LOG_CS_ENTER (thread_p);
 
       assert (LSA_LE (&log_Gl.append.prev_lsa, &log_Gl.hdr.append_lsa));
@@ -4665,7 +4664,9 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #endif
 
 #if defined(SERVER_MODE)
-  if (thread_p && thread_p->type != TT_DAEMON)
+  if (thread_p && thread_p->type != TT_DAEMON
+      && thread_p->type != TT_VACUUM_MASTER
+      && thread_p->type != TT_VACUUM_WORKER)
     {
       /* set event logging parameter */
       thread_p->event_stats.trace_log_flush_time =
@@ -5199,7 +5200,9 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
-  if (thread_p && thread_p->type != TT_DAEMON)
+  if (thread_p && thread_p->type != TT_DAEMON
+      && thread_p->type != TT_VACUUM_MASTER
+      && thread_p->type != TT_VACUUM_WORKER)
     {
       /* reset event logging parameter */
       thread_p->event_stats.trace_log_flush_time = 0;
@@ -5223,7 +5226,9 @@ error:
 		     "logpb_flush_all_append_pages");
 
 #if defined(SERVER_MODE)
-  if (thread_p && thread_p->type != TT_DAEMON)
+  if (thread_p && thread_p->type != TT_DAEMON
+      && thread_p->type != TT_VACUUM_MASTER
+      && thread_p->type != TT_VACUUM_WORKER)
     {
       /* reset event logging parameter */
       thread_p->event_stats.trace_log_flush_time = 0;

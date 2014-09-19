@@ -4011,7 +4011,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 
 	      if (LOG_IS_VACUUM_DATA_RECOVERY (rcvindex))
 		{
-		  vacuum_set_vacuum_data_lsa (thread_p, &rcv_lsa);
+		  vacuum_set_vacuum_data_lsa (thread_p, &rcv_lsa, rcvindex);
 		}
 	      break;
 

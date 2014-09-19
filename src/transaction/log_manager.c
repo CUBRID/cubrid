@@ -2259,7 +2259,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
    */
   if (LOG_IS_VACUUM_DATA_RECOVERY (rcvindex))
     {
-      vacuum_set_vacuum_data_lsa (thread_p, &start_lsa);
+      vacuum_set_vacuum_data_lsa (thread_p, &start_lsa, rcvindex);
     }
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p)
@@ -2520,7 +2520,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
    */
   if (LOG_IS_VACUUM_DATA_RECOVERY (rcvindex))
     {
-      vacuum_set_vacuum_data_lsa (thread_p, &start_lsa);
+      vacuum_set_vacuum_data_lsa (thread_p, &start_lsa, rcvindex);
     }
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p)
