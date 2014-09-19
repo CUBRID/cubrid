@@ -559,6 +559,12 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* save current range details */
   if (scan_save_range_details (isidp, &scan_range_det) != NO_ERROR)
     {
+      if (descending_scan)
+	{
+	  /* return range to initial state before exit */
+	  iss->skipped_range->key1 = iss->skipped_range->key2;
+	  iss->skipped_range->key2 = NULL;
+	}
       return S_ERROR;
     }
 
@@ -571,6 +577,12 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
      in the lower (or higher) bound of the fetch range (i.e. in last_key) */
   if (scan_get_index_oidset (thread_p, scan_id, NULL, NULL) != NO_ERROR)
     {
+      if (descending_scan)
+	{
+	  /* return range to initial state before exit */
+	  iss->skipped_range->key1 = iss->skipped_range->key2;
+	  iss->skipped_range->key2 = NULL;
+	}
       return S_ERROR;
     }
 
@@ -606,7 +618,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				       &first_midxkey_val, NULL, NULL);
       if (ret != NO_ERROR)
 	{
-	  return ret;
+	  return S_ERROR;
 	}
 
       /* first_midxkey_val holds pointer to first value from last_key, which
