@@ -4267,6 +4267,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp,
   bool clear_key;
   int oid_size;
   MVCCID mvccid;
+  short mvcc_flags;
 
   if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
@@ -4320,25 +4321,31 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp,
     }
 
   /* output MVCCIDs of first OID */
-  if (mvcc_Enabled == true)
+  mvcc_flags = btree_leaf_key_oid_get_mvcc_flag (rec->data);
+  if (mvcc_flags != 0)
     {
       fprintf (fp, " (");
-      if (btree_leaf_key_oid_is_mvcc_flaged (rec->data,
-					     BTREE_LEAF_OID_HAS_MVCC_INSID))
+      if (mvcc_flags & BTREE_LEAF_OID_HAS_MVCC_INSID)
 	{
+	  /* Get and print insert MVCCID */
 	  OR_GET_MVCCID (rec->data + oid_size, &mvccid);
-	  fprintf (fp, "%lld", (long long) mvccid);
-	  if (btree_leaf_key_oid_is_mvcc_flaged (rec->data,
-						 BTREE_LEAF_OID_HAS_MVCC_DELID))
+	  fprintf (fp, "insid=%lld", (long long) mvccid);
+
+	  if (mvcc_flags & BTREE_LEAF_OID_HAS_MVCC_DELID)
 	    {
+	      /* Get and print delete MVCCID */
 	      OR_GET_MVCCID (rec->data + oid_size + OR_MVCCID_SIZE, &mvccid);
-	      fprintf (fp, ", %lld", (long long) mvccid);
+	      fprintf (fp, ", delid=%lld", (long long) mvccid);
 	    }
 	}
       else
 	{
+	  /* Safe guard */
+	  assert (mvcc_flags & BTREE_LEAF_OID_HAS_MVCC_DELID);
+
+	  /* Get and print delete MVCCID */
 	  OR_GET_MVCCID (rec->data + oid_size, &mvccid);
-	  fprintf (fp, "%lld", (long long) mvccid);
+	  fprintf (fp, "delid=%lld", (long long) mvccid);
 	}
 
       fprintf (fp, ")  ");
@@ -4356,20 +4363,30 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp,
 	      fprintf (fp, "\n");
 	    }
 
+	  /* Get OID */
 	  or_get_oid (&buf, &oid);
+	  BTREE_CLEAR_MVCC_FLAGS_FROM_OID (&oid);
+
+	  /* Get class OID */
 	  or_get_oid (&buf, &class_oid);
 
+	  /* Print OID and class OID */
 	  fprintf (fp, " (%d %d %d : %d, %d, %d) ",
 		   class_oid.volid, class_oid.pageid, class_oid.slotid,
 		   oid.volid, oid.pageid, oid.slotid);
 
+	  /* Since objects are fixed size, they contain both insert and delete
+	   * MVCCID's.
+	   */
 	  fprintf (fp, " (");
 
+	  /* Get and print insert MVCCID */
 	  (void) or_get_mvccid (&buf, &mvccid);
-	  fprintf (fp, "%lld", (long long) mvccid);
+	  fprintf (fp, "insid=%lld", (long long) mvccid);
 
+	  /* Get and print delete MVCCID */
 	  (void) or_get_mvccid (&buf, &mvccid);
-	  fprintf (fp, "%lld", (long long) mvccid);
+	  fprintf (fp, ", delid=%lld", (long long) mvccid);
 
 	  fprintf (fp, ")  ");
 	}
@@ -4384,37 +4401,41 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp,
 	      fprintf (fp, "\n");
 	    }
 
+	  /* Get MVCC flags */
+	  mvcc_flags = btree_leaf_key_oid_get_mvcc_flag (buf.ptr);
+
 	  or_get_oid (&buf, &oid);
-	  if (mvcc_Enabled == true)
-	    {
-	      oid.volid = oid.volid & (~BTREE_LEAF_OID_MVCC_MASK);
-	    }
+	  BTREE_CLEAR_MVCC_FLAGS_FROM_OID (&oid);
 
 	  fprintf (fp, " (%d, %d, %d) ", oid.volid, oid.pageid, oid.slotid);
 
-	  fprintf (fp, " (");
-	  if (btree_leaf_key_oid_is_mvcc_flaged (buf.ptr - OR_OID_SIZE,
-						 BTREE_LEAF_OID_HAS_MVCC_INSID))
+	  if (mvcc_flags != 0)
 	    {
-	      (void) or_get_mvccid (&buf, &mvccid);
-	      fprintf (fp, "%lld", (long long) mvccid);
-
-	      if (btree_leaf_key_oid_is_mvcc_flaged (buf.ptr - OR_OID_SIZE -
-						     OR_MVCCID_SIZE,
-						     BTREE_LEAF_OID_HAS_MVCC_DELID))
+	      fprintf (fp, " (");
+	      if (mvcc_flags & BTREE_LEAF_OID_HAS_MVCC_INSID)
 		{
+		  /* Get and print insert MVCCID */
 		  (void) or_get_mvccid (&buf, &mvccid);
-		  fprintf (fp, ", %lld", (long long) mvccid);
+		  fprintf (fp, "insid=%lld", (long long) mvccid);
+
+		  if (mvcc_flags & BTREE_LEAF_OID_HAS_MVCC_DELID)
+		    {
+		      /* Get and print delete MVCCID */
+		      (void) or_get_mvccid (&buf, &mvccid);
+		      fprintf (fp, ", delid=%lld", (long long) mvccid);
+		    }
 		}
+	      else
+		{
+		  /* Safe guard */
+		  assert (mvcc_flags & BTREE_LEAF_OID_HAS_MVCC_DELID);
+
+		  /* Get and print delete MVCCID */
+		  (void) or_get_mvccid (&buf, &mvccid);
+		  fprintf (fp, "delid=%lld", (long long) mvccid);
+		}
+	      fprintf (fp, ")  ");
 	    }
-	  else
-	    if (btree_leaf_key_oid_is_mvcc_flaged
-		(buf.ptr - OR_OID_SIZE, BTREE_LEAF_OID_HAS_MVCC_DELID))
-	    {
-	      (void) or_get_mvccid (&buf, &mvccid);
-	      fprintf (fp, "%lld", (long long) mvccid);
-	    }
-	  fprintf (fp, ")  ");
 	}
     }
 
@@ -4466,6 +4487,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp,
 		}
 
 	      or_get_oid (&buf, &oid);
+	      BTREE_CLEAR_MVCC_FLAGS_FROM_OID (&oid);
 
 	      fprintf (fp, " (%d, %d, %d) ", oid.volid, oid.pageid,
 		       oid.slotid);
@@ -4481,10 +4503,10 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp,
 	      if (mvcc_Enabled == true)
 		{
 		  (void) or_get_mvccid (&buf, &mvccid);
-		  fprintf (fp, "%lld", (long long) mvccid);
+		  fprintf (fp, "insid=%lld", (long long) mvccid);
 
 		  (void) or_get_mvccid (&buf, &mvccid);
-		  fprintf (fp, ", %lld", (long long) mvccid);
+		  fprintf (fp, ", delid=%lld", (long long) mvccid);
 		}
 	      fprintf (fp, ")  ");
 	    }
