@@ -38,10 +38,12 @@
 void
 schema_table_meta (T_NET_BUF * net_buf)
 {
-  net_buf_cp_int (net_buf, 2, NULL);
+  net_buf_cp_int (net_buf, 3, NULL);
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
 			   "NAME");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, "TYPE");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0,
+			   SCH_CLASS_REMARKS_STR_LEN, "REMARKS");
 }
 
 void
@@ -55,7 +57,7 @@ schema_query_spec_meta (T_NET_BUF * net_buf)
 void
 schema_attr_meta (T_NET_BUF * net_buf)
 {
-  net_buf_cp_int (net_buf, 13, NULL);
+  net_buf_cp_int (net_buf, 14, NULL);
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
 			   "ATTR_NAME");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, "DOMAIN");
@@ -72,6 +74,8 @@ schema_attr_meta (T_NET_BUF * net_buf)
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
 			   "SOURCE_CLASS");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, "IS_KEY");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0,
+			   SCH_REMARKS_STR_LEN, "REMARKS");
 }
 
 void

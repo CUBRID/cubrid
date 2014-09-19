@@ -1757,6 +1757,27 @@ db_set_password (DB_OBJECT * user, const char *old_passwd,
 }
 
 /*
+ * db_set_user_comment() - This is used to set the comment string for a user.
+ * return    : Error code
+ * user(out) : user object
+ * comment(in) : a comment string
+ *
+ */
+int
+db_set_user_comment (DB_OBJECT * user, const char *comment)
+{
+  int retval;
+
+  CHECK_CONNECT_ERROR ();
+  CHECK_1ARG_ERROR (user);
+  CHECK_MODIFICATION_ERROR ();
+
+  retval = au_set_user_comment (user, comment);
+
+  return (retval);
+}
+
+/*
  * db_grant() -This is the basic mechanism for passing permissions to other
  *    users.  The authorization type is one of the numeric values defined
  *    by the DB_AUTH enumeration.  If more than one authorization is to

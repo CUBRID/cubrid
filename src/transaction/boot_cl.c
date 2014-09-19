@@ -1948,6 +1948,12 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "comment", "varchar(2048)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   error_code = sm_update_class (def, NULL);
   if (error_code != NO_ERROR)
     {
@@ -2052,6 +2058,12 @@ boot_define_attribute (MOP class_mop)
     }
 
   error_code = smt_add_attribute (def, "is_nullable", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -2628,6 +2640,12 @@ boot_define_index (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   error_code = sm_update_class (def, NULL);
   if (error_code != NO_ERROR)
     {
@@ -2873,6 +2891,12 @@ boot_define_partition (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   error_code = sm_update_class (def, NULL);
   if (error_code != NO_ERROR)
     {
@@ -3078,6 +3102,12 @@ boot_define_stored_procedure (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   error_code = sm_update_class (def, NULL);
   if (error_code != NO_ERROR)
     {
@@ -3148,6 +3178,12 @@ boot_define_stored_procedure_arguments (MOP class_mop)
     }
 
   error_code = smt_add_attribute (def, "mode", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3305,6 +3341,12 @@ boot_define_serial (MOP class_mop)
     }
   error_code = smt_set_attribute_default (def, "cached_num", 0,
 					  &default_value, DB_DEFAULT_NONE);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3997,7 +4039,8 @@ boot_define_view_class (void)
     {"is_system_class", "varchar(3)"},
     {"partitioned", "varchar(3)"},
     {"is_reuse_oid_class", "varchar(3)"},
-    {"collation", "varchar(32)"}
+    {"collation", "varchar(32)"},
+    {"comment", "varchar(2048)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -4031,7 +4074,7 @@ boot_define_view_class (void)
 	   " CASE WHEN [c].[sub_classes] IS NULL THEN 'NO' ELSE NVL((SELECT 'YES'"
 	   " FROM [%s] [p] WHERE [p].[class_of] = [c] and [p].[pname] IS NULL), 'NO') END,"
 	   " CASE WHEN MOD([c].[is_system_class] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END,"
-	   " [coll].[coll_name]"
+	   " [coll].[coll_name], [c].[comment]"
 	   " FROM [%s] [c], [%s] [coll]"
 	   " WHERE [c].[collation_id] = [coll].[coll_id] AND"
 	   " (CURRENT_USER = 'DBA' OR"
@@ -4160,7 +4203,8 @@ boot_define_view_vclass (void)
   MOP class_mop;
   COLUMN columns[] = {
     {"vclass_name", "varchar(255)"},
-    {"vclass_def", "varchar(4096)"}
+    {"vclass_def", "varchar(4096)"},
+    {"comment", "varchar(2048)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -4186,9 +4230,11 @@ boot_define_view_vclass (void)
     }
 
   sprintf (stmt,
-	   "SELECT [q].[class_of].[class_name], [q].[spec]"
-	   " FROM [%s] [q]"
-	   " WHERE CURRENT_USER = 'DBA' OR"
+	   "SELECT [q].[class_of].[class_name], [q].[spec],"
+	   " [c].[comment]"
+	   " FROM [%s] [q], [%s] [c]"
+	   " WHERE ([q].[class_of].[class_name] = [c].[class_name]) AND"
+	   " (CURRENT_USER = 'DBA' OR"
 	   " {[q].[class_of].[owner].[name]} SUBSETEQ ("
 	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
 	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
@@ -4199,8 +4245,8 @@ boot_define_view_vclass (void)
 	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
 	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
 	   "  WHERE [u].[name] = CURRENT_USER ) AND"
-	   "  [au].[auth_type] = 'SELECT')",
-	   CT_QUERYSPEC_NAME,
+	   "  [au].[auth_type] = 'SELECT'))",
+	   CT_QUERYSPEC_NAME, CT_CLASS_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
@@ -4247,7 +4293,8 @@ boot_define_view_attribute (void)
     {"collation", "varchar(32)"},
     {"domain_class_name", "varchar(255)"},
     {"default_value", "varchar(255)"},
-    {"is_nullable", "varchar(3)"}
+    {"is_nullable", "varchar(3)"},
+    {"comment", "varchar(1024)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -4287,7 +4334,8 @@ boot_define_view_attribute (void)
 	   " FROM [%s] [coll] WHERE [d].[collation_id] = [coll].[coll_id]),"
 	   " 'Not applicable'), "
 	   " [d].[class_of].[class_name], [a].[default_value],"
-	   " CASE WHEN [a].[is_nullable] = 1 THEN 'YES' ELSE 'NO' END"
+	   " CASE WHEN [a].[is_nullable] = 1 THEN 'YES' ELSE 'NO' END,"
+	   " [a].[comment]"
 	   " FROM [%s] [c], [%s] [a], [%s] [d], [%s] [t]"
 	   " WHERE [a].[class_of] = [c] AND [d].[object_of] = [a] AND [d].[data_type] = [t].[type_id] AND"
 	   " (CURRENT_USER = 'DBA' OR"
@@ -4781,7 +4829,8 @@ boot_define_view_index (void)
     {"is_primary_key", "varchar(3)"},
     {"is_foreign_key", "varchar(3)"},
     {"filter_expression", "varchar(255)"},
-    {"have_function", "varchar(3)"}
+    {"have_function", "varchar(3)"},
+    {"comment", "varchar(1024)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -4813,7 +4862,8 @@ boot_define_view_index (void)
 	   " CASE WHEN [i].[is_primary_key] = 0 THEN 'NO' ELSE 'YES' END,"
 	   " CASE WHEN [i].[is_foreign_key] = 0 THEN 'NO' ELSE 'YES' END,"
 	   " [i].[filter_expression],"
-	   " CASE WHEN [i].[have_function] = 0 THEN 'NO' ELSE 'YES' END"
+	   " CASE WHEN [i].[have_function] = 0 THEN 'NO' ELSE 'YES' END,"
+	   " [i].[comment]"
 	   " FROM [%s] [i]"
 	   " WHERE CURRENT_USER = 'DBA' OR"
 	   " {[i].[class_of].[owner].[name]} SUBSETEQ ("
@@ -5035,7 +5085,8 @@ boot_define_view_trigger (void)
     {"target_attr_name", "varchar(255)"},
     {"target_attr_type", "varchar(8)"},
     {"action_type", "integer"},
-    {"action_time", "integer"}
+    {"action_time", "integer"},
+    {"comment", "varchar(1024)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -5064,7 +5115,8 @@ boot_define_view_trigger (void)
 	   "SELECT CAST([t].[name] AS VARCHAR(255)), [c].[class_name],"
 	   " CAST([t].[target_attribute] AS VARCHAR(255)),"
 	   " CASE [t].[target_class_attribute] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
-	   " [t].[action_type], [t].[action_time]"
+	   " [t].[action_type], [t].[action_time],"
+	   " [t].[comment]"
 	   " FROM [%s] [t] LEFT OUTER JOIN [%s] [c] ON [t].[target_class] = [c].[class_of]"
 	   " WHERE CURRENT_USER = 'DBA' OR"
 	   " {[t].[owner].[name]} SUBSETEQ (SELECT SET{CURRENT_USER} +"
@@ -5119,7 +5171,8 @@ boot_define_view_partition (void)
     {"partition_class_name", "varchar(255)"},
     {"partition_type", "varchar(32)"},
     {"partition_expr", "varchar(255)"},
-    {"partition_values", "sequence of"}
+    {"partition_values", "sequence of"},
+    {"comment", "varchar(1024)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -5150,7 +5203,8 @@ boot_define_view_partition (void)
 	   " CASE WHEN [p].[ptype] = 0 THEN 'HASH'"
 	   " WHEN [p].[ptype] = 1 THEN 'RANGE' ELSE 'LIST' END AS [partition_type],"
 	   " TRIM(SUBSTRING([pi].[pexpr] FROM 8 FOR (POSITION(' FROM ' IN [pi].[pexpr])-8)))"
-	   " AS [partition_expression], [p].[pvalues] AS [partition_values]"
+	   " AS [partition_expression], [p].[pvalues] AS [partition_values],"
+	   " [p].[comment] AS [comment]"
 	   " FROM [%s] [p], (select * from [%s] [sp] where [sp].[class_of] = "
 	   " [p].[class_of] AND [sp].[pname] is null) [pi]"
 	   " WHERE [p].[pname] is not null AND"
@@ -5207,7 +5261,8 @@ boot_define_view_stored_procedure (void)
     {"arg_count", "integer"},
     {"lang", "varchar(16)"},
     {"target", "varchar(4096)"},
-    {"owner", "varchar(256)"}
+    {"owner", "varchar(256)"},
+    {"comment", "varchar(1024)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -5247,7 +5302,8 @@ boot_define_view_stored_procedure (void)
 	   " CASE [sp].[lang]"
 	   "   WHEN 1 THEN 'JAVA'"
 	   "   ELSE '' END,"
-	   " [sp].[target], [sp].[owner].[name]"
+	   " [sp].[target], [sp].[owner].[name],"
+	   " [sp].[comment]"
 	   " FROM [%s] [sp]", CT_DATATYPE_NAME, CT_STORED_PROC_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
@@ -5285,7 +5341,8 @@ boot_define_view_stored_procedure_arguments (void)
     {"index_of", "integer"},
     {"arg_name", "varchar(256)"},
     {"data_type", "varchar(16)"},
-    {"mode", "varchar(6)"}
+    {"mode", "varchar(6)"},
+    {"comment", "varchar(1024)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -5320,7 +5377,8 @@ boot_define_view_stored_procedure_arguments (void)
 	   "   WHEN [sp].[mode] = 1 THEN 'IN'"
 	   "   WHEN [sp].[mode] = 2 THEN 'OUT'"
 	   "   ELSE 'INOUT'"
-	   " END"
+	   " END,"
+	   " [sp].[comment]"
 	   " FROM [%s] [sp]"
 	   " ORDER BY [sp].[sp_name], [sp].[index_of]",
 	   CT_DATATYPE_NAME, CT_STORED_PROC_ARGS_NAME);

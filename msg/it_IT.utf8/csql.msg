@@ -195,3 +195,4 @@ $ messaggi di aiuto csql
 \tqcache                 - informazioni sulla cache di query\n
 235 <Partizioni>
 236 È necessario un nome di classe.
+237 <Comment>

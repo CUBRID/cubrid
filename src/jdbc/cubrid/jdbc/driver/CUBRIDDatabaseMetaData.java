@@ -843,19 +843,31 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		}
 
 		UColumnInfo[] column_info = us.getColumnInfo();
+		boolean has_remarks = false;
+		if (column_info.length > 2) {
+		    /* 
+		     * Class schema info may have two types of column info:
+		     * i - [0]=TABLE_NAME, [1]=TABLE_TYPE;
+		     * ii- [0]=TABLE_NAME, [1]=TABLE_TYPE, [2]=REMARKS;
+		     */
+			has_remarks = true;
+		}
+
 		int[] precision = new int[5];
 		precision[0] = 0; /* TABLE_CAT */
 		precision[1] = 0; /* TABLE_SCHEM */
 		precision[2] = column_info[0].getColumnPrecision(); /* TABLE_NAME */
 		precision[3] = 12; /* TABLE_TYPE */
-		precision[4] = 0; /* REMARKS */
+		precision[4] = has_remarks ? column_info[2].getColumnPrecision() : 0; /* REMARKS */
 		CUBRIDResultSetWithoutQuery rs = new CUBRIDResultSetWithoutQuery(5,
 				type, names, nullable, precision);
 
 		Object[] value = new Object[5];
 		value[0] = null;
 		value[1] = null;
-		value[4] = null;
+		if (has_remarks == false) {
+			value[4] = null;
+		}
 
 		// TABLE type
 		int j = 0;
@@ -879,6 +891,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 					continue;
 
 				value[2] = us.getString(0);
+				if (has_remarks == true) {
+					value[4] = us.getString(2);
+				}
 				rs.addTuple(value);
 			}
 		}
@@ -905,6 +920,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 					continue;
 
 				value[2] = us.getString(0);
+				if (has_remarks == true) {
+					value[4] = us.getString(2);
+				}
 				rs.addTuple(value);
 			}
 		}
@@ -930,6 +948,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 					continue;
 
 				value[2] = us.getString(0);
+				if (has_remarks == true) {
+					value[4] = us.getString(2);
+				}
 				rs.addTuple(value);
 			}
 		}
@@ -1009,9 +1030,6 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 				true, false, false, false, false, true, true, true, false,
 				false, false };
 
-		CUBRIDResultSetWithoutQuery rs = new CUBRIDResultSetWithoutQuery(18,
-				types, names, nullable, null);
-
 		UStatement us = null;
 		synchronized (u_con) {
 			int flag = 0;
@@ -1033,13 +1051,51 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 			}
 		}
 
+		UColumnInfo[] column_info = us.getColumnInfo();
+		boolean has_remarks = false;
+		if (column_info.length > 13) {
+		    /* 
+		     * Attribute schema info may have two types of column info:
+		     * i - [0~12]=ATTR_NAME/DOMAIN/SCALE/PRECISION/INDEXED/NON_NULL
+		     *     /SHARED/UNIQUE/DEFAULT/ATTR_ORDER/CLASS_NAME
+		     *     /SOURCE_CLASS/IS_KEY
+		     * ii- [0~12]=i, [13]=REMARKS;
+		     */
+			has_remarks = true;
+		}
+
+		int[] precision = new int[18];
+		precision[0] = 0; /* TABLE_CAT */
+		precision[1] = 0; /* TABLE_SCHEM */
+		precision[2] = column_info[10].getColumnPrecision(); /* TABLE_NAME */
+		precision[3] = column_info[0].getColumnPrecision(); /* COLUMN_NAME */
+		precision[4] = 2; /* DATA_TYPE */
+		precision[5] = 16; /* TYPE_NAME */
+		precision[6] = 4; /* COLUMN_SIZE */
+		precision[7] = 0; /* BUFFER_LENGTH */
+		precision[8] = 4; /* DECIMAL_DIGITS */
+		precision[9] = 0; /* NUM_PREC_RADIX */
+		precision[10] = 4; /* NULLABLE */
+		precision[11] = has_remarks ? column_info[13].getColumnPrecision() : 0; /* REMARKS */
+		precision[12] = column_info[8].getColumnPrecision();; /* COLUMN_DEF */
+		precision[13] = 0; /* SQL_DATA_TYPE */
+		precision[14] = 0; /* SQL_DATETIME_SUB */
+		precision[15] = 4; /* CHAR_OCTET_LENGTH */
+		precision[16] = 4; /* ORDINAL_POSITION */
+		precision[17] = 3; /* IS_NULLABLE */
+
+		CUBRIDResultSetWithoutQuery rs = new CUBRIDResultSetWithoutQuery(18,
+				types, names, nullable, precision);
+
 		Object[] value = new Object[18];
 
 		value[0] = null;
 		value[1] = null;
 		value[7] = null;
 		value[9] = new Integer(10);
-		value[11] = null;
+		if (has_remarks == false) {
+			value[11] = null; /* REMARKS */
+		}
 		value[13] = null;
 		value[14] = null;
 
@@ -1060,6 +1116,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 			value[3] = us.getString(0);
 			value[6] = value[15] = new Integer(us.getInt(3));
 			value[8] = new Integer(us.getInt(2));
+			if (has_remarks == true) {
+				value[11] = us.getString(13);
+			}
 			value[16] = new Integer(us.getInt(9));
 			if (us.getInt(5) == 1) {
 				value[10] = new Integer(columnNoNulls);

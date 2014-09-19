@@ -41,6 +41,7 @@
 #define SERIAL_ATTR_CLASS_NAME    "class_name"
 #define SERIAL_ATTR_ATT_NAME      "att_name"
 #define SERIAL_ATTR_CACHED_NUM    "cached_num"
+#define SERIAL_ATTR_COMMENT       "comment"
 
 extern int xserial_get_current_value (THREAD_ENTRY * thread_p,
 				      DB_VALUE * result_num,

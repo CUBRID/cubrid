@@ -196,3 +196,4 @@ $ csql help messages
 \tqcache                 - informaţii despre cache-ul interogărilor\n
 235 <Partiţii>
 236 Este necesar un nume de clasă.
+237 <Comment>

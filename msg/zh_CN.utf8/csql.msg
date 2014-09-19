@@ -195,3 +195,4 @@ $ csql help messages
 \tqcache                 - 查询缓存信息\n
 235 <分区>
 236 需要一个类名.
+237 <Comment>

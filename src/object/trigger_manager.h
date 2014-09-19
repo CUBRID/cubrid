@@ -83,6 +83,7 @@ typedef struct tr_trigger
    * needs to be re-evaluated
    */
   int chn;
+  const char *comment;
 } TR_TRIGGER;
 
 
@@ -212,6 +213,7 @@ extern const char *TR_ATT_ACTION_TIME;
 extern const char *TR_ATT_ACTION;
 extern const char *TR_ATT_ACTION_OLD;
 extern const char *TR_ATT_PROPERTIES;
+extern const char *TR_ATT_COMMENT;
 
 extern int tr_Current_depth;
 extern int tr_Maximum_depth;
@@ -254,7 +256,8 @@ extern DB_OBJECT *tr_create_trigger (const char *name,
 				     const char *cond_source,
 				     DB_TRIGGER_TIME action_time,
 				     DB_TRIGGER_ACTION action_type,
-				     const char *action_source);
+				     const char *action_source,
+				     const char *comment);
 
 /* Trigger location */
 
@@ -278,6 +281,8 @@ extern int tr_set_status (DB_OBJECT * trigger_object,
 			  DB_TRIGGER_STATUS status, bool call_from_api);
 extern int tr_set_priority (DB_OBJECT * trigger_object, double priority,
 			    bool call_from_api);
+extern int tr_set_comment (DB_OBJECT * trigger_object, const char *comment,
+			   bool call_from_api);
 
 /* Parameters */
 extern int tr_get_depth (void);
@@ -347,6 +352,7 @@ extern int tr_trigger_action_time (DB_OBJECT * trigger_object,
 				   DB_TRIGGER_TIME * tr_time);
 extern int tr_trigger_action_type (DB_OBJECT * trigger_object,
 				   DB_TRIGGER_ACTION * type);
+extern int tr_trigger_comment (DB_OBJECT * trigger_objet, char **comment);
 extern int tr_is_trigger (DB_OBJECT * trigger_object, int *status);
 
 /* Special schema functions */

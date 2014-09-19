@@ -3012,6 +3012,35 @@ sm_get_class_collation (MOP classop, int *collation_id)
 }
 
 /*
+ * sm_set_class_comment() - This sets the table comment.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   classop (in): class pointer
+ *   comment (in): table comment
+ */
+
+int
+sm_set_class_comment (MOP classop, const char *comment)
+{
+  SM_CLASS *class_;
+  int error = NO_ERROR;
+
+  assert (classop != NULL);
+
+  error = au_fetch_class_force (classop, &class_, AU_FETCH_UPDATE);
+  if (error == NO_ERROR)
+    {
+      ws_free_string (class_->comment);
+      class_->comment = ws_copy_string (comment);
+      if (class_->comment == NULL && comment != NULL)
+	{
+	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	}
+    }
+
+  return error;
+}
+
+/*
  * sm_is_system_class() - Tests the system class flag of a class object.
  *   return: non-zero if class is a system defined class
  *   op(in): class object
@@ -9369,7 +9398,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			       c->asc_desc, &index_btid,
 			       c->filter_predicate,
 			       c->fk_info, NULL,
-			       c->func_index_info) != NO_ERROR)
+			       c->func_index_info, c->comment) != NO_ERROR)
 			    {
 			      pr_clear_value (&cnstr_val);
 			      goto structure_error;
@@ -11154,7 +11183,7 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
       (&(class_->properties), con->type, con->name, con->attributes,
        con->asc_desc, con->attrs_prefix_length, &(con->index_btid),
        con->filter_predicate,
-       con->fk_info, NULL, con->func_index_info) != NO_ERROR)
+       con->fk_info, NULL, con->func_index_info, con->comment) != NO_ERROR)
     {
       return error;
     }
@@ -11764,7 +11793,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 					     con->filter_predicate,
 					     con->fk_info,
 					     con->shared_cons_name,
-					     con->func_index_info);
+					     con->func_index_info,
+					     con->comment);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -11780,7 +11810,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 					     con->attrs_prefix_length,
 					     &(con->index_btid),
 					     con->filter_predicate, NULL,
-					     NULL, con->func_index_info);
+					     NULL, con->func_index_info,
+					     con->comment);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -13589,6 +13620,7 @@ sm_exist_index (MOP classop, const char *idxname, BTID * btid)
  *   attrs_prefix_length(in): prefix length
  *   filter_predicate(in): expression from
  *   CREATE INDEX idx ON tbl(col1, ...) WHERE filter_predicate
+ *   comment(in): index comment
  */
 
 int
@@ -13596,7 +13628,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	      const char *constraint_name, const char **attnames,
 	      const int *asc_desc, const int *attrs_prefix_length,
 	      SM_PREDICATE_INFO * filter_index,
-	      SM_FUNCTION_INFO * function_index)
+	      SM_FUNCTION_INFO * function_index, const char *comment)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -13766,7 +13798,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 
 	  error = sm_add_index (sub_partitions[i], db_constraint_type,
 				constraint_name, attnames, asc_desc, NULL,
-				new_filter_index_info, new_func_index_info);
+				new_filter_index_info, new_func_index_info,
+				comment);
 	}
 
       if (new_func_index_info)
@@ -13898,7 +13931,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 				 constraint_name, attrs, asc_desc,
 				 attrs_prefix_length, &index,
 				 filter_index, NULL, out_shared_cons_name,
-				 function_index) != NO_ERROR)
+				 function_index, comment) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
@@ -14676,6 +14709,7 @@ sm_check_index_exist (MOP classop,
  *   class_attributes(in): Flag.  A true value indicates that the names refer to
  *     		class attributes. A false value indicates that the names
  *     		refer to instance attributes.
+ *   comment(in): constraint comment
  *
  *  Note: When adding NOT NULL constraint, this function doesn't check the
  *	  existing values of the attribute. To make sure NOT NULL constraint
@@ -14687,7 +14721,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
 		   const int *asc_desc, const int *attrs_prefix_length,
 		   int class_attributes,
 		   SM_PREDICATE_INFO * filter_index,
-		   SM_FUNCTION_INFO * function_index)
+		   SM_FUNCTION_INFO * function_index, const char *comment)
 {
   int error = NO_ERROR;
   char *shared_cons_name = NULL;
@@ -14706,7 +14740,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
     case DB_CONSTRAINT_REVERSE_INDEX:
       error = sm_add_index (classop, constraint_type, constraint_name,
 			    att_names, asc_desc, attrs_prefix_length,
-			    filter_index, function_index);
+			    filter_index, function_index, comment);
       break;
 
     case DB_CONSTRAINT_UNIQUE:
@@ -14722,7 +14756,8 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
 	{
 	  error = smt_add_constraint (def, constraint_type, constraint_name,
 				      att_names, asc_desc, class_attributes,
-				      NULL, filter_index, function_index);
+				      NULL, filter_index, function_index,
+				      comment);
 	  if (error == NO_ERROR)
 	    {
 	      error = sm_update_class (def, &newmop);
@@ -14750,7 +14785,8 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
 	{
 	  error = smt_add_constraint (def, constraint_type, constraint_name,
 				      att_names, asc_desc, class_attributes,
-				      NULL, filter_index, function_index);
+				      NULL, filter_index, function_index,
+				      comment);
 	  if (error == NO_ERROR)
 	    {
 	      error = do_check_fk_constraints (def, NULL);
@@ -14984,7 +15020,14 @@ sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
 	  free_and_init (info->ref_attrs);
 	}
 
-      free_and_init (info->name);
+      if (info->name != NULL)
+	{
+	  free_and_init (info->name);
+	}
+      if (info->comment != NULL)
+	{
+	  free_and_init (info->comment);
+	}
       free_and_init (info->asc_desc);
       free_and_init (info->prefix_length);
 
@@ -15078,6 +15121,8 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 	      strlen (c->name) + 1);
       goto error_exit;
     }
+
+  new_constraint->comment = (c->comment == NULL) ? NULL : strdup (c->comment);
 
   assert (c->attributes != NULL);
   for (crt_att_p = c->attributes, num_atts = 0; *crt_att_p != NULL;
@@ -15756,7 +15801,7 @@ sm_truncate_class (MOP class_mop)
       error = sm_add_index (class_mop, saved->constraint_type, saved->name,
 			    (const char **) saved->att_names, saved->asc_desc,
 			    saved->prefix_length, saved->filter_predicate,
-			    saved->func_index_info);
+			    saved->func_index_info, saved->comment);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -15771,7 +15816,7 @@ sm_truncate_class (MOP class_mop)
 				 (const char **) saved->att_names,
 				 saved->asc_desc, saved->prefix_length, 0,
 				 saved->filter_predicate,
-				 saved->func_index_info);
+				 saved->func_index_info, saved->comment);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -15794,7 +15839,7 @@ sm_truncate_class (MOP class_mop)
 				   saved->ref_cls_name,
 				   (const char **) saved->ref_attrs,
 				   saved->fk_delete_action,
-				   saved->fk_update_action);
+				   saved->fk_update_action, saved->comment);
 
       if (error != NO_ERROR)
 	{

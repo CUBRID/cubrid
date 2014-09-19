@@ -76,6 +76,14 @@
 #define PT_NODE_SP_JAVA_METHOD(node) \
   ((node)->info.sp.java_method->info.value.data_value.str->bytes)
 
+#define PT_NODE_SP_COMMENT(node) \
+  (((node)->info.sp.comment == NULL) ? NULL : \
+   (node)->info.sp.comment->info.value.data_value.str->bytes)
+
+#define PT_NODE_SP_ARG_COMMENT(node) \
+  (((node)->info.sp_param.comment == NULL) ? NULL : \
+   (node)->info.sp_param.comment->info.value.data_value.str->bytes)
+
 #define MAX_ARG_COUNT   64
 #define MAX_CALL_COUNT  16
 #define SAVEPOINT_ADD_STORED_PROC "ADDSTOREDPROC"
@@ -115,13 +123,15 @@ static int jsp_get_argument_count (const SP_ARGS * sp_args);
 static int jsp_add_stored_procedure_argument (MOP * mop_p,
 					      const char *sp_name,
 					      const char *arg_name, int index,
-					      int data_type, int mode);
+					      int data_type, int mode,
+					      const char *arg_comment);
 static char *jsp_check_stored_procedure_name (const char *str);
 static int jsp_add_stored_procedure (const char *name,
 				     const PT_MISC_TYPE type,
 				     const PT_TYPE_ENUM ret_type,
 				     PT_NODE * param_list,
-				     const char *java_method);
+				     const char *java_method,
+				     const char *comment);
 static int drop_stored_procedure (const char *name,
 				  PT_MISC_TYPE expected_type);
 static int jsp_writen (SOCKET fd, const void *vptr, int n);
@@ -514,7 +524,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  const char *name, *java_method;
+  const char *name, *java_method, *comment = NULL;
 
   PT_MISC_TYPE type;
   PT_NODE *param_list, *p;
@@ -585,8 +595,10 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto error_exit;
     }
 
+  comment = (char *) PT_NODE_SP_COMMENT (statement);
+
   err = jsp_add_stored_procedure (name, type, ret_type, param_list,
-				  java_method);
+				  java_method, comment);
   if (err != NO_ERROR)
     {
       goto error_exit;
@@ -602,7 +614,7 @@ error_exit:
 }
 
 /*
- * jsp_alter_stored_procedure_owner
+ * jsp_alter_stored_procedure
  *   return: if failed return error code else NO_ERROR
  *   parser(in/out): parser environment
  *   statement(in): a statement node
@@ -611,12 +623,11 @@ error_exit:
  */
 
 int
-jsp_alter_stored_procedure_owner (PARSER_CONTEXT * parser,
-				  PT_NODE * statement)
+jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  PT_NODE *sp_name, *sp_owner;
-  const char *name_str, *owner_str;
+  PT_NODE *sp_name, *sp_owner, *sp_comment;
+  const char *name_str, *owner_str, *comment_str = NULL;
   PT_MISC_TYPE type, real_type;
   MOP sp_mop, new_owner;
   DB_VALUE user_val, sp_type_val;
@@ -634,12 +645,22 @@ jsp_alter_stored_procedure_owner (PARSER_CONTEXT * parser,
 
   type = PT_NODE_SP_TYPE (statement);
   sp_name = statement->info.sp.name;
+  assert (sp_name != NULL);
+
   sp_owner = statement->info.sp.owner;
-  assert (sp_name != NULL && sp_owner != NULL);
+  sp_comment = statement->info.sp.comment;
+  assert (sp_owner != NULL || sp_comment != NULL);
 
   name_str = sp_name->info.name.original;
-  owner_str = sp_owner->info.name.original;
-  assert (name_str != NULL && owner_str != NULL);
+  assert (name_str != NULL);
+
+  if (sp_owner != NULL)
+    {
+      owner_str = sp_owner->info.name.original;
+      assert (owner_str != NULL);
+    }
+
+  comment_str = (char *) PT_NODE_SP_COMMENT (statement);
 
   AU_DISABLE (save);
 
@@ -662,12 +683,15 @@ jsp_alter_stored_procedure_owner (PARSER_CONTEXT * parser,
     }
 
   /* existence of new owner */
-  new_owner = db_find_user (owner_str);
-  if (new_owner == NULL)
+  if (sp_owner != NULL)
     {
-      err = ER_OBJ_OBJECT_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, owner_str);
-      goto error;
+      new_owner = db_find_user (owner_str);
+      if (new_owner == NULL)
+	{
+	  err = ER_OBJ_OBJECT_NOT_FOUND;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, owner_str);
+	  goto error;
+	}
     }
 
   /* check type */
@@ -688,15 +712,32 @@ jsp_alter_stored_procedure_owner (PARSER_CONTEXT * parser,
     }
 
   /* change the owner */
-  db_make_object (&user_val, new_owner);
-  err = obj_set (sp_mop, SP_ATTR_OWNER, &user_val);
-  if (err < 0)
+  if (sp_owner != NULL)
     {
-      goto error;
+      db_make_object (&user_val, new_owner);
+      err = obj_set (sp_mop, SP_ATTR_OWNER, &user_val);
+      if (err < 0)
+	{
+	  goto error;
+	}
+      pr_clear_value (&user_val);
+    }
+
+  /* change the comment */
+  if (sp_comment != NULL)
+    {
+      db_make_string (&user_val, comment_str);
+      err = obj_set (sp_mop, SP_ATTR_COMMENT, &user_val);
+      if (err < 0)
+	{
+	  goto error;
+	}
+      pr_clear_value (&user_val);
     }
 
 error:
 
+  pr_clear_value (&user_val);
   AU_ENABLE (save);
 
   return err;
@@ -779,6 +820,7 @@ jsp_get_argument_count (const SP_ARGS * sp_args)
  *   index(in) :
  *   data_type(in) :
  *   mode(in) :
+ *   arg_comment(in):
  *
  * Note:
  */
@@ -786,7 +828,8 @@ jsp_get_argument_count (const SP_ARGS * sp_args)
 static int
 jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name,
 				   const char *arg_name, int index,
-				   int data_type, int mode)
+				   int data_type, int mode,
+				   const char *arg_comment)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -844,6 +887,14 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name,
 
   db_make_int (&value, jsp_map_pt_misc_to_sp_mode ((PT_MISC_TYPE) mode));
   err = dbt_put_internal (obt_p, SP_ATTR_MODE, &value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_string (&value, arg_comment);
+  err = dbt_put_internal (obt_p, SP_ATTR_ARG_COMMENT, &value);
+  pr_clear_value (&value);
   if (err != NO_ERROR)
     {
       goto error;
@@ -910,6 +961,7 @@ jsp_check_stored_procedure_name (const char *str)
  *   ret_type(in): return type
  *   param_list(in): parameter list
  *   java_method(in):
+ *   comment(in):
  *
  * Note:
  */
@@ -917,7 +969,8 @@ jsp_check_stored_procedure_name (const char *str)
 static int
 jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
 			  const PT_TYPE_ENUM return_type,
-			  PT_NODE * param_list, const char *java_method)
+			  PT_NODE * param_list, const char *java_method,
+			  const char *comment)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -929,6 +982,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
   PT_NAME_INFO name_info;
   bool has_savepoint = false;
   char *checked_name;
+  const char *arg_comment;
 
   if (java_method == NULL)
     {
@@ -1009,10 +1063,13 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
 	}
       name_info = node_p->info.sp_param.name->info.name;
 
+      arg_comment = (char *) PT_NODE_SP_ARG_COMMENT (node_p);
+
       err = jsp_add_stored_procedure_argument (&mop, checked_name,
 					       name_info.original, i,
 					       node_p->type_enum,
-					       node_p->info.sp_param.mode);
+					       node_p->info.sp_param.mode,
+					       arg_comment);
       if (err != NO_ERROR)
 	{
 	  goto error;
@@ -1061,6 +1118,14 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
 
   db_make_object (&value, Au_user);
   err = dbt_put_internal (obt_p, SP_ATTR_OWNER, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_string (&value, comment);
+  err = dbt_put_internal (obt_p, SP_ATTR_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {

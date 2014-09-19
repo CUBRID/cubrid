@@ -66,6 +66,7 @@
 #define UNIQUE_SAVEPOINT_CHANGE_ATTR "cHANGEaTTR"
 #define UNIQUE_SAVEPOINT_ALTER_INDEX "aLTERiNDEX"
 #define UNIQUE_SAVEPOINT_CHANGE_DEF_COLL "cHANGEdEFAULTcOLL"
+#define UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT "cHANGEtBLcOMMENT"
 
 #define QUERY_MAX_SIZE	1024 * 1024
 #define MAX_FILTER_PREDICATE_STRING_LENGTH 128
@@ -156,6 +157,7 @@ enum
 				 * ALTER CHANGE)*/
   P_TYPE,			/* type (domain) change */
   P_IS_PARTITION_COL,		/* class has partitions */
+  P_COMMENT,			/* has comment */
   NUM_ATT_CHG_PROP
 };
 
@@ -244,6 +246,7 @@ static int create_or_drop_index_helper (PARSER_CONTEXT * parser,
 					int func_index_pos,
 					int func_index_args_count,
 					PT_NODE * function_expr,
+					PT_NODE * comment,
 					DB_OBJECT * const obj,
 					DO_INDEX do_index);
 static int update_locksets_for_multiple_rename (const char *class_name,
@@ -281,6 +284,9 @@ static int do_alter_change_owner (PARSER_CONTEXT * const parser,
 
 static int do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser,
 					    PT_NODE * const alter);
+
+static int do_alter_change_tbl_comment (PARSER_CONTEXT * const parser,
+					PT_NODE * const alter);
 
 static int do_change_att_schema_only (PARSER_CONTEXT * parser,
 				      DB_CTMPL * ctemplate,
@@ -569,6 +575,16 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_ADD_QUERY:
       error = do_add_queries (parser, ctemplate,
 			      alter->info.alter.alter_clause.query.query);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+
+      /* set vclass comment if it exists */
+      if (alter->info.alter.alter_clause.query.view_comment != NULL)
+	{
+	  error = do_alter_change_tbl_comment (parser, alter);
+	}
       break;
 
     case PT_DROP_QUERY:
@@ -615,6 +631,16 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 						 alter_clause.query.query);
       parser->custom_print = save_custom;
       error = dbt_change_query_spec (ctemplate, new_query, query_no);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+
+      /* set vclass comment if it exists */
+      if (alter->info.alter.alter_clause.query.view_comment != NULL)
+	{
+	  error = do_alter_change_tbl_comment (parser, alter);
+	}
       break;
 
     case PT_ADD_ATTR_MTHD:
@@ -774,6 +800,16 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	/* and add the single query spec we allow */
 	error = do_add_queries (parser, ctemplate,
 				alter->info.alter.alter_clause.query.query);
+	if (error != NO_ERROR)
+	  {
+	    goto reset_query_error;
+	  }
+
+	/* set vclass comment if it exists */
+	if (alter->info.alter.alter_clause.query.view_comment != NULL)
+	  {
+	    error = do_alter_change_tbl_comment (parser, alter);
+	  }
 	if (error != NO_ERROR)
 	  {
 	    goto reset_query_error;
@@ -1603,7 +1639,7 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser,
 				 info.name.original,
 				 (const bool) is_reverse,
 				 (const bool) is_unique,
-				 NULL, NULL, NULL, NULL, -1, 0, NULL,
+				 NULL, NULL, NULL, NULL, -1, 0, NULL, NULL,
 				 obj, DO_INDEX_DROP);
   return error_code;
 }
@@ -1757,6 +1793,9 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  break;
 	case PT_CHANGE_COLLATION:
 	  error_code = do_alter_change_default_cs_coll (parser, crt_clause);
+	  break;
+	case PT_CHANGE_TABLE_COMMENT:
+	  error_code = do_alter_change_tbl_comment (parser, crt_clause);
 	  break;
 	default:
 	  /* This code might not correctly handle a list of ALTER clauses so
@@ -1958,7 +1997,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_OBJECT *user, *group, *member;
   int exists;
   PT_NODE *node, *node2;
-  const char *user_name, *password;
+  const char *user_name, *password, *comment;
   const char *group_name, *member_name;
 
   CHECK_MODIFICATION_ERROR ();
@@ -2131,6 +2170,15 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		}
 	      while (error == NO_ERROR && member_name != NULL);
 	    }
+
+	  /* comment */
+	  node = statement->info.create_user.comment;
+	  if (node != NULL)
+	    {
+	      assert (node->node_type == PT_VALUE);
+	      comment = (char *) PT_VALUE_GET_BYTES (node);
+	      error = au_set_user_comment (user, comment);
+	    }
 	}
 
       if (error != NO_ERROR)
@@ -2208,7 +2256,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   int error = NO_ERROR;
   DB_OBJECT *user;
   PT_NODE *node;
-  const char *user_name, *password;
+  const char *user_name, *password, *comment;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2238,10 +2286,28 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
       else
 	{
-	  node = statement->info.alter_user.password;
-	  password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
+	  /*
+	   * here, both password and comment are optional,
+	   * either password or comment shall exist,
+	   * csql_grammar denies the error case with the missing of both.
+	   */
 
-	  error = au_set_password (user, password);
+	  /* password */
+	  node = statement->info.alter_user.password;
+	  if (node != NULL)
+	    {
+	      password = IS_STRING (node) ? GET_STRING (node) : NULL;
+	      error = au_set_password (user, password);
+	    }
+
+	  /* comment */
+	  node = statement->info.alter_user.comment;
+	  if (node != NULL)
+	    {
+	      assert (node->node_type == PT_VALUE);
+	      comment = (char *) PT_VALUE_GET_BYTES (node);
+	      error = au_set_user_comment (user, comment);
+	    }
 	}
     }
 
@@ -2695,6 +2761,7 @@ get_reverse_unique_index_type (const bool is_reverse, const bool is_unique)
  *   func_index_pos(in):
  *   func_index_args_count(in):
  *   function_expr(in):
+ *   comment(in): index comment
  *   obj(in): Class object
  *   do_index(in) : The operation to be performed (creating or dropping)
  */
@@ -2709,6 +2776,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 			     PT_NODE * where_predicate,
 			     int func_index_pos, int func_index_args_count,
 			     PT_NODE * function_expr,
+			     PT_NODE * comment,
 			     DB_OBJECT * const obj, DO_INDEX do_index)
 {
   int error = NO_ERROR;
@@ -2720,6 +2788,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
   int *attrs_prefix_length = NULL;
   char *cname = NULL;
   char const *colname = NULL;
+  const char *comment_str = NULL;
   bool mysql_index_name = false;
   bool free_packing_buff = false;
   PRED_EXPR_WITH_CONTEXT *filter_predicate = NULL;
@@ -2739,6 +2808,12 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_NOT_ALLOWED_ACCESS_TO_PARTITION, 0);
       return ER_NOT_ALLOWED_ACCESS_TO_PARTITION;
+    }
+
+  if (comment != NULL)
+    {
+      assert (comment->node_type == PT_VALUE);
+      comment_str = (char *) PT_VALUE_GET_BYTES (comment);
     }
 
   nnames = pt_length_of_list (column_names);
@@ -2915,7 +2990,8 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser,
 	  error = sm_add_constraint (obj, ctype, cname,
 				     (const char **) attnames, asc_desc,
 				     attrs_prefix_length, false,
-				     p_pred_index_info, func_index_info);
+				     p_pred_index_info, func_index_info,
+				     comment_str);
 	}
       else
 	{
@@ -3007,6 +3083,7 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 				       statement->info.index.func_pos,
 				       statement->info.index.func_no_args,
 				       statement->info.index.function_expr,
+				       statement->info.index.comment,
 				       obj, DO_INDEX_CREATE);
   return error;
 }
@@ -3084,7 +3161,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 				 statement->info.index.column_names, NULL,
 				 NULL, statement->info.index.func_pos,
 				 statement->info.index.func_no_args,
-				 statement->info.index.function_expr,
+				 statement->info.index.function_expr, NULL,
 				 obj, DO_INDEX_DROP);
 
   return error_code;
@@ -3124,6 +3201,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0, NULL, 0 };
   SM_PREDICATE_INFO *p_pred_index_info = NULL;
   const char *class_name = NULL;
+  const char *comment_str = NULL;
   bool do_rollback = false;
 
   /* TODO refactor this code, the code in create_or_drop_index_helper and the
@@ -3167,6 +3245,13 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      ER_SM_NO_INDEX, 1, index_name);
       error = ER_SM_NO_INDEX;
       goto error_exit;
+    }
+
+  if (statement->info.index.comment != NULL)
+    {
+      assert (statement->info.index.comment->node_type == PT_VALUE);
+      comment_str =
+	(char *) PT_VALUE_GET_BYTES (statement->info.index.comment);
     }
 
   /* check the index type */
@@ -3378,7 +3463,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   error = sm_add_constraint (obj, original_ctype, index_name,
 			     (const char **) attnames, asc_desc,
 			     attrs_prefix_length, false, p_pred_index_info,
-			     func_index_info);
+			     func_index_info, comment_str);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -3465,6 +3550,7 @@ do_alter_index_rename (PARSER_CONTEXT * parser, const PT_NODE * statement)
   const char *class_name = NULL;
   const char *index_name = NULL;
   const char *new_index_name = NULL;
+  const char *comment = NULL;
   bool do_rollback = false;
 
   index_name =
@@ -3478,6 +3564,12 @@ do_alter_index_rename (PARSER_CONTEXT * parser, const PT_NODE * statement)
   if (index_name == NULL || new_index_name == NULL)
     {
       goto error_exit;
+    }
+
+  if (statement->info.index.comment != NULL)
+    {
+      assert (statement->info.index.comment->node_type == PT_VALUE);
+      comment = (char *) PT_VALUE_GET_BYTES (statement->info.index.comment);
     }
 
   cls =
@@ -3519,6 +3611,124 @@ do_alter_index_rename (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   error = smt_rename_constraint (ctemplate, index_name,
 				 new_index_name, SM_INDEX_NAME);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  if (comment != NULL)
+    {
+      error = smt_change_constraint_comment (ctemplate,
+					     new_index_name, comment);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
+  /* classobj_free_template() is included in sm_update_class() */
+  error = sm_update_class (ctemplate, NULL);
+  if (error != NO_ERROR)
+    {
+      /* Even though sm_update() did not return NO_ERROR,
+       * ctemplate is already freed */
+      ctemplate = NULL;
+      goto error_exit;
+    }
+
+end:
+
+  return error;
+
+error_exit:
+  if (ctemplate != NULL)
+    {
+      /* smt_quit() always returns NO_ERROR */
+      smt_quit (ctemplate);
+    }
+
+  if (do_rollback == true)
+    {
+      if (do_rollback && error != ER_LK_UNILATERALLY_ABORTED)
+	{
+	  tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
+	}
+    }
+  error = (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ?
+    ER_FAILED : error;
+
+  goto end;
+}
+
+/*
+ * do_alter_index_comment() - alter an index comment on a class.
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a alter index statement
+ */
+static int
+do_alter_index_comment (PARSER_CONTEXT * parser, const PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *obj;
+  PT_NODE *cls = NULL;
+  SM_TEMPLATE *ctemplate = NULL;
+  const char *class_name = NULL;
+  const char *index_name = NULL;
+  const char *comment = NULL;
+  bool do_rollback = false;
+
+  index_name =
+    statement->info.index.index_name ? statement->info.index.index_name->info.
+    name.original : NULL;
+
+  if (index_name == NULL)
+    {
+      goto error_exit;
+    }
+
+  if (statement->info.index.comment != NULL)
+    {
+      assert (statement->info.index.comment->node_type == PT_VALUE);
+      comment = (char *) PT_VALUE_GET_BYTES (statement->info.index.comment);
+    }
+
+  cls =
+    statement->info.index.indexed_class ? statement->info.index.
+    indexed_class->info.spec.flat_entity_list : NULL;
+
+  if (cls == NULL)
+    {
+      goto error_exit;
+    }
+
+  class_name = cls->info.name.resolved;
+  obj = db_find_class (class_name);
+
+  if (obj == NULL)
+    {
+      error = er_errid ();
+      assert (error != NO_ERROR);
+      goto error_exit;
+    }
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  do_rollback = true;
+
+  ctemplate = smt_edit_class_mop (obj, AU_INDEX);
+  if (ctemplate == NULL)
+    {
+      error = er_errid ();
+      assert (error != NO_ERROR);
+      goto error_exit;
+    }
+
+  error = smt_change_constraint_comment (ctemplate, index_name, comment);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -3578,6 +3788,10 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   else if (statement->info.index.code == PT_RENAME_INDEX)
     {
       error = do_alter_index_rename (parser, statement);
+    }
+  else if (statement->info.index.code == PT_CHANGE_INDEX_COMMENT)
+    {
+      error = do_alter_index_comment (parser, statement);
     }
   else
     {
@@ -4323,6 +4537,31 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
     {
       goto fail_return;
     }
+
+  if (node->node_type == PT_PARTITION)
+    {
+      db_make_null (&val);
+    }
+  else
+    {
+      if (node->info.parts.comment != NULL)
+	{
+	  assert (node->info.parts.comment->node_type == PT_VALUE);
+	  p =
+	    (char *) node->info.parts.comment->info.value.data_value.str->
+	    bytes;
+	  db_make_string (&val, p);
+	}
+      else
+	{
+	  db_make_null (&val);
+	}
+    }
+  if (dbt_put_internal (otmpl, PARTITION_ATT_PCOMMENT, &val) < 0)
+    {
+      goto fail_return;
+    }
+
   newpart = dbt_finish_object (otmpl);
   if (newpart == NULL)
     {
@@ -5608,7 +5847,8 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
 	    sm_add_index (subclass_op, db_constraint_type (constraint),
 			  constraint->name, (const char **) namep, asc_desc,
 			  constraint->attrs_prefix_length,
-			  constraint->filter_predicate, new_func_index_info);
+			  constraint->filter_predicate, new_func_index_info,
+			  constraint->comment);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -5668,7 +5908,8 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class,
 	    sm_add_index (objs->op, db_constraint_type (constraint),
 			  constraint->name, (const char **) namep, asc_desc,
 			  constraint->attrs_prefix_length,
-			  constraint->filter_predicate, new_func_index_info);
+			  constraint->filter_predicate, new_func_index_info,
+			  constraint->comment);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -7197,12 +7438,13 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   int error = NO_ERROR;
   TP_DOMAIN *attr_db_domain;
   MOP auto_increment_obj = NULL;
-  SM_ATTRIBUTE *att;
+  SM_ATTRIBUTE *att = NULL;
   SM_NAME_SPACE name_space = ID_NULL;
   bool add_first = false;
   const char *add_after_attr = NULL;
-  PT_NODE *cnstr, *pk_attr;
+  PT_NODE *cnstr, *pk_attr, *comment;
   DB_DEFAULT_EXPR_TYPE default_expr_type = DB_DEFAULT_NONE;
+  PARSER_VARCHAR *comment_str = NULL;
 
   DB_MAKE_NULL (&stack_value);
   attr_name = get_attr_name (attribute);
@@ -7348,6 +7590,30 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	    }
 	}
     }
+
+  comment = attribute->info.attr_def.comment;
+  if (error == NO_ERROR && comment != NULL)
+    {
+      /* skip finding attribute if att is already available */
+      if (att == NULL)
+	{
+	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	}
+
+      if (error == NO_ERROR)
+	{
+	  assert (comment->node_type == PT_VALUE);
+	  comment_str = comment->info.value.data_value.str;
+	  att->comment =
+	    ws_copy_string ((char *) pt_get_varchar_bytes (comment_str));
+	  if (att->comment == NULL)
+	    {
+	      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	      goto error_exit;
+	    }
+	}
+    }
+
   return error;
 
 error_exit:
@@ -7623,6 +7889,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr,
   int i, n_atts, n_ref_atts;
   PT_NODE *p;
   int error = NO_ERROR;
+  const char *comment = NULL;
 
   fk_info = (PT_FOREIGN_KEY_INFO *) & (cnstr->info.constraint.un.foreign_key);
 
@@ -7659,12 +7926,18 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr,
       constraint_name = cnstr->info.constraint.name->info.name.original;
     }
 
+  if (cnstr->info.constraint.comment != NULL)
+    {
+      assert (cnstr->info.constraint.comment->node_type == PT_VALUE);
+      comment = (char *) PT_VALUE_GET_BYTES (cnstr->info.constraint.comment);
+    }
 
   error = dbt_add_foreign_key (ctemplate, constraint_name, att_names,
 			       fk_info->referenced_class->info.name.original,
 			       (const char **) ref_attrs,
 			       map_pt_to_sm_action (fk_info->delete_action),
-			       map_pt_to_sm_action (fk_info->update_action));
+			       map_pt_to_sm_action (fk_info->update_action),
+			       comment);
   free_and_init (ref_attrs);
   return error;
 }
@@ -7732,6 +8005,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		  char *constraint_name = NULL;
 		  DB_CONSTRAINT_TYPE constraint_type = DB_CONSTRAINT_UNIQUE;
 		  int *asc_desc = NULL;
+		  char *comment = NULL;
 
 		  n_atts =
 		    pt_length_of_list (cnstr->info.constraint.un.unique.
@@ -7804,12 +8078,21 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		      goto constraint_error;
 		    }
 
+		  if (cnstr->info.constraint.comment != NULL)
+		    {
+		      assert (cnstr->info.constraint.comment->node_type
+			      == PT_VALUE);
+		      comment =
+			(char *) PT_VALUE_GET_BYTES (cnstr->info.
+						     constraint.comment);
+		    }
+
 		  error =
 		    smt_add_constraint (ctemplate, constraint_type,
 					constraint_name,
 					(const char **) att_names,
 					asc_desc, class_attributes, NULL,
-					NULL, NULL);
+					NULL, NULL, comment);
 
 		  free_and_init (constraint_name);
 		  free_and_init (asc_desc);
@@ -7826,6 +8109,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		  int class_attributes = 0;
 		  char *constraint_name = NULL;
 		  int *asc_desc = NULL;
+		  char *comment = NULL;
 
 		  n_atts =
 		    pt_length_of_list (cnstr->info.constraint.un.
@@ -7884,12 +8168,21 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		      goto constraint_error;
 		    }
 
+		  if (cnstr->info.constraint.comment != NULL)
+		    {
+		      assert (cnstr->info.constraint.comment->node_type
+			      == PT_VALUE);
+		      comment =
+			(char *) PT_VALUE_GET_BYTES (cnstr->info.
+						     constraint.comment);
+		    }
+
 		  error = smt_add_constraint (ctemplate,
 					      DB_CONSTRAINT_PRIMARY_KEY,
 					      constraint_name,
 					      (const char **) att_names,
 					      asc_desc, class_attributes,
-					      NULL, NULL, NULL);
+					      NULL, NULL, NULL, comment);
 
 		  free_and_init (constraint_name);
 		  free_and_init (asc_desc);
@@ -8883,11 +9176,15 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   bool do_flush_class_mop = false;
   int charset = LANG_SYS_CODESET;
   int collation_id = LANG_SYS_COLLATION;
+  PARSER_VARCHAR *comment = NULL;
   PT_NODE *tbl_opt_charset, *tbl_opt_coll, *cs_node, *coll_node;
+  PT_NODE *tbl_opt_comment, *comment_node;
+  const char *comment_str = NULL;
 
   CHECK_MODIFICATION_ERROR ();
 
   tbl_opt_charset = tbl_opt_coll = cs_node = coll_node = NULL;
+  tbl_opt_comment = comment_node = NULL;
 
   class_name = node->info.create_entity.entity_name->info.name.original;
 
@@ -8932,6 +9229,9 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      break;
 	    case PT_TABLE_OPTION_COLLATION:
 	      tbl_opt_coll = tbl_opt;
+	      break;
+	    case PT_TABLE_OPTION_COMMENT:
+	      tbl_opt_comment = tbl_opt;
 	      break;
 	    default:
 	      break;
@@ -9056,6 +9356,19 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  error = sm_set_class_flag (class_obj,
 				     SM_CLASSFLAG_LOCALCHECKOPTION, 1);
 	}
+
+      comment_node = node->info.create_entity.vclass_comment;
+      if (comment_node != NULL)
+	{
+	  assert (comment_node->node_type == PT_VALUE);
+	  comment_str =
+	    (char *) comment_node->info.value.data_value.str->bytes;
+	  error = sm_set_class_comment (class_obj, comment_str);
+	  if (error == NO_ERROR)
+	    {
+	      do_flush_class_mop = true;
+	    }
+	}
       break;
 
     case PT_CLASS:
@@ -9088,6 +9401,24 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
       error = sm_set_class_collation (class_obj, collation_id);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      if (tbl_opt_comment)
+	{
+	  comment_node = tbl_opt_comment->info.table_option.val;
+	  assert (comment_node != NULL
+		  && comment_node->node_type == PT_VALUE);
+	  comment = comment_node->info.value.data_value.str;
+	  error =
+	    sm_set_class_comment (class_obj,
+				  (char *) pt_get_varchar_bytes (comment));
+	  if (error == NO_ERROR)
+	    {
+	      do_flush_class_mop = true;
+	    }
+	}
       break;
 
     default:
@@ -9096,7 +9427,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (do_flush_class_mop == true)
     {
-      assert (error == NO_ERROR && do_rollback_on_error == true);
+      assert (error == NO_ERROR);
       assert (class_obj != NULL);
 
       error = locator_flush_class (class_obj);
@@ -9343,7 +9674,7 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser,
 			       (const char **) saved->att_names,
 			       saved->asc_desc, saved->prefix_length, 0,
 			       saved->filter_predicate,
-			       saved->func_index_info);
+			       saved->func_index_info, saved->comment);
 
 	  if (error != NO_ERROR)
 	    {
@@ -9356,7 +9687,7 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser,
 	    sm_add_index (classmop, saved->constraint_type, saved->name,
 			  (const char **) saved->att_names, saved->asc_desc,
 			  saved->prefix_length, saved->filter_predicate,
-			  saved->func_index_info);
+			  saved->func_index_info, saved->comment);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -9463,14 +9794,16 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 				    att_names, index_save_info->asc_desc,
 				    index_save_info->prefix_length,
 				    index_save_info->filter_predicate,
-				    index_save_info->func_index_info);
+				    index_save_info->func_index_info,
+				    index_save_info->comment);
 	    }
 	  else
 	    {
 	      error = sm_add_index (classmop, constraint_type, new_cons_name,
 				    att_names, c->asc_desc,
 				    c->attrs_prefix_length,
-				    c->filter_predicate, c->func_index_info);
+				    c->filter_predicate, c->func_index_info,
+				    c->comment);
 	    }
 	}
 
@@ -9871,7 +10204,8 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
 					     saved_constr->prefix_length,
 					     false,
 					     saved_constr->filter_predicate,
-					     saved_constr->func_index_info);
+					     saved_constr->func_index_info,
+					     saved_constr->comment);
 		  if (error != NO_ERROR)
 		    {
 		      goto exit;
@@ -10261,6 +10595,132 @@ exit:
 }
 
 /*
+ * do_alter_change_tbl_comment() - change the table comment
+ *   return: Error code
+ *   parser(in): Parser context
+ *   alter(in/out): Parse tree of a PT_CHANGE_TABLE_COMMENT clause
+ */
+static int
+do_alter_change_tbl_comment (PARSER_CONTEXT * const parser,
+			     PT_NODE * const alter)
+{
+  int error = NO_ERROR;
+  const char *entity_name = NULL;
+  DB_OBJECT *class_obj = NULL;
+  DB_CTMPL *ctemplate = NULL;
+  PT_ALTER_INFO *alter_info;
+  bool tran_saved = false;
+  MOP class_mop = NULL;
+  PT_NODE *comment_node = NULL;
+  PARSER_VARCHAR *comment = NULL;
+
+  alter_info = &(alter->info.alter);
+  if (alter_info->code == PT_CHANGE_TABLE_COMMENT)
+    {
+      comment_node = alter_info->alter_clause.comment.tbl_comment;
+    }
+  else if (alter_info->code == PT_RESET_QUERY
+	   || alter_info->code == PT_ADD_QUERY
+	   || alter_info->code == PT_MODIFY_QUERY)
+    {
+      comment_node = alter_info->alter_clause.query.view_comment;
+    }
+  else
+    {
+      /*
+       * code shall be one of the above 4 types, otherwise it's an error.
+       */
+      assert (0);
+    }
+
+  assert (comment_node != NULL && comment_node->node_type == PT_VALUE);
+
+  entity_name = alter_info->entity_name->info.name.original;
+  if (entity_name == NULL)
+    {
+      error = ER_UNEXPECTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
+    }
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  tran_saved = true;
+
+  class_obj = db_find_class (entity_name);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      goto exit;
+    }
+
+  error = locator_flush_class (class_obj);
+  if (error != NO_ERROR)
+    {
+      /* don't overwrite error */
+      goto exit;
+    }
+
+  /* get exclusive lock on class */
+  if (locator_fetch_class (class_obj, DB_FETCH_WRITE) == NULL)
+    {
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  ctemplate = dbt_edit_class (class_obj);
+  if (ctemplate == NULL)
+    {
+      /* when dbt_edit_class fails (e.g. because the server unilaterally
+         aborts us), we must record the associated error message into the
+         parser.  Otherwise, we may get a confusing error msg of the form:
+         "so_and_so is not a class". */
+      pt_record_error (parser, parser->statement_number - 1,
+		       alter->line_number, alter->column_number, er_msg (),
+		       NULL);
+      error = er_errid ();
+      goto exit;
+    }
+
+  class_mop = ctemplate->op;
+  comment = comment_node->info.value.data_value.str;
+  error =
+    sm_set_class_comment (class_mop, (char *) pt_get_varchar_bytes (comment));
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  /* force schema update to server */
+  class_obj = dbt_finish_class (ctemplate);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      goto exit;
+    }
+  /* set NULL, avoid 'abort_class' in case of error */
+  ctemplate = NULL;
+
+exit:
+  if (ctemplate != NULL)
+    {
+      dbt_abort_class (ctemplate);
+      ctemplate = NULL;
+    }
+
+  if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void)
+	tran_abort_upto_system_savepoint
+	(UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
+    }
+  return error;
+}
+
+/*
  * do_change_att_schema_only() - Change an attribute of a class object
  *   return: Error code
  *   parser(in): Parser context
@@ -10285,7 +10745,9 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   const char *old_name = NULL;
   const char *new_name = NULL;
   const char *attr_name = NULL;
+  PARSER_VARCHAR *comment_str = NULL;
   DB_DEFAULT_EXPR_TYPE new_default_expr = DB_DEFAULT_NONE;
+  PT_NODE *comment;
 
   assert (attr_chg_prop != NULL);
   assert (change_mode != NULL);
@@ -10626,6 +11088,20 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	}
     }
 
+  if (is_att_prop_set (attr_chg_prop->p[P_COMMENT], ATT_CHG_PROPERTY_DIFF))
+    {
+      comment = attribute->info.attr_def.comment;
+      assert (comment != NULL && comment->node_type == PT_VALUE);
+      comment_str = comment->info.value.data_value.str;
+      found_att->comment =
+	ws_copy_string ((char *) pt_get_varchar_bytes (comment_str));
+      if (found_att->comment == NULL)
+	{
+	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	  goto exit;
+	}
+    }
+
   assert (attr_chg_prop->name_space == ID_ATTRIBUTE);
 
 exit:
@@ -10661,6 +11137,7 @@ build_attr_change_map (PARSER_CONTEXT * parser,
   const char *old_name = NULL;
   const char *new_name = NULL;
   int error = NO_ERROR;
+  PT_NODE *comment;
 
   attr_name = get_attr_name (attr_def);
 
@@ -11242,6 +11719,21 @@ build_attr_change_map (PARSER_CONTEXT * parser,
 	    ATT_CHG_PROPERTY_UNCHANGED;
 	}
     }
+
+  /* comment */
+  attr_chg_properties->p[P_COMMENT] = ATT_CHG_PROPERTY_UNCHANGED;
+  comment = attr_def->info.attr_def.comment;
+  if (comment != NULL)
+    {
+      assert (comment->node_type == PT_VALUE);
+      if (comment->info.value.data_value.str != NULL)
+	{
+	  attr_chg_properties->p[P_COMMENT] |= ATT_CHG_PROPERTY_DIFF;
+	  /* remove "UNCHANGED" flag */
+	  attr_chg_properties->p[P_COMMENT] &= ~ATT_CHG_PROPERTY_UNCHANGED;
+	}
+    }
+
   return error;
 }
 
@@ -13400,7 +13892,8 @@ do_recreate_att_constraints (MOP class_mop,
 				     constr->asc_desc, constr->prefix_length,
 				     0,
 				     constr->filter_predicate,
-				     constr->func_index_info);
+				     constr->func_index_info,
+				     constr->comment);
 
 	  if (error != NO_ERROR)
 	    {
@@ -13414,7 +13907,8 @@ do_recreate_att_constraints (MOP class_mop,
 	    sm_add_index (class_mop, constr->constraint_type, constr->name,
 			  (const char **) constr->att_names, constr->asc_desc,
 			  constr->prefix_length,
-			  constr->filter_predicate, constr->func_index_info);
+			  constr->filter_predicate, constr->func_index_info,
+			  constr->comment);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;

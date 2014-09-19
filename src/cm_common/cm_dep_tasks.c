@@ -2650,7 +2650,7 @@ trigger_info_sa_finale:
 static void
 op_get_trigger_information (nvplist * res, DB_OBJECT * p_trigger)
 {
-  char *trigger_name, *action, *attr, *condition;
+  char *trigger_name, *action, *attr, *condition, *comment;
   DB_OBJECT *target_class;
   DB_TRIGGER_EVENT event;
   DB_TRIGGER_TIME eventtime, actiontime;
@@ -2659,7 +2659,7 @@ op_get_trigger_information (nvplist * res, DB_OBJECT * p_trigger)
   double priority;
   char pri_string[16];
 
-  trigger_name = action = NULL;
+  trigger_name = action = comment = NULL;
 
   /* trigger name */
   db_trigger_name (p_trigger, &trigger_name);
@@ -2801,6 +2801,14 @@ op_get_trigger_information (nvplist * res, DB_OBJECT * p_trigger)
   db_trigger_priority (p_trigger, &priority);
   snprintf (pri_string, sizeof (pri_string) - 1, "%4.5f", priority);
   nv_add_nvp (res, "priority", pri_string);
+
+  /* trigger comment */
+  db_trigger_comment (p_trigger, &comment);
+  if (comment != NULL)
+    {
+      nv_add_nvp (res, "comment", comment);
+      db_string_free ((char *) comment);
+    }
 }
 
 static int

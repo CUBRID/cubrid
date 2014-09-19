@@ -57,6 +57,11 @@
 
 #define DB_MAX_SPEC_LENGTH       4096
 
+/* Maximum allowable class comment length */
+#define DB_MAX_CLASS_COMMENT_LENGTH     2048
+/* Maximum allowable comment length */
+#define DB_MAX_COMMENT_LENGTH    1024
+
 /* This constant defines the maximum length of a character
    string that can be used as the value of an attribute. */
 #define DB_MAX_STRING_LENGTH	0x3fffffff

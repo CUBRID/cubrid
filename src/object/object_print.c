@@ -754,6 +754,13 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
       buffer = pt_append_nulstring (parser, buffer, " */");
     }
 
+  if (attribute_p->comment != NULL && attribute_p->comment[0] != '\0')
+    {
+      buffer = pt_append_nulstring (parser, buffer, " COMMENT '");
+      buffer = pt_append_nulstring (parser, buffer, attribute_p->comment);
+      buffer = pt_append_nulstring (parser, buffer, "'");
+    }
+
   /* let the higher level display routine do this */
   /*
      buffer = pt_append_nulstring(parser,buffer,"\n");
@@ -774,7 +781,7 @@ static char *
 obj_print_describe_partition_parts (PARSER_CONTEXT * parser, MOP parts,
 				    OBJ_PRINT_TYPE prt_type)
 {
-  DB_VALUE ptype, pname, pval, ele;
+  DB_VALUE ptype, pname, pval, ele, comment;
   PARSER_VARCHAR *buffer;
   int save, setsize, i;
 
@@ -788,6 +795,8 @@ obj_print_describe_partition_parts (PARSER_CONTEXT * parser, MOP parts,
   DB_MAKE_NULL (&ptype);
   DB_MAKE_NULL (&pname);
   DB_MAKE_NULL (&pval);
+  DB_MAKE_NULL (&ele);
+  DB_MAKE_NULL (&comment);
 
   AU_DISABLE (save);
 
@@ -837,6 +846,17 @@ obj_print_describe_partition_parts (PARSER_CONTEXT * parser, MOP parts,
 	  buffer = pt_append_nulstring (parser, buffer, ")");
 	  break;
 	}
+
+      if (db_get (parts, PARTITION_ATT_PCOMMENT, &comment) == NO_ERROR)
+	{
+	  const char *comment_str = (char *) DB_GET_STRING (&comment);
+	  if (comment_str != NULL && comment_str[0] != '\0')
+	    {
+	      buffer = pt_append_nulstring (parser, buffer, " COMMENT '");
+	      buffer = pt_append_nulstring (parser, buffer, comment_str);
+	      buffer = pt_append_nulstring (parser, buffer, "'");
+	    }
+	}
     }
 
   AU_ENABLE (save);
@@ -844,6 +864,8 @@ obj_print_describe_partition_parts (PARSER_CONTEXT * parser, MOP parts,
   pr_clear_value (&ptype);
   pr_clear_value (&pname);
   pr_clear_value (&pval);
+  pr_clear_value (&ele);
+  pr_clear_value (&comment);
 
   return ((char *) pt_get_varchar_bytes (buffer));
 }
@@ -1186,6 +1208,13 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 				    (constraint_p->fk_info->update_action));
     }
 
+  if (constraint_p->comment != NULL && constraint_p->comment[0] != '\0')
+    {
+      buffer = pt_append_nulstring (parser, buffer, " COMMENT '");
+      buffer = pt_append_nulstring (parser, buffer, constraint_p->comment);
+      buffer = pt_append_nulstring (parser, buffer, "'");
+    }
+
   return ((char *) pt_get_varchar_bytes (buffer));
 }				/* describe_constraint() */
 
@@ -1456,6 +1485,13 @@ obj_print_describe_class_trigger (PARSER_CONTEXT * parser,
       buffer = pt_append_nulstring (parser, buffer, trigger->attribute);
     }
 
+  if (trigger->comment != NULL && trigger->comment[0] != '\0')
+    {
+      buffer = pt_append_nulstring (parser, buffer, " COMMENT '");
+      buffer = pt_append_nulstring (parser, buffer, trigger->comment);
+      buffer = pt_append_nulstring (parser, buffer, "'");
+    }
+
   return buffer;
 }
 
@@ -1594,6 +1630,7 @@ obj_print_make_class_help (void)
   new_p->query_spec = NULL;
   new_p->object_id = NULL;
   new_p->triggers = NULL;
+  new_p->comment = NULL;
 
   return new_p;
 }
@@ -1639,6 +1676,10 @@ obj_print_help_free_class (CLASS_HELP * info)
       obj_print_free_strarray (info->triggers);
       obj_print_free_strarray (info->constraints);
       obj_print_free_strarray (info->partition);
+      if (info->comment != NULL)
+	{
+	  free_and_init (info->comment);
+	}
       free_and_init (info);
     }
 }
@@ -1669,9 +1710,11 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
   int part_count = 0;
   SM_CLASS *subclass;
   char *description;
-  char name_buf[SM_MAX_IDENTIFIER_LENGTH + 2];
+  char name_buf[SM_MAX_IDENTIFIER_LENGTH + SM_MAX_CLASS_COMMENT_LENGTH + 50];
   bool include_inherited;
   bool force_print_att_coll = false;
+  bool has_comment = false;
+  int max_name_size = SM_MAX_IDENTIFIER_LENGTH + 50;
 
   buffer = NULL;
   if (parser == NULL)
@@ -1693,6 +1736,12 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
   else if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
+      if (class_->comment != NULL && class_->comment[0] != '\0')
+	{
+	  has_comment = true;
+	  max_name_size = SM_MAX_IDENTIFIER_LENGTH
+	    + SM_MAX_CLASS_COMMENT_LENGTH + 50;
+	}
 
       force_print_att_coll = (class_->collation_id != LANG_SYS_COLLATION)
 	? true : false;
@@ -1710,21 +1759,55 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
       if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
 	{
+	  /*
+	   * For the case of "print schema",
+	   * info->name is set to:
+	   *   exact class name
+	   *   + COLLATE collation_name if exists;
+	   *   + COMMENT 'text' if exists;
+	   *
+	   * The caller uses info->name to fill in "<Class Name> $name"
+	   */
 	  if (class_->collation_id == LANG_SYS_COLLATION)
 	    {
-	      info->name =
-		obj_print_copy_string ((char *) class_->header.name);
+	      if (has_comment)
+		{
+		  snprintf (name_buf, max_name_size,
+			    "%-20s COMMENT '%s'",
+			    (char *) class_->header.name, class_->comment);
+		}
+	      else
+		{
+		  snprintf (name_buf, max_name_size,
+			    "%s", (char *) class_->header.name);
+		}
 	    }
 	  else
 	    {
-	      snprintf (name_buf, SM_MAX_IDENTIFIER_LENGTH + 2,
-			"%-20s COLLATE %-20s", class_->header.name,
-			lang_get_collation_name (class_->collation_id));
-	      info->name = obj_print_copy_string (name_buf);
+	      if (has_comment)
+		{
+		  snprintf (name_buf, max_name_size,
+			    "%-20s COLLATE %s COMMENT '%s'",
+			    class_->header.name,
+			    lang_get_collation_name (class_->collation_id),
+			    class_->comment);
+		}
+	      else
+		{
+		  snprintf (name_buf, max_name_size,
+			    "%-20s COLLATE %s",
+			    class_->header.name,
+			    lang_get_collation_name (class_->collation_id));
+		}
 	    }
+	  info->name = obj_print_copy_string (name_buf);
 	}
       else
-	{			/* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
+	{
+	  /*
+	   * For the case prt_type == OBJ_PRINT_SHOW_CREATE_TABLE
+	   * info->name is set to the exact class name
+	   */
 	  snprintf (name_buf, SM_MAX_IDENTIFIER_LENGTH + 2, "[%s]",
 		    class_->header.name);
 	  info->name = obj_print_copy_string (name_buf);
@@ -1758,6 +1841,19 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
       if (info->collation == NULL)
 	{
 	  goto error_exit;
+	}
+
+      if (has_comment && prt_type != OBJ_PRINT_CSQL_SCHEMA_COMMAND)
+	{
+	  /*
+	   * For the case except "print schema",
+	   * comment is copied to info->comment anyway
+	   */
+	  info->comment = obj_print_copy_string (class_->comment);
+	  if (info->comment == NULL)
+	    {
+	      goto error_exit;
+	    }
 	}
 
       if (class_->inheritance != NULL)
@@ -2341,6 +2437,10 @@ help_free_trigger (TRIGGER_HELP * help)
       free_and_init (help->class_name);
       free_and_init (help->full_event);
       free_and_init (help->priority);
+      if (help->comment != NULL)
+	{
+	  free_and_init (help->comment);
+	}
 
       /* these were returned by the trigger manager and must be freed
          with db_string_free() */
@@ -2401,6 +2501,7 @@ help_trigger (DB_OBJECT * trobj)
   /* copy these */
   help->name = obj_print_copy_string (trigger->name);
   help->attribute = obj_print_copy_string (trigger->attribute);
+  help->comment = obj_print_copy_string (trigger->comment);
 
   /* these are already copies */
   help->condition = condition;
@@ -2601,6 +2702,11 @@ help_print_trigger (const char *name, FILE * fpp)
       else
 	{
 	  fprintf (fpp, "Action    : %s\n", help->action);
+	}
+
+      if (help->comment != NULL)
+	{
+	  fprintf (fpp, "Comment '%s'\n", help->comment);
 	}
 
       help_free_trigger (help);
@@ -2977,6 +3083,11 @@ help_fprint_obj (FILE * fp, MOP obj)
 		      fprintf (fp, "%s ", tinfo->action_time);
 		    }
 		  fprintf (fp, "%s\n", tinfo->action);
+		}
+
+	      if (tinfo->comment)
+		{
+		  fprintf (fp, " COMMENT '%s'\n", tinfo->comment);
 		}
 
 	      help_free_trigger (tinfo);

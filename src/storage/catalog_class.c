@@ -1210,6 +1210,12 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
       goto error;
     }
 
+  /* comment */
+  attr_val_p = &attrs[21].value;
+  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL,
+			       vars[ORC_COMMENT_INDEX].length, true, NULL, 0);
+  db_string_truncate (attr_val_p, DB_MAX_CLASS_COMMENT_LENGTH);
+
   if (vars)
     {
       free_and_init (vars);
@@ -1446,6 +1452,13 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   pr_clear_value (&val);
   attr_val_p->need_clear = true;
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
+
+  /* comment */
+  attr_val_p = &attrs[10].value;
+  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL,
+			       vars[ORC_ATT_COMMENT_INDEX].length,
+			       true, NULL, 0);
+  db_string_truncate (attr_val_p, DB_MAX_COMMENT_LENGTH);
 
   if (vars)
     {
@@ -2195,12 +2208,20 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
       /* the sequence of keys also includes the B+tree ID and the filter
        * predicate expression in the first two positions (0 and 1) */
       key_size = set_size (key_seq_p);
-      att_cnt = (key_size - 1) / 2;
+      att_cnt = (key_size - 2) / 2;
+
+      /* comment */
+      error = set_get_element (key_seq_p, key_size - 1, &attrs[10].value);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
+      db_string_truncate (&attrs[10].value, DB_MAX_COMMENT_LENGTH);
 
       if (!is_primary_key && !is_foreign_key)
 	{
 	  /* prefix_length or filter index */
-	  error = set_get_element (key_seq_p, key_size - 1, &svalue);
+	  error = set_get_element (key_seq_p, key_size - 2, &svalue);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;

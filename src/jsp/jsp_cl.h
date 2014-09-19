@@ -40,11 +40,13 @@
 #define SP_ATTR_LANG            "lang"
 #define SP_ATTR_TARGET          "target"
 #define SP_ATTR_OWNER           "owner"
+#define SP_ATTR_COMMENT         "comment"
 
 #define SP_ATTR_ARG_NAME        "arg_name"
 #define SP_ATTR_INDEX_OF_NAME   "index_of"
 #define SP_ATTR_DATA_TYPE       "data_type"
 #define SP_ATTR_MODE            "mode"
+#define SP_ATTR_ARG_COMMENT     "comment"
 
 typedef enum
 {
@@ -67,8 +69,8 @@ typedef enum
 
 extern int jsp_create_stored_procedure (PARSER_CONTEXT * parser,
 					PT_NODE * statement);
-extern int jsp_alter_stored_procedure_owner (PARSER_CONTEXT * parser,
-					     PT_NODE * statement);
+extern int jsp_alter_stored_procedure (PARSER_CONTEXT * parser,
+				       PT_NODE * statement);
 extern int jsp_drop_stored_procedure (PARSER_CONTEXT * parser,
 				      PT_NODE * statement);
 extern int jsp_call_stored_procedure (PARSER_CONTEXT * parser,

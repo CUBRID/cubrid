@@ -1325,7 +1325,7 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_ALTER:
 	case PT_ALTER_INDEX:
 	case PT_ALTER_SERIAL:
-	case PT_ALTER_STORED_PROCEDURE_OWNER:
+	case PT_ALTER_STORED_PROCEDURE:
 	case PT_ALTER_TRIGGER:
 	case PT_ALTER_USER:
 	case PT_CREATE_ENTITY:
@@ -9275,6 +9275,7 @@ error:
  *	    Key		AS Key
  *	    Default	AS Default
  *	    Extra	AS Extra
+ *	    [Comment    AS Comment]
  *   FROM
  *   (SELECT   0 AS Attr_Type,
  *	       0 AS Def_Order
@@ -9285,6 +9286,7 @@ error:
  *	       0 AS Key,
  *	      "" AS Default,
  *	      "" AS Extra,
+ *	      ["" AS Comment]
  *     FROM <table> ORDER BY 3, 5)
  *   [LIKE 'pattern' | WHERE expr];
  *
@@ -9313,10 +9315,10 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
   PT_NODE *outer_query = NULL;
   char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
   PT_NODE *value = NULL, *value_list = NULL;
-  DB_VALUE db_valuep[9];
+  DB_VALUE db_valuep[10];
   const char **psubquery_aliases = NULL, **pquery_names = NULL,
     **pquery_aliases = NULL;
-  int subquery_list_size = is_show_full ? 9 : 8;
+  int subquery_list_size = is_show_full ? 10 : 8;
   int query_list_size = subquery_list_size - 2;
 
   const char *subquery_aliases[] =
@@ -9325,7 +9327,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
   };
   const char *subquery_full_aliases[] =
     { "Attr_Type", "Def_Order", "Field", "Type", "Collation", "Null",
-    "Key", "Default", "Extra"
+    "Key", "Default", "Extra", "Comment"
   };
 
   const char *query_names[] =
@@ -9335,10 +9337,14 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
     { "Field", "Type", "Null", "Key", "Default", "Extra" };
 
   const char *query_full_names[] =
-    { "Field", "Type", "Collation", "Null", "Key", "Default", "Extra" };
+    { "Field", "Type", "Collation", "Null", "Key", "Default", "Extra",
+    "Comment"
+  };
 
   const char *query_full_aliases[] =
-    { "Field", "Type", "Collation", "Null", "Key", "Default", "Extra" };
+    { "Field", "Type", "Collation", "Null", "Key", "Default", "Extra",
+    "Comment"
+  };
 
   int i = 0;
 
@@ -9706,6 +9712,14 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 	    }
 	  buffer = pt_append_nulstring (parser, buffer, ")");
 	}
+    }
+
+  /* comment */
+  if (class_schema->comment != NULL && class_schema->comment[0] != '\0')
+    {
+      buffer = pt_append_nulstring (parser, buffer, " COMMENT='");
+      buffer = pt_append_nulstring (parser, buffer, class_schema->comment);
+      buffer = pt_append_nulstring (parser, buffer, "'");
     }
 
   if (class_schema != NULL)
@@ -10734,6 +10748,7 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser,
  *	     "" AS [Null],
  *	     'BTREE' AS Index_type
  *	     "" AS Func,
+ *           "" AS Comment,
  *    FROM <table> ORDER BY 3, 5;
  *
  *  Note: At execution, all empty fields will be replaced by values
@@ -10747,11 +10762,11 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   PT_NODE *query = NULL;
   char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
   PT_NODE *value = NULL, *value_list = NULL;
-  DB_VALUE db_valuep[12];
+  DB_VALUE db_valuep[13];
   const char *aliases[] = {
     "Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name",
     "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type",
-    "Func"
+    "Func", "Comment"
   };
   unsigned int i = 0;
 
@@ -10794,6 +10809,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   db_value_domain_default (db_valuep + 11, DB_TYPE_VARCHAR,
 			   DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
+  db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, "", 0,
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
   for (i = 0; i < sizeof (db_valuep) / sizeof (db_valuep[0]); i++)
     {

@@ -2954,6 +2954,10 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   or_put_offset (buf, offset);
   offset += property_list_size (att->properties);
 
+  /* comment */
+  or_put_offset (buf, offset);
+  offset += string_disk_size (att->comment);
+
   /* end of object */
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -2998,6 +3002,9 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   /* formerly att_extension_to_disk(buf, att) */
   put_property_list (buf, att->properties);
 
+  /* comment */
+  put_string (buf, att->comment);
+
   if (start + offset != buf->ptr)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_OUT_OF_SYNC, 0);
@@ -3032,6 +3039,8 @@ attribute_size (SM_ATTRIBUTE * att)
 
   /* size += att_extension_size(att); */
   size += property_list_size (att->properties);
+
+  size += string_disk_size (att->comment);
 
   return (size);
 }
@@ -3148,6 +3157,9 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 	      db_value_clear (&value);
 	    }
 	}
+
+      /* variable attribute 6: comment */
+      att->comment = get_string (buf, vars[ORC_ATT_COMMENT_INDEX].length);
 
       /* THIS SHOULD BE INITIALIZING THE header.name_space field !! */
 
@@ -3648,6 +3660,10 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
 
   offset += property_list_size (class_->properties);
 
+  or_put_offset (buf, offset);
+
+  offset += string_disk_size (class_->comment);
+
   /* end of object */
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -3758,6 +3774,8 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
   put_object_set (buf, triggers);
 
   put_property_list (buf, class_->properties);
+
+  put_string (buf, class_->comment);
 }
 
 
@@ -3868,6 +3886,8 @@ tf_class_size (MOBJ classobj)
 
   size += property_list_size (class_->properties);
 
+  size += string_disk_size (class_->comment);
+
   return (size);
 }
 
@@ -3969,6 +3989,10 @@ tf_dump_class_size (MOBJ classobj)
 
   s = property_list_size (class_->properties);
   fprintf (stdout, "Properties %d\n", s);
+  size += s;
+
+  s = string_disk_size (class_->comment);
+  fprintf (stdout, "Comment %d\n", s);
   size += s;
 
   fprintf (stdout, "TOTAL: %d\n", size);
@@ -4204,6 +4228,9 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   /* variable 14 */
   class_->properties =
     get_property_list (buf, vars[ORC_PROPERTIES_INDEX].length);
+
+  /* variable 15 */
+  class_->comment = get_string (buf, vars[ORC_COMMENT_INDEX].length);
 
   /* partition_of object */
   class_->partition_of = NULL;

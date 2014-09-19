@@ -140,6 +140,7 @@ const char *TR_ATT_ACTION_TIME = "action_time";
 const char *TR_ATT_ACTION = "action_definition";
 const char *TR_ATT_ACTION_OLD = "action";
 const char *TR_ATT_PROPERTIES = "properties";
+const char *TR_ATT_COMMENT = "comment";
 
 int tr_Current_depth = 0;
 int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
@@ -422,6 +423,7 @@ tr_make_trigger (void)
       trigger->current_refname = NULL;
       trigger->temp_refname = NULL;
       trigger->chn = NULL_CHN;
+      trigger->comment = NULL;
     }
 
   return (trigger);
@@ -464,6 +466,10 @@ tr_clear_trigger (TR_TRIGGER * trigger)
 	{
 	  free_activity (trigger->action);
 	  trigger->action = NULL;
+	}
+      if (trigger->comment != NULL)
+	{
+	  free_and_init (trigger->comment);
 	}
     }
 }
@@ -1112,6 +1118,12 @@ trigger_to_object (TR_TRIGGER * trigger)
 	}
     }
 
+  db_make_string (&value, trigger->comment);
+  if (dbt_put_internal (obt_p, TR_ATT_COMMENT, &value))
+    {
+      goto error;
+    }
+
   if ((object_p = dbt_finish_object (obt_p)) != NULL)
     {
       trigger->object = object_p;
@@ -1170,6 +1182,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
   trigger->attribute = NULL;
   trigger->condition = NULL;
   trigger->action = NULL;
+  trigger->comment = NULL;
 
   /*
    * Save the cache coherency number so we know when to re-calculate the
@@ -1355,6 +1368,22 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 	}
       db_value_clear (&value);
     }
+
+  /* COMMENT */
+  if (db_get (object, TR_ATT_COMMENT, &value))
+    {
+      goto error;
+    }
+
+  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
+    {
+      tmp = DB_GET_STRING (&value);
+      if (tmp != NULL)
+	{
+	  trigger->comment = strdup (tmp);
+	}
+    }
+  db_value_clear (&value);
 
   AU_ENABLE (save);
   return NO_ERROR;
@@ -1743,14 +1772,14 @@ validate_trigger (TR_TRIGGER * trigger)
 }
 
 /*
- * tr_map_trigger() - This creates a trigger cache strcuture for
+ * tr_map_trigger() - This creates a trigger cache structure for
  *                    a trigger instance and optionally validates the cache.
  *    return: trigger structure
  *    object(in): trigger object handle
  *    fetch(in): non-zero if the cache is to be updated
  *
  * Note:
- *    This creates a trigger cache strcuture for a trigger instance and
+ *    This creates a trigger cache structure for a trigger instance and
  *    optionally validates the cache.
  *    This is used whenever a trigger object handle needs to be mapped
  *    into a trigger structure.  The structure will be created if one
@@ -3853,6 +3882,7 @@ tr_check_correlation (PARSER_CONTEXT * parser, PT_NODE * node,
  *    action_time(in): action time
  *    action_type(in): action type
  *    action_source(in): action expression source
+ *    comment(in): trigger comment
  *
  * Note:
  *      Errors: ER_TR_TRIGGER_EXISTS:
@@ -3876,7 +3906,8 @@ tr_create_trigger (const char *name,
 		   DB_TRIGGER_TIME cond_time,
 		   const char *cond_source,
 		   DB_TRIGGER_TIME action_time,
-		   DB_TRIGGER_ACTION action_type, const char *action_source)
+		   DB_TRIGGER_ACTION action_type,
+		   const char *action_source, const char *comment)
 {
   TR_TRIGGER *trigger;
   DB_OBJECT *object;
@@ -3896,6 +3927,7 @@ tr_create_trigger (const char *name,
   trigger->priority = priority;
   trigger->event = event;
   trigger->class_mop = class_mop;
+  trigger->comment = (comment == NULL) ? NULL : strdup (comment);
 
   if (class_mop != NULL && db_is_vclass (class_mop))
     {
@@ -6507,6 +6539,43 @@ tr_trigger_action_type (DB_OBJECT * trigger_object, DB_TRIGGER_ACTION * type)
 }
 
 /*
+ * tr_trigger_comment() - This function finds the comment of the input trigger.
+ *    return: const char
+ *    trigger_object(in): trigger object
+ *    comment(out):
+ *
+ * Note:
+ *    If access to the internal object that contains the trigger definition
+ *    can not be obtained, the trigger cannot be identified or seen
+ *    by the user, or the user does not have the SELECT privilege
+ *    for the class in the trigger's event target, an error code
+ *    will be returned.
+ */
+int
+tr_trigger_comment (DB_OBJECT * trigger_object, char **comment)
+{
+  int error = NO_ERROR;
+  TR_TRIGGER *trigger;
+  int save;
+
+  *comment = NULL;
+  AU_DISABLE (save);
+
+  trigger = tr_map_trigger (trigger_object, 1);
+  if (trigger == NULL)
+    {
+      error = er_errid ();
+    }
+  else
+    {
+      *comment = ws_copy_string (trigger->comment);
+    }
+
+  AU_ENABLE (save);
+  return (error);
+}
+
+/*
  * tr_is_trigger() - This function can be used to test if an object is
  *                   a trigger object.
  *    return: error code
@@ -6743,6 +6812,12 @@ tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp)
 	      break;
 	    }
 	}
+
+      if (trigger->comment != NULL && trigger->comment[0] != '\0')
+	{
+	  fprintf (fp, " COMMENT '%s'", trigger->comment);
+	}
+
       fprintf (fp, ";\n");
     }
 
@@ -7227,6 +7302,76 @@ tr_set_priority (DB_OBJECT * trigger_object, double priority,
   return error;
 }
 
+/*
+ * tr_set_comment() - This changes a trigger comment.
+ *    return: error code
+ *    trigger_object(in): trigger object
+ *    comment(in): new comment
+ *    call_from_api(in): call from api
+ *
+ * Note:
+ *    The possible values
+ *    are TR_STATUS_ACTIVE and TR_STATUS_INACTIVE.
+ *    We reset the associated cache validation flag when the status
+ *    changes.
+ */
+int
+tr_set_comment (DB_OBJECT * trigger_object, const char *comment,
+		bool call_from_api)
+{
+  int error = NO_ERROR;
+  TR_TRIGGER *trigger;
+  DB_VALUE value;
+  int save;
+  char *oldcomment = NULL;
+
+  AU_DISABLE (save);
+
+  /* fetch and check the trigger */
+  trigger = tr_map_trigger (trigger_object, 1);
+  if (trigger == NULL)
+    {
+      error = er_errid ();
+    }
+  else if (!check_authorization (trigger, true))
+    {
+      error = ER_TR_TRIGGER_ALTER_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, trigger->name);
+    }
+
+  if (error == NO_ERROR)
+    {
+      oldcomment = trigger->comment;
+      assert (comment != NULL);
+      trigger->comment = strdup (comment);
+      if (trigger->comment == NULL)
+	{
+	  trigger->comment = oldcomment;
+	  error = ER_TR_TRIGGER_ALTER_FAILURE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, trigger->name);
+	}
+      else
+	{
+	  db_make_string (&value, comment);
+	  if (db_put_internal (trigger_object, TR_ATT_COMMENT, &value))
+	    {
+	      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	      trigger->comment = oldcomment;
+	    }
+	  else
+	    {
+	      if (oldcomment != NULL)
+		{
+		  free_and_init (oldcomment);
+		}
+	    }
+	}
+    }
+
+  AU_ENABLE (save);
+
+  return error;
+}
 
 /* TRIGGER PARAMETERS */
 
@@ -7475,6 +7620,9 @@ define_trigger_classes (void)
 
   db_make_int (&value, TR_TIME_AFTER);
   if (dbt_add_attribute (tmp, TR_ATT_ACTION_TIME, "integer", NULL))
+    goto tmp_error;
+
+  if (dbt_add_attribute (tmp, TR_ATT_COMMENT, "varchar(1024)", NULL))
     goto tmp_error;
 
   if ((class_mop = dbt_finish_class (tmp)) == NULL)

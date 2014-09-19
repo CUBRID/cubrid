@@ -111,7 +111,8 @@ extern int smt_add_constraint (SM_TEMPLATE * template_,
 			       int class_attribute,
 			       SM_FOREIGN_KEY_INFO * fk_info,
 			       SM_PREDICATE_INFO * filter_index,
-			       SM_FUNCTION_INFO * function_index);
+			       SM_FUNCTION_INFO * function_index,
+			       const char *comment);
 
 extern int smt_drop_constraint (SM_TEMPLATE * template_,
 				const char **att_names,
@@ -163,6 +164,11 @@ extern int smt_rename_any (SM_TEMPLATE * template_, const char *name,
 extern int smt_rename_constraint (SM_TEMPLATE * ctemplate,
 				  const char *old_name, const char *new_name,
 				  SM_CONSTRAINT_FAMILY element_type);
+
+/* Change comment function */
+extern int smt_change_constraint_comment (SM_TEMPLATE * ctemplate,
+					  const char *index_name,
+					  const char *comment);
 
 /* Deletion functions */
 extern int smt_delete_any (SM_TEMPLATE * template_, const char *name,

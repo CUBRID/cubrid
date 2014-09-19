@@ -86,6 +86,7 @@ static META_ATTRIBUTE att_atts[] = {
   {"domain", DB_TYPE_SET, 1, META_DOMAIN_NAME, 0, 0, NULL},
   {"triggers", DB_TYPE_SET, 1, "object", 0, 0, NULL},
   {"properties", DB_TYPE_SET, 0, NULL, 0, 0, NULL},
+  {"comment", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
 META_CLASS tf_Metaclass_attribute =
@@ -222,6 +223,7 @@ static META_ATTRIBUTE class_atts[] = {
   {"query_spec", DB_TYPE_SET, 1, META_QUERY_SPEC_NAME, 1, 0, NULL},
   {"triggers", DB_TYPE_SET, 1, "object", 0, 0, NULL},
   {"properties", DB_TYPE_SET, 0, NULL, 0, 0, NULL},
+  {"comment", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
 META_CLASS tf_Metaclass_class =
@@ -295,7 +297,8 @@ static CT_ATTR ct_class_atts[] = {
   {"class_meths", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"meth_files", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"query_specs", NULL_ATTRID, DB_TYPE_SEQUENCE},
-  {"indexes", NULL_ATTRID, DB_TYPE_SEQUENCE}
+  {"indexes", NULL_ATTRID, DB_TYPE_SEQUENCE},
+  {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 
 static CT_ATTR ct_attribute_atts[] = {
@@ -308,7 +311,8 @@ static CT_ATTR ct_attribute_atts[] = {
   {"from_class_of", NULL_ATTRID, DB_TYPE_OBJECT},
   {"is_nullable", NULL_ATTRID, DB_TYPE_INTEGER},
   {"default_value", NULL_ATTRID, DB_TYPE_VARCHAR},
-  {"domains", NULL_ATTRID, DB_TYPE_SEQUENCE}
+  {"domains", NULL_ATTRID, DB_TYPE_SEQUENCE},
+  {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 
 static CT_ATTR ct_attrid_atts[] = {
@@ -380,7 +384,8 @@ static CT_ATTR ct_index_atts[] = {
   {"is_primary_key", NULL_ATTRID, DB_TYPE_INTEGER},
   {"is_foreign_key", NULL_ATTRID, DB_TYPE_INTEGER},
   {"filter_expression", NULL_ATTRID, DB_TYPE_VARCHAR},
-  {"have_function", NULL_ATTRID, DB_TYPE_INTEGER}
+  {"have_function", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 
 static CT_ATTR ct_indexkey_atts[] = {

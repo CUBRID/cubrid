@@ -446,9 +446,8 @@ static PARSER_VARCHAR *pt_print_alter_index (PARSER_CONTEXT * parser,
 static PARSER_VARCHAR *pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_alter_serial (PARSER_CONTEXT * parser,
 					      PT_NODE * p);
-static PARSER_VARCHAR *pt_print_alter_stored_procedure_owner (PARSER_CONTEXT *
-							      parser,
-							      PT_NODE * p);
+static PARSER_VARCHAR *pt_print_alter_stored_procedure (PARSER_CONTEXT *
+							parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_alter_trigger (PARSER_CONTEXT * parser,
 					       PT_NODE * p);
 static PARSER_VARCHAR *pt_print_alter_user (PARSER_CONTEXT * parser,
@@ -5178,8 +5177,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_CONSTRAINT] = pt_apply_constraint;
   pt_apply_func_array[PT_POINTER] = pt_apply_pointer;
   pt_apply_func_array[PT_CREATE_STORED_PROCEDURE] = pt_apply_stored_procedure;
-  pt_apply_func_array[PT_ALTER_STORED_PROCEDURE_OWNER] =
-    pt_apply_stored_procedure;
+  pt_apply_func_array[PT_ALTER_STORED_PROCEDURE] = pt_apply_stored_procedure;
   pt_apply_func_array[PT_DROP_STORED_PROCEDURE] = pt_apply_stored_procedure;
   pt_apply_func_array[PT_PREPARE_STATEMENT] = pt_apply_prepare;
   pt_apply_func_array[PT_EXECUTE_PREPARE] = pt_apply_prepare;
@@ -5294,8 +5292,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_POINTER] = pt_init_pointer;
 
   pt_init_func_array[PT_CREATE_STORED_PROCEDURE] = pt_init_stored_procedure;
-  pt_init_func_array[PT_ALTER_STORED_PROCEDURE_OWNER] =
-    pt_init_stored_procedure;
+  pt_init_func_array[PT_ALTER_STORED_PROCEDURE] = pt_init_stored_procedure;
   pt_init_func_array[PT_DROP_STORED_PROCEDURE] = pt_init_stored_procedure;
   pt_init_func_array[PT_PREPARE_STATEMENT] = pt_init_prepare;
   pt_init_func_array[PT_EXECUTE_PREPARE] = pt_init_prepare;
@@ -5410,8 +5407,8 @@ pt_init_print_f (void)
   pt_print_func_array[PT_POINTER] = pt_print_pointer;
   pt_print_func_array[PT_CREATE_STORED_PROCEDURE] =
     pt_print_create_stored_procedure;
-  pt_print_func_array[PT_ALTER_STORED_PROCEDURE_OWNER] =
-    pt_print_alter_stored_procedure_owner;
+  pt_print_func_array[PT_ALTER_STORED_PROCEDURE] =
+    pt_print_alter_stored_procedure;
   pt_print_func_array[PT_DROP_STORED_PROCEDURE] =
     pt_print_drop_stored_procedure;
   pt_print_func_array[PT_PREPARE_STATEMENT] = NULL;	/* prepared statements should never need to be printed */
@@ -5814,6 +5811,13 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " owner to ");
       q = pt_append_varchar (parser, q, r1);
       break;
+    case PT_CHANGE_TABLE_COMMENT:
+      r1 = pt_print_bytes (parser,
+			   p->info.alter.alter_clause.comment.tbl_comment);
+      q = pt_append_nulstring (parser, q, " comment='");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, "'");
+      break;
     case PT_CHANGE_COLLATION:
       if (p->info.alter.alter_clause.collation.charset != -1)
 	{
@@ -5839,6 +5843,15 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes_l (parser, p->info.alter.alter_clause.query.query);
       q = pt_append_nulstring (parser, q, " add query ");
       q = pt_append_varchar (parser, q, r1);
+
+      if (p->info.alter.alter_clause.query.view_comment != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.alter.
+			       alter_clause.query.view_comment);
+	  q = pt_append_nulstring (parser, q, " comment='");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, "'");
+	}
       break;
     case PT_DROP_QUERY:
       r1 = pt_print_bytes_l (parser,
@@ -5853,6 +5866,15 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " change query ");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_varchar (parser, q, r2);
+
+      if (p->info.alter.alter_clause.query.view_comment != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.alter.
+			       alter_clause.query.view_comment);
+	  q = pt_append_nulstring (parser, q, " comment='");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, "'");
+	}
       break;
     case PT_RESET_QUERY:
       /* alias print should be enable for "alter view ..."
@@ -5870,6 +5892,15 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.alter.alter_clause.query.query);
       q = pt_append_nulstring (parser, q, " as ");
       q = pt_append_varchar (parser, q, r1);
+
+      if (p->info.alter.alter_clause.query.view_comment != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.alter.
+			       alter_clause.query.view_comment);
+	  q = pt_append_nulstring (parser, q, " comment='");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, "'");
+	}
 
       parser->custom_print = save_custom;
       break;
@@ -6599,7 +6630,8 @@ pt_apply_alter_user (PARSER_CONTEXT * parser, PT_NODE * p,
 static PT_NODE *
 pt_init_alter_user (PT_NODE * p)
 {
-  p->info.alter_user.user_name = p->info.alter_user.password = NULL;
+  p->info.alter_user.user_name =
+    p->info.alter_user.password = p->info.alter_user.comment = NULL;
   return p;
 }
 
@@ -6619,9 +6651,20 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
   b = pt_append_nulstring (parser, b, "alter user ");
   b = pt_append_varchar (parser, b, r1);
 
-  r1 = pt_print_bytes (parser, p->info.alter_user.password);
-  b = pt_append_nulstring (parser, b, " password ");
-  b = pt_append_varchar (parser, b, r1);
+  if (p->info.alter_user.password != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.alter_user.password);
+      b = pt_append_nulstring (parser, b, " password ");
+      b = pt_append_varchar (parser, b, r1);
+    }
+
+  if (p->info.alter_user.comment != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.alter_user.comment);
+      b = pt_append_nulstring (parser, b, " comment '");
+      b = pt_append_varchar (parser, b, r1);
+      b = pt_append_nulstring (parser, b, "'");
+    }
 
   return b;
 }
@@ -6684,12 +6727,21 @@ pt_print_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, " priority ");
       b = pt_append_varchar (parser, b, r1);
     }
-  else
+  else if (p->info.alter_trigger.trigger_status)
     {
       b = pt_append_nulstring (parser, b, " status ");
       b = pt_append_nulstring (parser, b, pt_show_misc_type
 			       (p->info.alter_trigger.trigger_status));
     }
+
+  if (p->info.alter_trigger.comment != NULL)
+    {
+      b = pt_append_nulstring (parser, b, " comment '");
+      r1 = pt_print_bytes (parser, p->info.alter_trigger.comment);
+      b = pt_append_varchar (parser, b, r1);
+      b = pt_append_nulstring (parser, b, "'");
+    }
+
   return b;
 }
 
@@ -7522,6 +7574,7 @@ pt_init_create_index (PT_NODE * p)
   p->info.index.func_no_args = 0;
   p->info.index.func_pos = -1;
   p->info.index.where = NULL;
+  p->info.index.comment = NULL;
   return p;
 }
 
@@ -7538,6 +7591,7 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = 0, *r1 = 0, *r2 = 0, *r3 = 0, *r4 = 0;
   unsigned int saved_cp = parser->custom_print;
   PT_NODE *sort_spec, *prefix_length;
+  PARSER_VARCHAR *comment = NULL;
 
   parser->custom_print |= PT_SUPPRESS_RESOLVED;
 
@@ -7602,11 +7656,20 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
   b = pt_append_varchar (parser, b, r2);
   b = pt_append_nulstring (parser, b, ") ");
 
-  if (p->info.index.where)
+  if (p->info.index.where != NULL)
     {
       r4 = pt_print_and_list (parser, p->info.index.where);
       b = pt_append_nulstring (parser, b, " where ");
       b = pt_append_varchar (parser, b, r4);
+    }
+
+  if (p->info.index.comment != NULL)
+    {
+      assert (p->info.index.comment->node_type == PT_VALUE);
+      comment = p->info.index.comment->info.value.data_value.str;
+      b = pt_append_nulstring (parser, b, "comment '");
+      b = pt_append_varchar (parser, b, comment);
+      b = pt_append_nulstring (parser, b, "'");
     }
 
   parser->custom_print = saved_cp;
@@ -7646,7 +7709,8 @@ pt_init_create_user (PT_NODE * p)
 {
   p->info.create_user.user_name =
     p->info.create_user.password =
-    p->info.create_user.groups = p->info.create_user.members = NULL;
+    p->info.create_user.groups =
+    p->info.create_user.members = p->info.create_user.comment = NULL;
   return p;
 }
 
@@ -7683,6 +7747,13 @@ pt_print_create_user (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.create_user.members);
       b = pt_append_nulstring (parser, b, " members ");
       b = pt_append_varchar (parser, b, r1);
+    }
+  if (p->info.create_user.comment != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.create_user.comment);
+      b = pt_append_nulstring (parser, b, " comment '");
+      b = pt_append_varchar (parser, b, r1);
+      b = pt_append_nulstring (parser, b, "'");
     }
   return b;
 }
@@ -7783,6 +7854,14 @@ pt_print_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
   r1 = pt_print_bytes (parser, p->info.create_trigger.trigger_action);
   q = pt_append_varchar (parser, q, r1);
 
+  if (p->info.create_trigger.comment != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.create_trigger.comment);
+      q = pt_append_nulstring (parser, q, " comment '");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, "'");
+    }
+
   return q;
 }
 
@@ -7848,6 +7927,14 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
   r3 = pt_print_bytes (parser, p->info.sp.java_method);
   q = pt_append_nulstring (parser, q, " as language java name ");
   q = pt_append_varchar (parser, q, r3);
+
+  if (p->info.sp.comment != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.sp.comment);
+      q = pt_append_nulstring (parser, q, " comment '");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, "'");
+    }
 
   return q;
 }
@@ -8004,6 +8091,9 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_TABLE_OPTION_COLLATION:
       q = pt_append_nulstring (parser, q, "collate ");
+      break;
+    case PT_TABLE_OPTION_COMMENT:
+      q = pt_append_nulstring (parser, q, "comment = ");
       break;
     default:
       break;
@@ -8251,6 +8341,7 @@ static PARSER_VARCHAR *
 pt_print_parts (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1, *r2;
+  PARSER_VARCHAR *comment = NULL;
   unsigned int save_custom;
 
   r1 = pt_print_bytes (parser, p->info.parts.name);
@@ -8283,6 +8374,14 @@ pt_print_parts (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  q = pt_append_nulstring (parser, q, " maxvalue ");
 	}
+    }
+
+  if (p->info.parts.comment != NULL)
+    {
+      comment = pt_print_bytes (parser, p->info.parts.comment);
+      q = pt_append_nulstring (parser, q, " comment '");
+      q = pt_append_varchar (parser, q, comment);
+      q = pt_append_nulstring (parser, q, "'");
     }
 
   return q;
@@ -8393,6 +8492,14 @@ pt_print_create_serial (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " nocache ");
     }
 
+  if (p->info.serial.comment != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.serial.comment);
+      q = pt_append_nulstring (parser, q, " comment '");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, "'");
+    }
+
   return q;
 }
 
@@ -8467,17 +8574,25 @@ pt_print_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " nocache ");
     }
 
+  if (p->info.serial.comment != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.serial.comment);
+      q = pt_append_nulstring (parser, q, " comment '");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, "'");
+    }
+
   return q;
 }
 
 /*
- * pt_print_alter_stored_procedure_owner () -
+ * pt_print_alter_stored_procedure () -
  *   return:
  *   parser(in):
  *   p(in):
  */
 static PARSER_VARCHAR *
-pt_print_alter_stored_procedure_owner (PARSER_CONTEXT * parser, PT_NODE * p)
+pt_print_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
   PT_STORED_PROC_INFO *sp_info;
@@ -8503,6 +8618,14 @@ pt_print_alter_stored_procedure_owner (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes_l (parser, sp_info->owner);
   q = pt_append_varchar (parser, q, r1);
+
+  if (sp_info->comment != NULL)
+    {
+      r1 = pt_print_bytes (parser, sp_info->comment);
+      q = pt_append_nulstring (parser, q, " comment '");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, "'");
+    }
 
   return q;
 }
@@ -17122,6 +17245,7 @@ pt_init_constraint (PT_NODE * node)
       node->info.constraint.name = NULL;
       node->info.constraint.deferrable = 0;
       node->info.constraint.initially_deferred = 0;
+      node->info.constraint.comment = NULL;
     }
   return node;
 }
@@ -17235,6 +17359,15 @@ pt_print_col_def_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.constraint.initially_deferred)
     {
       b = pt_append_nulstring (parser, b, "initially deferred ");
+    }
+
+  if (p->info.constraint.comment != NULL)
+    {
+      assert (p->info.constraint.comment->node_type == PT_VALUE);
+      r1 = pt_print_bytes (parser, p->info.constraint.comment);
+      b = pt_append_nulstring (parser, b, "comment '");
+      b = pt_append_varchar (parser, b, r1);
+      b = pt_append_nulstring (parser, b, "' ");
     }
 
   return b;
@@ -17362,6 +17495,15 @@ pt_print_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.constraint.initially_deferred)
     {
       b = pt_append_nulstring (parser, b, "initially deferred ");
+    }
+
+  if (p->info.constraint.comment)
+    {
+      assert (p->info.constraint.comment->node_type == PT_VALUE);
+      r1 = pt_print_bytes (parser, p->info.constraint.comment);
+      b = pt_append_nulstring (parser, b, "comment '");
+      b = pt_append_varchar (parser, b, r1);
+      b = pt_append_nulstring (parser, b, "' ");
     }
 
   return b;

@@ -500,6 +500,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
  *   max_val(in):
  *   cyclic(in):
  *   started(in):
+ *   comment(in):
  *   class_name(in):
  *   att_name(in):
  *
@@ -515,6 +516,7 @@ do_create_serial_internal (MOP * serial_object,
 			   const int cyclic,
 			   const int cached_num,
 			   const int started,
+			   const char *comment,
 			   const char *class_name, const char *att_name)
 {
   DB_OBJECT *ret_obj = NULL;
@@ -598,6 +600,15 @@ do_create_serial_internal (MOP * serial_object,
   /* started */
   db_make_int (&value, started);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &value);
+  pr_clear_value (&value);
+  if (error < 0)
+    {
+      goto end;
+    }
+
+  /* comment */
+  db_make_string (&value, comment);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
   pr_clear_value (&value);
   if (error < 0)
     {
@@ -1166,6 +1177,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool au_disable_flag = false;
   char *p = NULL;
   int name_size;
+  const char *comment = NULL;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1584,13 +1596,26 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       goto end;
     }
+
+  /* comment */
+  if (statement->info.serial.comment != NULL)
+    {
+      assert (statement->info.serial.comment->node_type == PT_VALUE);
+      comment = (char *) PT_VALUE_GET_BYTES (statement->info.serial.comment);
+      if (comment == NULL)
+	{
+	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	  goto end;
+	}
+    }
+
   /* now create serial object which is insert into db_serial */
   AU_DISABLE (save);
   au_disable_flag = true;
 
   error = do_create_serial_internal (&serial_object, p, &start_val, &inc_val,
 				     &min_val, &max_val, cyclic, cached_num,
-				     0, NULL, NULL);
+				     0, comment, NULL, NULL);
 
   AU_ENABLE (save);
   au_disable_flag = false;
@@ -1601,7 +1626,10 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
 
-  free_and_init (p);
+  if (p != NULL)
+    {
+      free_and_init (p);
+    }
 
   return NO_ERROR;
 
@@ -1611,7 +1639,7 @@ end:
       AU_ENABLE (save);
     }
 
-  if (p)
+  if (p != NULL)
     {
       free_and_init (p);
     }
@@ -1842,7 +1870,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
   /* create auto increment serial object */
   error = do_create_serial_internal (serial_object, serial_name, &start_val,
 				     &inc_val, &min_val, &max_val, 0, 0, 0,
-				     class_name, att_name);
+				     NULL, class_name, att_name);
   if (error < 0)
     {
       goto end;
@@ -2120,6 +2148,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE abs_inc_val, range_val;
   int cached_num;
   int ret_msg_id = 0;
+  const char *comment = NULL;
 
   unsigned char num[DB_NUMERIC_BUF_SIZE];
 
@@ -2675,6 +2704,20 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       pr_clear_value (&value);
     }
 
+  /* comment */
+  if (statement->info.serial.comment != NULL)
+    {
+      assert (statement->info.serial.comment->node_type == PT_VALUE);
+      comment = (char *) PT_VALUE_GET_BYTES (statement->info.serial.comment);
+      db_make_string (&value, comment);
+      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
+      if (error < 0)
+	{
+	  goto end;
+	}
+      pr_clear_value (&value);
+    }
+
   serial_object = dbt_finish_object (obj_tmpl);
   if (serial_object == NULL)
     {
@@ -3095,8 +3138,8 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = jsp_create_stored_procedure (parser, statement);
 	  break;
 
-	case PT_ALTER_STORED_PROCEDURE_OWNER:
-	  error = jsp_alter_stored_procedure_owner (parser, statement);
+	case PT_ALTER_STORED_PROCEDURE:
+	  error = jsp_alter_stored_procedure (parser, statement);
 	  break;
 
 	case PT_DROP_STORED_PROCEDURE:
@@ -3469,8 +3512,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_STORED_PROCEDURE:
       err = jsp_create_stored_procedure (parser, statement);
       break;
-    case PT_ALTER_STORED_PROCEDURE_OWNER:
-      err = jsp_alter_stored_procedure_owner (parser, statement);
+    case PT_ALTER_STORED_PROCEDURE:
+      err = jsp_alter_stored_procedure (parser, statement);
       break;
     case PT_DROP_STORED_PROCEDURE:
       err = jsp_drop_stored_procedure (parser, statement);
@@ -6035,8 +6078,8 @@ get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type,
 int
 do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  PT_NODE *cond, *action, *target, *attr, *pri;
-  const char *name;
+  PT_NODE *cond, *action, *target, *attr, *pri, *comment_node;
+  const char *name, *comment;
   DB_TRIGGER_STATUS status;
   double priority;
   DB_TRIGGER_EVENT event;
@@ -6052,6 +6095,17 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   name = PT_NODE_TR_NAME (statement);
   status = PT_NODE_TR_STATUS (statement);
+
+  comment_node = statement->info.create_trigger.comment;
+  if (comment_node != NULL)
+    {
+      assert (comment_node->node_type == PT_VALUE);
+      comment = (char *) comment_node->info.value.data_value.str->bytes;
+    }
+  else
+    {
+      comment = NULL;
+    }
 
   pri = PT_NODE_TR_PRI (statement);
   if (pri != NULL)
@@ -6117,7 +6171,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   trigger =
     tr_create_trigger (name, status, priority, event, class_, attribute,
 		       cond_time, cond_source, action_time, action_type,
-		       action_source);
+		       action_source, comment);
 
   if (trigger == NULL)
     {
@@ -6243,13 +6297,14 @@ int
 do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
-  PT_NODE *speclist, *p_node;
+  PT_NODE *speclist, *p_node, *comment_node;
   DB_OBJLIST *triggers, *t;
   double priority = TR_LOWEST_PRIORITY;
   DB_TRIGGER_STATUS status;
   PT_NODE *trigger_owner, *trigger_name = NULL;
-  const char *trigger_owner_name = NULL;
+  const char *trigger_owner_name = NULL, *trigger_comment;
   DB_VALUE returnval, trigger_name_val, user_val;
+  bool has_trigger_comment = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -6261,6 +6316,15 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
+    }
+
+  comment_node = statement->info.alter_trigger.comment;
+  if (comment_node != NULL)
+    {
+      has_trigger_comment = true;
+      assert (comment_node->node_type == PT_VALUE);
+      trigger_comment = (char *) comment_node->
+	info.value.data_value.str->bytes;
     }
 
   /* currently, we can' set the status and priority at the same time.
@@ -6277,11 +6341,16 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       priority = get_priority (parser, p_node);
     }
-  else
+  else if (statement->info.alter_trigger.trigger_status != NULL)
     {
       status =
 	convert_misc_to_tr_status (statement->info.
 				   alter_trigger.trigger_status);
+    }
+  else
+    {
+      /* here, means user intends to alter comment only, which must exist */
+      assert (has_trigger_comment);
     }
 
   if (error == NO_ERROR)
@@ -6328,6 +6397,11 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    }
 
 		  trigger_name = trigger_name->next;
+		}
+
+	      if (error == NO_ERROR && has_trigger_comment)
+		{
+		  error = tr_set_comment (t->op, trigger_comment, false);
 		}
 	    }
 	}
@@ -14809,8 +14883,8 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_schema.statement_type = CUBRID_STMT_CREATE_STORED_PROCEDURE;
       break;
 
-    case PT_ALTER_STORED_PROCEDURE_OWNER:
-      repl_schema.statement_type = CUBRID_STMT_ALTER_STORED_PROCEDURE_OWNER;
+    case PT_ALTER_STORED_PROCEDURE:
+      repl_schema.statement_type = CUBRID_STMT_ALTER_STORED_PROCEDURE;
       break;
 
     case PT_DROP_STORED_PROCEDURE:

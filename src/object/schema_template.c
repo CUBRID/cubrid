@@ -92,7 +92,8 @@ static int smt_add_constraint_to_property (SM_TEMPLATE * template_,
 					   char *shared_cons_name,
 					   SM_PREDICATE_INFO *
 					   filter_index,
-					   SM_FUNCTION_INFO * function_index);
+					   SM_FUNCTION_INFO * function_index,
+					   const char *comment);
 static int smt_drop_constraint_from_property (SM_TEMPLATE * template_,
 					      const char *constraint_name,
 					      SM_ATTRIBUTE_FLAG constraint);
@@ -152,6 +153,15 @@ static int rename_constraints_partitioned_class (SM_TEMPLATE * ctemplate,
 						 const char *new_name,
 						 SM_CONSTRAINT_FAMILY
 						 element_type);
+
+static int change_constraint_comment (SM_TEMPLATE * ctemplate,
+				      const char *index_name,
+				      const char *comment);
+
+static int change_constraints_comment_partitioned_class (MOP obj,
+							 const char
+							 *index_name,
+							 const char *comment);
 
 /* TEMPLATE SEARCH FUNCTIONS */
 /*
@@ -1624,6 +1634,7 @@ smt_drop_constraint_from_property (SM_TEMPLATE * template_,
  *   shared_cons_name(in):
  *   filter_index(in):
  *   function_index(in)
+ *   comment(in):
  */
 
 static int
@@ -1635,7 +1646,8 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_,
 				SM_FOREIGN_KEY_INFO * fk_info,
 				char *shared_cons_name,
 				SM_PREDICATE_INFO * filter_index,
-				SM_FUNCTION_INFO * function_index)
+				SM_FUNCTION_INFO * function_index,
+				const char *comment)
 {
   int error = NO_ERROR;
   DB_VALUE cnstr_val;
@@ -1657,7 +1669,7 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_,
       if (classobj_put_index
 	  (&(template_->properties), type, constraint_name, atts, asc_desc,
 	   NULL, filter_index, fk_info,
-	   shared_cons_name, function_index) == ER_FAILED)
+	   shared_cons_name, function_index, comment) == ER_FAILED)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
@@ -2035,6 +2047,7 @@ smt_check_index_exist (SM_TEMPLATE * template_,
  *   asc_desc(in): asc/desc info list
  *   class_attribute(in): non-zero if we're looking for class attributes
  *   fk_info(in): foreign key information
+ *   comment(in): constraint comment
  */
 
 int
@@ -2044,7 +2057,7 @@ smt_add_constraint (SM_TEMPLATE * template_,
 		    const int *asc_desc, int class_attribute,
 		    SM_FOREIGN_KEY_INFO * fk_info,
 		    SM_PREDICATE_INFO * filter_index,
-		    SM_FUNCTION_INFO * function_index)
+		    SM_FUNCTION_INFO * function_index, const char *comment)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE **atts = NULL;
@@ -2184,7 +2197,7 @@ smt_add_constraint (SM_TEMPLATE * template_,
 						  asc_desc, NULL,
 						  shared_cons_name,
 						  filter_index,
-						  function_index);
+						  function_index, comment);
 
 	  if (error == NO_ERROR && constraint == SM_ATTFLAG_PRIMARY_KEY)
 	    {
@@ -2221,7 +2234,8 @@ smt_add_constraint (SM_TEMPLATE * template_,
 					    constraint_name, atts,
 					    asc_desc, fk_info,
 					    shared_cons_name,
-					    filter_index, function_index);
+					    filter_index, function_index,
+					    comment);
 	}
     }
   else if (constraint == SM_ATTFLAG_NON_NULL)
@@ -3013,6 +3027,186 @@ end:
       classobj_free_class_constraints (sm_cons);
     }
 
+  return error;
+
+  /* in order to show explicitly the error */
+error_exit:
+  goto end;
+}
+
+/*
+ * change_constraint_comment() - Changes a constraint comment.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   template(in/out): schema template
+ *   index_name(in): the name of constraint
+ *   comment(in): new comment of constraint
+ */
+static int
+change_constraint_comment (SM_TEMPLATE * ctemplate,
+			   const char *index_name, const char *comment)
+{
+  int error = NO_ERROR;
+  SM_CLASS_CONSTRAINT *sm_constraint = NULL;
+  SM_CLASS_CONSTRAINT *sm_cons = NULL;
+  SM_CLASS_CONSTRAINT *existing_con = NULL;
+  const char *property_type = NULL;
+  char *norm_new_name = NULL;
+
+  error = classobj_make_class_constraints (ctemplate->properties,
+					   ctemplate->attributes, &sm_cons);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  if (sm_cons == NULL)
+    {
+      error = ER_SM_CONSTRAINT_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, index_name);
+      goto error_exit;
+    }
+
+  sm_constraint = classobj_find_constraint_by_name (sm_cons, index_name);
+  if (sm_constraint == NULL)
+    {
+      error = ER_SM_CONSTRAINT_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, index_name);
+      goto error_exit;
+    }
+
+  property_type = classobj_map_constraint_to_property (sm_constraint->type);
+
+  error =
+    classobj_change_constraint_comment (ctemplate->properties,
+					property_type, index_name, comment);
+
+end:
+  if (sm_cons)
+    {
+      classobj_free_class_constraints (sm_cons);
+    }
+  return error;
+
+error_exit:
+  goto end;
+}
+
+/*
+ * change_constraints_comment_partitioned_class ()
+ * - This function changes constraints comment in sub-classes(partition classes).
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   obj(in): database object of the super class (partition class)
+ *   index_name(in): then name of constraint
+ *   comment(in): the comment of constraint
+ */
+static int
+change_constraints_comment_partitioned_class (MOP obj,
+					      const char *index_name,
+					      const char *comment)
+{
+  int error = NO_ERROR;
+  int i, is_partition = 0;
+  MOP *sub_partitions = NULL;
+  SM_TEMPLATE *ctemplate = NULL;
+
+  error = sm_partitioned_class_type (obj, &is_partition, NULL,
+				     &sub_partitions);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  if (is_partition == DB_PARTITION_CLASS)
+    {
+      error = ER_NOT_ALLOWED_ACCESS_TO_PARTITION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto error_exit;
+    }
+  else if (is_partition == DB_NOT_PARTITIONED_CLASS)
+    {
+      goto end;
+    }
+
+  assert (is_partition == DB_PARTITIONED_CLASS);
+
+  for (i = 0; sub_partitions[i]; i++)
+    {
+      if (sm_exist_index (sub_partitions[i], index_name, NULL) != NO_ERROR)
+	{
+	  continue;
+	}
+
+      ctemplate = smt_edit_class_mop (sub_partitions[i], AU_INDEX);
+      if (ctemplate == NULL)
+	{
+	  error = er_errid ();
+	  assert (error != NO_ERROR);
+	  goto error_exit;
+	}
+
+      error = change_constraint_comment (ctemplate, index_name, comment);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      /* classobj_free_template() is included in sm_update_class() */
+      error = sm_update_class (ctemplate, NULL);
+      if (error != NO_ERROR)
+	{
+	  /* Even though sm_update() did not return NO_ERROR,
+	   * ctemplate is already freed */
+	  ctemplate = NULL;
+	  goto error_exit;
+	}
+    }
+
+end:
+  if (sub_partitions != NULL)
+    {
+      free_and_init (sub_partitions);
+    }
+  return error;
+
+error_exit:
+  if (ctemplate != NULL)
+    {
+      /* smt_quit() always returns NO_ERROR */
+      smt_quit (ctemplate);
+    }
+  goto end;
+}
+
+/*
+ * smt_change_constraint_comment() - This function change index/constraints'
+ *                                   comment in sm_template.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   ctemplate(in): sm_template of the class
+ *   index_name(in): the name of constraint
+ *   comment(in): new comment of constraint
+ */
+int
+smt_change_constraint_comment (SM_TEMPLATE * ctemplate,
+			       const char *index_name, const char *comment)
+{
+  int error = NO_ERROR;
+
+  assert (ctemplate != NULL);
+
+  error =
+    change_constraints_comment_partitioned_class (ctemplate->op,
+						  index_name, comment);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = change_constraint_comment (ctemplate, index_name, comment);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+end:
   return error;
 
   /* in order to show explicitly the error */

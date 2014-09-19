@@ -196,3 +196,4 @@ $ csql help messages
 \tqcache                 - Abfrage Cache Information\n
 235 <Partitionen>
 236 Ein Klassennamen ist erforderlich.
+237 <Comment>

@@ -114,6 +114,7 @@ typedef enum
   SERIAL_CYCLIC,
   SERIAL_STARTED,
   SERIAL_CACHED_NUM,
+  SERIAL_COMMENT,
 
   SERIAL_VALUE_INDEX_MAX
 } SERIAL_VALUE_INDEX;
@@ -653,7 +654,8 @@ export_serial (FILE * outfp)
     "[min_val], "
     "[cyclic], "
     "[started], "
-    "[cached_num] "
+    "[cached_num], "
+    "[comment] "
     "from [db_serial] where [class_name] is null and [att_name] is null";
 
   error = db_compile_and_execute_local (query, &query_result, &query_error);
@@ -726,6 +728,19 @@ export_serial (FILE * outfp)
 	      {
 		if (DB_IS_NULL (&values[i])
 		    || DB_VALUE_TYPE (&values[i]) != DB_TYPE_INTEGER)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			    ER_INVALID_SERIAL_VALUE, 0);
+		    error = ER_INVALID_SERIAL_VALUE;
+		    goto err;
+		  }
+	      }
+	      break;
+
+	    case SERIAL_COMMENT:
+	      {
+		if (DB_IS_NULL (&values[i]) == false
+		    && DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
 		  {
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			    ER_INVALID_SERIAL_VALUE, 0);
@@ -811,15 +826,21 @@ export_serial (FILE * outfp)
 	       (DB_GET_INTEGER (&values[SERIAL_CYCLIC]) == 0 ? "no" : ""));
       if (DB_GET_INTEGER (&values[SERIAL_CACHED_NUM]) <= 1)
 	{
-	  fprintf (outfp, "\t nocache;\n");
+	  fprintf (outfp, "\t nocache\n");
 
 	}
       else
 	{
-	  fprintf (outfp, "\t cache %d;\n",
+	  fprintf (outfp, "\t cache %d\n",
 		   DB_GET_INTEGER (&values[SERIAL_CACHED_NUM]));
 
 	}
+      if (DB_IS_NULL (&values[SERIAL_COMMENT]) == false)
+	{
+	  fprintf (outfp, "\t comment '%s'",
+		   DB_PULL_STRING (&values[SERIAL_COMMENT]));
+	}
+      fprintf (outfp, ";\n");
       fprintf (outfp,
 	       "call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
 	       DB_PULL_STRING (&values[SERIAL_NAME]),
@@ -1148,6 +1169,12 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 
       fprintf (output_file, "CREATE %s %s%s%s",
 	       is_vclass ? "VCLASS" : "CLASS", PRINT_IDENTIFIER (name));
+
+      if (au_fetch_class_force (cl->op, &class_, AU_FETCH_READ) != NO_ERROR)
+	{
+	  class_ = NULL;
+	}
+
       if (is_vclass)
 	{
 	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_WITHCHECKOPTION))
@@ -1161,11 +1188,6 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	}
       else
 	{
-	  if (au_fetch_class_force (cl->op, &class_, AU_FETCH_READ)
-	      != NO_ERROR)
-	    {
-	      class_ = NULL;
-	    }
 	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_REUSE_OID))
 	    {
 	      fprintf (output_file, " REUSE_OID");
@@ -1181,6 +1203,12 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 		       lang_get_collation_name (class_->collation_id));
 	    }
 	}
+
+      if (class_ != NULL && class_->comment != NULL)
+	{
+	  fprintf (output_file, " COMMENT '%s'", class_->comment);
+	}
+
       fprintf (output_file, ";\n");
       if (!is_vclass && storage_order == FOLLOW_STORAGE_ORDER)
 	{
@@ -2450,6 +2478,12 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
     {
       fprintf (output_file, " NOT NULL");
     }
+
+  /* emit comment */
+  if (attribute->comment != NULL)
+    {
+      fprintf (output_file, " COMMENT '%s'", attribute->comment);
+    }
 }
 
 
@@ -2526,6 +2560,11 @@ emit_unique_def (DB_OBJECT * class_)
 	      fprintf (output_file, "%s%s%s", PRINT_IDENTIFIER (name));
 	    }
 	  (void) fprintf (output_file, ")");
+
+	  if (constraint->comment != NULL && constraint->comment[0] != '\0')
+	    {
+	      fprintf (output_file, " COMMENT '%s'", constraint->comment);
+	    }
 
 	  ++num_printed;
 	}
@@ -2758,14 +2797,19 @@ emit_index_def (DB_OBJECT * class_)
 	{
 	  if (constraint->filter_predicate->pred_string)
 	    {
-	      fprintf (output_file, ") where %s;\n",
+	      fprintf (output_file, ") where %s",
 		       constraint->filter_predicate->pred_string);
 	    }
 	}
       else
 	{
-	  fprintf (output_file, ");\n");
+	  fprintf (output_file, ")");
 	}
+      if (constraint->comment != NULL && constraint->comment[0] != '\0')
+	{
+	  fprintf (output_file, " COMMENT '%s'", constraint->comment);
+	}
+      fprintf (output_file, ";\n");
     }
 }
 
@@ -3026,7 +3070,7 @@ emit_methfile_def (DB_METHFILE * methfile)
 static void
 emit_partition_parts (MOP parts, int partcnt)
 {
-  DB_VALUE ptype, pname, pval, ele;
+  DB_VALUE ptype, pname, pval, ele, comment;
   int save, setsize, i1;
 
   if (parts != NULL)
@@ -3034,6 +3078,7 @@ emit_partition_parts (MOP parts, int partcnt)
       DB_MAKE_NULL (&ptype);
       DB_MAKE_NULL (&pname);
       DB_MAKE_NULL (&pval);
+      DB_MAKE_NULL (&comment);
       if (partcnt > 0)
 	{
 	  fprintf (output_file, ",\n ");
@@ -3086,6 +3131,15 @@ emit_partition_parts (MOP parts, int partcnt)
 	      fprintf (output_file, ")");
 	      break;
 	    }
+
+	  if (db_get (parts, PARTITION_ATT_PCOMMENT, &comment) == NO_ERROR)
+	    {
+	      if (!DB_IS_NULL (&comment))
+		{
+		  fprintf (output_file, " COMMENT '%s'",
+			   DB_PULL_STRING (&comment));
+		}
+	    }
 	}
       else
 	{
@@ -3096,6 +3150,7 @@ emit_partition_parts (MOP parts, int partcnt)
       pr_clear_value (&ptype);
       pr_clear_value (&pname);
       pr_clear_value (&pval);
+      pr_clear_value (&comment);
     }
 }
 
@@ -3217,7 +3272,7 @@ static int
 emit_stored_procedure_args (int arg_cnt, DB_SET * arg_set)
 {
   MOP arg;
-  DB_VALUE arg_val, arg_name_val, arg_mode_val, arg_type_val;
+  DB_VALUE arg_val, arg_name_val, arg_mode_val, arg_type_val, arg_comment_val;
   int arg_mode, arg_type, i, save;
   int err;
   int err_count = 0;
@@ -3238,7 +3293,9 @@ emit_stored_procedure_args (int arg_cnt, DB_SET * arg_set)
       if ((err = db_get (arg, SP_ATTR_ARG_NAME, &arg_name_val)) != NO_ERROR
 	  || (err = db_get (arg, SP_ATTR_MODE, &arg_mode_val)) != NO_ERROR
 	  || (err = db_get (arg, SP_ATTR_DATA_TYPE,
-			    &arg_type_val)) != NO_ERROR)
+			    &arg_type_val)) != NO_ERROR
+	  || (err = db_get (arg, SP_ATTR_ARG_COMMENT,
+			    &arg_comment_val)) != NO_ERROR)
 	{
 	  err_count++;
 	  continue;
@@ -3260,6 +3317,12 @@ emit_stored_procedure_args (int arg_cnt, DB_SET * arg_set)
       else
 	{
 	  fprintf (output_file, "%s", db_get_type_name ((DB_TYPE) arg_type));
+	}
+
+      if (!DB_IS_NULL (&arg_comment_val))
+	{
+	  fprintf (output_file, " COMMENT '%s'",
+		   DB_PULL_STRING (&arg_comment_val));
 	}
 
       if (i < arg_cnt - 1)
@@ -3284,7 +3347,7 @@ emit_stored_procedure (void)
   MOP cls, obj, owner;
   DB_OBJLIST *sp_list = NULL, *cur_sp;
   DB_VALUE sp_name_val, sp_type_val, arg_cnt_val, args_val, rtn_type_val,
-    method_val;
+    method_val, comment_val;
   DB_VALUE owner_val, owner_name_val;
   int sp_type, rtn_type, arg_cnt, save;
   DB_SET *arg_set;
@@ -3312,7 +3375,8 @@ emit_stored_procedure (void)
 	  || ((err = db_get (obj, SP_ATTR_RETURN_TYPE, &rtn_type_val))
 	      != NO_ERROR)
 	  || (err = db_get (obj, SP_ATTR_TARGET, &method_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_OWNER, &owner_val)) != NO_ERROR)
+	  || (err = db_get (obj, SP_ATTR_OWNER, &owner_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
 	{
 	  err_count++;
 	  continue;
@@ -3350,8 +3414,16 @@ emit_stored_procedure (void)
 	    }
 	}
 
-      fprintf (output_file, "AS LANGUAGE JAVA NAME '%s';\n",
+      fprintf (output_file, "AS LANGUAGE JAVA NAME '%s'",
 	       DB_GET_STRING (&method_val));
+
+      if (!DB_IS_NULL (&comment_val))
+	{
+	  fprintf (output_file, " COMMENT '%s'",
+		   DB_PULL_STRING (&comment_val));
+	}
+
+      fprintf (output_file, ";\n");
 
       owner = DB_GET_OBJECT (&owner_val);
       err = db_get (owner, "name", &owner_name_val);
@@ -3443,6 +3515,11 @@ emit_foreign_key (DB_OBJLIST * classes)
 	  fprintf (output_file, "ON UPDATE %s ",
 		   classobj_describe_foreign_key_action (constraint->fk_info->
 							 update_action));
+
+	  if (constraint->comment != NULL && constraint->comment[0] != '\0')
+	    {
+	      fprintf (output_file, " COMMENT '%s'", constraint->comment);
+	    }
 
 	  (void) fprintf (output_file, ";\n\n");
 	}

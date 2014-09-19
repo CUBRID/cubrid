@@ -1847,7 +1847,7 @@ db_add_constraint (MOP classmop,
     {
       retval = sm_add_constraint (classmop, constraint_type, name,
 				  att_names, NULL, NULL, class_attributes,
-				  NULL, NULL);
+				  NULL, NULL, NULL);
       free_and_init (name);
     }
 

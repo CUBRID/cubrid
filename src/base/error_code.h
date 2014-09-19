@@ -1488,7 +1488,9 @@
 #define ER_TZ_INVALID_COMBINATION		    -1165
 #define ER_TZ_DURING_DS_LEAP                        -1166
 
-#define ER_LAST_ERROR                               -1167
+#define ER_AU_COMMENT_OVERFLOW                      -1167
+
+#define ER_LAST_ERROR                               -1168
 
 
 /*

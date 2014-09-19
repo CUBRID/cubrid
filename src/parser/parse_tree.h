@@ -289,6 +289,10 @@
 	   ((t) == PT_TYPE_VARNCHAR) || \
 	   ((t) == PT_TYPE_ENUMERATION))  ? true : false )
 
+#define PT_VALUE_GET_BYTES(node) \
+  ((node) == NULL ? NULL : \
+   (node)->info.value.data_value.str->bytes)
+
 #define pt_is_select(n) PT_IS_SELECT(n)
 #define pt_is_union(n) PT_IS_UNION(n)
 #define pt_is_intersection(n) PT_IS_INTERSECTION(n)
@@ -852,7 +856,7 @@ enum pt_node_type
   PT_RENAME_TRIGGER = CUBRID_STMT_RENAME_TRIGGER,
 
   PT_CREATE_STORED_PROCEDURE = CUBRID_STMT_CREATE_STORED_PROCEDURE,
-  PT_ALTER_STORED_PROCEDURE_OWNER = CUBRID_STMT_ALTER_STORED_PROCEDURE_OWNER,
+  PT_ALTER_STORED_PROCEDURE = CUBRID_STMT_ALTER_STORED_PROCEDURE,
   PT_DROP_STORED_PROCEDURE = CUBRID_STMT_DROP_STORED_PROCEDURE,
   PT_PREPARE_STATEMENT = CUBRID_STMT_PREPARE_STATEMENT,
   PT_EXECUTE_PREPARE = CUBRID_STMT_EXECUTE_PREPARE,
@@ -1279,7 +1283,9 @@ typedef enum
   PT_RENAME_CONSTRAINT,
   PT_RENAME_INDEX,
   PT_REBUILD_INDEX,
-  PT_ADD_INDEX_CLAUSE
+  PT_ADD_INDEX_CLAUSE,
+  PT_CHANGE_TABLE_COMMENT,
+  PT_CHANGE_INDEX_COMMENT
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -1327,7 +1333,8 @@ typedef enum
   PT_TABLE_OPTION_REUSE_OID = 9000,
   PT_TABLE_OPTION_AUTO_INCREMENT,
   PT_TABLE_OPTION_CHARSET,
-  PT_TABLE_OPTION_COLLATION
+  PT_TABLE_OPTION_COLLATION,
+  PT_TABLE_OPTION_COMMENT
 } PT_TABLE_OPTION_TYPE;
 
 
@@ -1785,6 +1792,7 @@ struct pt_alter_info
       PT_NODE *query;		/* PT_SELECT */
       PT_NODE *query_no_list;	/* PT_VALUE(list) */
       PT_NODE *attr_def_list;	/* to be filled in semantic check */
+      PT_NODE *view_comment;	/* PT_VALUE */
     } query;
     struct
     {
@@ -1846,6 +1854,10 @@ struct pt_alter_info
     {
       PT_NODE *user_name;	/* user name for PT_CHANGE_OWNER */
     } user;
+    struct
+    {
+      PT_NODE *tbl_comment;	/* PT_VALUE, comment for table/view */
+    } comment;
   } alter_clause;
   PT_NODE *constraint_list;	/* constraints from ADD and CHANGE clauses */
   PT_NODE *create_index;	/* PT_CREATE_INDEX from ALTER ADD INDEX */
@@ -1858,6 +1870,7 @@ struct pt_alter_user_info
 {
   PT_NODE *user_name;		/* PT_NAME */
   PT_NODE *password;		/* PT_VALUE (string) */
+  PT_NODE *comment;		/* PT_VALUE */
 };
 
 /* Info for ALTER_TRIGGER */
@@ -1867,6 +1880,7 @@ struct pt_alter_trigger_info
   PT_NODE *trigger_priority;	/* PT_VALUE */
   PT_NODE *trigger_owner;	/* PT_NAME */
   PT_MISC_TYPE trigger_status;	/* ACTIVE, INACTIVE */
+  PT_NODE *comment;		/* PT_VALUE */
 };
 
 /* Info for ATTACH & PREPARE TO COMMIT statements */
@@ -1882,6 +1896,7 @@ struct pt_attr_def_info
   PT_NODE *data_default;	/* PT_DATA_DEFAULT */
   PT_NODE *auto_increment;	/* PT_AUTO_INCREMENT */
   PT_NODE *ordering_info;	/* PT_ATTR_ORDERING */
+  PT_NODE *comment;		/* PT_VALUE */
   PT_MISC_TYPE attr_type;	/* PT_NORMAL or PT_META */
   int size_constraint;		/* max length of STRING */
   short constrain_not_null;
@@ -1936,6 +1951,9 @@ struct pt_create_entity_info
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_NODE *create_like;		/* PT_NAME */
   PT_NODE *create_select;	/* PT_SELECT or another type of select_expression */
+  PT_NODE *vclass_comment;	/* PT_VALUE, comment of vclass,
+				 * see also:
+				 * table_option_list for comment of class */
   PT_CREATE_SELECT_ACTION create_select_action;	/* nothing | REPLACE | IGNORE
 						 * for CREATE SELECT
 						 */
@@ -1954,6 +1972,7 @@ struct pt_index_info
   PT_NODE *where;		/* PT_EXPR */
   PT_NODE *function_expr;	/* PT_EXPR - expression to be used in a
 				 * function index */
+  PT_NODE *comment;		/* PT_VALUE */
   PT_ALTER_CODE code;
 
   int func_pos;			/* the position of the expression in the
@@ -1971,6 +1990,7 @@ struct pt_create_user_info
   PT_NODE *password;		/* PT_VALUE (string) */
   PT_NODE *groups;		/* PT_NAME list */
   PT_NODE *members;		/* PT_NAME list */
+  PT_NODE *comment;		/* PT_VALUE */
 };
 
 /* CREATE TRIGGER INFO */
@@ -1985,6 +2005,7 @@ struct pt_create_trigger_info
   PT_NODE *trigger_condition;	/* PT_EXPR or PT_METHOD_CALL */
   PT_NODE *trigger_action;	/* PT_TRIGGER_ACTION */
   PT_MISC_TYPE action_time;	/* BEFORE, AFTER, DEFERRED */
+  PT_NODE *comment;		/* PT_VALUE */
 };
 
 /* CREATE SERIAL INFO */
@@ -1996,6 +2017,7 @@ struct pt_serial_info
   PT_NODE *max_val;		/* PT_VALUE */
   PT_NODE *min_val;		/* PT_VALUE */
   PT_NODE *cached_num_val;	/* PT_VALUE */
+  PT_NODE *comment;		/* PT_VALUE */
   int cyclic;
   int no_max;
   int no_min;
@@ -2035,6 +2057,7 @@ struct pt_parts_info
   PT_NODE *name;		/* PT_NAME */
   PT_NODE *values;		/* PT_VALUE (or list) */
   PT_PARTITION_TYPE type;
+  PT_NODE *comment;		/* PT_VALUE */
 };
 #define PARTITIONED_SUB_CLASS_TAG "__p__"
 
@@ -3169,6 +3192,7 @@ struct pt_constraint_info
       PT_NODE *expr;		/* Search condition */
     } check;
   } un;
+  PT_NODE *comment;
 };
 
 /* POINTER node types */
@@ -3194,6 +3218,7 @@ struct pt_stored_proc_info
   PT_NODE *name;
   PT_NODE *param_list;
   PT_NODE *java_method;
+  PT_NODE *comment;
   PT_NODE *owner;		/* for ALTER PROCEDURE/FUNCTION name OWNER TO new_owner */
   PT_MISC_TYPE type;
   unsigned or_replace:1;	/* OR REPLACE clause */
@@ -3224,6 +3249,7 @@ struct pt_stored_proc_param_info
 {
   PT_NODE *name;
   PT_MISC_TYPE mode;
+  PT_NODE *comment;
 };
 
 /* TRUNCATE ENTITY INFO */

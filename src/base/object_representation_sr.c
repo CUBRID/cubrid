@@ -118,6 +118,9 @@ static OR_CLASSREP *or_get_current_representation (RECDES * record,
 						   int do_indexes);
 static OR_CLASSREP *or_get_old_representation (RECDES * record, int repid,
 					       int do_indexes);
+static const char *or_find_diskattr (RECDES * record, int attr_id);
+static const char *or_get_attr_string (RECDES * record, int attr_id,
+				       int attr_index);
 
 /*
  * orc_class_repid () - Extracts the current representation id from a record
@@ -1990,8 +1993,10 @@ err:
  *       structures which are in place that provide a list of B-tree IDs
  *       associated with an attribute in each attribute structure
  *       (OR_ATTRIBUTE).
- *       { [attrID, asc_desc]+, {fk_info} or {key prefix length} or
- *	                              {function index} or {filter index}}
+ *       { [attrID, asc_desc]+,
+ *         {fk_info} or {key prefix length} or {function index} or {filter index}+,
+ *         comment
+ *       }
  */
 static void
 or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
@@ -2012,7 +2017,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 
   index = &(rep->indexes[rep->n_indexes]);
 
-  att_cnt = (seq_size - 1) / 2;
+  att_cnt = (seq_size - 2) / 2;
 
   index->atts = (OR_ATTRIBUTE **) malloc (sizeof (OR_ATTRIBUTE *) * att_cnt);
   if (index->atts == NULL)
@@ -2082,7 +2087,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 
   if (type == BTREE_FOREIGN_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 1, &att_val)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val)
 	  == NO_ERROR)
 	{
 	  or_install_btids_foreign_key (cons_name,
@@ -2091,7 +2096,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
     }
   else if (type == BTREE_PRIMARY_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 1, &att_val)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val)
 	  == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
@@ -2103,7 +2108,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
     }
   else
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 1, &att_val)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val)
 	  == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
@@ -2339,7 +2344,7 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
  * Note: The constraint may be associated with multiple attributes.
  *       The form of the constraint is:
  *
- *       {btid, [attribute_ID, asc_desc]+ {fk_info}}
+ *       {btid, [attribute_ID, asc_desc]+ {fk_info}, comment}
  */
 static void
 or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq,
@@ -2353,7 +2358,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq,
 
   /*  Extract the first element of the sequence which is the
      encoded B-tree ID */
-  /* { btid, [attrID, asc_desc]+, {fk_info} or {key prefix length} } */
+  /* { btid, [attrID, asc_desc]+, {fk_info} or {key prefix length}, comment} */
   seq_size = set_size (constraint_seq);
 
   if (set_get_element_nocopy (constraint_seq, 0, &id_val) != NO_ERROR)
@@ -3619,6 +3624,142 @@ or_class_get_partition_info (RECDES * record, OID * partition_info,
   return NO_ERROR;
 }
 
+/*
+ * or_get_constraint_comment () - Get constraint/index comment from a record
+ *                                  descriptor of a class record
+ * return : comment
+ * record(in): record descriptor
+ * constraint_name(in): constraint/index name
+ *
+ * Note: The "comment" returned is a duplicated string containing the comment string.
+ *       It's up to the caller to free the returned pointer.
+ *       If the given constraint/index name does not exist for current
+ *       representation, NULL is returned.
+ */
+const char *
+or_get_constraint_comment (RECDES * record, const char *constraint_name)
+{
+  int error = NO_ERROR;
+  int i, j, len, info_len, num;
+  char *subset, *comment = NULL;
+  DB_SET *info, *props, *setref;
+  DB_VALUE value, uvalue, cvalue;
+  bool found = false;
+
+  info = props = setref = NULL;
+
+  if (OR_VAR_IS_NULL (record->data, ORC_PROPERTIES_INDEX))
+    {
+      return NULL;
+    }
+
+  subset = (char *) (record->data) +
+    OR_VAR_OFFSET (record->data, ORC_PROPERTIES_INDEX);
+
+  or_unpack_setref (subset, &setref);
+  if (setref == NULL)
+    {
+      return NULL;
+    }
+
+  num = set_size (setref);
+  for (i = 0; i < num && found == false; i += 2)
+    {
+      const char *prop_name = NULL;
+      error = set_get_element_nocopy (setref, i, &value);
+      if (error != NO_ERROR || DB_VALUE_TYPE (&value) != DB_TYPE_STRING)
+	{
+	  goto error_exit;
+	}
+
+      prop_name = DB_PULL_STRING (&value);
+      if (prop_name == NULL)
+	{
+	  goto error_exit;
+	}
+
+      if (strcmp (prop_name, SM_PROPERTY_PRIMARY_KEY) != 0 &&
+	  strcmp (prop_name, SM_PROPERTY_UNIQUE) != 0 &&
+	  strcmp (prop_name, SM_PROPERTY_REVERSE_UNIQUE) != 0 &&
+	  strcmp (prop_name, SM_PROPERTY_INDEX) != 0 &&
+	  strcmp (prop_name, SM_PROPERTY_REVERSE_INDEX) != 0 &&
+	  strcmp (prop_name, SM_PROPERTY_FOREIGN_KEY) != 0)
+	{
+	  continue;
+	}
+
+      error = set_get_element_nocopy (setref, i + 1, &value);
+      if (error != NO_ERROR || DB_VALUE_TYPE (&value) != DB_TYPE_SEQUENCE)
+	{
+	  goto error_exit;
+	}
+
+      /* this sequence is an alternating pair of constraint
+       * name & info sequence, as by:
+       *
+       * {
+       *    name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, comment},
+       *    name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, comment},
+       *    ...
+       * }
+       */
+      props = DB_PULL_SEQUENCE (&value);
+      len = set_size (props);
+      for (j = 0; j < len; j += 2)
+	{
+	  /* get the name */
+	  if (set_get_element_nocopy (props, j, &uvalue) ||
+	      DB_VALUE_TYPE (&uvalue) != DB_TYPE_STRING)
+	    {
+	      goto error_exit;
+	    }
+
+	  if (strcmp (constraint_name, DB_PULL_STRING (&uvalue)) != 0)
+	    {
+	      continue;
+	    }
+
+	  found = true;
+
+	  if (set_get_element_nocopy (props, j + 1, &uvalue))
+	    {
+	      goto error_exit;
+	    }
+	  if (DB_VALUE_TYPE (&uvalue) != DB_TYPE_SEQUENCE)
+	    {
+	      goto error_exit;
+	    }
+
+	  info = DB_PULL_SEQUENCE (&uvalue);
+	  info_len = set_size (info);
+
+	  if (set_get_element_nocopy (info, info_len - 1, &cvalue) ||
+	      DB_IS_NULL (&cvalue))
+	    {
+	      /* if not exists, set comment to null */
+	      comment = NULL;
+	    }
+	  else if (DB_VALUE_TYPE (&cvalue) == DB_TYPE_STRING)
+	    {
+	      /* strdup, caller shall free it */
+	      comment = strdup (DB_GET_STRING (&cvalue));
+	    }
+	  else
+	    {
+	      goto error_exit;
+	    }
+	  break;
+	}
+    }
+end:
+  set_free (setref);
+  return comment;
+
+error_exit:
+  assert (false);
+  goto end;
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * or_classrep_needs_indexes () -
@@ -3790,26 +3931,22 @@ or_free_classrep (OR_CLASSREP * rep)
 }
 
 /*
- * or_get_attrname () - Find the name of the given attribute
- *   return: attr_name
+ * or_find_diskattr () - Find disk attribute in record by attr_id
+ *   return: a pointer to a disk attribute
  *   record(in): disk record
- *   attrid(in): desired attribute
+ *   attr_id(in): desired attribute id
  *
- * Note: The name returned is an actual pointer to the record structure
- *       if the record is changed, the pointer may be trashed.
- *
- *       The name retruned is the name of the actual representation.
- *       If the given attribute identifier does not exist for current
- *       representation, NULL is retruned.
+ *   If the given attribute identifier does not exist for current
+ *   representation, NULL is returned.
  */
-const char *
-or_get_attrname (RECDES * record, int attrid)
+static const char *
+or_find_diskattr (RECDES * record, int attr_id)
 {
   int n_fixed, n_variable, n_shared, n_class;
   int n_attrs;
   int type_attr, i, id;
   bool found;
-  char *attr_name, *start, *ptr, *attset, *diskatt = NULL;
+  char *start, *ptr, *attset, *diskatt = NULL;
 
   start = record->data;
 
@@ -3817,7 +3954,6 @@ or_get_attrname (RECDES * record, int attrid)
 
   ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data,
 					    ORC_CLASS_VAR_ATT_COUNT);
-  attr_name = NULL;
 
   n_fixed = OR_GET_INT (ptr + ORC_FIXED_COUNT_OFFSET);
   n_variable = OR_GET_INT (ptr + ORC_VARIABLE_COUNT_OFFSET);
@@ -3872,42 +4008,102 @@ or_get_attrname (RECDES * record, int attrid)
 	  diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
 	  ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
 	  id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
-	  if (id == attrid)
+	  if (id == attr_id)
 	    {
 	      found = true;
 	    }
 	}
+    }
 
+  return found ? diskatt : NULL;
+}
+
+/*
+ * or_get_attr_string () - Get the string of the given attribute (id,index)
+ *   return: a pointer to desired attribute (id,index)
+ *   record(in): disk record
+ *   attr_id(in): desired attribute id
+ *   attr_index(in): index to a string among the attribute
+ *
+ *   If the given attribute identifier does not exist for current
+ *   representation, NULL is returned.
+ */
+static const char *
+or_get_attr_string (RECDES * record, int attr_id, int attr_index)
+{
+  char *diskatt, *attr = NULL;
+
+  assert (attr_index < ORC_ATT_LAST_INDEX);
+
+  diskatt = or_find_diskattr (record, attr_id);
+  if (diskatt != NULL)
+    {
       /*
        * diskatt now points to the attribute that we are interested in.
-       Get the attribute name. */
-      if (found == true)
+       * Get the attribute name.
+       */
+      unsigned char len;
+
+      attr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index));
+
+      /*
+       * kludge kludge kludge
+       * This is now an encoded "varchar" string, we need to skip over the
+       * length before returning it.  Note that this also depends on the
+       * stored string being NULL terminated.
+       */
+      len = *((unsigned char *) attr);
+      if (len == 0)
 	{
-	  unsigned char len;
-
-	  attr_name = (diskatt +
-		       OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
-						    ORC_ATT_NAME_INDEX));
-
-	  /*
-	   * kludge kludge kludge
-	   * This is now an encoded "varchar" string, we need to skip over the
-	   * length before returning it.  Note that this also depends on the
-	   * stored string being NULL terminated.
-	   */
-	  len = *((unsigned char *) attr_name);
-	  if (len < 0xFFU)
-	    {
-	      attr_name += 1;
-	    }
-	  else
-	    {
-	      attr_name = attr_name + 1 + OR_INT_SIZE;
-	    }
+	  attr = NULL;
+	}
+      else if (len < 0xFFU)
+	{
+	  attr += 1;
+	}
+      else
+	{
+	  attr = attr + 1 + OR_INT_SIZE;
 	}
     }
 
-  return attr_name;
+  return attr;
+}
+
+/*
+ * or_get_attrname () - Find the name of the given attribute
+ *   return: the name of the attribute
+ *   record(in): disk record
+ *   attrid(in): desired attribute
+ *
+ * Note: The name returned is an actual pointer to the record structure
+ *       if the record is changed, the pointer may be trashed.
+ *
+ *       The name returned is the name of the actual representation.
+ *       If the given attribute identifier does not exist for current
+ *       representation, NULL is returned.
+ */
+const char *
+or_get_attrname (RECDES * record, int attrid)
+{
+  return or_get_attr_string (record, attrid, ORC_ATT_NAME_INDEX);
+}
+
+/*
+ * or_get_attrcomment () - Find the comment of the given attribute
+ *   return: the comment of attribute
+ *   record(in): disk record
+ *   attrid(in): desired attribute
+ *
+ * Note: The comment returned is an actual pointer to the record structure
+ *       If the record is changed, the pointer may be trashed.
+ *       If the given attribute identifier does not exist for current
+ *       representation, NULL is returned.
+ */
+const char *
+or_get_attrcomment (RECDES * record, int attrid)
+{
+  return or_get_attr_string (record, attrid, ORC_ATT_COMMENT_INDEX);
 }
 
 /*

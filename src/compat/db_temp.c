@@ -317,7 +317,7 @@ dbt_constrain_non_null (DB_CTMPL * def,
   if (on_or_off)
     {
       error = dbt_add_constraint (def, DB_CONSTRAINT_NOT_NULL, NULL,
-				  names, class_attribute);
+				  names, class_attribute, NULL);
       if (error == NO_ERROR)
 	{
 	  error = do_check_fk_constraints (def, NULL);
@@ -357,7 +357,7 @@ dbt_constrain_unique (DB_CTMPL * def, const char *attname, int on_or_off)
   if (on_or_off)
     {
       error = dbt_add_constraint (def, DB_CONSTRAINT_UNIQUE, NULL,
-				  attnames, 0);
+				  attnames, 0, NULL);
     }
   else
     {
@@ -383,12 +383,14 @@ dbt_constrain_unique (DB_CTMPL * def, const char *attname, int on_or_off)
  * class_attributes(in): non-zero if the attributes are class attributes and
  *                   zero otherwise.  Unique constraints cannot be applied to
  *                   class attributes.
+ * comment(in): constraint comment
  */
 int
 dbt_add_constraint (DB_CTMPL * def,
 		    DB_CONSTRAINT_TYPE constraint_type,
 		    const char *constraint_name,
-		    const char **attnames, int class_attributes)
+		    const char **attnames, int class_attributes,
+		    const char *comment)
 {
   int error = NO_ERROR;
   char *name = NULL;
@@ -417,7 +419,7 @@ dbt_add_constraint (DB_CTMPL * def,
 	{
 	  error = smt_add_constraint (def, constraint_type, name,
 				      attnames, NULL, class_attributes, NULL,
-				      NULL, NULL);
+				      NULL, NULL, comment);
 	  free_and_init (name);
 	}
     }
@@ -499,7 +501,8 @@ dbt_drop_constraint (DB_CTMPL * def,
 int
 dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
 		     const char **attnames, const char *ref_class,
-		     const char **ref_attrs, int del_action, int upd_action)
+		     const char **ref_attrs, int del_action, int upd_action,
+		     const char *comment)
 {
   int error = NO_ERROR;
   char *name;
@@ -523,7 +526,8 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
   else
     {
       error = smt_add_constraint (def, DB_CONSTRAINT_FOREIGN_KEY, name,
-				  attnames, NULL, 0, &fk_info, NULL, NULL);
+				  attnames, NULL, 0, &fk_info, NULL, NULL,
+				  comment);
       free_and_init (name);
     }
 

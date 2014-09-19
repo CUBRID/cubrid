@@ -1479,7 +1479,9 @@
 #define ER_MVCC_LOG_INVALID_ISOLATION_LEVEL         -1157
 #define ER_MVCC_SERIALIZABLE_CONFLICT		    -1158
 
-#define ER_LAST_ERROR                               -1159
+#define ER_AU_COMMENT_OVERFLOW                      -1159
+
+#define ER_LAST_ERROR                               -1160
 
 #define DB_TRUE 1
 #define DB_FALSE 0
@@ -1723,7 +1725,9 @@ typedef enum
   CUBRID_STMT_DROP_SESSION_VARIABLES,
   CUBRID_STMT_MERGE,
   CUBRID_STMT_SET_NAMES,
-  CUBRID_STMT_ALTER_STORED_PROCEDURE_OWNER,
+  CUBRID_STMT_ALTER_STORED_PROCEDURE,
+  CUBRID_STMT_ALTER_STORED_PROCEDURE_OWNER =
+    CUBRID_STMT_ALTER_STORED_PROCEDURE,
   CUBRID_STMT_KILL,
 
   CUBRID_MAX_STMT_TYPE
@@ -1791,7 +1795,8 @@ typedef enum
 #define SQLX_CMD_DROP_SESSION_VARIABLES  CUBRID_STMT_DROP_SESSION_VARIABLES
 #define SQLX_CMD_STMT_MERGE  CUBRID_STMT_MERGE
 #define SQLX_CMD_SET_NAMES   CUBRID_STMT_SET_NAMES
-#define SQLX_CMD_ALTER_STORED_PROCEDURE_OWNER   CUBRID_STMT_ALTER_STORED_PROCEDURE_OWNER
+#define SQLX_CMD_ALTER_STORED_PROCEDURE   CUBRID_STMT_ALTER_STORED_PROCEDURE
+#define SQLX_CMD_ALTER_STORED_PROCEDURE_OWNER   CUBRID_STMT_ALTER_STORED_PROCEDURE
 #define SQLX_MAX_CMD_TYPE   CUBRID_MAX_STMT_TYPE
 
 /* Structure used to contain information about the position of
@@ -2036,6 +2041,11 @@ typedef unsigned int SESSION_ID;
 #define DB_MAX_CLASS_LENGTH (DB_MAX_IDENTIFIER_LENGTH-DB_MAX_SCHEMA_LENGTH-4)
 
 #define DB_MAX_SPEC_LENGTH       4096
+
+/* Maximum allowable class comment length */
+#define DB_MAX_CLASS_COMMENT_LENGTH     2048
+/* Maximum allowable comment length */
+#define DB_MAX_COMMENT_LENGTH    1024
 
 /* This constant defines the maximum length of a character
    string that can be used as the value of an attribute. */
@@ -3223,6 +3233,7 @@ extern int db_add_member (DB_OBJECT * user, DB_OBJECT * member);
 extern int db_drop_member (DB_OBJECT * user, DB_OBJECT * member);
 extern int db_set_password (DB_OBJECT * user,
 			    const char *oldpass, const char *newpass);
+extern int db_set_user_comment (DB_OBJECT * user, const char *comment);
 extern int db_grant (DB_OBJECT * user, DB_OBJECT * classobj,
 		     DB_AUTH auth, int grant_option);
 extern int db_revoke (DB_OBJECT * user, DB_OBJECT * classobj, DB_AUTH auth);
@@ -3618,6 +3629,7 @@ extern int db_trigger_action_type (DB_OBJECT * trobj,
 extern int db_trigger_action_time (DB_OBJECT * trobj,
 				   DB_TRIGGER_TIME * tr_time);
 extern int db_trigger_action (DB_OBJECT * trobj, char **action);
+extern int db_trigger_comment (DB_OBJECT * trobj, char **comment);
 
 /* Schema template functions */
 extern DB_CTMPL *dbt_create_class (const char *name);
@@ -3646,7 +3658,8 @@ extern int dbt_add_constraint (DB_CTMPL * def,
 			       DB_CONSTRAINT_TYPE
 			       constraint_type,
 			       const char *constraint_name,
-			       const char **attnames, int class_attributes);
+			       const char **attnames, int class_attributes,
+			       const char *comment);
 extern int dbt_drop_constraint (DB_CTMPL * def,
 				DB_CONSTRAINT_TYPE
 				constraint_type,
@@ -3719,7 +3732,7 @@ extern int dbt_set_object_id (DB_CTMPL * def, DB_NAMELIST * id_list);
 extern int dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
 				const char **attnames, const char *ref_class,
 				const char **ref_attrs, int del_action,
-				int upd_action);
+				int upd_action, const char *comment);
 
 /* Object template functions */
 extern DB_OTMPL *dbt_create_object (DB_OBJECT * classobj);

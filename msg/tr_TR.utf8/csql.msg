@@ -195,3 +195,4 @@ $ csql help messages
 \tqcache                 - sorgu önbellek bilgileri\n
 235 <Partitions>
 236 Bir sınıf adı gereklidir.
+237 <Comment>

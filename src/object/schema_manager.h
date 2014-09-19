@@ -74,6 +74,7 @@ struct sm_constraint_info
   SM_FOREIGN_KEY_ACTION fk_delete_action;
   SM_FOREIGN_KEY_ACTION fk_update_action;
   DB_CONSTRAINT_TYPE constraint_type;
+  const char *comment;
 };
 
 extern ROOT_CLASS sm_Root_class;
@@ -96,7 +97,7 @@ extern int sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 			 const char *constraint_name, const char **attnames,
 			 const int *asc_desc, const int *attrs_prefix_length,
 			 SM_PREDICATE_INFO * pred_info,
-			 SM_FUNCTION_INFO * fi_info);
+			 SM_FUNCTION_INFO * fi_info, const char *comment);
 extern int sm_get_index (MOP classop, const char *attname, BTID * index);
 extern char *sm_produce_constraint_name (const char *class_name,
 					 DB_CONSTRAINT_TYPE constraint_type,
@@ -123,7 +124,8 @@ extern int sm_add_constraint (MOP classop,
 			      const int *attrs_prefix_length,
 			      int class_attributes,
 			      SM_PREDICATE_INFO * predicate_info,
-			      SM_FUNCTION_INFO * fi_info);
+			      SM_FUNCTION_INFO * fi_info,
+			      const char *comment);
 extern int sm_drop_constraint (MOP classop,
 			       DB_CONSTRAINT_TYPE constraint_type,
 			       const char *constraint_name,
@@ -153,6 +155,7 @@ extern int sm_set_class_flag (MOP classop, SM_CLASS_FLAG flag, int onoff);
 extern int sm_get_class_flag (MOP op, SM_CLASS_FLAG flag);
 extern int sm_set_class_collation (MOP classop, int collation_id);
 extern int sm_get_class_collation (MOP classop, int *collation_id);
+extern int sm_set_class_comment (MOP classop, const char *comment);
 extern int sm_destroy_representations (MOP op);
 
 extern void sm_add_static_method (const char *name, void (*function) ());

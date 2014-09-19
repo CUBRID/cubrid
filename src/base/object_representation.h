@@ -907,6 +907,7 @@ enum
   ORC_QUERY_SPEC_INDEX = 12,
   ORC_TRIGGERS_INDEX = 13,
   ORC_PROPERTIES_INDEX = 14,
+  ORC_COMMENT_INDEX = 15,
 
   /* add a new one above */
 
@@ -934,6 +935,7 @@ enum
   ORC_ATT_DOMAIN_INDEX = 3,
   ORC_ATT_TRIGGER_INDEX = 4,
   ORC_ATT_PROPERTIES_INDEX = 5,
+  ORC_ATT_COMMENT_INDEX = 6,
 
   /* add a new one above */
 

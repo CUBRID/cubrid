@@ -171,6 +171,7 @@ extern int db_add_member (DB_OBJECT * user, DB_OBJECT * member);
 extern int db_drop_member (DB_OBJECT * user, DB_OBJECT * member);
 extern int db_set_password (DB_OBJECT * user,
 			    const char *oldpass, const char *newpass);
+extern int db_set_user_comment (DB_OBJECT * user, const char *comment);
 extern int db_grant (DB_OBJECT * user, DB_OBJECT * classobj,
 		     DB_AUTH auth, int grant_option);
 extern int db_revoke (DB_OBJECT * user, DB_OBJECT * classobj, DB_AUTH auth);
@@ -477,6 +478,7 @@ extern const char *db_get_loader_commands (DB_OBJECT * obj);
 extern DB_TYPE db_attribute_type (DB_ATTRIBUTE * attribute);
 extern DB_ATTRIBUTE *db_attribute_next (DB_ATTRIBUTE * attribute);
 extern const char *db_attribute_name (DB_ATTRIBUTE * attribute);
+extern const char *db_attribute_comment (DB_ATTRIBUTE * attribute);
 extern int db_attribute_id (DB_ATTRIBUTE * attribute);
 extern int db_attribute_order (DB_ATTRIBUTE * attribute);
 extern DB_DOMAIN *db_attribute_domain (DB_ATTRIBUTE * attribute);
@@ -593,6 +595,7 @@ extern int db_trigger_action_type (DB_OBJECT * trobj,
 extern int db_trigger_action_time (DB_OBJECT * trobj,
 				   DB_TRIGGER_TIME * tr_time);
 extern int db_trigger_action (DB_OBJECT * trobj, char **action);
+extern int db_trigger_comment (DB_OBJECT * trobj, char **comment);
 
 /* Schema template functions */
 extern DB_CTMPL *dbt_create_class (const char *name);
@@ -624,7 +627,8 @@ extern int dbt_add_constraint (DB_CTMPL * def,
 			       DB_CONSTRAINT_TYPE
 			       constraint_type,
 			       const char *constraint_name,
-			       const char **attnames, int class_attributes);
+			       const char **attnames, int class_attributes,
+			       const char *comment);
 extern int dbt_drop_constraint (DB_CTMPL * def,
 				DB_CONSTRAINT_TYPE
 				constraint_type,
@@ -698,7 +702,7 @@ extern int dbt_set_object_id (DB_CTMPL * def, DB_NAMELIST * id_list);
 extern int dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
 				const char **attnames, const char *ref_class,
 				const char **ref_attrs, int del_action,
-				int upd_action);
+				int upd_action, const char *comment);
 
 /* Object template functions */
 extern DB_OTMPL *dbt_create_object (DB_OBJECT * classobj);

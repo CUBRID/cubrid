@@ -195,3 +195,4 @@ $ csql help messages
 \tqcache                 - クエリキャッシュ情報\n
 235 <パーティション>
 236 クラス名が必要です。
+237 <Comment>

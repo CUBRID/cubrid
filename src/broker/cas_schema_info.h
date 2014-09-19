@@ -34,8 +34,12 @@
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #define SCH_STR_LEN	255
+#define SCH_CLASS_REMARKS_STR_LEN       2048
+#define SCH_REMARKS_STR_LEN     1024
 #else
 #define SCH_STR_LEN	DB_MAX_IDENTIFIER_LENGTH
+#define SCH_CLASS_REMARKS_STR_LEN       DB_MAX_CLASS_COMMENT_LENGTH
+#define SCH_REMARKS_STR_LEN             DB_MAX_COMMENT_LENGTH
 #endif
 
 typedef void (*T_SCHEMA_META_F) (T_NET_BUF *);

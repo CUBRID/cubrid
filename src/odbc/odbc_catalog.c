@@ -70,6 +70,7 @@ typedef struct tagODBC_TABLE_VALUE
 {
   char *table_name;
   char *table_type;
+  char *remarks;
 } ODBC_TABLE_VALUE;
 
 typedef struct tagODBC_COLUMN_VALUE
@@ -88,6 +89,7 @@ typedef struct tagODBC_COLUMN_VALUE
   short subcode;
   int octet_length;
   int ordinal_position;
+  char *remarks;
 } ODBC_COLUMN_VALUE;
 
 typedef struct tagODBC_STAT_VALUE
@@ -526,17 +528,20 @@ PRIVATE void free_procedures_node (ST_LIST * node);
 PRIVATE void free_procedure_columns_node (ST_LIST * node);
 
 PRIVATE int retrieve_table_from_db_class (int cci_connection,
-					  char *table_name, T_CCI_ERROR *error);
+					  char *table_name,
+					  T_CCI_ERROR * error);
 PRIVATE int schema_info_table_privileges (int cci_connection,
-					  int *cci_request, char *table_name, T_CCI_ERROR *error);
+					  int *cci_request, char *table_name,
+					  T_CCI_ERROR * error);
 PRIVATE int schema_info_procedures (int cci_connection, int *cci_request,
-				    char *proc_name, T_CCI_ERROR *error);
+				    char *proc_name, T_CCI_ERROR * error);
 PRIVATE int schema_info_procedure_columns (int cci_connection,
 					   int *cci_request, char *proc_name,
-					   char *column_name, T_CCI_ERROR *error);
+					   char *column_name,
+					   T_CCI_ERROR * error);
 PRIVATE int sql_execute (int cci_connection, int *cci_request,
 			 char *sql_statment, char *param_name[],
-			 int param_num, T_CCI_ERROR *error);
+			 int param_num, T_CCI_ERROR * error);
 
 PRIVATE void catalog_result_set_init (ODBC_STATEMENT * stmt,
 				      RESULT_TYPE task_type);
@@ -679,7 +684,8 @@ odbc_statistics (ODBC_STATEMENT * stmt,
   catalog_result_set_init (stmt, STATISTICS);
   catalog_set_ird (stmt, statistics_cinfo, NC_CATALOG_STATISTICS);
 
-  cci_retval = retrieve_table_from_db_class (stmt->conn->connhd, table_name, &cci_error);
+  cci_retval =
+    retrieve_table_from_db_class (stmt->conn->connhd, table_name, &cci_error);
   if (cci_retval == 0)
     {
       err_msg_table_not_exist (err_msg, stmt->conn->db_name, table_name);
@@ -739,7 +745,8 @@ odbc_special_columns (ODBC_STATEMENT * stmt,
       return ODBC_SUCCESS;
     }
 
-  cci_retval = retrieve_table_from_db_class (stmt->conn->connhd, table_name, &cci_error);
+  cci_retval =
+    retrieve_table_from_db_class (stmt->conn->connhd, table_name, &cci_error);
   if (cci_retval == 0)
     {
       err_msg_table_not_exist (err_msg, stmt->conn->db_name, table_name);
@@ -768,7 +775,7 @@ odbc_special_columns (ODBC_STATEMENT * stmt,
   return ODBC_SUCCESS;
 
 cci_error:
-	odbc_set_diag_by_cci (stmt->diag, cci_retval, &cci_error);
+  odbc_set_diag_by_cci (stmt->diag, cci_retval, &cci_error);
 error:
   if (cci_request > 0)
     {
@@ -795,7 +802,8 @@ odbc_foreign_keys (ODBC_STATEMENT * stmt, char *pk_table_name,
   if (pk_table_name)
     {
       cci_retval =
-	retrieve_table_from_db_class (stmt->conn->connhd, pk_table_name, &cci_error);
+	retrieve_table_from_db_class (stmt->conn->connhd, pk_table_name,
+				      &cci_error);
       if (cci_retval == 0)
 	{
 	  err_msg_table_not_exist (err_msg, stmt->conn->db_name,
@@ -812,7 +820,8 @@ odbc_foreign_keys (ODBC_STATEMENT * stmt, char *pk_table_name,
   if (fk_table_name)
     {
       cci_retval =
-	retrieve_table_from_db_class (stmt->conn->connhd, fk_table_name, &cci_error);
+	retrieve_table_from_db_class (stmt->conn->connhd, fk_table_name,
+				      &cci_error);
       if (cci_retval == 0)
 	{
 	  err_msg_table_not_exist (err_msg, stmt->conn->db_name,
@@ -897,7 +906,8 @@ odbc_primary_keys (ODBC_STATEMENT * stmt, char *catalog_name,
   catalog_result_set_init (stmt, PRIMARY_KEYS);
   catalog_set_ird (stmt, primary_keys_cinfo, NC_CATALOG_PRIMARY_KEYS);
 
-  cci_retval = retrieve_table_from_db_class (stmt->conn->connhd, table_name, &cci_error);
+  cci_retval =
+    retrieve_table_from_db_class (stmt->conn->connhd, table_name, &cci_error);
   if (cci_retval == 0)
     {
       err_msg_table_not_exist (err_msg, stmt->conn->db_name, table_name);
@@ -951,14 +961,15 @@ odbc_table_privileges (ODBC_STATEMENT * stmt, char *catalog_name,
 {
   int cci_retval = 0;
   int cci_request = 0;
-	T_CCI_ERROR cci_error;
+  T_CCI_ERROR cci_error;
 
   char err_msg[SQL_MAX_MESSAGE_LENGTH + 1];
 
   catalog_result_set_init (stmt, TABLE_PRIVILEGES);
   catalog_set_ird (stmt, table_privileges_cinfo, NC_CATALOG_TABLE_PRIVILEGES);
 
-  cci_retval = retrieve_table_from_db_class (stmt->conn->connhd, table_name, &cci_error);
+  cci_retval =
+    retrieve_table_from_db_class (stmt->conn->connhd, table_name, &cci_error);
   if (cci_retval == 0)
     {
       err_msg_table_not_exist (err_msg, stmt->conn->db_name, table_name);
@@ -972,7 +983,8 @@ odbc_table_privileges (ODBC_STATEMENT * stmt, char *catalog_name,
 
   if ((cci_retval = schema_info_table_privileges (stmt->conn->connhd,
 						  &cci_request,
-						  table_name, &cci_error)) < 0)
+						  table_name,
+						  &cci_error)) < 0)
     {
       goto cci_error;
     }
@@ -1002,13 +1014,14 @@ odbc_procedures (ODBC_STATEMENT * stmt, char *catalog_name,
 {
   int cci_retval = 0;
   int cci_request = 0;
-	T_CCI_ERROR cci_error;
+  T_CCI_ERROR cci_error;
 
   catalog_result_set_init (stmt, PROCEDURES);
   catalog_set_ird (stmt, procedures_cinfo, NC_CATALOG_PROCEDURES);
 
   if ((cci_retval = schema_info_procedures (stmt->conn->connhd,
-					    &cci_request, proc_name, &cci_error)) < 0)
+					    &cci_request, proc_name,
+					    &cci_error)) < 0)
     {
       goto cci_error;
     }
@@ -1039,7 +1052,7 @@ odbc_procedure_columns (ODBC_STATEMENT * stmt,
 {
   int cci_retval = 0;
   int cci_request = 0;
-	T_CCI_ERROR cci_error;
+  T_CCI_ERROR cci_error;
 
   catalog_result_set_init (stmt, PROCEDURE_COLUMNS);
   catalog_set_ird (stmt, procedure_columns_cinfo,
@@ -1047,7 +1060,8 @@ odbc_procedure_columns (ODBC_STATEMENT * stmt,
 
   if ((cci_retval = schema_info_procedure_columns (stmt->conn->connhd,
 						   &cci_request, proc_name,
-						   column_name, &cci_error)) < 0)
+						   column_name,
+						   &cci_error)) < 0)
     {
       goto cci_error;
     }
@@ -2219,7 +2233,7 @@ make_table_result_set (ODBC_STATEMENT * stmt, int req_handle, int type_option)
   int cci_ind;
   int rc;
   int cci_rc;
-  UNI_CCI_A_TYPE cci_value;
+  UNI_CCI_A_TYPE cci_value, cci_value_remarks;
 
   long current_tpl_pos = 0;
   ODBC_TABLE_VALUE *table_node = NULL;
@@ -2277,6 +2291,10 @@ make_table_result_set (ODBC_STATEMENT * stmt, int req_handle, int type_option)
 	  goto error;
 	}
 
+      // get class remarks
+      cci_rc = cci_get_data (req_handle, 3, CCI_A_TYPE_STR,
+			     &cci_value_remarks, &cci_ind);
+
       // create a tuple
       table_node = create_table_value ();
       if (table_node == NULL)
@@ -2295,6 +2313,11 @@ make_table_result_set (ODBC_STATEMENT * stmt, int req_handle, int type_option)
       else
 	{
 	  table_node->table_type = UT_MAKE_STRING ("TABLE", -1);
+	}
+
+      if (cci_rc == 0)
+	{
+	  table_node->remarks = UT_MAKE_STRING (cci_value_remarks.str, -1);
 	}
 
       ListTailAdd (stmt->catalog_result.value, NULL, table_node, NodeAssign);
@@ -2404,6 +2427,13 @@ make_column_result_set (ODBC_STATEMENT * stmt, int req_handle)
 	}
       column_node->column_name = UT_MAKE_STRING (cci_value.str, -1);
 
+      // get remarks
+      cci_rc = cci_get_data (req_handle, 14, CCI_A_TYPE_STR,
+			     &cci_value, &cci_ind);
+      if (cci_rc == 0)
+	{
+	  column_node->remarks = UT_MAKE_STRING (cci_value.str, -1);
+	}
 
       // get domain
       cci_rc = cci_get_data (req_handle, 2, CCI_A_TYPE_INT,
@@ -3777,7 +3807,8 @@ free_catalog_result (ST_LIST * result, RESULT_TYPE type)
 }
 
 PRIVATE int
-retrieve_table_from_db_class (int cci_connection, char *table_name, T_CCI_ERROR *error)
+retrieve_table_from_db_class (int cci_connection, char *table_name,
+			      T_CCI_ERROR * error)
 {
   int cci_request;
 
@@ -3790,7 +3821,7 @@ retrieve_table_from_db_class (int cci_connection, char *table_name, T_CCI_ERROR 
 
 PRIVATE int
 schema_info_table_privileges (int cci_connection, int *cci_request,
-			      char *table_name, T_CCI_ERROR *error)
+			      char *table_name, T_CCI_ERROR * error)
 {
   char *sql_statment =
     "SELECT "
@@ -3804,7 +3835,8 @@ schema_info_table_privileges (int cci_connection, int *cci_request,
 }
 
 PRIVATE int
-schema_info_procedures (int cci_connection, int *cci_request, char *proc_name, T_CCI_ERROR *error)
+schema_info_procedures (int cci_connection, int *cci_request, char *proc_name,
+			T_CCI_ERROR * error)
 {
   char *sql_statment;
   char *param_list[1] = { NULL };
@@ -3831,7 +3863,8 @@ schema_info_procedures (int cci_connection, int *cci_request, char *proc_name, T
 
 PRIVATE int
 schema_info_procedure_columns (int cci_connection, int *cci_request,
-			       char *proc_name, char *column_name, T_CCI_ERROR *error)
+			       char *proc_name, char *column_name,
+			       T_CCI_ERROR * error)
 {
   char *sql_statment;
   char *param_list[2] = { NULL };
@@ -3885,7 +3918,8 @@ schema_info_procedure_columns (int cci_connection, int *cci_request,
 
 PRIVATE int
 sql_execute (int cci_connection, int *cci_request,
-	     char *sql_statment, char *param_list[], int param_num, T_CCI_ERROR *error)
+	     char *sql_statment, char *param_list[], int param_num,
+	     T_CCI_ERROR * error)
 {
   int cci_retval;
   int i;

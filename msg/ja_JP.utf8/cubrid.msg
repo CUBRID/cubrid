@@ -1233,7 +1233,8 @@ $ LOADDB
 1164 Daylight saving time is not supported with this timezone.
 1165 Invalid combination of date, time, timezone and daylight specifier.
 1166 The specified combination of date and time do not exist (during daylight saving interval).
-1167 ラストエラー
+1167 Comment string cannot have more than 1024 bytes.
+1168 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1387,6 +1388,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 123 invalid use of timezone\n set timezone 'timezone_val' or set time zone 'timezone_val'
 124 invalid use of dbtimezone\n dbtimezone
 125 invalid use of sessiontimezone\n sessiontimezone
+126 Maximum length of a class/vclass comment is %1$d bytes.
+127 Maximum length of a comment is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。

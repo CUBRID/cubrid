@@ -63,6 +63,7 @@ struct class_description
   char **triggers;
   char **constraints;
   char **partition;
+  char *comment;
 };
 
 /*
@@ -102,7 +103,7 @@ struct trigger_description
   char *condition;
   const char *action_time;
   char *action;
-
+  const char *comment;
 };
 
 typedef enum obj_print_type

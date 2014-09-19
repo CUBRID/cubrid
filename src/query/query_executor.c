@@ -27470,6 +27470,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int function_index_pos = -1;
   int index_position = 0;
   int num_idx_att = 0;
+  const char *comment = NULL;
 
   if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state)
       != NO_ERROR)
@@ -27532,7 +27533,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       attr_ids[i] = attrepr->id;
     }
 
-  assert (xasl->outptr_list->valptr_cnt == 12);
+  assert (xasl->outptr_list->valptr_cnt == 13);
   out_values = (DB_VALUE **) malloc (xasl->outptr_list->valptr_cnt *
 				     sizeof (DB_VALUE *));
   if (out_values == NULL)
@@ -27566,6 +27567,10 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
       /* Func */
       db_make_null (out_values[11]);
+
+      /* Comment */
+      comment = or_get_constraint_comment (&class_record, index->btname);
+      db_make_string (out_values[12], comment);
 
       if (index->func_index_info == NULL)
 	{
@@ -27716,6 +27721,10 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);
 	}
 
+      if (comment != NULL)
+	{
+	  free_and_init (comment);
+	}
     }
 
   free_and_init (out_values);
@@ -28313,6 +28322,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   OR_INDEX *index = NULL;
   OR_ATTRIBUTE *index_att = NULL;
   const char *attr_name = NULL;
+  const char *attr_comment = NULL;
   OR_ATTRIBUTE *volatile attrepr = NULL;
   DB_VALUE **out_values = NULL;
   REGU_VARIABLE_LIST regu_var_p;
@@ -28584,6 +28594,13 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  else
 	    {
 	      db_make_string (out_values[idx_val++], "auto_increment");
+	    }
+
+	  /* attribute's comment */
+	  if (full_columns)
+	    {
+	      attr_comment = or_get_attrcomment (&class_record, attrepr->id);
+	      db_make_string (out_values[idx_val++], attr_comment);
 	    }
 
 	  qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);

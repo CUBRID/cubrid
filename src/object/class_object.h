@@ -144,6 +144,10 @@
  */
 #define SM_MAX_IDENTIFIER_LENGTH 255
 
+#define SM_MAX_CLASS_COMMENT_LENGTH 2048	/* max comment length for class */
+/* max comment length for column/index/partition/sp/trigger/serial/user */
+#define SM_MAX_COMMENT_LENGTH 1024
+
 /*
  *  c : constraint_type
  */
@@ -617,6 +621,7 @@ struct sm_attribute
 
   MOP auto_increment;		/* instance of db_serial */
   int storage_order;		/* storage order number */
+  const char *comment;
 };
 
 typedef struct sm_foreign_key_info SM_FOREIGN_KEY_INFO;
@@ -675,6 +680,7 @@ struct sm_class_constraint
   BTID index_btid;
   SM_CONSTRAINT_TYPE type;
   SM_FUNCTION_INFO *func_index_info;
+  const char *comment;
 };
 
 /*
@@ -876,6 +882,7 @@ struct sm_class
   struct tr_schema_cache *triggers;	/* Trigger cache */
   SM_CLASS_CONSTRAINT *constraints;	/* Constraint cache */
   MOP partition_of;		/* Partition information */
+  const char *comment;		/* table comment */
   SM_CLASS_CONSTRAINT *fk_ref;	/* fk ref cache */
 
   unsigned int flags;
@@ -1072,7 +1079,8 @@ extern int classobj_put_index (DB_SEQ ** properties,
 			       SM_PREDICATE_INFO * filter_index_info,
 			       SM_FOREIGN_KEY_INFO * fk_info,
 			       char *shared_cons_name,
-			       SM_FUNCTION_INFO * func_index_info);
+			       SM_FUNCTION_INFO * func_index_info,
+			       const char *comment);
 extern int classobj_put_index_id (DB_SEQ ** properties,
 				  SM_CONSTRAINT_TYPE type,
 				  const char *constraint_name,
@@ -1083,7 +1091,8 @@ extern int classobj_put_index_id (DB_SEQ ** properties,
 				  SM_PREDICATE_INFO * filter_index_info,
 				  SM_FOREIGN_KEY_INFO * fk_info,
 				  char *shared_cons_name,
-				  SM_FUNCTION_INFO * func_index_info);
+				  SM_FUNCTION_INFO * func_index_info,
+				  const char *comment);
 extern int classobj_find_prop_constraint (DB_SEQ * properties,
 					  const char *prop_name,
 					  const char *cnstr_name,
@@ -1093,6 +1102,11 @@ extern int classobj_rename_constraint (DB_SEQ * properties,
 				       const char *prop_name,
 				       const char *old_name,
 				       const char *new_name);
+
+extern int classobj_change_constraint_comment (DB_SEQ * properties,
+					       const char *prop_type,
+					       const char *index_name,
+					       const char *comment);
 
 extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints,
 					   SM_CONSTRAINT_TYPE type,

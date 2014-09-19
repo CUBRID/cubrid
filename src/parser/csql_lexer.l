@@ -192,6 +192,9 @@ int yybuffer_pos;
 [cC][oO][lL][uU][mM][nN][sS]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return COLUMNS; }
+[cC][oO][mM][mM][eE][nN][tT]					{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return COMMENT; }
 [cC][oO][mM][mM][iI][tT]						{ begin_token(yytext);   return COMMIT; }
 [cC][oO][mM][mM][iI][tT][tT][eE][dD]					{ begin_token(yytext); 
 										csql_yylval.cptr = pt_makename(yytext);

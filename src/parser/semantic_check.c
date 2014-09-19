@@ -8743,6 +8743,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   int collation_id, charset;
   bool found_reuse_oid = false;
   bool found_auto_increment = false;
+  bool found_tbl_comment = false;
   int error = NO_ERROR;
 
   entity_type = node->info.create_entity.entity_type;
@@ -8833,6 +8834,22 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    else
 	      {
 		tbl_opt_coll = tbl_opt;
+	      }
+	  }
+	  break;
+	case PT_TABLE_OPTION_COMMENT:
+	  {
+	    if (found_tbl_comment)
+	      {
+		PT_ERRORmf (parser, node,
+			    MSGCAT_SET_PARSER_SEMANTIC,
+			    MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
+			    parser_print_tree (parser, tbl_opt));
+		return;
+	      }
+	    else
+	      {
+		found_tbl_comment = true;
 	      }
 	  }
 	  break;

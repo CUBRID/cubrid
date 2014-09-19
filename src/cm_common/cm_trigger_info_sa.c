@@ -125,7 +125,7 @@ write_err_msg (char *errfile, char *msg)
 static void
 get_trigger_information (FILE * fp, DB_OBJECT * triggerobj)
 {
-  char *trigger_name, *action, *attr, *condition;
+  char *trigger_name, *action, *attr, *condition, *comment;
   DB_OBJECT *target_class;
   DB_TRIGGER_EVENT event;
   DB_TRIGGER_TIME eventtime, actiontime;
@@ -134,7 +134,7 @@ get_trigger_information (FILE * fp, DB_OBJECT * triggerobj)
   double priority;
   char pri_string[10];
 
-  trigger_name = action = NULL;
+  trigger_name = action = comment = NULL;
 
   /* trigger name */
   db_trigger_name (triggerobj, &trigger_name);
@@ -273,4 +273,12 @@ get_trigger_information (FILE * fp, DB_OBJECT * triggerobj)
   db_trigger_priority (triggerobj, &priority);
   sprintf (pri_string, "%4.5f", priority);
   fprintf (fp, MSGFMT, "priority", pri_string);
+
+  /* comment */
+  db_trigger_comment (triggerobj, &comment);
+  if (comment != NULL)
+    {
+      fprintf (fp, MSGFMT, "comment", comment);
+      db_string_free ((char *) comment);
+    }
 }

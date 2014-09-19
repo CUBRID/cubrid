@@ -195,3 +195,4 @@ $ csql help messages
 \tqcache                 - information du cache de requêtes\n
 235 <Partitions>
 236 Un nom de classe est requis.
+237 <Comment>

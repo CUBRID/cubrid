@@ -1362,8 +1362,8 @@ DB_OBJECT *db_create_trigger
 
   /* check for invalid arguments */
   retval = (tr_create_trigger (name, status, priority, event, class_, attr,
-			       cond_time, cond_source,
-			       action_time, action_type, action_source));
+			       cond_time, cond_source, action_time,
+			       action_type, action_source, NULL));
 
   return (retval);
 }
@@ -1803,6 +1803,27 @@ db_trigger_action (DB_OBJECT * trobj, char **action)
   CHECK_2ARGS_ERROR (trobj, action);
 
   retval = (tr_trigger_action (trobj, action));
+  return (retval);
+}
+
+/*
+ * db_trigger_comment() - This function returns the comment of an input trigger.
+ * return : error code
+ * trobj(in): trigger object
+ * comment(out): trigger comment (returned)
+ *
+ * note : The string containing the trigger comment must be freed with the
+ *        db_string_free() function.
+ */
+int
+db_trigger_comment (DB_OBJECT * trobj, char **comment)
+{
+  int retval;
+
+  CHECK_CONNECT_ERROR ();
+  CHECK_2ARGS_ERROR (trobj, comment);
+
+  retval = (tr_trigger_comment (trobj, comment));
   return (retval);
 }
 

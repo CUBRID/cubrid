@@ -131,6 +131,7 @@ MOP au_get_dba_user (void);
 
 #define AU_MAX_PASSWORD_CHARS   31
 #define AU_MAX_PASSWORD_BUF     2048
+#define AU_MAX_COMMENT_CHARS    SM_MAX_COMMENT_LENGTH
 
 typedef enum au_fetchmode
 {
@@ -176,6 +177,7 @@ extern int au_add_member (MOP group, MOP member);
 extern int au_drop_member (MOP group, MOP member);
 extern int au_drop_user (MOP user);
 extern int au_set_password (MOP user, const char *password);
+extern int au_set_user_comment (MOP user, const char *comment);
 
 extern const char *au_user_name (void);
 extern char *au_user_name_dup (void);

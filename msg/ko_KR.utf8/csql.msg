@@ -192,3 +192,4 @@ $ csql help messages
 \tqcache                 - 쿼리 캐시 정보\n
 235 <분할>
 236 클래스 이름이 필요합니다.
+237 <Comment>

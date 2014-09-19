@@ -1414,6 +1414,9 @@ au_make_user (const char *name)
 
 		  db_make_object (&value, auth);
 		  obj_set (user, "authorization", &value);
+
+		  db_make_string (&value, NULL);
+		  obj_set (user, "comment", &value);
 		}
 	    }
 	  else
@@ -2595,6 +2598,51 @@ au_set_password_encoded_sha1_method (MOP user, DB_VALUE * returnval,
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
       db_make_error (returnval, error);
     }
+}
+
+/*
+ * au_set_user_comment() -  Set the comment string for a user.
+ *   return: error code
+ *   user(in): user object
+ *   comment(in): a comment string
+ */
+int
+au_set_user_comment (MOP user, const char *comment)
+{
+  int error = NO_ERROR;
+  DB_VALUE value;
+  int len = 0;
+
+  if (Au_user != user && !au_is_dba_group_member (Au_user))
+    {
+      error = ER_AU_UPDATE_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+    }
+  else
+    {
+      if (comment != NULL)
+	{
+	  len = strlen (comment);
+	}
+
+      if (len == 0)
+	{
+	  comment = NULL;
+	}
+
+      if (len > AU_MAX_COMMENT_CHARS)
+	{
+	  error = ER_AU_COMMENT_OVERFLOW;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      else
+	{
+	  db_make_string (&value, comment);
+	  error = obj_set (user, "comment", &value);
+	}
+    }
+
+  return error;
 }
 
 /*
@@ -6703,7 +6751,7 @@ au_export_users (FILE * outfp)
   DB_VALUE value, gvalue;
   MOP user, pwd;
   int g, gcard;
-  char *uname, *str, *gname;
+  char *uname, *str, *gname, *comment;
   char passbuf[AU_MAX_PASSWORD_BUF];
   char *query;
   size_t query_size;
@@ -6752,6 +6800,7 @@ au_export_users (FILE * outfp)
       strcpy (passbuf, "");
       encrypt_mode = 0x00;
 
+      /* retrieve password */
       error = obj_get (user, "password", &value);
       if (error == NO_ERROR)
 	{
@@ -6798,6 +6847,20 @@ au_export_users (FILE * outfp)
 		      ws_free_string (str);
 		    }
 		}
+	    }
+	}
+
+      /* retrieve comment */
+      error = obj_get (user, "comment", &value);
+      if (error == NO_ERROR)
+	{
+	  if (DB_IS_NULL (&value))
+	    {
+	      comment = NULL;
+	    }
+	  else
+	    {
+	      comment = db_get_string (&value);
 	    }
 	}
 
@@ -6852,12 +6915,23 @@ au_export_users (FILE * outfp)
 		    }
 		}
 	    }
+
+	  /* export comment */
+	  if (comment != NULL && comment[0] != '\0')
+	    {
+	      fprintf (outfp, "ALTER USER [%s] COMMENT '%s';\n",
+		       uname, comment);
+	    }
 	}
 
       /* remember, these were allocated in the workspace */
       if (uname != NULL)
 	{
 	  ws_free_string (uname);
+	}
+      if (comment != NULL)
+	{
+	  ws_free_string (comment);
 	}
     }
 
@@ -8118,6 +8192,7 @@ au_install (void)
   smt_add_attribute (def, "authorization", AU_AUTH_CLASS_NAME,
 		     (DB_DOMAIN *) 0);
   smt_add_attribute (def, "triggers", "sequence of object", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "comment", "varchar(1024)", NULL);
   /* need signatures for these */
   smt_add_method (def, "set_password", "au_set_password_method");
   smt_add_method (def, "set_password_encoded",

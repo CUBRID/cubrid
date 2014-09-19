@@ -44,6 +44,7 @@
 #define PARTITION_ATT_PTYPE "ptype"
 #define PARTITION_ATT_PEXPR "pexpr"
 #define PARTITION_ATT_PVALUES "pvalues"
+#define PARTITION_ATT_PCOMMENT "comment"
 #define PARTITION_VARCHAR_LEN (DB_MAX_IDENTIFIER_LENGTH)
 #define CLASS_ATT_NAME "class_name"
 #define CLASS_IS_PARTITION "partition_of"

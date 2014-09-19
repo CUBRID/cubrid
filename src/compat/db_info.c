@@ -1034,7 +1034,7 @@ db_attribute_ordered_next (DB_ATTRIBUTE * attribute)
 }
 
 /*
- * db_attribute_name() - This function gets the name string for an attribute.
+ * db_attribute_name() - This function gets the name string from an attribute.
  * return : C string containing name
  * attribute(in): attribute descriptor
  */
@@ -1052,7 +1052,25 @@ db_attribute_name (DB_ATTRIBUTE * attribute)
 }
 
 /*
- * db_attribute_length() - This function gets the precision for an
+ * db_attribute_comment() - This function gets the comment string from an attribute.
+ * return : C string containing comment
+ * attribute(in): attribute descriptor
+ */
+const char *
+db_attribute_comment (DB_ATTRIBUTE * attribute)
+{
+  const char *comment = NULL;
+
+  if (attribute != NULL)
+    {
+      comment = attribute->comment;
+    }
+
+  return (comment);
+}
+
+/*
+ * db_attribute_length() - This function gets the precision from an
  *    attribute if any.
  * return : precision of attribute
  * attribute(in): attribute descriptor

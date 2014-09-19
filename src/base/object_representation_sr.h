@@ -205,8 +205,11 @@ extern OR_CLASSREP *or_classrep_load_indexes (OR_CLASSREP * rep,
 extern int or_class_get_partition_info (RECDES * record,
 					OID * partition_info,
 					REPR_ID * repr_id);
+const char *or_get_constraint_comment (RECDES * record,
+				       const char *constraint_name);
 extern void or_free_classrep (OR_CLASSREP * rep);
 extern const char *or_get_attrname (RECDES * record, int attrid);
+extern const char *or_get_attrcomment (RECDES * record, int attrid);
 extern OR_CLASS *or_get_class (RECDES * record);
 extern void or_free_class (OR_CLASS * class_);
 

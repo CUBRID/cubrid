@@ -165,6 +165,7 @@ struct t_attr_table
   char unique;
   char set_domain;
   char is_key;
+  char *comment;
 };
 
 extern void histo_print (FILE * stream);
@@ -6052,6 +6053,17 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       /* 13. is_key */
       add_res_data_short (net_buf, (short) attr_info.is_key, 0, NULL);
 
+      /* 14. remarks */
+      p = attr_info.comment;
+      if (p == NULL)
+	{
+	  add_res_data_string (net_buf, "", 0, 0, NULL);
+	}
+      else
+	{
+	  add_res_data_string (net_buf, p, strlen (p), 0, NULL);
+	}
+
       db_value_clear (&val_class);
       db_value_clear (&val_attr);
 
@@ -6517,6 +6529,18 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
       tmp_str = NULL;
       if ((db_trigger_condition (tmp_p->op, &tmp_str) < 0)
 	  || (tmp_str == NULL))
+	{
+	  add_res_data_string (net_buf, "", 0, 0, NULL);
+	}
+      else
+	{
+	  add_res_data_string (net_buf, tmp_str, strlen (tmp_str), 0, NULL);
+	  db_string_free (tmp_str);
+	}
+
+      /* 11. comment */
+      tmp_str = NULL;
+      if ((db_trigger_comment (tmp_p->op, &tmp_str) < 0) || (tmp_str == NULL))
 	{
 	  add_res_data_string (net_buf, "", 0, 0, NULL);
 	}
@@ -7947,7 +7971,7 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag,
   where_vclass = "class_type = 'VCLASS'";
 
   STRING_APPEND (sql_p, avail_size,
-		 "SELECT class_name, CAST(%s AS short) FROM db_class ",
+		 "SELECT class_name, CAST(%s AS short), comment FROM db_class ",
 		 case_stmt);
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
@@ -8564,6 +8588,9 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern,
 
   attr_table->class_name = class_name;
   attr_table->attr_name = p;
+
+  p = (char *) db_attribute_comment (attr);
+  attr_table->comment = p;
 
   if (TP_IS_SET_TYPE (db_type))
     {
