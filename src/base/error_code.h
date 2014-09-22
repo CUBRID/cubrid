@@ -1490,8 +1490,9 @@
 
 #define ER_AU_COMMENT_OVERFLOW                      -1167
 
-#define ER_LAST_ERROR                               -1168
+#define ER_UPDATE_STAT_CANNOT_GET_LOCK              -1168
 
+#define ER_LAST_ERROR                               -1169
 
 /*
  * CAUTION!

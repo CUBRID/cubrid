@@ -131,18 +131,31 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 #if !defined(NDEBUG)
   int track_id;
 #endif
+  int lk_grant_code = 0;
 
 #if !defined(NDEBUG)
   track_id = thread_rc_track_enter (thread_p);
 #endif
+
+  class_name = heap_get_class_name (thread_p, class_id_p);
+
+  /* before go further, we should get the lock to disable updating schema */
+  lk_grant_code = lock_object (thread_p, class_id_p, oid_Root_class_oid,
+			       SCH_S_LOCK, LK_COND_LOCK);
+  if (lk_grant_code != LK_GRANTED)
+    {
+      error_code = ER_UPDATE_STAT_CANNOT_GET_LOCK;
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, error_code, 1,
+	      class_name ? class_name : "*UNKNOWN-CLASS*");
+
+      goto error;
+    }
 
   cls_info_p = catalog_get_class_info (thread_p, class_id_p);
   if (cls_info_p == NULL)
     {
       goto error;
     }
-
-  class_name = heap_get_class_name (thread_p, class_id_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
 	  ER_LOG_STARTED_TO_UPDATE_STATISTICS, 4,
@@ -256,20 +269,26 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
   /* replace the current disk representation structure/information in the
      catalog with the newly computed statistics */
 
-  if (catalog_add_representation (thread_p, class_id_p, repr_id, disk_repr_p)
-      != NO_ERROR)
+  error_code = catalog_add_representation (thread_p, class_id_p,
+					   repr_id, disk_repr_p);
+  if (error_code != NO_ERROR)
     {
       goto error;
     }
 
   cls_info_p->time_stamp = stats_get_time_stamp ();
 
-  if (catalog_add_class_info (thread_p, class_id_p, cls_info_p) != NO_ERROR)
+  error_code = catalog_add_class_info (thread_p, class_id_p, cls_info_p);
+  if (error_code != NO_ERROR)
     {
       goto error;
     }
 
 end:
+
+  lock_unlock_object (thread_p, class_id_p, oid_Root_class_oid, SCH_S_LOCK,
+		      false);
+
   if (disk_repr_p)
     {
       catalog_free_representation (disk_repr_p);
@@ -324,44 +343,47 @@ error:
 int
 xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
 {
-  int error;
+  int error = NO_ERROR;
   OID class_id;
   CLASS_ID_LIST *class_id_list_p = NULL, *class_id_item_p;
 
   error =
     ehash_map (thread_p, &catalog_Id.xhid, stats_get_class_list,
 	       (void *) &class_id_list_p);
-  if (error != NO_ERROR)
+  if (error != NO_ERROR || class_id_list_p == NULL)
     {
-      stats_free_class_list (class_id_list_p);
-      return error;
-    }
-
-  if (class_id_list_p == NULL)
-    {
-      /* No classes */
-      return NO_ERROR;
+      goto end;
     }
 
   for (class_id_item_p = class_id_list_p;
-       class_id_item_p->next != NULL; class_id_item_p = class_id_item_p->next)
+       class_id_item_p != NULL; class_id_item_p = class_id_item_p->next)
     {
       class_id.volid = class_id_item_p->class_id.volid;
       class_id.pageid = class_id_item_p->class_id.pageid;
       class_id.slotid = class_id_item_p->class_id.slotid;
 
       error = xstats_update_statistics (thread_p, &class_id, with_fullscan);
-      if (error != NO_ERROR)
+      if (error == ER_UPDATE_STAT_CANNOT_GET_LOCK
+	  || error == ER_SP_UNKNOWN_SLOTID)
 	{
-	  stats_free_class_list (class_id_list_p);
-
-	  return error;
+	  /* continue with other classes */
+	  er_clear ();
+	  error = NO_ERROR;
+	}
+      else if (error != NO_ERROR)
+	{
+	  goto end;
 	}
     }
 
-  stats_free_class_list (class_id_list_p);
+end:
 
-  return NO_ERROR;
+  if (class_id_list_p != NULL)
+    {
+      stats_free_class_list (class_id_list_p);
+    }
+
+  return error;
 }
 
 /*
