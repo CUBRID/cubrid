@@ -7625,7 +7625,7 @@ btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTID * btid,
 
   /* root page */
   VPID_SET (&current_vpid, btid->vfid.volid, btid->root_pageid);
-  root_pgptr = pgbuf_fix (thread_p, &current_vpid, OLD_PAGE, PGBUF_LATCH_READ,
+  root_pgptr = pgbuf_fix (thread_p, &current_vpid, OLD_PAGE, request_mode,
 			  PGBUF_UNCONDITIONAL_LATCH);
   if (root_pgptr == NULL)
     {
