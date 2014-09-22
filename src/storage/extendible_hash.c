@@ -5323,7 +5323,7 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
   dir_page_no = 0;
   dir_ptr_no = 0;
 
-  dir_page_p = ehash_fix_ehid_page (thread_p, ehid_p, PGBUF_LATCH_WRITE);
+  dir_page_p = ehash_fix_ehid_page (thread_p, ehid_p, PGBUF_LATCH_READ);
   if (dir_page_p == NULL)
     {
       pgbuf_unfix_and_init (thread_p, dir_root_page_p);
@@ -5335,7 +5335,7 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
       if (DB_PAGESIZE - dir_offset < SSIZEOF (EHASH_DIR_RECORD))
 	{
 	  /* We reached the end of the directory page.
-	   * The next bucket pointer is in  the next directory page.
+	   * The next bucket pointer is in the next directory page.
 	   */
 
 	  /* Release previous page, and unlock it */
@@ -5345,7 +5345,7 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
 
 	  /* Get another page */
 	  dir_page_p = ehash_fix_nth_page (thread_p, &ehid_p->vfid,
-					   dir_page_no, PGBUF_LATCH_WRITE);
+					   dir_page_no, PGBUF_LATCH_READ);
 	  if (dir_page_p == NULL)
 	    {
 	      return;
