@@ -181,4 +181,8 @@ for %%f in (%MSG_JA_UTF8_DIR%,%MSG_KM_UTF8_DIR%,%MSG_VI_UTF8_DIR%,%MSG_ZH_UTF8_D
 for %%f in (%MSG_JA_UTF8_DIR%,%MSG_KM_UTF8_DIR%,%MSG_VI_UTF8_DIR%,%MSG_ZH_UTF8_DIR%,%MSG_RO_UTF8_DIR%) do %GENCAT% %%f\cubrid.cat %%f\cubrid.msg
 for %%f in (%MSG_JA_UTF8_DIR%,%MSG_KM_UTF8_DIR%,%MSG_VI_UTF8_DIR%,%MSG_ZH_UTF8_DIR%,%MSG_RO_UTF8_DIR%) do %GENCAT% %%f\esql.cat %%f\esql.msg
 for %%f in (%MSG_JA_UTF8_DIR%,%MSG_KM_UTF8_DIR%,%MSG_VI_UTF8_DIR%,%MSG_ZH_UTF8_DIR%,%MSG_RO_UTF8_DIR%) do %GENCAT% %%f\utils.cat %%f\utils.msg
+
+rem -------------------------------------------
+set CUBRID=%DEST_DIR:"=%
+%DEST_DIR%\bin\make_tz.bat
 :EXIT

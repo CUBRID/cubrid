@@ -394,6 +394,7 @@
 		<row><td>logging.properties</td><td>CUBRID</td><td>logging.properties</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\java\logging.properties</td><td>1</td><td>NewSubFolder8</td></row>
 		<row><td>make_locale.bat</td><td>CUBRID</td><td>make_locale.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\make_locale.bat</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>make_tz.bat</td><td>CUBRID</td><td>make_tz.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\make_tz.bat</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>libcubrid_timezones.dll</td><td>CUBRID</td><td>libcubrid_timezones.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\libcubrid_timezones.dll</td><td>1</td><td>NewSubFolder7</td></row>
 		<row><td>makedemo_is.bat</td><td>CUBRID</td><td>makedemo_is.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;ISPROJECTDIR&gt;\makedemo_is.bat</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>migrate_91_to_92.exe</td><td>CUBRID</td><td>migrate_91_to_92.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\migrate_91_to_92.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>migrate_91_to_92.pdb</td><td>CUBRID</td><td>migrate_91_to_92.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\migrate_91_to_92.pdb</td><td>1</td><td>NewSubFolder5</td></row>

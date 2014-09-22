@@ -104,7 +104,7 @@ goto :ENV_ERROR
 @echo. 
 
 @echo. Generating timezone C file with mode %TZ_MODE% ...
-cubrid gen_tz -g %TZ_MODE%
+%CUBRID%\bin\cubrid gen_tz -g %TZ_MODE%
 
 if %ERRORLEVEL% NEQ 0 goto :ERROR_GENTZ
 
@@ -207,5 +207,6 @@ rmdir /S /Q %CUBRID%\timezones\tzlib\Output
 if exist %CUBRID%\timezones\tzlib\timezones.c (
 del /Q %CUBRID%\timezones\tzlib\timezones.c
 )
+EXIT /B %ERRORLEVEL%
 
 :eof
