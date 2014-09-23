@@ -58,3 +58,20 @@ dist_haexp_SCRIPTS = \
 	
 hacommondir = ${hascriptsdir}/common
 dist_hacommon_SCRIPTS = scripts/ha/common/common.sh
+
+EXTRA_DIST += systemtap/probes.d
+systemtapdir = ${datadir}/systemtap/tapset
+dist_systemtap_DATA = systemtap/cubrid_func.stp
+
+systemtap_scriptsdir = ${datadir}/systemtap/tapset/scripts
+dist_systemtap_scripts_DATA = \
+	systemtap/scripts/buffer_access.stp \
+	systemtap/scripts/global_time.stp \
+	systemtap/scripts/io_stat.stp \
+	systemtap/scripts/lock_time.stp \
+	systemtap/scripts/obj_access.stp \
+	systemtap/scripts/query_time.stp \
+	systemtap/scripts/transaction.stp \
+	systemtap/scripts/topcallstack/get_file_line.sh \
+	systemtap/scripts/topcallstack/topcallstack \
+	systemtap/scripts/topcallstack/topcallstack_helper.stp

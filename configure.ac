@@ -426,6 +426,19 @@ AC_ARG_ENABLE([nclavis],
   [enable_nclavis=no])
 AM_CONDITIONAL([BUILD_NCLAVIS], [test "$enable_nclavis" != "no"])
 
+AC_ARG_ENABLE([systemtap],
+	[AS_HELP_STRING([--enable-systemtap],
+		[Enable dynamic tracing support using systemtap @<:@default=no@:>@])],
+	[enable_systemtap=$enableval],
+	[enable_systemtap=no])
+AS_IF([test "$enable_systemtap" = "yes"], 
+	[AC_CHECK_PROG(DTRACE, dtrace, dtrace)
+	AS_IF([test "x$DTRACE" = "x"],
+		[AC_MSG_ERROR(dtrace was not found. check PATH or install dtrace)])
+        AC_CHECK_HEADER([sys/sdt.h],,[AC_MSG_ERROR([systemtap support needs sys/sdt.h header])])
+	AC_DEFINE([ENABLE_SYSTEMTAP], [1], [Enable dynamic tracing support using systemtap]) ])
+AM_CONDITIONAL([ENABLE_SYSTEMTAP], [test "x$enable_systemtap" = xyes])
+
 AC_MSG_CHECKING(for java home)
 AS_IF([test "$with_cci_only" = "no"],
       	[AS_IF([test "x$JAVA_HOME" != "x"],
@@ -516,27 +529,6 @@ AS_IF([test "$with_cci_only" = "yes"], [with_libedit=no],
 		LIBEDIT_INC="-I$with_libedit/include"
 		EXTERNAL_DIST="$EXTERNAL_DIST libedit-20120601-3.0"])])
 AC_MSG_RESULT([$with_libedit])
-
-AC_ARG_ENABLE([systemtap],
-	      [AS_HELP_STRING([--enable-systemtap],
-			      [Enable dynamic tracing support using systemtap])],
-	      [ENABLE_SYSTEMTAP=$enableval
-	       SYSTEMTAP_LIB="\$(top_builddir)/contrib/systemtap/probes.o"
-               AC_CHECK_PROGS(DTRACE, dtrace)
-               if test -z "$DTRACE"; then
-                   AC_MSG_ERROR([dtrace not found])
-               fi
-               AC_CHECK_HEADER([sys/sdt.h], [SDT_H_FOUND='yes'],
-                             [SDT_H_FOUND='no';
-		              AC_MSG_ERROR([systemtap support needs sys/sdt.h header])])
-],
-               [ENABLE_SYSTEMTAP='no'
-                SYSTEMTAP_LIB=""])
-AM_CONDITIONAL([ENABLE_SYSTEMTAP], [test "x$ENABLE_SYSTEMTAP" = xyes])
-if test "x$ENABLE_SYSTEMTAP" = xyes; then
-	AC_DEFINE([ENABLE_SYSTEMTAP], [1], [Enable dynamic tracing support using systemtap])
-	AC_CONFIG_SUBDIRS([contrib/systemtap])
-fi
 
 AC_MSG_CHECKING([for lzo2 library])
 AC_ARG_WITH([lzo2],
@@ -654,18 +646,6 @@ case "$with_nbase_t" in
 		NBASE_T_INC_PATH="-I$with_nbase_t/include"
 		;;
 esac
-
-if test "$with_nbase_t" != "no" || test "$enable_nclavis" != "no"
-then
-  if test -d "$srcdir/ndbgw"
-  then
-    AC_CONFIG_FILES([ndbgw/Makefile])
-    OPTIONAL_DIR="$OPTIONAL_DIR ndbgw"
-  else
-    AC_MSG_ERROR(cannot support nbase_t or nclavis feature)
-  fi
-fi
-
 AC_MSG_RESULT([$with_nbase_t])
 
 AC_MSG_CHECKING([for mysql client library version 5.1])
@@ -884,7 +864,7 @@ CCI_LIB="\$(top_builddir)/cci/libcascci.la"
 ESQL_LIB="\$(top_builddir)/util/libcubridesql.la"
 BROKER_ADMIN_LIB="\$(top_builddir)/broker/libbrokeradmin.la"
 
-EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS $REGEX_LIBS $EXPAT_LIBS $JANSSON_LIBS $GCRYPT_LIBS $GPG_ERROR_LIBS $SYSTEMTAP_LIB"
+EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS $REGEX_LIBS $EXPAT_LIBS $JANSSON_LIBS $GCRYPT_LIBS $GPG_ERROR_LIBS"
 EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC $REGEX_INC $EXPAT_INC $JANSSON_INC $GCRYPT_INC $GPG_ERROR_INC"
 
 AC_MSG_CHECKING([whether to use CUBRID environment variable])
@@ -1125,7 +1105,7 @@ AS_IF([test "$with_cci_only" = "yes"],
 	EXTRA_DIST_SUBDIRS=""
 	CUBRID_LOGDIR=""
 	CUBRID_TMPDIR=""],
-	[BUILD_SUBDIRS="contrib/systemtap external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales dbgw tools timezones $OPTIONAL_DIR"
+	[BUILD_SUBDIRS="external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales dbgw ndbgw tools timezones $OPTIONAL_DIR"
 	EXTRA_DIST_SUBDIRS="debian win src"])
 
 AC_SUBST([BUILD_NUMBER])
@@ -1218,7 +1198,6 @@ AS_IF([test "$with_cci_only" = "no"],
 	msg/ro_RO.utf8/Makefile
 	demo/Makefile
 	contrib/Makefile
-        contrib/systemtap/Makefile
 	jdbc/Makefile
 	java/Makefile
 	cas4mysql/Makefile
@@ -1232,6 +1211,7 @@ AS_IF([test "$with_cci_only" = "no"],
 	timezones/tzdata/Makefile
 	timezones/tzlib/Makefile
 	dbgw/Makefile
+	ndbgw/Makefile
 	tools/Makefile
 	])])
 
