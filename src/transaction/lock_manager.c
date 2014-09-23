@@ -5977,6 +5977,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   int next_node;
   int *tran_index_in_cycle = NULL;
   int victim_tran_index;
+  int tran_log_count, victim_tran_log_count;
 
   /* simple notation */
   TWFG_node = lk_Gl.TWFG_node;
@@ -6229,25 +6230,34 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 		      victim_tranid = tranid;
 		    }
 		}
-	      else if (logtb_find_log_records_count (v) <
-		       logtb_find_log_records_count (victim_tran_index))
-		{
-		  /* Prefer a transaction has written less log records. */
-		  victim_tranid = tranid;
-		}
 	      else
 		{
-		  /*
-		   *  Prefer a transaction with a closer timeout.
-		   *  Prefer the youngest transaction.
-		   */
-		  if ((victims[victim_count].can_timeout == false
-		       && can_timeout == true)
-		      || (victims[victim_count].can_timeout == can_timeout
-			  && (LK_ISYOUNGER
-			      (tranid, victims[victim_count].tranid))))
+		  tran_log_count = logtb_find_log_records_count (v);
+		  victim_tran_log_count =
+		    logtb_find_log_records_count (victim_tran_index);
+
+		  if (tran_log_count != victim_tran_log_count)
 		    {
-		      victim_tranid = tranid;
+		      if (tran_log_count < victim_tran_log_count)
+			{
+			  /* Prefer a transaction has written less log records. */
+			  victim_tranid = tranid;
+			}
+		    }
+		  else
+		    {
+		      /*
+		       *  Prefer a transaction with a closer timeout.
+		       *  Prefer the youngest transaction.
+		       */
+		      if ((victims[victim_count].can_timeout == false
+			   && can_timeout == true)
+			  || (victims[victim_count].can_timeout == can_timeout
+			      && (LK_ISYOUNGER
+				  (tranid, victims[victim_count].tranid))))
+			{
+			  victim_tranid = tranid;
+			}
 		    }
 		}
 
