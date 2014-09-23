@@ -1890,7 +1890,7 @@ classobj_rename_foreign_key_ref (DB_SEQ ** properties, char *old_name,
   pk_seq = DB_GET_SEQUENCE (&pk_val);
   size = set_size (pk_seq);
 
-  err = set_get_element (pk_seq, size - 1, &fk_container_val);
+  err = set_get_element (pk_seq, size - 2, &fk_container_val);
   if (err != NO_ERROR)
     {
       goto end;
@@ -1900,7 +1900,7 @@ classobj_rename_foreign_key_ref (DB_SEQ ** properties, char *old_name,
     {
       fk_container = DB_GET_SEQUENCE (&fk_container_val);
       fk_container_len = set_size (fk_container);
-      pk_seq_pos = size - 1;
+      pk_seq_pos = size - 2;
 
       /* find the position of the existing FK ref */
       for (i = 0; i < fk_container_len; i++)
