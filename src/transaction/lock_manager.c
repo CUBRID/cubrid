@@ -6080,8 +6080,9 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
      1) Must be lock holder.
      2) Must be active transaction.
      3) Prefer a transaction does not have victim priority.
-     4) Prefer a transaction with a closer timeout.
-     5) Prefer the youngest transaction.
+     4) Prefer a transaction has written less log records.
+     5) Prefer a transaction with a closer timeout.
+     6) Prefer the youngest transaction.
    */
 #if defined(CUBRID_DEBUG)
   num_WFG_nodes = tot_WFG_nodes;
@@ -6227,6 +6228,12 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 		    {
 		      victim_tranid = tranid;
 		    }
+		}
+	      else if (logtb_find_log_records_count (v) <
+		       logtb_find_log_records_count (victim_tran_index))
+		{
+		  /* Prefer a transaction has written less log records. */
+		  victim_tranid = tranid;
 		}
 	      else
 		{

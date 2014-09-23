@@ -4374,6 +4374,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p,
   (void) vacuum_consume_buffer_log_blocks (thread_p, false);
 #endif
 
+  tdes->num_log_records_written++;
+
   return start_lsa;
 }
 

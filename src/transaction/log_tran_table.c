@@ -1830,6 +1830,8 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       tdes->disable_modifications = db_Disable_modifications;
     }
   tdes->has_deadlock_priority = false;
+
+  tdes->num_log_records_written = 0;
 }
 
 /*
@@ -1913,6 +1915,8 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
       tdes->bind_history[i].vals = NULL;
     }
   tdes->has_deadlock_priority = false;
+
+  tdes->num_log_records_written = 0;
 
   tdes->mvcc_info = NULL;
 
@@ -2785,6 +2789,29 @@ logtb_find_interrupt (int tran_index, bool * interrupt)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * logtb_find_log_records_count -  find log records count for given transaction
+ *
+ * return: num_log_records_written...
+ *
+ *   tran_index(in): Index of transaction
+ */
+int
+logtb_find_log_records_count (int tran_index)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL)
+    {
+      return tdes->num_log_records_written;
+    }
+  else
+    {
+      return 0;
+    }
 }
 
 /*

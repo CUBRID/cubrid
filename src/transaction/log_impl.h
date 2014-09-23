@@ -952,6 +952,8 @@ struct log_tdes
 
   bool has_deadlock_priority;
 
+  int num_log_records_written;	/* # of log records generated */
+
   LOG_MVCC_UPDATE_STATS log_upd_stats;	/* Collects data about inserted/
 					 * deleted records during last
 					 * command/transaction
@@ -2473,4 +2475,5 @@ extern int logtb_mvcc_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
 extern void logtb_mvcc_reset_count_optim_state (THREAD_ENTRY * thread_p);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p,
 				     LOG_TDES * tdes);
+extern int logtb_find_log_records_count (int tran_index);
 #endif /* _LOG_IMPL_H_ */
