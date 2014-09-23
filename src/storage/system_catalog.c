@@ -5239,7 +5239,6 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
   int subcls_idx_cache;
   int idx_cache;
   int i;
-  int is_global_index;
   bool is_subcls_attr_found = false;
   bool free_cls_rep = false;
 
@@ -5383,21 +5382,6 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
     }
   else
     {
-      error =
-	partition_is_global_index (thread_p, NULL, class_oid, btid, NULL,
-				   &is_global_index);
-      if (error != NO_ERROR)
-	{
-	  goto exit_cleanup;
-	}
-
-      if (is_global_index > 0)
-	{
-	  /* global index, no need to search through each partition */
-	  *cardinality = p_stat_info->keys;
-	  goto exit_cleanup;
-	}
-
       *cardinality = 0;
       for (i = 0; i < count; i++)
 	{

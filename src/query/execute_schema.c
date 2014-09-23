@@ -4575,6 +4575,9 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
     }
   else
     {
+      SM_CLASS * superclass = NULL;
+      MOP superclass_op;
+
       newclass = sm_find_class (cata_obj);
       if (newclass == NULL)
 	{
@@ -4595,6 +4598,19 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
 	    }
 	}
       ctmpl->partition_of = newpart;
+
+      superclass_op = sm_find_class (base_obj);
+      if (superclass_op == NULL)
+	{
+	  goto fail_return;
+	}
+      if (au_fetch_class (superclass_op, &superclass, AU_FETCH_READ, AU_SELECT)
+	  != NO_ERROR)
+	{
+	  goto fail_return;
+	}
+      ctmpl->partition_parent_atts = superclass->attributes;
+
       if (dbt_finish_class (ctmpl) == NULL)
 	{
 	  dbt_abort_class (ctmpl);

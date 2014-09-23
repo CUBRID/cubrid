@@ -3705,7 +3705,6 @@ partition_decrement_value (DB_VALUE * val)
  * class_oid (in/out) : class OID
  * class_hfid (in/out): class HFID
  * btid (in/out) :  class BTID
- * is_global_btid (in/out): true if partitioning key is not part of the index
  *
  * Note: this function search for the partition which could contain the key
  * value and places the corresponding partition oid and btid in class_oid and
@@ -3713,8 +3712,7 @@ partition_decrement_value (DB_VALUE * val)
  */
 int
 partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key,
-			     OID * class_oid, HFID * class_hfid, BTID * btid,
-			     bool * is_global_btid)
+			     OID * class_oid, HFID * class_hfid, BTID * btid)
 {
   int error = NO_ERROR, pos = 0;
   MATCH_STATUS status = MATCH_NOT_FOUND;
@@ -3732,8 +3730,6 @@ partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key,
       return ER_FAILED;
     }
 
-  *is_global_btid = false;
-
   if (pcontext->pruning_type == DB_PARTITION_CLASS)
     {
       /* btid is the BTID of the index corresponding to the partition. Find
@@ -3743,22 +3739,6 @@ partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key,
       if (error != NO_ERROR)
 	{
 	  return error;
-	}
-    }
-  error = partition_is_global_index (pcontext->thread_p, pcontext,
-				     &pcontext->root_oid, btid, NULL,
-				     &is_global_index);
-  if (error != NO_ERROR)
-    {
-      pcontext->attr_position = -1;
-      return error;
-    }
-  else
-    {
-      if (is_global_index == 1)
-	{
-	  *is_global_btid = true;
-	  return NO_ERROR;
 	}
     }
 
@@ -3780,7 +3760,6 @@ partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key,
        * key value (for example, if this is called by ON DUPLICATE KEY UPDATE
        * but the value that is being inserted will throw an error anyway)
        */
-      *is_global_btid = true;
       return NO_ERROR;
     }
   else if (pruningset_popcount (&pruned) != 1)
@@ -3790,8 +3769,6 @@ partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key,
       OID_SET_NULL (class_oid);
       return NO_ERROR;
     }
-
-  *is_global_btid = false;
 
   pruningset_iterator_init (&pruned, &it);
   pos = pruningset_iterator_next (&it);
@@ -3880,7 +3857,6 @@ partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext,
   int error = NO_ERROR, i = 0;
   char *btree_name = NULL;
   BTREE_TYPE btree_type;
-  int is_global_index;
   PARTITION_SPEC_TYPE *part = NULL;
 
   assert_release (helper != NULL);
@@ -3888,7 +3864,6 @@ partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext,
   helper->btids = NULL;
   helper->hfids = NULL;
   helper->count = 0;
-  helper->is_global_index = true;
 
   if (spec->pruning_type != DB_PARTITIONED_CLASS || !spec->pruned)
     {
@@ -3926,25 +3901,6 @@ partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext,
       goto cleanup;
     }
 
-  error = partition_is_global_index (pcontext->thread_p, pcontext,
-				     &pcontext->root_oid, root_btid,
-				     &btree_type, &is_global_index);
-  if (error != NO_ERROR)
-    {
-      goto cleanup;
-    }
-
-  if (is_global_index > 0)
-    {
-      /* global index, no need to search through each partition */
-      helper->is_global_index = true;
-      helper->btids = NULL;
-      goto cleanup;
-    }
-
-  /* any other index is a local index */
-  helper->is_global_index = false;
-
   /* get local BTIDs for pruned partitions */
   helper->btids = (BTID *) db_private_alloc (pcontext->thread_p,
 					     pruned_count * sizeof (BTID));
@@ -3976,7 +3932,6 @@ cleanup:
 	  db_private_free_and_init (pcontext->thread_p, helper->hfids);
 	}
       helper->count = 0;
-      helper->is_global_index = true;
     }
 
   if (btree_name != NULL)
@@ -3986,6 +3941,7 @@ cleanup:
   return error;
 }
 
+#if 0
 /*
  * partition_is_global_index () - check if an index is global for a partitioned
  *				class
@@ -4075,6 +4031,7 @@ cleanup:
 
   return error;
 }
+#endif
 
 /*
  * partition_attrinfo_get_key () - retrieves the appropiate partitioning key

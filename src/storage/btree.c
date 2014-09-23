@@ -5526,6 +5526,7 @@ xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid,
       is_global_index = false;
       BTID_COPY (&pruned_btid, &btids[i]);
       COPY_OID (&pruned_class_oid, class_oid);
+
       if (pruning_type)
 	{
 	  /* At this point, there's no way of knowing if btids[i] refers a
@@ -5535,8 +5536,7 @@ xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid,
 	   */
 	  error = partition_prune_unique_btid (&context, &values[i],
 					       &pruned_class_oid,
-					       &pruned_hfid, &pruned_btid,
-					       &is_global_index);
+					       &pruned_hfid, &pruned_btid);
 	  if (error != NO_ERROR)
 	    {
 	      result = BTREE_ERROR_OCCURRED;
@@ -5552,32 +5552,7 @@ xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid,
 	{
 	  if (pruning_type == DB_PARTITION_CLASS)
 	    {
-	      if (is_global_index)
-		{
-		  OID found_class_oid;
-
-		  /* find the class oid for found oid */
-		  if (heap_get_class_oid (thread_p, &found_class_oid,
-					  &found_oids[idx],
-					  NEED_SNAPSHOT) == NULL)
-		    {
-		      error = ER_FAILED;
-		      result = BTREE_ERROR_OCCURRED;
-		      goto error_return;
-		    }
-		  if (!OID_EQ (&found_class_oid, class_oid))
-		    {
-		      /* Found a constraint violation on a different
-		       * partition: throw invalid partition
-		       */
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_INVALID_DATA_FOR_PARTITION, 0);
-		      error = ER_INVALID_DATA_FOR_PARTITION;
-		      result = BTREE_ERROR_OCCURRED;
-		      goto error_return;
-		    }
-		}
-	      else if (!OID_EQ (&pruned_class_oid, class_oid))
+	      if (!OID_EQ (&pruned_class_oid, class_oid))
 		{
 		  /* Found a constraint violation on a different partition:
 		   * throw invalid partition

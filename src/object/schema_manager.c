@@ -426,7 +426,8 @@ static int update_foreign_key_ref (MOP ref_clsop,
 				   SM_FOREIGN_KEY_INFO * fk_info);
 static int allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 				       SM_CLASS_CONSTRAINT * con,
-				       DB_OBJLIST * subclasses);
+				       DB_OBJLIST * subclasses,
+				       SM_TEMPLATE * template_);
 static int allocate_foreign_key (MOP classop, SM_CLASS * class_,
 				 SM_CLASS_CONSTRAINT * con,
 				 DB_OBJLIST * subclasses,
@@ -434,9 +435,11 @@ static int allocate_foreign_key (MOP classop, SM_CLASS * class_,
 static int allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
 					   SM_CLASS_CONSTRAINT * con,
 					   DB_OBJLIST * subclasses,
+					   SM_TEMPLATE * template_,
 					   bool * recache_cls_cons);
 static int allocate_disk_structures (MOP classop, SM_CLASS * class_,
-				     DB_OBJLIST * subclasses);
+				     DB_OBJLIST * subclasses,
+				     SM_TEMPLATE * template_);
 static int drop_foreign_key_ref (MOP classop, SM_CLASS_CONSTRAINT * flat_cons,
 				 SM_CLASS_CONSTRAINT * cons);
 static bool is_index_owner (MOP classop, SM_CLASS_CONSTRAINT * con);
@@ -533,6 +536,10 @@ static const char *sm_type_name (DB_TYPE id);
 #endif
 static int filter_local_constraints (SM_TEMPLATE * template_,
 				     SM_CLASS * super_class);
+static int update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate,
+					    SM_FOREIGN_KEY_INFO * fk_info,
+					    char * old_name, char * new_name,
+					    BTID * btid);
 /*
  * sc_set_current_schema()
  *      return: NO_ERROR if successful
@@ -5320,6 +5327,8 @@ sm_find_index (MOP classop, char **att_names, int num_atts,
   SM_ATTRIBUTE *att1, *att2;
   BTID *index = NULL;
   bool force_local_index = false;
+  int is_global = 0;
+
   index = NULL;
 
   error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
@@ -5362,7 +5371,13 @@ sm_find_index (MOP classop, char **att_names, int num_atts,
 	    {
 	      continue;
 	    }
-	  if (force_local_index && sm_is_global_only_constraint (con))
+	  if (sm_is_global_only_constraint (classop, con, &is_global, NULL)
+	      != NO_ERROR)
+	    {
+	      return NULL;
+	    }
+
+	  if (force_local_index && is_global)
 	    {
 	      continue;
 	    }
@@ -9353,6 +9368,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			  DB_SEQ *local_property;
 			  DB_VALUE btid_val;
 			  BTID btid;
+			  int is_global_index = 0;
 
 			  /* Get the BTID from the local constraint */
 			  DB_MAKE_NULL (&btid_val);
@@ -9376,7 +9392,16 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			   * key constraints do not share the same index so
 			   * it's expected to have different btid in this case
 			   */
-			  if (sm_is_global_only_constraint (c)
+			  if (sm_is_global_only_constraint (super->op, c,
+							    &is_global_index,
+							    def)
+			      != NO_ERROR)
+			    {
+			      pr_clear_value (&cnstr_val);
+			      goto structure_error;
+			    }
+
+			  if (is_global_index == 1
 			      && !BTID_IS_EQUAL (&btid, &c->index_btid)
 			      && SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
 			    {
@@ -9387,8 +9412,16 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 		      else
 			{
 			  BTID index_btid;
+			  int is_global_index = 0;
+
 			  BTID_SET_NULL (&index_btid);
-			  if (sm_is_global_only_constraint (c))
+			  if (sm_is_global_only_constraint (super->op, c,
+			      &is_global_index, def) != NO_ERROR)
+			    {
+			      goto structure_error;
+			    }
+
+			  if (is_global_index == 1)
 			    {
 			      /* unique indexes are shared indexes */
 			      BTID_COPY (&index_btid, &c->index_btid);
@@ -10790,6 +10823,15 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
       return er_errid ();
     }
 
+  error = update_fk_ref_partitioned_class (template_, fk_info, NULL, NULL,
+					   NULL);
+  if (error != NO_ERROR)
+    {
+      dbt_abort_class (template_);
+      AU_ENABLE (save);
+      return error;
+    }
+
   error = classobj_put_foreign_key_ref (&(template_->properties), fk_info);
   if (error != NO_ERROR)
     {
@@ -10862,6 +10904,15 @@ sm_rename_foreign_key_ref (MOP ref_clsop, char *old_name, char *new_name)
       return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
     }
 
+  error = update_fk_ref_partitioned_class (template_, NULL, old_name, new_name,
+					   NULL);
+  if (error != NO_ERROR)
+    {
+      dbt_abort_class (template_);
+      AU_ENABLE (save);
+      return error;
+    }
+
   error =
     classobj_rename_foreign_key_ref (&(template_->properties), old_name,
 				     new_name);
@@ -10891,18 +10942,23 @@ sm_rename_foreign_key_ref (MOP ref_clsop, char *old_name, char *new_name)
  *   class(in): class structure
  *   con(in):constraint info
  *   subclasses(in): sub class list
- *   asc_desc(in): asc/desc info list
+ *   template_(in): template
  */
 static int
 allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 			    SM_CLASS_CONSTRAINT * con,
-			    DB_OBJLIST * subclasses)
+			    DB_OBJLIST * subclasses,
+			    SM_TEMPLATE * template_)
 {
   int unique_pk, not_null, reverse;
   SM_CLASS *super_class;
   SM_CLASS_CONSTRAINT *super_con, *shared_con;
   const int *asc_desc;
-  bool is_local = true;
+  int is_global = 0;
+  DB_CLASS_PARTITION_TYPE partition_type = DB_NOT_PARTITIONED_CLASS;
+  SM_ATTRIBUTE *attr = NULL;
+  SM_ATTRIBUTE *key_attr = NULL;
+  int i = 0, j = 0;
 
   /* At this point, we have to distinguish between the following cases:
    *  1. This is a subclass and the constraint is inherited
@@ -10917,22 +10973,59 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
    *     duplicated in the subclasses
    *      -> create the constraint and only load data from this class
    */
+
+ assert (con->attributes != NULL);
+
+ attr = &class_->attributes[0];
+ while (attr != NULL && i < class_->att_count)
+   {
+     if (attr->flags & SM_ATTFLAG_PARTITION_KEY)
+       {
+	 /* if the attribute is part of the partitioning key,
+	  * it must be present in the unique key
+	  */
+	 j = 0;
+	 key_attr = con->attributes[0];
+	 while (key_attr != NULL)
+	   {
+	     if (key_attr->id == attr->id)
+	       {
+		 /* attribute found */
+		 break;
+	       }
+	     j++;
+	     key_attr = con->attributes[j];
+	   }
+	 if (key_attr == NULL)
+	   {
+	     /* attribute not found, raise an error */
+	     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		     ER_SM_INVALID_UNIQUE_IDX_PARTITION, 0);
+	     return ER_SM_INVALID_UNIQUE_IDX_PARTITION;
+	   }
+       }
+     i++;
+     attr = &class_->attributes[i];
+  }
+
   if (con->attributes[0]->class_mop != classop)
     {
       /* This is an inherited constraint */
-      is_local = false;
+      is_global = 1;
 
-      if (!sm_is_global_only_constraint (con))
+      if (sm_is_global_only_constraint (con->attributes[0]->class_mop, con,
+					&is_global, template_) != NO_ERROR)
 	{
-	  /* This constraint is duplicated in subclasses: case 4 */
-	  is_local = true;
+	  return er_errid ();
 	}
     }
 
-  if (is_local)
+  if (is_global == 0)
     {
       /* its local, allocate our very own index */
       DB_OBJLIST *local_subclasses = NULL;
+      int is_global_cnst = 0;
+
       unique_pk = BTREE_CONSTRAINT_UNIQUE;
       if (con->type == SM_CONSTRAINT_PRIMARY_KEY)
 	{
@@ -10941,7 +11034,13 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
 
       if (con->attributes[0]->class_mop == classop)
 	{
-	  if (sm_is_global_only_constraint (con))
+	  if (sm_is_global_only_constraint (classop, con, &is_global_cnst,
+					    template_)
+	      != NO_ERROR)
+	    {
+	      return er_errid ();
+	    }
+	  if (is_global_cnst)
 	    {
 	      /* This is an inherited constraint, load subclasses: case 3 */
 	      local_subclasses = subclasses;
@@ -11120,12 +11219,14 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
  *   class(in): class structure
  *   con(in):constraint info
  *   subclasses(in): sub class list
+ *   template_(in): object template
  *   recache_cls_cons(out):
  */
 static int
 allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
 				SM_CLASS_CONSTRAINT * con,
 				DB_OBJLIST * subclasses,
+				SM_TEMPLATE * template_,
 				bool * recache_cls_cons)
 {
   int error = NO_ERROR;
@@ -11142,7 +11243,8 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
       if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type))
 	{
 	  error =
-	    allocate_unique_constraint (classop, class_, con, subclasses);
+	    allocate_unique_constraint (classop, class_, con, subclasses,
+					template_);
 	}
       else if (con->type == SM_CONSTRAINT_INDEX ||
 	       con->type == SM_CONSTRAINT_REVERSE_INDEX)
@@ -11201,11 +11303,12 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_,
  *   return: The number of indexes of the table on success, non-zero for ERROR
  *   classop(in): class object
  *   class(in): class structure
+ *   template_(in): object template
  *   subclasses(in):
  */
 static int
 allocate_disk_structures (MOP classop, SM_CLASS * class_,
-			  DB_OBJLIST * subclasses)
+			  DB_OBJLIST * subclasses, SM_TEMPLATE * template_)
 {
   SM_CLASS_CONSTRAINT *con;
   int num_indexes = 0;
@@ -11236,7 +11339,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 	  && con->attributes[0] != NULL && con->shared_cons_name == NULL)
 	{
 	  if (allocate_disk_structures_index (classop, class_, con,
-					      subclasses,
+					      subclasses, template_,
 					      &recache_cls_cons) != NO_ERROR)
 	    {
 	      goto structure_error;
@@ -11254,6 +11357,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
 	{
 	  if (allocate_disk_structures_index (classop, class_, con,
 					      subclasses,
+					      template_,
 					      &recache_cls_cons) != NO_ERROR)
 	    {
 	      goto structure_error;
@@ -11377,6 +11481,13 @@ drop_foreign_key_ref (MOP classop,
 	  return er_errid ();
 	}
 
+      err = update_fk_ref_partitioned_class (refcls_template, NULL, NULL, NULL,
+					     &cons->index_btid);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+
       err = classobj_drop_foreign_key_ref (&refcls_template->properties,
 					   &cons->index_btid);
       if (err != NO_ERROR)
@@ -11414,6 +11525,7 @@ static bool
 is_index_owner (MOP classop, SM_CLASS_CONSTRAINT * con)
 {
   MOP origin_classop;
+  int is_global = 0;
 
   origin_classop = con->attributes[0]->class_mop;
 
@@ -11425,7 +11537,11 @@ is_index_owner (MOP classop, SM_CLASS_CONSTRAINT * con)
   /* we are not the owner of this index so it belongs to us only if it is not
    * a global constraint
    */
-  return !sm_is_global_only_constraint (con);
+  if (sm_is_global_only_constraint (classop, con, &is_global, NULL) != NO_ERROR)
+    {
+      return false;
+    }
+  return !is_global;
 }
 
 /*
@@ -11554,6 +11670,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
   bool is_partitioned;
   BTID btid;
   MOP origin_classop;
+  int is_global_index = 0;
 
   /* Get the cached constraint info for the flattened template.
    * Sigh, convert the template property list to a transient constraint
@@ -11746,8 +11863,11 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
   for (con = flat_constraints;
        ((con != NULL) && (error == NO_ERROR)); con = con->next)
     {
+      is_global_index = 0;
+      error = sm_is_global_only_constraint (classop, con, &is_global_index,
+					    flat);
       if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type)
-	  && sm_is_global_only_constraint (con)
+	  && is_global_index == 1
 	  && BTID_IS_NULL (&(con->index_btid)))
 	{
 	  error = inherit_constraint (classop, con);
@@ -12680,7 +12800,7 @@ update_subclasses (DB_OBJLIST * subclasses)
 		   *   remove allocated_disk_structures
 		   */
 		  num_indexes = allocate_disk_structures (sub->op, class_,
-							  NULL);
+							  NULL, NULL);
 		  if (num_indexes > 0)
 		    {
 		      error = sm_update_statistics (sub->op,
@@ -13022,7 +13142,8 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
    * class have different schema.
    */
 
-  num_indexes = allocate_disk_structures (template_->op, class_, newsubs);
+  num_indexes = allocate_disk_structures (template_->op, class_, newsubs,
+					  template_);
   if (num_indexes < 0)
     {
       error = num_indexes;
@@ -13069,7 +13190,8 @@ error_return:
   abort_subclasses (newsubs);
   if (error == ER_BTREE_UNIQUE_FAILED || error == ER_FK_INVALID
       || error == ER_SM_PRIMARY_KEY_EXISTS
-      || error == ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE)
+      || error == ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE
+      || error == ER_SM_INVALID_UNIQUE_IDX_PARTITION)
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_NAME);
     }
@@ -15955,6 +16077,7 @@ filter_local_constraints (SM_TEMPLATE * template_, SM_CLASS * super_class)
   DB_SEQ *seq;
   DB_VALUE oldval, newval;
   int error = NO_ERROR, found = 0;
+  int is_global_index = 0;
 
   assert_release (template_ != NULL);
   assert_release (super_class != NULL);
@@ -16000,12 +16123,20 @@ filter_local_constraints (SM_TEMPLATE * template_, SM_CLASS * super_class)
     {
       if (c->type != SM_CONSTRAINT_FOREIGN_KEY
 	  && c->type != SM_CONSTRAINT_UNIQUE
-	  && c->type != SM_CONSTRAINT_REVERSE_UNIQUE)
+	  && c->type != SM_CONSTRAINT_REVERSE_UNIQUE
+	  && c->type != SM_CONSTRAINT_PRIMARY_KEY)
 	{
 	  continue;
 	}
+      is_global_index = 0;
+      error = sm_is_global_only_constraint (template_->op, c, &is_global_index,
+					    template_);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
       if (c->type != SM_CONSTRAINT_FOREIGN_KEY
-	  && sm_is_global_only_constraint (c))
+	  && is_global_index == 1)
 	{
 	  continue;
 	}
@@ -16111,29 +16242,33 @@ sm_free_filter_index_info (SM_PREDICATE_INFO * filter_index_info)
 /*
  * sm_is_global_only_constraint () - verify if this constraint must be global
  *				     across a class hierarchy
- * return : true/false
+ * return : whether is global, local or error code
+ * classmop (in) : the class to which this constraint belongs to
  * constraint (in) : constraint
- * super_class (in) : the class to which this constraint belongs to
  * Note:
  *  SM_CONSTRAINT_INDEX		  - always local
  *  SM_CONSTRAINT_REVERSE_INDEX	  - always local
  *  SM_CONSTRAINT_FOREIGN_KEY	  - always local
  *  SM_CONSTRAINT_UNIQUE	  - global unless this is a partitioned class
- *				    and the partitioning key belongs to the
- *				    index
  *  SM_CONSTRAINT_REVERSE_UNIQUE  - same as SM_CONSTRAINT_UNIQUE
- *  SM_CONSTRAINT_PRIMARY_KEY	  - always global
+ *  SM_CONSTRAINT_PRIMARY_KEY	  - always global unless this is a partitioned
+ *				    class
  */
-bool
-sm_is_global_only_constraint (SM_CLASS_CONSTRAINT * constraint)
+int
+sm_is_global_only_constraint (MOP classmop, SM_CLASS_CONSTRAINT * constraint,
+			      int *is_global, SM_TEMPLATE *template_)
 {
   SM_ATTRIBUTE *attr = NULL;
-  int i;
+  int partition_type;
+  int i = 0;
+  bool has_partition = false;
+
+  *is_global = 0;
 
   if (constraint == NULL)
     {
       assert_release (constraint != NULL);
-      return false;
+      return 0;
     }
 
   switch (constraint->type)
@@ -16147,31 +16282,54 @@ sm_is_global_only_constraint (SM_CLASS_CONSTRAINT * constraint)
     case SM_CONSTRAINT_FOREIGN_KEY:
     case SM_CONSTRAINT_NOT_NULL:
       /* always local */
-      return false;
+      *is_global = 0;
+      return NO_ERROR;
     case SM_CONSTRAINT_PRIMARY_KEY:
       /* always global */
-      return true;
+      break;
     }
 
-  if (constraint->attributes == NULL)
-    {
-      return false;
-    }
+  /* the condition for unique indexes on partitions has already been checked
+   * during the creation of the B-tree
+   */
 
-  i = 0;
+  assert (constraint->attributes != NULL);
+
   attr = constraint->attributes[0];
+  i = 0;
+  has_partition = false;
   while (attr != NULL)
     {
       if (attr->flags & SM_ATTFLAG_PARTITION_KEY)
 	{
-	  /* partitioning key belongs to the constraint, it can be local */
-	  return false;
+	  has_partition = true;
+	  break;
 	}
       i++;
       attr = constraint->attributes[i];
     }
 
-  return true;
+  if (has_partition == true
+      && (template_ == NULL || (template_->inheritance == NULL
+				&& template_->partition_parent_atts == NULL)
+	  || template_->partition_of != NULL))
+    {
+      *is_global = 0;
+      return NO_ERROR;
+    }
+
+  if (template_ != NULL)
+    {
+      if (template_->inheritance != NULL
+	  && template_->partition_parent_atts != NULL)
+	{
+	  *is_global = 0;
+	  return NO_ERROR;
+	}
+    }
+
+  *is_global = 1;
+  return NO_ERROR;
 }
 
 /*
@@ -16343,4 +16501,158 @@ error:
     }
 
   return error_code;
+}
+
+/*
+ * update_fk_ref_partitioned_class () - This function renames
+ *                   constraints in sub-classes(partition classes).
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   ctemplate(in): sm_template of the super class (partition class)
+ *   fk_info(in): foreign key reference info of super class (partition class)
+ *   old_name(in):
+ *   new_name(in):
+ *   btid(in): btid of the foreign key reference
+ */
+static int
+update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate,
+				 SM_FOREIGN_KEY_INFO * fk_info,
+				 char * old_name, char * new_name, BTID * btid)
+{
+  int error = NO_ERROR;
+  int i, is_partition = 0;
+  MOP *sub_partitions = NULL;
+  SM_TEMPLATE *sub_ctemplate = NULL;
+  SM_CLASS_CONSTRAINT *sm_cons = NULL;
+  SM_CLASS_CONSTRAINT * con = NULL;
+
+  assert (ctemplate != NULL);
+
+  error = sm_partitioned_class_type (ctemplate->op, &is_partition, NULL,
+				     &sub_partitions);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  if (is_partition == DB_PARTITION_CLASS)
+    {
+      error = ER_NOT_ALLOWED_ACCESS_TO_PARTITION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto error_exit;
+    }
+  else if (is_partition == DB_NOT_PARTITIONED_CLASS)
+    {
+      goto end;
+    }
+
+  assert (is_partition == DB_PARTITIONED_CLASS);
+
+  for (i = 0; sub_partitions[i] != 0; i++)
+    {
+      sub_ctemplate = smt_edit_class_mop (sub_partitions[i], AU_INDEX);
+      if (sub_ctemplate == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  assert (error != NO_ERROR);
+	  goto error_exit;
+	}
+
+      /* make a list of constraints that is included in the partitioned class. */
+      error = classobj_make_class_constraints (sub_ctemplate->properties,
+					       sub_ctemplate->attributes,
+					       &sm_cons);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      if (sm_cons == NULL)
+	{
+	  error = ER_SM_CONSTRAINT_NOT_FOUND;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
+	  goto error_exit;
+	}
+
+      if (old_name != NULL)
+	{
+	  con = classobj_find_constraint_by_name (sm_cons, old_name);
+	  if (con == NULL)
+	    {
+	      error = ER_SM_CONSTRAINT_NOT_FOUND;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, old_name);
+	      goto error_exit;
+	    }
+	}
+
+      if (old_name != NULL && new_name != NULL)
+	{
+	  error = classobj_rename_foreign_key_ref (&sub_ctemplate->properties,
+						   old_name, new_name);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+      else
+	{
+	  if (fk_info != NULL)
+	    {
+	      error = classobj_put_foreign_key_ref (&sub_ctemplate->properties,
+						    fk_info);
+	      if (error != NO_ERROR)
+		{
+		  goto error_exit;
+		}
+	    }
+	  else if (btid != NULL)
+	    {
+	      error = classobj_drop_foreign_key_ref (&sub_ctemplate->properties,
+						     btid);
+	      if (error != NO_ERROR)
+		{
+		  goto error_exit;
+		}
+	    }
+	  else
+	    {
+	      assert (false);
+	    }
+	}
+
+      if (sm_cons)
+	{
+	  classobj_free_class_constraints (sm_cons);
+	  sm_cons = NULL;
+	}
+
+      /* classobj_free_template() is included in sm_update_class() */
+      error = sm_update_class (sub_ctemplate, NULL);
+      if (error != NO_ERROR)
+	{
+	  /* Even though sm_update() did not return NO_ERROR,
+	   * sub_ctemplate is already freed */
+	  sub_ctemplate = NULL;
+	  goto error_exit;
+	}
+    }
+
+end:
+  if (sub_partitions != NULL)
+    {
+      free_and_init (sub_partitions);
+    }
+  return error;
+
+error_exit:
+  if (sm_cons)
+    {
+      classobj_free_class_constraints (sm_cons);
+    }
+  if (sub_ctemplate != NULL)
+    {
+      /* smt_quit() always returns NO_ERROR */
+      smt_quit (sub_ctemplate);
+    }
+  goto end;
 }

@@ -348,7 +348,10 @@ extern int sm_has_non_null_attribute (SM_ATTRIBUTE ** attrs);
 extern void sm_free_function_index_info (SM_FUNCTION_INFO * func_index_info);
 extern void sm_free_filter_index_info (SM_PREDICATE_INFO * filter_index_info);
 
-extern bool sm_is_global_only_constraint (SM_CLASS_CONSTRAINT * constraint);
+extern int sm_is_global_only_constraint (MOP classmop,
+					 SM_CLASS_CONSTRAINT * constraint,
+					 int * is_global,
+					 SM_TEMPLATE * template_);
 
 extern int sm_rename_foreign_key_ref (MOP ref_clsop, char *old_name,
 				      char *new_name);

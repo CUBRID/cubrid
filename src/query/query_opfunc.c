@@ -8185,24 +8185,7 @@ qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p,
 
   if ((agg_p->function == PT_MIN) || (agg_p->function == PT_MAX))
     {
-      int is_global_index = 0;
-
       flag_btree_stat_needed = false;
-
-      if (super_oid && !OID_ISNULL (super_oid))
-	{
-	  if (partition_is_global_index (thread_p, NULL, super_oid,
-					 &agg_p->btid, NULL, &is_global_index)
-	      != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	  if (is_global_index != 0)
-	    {
-	      agg_p->flag_agg_optimize = false;
-	      return ER_FAILED;
-	    }
-	}
     }
 
   if (flag_btree_stat_needed)
@@ -8294,7 +8277,7 @@ qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p,
     {
       return error;
     }
-  if (!BTID_IS_NULL (&agg_p->btid) && helper->is_global_index)
+  if (!BTID_IS_NULL (&agg_p->btid))
     {
       /* If this is a global index, there's no need to go into the hierarchy,
        * the result is already correctly computed

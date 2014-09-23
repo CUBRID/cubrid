@@ -128,8 +128,7 @@ extern int partition_prune_update (THREAD_ENTRY * thread_p,
 
 extern int partition_prune_unique_btid (PRUNING_CONTEXT * pcontext,
 					DB_VALUE * key, OID * class_oid,
-					HFID * class_hfid, BTID * btid,
-					bool * is_global_btid);
+					HFID * class_hfid, BTID * btid);
 
 extern int partition_get_partition_oids (THREAD_ENTRY * thread_p,
 					 const OID * class_oid,
@@ -141,11 +140,14 @@ extern int partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext,
 					    BTID * root_btid,
 					    HIERARCHY_AGGREGATE_HELPER *
 					    helper);
+#if 0
 extern int partition_is_global_index (THREAD_ENTRY * thread_p,
 				      PRUNING_CONTEXT * contextp,
 				      OID * class_oid, BTID * btid,
 				      BTREE_TYPE * btree_typep,
 				      int *is_global_index);
+#endif
+
 extern int partition_find_root_class_oid (THREAD_ENTRY * thread_p,
 					  const OID * class_oid,
 					  OID * super_oid);
