@@ -4032,6 +4032,7 @@ static const char *
 or_get_attr_string (RECDES * record, int attr_id, int attr_index)
 {
   char *diskatt, *attr = NULL;
+  int offset, offset_pre = -1;
 
   assert (attr_index < ORC_ATT_LAST_INDEX);
 
@@ -4043,8 +4044,13 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index)
        * Get the attribute name.
        */
       unsigned char len;
+      offset = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index);
+      if (attr_index > 0)
+	{
+	  offset_pre = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index - 1);
+	}
 
-      attr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index));
+      attr = diskatt + offset;
 
       /*
        * kludge kludge kludge
@@ -4052,8 +4058,9 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index)
        * length before returning it.  Note that this also depends on the
        * stored string being NULL terminated.
        */
+
       len = *((unsigned char *) attr);
-      if (len == 0)
+      if (len == 0 || offset == offset_pre)
 	{
 	  attr = NULL;
 	}
