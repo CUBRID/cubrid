@@ -11601,7 +11601,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 	    }
 	  error_code = partition_prune_unique_btid (pcontext, key_dbvalue,
 						    &pruned_oid, &pruned_hfid,
-						    &btid);
+						    &btid, &is_global_index);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -11616,8 +11616,41 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p,
 
       if (r == BTREE_KEY_FOUND)
 	{
-	  if (pruning_type != DB_NOT_PARTITIONED_CLASS)
+	  if (pruning_type && is_global_index)
 	    {
+	      /* Key could not be used to perform pruning. This happens when
+	       * the partitioning key is not part of the index, in which case,
+	       * key_dbvalue does not contain pruning information. We have to
+	       * find the actual class to which this OID belongs to.
+	       */
+	      int partidx = 0;
+	      bool found_partition = false;
+
+	      /* get actual class oid */
+	      if (heap_get_class_oid (thread_p, &pruned_oid, &unique_oid,
+				      DONT_NEED_SNAPSHOT) == NULL)
+		{
+		  goto error_exit;
+		}
+	      if (pruning_type == DB_PARTITION_CLASS)
+		{
+		  /* make sure data belongs to the right partition */
+		  if (!OID_EQ
+		      (&pruned_oid, &pcontext->selected_partition->class_oid))
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_INVALID_DATA_FOR_PARTITION, 0);
+		      goto error_exit;
+		    }
+		}
+	      /* get actual class hfid */
+	      error_code = heap_get_hfid_from_class_oid (thread_p,
+							 &pruned_oid,
+							 &pruned_hfid);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error_exit;
+		}
 	      COPY_OID (&attr_info->inst_oid, &unique_oid);
 	    }
 
@@ -11884,7 +11917,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 	    }
 	  error_code = partition_prune_unique_btid (pcontext, key_dbvalue,
 						    &class_oid, &class_hfid,
-						    &btid);
+						    &btid, &is_global_index);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -11897,8 +11930,22 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 
       if (r == BTREE_KEY_FOUND)
 	{
-	  if (pruning_type != DB_NOT_PARTITIONED_CLASS)
+	  if (pruning_type != DB_NOT_PARTITIONED_CLASS && is_global_index)
 	    {
+	      /* get actual class oid */
+	      if (heap_get_class_oid (thread_p, &class_oid, &unique_oid,
+				      DONT_NEED_SNAPSHOT) == NULL)
+		{
+		  goto error_exit;
+		}
+	      /* get actual class hfid */
+	      error_code = heap_get_hfid_from_class_oid (thread_p,
+							 &class_oid,
+							 &class_hfid);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error_exit;
+		}
 	      COPY_OID (&attr_info->inst_oid, &unique_oid);
 	    }
 
@@ -11931,7 +11978,22 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p,
 	   */
 	  if (pruning_type == DB_PARTITION_CLASS)
 	    {
-	      if (!OID_EQ (&class_oid,
+	      OID pruned_class;
+	      if (is_global_index)
+		{
+		  /* find the class to which unique_oid belongs to */
+		  if (heap_get_class_oid (thread_p, &pruned_class,
+					  &unique_oid,
+					  DONT_NEED_SNAPSHOT) == NULL)
+		    {
+		      goto error_exit;
+		    }
+		}
+	      else
+		{
+		  COPY_OID (&pruned_class, &class_oid);
+		}
+	      if (!OID_EQ (&pruned_class,
 			   &pcontext->selected_partition->class_oid))
 		{
 		  /* found a duplicate OID but not in the right partition */
@@ -29299,6 +29361,7 @@ qexec_init_agg_hierarchy_helpers (THREAD_ENTRY * thread_p,
     {
       helpers[i].btids = NULL;
       helpers[i].hfids = NULL;
+      helpers[i].is_global_index = false;
     }
 
   /* count pruned partitions */

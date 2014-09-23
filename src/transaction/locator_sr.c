@@ -4154,18 +4154,14 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
   int num_found, i;
   HEAP_CACHE_ATTRINFO index_attrinfo;
   HEAP_IDX_ELEMENTS_INFO idx_info;
-  BTID btid, local_btid;
+  BTID btid;
   DB_VALUE *key_dbvalue;
   DB_VALUE dbvalue;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   OR_INDEX *index;
   OID unique_oid;
-  OID part_oid;
-  HFID class_hfid;
   bool is_null;
   int error_code = NO_ERROR;
-  PRUNING_CONTEXT pcontext;
-  bool clear_pcontext = false;
 
   DB_MAKE_NULL (&dbvalue);
 
@@ -4217,33 +4213,9 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
 
       if (!is_null)
 	{
-	  (void) partition_init_pruning_context (&pcontext);
-	  clear_pcontext = true;
-	  error_code = partition_load_pruning_context(thread_p,
-						      &index->fk->ref_class_oid,
-						      DB_PARTITIONED_CLASS,
-						      &pcontext);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  BTID_COPY (&local_btid, &index->fk->ref_class_pk_btid);
-	  COPY_OID (&part_oid, &index->fk->ref_class_oid);
-
-	  if (pcontext.partitions != NULL)
-	    {
-	      error_code = partition_prune_unique_btid (&pcontext, key_dbvalue,
-							&part_oid, &class_hfid,
-							&local_btid);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error;
-		}
-	    }
-	  if (xbtree_find_unique (thread_p, &local_btid,
+	  if (xbtree_find_unique (thread_p, &index->fk->ref_class_pk_btid,
 				  S_SELECT, key_dbvalue,
-				  &part_oid, &unique_oid,
+				  &index->fk->ref_class_oid, &unique_oid,
 				  true) != BTREE_KEY_FOUND)
 	    {
 	      char *val_print = NULL;
@@ -4280,10 +4252,6 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid,
     }
 
 error:
-  if (clear_pcontext == true)
-    {
-      partition_clear_pruning_context (&pcontext);
-    }
   heap_attrinfo_end (thread_p, &index_attrinfo);
   return error_code;
 }

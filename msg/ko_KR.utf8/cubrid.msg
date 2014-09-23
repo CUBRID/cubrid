@@ -1235,8 +1235,7 @@ $ LOADDB
 1166 The specified combination of date and time do not exist (during daylight saving interval).
 1167 Comment string cannot have more than 1024 bytes.
 1168 Unable to update statistics on table (%1$s) because a lock is not immediately granted.
-1169 Partition key attributes must be present in the index key.
-1170 마지막 에러
+1169 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

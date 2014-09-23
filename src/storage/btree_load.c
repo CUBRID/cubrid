@@ -3253,12 +3253,8 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
   int force_count;
   HEAP_SCANCACHE upd_scancache;
   int ret = NO_ERROR;
-  OID part_oid;
-  HFID class_hfid;
-  BTID local_btid;
-  PRUNING_CONTEXT pcontext;
-  bool clear_pcontext = false;
 
+  /* TO DO - adapt this function to MVCC */
   DB_MAKE_NULL (&val);
   OID_SET_NULL (&unique_oid);
 
@@ -3271,61 +3267,28 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
       is_null = DB_IS_NULL (keyval);
     }
 
-  if (!is_null)
-    {
-      (void) partition_init_pruning_context (&pcontext);
-      clear_pcontext = true;
-      ret = partition_load_pruning_context(thread_p, pk_cls_oid,
-					   DB_PARTITIONED_CLASS, &pcontext);
-      if (ret != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-
-      BTID_COPY (&local_btid, pk_btid);
-      COPY_OID (&part_oid, pk_cls_oid);
-
-      if (pcontext.partitions != NULL)
-	{
-	  ret = partition_prune_unique_btid (&pcontext, keyval,
-					     &part_oid, &class_hfid,
-					     &local_btid);
-	  if (ret != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-      if (xbtree_find_unique (thread_p, &local_btid, S_SELECT, keyval,
-			     &part_oid, &unique_oid,
+  if (!is_null
+      && xbtree_find_unique (thread_p, pk_btid, S_SELECT, keyval,
+			     pk_cls_oid, &unique_oid,
 			     true) != BTREE_KEY_FOUND)
-	{
-	  char *val_print = NULL;
-
-	  val_print = pr_valstring (keyval);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, fk_name,
-		  (val_print ? val_print : "unknown value"));
-	  if (val_print)
-	    {
-	      free_and_init (val_print);
-	    }
-	  ret = ER_FK_INVALID;
-	  goto exit_on_error;
-	}
-    }
-
-  if (clear_pcontext == true)
     {
-      partition_clear_pruning_context (&pcontext);
+      char *val_print = NULL;
+
+      val_print = pr_valstring (keyval);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, fk_name,
+	      (val_print ? val_print : "unknown value"));
+      if (val_print)
+	{
+	  free_and_init (val_print);
+	}
+      ret = ER_FK_INVALID;
+      goto exit_on_error;
     }
 
   return ret;
 
 exit_on_error:
 
-  if (clear_pcontext == true)
-    {
-      partition_clear_pruning_context (&pcontext);
-    }
   return (ret == NO_ERROR
 	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }

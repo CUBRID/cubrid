@@ -1492,9 +1492,7 @@
 
 #define ER_UPDATE_STAT_CANNOT_GET_LOCK              -1168
 
-#define ER_SM_INVALID_UNIQUE_IDX_PARTITION	    -1169
-
-#define ER_LAST_ERROR                               -1170
+#define ER_LAST_ERROR                               -1169
 
 #define DB_TRUE 1
 #define DB_FALSE 0
