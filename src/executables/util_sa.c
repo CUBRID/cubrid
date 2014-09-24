@@ -1176,6 +1176,7 @@ installdb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
+  char lob_path_buf[PATH_MAX];
   const char *server_name;
   const char *db_path;
   const char *log_path;
@@ -1231,6 +1232,14 @@ installdb (UTIL_FUNCTION_ARG * arg)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
+    }
+  if (db->lobpath == NULL)
+    {
+      /* assign the data volume directory */
+      snprintf (lob_path_buf, sizeof (lob_path_buf), "%s%s%clob",
+		LOB_PATH_DEFAULT_PREFIX, db->pathname, PATH_SEPARATOR);
+      lob_path_buf[PATH_MAX - 1] = '\0';
+      db->lobpath = strdup (lob_path_buf);
     }
 
   cfg_write_directory (dir);
