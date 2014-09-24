@@ -5973,10 +5973,14 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 
 	    err_code = ut_str_to_float ((char *) value, &f_val);
 	    if (err_code < 0)
-	      return err_code;
+	      {
+		return err_code;
+	      }
 	    ALLOC_COPY_FLOAT (bind_value->value, f_val);
 	    if (bind_value->value == NULL)
-	      return CCI_ER_NO_MORE_MEMORY;
+	      {
+		return CCI_ER_NO_MORE_MEMORY;
+	      }
 	    bind_value->size = sizeof (float);
 	    bind_value->flag = BIND_PTR_DYNAMIC;
 	  }
@@ -5985,12 +5989,17 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_DOUBLE:
 	  {
 	    double d_val;
+
 	    err_code = ut_str_to_double ((char *) value, &d_val);
 	    if (err_code < 0)
-	      return err_code;
+	      {
+		return err_code;
+	      }
 	    ALLOC_COPY_DOUBLE (bind_value->value, d_val);
 	    if (bind_value->value == NULL)
-	      return CCI_ER_NO_MORE_MEMORY;
+	      {
+		return CCI_ER_NO_MORE_MEMORY;
+	      }
 	    bind_value->size = sizeof (double);
 	    bind_value->flag = BIND_PTR_DYNAMIC;
 	  }
@@ -5998,6 +6007,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_DATE:
 	  {
 	    T_CCI_DATE date = { 0, 0, 0, 0, 0, 0, 0 };
+
 	    err_code = ut_str_to_date ((char *) value, &date);
 	    if (err_code < 0)
 	      return err_code;
@@ -6011,6 +6021,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_TIME:
 	  {
 	    T_CCI_DATE date = { 0, 0, 0, 0, 0, 0, 0 };
+
 	    err_code = ut_str_to_time ((char *) value, &date);
 	    if (err_code < 0)
 	      return err_code;
@@ -6024,8 +6035,8 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_TIMETZ:
 	  {
 	    T_CCI_DATE_TZ date_tz = { 0, 0, 0, 0, 0, 0, 0, "" };
-	    err_code = ut_str_to_timetz ((char *) value,
-					 (T_CCI_DATE *) (&date_tz));
+
+	    err_code = ut_str_to_timetz ((char *) value, &date_tz);
 	    if (err_code < 0)
 	      {
 		return err_code;
@@ -6043,12 +6054,17 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_TIMESTAMP:
 	  {
 	    T_CCI_DATE date = { 0, 0, 0, 0, 0, 0, 0 };
+
 	    err_code = ut_str_to_timestamp ((char *) value, &date);
 	    if (err_code < 0)
-	      return err_code;
+	      {
+		return err_code;
+	      }
 	    ALLOC_COPY_DATE (bind_value->value, date);
 	    if (bind_value->value == NULL)
-	      return CCI_ER_NO_MORE_MEMORY;
+	      {
+		return CCI_ER_NO_MORE_MEMORY;
+	      }
 	    bind_value->size = sizeof (T_CCI_DATE);
 	    bind_value->flag = BIND_PTR_DYNAMIC;
 	  }
@@ -6057,8 +6073,8 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	  {
 	    const char *p_tz = NULL;
 	    T_CCI_DATE_TZ date_tz = { 0, 0, 0, 0, 0, 0, 0, "" };
-	    err_code = ut_str_to_timestamp ((char *) value,
-					    (T_CCI_DATE *) (&date_tz));
+
+	    err_code = ut_str_to_timestamptz ((char *) value, &date_tz);
 	    if (err_code < 0)
 	      {
 		return err_code;
@@ -6076,12 +6092,17 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_DATETIME:
 	  {
 	    T_CCI_DATE date = { 0, 0, 0, 0, 0, 0, 0 };
+
 	    err_code = ut_str_to_datetime ((char *) value, &date);
 	    if (err_code < 0)
-	      return err_code;
+	      {
+		return err_code;
+	      }
 	    ALLOC_COPY_DATE (bind_value->value, date);
 	    if (bind_value->value == NULL)
-	      return CCI_ER_NO_MORE_MEMORY;
+	      {
+		return CCI_ER_NO_MORE_MEMORY;
+	      }
 	    bind_value->size = sizeof (T_CCI_DATE);
 	    bind_value->flag = BIND_PTR_DYNAMIC;
 	  }
@@ -6089,6 +6110,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_DATETIMETZ:
 	  {
 	    T_CCI_DATE_TZ date_tz = { 0, 0, 0, 0, 0, 0, 0, "" };
+
 	    err_code = ut_str_to_datetimetz ((char *) value, &date_tz);
 	    if (err_code < 0)
 	      {
@@ -6107,12 +6129,17 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_OBJECT:
 	  {
 	    T_OBJECT obj;
+
 	    err_code = ut_str_to_oid ((char *) value, &obj);
 	    if (err_code < 0)
-	      return err_code;
+	      {
+		return err_code;
+	      }
 	    ALLOC_COPY_OBJECT (bind_value->value, obj);
 	    if (bind_value->value == NULL)
-	      return CCI_ER_NO_MORE_MEMORY;
+	      {
+		return CCI_ER_NO_MORE_MEMORY;
+	      }
 	    bind_value->flag = BIND_PTR_DYNAMIC;
 	  }
 	  break;
