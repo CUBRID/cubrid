@@ -411,21 +411,6 @@ AS_IF([test "$enable_owfs" = "yes"],
 	SYS_DEFS="$SYS_DEFS -DCUBRID_OWFS"
 	SYS_LIBS="$SYS_LIBS -L\$(top_builddir)/external/lib -lowfsclient -ldl -lpthread"])
 
-AC_ARG_ENABLE([mock],
-	[AS_HELP_STRING([--enable-mock],
-		[build as dbgw lib to use cci mock @<:@default=no@:>@])],
-	[enable_mock=$enableval],
-	[enable_mock=no])
-AS_IF([test "$enable_mock" = "yes"],
-	[DBGW_DEFS="$DBGW_DEFS -DBUILD_MOCK"])
-
-AC_ARG_ENABLE([nclavis],
-  [AS_HELP_STRING([--enable-nclavis],
-    [build as dbgw lib to use nclavis feature @<:@default=no@:>@])],
-  [enable_nclavis=$enableval],
-  [enable_nclavis=no])
-AM_CONDITIONAL([BUILD_NCLAVIS], [test "$enable_nclavis" != "no"])
-
 AC_ARG_ENABLE([systemtap],
 	[AS_HELP_STRING([--enable-systemtap],
 		[Enable dynamic tracing support using systemtap @<:@default=no@:>@])],
@@ -622,32 +607,6 @@ AS_IF([test "$with_aio" = "yes"],
 	SYS_LIBS="$SYS_LIBS -lrt"])
 AC_MSG_RESULT([$with_aio])
 
-AC_MSG_CHECKING([for DBGW3.0 nbase-t support])
-AC_ARG_WITH([nbase_t],
-	AS_HELP_STRING([--with-nbase-t=PATH],
-	  [build as dbgw lib to use nbase-t @<:@default=builtin@:>@])],
-	[with_nbase_t=$withval],
-	[with_nbase_t=no])
-	
-case "$with_nbase_t" in
-	yes|builtin)
-		if test -d "$srcdir/external/nbase" && test "$enable_64bit" == "yes"; then
-			AC_CONFIG_SUBDIRS([external/nbase])
-			NBASE_T_LIB_PATH="-L\$(top_builddir)/external/nbase/lib"
-			NBASE_T_INC_PATH="-I\$(top_builddir)/external/nbase/include"
-		else
-			with_nbase_t=no
-		fi
-		;;
-	no)
-		;;
-	*)
-		NBASE_T_LIB_PATH="-L$with_nbase_t/lib"
-		NBASE_T_INC_PATH="-I$with_nbase_t/include"
-		;;
-esac
-AC_MSG_RESULT([$with_nbase_t])
-
 AC_MSG_CHECKING([for mysql client library version 5.1])
 AC_ARG_WITH([mysql51],
 	AS_HELP_STRING([--with-mysql51=PATH],
@@ -728,26 +687,6 @@ case "$with_oracle" in
 esac
 AM_CONDITIONAL([BUILD_CAS_FOR_ORACLE], [test "$with_oracle" != "no"])
 AC_MSG_RESULT([$with_oracle])
-
-AC_ARG_ENABLE([dbgw],
-       [AS_HELP_STRING([--enable-dbgw],
-               [build as dbgw lib @<:@default=no@:>@])],
-       [enable_dbgw=$enableval],
-       [enable_dbgw=no])
-       
-AM_CONDITIONAL([BUILD_DBGW], [test "$enable_dbgw" != "no"])
-AS_IF([test "$with_cci_only" = "yes"], [enable_dbgw=no])
-AM_CONDITIONAL([BUILD_DBGW_ORACLE], [test "$enable_dbgw" != "no" && test "$with_oracle" != "no"])
-AM_CONDITIONAL([BUILD_DBGW_MYSQL51], [test "$enable_dbgw" != "no" && test "$with_mysql51" != "no"])
-AM_CONDITIONAL([BUILD_DBGW_MYSQL], [test "$enable_dbgw" != "no" && test "$with_mysql" != "no"])
-AM_CONDITIONAL([BUILD_DBGW_NBASE_T], [test "$enable_dbgw" != "no" && test "$with_nbase_t" != "no"])
-AM_CONDITIONAL([BUILD_DBGW_ALL], [test "$enable_dbgw" != "no" && test "$with_oracle" != "no" && test "$with_mysql" != "no"])
-if test "$enable_dbgw" = "yes"
-then
-	AC_LANG_PUSH([C++])
-	AC_CHECK_HEADERS([boost/property_tree/ptree.hpp], [], [AC_MSG_ERROR(Boost library is required.(version 1.41.0 or higher))])
-	AC_LANG_POP([C++])
-fi
 
 AC_MSG_CHECKING([for cubrid manager server])
 AC_ARG_WITH([cmserver],
@@ -1105,7 +1044,7 @@ AS_IF([test "$with_cci_only" = "yes"],
 	EXTRA_DIST_SUBDIRS=""
 	CUBRID_LOGDIR=""
 	CUBRID_TMPDIR=""],
-	[BUILD_SUBDIRS="external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales dbgw ndbgw tools timezones $OPTIONAL_DIR"
+	[BUILD_SUBDIRS="external include cas sa cs cubrid util cci broker cas4mysql cas4oracle cm_common conf msg demo contrib locales tools timezones $OPTIONAL_DIR"
 	EXTRA_DIST_SUBDIRS="debian win src"])
 
 AC_SUBST([BUILD_NUMBER])
@@ -1155,7 +1094,6 @@ AC_SUBST([BUILD_SUBDIRS])
 AC_SUBST([EXTRA_DIST_SUBDIRS])
 AC_SUBST([EXPAT_LIBS])
 AC_SUBST([JANSSON_LIBS])
-AC_SUBST([DBGW_DEFS])
 
 AH_TOP([
 #ifndef _CONFIG_H_
@@ -1210,8 +1148,6 @@ AS_IF([test "$with_cci_only" = "no"],
 	timezones/Makefile
 	timezones/tzdata/Makefile
 	timezones/tzlib/Makefile
-	dbgw/Makefile
-	ndbgw/Makefile
 	tools/Makefile
 	])])
 

@@ -104,7 +104,6 @@
 		<col def="S0">ISDotNetInstallerArgsRollback</col>
 		<row><td>CCI</td><td>{08857469-5D35-47EB-97C9-E9DA32D5B94B}</td><td>TARGETDIR</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>CUBRID</td><td>{B1705AB8-DE04-49AE-A15D-65B661DA11C5}</td><td>TARGETDIR</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>DBGW</td><td>{8A2357CC-421C-49E8-A036-6592A6B920F0}</td><td>TARGETDIR</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>JDBC</td><td>{88159C1F-B1FA-459D-B8CD-2C6995EFDB82}</td><td>JDBC</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>locales</td><td>{EE6B422E-6E00-4FCE-8E3A-00C836068280}</td><td>LOCALES</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 		<row><td>timezones</td><td>{EE6B422E-6E00-4FCE-8E3A-00C836068281}</td><td>TIMEZONES</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
@@ -215,7 +214,6 @@
 		<row><td>{F4AB573B-1400-437F-A570-D216A4E0FEC9}</td><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>New Merge Module Holder Object 1</td><td/><td>16</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>CRT</td></row>
 		<row><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td><td/><td>##ID_STRING14##</td><td>##ID_STRING15##</td><td>14</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>CCI</td></row>
 		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td/><td>##ID_STRING6##</td><td>##ID_STRING20##</td><td>2</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>CUBRID</td></row>
-		<row><td>{253707A6-A23C-451F-A8FC-7DD8FA3E0882}</td><td/><td>##ID_STRING1##</td><td/><td>16</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>DBGW</td></row>
 	</table>
 
 	<table name="FeatureComponents">
@@ -228,7 +226,6 @@
 		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>timezones</td></row>
 		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>msg</td></row>
 		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>share</td></row>
-		<row><td>{253707A6-A23C-451F-A8FC-7DD8FA3E0882}</td><td>DBGW</td></row>
 	</table>
 
 	<table name="File">
@@ -243,7 +240,6 @@
 		<col def="S255">ISBuildSourcePath</col>
 		<col def="I4">ISAttributes</col>
 		<col def="S72">ISComponentSubFolder_</col>
-		<row><td>adapter.h</td><td>DBGW</td><td>Adapter.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\adapter\Adapter.h</td><td>1</td><td>NewSubFolder21</td></row>
 		<row><td>autoaddvoldb.conf</td><td>CUBRID</td><td>autoaddvoldb.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\autoaddvoldb.conf</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>autobackupdb.conf</td><td>CUBRID</td><td>autobackupdb.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\autobackupdb.conf</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>autoexecquery.conf</td><td>CUBRID</td><td>autoexecquery.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\autoexecquery.conf</td><td>1</td><td>NewSubFolder4</td></row>
@@ -261,7 +257,6 @@
 		<row><td>broker_tester.pdb</td><td>CUBRID</td><td>broker_tester.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\broker_tester.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>brokeradmin.dll</td><td>CUBRID</td><td>brokeradmin.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\brokeradmin.dll</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>brokeradmin.pdb</td><td>CUBRID</td><td>brokeradmin.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\brokeradmin.pdb</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>callableStatement.h</td><td>DBGW</td><td>CallableStatement.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\sql\CallableStatement.h</td><td>1</td><td>NewSubFolder18</td></row>
 		<row><td>cas_cci.h</td><td>CCI</td><td>cas_cci.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cas_cci.h</td><td>1</td><td>NewSubFolder1</td></row>
 		<row><td>cas_cci.h1</td><td>CUBRID</td><td>cas_cci.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cas_cci.h</td><td>1</td><td>NewSubFolder6</td></row>
 		<row><td>cas_error.h</td><td>CCI</td><td>cas_error.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cas_error.h</td><td>1</td><td>NewSubFolder1</td></row>
@@ -271,9 +266,6 @@
 		<row><td>cascci.lib</td><td>CCI</td><td>cascci.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cascci.lib</td><td>1</td><td>NewSubFolder3</td></row>
 		<row><td>cascci.lib1</td><td>CUBRID</td><td>cascci.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cascci.lib</td><td>1</td><td>NewSubFolder7</td></row>
 		<row><td>cascci.pdb</td><td>CUBRID</td><td>cascci.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cascci.pdb</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>cci_log.h</td><td>DBGW</td><td>cci_log.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cci_log.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>client.h</td><td>DBGW</td><td>Client.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\client\Client.h</td><td>1</td><td>NewSubFolder20</td></row>
-		<row><td>clientResultSet.h</td><td>DBGW</td><td>ClientResultSet.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\client\ClientResultSet.h</td><td>1</td><td>NewSubFolder20</td></row>
 		<row><td>cm.conf_dist</td><td>CUBRID</td><td>cm.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cm.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cm.pass_dist</td><td>CUBRID</td><td>cm.pass-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cm.pass-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cm_admin.exe</td><td>CUBRID</td><td>cm_admin.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cm_admin.exe</td><td>1</td><td>NewSubFolder5</td></row>
@@ -293,10 +285,6 @@
 		<row><td>cmstat.lib</td><td>CCI</td><td>cmstat.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cmstat.lib</td><td>1</td><td>NewSubFolder3</td></row>
 		<row><td>cmstat.lib1</td><td>CUBRID</td><td>cmstat.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cmstat.lib</td><td>1</td><td>NewSubFolder7</td></row>
 		<row><td>cmstat.pdb</td><td>CUBRID</td><td>cmstat.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cmstat.pdb</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>common.h</td><td>DBGW</td><td>Common.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\Common.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>configuration.h</td><td>DBGW</td><td>Configuration.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\client\Configuration.h</td><td>1</td><td>NewSubFolder20</td></row>
-		<row><td>configurationObject.h</td><td>DBGW</td><td>ConfigurationObject.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\client\ConfigurationObject.h</td><td>1</td><td>NewSubFolder20</td></row>
-		<row><td>connection.h</td><td>DBGW</td><td>Connection.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\sql\Connection.h</td><td>1</td><td>NewSubFolder18</td></row>
 		<row><td>convert_password.exe</td><td>CUBRID</td><td>convert_password.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\convert_password.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>copying</td><td>CUBRID</td><td>COPYING</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\COPYING</td><td>1</td><td/></row>
 		<row><td>credits</td><td>CUBRID</td><td>CREDITS</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\CREDITS</td><td>1</td><td/></row>
@@ -358,26 +346,13 @@
 		<row><td>cubridsa.pdb</td><td>CUBRID</td><td>cubridsa.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridsa.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubridservice.exe</td><td>CUBRID</td><td>cubridservice.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridservice.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubridservice.pdb</td><td>CUBRID</td><td>cubridservice.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridservice.pdb</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>databaseInterface.h</td><td>DBGW</td><td>DatabaseInterface.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\sql\DatabaseInterface.h</td><td>1</td><td>NewSubFolder18</td></row>
 		<row><td>dbghelp.dll</td><td>CUBRID</td><td>dbghelp.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\dbghelp.dll</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>dbgwclient.h</td><td>DBGW</td><td>DBGWClient.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\DBGWClient.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwconnector3.dll</td><td>DBGW</td><td>DBGWConnector3.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3.dll</td><td>1</td><td>NewSubFolder15</td></row>
-		<row><td>dbgwconnector3.h</td><td>DBGW</td><td>DBGWConnector3.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\\DBGWConnector3.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>dbgwconnector3.lib</td><td>DBGW</td><td>DBGWConnector3.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\DBGWConnector3.lib</td><td>1</td><td>NewSubFolder16</td></row>
-		<row><td>dbgwconnector3.pdb</td><td>DBGW</td><td>DBGWConnector3.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3.pdb</td><td>1</td><td>NewSubFolder15</td></row>
-		<row><td>dbgwconnector3mysql.dll</td><td>DBGW</td><td>DBGWConnector3MySQL.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3MySQL.dll</td><td>1</td><td>NewSubFolder15</td></row>
-		<row><td>dbgwconnector3mysql.lib</td><td>DBGW</td><td>DBGWConnector3MySQL.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\DBGWConnector3MySQL.lib</td><td>1</td><td>NewSubFolder16</td></row>
-		<row><td>dbgwconnector3mysql.pdb</td><td>DBGW</td><td>DBGWConnector3MySQL.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\DBGWConnector3MySQL.pdb</td><td>1</td><td>NewSubFolder15</td></row>
-		<row><td>dbgwporting.h</td><td>DBGW</td><td>DBGWPorting.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\system\DBGWPorting.h</td><td>1</td><td>NewSubFolder19</td></row>
 		<row><td>dbi.h</td><td>CUBRID</td><td>dbi.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbi.h</td><td>1</td><td>NewSubFolder6</td></row>
 		<row><td>demodb_objects</td><td>CUBRID</td><td>demodb_objects</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_DEMO_FILES&gt;\demodb_objects</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>demodb_schema</td><td>CUBRID</td><td>demodb_schema</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_DEMO_FILES&gt;\demodb_schema</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>diagactivitytemplate.conf</td><td>CUBRID</td><td>diagactivitytemplate.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\diagactivitytemplate.conf</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>diagstatustemplate.conf</td><td>CUBRID</td><td>diagstatustemplate.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\diagstatustemplate.conf</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>driverManager.h</td><td>DBGW</td><td>DriverManager.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\sql\DriverManager.h</td><td>1</td><td>NewSubFolder18</td></row>
-		<row><td>exception.h</td><td>DBGW</td><td>Exception.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\Exception.h</td><td>1</td><td>NewSubFolder14</td></row>
 		<row><td>gc64_dll.dll</td><td>CUBRID</td><td>gc64_dll.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\gc64_dll.dll</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>interface.h</td><td>DBGW</td><td>Interface.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\client\Interface.h</td><td>1</td><td>NewSubFolder20</td></row>
 		<row><td>jansson.dll</td><td>CUBRID</td><td>jansson.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\jansson.dll</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>jspserver.jar</td><td>CUBRID</td><td>jspserver.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\java\jspserver.jar</td><td>1</td><td>NewSubFolder8</td></row>
 		<row><td>libcubrid.dll</td><td>CUBRID</td><td>libcubrid.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libcubrid.dll</td><td>1</td><td>NewSubFolder5</td></row>
@@ -389,8 +364,6 @@
 		<row><td>libgpg_error_0.dll</td><td>CUBRID</td><td>libgpg-error-0.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libgpg-error-0.dll</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>loadjava.exe</td><td>CUBRID</td><td>loadjava.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\loadjava.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>loadjava.pdb</td><td>CUBRID</td><td>loadjava.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\loadjava.pdb</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>lob.h</td><td>DBGW</td><td>Lob.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\Lob.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>logger.h</td><td>DBGW</td><td>Logger.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\Logger.h</td><td>1</td><td>NewSubFolder14</td></row>
 		<row><td>logging.properties</td><td>CUBRID</td><td>logging.properties</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\java\logging.properties</td><td>1</td><td>NewSubFolder8</td></row>
 		<row><td>make_locale.bat</td><td>CUBRID</td><td>make_locale.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\make_locale.bat</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>make_tz.bat</td><td>CUBRID</td><td>make_tz.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\make_tz.bat</td><td>1</td><td>NewSubFolder5</td></row>
@@ -398,22 +371,12 @@
 		<row><td>makedemo_is.bat</td><td>CUBRID</td><td>makedemo_is.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;ISPROJECTDIR&gt;\makedemo_is.bat</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>migrate_91_to_92.exe</td><td>CUBRID</td><td>migrate_91_to_92.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\migrate_91_to_92.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>migrate_91_to_92.pdb</td><td>CUBRID</td><td>migrate_91_to_92.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\migrate_91_to_92.pdb</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>mock.h</td><td>DBGW</td><td>Mock.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\client\Mock.h</td><td>1</td><td>NewSubFolder20</td></row>
-		<row><td>preparedStatement.h</td><td>DBGW</td><td>PreparedStatement.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\sql\PreparedStatement.h</td><td>1</td><td>NewSubFolder18</td></row>
-		<row><td>queryMapper.h</td><td>DBGW</td><td>QueryMapper.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\client\QueryMapper.h</td><td>1</td><td>NewSubFolder20</td></row>
 		<row><td>readme</td><td>CUBRID</td><td>README</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\README</td><td>1</td><td/></row>
-		<row><td>resource.h</td><td>DBGW</td><td>Resource.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\client\Resource.h</td><td>1</td><td>NewSubFolder20</td></row>
-		<row><td>resultSet.h</td><td>DBGW</td><td>ResultSet.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\sql\ResultSet.h</td><td>1</td><td>NewSubFolder18</td></row>
-		<row><td>resultSetMetaData.h</td><td>DBGW</td><td>ResultSetMetaData.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\sql\ResultSetMetaData.h</td><td>1</td><td>NewSubFolder18</td></row>
 		<row><td>setupmanage.exe</td><td>CUBRID</td><td>setupmanage.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\setupmanage.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>setupmanage.pdb</td><td>CUBRID</td><td>setupmanage.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\setupmanage.pdb</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>shard.conf_dist</td><td>CUBRID</td><td>shard.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>shard_connection.txt_dist</td><td>CUBRID</td><td>shard_connection.txt-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard_connection.txt-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>shard_key.txt_dist</td><td>CUBRID</td><td>shard_key.txt-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard_key.txt-dist</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>statement.h</td><td>DBGW</td><td>Statement.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\sql\Statement.h</td><td>1</td><td>NewSubFolder18</td></row>
-		<row><td>synchronizedResource.h</td><td>DBGW</td><td>SynchronizedResource.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\SynchronizedResource.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>threadEx.h</td><td>DBGW</td><td>ThreadEx.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\system\ThreadEx.h</td><td>1</td><td>NewSubFolder19</td></row>
-		<row><td>value.h</td><td>DBGW</td><td>Value.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\Value.h</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>valueset.h</td><td>DBGW</td><td>ValueSet.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbgw3\ValueSet.h</td><td>1</td><td>NewSubFolder14</td></row>
 	</table>
 
 	<table name="Font">
@@ -450,7 +413,6 @@
 		<col def="S0">Miscellaneous</col>
 		<row><td>CCI</td><td/><td/><td>_6074D733_15A8_448F_B51E_132462F85128_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>CUBRID</td><td/><td/><td>_0D8A47D7_17BA_4E0F_B747_19EDF5E0BAA9_FILTER</td><td/><td/><td/><td/></row>
-		<row><td>DBGW</td><td/><td/><td>_1AD376ED_FE08_4670_AD53_17F4F65E50FB_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>JDBC</td><td/><td/><td>_7AA7B79B_2B45_4714_A5B4_B933918E7AEE_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>locales</td><td/><td/><td>_4E464296_39B2_492F_883A_54122B58A112_FILTER</td><td/><td/><td/><td/></row>
 		<row><td>timezones</td><td/><td/><td>_4E464296_39B2_492F_883A_54122B58A113_FILTER</td><td/><td/><td/><td/></row>
@@ -468,15 +430,7 @@
 		<row><td>NewSubFolder11</td><td>CUBRID</td><td/><td>log</td></row>
 		<row><td>NewSubFolder12</td><td>CUBRID</td><td/><td>tmp</td></row>
 		<row><td>NewSubFolder13</td><td>CUBRID</td><td>NewSubFolder9</td><td>demodb</td></row>
-		<row><td>NewSubFolder14</td><td>DBGW</td><td/><td>include</td></row>
-		<row><td>NewSubFolder15</td><td>DBGW</td><td/><td>bin</td></row>
-		<row><td>NewSubFolder16</td><td>DBGW</td><td/><td>lib</td></row>
-		<row><td>NewSubFolder17</td><td>DBGW</td><td>NewSubFolder14</td><td>dbgw3</td></row>
-		<row><td>NewSubFolder18</td><td>DBGW</td><td>NewSubFolder17</td><td>sql</td></row>
-		<row><td>NewSubFolder19</td><td>DBGW</td><td>NewSubFolder17</td><td>system</td></row>
 		<row><td>NewSubFolder2</td><td>CCI</td><td/><td>bin</td></row>
-		<row><td>NewSubFolder20</td><td>DBGW</td><td>NewSubFolder17</td><td>client</td></row>
-		<row><td>NewSubFolder21</td><td>DBGW</td><td>NewSubFolder17</td><td>adapter</td></row>
 		<row><td>NewSubFolder3</td><td>CCI</td><td/><td>lib</td></row>
 		<row><td>NewSubFolder4</td><td>CUBRID</td><td/><td>conf</td></row>
 		<row><td>NewSubFolder5</td><td>CUBRID</td><td/><td>bin</td></row>
@@ -1017,14 +971,14 @@
 	<table name="ISSetupTypeFeatures">
 		<col key="yes" def="s38">ISSetupType_</col>
 		<col key="yes" def="s38">Feature_</col>
-		<row><td>ALL</td><td>{253707A6-A23C-451F-A8FC-7DD8FA3E0882}</td></row>
 		<row><td>ALL</td><td>{573BEA45-481E-4C78-8987-A2FBA41A02EA}</td></row>
+		<row><td>ALL</td><td>{F4AB573B-1400-437F-A570-D216A4E0FEC9}</td></row>
 		<row><td>ALL</td><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td></row>
 		<row><td>ALL</td><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td></row>
-		<row><td>ALL</td><td>{F4AB573B-1400-437F-A570-D216A4E0FEC9}</td></row>
-		<row><td>CLIENT_ONLY</td><td>{253707A6-A23C-451F-A8FC-7DD8FA3E0882}</td></row>
+		<row><td>ALL</td><td>{253707A6-A23C-451F-A8FC-7DD8FA3E0882}</td></row>
 		<row><td>CLIENT_ONLY</td><td>{573BEA45-481E-4C78-8987-A2FBA41A02EA}</td></row>
 		<row><td>CLIENT_ONLY</td><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td></row>
+		<row><td>CLIENT_ONLY</td><td>{253707A6-A23C-451F-A8FC-7DD8FA3E0882}</td></row>
 	</table>
 
 	<table name="ISShortcutComponents">
@@ -1044,8 +998,8 @@
 		<col def="I2">Encoded</col>
 		<col def="S0">Comment</col>
 		<col def="I4">TimeStamp</col>
-		<row><td>CUBRID_ARCH</td><td>1033</td><td>x86</td><td>0</td><td/><td>1235213393</td></row>
-		<row><td>CUBRID_ARCH</td><td>1042</td><td>x86</td><td>0</td><td/><td>1235217489</td></row>
+		<row><td>CUBRID_ARCH</td><td>1033</td><td>x86</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>CUBRID_ARCH</td><td>1042</td><td>x86</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>FOLDER_NAME</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-920696785</td></row>
 		<row><td>FOLDER_NAME</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-920700881</td></row>
 		<row><td>IDPROP_SETUPTYPE_COMPLETE</td><td>1033</td><td>Complete</td><td>0</td><td/><td>-1323342357</td></row>
@@ -1284,8 +1238,6 @@
 		<row><td>ID_STRING3</td><td>1042</td><td>CUBRID</td><td>0</td><td/><td>-1189139222</td></row>
 		<row><td>ID_STRING4</td><td>1033</td><td>CUBRID Setup...</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>ID_STRING4</td><td>1042</td><td>CUBRID Setup...</td><td>0</td><td/><td>-1323328437</td></row>
-		<row><td>ID_STRING5</td><td>1033</td><td>NewFeature1</td><td>0</td><td/><td>-1373592854</td></row>
-		<row><td>ID_STRING5</td><td>1042</td><td>NewFeature1</td><td>0</td><td/><td>-1373592854</td></row>
 		<row><td>ID_STRING6</td><td>1033</td><td>CUBRID</td><td>0</td><td/><td>-1323329329</td></row>
 		<row><td>ID_STRING6</td><td>1042</td><td>CUBRID</td><td>0</td><td/><td>-1323329329</td></row>
 		<row><td>ID_STRING7</td><td>1033</td><td>CUBRID ODBC</td><td>0</td><td/><td>-1323342357</td></row>
