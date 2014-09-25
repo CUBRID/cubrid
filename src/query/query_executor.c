@@ -8482,21 +8482,8 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
     }
   else
     {
-      if ((spec->access == SEQUENTIAL
-	   || spec->access == S_HEAP_SCAN_RECORD_INFO
-	   || spec->access == S_HEAP_PAGE_SCAN)
-	  && (!mvcc_Enabled || spec->where_pred == NULL))
-	{
-	  lock = X_LOCK;
-	}
-      else if (mvcc_Enabled || IS_ANY_INDEX_ACCESS (spec->access))
-	{
-	  lock = IX_LOCK;
-	}
-      else
-	{
-	  assert (0);
-	}
+      /* MVCC use IX_LOCK on class at update/delete */
+      lock = IX_LOCK;
     }
 
   for (partition_spec = spec->parts; partition_spec != NULL;
@@ -13757,7 +13744,6 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int savepoint_used = 0;
   OID *oid = NULL, *class_oid = NULL, class_oid_buf, last_cached_class_oid;
   HFID *class_hfid;
-  int lock_ret;
   int tran_index;
   int err = NO_ERROR;
   int needs_pruning = DB_NOT_PARTITIONED_CLASS;
@@ -27222,7 +27208,7 @@ qexec_for_update_set_class_locks (THREAD_ENTRY * thread_p,
   ACCESS_SPEC_TYPE *specp = NULL;
   OID *class_oid = NULL;
   int error = NO_ERROR;
-  LOCK class_lock = IX_LOCK;
+  LOCK class_lock = IX_LOCK;	/* MVCC use IX_LOCK on class at update/delete */
 
   for (scan = scan_list; scan != NULL; scan = scan->scan_ptr)
     {
@@ -27232,24 +27218,6 @@ qexec_for_update_set_class_locks (THREAD_ENTRY * thread_p,
 	      && (specp->flags & ACCESS_SPEC_FLAG_FOR_UPDATE))
 	    {
 	      class_oid = &specp->s.cls_node.cls_oid;
-
-	      /* search through query classes */
-	      if (specp->access == SEQUENTIAL
-		  && specp->pruning_type != DB_PARTITIONED_CLASS)
-		{
-		  /* X_LOCK classes which are accessed
-		   * sequentially. If this is a partitioned class,
-		   * IX_LOCK is enough. Later in the execution,
-		   * when pruning is performed, partitions will be
-		   * locked with X_LOCK.
-		   */
-		  class_lock = X_LOCK;
-		}
-	      else
-		{
-		  /* INDEX access or partitioned class */
-		  class_lock = IX_LOCK;
-		}
 
 	      /* lock the class */
 	      if (lock_object
@@ -27295,9 +27263,7 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
   int i, j, error = NO_ERROR;
   UPDDEL_CLASS_INFO *query_class = NULL;
   bool found = false;
-  LOCK class_lock = IX_LOCK;
-  OR_PARTITION *partitions = NULL;
-  int partition_count = 0;
+  LOCK class_lock = IX_LOCK;	/* MVCC use IX_LOCK on class at update/delete */
 
   for (aptr = aptr_list; aptr != NULL; aptr = aptr->scan_ptr)
     {
@@ -27309,8 +27275,6 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 
 	      assert (specp->access == SEQUENTIAL);
 
-	      class_lock = X_LOCK;
-
 	      for (i = 0; i < query_classes_count; i++)
 		{
 		  query_class = &query_classes[i];
@@ -27319,27 +27283,6 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 		  for (j = 0; j < query_class->no_subclasses; j++)
 		    {
 		      class_oid = &query_class->class_oid[j];
-		      error = heap_get_class_partitions (thread_p, class_oid,
-							 &partitions,
-							 &partition_count);
-		      if (partitions != NULL)
-			{
-			  heap_clear_partition_info (thread_p, partitions,
-						     partition_count);
-			}
-		      if (error != NO_ERROR)
-			{
-			  return error;
-			}
-
-		      if (partition_count > 0)
-			{
-			  class_lock = IX_LOCK;
-			}
-		      else
-			{
-			  class_lock = X_LOCK;
-			}
 
 		      if (lock_object (thread_p, class_oid,
 				       oid_Root_class_oid, class_lock,
@@ -27374,26 +27317,6 @@ qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 		    {
 		      if (OID_EQ (&query_class->class_oid[j], class_oid))
 			{
-			  if ((specp->access == SEQUENTIAL
-			       || specp->access == SEQUENTIAL_RECORD_INFO
-			       || specp->access == SEQUENTIAL_PAGE_SCAN)
-			      && specp->pruning_type != DB_PARTITIONED_CLASS
-			      && (!mvcc_Enabled || specp->where_pred == NULL))
-			    {
-			      /* X_LOCK classes which are accessed
-			       * sequentially. If this is a partitioned class,
-			       * IX_LOCK is enough. Later in the execution,
-			       * when pruning is performed, partitions will be
-			       * locked with X_LOCK.
-			       */
-			      class_lock = X_LOCK;
-			    }
-			  else
-			    {
-			      /* INDEX access or partitioned class */
-			      class_lock = IX_LOCK;
-			    }
-
 			  /* lock the class */
 			  if (lock_object (thread_p, class_oid,
 					   oid_Root_class_oid, class_lock,
