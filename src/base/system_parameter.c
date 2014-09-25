@@ -8366,6 +8366,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
   PARAM_ID id;
   THREAD_ENTRY *thread_p;
 #endif
+  void *tmp_ptr = NULL;
 
   if (prm == NULL)
     {
@@ -8380,14 +8381,16 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
 	case PRM_STRING:
 	  if (value.str != NULL)
 	    {
-	      value.str = strdup (value.str);
-	      if (value.str == NULL)
+	      tmp_ptr = strdup (value.str);
+	      if (tmp_ptr == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  strlen (value.str) + 1);
 		  return PRM_ERR_NO_MEM_FOR_PRM;
 		}
+
+	      value.str = (char *) tmp_ptr;
 	    }
 	  break;
 
@@ -8395,15 +8398,16 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
 	  if (value.integer_list != NULL)
 	    {
 	      int *integer_list = value.integer_list;
-	      value.integer_list =
-		(int *) malloc ((integer_list[0] + 1) * sizeof (int));
-	      if (value.integer_list == NULL)
+	      tmp_ptr = (int *) malloc ((integer_list[0] + 1) * sizeof (int));
+	      if (tmp_ptr == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  (integer_list[0] + 1) * sizeof (int));
 		  return PRM_ERR_NO_MEM_FOR_PRM;
 		}
+
+	      value.integer_list = (int *) tmp_ptr;
 	      memcpy (value.integer_list, integer_list,
 		      (integer_list[0] + 1) * sizeof (int));
 	    }
@@ -8426,6 +8430,11 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
       param = session_get_session_parameter (thread_p, id);
       if (param == NULL)
 	{
+	  if (tmp_ptr != NULL)
+	    {
+	      free (tmp_ptr);
+	    }
+
 	  return PRM_ERR_UNKNOWN_PARAM;
 	}
 
