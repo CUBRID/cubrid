@@ -480,6 +480,9 @@ tran_commit (bool retain_lock)
       break;
     }
 
+  /* Increment snapshot version in work space */
+  ws_increment_mvcc_snapshot_version ();
+
   /* clear workspace information and any open query cursors */
   if (error_code == NO_ERROR || BOOT_IS_CLIENT_RESTARTED ())
     {
@@ -589,6 +592,9 @@ tran_abort (void)
 #endif /* CUBRID_DEBUG */
       break;
     }
+
+  /* Increment snapshot version in work space */
+  ws_increment_mvcc_snapshot_version ();
 
   er_stack_clearall ();
 
