@@ -2088,7 +2088,7 @@ locator_find_lockset_missing_class_oids (THREAD_ENTRY * thread_p,
        * Get the class identifier from disk
        */
       if (heap_get_class_oid (thread_p, &class_oid, &reqobjs[i].oid,
-			      NEED_SNAPSHOT) == NULL)
+			      SNAPSHOT_TYPE_MVCC) == NULL)
 	{
 	  /*
 	   * Unable to find the class of the object. Remove the object from
@@ -2329,6 +2329,7 @@ locator_return_object (THREAD_ENTRY * thread_p,
  *   chn(in): Cache coherence number of object
  *   lock(in): Lock to acquire before the object is fetched
  *   retain_lock(in): flag to retain/release lock after fetching the class
+ *   fetch_type(in): fetch type
  *   class_oid(in): Class identifier of the object
  *   class_chn(in): Cache coherence number of the class of the object
  *   prefetching(in): true when pretching of neighbors is desired
@@ -2351,7 +2352,7 @@ locator_return_object (THREAD_ENTRY * thread_p,
  */
 int
 xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
-		bool retain_lock, OID * class_oid, int class_chn,
+		LC_FETCH_TYPE fetch_type, OID * class_oid, int class_chn,
 		int prefetching, LC_COPYAREA ** fetch_area)
 {
   OID tmp_oid;			/* Uses to hold the class_oid when
@@ -2362,6 +2363,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
   SCAN_CODE scan = S_ERROR;
   int error_code = NO_ERROR;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  MVCC_SNAPSHOT mvcc_snapshot_dirty;
 
   if (class_oid == NULL)
     {
@@ -2376,7 +2378,18 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
        * Caller does not know the class of the object. Get the class
        * identifier from disk
        */
-      if (heap_get_class_oid (thread_p, class_oid, oid, NEED_SNAPSHOT) ==
+      SNAPSHOT_TYPE snapshot_type = SNAPSHOT_TYPE_NONE;
+
+      if (LC_FETCH_IS_LAST_MVCC_VERSION_NEEDED (fetch_type))
+	{
+	  snapshot_type = SNAPSHOT_TYPE_MVCC;
+	}
+      else if (LC_FETCH_IS_LAST_DIRTY_VERSION_NEEDED (fetch_type))
+	{
+	  snapshot_type = SNAPSHOT_TYPE_DIRTY;
+	}
+
+      if (heap_get_class_oid (thread_p, class_oid, oid, snapshot_type) ==
 	  NULL)
 	{
 	  /* Unable to find the class of the object.. return */
@@ -2414,7 +2427,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 
   assert (!OID_ISNULL (class_oid));
 
-  if (mvcc_Enabled)
+  if (LC_FETCH_IS_LAST_MVCC_VERSION_NEEDED (fetch_type))
     {
       mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (mvcc_snapshot == NULL)
@@ -2422,6 +2435,11 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	  error_code = er_errid ();
 	  return (error_code == NO_ERROR ? ER_FAILED : error_code);
 	}
+    }
+  else if (LC_FETCH_IS_LAST_DIRTY_VERSION_NEEDED (fetch_type))
+    {
+      mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
+      mvcc_snapshot = &mvcc_snapshot_dirty;
     }
 
   /* Obtain the desired lock */
@@ -2590,7 +2608,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
     }
 
 error:
-  if (lock != NULL_LOCK && !retain_lock)
+  if (lock != NULL_LOCK && !LC_FETCH_IS_LOCK_RETAINED (fetch_type))
     {
       lock_unlock_object (thread_p, oid, class_oid, lock, false);
     }
@@ -2640,7 +2658,7 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn,
        * Caller does not know the class of the object. Get the class identifier
        * from disk
        */
-      if (heap_get_class_oid (thread_p, class_oid, oid, NEED_SNAPSHOT) ==
+      if (heap_get_class_oid (thread_p, class_oid, oid, SNAPSHOT_TYPE_MVCC) ==
 	  NULL)
 	{
 	  /*
@@ -2668,12 +2686,12 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn,
 
   /*
    * Now fetch the class, the instance and optinally prefetch some
-   * neighbors of the instance
+   * neighbors of the instance. No need to get the last version for class.
    */
 
   error_code = xlocator_fetch (NULL, class_oid, class_chn, NULL_LOCK,
-			       false, oid_Root_class_oid, -1, prefetching,
-			       fetch_area);
+			       LC_FETCH_CURRENT_VERSION, oid_Root_class_oid,
+			       -1, prefetching, fetch_area);
 
   if (lock != NULL_LOCK)
     {
@@ -3913,7 +3931,7 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
        * from disk
        */
       class_chn = CHN_UNKNOWN_ATCLIENT;
-      if (heap_get_class_oid (thread_p, class_oid, oid, NEED_SNAPSHOT) ==
+      if (heap_get_class_oid (thread_p, class_oid, oid, SNAPSHOT_TYPE_MVCC) ==
 	  NULL)
 	{
 	  /* Unable to find the class of the object.. return */
@@ -3965,7 +3983,8 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	{
 	  /* The object exist. Prefetch the object if that operation is
 	   * desirable */
-	  (void) xlocator_fetch (NULL, oid, chn, NULL_LOCK, false, class_oid,
+	  (void) xlocator_fetch (NULL, oid, chn, NULL_LOCK,
+				 LC_FETCH_NEED_LAST_MVCC_VERSION, class_oid,
 				 class_chn, prefetching, fetch_area);
 	}
       if (lock != NULL_LOCK)
@@ -5921,7 +5940,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	   * with a classoid resulted from a unique btid pruning
 	   */
 	  if (heap_get_class_oid (thread_p, class_oid, oid,
-				  DONT_NEED_SNAPSHOT) == NULL)
+				  SNAPSHOT_TYPE_NONE) == NULL)
 	    {
 	      goto error;
 	    }
@@ -10638,7 +10657,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
 	       * list of classes.
 	       */
 	      if (heap_get_class_oid (thread_p, &cl_oid, &oid_area[i],
-				      NEED_SNAPSHOT) == NULL)
+				      SNAPSHOT_TYPE_MVCC) == NULL)
 		{
 		  (void) heap_scancache_end (thread_p, &isid.scan_cache);
 		  goto error;

@@ -66,8 +66,9 @@ struct trans_info
 };
 
 extern void db_free_execution_plan (void);
-extern int locator_fetch (OID * oidp, int chn, LOCK lock, bool retain_lock,
-			  OID * class_oid, int class_chn, int prefetch,
+extern int locator_fetch (OID * oidp, int chn, LOCK lock,
+			  LC_FETCH_TYPE fetch_type, OID * class_oid,
+			  int class_chn, int prefetch,
 			  LC_COPYAREA ** fetch_copyarea);
 extern int locator_get_class (OID * class_oid, int class_chn, const OID * oid,
 			      LOCK lock, int prefetching,

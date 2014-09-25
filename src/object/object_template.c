@@ -2057,7 +2057,8 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
 
   if (mop != NULL)
     {
-      error = au_fetch_instance_force (mop, &obj, AU_FETCH_UPDATE);
+      error = au_fetch_instance_force (mop, &obj, AU_FETCH_UPDATE,
+				       LC_FETCH_NEED_LAST_MVCC_VERSION);
       if (error == NO_ERROR)
 	{
 	  /* must call this when updating instances */
@@ -2548,7 +2549,8 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	      if (error == NO_ERROR && object->decached)
 		{
 		  error =
-		    au_fetch_instance_force (object, &mobj, AU_FETCH_UPDATE);
+		    au_fetch_instance_force (object, &mobj, AU_FETCH_UPDATE,
+					     LC_FETCH_NEED_LAST_MVCC_VERSION);
 		  if (error != NO_ERROR)
 		    {
 		      if (WS_IS_DELETED (object))

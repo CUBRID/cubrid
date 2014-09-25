@@ -201,14 +201,14 @@ length_string_with_null_padding (int len)
  *   oidp(in):
  *   chn(in):
  *   lock(in):
- *   retain_lock(in):
+ *   fetch_type(in): fetch type
  *   class_oid(in):
  *   class_chn(in):
  *   prefetch(in):
  *   fetch_copyarea(in):
  */
 int
-locator_fetch (OID * oidp, int chn, LOCK lock, bool retain_lock,
+locator_fetch (OID * oidp, int chn, LOCK lock, LC_FETCH_TYPE fetch_type,
 	       OID * class_oid, int class_chn, int prefetch,
 	       LC_COPYAREA ** fetch_copyarea)
 {
@@ -227,7 +227,7 @@ locator_fetch (OID * oidp, int chn, LOCK lock, bool retain_lock,
   ptr = or_pack_oid (request, oidp);
   ptr = or_pack_int (ptr, chn);
   ptr = or_pack_lock (ptr, lock);
-  ptr = or_pack_int (ptr, retain_lock);
+  ptr = or_pack_int (ptr, (int) fetch_type);
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, class_chn);
   ptr = or_pack_int (ptr, prefetch);
@@ -255,7 +255,7 @@ locator_fetch (OID * oidp, int chn, LOCK lock, bool retain_lock,
 
   ENTER_SERVER ();
 
-  success = xlocator_fetch (NULL, oidp, chn, lock, retain_lock, class_oid,
+  success = xlocator_fetch (NULL, oidp, chn, lock, fetch_type, class_oid,
 			    class_chn, prefetch, fetch_copyarea);
 
   EXIT_SERVER ();

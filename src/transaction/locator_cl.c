@@ -135,7 +135,7 @@ static void locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object,
 				    void *xlockset);
 static LOCK locator_to_prefetched_lock (LOCK class_lock);
 static int locator_lock (MOP mop, LC_OBJTYPE isclass,
-			 LOCK lock, bool retain_lock);
+			 LOCK lock, LC_FETCH_TYPE fetch_type);
 static int locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop,
 					   LOCK lock);
 static int locator_lock_and_doesexist (MOP mop, LOCK lock,
@@ -618,7 +618,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
  *   mop(in): Mop of the object to lock
  *   isclass(in): LC_OBJTYPE of mop to be locked
  *   lock(in): Lock to acquire
- *   retain_lock(in): flag to retain lock after fetching the class
+ *   fetch_type(in): fetch type
  *
  * Note: The object associated with the given MOP is locked with the
  *              desired lock. The object locator on the server is not invoked
@@ -629,7 +629,8 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
  *              may be prefetched.
  */
 static int
-locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, bool retain_lock)
+locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock,
+	      LC_FETCH_TYPE fetch_type)
 {
   LOCATOR_CACHE_LOCK cache_lock;	/* Cache the lock */
   OID *oid;			/* OID of object to lock                  */
@@ -813,7 +814,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, bool retain_lock)
       is_prefetch = false;
     }
 
-  if (locator_fetch (oid, chn, lock, retain_lock, class_oid, class_chn,
+  if (locator_fetch (oid, chn, lock, fetch_type, class_oid, class_chn,
 		     is_prefetch, &fetch_area) != NO_ERROR)
     {
       error_code = ER_FAILED;
@@ -923,8 +924,8 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock,
   if (lockset == NULL)
     {
       /* Out of space... Try single object */
-      return locator_lock (vector_mop[0], LC_INSTANCE,
-			   reqobj_inst_lock, false);
+      return locator_lock (vector_mop[0], LC_INSTANCE, reqobj_inst_lock,
+			   LC_FETCH_NEED_LAST_MVCC_VERSION);
     }
 
   reqobjs = lockset->objects;
@@ -2345,7 +2346,8 @@ locator_get_cache_coherency_number (MOP mop)
     }
 
   lock = locator_fetch_mode_to_lock (DB_FETCH_READ, isclass);
-  if (locator_lock (mop, isclass, lock, false) != NO_ERROR)
+  if (locator_lock (mop, isclass, lock, LC_FETCH_NEED_LAST_MVCC_VERSION) !=
+      NO_ERROR)
     {
       return NULL_CHN;
     }
@@ -2405,7 +2407,8 @@ locator_fetch_object (MOP mop, DB_FETCH_MODE purpose)
     }
 
   lock = locator_fetch_mode_to_lock (purpose, isclass);
-  if (locator_lock (mop, isclass, lock, false) != NO_ERROR)
+  if (locator_lock (mop, isclass, lock, LC_FETCH_NEED_LAST_MVCC_VERSION) !=
+      NO_ERROR)
     {
       return NULL;
     }
@@ -2444,7 +2447,7 @@ MOBJ
 locator_fetch_class (MOP class_mop, DB_FETCH_MODE purpose)
 {
   LOCK lock;			/* Lock to acquire for the above purpose */
-  bool retain_lock;
+  LC_FETCH_TYPE fetch_type = LC_FETCH_CURRENT_VERSION;	/* get current version */
   MOBJ class_obj;		/* The desired class                     */
 
   if (class_mop == NULL)
@@ -2466,15 +2469,19 @@ locator_fetch_class (MOP class_mop, DB_FETCH_MODE purpose)
 			"with argument class_mop is not a class.\n.."
 			" Calling... locator_fetch_instance instead...***\n",
 			oid->volid, oid->pageid, oid->slotid);
-	  return locator_fetch_instance (class_mop, purpose);
+	  return locator_fetch_instance (class_mop, purpose,
+					 LC_FETCH_NEED_LAST_MVCC_VERSION);
 	}
     }
 #endif /* CUBRID_DEBUG */
 
   lock = locator_fetch_mode_to_lock (purpose, LC_CLASS);
-  retain_lock = (purpose == DB_FETCH_SCAN
-		 || purpose == DB_FETCH_EXCLUSIVE_SCAN);
-  if (locator_lock (class_mop, LC_CLASS, lock, retain_lock) != NO_ERROR)
+  if (purpose == DB_FETCH_SCAN || purpose == DB_FETCH_EXCLUSIVE_SCAN)
+    {
+      fetch_type |= LC_FETCH_RETAIN_LOCK;
+    }
+
+  if (locator_lock (class_mop, LC_CLASS, lock, fetch_type) != NO_ERROR)
     {
       return NULL;
     }
@@ -2535,6 +2542,7 @@ locator_fetch_class_of_instance (MOP inst_mop, MOP * class_mop,
  *                                    DB_FETCH_READ
  *                                    DB_FETCH_WRITE
  *                                    DB_FETCH_DIRTY
+ *   fetch_type(in): fetch type
  *
  * Note: Fetch the instance associated with the given mop for the given
  *              purpose
@@ -2545,7 +2553,8 @@ locator_fetch_class_of_instance (MOP inst_mop, MOP * class_mop,
  *              (See report on "Long Transaction Support")
  */
 MOBJ
-locator_fetch_instance (MOP mop, DB_FETCH_MODE purpose)
+locator_fetch_instance (MOP mop, DB_FETCH_MODE purpose,
+			LC_FETCH_TYPE fetch_type)
 {
   LOCK lock;			/* Lock to acquire for the above purpose */
   MOBJ inst;			/* The desired instance                  */
@@ -2571,7 +2580,7 @@ locator_fetch_instance (MOP mop, DB_FETCH_MODE purpose)
 
   inst = NULL;
   lock = locator_fetch_mode_to_lock (purpose, LC_INSTANCE);
-  if (locator_lock (mop, LC_INSTANCE, lock, false) != NO_ERROR)
+  if (locator_lock (mop, LC_INSTANCE, lock, fetch_type) != NO_ERROR)
     {
       return NULL;
     }
@@ -2653,7 +2662,8 @@ locator_fetch_set (int num_mops, MOP * mop_set, DB_FETCH_MODE inst_purpose,
 	}
       else
 	{
-	  return locator_fetch_instance (first, inst_purpose);
+	  return locator_fetch_instance (first, inst_purpose,
+					 LC_FETCH_NEED_LAST_MVCC_VERSION);
 	}
     }
 
@@ -3161,7 +3171,9 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname,
 	  return found;
 	}
 
-      error_code = locator_lock (*class_mop, LC_CLASS, lock, false);
+      /* no need to get last version for class */
+      error_code = locator_lock (*class_mop, LC_CLASS, lock,
+				 LC_FETCH_CURRENT_VERSION);
       if (error_code != NO_ERROR)
 	{
 	  /*
@@ -3258,7 +3270,9 @@ locator_find_class_by_name (const char *classname, LOCK lock, MOP * class_mop)
     }
   else
     {
-      if (locator_lock (*class_mop, LC_CLASS, lock, false) != NO_ERROR)
+      /* no need to get last version for class */
+      if (locator_lock (*class_mop, LC_CLASS, lock, LC_FETCH_CURRENT_VERSION)
+	  != NO_ERROR)
 	{
 	  *class_mop = NULL;
 	  found = LC_CLASSNAME_ERROR;
@@ -5874,9 +5888,9 @@ locator_add_class (MOBJ class_obj, const char *classname)
     }
   else
     {
-      /* Fetch the rootclass object */
-      if (locator_lock (sm_Root_class_mop, LC_CLASS, IX_LOCK, false) !=
-	  NO_ERROR)
+      /* Fetch the rootclass object - no need to get last version for class */
+      if (locator_lock (sm_Root_class_mop, LC_CLASS, IX_LOCK,
+			LC_FETCH_CURRENT_VERSION) != NO_ERROR)
 	{
 	  /* Unable to lock the Rootclass. Undo the reserve of classname */
 	  (void) locator_delete_class_name (classname);
@@ -6248,6 +6262,7 @@ locator_prepare_rename_class (MOP class_mop, const char *old_classname,
  * return: MOBJ
  *
  *   mop(in): Mop of object that it is going to be updated
+ *   fetch_type(in): fetch type 
  *
  * Note:Prepare an instance for update. The instance is fetched for
  *              exclusive mode and it is set dirty. Note that it is very
@@ -6259,11 +6274,11 @@ locator_prepare_rename_class (MOP class_mop, const char *old_classname,
  *              updated.
  */
 MOBJ
-locator_update_instance (MOP mop)
+locator_update_instance (MOP mop, LC_FETCH_TYPE fetch_type)
 {
   MOBJ object;			/* The instance object */
 
-  object = locator_fetch_instance (mop, DB_FETCH_WRITE);
+  object = locator_fetch_instance (mop, DB_FETCH_WRITE, fetch_type);
   if (object != NULL)
     {
       ws_dirty (mop);

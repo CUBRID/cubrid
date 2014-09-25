@@ -247,7 +247,8 @@ vid_fetch_instance (MOP mop, DB_FETCH_MODE purpose)
 	    {
 	      fetch_mode = AU_FETCH_READ;
 	    }
-	  if (au_fetch_instance_force (base_mop, &inst, fetch_mode) !=
+	  if (au_fetch_instance_force (base_mop, &inst, fetch_mode,
+				       LC_FETCH_NEED_LAST_MVCC_VERSION) !=
 	      NO_ERROR)
 	    {
 	      inst = (MOBJ) 0;
@@ -1511,7 +1512,8 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	       * it in. Otherwise, db_decode_object() can fail.
 	       */
 	      if (vclass && vclass->object == NULL
-		  && au_fetch_instance_force (vclass, &inst, AU_FETCH_READ))
+		  && au_fetch_instance_force (vclass, &inst, AU_FETCH_READ,
+					      LC_FETCH_NEED_LAST_MVCC_VERSION))
 		{
 		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
@@ -1534,7 +1536,8 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	    {
 	      bclass = db_get_object (&elem_value);
 	      if (bclass && bclass->object == NULL
-		  && au_fetch_instance_force (bclass, &inst, AU_FETCH_READ))
+		  && au_fetch_instance_force (bclass, &inst, AU_FETCH_READ,
+					      LC_FETCH_NEED_LAST_MVCC_VERSION))
 		{
 		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();

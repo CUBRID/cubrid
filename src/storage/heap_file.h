@@ -237,8 +237,12 @@ enum heap_update_style
 enum
 { END_SCAN, CONTINUE_SCAN };
 
-enum
-{ DONT_NEED_SNAPSHOT, NEED_SNAPSHOT };
+typedef enum
+{
+  SNAPSHOT_TYPE_NONE,		/* do not use snapshot */
+  SNAPSHOT_TYPE_MVCC,		/* use MVCC snapshot */
+  SNAPSHOT_TYPE_DIRTY		/* use dirty snapshot */
+} SNAPSHOT_TYPE;
 
 extern int heap_classrepr_decache (THREAD_ENTRY * thread_p,
 				   const OID * class_oid);
@@ -384,7 +388,7 @@ extern INT32 heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p,
 					     int num_var_attrs);
 
 extern OID *heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid,
-				const OID * oid, bool need_snapshot);
+				const OID * oid, SNAPSHOT_TYPE snapshot_type);
 extern char *heap_get_class_name (THREAD_ENTRY * thread_p,
 				  const OID * class_oid);
 extern char *heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p,

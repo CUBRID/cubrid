@@ -1129,8 +1129,11 @@ trigger_to_object (TR_TRIGGER * trigger)
       trigger->object = object_p;
       obt_p = NULL;
 
-      /* get the CHN so we know this template is still valid */
-      if (au_fetch_instance_force (object_p, &obj, AU_FETCH_READ) == 0)
+      /* get the CHN so we know this template is still valid
+       * get the current version, not the latest one.
+       */
+      if (au_fetch_instance_force (object_p, &obj, AU_FETCH_READ,
+				   LC_FETCH_CURRENT_VERSION) == 0)
 	{
 	  trigger->chn = WS_CHN (obj);
 	}
@@ -1186,10 +1189,13 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
   /*
    * Save the cache coherency number so we know when to re-calculate the
-   * cache
+   * cache. Get the last dirty version.
    */
-  if (au_fetch_instance_force (object, &obj, AU_FETCH_READ))
-    goto error;
+  if (au_fetch_instance_force (object, &obj, AU_FETCH_READ,
+			       LC_FETCH_NEED_LAST_DIRTY_VERSION))
+    {
+      goto error;
+    }
 
   trigger->chn = WS_CHN (obj);
 
@@ -1737,9 +1743,11 @@ validate_trigger (TR_TRIGGER * trigger)
   /*
    * should have a quicker lock check mechanism, could call
    * locator directly here if it speeds things up
+   * Get the current version, not the latest one.
    */
 
-  if (au_fetch_instance_force (trigger->object, &obj, AU_FETCH_READ))
+  if (au_fetch_instance_force (trigger->object, &obj, AU_FETCH_READ,
+			       LC_FETCH_CURRENT_VERSION))
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -4355,7 +4363,8 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback)
 		  ws_decache (trigger->object);
 		  ws_clear_hints (trigger->object, false);
 		  error = au_fetch_instance_force (trigger->object, NULL,
-						   AU_FETCH_WRITE);
+						   AU_FETCH_WRITE,
+						   LC_FETCH_NEED_LAST_MVCC_VERSION);
 		  if (error == NO_ERROR)
 		    {
 		      /* 
@@ -5882,7 +5891,8 @@ its_deleted (DB_OBJECT * object)
 	{
 	  int error;
 
-	  error = au_fetch_instance_force (object, NULL, AU_FETCH_READ);
+	  error = au_fetch_instance_force (object, NULL, AU_FETCH_READ,
+					   LC_FETCH_NEED_LAST_MVCC_VERSION);
 	  if (error == ER_HEAP_UNKNOWN_OBJECT)
 	    {
 	      deleted = 1;

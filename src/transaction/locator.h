@@ -110,6 +110,23 @@ typedef enum
   (operation == LC_FLUSH_UPDATE || operation == LC_FLUSH_UPDATE_PRUNE \
    || operation == LC_FLUSH_UPDATE_PRUNE_VERIFY)
 
+typedef enum
+{
+  LC_FETCH_CURRENT_VERSION = 0x01,	/* fetch current version */
+  LC_FETCH_RETAIN_LOCK = 0x02,	/* retain lock after class fetch */
+  LC_FETCH_NEED_LAST_MVCC_VERSION = 0x04,	/* fetch last MVCC version */
+  LC_FETCH_NEED_LAST_DIRTY_VERSION = 0x08	/* fetch last dirty version */
+} LC_FETCH_TYPE;
+
+#define LC_FETCH_IS_LOCK_RETAINED(fetch_type) \
+  ((fetch_type & LC_FETCH_RETAIN_LOCK) != 0)
+
+#define LC_FETCH_IS_LAST_MVCC_VERSION_NEEDED(fetch_type) \
+  ((fetch_type & LC_FETCH_NEED_LAST_MVCC_VERSION) != 0)
+
+#define LC_FETCH_IS_LAST_DIRTY_VERSION_NEEDED(fetch_type) \
+  ((fetch_type & LC_FETCH_NEED_LAST_DIRTY_VERSION) != 0)
+
 #define LC_FLAG_HAS_INDEX_MASK  0x05
 #define LC_ONEOBJ_GET_INDEX_FLAG(obj)  \
   ((obj)->flag & LC_FLAG_HAS_INDEX_MASK)

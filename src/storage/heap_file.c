@@ -11459,8 +11459,8 @@ heap_get_mvcc_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
 	    }
 
 	  /* Check satisfies snapshot */
-	  if (mvcc_satisfies_snapshot (thread_p, &mvcc_rec_header,
-				       mvcc_snapshot))
+	  if ((mvcc_snapshot)->snapshot_fnc (thread_p, &mvcc_rec_header,
+					     mvcc_snapshot))
 	    {
 	      /* The object is visible */
 	      if (type == REC_NEWHOME)
@@ -12978,11 +12978,12 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 	       * Caller does not know the class of the object. Get the class
 	       * identifier from disk
 	       */
-	      bool need_snapshot =
-		((class_oid != NULL) ? NEED_SNAPSHOT : DONT_NEED_SNAPSHOT);
+	      SNAPSHOT_TYPE snapshot_type =
+		((class_oid !=
+		  NULL) ? SNAPSHOT_TYPE_MVCC : SNAPSHOT_TYPE_NONE);
 
 	      if (heap_get_class_oid (thread_p, class_oid, oid,
-				      need_snapshot) == NULL)
+				      snapshot_type) == NULL)
 		{
 		  doesexist = false;
 		  break;
@@ -13372,17 +13373,18 @@ exit_on_error:
  *   return: OID *(class_oid on success and NULL on failure)
  *   class_oid(out): The Class oid of the instance
  *   oid(in): The Object identifier of the instance
- *   need_snapshot(in): true if need snapshot
+ *   snapshot_type(in): snapshot type
  *
  * Note: Find the class identifier of the given instance.
  */
 OID *
 heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
-		    bool need_snapshot)
+		    SNAPSHOT_TYPE snapshot_type)
 {
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
   DISK_ISVALID oid_valid;
+  MVCC_SNAPSHOT mvcc_snapshot_dirty;
 
   if (class_oid == NULL)
     {
@@ -13391,13 +13393,18 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
     }
 
   heap_scancache_quick_start (&scan_cache);
-  if (mvcc_Enabled && need_snapshot)
+  if (snapshot_type == SNAPSHOT_TYPE_MVCC)
     {
       scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (scan_cache.mvcc_snapshot == NULL)
 	{
 	  return NULL;
 	}
+    }
+  else if (snapshot_type == SNAPSHOT_TYPE_DIRTY)
+    {
+      mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
+      scan_cache.mvcc_snapshot = &mvcc_snapshot_dirty;
     }
 
   if (heap_get_with_class_oid (thread_p, class_oid, oid, &recdes,
@@ -15565,7 +15572,7 @@ heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid,
    * the _db_partition class here because we will need it later
    */
   if (heap_get_class_oid (thread_p, &_db_part_oid, &part_info,
-			  DONT_NEED_SNAPSHOT) == NULL)
+			  SNAPSHOT_TYPE_NONE) == NULL)
     {
       error = ER_FAILED;
       goto cleanup;

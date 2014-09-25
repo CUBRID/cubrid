@@ -553,7 +553,8 @@ static int au_fetch_class_internal (MOP op, SM_CLASS ** class_ptr,
 				    AU_FETCHMODE fetchmode, DB_AUTH type,
 				    FETCH_BY fetch_by);
 
-static int fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode);
+static int fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
+			   LC_FETCH_TYPE fetch_type);
 static int au_perform_login (const char *name, const char *password,
 			     bool ignore_dba_privilege);
 
@@ -6089,9 +6090,11 @@ au_check_authorization (MOP op, DB_AUTH auth)
  *   op(in): instance MOP
  *   obj_ptr(out): returned pointer to object
  *   fetchmode(in): desired operation
+ *   fetch_type(in): fetch type 
  */
 static int
-fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode)
+fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
+		LC_FETCH_TYPE fetch_type)
 {
   int error = NO_ERROR;
   MOBJ obj = NULL;
@@ -6148,13 +6151,13 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode)
       switch (fetchmode)
 	{
 	case AU_FETCH_READ:
-	  obj = locator_fetch_instance (op, DB_FETCH_READ);
+	  obj = locator_fetch_instance (op, DB_FETCH_READ, fetch_type);
 	  break;
 	case AU_FETCH_WRITE:
-	  obj = locator_fetch_instance (op, DB_FETCH_WRITE);
+	  obj = locator_fetch_instance (op, DB_FETCH_WRITE, fetch_type);
 	  break;
 	case AU_FETCH_UPDATE:
-	  obj = locator_update_instance (op);
+	  obj = locator_update_instance (op, fetch_type);
 	  break;
 	case AU_FETCH_SCAN:
 	case AU_FETCH_EXCLUSIVE_SCAN:
@@ -6253,7 +6256,8 @@ au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, DB_AUTH type)
 
   if (Au_disable || !(error = check_authorization (classmop, class_, type)))
     {
-      error = fetch_instance (op, obj_ptr, mode);
+      error =
+	fetch_instance (op, obj_ptr, mode, LC_FETCH_NEED_LAST_MVCC_VERSION);
     }
 
   return error;
@@ -6267,11 +6271,13 @@ au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, DB_AUTH type)
  *   op(in): instance MOP
  *   obj_ptr(out): returned instance memory pointer
  *   fetchmode(in): access type
+ *   fetch_type(in): fetch type 
  */
 int
-au_fetch_instance_force (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode)
+au_fetch_instance_force (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
+			 LC_FETCH_TYPE fetch_type)
 {
-  return (fetch_instance (op, obj_ptr, fetchmode));
+  return (fetch_instance (op, obj_ptr, fetchmode, fetch_type));
 }
 
 

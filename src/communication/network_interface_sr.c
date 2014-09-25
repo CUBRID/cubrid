@@ -446,8 +446,6 @@ slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   OID oid;
   int chn;
   LOCK lock;
-  int tmp;
-  bool retain_lock;
   OID class_oid;
   int class_chn;
   int prefetch;
@@ -461,20 +459,20 @@ slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   char *content_ptr;
   int content_size;
   int num_objs = 0;
+  int fetch_type;
 
   ptr = or_unpack_oid (request, &oid);
   ptr = or_unpack_int (ptr, &chn);
   ptr = or_unpack_lock (ptr, &lock);
-  ptr = or_unpack_int (ptr, &tmp);
-  retain_lock = (bool) tmp;
+  ptr = or_unpack_int (ptr, &fetch_type);
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &class_chn);
   ptr = or_unpack_int (ptr, &prefetch);
 
   copy_area = NULL;
   success =
-    xlocator_fetch (thread_p, &oid, chn, lock, retain_lock, &class_oid,
-		    class_chn, prefetch, &copy_area);
+    xlocator_fetch (thread_p, &oid, chn, lock, (LC_FETCH_TYPE) fetch_type,
+		    &class_oid, class_chn, prefetch, &copy_area);
 
   if (success != NO_ERROR)
     {

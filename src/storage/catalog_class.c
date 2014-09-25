@@ -2985,7 +2985,7 @@ catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
 	    {
 	      oid_p = DB_PULL_OID (&element);
 	      (void) heap_get_class_oid (thread_p, &class_oid, oid_p,
-					 NEED_SNAPSHOT);
+					 SNAPSHOT_TYPE_MVCC);
 
 	      if (!OID_EQ (&class_oid, &ct_Class.classoid))
 		{

@@ -833,9 +833,9 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 			   * gets cached in the MOP which is important for the
 			   * following usage of ref_mop->class
 			   */
-			  if (au_fetch_instance_force (ref_mop, &ref_obj,
-						       AU_FETCH_UPDATE) !=
-			      NO_ERROR)
+			  if (au_fetch_instance_force
+			      (ref_mop, &ref_obj, AU_FETCH_UPDATE,
+			       LC_FETCH_NEED_LAST_MVCC_VERSION) != NO_ERROR)
 			    {
 			      assert (er_errid () != NO_ERROR);
 			      return er_errid ();
@@ -1490,7 +1490,9 @@ obj_get_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value)
       if (att->header.name_space == ID_ATTRIBUTE)
 	{
 	  /* fetch the instance and caluclate memory offset */
-	  if (au_fetch_instance_force (op, &obj, AU_FETCH_READ) != NO_ERROR)
+	  if (au_fetch_instance_force (op, &obj, AU_FETCH_READ,
+				       LC_FETCH_NEED_LAST_MVCC_VERSION) !=
+	      NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
@@ -3664,7 +3666,9 @@ find_unique (MOP classop, SM_ATTRIBUTE * att,
    */
   if (found != NULL)
     {
-      if (au_fetch_instance_force (found, NULL, fetchmode) != NO_ERROR)
+      if (au_fetch_instance_force (found, NULL, fetchmode,
+				   LC_FETCH_NEED_LAST_MVCC_VERSION) !=
+	  NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -4208,7 +4212,9 @@ obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons,
        */
       if (obj != NULL)
 	{
-	  if (au_fetch_instance_force (obj, NULL, fetchmode) != NO_ERROR)
+	  if (au_fetch_instance_force (obj, NULL, fetchmode,
+				       LC_FETCH_NEED_LAST_MVCC_VERSION) !=
+	      NO_ERROR)
 	    {
 	      return NULL;
 	    }
@@ -4415,7 +4421,9 @@ obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key,
    */
   if (obj != NULL)
     {
-      if (au_fetch_instance_force (obj, NULL, fetchmode) != NO_ERROR)
+      if (au_fetch_instance_force (obj, NULL, fetchmode,
+				   LC_FETCH_NEED_LAST_MVCC_VERSION) !=
+	  NO_ERROR)
 	{
 	  return NULL;
 	}
