@@ -1874,8 +1874,8 @@ bool PRM_OPTIMIZER_RESERVE_20 = false;
 static bool prm_optimizer_reserve_20_default = false;
 static unsigned int prm_optimizer_reserve_20_flag = 0;
 
-bool PRM_HA_REPL_ENABLE_SERVER_SIDE_UPDATE = true;
-static bool prm_ha_repl_enable_server_side_update_default = true;
+bool PRM_HA_REPL_ENABLE_SERVER_SIDE_UPDATE = false;
+static bool prm_ha_repl_enable_server_side_update_default = false;
 static bool prm_ha_repl_enable_server_side_update_flag = 0;
 
 float PRM_PB_LRU_HOT_RATIO = 0.4f;
@@ -8984,6 +8984,8 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *max_log_archives_prm;
   SYSPRM_PARAM *force_remove_log_archives_prm;
   SYSPRM_PARAM *call_stack_dump_activation_prm;
+  SYSPRM_PARAM *ha_repl_enable_server_side_update_prm;
+  SYSPRM_PARAM *ha_prefetchlogdb_enable_prm;
 
   char newval[LINE_MAX];
   char host_name[MAXHOSTNAMELEN];
@@ -9021,6 +9023,10 @@ prm_tune_parameters (void)
   max_log_archives_prm = prm_find (PRM_NAME_LOG_MAX_ARCHIVES, NULL);
   force_remove_log_archives_prm =
     prm_find (PRM_NAME_FORCE_REMOVE_LOG_ARCHIVES, NULL);
+  ha_repl_enable_server_side_update_prm =
+    prm_find (PRM_NAME_HA_REPL_ENABLE_SERVER_SIDE_UPDATE, NULL);
+  ha_prefetchlogdb_enable_prm =
+    prm_find (PRM_NAME_HA_PREFETCHLOGDB_ENABLE, NULL);
 
   /* Check that max clients has been set */
   assert (max_clients_prm != NULL);
@@ -9164,7 +9170,7 @@ prm_tune_parameters (void)
     {
       (void) prm_set_default (max_log_archives_prm);
     }
-#else /* !SERVER_MODE */
+#else /* SA_MODE  || WINDOWS */
   if (PRM_GET_INT (ha_mode_prm->value) != HA_MODE_OFF)
     {
       if (PRM_DEFAULT_VAL_USED (*ha_server_state_prm->dynamic_flag))
@@ -9178,6 +9184,9 @@ prm_tune_parameters (void)
 	{
 	  prm_set (force_remove_log_archives_prm, "yes", false);
 	}
+
+      prm_set (ha_repl_enable_server_side_update_prm, "no", false);
+      prm_set (ha_prefetchlogdb_enable_prm, "no", false);
     }
   else
     {
@@ -9190,7 +9199,7 @@ prm_tune_parameters (void)
 	  (void) prm_set_default (max_log_archives_prm);
 	}
     }
-#endif /* SERVER_MODE */
+#endif /* !SA_MODE && !WINDOWS */
 
   if (ha_node_list_prm == NULL
       || PRM_DEFAULT_VAL_USED (*ha_node_list_prm->dynamic_flag))
@@ -9250,6 +9259,8 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *shutdown_wait_time_in_secs_prm;
   SYSPRM_PARAM *ha_copy_log_timeout_prm;
   SYSPRM_PARAM *ha_check_disk_failure_interval_prm;
+  SYSPRM_PARAM *ha_repl_enable_server_side_update_prm;
+  SYSPRM_PARAM *ha_prefetchlogdb_enable_prm;
 
   char newval[LINE_MAX];
   char host_name[MAXHOSTNAMELEN];
@@ -9269,6 +9280,10 @@ prm_tune_parameters (void)
   ha_copy_log_timeout_prm = prm_find (PRM_NAME_HA_COPY_LOG_TIMEOUT, NULL);
   ha_check_disk_failure_interval_prm =
     prm_find (PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS, NULL);
+  ha_repl_enable_server_side_update_prm =
+    prm_find (PRM_NAME_HA_REPL_ENABLE_SERVER_SIDE_UPDATE, NULL);
+  ha_prefetchlogdb_enable_prm =
+    prm_find (PRM_NAME_HA_PREFETCHLOGDB_ENABLE, NULL);
 
   assert (max_plan_cache_entries_prm != NULL);
   if (max_plan_cache_entries_prm == NULL)
@@ -9311,6 +9326,10 @@ prm_tune_parameters (void)
 	  sprintf (newval, "%ds", ha_check_disk_failure_interval_value);
 	  prm_set (ha_check_disk_failure_interval_prm, newval, false);
 	}
+
+      /* disable them temporarily */
+      prm_set (ha_repl_enable_server_side_update_prm, "no", false);
+      prm_set (ha_prefetchlogdb_enable_prm, "no", false);
     }
 
   if (ha_node_list_prm == NULL

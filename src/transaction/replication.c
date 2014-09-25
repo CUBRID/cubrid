@@ -65,11 +65,6 @@ repl_data_insert_log_dump (FILE * fp, int length, void *data)
   DB_VALUE key;
   char *ptr;
 
-  if (mvcc_Enabled)
-    {
-      return;
-    }
-
   ptr = or_unpack_string_nocopy ((char *) data, &class_name);
   ptr = or_unpack_mem_value (ptr, &key);
   fprintf (fp, "      class_name: %s\n", class_name);
@@ -138,11 +133,6 @@ repl_schema_log_dump (FILE * fp, int length, void *data)
   char *class_name, *ddl;
   char *ptr;
 
-  if (mvcc_Enabled)
-    {
-      return;
-    }
-
   ptr = or_unpack_int ((char *) data, &type);
   ptr = or_unpack_string_nocopy (ptr, &class_name);
   ptr = or_unpack_string_nocopy (ptr, &ddl);
@@ -174,11 +164,6 @@ repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc)
 {
   int i = 0, k;
   int error = NO_ERROR;
-
-  if (mvcc_Enabled)
-    {
-      return NO_ERROR;
-    }
 
   if (need_realloc == false)
     {
@@ -251,11 +236,6 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
   bool find = false;
   int error = NO_ERROR;
 
-  if (mvcc_Enabled)
-    {
-      return NO_ERROR;
-    }
-
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   tdes = LOG_FIND_TDES (tran_index);
@@ -325,11 +305,6 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
   char *class_name;
   char *ptr;
   int error = NO_ERROR, strlen;
-
-  if (mvcc_Enabled)
-    {
-      return NO_ERROR;
-    }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -433,11 +408,21 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 	}
       break;
     case RVREPL_DATA_UPDATE:
-      /*
-       * for the update case, this function is called before the heap
-       * file update, so we don't need to LSA for update log here.
-       */
-      LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
+      if (!LSA_ISNULL (&tdes->repl_insert_lsa))
+	{
+	  /* MVCC update */
+	  LSA_COPY (&repl_rec->lsa, &tdes->repl_insert_lsa);
+	  LSA_SET_NULL (&tdes->repl_insert_lsa);
+	  LSA_SET_NULL (&tdes->repl_update_lsa);
+	}
+      else
+	{
+	  /*
+	   * for the update case, this function is called before the heap
+	   * file update, so we don't need to LSA for update log here.
+	   */
+	  LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
+	}
       break;
     case RVREPL_DATA_DELETE:
       /*
@@ -497,11 +482,6 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
   LOG_REPL_RECORD *repl_rec;
   char *ptr;
   int error = NO_ERROR, strlen1, strlen2, strlen3, strlen4;
-
-  if (mvcc_Enabled)
-    {
-      return NO_ERROR;
-    }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -583,11 +563,6 @@ repl_start_flush_mark (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes;
 
-  if (mvcc_Enabled)
-    {
-      return;
-    }
-
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
   if (tdes == NULL)
@@ -618,11 +593,6 @@ repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo)
 {
   LOG_TDES *tdes;
   int i;
-
-  if (mvcc_Enabled)
-    {
-      return;
-    }
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
 

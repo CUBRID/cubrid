@@ -469,7 +469,7 @@ static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class,
 			   int bound_bit_flag, DB_OTMPL * def,
 			   DB_VALUE * key, int offset_size);
 static int la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def,
-			   DB_VALUE * key);
+			   DB_VALUE * key, unsigned int rcvindex);
 static char *la_get_zipped_data (char *undo_data, int undo_length,
 				 bool is_diff, bool is_undo_zip,
 				 bool is_overflow, char **rec_type,
@@ -3694,16 +3694,17 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class,
  */
 static int
 la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def,
-		DB_VALUE * key)
+		DB_VALUE * key, unsigned int rcvindex)
 {
   OR_BUF orep, *buf;
-  int repid, status;
+  int status;
   SM_CLASS *sm_class;
   unsigned int repid_bits;
   int bound_bit_flag;
   int rc = NO_ERROR;
   int error = NO_ERROR;
   int offset_size;
+  char mvcc_flags;
 
   /* Kludge, make sure we don't upgrade objects to OID'd during the reading */
   buf = &orep;
@@ -3718,12 +3719,72 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def,
       /* offset size */
       offset_size = OR_GET_OFFSET_SIZE (buf->ptr);
 
-      repid_bits = or_get_int (buf, &rc);
+      if (rcvindex == RVHF_MVCC_INSERT && record->type != REC_BIGONE)
+	{
+	  /*
+	   * MVCC insert redo log only contains repid_flags and chn.
+	   * Do not skip other MVCC header info even though the flags
+	   * says that they exist. (see heap_mvcc_log_insert())
+	   */
 
-      (void) or_get_int (buf, &rc);	/* skip chn */
+	  /* in case of MVCC, repid_bits contains MVCC flags */
+	  repid_bits = or_get_int (buf, &rc);
 
-      /* mask out the repid & bound bit flag */
-      repid = repid_bits & ~OR_BOUND_BIT_FLAG & ~OR_OFFSET_SIZE_FLAG;
+	  /* skip chn */
+	  (void) or_advance (buf, OR_INT_SIZE);
+
+	  mvcc_flags = (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) &
+			       OR_MVCC_FLAG_MASK);
+	  assert (!(mvcc_flags & (OR_MVCC_FLAG_VALID_DELID
+				  | OR_MVCC_FLAG_VALID_LONG_CHN
+				  | OR_MVCC_FLAG_VALID_NEXT_VERSION)));
+	  assert (mvcc_flags & OR_MVCC_FLAG_VALID_INSID);
+	}
+      else
+	{
+	  /* in case of MVCC, repid_bits contains MVCC flags */
+	  repid_bits = or_mvcc_get_repid_and_flags (buf, &rc);
+
+	  mvcc_flags =
+	    (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) &
+		    OR_MVCC_FLAG_MASK);
+	  if (mvcc_flags == 0)
+	    {
+	      /* non mvcc header */
+	      /* skip chn */
+	      (void) or_advance (buf, OR_INT_SIZE);
+	    }
+	  else
+	    {
+	      if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
+		{
+		  /* skip insert id */
+		  (void) or_advance (buf, OR_MVCCID_SIZE);
+		}
+
+	      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
+		{
+		  /* skip delete id */
+		  (void) or_advance (buf, OR_MVCCID_SIZE);
+		}
+	      else
+		{
+		  /* skip chn */
+		  (void) or_advance (buf, OR_INT_SIZE);
+		  if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
+		    {
+		      /* skip 4 bytes - fixed MVCC header size */
+		      (void) or_advance (buf, OR_INT_SIZE);
+		    }
+		}
+
+	      if (mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION)
+		{
+		  /* skip next version */
+		  (void) or_advance (buf, OR_OID_SIZE);
+		}
+	    }
+	}
 
       bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
 
@@ -3910,11 +3971,17 @@ la_get_log_data (LOG_RECORD_HEADER * lrec,
   LOG_PAGE *pg;
   PGLENGTH offset;
   int length;			/* type change PGLENGTH -> int */
+  int log_size;
   LOG_PAGEID pageid;
   int error = NO_ERROR;
+
   struct log_undoredo *undoredo;
   struct log_undo *undo;
   struct log_redo *redo;
+
+  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
+  struct log_mvcc_undo *mvcc_undo = NULL;
+  struct log_mvcc_redo *mvcc_redo = NULL;
 
   bool is_undo_zip = false;
   int rec_len = 0;
@@ -3926,6 +3993,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec,
 
   bool is_overflow = false;
   bool is_diff = false;
+  bool is_mvcc_log = false;
 
   pg = pgptr;
 
@@ -3938,18 +4006,46 @@ la_get_log_data (LOG_RECORD_HEADER * lrec,
       return error;
     }
 
+  if (LOG_IS_MVCC_OP_RECORD_TYPE (lrec->type) == true)
+    {
+      is_mvcc_log = true;
+    }
+
   switch (lrec->type)
     {
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
-      is_diff = (lrec->type == LOG_DIFF_UNDOREDO_DATA) ? true : false;
+    case LOG_MVCC_UNDOREDO_DATA:
+    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+      if (LOG_IS_DIFF_UNDOREDO_TYPE (lrec->type) == true)
+	{
+	  is_diff = true;
+	}
 
-      length = DB_SIZEOF (struct log_undoredo);
-      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, length, offset, pageid, pg);
+      if (is_mvcc_log == true)
+	{
+	  log_size = DB_SIZEOF (struct log_mvcc_undoredo);
+	}
+      else
+	{
+	  log_size = DB_SIZEOF (struct log_undoredo);
+	}
+
+      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid,
+					   pg);
 
       if (error == NO_ERROR)
 	{
-	  undoredo = (struct log_undoredo *) ((char *) pg->area + offset);
+	  if (is_mvcc_log == true)
+	    {
+	      mvcc_undoredo =
+		(struct log_mvcc_undoreo *) ((char *) pg->area + offset);
+	      undoredo = &mvcc_undoredo->undoredo;
+	    }
+	  else
+	    {
+	      undoredo = (struct log_undoredo *) ((char *) pg->area + offset);
+	    }
 
 	  undo_length = undoredo->ulength;	/* undo log length */
 	  temp_length = undoredo->rlength;	/* for the replication, we just need
@@ -3973,8 +4069,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec,
 	      *logs = (void *) NULL;
 	    }
 
-	  LA_LOG_READ_ADD_ALIGN (error, DB_SIZEOF (*undoredo), offset,
-				 pageid, pg);
+	  LA_LOG_READ_ADD_ALIGN (error, log_size, offset, pageid, pg);
 	  if (error == NO_ERROR)
 	    {
 	      if (is_diff)
@@ -4003,11 +4098,31 @@ la_get_log_data (LOG_RECORD_HEADER * lrec,
       break;
 
     case LOG_UNDO_DATA:
-      length = DB_SIZEOF (struct log_undo);
-      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, length, offset, pageid, pg);
+    case LOG_MVCC_UNDO_DATA:
+      if (is_mvcc_log == true)
+	{
+	  log_size = DB_SIZEOF (struct log_mvcc_undo);
+	}
+      else
+	{
+	  log_size = DB_SIZEOF (struct log_undo);
+	}
+
+      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid,
+					   pg);
       if (error == NO_ERROR)
 	{
-	  undo = (struct log_undo *) ((char *) pg->area + offset);
+	  if (is_mvcc_log == true)
+	    {
+	      mvcc_undo =
+		(struct log_mvcc_undo *) ((char *) pg->area + offset);
+	      undo = &mvcc_undo->undo;
+	    }
+	  else
+	    {
+	      undo = (struct log_undo *) ((char *) pg->area + offset);
+	    }
+
 	  temp_length = undo->length;
 	  length = (int) GET_ZIP_LEN (undo->length);
 
@@ -4026,17 +4141,36 @@ la_get_log_data (LOG_RECORD_HEADER * lrec,
 	    {
 	      *logs = (void *) NULL;
 	    }
-	  LA_LOG_READ_ADD_ALIGN (error, DB_SIZEOF (*undo), offset, pageid,
-				 pg);
+	  LA_LOG_READ_ADD_ALIGN (error, log_size, offset, pageid, pg);
 	}
       break;
 
     case LOG_REDO_DATA:
-      length = DB_SIZEOF (struct log_redo);
-      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, length, offset, pageid, pg);
+    case LOG_MVCC_REDO_DATA:
+      if (is_mvcc_log == true)
+	{
+	  log_size = DB_SIZEOF (struct log_mvcc_redo);
+	}
+      else
+	{
+	  log_size = DB_SIZEOF (struct log_redo);
+	}
+
+      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid,
+					   pg);
       if (error == NO_ERROR)
 	{
-	  redo = (struct log_redo *) ((char *) pg->area + offset);
+	  if (is_mvcc_log == true)
+	    {
+	      mvcc_redo =
+		(struct log_mvcc_redo *) ((char *) pg->area + offset);
+	      redo = &mvcc_redo->redo;
+	    }
+	  else
+	    {
+	      redo = (struct log_redo *) ((char *) pg->area + offset);
+	    }
+
 	  temp_length = redo->length;
 	  length = GET_ZIP_LEN (redo->length);
 
@@ -4055,8 +4189,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec,
 	    {
 	      *logs = (void *) NULL;
 	    }
-	  LA_LOG_READ_ADD_ALIGN (error, DB_SIZEOF (*redo), offset, pageid,
-				 pg);
+	  LA_LOG_READ_ADD_ALIGN (error, log_size, offset, pageid, pg);
 	}
       break;
 
@@ -4186,7 +4319,7 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs,
 	  la_release_page_buffer (current_lsa.pageid);
 	  break;
 	}
-      else if (current_log_record->type == LOG_REDO_DATA)
+      else if (LOG_IS_REDO_RECORD_TYPE (current_log_record->type) == true)
 	{
 	  /* process only LOG_REDO_DATA */
 
@@ -4313,17 +4446,20 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec,
   LOG_LSA lsa;
   PGLENGTH offset;
   int length;			/* type change PGLENGTH -> int */
+  int log_size;
   LOG_PAGEID pageid;
   int error = NO_ERROR;
   LOG_RECORD_HEADER *lrec;
   struct log_undoredo *undoredo;
   struct log_undoredo *prev_log;
+  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
   int zip_len = 0;
   int temp_length = 0;
   int undo_length = 0;
   int redo_length = 0;
 
   bool is_undo_zip = false;
+  bool is_mvcc_log = false;
 
   char *undo_data = NULL;
   LOG_ZIP *redo_unzip_data = NULL;
@@ -4343,21 +4479,48 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec,
 	{
 	  lrec = LOG_GET_LOG_RECORD_HEADER (pg, &lsa);
 	  if (lrec->trid == prev_lrec->trid &&
-	      (lrec->type == LOG_UNDOREDO_DATA
-	       || lrec->type == LOG_DIFF_UNDOREDO_DATA))
+	      LOG_IS_UNDOREDO_RECORD_TYPE (lrec->type))
 	    {
-	      is_diff = (lrec->type == LOG_DIFF_UNDOREDO_DATA) ? true : false;
+	      if (LOG_IS_DIFF_UNDOREDO_TYPE (lrec->type) == true)
+		{
+		  is_diff = true;
+		}
+	      else
+		{
+		  is_diff = false;
+		}
+
+	      if (LOG_IS_MVCC_OP_RECORD_TYPE (lrec->type) == true)
+		{
+		  is_mvcc_log = true;
+		  log_size = DB_SIZEOF (struct log_mvcc_undoredo);
+		}
+	      else
+		{
+		  is_mvcc_log = false;
+		  log_size = DB_SIZEOF (struct log_undoredo);
+		}
 
 	      offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa.offset;
 	      pageid = lsa.pageid;
 	      LA_LOG_READ_ALIGN (error, offset, pageid, pg);
-	      length = DB_SIZEOF (struct log_undoredo);
-	      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, length, offset,
+	      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset,
 						   pageid, pg);
 	      if (error == NO_ERROR)
 		{
-		  undoredo =
-		    (struct log_undoredo *) ((char *) pg->area + offset);
+		  if (is_mvcc_log == true)
+		    {
+		      mvcc_undoredo =
+			(struct log_mvcc_undoredo *) ((char *) pg->area +
+						      offset);
+		      undoredo = &mvcc_undoredo->undoredo;
+		    }
+		  else
+		    {
+		      undoredo =
+			(struct log_undoredo *) ((char *) pg->area + offset);
+		    }
+
 		  undo_length = undoredo->ulength;
 		  temp_length = undoredo->rlength;
 		  length = GET_ZIP_LEN (undoredo->rlength);
@@ -4367,7 +4530,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec,
 		      undoredo->data.offset == prev_log->data.offset &&
 		      undoredo->data.volid == prev_log->data.volid)
 		    {
-		      LA_LOG_READ_ADD_ALIGN (error, DB_SIZEOF (*undoredo),
+		      LA_LOG_READ_ADD_ALIGN (error, log_size,
 					     offset, pageid, pg);
 		      if (is_diff)
 			{
@@ -4899,7 +5062,8 @@ la_apply_update_log (LA_ITEM * item)
       la_release_page_buffer (old_pageid);
       return error;
     }
-  if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK)
+  if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK
+      && rcvindex != RVHF_MVCC_INSERT)
     {
       er_log_debug (ARG_FILE_LINE, "apply_update : rcvindex = %d\n",
 		    rcvindex);
@@ -4959,7 +5123,7 @@ la_apply_update_log (LA_ITEM * item)
     }
 
   /* make object using the record rescription */
-  error = la_disk_to_obj (mclass, &recdes, inst_tp, &item->key);
+  error = la_disk_to_obj (mclass, &recdes, inst_tp, &item->key, rcvindex);
   if (error != NO_ERROR)
     {
       AU_RESTORE (au_save);
@@ -5185,7 +5349,8 @@ la_apply_update_log_server_side (LA_ITEM * item)
 	      break;
 	    }
 
-	  rc = la_disk_to_obj (mclass, &recdes, inst_tp, &item->key);
+	  rc =
+	    la_disk_to_obj (mclass, &recdes, inst_tp, &item->key, rcvindex);
 	  if (rc != NO_ERROR)
 	    {
 	      sql_logging_failed = true;
@@ -5327,7 +5492,7 @@ la_apply_insert_log (LA_ITEM * item)
       la_release_page_buffer (old_pageid);
       return error;
     }
-  if (rcvindex != RVHF_INSERT)
+  if (rcvindex != RVHF_INSERT && rcvindex != RVHF_MVCC_INSERT)
     {
       er_log_debug (ARG_FILE_LINE, "apply_insert : rcvindex = %d\n",
 		    rcvindex);
@@ -5383,7 +5548,7 @@ la_apply_insert_log (LA_ITEM * item)
     }
 
   /* make object using the record description */
-  error = la_disk_to_obj (mclass, &recdes, inst_tp, &item->key);
+  error = la_disk_to_obj (mclass, &recdes, inst_tp, &item->key, rcvindex);
   if (error != NO_ERROR)
     {
       AU_RESTORE (au_save);

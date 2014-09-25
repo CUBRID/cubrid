@@ -1410,14 +1410,14 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
 	  if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
 	    {
 	      /* skip insert id */
-	      or_advance (buf, OR_INT64_SIZE);
+	      or_advance (buf, OR_MVCCID_SIZE);
 	    }
 
 	  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	    {
 	      /* skip delete id */
 	      chn = NULL_CHN;
-	      or_advance (buf, OR_INT64_SIZE);
+	      or_advance (buf, OR_MVCCID_SIZE);
 	    }
 	  else
 	    {

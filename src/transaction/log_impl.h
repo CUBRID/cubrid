@@ -1410,6 +1410,10 @@ enum log_repl_flush
    || ((type) == LOG_DIFF_UNDOREDO_DATA) \
    || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
 
+#define LOG_IS_DIFF_UNDOREDO_TYPE(type) \
+  ((type) == LOG_DIFF_UNDOREDO_DATA \
+   || (type == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
 /* Definitions used to identify MVCC log records. Used by log manager and
  * vacuum.
  */
