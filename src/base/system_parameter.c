@@ -11192,7 +11192,6 @@ sysprm_init_intl_param (void)
   SYSPRM_PARAM *prm_number_lang;
   SYSPRM_PARAM *prm_intl_collation;
   SYSPRM_PARAM *prm_timezone;
-  char sys_prm_chg[LINE_MAX];
   int error = NO_ERROR;
 
   prm_date_lang = prm_find (PRM_NAME_INTL_DATE_LANG, NULL);
@@ -11247,9 +11246,6 @@ sysprm_init_intl_param (void)
 #if defined (CS_MODE)
       sysprm_update_cached_session_param_val (PRM_ID_TIMEZONE);
 #endif
-      snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1, "timezone=%s",
-		prm_get_string_value (PRM_ID_SERVER_TIMEZONE));
-      error = db_set_system_parameters (sys_prm_chg);
     }
 
   return error;
