@@ -150,7 +150,8 @@ static void *tz_lib_handle = NULL;
 #if defined(WINDOWS)
 static TZ_DATA timezone_data =
   { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0,
-NULL };
+  NULL
+};
 #else
 static TZ_DATA timezone_data =
   { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL };
@@ -1826,7 +1827,7 @@ tz_zone_info_to_str (const TZ_DECODE_INFO * tz_info, char *tz_str,
   TZ_TIMEZONE *timezone;
   TZ_OFFSET_RULE *zone_off_rule;
   char dst_format[TZ_MAX_FORMAT_SIZE];
-  char *p_dst_format = NULL;
+  const char *p_dst_format = NULL;
 
   if (tz_info->type == TZ_REGION_OFFSET)
     {
@@ -1872,7 +1873,7 @@ tz_zone_info_to_str (const TZ_DECODE_INFO * tz_info, char *tz_str,
       TZ_DS_RULESET *ds_ruleset;
       TZ_DS_RULE *ds_rule;
       int dst_id = tz_info->zone.dst_id;
-      char *ds_abbr = NULL;
+      const char *ds_abbr = NULL;
 
       ds_ruleset = &(tzd->ds_rulesets[zone_off_rule->ds_ruleset]);
       if (dst_id < ds_ruleset->count)
@@ -2210,7 +2211,7 @@ tz_decode_tz_id (const TZ_ID * tz_id, const bool is_full_decode,
 	      TZ_DS_RULESET *ds_ruleset;
 	      TZ_DS_RULE *ds_rule;
 	      int dst_id;
-	      char *ds_abbr = NULL;
+	      const char *ds_abbr = NULL;
 
 	      ds_ruleset = &(tzd->ds_rulesets[zone_off_rule->ds_ruleset]);
 	      dst_id = tz_info->zone.dst_id;
@@ -3382,7 +3383,7 @@ tz_explain_tz_id (const TZ_ID * tz_id, char *tzr,
   TZ_OFFSET_RULE *zone_off_rule;
   TZ_DECODE_INFO tz_info;
   char dst_format[TZ_MAX_FORMAT_SIZE];
-  char *p_dst_format = NULL;
+  const char *p_dst_format = NULL;
   int total_offset = 0;
   int er_status = NO_ERROR;
 
@@ -3456,7 +3457,7 @@ tz_explain_tz_id (const TZ_ID * tz_id, char *tzr,
       TZ_DS_RULESET *ds_ruleset;
       TZ_DS_RULE *ds_rule;
       int dst_id = tz_info.zone.dst_id;
-      char *ds_abbr = NULL;
+      const char *ds_abbr = NULL;
 
       ds_ruleset = &(tzd->ds_rulesets[zone_off_rule->ds_ruleset]);
       if (dst_id < ds_ruleset->count)
@@ -4330,7 +4331,7 @@ tz_full_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type,
   TZ_TIMEZONE timezone;
   TZ_OFFSET_RULE zone_off_rule;
   char dst_format[TZ_MAX_FORMAT_SIZE];
-  char *dst_name = NULL;
+  const char *dst_name = NULL;
   char gmt_offset[MAX_LEN_OFFSET];
   char dst_offset[MAX_LEN_OFFSET];
   char empty_string[1];
@@ -4407,7 +4408,7 @@ tz_full_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type,
 	  TZ_DS_RULESET ds_ruleset;
 	  TZ_DS_RULE ds_rule;
 	  int dst_id;
-	  char *ds_abbr = NULL;
+	  const char *ds_abbr = NULL;
 
 	  ds_ruleset = tzd->ds_rulesets[zone_off_rule.ds_ruleset];
 	  dst_id = tzinfo.zone.dst_id;

@@ -339,10 +339,10 @@ static int tzc_add_leap_sec (TZ_RAW_DATA * tzd_raw, int year, int month,
 			     int day, unsigned char hour, unsigned char min,
 			     unsigned char sec, bool corr_minus,
 			     bool leap_is_rolling);
-static int tzc_read_time_type (const char *str, char **next,
+static int tzc_read_time_type (const char *str, const char **next,
 			       TZ_TIME_TYPE * time_type);
 static int tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text);
-static int tzc_parse_ds_change_on (TZ_RAW_DS_RULE * dest, char *str);
+static int tzc_parse_ds_change_on (TZ_RAW_DS_RULE * dest, const char *str);
 static bool tzc_is_valid_date (const int day, const int month,
 			       const int year_start, const int year_end);
 static int tzc_get_ds_ruleset_by_name (const TZ_DATA * tzd,
@@ -357,16 +357,19 @@ static int tzc_index_raw_data_w_static (TZ_RAW_DATA * tzd_raw,
 					const TZ_GEN_TYPE mode);
 static int tzc_index_raw_subdata (TZ_RAW_DATA * tzd_raw,
 				  const TZ_GEN_TYPE mode);
+static int compare_ints (const void *a, const void *b);
 
 static int tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd);
 static int tzc_compile_ds_rules (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd);
 
 static int str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule,
 				     char *str);
-static int str_month_to_int (char *month, int *month_num, char **str_next);
-static int str_day_to_int (char *str_in, int *day_num, char **str_next);
-static int str_read_day_var (char *str, int *type, int *day, int *bound,
-			     char **str_next);
+static int str_month_to_int (const char *month, int *month_num,
+			     const char **str_next);
+static int str_day_to_int (const char *str_in, int *day_num,
+			   const char **str_next);
+static int str_read_day_var (const char *str, int *type, int *day, int *bound,
+			     const char **str_next);
 
 static int comp_func_raw_countries (const void *arg1, const void *arg2);
 static int comp_func_raw_zones (const void *arg1, const void *arg2);
@@ -667,15 +670,15 @@ tzc_free_tz_data (TZ_DATA * tzd)
 	{
 	  if (tzd->offset_rules[i].std_format != NULL)
 	    {
-	      free (tzd->offset_rules[i].std_format);
+	      free ((void *) (tzd->offset_rules[i].std_format));
 	    }
 	  if (tzd->offset_rules[i].save_format != NULL)
 	    {
-	      free (tzd->offset_rules[i].save_format);
+	      free ((void *) (tzd->offset_rules[i].save_format));
 	    }
 	  if (tzd->offset_rules[i].var_format != NULL)
 	    {
-	      free (tzd->offset_rules[i].var_format);
+	      free ((void *) (tzd->offset_rules[i].var_format));
 	    }
 	}
       free (tzd->offset_rules);
@@ -686,7 +689,7 @@ tzc_free_tz_data (TZ_DATA * tzd)
 	{
 	  if (tzd->names[i].name != NULL)
 	    {
-	      free (tzd->names[i].name);
+	      free ((void *) (tzd->names[i].name));
 	    }
 	}
       free (tzd->names);
@@ -698,7 +701,7 @@ tzc_free_tz_data (TZ_DATA * tzd)
 	{
 	  if (tzd->ds_rulesets[i].ruleset_name != NULL)
 	    {
-	      free (tzd->ds_rulesets[i].ruleset_name);
+	      free ((void *) (tzd->ds_rulesets[i].ruleset_name));
 	    }
 	}
       free (tzd->ds_rulesets);
@@ -709,7 +712,7 @@ tzc_free_tz_data (TZ_DATA * tzd)
 	{
 	  if (tzd->ds_rules[i].letter_abbrev != NULL)
 	    {
-	      free (tzd->ds_rules[i].letter_abbrev);
+	      free ((void *) (tzd->ds_rules[i].letter_abbrev));
 	    }
 	}
       free (tzd->ds_rules);
@@ -1440,7 +1443,7 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   char str[TZ_MAX_LINE_LEN] = { 0 };
   FILE *fp = NULL;
   void *block_alloc = NULL;
-  char *next_token, *str_next, *entry_type_str;
+  const char *next_token, *str_next, *entry_type_str;
   bool leap_corr_minus = false;
   bool leap_is_rolling = false;
 
@@ -1815,7 +1818,7 @@ tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text)
   char *gmt_off = NULL, *rules = NULL, *format = NULL, *until = NULL;
   int err_status = NO_ERROR;
   TZ_RAW_OFFSET_RULE *temp_rule = NULL;
-  char *str_dummy = NULL;
+  const char *str_dummy = NULL;
   int gmt_off_num = 0;
   bool is_numeric_gmt_off = false;
 
@@ -1929,7 +1932,8 @@ exit:
  * rule_text(in): string to parse as a daylight saving rule
  */
 static int
-tzc_read_time_type (const char *str, char **next, TZ_TIME_TYPE * time_type)
+tzc_read_time_type (const char *str, const char **next,
+		    TZ_TIME_TYPE * time_type)
 {
   assert (time_type != NULL);
   assert (next != NULL);
@@ -1980,7 +1984,7 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
   TZ_RAW_DS_RULE *ds_rule = NULL;
   char *col_name, *col_from, *col_to, *col_type, *col_in, *col_on, *col_at;
   char *col_save, *col_letters;
-  char *str_cursor = NULL;
+  const char *str_cursor = NULL;
 
   assert (tzd_raw != NULL);
 
@@ -2213,15 +2217,15 @@ exit:
  *	"Sun>=16", "lastSun" or other variations using other week days.
  */
 static int
-tzc_parse_ds_change_on (TZ_RAW_DS_RULE * dest, char *str)
+tzc_parse_ds_change_on (TZ_RAW_DS_RULE * dest, const char *str)
 {
   int err_status = NO_ERROR;
   int day_num = 0;		/* day of week or day of month, depending on the context */
   int type = -1, bound = -1;
-  char *str_cursor = NULL;
+  const char *str_cursor = NULL;
 
   assert (str != NULL && strlen (str) > 0);
-  assert (dest->in_month >= TZ_MON_JAN && dest->in_month <= TZ_MON_DEC);
+  assert (dest->in_month <= TZ_MON_DEC);
 
   str_cursor = str;
 
@@ -2801,14 +2805,14 @@ exit:
   return err_status;
 }
 
-int
-compare_ints (const int *a, const int *b)
+static int
+compare_ints (const void *a, const void *b)
 {
-  if (*a == *b)
+  if (*((int *) a) == *((int *) b))
     {
       return 0;
     }
-  else if (*a < *b)
+  else if (*((int *) a) < *((int *) b))
     {
       return -1;
     }
@@ -3149,7 +3153,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	    tzc_get_ds_ruleset_by_name (tzd, raw_offrule->ds_ruleset_name);
 	  if (offrule->ds_ruleset == -1)
 	    {
-	      char *dummy = NULL;
+	      const char *dummy = NULL;
 	      /* raw_offrule->rules is not an identifier of a ruleset;
 	       * check if it is '-' or time offset */
 	      offrule->ds_type = DS_TYPE_FIXED;
@@ -3456,8 +3460,8 @@ exit:
 static int
 str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
 {
-  char *str_cursor;
-  char *str_next;
+  const char *str_cursor;
+  const char *str_next;
   int year = 0;
   int val_read = 0;
   int type = -1, day = -1, bound = -1;
@@ -3673,10 +3677,10 @@ exit:
  * str_next(out): char pointer to the remaining string after parsing month
  */
 static int
-str_month_to_int (char *str_in, int *month_num, char **str_next)
+str_month_to_int (const char *str_in, int *month_num, const char **str_next)
 {
   int i;
-  char *str;
+  const char *str;
 
   assert (!IS_EMPTY_STR (str_in));
 
@@ -3688,7 +3692,7 @@ str_month_to_int (char *str_in, int *month_num, char **str_next)
       str++;
     }
 
-  if (strlen (str) < sizeof (MONTH_NAMES_ABBREV[0]) - 1)
+  if (strlen (str) < (int) sizeof (MONTH_NAMES_ABBREV[0]) - 1)
     {
       /* not enough characters to work with; exit with error */
       return TZC_ERR_INVALID_VALUE;
@@ -3723,10 +3727,10 @@ str_month_to_int (char *str_in, int *month_num, char **str_next)
  * str_next(out): char pointer to the remaining string after parsing day
  */
 static int
-str_day_to_int (char *str_in, int *day_num, char **str_next)
+str_day_to_int (const char *str_in, int *day_num, const char **str_next)
 {
   int i;
-  char *str;
+  const char *str;
   int err_status = NO_ERROR;
 
   assert (!IS_EMPTY_STR (str_in));
@@ -3739,7 +3743,7 @@ str_day_to_int (char *str_in, int *day_num, char **str_next)
       str++;
     }
 
-  if (strlen (str) < sizeof (DAY_NAMES_ABBREV[0]) - 1)
+  if (strlen (str) < (int) sizeof (DAY_NAMES_ABBREV[0]) - 1)
     {
       /* not enough characters to work with; exit with error */
       *day_num = -1;
@@ -3788,12 +3792,13 @@ exit:
  * str_next(out): pointer to the ramaining string after parsing the day rule
  */
 static int
-str_read_day_var (char *str, int *type, int *day, int *bound, char **str_next)
+str_read_day_var (const char *str, int *type, int *day, int *bound,
+		  const char **str_next)
 {
   int err_status = NO_ERROR;
   int day_num;
   char str_last[5] = "last";
-  char *str_cursor;
+  const char *str_cursor;
 
   assert (str != NULL);
 
@@ -4619,7 +4624,7 @@ tzc_dump_ds_ruleset (const TZ_DATA * tzd, const int ruleset_id)
       printf ("-\t");
 
       /* print IN column */
-      assert (rule->in_month >= 0 && rule->in_month < 12);
+      assert (rule->in_month < 12);
       printf ("%s\t", MONTH_NAMES_ABBREV[rule->in_month]);
 
       /* print ON column */

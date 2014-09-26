@@ -126,9 +126,9 @@ struct tz_offset_rule
 				 * 0 if it is a fixed time offset (seconds) */
   int julian_date;		/* encoded julian date for until_year, until_mon,
 				   and until_day */
-  char *std_format;		/* format for standard time */
-  char *save_format;		/* format for DST time (when saving time) */
-  char *var_format;		/* format for variable time (mutually excluded
+  const char *std_format;	/* format for standard time */
+  const char *save_format;	/* format for DST time (when saving time) */
+  const char *var_format;	/* format for variable time (mutually excluded
 				 * with std and save formats */
 };
 
@@ -163,7 +163,7 @@ struct tz_ds_rule
   int at_time;			/* time when DS event occurs */
   TZ_TIME_TYPE at_time_type;	/* type for at_time: standard, wall, UTC */
   int save_time;		/* amount of time saved, in seconds */
-  char *letter_abbrev;		/* letter(s) to be used in the time zone string ID */
+  const char *letter_abbrev;	/* letter(s) to be used in the time zone string ID */
 };
 
 typedef struct tz_ds_ruleset TZ_DS_RULESET;
@@ -171,14 +171,14 @@ struct tz_ds_ruleset
 {
   int index_start;
   int count;
-  char *ruleset_name;
+  const char *ruleset_name;
 };
 
 typedef struct tz_name TZ_NAME;
 struct tz_name
 {
   int zone_id;
-  char *name;
+  const char *name;
   unsigned char is_alias;	/* 1 if it is an alias, 0 otherwise */
 };
 
