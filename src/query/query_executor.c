@@ -27389,7 +27389,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int function_index_pos = -1;
   int index_position = 0;
   int num_idx_att = 0;
-  const char *comment = NULL;
+  char *comment = NULL;
 
   if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state)
       != NO_ERROR)
@@ -27488,7 +27488,8 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       db_make_null (out_values[11]);
 
       /* Comment */
-      comment = or_get_constraint_comment (&class_record, index->btname);
+      comment =
+	(char *) or_get_constraint_comment (&class_record, index->btname);
       db_make_string (out_values[12], comment);
 
       if (index->func_index_info == NULL)

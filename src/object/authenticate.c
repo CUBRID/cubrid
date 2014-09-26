@@ -1416,7 +1416,7 @@ au_make_user (const char *name)
 		  db_make_object (&value, auth);
 		  obj_set (user, "authorization", &value);
 
-		  db_make_string (&value, NULL);
+		  db_make_null (&value);
 		  obj_set (user, "comment", &value);
 		}
 	    }

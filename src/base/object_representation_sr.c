@@ -3742,7 +3742,8 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  else if (DB_VALUE_TYPE (&cvalue) == DB_TYPE_STRING)
 	    {
 	      /* strdup, caller shall free it */
-	      comment = strdup (DB_GET_STRING (&cvalue));
+	      char *cvalue_string = DB_GET_STRING (&cvalue);
+	      comment = strdup (cvalue_string);
 	    }
 	  else
 	    {
@@ -4036,7 +4037,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index)
 
   assert (attr_index < ORC_ATT_LAST_INDEX);
 
-  diskatt = or_find_diskattr (record, attr_id);
+  diskatt = (char *) or_find_diskattr (record, attr_id);
   if (diskatt != NULL)
     {
       /*
